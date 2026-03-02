@@ -31,7 +31,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   /* 新增：背景图相关样式 */
-  background-image: url('/bg.jpg'); /* 背景图路径（图片放 public 文件夹下） */
+  background-image: url('/bg.png'); /* 背景图路径（图片放 public 文件夹下） */
   background-size: cover; /* 背景图覆盖整个页面 */
   background-position: center; /* 背景图居中显示 */
   background-attachment: fixed; /* 滚动时背景固定 */
