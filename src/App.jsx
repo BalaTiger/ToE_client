@@ -59,9 +59,9 @@ const GOD_DEFS={
     godKey:'CTH',name:'拉莱耶之主',subtitle:'克苏鲁之化身',power:'梦访拉莱耶',
     col:'#2060c0',bgCol:'#080820',
     levels:[
-      {extraDraws:1,desc:'翻面休息前，可先摸1张牌'},
-      {extraDraws:2,desc:'翻面休息前，可先摸2张牌'},
-      {extraDraws:3,desc:'翻面休息前，可先摸3张牌'},
+      {extraDraws:1,desc:'在角色翻面状态下结束或跳过回合时，立即摸1张牌'},
+      {extraDraws:2,desc:'在角色翻面状态下结束或跳过回合时，立即摸2张牌'},
+      {extraDraws:3,desc:'在角色翻面状态下结束或跳过回合时，立即摸3张牌'},
     ],
   },
 };
@@ -101,7 +101,7 @@ function applyFx(card,ci,ti,ps,deck,disc){
   let P=copyPlayers(ps),D=[...deck],Disc=[...disc],msgs=[];
   const healHP=(i,v)=>{if(i==null||!P[i])return;P[i].hp=clamp(P[i].hp+v);};
   const healSAN=(i,v)=>{if(i==null||!P[i])return;P[i].san=clamp(P[i].san+v);};
-  const hurtHP=(i,v)=>{if(i==null||!P[i]||P[i].isDead)return;P[i].hp=clamp(P[i].hp-v);if(P[i].hp<=0){P[i].isDead=true;msgs.push(`☠ ${P[i].name} 倒下了！`);Disc.push(...P[i].hand);P[i].hand=[];}};
+  const hurtHP=(i,v)=>{if(i==null||!P[i]||P[i].isDead)return;P[i].hp=clamp(P[i].hp-v);if(P[i].hp<=0){P[i].isDead=true;P[i].roleRevealed=true;msgs.push(`☠ ${P[i].name}（${P[i].role}）倒下了！`);Disc.push(...P[i].hand);P[i].hand=[];if(P[i].godZone?.length){Disc.push(...P[i].godZone);P[i].godZone=[];P[i].godName=null;P[i].godLevel=0;}}};
   const hurtSAN=(i,v)=>{if(i==null||!P[i]||P[i].isDead)return;P[i].san=clamp(P[i].san-v);};
   const randDiscard=i=>{if(i==null||!P[i])return;if(P[i].hand.length){const x=0|Math.random()*P[i].hand.length;const c=P[i].hand.splice(x,1)[0];Disc.push(c);msgs.push(`${P[i].name} 失去了 [${c.key}]`);}};
   const drawDirect=i=>{if(i==null||!P[i])return;if(!D.length&&Disc.length){D=shuffle(Disc);Disc=[];msgs.push('牌堆重新洗入...');}if(D.length)P[i].hand.push(D.shift());};
@@ -133,9 +133,9 @@ function checkWin(players){
   // 1. 邪祀者 win: any surviving player's SAN hits 0 (evil god revives)
   for(const p of players)if(!p.isDead&&p.san<=0){
     const ws=players.filter(q=>q.role==='邪祀者').map(q=>q.name).join('、');
-    return{winner:'邪祀者',reason:`${p.name} 的理智归零，邪神苏醒！邪祀者（${ws||p.name}）获胜！`};
+    return{winner:'邪祀者',reason:`${p.name} 的理智归零，邪神苏醒！邪祀者（${ws}）获胜！`};
   }
-  // 2. 追猎者 win: all non-hunters dead (check BEFORE player-death so hunter player also wins)
+  // 2. 追猎者 win: all non-hunters dead — does NOT require any hunter to be alive
   const nonHunters=players.filter(p=>p.role!=='追猎者');
   if(nonHunters.length&&nonHunters.every(p=>p.isDead)){
     const ws=players.filter(q=>q.role==='追猎者').map(q=>q.name).join('、');
@@ -280,19 +280,23 @@ function startNextTurn(gs){
   if(P[next].isResting){
     P[next].isResting=false;
     L.push(`── ${P[next].name} 的回合开始 ──`);
-    // CTH power: resting player may draw before skipping
+    // CTH power: draw when ending/skipping turn while face-down
     if(next===0&&P[0].godName==='CTH'&&P[0].godLevel>=1){
       const extraDraws=P[0].godLevel; // lv1→1, lv2→2, lv3→3
-      L.push(`你（克苏鲁信徒Lv.${P[0].godLevel}）梦访拉莱耶，休息中额外摸${extraDraws}张牌`);
+      L.push(`你（克苏鲁信徒Lv.${P[0].godLevel}）梦访拉莱耶，翻面跳过回合时额外摸${extraDraws}张牌`);
       for(let _d=0;_d<extraDraws;_d++){
         const r2=playerDrawCard(P,D,Disc);P=r2.P;D=r2.D;Disc=r2.Disc;
         if(r2.drawnCard)L.push(`  摸到 [${r2.drawnCard.key||r2.drawnCard.name}]`);
-        if(r2.needGodChoice){return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,phase:'GOD_CHOICE',abilityData:{godCard:r2.drawnCard,fromRest:true},drawReveal:null,selectedCard:null};}
+        if(r2.needGodChoice){return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:r2.drawnCard,fromRest:true},drawReveal:null,selectedCard:null};}
       }
+      // Skip the turn: advance past player 0 to the next living player
+      // Hand limit is NOT enforced here — excess cards are kept until the next normal turn ends
+      L.push('回合跳过（翻面中）');
+      return startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,godFromHandUsed:false,godTriggeredThisTurn:false});
     } else {
       L.push(`${P[next].name} 从休息中醒来，跳过本回合`);
     }
-    return startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,skillUsed:false,restUsed:false});
+    return startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,skillUsed:false,restUsed:false,godFromHandUsed:false,godTriggeredThisTurn:false});
   }
   L.push(`── ${P[next].name} 的回合开始 ──`);
   if(next===0){
@@ -300,36 +304,36 @@ function startNextTurn(gs){
     if(P[0].godName==='NYA'&&P[0].godLevel>=1){
       const deadOthers=P.filter((p,i)=>i>0&&p.isDead);
       if(deadOthers.length>0){
-        return{...gs,players:P,deck:D,discard:Disc,log:[...L,'你的邪神之力「千人千貌」：可借用已死角色的身份'],currentTurn:0,skillUsed:false,restUsed:false,phase:'NYA_BORROW',abilityData:{},drawReveal:null,selectedCard:null};
+        return{...gs,players:P,deck:D,discard:Disc,log:[...L,'你的邪神之力「千人千貌」：可借用已死角色的身份'],currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,phase:'NYA_BORROW',abilityData:{},drawReveal:null,selectedCard:null};
       }
     }
     const res=playerDrawCard(P,D,Disc);
     P=res.P;D=res.D;Disc=res.Disc;
-    if(!res.drawnCard){L.push('牌堆耗尽！');return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,phase:'ACTION',drawReveal:null,abilityData:{},skillUsed:false,restUsed:false};}
-    if(res.needGodChoice){const win2=checkWin(P);if(win2)return{...gs,players:P,deck:D,discard:Disc,log:[...L,...res.effectMsgs],gameOver:win2};return{...gs,players:P,deck:D,discard:Disc,log:[...L,...res.effectMsgs],currentTurn:0,skillUsed:false,restUsed:false,phase:'GOD_CHOICE',abilityData:{godCard:res.drawnCard},drawReveal:null,selectedCard:null};}
+    if(!res.drawnCard){L.push('牌堆耗尽！');return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,phase:'ACTION',drawReveal:null,abilityData:{},skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false};}
+    if(res.needGodChoice){const win2=checkWin(P);if(win2)return{...gs,players:P,deck:D,discard:Disc,log:[...L,...res.effectMsgs],gameOver:win2};return{...gs,players:P,deck:D,discard:Disc,log:[...L,...res.effectMsgs],currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:res.drawnCard},drawReveal:null,selectedCard:null};}
     const win=checkWin(P);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
     if(!res.needTarget&&!P[0].isDead&&P[0].role==='寻宝者'&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
-      // Embed gameOver into the state that will be applied AFTER the card-flip anim.
-      // triggerAnimQueue queues DRAW_CARD, plays it, then setGs(this) → win screen.
+      // Set PLAYER_WIN_PENDING so treasure-map animation plays before win screen
       return{...gs,players:P,deck:D,discard:Disc,
         log:[...L,'你摸牌后集齐了全部编号！'],
-        currentTurn:0,skillUsed:false,restUsed:false,phase:'DRAW_REVEAL',
+        currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,phase:'DRAW_REVEAL',
         drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needTarget:false},
-        selectedCard:null,abilityData:{},
-        gameOver:{winner:'寻宝者',reason:'你集齐了全部编号，寻宝者获胜！',winnerIdx:0}};
+        selectedCard:null,abilityData:{winReason:'你集齐了全部编号并获胜！'},
+        _pendingPlayerWin:true};
     }
-    return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,
+    return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,
       phase:res.needTarget?'DRAW_SELECT_TARGET':'DRAW_REVEAL',
       drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needTarget:res.needTarget},
       selectedCard:null,abilityData:{}};
   }else{
+    const _P_beforeDraw=copyPlayers(P);
     const res=aiDrawAndApply(next,P,D,Disc);
     P=res.P;D=res.D;Disc=res.Disc;if(res.effectMsgs.length)L.push(...res.effectMsgs);
     const win=checkWin(P);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
-    if(!P[next].isDead&&P[next].role==='寻宝者'&&isWinHand(P[next].hand)){P[next].roleRevealed=true;return{...gs,players:P,deck:D,discard:Disc,log:[...L,`${P[next].name}（寻宝者）集齐获胜！`],gameOver:{winner:'寻宝者',reason:`${P[next].name} 集齐了全部编号，寻宝者获胜！`,winnerIdx:next}};}
-    return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,phase:'AI_TURN',drawReveal:null,selectedCard:null,abilityData:{},
-      _drawnCard:res.drawnCard??null,_turnKey:(gs._turnKey||0)+1};
+    if(!P[next].isDead&&P[next].role==='寻宝者'&&isWinHand(P[next].hand)){P[next].roleRevealed=true;return{...gs,players:P,deck:D,discard:Disc,log:[...L,`${P[next].name} 集齐全部编号并获胜！`],gameOver:{winner:'寻宝者',reason:`${P[next].name} 集齐了全部编号并获胜！`,winnerIdx:next}};}
+    return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,phase:'AI_TURN',drawReveal:null,selectedCard:null,abilityData:{},huntAbandoned:[],
+      _drawnCard:res.drawnCard??null,_playersBeforeThisDraw:_P_beforeDraw,_turnKey:(gs._turnKey||0)+1};
   }
 }
 
@@ -353,57 +357,119 @@ function aiStep(gs){
     }
   }
   const ai=P[ct];const alive=P.filter((p,i)=>!p.isDead&&i!==ct);
-  if((ai._nyaBorrow||ai.role)==='寻宝者'&&isWinHand(ai.hand)){P[ct].roleRevealed=true;return{...gs,players:P,log:[...L,`${ai.name}（寻宝者）宣告获胜！`],gameOver:{winner:'寻宝者',reason:`${ai.name} 集齐了全部编号，寻宝者获胜！`,winnerIdx:ct}};}
-  // AI Rest: decide to rest when HP is low and rest hasn't been used
-  if(!gs.restUsed&&!gs.skillUsed&&ai.hp<=4&&Math.random()<0.65){
+  if((ai._nyaBorrow||ai.role)==='寻宝者'&&isWinHand(ai.hand)){P[ct].roleRevealed=true;return{...gs,players:P,log:[...L,`${ai.name} 宣告获胜！`],gameOver:{winner:'寻宝者',reason:`${ai.name} 集齐了全部编号并获胜！`,winnerIdx:ct}};}
+  // AI worship-from-hand: face-down god cards in hand can be worshipped (no skull counter, once per turn)
+  if(!gs.skillUsed&&!gs.restUsed){
+    const handGodIdx=P[ct].hand.findIndex(c=>c.isGod);
+    if(handGodIdx>=0){
+      const hgc=P[ct].hand[handGodIdx];
+      const alreadyHasGod=P[ct].godName&&P[ct].godName!==hgc.godKey;
+      const willWorship=P[ct].role==='邪祀者'?Math.random()<0.65:Math.random()<0.45;
+      if(willWorship){
+        P[ct].hand.splice(handGodIdx,1);
+        // Forced convert if worshipping different god
+        if(alreadyHasGod){P[ct].san=clamp(P[ct].san-1);Disc.push(...P[ct].godZone);P[ct].godZone=[];P[ct].godName=null;P[ct].godLevel=0;L.push(`${P[ct].name} 改信新神，SAN-1`);}
+        if(P[ct].godName===hgc.godKey&&P[ct].godLevel<3){
+          P[ct].godLevel++;P[ct].godZone.push({...hgc});
+          L.push(`${P[ct].name} 从手牌升级邪神之力至Lv.${P[ct].godLevel}（骷髅头不计）`);
+        } else if(!P[ct].godName||alreadyHasGod){
+          P[ct].godName=hgc.godKey;P[ct].godLevel=1;P[ct].godZone=[{...hgc}];
+          L.push(`${P[ct].name} 从手牌信仰 ${hgc.name}，获得${hgc.power}(Lv.1)（骷髅头不计）`);
+        }
+        P.forEach((p,i)=>{if(i!==ct&&p.godName===hgc.godKey){p.san=clamp(p.san-1);Disc.push(...p.godZone);p.godZone=[];p.godName=null;p.godLevel=0;L.push(`${p.name} 被邪神抛弃，SAN-1`);}});
+        const ww=checkWin(P);if(ww)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:ww};
+      }
+    }
+  }
+  // ── AI Rest (v2 MCTS策略，修正版) ────────────────────────────
+  // 核心约束：HP≥9时休息无意义（clamp后实际回复0-1HP），一律不休
+  // 寻宝者: hp≤7时休息优于不休（训练数据HP≈6/8 ✓，排除HP≈8覆盖的hp=9）
+  // 追猎者: hp≤5时积极休息；hp 6-8区间不休（训练证明6-7不休更优，hp=8-9实际收益<2HP）
+  // 邪祀者: 沿用低HP保守门槛
+  const aiEffRole=ai._nyaBorrow||ai.role;
+  const shouldRest=(()=>{
+    if(gs.restUsed||gs.skillUsed)return false;
+    if(ai.hp>=9)return false; // 通用上限：HP≥9时healing被clamp截断，浪费回合
+    if(aiEffRole==='寻宝者')return ai.hp<=7&&Math.random()<0.70;
+    if(aiEffRole==='追猎者'){
+      if(ai.hp<=5)return Math.random()<0.75;
+      return false; // hp 6-8: 训练证明此区间不休更优
+    }
+    return ai.hp<=4&&Math.random()<0.65;
+  })();
+  if(shouldRest){
     const d1=(1+Math.random()*6|0),d2=(1+Math.random()*6|0),heal=Math.max(d1,d2);
     P[ct].hp=clamp(P[ct].hp+heal);P[ct].isResting=true;
     L.push(`${ai.name} 选择【休息】，掷骰 ${d1}+${d2}，回复 ${heal}HP，翻面休息中`);
     const win=checkWin(P);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
+    const _P_afterRest=copyPlayers(P);
     const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,restUsed:true,skillUsed:false});
-    return{...nextGs,_aiDrawnCard:gs._drawnCard,_aiName:ai.name};
+    return{...nextGs,_aiDrawnCard:gs._drawnCard,_aiName:ai.name,_playersBeforeNextDraw:_P_afterRest};
   }
-  // Hunters & cultists use skill more aggressively (55%); treasurehunters stay 35%
-  const skillRate=ai.role==='追猎者'||ai.role==='邪祀者'?0.55:0.35;
+  // 追猎者/邪祀者积极发动技能(65%); 寻宝者随进度提升(35%→55%)
+  const myNonGod=P[ct].hand.filter(c=>!c.isGod);
+  const myProgress=aiEffRole==='寻宝者'
+    ?(new Set(myNonGod.map(c=>c.letter)).size+new Set(myNonGod.map(c=>c.number)).size):0;
+  const skillRate=aiEffRole==='追猎者'||aiEffRole==='邪祀者'?0.65
+    :(myProgress>=7?0.55:0.35);
   const useSkill=!gs.restUsed&&Math.random()<skillRate&&alive.length>0;
   if(useSkill){
     P[ct].roleRevealed=true;
-    // Role-optimised target: hunters focus lowest-HP non-hunter; cultists focus lowest-SAN
+    // ── v2 MCTS 目标选择 ────────────────────────────────────
     let tgt;
-    if(ai.role==='追猎者'){
-      // No friendly fire; concentrate on the weakest (lowest HP) non-hunter
-      const pool=(()=>{const e=alive.filter(p=>p.role!=='追猎者');return e.length?e:alive;})();
+    if(aiEffRole==='追猎者'){
+      // v2: 猎最弱非猎手(17.5%) ≈ 猎全场最弱(17.6%)，保持非猎手优先
+      const nonH=alive.filter(p=>p.role!=='追猎者');
+      const pool=nonH.length?nonH:alive;
       tgt=pool.reduce((b,p)=>p.hp<b.hp?p:b,pool[0]);
-    } else if(ai.role==='邪祀者'){
-      // PRIMARY: globally lowest SAN player is the "ripe" target (including teammates)
-      const ripeTgt=alive.reduce((b,p)=>p.san<b.san?p:b,alive[0]);
-      // PROTECT: if the ripe target is critically low HP (≤3), a hunter may kill them
-      // before SAN reaches 0. Counter: target the hunter threatening them instead,
-      // gift SAN-damage to weaken/kill the hunter and buy time.
-      const hunterThreat=alive.filter(p=>p.role==='追猎者'&&!p.isDead);
-      const ripeHpCritical=ripeTgt.hp<=3&&hunterThreat.length>0;
-      if(ripeHpCritical){
-        // Target the hunter with highest HP (most dangerous) to weaken with SAN attack
-        tgt=hunterThreat.reduce((b,p)=>p.hp>b.hp?p:b,hunterThreat[0]);
-      } else {
-        tgt=ripeTgt;
-      }
+    } else if(aiEffRole==='邪祀者'){
+      // ── 邪祀者目标选择（模拟验证版）──────────────────────────
+      // z检验：v2 MCTS的16种蛊惑组合全部为统计噪音（最高z=1.41，n~116/组，不显著）
+      // 逻辑模拟揭示真实机制（逐回合追演）：
+      //   · 攻最低HP目标 → 猎人同回合或次回合击杀该目标 → 所有SAN投资清零 → 失败
+      //   · 攻最低SAN目标 → 若该目标HP也低，猎人抢先击杀，SAN同样清零
+      //   · 攻max(HP-SAN)目标 → HP越高存活越久(不被猎人抢杀)，SAN越低需要轮数越少
+      //     → 胜利窗口最大，逻辑上最优
+      // 用牌：SAN牌和HP牌本质没有区别（蛊惑后对方拿走），选SAN牌稍优以配合目标
+      const sanScore=p=>(p.hp-p.san);
+      tgt=alive.reduce((b,p)=>sanScore(p)>sanScore(b)?p:b,alive[0]);
     } else {
-      tgt=alive[0|Math.random()*alive.length];
+      // 寻宝者: 进度高时随机掉包(38-51%胜率); 进度低时选互补目标
+      const withH=alive.filter(p=>p.hand.length>0);
+      const pool=withH.length?withH:alive;
+      if(myProgress>=7){
+        tgt=pool[0|Math.random()*pool.length];
+      } else {
+        const myL=new Set(myNonGod.map(c=>c.letter));
+        const myN=new Set(myNonGod.map(c=>c.number));
+        const scoreH=h=>h.filter(c=>!c.isGod&&(!myL.has(c.letter)||!myN.has(c.number))).length;
+        tgt=pool.reduce((b,p)=>scoreH(p.hand)>scoreH(b.hand)?p:b,pool[0]);
+      }
     }
     const ti=P.indexOf(tgt);
-    if(ai.role==='寻宝者'&&P[ti].hand.length&&P[ct].hand.length){
+    if(aiEffRole==='寻宝者'&&P[ti].hand.length&&P[ct].hand.length){
       const ri=0|Math.random()*P[ti].hand.length;const taken=P[ti].hand.splice(ri,1)[0];
       const gi=0|Math.random()*P[ct].hand.length;const given=P[ct].hand.splice(gi,1)[0];
       P[ct].hand.push(taken);P[ti].hand.push(given);
       L.push(`${ai.name}（寻宝者）对 ${tgt.name} 【掉包】`);
-      if(isWinHand(P[ct].hand)){P[ct].roleRevealed=true;return{...gs,players:P,deck:D,discard:Disc,log:[...L,`${ai.name} 掉包后获胜！`],gameOver:{winner:'寻宝者',reason:`${ai.name} 通过掉包集齐全部编号！`,winnerIdx:ct}};}
-    }else if(ai.role==='追猎者'&&P[ti].hand.length){
-      const ri=0|Math.random()*P[ti].hand.length;const rc=P[ti].hand[ri];
+      if(isWinHand(P[ct].hand)){P[ct].roleRevealed=true;return{...gs,players:P,deck:D,discard:Disc,log:[...L,`${ai.name} 掉包后获胜！`],gameOver:{winner:'寻宝者',reason:`${ai.name} 通过掉包集齐全部编号并获胜！`,winnerIdx:ct}};}
+    }else if(ai.role==='追猎者'){
+      const zoneH=P[ti].hand.filter(c=>!c.isGod);
+      if(!zoneH.length){L.push(`${tgt.name} 无区域牌，追捕失败`);
+      }else if(ti===0){
+        // Player is the target — pause AI turn and let player choose which card to reveal
+        L.push(`${ai.name}（追猎者）向你发动【追捕】！请选择亮出一张区域牌`);
+        return{...gs,players:P,deck:D,discard:Disc,log:L,
+          phase:'PLAYER_REVEAL_FOR_HUNT',
+          abilityData:{huntingAI:ct,aiHunterName:ai.name},
+          skillUsed:true,_aiName:ai.name,_drawnCard:gs._drawnCard};
+      }else{
+      const ri=0|Math.random()*zoneH.length;const rc=zoneH[ri];
       L.push(`${ai.name}（追猎者）对 ${tgt.name} 【追捕】，亮出 [${rc.key}]`);
       const mi=P[ct].hand.findIndex(c=>c.letter===rc.letter||c.number===rc.number);
-      if(mi>=0){const dc=P[ct].hand.splice(mi,1)[0];Disc.push(dc);P[ti].hp=clamp(P[ti].hp-2);L.push(`弃 [${dc.key}] → ${tgt.name} 受 2HP 伤害！`);if(P[ti].hp<=0){P[ti].isDead=true;L.push(`☠ ${tgt.name} 倒下了！`);if(P[ti].hand.length){P[ct].hand.push(...P[ti].hand);L.push(`${ai.name} 没收了 ${tgt.name} 的手牌！`);P[ti].hand=[];}}}
+      if(mi>=0){const dc=P[ct].hand.splice(mi,1)[0];Disc.push(dc);P[ti].hp=clamp(P[ti].hp-2);L.push(`弃 [${dc.key}] → ${tgt.name} 受 2HP 伤害！`);if(P[ti].hp<=0){P[ti].isDead=true;P[ti].roleRevealed=true;L.push(`☠ ${tgt.name}（${tgt.role}）倒下了！`);if(P[ti].hand.length){P[ct].hand.push(...P[ti].hand);L.push(`${ai.name} 没收了 ${tgt.name} 的手牌！`);P[ti].hand=[];}if(P[ti].godZone?.length){Disc.push(...P[ti].godZone);P[ti].godZone=[];P[ti].godName=null;P[ti].godLevel=0;}}}
       else L.push(`无匹配手牌，放弃追捕`);
+      }// end else zoneH.length
     }else if(ai.role==='邪祀者'&&P[ct].hand.length){
       const hunterThreatTgt=P[ti]?.role==='追猎者';
       // Priority 1: god card that forces a conversion (enemy already worships different god)
@@ -431,8 +497,9 @@ function aiStep(gs){
   const win=checkWin(P);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
   while(P[ct].hand.length>4){const c=P[ct].hand.shift();Disc.push(c);L.push(`${ai.name} 弃 [${c.key}]（上限）`);}
   // gs._drawnCard was tagged by startNextTurn when this AI turn started; pass it through
+  const _P_afterAction=copyPlayers(P);
   const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct});
-  return{...nextGs,_aiDrawnCard:gs._drawnCard,_aiName:ai.name};
+  return{...nextGs,_aiDrawnCard:gs._drawnCard,_aiName:ai.name,_playersBeforeNextDraw:_P_afterAction};
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -442,7 +509,7 @@ function initGame(){
   const deck=mkDeck(),roles=mkRoles(),names=['你',...AI_NAMES];
   const players=names.map((name,i)=>({id:i,name,role:roles[i],roleRevealed:false,hp:10,san:10,hand:[],isDead:false,isResting:false,godEncounters:0,godZone:[],godName:null,godLevel:0}));
   for(let r=0;r<4;r++)players.forEach(p=>p.hand.push(deck.shift()));
-  const base={players,deck,discard:[],currentTurn:-1,phase:'DRAW_REVEAL',drawReveal:null,selectedCard:null,abilityData:{},log:['游戏开始。每人获得四张初始手牌。'],gameOver:null,skillUsed:false,restUsed:false,_turnKey:0};
+  const base={players,deck,discard:[],currentTurn:-1,phase:'DRAW_REVEAL',drawReveal:null,selectedCard:null,abilityData:{},log:['游戏开始。每人获得四张初始手牌。'],gameOver:null,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,_turnKey:0};
   return startNextTurn(base);
 }
 
@@ -454,7 +521,7 @@ function initGame(){
 const EVIL_TYPES=new Set(['damage','allDamage','sanDamage','allSANDamage','sanDamageDiscard','damageDraw','selfSANDamage']);
 
 // Duration (ms) per animation type
-const ANIM_DURATION={DRAW_CARD:1200, HP_HEAL:1200, SAN_HEAL:1200, SAN_DAMAGE:800, SKILL_SWAP:800, SKILL_HUNT:1200, SKILL_BEWITCH:1200, DICE_ROLL:2200, default:600};
+const ANIM_DURATION={DRAW_CARD:1850, HP_HEAL:1200, SAN_HEAL:1200, SAN_DAMAGE:800, SKILL_SWAP:800, SKILL_HUNT:1200, SKILL_BEWITCH:1200, DICE_ROLL:2200, DISCARD:1000, YOUR_TURN:2000, GUILLOTINE:2500, default:600};
 
 // Build an animation queue from before/after game states
 function buildAnimQueue(oldGs,newGs){
@@ -463,6 +530,7 @@ function buildAnimQueue(oldGs,newGs){
   const deaths=newGs.players.filter((p,i)=>oldGs.players[i]&&!oldGs.players[i].isDead&&p.isDead);
   if(deaths.length){
     const deathIdx=newGs.players.reduce((acc,p,i)=>{if(oldGs.players[i]&&!oldGs.players[i].isDead&&p.isDead)acc.push(i);return acc;},[]);
+    q.push({type:'GUILLOTINE',msgs:newMsgs,hitIndices:deathIdx});
     q.push({type:'DEATH',msgs:newMsgs,hitIndices:deathIdx});
   }else{
     const hpHitIdx=newGs.players.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.hp<oldGs.players[i].hp)acc.push(i);return acc;},[]);
@@ -652,6 +720,30 @@ function CardFlipAnim({card,triggerName,exiting}){
   if(!card) return null;
   const s=CS[card.letter]||GOD_CS;
   const isEvil=EVIL_TYPES.has(card.type)||card.isGod;
+
+  // Phase 1: card travels from deck (top-right) to centre ~700ms
+  // Phase 2: full flip animation
+  const [traveled,setTraveled]=React.useState(false);
+  React.useEffect(()=>{const t=setTimeout(()=>setTraveled(true),650);return()=>clearTimeout(t);},[]);
+
+  // Travel phase — card back slides from deck position to centre
+  if(!traveled) return(
+    <div style={{position:'fixed',inset:0,zIndex:999,background:'rgba(4,4,2,0)',pointerEvents:'none'}}>
+      <div style={{
+        position:'absolute',
+        width:70,height:94,borderRadius:4,
+        background:'linear-gradient(135deg,#1e1208,#0e0804)',
+        border:'1.5px solid #4a3010',
+        boxShadow:'0 4px 18px rgba(0,0,0,0.7)',
+        animation:'cardTravelToDeck 0.65s cubic-bezier(0.3,0,0.2,1) forwards',
+      }}>
+        <div style={{position:'absolute',inset:0,borderRadius:4,
+          background:'repeating-linear-gradient(45deg,#2a1a0820 0px,#2a1a0820 1px,transparent 1px,transparent 4px)'}}/>
+        <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',
+          fontFamily:"'Cinzel',serif",fontSize:14,color:'#3a2810',opacity:0.6}}>✦</div>
+      </div>
+    </div>
+  );
 
   // Ghost-smoke columns: each column = core wisp + halo + ghost face at top
   const spirits=isEvil
@@ -845,6 +937,36 @@ function KnifeEffect(){
   );
 }
 
+// ── Discard Move Overlay ──────────────────────────────────────
+// Shows a card-back flying from hand area (bottom-centre) to discard pile (left-centre)
+function DiscardMoveOverlay({anim,exiting}){
+  if(!anim)return null;
+  const card=anim.card||null;
+  const s=card&&CS[card.letter]?CS[card.letter]:null;
+  return(
+    <div style={{position:'fixed',inset:0,zIndex:990,pointerEvents:'none',
+      animation:exiting?'animFadeOut 0.18s ease-in forwards':'none',
+    }}>
+      {/* Subtle bg dim */}
+      <div style={{position:'absolute',inset:0,background:'rgba(4,2,0,0.35)',animation:'discardBgFade 1.0s ease both'}}/>
+      {/* Flying card */}
+      <div style={{
+        position:'absolute',
+        width:62,height:84,borderRadius:4,
+        background:s?s.bg:'linear-gradient(135deg,#1e1208,#0e0804)',
+        border:s?`1.5px solid ${s.borderBright}`:'1.5px solid #4a3010',
+        boxShadow:'0 6px 24px rgba(0,0,0,0.65)',
+        animation:'discardCardFly 1.0s cubic-bezier(0.4,0,0.3,1) forwards',
+        display:'flex',alignItems:'center',justifyContent:'center',
+      }}>
+        {card&&s&&<div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:18}}>{card.key}</div>}
+        {(!card||!s)&&<div style={{position:'absolute',inset:0,borderRadius:4,
+          background:'repeating-linear-gradient(45deg,#2a1a0820 0px,#2a1a0820 1px,transparent 1px,transparent 4px)'}}/>}
+      </div>
+    </div>
+  );
+}
+
 // ── Generic Overlay Anim ──────────────────────────────────────
 const ANIM_CFG={
   // HP_DAMAGE handled via per-character KnifeEffect, no fullscreen overlay needed
@@ -852,7 +974,7 @@ const ANIM_CFG={
   HP_HEAL:      {overlay:'rgba(3,12,3,0.90)', accent:'#4ade80', icon:'✚',  title:'创伤愈合',  shake:false},
   SAN_HEAL:     {overlay:'rgba(8,3,18,0.90)', accent:'#a78bfa', icon:'☯',  title:'心神平复',  shake:false},
   // SKILL_SWAP/HUNT/BEWITCH use dedicated overlay components, not GenericAnimOverlay
-  DISCARD:      {overlay:'rgba(18,10,2,0.90)',accent:'#c87030', icon:'🕯',  title:'弃置遗忘',  shake:false},
+  // DISCARD uses DiscardMoveOverlay, not GenericAnimOverlay
   DEATH:        {overlay:'rgba(12,2,2,0.96)', accent:'#ff2020', icon:'☠',  title:'死亡降临',  shake:false},
 };
 function GenericAnimOverlay({anim,exiting}){
@@ -954,14 +1076,355 @@ function DiceRollAnim({anim,exiting}){
     </div>
   );
 }
+function YourTurnAnim(){
+  return(
+    <div style={{position:'fixed',inset:0,zIndex:2500,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
+      <div style={{
+        fontFamily:"'Cinzel Decorative','Cinzel',serif",
+        fontSize:32,fontWeight:700,letterSpacing:8,
+        color:'#e8c87a',
+        textShadow:'0 0 40px #c8a96e99, 0 0 80px #c8a96e44',
+        animation:'yourTurnFade 2.0s ease-in-out forwards',
+        whiteSpace:'nowrap',
+      }}>你的回合</div>
+    </div>
+  );
+}
+
+// ── Guillotine Death Animation ────────────────────────────────
+function GuillotineAnim({hitIndices}){
+  const[targets,setTargets]=useState([]);
+  const[phase,setPhase]=useState('falling'); // falling → impact → shatter
+  const[shards]=useState(()=>
+    Array.from({length:28},(_,i)=>{
+      const angle=(i/28)*Math.PI*2+Math.random()*0.5;
+      const dist=70+Math.random()*140;
+      return{
+        w:8+Math.random()*24, h:5+Math.random()*16,
+        tx:Math.cos(angle)*dist, ty:Math.sin(angle)*dist-50,
+        rot:(Math.random()-0.5)*440,
+        delay:i*0.012,
+        hue:10+Math.random()*30, sat:15+Math.random()*25, lit:12+Math.random()*18,
+      };
+    })
+  );
+
+  useEffect(()=>{
+    const measured=hitIndices.map(idx=>{
+      const el=document.querySelector(`[data-pid="${idx}"]`);
+      if(!el)return null;
+      const r=el.getBoundingClientRect();
+      return{x:r.left,y:r.top,w:r.width,h:r.height,cx:r.left+r.width/2,cy:r.top+r.height/2};
+    }).filter(Boolean);
+    setTargets(measured);
+    const t1=setTimeout(()=>setPhase('impact'),560);
+    const t2=setTimeout(()=>setPhase('shatter'),640);
+    return()=>{clearTimeout(t1);clearTimeout(t2);};
+  },[]);
+
+  return(
+    <div style={{position:'fixed',inset:0,zIndex:1400,pointerEvents:'none',overflow:'hidden'}}>
+      {/* Screen shake — whole-viewport scale+translate jitter */}
+      {(phase==='impact'||phase==='shatter')&&(
+        <div style={{position:'absolute',inset:'-5%',background:'transparent',
+          animation:'deathScreenShake 0.55s cubic-bezier(0.36,0.07,0.19,0.97) forwards'}}/>
+      )}
+      {/* Dark vignette pulse */}
+      <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0)',animation:'guillotineVig 2.5s ease-in-out forwards'}}/>
+      {/* Blood flash at impact */}
+      {phase==='impact'&&(
+        <div style={{position:'absolute',inset:0,
+          background:'radial-gradient(ellipse at center,rgba(180,10,10,0.55) 0%,rgba(80,0,0,0.25) 60%,transparent 100%)',
+          animation:'guillotineBloodFlash 0.35s ease-out forwards'}}/>
+      )}
+      {targets.map((t,ti)=>(
+        <div key={ti}>
+          {/* ── Blade (falling) ── */}
+          {phase==='falling'&&(
+            <div style={{
+              position:'absolute',left:t.cx-28,top:0,
+              '--fall-y':`${t.y-100}px`,
+              animation:'guillotineFall 0.56s cubic-bezier(0.4,0,1,1) forwards',
+            }}>
+              <svg width="56" height="260" viewBox="0 0 56 260" style={{filter:'drop-shadow(0 4px 20px rgba(200,180,100,0.5))'}}>
+                {/* Guide rails */}
+                <rect x="8"  y="0" width="6" height="200" fill="#4a3a20" rx="1"/>
+                <rect x="42" y="0" width="6" height="200" fill="#4a3a20" rx="1"/>
+                {/* Blade weight block */}
+                <rect x="14" y="140" width="28" height="30" fill="#888880" rx="1"/>
+                <rect x="16" y="142" width="24" height="6" fill="#aaaa98" rx="1" opacity="0.6"/>
+                {/* Blade body */}
+                <polygon points="6,170 50,170 44,230 12,230" fill="#8a8878"/>
+                {/* Cutting edge – angled like a real guillotine blade */}
+                <polygon points="6,230 44,225 50,235 6,240" fill="#d0cfc0"/>
+                <polygon points="44,225 50,235 50,228" fill="#e8e8d8"/>
+                {/* Gleam */}
+                <line x1="12" y1="172" x2="20" y2="228" stroke="#fff" strokeWidth="2.5" opacity="0.25"/>
+                <line x1="36" y1="175" x2="42" y2="224" stroke="#fff" strokeWidth="1.5" opacity="0.15"/>
+                {/* Rivets */}
+                <circle cx="20" cy="155" r="3" fill="#6a6860"/>
+                <circle cx="36" cy="155" r="3" fill="#6a6860"/>
+              </svg>
+            </div>
+          )}
+          {/* ── Impact flash ── */}
+          {phase==='impact'&&(
+            <div style={{
+              position:'absolute',
+              left:t.x-8,top:t.y-8,width:t.w+16,height:t.h+16,
+              background:'rgba(255,230,120,0.85)',borderRadius:4,
+              animation:'guillotineFlash 0.09s ease-out forwards',
+            }}/>
+          )}
+          {/* ── Shards ── */}
+          {phase==='shatter'&&shards.map((s,si)=>(
+            <div key={si} style={{
+              position:'absolute',
+              left:t.cx+(si%3-1)*10,top:t.cy+(si%2-0.5)*8,
+              width:s.w,height:s.h,
+              background:`hsl(${s.hue},${s.sat}%,${s.lit}%)`,
+              border:'1px solid #6a4510',
+              borderRadius:1,
+              '--stx':`${s.tx}px`,'--sty':`${s.ty}px`,'--srot':`${s.rot}deg`,
+              animation:`shardFly 0.85s cubic-bezier(0,0.55,0.3,1) ${s.delay}s forwards`,
+              transformOrigin:'center',
+            }}/>
+          ))}
+          {/* ── Panel crack overlay ── */}
+          {phase==='shatter'&&(
+            <div style={{
+              position:'absolute',left:t.x,top:t.y,width:t.w,height:t.h,
+              border:'2.5px solid #cc2222',borderRadius:3,
+              animation:'panelCrumble 0.9s ease-out forwards',
+              background:'rgba(80,10,10,0.45)',
+            }}>
+              {/* Crack lines */}
+              <svg width={t.w} height={t.h} style={{position:'absolute',inset:0,opacity:0.9}}>
+                <line x1={t.w*0.5} y1={0} x2={t.w*0.15} y2={t.h} stroke="#ff4444" strokeWidth="2" opacity="0.9"/>
+                <line x1={t.w*0.5} y1={0} x2={t.w*0.85} y2={t.h} stroke="#ff3333" strokeWidth="1.5" opacity="0.75"/>
+                <line x1={0} y1={t.h*0.35} x2={t.w} y2={t.h*0.55} stroke="#cc2222" strokeWidth="1.5" opacity="0.65"/>
+                <line x1={t.w*0.3} y1={0} x2={t.w*0.7} y2={t.h} stroke="#ff5555" strokeWidth="1" opacity="0.5"/>
+              </svg>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Treasure Map Win Animation (寻宝者 win, single unified impl) ─────────────
+function TreasureMapAnim({hand,onConfirm}){
+  // Compute the minimal ordered set of cards that covers all 4 letters AND 4 numbers
+  const LETTERS_ALL=['A','B','C','D'],NUMS_ALL=[1,2,3,4];
+  function pickWinCards(h){
+    const nonGod=h.filter(c=>!c.isGod);
+    const chosen=[];
+    const ls=new Set(),ns=new Set();
+    // Greedy: repeatedly pick card with most new coverage
+    const rem=[...nonGod];
+    while((ls.size<4||ns.size<4)&&rem.length){
+      let bestIdx=0,bestScore=-1;
+      rem.forEach((c,i)=>{
+        const gain=(!ls.has(c.letter)?1:0)+(!ns.has(c.number)?1:0);
+        if(gain>bestScore){bestScore=gain;bestIdx=i;}
+      });
+      const pick=rem.splice(bestIdx,1)[0];
+      chosen.push(pick);
+      ls.add(pick.letter);ns.add(pick.number);
+    }
+    return chosen;
+  }
+  const winCards=pickWinCards(hand);
+  const N=winCards.length; // 4 to 8
+  // Phase: 0=init, 1..N = card N flies in, N+1=all in (glow builds), N+2=flash, N+3=map revealed, N+4=button shown
+  const [phase,setPhase]=useState(0);
+  const [fired,setFired]=useState(false);
+  useEffect(()=>{
+    if(fired)return;setFired(true);
+    const ts=[];
+    let t=300;
+    for(let i=1;i<=N;i++){const _i=i;ts.push(setTimeout(()=>setPhase(_i),t));t+=350;}
+    ts.push(setTimeout(()=>setPhase(N+1),t));t+=800; // all assembled, glow
+    ts.push(setTimeout(()=>setPhase(N+2),t));t+=500; // flash
+    ts.push(setTimeout(()=>setPhase(N+3),t));t+=600; // map
+    ts.push(setTimeout(()=>setPhase(N+4),t));        // button
+    return()=>ts.forEach(clearTimeout);
+  },[]);
+  // Layout: cards in a grid, max 4 per row
+  const COLS=Math.min(N,4),ROWS=Math.ceil(N/COLS);
+  const CW=72,CH=96,GAP=8;
+  const gridW=COLS*(CW+GAP)-GAP, gridH=ROWS*(CH+GAP)-GAP;
+  // Scatter origins (8 corners/edges)
+  const origins=[
+    {x:-220,y:-170},{x:220,y:-170},{x:-220,y:170},{x:220,y:170},
+    {x:0,y:-190},{x:0,y:190},{x:-200,y:0},{x:200,y:0},
+  ];
+  const allIn=phase>N;
+  const glowing=phase===N+1;
+  const flashing=phase===N+2;
+  const mapRevealed=phase>=N+3;
+  const btnVisible=phase>=N+4;
+  return(
+    <div style={{position:'fixed',inset:0,zIndex:4000,display:'flex',flexDirection:'column',
+      alignItems:'center',justifyContent:'center',
+      background:flashing?'rgba(255,240,200,0.92)':'rgba(4,3,1,0.92)',
+      backdropFilter:'blur(2px)',transition:'background 0.35s ease',
+      animation:'animFadeIn 0.35s ease-out'}}>
+      <div style={{textAlign:'center',marginBottom:22,animation:'animFadeIn 0.5s 0.1s both'}}>
+        <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:22,fontWeight:700,
+          letterSpacing:4,color:'#c8a96e',textShadow:'0 0 40px #c8a96e88',marginBottom:6}}>
+          ✦ 藏宝图已完整 ✦
+        </div>
+        <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',
+          color:'#7a6040',fontSize:13,letterSpacing:1}}>
+          遗迹的秘密，尽在掌中
+        </div>
+      </div>
+      {/* Card grid / Map area */}
+      <div style={{position:'relative',width:gridW,height:gridH,marginBottom:32}}>
+        {/* Glow overlay on grid */}
+        {(glowing||flashing)&&(
+          <div style={{position:'absolute',inset:-12,borderRadius:8,pointerEvents:'none',
+            background:flashing?'rgba(255,240,180,0.85)':'rgba(200,169,110,0.10)',
+            boxShadow:glowing?'0 0 60px #c8a96ecc, 0 0 120px #c8a96e66':
+              flashing?'0 0 120px #fff8e0ff, 0 0 200px #ffffffcc':'none',
+            transition:'all 0.5s ease',animation:glowing?'animPop 0.4s ease-out':undefined,
+            zIndex:10}}/>
+        )}
+        {/* Cards */}
+        {!mapRevealed&&winCards.map((card,i)=>{
+          const col=i%COLS,row=Math.floor(i/COLS);
+          const tx=col*(CW+GAP),ty=row*(CH+GAP);
+          const arrived=phase>i;
+          const orig=origins[i%origins.length];
+          const s=CS[card.letter]||GOD_CS;
+          return(
+            <div key={card.id} style={{
+              position:'absolute',left:tx,top:ty,width:CW,height:CH,
+              transform:arrived?'translate(0,0)':`translate(${orig.x}px,${orig.y}px)`,
+              opacity:arrived?1:0,
+              transition:'transform 0.55s cubic-bezier(0.22,1.1,0.36,1), opacity 0.4s ease',
+              borderRadius:5,background:s.bg,
+              border:`1.5px solid ${allIn?'#c8a96e':s.borderBright}`,
+              boxShadow:allIn?`0 0 14px #c8a96e99, 0 0 4px ${s.glow}`:`0 0 4px ${s.glow}`,
+              display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+              transition2:'border-color 0.4s, box-shadow 0.4s',
+            }}>
+              <div style={{fontFamily:"'Cinzel',serif",fontSize:20,fontWeight:700,
+                color:s.text,textShadow:`0 0 10px ${s.glow}`}}>{card.letter}{card.number}</div>
+              <div style={{fontSize:8,color:s.text,opacity:0.65,fontFamily:"'IM Fell English',serif",
+                fontStyle:'italic',textAlign:'center',padding:'0 5px',marginTop:3,lineHeight:1.4}}>
+                {card.name}
+              </div>
+            </div>
+          );
+        })}
+        {/* Treasure map revealed */}
+        {mapRevealed&&(
+          <div style={{
+            position:'absolute',inset:0,borderRadius:8,
+            background:'linear-gradient(135deg,#3a2508 0%,#6b4010 35%,#8b5a18 55%,#5a3808 80%,#2a1804 100%)',
+            border:'2px solid #c8a96e',
+            boxShadow:'0 0 40px #c8a96e88, inset 0 0 30px rgba(0,0,0,0.6)',
+            display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+            animation:'animPop 0.5s ease-out',
+            overflow:'hidden',
+          }}>
+            {/* Map decorations */}
+            <div style={{position:'absolute',inset:0,opacity:0.15,
+              backgroundImage:'repeating-linear-gradient(0deg,transparent,transparent 18px,#c8a96e22 18px,#c8a96e22 19px),repeating-linear-gradient(90deg,transparent,transparent 18px,#c8a96e22 18px,#c8a96e22 19px)'}}/>
+            <div style={{position:'absolute',top:8,left:12,right:12,bottom:8,
+              border:'1px solid #c8a96e44',borderRadius:4,pointerEvents:'none'}}/>
+            <div style={{fontSize:48,opacity:0.6,color:'#c8a96e',
+              filter:'drop-shadow(0 0 10px #c8a96eaa)',marginBottom:6}}>✦</div>
+            <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:'#c8a96e',
+              letterSpacing:3,opacity:0.8}}>TREASURE MAP</div>
+            <div style={{marginTop:10,display:'flex',gap:5,flexWrap:'wrap',justifyContent:'center'}}>
+              {['A1','B2','C3','D4'].map(k=>(
+                <div key={k} style={{fontFamily:"'Cinzel',serif",fontSize:9,color:'#8a6020',
+                  border:'1px solid #6a4010',borderRadius:2,padding:'1px 5px',background:'#1a0e04'}}>
+                  {k}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      {btnVisible&&(
+        <button onClick={onConfirm}
+          style={{padding:'12px 44px',background:'#1c1008',border:'2px solid #c8a96e',
+            color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:14,
+            borderRadius:2,cursor:'pointer',letterSpacing:3,textTransform:'uppercase',
+            boxShadow:'0 0 30px #c8a96e55',animation:'animPop 0.35s ease-out',
+            transition:'all .2s'}}
+          onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';e.currentTarget.style.boxShadow='0 0 50px #c8a96e88';}}
+          onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';e.currentTarget.style.boxShadow='0 0 30px #c8a96e55';}}
+        >✦ 宣布胜利</button>
+      )}
+    </div>
+  );
+}
+
 // ── Master Anim Dispatcher ────────────────────────────────────
 function AnimOverlay({anim,exiting}){
   if(!anim) return null;
+  if(anim.type==='YOUR_TURN') return <YourTurnAnim/>;
   if(anim.type==='DRAW_CARD') return <CardFlipAnim card={anim.card} triggerName={anim.triggerName} exiting={exiting}/>;
   if(anim.type==='DICE_ROLL') return <DiceRollAnim anim={anim} exiting={exiting}/>;
-  // Per-panel effects only — no fullscreen overlay for any of these
+  if(anim.type==='DISCARD') return <DiscardMoveOverlay anim={anim} exiting={exiting}/>;
   if(['HP_DAMAGE','HP_HEAL','SAN_HEAL','SAN_DAMAGE'].includes(anim.type)) return null;
   return <GenericAnimOverlay anim={anim} exiting={exiting}/>;
+}
+
+// ── Role Reveal Animation (slot-machine, shown at every game start) ──────────
+function RoleRevealAnim({role,onDone}){
+  const [offset,setOffset]=useState(0);
+  const ITEM_H=46, BEFORE=9;
+  const ROLES_CYCLE=['寻宝者','追猎者','邪祀者','邪祀者','寻宝者','追猎者','寻宝者','邪祀者','追猎者'];
+  const items=[...ROLES_CYCLE.slice(0,BEFORE),role];
+  const ri=RINFO[role];
+  useEffect(()=>{
+    const t1=setTimeout(()=>setOffset(-(BEFORE*ITEM_H)),120);
+    const t2=setTimeout(onDone,2500);
+    return()=>{clearTimeout(t1);clearTimeout(t2);};
+  },[]);
+  return(
+    <div style={{position:'fixed',inset:0,zIndex:3000,background:'linear-gradient(160deg,#060402 0%,#0e0804 100%)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',animation:'animFadeIn 0.3s ease-out'}}>
+      <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse at center,transparent 35%,#000000bb 100%)',pointerEvents:'none'}}/>
+      <div style={{position:'relative',zIndex:1,textAlign:'center'}}>
+        {/* Line 1 */}
+        <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:26,fontWeight:700,letterSpacing:6,color:'#c8a96e',marginBottom:22,textShadow:'0 0 40px #c8a96e55',animation:'animFadeIn 0.5s 0.15s both'}}>
+          探索开始
+        </div>
+        <div style={{width:180,height:1,background:'linear-gradient(90deg,transparent,#5a4020,transparent)',margin:'0 auto 26px',animation:'animFadeIn 0.5s 0.3s both'}}/>
+        {/* Line 2: label + slot */}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,animation:'animFadeIn 0.5s 0.4s both'}}>
+          <span style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#7a6040',fontSize:14,whiteSpace:'nowrap'}}>
+            你本局的身份：
+          </span>
+          {/* Slot window */}
+          <div style={{overflow:'hidden',height:ITEM_H,minWidth:108,background:'#080502',padding:'0 10px',display:'flex',alignItems:'flex-start'}}>
+            <div style={{
+              transform:`translateY(${offset}px)`,
+              transition:offset===0?'none':`transform 2.0s cubic-bezier(0.04,0.0,0.1,1.0)`,
+              willChange:'transform',
+            }}>
+              {items.map((r,i)=>{
+                const rr=RINFO[r];
+                const isTarget=i===BEFORE;
+                return(
+                  <div key={i} style={{height:ITEM_H,display:'flex',alignItems:'center',justifyContent:'center',gap:5,fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:15,letterSpacing:1,color:isTarget?ri.col:'#3a2810',textShadow:isTarget?`0 0 18px ${ri.col}99`:'none'}}>
+                    <span>{rr.icon}</span><span>{r}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ── Card ─────────────────────────────────────────────────────
@@ -1008,10 +1471,10 @@ function GodTooltip({def,godLevel}){
     </div>
   );
 }
-function GodDDCard({card,onClick,disabled,selected,highlight,small,godLevel}){
+function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel}){
   const def=GOD_DEFS[card.godKey];if(!def)return null;
   const[hover,setHover]=React.useState(false);
-  const w=small?44:82,h=small?58:108;
+  const w=small?44:compact?62:82,h=small?58:compact?82:108;
   const col=def.col;
   // fit text: long subtitle gets smaller font
   const nameLen=def.name.length;
@@ -1034,7 +1497,7 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,godLevel}){
         transform:selected?'translateY(-5px)':undefined,
         transition:'all .14s',
         display:'flex',flexDirection:'column',
-        padding:small?'3px 2px':'6px 6px',
+        padding:small?'3px 2px':compact?'5px 4px':'6px 6px',
         userSelect:'none',
         position:'relative',
         overflow:'visible',
@@ -1045,11 +1508,11 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,godLevel}){
       {/* Subtitle */}
       {!small&&<div style={{fontFamily:"'IM Fell English',serif",fontStyle:'italic',fontSize:subFsz,color:col+'aa',lineHeight:1.2,marginTop:2,wordBreak:'keep-all'}}>{def.subtitle}</div>}
       {/* Divider */}
-      {!small&&<div style={{height:1,background:`linear-gradient(90deg,${col}88,transparent)`,margin:'4px 0'}}/>}
+      {!small&&!compact&&<div style={{height:1,background:`linear-gradient(90deg,${col}88,transparent)`,margin:'4px 0'}}/>}
       {/* God power name small */}
-      {!small&&<div style={{fontFamily:"'Cinzel',serif",fontSize:7.5,color:col+'cc',letterSpacing:0.5,lineHeight:1.3}}>「{def.power}」</div>}
+      {!small&&!compact&&<div style={{fontFamily:"'Cinzel',serif",fontSize:7.5,color:col+'cc',letterSpacing:0.5,lineHeight:1.3}}>「{def.power}」</div>}
       {/* Octopus bottom-left */}
-      {!small&&(
+      {!small&&!compact&&(
         <div style={{position:'absolute',bottom:2,left:2}}>
           <OctopusSVG col={col} size={28}/>
         </div>
@@ -1059,11 +1522,11 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,godLevel}){
     </div>
   );
 }
-function DDCard({card,onClick,disabled,selected,highlight,small,godLevel}){
+function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel}){
   if(!card)return null;
-  if(card.isGod) return <GodDDCard card={card} onClick={onClick} disabled={disabled} selected={selected} highlight={highlight} small={small} godLevel={godLevel}/>;
+  if(card.isGod) return <GodDDCard card={card} onClick={onClick} disabled={disabled} selected={selected} highlight={highlight} small={small} compact={compact} godLevel={godLevel}/>;
   const s=CS[card.letter]||GOD_CS;
-  const w=small?44:82,h=small?58:108;
+  const w=small?44:compact?62:82,h=small?58:compact?82:108;
   return(
     <div onClick={disabled?undefined:onClick} style={{
       width:w,minWidth:w,height:h,flexShrink:0,
@@ -1076,17 +1539,17 @@ function DDCard({card,onClick,disabled,selected,highlight,small,godLevel}){
       transform:selected?'translateY(-5px)':undefined,
       transition:'all .14s',
       display:'flex',flexDirection:'column',
-      padding:small?'4px 3px':'7px 8px',
+      padding:small?'4px 3px':compact?'5px 5px':'7px 8px',
       userSelect:'none',
       position:'relative',
     }}>
       {/* Corner ornament */}
-      {!small&&<div style={{position:'absolute',top:3,right:5,color:s.border,fontSize:9,opacity:0.7}}>✦</div>}
-      <div style={{color:s.text,fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:small?12:18,lineHeight:1}}>{card.key}</div>
-      {!small&&<div style={{color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",fontSize:10.5,fontWeight:600,marginTop:4,lineHeight:1.25}}>{card.name}</div>}
-      {!small&&<div style={{color:'#7a6040',fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:9.5,marginTop:'auto',lineHeight:1.35}}>{card.desc}</div>}
+      {!small&&!compact&&<div style={{position:'absolute',top:3,right:5,color:s.border,fontSize:9,opacity:0.7}}>✦</div>}
+      <div style={{color:s.text,fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:small?12:compact?15:18,lineHeight:1}}>{card.key}</div>
+      {!small&&<div style={{color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",fontSize:compact?9.5:10.5,fontWeight:600,marginTop:compact?2:4,lineHeight:1.25}}>{card.name}</div>}
+      {!small&&!compact&&<div style={{color:'#7a6040',fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:9.5,marginTop:'auto',lineHeight:1.35}}>{card.desc}</div>}
       {/* Bottom ornament */}
-      {!small&&<div style={{position:'absolute',bottom:3,left:'50%',transform:'translateX(-50%)',color:s.border,fontSize:8,opacity:0.5}}>— ✦ —</div>}
+      {!small&&!compact&&<div style={{position:'absolute',bottom:3,left:'50%',transform:'translateX(-50%)',color:s.border,fontSize:8,opacity:0.5}}>— ✦ —</div>}
     </div>
   );
 }
@@ -1142,7 +1605,7 @@ function PaperCupSVG({glow}){
     </svg>
   );
 }
-function SwapCupOverlay({active}){
+function SwapCupOverlay({active,casterName,targetName}){
   if(!active)return null;
   return(
     <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:600,display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -1163,6 +1626,18 @@ function SwapCupOverlay({active}){
       <div style={{position:'relative',zIndex:1,animation:'swapCupR 0.8s cubic-bezier(0.4,0,0.2,1) both'}}>
         <PaperCupSVG glow="#40c8f8"/>
       </div>
+      {/* Action text */}
+      {casterName&&targetName&&(
+        <div style={{
+          position:'absolute',bottom:'38%',left:0,right:0,
+          textAlign:'center',zIndex:2,
+          fontFamily:"'Noto Serif SC','Cinzel',serif",
+          fontSize:22,fontWeight:700,letterSpacing:4,
+          color:'#40c8f8',
+          textShadow:'0 0 18px #40c8f8, 0 2px 8px rgba(0,0,0,0.9)',
+          animation:'swapLabelPop 0.35s ease-out 0.15s both',
+        }}>{(casterName||'').replace(/（.*?）/g,'')}（寻宝者）对 {targetName} 掉包中…</div>
+      )}
     </div>
   );
 }
@@ -1419,7 +1894,7 @@ function PlayerPanel({player,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCa
         borderBottom:'1px solid #2a1a08',paddingBottom:5,
       }}>
         <span style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,color:isCurrentTurn?'#e8c87a':'#c8a96e',letterSpacing:1}}>{player.name}</span>
-        {player.roleRevealed&&<span style={{fontSize:10,color:ri.col,fontFamily:"'Cinzel',serif",letterSpacing:1,marginLeft:2}}>{ri.icon} {player.role}</span>}
+        {(player.roleRevealed||player.isDead)&&<span style={{fontSize:10,color:ri.col,fontFamily:"'Cinzel',serif",letterSpacing:1,marginLeft:2}}>{ri.icon} {player.role}</span>}
         {player.isDead&&<span style={{fontSize:11,color:'#882020',marginLeft:'auto'}}>☠</span>}
         {player.isResting&&!player.isDead&&<span style={{fontSize:9,color:'#4ade80',marginLeft:'auto',letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 休息中</span>}
         {isCurrentTurn&&!player.isDead&&!player.isResting&&<span style={{fontSize:9,color:'#c8a96e',marginLeft:'auto',letterSpacing:1}}>▸ 行动</span>}
@@ -1499,9 +1974,9 @@ function GodChoiceModal({godCard,player,onWorship,onKeepHand,onDiscard,isConvert
             {canUpgrade?'⬆ 升级邪神之力':isConvert?'⛧ 改信新神':'⛧ 信仰邪神'}
           </button>
         )}
-        {isCultist&&!alreadyWorship&&(
-          <button onClick={onKeepHand} style={{padding:'9px 22px',background:'#180830',border:'1.5px solid #9060cc',color:'#9060cc',fontFamily:"'Cinzel',serif",fontSize:11,borderRadius:3,cursor:'pointer',letterSpacing:1}}>
-            ☽ 收入手牌（亮明身份）
+        {!alreadyWorship&&!forcedConvert&&isCultist&&(
+          <button onClick={onKeepHand} style={{padding:'9px 22px',background:'#180830',border:`1.5px solid #9060cc`,color:'#9060cc',fontFamily:"'Cinzel',serif",fontSize:11,borderRadius:3,cursor:'pointer',letterSpacing:1}}>
+            ☽ 秘密收入手牌
           </button>
         )}
         {!forcedConvert&&(
@@ -1729,11 +2204,11 @@ function DeckPile({count}){
     </div>
   );
 }
-function PileDisplay({deckCount,discardCount,discardTop}){
+function PileDisplay({deckCount,discardCount,discardTop,compact,deckRef}){
   return(
-    <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',position:'relative',minWidth:0,minHeight:222}}>
+    <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',position:'relative',minWidth:0,minHeight:compact?80:222}}>
       {/* Deck — top-right corner */}
-      <div style={{position:'absolute',top:4,right:8,display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
+      <div ref={deckRef} style={{position:'absolute',top:4,right:8,display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
         <DeckPile count={deckCount}/>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:8,color:'#3a2510',letterSpacing:1,textAlign:'center'}}>牌堆:{deckCount}张</div>
       </div>
@@ -1832,9 +2307,65 @@ function RoadmapModal({onClose}){
   );
 }
 
+// ── Responsive window-size hook ───────────────────────────────
+function useWindowSize(){
+  const[sz,setSz]=useState({w:typeof window!=='undefined'?window.innerWidth:1200,h:typeof window!=='undefined'?window.innerHeight:800});
+  useEffect(()=>{
+    const h=()=>setSz({w:window.innerWidth,h:window.innerHeight});
+    window.addEventListener('resize',h);
+    return()=>window.removeEventListener('resize',h);
+  },[]);
+  return sz;
+}
+
+const NARRATOR_AVATAR="data:image/png;base64,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";
+
+// Small narrator portrait used in tutorial popups
+function NarratorAvatar({tooltipW}){
+  const sz=Math.max(36,Math.floor((tooltipW||260)/4));
+  return(
+    <img src={NARRATOR_AVATAR} alt="narrator"
+      style={{width:sz,height:sz,borderRadius:3,objectFit:'cover',objectPosition:'top',
+        border:'1.5px solid #5a3a10',flexShrink:0,
+        boxShadow:'0 0 8px #7a502055',imageRendering:'auto'}}
+    />
+  );
+}
+
 export default function Game(){
   const[gs,setGs]=useState(null);
   const[modal,setModal]=useState(null); // 'about' | 'roadmap' | null
+  // ── Tutorial ──────────────────────────────────────────────────
+  // Detect non-production environments (Claude Artifacts iframe, local dev, etc.)
+  // Use multiple signals: iframe check + origin check + localhost
+  const isArtifact = (()=>{
+    try{
+      if(window.self!==window.top)return true;          // inside any iframe (Artifacts)
+      if(window.location.origin==='null')return true;   // sandboxed origin
+      if(/localhost|127\.0\.0\.1/.test(window.location.hostname))return false; // local dev: use real localStorage
+      return false;                                      // deployed website: use real localStorage
+    }catch(e){return true;}                              // cross-origin frame access blocked → treat as Artifact
+  })();
+  const TUTORIAL_KEY='cthulhu_tutorial_v2_done'; // v2: bump version to reset all prior cached state
+  const safeLS={
+    get:(k)=>{try{return localStorage.getItem(k);}catch(e){return null;}},
+    set:(k,v)=>{try{localStorage.setItem(k,v);}catch(e){}},
+  };
+  const readTutorialDone=()=>isArtifact?false:safeLS.get(TUTORIAL_KEY)==='1';
+  const [tutorialDone,setTutorialDone]=useState(readTutorialDone);
+  const [showTutorial,setShowTutorial]=useState(false);
+  const [tutorialStep,setTutorialStep]=useState(1); // 1=greeting,2=HP,3=SAN,4=SAN-zero,5=role,6=寻宝者desc,7=hand,8=追猎者desc,9=追猎者win,10=邪祀者desc,11=邪祀者win,12=牌堆,13=邪神,14=尾声,15=手牌上限,16=完成
+  const selfPanelRef=useRef(null);
+  const [panelRect,setPanelRect]=useState(null);
+  const roleTextRef=useRef(null);
+  const [roleTextRect,setRoleTextRect]=useState(null);
+  const handAreaRef=useRef(null);
+  const [handAreaRect,setHandAreaRect]=useState(null);
+  const aiPanelAreaRef=useRef(null);
+  const [aiPanelAreaRect,setAiPanelAreaRect]=useState(null);
+  const deckAreaRef=useRef(null);
+  const [deckAreaRect,setDeckAreaRect]=useState(null);
+  const [roleRevealAnim,setRoleRevealAnim]=useState(null); // {role,pendingGs}|null
   const[anim,setAnim]=useState(null);
   const[animExiting,setAnimExiting]=useState(false);
   const[hitIndices,setHitIndices]=useState([]);    // HP damage
@@ -1845,13 +2376,54 @@ export default function Game(){
   const[hpHealIndices,setHpHealIndices]=useState([]); // HP heal
   const[sanHealIndices,setSanHealIndices]=useState([]); // SAN heal
   const[screenShake,setScreenShake]=useState(false);
+  const[deathShake,setDeathShake]=useState(false);
   const animQueueRef=useRef([]);
   const pendingGsRef=useRef(null);
   const timerRef=useRef(null);
   const logRef=useRef(null);
   const shakeTimerRef=useRef(null);
 
+  // ── Responsive layout ──────────────────────────────────────
+  const {w:vw}=useWindowSize();
+  const isMobile=vw<580;
+  const isSmall=vw<860;
+
   useEffect(()=>{if(logRef.current)logRef.current.scrollTop=logRef.current.scrollHeight;},[gs?.log?.length]);
+
+  // Measure player self-panel rect for tutorial steps 2-4 pointer
+  useEffect(()=>{
+    const update=()=>{
+      if(showTutorial&&tutorialStep>=2&&tutorialStep<=4&&selfPanelRef.current){
+        const r=selfPanelRef.current.getBoundingClientRect();
+        setPanelRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+      }
+      if(showTutorial&&tutorialStep===5&&roleTextRef.current){
+        const r=roleTextRef.current.getBoundingClientRect();
+        setRoleTextRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+      }
+      if(showTutorial&&(tutorialStep===7||tutorialStep===15)&&handAreaRef.current){
+        const r=handAreaRef.current.getBoundingClientRect();
+        setHandAreaRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+      }
+      if(showTutorial&&(tutorialStep===9||tutorialStep===11)&&aiPanelAreaRef.current){
+        const r=aiPanelAreaRef.current.getBoundingClientRect();
+        setAiPanelAreaRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+      }
+      if(showTutorial&&(tutorialStep===12||tutorialStep===13)&&deckAreaRef.current){
+        const r=deckAreaRef.current.getBoundingClientRect();
+        setDeckAreaRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+      }
+    };
+    update();
+    if(showTutorial){
+      window.addEventListener('scroll',update,true);
+      window.addEventListener('resize',update);
+      return()=>{
+        window.removeEventListener('scroll',update,true);
+        window.removeEventListener('resize',update);
+      };
+    }
+  },[showTutorial,tutorialStep,gs]);
 
   // When HP_DAMAGE anim fires: trigger knife effects + screen shake
   useEffect(()=>{
@@ -1874,8 +2446,11 @@ export default function Game(){
       setSanHealIndices(anim.hitIndices);
       setTimeout(()=>setSanHealIndices([]),1300);
     }else if(anim?.type==='SKILL_SWAP'){
-      setSwapAnim(true);
-      setTimeout(()=>setSwapAnim(false),900);
+      // Extract caster and target names from msgs (e.g. "X 对 Y 掉包")
+      const swapMsg=anim.msgs?.find(m=>m.includes('掉包'));
+      const swapMatch=swapMsg?.match(/^(.+?)对 (.+?) 【掉包】/);
+      setSwapAnim({casterName:swapMatch?.[1]||'', targetName:swapMatch?.[2]||''});
+      setTimeout(()=>setSwapAnim(null),900);
     }else if(anim?.type==='SKILL_HUNT'){
       const ti=anim.targetIdx??1;
       // Measure actual panel centre from DOM — precise regardless of screen size
@@ -1893,6 +2468,14 @@ export default function Game(){
       if(bel){const br=bel.getBoundingClientRect();setBewitchAnim({cx:br.left+br.width/2,cy:br.top+br.height/2});}
       else{setBewitchAnim({cx:window.innerWidth/2,cy:window.innerHeight*0.25});}
       setTimeout(()=>setBewitchAnim(null),1200);
+    }else if(anim?.type==='GUILLOTINE'&&anim.hitIndices?.length){
+      // Blade impact at ~560ms; shake starts then
+      const shakeTimer=setTimeout(()=>{
+        setDeathShake(true);
+        clearTimeout(shakeTimerRef.current);
+        shakeTimerRef.current=setTimeout(()=>setDeathShake(false),2000);
+      },540);
+      return()=>clearTimeout(shakeTimer);
     }else if(!anim){
       setHitIndices([]);
       setSanHitIndices([]);
@@ -1911,7 +2494,11 @@ export default function Game(){
       const next=pendingGsRef.current;
       pendingGsRef.current=null;
       setAnim(null);
-      if(next) setGs(next);
+      if(next) setGs(prev=>{
+        // Never overwrite a win/pending-win state with stale queued state
+        if(prev?.gameOver||prev?.phase==='PLAYER_WIN_PENDING'||prev?.phase==='TREASURE_WIN')return prev;
+        return next;
+      });
     }
   }
 
@@ -1943,12 +2530,12 @@ export default function Game(){
 
   // AI turn
   useEffect(()=>{
-    if(!gs||gs.phase!=='AI_TURN'||gs.gameOver||anim)return;
+    if(!gs||gs.phase!=='AI_TURN'||gs.gameOver||gs.phase==='PLAYER_WIN_PENDING'||anim||showTutorial)return;
     timerRef.current=setTimeout(()=>{
       let rawResult,newGs;
       try{
         rawResult=aiStep(gs);
-        const{_aiDrawnCard:_a,_aiName:_n,_drawnCard:_d,...stripped}=rawResult;
+        const{_aiDrawnCard:_a,_aiName:_n,_drawnCard:_d,_playersBeforeNextDraw:_pbn,...stripped}=rawResult;
         newGs=stripped;
       }catch(e){
         console.error('[aiStep error]',e);
@@ -1956,19 +2543,36 @@ export default function Game(){
         const safeGs=startNextTurn({...gs,currentTurn:gs.currentTurn,skillUsed:false,restUsed:false});
         setGs(safeGs);return;
       }
+      // If AI is hunting player 0, pause here for player input (after draw card anim)
+      if(newGs.phase==='PLAYER_REVEAL_FOR_HUNT'){
+        const queue=[];
+        if(gs._drawnCard) queue.push({type:'DRAW_CARD',card:gs._drawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???'});
+        triggerAnimQueue(queue,newGs);
+        return;
+      }
       // Strip ALL animation-only temp fields before storing as real game state
-      const{_aiDrawnCard,_aiName,_drawnCard,..._unused}=rawResult;
+      const{_aiDrawnCard,_aiName,_drawnCard,_playersBeforeNextDraw,...stripped}=rawResult;
+      newGs=stripped; // reassign: stripped has _playersBeforeThisDraw from startNextTurn
       const newMsgs=newGs.log.slice(gs.log.length);
       const j=newMsgs.join(' ');
+      // Helper: build a gs-like object with substituted players for buildAnimQueue
+      const fakeGs=ps=>({...gs,players:ps,log:newGs.log});
       const queue=[];
-      // 1. Anim for THIS AI's draw (card was drawn when their turn started, stored in gs._drawnCard)
+      // 1. Banner anim: 'YOUR_TURN' equivalent for AI — shown via gs.phase=AI_TURN before queue
+      //    (no explicit anim needed; the static UI banner shows when !anim)
+      // 2. Draw card anim for THIS AI (card drawn at turn start, stored in gs._drawnCard)
       if(gs._drawnCard) queue.push({type:'DRAW_CARD',card:gs._drawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???'});
-      // 2. Dice anim (if AI rested)
+      // 2b. Stat changes caused by THIS AI's drawn card (draw effects: gs._playersBeforeThisDraw → gs.players)
+      if(gs._playersBeforeThisDraw&&gs._drawnCard){
+        const drawEffectQ=buildAnimQueue(fakeGs(gs._playersBeforeThisDraw),gs);
+        queue.push(...drawEffectQ);
+      }
+      // 3. Dice anim (if AI rested)
       const restMsg=newMsgs.find(m=>m.includes('选择【休息】')&&m.includes('掷骰'));
       if(restMsg){
         const m=restMsg.match(/掷骰 (\d+)\+(\d+)，回复 (\d+)HP/);
         if(m){const rd1=+m[1],rd2=+m[2],rh=+m[3];queue.push({type:'DICE_ROLL',d1:rd1,d2:rd2,heal:rh,rollerName:_aiName||gs.players[gs.currentTurn]?.name});}}
-      // 3. Skill anim (if used)
+      // 4. Skill anim (if used)
       if(j.includes('掉包')) queue.push({type:'SKILL_SWAP',msgs:newMsgs});
       else if(j.includes('追捕')){const hti=newGs.players.findIndex((p,i)=>i>0&&p.hp<(gs.players[i]?.hp??10));queue.push({type:'SKILL_HUNT',msgs:newMsgs,targetIdx:hti>0?hti:1});}
       else if(j.includes('蛊惑')){
@@ -1978,17 +2582,39 @@ export default function Game(){
         const bwti=bwName?newGs.players.findIndex(p=>p.name===bwName):-1;
         queue.push({type:'SKILL_BEWITCH',msgs:newMsgs,targetIdx:bwti>=0?bwti:1});
       }
-      // 3. Stat change anims or next player's draw anim
-      if(newGs.currentTurn===0&&newGs.drawReveal?.card){
-        queue.push({type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:'你'});
+      // 5. Stat changes from THIS AI's action only (not next draw — those belong to next AI's queue)
+      //    Compare gs (after this AI's draw) → _playersBeforeNextDraw (after action, before next draw)
+      const P_actionEnd=_playersBeforeNextDraw||newGs.players;
+      const actionStatQ=buildAnimQueue(gs,fakeGs(P_actionEnd));
+      // 6. Advance to next player's turn
+      if(newGs.currentTurn===0){
+        queue.push(...actionStatQ);
+        if(newGs.drawReveal?.card){
+          queue.push({type:'YOUR_TURN'},{type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:'你'});
+        }else{
+          // God card drawn: no drawReveal, card is in abilityData.godCard
+          const godCard=newGs.abilityData?.godCard;
+          queue.push({type:'YOUR_TURN'});
+          if(godCard) queue.push({type:'DRAW_CARD',card:godCard,triggerName:'你'});
+        }
       }else{
-        const statQ=buildAnimQueue(gs,newGs);
-        queue.push(...statQ);
+        // AI next: action stat changes go before queue ends; draw effects for next AI
+        // will be shown at the start of that AI's own queue (after their banner + DRAW_CARD)
+        queue.push(...actionStatQ);
       }
       triggerAnimQueue(queue,newGs);
     },700);
     return()=>clearTimeout(timerRef.current);
-  },[gs?.currentTurn,gs?.phase,gs?._turnKey,anim]);
+  },[gs?.currentTurn,gs?.phase,gs?._turnKey,anim,gs?.gameOver]);
+
+  // Auto-freeze game the instant player 寻宝者 has a winning hand
+  useEffect(()=>{
+    if(!gs||gs.gameOver||gs.phase==='TREASURE_WIN'||gs.phase==='PLAYER_WIN_PENDING'||showTutorial)return;
+    const p0=gs.players[0];
+    if(p0&&!p0.isDead&&p0.role==='寻宝者'&&isWinHand(p0.hand)){
+      setGs(g=>g?{...g,phase:'TREASURE_WIN'}:g);
+    }
+  },[gs]);
 
   // ── Start Screen ───────────────────────────────────────────
   if(!gs){
@@ -2064,6 +2690,42 @@ export default function Game(){
         </div>
         {modal==='about'&&<AboutModal onClose={()=>setModal(null)}/>}
         {modal==='roadmap'&&<RoadmapModal onClose={()=>setModal(null)}/>}
+        {/* ── Tutorial overlay ── */}
+        {showTutorial&&(
+          <div style={{position:'fixed',inset:0,background:'#000000cc',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center'}}>
+            {/* ── Step 1: Greeting ── */}
+            {tutorialStep===1&&(
+              <div style={{background:'#120d06',border:'2px solid #7a5020',borderRadius:4,padding:'36px 40px',maxWidth:380,width:'90%',textAlign:'center',boxShadow:'0 0 60px #7a502066',position:'relative',animation:'animPop 0.25s ease-out'}}>
+                <div style={{fontSize:30,marginBottom:16,filter:'drop-shadow(0 0 14px #c8a96e66)'}}>👁</div>
+                <p style={{color:'#e8c87a',fontSize:15,lineHeight:2,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif"}}>
+                  哈，又是一个不怕死的人！
+                </p>
+                <p style={{color:'#c8a96e',fontSize:14,lineHeight:2,fontStyle:'italic',marginBottom:32,opacity:0.75,fontFamily:"'IM Fell English','Georgia',serif"}}>
+                  等等——我们是不是见过…
+                </p>
+                <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                  <button
+                    onClick={completeTutorial}
+                    style={{padding:'9px 24px',background:'transparent',border:'1.5px solid #3a2510',color:'#7a6040',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',transition:'all .2s'}}
+                    onMouseEnter={e=>{e.currentTarget.style.borderColor='#7a5020';e.currentTarget.style.color='#c8a96e';}}
+                    onMouseLeave={e=>{e.currentTarget.style.borderColor='#3a2510';e.currentTarget.style.color='#7a6040';}}
+                  >
+                    我是老手（跳过引导）
+                  </button>
+                  <button
+                    onClick={()=>{_startForTutorial();setTutorialStep(2);}}
+                    style={{padding:'10px 24px',background:'#1c1008',border:'2px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 18px #c8a96e33',transition:'all .2s'}}
+                    onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';e.currentTarget.style.boxShadow='0 0 30px #c8a96e66';}}
+                    onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';e.currentTarget.style.boxShadow='0 0 18px #c8a96e33';}}
+                  >
+                    ✦ 告诉我如何探索
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        {roleRevealAnim&&<RoleRevealAnim role={roleRevealAnim.role} onDone={()=>_onRoleRevealDone(roleRevealAnim.pendingGs)}/>}
         <style>{GLOBAL_STYLES}</style>
       </div>
     );
@@ -2083,7 +2745,7 @@ export default function Game(){
         <div style={{position:'relative',zIndex:1}}>
           <div style={{fontSize:72,marginBottom:14,filter:`drop-shadow(0 0 30px ${iWon?'#c8a96e':isLose?'#882020':'#9060cc'})`,animation:'animPop 0.4s ease-out'}}>{isLose?'☠':iWon?'✦':'⚔'}</div>
           <h2 style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:26,fontWeight:700,marginBottom:10,color:iWon?'#e8c87a':isLose?'#882020':'#a07090',textShadow:`0 0 30px ${iWon?'#c8a96e44':'#88202044'}`}}>
-            {isLose?'英魂殒落':iWon?'胜利归你':'——  '+winner+'获胜  ——'}
+            {isLose?'英魂殒落':iWon?'胜利归你':winner==='寻宝者'?`——  ${gs.players[winnerIdx]?.name??''}获胜  ——`:'——  '+winner+'获胜  ——'}
           </h2>
           <div style={{width:180,height:1,background:'linear-gradient(90deg,transparent,#5a4020,transparent)',margin:'0 auto 12px'}}/>
           <p style={{color:'#7a6040',marginBottom:28,fontSize:13,fontStyle:'italic',maxWidth:340}}>{reason}</p>
@@ -2111,6 +2773,7 @@ export default function Game(){
         </div>
         {/* AnimOverlay must render on game-over screen too so startNewGame card flip works */}
         <AnimOverlay anim={anim} exiting={animExiting}/>
+        {roleRevealAnim&&<RoleRevealAnim role={roleRevealAnim.role} onDone={()=>_onRoleRevealDone(roleRevealAnim.pendingGs)}/>}
         <style>{GLOBAL_STYLES}</style>
       </div>
     );
@@ -2124,14 +2787,18 @@ export default function Game(){
   const canWin=effectiveRole==='寻宝者'&&isWinHand(me.hand);
   const phase=gs.phase;
   const ri=RINFO[me.role];
-  const isBlocked=!!anim; // block all interaction during animation
-  const huntAbandoned=gs.abilityData?.abandonedHunts||[];
+  const isBlocked=!!anim||showTutorial; // block all interaction during animation or tutorial
+  const suppressAnim=showTutorial&&tutorialStep>=2; // hide all anims during tutorial steps 2+
+  const huntAbandoned=gs.huntAbandoned||[];
 
   // ── Action handlers ────────────────────────────────────────
   function handleDrawConfirm(){
-    // gameOver (if present from win-by-draw) was embedded in state and will
-    // be applied automatically once the DRAW_CARD animation completes.
-    setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
+    setGs(p=>{
+      if(!p)return p;
+      if(p._pendingPlayerWin)
+        return{...p,phase:'PLAYER_WIN_PENDING',drawReveal:null,_pendingPlayerWin:undefined};
+      return{...p,phase:'ACTION',drawReveal:null};
+    });
   }
 
   function handleDrawSelectTarget(ti){
@@ -2171,8 +2838,8 @@ export default function Game(){
     P[0].hand.push(takenCard);P[swapTi].hand.push(given);
     const L=[...gs.log,`拿走 [${takenCard.key}]，还给 ${P[swapTi].name} [${given.key}]`];
     if(isWinHand(P[0].hand)){
-      setGs({...gs,players:P,log:[...L,'你亮出获胜手牌！'],abilityData:{},
-        gameOver:{winner:'寻宝者',reason:'你通过掉包集齐了全部编号！',winnerIdx:0}});
+      setGs({...gs,players:P,log:[...L,'你集齐了全部编号！'],abilityData:{winReason:'你通过掉包集齐了全部编号！'},
+        phase:'PLAYER_WIN_PENDING'});
       return;
     }
     const win=checkWin(P);
@@ -2181,38 +2848,79 @@ export default function Game(){
   }
 
   function huntSelectTarget(ti){
-    // Randomly pick ONE card from target and reveal it immediately — player never sees all cards
     let P=copyPlayers(gs.players);P[0].roleRevealed=true;
-    const tHand=P[ti].hand;
+    const tHand=P[ti].hand.filter(c=>!c.isGod);
     if(!tHand.length){
-      setGs({...gs,players:P,phase:'ACTION',abilityData:{},log:[...gs.log,`${P[ti].name} 手中无牌，追捕失败`]});
+      setGs({...gs,players:P,phase:'ACTION',abilityData:{},log:[...gs.log,`${P[ti].name} 手中无区域牌，追捕失败`]});
       return;
     }
     const ri2=0|Math.random()*tHand.length;
     const rc=tHand[ri2];
-    setGs({...gs,players:P,phase:'HUNT_CONFIRM',
-      abilityData:{huntTi:ti,revCard:rc},
-      log:[...gs.log,`你（追猎者）追捕 ${P[ti].name}，随机亮出其手牌 [${rc.key}] ${rc.name}`]});
+    const huntConfirmGs={...gs,players:P,phase:'HUNT_CONFIRM',
+      abilityData:{...(gs.abilityData||{}),huntTi:ti,revCard:rc},
+      log:[...gs.log,`你（追猎者）追捕 ${P[ti].name}，随机亮出其手牌 [${rc.key}] ${rc.name}`]};
+    // Play scope animation targeting the victim; state transitions to HUNT_CONFIRM when done
+    const panelEl=document.getElementById(`player-panel-${ti}`);
+    if(panelEl){
+      const r=panelEl.getBoundingClientRect();
+      setHuntAnim({cx:r.left+r.width/2,cy:r.top+r.height/2});
+    }else{
+      setHuntAnim({cx:window.innerWidth/2,cy:window.innerHeight*0.25});
+    }
+    setTimeout(()=>setHuntAnim(null),1300);
+    // Deliver HUNT_CONFIRM state after anim
+    triggerAnimQueue([{type:'SKILL_HUNT',targetIdx:ti}],huntConfirmGs);
   }
   function huntConfirm(myCardIdx){
     const{huntTi,revCard}=gs.abilityData;
-    const prevAbandoned=gs.abilityData.abandonedHunts||[];
     let P=copyPlayers(gs.players),Disc=[...gs.discard];const L=[...gs.log];
     if(myCardIdx>=0){
       const dc=P[0].hand.splice(myCardIdx,1)[0];Disc.push(dc);
       P[huntTi].hp=clamp(P[huntTi].hp-2);L.push(`弃 [${dc.key}] → ${P[huntTi].name} 受 2HP 伤害`);
-      if(P[huntTi].hp<=0){P[huntTi].isDead=true;L.push(`☠ ${P[huntTi].name} 倒下了！`);if(P[huntTi].hand.length){P[0].hand.push(...P[huntTi].hand);L.push(`你没收了 ${P[huntTi].name} 的全部手牌！`);P[huntTi].hand=[];}}
+      if(P[huntTi].hp<=0){P[huntTi].isDead=true;P[huntTi].roleRevealed=true;L.push(`☠ ${P[huntTi].name}（${P[huntTi].role}）倒下了！`);if(P[huntTi].hand.length){P[0].hand.push(...P[huntTi].hand);L.push(`你没收了 ${P[huntTi].name} 的全部手牌！`);P[huntTi].hand=[];}if(P[huntTi].godZone?.length){Disc.push(...P[huntTi].godZone);P[huntTi].godZone=[];P[huntTi].godName=null;P[huntTi].godLevel=0;}}
       const win=checkWin(P);
-      const newGs={...gs,players:P,discard:Disc,log:L,abilityData:{},phase:'ACTION',...(win?{gameOver:win}:{})};
-      const queue=[{type:'SKILL_HUNT',targetIdx:huntTi},...buildAnimQueue(gs,newGs)];
+      const newGs={...gs,players:P,discard:Disc,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...(win?{gameOver:win}:{})};
+      const queue=buildAnimQueue(gs,newGs);
       if(queue.length) triggerAnimQueue(queue,newGs); else setGs(newGs);
     }else{
-      // Abandon: add this target to blocklist, return to target-select
-      const newAbandoned=[...prevAbandoned,huntTi];
+      // Abandon: add this target to blocklist and return to ACTION so player can choose again
+      const newAbandoned=[...(gs.huntAbandoned||[]),huntTi];
       L.push(`放弃追捕 ${P[huntTi].name}`);
-      setGs({...gs,log:L,phase:'HUNT_SELECT_TARGET',
-        abilityData:{...gs.abilityData,abandonedHunts:newAbandoned,huntTi:undefined,revCard:undefined}});
+      setGs({...gs,players:P,log:L,phase:'ACTION',huntAbandoned:newAbandoned,
+        abilityData:{...gs.abilityData,huntTi:undefined,revCard:undefined}});
     }
+  }
+
+  // Called when player picks their zone card to reveal during an AI hunt
+  function playerRevealForHunt(cardIdx){
+    const card=me.hand[cardIdx];
+    if(!card||card.isGod)return; // only zone cards valid
+    const{huntingAI,aiHunterName}=gs.abilityData;
+    let P=copyPlayers(gs.players),Disc=[...gs.discard];const L=[...gs.log];
+    L.push(`你亮出 [${card.key}] ${card.name}`);
+    // Check AI hunter's hand for matching letter or number
+    const aiHand=P[huntingAI].hand;
+    const mi=aiHand.findIndex(c=>c.letter===card.letter||c.number===card.number);
+    if(mi>=0){
+      const dc=aiHand.splice(mi,1)[0];Disc.push(dc);
+      P[0].hp=clamp(P[0].hp-2);
+      L.push(`${aiHunterName} 弃 [${dc.key}]，你受 2HP 伤害！`);
+      if(P[0].hp<=0){
+        P[0].isDead=true;P[0].roleRevealed=true;L.push(`☠ 你（${P[0].role}）倒下了！`);
+        if(P[0].hand.length){P[huntingAI].hand.push(...P[0].hand);L.push(`${aiHunterName} 没收了你的全部手牌！`);P[0].hand=[];}
+        if(P[0].godZone?.length){Disc.push(...P[0].godZone);P[0].godZone=[];P[0].godName=null;P[0].godLevel=0;}
+      }
+    }else{
+      L.push(`${aiHunterName} 无匹配手牌，追捕失败`);
+    }
+    // Finish AI turn: discard excess, advance
+    while(P[huntingAI].hand.length>4){const c=P[huntingAI].hand.shift();Disc.push(c);L.push(`${aiHunterName} 弃 [${c.key}]（上限）`);}
+    const win=checkWin(P);
+    const baseGs={...gs,players:P,discard:Disc,log:L,abilityData:{},phase:'ACTION'};
+    const newGs=win?{...baseGs,gameOver:win}:startNextTurn({...baseGs,currentTurn:huntingAI});
+    // Hunt scope anim targeting player 0, then stat anims
+    const queue=[{type:'SKILL_HUNT',msgs:L.slice(-3),targetIdx:0},...buildAnimQueue(gs,newGs)];
+    triggerAnimQueue(queue,newGs);
   }
 
   function bewitchSelectCard(idx){
@@ -2258,8 +2966,8 @@ export default function Game(){
     const gk=godCard.godKey;
     const alreadyWorship=P[0].godName===gk;
     if(action==='keepHand'){
-      P[0].roleRevealed=true;P[0].hand.push({...godCard});
-      L.push('你（邪祀者）将邪神牌收入手牌，身份已亮明');
+      P[0].hand.push({...godCard});
+      L.push('你（邪祀者）将邪神牌秘密收入手牌');
     } else if(action==='worship'||action==='upgrade'||action==='forcedConvert'){
       if(action==='forcedConvert'||(P[0].godName&&P[0].godName!==gk)){
         P[0].san=clamp(P[0].san-1);Disc.push(...P[0].godZone);P[0].godZone=[];P[0].godName=null;P[0].godLevel=0;
@@ -2279,7 +2987,12 @@ export default function Game(){
       Disc.push({...godCard});L.push('你放弃了邪神的馈赠');
     }
     const win=checkWin(P);
-    const newGs={...gs,players:P,discard:Disc,log:L,phase:'ACTION',abilityData:{},...(win?{gameOver:win}:{})};
+    // Only worship/forcedConvert consume the worship-this-turn slot.
+    // Upgrade, discard, and keepHand do not.
+    const consumesSlot=action==='worship'||action==='forcedConvert';
+    const newGs={...gs,players:P,discard:Disc,log:L,phase:'ACTION',abilityData:{},
+      godTriggeredThisTurn:consumesSlot,
+      ...(win?{gameOver:win}:{})};
     setGs(newGs);
   }
 
@@ -2336,15 +3049,34 @@ export default function Game(){
     let P=copyPlayers(gs.players);
     P[0].hp=clamp(P[0].hp+heal);
     P[0].isResting=true;
-    const L=[...gs.log,`你选择【休息】，掷骰 ${d1}+${d2}，回复 ${heal}HP，翻面休息中`];
+    let L=[...gs.log,`你选择【休息】，掷骰 ${d1}+${d2}，回复 ${heal}HP，翻面休息中`];
     const win=checkWin(P);
     if(win){setGs({...gs,players:P,log:L,gameOver:win});return;}
     const oldGs={...gs,players:copyPlayers(gs.players)};
-    const newGs={...gs,players:P,log:L,restUsed:true};
-    // Dice roll anim first, then HP heal, then advance turn
+    // CTH power Trigger 1: draw when turn ends while going face-down
+    let D=gs.deck.slice(), Disc=gs.discard.slice();
+    if(P[0].godName==='CTH'&&P[0].godLevel>=1){
+      const extraDraws=P[0].godLevel;
+      L.push(`你（克苏鲁信徒Lv.${P[0].godLevel}）梦访拉莱耶，翻面结束回合时额外摸${extraDraws}张牌`);
+      for(let _d=0;_d<extraDraws;_d++){
+        const r2=playerDrawCard(P,D,Disc);P=r2.P;D=r2.D;Disc=r2.Disc;
+        if(r2.drawnCard)L.push(`  摸到 [${r2.drawnCard.key||r2.drawnCard.name}]`);
+        // If god card drawn mid-rest-draw, pause for GOD_CHOICE
+        if(r2.needGodChoice){
+          setGs({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:true,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:r2.drawnCard,fromRest:true},drawReveal:null,selectedCard:null});
+          return;
+        }
+      }
+    }
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,restUsed:true};
+    // Dice roll anim first, then HP heal, then check hand limit before advancing
     const statQueue=buildAnimQueue(oldGs,{...newGs,players:P});
     const queue=[{type:'DICE_ROLL',d1,d2,heal,rollerName:'你'},...statQueue];
-    triggerAnimQueue(queue,startNextTurn({...newGs,currentTurn:0}));
+    const afterRest={...newGs,currentTurn:0};
+    const pendingGs=P[0].hand.length>effectiveHandLimit
+      ?{...newGs,phase:'DISCARD_PHASE',abilityData:{discardSelected:[]}}
+      :startNextTurn(afterRest);
+    triggerAnimQueue(queue,pendingGs);
   }
 
   function endTurn(){
@@ -2354,28 +3086,59 @@ export default function Game(){
     if(newGs.currentTurn===0&&newGs.drawReveal?.card){
       // buildAnimQueue detects HP/SAN changes that occurred during the draw (heals, damage cards)
       const statQ=buildAnimQueue(gs,newGs);
-      triggerAnimQueue([{type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:'你'},...statQ],newGs);
+      triggerAnimQueue([{type:'YOUR_TURN'},{type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:'你'},...statQ],newGs);
     }else setGs(newGs);
   }
 
   function startNewGame(){
+    // First-time player: show tutorial before starting
+    if(!tutorialDone){setTutorialStep(1);setShowTutorial(true);return;}
+    _doStartNewGame();
+  }
+  function _doStartNewGame(silent=false){
     const newGs=initGame();
-    // Fully flush animation state from previous game before starting, so stale
-    // pendingGsRef / animQueue / exiting flags cannot prevent the card-flip.
     animQueueRef.current=[];
     pendingGsRef.current=null;
     setAnimExiting(false);
     setHitIndices([]);
-    if(newGs.drawReveal?.card){
-      // Use the start-screen (gs=null) as the render host — it always has
-      // <AnimOverlay> and is exactly how the very first game works.
-      pendingGsRef.current=newGs;
-      setGs(null);                // ← key fix: lands on start-screen with AnimOverlay
-      setAnim({type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:'你'});
-    }else{
+    if(silent){
+      // Tutorial preview: set game state immediately, no animation, no pending draw
       setAnim(null);
-      setGs(newGs);
+      setGs({...newGs,phase:'ACTION',drawReveal:null});
+      return;
     }
+    // Normal start: show game board immediately as background, then play animations on top
+    setGs({...newGs,phase:'ACTION',drawReveal:null});
+    setAnim(null);
+    setRoleRevealAnim({role:newGs.players[0].role,pendingGs:newGs});
+  }
+  function _onRoleRevealDone(pendingGs){
+    setRoleRevealAnim(null);
+    if(!pendingGs)return; // tutorial path: game already set
+    if(pendingGs.drawReveal?.card){
+      // Normal draw: YOUR_TURN → card flip → apply state
+      triggerAnimQueue([{type:'YOUR_TURN'},{type:'DRAW_CARD',card:pendingGs.drawReveal.card,triggerName:'你'}],pendingGs);
+    }else{
+      // God card drawn: drawReveal is null, card is in abilityData.godCard
+      // Still show: YOUR_TURN → card flip (god card) → apply state (GOD_CHOICE modal)
+      const godCard=pendingGs.abilityData?.godCard;
+      const queue=[{type:'YOUR_TURN'}];
+      if(godCard) queue.push({type:'DRAW_CARD',card:godCard,triggerName:'你'});
+      triggerAnimQueue(queue,pendingGs);
+    }
+  }
+
+  function completeTutorial(){
+    setShowTutorial(false);
+    setTutorialDone(true);
+    if(!isArtifact)safeLS.set(TUTORIAL_KEY,'1');
+    // Always start a fresh game — the silent tutorial-preview gs was display-only.
+    // _doStartNewGame() will trigger roleReveal → YOUR_TURN → DRAW_CARD in sequence.
+    _doStartNewGame();
+  }
+  function _startForTutorial(){
+    // Silent game init for tutorial preview (steps 2+)
+    _doStartNewGame(true);
   }
 
   function cancelAction(){
@@ -2392,10 +3155,19 @@ export default function Game(){
   }
 
   function revealWin(){
-    if(!canWin||isBlocked)return;
-    setGs({...gs,players:gs.players.map((p,i)=>i===0?{...p,roleRevealed:true}:p),
-      log:[...gs.log,'你亮出手牌，宣告胜利！'],
-      gameOver:{winner:'寻宝者',reason:'你集齐了全部编号，寻宝者获胜！',winnerIdx:0}});
+    if(!canWin)return;
+    // Kill any running animation so we can't be overwritten by a stale pendingGs
+    animQueueRef.current=[];
+    pendingGsRef.current=null;
+    setAnim(null);
+    setGs(prev=>{
+      if(!prev)return prev;
+      return{...prev,
+        players:prev.players.map((p,i)=>i===0?{...p,roleRevealed:true}:p),
+        drawReveal:null,
+        _pendingPlayerWin:undefined,
+        gameOver:{winner:'寻宝者',reason:prev.abilityData?.winReason||'你集齐了全部编号并获胜！',winnerIdx:0}};
+    });
   }
 
   // Phase labels
@@ -2405,37 +3177,42 @@ export default function Game(){
     SWAP_GIVE_CARD:       `暗抽到 [${gs.abilityData?.takenCard?.key}]，选一张手牌还给对方`,
     HUNT_SELECT_TARGET:   '【追捕】选择猎物',
     HUNT_CONFIRM:         `[${gs.abilityData?.revCard?.key}] ${gs.abilityData?.revCard?.name} 已亮出！弃出匹配手牌造成2HP，或放弃`,
+    PLAYER_REVEAL_FOR_HUNT:`⚠ ${gs.abilityData?.aiHunterName||'追猎者'} 正在追捕你！请选择一张区域牌亮出`,
     BEWITCH_SELECT_CARD:  '【蛊惑】选择要赠送的手牌',
     GOD_CHOICE:          '邪神降临！选择如何回应',
     NYA_BORROW:          '「千人千貌」——借用已死角色的身份？',
     DISCARD_PHASE:(()=>{const sel=gs.abilityData.discardSelected||[];const need=me.hand.length-effectiveHandLimit;return`手牌超限 (${me.hand.length}/${effectiveHandLimit}) — 需弃 ${need} 张，已选 ${sel.length}/${need}`;})(),
     AI_TURN:`${gs.players[gs.currentTurn]?.name} 正在行动…`,
+    PLAYER_WIN_PENDING:'✦ 你已集齐全部编号！',
   }[phase]||'';
 
   const selectingOther=['DRAW_SELECT_TARGET','SWAP_SELECT_TARGET','HUNT_SELECT_TARGET','BEWITCH_SELECT_TARGET'].includes(phase);
   const cancelable=['SWAP_SELECT_TARGET','SWAP_GIVE_CARD','HUNT_SELECT_TARGET','HUNT_CONFIRM','BEWITCH_SELECT_CARD','BEWITCH_SELECT_TARGET'].includes(phase);
+  // In HUNT_CONFIRM, 放弃追捕 replaces ✕取消 — never show both
+  const showCancelBtn=cancelable&&phase!=='HUNT_CONFIRM';
 
 
   function handleAIClick(pi){
     if(gs.players[pi].isDead||isBlocked)return;
     if(phase==='DRAW_SELECT_TARGET')handleDrawSelectTarget(pi);
     else if(phase==='SWAP_SELECT_TARGET')swapSelectTarget(pi);
-    else if(phase==='HUNT_SELECT_TARGET')huntSelectTarget(pi);
+    else if(phase==='HUNT_SELECT_TARGET'){if(!huntAbandoned.includes(pi))huntSelectTarget(pi);}
     else if(phase==='BEWITCH_SELECT_TARGET')bewitchSelectTarget(pi);
   }
-  // Worship a god card directly from hand (no encounter cost, no skull count)
+  // Use a god card from hand: upgrade (same god, unlimited) or worship (different/new, once per turn)
   function worshipFromHand(idx){
     const godCard=me.hand[idx];if(!godCard||!godCard.isGod)return;
-    if(me.godEncounters>0)return; // already triggered a god card — can't use this shortcut
-    if(gs.restUsed)return;        // can't act after rest
     const godKey=godCard.godKey;
+    const isUpgrade=me.godName===godKey&&(me.godLevel||0)<3;
+    // Upgrade: no per-turn limit, not blocked by godTriggeredThisTurn or godFromHandUsed
+    // Worship/convert: blocked if worship slot already used this turn
+    if(!isUpgrade&&(gs.godTriggeredThisTurn||gs.godFromHandUsed))return;
     let P=copyPlayers(gs.players),Disc=[...gs.discard];
-    P[0].hand.splice(idx,1);      // remove from hand
+    P[0].hand.splice(idx,1);
     const L=[...gs.log];
-    // Handle same-god upgrade, different-god convert, or fresh worship
-    if(P[0].godName===godKey&&P[0].godLevel<3){
+    if(isUpgrade){
       P[0].godLevel++;P[0].godZone.push({...godCard});
-      L.push(`你从手牌信仰 ${godCard.name}，邪神之力升至Lv.${P[0].godLevel}`);
+      L.push(`你从手牌升级邪神之力至Lv.${P[0].godLevel}（骷髅头不计）`);
     } else if(P[0].godName&&P[0].godName!==godKey){
       P[0].san=clamp(P[0].san-1);Disc.push(...P[0].godZone);
       P[0].godZone=[];P[0].godName=null;P[0].godLevel=0;
@@ -2444,12 +3221,12 @@ export default function Game(){
       L.push(`你信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
     } else {
       P[0].godName=godKey;P[0].godLevel=1;P[0].godZone=[{...godCard}];
-      L.push(`你从手牌直接信仰 ${godCard.name}，获得${godCard.power}(Lv.1)`);
+      L.push(`你从手牌直接信仰 ${godCard.name}，获得${godCard.power}(Lv.1)（骷髅头不计）`);
     }
-    // Kick anyone else worshipping same god
     P.forEach((p,i)=>{if(i>0&&p.godName===godKey){p.san=clamp(p.san-1);Disc.push(...p.godZone);p.godZone=[];p.godName=null;p.godLevel=0;L.push(`${p.name} 被邪神抛弃，SAN-1`);}});
     const win=checkWin(P);
-    setGs({...gs,players:P,discard:Disc,log:L,...(win?{gameOver:win}:{})});
+    // Upgrade does not consume the worship slot; worship/convert does
+    setGs({...gs,players:P,discard:Disc,log:L,...(!isUpgrade?{godFromHandUsed:true}:{}),...(win?{gameOver:win}:{})});
   }
 
   function handleMyCardClick(idx){
@@ -2458,9 +3235,13 @@ export default function Game(){
     else if(phase==='BEWITCH_SELECT_CARD')bewitchSelectCard(idx);
     else if(phase==='DISCARD_PHASE')toggleDiscardSelect(idx);
     else if(phase==='HUNT_CONFIRM'){const c=me.hand[idx],rc=gs.abilityData?.revCard;if(rc&&(c.letter===rc.letter||c.number===rc.number))huntConfirm(idx);}
+    else if(phase==='PLAYER_REVEAL_FOR_HUNT'){const c=me.hand[idx];if(c&&!c.isGod)playerRevealForHunt(idx);}
     else if(phase==='ACTION'&&myTurn&&!isBlocked){
       const c=me.hand[idx];
-      if(c&&c.isGod&&me.godEncounters===0&&!gs.restUsed)worshipFromHand(idx);
+      if(c&&c.isGod){
+        const isUpgrade=me.godName===c.godKey&&(me.godLevel||0)<3;
+        if(isUpgrade||(!(gs.godTriggeredThisTurn||gs.godFromHandUsed)))worshipFromHand(idx);
+      }
     }
   }
   function isMyCardClickable(c,idx){
@@ -2469,28 +3250,56 @@ export default function Game(){
     if(phase==='BEWITCH_SELECT_CARD')return true;
     if(phase==='DISCARD_PHASE'){const sel=gs.abilityData.discardSelected||[];const max=me.hand.length-4;return sel.includes(idx)||sel.length<max;}
     if(phase==='HUNT_CONFIRM'){const rc=gs.abilityData?.revCard;return!!(rc&&(c.letter===rc.letter||c.number===rc.number));}
-    // Worship-from-hand: god card, ACTION phase, player's turn, no prior encounter, not rested
-    if(phase==='ACTION'&&myTurn&&c.isGod&&me.godEncounters===0&&!gs.restUsed)return true;
+    if(phase==='PLAYER_REVEAL_FOR_HUNT')return!c.isGod; // only zone cards
+    // God card in ACTION phase: upgrade (same god) is always allowed; worship/convert requires slot
+    if(phase==='ACTION'&&myTurn&&c.isGod){
+      const isUpgrade=me.godName===c.godKey&&(me.godLevel||0)<3;
+      if(isUpgrade||(!gs.godTriggeredThisTurn&&!gs.godFromHandUsed))return true;
+    }
     return false;
   }
 
   const skillLimited=gs.skillUsed&&ri.skillLimited;
 
   return(
-    <div style={{minHeight:'100vh',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:7,padding:'8px 10px',position:'relative',
-      animation:screenShake?'screenShakeAnim 0.38s ease-in-out':undefined,
+    <div style={{minHeight:'100vh',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:7,padding:isMobile?'6px 8px':'8px 10px',position:'relative',overflowX:'hidden',
+    animation:deathShake?'deathShakeAnim 2.0s ease-in-out':screenShake?'screenShakeAnim 0.38s ease-in-out':undefined,
     }}>
       {/* Global vignette */}
       <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at 50% 50%,transparent 40%,#00000099 100%)',pointerEvents:'none',zIndex:1}}/>
 
       {/* Animation overlay */}
-      <AnimOverlay anim={anim} exiting={animExiting}/>
+      {!suppressAnim&&<AnimOverlay anim={anim} exiting={animExiting}/>}
+      {/* Guillotine death animation */}
+      {!suppressAnim&&anim?.type==='GUILLOTINE'&&<GuillotineAnim hitIndices={anim.hitIndices||[]}/>}
       {/* SAN damage full-screen mist bolts */}
-      <SanMistOverlay hitIndices={sanHitIndices}/>
+      {!suppressAnim&&<SanMistOverlay hitIndices={sanHitIndices}/>}
       {/* Skill overlays */}
-      <SwapCupOverlay active={swapAnim}/>
-      <HuntScopeOverlay active={!!huntAnim} cx={huntAnim?.cx??0} cy={huntAnim?.cy??0}/>
-      <BewitchEyeOverlay active={!!bewitchAnim} cx={bewitchAnim?.cx??0} cy={bewitchAnim?.cy??0}/>
+      {!suppressAnim&&<SwapCupOverlay active={!!swapAnim} casterName={swapAnim?.casterName||''} targetName={swapAnim?.targetName||''}/>}
+      {!suppressAnim&&<HuntScopeOverlay active={!!huntAnim} cx={huntAnim?.cx??0} cy={huntAnim?.cy??0}/>}
+      {!suppressAnim&&<BewitchEyeOverlay active={!!bewitchAnim} cx={bewitchAnim?.cx??0} cy={bewitchAnim?.cy??0}/>}
+
+      {/* Turn indicator — shown during AI turns */}
+      {gs.phase==='AI_TURN'&&gs.currentTurn!==0&&!anim&&(()=>{
+        const tp=gs.players[gs.currentTurn];
+        const tr=tp?RINFO[tp.role]:null;
+        return(
+          <div style={{
+            position:'fixed',top:'44%',left:'50%',transform:'translateX(-50%)',
+            zIndex:500,pointerEvents:'none',textAlign:'center',
+            animation:'turnIndicatorFade 0.5s ease-out forwards',
+          }}>
+            <div style={{
+              fontFamily:"'Noto Serif SC','IM Fell English',serif",
+              fontSize:18,fontWeight:700,letterSpacing:5,
+              color:tr?tr.col:'#c8a96e',
+              textShadow:tr?`0 0 20px ${tr.col}88, 0 2px 8px rgba(0,0,0,0.9)`:'0 0 20px #c8a96e88, 0 2px 8px rgba(0,0,0,0.9)',
+              animation:'turnIndicatorPulse 2.5s ease-in-out infinite',
+              whiteSpace:'nowrap',
+            }}>当前为 {tp?.name||'？'} 的回合</div>
+          </div>
+        );
+      })()}
 
       {/* Target selection mask + floating prompt */}
       <TargetSelectOverlay drawReveal={gs.drawReveal} phase={phase}/>
@@ -2519,18 +3328,18 @@ export default function Game(){
         return(<NyaBorrowModal deadPlayers={deadOthers} godLevel={me.godLevel} onBorrow={nyaBorrow} onSkip={nyaSkip}/>);
       })()}
       {/* Draw reveal modal */}
-      {phase==='DRAW_REVEAL'&&gs.drawReveal&&<DrawRevealModal drawReveal={gs.drawReveal} onConfirm={handleDrawConfirm}/>}
+      {!suppressAnim&&phase==='DRAW_REVEAL'&&gs.drawReveal&&<DrawRevealModal drawReveal={gs.drawReveal} onConfirm={handleDrawConfirm}/>}
 
       <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',gap:7}}>
         {/* Header */}
         <div style={{display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid #2a1a08',paddingBottom:6}}>
-          <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:14,fontWeight:700,color:'#c8a96e',letterSpacing:2}}>邪神的宝藏</div>
-          <div style={{fontFamily:"'Cinzel',serif",fontSize:10,color:'#7a6040',letterSpacing:2,marginTop:1}}>Treasures of Evils</div>
+          <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:isMobile?12:14,fontWeight:700,color:'#c8a96e',letterSpacing:isMobile?1:2}}>邪神的宝藏</div>
+          <div style={{fontFamily:"'Cinzel',serif",fontSize:isMobile?8:10,color:'#7a6040',letterSpacing:isMobile?1:2,marginTop:1}}>Treasures of Evils</div>
           
         </div>
 
         {/* AI panels */}
-        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:7}}>
+        <div ref={aiPanelAreaRef} style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':isSmall?'repeat(3,1fr)':'repeat(4,1fr)',gap:isMobile?5:7}}>
           {gs.players.slice(1).map((p,i)=>{
             const pi=i+1;
             const isSel=selectingOther&&!p.isDead&&!isBlocked&&!(phase==='HUNT_SELECT_TARGET'&&huntAbandoned.includes(pi));
@@ -2543,14 +3352,14 @@ export default function Game(){
         </div>
 
         {/* Middle: self info + deck/discard piles + log */}
-        <div style={{display:'flex',gap:7}}>
+        <div style={{display:'flex',gap:isMobile?5:7,flexWrap:isMobile?'wrap':'nowrap'}}>
           {/* Self panel */}
-          <div data-pid={0} style={{background:'#180f07',border:`1.5px solid ${hitIndices.includes(0)?'#cc2222':sanHitIndices.includes(0)?'#8840cc':'#3a2510'}`,borderRadius:3,padding:'12px 13px',width:155,minHeight:222,flexShrink:0,display:'flex',flexDirection:'column',gap:9,position:'relative',overflow:'hidden'}}>
+          <div ref={selfPanelRef} data-pid={0} style={{background:'#180f07',border:`1.5px solid ${hitIndices.includes(0)?'#cc2222':sanHitIndices.includes(0)?'#8840cc':suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'#c8a96e':'#3a2510'}`,borderRadius:3,padding:isMobile?'10px 11px':'12px 13px',width:isMobile?undefined:155,flexBasis:isMobile?'calc(58% - 2.5px)':undefined,minHeight:isMobile?undefined:222,flexShrink:0,display:'flex',flexDirection:'column',gap:9,position:'relative',overflow:'hidden',boxShadow:suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'0 0 0 2px #c8a96e66,0 0 20px #c8a96e44':undefined}}>
             {hitIndices.includes(0)&&<KnifeEffect/>}
             {/* SAN mist: rendered by full-screen SanMistOverlay */}
             {(hpHealIndices.includes(0)||sanHealIndices.includes(0))&&<HealCrossEffect color={sanHealIndices.includes(0)?'#a78bfa':'#4ade80'}/>}
             <div>
-              <div style={{fontFamily:"'Cinzel',serif",color:'#3a2510',fontSize:9,letterSpacing:2,marginBottom:3,textTransform:'uppercase'}}>你的身份</div>
+              <div ref={roleTextRef} style={{fontFamily:"'Cinzel',serif",color:'#3a2510',fontSize:9,letterSpacing:2,marginBottom:3,textTransform:'uppercase'}}>你的身份</div>
               <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:13,color:ri.col,textShadow:`0 0 12px ${ri.col}66`,letterSpacing:1}}>{ri.icon} {me.role}</div>
               <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#5a4020',fontSize:10,marginTop:4,lineHeight:1.6}}>{ri.goal}</div>
               {me.isResting&&<div style={{marginTop:4,fontSize:10,color:'#4ade80',fontFamily:"'Cinzel',serif",letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 休息中 — 下回合跳过</div>}
@@ -2568,7 +3377,7 @@ export default function Game(){
               <StatBar label="HP"  val={me.hp}  color="#7a1515" trackColor="#1a0808"/>
               <StatBar label="SAN" val={me.san} color="#3a1078" trackColor="#120820"/>
             </div>
-            {canWin&&(
+            {canWin&&phase!=='PLAYER_WIN_PENDING'&&(
               <button onClick={revealWin} style={{
                 padding:'7px 4px',background:'#1c1208',border:'1.5px solid #c8a96e',
                 color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,
@@ -2579,9 +3388,9 @@ export default function Game(){
             )}
           </div>
           {/* Center: deck/discard piles */}
-          <PileDisplay deckCount={gs.deck.length} discardCount={gs.discard.length} discardTop={gs.discard[gs.discard.length-1]||null}/>
+          <PileDisplay deckCount={gs.deck.length} discardCount={gs.discard.length} discardTop={gs.discard[gs.discard.length-1]||null} compact={isMobile} deckRef={deckAreaRef}/>
           {/* Log — narrow, right-aligned */}
-          <div ref={logRef} style={{width:218,flexShrink:0,background:'#0e0904',border:'1.5px solid #2a1a08',borderRadius:3,padding:'8px 10px',overflowY:'auto',maxHeight:222}}>
+          <div ref={logRef} style={{width:isMobile?'100%':218,flexBasis:isMobile?'100%':undefined,flexShrink:0,background:'#0e0904',border:'1.5px solid #2a1a08',borderRadius:3,padding:'8px 10px',overflowY:'auto',maxHeight:isMobile?100:222}}>
             <div style={{fontFamily:"'Cinzel',serif",color:'#2a1a08',fontSize:9,letterSpacing:2,marginBottom:5,textTransform:'uppercase'}}>— 冒险日志 —</div>
             {gs.log.slice(-50).map((line,i)=>(
               <div key={i} style={{
@@ -2602,20 +3411,17 @@ export default function Game(){
         <div style={{
           background:'#120900',
           border:`1px solid ${myTurn&&!['AI_TURN'].includes(phase)?'#5a3010':'#2a1a08'}`,
-          borderRadius:3,padding:'7px 14px',minHeight:38,
+          borderRadius:3,padding:isMobile?'5px 10px':'7px 14px',minHeight:isMobile?32:38,
           display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',
         }}>
-          <div style={{flex:1,fontFamily:"'Cinzel',serif",color:myTurn&&phase!=='AI_TURN'?'#a08040':'#3a2510',fontSize:11,letterSpacing:1}}>{phaseLabel}</div>
-          {phase==='HUNT_CONFIRM'&&(
-            <button onClick={()=>huntConfirm(-1)} style={smallBtnStyle}>放弃追捕</button>
-          )}
+          <div style={{flex:1,fontFamily:"'Cinzel',serif",color:phase==='PLAYER_REVEAL_FOR_HUNT'?'#cc3030':myTurn&&phase!=='AI_TURN'?'#a08040':'#3a2510',fontSize:isMobile?10:11,letterSpacing:isMobile?0.5:1}}>{phaseLabel}</div>
         </div>
 
         {/* Hand area */}
-        <div style={{background:'#120900',border:`1.5px solid ${myTurn?'#3a2010':'#2a1a08'}`,borderRadius:3,padding:'11px 13px'}}>
+        <div ref={handAreaRef} style={{background:'#120900',border:`1.5px solid ${myTurn?'#3a2010':'#2a1a08'}`,borderRadius:3,padding:isMobile?'8px 9px':'11px 13px'}}>
           <div style={{display:'flex',alignItems:'center',marginBottom:9,gap:8}}>
-            <span style={{fontFamily:"'Cinzel',serif",color:phase==='DISCARD_PHASE'?'#882020':'#3a2510',fontSize:10,letterSpacing:1}}>
-              {phase==='DISCARD_PHASE'?`⚠ 手牌超限 (${me.hand.length}/${effectiveHandLimit})`:`手牌 (${me.hand.length}/${effectiveHandLimit})`}
+            <span style={{fontFamily:"'Cinzel',serif",color:phase==='DISCARD_PHASE'||phase==='PLAYER_REVEAL_FOR_HUNT'?'#882020':'#3a2510',fontSize:10,letterSpacing:1}}>
+              {phase==='DISCARD_PHASE'?`⚠ 手牌超限 (${me.hand.length}/${effectiveHandLimit})`:phase==='PLAYER_REVEAL_FOR_HUNT'?'⚠ 选择亮出一张区域牌':`手牌 (${me.hand.length}/${effectiveHandLimit})`}
             </span>
             {(phase==='ACTION'&&myTurn&&!isBlocked||cancelable)&&(
               <div style={{display:'flex',gap:8,marginLeft:'auto',flexWrap:'wrap',position:'relative',zIndex:200}}>
@@ -2625,11 +3431,11 @@ export default function Game(){
                   return(<>
                     <button onClick={useAbility} disabled={skillRestLimited}
                       style={{
-                        padding:'6px 16px',background:'#1c1208',
+                        padding:isMobile?'5px 10px':'6px 16px',background:'#1c1208',
                         border:`1.5px solid ${skillRestLimited?'#3a2510':ri.col}`,
                         color:skillRestLimited?'#3a2510':ri.col,
-                        fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,
-                        borderRadius:2,cursor:skillRestLimited?'not-allowed':'pointer',letterSpacing:1,
+                        fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:isMobile?10:11,
+                        borderRadius:2,cursor:skillRestLimited?'not-allowed':'pointer',letterSpacing:isMobile?0.5:1,
                         boxShadow:skillRestLimited?'none':`0 0 10px ${ri.col}44`,
                         textTransform:'uppercase',opacity:skillRestLimited?0.4:1,
                         position:'relative',
@@ -2639,11 +3445,11 @@ export default function Game(){
                     </button>
                     <button onClick={doRest} disabled={restLimited}
                       style={{
-                        padding:'6px 14px',background:restLimited?'#130a04':'#0e1a0e',
+                        padding:isMobile?'5px 10px':'6px 14px',background:restLimited?'#130a04':'#0e1a0e',
                         border:`1.5px solid ${restLimited?'#2a1a08':'#2a5a2a'}`,
                         color:restLimited?'#3a2510':'#4ade80',
-                        fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,
-                        borderRadius:2,cursor:restLimited?'not-allowed':'pointer',letterSpacing:1,
+                        fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:isMobile?10:11,
+                        borderRadius:2,cursor:restLimited?'not-allowed':'pointer',letterSpacing:isMobile?0.5:1,
                         boxShadow:restLimited?'none':'0 0 10px #4ade8044',
                         textTransform:'uppercase',opacity:restLimited?0.4:1,
                       }}>
@@ -2651,14 +3457,14 @@ export default function Game(){
                       {restLimited&&<span style={{fontSize:9,marginLeft:4,color:'#3a2510'}}>(已用)</span>}
                     </button>
                     <button onClick={endTurn} style={{
-                      padding:'6px 16px',background:'#180e08',
+                      padding:isMobile?'5px 10px':'6px 16px',background:'#180e08',
                       border:'1.5px solid #3a2510',color:'#5a4020',
-                      fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,
-                      borderRadius:2,cursor:'pointer',letterSpacing:1,textTransform:'uppercase',
+                      fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:isMobile?10:11,
+                      borderRadius:2,cursor:'pointer',letterSpacing:isMobile?0.5:1,textTransform:'uppercase',
                     }}>结束回合</button>
                   </>);
                 })()}
-                {cancelable&&(
+                {showCancelBtn&&(
                   <button onClick={cancelAction} style={{
                     padding:'6px 18px',background:'#1a0c04',
                     border:'2px solid #d4832a',color:'#f0a855',
@@ -2667,6 +3473,16 @@ export default function Game(){
                     boxShadow:'0 0 14px #d4832a66,inset 0 0 6px #d4832a22',
                     position:'relative',zIndex:200,
                   }}>✕ 取消</button>
+                )}
+                {phase==='HUNT_CONFIRM'&&(
+                  <button onClick={()=>huntConfirm(-1)} style={{
+                    padding:'6px 18px',background:'#1a0c04',
+                    border:'2px solid #d4832a',color:'#f0a855',
+                    fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,
+                    borderRadius:2,cursor:'pointer',letterSpacing:2,textTransform:'uppercase',
+                    boxShadow:'0 0 14px #d4832a66,inset 0 0 6px #d4832a22',
+                    position:'relative',zIndex:200,
+                  }}>✕ 放弃追捕</button>
                 )}
               </div>
             )}
@@ -2690,9 +3506,12 @@ export default function Game(){
               const clickable=isMyCardClickable(c,i);
               const isSel=phase==='DISCARD_PHASE'&&(gs.abilityData.discardSelected||[]).includes(i);
               const isMatch=phase==='HUNT_CONFIRM'&&gs.abilityData?.revCard&&(c.letter===gs.abilityData.revCard.letter||c.number===gs.abilityData.revCard.number);
-              const canWorshipNow=c.isGod&&phase==='ACTION'&&myTurn&&me.godEncounters===0&&!gs.restUsed;
+              const isGodUpgrade=c.isGod&&me.godName===c.godKey&&(me.godLevel||0)<3;
+              const canUpgradeNow=isGodUpgrade&&phase==='ACTION'&&myTurn;
+              const canWorshipNow=c.isGod&&!isGodUpgrade&&phase==='ACTION'&&myTurn&&!gs.godTriggeredThisTurn&&!gs.godFromHandUsed;
               return(<div key={c.id} style={{position:'relative',display:'inline-block'}}>
-                <DDCard card={c} onClick={clickable?()=>handleMyCardClick(i):undefined} disabled={!clickable} selected={isSel} highlight={isMatch||canWorshipNow} godLevel={me.godName===c.godKey?me.godLevel:0}/>
+                <DDCard card={c} onClick={clickable?()=>handleMyCardClick(i):undefined} disabled={!clickable} selected={isSel} highlight={isMatch||canWorshipNow||canUpgradeNow} godLevel={me.godName===c.godKey?me.godLevel:0} compact={isMobile}/>
+                {canUpgradeNow&&<div style={{position:'absolute',top:-7,left:'50%',transform:'translateX(-50%)',fontFamily:"'Cinzel',serif",fontSize:8,color:'#c8a96e',background:'#0a0705',border:'1px solid #8a6020',borderRadius:2,padding:'1px 4px',pointerEvents:'none',whiteSpace:'nowrap',zIndex:10}}>⬆ 升级邪神之力</div>}
                 {canWorshipNow&&<div style={{position:'absolute',top:-7,left:'50%',transform:'translateX(-50%)',fontFamily:"'Cinzel',serif",fontSize:8,color:'#b080e0',background:'#0a0412',border:'1px solid #7040aa',borderRadius:2,padding:'1px 4px',pointerEvents:'none',whiteSpace:'nowrap',zIndex:10}}>⛧ 点击信仰</div>}
               </div>);
             })}
@@ -2700,6 +3519,612 @@ export default function Game(){
           </div>
         </div>
       </div>
+      {/* ── Tutorial steps 2 & 3 (shown over game interface) ── */}
+      {/* ── Treasure Map Win Animation ── */}
+      {phase==='TREASURE_WIN'&&!showTutorial&&<TreasureMapAnim hand={me.hand} onConfirm={revealWin}/>}
+      {showTutorial&&tutorialStep===2&&(()=>{
+        const TW=Math.min(260,vw-20);
+        const px=Math.max(8,Math.min(panelRect?panelRect.right+14:175,vw-TW-8));
+        const py=panelRect?panelRect.top+(panelRect.height/2):260;
+        const arrowTop=panelRect?Math.max(16,Math.min(panelRect.height/2,60)):40;
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
+            {/* Semi-dark backdrop */}
+            <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
+            {/* Spotlight cutout glow — handled via panel border above */}
+            {/* Tooltip popup */}
+            <div style={{
+              position:'absolute',
+              left:px,
+              top:Math.max(8,py-90),
+              width:TW,pointerEvents:'auto',
+              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
+              padding:'18px 20px',
+              boxShadow:'0 0 40px #7a502066',
+              animation:'animPop 0.25s ease-out',
+              zIndex:901,
+            }}>
+              {/* Arrow pointing left */}
+              <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid #7a5020'}}/>
+              <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #120d06'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                这么说吧，你此行的目标是一个危险的遗迹，遗迹里有着…很可怕的东西。
+              </p>
+              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                这里会显示你的当前状态，当<span style={{color:'#e05050',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc222288'}}>HP</span>归零，你就会倒下。
+              </p>
+              <button
+                onClick={()=>setTutorialStep(3)}
+                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
+                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
+                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+              >
+                下一步 →
+              </button>
+            </div></div>
+            </div>
+          </div>
+        );
+      })()}
+      {showTutorial&&tutorialStep===3&&(()=>{
+        const TW=Math.min(260,vw-20);
+        const px=Math.max(8,Math.min(panelRect?panelRect.right+14:175,vw-TW-8));
+        const py=panelRect?panelRect.top+(panelRect.height/2):260;
+        const arrowTop=panelRect?Math.max(16,Math.min(panelRect.height/2,60)):40;
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
+            <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
+            <div style={{
+              position:'absolute',
+              left:px,
+              top:Math.max(8,py-90),
+              width:TW,pointerEvents:'auto',
+              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
+              padding:'18px 20px',
+              boxShadow:'0 0 40px #7a502066',
+              animation:'animPop 0.25s ease-out',
+              zIndex:901,
+            }}>
+              <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid #7a5020'}}/>
+              <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #120d06'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                <span style={{color:'#e05050',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc222288'}}>HP</span>下方是你的<span style={{color:'#a78bfa',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #8844cc88'}}>SAN</span>值，象征心智。
+              </p>
+              <button
+                onClick={()=>setTutorialStep(4)}
+                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
+                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
+                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+              >
+                下一步 →
+              </button>
+            </div></div>
+            </div>
+          </div>
+        );
+      })()}
+      {showTutorial&&tutorialStep===4&&(()=>{
+        const TW=Math.min(260,vw-20);
+        const px=Math.max(8,Math.min(panelRect?panelRect.right+14:175,vw-TW-8));
+        const py=panelRect?panelRect.top+(panelRect.height/2):260;
+        const arrowTop=panelRect?Math.max(16,Math.min(panelRect.height/2,60)):40;
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
+            <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
+            <div style={{
+              position:'absolute',
+              left:px,
+              top:Math.max(8,py-90),
+              width:TW,pointerEvents:'auto',
+              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
+              padding:'18px 20px',
+              boxShadow:'0 0 40px #7a502066',
+              animation:'animPop 0.25s ease-out',
+              zIndex:901,
+            }}>
+              <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid #7a5020'}}/>
+              <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #120d06'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                当一个人完全丧失心智，被遗迹里那些邪祟占据身体，所有人都会大祸临头！
+              </p>
+              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                哦，不过<span style={{color:'#9060cc',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #7040aa88'}}>邪祀者</span>可能会挺高兴…
+              </p>
+              <button
+                onClick={()=>setTutorialStep(5)}
+                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
+                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
+                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+              >
+                下一步 →
+              </button>
+            </div></div>
+            </div>
+          </div>
+        );
+      })()}
+      {showTutorial&&tutorialStep===5&&(()=>{
+        const TW=Math.min(260,vw-20);
+        const rx=Math.max(8,Math.min(roleTextRect?roleTextRect.right+14:175,vw-TW-8));
+        const ry=roleTextRect?roleTextRect.top+(roleTextRect.height/2):120;
+        const arrowTop=12;
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
+            <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
+            <div style={{
+              position:'absolute',
+              left:rx,
+              top:Math.max(8,ry-20),
+              width:TW,pointerEvents:'auto',
+              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
+              padding:'18px 20px',
+              boxShadow:'0 0 40px #7a502066',
+              animation:'animPop 0.25s ease-out',
+              zIndex:901,
+            }}>
+              <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid #7a5020'}}/>
+              <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #120d06'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                说到<span style={{color:'#9060cc',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #7040aa88'}}>邪祀者</span>，你知道你这次的<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>身份</span>吗？
+              </p>
+              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                每次探索中你的<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>身份</span>都有可能不一样。不知道的话，你可要记好了：
+              </p>
+              <button
+                onClick={()=>setTutorialStep(6)}
+                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
+                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
+                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+              >
+                下一步 →
+              </button>
+            </div></div>
+            </div>
+          </div>
+        );
+      })()}
+      {showTutorial&&tutorialStep===6&&(()=>{
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
+            <div style={{
+              position:'relative',zIndex:901,
+              width:Math.min(280,vw-20),pointerEvents:'auto',
+              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
+              padding:'18px 20px',
+              boxShadow:'0 0 40px #7a502066',
+              animation:'animPop 0.25s ease-out',
+            }}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                首先是<span style={{color:'#c8a96e',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #c8a96e88'}}>寻宝者</span>。他们贪婪、无惧危险，进入遗迹只为独占<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>宝藏</span>。他们不会跟任何人合作，包括其他<span style={{color:'#c8a96e',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #c8a96e88'}}>寻宝者</span>。
+              </p>
+              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                至于他们大闹一通后，邪恶的古神会不会第二天就复活？他们才不管。
+              </p>
+              <button
+                onClick={()=>setTutorialStep(7)}
+                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
+                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
+                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+              >
+                下一步 →
+              </button>
+            </div></div>
+            </div>
+          </div>
+        );
+      })()}
+      {showTutorial&&tutorialStep===7&&(()=>{
+        // Position tooltip above hand area, centered horizontally over it, arrow pointing down
+        const TOOLTIP_W=Math.min(265,vw-20);
+        const hcx=handAreaRect?handAreaRect.left+(handAreaRect.width/2):200;
+        const hty=handAreaRect?handAreaRect.top:400;
+        const hbottom=handAreaRect?handAreaRect.bottom:500;
+        const hleft=handAreaRect?handAreaRect.left:0;
+        const hright=handAreaRect?handAreaRect.right:window.innerWidth;
+        const tooltipLeft=Math.max(8,Math.min(hcx-TOOLTIP_W/2, window.innerWidth-TOOLTIP_W-8));
+        const tooltipBottom=window.innerHeight-hty+14;
+        const arrowLeft=Math.max(16,Math.min(hcx-tooltipLeft-8, TOOLTIP_W-24));
+        const BG='rgba(0,0,0,0.58)';
+        const W=window.innerWidth, H=window.innerHeight;
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
+            {/* Four-strip backdrop — leaves hand cards area undarken, covers button row */}
+            <div style={{position:'absolute',left:0,top:0,right:0,height:hty+46,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',left:0,top:hty+46,bottom:0,width:hleft,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',right:0,top:hty+46,bottom:0,left:hright,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',left:hleft,right:W-hright,top:hbottom,bottom:0,background:BG,pointerEvents:'none'}}/>
+            <div style={{
+              position:'fixed',
+              left:tooltipLeft,
+              bottom:tooltipBottom,
+              width:TOOLTIP_W,pointerEvents:'auto',
+              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
+              padding:'18px 20px',
+              boxShadow:'0 0 40px #7a502066',
+              animation:'animPop 0.25s ease-out',
+              zIndex:901,
+            }}>
+              {/* Arrow pointing down */}
+              <div style={{position:'absolute',bottom:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderTop:'9px solid #7a5020'}}/>
+              <div style={{position:'absolute',bottom:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderTop:'8px solid #120d06'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                你问我如何寻得<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>宝藏</span>？翻遍所有地方，就这么简单。
+              </p>
+              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                先驱在遗迹地图上标记了ABCD四列、1234四行。如果你是<span style={{color:'#c8a96e',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #c8a96e88'}}>寻宝者</span>，手牌中有<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>所有列和所有行</span>的编号，你就赢了。
+              </p>
+              <button
+                onClick={()=>setTutorialStep(8)}
+                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
+                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
+                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+              >
+                下一步 →
+              </button>
+            </div></div>
+            </div>
+          </div>
+        );
+      })()}
+      {/* ── Step 8: 追猎者 description (centered modal, no arrow) ── */}
+      {showTutorial&&tutorialStep===8&&(()=>{
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
+            <div style={{
+              position:'relative',zIndex:901,
+              width:Math.min(280,vw-20),pointerEvents:'auto',
+              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
+              padding:'18px 20px',
+              boxShadow:'0 0 40px #7a502066',
+              animation:'animPop 0.25s ease-out',
+            }}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                接着是<span style={{color:'#dd6a30',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc440088'}}>追猎者</span>，他们<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>团结一心</span>，是遗迹的卫士。
+              </p>
+              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                所有闯入者，都是他们的敌人，是可能复活邪神的潜在威胁。
+              </p>
+              <button
+                onClick={()=>setTutorialStep(9)}
+                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
+                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
+                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+              >
+                下一步 →
+              </button>
+            </div></div>
+            </div>
+          </div>
+        );
+      })()}
+      {/* ── Step 9: 追猎者 win condition, tooltip pointing UP at AI panels area ── */}
+      {showTutorial&&tutorialStep===9&&(()=>{
+        const TOOLTIP_W=Math.min(265,vw-20);
+        const aty =aiPanelAreaRect?aiPanelAreaRect.top:0;
+        const abottom=aiPanelAreaRect?aiPanelAreaRect.bottom:120;
+        const aleft =aiPanelAreaRect?aiPanelAreaRect.left:0;
+        const aright=aiPanelAreaRect?aiPanelAreaRect.right:vw;
+        const acx   =aleft+(aright-aleft)/2;
+        const tooltipLeft=Math.max(8,Math.min(acx-TOOLTIP_W/2,vw-TOOLTIP_W-8));
+        const tooltipTop =abottom+14;
+        const arrowLeft  =Math.max(16,Math.min(acx-tooltipLeft-8,TOOLTIP_W-24));
+        const BG='rgba(0,0,0,0.58)';
+        const W=vw;
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
+            {/* Four-strip backdrop — leaves AI panels area undarken */}
+            {aty>0&&<div style={{position:'absolute',left:0,top:0,right:0,height:aty,background:BG}}/>}
+            <div style={{position:'absolute',left:0,top:aty,bottom:0,width:aleft,background:BG}}/>
+            <div style={{position:'absolute',left:aright,top:aty,right:0,bottom:0,background:BG}}/>
+            <div style={{position:'absolute',left:aleft,right:W-aright,top:abottom,bottom:0,background:BG}}/>
+            <div style={{
+              position:'fixed',
+              left:tooltipLeft,
+              top:tooltipTop,
+              width:TOOLTIP_W,pointerEvents:'auto',
+              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
+              padding:'18px 20px',
+              boxShadow:'0 0 40px #7a502066',
+              animation:'animPop 0.25s ease-out',
+              zIndex:901,
+            }}>
+              {/* Arrow pointing UP */}
+              <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid #7a5020'}}/>
+              <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #120d06'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                如果你是<span style={{color:'#dd6a30',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc440088'}}>追猎者</span>，你要肃清所有非<span style={{color:'#dd6a30',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc440088'}}>追猎者</span>角色，将他们的<span style={{color:'#e05050',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc222288'}}>HP</span>全部清零，就能获胜。
+              </p>
+              <button
+                onClick={()=>setTutorialStep(10)}
+                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
+                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
+                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+              >
+                下一步 →
+              </button>
+            </div></div>
+            </div>
+          </div>
+        );
+      })()}
+      {/* ── Step 10: 邪祀者 description (centered modal, no arrow) ── */}
+      {showTutorial&&tutorialStep===10&&(()=>{
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
+            <div style={{
+              position:'relative',zIndex:901,
+              width:Math.min(280,vw-20),pointerEvents:'auto',
+              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
+              padding:'18px 20px',
+              boxShadow:'0 0 40px #7a502066',
+              animation:'animPop 0.25s ease-out',
+            }}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                最后是<span style={{color:'#9060cc',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #7040aa88'}}>邪祀者</span>，他们一心复活邪神，基于利害关系相互合作，精于算计他人。
+              </p>
+              <button
+                onClick={()=>setTutorialStep(11)}
+                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
+                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
+                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+              >
+                下一步 →
+              </button>
+            </div></div>
+            </div>
+          </div>
+        );
+      })()}
+      {/* ── Step 11: 邪祀者 win condition, four-strip spotlight on AI panels ── */}
+      {showTutorial&&tutorialStep===11&&(()=>{
+        const TOOLTIP_W=Math.min(265,vw-20);
+        const aty    =aiPanelAreaRect?aiPanelAreaRect.top:0;
+        const abottom=aiPanelAreaRect?aiPanelAreaRect.bottom:120;
+        const aleft  =aiPanelAreaRect?aiPanelAreaRect.left:0;
+        const aright =aiPanelAreaRect?aiPanelAreaRect.right:vw;
+        const acx    =aleft+(aright-aleft)/2;
+        const tooltipLeft=Math.max(8,Math.min(acx-TOOLTIP_W/2,vw-TOOLTIP_W-8));
+        const tooltipTop =abottom+14;
+        const arrowLeft  =Math.max(16,Math.min(acx-tooltipLeft-8,TOOLTIP_W-24));
+        const BG='rgba(0,0,0,0.58)';
+        const W=vw;
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
+            {/* Four-strip backdrop — leaves AI panels area undarken */}
+            {aty>0&&<div style={{position:'absolute',left:0,top:0,right:0,height:aty,background:BG}}/>}
+            <div style={{position:'absolute',left:0,top:aty,bottom:0,width:aleft,background:BG}}/>
+            <div style={{position:'absolute',left:aright,top:aty,right:0,bottom:0,background:BG}}/>
+            <div style={{position:'absolute',left:aleft,right:W-aright,top:abottom,bottom:0,background:BG}}/>
+            <div style={{
+              position:'fixed',
+              left:tooltipLeft,
+              top:tooltipTop,
+              width:TOOLTIP_W,pointerEvents:'auto',
+              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
+              padding:'18px 20px',
+              boxShadow:'0 0 40px #7a502066',
+              animation:'animPop 0.25s ease-out',
+              zIndex:901,
+            }}>
+              {/* Arrow pointing UP */}
+              <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid #7a5020'}}/>
+              <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #120d06'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                如果你是<span style={{color:'#9060cc',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #7040aa88'}}>邪祀者</span>，你要专注于腐化一名角色的心智。当他<span style={{color:'#a78bfa',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #8844cc88'}}>SAN</span>值清零，被邪神占据身体，你就赢了。
+              </p>
+              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                当然，如果你准备自己丧失心智，成为邪神的宿主…那也未尝不可。
+              </p>
+              <button
+                onClick={()=>setTutorialStep(12)}
+                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
+                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
+                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+              >
+                下一步 →
+              </button>
+            </div></div>
+            </div>
+          </div>
+        );
+      })()}
+      {showTutorial&&tutorialStep===12&&(()=>{
+        const TOOLTIP_W=Math.min(265,vw-20);
+        const pty    =deckAreaRect?deckAreaRect.top:0;
+        const pbottom=deckAreaRect?deckAreaRect.bottom:200;
+        const pleft  =deckAreaRect?deckAreaRect.left:0;
+        const pright =deckAreaRect?deckAreaRect.right:vw;
+        const pcx    =pleft+(pright-pleft)/2;
+        const tooltipLeft=Math.max(8,Math.min(pcx-TOOLTIP_W/2,vw-TOOLTIP_W-8));
+        const tooltipTop =pbottom+14;
+        const arrowLeft  =Math.max(16,Math.min(pcx-tooltipLeft-8,TOOLTIP_W-24));
+        const BG='rgba(0,0,0,0.58)';
+        const W=vw;
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
+            {pty>0&&<div style={{position:'absolute',left:0,top:0,right:0,height:pty,background:BG}}/>}
+            <div style={{position:'absolute',left:0,top:pty,bottom:0,width:pleft,background:BG}}/>
+            <div style={{position:'absolute',left:pright,top:pty,right:0,bottom:0,background:BG}}/>
+            <div style={{position:'absolute',left:pleft,right:W-pright,top:pbottom,bottom:0,background:BG}}/>
+            <div style={{
+              position:'fixed',left:tooltipLeft,top:tooltipTop,
+              width:TOOLTIP_W,pointerEvents:'auto',
+              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
+              padding:'18px 20px',boxShadow:'0 0 40px #7a502066',
+              animation:'animPop 0.25s ease-out',zIndex:901,
+            }}>
+              <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid #7a5020'}}/>
+              <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #120d06'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                每回合你将从<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>牌堆</span>摸一张牌，探索一个新区域，同时也会发生<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>随机事件</span>。
+              </p>
+              <button
+                onClick={()=>setTutorialStep(13)}
+                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
+                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
+                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+              >下一步 →</button>
+            </div></div>
+            </div>
+          </div>
+        );
+      })()}
+      {showTutorial&&tutorialStep===13&&(()=>{
+        const TOOLTIP_W=Math.min(265,vw-20);
+        const pty    =deckAreaRect?deckAreaRect.top:0;
+        const pbottom=deckAreaRect?deckAreaRect.bottom:200;
+        const pleft  =deckAreaRect?deckAreaRect.left:0;
+        const pright =deckAreaRect?deckAreaRect.right:vw;
+        const pcx    =pleft+(pright-pleft)/2;
+        const tooltipLeft=Math.max(8,Math.min(pcx-TOOLTIP_W/2,vw-TOOLTIP_W-8));
+        const tooltipTop =pbottom+14;
+        const arrowLeft  =Math.max(16,Math.min(pcx-tooltipLeft-8,TOOLTIP_W-24));
+        const BG='rgba(0,0,0,0.58)';
+        const W=vw;
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
+            {pty>0&&<div style={{position:'absolute',left:0,top:0,right:0,height:pty,background:BG}}/>}
+            <div style={{position:'absolute',left:0,top:pty,bottom:0,width:pleft,background:BG}}/>
+            <div style={{position:'absolute',left:pright,top:pty,right:0,bottom:0,background:BG}}/>
+            <div style={{position:'absolute',left:pleft,right:W-pright,top:pbottom,bottom:0,background:BG}}/>
+            <div style={{
+              position:'fixed',left:tooltipLeft,top:tooltipTop,
+              width:TOOLTIP_W,pointerEvents:'auto',
+              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
+              padding:'18px 20px',boxShadow:'0 0 40px #7a502066',
+              animation:'animPop 0.25s ease-out',zIndex:901,
+            }}>
+              <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid #7a5020'}}/>
+              <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #120d06'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                也有可能，你遇到的不是新区域，而是<span style={{color:'#c060e0',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #9030cc88'}}>邪神的化身</span>。
+              </p>
+              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                是否<span style={{color:'#c060e0',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #9030cc88'}}>信仰</span>祂，分享祂的权能，取决于你。小心越陷越深。
+              </p>
+              <button
+                onClick={()=>setTutorialStep(14)}
+                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
+                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
+                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+              >下一步 →</button>
+            </div></div>
+            </div>
+          </div>
+        );
+      })()}
+      {showTutorial&&tutorialStep===14&&(()=>{
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
+            <div style={{
+              position:'relative',zIndex:901,
+              width:Math.min(280,vw-20),pointerEvents:'auto',
+              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
+              padding:'18px 20px',boxShadow:'0 0 40px #7a502066',
+              animation:'animPop 0.25s ease-out',
+            }}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                你问我还能遇到什么？天知道。
+              </p>
+              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                我已经老了，或许你<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>以后</span>能遇到更多事。
+              </p>
+              <button
+                onClick={()=>setTutorialStep(15)}
+                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
+                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
+                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+              >下一步 →</button>
+            </div></div>
+            </div>
+          </div>
+        );
+      })()}
+      {/* ── Step 15: hand area spotlight (same layout as step 7) ── */}
+      {showTutorial&&tutorialStep===15&&(()=>{
+        const TOOLTIP_W=Math.min(265,vw-20);
+        const hcx=handAreaRect?handAreaRect.left+(handAreaRect.width/2):200;
+        const hty=handAreaRect?handAreaRect.top:400;
+        const hbottom=handAreaRect?handAreaRect.bottom:500;
+        const hleft=handAreaRect?handAreaRect.left:0;
+        const hright=handAreaRect?handAreaRect.right:window.innerWidth;
+        const tooltipLeft=Math.max(8,Math.min(hcx-TOOLTIP_W/2,window.innerWidth-TOOLTIP_W-8));
+        const tooltipBottom=window.innerHeight-hty+14;
+        const arrowLeft=Math.max(16,Math.min(hcx-tooltipLeft-8,TOOLTIP_W-24));
+        const BG='rgba(0,0,0,0.58)';
+        const W=window.innerWidth;
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
+            <div style={{position:'absolute',left:0,top:0,right:0,height:hty+46,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',left:0,top:hty+46,bottom:0,width:hleft,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',right:0,top:hty+46,bottom:0,left:hright,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',left:hleft,right:W-hright,top:hbottom,bottom:0,background:BG,pointerEvents:'none'}}/>
+            <div style={{
+              position:'fixed',left:tooltipLeft,bottom:tooltipBottom,
+              width:TOOLTIP_W,pointerEvents:'auto',
+              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
+              padding:'18px 20px',boxShadow:'0 0 40px #7a502066',
+              animation:'animPop 0.25s ease-out',zIndex:901,
+            }}>
+              <div style={{position:'absolute',bottom:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderTop:'9px solid #7a5020'}}/>
+              <div style={{position:'absolute',bottom:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderTop:'8px solid #120d06'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                务必注意，你的行囊有限。回合结束时，如果你的<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>手牌多于4张</span>，那就丢掉多余的东西，轻装上路。
+              </p>
+              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+                我还有很多没教你，比如各身份都有自己的<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>技能</span>。不过想要生存并获胜，你得自己学了。
+              </p>
+              <button
+                onClick={()=>setTutorialStep(16)}
+                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
+                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
+                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+              >下一步 →</button>
+            </div></div>
+            </div>
+          </div>
+        );
+      })()}
+      {/* ── Step 16: closing modal, "完成引导" ── */}
+      {showTutorial&&tutorialStep===16&&(
+        <div style={{position:'fixed',inset:0,background:'#000000cc',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{background:'#120d06',border:'2px solid #7a5020',borderRadius:4,padding:'36px 40px',maxWidth:380,width:'90%',textAlign:'center',boxShadow:'0 0 60px #7a502066',animation:'animPop 0.25s ease-out'}}>
+            <img src={NARRATOR_AVATAR} alt="narrator" style={{width:Math.min(80,Math.floor((vw-20)/4)),height:Math.min(80,Math.floor((vw-20)/4)),borderRadius:4,objectFit:'cover',objectPosition:'top',border:'2px solid #5a3a10',boxShadow:'0 0 16px #7a502066',margin:'0 auto 14px',display:'block'}} />
+            <div style={{width:160,height:1,background:'linear-gradient(90deg,transparent,#5a4020,transparent)',margin:'0 auto 20px'}}/>
+            <p style={{color:'#c8a96e',fontSize:13,lineHeight:1.9,fontStyle:'italic',marginBottom:14,opacity:0.85}}>
+              如果你开始害怕这座遗迹，像我一样逃离还来得及。如果你依然无所畏惧…
+            </p>
+            <p style={{color:'#e8c87a',fontSize:17,lineHeight:1.9,fontWeight:700,fontStyle:'italic',marginBottom:28,fontFamily:"'IM Fell English','Georgia',serif",textShadow:'0 0 16px #c8a96e66'}}>
+              那就<span style={{color:'#f0d890',textShadow:'0 0 20px #e8c87a99',fontWeight:700}}>开始探索</span>吧！
+            </p>
+            <button
+              onClick={completeTutorial}
+              style={{padding:'10px 36px',background:'#1c1008',border:'2px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:13,borderRadius:2,cursor:'pointer',letterSpacing:2,textTransform:'uppercase',boxShadow:'0 0 20px #c8a96e44',transition:'all .2s'}}
+              onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';e.currentTarget.style.boxShadow='0 0 30px #c8a96e88';}}
+              onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';e.currentTarget.style.boxShadow='0 0 20px #c8a96e44';}}
+            >
+              ✦ 完成引导
+            </button>
+            {isArtifact&&(
+              <div style={{marginTop:14,fontSize:10,color:'#3a2510',fontFamily:"'Cinzel',serif",letterSpacing:0.5}}>
+                （当前为预览环境，引导完成状态不会被保存）
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {roleRevealAnim&&<RoleRevealAnim role={roleRevealAnim.role} onDone={()=>_onRoleRevealDone(roleRevealAnim.pendingGs)}/>}
+      {phase==='PLAYER_WIN_PENDING'&&!showTutorial&&(
+        <TreasureMapAnim hand={me.hand} onConfirm={()=>{
+          setGs({...gs,
+            players:gs.players.map((p,i)=>i===0?{...p,roleRevealed:true}:p),
+            gameOver:{winner:'寻宝者',reason:gs.abilityData?.winReason||'你集齐了全部编号并获胜！',winnerIdx:0}});
+        }}/>
+      )}
       <style>{GLOBAL_STYLES}</style>
     </div>
   );
@@ -2720,8 +4145,33 @@ const GLOBAL_STYLES=`
   ::-webkit-scrollbar{width:5px;height:5px;}
   ::-webkit-scrollbar-track{background:#0a0705;}
   ::-webkit-scrollbar-thumb{background:#3a2510;border-radius:2px;}
+  html,body{ overflow-x:hidden; }
+
+  /* ── Mobile / small-screen overrides ── */
+  @media (max-width:580px){
+    /* Tighten global padding */
+    body { font-size:13px; }
+    /* Modals stay within viewport */
+    [data-modal]{max-width:calc(100vw - 24px)!important;padding:20px 16px!important;}
+    /* Phase bar text wrap */
+    [data-phasebar]{font-size:10px!important;}
+    /* Hand area tighter padding */
+    [data-handarea]{padding:8px 9px!important;}
+    /* Phase/status tooltip fit */
+    [data-tooltip]{max-width:calc(100vw - 32px)!important;}
+  }
+
+  /* ── Prevent fixed overlays from cutting off on very small screens ── */
+  @media (max-width:400px){
+    body{font-size:12px;}
+  }
 
   /* Generic overlay */
+  @keyframes cardTravelToDeck {
+    0%   {top:8%;right:6%;transform:scale(0.85);opacity:0.9}
+    30%  {opacity:1}
+    100% {top:50%;right:50%;transform:translate(50%,-50%) scale(1.1);opacity:1}
+  }
   @keyframes animFadeIn  { from{opacity:0} to{opacity:1} }
   @keyframes animFadeOut { from{opacity:1} to{opacity:0} }
   @keyframes animPop     { 0%{transform:scale(0.5);opacity:0} 60%{transform:scale(1.1)} 100%{transform:scale(1);opacity:1} }
@@ -2971,6 +4421,101 @@ const GLOBAL_STYLES=`
     50%{transform:translateX(-5px)}
     70%{transform:translateX(6px)}
     85%{transform:translateX(-3px)}
+  }
+  @keyframes deathShakeAnim {
+    0%,100%{transform:translate(0,0)}
+    4%  {transform:translate(-14px,-10px)}
+    8%  {transform:translate(18px,12px)}
+    13% {transform:translate(-12px,-16px)}
+    18% {transform:translate(20px,8px)}
+    24% {transform:translate(-16px,-10px)}
+    30% {transform:translate(14px,14px)}
+    38% {transform:translate(-10px,-8px)}
+    46% {transform:translate(12px,6px)}
+    55% {transform:translate(-8px,-4px)}
+    65% {transform:translate(6px,8px)}
+    75% {transform:translate(-5px,-3px)}
+    85% {transform:translate(4px,4px)}
+    93% {transform:translate(-2px,-2px)}
+  }
+  @keyframes guillotineFall {
+    0%   {transform:translateY(-260px)}
+    100% {transform:translateY(var(--fall-y))}
+  }
+  @keyframes guillotineFlash {
+    0%   {opacity:1;transform:scale(1.08)}
+    100% {opacity:0;transform:scale(0.96)}
+  }
+  @keyframes guillotineBloodFlash {
+    0%   {opacity:1}
+    60%  {opacity:0.6}
+    100% {opacity:0}
+  }
+  @keyframes deathScreenShake {
+    0%   {transform:translate(0,0) rotate(0deg)}
+    8%   {transform:translate(-6px,-4px) rotate(-0.4deg)}
+    16%  {transform:translate(7px,5px) rotate(0.5deg)}
+    24%  {transform:translate(-8px,3px) rotate(-0.6deg)}
+    32%  {transform:translate(6px,-6px) rotate(0.4deg)}
+    40%  {transform:translate(-5px,4px) rotate(-0.3deg)}
+    50%  {transform:translate(4px,-3px) rotate(0.25deg)}
+    60%  {transform:translate(-3px,2px) rotate(-0.15deg)}
+    75%  {transform:translate(2px,-1px) rotate(0.1deg)}
+    100% {transform:translate(0,0) rotate(0deg)}
+  }
+  @keyframes shardFly {
+    0%   {transform:translate(0,0) rotate(0deg) scale(1);opacity:1}
+    100% {transform:translate(var(--stx),var(--sty)) rotate(var(--srot)) scale(0.1);opacity:0}
+  }
+  @keyframes panelCrumble {
+    0%   {opacity:1;transform:scale(1)}
+    25%  {opacity:0.9;transform:scale(1.03) rotate(-0.5deg)}
+    60%  {opacity:0.7;transform:scale(0.97) rotate(0.8deg)}
+    100% {opacity:0;transform:scale(0.88) rotate(-1deg)}
+  }
+  @keyframes guillotineVig {
+    0%   {background:rgba(0,0,0,0)}
+    20%  {background:rgba(0,0,0,0.45)}
+    50%  {background:rgba(10,0,0,0.55)}
+    100% {background:rgba(0,0,0,0)}
+  }
+
+  /* Discard card fly — hand (bottom-centre) → discard pile (centre-left area) */
+  @keyframes discardCardFly {
+    0%   {bottom:14%;left:50%;transform:translateX(-50%) scale(1);opacity:1}
+    40%  {bottom:36%;left:38%;transform:translateX(-50%) scale(1.08) rotate(-8deg);opacity:1}
+    100% {bottom:44%;left:28%;transform:translateX(-50%) scale(0.85) rotate(-18deg);opacity:0.7}
+  }
+  @keyframes discardBgFade {
+    0%   {opacity:0}
+    20%  {opacity:1}
+    80%  {opacity:0.8}
+    100% {opacity:0}
+  }
+
+  /* Turn indicator */
+  @keyframes turnIndicatorFade {
+    from{opacity:0;transform:translateX(-50%) translateY(-8px)}
+    to  {opacity:1;transform:translateX(-50%) translateY(0)}
+  }
+  @keyframes yourTurnFade {
+    0%  {opacity:0; transform:scale(0.88)}
+    18% {opacity:1; transform:scale(1.04)}
+    38% {opacity:1; transform:scale(1.0)}
+    75% {opacity:1; transform:scale(1.0)}
+    100%{opacity:0; transform:scale(1.05)}
+  }
+  @keyframes treasureAssemble {
+    0%   {opacity:0; transform:translate(var(--ox),var(--oy)) scale(0.55) rotate(-8deg)}
+    60%  {opacity:1; transform:translate(0,0) scale(1.06) rotate(1deg)}
+    100% {opacity:1; transform:translate(0,0) scale(1) rotate(0deg)}
+  }
+  @keyframes treasureScatter {
+    0%,100% {opacity:0; transform:translate(var(--ox),var(--oy)) scale(0.5)}
+  }
+  @keyframes turnIndicatorPulse {
+    0%,100%{opacity:0.55;filter:brightness(0.85)}
+    50%    {opacity:1;   filter:brightness(1.35)}
   }
 `;
 
