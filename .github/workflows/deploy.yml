@@ -30,9 +30,12 @@ jobs:
         run: npm install
       - name: Build
         run: npm run build
+      # 新增/修改：部署步骤添加 cname 参数，强制指定域名
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # 部署 dist 文件夹的内容
           publish_dir: ./dist
+          force_orphan: true
+          # 核心：直接指定你的自定义域名，会自动生成/覆盖 CNAME 文件
+          cname: www.toegame.online
