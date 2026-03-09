@@ -2447,6 +2447,13 @@ export default function Game(){
   const [connErrModal,setConnErrModal]=useState(false);
   const socketRef=useRef(null);
   const connTimeoutRef=useRef(null);
+  // 联机选项界面状态
+  const [onlineOptionsModal,setOnlineOptionsModal]=useState(false);
+  const [playerUsername,setPlayerUsername]=useState('');
+  const [renameInput,setRenameInput]=useState('');
+  const [renameCdActive,setRenameCdActive]=useState(false);
+  const renameCdTimerRef=useRef(null);
+  const [joinRoomInput,setJoinRoomInput]=useState('');
 
   // ── Gamma / brightness ────────────────────────────────────────
   const [gamma,setGamma]=useState(()=>{
@@ -2477,7 +2484,8 @@ export default function Game(){
     });
   }
 
-  async function handleMultiplayer(){
+  // ── 连接后端（联机选项界面专用）─────────────────────────────
+  async function connectSocket(onConnected){
     if(isArtifact){
       addToast('联机功能在预览环境中不可用，请部署到服务器后使用');
       return;
@@ -2487,7 +2495,6 @@ export default function Game(){
     if(socketRef.current){socketRef.current.disconnect();socketRef.current=null;}
     if(connTimeoutRef.current){clearTimeout(connTimeoutRef.current);connTimeoutRef.current=null;}
 
-    // 5-second timeout
     connTimeoutRef.current=setTimeout(()=>{
       if(socketRef.current){socketRef.current.disconnect();socketRef.current=null;}
       setMultiLoading(false);
@@ -2507,9 +2514,6 @@ export default function Game(){
 
     function cleanup(){clearTimeout(connTimeoutRef.current);connTimeoutRef.current=null;}
 
-    socket.on('connect',()=>{
-      socket.emit('createRoom',{uuid:playerUUID});
-    });
     socket.on('connect_error',()=>{
       cleanup();
       setMultiLoading(false);
@@ -2519,19 +2523,91 @@ export default function Game(){
     socket.on('uuidAssigned',({uuid})=>{
       setPlayerUUID(uuid);
       safeLS.set('cthulhu_player_uuid',uuid);
-      addToast(`系统自动为您创建UUID：${uuid}`);
     });
-    socket.on('roomCreated',({roomId,players})=>{
+    // userInfo：打开联机选项界面时后端下发，含异常断线标志
+    socket.on('userInfo',({uuid,username,wasForceReset})=>{
+      setPlayerUsername(username);
+      setRenameInput(username);
       cleanup();
       setMultiLoading(false);
+      if(wasForceReset){
+        addToast('您上次在游戏房间强制下线，已退出房间');
+      }
+    });
+    socket.on('renameSuccess',({username})=>{
+      setPlayerUsername(username);
+      setRenameInput(username);
+    });
+    socket.on('renameError',({msg})=>{
+      addToast(msg);
+    });
+    // roomCreated：创建房间成功
+    socket.on('roomCreated',({roomId,players})=>{
+      setMultiLoading(false);
+      setOnlineOptionsModal(false);
       addToast(`创建成功！房间号：${roomId}`);
       setRoomModal({roomId,players});
+    });
+    // roomUpdated：加入房间成功，或房间成员变动时，房间内所有人收到
+    socket.on('roomUpdated',({roomId,players})=>{
+      setMultiLoading(false);
+      setOnlineOptionsModal(false);
+      setRoomModal(prev=>prev?{...prev,roomId,players}:{roomId,players});
+    });
+    // joinError：加入房间失败
+    socket.on('joinError',({msg})=>{
+      setMultiLoading(false);
+      addToast(msg);
     });
     socket.on('serverError',(msg)=>{
       cleanup();
       setMultiLoading(false);
       addToast(`错误：${msg}`);
     });
+    socket.on('connect',()=>{ onConnected(socket); });
+  }
+
+  // 点击"联机对战"→ 连接后端，打开联机选项界面
+  function handleMultiplayer(){
+    connectSocket(socket=>{
+      socket.emit('openOnlineOptions',{uuid:playerUUID});
+      setOnlineOptionsModal(true);
+    });
+  }
+
+  // 联机选项界面 → 创建房间
+  function handleCreateRoom(){
+    if(!socketRef.current)return;
+    socketRef.current.emit('createRoom',{uuid:playerUUID});
+    setMultiLoading(true);
+  }
+
+  // 联机选项界面 → 加入房间
+  function handleJoinRoom(){
+    if(!socketRef.current)return;
+    const rid=joinRoomInput.trim();
+    if(!rid){addToast('请输入房间号');return;}
+    socketRef.current.emit('joinRoom',{uuid:playerUUID,roomId:rid});
+    setMultiLoading(true);
+  }
+
+  // 关闭联机选项界面
+  function closeOnlineOptions(){
+    setOnlineOptionsModal(false);
+    if(renameCdTimerRef.current){clearTimeout(renameCdTimerRef.current);renameCdTimerRef.current=null;}
+    setRenameCdActive(false);
+    if(socketRef.current){socketRef.current.disconnect();socketRef.current=null;}
+  }
+
+  // 点击"修改"用户名
+  function handleRename(){
+    if(renameCdActive||!socketRef.current)return;
+    socketRef.current.emit('renameUser',{uuid:playerUUID,newName:renameInput});
+    setRenameCdActive(true);
+    renameCdTimerRef.current=setTimeout(()=>{
+      setRenameCdActive(false);
+      renameCdTimerRef.current=null;
+    },5000);
   }
 
   function closeRoomModal(){
@@ -2915,7 +2991,97 @@ export default function Game(){
             }}>{t.text}</div>
           ))}
         </div>
-        {/* ── Room Modal ── */}
+        {/* ── Online Options Modal ── */}
+        {onlineOptionsModal&&(
+          <div style={{position:'fixed',inset:0,background:'#000000cc',zIndex:1500,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={closeOnlineOptions}>
+            <div onClick={e=>e.stopPropagation()} style={{
+              background:'#0e0a14',border:'2px solid #7a50b0',borderRadius:6,
+              padding:'28px 32px',maxWidth:400,width:'90%',
+              boxShadow:'0 0 60px #5a3a8066',animation:'animPop 0.25s ease-out',
+              position:'relative',display:'flex',flexDirection:'column',gap:16,
+            }}>
+              <button onClick={closeOnlineOptions} style={{position:'absolute',top:12,right:14,background:'none',border:'none',color:'#5a4070',fontSize:18,cursor:'pointer',lineHeight:1,padding:'2px 6px'}}>✕</button>
+
+              {/* ── 标题 ── */}
+              <div style={{textAlign:'center',marginBottom:4}}>
+                <div style={{fontSize:26,marginBottom:8,filter:'drop-shadow(0 0 12px #a080d088)'}}>🌐</div>
+                <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:15,color:'#c8a0e8',letterSpacing:2,marginBottom:6}}>联机对战</div>
+                <div style={{width:100,height:1,background:'linear-gradient(90deg,transparent,#7a50b0,transparent)',margin:'0 auto'}}/>
+              </div>
+
+              {/* ── 功能区 A：创建房间 ── */}
+              <div style={{background:'#120920',border:'1px solid #4a3070',borderRadius:4,padding:'16px 18px'}}>
+                <button onClick={handleCreateRoom} disabled={multiLoading} style={{
+                  width:'100%',padding:'12px',background:'#1e0d36',
+                  border:'1.5px solid #7a50b0',borderRadius:4,
+                  color:'#c8a0e8',fontFamily:"'Cinzel Decorative','Cinzel',serif",
+                  fontSize:13,letterSpacing:2,cursor:multiLoading?'not-allowed':'pointer',
+                  display:'flex',alignItems:'center',justifyContent:'center',gap:8,
+                  transition:'all .2s',
+                }}>
+                  {multiLoading&&<span style={{display:'inline-block',width:12,height:12,border:'2px solid #5a3a80',borderTopColor:'#a080d0',borderRadius:'50%',animation:'spinLoader 0.7s linear infinite'}}/>}
+                  创建房间
+                </button>
+              </div>
+
+              {/* ── 功能区 B：加入房间 ── */}
+              <div style={{background:'#120920',border:'1px solid #4a3070',borderRadius:4,padding:'16px 18px',display:'flex',flexDirection:'column',gap:10}}>
+                <div style={{fontFamily:"'Cinzel',serif",color:'#6a5080',fontSize:9,letterSpacing:2,textTransform:'uppercase'}}>— 或者输入房间号加入房间 —</div>
+                <input
+                  value={joinRoomInput}
+                  onChange={e=>setJoinRoomInput(e.target.value.toUpperCase())}
+                  onKeyDown={e=>e.key==='Enter'&&handleJoinRoom()}
+                  placeholder="房间号"
+                  maxLength={6}
+                  style={{
+                    background:'#160d22',border:'1px solid #5a3a80',borderRadius:3,
+                    color:'#e0c0f8',fontFamily:"'Cinzel',serif",fontSize:14,
+                    padding:'8px 12px',outline:'none',letterSpacing:3,
+                    textTransform:'uppercase',width:'100%',boxSizing:'border-box',
+                  }}
+                />
+                <button onClick={handleJoinRoom} disabled={multiLoading} style={{
+                  width:'100%',padding:'12px',background:'#1a1030',
+                  border:'1.5px solid #5a3a80',borderRadius:4,
+                  color:'#b090d8',fontFamily:"'Cinzel Decorative','Cinzel',serif",
+                  fontSize:13,letterSpacing:2,cursor:multiLoading?'not-allowed':'pointer',
+                  display:'flex',alignItems:'center',justifyContent:'center',gap:8,
+                  transition:'all .2s',
+                }}>
+                  {multiLoading&&<span style={{display:'inline-block',width:12,height:12,border:'2px solid #5a3a80',borderTopColor:'#a080d0',borderRadius:'50%',animation:'spinLoader 0.7s linear infinite'}}/>}
+                  加入房间
+                </button>
+              </div>
+
+              {/* ── 功能区 C：用户名 ── */}
+              <div style={{background:'#120920',border:'1px solid #4a3070',borderRadius:4,padding:'16px 18px',display:'flex',flexDirection:'column',gap:10}}>
+                <div style={{fontFamily:"'Cinzel',serif",color:'#6a5080',fontSize:9,letterSpacing:2,textTransform:'uppercase'}}>— 你的联机用户名 —</div>
+                <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                  <input
+                    value={renameInput}
+                    onChange={e=>setRenameInput(e.target.value)}
+                    onKeyDown={e=>e.key==='Enter'&&handleRename()}
+                    maxLength={10}
+                    style={{
+                      flex:1,background:'#160d22',border:'1px solid #5a3a80',borderRadius:3,
+                      color:'#e0c0f8',fontFamily:"'Cinzel',serif",fontSize:13,
+                      padding:'8px 12px',outline:'none',letterSpacing:1,
+                    }}
+                  />
+                  <button onClick={handleRename} disabled={renameCdActive} style={{
+                    padding:'8px 14px',background:renameCdActive?'#1e1430':'#2e1450',
+                    border:'1px solid '+(renameCdActive?'#3a2560':'#7a50b0'),
+                    borderRadius:3,color:renameCdActive?'#5a4070':'#c8a0e8',
+                    fontFamily:"'Cinzel',serif",fontSize:11,
+                    cursor:renameCdActive?'not-allowed':'pointer',
+                    transition:'all .2s',whiteSpace:'nowrap',
+                  }}>{renameCdActive?'冷却中…':'修改'}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+                {/* ── Room Modal ── */}
         {roomModal&&(
           <div style={{position:'fixed',inset:0,background:'#000000cc',zIndex:1500,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={closeRoomModal}>
             <div onClick={e=>e.stopPropagation()} style={{
@@ -2924,38 +3090,27 @@ export default function Game(){
               boxShadow:'0 0 60px #5a3a8066',animation:'animPop 0.25s ease-out',
               position:'relative',
             }}>
-              {/* Close button */}
-              <button onClick={closeRoomModal} style={{
-                position:'absolute',top:12,right:14,background:'none',border:'none',
-                color:'#5a4070',fontSize:18,cursor:'pointer',lineHeight:1,padding:'2px 6px',
-              }}>✕</button>
+              <button onClick={closeRoomModal} style={{position:'absolute',top:12,right:14,background:'none',border:'none',color:'#5a4070',fontSize:18,cursor:'pointer',lineHeight:1,padding:'2px 6px'}}>✕</button>
               <div style={{textAlign:'center',marginBottom:24}}>
                 <div style={{fontSize:28,marginBottom:10,filter:'drop-shadow(0 0 12px #a080d088)'}}>🔮</div>
                 <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:16,color:'#c8a0e8',letterSpacing:2,marginBottom:6}}>联机房间</div>
                 <div style={{width:120,height:1,background:'linear-gradient(90deg,transparent,#7a50b0,transparent)',margin:'0 auto'}}/>
               </div>
-              {/* Room number */}
               <div style={{background:'#160d22',border:'1px solid #5a3a80',borderRadius:4,padding:'16px',textAlign:'center',marginBottom:20}}>
                 <div style={{fontFamily:"'Cinzel',serif",color:'#8060a0',fontSize:10,letterSpacing:3,marginBottom:8,textTransform:'uppercase'}}>— 房间号 —</div>
                 <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:28,color:'#e0c0f8',letterSpacing:6,textShadow:'0 0 20px #a080d066'}}>{roomModal.roomId}</div>
                 <div style={{color:'#6a5080',fontSize:10,marginTop:8,fontStyle:'italic'}}>将此房间号分享给其他玩家</div>
               </div>
-              {/* Players list */}
               <div style={{marginBottom:24}}>
                 <div style={{fontFamily:"'Cinzel',serif",color:'#6a5080',fontSize:9,letterSpacing:3,marginBottom:10,textTransform:'uppercase'}}>— 当前玩家 —</div>
-                {roomModal.players.map((uuid,i)=>(
-                  <div key={uuid} style={{
-                    display:'flex',alignItems:'center',gap:8,
-                    padding:'8px 12px',marginBottom:6,
-                    background:'#1a1028',border:'1px solid #3a2560',borderRadius:3,
-                  }}>
+                {roomModal.players.map((p)=>(
+                  <div key={p.uuid} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',marginBottom:6,background:'#1a1028',border:'1px solid #3a2560',borderRadius:3}}>
                     <span style={{color:'#a080d0',fontSize:12}}>👤</span>
-                    <span style={{fontFamily:"'Cinzel',serif",fontSize:9,color:'#c8a0e8',letterSpacing:0.5}}>{uuid}</span>
-                    {uuid===playerUUID&&<span style={{marginLeft:'auto',color:'#7060a0',fontSize:9,fontStyle:'italic'}}>（你）</span>}
+                    <span style={{fontFamily:"'Cinzel',serif",fontSize:13,color:'#c8a0e8',letterSpacing:0.5}}>{p.username}</span>
+                    {p.uuid===playerUUID&&<span style={{marginLeft:'auto',color:'#7060a0',fontSize:9,fontStyle:'italic'}}>（你）</span>}
                   </div>
                 ))}
               </div>
-              {/* Waiting indicator */}
               <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#6a5080',fontSize:11,fontStyle:'italic',fontFamily:"'IM Fell English','Georgia',serif"}}>
                 <span style={{display:'inline-block',width:10,height:10,border:'1.5px solid #5a3a80',borderTopColor:'#a080d0',borderRadius:'50%',animation:'spinLoader 0.9s linear infinite'}}/>
                 等待其他玩家加入…
@@ -2963,7 +3118,7 @@ export default function Game(){
             </div>
           </div>
         )}
-        {/* ── Tutorial overlay ── */}
+                {/* ── Tutorial overlay ── */}
         {showTutorial&&(
           <div style={{position:'fixed',inset:0,background:'#000000cc',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center'}}>
             {/* ── Step 1: Greeting ── */}
