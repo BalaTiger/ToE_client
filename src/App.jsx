@@ -2439,7 +2439,7 @@ export default function Game(){
 
   // ── Multiplayer ───────────────────────────────────────────────
   // ⚠ Change SERVER_URL to your backend address before deploying
-  const SERVER_URL = 'http://localhost:3001';
+  const SERVER_URL = 'https://cookie-reveal-cal-mount.trycloudflare.com';
   const [playerUUID,setPlayerUUID]=useState(()=>safeLS.get('cthulhu_player_uuid')||null);
   const [multiLoading,setMultiLoading]=useState(false);
   const [toasts,setToasts]=useState([]);
