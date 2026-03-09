@@ -1968,6 +1968,19 @@ function GodChoiceModal({godCard,player,onWorship,onKeepHand,onDiscard,isConvert
         {'💀'.repeat(player.godEncounters)} 第{player.godEncounters}次遭遇，失去{player.godEncounters}SAN
         {isConvert&&!forcedConvert&&<span style={{color:'#e08888',marginLeft:8}}>（改信将失去1SAN）</span>}
       </div>
+      {/* Power gain preview */}
+      {!forcedConvert&&(
+        <div style={{
+          fontSize:11,color:def.col,fontFamily:"'Cinzel',serif",letterSpacing:1,
+          marginBottom:8,opacity:0.9,
+          background:def.bgCol,border:`1px solid ${def.col}55`,
+          borderRadius:3,padding:'4px 12px',display:'inline-block',
+        }}>
+          {canUpgrade
+            ? `⬆ 升级后你将获得：${def.power} Lv.${(player.godLevel||0)+1}`
+            : `⛧ 信仰后你将获得邪神之力：${def.power} Lv.1`}
+        </div>
+      )}
       <GodCardDisplay card={godCard} level={alreadyWorship?(player.godLevel+1):1}/>
       <div style={{display:'flex',gap:12,flexWrap:'wrap',justifyContent:'center',marginTop:8}}>
         {!forcedConvert&&(
@@ -2072,17 +2085,43 @@ function DrawRevealModal({drawReveal,onConfirm}){
   );
 }
 
+// ── Bewitch effect description helper ─────────────────────────
+function getBewitchEffectDesc(card){
+  if(!card) return '';
+  if(card.isGod){
+    return `你将把「${card.name}」送给目标角色，使该角色遭遇邪神并失去SAN值（第N次遭遇失去N点），该角色可能被迫信仰${card.name}`;
+  }
+  const n=card.name,k=card.key,v=card.val;
+  switch(card.type){
+    case 'damage':          return `你将把【${k} ${n}】送给目标角色，使该角色的HP被扣减${v}点`;
+    case 'allDamage':       return `你将把【${k} ${n}】送给目标角色，使全场其他所有角色（含你）的HP各被扣减${v}点`;
+    case 'sanDamage':       return `你将把【${k} ${n}】送给目标角色，使该角色的SAN值被扣减${v}点`;
+    case 'allSANDamage':    return `你将把【${k} ${n}】送给目标角色，使全场其他所有角色（含你）的SAN值各被扣减${v}点`;
+    case 'selfSANDamage':   return `你将把【${k} ${n}】送给目标角色，使该角色的SAN值被扣减${v}点`;
+    case 'selfHeal':        return `你将把【${k} ${n}】送给目标角色，使该角色的HP恢复${v}点`;
+    case 'selfHealSAN':     return `你将把【${k} ${n}】送给目标角色，使该角色的SAN值恢复${v}点`;
+    case 'damageDraw':      return `你将把【${k} ${n}】送给目标角色，使该角色的HP被扣减${v}点，并使其摸1张牌`;
+    case 'sanDamageDiscard':return `你将把【${k} ${n}】送给目标角色，使该角色的SAN值被扣减${v}点并强制弃1张手牌`;
+    case 'draw':            return `你将把【${k} ${n}】送给目标角色，使该角色摸1张牌`;
+    case 'allHealSAN':      return `你将把【${k} ${n}】送给目标角色，使全场所有角色的SAN值各恢复${v}点`;
+    case 'allHeal':         return `你将把【${k} ${n}】送给目标角色，使全场所有角色的HP各恢复${v}点`;
+    default:                return `你将把【${k} ${n}】送给目标角色`;
+  }
+}
+
 // ── Target Select Overlay ─────────────────────────────────────
-function TargetSelectOverlay({drawReveal,phase}){
+function TargetSelectOverlay({drawReveal,phase,bewitchCard}){
   const isActive=['DRAW_SELECT_TARGET','SWAP_SELECT_TARGET','HUNT_SELECT_TARGET','BEWITCH_SELECT_TARGET'].includes(phase);
   if(!isActive) return null;
-  const card=drawReveal?.card;
-  const s=card?(CS[card.letter]||GOD_CS):null;
+  const isBewitch=phase==='BEWITCH_SELECT_TARGET';
+  const card=isBewitch?bewitchCard:(drawReveal?.card);
+  const s=card?(card.isGod?GOD_CS:(CS[card.letter]||GOD_CS)):null;
+  const bewitchDesc=isBewitch?getBewitchEffectDesc(card):null;
   const phaseHint={
     DRAW_SELECT_TARGET:'请点击目标角色以施加牌效',
     SWAP_SELECT_TARGET:'请点击目标角色以发动【掉包】',
     HUNT_SELECT_TARGET:'请点击目标角色以发动【追捕】',
-    BEWITCH_SELECT_TARGET:'请点击目标角色以发动【蛊惑】',
+    BEWITCH_SELECT_TARGET:'请选择蛊惑目标',
   }[phase]||'请选择目标';
   return(
     <>
@@ -2100,7 +2139,7 @@ function TargetSelectOverlay({drawReveal,phase}){
           border:`1.5px solid ${s?s.borderBright:'#5a3010'}`,
           borderRadius:4,padding:'18px 28px',
           boxShadow:`0 0 40px ${s?s.glow+'66':'#3a201044'}, 0 0 80px #000a`,
-          textAlign:'center',minWidth:260,
+          textAlign:'center',minWidth:260,maxWidth:340,
         }}>
           {card&&(
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10,justifyContent:'center'}}>
@@ -2108,11 +2147,28 @@ function TargetSelectOverlay({drawReveal,phase}){
                 background:s.bg,border:`1.5px solid ${s.borderBright}`,borderRadius:3,
                 padding:'5px 9px',minWidth:48,textAlign:'center',
               }}>
-                <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:27,lineHeight:1}}>{card.key}</div>
-                <div style={{fontFamily:"'Cinzel',serif",color:'#e8cc88',fontSize:14.25,marginTop:2}}>{card.name}</div>
+                {card.isGod
+                  ?<div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:20,lineHeight:1.2}}>⛧</div>
+                  :<div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:27,lineHeight:1}}>{card.key}</div>
+                }
+                <div style={{fontFamily:"'Cinzel',serif",color:'#e8cc88',fontSize:card.isGod?10:14.25,marginTop:2}}>{card.name}</div>
               </div>
               <div style={{textAlign:'left'}}>
-                <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#d4b468',fontSize:15,maxWidth:180,lineHeight:1.4}}>{card.desc}</div>
+                <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#d4b468',fontSize:15,maxWidth:180,lineHeight:1.4}}>{card.isGod?card.subtitle:card.desc}</div>
+              </div>
+            </div>
+          )}
+          {/* Bewitch effect preview */}
+          {isBewitch&&bewitchDesc&&(
+            <div style={{
+              background:'rgba(80,20,100,0.22)',
+              border:'1px solid #7040aa55',
+              borderRadius:3,padding:'7px 10px',
+              marginBottom:10,textAlign:'left',
+            }}>
+              <div style={{fontFamily:"'Cinzel',serif",color:'#9060cc',fontSize:9,letterSpacing:2,marginBottom:4,textTransform:'uppercase'}}>☽ 蛊惑效果预览</div>
+              <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#d4b0e8',fontSize:13,lineHeight:1.6}}>
+                {bewitchDesc}
               </div>
             </div>
           )}
@@ -3533,7 +3589,7 @@ export default function Game(){
       })()}
 
       {/* Target selection mask + floating prompt */}
-      <TargetSelectOverlay drawReveal={gs.drawReveal} phase={phase}/>
+      <TargetSelectOverlay drawReveal={gs.drawReveal} phase={phase} bewitchCard={gs.abilityData?.bewitchCard}/>
 
       {/* God choice modal */}
       {phase==='GOD_CHOICE'&&gs.abilityData?.godCard&&(()=>{
