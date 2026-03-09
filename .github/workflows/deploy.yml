@@ -3,15 +3,24 @@ name: Deploy to GitHub Pages
 on:
   # 当推送到 main 分支时触发部署
   push:
-    branches: [main]
+    branches: [release]
   # 允许手动触发部署
   workflow_dispatch:
+    # 可选：手动触发时允许选择分支（方便测试）
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        default: 'release'
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        # 2. 新增：明确拉取 release 分支（避免默认拉取 main）
+        with:
+          ref: 'release'
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
