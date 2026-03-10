@@ -92,7 +92,7 @@ function mkDeck(){
   ];
   return shuffle([...zoneCards,...godCards]);
 }
-function mkRoles(){return shuffle([...ROLES,...shuffle(ROLES).slice(0,2)]);}
+function mkRoles(N=5){const base=['寻宝者','追猎者'];while(base.length<N)base.push('邪祀者');return shuffle(base.slice(0,N));}
 const isWinHand=h=>{const ls=new Set(h.map(c=>c.letter)),ns=new Set(h.map(c=>c.number));return LETTERS.every(l=>ls.has(l))&&NUMS.every(n=>ns.has(n));};
 
 // ══════════════════════════════════════════════════════════════
@@ -130,7 +130,32 @@ function applyFx(card,ci,ti,ps,deck,disc){
 // ══════════════════════════════════════════════════════════════
 //  WIN CHECK
 // ══════════════════════════════════════════════════════════════
-function checkWin(players){
+// ── Multiplayer rotation helpers ─────────────────────────────────
+// Rotate gs so that the player at canonical index myIndex appears at players[0]
+function rotateGsForViewer(gs,myIndex){
+  if(!gs||myIndex===0)return gs;
+  const N=gs.players.length;
+  const ri=i=>(i<0?i:(i-myIndex+N)%N);
+  const players=[...gs.players.slice(myIndex),...gs.players.slice(0,myIndex)];
+  const currentTurn=ri(gs.currentTurn);
+  const gameOver=gs.gameOver&&gs.gameOver.winnerIdx!=null
+    ?{...gs.gameOver,winnerIdx:ri(gs.gameOver.winnerIdx)}:gs.gameOver;
+  const huntAbandoned=(gs.huntAbandoned||[]).map(i=>ri(i));
+  const ad=gs.abilityData||{};
+  const abilityData={...ad,
+    ...(ad.swapTi!=null?{swapTi:ri(ad.swapTi)}:{}),
+    ...(ad.huntTi!=null?{huntTi:ri(ad.huntTi)}:{}),
+    ...(ad.huntingAI!=null?{huntingAI:ri(ad.huntingAI)}:{}),
+  };
+  return{...gs,players,currentTurn,gameOver,huntAbandoned,abilityData};
+}
+function derotateGs(gs,myIndex){
+  if(!gs||myIndex===0)return gs;
+  const N=gs.players.length;
+  return rotateGsForViewer(gs,(N-myIndex)%N);
+}
+
+function checkWin(players,isMP){
   // 1. 邪祀者 win: any surviving player's SAN hits 0 (evil god revives)
   for(const p of players)if(!p.isDead&&p.san<=0){
     const ws=players.filter(q=>q.role==='邪祀者').map(q=>q.name).join('、');
@@ -142,8 +167,8 @@ function checkWin(players){
     const ws=players.filter(q=>q.role==='追猎者').map(q=>q.name).join('、');
     return{winner:'追猎者',reason:`所有非追猎者已覆灭！追猎者（${ws}）获胜！`};
   }
-  // 3. Player death — only if neither team has already won
-  if(players[0].isDead)return{winner:'LOSE',reason:'你已沉入永恒的黑暗…'};
+  // 3. Player death — single-player only (MP games continue when a player dies)
+  if(!isMP&&players[0].isDead)return{winner:'LOSE',reason:'你已沉入永恒的黑暗…'};
   return null;
 }
 
@@ -217,7 +242,7 @@ function aiDrawAndApply(ci,ps,deck,disc){
     let L2=[];
     const gr=aiHandleGodCard(ci,drawnCard,P,D,Disc,L2);
     P=gr.P;D=gr.D;Disc=gr.Disc;
-    const win2=checkWin(P);if(win2)return{P,D,Disc,drawnCard,effectMsgs:L2,_godWin:win2};
+    const win2=checkWin(P,gs._isMP);if(win2)return{P,D,Disc,drawnCard,effectMsgs:L2,_godWin:win2};
     return{P,D,Disc,drawnCard,effectMsgs:L2};
   }
   let ti=null;
@@ -271,9 +296,10 @@ function playerDrawCard(ps,deck,disc){
 //  TURN ADVANCE  (adds skillUsed:false reset for player turn)
 // ══════════════════════════════════════════════════════════════
 function startNextTurn(gs){
+  const N=gs.players.length;
   let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
   let next=gs.currentTurn;
-  for(let i=1;i<=5;i++){next=(gs.currentTurn+i)%5;if(!P[next].isDead)break;}
+  for(let i=1;i<=N;i++){next=(gs.currentTurn+i)%N;if(!P[next].isDead)break;}
   // Clear any NYA temp borrow for the player whose turn just ended
   if(P[gs.currentTurn]&&P[gs.currentTurn]._nyaBorrow)delete P[gs.currentTurn]._nyaBorrow;
   if(P[gs.currentTurn]&&P[gs.currentTurn]._nyaHandLimit)delete P[gs.currentTurn]._nyaHandLimit;
@@ -311,8 +337,8 @@ function startNextTurn(gs){
     const res=playerDrawCard(P,D,Disc);
     P=res.P;D=res.D;Disc=res.Disc;
     if(!res.drawnCard){L.push('牌堆耗尽！');return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,phase:'ACTION',drawReveal:null,abilityData:{},skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false};}
-    if(res.needGodChoice){const win2=checkWin(P);if(win2)return{...gs,players:P,deck:D,discard:Disc,log:[...L,...res.effectMsgs],gameOver:win2};return{...gs,players:P,deck:D,discard:Disc,log:[...L,...res.effectMsgs],currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:res.drawnCard},drawReveal:null,selectedCard:null};}
-    const win=checkWin(P);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
+    if(res.needGodChoice){const win2=checkWin(P,gs._isMP);if(win2)return{...gs,players:P,deck:D,discard:Disc,log:[...L,...res.effectMsgs],gameOver:win2};return{...gs,players:P,deck:D,discard:Disc,log:[...L,...res.effectMsgs],currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:res.drawnCard},drawReveal:null,selectedCard:null};}
+    const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
     if(!res.needTarget&&!P[0].isDead&&P[0].role==='寻宝者'&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
       // Set PLAYER_WIN_PENDING so treasure-map animation plays before win screen
@@ -327,11 +353,22 @@ function startNextTurn(gs){
       phase:res.needTarget?'DRAW_SELECT_TARGET':'DRAW_REVEAL',
       drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needTarget:res.needTarget},
       selectedCard:null,abilityData:{}};
+  }else if(gs._isMP){
+    // Multiplayer: next player is human — draw their card and enter DRAW_REVEAL
+    const res=playerDrawCard(P,D,Disc);
+    P=res.P;D=res.D;Disc=res.Disc;if(res.effectMsgs.length)L.push(...res.effectMsgs);
+    if(!res.drawnCard){L.push('牌堆耗尽！');return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,phase:'ACTION',drawReveal:null,abilityData:{},skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false};}
+    if(res.needGodChoice){const win2=checkWin(P,true);if(win2)return{...gs,players:P,deck:D,discard:Disc,log:[...L,...res.effectMsgs],gameOver:win2};return{...gs,players:P,deck:D,discard:Disc,log:[...L,...res.effectMsgs],currentTurn:next,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:res.drawnCard},drawReveal:null,selectedCard:null,_isMP:true};}
+    const win=checkWin(P,true);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
+    return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,
+      phase:res.needTarget?'DRAW_SELECT_TARGET':'DRAW_REVEAL',
+      drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needTarget:res.needTarget},
+      selectedCard:null,abilityData:{},_isMP:true};
   }else{
     const _P_beforeDraw=copyPlayers(P);
     const res=aiDrawAndApply(next,P,D,Disc);
     P=res.P;D=res.D;Disc=res.Disc;if(res.effectMsgs.length)L.push(...res.effectMsgs);
-    const win=checkWin(P);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
+    const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
     if(!P[next].isDead&&P[next].role==='寻宝者'&&isWinHand(P[next].hand)){P[next].roleRevealed=true;return{...gs,players:P,deck:D,discard:Disc,log:[...L,`${P[next].name} 集齐全部编号并获胜！`],gameOver:{winner:'寻宝者',reason:`${P[next].name} 集齐了全部编号并获胜！`,winnerIdx:next}};}
     return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,phase:'AI_TURN',drawReveal:null,selectedCard:null,abilityData:{},huntAbandoned:[],
       _drawnCard:res.drawnCard??null,_playersBeforeThisDraw:_P_beforeDraw,_turnKey:(gs._turnKey||0)+1};
@@ -378,7 +415,7 @@ function aiStep(gs){
           L.push(`${P[ct].name} 从手牌信仰 ${hgc.name}，获得${hgc.power}(Lv.1)（骷髅头不计）`);
         }
         P.forEach((p,i)=>{if(i!==ct&&p.godName===hgc.godKey){p.san=clamp(p.san-1);Disc.push(...p.godZone);p.godZone=[];p.godName=null;p.godLevel=0;L.push(`${p.name} 被邪神抛弃，SAN-1`);}});
-        const ww=checkWin(P);if(ww)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:ww};
+        const ww=checkWin(P,gs._isMP);if(ww)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:ww};
       }
     }
   }
@@ -402,7 +439,7 @@ function aiStep(gs){
     const d1=(1+Math.random()*6|0),d2=(1+Math.random()*6|0),heal=Math.max(d1,d2);
     P[ct].hp=clamp(P[ct].hp+heal);P[ct].isResting=true;
     L.push(`${ai.name} 选择【休息】，掷骰 ${d1}+${d2}，回复 ${heal}HP，翻面休息中`);
-    const win=checkWin(P);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
+    const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
     const _P_afterRest=copyPlayers(P);
     const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,restUsed:true,skillUsed:false});
     return{...nextGs,_aiDrawnCard:gs._drawnCard,_aiName:ai.name,_playersBeforeNextDraw:_P_afterRest};
@@ -495,7 +532,7 @@ function aiStep(gs){
       }
     }
   }else{L.push(`${ai.name} 未使用技能，结束回合`);}
-  const win=checkWin(P);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
+  const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
   while(P[ct].hand.length>4){const c=P[ct].hand.shift();Disc.push(c);L.push(`${ai.name} 弃 [${c.key}]（上限）`);}
   // gs._drawnCard was tagged by startNextTurn when this AI turn started; pass it through
   const _P_afterAction=copyPlayers(P);
@@ -506,11 +543,13 @@ function aiStep(gs){
 // ══════════════════════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════════════════════
-function initGame(){
-  const deck=mkDeck(),roles=mkRoles(),names=['你',...AI_NAMES];
+function initGame(playerNames){
+  const names=playerNames||['你',...AI_NAMES];
+  const N=names.length;
+  const deck=mkDeck(),roles=mkRoles(N);
   const players=names.map((name,i)=>({id:i,name,role:roles[i],roleRevealed:false,hp:10,san:10,hand:[],isDead:false,isResting:false,godEncounters:0,godZone:[],godName:null,godLevel:0}));
   for(let r=0;r<4;r++)players.forEach(p=>p.hand.push(deck.shift()));
-  const base={players,deck,discard:[],currentTurn:-1,phase:'DRAW_REVEAL',drawReveal:null,selectedCard:null,abilityData:{},log:['游戏开始。每人获得四张初始手牌。'],gameOver:null,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,_turnKey:0};
+  const base={players,deck,discard:[],currentTurn:-1,phase:'DRAW_REVEAL',drawReveal:null,selectedCard:null,abilityData:{},log:['游戏开始。每人获得四张初始手牌。'],gameOver:null,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,_turnKey:0,_isMP:!!playerNames};
   return startNextTurn(base);
 }
 
@@ -2496,6 +2535,10 @@ export default function Game(){
   // 联机多人游戏状态
   const [isMultiplayer,setIsMultiplayer]=useState(false);
   const isMultiplayerRef=useRef(false);  // 供 socket 闭包读取最新值
+  const [myPlayerIndex,setMyPlayerIndex]=useState(0);
+  const myPlayerIndexRef=useRef(0);  // 同步 myPlayerIndex 供 socket 闭包使用
+  const receivedGsRef=useRef(false); // 收到远端 state 时置 true，阻止 sync useEffect 回发
+  const mpRoleRevealedRef=useRef(false); // 每局游戏只触发一次角色揭示
   const [isDisconnected,setIsDisconnected]=useState(false);
   const [mpTurnSec,setMpTurnSec]=useState(null);       // 回合倒计时剩余秒数（显示用）
   const [mpDiscardSec,setMpDiscardSec]=useState(null); // 弃牌阶段倒计时
@@ -2624,15 +2667,52 @@ export default function Game(){
       addToast(reason||'你已被踢出房间');
       if(socketRef.current){socketRef.current.disconnect();socketRef.current=null;}
     });
-    // gameStart：多人游戏开始，房间 players 准备状态重置
+    // gameStart：多人游戏开始，只有房主（排位0）初始化并广播 gs
     socket.on('gameStart',({roomId,players})=>{
-      // 将房间里所有玩家标记为未准备（回到房间后需重新准备）
+      const myIdx=players.findIndex(p=>p.uuid===playerUUID);
+      const safeIdx=myIdx<0?0:myIdx;
+      myPlayerIndexRef.current=safeIdx;
+      setMyPlayerIndex(safeIdx);
       const resetPlayers=players.map(p=>({...p,ready:false}));
       setRoomModal(prev=>prev?{...prev,players:resetPlayers,countdown:null}:{roomId,players:resetPlayers,count:players.length,max:12,countdown:null});
       setIsMultiplayer(true); isMultiplayerRef.current=true;
       setIsDisconnected(false);
       addToast('多人游戏开始！');
-      _doStartNewGame();
+      mpRoleRevealedRef.current=false; // 每局重置角色揭示标志
+      if(safeIdx===0){
+        // 房主：初始化游戏并广播给所有人
+        const names=players.map(p=>p.username);
+        const rawGs=initGame(names);
+        animQueueRef.current=[];
+        pendingGsRef.current=null;
+        setAnimExiting(false);
+        setHitIndices([]);
+        setAnim(null);
+        const rotatedGs=rotateGsForViewer(rawGs,0);
+        setGs(rotatedGs);
+        setRoleRevealAnim({role:rotatedGs.players[0].role,pendingGs:rotatedGs});
+        // 广播原始 gs（未旋转）给所有人
+        socket.emit('mpStateSync',{roomId,gs:rawGs});
+      }
+      // 非房主等待接收 mpStateSync
+    });
+    // mpStateSync：收到房主广播的最新 gs（规范顺序），旋转到自己视角后应用
+    socket.on('mpStateSync',({gs:rawGs})=>{
+      if(!rawGs)return;
+      const myIdx=myPlayerIndexRef.current;
+      const rotated=rotateGsForViewer(rawGs,myIdx);
+      receivedGsRef.current=true;
+      animQueueRef.current=[];
+      pendingGsRef.current=null;
+      setAnimExiting(false);
+      setHitIndices([]);
+      setAnim(null);
+      setGs(rotated);
+      // 仅第一次收到时显示角色揭示动画
+      if(!mpRoleRevealedRef.current&&(rotated.phase==='DRAW_REVEAL'||rotated.phase==='ACTION')){
+        mpRoleRevealedRef.current=true;
+        setRoleRevealAnim({role:rotated.players[0].role,pendingGs:rotated});
+      }
     });
     // emojiReceived：收到其他玩家发的表情
     socket.on('emojiReceived',({fromUuid,emojis})=>{
@@ -2673,6 +2753,8 @@ export default function Game(){
     socket.on('aiTakeover',({reason})=>{
       setIsDisconnected(true);
       setIsMultiplayer(false); isMultiplayerRef.current=false;
+      setMyPlayerIndex(0); myPlayerIndexRef.current=0;
+      mpRoleRevealedRef.current=false;
     });
     // 多人游戏中 socket 断线（网络中断等）
     socket.on('disconnect',()=>{
@@ -2931,7 +3013,7 @@ export default function Game(){
 
   // AI turn
   useEffect(()=>{
-    if(!gs||gs.phase!=='AI_TURN'||gs.gameOver||gs.phase==='PLAYER_WIN_PENDING'||anim||showTutorial)return;
+    if(!gs||gs.phase!=='AI_TURN'||gs.gameOver||gs.phase==='PLAYER_WIN_PENDING'||anim||showTutorial||gs._isMP)return;
     timerRef.current=setTimeout(()=>{
       let rawResult,newGs;
       try{
@@ -3013,8 +3095,24 @@ export default function Game(){
     if(!isMultiplayer||!gs?.gameOver)return;
     if(socketRef.current?.connected){
       socketRef.current.emit('gameEnd',{uuid:playerUUID,roomId:roomModal?.roomId});
+      // 广播最终 gs 让其他玩家也看到结算界面
+      const rawFinalGs=derotateGs(gs,myPlayerIndex);
+      socketRef.current.emit('mpStateSync',{roomId:roomModal?.roomId,gs:rawFinalGs});
     }
   },[gs?.gameOver,isMultiplayer]);
+
+  // ── 多人游戏：本地 gs 变化后广播给房间其他人 ──────────────────
+  // receivedGsRef 防止接收远端 state 后回发（避免乒乓死循环）
+  // 注意：endTurn 后 currentTurn 已指向下一玩家，不能用 currentTurn===0 做守卫
+  useEffect(()=>{
+    if(!gs||!isMultiplayer||!socketRef.current)return;
+    if(gs.gameOver)return; // gameEnd event 单独处理
+    if(receivedGsRef.current){receivedGsRef.current=false;return;}
+    const room=roomModal;
+    if(!room?.roomId)return;
+    const rawGs=derotateGs(gs,myPlayerIndexRef.current);
+    socketRef.current.emit('mpStateSync',{roomId:room.roomId,gs:rawGs});
+  },[gs]);
 
   // Auto-freeze game the instant player 寻宝者 has a winning hand
   useEffect(()=>{
@@ -3065,7 +3163,7 @@ export default function Game(){
 
   // ── 多人游戏：弃牌计时器（15s）─────────────────────────────────
   useEffect(()=>{
-    if(!isMultiplayer||!gs||gs.gameOver||gs.phase!=='DISCARD_PHASE')return;
+    if(!isMultiplayer||!gs||gs.gameOver||gs.phase!=='DISCARD_PHASE'||gs.currentTurn!==0)return;
     setMpDiscardSec(15);
     mpDiscardIntervalRef.current=setInterval(()=>{
       setMpDiscardSec(s=>{if(s===null||s<=1){clearInterval(mpDiscardIntervalRef.current);return 0;}return s-1;});
@@ -3187,7 +3285,7 @@ export default function Game(){
         {modal==='roadmap'&&<RoadmapModal onClose={()=>setModal(null)}/>}
         {/* ── 断线遮罩（多人游戏断线后禁止操作）── */}
         {isDisconnected&&(
-          <div onClick={()=>{setIsDisconnected(false);setIsMultiplayer(false);isMultiplayerRef.current=false;setGs(null);}}
+          <div onClick={()=>{setIsDisconnected(false);setIsMultiplayer(false);isMultiplayerRef.current=false;setMyPlayerIndex(0);myPlayerIndexRef.current=0;mpRoleRevealedRef.current=false;setGs(null);}}
             style={{position:'fixed',inset:0,background:'#000000dd',zIndex:9999,
               display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
             <div style={{textAlign:'center',color:'#c8a0e8',fontFamily:"'Cinzel Decorative','Cinzel',serif",
@@ -3445,9 +3543,9 @@ export default function Game(){
           <p style={{color:'#b89858',marginBottom:28,fontSize:13,fontStyle:'italic',maxWidth:340}}>{reason}</p>
           {/* Player results */}
           <div style={{display:'flex',gap:10,marginBottom:36,flexWrap:'wrap',justifyContent:'center'}}>
-            {gs.players.map(p=>{
+            {gs.players.map((p,pIdx)=>{
               const r=RINFO[p.role];
-              const isWinner=!isLose&&(winner==='寻宝者'?(p.id===winnerIdx):p.role===winner);
+              const isWinner=!isLose&&(winner==='寻宝者'?(pIdx===winnerIdx):p.role===winner);
               return(
                 <div key={p.id} style={{background:isWinner?'#1a1208':'#140f08',border:`1.5px solid ${isWinner?r.col:r.dim}`,borderRadius:3,padding:'10px 14px',textAlign:'center',minWidth:76,boxShadow:isWinner?`0 0 14px ${r.col}55`:'none'}}>
                   <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,color:isWinner?r.col:'#c8a96e',letterSpacing:1}}>{p.name}</div>
@@ -3460,7 +3558,7 @@ export default function Game(){
             })}
           </div>
           {isMultiplayer?(
-            <button onClick={()=>{setIsMultiplayer(false);isMultiplayerRef.current=false;setGs(null);}} style={{
+            <button onClick={()=>{setIsMultiplayer(false);isMultiplayerRef.current=false;setMyPlayerIndex(0);myPlayerIndexRef.current=0;mpRoleRevealedRef.current=false;setGs(null);}} style={{
               padding:'11px 40px',background:'#1c1208',border:'2px solid #3a6a3a',
               color:'#80e080',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:13,
               borderRadius:2,cursor:'pointer',letterSpacing:2,textTransform:'uppercase',
@@ -3508,7 +3606,7 @@ export default function Game(){
     const res=applyFx(dr.card,0,ti,P,D,Disc);
     P=res.P;D=res.D;Disc=res.Disc;P[0].hand.push(dr.card);
     const L=[...gs.log,`你摸到 [${dr.card.key}] ${dr.card.name}，目标→${gs.players[ti].name}`,...res.msgs];
-    const win=checkWin(P);if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win});return;}
+    const win=checkWin(P,gs._isMP);if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win});return;}
     const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:{}};
     const queue=buildAnimQueue(gs,newGs);
     triggerAnimQueue(queue,newGs);
@@ -3543,7 +3641,7 @@ export default function Game(){
         phase:'PLAYER_WIN_PENDING'});
       return;
     }
-    const win=checkWin(P);
+    const win=checkWin(P,gs._isMP);
     const newGs={...gs,players:P,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...(win?{gameOver:win}:{})};
     triggerAnimQueue([{type:'SKILL_SWAP',msgs:L.slice(-2)},...buildAnimQueue(gs,newGs)],newGs);
   }
@@ -3579,7 +3677,7 @@ export default function Game(){
       const dc=P[0].hand.splice(myCardIdx,1)[0];Disc.push(dc);
       P[huntTi].hp=clamp(P[huntTi].hp-2);L.push(`弃 [${dc.key}] → ${P[huntTi].name} 受 2HP 伤害`);
       if(P[huntTi].hp<=0){P[huntTi].isDead=true;P[huntTi].roleRevealed=true;L.push(`☠ ${P[huntTi].name}（${P[huntTi].role}）倒下了！`);if(P[huntTi].hand.length){P[0].hand.push(...P[huntTi].hand);L.push(`你没收了 ${P[huntTi].name} 的全部手牌！`);P[huntTi].hand=[];}if(P[huntTi].godZone?.length){Disc.push(...P[huntTi].godZone);P[huntTi].godZone=[];P[huntTi].godName=null;P[huntTi].godLevel=0;}}
-      const win=checkWin(P);
+      const win=checkWin(P,gs._isMP);
       const newGs={...gs,players:P,discard:Disc,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...(win?{gameOver:win}:{})};
       const queue=buildAnimQueue(gs,newGs);
       if(queue.length) triggerAnimQueue(queue,newGs); else setGs(newGs);
@@ -3616,7 +3714,7 @@ export default function Game(){
     }
     // Finish AI turn: discard excess, advance
     while(P[huntingAI].hand.length>4){const c=P[huntingAI].hand.shift();Disc.push(c);L.push(`${aiHunterName} 弃 [${c.key}]（上限）`);}
-    const win=checkWin(P);
+    const win=checkWin(P,gs._isMP);
     const baseGs={...gs,players:P,discard:Disc,log:L,abilityData:{},phase:'ACTION'};
     const newGs=win?{...baseGs,gameOver:win}:startNextTurn({...baseGs,currentTurn:huntingAI});
     // Hunt scope anim targeting player 0, then stat anims
@@ -3643,14 +3741,14 @@ export default function Game(){
       const forcedConvert=!!(P[ti].godName&&P[ti].godName!==bewitchCard.godKey);
       const gres=resolveGodEncounterForAI(ti,bewitchCard,P,Disc,forcedConvert);
       P=gres.P;Disc=gres.Disc;L.push(...gres.msgs);
-      const win=checkWin(P);
+      const win=checkWin(P,gs._isMP);
       const newGs={...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...(win?{gameOver:win}:{})};
       triggerAnimQueue([{type:'SKILL_BEWITCH',msgs:L.slice(-3),targetIdx:ti},...buildAnimQueue(gs,newGs)],newGs);
       return;
     }
     const res=applyFx(bewitchCard,ti,ti,P,D,Disc);L.push(...res.msgs);
     res.P[ti].hand.push(bewitchCard);
-    const win=checkWin(res.P);
+    const win=checkWin(res.P,gs._isMP);
     const newGs={...gs,players:res.P,deck:res.D,discard:res.Disc,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...(win?{gameOver:win}:{})};
     triggerAnimQueue([
       {type:'SKILL_BEWITCH',msgs:L.slice(-3),targetIdx:ti},
@@ -3687,7 +3785,7 @@ export default function Game(){
     } else {
       Disc.push({...godCard});L.push('你放弃了邪神的馈赠');
     }
-    const win=checkWin(P);
+    const win=checkWin(P,gs._isMP);
     // Only worship/forcedConvert consume the worship-this-turn slot.
     // Upgrade, discard, and keepHand do not.
     const consumesSlot=action==='worship'||action==='forcedConvert';
@@ -3711,7 +3809,7 @@ export default function Game(){
       setGs({...gs,players:res.P,deck:res.D,discard:res.Disc,log:[...L,...res.effectMsgs],phase:'GOD_CHOICE',abilityData:{godCard:res.drawnCard},drawReveal:null,selectedCard:null,currentTurn:0,skillUsed:false,restUsed:false});
       return;
     }
-    const win=checkWin(res.P);if(win){setGs({...gs,players:res.P,deck:res.D,discard:res.Disc,log:L,gameOver:win});return;}
+    const win=checkWin(res.P,gs._isMP);if(win){setGs({...gs,players:res.P,deck:res.D,discard:res.Disc,log:L,gameOver:win});return;}
     setGs({...gs,players:res.P,deck:res.D,discard:res.Disc,log:[...L,...res.effectMsgs],phase:res.needTarget?'DRAW_SELECT_TARGET':'DRAW_REVEAL',drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needTarget:res.needTarget},selectedCard:null,abilityData:{},currentTurn:0,skillUsed:false,restUsed:false});
   }
 
@@ -3719,7 +3817,7 @@ export default function Game(){
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
     const res=playerDrawCard(P,D,Disc);
     if(res.needGodChoice){setGs({...gs,players:res.P,deck:res.D,discard:res.Disc,log:[...gs.log,...res.effectMsgs],phase:'GOD_CHOICE',abilityData:{godCard:res.drawnCard},drawReveal:null,selectedCard:null,currentTurn:0,skillUsed:false,restUsed:false});return;}
-    const win=checkWin(res.P);if(win){setGs({...gs,players:res.P,deck:res.D,discard:res.Disc,log:gs.log,gameOver:win});return;}
+    const win=checkWin(res.P,gs._isMP);if(win){setGs({...gs,players:res.P,deck:res.D,discard:res.Disc,log:gs.log,gameOver:win});return;}
     setGs({...gs,players:res.P,deck:res.D,discard:res.Disc,log:[...gs.log,...res.effectMsgs],phase:res.needTarget?'DRAW_SELECT_TARGET':'DRAW_REVEAL',drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needTarget:res.needTarget},selectedCard:null,abilityData:{},currentTurn:0,skillUsed:false,restUsed:false});
   }
 
@@ -3751,7 +3849,7 @@ export default function Game(){
     P[0].hp=clamp(P[0].hp+heal);
     P[0].isResting=true;
     let L=[...gs.log,`你选择【休息】，掷骰 ${d1}+${d2}，回复 ${heal}HP，翻面休息中`];
-    const win=checkWin(P);
+    const win=checkWin(P,gs._isMP);
     if(win){setGs({...gs,players:P,log:L,gameOver:win});return;}
     const oldGs={...gs,players:copyPlayers(gs.players)};
     // CTH power Trigger 1: draw when turn ends while going face-down
@@ -3905,8 +4003,10 @@ export default function Game(){
     GOD_CHOICE:          '邪神降临！选择如何回应',
     NYA_BORROW:          '「千人千貌」——借用已死角色的身份？',
     DISCARD_PHASE:(()=>{const sel=gs.abilityData.discardSelected||[];const need=me.hand.length-effectiveHandLimit;return`手牌超限 (${me.hand.length}/${effectiveHandLimit}) — 需弃 ${need} 张，已选 ${sel.length}/${need}`;})(),
-    AI_TURN:`${gs.players[gs.currentTurn]?.name} 正在行动…`,
+    AI_TURN:gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 行动…`:`${gs.players[gs.currentTurn]?.name} 正在行动…`,
     PLAYER_WIN_PENDING:'✦ 你已集齐全部编号！',
+    DRAW_REVEAL:         myTurn?'摸牌 — 请确认':(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 摸牌…`:''),
+    TREASURE_WIN:         '✦ 你已集齐全部编号！',
   }[phase]||'';
 
   const selectingOther=['DRAW_SELECT_TARGET','SWAP_SELECT_TARGET','HUNT_SELECT_TARGET','BEWITCH_SELECT_TARGET'].includes(phase);
@@ -3947,7 +4047,7 @@ export default function Game(){
       L.push(`你从手牌直接信仰 ${godCard.name}，获得${godCard.power}(Lv.1)（骷髅头不计）`);
     }
     P.forEach((p,i)=>{if(i>0&&p.godName===godKey){p.san=clamp(p.san-1);Disc.push(...p.godZone);p.godZone=[];p.godName=null;p.godLevel=0;L.push(`${p.name} 被邪神抛弃，SAN-1`);}});
-    const win=checkWin(P);
+    const win=checkWin(P,gs._isMP);
     // Upgrade does not consume the worship slot; worship/convert does
     setGs({...gs,players:P,discard:Disc,log:L,...(!isUpgrade?{godFromHandUsed:true}:{}),...(win?{gameOver:win}:{})});
   }
@@ -3998,7 +4098,7 @@ export default function Game(){
       {showEmojiPicker&&<div onClick={()=>setShowEmojiPicker(false)} style={{position:'fixed',inset:0,zIndex:49}}/>}
       {/* ── 断线遮罩（游戏内）── */}
       {isDisconnected&&(
-        <div onClick={()=>{setIsDisconnected(false);setIsMultiplayer(false);isMultiplayerRef.current=false;setGs(null);}}
+        <div onClick={()=>{setIsDisconnected(false);setIsMultiplayer(false);isMultiplayerRef.current=false;setMyPlayerIndex(0);myPlayerIndexRef.current=0;mpRoleRevealedRef.current=false;setGs(null);}}
           style={{position:'fixed',inset:0,background:'#000000dd',zIndex:9999,
             display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
           <div style={{textAlign:'center',color:'#c8a0e8',fontFamily:"'Cinzel Decorative','Cinzel',serif",
@@ -4025,7 +4125,7 @@ export default function Game(){
       {!suppressAnim&&<BewitchEyeOverlay active={!!bewitchAnim} cx={bewitchAnim?.cx??0} cy={bewitchAnim?.cy??0}/>}
 
       {/* Turn indicator — shown during AI turns */}
-      {gs.phase==='AI_TURN'&&gs.currentTurn!==0&&!anim&&(()=>{
+      {gs.phase==='AI_TURN'&&gs.currentTurn!==0&&!anim&&!gs._isMP&&(()=>{
         const tp=gs.players[gs.currentTurn];
         const tr=tp?RINFO[tp.role]:null;
         return(
@@ -4073,7 +4173,7 @@ export default function Game(){
         return(<NyaBorrowModal deadPlayers={deadOthers} godLevel={me.godLevel} onBorrow={nyaBorrow} onSkip={nyaSkip}/>);
       })()}
       {/* Draw reveal modal */}
-      {!suppressAnim&&phase==='DRAW_REVEAL'&&gs.drawReveal&&<DrawRevealModal drawReveal={gs.drawReveal} onConfirm={handleDrawConfirm}/>}
+      {!suppressAnim&&phase==='DRAW_REVEAL'&&gs.drawReveal&&myTurn&&<DrawRevealModal drawReveal={gs.drawReveal} onConfirm={handleDrawConfirm}/>}
 
       <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',gap:7}}>
         {/* Header */}
