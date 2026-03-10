@@ -4070,8 +4070,8 @@ export default function Game(){
     HUNT_CONFIRM:         `[${gs.abilityData?.revCard?.key}] ${gs.abilityData?.revCard?.name} 已亮出！弃出匹配手牌造成2HP，或放弃`,
     PLAYER_REVEAL_FOR_HUNT:`⚠ ${gs.abilityData?.aiHunterName||'追猎者'} 正在追捕你！请选择一张区域牌亮出`,
     BEWITCH_SELECT_CARD:  '【蛊惑】选择要赠送的手牌',
-    GOD_CHOICE:          '邪神降临！选择如何回应',
-    NYA_BORROW:          '「千人千貌」——借用已死角色的身份？',
+    GOD_CHOICE:          myTurn?'邪神降临！选择如何回应':(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 回应邪神…`:'邪神降临！选择如何回应'),
+    NYA_BORROW:          myTurn?'「千人千貌」——借用已死角色的身份？':(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 借用身份…`:'「千人千貌」——借用已死角色的身份？'),
     DISCARD_PHASE:(()=>{const sel=gs.abilityData.discardSelected||[];const need=me.hand.length-effectiveHandLimit;return`手牌超限 (${me.hand.length}/${effectiveHandLimit}) — 需弃 ${need} 张，已选 ${sel.length}/${need}`;})(),
     AI_TURN:gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 行动…`:`${gs.players[gs.currentTurn]?.name} 正在行动…`,
     PLAYER_WIN_PENDING:'✦ 你已集齐全部编号！',
@@ -4217,10 +4217,10 @@ export default function Game(){
       })()}
 
       {/* Target selection mask + floating prompt */}
-      <TargetSelectOverlay drawReveal={gs.drawReveal} phase={phase} bewitchCard={gs.abilityData?.bewitchCard}/>
+      <TargetSelectOverlay drawReveal={gs.drawReveal} phase={myTurn?phase:null} bewitchCard={gs.abilityData?.bewitchCard}/>
 
       {/* God choice modal */}
-      {phase==='GOD_CHOICE'&&gs.abilityData?.godCard&&(()=>{
+      {phase==='GOD_CHOICE'&&gs.abilityData?.godCard&&myTurn&&(()=>{
         const godCard=gs.abilityData.godCard;
         const gk=godCard.godKey;
         const alreadyWorship=me.godName===gk;
@@ -4238,7 +4238,7 @@ export default function Game(){
         );
       })()}
       {/* NYA borrow modal */}
-      {phase==='NYA_BORROW'&&(()=>{
+      {phase==='NYA_BORROW'&&myTurn&&(()=>{
         const deadOthers=gs.players.filter((p,i)=>i>0&&p.isDead);
         return(<NyaBorrowModal deadPlayers={deadOthers} godLevel={me.godLevel} onBorrow={nyaBorrow} onSkip={nyaSkip}/>);
       })()}
