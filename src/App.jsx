@@ -490,7 +490,22 @@ function aiStep(gs){
       const gi=0|Math.random()*P[ct].hand.length;const given=P[ct].hand.splice(gi,1)[0];
       P[ct].hand.push(taken);P[ti].hand.push(given);
       L.push(`${ai.name}（寻宝者）对 ${tgt.name} 【掉包】`);
-      if(isWinHand(P[ct].hand)){P[ct].roleRevealed=true;return{...gs,players:P,deck:D,discard:Disc,log:[...L,`${ai.name} 掉包后获胜！`],gameOver:{winner:'寻宝者',reason:`${ai.name} 通过掉包集齐全部编号并获胜！`,winnerIdx:ct}};}
+      if(isWinHand(P[ct].hand)){
+      P[ct].roleRevealed=true;
+      // 检查被掉包的玩家（ti）是否也为寻宝者且同时获胜
+      if(P[ti].role==='寻宝者'&&isWinHand(P[ti].hand)){
+        P[ti].roleRevealed=true;
+        const reason2=`${ai.name} 与 ${P[ti].name} 互换后双方均集齐编号，两位寻宝者共同获胜！`;
+        return{...gs,players:P,deck:D,discard:Disc,log:[...L,reason2],gameOver:{winner:'寻宝者',reason:reason2,winnerIdx:ct,winnerIdx2:ti}};
+      }
+      return{...gs,players:P,deck:D,discard:Disc,log:[...L,`${ai.name} 掉包后获胜！`],gameOver:{winner:'寻宝者',reason:`${ai.name} 通过掉包集齐全部编号并获胜！`,winnerIdx:ct}};
+    }
+    // 被掉包的玩家（非 AI 方）是否满足胜利条件
+    if(P[ti].role==='寻宝者'&&isWinHand(P[ti].hand)){
+      P[ti].roleRevealed=true;
+      const reason3=`${P[ti].name} 因掉包获得最后一张编号，寻宝者获胜！`;
+      return{...gs,players:P,deck:D,discard:Disc,log:[...L,reason3],gameOver:{winner:'寻宝者',reason:reason3,winnerIdx:ti}};
+    }
     }else if(ai.role==='追猎者'){
       const zoneH=P[ti].hand.filter(c=>!c.isGod);
       if(!zoneH.length){L.push(`${tgt.name} 无区域牌，追捕失败`);
@@ -1116,17 +1131,21 @@ function DiceRollAnim({anim,exiting}){
     </div>
   );
 }
-function YourTurnAnim(){
+function YourTurnAnim({name}){
+  const text=name?`${name}的回合`:'你的回合';
+  const col=name?'#c8a0e8':'#e8c87a';
+  const glow=name?'#a080d099':'#c8a96e99';
+  const glow2=name?'#a080d044':'#c8a96e44';
   return(
     <div style={{position:'fixed',inset:0,zIndex:2500,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
       <div style={{
         fontFamily:"'Cinzel Decorative','Cinzel',serif",
         fontSize:32,fontWeight:700,letterSpacing:8,
-        color:'#e8c87a',
-        textShadow:'0 0 40px #c8a96e99, 0 0 80px #c8a96e44',
+        color:col,
+        textShadow:`0 0 40px ${glow}, 0 0 80px ${glow2}`,
         animation:'yourTurnFade 2.0s ease-in-out forwards',
         whiteSpace:'nowrap',
-      }}>你的回合</div>
+      }}>{text}</div>
     </div>
   );
 }
@@ -1409,7 +1428,7 @@ function TreasureMapAnim({hand,onConfirm}){
 // ── Master Anim Dispatcher ────────────────────────────────────
 function AnimOverlay({anim,exiting}){
   if(!anim) return null;
-  if(anim.type==='YOUR_TURN') return <YourTurnAnim/>;
+  if(anim.type==='YOUR_TURN') return <YourTurnAnim name={anim.name}/>;
   if(anim.type==='DRAW_CARD') return <CardFlipAnim card={anim.card} triggerName={anim.triggerName} exiting={exiting}/>;
   if(anim.type==='DICE_ROLL') return <DiceRollAnim anim={anim} exiting={exiting}/>;
   if(anim.type==='DISCARD') return <DiscardMoveOverlay anim={anim} exiting={exiting}/>;
@@ -2539,6 +2558,7 @@ export default function Game(){
   const myPlayerIndexRef=useRef(0);  // 同步 myPlayerIndex 供 socket 闭包使用
   const receivedGsRef=useRef(false); // 收到远端 state 时置 true，阻止 sync useEffect 回发
   const mpRoleRevealedRef=useRef(false); // 每局游戏只触发一次角色揭示
+  const gameEndSentRef=useRef(false);      // 防止 gameEnd 重复发送
   const [isDisconnected,setIsDisconnected]=useState(false);
   const [mpTurnSec,setMpTurnSec]=useState(null);       // 回合倒计时剩余秒数（显示用）
   const [mpDiscardSec,setMpDiscardSec]=useState(null); // 弃牌阶段倒计时
@@ -2679,6 +2699,7 @@ export default function Game(){
       setIsDisconnected(false);
       addToast('多人游戏开始！');
       mpRoleRevealedRef.current=false; // 每局重置角色揭示标志
+      gameEndSentRef.current=false;       // 每局重置 gameEnd 发送标志
       if(safeIdx===0){
         // 房主：初始化游戏并广播给所有人
         const names=players.map(p=>p.username);
@@ -3090,23 +3111,26 @@ export default function Game(){
     return()=>clearTimeout(timerRef.current);
   },[gs?.currentTurn,gs?.phase,gs?._turnKey,anim,gs?.gameOver]);
 
-  // 多人游戏结束时通知后端重置房间状态
+  // 多人游戏结束时通知后端重置房间状态（用 ref 防止因 isMultiplayer 变化导致的重复发送）
   useEffect(()=>{
     if(!isMultiplayer||!gs?.gameOver)return;
+    if(gameEndSentRef.current)return;
+    gameEndSentRef.current=true;
     if(socketRef.current?.connected){
       socketRef.current.emit('gameEnd',{uuid:playerUUID,roomId:roomModal?.roomId});
       // 广播最终 gs 让其他玩家也看到结算界面
-      const rawFinalGs=derotateGs(gs,myPlayerIndex);
+      const rawFinalGs=derotateGs(gs,myPlayerIndexRef.current);
       socketRef.current.emit('mpStateSync',{roomId:roomModal?.roomId,gs:rawFinalGs});
     }
   },[gs?.gameOver,isMultiplayer]);
 
   // ── 多人游戏：本地 gs 变化后广播给房间其他人 ──────────────────
   // receivedGsRef 防止接收远端 state 后回发（避免乒乓死循环）
-  // 注意：endTurn 后 currentTurn 已指向下一玩家，不能用 currentTurn===0 做守卫
+  // TREASURE_WIN / PLAYER_WIN_PENDING 是本地过渡态，不广播（等 revealWin→gameOver 再广播）
   useEffect(()=>{
     if(!gs||!isMultiplayer||!socketRef.current)return;
     if(gs.gameOver)return; // gameEnd event 单独处理
+    if(gs.phase==='TREASURE_WIN'||gs.phase==='PLAYER_WIN_PENDING')return; // local-only phases
     if(receivedGsRef.current){receivedGsRef.current=false;return;}
     const room=roomModal;
     if(!room?.roomId)return;
@@ -3528,7 +3552,7 @@ export default function Game(){
     const{winner,reason,winnerIdx}=gs.gameOver;
     const myRole=gs.players[0].role;
     const iWon=winner==='LOSE'?false
-      :winner==='寻宝者'?(winnerIdx===0)
+      :winner==='寻宝者'?(winnerIdx===0||(gs.gameOver.winnerIdx2??-1)===0)
       :(winner===myRole);
     const isLose=winner==='LOSE';
     return(
@@ -3545,7 +3569,7 @@ export default function Game(){
           <div style={{display:'flex',gap:10,marginBottom:36,flexWrap:'wrap',justifyContent:'center'}}>
             {gs.players.map((p,pIdx)=>{
               const r=RINFO[p.role];
-              const isWinner=!isLose&&(winner==='寻宝者'?(pIdx===winnerIdx):p.role===winner);
+              const isWinner=!isLose&&(winner==='寻宝者'?(pIdx===winnerIdx||pIdx===(gs.gameOver.winnerIdx2??-1)):p.role===winner);
               return(
                 <div key={p.id} style={{background:isWinner?'#1a1208':'#140f08',border:`1.5px solid ${isWinner?r.col:r.dim}`,borderRadius:3,padding:'10px 14px',textAlign:'center',minWidth:76,boxShadow:isWinner?`0 0 14px ${r.col}55`:'none'}}>
                   <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,color:isWinner?r.col:'#c8a96e',letterSpacing:1}}>{p.name}</div>
@@ -3558,7 +3582,17 @@ export default function Game(){
             })}
           </div>
           {isMultiplayer?(
-            <button onClick={()=>{setIsMultiplayer(false);isMultiplayerRef.current=false;setMyPlayerIndex(0);myPlayerIndexRef.current=0;mpRoleRevealedRef.current=false;setGs(null);}} style={{
+            <button onClick={()=>{
+              // 先直接发送 gameEnd（在 state 重置前），避免 useEffect 因 isMultiplayer=false 跳过发送
+              if(!gameEndSentRef.current&&socketRef.current?.connected){
+                gameEndSentRef.current=true;
+                socketRef.current.emit('gameEnd',{uuid:playerUUID,roomId:roomModal?.roomId});
+              }
+              setIsMultiplayer(false);isMultiplayerRef.current=false;
+              setMyPlayerIndex(0);myPlayerIndexRef.current=0;
+              mpRoleRevealedRef.current=false;gameEndSentRef.current=false;
+              setGs(null);
+            }} style={{
               padding:'11px 40px',background:'#1c1208',border:'2px solid #3a6a3a',
               color:'#80e080',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:13,
               borderRadius:2,cursor:'pointer',letterSpacing:2,textTransform:'uppercase',
@@ -3637,8 +3671,34 @@ export default function Game(){
     P[0].hand.push(takenCard);P[swapTi].hand.push(given);
     const L=[...gs.log,`拿走 [${takenCard.key}]，还给 ${P[swapTi].name} [${given.key}]`];
     if(isWinHand(P[0].hand)){
-      setGs({...gs,players:P,log:[...L,'你集齐了全部编号！'],abilityData:{winReason:'你通过掉包集齐了全部编号！'},
+      const _wname=gs._isMP?gs.players[0].name:'你';
+      // 同时检查对方（目标）是否也是寻宝者且满足胜利条件（双寻宝者掉包规则）
+      const targetAlsoWins=P[swapTi].role==='寻宝者'&&isWinHand(P[swapTi].hand);
+      if(targetAlsoWins){
+        // 双方均获胜：直接进入 gameOver，双寻宝者共赢
+        const tname=P[swapTi].name;
+        P[0].roleRevealed=true;P[swapTi].roleRevealed=true;
+        const reason=gs._isMP
+          ?`${_wname} 与 ${tname} 互换后双方均集齐编号，两位寻宝者共同获胜！`
+          :`你与 ${tname} 互换后双方均集齐编号，两位寻宝者共同获胜！`;
+        const newGs={...gs,players:P,log:[...L,reason],abilityData:{},
+          gameOver:{winner:'寻宝者',reason,winnerIdx:0,winnerIdx2:swapTi}};
+        triggerAnimQueue([{type:'SKILL_SWAP',msgs:[reason]}],newGs);
+        return;
+      }
+      setGs({...gs,players:P,log:[...L,`${_wname}集齐了全部编号！`],abilityData:{winReason:`${_wname}通过掉包集齐了全部编号！`},
         phase:'PLAYER_WIN_PENDING'});
+      return;
+    }
+    // 检查目标（非自身）是否为寻宝者且掉包后获胜
+    if(P[swapTi].role==='寻宝者'&&isWinHand(P[swapTi].hand)){
+      P[swapTi].roleRevealed=true;
+      const tname=P[swapTi].name;
+      const reason=`${tname} 获得了最后一张编号，寻宝者获胜！`;
+      L.push(reason);
+      const newGs={...gs,players:P,log:L,abilityData:{},
+        gameOver:{winner:'寻宝者',reason,winnerIdx:swapTi},phase:'ACTION',skillUsed:true};
+      triggerAnimQueue([{type:'SKILL_SWAP',msgs:[reason]},...buildAnimQueue(gs,newGs)],newGs);
       return;
     }
     const win=checkWin(P,gs._isMP);
@@ -3936,12 +3996,17 @@ export default function Game(){
   function _onRoleRevealDone(pendingGs){
     setRoleRevealAnim(null);
     if(!pendingGs)return; // tutorial path: game already set
+    // 多人游戏中非当前操作玩家：只播「XX的回合」动画，不播摸牌（避免泄露手牌信息）
+    if(pendingGs._isMP&&pendingGs.currentTurn!==0){
+      const activeName=pendingGs.players[pendingGs.currentTurn]?.name||'???';
+      triggerAnimQueue([{type:'YOUR_TURN',name:activeName}],pendingGs);
+      return;
+    }
     if(pendingGs.drawReveal?.card){
       // Normal draw: YOUR_TURN → card flip → apply state
       triggerAnimQueue([{type:'YOUR_TURN'},{type:'DRAW_CARD',card:pendingGs.drawReveal.card,triggerName:'你'}],pendingGs);
     }else{
       // God card drawn: drawReveal is null, card is in abilityData.godCard
-      // Still show: YOUR_TURN → card flip (god card) → apply state (GOD_CHOICE modal)
       const godCard=pendingGs.abilityData?.godCard;
       const queue=[{type:'YOUR_TURN'}];
       if(godCard) queue.push({type:'DRAW_CARD',card:godCard,triggerName:'你'});
@@ -3983,11 +4048,16 @@ export default function Game(){
     setAnim(null);
     setGs(prev=>{
       if(!prev)return prev;
+      const winnerName=prev.players[0].name;
+      const defaultReason=prev._isMP?`${winnerName}集齐了全部编号并获胜！`:'你集齐了全部编号并获胜！';
+      const rawReason=prev.abilityData?.winReason||defaultReason;
+      // MP 下把「你」替换为实际玩家名，避免对其他观看者显示「你」
+      const reason=prev._isMP?rawReason.replace(/^你/,winnerName):rawReason;
       return{...prev,
         players:prev.players.map((p,i)=>i===0?{...p,roleRevealed:true}:p),
         drawReveal:null,
         _pendingPlayerWin:undefined,
-        gameOver:{winner:'寻宝者',reason:prev.abilityData?.winReason||'你集齐了全部编号并获胜！',winnerIdx:0}};
+        gameOver:{winner:'寻宝者',reason,winnerIdx:0}};
     });
   }
 
