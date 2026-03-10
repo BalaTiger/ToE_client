@@ -3027,6 +3027,9 @@ export default function Game(){
 
   // isBlocked 提升到 useEffect 之前，避免依赖数组 TDZ 报错
   const isBlocked=!!anim||showTutorial;
+  // refs 供计时器 useEffect 调用（避免陈旧闭包，必须在 if(!gs) return 之前）
+  const endTurnRef=useRef(null);
+  const autoDiscardRef=useRef(null);
 
   // ── 房间倒计时显示（前端独立计时，服务端计时器版本号变化时重置）───
   useEffect(()=>{
@@ -3776,10 +3779,6 @@ export default function Game(){
       :startNextTurn(afterRest);
     triggerAnimQueue(queue,pendingGs);
   }
-
-  // refs 供计时器 useEffect 调用（避免陈旧闭包）
-  const endTurnRef=useRef(null);
-  const autoDiscardRef=useRef(null);
 
   function endTurn(){
     if(isBlocked)return;
