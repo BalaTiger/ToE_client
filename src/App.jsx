@@ -2734,6 +2734,9 @@ export default function Game(){
         setHitIndices([]);
         setAnim(null);
         const rotatedGs=rotateGsForViewer(rawGs,0);
+        // 开局广播先于 useEffect([gs])（soket 同步发送，useEffect 在 render 后触发）
+        // 必须先标记 received=true，防止 useEffect 把遮蔽态 gs 再次广播覆盖真实状态
+        receivedGsRef.current=true;
         // 与单机一致：先用遮蔽态渲染棋盘背景，动画结束后才解锁真实 phase
         setGs({...rotatedGs,phase:'ACTION',drawReveal:null,abilityData:{}});
         setAnim(null);
