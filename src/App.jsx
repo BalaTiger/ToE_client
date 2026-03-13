@@ -2733,7 +2733,9 @@ export default function Game(){
         setHitIndices([]);
         setAnim(null);
         const rotatedGs=rotateGsForViewer(rawGs,0);
-        setGs(rotatedGs);
+        // 与单机一致：先用遮蔽态渲染棋盘背景，动画结束后才解锁真实 phase
+        setGs({...rotatedGs,phase:'ACTION',drawReveal:null,abilityData:{}});
+        setAnim(null);
         setRoleRevealAnim({role:rotatedGs.players[0].role,pendingGs:rotatedGs});
         // 广播原始 gs（未旋转）给所有人
         socket.emit('mpStateSync',{roomId,gs:rawGs});
@@ -2751,11 +2753,16 @@ export default function Game(){
       setAnimExiting(false);
       setHitIndices([]);
       setAnim(null);
-      setGs(rotated);
-      // 仅第一次收到时显示角色揭示动画
-      if(!mpRoleRevealedRef.current&&(rotated.phase==='DRAW_REVEAL'||rotated.phase==='ACTION')){
+      // 仅第一次收到（游戏开局）时显示角色揭示动画
+      // 条件：任何有效首帧（不限 phase，只要游戏未结束）
+      if(!mpRoleRevealedRef.current&&!rotated.gameOver){
         mpRoleRevealedRef.current=true;
+        // 与单机/房主一致：先用遮蔽态渲染棋盘背景，动画结束后才解锁真实 phase
+        setGs({...rotated,phase:'ACTION',drawReveal:null,abilityData:{}});
+        setAnim(null);
         setRoleRevealAnim({role:rotated.players[0].role,pendingGs:rotated});
+      }else{
+        setGs(rotated);
       }
     });
     // emojiReceived：收到其他玩家发的表情
@@ -4104,6 +4111,9 @@ export default function Game(){
   function _onRoleRevealDone(pendingGs){
     setRoleRevealAnim(null);
     if(!pendingGs)return; // tutorial path: game already set
+    // 开局时所有玩家的 pendingGs 已随 gameStart 广播过，
+    // advanceQueue→setGs 不应再触发 useEffect 广播（否则非房主播完动画后会打断房主动画）
+    receivedGsRef.current=true;
     // 多人游戏中非当前操作玩家：只播「XX的回合」动画，不播摸牌（避免泄露手牌信息）
     if(pendingGs._isMP&&pendingGs.currentTurn!==0){
       const activeName=pendingGs.players[pendingGs.currentTurn]?.name||'???';
