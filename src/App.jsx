@@ -1091,7 +1091,7 @@ function CardTransferOverlay({transfers}){
   if(!transfers||!transfers.length)return null;
   return(
     <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:480,overflow:'hidden'}}>
-      {transfers.map(({srcX,srcY,destX,destY,count,key})=>(
+      {transfers.flatMap(({srcX,srcY,destX,destY,count,key})=>
         Array.from({length:count}).map((_,idx)=>{
           const ox=(idx-(count-1)/2)*14;
           const oy=idx*(-4);
@@ -1118,7 +1118,7 @@ function CardTransferOverlay({transfers}){
             </div>
           );
         })
-      ))}
+      )}
     </div>
   );
 }
@@ -3325,19 +3325,28 @@ export default function Game(){
   },[roomModal?.countdown?.version]);
 
   // ── 多人游戏：回合计时器（45s）─────────────────────────────────
-  // 监听 phase：进入 DISCARD_PHASE 时立即停止（cleanup 取消计时器），
-  // 弃牌阶段由独立的 15s 弃牌计时器接管
+  // 只在回合切换时重置（currentTurn/_turnKey 变化），不监听 phase 避免每次 phase 变化都重置
+  const mpTurnTimeoutRef=useRef(null);
   useEffect(()=>{
     if(!isMultiplayer||!gs||gs.gameOver||gs.currentTurn!==0)return;
-    // 弃牌阶段：计时器不启动（return 触发 cleanup 取消旧计时器）
-    if(gs.phase==='DISCARD_PHASE')return;
     setMpTurnSec(45);
     mpTurnIntervalRef.current=setInterval(()=>{
       setMpTurnSec(s=>{if(s===null||s<=1){clearInterval(mpTurnIntervalRef.current);return 0;}return s-1;});
     },1000);
-    const t=setTimeout(()=>setGs(p=>p?{...p,_mpEndTurn:true}:p),45000);
-    return()=>{clearTimeout(t);clearInterval(mpTurnIntervalRef.current);setMpTurnSec(null);};
-  },[isMultiplayer,gs?.currentTurn,gs?._turnKey,gs?.gameOver,gs?.phase]);
+    mpTurnTimeoutRef.current=setTimeout(()=>setGs(p=>p?{...p,_mpEndTurn:true}:p),45000);
+    return()=>{
+      clearTimeout(mpTurnTimeoutRef.current);mpTurnTimeoutRef.current=null;
+      clearInterval(mpTurnIntervalRef.current);setMpTurnSec(null);
+    };
+  },[isMultiplayer,gs?.currentTurn,gs?._turnKey,gs?.gameOver]);
+
+  // 进入弃牌阶段时立即停止回合计时器（不依赖 cleanup，直接命令式清除）
+  useEffect(()=>{
+    if(!isMultiplayer||gs?.phase!=='DISCARD_PHASE')return;
+    clearTimeout(mpTurnTimeoutRef.current);mpTurnTimeoutRef.current=null;
+    clearInterval(mpTurnIntervalRef.current);
+    setMpTurnSec(null);
+  },[isMultiplayer,gs?.phase]);
 
   // HUNT_WAIT_REVEAL 期间 45s 计时暂停 + 被追捕者 20s 超时随机亮牌
   const huntRevealTimerRef=useRef(null);
