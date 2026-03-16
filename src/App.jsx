@@ -3356,11 +3356,19 @@ export default function Game(){
   // ── 多人游戏：回合计时器（45s）─────────────────────────────────
   // 只在回合切换时重置（currentTurn/_turnKey 变化），不监听 phase 避免每次 phase 变化都重置
   const mpTurnTimeoutRef=useRef(null);
+  const mpTurnSecRef=useRef(45);       // mirrors mpTurnSec for reading in effects
+  const mpTurnPausedRemRef=useRef(null); // stored seconds when paused for HUNT_WAIT_REVEAL
   useEffect(()=>{
     if(!isMultiplayer||!gs||gs.gameOver||gs.currentTurn!==0)return;
-    setMpTurnSec(45);
+    mpTurnPausedRemRef.current=null; // 新回合清除暂停记录
+    setMpTurnSec(45);mpTurnSecRef.current=45;
     mpTurnIntervalRef.current=setInterval(()=>{
-      setMpTurnSec(s=>{if(s===null||s<=1){clearInterval(mpTurnIntervalRef.current);return 0;}return s-1;});
+      setMpTurnSec(s=>{
+        const next=(s===null||s<=1)?0:s-1;
+        mpTurnSecRef.current=next;
+        if(next===0)clearInterval(mpTurnIntervalRef.current);
+        return next;
+      });
     },1000);
     mpTurnTimeoutRef.current=setTimeout(()=>setGs(p=>p?{...p,_mpEndTurn:true}:p),45000);
     return()=>{
@@ -3369,13 +3377,45 @@ export default function Game(){
     };
   },[isMultiplayer,gs?.currentTurn,gs?._turnKey,gs?.gameOver]);
 
-  // 进入弃牌阶段时立即停止回合计时器（不依赖 cleanup，直接命令式清除）
+  // 进入弃牌阶段：完全停止计时（下回合从头来）
   useEffect(()=>{
     if(!isMultiplayer||gs?.phase!=='DISCARD_PHASE')return;
     clearTimeout(mpTurnTimeoutRef.current);mpTurnTimeoutRef.current=null;
     clearInterval(mpTurnIntervalRef.current);
     setMpTurnSec(null);
   },[isMultiplayer,gs?.phase]);
+
+  // 进入 HUNT_WAIT_REVEAL：暂停计时（保存剩余秒数，退出后续算）
+  useEffect(()=>{
+    if(!isMultiplayer||gs?.phase!=='HUNT_WAIT_REVEAL')return;
+    // 保存当前剩余秒数
+    mpTurnPausedRemRef.current=mpTurnSecRef.current||0;
+    // 停止 interval 和 timeout（但不清 mpTurnSec 显示——隐藏逻辑由 JSX 负责）
+    clearTimeout(mpTurnTimeoutRef.current);mpTurnTimeoutRef.current=null;
+    clearInterval(mpTurnIntervalRef.current);
+  },[isMultiplayer,gs?.phase]);
+
+  // 离开 HUNT_WAIT_REVEAL（进入 HUNT_CONFIRM 等）：从保存的秒数续计
+  useEffect(()=>{
+    if(!isMultiplayer||!gs||gs.gameOver)return;
+    if(gs.phase==='HUNT_WAIT_REVEAL')return; // 还在等待中
+    if(mpTurnPausedRemRef.current===null)return; // 没有暂停记录
+    if(gs.currentTurn!==0)return; // 不是我的回合
+    const rem=mpTurnPausedRemRef.current;
+    mpTurnPausedRemRef.current=null;
+    if(rem<=0)return; // 时间已耗尽，直接超时
+    setMpTurnSec(rem);mpTurnSecRef.current=rem;
+    mpTurnIntervalRef.current=setInterval(()=>{
+      setMpTurnSec(s=>{
+        const next=(s===null||s<=1)?0:s-1;
+        mpTurnSecRef.current=next;
+        if(next===0)clearInterval(mpTurnIntervalRef.current);
+        return next;
+      });
+    },1000);
+    mpTurnTimeoutRef.current=setTimeout(()=>setGs(p=>p?{...p,_mpEndTurn:true}:p),rem*1000);
+    return()=>{clearTimeout(mpTurnTimeoutRef.current);mpTurnTimeoutRef.current=null;clearInterval(mpTurnIntervalRef.current);}
+  },[isMultiplayer,gs?.phase,gs?.currentTurn,gs?.gameOver]);
 
   // HUNT_WAIT_REVEAL 期间 45s 计时暂停 + 被追捕者 20s 超时随机亮牌
   const huntRevealTimerRef=useRef(null);
@@ -4380,10 +4420,26 @@ export default function Game(){
     // 开局时所有玩家的 pendingGs 已随 gameStart 广播过，
     // advanceQueue→setGs 不应再触发 useEffect 广播（否则非房主播完动画后会打断房主动画）
     receivedGsRef.current=true;
-    // 多人游戏中非当前操作玩家：只播「XX的回合」动画，不播摸牌（避免泄露手牌信息）
+    // 多人游戏中非当前操作玩家：播「XX的回合」+ 翻牌动画（与当前玩家体验一致）
     if(pendingGs._isMP&&pendingGs.currentTurn!==0){
       const activeName=pendingGs.players[pendingGs.currentTurn]?.name||'???';
-      triggerAnimQueue([{type:'YOUR_TURN',name:activeName}],pendingGs);
+      const drawerPid=pendingGs.currentTurn;
+      const ph=pendingGs.phase;
+      const drawnCard=ph==='GOD_CHOICE'
+        ?pendingGs.abilityData?.godCard
+        :pendingGs.drawReveal?.card;
+      if(drawnCard){
+        // 遮蔽真实 phase，动画结束后 advanceQueue 再还原（与 applyNextTurnGs 同样模式）
+        pendingGsRef.current=pendingGs;
+        animQueueRef.current=[];
+        setGs({...pendingGs,phase:'ACTION',drawReveal:null,abilityData:{}});
+        triggerAnimQueue([
+          {type:'YOUR_TURN',name:activeName},
+          {type:'DRAW_CARD',card:drawnCard,triggerName:activeName,targetPid:drawerPid},
+        ],pendingGs);
+      }else{
+        triggerAnimQueue([{type:'YOUR_TURN',name:activeName}],pendingGs);
+      }
       return;
     }
     if(pendingGs.drawReveal?.card){
@@ -4780,7 +4836,7 @@ export default function Game(){
         }}>
           <div style={{flex:1,fontFamily:"'Cinzel',serif",color:phase==='PLAYER_REVEAL_FOR_HUNT'?'#cc3030':myTurn&&phase!=='AI_TURN'?'#a08040':'#3a2510',fontSize:isMobile?10:11,letterSpacing:isMobile?0.5:1}}>{phaseLabel}</div>
           {/* 多人回合计时器 */}
-          {isMultiplayer&&mpTurnSec!==null&&myTurn&&phase!=='AI_TURN'&&(
+          {isMultiplayer&&mpTurnSec!==null&&myTurn&&phase!=='AI_TURN'&&phase!=='HUNT_WAIT_REVEAL'&&(
             <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:mpTurnSec<=10?'#e05030':mpTurnSec<=20?'#e09030':'#608060',letterSpacing:1,flexShrink:0}}>
               ⏱ {mpTurnSec}s
             </div>
