@@ -2561,6 +2561,7 @@ export default function Game(){
   // ⚠ Change SERVER_URL to your backend address before deploying
   const SERVER_URL = 'https://cookie-reveal-cal-mount.trycloudflare.com';
   const [playerUUID,setPlayerUUID]=useState(()=>safeLS.get('cthulhu_player_uuid')||null);
+  const playerUUIDRef=useRef(safeLS.get('cthulhu_player_uuid')||null);
   const [multiLoading,setMultiLoading]=useState(false);
   const [toasts,setToasts]=useState([]);
   const [roomModal,setRoomModal]=useState(null);
@@ -2666,6 +2667,7 @@ export default function Game(){
     });
     socket.on('uuidAssigned',({uuid})=>{
       setPlayerUUID(uuid);
+      playerUUIDRef.current=uuid;
       safeLS.set('cthulhu_player_uuid',uuid);
     });
     // userInfo：打开联机选项界面时后端下发，含异常断线标志
@@ -2713,7 +2715,7 @@ export default function Game(){
     });
     // gameStart：多人游戏开始，只有房主（排位0）初始化并广播 gs
     socket.on('gameStart',({roomId,players})=>{
-      const myIdx=players.findIndex(p=>p.uuid===playerUUID);
+      const myIdx=players.findIndex(p=>p.uuid===playerUUIDRef.current);
       const safeIdx=myIdx<0?0:myIdx;
       myPlayerIndexRef.current=safeIdx;
       setMyPlayerIndex(safeIdx);
@@ -2775,7 +2777,7 @@ export default function Game(){
       emojis.forEach((emoji,i)=>{
         setTimeout(()=>{
           // 发射起点：自己发的从 selfPanel，别人发的从屏幕顶部随机位置
-          const isSelf=fromUuid===playerUUID;
+          const isSelf=fromUuid===playerUUIDRef.current;
           let sx,sy;
           if(isSelf){
             const el=document.querySelector('[data-pid="0"]');
