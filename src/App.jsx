@@ -611,24 +611,32 @@ function buildAnimQueue(oldGs,newGs){
     const sanHitIdx=newGs.players.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.san<oldGs.players[i].san)acc.push(i);return acc;},[]);
     if(sanHitIdx.length) q.push({type:'SAN_DAMAGE',msgs:newMsgs,hitIndices:sanHitIdx});
     // Detect hand card losses → CARD_TRANSFER
-    // 策略：只有恰好一名玩家减少手牌时生成动画（两人同时减少 = 掉包，跳过）
     const losers=newGs.players.filter((p,i)=>oldGs.players[i]&&p.hand.length<oldGs.players[i].hand.length);
     if(losers.length===1){
+      // 普通单向手牌减少（追捕没收、蛊惑、弃牌等）
       const li=newGs.players.indexOf(losers[0]);
       const count=(oldGs.players[li].hand.length-newGs.players[li].hand.length);
-      // 确定去向：是否有玩家获得了手牌？
       let dest='discard',toPid=null;
       for(let j=0;j<newGs.players.length;j++){
         if(j===li||!oldGs.players[j])continue;
         if(newGs.players[j].hand.length>oldGs.players[j].hand.length){dest='player';toPid=j;break;}
       }
-      // 去向为自身角色区域（如邪神牌进入 godZone）
       if(dest==='discard'){
         const oldGZ=oldGs.players[li].godZone?.length||0;
         const newGZ=newGs.players[li].godZone?.length||0;
         if(newGZ>oldGZ)dest='godzone';
       }
       q.push({type:'CARD_TRANSFER',fromPid:li,dest,toPid,count});
+    }else if(losers.length===2){
+      // 双向交换（掉包）：为双方各生成一条飞牌动画
+      // A→B（发动者把牌给目标），B→A（目标的牌到发动者）
+      losers.forEach(loser=>{
+        const li=newGs.players.indexOf(loser);
+        const toPid=newGs.players.findIndex((p,j)=>j!==li&&oldGs.players[j]&&p.hand.length>oldGs.players[j].hand.length);
+        if(toPid<0)return;
+        const count=oldGs.players[li].hand.length-newGs.players[li].hand.length;
+        q.push({type:'CARD_TRANSFER',fromPid:li,dest:'player',toPid,count});
+      });
     }
   }
   return q;
@@ -3317,17 +3325,19 @@ export default function Game(){
   },[roomModal?.countdown?.version]);
 
   // ── 多人游戏：回合计时器（45s）─────────────────────────────────
-  // 只在新回合开始时重置（currentTurn/gameOver/_turnKey 变化），
-  // 不监听 phase：DRAW_REVEAL / GOD_CHOICE / NYA_BORROW 均属于本回合时间内
+  // 监听 phase：进入 DISCARD_PHASE 时立即停止（cleanup 取消计时器），
+  // 弃牌阶段由独立的 15s 弃牌计时器接管
   useEffect(()=>{
     if(!isMultiplayer||!gs||gs.gameOver||gs.currentTurn!==0)return;
+    // 弃牌阶段：计时器不启动（return 触发 cleanup 取消旧计时器）
+    if(gs.phase==='DISCARD_PHASE')return;
     setMpTurnSec(45);
     mpTurnIntervalRef.current=setInterval(()=>{
       setMpTurnSec(s=>{if(s===null||s<=1){clearInterval(mpTurnIntervalRef.current);return 0;}return s-1;});
     },1000);
     const t=setTimeout(()=>setGs(p=>p?{...p,_mpEndTurn:true}:p),45000);
     return()=>{clearTimeout(t);clearInterval(mpTurnIntervalRef.current);setMpTurnSec(null);};
-  },[isMultiplayer,gs?.currentTurn,gs?._turnKey,gs?.gameOver]);
+  },[isMultiplayer,gs?.currentTurn,gs?._turnKey,gs?.gameOver,gs?.phase]);
 
   // HUNT_WAIT_REVEAL 期间 45s 计时暂停 + 被追捕者 20s 超时随机亮牌
   const huntRevealTimerRef=useRef(null);
