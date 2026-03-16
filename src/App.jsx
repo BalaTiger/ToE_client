@@ -590,7 +590,7 @@ function initGame(playerNames){
 const EVIL_TYPES=new Set(['damage','allDamage','sanDamage','allSANDamage','sanDamageDiscard','damageDraw','selfSANDamage']);
 
 // Duration (ms) per animation type
-const ANIM_DURATION={DRAW_CARD:1850, HP_HEAL:1200, SAN_HEAL:1200, SAN_DAMAGE:800, SKILL_SWAP:800, SKILL_HUNT:1200, SKILL_BEWITCH:1200, DICE_ROLL:2200, DISCARD:1000, YOUR_TURN:2000, GUILLOTINE:2500, default:600};
+const ANIM_DURATION={DRAW_CARD:1850, HP_HEAL:1200, SAN_HEAL:1200, SAN_DAMAGE:800, SKILL_SWAP:800, SKILL_HUNT:1200, SKILL_BEWITCH:1200, DICE_ROLL:2200, DISCARD:1000, YOUR_TURN:2000, GUILLOTINE:2500, CARD_TRANSFER:700, default:600};
 
 // Build an animation queue from before/after game states
 function buildAnimQueue(oldGs,newGs){
@@ -610,6 +610,26 @@ function buildAnimQueue(oldGs,newGs){
     if(sanHealIdx.length) q.push({type:'SAN_HEAL',msgs:newMsgs,hitIndices:sanHealIdx});
     const sanHitIdx=newGs.players.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.san<oldGs.players[i].san)acc.push(i);return acc;},[]);
     if(sanHitIdx.length) q.push({type:'SAN_DAMAGE',msgs:newMsgs,hitIndices:sanHitIdx});
+    // Detect hand card losses → CARD_TRANSFER
+    // 策略：只有恰好一名玩家减少手牌时生成动画（两人同时减少 = 掉包，跳过）
+    const losers=newGs.players.filter((p,i)=>oldGs.players[i]&&p.hand.length<oldGs.players[i].hand.length);
+    if(losers.length===1){
+      const li=newGs.players.indexOf(losers[0]);
+      const count=(oldGs.players[li].hand.length-newGs.players[li].hand.length);
+      // 确定去向：是否有玩家获得了手牌？
+      let dest='discard',toPid=null;
+      for(let j=0;j<newGs.players.length;j++){
+        if(j===li||!oldGs.players[j])continue;
+        if(newGs.players[j].hand.length>oldGs.players[j].hand.length){dest='player';toPid=j;break;}
+      }
+      // 去向为自身角色区域（如邪神牌进入 godZone）
+      if(dest==='discard'){
+        const oldGZ=oldGs.players[li].godZone?.length||0;
+        const newGZ=newGs.players[li].godZone?.length||0;
+        if(newGZ>oldGZ)dest='godzone';
+      }
+      q.push({type:'CARD_TRANSFER',fromPid:li,dest,toPid,count});
+    }
   }
   return q;
 }
@@ -1057,6 +1077,44 @@ function DiscardMoveOverlay({anim,exiting}){
   );
 }
 
+// ── Card Transfer Overlay (hand cards flying to dest) ───────────
+// Receives pre-measured positions from parent useEffect([anim])
+function CardTransferOverlay({transfers}){
+  if(!transfers||!transfers.length)return null;
+  return(
+    <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:480,overflow:'hidden'}}>
+      {transfers.map(({srcX,srcY,destX,destY,count,key})=>(
+        Array.from({length:count}).map((_,idx)=>{
+          const ox=(idx-(count-1)/2)*14;
+          const oy=idx*(-4);
+          const txPx=destX-srcX+ox;
+          const tyPx=destY-srcY+oy;
+          return(
+            <div key={`${key}-${idx}`} style={{
+              position:'absolute',
+              left:srcX,top:srcY,
+              width:28,height:40,marginLeft:-14,marginTop:-20,
+              background:'linear-gradient(135deg,#2e1c0a,#1a0e06)',
+              border:'1.5px solid #6a4020',
+              borderRadius:3,
+              boxShadow:'0 2px 8px rgba(0,0,0,0.6)',
+              '--tx':`${txPx}px`,'--ty':`${tyPx}px`,
+              animation:`cardTransferFly 0.62s cubic-bezier(0.25,0,0.35,1) ${idx*0.07}s both`,
+              zIndex:481+idx,
+            }}>
+              <div style={{
+                position:'absolute',inset:0,borderRadius:3,
+                background:'repeating-linear-gradient(45deg,#3a2010 0px,#3a2010 1px,transparent 1px,transparent 5px)',
+                opacity:0.4,
+              }}/>
+            </div>
+          );
+        })
+      ))}
+    </div>
+  );
+}
+
 // ── Generic Overlay Anim ──────────────────────────────────────
 const ANIM_CFG={
   // HP_DAMAGE handled via per-character KnifeEffect, no fullscreen overlay needed
@@ -1466,7 +1524,8 @@ function AnimOverlay({anim,exiting}){
   if(anim.type==='YOUR_TURN') return <YourTurnAnim name={anim.name}/>;
   if(anim.type==='DRAW_CARD') return <CardFlipAnim card={anim.card} triggerName={anim.triggerName} targetPid={anim.targetPid??0} exiting={exiting}/>;
   if(anim.type==='DICE_ROLL') return <DiceRollAnim anim={anim} exiting={exiting}/>;
-  if(anim.type==='DISCARD') return <DiscardMoveOverlay anim={anim} exiting={exiting}/>;
+  if(anim.type==='DISCARD') return <DiscardMoveOverlay anim={anim} exiting={exiting}/>
+  if(anim.type==='CARD_TRANSFER') return null; // rendered via cardTransfers state
   if(['HP_DAMAGE','HP_HEAL','SAN_HEAL','SAN_DAMAGE'].includes(anim.type)) return null;
   return <GenericAnimOverlay anim={anim} exiting={exiting}/>;
 }
@@ -2739,6 +2798,9 @@ export default function Game(){
         // 开局广播先于 useEffect([gs])（soket 同步发送，useEffect 在 render 后触发）
         // 必须先标记 received=true，防止 useEffect 把遮蔽态 gs 再次广播覆盖真实状态
         receivedGsRef.current=true;
+        // 房主已通过 gameStart 路径触发身份揭示，标记为已揭示，
+        // 防止后续收到非房主广播时重复触发 role reveal（mpRoleRevealedRef 在 gameStart 时被 reset 为 false）
+        mpRoleRevealedRef.current=true;
         // 与单机一致：先用遮蔽态渲染棋盘背景，动画结束后才解锁真实 phase
         setGs({...rotatedGs,phase:'ACTION',drawReveal:null,abilityData:{}});
         setAnim(null);
@@ -2913,6 +2975,7 @@ export default function Game(){
   const[sanTargets,setSanTargets]=useState([]); // pre-measured {pi,cx,cy,startX,startY} // SAN damage
   const[swapAnim,setSwapAnim]=useState(false);        // cup shuffle
   const[huntAnim,setHuntAnim]=useState(null);          // scope + vignette {targetIdx}
+  const[cardTransfers,setCardTransfers]=useState([]);   // hand card transfer anims
   const[bewitchAnim,setBewitchAnim]=useState(null);   // horus eye {cx,cy}
   const[hpHealIndices,setHpHealIndices]=useState([]); // HP heal
   const[sanHealIndices,setSanHealIndices]=useState([]); // SAN heal
@@ -3024,6 +3087,32 @@ export default function Game(){
       if(bel){const br=bel.getBoundingClientRect();setBewitchAnim({cx:br.left+br.width/2,cy:br.top+br.height/2});}
       else{setBewitchAnim({cx:window.innerWidth/2,cy:window.innerHeight*0.25});}
       setTimeout(()=>setBewitchAnim(null),1200);
+    }else if(anim?.type==='CARD_TRANSFER'){
+      const{fromPid,dest,toPid,count}=anim;
+      // 测量源点（失去手牌的玩家面板中心）
+      const srcEl=document.querySelector(`[data-pid="${fromPid}"]`);
+      const srcR=srcEl?.getBoundingClientRect();
+      const srcX=srcR?srcR.left+srcR.width/2:window.innerWidth/2;
+      const srcY=srcR?srcR.top+srcR.height/2:window.innerHeight*0.5;
+      // 测量终点
+      let destX,destY;
+      if(dest==='discard'){
+        const dr=discardPileRef.current?.getBoundingClientRect();
+        destX=dr?dr.left+dr.width/2:window.innerWidth*0.45;
+        destY=dr?dr.top+dr.height/2:window.innerHeight*0.45;
+      }else if(dest==='player'){
+        const destEl=document.querySelector(`[data-pid="${toPid}"]`);
+        const pr=destEl?.getBoundingClientRect();
+        destX=pr?pr.left+pr.width/2:window.innerWidth*0.5;
+        destY=pr?pr.top+pr.height/2:window.innerHeight*0.25;
+      }else{
+        // godzone = 同一面板的上部（角色区域）
+        destX=srcX;
+        destY=srcR?srcR.top+srcR.height*0.25:srcY*0.5;
+      }
+      const key=`${fromPid}-${dest}-${toPid??'x'}-${Date.now()}`;
+      setCardTransfers(prev=>[...prev,{srcX,srcY,destX,destY,count,key}]);
+      setTimeout(()=>setCardTransfers(prev=>prev.filter(t=>t.key!==key)),750);
     }else if(anim?.type==='GUILLOTINE'&&anim.hitIndices?.length){
       // Blade impact at ~560ms; shake starts then
       const shakeTimer=setTimeout(()=>{
@@ -3036,6 +3125,7 @@ export default function Game(){
       setHitIndices([]);
       setSanHitIndices([]);
       setSanTargets([]);
+      setCardTransfers([]);
       setHpHealIndices([]);
       setSanHealIndices([]);
     }
@@ -4382,6 +4472,7 @@ export default function Game(){
       {!suppressAnim&&<SanMistOverlay targets={sanTargets}/>}
       {/* Skill overlays */}
       {!suppressAnim&&<SwapCupOverlay active={!!swapAnim} casterName={swapAnim?.casterName||''} targetName={swapAnim?.targetName||''}/>}
+      {!suppressAnim&&<CardTransferOverlay transfers={cardTransfers}/>}
       {!suppressAnim&&<HuntScopeOverlay active={!!huntAnim} cx={huntAnim?.cx??0} cy={huntAnim?.cy??0}/>}
       {!suppressAnim&&<BewitchEyeOverlay active={!!bewitchAnim} cx={bewitchAnim?.cx??0} cy={bewitchAnim?.cy??0}/>}
 
@@ -5660,6 +5751,12 @@ const GLOBAL_STYLES=`
   }
 
   /* Discard card fly — hand (bottom-centre) → discard pile (centre-left area) */
+  @keyframes cardTransferFly {
+    0%   { transform: translate(0,0) scale(1)   rotate(0deg);   opacity:1 }
+    45%  { transform: translate(calc(var(--tx)*0.55), calc(var(--ty)*0.55)) scale(1.12) rotate(-12deg); opacity:1 }
+    100% { transform: translate(var(--tx), var(--ty)) scale(0.72) rotate(-22deg); opacity:0 }
+  }
+
   @keyframes discardCardFly {
     0%   {bottom:14%;left:50%;transform:translateX(-50%) scale(1);opacity:1}
     40%  {bottom:36%;left:38%;transform:translateX(-50%) scale(1.08) rotate(-8deg);opacity:1}
