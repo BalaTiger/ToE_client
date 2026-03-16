@@ -3185,18 +3185,11 @@ export default function Game(){
       const next=pendingGsRef.current;
       pendingGsRef.current=null;
       setAnim(null);
-      if(next){
+      if(next) setGs(prev=>{
         // Never overwrite a win/pending-win state with stale queued state
-        const safeApply=applyNextTurnGsRef.current;
-        if(safeApply){
-          safeApply(next);
-        }else{
-          setGs(prev=>{
-            if(prev?.gameOver||prev?.phase==='PLAYER_WIN_PENDING'||prev?.phase==='TREASURE_WIN')return prev;
-            return next;
-          });
-        }
-      }
+        if(prev?.gameOver||prev?.phase==='PLAYER_WIN_PENDING'||prev?.phase==='TREASURE_WIN')return prev;
+        return next;
+      });
     }
   }
 
@@ -3346,7 +3339,6 @@ export default function Game(){
   // refs 供计时器 useEffect 调用（避免陈旧闭包，必须在 if(!gs) return 之前）
   const endTurnRef=useRef(null);
   const autoDiscardRef=useRef(null);
-  const applyNextTurnGsRef=useRef(null);
 
   // ── 房间倒计时显示（前端独立计时，服务端计时器版本号变化时重置）───
   useEffect(()=>{
@@ -4370,7 +4362,6 @@ export default function Game(){
     }
     setGs(newGs);
   }
-  applyNextTurnGsRef.current=applyNextTurnGs;
 
   function endTurn(){
     if(isBlocked)return;
