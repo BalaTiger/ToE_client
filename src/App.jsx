@@ -4391,7 +4391,11 @@ export default function Game(){
     HUNT_SELECT_TARGET:   '【追捕】选择猎物',
     HUNT_CONFIRM:         myTurn?`[${gs.abilityData?.revCard?.key}] ${gs.abilityData?.revCard?.name} 已亮出！弃出匹配手牌造成2HP，或放弃`:(gs._isMP?'请等待追猎者做出选择…':`[${gs.abilityData?.revCard?.key}] 已亮出`),
     PLAYER_REVEAL_FOR_HUNT:`⚠ ${gs.abilityData?.aiHunterName||'追猎者'} 正在追捕你！请选择一张区域牌亮出`,
-    HUNT_WAIT_REVEAL:myTurn?`等待 ${gs.players[gs.abilityData?.huntTi??1]?.name||'对方'} 亮出区域牌…`:`⚠ 追猎者正在追捕你！请选择一张区域牌亮出（20秒）`,
+    HUNT_WAIT_REVEAL:myTurn
+      ?`等待 ${gs.players[gs.abilityData?.huntTi??1]?.name||'对方'} 亮出区域牌…`
+      :gs.abilityData?.huntTi===0
+        ?`⚠ 追猎者正在追捕你！请选择一张区域牌亮出（20秒）`
+        :`等待 ${gs.players[gs.abilityData?.huntTi??1]?.name||'对方'} 亮出区域牌…`,
     BEWITCH_SELECT_CARD:  '【蛊惑】选择要赠送的手牌',
     GOD_CHOICE:          myTurn?'邪神降临！选择如何回应':(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 回应邪神…`:'邪神降临！选择如何回应'),
     NYA_BORROW:          myTurn?'「千人千貌」——借用已死角色的身份？':(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 借用身份…`:'「千人千貌」——借用已死角色的身份？'),
@@ -4451,9 +4455,9 @@ export default function Game(){
     if(phase==='SWAP_GIVE_CARD')swapGiveCard(idx);
     else if(phase==='BEWITCH_SELECT_CARD')bewitchSelectCard(idx);
     else if(phase==='DISCARD_PHASE')toggleDiscardSelect(idx);
-    else if(phase==='HUNT_CONFIRM'){const c=me.hand[idx],rc=gs.abilityData?.revCard;if(rc&&(c.letter===rc.letter||c.number===rc.number))huntConfirm(idx);}
+    else if(phase==='HUNT_CONFIRM'&&myTurn){const c=me.hand[idx],rc=gs.abilityData?.revCard;if(rc&&(c.letter===rc.letter||c.number===rc.number))huntConfirm(idx);}
     else if(phase==='PLAYER_REVEAL_FOR_HUNT'){const c=me.hand[idx];if(c&&!c.isGod)playerRevealForHunt(idx);}
-    else if(phase==='HUNT_WAIT_REVEAL'&&!myTurn){const c=me.hand[idx];if(c&&!c.isGod)humanRevealForMPHunt(idx);}
+    else if(phase==='HUNT_WAIT_REVEAL'&&!myTurn&&gs.abilityData?.huntTi===0){const c=me.hand[idx];if(c&&!c.isGod)humanRevealForMPHunt(idx);}
     else if(phase==='ACTION'&&myTurn&&!isBlocked){
       const c=me.hand[idx];
       if(c&&c.isGod){
@@ -4467,8 +4471,8 @@ export default function Game(){
     if(phase==='SWAP_GIVE_CARD')return true;
     if(phase==='BEWITCH_SELECT_CARD')return true;
     if(phase==='DISCARD_PHASE'){const sel=gs.abilityData.discardSelected||[];const max=me.hand.length-4;return sel.includes(idx)||sel.length<max;}
-    if(phase==='HUNT_CONFIRM'){const rc=gs.abilityData?.revCard;return!!(rc&&(c.letter===rc.letter||c.number===rc.number));}
-    if(phase==='HUNT_WAIT_REVEAL'&&!myTurn)return!c.isGod;
+    if(phase==='HUNT_CONFIRM'&&myTurn){const rc=gs.abilityData?.revCard;return!!(rc&&(c.letter===rc.letter||c.number===rc.number));}
+    if(phase==='HUNT_WAIT_REVEAL'&&!myTurn&&gs.abilityData?.huntTi===0)return!c.isGod;
     if(phase==='PLAYER_REVEAL_FOR_HUNT')return!c.isGod; // only zone cards
     // God card in ACTION phase: upgrade (same god) is always allowed; worship/convert requires slot
     if(phase==='ACTION'&&myTurn&&c.isGod){
@@ -4735,7 +4739,7 @@ export default function Game(){
         <div ref={handAreaRef} style={{background:'#120900',border:`1.5px solid ${myTurn?'#3a2010':'#2a1a08'}`,borderRadius:3,padding:isMobile?'8px 9px':'11px 13px'}}>
           <div style={{display:'flex',alignItems:'center',marginBottom:9,gap:8}}>
             <span style={{fontFamily:"'Cinzel',serif",color:phase==='DISCARD_PHASE'||phase==='PLAYER_REVEAL_FOR_HUNT'?'#882020':'#3a2510',fontSize:10,letterSpacing:1}}>
-              {phase==='DISCARD_PHASE'?`⚠ 手牌超限 (${me.hand.length}/${effectiveHandLimit})`:phase==='PLAYER_REVEAL_FOR_HUNT'?'⚠ 选择亮出一张区域牌':phase==='HUNT_WAIT_REVEAL'&&!myTurn?'⚠ 选择亮出一张区域牌':`手牌 (${me.hand.length}/${effectiveHandLimit})`}
+              {phase==='DISCARD_PHASE'?`⚠ 手牌超限 (${me.hand.length}/${effectiveHandLimit})`:phase==='PLAYER_REVEAL_FOR_HUNT'?'⚠ 选择亮出一张区域牌':phase==='HUNT_WAIT_REVEAL'&&!myTurn&&gs.abilityData?.huntTi===0?'⚠ 选择亮出一张区域牌':`手牌 (${me.hand.length}/${effectiveHandLimit})`}
             </span>
             {(phase==='ACTION'&&myTurn&&!isBlocked||cancelable)&&(
               <div style={{display:'flex',gap:8,marginLeft:'auto',flexWrap:'wrap',position:'relative',zIndex:200}}>
