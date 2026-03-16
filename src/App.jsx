@@ -3469,17 +3469,16 @@ export default function Game(){
       return g;
     }
 
-    setGs(p=>{
-      if(!p)return p;
-      const base=resolveToAction({...p,_mpEndTurn:undefined});
-      const win=checkWin(base.players,true);if(win)return{...base,gameOver:win};
-      // 检查手牌超限
-      if(base.players[0].hand.length>4){
-        return{...base,phase:'DISCARD_PHASE',abilityData:{discardSelected:[]}};
-      }
-      // 结束回合（直接跳到下一回合，超时路径不播摸牌动画）
-      return startNextTurn({...base,currentTurn:0});
-    });
+    // 直接从 gs 读取，避免 functional update（functional update 内无法调用 setAnim）
+    const base=resolveToAction({...gs,_mpEndTurn:undefined});
+    const win=checkWin(base.players,true);
+    if(win){setGs({...base,gameOver:win});return;}
+    if(base.players[0].hand.length>4){
+      setGs({...base,phase:'DISCARD_PHASE',abilityData:{discardSelected:[]}});
+      return;
+    }
+    const nextGs=startNextTurn({...base,currentTurn:0});
+    applyNextTurnGs(nextGs);
   },[gs?._mpEndTurn,isBlocked]);
 
   // ── 多人游戏：弃牌计时器（15s）─────────────────────────────────
@@ -3753,15 +3752,18 @@ export default function Game(){
                 <div style={{fontFamily:"'Cinzel',serif",color:'#8060a0',fontSize:10,letterSpacing:3,marginBottom:8,textTransform:'uppercase'}}>— 房间号 —</div>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
                   <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:28,color:'#e0c0f8',letterSpacing:6,textShadow:'0 0 20px #a080d066'}}>{roomModal.roomId}</div>
-                  <button onClick={()=>{try{navigator.clipboard.writeText(roomModal.roomId).then(()=>addToast('房间号已复制'));}catch{addToast('复制失败，请手动复制');}}} title="复制房间号" style={{
-                    background:'none',border:'1px solid #5a3a80',borderRadius:4,
-                    padding:'4px 7px',cursor:'pointer',color:'#a080c8',fontSize:16,lineHeight:1,
-                    display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,
+                  <button onClick={()=>{try{navigator.clipboard.writeText(roomModal.roomId).then(()=>addToast('✓ 房间号已复制')).catch(()=>addToast('复制失败，请手动复制'));}catch{addToast('复制失败，请手动复制');}}} title="复制房间号" style={{
+                    background:'#1a0d2e',border:'1px solid #7a50b0',borderRadius:4,
+                    padding:'5px 10px',cursor:'pointer',color:'#c8a0e8',
+                    fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:1,
+                    display:'inline-flex',alignItems:'center',gap:5,flexShrink:0,
+                    boxShadow:'0 0 8px #5a3a8044',
                   }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#c8a0e8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                     </svg>
+                    复制
                   </button>
                 </div>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:8}}>
@@ -4298,6 +4300,25 @@ export default function Game(){
     triggerAnimQueue(queue,pendingGs);
   }
 
+  // 多人游戏：当下一回合是他人时，为当前玩家播放翻牌动画（否则他们的本地 gs 更新无动画）
+  function applyNextTurnGs(newGs){
+    if(newGs._isMP&&newGs.currentTurn!==0){
+      const ph=newGs.phase;
+      const drawnCard=ph==='GOD_CHOICE'?newGs.abilityData?.godCard:newGs.drawReveal?.card;
+      if(drawnCard&&(ph==='DRAW_REVEAL'||ph==='GOD_CHOICE'||ph==='DRAW_SELECT_TARGET')){
+        const drawerName=newGs.players[newGs.currentTurn]?.name||'???';
+        const drawerPid=newGs.currentTurn;
+        receivedGsRef.current=true; // 遮蔽态不对外广播
+        pendingGsRef.current=newGs;
+        animQueueRef.current=[];
+        setGs({...newGs,phase:'ACTION',drawReveal:null,abilityData:{}});
+        setAnim({type:'DRAW_CARD',card:drawnCard,triggerName:drawerName,targetPid:drawerPid});
+        return;
+      }
+    }
+    setGs(newGs);
+  }
+
   function endTurn(){
     if(isBlocked)return;
     if(me.hand.length>effectiveHandLimit){setGs({...gs,phase:'DISCARD_PHASE',abilityData:{discardSelected:[]}});return;}
@@ -4305,7 +4326,7 @@ export default function Game(){
     if(newGs.currentTurn===0&&newGs.drawReveal?.card){
       const statQ=buildAnimQueue(gs,newGs);
       triggerAnimQueue([{type:'YOUR_TURN'},{type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:'你'},...statQ],newGs);
-    }else setGs(newGs);
+    }else applyNextTurnGs(newGs);
   }
   endTurnRef.current=endTurn;
 
@@ -4321,7 +4342,7 @@ export default function Game(){
       if(newGs.currentTurn===0&&newGs.drawReveal?.card){
         const statQ=buildAnimQueue(gs,newGs);
         triggerAnimQueue([{type:'YOUR_TURN'},{type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:'你'},...statQ],newGs);
-      }else setGs(newGs);
+      }else applyNextTurnGs(newGs);
       return;
     }
     const Disc=[...gs.discard,...discarded];
