@@ -3185,11 +3185,18 @@ export default function Game(){
       const next=pendingGsRef.current;
       pendingGsRef.current=null;
       setAnim(null);
-      if(next) setGs(prev=>{
+      if(next){
         // Never overwrite a win/pending-win state with stale queued state
-        if(prev?.gameOver||prev?.phase==='PLAYER_WIN_PENDING'||prev?.phase==='TREASURE_WIN')return prev;
-        return next;
-      });
+        const safeApply=applyNextTurnGsRef.current;
+        if(safeApply){
+          safeApply(next);
+        }else{
+          setGs(prev=>{
+            if(prev?.gameOver||prev?.phase==='PLAYER_WIN_PENDING'||prev?.phase==='TREASURE_WIN')return prev;
+            return next;
+          });
+        }
+      }
     }
   }
 
@@ -3339,6 +3346,7 @@ export default function Game(){
   // refs 供计时器 useEffect 调用（避免陈旧闭包，必须在 if(!gs) return 之前）
   const endTurnRef=useRef(null);
   const autoDiscardRef=useRef(null);
+  const applyNextTurnGsRef=useRef(null);
 
   // ── 房间倒计时显示（前端独立计时，服务端计时器版本号变化时重置）───
   useEffect(()=>{
@@ -3848,10 +3856,12 @@ export default function Game(){
                     :`⏳ ${cdSecondsLeft}s 后将踢出未准备的玩家`}
                 </div>
               )}
-              <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#6a5080',fontSize:11,fontStyle:'italic',fontFamily:"'IM Fell English','Georgia',serif"}}>
-                <span style={{display:'inline-block',width:10,height:10,border:'1.5px solid #5a3a80',borderTopColor:'#a080d0',borderRadius:'50%',animation:'spinLoader 0.9s linear infinite'}}/>
-                等待其他玩家就绪…
-              </div>
+              {!roomModal.players.every(p=>p.ready)&&(
+                <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#6a5080',fontSize:11,fontStyle:'italic',fontFamily:"'IM Fell English','Georgia',serif"}}>
+                  <span style={{display:'inline-block',width:10,height:10,border:'1.5px solid #5a3a80',borderTopColor:'#a080d0',borderRadius:'50%',animation:'spinLoader 0.9s linear infinite'}}/>
+                  等待其他玩家就绪…
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -4342,6 +4352,8 @@ export default function Game(){
 
   // 多人游戏：当下一回合是他人时，为当前玩家播放翻牌动画（否则他们的本地 gs 更新无动画）
   function applyNextTurnGs(newGs){
+    // Guard: never overwrite win/pending-win state
+    if(newGs&&(newGs.phase==='PLAYER_WIN_PENDING'||newGs.phase==='TREASURE_WIN'))return setGs(p=>p?.gameOver||p?.phase==='PLAYER_WIN_PENDING'||p?.phase==='TREASURE_WIN'?p:newGs);
     if(newGs._isMP&&newGs.currentTurn!==0){
       const ph=newGs.phase;
       const drawnCard=ph==='GOD_CHOICE'?newGs.abilityData?.godCard:newGs.drawReveal?.card;
@@ -4358,6 +4370,7 @@ export default function Game(){
     }
     setGs(newGs);
   }
+  applyNextTurnGsRef.current=applyNextTurnGs;
 
   function endTurn(){
     if(isBlocked)return;
@@ -4528,7 +4541,7 @@ export default function Game(){
   // 多人游戏中 HUNT_CONFIRM 非追猎者不显示操作按钮区域
   const cancelable=['SWAP_SELECT_TARGET','SWAP_GIVE_CARD','HUNT_SELECT_TARGET',...(phase==='HUNT_CONFIRM'&&gs._isMP&&!myTurn?[]:['HUNT_CONFIRM']),'BEWITCH_SELECT_CARD','BEWITCH_SELECT_TARGET'].includes(phase);
   // In HUNT_CONFIRM, 放弃追捕 replaces ✕取消 — never show both
-  const showCancelBtn=cancelable&&phase!=='HUNT_CONFIRM';
+  const showCancelBtn=cancelable&&phase!=='HUNT_CONFIRM'&&(!gs._isMP||myTurn);
 
 
   function handleAIClick(pi){
