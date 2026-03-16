@@ -370,9 +370,12 @@ function startNextTurn(gs){
   }else if(gs._isMP){
     // Multiplayer: next player is human — draw their card and enter DRAW_REVEAL
     const res=playerDrawCard(P,D,Disc,next);
-    P=res.P;D=res.D;Disc=res.Disc;if(res.effectMsgs.length)L.push(...res.effectMsgs);
+    P=res.P;D=res.D;Disc=res.Disc;
+    // 记录摸牌信息到日志（与单机AI摸牌保持一致：[key] 名称）
+    if(res.drawnCard)L.push(`${P[next].name} 摸到 [${res.drawnCard.key}] ${res.drawnCard.name}`);
+    if(res.effectMsgs.length)L.push(...res.effectMsgs);
     if(!res.drawnCard){L.push('牌堆耗尽！');return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,phase:'ACTION',drawReveal:null,abilityData:{},skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false};}
-    if(res.needGodChoice){const win2=checkWin(P,true);if(win2)return{...gs,players:P,deck:D,discard:Disc,log:[...L,...res.effectMsgs],gameOver:win2};return{...gs,players:P,deck:D,discard:Disc,log:[...L,...res.effectMsgs],currentTurn:next,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:res.drawnCard},drawReveal:null,selectedCard:null,_isMP:true};}
+    if(res.needGodChoice){const win2=checkWin(P,true);if(win2)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win2};return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:res.drawnCard},drawReveal:null,selectedCard:null,_isMP:true};}
     const win=checkWin(P,true);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
     return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,
       phase:res.needTarget?'DRAW_SELECT_TARGET':'DRAW_REVEAL',
@@ -966,7 +969,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting}){
           textShadow:isEvil?'0 0 16px #9020cc88':'0 0 16px #c8a96e88',
           textTransform:'uppercase',whiteSpace:'nowrap',
           animation:'animFadeIn 0.4s ease-out 1.2s both',
-        }}>触发者：{triggerName}</div>
+        }}>{triggerName} 翻开卡牌</div>
       )}
 
       {/* Card wrapper: rises + flips */}
@@ -2845,7 +2848,33 @@ export default function Game(){
         setAnim(null);
         setRoleRevealAnim({role:rotated.players[0].role,pendingGs:rotated});
       }else{
-        setGs(rotated);
+        // 检测是否应该为旁观者播放翻牌动画
+        // 条件：当前轮次不是自己（currentTurn≠0），且 gs 包含刚摸的牌信息
+        const nonSelfDraw=!rotated.gameOver&&rotated.currentTurn!==0&&(
+          rotated.phase==='DRAW_REVEAL'||
+          rotated.phase==='DRAW_SELECT_TARGET'||
+          rotated.phase==='GOD_CHOICE'
+        );
+        if(nonSelfDraw){
+          const drawnCard=rotated.phase==='GOD_CHOICE'
+            ?rotated.abilityData?.godCard
+            :rotated.drawReveal?.card;
+          if(drawnCard){
+            const drawerName=rotated.players[rotated.currentTurn]?.name||'???';
+            const drawerPid=rotated.currentTurn;
+            // 用遮蔽态先渲染，避免 DrawRevealModal/GOD_CHOICE 弹出
+            setGs({...rotated,phase:'ACTION',drawReveal:null,abilityData:{}});
+            receivedGsRef.current=true; // 防止 gs sync useEffect 广播遮蔽态
+            // 播放飞牌+翻牌动画，pendingGs 为真实态
+            pendingGsRef.current=rotated;
+            animQueueRef.current=[];
+            setAnim({type:'DRAW_CARD',card:drawnCard,triggerName:drawerName,targetPid:drawerPid});
+          }else{
+            setGs(rotated);
+          }
+        }else{
+          setGs(rotated);
+        }
       }
     });
     // emojiReceived：收到其他玩家发的表情
@@ -3722,7 +3751,19 @@ export default function Game(){
               </div>
               <div style={{background:'#160d22',border:'1px solid #5a3a80',borderRadius:4,padding:'16px',textAlign:'center',marginBottom:20}}>
                 <div style={{fontFamily:"'Cinzel',serif",color:'#8060a0',fontSize:10,letterSpacing:3,marginBottom:8,textTransform:'uppercase'}}>— 房间号 —</div>
-                <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:28,color:'#e0c0f8',letterSpacing:6,textShadow:'0 0 20px #a080d066'}}>{roomModal.roomId}</div>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
+                  <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:28,color:'#e0c0f8',letterSpacing:6,textShadow:'0 0 20px #a080d066'}}>{roomModal.roomId}</div>
+                  <button onClick={()=>{try{navigator.clipboard.writeText(roomModal.roomId).then(()=>addToast('房间号已复制'));}catch{addToast('复制失败，请手动复制');}}} title="复制房间号" style={{
+                    background:'none',border:'1px solid #5a3a80',borderRadius:4,
+                    padding:'4px 7px',cursor:'pointer',color:'#a080c8',fontSize:16,lineHeight:1,
+                    display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,
+                  }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                  </button>
+                </div>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:8}}>
                   <div style={{color:'#6a5080',fontSize:10,fontStyle:'italic'}}>将此房间号分享给其他玩家</div>
                   <div style={{fontFamily:"'Cinzel',serif",fontSize:10,color:'#8060a0',letterSpacing:1}}>房间人数：<span style={{color:'#c8a0e8'}}>{roomModal.count||roomModal.players.length}</span>/{roomModal.max||12}</div>
