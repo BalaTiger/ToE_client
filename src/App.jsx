@@ -1800,12 +1800,15 @@ function SwapCupOverlay({active,casterName,targetName}){
 function HuntScopeOverlay({active,cx,cy}){
   if(!active)return null;
   // cx, cy are the exact viewport pixel centre of the target panel
+  // Vignette centre tracks the target so the darkening focus matches the reticle
+  const vx=cx!=null?(cx/window.innerWidth*100).toFixed(1)+'%':'50%';
+  const vy=cy!=null?(cy/window.innerHeight*100).toFixed(1)+'%':'50%';
   return(
     <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:600}}>
-      {/* Crimson vignette */}
+      {/* Crimson vignette — centred on target, not screen centre */}
       <div style={{
         position:'absolute',inset:0,
-        background:'radial-gradient(ellipse at 50% 50%, transparent 28%, rgba(60,0,0,0.55) 62%, rgba(15,0,0,0.88) 100%)',
+        background:`radial-gradient(ellipse at ${vx} ${vy}, transparent 28%, rgba(60,0,0,0.55) 62%, rgba(15,0,0,0.88) 100%)`,
         animation:'huntVigFade 1.2s ease both',
       }}/>
       {/* Scope frame — starts offset from centre, wobbles, then locks dead-centre */}
@@ -1847,12 +1850,14 @@ function HuntScopeOverlay({active,cx,cy}){
 // ── Bewitch Eye Overlay — Hunt-style scope with Horus eye ────────
 function BewitchEyeOverlay({active,cx,cy}){
   if(!active)return null;
+  const vx=cx!=null?(cx/window.innerWidth*100).toFixed(1)+'%':'50%';
+  const vy=cy!=null?(cy/window.innerHeight*100).toFixed(1)+'%':'50%';
   return(
     <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:600}}>
-      {/* Same crimson vignette as hunt */}
+      {/* Vignette centred on target */}
       <div style={{
         position:'absolute',inset:0,
-        background:'radial-gradient(ellipse at 50% 50%, transparent 28%, rgba(40,0,60,0.55) 62%, rgba(8,0,18,0.88) 100%)',
+        background:`radial-gradient(ellipse at ${vx} ${vy}, transparent 28%, rgba(40,0,60,0.55) 62%, rgba(8,0,18,0.88) 100%)`,
         animation:'huntVigFade 1.2s ease both',
       }}/>
       {/* Horus eye — tracks to target centre, same motion as hunt scope */}
@@ -2646,11 +2651,13 @@ export default function Game(){
   const [isDisconnected,setIsDisconnected]=useState(false);
   const [mpTurnSec,setMpTurnSec]=useState(null);       // 回合倒计时剩余秒数（显示用）
   const [mpDiscardSec,setMpDiscardSec]=useState(null); // 弃牌阶段倒计时
+  const [mpHuntSec,setMpHuntSec]=useState(null);       // 追捕亮牌倒计时（被追捕方显示）
   // 房间倒计时显示（前端独立计时）
   const [cdSecondsLeft,setCdSecondsLeft]=useState(null);
   const [cdType,setCdType]=useState(null);   // 'start' | 'kick'
   const cdIntervalRef=useRef(null);
   const mpTurnIntervalRef=useRef(null);
+  const mpHuntIntervalRef=useRef(null);
   const mpDiscardIntervalRef=useRef(null);
   // 表情功能
   const [flyingEmojis,setFlyingEmojis]=useState([]);  // [{id,emoji,startX,startY,endX,endY,arcHeight,durationMs}]
@@ -3326,20 +3333,28 @@ export default function Game(){
   const huntRevealTimerRef=useRef(null);
   useEffect(()=>{
     if(!isMultiplayer||!gs||gs.gameOver)return;
-    // 只对被追捕方（非 myTurn）生效
-    if(gs.phase!=='HUNT_WAIT_REVEAL'||myTurn)return;
-    const t=setTimeout(()=>{
-      // 超时：随机选一张非邪神牌亮出
-      const zoneCards=me.hand.filter(c=>!c.isGod);
-      if(!zoneCards.length)return;
-      const rc=zoneCards[0|Math.random()*zoneCards.length];
-      const L=[...gs.log,`(超时) ${me.name} 随机亮出 [${rc.key}] ${rc.name}`];
-      const newGs={...gs,log:L,phase:'HUNT_CONFIRM',
-        abilityData:{...gs.abilityData,revCard:rc}};
-      setGs(newGs);
-    },20000);
-    huntRevealTimerRef.current=t;
-    return()=>{clearTimeout(t);huntRevealTimerRef.current=null;};
+    // 被追捕方（!myTurn）显示倒计时并执行超时逻辑
+    // 追猎者（myTurn）也进入此 phase，两边都显示倒计时
+    if(gs.phase!=='HUNT_WAIT_REVEAL')return;
+    setMpHuntSec(20);
+    mpHuntIntervalRef.current=setInterval(()=>{
+      setMpHuntSec(s=>{if(s===null||s<=1){clearInterval(mpHuntIntervalRef.current);return 0;}return s-1;});
+    },1000);
+    if(!myTurn){
+      // 只有被追捕方执行超时逻辑
+      const t=setTimeout(()=>{
+        const zoneCards=me.hand.filter(c_=>!c_.isGod);
+        if(!zoneCards.length)return;
+        const rc=zoneCards[0|Math.random()*zoneCards.length];
+        const L=[...gs.log,`(超时) ${me.name} 随机亮出 [${rc.key}] ${rc.name}`];
+        setGs({...gs,log:L,phase:'HUNT_CONFIRM',abilityData:{...gs.abilityData,revCard:rc}});
+      },20000);
+      huntRevealTimerRef.current=t;
+    }
+    return()=>{
+      clearTimeout(huntRevealTimerRef.current);huntRevealTimerRef.current=null;
+      clearInterval(mpHuntIntervalRef.current);setMpHuntSec(null);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[gs?.phase,gs?.currentTurn,isMultiplayer]);
 
@@ -4677,6 +4692,11 @@ export default function Game(){
           {isMultiplayer&&mpDiscardSec!==null&&phase==='DISCARD_PHASE'&&(
             <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:mpDiscardSec<=5?'#e05030':'#e09030',letterSpacing:1,flexShrink:0}}>
               ⏱ 弃牌 {mpDiscardSec}s
+            </div>
+          )}
+          {isMultiplayer&&mpHuntSec!==null&&phase==='HUNT_WAIT_REVEAL'&&(
+            <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:mpHuntSec<=5?'#e05030':mpHuntSec<=10?'#e09030':'#cc8030',letterSpacing:1,flexShrink:0}}>
+              ⏱ 亮牌 {mpHuntSec}s
             </div>
           )}
         </div>
