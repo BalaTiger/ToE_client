@@ -3140,20 +3140,25 @@ export default function Game(){
       setTimeout(()=>setSwapAnim(null),900);
     }else if(anim?.type==='SKILL_HUNT'){
       const ti=anim.targetIdx??1;
-      // Measure actual panel centre from DOM — precise regardless of screen size
-      const el=document.querySelector(`[data-pid="${ti}"]`);
-      if(el){
-        const r=el.getBoundingClientRect();
-        setHuntAnim({cx:r.left+r.width/2, cy:r.top+r.height/2});
-      }else{
-        setHuntAnim({cx:window.innerWidth/2, cy:window.innerHeight*0.25});
-      }
+      // 双 rAF：第一帧触发 layout，第二帧读取稳定后的位置
+      // 同时排除 screenShake 偏移：用容器基准消除水平位移
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        const el=document.querySelector(`[data-pid="${ti}"]`);
+        if(el){
+          const r=el.getBoundingClientRect();
+          setHuntAnim({cx:r.left+r.width/2, cy:r.top+r.height/2});
+        }else{
+          setHuntAnim({cx:window.innerWidth/2, cy:window.innerHeight*0.25});
+        }
+      }));
       setTimeout(()=>setHuntAnim(null),1300);
     }else if(anim?.type==='SKILL_BEWITCH'){
       const bti=anim.targetIdx??1;
-      const bel=document.querySelector(`[data-pid="${bti}"]`);
-      if(bel){const br=bel.getBoundingClientRect();setBewitchAnim({cx:br.left+br.width/2,cy:br.top+br.height/2});}
-      else{setBewitchAnim({cx:window.innerWidth/2,cy:window.innerHeight*0.25});}
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        const bel=document.querySelector(`[data-pid="${bti}"]`);
+        if(bel){const br=bel.getBoundingClientRect();setBewitchAnim({cx:br.left+br.width/2,cy:br.top+br.height/2});}
+        else{setBewitchAnim({cx:window.innerWidth/2,cy:window.innerHeight*0.25});}
+      }));
       setTimeout(()=>setBewitchAnim(null),1200);
     }else if(anim?.type==='CARD_TRANSFER'){
       const{fromPid,dest,toPid,count}=anim;
@@ -3388,16 +3393,16 @@ export default function Game(){
   // ── 多人游戏：回合计时器（45s）─────────────────────────────────
   // 只在回合切换时重置（currentTurn/_turnKey 变化），不监听 phase 避免每次 phase 变化都重置
   const mpTurnTimeoutRef=useRef(null);
-  const mpTurnSecRef=useRef(45);       // mirrors mpTurnSec for reading in effects
-  const mpTurnPausedRemRef=useRef(null); // stored seconds when paused for HUNT_WAIT_REVEAL
+  const mpTurnStartRef=useRef(null);    // Date.now() when current turn timer started
+  const mpTurnPausedElapsedRef=useRef(null); // ms elapsed before HUNT_WAIT_REVEAL pause
   useEffect(()=>{
     if(!isMultiplayer||!gs||gs.gameOver||gs.currentTurn!==0)return;
-    mpTurnPausedRemRef.current=null; // 新回合清除暂停记录
-    setMpTurnSec(45);mpTurnSecRef.current=45;
+    mpTurnPausedElapsedRef.current=null; // 新回合清除暂停记录
+    mpTurnStartRef.current=Date.now();
+    setMpTurnSec(45);
     mpTurnIntervalRef.current=setInterval(()=>{
       setMpTurnSec(s=>{
         const next=(s===null||s<=1)?0:s-1;
-        mpTurnSecRef.current=next;
         if(next===0)clearInterval(mpTurnIntervalRef.current);
         return next;
       });
@@ -3417,36 +3422,39 @@ export default function Game(){
     setMpTurnSec(null);
   },[isMultiplayer,gs?.phase]);
 
-  // 进入 HUNT_WAIT_REVEAL：暂停计时（保存剩余秒数，退出后续算）
+  // 进入 HUNT_WAIT_REVEAL：暂停计时（保存已消耗 ms，退出后续算剩余时间）
   useEffect(()=>{
     if(!isMultiplayer||gs?.phase!=='HUNT_WAIT_REVEAL')return;
-    // 保存当前剩余秒数
-    mpTurnPausedRemRef.current=mpTurnSecRef.current||0;
-    // 停止 interval 和 timeout（但不清 mpTurnSec 显示——隐藏逻辑由 JSX 负责）
+    // 计算已消耗时间（ms）
+    const elapsed=mpTurnStartRef.current?Date.now()-mpTurnStartRef.current:0;
+    mpTurnPausedElapsedRef.current=elapsed;
+    // 停止 interval 和 timeout（不清 mpTurnSec 显示——JSX 中由 phase 条件隐藏）
     clearTimeout(mpTurnTimeoutRef.current);mpTurnTimeoutRef.current=null;
     clearInterval(mpTurnIntervalRef.current);
   },[isMultiplayer,gs?.phase]);
 
-  // 离开 HUNT_WAIT_REVEAL（进入 HUNT_CONFIRM 等）：从保存的秒数续计
+  // 离开 HUNT_WAIT_REVEAL（进入 HUNT_CONFIRM 等）：从暂停时刻续计剩余时间
   useEffect(()=>{
     if(!isMultiplayer||!gs||gs.gameOver)return;
     if(gs.phase==='HUNT_WAIT_REVEAL')return; // 还在等待中
-    if(mpTurnPausedRemRef.current===null)return; // 没有暂停记录
+    if(mpTurnPausedElapsedRef.current===null)return; // 没有暂停记录
     if(gs.currentTurn!==0)return; // 不是我的回合
-    const rem=mpTurnPausedRemRef.current;
-    mpTurnPausedRemRef.current=null;
-    if(rem<=0)return; // 时间已耗尽，直接超时
-    setMpTurnSec(rem);mpTurnSecRef.current=rem;
+    const elapsedBefore=mpTurnPausedElapsedRef.current;
+    mpTurnPausedElapsedRef.current=null;
+    const remMs=Math.max(0,45000-elapsedBefore);
+    const remSec=Math.round(remMs/1000);
+    if(remSec<=0){setGs(p=>p?{...p,_mpEndTurn:true}:p);return;}
+    // 重置起点为"现在−已消耗时间"，这样主 effect cleanup 能正确计算剩余
+    mpTurnStartRef.current=Date.now()-elapsedBefore;
+    setMpTurnSec(remSec);
     mpTurnIntervalRef.current=setInterval(()=>{
       setMpTurnSec(s=>{
         const next=(s===null||s<=1)?0:s-1;
-        mpTurnSecRef.current=next;
         if(next===0)clearInterval(mpTurnIntervalRef.current);
         return next;
       });
     },1000);
-    mpTurnTimeoutRef.current=setTimeout(()=>setGs(p=>p?{...p,_mpEndTurn:true}:p),rem*1000);
-    return()=>{clearTimeout(mpTurnTimeoutRef.current);mpTurnTimeoutRef.current=null;clearInterval(mpTurnIntervalRef.current);}
+    mpTurnTimeoutRef.current=setTimeout(()=>setGs(p=>p?{...p,_mpEndTurn:true}:p),remMs);
   },[isMultiplayer,gs?.phase,gs?.currentTurn,gs?.gameOver]);
 
   // HUNT_WAIT_REVEAL 期间 45s 计时暂停 + 被追捕者 20s 超时随机亮牌
@@ -4640,7 +4648,7 @@ export default function Game(){
 
   const skillLimited=gs.skillUsed&&ri.skillLimited;
 
-  return(
+  return(<>
     <div style={{minHeight:'100vh',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:7,padding:isMobile?'6px 8px':'8px 10px',position:'relative',overflowX:'hidden',filter:gammaFilter,
     animation:deathShake?'deathShakeAnim 2.0s ease-in-out':screenShake?'screenShakeAnim 0.38s ease-in-out':undefined,
     }}>
@@ -4678,8 +4686,6 @@ export default function Game(){
       {/* Skill overlays */}
       {!suppressAnim&&<SwapCupOverlay active={!!swapAnim} casterName={swapAnim?.casterName||''} targetName={swapAnim?.targetName||''}/>}
       {!suppressAnim&&<CardTransferOverlay transfers={cardTransfers}/>}
-      {!suppressAnim&&<HuntScopeOverlay active={!!huntAnim} cx={huntAnim?.cx??0} cy={huntAnim?.cy??0}/>}
-      {!suppressAnim&&<BewitchEyeOverlay active={!!bewitchAnim} cx={bewitchAnim?.cx??0} cy={bewitchAnim?.cy??0}/>}
 
       {/* Turn indicator — shown during AI turns */}
       {gs.phase==='AI_TURN'&&gs.currentTurn!==0&&!anim&&!gs._isMP&&(()=>{
@@ -5602,7 +5608,10 @@ export default function Game(){
       <GammaSlider gamma={gamma} onChange={handleGamma}/>
       <style>{GLOBAL_STYLES}</style>
     </div>
-  );
+    {/* Hunt/Bewitch overlays rendered OUTSIDE the filtered container to avoid position:fixed coordinate mismatch */}
+    {!suppressAnim&&<HuntScopeOverlay active={!!huntAnim} cx={huntAnim?.cx??0} cy={huntAnim?.cy??0}/>}
+    {!suppressAnim&&<BewitchEyeOverlay active={!!bewitchAnim} cx={bewitchAnim?.cx??0} cy={bewitchAnim?.cy??0}/>}
+  </>);
 }
 // ══════════════════════════════════════════════════════════════
 const smallBtnStyle={
