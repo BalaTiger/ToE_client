@@ -4312,8 +4312,6 @@ export default function Game(){
   function huntConfirm(myCardIdx){
     const{huntTi,revCard}=gs.abilityData;
     let P=copyPlayers(gs.players),Disc=[...gs.discard];const L=[...gs.log];
-    const newAbandoned=[...(gs.huntAbandoned||[]),huntTi];
-
     if(myCardIdx>=0){
       const dc=P[0].hand.splice(myCardIdx,1)[0];Disc.push(dc);
       P[huntTi].hp=clamp(P[huntTi].hp-2);L.push(`弃 [${dc.key}] → ${P[huntTi].name} 受 2HP 伤害`);
@@ -4331,10 +4329,11 @@ export default function Game(){
         if(P[huntTi].godZone?.length){Disc.push(...P[huntTi].godZone);P[huntTi].godZone=[];P[huntTi].godName=null;P[huntTi].godLevel=0;}
       }
       const win=checkWin(P,gs._isMP);
-      const newGs={...gs,players:P,discard:Disc,log:L,abilityData:{},phase:'ACTION',skillUsed:true, huntAbandoned:newAbandoned, ...(win?{gameOver:win}:{})};
+      const newGs={...gs,players:P,discard:Disc,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...(win?{gameOver:win}:{})};
       const queue=buildAnimQueue(gs,newGs);
       if(queue.length) triggerAnimQueue(queue,newGs); else setGs(newGs);
     }else{
+      const newAbandoned=[...(gs.huntAbandoned||[]),huntTi];
       L.push(`放弃追捕 ${P[huntTi].name}`);
       setGs({...gs,players:P,log:L,phase:'ACTION',huntAbandoned:newAbandoned,
         abilityData:{...gs.abilityData,huntTi:undefined,revCard:undefined},skillUsed:true});
@@ -6195,4 +6194,3 @@ const GLOBAL_STYLES=`
     50%    {opacity:1;   filter:brightness(1.35)}
   }
 `;
-
