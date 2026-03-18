@@ -252,7 +252,7 @@ function aiDrawAndApply(ci,ps,deck,disc){
     let L2=[];
     const gr=aiHandleGodCard(ci,drawnCard,P,D,Disc,L2);
     P=gr.P;D=gr.D;Disc=gr.Disc;
-    const win2=checkWin(P,gs._isMP);if(win2)return{P,D,Disc,drawnCard,effectMsgs:L2,_godWin:win2};
+    const win2=checkWin(P,false);if(win2)return{P,D,Disc,drawnCard,effectMsgs:L2,_godWin:win2};
     return{P,D,Disc,drawnCard,effectMsgs:L2};
   }
   let ti=null;
@@ -1257,43 +1257,33 @@ function YourTurnAnim({name}){
 }
 
 // ── Guillotine Death Animation ────────────────────────────────
-function GuillotineAnim({hitIndices}){
-  const[targets,setTargets]=useState([]);
-  const[phase,setPhase]=useState('falling'); // falling → impact → shatter
-  const[shards]=useState(()=>
-    Array.from({length:28},(_,i)=>{
-      const angle=(i/28)*Math.PI*2+Math.random()*0.5;
-      const dist=70+Math.random()*140;
+// GuillotineAnim now receives pre-measured targets from parent useEffect (same as HuntScope)
+function GuillotineAnim({targets}){
+  const[phase,setPhase]=React.useState('falling');
+  const[shards]=React.useState(()=>
+    Array.from({length:26},(_,i)=>{
+      const angle=(i/26)*Math.PI*2+Math.random()*0.4;
+      const dist=60+Math.random()*130;
       return{
-        w:8+Math.random()*24, h:5+Math.random()*16,
-        tx:Math.cos(angle)*dist, ty:Math.sin(angle)*dist-50,
-        rot:(Math.random()-0.5)*440,
-        delay:i*0.012,
-        hue:10+Math.random()*30, sat:15+Math.random()*25, lit:12+Math.random()*18,
+        w:6+Math.random()*20, h:4+Math.random()*14,
+        tx:Math.cos(angle)*dist, ty:Math.sin(angle)*dist-40,
+        rot:(Math.random()-0.5)*400,
+        delay:i*0.011,
+        hue:10+Math.random()*25, sat:12+Math.random()*22, lit:10+Math.random()*16,
       };
     })
   );
 
-  useEffect(()=>{
-    const measured=hitIndices.map(idx=>{
-      const el=document.querySelector(`[data-pid="${idx}"]`);
-      if(!el)return null;
-      const r=el.getBoundingClientRect();
-      return{x:r.left,y:r.top,w:r.width,h:r.height,cx:r.left+r.width/2,cy:r.top+r.height/2};
-    }).filter(Boolean);
-    setTargets(measured);
-    const t1=setTimeout(()=>setPhase('impact'),560);
-    const t2=setTimeout(()=>setPhase('shatter'),640);
+  React.useEffect(()=>{
+    const t1=setTimeout(()=>setPhase('impact'),540);
+    const t2=setTimeout(()=>setPhase('shatter'),620);
     return()=>{clearTimeout(t1);clearTimeout(t2);};
   },[]);
 
+  if(!targets||!targets.length)return null;
+
   return(
     <div style={{position:'fixed',inset:0,zIndex:1400,pointerEvents:'none',overflow:'hidden'}}>
-      {/* Screen shake — whole-viewport scale+translate jitter */}
-      {(phase==='impact'||phase==='shatter')&&(
-        <div style={{position:'absolute',inset:'-5%',background:'transparent',
-          animation:'deathScreenShake 0.55s cubic-bezier(0.36,0.07,0.19,0.97) forwards'}}/>
-      )}
       {/* Dark vignette pulse */}
       <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0)',animation:'guillotineVig 2.5s ease-in-out forwards'}}/>
       {/* Blood flash at impact */}
@@ -1302,78 +1292,124 @@ function GuillotineAnim({hitIndices}){
           background:'radial-gradient(ellipse at center,rgba(180,10,10,0.55) 0%,rgba(80,0,0,0.25) 60%,transparent 100%)',
           animation:'guillotineBloodFlash 0.35s ease-out forwards'}}/>
       )}
-      {targets.map((t,ti)=>(
-        <div key={ti}>
-          {/* ── Blade (falling) ── */}
-          {phase==='falling'&&(
+      {targets.map((t,ti)=>{
+        // 断头台尺寸（以目标面板中心对齐）
+        const postW=9, bladeW=42, frameW=bladeW+postW*2;
+        const postLeft=t.cx-frameW/2;
+        const bladeLeft=t.cx-bladeW/2;
+        const bladeH=32;
+        // 斧刃从视口顶部上方开始，落至目标面板中心
+        const landY=t.cy-bladeH/2;
+        const startY=-bladeH-30;
+        const dy=landY-startY;
+        return(
+          <React.Fragment key={ti}>
+            {/* ── 两根竖立木柱（从顶端延伸到目标中心）── */}
+            {/* 左柱 */}
             <div style={{
-              position:'absolute',left:t.cx-28,top:0,
-              '--fall-y':`${t.y-100}px`,
-              animation:'guillotineFall 0.56s cubic-bezier(0.4,0,1,1) forwards',
-            }}>
-              <svg width="56" height="260" viewBox="0 0 56 260" style={{filter:'drop-shadow(0 4px 20px rgba(200,180,100,0.5))'}}>
-                {/* Guide rails */}
-                <rect x="8"  y="0" width="6" height="200" fill="#4a3a20" rx="1"/>
-                <rect x="42" y="0" width="6" height="200" fill="#4a3a20" rx="1"/>
-                {/* Blade weight block */}
-                <rect x="14" y="140" width="28" height="30" fill="#888880" rx="1"/>
-                <rect x="16" y="142" width="24" height="6" fill="#aaaa98" rx="1" opacity="0.6"/>
-                {/* Blade body */}
-                <polygon points="6,170 50,170 44,230 12,230" fill="#8a8878"/>
-                {/* Cutting edge – angled like a real guillotine blade */}
-                <polygon points="6,230 44,225 50,235 6,240" fill="#d0cfc0"/>
-                <polygon points="44,225 50,235 50,228" fill="#e8e8d8"/>
-                {/* Gleam */}
-                <line x1="12" y1="172" x2="20" y2="228" stroke="#fff" strokeWidth="2.5" opacity="0.25"/>
-                <line x1="36" y1="175" x2="42" y2="224" stroke="#fff" strokeWidth="1.5" opacity="0.15"/>
-                {/* Rivets */}
-                <circle cx="20" cy="155" r="3" fill="#6a6860"/>
-                <circle cx="36" cy="155" r="3" fill="#6a6860"/>
-              </svg>
-            </div>
-          )}
-          {/* ── Impact flash ── */}
-          {phase==='impact'&&(
-            <div style={{
-              position:'absolute',
-              left:t.x-8,top:t.y-8,width:t.w+16,height:t.h+16,
-              background:'rgba(255,230,120,0.85)',borderRadius:4,
-              animation:'guillotineFlash 0.09s ease-out forwards',
+              position:'absolute',left:postLeft,top:0,
+              width:postW,height:t.cy+postW,
+              background:'linear-gradient(90deg,#7a5028 0%,#3e1e08 45%,#7a5028 100%)',
+              boxShadow:'inset 0 0 3px rgba(0,0,0,0.5)',
             }}/>
-          )}
-          {/* ── Shards ── */}
-          {phase==='shatter'&&shards.map((s,si)=>(
-            <div key={si} style={{
-              position:'absolute',
-              left:t.cx+(si%3-1)*10,top:t.cy+(si%2-0.5)*8,
-              width:s.w,height:s.h,
-              background:`hsl(${s.hue},${s.sat}%,${s.lit}%)`,
-              border:'1px solid #6a4510',
-              borderRadius:1,
-              '--stx':`${s.tx}px`,'--sty':`${s.ty}px`,'--srot':`${s.rot}deg`,
-              animation:`shardFly 0.85s cubic-bezier(0,0.55,0.3,1) ${s.delay}s forwards`,
-              transformOrigin:'center',
-            }}/>
-          ))}
-          {/* ── Panel crack overlay ── */}
-          {phase==='shatter'&&(
+            {/* 右柱 */}
             <div style={{
-              position:'absolute',left:t.x,top:t.y,width:t.w,height:t.h,
-              border:'2.5px solid #cc2222',borderRadius:3,
-              animation:'panelCrumble 0.9s ease-out forwards',
-              background:'rgba(80,10,10,0.45)',
-            }}>
-              {/* Crack lines */}
-              <svg width={t.w} height={t.h} style={{position:'absolute',inset:0,opacity:0.9}}>
-                <line x1={t.w*0.5} y1={0} x2={t.w*0.15} y2={t.h} stroke="#ff4444" strokeWidth="2" opacity="0.9"/>
-                <line x1={t.w*0.5} y1={0} x2={t.w*0.85} y2={t.h} stroke="#ff3333" strokeWidth="1.5" opacity="0.75"/>
-                <line x1={0} y1={t.h*0.35} x2={t.w} y2={t.h*0.55} stroke="#cc2222" strokeWidth="1.5" opacity="0.65"/>
-                <line x1={t.w*0.3} y1={0} x2={t.w*0.7} y2={t.h} stroke="#ff5555" strokeWidth="1" opacity="0.5"/>
-              </svg>
-            </div>
-          )}
-        </div>
-      ))}
+              position:'absolute',left:postLeft+bladeW+postW,top:0,
+              width:postW,height:t.cy+postW,
+              background:'linear-gradient(90deg,#7a5028 0%,#3e1e08 45%,#7a5028 100%)',
+              boxShadow:'inset 0 0 3px rgba(0,0,0,0.5)',
+            }}/>
+            {/* 顶部横梁 */}
+            <div style={{
+              position:'absolute',left:postLeft-4,top:0,
+              width:frameW+8,height:10,
+              background:'#5a3518',
+              boxShadow:'0 3px 10px rgba(0,0,0,0.8)',
+            }}/>
+            {/* 两柱接触地（目标面板）处的横档 */}
+            <div style={{
+              position:'absolute',left:postLeft,top:t.cy+postW-4,
+              width:frameW,height:8,
+              background:'#4a2e10',
+            }}/>
+
+            {/* ── 斧刃（无斧柄，夹在两柱之间，从顶部下落）── */}
+            {(phase==='falling'||phase==='impact')&&(
+              <div style={{
+                position:'absolute',
+                left:bladeLeft,
+                top:startY,
+                width:bladeW,
+                '--blade-dy':`${dy}px`,
+                animation:phase==='falling'
+                  ?'guillotineFall 0.54s cubic-bezier(0.45,0,0.9,0.85) forwards'
+                  :'none',
+                transform:phase==='impact'?`translateY(${dy}px)`:undefined,
+              }}>
+                <svg width={bladeW} height={bladeH+20} viewBox={`0 0 ${bladeW} ${bladeH+20}`}
+                  style={{overflow:'visible',filter:'drop-shadow(0 4px 16px rgba(180,160,80,0.5))'}}>
+                  {/* 导槽卡扣（卡在左右木柱内侧）*/}
+                  <rect x="-3" y="2" width="5" height={bladeH-4} fill="#6a4020" rx="1" opacity="0.9"/>
+                  <rect x={bladeW-2} y="2" width="5" height={bladeH-4} fill="#6a4020" rx="1" opacity="0.9"/>
+                  {/* 刀身主体（矩形，无斧柄）*/}
+                  <rect x="2" y="0" width={bladeW-4} height={bladeH} fill="#808075" stroke="#505048" strokeWidth="1.5" rx="1"/>
+                  {/* 刀身竖纹（金属质感）*/}
+                  <line x1="6" y1="3" x2="6" y2={bladeH-3} stroke="rgba(255,255,255,0.12)" strokeWidth="1.5"/>
+                  <line x1={bladeW-6} y1="3" x2={bladeW-6} y2={bladeH-3} stroke="rgba(0,0,0,0.2)" strokeWidth="1"/>
+                  {/* 斜面切刃（右高左低，经典断头台样式）*/}
+                  <polygon
+                    points={`2,${bladeH} ${bladeW-2},${bladeH} ${bladeW-2},${bladeH+8} 2,${bladeH+18}`}
+                    fill="#b8b8a8" stroke="#787870" strokeWidth="1"/>
+                  {/* 刃口高光线 */}
+                  <line x1="2" y1={bladeH+18} x2={bladeW-2} y2={bladeH+8}
+                    stroke="#e0e0d0" strokeWidth="2" strokeLinecap="round"/>
+                  {/* 刀身顶部铆钉 */}
+                  <circle cx={bladeW*0.3} cy="6" r="2.5" fill="#5a5850" stroke="#303028" strokeWidth="0.8"/>
+                  <circle cx={bladeW*0.7} cy="6" r="2.5" fill="#5a5850" stroke="#303028" strokeWidth="0.8"/>
+                </svg>
+              </div>
+            )}
+
+            {/* ── Impact flash ── */}
+            {phase==='impact'&&(
+              <div style={{
+                position:'absolute',
+                left:t.x-8,top:t.y-8,width:t.w+16,height:t.h+16,
+                background:'rgba(255,220,100,0.80)',borderRadius:4,
+                animation:'guillotineFlash 0.09s ease-out forwards',
+              }}/>
+            )}
+            {/* ── Shards ── */}
+            {phase==='shatter'&&shards.map((s,si)=>(
+              <div key={si} style={{
+                position:'absolute',
+                left:t.cx+(si%3-1)*10,top:t.cy+(si%2-0.5)*8,
+                width:s.w,height:s.h,
+                background:`hsl(${s.hue},${s.sat}%,${s.lit}%)`,
+                border:'1px solid #6a4510',borderRadius:1,
+                '--stx':`${s.tx}px`,'--sty':`${s.ty}px`,'--srot':`${s.rot}deg`,
+                animation:`shardFly 0.85s cubic-bezier(0,0.55,0.3,1) ${s.delay}s forwards`,
+                transformOrigin:'center',
+              }}/>
+            ))}
+            {/* ── Panel crack overlay ── */}
+            {phase==='shatter'&&(
+              <div style={{
+                position:'absolute',left:t.x,top:t.y,width:t.w,height:t.h,
+                border:'2.5px solid #cc2222',borderRadius:3,
+                animation:'panelCrumble 0.9s ease-out forwards',
+                background:'rgba(80,10,10,0.45)',
+              }}>
+                <svg width={t.w} height={t.h} style={{position:'absolute',inset:0,opacity:0.9}}>
+                  <line x1={t.w*0.5} y1={0} x2={t.w*0.15} y2={t.h} stroke="#ff4444" strokeWidth="2" opacity="0.9"/>
+                  <line x1={t.w*0.5} y1={0} x2={t.w*0.85} y2={t.h} stroke="#ff3333" strokeWidth="1.5" opacity="0.75"/>
+                  <line x1={0} y1={t.h*0.35} x2={t.w} y2={t.h*0.55} stroke="#cc2222" strokeWidth="1.5" opacity="0.65"/>
+                </svg>
+              </div>
+            )}
+          </React.Fragment>
+        );
+      })}
     </div>
   );
 }
@@ -3042,6 +3078,7 @@ export default function Game(){
   const[swapAnim,setSwapAnim]=useState(false);        // cup shuffle
   const[huntAnim,setHuntAnim]=useState(null);          // scope + vignette {targetIdx}
   const[cardTransfers,setCardTransfers]=useState([]);   // hand card transfer anims
+  const[guillotineTargets,setGuillotineTargets]=useState([]); // pre-measured {x,y,w,h,cx,cy}
   const[bewitchAnim,setBewitchAnim]=useState(null);   // horus eye {cx,cy}
   const[hpHealIndices,setHpHealIndices]=useState([]); // HP heal
   const[sanHealIndices,setSanHealIndices]=useState([]); // SAN heal
@@ -3187,7 +3224,17 @@ export default function Game(){
       setCardTransfers(prev=>[...prev,{srcX,srcY,destX,destY,count,key}]);
       setTimeout(()=>setCardTransfers(prev=>prev.filter(t=>t.key!==key)),750);
     }else if(anim?.type==='GUILLOTINE'&&anim.hitIndices?.length){
-      // Blade impact at ~560ms; shake starts then
+      // 双 rAF 测量（与 SKILL_HUNT 相同，过滤容器外的 position:fixed 需要 viewport 坐标）
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        const pts=anim.hitIndices.map(idx=>{
+          const el=document.querySelector(`[data-pid="${idx}"]`);
+          if(!el)return null;
+          const r=el.getBoundingClientRect();
+          return{x:r.left,y:r.top,w:r.width,h:r.height,cx:r.left+r.width/2,cy:r.top+r.height/2};
+        }).filter(Boolean);
+        setGuillotineTargets(pts);
+      }));
+      // Blade impact at ~540ms; shake starts then
       const shakeTimer=setTimeout(()=>{
         setDeathShake(true);
         clearTimeout(shakeTimerRef.current);
@@ -3199,6 +3246,7 @@ export default function Game(){
       setSanHitIndices([]);
       setSanTargets([]);
       setCardTransfers([]);
+      setGuillotineTargets([]);
       setHpHealIndices([]);
       setSanHealIndices([]);
     }
@@ -3255,9 +3303,38 @@ export default function Game(){
     setAnim(queue[0]);
   }
 
+  // Detect stuck state: AI's turn but phase is not AI_TURN (e.g. got stuck in DRAW_REVEAL)
+  // This can happen in rare edge cases; recover by forcing the turn to advance
+  useEffect(()=>{
+    if(!gs||gs._isMP||gs.gameOver||anim||showTutorial)return;
+    if(gs.currentTurn===0)return; // player's turn, normal
+    const aiPhase=gs.phase;
+    // AI is in a phase that requires player interaction — this is a stuck state
+    const badPhases=['DRAW_REVEAL','DRAW_SELECT_TARGET','GOD_CHOICE','NYA_BORROW',
+                     'SWAP_SELECT_TARGET','SWAP_GIVE_CARD','BEWITCH_SELECT_CARD','BEWITCH_SELECT_TARGET',
+                     'HUNT_SELECT_TARGET','HUNT_CONFIRM','DISCARD_PHASE'];
+    if(!badPhases.includes(aiPhase))return;
+    console.warn('[stuck-recovery] AI in bad phase',aiPhase,'at turn',gs.currentTurn);
+    const t=setTimeout(()=>{
+      setGs(p=>{
+        if(!p||p._isMP||p.currentTurn===0)return p;
+        if(!badPhases.includes(p.phase))return p;
+        return startNextTurn({...p,currentTurn:p.currentTurn,skillUsed:true,restUsed:false,huntAbandoned:[]});
+      });
+    },500);
+    return()=>clearTimeout(t);
+  },[gs?.currentTurn,gs?.phase,gs?._isMP,anim,gs?.gameOver,showTutorial]);
+
   // AI turn
   useEffect(()=>{
     if(!gs||gs.phase!=='AI_TURN'||gs.gameOver||gs.phase==='PLAYER_WIN_PENDING'||anim||showTutorial||gs._isMP)return;
+    // Safety watchdog: if AI turn hangs for any reason, force-advance after 3.5s
+    // (normal AI turn takes ~700ms + anim duration; 3.5s is generous but not user-visible)
+    const watchdog=setTimeout(()=>{
+      console.warn('[AI watchdog] AI turn exceeded 3.5s, force-advancing');
+      const safeGs=startNextTurn({...gs,currentTurn:gs.currentTurn,skillUsed:true,restUsed:false,huntAbandoned:[]});
+      setGs(safeGs);
+    },20000);
     timerRef.current=setTimeout(()=>{
       let rawResult,newGs;
       try{
@@ -3283,7 +3360,8 @@ export default function Game(){
       const newMsgs=newGs.log.slice(gs.log.length);
       const j=newMsgs.join(' ');
       // Helper: build a gs-like object with substituted players for buildAnimQueue
-      const fakeGs=ps=>({...gs,players:ps,log:newGs.log});
+      // fakeGs: use gs.log as the baseline so buildAnimQueue correctly detects new messages
+      const fakeGs = ps => ({...gs, players: ps});
       const queue=[];
       // 1. Banner anim: 'YOUR_TURN' equivalent for AI — shown via gs.phase=AI_TURN before queue
       //    (no explicit anim needed; the static UI banner shows when !anim)
@@ -3331,7 +3409,7 @@ export default function Game(){
       }
       triggerAnimQueue(queue,newGs);
     },700);
-    return()=>clearTimeout(timerRef.current);
+    return()=>{clearTimeout(timerRef.current);clearTimeout(watchdog);};
   },[gs?.currentTurn,gs?.phase,gs?._turnKey,anim,gs?.gameOver]);
 
   // 多人游戏结束时通知后端重置房间状态（用 ref 防止因 isMultiplayer 变化导致的重复发送）
@@ -3375,6 +3453,8 @@ export default function Game(){
   // refs 供计时器 useEffect 调用（避免陈旧闭包，必须在 if(!gs) return 之前）
   const endTurnRef=useRef(null);
   const autoDiscardRef=useRef(null);
+  const latestGsRef=useRef(null); // always mirrors latest gs for closures reading stale state
+  latestGsRef.current=gs; // 同步更新：渲染期间直接镜像，确保 confirmDiscard 等闭包读到最新值
   const suppressNextBroadcastRef=useRef(false); // set before bystander-anim pendingGs; cleared in advanceQueue
 
   // ── 房间倒计时显示（前端独立计时，服务端计时器版本号变化时重置）───
@@ -4333,15 +4413,19 @@ export default function Game(){
     else if(prev.length<maxSelect)setGs({...gs,abilityData:{...gs.abilityData,discardSelected:[...prev,idx]}});
   }
   function confirmDiscard(){
-    const selected=gs.abilityData.discardSelected||[];if(!selected.length)return;
-    let P=copyPlayers(gs.players);
+    // 使用最新的 gs 快照（避免 React 批量更新导致闭包读到旧的 discardSelected）
+    const latestGs=latestGsRef.current;
+    const selected=(latestGs||gs).abilityData?.discardSelected||[];
+    if(!selected.length)return;
+    const baseGs=latestGs||gs;
+    let P=copyPlayers(baseGs.players);
     const sorted=[...selected].sort((a,b)=>b-a);const discarded=[];
     sorted.forEach(i=>{const c=P[0].hand.splice(i,1)[0];discarded.push(c);});
-    const Disc=[...gs.discard,...discarded];
-    const L=[...gs.log,`弃置：${discarded.map(c=>`[${c.key}]`).join(' ')}`];
+    const Disc=[...baseGs.discard,...discarded];
+    const L=[...baseGs.log,`弃置：${discarded.map(c=>`[${c.key}]`).join(' ')}`];
     const newGs=P[0].hand.length>4
-      ?{...gs,players:P,discard:Disc,log:L,abilityData:{discardSelected:[]}}
-      :startNextTurn({...gs,players:P,discard:Disc,log:L,currentTurn:0,abilityData:{}});
+      ?{...baseGs,players:P,discard:Disc,log:L,abilityData:{discardSelected:[]}}
+      :startNextTurn({...baseGs,players:P,discard:Disc,log:L,currentTurn:0,abilityData:{}});
     triggerAnimQueue([{type:'DISCARD',msgs:L.slice(-1)}],newGs);
   }
 
@@ -4679,8 +4763,7 @@ export default function Game(){
 
       {/* Animation overlay */}
       {!suppressAnim&&<AnimOverlay anim={anim} exiting={animExiting}/>}
-      {/* Guillotine death animation */}
-      {!suppressAnim&&anim?.type==='GUILLOTINE'&&<GuillotineAnim hitIndices={anim.hitIndices||[]}/>}
+      {/* Guillotine death animation — rendered outside filtered container, see below */}
       {/* SAN damage full-screen mist bolts */}
       {!suppressAnim&&<SanMistOverlay targets={sanTargets}/>}
       {/* Skill overlays */}
@@ -5608,9 +5691,10 @@ export default function Game(){
       <GammaSlider gamma={gamma} onChange={handleGamma}/>
       <style>{GLOBAL_STYLES}</style>
     </div>
-    {/* Hunt/Bewitch overlays rendered OUTSIDE the filtered container to avoid position:fixed coordinate mismatch */}
+    {/* Hunt/Bewitch/Guillotine overlays rendered OUTSIDE the filtered container */}
     {!suppressAnim&&<HuntScopeOverlay active={!!huntAnim} cx={huntAnim?.cx??0} cy={huntAnim?.cy??0}/>}
     {!suppressAnim&&<BewitchEyeOverlay active={!!bewitchAnim} cx={bewitchAnim?.cx??0} cy={bewitchAnim?.cy??0}/>}
+    {!suppressAnim&&guillotineTargets.length>0&&<GuillotineAnim targets={guillotineTargets}/>}
   </>);
 }
 // ══════════════════════════════════════════════════════════════
@@ -5928,8 +6012,8 @@ const GLOBAL_STYLES=`
     93% {transform:translate(-2px,-2px)}
   }
   @keyframes guillotineFall {
-    0%   {transform:translateY(-260px)}
-    100% {transform:translateY(var(--fall-y))}
+    0%   {transform:translateY(0)}
+    100% {transform:translateY(var(--blade-dy))}
   }
   @keyframes guillotineFlash {
     0%   {opacity:1;transform:scale(1.08)}
