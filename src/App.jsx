@@ -92,7 +92,36 @@ function mkDeck(){
   ];
   return shuffle([...zoneCards,...godCards]);
 }
-function mkRoles(N=5){const base=['寻宝者','追猎者'];while(base.length<N)base.push('邪祀者');return shuffle(base.slice(0,N));}
+function mkRoles(N=5) {
+  // 拦截非法的游戏人数
+  if (N < 2) throw new Error('游戏人数不能少于2人');
+  
+  // 双人局：从三个基础身份中随机抽取两个不同的身份对战
+  if (N === 2) {
+    const baseRoles = ['寻宝者', '追猎者', '邪祀者'];
+    return shuffle(baseRoles).slice(0, 2);
+  }
+  
+  // 3人及以上：保证各身份至少1名
+  const roles = ['寻宝者', '追猎者', '邪祀者'];
+  const counts = { '寻宝者': 1, '追猎者': 1, '邪祀者': 1 };
+  
+  // 非寻宝者阵营的数量上限：向下取整的半数
+  const limit = Math.floor(N / 2);
+  
+  for (let i = 3; i < N; i++) {
+    const available = ['寻宝者']; // 寻宝者没有数量上限
+    if (counts['追猎者'] < limit) available.push('追猎者');
+    if (counts['邪祀者'] < limit) available.push('邪祀者');
+    
+    // 从允许的身份池中随机抽取一个
+    const pick = available[Math.floor(Math.random() * available.length)];
+    roles.push(pick);
+    counts[pick]++;
+  }
+  
+  return shuffle(roles);
+}
 const isWinHand=h=>{const ls=new Set(h.map(c=>c.letter)),ns=new Set(h.map(c=>c.number));return LETTERS.every(l=>ls.has(l))&&NUMS.every(n=>ns.has(n));};
 
 // ══════════════════════════════════════════════════════════════
@@ -526,22 +555,7 @@ function aiStep(gs){
       return{...gs,players:P,deck:D,discard:Disc,log:[...L,reason3],gameOver:{winner:'寻宝者',reason:reason3,winnerIdx:ti}};
     }
     }else if(ai.role==='追猎者'){
-      const zoneH=P[ti].hand.filter(c=>!c.isGod);
-      if(!zoneH.length){L.push(`${tgt.name} 无区域牌，追捕失败`);
-      }else if(ti===0){
-        // Player is the target — pause AI turn and let player choose which card to reveal
-        L.push(`${ai.name}（追猎者）向你发动【追捕】！请选择亮出一张区域牌`);
-        return{...gs,players:P,deck:D,discard:Disc,log:L,
-          phase:'PLAYER_REVEAL_FOR_HUNT',
-          abilityData:{huntingAI:ct,aiHunterName:ai.name},
-          skillUsed:true,_aiName:ai.name,_drawnCard:gs._drawnCard};
-      }else{
-      const rc=aiChooseRevealCard(zoneH,P[ct].hand);
-      L.push(`${ai.name}（追猎者）对 ${tgt.name} 【追捕】，亮出 [${rc.key}]`);
-      const mi=P[ct].hand.findIndex(c=>c.letter===rc.letter||c.number===rc.number);
-      if(mi>=0){const dc=P[ct].hand.splice(mi,1)[0];Disc.push(dc);P[ti].hp=clamp(P[ti].hp-2);L.push(`弃 [${dc.key}] → ${tgt.name} 受 2HP 伤害！`);if(P[ti].hp<=0){P[ti].isDead=true;P[ti].roleRevealed=true;L.push(`☠ ${tgt.name}（${tgt.role}）倒下了！`);if(P[ti].hand.length){P[ct].hand.push(...P[ti].hand);L.push(`${ai.name} 没收了 ${tgt.name} 的手牌！`);P[ti].hand=[];}if(P[ti].godZone?.length){Disc.push(...P[ti].godZone);P[ti].godZone=[];P[ti].godName=null;P[ti].godLevel=0;}}}
-      else L.push(`无匹配手牌，放弃追捕`);
-      }// end else zoneH.length
+      return aiRunHunterChain(gs,P,D,Disc,L,ct);
     }else if(ai.role==='邪祀者'&&P[ct].hand.length){
       const hunterThreatTgt=P[ti]?.role==='追猎者';
       // Priority 1: god card that forces a conversion (enemy already worships different god)
@@ -567,11 +581,7 @@ function aiStep(gs){
     }
   }else{L.push(`${ai.name} 未使用技能，结束回合`);}
   const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
-  while(P[ct].hand.length>4){const c=P[ct].hand.shift();Disc.push(c);L.push(`${ai.name} 弃 [${c.key}]（上限）`);}
-  // gs._drawnCard was tagged by startNextTurn when this AI turn started; pass it through
-  const _P_afterAction=copyPlayers(P);
-  const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct});
-  return{...nextGs,_aiDrawnCard:gs._drawnCard,_aiName:ai.name,_playersBeforeNextDraw:_P_afterAction};
+  return aiFinishTurn(gs,P,D,Disc,L,ct,ai.name);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -4215,6 +4225,114 @@ export default function Game(){
     return scored[0].c;
   }
 
+  function aiEvaluateHunterTarget(P,ct,ti){
+    if(ti==null||!P[ti]||P[ti].isDead||ti===ct||P[ti].role==='追猎者')return null;
+    const zoneH=P[ti].hand.filter(c=>!c.isGod);
+    if(!zoneH.length)return null;
+    const reveal=aiChooseRevealCard(zoneH,P[ct].hand);
+    const matches=P[ct].hand
+      .map((c,i)=>(c.letter===reveal.letter||c.number===reveal.number)?i:-1)
+      .filter(i=>i>=0);
+    const canHit=matches.length>0;
+    const killNow=canHit&&P[ti].hp<=2;
+    const loot=P[ti].hand.filter(c=>!c.isGod).length;
+    const score=
+      (killNow?1000:0)+
+      (canHit?350:-400)+
+      loot*25+
+      (11-P[ti].hp)*18+
+      (10-P[ti].san)*4;
+    return{ti,reveal,matches,canHit,killNow,loot,score};
+  }
+
+  function aiPickHunterTarget(P,ct,abandoned=[]){
+    const blocked=new Set(abandoned||[]);
+    const candidates=P
+      .map((_,i)=>i)
+      .filter(i=>i!==ct&&!P[i].isDead&&!blocked.has(i))
+      .map(i=>aiEvaluateHunterTarget(P,ct,i))
+      .filter(Boolean);
+    if(!candidates.length)return null;
+    candidates.sort((a,b)=>
+      (b.score-a.score)||
+      ((b.canHit?1:0)-(a.canHit?1:0))||
+      ((b.killNow?1:0)-(a.killNow?1:0))||
+      (P[a.ti].hp-P[b.ti].hp)||
+      (b.loot-a.loot)
+    );
+    return candidates[0];
+  }
+
+  function aiShouldPressHunt(P,ct,abandoned=[],chainCount=0){
+    if(P[ct].isDead||chainCount>=3)return false;
+    const best=aiPickHunterTarget(P,ct,abandoned);
+    if(!best)return false;
+    if(best.killNow)return true;
+    if(best.canHit&&best.score>=320)return true;
+    return false;
+  }
+
+  function aiFinishTurn(gs,P,D,Disc,L,ct,aiName){
+    while(P[ct].hand.length>4){
+      const c=P[ct].hand.shift();
+      Disc.push(c);
+      L.push(`${aiName} 弃 [${c.key}]（上限）`);
+    }
+    const _P_afterAction=copyPlayers(P);
+    const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct});
+    return{...nextGs,_aiDrawnCard:gs._drawnCard,_aiName:aiName,_playersBeforeNextDraw:_P_afterAction};
+  }
+
+  function aiRunHunterChain(gs,P,D,Disc,L,ct,{pauseOnPlayer=true,abandoned=[]}={}){
+    const aiName=P[ct].name;
+    let blocked=[...(abandoned||[])];
+    let chainCount=0;
+    while(true){
+      const choice=aiPickHunterTarget(P,ct,blocked);
+      if(!choice)break;
+      if(chainCount>0&&!aiShouldPressHunt(P,ct,blocked,chainCount))break;
+      const tgt=P[choice.ti];
+      if(choice.ti===0&&pauseOnPlayer){
+        L.push(`${aiName}（追猎者）向你发动【追捕】！请选择亮出一张区域牌`);
+        return{
+          ...gs,players:P,deck:D,discard:Disc,log:L,
+          phase:'PLAYER_REVEAL_FOR_HUNT',
+          abilityData:{huntingAI:ct,aiHunterName:aiName,huntAbandoned:blocked,huntChainCount:chainCount},
+          skillUsed:true,_aiName:aiName,_drawnCard:gs._drawnCard
+        };
+      }
+      L.push(`${aiName}（追猎者）对 ${tgt.name} 【追捕】，亮出 [${choice.reveal.key}]`);
+      if(choice.canHit){
+        const mi=choice.matches[0];
+        const dc=P[ct].hand.splice(mi,1)[0];
+        Disc.push(dc);
+        P[choice.ti].hp=clamp(P[choice.ti].hp-2);
+        L.push(`弃 [${dc.key}] → ${tgt.name} 受 2HP 伤害！`);
+        if(P[choice.ti].hp<=0){
+          P[choice.ti].isDead=true;P[choice.ti].roleRevealed=true;
+          L.push(`☠ ${tgt.name}（${tgt.role}）倒下了！`);
+          if(P[choice.ti].hand.length){
+            P[ct].hand.push(...P[choice.ti].hand);
+            L.push(`${aiName} 没收了 ${tgt.name} 的手牌！`);
+            P[choice.ti].hand=[];
+          }
+          if(P[choice.ti].godZone?.length){
+            Disc.push(...P[choice.ti].godZone);
+            P[choice.ti].godZone=[];P[choice.ti].godName=null;P[choice.ti].godLevel=0;
+          }
+        }
+      }else{
+        L.push(`无匹配手牌，放弃追捕 ${tgt.name}`);
+        blocked.push(choice.ti);
+      }
+      const win=checkWin(P,gs._isMP);
+      if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
+      chainCount++;
+      if(!aiShouldPressHunt(P,ct,blocked,chainCount))break;
+    }
+    return aiFinishTurn(gs,P,D,Disc,L,ct,aiName);
+  }
+
   function huntSelectTarget(ti){
     let P=copyPlayers(gs.players);P[0].roleRevealed=true;
     const tHand=P[ti].hand.filter(c=>!c.isGod);
@@ -4279,7 +4397,8 @@ export default function Game(){
     const card=me.hand[cardIdx];
     if(!card||card.isGod)return; // only zone cards valid
     const{huntingAI,aiHunterName}=gs.abilityData;
-    let P=copyPlayers(gs.players),Disc=[...gs.discard];const L=[...gs.log];
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];const L=[...gs.log];
+    const blocked=[...(gs.abilityData?.huntAbandoned||[])];
     L.push(`你亮出 [${card.key}] ${card.name}`);
     // Check AI hunter's hand for matching letter or number
     const aiHand=P[huntingAI].hand;
@@ -4295,12 +4414,11 @@ export default function Game(){
       }
     }else{
       L.push(`${aiHunterName} 无匹配手牌，追捕失败`);
+      blocked.push(0);
     }
-    // Finish AI turn: discard excess, advance
-    while(P[huntingAI].hand.length>4){const c=P[huntingAI].hand.shift();Disc.push(c);L.push(`${aiHunterName} 弃 [${c.key}]（上限）`);}
     const win=checkWin(P,gs._isMP);
-    const baseGs={...gs,players:P,discard:Disc,log:L,abilityData:{},phase:'ACTION'};
-    const newGs=win?{...baseGs,gameOver:win}:startNextTurn({...baseGs,currentTurn:huntingAI});
+    const baseGs={...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{},phase:'ACTION',skillUsed:true};
+    const newGs=win?{...baseGs,gameOver:win}:aiRunHunterChain(baseGs,P,D,Disc,L,huntingAI,{pauseOnPlayer:true,abandoned:blocked});
     // Hunt scope anim targeting player 0, then stat anims
     const queue=[{type:'SKILL_HUNT',msgs:L.slice(-3),targetIdx:0},...buildAnimQueue(gs,newGs)];
     triggerAnimQueue(queue,newGs);
@@ -6097,4 +6215,3 @@ const GLOBAL_STYLES=`
     50%    {opacity:1;   filter:brightness(1.35)}
   }
 `;
-
