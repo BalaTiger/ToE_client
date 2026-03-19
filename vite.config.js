@@ -5,5 +5,5 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   // 关键：base 设为仓库名（如果仓库名是 jsx-github-pages，就写这个）
-  base: '/' 
+  base: '/BalaTiger.github.io/' 
 })
