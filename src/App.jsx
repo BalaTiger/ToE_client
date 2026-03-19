@@ -785,7 +785,7 @@ const EVIL_TYPES=new Set([
 ]);
 
 // Duration (ms) per animation type
-const ANIM_DURATION={DRAW_CARD:1850, HP_HEAL:1200, SAN_HEAL:1200, SAN_DAMAGE:800, SKILL_SWAP:800, SKILL_HUNT:1200, SKILL_BEWITCH:1200, DICE_ROLL:2200, DISCARD:1000, YOUR_TURN:2000, GUILLOTINE:2500, CARD_TRANSFER:700, default:600};
+const ANIM_DURATION={DRAW_CARD:1850, HP_HEAL:1200, SAN_HEAL:1200, HP_SAN_HEAL:1200, SAN_DAMAGE:800, SKILL_SWAP:800, SKILL_HUNT:1200, SKILL_BEWITCH:1200, DICE_ROLL:2200, DISCARD:1000, YOUR_TURN:2000, GUILLOTINE:2500, CARD_TRANSFER:700, default:600};
 
 // Build an animation queue from before/after game states
 function buildAnimQueue(oldGs,newGs){
@@ -797,12 +797,17 @@ function buildAnimQueue(oldGs,newGs){
     q.push({type:'GUILLOTINE',msgs:newMsgs,hitIndices:deathIdx});
     q.push({type:'DEATH',msgs:newMsgs,hitIndices:deathIdx});
   }else{
+    const hpHealIdx=newGs.players.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.hp>oldGs.players[i].hp)acc.push(i);return acc;},[]);
+    const sanHealIdx=newGs.players.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.san>oldGs.players[i].san)acc.push(i);return acc;},[]);
+    const sameHealTargets=hpHealIdx.length&&sanHealIdx.length&&hpHealIdx.length===sanHealIdx.length&&hpHealIdx.every((v,i)=>v===sanHealIdx[i]);
     const hpHitIdx=newGs.players.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.hp<oldGs.players[i].hp)acc.push(i);return acc;},[]);
     if(hpHitIdx.length) q.push({type:'HP_DAMAGE',msgs:newMsgs,hitIndices:hpHitIdx});
-    const hpHealIdx=newGs.players.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.hp>oldGs.players[i].hp)acc.push(i);return acc;},[]);
-    if(hpHealIdx.length) q.push({type:'HP_HEAL',msgs:newMsgs,hitIndices:hpHealIdx});
-    const sanHealIdx=newGs.players.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.san>oldGs.players[i].san)acc.push(i);return acc;},[]);
-    if(sanHealIdx.length) q.push({type:'SAN_HEAL',msgs:newMsgs,hitIndices:sanHealIdx});
+    if(sameHealTargets){
+      q.push({type:'HP_SAN_HEAL',msgs:newMsgs,hitIndices:hpHealIdx});
+    }else{
+      if(hpHealIdx.length) q.push({type:'HP_HEAL',msgs:newMsgs,hitIndices:hpHealIdx});
+      if(sanHealIdx.length) q.push({type:'SAN_HEAL',msgs:newMsgs,hitIndices:sanHealIdx});
+    }
     const sanHitIdx=newGs.players.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.san<oldGs.players[i].san)acc.push(i);return acc;},[]);
     if(sanHitIdx.length) q.push({type:'SAN_DAMAGE',msgs:newMsgs,hitIndices:sanHitIdx});
     // Detect hand card losses → CARD_TRANSFER
@@ -4317,7 +4322,12 @@ export default function Game(){
     const win=checkWin(P,gs._isMP);if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,drawReveal:null,...(res.statePatch||{})});return;}
     const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:{},...(res.statePatch||{})};
     const queue=buildAnimQueue(gs,newGs);
-    if(queue.length)triggerAnimQueue(queue,newGs);else setGs(newGs);
+    if(queue.length){
+      pendingGsRef.current=newGs;
+      animQueueRef.current=[...queue.slice(1)];
+      setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
+      setAnim(queue[0]);
+    }else setGs(newGs);
   }
 
   function handleDrawDiscard(){
