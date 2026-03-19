@@ -12,22 +12,22 @@ import React, { useState, useEffect, useRef } from "react";
 //   Damage contribution: 6×(−2−1−8−4) = −90   [C2 hits 4 others = −8; D2 hits 1 = −4]
 // ──────────────────────────────────────────────────────────────────────────────
 const FIXED_ZONE_EFFECTS = {
-  A1:{pos:{name:'营地篝火',desc:'你与相邻存活角色回复1HP',type:'adjHealHP',val:1},negS:{name:'坠落',desc:'你失去2HP，随机失去一张牌',type:'selfDamageDiscardHP',val:2},negA:{name:'毒气喷涌',desc:'你与相邻存活角色失去1HP',type:'adjDamageHP',val:1}},
+  A1:{pos:{name:'营地篝火',desc:'你回复2HP，相邻存活角色各失去1HP',type:'selfHealAdjDamageHP',val:1},negS:{name:'坠落',desc:'你失去2HP，随机失去一张牌',type:'selfDamageDiscardHP',val:2},negA:{name:'毒气喷涌',desc:'你与相邻存活角色失去1HP',type:'adjDamageHP',val:1}},
   A2:{pos:{name:'古代秘药',desc:'你回复2HP',type:'selfHealHP',val:2},negS:{name:'遭遇塌方',desc:'你失去2HP并翻面（切换休息状态）',type:'selfDamageRestHP',val:2},negA:{name:'地刺陷阱',desc:'你与相邻存活角色失去2HP',type:'adjDamageHP',val:2}},
   A3:{pos:{name:'吃下荧光苔藓',desc:'HP回满，手牌全局公开，盲抽变挑选',type:'selfRevealHandHP',val:10},negS:{name:'理智动摇',desc:'你失去2SAN',type:'selfDamageSAN',val:2},negA:{name:'邪恶低语',desc:'你与相邻存活角色失去1SAN',type:'adjDamageSAN',val:1}},
   A4:{pos:{name:'绮丽诗篇',desc:'直到下回合，所有人技能变为“掉包”',type:'globalOnlySwap',val:0},negS:{name:'惊惧幻象',desc:'你失去3SAN',type:'selfDamageSAN',val:3},negA:{name:'灵魂尖啸',desc:'全体存活角色失去1SAN',type:'allDamageSAN',val:1}},
   B1:{pos:{name:'理智护符',desc:'你回复3SAN',type:'selfHealSAN',val:3},negS:{name:'忏悔独白',desc:'若信仰邪神则弃信受罚，否则失去1SAN',type:'selfRenounceGod',val:1},negA:{name:'绝望回声',desc:'你与相邻存活角色失去2SAN',type:'adjDamageSAN',val:2}},
-  B2:{pos:{name:'强心剂',desc:'你回复3HP',type:'selfHealHP',val:3},negS:{name:'极度虚弱',desc:'你失去2SAN并翻面（切换休息状态）',type:'selfDamageRestSAN',val:2},negA:{name:'地动山摇',desc:'全体存活角色失去1HP',type:'allDamageHP',val:1}},
+  B2:{pos:{name:'强心剂',desc:'你回复3HP',type:'selfHealHP',val:3},negS:{name:'极度虚弱',desc:'你失去2SAN并翻面（切换休息状态）',type:'selfDamageRestSAN',val:2},negA:{name:'地动山摇',desc:'全体存活角色失去2HP',type:'allDamageHP',val:2}},
   B3:{pos:{name:'群体安抚',desc:'全体存活角色回复1SAN',type:'allHealSAN',val:1},negS:{name:'黑暗侵蚀',desc:'你失去1HP与1SAN',type:'selfDamageBoth',val:1},negA:{name:'沉睡魔咒',desc:'你与相邻角色翻面（切换休息状态）',type:'adjRest',val:0}},
   B4:{pos:{name:'宁神香薰',desc:'你回复2SAN',type:'selfHealSAN',val:2},negS:{name:'落石砸击',desc:'你失去3HP',type:'selfDamageHP',val:3},negA:{name:'群体狂乱',desc:'全体存活角色失去2SAN',type:'allDamageSAN',val:2}},
   C1:{pos:{name:'军用口粮',desc:'你回复2HP与1SAN',type:'selfHealBoth21',val:0},negS:{name:'行囊破裂',desc:'你失去1HP，随机弃2张牌',type:'selfDamageDiscardHP2',val:1},negA:{name:'毁灭风暴',desc:'全体存活角色失去2HP',type:'allDamageHP',val:2}},
-  C2:{pos:{name:'舒缓之歌',desc:'你与相邻存活角色回复1SAN',type:'adjHealSAN',val:1},negS:{name:'毒液飞溅',desc:'你失去2HP与1SAN',type:'selfDamageBoth21',val:0},negA:{name:'混乱气流',desc:'你与相邻角色各随机弃1张手牌',type:'adjDiscard',val:1}},
+  C2:{pos:{name:'舒缓之歌',desc:'你与相邻存活角色回复1SAN',type:'adjHealSAN',val:1},negS:{name:'毒液飞溅',desc:'你失去2HP与1SAN',type:'selfDamageBoth21',val:0},negA:{name:'混乱气流',desc:'你与相邻角色各随机弃1张手牌，然后相邻角色各失去1HP',type:'adjDiscardDamageHP',val:1}},
   C3:{pos:{name:'均衡灵药',desc:'你回复1HP与1SAN',type:'selfHealBoth',val:1},negS:{name:'惊慌失措',desc:'你失去2SAN，随机弃1张牌',type:'selfDamageDiscardSAN',val:2},negA:{name:'瘟疫蔓延',desc:'你与相邻存活角色失去1HP和1SAN',type:'adjDamageBoth',val:1}},
   C4:{pos:{name:'启示光辉',desc:'你失去1HP，全体回复2SAN',type:'sacHealSAN',val:2},negS:{name:'恶毒诅咒',desc:'你失去1HP与2SAN',type:'selfDamageBoth12',val:0},negA:{name:'末日预兆',desc:'全体存活角色失去1HP和1SAN',type:'allDamageBoth',val:1}},
   D1:{pos:{name:'饮下清醒之泉',desc:'SAN回满，手牌全局公开，盲抽变挑选',type:'selfRevealHandSAN',val:10},negS:{name:'致命尖刺',desc:'你失去4HP',type:'selfDamageHP',val:4},negA:{name:'强风刮过',desc:'全体存活角色各随机弃1张手牌',type:'allDiscard',val:1}},
   D2:{pos:{name:'群体治愈',desc:'全体存活角色回复1HP',type:'allHealHP',val:1},negS:{name:'恐怖直视',desc:'你失去4SAN',type:'selfDamageSAN',val:4},negA:{name:'血之共鸣',desc:'你失去2HP，场上其他角色回复1HP',type:'sacAllHealHP',val:2}},
   D3:{pos:{name:'献祭治愈',desc:'你失去1SAN，全体回复2HP',type:'sacHealHP',val:2},negS:{name:'遗忘咒语',desc:'你失去1SAN，随机弃2张手牌',type:'selfDamageDiscardSAN2',val:1},negA:{name:'精神链接',desc:'你失去2SAN，场上其他角色回复1SAN',type:'sacAllHealSAN',val:2}},
-  D4:{pos:{name:'禁忌狂化',desc:'你失去1SAN，回复4HP',type:'sacHealSelfHP',val:4},negS:{name:'陷阱触发',desc:'你失去2HP',type:'selfDamageHP',val:2},negA:{name:'理智崩坏',desc:'你失去3SAN',type:'selfDamageSAN',val:3}},
+  D4:{pos:{name:'禁忌狂化',desc:'你失去1SAN和1HP，直到回合结束，你造成的伤害+1',type:'selfBerserk',val:1},negS:{name:'陷阱触发',desc:'你失去2HP',type:'selfDamageHP',val:2},negA:{name:'理智崩坏',desc:'你失去3SAN',type:'selfDamageSAN',val:3}},
 };
 const ZONE_VARIANTS=['pos','negS','negA'];
 const LETTERS=['A','B','C','D'], NUMS=[1,2,3,4];
@@ -182,6 +182,9 @@ function estimateZoneCardKeepScore(card,ci,players){
     case 'globalOnlySwap':
       score=self.role==='寻宝者'?3.5:0.8;
       break;
+    case 'selfBerserk':
+      score=self.role==='追猎者'?4.6:-2.2;
+      break;
     case 'selfDamageHP':
     case 'selfDamageSAN':
       score=-card.val*2.1;
@@ -205,7 +208,7 @@ function estimateZoneCardKeepScore(card,ci,players){
       score=-(self.godName?2.8:1.4);
       break;
     default:
-      if(card.type.startsWith('allDamage')||card.type.startsWith('adjDamage')||card.type==='adjDiscard'||card.type==='allDiscard'){
+      if(card.type.startsWith('allDamage')||card.type.startsWith('adjDamage')||card.type==='adjDiscard'||card.type==='allDiscard'||card.type==='adjDiscardDamageHP'){
         if(self.role==='追猎者') score=2.4;
         else if(self.role==='邪祀者'&&card.type.includes('SAN')) score=2.2;
         else score=-1.6;
@@ -227,6 +230,7 @@ function aiShouldKeepZoneCard(card,ci,players,forced=false){
 function applyFx(card,ci,ti,ps,deck,disc){
   let P=copyPlayers(ps),D=[...deck],Disc=[...disc],msgs=[];
   let statePatch={};
+  const dmgBonus=P[ci]?.damageBonus||0;
   const healHP=(i,v)=>{if(i==null||!P[i]||P[i].isDead)return;P[i].hp=clamp(P[i].hp+v);};
   const healSAN=(i,v)=>{if(i==null||!P[i]||P[i].isDead)return;P[i].san=clamp(P[i].san+v);};
   const killPlayer=i=>{
@@ -238,6 +242,8 @@ function applyFx(card,ci,ti,ps,deck,disc){
   };
   const hurtHP=(i,v)=>{if(i==null||!P[i]||P[i].isDead)return;P[i].hp=clamp(P[i].hp-v);if(P[i].hp<=0)killPlayer(i);};
   const hurtSAN=(i,v)=>{if(i==null||!P[i]||P[i].isDead)return;P[i].san=clamp(P[i].san-v);};
+  const dealHP=(i,v)=>hurtHP(i,v+dmgBonus);
+  const dealSAN=(i,v)=>hurtSAN(i,v+dmgBonus);
   const randDiscard=(i,count=1)=>{if(i==null||!P[i])return;for(let n=0;n<count;n++){if(P[i].hand.length){const x=0|Math.random()*P[i].hand.length;const c=P[i].hand.splice(x,1)[0];Disc.push(c);msgs.push(`${P[i].name} 失去了 [${c.key}]`);}}};
   const toggleRest=i=>{if(i==null||!P[i]||P[i].isDead)return;P[i].isResting=!P[i].isResting;msgs.push(`${P[i].name}${P[i].isResting?'进入':'离开'}休息状态`);};
   const adjacent=getAdjacentTargets(P,ci);
@@ -249,6 +255,7 @@ function applyFx(card,ci,ti,ps,deck,disc){
     case 'selfHealSAN': healSAN(ci,card.val);msgs.push(`${actor.name} 回复了 ${card.val} SAN`);break;
     case 'selfHealBoth': healHP(ci,1);healSAN(ci,1);msgs.push(`${actor.name} 回复了 1 HP 和 1 SAN`);break;
     case 'selfHealBoth21': healHP(ci,2);healSAN(ci,1);msgs.push(`${actor.name} 回复了 2 HP 和 1 SAN`);break;
+    case 'selfHealAdjDamageHP': healHP(ci,2);adjacent.filter(i=>i!==ci).forEach(i=>dealHP(i,1));msgs.push(`${actor.name} 回复了 2 HP，相邻角色各失去 ${1+dmgBonus} HP`);break;
     case 'adjHealHP': adjacent.forEach(i=>healHP(i,card.val));msgs.push(`${actor.name} 与相邻角色各回复 ${card.val} HP`);break;
     case 'adjHealSAN': adjacent.forEach(i=>healSAN(i,card.val));msgs.push(`${actor.name} 与相邻角色各回复 ${card.val} SAN`);break;
     case 'allHealHP': allLiving.forEach(i=>healHP(i,card.val));msgs.push(`全体存活角色回复 ${card.val} HP`);break;
@@ -267,14 +274,15 @@ function applyFx(card,ci,ti,ps,deck,disc){
     case 'selfDamageDiscardSAN2': hurtSAN(ci,card.val);randDiscard(ci,2);break;
     case 'selfDamageRestHP': hurtHP(ci,card.val);toggleRest(ci);break;
     case 'selfDamageRestSAN': hurtSAN(ci,card.val);toggleRest(ci);break;
-    case 'adjDamageHP': adjacent.forEach(i=>hurtHP(i,card.val));msgs.push(`${actor.name} 与相邻角色各失去 ${card.val} HP`);break;
-    case 'adjDamageSAN': adjacent.forEach(i=>hurtSAN(i,card.val));msgs.push(`${actor.name} 与相邻角色各失去 ${card.val} SAN`);break;
-    case 'adjDamageBoth': adjacent.forEach(i=>{hurtHP(i,card.val);hurtSAN(i,card.val);});msgs.push(`${actor.name} 与相邻角色各失去 ${card.val} HP 和 ${card.val} SAN`);break;
-    case 'allDamageHP': allLiving.forEach(i=>hurtHP(i,card.val));msgs.push(`全体存活角色失去 ${card.val} HP`);break;
-    case 'allDamageSAN': allLiving.forEach(i=>hurtSAN(i,card.val));msgs.push(`全体存活角色失去 ${card.val} SAN`);break;
-    case 'allDamageBoth': allLiving.forEach(i=>{hurtHP(i,card.val);hurtSAN(i,card.val);});msgs.push(`全体存活角色失去 ${card.val} HP 和 ${card.val} SAN`);break;
+    case 'adjDamageHP': adjacent.forEach(i=>dealHP(i,card.val));msgs.push(`${actor.name} 与相邻角色各失去 ${card.val+dmgBonus} HP`);break;
+    case 'adjDamageSAN': adjacent.forEach(i=>dealSAN(i,card.val));msgs.push(`${actor.name} 与相邻角色各失去 ${card.val+dmgBonus} SAN`);break;
+    case 'adjDamageBoth': adjacent.forEach(i=>{dealHP(i,card.val);dealSAN(i,card.val);});msgs.push(`${actor.name} 与相邻角色各失去 ${card.val+dmgBonus} HP 和 ${card.val+dmgBonus} SAN`);break;
+    case 'allDamageHP': allLiving.forEach(i=>dealHP(i,card.val));msgs.push(`全体存活角色失去 ${card.val+dmgBonus} HP`);break;
+    case 'allDamageSAN': allLiving.forEach(i=>dealSAN(i,card.val));msgs.push(`全体存活角色失去 ${card.val+dmgBonus} SAN`);break;
+    case 'allDamageBoth': allLiving.forEach(i=>{dealHP(i,card.val);dealSAN(i,card.val);});msgs.push(`全体存活角色失去 ${card.val+dmgBonus} HP 和 ${card.val+dmgBonus} SAN`);break;
     case 'adjRest': adjacent.forEach(i=>toggleRest(i));break;
     case 'adjDiscard': adjacent.forEach(i=>randDiscard(i,1));break;
+    case 'adjDiscardDamageHP': adjacent.forEach(i=>randDiscard(i,1));adjacent.filter(i=>i!==ci).forEach(i=>dealHP(i,1));msgs.push(`${actor.name} 与相邻角色各随机弃置 1 张牌，相邻角色各失去 ${1+dmgBonus} HP`);break;
     case 'allDiscard': allLiving.forEach(i=>randDiscard(i,1));break;
     case 'selfRenounceGod':
       if(actor.godName){
@@ -291,6 +299,7 @@ function applyFx(card,ci,ti,ps,deck,disc){
     case 'sacAllHealHP': hurtHP(ci,card.val);others.forEach(i=>healHP(i,1));msgs.push(`${actor.name} 失去 ${card.val} HP，其他角色各回复 1 HP`);break;
     case 'sacAllHealSAN': hurtSAN(ci,card.val);others.forEach(i=>healSAN(i,1));msgs.push(`${actor.name} 失去 ${card.val} SAN，其他角色各回复 1 SAN`);break;
     case 'sacHealSelfHP': hurtSAN(ci,1);healHP(ci,card.val);msgs.push(`${actor.name} 失去 1 SAN，回复 ${card.val} HP`);break;
+    case 'selfBerserk': hurtSAN(ci,1);hurtHP(ci,1);P[ci].damageBonus=(P[ci].damageBonus||0)+1;msgs.push(`${actor.name} 失去 1 SAN 和 1 HP，本回合造成的伤害+1`);break;
   }
   return{P,D,Disc,msgs,statePatch};
 }
@@ -467,6 +476,7 @@ function startNextTurn(gs){
   // Clear any NYA temp borrow for the player whose turn just ended
   if(P[gs.currentTurn]&&P[gs.currentTurn]._nyaBorrow)delete P[gs.currentTurn]._nyaBorrow;
   if(P[gs.currentTurn]&&P[gs.currentTurn]._nyaHandLimit)delete P[gs.currentTurn]._nyaHandLimit;
+  if(P[gs.currentTurn]&&P[gs.currentTurn].damageBonus)delete P[gs.currentTurn].damageBonus;
   let globalOnlySwapOwner=gs.globalOnlySwapOwner;
   if(globalOnlySwapOwner===next){
     globalOnlySwapOwner=null;
@@ -662,18 +672,16 @@ function aiStep(gs){
             const mi = P[ct].hand.findIndex(c => c.letter === rc.letter || c.number === rc.number);
             if (mi >= 0) {
                 const dc = P[ct].hand.splice(mi, 1)[0]; Disc.push(dc);
-                P[ti].hp = clamp(P[ti].hp - 2);
-                L.push(`弃 [${dc.key}] → ${tgt.name} 受 2HP 伤害！`);
+                const huntDamage=2+(P[ct].damageBonus||0);
+                P[ti].hp = clamp(P[ti].hp - huntDamage);
+                L.push(`弃 [${dc.key}] → ${tgt.name} 受 ${huntDamage}HP 伤害！`);
                 if (P[ti].hp <= 0) {
                     P[ti].isDead = true; P[ti].roleRevealed = true;
                     L.push(`☠ ${tgt.name}（${tgt.role}）倒下了！`);
                     if (P[ti].hand.length) {
-                        // 削弱追猎者滚雪球：只夺取1张，其余弃置
-                        const stolenIdx = 0 | (Math.random() * P[ti].hand.length);
-                        const stolen = P[ti].hand.splice(stolenIdx, 1)[0];
-                        P[ct].hand.push(stolen);
-                        Disc.push(...P[ti].hand);
-                        L.push(`${ai.name} 夺取了 ${tgt.name} 的 1 张手牌，其余弃置！`);
+                        const stolenCards = [...P[ti].hand];
+                        P[ct].hand.push(...stolenCards);
+                        L.push(`${ai.name} 夺取了 ${tgt.name} 的全部手牌！`);
                         P[ti].hand = [];
                     }
                     if (P[ti].godZone?.length) { Disc.push(...P[ti].godZone); P[ti].godZone = []; P[ti].godName = null; P[ti].godLevel = 0; }
@@ -1457,18 +1465,109 @@ function YourTurnAnim({name}){
 
 // ── Guillotine Death Animation ────────────────────────────────
 // GuillotineAnim now receives pre-measured targets from parent useEffect (same as HuntScope)
+function TitleCandleFlames(){
+  const flames=[
+    {left:'10%',top:'16%',scale:0.72,dur:'4.4s',delay:'-0.8s',drift:'-7px'},
+    {left:'22%',top:'4%',scale:0.92,dur:'3.8s',delay:'-1.6s',drift:'8px'},
+    {left:'37%',top:'11%',scale:0.64,dur:'4.9s',delay:'-0.4s',drift:'-5px'},
+    {left:'64%',top:'2%',scale:1.02,dur:'3.6s',delay:'-2.2s',drift:'10px'},
+    {left:'81%',top:'15%',scale:0.76,dur:'4.1s',delay:'-1.1s',drift:'-8px'},
+    {left:'90%',top:'35%',scale:0.58,dur:'5.2s',delay:'-0.9s',drift:'7px'},
+    {left:'75%',top:'58%',scale:0.88,dur:'4.6s',delay:'-1.7s',drift:'-6px'},
+    {left:'52%',top:'69%',scale:0.62,dur:'3.9s',delay:'-0.5s',drift:'5px'},
+    {left:'26%',top:'63%',scale:0.82,dur:'4.8s',delay:'-2.4s',drift:'-9px'},
+    {left:'8%',top:'46%',scale:0.54,dur:'4.3s',delay:'-1.3s',drift:'6px'},
+  ];
+  return(
+    <div style={{position:'absolute',inset:0,pointerEvents:'none',overflow:'visible'}}>
+      {flames.map((f,i)=>(
+        <div
+          key={i}
+          style={{
+            position:'absolute',
+            left:f.left,
+            top:f.top,
+            transform:`translate(-50%,-50%) scale(${f.scale})`,
+            '--flame-scale':f.scale,
+            '--flame-drift':f.drift,
+            '--flame-duration':f.dur,
+            '--flame-delay':f.delay,
+            animation:'titleFlameSway var(--flame-duration) ease-in-out var(--flame-delay) infinite',
+            transformOrigin:'50% 100%',
+            filter:'drop-shadow(0 0 18px rgba(255,170,70,0.34))',
+          }}
+        >
+          <div style={{
+            position:'absolute',
+            left:'50%',
+            top:'50%',
+            width:46,
+            height:46,
+            transform:'translate(-50%,-58%)',
+            borderRadius:'50%',
+            background:'radial-gradient(circle, rgba(255,190,90,0.42) 0%, rgba(255,145,40,0.18) 40%, rgba(0,0,0,0) 76%)',
+            filter:'blur(6px)',
+            animation:'titleFlameGlow calc(var(--flame-duration) * 0.82) ease-in-out var(--flame-delay) infinite',
+          }}/>
+          <div style={{
+            width:18,
+            height:28,
+            borderRadius:'55% 55% 60% 60% / 72% 72% 28% 28%',
+            background:'radial-gradient(ellipse at 50% 72%, rgba(255,248,214,0.95) 0%, rgba(255,223,140,0.92) 26%, rgba(255,170,58,0.92) 58%, rgba(255,96,18,0.82) 82%, rgba(255,96,18,0.05) 100%)',
+            boxShadow:'0 0 14px rgba(255,170,70,0.62), 0 0 28px rgba(255,106,24,0.3)',
+            clipPath:'polygon(50% 0%, 72% 16%, 88% 42%, 82% 70%, 63% 100%, 38% 100%, 18% 72%, 12% 40%, 28% 14%)',
+            animation:'titleFlameFlicker calc(var(--flame-duration) * 0.52) linear var(--flame-delay) infinite',
+          }}/>
+          <div style={{
+            position:'absolute',
+            left:'50%',
+            top:'46%',
+            width:7,
+            height:13,
+            transform:'translate(-50%,-50%)',
+            borderRadius:'50%',
+            background:'radial-gradient(circle, rgba(255,255,245,1) 0%, rgba(255,246,206,0.94) 58%, rgba(255,241,180,0.0) 100%)',
+            filter:'blur(0.4px)',
+            opacity:0.92,
+            animation:'titleFlameCore calc(var(--flame-duration) * 0.68) ease-in-out var(--flame-delay) infinite',
+          }}/>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function GuillotineAnim({targets}){
   const[phase,setPhase]=React.useState('falling');
-  const[shards]=React.useState(()=>
-    Array.from({length:26},(_,i)=>{
-      const angle=(i/26)*Math.PI*2+Math.random()*0.4;
-      const dist=60+Math.random()*130;
+  const[fragments]=React.useState(()=>
+    Array.from({length:32},(_,i)=>{
+      const angle=-Math.PI*0.95+Math.random()*Math.PI*1.9;
+      const dist=56+Math.random()*176;
+      const lift=20+Math.random()*84;
       return{
-        w:6+Math.random()*20, h:4+Math.random()*14,
-        tx:Math.cos(angle)*dist, ty:Math.sin(angle)*dist-40,
-        rot:(Math.random()-0.5)*400,
-        delay:i*0.011,
-        hue:10+Math.random()*25, sat:12+Math.random()*22, lit:10+Math.random()*16,
+        w:10+Math.random()*34,
+        h:7+Math.random()*22,
+        tx:Math.cos(angle)*dist,
+        ty:Math.sin(angle)*dist-lift,
+        rot:(Math.random()-0.5)*520,
+        delay:(i%8)*0.018+Math.floor(i/8)*0.008,
+        hue:Math.random()<0.3?38+Math.random()*12:3+Math.random()*18,
+        sat:72+Math.random()*24,
+        lit:Math.random()<0.3?58+Math.random()*16:42+Math.random()*18,
+        shape:`polygon(${14+Math.random()*18}% 0%, 100% ${12+Math.random()*22}%, ${78+Math.random()*22}% 100%, 0% ${72+Math.random()*18}%)`,
+      };
+    })
+  );
+  const[sparks]=React.useState(()=>
+    Array.from({length:20},(_,i)=>{
+      const angle=-Math.PI*0.9+Math.random()*Math.PI*1.8;
+      const dist=70+Math.random()*210;
+      return{
+        tx:Math.cos(angle)*dist,
+        ty:Math.sin(angle)*dist-(50+Math.random()*90),
+        delay:i*0.014,
+        dur:0.62+Math.random()*0.28,
+        size:2+Math.random()*3.4,
       };
     })
   );
@@ -1579,30 +1678,67 @@ function GuillotineAnim({targets}){
               }}/>
             )}
             {/* ── Shards ── */}
-            {phase==='shatter'&&shards.map((s,si)=>(
-              <div key={si} style={{
-                position:'absolute',
-                left:t.cx+(si%3-1)*10,top:t.cy+(si%2-0.5)*8,
-                width:s.w,height:s.h,
-                background:`hsl(${s.hue},${s.sat}%,${s.lit}%)`,
-                border:'1px solid #6a4510',borderRadius:1,
-                '--stx':`${s.tx}px`,'--sty':`${s.ty}px`,'--srot':`${s.rot}deg`,
-                animation:`shardFly 0.85s cubic-bezier(0,0.55,0.3,1) ${s.delay}s forwards`,
-                transformOrigin:'center',
-              }}/>
-            ))}
+            {phase==='shatter'&&(
+              <>
+                <div style={{
+                  position:'absolute',
+                  left:t.cx-16,top:t.cy-16,width:32,height:32,
+                  border:'2px solid rgba(255,170,90,0.86)',
+                  borderRadius:'50%',
+                  boxShadow:'0 0 18px rgba(255,120,40,0.55)',
+                  animation:'deathShockRing 0.58s ease-out forwards',
+                }}/>
+                <div style={{
+                  position:'absolute',
+                  left:t.x-18,top:t.y-18,width:t.w+36,height:t.h+36,
+                  background:'radial-gradient(ellipse at center, rgba(255,134,36,0.22) 0%, rgba(190,28,22,0.24) 34%, rgba(20,0,0,0) 78%)',
+                  filter:'blur(7px)',
+                  animation:'deathDustBloom 0.78s ease-out forwards',
+                }}/>
+                {fragments.map((s,si)=>(
+                  <div key={si} style={{
+                    position:'absolute',
+                    left:t.cx+(si%4-1.5)*8,
+                    top:t.cy+(si%3-1)*7,
+                    width:s.w,height:s.h,
+                    clipPath:s.shape,
+                    background:`linear-gradient(135deg, hsla(${s.hue},${s.sat}%,${Math.min(90,s.lit+18)}%,0.92), hsla(${s.hue},${s.sat}%,${s.lit}%,0.96) 52%, rgba(20,0,0,0.88) 100%)`,
+                    border:'1px solid rgba(255,210,170,0.34)',
+                    boxShadow:'0 0 16px rgba(255,84,42,0.34)',
+                    '--stx':`${s.tx}px`,'--sty':`${s.ty}px`,'--srot':`${s.rot}deg`,
+                    animation:`deathFragmentFly 0.92s cubic-bezier(0.12,0.62,0.24,1) ${s.delay}s forwards`,
+                    transformOrigin:'center',
+                  }}/>
+                ))}
+                {sparks.map((s,si)=>(
+                  <div key={`spark-${si}`} style={{
+                    position:'absolute',
+                    left:t.cx,
+                    top:t.cy,
+                    width:s.size,height:s.size,
+                    borderRadius:'50%',
+                    background:'radial-gradient(circle, rgba(255,245,214,0.98) 0%, rgba(255,186,84,0.94) 42%, rgba(255,92,26,0.1) 100%)',
+                    boxShadow:'0 0 10px rgba(255,170,80,0.9)',
+                    '--stx':`${s.tx}px`,'--sty':`${s.ty}px`,
+                    animation:`deathSparkFly ${s.dur}s ease-out ${s.delay}s forwards`,
+                  }}/>
+                ))}
+              </>
+            )}
             {/* ── Panel crack overlay ── */}
             {phase==='shatter'&&(
               <div style={{
                 position:'absolute',left:t.x,top:t.y,width:t.w,height:t.h,
-                border:'2.5px solid #cc2222',borderRadius:3,
-                animation:'panelCrumble 0.9s ease-out forwards',
-                background:'rgba(80,10,10,0.45)',
+                border:'1.5px solid rgba(255,116,64,0.42)',borderRadius:5,
+                animation:'panelRupture 0.9s ease-out forwards',
+                background:'linear-gradient(135deg, rgba(255,210,140,0.18), rgba(170,24,20,0.36) 48%, rgba(32,0,0,0.04) 100%)',
+                boxShadow:'0 0 34px rgba(210,32,26,0.28), inset 0 0 24px rgba(255,182,120,0.12)',
               }}>
-                <svg width={t.w} height={t.h} style={{position:'absolute',inset:0,opacity:0.9}}>
-                  <line x1={t.w*0.5} y1={0} x2={t.w*0.15} y2={t.h} stroke="#ff4444" strokeWidth="2" opacity="0.9"/>
-                  <line x1={t.w*0.5} y1={0} x2={t.w*0.85} y2={t.h} stroke="#ff3333" strokeWidth="1.5" opacity="0.75"/>
-                  <line x1={0} y1={t.h*0.35} x2={t.w} y2={t.h*0.55} stroke="#cc2222" strokeWidth="1.5" opacity="0.65"/>
+                <svg width={t.w} height={t.h} style={{position:'absolute',inset:0,overflow:'visible'}}>
+                  <path d={`M ${t.w*0.52} 0 L ${t.w*0.23} ${t.h*0.46} L ${t.w*0.06} ${t.h}`} stroke="rgba(255,208,150,0.92)" strokeWidth="2.2" fill="none" strokeLinecap="round"/>
+                  <path d={`M ${t.w*0.5} ${t.h*0.06} L ${t.w*0.86} ${t.h*0.42} L ${t.w*0.94} ${t.h*0.92}`} stroke="rgba(255,114,72,0.88)" strokeWidth="1.8" fill="none" strokeLinecap="round"/>
+                  <path d={`M 0 ${t.h*0.34} L ${t.w*0.36} ${t.h*0.52} L ${t.w*0.68} ${t.h*0.58} L ${t.w} ${t.h*0.48}`} stroke="rgba(180,18,18,0.72)" strokeWidth="1.6" fill="none" strokeLinecap="round"/>
+                  <path d={`M ${t.w*0.35} ${t.h} L ${t.w*0.54} ${t.h*0.68} L ${t.w*0.66} ${t.h*0.18}`} stroke="rgba(255,170,108,0.72)" strokeWidth="1.35" fill="none" strokeLinecap="round"/>
                 </svg>
               </div>
             )}
@@ -4041,10 +4177,13 @@ export default function Game(){
         {/* Animation overlay — visible even before game starts (first-turn card flip) */}
         <AnimOverlay anim={anim} exiting={animExiting}/>
         <div style={{position:'relative',zIndex:1}}>
+          <div style={{position:'relative',width:'min(520px,92vw)',margin:'0 auto 22px',padding:'26px 0 18px'}}>
+            <TitleCandleFlames/>
           <h1 style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:34,fontWeight:700,letterSpacing:3,marginBottom:4,color:'#e8c87a',textShadow:'0 0 40px #c8a96e44,0 2px 0 #0a0705'}}>邪神的宝藏</h1>
           <div style={{fontFamily:"'Cinzel',serif",fontSize:13,letterSpacing:3,color:'#c8a96e',marginBottom:4,opacity:0.85}}>克苏鲁卡牌对战</div>
           <div style={{fontSize:10,letterSpacing:5,color:'#a07838',fontFamily:"'Cinzel',serif",marginBottom:10,textTransform:'uppercase',opacity:0.7}}>Treasures of Evils</div>
           <div style={{width:200,height:1,background:'linear-gradient(90deg,transparent,#5a4020,transparent)',margin:'0 auto 28px'}}/>
+          </div>
           <p style={{color:'#b89858',maxWidth:380,marginBottom:32,lineHeight:1.9,fontSize:14,fontStyle:'italic'}}>
             "古神沉眠之时，旅者聚于此地。寻宝者寻觅遗物，追猎者猎杀异类，邪祀者企图唤醒邪神。各怀秘密，命运共织。"
           </p>
@@ -4646,16 +4785,14 @@ export default function Game(){
     let P=copyPlayers(gs.players),Disc=[...gs.discard];const L=[...gs.log];
     if(myCardIdx>=0){
       const dc=P[0].hand.splice(myCardIdx,1)[0];Disc.push(dc);
-      P[huntTi].hp=clamp(P[huntTi].hp-2);L.push(`弃 [${dc.key}] → ${P[huntTi].name} 受 2HP 伤害`);
+      const huntDamage=2+(P[0].damageBonus||0);
+      P[huntTi].hp=clamp(P[huntTi].hp-huntDamage);L.push(`弃 [${dc.key}] → ${P[huntTi].name} 受 ${huntDamage}HP 伤害`);
       if(P[huntTi].hp<=0){
         P[huntTi].isDead=true;P[huntTi].roleRevealed=true;L.push(`☠ ${P[huntTi].name}（${P[huntTi].role}）倒下了！`);
         if(P[huntTi].hand.length){
-          // 削弱玩家追猎者：随机拿 1 张
-          const stolenIdx = 0 | (Math.random() * P[huntTi].hand.length);
-          const stolen = P[huntTi].hand.splice(stolenIdx, 1)[0];
-          P[0].hand.push(stolen);
-          Disc.push(...P[huntTi].hand);
-          L.push(`你夺取了 ${P[huntTi].name} 的 1 张手牌，其余弃置！`);
+          const stolenCards=[...P[huntTi].hand];
+          P[0].hand.push(...stolenCards);
+          L.push(`你夺取了 ${P[huntTi].name} 的全部手牌！`);
           P[huntTi].hand=[];
         }
         if(P[huntTi].godZone?.length){Disc.push(...P[huntTi].godZone);P[huntTi].godZone=[];P[huntTi].godName=null;P[huntTi].godLevel=0;}
@@ -4698,17 +4835,15 @@ export default function Game(){
     const mi=aiHand.findIndex(c=>c.letter===card.letter||c.number===card.number);
     if(mi>=0){
       const dc=aiHand.splice(mi,1)[0];Disc.push(dc);
-      P[0].hp=clamp(P[0].hp-2);
-      L.push(`${aiHunterName} 弃 [${dc.key}]，你受 2HP 伤害！`);
+      const huntDamage=2+(P[huntingAI].damageBonus||0);
+      P[0].hp=clamp(P[0].hp-huntDamage);
+      L.push(`${aiHunterName} 弃 [${dc.key}]，你受 ${huntDamage}HP 伤害！`);
       if(P[0].hp<=0){
         P[0].isDead=true;P[0].roleRevealed=true;L.push(`☠ 你（${P[0].role}）倒下了！`);
         if(P[0].hand.length){
-          // 削弱连杀滚雪球：随机抽取 1 张
-          const stolenIdx = 0 | (Math.random() * P[0].hand.length);
-          const stolen = P[0].hand.splice(stolenIdx, 1)[0];
-          P[huntingAI].hand.push(stolen);
-          Disc.push(...P[0].hand);
-          L.push(`${aiHunterName} 夺取了你的 1 张手牌，其余弃置！`);
+          const stolenCards=[...P[0].hand];
+          P[huntingAI].hand.push(...stolenCards);
+          L.push(`${aiHunterName} 夺取了你的全部手牌！`);
           P[0].hand=[];
         }
         if(P[0].godZone?.length){Disc.push(...P[0].godZone);P[0].godZone=[];P[0].godName=null;P[0].godLevel=0;}
@@ -6472,21 +6607,61 @@ const GLOBAL_STYLES=`
     75%  {transform:translate(2px,-1px) rotate(0.1deg)}
     100% {transform:translate(0,0) rotate(0deg)}
   }
-  @keyframes shardFly {
+  @keyframes deathFragmentFly {
     0%   {transform:translate(0,0) rotate(0deg) scale(1);opacity:1}
-    100% {transform:translate(var(--stx),var(--sty)) rotate(var(--srot)) scale(0.1);opacity:0}
+    18%  {opacity:1}
+    100% {transform:translate(var(--stx),var(--sty)) rotate(var(--srot)) scale(0.22);opacity:0}
   }
-  @keyframes panelCrumble {
+  @keyframes deathSparkFly {
+    0%   {transform:translate(0,0) scale(0.7);opacity:0}
+    15%  {transform:translate(calc(var(--stx) * 0.18),calc(var(--sty) * 0.18)) scale(1);opacity:1}
+    100% {transform:translate(var(--stx),var(--sty)) scale(0.2);opacity:0}
+  }
+  @keyframes deathShockRing {
+    0%   {transform:scale(0.16);opacity:0.95}
+    55%  {opacity:0.64}
+    100% {transform:scale(7.4);opacity:0}
+  }
+  @keyframes deathDustBloom {
+    0%   {transform:scale(0.72);opacity:0.9}
+    60%  {opacity:0.42}
+    100% {transform:scale(1.34);opacity:0}
+  }
+  @keyframes panelRupture {
     0%   {opacity:1;transform:scale(1)}
-    25%  {opacity:0.9;transform:scale(1.03) rotate(-0.5deg)}
-    60%  {opacity:0.7;transform:scale(0.97) rotate(0.8deg)}
-    100% {opacity:0;transform:scale(0.88) rotate(-1deg)}
+    18%  {opacity:1;transform:scale(1.04) rotate(-0.6deg)}
+    45%  {opacity:0.88;transform:scale(0.98) rotate(0.9deg)}
+    100% {opacity:0;transform:scale(0.86) rotate(-1.4deg)}
   }
   @keyframes guillotineVig {
     0%   {background:rgba(0,0,0,0)}
     20%  {background:rgba(0,0,0,0.45)}
     50%  {background:rgba(10,0,0,0.55)}
     100% {background:rgba(0,0,0,0)}
+  }
+  @keyframes titleFlameSway {
+    0%   {transform:translate(-50%,-50%) scale(var(--flame-scale,1)) rotate(-4deg)}
+    25%  {transform:translate(calc(-50% + var(--flame-drift) * 0.3),calc(-50% - 2px)) scale(calc(var(--flame-scale,1) * 1.02)) rotate(3deg)}
+    55%  {transform:translate(calc(-50% + var(--flame-drift)),calc(-50% - 4px)) scale(calc(var(--flame-scale,1) * 0.97)) rotate(-2deg)}
+    80%  {transform:translate(calc(-50% + var(--flame-drift) * 0.15),calc(-50% - 1px)) scale(calc(var(--flame-scale,1) * 1.03)) rotate(4deg)}
+    100% {transform:translate(-50%,-50%) scale(var(--flame-scale,1)) rotate(-4deg)}
+  }
+  @keyframes titleFlameFlicker {
+    0%,100% {opacity:0.88; filter:brightness(0.94) saturate(0.96)}
+    18%     {opacity:1;    filter:brightness(1.18) saturate(1.1)}
+    39%     {opacity:0.76; filter:brightness(0.84) saturate(0.9)}
+    61%     {opacity:0.96; filter:brightness(1.08) saturate(1.08)}
+    82%     {opacity:0.8;  filter:brightness(0.9) saturate(0.94)}
+  }
+  @keyframes titleFlameGlow {
+    0%,100% {opacity:0.46; transform:translate(-50%,-58%) scale(0.92)}
+    45%     {opacity:0.72; transform:translate(-50%,-62%) scale(1.08)}
+    70%     {opacity:0.58; transform:translate(-50%,-56%) scale(0.98)}
+  }
+  @keyframes titleFlameCore {
+    0%,100% {opacity:0.82; transform:translate(-50%,-50%) scale(0.88)}
+    35%     {opacity:1;    transform:translate(-50%,-54%) scale(1.14)}
+    72%     {opacity:0.76; transform:translate(-50%,-48%) scale(0.92)}
   }
 
   /* Discard card fly — hand (bottom-centre) → discard pile (centre-left area) */
