@@ -11,24 +11,25 @@ import React, { useState, useEffect, useRef } from "react";
 //   Heal contribution: 2×(+2+1+5+3) = +22
 //   Damage contribution: 6×(−2−1−8−4) = −90   [C2 hits 4 others = −8; D2 hits 1 = −4]
 // ──────────────────────────────────────────────────────────────────────────────
-const CARD_DEFS = {
-  A1:{name:'生命甘霖',  desc:'触发此卡时，触发者回复3HP并摸1牌',                           type:'selfHealDraw',    val:3, needsTarget:false},
-  A2:{name:'诅咒箭矢',  desc:'触发此卡时，指定1名目标受3HP伤害',                  type:'damage',          val:3, needsTarget:true},
-  A3:{name:'精神侵蚀',  desc:'触发此卡时，触发者失去2SAN',                        type:'selfSANDamage',   val:2, needsTarget:false},
-  A4:{name:'恐惧幻象',  desc:'触发此卡时，指定1名目标失去2SAN',                   type:'sanDamage',       val:2, needsTarget:true},
-  B1:{name:'预言碎片',  desc:'触发此卡时，触发者摸1牌',                           type:'draw',            val:0, needsTarget:false},
-  B2:{name:'穿刺',      desc:'触发此卡时，指定1名目标受2HP伤害，触发者摸1牌',     type:'damageDraw',      val:2, needsTarget:true},
-  B3:{name:'迷失低语',  desc:'触发此卡时，触发者失去1SAN',                        type:'selfSANDamage',   val:1, needsTarget:false},
-  B4:{name:'精神侵蚀',  desc:'触发此卡时，指定1名目标失去1SAN并强制弃1牌',        type:'sanDamageDiscard',val:1, needsTarget:true},
-  C1:{name:'集体净化',  desc:'触发此卡时，全场回复1SAN',                          type:'allHealSAN',      val:1, needsTarget:false},
-  C2:{name:'黑暗风暴',  desc:'触发此卡时，全场其他人受2HP伤害',                   type:'allDamage',       val:2, needsTarget:false},
-  C3:{name:'集体冥想',  desc:'触发此卡时，全场回复1SAN',                          type:'allHealSAN',      val:1, needsTarget:false},
-  C4:{name:'群体恐慌',  desc:'触发此卡时，全场其他人失去1SAN',                    type:'allSANDamage',    val:1, needsTarget:false},
-  D1:{name:'群体庇护',  desc:'触发此卡时，全体回复2HP',                           type:'allHeal',         val:2, needsTarget:false},
-  D2:{name:'毁灭之力',  desc:'触发此卡时，指定1名目标受4HP伤害',                  type:'damage',          val:4, needsTarget:true},
-  D3:{name:'深渊凝视',  desc:'触发此卡时，触发者失去3SAN',                        type:'selfSANDamage',   val:3, needsTarget:false},
-  D4:{name:'疯狂瘟疫',  desc:'触发此卡时，指定1名目标失去3SAN',                   type:'sanDamage',       val:3, needsTarget:true},
+const FIXED_ZONE_EFFECTS = {
+  A1:{pos:{name:'营地篝火',desc:'你与相邻存活角色回复1HP',type:'adjHealHP',val:1},negS:{name:'坠落',desc:'你失去2HP，随机失去一张牌',type:'selfDamageDiscardHP',val:2},negA:{name:'毒气喷涌',desc:'你与相邻存活角色失去1HP',type:'adjDamageHP',val:1}},
+  A2:{pos:{name:'古代秘药',desc:'你回复2HP',type:'selfHealHP',val:2},negS:{name:'遭遇塌方',desc:'你失去2HP并翻面（切换休息状态）',type:'selfDamageRestHP',val:2},negA:{name:'地刺陷阱',desc:'你与相邻存活角色失去2HP',type:'adjDamageHP',val:2}},
+  A3:{pos:{name:'吃下荧光苔藓',desc:'HP回满，手牌全局公开，盲抽变挑选',type:'selfRevealHandHP',val:10},negS:{name:'理智动摇',desc:'你失去2SAN',type:'selfDamageSAN',val:2},negA:{name:'邪恶低语',desc:'你与相邻存活角色失去1SAN',type:'adjDamageSAN',val:1}},
+  A4:{pos:{name:'绮丽诗篇',desc:'直到下回合，所有人技能变为“掉包”',type:'globalOnlySwap',val:0},negS:{name:'惊惧幻象',desc:'你失去3SAN',type:'selfDamageSAN',val:3},negA:{name:'灵魂尖啸',desc:'全体存活角色失去1SAN',type:'allDamageSAN',val:1}},
+  B1:{pos:{name:'理智护符',desc:'你回复3SAN',type:'selfHealSAN',val:3},negS:{name:'忏悔独白',desc:'若信仰邪神则弃信受罚，否则失去1SAN',type:'selfRenounceGod',val:1},negA:{name:'绝望回声',desc:'你与相邻存活角色失去2SAN',type:'adjDamageSAN',val:2}},
+  B2:{pos:{name:'强心剂',desc:'你回复3HP',type:'selfHealHP',val:3},negS:{name:'极度虚弱',desc:'你失去2SAN并翻面（切换休息状态）',type:'selfDamageRestSAN',val:2},negA:{name:'地动山摇',desc:'全体存活角色失去1HP',type:'allDamageHP',val:1}},
+  B3:{pos:{name:'群体安抚',desc:'全体存活角色回复1SAN',type:'allHealSAN',val:1},negS:{name:'黑暗侵蚀',desc:'你失去1HP与1SAN',type:'selfDamageBoth',val:1},negA:{name:'沉睡魔咒',desc:'你与相邻角色翻面（切换休息状态）',type:'adjRest',val:0}},
+  B4:{pos:{name:'宁神香薰',desc:'你回复2SAN',type:'selfHealSAN',val:2},negS:{name:'落石砸击',desc:'你失去3HP',type:'selfDamageHP',val:3},negA:{name:'群体狂乱',desc:'全体存活角色失去2SAN',type:'allDamageSAN',val:2}},
+  C1:{pos:{name:'军用口粮',desc:'你回复2HP与1SAN',type:'selfHealBoth21',val:0},negS:{name:'行囊破裂',desc:'你失去1HP，随机弃2张牌',type:'selfDamageDiscardHP2',val:1},negA:{name:'毁灭风暴',desc:'全体存活角色失去2HP',type:'allDamageHP',val:2}},
+  C2:{pos:{name:'舒缓之歌',desc:'你与相邻存活角色回复1SAN',type:'adjHealSAN',val:1},negS:{name:'毒液飞溅',desc:'你失去2HP与1SAN',type:'selfDamageBoth21',val:0},negA:{name:'混乱气流',desc:'你与相邻角色各随机弃1张手牌',type:'adjDiscard',val:1}},
+  C3:{pos:{name:'均衡灵药',desc:'你回复1HP与1SAN',type:'selfHealBoth',val:1},negS:{name:'惊慌失措',desc:'你失去2SAN，随机弃1张牌',type:'selfDamageDiscardSAN',val:2},negA:{name:'瘟疫蔓延',desc:'你与相邻存活角色失去1HP和1SAN',type:'adjDamageBoth',val:1}},
+  C4:{pos:{name:'启示光辉',desc:'你失去1HP，全体回复2SAN',type:'sacHealSAN',val:2},negS:{name:'恶毒诅咒',desc:'你失去1HP与2SAN',type:'selfDamageBoth12',val:0},negA:{name:'末日预兆',desc:'全体存活角色失去1HP和1SAN',type:'allDamageBoth',val:1}},
+  D1:{pos:{name:'饮下清醒之泉',desc:'SAN回满，手牌全局公开，盲抽变挑选',type:'selfRevealHandSAN',val:10},negS:{name:'致命尖刺',desc:'你失去4HP',type:'selfDamageHP',val:4},negA:{name:'强风刮过',desc:'全体存活角色各随机弃1张手牌',type:'allDiscard',val:1}},
+  D2:{pos:{name:'群体治愈',desc:'全体存活角色回复1HP',type:'allHealHP',val:1},negS:{name:'恐怖直视',desc:'你失去4SAN',type:'selfDamageSAN',val:4},negA:{name:'血之共鸣',desc:'你失去2HP，场上其他角色回复1HP',type:'sacAllHealHP',val:2}},
+  D3:{pos:{name:'献祭治愈',desc:'你失去1SAN，全体回复2HP',type:'sacHealHP',val:2},negS:{name:'遗忘咒语',desc:'你失去1SAN，随机弃2张手牌',type:'selfDamageDiscardSAN2',val:1},negA:{name:'精神链接',desc:'你失去2SAN，场上其他角色回复1SAN',type:'sacAllHealSAN',val:2}},
+  D4:{pos:{name:'禁忌狂化',desc:'你失去1SAN，回复4HP',type:'sacHealSelfHP',val:4},negS:{name:'陷阱触发',desc:'你失去2HP',type:'selfDamageHP',val:2},negA:{name:'理智崩坏',desc:'你失去3SAN',type:'selfDamageSAN',val:3}},
 };
+const ZONE_VARIANTS=['pos','negS','negA'];
 const LETTERS=['A','B','C','D'], NUMS=[1,2,3,4];
 const AI_NAMES=['艾伦','贝拉','卡洛斯','黛安娜'];
 const ROLES=['寻宝者','追猎者','邪祀者'];
@@ -77,15 +78,20 @@ const copyPlayers=ps=>ps.map(p=>({...p,hand:[...p.hand],godZone:[...(p.godZone||
 // Cards: A1×3 A2×3 … D4×3 — 3 copies each, 48 total
 // Each card has exactly 3 copies → 48 cards total.
 // Letter sums: A=12 B=12 C=12 D=12 ✓  Number sums: col1=12 col2=12 col3=12 col4=12 ✓
-const CARD_COPIES={
-  A1:3,A2:3,A3:3,A4:3,
-  B1:3,B2:3,B3:3,B4:3,
-  C1:3,C2:3,C3:3,C4:3,
-  D1:3,D2:3,D3:3,D4:3,
-};
 function mkDeck(){
   let id=0;
-  const zoneCards=LETTERS.flatMap(L=>NUMS.flatMap(N=>{const n=CARD_COPIES[`${L}${N}`]||3;return Array(n).fill(0).map(()=>({id:id++,key:`${L}${N}`,letter:L,number:N,...CARD_DEFS[`${L}${N}`]}));}));
+  const zoneCards=LETTERS.flatMap(L=>NUMS.flatMap(N=>{
+    const key=`${L}${N}`;
+    return ZONE_VARIANTS.map(variant=>({
+      id:id++,
+      key,
+      letter:L,
+      number:N,
+      variant,
+      isZone:true,
+      ...FIXED_ZONE_EFFECTS[key][variant],
+    }));
+  }));
   const godCards=[
     ...Array(4).fill(0).map(()=>({id:id++,isGod:true,godKey:'NYA',key:'NYA',type:'god',needsTarget:false,...GOD_DEFS.NYA})),
     ...Array(4).fill(0).map(()=>({id:id++,isGod:true,godKey:'CTH',key:'CTH',type:'god',needsTarget:false,...GOD_DEFS.CTH})),
@@ -127,33 +133,162 @@ const isWinHand=h=>{const ls=new Set(h.map(c=>c.letter)),ns=new Set(h.map(c=>c.n
 // ══════════════════════════════════════════════════════════════
 //  EFFECT ENGINE
 // ══════════════════════════════════════════════════════════════
+function getPrevLivingIndex(players,ci){
+  for(let step=1;step<players.length;step++){
+    const idx=(ci-step+players.length)%players.length;
+    if(idx!==ci&&!players[idx].isDead)return idx;
+  }
+  return null;
+}
+function getNextLivingIndex(players,ci){
+  for(let step=1;step<players.length;step++){
+    const idx=(ci+step)%players.length;
+    if(idx!==ci&&!players[idx].isDead)return idx;
+  }
+  return null;
+}
+function getAdjacentTargets(players,ci){
+  const prev=getPrevLivingIndex(players,ci);
+  const next=getNextLivingIndex(players,ci);
+  return [ci,...[prev,next].filter((idx,pos,arr)=>idx!=null&&arr.indexOf(idx)===pos)];
+}
+function scorePlayerPerspective(player){
+  if(!player||player.isDead)return -999;
+  return (10-player.hp)*1.3+(10-player.san)*1.1+player.hand.length*0.2+(player.godName?1:0)+(player.godLevel||0)*0.6;
+}
+function estimateZoneCardKeepScore(card,ci,players){
+  const self=players[ci];
+  if(!self||self.isDead)return -99;
+  let score=0;
+  switch(card.type){
+    case 'selfHealHP': score=(10-self.hp)*1.5; break;
+    case 'selfHealSAN': score=(10-self.san)*1.4; break;
+    case 'selfHealBoth': score=(10-self.hp)+(10-self.san); break;
+    case 'selfHealBoth21': score=(10-self.hp)*1.5+(10-self.san)*0.8; break;
+    case 'selfRevealHandHP': score=(10-self.hp)*2.2+1.5; break;
+    case 'selfRevealHandSAN': score=(10-self.san)*2.2+1.5; break;
+    case 'adjHealHP':
+    case 'adjHealSAN':
+      score=getAdjacentTargets(players,ci).reduce((sum,idx)=>sum+scorePlayerPerspective(players[idx]),0)*0.45;
+      break;
+    case 'allHealHP':
+    case 'allHealSAN':
+      score=players.reduce((sum,p)=>sum+scorePlayerPerspective(p),0)*0.22;
+      break;
+    case 'globalOnlySwap':
+      score=self.role==='寻宝者'?3.5:0.8;
+      break;
+    case 'selfDamageHP':
+    case 'selfDamageSAN':
+      score=-card.val*2.1;
+      break;
+    case 'selfDamageDiscardHP':
+    case 'selfDamageDiscardSAN':
+    case 'selfDamageDiscardHP2':
+    case 'selfDamageDiscardSAN2':
+      score=-card.val*2.2-Math.min(self.hand.length,card.type.endsWith('2')?2:1)*1.2;
+      break;
+    case 'selfDamageBoth':
+    case 'selfDamageBoth12':
+    case 'selfDamageBoth21':
+      score=-3.4;
+      break;
+    case 'selfDamageRestHP':
+    case 'selfDamageRestSAN':
+      score=-3.1;
+      break;
+    case 'selfRenounceGod':
+      score=-(self.godName?2.8:1.4);
+      break;
+    default:
+      if(card.type.startsWith('allDamage')||card.type.startsWith('adjDamage')||card.type==='adjDiscard'||card.type==='allDiscard'){
+        if(self.role==='追猎者') score=2.4;
+        else if(self.role==='邪祀者'&&card.type.includes('SAN')) score=2.2;
+        else score=-1.6;
+      }else if(card.type.startsWith('sac')){
+        score=self.role==='寻宝者'?0.6:1.6;
+      }
+      break;
+  }
+  if(self.hp<=2&&card.type.includes('DamageHP'))score-=4;
+  if(self.san<=2&&card.type.includes('DamageSAN'))score-=4;
+  return score;
+}
+function aiShouldKeepZoneCard(card,ci,players,forced=false){
+  if(forced)return true;
+  const score=estimateZoneCardKeepScore(card,ci,players);
+  if(card.variant==='pos')return score>-1.5;
+  return score>1.1;
+}
 function applyFx(card,ci,ti,ps,deck,disc){
   let P=copyPlayers(ps),D=[...deck],Disc=[...disc],msgs=[];
-  const healHP=(i,v)=>{if(i==null||!P[i])return;P[i].hp=clamp(P[i].hp+v);};
-  const healSAN=(i,v)=>{if(i==null||!P[i])return;P[i].san=clamp(P[i].san+v);};
-  const hurtHP=(i,v)=>{if(i==null||!P[i]||P[i].isDead)return;P[i].hp=clamp(P[i].hp-v);if(P[i].hp<=0){P[i].isDead=true;P[i].roleRevealed=true;msgs.push(`☠ ${P[i].name}（${P[i].role}）倒下了！`);Disc.push(...P[i].hand);P[i].hand=[];if(P[i].godZone?.length){Disc.push(...P[i].godZone);P[i].godZone=[];P[i].godName=null;P[i].godLevel=0;}}};
+  let statePatch={};
+  const healHP=(i,v)=>{if(i==null||!P[i]||P[i].isDead)return;P[i].hp=clamp(P[i].hp+v);};
+  const healSAN=(i,v)=>{if(i==null||!P[i]||P[i].isDead)return;P[i].san=clamp(P[i].san+v);};
+  const killPlayer=i=>{
+    if(i==null||!P[i]||P[i].isDead)return;
+    P[i].isDead=true;P[i].roleRevealed=true;
+    msgs.push(`☠ ${P[i].name}（${P[i].role}）倒下了！`);
+    Disc.push(...P[i].hand);P[i].hand=[];
+    if(P[i].godZone?.length){Disc.push(...P[i].godZone);P[i].godZone=[];P[i].godName=null;P[i].godLevel=0;}
+  };
+  const hurtHP=(i,v)=>{if(i==null||!P[i]||P[i].isDead)return;P[i].hp=clamp(P[i].hp-v);if(P[i].hp<=0)killPlayer(i);};
   const hurtSAN=(i,v)=>{if(i==null||!P[i]||P[i].isDead)return;P[i].san=clamp(P[i].san-v);};
-  const randDiscard=i=>{if(i==null||!P[i])return;if(P[i].hand.length){const x=0|Math.random()*P[i].hand.length;const c=P[i].hand.splice(x,1)[0];Disc.push(c);msgs.push(`${P[i].name} 失去了 [${c.key}]`);}};
-  const drawDirect=i=>{if(i==null||!P[i])return;if(!D.length&&Disc.length){D=shuffle(Disc);Disc=[];msgs.push('牌堆重新洗入...');}if(D.length)P[i].hand.push(D.shift());};
-  const cn=P[ci].name,tn=ti!=null?P[ti]?.name:'';
+  const randDiscard=(i,count=1)=>{if(i==null||!P[i])return;for(let n=0;n<count;n++){if(P[i].hand.length){const x=0|Math.random()*P[i].hand.length;const c=P[i].hand.splice(x,1)[0];Disc.push(c);msgs.push(`${P[i].name} 失去了 [${c.key}]`);}}};
+  const toggleRest=i=>{if(i==null||!P[i]||P[i].isDead)return;P[i].isResting=!P[i].isResting;msgs.push(`${P[i].name}${P[i].isResting?'进入':'离开'}休息状态`);};
+  const adjacent=getAdjacentTargets(P,ci);
+  const others=P.map((_,i)=>i).filter(i=>i!==ci&&!P[i].isDead);
+  const allLiving=P.map((_,i)=>i).filter(i=>!P[i].isDead);
+  const actor=P[ci];
   switch(card.type){
-    case 'selfHeal':       healHP(ci,card.val);  msgs.push(`${cn} 回复 ${card.val}HP`);break;
-    case 'selfHealSAN':    healSAN(ci,card.val); msgs.push(`${cn} 回复 ${card.val}SAN`);break;
-    case 'damage':         hurtHP(ti,card.val);  msgs.push(`${cn} → ${tn}：${card.val}HP 伤害`);break;
-    case 'sanDamage':      hurtSAN(ti,card.val); msgs.push(`${cn} → ${tn}：失去 ${card.val}SAN`);break;
-    case 'selfHealDraw':   healHP(ci,card.val);drawDirect(ci);msgs.push(`${cn} 回复 ${card.val}HP 并摸1牌`);break;
-    case 'selfHealSANDraw':healSAN(ci,card.val);drawDirect(ci);msgs.push(`${cn} 回复 ${card.val}SAN 并摸1牌`);break;
-    case 'draw':           drawDirect(ci);msgs.push(`${cn} 摸1牌`);break;
-    case 'selfHealSANcostHP':healSAN(ci,card.val);hurtHP(ci,1);msgs.push(`${cn} 回复 ${card.val}SAN，失去1HP`);break;
-    case 'selfSANDamage':  hurtSAN(ci,card.val);msgs.push(`${cn} 失去 ${card.val}SAN`);break;
-    case 'damageDraw':     hurtHP(ti,card.val);drawDirect(ci);msgs.push(`${cn} → ${tn}：${card.val}HP 伤害，${cn} 摸1牌`);break;
-    case 'sanDamageDiscard':hurtSAN(ti,card.val);randDiscard(ti);msgs.push(`${cn} → ${tn}：失去 ${card.val}SAN 并夺牌`);break;
-    case 'allHeal':        P.forEach((_,i)=>{if(!P[i].isDead)healHP(i,card.val);});msgs.push(`全体回复 ${card.val}HP`);break;
-    case 'allDamage':      P.forEach((_,i)=>{if(!P[i].isDead&&i!==ci)hurtHP(i,card.val);});msgs.push(`${cn} 对所有他人造成 ${card.val}HP 伤害`);break;
-    case 'allHealSAN':     P.forEach((_,i)=>{if(!P[i].isDead)healSAN(i,card.val);});msgs.push(`全体回复 ${card.val}SAN`);break;
-    case 'allSANDamage':   P.forEach((_,i)=>{if(!P[i].isDead&&i!==ci)hurtSAN(i,card.val);});msgs.push(`${cn} 侵蚀了所有人的理智`);break;
+    case 'selfHealHP': healHP(ci,card.val);msgs.push(`${actor.name} 回复了 ${card.val} HP`);break;
+    case 'selfHealSAN': healSAN(ci,card.val);msgs.push(`${actor.name} 回复了 ${card.val} SAN`);break;
+    case 'selfHealBoth': healHP(ci,1);healSAN(ci,1);msgs.push(`${actor.name} 回复了 1 HP 和 1 SAN`);break;
+    case 'selfHealBoth21': healHP(ci,2);healSAN(ci,1);msgs.push(`${actor.name} 回复了 2 HP 和 1 SAN`);break;
+    case 'adjHealHP': adjacent.forEach(i=>healHP(i,card.val));msgs.push(`${actor.name} 与相邻角色各回复 ${card.val} HP`);break;
+    case 'adjHealSAN': adjacent.forEach(i=>healSAN(i,card.val));msgs.push(`${actor.name} 与相邻角色各回复 ${card.val} SAN`);break;
+    case 'allHealHP': allLiving.forEach(i=>healHP(i,card.val));msgs.push(`全体存活角色回复 ${card.val} HP`);break;
+    case 'allHealSAN': allLiving.forEach(i=>healSAN(i,card.val));msgs.push(`全体存活角色回复 ${card.val} SAN`);break;
+    case 'selfRevealHandHP': actor.hp=10;actor.revealHand=true;actor.pickInsteadOfRandom=true;msgs.push(`${actor.name} HP 回满，手牌公开且盲抽改为挑选`);break;
+    case 'selfRevealHandSAN': actor.san=10;actor.revealHand=true;actor.pickInsteadOfRandom=true;msgs.push(`${actor.name} SAN 回满，手牌公开且盲抽改为挑选`);break;
+    case 'globalOnlySwap': statePatch={globalOnlySwapOwner:ci};msgs.push(`直到 ${actor.name} 的下回合开始前，所有角色技能都视为“掉包”`);break;
+    case 'selfDamageHP': hurtHP(ci,card.val);msgs.push(`${actor.name} 失去 ${card.val} HP`);break;
+    case 'selfDamageSAN': hurtSAN(ci,card.val);msgs.push(`${actor.name} 失去 ${card.val} SAN`);break;
+    case 'selfDamageBoth': hurtHP(ci,1);hurtSAN(ci,1);msgs.push(`${actor.name} 失去 1 HP 和 1 SAN`);break;
+    case 'selfDamageBoth12': hurtHP(ci,1);hurtSAN(ci,2);msgs.push(`${actor.name} 失去 1 HP 和 2 SAN`);break;
+    case 'selfDamageBoth21': hurtHP(ci,2);hurtSAN(ci,1);msgs.push(`${actor.name} 失去 2 HP 和 1 SAN`);break;
+    case 'selfDamageDiscardHP': hurtHP(ci,card.val);randDiscard(ci,1);break;
+    case 'selfDamageDiscardSAN': hurtSAN(ci,card.val);randDiscard(ci,1);break;
+    case 'selfDamageDiscardHP2': hurtHP(ci,card.val);randDiscard(ci,2);break;
+    case 'selfDamageDiscardSAN2': hurtSAN(ci,card.val);randDiscard(ci,2);break;
+    case 'selfDamageRestHP': hurtHP(ci,card.val);toggleRest(ci);break;
+    case 'selfDamageRestSAN': hurtSAN(ci,card.val);toggleRest(ci);break;
+    case 'adjDamageHP': adjacent.forEach(i=>hurtHP(i,card.val));msgs.push(`${actor.name} 与相邻角色各失去 ${card.val} HP`);break;
+    case 'adjDamageSAN': adjacent.forEach(i=>hurtSAN(i,card.val));msgs.push(`${actor.name} 与相邻角色各失去 ${card.val} SAN`);break;
+    case 'adjDamageBoth': adjacent.forEach(i=>{hurtHP(i,card.val);hurtSAN(i,card.val);});msgs.push(`${actor.name} 与相邻角色各失去 ${card.val} HP 和 ${card.val} SAN`);break;
+    case 'allDamageHP': allLiving.forEach(i=>hurtHP(i,card.val));msgs.push(`全体存活角色失去 ${card.val} HP`);break;
+    case 'allDamageSAN': allLiving.forEach(i=>hurtSAN(i,card.val));msgs.push(`全体存活角色失去 ${card.val} SAN`);break;
+    case 'allDamageBoth': allLiving.forEach(i=>{hurtHP(i,card.val);hurtSAN(i,card.val);});msgs.push(`全体存活角色失去 ${card.val} HP 和 ${card.val} SAN`);break;
+    case 'adjRest': adjacent.forEach(i=>toggleRest(i));break;
+    case 'adjDiscard': adjacent.forEach(i=>randDiscard(i,1));break;
+    case 'allDiscard': allLiving.forEach(i=>randDiscard(i,1));break;
+    case 'selfRenounceGod':
+      if(actor.godName){
+        actor.san=clamp(actor.san-card.val);
+        if(actor.godZone?.length)Disc.push(...actor.godZone);
+        actor.godZone=[];actor.godName=null;actor.godLevel=0;
+        msgs.push(`${actor.name} 弃信邪神并受到惩罚，失去 ${card.val} SAN`);
+      }else{
+        hurtSAN(ci,card.val);msgs.push(`${actor.name} 失去 ${card.val} SAN`);
+      }
+      break;
+    case 'sacHealSAN': hurtHP(ci,1);allLiving.forEach(i=>healSAN(i,card.val));msgs.push(`${actor.name} 失去 1 HP，随后全体回复 ${card.val} SAN`);break;
+    case 'sacHealHP': hurtSAN(ci,1);allLiving.forEach(i=>healHP(i,card.val));msgs.push(`${actor.name} 失去 1 SAN，随后全体回复 ${card.val} HP`);break;
+    case 'sacAllHealHP': hurtHP(ci,card.val);others.forEach(i=>healHP(i,1));msgs.push(`${actor.name} 失去 ${card.val} HP，其他角色各回复 1 HP`);break;
+    case 'sacAllHealSAN': hurtSAN(ci,card.val);others.forEach(i=>healSAN(i,1));msgs.push(`${actor.name} 失去 ${card.val} SAN，其他角色各回复 1 SAN`);break;
+    case 'sacHealSelfHP': hurtSAN(ci,1);healHP(ci,card.val);msgs.push(`${actor.name} 失去 1 SAN，回复 ${card.val} HP`);break;
   }
-  return{P,D,Disc,msgs};
+  return{P,D,Disc,msgs,statePatch};
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -170,13 +305,14 @@ function rotateGsForViewer(gs,myIndex){
   const gameOver=gs.gameOver&&gs.gameOver.winnerIdx!=null
     ?{...gs.gameOver,winnerIdx:ri(gs.gameOver.winnerIdx)}:gs.gameOver;
   const huntAbandoned=(gs.huntAbandoned||[]).map(i=>ri(i));
+  const drawReveal=gs.drawReveal?{...gs.drawReveal,...(gs.drawReveal.drawerIdx!=null?{drawerIdx:ri(gs.drawReveal.drawerIdx)}:{})}:gs.drawReveal;
   const ad=gs.abilityData||{};
   const abilityData={...ad,
     ...(ad.swapTi!=null?{swapTi:ri(ad.swapTi)}:{}),
     ...(ad.huntTi!=null?{huntTi:ri(ad.huntTi)}:{}),
     ...(ad.huntingAI!=null?{huntingAI:ri(ad.huntingAI)}:{}),
   };
-  return{...gs,players,currentTurn,gameOver,huntAbandoned,abilityData};
+  return{...gs,players,currentTurn,gameOver,huntAbandoned,abilityData,drawReveal};
 }
 function derotateGs(gs,myIndex){
   if(!gs||myIndex===0)return gs;
@@ -284,30 +420,14 @@ function aiDrawAndApply(ci,ps,deck,disc){
     const win2=checkWin(P,false);if(win2)return{P,D,Disc,drawnCard,effectMsgs:L2,_godWin:win2};
     return{P,D,Disc,drawnCard,effectMsgs:L2};
   }
-  let ti=null;
-  if(drawnCard.needsTarget){
-    const aliveIdx=P.map((_,i)=>i).filter(i=>!P[i].isDead&&i!==ci);
-    if(aliveIdx.length){
-      const role=P[ci].role;let bestIdx;
-      if(['damage','damageDraw'].includes(drawnCard.type)){
-        if(role==='追猎者'){
-          // No friendly fire; concentrate on lowest-HP non-hunter (focus fire)
-          const pool=(()=>{const e=aliveIdx.filter(i=>P[i].role!=='追猎者');return e.length?e:aliveIdx;})();
-          bestIdx=pool.reduce((b,i)=>P[i].hp<P[b].hp?i:b,pool[0]);
-        } else bestIdx=aliveIdx[0|Math.random()*aliveIdx.length];
-      } else {
-        // SAN-damage cards: 邪祀者 targets the globally lowest-SAN alive player
-        // (including teammates — any SAN=0 triggers win, even a cultist)
-        if(role==='邪祀者'){
-          bestIdx=aliveIdx.reduce((b,i)=>P[i].san<P[b].san?i:b,aliveIdx[0]);
-        } else bestIdx=aliveIdx[0|Math.random()*aliveIdx.length];
-      }
-      ti=bestIdx;
-    }else{P[ci].hand.push(drawnCard);return{P,D,Disc,drawnCard,effectMsgs:[`${P[ci].name} 摸到 [${drawnCard.key}]（无目标，效果失效）`]};}
+  const keep=aiShouldKeepZoneCard(drawnCard,ci,P,false);
+  if(!keep){
+    Disc.push(drawnCard);
+    return{P,D,Disc,drawnCard,effectMsgs:[`${P[ci].name} 摸到 [${drawnCard.key}] ${drawnCard.name}，评估后选择弃置`]};  
   }
-  const res=applyFx(drawnCard,ci,ti,P,D,Disc);
+  const res=applyFx(drawnCard,ci,null,P,D,Disc);
   P=res.P;D=res.D;Disc=res.Disc;P[ci].hand.push(drawnCard);
-  return{P,D,Disc,drawnCard,effectMsgs:[`${P[ci].name} 摸到 [${drawnCard.key}] ${drawnCard.name}`,...res.msgs]};
+  return{P,D,Disc,drawnCard,effectMsgs:[`${P[ci].name} 摸到 [${drawnCard.key}] ${drawnCard.name}，选择收入手牌并触发效果`,...res.msgs],statePatch:res.statePatch,kept:true};
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -317,7 +437,7 @@ function playerDrawCard(ps,deck,disc,ci=0){
   // ci: index of the drawing player in ps (0 = viewer, other = MP opponent)
   let P=copyPlayers(ps),D=[...deck],Disc=[...disc];
   if(!D.length&&Disc.length){D=shuffle(Disc);Disc=[];}
-  if(!D.length)return{P,D,Disc,drawnCard:null,effectMsgs:[],needTarget:false};
+  if(!D.length)return{P,D,Disc,drawnCard:null,effectMsgs:[],needTarget:false,needsDecision:false};
   const drawnCard=D.shift();
   // God card: don't apply effect yet — route to player choice UI
   if(drawnCard.isGod){
@@ -327,12 +447,9 @@ function playerDrawCard(ps,deck,disc,ci=0){
     const whoName=ci===0?'你':P[ci].name;
     return{P,D,Disc,drawnCard,
       effectMsgs:[`${whoName}遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）失去${cost}SAN`],
-      needTarget:false,needGodChoice:true};
+      needTarget:false,needGodChoice:true,needsDecision:false};
   }
-  if(drawnCard.needsTarget)return{P,D,Disc,drawnCard,effectMsgs:[],needTarget:true};
-  const res=applyFx(drawnCard,ci,null,P,D,Disc);
-  P=res.P;D=res.D;Disc=res.Disc;P[ci].hand.push(drawnCard);
-  return{P,D,Disc,drawnCard,effectMsgs:res.msgs,needTarget:false};
+  return{P,D,Disc,drawnCard,effectMsgs:[],needTarget:false,needsDecision:true,forcedKeep:false};
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -346,6 +463,11 @@ function startNextTurn(gs){
   // Clear any NYA temp borrow for the player whose turn just ended
   if(P[gs.currentTurn]&&P[gs.currentTurn]._nyaBorrow)delete P[gs.currentTurn]._nyaBorrow;
   if(P[gs.currentTurn]&&P[gs.currentTurn]._nyaHandLimit)delete P[gs.currentTurn]._nyaHandLimit;
+  let globalOnlySwapOwner=gs.globalOnlySwapOwner;
+  if(globalOnlySwapOwner===next){
+    globalOnlySwapOwner=null;
+    L.push('“全员技能变为掉包”的效果结束了');
+  }
   // If this player was resting: wake up (flip card face-up), skip their turn entirely
   if(P[next].isResting){
     P[next].isResting=false;
@@ -357,16 +479,17 @@ function startNextTurn(gs){
       for(let _d=0;_d<extraDraws;_d++){
         const r2=playerDrawCard(P,D,Disc);P=r2.P;D=r2.D;Disc=r2.Disc;
         if(r2.drawnCard)L.push(`  摸到 [${r2.drawnCard.key||r2.drawnCard.name}]`);
-        if(r2.needGodChoice){return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:r2.drawnCard,fromRest:true},drawReveal:null,selectedCard:null};}
+        if(r2.needGodChoice){return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:r2.drawnCard,fromRest:true},drawReveal:null,selectedCard:null,globalOnlySwapOwner};}
+        if(r2.needsDecision){return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,phase:'DRAW_REVEAL',drawReveal:{card:r2.drawnCard,msgs:[],needsDecision:true,forcedKeep:false,drawerIdx:0,drawerName:P[0].name,fromRest:true},selectedCard:null,abilityData:{},globalOnlySwapOwner};}
       }
       // Skip the turn: advance past player 0 to the next living player
       // Hand limit is NOT enforced here — excess cards are kept until the next normal turn ends
       L.push('回合跳过（翻面中）');
-      return startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,godFromHandUsed:false,godTriggeredThisTurn:false});
+      return startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,godFromHandUsed:false,godTriggeredThisTurn:false,globalOnlySwapOwner});
     } else {
       L.push(`${P[next].name} 从休息中醒来，跳过本回合`);
     }
-    return startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,skillUsed:false,restUsed:false,godFromHandUsed:false,godTriggeredThisTurn:false});
+    return startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,skillUsed:false,restUsed:false,godFromHandUsed:false,godTriggeredThisTurn:false,globalOnlySwapOwner});
   }
   L.push(`── ${P[next].name} 的回合开始 ──`);
   if(next===0){
@@ -374,30 +497,20 @@ function startNextTurn(gs){
     if(P[0].godName==='NYA'&&P[0].godLevel>=1){
       const deadOthers=P.filter((p,i)=>i>0&&p.isDead);
       if(deadOthers.length>0){
-        return{...gs,players:P,deck:D,discard:Disc,log:[...L,'你的邪神之力「千人千貌」：可借用已死角色的身份'],currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,phase:'NYA_BORROW',abilityData:{},drawReveal:null,selectedCard:null};
+        return{...gs,players:P,deck:D,discard:Disc,log:[...L,'你的邪神之力「千人千貌」：可借用已死角色的身份'],currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,phase:'NYA_BORROW',abilityData:{},drawReveal:null,selectedCard:null,globalOnlySwapOwner};
       }
     }
     const res=playerDrawCard(P,D,Disc);
     P=res.P;D=res.D;Disc=res.Disc;
     // 多人游戏中记录玩家0摸牌信息到日志，让其他玩家可见（单机不需要，DRAW_REVEAL 时可见）
     if(gs._isMP&&res.drawnCard)L.push(`${P[0].name} 摸到 [${res.drawnCard.key}] ${res.drawnCard.name}`);
-    if(!res.drawnCard){L.push('牌堆耗尽！');return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,phase:'ACTION',drawReveal:null,abilityData:{},skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false};}
-    if(res.needGodChoice){const win2=checkWin(P,gs._isMP);if(win2)return{...gs,players:P,deck:D,discard:Disc,log:[...L,...res.effectMsgs],gameOver:win2};return{...gs,players:P,deck:D,discard:Disc,log:[...L,...res.effectMsgs],currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:res.drawnCard},drawReveal:null,selectedCard:null};}
+    if(!res.drawnCard){L.push('牌堆耗尽！');return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,phase:'ACTION',drawReveal:null,abilityData:{},skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,globalOnlySwapOwner};}
+    if(res.needGodChoice){const win2=checkWin(P,gs._isMP);if(win2)return{...gs,players:P,deck:D,discard:Disc,log:[...L,...res.effectMsgs],gameOver:win2,globalOnlySwapOwner};return{...gs,players:P,deck:D,discard:Disc,log:[...L,...res.effectMsgs],currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:res.drawnCard},drawReveal:null,selectedCard:null,globalOnlySwapOwner};}
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
-    if(!res.needTarget&&!P[0].isDead&&P[0].role==='寻宝者'&&isWinHand(P[0].hand)){
-      P[0].roleRevealed=true;
-      // Set PLAYER_WIN_PENDING so treasure-map animation plays before win screen
-      return{...gs,players:P,deck:D,discard:Disc,
-        log:[...L,'你摸牌后集齐了全部编号！'],
-        currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,phase:'DRAW_REVEAL',
-        drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needTarget:false},
-        selectedCard:null,abilityData:{winReason:'你集齐了全部编号并获胜！'},
-        _pendingPlayerWin:true};
-    }
     return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,
-      phase:res.needTarget?'DRAW_SELECT_TARGET':'DRAW_REVEAL',
-      drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needTarget:res.needTarget},
-      selectedCard:null,abilityData:{}};
+      phase:'DRAW_REVEAL',
+      drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:!!res.needsDecision,forcedKeep:!!res.forcedKeep,drawerIdx:0,drawerName:P[0].name},
+      selectedCard:null,abilityData:{},globalOnlySwapOwner};
   }else if(gs._isMP){
     // Multiplayer: next player is human — draw their card and enter DRAW_REVEAL
     const res=playerDrawCard(P,D,Disc,next);
@@ -405,21 +518,21 @@ function startNextTurn(gs){
     // 记录摸牌信息到日志（与单机AI摸牌保持一致：[key] 名称）
     if(res.drawnCard)L.push(`${P[next].name} 摸到 [${res.drawnCard.key}] ${res.drawnCard.name}`);
     if(res.effectMsgs.length)L.push(...res.effectMsgs);
-    if(!res.drawnCard){L.push('牌堆耗尽！');return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,phase:'ACTION',drawReveal:null,abilityData:{},skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false};}
-    if(res.needGodChoice){const win2=checkWin(P,true);if(win2)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win2};return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:res.drawnCard},drawReveal:null,selectedCard:null,_isMP:true};}
+    if(!res.drawnCard){L.push('牌堆耗尽！');return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,phase:'ACTION',drawReveal:null,abilityData:{},skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,globalOnlySwapOwner};}
+    if(res.needGodChoice){const win2=checkWin(P,true);if(win2)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win2,globalOnlySwapOwner};return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:res.drawnCard},drawReveal:null,selectedCard:null,_isMP:true,globalOnlySwapOwner};}
     const win=checkWin(P,true);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
     return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,
-      phase:res.needTarget?'DRAW_SELECT_TARGET':'DRAW_REVEAL',
-      drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needTarget:res.needTarget},
-      selectedCard:null,abilityData:{},_isMP:true};
+      phase:'DRAW_REVEAL',
+      drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:!!res.needsDecision,forcedKeep:!!res.forcedKeep,drawerIdx:next,drawerName:P[next].name},
+      selectedCard:null,abilityData:{},_isMP:true,globalOnlySwapOwner};
   }else{
     const _P_beforeDraw=copyPlayers(P);
     const res=aiDrawAndApply(next,P,D,Disc);
     P=res.P;D=res.D;Disc=res.Disc;if(res.effectMsgs.length)L.push(...res.effectMsgs);
-    const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
+    const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,...(res.statePatch||{}),globalOnlySwapOwner:(res.statePatch?.globalOnlySwapOwner??globalOnlySwapOwner)};
     if(!P[next].isDead&&P[next].role==='寻宝者'&&isWinHand(P[next].hand)){P[next].roleRevealed=true;return{...gs,players:P,deck:D,discard:Disc,log:[...L,`${P[next].name} 集齐全部编号并获胜！`],gameOver:{winner:'寻宝者',reason:`${P[next].name} 集齐了全部编号并获胜！`,winnerIdx:next}};}
     return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,phase:'AI_TURN',drawReveal:null,selectedCard:null,abilityData:{},huntAbandoned:[],
-      _drawnCard:res.drawnCard??null,_playersBeforeThisDraw:_P_beforeDraw,_turnKey:(gs._turnKey||0)+1};
+      _drawnCard:res.drawnCard??null,_playersBeforeThisDraw:_P_beforeDraw,_turnKey:(gs._turnKey||0)+1,...(res.statePatch||{}),globalOnlySwapOwner:(res.statePatch?.globalOnlySwapOwner??globalOnlySwapOwner)};
   }
 }
 
@@ -443,7 +556,7 @@ function aiStep(gs){
     }
   }
   const ai=P[ct];const alive=P.filter((p,i)=>!p.isDead&&i!==ct);
-  if((ai._nyaBorrow||ai.role)==='寻宝者'&&isWinHand(ai.hand)){P[ct].roleRevealed=true;return{...gs,players:P,log:[...L,`${ai.name} 宣告获胜！`],gameOver:{winner:'寻宝者',reason:`${ai.name} 集齐了全部编号并获胜！`,winnerIdx:ct}};}
+  if(((gs.globalOnlySwapOwner!=null?'寻宝者':(ai._nyaBorrow||ai.role)))==='寻宝者'&&isWinHand(ai.hand)){P[ct].roleRevealed=true;return{...gs,players:P,log:[...L,`${ai.name} 宣告获胜！`],gameOver:{winner:'寻宝者',reason:`${ai.name} 集齐了全部编号并获胜！`,winnerIdx:ct}};}
   // AI worship-from-hand: face-down god cards in hand can be worshipped (no skull counter, once per turn)
   if(!gs.skillUsed&&!gs.restUsed){
     const handGodIdx=P[ct].hand.findIndex(c=>c.isGod);
@@ -472,7 +585,7 @@ function aiStep(gs){
   // 寻宝者: hp≤7时休息优于不休（训练数据HP≈6/8 ✓，排除HP≈8覆盖的hp=9）
   // 追猎者: hp≤5时积极休息；hp 6-8区间不休（训练证明6-7不休更优，hp=8-9实际收益<2HP）
   // 邪祀者: 沿用低HP保守门槛
-  const aiEffRole=ai._nyaBorrow||ai.role;
+  const aiEffRole=gs.globalOnlySwapOwner!=null?'寻宝者':(ai._nyaBorrow||ai.role);
   const shouldRest=(()=>{
     if(gs.restUsed||gs.skillUsed)return false;
     if(ai.hp>=9)return false; // 通用上限：HP≥9时healing被clamp截断，浪费回合
@@ -575,7 +688,9 @@ function aiStep(gs){
         const hunterThreatTgt=P[ti]?.role==='追猎者';
         const forcedConvertGod=P[ct].hand.find(c=>c.isGod&&P[ti].godName&&P[ti].godName!==c.godKey);
         const anyGod=P[ct].hand.find(c=>c.isGod);
-        const sanPrefer=hunterThreatTgt?['damage','allDamage','damageDraw','sanDamage','allSANDamage','sanDamageDiscard']:['sanDamage','allSANDamage','sanDamageDiscard'];
+        const sanPrefer=hunterThreatTgt
+          ?['allDamageHP','adjDamageHP','allDamageSAN','adjDamageSAN','allDamageBoth','adjDamageBoth','selfDamageSAN']
+          :['allDamageSAN','adjDamageSAN','allDamageBoth','adjDamageBoth','selfDamageSAN'];
         const sanCard=P[ct].hand.find(c=>sanPrefer.includes(c.type));
         const sc=forcedConvertGod||anyGod||sanCard||P[ct].hand[0];
         P[ct].hand=P[ct].hand.filter(c=>c.id!==sc.id);
@@ -653,7 +768,7 @@ function initGame(playerNames){
   const deck=mkDeck(),roles=mkRoles(N);
   const players=names.map((name,i)=>({id:i,name,role:roles[i],roleRevealed:false,hp:10,san:10,hand:[],isDead:false,isResting:false,godEncounters:0,godZone:[],godName:null,godLevel:0}));
   for(let r=0;r<4;r++)players.forEach(p=>p.hand.push(deck.shift()));
-  const base={players,deck,discard:[],currentTurn:-1,phase:'DRAW_REVEAL',drawReveal:null,selectedCard:null,abilityData:{},log:['游戏开始。每人获得四张初始手牌。'],gameOver:null,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,_turnKey:0,_isMP:!!playerNames};
+  const base={players,deck,discard:[],currentTurn:-1,phase:'DRAW_REVEAL',drawReveal:null,selectedCard:null,abilityData:{},log:['游戏开始。每人获得四张初始手牌。'],gameOver:null,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,globalOnlySwapOwner:null,_turnKey:0,_isMP:!!playerNames};
   return startNextTurn(base);
 }
 
@@ -662,7 +777,12 @@ function initGame(playerNames){
 // ══════════════════════════════════════════════════════════════
 
 // Evil card types: cause HP or SAN damage to others
-const EVIL_TYPES=new Set(['damage','allDamage','sanDamage','allSANDamage','sanDamageDiscard','damageDraw','selfSANDamage']);
+const EVIL_TYPES=new Set([
+  'selfDamageHP','selfDamageSAN','selfDamageBoth','selfDamageBoth12','selfDamageBoth21',
+  'selfDamageDiscardHP','selfDamageDiscardSAN','selfDamageDiscardHP2','selfDamageDiscardSAN2',
+  'selfDamageRestHP','selfDamageRestSAN','adjDamageHP','adjDamageSAN','adjDamageBoth',
+  'allDamageHP','allDamageSAN','allDamageBoth','adjDiscard','allDiscard','selfRenounceGod',
+]);
 
 // Duration (ms) per animation type
 const ANIM_DURATION={DRAW_CARD:1850, HP_HEAL:1200, SAN_HEAL:1200, SAN_DAMAGE:800, SKILL_SWAP:800, SKILL_HUNT:1200, SKILL_BEWITCH:1200, DICE_ROLL:2200, DISCARD:1000, YOUR_TURN:2000, GUILLOTINE:2500, CARD_TRANSFER:700, default:600};
@@ -2300,9 +2420,9 @@ function NyaBorrowModal({deadPlayers,godLevel,onBorrow,onSkip}){
 }
 
 // ── Draw Reveal Modal ─────────────────────────────────────────
-function DrawRevealModal({drawReveal,onConfirm}){
+function DrawRevealModal({drawReveal,onKeep,onDiscard,canChoose,thinkingText}){
   if(!drawReveal?.card)return null;
-  const{card,msgs}=drawReveal;
+  const{card,msgs,needsDecision}=drawReveal;
   const s=CS[card.letter]||GOD_CS;
   return(
     <div style={{position:'fixed',inset:0,background:'rgba(2,1,0,0.88)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:300}}>
@@ -2333,17 +2453,36 @@ function DrawRevealModal({drawReveal,onConfirm}){
             ))}
           </div>
         )}
-        <button onClick={onConfirm} style={{
-          padding:'10px 36px',
-          background:'#1c1008',
-          border:'1.5px solid #7a5020',
-          color:'#c8a96e',
-          fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:19.5,
-          borderRadius:2,cursor:'pointer',letterSpacing:2,
-          boxShadow:'0 0 16px #7a502044',
-          textTransform:'uppercase',
-          transition:'all .15s',
-        }}>收入手牌</button>
+        {needsDecision&&canChoose&&(
+          <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}>
+            <button onClick={onKeep} style={{
+              padding:'10px 18px',background:'#1c1008',border:'1.5px solid #7a5020',color:'#c8a96e',
+              fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:16,borderRadius:2,cursor:'pointer',letterSpacing:1,
+            }}>收入手牌（触发效果）</button>
+            <button onClick={onDiscard} style={{
+              padding:'10px 18px',background:'#120808',border:'1.5px solid #5a2a20',color:'#d0a68e',
+              fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:16,borderRadius:2,cursor:'pointer',letterSpacing:1,
+            }}>弃置此牌</button>
+          </div>
+        )}
+        {needsDecision&&!canChoose&&(
+          <div style={{fontFamily:"'Cinzel',serif",color:'#c8a96e',fontSize:18,letterSpacing:1.5}}>
+            {thinkingText||'对方正在思考…'}
+          </div>
+        )}
+        {!needsDecision&&(
+          <button onClick={onKeep} style={{
+            padding:'10px 36px',
+            background:'#1c1008',
+            border:'1.5px solid #7a5020',
+            color:'#c8a96e',
+            fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:19.5,
+            borderRadius:2,cursor:'pointer',letterSpacing:2,
+            boxShadow:'0 0 16px #7a502044',
+            textTransform:'uppercase',
+            transition:'all .15s',
+          }}>继续</button>
+        )}
       </div>
     </div>
   );
@@ -2355,22 +2494,7 @@ function getBewitchEffectDesc(card){
   if(card.isGod){
     return `你将把「${card.name}」送给目标角色，使该角色遭遇邪神并失去SAN值（第N次遭遇失去N点），该角色可能被迫信仰${card.name}`;
   }
-  const n=card.name,k=card.key,v=card.val;
-  switch(card.type){
-    case 'damage':          return `你将把【${k} ${n}】送给目标角色，使该角色的HP被扣减${v}点`;
-    case 'allDamage':       return `你将把【${k} ${n}】送给目标角色，使全场其他所有角色（含你）的HP各被扣减${v}点`;
-    case 'sanDamage':       return `你将把【${k} ${n}】送给目标角色，使该角色的SAN值被扣减${v}点`;
-    case 'allSANDamage':    return `你将把【${k} ${n}】送给目标角色，使全场其他所有角色（含你）的SAN值各被扣减${v}点`;
-    case 'selfSANDamage':   return `你将把【${k} ${n}】送给目标角色，使该角色的SAN值被扣减${v}点`;
-    case 'selfHeal':        return `你将把【${k} ${n}】送给目标角色，使该角色的HP恢复${v}点`;
-    case 'selfHealSAN':     return `你将把【${k} ${n}】送给目标角色，使该角色的SAN值恢复${v}点`;
-    case 'damageDraw':      return `你将把【${k} ${n}】送给目标角色，使该角色的HP被扣减${v}点，并使其摸1张牌`;
-    case 'sanDamageDiscard':return `你将把【${k} ${n}】送给目标角色，使该角色的SAN值被扣减${v}点并强制弃1张手牌`;
-    case 'draw':            return `你将把【${k} ${n}】送给目标角色，使该角色摸1张牌`;
-    case 'allHealSAN':      return `你将把【${k} ${n}】送给目标角色，使全场所有角色的SAN值各恢复${v}点`;
-    case 'allHeal':         return `你将把【${k} ${n}】送给目标角色，使全场所有角色的HP各恢复${v}点`;
-    default:                return `你将把【${k} ${n}】送给目标角色`;
-  }
+  return `你将把【${card.key} ${card.name}】送给目标角色，并强制其收入手牌后立刻结算：“你”与相邻角色都以该目标为基准计算`;
 }
 
 // ── Target Select Overlay ─────────────────────────────────────
@@ -3648,19 +3772,18 @@ export default function Game(){
       const phase=g.phase;
       if(phase==='ACTION'||phase==='DISCARD_PHASE')return g;
       if(phase==='DRAW_REVEAL'){
-        // 无须指定目标：直接收入手牌（effectMsgs 已在 drawReveal.msgs 记录）
-        return{...g,phase:'ACTION',drawReveal:null};
-      }
-      if(phase==='DRAW_SELECT_TARGET'){
         const dr=g.drawReveal;
-        if(!dr)return{...g,phase:'ACTION',drawReveal:null};
-        const living=g.players.slice(1).map((_,i)=>i+1).filter(i=>!g.players[i].isDead);
-        const ti=living.length?living[0|Math.random()*living.length]:1;
-        let P=copyPlayers(g.players),D=[...g.deck],Disc=[...g.discard];
-        const res=applyFx(dr.card,0,ti,P,D,Disc);
-        P=res.P;D=res.D;Disc=res.Disc;P[0].hand.push(dr.card);
-        const L=[...g.log,`(超时) [${dr.card.key}] 随机目标→${g.players[ti]?.name||'?'}`,...res.msgs];
-        return{...g,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:{}};
+        if(!dr?.card)return{...g,phase:'ACTION',drawReveal:null};
+        if(dr.needsDecision){
+          if(dr.forcedKeep){
+            let P=copyPlayers(g.players),D=[...g.deck],Disc=[...g.discard];
+            const res=applyFx(dr.card,dr.drawerIdx??0,null,P,D,Disc);
+            P=res.P;D=res.D;Disc=res.Disc;P[dr.drawerIdx??0].hand.push(dr.card);
+            return{...g,players:P,deck:D,discard:Disc,log:[...g.log,`(超时) ${dr.drawerName||'该玩家'}被迫收入 [${dr.card.key}]`,...res.msgs],phase:'ACTION',drawReveal:null,abilityData:{},...(res.statePatch||{})};
+          }
+          return{...g,discard:[...g.discard,dr.card],log:[...g.log,`(超时) ${dr.drawerName||'该玩家'}弃置了 [${dr.card.key}] ${dr.card.name}`],phase:'ACTION',drawReveal:null,abilityData:{}};
+        }
+        return{...g,phase:'ACTION',drawReveal:null};
       }
       if(phase==='GOD_CHOICE'){
         const godCard=g.abilityData?.godCard;
@@ -3679,21 +3802,14 @@ export default function Game(){
           Disc.push({...res.drawnCard});
           return{...g,players:P,deck:D,discard:Disc,log:[...L,'(超时) 放弃了邪神的馈赠'],phase:'ACTION',abilityData:{}};
         }
-        if(res.needTarget){
-          // 摸到需目标牌 → 随机指定
-          const living=P.slice(1).map((_,i)=>i+1).filter(i=>!P[i].isDead);
-          const ti=living.length?living[0|Math.random()*living.length]:1;
-          const res2=applyFx(res.drawnCard,0,ti,P,D,Disc);
-          P=res2.P;P[0].hand.push(res.drawnCard);
-          return{...g,players:P,deck:res2.D,discard:res2.Disc,
-            log:[...L,`(超时) [${res.drawnCard.key}] 随机目标→${P[ti]?.name||'?'}`,...res2.msgs],
-            phase:'ACTION',drawReveal:null,abilityData:{}};
+        if(res.needsDecision){
+          return{...g,players:P,deck:D,discard:[...Disc,res.drawnCard],log:[...L,`(超时) 弃置了 [${res.drawnCard.key}] ${res.drawnCard.name}`],phase:'ACTION',drawReveal:null,abilityData:{}};
         }
         // 普通牌
         return{...g,players:P,deck:D,discard:Disc,
           log:[...L,...res.effectMsgs],
           phase:'ACTION',
-          drawReveal:res.drawnCard?{card:res.drawnCard,msgs:res.effectMsgs,needTarget:false}:null,
+          drawReveal:res.drawnCard?{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:false}:null,
           abilityData:{}};
       }
       return g;
@@ -4176,37 +4292,49 @@ export default function Game(){
   const canWin=effectiveRole==='寻宝者'&&isWinHand(me.hand);
   const phase=gs.phase;
   const ri=RINFO[me.role];
+  const effectiveSkillName=gs.globalOnlySwapOwner!=null?'掉包':(RINFO[effectiveRole]?.skillName||ri.skillName);
   const suppressAnim=showTutorial&&tutorialStep>=2; // hide all anims during tutorial steps 2+
   const huntAbandoned=gs.huntAbandoned||[];
 
   // ── Action handlers ────────────────────────────────────────
   function handleDrawConfirm(){
-    setGs(p=>{
-      if(!p)return p;
-      if(p._pendingPlayerWin)
-        return{...p,phase:'PLAYER_WIN_PENDING',drawReveal:null,_pendingPlayerWin:undefined};
-      return{...p,phase:'ACTION',drawReveal:null};
-    });
+    setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
   }
 
-  function handleDrawSelectTarget(ti){
-    const dr=gs.drawReveal;if(!dr)return;
+  function handleDrawKeep(){
+    const dr=gs.drawReveal;if(!dr?.card)return;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
-    const res=applyFx(dr.card,0,ti,P,D,Disc);
-    P=res.P;D=res.D;Disc=res.Disc;P[0].hand.push(dr.card);
-    const L=[...gs.log,`你摸到 [${dr.card.key}] ${dr.card.name}，目标→${gs.players[ti].name}`,...res.msgs];
-    const win=checkWin(P,gs._isMP);if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win});return;}
-    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:{}};
+    const drawerIdx=dr.drawerIdx??0;
+    const res=applyFx(dr.card,drawerIdx,null,P,D,Disc);
+    P=res.P;D=res.D;Disc=res.Disc;P[drawerIdx].hand.push(dr.card);
+    const who=drawerIdx===0?'你':P[drawerIdx].name;
+    const L=[...gs.log,`${who} 收入了 [${dr.card.key}] ${dr.card.name}`,...res.msgs];
+    if(drawerIdx===0&&!P[0].isDead&&P[0].role==='寻宝者'&&isWinHand(P[0].hand)){
+      P[0].roleRevealed=true;
+      setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,'你集齐了全部编号！'],phase:'PLAYER_WIN_PENDING',drawReveal:null,abilityData:{winReason:'你集齐了全部编号并获胜！'},...(res.statePatch||{})});
+      return;
+    }
+    const win=checkWin(P,gs._isMP);if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,drawReveal:null,...(res.statePatch||{})});return;}
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:{},...(res.statePatch||{})};
     const queue=buildAnimQueue(gs,newGs);
-    triggerAnimQueue(queue,newGs);
+    if(queue.length)triggerAnimQueue(queue,newGs);else setGs(newGs);
+  }
+
+  function handleDrawDiscard(){
+    const dr=gs.drawReveal;if(!dr?.card)return;
+    const drawerIdx=dr.drawerIdx??0;
+    const who=drawerIdx===0?'你':(dr.drawerName||gs.players[drawerIdx]?.name||'该角色');
+    const newGs={...gs,discard:[...gs.discard,dr.card],log:[...gs.log,`${who} 弃置了 [${dr.card.key}] ${dr.card.name}`],phase:'ACTION',drawReveal:null,abilityData:{}};
+    setGs(newGs);
   }
 
   function useAbility(){
     if((phase!=='ACTION'&&phase!=='HUNT_SELECT_TARGET')||isBlocked||gs.restUsed)return;
     // Snapshot roleRevealed so cancel can restore it if skill is aborted
     const preSkillRevealed=me.roleRevealed;
-    if(me.role==='寻宝者')setGs({...gs,phase:'SWAP_SELECT_TARGET',abilityData:{preSkillRevealed}});
-    else if(me.role==='追猎者')setGs({...gs,phase:'HUNT_SELECT_TARGET',abilityData:{preSkillRevealed}});
+    const skillRole=gs.globalOnlySwapOwner!=null?'寻宝者':me.role;
+    if(skillRole==='寻宝者')setGs({...gs,phase:'SWAP_SELECT_TARGET',abilityData:{preSkillRevealed}});
+    else if(skillRole==='追猎者')setGs({...gs,phase:'HUNT_SELECT_TARGET',abilityData:{preSkillRevealed}});
     else setGs({...gs,phase:'BEWITCH_SELECT_CARD',abilityData:{preSkillRevealed}});
   }
 
@@ -4430,7 +4558,7 @@ export default function Game(){
     const res=applyFx(bewitchCard,ti,ti,P,D,Disc);L.push(...res.msgs);
     res.P[ti].hand.push(bewitchCard);
     const win=checkWin(res.P,gs._isMP);
-    const newGs={...gs,players:res.P,deck:res.D,discard:res.Disc,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...(win?{gameOver:win}:{})};
+    const newGs={...gs,players:res.P,deck:res.D,discard:res.Disc,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...(res.statePatch||{}),...(win?{gameOver:win}:{})};
     triggerAnimQueue([
       {type:'SKILL_BEWITCH',msgs:L.slice(-3),targetIdx:ti},
       {type:'DRAW_CARD',card:bewitchCard,triggerName:res.P[ti]?.name,targetPid:ti},
@@ -4491,7 +4619,7 @@ export default function Game(){
       return;
     }
     const win=checkWin(res.P,gs._isMP);if(win){setGs({...gs,players:res.P,deck:res.D,discard:res.Disc,log:L,gameOver:win});return;}
-    setGs({...gs,players:res.P,deck:res.D,discard:res.Disc,log:[...L,...res.effectMsgs],phase:res.needTarget?'DRAW_SELECT_TARGET':'DRAW_REVEAL',drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needTarget:res.needTarget},selectedCard:null,abilityData:{},currentTurn:0,skillUsed:false,restUsed:false});
+    setGs({...gs,players:res.P,deck:res.D,discard:res.Disc,log:[...L,...res.effectMsgs],phase:'DRAW_REVEAL',drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:!!res.needsDecision,forcedKeep:!!res.forcedKeep,drawerIdx:0,drawerName:res.P[0].name},selectedCard:null,abilityData:{},currentTurn:0,skillUsed:false,restUsed:false});
   }
 
   function nyaSkip(){
@@ -4499,7 +4627,7 @@ export default function Game(){
     const res=playerDrawCard(P,D,Disc);
     if(res.needGodChoice){setGs({...gs,players:res.P,deck:res.D,discard:res.Disc,log:[...gs.log,...res.effectMsgs],phase:'GOD_CHOICE',abilityData:{godCard:res.drawnCard},drawReveal:null,selectedCard:null,currentTurn:0,skillUsed:false,restUsed:false});return;}
     const win=checkWin(res.P,gs._isMP);if(win){setGs({...gs,players:res.P,deck:res.D,discard:res.Disc,log:gs.log,gameOver:win});return;}
-    setGs({...gs,players:res.P,deck:res.D,discard:res.Disc,log:[...gs.log,...res.effectMsgs],phase:res.needTarget?'DRAW_SELECT_TARGET':'DRAW_REVEAL',drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needTarget:res.needTarget},selectedCard:null,abilityData:{},currentTurn:0,skillUsed:false,restUsed:false});
+    setGs({...gs,players:res.P,deck:res.D,discard:res.Disc,log:[...gs.log,...res.effectMsgs],phase:'DRAW_REVEAL',drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:!!res.needsDecision,forcedKeep:!!res.forcedKeep,drawerIdx:0,drawerName:res.P[0].name},selectedCard:null,abilityData:{},currentTurn:0,skillUsed:false,restUsed:false});
   }
 
   // Multi-select discard
@@ -4751,7 +4879,7 @@ export default function Game(){
     TREASURE_WIN:         '✦ 你已集齐全部编号！',
   }[phase]||'';
 
-  const selectingOther=['DRAW_SELECT_TARGET','SWAP_SELECT_TARGET','HUNT_SELECT_TARGET','BEWITCH_SELECT_TARGET'].includes(phase);
+  const selectingOther=['SWAP_SELECT_TARGET','HUNT_SELECT_TARGET','BEWITCH_SELECT_TARGET'].includes(phase);
   // 多人游戏中 HUNT_CONFIRM 非追猎者不显示操作按钮区域
   const cancelable=['SWAP_SELECT_TARGET','SWAP_GIVE_CARD','HUNT_SELECT_TARGET',...(phase==='HUNT_CONFIRM'&&gs._isMP&&!myTurn?[]:['HUNT_CONFIRM']),'BEWITCH_SELECT_CARD','BEWITCH_SELECT_TARGET'].includes(phase);
   // In HUNT_CONFIRM, 放弃追捕 replaces ✕取消 — never show both
@@ -4760,8 +4888,7 @@ export default function Game(){
 
   function handleAIClick(pi){
     if(gs.players[pi].isDead||isBlocked)return;
-    if(phase==='DRAW_SELECT_TARGET')handleDrawSelectTarget(pi);
-    else if(phase==='SWAP_SELECT_TARGET')swapSelectTarget(pi);
+    if(phase==='SWAP_SELECT_TARGET')swapSelectTarget(pi);
     else if(phase==='HUNT_SELECT_TARGET'){if(!huntAbandoned.includes(pi))huntSelectTarget(pi);}
     else if(phase==='BEWITCH_SELECT_TARGET')bewitchSelectTarget(pi);
   }
@@ -4916,7 +5043,15 @@ export default function Game(){
         return(<NyaBorrowModal deadPlayers={deadOthers} godLevel={me.godLevel} onBorrow={nyaBorrow} onSkip={nyaSkip}/>);
       })()}
       {/* Draw reveal modal */}
-      {!suppressAnim&&phase==='DRAW_REVEAL'&&gs.drawReveal&&myTurn&&<DrawRevealModal drawReveal={gs.drawReveal} onConfirm={handleDrawConfirm}/>}
+      {!suppressAnim&&phase==='DRAW_REVEAL'&&gs.drawReveal&&(
+        <DrawRevealModal
+          drawReveal={gs.drawReveal}
+          onKeep={gs.drawReveal.needsDecision?handleDrawKeep:handleDrawConfirm}
+          onDiscard={handleDrawDiscard}
+          canChoose={myTurn&&!!gs.drawReveal.needsDecision}
+          thinkingText={gs._isMP&&!myTurn?`${gs.drawReveal.drawerName||gs.players[gs.currentTurn]?.name||'对方'}正在思考…`:''}
+        />
+      )}
 
       <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',gap:7}}>
         {/* Header */}
@@ -5100,7 +5235,7 @@ export default function Game(){
                         textTransform:'uppercase',opacity:skillRestLimited?0.4:1,
                         position:'relative',
                       }}>
-                      {RINFO[effectiveRole]?.icon||ri.icon} {RINFO[effectiveRole]?.skillName||ri.skillName}
+                      {RINFO[effectiveRole]?.icon||ri.icon} {effectiveSkillName}
                       {skillRestLimited&&<span style={{fontSize:9,marginLeft:4,color:'#5a3020'}}>{gs.restUsed?'(已休息)':'(已用)'}</span>}
                     </button>
                     <button onClick={doRest} disabled={restLimited}
