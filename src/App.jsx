@@ -648,3 +648,5 @@ function DungeonDraw() {
     </div>
   );
 }
+
+export default DungeonDraw;
