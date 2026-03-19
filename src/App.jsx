@@ -2867,6 +2867,7 @@ function GammaSlider({gamma,onChange}){
 
 function useGameAudio(isBattleScreen){
   const [audioReady,setAudioReady]=useState(false);
+  const readyRef=useRef(false);
   const bgmRefs=useRef({main:null,battle:null});
   const sfxRefs=useRef({open:null,close:null});
   const currentTrackRef=useRef(null);
@@ -2952,12 +2953,44 @@ function useGameAudio(isBattleScreen){
     syncTrack(false);
   },[audioReady,isBattleScreen]);
 
+  useEffect(()=>{
+    if(audioReady)return;
+    const preview=isBattleScreen?bgmRefs.current.battle:bgmRefs.current.main;
+    if(!preview)return;
+    try{
+      preview.loop=true;
+      preview.volume=targetVolumesRef.current[isBattleScreen?'battle':'main'];
+      preview.play().then(()=>{
+        if(!readyRef.current){
+          readyRef.current=true;
+          setAudioReady(true);
+          currentTrackRef.current=isBattleScreen?'battle':'main';
+        }
+      }).catch(()=>{});
+    }catch{}
+  },[audioReady,isBattleScreen]);
+
   const noteUserGesture=()=>{
-    if(!audioReady){
+    if(!readyRef.current){
+      readyRef.current=true;
       setAudioReady(true);
       queueMicrotask(()=>syncTrack(true));
     }
   };
+
+  useEffect(()=>{
+    if(audioReady)return;
+    const unlock=()=>noteUserGesture();
+    const opts={capture:true,once:true};
+    window.addEventListener('pointerdown',unlock,opts);
+    window.addEventListener('keydown',unlock,opts);
+    window.addEventListener('touchstart',unlock,opts);
+    return()=>{
+      window.removeEventListener('pointerdown',unlock,opts);
+      window.removeEventListener('keydown',unlock,opts);
+      window.removeEventListener('touchstart',unlock,opts);
+    };
+  },[audioReady]);
 
   const playSfx=kind=>{
     noteUserGesture();
@@ -3000,7 +3033,7 @@ export default function Game(){
   const [tutorialDone,setTutorialDone]=useState(readTutorialDone);
   const [showTutorial,setShowTutorial]=useState(false);
   const [tutorialStep,setTutorialStep]=useState(1);
-  const isBattleScreen=!!gs&&!gs.gameOver;
+  const isBattleScreen=!!gs;
   const {noteUserGesture,playOpenSound,playCloseSound}=useGameAudio(isBattleScreen);
 
   function isCloseButtonText(text){
@@ -4031,9 +4064,10 @@ export default function Game(){
             {[
               '游戏身份随机分配',
               '每人初始 HP / SAN 各 10，上限 10',
-              '每回合开始摸 1 张牌，牌效果立即生效后收入手牌',
-              '可发动身份技能或直接结束回合',
-              '掉包与蛊惑每回合各限使用一次',
+              '每回合开始摸 1 张牌；摸到区域牌时可选择收入手牌并触发效果，或直接弃置',
+              '被【蛊惑】获得的牌必须收入手牌并触发效果，不能选择弃置',
+              '可发动身份技能、休息或直接结束回合',
+              '【掉包】与【蛊惑】每回合限用一次；【追捕】同回合可连续发动',
               '可发动【休息】：翻面自己的角色卡，掷2枚6面骰取最高值回复HP；翻面状态下下回合自动翻回并跳过（不摸牌不弃牌）',
               '每回合只能使用技能或休息其中之一，二者互斥',
               '手牌上限 4 张，超出须在回合结束前弃牌',
@@ -4423,11 +4457,21 @@ export default function Game(){
               borderRadius:2,cursor:'pointer',letterSpacing:2,textTransform:'uppercase',
             }}>返回房间</button>
           ):(
-            <button onClick={startNewGame} style={{
-              padding:'11px 40px',background:'#1c1008',border:'2px solid #5a3010',
-              color:'#c8a96e',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:13,
-              borderRadius:2,cursor:'pointer',letterSpacing:2,textTransform:'uppercase',
-            }}>再次降临</button>
+            <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
+              <button onClick={startNewGame} style={{
+                padding:'11px 40px',background:'#1c1008',border:'2px solid #5a3010',
+                color:'#c8a96e',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:13,
+                borderRadius:2,cursor:'pointer',letterSpacing:2,textTransform:'uppercase',
+              }}>再次降临</button>
+              <button onClick={()=>{
+                setModal(null);
+                setGs(null);
+              }} style={{
+                padding:'11px 32px',background:'transparent',border:'2px solid #3a2510',
+                color:'#a07838',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:13,
+                borderRadius:2,cursor:'pointer',letterSpacing:2,textTransform:'uppercase',
+              }}>返回主页</button>
+            </div>
           )}
         </div>
         {/* AnimOverlay must render on game-over screen too so startNewGame card flip works */}
@@ -4446,7 +4490,8 @@ export default function Game(){
   const canWin=effectiveRole==='寻宝者'&&isWinHand(me.hand);
   const phase=gs.phase;
   const ri=RINFO[me.role];
-  const effectiveSkillName=gs.globalOnlySwapOwner!=null?'掉包':(RINFO[effectiveRole]?.skillName||ri.skillName);
+  const skillRi=gs.globalOnlySwapOwner!=null?RINFO['寻宝者']:(RINFO[effectiveRole]||ri);
+  const effectiveSkillName=skillRi.skillName||ri.skillName;
   const suppressAnim=showTutorial&&tutorialStep>=2; // hide all anims during tutorial steps 2+
   const huntAbandoned=gs.huntAbandoned||[];
 
@@ -5113,7 +5158,7 @@ export default function Game(){
     return false;
   }
 
-  const skillLimited=gs.skillUsed&&ri.skillLimited;
+  const skillLimited=gs.skillUsed&&skillRi.skillLimited;
 
   return(<>
     <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:7,padding:isMobile?'6px 8px':'8px 10px',position:'relative',overflowX:'hidden',filter:gammaFilter,
@@ -5386,15 +5431,15 @@ export default function Game(){
                     <button onClick={useAbility} disabled={skillRestLimited}
                       style={{
                         padding:isMobile?'5px 10px':'6px 16px',background:'#1c1208',
-                        border:`1.5px solid ${skillRestLimited?'#3a2510':ri.col}`,
-                        color:skillRestLimited?'#3a2510':ri.col,
+                        border:`1.5px solid ${skillRestLimited?'#3a2510':skillRi.col}`,
+                        color:skillRestLimited?'#3a2510':skillRi.col,
                         fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:isMobile?10:11,
                         borderRadius:2,cursor:skillRestLimited?'not-allowed':'pointer',letterSpacing:isMobile?0.5:1,
-                        boxShadow:skillRestLimited?'none':`0 0 10px ${ri.col}44`,
+                        boxShadow:skillRestLimited?'none':`0 0 10px ${skillRi.col}44`,
                         textTransform:'uppercase',opacity:skillRestLimited?0.4:1,
                         position:'relative',
                       }}>
-                      {RINFO[effectiveRole]?.icon||ri.icon} {effectiveSkillName}
+                      {skillRi.icon||ri.icon} {effectiveSkillName}
                       {skillRestLimited&&<span style={{fontSize:9,marginLeft:4,color:'#5a3020'}}>{gs.restUsed?'(已休息)':'(已用)'}</span>}
                     </button>
                     <button onClick={doRest} disabled={restLimited}
