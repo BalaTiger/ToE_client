@@ -12,22 +12,22 @@ import React, { useState, useEffect, useRef } from "react";
 //   Damage contribution: 6×(−2−1−8−4) = −90   [C2 hits 4 others = −8; D2 hits 1 = −4]
 // ──────────────────────────────────────────────────────────────────────────────
 const FIXED_ZONE_EFFECTS = {
-  A1:{pos:{name:'营地篝火',desc:'你回复2HP，相邻存活角色各失去1HP',type:'selfHealAdjDamageHP',val:1},negS:{name:'坠落',desc:'你失去2HP，随机失去一张牌',type:'selfDamageDiscardHP',val:2},negA:{name:'毒气喷涌',desc:'你与相邻存活角色失去1HP',type:'adjDamageHP',val:1}},
-  A2:{pos:{name:'古代秘药',desc:'你回复2HP',type:'selfHealHP',val:2},negS:{name:'遭遇塌方',desc:'你失去2HP并翻面（切换休息状态）',type:'selfDamageRestHP',val:2},negA:{name:'地刺陷阱',desc:'你与相邻存活角色失去2HP',type:'adjDamageHP',val:2}},
-  A3:{pos:{name:'吃下荧光苔藓',desc:'HP回满，手牌全局公开，盲抽变挑选',type:'selfRevealHandHP',val:10},negS:{name:'理智动摇',desc:'你失去2SAN',type:'selfDamageSAN',val:2},negA:{name:'邪恶低语',desc:'你与相邻存活角色失去1SAN',type:'adjDamageSAN',val:1}},
-  A4:{pos:{name:'绮丽诗篇',desc:'直到下回合，所有人技能变为“掉包”',type:'globalOnlySwap',val:0},negS:{name:'惊惧幻象',desc:'你失去3SAN',type:'selfDamageSAN',val:3},negA:{name:'灵魂尖啸',desc:'全体存活角色失去1SAN',type:'allDamageSAN',val:1}},
-  B1:{pos:{name:'理智护符',desc:'你回复3SAN',type:'selfHealSAN',val:3},negS:{name:'忏悔独白',desc:'若信仰邪神则弃信受罚，否则失去1SAN',type:'selfRenounceGod',val:1},negA:{name:'绝望回声',desc:'你与相邻存活角色失去2SAN',type:'adjDamageSAN',val:2}},
-  B2:{pos:{name:'强心剂',desc:'你回复3HP',type:'selfHealHP',val:3},negS:{name:'极度虚弱',desc:'你失去2SAN并翻面（切换休息状态）',type:'selfDamageRestSAN',val:2},negA:{name:'地动山摇',desc:'全体存活角色失去2HP',type:'allDamageHP',val:2}},
-  B3:{pos:{name:'群体安抚',desc:'全体存活角色回复1SAN',type:'allHealSAN',val:1},negS:{name:'黑暗侵蚀',desc:'你失去1HP与1SAN',type:'selfDamageBoth',val:1},negA:{name:'沉睡魔咒',desc:'你与相邻角色翻面（切换休息状态）',type:'adjRest',val:0}},
-  B4:{pos:{name:'宁神香薰',desc:'你回复2SAN',type:'selfHealSAN',val:2},negS:{name:'落石砸击',desc:'你失去3HP',type:'selfDamageHP',val:3},negA:{name:'群体狂乱',desc:'全体存活角色失去2SAN',type:'allDamageSAN',val:2}},
-  C1:{pos:{name:'军用口粮',desc:'你回复2HP与1SAN',type:'selfHealBoth21',val:0},negS:{name:'行囊破裂',desc:'你失去1HP，随机弃2张牌',type:'selfDamageDiscardHP2',val:1},negA:{name:'毁灭风暴',desc:'全体存活角色失去2HP',type:'allDamageHP',val:2}},
-  C2:{pos:{name:'舒缓之歌',desc:'你与相邻存活角色回复1SAN',type:'adjHealSAN',val:1},negS:{name:'毒液飞溅',desc:'你失去2HP与1SAN',type:'selfDamageBoth21',val:0},negA:{name:'混乱气流',desc:'你与相邻角色各随机弃1张手牌，然后相邻角色各失去1HP',type:'adjDiscardDamageHP',val:1}},
-  C3:{pos:{name:'均衡灵药',desc:'你回复1HP与1SAN',type:'selfHealBoth',val:1},negS:{name:'惊慌失措',desc:'你失去2SAN，随机弃1张牌',type:'selfDamageDiscardSAN',val:2},negA:{name:'瘟疫蔓延',desc:'你与相邻存活角色失去1HP和1SAN',type:'adjDamageBoth',val:1}},
-  C4:{pos:{name:'启示光辉',desc:'你失去1HP，全体回复2SAN',type:'sacHealSAN',val:2},negS:{name:'恶毒诅咒',desc:'你失去1HP与2SAN',type:'selfDamageBoth12',val:0},negA:{name:'末日预兆',desc:'全体存活角色失去1HP和1SAN',type:'allDamageBoth',val:1}},
-  D1:{pos:{name:'饮下清醒之泉',desc:'SAN回满，手牌全局公开，盲抽变挑选',type:'selfRevealHandSAN',val:10},negS:{name:'致命尖刺',desc:'你失去4HP',type:'selfDamageHP',val:4},negA:{name:'强风刮过',desc:'全体存活角色各随机弃1张手牌',type:'allDiscard',val:1}},
-  D2:{pos:{name:'群体治愈',desc:'全体存活角色回复1HP',type:'allHealHP',val:1},negS:{name:'恐怖直视',desc:'你失去4SAN',type:'selfDamageSAN',val:4},negA:{name:'血之共鸣',desc:'你失去2HP，场上其他角色回复1HP',type:'sacAllHealHP',val:2}},
-  D3:{pos:{name:'献祭治愈',desc:'你失去1SAN，全体回复2HP',type:'sacHealHP',val:2},negS:{name:'遗忘咒语',desc:'你失去1SAN，随机弃2张手牌',type:'selfDamageDiscardSAN2',val:1},negA:{name:'精神链接',desc:'你失去2SAN，场上其他角色回复1SAN',type:'sacAllHealSAN',val:2}},
-  D4:{pos:{name:'禁忌狂化',desc:'你失去1SAN和1HP，直到回合结束，你造成的伤害+1',type:'selfBerserk',val:1},negS:{name:'陷阱触发',desc:'你失去2HP',type:'selfDamageHP',val:2},negA:{name:'理智崩坏',desc:'你失去3SAN',type:'selfDamageSAN',val:3}},
+  A1:{pos:{name:'营地篝火',desc:'你回复1HP，相邻存活角色各失去1HP',type:'selfHealAdjDamageHP',val:1},negS:{name:'坠落',desc:'你失去3HP，随机弃1张牌（强制触发）',type:'selfDamageDiscardHP',val:3,forced:true},negA:{name:'毒气喷涌',desc:'你与相邻存活角色失去1HP',type:'adjDamageHP',val:1}},
+  A2:{pos:{name:'古代秘药',desc:'你回复1HP',type:'selfHealHP',val:1},negS:{name:'遭遇塌方',desc:'你失去3HP并翻面（切换休息状态）',type:'selfDamageRestHP',val:3},negA:{name:'地刺陷阱',desc:'你与相邻存活角色失去2HP',type:'adjDamageHP',val:2}},
+  A3:{pos:{name:'吃下荧光苔藓',desc:'HP回满，手牌全局公开，盲抽变挑选',type:'selfRevealHandHP',val:10},negS:{name:'理智动摇',desc:'你失去3SAN',type:'selfDamageSAN',val:3},negA:{name:'邪恶低语',desc:'你与相邻存活角色失去1SAN',type:'adjDamageSAN',val:1}},
+  A4:{pos:{name:'绮丽诗篇',desc:'直到下回合，所有人技能变为“掉包”',type:'globalOnlySwap',val:0},negS:{name:'惊惧幻象',desc:'你失去4SAN',type:'selfDamageSAN',val:4},negA:{name:'灵魂尖啸',desc:'全体存活角色失去1SAN',type:'allDamageSAN',val:1}},
+  B1:{pos:{name:'理智护符',desc:'你回复2SAN',type:'selfHealSAN',val:2},negS:{name:'忏悔独白',desc:'若信仰邪神则弃信受罚，否则失去1SAN',type:'selfRenounceGod',val:1},negA:{name:'绝望回声',desc:'你与相邻存活角色失去2SAN',type:'adjDamageSAN',val:2}},
+  B2:{pos:{name:'强心剂',desc:'你回复2HP',type:'selfHealHP',val:2},negS:{name:'极度虚弱',desc:'你失去2SAN并翻面（切换休息状态）',type:'selfDamageRestSAN',val:2},negA:{name:'地动山摇',desc:'全体存活角色各随机弃1张牌（强制触发）',type:'allDiscard',val:1,forced:true}},
+  B3:{pos:{name:'群体安抚',desc:'全体存活角色回复1SAN',type:'allHealSAN',val:1},negS:{name:'黑暗侵蚀',desc:'你失去2HP与1SAN',type:'selfDamageBoth',val:2},negA:{name:'沉睡魔咒',desc:'你与相邻角色翻面（切换休息状态）',type:'adjRest',val:0}},
+  B4:{pos:{name:'宁神香薰',desc:'你回复1SAN',type:'selfHealSAN',val:1},negS:{name:'落石砸击',desc:'你失去4HP',type:'selfDamageHP',val:4},negA:{name:'群体狂乱',desc:'全体存活角色失去2SAN',type:'allDamageSAN',val:2}},
+  C1:{pos:{name:'军用口粮',desc:'你回复1HP与1SAN',type:'selfHealBoth21',val:0},negS:{name:'行囊破裂',desc:'你失去2HP与2SAN',type:'selfDamageBoth12',val:0},negA:{name:'毁灭风暴',desc:'全体存活角色失去2HP',type:'allDamageHP',val:2}},
+  C2:{pos:{name:'舒缓之歌',desc:'你与相邻存活角色回复1SAN',type:'adjHealSAN',val:1},negS:{name:'毒液飞溅',desc:'你失去3HP与1SAN',type:'selfDamageBoth21',val:0},negA:{name:'混乱气流',desc:'你与相邻角色各失去2HP',type:'adjDamageHP',val:2}},
+  C3:{pos:{name:'均衡灵药',desc:'你回复1HP与1SAN',type:'selfHealBoth',val:1},negS:{name:'惊慌失措',desc:'你失去2SAN，随机弃1张牌（强制触发）',type:'selfDamageDiscardSAN',val:2,forced:true},negA:{name:'瘟疫蔓延',desc:'你与相邻存活角色失去1HP和1SAN',type:'adjDamageBoth',val:1}},
+  C4:{pos:{name:'启示光辉',desc:'你失去1HP，全体回复1SAN',type:'sacHealSAN',val:1},negS:{name:'恶毒诅咒',desc:'你失去2HP与2SAN',type:'selfDamageBoth12',val:0},negA:{name:'末日预兆',desc:'全体存活角色失去1HP和1SAN',type:'allDamageBoth',val:1}},
+  D1:{pos:{name:'饮下清醒之泉',desc:'SAN回满，手牌全局公开，盲抽变挑选',type:'selfRevealHandSAN',val:10},negS:{name:'致命尖刺',desc:'你失去5HP',type:'selfDamageHP',val:5},negA:{name:'强风刮过',desc:'全体存活角色失去1SAN',type:'allDamageSAN',val:1}},
+  D2:{pos:{name:'群体治愈',desc:'全体存活角色回复1HP',type:'allHealHP',val:1},negS:{name:'恐怖直视',desc:'你失去4SAN',type:'selfDamageSAN',val:4},negA:{name:'血之共鸣',desc:'你失去3HP，场上其他角色回复1HP',type:'sacAllHealHP',val:3}},
+  D3:{pos:{name:'献祭治愈',desc:'你失去1SAN，全体回复1HP',type:'sacHealHP',val:1},negS:{name:'遗忘咒语',desc:'你失去1SAN与2HP',type:'selfDamageBoth',val:2},negA:{name:'精神链接',desc:'你失去2SAN，场上其他角色回复1SAN',type:'sacAllHealSAN',val:2}},
+  D4:{pos:{name:'禁忌狂化',desc:'你失去1SAN和2HP，直到回合结束，你造成的伤害+1',type:'selfBerserk',val:1},negS:{name:'陷阱触发',desc:'你失去3HP，随机弃1张牌（强制触发）',type:'selfDamageDiscardHP',val:3,forced:true},negA:{name:'理智崩坏',desc:'你失去4SAN',type:'selfDamageSAN',val:4}},
 };
 const ZONE_VARIANTS=['pos','negS','negA'];
 const LETTERS=['A','B','C','D'], NUMS=[1,2,3,4];
@@ -461,6 +461,14 @@ function playerDrawCard(ps,deck,disc,ci=0){
     return{P,D,Disc,drawnCard,
       effectMsgs:[`${whoName}遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）失去${cost}SAN`],
       needTarget:false,needGodChoice:true,needsDecision:false};
+  }
+  // 检查是否为强制触发的牌（随机弃牌类）
+  if(drawnCard.forced){
+    // 强制触发：直接收入手牌并触发效果
+    const res=applyFx(drawnCard,ci,null,P,D,Disc);
+    P=res.P;D=res.D;Disc=res.Disc;P[ci].hand.push(drawnCard);
+    const whoName=ci===0?'你':P[ci].name;
+    return{P,D,Disc,drawnCard,effectMsgs:[`${whoName}摸到 [${drawnCard.key}] ${drawnCard.name}（强制触发）`,...res.msgs],statePatch:res.statePatch,kept:true,needsDecision:false};
   }
   return{P,D,Disc,drawnCard,effectMsgs:[],needTarget:false,needsDecision:true,forcedKeep:false};
 }
@@ -5435,7 +5443,6 @@ export default function Game(){
       {/* Guillotine death animation — rendered outside filtered container, see below */}
       {/* Skill overlays */}
       {!suppressAnim&&<SwapCupOverlay active={!!swapAnim} casterName={swapAnim?.casterName||''} targetName={swapAnim?.targetName||''}/>}
-      {!suppressAnim&&<CardTransferOverlay transfers={cardTransfers}/>}
 
       {/* Turn indicator — shown during AI turns */}
       {gs.phase==='AI_TURN'&&gs.currentTurn!==0&&!anim&&!gs._isMP&&(()=>{
@@ -6369,12 +6376,13 @@ export default function Game(){
       <GammaSlider gamma={gamma} onChange={handleGamma}/>
       <style>{GLOBAL_STYLES}</style>
     </div>
-    {/* Hunt/Bewitch/Guillotine/Knife/SanMist overlays rendered OUTSIDE the filtered container */}
+    {/* Hunt/Bewitch/Guillotine/Knife/SanMist/CardTransfer overlays rendered OUTSIDE the filtered container */}
     {!suppressAnim&&<HuntScopeOverlay active={!!huntAnim} cx={huntAnim?.cx??0} cy={huntAnim?.cy??0}/>}
     {!suppressAnim&&<BewitchEyeOverlay active={!!bewitchAnim} cx={bewitchAnim?.cx??0} cy={bewitchAnim?.cy??0}/>}
     {!suppressAnim&&guillotineTargets.length>0&&<GuillotineAnim targets={guillotineTargets}/>}
     {!suppressAnim&&<KnifeEffect targets={knifeTargets}/>}
     {!suppressAnim&&<SanMistOverlay targets={sanTargets}/>}
+    {!suppressAnim&&<CardTransferOverlay transfers={cardTransfers}/>}
   </>);
 }
 // ══════════════════════════════════════════════════════════════
