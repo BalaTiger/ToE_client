@@ -4003,7 +4003,12 @@ export default function Game(){
     if(gameEndSentRef.current)return;
     gameEndSentRef.current=true;
     if(socketRef.current?.connected){
-      socketRef.current.emit('gameEnd',{uuid:playerUUID,roomId:roomModal?.roomId});
+      // 确定获胜者身份
+      let winnerRole = null;
+      if (gs.gameOver.winner === '寻宝者' || gs.gameOver.winner === '追猎者' || gs.gameOver.winner === '邪祀者') {
+        winnerRole = gs.gameOver.winner;
+      }
+      socketRef.current.emit('gameEnd',{uuid:playerUUID,roomId:roomModal?.roomId,winnerRole});
       // 广播最终 gs 让其他玩家也看到结算界面
       const rawFinalGs=derotateGs(gs,myPlayerIndexRef.current);
       socketRef.current.emit('mpStateSync',{roomId:roomModal?.roomId,gs:rawFinalGs});
@@ -4652,7 +4657,12 @@ export default function Game(){
               // 先直接发送 gameEnd（在 state 重置前），避免 useEffect 因 isMultiplayer=false 跳过发送
               if(!gameEndSentRef.current&&socketRef.current?.connected){
                 gameEndSentRef.current=true;
-                socketRef.current.emit('gameEnd',{uuid:playerUUID,roomId:roomModal?.roomId});
+                // 确定获胜者身份
+                let winnerRole = null;
+                if (gs?.gameOver?.winner === '寻宝者' || gs?.gameOver?.winner === '追猎者' || gs?.gameOver?.winner === '邪祀者') {
+                  winnerRole = gs.gameOver.winner;
+                }
+                socketRef.current.emit('gameEnd',{uuid:playerUUID,roomId:roomModal?.roomId,winnerRole});
               }
               setIsMultiplayer(false);isMultiplayerRef.current=false;
               setMyPlayerIndex(0);myPlayerIndexRef.current=0;
