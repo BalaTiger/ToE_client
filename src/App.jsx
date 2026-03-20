@@ -3596,6 +3596,8 @@ export default function Game(){
   const [multiLoading,setMultiLoading]=useState(false);
   const [toasts,setToasts]=useState([]);
   const [roomModal,setRoomModal]=useState(null);
+  const roomModalRef=useRef(null);
+  useEffect(()=>{roomModalRef.current=roomModal;},[roomModal]);
   const [connErrModal,setConnErrModal]=useState(false);
   const socketRef=useRef(null);
   const connTimeoutRef=useRef(null);
@@ -3940,7 +3942,7 @@ export default function Game(){
   // 表情：点击 emoji → 加入批次队列 → 300ms 内 flush 打包发送
   function handleEmojiClick(emoji){
     setShowEmojiPicker(false);
-    if(!socketRef.current||!roomModal?.roomId)return;
+    if(!socketRef.current||!roomModalRef.current?.roomId)return;
     emojiQueueRef.current.push(emoji);
     if(!emojiFlushTimerRef.current){
       emojiFlushTimerRef.current=setTimeout(()=>{
@@ -3948,7 +3950,7 @@ export default function Game(){
         emojiQueueRef.current=[];
         emojiFlushTimerRef.current=null;
         if(batch.length&&socketRef.current){
-          socketRef.current.emit('emojiSend',{uuid:playerUUIDRef.current,roomId:roomModal.roomId,emojis:batch});
+          socketRef.current.emit('emojiSend',{uuid:playerUUIDRef.current,roomId:roomModalRef.current.roomId,emojis:batch});
         }
       },300);
     }
