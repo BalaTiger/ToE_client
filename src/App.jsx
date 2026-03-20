@@ -5926,18 +5926,15 @@ export default function Game(){
       {/* 点击外部关闭 emoji picker */}
       {showEmojiPicker&&<div onClick={()=>setShowEmojiPicker(false)} style={{position:'fixed',inset:0,zIndex:49}}/>}
       {/* 表情选择器面板 - 与遮罩层同级，确保在遮罩层上方 */}
-      {isMultiplayer&&showEmojiPicker&&(()=>{
-        const btnRect=emojiButtonRef.current?.getBoundingClientRect();
-        if(!btnRect)return null;
-        return(
-          <div style={{
-            position:'fixed',
-            top:btnRect.bottom+5,
-            right:window.innerWidth-btnRect.right,
-            background:'#140e04',border:'1.5px solid #4a3010',borderRadius:4,
-            padding:6,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:3,
-            boxShadow:'0 4px 20px #00000088',zIndex:50,
-          }}>
+      {isMultiplayer&&showEmojiPicker&&(
+        <div style={{
+          position:'fixed',
+          top:20,
+          right:20,
+          background:'#140e04',border:'1.5px solid #4a3010',borderRadius:4,
+          padding:6,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:3,
+          boxShadow:'0 4px 20px #00000088',zIndex:50,
+        }}>
             {EMOJI_LIST.map(e=>(
               <button key={e} onClick={ev=>{ev.stopPropagation();handleEmojiClick(e);}} style={{
                 background:'none',border:'none',fontSize:20,cursor:'pointer',
@@ -5949,8 +5946,7 @@ export default function Game(){
               >{e}</button>
             ))}
           </div>
-        );
-      })()}
+      )}
       {/* ── 断线遮罩（游戏内）── */}
       {isDisconnected&&(
         <div onClick={()=>{setIsDisconnected(false);setIsMultiplayer(false);isMultiplayerRef.current=false;setMyPlayerIndex(0);myPlayerIndexRef.current=0;mpRoleRevealedRef.current=false;setGs(null);}}
