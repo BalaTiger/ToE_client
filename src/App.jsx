@@ -2566,15 +2566,15 @@ function NyaBorrowModal({deadPlayers,godLevel,onBorrow,onSkip}){
 }
 
 // ── Draw Reveal Modal ─────────────────────────────────────────
-function DrawRevealModal({drawReveal, onAccept, onDiscard, isBystander, activeName}){
+function DrawRevealModal({drawReveal,onAccept,onDiscard,isBystander,activeName}){
   if(!drawReveal?.card)return null;
   const{card,msgs}=drawReveal;
   const s=CS[card.letter]||GOD_CS;
   return(
-    // 修改了这里的 background 和 backdropFilter
     <div style={{position:'fixed',inset:0,background:'rgba(2,1,0,0.45)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:300}}>
       <div style={{
-        background:'#150e07', border:`2px solid ${s.border}`,
+        background:'#150e07',
+        border:`2px solid ${s.border}`,
         boxShadow:`0 0 60px ${s.glow}44, 0 0 120px #000a`,
         borderRadius:4,padding:'28px 34px',maxWidth:320,width:'92%',textAlign:'center',
         animation:'animPop 0.22s ease-out',
@@ -2590,44 +2590,35 @@ function DrawRevealModal({drawReveal, onAccept, onDiscard, isBystander, activeNa
           <div style={{fontFamily:"'Cinzel',serif",color:'#e8cc88',fontSize:19.5,fontWeight:600,marginTop:6}}>{card.name}</div>
           <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#d4b468',fontSize:16.5,marginTop:8,lineHeight:1.4,maxWidth:200}}>{card.desc}</div>
         </div>
-        {/* Effect results */}
-        {msgs.length>0&&(
-          <div style={{background:'#0c0800',border:'1px solid #2a1a08',borderRadius:2,padding:'8px 14px',marginBottom:16,textAlign:'left'}}>
-            <div style={{fontFamily:"'Cinzel',serif",color:'#a07838',fontSize:13.5,letterSpacing:2,marginBottom:6,textTransform:'uppercase'}}>效果结算</div>
-            {msgs.map((m,i)=>(
-              <div key={i} style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:18,color:'#e8cc88',lineHeight:1.7}}>{m}</div>
-            ))}
+        
+        {isBystander ? (
+          <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#c8a96e',fontSize:15,marginTop:16}}>
+            等待 {activeName} 做出抉择...
           </div>
-        )}
-        {needsDecision&&canChoose&&(
-          <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}>
-            <button onClick={onKeep} style={{
-              padding:'10px 18px',background:'#1c1008',border:'1.5px solid #7a5020',color:'#c8a96e',
-              fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:16,borderRadius:2,cursor:'pointer',letterSpacing:1,
-            }}>收入手牌（触发效果）</button>
+        ) : (
+          <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap',marginTop:16}}>
+            <button onClick={onAccept} style={{
+              padding:'10px 22px',background:'#1c1008',border:'1.5px solid #c8a96e',
+              color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:14,
+              borderRadius:2,cursor:'pointer',letterSpacing:1,
+              boxShadow:'0 0 16px #c8a96e44',transition:'all .15s',
+            }}>
+              收入手牌
+              <div style={{fontSize:10,opacity:0.7,marginTop:4,fontWeight:400,fontFamily:"'IM Fell English',serif"}}>
+                (触发效果)
+              </div>
+            </button>
             <button onClick={onDiscard} style={{
-              padding:'10px 18px',background:'#120808',border:'1.5px solid #5a2a20',color:'#d0a68e',
-              fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:16,borderRadius:2,cursor:'pointer',letterSpacing:1,
-            }}>弃置此牌</button>
+              padding:'10px 22px',background:'#120a08',border:'1.5px solid #883030',
+              color:'#e08888',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:14,
+              borderRadius:2,cursor:'pointer',letterSpacing:1,transition:'all .15s',
+            }}>
+              弃置此牌
+              <div style={{fontSize:10,opacity:0.7,marginTop:4,fontWeight:400,fontFamily:"'IM Fell English',serif"}}>
+                (受1点环境伤害)
+              </div>
+            </button>
           </div>
-        )}
-        {needsDecision&&!canChoose&&(
-          <div style={{fontFamily:"'Cinzel',serif",color:'#c8a96e',fontSize:18,letterSpacing:1.5}}>
-            {thinkingText||'对方正在思考…'}
-          </div>
-        )}
-        {!needsDecision&&(
-          <button onClick={onKeep} style={{
-            padding:'10px 36px',
-            background:'#1c1008',
-            border:'1.5px solid #7a5020',
-            color:'#c8a96e',
-            fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:19.5,
-            borderRadius:2,cursor:'pointer',letterSpacing:2,
-            boxShadow:'0 0 16px #7a502044',
-            textTransform:'uppercase',
-            transition:'all .15s',
-          }}>继续</button>
         )}
       </div>
     </div>
