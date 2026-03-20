@@ -1230,14 +1230,17 @@ function KnifeEffect({targets}){
       {targets.map(({pi,cx,cy},idx)=>{
         const delay=(idx*0.08).toFixed(2)+'s';
         const hitDelay=(idx*0.08+0.28).toFixed(2)+'s';
-        const txPx=cx-window.innerWidth/2;
-        const tyPx=cy-window.innerHeight/2;
+        const startX=window.innerWidth/2;
+        const startY=window.innerHeight/2;
+        const txPx=cx-startX;
+        const tyPx=cy-startY;
         const angle=Math.atan2(tyPx,txPx)*180/Math.PI;
         return(
           <React.Fragment key={pi}>
             <div style={{
-              position:'absolute',left:window.innerWidth/2,top:window.innerHeight/2,
-              fontSize:32,
+              position:'absolute',left:startX,top:startY,
+              width:32,height:32,marginLeft:-16,marginTop:-16,
+              fontSize:32,lineHeight:1,textAlign:'center',
               filter:'drop-shadow(0 0 4px rgba(200,50,50,0.7))',
               '--tx':`${txPx}px`,'--ty':`${tyPx}px`,'--angle':`${angle}deg`,
               animation:`knifeStrikeGlobal 0.28s cubic-bezier(0.2,0,0.8,1) ${delay} both`,
@@ -3657,6 +3660,7 @@ export default function Game(){
     if(anim?.type==='HP_DAMAGE'&&anim.hitIndices?.length){
       setHitIndices(anim.hitIndices);
       // 与 SKILL_HUNT / BEWITCH 相同：双 rAF 测量 DOM 位置，避免 grid layout race
+      // 先测量位置，再触发 screenShake，避免震动影响测量
       requestAnimationFrame(()=>requestAnimationFrame(()=>{
         const pts=anim.hitIndices.map(pi=>{
           const el=document.querySelector(`[data-pid="${pi}"]`);
@@ -3667,13 +3671,15 @@ export default function Game(){
           return{pi,cx:window.innerWidth/2,cy:window.innerHeight*0.3};
         });
         setKnifeTargets(pts);
+        // 测量完成后再触发震动
+        setScreenShake(true);
+        clearTimeout(shakeTimerRef.current);
+        shakeTimerRef.current=setTimeout(()=>{setScreenShake(false);},400);
       }));
-      setScreenShake(true);
-      clearTimeout(shakeTimerRef.current);
-      shakeTimerRef.current=setTimeout(()=>{setScreenShake(false);},400);
     }else if(anim?.type==='SAN_DAMAGE'&&anim.hitIndices?.length){
       // 与 SKILL_HUNT / BEWITCH 相同：双 rAF 测量 DOM 位置，避免 grid layout race
       setSanHitIndices(anim.hitIndices); // 仍然保留用于面板边框高亮
+      // 先测量位置，再触发 screenShake，避免震动影响测量
       requestAnimationFrame(()=>requestAnimationFrame(()=>{
         const srcEl=document.querySelector('[data-pid="0"]');
         const srcR=srcEl?srcEl.getBoundingClientRect():{left:window.innerWidth*0.5,top:window.innerHeight*0.7,width:0,height:0};
@@ -3689,11 +3695,11 @@ export default function Game(){
           return{pi,cx:window.innerWidth/2,cy:window.innerHeight*0.3,startX:srcX,startY:srcY};
         });
         setSanTargets(pts);
+        // 测量完成后再触发震动
+        setScreenShake(true);
+        clearTimeout(shakeTimerRef.current);
+        shakeTimerRef.current=setTimeout(()=>setScreenShake(false),280);
       }));
-      // Brief screen shake on SAN hit
-      setScreenShake(true);
-      clearTimeout(shakeTimerRef.current);
-      shakeTimerRef.current=setTimeout(()=>setScreenShake(false),280);
       // 面板边框高亮恢复（850ms），但 sanTargets 不在这里清除：
       // 由 !anim 分支统一清除，避免与紧跟的 SAN_DAMAGE 动画产生竞态导致位置跳变
       setTimeout(()=>setSanHitIndices([]),850);
