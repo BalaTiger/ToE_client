@@ -3499,10 +3499,28 @@ function useGameAudio(isBattleScreen){
     }catch{}
   };
 
+  const playTickSound=()=>{
+    noteUserGesture();
+    try{
+      const ctx=new (window.AudioContext||window.webkitAudioContext)();
+      const osc=ctx.createOscillator();
+      const gain=ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value=800;
+      osc.type='sine';
+      gain.gain.setValueAtTime(0.15,ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.05);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime+0.05);
+    }catch{}
+  };
+
   return{
     noteUserGesture,
     playOpenSound:()=>playSfx('open'),
     playCloseSound:()=>playSfx('close'),
+    playTickSound,
   };
 }
 
@@ -3571,7 +3589,7 @@ export default function Game(){
   const [showTutorial,setShowTutorial]=useState(false);
   const [tutorialStep,setTutorialStep]=useState(1);
   const isBattleScreen=!!gs;
-  const {noteUserGesture,playOpenSound,playCloseSound}=useGameAudio(isBattleScreen);
+  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound}=useGameAudio(isBattleScreen);
 
   function isCloseButtonText(text){
     const normalized=(text||'').replace(/\s+/g,'');
@@ -3857,13 +3875,11 @@ export default function Game(){
     });
     // emojiReceived：收到其他玩家发的表情
     socket.on('emojiReceived',({fromUuid,emojis})=>{
-      console.log('[Emoji] Received emojiReceived:', {fromUuid, emojis, myUUID: playerUUIDRef.current});
       // 错开发射时间，每条间隔 80ms
       emojis.forEach((emoji,i)=>{
         setTimeout(()=>{
           // 发射起点：自己发的从 selfPanel，别人发的从屏幕顶部随机位置
           const isSelf=fromUuid===playerUUIDRef.current;
-          console.log('[Emoji] Processing emoji:', emoji, 'isSelf:', isSelf);
           let sx,sy;
           if(isSelf){
             const el=document.querySelector('[data-pid="0"]');
@@ -3879,12 +3895,11 @@ export default function Game(){
           const ey=dp?dp.top+dp.height/2:window.innerHeight*0.45;
           // 随机化
           const rand=(v,pct)=>v*(1+(Math.random()*2-1)*pct);
-          const arc=rand(window.innerHeight*0.32,0.15);
-          const dur=rand(900,0.15);
-          const jx=ex+(Math.random()*2-1)*18;
-          const jy=ey+(Math.random()*2-1)*12;
+          const arc=rand(window.innerHeight*0.10,0.20);
+          const dur=rand(900,0.20);
+          const jx=ex+rand(18,0.20);
+          const jy=ey+rand(12,0.20);
           const uid=`${Date.now()}-${Math.random()}`;
-          console.log('[Emoji] Creating FlyingEmoji:', {id:uid, emoji, sx, sy, ex, ey});
           setFlyingEmojis(prev=>[...prev,{id:uid,emoji,startX:sx,startY:sy,endX:jx,endY:jy,arcHeight:arc,durationMs:dur}]);
         },i*80);
       });
@@ -3945,21 +3960,14 @@ export default function Game(){
   // 表情：点击 emoji → 加入批次队列 → 300ms 内 flush 打包发送
   function handleEmojiClick(emoji){
     setShowEmojiPicker(false);
-    console.log('[Emoji] handleEmojiClick called:', {emoji, socket: !!socketRef.current, roomModal: roomModalRef.current, playerUUID: playerUUIDRef.current});
-    if(!socketRef.current||!roomModalRef.current?.roomId){
-      console.log('[Emoji] Early return - socket or roomId missing');
-      return;
-    }
+    if(!socketRef.current||!roomModalRef.current?.roomId)return;
     emojiQueueRef.current.push(emoji);
-    console.log('[Emoji] Queued, current queue:', emojiQueueRef.current);
     if(!emojiFlushTimerRef.current){
       emojiFlushTimerRef.current=setTimeout(()=>{
         const batch=[...emojiQueueRef.current];
         emojiQueueRef.current=[];
         emojiFlushTimerRef.current=null;
-        console.log('[Emoji] Flushing batch:', batch, 'roomId:', roomModalRef.current?.roomId);
         if(batch.length&&socketRef.current){
-          console.log('[Emoji] Emitting emojiSend:', {uuid:playerUUIDRef.current,roomId:roomModalRef.current.roomId,emojis:batch});
           socketRef.current.emit('emojiSend',{uuid:playerUUIDRef.current,roomId:roomModalRef.current.roomId,emojis:batch});
         }
       },300);
@@ -4434,7 +4442,12 @@ export default function Game(){
     setCdType(cd.type);
     setCdSecondsLeft(cd.seconds);
     cdIntervalRef.current=setInterval(()=>{
-      setCdSecondsLeft(s=>{if(s===null||s<=1){clearInterval(cdIntervalRef.current);return 0;}return s-1;});
+      setCdSecondsLeft(s=>{
+        const next=s===null||s<=1?0:s-1;
+        if(next===0)clearInterval(cdIntervalRef.current);
+        if(next>0&&next<=10)playTickSound();
+        return next;
+      });
     },1000);
     return()=>{if(cdIntervalRef.current)clearInterval(cdIntervalRef.current);};
   },[roomModal?.countdown?.version]);
@@ -4453,6 +4466,7 @@ export default function Game(){
       setMpTurnSec(s=>{
         const next=(s===null||s<=1)?0:s-1;
         if(next===0)clearInterval(mpTurnIntervalRef.current);
+        if(next>0&&next<=10)playTickSound();
         return next;
       });
     },1000);
@@ -4500,6 +4514,7 @@ export default function Game(){
       setMpTurnSec(s=>{
         const next=(s===null||s<=1)?0:s-1;
         if(next===0)clearInterval(mpTurnIntervalRef.current);
+        if(next>0&&next<=10)playTickSound();
         return next;
       });
     },1000);
@@ -4515,7 +4530,12 @@ export default function Game(){
     if(gs.phase!=='HUNT_WAIT_REVEAL')return;
     setMpHuntSec(20);
     mpHuntIntervalRef.current=setInterval(()=>{
-      setMpHuntSec(s=>{if(s===null||s<=1){clearInterval(mpHuntIntervalRef.current);return 0;}return s-1;});
+      setMpHuntSec(s=>{
+        const next=s===null||s<=1?0:s-1;
+        if(next===0)clearInterval(mpHuntIntervalRef.current);
+        if(next>0&&next<=10)playTickSound();
+        return next;
+      });
     },1000);
     if(!myTurn){
       // 只有被追捕方执行超时逻辑
@@ -4607,7 +4627,12 @@ export default function Game(){
     if(!isMultiplayer||!gs||gs.gameOver||gs.phase!=='DISCARD_PHASE'||gs.currentTurn!==0)return;
     setMpDiscardSec(15);
     mpDiscardIntervalRef.current=setInterval(()=>{
-      setMpDiscardSec(s=>{if(s===null||s<=1){clearInterval(mpDiscardIntervalRef.current);return 0;}return s-1;});
+      setMpDiscardSec(s=>{
+        const next=s===null||s<=1?0:s-1;
+        if(next===0)clearInterval(mpDiscardIntervalRef.current);
+        if(next>0&&next<=10)playTickSound();
+        return next;
+      });
     },1000);
     const t=setTimeout(()=>setGs(p=>p?{...p,_mpAutoDiscard:true}:p),15000);
     return()=>{clearTimeout(t);clearInterval(mpDiscardIntervalRef.current);setMpDiscardSec(null);};
@@ -4969,12 +4994,14 @@ export default function Game(){
                     :`⏳ ${cdSecondsLeft}s 后将踢出未准备的玩家`}
                 </div>
               )}
-              {!roomModal.players.every(p=>p.ready)&&(
-                <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#6a5080',fontSize:11,fontStyle:'italic',fontFamily:"'IM Fell English','Georgia',serif"}}>
-                  <span style={{display:'inline-block',width:10,height:10,border:'1.5px solid #5a3a80',borderTopColor:'#a080d0',borderRadius:'50%',animation:'spinLoader 0.9s linear infinite'}}/>
-                  等待其他玩家就绪…
-                </div>
-              )}
+              {(()=>{const myPlayerRec=roomModal.players.find(p=>p.uuid===playerUUID);const myReady=myPlayerRec?.ready||false;return(
+                myReady&&!roomModal.players.every(p=>p.ready)&&(
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#6a5080',fontSize:11,fontStyle:'italic',fontFamily:"'IM Fell English','Georgia',serif"}}>
+                    <span style={{display:'inline-block',width:10,height:10,border:'1.5px solid #5a3a80',borderTopColor:'#a080d0',borderRadius:'50%',animation:'spinLoader 0.9s linear infinite'}}/>
+                    等待其他玩家就绪…
+                  </div>
+                )
+              );})()}
             </div>
           </div>
         )}
@@ -5892,7 +5919,7 @@ export default function Game(){
         <FlyingEmoji key={fe.id} {...fe} onDone={id=>setFlyingEmojis(prev=>prev.filter(x=>x.id!==id))}/>
       ))}
       {/* 点击外部关闭 emoji picker */}
-      {showEmojiPicker&&<div onClick={()=>{console.log('[Emoji] Mask clicked, closing picker');setShowEmojiPicker(false);}} style={{position:'fixed',inset:0,zIndex:49}}/>}
+      {showEmojiPicker&&<div onClick={()=>setShowEmojiPicker(false)} style={{position:'fixed',inset:0,zIndex:49}}/>}
       {/* 表情选择器面板 - 与遮罩层同级，确保在遮罩层上方 */}
       {isMultiplayer&&showEmojiPicker&&(()=>{
         const btnRect=selfPanelRef.current?.getBoundingClientRect();
@@ -6063,7 +6090,7 @@ export default function Game(){
             {/* 表情按钮（多人游戏时显示） */}
             {isMultiplayer&&(
               <div style={{position:'absolute',top:6,right:6,zIndex:50}}>
-                <button onClick={()=>{console.log('[Emoji] Toggle button clicked, current state:', showEmojiPicker);setShowEmojiPicker(v=>!v);}} style={{
+                <button onClick={()=>setShowEmojiPicker(v=>!v)} style={{
                   background:'#1a1008',border:'1px solid #4a3010',borderRadius:3,
                   fontSize:14,cursor:'pointer',padding:'2px 5px',lineHeight:1.2,
                   color:'#c8a96e',opacity:showEmojiPicker?1:0.7,
