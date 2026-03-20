@@ -3649,6 +3649,7 @@ export default function Game(){
   // 表情功能
   const [flyingEmojis,setFlyingEmojis]=useState([]);  // [{id,emoji,startX,startY,endX,endY,arcHeight,durationMs}]
   const [showEmojiPicker,setShowEmojiPicker]=useState(false);
+  const [emojiButtonPos,setEmojiButtonPos]=useState({top:70,right:20});
   const emojiQueueRef=useRef([]);           // 待发送 emoji 批次
   const emojiFlushTimerRef=useRef(null);    // 批量 flush 定时器
   const emojiClickDebounceRef=useRef(null); // 防抖：防止短时间内重复点击
@@ -5930,8 +5931,8 @@ export default function Game(){
       {isMultiplayer&&showEmojiPicker&&(
         <div style={{
           position:'fixed',
-          top:70,
-          right:20,
+          top:emojiButtonPos.top,
+          right:emojiButtonPos.right,
           background:'#140e04',border:'1.5px solid #4a3010',borderRadius:4,
           padding:6,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:3,
           boxShadow:'0 4px 20px #00000088',zIndex:50,
@@ -6092,7 +6093,16 @@ export default function Game(){
             {/* 表情按钮（多人游戏时显示） */}
             {isMultiplayer&&(
               <div style={{position:'absolute',top:6,right:6,zIndex:50}}>
-                <button ref={emojiButtonRef} onClick={()=>setShowEmojiPicker(v=>!v)} style={{
+                <button ref={emojiButtonRef} onClick={()=>{
+                  const rect=emojiButtonRef.current?.getBoundingClientRect();
+                  if(rect){
+                    setEmojiButtonPos({
+                      top:rect.bottom+8,
+                      right:window.innerWidth-rect.right
+                    });
+                  }
+                  setShowEmojiPicker(v=>!v);
+                }} style={{
                   background:'#1a1008',border:'1px solid #4a3010',borderRadius:3,
                   fontSize:14,cursor:'pointer',padding:'2px 5px',lineHeight:1.2,
                   color:'#c8a96e',opacity:showEmojiPicker?1:0.7,
