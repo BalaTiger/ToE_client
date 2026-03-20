@@ -2489,7 +2489,7 @@ function GodChoiceModal({godCard,player,onWorship,onKeepHand,onDiscard,isConvert
   const canUpgrade=alreadyWorship&&(player.godLevel||0)<3;
   return(
     // 修改了这里的 background 和 backdropFilter
-    <div style={{position:'fixed',inset:0,background:'rgba(2,0,8,0.45)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:400,flexDirection:'column',gap:16}}>
+    <div style={{position:'fixed',inset:0,background:'rgba(2,0,8,0.25)',backdropFilter:'blur(3px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:400,flexDirection:'column',gap:16}}>
       <div style={{fontFamily:"'Cinzel',serif",color:'#e8cc88',fontSize:19.5,letterSpacing:2,marginBottom:4}}>
         {forcedConvert?'邪祀者强制改信——':'邪神降临——'}
         <span style={{color:def.col,filter:`drop-shadow(0 0 6px ${def.col}88)`}}>{godCard.name}</span>
@@ -2571,7 +2571,7 @@ function DrawRevealModal({drawReveal,onAccept,onDiscard,isBystander,activeName})
   const{card,msgs}=drawReveal;
   const s=CS[card.letter]||GOD_CS;
   return(
-    <div style={{position:'fixed',inset:0,background:'rgba(2,1,0,0.45)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:300}}>
+    <div style={{position:'fixed',inset:0,background:'rgba(2,1,0,0.25)',backdropFilter:'blur(3px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:300}}>
       <div style={{
         background:'#150e07',
         border:`2px solid ${s.border}`,
@@ -2614,9 +2614,6 @@ function DrawRevealModal({drawReveal,onAccept,onDiscard,isBystander,activeName})
               borderRadius:2,cursor:'pointer',letterSpacing:1,transition:'all .15s',
             }}>
               弃置此牌
-              <div style={{fontSize:10,opacity:0.7,marginTop:4,fontWeight:400,fontFamily:"'IM Fell English',serif"}}>
-                (受1点环境伤害)
-              </div>
             </button>
           </div>
         )}
