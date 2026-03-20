@@ -4002,6 +4002,7 @@ export default function Game(){
     if(socketRef.current){socketRef.current.disconnect();socketRef.current=null;}
   }
   const selfPanelRef=useRef(null);
+  const emojiButtonRef=useRef(null);
   const [panelRect,setPanelRect]=useState(null);
   const roleTextRef=useRef(null);
   const [roleTextRect,setRoleTextRect]=useState(null);
@@ -5926,13 +5927,13 @@ export default function Game(){
       {showEmojiPicker&&<div onClick={()=>setShowEmojiPicker(false)} style={{position:'fixed',inset:0,zIndex:49}}/>}
       {/* 表情选择器面板 - 与遮罩层同级，确保在遮罩层上方 */}
       {isMultiplayer&&showEmojiPicker&&(()=>{
-        const btnRect=selfPanelRef.current?.getBoundingClientRect();
+        const btnRect=emojiButtonRef.current?.getBoundingClientRect();
         if(!btnRect)return null;
         return(
           <div style={{
             position:'fixed',
-            top:btnRect.top+30,
-            right:window.innerWidth-btnRect.right+10,
+            top:btnRect.bottom+5,
+            right:window.innerWidth-btnRect.right,
             background:'#140e04',border:'1.5px solid #4a3010',borderRadius:4,
             padding:6,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:3,
             boxShadow:'0 4px 20px #00000088',zIndex:50,
@@ -6094,7 +6095,7 @@ export default function Game(){
             {/* 表情按钮（多人游戏时显示） */}
             {isMultiplayer&&(
               <div style={{position:'absolute',top:6,right:6,zIndex:50}}>
-                <button onClick={()=>setShowEmojiPicker(v=>!v)} style={{
+                <button ref={emojiButtonRef} onClick={()=>setShowEmojiPicker(v=>!v)} style={{
                   background:'#1a1008',border:'1px solid #4a3010',borderRadius:3,
                   fontSize:14,cursor:'pointer',padding:'2px 5px',lineHeight:1.2,
                   color:'#c8a96e',opacity:showEmojiPicker?1:0.7,
