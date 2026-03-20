@@ -5457,7 +5457,7 @@ export default function Game(){
             const isSel=selectingOther&&!p.isDead&&!isBlocked&&!(phase==='HUNT_SELECT_TARGET'&&huntAbandoned.includes(pi));
             return(
               <div key={p.id} data-pid={pi} style={{position:'relative',zIndex:isSel?101:undefined,alignSelf:'start'}}>
-                <PlayerPanel player={p} isCurrentTurn={gs.currentTurn===pi} isSelectable={isSel} showFaceUp={false} onSelect={()=>handleAIClick(pi)} onCardSelect={null} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)}/>
+                <PlayerPanel player={p} isCurrentTurn={gs.currentTurn===pi} isSelectable={isSel} showFaceUp={p.revealHand} onSelect={()=>handleAIClick(pi)} onCardSelect={null} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)}/>
               </div>
             );
           })}
