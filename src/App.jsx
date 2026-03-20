@@ -4788,6 +4788,11 @@ export default function Game(){
       const dc=P[0].hand.splice(myCardIdx,1)[0];Disc.push(dc);
       const huntDamage=2+(P[0].damageBonus||0);
       P[huntTi].hp=clamp(P[huntTi].hp-huntDamage);L.push(`弃 [${dc.key}] → ${P[huntTi].name} 受 ${huntDamage}HP 伤害`);
+      // 追捕成功时揭晓追猎者身份
+      if(!P[0].roleRevealed){
+        P[0].roleRevealed=true;
+        L.push(`${P[0].name} 的身份揭晓：追猎者`);
+      }
       if(P[huntTi].hp<=0){
         P[huntTi].isDead=true;P[huntTi].roleRevealed=true;L.push(`☠ ${P[huntTi].name}（${P[huntTi].role}）倒下了！`);
         if(P[huntTi].hand.length){
@@ -4805,6 +4810,11 @@ export default function Game(){
     }else{
       const newAbandoned=[...(gs.huntAbandoned||[]),huntTi];
       L.push(`放弃追捕 ${P[huntTi].name}`);
+      // 放弃追捕时揭晓追猎者身份
+      if(!P[0].roleRevealed){
+        P[0].roleRevealed=true;
+        L.push(`${P[0].name} 的身份揭晓：追猎者`);
+      }
       setGs({...gs,players:P,log:L,phase:'ACTION',huntAbandoned:newAbandoned,
         abilityData:{...gs.abilityData,huntTi:undefined,revCard:undefined},skillUsed:true});
     }
