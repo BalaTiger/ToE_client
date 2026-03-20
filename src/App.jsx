@@ -1558,22 +1558,37 @@ function TitleCandleFlames(){
             animation:'titleFlameGlow calc(var(--flame-duration) * 0.5) ease-in-out var(--flame-delay) infinite',
           }}/>
           <div style={{
-            width:18,
-            height:28,
-            borderRadius:'55% 55% 60% 60% / 72% 72% 28% 28%',
-            background:'radial-gradient(ellipse at 50% 72%, rgba(255,248,214,0.12) 0%, rgba(255,223,140,0.10) 26%, rgba(255,170,58,0.10) 58%, rgba(255,96,18,0.05) 82%, rgba(255,96,18,0) 100%)',
+            width:16,
+            height:32,
+            borderRadius:'60% 60% 30% 30% / 80% 80% 20% 20%',
+            background:'radial-gradient(ellipse at 50% 75%, rgba(255,248,214,0.15) 0%, rgba(255,223,140,0.12) 26%, rgba(255,170,58,0.10) 58%, rgba(255,96,18,0.08) 82%, rgba(255,96,18,0) 100%)',
             boxShadow:'0 0 8px rgba(255,170,70,0.10), 0 0 16px rgba(255,106,24,0.03)',
-            clipPath:'polygon(50% 0%, 72% 16%, 88% 42%, 82% 70%, 63% 100%, 38% 100%, 18% 72%, 12% 40%, 28% 14%)',
+            clipPath:'polygon(50% 0%, 70% 10%, 85% 25%, 90% 45%, 85% 65%, 70% 85%, 60% 95%, 40% 95%, 30% 85%, 15% 65%, 10% 45%, 15% 25%, 30% 10%)',
             maskImage:'linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 40%, rgba(0,0,0,0) 75%)',
             WebkitMaskImage:'linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 40%, rgba(0,0,0,0) 75%)',
             animation:'titleFlameFlicker calc(var(--flame-duration) * 0.3) linear var(--flame-delay) infinite',
-          }}/>
+            position:'relative',
+          }}>
+            {/* 底部红色三角区 */}
+            <div style={{
+              position:'absolute',
+              bottom:0,
+              left:'50%',
+              transform:'translateX(-50%)',
+              width:20,
+              height:8,
+              background:'radial-gradient(ellipse at 50% 50%, rgba(255,96,18,0.15) 0%, rgba(220,60,10,0.10) 50%, rgba(180,30,5,0.05) 80%, rgba(0,0,0,0) 100%)',
+              clipPath:'polygon(50% 0%, 100% 100%, 0% 100%)',
+              opacity:0.6,
+              animation:'titleFlameFlicker calc(var(--flame-duration) * 0.3) linear var(--flame-delay) infinite',
+            }}/>
+          </div>
           <div style={{
             position:'absolute',
             left:'50%',
-            top:'46%',
-            width:7,
-            height:13,
+            top:'40%',
+            width:6,
+            height:10,
             transform:'translate(-50%,-50%)',
             borderRadius:'50%',
             background:'radial-gradient(circle, rgba(255,255,245,0.4) 0%, rgba(255,246,206,0.3) 58%, rgba(255,241,180,0.0) 100%)',
