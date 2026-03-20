@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import ReactDOM from "react-dom";
 // socket.io-client is loaded at runtime via CDN (only outside Claude Artifacts)
 
 // ══════════════════════════════════════════════════════════════
@@ -3337,7 +3338,9 @@ function NarratorAvatar({tooltipW}){
 // Persistent gamma / brightness slider — top-right corner
 function GammaSlider({gamma,onChange}){
   const [open,setOpen]=useState(false);
-  return(
+  // Rendered via Portal directly onto document.body so that any CSS filter on ancestor
+  // elements does not affect position:fixed coordinates (filter creates a new containing block).
+  return ReactDOM.createPortal(
     <div style={{position:'fixed',top:10,right:12,zIndex:1800,display:'flex',alignItems:'center',gap:6}}>
       {open&&(
         <div style={{display:'flex',alignItems:'center',gap:8,background:'#120d06cc',border:'1px solid #3a2510',borderRadius:3,padding:'4px 10px',backdropFilter:'blur(4px)'}}>
@@ -3359,7 +3362,8 @@ function GammaSlider({gamma,onChange}){
         onMouseEnter={e=>e.currentTarget.style.borderColor='#7a5020'}
         onMouseLeave={e=>e.currentTarget.style.borderColor='#3a2510'}
       >☀</button>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -3665,8 +3669,15 @@ export default function Game(){
     setGamma(v);
     try{localStorage.setItem('cthulhu_gamma',String(v));}catch{}
   }
-  // CSS filter applied to root div: gamma approximated via brightness+contrast
+  // Apply gamma filter to document.body instead of a React container div.
+  // Applying CSS filter to a div creates a new containing block for position:fixed children,
+  // causing overlays to be positioned relative to the div instead of the viewport.
+  // Applying to document.body avoids this: body-sized containing block == viewport.
   const gammaFilter=gamma===1?undefined:`brightness(${gamma.toFixed(2)}) contrast(${(1+(gamma-1)*0.3).toFixed(2)})`;
+  useEffect(()=>{
+    document.body.style.filter=gammaFilter||'';
+    return()=>{document.body.style.filter='';};
+  },[gammaFilter]);
 
   function addToast(text){
     const id=Date.now()+Math.random();
@@ -4693,7 +4704,7 @@ export default function Game(){
   // ── Start Screen ───────────────────────────────────────────
   if(!gs){
     return(<>
-      <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:24,position:'relative',overflow:'hidden',filter:gammaFilter}}>
+      <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:24,position:'relative',overflow:'hidden'}}>
         {/* Vignette */}
         <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at center,transparent 30%,#000000bb 100%)',pointerEvents:'none'}}/>
         {/* Animation overlay — visible even before game starts (first-turn card flip) */}
@@ -5918,7 +5929,7 @@ export default function Game(){
   const skillLimited=gs.skillUsed&&skillRi.skillLimited;
 
   return(<>
-    <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:7,padding:isMobile?'6px 8px':'8px 10px',position:'relative',overflowX:'hidden',filter:gammaFilter,
+    <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:7,padding:isMobile?'6px 8px':'8px 10px',position:'relative',overflowX:'hidden',
     animation:deathShake?'deathShakeAnim 2.0s ease-in-out':screenShake?'screenShakeAnim 0.38s ease-in-out':undefined,
     }}>
       {/* Global vignette */}
@@ -6876,27 +6887,30 @@ export default function Game(){
     {/* GammaSlider, emoji picker, and combat overlays all outside the filtered container
          so that position:fixed uses the true viewport (filter on ancestor breaks fixed positioning) */}
     <GammaSlider gamma={gamma} onChange={handleGamma}/>
-    {showEmojiPicker&&<div onClick={()=>setShowEmojiPicker(false)} style={{position:'fixed',inset:0,zIndex:49}}/>}
-    {isMultiplayer&&showEmojiPicker&&(
-      <div style={{
-        position:'fixed',
-        top:emojiButtonPos.top,
-        right:emojiButtonPos.right,
-        background:'#140e04',border:'1.5px solid #4a3010',borderRadius:4,
-        padding:6,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:3,
-        boxShadow:'0 4px 20px #00000088',zIndex:50,
-      }}>
-        {EMOJI_LIST.map(e=>(
-          <button key={e} onClick={ev=>{ev.stopPropagation();handleEmojiClick(e);}} style={{
-            background:'none',border:'none',fontSize:20,cursor:'pointer',
-            padding:'3px 2px',borderRadius:3,lineHeight:1,
-            transition:'background 0.1s',
-          }}
-          onMouseEnter={ev=>ev.currentTarget.style.background='#3a2010'}
-          onMouseLeave={ev=>ev.currentTarget.style.background='none'}
-          >{e}</button>
-        ))}
-      </div>
+    {isMultiplayer&&showEmojiPicker&&ReactDOM.createPortal(
+      <>
+        <div onClick={()=>setShowEmojiPicker(false)} style={{position:'fixed',inset:0,zIndex:49}}/>
+        <div style={{
+          position:'fixed',
+          top:emojiButtonPos.top,
+          right:emojiButtonPos.right,
+          background:'#140e04',border:'1.5px solid #4a3010',borderRadius:4,
+          padding:6,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:3,
+          boxShadow:'0 4px 20px #00000088',zIndex:50,
+        }}>
+          {EMOJI_LIST.map(e=>(
+            <button key={e} onClick={ev=>{ev.stopPropagation();handleEmojiClick(e);}} style={{
+              background:'none',border:'none',fontSize:20,cursor:'pointer',
+              padding:'3px 2px',borderRadius:3,lineHeight:1,
+              transition:'background 0.1s',
+            }}
+            onMouseEnter={ev=>ev.currentTarget.style.background='#3a2010'}
+            onMouseLeave={ev=>ev.currentTarget.style.background='none'}
+            >{e}</button>
+          ))}
+        </div>
+      </>,
+      document.body
     )}
     {/* Hunt/Bewitch/Guillotine/Knife/SanMist/CardTransfer overlays rendered OUTSIDE the filtered container */}
     {!suppressAnim&&<HuntScopeOverlay active={!!huntAnim} cx={huntAnim?.cx??0} cy={huntAnim?.cy??0}/>}
