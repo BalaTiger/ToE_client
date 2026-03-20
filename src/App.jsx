@@ -5892,7 +5892,7 @@ export default function Game(){
         <FlyingEmoji key={fe.id} {...fe} onDone={id=>setFlyingEmojis(prev=>prev.filter(x=>x.id!==id))}/>
       ))}
       {/* 点击外部关闭 emoji picker */}
-      {showEmojiPicker&&<div onClick={()=>setShowEmojiPicker(false)} style={{position:'fixed',inset:0,zIndex:49}}/>}
+      {showEmojiPicker&&<div onClick={()=>{console.log('[Emoji] Mask clicked, closing picker');setShowEmojiPicker(false);}} style={{position:'fixed',inset:0,zIndex:49}}/>}
       {/* ── 断线遮罩（游戏内）── */}
       {isDisconnected&&(
         <div onClick={()=>{setIsDisconnected(false);setIsMultiplayer(false);isMultiplayerRef.current=false;setMyPlayerIndex(0);myPlayerIndexRef.current=0;mpRoleRevealedRef.current=false;setGs(null);}}
@@ -6003,7 +6003,7 @@ export default function Game(){
         {/* Middle: self info + deck/discard piles + log */}
         <div style={{display:'flex',gap:isMobile?5:7,flexWrap:isMobile?'wrap':'nowrap'}}>
           {/* Self panel */}
-          <div ref={selfPanelRef} data-pid={0} style={{background:'#180f07',border:`1.5px solid ${hitIndices.includes(0)?'#cc2222':sanHitIndices.includes(0)?'#8840cc':suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'#c8a96e':'#3a2510'}`,borderRadius:3,padding:isMobile?'10px 11px':'12px 13px',width:isMobile?undefined:155,flexBasis:isMobile?'calc(58% - 2.5px)':undefined,minHeight:isMobile?undefined:222,flexShrink:0,display:'flex',flexDirection:'column',gap:9,position:'relative',overflow:'hidden',boxShadow:suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'0 0 0 2px #c8a96e66,0 0 20px #c8a96e44':undefined}}>
+          <div ref={selfPanelRef} data-pid={0} style={{background:'#180f07',border:`1.5px solid ${hitIndices.includes(0)?'#cc2222':sanHitIndices.includes(0)?'#8840cc':suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'#c8a96e':'#3a2510'}`,borderRadius:3,padding:isMobile?'10px 11px':'12px 13px',width:isMobile?undefined:155,flexBasis:isMobile?'calc(58% - 2.5px)':undefined,minHeight:isMobile?undefined:222,flexShrink:0,display:'flex',flexDirection:'column',gap:9,position:'relative',overflow:'visible',boxShadow:suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'0 0 0 2px #c8a96e66,0 0 20px #c8a96e44':undefined}}>
             {/* SAN mist: rendered by full-screen SanMistOverlay */}
             {(hpHealIndices.includes(0)||sanHealIndices.includes(0))&&<HealCrossEffect color={sanHealIndices.includes(0)?'#a78bfa':'#4ade80'}/>}
             <div>
@@ -6037,7 +6037,7 @@ export default function Game(){
             {/* 表情按钮（多人游戏时显示） */}
             {isMultiplayer&&(
               <div style={{position:'absolute',top:6,right:6,zIndex:50}}>
-                <button onClick={()=>setShowEmojiPicker(v=>!v)} style={{
+                <button onClick={()=>{console.log('[Emoji] Toggle button clicked, current state:', showEmojiPicker);setShowEmojiPicker(v=>!v);}} style={{
                   background:'#1a1008',border:'1px solid #4a3010',borderRadius:3,
                   fontSize:14,cursor:'pointer',padding:'2px 5px',lineHeight:1.2,
                   color:'#c8a96e',opacity:showEmojiPicker?1:0.7,
