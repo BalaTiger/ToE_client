@@ -1223,43 +1223,49 @@ function CardFlipAnim({card,triggerName,targetPid,exiting}){
 }
 
 // ── Knife Effect (per-character HP damage) ────────────────────
-function KnifeEffect(){
-  // Blood drops: random positions
-  const drops=[
-    {x:30,y:40,s:1.1},{x:55,y:25,s:0.8},{x:70,y:55,s:1.3},
-    {x:20,y:60,s:0.7},{x:45,y:70,s:1.0},{x:65,y:35,s:0.9},
-  ];
+function KnifeEffect({targets}){
+  if(!targets||!targets.length)return null;
   return(
-    <div style={{position:'absolute',inset:0,zIndex:10,pointerEvents:'none',overflow:'hidden'}}>
-      {/* Knife — flies in from top-right, rotated diagonally */}
-      <div style={{
-        position:'absolute',top:'-10%',right:'-5%',
-        fontSize:32,
-        filter:'drop-shadow(0 0 4px rgba(200,50,50,0.7))',
-        animation:'knifeStrike 0.28s cubic-bezier(0.2,0,0.8,1) 0s both',
-        transformOrigin:'center center',
-      }}>🗡️</div>
-      {/* Flash on hit */}
-      <div style={{
-        position:'absolute',inset:0,
-        background:'rgba(200,30,30,0.35)',
-        borderRadius:'inherit',
-        animation:'hitFlash 0.3s ease-out 0.25s both',
-        opacity:0,
-      }}/>
-      {/* Blood drops */}
-      {drops.map((d,i)=>(
-        <div key={i} style={{
-          position:'absolute',
-          left:`${d.x}%`,top:`${d.y}%`,
-          width:Math.round(5*d.s),height:Math.round(8*d.s),
-          borderRadius:'50% 50% 55% 55%',
-          background:'radial-gradient(ellipse,#cc1010 0%,#880808 70%)',
-          animation:`bloodDrop 0.55s ease-out ${0.26+i*0.028}s both`,
-          opacity:0,
-          transform:'translateY(-12px)',
-        }}/>
-      ))}
+    <div style={{position:'fixed',inset:0,zIndex:485,pointerEvents:'none',overflow:'hidden'}}>
+      {targets.map(({pi,cx,cy},idx)=>{
+        const delay=(idx*0.08).toFixed(2)+'s';
+        const hitDelay=(idx*0.08+0.28).toFixed(2)+'s';
+        const txPx=cx-window.innerWidth/2;
+        const tyPx=cy-window.innerHeight/2;
+        const angle=Math.atan2(tyPx,txPx)*180/Math.PI;
+        return(
+          <React.Fragment key={pi}>
+            <div style={{
+              position:'absolute',left:window.innerWidth/2,top:window.innerHeight/2,
+              fontSize:32,
+              filter:'drop-shadow(0 0 4px rgba(200,50,50,0.7))',
+              '--tx':`${txPx}px`,'--ty':`${tyPx}px`,'--angle':`${angle}deg`,
+              animation:`knifeStrikeGlobal 0.28s cubic-bezier(0.2,0,0.8,1) ${delay} both`,
+              transformOrigin:'center center',
+            }}>🗡️</div>
+            <div style={{
+              position:'absolute',left:cx,top:cy,
+              width:80,height:80,marginLeft:-40,marginTop:-40,
+              background:'radial-gradient(circle,rgba(200,30,30,0.45) 0%,transparent 70%)',
+              borderRadius:'inherit',
+              animation:'hitFlashGlobal 0.3s ease-out '+hitDelay+' both',
+              opacity:0,
+            }}/>
+            {[{x:30,y:40,s:1.1},{x:55,y:25,s:0.8},{x:70,y:55,s:1.3},{x:20,y:60,s:0.7},{x:45,y:70,s:1.0},{x:65,y:35,s:0.9}].map((d,i)=>(
+              <div key={i} style={{
+                position:'absolute',
+                left:cx-40+d.x*0.8,top:cy-40+d.y*0.8,
+                width:Math.round(5*d.s),height:Math.round(8*d.s),
+                borderRadius:'50% 50% 55% 55%',
+                background:'radial-gradient(ellipse,#cc1010 0%,#880808 70%)',
+                animation:`bloodDrop 0.55s ease-out ${(idx*0.08+0.26+i*0.028).toFixed(2)}s both`,
+                opacity:0,
+                transform:'translateY(-12px)',
+              }}/>
+            ))}
+          </React.Fragment>
+        );
+      })}
     </div>
   );
 }
@@ -2411,8 +2417,6 @@ function PlayerPanel({player,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCa
       position:'relative',
       overflow:'hidden',
     }}>
-      {/* Knife hit effect */}
-      {isBeingHit&&<KnifeEffect/>}
       {/* SAN mist: rendered by full-screen SanMistOverlay */}
       {(isHpHeal||isSanHeal)&&<HealCrossEffect color={isSanHeal?'#a78bfa':'#4ade80'}/>}
       {/* Name plate */}
@@ -3588,6 +3592,7 @@ export default function Game(){
   const[anim,setAnim]=useState(null);
   const[animExiting,setAnimExiting]=useState(false);
   const[hitIndices,setHitIndices]=useState([]);    // HP damage
+  const[knifeTargets,setKnifeTargets]=useState([]); // pre-measured {pi,cx,cy} for KnifeEffect
   const[sanHitIndices,setSanHitIndices]=useState([]);
   const[sanTargets,setSanTargets]=useState([]); // pre-measured {pi,cx,cy,startX,startY} // SAN damage
   const[swapAnim,setSwapAnim]=useState(false);        // cup shuffle
@@ -3651,26 +3656,40 @@ export default function Game(){
   useEffect(()=>{
     if(anim?.type==='HP_DAMAGE'&&anim.hitIndices?.length){
       setHitIndices(anim.hitIndices);
+      // 与 SKILL_HUNT / BEWITCH 相同：双 rAF 测量 DOM 位置，避免 grid layout race
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        const pts=anim.hitIndices.map(pi=>{
+          const el=document.querySelector(`[data-pid="${pi}"]`);
+          if(el){
+            const r=el.getBoundingClientRect();
+            return{pi,cx:r.left+r.width/2,cy:r.top+r.height/2};
+          }
+          return{pi,cx:window.innerWidth/2,cy:window.innerHeight*0.3};
+        });
+        setKnifeTargets(pts);
+      }));
       setScreenShake(true);
       clearTimeout(shakeTimerRef.current);
       shakeTimerRef.current=setTimeout(()=>{setScreenShake(false);},400);
     }else if(anim?.type==='SAN_DAMAGE'&&anim.hitIndices?.length){
-      // 与 SKILL_HUNT / BEWITCH 相同：在 useEffect 内（paint后）测量 DOM 位置，避免 grid layout race
+      // 与 SKILL_HUNT / BEWITCH 相同：双 rAF 测量 DOM 位置，避免 grid layout race
       setSanHitIndices(anim.hitIndices); // 仍然保留用于面板边框高亮
-      const srcEl=document.querySelector('[data-pid="0"]');
-      const srcR=srcEl?srcEl.getBoundingClientRect():{left:window.innerWidth*0.5,top:window.innerHeight*0.7,width:0,height:0};
-      const srcX=srcR.left+srcR.width/2, srcY=srcR.top+srcR.height/2;
-      const pts=anim.hitIndices.map(pi=>{
-        const el=document.querySelector(`[data-pid="${pi}"]`);
-        if(el){
-          const r=el.getBoundingClientRect();
-          const cx=r.left+r.width/2, cy=r.top+r.height/2;
-          const ox=((pi*17+5)%22)-11, oy=((pi*13+7)%16)-8;
-          return{pi,cx,cy,startX:srcX+ox,startY:srcY+oy};
-        }
-        return{pi,cx:window.innerWidth/2,cy:window.innerHeight*0.3,startX:srcX,startY:srcY};
-      });
-      setSanTargets(pts);
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        const srcEl=document.querySelector('[data-pid="0"]');
+        const srcR=srcEl?srcEl.getBoundingClientRect():{left:window.innerWidth*0.5,top:window.innerHeight*0.7,width:0,height:0};
+        const srcX=srcR.left+srcR.width/2, srcY=srcR.top+srcR.height/2;
+        const pts=anim.hitIndices.map(pi=>{
+          const el=document.querySelector(`[data-pid="${pi}"]`);
+          if(el){
+            const r=el.getBoundingClientRect();
+            const cx=r.left+r.width/2, cy=r.top+r.height/2;
+            const ox=((pi*17+5)%22)-11, oy=((pi*13+7)%16)-8;
+            return{pi,cx,cy,startX:srcX+ox,startY:srcY+oy};
+          }
+          return{pi,cx:window.innerWidth/2,cy:window.innerHeight*0.3,startX:srcX,startY:srcY};
+        });
+        setSanTargets(pts);
+      }));
       // Brief screen shake on SAN hit
       setScreenShake(true);
       clearTimeout(shakeTimerRef.current);
@@ -3758,6 +3777,7 @@ export default function Game(){
       return()=>clearTimeout(shakeTimer);
     }else if(!anim){
       setHitIndices([]);
+      setKnifeTargets([]);
       setSanHitIndices([]);
       setSanTargets([]);
       setCardTransfers([]);
@@ -5377,6 +5397,8 @@ export default function Game(){
       {/* Animation overlay */}
       {!suppressAnim&&<AnimOverlay anim={anim} exiting={animExiting}/>}
       {/* Guillotine death animation — rendered outside filtered container, see below */}
+      {/* HP damage knife effect — flies from screen center to target */}
+      {!suppressAnim&&<KnifeEffect targets={knifeTargets}/>}
       {/* SAN damage full-screen mist bolts */}
       {!suppressAnim&&<SanMistOverlay targets={sanTargets}/>}
       {/* Skill overlays */}
@@ -5467,7 +5489,6 @@ export default function Game(){
         <div style={{display:'flex',gap:isMobile?5:7,flexWrap:isMobile?'wrap':'nowrap'}}>
           {/* Self panel */}
           <div ref={selfPanelRef} data-pid={0} style={{background:'#180f07',border:`1.5px solid ${hitIndices.includes(0)?'#cc2222':sanHitIndices.includes(0)?'#8840cc':suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'#c8a96e':'#3a2510'}`,borderRadius:3,padding:isMobile?'10px 11px':'12px 13px',width:isMobile?undefined:155,flexBasis:isMobile?'calc(58% - 2.5px)':undefined,minHeight:isMobile?undefined:222,flexShrink:0,display:'flex',flexDirection:'column',gap:9,position:'relative',overflow:'hidden',boxShadow:suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'0 0 0 2px #c8a96e66,0 0 20px #c8a96e44':undefined}}>
-            {hitIndices.includes(0)&&<KnifeEffect/>}
             {/* SAN mist: rendered by full-screen SanMistOverlay */}
             {(hpHealIndices.includes(0)||sanHealIndices.includes(0))&&<HealCrossEffect color={sanHealIndices.includes(0)?'#a78bfa':'#4ade80'}/>}
             <div>
@@ -6599,7 +6620,14 @@ const GLOBAL_STYLES=`
     80%  {transform:translate(-64px,64px) rotate(-45deg) scale(1.1); opacity:1;}
     100% {transform:translate(-64px,64px) rotate(-45deg) scale(0.9); opacity:0;}
   }
+  @keyframes knifeStrikeGlobal {
+    0%   {transform:translate(0,0) rotate(calc(var(--angle) + 45deg)); opacity:1;}
+    70%  {transform:translate(var(--tx),var(--ty)) rotate(calc(var(--angle) + 45deg)) scale(1.15); opacity:1;}
+    80%  {transform:translate(var(--tx),var(--ty)) rotate(calc(var(--angle) + 45deg)) scale(1.1); opacity:1;}
+    100% {transform:translate(var(--tx),var(--ty)) rotate(calc(var(--angle) + 45deg)) scale(0.9); opacity:0;}
+  }
   @keyframes hitFlash { 0%{opacity:0} 20%{opacity:1} 100%{opacity:0} }
+  @keyframes hitFlashGlobal { 0%{opacity:0} 20%{opacity:1} 100%{opacity:0} }
   @keyframes bloodDrop {
     0%   {opacity:0; transform:translateY(-12px) scale(0);}
     25%  {opacity:1; transform:translateY(0) scale(1);}
