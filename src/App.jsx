@@ -6042,28 +6042,34 @@ export default function Game(){
                   fontSize:14,cursor:'pointer',padding:'2px 5px',lineHeight:1.2,
                   color:'#c8a96e',opacity:showEmojiPicker?1:0.7,
                 }}>😊</button>
-                {showEmojiPicker&&(
-                  <div style={{
-                    position:'absolute',top:26,right:0,
-                    background:'#140e04',border:'1.5px solid #4a3010',borderRadius:4,
-                    padding:6,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:3,
-                    boxShadow:'0 4px 20px #00000088',zIndex:100,
-                  }}>
-                    {EMOJI_LIST.map(e=>(
-                      <button key={e} onClick={()=>handleEmojiClick(e)} style={{
-                        background:'none',border:'none',fontSize:20,cursor:'pointer',
-                        padding:'3px 2px',borderRadius:3,lineHeight:1,
-                        transition:'background 0.1s',
-                      }}
-                      onMouseEnter={ev=>ev.currentTarget.style.background='#3a2010'}
-                      onMouseLeave={ev=>ev.currentTarget.style.background='none'}
-                      >{e}</button>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
           </div>
+          {/* 表情选择器面板 - 使用 fixed 定位脱离父容器层叠上下文 */}
+          {isMultiplayer&&showEmojiPicker&&(()=>{
+            const btnRect=selfPanelRef.current?.getBoundingClientRect();
+            return(
+              <div style={{
+                position:'fixed',
+                top:btnRect?btnRect.top+30:100,
+                right:btnRect?window.innerWidth-btnRect.right+btnRect.width-10:100,
+                background:'#140e04',border:'1.5px solid #4a3010',borderRadius:4,
+                padding:6,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:3,
+                boxShadow:'0 4px 20px #00000088',zIndex:5000,
+              }}>
+                {EMOJI_LIST.map(e=>(
+                  <button key={e} onClick={()=>handleEmojiClick(e)} style={{
+                    background:'none',border:'none',fontSize:20,cursor:'pointer',
+                    padding:'3px 2px',borderRadius:3,lineHeight:1,
+                    transition:'background 0.1s',
+                  }}
+                  onMouseEnter={ev=>ev.currentTarget.style.background='#3a2010'}
+                  onMouseLeave={ev=>ev.currentTarget.style.background='none'}
+                  >{e}</button>
+                ))}
+              </div>
+            );
+          })()}
           {/* Center: deck/discard piles */}
           <PileDisplay deckCount={gs.deck.length} discardCount={gs.discard.length} discardTop={gs.discard[gs.discard.length-1]||null} compact={isMobile} deckRef={deckAreaRef} discardRef={discardPileRef}/>
           {/* Log — narrow, right-aligned */}
