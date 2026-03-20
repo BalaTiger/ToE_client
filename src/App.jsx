@@ -1511,97 +1511,170 @@ function YourTurnAnim({name}){
   );
 }
 
-// ── Guillotine Death Animation ────────────────────────────────
-// GuillotineAnim now receives pre-measured targets from parent useEffect (same as HuntScope)
-function TitleCandleFlames(){
-  const flames=[
-    {left:'10%',top:'55%',scale:0.72,dur:'4.4s',delay:'-0.8s',drift:'-7px'},
-    {left:'22%',top:'43%',scale:0.92,dur:'3.8s',delay:'-1.6s',drift:'8px'},
-    {left:'37%',top:'50%',scale:0.64,dur:'4.9s',delay:'-0.4s',drift:'-5px'},
-    {left:'64%',top:'41%',scale:1.02,dur:'3.6s',delay:'-2.2s',drift:'10px'},
-    {left:'81%',top:'54%',scale:0.76,dur:'4.1s',delay:'-1.1s',drift:'-8px'},
-    {left:'90%',top:'74%',scale:0.58,dur:'5.2s',delay:'-0.9s',drift:'7px'},
-    {left:'75%',top:'92%',scale:0.88,dur:'4.6s',delay:'-1.7s',drift:'-6px'},
-    {left:'52%',top:'100%',scale:0.62,dur:'3.9s',delay:'-0.5s',drift:'5px'},
-    {left:'26%',top:'97%',scale:0.82,dur:'4.8s',delay:'-2.4s',drift:'-9px'},
-    {left:'8%',top:'85%',scale:0.54,dur:'4.3s',delay:'-1.3s',drift:'6px'},
-  ];
-  return(
-    <div style={{position:'absolute',inset:0,pointerEvents:'none',overflow:'visible',zIndex:-1}}>
-      {flames.map((f,i)=>(
-        <div
-          key={i}
-          style={{
-            position:'absolute',
-            left:f.left,
-            top:f.top,
-            transform:`translate(-50%,-50%) scale(${f.scale})`,
-            '--flame-scale':f.scale,
-            '--flame-drift':f.drift,
-            '--flame-duration':f.dur,
-            '--flame-delay':f.delay,
-            animation:'titleFlameSway var(--flame-duration) ease-in-out var(--flame-delay) infinite',
-            transformOrigin:'50% 100%',
-            filter:'drop-shadow(0 0 10px rgba(255,170,70,0.08))',
-          }}
-        >
-          <div style={{
-            position:'absolute',
-            left:'50%',
-            top:'50%',
-            width:46,
-            height:46,
-            transform:'translate(-50%,-58%)',
-            borderRadius:'50%',
-            background:'radial-gradient(circle, rgba(255,190,90,0.06) 0%, rgba(255,145,40,0.02) 40%, rgba(0,0,0,0) 76%)',
-            filter:'blur(6px)',
-            animation:'titleFlameGlow calc(var(--flame-duration) * 0.5) ease-in-out var(--flame-delay) infinite',
-          }}/>
-          <div style={{
-            width:16,
-            height:32,
-            borderRadius:'60% 60% 30% 30% / 80% 80% 20% 20%',
-            background:'radial-gradient(ellipse at 50% 75%, rgba(255,248,214,0.15) 0%, rgba(255,223,140,0.12) 26%, rgba(255,170,58,0.10) 58%, rgba(255,96,18,0.08) 82%, rgba(255,96,18,0) 100%)',
-            boxShadow:'0 0 8px rgba(255,170,70,0.10), 0 0 16px rgba(255,106,24,0.03)',
-            clipPath:'polygon(50% 0%, 70% 10%, 85% 25%, 90% 45%, 85% 65%, 70% 85%, 60% 95%, 40% 95%, 30% 85%, 15% 65%, 10% 45%, 15% 25%, 30% 10%)',
-            maskImage:'linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 40%, rgba(0,0,0,0) 75%)',
-            WebkitMaskImage:'linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 40%, rgba(0,0,0,0) 75%)',
-            animation:'titleFlameFlicker calc(var(--flame-duration) * 0.3) linear var(--flame-delay) infinite',
-            position:'relative',
-          }}>
-            {/* 底部红色三角区 */}
-            <div style={{
-              position:'absolute',
-              bottom:0,
-              left:'50%',
-              transform:'translateX(-50%)',
-              width:20,
-              height:8,
-              background:'radial-gradient(ellipse at 50% 50%, rgba(255,96,18,0.15) 0%, rgba(220,60,10,0.10) 50%, rgba(180,30,5,0.05) 80%, rgba(0,0,0,0) 100%)',
-              clipPath:'polygon(50% 0%, 100% 100%, 0% 100%)',
-              opacity:0.6,
-              animation:'titleFlameFlicker calc(var(--flame-duration) * 0.3) linear var(--flame-delay) infinite',
-            }}/>
-          </div>
-          <div style={{
-            position:'absolute',
-            left:'50%',
-            top:'40%',
-            width:6,
-            height:10,
-            transform:'translate(-50%,-50%)',
-            borderRadius:'50%',
-            background:'radial-gradient(circle, rgba(255,255,245,0.4) 0%, rgba(255,246,206,0.3) 58%, rgba(255,241,180,0.0) 100%)',
-            filter:'blur(0.4px)',
-            opacity:0.4,
-            animation:'titleFlameCore calc(var(--flame-duration) * 0.55) ease-in-out var(--flame-delay) infinite',
-          }}/>
-        </div>
-      ))}
-    </div>
+// 确保将此组件定义在所有其他组件的【外部】，防止重新渲染时被销毁重置
+function TitleCandleFlames() {
+  const [frame, setFrame] = useState(0);
+
+  useEffect(() => {
+    let animationFrameId;
+    let lastTime = performance.now();
+    const fps = 12; // 火焰动画帧率，可以根据需要调整 (10-15比较自然)
+    const interval = 1000 / fps;
+
+    const animate = (time) => {
+      if (time - lastTime >= interval) {
+        // 【修复1：必须使用函数式更新 prev => prev + 1，破解闭包陷阱】
+        setFrame(prev => (prev + 1) % 16); 
+        lastTime = time;
+      }
+      animationFrameId = requestAnimationFrame(animate);
+    };
+
+    animationFrameId = requestAnimationFrame(animate);
+
+    // 组件卸载时清理动画帧
+    return () => cancelAnimationFrame(animationFrameId);
+  }, []);
+
+  // 4x4 序列帧，计算当前所在的列和行
+  const col = frame % 4;
+  const row = Math.floor(frame / 4);
+
+  // 生成随机烛火位置
+  const candlePositions = React.useMemo(() => {
+    const positions = [];
+    // 左侧烛火
+    for (let i = 0; i < 7; i++) {
+      const distance = Math.random(); // 0-1，0表示最近，1表示最远
+      positions.push({
+        side: 'left',
+        x: -120 - Math.random() * 120,
+        y: 60 - distance * 120, // 近处的烛火更低（位置偏下）
+        scale: 0.5 + (1 - distance) * 0.6, // 近处的烛火更大
+        distance: distance,
+        delay: Math.random() * 2 // 随机初始延迟，错开动画
+      });
+    }
+    // 右侧烛火
+    for (let i = 0; i < 7; i++) {
+      const distance = Math.random(); // 0-1，0表示最近，1表示最远
+      positions.push({
+        side: 'right',
+        x: 120 + Math.random() * 120,
+        y: 60 - distance * 120, // 近处的烛火更低（位置偏下）
+        scale: 0.5 + (1 - distance) * 0.6, // 近处的烛火更大
+        distance: distance,
+        delay: Math.random() * 2 // 随机初始延迟，错开动画
+      });
+    }
+    // 按距离排序，近处的烛火排在后面，显示层级更高
+    return positions.sort((a, b) => a.distance - b.distance);
+  }, []);
+
+  // 为每个烛火生成随机的初始帧偏移
+  const getFrameOffset = (delay) => {
+    return Math.floor((delay / 2) * 16) % 16; // 2秒周期，16帧
+  };
+
+  const flameStyle = {
+    position: 'absolute',
+    width: '48px',  // 火焰的实际显示宽度
+    height: '48px', // 火焰的实际显示高度（128*128每帧，缩小到48*48）
+    backgroundImage: `url('/img/title_candle.png')`,
+    
+    // 4x4的图，背景尺寸必须是容器的 400%
+    backgroundSize: '400% 400%', 
+    
+    pointerEvents: 'none',
+    maskImage: 'linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 40%, rgba(0,0,0,0) 75%)',
+    WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 40%, rgba(0,0,0,0) 75%)',
+  };
+
+  const glowStyle = {
+    position: 'absolute',
+    width: '32px', // 缩小到70%
+    height: '32px', // 缩小到70%
+    borderRadius: '50%',
+    background: 'radial-gradient(circle, rgba(255,190,90,0.03) 0%, rgba(255,145,40,0.01) 40%, rgba(0,0,0,0) 76%)', // 透明度减半
+    filter: 'blur(4px)', // 模糊效果也相应缩小
+    pointerEvents: 'none',
+  };
+
+  return (
+    <>
+      {/* 主烛火和光晕 */}
+      {/* 左侧主烛火 */}
+      <div style={{ 
+        ...glowStyle, 
+        top: '50%', 
+        left: 'calc(50% - 120px)', 
+        transform: 'translate(-50%, -40%)', // 光晕中心点在烛火中心点略偏下
+        zIndex: 0
+      }} />
+      <div style={{ 
+        ...flameStyle, 
+        top: '50%', 
+        left: 'calc(50% - 120px)', 
+        transform: 'translate(-50%, -50%)',
+        backgroundPosition: `${(col / 3) * 100}% ${(row / 3) * 100}%`,
+        zIndex: 1,
+        opacity: 0.85
+      }} />
+      {/* 右侧主烛火 */}
+      <div style={{ 
+        ...glowStyle, 
+        top: '50%', 
+        right: 'calc(50% - 120px)', 
+        transform: 'translate(50%, -40%)', // 光晕中心点在烛火中心点略偏下
+        zIndex: 0
+      }} />
+      <div style={{ 
+        ...flameStyle, 
+        top: '50%', 
+        right: 'calc(50% - 120px)', 
+        transform: 'translate(50%, -50%)',
+        backgroundPosition: `${(col / 3) * 100}% ${(row / 3) * 100}%`,
+        zIndex: 1,
+        opacity: 0.85
+      }} />
+      
+      {/* 随机散布的烛火 */}
+      {candlePositions.map((pos, index) => {
+        // 为每个烛火计算独立的帧位置
+        const frameOffset = getFrameOffset(pos.delay);
+        const offsetCol = (frame + frameOffset) % 4;
+        const offsetRow = Math.floor((frame + frameOffset) / 4);
+        
+        return (
+          <React.Fragment key={index}>
+            <div style={{ 
+              ...glowStyle, 
+              top: `calc(50% + ${pos.y}px)`, 
+              left: pos.side === 'left' ? `calc(50% + ${pos.x}px)` : `calc(50% + ${pos.x}px)`, 
+              transform: `translate(-50%, -40%) scale(${pos.scale})`, // 光晕中心点在烛火中心点略偏下
+              opacity: 0.3 + (1 - pos.distance) * 0.5, // 近处的光晕更亮
+              zIndex: Math.floor((1 - pos.distance) * 5), // 近处的光晕层级更高
+              animation: `titleFlameGlow 3.5s ease-in-out ${pos.delay}s infinite` // 错开呼吸动画
+            }} />
+            <div style={{ 
+              ...flameStyle, 
+              top: `calc(50% + ${pos.y}px)`, 
+              left: pos.side === 'left' ? `calc(50% + ${pos.x}px)` : `calc(50% + ${pos.x}px)`, 
+              transform: `translate(-50%, -50%) scale(${pos.scale})`,
+              backgroundPosition: `${(offsetCol / 3) * 100}% ${(offsetRow / 3) * 100}%`, // 错开序列帧
+              opacity: 0.5 + (1 - pos.distance) * 0.4, // 近处的烛火更亮
+              zIndex: Math.floor((1 - pos.distance) * 5) + 1, // 近处的烛火层级更高
+              animation: `titleFlameFlicker 3.5s linear ${pos.delay}s infinite` // 错开呼吸动画
+            }} />
+          </React.Fragment>
+        );
+      })}
+    </>
   );
 }
 
+// ── Guillotine Death Animation ────────────────────────────────
+// GuillotineAnim now receives pre-measured targets from parent useEffect (same as HuntScope)
 function GuillotineAnim({targets}){
   const[phase,setPhase]=React.useState('falling');
   const[fragments]=React.useState(()=>
@@ -3169,7 +3242,7 @@ function AboutModal({onClose}){
           <div style={{color:'#c8a96e',fontSize:12,letterSpacing:1}}>QQ催更群：787317460</div>
           <div style={{color:'#9a7a42',fontSize:11,letterSpacing:1,fontStyle:'italic'}}>微信催更群二维码</div>
           <img
-            src={buildPublicUrl('QRCode.jpg')}
+            src={buildPublicUrl('img/QRCode.jpg')}
             alt="微信催更群二维码"
             style={{
               display:'block',
@@ -3203,15 +3276,24 @@ function RoadmapModal({onClose}){
         <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:'#b07828',letterSpacing:2,textTransform:'uppercase',marginBottom:16,textAlign:'center'}}>— 版本更新计划 —</div>
         {/* Current version */}
         <div style={{marginBottom:12}}>
-          <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:'#c8a96e',letterSpacing:1,marginBottom:4}}>当前版本：Beta 0.0.1</div>
+          <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:'#c8a96e',letterSpacing:1,marginBottom:4}}>当前版本：0.1.1</div>
+          {[
+            '联机对战已开放！欢迎测试',
+            '大量玩法和图像改进',
+            '添加背景音乐',
+          ].map((t,i)=>(
+            <div key={i} style={{display:'flex',gap:8,alignItems:'flex-start',marginBottom:7}}>
+              <span style={{color:'#b07828',flexShrink:0}}>·</span>
+              <span style={{color:'#a08060',fontSize:12,lineHeight:1.7,fontStyle:'italic'}}>{t}</span>
+            </div>
+          ))}
         </div>
         <div style={{width:'100%',height:1,background:'linear-gradient(90deg,transparent,#5a3a1066,transparent)',margin:'0 0 12px'}}/>
         {/* Next version block */}
         <div>
-          <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:'#c8a96e',letterSpacing:1,marginBottom:10}}>下一个版本：Beta 0.1.1</div>
+          <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:'#c8a96e',letterSpacing:1,marginBottom:10}}>下一个版本：0.2.1</div>
           {[
             '新扩展包《析骨为柴》锐意制作中！',
-            '可能会开始为联机对战搭建基础框架',
           ].map((t,i)=>(
             <div key={i} style={{display:'flex',gap:8,alignItems:'flex-start',marginBottom:7}}>
               <span style={{color:'#b07828',flexShrink:0}}>·</span>
@@ -3426,6 +3508,47 @@ function useGameAudio(isBattleScreen){
 export default function Game(){
   const[gs,setGs]=useState(null);
   const[modal,setModal]=useState(null); // 'about' | 'roadmap' | null
+  // ── Audio Preloading ──────────────────────────────────────────
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingError, setLoadingError] = useState(null);
+  
+  // Preload audio files
+  useEffect(() => {
+    const preloadAudio = async () => {
+      const audioFiles = [
+        '/sounds/mainTheme.mp3',
+        '/sounds/battle.mp3'
+      ];
+      
+      let loadedCount = 0;
+      const totalFiles = audioFiles.length;
+      
+      for (const file of audioFiles) {
+        try {
+          const audio = new Audio(file);
+          await new Promise((resolve, reject) => {
+            audio.addEventListener('canplaythrough', resolve);
+            audio.addEventListener('error', reject);
+            audio.load();
+          });
+          loadedCount++;
+          setLoadingProgress((loadedCount / totalFiles) * 100);
+        } catch (error) {
+          console.error(`Failed to load audio: ${file}`, error);
+          // Continue loading other files even if one fails
+          loadedCount++;
+          setLoadingProgress((loadedCount / totalFiles) * 100);
+        }
+      }
+      
+      // Finish loading after all files are processed
+      setIsLoading(false);
+    };
+    
+    preloadAudio();
+  }, []);
+  
   // ── Tutorial ──────────────────────────────────────────────────
   // Detect non-production environments (Claude Artifacts iframe, local dev, etc.)
   // Use multiple signals: iframe check + origin check + localhost
@@ -3433,7 +3556,7 @@ export default function Game(){
     try{
       if(window.self!==window.top)return true;          // inside any iframe (Artifacts)
       if(window.location.origin==='null')return true;   // sandboxed origin
-      if(/localhost|127\.0\.0\.1/.test(window.location.hostname))return false; // local dev: use real localStorage
+      if(/localhost|127\.0\.1/.test(window.location.hostname))return false; // local dev: use real localStorage
       return false;                                      // deployed website: use real localStorage
     }catch(e){return true;}                              // cross-origin frame access blocked → treat as Artifact
   })();
@@ -4484,6 +4607,42 @@ export default function Game(){
     autoDiscardRef.current?.();
   },[gs?._mpAutoDiscard]);
 
+  // ── Loading Screen ───────────────────────────────────────────
+  if(isLoading){
+    return(
+      <div style={{minHeight:'100vh',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:24,position:'relative',overflow:'hidden'}}>
+        {/* Vignette */}
+        <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at center,transparent 30%,#000000bb 100%)',pointerEvents:'none'}}/>
+        
+        <div style={{position:'relative',zIndex:1,maxWidth:400,width:'100%'}}>
+          <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:34,fontWeight:700,letterSpacing:3,marginBottom:24,color:'#e8c87a',textShadow:'0 0 40px #c8a96e44,0 2px 0 #0a0705'}}>邪神的宝藏</div>
+          
+          <div style={{marginBottom:32}}>
+            <div style={{fontFamily:"'Cinzel',serif",fontSize:14,letterSpacing:2,marginBottom:12,color:'#c8a96e',opacity:0.85}}>正在加载游戏资源...</div>
+            
+            <div style={{width:'100%',height:8,background:'#140f08',border:'1px solid #3a2510',borderRadius:4,overflow:'hidden'}}>
+              <div style={{
+                width:`${loadingProgress}%`,
+                height:'100%',
+                background:'linear-gradient(90deg,#7a5020,#c8a96e,#7a5020)',
+                transition:'width 0.3s ease',
+                boxShadow:'0 0 10px #c8a96e44'
+              }}/>
+            </div>
+            
+            <div style={{fontFamily:"'Cinzel',serif",fontSize:12,letterSpacing:1,marginTop:8,color:'#a07838'}}>{Math.round(loadingProgress)}%</div>
+          </div>
+          
+          {loadingError&&(
+            <div style={{background:'#1a0a0a',border:'1px solid #7a2020',borderRadius:4,padding:'12px 16px',color:'#e07070',fontFamily:"'Cinzel',serif",fontSize:12,letterSpacing:0.5}}>
+              {loadingError}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // ── Start Screen ───────────────────────────────────────────
   if(!gs){
     return(
@@ -4498,13 +4657,13 @@ export default function Game(){
           <h1 style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:34,fontWeight:700,letterSpacing:3,marginBottom:4,color:'#e8c87a',textShadow:'0 0 40px #c8a96e44,0 2px 0 #0a0705'}}>邪神的宝藏</h1>
           <div style={{fontFamily:"'Cinzel',serif",fontSize:13,letterSpacing:3,color:'#c8a96e',marginBottom:4,opacity:0.85}}>克苏鲁卡牌对战</div>
           <div style={{fontSize:10,letterSpacing:5,color:'#a07838',fontFamily:"'Cinzel',serif",marginBottom:10,textTransform:'uppercase',opacity:0.7}}>Treasures of Evils</div>
-          <div style={{width:200,height:1,background:'linear-gradient(90deg,transparent,#5a4020,transparent)',margin:'0 auto 28px'}}/>
-          </div>
-          <p style={{color:'#b89858',maxWidth:380,marginBottom:32,lineHeight:1.9,fontSize:14,fontStyle:'italic'}}>
+          <div style={{width:200,height:1,background:'linear-gradient(90deg,transparent,#5a4020,transparent)',margin:'0 auto 20px'}}/>
+          <p style={{color:'#b89858',maxWidth:380,margin:'0 auto 8px',lineHeight:1.9,fontSize:14,fontStyle:'italic'}}>
             "古神沉眠之时，旅者聚于此地。寻宝者寻觅遗物，追猎者猎杀异类，邪祀者企图唤醒邪神。各怀秘密，命运共织。"
           </p>
+          </div>
           {/* Role cards */}
-          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,maxWidth:500,width:'100%',margin:'0 auto 28px'}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,maxWidth:500,width:'100%',margin:'0 auto 8px',transform:'translateY(-22px)'}}>
             {Object.entries(RINFO).map(([role,r])=>(
               <div key={role} style={{background:'#140f08',border:`1.5px solid ${r.dim}`,borderRadius:3,padding:'16px 12px',textAlign:'center',boxShadow:`0 0 20px ${r.dim}33`}}>
                 <div style={{fontSize:22,marginBottom:6,color:r.col,textShadow:`0 0 12px ${r.col}`}}>{r.icon}</div>
@@ -7087,6 +7246,10 @@ const GLOBAL_STYLES=`
     0%,100% {opacity:0.2; transform:translate(-50%,-50%) scale(0.5)}
     35%     {opacity:1;   transform:translate(-50%,-54%) scale(1.8)}
     72%     {opacity:0.2; transform:translate(-50%,-48%) scale(0.6)}
+  }
+  @keyframes flameSpriteSheet {
+    0% {backgroundPosition:0 0;}
+    100% {backgroundPosition:-192px -336px;}
   }
   @keyframes tentacleEmerge {
     0%   {transform:translate(-50%, 0) scaleY(0); opacity:0}
