@@ -2578,7 +2578,7 @@ function NyaBorrowModal({deadPlayers,godLevel,onBorrow,onSkip}){
 }
 
 // ── Draw Reveal Modal ─────────────────────────────────────────
-function DrawRevealModal({drawReveal,onAccept,onDiscard,isBystander,activeName}){
+function DrawRevealModal({drawReveal,onKeep,onDiscard,isBystander,activeName}){
   if(!drawReveal?.card)return null;
   const{card,msgs}=drawReveal;
   const s=CS[card.letter]||GOD_CS;
@@ -2609,7 +2609,7 @@ function DrawRevealModal({drawReveal,onAccept,onDiscard,isBystander,activeName})
           </div>
         ) : (
           <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap',marginTop:16}}>
-            <button onClick={onAccept} style={{
+            <button onClick={onKeep} style={{
               padding:'10px 22px',background:'#1c1008',border:'1.5px solid #c8a96e',
               color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:14,
               borderRadius:2,cursor:'pointer',letterSpacing:1,
