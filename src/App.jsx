@@ -486,6 +486,7 @@ function startNextTurn(gs){
   if(P[next].isResting){
     P[next].isResting=false;
     L.push(`── ${P[next].name} 的回合开始 ──`);
+    L.push(`${P[next].name} 从休息中醒来，跳过本回合`);
     // CTH power: draw when ending/skipping turn while face-down
     if(next===0&&P[0].godName==='CTH'&&P[0].godLevel>=1){
       const extraDraws=P[0].godLevel; // lv1→1, lv2→2, lv3→3
@@ -496,13 +497,9 @@ function startNextTurn(gs){
         if(r2.needGodChoice){return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:r2.drawnCard,fromRest:true},drawReveal:null,selectedCard:null,globalOnlySwapOwner};}
         if(r2.needsDecision){return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,phase:'DRAW_REVEAL',drawReveal:{card:r2.drawnCard,msgs:[],needsDecision:true,forcedKeep:false,drawerIdx:0,drawerName:P[0].name,fromRest:true},selectedCard:null,abilityData:{},globalOnlySwapOwner};}
       }
-      // Skip the turn: advance past player 0 to the next living player
-      // Hand limit is NOT enforced here — excess cards are kept until the next normal turn ends
-      L.push('回合跳过（翻面中）');
-      return startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,godFromHandUsed:false,godTriggeredThisTurn:false,globalOnlySwapOwner});
-    } else {
-      L.push(`${P[next].name} 从休息中醒来，跳过本回合`);
     }
+    // Skip the turn: advance past player to the next living player
+    // Hand limit is NOT enforced here — excess cards are kept until the next normal turn ends
     return startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,skillUsed:false,restUsed:false,godFromHandUsed:false,godTriggeredThisTurn:false,globalOnlySwapOwner});
   }
   L.push(`── ${P[next].name} 的回合开始 ──`);
@@ -4996,12 +4993,29 @@ export default function Game(){
     let P=copyPlayers(baseGs.players);
     const sorted=[...selected].sort((a,b)=>b-a);const discarded=[];
     sorted.forEach(i=>{const c=P[0].hand.splice(i,1)[0];discarded.push(c);});
-    const Disc=[...baseGs.discard,...discarded];
-    const L=[...baseGs.log,`弃置：${discarded.map(c=>`[${c.key}]`).join(' ')}`];
+    let D=[...baseGs.deck],Disc=[...baseGs.discard,...discarded];
+    let L=[...baseGs.log,`弃置：${discarded.map(c=>`[${c.key}]`).join(' ')}`];
+    // CTH power: draw when ending turn while face-down
+    if(P[0].isResting&&P[0].godName==='CTH'&&P[0].godLevel>=1){
+      const extraDraws=P[0].godLevel;
+      L.push(`你（克苏鲁信徒Lv.${P[0].godLevel}）梦访拉莱耶，翻面结束回合时额外摸${extraDraws}张牌`);
+      for(let _d=0;_d<extraDraws;_d++){
+        const r2=playerDrawCard(P,D,Disc);P=r2.P;D=r2.D;Disc=r2.Disc;
+        if(r2.drawnCard)L.push(`  摸到 [${r2.drawnCard.key||r2.drawnCard.name}]`);
+        if(r2.needGodChoice){
+          setGs({...baseGs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:r2.drawnCard,fromRest:true},drawReveal:null,selectedCard:null});
+          return;
+        }
+        if(r2.needsDecision){
+          setGs({...baseGs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,phase:'DRAW_REVEAL',drawReveal:{card:r2.drawnCard,msgs:[],needsDecision:true,forcedKeep:false,drawerIdx:0,drawerName:P[0].name,fromRest:true},selectedCard:null,abilityData:{}});
+          return;
+        }
+      }
+    }
     const newGs=P[0].hand.length>4
-      ?{...baseGs,players:P,discard:Disc,log:L,abilityData:{discardSelected:[]}}
-      :startNextTurn({...baseGs,players:P,discard:Disc,log:L,currentTurn:0,abilityData:{}});
-    triggerAnimQueue([{type:'DISCARD',msgs:L.slice(-1)}],newGs);
+      ?{...baseGs,players:P,deck:D,discard:Disc,log:L,abilityData:{discardSelected:[]}}
+      :startNextTurn({...baseGs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,abilityData:{}});
+    triggerAnimQueue([{type:'DISCARD',msgs:L.slice(-discarded.length-1)}],newGs);
   }
 
   function doRest(){
@@ -5015,22 +5029,7 @@ export default function Game(){
     const win=checkWin(P,gs._isMP);
     if(win){setGs({...gs,players:P,log:L,gameOver:win});return;}
     const oldGs={...gs,players:copyPlayers(gs.players)};
-    // CTH power Trigger 1: draw when turn ends while going face-down
-    let D=gs.deck.slice(), Disc=gs.discard.slice();
-    if(P[0].godName==='CTH'&&P[0].godLevel>=1){
-      const extraDraws=P[0].godLevel;
-      L.push(`你（克苏鲁信徒Lv.${P[0].godLevel}）梦访拉莱耶，翻面结束回合时额外摸${extraDraws}张牌`);
-      for(let _d=0;_d<extraDraws;_d++){
-        const r2=playerDrawCard(P,D,Disc);P=r2.P;D=r2.D;Disc=r2.Disc;
-        if(r2.drawnCard)L.push(`  摸到 [${r2.drawnCard.key||r2.drawnCard.name}]`);
-        // If god card drawn mid-rest-draw, pause for GOD_CHOICE
-        if(r2.needGodChoice){
-          setGs({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:true,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:r2.drawnCard,fromRest:true},drawReveal:null,selectedCard:null});
-          return;
-        }
-      }
-    }
-    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,restUsed:true};
+    const newGs={...gs,players:P,log:L,restUsed:true};
     // Dice roll anim first, then HP heal, then check hand limit before advancing
     const statQueue=buildAnimQueue(oldGs,{...newGs,players:P});
     const queue=[{type:'DICE_ROLL',d1,d2,heal,rollerName:'你'},...statQueue];
@@ -5065,8 +5064,30 @@ export default function Game(){
 
   function endTurn(){
     if(isBlocked)return;
-    if(me.hand.length>effectiveHandLimit){setGs({...gs,phase:'DISCARD_PHASE',abilityData:{discardSelected:[]}});return;}
-    const newGs=startNextTurn({...gs,currentTurn:0});
+    if(me.hand.length>effectiveHandLimit){
+      // 需要弃牌时，不立即触发CTH效果，等待弃牌后再触发
+      setGs({...gs,phase:'DISCARD_PHASE',abilityData:{discardSelected:[]}});
+      return;
+    }
+    // 不需要弃牌时，直接触发CTH效果
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
+    if(P[0].isResting&&P[0].godName==='CTH'&&P[0].godLevel>=1){
+      const extraDraws=P[0].godLevel;
+      L.push(`你（克苏鲁信徒Lv.${P[0].godLevel}）梦访拉莱耶，翻面结束回合时额外摸${extraDraws}张牌`);
+      for(let _d=0;_d<extraDraws;_d++){
+        const r2=playerDrawCard(P,D,Disc);P=r2.P;D=r2.D;Disc=r2.Disc;
+        if(r2.drawnCard)L.push(`  摸到 [${r2.drawnCard.key||r2.drawnCard.name}]`);
+        if(r2.needGodChoice){
+          setGs({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:r2.drawnCard,fromRest:true},drawReveal:null,selectedCard:null});
+          return;
+        }
+        if(r2.needsDecision){
+          setGs({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,phase:'DRAW_REVEAL',drawReveal:{card:r2.drawnCard,msgs:[],needsDecision:true,forcedKeep:false,drawerIdx:0,drawerName:P[0].name,fromRest:true},selectedCard:null,abilityData:{}});
+          return;
+        }
+      }
+    }
+    const newGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0});
     if(newGs.currentTurn===0&&newGs.drawReveal?.card){
       const statQ=buildAnimQueue(gs,newGs);
       triggerAnimQueue([{type:'YOUR_TURN'},{type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:'你'},...statQ],newGs);
@@ -5080,19 +5101,37 @@ export default function Game(){
     let P=copyPlayers(gs.players);
     const discarded=[];
     while(P[0].hand.length>limit){const c_=P[0].hand.pop();discarded.push(c_);}
-    if(!discarded.length){
-      // 已在限制内，直接结束回合
-      const newGs=startNextTurn({...gs,currentTurn:0});
-      if(newGs.currentTurn===0&&newGs.drawReveal?.card){
-        const statQ=buildAnimQueue(gs,newGs);
-        triggerAnimQueue([{type:'YOUR_TURN'},{type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:'你'},...statQ],newGs);
-      }else applyNextTurnGs(newGs);
-      return;
+    let D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
+    if(discarded.length){
+      Disc=[...Disc,...discarded];
+      L.push(`(超时) 弃置：${discarded.map(c_=>`[${c_.key}]`).join(' ')}`);
     }
-    const Disc=[...gs.discard,...discarded];
-    const L=[...gs.log,`(超时) 弃置：${discarded.map(c_=>`[${c_.key}]`).join(' ')}`];
-    const newGs=startNextTurn({...gs,players:P,discard:Disc,log:L,currentTurn:0,abilityData:{}});
-    triggerAnimQueue([{type:'DISCARD',msgs:L.slice(-1)}],newGs);
+    // CTH power: draw when ending turn while face-down
+    if(P[0].isResting&&P[0].godName==='CTH'&&P[0].godLevel>=1){
+      const extraDraws=P[0].godLevel;
+      L.push(`你（克苏鲁信徒Lv.${P[0].godLevel}）梦访拉莱耶，翻面结束回合时额外摸${extraDraws}张牌`);
+      for(let _d=0;_d<extraDraws;_d++){
+        const r2=playerDrawCard(P,D,Disc);P=r2.P;D=r2.D;Disc=r2.Disc;
+        if(r2.drawnCard)L.push(`  摸到 [${r2.drawnCard.key||r2.drawnCard.name}]`);
+        if(r2.needGodChoice){
+          setGs({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:r2.drawnCard,fromRest:true},drawReveal:null,selectedCard:null});
+          return;
+        }
+        if(r2.needsDecision){
+          setGs({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,phase:'DRAW_REVEAL',drawReveal:{card:r2.drawnCard,msgs:[],needsDecision:true,forcedKeep:false,drawerIdx:0,drawerName:P[0].name,fromRest:true},selectedCard:null,abilityData:{}});
+          return;
+        }
+      }
+    }
+    const newGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,abilityData:{}});
+    if(discarded.length){
+      triggerAnimQueue([{type:'DISCARD',msgs:L.slice(-discarded.length-1)}],newGs);
+    }else if(newGs.currentTurn===0&&newGs.drawReveal?.card){
+      const statQ=buildAnimQueue(gs,newGs);
+      triggerAnimQueue([{type:'YOUR_TURN'},{type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:'你'},...statQ],newGs);
+    }else{
+      applyNextTurnGs(newGs);
+    }
   }
   autoDiscardRef.current=autoDiscardFromRight;
 
