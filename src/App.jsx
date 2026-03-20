@@ -1905,21 +1905,93 @@ function GuillotineAnim({targets}){
 }
 
 // ── God Resurrection Animation (邪祀者 win) ────────────────────
-function GodResurrectionAnim({onConfirm}){
-  // Phase: 0=init, 1=darkness, 2=glow, 3=god form, 4=resurrection, 5=button shown
+function GodResurrectionAnim({onDone}){
+  // Phase: 0=init, 1=darkness, 2=glow, 3=god form, 4=resurrection
   const [phase,setPhase]=useState(0);
   const [fired,setFired]=useState(false);
   useEffect(()=>{
     if(fired)return;setFired(true);
     const ts=[];
     let t=300;
-    ts.push(setTimeout(()=>setPhase(1),t));t+=800; // darkness
+    ts.push(setTimeout(()=>setPhase(1),t));t+=800;  // darkness
     ts.push(setTimeout(()=>setPhase(2),t));t+=1000; // glow
     ts.push(setTimeout(()=>setPhase(3),t));t+=1200; // god form
-    ts.push(setTimeout(()=>setPhase(4),t));t+=1500; // resurrection
-    ts.push(setTimeout(()=>setPhase(5),t));        // button
+    ts.push(setTimeout(()=>setPhase(4),t));t+=2000; // resurrection lingers
+    ts.push(setTimeout(()=>onDone&&onDone(),t));     // auto-advance to results
     return()=>ts.forEach(clearTimeout);
   },[]);
+  return(
+    <div style={{position:'fixed',inset:0,zIndex:4000,display:'flex',flexDirection:'column',
+      alignItems:'center',justifyContent:'center',
+      background:phase===1?'rgba(0,0,0,0.95)':phase===2?'rgba(20,0,30,0.92)':phase===3?'rgba(30,0,40,0.92)':phase>=4?'rgba(40,0,50,0.92)':'rgba(4,3,1,0.92)',
+      backdropFilter:'blur(2px)',transition:'background 0.8s ease',
+      animation:'animFadeIn 0.35s ease-out'}}>
+      <div style={{textAlign:'center',marginBottom:32,animation:'animFadeIn 0.5s 0.1s both'}}>
+        <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:22,fontWeight:700,
+          letterSpacing:4,color:phase>=2?'#b03060':phase===1?'#602040':'#c8a96e',textShadow:phase>=2?'0 0 40px #b0306088':'0 0 40px #c8a96e88',marginBottom:6,
+          transition:'color 0.8s ease, text-shadow 0.8s ease'}}>
+          {phase===1?'✦ 黑暗降临 ✦':phase>=2?'✦ 邪神苏醒 ✦':'✦ 邪祀者获胜 ✦'}
+        </div>
+        <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',
+          color:phase>=2?'#d06090':phase===1?'#804060':'#b89858',fontSize:13,letterSpacing:1,
+          transition:'color 0.8s ease'}}>
+          {phase===1?'万物陷入混沌...':phase>=2?'古神的力量正在觉醒...':'邪祀者的献祭唤醒了邪神！'}
+        </div>
+      </div>
+      {/* God Resurrection Effect */}
+      <div style={{position:'relative',width:300,height:300,marginBottom:32}}>
+        {/* Darkness effect */}
+        {phase===1&&(
+          <div style={{position:'absolute',inset:0,borderRadius:50,pointerEvents:'none',
+            background:'radial-gradient(circle, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.95) 100%)',
+            animation:'animPulse 2s ease-in-out infinite',
+            zIndex:5}}/>
+        )}
+        {/* Glow effect */}
+        {phase>=2&&(
+          <div style={{position:'absolute',inset:-20,borderRadius:60,pointerEvents:'none',
+            background:'radial-gradient(circle, rgba(176,48,96,0.1) 0%, rgba(176,48,96,0.05) 40%, rgba(0,0,0,0) 76%)',
+            boxShadow:phase===2?'0 0 60px #b0306044, 0 0 120px #b0306022':
+              phase===3?'0 0 80px #b0306066, 0 0 160px #b0306044':
+              '0 0 100px #b0306088, 0 0 200px #b0306066',
+            transition:'all 1s ease',animation:phase===2?'animPop 0.8s ease-out':undefined,
+            zIndex:10}}/>
+        )}
+        {/* God form */}
+        {phase>=3&&(
+          <div style={{position:'absolute',inset:20,borderRadius:40,pointerEvents:'none',
+            background:'radial-gradient(ellipse at 50% 50%, rgba(176,48,96,0.3) 0%, rgba(128,32,64,0.6) 50%, rgba(64,16,32,0.9) 100%)',
+            boxShadow:'inset 0 0 40px rgba(176,48,96,0.5), 0 0 20px rgba(176,48,96,0.8)',
+            transition:'all 1s ease',animation:phase===3?'animPop 0.6s ease-out':undefined,
+            zIndex:15}}/>
+        )}
+        {/* Resurrection effect */}
+        {phase>=4&&(
+          <div style={{position:'absolute',inset:0,borderRadius:50,pointerEvents:'none',
+            background:'radial-gradient(circle, rgba(255,255,255,0.1) 0%, rgba(176,48,96,0.2) 40%, rgba(0,0,0,0) 76%)',
+            boxShadow:'0 0 120px #ffffff44, 0 0 200px #b0306066',
+            animation:'animPulse 1.5s ease-in-out infinite',
+            zIndex:20}}/>
+        )}
+        {/* Eye of Cthulhu */}
+        {phase>=3&&(
+          <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',
+            width:120,height:120,borderRadius:50,
+            background:'radial-gradient(circle, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.4) 20%, rgba(0,0,0,0.8) 40%, rgba(0,0,0,1) 100%)',
+            boxShadow:'0 0 30px rgba(255,255,255,0.8), 0 0 60px rgba(176,48,96,0.6)',
+            display:'flex',alignItems:'center',justifyContent:'center',
+            animation:phase===3?'animPop 0.4s ease-out':phase>=4?'animPulse 2s ease-in-out infinite':undefined,
+            zIndex:25}}>
+            <div style={{width:40,height:40,borderRadius:50,
+              background:'rgba(0,0,0,0.9)',
+              boxShadow:'inset 0 0 10px rgba(0,0,0,0.8)',
+              animation:phase>=4?'animPulse 1.5s ease-in-out infinite':undefined}}/>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
   return(
     <div style={{position:'fixed',inset:0,zIndex:4000,display:'flex',flexDirection:'column',
       alignItems:'center',justifyContent:'center',
@@ -3607,6 +3679,7 @@ export default function Game(){
   const readTutorialDone=()=>isArtifact?false:safeLS.get(TUTORIAL_KEY)==='1';
   const [tutorialDone,setTutorialDone]=useState(readTutorialDone);
   const [showTutorial,setShowTutorial]=useState(false);
+  const [showGodResurrection,setShowGodResurrection]=useState(false);
   const [tutorialStep,setTutorialStep]=useState(1);
   const isBattleScreen=!!gs;
   const {noteUserGesture,playOpenSound,playCloseSound,playTickSound}=useGameAudio(isBattleScreen);
@@ -5105,6 +5178,11 @@ export default function Game(){
       :winner==='寻宝者'?(winnerIdx===0||(gs.gameOver.winnerIdx2??-1)===0)
       :(winner===myRole);
     const isLose=winner==='LOSE'||winner==='LOSE_ALL';
+
+    // 邪祀者获胜：先全屏播放邪神复活特效，onConfirm 后再显示结算
+    if(winner==='邪祀者'&&!showGodResurrection){
+      return <GodResurrectionAnim onDone={()=>setShowGodResurrection(true)}/>;
+    }
     return(
       <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:24,position:'relative'}}>
         <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at center,transparent 20%,#000000cc 100%)',pointerEvents:'none'}}/>
@@ -5146,6 +5224,7 @@ export default function Game(){
               setIsMultiplayer(false);isMultiplayerRef.current=false;
               setMyPlayerIndex(0);myPlayerIndexRef.current=0;
               mpRoleRevealedRef.current=false;gameEndSentRef.current=false;
+              setShowGodResurrection(false);
               setGs(null);
             }} style={{
               padding:'11px 40px',background:'#1c1208',border:'2px solid #3a6a3a',
@@ -5161,6 +5240,7 @@ export default function Game(){
               }}>再次降临</button>
               <button onClick={()=>{
                 setModal(null);
+                setShowGodResurrection(false);
                 setGs(null);
               }} style={{
                 padding:'11px 32px',background:'transparent',border:'2px solid #3a2510',
@@ -5760,6 +5840,7 @@ export default function Game(){
     pendingGsRef.current=null;
     setAnimExiting(false);
     setHitIndices([]);
+    setShowGodResurrection(false); // reset for next game
     if(silent){
       // Tutorial preview: set game state immediately, no animation, no pending draw
       setAnim(null);
