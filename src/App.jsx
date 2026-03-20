@@ -638,7 +638,7 @@ function aiStep(gs){
   const canUseSkill = !gs.restUsed && (aiEffRole === '追猎者' ? true : !gs.skillUsed);
   const useSkill = canUseSkill && Math.random() < skillRate && alive.length > 0;
 
-  let huntContinue = false;
+  let huntContinue = true;
   let newAbandoned = gs.huntAbandoned || [];
 
   if(useSkill){
@@ -646,56 +646,90 @@ function aiStep(gs){
     // ── v2 MCTS 目标选择 ────────────────────────────────────
     let tgt;
     if(aiEffRole==='追猎者'){
-      const validTargets = alive.filter(p => p.role !== '追猎者' && !newAbandoned.includes(P.indexOf(p)));
-      
-      if (validTargets.length === 0) {
-        L.push(`${ai.name} 环顾四周，没有合适的猎物了`);
-      } else {
-        // 追猎者目标选择优化：血量越低、手牌越多、击杀概率越高的优先级越高
-        tgt = validTargets.reduce((best, p) => {
-            const score = (p.hp <= 2 ? 100 : 0) + (p.hand.length * 5) - p.hp;
-            const bestScore = (best.hp <= 2 ? 100 : 0) + (best.hand.length * 5) - best.hp;
-            return score > bestScore ? p : best;
-        }, validTargets[0]);
-
-        const ti = P.indexOf(tgt);
-        newAbandoned = [...newAbandoned, ti]; // 记录本回合已追捕过该目标
-
-        const zoneH = P[ti].hand.filter(c => !c.isGod);
-        if (!zoneH.length) {
-            L.push(`${tgt.name} 无区域牌，追捕失败`);
-            huntContinue = true; // 换人继续追
-        } else if (ti === 0) {
-            L.push(`${ai.name}（追猎者）向你发动【追捕】！请选择亮出一张区域牌`);
-            return {...gs, players:P, deck:D, discard:Disc, log:L,
-              phase:'PLAYER_REVEAL_FOR_HUNT',
-              abilityData:{huntingAI:ct, aiHunterName:ai.name},
-              skillUsed:true, huntAbandoned: newAbandoned, _aiName:ai.name, _drawnCard:gs._drawnCard};
-        } else {
-            const rc = aiChooseRevealCard(zoneH, P[ct].hand);
-            L.push(`${ai.name}（追猎者）对 ${tgt.name} 【追捕】，亮出 [${rc.key}]`);
-            const mi = P[ct].hand.findIndex(c => c.letter === rc.letter || c.number === rc.number);
-            if (mi >= 0) {
-                const dc = P[ct].hand.splice(mi, 1)[0]; Disc.push(dc);
-                const huntDamage=2+(P[ct].damageBonus||0);
-                P[ti].hp = clamp(P[ti].hp - huntDamage);
-                L.push(`弃 [${dc.key}] → ${tgt.name} 受 ${huntDamage}HP 伤害！`);
-                if (P[ti].hp <= 0) {
+      // 只要手牌超限或有合适目标，就继续追捕
+      while (huntContinue && (P[ct].hand.length > 4 || P.filter((p, i) => !p.isDead && i !== ct && p.role !== '追猎者' && !newAbandoned.includes(i)).length > 0)) {
+        // 重新计算有效目标：排除已尝试的目标
+        const validTargets = P.filter((p, i) => !p.isDead && i !== ct && p.role !== '追猎者' && !newAbandoned.includes(i));
+        
+        if (validTargets.length > 0) {
+          // 按HP从低到高排序所有有效目标
+          const sortedTargets = [...validTargets].sort((a, b) => {
+            // 邪祀者优先
+            if (a.role === '邪祀者' && b.role !== '邪祀者') return -1;
+            if (a.role !== '邪祀者' && b.role === '邪祀者') return 1;
+            // 然后按HP排序
+            return a.hp - b.hp;
+          });
+          
+          // 遍历所有目标，直到找到可以追捕的目标或用完所有目标
+          let foundTarget = false;
+          for (const tgt of sortedTargets) {
+            const ti = P.indexOf(tgt);
+            newAbandoned = [...newAbandoned, ti];
+            
+            const zoneH = P[ti].hand.filter(c => !c.isGod);
+            if (zoneH.length > 0) {
+              if (ti === 0) {
+                L.push(`${ai.name}（追猎者）向你发动【追捕】！请选择亮出一张区域牌`);
+                return {...gs, players:P, deck:D, discard:Disc, log:L,
+                  phase:'PLAYER_REVEAL_FOR_HUNT',
+                  abilityData:{huntingAI:ct, aiHunterName:ai.name},
+                  skillUsed:true, huntAbandoned: newAbandoned, _aiName:ai.name, _drawnCard:gs._drawnCard};
+              } else {
+                const rc = aiChooseRevealCard(zoneH, P[ct].hand);
+                L.push(`${ai.name}（追猎者）对 ${tgt.name} 【追捕】，亮出 [${rc.key}]`);
+                const mi = P[ct].hand.findIndex(c => c.letter === rc.letter || c.number === rc.number);
+                if (mi >= 0) {
+                  const dc = P[ct].hand.splice(mi, 1)[0]; Disc.push(dc);
+                  const huntDamage=2+(P[ct].damageBonus||0);
+                  P[ti].hp = clamp(P[ti].hp - huntDamage);
+                  L.push(`弃 [${dc.key}] → ${tgt.name} 受 ${huntDamage}HP 伤害！`);
+                  if (P[ti].hp <= 0) {
                     P[ti].isDead = true; P[ti].roleRevealed = true;
                     L.push(`☠ ${tgt.name}（${tgt.role}）倒下了！`);
                     if (P[ti].hand.length) {
-                        const stolenCards = [...P[ti].hand];
-                        P[ct].hand.push(...stolenCards);
-                        L.push(`${ai.name} 夺取了 ${tgt.name} 的全部手牌！`);
-                        P[ti].hand = [];
+                      const stolenCards = [...P[ti].hand];
+                      P[ct].hand.push(...stolenCards);
+                      L.push(`${ai.name} 夺取了 ${tgt.name} 的全部手牌！`);
+                      P[ti].hand = [];
                     }
                     if (P[ti].godZone?.length) { Disc.push(...P[ti].godZone); P[ti].godZone = []; P[ti].godName = null; P[ti].godLevel = 0; }
+                    // 有击杀，继续追捕
+                    alive = P.filter((p, i) => !p.isDead && i !== ct);
+                    newAbandoned = []; // 重置已尝试目标
+                    foundTarget = true;
+                    // 立即尝试用新获得的手牌追捕其他目标
+                    break;
+                  } else {
+                    // 成功追捕，减少了手牌，继续下一轮循环
+                    foundTarget = true;
+                    break;
+                  }
+                } else {
+                  L.push(`无匹配手牌，放弃追捕`);
+                  // 继续尝试下一个目标
+                  continue;
                 }
+              }
             } else {
-                L.push(`无匹配手牌，放弃追捕`);
+              L.push(`${tgt.name} 无区域牌，追捕失败`);
+              // 继续尝试下一个目标
+              continue;
             }
-            huntContinue = true; // 结算完不论是否击杀，判定是否继续追
+          }
+          
+          if (!foundTarget) {
+            // 所有目标都尝试过了，仍无法追捕
+            L.push(`${ai.name} 尝试了所有目标，仍无法追捕`);
+            huntContinue = false;
+          }
+        } else {
+          L.push(`${ai.name} 环顾四周，没有合适的猎物了`);
+          huntContinue = false;
         }
+        
+        // 检查胜利条件
+        const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
       }
     } else if(aiEffRole==='邪祀者'){
       const sanScore=p=>(p.hp-p.san);
@@ -754,7 +788,7 @@ function aiStep(gs){
       }
     }
   }else{
-    if (aiEffRole !== '追猎者' || alive.filter(p => p.role !== '追猎者' && !newAbandoned.includes(P.indexOf(p))).length === 0) {
+    if (aiEffRole !== '追猎者' || P.filter((p, i) => !p.isDead && i !== ct && p.role !== '追猎者' && !newAbandoned.includes(i)).length === 0) {
         L.push(`${ai.name} 未使用技能，结束回合`);
     } else {
         L.push(`${ai.name} 停止了追捕`);
@@ -768,7 +802,7 @@ function aiStep(gs){
 
   // AI状态机扭转关键：如果是追猎者决定连续追捕，并且还有合法目标，退回到 AI_TURN 而不是 startNextTurn
   if (huntContinue && P.filter((p, i) => !p.isDead && i !== ct && p.role !== '追猎者' && !newAbandoned.includes(i)).length > 0) {
-      nextGs = {...gs, players:P, deck:D, discard:Disc, log:L, phase: 'AI_TURN', currentTurn: ct, huntAbandoned: newAbandoned, skillUsed: true};
+      nextGs = {...gs, players:P, deck:D, discard:Disc, log:L, phase: 'AI_TURN', currentTurn: ct, huntAbandoned: newAbandoned, skillUsed: false};
   } else {
       nextGs = startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct, huntAbandoned: newAbandoned, skillUsed: (useSkill || gs.skillUsed)});
   }
