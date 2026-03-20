@@ -2489,50 +2489,62 @@ function GodChoiceModal({godCard,player,onWorship,onKeepHand,onDiscard,isConvert
   const canUpgrade=alreadyWorship&&(player.godLevel||0)<3;
   return(
     // 修改了这里的 background 和 backdropFilter
-    <div style={{position:'fixed',inset:0,display:'flex',alignItems:'flex-start',justifyContent:'center',zIndex:400,flexDirection:'column',gap:16,paddingTop:'10vh'}}>
-      <div style={{fontFamily:"'Cinzel',serif",color:'#e8cc88',fontSize:19.5,letterSpacing:2,marginBottom:4}}>
-        {forcedConvert?'邪祀者强制改信——':'邪神降临——'}
-        <span style={{color:def.col,filter:`drop-shadow(0 0 6px ${def.col}88)`}}>{godCard.name}</span>
-      </div>
-      <div style={{fontSize:16.5,color:'#c89058',fontStyle:'italic',fontFamily:"'IM Fell English',serif",marginBottom:4}}>
-        {'💀'.repeat(player.godEncounters)} 第{player.godEncounters}次遭遇，失去{player.godEncounters}SAN
-        {isConvert&&!forcedConvert&&<span style={{color:'#e08888',marginLeft:8}}>（改信将失去1SAN）</span>}
-      </div>
-      {/* Power gain preview */}
-      {!forcedConvert&&(
-        <div style={{
-          fontSize:11,color:def.col,fontFamily:"'Cinzel',serif",letterSpacing:1,
-          marginBottom:8,opacity:0.9,
-          background:def.bgCol,border:`1px solid ${def.col}55`,
-          borderRadius:3,padding:'4px 12px',display:'inline-block',
-        }}>
-          {canUpgrade
-            ? `⬆ 升级后你将获得：${def.power} Lv.${(player.godLevel||0)+1}`
-            : `⛧ 信仰后你将获得邪神之力：${def.power} Lv.1`}
+    <div style={{position:'fixed',inset:0,display:'flex',alignItems:'flex-start',justifyContent:'center',zIndex:400,paddingTop:'10vh'}}>
+      <div style={{
+        background:'#150e07dd',
+        border:`2px solid ${def.col}`,
+        boxShadow:`0 0 60px ${def.col}44, 0 0 120px #000a`,
+        borderRadius:4,padding:'20px 28px',maxWidth:320,width:'90%',textAlign:'center',
+        animation:'animPop 0.22s ease-out',
+        display:'flex',
+        flexDirection:'column',
+        gap:12
+      }}>
+        <div style={{fontFamily:"'Cinzel',serif",color:'#e8cc88',fontSize:19.5,letterSpacing:2,marginBottom:4}}>
+          {forcedConvert?'邪祀者强制改信——':'邪神降临——'}
+          <span style={{color:def.col,filter:`drop-shadow(0 0 6px ${def.col}88)`}}>{godCard.name}</span>
         </div>
-      )}
-      <GodCardDisplay card={godCard} level={alreadyWorship?(player.godLevel+1):1}/>
-      <div style={{display:'flex',gap:12,flexWrap:'wrap',justifyContent:'center',marginTop:8}}>
+        <div style={{fontSize:16.5,color:'#c89058',fontStyle:'italic',fontFamily:"'IM Fell English',serif",marginBottom:4}}>
+          {'💀'.repeat(player.godEncounters)} 第{player.godEncounters}次遭遇，失去{player.godEncounters}SAN
+          {isConvert&&!forcedConvert&&<span style={{color:'#e08888',marginLeft:8}}>（改信将失去1SAN）</span>}
+        </div>
+        {/* Power gain preview */}
         {!forcedConvert&&(
-          <button onClick={onWorship} style={{padding:'9px 22px',background:def.bgCol,border:`1.5px solid ${def.col}`,color:def.col,fontFamily:"'Cinzel',serif",fontSize:16.5,borderRadius:3,cursor:'pointer',letterSpacing:1,filter:`drop-shadow(0 0 4px ${def.col}66)`}}>
-            {canUpgrade?'⬆ 升级邪神之力':isConvert?'⛧ 改信新神':'⛧ 信仰邪神'}
-          </button>
+          <div style={{
+            fontSize:11,color:def.col,fontFamily:"'Cinzel',serif",letterSpacing:1,
+            marginBottom:8,opacity:0.9,
+            background:def.bgCol,border:`1px solid ${def.col}55`,
+            borderRadius:3,padding:'4px 12px',display:'inline-block',
+            alignSelf:'center'
+          }}>
+            {canUpgrade
+              ? `⬆ 升级后你将获得：${def.power} Lv.${(player.godLevel||0)+1}`
+              : `⛧ 信仰后你将获得邪神之力：${def.power} Lv.1`}
+          </div>
         )}
-        {!alreadyWorship&&!forcedConvert&&isCultist&&(
-          <button onClick={onKeepHand} style={{padding:'9px 22px',background:'#180830',border:`1.5px solid #b080ee`,color:'#b080ee',fontFamily:"'Cinzel',serif",fontSize:16.5,borderRadius:3,cursor:'pointer',letterSpacing:1,filter:'drop-shadow(0 0 4px #9060cc66)'}}>
-            ☽ 秘密收入手牌
-          </button>
-        )}
-        {!forcedConvert&&(
-          <button onClick={onDiscard} style={{padding:'9px 22px',background:'#120a08',border:'1.5px solid #6a4828',color:'#d4a858',fontFamily:"'Cinzel',serif",fontSize:16.5,borderRadius:3,cursor:'pointer',letterSpacing:1}}>
-            放弃
-          </button>
-        )}
-        {forcedConvert&&(
-          <button onClick={onWorship} style={{padding:'9px 22px',background:def.bgCol,border:`1.5px solid ${def.col}`,color:def.col,fontFamily:"'Cinzel',serif",fontSize:16.5,borderRadius:3,cursor:'pointer',letterSpacing:1,filter:`drop-shadow(0 0 4px ${def.col}66)`}}>
-            ⛧ 接受改信
-          </button>
-        )}
+        <GodCardDisplay card={godCard} level={alreadyWorship?(player.godLevel+1):1}/>
+        <div style={{display:'flex',gap:12,flexWrap:'wrap',justifyContent:'center',marginTop:8}}>
+          {!forcedConvert&&(
+            <button onClick={onWorship} style={{padding:'9px 22px',background:def.bgCol,border:`1.5px solid ${def.col}`,color:def.col,fontFamily:"'Cinzel',serif",fontSize:16.5,borderRadius:3,cursor:'pointer',letterSpacing:1,filter:`drop-shadow(0 0 4px ${def.col}66)`}}>
+              {canUpgrade?'⬆ 升级邪神之力':isConvert?'⛧ 改信新神':'⛧ 信仰邪神'}
+            </button>
+          )}
+          {!alreadyWorship&&!forcedConvert&&isCultist&&(
+            <button onClick={onKeepHand} style={{padding:'9px 22px',background:'#180830',border:`1.5px solid #b080ee`,color:'#b080ee',fontFamily:"'Cinzel',serif",fontSize:16.5,borderRadius:3,cursor:'pointer',letterSpacing:1,filter:'drop-shadow(0 0 4px #9060cc66)'}}>
+              ☽ 秘密收入手牌
+            </button>
+          )}
+          {!forcedConvert&&(
+            <button onClick={onDiscard} style={{padding:'9px 22px',background:'#120a08',border:'1.5px solid #6a4828',color:'#d4a858',fontFamily:"'Cinzel',serif",fontSize:16.5,borderRadius:3,cursor:'pointer',letterSpacing:1}}>
+              放弃
+            </button>
+          )}
+          {forcedConvert&&(
+            <button onClick={onWorship} style={{padding:'9px 22px',background:def.bgCol,border:`1.5px solid ${def.col}`,color:def.col,fontFamily:"'Cinzel',serif",fontSize:16.5,borderRadius:3,cursor:'pointer',letterSpacing:1,filter:`drop-shadow(0 0 4px ${def.col}66)`}}>
+              ⛧ 接受改信
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
