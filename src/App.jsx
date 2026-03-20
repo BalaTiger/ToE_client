@@ -75,7 +75,9 @@ const shuffle=a=>{const b=[...a];for(let i=b.length-1;i>0;i--){const j=0|Math.ra
 const clamp=(v,lo=0,hi=10)=>Math.max(lo,Math.min(hi,v));
 const copyPlayers=ps=>ps.map(p=>({...p,hand:[...p.hand],godZone:[...(p.godZone||[])]}));
 const buildPublicUrl=path=>{
-  const base=(import.meta.env.BASE_URL||'/').replace(/\/?$/,'/');
+  // Use window.__PUBLIC_BASE__ if set by the host page (Vite injects BASE_URL there),
+  // otherwise fall back to '/' which works for the default deployment config.
+  const base=((window.__PUBLIC_BASE__)||'/').replace(/\/?$/,'/');
   return `${base}${String(path).replace(/^\/+/,'')}`;
 };
 // Per-card copy counts — tuned for E[HP|HP card] ≈ −2
@@ -4690,7 +4692,7 @@ export default function Game(){
 
   // ── Start Screen ───────────────────────────────────────────
   if(!gs){
-    return(
+    return(<>
       <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:24,position:'relative',overflow:'hidden',filter:gammaFilter}}>
         {/* Vignette */}
         <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at center,transparent 30%,#000000bb 100%)',pointerEvents:'none'}}/>
@@ -5048,8 +5050,6 @@ export default function Game(){
           </div>
         )}
         {roleRevealAnim&&<RoleRevealAnim role={roleRevealAnim.role} onDone={()=>_onRoleRevealDone(roleRevealAnim.pendingGs)}/>}
-        {/* ── Gamma slider (top-right corner, persistent) ── */}
-        <GammaSlider gamma={gamma} onChange={handleGamma}/>
         {/* ── Connection error modal ── */}
         {connErrModal&&(
           <div onClick={()=>setConnErrModal(false)} style={{position:'fixed',inset:0,background:'#000000bb',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
@@ -5064,7 +5064,9 @@ export default function Game(){
         )}
         <style>{GLOBAL_STYLES}</style>
       </div>
-    );
+      {/* GammaSlider outside filtered lobby container */}
+      <GammaSlider gamma={gamma} onChange={handleGamma}/>
+    </>);
   }
 
   // ── Game Over ──────────────────────────────────────────────
@@ -5925,30 +5927,7 @@ export default function Game(){
       {flyingEmojis.map(fe=>(
         <FlyingEmoji key={fe.id} {...fe} onDone={id=>setFlyingEmojis(prev=>prev.filter(x=>x.id!==id))}/>
       ))}
-      {/* 点击外部关闭 emoji picker */}
-      {showEmojiPicker&&<div onClick={()=>setShowEmojiPicker(false)} style={{position:'fixed',inset:0,zIndex:49}}/>}
-      {/* 表情选择器面板 - 与遮罩层同级，确保在遮罩层上方 */}
-      {isMultiplayer&&showEmojiPicker&&(
-        <div style={{
-          position:'fixed',
-          top:emojiButtonPos.top,
-          right:emojiButtonPos.right,
-          background:'#140e04',border:'1.5px solid #4a3010',borderRadius:4,
-          padding:6,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:3,
-          boxShadow:'0 4px 20px #00000088',zIndex:50,
-        }}>
-            {EMOJI_LIST.map(e=>(
-              <button key={e} onClick={ev=>{ev.stopPropagation();handleEmojiClick(e);}} style={{
-                background:'none',border:'none',fontSize:20,cursor:'pointer',
-                padding:'3px 2px',borderRadius:3,lineHeight:1,
-                transition:'background 0.1s',
-              }}
-              onMouseEnter={ev=>ev.currentTarget.style.background='#3a2010'}
-              onMouseLeave={ev=>ev.currentTarget.style.background='none'}
-              >{e}</button>
-            ))}
-          </div>
-      )}
+      {/* emoji picker moved outside filtered container — see Fragment below */}
       {/* ── 断线遮罩（游戏内）── */}
       {isDisconnected&&(
         <div onClick={()=>{setIsDisconnected(false);setIsMultiplayer(false);isMultiplayerRef.current=false;setMyPlayerIndex(0);myPlayerIndexRef.current=0;mpRoleRevealedRef.current=false;setGs(null);}}
@@ -6892,9 +6871,33 @@ export default function Game(){
             gameOver:{winner:'寻宝者',reason:gs.abilityData?.winReason||'你集齐了全部编号并获胜！',winnerIdx:0}});
         }}/>
       )}
-      <GammaSlider gamma={gamma} onChange={handleGamma}/>
       <style>{GLOBAL_STYLES}</style>
     </div>
+    {/* GammaSlider, emoji picker, and combat overlays all outside the filtered container
+         so that position:fixed uses the true viewport (filter on ancestor breaks fixed positioning) */}
+    <GammaSlider gamma={gamma} onChange={handleGamma}/>
+    {showEmojiPicker&&<div onClick={()=>setShowEmojiPicker(false)} style={{position:'fixed',inset:0,zIndex:49}}/>}
+    {isMultiplayer&&showEmojiPicker&&(
+      <div style={{
+        position:'fixed',
+        top:emojiButtonPos.top,
+        right:emojiButtonPos.right,
+        background:'#140e04',border:'1.5px solid #4a3010',borderRadius:4,
+        padding:6,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:3,
+        boxShadow:'0 4px 20px #00000088',zIndex:50,
+      }}>
+        {EMOJI_LIST.map(e=>(
+          <button key={e} onClick={ev=>{ev.stopPropagation();handleEmojiClick(e);}} style={{
+            background:'none',border:'none',fontSize:20,cursor:'pointer',
+            padding:'3px 2px',borderRadius:3,lineHeight:1,
+            transition:'background 0.1s',
+          }}
+          onMouseEnter={ev=>ev.currentTarget.style.background='#3a2010'}
+          onMouseLeave={ev=>ev.currentTarget.style.background='none'}
+          >{e}</button>
+        ))}
+      </div>
+    )}
     {/* Hunt/Bewitch/Guillotine/Knife/SanMist/CardTransfer overlays rendered OUTSIDE the filtered container */}
     {!suppressAnim&&<HuntScopeOverlay active={!!huntAnim} cx={huntAnim?.cx??0} cy={huntAnim?.cy??0}/>}
     {!suppressAnim&&<BewitchEyeOverlay active={!!bewitchAnim} cx={bewitchAnim?.cx??0} cy={bewitchAnim?.cy??0}/>}
