@@ -3857,11 +3857,13 @@ export default function Game(){
     });
     // emojiReceived：收到其他玩家发的表情
     socket.on('emojiReceived',({fromUuid,emojis})=>{
+      console.log('[Emoji] Received emojiReceived:', {fromUuid, emojis, myUUID: playerUUIDRef.current});
       // 错开发射时间，每条间隔 80ms
       emojis.forEach((emoji,i)=>{
         setTimeout(()=>{
           // 发射起点：自己发的从 selfPanel，别人发的从屏幕顶部随机位置
           const isSelf=fromUuid===playerUUIDRef.current;
+          console.log('[Emoji] Processing emoji:', emoji, 'isSelf:', isSelf);
           let sx,sy;
           if(isSelf){
             const el=document.querySelector('[data-pid="0"]');
@@ -3882,6 +3884,7 @@ export default function Game(){
           const jx=ex+(Math.random()*2-1)*18;
           const jy=ey+(Math.random()*2-1)*12;
           const uid=`${Date.now()}-${Math.random()}`;
+          console.log('[Emoji] Creating FlyingEmoji:', {id:uid, emoji, sx, sy, ex, ey});
           setFlyingEmojis(prev=>[...prev,{id:uid,emoji,startX:sx,startY:sy,endX:jx,endY:jy,arcHeight:arc,durationMs:dur}]);
         },i*80);
       });
@@ -3942,14 +3945,21 @@ export default function Game(){
   // 表情：点击 emoji → 加入批次队列 → 300ms 内 flush 打包发送
   function handleEmojiClick(emoji){
     setShowEmojiPicker(false);
-    if(!socketRef.current||!roomModalRef.current?.roomId)return;
+    console.log('[Emoji] handleEmojiClick called:', {emoji, socket: !!socketRef.current, roomModal: roomModalRef.current, playerUUID: playerUUIDRef.current});
+    if(!socketRef.current||!roomModalRef.current?.roomId){
+      console.log('[Emoji] Early return - socket or roomId missing');
+      return;
+    }
     emojiQueueRef.current.push(emoji);
+    console.log('[Emoji] Queued, current queue:', emojiQueueRef.current);
     if(!emojiFlushTimerRef.current){
       emojiFlushTimerRef.current=setTimeout(()=>{
         const batch=[...emojiQueueRef.current];
         emojiQueueRef.current=[];
         emojiFlushTimerRef.current=null;
+        console.log('[Emoji] Flushing batch:', batch, 'roomId:', roomModalRef.current?.roomId);
         if(batch.length&&socketRef.current){
+          console.log('[Emoji] Emitting emojiSend:', {uuid:playerUUIDRef.current,roomId:roomModalRef.current.roomId,emojis:batch});
           socketRef.current.emit('emojiSend',{uuid:playerUUIDRef.current,roomId:roomModalRef.current.roomId,emojis:batch});
         }
       },300);
