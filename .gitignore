@@ -24,5 +24,6 @@ dist-ssr
 *.sw?
 
 # Custom files to ignore
-simulation.js
+ecosystem.config.js
 server.js
+sim_scripts/
