@@ -4004,6 +4004,19 @@ export default function Game(){
         '/videos/ancient_god_tentacles.mp4'
       ];
       
+      // Check if resources are already cached
+      const CACHE_KEY = 'toe_resources_cached';
+      try {
+        const isCached = localStorage.getItem(CACHE_KEY) === '1';
+        if (isCached) {
+          // Skip preloading if resources are already cached
+          setIsLoading(false);
+          return;
+        }
+      } catch (e) {
+        // localStorage error, proceed with preloading
+      }
+      
       let loadedCount = 0;
       const totalFiles = audioFiles.length + videoFiles.length;
       
@@ -4011,6 +4024,8 @@ export default function Game(){
       for (const file of audioFiles) {
         try {
           const audio = new Audio(file);
+          // Set cache control headers
+          audio.crossOrigin = 'anonymous';
           await new Promise((resolve, reject) => {
             audio.addEventListener('canplaythrough', resolve);
             audio.addEventListener('error', reject);
@@ -4032,6 +4047,7 @@ export default function Game(){
           const video = document.createElement('video');
           video.src = file;
           video.preload = 'auto';
+          video.crossOrigin = 'anonymous';
           await new Promise((resolve, reject) => {
             video.addEventListener('canplaythrough', resolve);
             video.addEventListener('error', reject);
@@ -4045,6 +4061,13 @@ export default function Game(){
           loadedCount++;
           setLoadingProgress((loadedCount / totalFiles) * 100);
         }
+      }
+      
+      // Mark resources as cached
+      try {
+        localStorage.setItem(CACHE_KEY, '1');
+      } catch (e) {
+        // localStorage error, ignore
       }
       
       // Finish loading after all files are processed
@@ -5355,6 +5378,8 @@ export default function Game(){
           
           <div style={{marginBottom:32}}>
             <div style={{fontFamily:"'Cinzel',serif",fontSize:14,letterSpacing:2,marginBottom:12,color:'#c8a96e',opacity:0.85}}>正在加载游戏资源...</div>
+            
+            <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontSize:12,fontStyle:'italic',marginBottom:16,color:'#a07838',lineHeight:1.5}}>第一次前往遗迹的路会很长，请稍等……</div>
             
             <div style={{width:'100%',height:8,background:'#140f08',border:'1px solid #3a2510',borderRadius:4,overflow:'hidden'}}>
               <div style={{
