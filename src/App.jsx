@@ -5445,6 +5445,7 @@ export default function Game(){
   if(isLoading){
     return(
       <div style={{minHeight:'100vh',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:24,position:'relative',overflow:'hidden'}}>
+        <style>{'@keyframes spinLoader { to { transform: rotate(360deg); } }'}</style>
         {/* Vignette */}
         <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at center,transparent 30%,#000000bb 100%)',pointerEvents:'none'}}/>
         
