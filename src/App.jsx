@@ -5459,7 +5459,8 @@ export default function Game(){
                   height: '12px', 
                   marginRight: '10px',
                   animation: 'spinLoader 1s linear infinite',
-                  filter: 'invert(60%) sepia(30%) saturate(300%) hue-rotate(30deg) brightness(80%) contrast(90%)'
+                  filter: 'invert(60%) sepia(30%) saturate(300%) hue-rotate(30deg) brightness(80%) contrast(90%)',
+                  transformOrigin: 'center'
                 }} 
                 alt="Loading"
               />
