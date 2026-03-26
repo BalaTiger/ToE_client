@@ -5458,7 +5458,8 @@ export default function Game(){
                 style={{
                   height: '12px', 
                   marginRight: '10px',
-                  animation: 'spinLoader 1s linear infinite'
+                  animation: 'spinLoader 1s linear infinite',
+                  filter: 'invert(60%) sepia(30%) saturate(300%) hue-rotate(30deg) brightness(80%) contrast(90%)'
                 }} 
                 alt="Loading"
               />
