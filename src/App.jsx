@@ -119,7 +119,7 @@ function mkDeck(){
   ];
   return shuffle([...zoneCards,...godCards]);
 }
-function mkRoles(N=5) {
+function mkRoles(N=5, isSinglePlayer = false) {
   // 拦截非法的游戏人数
   if (N < 2) throw new Error('游戏人数不能少于2人');
   
@@ -136,15 +136,80 @@ function mkRoles(N=5) {
   // 非寻宝者阵营的数量上限：向下取整的半数
   const limit = Math.floor(N / 2);
   
+  // 单人游戏：调整身份概率
+  let playerRoleProbabilities = { '寻宝者': 1, '追猎者': 1, '邪祀者': 1 };
+  let playerRole = null;
+  
+  if (isSinglePlayer) {
+    try {
+      const storedData = localStorage.getItem('cthulhu_role_streaks');
+      if (storedData) {
+        const streaks = JSON.parse(storedData);
+        // 计算概率：每连续一次，概率降低10%，最低为0
+        Object.keys(streaks).forEach(role => {
+          playerRoleProbabilities[role] = Math.max(0, 1 - (streaks[role] * 0.1));
+        });
+      }
+    } catch (e) {
+      // localStorage error, use default probabilities
+    }
+  }
+  
   for (let i = 3; i < N; i++) {
     const available = ['寻宝者']; // 寻宝者没有数量上限
     if (counts['追猎者'] < limit) available.push('追猎者');
     if (counts['邪祀者'] < limit) available.push('邪祀者');
     
     // 从允许的身份池中随机抽取一个
-    const pick = available[Math.floor(Math.random() * available.length)];
+    let pick;
+    if (isSinglePlayer && i === 3) { // 玩家是第四个角色（索引3）
+      // 为玩家选择身份时使用调整后的概率
+      const weights = available.map(role => playerRoleProbabilities[role]);
+      const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+      
+      if (totalWeight > 0) {
+        let random = Math.random() * totalWeight;
+        for (let j = 0; j < available.length; j++) {
+          random -= weights[j];
+          if (random <= 0) {
+            pick = available[j];
+            break;
+          }
+        }
+      } else {
+        // 如果所有概率都为0，随机选择
+        pick = available[Math.floor(Math.random() * available.length)];
+      }
+      
+      // 记录玩家的身份
+      playerRole = pick;
+    } else {
+      // AI角色使用默认概率
+      pick = available[Math.floor(Math.random() * available.length)];
+    }
+    
     roles.push(pick);
     counts[pick]++;
+  }
+  
+  // 单人游戏：更新连续身份计数
+  if (isSinglePlayer && playerRole) {
+    try {
+      // 读取当前的连续计数
+      const storedData = localStorage.getItem('cthulhu_role_streaks');
+      let streaks = storedData ? JSON.parse(storedData) : { '寻宝者': 0, '追猎者': 0, '邪祀者': 0 };
+      
+      // 重置所有计数，然后更新当前身份的计数
+      Object.keys(streaks).forEach(role => {
+        streaks[role] = 0;
+      });
+      streaks[playerRole] = (streaks[playerRole] || 0) + 1;
+      
+      // 存储更新后的计数
+      localStorage.setItem('cthulhu_role_streaks', JSON.stringify(streaks));
+    } catch (e) {
+      // localStorage error, ignore
+    }
   }
   
   return shuffle(roles);
@@ -1148,7 +1213,8 @@ function aiStep(gs){
 function initGame(playerNames){
   const names=playerNames||['你',...AI_NAMES];
   const N=names.length;
-  const deck=mkDeck(),roles=mkRoles(N);
+  const isSinglePlayer = !playerNames; // 当没有提供playerNames时，是单人游戏
+  const deck=mkDeck(),roles=mkRoles(N, isSinglePlayer);
   const players=names.map((name,i)=>({id:i,name,role:roles[i],roleRevealed:false,hp:10,san:10,hand:[],isDead:false,isResting:false,godEncounters:0,godZone:[],godName:null,godLevel:0}));
   for(let r=0;r<4;r++)players.forEach(p=>p.hand.push(deck.shift()));
   const base={players,deck,discard:[],currentTurn:-1,phase:'DRAW_REVEAL',drawReveal:null,selectedCard:null,abilityData:{},log:['游戏开始。每人获得四张初始手牌。'],gameOver:null,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,globalOnlySwapOwner:null,_turnKey:0,_isMP:!!playerNames};
@@ -1655,20 +1721,53 @@ function DiscardMoveOverlay({anim,exiting}){
   const s=card&&CS[card.letter]?CS[card.letter]:null;
   const targetPid=anim.targetPid||0;
 
-  // Compute start position based on targetPid
-  const startStyle=React.useMemo(()=>{
+  // Compute start and end positions
+  const [cardStyle, setCardStyle] = React.useState({});
+  
+  React.useEffect(() => {
+    // Calculate discard pile position (fixed location)
+    const discardLeft = window.innerWidth * 0.28; // 28% of screen width
+    const discardTop = window.innerHeight * 0.56; // 56% of screen height (since bottom:44%)
+    
+    let startX, startY;
     if(targetPid>0){
       const el=document.querySelector(`[data-pid="${targetPid}"]`);
       if(el){
         const r=el.getBoundingClientRect();
-        const startX=r.left+r.width/2;
-        const startY=r.top+r.height/2;
-        return {left:startX,top:startY,transform:'translate(-50%, -50%)'};
+        startX=r.left+r.width/2;
+        startY=r.top+r.height/2;
       }
+    } else {
+      // Default to player 0 position
+      startX = window.innerWidth * 0.5;
+      startY = window.innerHeight * 0.86; // 100% - 14%
     }
-    // Default to player 0 position
-    return {bottom:'14%',left:'50%',transform:'translateX(-50%)'};
-  },[targetPid]);
+    
+    if (startX && startY) {
+      // Calculate animation
+      const tx = discardLeft - startX;
+      const ty = discardTop - startY;
+      
+      setCardStyle({
+        position: 'absolute',
+        left: startX,
+        top: startY,
+        transform: 'translate(-50%, -50%) scale(1)',
+        width: 62,
+        height: 84,
+        borderRadius: 4,
+        background: s?s.bg:'linear-gradient(135deg,#1e1208,#0e0804)',
+        border: s?`1.5px solid ${s.borderBright}`:'1.5px solid #4a3010',
+        boxShadow: '0 6px 24px rgba(0,0,0,0.65)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        animation: `discardCardFlyCustom 1.0s cubic-bezier(0.4,0,0.3,1) forwards`,
+        '--tx': `${tx}px`,
+        '--ty': `${ty}px`
+      });
+    }
+  }, [anim, targetPid, s]);
 
   return(
     <div style={{position:'fixed',inset:0,zIndex:990,pointerEvents:'none',
@@ -1677,22 +1776,13 @@ function DiscardMoveOverlay({anim,exiting}){
       {/* Subtle bg dim */}
       <div style={{position:'absolute',inset:0,background:'rgba(4,2,0,0.35)',animation:'discardBgFade 1.0s ease both'}}/>
       {/* Flying card */}
-      <div style={{
-        position:'absolute',
-        width:62,height:84,borderRadius:4,
-        background:s?s.bg:'linear-gradient(135deg,#1e1208,#0e0804)',
-        border:s?`1.5px solid ${s.borderBright}`:'1.5px solid #4a3010',
-        boxShadow:'0 6px 24px rgba(0,0,0,0.65)',
-        ...startStyle,
-        animation:targetPid>0
-          ?'discardCardFlyFromAI 1.0s cubic-bezier(0.4,0,0.3,1) forwards'
-          :'discardCardFly 1.0s cubic-bezier(0.4,0,0.3,1) forwards',
-        display:'flex',alignItems:'center',justifyContent:'center',
-      }}>
-        {card&&s&&<div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:18}}>{card.key}</div>}
-        {(!card||!s)&&<div style={{position:'absolute',inset:0,borderRadius:4,
-          background:'repeating-linear-gradient(45deg,#2a1a0820 0px,#2a1a0820 1px,transparent 1px,transparent 4px)'}}/>}
-      </div>
+      {Object.keys(cardStyle).length > 0 && (
+        <div style={cardStyle}>
+          {card&&s&&<div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:18}}>{card.key}</div>}
+          {(!card||!s)&&<div style={{position:'absolute',inset:0,borderRadius:4,
+            background:'repeating-linear-gradient(45deg,#2a1a0820 0px,#2a1a0820 1px,transparent 1px,transparent 4px)'}}/>}
+        </div>
+      )}
     </div>
   );
 }
@@ -3190,7 +3280,7 @@ function HealCrossEffect({color='#4ade80'}){
   );
 }
 
-function PlayerPanel({player,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal}){
+function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,displayStats}){
   const ri=RINFO[player.role];
   const borderColor=isBeingHit?'#cc2222':isSanHit?'#8840cc':isCurrentTurn?'#c8a96e':isSelectable?ri.col:'#3a2510';
   return(
@@ -3218,8 +3308,8 @@ function PlayerPanel({player,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCa
         {player.isResting&&!player.isDead&&<span style={{fontSize:9,color:'#4ade80',marginLeft:'auto',letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 翻面中</span>}
         {isCurrentTurn&&!player.isDead&&!player.isResting&&<span style={{fontSize:9,color:'#c8a96e',marginLeft:'auto',letterSpacing:1}}>▸ 行动</span>}
       </div>
-      <StatBar label="HP"  val={player.hp}  color="#8b1515" trackColor="#1a0808"/>
-      <StatBar label="SAN" val={player.san} color="#4a1080" trackColor="#120820"/>
+      <StatBar label="HP"  val={displayStats?.[playerIndex]?.hp ?? player.hp}  color="#8b1515" trackColor="#1a0808"/>
+      <StatBar label="SAN" val={displayStats?.[playerIndex]?.san ?? player.san} color="#4a1080" trackColor="#120820"/>
       {/* Skull counter + god zone */}
       {((player.godEncounters||0)>0||(player.godZone||[]).length>0)&&(
         <div style={{display:'flex',alignItems:'center',gap:4,marginTop:4,flexWrap:'wrap'}}>
@@ -3916,7 +4006,7 @@ function GammaSlider({gamma,onChange}){
             onChange={e=>onChange(parseFloat(e.target.value))}
             style={{width:90,accentColor:'#b07828',cursor:'pointer'}}
           />
-          <span style={{fontFamily:"'Cinzel',serif",fontSize:9,color:'#b07828',width:28,textAlign:'right'}}>{Math.round((gamma-1)*100>0?'+':''+(gamma-1)*100)}%</span>
+          <span style={{fontFamily:"'Cinzel',serif",fontSize:9,color:'#b07828',width:28,textAlign:'right'}}>{(()=>{const v=Math.round((gamma-1)*100);return v>0?'+'+v:v;})()}%</span>
           <button onClick={()=>onChange(1)} style={{background:'none',border:'none',color:'#7a5020',fontSize:9,cursor:'pointer',padding:'0 2px',fontFamily:"'Cinzel',serif"}}>重置</button>
         </div>
       )}
@@ -4807,6 +4897,44 @@ export default function Game(){
   const[anim,setAnim]=useState(null);
   const[animExiting,setAnimExiting]=useState(false);
   const[hitIndices,setHitIndices]=useState([]);    // HP damage
+  
+  // --- 新增：用于 UI 延迟显示的 HP/SAN 状态 ---
+  const [displayStats, setDisplayStats] = useState(() => gs?.players ? gs.players.map(p => ({ hp: p.hp, san: p.san })) : []);
+  
+  // 1. 兜底与静默同步：当没有动画在播放时，UI 强制对齐真实的底层数据
+  useEffect(() => {
+    if (gs?.players && (!anim && (!animQueueRef.current || animQueueRef.current.length === 0))) {
+      setDisplayStats(gs.players.map(p => ({ hp: p.hp, san: p.san })));
+    }
+  }, [gs?.players, anim]);
+  
+  // 2. 动画期间的精准延迟对齐：当播放某个角色的受击/治疗动画时，延迟 350ms 更新显示数值
+  useEffect(() => {
+    if (anim) {
+      // 收集当前动画可能影响到的所有目标
+      const targets = new Set();
+      if (anim.targetPid !== undefined) targets.add(anim.targetPid);
+      if (anim.targetIdx !== undefined) targets.add(anim.targetIdx);
+      if (Array.isArray(anim.targets)) anim.targets.forEach(t => targets.add(t));
+      if (anim.triggerPid !== undefined) targets.add(anim.triggerPid); // 涵盖自伤等情况
+      if (anim.hitIndices && Array.isArray(anim.hitIndices)) anim.hitIndices.forEach(hi => targets.add(hi)); // 涵盖群体伤害
+
+      if (targets.size > 0) {
+        const timer = setTimeout(() => {
+          setDisplayStats(prev => {
+            const next = [...prev];
+            targets.forEach(pid => {
+              if (next[pid] && gs?.players[pid]) {
+                next[pid] = { hp: gs.players[pid].hp, san: gs.players[pid].san };
+              }
+            });
+            return next;
+          });
+        }, 350); // 350ms 延迟，让数字特效先"飞"出来，血条再掉。你可以根据手感微调这个数字
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [anim, gs?.players]);
   const[knifeTargets,setKnifeTargets]=useState([]); // pre-measured {pi,cx,cy} for KnifeEffect
   const[sanHitIndices,setSanHitIndices]=useState([]);
   const[sanTargets,setSanTargets]=useState([]); // pre-measured {pi,cx,cy,startX,startY} // SAN damage
@@ -6272,6 +6400,8 @@ export default function Game(){
   const effectiveRole=me._nyaBorrow||me.role;
   const effectiveHandLimit=me._nyaHandLimit??4;
   const myTurn=gs.currentTurn===0;
+  // 只有当底层是玩家回合，且没有正在播放的动画，且动画队列为空时，才算真正轮到玩家
+  const isVisualPlayerTurn = myTurn && !anim && (animQueueRef.current.length === 0);
   const canWin=effectiveRole==='寻宝者'&&isWinHand(me.hand);
   const phase=gs.phase;
   const ri=RINFO[me.role];
@@ -7394,7 +7524,7 @@ export default function Game(){
         huntSelectCardFromPublic(idx);
       }
     }
-    else if(phase==='ACTION'&&myTurn&&!isBlocked){
+    else if(phase==='ACTION'&&isVisualPlayerTurn&&!isBlocked){
       const c=me.hand[idx];
       if(c&&c.isGod){
         const isUpgrade=me.godName===c.godKey&&(me.godLevel||0)<3;
@@ -7407,16 +7537,16 @@ export default function Game(){
     if(phase==='SWAP_GIVE_CARD')return true;
     if(phase==='BEWITCH_SELECT_CARD')return true;
     if(phase==='DISCARD_PHASE'){const sel=gs.abilityData.discardSelected||[];const max=me.hand.length-4;return sel.includes(idx)||sel.length<max;}
-    if(phase==='HUNT_CONFIRM'&&myTurn){const rc=gs.abilityData?.revCard;return!!(rc&&(c.letter===rc.letter||c.number===rc.number));}
-    if(phase==='HUNT_WAIT_REVEAL'&&!myTurn&&gs.abilityData?.huntTi===0)return!c.isGod;
+    if(phase==='HUNT_CONFIRM'&&isVisualPlayerTurn){const rc=gs.abilityData?.revCard;return!!(rc&&(c.letter===rc.letter||c.number===rc.number));}
+    if(phase==='HUNT_WAIT_REVEAL'&&!isVisualPlayerTurn&&gs.abilityData?.huntTi===0)return!c.isGod;
     if(phase==='PLAYER_REVEAL_FOR_HUNT')return!c.isGod; // only zone cards
-    if(phase==='HUNT_SELECT_CARD_FROM_PUBLIC'&&myTurn){
+    if(phase==='HUNT_SELECT_CARD_FROM_PUBLIC'&&isVisualPlayerTurn){
       const huntTi=gs.abilityData?.huntTi;
       const targetPlayer=gs.players[huntTi];
       return targetPlayer&&idx<targetPlayer.hand.length;
     }
     // God card in ACTION phase: upgrade (same god) is always allowed; worship/convert requires slot
-    if(phase==='ACTION'&&myTurn&&c.isGod){
+    if(phase==='ACTION'&&isVisualPlayerTurn&&c.isGod){
       const isUpgrade=me.godName===c.godKey&&(me.godLevel||0)<3;
       if(isUpgrade||(!gs.godTriggeredThisTurn&&!gs.godFromHandUsed))return true;
     }
@@ -7482,7 +7612,7 @@ export default function Game(){
       })()}
 
       {/* Target selection mask + floating prompt */}
-      <TargetSelectOverlay drawReveal={gs.drawReveal} phase={myTurn?phase:null} bewitchCard={gs.abilityData?.bewitchCard}/>
+      <TargetSelectOverlay drawReveal={gs.drawReveal} phase={isVisualPlayerTurn?phase:null} bewitchCard={gs.abilityData?.bewitchCard}/>
 
       {/* God choice modal */}
       {phase==='GOD_CHOICE'&&gs.abilityData?.godCard&&isLocalGodChoice&&(()=>{
@@ -7574,7 +7704,7 @@ export default function Game(){
             const onCardSelectForSwap=isSwapTargetCardPhase?((cardIdx)=>swapSelectTargetCard(cardIdx)):isHuntCardFromPublicPhase?((cardIdx)=>huntSelectCardFromPublic(cardIdx)):null;
             return(
               <div key={p.id} data-pid={pi} style={{position:'relative',zIndex:isSel?101:undefined,alignSelf:'start'}}>
-                <PlayerPanel player={p} isCurrentTurn={gs.currentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)}/>
+                <PlayerPanel player={p} playerIndex={pi} isCurrentTurn={gs.currentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)} displayStats={displayStats}/>
               </div>
             );
           })}
@@ -7602,8 +7732,8 @@ export default function Game(){
             )}
             </div>
             <div style={{borderTop:'1px solid #2a1a08',paddingTop:8}}>
-              <StatBar label="HP"  val={me.hp}  color="#7a1515" trackColor="#1a0808"/>
-              <StatBar label="SAN" val={me.san} color="#3a1078" trackColor="#120820"/>
+              <StatBar label="HP"  val={displayStats[0]?.hp ?? me.hp}  color="#7a1515" trackColor="#1a0808"/>
+              <StatBar label="SAN" val={displayStats[0]?.san ?? me.san} color="#3a1078" trackColor="#120820"/>
             </div>
             {canWin&&phase!=='PLAYER_WIN_PENDING'&&(
               <button onClick={revealWin} style={{
@@ -7718,9 +7848,9 @@ export default function Game(){
             <span style={{fontFamily:"'Cinzel',serif",color:phase==='DISCARD_PHASE'||phase==='PLAYER_REVEAL_FOR_HUNT'?'#882020':'#3a2510',fontSize:10,letterSpacing:1}}>
               {phase==='DISCARD_PHASE'?`⚠ 手牌超限 (${me.hand.length}/${effectiveHandLimit})`:phase==='PLAYER_REVEAL_FOR_HUNT'?'⚠ 选择亮出一张区域牌':phase==='HUNT_WAIT_REVEAL'&&!myTurn&&gs.abilityData?.huntTi===0?'⚠ 选择亮出一张区域牌':`手牌 (${me.hand.length}/${effectiveHandLimit})`}
             </span>
-            {(phase==='ACTION'&&myTurn&&!isBlocked||cancelable)&&(
+            {(phase==='ACTION'&&isVisualPlayerTurn&&!isBlocked||cancelable)&&(
               <div style={{display:'flex',gap:8,marginLeft:'auto',flexWrap:'wrap',position:'relative',zIndex:200}}>
-                {phase==='ACTION'&&myTurn&&!isBlocked&&(()=>{
+                {phase==='ACTION'&&isVisualPlayerTurn&&!isBlocked&&(()=>{
                   // 对于其他职业，只要技能或休息中的任意一个被使用，那么两者都不能再使用
                   // 对于追猎者，只要休息被使用，就不能再使用技能；只要技能被使用，就不能再休息，但技能可以多次使用
                   const isHunter = me.role === '追猎者';
@@ -7772,7 +7902,7 @@ export default function Game(){
                     position:'relative',zIndex:200,
                   }}>✕ 取消</button>
                 )}
-                {phase==='HUNT_CONFIRM'&&(!gs._isMP||myTurn)&&(
+                {phase==='HUNT_CONFIRM'&&(!gs._isMP||isVisualPlayerTurn)&&(
                   <button onClick={()=>huntConfirm(-1)} style={{
                     padding:'6px 18px',background:'#1a0c04',
                     border:'2px solid #d4832a',color:'#f0a855',
@@ -7805,8 +7935,8 @@ export default function Game(){
               const isSel=phase==='DISCARD_PHASE'&&(gs.abilityData.discardSelected||[]).includes(i);
               const isMatch=phase==='HUNT_CONFIRM'&&gs.abilityData?.revCard&&(c.letter===gs.abilityData.revCard.letter||c.number===gs.abilityData.revCard.number);
               const isGodUpgrade=c.isGod&&me.godName===c.godKey&&(me.godLevel||0)<3;
-              const canUpgradeNow=isGodUpgrade&&phase==='ACTION'&&myTurn;
-              const canWorshipNow=c.isGod&&!isGodUpgrade&&phase==='ACTION'&&myTurn&&!gs.godTriggeredThisTurn&&!gs.godFromHandUsed;
+              const canUpgradeNow=isGodUpgrade&&phase==='ACTION'&&isVisualPlayerTurn;
+              const canWorshipNow=c.isGod&&!isGodUpgrade&&phase==='ACTION'&&isVisualPlayerTurn&&!gs.godTriggeredThisTurn&&!gs.godFromHandUsed;
               return(<div key={c.id} style={{position:'relative',display:'inline-block'}}>
                 <DDCard card={c} onClick={clickable?()=>handleMyCardClick(i):undefined} disabled={!clickable} selected={isSel} highlight={isMatch||canWorshipNow||canUpgradeNow} godLevel={me.godName===c.godKey?me.godLevel:0} compact={isMobile}/>
                 {canUpgradeNow&&<div style={{position:'absolute',top:-7,left:'50%',transform:'translateX(-50%)',fontFamily:"'Cinzel',serif",fontSize:8,color:'#c8a96e',background:'#0a0705',border:'1px solid #8a6020',borderRadius:2,padding:'1px 4px',pointerEvents:'none',whiteSpace:'nowrap',zIndex:10}}>⬆ 升级邪神之力</div>}
@@ -8892,8 +9022,28 @@ const GLOBAL_STYLES=`
   }
   @keyframes discardCardFlyFromAI {
     0%   {transform:translate(-50%, -50%) scale(1);opacity:1}
-    40%  {transform:translate(-120px, -60px) scale(1.08) rotate(-8deg);opacity:1}
-    100% {transform:translate(-200px, -80px) scale(0.85) rotate(-18deg);opacity:0.7}
+    40%  {transform:translate(calc(-50% - 12vw), calc(-50% - 22vh)) scale(1.08) rotate(-8deg);opacity:1}
+    100% {transform:translate(calc(-50% - 22vw), calc(-50% - 30vh)) scale(0.85) rotate(-18deg);opacity:0.7}
+  }
+  @keyframes discardCardFlyCustom {
+    0%   {transform:translate(-50%, -50%) scale(1) rotate(0deg);opacity:1}
+    40%  {transform:translate(calc(-50% + var(--tx) * 0.4), calc(-50% + var(--ty) * 0.4)) scale(1.08) rotate(-8deg);opacity:1}
+    100% {transform:translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(0.85) rotate(-18deg);opacity:0.7}
+  }
+  /* AI 专属摸牌：从中央牌库向上飞往 AI 手牌区 */
+  @keyframes drawAnimAi {
+    0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+    20% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+    100% { transform: translate(-50%, -35vh) scale(1); opacity: 0; }
+    /* 注意这里是 -35vh，向上飞 */
+  }
+
+  /* AI 专属弃牌：从 AI 手牌区向下飞往中央弃牌堆 */
+  @keyframes discardCardFlyAi {
+    0%   {top:14%;left:50%;transform:translateX(-50%) scale(1);opacity:1}
+    40%  {top:36%;left:38%;transform:translateX(-50%) scale(1.08) rotate(-8deg);opacity:1}
+    100% {top:44%;left:28%;transform:translateX(-50%) scale(0.85) rotate(-18deg);opacity:0.7}
+    /* 注意这里把原版所有的 bottom 换成了 top */
   }
   @keyframes discardBgFade {
     0%   {opacity:0}
