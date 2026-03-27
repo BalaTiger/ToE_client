@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import ReactDOM from "react-dom";
+import ReactDOM, { createPortal } from "react-dom";
 // socket.io-client is loaded at runtime via CDN (only outside Claude Artifacts)
 
 // Ellipsis component for loading animation
@@ -49,7 +49,7 @@ const ZONE_VARIANTS=['pos','negS','negA'];
 const LETTERS=['A','B','C','D'], NUMS=[1,2,3,4];
 const AI_NAMES=['艾伦','贝拉','卡洛斯','黛安娜'];
 const RINFO={
-  '寻宝者':{icon:'✦',col:'#7ecfd4',dim:'#2a6068',goal:'集齐A-D×1-4各一张牌',skillName:'掉包',skillLimited:true},
+  '寻宝者':{icon:'✦',col:'#7ecfd4',dim:'#2a6068',goal:'集齐宝藏',skillName:'掉包',skillLimited:true},
   '追猎者':{icon:'☩',col:'#cc4444',dim:'#6a1a1a',goal:'消灭所有非追猎者',skillName:'追捕',skillLimited:false},
   '邪祀者':{icon:'☽',col:'#9060cc',dim:'#3a1060',goal:'使任意角色SAN归零',skillName:'蛊惑',skillLimited:true},
 };
@@ -928,7 +928,7 @@ function aiStep(gs){
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
     const _P_afterRest=copyPlayers(P);
     const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,restUsed:true,skillUsed:false});
-    return{...nextGs,_aiDrawnCard:gs._drawnCard,_aiName:ai.name,_playersBeforeNextDraw:_P_afterRest};
+    return{...nextGs,_aiDrawnCard:gs._drawnCard??nextGs._drawnCard??null,_aiName:ai.name,_playersBeforeNextDraw:_P_afterRest};
   }
 // 追猎者/邪祀者积极发动技能(65%); 寻宝者随进度提升(35%→55%)
   const myNonGod=P[ct].hand.filter(c=>!c.isGod);
@@ -987,7 +987,7 @@ function aiStep(gs){
                 return {...gs, players:P, deck:D, discard:Disc, log:L,
                   phase:'PLAYER_REVEAL_FOR_HUNT',
                   abilityData:{huntingAI:ct, aiHunterName:ai.name},
-                  skillUsed:true, huntAbandoned: updatedAbandoned, _aiName:ai.name, _drawnCard:gs._drawnCard};
+                  skillUsed:true, huntAbandoned: updatedAbandoned, _aiName:ai.name, _drawnCard:gs._drawnCard, _aiDrawnCard:gs._drawnCard};
               } else {
                 const rc = aiChooseRevealCard(zoneH, P[ct].hand);
                 L.push(`${ai.name}（追猎者）对 ${tgt.name} 【追捕】，亮出 [${rc.key}]`);
@@ -1134,12 +1134,12 @@ function aiStep(gs){
   const hasValidTargets = P.filter((p, i) => !p.isDead && i !== ct && p.role !== '追猎者' && !newAbandoned.includes(i)).length > 0;
   const hasZoneCards = P[ct].hand.filter(c=>!c.isGod).length > 0;
   if (aiEffRole === '追猎者' && huntContinue && hasZoneCards && hasValidTargets) {
-      nextGs = {...gs, players:P, deck:D, discard:Disc, log:L, phase: 'AI_TURN', currentTurn: ct, huntAbandoned: newAbandoned, skillUsed: false};
+      nextGs = {...gs, players:P, deck:D, discard:Disc, log:L, phase: 'AI_TURN', currentTurn: ct, huntAbandoned: newAbandoned, skillUsed: false, _drawnCard: gs._drawnCard};
   } else {
       nextGs = startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct, huntAbandoned: newAbandoned, skillUsed: (useSkill || gs.skillUsed)});
   }
 
-  return{...nextGs,_aiDrawnCard:gs._drawnCard,_aiName:ai.name,_playersBeforeNextDraw:_P_afterAction};
+  return{...nextGs,_aiDrawnCard:gs._drawnCard??nextGs._drawnCard??null,_aiName:ai.name,_playersBeforeNextDraw:_P_afterAction};
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1653,6 +1653,23 @@ function DiscardMoveOverlay({anim,exiting}){
   if(!anim)return null;
   const card=anim.card||null;
   const s=card&&CS[card.letter]?CS[card.letter]:null;
+  const targetPid=anim.targetPid||0;
+
+  // Compute start position based on targetPid
+  const startStyle=React.useMemo(()=>{
+    if(targetPid>0){
+      const el=document.querySelector(`[data-pid="${targetPid}"]`);
+      if(el){
+        const r=el.getBoundingClientRect();
+        const startX=r.left+r.width/2;
+        const startY=r.top+r.height/2;
+        return {left:startX,top:startY,transform:'translate(-50%, -50%)'};
+      }
+    }
+    // Default to player 0 position
+    return {bottom:'14%',left:'50%',transform:'translateX(-50%)'};
+  },[targetPid]);
+
   return(
     <div style={{position:'fixed',inset:0,zIndex:990,pointerEvents:'none',
       animation:exiting?'animFadeOut 0.18s ease-in forwards':'none',
@@ -1666,7 +1683,10 @@ function DiscardMoveOverlay({anim,exiting}){
         background:s?s.bg:'linear-gradient(135deg,#1e1208,#0e0804)',
         border:s?`1.5px solid ${s.borderBright}`:'1.5px solid #4a3010',
         boxShadow:'0 6px 24px rgba(0,0,0,0.65)',
-        animation:'discardCardFly 1.0s cubic-bezier(0.4,0,0.3,1) forwards',
+        ...startStyle,
+        animation:targetPid>0
+          ?'discardCardFlyFromAI 1.0s cubic-bezier(0.4,0,0.3,1) forwards'
+          :'discardCardFly 1.0s cubic-bezier(0.4,0,0.3,1) forwards',
         display:'flex',alignItems:'center',justifyContent:'center',
       }}>
         {card&&s&&<div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:18}}>{card.key}</div>}
@@ -2685,28 +2705,58 @@ function OctopusSVG({col,size=32}){
   );
 }
 // ── God card tooltip ──────────────────────────────────────────
-function GodTooltip({def,godLevel}){
+function GodTooltip({def,godLevel,position}){
   const lvIdx=Math.max(0,(godLevel||1)-1);
-  return(
+  if(!position) return null;
+  
+  return createPortal(
     <div style={{
-      position:'absolute',left:'calc(100% + 6px)',top:0,zIndex:500,
+      position:'fixed',left:`${position.right + 6}px`,top:`${position.top}px`,zIndex:99999,
       background:'#0a0412',border:`1.5px solid ${def.col}`,borderRadius:4,
-      padding:'10px 13px',width:180,pointerEvents:'none',
+      padding:'12px 15px',width:200,pointerEvents:'none',
       boxShadow:`0 0 20px ${def.col}55`,
+      opacity:1,
+      filter:'none',
     }}>
-      <div style={{fontFamily:"'Cinzel',serif",fontSize:9,color:def.col,letterSpacing:1,marginBottom:4}}>{def.power}</div>
+      <div style={{fontFamily:"'Cinzel',serif",fontSize:10,color:def.col,letterSpacing:1,marginBottom:5}}>{def.power}</div>
       {def.levels.map((lv,i)=>(
-        <div key={i} style={{marginBottom:5}}>
-          <div style={{fontFamily:"'Cinzel',serif",fontSize:8,color:i===lvIdx?def.col:'#3a2510',letterSpacing:0.5,marginBottom:2}}>Lv.{i+1}{i===lvIdx?' ★':''}</div>
-          <div style={{fontFamily:"'IM Fell English',serif",fontStyle:'italic',fontSize:9.5,color:i===lvIdx?'#b09080':'#5a4030',lineHeight:1.5}}>{lv.desc}</div>
+        <div key={i} style={{marginBottom:6}}>
+          <div style={{fontFamily:"'Cinzel',serif",fontSize:9,color:i===lvIdx?def.col:'#3a2510',letterSpacing:0.5,marginBottom:3}}>Lv.{i+1}{i===lvIdx?' ★':''}</div>
+          <div style={{fontFamily:"'IM Fell English',serif",fontStyle:'italic',fontSize:11,color:i===lvIdx?'#b09080':'#5a4030',lineHeight:1.5}}>{lv.desc}</div>
         </div>
       ))}
-    </div>
+    </div>,
+    document.body
   );
 }
+
+// ── Area card tooltip ──────────────────────────────────────────
+function AreaTooltip({card,position}){
+  const s=CS[card.letter]||GOD_CS;
+  if(!position) return null;
+  
+  return createPortal(
+    <div style={{
+      position:'fixed',left:`${position.right + 6}px`,top:`${position.top}px`,zIndex:99999,
+      background:'#0a0705',border:`1.5px solid ${s.borderBright}`,borderRadius:4,
+      padding:'12px 15px',width:200,pointerEvents:'none',
+      boxShadow:`0 0 20px ${s.glow}55`,
+      opacity:1,
+      filter:'none',
+    }}>
+      <div style={{fontFamily:"'Cinzel',serif",fontSize:10,color:s.text,letterSpacing:1,marginBottom:5}}>{card.key}</div>
+      <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontSize:11,color:'#e8cc88',fontWeight:600,marginBottom:5}}>{card.name}</div>
+      <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:11,color:'#d4b468',lineHeight:1.5}}>{card.desc}</div>
+    </div>,
+    document.body
+  );
+}
+
 function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel}){
   const def=GOD_DEFS[card.godKey];if(!def)return null;
   const[hover,setHover]=React.useState(false);
+  const[tooltipPosition,setTooltipPosition]=React.useState(null);
+  const cardRef=React.useRef(null);
   const w=small?44:compact?62:82,h=small?58:compact?82:108;
   const col=def.col;
   // fit text: long subtitle gets smaller font
@@ -2714,76 +2764,121 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLe
   const subLen=def.subtitle.length;
   const nameFsz=small?7:nameLen>6?10:12;
   const subFsz=small?6:subLen>10?8:9;
+  
+  const handleMouseEnter=()=>{
+    setHover(true);
+    if(cardRef.current){
+      const rect=cardRef.current.getBoundingClientRect();
+      setTooltipPosition(rect);
+    }
+  };
+  
+  const handleMouseLeave=()=>{
+    setHover(false);
+    setTooltipPosition(null);
+  };
+  
   return(
-    <div
-      onClick={disabled?undefined:onClick}
-      onMouseEnter={()=>setHover(true)}
-      onMouseLeave={()=>setHover(false)}
-      style={{
-        width:w,minWidth:w,height:h,flexShrink:0,
-        background:def.bgCol,
-        border:`1.5px solid ${selected?'#c8a96e':highlight?col:col+'88'}`,
-        boxShadow:selected?`0 0 14px #c8a96e88,inset 0 0 12px #c8a96e22`:hover?`0 0 14px ${col}88`:`0 0 6px ${col}44`,
-        borderRadius:3,
-        cursor:disabled?'default':'pointer',
-        opacity:disabled?0.35:1,
-        transform:selected?'translateY(-5px)':undefined,
-        transition:'all .14s',
-        display:'flex',flexDirection:'column',
-        padding:small?'3px 2px':compact?'5px 4px':'6px 6px',
-        userSelect:'none',
-        position:'relative',
-        overflow:'visible',
-      }}
-    >
-      {/* Top: god name */}
-      <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:nameFsz,color:col,lineHeight:1.2,textShadow:`0 0 8px ${col}66`,wordBreak:'keep-all'}}>{def.name}</div>
-      {/* Subtitle */}
-      {!small&&<div style={{fontFamily:"'IM Fell English',serif",fontStyle:'italic',fontSize:subFsz,color:col,lineHeight:1.2,marginTop:2,wordBreak:'keep-all',opacity:0.85}}>{def.subtitle}</div>}
-      {/* Divider */}
-      {!small&&!compact&&<div style={{height:1,background:`linear-gradient(90deg,${col}88,transparent)`,margin:'4px 0'}}/>}
-      {/* God power name small */}
-      {!small&&!compact&&<div style={{fontFamily:"'Cinzel',serif",fontSize:7.5,color:col,letterSpacing:0.5,lineHeight:1.3,opacity:0.9}}>「{def.power}」</div>}
-      {/* Octopus bottom-left */}
-      {!small&&!compact&&(
-        <div style={{position:'absolute',bottom:2,left:2}}>
-          <OctopusSVG col={col} size={28}/>
-        </div>
-      )}
+    <>
+      <div
+        ref={cardRef}
+        onClick={disabled?undefined:onClick}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        style={{
+          width:w,minWidth:w,height:h,flexShrink:0,
+          background:def.bgCol,
+          border:`1.5px solid ${selected?'#c8a96e':highlight?col:col+'88'}`,
+          boxShadow:selected?`0 0 14px #c8a96e88,inset 0 0 12px #c8a96e22`:hover?`0 0 14px ${col}88`:`0 0 6px ${col}44`,
+          borderRadius:3,
+          cursor:disabled?'default':'pointer',
+          opacity:disabled?0.35:1,
+          transform:selected?'translateY(-5px)':undefined,
+          transition:'all .14s',
+          display:'flex',flexDirection:'column',
+          padding:small?'3px 2px':compact?'5px 4px':'6px 6px',
+          userSelect:'none',
+          position:'relative',
+          overflow:'visible',
+        }}
+      >
+        {/* Top: god name */}
+        <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:nameFsz,color:col,lineHeight:1.2,textShadow:`0 0 8px ${col}66`,wordBreak:'keep-all'}}>{def.name}</div>
+        {/* Subtitle */}
+        {!small&&<div style={{fontFamily:"'IM Fell English',serif",fontStyle:'italic',fontSize:subFsz,color:col,lineHeight:1.2,marginTop:2,wordBreak:'keep-all',opacity:0.85}}>{def.subtitle}</div>}
+        {/* Divider */}
+        {!small&&!compact&&<div style={{height:1,background:`linear-gradient(90deg,${col}88,transparent)`,margin:'4px 0'}}/>}
+        {/* God power name small */}
+        {!small&&!compact&&<div style={{fontFamily:"'Cinzel',serif",fontSize:7.5,color:col,letterSpacing:0.5,lineHeight:1.3,opacity:0.9}}>「{def.power}」</div>}
+        {/* Octopus bottom-left */}
+        {!small&&!compact&&(
+          <div style={{position:'absolute',bottom:2,left:2}}>
+            <OctopusSVG col={col} size={28}/>
+          </div>
+        )}
+      </div>
       {/* Hover tooltip */}
-      {!small&&hover&&<GodTooltip def={def} godLevel={godLevel||1}/>}
-    </div>
+      {!small&&hover&&<GodTooltip def={def} godLevel={godLevel||1} position={tooltipPosition}/>}
+    </>
   );
 }
 function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel}){
   if(!card)return null;
   if(card.isGod) return <GodDDCard card={card} onClick={onClick} disabled={disabled} selected={selected} highlight={highlight} small={small} compact={compact} godLevel={godLevel}/>;
+  const[hover,setHover]=React.useState(false);
+  const[tooltipPosition,setTooltipPosition]=React.useState(null);
+  const cardRef=React.useRef(null);
   const s=CS[card.letter]||GOD_CS;
   const w=small?44:compact?62:82,h=small?58:compact?82:108;
+  
+  const handleMouseEnter=()=>{
+    setHover(true);
+    if(cardRef.current){
+      const rect=cardRef.current.getBoundingClientRect();
+      setTooltipPosition(rect);
+    }
+  };
+  
+  const handleMouseLeave=()=>{
+    setHover(false);
+    setTooltipPosition(null);
+  };
+  
   return(
-    <div onClick={disabled?undefined:onClick} style={{
-      width:w,minWidth:w,height:h,flexShrink:0,
-      background:s.bg,
-      border:`1.5px solid ${selected?'#c8a96e':highlight?s.borderBright:s.border}`,
-      boxShadow:selected?`0 0 14px #c8a96e88,inset 0 0 12px #c8a96e22`:highlight?`0 0 10px ${s.glow}88`:`inset 0 1px 0 ${s.border}44`,
-      borderRadius:3,
-      cursor:disabled?'default':'pointer',
-      opacity:disabled?0.35:1,
-      transform:selected?'translateY(-5px)':undefined,
-      transition:'all .14s',
-      display:'flex',flexDirection:'column',
-      padding:small?'4px 3px':compact?'5px 5px':'7px 8px',
-      userSelect:'none',
-      position:'relative',
-    }}>
-      {/* Corner ornament */}
-      {!small&&!compact&&<div style={{position:'absolute',top:3,right:5,color:s.border,fontSize:9,opacity:0.7}}>✦</div>}
-      <div style={{color:s.text,fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:small?12:compact?15:18,lineHeight:1,textShadow:`0 0 6px ${s.text}55`}}>{card.key}</div>
-      {!small&&<div style={{color:'#e8cc88',fontFamily:"'IM Fell English','Georgia',serif",fontSize:compact?9.5:10.5,fontWeight:600,marginTop:compact?2:4,lineHeight:1.25}}>{card.name}</div>}
-      {!small&&!compact&&<div style={{color:'#d4b468',fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:9.5,marginTop:'auto',lineHeight:1.35}}>{card.desc}</div>}
-      {/* Bottom ornament */}
-      {!small&&!compact&&<div style={{position:'absolute',bottom:3,left:'50%',transform:'translateX(-50%)',color:s.border,fontSize:8,opacity:0.5}}>— ✦ —</div>}
-    </div>
+    <>
+      <div 
+        ref={cardRef}
+        onClick={disabled?undefined:onClick}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        style={{
+          width:w,minWidth:w,height:h,flexShrink:0,
+          background:s.bg,
+          border:`1.5px solid ${selected?'#c8a96e':highlight?s.borderBright:s.border}`,
+          boxShadow:selected?`0 0 14px #c8a96e88,inset 0 0 12px #c8a96e22`:highlight?`0 0 10px ${s.glow}88`:`inset 0 1px 0 ${s.border}44`,
+          borderRadius:3,
+          cursor:disabled?'default':'pointer',
+          opacity:disabled?0.35:1,
+          transform:selected?'translateY(-5px)':undefined,
+          transition:'all .14s',
+          display:'flex',flexDirection:'column',
+          padding:small?'4px 3px':compact?'5px 5px':'7px 8px',
+          userSelect:'none',
+          position:'relative',
+          overflow:'visible',
+        }}
+      >
+        {/* Corner ornament */}
+        {!small&&!compact&&<div style={{position:'absolute',top:3,right:5,color:s.border,fontSize:9,opacity:0.7}}>✦</div>}
+        <div style={{color:s.text,fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:small?12:compact?15:18,lineHeight:1,textShadow:`0 0 6px ${s.text}55`}}>{card.key}</div>
+        {!small&&<div style={{color:'#e8cc88',fontFamily:"'IM Fell English','Georgia',serif",fontSize:compact?9.5:10.5,fontWeight:600,marginTop:compact?2:4,lineHeight:1.25}}>{card.name}</div>}
+        {!small&&!compact&&<div style={{color:'#d4b468',fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:9.5,marginTop:'auto',lineHeight:1.35}}>{card.desc}</div>}
+        {/* Bottom ornament */}
+        {!small&&!compact&&<div style={{position:'absolute',bottom:3,left:'50%',transform:'translateX(-50%)',color:s.border,fontSize:8,opacity:0.5}}>— ✦ —</div>}
+      </div>
+      {/* Hover tooltip */}
+      {!small&&hover&&<AreaTooltip card={card} position={tooltipPosition}/>}
+    </>
   );
 }
 
@@ -4107,7 +4202,7 @@ export default function Game(){
           setCurrentFile(file.split('/').pop());
           const video = document.createElement('video');
           video.src = file;
-          video.preload = 'auto';
+          video.preload = 'metadata'; // 只加载元数据，更快
           video.crossOrigin = 'anonymous';
           
           // Get file size
@@ -4120,7 +4215,7 @@ export default function Game(){
           }
           
           await new Promise((resolve, reject) => {
-            video.addEventListener('canplaythrough', () => {
+            video.addEventListener('loadeddata', () => { // 只需要加载第一帧
               loadedBytes += fileSize;
               setLoadedSize(loadedBytes);
               resolve();
@@ -5033,8 +5128,17 @@ export default function Game(){
       // If AI is hunting player 0, pause here for player input (after draw card anim)
       if(newGs.phase==='PLAYER_REVEAL_FOR_HUNT'){
         const queue=[];
-        if(gs._drawnCard) queue.push({type:'DRAW_CARD',card:gs._drawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn});
-        triggerAnimQueue(queue,newGs);
+        if(rawResult._aiDrawnCard) queue.push({type:'DRAW_CARD',card:rawResult._aiDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn});
+        // Add discard anim if AI chose to discard the drawn card
+        const discardMsg=newGs.log.slice(gs.log.length).find(m=>m.includes('评估后选择弃置'));
+        if(discardMsg&&rawResult._aiDrawnCard){
+          queue.push({type:'DISCARD',card:rawResult._aiDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn});
+        }
+        // Play draw and discard animations first, then show hunt animation
+        triggerAnimQueue(queue, newGs, () => {
+          // After draw animations complete, show hunt animation
+          triggerAnimQueue([{type:'SKILL_HUNT',msgs:newGs.log.slice(gs.log.length),targetIdx:0}], newGs);
+        });
         return;
       }
       // Strip ALL animation-only temp fields before storing as real game state
@@ -5048,19 +5152,24 @@ export default function Game(){
       const queue=[];
       // 1. Banner anim: 'YOUR_TURN' equivalent for AI — shown via gs.phase=AI_TURN before queue
       //    (no explicit anim needed; the static UI banner shows when !anim)
-      // 2. Draw card anim for THIS AI (card drawn at turn start, stored in gs._drawnCard)
-      if(gs._drawnCard) queue.push({type:'DRAW_CARD',card:gs._drawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn});
+      // 2. Draw card anim for THIS AI (card drawn at turn start, stored in rawResult._aiDrawnCard)
+      if(rawResult._aiDrawnCard) queue.push({type:'DRAW_CARD',card:rawResult._aiDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn});
       // 2b. Stat changes caused by THIS AI's drawn card (draw effects: gs._playersBeforeThisDraw → gs.players)
-      if(gs._playersBeforeThisDraw&&gs._drawnCard){
+      if(gs._playersBeforeThisDraw&&rawResult._aiDrawnCard){
         const drawEffectQ=buildAnimQueue(fakeGs(gs._playersBeforeThisDraw),gs);
         queue.push(...drawEffectQ);
+      }
+      // 2c. Discard anim if AI chose to discard the drawn card
+      const discardMsg=newMsgs.find(m=>m.includes('评估后选择弃置'));
+      if(discardMsg&&rawResult._aiDrawnCard){
+        queue.push({type:'DISCARD',card:rawResult._aiDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn});
       }
       // 3. Dice anim (if AI rested)
       const restMsg=newMsgs.find(m=>m.includes('选择【休息】')&&m.includes('掷骰'));
       if(restMsg){
         const m=restMsg.match(/掷骰 (\d+)\+(\d+)，回复 (\d+)HP/);
         if(m){const rd1=+m[1],rd2=+m[2],rh=+m[3];queue.push({type:'DICE_ROLL',d1:rd1,d2:rd2,heal:rh,rollerName:_aiName||gs.players[gs.currentTurn]?.name});}}
-      // 4. Skill anim (if used)
+      // 4. Skill anim (if used) - play after draw and discard animations
       if(j.includes('掉包')) queue.push({type:'SKILL_SWAP',msgs:newMsgs});
       else if(j.includes('追捕')){const hti=newGs.players.findIndex((p,i)=>i>0&&p.hp<(gs.players[i]?.hp??10));queue.push({type:'SKILL_HUNT',msgs:newMsgs,targetIdx:hti>0?hti:1});}
       else if(j.includes('蛊惑')){
@@ -5091,7 +5200,7 @@ export default function Game(){
         queue.push(...actionStatQ);
       }
       triggerAnimQueue(queue,newGs);
-    },700);
+    },2100);
     return()=>{clearTimeout(timerRef.current);clearTimeout(watchdog);};
   },[gs?.currentTurn,gs?.phase,gs?._turnKey,anim,gs?.gameOver]);
 
@@ -6412,11 +6521,20 @@ export default function Game(){
     const dr=gs.drawReveal;if(!dr?.card)return;
     const drawerIdx=dr.drawerIdx??0;
     const who=drawerIdx===0?'你':(dr.drawerName||gs.players[drawerIdx]?.name||'该角色');
-    // 保留abilityData中的cthDrawsRemaining信息
+    // 先播放弃牌动画，再更新游戏状态
+    const discardCard=dr.card;
+    const queue=[{type:'DISCARD',card:discardCard,triggerName:who}];
     const newGs={...gs,discard:[...gs.discard,dr.card],log:[...gs.log,`${who} 弃置了 [${dr.card.key}] ${dr.card.name}`],phase:'ACTION',drawReveal:null,abilityData:gs.abilityData};
     // CTH fromRest: after discarding, process remaining draws then advance turn
-    if(dr.fromRest){_cthContinueRestDraws(newGs);return;}
-    setGs(newGs);
+    if(dr.fromRest){
+      // 播放动画后继续处理剩余抽牌
+      triggerAnimQueue(queue,newGs,()=>{
+        _cthContinueRestDraws(newGs);
+      });
+    }else{
+      // 播放动画后更新游戏状态
+      triggerAnimQueue(queue,newGs);
+    }
   }
 
   function useAbility(){
@@ -7471,7 +7589,7 @@ export default function Game(){
             <div>
               <div ref={roleTextRef} style={{fontFamily:"'Cinzel',serif",color:'#7a5a2a',fontSize:9,letterSpacing:2,marginBottom:3,textTransform:'uppercase'}}>你的身份</div>
               <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:13,color:ri.col,textShadow:`0 0 12px ${ri.col}66`,letterSpacing:1}}>{ri.icon} {me.role}</div>
-              <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#a07838',fontSize:10,marginTop:4,lineHeight:1.6}}>{ri.goal}</div>
+              <div style={{fontFamily:"'Playfair Display','IM Fell English','Georgia',serif",fontStyle:'italic',color:'#a07838',fontSize:10,marginTop:4,lineHeight:1.6}}>{ri.goal}</div>
               {me.isResting&&<div style={{marginTop:4,fontSize:10,color:'#4ade80',fontFamily:"'Cinzel',serif",letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 翻面中 — 下回合跳过</div>}
             {/* God zone display */}
             {(me.godEncounters||0)>0&&<div style={{marginTop:4,fontSize:10,color:'#8b6060',letterSpacing:1}}>{'💀'.repeat(Math.min(me.godEncounters,5))}{me.godEncounters>5?`×${me.godEncounters}`:''} 邪神遭遇</div>}
@@ -8771,6 +8889,11 @@ const GLOBAL_STYLES=`
     0%   {bottom:14%;left:50%;transform:translateX(-50%) scale(1);opacity:1}
     40%  {bottom:36%;left:38%;transform:translateX(-50%) scale(1.08) rotate(-8deg);opacity:1}
     100% {bottom:44%;left:28%;transform:translateX(-50%) scale(0.85) rotate(-18deg);opacity:0.7}
+  }
+  @keyframes discardCardFlyFromAI {
+    0%   {transform:translate(-50%, -50%) scale(1);opacity:1}
+    40%  {transform:translate(-120px, -60px) scale(1.08) rotate(-8deg);opacity:1}
+    100% {transform:translate(-200px, -80px) scale(0.85) rotate(-18deg);opacity:0.7}
   }
   @keyframes discardBgFade {
     0%   {opacity:0}
