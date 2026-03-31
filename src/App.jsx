@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import ReactDOM, { createPortal } from "react-dom";
 // socket.io-client is loaded at runtime via CDN (only outside Claude Artifacts)
 
@@ -32,7 +32,7 @@ function Ellipsis() {
   return <span>{'.'.repeat(dots)}</span>;
 }
 
-// ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════、
 //  UTILITIES
 // ══════════════════════════════════════════════════════════════
 const shuffle=a=>{const b=[...a];for(let i=b.length-1;i>0;i--){const j=0|Math.random()*(i+1);[b[i],b[j]]=[b[j],b[i]];}return b;};
@@ -5012,7 +5012,7 @@ function GammaSlider({gamma,onChange}){
             onChange={e=>onChange(parseFloat(e.target.value))}
             style={{width:90,accentColor:'#b07828',cursor:'pointer'}}
           />
-          <span style={{fontFamily:"'Cinzel',serif",fontSize:9,color:'#b07828',width:28,textAlign:'right'}}>{Math.round((gamma-1)*100>0?'+':''+(gamma-1)*100)}%</span>
+          <span style={{fontFamily:"'Cinzel',serif",fontSize:9,color:'#b07828',width:28,textAlign:'right'}}>{(()=>{const v=Math.round((gamma-1)*100);return v>0?'+'+v:v;})()}%</span>
           <button onClick={()=>onChange(1)} style={{background:'none',border:'none',color:'#7a5020',fontSize:9,cursor:'pointer',padding:'0 2px',fontFamily:"'Cinzel',serif"}}>重置</button>
         </div>
       )}
@@ -7538,6 +7538,8 @@ export default function Game(){
   const effectiveRole=me._nyaBorrow||me.role;
   const effectiveHandLimit=Math.max(0,(me._nyaHandLimit??4)-(me.handLimitDecrease||0));
   const myTurn=gs.currentTurn===0;
+  // 只有当底层是玩家回合，且没有正在播放的动画，且动画队列为空时，才算真正轮到玩家
+  const isVisualPlayerTurn = myTurn && !anim && (animQueueRef.current.length === 0);
   const canWin=effectiveRole==='寻宝者'&&isWinHand(me.hand);
   const phase=gs.phase;
   const ri=RINFO[me.role];
@@ -9056,17 +9058,17 @@ export default function Game(){
     if(phase==='SWAP_GIVE_CARD')return true;
     if(phase==='BEWITCH_SELECT_CARD')return true;
     if(phase==='DISCARD_PHASE'){const sel=gs.abilityData.discardSelected||[];const max=me.hand.length-4;return sel.includes(idx)||sel.length<max;}
-    if(phase==='HUNT_CONFIRM'&&myTurn){const rc=gs.abilityData?.revCard;return!!(rc&&(c.letter===rc.letter||c.number===rc.number));}
-    if(phase==='HUNT_WAIT_REVEAL'&&!myTurn&&gs.abilityData?.huntTi===0)return!c.isGod;
+    if(phase==='HUNT_CONFIRM'&&isVisualPlayerTurn){const rc=gs.abilityData?.revCard;return!!(rc&&(c.letter===rc.letter||c.number===rc.number));}
+    if(phase==='HUNT_WAIT_REVEAL'&&!isVisualPlayerTurn&&gs.abilityData?.huntTi===0)return!c.isGod;
     if(phase==='PLAYER_REVEAL_FOR_HUNT')return!c.isGod; // only zone cards
-    if(phase==='HUNT_SELECT_CARD_FROM_PUBLIC'&&myTurn){
+    if(phase==='HUNT_SELECT_CARD_FROM_PUBLIC'&&isVisualPlayerTurn){
       const huntTi=gs.abilityData?.huntTi;
       const targetPlayer=gs.players[huntTi];
       return targetPlayer&&idx<targetPlayer.hand.length;
     }
     if(phase==='CAVE_DUEL_SELECT_CARD'&&myTurn)return true;
     // God card in ACTION phase: upgrade (same god) is always allowed; worship/convert requires slot
-    if(phase==='ACTION'&&myTurn&&c.isGod){
+    if(phase==='ACTION'&&isVisualPlayerTurn&&c.isGod){
       const isUpgrade=me.godName===c.godKey&&(me.godLevel||0)<3;
       if(isUpgrade||(!gs.godTriggeredThisTurn&&!gs.godFromHandUsed))return true;
     }
@@ -9132,7 +9134,7 @@ export default function Game(){
       })()}
 
       {/* Target selection mask + floating prompt */}
-      <TargetSelectOverlay drawReveal={gs.drawReveal} phase={myTurn?phase:null} bewitchCard={gs.abilityData?.bewitchCard}/>
+      <TargetSelectOverlay drawReveal={gs.drawReveal} phase={isVisualPlayerTurn?phase:null} bewitchCard={gs.abilityData?.bewitchCard}/>
 
       {/* God choice modal */}
       {phase==='GOD_CHOICE'&&gs.abilityData?.godCard&&isLocalGodChoice&&(()=>{
@@ -9449,9 +9451,9 @@ export default function Game(){
             <span style={{fontFamily:"'Cinzel',serif",color:phase==='DISCARD_PHASE'||phase==='PLAYER_REVEAL_FOR_HUNT'?'#882020':'#3a2510',fontSize:10,letterSpacing:1}}>
               {phase==='DISCARD_PHASE'?`⚠ 手牌超限 (${me.hand.length}/${effectiveHandLimit})`:phase==='PLAYER_REVEAL_FOR_HUNT'?'⚠ 选择亮出一张区域牌':phase==='HUNT_WAIT_REVEAL'&&!myTurn&&gs.abilityData?.huntTi===0?'⚠ 选择亮出一张区域牌':`手牌 (${me.hand.length}/${effectiveHandLimit})`}
             </span>
-            {(phase==='ACTION'&&myTurn&&!isBlocked||cancelable)&&(
+            {(phase==='ACTION'&&isVisualPlayerTurn&&!isBlocked||cancelable)&&(
               <div style={{display:'flex',gap:8,marginLeft:'auto',flexWrap:'wrap',position:'relative',zIndex:200}}>
-                {phase==='ACTION'&&myTurn&&!isBlocked&&(()=>{
+                {phase==='ACTION'&&isVisualPlayerTurn&&!isBlocked&&(()=>{
                   // 对于其他职业，只要技能或休息中的任意一个被使用，那么两者都不能再使用
                   // 对于追猎者，只要休息被使用，就不能再使用技能；只要技能被使用，就不能再休息，但技能可以多次使用
                   const skillRole=gs.globalOnlySwapOwner!=null?'寻宝者':me.role;
@@ -9504,7 +9506,7 @@ export default function Game(){
                     position:'relative',zIndex:200,
                   }}>✕ 取消</button>
                 )}
-                {phase==='HUNT_CONFIRM'&&(!gs._isMP||myTurn)&&(
+                {phase==='HUNT_CONFIRM'&&(!gs._isMP||isVisualPlayerTurn)&&(
                   <button onClick={()=>huntConfirm(-1)} style={{
                     padding:'6px 18px',background:'#1a0c04',
                     border:'2px solid #d4832a',color:'#f0a855',
@@ -9537,8 +9539,8 @@ export default function Game(){
               const isSel=phase==='DISCARD_PHASE'&&(gs.abilityData.discardSelected||[]).includes(i);
               const isMatch=phase==='HUNT_CONFIRM'&&gs.abilityData?.revCard&&(c.letter===gs.abilityData.revCard.letter||c.number===gs.abilityData.revCard.number);
               const isGodUpgrade=c.isGod&&me.godName===c.godKey&&(me.godLevel||0)<3;
-              const canUpgradeNow=isGodUpgrade&&phase==='ACTION'&&myTurn;
-              const canWorshipNow=c.isGod&&!isGodUpgrade&&phase==='ACTION'&&myTurn&&!gs.godTriggeredThisTurn&&!gs.godFromHandUsed;
+              const canUpgradeNow=isGodUpgrade&&phase==='ACTION'&&isVisualPlayerTurn;
+              const canWorshipNow=c.isGod&&!isGodUpgrade&&phase==='ACTION'&&isVisualPlayerTurn&&!gs.godTriggeredThisTurn&&!gs.godFromHandUsed;
               return(<div key={c.id} style={{position:'relative',display:'inline-block'}}>
                 <DDCard card={c} onClick={clickable?()=>handleMyCardClick(i):undefined} disabled={!clickable} selected={isSel} highlight={isMatch||canWorshipNow||canUpgradeNow} godLevel={me.godName===c.godKey?me.godLevel:0} compact={isMobile}/>
                 {canUpgradeNow&&<div style={{position:'absolute',top:-7,left:'50%',transform:'translateX(-50%)',fontFamily:"'Cinzel',serif",fontSize:8,color:'#c8a96e',background:'#0a0705',border:'1px solid #8a6020',borderRadius:2,padding:'1px 4px',pointerEvents:'none',whiteSpace:'nowrap',zIndex:10}}>⬆ 升级邪神之力</div>}
