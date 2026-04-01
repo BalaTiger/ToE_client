@@ -37,7 +37,14 @@ function Ellipsis() {
 // ══════════════════════════════════════════════════════════════
 const shuffle=a=>{const b=[...a];for(let i=b.length-1;i>0;i--){const j=0|Math.random()*(i+1);[b[i],b[j]]=[b[j],b[i]];}return b;};
 const clamp=(v,lo=0,hi=10)=>Math.max(lo,Math.min(hi,v));
-const copyPlayers=ps=>ps.map(p=>({...p,hand:[...p.hand],godZone:[...(p.godZone||[])]}));
+const copyPlayers=ps=>ps.map(p=>({...p,hand:[...p.hand],godZone:[...(p.godZone||[])],zoneCards:[...(p.zoneCards||[])]}));
+const isZoneCard=c=>!!c?.isZone;
+const isBlankZoneCard=c=>c?.type==='blankZone';
+const cardsHuntMatch=(a,b)=>{
+  if(!a||!b)return false;
+  if(isBlankZoneCard(a)||isBlankZoneCard(b))return true;
+  return a.letter===b.letter||a.number===b.number;
+};
 const buildPublicUrl=path=>{
   // Use window.__PUBLIC_BASE__ if set by the host page (Vite injects BASE_URL there),
   // otherwise fall back to '/' which works for the default deployment config.
@@ -163,76 +170,110 @@ function mkRoles(N=5, isSinglePlayer=false) {
   
   return shuffle(roles);
 }
-const isWinHand=h=>{const ls=new Set(h.map(c=>c.letter)),ns=new Set(h.map(c=>c.number));return LETTERS.every(l=>ls.has(l))&&NUMS.every(n=>ns.has(n));};
+const isWinHand=h=>{
+  const blanks=h.filter(isBlankZoneCard).length;
+  const ls=new Set(h.map(c=>c.letter).filter(Boolean));
+  const ns=new Set(h.map(c=>c.number).filter(n=>n!=null));
+  const missingLetters=LETTERS.filter(l=>!ls.has(l)).length;
+  const missingNumbers=NUMS.filter(n=>!ns.has(n)).length;
+  return Math.max(missingLetters,missingNumbers)<=blanks;
+};
 
-// AI 亮牌策略：选择与追猎者手牌匹配度最低的区域牌（降低被击中概率）
-function aiChooseRevealCard(targetHand, hunterHand, log, discardPile){
-  const zoneCards=targetHand.filter(c=>!c.isGod);
+function moveEligibleBlankZones(players,log=[]){
+  let changed=false;
+  const P=copyPlayers(players);
+  const L=[...log];
+  P.forEach(player=>{
+    if(!player||player.isDead)return;
+    const blankZones=(player.zoneCards||[]).filter(isBlankZoneCard);
+    if(!blankZones.length)return;
+    if(player.hand.length<=3){
+      blankZones.forEach(blank=>{
+        player.hand.push(blank);
+        L.push(`${player.name} 手牌不大于3张，将空白区域牌收入手牌`);
+      });
+      player.zoneCards=(player.zoneCards||[]).filter(c=>!isBlankZoneCard(c));
+      changed=true;
+    }
+  });
+  return changed?{players:P,log:L}:null;
+}
+
+// AI 亮牌策略：只根据当前追猎者的公开信息，选择风险最低的区域牌
+function aiChooseRevealCard(targetHand, hunterName, log=[]){
+  const zoneCards=targetHand.filter(isZoneCard);
   if(!zoneCards.length)return targetHand[0];
+  const hunterLogPrefixes=[
+    `${hunterName} `,
+    `${hunterName}（追猎者）`,
+    `${hunterName}（寻宝者）`,
+    `${hunterName}（邪祀者）`,
+  ];
+  const isHunterEntry=entry=>hunterLogPrefixes.some(prefix=>entry.startsWith(prefix));
+  const parseCardKey=cardKey=>{
+    if(!cardKey)return null;
+    const letterMatch=cardKey.match(/[A-Z]/);
+    const numberMatch=cardKey.match(/\d+/);
+    if(!letterMatch||!numberMatch)return null;
+    return {key:cardKey,letter:letterMatch[0],number:parseInt(numberMatch[0])};
+  };
+  const hunterCardsInHand=[];
+  log.forEach(entry=>{
+    if(!isHunterEntry(entry)||!entry.includes('摸到')||!entry.includes('[')||!entry.includes(']'))return;
+    const cardMatch=entry.match(/\[(.*?)\]/);
+    const cardKey=cardMatch?.[1];
+    if(!cardKey)return;
+    const wasDiscarded=log.some(logEntry=>isHunterEntry(logEntry)&&logEntry.includes(`弃 [${cardKey}]`));
+    if(wasDiscarded)return;
+    const parsed=parseCardKey(cardKey);
+    if(parsed)hunterCardsInHand.push(parsed);
+  });
+
+  const safeRevealPatterns=[];
+  for(let index=0;index<log.length;index++){
+    const entry=log[index];
+    let targetName=null;
+    let cardKey=null;
+    if(hunterName==='你'){
+      const match=entry.match(/^你（追猎者）追捕 (.+?)，.+?亮出 \[(.*?)\]/);
+      targetName=match?.[1]||null;
+      cardKey=match?.[2]||null;
+      if(!targetName||!cardKey)continue;
+      const laterFailure=log.slice(index+1).some(nextEntry=>nextEntry===`放弃追捕 ${targetName}`);
+      if(!laterFailure)continue;
+    }else{
+      const escapedHunterName=hunterName.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      const match=entry.match(new RegExp(`^${escapedHunterName}（追猎者）对 (.+?) 【追捕】，亮出 \\[(.*?)\\]`));
+      targetName=match?.[1]||null;
+      cardKey=match?.[2]||null;
+      if(!targetName||!cardKey)continue;
+      const laterFailure=log.slice(index+1).some(nextEntry=>nextEntry===`无匹配手牌，放弃追捕 ${targetName}`);
+      if(!laterFailure)continue;
+    }
+    const parsed=parseCardKey(cardKey);
+    if(parsed)safeRevealPatterns.push(parsed);
+  }
 
   const scored=zoneCards.map(c=>{
     let safetyScore=0;
-
-    const hunterCardsInHand=[];
-    log.forEach(entry=>{
-      if(entry.includes('摸到')&&entry.includes('[')&&entry.includes(']')){
-        const cardMatch=entry.match(/\[(.*?)\]/);
-        if(cardMatch){
-          const cardKey=cardMatch[1];
-          const wasDiscarded=log.some(logEntry=>logEntry.includes('弃 [')&&logEntry.includes(cardKey)&&logEntry.includes(']'));
-          if(!wasDiscarded){
-            const letterMatch=cardKey.match(/[A-Z]/);
-            const numberMatch=cardKey.match(/\d+/);
-            if(letterMatch&&numberMatch){
-              hunterCardsInHand.push({letter:letterMatch[0],number:parseInt(numberMatch[0])});
-            }
-          }
-        }
-      }
-    });
 
     const isSimilarToHunterCard=hunterCardsInHand.some(hc=>hc.letter===c.letter||hc.number===c.number);
     if(!isSimilarToHunterCard){
       safetyScore+=3;
     }
 
-    const recentHuntEntries=[];
-    log.forEach((entry,index)=>{
-      if(entry.includes('追捕')&&entry.includes('亮出')){
-        recentHuntEntries.push({entry,index});
-      }
+    safeRevealPatterns.forEach(pattern=>{
+      if(pattern.key===c.key)safetyScore+=5;
+      else if(pattern.letter===c.letter||pattern.number===c.number)safetyScore+=2;
     });
-    recentHuntEntries.sort((a,b)=>b.index-a.index);
-
-    if(recentHuntEntries.length>0){
-      const lastHuntEntry=recentHuntEntries[0].entry;
-      if(lastHuntEntry.includes('亮出')&&!lastHuntEntry.includes('受')){
-        const cardMatch=lastHuntEntry.match(/\[(.*?)\]/);
-        if(cardMatch){
-          const cardKey=cardMatch[1];
-          const letterMatch=cardKey.match(/[A-Z]/);
-          const numberMatch=cardKey.match(/\d+/);
-          if(letterMatch&&numberMatch){
-            const revealedCard={letter:letterMatch[0],number:parseInt(numberMatch[0])};
-            if(revealedCard.letter===c.letter||revealedCard.number===c.number){
-              safetyScore+=2;
-            }
-          }
-        }
-      }
-    }
 
     const discardedHunterCards=[];
     log.forEach(entry=>{
-      if(entry.includes('弃 [')&&entry.includes(']')){
+      if(isHunterEntry(entry)&&entry.includes('弃 [')&&entry.includes(']')){
         const cardMatch=entry.match(/\[(.*?)\]/);
         if(cardMatch){
-          const cardKey=cardMatch[1];
-          const letterMatch=cardKey.match(/[A-Z]/);
-          const numberMatch=cardKey.match(/\d+/);
-          if(letterMatch&&numberMatch){
-            discardedHunterCards.push({letter:letterMatch[0],number:parseInt(numberMatch[0])});
-          }
+          const parsed=parseCardKey(cardMatch[1]);
+          if(parsed)discardedHunterCards.push(parsed);
         }
       }
     });
@@ -255,6 +296,40 @@ function aiChooseRevealCard(targetHand, hunterHand, log, discardPile){
   const bestCards=scored.filter(s=>s.safetyScore===maxScore);
   const randomIndex=Math.floor(Math.random()*bestCards.length);
   return bestCards[randomIndex].c;
+}
+
+function aiChooseHunterLootCards(targetHand,hunterHand,maxToTake=3){
+  const remaining=[...targetHand];
+  const chosen=[];
+  const hunterLetters=new Set(hunterHand.filter(c=>c?.letter).map(c=>c.letter));
+  const hunterNumbers=new Set(hunterHand.filter(c=>c?.number!=null).map(c=>c.number));
+  const pickCount=Math.min(maxToTake,remaining.length);
+  for(let pick=0;pick<pickCount;pick++){
+    let bestIdx=0;
+    let bestScore=-Infinity;
+    for(let i=0;i<remaining.length;i++){
+      const card=remaining[i];
+      const hasLetter=card?.letter!=null;
+      const hasNumber=card?.number!=null;
+      const missingLetter=hasLetter&&!hunterLetters.has(card.letter);
+      const missingNumber=hasNumber&&!hunterNumbers.has(card.number);
+      let score=0;
+      if(missingLetter)score+=2;
+      if(missingNumber)score+=2;
+      if(missingLetter&&missingNumber)score+=1;
+      if(card?.isGod)score-=3;
+      if(score>bestScore||(score===bestScore&&Math.random()<0.5)){
+        bestScore=score;
+        bestIdx=i;
+      }
+    }
+    const [card]=remaining.splice(bestIdx,1);
+    if(!card)break;
+    chosen.push(card);
+    if(card.letter!=null)hunterLetters.add(card.letter);
+    if(card.number!=null)hunterNumbers.add(card.number);
+  }
+  return chosen;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -680,6 +755,20 @@ function aiShouldKeepZoneCard(card,ci,players,forced=false){
 function applyFx(card,ci,ti,ps,deck,disc,gs,avoidNegative=false,avoidNegativeFor=[],isAI=false){
   let P=copyPlayers(ps),D=[...deck],Disc=[...disc],msgs=[];
   let statePatch={};
+  let inspectionMeta={
+    inspectionDeck: gs?.inspectionDeck??[],
+    inspectionDiscard: gs?.inspectionDiscard??[],
+    sealLooseningCount: gs?.sealLooseningCount??0,
+    houndsOfTindalosActive: gs?.houndsOfTindalosActive??false,
+    houndsOfTindalosTarget: gs?.houndsOfTindalosTarget??null,
+    houndsOfTindalosElapsed: gs?.houndsOfTindalosElapsed??0,
+    _inspectionSeq: gs?._inspectionSeq||0,
+    _inspectionCard: gs?._inspectionCard||null,
+    _inspectionTarget: gs?._inspectionTarget??null,
+    _inspectionPrevLogLen: gs?._inspectionPrevLogLen??null,
+    _inspectionBeforePlayers: gs?._inspectionBeforePlayers??null,
+  };
+  const pendingInspectionTargets=[];
   const dmgBonus=P[ci]?.damageBonus||0;
   const healHP=(i,v)=>{if(i==null||!P[i]||P[i].isDead)return;P[i].hp=clamp(P[i].hp+v);};
   const healSAN=(i,v)=>{if(i==null||!P[i]||P[i].isDead)return;P[i].san=clamp(P[i].san+v);};
@@ -717,14 +806,8 @@ function applyFx(card,ci,ti,ps,deck,disc,gs,avoidNegative=false,avoidNegativeFor
     P=inspectionResult.players;
     D=inspectionResult.deck;
     Disc=inspectionResult.discard;
-    statePatch={
-      ...statePatch,
-      inspectionDeck:inspectionResult.inspectionDeck,
-      inspectionDiscard:inspectionResult.inspectionDiscard,
-      sealLooseningCount:inspectionResult.sealLooseningCount,
-      houndsOfTindalosActive:inspectionResult.houndsOfTindalosActive,
-      houndsOfTindalosTarget:inspectionResult.houndsOfTindalosTarget,
-    };
+    inspectionMeta=mergeInspectionMeta(inspectionMeta,inspectionResult);
+    statePatch={...statePatch,...inspectionMeta};
     const fullLog=Array.isArray(inspectionResult.log)?inspectionResult.log:baseLog;
     const extraMsgs=fullLog.slice(baseLog.length);
     if(extraMsgs.length)msgs.push(...extraMsgs);
@@ -734,19 +817,7 @@ function applyFx(card,ci,ti,ps,deck,disc,gs,avoidNegative=false,avoidNegativeFor
     P[i].san=clamp(P[i].san-v);
     const newSan=P[i].san;
     if(newSan<=6){
-      const inspectionBaseLog=[...(Array.isArray(gs?.log)?gs.log:[]),...msgs];
-      const inspectionResult=handleInspection(i,{
-        players:P,
-        deck:D,
-        discard:Disc,
-        log:inspectionBaseLog,
-        inspectionDeck:statePatch.inspectionDeck??gs?.inspectionDeck??[],
-        inspectionDiscard:statePatch.inspectionDiscard??gs?.inspectionDiscard??[],
-        sealLooseningCount:statePatch.sealLooseningCount??gs?.sealLooseningCount??0,
-        houndsOfTindalosActive:statePatch.houndsOfTindalosActive??gs?.houndsOfTindalosActive??false,
-        houndsOfTindalosTarget:statePatch.houndsOfTindalosTarget??gs?.houndsOfTindalosTarget??null,
-      });
-      mergeInspectionResult(inspectionResult,inspectionBaseLog);
+      pendingInspectionTargets.push(i);
     }
   };
   const dealHP=(i,v)=>hurtHP(i,v+dmgBonus);
@@ -1120,8 +1191,10 @@ function applyFx(card,ci,ti,ps,deck,disc,gs,avoidNegative=false,avoidNegativeFor
       if(!avoidNegative&&!avoidNegativeFor.includes(ci)){
         // 创建空白区域牌
         const blankZone={
+          id:`blank-${ci}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
           name:'空白区域牌',
           key:'BLANK',
+          isZone:true,
           type:'blankZone',
           desc:'可代表任意字母和数字组合'
         };
@@ -1238,6 +1311,13 @@ function applyFx(card,ci,ti,ps,deck,disc,gs,avoidNegative=false,avoidNegativeFor
         }
       }
       break;
+  }
+  if(pendingInspectionTargets.length){
+    const inspectionBaseLog=[...(Array.isArray(gs?.log)?gs.log:[]),...msgs];
+    const processed=processInspectionTargets(pendingInspectionTargets,gs?.currentTurn??ci,P,D,Disc,inspectionBaseLog,inspectionMeta);
+    P=processed.P;D=processed.D;Disc=processed.Disc;inspectionMeta=processed.inspectionMeta;
+    msgs=[...msgs,...processed.log.slice(inspectionBaseLog.length)];
+    statePatch={...statePatch,...inspectionMeta};
   }
   return{P,D,Disc,msgs,statePatch};
 }
@@ -1404,13 +1484,13 @@ function getHunterChaseTargets(players,hunterIdx,huntAbandoned=[]){
   return players
     .map((player,idx)=>({player,idx}))
     .filter(({player,idx})=>!player.isDead && idx!==hunterIdx && player.role!==ROLE_HUNTER && !huntAbandoned.includes(idx))
-    .filter(({player})=>(player.hand||[]).some(c=>!c.isGod));
+    .filter(({player})=>(player.hand||[]).some(isZoneCard));
 }
 
 function shouldHunterKeepChasing(players,hunterIdx,huntAbandoned=[]){
   const hunter=players[hunterIdx];
   if(!hunter||hunter.isDead)return false;
-  const hunterZoneCards=(hunter.hand||[]).filter(c=>!c.isGod);
+  const hunterZoneCards=(hunter.hand||[]).filter(isZoneCard);
   const hunterHandLimit=hunter._nyaHandLimit??4;
   const hunterOverLimit=hunterZoneCards.length>hunterHandLimit;
   const someoneWounded=players.some((p,i)=>i!==hunterIdx&&!p.isDead&&p.hp<10);
@@ -1439,13 +1519,24 @@ function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
     
     if (isAI) {
       let L2 = [];
+      let inspectionMeta={
+        inspectionDeck: gs?.inspectionDeck||[],
+        inspectionDiscard: gs?.inspectionDiscard||[],
+        sealLooseningCount: gs?.sealLooseningCount||0,
+        houndsOfTindalosActive: gs?.houndsOfTindalosActive||false,
+        houndsOfTindalosTarget: gs?.houndsOfTindalosTarget||null,
+        houndsOfTindalosElapsed: gs?.houndsOfTindalosElapsed||0,
+        _inspectionSeq: gs?._inspectionSeq||0,
+        _inspectionCard: gs?._inspectionCard||null,
+        _inspectionTarget: gs?._inspectionTarget??null,
+      };
       // AI处理邪神牌时，仍然立即扣减SAN值
       if (P[ci].role !== ROLE_CULTIST) {
-        P[ci].san = clamp(P[ci].san - cost);const newSan=P[ci].san;if(newSan<=6){const inspectionResult=handleInspection(ci,{players:P,deck:D,discard:Disc,log:gs?.log||[],inspectionDeck:gs?.inspectionDeck||[],inspectionDiscard:gs?.inspectionDiscard||[],sealLooseningCount:gs?.sealLooseningCount||0,houndsOfTindalosActive:gs?.houndsOfTindalosActive||false,houndsOfTindalosTarget:gs?.houndsOfTindalosTarget||null});P=inspectionResult.players;D=inspectionResult.deck;Disc=inspectionResult.discard;}
+        P[ci].san = clamp(P[ci].san - cost);const newSan=P[ci].san;if(newSan<=6){const processed=processInspectionTargets([ci],gs?.currentTurn??ci,P,D,Disc,gs?.log||[],inspectionMeta);P=processed.P;D=processed.D;Disc=processed.Disc;inspectionMeta=processed.inspectionMeta;L2.push(...processed.log.slice((gs?.log||[]).length));}
       }
       const gr = aiHandleGodCard(ci, drawnCard, P, D, Disc, L2, gs);
       P = gr.P; D = gr.D; Disc = gr.Disc;
-      return { P, D, Disc, drawnCard, effectMsgs: L2, kept: true };
+      return { P, D, Disc, drawnCard, effectMsgs: L2, kept: true, statePatch:{...inspectionMeta,...(gr.inspectionMeta||{})} };
     } else {
       let effectMsg = P[ci].role === ROLE_CULTIST 
         ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`
@@ -1853,7 +1944,7 @@ function aiStep(gs){
   else if (myProgress >= 7) skillRate = 0.55;
 
   const canUseSkill = !gs.restUsed && (aiEffRole === ROLE_HUNTER ? true : !gs.skillUsed);
-  const hunterZoneCards = P[ct].hand.filter(c=>!c.isGod);
+  const hunterZoneCards = P[ct].hand.filter(isZoneCard);
   const hunterHandLimit = P[ct]._nyaHandLimit ?? 4;
   const hunterOverLimit = hunterZoneCards.length > hunterHandLimit;
   const someoneWounded = P.some((p,i)=>i!==ct && !p.isDead && p.hp < 10);
@@ -1892,7 +1983,7 @@ function aiStep(gs){
     let tgt;
     if(aiEffRole===ROLE_HUNTER){
       if(hunterZoneCards.length === 0) huntContinue = false;
-      while (huntContinue && P[ct].hand.some(c=>!c.isGod)) {
+      while (huntContinue && P[ct].hand.some(isZoneCard)) {
         const validTargets = getHunterTargets();
         if (validTargets.length > 0) {
           const sortedTargets = [...validTargets].sort((a, b) => {
@@ -1903,7 +1994,7 @@ function aiStep(gs){
           // 遍历所有目标，直到找到可以追捕的目标或用完所有目标
           let foundTarget = false;
           for (const { player: tgt, idx: ti } of sortedTargets) {
-            const zoneH = P[ti].hand.filter(c => !c.isGod);
+            const zoneH = P[ti].hand.filter(isZoneCard);
             if (ti === 0) {
               L.push(`${ai.name}（追猎者）向你发动【追捕】！请选择亮出一张区域牌`);
               const updatedAbandoned = [...newAbandoned, ti];
@@ -1912,9 +2003,9 @@ function aiStep(gs){
                 abilityData:{huntingAI:ct, aiHunterName:ai.name},
                 skillUsed:true, huntAbandoned: updatedAbandoned, _aiName:ai.name, _drawnCard:gs._drawnCard, _aiDrawnCard:gs._drawnCard, _discardedDrawnCard:gs._discardedDrawnCard??false};
             } else {
-              const rc = aiChooseRevealCard(zoneH, P[ct].hand, L, Disc);
+              const rc = aiChooseRevealCard(zoneH, ai.name, L);
               L.push(`${ai.name}（追猎者）对 ${tgt.name} 【追捕】，亮出 [${rc.key}]`);
-              const mi = P[ct].hand.findIndex(c => c.letter === rc.letter || c.number === rc.number);
+              const mi = P[ct].hand.findIndex(c => cardsHuntMatch(c,rc));
               if (mi >= 0) {
                 const dc = P[ct].hand.splice(mi, 1)[0]; Disc.push(dc);
                 const huntDamage=3+(P[ct].damageBonus||0);
@@ -1924,18 +2015,27 @@ function aiStep(gs){
                   P[ti].isDead = true; P[ti].roleRevealed = true;
                   L.push(`☠ ${tgt.name}（${tgt.role}）倒下了！`);
                   if (P[ti].hand.length) {
+                    const maxToTake=3;
                     if (P[ti].revealHand) {
-                      const randomIndex = Math.floor(Math.random() * P[ti].hand.length);
-                      const stolenCard = P[ti].hand.splice(randomIndex, 1)[0];
-                      P[ct].hand.push(stolenCard);
-                      L.push(`${ai.name} 从 ${tgt.name} 的公开手牌中任选了一张 [${stolenCard.key}]！`);
+                      const chosenCards=aiChooseHunterLootCards(P[ti].hand,P[ct].hand,maxToTake);
+                      chosenCards.forEach(stolenCard=>{
+                        const idx=P[ti].hand.findIndex(c=>c.id===stolenCard.id);
+                        if(idx>=0){
+                          P[ti].hand.splice(idx,1);
+                          P[ct].hand.push(stolenCard);
+                          L.push(`${ai.name} 从 ${tgt.name} 的公开手牌中选择了 [${stolenCard.key}]！`);
+                        }
+                      });
                       Disc.push(...P[ti].hand);
                       P[ti].hand = [];
                     } else {
-                      const randomIndex = Math.floor(Math.random() * P[ti].hand.length);
-                      const stolenCard = P[ti].hand.splice(randomIndex, 1)[0];
-                      P[ct].hand.push(stolenCard);
-                      L.push(`${ai.name} 从 ${tgt.name} 的手牌中暗抽了一张！`);
+                      const cardsToTake=Math.min(maxToTake,P[ti].hand.length);
+                      for(let i=0;i<cardsToTake;i++){
+                        const randomIndex = Math.floor(Math.random() * P[ti].hand.length);
+                        const stolenCard = P[ti].hand.splice(randomIndex, 1)[0];
+                        P[ct].hand.push(stolenCard);
+                        L.push(`${ai.name} 从 ${tgt.name} 的手牌中暗抽了一张！`);
+                      }
                       Disc.push(...P[ti].hand);
                       P[ti].hand = [];
                     }
@@ -1980,6 +2080,17 @@ function aiStep(gs){
       tgt=alive.reduce((b,p)=>sanScore(p)>sanScore(b)?p:b,alive[0]);
       const ti=P.indexOf(tgt);
       if(P[ct].hand.length){
+        let inspectionMeta={
+          inspectionDeck: gs.inspectionDeck,
+          inspectionDiscard: gs.inspectionDiscard,
+          sealLooseningCount: gs.sealLooseningCount,
+          houndsOfTindalosActive: gs.houndsOfTindalosActive,
+          houndsOfTindalosTarget: gs.houndsOfTindalosTarget,
+          houndsOfTindalosElapsed: gs.houndsOfTindalosElapsed||0,
+          _inspectionSeq: gs._inspectionSeq||0,
+          _inspectionCard: gs._inspectionCard||null,
+          _inspectionTarget: gs._inspectionTarget??null,
+        };
         const hunterThreatTgt=P[ti]?.role===ROLE_HUNTER;
         const forcedConvertGod=P[ct].hand.find(c=>c.isGod&&P[ti].godName&&P[ti].godName!==c.godKey);
         const anyGod=P[ct].hand.find(c=>c.isGod);
@@ -1996,10 +2107,11 @@ function aiStep(gs){
             P[ti].roleRevealed=true;
           }else{
             const godCost=P[ti].godEncounters;
-            P[ti].san=clamp(P[ti].san-godCost);const newSan=P[ti].san;if(newSan<=6){const inspectionResult=handleInspection(ti,{players:P,deck:D,discard:Disc,log:gs?.log||[],inspectionDeck:gs?.inspectionDeck||[],inspectionDiscard:gs?.inspectionDiscard||[],sealLooseningCount:gs?.sealLooseningCount||0,houndsOfTindalosActive:gs?.houndsOfTindalosActive||false,houndsOfTindalosTarget:gs?.houndsOfTindalosTarget||null});P=inspectionResult.players;D=inspectionResult.deck;Disc=inspectionResult.discard;}
+            P[ti].san=clamp(P[ti].san-godCost);const newSan=P[ti].san;if(newSan<=6){const processed=processInspectionTargets([ti],gs.currentTurn,P,D,Disc,L,inspectionMeta);P=processed.P;D=processed.D;Disc=processed.Disc;inspectionMeta=processed.inspectionMeta;L.splice(0,L.length,...processed.log);}
           }
           const gr=aiHandleGodCard(ti,sc,P,D,Disc,L,gs);
           P=gr.P;D=gr.D;Disc=gr.Disc;
+          gs={...gs,...inspectionMeta,...(gr.inspectionMeta||{})};
         }else{
           const res=applyFx(sc,ti,ti,P,D,Disc,gs);P=res.P;D=res.D;Disc=res.Disc;L.push(...res.msgs);
           P[ti].hand.push(sc);
@@ -2063,10 +2175,10 @@ function aiStep(gs){
 
   // AI状态机扭转关键：只有追猎者才能在同一回合内连续追捕并留在 AI_TURN
   const hasValidTargets = getHunterTargets().length > 0;
-  const hasZoneCards = P[ct].hand.filter(c=>!c.isGod).length > 0;
+  const hasZoneCards = P[ct].hand.filter(isZoneCard).length > 0;
   try{
     if (aiEffRole === ROLE_HUNTER && huntContinue && hasZoneCards && hasValidTargets) {
-        nextGs = {...gs, players:P, deck:D, discard:Disc, log:L, phase: 'AI_TURN', currentTurn: ct, huntAbandoned: newAbandoned, skillUsed: false, _drawnCard: gs._drawnCard};
+        nextGs = {...gs, players:P, deck:D, discard:Disc, log:L, phase: 'AI_TURN', currentTurn: ct, huntAbandoned: newAbandoned, skillUsed: false, _drawnCard: null, _discardedDrawnCard:false, _playersBeforeThisDraw:null};
     } else {
         nextGs = startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct, huntAbandoned: newAbandoned, skillUsed: (useSkill || gs.skillUsed)});
     }
@@ -2074,7 +2186,7 @@ function aiStep(gs){
     throw new Error(`${ai.name} 回合收尾失败: ${e?.message||'未知错误'}`);
   }
 
-  return{...nextGs,_aiDrawnCard:gs._aiDrawnCard??gs._drawnCard??null,_discardedDrawnCard:gs._discardedDrawnCard??false,_aiName:ai.name,_playersBeforeNextDraw:_P_afterAction};
+  return{...nextGs,_aiDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?null:(gs._aiDrawnCard??gs._drawnCard??null),_discardedDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?false:(gs._discardedDrawnCard??false),_aiName:ai.name,_playersBeforeNextDraw:_P_afterAction};
 }
 
 // 检定牌堆
@@ -2101,16 +2213,18 @@ function initGame(playerNames){
   const N=names.length;
   const isSinglePlayer = !playerNames;
   const deck=mkDeck(),roles=mkRoles(N, isSinglePlayer);
-  const players=names.map((name,i)=>({id:i,name,role:roles[i],roleRevealed:false,hp:10,san:10,hand:[],isDead:false,isResting:false,godEncounters:0,godZone:[],godName:null,godLevel:0,disableRest:false,disableSkill:false,handLimitDecrease:0}));
+  const players=names.map((name,i)=>({id:i,name,role:roles[i],roleRevealed:false,hp:10,san:10,hand:[],zoneCards:[],isDead:false,isResting:false,godEncounters:0,godZone:[],godName:null,godLevel:0,disableRest:false,disableSkill:false,handLimitDecrease:0}));
   for(let r=0;r<4;r++)players.forEach(p=>p.hand.push(deck.shift()));
   const inspectionDeck=shuffle([...INSPECTION_DECK]);
-  const base={players,deck,discard:[],inspectionDeck,inspectionDiscard:[],currentTurn:-1,phase:'DRAW_REVEAL',drawReveal:null,selectedCard:null,abilityData:{},log:['游戏开始。每人获得四张初始手牌。'],gameOver:null,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,globalOnlySwapOwner:null,_turnKey:0,_isMP:!!playerNames,turn:0,sealLooseningCount:0,houndsOfTindalosActive:false,houndsOfTindalosTarget:null};
+  const base={players,deck,discard:[],inspectionDeck,inspectionDiscard:[],currentTurn:-1,phase:'DRAW_REVEAL',drawReveal:null,selectedCard:null,abilityData:{},log:['游戏开始。每人获得四张初始手牌。'],gameOver:null,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,globalOnlySwapOwner:null,_turnKey:0,_isMP:!!playerNames,turn:0,sealLooseningCount:0,houndsOfTindalosActive:false,houndsOfTindalosTarget:null,houndsOfTindalosElapsed:0};
   return startNextTurn(base);
 }
 
 // 处理检定牌翻开和结算
 function handleInspection(playerIndex, gs) {
   let newGs = {...gs};
+  const beforePlayers = copyPlayers(gs.players||[]);
+  const beforeLogLen = Array.isArray(gs.log)?gs.log.length:0;
   // 检查检定牌堆是否为空，如果为空则洗牌
   if (newGs.inspectionDeck.length === 0) {
     newGs.inspectionDeck = shuffle([...newGs.inspectionDiscard]);
@@ -2121,6 +2235,22 @@ function handleInspection(playerIndex, gs) {
   // 结算检定牌效果
   const L = [...(Array.isArray(newGs.log)?newGs.log:[])];
   const P = [...newGs.players];
+  const killPlayer = i => {
+    if(i==null || !P[i] || P[i].isDead) return;
+    P[i].isDead = true;
+    P[i].roleRevealed = true;
+    L.push(`☠ ${P[i].name}（${P[i].role}）倒下了！`);
+    if(P[i].hand?.length){
+      newGs.discard.push(...P[i].hand);
+      P[i].hand = [];
+    }
+    if(P[i].godZone?.length){
+      newGs.discard.push(...P[i].godZone);
+      P[i].godZone = [];
+      P[i].godName = null;
+      P[i].godLevel = 0;
+    }
+  };
   switch (drawnCard.effect) {
     case 'adjacentDamageHP': {
       // 相邻角色失去1HP
@@ -2131,6 +2261,7 @@ function handleInspection(playerIndex, gs) {
         if (!P[leftIdx].isDead) {
           P[leftIdx].hp = Math.max(0, P[leftIdx].hp - drawnCard.value);
           L.push(`${P[leftIdx].name} 被乱抓，失去 ${drawnCard.value} HP`);
+          if(P[leftIdx].hp<=0) killPlayer(leftIdx);
           break;
         }
       }
@@ -2139,6 +2270,7 @@ function handleInspection(playerIndex, gs) {
         if (!P[rightIdx].isDead) {
           P[rightIdx].hp = Math.max(0, P[rightIdx].hp - drawnCard.value);
           L.push(`${P[rightIdx].name} 被乱抓，失去 ${drawnCard.value} HP`);
+          if(P[rightIdx].hp<=0) killPlayer(rightIdx);
           break;
         }
       }
@@ -2148,6 +2280,7 @@ function handleInspection(playerIndex, gs) {
       // 失去1HP
       P[playerIndex].hp = Math.max(0, P[playerIndex].hp - drawnCard.value);
       L.push(`${P[playerIndex].name} 自残，失去 ${drawnCard.value} HP`);
+      if(P[playerIndex].hp<=0) killPlayer(playerIndex);
       break;
     }
     case 'disableRest': {
@@ -2224,15 +2357,22 @@ function handleInspection(playerIndex, gs) {
       // 廷达罗斯猎犬离开检定牌堆并沿场地奔跑，对第一个回合用时超过15秒的玩家造成4点HP伤害，之后返回检定牌堆
       newGs.houndsOfTindalosActive = true;
       newGs.houndsOfTindalosTarget = null;
+      newGs.houndsOfTindalosElapsed = 0;
       L.push('廷达罗斯猎犬出现了！');
       break;
     }
   }
-  // 将检定牌放入弃牌堆
-  newGs.inspectionDiscard.push(drawnCard);
+  if (drawnCard.effect === 'houndsOfTindalos') {
+    newGs.inspectionDiscard = [];
+  } else {
+    newGs.inspectionDeck = shuffle([...(newGs.inspectionDeck||[]), drawnCard]);
+    newGs.inspectionDiscard = [];
+  }
   newGs._inspectionSeq = (gs?._inspectionSeq || 0) + 1;
   newGs._inspectionCard = drawnCard;
   newGs._inspectionTarget = playerIndex;
+  newGs._inspectionPrevLogLen = beforeLogLen;
+  newGs._inspectionBeforePlayers = beforePlayers;
   // 更新游戏状态
   newGs.players = P;
   newGs.log = L;
@@ -2247,10 +2387,44 @@ function mergeInspectionMeta(target, inspectionResult){
     sealLooseningCount: inspectionResult.sealLooseningCount,
     houndsOfTindalosActive: inspectionResult.houndsOfTindalosActive,
     houndsOfTindalosTarget: inspectionResult.houndsOfTindalosTarget,
+    houndsOfTindalosElapsed: inspectionResult.houndsOfTindalosElapsed,
     _inspectionSeq: inspectionResult._inspectionSeq,
     _inspectionCard: inspectionResult._inspectionCard,
     _inspectionTarget: inspectionResult._inspectionTarget,
+    _inspectionPrevLogLen: inspectionResult._inspectionPrevLogLen,
+    _inspectionBeforePlayers: inspectionResult._inspectionBeforePlayers,
   };
+}
+
+function sortInspectionTargets(targets,startIndex,totalPlayers){
+  const uniq=[...new Set((targets||[]).filter(i=>i!=null))];
+  return uniq.sort((a,b)=>(((a-startIndex)+totalPlayers)%totalPlayers)-(((b-startIndex)+totalPlayers)%totalPlayers));
+}
+
+function processInspectionTargets(targets,startIndex,P,D,Disc,baseLog,inspectionMeta){
+  let nextP=P,nextD=D,nextDisc=Disc,nextLog=[...baseLog],nextMeta={...inspectionMeta};
+  const ordered=sortInspectionTargets(targets,startIndex,nextP.length||1);
+  for(const idx of ordered){
+    const inspectionResult=handleInspection(idx,{
+      players:nextP,
+      deck:nextD,
+      discard:nextDisc,
+      log:nextLog,
+      inspectionDeck:nextMeta.inspectionDeck,
+      inspectionDiscard:nextMeta.inspectionDiscard,
+      sealLooseningCount:nextMeta.sealLooseningCount,
+      houndsOfTindalosActive:nextMeta.houndsOfTindalosActive,
+      houndsOfTindalosTarget:nextMeta.houndsOfTindalosTarget,
+      houndsOfTindalosElapsed:nextMeta.houndsOfTindalosElapsed,
+      _inspectionSeq:nextMeta._inspectionSeq,
+    });
+    nextP=inspectionResult.players;
+    nextD=inspectionResult.deck;
+    nextDisc=inspectionResult.discard;
+    nextLog=inspectionResult.log||nextLog;
+    nextMeta=mergeInspectionMeta(nextMeta,inspectionResult);
+  }
+  return {P:nextP,D:nextD,Disc:nextDisc,log:nextLog,inspectionMeta:nextMeta};
 }
 
 // 检查并处理检定牌
@@ -2272,6 +2446,24 @@ const EVIL_TYPES=new Set([
   'selfDamageRestHP','selfDamageRestSAN','adjDamageHP','adjDamageSAN','adjDamageBoth',
   'allDamageHP','allDamageSAN','allDamageBoth','allDiscard','selfRenounceGod',
 ]);
+
+function getInspectionCardDesc(card){
+  switch(card?.effect){
+    case 'adjacentDamageHP': return '相邻角色失去 1 HP';
+    case 'selfDamageHP': return '失去 1 HP';
+    case 'disableRest': return '下一回合禁用“休息”';
+    case 'nothing': return '什么也不做';
+    case 'flip': return '翻面';
+    case 'discardRandom': return '随机弃一张牌';
+    case 'disableSkill': return '下一回合禁用技能';
+    case 'handLimitDecrease': return '下一回合手牌上限 -1';
+    case 'healSAN': return '恢复 1 SAN';
+    case 'drawCard': return '从牌堆摸一张牌';
+    case 'sealLoosening': return '连续翻出两次时邪神复活';
+    case 'houndsOfTindalos': return '首个超时超过 15 秒的回合失去 4 HP';
+    default: return '';
+  }
+}
 
 // Duration (ms) per animation type
 const ANIM_DURATION={DRAW_CARD:1850, HP_HEAL:1200, SAN_HEAL:1200, HP_SAN_HEAL:1200, SAN_DAMAGE:800, SKILL_SWAP:800, SKILL_HUNT:1200, SKILL_BEWITCH:1200, DICE_ROLL:2200, DISCARD:1000, YOUR_TURN:2000, GUILLOTINE:2500, CARD_TRANSFER:700, EARTHQUAKE:1200, default:600};
@@ -2511,8 +2703,20 @@ function FlowerBloom(){
 
 function CardFlipAnim({card,triggerName,targetPid,exiting}){
   if(!card) return null;
-  const s=CS[card.letter]||GOD_CS;
-  const isEvil=EVIL_TYPES.has(card.type)||card.isGod;
+  const isInspection=!!card.effect;
+  const inspectionTone=isInspection?(card.type||'neutral'):null;
+  const s=isInspection
+    ?({
+      bg:inspectionTone==='positive'?'linear-gradient(135deg,#11331d,#08160d)':inspectionTone==='neutral'?'linear-gradient(135deg,#1a1d24,#0b0e13)':'linear-gradient(135deg,#241126,#0f0713)',
+      borderBright:inspectionTone==='positive'?'#56d184':inspectionTone==='neutral'?'#7b889b':'#d16acb',
+      border:inspectionTone==='positive'?'#3da865':inspectionTone==='neutral'?'#5d6978':'#9e4a92',
+      text:inspectionTone==='positive'?'#b8ffd1':inspectionTone==='neutral'?'#d7e0ef':'#ffd0ff',
+      glow:inspectionTone==='positive'?'#49d17d':inspectionTone==='neutral'?'#91a1c2':'#b24ad1',
+    })
+    :(CS[card.letter]||GOD_CS);
+  const isEvil=isInspection?inspectionTone==='negative':(EVIL_TYPES.has(card.type)||card.isGod);
+  const isNeutralInspection=isInspection&&inspectionTone==='neutral';
+  const isPositiveInspection=isInspection&&inspectionTone==='positive';
 
   // Phase 1: card travels from deck (top-right) toward destination panel ~650ms
   // Phase 2: full flip animation
@@ -2520,12 +2724,14 @@ function CardFlipAnim({card,triggerName,targetPid,exiting}){
   React.useEffect(()=>{const t=setTimeout(()=>setTraveled(true),650);return()=>clearTimeout(t);},[]);
 
   const getDeckCenter=()=>{
-    const deckEl=document.querySelector('[data-deck-pile]');
+    const deckEl=document.querySelector(isInspection?'[data-inspection-pile]':'[data-deck-pile]');
     if(deckEl){
       const r=deckEl.getBoundingClientRect();
       return {x:r.left+r.width/2,y:r.top+r.height/2};
     }
-    return {x:window.innerWidth*0.94-35,y:window.innerHeight*0.08};
+    return isInspection
+      ?{x:window.innerWidth*0.10,y:window.innerHeight*0.14}
+      :{x:window.innerWidth*0.94-35,y:window.innerHeight*0.08};
   };
   const getHandCenter=pid=>{
     if(pid===0){
@@ -2573,7 +2779,9 @@ function CardFlipAnim({card,triggerName,targetPid,exiting}){
   );
 
   // Ghost-smoke columns: each column = core wisp + halo + ghost face at top
-  const spirits=isEvil
+  const spirits=isNeutralInspection
+    ?[]
+    :isEvil
     ?SMOKE_COLS.flatMap((col,i)=>[
       // Core smoke wisp — S-curve via keyframes, narrow bottom → wide top
       <div key={`${i}a`} style={{
@@ -2653,7 +2861,9 @@ function CardFlipAnim({card,triggerName,targetPid,exiting}){
       {/* Ambient light burst — fires at 1.2s when flip completes */}
       <div style={{
         position:'absolute',width:320,height:320,borderRadius:'50%',
-        background:isEvil
+        background:isNeutralInspection
+          ?'radial-gradient(circle,rgba(140,155,180,0.12) 0%,rgba(70,80,98,0.08) 40%,transparent 70%)'
+          :isEvil
           ?'radial-gradient(circle,#7010aa44 0%,#3a0060 40%,transparent 70%)'
           :'radial-gradient(circle,#e8c87a33 0%,#c8a96e22 40%,transparent 70%)',
         animation:'burstPulse 1.0s ease-out 1.15s both',
@@ -2661,7 +2871,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting}){
       }}/>
 
       {/* ═══ FLOWER BLOOM — pure SVG flowers bloom on both sides for benign cards ═══ */}
-      {!isEvil&&<FlowerBloom/>}
+      {(isPositiveInspection||(!isInspection&&!isEvil))&&<FlowerBloom/>}
 
       {/* Rising spirits */}
       <div style={{position:'absolute',inset:0,pointerEvents:'none'}}>{spirits}</div>
@@ -2671,8 +2881,8 @@ function CardFlipAnim({card,triggerName,targetPid,exiting}){
         <div style={{
           position:'absolute',bottom:'12%',left:'50%',transform:'translateX(-50%)',
           fontFamily:"'Cinzel',serif",fontWeight:700,letterSpacing:3,fontSize:13,
-          color:isEvil?'#c060dd':'#c8a96e',
-          textShadow:isEvil?'0 0 16px #9020cc88':'0 0 16px #c8a96e88',
+          color:isInspection?(inspectionTone==='positive'?'#7ef2aa':inspectionTone==='neutral'?'#c7d3e8':'#e28cff'):(isEvil?'#c060dd':'#c8a96e'),
+          textShadow:isInspection?(inspectionTone==='positive'?'0 0 16px #2dbf6688':inspectionTone==='neutral'?'0 0 16px #8fa0bf66':'0 0 16px #9020cc88'):(isEvil?'0 0 16px #9020cc88':'0 0 16px #c8a96e88'),
           textTransform:'uppercase',whiteSpace:'nowrap',
           animation:'animFadeIn 0.4s ease-out 1.2s both',
         }}>{triggerName} 翻开卡牌</div>
@@ -2711,9 +2921,14 @@ function CardFlipAnim({card,triggerName,targetPid,exiting}){
             boxShadow:`0 0 30px ${s.glow}88, 0 0 60px ${isEvil?'#6010aa':'#c8a96e'}44`,
           }}>
             <div style={{position:'absolute',top:4,right:6,fontSize:8,color:s.border,opacity:0.7}}>✦</div>
-            <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:28,lineHeight:1}}>{card.key}</div>
-            <div style={{fontFamily:"'Cinzel',serif",color:'#c8a96e',fontSize:11.5,fontWeight:600,marginTop:6,lineHeight:1.3}}>{card.name}</div>
-            <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#b89858',fontSize:9.5,marginTop:8,lineHeight:1.4}}>{card.desc}</div>
+            <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:isInspection?18:28,lineHeight:1,letterSpacing:isInspection?2:0}}>{isInspection?'检定':card.key}</div>
+            <div style={{fontFamily:"'Cinzel',serif",color:isInspection?s.text:'#c8a96e',fontSize:isInspection?16:11.5,fontWeight:600,marginTop:6,lineHeight:1.3}}>{card.name}</div>
+            <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:isInspection?(inspectionTone==='positive'?'#aeeac0':inspectionTone==='neutral'?'#b8c4d8':'#e2a8e8'):'#b89858',fontSize:9.5,marginTop:8,lineHeight:1.4}}>{isInspection?getInspectionCardDesc(card):card.desc}</div>
+            {isInspection&&(
+              <div style={{position:'absolute',left:10,bottom:10,fontSize:9,color:s.border,letterSpacing:2,fontFamily:"'Cinzel',serif"}}>
+                {inspectionTone==='positive'?'正面检定':inspectionTone==='neutral'?'中性检定':'负面检定'}
+              </div>
+            )}
             <div style={{position:'absolute',bottom:4,left:'50%',transform:'translateX(-50%)',color:s.border,fontSize:7,opacity:0.5}}>— ✦ —</div>
           </div>
         </div>
@@ -3880,6 +4095,28 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLe
 function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel}){
   if(!card)return null;
   if(card.isGod) return <GodDDCard card={card} onClick={onClick} disabled={disabled} selected={selected} highlight={highlight} small={small} compact={compact} godLevel={godLevel}/>;
+  if(card.type==='blankZone'){
+    const w=small?44:compact?62:82,h=small?58:compact?82:108;
+    return(
+      <div
+        onClick={disabled?undefined:onClick}
+        style={{
+          width:w,minWidth:w,height:h,flexShrink:0,
+          background:'linear-gradient(160deg,#1a150f,#120d08)',
+          border:`1.5px dashed ${selected?'#f4d27a':highlight?'#d8b45a':'#8a6a2a'}`,
+          boxShadow:selected?'0 0 14px #c8a96e88,inset 0 0 12px #c8a96e22':highlight?'0 0 10px #d8b45a66':'inset 0 1px 0 #8a6a2a44',
+          borderRadius:3,cursor:disabled?'default':'pointer',opacity:disabled?0.35:1,
+          transform:selected?'translateY(-5px)':undefined,transition:'all .14s',
+          display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+          padding:small?'4px 3px':compact?'5px 5px':'7px 8px',userSelect:'none',position:'relative',overflow:'hidden',
+        }}
+      >
+        <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:small?11:compact?13:16,color:'#f1d28b',letterSpacing:1}}>BLANK</div>
+        <div style={{fontSize:small?14:compact?18:22,color:'#d8b45a',textShadow:'0 0 10px #d8b45a88'}}>◇</div>
+        {!small&&<div style={{fontFamily:"'IM Fell English','Georgia',serif",fontSize:compact?9:10,color:'#c5a86a',fontStyle:'italic',lineHeight:1.35,textAlign:'center'}}>任意字母与数字</div>}
+      </div>
+    );
+  }
   const[hover,setHover]=React.useState(false);
   const[tooltipPosition,setTooltipPosition]=React.useState(null);
   const cardRef=React.useRef(null);
@@ -4332,6 +4569,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
         </div>
       )}
       <div style={{display:'flex',flexWrap:'wrap',gap:3,marginTop:5}}>
+        {(player.zoneCards||[]).map((c,ci)=><DDCard key={c.id||`zone-${playerIndex}-${ci}`} card={c} small disabled/>)}
         {showFaceUp
           ?player.hand.map((c,ci)=><DDCard key={c.id} card={c} small onClick={onCardSelect?()=>onCardSelect(ci):undefined} disabled={!onCardSelect} highlight={!!onCardSelect}/>)
           :player.hand.map((_,ci)=><DDCardBack key={ci} small/>)
@@ -4773,9 +5011,35 @@ function DeckPile({count}){
     </div>
   );
 }
-function PileDisplay({deckCount,discardCount,discardTop,compact,deckRef,discardRef}){
+function InspectionPile({count}){
+  const vis=Math.min(Math.max(count,0),5);
+  return(
+    <div style={{width:CARD_W+10,height:CARD_H+10,position:'relative',flexShrink:0}}>
+      {Array(Math.max(vis,1)).fill(0).map((_,i)=>(
+        <div key={i} style={{
+          ...CARD_BACK_STYLE,
+          left:i*1.2,top:(Math.max(vis,1)-1-i)*1.2,
+          zIndex:i,
+          background:'linear-gradient(135deg,#151c28,#090d15)',
+          border:'1.5px solid #6a7fa8',
+          boxShadow:'0 0 16px #6a7fa833,inset 0 0 8px #00000088',
+        }}>
+          <div style={{position:'absolute',inset:0,borderRadius:3,
+            background:'repeating-linear-gradient(45deg,#8ca4d220 0px,#8ca4d220 1px,transparent 1px,transparent 4px)'}}/>
+          {i===Math.max(vis,1)-1&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,color:'#d7e6ff',textShadow:'0 0 10px #9dc1ff'}}>◈</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+function PileDisplay({deckCount,discardCount,discardTop,inspectionCount,compact,deckRef,discardRef}){
   return(
     <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',position:'relative',minWidth:0,minHeight:compact?80:222}}>
+      {/* Inspection deck — top-left corner */}
+      <div data-inspection-pile style={{position:'absolute',top:4,left:8,display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
+        <InspectionPile count={inspectionCount}/>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:8,color:'#90a8d8',letterSpacing:1,textAlign:'center'}}>检定牌堆:{inspectionCount}张</div>
+      </div>
       {/* Deck — top-right corner */}
       <div ref={deckRef} data-deck-pile style={{position:'absolute',top:4,right:8,display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
         <DeckPile count={deckCount}/>
@@ -4786,6 +5050,24 @@ function PileDisplay({deckCount,discardCount,discardTop,compact,deckRef,discardR
         <DiscardPile count={discardCount} topCard={discardTop}/>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:8,color:'#7a5a2a',letterSpacing:1,textAlign:'center'}}>弃牌堆:{discardCount}张</div>
       </div>
+    </div>
+  );
+}
+
+function HoundsTimerBadge({secondsLeft,active}){
+  if(!active||secondsLeft==null)return null;
+  return(
+    <div style={{
+      position:'fixed',top:14,left:'50%',transform:'translateX(-50%)',
+      width:88,height:88,borderRadius:'50%',
+      background:'radial-gradient(circle at 35% 30%,#3a0a0a 0%,#170406 58%,#090102 100%)',
+      border:'2px solid #b44a3a',boxShadow:'0 0 26px #b44a3a55, inset 0 0 22px #000000bb',
+      zIndex:720,pointerEvents:'none',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+      color:'#f0d0c8'
+    }}>
+      <div style={{fontSize:22,lineHeight:1,filter:'drop-shadow(0 0 8px #ff8a6a)'}}>🐺</div>
+      <div style={{fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:1,color:'#f2a28e'}}>猎犬</div>
+      <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:20,color:secondsLeft<=5?'#ff7056':'#ffd7b0',textShadow:'0 0 12px currentColor'}}>{secondsLeft}</div>
     </div>
   );
 }
@@ -5977,11 +6259,16 @@ export default function Game(){
   const[deathShake,setDeathShake]=useState(false);
   const animQueueRef=useRef([]);
   const pendingGsRef=useRef(null);
+  const prevDamageLinksRef=useRef([]);
+  const prevLogLenRef=useRef(0);
+  const damageLinkGhostTimersRef=useRef(new Map());
+  const [damageLinkGhosts,setDamageLinkGhosts]=useState([]);
   const animCallbackRef=useRef(null); // callback to execute after animation queue
   const timerRef=useRef(null);
   const logRef=useRef(null);
   const shakeTimerRef=useRef(null);
   const lastInspectionSeqRef=useRef(0);
+  const [houndsSecLeft,setHoundsSecLeft]=useState(null);
 
   // ── Responsive layout ──────────────────────────────────────
   const {w:vw}=useWindowSize();
@@ -5990,12 +6277,120 @@ export default function Game(){
 
   useEffect(()=>{if(logRef.current)logRef.current.scrollTop=logRef.current.scrollHeight;},[gs?.log?.length]);
 
+  useEffect(()=>()=>{damageLinkGhostTimersRef.current.forEach(t=>clearTimeout(t));damageLinkGhostTimersRef.current.clear();},[]);
+
+  useEffect(()=>{
+    const prevTimers=damageLinkGhostTimersRef.current;
+    if(!gs?.players){
+      prevDamageLinksRef.current=[];
+      prevLogLenRef.current=Array.isArray(gs?.log)?gs.log.length:0;
+      setDamageLinkGhosts([]);
+      prevTimers.forEach(t=>clearTimeout(t));
+      prevTimers.clear();
+      return;
+    }
+    const extractPairs=(players)=>players.flatMap((p,i)=>{
+      if(!p?.damageLink?.active)return [];
+      const j=p.damageLink.partner;
+      if(j==null||j<=i||!players[j]?.damageLink?.active||players[j].damageLink.partner!==i)return [];
+      return [{a:i,b:j}];
+    });
+    const prevPairs=prevDamageLinksRef.current;
+    const currentPairs=extractPairs(gs.players);
+    const currentKeys=new Set(currentPairs.map(p=>`${p.a}-${p.b}`));
+    const newLogs=(Array.isArray(gs.log)?gs.log:[]).slice(prevLogLenRef.current);
+    prevPairs.forEach(pair=>{
+      const key=`${pair.a}-${pair.b}`;
+      if(currentKeys.has(key))return;
+      const aName=gs.players[pair.a]?.name;
+      const bName=gs.players[pair.b]?.name;
+      const breakMsg=`【两人一绳】绳索断裂！${aName} 和 ${bName}`;
+      const expireMsg=`【两人一绳】绳索未断裂！${aName} 和 ${bName}`;
+      const mode=newLogs.some(m=>typeof m==='string'&&m.includes(breakMsg))?'break'
+        : newLogs.some(m=>typeof m==='string'&&m.includes(expireMsg))?'fade'
+        : 'fade';
+      const ghostId=`${key}-${Date.now()}-${mode}`;
+      setDamageLinkGhosts(prev=>[...prev.filter(g=>g.key!==key),{id:ghostId,key,a:pair.a,b:pair.b,mode}]);
+      if(prevTimers.has(key))clearTimeout(prevTimers.get(key));
+      const timeoutMs=mode==='break'?560:720;
+      const timer=setTimeout(()=>{
+        setDamageLinkGhosts(prev=>prev.filter(g=>g.id!==ghostId));
+        prevTimers.delete(key);
+      },timeoutMs);
+      prevTimers.set(key,timer);
+    });
+    prevDamageLinksRef.current=currentPairs;
+    prevLogLenRef.current=Array.isArray(gs.log)?gs.log.length:0;
+    return ()=>{
+      if(!gs?.players){
+        prevTimers.forEach(t=>clearTimeout(t));
+        prevTimers.clear();
+      }
+    };
+  },[gs?.players,gs?.log]);
+
+  useEffect(()=>{
+    if(!gs||anim||animQueueRef.current.length>0||gs.gameOver)return;
+    const normalized=moveEligibleBlankZones(gs.players,gs.log||[]);
+    if(!normalized)return;
+    setGs(prev=>{
+      if(!prev||prev.gameOver)return prev;
+      const recheck=moveEligibleBlankZones(prev.players,prev.log||[]);
+      if(!recheck)return prev;
+      return {...prev,players:recheck.players,log:recheck.log};
+    });
+  },[gs?.players,gs?.log?.length,gs?.gameOver,anim]);
+
+  useEffect(()=>{
+    if(!gs?.houndsOfTindalosActive||gs?.gameOver||showTutorial){
+      setHoundsSecLeft(null);
+      return;
+    }
+    const ignoredPhases=new Set(['HUNT_WAIT_REVEAL','PLAYER_REVEAL_FOR_HUNT','CAVE_DUEL_SELECT_TARGET','CAVE_DUEL_SELECT_CARD']);
+    if(ignoredPhases.has(gs.phase)){
+      setHoundsSecLeft(Math.max(0,15-(gs.houndsOfTindalosElapsed||0)));
+      return;
+    }
+    setHoundsSecLeft(Math.max(0,15-(gs.houndsOfTindalosElapsed||0)));
+    const iv=setInterval(()=>{
+      setGs(prev=>{
+        if(!prev||!prev.houndsOfTindalosActive||prev.gameOver)return prev;
+        if(ignoredPhases.has(prev.phase)||anim||animQueueRef.current.length>0)return prev;
+        const nextElapsed=(prev.houndsOfTindalosElapsed||0)+1;
+        if(nextElapsed<15)return {...prev,houndsOfTindalosElapsed:nextElapsed};
+        const P=copyPlayers(prev.players),Disc=[...prev.discard],L=[...prev.log];
+        const ti=prev.currentTurn;
+        if(P[ti]&&!P[ti].isDead){
+          P[ti].hp=clamp(P[ti].hp-4);
+          L.push(`廷达罗斯猎犬撕咬 ${P[ti].name}，其失去 4 HP`);
+          if(P[ti].hp<=0){
+            P[ti].isDead=true;P[ti].roleRevealed=true;
+            L.push(`☠ ${P[ti].name}（${P[ti].role}）倒下了！`);
+            if(P[ti].hand.length)Disc.push(...P[ti].hand);
+            P[ti].hand=[];
+            if(P[ti].godZone?.length){Disc.push(...P[ti].godZone);P[ti].godZone=[];P[ti].godName=null;P[ti].godLevel=0;}
+          }
+        }
+        const houndsCard=INSPECTION_DECK.find(c=>c.effect==='houndsOfTindalos');
+        const nextGs={...prev,players:P,discard:Disc,log:L,houndsOfTindalosActive:false,houndsOfTindalosTarget:ti,houndsOfTindalosElapsed:0,inspectionDeck:houndsCard?shuffle([...(prev.inspectionDeck||[]),houndsCard]):prev.inspectionDeck};
+        const win=checkWin(P,prev._isMP);
+        return win?{...nextGs,gameOver:win}:nextGs;
+      });
+    },1000);
+    return()=>clearInterval(iv);
+  },[gs?.houndsOfTindalosActive,gs?.houndsOfTindalosElapsed,gs?.phase,gs?.currentTurn,gs?.gameOver,showTutorial,anim]);
+
   useEffect(()=>{
     if(!gs||showTutorial||anim||animQueueRef.current.length>0||gs.gameOver)return;
     const seq=gs._inspectionSeq||0;
     if(seq<=lastInspectionSeqRef.current||!gs._inspectionCard)return;
     lastInspectionSeqRef.current=seq;
-    triggerAnimQueue([{type:'DRAW_CARD',card:gs._inspectionCard,triggerName:'检定牌',targetPid:gs._inspectionTarget??0}],gs);
+    const prevPlayers=gs._inspectionBeforePlayers||gs.players;
+    const prevLogLen=gs._inspectionPrevLogLen??Math.max(0,(gs.log?.length||0)-1);
+    const prevLog=(gs.log||[]).slice(0,prevLogLen);
+    const prevGs={...gs,players:prevPlayers,log:prevLog};
+    const statQ=buildAnimQueue(prevGs,gs);
+    triggerAnimQueue([{type:'DRAW_CARD',card:gs._inspectionCard,triggerName:'检定牌',targetPid:gs._inspectionTarget??0},...statQ],gs);
   },[gs?._inspectionSeq,gs?._inspectionCard,gs?._inspectionTarget,gs?.gameOver,anim,showTutorial]);
 
   // Measure player self-panel rect for tutorial steps 2-4 pointer
@@ -6386,7 +6781,8 @@ export default function Game(){
         const P_actionEnd=rawResult._playersBeforeNextDraw||newGs.players;
         const actionStatQ=buildAnimQueue(gs,fakeGs(P_actionEnd));
         let orderedActionQ=null;
-        if(j.includes('掉包')) queue.push({type:'SKILL_SWAP',msgs:newMsgs});
+        const hasActualSwap=newMsgs.some(m=>/^.+对 .+ 【掉包】/.test(m));
+        if(hasActualSwap) queue.push({type:'SKILL_SWAP',msgs:newMsgs});
         else if(j.includes('【追捕】')||(j.includes('追捕')&&!j.includes('停止了追捕')&&!j.includes('放弃追捕'))){
           const huntMsg=newMsgs.find(m=>m.includes('【追捕】')||m.includes('追捕'));
           const huntMatch=huntMsg?.match(/对 (.+?) 【追捕】|追捕 (.+)/);
@@ -6661,7 +7057,7 @@ export default function Game(){
     if(!myTurn){
       // 只有被追捕方执行超时逻辑
       const t=setTimeout(()=>{
-        const zoneCards=me.hand.filter(c_=>!c_.isGod);
+        const zoneCards=me.hand.filter(isZoneCard);
         if(!zoneCards.length)return;
         const rc=zoneCards[0|Math.random()*zoneCards.length];
         const L=[...gs.log,`(超时) ${me.name} 随机亮出 [${rc.key}] ${rc.name}`];
@@ -8157,7 +8553,7 @@ export default function Game(){
 
   function huntSelectTarget(ti){
     let P=copyPlayers(gs.players);P[0].roleRevealed=true;
-    const tHand=P[ti].hand.filter(c=>!c.isGod);
+    const tHand=P[ti].hand.filter(isZoneCard);
     if(!tHand.length){
       setGs({...gs,players:P,phase:'ACTION',abilityData:{},log:[...gs.log,`${P[ti].name} 手中无区域牌，追捕失败`]});
       return;
@@ -8172,7 +8568,7 @@ export default function Game(){
       return;
     }
     // 单机/AI目标：由AI策略选择最优亮牌
-    const rc=aiChooseRevealCard(P[ti].hand,P[0].hand,gs.log,gs.discard);
+    const rc=aiChooseRevealCard(P[ti].hand,'你',gs.log);
     const huntConfirmGs={...gs,players:P,phase:'HUNT_CONFIRM',
       abilityData:{...(gs.abilityData||{}),huntTi:ti,revCard:rc},
       log:[...gs.log,`你（追猎者）追捕 ${P[ti].name}，${P[ti].name} 亮出 [${rc.key}] ${rc.name}`]};
@@ -8272,7 +8668,7 @@ export default function Game(){
   // 多人游戏：被追捕的真人玩家选择亮出一张区域牌
   function humanRevealForMPHunt(cardIdx){
     const card=me.hand[cardIdx];
-    if(!card||card.isGod)return;
+    if(!isZoneCard(card))return;
     const{huntTi}=gs.abilityData; // huntTi = 被追捕者在当前视角下的 index（非0）
     // 被追捕者将选择结果推送回规范 gs 并广播：
     // 设置 revCard，切换到 HUNT_CONFIRM 让追猎者（currentTurn=0 视角）完成后续
@@ -8287,12 +8683,12 @@ export default function Game(){
   // Called when player picks their zone card to reveal during an AI hunt
   function playerRevealForHunt(cardIdx){
     const card=me.hand[cardIdx];
-    if(!card||card.isGod)return;
+    if(!isZoneCard(card))return;
     const{huntingAI,aiHunterName}=gs.abilityData;
     let P=copyPlayers(gs.players),Disc=[...gs.discard];const L=[...gs.log];
     L.push(`你亮出 [${card.key}] ${card.name}`);
     const aiHand=P[huntingAI].hand;
-    const mi=aiHand.findIndex(c=>c.letter===card.letter||c.number===card.number);
+    const mi=aiHand.findIndex(c=>cardsHuntMatch(c,card));
     if(mi>=0){
       const dc=aiHand.splice(mi,1)[0];Disc.push(dc);
       const huntDamage=3+(P[huntingAI].damageBonus||0);
@@ -8301,18 +8697,27 @@ export default function Game(){
       if(P[0].hp<=0){
         P[0].isDead=true;P[0].roleRevealed=true;L.push(`☠ 你（${P[0].role}）倒下了！`);
         if(P[0].hand.length){
+          const maxToTake=3;
           if(P[0].revealHand){
-            const randomIndex=Math.floor(Math.random()*P[0].hand.length);
-            const stolenCard=P[0].hand.splice(randomIndex,1)[0];
-            P[huntingAI].hand.push(stolenCard);
-            L.push(`${aiHunterName} 从你的公开手牌中任选了一张 [${stolenCard.key}]！`);
+            const chosenCards=aiChooseHunterLootCards(P[0].hand,P[huntingAI].hand,maxToTake);
+            chosenCards.forEach(stolenCard=>{
+              const idx=P[0].hand.findIndex(c=>c.id===stolenCard.id);
+              if(idx>=0){
+                P[0].hand.splice(idx,1);
+                P[huntingAI].hand.push(stolenCard);
+                L.push(`${aiHunterName} 从你的公开手牌中选择了 [${stolenCard.key}]！`);
+              }
+            });
             Disc.push(...P[0].hand);
             P[0].hand=[];
           }else{
-            const randomIndex=Math.floor(Math.random()*P[0].hand.length);
-            const stolenCard=P[0].hand.splice(randomIndex,1)[0];
-            P[huntingAI].hand.push(stolenCard);
-            L.push(`${aiHunterName} 从你的手牌中暗抽了一张！`);
+            const cardsToTake=Math.min(maxToTake,P[0].hand.length);
+            for(let i=0;i<cardsToTake;i++){
+              const randomIndex=Math.floor(Math.random()*P[0].hand.length);
+              const stolenCard=P[0].hand.splice(randomIndex,1)[0];
+              P[huntingAI].hand.push(stolenCard);
+              L.push(`${aiHunterName} 从你的手牌中暗抽了一张！`);
+            }
             Disc.push(...P[0].hand);
             P[0].hand=[];
           }
@@ -8334,7 +8739,7 @@ export default function Game(){
     let newGs;
     if (win) newGs = {...baseGs, gameOver:win};
     // 决定是让 AI 重新进入 AI_TURN 继续追杀，还是结束该回合
-    else if (wantsToHuntAgain) newGs = {...baseGs, phase: 'AI_TURN', currentTurn: huntingAI, skillUsed: false, restUsed: false, _drawnCard: gs._drawnCard, _aiDrawnCard: gs._aiDrawnCard??gs._drawnCard??null, _aiName: aiHunterName};
+    else if (wantsToHuntAgain) newGs = {...baseGs, phase: 'AI_TURN', currentTurn: huntingAI, skillUsed: false, restUsed: false, _drawnCard: null, _aiDrawnCard: null, _discardedDrawnCard:false, _playersBeforeThisDraw:null, _aiName: aiHunterName};
     else newGs = startNextTurn({...baseGs, currentTurn: huntingAI, skillUsed: true});
 
     const queue=[{type:'SKILL_HUNT',msgs:L.slice(-3),targetIdx:0},...buildAnimQueue(gs,newGs)];
@@ -8380,6 +8785,17 @@ export default function Game(){
   function bewitchSelectTarget(ti){
     const{bewitchCard,bewitchIdx}=gs.abilityData;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
+    let inspectionMeta={
+      inspectionDeck: gs.inspectionDeck,
+      inspectionDiscard: gs.inspectionDiscard,
+      sealLooseningCount: gs.sealLooseningCount,
+      houndsOfTindalosActive: gs.houndsOfTindalosActive,
+      houndsOfTindalosTarget: gs.houndsOfTindalosTarget,
+      houndsOfTindalosElapsed: gs.houndsOfTindalosElapsed||0,
+      _inspectionSeq: gs._inspectionSeq||0,
+      _inspectionCard: gs._inspectionCard||null,
+      _inspectionTarget: gs._inspectionTarget??null,
+    };
     P[0].roleRevealed=true;P[0].hand.splice(bewitchIdx,1);
     const L=[...gs.log,`你对 ${P[ti].name} 【蛊惑】，赠 [${bewitchCard.isGod?bewitchCard.name:bewitchCard.key}]`];
     // God card gifted via bewitch: forced convert if different god, then AI resolves for target
@@ -8395,15 +8811,16 @@ export default function Game(){
           effectMsg += '，身份揭晓：邪祀者';
         }
       } else {
-        P[ti].san=clamp(P[ti].san-cost);const newSan=P[ti].san;if(newSan<=6){const inspectionResult=handleInspection(ti,{players:P,deck:D,discard:Disc,log:gs.log||[],inspectionDeck:gs.inspectionDeck,inspectionDiscard:gs.inspectionDiscard,sealLooseningCount:gs.sealLooseningCount,houndsOfTindalosActive:gs.houndsOfTindalosActive,houndsOfTindalosTarget:gs.houndsOfTindalosTarget});P=inspectionResult.players;D=inspectionResult.deck;Disc=inspectionResult.discard;}
+        P[ti].san=clamp(P[ti].san-cost);const newSan=P[ti].san;if(newSan<=6){const processed=processInspectionTargets([ti],gs.currentTurn,P,D,Disc,L,inspectionMeta);P=processed.P;D=processed.D;Disc=processed.Disc;inspectionMeta=processed.inspectionMeta;L.splice(0,L.length,...processed.log);}
         effectMsg = `${P[ti].name} 遭遇邪神 ${bewitchCard.name}（第${P[ti].godEncounters}次），失去${cost}SAN`;
       }
       L.push(effectMsg);
       const forcedConvert=!!(P[ti].godName&&P[ti].godName!==bewitchCard.godKey);
-      const gres=resolveGodEncounterForAI(ti,bewitchCard,P,D,Disc,gs,forcedConvert);
-      P=gres.P;Disc=gres.Disc;L.push(...gres.msgs);
+      const godResolveGs={...gs,players:P,deck:D,discard:Disc,log:L,...inspectionMeta};
+      const gres=resolveGodEncounterForAI(ti,bewitchCard,P,D,Disc,godResolveGs,forcedConvert);
+      P=gres.P;D=gres.D;Disc=gres.Disc;L.push(...gres.msgs);
       const win=checkWin(P,gs._isMP);
-      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...(win?{gameOver:win}:{})};
+      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...inspectionMeta,...(gres.inspectionMeta||{}),...(win?{gameOver:win}:{})};
       const statQueue=buildAnimQueue(gs,newGs);
       triggerAnimQueue(buildBewitchForcedCardQueue(0,ti,bewitchCard,P[ti]?.name,statQueue,L.slice(-3)),newGs);
       return;
@@ -8411,7 +8828,14 @@ export default function Game(){
     const res=applyFx(bewitchCard,ti,ti,P,D,Disc,gs);L.push(...res.msgs);
     res.P[ti].hand.push(bewitchCard);
     const win=checkWin(res.P,gs._isMP);
-    const newGs={...gs,players:res.P,deck:res.D,discard:res.Disc,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...(res.statePatch||{}),...(win?{gameOver:win}:{})};
+    const entersDamageLinkSelect=!!res.statePatch?.damageLinkTargets;
+    const newGs={...gs,players:res.P,deck:res.D,discard:res.Disc,log:L,
+      abilityData:entersDamageLinkSelect?{
+        damageLinkTargets:res.statePatch.damageLinkTargets,
+        damageLinkSource:res.statePatch.damageLinkSource,
+      }:{},
+      phase:entersDamageLinkSelect?'DAMAGE_LINK_SELECT_TARGET':'ACTION',
+      skillUsed:true,...(res.statePatch||{}),...(win?{gameOver:win}:{})};
     const statQueue=buildAnimQueue(gs,newGs);
     triggerAnimQueue(
       buildBewitchForcedCardQueue(0,ti,bewitchCard,res.P[ti]?.name,statQueue,L.slice(-3)),
@@ -9032,9 +9456,9 @@ export default function Game(){
     if(phase==='SWAP_GIVE_CARD')swapGiveCard(idx);
     else if(phase==='BEWITCH_SELECT_CARD')bewitchSelectCard(idx);
     else if(phase==='DISCARD_PHASE')toggleDiscardSelect(idx);
-    else if(phase==='HUNT_CONFIRM'&&myTurn){const c=me.hand[idx],rc=gs.abilityData?.revCard;if(rc&&(c.letter===rc.letter||c.number===rc.number))huntConfirm(idx);}
-    else if(phase==='PLAYER_REVEAL_FOR_HUNT'){const c=me.hand[idx];if(c&&!c.isGod)playerRevealForHunt(idx);}
-    else if(phase==='HUNT_WAIT_REVEAL'&&!myTurn&&gs.abilityData?.huntTi===0){const c=me.hand[idx];if(c&&!c.isGod)humanRevealForMPHunt(idx);}
+    else if(phase==='HUNT_CONFIRM'&&myTurn){const c=me.hand[idx],rc=gs.abilityData?.revCard;if(rc&&cardsHuntMatch(c,rc))huntConfirm(idx);}
+    else if(phase==='PLAYER_REVEAL_FOR_HUNT'){const c=me.hand[idx];if(isZoneCard(c))playerRevealForHunt(idx);}
+    else if(phase==='HUNT_WAIT_REVEAL'&&!myTurn&&gs.abilityData?.huntTi===0){const c=me.hand[idx];if(isZoneCard(c))humanRevealForMPHunt(idx);}
     else if(phase==='HUNT_SELECT_CARD_FROM_PUBLIC'&&myTurn){
       const huntTi=gs.abilityData?.huntTi;
       const targetPlayer=gs.players[huntTi];
@@ -9058,10 +9482,10 @@ export default function Game(){
     if(phase==='SWAP_GIVE_CARD')return true;
     if(phase==='BEWITCH_SELECT_CARD')return true;
     if(phase==='DISCARD_PHASE'){const sel=gs.abilityData.discardSelected||[];const max=me.hand.length-4;return sel.includes(idx)||sel.length<max;}
-    if(phase==='HUNT_CONFIRM'&&isVisualPlayerTurn){const rc=gs.abilityData?.revCard;return!!(rc&&(c.letter===rc.letter||c.number===rc.number));}
-    if(phase==='HUNT_WAIT_REVEAL'&&!isVisualPlayerTurn&&gs.abilityData?.huntTi===0)return!c.isGod;
-    if(phase==='PLAYER_REVEAL_FOR_HUNT')return!c.isGod; // only zone cards
-    if(phase==='HUNT_SELECT_CARD_FROM_PUBLIC'&&isVisualPlayerTurn){
+    if(phase==='HUNT_CONFIRM'&&myTurn){const rc=gs.abilityData?.revCard;return!!(rc&&cardsHuntMatch(c,rc));}
+    if(phase==='HUNT_WAIT_REVEAL'&&!myTurn&&gs.abilityData?.huntTi===0)return isZoneCard(c);
+    if(phase==='PLAYER_REVEAL_FOR_HUNT')return isZoneCard(c); // only zone cards
+    if(phase==='HUNT_SELECT_CARD_FROM_PUBLIC'&&myTurn){
       const huntTi=gs.abilityData?.huntTi;
       const targetPlayer=gs.players[huntTi];
       return targetPlayer&&idx<targetPlayer.hand.length;
@@ -9112,7 +9536,7 @@ export default function Game(){
       {!suppressAnim&&<SwapCupOverlay active={!!swapAnim} casterName={swapAnim?.casterName||''} targetName={swapAnim?.targetName||''}/>}
 
       {/* Turn indicator — shown during AI turns */}
-      {gs.phase==='AI_TURN'&&gs.currentTurn!==0&&!anim&&!gs._isMP&&(()=>{
+      {gs.phase==='AI_TURN'&&gs.currentTurn!==0&&!anim&&!gs._isMP&&gs._playersBeforeThisDraw&&(()=>{
         const tp=gs.players[gs.currentTurn];
         const tr=tp?RINFO[tp.role]:null;
         return(
@@ -9275,6 +9699,11 @@ export default function Game(){
                 <div style={{fontSize:9.5,color:'#a07878',fontStyle:'italic',marginTop:1,lineHeight:1.4}}>{GOD_DEFS[me.godName]?.levels[(me.godLevel||1)-1]?.desc}</div>
               </div>
             )}
+            {!!me.zoneCards?.length&&(
+              <div style={{marginTop:6,display:'flex',flexWrap:'wrap',gap:4}}>
+                {me.zoneCards.map((c,ci)=><DDCard key={c.id||`self-zone-${ci}`} card={c} small disabled/>)}
+              </div>
+            )}
             </div>
             <div style={{borderTop:'1px solid #2a1a08',paddingTop:8}}>
               <StatBar label="HP"  val={displayStats[0]?.hp ?? me.hp}  color="#7a1515" trackColor="#1a0808"/>
@@ -9310,7 +9739,7 @@ export default function Game(){
             )}
           </div>
           {/* Center: deck/discard piles */}
-          <PileDisplay deckCount={gs.deck.length} discardCount={gs.discard.length} discardTop={gs.discard[gs.discard.length-1]||null} compact={isMobile} deckRef={deckAreaRef} discardRef={discardPileRef}/>
+          <PileDisplay deckCount={gs.deck.length} discardCount={gs.discard.length} discardTop={gs.discard[gs.discard.length-1]||null} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={isMobile} deckRef={deckAreaRef} discardRef={discardPileRef}/>
           {/* Log — narrow, right-aligned */}
           <div ref={logRef} style={{width:isMobile?'100%':218,flexBasis:isMobile?'100%':undefined,flexShrink:0,background:'#0e0904',border:'1.5px solid #2a1a08',borderRadius:3,padding:'8px 10px',overflowY:'auto',maxHeight:isMobile?100:222}}>
             <div style={{fontFamily:"'Cinzel',serif",color:'#7a5a2a',fontSize:9,letterSpacing:2,marginBottom:5,textTransform:'uppercase'}}>— 冒险日志 —</div>
@@ -9388,61 +9817,175 @@ export default function Game(){
         </div>
 
         {/* 两人一绳锁链图像 */}
-        {gs.players.map((player, playerIndex) => {
-          if (player.damageLink && player.damageLink.active) {
-            const partnerIndex = player.damageLink.partner;
-            const partner = gs.players[partnerIndex];
-            if (partner) {
-              return (
-                <div
-                  key={`link-${playerIndex}-${partnerIndex}`}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    zIndex: 50,
-                    pointerEvents: 'none'
-                  }}
-                >
-                  <svg
-                    width="100%"
-                    height="100%"
-                    style={{ position: 'absolute', top: 0, left: 0 }}
+        {[
+          ...gs.players.flatMap((player,playerIndex)=>{
+            if(!player.damageLink||!player.damageLink.active)return [];
+            const partnerIndex=player.damageLink.partner;
+            if(partnerIndex==null||partnerIndex<=playerIndex)return [];
+            const partner=gs.players[partnerIndex];
+            if(!partner?.damageLink?.active||partner.damageLink.partner!==playerIndex)return [];
+            return [{id:`active-${playerIndex}-${partnerIndex}`,a:playerIndex,b:partnerIndex,mode:'active'}];
+          }),
+          ...damageLinkGhosts
+        ].map((link) => {
+          const playerIndex=link.a;
+          const partnerIndex=link.b;
+          const ghostMode=link.mode==='active'?null:link.mode;
+          const sourceEl = document.querySelector(`[data-pid="${playerIndex}"]`);
+          const partnerEl = document.querySelector(`[data-pid="${partnerIndex}"]`);
+          const sourceRect = sourceEl?.getBoundingClientRect();
+          const partnerRect = partnerEl?.getBoundingClientRect();
+          if (!sourceRect || !partnerRect) return null;
+          const x1 = sourceRect.left + sourceRect.width / 2;
+          const y1 = sourceRect.top + sourceRect.height * 0.68;
+          const x2 = partnerRect.left + partnerRect.width / 2;
+          const y2 = partnerRect.top + partnerRect.height * 0.68;
+          const makeBindStrands=(rect,anchorX,anchorY,keyPrefix)=>{
+            const bindSpacing=9.5;
+            const ringRx=9;
+            const ringRy=4.4;
+            const strandGap=ringRy*2.6;
+            const strandOffsets=[-strandGap,0,strandGap];
+            const strandTilts=[11,2,-9];
+            const strandAnchorShifts=[-18,4,20];
+            const strandHalf=Math.max(26,rect.width*0.52);
+            const minY=rect.top+rect.height*0.56;
+            const maxY=rect.bottom-ringRy-8;
+            return strandOffsets.flatMap((offset,rowIdx)=>{
+              const strandY=Math.max(minY,Math.min(maxY,anchorY+offset));
+              const startX=anchorX-strandHalf;
+              const endX=anchorX+strandHalf;
+              const span=Math.max(1,endX-startX);
+              const count=Math.max(2,Math.floor(span/bindSpacing)+1);
+              const tilt=strandTilts[rowIdx] ?? 0;
+              const localAnchorX=anchorX+(strandAnchorShifts[rowIdx] ?? 0);
+              const slope=Math.tan(tilt*Math.PI/180);
+              return [...Array(count)].map((_,i)=>{
+                const t=count===1?0.5:i/(count-1);
+                const cx=startX+span*t;
+                const cy=Math.max(minY,Math.min(maxY,strandY+(cx-localAnchorX)*slope));
+                return{
+                  cx,
+                  cy,
+                  rx:ringRx,
+                  ry:ringRy,
+                  rot:tilt,
+                  key:`${keyPrefix}-${rowIdx}-${i}`,
+                };
+              });
+            });
+          };
+          const bindRings=[
+            ...makeBindStrands(sourceRect,x1,y1,`bind-${playerIndex}`),
+            ...makeBindStrands(partnerRect,x2,y2,`bind-${partnerIndex}`),
+          ];
+          const dx = x2 - x1;
+          const dy = y2 - y1;
+          const length = Math.hypot(dx, dy);
+          if (length < 8) return null;
+          const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+          const ux = dx / length;
+          const uy = dy / length;
+          const perpX = -uy;
+          const perpY = ux;
+          const ringSpacing = 9.5;
+          const ringCount = Math.max(2, Math.floor(length / ringSpacing));
+          const wrapStyle=ghostMode==='break'?{animation:'chainBreakFade 560ms ease-out forwards'}:
+            ghostMode==='fade'?{animation:'chainExpireFade 720ms ease-out forwards'}:null;
+          const bindAnimStyle=ghostMode==='break'?{animation:'chainBindSnap 560ms ease-out forwards'}:
+            ghostMode==='fade'?{animation:'chainExpireFade 720ms ease-out forwards'}:null;
+          return (
+            <div
+              key={`link-${link.id}`}
+              style={{
+                position: 'fixed',
+                inset: 0,
+                zIndex: 50,
+                pointerEvents: 'none',
+                ...(wrapStyle||{})
+              }}
+            >
+              <svg
+                width="100%"
+                height="100%"
+                style={{ position: 'absolute', top: 0, left: 0, overflow: 'visible' }}
+              >
+                {bindRings.map(ring=>(
+                  <g
+                    key={ring.key}
+                    transform={`translate(${ring.cx} ${ring.cy}) rotate(${ring.rot})`}
                   >
-                    <defs>
-                      <pattern
-                        id={`chain-pattern-${playerIndex}`}
-                        patternUnits="userSpaceOnUse"
-                        width="20"
-                        height="10"
+                    <g style={bindAnimStyle||undefined}>
+                      <ellipse
+                        cx="0"
+                        cy="0"
+                        rx={ring.rx}
+                        ry={ring.ry}
+                        fill="rgba(42,26,8,0.02)"
+                        stroke="rgba(200,169,110,0.18)"
+                        strokeWidth="1.5"
+                      />
+                      <ellipse
+                        cx="0"
+                        cy="0"
+                        rx={Math.max(6,ring.rx-2.4)}
+                        ry={Math.max(3,ring.ry-1.5)}
+                        fill="none"
+                        stroke="rgba(255,233,186,0.08)"
+                        strokeWidth="0.55"
+                      />
+                    </g>
+                  </g>
+                ))}
+                {[...Array(ringCount)].map((_, ringIdx) => {
+                  const t = ringCount === 1 ? 0.5 : ringIdx / (ringCount - 1);
+                  const offset = ringIdx % 2 === 0 ? -0.9 : 0.9;
+                  const cx = x1 + dx * t + perpX * offset;
+                  const cy = y1 + dy * t + perpY * offset;
+                  const shouldDrift = ringIdx > 0 && ringIdx < ringCount - 1;
+                  return (
+                    <g
+                      key={`ring-${playerIndex}-${partnerIndex}-${ringIdx}`}
+                      transform={`translate(${cx} ${cy}) rotate(${angle})`}
+                    >
+                      <g
+                        style={{
+                          animation: ghostMode==='break'
+                            ? `chainMainSnap 560ms ease-out forwards`
+                            : ghostMode==='fade'
+                              ? `chainExpireFade 720ms ease-out forwards`
+                              : shouldDrift
+                                ? `chainLinkDrift 1.6s ease-in-out ${ringIdx * 0.05}s infinite alternate`
+                                : 'none',
+                          transformOrigin: '0px 0px',
+                          transformBox: 'fill-box',
+                        }}
                       >
-                        <path
-                          d="M0,5 L5,5 L5,8 L10,8 L10,5 L15,5 L15,8 L20,8 L20,5"
-                          stroke="#c8a96e"
-                          strokeWidth="1"
-                          fill="none"
+                        <ellipse
+                          cx="0"
+                          cy="0"
+                          rx="9"
+                          ry="4.4"
+                          fill="rgba(42,26,8,0.02)"
+                          stroke="rgba(200,169,110,0.22)"
+                          strokeWidth="1.45"
                         />
-                      </pattern>
-                    </defs>
-                    <line
-                      x1="50%"
-                      y1="50%"
-                      x2="50%"
-                      y2="50%"
-                      stroke={`url(#chain-pattern-${playerIndex})`}
-                      strokeWidth="2"
-                      style={{
-                        animation: 'chainMove 2s linear infinite'
-                      }}
-                    />
-                  </svg>
-                </div>
-              );
-            }
-          }
-          return null;
+                        <ellipse
+                          cx="0"
+                          cy="0"
+                          rx="6.6"
+                          ry="2.9"
+                          fill="none"
+                          stroke="rgba(255,233,186,0.10)"
+                          strokeWidth="0.55"
+                        />
+                      </g>
+                    </g>
+                  );
+                })}
+              </svg>
+            </div>
+          );
         })}
 
         {/* Hand area */}
@@ -9555,6 +10098,7 @@ export default function Game(){
       {/* ── Win Animations ── */}
       {phase==='TREASURE_WIN'&&!showTutorial&&<TreasureMapAnim hand={me.hand} onConfirm={revealWin}/>}
       {phase==='GOD_RESURRECTION'&&!showTutorial&&<CthulhuResurrectionAnim onConfirm={revealWin}/>}
+      {!showTutorial&&<HoundsTimerBadge active={!!gs?.houndsOfTindalosActive} secondsLeft={houndsSecLeft}/>}
       {showTutorial&&tutorialStep===2&&(()=>{
         const TW=Math.min(260,vw-20);
         const px=Math.max(8,Math.min(panelRect?panelRect.right+14:175,vw-TW-8));
@@ -10283,6 +10827,11 @@ const GLOBAL_STYLES=`
   @keyframes animVig     { 0%,100%{opacity:0} 50%{opacity:1} }
   @keyframes animGlow    { 0%,100%{box-shadow:0 0 8px #c8a96e33} 50%{box-shadow:0 0 22px #c8a96e88} }
   @keyframes chainMove    { 0%{stroke-dashoffset: 20} 100%{stroke-dashoffset: 0} }
+  @keyframes chainLinkDrift { 0%{transform:rotate(-3deg)} 100%{transform:rotate(3deg)} }
+  @keyframes chainBreakFade { 0%{opacity:1} 35%{opacity:1} 100%{opacity:0} }
+  @keyframes chainExpireFade { 0%{opacity:1} 100%{opacity:0} }
+  @keyframes chainMainSnap { 0%{transform:scaleX(1)} 35%{transform:scaleX(0.88)} 100%{transform:scaleX(0.18);opacity:0} }
+  @keyframes chainBindSnap { 0%{transform:translateX(0)} 20%{transform:translateX(-2px)} 40%{transform:translateX(2px)} 70%{transform:translateX(-1px)} 100%{transform:translateX(0);opacity:0} }
   @keyframes earthquakeShake { 0%,100%{transform:translateX(0)} 10%{transform:translateX(-8px)} 20%{transform:translateX(8px)} 30%{transform:translateX(-6px)} 40%{transform:translateX(6px)} 50%{transform:translateX(-4px)} 60%{transform:translateX(4px)} 70%{transform:translateX(-2px)} 80%{transform:translateX(2px)} }
   @keyframes earthquakeFlash { 0%,100%{filter:grayscale(0%)} 50%{filter:grayscale(100%)} }
   @keyframes rockFall { 0%{top:-30px;opacity:1} 100%{top:100vh;opacity:0} }

@@ -24,7 +24,7 @@ const FIXED_ZONE_EFFECTS = {
   D1:{pos:{name:'秤心仪式',desc:'你失去3HP，回复2SAN（若你本局未信仰过邪神，只执行后半句效果）',type:'sacHealSelfSANCultist',val:2},negS:{name:'致命尖刺',desc:'你失去2HP，若你手牌数≥4则额外失去2HP',type:'selfDamageHPCond',val:2,bonus:2,condType:'handHigh',condVal:4},negA:{name:'钻地魔虫',desc:'全体角色失去1HP，随机一名角色再失去1HP',type:'allDamageHPRandomExtra',val:1}},
   D2:{pos:{name:'穴居人战争',desc:'你与另一名角色各亮一张手牌，数字编号更大的一方收下这两张牌',type:'caveDuel',val:0},negS:{name:'恐怖直视',desc:'你失去1SAN，若你手牌数≤2则额外失去2SAN',type:'selfDamageSANCond',val:1,bonus:2,condType:'handLow',condVal:2},negA:{name:'血之窥探',desc:'你失去3HP，选一名角色偷看其一张手牌',type:'selfDamageHPPeek',val:3}},
   D3:{pos:{name:'灵龟卜祝',desc:'展示牌堆顶的4张牌，然后选择你手中最多的一个字母或数字编号，将这4张牌中该编号的牌收入手牌（不触发效果）',type:'revealTopCards',val:4},negS:{name:'遗忘咒语',desc:'你失去2HP与1SAN',type:'selfDamageHPSAN',hpVal:2,sanVal:1},negA:{name:'意志崩散',desc:'你失去3SAN',type:'selfDamageSAN',val:3}},
-  D4:{pos:{name:'狂化',desc:'你失去1SAN，直到回合结束，你造成的伤害+1',type:'selfBerserk',val:1},negS:{name:'扭伤',desc:'你失去1HP，下回合开始时你不能摸牌（强制触发）',type:'selfDamageSkipDraw',val:1,forced:true},negA:{name:'同归深渊',desc:'你失去2HP与2SAN，相邻角色各失去1HP与1SAN',type:'selfDamageAdjDamageBoth',hpVal:2,sanVal:2,adjHpVal:1,adjSanVal:1,forced:true}},
+  D4:{pos:{name:'狂化',desc:'你失去1SAN，直到回合结束，你造成的伤害+1',type:'selfBerserk',val:1},negS:{name:'扭伤',desc:'你失去1HP，下回合开始时你不能摸牌（强制触发）',type:'selfDamageSkipDraw',val:1,forced:true},negA:{name:'同归深渊',desc:'你失去2HP与2SAN，相邻角色各失去1HP与1SAN',type:'selfDamageAdjDamageBoth',hpVal:2,sanVal:2,adjHpVal:1,adjSanVal:1}},
 };
 const ZONE_VARIANTS=['pos','negS','negA'];
 const LETTERS=['A','B','C','D'], NUMS=[1,2,3,4];
