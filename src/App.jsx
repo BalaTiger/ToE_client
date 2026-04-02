@@ -6128,11 +6128,15 @@ export default function Game(){
   }
 
   // ── Multiplayer ───────────────────────────────────────────────
-  // Prefer explicit runtime/env configuration; fall back to the historical tunnel URL.
+  // Prefer explicit runtime/env configuration; default to same-origin reverse proxy.
   const SERVER_URL =
     (typeof window!=='undefined'&&window.__TOE_SERVER_URL__) ||
     (typeof import.meta!=='undefined'&&import.meta.env?.VITE_SERVER_URL) ||
-    'https://cookie-reveal-cal-mount.trycloudflare.com';
+    (typeof window!=='undefined'?window.location.origin:'');
+  const SOCKET_PATH =
+    (typeof window!=='undefined'&&window.__TOE_SOCKET_PATH__) ||
+    (typeof import.meta!=='undefined'&&import.meta.env?.VITE_SOCKET_PATH) ||
+    '/api/socket.io';
   const [playerUUID,setPlayerUUID]=useState(()=>safeLS.get('cthulhu_player_uuid')||null);
   const playerUUIDRef=useRef(safeLS.get('cthulhu_player_uuid')||null);
   const [multiLoading,setMultiLoading]=useState(false);
@@ -6250,7 +6254,7 @@ export default function Game(){
       addToast('网络加载失败，请检查连接后重试');
       return;
     }
-    const socket=ioFn(SERVER_URL,{transports:['websocket','polling'],reconnection:false});
+    const socket=ioFn(SERVER_URL,{path:SOCKET_PATH,transports:['websocket','polling'],reconnection:false});
     socketRef.current=socket;
 
     function cleanup(){clearTimeout(connTimeoutRef.current);connTimeoutRef.current=null;}
@@ -6258,7 +6262,7 @@ export default function Game(){
     socket.on('connect_error',(err)=>{
       cleanup();
       setMultiLoading(false);
-      console.error('[multiplayer connect_error]', SERVER_URL, err?.message||err);
+      console.error('[multiplayer connect_error]', SERVER_URL, SOCKET_PATH, err?.message||err);
       setConnErrModal(true);
       socket.disconnect();
     });
@@ -7912,10 +7916,10 @@ export default function Game(){
               <img 
                 src="/img/loading.png" 
                 style={{
-                  height: '12px', 
+                  height: '16px', 
                   marginRight: '10px',
                   animation: 'spinLoader 1s linear infinite',
-                  filter: 'invert(60%) sepia(30%) saturate(300%) hue-rotate(30deg) brightness(80%) contrast(90%)',
+                  filter: 'invert(60%) sepia(30%) saturate(300%) hue-rotate(30deg)',
                   transformOrigin: 'center'
                 }} 
                 alt="Loading"
