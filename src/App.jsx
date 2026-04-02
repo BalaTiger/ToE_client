@@ -6254,7 +6254,7 @@ export default function Game(){
       addToast('网络加载失败，请检查连接后重试');
       return;
     }
-    const socket=ioFn(SERVER_URL,{path:SOCKET_PATH,transports:['websocket','polling'],reconnection:false});
+    const socket=ioFn(SERVER_URL,{path:SOCKET_PATH,transports:['polling','websocket'],reconnection:false});
     socketRef.current=socket;
 
     function cleanup(){clearTimeout(connTimeoutRef.current);connTimeoutRef.current=null;}

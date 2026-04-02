@@ -21,6 +21,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /root/local/client
+			git reset --hard
             git checkout release
             git pull
             npm install
