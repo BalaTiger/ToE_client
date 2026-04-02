@@ -5938,27 +5938,6 @@ export default function Game(){
   const[gs,setGs]=useState(null);
   const[modal,setModal]=useState(null); // 'about' | 'roadmap' | null
   const [serverAnnouncement, setServerAnnouncement] = useState(null);
-  useEffect(()=>{
-    if(typeof window==='undefined') return undefined;
-    const announcementUrl = `${SERVER_URL.replace(/\/$/,'')}/api/announcement`;
-    let cancelled = false;
-    async function syncAnnouncement(){
-      try{
-        const res = await fetch(announcementUrl,{cache:'no-store'});
-        if(!res.ok) return;
-        const data = await res.json();
-        if(!cancelled) setServerAnnouncement(data?.announcement||null);
-      }catch(_err){
-        // 静默失败：轮询只做联机公告兜底，不影响单机游玩
-      }
-    }
-    syncAnnouncement();
-    const intervalId = setInterval(syncAnnouncement,15000);
-    return ()=>{
-      cancelled = true;
-      clearInterval(intervalId);
-    };
-  },[SERVER_URL]);
   // ── Audio Preloading ──────────────────────────────────────────
   const [isLoading, setIsLoading] = useState(true);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -6158,6 +6137,27 @@ export default function Game(){
     (typeof window!=='undefined'&&window.__TOE_SOCKET_PATH__) ||
     (typeof import.meta!=='undefined'&&import.meta.env?.VITE_SOCKET_PATH) ||
     '/api/socket.io';
+  useEffect(()=>{
+    if(typeof window==='undefined') return undefined;
+    const announcementUrl = `${SERVER_URL.replace(/\/$/,'')}/api/announcement`;
+    let cancelled = false;
+    async function syncAnnouncement(){
+      try{
+        const res = await fetch(announcementUrl,{cache:'no-store'});
+        if(!res.ok) return;
+        const data = await res.json();
+        if(!cancelled) setServerAnnouncement(data?.announcement||null);
+      }catch(_err){
+        // 静默失败：轮询只做联机公告兜底，不影响单机游玩
+      }
+    }
+    syncAnnouncement();
+    const intervalId = setInterval(syncAnnouncement,15000);
+    return ()=>{
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  },[SERVER_URL]);
   const [playerUUID,setPlayerUUID]=useState(()=>safeLS.get('cthulhu_player_uuid')||null);
   const playerUUIDRef=useRef(safeLS.get('cthulhu_player_uuid')||null);
   const [multiLoading,setMultiLoading]=useState(false);
