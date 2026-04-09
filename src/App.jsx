@@ -489,81 +489,6 @@ function zoneCardUsesTargetInteraction(card){
   return !!card?.type && ['swapAllHands','caveDuel','damageLink','roseThornGiftAllHand','globalOnlySwap'].includes(card.type);
 }
 
-// 通用效果处理函数
-function applyEffect(P, D, Disc, card, ci, ti = null, avoidNegative = false, avoidNegativeFor = [], gs) {
-  return applyFx(card, ci, ti, P, D, Disc, gs, avoidNegative, avoidNegativeFor);
-}
-
-function applyHealHP(P, i, v) {
-  if (i == null || !P[i] || P[i].isDead) return;
-  P[i].hp = clamp(P[i].hp + v);
-}
-
-function applyHealSAN(P, i, v) {
-  if (i == null || !P[i] || P[i].isDead) return;
-  P[i].san = clamp(P[i].san + v);
-}
-
-function applyHurtHP(P, i, v, avoidNegative, avoidNegativeFor, ci, dmgBonus = 0) {
-  if (i == null || !P[i] || P[i].isDead || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return false;
-  P[i].hp = clamp(P[i].hp - (v + dmgBonus));
-  if (P[i].hp <= 0) {
-    P[i].isDead = true;
-    P[i].roleRevealed = true;
-    return true; // 表示角色死亡
-  }
-  return false;
-}
-
-function applyHurtSAN(P, i, v, avoidNegative, avoidNegativeFor, ci, dmgBonus = 0) {
-  if (i == null || !P[i] || P[i].isDead || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return;
-  P[i].san = clamp(P[i].san - (v + dmgBonus));
-}
-
-function applyRandDiscard(P, i, count, Disc, msgs, avoidNegative, avoidNegativeFor, ci) {
-  if (i == null || !P[i] || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return;
-  for (let n = 0; n < count; n++) {
-    if (P[i].hand.length) {
-      const x = 0 | Math.random() * P[i].hand.length;
-      const c = P[i].hand.splice(x, 1)[0];
-      Disc.push(c);
-      msgs.push(`${P[i].name} 失去了 ${cardLogText(c)}`);
-    }
-  }
-}
-
-function applyToggleRest(P, i, msgs, avoidNegative, avoidNegativeFor, ci) {
-  if (i == null || !P[i] || P[i].isDead || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return;
-  P[i].isResting = !P[i].isResting;
-  msgs.push(`${P[i].name}${P[i].isResting ? '进入' : '离开'}休息状态`);
-}
-
-function applyDamageToTargets(P, targets, damageFn, v, dmgBonus, avoidNegative, avoidNegativeFor, msgs, actorName, ci) {
-  let hasDamage = false;
-  for (const i of targets) {
-    if (i !== ci || !avoidNegative || !avoidNegativeFor.includes(i)) {
-      hasDamage = true;
-    }
-    const died = damageFn(P, i, v, avoidNegative, avoidNegativeFor, ci, dmgBonus);
-    if (died) {
-      msgs.push(`☠ ${P[i].name}（${P[i].role}）倒下了！`);
-      Disc.push(...P[i].hand);
-      P[i].hand = [];
-      if (P[i].godZone?.length) {
-        Disc.push(...P[i].godZone);
-        P[i].godZone = [];
-        P[i].godName = null;
-        P[i].godLevel = 0;
-      }
-    }
-  }
-  return hasDamage;
-}
-
-function scorePlayerPerspective(player){
-  if(!player||player.isDead)return -999;
-  return (10-player.hp)*1.3+(10-player.san)*1.1+player.hand.length*0.2+(player.godName?1:0)+(player.godLevel||0)*0.6;
-}
 
 function estimateHunterZoneCardScore(card,self,players,ci){
   let score=0;
@@ -3196,13 +3121,6 @@ function convertGodFollower(targetIndex,startIndex,P,D,Disc,L,inspectionMeta,log
   return {P,D,Disc,L,inspectionMeta};
 }
 
-// 检查并处理检定牌
-function checkInspection(playerIndex, oldSan, newSan, gs) {
-  if (newSan <= 6) {
-    return handleInspection(playerIndex, gs);
-  }
-  return gs;
-}
 
 // ══════════════════════════════════════════════════════════════
 //  ANIMATION SYSTEM  ─ queue-based, game freezes until all done
@@ -3318,6 +3236,54 @@ const EMPTY_TURN_ANIM_FIELDS=Object.freeze({
 });
 function withClearedTurnAnimFields(state,extra={}){
   return {...state,...EMPTY_TURN_ANIM_FIELDS,...extra};
+}
+function buildLocalCthDecisionState(baseState,{
+  players,
+  deck,
+  discard,
+  log,
+  drawnCard,
+  remainingDraws,
+  needGodChoice=false,
+  preStatLogs=[],
+  statLogs=[],
+  extraState={},
+}){
+  const drawLogs=[`你 摸到 ${cardLogText(drawnCard,{alwaysShowName:true})}`,...(needGodChoice?[]:preStatLogs)];
+  if(needGodChoice){
+    return {
+      ...baseState,
+      players,
+      deck,
+      discard,
+      log,
+      currentTurn:0,
+      phase:'GOD_CHOICE',
+      abilityData:{godCard:drawnCard,fromRest:true,cthDrawsRemaining:remainingDraws,drawerIdx:0},
+      drawReveal:null,
+      selectedCard:null,
+      _turnStartLogs:[],
+      _drawLogs:drawLogs,
+      _statLogs:[],
+      ...extraState,
+    };
+  }
+  return {
+    ...baseState,
+    players,
+    deck,
+    discard,
+    log,
+    currentTurn:0,
+    phase:'DRAW_REVEAL',
+    drawReveal:{card:drawnCard,msgs:[],needsDecision:true,forcedKeep:false,drawerIdx:0,drawerName:players[0].name,fromRest:true},
+    selectedCard:null,
+    abilityData:{fromRest:true,cthDrawsRemaining:remainingDraws},
+    _turnStartLogs:[],
+    _drawLogs:drawLogs,
+    _statLogs:statLogs,
+    ...extraState,
+  };
 }
 function buildPlayerTurnDrawQueue(oldGs,newGs,seedQueue=[]){
   const queue=[...(Array.isArray(seedQueue)?seedQueue:[])];
@@ -10973,12 +10939,19 @@ function buildInspectionEventFlow(baseGs,events){
           const r2=playerDrawCard(P,D,Disc,0,baseGs);P=r2.P;D=r2.D;Disc=r2.Disc;
           if(r2.drawnCard)L.push(`  摸到 ${cardLogText(r2.drawnCard,{alwaysShowName:true})}`);
           if(r2.needGodChoice){
-          setGs({...baseGs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:r2.drawnCard,fromRest:true,cthDrawsRemaining:extraDraws-_d-1,drawerIdx:0},drawReveal:null,selectedCard:null,_turnStartLogs:[],_drawLogs:[`你 摸到 ${cardLogText(r2.drawnCard,{alwaysShowName:true})}`],_statLogs:[]});
+          setGs(buildLocalCthDecisionState(baseGs,{
+            players:P,deck:D,discard:Disc,log:L,drawnCard:r2.drawnCard,remainingDraws:extraDraws-_d-1,needGodChoice:true,
+            extraState:{skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true},
+          }));
           return;
         }
         if(r2.needsDecision){
           const split=splitAnimBoundLogs(r2.effectMsgs||[]);
-          setGs({...baseGs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,phase:'DRAW_REVEAL',drawReveal:{card:r2.drawnCard,msgs:[],needsDecision:true,forcedKeep:false,drawerIdx:0,drawerName:P[0].name,fromRest:true},selectedCard:null,abilityData:{fromRest:true,cthDrawsRemaining:extraDraws-_d-1},_turnStartLogs:[],_drawLogs:[`你 摸到 ${cardLogText(r2.drawnCard,{alwaysShowName:true})}`,...split.preStat],_statLogs:split.stat});
+          setGs(buildLocalCthDecisionState(baseGs,{
+            players:P,deck:D,discard:Disc,log:L,drawnCard:r2.drawnCard,remainingDraws:extraDraws-_d-1,
+            preStatLogs:split.preStat,statLogs:split.stat,
+            extraState:{skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false},
+          }));
           return;
         }
       }
@@ -11036,12 +11009,19 @@ function buildInspectionEventFlow(baseGs,events){
           const r2=playerDrawCard(P,D,Disc,0,oldGs);P=r2.P;D=r2.D;Disc=r2.Disc;
           if(r2.drawnCard)L.push(`  摸到 ${cardLogText(r2.drawnCard,{alwaysShowName:true})}`);
           if(r2.needGodChoice){
-            setGs({...oldGs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:true,restUsed:true,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:r2.drawnCard,fromRest:true,cthDrawsRemaining:extraDraws-_d-1,drawerIdx:0},drawReveal:null,selectedCard:null,_turnStartLogs:[],_drawLogs:[`你 摸到 ${cardLogText(r2.drawnCard,{alwaysShowName:true})}`],_statLogs:[]});
+            setGs(buildLocalCthDecisionState(oldGs,{
+              players:P,deck:D,discard:Disc,log:L,drawnCard:r2.drawnCard,remainingDraws:extraDraws-_d-1,needGodChoice:true,
+              extraState:{skillUsed:true,restUsed:true,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true},
+            }));
             return;
           }
           if(r2.needsDecision){
             const split=splitAnimBoundLogs(r2.effectMsgs||[]);
-            setGs({...oldGs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:true,restUsed:true,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,phase:'DRAW_REVEAL',drawReveal:{card:r2.drawnCard,msgs:[],needsDecision:true,forcedKeep:false,drawerIdx:0,drawerName:P[0].name,fromRest:true},selectedCard:null,abilityData:{fromRest:true,cthDrawsRemaining:extraDraws-_d-1},_turnStartLogs:[],_drawLogs:[`你 摸到 ${cardLogText(r2.drawnCard,{alwaysShowName:true})}`,...split.preStat],_statLogs:split.stat});
+            setGs(buildLocalCthDecisionState(oldGs,{
+              players:P,deck:D,discard:Disc,log:L,drawnCard:r2.drawnCard,remainingDraws:extraDraws-_d-1,
+              preStatLogs:split.preStat,statLogs:split.stat,
+              extraState:{skillUsed:true,restUsed:true,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false},
+            }));
             return;
           }
           // forced card: already applied, continue
@@ -11200,12 +11180,19 @@ function buildInspectionEventFlow(baseGs,events){
           cthDraws.push(r2.drawnCard);
         }
         if(r2.needGodChoice){
-          setGs({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:r2.drawnCard,fromRest:true,cthDrawsRemaining:extraDraws-_d-1,drawerIdx:0},drawReveal:null,selectedCard:null,_turnStartLogs:[],_drawLogs:[`你 摸到 ${cardLogText(r2.drawnCard,{alwaysShowName:true})}`],_statLogs:[]});
+          setGs(buildLocalCthDecisionState(gs,{
+            players:P,deck:D,discard:Disc,log:L,drawnCard:r2.drawnCard,remainingDraws:extraDraws-_d-1,needGodChoice:true,
+            extraState:{skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true},
+          }));
           return;
         }
         if(r2.needsDecision){
           const split=splitAnimBoundLogs(r2.effectMsgs||[]);
-          setGs({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,phase:'DRAW_REVEAL',drawReveal:{card:r2.drawnCard,msgs:[],needsDecision:true,forcedKeep:false,drawerIdx:0,drawerName:P[0].name,fromRest:true},selectedCard:null,abilityData:{fromRest:true,cthDrawsRemaining:extraDraws-_d-1},_turnStartLogs:[],_drawLogs:[`你 摸到 ${cardLogText(r2.drawnCard,{alwaysShowName:true})}`,...split.preStat],_statLogs:split.stat});
+          setGs(buildLocalCthDecisionState(gs,{
+            players:P,deck:D,discard:Disc,log:L,drawnCard:r2.drawnCard,remainingDraws:extraDraws-_d-1,
+            preStatLogs:split.preStat,statLogs:split.stat,
+            extraState:{skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false},
+          }));
           return;
         }
         // forced card: already applied, continue
@@ -11261,12 +11248,19 @@ function buildInspectionEventFlow(baseGs,events){
           cthDraws.push(r2.drawnCard);
         }
         if(r2.needGodChoice){
-          setGs({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:r2.drawnCard,fromRest:true,cthDrawsRemaining:extraDraws-_d-1,drawerIdx:0},drawReveal:null,selectedCard:null,_turnStartLogs:[],_drawLogs:[`你 摸到 ${cardLogText(r2.drawnCard,{alwaysShowName:true})}`],_statLogs:[]});
+          setGs(buildLocalCthDecisionState(gs,{
+            players:P,deck:D,discard:Disc,log:L,drawnCard:r2.drawnCard,remainingDraws:extraDraws-_d-1,needGodChoice:true,
+            extraState:{skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true},
+          }));
           return;
         }
         if(r2.needsDecision){
           const split=splitAnimBoundLogs(r2.effectMsgs||[]);
-          setGs({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,phase:'DRAW_REVEAL',drawReveal:{card:r2.drawnCard,msgs:[],needsDecision:true,forcedKeep:false,drawerIdx:0,drawerName:P[0].name,fromRest:true},selectedCard:null,abilityData:{fromRest:true,cthDrawsRemaining:extraDraws-_d-1},_turnStartLogs:[],_drawLogs:[`你 摸到 ${cardLogText(r2.drawnCard,{alwaysShowName:true})}`,...split.preStat],_statLogs:split.stat});
+          setGs(buildLocalCthDecisionState(gs,{
+            players:P,deck:D,discard:Disc,log:L,drawnCard:r2.drawnCard,remainingDraws:extraDraws-_d-1,
+            preStatLogs:split.preStat,statLogs:split.stat,
+            extraState:{skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false},
+          }));
           return;
         }
       }
@@ -11730,6 +11724,7 @@ function buildInspectionEventFlow(baseGs,events){
             </div>
             <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap',marginBottom:16}}>
               {(gs.abilityData?.revealedCards||[]).map((card,index)=>{
+                const pickerIdx=gs.abilityData?.pickOrder?.[gs.abilityData?.pickIndex||0];
                 const canPick=isLocalFirstComePicker(gs);
                 return (
                   <DDCard
