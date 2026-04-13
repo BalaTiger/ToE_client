@@ -8,6 +8,7 @@ import {
   copyPlayers,
   getPrevLivingIndex,
   getNextLivingIndex,
+  ROLE_TREASURE,
 } from './coreUtils';
 
 export function aiChooseRevealCard(targetHand, hunterName, log = [], knownHunterCards = []) {
@@ -50,6 +51,14 @@ export function aiChooseHunterLootCards(targetHand, hunterHand, maxToTake = 3) {
 export function aiShouldKeepZoneCard(card, ci, players, forced = false) {
   if (!card || !isZoneCard(card)) return forced;
   if (card.isGod) return true;
+  
+  // 玫瑰倒刺：寻宝者AI永远丢弃，邪祀者AI让评分逻辑决定
+  if (card.type === 'roseThornGiftAllHand') {
+    const role = players[ci]?.role;
+    if (role === ROLE_TREASURE) return false; // 寻宝者不能触发玫瑰倒刺
+    // 邪祀者让收入评分逻辑决定
+    return false;
+  }
   
   const myHand = players[ci]?.hand || [];
   const myLetter = new Set(myHand.filter(c => c.letter && !c.isGod).map(c => c.letter));

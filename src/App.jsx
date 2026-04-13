@@ -415,7 +415,16 @@ function estimateHunterZoneCardScore(card,self,players,ci){
       score=1.2;
       break;
     case 'roseThornGiftAllHand':
-      score=4.1;
+      // 邪祀者只有在有把握击杀追猎者的情况下才会触发玫瑰倒刺
+      const hunters = players.filter((p, i) => i !== ci && !p.isDead && p.role === ROLE_HUNTER);
+      if (hunters.length > 0) {
+        const hasVulnerableHunter = hunters.some(hunter => hunter.hp <= 2);
+        if (hasVulnerableHunter) {
+          score = 5.0; // 有把握击杀追猎者，选择收入并触发
+        }
+      }
+      // 没有追猎者或追猎者HP足够高时，选择弃置
+      if (score === 0) score = -100;
       break;
     case 'allDamageHPRandomExtra': {
       const aliveOthers=players.filter((p,i)=>i!==ci&&!p.isDead).length;
@@ -513,7 +522,7 @@ function estimateTreasureZoneCardScore(card,self,players,ci){
       score=3.8;
       break;
     case 'roseThornGiftAllHand':
-      score=-0.8;
+      score=-100; // 寻宝者绝对不应该触发玫瑰倒刺，因为会失去所有手牌，宝藏进度归零
       break;
     case 'selfDamageHP':
     case 'selfDamageSAN':
@@ -710,7 +719,20 @@ function estimateCultistZoneCardScore(card,self,players,ci){
     case 'firstComePick':
       return 1.8;
     case 'roseThornGiftAllHand':
-      return 1.7;
+      // 邪祀者只有在有把握击杀追猎者的情况下才会触发玫瑰倒刺
+      const hunters=players.filter((p,i)=>i!==ci&&!p.isDead&&p.role===ROLE_HUNTER);
+      if(hunters.length>0){
+        // 检查是否有追猎者的HP足够低，送牌后可能会被击杀
+        const hasVulnerableHunter=hunters.some(hunter=>{
+          // 假设邪祀者有n张手牌，送牌后追猎者失去任意一张牌时会受到2点伤害
+          // 这里简化计算，假设追猎者至少会失去一张牌
+          return hunter.hp<=2;
+        });
+        if(hasVulnerableHunter){
+          return 5.0; // 有把握击杀追猎者，触发玫瑰倒刺
+        }
+      }
+      return -100; // 没有追猎者或追猎者HP足够高，不触发玫瑰倒刺
     case 'swapAllHands':
       return 0.3;
     case 'caveDuel':
@@ -8445,7 +8467,22 @@ function buildInspectionEventFlow(baseGs,events){
     if(!sourcePlayer||sourcePlayer.isDead)return;
     const validTargets=roseThornTargets.filter(i=>gs.players[i]&&!gs.players[i].isDead&&i!==roseThornSource);
     if(!validTargets.length)return;
-    const targetIndex=[...validTargets].sort((a,b)=>(gs.players[b].hand.length-gs.players[a].hand.length)||(gs.players[a].hp-gs.players[b].hp))[0];
+    let targetIndex=null;
+    
+    // 邪祀者优先选择追猎者作为目标
+    if(sourcePlayer.role===ROLE_CULTIST){
+      const hunterTargets=validTargets.filter(i=>gs.players[i].role===ROLE_HUNTER);
+      if(hunterTargets.length>0){
+        // 选择HP最低的追猎者
+        targetIndex=[...hunterTargets].sort((a,b)=>(gs.players[a].hp-gs.players[b].hp))[0];
+      }
+    }
+    
+    // 如果没有找到合适的目标，使用默认逻辑
+    if(targetIndex===null){
+      targetIndex=[...validTargets].sort((a,b)=>(gs.players[b].hand.length-gs.players[a].hand.length)||(gs.players[a].hp-gs.players[b].hp))[0];
+    }
+    
     setGs({...gs,abilityData:{...gs.abilityData,roseThornAutoChoosing:true}});
     setTimeout(()=>{
       roseThornSelectTarget(targetIndex);
