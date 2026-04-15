@@ -40,22 +40,41 @@ export const FACE_POLARITY = {
   negativeAll: 'negative'
 };
 
+export const FACE_SCOPE = {
+  positive: 'self',
+  negativeSelf: 'self',
+  negativeAll: 'all'
+};
+
+export const getZoneCardPolarity = (card) => {
+  if (!card) return null;
+  if (card.polarity) return card.polarity;
+  const slotKey = card.slotKey || card.key || card.letter;
+  const byFace = FIXED_ZONE_EFFECTS_BY_FACE[slotKey]?.[card.face];
+  if (byFace?.polarity) return byFace.polarity;
+  if (card.face && FACE_POLARITY[card.face]) return FACE_POLARITY[card.face];
+  return null;
+};
+
+export const getZoneCardEffectScope = (card) => {
+  if (!card) return null;
+  if (card.effectScope) return card.effectScope;
+  const slotKey = card.slotKey || card.key || card.letter;
+  const byFace = FIXED_ZONE_EFFECTS_BY_FACE[slotKey]?.[card.face];
+  if (byFace?.effectScope) return byFace.effectScope;
+  if (card.face && FACE_SCOPE[card.face]) return FACE_SCOPE[card.face];
+  return null;
+};
+
 export const isNegativeZoneCard = (card) => {
-  if (!card) return false;
-  const face = FACE_POLARITY.negativeSelf;
-  return FIXED_ZONE_EFFECTS_BY_FACE[card.letter]?.[face] || card.face === face;
+  return getZoneCardPolarity(card) === 'negative';
 };
 
 export const isPositiveZoneCard = (card) => {
-  if (!card) return false;
-  const face = FACE_POLARITY.positive;
-  return FIXED_ZONE_EFFECTS_BY_FACE[card.letter]?.[face] || card.face === face;
+  return getZoneCardPolarity(card) === 'positive';
 };
 
 export const isNeutralZoneCard = (card) => !isPositiveZoneCard(card) && !isNegativeZoneCard(card);
-
-export const getLetterIndex = (letter) => LETTERS.indexOf(letter);
-export const getNumberIndex = (num) => NUMS.indexOf(num);
 
 export const isWinHand = (hand) => {
   if (!hand?.length) return false;
@@ -102,14 +121,6 @@ export const estimateZoneCardKeepScore = (card, ci, players) => {
   if (card.type === 'swapAllHands') score += 3;
   if (card.type === 'caveDuel') score += 2;
   return score;
-};
-
-export const shuffleDeck = (deck, handExclusions = []) => {
-  const excludedIds = new Set((handExclusions || []).map(c => c?.id).filter(id => id != null));
-  const toShuffle = deck.filter(c => !excludedIds.has(c?.id));
-  const shuffled = shuffle(toShuffle);
-  const excluded = deck.filter(c => excludedIds.has(c?.id));
-  return [...excluded, ...shuffled];
 };
 
 export const removeCardsFromDiscard = (discard, cards) => {

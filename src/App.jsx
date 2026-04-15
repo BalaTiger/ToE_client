@@ -23,21 +23,16 @@ import {
   shuffle,
   clamp,
   copyPlayers,
-  isZoneCard as gameIsZoneCard,
-  isBlankZoneCard as gameIsBlankZoneCard,
-  isNegativeZoneCard as gameIsNegativeZoneCard,
-  isPositiveZoneCard as gameIsPositiveZoneCard,
-  isNeutralZoneCard as gameIsNeutralZoneCard,
-  isWinHand as gameIsWinHand,
-  getLivingPlayerOrder as gameGetLivingPlayerOrder,
-  estimateZoneCardKeepScore as gameEstimateZoneCardKeepScore,
-  getLetterIndex as gameGetLetterIndex,
-  getNumberIndex as gameGetNumberIndex,
-  cardLogText as gameCardLogText,
-  shuffleDeck as gameShuffleDeck,
-  removeCardsFromDiscard as gameRemoveCardsFromDiscard,
-  getPrevLivingIndex as gameGetPrevLivingIndex,
-  getNextLivingIndex as gameGetNextLivingIndex,
+  isZoneCard,
+  isBlankZoneCard,
+  isNegativeZoneCard,
+  isWinHand,
+  getLivingPlayerOrder,
+  estimateZoneCardKeepScore,
+  cardLogText,
+  removeCardsFromDiscard,
+  getPrevLivingIndex,
+  getNextLivingIndex,
 } from "./game/coreUtils";
 
 import {
@@ -64,24 +59,10 @@ function Ellipsis() {
 // ══════════════════════════════════════════════════════════════、
 //  UTILITIES
 // ══════════════════════════════════════════════════════════════
-const isZoneCard=c=>!!c?.isZone;
-const isBlankZoneCard=c=>c?.type==='blankZone';
 const FACE_POLARITY={positive:'positive',negativeSelf:'negative',negativeAll:'negative'};
 const FACE_SCOPE={positive:'self',negativeSelf:'self',negativeAll:'all'};
 const getZoneCardPolarity=c=>c?.polarity||FACE_POLARITY[c?.face]||'neutral';
 const getZoneCardEffectScope=c=>c?.effectScope||FACE_SCOPE[c?.face]||'self';
-const isNegativeZoneCard=c=>!!c&&isZoneCard(c)&&getZoneCardPolarity(c)==='negative';
-const isPositiveZoneCard=c=>!!c&&isZoneCard(c)&&getZoneCardPolarity(c)==='positive';
-const isNeutralZoneCard=c=>!!c&&isZoneCard(c)&&getZoneCardPolarity(c)==='neutral';
-const cardLogText=(card,opts={})=>{
-  if(!card)return '';
-  const {alwaysShowName=false}=opts;
-  const base=`[${card.key}]`;
-  if(card.isGod){
-    return `${base} ${card.name}${card.subtitle?` ${card.subtitle}`:''}`;
-  }
-  return alwaysShowName?`${base} ${card.name}`:base;
-};
 const cardsHuntMatch=(a,b)=>{
   if(!a||!b)return false;
   if(isBlankZoneCard(a)||isBlankZoneCard(b))return true;
@@ -96,6 +77,7 @@ const buildPublicUrl=path=>{
 const LOCAL_DEBUG_KEY='cthulhu_local_debug_mode';
 const DEBUG_FORCE_CARD_KEY='cthulhu_debug_force_card';
 const DEBUG_FORCE_CARD_TARGET_KEY='cthulhu_debug_force_card_target';
+const DEBUG_PLAYER_ROLE_KEY='cthulhu_debug_player_role';
 const ZONE_CARD_KEYS = LETTERS.flatMap(L => NUMS.map(N => `${L}${N}`));
 const isLocalTestHost=()=>{
   if(typeof window==='undefined')return false;
@@ -131,13 +113,17 @@ function mkDeck(){
   ];
   return shuffle([...zoneCards,...godCards]);
 }
-function mkRoles(N=5, isSinglePlayer=false) {
+function mkRoles(N=5, isSinglePlayer=false, forcedPlayerRole=null) {
   // 拦截非法的游戏人数
   if (N < 2) throw new Error('游戏人数不能少于2人');
   
   // 双人局：从三个基础身份中随机抽取两个不同的身份对战
   if (N === 2) {
     const baseRoles = [ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST];
+    if (isSinglePlayer && forcedPlayerRole && baseRoles.includes(forcedPlayerRole)) {
+      const remaining = shuffle(baseRoles.filter(role => role !== forcedPlayerRole));
+      return [forcedPlayerRole, remaining[0]];
+    }
     return shuffle(baseRoles).slice(0, 2);
   }
   
@@ -226,14 +212,6 @@ function mkRoles(N=5, isSinglePlayer=false) {
   
   return shuffle(roles);
 }
-const isWinHand=h=>{
-  const blanks=h.filter(isBlankZoneCard).length;
-  const ls=new Set(h.map(c=>c.letter).filter(Boolean));
-  const ns=new Set(h.map(c=>c.number).filter(n=>n!=null));
-  const missingLetters=LETTERS.filter(l=>!ls.has(l)).length;
-  const missingNumbers=NUMS.filter(n=>!ns.has(n)).length;
-  return Math.max(missingLetters,missingNumbers)<=blanks;
-};
 
 function moveEligibleBlankZones(players,log=[]){
   let changed=false;
@@ -273,13 +251,6 @@ function killPlayerState(P,i,Disc,L){
   }
 }
 
-function removeCardsFromDiscard(discard,cards){
-  if(!Array.isArray(discard)||!Array.isArray(cards)||!cards.length)return discard;
-  const removeIds=new Set(cards.map(c=>c?.id).filter(id=>id!=null));
-  if(!removeIds.size)return discard;
-  return discard.filter(c=>!removeIds.has(c?.id));
-}
-
 function applyHpDamageWithLink(P,i,amount,Disc,L){
   if(i==null||!P[i]||P[i].isDead||!(amount>0))return;
   P[i].hp=clamp(P[i].hp-amount);
@@ -299,15 +270,6 @@ function applyHpDamageWithLink(P,i,amount,Disc,L){
   if(P[i].hp<=0)killPlayerState(P,i,Disc,L);
 }
 
-function getLivingPlayerOrder(players,startIdx){
-  const aliveOrder=[];
-  for(let step=0;step<players.length;step++){
-    const idx=(startIdx+step)%players.length;
-    if(players[idx]&&!players[idx].isDead)aliveOrder.push(idx);
-  }
-  return aliveOrder;
-}
-
 function chooseFirstComePickForAI(cards,ci,players){
   if(!cards?.length)return 0;
   const scored=cards.map((card,index)=>({
@@ -321,20 +283,6 @@ function chooseFirstComePickForAI(cards,ci,players){
 // ══════════════════════════════════════════════════════════════
 //  EFFECT ENGINE
 // ══════════════════════════════════════════════════════════════
-function getPrevLivingIndex(players,ci){
-  for(let step=1;step<players.length;step++){
-    const idx=(ci-step+players.length)%players.length;
-    if(idx!==ci&&!players[idx].isDead)return idx;
-  }
-  return null;
-}
-function getNextLivingIndex(players,ci){
-  for(let step=1;step<players.length;step++){
-    const idx=(ci+step)%players.length;
-    if(idx!==ci&&!players[idx].isDead)return idx;
-  }
-  return null;
-}
 function getAdjacentTargets(players,ci){
   const prev=getPrevLivingIndex(players,ci);
   const next=getNextLivingIndex(players,ci);
@@ -746,15 +694,6 @@ function estimateCultistZoneCardScore(card,self,players,ci){
     default:
       return 0;
   }
-}
-
-function estimateZoneCardKeepScore(card,ci,players){
-  const self=players[ci];
-  if(!self||self.isDead)return -99;
-  if(self.role===ROLE_CULTIST)return estimateCultistZoneCardScore(card,self,players,ci);
-  if(self.role===ROLE_HUNTER)return estimateHunterZoneCardScore(card,self,players,ci);
-  if(self.role===ROLE_TREASURE)return estimateTreasureZoneCardScore(card,self,players,ci);
-  return 0;
 }
 function applyFx(card,ci,ti,ps,deck,disc,gs,avoidNegative=false,avoidNegativeFor=[],isAI=false){
   let P=copyPlayers(ps),D=[...deck],Disc=[...disc],msgs=[];
@@ -2732,7 +2671,7 @@ const INSPECTION_DECK = [
 // ══════════════════════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════════════════════
-function initGame(playerNames, debugForceCard, debugForceCardTarget, debugForceCardType, debugForceZoneCardKey, debugForceZoneCardFace, debugForceGodCardKey){
+function initGame(playerNames, debugForceCard, debugForceCardTarget, debugForceCardType, debugForceZoneCardKey, debugForceZoneCardFace, debugForceGodCardKey, debugPlayerRole){
   const names=playerNames||['你',...AI_NAMES];
   const N=names.length;
   const isSinglePlayer = !playerNames;
@@ -2760,6 +2699,12 @@ function initGame(playerNames, debugForceCard, debugForceCardTarget, debugForceC
   }
   
   const roles=mkRoles(N, isSinglePlayer);
+  if (
+    isSinglePlayer &&
+    [ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST].includes(debugPlayerRole)
+  ) {
+    roles[0] = debugPlayerRole;
+  }
   const players=names.map((name,i)=>({
     id:i,
     name,
@@ -6777,6 +6722,7 @@ export default function Game(){
   const [debugForceZoneCardKey,setDebugForceZoneCardKey]=useState('A1');
   const [debugForceZoneCardFace,setDebugForceZoneCardFace]=useState('front');
   const [debugForceGodCardKey,setDebugForceGodCardKey]=useState('CTH');
+  const [debugPlayerRole,setDebugPlayerRole]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_PLAYER_ROLE_KEY)||'auto');
   const [showDebugSettings,setShowDebugSettings]=useState(false);
   const isBattleScreen=!!gs;
   const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound}=useGameAudio(isBattleScreen);
@@ -6790,6 +6736,11 @@ export default function Game(){
     safeLS.set(DEBUG_FORCE_CARD_KEY,debugForceCard||'');
     safeLS.set(DEBUG_FORCE_CARD_TARGET_KEY,debugForceCardTarget);
   },[isLocalTestMode,debugForceCard,debugForceCardTarget]);
+
+  useEffect(()=>{
+    if(!isLocalTestMode)return;
+    safeLS.set(DEBUG_PLAYER_ROLE_KEY,debugPlayerRole);
+  },[isLocalTestMode,debugPlayerRole]);
 
   function isCloseButtonText(text){
     const normalized=(text||'').replace(/\s+/g,'');
@@ -7041,7 +6992,7 @@ export default function Game(){
       if(isLocalSeatIndex(safeIdx)){
         // 房主：初始化游戏并广播给所有人
         const names=players.map(p=>p.username);
-        const rawGs=initGame(names, debugForceCard, debugForceCardTarget, debugForceCardType, debugForceZoneCardKey, debugForceZoneCardFace, debugForceGodCardKey);
+        const rawGs=initGame(names, debugForceCard, debugForceCardTarget, debugForceCardType, debugForceZoneCardKey, debugForceZoneCardFace, debugForceGodCardKey, debugPlayerRole);
         animQueueRef.current=[];
         pendingGsRef.current=null;
         setAnimExiting(false);
@@ -9714,6 +9665,26 @@ function buildInspectionEventFlow(baseGs,events){
                   }
                 </div>
               </div>
+              <div style={{marginBottom:12}}>
+                <label style={{display:'block',marginBottom:4,fontSize:12}}>玩家身份（下局生效）</label>
+                <select
+                  value={debugPlayerRole}
+                  onChange={(e)=>setDebugPlayerRole(e.target.value)}
+                  style={{
+                    width:'100%',
+                    padding:6,
+                    background:'#2a1608',
+                    color:'#c8a96e',
+                    border:'1px solid #3a2510',
+                    borderRadius:4,
+                  }}
+                >
+                  <option value="auto">自动</option>
+                  <option value={ROLE_TREASURE}>{ROLE_TREASURE}</option>
+                  <option value={ROLE_HUNTER}>{ROLE_HUNTER}</option>
+                  <option value={ROLE_CULTIST}>{ROLE_CULTIST}</option>
+                </select>
+              </div>
               <button
                 type="button"
                 onClick={()=>setShowDebugSettings(false)}
@@ -11509,7 +11480,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     _doStartNewGame();
   }
   function _doStartNewGame(silent=false){
-    const newGs=initGame(null, debugForceCard, debugForceCardTarget, debugForceCardType, debugForceZoneCardKey, debugForceZoneCardFace, debugForceGodCardKey);
+    const newGs=initGame(null, debugForceCard, debugForceCardTarget, debugForceCardType, debugForceZoneCardKey, debugForceZoneCardFace, debugForceGodCardKey, debugPlayerRole);
     animQueueRef.current=[];
     pendingGsRef.current=null;
     setAnimExiting(false);
