@@ -66,13 +66,66 @@ export function chooseFirstComePickForAI(cards, ci, players) {
   return scored[0].index;
 }
 
+export function chooseAiRoseThornTarget(players, sourceIdx, validTargetIndices) {
+  if (!Array.isArray(validTargetIndices) || !validTargetIndices.length) return null;
+  const sourcePlayer = players?.[sourceIdx];
+  if (!sourcePlayer || sourcePlayer.isDead) return null;
+
+  const validTargets = validTargetIndices
+    .filter(i => i != null && i !== sourceIdx && players[i] && !players[i].isDead)
+    .map(i => ({ idx: i, player: players[i] }));
+  if (!validTargets.length) return null;
+
+  const byLowestHpThenMoreCards = (a, b) =>
+    (a.player.hp - b.player.hp) ||
+    (b.player.hand.length - a.player.hand.length) ||
+    (a.idx - b.idx);
+
+  if (sourcePlayer.role === ROLE_CULTIST) {
+    const revealedHunters = validTargets.filter(t => t.player.role === ROLE_HUNTER && t.player.roleRevealed);
+    const hunterPool = revealedHunters.length
+      ? revealedHunters
+      : validTargets.filter(t => t.player.role === ROLE_HUNTER);
+    if (hunterPool.length) {
+      return [...hunterPool].sort(byLowestHpThenMoreCards)[0].idx;
+    }
+  }
+
+  if (sourcePlayer.role === ROLE_HUNTER) {
+    const selectableTargets = validTargets.filter(t => !(t.player.role === ROLE_HUNTER && t.player.roleRevealed));
+    if (!selectableTargets.length) return null;
+
+    const revealedCultists = selectableTargets.filter(t => t.player.role === ROLE_CULTIST && t.player.roleRevealed);
+    if (revealedCultists.length) {
+      return [...revealedCultists].sort(byLowestHpThenMoreCards)[0].idx;
+    }
+
+    const revealedNonTreasure = selectableTargets.filter(t => t.player.roleRevealed && t.player.role !== ROLE_TREASURE);
+    const safePool = revealedNonTreasure.length
+      ? revealedNonTreasure
+      : selectableTargets.filter(t => t.player.role !== ROLE_TREASURE);
+    const fallbackPool = safePool.length ? safePool : selectableTargets;
+    return [...fallbackPool].sort((a, b) =>
+      (b.player.hand.length - a.player.hand.length) ||
+      (a.player.hp - b.player.hp) ||
+      (a.idx - b.idx)
+    )[0].idx;
+  }
+
+  return [...validTargets].sort((a, b) =>
+    (b.player.hand.length - a.player.hand.length) ||
+    (a.player.hp - b.player.hp) ||
+    (a.idx - b.idx)
+  )[0].idx;
+}
+
 export function aiShouldKeepZoneCard(card, ci, players, forced = false) {
   if (!card || !isZoneCard(card)) return forced;
   if (card.isGod) return true;
   
   if (card.type === 'roseThornGiftAllHand') {
     const self = players[ci];
-    const role = self?.role;
+    const role = self?._nyaBorrow || self?.role;
     const hand = self?.hand || [];
     const validTargets = players.filter((p, i) => i !== ci && !p?.isDead);
     if (role === ROLE_TREASURE) return false;
@@ -90,13 +143,14 @@ export function aiShouldKeepZoneCard(card, ci, players, forced = false) {
       const revealedCultists = validTargets.filter(p => p.role === ROLE_CULTIST && p.roleRevealed);
       const uniqueAxes = countUniqueZoneAxes(hand);
       let score = 0;
-      if (godCardCount >= 2) score += 4.5;
-      else if (godCardCount === 1) score += 1.2;
-      if (abandonedHunts >= 2) score += 4.0;
-      else if (abandonedHunts === 1) score += 1.5;
-      if (revealedCultists.length > 0) score += 2.8;
-      else score -= uniqueAxes * 0.9;
-      return score > 0;
+      if (godCardCount >= 2) score += 5.5;
+      else if (godCardCount === 1) score += 2.0;
+      if (abandonedHunts >= 2) score += 4.5;
+      else if (abandonedHunts === 1) score += 2.2;
+      if (revealedCultists.length > 0) score += 4.0;
+      else score -= uniqueAxes * 0.55;
+      if (hand.length >= 5) score += 1.2;
+      return score >= 2.5;
     }
   }
   

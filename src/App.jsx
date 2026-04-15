@@ -38,6 +38,7 @@ import {
 import {
   aiChooseRevealCard,
   aiChooseHunterLootCards,
+  chooseAiRoseThornTarget,
   aiShouldKeepZoneCard,
 } from "./game/ai";
 
@@ -77,6 +78,7 @@ const buildPublicUrl=path=>{
 const LOCAL_DEBUG_KEY='cthulhu_local_debug_mode';
 const DEBUG_FORCE_CARD_KEY='cthulhu_debug_force_card';
 const DEBUG_FORCE_CARD_TARGET_KEY='cthulhu_debug_force_card_target';
+const DEBUG_FORCE_CARD_KEEP_KEY='cthulhu_debug_force_card_keep';
 const DEBUG_PLAYER_ROLE_KEY='cthulhu_debug_player_role';
 const ZONE_CARD_KEYS = LETTERS.flatMap(L => NUMS.map(N => `${L}${N}`));
 const isLocalTestHost=()=>{
@@ -1675,7 +1677,10 @@ function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
   
   // AI auto-decision
   if (isAI) {
-    const keep = aiShouldKeepZoneCard(drawnCard, ci, P, false);
+    const keepOverride = ci===1&&gs?.debugForceCardKeepPending
+      ? gs.debugForceCardKeepPending
+      : 'auto';
+    const keep = keepOverride==='keep' ? true : keepOverride==='discard' ? false : aiShouldKeepZoneCard(drawnCard, ci, P, false);
     if (!keep) {
       Disc.push(drawnCard);
       return { P, D, Disc, drawnCard, effectMsgs: [`${P[ci].name} 摸到 ${cardLogText(drawnCard,{alwaysShowName:true})}，评估后选择弃置`], needsDecision: false, _aiDrawnCard: drawnCard, discardedDrawnCard: true };
@@ -1836,6 +1841,7 @@ function startNextTurn(gs){
     if(gs.debugForceCard && gs.debugForceCardTarget === 'player'){
       // 将指定的牌放在牌堆顶部
       D.unshift(gs.debugForceCard);
+      gs.debugForceCardKeepPending = gs.debugForceCardKeep || 'auto';
       // 清除debug设置，避免后续回合再次触发
       gs.debugForceCard = null;
       gs.debugForceCardTarget = null;
@@ -1975,9 +1981,10 @@ function startNextTurn(gs){
     }
     const _P_beforeDraw=copyPlayers(P);
     const res=aiDrawAndApply(next,P,D,Disc,gs);
+    gs.debugForceCardKeepPending = null;
     P=res.P;D=res.D;Disc=res.Disc;
     if(res.drawnCard&&isLocalDebugEnabled()){
-      const debugDrawLog=`[调试] ${P[next].name} 起手摸到 ${cardLogText(res.drawnCard,{alwaysShowName:true})}`;
+      const debugDrawLog=`[调试] ${P[next].name}（${P[next]._nyaBorrow||P[next].role}）起手摸到 ${cardLogText(res.drawnCard,{alwaysShowName:true})}`;
       turnStartLogs.push(debugDrawLog);
       L.push(debugDrawLog);
     }
@@ -2091,7 +2098,7 @@ function aiStep(gs){
   if(abilityData.roseThornTargets&&abilityData.roseThornSource===ct){
     const validTargets=abilityData.roseThornTargets.filter(i=>P[i]&&!P[i].isDead&&i!==ct);
     if(validTargets.length){
-      const targetIdx=[...validTargets].sort((a,b)=>(P[b].hand.length-P[a].hand.length)||(P[a].hp-P[b].hp))[0];
+      const targetIdx=chooseAiRoseThornTarget(P, ct, validTargets);
       const gifted=P[ct].hand.splice(0).map(card=>({...card,roseThornHolderId:targetIdx,roseThornSourceId:ct,roseThornSourceName:P[ct].name}));
       P[targetIdx].hand.push(...gifted);
       L.push(`【玫瑰倒刺】${P[ct].name} 将全部手牌交给了 ${P[targetIdx].name}`);
@@ -2671,7 +2678,7 @@ const INSPECTION_DECK = [
 // ══════════════════════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════════════════════
-function initGame(playerNames, debugForceCard, debugForceCardTarget, debugForceCardType, debugForceZoneCardKey, debugForceZoneCardFace, debugForceGodCardKey, debugPlayerRole){
+function initGame(playerNames, debugForceCard, debugForceCardTarget, debugForceCardKeep, debugForceCardType, debugForceZoneCardKey, debugForceZoneCardFace, debugForceGodCardKey, debugPlayerRole){
   const names=playerNames||['你',...AI_NAMES];
   const N=names.length;
   const isSinglePlayer = !playerNames;
@@ -2734,6 +2741,7 @@ function initGame(playerNames, debugForceCard, debugForceCardTarget, debugForceC
   
   const inspectionDeck=shuffle([...INSPECTION_DECK]);
   const base={players,deck,discard:[],inspectionDeck,inspectionDiscard:[],currentTurn:-1,phase:'DRAW_REVEAL',drawReveal:null,selectedCard:null,abilityData:{},log:['游戏开始。每人获得四张初始手牌。'],gameOver:null,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,globalOnlySwapOwner:null,_turnKey:0,_isMP:!!playerNames,turn:0,sealLooseningCount:0,houndsOfTindalosActive:false,houndsOfTindalosTarget:null,houndsOfTindalosElapsed:0,debugForceCard:targetCard,debugForceCardTarget};
+  base.debugForceCardKeep=debugForceCardKeep;
   return startNextTurn(base);
 }
 
@@ -5369,6 +5377,13 @@ function HealCrossEffect({color='#4ade80'}){
 function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,displayStats}){
   const ri=RINFO[player.role];
   const borderColor=isBeingHit?'#cc2222':isSanHit?'#8840cc':isCurrentTurn?'#c8a96e':isSelectable?ri.col:'#3a2510';
+  const handCards=showFaceUp?player.hand:player.hand.map((_,ci)=>({id:`back-${playerIndex}-${ci}`,_back:true}));
+  const HAND_CARD_WIDTH=showFaceUp?44:36;
+  const HAND_CARD_GAP=3;
+  const HAND_AREA_WIDTH=(HAND_CARD_WIDTH*4)+(HAND_CARD_GAP*3);
+  const handOverlap=handCards.length>4
+    ? Math.max(0, Math.ceil(((handCards.length*HAND_CARD_WIDTH)-HAND_AREA_WIDTH)/(handCards.length-1)))
+    : 0;
   return(
     <div onClick={isSelectable?onSelect:undefined} style={{
       background:isCurrentTurn?'#1c1408':'#140f08',
@@ -5416,12 +5431,17 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
           )}
         </div>
       )}
-      <div style={{display:'flex',flexWrap:'wrap',gap:3,marginTop:5}}>
+      <div style={{display:'flex',flexWrap:'wrap',gap:3,marginTop:5,minWidth:0}}>
         {(player.zoneCards||[]).map((c,ci)=><DDCard key={c.id||`zone-${playerIndex}-${ci}`} card={c} small disabled holderId={playerIndex}/>)}
-        {showFaceUp
-          ?player.hand.map((c,ci)=><DDCard key={c.id} card={c} small onClick={onCardSelect?()=>onCardSelect(ci):undefined} disabled={!onCardSelect} highlight={!!onCardSelect} holderId={playerIndex}/>)
-          :player.hand.map((_,ci)=><DDCardBack key={ci} small/>)
-        }
+      </div>
+      <div style={{display:'flex',alignItems:'flex-start',marginTop:5,minWidth:0,width:HAND_AREA_WIDTH,maxWidth:'100%',overflow:'hidden'}}>
+        {handCards.map((card,ci)=>(
+          <div key={card.id||`hand-${playerIndex}-${ci}`} style={{marginLeft:ci===0?0:(handOverlap>0?-handOverlap:HAND_CARD_GAP),flex:'0 0 auto',position:'relative',zIndex:ci+1}}>
+            {card._back
+              ?<DDCardBack small/>
+              :<DDCard card={card} small onClick={onCardSelect?()=>onCardSelect(ci):undefined} disabled={!onCardSelect} highlight={!!onCardSelect} holderId={playerIndex}/>}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -6718,6 +6738,7 @@ export default function Game(){
   const [localDebugMode,setLocalDebugMode]=useState(()=>isLocalTestMode&&safeLS.get(LOCAL_DEBUG_KEY)==='1');
   const [debugForceCard,setDebugForceCard]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_KEY)||null);
   const [debugForceCardTarget,setDebugForceCardTarget]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_TARGET_KEY)||'player');
+  const [debugForceCardKeep,setDebugForceCardKeep]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_KEEP_KEY)||'auto');
   const [debugForceCardType,setDebugForceCardType]=useState('zone');
   const [debugForceZoneCardKey,setDebugForceZoneCardKey]=useState('A1');
   const [debugForceZoneCardFace,setDebugForceZoneCardFace]=useState('front');
@@ -6735,7 +6756,8 @@ export default function Game(){
     if(!isLocalTestMode)return;
     safeLS.set(DEBUG_FORCE_CARD_KEY,debugForceCard||'');
     safeLS.set(DEBUG_FORCE_CARD_TARGET_KEY,debugForceCardTarget);
-  },[isLocalTestMode,debugForceCard,debugForceCardTarget]);
+    safeLS.set(DEBUG_FORCE_CARD_KEEP_KEY,debugForceCardKeep);
+  },[isLocalTestMode,debugForceCard,debugForceCardTarget,debugForceCardKeep]);
 
   useEffect(()=>{
     if(!isLocalTestMode)return;
@@ -6992,7 +7014,7 @@ export default function Game(){
       if(isLocalSeatIndex(safeIdx)){
         // 房主：初始化游戏并广播给所有人
         const names=players.map(p=>p.username);
-        const rawGs=initGame(names, debugForceCard, debugForceCardTarget, debugForceCardType, debugForceZoneCardKey, debugForceZoneCardFace, debugForceGodCardKey, debugPlayerRole);
+        const rawGs=initGame(names, debugForceCard, debugForceCardTarget, debugForceCardKeep, debugForceCardType, debugForceZoneCardKey, debugForceZoneCardFace, debugForceGodCardKey, debugPlayerRole);
         animQueueRef.current=[];
         pendingGsRef.current=null;
         setAnimExiting(false);
@@ -8362,7 +8384,7 @@ function buildInspectionEventFlow(baseGs,events){
 
   // Auto-freeze game the instant player 寻宝者 has a winning hand
   useEffect(()=>{
-    if(!gs||gs.gameOver||gs.phase==='TREASURE_WIN'||gs.phase==='PLAYER_WIN_PENDING'||gs.phase==='GOD_RESURRECTION'||gs.phase==='SWAP_SELECT_TARGET'||gs.phase==='SWAP_GIVE_CARD'||showTutorial)return;
+    if(!gs||gs.gameOver||gs.phase!=='ACTION'||showTutorial)return;
     const p0=gs.players[0];
     if(p0&&!p0.isDead&&p0.role===ROLE_TREASURE&&isWinHand(p0.hand)){
       setGs(g=>g?{...g,phase:'TREASURE_WIN'}:g);
@@ -8434,6 +8456,7 @@ function buildInspectionEventFlow(baseGs,events){
       targetIndex=[...validTargets].sort((a,b)=>(gs.players[b].hand.length-gs.players[a].hand.length)||(gs.players[a].hp-gs.players[b].hp))[0];
     }
     
+    targetIndex=chooseAiRoseThornTarget(gs.players, roseThornSource, validTargets);
     setGs({...gs,abilityData:{...gs.abilityData,roseThornAutoChoosing:true}});
     setTimeout(()=>{
       roseThornSelectTarget(targetIndex);
@@ -9565,6 +9588,25 @@ function buildInspectionEventFlow(baseGs,events){
                 >
                   <option value="player">玩家</option>
                   <option value="ai1">第一名AI</option>
+                </select>
+              </div>
+              <div style={{marginBottom:12}}>
+                <label style={{display:'block',marginBottom:4,fontSize:12}}>第一名AI是否收入这张牌</label>
+                <select
+                  value={debugForceCardKeep}
+                  onChange={(e)=>setDebugForceCardKeep(e.target.value)}
+                  style={{
+                    width:'100%',
+                    padding:6,
+                    background:'#2a1608',
+                    color:'#c8a96e',
+                    border:'1px solid #3a2510',
+                    borderRadius:4,
+                  }}
+                >
+                  <option value="auto">自动判断</option>
+                  <option value="keep">强制收入</option>
+                  <option value="discard">强制弃置</option>
                 </select>
               </div>
               <div style={{marginBottom:12}}>
@@ -11480,7 +11522,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     _doStartNewGame();
   }
   function _doStartNewGame(silent=false){
-    const newGs=initGame(null, debugForceCard, debugForceCardTarget, debugForceCardType, debugForceZoneCardKey, debugForceZoneCardFace, debugForceGodCardKey, debugPlayerRole);
+    const newGs=initGame(null, debugForceCard, debugForceCardTarget, debugForceCardKeep, debugForceCardType, debugForceZoneCardKey, debugForceZoneCardFace, debugForceGodCardKey, debugPlayerRole);
     animQueueRef.current=[];
     pendingGsRef.current=null;
     setAnimExiting(false);

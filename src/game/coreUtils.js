@@ -80,12 +80,19 @@ export const isWinHand = (hand) => {
   if (!hand?.length) return false;
   const letters = new Set();
   const numbers = new Set();
+  let blankCount = 0;
   for (const c of hand) {
     if (c.isGod) continue;
+    if (isBlankZoneCard(c)) {
+      blankCount += 1;
+      continue;
+    }
     if (c.letter) letters.add(c.letter);
     if (c.number) numbers.add(c.number);
   }
-  return letters.size === LETTERS.length || numbers.size === NUMS.length;
+  const missingLetters = Math.max(0, LETTERS.length - letters.size);
+  const missingNumbers = Math.max(0, NUMS.length - numbers.size);
+  return Math.max(missingLetters, missingNumbers) <= blankCount;
 };
 
 export const getLivingPlayerOrder = (players, startIdx) => {
@@ -101,10 +108,9 @@ export const cardLogText = (card, opts = {}) => {
   if (!card) return '???';
   const { alwaysShowName = false } = opts;
   if (alwaysShowName || !card.isZone) return card.name || '???';
-  const letterPart = card.letter ? `[${card.letter}]` : '';
-  const numberPart = card.number ? String(card.number) : '';
+  const codePart = (card.letter || card.number) ? `[${card.letter || ''}${card.number || ''}]` : '';
   const namePart = card.name || '';
-  return `${letterPart}${numberPart} ${namePart}`.trim() || '???';
+  return `${codePart} ${namePart}`.trim() || '???';
 };
 
 export const estimateZoneCardKeepScore = (card, ci, players) => {
