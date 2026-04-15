@@ -249,7 +249,6 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "polarity": "neutral",
       "effectScope": "target",
       "slotKey": "B4",
-      "legacyFace": "negativeAll"
     }
   ],
   "C1": [
@@ -500,22 +499,6 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     }
   ]
 };
-
-const FIXED_ZONE_EFFECTS_BY_KEY = FIXED_ZONE_CARD_VARIANTS_BY_KEY;
-
-const LEGACY_ZONE_FACE_ORDER = ['positive', 'negativeSelf', 'negativeAll'];
-
-const FIXED_ZONE_EFFECTS_BY_FACE = Object.fromEntries(
-  Object.entries(FIXED_ZONE_CARD_VARIANTS_BY_KEY).map(([slotKey, variants]) => [
-    slotKey,
-    Object.fromEntries(
-      variants.map((cardDef, index) => {
-        const face = LEGACY_ZONE_FACE_ORDER[index];
-        return [face, { ...cardDef, face }];
-      })
-    ),
-  ])
-);
 const LETTERS=['A','B','C','D'], NUMS=[1,2,3,4];
 const AI_NAMES=['艾伦','贝拉','卡洛斯','黛安娜'];
 const RINFO={
@@ -556,8 +539,6 @@ const GOD_DEFS={
 
 export {
   FIXED_ZONE_CARD_VARIANTS_BY_KEY,
-  FIXED_ZONE_EFFECTS_BY_KEY,
-  FIXED_ZONE_EFFECTS_BY_FACE,
   LETTERS,
   NUMS,
   AI_NAMES,

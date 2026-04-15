@@ -3,7 +3,7 @@ import ReactDOM, { createPortal } from "react-dom";
 // socket.io-client is loaded at runtime via CDN (only outside Claude Artifacts)
 
 import {
-  FIXED_ZONE_EFFECTS_BY_KEY,
+  FIXED_ZONE_CARD_VARIANTS_BY_KEY,
   LETTERS,
   NUMS,
   AI_NAMES,
@@ -96,7 +96,7 @@ function mkDeck(){
   let id=0;
   const zoneCards=LETTERS.flatMap(L=>NUMS.flatMap(N=>{
     const key=`${L}${N}`;
-    return (FIXED_ZONE_EFFECTS_BY_KEY[key]||[]).map((cardDef)=>({
+    return (FIXED_ZONE_CARD_VARIANTS_BY_KEY[key]||[]).map((cardDef)=>({
       ...cardDef,
       id:id++,
       key,
@@ -6738,7 +6738,7 @@ export default function Game(){
   const [debugForceCardType,setDebugForceCardType]=useState('zone');
   const [debugForceZoneCardKey,setDebugForceZoneCardKey]=useState('A1');
   const [debugForceZoneCardName,setDebugForceZoneCardName]=useState(
-    ()=>FIXED_ZONE_EFFECTS_BY_KEY.A1?.[0]?.name||''
+    ()=>FIXED_ZONE_CARD_VARIANTS_BY_KEY.A1?.[0]?.name||''
   );
   const [debugForceGodCardKey,setDebugForceGodCardKey]=useState('CTH');
   const [debugPlayerRole,setDebugPlayerRole]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_PLAYER_ROLE_KEY)||'auto');
@@ -9635,7 +9635,7 @@ function buildInspectionEventFlow(baseGs,events){
                         const newKey = e.target.value;
                         setDebugForceZoneCardKey(newKey);
                         // 自动选择第一个可用牌面
-                        const cards = FIXED_ZONE_EFFECTS_BY_KEY[newKey]||[];
+                        const cards = FIXED_ZONE_CARD_VARIANTS_BY_KEY[newKey]||[];
                         if(cards.length){
                           setDebugForceZoneCardName(cards[0].name);
                         }
@@ -9668,7 +9668,7 @@ function buildInspectionEventFlow(baseGs,events){
                         borderRadius:4,
                       }}
                     >
-                      {FIXED_ZONE_EFFECTS_BY_KEY[debugForceZoneCardKey] && FIXED_ZONE_EFFECTS_BY_KEY[debugForceZoneCardKey].map((card) => (
+                      {FIXED_ZONE_CARD_VARIANTS_BY_KEY[debugForceZoneCardKey] && FIXED_ZONE_CARD_VARIANTS_BY_KEY[debugForceZoneCardKey].map((card) => (
                         <option key={card.name} value={card.name}>{card.name}</option>
                       ))}
                     </select>
