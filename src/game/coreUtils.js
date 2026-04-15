@@ -1,0 +1,147 @@
+import {
+  FIXED_ZONE_EFFECTS_BY_FACE,
+  LETTERS,
+  NUMS,
+} from '../constants/card';
+
+export const ROLE_TREASURE = '寻宝者';
+export const ROLE_HUNTER = '追猎者';
+export const ROLE_CULTIST = '邪祀者';
+
+export const shuffle = (arr) => {
+  const result = [...arr];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+};
+
+export const clamp = (value, lo = 0, hi = 10) => Math.max(lo, Math.min(hi, value));
+
+export const copyPlayers = (ps) => ps.map(p => ({
+  ...p,
+  hand: [...p.hand],
+  godZone: [...(p.godZone || [])],
+  zoneCards: [...(p.zoneCards || [])],
+  peekMemories: Object.fromEntries(Object.entries(p.peekMemories || {}).map(([k, v]) => [k, [...(v || [])]])),
+  disableRestNextTurn: !!p.disableRestNextTurn,
+  disableSkillNextTurn: !!p.disableSkillNextTurn,
+  handLimitDecreaseNextTurn: p.handLimitDecreaseNextTurn || 0
+}));
+
+export const isZoneCard = (card) => !!card?.isZone;
+
+export const isBlankZoneCard = (card) => card?.type === 'blankZone';
+
+export const FACE_POLARITY = {
+  positive: 'positive',
+  negativeSelf: 'negative',
+  negativeAll: 'negative'
+};
+
+export const FACE_SCOPE = {
+  positive: 'self',
+  negativeSelf: 'self',
+  negativeAll: 'all'
+};
+
+export const getZoneCardPolarity = (card) => {
+  if (!card) return null;
+  if (card.polarity) return card.polarity;
+  const slotKey = card.slotKey || card.key || card.letter;
+  const byFace = FIXED_ZONE_EFFECTS_BY_FACE[slotKey]?.[card.face];
+  if (byFace?.polarity) return byFace.polarity;
+  if (card.face && FACE_POLARITY[card.face]) return FACE_POLARITY[card.face];
+  return null;
+};
+
+export const getZoneCardEffectScope = (card) => {
+  if (!card) return null;
+  if (card.effectScope) return card.effectScope;
+  const slotKey = card.slotKey || card.key || card.letter;
+  const byFace = FIXED_ZONE_EFFECTS_BY_FACE[slotKey]?.[card.face];
+  if (byFace?.effectScope) return byFace.effectScope;
+  if (card.face && FACE_SCOPE[card.face]) return FACE_SCOPE[card.face];
+  return null;
+};
+
+export const isNegativeZoneCard = (card) => {
+  return getZoneCardPolarity(card) === 'negative';
+};
+
+export const isPositiveZoneCard = (card) => {
+  return getZoneCardPolarity(card) === 'positive';
+};
+
+export const isNeutralZoneCard = (card) => !isPositiveZoneCard(card) && !isNegativeZoneCard(card);
+
+export const isWinHand = (hand) => {
+  if (!hand?.length) return false;
+  const letters = new Set();
+  const numbers = new Set();
+  for (const c of hand) {
+    if (c.isGod) continue;
+    if (c.letter) letters.add(c.letter);
+    if (c.number) numbers.add(c.number);
+  }
+  return letters.size === LETTERS.length || numbers.size === NUMS.length;
+};
+
+export const getLivingPlayerOrder = (players, startIdx) => {
+  const aliveOrder = [];
+  for (let step = 0; step < players.length; step++) {
+    const idx = (startIdx + step) % players.length;
+    if (players[idx] && !players[idx].isDead) aliveOrder.push(idx);
+  }
+  return aliveOrder;
+};
+
+export const cardLogText = (card, opts = {}) => {
+  if (!card) return '???';
+  const { alwaysShowName = false } = opts;
+  if (alwaysShowName || !card.isZone) return card.name || '???';
+  const letterPart = card.letter ? `[${card.letter}]` : '';
+  const numberPart = card.number ? String(card.number) : '';
+  const namePart = card.name || '';
+  return `${letterPart}${numberPart} ${namePart}`.trim() || '???';
+};
+
+export const estimateZoneCardKeepScore = (card, ci, players) => {
+  let score = 0;
+  if (!card) return score;
+  const letter = card.letter;
+  const number = card.number;
+  const letterCount = players.filter(p => p.hand.some(c => c.letter === letter)).length;
+  const numberCount = players.filter(p => p.hand.some(c => c.number === number)).length;
+  if (card.isGod) score = 10;
+  else if (isPositiveZoneCard(card)) score = 8 - letterCount * 2 - numberCount * 2;
+  else if (isNegativeZoneCard(card)) score = 3 + letterCount * 3 + numberCount * 3;
+  else score = 5;
+  if (card.type === 'swapAllHands') score += 3;
+  if (card.type === 'caveDuel') score += 2;
+  return score;
+};
+
+export const removeCardsFromDiscard = (discard, cards) => {
+  if (!Array.isArray(discard) || !Array.isArray(cards) || !cards.length) return discard;
+  const removeIds = new Set(cards.map(c => c?.id).filter(id => id != null));
+  if (!removeIds.size) return discard;
+  return discard.filter(c => !removeIds.has(c?.id));
+};
+
+export const getPrevLivingIndex = (players, ci) => {
+  for (let step = 1; step < players.length; step++) {
+    const idx = (ci - step + players.length) % players.length;
+    if (idx !== ci && players[idx] && !players[idx].isDead) return idx;
+  }
+  return null;
+};
+
+export const getNextLivingIndex = (players, ci) => {
+  for (let step = 1; step < players.length; step++) {
+    const idx = (ci + step) % players.length;
+    if (idx !== ci && players[idx] && !players[idx].isDead) return idx;
+  }
+  return null;
+};
