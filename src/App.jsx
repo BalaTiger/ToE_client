@@ -290,7 +290,7 @@ function applyFx(card,ci,ti,ps,deck,disc,gs,avoidNegative=false,avoidNegativeFor
         // 空白区域牌被弃置时消失，不进入弃牌堆
         if (c.type !== 'blankZone') {
           Disc.push(c);
-          msgs.push(`${P[i].name} 失去了 ${cardLogText(c)}`);
+          msgs.push(`${P[i].name} 失去了 ${cardLogText(c,{alwaysShowName:true})}`);
         } else {
           msgs.push(`${P[i].name} 的空白区域牌消失了`);
         }
@@ -1710,7 +1710,7 @@ function aiStep(gs){
     L.push(`${ai.name} 选择【休息】，掷骰 ${d1}+${d2}，回复 ${heal}HP，翻面休息中`);
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
     const aiHandLimit=P[ct]._nyaHandLimit??4;
-    while(P[ct].hand.length>aiHandLimit){const c=P[ct].hand.shift();Disc.push(c);L.push(`${ai.name} 弃 ${cardLogText(c)}（上限）`);}
+    while(P[ct].hand.length>aiHandLimit){const c=P[ct].hand.shift();Disc.push(c);L.push(`${ai.name} 弃 ${cardLogText(c,{alwaysShowName:true})}（上限）`);}
     const _P_afterRest=copyPlayers(P);
     const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,restUsed:true,skillUsed:false});
     return{...nextGs,_aiDrawnCard:gs._aiDrawnCard??gs._drawnCard??null,_discardedDrawnCard:gs._discardedDrawnCard??false,_aiName:ai.name,_playersBeforeNextDraw:_P_afterRest,_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard};
@@ -1748,7 +1748,7 @@ function aiStep(gs){
   if(aiEffRole!==ROLE_HUNTER && alive.length===0){
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
     const aiHandLimit=P[ct]._nyaHandLimit??4;
-    while(P[ct].hand.length>aiHandLimit){const c=P[ct].hand.shift();Disc.push(c);L.push(`${ai.name} 弃 ${cardLogText(c)}（上限）`);}
+    while(P[ct].hand.length>aiHandLimit){const c=P[ct].hand.shift();Disc.push(c);L.push(`${ai.name} 弃 ${cardLogText(c,{alwaysShowName:true})}（上限）`);}
     L.push(`${ai.name} 未使用技能，结束回合`);
     const _P_afterAction=copyPlayers(P);
     const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:gs.skillUsed});
@@ -1804,7 +1804,7 @@ function aiStep(gs){
                 const afterDiscardPlayers=copyPlayers(P);
                 const afterDiscardDiscard=[...Disc];
                 const huntDamage=3+(P[ct].damageBonus||0);
-                L.push(`弃 ${cardLogText(dc)} → ${tgt.name} 受 ${huntDamage}HP 伤害！`);
+                L.push(`弃 ${cardLogText(dc,{alwaysShowName:true})} → ${tgt.name} 受 ${huntDamage}HP 伤害！`);
                 applyHpDamageWithLink(P,ti,huntDamage,Disc,L);
                 if (P[ti].hp <= 0) {
                   if (targetHandBefore.length) {
@@ -1921,7 +1921,7 @@ function aiStep(gs){
         const sanCard=P[ct].hand.find(c=>sanPrefer.includes(c.type));
         const sc=forcedConvertGod||anyGod||sanCard||P[ct].hand[0];
         P[ct].hand=P[ct].hand.filter(c=>c.id!==sc.id);
-        L.push(`${ai.name}（邪祀者）对 ${tgt.name} 【蛊惑】，赠予 ${cardLogText(sc)}`);
+        L.push(`${ai.name}（邪祀者）对 ${tgt.name} 【蛊惑】，赠予 ${cardLogText(sc,{alwaysShowName:true})}`);
         if(sc.isGod){
           P[ti].godEncounters=(P[ti].godEncounters||0)+1;
           if(P[ti].role===ROLE_CULTIST){
@@ -1934,10 +1934,14 @@ function aiStep(gs){
           P=gr.P;D=gr.D;Disc=gr.Disc;
           gs={...gs,...inspectionMeta,...(gr.inspectionMeta||{})};
         }else{
-          const res=applyFx(sc,ti,ti,P,D,Disc,gs);P=res.P;D=res.D;Disc=res.Disc;L.push(...res.msgs);
+          const res=applyFx(sc,ti,sc.type==='swapAllHands'?null:ti,P,D,Disc,gs);P=res.P;D=res.D;Disc=res.Disc;L.push(...res.msgs);
           P[ti].hand.push(sc);
-          if(res.statePatch?.peekHandTargets||res.statePatch?.caveDuelTargets||res.statePatch?.damageLinkTargets||res.statePatch?.roseThornTargets){
+          if(sc.type==='swapAllHands'||res.statePatch?.peekHandTargets||res.statePatch?.caveDuelTargets||res.statePatch?.damageLinkTargets||res.statePatch?.roseThornTargets){
             const phaseAbilityData={
+              ...(sc.type==='swapAllHands'?{
+                zoneSwapCard:sc,
+                zoneSwapSource:ti,
+              }:{}),
               ...(res.statePatch?.peekHandTargets?{
                 peekHandTargets:res.statePatch.peekHandTargets,
                 peekHandSource:res.statePatch.peekHandSource,
@@ -1956,12 +1960,13 @@ function aiStep(gs){
               }:{}),
             };
             const nextPhase=
+              sc.type==='swapAllHands'?'ZONE_SWAP_SELECT_TARGET':
               res.statePatch?.peekHandTargets?'PEEK_HAND_SELECT_TARGET':
               res.statePatch?.caveDuelTargets?'CAVE_DUEL_SELECT_TARGET':
               res.statePatch?.damageLinkTargets?'DAMAGE_LINK_SELECT_TARGET':
               res.statePatch?.roseThornTargets?'ROSE_THORN_SELECT_TARGET':
               'ACTION';
-            const needsPlayerDecision = !!res.statePatch?.peekHandTargets || !!res.statePatch?.caveDuelTargets || !!res.statePatch?.damageLinkTargets || !!res.statePatch?.roseThornTargets;
+            const needsPlayerDecision = sc.type==='swapAllHands' || !!res.statePatch?.peekHandTargets || !!res.statePatch?.caveDuelTargets || !!res.statePatch?.damageLinkTargets || !!res.statePatch?.roseThornTargets;
             return {
               ...gs,
               players:P,
@@ -2034,7 +2039,7 @@ function aiStep(gs){
   }
   const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
   const aiHandLimit=P[ct]._nyaHandLimit??4;
-  while(P[ct].hand.length>aiHandLimit){const c=P[ct].hand.shift();Disc.push(c);L.push(`${ai.name} 弃 ${cardLogText(c)}（上限）`);}
+  while(P[ct].hand.length>aiHandLimit){const c=P[ct].hand.shift();Disc.push(c);L.push(`${ai.name} 弃 ${cardLogText(c,{alwaysShowName:true})}（上限）`);}
   
   const _P_afterAction=copyPlayers(P);
   let nextGs;
@@ -3587,7 +3592,7 @@ function GuillotineAnim({targets}){
   const[phase,setPhase]=React.useState('slice'); // slice, slide
 
   React.useEffect(()=>{
-    const t1=setTimeout(()=>setPhase('slide'),500);
+    const t1=setTimeout(()=>setPhase('slide'),180);
     return()=>{clearTimeout(t1);};
   },[]);
 
@@ -3595,7 +3600,7 @@ function GuillotineAnim({targets}){
 
   return(
     <div style={{position:'fixed',inset:0,zIndex:1400,pointerEvents:'none',overflow:'hidden'}}>
-      <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0)',animation:'guillotineVig 2.5s ease-in-out forwards'}}/>
+      <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0)',animation:'guillotineVig 1.1s ease-in-out forwards'}}/>
       {targets.map((t,ti)=>{
         const hasSnapshot=!!t.snapshotUrl;
         return(
@@ -3647,7 +3652,7 @@ function GuillotineAnim({targets}){
                   overflow:'hidden',
                   borderTopLeftRadius:3,
                   borderTopRightRadius:3,
-                  animation:'slideUp 1s ease-out forwards',
+                  animation:'slideUp 0.82s cubic-bezier(0.08,0.82,0.22,1) forwards',
                   boxShadow:hasSnapshot?'0 6px 18px rgba(0,0,0,0.28)':'none',
                 }}>
                   {hasSnapshot?(
@@ -3673,7 +3678,7 @@ function GuillotineAnim({targets}){
                   overflow:'hidden',
                   borderBottomLeftRadius:3,
                   borderBottomRightRadius:3,
-                  animation:'slideDown 1s ease-out forwards',
+                  animation:'slideDown 0.86s cubic-bezier(0.08,0.82,0.24,1) forwards',
                   boxShadow:hasSnapshot?'0 6px 18px rgba(0,0,0,0.28)':'none',
                 }}>
                   {hasSnapshot?(
@@ -7167,8 +7172,8 @@ export default function Game(){
       const shakeTimer=setTimeout(()=>{
         setDeathShake(true);
         clearTimeout(shakeTimerRef.current);
-        shakeTimerRef.current=setTimeout(()=>setDeathShake(false),2000);
-      },540);
+        shakeTimerRef.current=setTimeout(()=>setDeathShake(false),220);
+      },120);
       return()=>{
         cancelled=true;
         clearTimeout(shakeTimer);
@@ -9886,7 +9891,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     const taken=P[swapTi].hand.splice(cardIdx,1)[0];
     setGs({...gs,players:P,phase:'SWAP_GIVE_CARD',
       abilityData:{...gs.abilityData,takenCard:taken},
-      log:[...gs.log,`你选择抽取了 ${cardLogText(taken)}`]}
+      log:[...gs.log,`你选择抽取了 ${cardLogText(taken,{alwaysShowName:true})}`]}
     );
   }
   function swapGiveCard(idx){
@@ -9894,7 +9899,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     let P=copyPlayers(gs.players);
     const given=P[0].hand.splice(idx,1)[0];
     P[0].hand.push(takenCard);P[swapTi].hand.push(given);
-    const L=[...gs.log,`拿走 ${cardLogText(takenCard)}，还给 ${P[swapTi].name} ${cardLogText(given)}`];
+    const L=[...gs.log,`拿走 ${cardLogText(takenCard,{alwaysShowName:true})}，还给 ${P[swapTi].name} ${cardLogText(given,{alwaysShowName:true})}`];
     // 只有真正的寻宝者才能通过集齐全部编号获胜
     if(P[0].role==='寻宝者'&&isWinHand(P[0].hand)){
       const _wname=gs._isMP?gs.players[0].name:'你';
@@ -9980,7 +9985,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       const dc=P[0].hand.splice(myCardIdx,1)[0];Disc.push(dc);
       const huntDamage=3+(P[0].damageBonus||0);
       applyHpDamageWithLink(P,huntTi,huntDamage,Disc,L);
-      L.push(`弃 ${cardLogText(dc)} → ${P[huntTi].name} 受 ${huntDamage}HP 伤害`);
+      L.push(`弃 ${cardLogText(dc,{alwaysShowName:true})} → ${P[huntTi].name} 受 ${huntDamage}HP 伤害`);
       // 追捕成功时揭晓追猎者身份
       if(!P[0].roleRevealed){
         P[0].roleRevealed=true;
@@ -10096,7 +10101,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       const dc=aiHand.splice(mi,1)[0];Disc.push(dc);
       const huntDamage=3+(P[huntingAI].damageBonus||0);
       applyHpDamageWithLink(P,0,huntDamage,Disc,L);
-      L.push(`${aiHunterName} 弃 ${cardLogText(dc)}，你受 ${huntDamage}HP 伤害！`);
+      L.push(`${aiHunterName} 弃 ${cardLogText(dc,{alwaysShowName:true})}，你受 ${huntDamage}HP 伤害！`);
       if(P[0].hp<=0){
         if(myHandBefore.length){
           Disc=removeCardsFromDiscard(Disc,myHandBefore);
@@ -10146,7 +10151,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       while(P[huntingAI].hand.length>aiHandLimit){
         const c=P[huntingAI].hand.shift();
         Disc.push(c);
-        L.push(`${aiHunterName} 弃 ${cardLogText(c)}（上限）`);
+        L.push(`${aiHunterName} 弃 ${cardLogText(c,{alwaysShowName:true})}（上限）`);
       }
       newGs = startNextTurn({...baseGs, players:P, discard:Disc, log:L, currentTurn: huntingAI, skillUsed: true});
     }
@@ -10213,7 +10218,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
     let inspectionMeta=makeInspectionMeta(gs);
     P[0].roleRevealed=true;P[0].hand.splice(bewitchIdx,1);
-    const L=[...gs.log,`你对 ${P[ti].name} 【蛊惑】，赠 ${cardLogText(bewitchCard)}`];
+    const L=[...gs.log,`你对 ${P[ti].name} 【蛊惑】，赠予 ${cardLogText(bewitchCard,{alwaysShowName:true})}`];
     // God card gifted via bewitch: forced convert if different god, then AI resolves for target
     if(bewitchCard.isGod){
       P[ti].godEncounters=(P[ti].godEncounters||0)+1;
@@ -10242,10 +10247,14 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       triggerAnimQueue(buildBewitchForcedCardQueue(0,ti,bewitchCard,P[ti]?.name,statQueue,bewitchMsgs),newGs);
       return;
     }
-    const res=applyFx(bewitchCard,ti,ti,P,D,Disc,gs);L.push(...res.msgs);
+    const res=applyFx(bewitchCard,ti,bewitchCard.type==='swapAllHands'?null:ti,P,D,Disc,gs);L.push(...res.msgs);
     res.P[ti].hand.push(bewitchCard);
     const win=checkWin(res.P,gs._isMP);
     const phaseAbilityData={
+      ...(bewitchCard.type==='swapAllHands'?{
+        zoneSwapCard:bewitchCard,
+        zoneSwapSource:ti,
+      }:{}),
       ...(res.statePatch?.peekHandTargets?{
         peekHandTargets:res.statePatch.peekHandTargets,
         peekHandSource:res.statePatch.peekHandSource,
@@ -10264,6 +10273,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       }:{}),
     };
     const nextPhase=
+      bewitchCard.type==='swapAllHands'?'ZONE_SWAP_SELECT_TARGET':
       res.statePatch?.peekHandTargets?'PEEK_HAND_SELECT_TARGET':
       res.statePatch?.caveDuelTargets?'CAVE_DUEL_SELECT_TARGET':
       res.statePatch?.damageLinkTargets?'DAMAGE_LINK_SELECT_TARGET':
@@ -10413,7 +10423,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     const sorted=[...selected].sort((a,b)=>b-a);const discarded=[];
     sorted.forEach(i=>{const c=P[0].hand.splice(i,1)[0];discarded.push(c);});
     let D=[...baseGs.deck],Disc=[...baseGs.discard,...discarded];
-    let L=[...baseGs.log,`弃置：${discarded.map(c=>cardLogText(c)).join(' ')}`];
+    let L=[...baseGs.log,`弃置：${discarded.map(c=>cardLogText(c,{alwaysShowName:true})).join(' ')}`];
     // CTH power: draw when ending turn while face-down
     if(P[0].isResting&&P[0].godName==='CTH'&&P[0].godLevel>=1){
       const extraDraws=P[0].godLevel;
@@ -10718,7 +10728,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     const cthDraws=[];
     if(discarded.length){
       Disc=[...Disc,...discarded];
-      L.push(`(超时) 弃置：${discarded.map(c_=>cardLogText(c_)).join(' ')}`);
+      L.push(`(超时) 弃置：${discarded.map(c_=>cardLogText(c_,{alwaysShowName:true})).join(' ')}`);
     }
     // CTH power: draw when ending turn while face-down
     if(P[0].isResting&&P[0].godName==='CTH'&&P[0].godLevel>=1){
@@ -12788,12 +12798,16 @@ const GLOBAL_STYLES=`
     100%{opacity:0; transform:scale(1.5)}
   }
   @keyframes slideUp {
-    0%{transform:translate(0, 0)}
-    100%{transform:translate(-20px, -20px) rotate(-5deg)}
+    0%{transform:translate(0,0) rotate(0deg);opacity:1;filter:brightness(1)}
+    22%{transform:translate(-38px,-28px) rotate(-6deg);opacity:0.98;filter:brightness(1.14)}
+    58%{transform:translate(-82px,-62px) rotate(-11deg);opacity:0.78;filter:brightness(1.02)}
+    100%{transform:translate(-108px,-84px) rotate(-14deg);opacity:0;filter:brightness(0.62)}
   }
   @keyframes slideDown {
-    0%{transform:translate(0, 0)}
-    100%{transform:translate(20px, 20px) rotate(5deg)}
+    0%{transform:translate(0,0) rotate(0deg);opacity:1;filter:brightness(1)}
+    18%{transform:translate(42px,34px) rotate(6deg);opacity:0.99;filter:brightness(1.16)}
+    56%{transform:translate(88px,86px) rotate(11deg);opacity:0.8;filter:brightness(1.02)}
+    100%{transform:translate(118px,126px) rotate(15deg);opacity:0;filter:brightness(0.6)}
   }
   @keyframes titleFlameSway {
     0%   {transform:translate(-50%,-50%) scale(var(--flame-scale,1)) rotate(-4deg)}

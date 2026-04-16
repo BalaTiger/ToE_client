@@ -86,10 +86,11 @@ export const getLivingPlayerOrder = (players, startIdx) => {
 export const cardLogText = (card, opts = {}) => {
   if (!card) return '???';
   const { alwaysShowName = false } = opts;
-  if (alwaysShowName || !card.isZone) return card.name || '???';
-  const codePart = (card.letter || card.number) ? `[${card.letter || ''}${card.number || ''}]` : '';
+  if (!card.isZone) return card.name || '???';
+  const codePart = (card.letter || card.number != null) ? `[${card.letter || ''}${card.number || ''}]` : '';
   const namePart = card.name || '';
-  return `${codePart} ${namePart}`.trim() || '???';
+  if (alwaysShowName) return `${codePart} ${namePart}`.trim() || namePart || '???';
+  return codePart || namePart || '???';
 };
 
 export const estimateZoneCardKeepScore = (card, ci, players) => {
