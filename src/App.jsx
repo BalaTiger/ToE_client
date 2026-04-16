@@ -71,6 +71,31 @@ import {
   isLocalTreasureAoEDodgePhase,
   isLocalWinnerSeat,
 } from "./game/rotateState";
+import {
+  isTurnStartLog,
+  isStatLog,
+  isSkillHuntLog,
+  isSkillSwapLog,
+  isSkillBewitchLog,
+  isDiscardOnlyLog,
+  isTransferLog,
+  isDrawLikeLog,
+  splitAnimBoundLogs,
+  bindAnimLogChunks,
+  subtractLogOccurrences,
+  splitTransitionLogs,
+  appendAnimLogChunkToQueueEnd,
+  hasExplicitAnimMsgs,
+  hasExplicitTurnFlowLogs,
+  extractSkillLogs,
+  prepareAnimQueueLogs,
+} from "./game/animLogs";
+import {
+  resolveTurnHighlightForStep,
+  buildBewitchForcedCardQueue,
+  buildInspectionRevealQueue,
+  buildInspectionEventFlow,
+} from "./game/animQueueHelpers";
 
 // Ellipsis component for loading animation
 function Ellipsis() {
@@ -2441,198 +2466,6 @@ const ANIM_STEP_GAP=420;
 const AI_AUTO_STEP_DELAY=900;
 const AI_PICK_STEP_DELAY=1300;
 
-function isTurnStartLog(line){
-  return /^── .+ 的回合开始 ──$/.test(line||'');
-}
-
-function isStatLog(line){
-  return /受 \d+HP 伤害|失去 \d+ HP|失去 \d+ SAN|失去 \d+ HP 和 \d+ SAN|回复 \d+ HP|回复 \d+ SAN|各失去|各回复|额外失去|被乱抓|自残|恢复 1SAN/.test(line||'');
-}
-function isSkillHuntLog(line){
-  return /【追捕】|发动【追捕】|（追猎者）追捕|向你发动【追捕】|放弃追捕|停止了追捕|尝试了所有目标，仍无法追捕/.test(line||'');
-}
-function isSkillSwapLog(line){
-  return /【掉包】/.test(line||'');
-}
-function isSkillBewitchLog(line){
-  return /【蛊惑】/.test(line||'');
-}
-function isDiscardOnlyLog(line){
-  return /评估后选择弃置|（上限）|随机弃|弃置了 \[/.test(line||'')&&!/受 \d+HP 伤害|失去 \d+ HP|失去 \d+ SAN|失去 \d+ HP 和 \d+ SAN/.test(line||'');
-}
-function isTransferLog(line){
-  return /交换了全部手牌|暗抽了\d+张牌|暗抽了一张|拿走 \[|还给 |选择了 \[.+\]|收入了 \d+ 张编号为/.test(line||'');
-}
-function isDrawLikeLog(line){
-  return /摸到 \[|收入了 \[|遭遇邪神|将邪神牌收入手牌|信仰了 |展示了牌堆顶|这是带有负面效果的区域牌|掷出 \d+ 点|准备偷看|准备使用两人一绳|准备进行穴居人战争/.test(line||'');
-}
-
-function splitAnimBoundLogs(lines){
-  const normalized=(Array.isArray(lines)?lines:[]).filter(line=>typeof line==='string'&&line.length);
-  const preStat=[];
-  const stat=[];
-  normalized.forEach(line=>{
-    if(isStatLog(line)) stat.push(line);
-    else preStat.push(line);
-  });
-  return {preStat,stat};
-}
-
-function bindAnimLogChunks(queue,{turnStartLogs=[],drawLogs=[],preStatLogs=[],statLogs=[]}={}){
-  if(!Array.isArray(queue)||!queue.length)return queue||[];
-  const bound=queue.map(step=>({...step}));
-  const mergeMsgs=(step,lines)=>{
-    const normalized=(Array.isArray(lines)?lines:[]).filter(line=>typeof line==='string'&&line.length);
-    if(!normalized.length)return;
-    step.msgs=[...(Array.isArray(step.msgs)?step.msgs:[]),...normalized];
-  };
-  const turnIdx=bound.findIndex(step=>step.type==='YOUR_TURN');
-  if(turnIdx>=0)mergeMsgs(bound[turnIdx],turnStartLogs);
-  const drawIdx=bound.findIndex(step=>step.type==='DRAW_CARD');
-  if(drawIdx>=0)mergeMsgs(bound[drawIdx],drawLogs);
-  const firstStatIdx=bound.findIndex(step=>['HP_DAMAGE','SAN_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','GUILLOTINE','DEATH'].includes(step.type));
-  if(firstStatIdx>=0){
-    mergeMsgs(bound[firstStatIdx],preStatLogs);
-    mergeMsgs(bound[firstStatIdx],statLogs);
-  }else if(drawIdx>=0){
-    mergeMsgs(bound[drawIdx],preStatLogs);
-    mergeMsgs(bound[drawIdx],statLogs);
-  }else if(turnIdx>=0){
-    mergeMsgs(bound[turnIdx],preStatLogs);
-    mergeMsgs(bound[turnIdx],statLogs);
-  }else if(bound.length){
-    mergeMsgs(bound[0],preStatLogs);
-    mergeMsgs(bound[0],statLogs);
-  }
-  return bound;
-}
-
-const EMPTY_TURN_ANIM_FIELDS=Object.freeze({
-  _playersBeforeThisDraw:null,
-  _turnStartLogs:[],
-  _drawLogs:[],
-  _statLogs:[],
-  _preTurnPlayers:null,
-  _preTurnStatLogs:[],
-});
-function withClearedTurnAnimFields(state,extra={}){
-  return {...state,...EMPTY_TURN_ANIM_FIELDS,...extra};
-}
-function buildLocalCthDecisionState(baseState,{
-  players,
-  deck,
-  discard,
-  log,
-  drawnCard,
-  remainingDraws,
-  needGodChoice=false,
-  preStatLogs=[],
-  statLogs=[],
-  extraState={},
-}){
-  const drawLogs=[`你 摸到 ${cardLogText(drawnCard,{alwaysShowName:true})}`,...(needGodChoice?[]:preStatLogs)];
-  if(needGodChoice){
-    return {
-      ...baseState,
-      players,
-      deck,
-      discard,
-      log,
-      currentTurn:0,
-      phase:'GOD_CHOICE',
-      abilityData:{godCard:drawnCard,fromRest:true,cthDrawsRemaining:remainingDraws,drawerIdx:0},
-      drawReveal:null,
-      selectedCard:null,
-      _turnStartLogs:[],
-      _drawLogs:drawLogs,
-      _statLogs:[],
-      ...extraState,
-    };
-  }
-  return {
-    ...baseState,
-    players,
-    deck,
-    discard,
-    log,
-    currentTurn:0,
-    phase:'DRAW_REVEAL',
-    drawReveal:{card:drawnCard,msgs:[],needsDecision:true,forcedKeep:false,drawerIdx:0,drawerName:players[0].name,fromRest:true},
-    selectedCard:null,
-    abilityData:{fromRest:true,cthDrawsRemaining:remainingDraws},
-    _turnStartLogs:[],
-    _drawLogs:drawLogs,
-    _statLogs:statLogs,
-    ...extraState,
-  };
-}
-function buildPlayerTurnDrawQueue(oldGs,newGs,seedQueue=[]){
-  const queue=[...(Array.isArray(seedQueue)?seedQueue:[])];
-  if(isLocalCurrentTurn(newGs)&&newGs.drawReveal?.card){
-    queue.push(
-      {type:'YOUR_TURN',msgs:newGs._turnStartLogs},
-      {type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:'你',targetPid:0,msgs:newGs._drawLogs}
-    );
-    const statQ=bindAnimLogChunks(buildAnimQueue(oldGs,newGs),{statLogs:newGs._statLogs});
-    queue.push(...statQ);
-  }
-  return queue;
-}
-
-function subtractLogOccurrences(sourceLines, removeLines){
-  const source=[...(Array.isArray(sourceLines)?sourceLines:[])];
-  (Array.isArray(removeLines)?removeLines:[]).forEach(line=>{
-    const idx=source.findIndex(item=>item===line);
-    if(idx>=0)source.splice(idx,1);
-  });
-  return source;
-}
-
-function splitTransitionLogs(oldLog,nextLog){
-  const oldArr=Array.isArray(oldLog)?oldLog:[];
-  const nextArr=Array.isArray(nextLog)?nextLog:[];
-  const delta=nextArr.slice(oldArr.length);
-  const nextTurnIdx=delta.findIndex(line=>isTurnStartLog(line));
-  return {
-    currentTurnLogs: nextTurnIdx>=0 ? delta.slice(0,nextTurnIdx) : delta,
-    nextTurnLogs: nextTurnIdx>=0 ? delta.slice(nextTurnIdx) : [],
-  };
-}
-
-function appendAnimLogChunkToQueueEnd(queue,lines){
-  const normalized=(Array.isArray(lines)?lines:[]).filter(line=>typeof line==='string'&&line.length);
-  if(!Array.isArray(queue)||!queue.length||!normalized.length)return queue||[];
-  const bound=queue.map(step=>({...step}));
-  const lastIdx=bound.length-1;
-  bound[lastIdx].msgs=[...(Array.isArray(bound[lastIdx].msgs)?bound[lastIdx].msgs:[]),...normalized];
-  return bound;
-}
-function hasExplicitAnimMsgs(step){
-  return Array.isArray(step?.msgs)&&step.msgs.some(line=>typeof line==='string'&&line.length);
-}
-function hasExplicitTurnFlowLogs(nextGs){
-  return !!(
-    (Array.isArray(nextGs?._turnStartLogs)&&nextGs._turnStartLogs.length) ||
-    (Array.isArray(nextGs?._drawLogs)&&nextGs._drawLogs.length) ||
-    (Array.isArray(nextGs?._statLogs)&&nextGs._statLogs.length)
-  );
-}
-
-function extractSkillLogs(lines,kind){
-  const normalized=(Array.isArray(lines)?lines:[]).filter(line=>typeof line==='string'&&line.length);
-  switch(kind){
-    case 'swap':
-      return normalized.filter(isSkillSwapLog);
-    case 'bewitch':
-      return normalized.filter(isSkillBewitchLog);
-    case 'hunt':
-      return normalized.filter(isSkillHuntLog);
-    default:
-      return [];
-  }
-}
-
-// Build an animation queue from before/after game states
 function buildAnimQueue(oldGs,newGs){
   const q=[];
   const newMsgs=newGs.log.slice(oldGs.log.length);
@@ -7012,7 +6845,8 @@ export default function Game(){
     lastInspectionSeqRef.current=Math.max(...events.map(ev=>ev.seq));
     const flow=buildInspectionEventFlow(
       {players:events[0]?.beforePlayers||gs.players,log:events[0]?.beforeLog||gs.log},
-      events
+      events,
+      {buildAnimQueue,copyPlayers}
     );
     const queue=flow.queue;
     triggerAnimQueue(queue,gs);
@@ -7201,111 +7035,6 @@ export default function Game(){
     }
   }
 
-  function resolveTurnHighlightForStep(step,nextGs){
-    if(!step||step.type!=='YOUR_TURN')return null;
-    const stepName=
-      step.name ||
-      (Array.isArray(step.msgs)
-        ? (step.msgs.find(line=>/^── .+ 的回合开始 ──$/.test(line||''))||'').replace(/^── (.+) 的回合开始 ──$/,'$1')
-        : '');
-    if(!stepName)return null;
-    if(stepName==='你')return 0;
-    const players=(nextGs?.players||gs?.players||[]);
-    const idx=players.findIndex(p=>p?.name===stepName);
-    return idx>=0?idx:null;
-  }
-
-  function takeMatchingLogs(remaining,predicate,limit=1){
-    if(!remaining.length)return [];
-    const taken=[];
-    let consumed=0;
-    while(remaining.length&&consumed<limit&&predicate(remaining[0],consumed)){
-      taken.push(remaining.shift());
-      consumed++;
-    }
-    return taken;
-  }
-
-  function prepareAnimQueueLogs(queue,nextGs){
-    if(!Array.isArray(queue)||!queue.length)return queue||[];
-    const nextLog=Array.isArray(nextGs?.log)?nextGs.log:[];
-    const baseLog=Array.isArray(visibleLogRef.current)?visibleLogRef.current:[];
-    const explicitTurnFlow=hasExplicitTurnFlowLogs(nextGs);
-    let prefix=0;
-    while(prefix<baseLog.length&&prefix<nextLog.length&&baseLog[prefix]===nextLog[prefix])prefix++;
-    let remaining=nextLog.slice(prefix);
-    const queueStartsNewTurn=queue[0]?.type==='YOUR_TURN';
-    if(nextGs?._playersBeforeThisDraw&&!queueStartsNewTurn){
-      const turnStartIdx=remaining.findIndex(line=>/^── .+ 的回合开始 ──$/.test(line||''));
-      if(turnStartIdx>=0){
-        remaining=remaining.slice(0,turnStartIdx);
-      }
-    }
-    const consumeExplicit=(msgs=[])=>{
-      const normalized=(Array.isArray(msgs)?msgs:[]).filter(m=>typeof m==='string'&&m.length);
-      if(!normalized.length)return [];
-      const taken=[];
-      normalized.forEach(msg=>{
-        const idx=remaining.findIndex(line=>line===msg);
-        if(idx>=0){
-          taken.push(remaining[idx]);
-          remaining.splice(idx,1);
-        }
-      });
-      return taken;
-    };
-    return queue.map(item=>{
-      const step={...item};
-      if(Array.isArray(step._logChunk))return step;
-      let chunk=consumeExplicit(step.msgs);
-      if(hasExplicitAnimMsgs(step)){
-        step._logChunk=chunk;
-        return step;
-      }
-      if(explicitTurnFlow&&['YOUR_TURN','DRAW_CARD','HP_DAMAGE','SAN_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','GUILLOTINE','DEATH'].includes(step.type)){
-        step._logChunk=chunk;
-        return step;
-      }
-      if(!chunk.length){
-        switch(step.type){
-          case 'YOUR_TURN':
-            chunk=takeMatchingLogs(remaining,isTurnStartLog,1);
-            break;
-          case 'DRAW_CARD':
-            chunk=takeMatchingLogs(remaining,isDrawLikeLog,8);
-            if(!chunk.length)chunk=takeMatchingLogs(remaining,line=>!isTurnStartLog(line)&&!isSkillHuntLog(line)&&!isSkillSwapLog(line)&&!isSkillBewitchLog(line)&&!isStatLog(line),4);
-            break;
-          case 'SKILL_HUNT':
-            chunk=takeMatchingLogs(remaining,isSkillHuntLog,1);
-            break;
-          case 'SKILL_SWAP':
-            chunk=takeMatchingLogs(remaining,isSkillSwapLog,1);
-            break;
-          case 'SKILL_BEWITCH':
-            chunk=takeMatchingLogs(remaining,isSkillBewitchLog,1);
-            break;
-          case 'DISCARD':
-            chunk=takeMatchingLogs(remaining,isDiscardOnlyLog,1);
-            break;
-          case 'CARD_TRANSFER':
-            chunk=takeMatchingLogs(remaining,isTransferLog,1);
-            break;
-          case 'HP_DAMAGE':
-          case 'SAN_DAMAGE':
-          case 'HP_HEAL':
-          case 'SAN_HEAL':
-          case 'GUILLOTINE':
-            chunk=takeMatchingLogs(remaining,isStatLog,12);
-            break;
-          default:
-            break;
-        }
-      }
-      step._logChunk=chunk;
-      return step;
-    });
-  }
-
   function advanceQueue(){
     setAnimExiting(false);
     if(animQueueRef.current.length>0){
@@ -7328,7 +7057,7 @@ export default function Game(){
           applyNextTurnGs(nextGs);
         }
       }else{
-        const nextTurnHighlight=resolveTurnHighlightForStep(next,pendingGsRef.current||gs);
+        const nextTurnHighlight=resolveTurnHighlightForStep(next,pendingGsRef.current||gs,gs?.players||[]);
         if(nextTurnHighlight!=null)turnHighlightLockRef.current=nextTurnHighlight;
         setAnim(next);
         revealAnimLogs(next);
@@ -7415,9 +7144,9 @@ export default function Game(){
     } : callback;
     
     visibleLogAuthorityRef.current=Array.isArray(nextGs?.log)?nextGs.log:(Array.isArray(visibleLogAuthorityRef.current)?visibleLogAuthorityRef.current:[]);
-    const preparedQueue=prepareAnimQueueLogs(queue,nextGs);
+    const preparedQueue=prepareAnimQueueLogs(queue,nextGs,visibleLogRef.current);
     turnHighlightLockRef.current=gs?.currentTurn??null;
-    const firstTurnHighlight=resolveTurnHighlightForStep(preparedQueue[0],nextGs);
+    const firstTurnHighlight=resolveTurnHighlightForStep(preparedQueue[0],nextGs,gs?.players||[]);
     if(firstTurnHighlight!=null)turnHighlightLockRef.current=firstTurnHighlight;
     pendingGsRef.current=nextGs;
     animQueueRef.current=[...preparedQueue.slice(1)];
@@ -7425,55 +7154,6 @@ export default function Game(){
     setAnim(preparedQueue[0]);
     revealAnimLogs(preparedQueue[0]);
   }
-
-  function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQueue,msgs,turnIntroName=null){
-    const ordered=[{type:'SKILL_BEWITCH',msgs,targetIdx:toPid}];
-    if(toPid!=null&&toPid>=0){
-      ordered.push({type:'CARD_TRANSFER',fromPid,dest:'player',toPid,count:1});
-    }
-    if(turnIntroName){
-      ordered.push({type:'YOUR_TURN',name:turnIntroName,msgs:[]});
-    }
-    if(card){
-      ordered.push({type:'DRAW_CARD',card,triggerName,targetPid:toPid,skipTravel:true});
-    }
-    ordered.push(...statQueue.filter(a=>a.type!=='CARD_TRANSFER'));
-    return ordered;
-  }
-
-function buildInspectionRevealQueue(events){
-  return (events||[]).map(ev=>({
-      type:'DRAW_CARD',
-      card:ev.card,
-      triggerName:'检定牌',
-      targetPid:ev.target??0,
-    }));
-}
-
-function buildInspectionEventFlow(baseGs,events){
-  const queue=[];
-  let cursorPlayers=copyPlayers(baseGs?.players||[]);
-  let cursorLog=[...(Array.isArray(baseGs?.log)?baseGs.log:[])];
-  (events||[]).forEach(ev=>{
-    const beforePlayers=copyPlayers(ev?.beforePlayers||cursorPlayers);
-    const beforeLog=[...(Array.isArray(ev?.beforeLog)?ev.beforeLog:cursorLog)];
-    const afterPlayers=copyPlayers(ev?.afterPlayers||beforePlayers);
-    const afterLog=[...(Array.isArray(ev?.afterLog)?ev.afterLog:beforeLog)];
-    const preQ=buildAnimQueue({players:cursorPlayers,log:cursorLog},{players:beforePlayers,log:beforeLog});
-    if(preQ.length)queue.push(...preQ);
-    queue.push({
-      type:'DRAW_CARD',
-      card:ev.card,
-      triggerName:'检定牌',
-      targetPid:ev.target??0,
-    });
-    const effectQ=buildAnimQueue({players:beforePlayers,log:beforeLog},{players:afterPlayers,log:afterLog});
-    if(effectQ.length)queue.push(...effectQ);
-    cursorPlayers=afterPlayers;
-    cursorLog=afterLog;
-  });
-  return {queue,players:cursorPlayers,log:cursorLog};
-}
 
   // Detect stuck state: AI's turn but phase is not AI_TURN (e.g. got stuck in DRAW_REVEAL)
   // This can happen in rare edge cases; recover by forcing the turn to advance
@@ -10489,7 +10169,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     let queue;
     if(inspectionEvents.length){
       lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
-      const inspectionFlow=buildInspectionEventFlow(gs,inspectionEvents);
+      const inspectionFlow=buildInspectionEventFlow(gs,inspectionEvents,{buildAnimQueue,copyPlayers});
       const tailQueue=buildAnimQueue(
         {players:inspectionFlow.players,log:inspectionFlow.log},
         {players:newGs.players,log:newGs.log}
