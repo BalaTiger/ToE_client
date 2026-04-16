@@ -43,6 +43,34 @@ import {
   chooseAiRoseThornTarget,
   aiShouldKeepZoneCard,
 } from "./game/ai";
+import { mkDeck, mkRoles } from "./game/setup";
+import {
+  rotateGsForViewer,
+  derotateGs,
+  isLocalSeatIndex,
+  isMultiplayerGame,
+  isAiSeat,
+  isLocalCurrentTurn,
+  isAiCurrentTurn,
+  localDisplayName,
+  isLocalActorSeat,
+  isLocalDrawDecisionPhase,
+  isLocalGodChoicePhase,
+  isLocalFirstComePicker,
+  isLocalDamageLinkSourcePhase,
+  canLocalActOnTargetSelectionPhase,
+  isLocalSwapGivePhase,
+  isLocalBewitchCardPhase,
+  isLocalTortoiseSelectPhase,
+  isLocalHuntConfirmPhase,
+  isLocalPublicCardPickPhase,
+  isLocalHuntTargetSeat,
+  isLocalCaveDuelTargetSeat,
+  isLocalNyaBorrowPhase,
+  isLocalTreasureDodgePhase,
+  isLocalTreasureAoEDodgePhase,
+  isLocalWinnerSeat,
+} from "./game/rotateState";
 
 // Ellipsis component for loading animation
 function Ellipsis() {
@@ -93,125 +121,6 @@ const isLocalDebugEnabled=()=>{
 // Cards: A1×3 A2×3 … D4×3 — 3 copies each, 48 total
 // Each card has exactly 3 copies → 48 cards total.
 // Letter sums: A=12 B=12 C=12 D=12 ✓  Number sums: col1=12 col2=12 col3=12 col4=12 ✓
-function mkDeck(){
-  let id=0;
-  const zoneCards=LETTERS.flatMap(L=>NUMS.flatMap(N=>{
-    const key=`${L}${N}`;
-    return (FIXED_ZONE_CARD_VARIANTS_BY_KEY[key]||[]).map((cardDef)=>({
-      ...cardDef,
-      id:id++,
-      key,
-      letter:L,
-      number:N,
-      isZone:true,
-    }));
-  }));
-  const godCards=[
-    ...Array(4).fill(0).map(()=>({id:id++,isGod:true,godKey:'NYA',key:'NYA',type:'god',needsTarget:false,...GOD_DEFS.NYA})),
-    ...Array(4).fill(0).map(()=>({id:id++,isGod:true,godKey:'CTH',key:'CTH',type:'god',needsTarget:false,...GOD_DEFS.CTH})),
-  ];
-  return shuffle([...zoneCards,...godCards]);
-}
-function mkRoles(N=5, isSinglePlayer=false, forcedPlayerRole=null) {
-  // 拦截非法的游戏人数
-  if (N < 2) throw new Error('游戏人数不能少于2人');
-  
-  // 双人局：从三个基础身份中随机抽取两个不同的身份对战
-  if (N === 2) {
-    const baseRoles = [ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST];
-    if (isSinglePlayer && forcedPlayerRole && baseRoles.includes(forcedPlayerRole)) {
-      const remaining = shuffle(baseRoles.filter(role => role !== forcedPlayerRole));
-      return [forcedPlayerRole, remaining[0]];
-    }
-    return shuffle(baseRoles).slice(0, 2);
-  }
-  
-  // 3人及以上：保证各身份至少1名
-  const roles = [ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST];
-  const counts = { [ROLE_TREASURE]: 1, [ROLE_HUNTER]: 1, [ROLE_CULTIST]: 1 };
-  
-  // 非寻宝者阵营的数量上限：向下取整的半数
-  const limit = Math.floor(N / 2);
-  
-  // 单人游戏：调整身份概率
-  let playerRoleProbabilities = { [ROLE_TREASURE]: 1, [ROLE_HUNTER]: 1, [ROLE_CULTIST]: 1 };
-  let playerRole = null;
-  
-  if (isSinglePlayer) {
-    try {
-      const storedData = localStorage.getItem('cthulhu_role_streaks');
-      if (storedData) {
-        const streaks = JSON.parse(storedData);
-        // 计算概率：每连续一次，概率降低10%，最低为0
-        Object.keys(streaks).forEach(role => {
-          playerRoleProbabilities[role] = Math.max(0, 1 - (streaks[role] * 0.1));
-        });
-      }
-    } catch (e) {
-      // localStorage error, use default probabilities
-    }
-  }
-  
-  for (let i = 3; i < N; i++) {
-    const available = [ROLE_TREASURE]; // 寻宝者没有数量上限
-    if (counts[ROLE_HUNTER] < limit) available.push(ROLE_HUNTER);
-    if (counts[ROLE_CULTIST] < limit) available.push(ROLE_CULTIST);
-    
-    // 从允许的身份池中随机抽取一个
-    let pick;
-    if (isSinglePlayer && i === 3) { // 玩家是第四个角色（索引3）
-      // 为玩家选择身份时使用调整后的概率
-      const weights = available.map(role => playerRoleProbabilities[role]);
-      const totalWeight = weights.reduce((sum, w) => sum + w, 0);
-      
-      if (totalWeight > 0) {
-        let random = Math.random() * totalWeight;
-        for (let j = 0; j < available.length; j++) {
-          random -= weights[j];
-          if (random <= 0) {
-            pick = available[j];
-            break;
-          }
-        }
-      } else {
-        // 如果所有概率都为0，随机选择
-        pick = available[Math.floor(Math.random() * available.length)];
-      }
-      
-      // 记录玩家的身份
-      playerRole = pick;
-    } else {
-      // AI角色使用默认概率
-      pick = available[Math.floor(Math.random() * available.length)];
-    }
-    
-    roles.push(pick);
-    counts[pick]++;
-  }
-  
-  // 单人游戏：更新连续身份计数
-  if (isSinglePlayer && playerRole) {
-    try {
-      // 读取当前的连续计数
-      const storedData = localStorage.getItem('cthulhu_role_streaks');
-      let streaks = storedData ? JSON.parse(storedData) : { [ROLE_TREASURE]: 0, [ROLE_HUNTER]: 0, [ROLE_CULTIST]: 0 };
-      
-      // 重置所有计数，然后更新当前身份的计数
-      Object.keys(streaks).forEach(role => {
-        streaks[role] = 0;
-      });
-      streaks[playerRole] = (streaks[playerRole] || 0) + 1;
-      
-      // 存储更新后的计数
-      localStorage.setItem('cthulhu_role_streaks', JSON.stringify(streaks));
-    } catch (e) {
-      // localStorage error, ignore
-    }
-  }
-  
-  return shuffle(roles);
-}
-
 function moveEligibleBlankZones(players,log=[]){
   let changed=false;
   const P=copyPlayers(players);
@@ -932,163 +841,7 @@ function applyFx(card,ci,ti,ps,deck,disc,gs,avoidNegative=false,avoidNegativeFor
 //     caveDuelSource, caveDuelTarget, damageLinkSource, roseThornSource, pickSource
 //   abilityData seat arrays: peekHandTargets, caveDuelTargets, damageLinkTargets,
 //     roseThornTargets, pickOrder
-const ROTATE_GS_TOP_LEVEL_INDEX_FIELDS=['currentTurn'];
-const ROTATE_GS_TOP_LEVEL_INDEX_ARRAY_FIELDS=['huntAbandoned'];
-const ROTATE_GAME_OVER_INDEX_FIELDS=['winnerIdx','winnerIdx2'];
-const ROTATE_DRAW_REVEAL_INDEX_FIELDS=['drawerIdx'];
-const ROTATE_ABILITYDATA_INDEX_FIELDS=[
-  'drawerIdx',
-  'swapTi',
-  'huntTi',
-  'huntingAI',
-  'peekHandSource',
-  'caveDuelSource',
-  'caveDuelTarget',
-  'damageLinkSource',
-  'roseThornSource',
-  'pickSource',
-];
-const ROTATE_ABILITYDATA_INDEX_ARRAY_FIELDS=[
-  'peekHandTargets',
-  'caveDuelTargets',
-  'damageLinkTargets',
-  'roseThornTargets',
-  'pickOrder',
-];
-function rotateIndexedFields(obj,fields,rotateIndex){
-  if(!obj)return obj;
-  let changed=false;
-  const next={...obj};
-  fields.forEach(field=>{
-    if(next[field]!=null){
-      next[field]=rotateIndex(next[field]);
-      changed=true;
-    }
-  });
-  return changed?next:obj;
-}
-function rotateIndexedArrayFields(obj,fields,rotateIndex){
-  if(!obj)return obj;
-  let changed=false;
-  const next={...obj};
-  fields.forEach(field=>{
-    if(Array.isArray(next[field])){
-      next[field]=next[field].map(rotateIndex);
-      changed=true;
-    }
-  });
-  return changed?next:obj;
-}
-function rotateAbilityDataForViewer(abilityData,rotateIndex){
-  if(!abilityData)return abilityData;
-  const rotatedIndices=rotateIndexedFields(abilityData,ROTATE_ABILITYDATA_INDEX_FIELDS,rotateIndex);
-  return rotateIndexedArrayFields(rotatedIndices,ROTATE_ABILITYDATA_INDEX_ARRAY_FIELDS,rotateIndex);
-}
-function rotateTopLevelGsFieldsForViewer(gs,rotateIndex){
-  if(!gs)return gs;
-  const rotatedIndices=rotateIndexedFields(gs,ROTATE_GS_TOP_LEVEL_INDEX_FIELDS,rotateIndex);
-  return rotateIndexedArrayFields(rotatedIndices,ROTATE_GS_TOP_LEVEL_INDEX_ARRAY_FIELDS,rotateIndex);
-}
-function rotateGameOverForViewer(gameOver,rotateIndex){
-  return rotateIndexedFields(gameOver,ROTATE_GAME_OVER_INDEX_FIELDS,rotateIndex);
-}
-function rotateDrawRevealForViewer(drawReveal,rotateIndex){
-  return rotateIndexedFields(drawReveal,ROTATE_DRAW_REVEAL_INDEX_FIELDS,rotateIndex);
-}
-// Rotate gs so that the player at canonical index myIndex appears at players[0]
-function rotateGsForViewer(gs,myIndex){
-  if(!gs||myIndex===0)return gs;
-  const N=gs.players.length;
-  const ri=i=>(i<0?i:(i-myIndex+N)%N);
-  const players=[...gs.players.slice(myIndex),...gs.players.slice(0,myIndex)];
-  const rotatedTopLevel=rotateTopLevelGsFieldsForViewer(gs,ri);
-  const gameOver=rotateGameOverForViewer(gs.gameOver,ri);
-  const drawReveal=rotateDrawRevealForViewer(gs.drawReveal,ri);
-  const abilityData=rotateAbilityDataForViewer(gs.abilityData||{},ri);
-  return{...rotatedTopLevel,players,gameOver,abilityData,drawReveal};
-}
-function derotateGs(gs,myIndex){
-  if(!gs||myIndex===0)return gs;
-  const N=gs.players.length;
-  return rotateGsForViewer(gs,(N-myIndex)%N);
-}
-function isLocalSeatIndex(idx){
-  return idx===0;
-}
-function isMultiplayerGame(gs){
-  return !!gs?._isMP;
-}
-function isAiSeat(gs,idx){
-  return !isMultiplayerGame(gs)&&idx!=null&&!isLocalSeatIndex(idx);
-}
-function isLocalCurrentTurn(gs){
-  return isLocalSeatIndex(gs?.currentTurn);
-}
-function isAiCurrentTurn(gs){
-  return isAiSeat(gs,gs?.currentTurn);
-}
-function localDisplayName(idx,fallbackName='该角色'){
-  return isLocalSeatIndex(idx)?'你':fallbackName;
-}
-function isLocalActorSeat(gs,idx,fallbackIdx=gs?.currentTurn){
-  return isLocalSeatIndex(idx??fallbackIdx);
-}
-function isLocalDrawDecisionPhase(gs){
-  return gs?.phase==='DRAW_REVEAL'&&gs.drawReveal?.needsDecision&&isLocalActorSeat(gs,gs.drawReveal?.drawerIdx,-1);
-}
-function isLocalGodChoicePhase(gs){
-  return gs?.phase==='GOD_CHOICE'&&gs.abilityData?.godCard&&isLocalActorSeat(gs,gs.abilityData?.drawerIdx);
-}
-function isLocalFirstComePicker(gs){
-  const currentPickerIdx=gs?.abilityData?.pickOrder?.[gs?.abilityData?.pickIndex||0];
-  return gs?.phase==='FIRST_COME_PICK_SELECT'&&isLocalSeatIndex(currentPickerIdx);
-}
-function isLocalDamageLinkSourcePhase(gs){
-  return gs?.phase==='DAMAGE_LINK_SELECT_TARGET'&&isLocalActorSeat(gs,gs?.abilityData?.damageLinkSource);
-}
-function canLocalActOnTargetSelectionPhase(gs){
-  const phase=gs?.phase;
-  return (
-    (
-      ['SWAP_SELECT_TARGET','HUNT_SELECT_TARGET','BEWITCH_SELECT_TARGET','ZONE_SWAP_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','ROSE_THORN_SELECT_TARGET'].includes(phase)
-      && isLocalCurrentTurn(gs)
-    )
-    || isLocalDamageLinkSourcePhase(gs)
-  );
-}
-function isLocalSwapGivePhase(gs){
-  return gs?.phase==='SWAP_GIVE_CARD'&&isLocalCurrentTurn(gs);
-}
-function isLocalBewitchCardPhase(gs){
-  return gs?.phase==='BEWITCH_SELECT_CARD'&&isLocalCurrentTurn(gs);
-}
-function isLocalTortoiseSelectPhase(gs){
-  return gs?.phase==='TORTOISE_ORACLE_SELECT'&&isLocalCurrentTurn(gs);
-}
-function isLocalHuntConfirmPhase(gs){
-  return gs?.phase==='HUNT_CONFIRM'&&isLocalCurrentTurn(gs);
-}
-function isLocalPublicCardPickPhase(gs){
-  return gs?.phase==='HUNT_SELECT_CARD_FROM_PUBLIC'&&isLocalCurrentTurn(gs);
-}
-function isLocalHuntTargetSeat(gs){
-  return isLocalSeatIndex(gs?.abilityData?.huntTi);
-}
-function isLocalCaveDuelTargetSeat(gs){
-  return isLocalSeatIndex(gs?.abilityData?.caveDuelTarget);
-}
-function isLocalNyaBorrowPhase(gs){
-  return gs?.phase==='NYA_BORROW'&&isLocalCurrentTurn(gs);
-}
-function isLocalTreasureDodgePhase(gs){
-  return gs?.phase==='TREASURE_DODGE_DECISION'&&isLocalCurrentTurn(gs);
-}
-function isLocalTreasureAoEDodgePhase(gs){
-  return gs?.phase==='TREASURE_AOE_DODGE_DECISION'&&isLocalCurrentTurn(gs);
-}
-function isLocalWinnerSeat(gameOver){
-  return isLocalSeatIndex(gameOver?.winnerIdx)||isLocalSeatIndex(gameOver?.winnerIdx2);
-}
+
 
 function checkWin(players,isMP){
   const hasHunters=players.some(p=>p.role===ROLE_HUNTER);
