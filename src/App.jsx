@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import ReactDOM, { createPortal } from "react-dom";
 // socket.io-client is loaded at runtime via CDN (only outside Claude Artifacts)
 
@@ -39,6 +39,7 @@ import {
 import {
   aiChooseRevealCard,
   aiChooseHunterLootCards,
+  chooseFirstComePickForAI,
   chooseAiRoseThornTarget,
   aiShouldKeepZoneCard,
 } from "./game/ai";
@@ -268,15 +269,7 @@ function applyHpDamageWithLink(P,i,amount,Disc,L){
   if(P[i].hp<=0)killPlayerState(P,i,Disc,L);
 }
 
-function chooseFirstComePickForAI(cards,ci,players){
-  if(!cards?.length)return 0;
-  const scored=cards.map((card,index)=>({
-    index,
-    score:estimateZoneCardKeepScore(card,ci,players)+(isZoneCard(card)?0.5:0),
-  }));
-  scored.sort((a,b)=>b.score-a.score);
-  return scored[0].index;
-}
+
 
 // ══════════════════════════════════════════════════════════════
 //  EFFECT ENGINE
@@ -320,379 +313,7 @@ function zoneCardUsesTargetInteraction(card){
 }
 
 
-function estimateHunterZoneCardScore(card,self,players,ci){
-  let score=0;
-  switch(card.type){
-    case 'selfHealHP': score=(10-self.hp)*1.5; break;
-    case 'selfHealSAN': score=(10-self.san)*1.4; break;
-    case 'selfHealBoth': score=(10-self.hp)+(10-self.san); break;
-    case 'selfHealBoth21': score=(10-self.hp)*1.5+(10-self.san)*0.8; break;
-    case 'sacHealSelfSAN': score=(10-self.san)*1.8-1.2; break;
-    case 'selfRevealHandHP': score=(10-self.hp)*2.2+1.5; break;
-    case 'selfRevealHandSAN': score=(10-self.san)*2.2+1.5; break;
-    case 'adjHealHP':
-      score=getLivingAdjacentTargets(players,ci).reduce((sum,idx)=>sum+(10-players[idx].hp)*0.6,0);
-      break;
-    case 'globalOnlySwap':
-      score=0.8;
-      break;
-    case 'selfBerserk':
-      score=7.2;
-      break;
-    case 'swapAllHands':{
-      const bestOther=players.reduce((best,p,i)=>{
-        if(i===ci||p.isDead)return best;
-        return p.hand.length>best.count?{idx:i,count:p.hand.length}:best;
-      },{idx:-1,count:-1});
-      const cardDiff=(bestOther.count-self.hand.length);
-      score=cardDiff>0?cardDiff*3+2.5:(self.hand.length>(self._nyaHandLimit??4)?-2:-0.8);
-      break;
-    }
-    case 'caveDuel':
-      score=self.hand.length>0?1.2:-0.8;
-      break;
-    case 'selfDamageHPPeek':
-      score=-card.val*1.8+0.5;
-      break;
-    case 'damageLink':
-      score=4.2;
-      break;
-    case 'firstComePick':
-      score=1.2;
-      break;
-    case 'roseThornGiftAllHand':
-      // 邪祀者只有在有把握击杀追猎者的情况下才会触发玫瑰倒刺
-      const hunters = players.filter((p, i) => i !== ci && !p.isDead && p.role === ROLE_HUNTER);
-      if (hunters.length > 0) {
-        const hasVulnerableHunter = hunters.some(hunter => hunter.hp <= 2);
-        if (hasVulnerableHunter) {
-          score = 5.0; // 有把握击杀追猎者，选择收入并触发
-        }
-      }
-      // 没有追猎者或追猎者HP足够高时，选择弃置
-      if (score === 0) score = -100;
-      break;
-    case 'allDamageHPRandomExtra': {
-      const aliveOthers=players.filter((p,i)=>i!==ci&&!p.isDead).length;
-      score=aliveOthers*2.6;
-      if(self.hp<=((card.val||0)*2)) score-=12;
-      else if(self.hp<=((card.val||0)+1)) score-=5;
-      break;
-    }
-    case 'selfDamageHP':
-    case 'selfDamageSAN':
-      score=-card.val*2.1;
-      break;
-    case 'selfDamageDiscardHP':
-    case 'selfDamageDiscardSAN':
-      score=-card.val*2.2-Math.min(self.hand.length,1)*1.2;
-      break;
-    case 'selfDamageHPSAN':
-      score=-(card.hpVal||0)*1.8-(card.sanVal||0)*2.1;
-      break;
-    case 'selfDamageRestHP':
-    case 'selfDamageRestSAN':
-      score=-3.1;
-      break;
-    case 'selfRenounceGod':
-      score=-(self.godName?2.8:1.4);
-      break;
-    default: {
-      const polarity=getZoneCardPolarity(card);
-      if(zoneCardAppliesWidePressure(card)&&(polarity==='negative'||card.type==='allDiscard')){
-        const isWideHpDamage=zoneCardHasGuaranteedHpLoss(card);
-        const isWideSanDamage=zoneCardHasGuaranteedSanLoss(card)&&!isWideHpDamage;
-        if(isWideHpDamage) score=6.5;
-        else if(isWideSanDamage) score=1.8;
-        else score=1.2;
-      }else if(zoneCardIsSacrificeStyle(card)){
-        score=1.6;
-      }else if(polarity==='positive'&&zoneCardProvidesGuaranteedCardGain(card)){
-        score=1.2;
-      }else if(polarity==='neutral'&&zoneCardUsesTargetInteraction(card)){
-        score=1.3;
-      }else if(polarity==='neutral'){
-        score=0.2;
-      }
-      break;
-    }
-  }
-  if(self.hp<=2&&zoneCardHasGuaranteedHpLoss(card))score-=4;
-  if(self.san<=2&&zoneCardHasGuaranteedSanLoss(card))score-=4;
-  return score;
-}
 
-function estimateTreasureZoneCardScore(card,self,players,ci){
-  let score=0;
-  const myNonGod=(self.hand||[]).filter(c=>!c.isGod);
-  const letters=new Set(myNonGod.map(c=>c.letter).filter(v=>v!=null));
-  const numbers=new Set(myNonGod.map(c=>c.number).filter(v=>v!=null));
-  const progress=letters.size+numbers.size;
-  const closeToWin=progress>=6;
-  switch(card.type){
-    case 'selfHealHP': score=(10-self.hp)*1.5; break;
-    case 'selfHealSAN': score=(10-self.san)*1.6; break;
-    case 'selfHealBoth': score=(10-self.hp)+(10-self.san)*1.1; break;
-    case 'selfHealBoth21': score=(10-self.hp)*1.5+(10-self.san)*1.0; break;
-    case 'sacHealSelfSAN': score=(10-self.san)*1.8-1.2; break;
-    case 'selfRevealHandHP': score=(10-self.hp)*2.2+1.2; break;
-    case 'selfRevealHandSAN': score=(10-self.san)*2.3+1.0; break;
-    case 'adjHealHP':
-      score=getLivingAdjacentTargets(players,ci).reduce((sum,idx)=>sum+(10-players[idx].hp)*0.3,0);
-      break;
-    case 'globalOnlySwap':
-      score=3.5;
-      break;
-    case 'selfBerserk':
-      score=-1.5;
-      break;
-    case 'swapAllHands':{
-      const bestOther=players.reduce((best,p,i)=>{
-        if(i===ci||p.isDead)return best;
-        return p.hand.length>best.count?{idx:i,count:p.hand.length}:best;
-      },{idx:-1,count:-1});
-      const cardDiff=(bestOther.count-self.hand.length);
-      score=cardDiff>1?cardDiff*1.5:0.5;
-      break;
-    }
-    case 'caveDuel':
-      score=self.hand.length>0?(closeToWin?1.4:0.8):-1.0;
-      break;
-    case 'selfDamageHPPeek':
-      score=-card.val*1.8+0.6;
-      break;
-    case 'damageLink':
-      score=0.1;
-      break;
-    case 'firstComePick':
-      score=3.8;
-      break;
-    case 'roseThornGiftAllHand':
-      score=-100; // 寻宝者绝对不应该触发玫瑰倒刺，因为会失去所有手牌，宝藏进度归零
-      break;
-    case 'selfDamageHP':
-    case 'selfDamageSAN':
-      score=-card.val*2.2;
-      break;
-    case 'selfDamageDiscardHP':
-    case 'selfDamageDiscardSAN':
-      score=-card.val*2.4-Math.min(self.hand.length,1)*1.3;
-      break;
-    case 'selfDamageHPSAN':
-      score=-(card.hpVal||0)*1.9-(card.sanVal||0)*2.2;
-      break;
-    case 'selfDamageRestHP':
-    case 'selfDamageRestSAN':
-      score=-3.3;
-      break;
-    case 'selfRenounceGod':
-      score=-(self.godName?2.8:1.0);
-      break;
-    default: {
-      const polarity=getZoneCardPolarity(card);
-      if(zoneCardAppliesWidePressure(card)&&(polarity==='negative'||card.type==='allDiscard')){
-        const isWideHpDamage=zoneCardHasGuaranteedHpLoss(card);
-        const isWideSanDamage=zoneCardHasGuaranteedSanLoss(card)&&!isWideHpDamage;
-        if(isWideHpDamage) score=-3.8;
-        else if(isWideSanDamage) score=-2.4;
-        else score=-1.8;
-      }else if(zoneCardIsSacrificeStyle(card)){
-        score=0.4;
-      }else if(polarity==='positive'&&zoneCardProvidesGuaranteedCardGain(card)){
-        score=closeToWin?3.2:2.6;
-      }else if(polarity==='neutral'&&zoneCardUsesTargetInteraction(card)){
-        score=closeToWin?1.2:0.4;
-      }else if(polarity==='neutral'){
-        score=0.1;
-      }
-      break;
-    }
-  }
-  if(self.hp<=2&&zoneCardHasGuaranteedHpLoss(card))score-=4.5;
-  if(self.san<=2&&zoneCardHasGuaranteedSanLoss(card))score-=4.5;
-  return score;
-}
-
-function estimateCultistZoneCardScore(card,self,players,ci){
-  const dmgBonus=self.damageBonus||0;
-  const livingPlayers=players.filter(p=>!p.isDead);
-  const minSan=Math.min(...livingPlayers.map(p=>p.san));
-  const SAN_TO_HP_RATIO=1.8;
-  const checkInstantWin=(targets,hpLoss,sanLoss)=>{
-    for(const idx of targets){
-      const target=players[idx];
-      if(target.isDead)continue;
-      const newHp=target.hp-(hpLoss||0)-dmgBonus;
-      const newSan=target.san-(sanLoss||0);
-      if(newSan<=0&&newHp>0)return true;
-    }
-    return false;
-  };
-  const checkHunterKill=(targets,hpLoss)=>{
-    let bonus=0;
-    for(const idx of targets){
-      const target=players[idx];
-      if(target.role===ROLE_HUNTER&&!target.isDead){
-        const newHp=target.hp-(hpLoss||0)-dmgBonus;
-        if(newHp<=0&&target.san>=4)bonus+=5;
-      }
-    }
-    return bonus;
-  };
-  const calcHPSanScore=(hpDelta,sanDelta,targetIdx,isSelf)=>{
-    const target=players[targetIdx];
-    if(!target||target.isDead)return 0;
-    let hpScore=0,sanScore=0;
-    if(sanDelta<0){
-      const sanUrgency=target.san<=-sanDelta?3:0;
-      sanScore=(-sanDelta)*SAN_TO_HP_RATIO*1.2+sanUrgency;
-    }else if(sanDelta>0){
-      if(isSelf&&self.hp<=3&&minSan>3){
-        sanScore=-sanDelta*SAN_TO_HP_RATIO*0.3;
-      }else{
-        sanScore=-sanDelta*SAN_TO_HP_RATIO*1.2;
-      }
-    }
-    if(hpDelta>0){
-      hpScore=hpDelta*1.0;
-    }else if(hpDelta<0){
-      const deathRisk=target.hp<=-hpDelta+dmgBonus?3:0;
-      hpScore=hpDelta*1.2-deathRisk;
-    }
-    return isSelf?(hpScore+sanScore):((hpScore+sanScore)*0.7);
-  };
-  const getTargetsAndValues=()=>{
-    switch(card.type){
-      case 'selfHealHP':
-        return {targets:[ci],hpDelta:card.val,sanDelta:0,hpLoss:0,sanLoss:0};
-      case 'selfHealSAN':
-        return {targets:[ci],hpDelta:0,sanDelta:card.val,hpLoss:0,sanLoss:0};
-      case 'selfHealBoth':
-        return {targets:[ci],hpDelta:card.val,sanDelta:card.val,hpLoss:0,sanLoss:0};
-      case 'selfHealBoth21':
-        return {targets:[ci],hpDelta:2,sanDelta:1,hpLoss:0,sanLoss:0};
-      case 'selfHealHPSelfDamageSAN':
-        return {targets:[ci],hpDelta:card.hpVal,sanDelta:-card.sanVal,hpLoss:0,sanLoss:card.sanVal};
-      case 'selfRevealHandHP':
-        return {targets:[ci],hpDelta:10,sanDelta:0,hpLoss:0,sanLoss:0};
-      case 'selfRevealHandSAN':
-        return {targets:[ci],hpDelta:0,sanDelta:10,hpLoss:0,sanLoss:0};
-      case 'adjHealHP':
-        return {targets:getAdjacentTargets(players,ci),hpDelta:card.val,sanDelta:0,hpLoss:0,sanLoss:0};
-      case 'sacHealHP':
-        return {targets:[ci,...livingPlayers.map((_,i)=>i)],hpDelta:1,sanDelta:-1,hpLoss:0,sanLoss:1,special:'sacHealHP'};
-      case 'sacHealSelfSAN':
-        return {targets:[ci],hpDelta:-3,sanDelta:card.val,hpLoss:3,sanLoss:0};
-      case 'selfDamageHP':
-      case 'selfDamageDiscardHP':
-        return {targets:[ci],hpDelta:0,sanDelta:0,hpLoss:card.val,sanLoss:0};
-      case 'selfDamageSAN':
-      case 'selfDamageDiscardSAN':
-        return {targets:[ci],hpDelta:0,sanDelta:0,hpLoss:0,sanLoss:card.val};
-      case 'selfDamageHPSAN':
-        return {targets:[ci],hpDelta:0,sanDelta:0,hpLoss:card.hpVal,sanLoss:card.sanVal};
-      case 'selfDamageRestHP':
-        return {targets:[ci],hpDelta:0,sanDelta:0,hpLoss:card.val,sanLoss:0};
-      case 'selfDamageRestSAN':
-        return {targets:[ci],hpDelta:0,sanDelta:0,hpLoss:0,sanLoss:card.val};
-      case 'selfDamageHPPeek':
-        return {targets:[ci],hpDelta:0,sanDelta:0,hpLoss:card.val,sanLoss:0};
-      case 'adjDamageHP':
-        return {targets:getAdjacentTargets(players,ci),hpDelta:0,sanDelta:0,hpLoss:card.val,sanLoss:0};
-      case 'adjDamageSAN':
-        return {targets:getAdjacentTargets(players,ci),hpDelta:0,sanDelta:0,hpLoss:0,sanLoss:card.val};
-      case 'adjDamageBoth':
-        return {targets:getAdjacentTargets(players,ci),hpDelta:0,sanDelta:0,hpLoss:card.hpVal,sanLoss:card.sanVal};
-      case 'allDamageHP':
-        return {targets:livingPlayers.map((_,i)=>i),hpDelta:0,sanDelta:0,hpLoss:card.val,sanLoss:0};
-      case 'allDamageSAN':
-        return {targets:livingPlayers.map((_,i)=>i),hpDelta:0,sanDelta:0,hpLoss:0,sanLoss:card.val};
-      case 'allDamageBoth':
-        return {targets:livingPlayers.map((_,i)=>i),hpDelta:0,sanDelta:0,hpLoss:card.val,sanLoss:card.val};
-      case 'selfDamageAdjDamageBoth':
-        return {targets:[ci,...getAdjacentTargets(players,ci)],hpDelta:0,sanDelta:0,hpLoss:card.hpVal,sanLoss:card.sanVal,special:'selfDamageAdjDamageBoth',adjHpLoss:card.adjHpVal,adjSanLoss:card.adjSanVal};
-      default:
-        return null;
-    }
-  };
-  const cardInfo=getTargetsAndValues();
-  if(cardInfo){
-    const{targets,hpDelta,sanDelta,hpLoss,sanLoss,special,adjHpLoss,adjSanLoss}=cardInfo;
-    if(special==='selfDamageAdjDamageBoth'){
-      if(checkInstantWin([ci],hpLoss,sanLoss))return 100;
-      const adjTargets=targets.filter(idx=>idx!==ci);
-      if(checkInstantWin(adjTargets,adjHpLoss,adjSanLoss))return 100;
-    }else if(checkInstantWin(targets,hpLoss,sanLoss)){
-      return 100;
-    }
-    let hunterBonus=0;
-    if(special==='selfDamageAdjDamageBoth'){
-      hunterBonus=checkHunterKill([ci],hpLoss)+checkHunterKill(targets.filter(idx=>idx!==ci),adjHpLoss);
-    }else{
-      hunterBonus=checkHunterKill(targets,hpLoss);
-    }
-    let totalScore=hunterBonus;
-    if(special==='sacHealHP'){
-      totalScore+=calcHPSanScore(0,-1,ci,true);
-      targets.filter(idx=>idx!==ci).forEach(idx=>{
-        totalScore+=calcHPSanScore(1,0,idx,false);
-      });
-    }else if(special==='selfDamageAdjDamageBoth'){
-      totalScore+=calcHPSanScore(-hpLoss,-sanLoss,ci,true);
-      targets.filter(idx=>idx!==ci).forEach(idx=>{
-        totalScore+=calcHPSanScore(-adjHpLoss,-adjSanLoss,idx,false);
-      });
-    }else if(hpLoss||sanLoss){
-      targets.forEach(idx=>{
-        const isSelf=idx===ci;
-        totalScore+=calcHPSanScore(-hpLoss,-sanLoss,idx,isSelf);
-      });
-    }else if(hpDelta||sanDelta){
-      targets.forEach(idx=>{
-        const isSelf=idx===ci;
-        totalScore+=calcHPSanScore(hpDelta,sanDelta,idx,isSelf);
-      });
-    }
-    return totalScore;
-  }
-  switch(card.type){
-    case 'selfRenounceGod':
-      return -(self.godName?1:0.5);
-    case 'selfBerserk':
-      return 2+minSan*0.2;
-    case 'damageLink':
-      return 0.5;
-    case 'firstComePick':
-      return 1.8;
-    case 'roseThornGiftAllHand':
-      // 邪祀者只有在有把握击杀追猎者的情况下才会触发玫瑰倒刺
-      const hunters=players.filter((p,i)=>i!==ci&&!p.isDead&&p.role===ROLE_HUNTER);
-      if(hunters.length>0){
-        // 检查是否有追猎者的HP足够低，送牌后可能会被击杀
-        const hasVulnerableHunter=hunters.some(hunter=>{
-          // 假设邪祀者有n张手牌，送牌后追猎者失去任意一张牌时会受到2点伤害
-          // 这里简化计算，假设追猎者至少会失去一张牌
-          return hunter.hp<=2;
-        });
-        if(hasVulnerableHunter){
-          return 5.0; // 有把握击杀追猎者，触发玫瑰倒刺
-        }
-      }
-      return -100; // 没有追猎者或追猎者HP足够高，不触发玫瑰倒刺
-    case 'swapAllHands':
-      return 0.3;
-    case 'caveDuel':
-      return self.hand.length>0?0.3:-0.3;
-    case 'globalOnlySwap':
-      return 0.2;
-    case 'allDiscard':
-      return -0.3;
-    case 'adjRest':
-      return 0;
-    default:
-      return 0;
-  }
-}
 function applyFx(card,ci,ti,ps,deck,disc,gs,avoidNegative=false,avoidNegativeFor=[],isAI=false){
   let P=copyPlayers(ps),D=[...deck],Disc=[...disc],msgs=[];
   let statePatch={};
@@ -2737,7 +2358,7 @@ function initGame(playerNames, debugForceCard, debugForceCardTarget, debugForceC
   
   const inspectionDeck=shuffle([...INSPECTION_DECK]);
   const base={players,deck,discard:[],inspectionDeck,inspectionDiscard:[],currentTurn:-1,phase:'DRAW_REVEAL',drawReveal:null,selectedCard:null,abilityData:{},log:['游戏开始。每人获得四张初始手牌。'],gameOver:null,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,globalOnlySwapOwner:null,_turnKey:0,_isMP:!!playerNames,turn:0,sealLooseningCount:0,houndsOfTindalosActive:false,houndsOfTindalosTarget:null,houndsOfTindalosElapsed:0,debugForceCard:targetCard,debugForceCardTarget};
-  base.debugForceCardKeep=debugForceCardKeep;
+  base.debugForceCardKeep=playerNames?'auto':debugForceCardKeep;
   return startNextTurn(base);
 }
 
@@ -6745,6 +6366,40 @@ export default function Game(){
   const [showDebugSettings,setShowDebugSettings]=useState(false);
   const isBattleScreen=!!gs;
   const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound}=useGameAudio(isBattleScreen);
+  const activeDebugConfig=useMemo(()=>{
+    if(!localDebugMode){
+      return{
+        debugForceCard:null,
+        debugForceCardTarget:null,
+        debugForceCardKeep:'auto',
+        debugForceCardType:null,
+        debugForceZoneCardKey:null,
+        debugForceZoneCardName:null,
+        debugForceGodCardKey:null,
+        debugPlayerRole:'auto',
+      };
+    }
+    return{
+      debugForceCard,
+      debugForceCardTarget,
+      debugForceCardKeep,
+      debugForceCardType,
+      debugForceZoneCardKey,
+      debugForceZoneCardName,
+      debugForceGodCardKey,
+      debugPlayerRole,
+    };
+  },[
+    localDebugMode,
+    debugForceCard,
+    debugForceCardTarget,
+    debugForceCardKeep,
+    debugForceCardType,
+    debugForceZoneCardKey,
+    debugForceZoneCardName,
+    debugForceGodCardKey,
+    debugPlayerRole,
+  ]);
   useEffect(()=>{
     if(!isLocalTestMode)return;
     safeLS.set(LOCAL_DEBUG_KEY,localDebugMode?'1':'0');
@@ -7012,7 +6667,17 @@ export default function Game(){
       if(isLocalSeatIndex(safeIdx)){
         // 房主：初始化游戏并广播给所有人
         const names=players.map(p=>p.username);
-        const rawGs=initGame(names, debugForceCard, debugForceCardTarget, debugForceCardKeep, debugForceCardType, debugForceZoneCardKey, debugForceZoneCardName, debugForceGodCardKey, debugPlayerRole);
+        const rawGs=initGame(
+          names,
+          activeDebugConfig.debugForceCard,
+          activeDebugConfig.debugForceCardTarget,
+          activeDebugConfig.debugForceCardKeep,
+          activeDebugConfig.debugForceCardType,
+          activeDebugConfig.debugForceZoneCardKey,
+          activeDebugConfig.debugForceZoneCardName,
+          activeDebugConfig.debugForceGodCardKey,
+          activeDebugConfig.debugPlayerRole,
+        );
         animQueueRef.current=[];
         pendingGsRef.current=null;
         setAnimExiting(false);
@@ -9585,11 +9250,11 @@ function buildInspectionEventFlow(baseGs,events){
                   }}
                 >
                   <option value="player">玩家</option>
-                  <option value="ai1">第一名AI</option>
+                  <option value="ai1">1号位角色</option>
                 </select>
               </div>
               <div style={{marginBottom:12}}>
-                <label style={{display:'block',marginBottom:4,fontSize:12}}>第一名AI是否收入这张牌</label>
+                <label style={{display:'block',marginBottom:4,fontSize:12}}>1号位角色是否收入这张牌</label>
                 <select
                   value={debugForceCardKeep}
                   onChange={(e)=>setDebugForceCardKeep(e.target.value)}
@@ -11519,7 +11184,17 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     _doStartNewGame();
   }
   function _doStartNewGame(silent=false){
-    const newGs=initGame(null, debugForceCard, debugForceCardTarget, debugForceCardKeep, debugForceCardType, debugForceZoneCardKey, debugForceZoneCardName, debugForceGodCardKey, debugPlayerRole);
+    const newGs=initGame(
+      null,
+      activeDebugConfig.debugForceCard,
+      activeDebugConfig.debugForceCardTarget,
+      activeDebugConfig.debugForceCardKeep,
+      activeDebugConfig.debugForceCardType,
+      activeDebugConfig.debugForceZoneCardKey,
+      activeDebugConfig.debugForceZoneCardName,
+      activeDebugConfig.debugForceGodCardKey,
+      activeDebugConfig.debugPlayerRole,
+    );
     animQueueRef.current=[];
     pendingGsRef.current=null;
     setAnimExiting(false);
