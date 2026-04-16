@@ -973,24 +973,23 @@ function resolveGodEncounterForAI(ci,godCard,P,D,Disc,gs,forcedConvert){
 }
 
 // Apply god encounter SAN cost and resolve for AI
-function aiHandleGodCard(ci,godCard,P,D,Disc,L,gs){
+function aiHandleGodCard(ci,godCard,P,D,Disc,L,gs,skipEffectMsg=false){
   const sanCost=P[ci].godEncounters||0;
   // 邪祀者遭遇邪神时不扣减SAN且强制亮明身份
-  let effectMsg = '';
-  if (P[ci].role === ROLE_CULTIST) {
-    P[ci].roleRevealed = true;
-    effectMsg = `${P[ci].name}（邪祀者）遭遇邪神 ${godCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`;
-    if (!P[ci].roleRevealed) {
-      effectMsg += '，身份揭晓：邪祀者';
+  if(!skipEffectMsg){
+    let effectMsg = '';
+    if (P[ci].role === ROLE_CULTIST) {
+      P[ci].roleRevealed = true;
+      effectMsg = `${P[ci].name}（邪祀者）遭遇邪神 ${godCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`;
+    } else {
+      effectMsg = `${P[ci].name} 遭遇邪神 ${godCard.name}！（第${P[ci].godEncounters}次）失去${sanCost}SAN`;
     }
-  } else {
-    effectMsg = `${P[ci].name} 遭遇邪神 ${godCard.name}！（第${P[ci].godEncounters}次）失去${sanCost}SAN`;
+    L.push(effectMsg);
   }
   const forcedConvert=!!(P[ci].godName&&P[ci].godName!==godCard.godKey);
   const gres=resolveGodEncounterForAI(ci,godCard,P,D,Disc,gs,forcedConvert);
   P=gres.P;D=gres.D;Disc=gres.Disc;
   L.push(...gres.msgs);
-  L.push(effectMsg);
   return{P,D,Disc,L,inspectionMeta:gres.inspectionMeta};
 }
 
@@ -1034,25 +1033,40 @@ function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
     if (isAI) {
       let L2 = [];
       let inspectionMeta=makeInspectionMeta(gs);
+      let effectMsg = P[ci].role === ROLE_CULTIST 
+        ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`
+        : `${whoName} 遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）失去${cost}SAN`;
+      L2.push(effectMsg);
       // AI处理邪神牌时，仍然立即扣减SAN值
       if (P[ci].role !== ROLE_CULTIST) {
         P[ci].san = clamp(P[ci].san - cost);const newSan=P[ci].san;{const baseLog=gs?.log||[];const processed=applyInspectionForSanLoss(ci,newSan,gs?.currentTurn??ci,P,D,Disc,baseLog,inspectionMeta);P=processed.P;D=processed.D;Disc=processed.Disc;inspectionMeta=processed.inspectionMeta;L2.push(...processed.log.slice(baseLog.length));}
       }
-      const gr = aiHandleGodCard(ci, drawnCard, P, D, Disc, L2, gs);
+      const gr = aiHandleGodCard(ci, drawnCard, P, D, Disc, L2, gs, true);
       P = gr.P; D = gr.D; Disc = gr.Disc;
       return { P, D, Disc, drawnCard, effectMsgs: L2, kept: true, statePatch:{...inspectionMeta,...(gr.inspectionMeta||{})} };
     } else {
       let effectMsg = P[ci].role === ROLE_CULTIST 
         ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`
-        : `${whoName}遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）失去${cost}SAN`;
-      if (P[ci].role === ROLE_CULTIST && !P[ci].roleRevealed) {
-        effectMsg += '，身份揭晓：邪祀者';
+        : `${whoName} 遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）失去${cost}SAN`;
+      
+      let inspectionMeta = makeInspectionMeta(gs);
+      let effectMsgs = [effectMsg];
+      
+      if (P[ci].role !== ROLE_CULTIST && cost > 0) {
+        P[ci].san = clamp(P[ci].san - cost);
+        const newSan = P[ci].san;
+        const baseLog=gs?.log?[...gs.log, effectMsg]:[effectMsg];
+        const processed = applyInspectionForSanLoss(ci, newSan, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta);
+        P = processed.P; D = processed.D; Disc = processed.Disc; 
+        inspectionMeta = processed.inspectionMeta;
+        effectMsgs.push(...processed.log.slice(baseLog.length));
       }
-      // 对于玩家，不立即扣减SAN值，而是将扣减信息存储在返回对象中
+
       return { P, D, Disc, drawnCard,
-        effectMsgs: [effectMsg],
+        effectMsgs,
         needGodChoice: true, needsDecision: false,
-        godEncounterCost: P[ci].role !== ROLE_CULTIST ? cost : 0 };
+        godEncounterCost: 0,
+        statePatch: inspectionMeta };
     }
   }
   
@@ -10303,11 +10317,8 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     let inspectionMeta=makeInspectionMeta(gs);
     const gk=godCard.godKey;
     const alreadyWorship=P[0].godName===gk;
-    // 扣减SAN值（在动画播放之前）
-    const godEncounterCost=gs.abilityData?.godEncounterCost||0;
-    if(godEncounterCost>0){
-      P[0].san=clamp(P[0].san-godEncounterCost);const newSan=P[0].san;if(newSan<=6){const inspectionResult=handleInspection(0,{players:P,deck:D,discard:Disc,log:L,inspectionDeck:inspectionMeta.inspectionDeck,inspectionDiscard:inspectionMeta.inspectionDiscard,sealLooseningCount:inspectionMeta.sealLooseningCount,houndsOfTindalosActive:inspectionMeta.houndsOfTindalosActive,houndsOfTindalosTarget:inspectionMeta.houndsOfTindalosTarget,_inspectionSeq:inspectionMeta._inspectionSeq});P=inspectionResult.players;D=inspectionResult.deck;Disc=inspectionResult.discard;inspectionMeta=mergeInspectionMeta(inspectionMeta,inspectionResult);L.splice(0,L.length,...(inspectionResult.log||L));}
-    }
+    // SAN deduction and inspections are now handled upfront in handleCardDraw
+    
     if(action==='keepHand'){
       P[0].hand.push({...godCard});
       L.push('你（邪祀者）将邪神牌秘密收入手牌');
@@ -10599,10 +10610,20 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       }
       if(newGs.phase==='GOD_CHOICE'&&newGs.abilityData?.godCard){
         pendingGsRef.current=newGs;
+        const inspectionEvents = (newGs._inspectionEvents||[]).filter(ev=>ev?.seq>(gs._inspectionSeq||0));
+        let inspectionAndTailQueue = [];
+        if(inspectionEvents.length) {
+          lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
+          const inspectionFlow = buildInspectionEventFlow({...gs, players: newGs._playersBeforeThisDraw||gs.players}, inspectionEvents, {buildAnimQueue, copyPlayers});
+          const tailQueue = buildAnimQueue({players: inspectionFlow.players, log: inspectionFlow.log}, newGs);
+          inspectionAndTailQueue = [...inspectionFlow.queue, ...bindAnimLogChunks(tailQueue, {statLogs:newGs._statLogs})];
+        } else {
+          inspectionAndTailQueue = drawStatQ;
+        }
         animQueueRef.current=[
           {type:'DRAW_CARD',card:newGs.abilityData.godCard,triggerName:'你',targetPid:0,msgs:playerDrawMsgs},
           ...preTurnStatQ,
-          ...drawStatQ,
+          ...inspectionAndTailQueue,
         ];
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
         setAnim({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
@@ -10636,7 +10657,21 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         const drawerPid=newGs.currentTurn;
         receivedGsRef.current=true;
         pendingGsRef.current=newGs;
-        animQueueRef.current=[...preTurnStatQ,...drawStatQ];
+        let inspectionAndTailQueue = [];
+        if(ph==='GOD_CHOICE'){
+          const inspectionEvents = (newGs._inspectionEvents||[]).filter(ev=>ev?.seq>(gs._inspectionSeq||0));
+          if(inspectionEvents.length) {
+            lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
+            const inspectionFlow = buildInspectionEventFlow({...gs, players: newGs._playersBeforeThisDraw||gs.players}, inspectionEvents, {buildAnimQueue, copyPlayers});
+            const tailQueue = buildAnimQueue({players: inspectionFlow.players, log: inspectionFlow.log}, newGs);
+            inspectionAndTailQueue = [...inspectionFlow.queue, ...bindAnimLogChunks(tailQueue, {statLogs:newGs._statLogs})];
+          } else {
+            inspectionAndTailQueue = drawStatQ;
+          }
+        } else {
+          inspectionAndTailQueue = drawStatQ;
+        }
+        animQueueRef.current=[...preTurnStatQ,...inspectionAndTailQueue];
         setAnim({type:'DRAW_CARD',card:drawnCard,triggerName:drawerName,targetPid:drawerPid,msgs:newGs._drawLogs});
         return;
       }
@@ -10835,16 +10870,33 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         // 遮蔽真实 phase，动画结束后 advanceQueue 再还原（与 applyNextTurnGs 同样模式）
         suppressNextBroadcastRef.current=true; // pendingGs 已广播过，advanceQueue 不再回传
         pendingGsRef.current=pendingGs;
+        
+        let inspectionAndTailQueue = [];
         const drawStatQ=bindAnimLogChunks(
           buildAnimQueue({...gs,players:pendingGs._playersBeforeThisDraw||gs.players},pendingGs),
           {statLogs:pendingGs._statLogs}
         );
-        animQueueRef.current=[...drawStatQ];
+        
+        if(ph==='GOD_CHOICE'){
+          const inspectionEvents = (pendingGs._inspectionEvents||[]).filter(ev=>ev?.seq>(gs._inspectionSeq||0));
+          if(inspectionEvents.length) {
+            lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
+            const inspectionFlow = buildInspectionEventFlow({...gs, players: pendingGs._playersBeforeThisDraw||gs.players}, inspectionEvents, {buildAnimQueue, copyPlayers});
+            const tailQueue = buildAnimQueue({players: inspectionFlow.players, log: inspectionFlow.log}, pendingGs);
+            inspectionAndTailQueue = [...inspectionFlow.queue, ...bindAnimLogChunks(tailQueue, {statLogs:pendingGs._statLogs})];
+          } else {
+            inspectionAndTailQueue = drawStatQ;
+          }
+        } else {
+          inspectionAndTailQueue = drawStatQ;
+        }
+        
+        animQueueRef.current=[...inspectionAndTailQueue];
         setGs({...pendingGs,phase:'ACTION',drawReveal:null,abilityData:{}});
         triggerAnimQueue([
           {type:'YOUR_TURN',name:activeName,msgs:pendingGs._turnStartLogs},
           {type:'DRAW_CARD',card:drawnCard,triggerName:activeName,targetPid:drawerPid,msgs:pendingGs._drawLogs},
-          ...drawStatQ,
+          ...inspectionAndTailQueue,
         ],pendingGs);
       }else{
         triggerAnimQueue([{type:'YOUR_TURN',name:activeName,msgs:pendingGs._turnStartLogs}],pendingGs);
