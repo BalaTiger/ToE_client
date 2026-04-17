@@ -1737,7 +1737,7 @@ function aiStep(gs){
   // 给追猎者更高的出手倾向以促成连续追捕
   let skillRate = 0.35;
   if (aiEffRole === ROLE_HUNTER) skillRate = 0.97;
-  else if (aiEffRole === ROLE_CULTIST) skillRate = 0.65;
+  else if (aiEffRole === ROLE_CULTIST) skillRate = 0.95;
   else if (myProgress >= 7) skillRate = 0.55;
 
   const canUseSkill = !gs.restUsed && (aiEffRole === ROLE_HUNTER ? true : !gs.skillUsed);
@@ -4288,7 +4288,7 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLe
           border:`1.5px solid ${selected?'#c8a96e':highlight?col:col+'88'}`,
           boxShadow:selected?`0 0 14px #c8a96e88,inset 0 0 12px #c8a96e22`:hover?`0 0 14px ${col}88`:`0 0 6px ${col}44`,
           borderRadius:3,
-          cursor:disabled?'default':'pointer',
+          cursor:(onClick&&!disabled)?'pointer':'default',
           opacity:disabled?0.35:1,
           transform:selected?'translateY(-5px)':undefined,
           transition:'all .14s',
@@ -4332,7 +4332,7 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
           background:'linear-gradient(160deg,#1a150f,#120d08)',
           border:`1.5px dashed ${selected?'#f4d27a':highlight?'#d8b45a':'#8a6a2a'}`,
           boxShadow:selected?'0 0 14px #c8a96e88,inset 0 0 12px #c8a96e22':highlight?'0 0 10px #d8b45a66':'inset 0 1px 0 #8a6a2a44',
-          borderRadius:3,cursor:disabled?'default':'pointer',opacity:disabled?0.35:1,
+          borderRadius:3,cursor:(onClick&&!disabled)?'pointer':'default',opacity:disabled?0.35:1,
           transform:selected?'translateY(-5px)':undefined,transition:'all .14s',
           display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
           padding:small?'4px 3px':compact?'5px 5px':'7px 8px',userSelect:'none',position:'relative',overflow:'hidden',
@@ -4366,7 +4366,7 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
           border:`1.5px solid ${selected?'#c8a96e':isRoseThornMarked?'#ff7a9a':highlight?s.borderBright:s.border}`,
           boxShadow:selected?`0 0 14px #c8a96e88,inset 0 0 12px #c8a96e22`:isRoseThornMarked?'0 0 18px rgba(255,90,130,0.35), inset 0 0 16px rgba(255,90,130,0.16)':highlight?`0 0 10px ${s.glow}88`:`inset 0 1px 0 ${s.border}44`,
           borderRadius:3,
-          cursor:disabled?'default':'pointer',
+          cursor:(onClick&&!disabled)?'pointer':'default',
           opacity:disabled?0.35:1,
           transform:selected?'translateY(-5px)':undefined,
           transition:'all .14s',
@@ -4795,14 +4795,14 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
         </div>
       )}
       <div style={{display:'flex',flexWrap:'wrap',gap:3,marginTop:5,minWidth:0}}>
-        {(player.zoneCards||[]).map((c,ci)=><DDCard key={c.id||`zone-${playerIndex}-${ci}`} card={c} small disabled holderId={playerIndex}/>)}
+        {(player.zoneCards||[]).map((c,ci)=><DDCard key={c.id||`zone-${playerIndex}-${ci}`} card={c} small holderId={playerIndex}/>)}
       </div>
       <div style={{display:'flex',alignItems:'flex-start',marginTop:5,minWidth:0,width:HAND_AREA_WIDTH,maxWidth:'100%',overflow:'hidden'}}>
         {handCards.map((card,ci)=>(
           <div key={card.id||`hand-${playerIndex}-${ci}`} style={{marginLeft:ci===0?0:(handOverlap>0?-handOverlap:HAND_CARD_GAP),flex:'0 0 auto',position:'relative',zIndex:ci+1}}>
             {card._back
               ?<DDCardBack small/>
-              :<DDCard card={card} small onClick={onCardSelect?()=>onCardSelect(ci):undefined} disabled={!onCardSelect} highlight={!!onCardSelect} holderId={playerIndex}/>}
+              :<DDCard card={card} small onClick={onCardSelect?()=>onCardSelect(ci):undefined} highlight={!!onCardSelect} holderId={playerIndex}/>}
           </div>
         ))}
       </div>
@@ -11356,7 +11356,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             )}
             {!!me.zoneCards?.length&&(
               <div style={{marginTop:6,display:'flex',flexWrap:'wrap',gap:4}}>
-                {me.zoneCards.map((c,ci)=><DDCard key={c.id||`self-zone-${ci}`} card={c} small disabled holderId={0}/>)}
+                {me.zoneCards.map((c,ci)=><DDCard key={c.id||`self-zone-${ci}`} card={c} small holderId={0}/>)}
               </div>
             )}
             </div>

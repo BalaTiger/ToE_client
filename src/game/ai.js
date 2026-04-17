@@ -164,6 +164,18 @@ function estimateHunterZoneCardScore(card, self, players, ci) {
   }
   if (self.hp <= 2 && zoneCardHasGuaranteedHpLoss(card)) score -= 4;
   if (self.san <= 2 && zoneCardHasGuaranteedSanLoss(card)) score -= 4;
+
+  if (self.hand.length === 0 && score < 0) {
+    const isSelfDamage = ['selfDamageHP', 'selfDamageSAN', 'selfDamageHPSAN', 'selfDamageRestHP', 'selfDamageRestSAN', 'selfDamageHPPeek', 'selfDamageDiscardHP', 'selfDamageDiscardSAN'].includes(card.type);
+    if (isSelfDamage) {
+      const willHpBe = self.hp - (zoneCardHasGuaranteedHpLoss(card) ? (card.val || card.hpVal || 1) : 0);
+      const willSanBe = self.san - (zoneCardHasGuaranteedSanLoss(card) ? (card.val || card.sanVal || 1) : 0);
+      if (willHpBe >= 5 && willSanBe >= 5 && card.type !== 'selfDamageRestHP' && card.type !== 'selfDamageRestSAN') {
+        score += 10;
+      }
+    }
+  }
+
   return score;
 }
 
