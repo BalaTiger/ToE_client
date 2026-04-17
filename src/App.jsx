@@ -6628,10 +6628,9 @@ export default function Game(){
   const isSmall=vw<860;
   // Scale ratio for responsive player areas (based on 1200px design width)
   const DESIGN_WIDTH=1200;
-  const SCALE_MIN_WIDTH=480; // Minimum width before allowing scroll
   const rawScale=vw/DESIGN_WIDTH;
-  const needScroll=vw<SCALE_MIN_WIDTH;
-  const scaleRatio=needScroll?1:Math.min(rawScale,1);
+  const shouldScale=vw<DESIGN_WIDTH;
+  const scaleRatio=shouldScale?Math.min(rawScale,1):1;
 
   const applyVisibleLogPrefix=useCallback((count,authorityOverride)=>{
     const authority=Array.isArray(authorityOverride)?authorityOverride:(Array.isArray(visibleLogAuthorityRef.current)?visibleLogAuthorityRef.current:[]);
@@ -11104,8 +11103,8 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         </div>
 
         {/* Scaled player areas wrapper - applies scale to AI panels + middle section */}
-        <div style={{overflowX:scaleRatio<1?'auto':'visible',overflowY:'visible'}}>
-          <div style={{transformOrigin:'top left',transform:scaleRatio<1?`scale(${scaleRatio})`:'none',width:scaleRatio<1?`calc(${100/scaleRatio}% + ${(1/scaleRatio-1)*vw}px)`:'100%',minWidth:scaleRatio<1?SCALE_MIN_WIDTH:0}}>
+        <div style={{overflow:'hidden',width:'100%'}}>
+          <div style={{transformOrigin:'top left',transform:scaleRatio<1?`scale(${scaleRatio})`:'none',width:scaleRatio<1?`calc(100% / ${scaleRatio})`:'100%'}}>
 
 
         {/* AI panels */}
