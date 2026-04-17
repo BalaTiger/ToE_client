@@ -4549,7 +4549,6 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
   return(
     <div onClick={isSelectable?onSelect:undefined} style={{
       width:'100%',
-      maxWidth:180,
       background:isCurrentTurn?'#1c1408':'#140f08',
       border:`1.5px solid ${borderColor}`,
       boxShadow:isCurrentTurn?`0 0 20px #c8a96e22,inset 0 0 16px #c8a96e08`:isSelectable?`0 0 14px ${ri.col}44`:'none',
