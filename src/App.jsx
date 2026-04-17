@@ -11112,10 +11112,8 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         <div ref={aiPanelAreaRef} style={{
           display:'grid',
           gridTemplateColumns:'repeat(4,1fr)',
-          gap:isMobile?5:10,
+          gap:isMobile?10:14,
           justifyContent:'center',
-          maxWidth:760,
-          margin:'0 auto',
           width:'100%'
         }}>
           {visualPlayers.slice(1).map((p,i)=>{
