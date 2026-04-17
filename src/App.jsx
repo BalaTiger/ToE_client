@@ -11112,7 +11112,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         <div ref={aiPanelAreaRef} style={{
           display:'grid',
           gridTemplateColumns:'repeat(4,1fr)',
-          gap:isMobile?10:14,
+          gap:isMobile?6:8,
           justifyContent:'center',
           width:'100%'
         }}>
