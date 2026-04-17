@@ -6627,6 +6627,12 @@ export default function Game(){
   const isMobile=vw<580;
   const isSmall=vw<860;
 
+  // Scale ratio for player areas (based on 1200px design width)
+  const DESIGN_WIDTH=1200;
+  const rawScale=vw/DESIGN_WIDTH;
+  const shouldScale=vw<DESIGN_WIDTH;
+  const scaleRatio=shouldScale?Math.min(rawScale,1):1;
+
   const applyVisibleLogPrefix=useCallback((count,authorityOverride)=>{
     const authority=Array.isArray(authorityOverride)?authorityOverride:(Array.isArray(visibleLogAuthorityRef.current)?visibleLogAuthorityRef.current:[]);
     const safeCount=Math.max(0,Math.min(count,authority.length));
@@ -11097,6 +11103,10 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
           
         </div>
 
+        {/* Scaled player areas wrapper */}
+        <div style={{overflow:'hidden',width:'100%'}}>
+          <div style={{zoom:scaleRatio<1?scaleRatio:'normal',width:scaleRatio<1?`calc(100% / ${scaleRatio})`:'100%'}}>
+
         {/* AI panels */}
         <div ref={aiPanelAreaRef} style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':isSmall?'repeat(3,1fr)':'repeat(4,1fr)',gap:isMobile?5:7}}>
           {visualPlayers.slice(1).map((p,i)=>{
@@ -11219,6 +11229,8 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
               });
             })()}
           </div>
+        </div>
+        </div>
         </div>
 
         {/* Phase bar */}
