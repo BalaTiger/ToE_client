@@ -10770,6 +10770,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
   }
 
   // Phase labels
+  const cardHintText='鼠标悬停查看卡牌详情（移动端请点击卡牌）';
   const phaseLabel={
     ACTION:               isLocalCurrentTurn(gs)?'你的回合 — 可发动技能、休息，或结束回合':'等候其他旅者…',
     SWAP_SELECT_TARGET:   '【掉包】选择目标角色',
@@ -11227,7 +11228,10 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
           borderRadius:3,padding:isMobile?'5px 10px':'7px 14px',minHeight:isMobile?32:38,
           display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',
         }}>
-          <div style={{flex:1,fontFamily:"'Cinzel',serif",color:(phase==='PLAYER_REVEAL_FOR_HUNT'||phase==='CAVE_DUEL_SELECT_CARD')?'#cc3030':myTurn&&phase!=='AI_TURN'?'#a08040':'#3a2510',fontSize:isMobile?10:11,letterSpacing:isMobile?0.5:1}}>{phaseLabel}</div>
+          <div style={{flex:1,fontFamily:"'Cinzel',serif",color:(phase==='PLAYER_REVEAL_FOR_HUNT'||phase==='CAVE_DUEL_SELECT_CARD')?'#cc3030':myTurn&&phase!=='AI_TURN'?'#a08040':'#3a2510',fontSize:isMobile?10:11,letterSpacing:isMobile?0.5:1}}>
+            <div>{phaseLabel}</div>
+            {phase==='ACTION'&&<div style={{fontSize:isMobile?8:9,color:'#5a4a3a',marginTop:2}}>{cardHintText}</div>}
+          </div>
           {isMultiplayer&&mpCthSec!==null&&isMpCthDecisionPhase&&(
             <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:mpCthSec<=5?'#e05030':mpCthSec<=10?'#e09030':'#cc8030',letterSpacing:1,flexShrink:0}}>
               ⏱ 抉择 {mpCthSec}s
