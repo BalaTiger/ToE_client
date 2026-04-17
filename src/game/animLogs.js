@@ -1,33 +1,33 @@
 export function isTurnStartLog(line){
-  return new RegExp("^鈹€鈹€ .+ 鐨勫洖鍚堝紑濮?鈹€鈹€$").test(line||"");
+  return new RegExp("^── .+ 的回合开始 ──$").test(line||"");
 }
 
 export function isStatLog(line){
-  return new RegExp("鍙?\\d+HP 浼ゅ|澶卞幓 \\d+ HP|澶卞幓 \\d+ SAN|澶卞幓 \\d+ HP 鍜?\\d+ SAN|鍥炲 \\d+ HP|鍥炲 \\d+ SAN|鍚勫け鍘粅鍚勫洖澶峾棰濆澶卞幓|琚贡鎶搢鑷畫|鎭㈠ 1SAN").test(line||"");
+  return new RegExp("造成 \\d+HP 伤害|失去 \\d+ HP|失去 \\d+ SAN|失去 \\d+ HP 和 \\d+ SAN|恢复 \\d+ HP|恢复 \\d+ SAN|各种理智和各种回复额外失去|被玫瑰倒刺刺伤|恢复 1SAN").test(line||"");
 }
 
 export function isSkillHuntLog(line){
-  return new RegExp("銆愯拷鎹曘€憒鍙戝姩銆愯拷鎹曘€憒锛堣拷鐚庤€咃級杩芥崟|鍚戜綘鍙戝姩銆愯拷鎹曘€憒鏀惧純杩芥崟|鍋滄浜嗚拷鎹晐灏濊瘯浜嗘墍鏈夌洰鏍囷紝浠嶆棤娉曡拷鎹?").test(line||"");
+  return new RegExp("【掉包】发动|【掉包】（放弃）追单|向你发动|放弃追单|停止了追捕尝试了所有目标，仍无法追捕?").test(line||"");
 }
 
 export function isSkillSwapLog(line){
-  return new RegExp("銆愭帀鍖呫€?").test(line||"");
+  return new RegExp("【掉包】").test(line||"");
 }
 
 export function isSkillBewitchLog(line){
-  return new RegExp("銆愯泭鎯戙€?").test(line||"");
+  return new RegExp("【蛊惑】").test(line||"");
 }
 
 export function isDiscardOnlyLog(line){
-  return new RegExp("璇勪及鍚庨€夋嫨寮冪疆|锛堜笂闄愶級|闅忔満寮億寮冪疆浜?\\[").test(line||"") && !new RegExp("鍙?\\d+HP 浼ゅ|澶卞幓 \\d+ HP|澶卞幓 \\d+ SAN|澶卞幓 \\d+ HP 鍜?\\d+ SAN").test(line||"");
+  return new RegExp("评估后选择弃置|（上限）|随机放弃抽了 \\d+ 张牌").test(line||"") && !new RegExp("造成 \\d+HP 伤害|失去 \\d+ HP|失去 \\d+ SAN|失去 \\d+ HP 和 \\d+ SAN").test(line||"");
 }
 
 export function isTransferLog(line){
-  return new RegExp("浜ゆ崲浜嗗叏閮ㄦ墜鐗寍鏆楁娊浜哱d+寮犵墝|鏆楁娊浜嗕竴寮爘鎷胯蛋 \\[|杩樼粰 |閫夋嫨浜?\\[.+\\]|鏀跺叆浜?\\d+ 寮犵紪鍙蜂负").test(line||"");
+  return new RegExp("交换了全部手牌为祭品献祭了|祭献了一张手牌溜走|选择|收入了 \\d+ 张牌编号为|收入了手牌|收入了").test(line||"");
 }
 
 export function isDrawLikeLog(line){
-  return new RegExp("鎽稿埌 \\[|鏀跺叆浜?\\[|閬亣閭|灏嗛偑绁炵墝鏀跺叆鎵嬬墝|淇′话浜?|灞曠ず浜嗙墝鍫嗛《|杩欐槸甯︽湁璐熼潰鏁堟灉鐨勫尯鍩熺墝|鎺峰嚭 \\d+ 鐐箌鍑嗗鍋风湅|鍑嗗浣跨敤涓や汉涓€缁硘鍑嗗杩涜绌村眳浜烘垬浜?").test(line||"");
+  return new RegExp("摸到 \\[|收入了 \\[|偶遇灵魂|将神牌收入手牌|展示了一张牌顶|这是带有负面效果的区域牌|抽出 \\d+ 点准备看|准备使用两人一绳进行随机居战?").test(line||"");
 }
 
 export function splitAnimBoundLogs(lines){

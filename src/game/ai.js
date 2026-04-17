@@ -1,9 +1,7 @@
 import {
   isZoneCard,
-  isBlankZoneCard,
   isPositiveZoneCard,
   isNegativeZoneCard,
-  isWinHand,
   estimateZoneCardKeepScore,
   getPrevLivingIndex,
   getNextLivingIndex,
@@ -124,11 +122,6 @@ function zoneCardGiftRestsTarget(card) {
   return ['selfDamageRestHP', 'selfDamageRestSAN', 'adjRest'].includes(card?.type);
 }
 
-function zoneCardSupportsCultistKeep(card) {
-  if (!card) return false;
-  return zoneCardCanGiftLowerSan(card, { san: 99, hp: 99 }) > 0 || zoneCardGiftHpHealValue(card) > 0;
-}
-
 function estimateGodGiftSanLoss(card, target) {
   if (!card?.isGod || !target || target.isDead) return 0;
   if ((target._nyaBorrow || target.role) === ROLE_CULTIST) return 0;
@@ -216,6 +209,36 @@ function estimateHunterZoneCardScore(card, self, players, ci) {
       score = aliveOthers * 2.6;
       if (self.hp <= ((card.val || 0) * 2)) score -= 12;
       else if (self.hp <= ((card.val || 0) + 1)) score -= 5;
+      break;
+    }
+    case 'allDamageHP':
+    case 'allDamageSAN':
+    case 'allDamageBoth': {
+      const dmgBonus = self.damageBonus || 0;
+      const livingPlayers = players.filter(p => !p.isDead);
+      const hpLoss = card.type === 'allDamageBoth' ? card.val : (card.type === 'allDamageHP' ? card.val : 0);
+      const sanLoss = card.type === 'allDamageBoth' ? card.val : (card.type === 'allDamageSAN' ? card.val : 0);
+      const targets = livingPlayers.map((_, i) => i);
+      let hunterKillBonus = 0;
+      let totalKillPotential = 0;
+      for (const idx of targets) {
+        if (idx === ci) continue;
+        const target = players[idx];
+        if (target.role === ROLE_HUNTER && !target.isDead) {
+          const newHp = target.hp - hpLoss - dmgBonus;
+          if (newHp <= 0 && target.san >= 4) {
+            hunterKillBonus += 8;
+            totalKillPotential++;
+          }
+        }
+      }
+      if (totalKillPotential > 0) {
+        score = 10 + hunterKillBonus + totalKillPotential * 2;
+      } else {
+        const totalDamageToOthers = targets.filter(idx => idx !== ci).length * (hpLoss || sanLoss);
+        score = totalDamageToOthers * 0.3;
+        if (self.hp <= hpLoss + 1) score -= 5;
+      }
       break;
     }
     case 'selfDamageHP':
@@ -449,10 +472,6 @@ function estimateCultistZoneCardScore(card, self, players, ci) {
         return { targets: [ci], hpDelta: 0, sanDelta: 0, hpLoss: 0, sanLoss: card.val };
       case 'selfDamageHPSAN':
         return { targets: [ci], hpDelta: 0, sanDelta: 0, hpLoss: card.hpVal, sanLoss: card.sanVal };
-      case 'selfDamageRestHP':
-        return { targets: [ci], hpDelta: 0, sanDelta: 0, hpLoss: card.val, sanLoss: 0 };
-      case 'selfDamageRestSAN':
-        return { targets: [ci], hpDelta: 0, sanDelta: 0, hpLoss: 0, sanLoss: card.val };
       case 'selfDamageHPPeek':
         return { targets: [ci], hpDelta: 0, sanDelta: 0, hpLoss: card.val, sanLoss: 0 };
       case 'adjDamageHP':
@@ -556,7 +575,7 @@ function estimateCultistZoneCardScore(card, self, players, ci) {
   }
 }
 
-export function aiChooseRevealCard(targetHand, hunterName, log = [], knownHunterCards = []) {
+export function aiChooseRevealCard(targetHand, hunterName, log, knownHunterCards) { // eslint-disable-line no-unused-vars
   const zoneCards = targetHand.filter(isZoneCard);
   if (!zoneCards.length) return targetHand[0];
   
@@ -568,10 +587,10 @@ export function aiChooseRevealCard(targetHand, hunterName, log = [], knownHunter
     if (card.type === 'caveDuel') score += 3;
     const isNegative = isNegativeZoneCard(card);
     if (isNegative) score -= 100;
-    return { index: targetHand.indexOf(card), score };
+    return { index, score };
   });
   scored.sort((a, b) => b.score - a.score);
-  return scored[0]?.index != null ? targetHand[scored[0].index] : targetHand[0];
+  return targetHand[scored[0]?.index ?? 0];
 }
 
 export function aiChooseHunterLootCards(targetHand, hunterHand, maxToTake = 3) {
@@ -933,7 +952,7 @@ export function aiShouldKeepZoneCard(card, ci, players, forced = false) {
   }
 
   if (role === ROLE_CULTIST) {
-    return zoneCardSupportsCultistKeep(card);
+    return estimateCultistZoneCardScore(card, self, players, ci) > 0;
   }
   
   const myHand = players[ci]?.hand || [];
@@ -968,4 +987,164 @@ export function aiShouldKeepZoneCard(card, ci, players, forced = false) {
   }
 
   return estimateZoneCardKeepScore(card, ci, players) > 0;
+}
+
+export function canTreasureHunterWinBySwap(players, ti) {
+  const self = players[ti];
+  if (!self || self.isDead) return null;
+  const role = self._nyaBorrow || self.role;
+  if (role !== ROLE_TREASURE) return null;
+
+  const myHand = self.hand || [];
+  const myLetters = new Set(myHand.filter(c => c.letter && !c.isGod).map(c => c.letter));
+  const myNumbers = new Set(myHand.filter(c => c.number != null && !c.isGod).map(c => c.number));
+  const missingLetters = ['A', 'B', 'C', 'D'].filter(l => !myLetters.has(l));
+  const missingNumbers = [1, 2, 3, 4].filter(n => !myNumbers.has(n));
+
+  if (missingLetters.length === 0 && missingNumbers.length === 0) return null;
+  if (missingLetters.length > 1 || missingNumbers.length > 1) return null;
+
+  const neededLetter = missingLetters.length === 1 ? missingLetters[0] : null;
+  const neededNumber = missingNumbers.length === 1 ? missingNumbers[0] : null;
+
+  const targetPlayers = players
+    .map((p, i) => ({ player: p, idx: i }))
+    .filter(({ player, idx }) => idx !== ti && !player.isDead);
+
+  for (const { player, idx } of targetPlayers) {
+    for (const card of player.hand || []) {
+      if (card.isGod) continue;
+      const hasNeeded = (neededLetter && card.letter === neededLetter) || (neededNumber && card.number === neededNumber);
+      if (hasNeeded) {
+        const giveCard = player.hand.find(c => !c.isGod && !((neededLetter && c.letter === neededLetter) || (neededNumber && c.number === neededNumber)));
+        const newMissingLetters = ['A', 'B', 'C', 'D'].filter(l => {
+          if (neededLetter && l === neededLetter) return false;
+          if (giveCard && giveCard.letter === l) return false;
+          return !myLetters.has(l);
+        });
+        const newMissingNumbers = [1, 2, 3, 4].filter(n => {
+          if (neededNumber && n === neededNumber) return false;
+          if (giveCard && giveCard.number === n) return false;
+          return !myNumbers.has(n);
+        });
+        if (newMissingLetters.length === 0 && newMissingNumbers.length === 0) {
+          return { targetIdx: idx, neededCard: card };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+export function shouldTreasureHunterSwapToAvoidRegression(players, ti) {
+  const self = players[ti];
+  if (!self || self.isDead) return null;
+  const role = self._nyaBorrow || self.role;
+  if (role !== ROLE_TREASURE) return null;
+
+  const handLimit = self._nyaHandLimit ?? 4;
+  const zoneCards = (self.hand || []).filter(isZoneCard);
+  if (zoneCards.length <= handLimit) return null;
+
+  const myHand = self.hand || [];
+  const myLetters = new Set(myHand.filter(c => c.letter && !c.isGod).map(c => c.letter));
+  const myNumbers = new Set(myHand.filter(c => c.number != null && !c.isGod).map(c => c.number));
+  const missingLetters = ['A', 'B', 'C', 'D'].filter(l => !myLetters.has(l));
+  const missingNumbers = [1, 2, 3, 4].filter(n => !myNumbers.has(n));
+
+  if (missingLetters.length === 0 && missingNumbers.length === 0) return null;
+  if (missingLetters.length > 1 || missingNumbers.length > 1) return null;
+
+  const neededLetter = missingLetters.length === 1 ? missingLetters[0] : null;
+  const neededNumber = missingNumbers.length === 1 ? missingNumbers[0] : null;
+
+  const targetPlayers = players
+    .map((p, i) => ({ player: p, idx: i }))
+    .filter(({ player, idx }) => idx !== ti && !player.isDead);
+
+  for (const { player, idx } of targetPlayers) {
+    for (const card of player.hand || []) {
+      if (card.isGod) continue;
+      const hasNeeded = (neededLetter && card.letter === neededLetter) || (neededNumber && card.number === neededNumber);
+      if (hasNeeded) {
+        return { targetIdx: idx, neededCard: card };
+      }
+    }
+  }
+  return null;
+}
+
+export function canCultistWinByBewitch(players, ti) {
+  const cultistPlan = chooseAiCultistBewitchPlan(players, ti);
+  if (!cultistPlan) return false;
+
+  const self = players[ti];
+  const target = players[cultistPlan.targetIdx];
+  if (!self || !target) return false;
+
+  const card = cultistPlan.card;
+  if (card.isGod) {
+    const sanLoss = estimateGodGiftSanLoss(card, target);
+    return target.san - sanLoss <= 0 && target.hp > 0;
+  } else {
+    const sanLoss = zoneCardCanGiftLowerSan(card, target);
+    return target.san - sanLoss <= 0 && target.hp > 0;
+  }
+}
+
+export function canCultistEmptyHandByBewitch(players, ti) {
+  const self = players[ti];
+  if (!self || self.isDead) return false;
+
+  const hand = self.hand || [];
+  if (hand.length === 0) return true;
+
+  const regionCards = hand.filter(c => !c.isGod);
+  return regionCards.length > 0;
+}
+
+export function aiShouldNotRest(gs, ai, aiEffRole, players, ti) {
+  if (ai.hp >= 9) return false;
+
+  if (aiEffRole === ROLE_TREASURE && ai.hp <= 4) {
+    const winSwap = canTreasureHunterWinBySwap(players, ti);
+    if (winSwap) return { shouldNotRest: true, reason: 'swapWin', targetIdx: winSwap.targetIdx };
+
+    const regressionSwap = shouldTreasureHunterSwapToAvoidRegression(players, ti);
+    if (regressionSwap) return { shouldNotRest: true, reason: 'swapAvoidRegression', targetIdx: regressionSwap.targetIdx };
+
+    return { shouldNotRest: false };
+  }
+
+  if (aiEffRole === ROLE_CULTIST && ai.hp <= 4) {
+    if (canCultistWinByBewitch(players, ti)) {
+      return { shouldNotRest: true, reason: 'bewitchWin' };
+    }
+
+    if (canCultistEmptyHandByBewitch(players, ti)) {
+      return { shouldNotRest: true, reason: 'bewitchEmptyHand' };
+    }
+
+    if (ai.hp <= 2) {
+      return { shouldNotRest: false, reason: 'hpTooLow' };
+    }
+
+    return { shouldNotRest: false };
+  }
+
+  return { shouldNotRest: false };
+}
+
+export function isCultistEndingTurnUnreasonable(players, ti) {
+  const self = players[ti];
+  if (!self || self.isDead) return false;
+
+  const role = self._nyaBorrow || self.role;
+  if (role !== ROLE_CULTIST) return false;
+
+  const regionCards = (self.hand || []).filter(c => !c.isGod);
+  if (regionCards.length === 0) return false;
+  if (self.roleRevealed) return true;
+  if (self.hp < 5 || self.san < 5) return true;
+  return false;
 }

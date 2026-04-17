@@ -23,23 +23,27 @@
 
 ```text
 src/
-├─ App.jsx
-├─ App.css
-├─ index.css
-├─ main.jsx
-├─ README_structure.md
-├─ assets/
+├─ App.jsx              # 游戏主入口，维护全局状态、动画队列、UI渲染
+├─ App.css              # 游戏界面样式
+├─ index.css            # 全局基础样式
+├─ main.jsx             # React挂载入口
+├─ README_structure.md  # 本文档
+├─ assets/              # 静态资源目录
+├─ components/
+│  └─ cards/            # 阶段2.1：卡牌渲染组件
+│     └─ index.jsx      # DDCard, GodDDCard, DDCardBack, GodCardDisplay, Tooltip, OctopusSVG
 ├─ constants/
-│  └─ card.js
-├─ game/
-│  ├─ ai.js
-│  ├─ animLogs.js
-│  ├─ animQueueHelpers.js
-│  ├─ coreUtils.js
-│  ├─ rotateState.js
-│  └─ setup.js
-├─ styles/
-└─ utils/
+│  └─ card.js           # 卡牌静态数据、身份常量、颜色配置
+├─ game/                # 游戏逻辑纯函数（无React依赖）
+│  ├─ index.js          # 桶文件，统一导出game下所有模块
+│  ├─ ai.js            # AI决策策略、评分器、目标选择
+│  ├─ animLogs.js      # 动画日志编排辅助函数
+│  ├─ animQueueHelpers.js  # 动画队列外围辅助函数
+│  ├─ coreUtils.js     # 洗牌、拷贝、区域牌判断等规则工具
+│  ├─ rotateState.js   # 联机视角旋转、seat语义判断
+│  └─ setup.js         # 开局生成：mkDeck, mkRoles
+├─ styles/              # 样式目录
+└─ utils/               # 工具函数目录
 ```
 
 ## 模块职责
@@ -110,9 +114,19 @@ src/
 - `mkDeck()`：生成初始牌堆
 - `mkRoles()`：生成初始身份顺序
 
-后续如果继续收缩 `App.jsx`，与“构建初始对局状态”强相关、但又不依赖 UI 的逻辑，也可以继续往这里移动。
+后续如果继续收缩 `App.jsx`，与"构建初始对局状态"强相关、但又不依赖 UI 的逻辑，也可以继续往这里移动。
 
-### `game/rotateState.js`
+### `game/index.js`
+
+游戏逻辑模块的统一导出入口（桶文件）。
+
+当前导出：
+
+- `coreUtils` 的所有导出
+- `ai` 的所有导出
+- `setup` 的所有导出
+
+App.jsx 通过 `import { xxx } from './game'` 统一导入，便于扩展和维护。
 
 负责联机视角旋转与“本地 seat 语义”相关 helper。
 
@@ -169,29 +183,65 @@ src/
 - 联机视角旋转与 seat helper -> `game/rotateState.js`
 - 动画日志辅助 -> `game/animLogs.js`
 - 动画队列外围辅助 -> `game/animQueueHelpers.js`
+- 卡牌渲染组件 -> `components/cards/` (阶段 2.1)
+
+### `components/cards/index.jsx`
+
+负责基础卡牌 UI 渲染，是全应用最高频复用的组件层。
+
+当前包括：
+
+- `DDCard`：区域牌卡片组件（支持普通牌、空白牌、玫瑰倒刺标记）
+- `GodDDCard`：邪神牌卡片组件
+- `DDCardBack`：牌背面组件
+- `GodCardDisplay`：邪神牌展示组件
+- `GodTooltip`：邪神牌悬浮提示
+- `AreaTooltip`：区域牌悬浮提示
+- `OctopusSVG`：八爪鱼装饰 SVG
+- `useCardHoverTooltip`：卡牌悬浮提示 Hook
+
+特点：
+- 完全独立，无 React 状态依赖
+- 通过 props 接收数据和回调
+- 可直接复用或替换样式
 
 ## 当前仍留在 `App.jsx`、后续可继续拆分的重点
 
-### 1. 效果结算主链
+### 阶段 2.2：交互模态框与面板 (Modals & Modifiers)
 
-例如：
+待拆分组件：
+- `GodChoiceModal`、`NyaBorrowModal`、`DrawRevealModal`
+- `TreasureDodgeModal`、`PeekHandModal`、`TortoiseOracleModal`
+- `AboutModal`、`FullLogModal`、`RoadmapModal`
+
+目标路径：`components/modals/`
+
+### 阶段 2.3：玩家面板及桌面布局 (Board Layer)
+
+待拆分组件：
+- `PlayerPanel`、`PileDisplay`、`DiscardPile`、`DeckPile`
+- `InspectionPile`、`HoundsTimerBadge`、`StatBar`
+
+目标路径：`components/board/`
+
+### 阶段 2.4：复杂动画节点 (Animations & Overlays)
+
+待拆分组件：
+- `FlowerBloom`、`CardFlipAnim`、`KnifeEffect`、`DiscardMoveOverlay`
+- `CardTransferOverlay`、`GenericAnimOverlay`、`DiceRollAnim`、`YourTurnAnim`
+- `GuillotineAnim`、`SanMistOverlay`、`HealCrossEffect`、`CaveDuelAnim`
+- `BewitchEyeOverlay`、`HuntScopeOverlay`、`SwapCupOverlay` 等
+
+目标路径：`components/anim/`
+
+### 效果结算主链（长期）
 
 - `applyFx(...)`
 - 邪神结算相关主链
 
-这部分仍然偏重，长期更适合拆成独立的 effect engine。
+长期更适合拆成独立的 effect engine。
 
-### 2. 动画主调度
-
-例如：
-
-- `buildAnimQueue(...)`
-- 动画推进主循环
-- 视觉状态 patch
-
-这部分和 UI 状态仍然耦合较深，暂时保留在 `App.jsx`，后续可继续评估。
-
-### 3. 实时日志与动画的最终桥接层
+### 实时日志与动画的最终桥接层
 
 虽然纯 helper 已经拆到 `animLogs.js`，但：
 
@@ -211,7 +261,8 @@ src/
 4. 开局构建放 `game/setup.js`
 5. 联机 seat / 视角映射放 `game/rotateState.js`
 6. 动画日志纯辅助放 `game/animLogs.js`
-7. 只有真正依赖 React 状态、组件上下文或 DOM 的逻辑，才继续留在 `App.jsx`
+7. UI 组件按层级拆分到 `components/cards/`、`components/modals/`、`components/board/`、`components/anim/`
+8. 只有真正依赖 React 状态、组件上下文或 DOM 的逻辑，才继续留在 `App.jsx`
 
 ## 维护要求
 
