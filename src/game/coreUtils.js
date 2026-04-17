@@ -55,6 +55,40 @@ export const isPositiveZoneCard = (card) => {
 
 export const isNeutralZoneCard = (card) => !isPositiveZoneCard(card) && !isNegativeZoneCard(card);
 
+export const zoneCardHasGuaranteedHpLoss = (card) => {
+  if (!card?.type) return false;
+  return [
+    'selfDamageHP', 'selfDamageDiscardHP', 'selfDamageHPSAN', 'selfDamageRestHP', 'selfDamageHPPeek',
+    'allDamageHP', 'allDamageBoth', 'adjDamageHP', 'adjDamageBoth',
+    'selfDamageAdjDamageHP', 'selfDamageAdjDamageBoth', 'allDamageHPRandomExtra'
+  ].includes(card.type);
+};
+
+export const zoneCardHasGuaranteedSanLoss = (card) => {
+  if (!card?.type) return false;
+  return [
+    'selfDamageSAN', 'selfDamageDiscardSAN', 'selfDamageHPSAN', 'selfDamageRestSAN',
+    'allDamageSAN', 'allDamageBoth', 'adjDamageSAN', 'adjDamageBoth', 'selfDamageAdjDamageBoth'
+  ].includes(card.type);
+};
+
+export const zoneCardIsSacrificeStyle = (card) => {
+  return !!card?.type && (card.type.startsWith('sac') || card.type === 'selfBerserk');
+};
+
+export const zoneCardAppliesWidePressure = (card) => {
+  const scope = getZoneCardEffectScope(card);
+  return scope === 'all' || scope === 'adjacent';
+};
+
+export const zoneCardProvidesGuaranteedCardGain = (card) => {
+  return !!card?.type && ['placeBlankZone', 'revealTopCards', 'firstComePick', 'drawCard'].includes(card.type);
+};
+
+export const zoneCardUsesTargetInteraction = (card) => {
+  return !!card?.type && ['swapAllHands', 'caveDuel', 'damageLink', 'roseThornGiftAllHand', 'globalOnlySwap'].includes(card.type);
+};
+
 export const isWinHand = (hand) => {
   if (!hand?.length) return false;
   const letters = new Set();

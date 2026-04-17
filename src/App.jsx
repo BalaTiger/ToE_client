@@ -28,6 +28,12 @@ import {
   isNegativeZoneCard,
   getZoneCardPolarity,
   getZoneCardEffectScope,
+  zoneCardHasGuaranteedHpLoss,
+  zoneCardHasGuaranteedSanLoss,
+  zoneCardIsSacrificeStyle,
+  zoneCardAppliesWidePressure,
+  zoneCardProvidesGuaranteedCardGain,
+  zoneCardUsesTargetInteraction,
   isWinHand,
   getLivingPlayerOrder,
   estimateZoneCardKeepScore,
@@ -218,37 +224,6 @@ function getAdjacentTargets(players,ci){
 function getLivingAdjacentTargets(players,ci){
   return getAdjacentTargets(players,ci).filter((idx,pos,arr)=>idx!==ci&&idx!=null&&players[idx]&&!players[idx].isDead&&arr.indexOf(idx)===pos);
 }
-
-function zoneCardHasGuaranteedHpLoss(card){
-  if(!card?.type)return false;
-  return [
-    'selfDamageHP','selfDamageDiscardHP','selfDamageHPSAN','selfDamageRestHP','selfDamageHPPeek',
-    'allDamageHP','allDamageBoth','adjDamageHP','adjDamageBoth',
-    'selfDamageAdjDamageHP','selfDamageAdjDamageBoth','allDamageHPRandomExtra'
-  ].includes(card.type);
-}
-function zoneCardHasGuaranteedSanLoss(card){
-  if(!card?.type)return false;
-  return [
-    'selfDamageSAN','selfDamageDiscardSAN','selfDamageHPSAN','selfDamageRestSAN',
-    'allDamageSAN','allDamageBoth','adjDamageSAN','adjDamageBoth','selfDamageAdjDamageBoth'
-  ].includes(card.type);
-}
-function zoneCardIsSacrificeStyle(card){
-  return !!card?.type && (card.type.startsWith('sac')||card.type==='selfBerserk');
-}
-function zoneCardAppliesWidePressure(card){
-  const scope=getZoneCardEffectScope(card);
-  return scope==='all'||scope==='adjacent';
-}
-function zoneCardProvidesGuaranteedCardGain(card){
-  return !!card?.type && ['placeBlankZone','revealTopCards','firstComePick','drawCard'].includes(card.type);
-}
-function zoneCardUsesTargetInteraction(card){
-  return !!card?.type && ['swapAllHands','caveDuel','damageLink','roseThornGiftAllHand','globalOnlySwap'].includes(card.type);
-}
-
-
 
 function applyFx(card,ci,ti,ps,deck,disc,gs,avoidNegative=false,avoidNegativeFor=[],isAI=false){
   let P=copyPlayers(ps),D=[...deck],Disc=[...disc],msgs=[];
