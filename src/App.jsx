@@ -4209,9 +4209,9 @@ function RoleRevealAnim({role,onDone}){
 // ── Stat Bar ─────────────────────────────────────────────────
 function StatBar({label,val,color,trackColor}){
   return(
-    <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:4}}>
-      <span style={{fontFamily:"'Cinzel',serif",color:'#a07838',fontSize:9,width:26,letterSpacing:1}}>{label}</span>
-      <div style={{flex:1,height:6,background:trackColor||'#1a1008',border:'1px solid #2a1a08',borderRadius:1,overflow:'visible',position:'relative'}}>
+    <div style={{display:'flex',alignItems:'center',gap:4,marginBottom:3}}>
+      <span style={{fontFamily:"'Cinzel',serif",color:'#a07838',fontSize:9,letterSpacing:0.5,flexShrink:0}}>{label}</span>
+      <div style={{flex:1,height:7,background:trackColor||'#1a1008',border:'1px solid #2a1a08',borderRadius:1,overflow:'visible',position:'relative',minWidth:0,maxWidth:160}}>
         <div style={{height:'100%',width:`${val*10}%`,background:color,transition:'width .35s',borderRadius:1}}/>
         {/* 6点SAN阈值线 */}
         {label === 'SAN' && (
@@ -4548,6 +4548,8 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
     : 0;
   return(
     <div onClick={isSelectable?onSelect:undefined} style={{
+      width:'100%',
+      maxWidth:180,
       background:isCurrentTurn?'#1c1408':'#140f08',
       border:`1.5px solid ${borderColor}`,
       boxShadow:isCurrentTurn?`0 0 20px #c8a96e22,inset 0 0 16px #c8a96e08`:isSelectable?`0 0 14px ${ri.col}44`:'none',
@@ -11107,7 +11109,15 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
           <div style={{zoom:scaleRatio<1?scaleRatio:'normal'}}>
 
         {/* AI panels */}
-        <div ref={aiPanelAreaRef} style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':isSmall?'repeat(3,1fr)':'repeat(4,1fr)',gap:isMobile?5:7}}>
+        <div ref={aiPanelAreaRef} style={{
+          display:'grid',
+          gridTemplateColumns:'repeat(4,1fr)',
+          gap:isMobile?5:10,
+          justifyContent:'center',
+          maxWidth:760,
+          margin:'0 auto',
+          width:'100%'
+        }}>
           {visualPlayers.slice(1).map((p,i)=>{
             const pi=i+1;
             const isSel=selectingOther&&!p.isDead&&!isBlocked&&!(phase==='HUNT_SELECT_TARGET'&&huntAbandoned.includes(pi));
@@ -11128,7 +11138,24 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         {/* Middle: self info + deck/discard piles + log */}
         <div style={{display:'flex',gap:isMobile?5:7,flexWrap:isMobile?'wrap':'nowrap'}}>
           {/* Self panel */}
-          <div ref={selfPanelRef} data-pid={0} style={{background:'#180f07',border:`1.5px solid ${hitIndices.includes(0)?'#cc2222':sanHitIndices.includes(0)?'#8840cc':suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'#c8a96e':'#3a2510'}`,borderRadius:3,padding:isMobile?'10px 11px':'12px 13px',width:isMobile?undefined:155,flexBasis:isMobile?'calc(58% - 2.5px)':undefined,minHeight:isMobile?undefined:222,flexShrink:0,display:'flex',flexDirection:'column',gap:9,position:'relative',overflow:'visible',boxShadow:suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'0 0 0 2px #c8a96e66,0 0 20px #c8a96e44':undefined,opacity:guillotinedPids.has(0)?0:1}}>
+          <div ref={selfPanelRef} data-pid={0} style={{
+            background:'#180f07',
+            border:`1.5px solid ${hitIndices.includes(0)?'#cc2222':sanHitIndices.includes(0)?'#8840cc':suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'#c8a96e':'#3a2510'}`,
+            borderRadius:3,
+            padding:isMobile?'10px 11px':'12px 13px',
+            width:isMobile?'100%':155,
+            maxWidth:200,
+            flexBasis:isMobile?'calc(58% - 2.5px)':undefined,
+            minHeight:isMobile?undefined:222,
+            flexShrink:0,
+            display:'flex',
+            flexDirection:'column',
+            gap:9,
+            position:'relative',
+            overflow:'visible',
+            boxShadow:suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'0 0 0 2px #c8a96e66,0 0 20px #c8a96e44':undefined,
+            opacity:guillotinedPids.has(0)?0:1
+          }}>
             {/* SAN mist: rendered by full-screen SanMistOverlay */}
             {(hpHealIndices.includes(0)||sanHealIndices.includes(0))&&<HealCrossEffect color={sanHealIndices.includes(0)?'#a78bfa':'#4ade80'}/>}
             <div>
