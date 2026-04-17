@@ -6626,6 +6626,12 @@ export default function Game(){
   const {w:vw}=useWindowSize();
   const isMobile=vw<580;
   const isSmall=vw<860;
+  // Scale ratio for responsive player areas (based on 1200px design width)
+  const DESIGN_WIDTH=1200;
+  const SCALE_MIN_WIDTH=480; // Minimum width before allowing scroll
+  const rawScale=vw/DESIGN_WIDTH;
+  const needScroll=vw<SCALE_MIN_WIDTH;
+  const scaleRatio=needScroll?1:Math.min(rawScale,1);
 
   const applyVisibleLogPrefix=useCallback((count,authorityOverride)=>{
     const authority=Array.isArray(authorityOverride)?authorityOverride:(Array.isArray(visibleLogAuthorityRef.current)?visibleLogAuthorityRef.current:[]);
@@ -10770,6 +10776,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
   }
 
   // Phase labels
+  const cardHintText='鼠标悬停查看卡牌详情（移动端请点击卡牌）';
   const phaseLabel={
     ACTION:               isLocalCurrentTurn(gs)?'你的回合 — 可发动技能、休息，或结束回合':'等候其他旅者…',
     SWAP_SELECT_TARGET:   '【掉包】选择目标角色',
@@ -11096,6 +11103,11 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
           
         </div>
 
+        {/* Scaled player areas wrapper - applies scale to AI panels + middle section */}
+        <div style={{overflowX:scaleRatio<1?'auto':'visible',overflowY:'visible'}}>
+          <div style={{transformOrigin:'top left',transform:scaleRatio<1?`scale(${scaleRatio})`:'none',width:scaleRatio<1?`calc(${100/scaleRatio}% + ${(1/scaleRatio-1)*vw}px)`:'100%',minWidth:scaleRatio<1?SCALE_MIN_WIDTH:0}}>
+
+
         {/* AI panels */}
         <div ref={aiPanelAreaRef} style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':isSmall?'repeat(3,1fr)':'repeat(4,1fr)',gap:isMobile?5:7}}>
           {visualPlayers.slice(1).map((p,i)=>{
@@ -11219,6 +11231,8 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             })()}
           </div>
         </div>
+        </div>
+        </div>
 
         {/* Phase bar */}
         <div style={{
@@ -11227,7 +11241,10 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
           borderRadius:3,padding:isMobile?'5px 10px':'7px 14px',minHeight:isMobile?32:38,
           display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',
         }}>
-          <div style={{flex:1,fontFamily:"'Cinzel',serif",color:(phase==='PLAYER_REVEAL_FOR_HUNT'||phase==='CAVE_DUEL_SELECT_CARD')?'#cc3030':myTurn&&phase!=='AI_TURN'?'#a08040':'#3a2510',fontSize:isMobile?10:11,letterSpacing:isMobile?0.5:1}}>{phaseLabel}</div>
+          <div style={{flex:1,fontFamily:"'Cinzel',serif",color:(phase==='PLAYER_REVEAL_FOR_HUNT'||phase==='CAVE_DUEL_SELECT_CARD')?'#cc3030':myTurn&&phase!=='AI_TURN'?'#a08040':'#3a2510',fontSize:isMobile?10:11,letterSpacing:isMobile?0.5:1}}>
+            <div>{phaseLabel}</div>
+            {phase==='ACTION'&&<div style={{fontSize:isMobile?8:9,color:'#5a4a3a',marginTop:2}}>{cardHintText}</div>}
+          </div>
           {isMultiplayer&&mpCthSec!==null&&isMpCthDecisionPhase&&(
             <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:mpCthSec<=5?'#e05030':mpCthSec<=10?'#e09030':'#cc8030',letterSpacing:1,flexShrink:0}}>
               ⏱ 抉择 {mpCthSec}s

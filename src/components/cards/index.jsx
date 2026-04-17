@@ -29,9 +29,31 @@ function GodTooltip({def,godLevel,position}){
   const lvIdx=Math.max(0,(godLevel||1)-1);
   if(!position) return null;
   
+  const tooltipWidth=214;
+  const tooltipHeight=def.levels.length*80+40;
+  const viewW=window.innerWidth;
+  const viewH=window.innerHeight;
+  
+  let left,top;
+  if(position.right+tooltipWidth+6<=viewW){
+    left=position.right+6;
+  }else if(position.left-tooltipWidth-6>=0){
+    left=position.left-tooltipWidth-6;
+  }else{
+    left=Math.max(4,Math.min(position.left,viewW-tooltipWidth-4));
+  }
+  
+  if(position.bottom+tooltipHeight+4<=viewH){
+    top=position.top;
+  }else if(position.top-tooltipHeight-4>=0){
+    top=position.top-tooltipHeight;
+  }else{
+    top=Math.max(4,Math.min(position.top,viewH-tooltipHeight-4));
+  }
+  
   return createPortal(
     <div style={{
-      position:'fixed',left:`${position.right + 6}px`,top:`${position.top}px`,zIndex:99999,
+      position:'fixed',left:`${left}px`,top:`${top}px`,zIndex:99999,
       background:'#0a0412',border:`1.5px solid ${def.col}`,borderRadius:4,
       padding:'12px 15px',width:200,pointerEvents:'none',
       boxShadow:`0 0 20px ${def.col}55`,
@@ -54,9 +76,31 @@ function AreaTooltip({card,position}){
   const s=CS[card.letter]||GOD_CS;
   if(!position) return null;
   
+  const tooltipWidth=214;
+  const tooltipHeight=100;
+  const viewW=window.innerWidth;
+  const viewH=window.innerHeight;
+  
+  let left,top;
+  if(position.right+tooltipWidth+6<=viewW){
+    left=position.right+6;
+  }else if(position.left-tooltipWidth-6>=0){
+    left=position.left-tooltipWidth-6;
+  }else{
+    left=Math.max(4,Math.min(position.left,viewW-tooltipWidth-4));
+  }
+  
+  if(position.bottom+tooltipHeight+4<=viewH){
+    top=position.top;
+  }else if(position.top-tooltipHeight-4>=0){
+    top=position.top-tooltipHeight;
+  }else{
+    top=Math.max(4,Math.min(position.top,viewH-tooltipHeight-4));
+  }
+  
   return createPortal(
     <div style={{
-      position:'fixed',left:`${position.right + 6}px`,top:`${position.top}px`,zIndex:99999,
+      position:'fixed',left:`${left}px`,top:`${top}px`,zIndex:99999,
       background:'#0a0705',border:`1.5px solid ${s.borderBright}`,borderRadius:4,
       padding:'12px 15px',width:200,pointerEvents:'none',
       boxShadow:`0 0 20px ${s.glow}55`,
