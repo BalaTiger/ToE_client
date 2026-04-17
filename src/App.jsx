@@ -6626,6 +6626,11 @@ export default function Game(){
   const {w:vw}=useWindowSize();
   const isMobile=vw<580;
   const isSmall=vw<860;
+  // Scale ratio for responsive player areas (based on 1200px design width)
+  const DESIGN_WIDTH=1200;
+  const rawScale=vw/DESIGN_WIDTH;
+  const shouldScale=vw<DESIGN_WIDTH;
+  const scaleRatio=shouldScale?Math.min(rawScale,1):1;
 
   // Scale ratio for player areas (based on 1200px design width)
   const DESIGN_WIDTH=1200;
