@@ -4207,11 +4207,12 @@ function RoleRevealAnim({role,onDone}){
 
 
 // ── Stat Bar ─────────────────────────────────────────────────
-function StatBar({label,val,color,trackColor}){
+function StatBar({label,val,color,trackColor,scaleRatio}){
+  const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const labelCol='clamp(18px, 2.5vw, 30px)';
   const valueCol='clamp(14px, 2.8vw, 20px)';
-  const statFont='clamp(8px, 1.7vw, 10px)';
-  const barHeight='clamp(8px, 1.6vw, 10px)';
+  const statFont=`clamp(${8*fontZoom}px, 1.7vw, ${10*fontZoom}px)`;
+  const barHeight=`clamp(${8*fontZoom}px, 1.6vw, ${10*fontZoom}px)`;
   return(
     <div style={{display:'grid',gridTemplateColumns:`${labelCol} minmax(0,1fr) ${valueCol}`,alignItems:'center',columnGap:'clamp(4px, 1vw, 6px)',marginBottom:4,width:'100%',boxSizing:'border-box',overflow:'visible'}}>
       <span style={{fontFamily:"'Cinzel',serif",color:'#a07838',fontSize:statFont,fontWeight:700,letterSpacing:0.3,textAlign:'left',whiteSpace:'nowrap',minWidth:0}}>{label}</span>
@@ -4540,8 +4541,11 @@ function HealCrossEffect({color='#4ade80'}){
   );
 }
 
-function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats}){
+function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio}){
   const ri=RINFO[player.role];
+  // 缩放时反向补偿字体：确保缩放后字体不失真
+  const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
+  const _ = (px) => px * fontZoom; // 补偿函数
   const borderColor=isBeingHit?'#cc2222':isSanHit?'#8840cc':isCurrentTurn?'#c8a96e':isSelectable?ri.col:'#3a2510';
   const handCards=showFaceUp?player.hand:player.hand.map((_,ci)=>({id:`back-${playerIndex}-${ci}`,_back:true}));
   const HAND_CARD_WIDTH=showFaceUp?44:36;
@@ -4574,14 +4578,14 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
         display:'flex',alignItems:'center',gap:6,marginBottom:6,
         borderBottom:'1px solid #2a1a08',paddingBottom:5,
       }}>
-        <span style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,color:isCurrentTurn?'#e8c87a':'#c8a96e',letterSpacing:1}}>{player.name}</span>
-        {(player.roleRevealed||player.isDead)&&<span style={{fontSize:10,color:ri.col,fontFamily:"'Cinzel',serif",letterSpacing:1,marginLeft:2}}>{ri.icon} {player.role}</span>}
-        {player.isDead&&<span style={{fontSize:11,color:'#882020',marginLeft:'auto'}}>☠</span>}
-        {player.isResting&&!player.isDead&&<span style={{fontSize:9,color:'#4ade80',marginLeft:'auto',letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 翻面中</span>}
-        {isCurrentTurn&&!player.isDead&&!player.isResting&&<span style={{fontSize:9,color:'#c8a96e',marginLeft:'auto',letterSpacing:1}}>▸ 行动</span>}
+        <span style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:_(11),color:isCurrentTurn?'#e8c87a':'#c8a96e',letterSpacing:1}}>{player.name}</span>
+        {(player.roleRevealed||player.isDead)&&<span style={{fontSize:_(10),color:ri.col,fontFamily:"'Cinzel',serif",letterSpacing:1,marginLeft:2}}>{ri.icon} {player.role}</span>}
+        {player.isDead&&<span style={{fontSize:_(11),color:'#882020',marginLeft:'auto'}}>☠</span>}
+        {player.isResting&&!player.isDead&&<span style={{fontSize:_(9),color:'#4ade80',marginLeft:'auto',letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 翻面中</span>}
+        {isCurrentTurn&&!player.isDead&&!player.isResting&&<span style={{fontSize:_(9),color:'#c8a96e',marginLeft:'auto',letterSpacing:1}}>▸ 行动</span>}
       </div>
-      <StatBar label="HP"  val={displayStats?.[playerIndex]?.hp ?? player.hp}  color="#8b1515" trackColor="#1a0808"/>
-      <StatBar label="SAN" val={displayStats?.[playerIndex]?.san ?? player.san} color="#4a1080" trackColor="#120820"/>
+      <StatBar label="HP"  val={displayStats?.[playerIndex]?.hp ?? player.hp}  color="#8b1515" trackColor="#1a0808" scaleRatio={scaleRatio}/>
+      <StatBar label="SAN" val={displayStats?.[playerIndex]?.san ?? player.san} color="#4a1080" trackColor="#120820" scaleRatio={scaleRatio}/>
       {/* Skull counter + god zone */}
       {((player.godEncounters||0)>0||(player.godZone||[]).length>0)&&(
         <div style={{display:'flex',alignItems:'center',gap:4,marginTop:4,flexWrap:'wrap'}}>
@@ -5274,7 +5278,9 @@ function InspectionPile({count,scale=1}){
     </div>
   );
 }
-function PileDisplay({deckCount,discardCount,discardTop,inspectionCount,compact,baseHeight,deckRef,discardRef}){
+function PileDisplay({deckCount,discardCount,discardTop,inspectionCount,compact,baseHeight,deckRef,discardRef,scaleRatio}){
+  const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
+  const _ = (px) => px * fontZoom;
   const pileWrapRef=React.useRef(null);
   const [pileWrapWidth,setPileWrapWidth]=React.useState(0);
   React.useLayoutEffect(()=>{
@@ -5291,24 +5297,24 @@ function PileDisplay({deckCount,discardCount,discardTop,inspectionCount,compact,
   const widthBonus=Math.max(0,pileWrapWidth-(effectiveCompact?240:320));
   // Dial back scale slightly for better balance
   const pileScale=(effectiveCompact?1.5:2.0)+Math.min(effectiveCompact?0.3:0.6,widthBonus/(effectiveCompact?320:480));
-  const pileLabelFont=effectiveCompact?13:15;
+  const pileLabelFont=effectiveCompact?_(13):_(15);
   const pileMinHeight=effectiveCompact ? 140 : 220;
   return(
     <div ref={pileWrapRef} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',position:'relative',minWidth:0,minHeight:pileMinHeight}}>
       {/* Inspection deck — top-left corner */}
       <div data-inspection-pile style={{position:'absolute',top:4,left:8,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
         <InspectionPile count={inspectionCount} scale={pileScale}/>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:pileLabelFont,color:'#90a8d8',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 8px #000000'}}>检定:{inspectionCount}</div>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:_(11),color:'#90a8d8',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 8px #000000'}}>检定:{inspectionCount}</div>
       </div>
       {/* Deck — top-right corner */}
       <div ref={deckRef} data-deck-pile style={{position:'absolute',top:4,right:8,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
         <DeckPile count={deckCount} scale={pileScale}/>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:pileLabelFont,color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 8px #000000'}}>牌堆:{deckCount}</div>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:_(11),color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 8px #000000'}}>牌堆:{deckCount}</div>
       </div>
       {/* Discard — center */}
       <div ref={discardRef} data-discard-pile style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
         <DiscardPile count={discardCount} topCard={discardTop} scale={pileScale}/>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:pileLabelFont+2,color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 10px #000000'}}>弃牌堆:{discardCount}</div>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:_(12),color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 10px #000000'}}>弃牌堆:{discardCount}</div>
       </div>
     </div>
   );
@@ -6682,11 +6688,32 @@ export default function Game(){
   const {w:vw}=useWindowSize();
   const isMobile=vw<580;
   const isSmall=vw<860;
+const MIN_FONT_VW=480; // 最小字号阈值视口宽度
+  const isVerySmall=vw<MIN_FONT_VW;
   // Scale ratio for responsive player areas (based on 1200px design width)
   const DESIGN_WIDTH=1200;
   const rawScale=vw/DESIGN_WIDTH;
   const shouldScale=vw<DESIGN_WIDTH;
   const scaleRatio=shouldScale?Math.min(rawScale,1):1;
+  // 基于rem的最小字号（浏览器默认16px）
+  const rem=16;
+  // 基础字号（UI chrome元素，不补偿）
+  const baseFontSizes={
+    title: isMobile?0.75*rem:isVerySmall?0.75*rem:0.875*rem,    // 标题
+    subtitle: isMobile?0.5*rem:isVerySmall?0.5*rem:0.625*rem,   // 副标题
+    body: isMobile?0.625*rem:isVerySmall?0.625*rem:0.6875*rem, // 正文
+    small: isMobile?0.5*rem:isVerySmall?0.5*rem:0.5625*rem,    // 小字
+    tiny: isMobile?0.4375*rem:isVerySmall?0.4375*rem:0.5*rem,  // 极小
+  };
+  // 内容字号（需要补偿缩放）
+  const fontZoomCompensate = scaleRatio < 1 ? 1 / scaleRatio : 1;
+  const fontSizes={
+    title: baseFontSizes.title * fontZoomCompensate,
+    subtitle: baseFontSizes.subtitle * fontZoomCompensate,
+    body: baseFontSizes.body * fontZoomCompensate,
+    small: baseFontSizes.small * fontZoomCompensate,
+    tiny: baseFontSizes.tiny * fontZoomCompensate,
+  };
   const middleRowHeight=isMobile?248:282;
 
   const applyVisibleLogPrefix=useCallback((count,authorityOverride)=>{
@@ -11154,8 +11181,8 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',gap:7}}>
         {/* Header */}
         <div style={{display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid #2a1a08',paddingBottom:6}}>
-          <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:isMobile?12:14,fontWeight:700,color:'#c8a96e',letterSpacing:isMobile?1:2}}>邪神的宝藏</div>
-          <div style={{fontFamily:"'Cinzel',serif",fontSize:isMobile?8:10,color:'#b89858',letterSpacing:isMobile?1:2,marginTop:1}}>Treasures of Evils</div>
+          <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:baseFontSizes.title,fontWeight:700,color:'#c8a96e',letterSpacing:isMobile?1:2}}>邪神的宝藏</div>
+          <div style={{fontFamily:"'Cinzel',serif",fontSize:baseFontSizes.subtitle,color:'#b89858',letterSpacing:isMobile?1:2,marginTop:1}}>Treasures of Evils</div>
           
         </div>
 
@@ -11186,7 +11213,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
               const onCardSelectForSwap=isSwapTargetCardPhase?((cardIdx)=>swapSelectTargetCard(cardIdx)):isHuntCardFromPublicPhase?((cardIdx)=>huntSelectCardFromPublic(cardIdx)):null;
               return(
                 <div key={p.id} data-pid={pi} style={{position:'relative',zIndex:isSel?101:undefined,alignSelf:'start'}}>
-                <PlayerPanel player={p} playerIndex={pi} isCurrentTurn={visualCurrentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)} isBeingGuillotined={guillotinedPids.has(pi)} displayStats={displayStats}/>
+                <PlayerPanel player={p} playerIndex={pi} isCurrentTurn={visualCurrentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)} isBeingGuillotined={guillotinedPids.has(pi)} displayStats={displayStats} scaleRatio={scaleRatio}/>
                 </div>
               );
             })}
@@ -11218,17 +11245,17 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             {/* SAN mist: rendered by full-screen SanMistOverlay */}
             {(hpHealIndices.includes(0)||sanHealIndices.includes(0))&&<HealCrossEffect color={sanHealIndices.includes(0)?'#a78bfa':'#4ade80'}/>}
             <div>
-              <div ref={roleTextRef} style={{fontFamily:"'Cinzel',serif",color:'#7a5a2a',fontSize:9,letterSpacing:2,marginBottom:3,textTransform:'uppercase'}}>你的身份</div>
-              <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:13,color:ri.col,textShadow:`0 0 12px ${ri.col}66`,letterSpacing:1}}>{ri.icon} {me.role}</div>
-              <div style={{fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontStyle:'italic',color:'#a07838',fontSize:10,marginTop:4,lineHeight:1.6,whiteSpace:'nowrap'}}>{ri.goal}</div>
-              {me.isResting&&<div style={{marginTop:4,fontSize:10,color:'#4ade80',fontFamily:"'Cinzel',serif",letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 翻面中 — 下回合跳过</div>}
+              <div ref={roleTextRef} style={{fontFamily:"'Cinzel',serif",color:'#7a5a2a',fontSize:fontSizes.small,letterSpacing:2,marginBottom:3,textTransform:'uppercase'}}>你的身份</div>
+              <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:fontSizes.body,color:ri.col,textShadow:`0 0 12px ${ri.col}66`,letterSpacing:1}}>{ri.icon} {me.role}</div>
+              <div style={{fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontStyle:'italic',color:'#a07838',fontSize:fontSizes.small,marginTop:4,lineHeight:1.6,whiteSpace:'nowrap'}}>{ri.goal}</div>
+              {me.isResting&&<div style={{marginTop:4,fontSize:fontSizes.small,color:'#4ade80',fontFamily:"'Cinzel',serif",letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 翻面中 — 下回合跳过</div>}
             {/* God zone display */}
-            {(me.godEncounters||0)>0&&<div style={{marginTop:4,fontSize:10,color:'#8b6060',letterSpacing:1}}>{'💀'.repeat(Math.min(me.godEncounters,5))}{me.godEncounters>5?`×${me.godEncounters}`:''} 邪神遭遇</div>}
+            {(me.godEncounters||0)>0&&<div style={{marginTop:4,fontSize:fontSizes.small,color:'#8b6060',letterSpacing:1}}>{'💀'.repeat(Math.min(me.godEncounters,5))}{me.godEncounters>5?`×${me.godEncounters}`:''} 邪神遭遇</div>}
             {me.godName&&(me.godZone||[]).length>0&&(
               <div style={{marginTop:4,padding:'3px 6px',background:GOD_DEFS[me.godName]?.bgCol||'#100808',border:`1px solid ${GOD_DEFS[me.godName]?.col||'#c06020'}88`,borderRadius:3}}>
-                <div style={{fontSize:11,color:GOD_DEFS[me.godName]?.col,fontFamily:"'Cinzel',serif",letterSpacing:0.5,fontWeight:700,textShadow:`0 0 6px ${GOD_DEFS[me.godName]?.col}66`}}>{GOD_DEFS[me.godName]?.name}</div>
-                <div style={{fontSize:10,color:'#d4b0b0',fontFamily:"'IM Fell English',serif",fontStyle:'italic'}}>{GOD_DEFS[me.godName]?.power} Lv.{me.godLevel}</div>
-                <div style={{fontSize:9.5,color:'#a07878',fontStyle:'italic',marginTop:1,lineHeight:1.4}}>{GOD_DEFS[me.godName]?.levels[(me.godLevel||1)-1]?.desc}</div>
+                <div style={{fontSize:fontSizes.small,color:GOD_DEFS[me.godName]?.col,fontFamily:"'Cinzel',serif",letterSpacing:0.5,fontWeight:700,textShadow:`0 0 6px ${GOD_DEFS[me.godName]?.col}66`}}>{GOD_DEFS[me.godName]?.name}</div>
+                <div style={{fontSize:fontSizes.small,color:'#d4b0b0',fontFamily:"'IM Fell English',serif",fontStyle:'italic'}}>{GOD_DEFS[me.godName]?.power} Lv.{me.godLevel}</div>
+                <div style={{fontSize:fontSizes.tiny,color:'#a07878',fontStyle:'italic',marginTop:1,lineHeight:1.4}}>{GOD_DEFS[me.godName]?.levels[(me.godLevel||1)-1]?.desc}</div>
               </div>
             )}
             {!!me.zoneCards?.length&&(
@@ -11238,8 +11265,8 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             )}
             </div>
             <div style={{borderTop:'1px solid #2a1a08',paddingTop:8}}>
-              <StatBar label="HP"  val={displayStats[0]?.hp ?? me.hp}  color="#7a1515" trackColor="#1a0808"/>
-              <StatBar label="SAN" val={displayStats[0]?.san ?? me.san} color="#3a1078" trackColor="#120820"/>
+              <StatBar label="HP"  val={displayStats[0]?.hp ?? me.hp}  color="#7a1515" trackColor="#1a0808" scaleRatio={scaleRatio}/>
+              <StatBar label="SAN" val={displayStats[0]?.san ?? me.san} color="#3a1078" trackColor="#120820" scaleRatio={scaleRatio}/>
             </div>
             {canWin&&phase!=='PLAYER_WIN_PENDING'&&(
               <button onClick={revealWin} style={{
@@ -11271,10 +11298,10 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             )}
           </div>
           {/* Center: deck/discard piles */}
-          <PileDisplay deckCount={gs.deck.length} discardCount={gs.discard.length} discardTop={gs.discard[gs.discard.length-1]||null} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={vw<430} baseHeight={middleRowHeight} deckRef={deckAreaRef} discardRef={discardPileRef}/>
+          <PileDisplay deckCount={gs.deck.length} discardCount={gs.discard.length} discardTop={gs.discard[gs.discard.length-1]||null} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={vw<430} baseHeight={middleRowHeight} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={scaleRatio}/>
           {/* Log — narrow, right-aligned */}
           <div ref={logRef} style={{width:isMobile?'100%':218,flexBasis:isMobile?'100%':undefined,flexShrink:0,background:'#0e0904',border:'1.5px solid #2a1a08',borderRadius:3,padding:'8px 10px',overflowY:'auto',minHeight:isMobile?100:middleRowHeight,maxHeight:isMobile?100:middleRowHeight}}>
-            <div style={{fontFamily:"'Cinzel',serif",color:'#7a5a2a',fontSize:9,letterSpacing:2,marginBottom:5,textTransform:'uppercase'}}>— 冒险日志 —</div>
+            <div style={{fontFamily:"'Cinzel',serif",color:'#7a5a2a',fontSize:fontSizes.small,letterSpacing:2,marginBottom:5,textTransform:'uppercase'}}>— 冒险日志 —</div>
             {(()=>{
               // 多人游戏：用玩家真实名字替换其他人回合里的"你"
               let logOwner=null; // 当前段落属于哪位玩家（名字）
@@ -11303,7 +11330,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
                 return(
                   <div key={i} style={{
                     fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',
-                    fontSize:11,lineHeight:1.7,
+                    fontSize:fontSizes.body,lineHeight:1.7,
                     color:line.includes('──')?'#7a5020':
                           line.includes('☠')||line.includes('死亡')||line.includes('倒下')?'#882020':
                           line.includes('获胜')||line.includes('集齐')?'#c8a96e':
@@ -11325,9 +11352,9 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
           borderRadius:3,padding:isMobile?'5px 10px':'7px 14px',minHeight:isMobile?32:38,
           display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',
         }}>
-          <div style={{flex:1,fontFamily:"'Cinzel',serif",color:(phase==='PLAYER_REVEAL_FOR_HUNT'||phase==='CAVE_DUEL_SELECT_CARD')?'#cc3030':myTurn&&phase!=='AI_TURN'?'#a08040':'#3a2510',fontSize:isMobile?10:11,letterSpacing:isMobile?0.5:1}}>
+          <div style={{flex:1,fontFamily:"'Cinzel',serif",color:(phase==='PLAYER_REVEAL_FOR_HUNT'||phase==='CAVE_DUEL_SELECT_CARD')?'#cc3030':myTurn&&phase!=='AI_TURN'?'#a08040':'#3a2510',fontSize:baseFontSizes.body,letterSpacing:isMobile?0.5:1}}>
             <div>{phaseLabel}</div>
-            {phase==='ACTION'&&<div style={{fontSize:isMobile?8:9,color:'#5a4a3a',marginTop:2}}>{cardHintText}</div>}
+            {phase==='ACTION'&&<div style={{fontSize:baseFontSizes.small,color:'#5a4a3a',marginTop:2}}>{cardHintText}</div>}
           </div>
           {isMultiplayer&&mpCthSec!==null&&isMpCthDecisionPhase&&(
             <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:mpCthSec<=5?'#e05030':mpCthSec<=10?'#e09030':'#cc8030',letterSpacing:1,flexShrink:0}}>
@@ -11545,7 +11572,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
                         padding:isMobile?'5px 10px':'6px 16px',background:'#1c1208',
                         border:`1.5px solid ${skillRestLimited?'#3a2510':skillRi.col}`,
                         color:skillRestLimited?'#3a2510':skillRi.col,
-                        fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:isMobile?10:11,
+                        fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:baseFontSizes.body,
                         borderRadius:2,cursor:skillRestLimited?'not-allowed':'pointer',letterSpacing:isMobile?0.5:1,
                         boxShadow:skillRestLimited?'none':`0 0 10px ${skillRi.col}44`,
                         textTransform:'uppercase',opacity:skillRestLimited?0.4:1,
@@ -11559,7 +11586,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
                         padding:isMobile?'5px 10px':'6px 14px',background:restLimited?'#130a04':'#0e1a0e',
                         border:`1.5px solid ${restLimited?'#2a1a08':'#2a5a2a'}`,
                         color:restLimited?'#3a2510':'#4ade80',
-                        fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:isMobile?10:11,
+                        fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:baseFontSizes.body,
                         borderRadius:2,cursor:restLimited?'not-allowed':'pointer',letterSpacing:isMobile?0.5:1,
                         boxShadow:restLimited?'none':'0 0 10px #4ade8044',
                         textTransform:'uppercase',opacity:restLimited?0.4:1,
@@ -11570,7 +11597,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
                     <button onClick={endTurn} style={{
                       padding:isMobile?'5px 10px':'6px 16px',background:'#180e08',
                       border:'1.5px solid #3a2510',color:'#a07838',
-                      fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:isMobile?10:11,
+                      fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:baseFontSizes.body,
                       borderRadius:2,cursor:'pointer',letterSpacing:isMobile?0.5:1,textTransform:'uppercase',
                     }}>结束回合</button>
                   </>);
