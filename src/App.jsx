@@ -4209,9 +4209,9 @@ function RoleRevealAnim({role,onDone}){
 // ── Stat Bar ─────────────────────────────────────────────────
 function StatBar({label,val,color,trackColor}){
   return(
-    <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4,width:'100%',boxSizing:'border-box'}}>
-      <span style={{fontFamily:"'Cinzel',serif",color:'#a07838',fontSize:10,letterSpacing:0.5,flexShrink:0,minWidth:25}}>{label}</span>
-      <div style={{flex:1,maxWidth:160,height:10,background:trackColor||'#110804',border:'1px solid #2a1a08',borderRadius:2,overflow:'visible',position:'relative',minWidth:0}}>
+    <div style={{display:'grid',gridTemplateColumns:'28px minmax(0,1fr) 16px',alignItems:'center',columnGap:6,marginBottom:4,width:'100%',boxSizing:'border-box'}}>
+      <span style={{fontFamily:"'Cinzel',serif",color:'#a07838',fontSize:10,letterSpacing:0.5,width:28,textAlign:'left'}}>{label}</span>
+      <div style={{width:'100%',height:10,background:trackColor||'#110804',border:'1px solid #2a1a08',borderRadius:2,overflow:'visible',position:'relative',minWidth:0}}>
         <div style={{height:'100%',width:`${val*10}%`,background:color,transition:'width .35s',borderRadius:1}}/>
         {/* 6点SAN阈值线 */}
         {label === 'SAN' && (
@@ -4251,7 +4251,7 @@ function StatBar({label,val,color,trackColor}){
           </div>
         )}
       </div>
-      <span style={{fontFamily:"'Cinzel',serif",color:val<=3?'#cc3333':'#c8a96e',fontSize:10,width:14,textAlign:'right',fontWeight:700}}>{val}</span>
+      <span style={{fontFamily:"'Cinzel',serif",color:val<=3?'#cc3333':'#c8a96e',fontSize:10,width:16,textAlign:'right',fontWeight:700}}>{val}</span>
     </div>
   );
 }
@@ -4541,8 +4541,11 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
   const borderColor=isBeingHit?'#cc2222':isSanHit?'#8840cc':isCurrentTurn?'#c8a96e':isSelectable?ri.col:'#3a2510';
   const handCards=showFaceUp?player.hand:player.hand.map((_,ci)=>({id:`back-${playerIndex}-${ci}`,_back:true}));
   const HAND_CARD_WIDTH=showFaceUp?44:36;
+  const HAND_CARD_HEIGHT=showFaceUp?58:50;
   const HAND_CARD_GAP=3;
   const HAND_AREA_WIDTH=(HAND_CARD_WIDTH*4)+(HAND_CARD_GAP*3);
+  const shouldFillFlatHand=handCards.length===4;
+  const stretchedHandSlotWidth=`calc((100% - ${HAND_CARD_GAP*3}px) / 4)`;
   const handOverlap=handCards.length>4
     ? Math.max(0, Math.ceil(((handCards.length*HAND_CARD_WIDTH)-HAND_AREA_WIDTH)/(handCards.length-1)))
     : 0;
@@ -4597,12 +4600,27 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
       <div style={{display:'flex',flexWrap:'wrap',gap:3,marginTop:5,minWidth:0}}>
         {(player.zoneCards||[]).map((c,ci)=><DDCard key={c.id||`zone-${playerIndex}-${ci}`} card={c} small holderId={playerIndex}/>)}
       </div>
-      <div style={{display:'flex',alignItems:'flex-start',marginTop:5,minWidth:0,width:HAND_AREA_WIDTH,maxWidth:'100%',overflow:'hidden'}}>
+      <div style={{
+        display:shouldFillFlatHand?'grid':'flex',
+        gridTemplateColumns:shouldFillFlatHand?'repeat(4, minmax(0, 1fr))':undefined,
+        gap:shouldFillFlatHand?HAND_CARD_GAP:undefined,
+        alignItems:'flex-start',
+        marginTop:5,
+        minWidth:0,
+        width:shouldFillFlatHand?'100%':HAND_AREA_WIDTH,
+        maxWidth:'100%',
+        overflow:'hidden',
+      }}>
         {handCards.map((card,ci)=>(
-          <div key={card.id||`hand-${playerIndex}-${ci}`} style={{marginLeft:ci===0?0:(handOverlap>0?-handOverlap:HAND_CARD_GAP),flex:'0 0 auto',position:'relative',zIndex:ci+1}}>
+          <div key={card.id||`hand-${playerIndex}-${ci}`} style={{
+            marginLeft:shouldFillFlatHand?0:(ci===0?0:(handOverlap>0?-handOverlap:HAND_CARD_GAP)),
+            flex:'0 0 auto',
+            position:'relative',
+            zIndex:ci+1
+          }}>
             {card._back
-              ?<DDCardBack small/>
-              :<DDCard card={card} small onClick={onCardSelect?()=>onCardSelect(ci):undefined} highlight={!!onCardSelect} holderId={playerIndex}/>}
+              ?<DDCardBack small frameStyle={shouldFillFlatHand?{width:'100%',minWidth:'100%',height:'auto',aspectRatio:`${HAND_CARD_WIDTH}/${HAND_CARD_HEIGHT}`}:{}}/>
+              :<DDCard card={card} small onClick={onCardSelect?()=>onCardSelect(ci):undefined} highlight={!!onCardSelect} holderId={playerIndex} frameStyle={shouldFillFlatHand?{width:'100%',minWidth:'100%',height:'auto',aspectRatio:`${HAND_CARD_WIDTH}/${HAND_CARD_HEIGHT}`}:{}}/>}
           </div>
         ))}
       </div>
@@ -5154,16 +5172,20 @@ const DISCARD_OFFSETS=[
   {x:0,y:0},{x:4,y:-3},{x:-3,y:2},{x:6,y:1},{x:-5,y:-4},{x:2,y:5},
   {x:-4,y:3},{x:5,y:-2},{x:-2,y:4},{x:3,y:-5},{x:-6,y:1},{x:1,y:3},
 ];
-function DiscardPile({count,topCard}){
+function DiscardPile({count,topCard,scale=1}){
   const vis=Math.min(count,7);
+  const cardW=Math.round(CARD_W*scale);
+  const cardH=Math.round(CARD_H*scale);
+  const outerW=Math.round((CARD_W+30)*scale);
+  const outerH=Math.round((CARD_H+20)*scale);
   if(vis===0) return(
-    <div style={{width:CARD_W+30,height:CARD_H+20,display:'flex',alignItems:'center',justifyContent:'center'}}>
-      <div style={{width:CARD_W,height:CARD_H,borderRadius:3,border:'1px dashed #2a1a08',background:'transparent'}}/>
+    <div style={{width:outerW,height:outerH,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div style={{width:cardW,height:cardH,borderRadius:3,border:'1px dashed #2a1a08',background:'transparent'}}/>
     </div>
   );
   const s=topCard&&CS[topCard.letter]?CS[topCard.letter]:GOD_CS;
   return(
-    <div style={{width:CARD_W+30,height:CARD_H+20,position:'relative',flexShrink:0}}>
+    <div style={{width:outerW,height:outerH,position:'relative',flexShrink:0}}>
       {Array(vis).fill(0).map((_,i)=>{
         const rot=DISCARD_ROTATIONS[i%DISCARD_ROTATIONS.length];
         const off=DISCARD_OFFSETS[i%DISCARD_OFFSETS.length];
@@ -5171,7 +5193,8 @@ function DiscardPile({count,topCard}){
         return(
           <div key={i} style={{
             ...CARD_BACK_STYLE,
-            left:15+off.x,top:10+off.y,
+            width:cardW,height:cardH,
+            left:Math.round((15+off.x)*scale),top:Math.round((10+off.y)*scale),
             transform:`rotate(${rot}deg)`,
             ...(isTop&&topCard?{
               background:s.bg,
@@ -5182,7 +5205,7 @@ function DiscardPile({count,topCard}){
           }}>
             {isTop&&topCard&&<div style={{
               position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',
-              fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:11,
+              fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:Math.round(11*scale),
             }}>{topCard.isGod?'⛧':topCard.key}</div>}
           </div>
         );
@@ -5190,19 +5213,24 @@ function DiscardPile({count,topCard}){
     </div>
   );
 }
-function DeckPile({count}){
+function DeckPile({count,scale=1}){
   const vis=Math.min(count,7);
+  const cardW=Math.round(CARD_W*scale);
+  const cardH=Math.round(CARD_H*scale);
+  const outerW=Math.round((CARD_W+12)*scale);
+  const outerH=Math.round((CARD_H+12)*scale);
   if(vis===0) return(
-    <div style={{width:CARD_W+12,height:CARD_H+12,display:'flex',alignItems:'center',justifyContent:'center'}}>
-      <div style={{width:CARD_W,height:CARD_H,borderRadius:3,border:'1px dashed #2a1a08',background:'transparent'}}/>
+    <div style={{width:outerW,height:outerH,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div style={{width:cardW,height:cardH,borderRadius:3,border:'1px dashed #2a1a08',background:'transparent'}}/>
     </div>
   );
   return(
-    <div style={{width:CARD_W+12,height:CARD_H+12,position:'relative',flexShrink:0}}>
+    <div style={{width:outerW,height:outerH,position:'relative',flexShrink:0}}>
       {Array(vis).fill(0).map((_,i)=>(
         <div key={i} style={{
           ...CARD_BACK_STYLE,
-          left:i*1.4,top:(vis-1-i)*1.4,
+          width:cardW,height:cardH,
+          left:Math.round(i*1.4*scale),top:Math.round((vis-1-i)*1.4*scale),
           zIndex:i,
           background:'linear-gradient(135deg,#1e1208,#0e0804)',
           border:'1.5px solid #4a3010',
@@ -5216,14 +5244,19 @@ function DeckPile({count}){
     </div>
   );
 }
-function InspectionPile({count}){
+function InspectionPile({count,scale=1}){
   const vis=Math.min(Math.max(count,0),5);
+  const cardW=Math.round(CARD_W*scale);
+  const cardH=Math.round(CARD_H*scale);
+  const outerW=Math.round((CARD_W+10)*scale);
+  const outerH=Math.round((CARD_H+10)*scale);
   return(
-    <div style={{width:CARD_W+10,height:CARD_H+10,position:'relative',flexShrink:0}}>
+    <div style={{width:outerW,height:outerH,position:'relative',flexShrink:0}}>
       {Array(Math.max(vis,1)).fill(0).map((_,i)=>(
         <div key={i} style={{
           ...CARD_BACK_STYLE,
-          left:i*1.2,top:(Math.max(vis,1)-1-i)*1.2,
+          width:cardW,height:cardH,
+          left:Math.round(i*1.2*scale),top:Math.round((Math.max(vis,1)-1-i)*1.2*scale),
           zIndex:i,
           background:'linear-gradient(135deg,#151c28,#090d15)',
           border:'1.5px solid #6a7fa8',
@@ -5237,23 +5270,41 @@ function InspectionPile({count}){
     </div>
   );
 }
-function PileDisplay({deckCount,discardCount,discardTop,inspectionCount,compact,deckRef,discardRef}){
+function PileDisplay({deckCount,discardCount,discardTop,inspectionCount,compact,baseHeight,deckRef,discardRef}){
+  const pileWrapRef=React.useRef(null);
+  const [pileWrapWidth,setPileWrapWidth]=React.useState(0);
+  React.useLayoutEffect(()=>{
+    const el=pileWrapRef.current;
+    if(!el)return;
+    const update=()=>setPileWrapWidth(el.clientWidth||0);
+    update();
+    if(typeof ResizeObserver==='undefined')return;
+    const ro=new ResizeObserver(update);
+    ro.observe(el);
+    return()=>ro.disconnect();
+  },[]);
+  const effectiveCompact=compact&&pileWrapWidth<320;
+  const widthBonus=Math.max(0,pileWrapWidth-(effectiveCompact?240:320));
+  // Dial back scale slightly for better balance
+  const pileScale=(effectiveCompact?1.5:2.0)+Math.min(effectiveCompact?0.3:0.6,widthBonus/(effectiveCompact?320:480));
+  const pileLabelFont=effectiveCompact?13:15;
+  const pileMinHeight=effectiveCompact ? 140 : 220;
   return(
-    <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',position:'relative',minWidth:0,minHeight:compact?80:222}}>
+    <div ref={pileWrapRef} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',position:'relative',minWidth:0,minHeight:pileMinHeight}}>
       {/* Inspection deck — top-left corner */}
-      <div data-inspection-pile style={{position:'absolute',top:4,left:8,display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
-        <InspectionPile count={inspectionCount}/>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:8,color:'#90a8d8',letterSpacing:1,textAlign:'center'}}>检定牌堆:{inspectionCount}张</div>
+      <div data-inspection-pile style={{position:'absolute',top:4,left:8,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+        <InspectionPile count={inspectionCount} scale={pileScale}/>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:pileLabelFont,color:'#90a8d8',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 8px #000000'}}>检定:{inspectionCount}</div>
       </div>
       {/* Deck — top-right corner */}
-      <div ref={deckRef} data-deck-pile style={{position:'absolute',top:4,right:8,display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
-        <DeckPile count={deckCount}/>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:8,color:'#7a5a2a',letterSpacing:1,textAlign:'center'}}>牌堆:{deckCount}张</div>
+      <div ref={deckRef} data-deck-pile style={{position:'absolute',top:4,right:8,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+        <DeckPile count={deckCount} scale={pileScale}/>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:pileLabelFont,color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 8px #000000'}}>牌堆:{deckCount}</div>
       </div>
       {/* Discard — center */}
       <div ref={discardRef} data-discard-pile style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
-        <DiscardPile count={discardCount} topCard={discardTop}/>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:8,color:'#7a5a2a',letterSpacing:1,textAlign:'center'}}>弃牌堆:{discardCount}张</div>
+        <DiscardPile count={discardCount} topCard={discardTop} scale={pileScale}/>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:pileLabelFont+2,color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 10px #000000'}}>弃牌堆:{discardCount}</div>
       </div>
     </div>
   );
@@ -6632,6 +6683,7 @@ export default function Game(){
   const rawScale=vw/DESIGN_WIDTH;
   const shouldScale=vw<DESIGN_WIDTH;
   const scaleRatio=shouldScale?Math.min(rawScale,1):1;
+  const middleRowHeight=isMobile?248:282;
 
   const applyVisibleLogPrefix=useCallback((count,authorityOverride)=>{
     const authority=Array.isArray(authorityOverride)?authorityOverride:(Array.isArray(visibleLogAuthorityRef.current)?visibleLogAuthorityRef.current:[]);
@@ -11144,13 +11196,15 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             border:`1.5px solid ${hitIndices.includes(0)?'#cc2222':sanHitIndices.includes(0)?'#8840cc':suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'#c8a96e':'#3a2510'}`,
             borderRadius:3,
             padding:isMobile?'8px 9px':'12px 13px',
-            width:180,
-            flexBasis:180,
+            width:214,
+            minWidth:214,
+            flexBasis:214,
             flexGrow:0,
             flexShrink:0,
             display:'flex',
             flexDirection:'column',
             gap:9,
+            minHeight:middleRowHeight,
             position:'relative',
             overflow:'visible',
             boxShadow:suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'0 0 0 2px #c8a96e66,0 0 20px #c8a96e44':undefined,
@@ -11162,7 +11216,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             <div>
               <div ref={roleTextRef} style={{fontFamily:"'Cinzel',serif",color:'#7a5a2a',fontSize:9,letterSpacing:2,marginBottom:3,textTransform:'uppercase'}}>你的身份</div>
               <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:13,color:ri.col,textShadow:`0 0 12px ${ri.col}66`,letterSpacing:1}}>{ri.icon} {me.role}</div>
-              <div style={{fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontStyle:'italic',color:'#a07838',fontSize:10,marginTop:4,lineHeight:1.6}}>{ri.goal}</div>
+              <div style={{fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontStyle:'italic',color:'#a07838',fontSize:10,marginTop:4,lineHeight:1.6,whiteSpace:'nowrap'}}>{ri.goal}</div>
               {me.isResting&&<div style={{marginTop:4,fontSize:10,color:'#4ade80',fontFamily:"'Cinzel',serif",letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 翻面中 — 下回合跳过</div>}
             {/* God zone display */}
             {(me.godEncounters||0)>0&&<div style={{marginTop:4,fontSize:10,color:'#8b6060',letterSpacing:1}}>{'💀'.repeat(Math.min(me.godEncounters,5))}{me.godEncounters>5?`×${me.godEncounters}`:''} 邪神遭遇</div>}
@@ -11213,9 +11267,9 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             )}
           </div>
           {/* Center: deck/discard piles */}
-          <PileDisplay deckCount={gs.deck.length} discardCount={gs.discard.length} discardTop={gs.discard[gs.discard.length-1]||null} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={isMobile} deckRef={deckAreaRef} discardRef={discardPileRef}/>
+          <PileDisplay deckCount={gs.deck.length} discardCount={gs.discard.length} discardTop={gs.discard[gs.discard.length-1]||null} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={vw<430} baseHeight={middleRowHeight} deckRef={deckAreaRef} discardRef={discardPileRef}/>
           {/* Log — narrow, right-aligned */}
-          <div ref={logRef} style={{width:isMobile?'100%':218,flexBasis:isMobile?'100%':undefined,flexShrink:0,background:'#0e0904',border:'1.5px solid #2a1a08',borderRadius:3,padding:'8px 10px',overflowY:'auto',maxHeight:isMobile?100:222}}>
+          <div ref={logRef} style={{width:isMobile?'100%':218,flexBasis:isMobile?'100%':undefined,flexShrink:0,background:'#0e0904',border:'1.5px solid #2a1a08',borderRadius:3,padding:'8px 10px',overflowY:'auto',minHeight:isMobile?100:middleRowHeight,maxHeight:isMobile?100:middleRowHeight}}>
             <div style={{fontFamily:"'Cinzel',serif",color:'#7a5a2a',fontSize:9,letterSpacing:2,marginBottom:5,textTransform:'uppercase'}}>— 冒险日志 —</div>
             {(()=>{
               // 多人游戏：用玩家真实名字替换其他人回合里的"你"
