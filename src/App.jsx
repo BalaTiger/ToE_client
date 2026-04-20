@@ -4208,10 +4208,14 @@ function RoleRevealAnim({role,onDone}){
 
 // ── Stat Bar ─────────────────────────────────────────────────
 function StatBar({label,val,color,trackColor}){
+  const labelCol='clamp(18px, 2.5vw, 30px)';
+  const valueCol='clamp(14px, 2.8vw, 20px)';
+  const statFont='clamp(8px, 1.7vw, 10px)';
+  const barHeight='clamp(8px, 1.6vw, 10px)';
   return(
-    <div style={{display:'grid',gridTemplateColumns:'30px 1fr 20px',alignItems:'center',columnGap:6,marginBottom:4,width:'100%',boxSizing:'border-box',overflow:'visible'}}>
-      <span style={{fontFamily:"'Cinzel',serif",color:'#a07838',fontSize:10,fontWeight:700,letterSpacing:0.5,width:30,textAlign:'left',flexShrink:0}}>{label}</span>
-      <div style={{height:10,background:trackColor||'#110804',border:'1.2px solid #2a1a08',borderRadius:2,overflow:'visible',position:'relative',minWidth:0,width:'100%'}}>
+    <div style={{display:'grid',gridTemplateColumns:`${labelCol} minmax(0,1fr) ${valueCol}`,alignItems:'center',columnGap:'clamp(4px, 1vw, 6px)',marginBottom:4,width:'100%',boxSizing:'border-box',overflow:'visible'}}>
+      <span style={{fontFamily:"'Cinzel',serif",color:'#a07838',fontSize:statFont,fontWeight:700,letterSpacing:0.3,textAlign:'left',whiteSpace:'nowrap',minWidth:0}}>{label}</span>
+      <div style={{height:barHeight,background:trackColor||'#110804',border:'1.2px solid #2a1a08',borderRadius:2,overflow:'visible',position:'relative',minWidth:0,width:'100%'}}>
         <div style={{height:'100%',width:`${Math.min(10,val)*10}%`,background:color,transition:'width .35s',borderRadius:1}}/>
         {/* 6点SAN阈值线 */}
         {label === 'SAN' && (
@@ -4251,7 +4255,7 @@ function StatBar({label,val,color,trackColor}){
           </div>
         )}
       </div>
-      <span style={{fontFamily:"'Cinzel',serif",color:val<=3?'#cc3333':'#c8a96e',fontSize:10,width:20,textAlign:'right',fontWeight:700,flexShrink:0}}>{val}</span>
+      <span style={{fontFamily:"'Cinzel',serif",color:val<=3?'#cc3333':'#c8a96e',fontSize:statFont,textAlign:'right',fontWeight:700,whiteSpace:'nowrap',minWidth:0,justifySelf:'end'}}>{val}</span>
     </div>
   );
 }
