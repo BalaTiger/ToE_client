@@ -4209,9 +4209,9 @@ function RoleRevealAnim({role,onDone}){
 // ── Stat Bar ─────────────────────────────────────────────────
 function StatBar({label,val,color,trackColor}){
   return(
-    <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:4}}>
-      <span style={{fontFamily:"'Cinzel',serif",color:'#a07838',fontSize:10,letterSpacing:0.5,flexShrink:0}}>{label}</span>
-      <div style={{flex:1,height:10,background:trackColor||'#110804',border:'1px solid #2a1a08',borderRadius:2,overflow:'visible',position:'relative',minWidth:0}}>
+    <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4,width:'100%',boxSizing:'border-box'}}>
+      <span style={{fontFamily:"'Cinzel',serif",color:'#a07838',fontSize:10,letterSpacing:0.5,flexShrink:0,minWidth:25}}>{label}</span>
+      <div style={{flex:1,maxWidth:160,height:10,background:trackColor||'#110804',border:'1px solid #2a1a08',borderRadius:2,overflow:'visible',position:'relative',minWidth:0}}>
         <div style={{height:'100%',width:`${val*10}%`,background:color,transition:'width .35s',borderRadius:1}}/>
         {/* 6点SAN阈值线 */}
         {label === 'SAN' && (
