@@ -136,7 +136,7 @@ function useCardHoverTooltip() {
   return { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseLeave };
 }
 
-function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel}){
+function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel,frameStyle}){
   const def=GOD_DEFS[card.godKey];if(!def)return null;
   const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseLeave } = useCardHoverTooltip();
   const w=small?44:compact?62:82,h=small?58:compact?82:108;
@@ -169,6 +169,7 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLe
           userSelect:'none',
           position:'relative',
           overflow:'visible',
+          ...frameStyle,
         }}
       >
         {/* Top: god name */}
@@ -192,9 +193,9 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLe
   );
 }
 
-function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel,holderId}){
+function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel,holderId,frameStyle}){
   if(!card)return null;
-  if(card.isGod) return <GodDDCard card={card} onClick={onClick} disabled={disabled} selected={selected} highlight={highlight} small={small} compact={compact} godLevel={godLevel}/>;
+  if(card.isGod) return <GodDDCard card={card} onClick={onClick} disabled={disabled} selected={selected} highlight={highlight} small={small} compact={compact} godLevel={godLevel} frameStyle={frameStyle}/>;
   if(card.type==='blankZone'){
     const w=small?44:compact?62:82,h=small?58:compact?82:108;
     return(
@@ -208,8 +209,9 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
           borderRadius:3,cursor:(onClick&&!disabled)?'pointer':'default',opacity:disabled?0.35:1,
           transform:selected?'translateY(-5px)':undefined,transition:'all .14s',
           display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-          padding:small?'4px 3px':compact?'5px 5px':'7px 8px',userSelect:'none',position:'relative',overflow:'hidden',
-        }}
+           padding:small?'4px 3px':compact?'5px 5px':'7px 8px',userSelect:'none',position:'relative',overflow:'hidden',
+           ...frameStyle,
+         }}
       >
         <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:small?11:compact?13:16,color:'#f1d28b',letterSpacing:1}}>BLANK</div>
         <div style={{fontSize:small?14:compact?18:22,color:'#d8b45a',textShadow:'0 0 10px #d8b45a88'}}>◇</div>
@@ -248,6 +250,7 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
           userSelect:'none',
           position:'relative',
           overflow:'visible',
+          ...frameStyle,
         }}
       >
         {/* Corner ornament */}
@@ -265,7 +268,7 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
   );
 }
 
-function DDCardBack({small}){
+function DDCardBack({small,frameStyle}){
   return(
     <div style={{
       width:small?36:50,height:small?50:68,flexShrink:0,
@@ -274,6 +277,7 @@ function DDCardBack({small}){
       boxShadow:'inset 0 0 8px #0a0600',
       borderRadius:3,
       display:'flex',alignItems:'center',justifyContent:'center',
+      ...frameStyle,
     }}>
       <div style={{color:'#7a5a2a',fontSize:small?14:18,fontFamily:"serif"}}>✦</div>
     </div>
