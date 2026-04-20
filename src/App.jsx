@@ -11104,8 +11104,12 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         </div>
 
         {/* Scaled player areas wrapper */}
-        <div style={{overflow:'hidden',width:'100%'}}>
-          <div style={{zoom:scaleRatio<1?scaleRatio:'normal',width:shouldScale?`${DESIGN_WIDTH}px`:'100%'}}>
+        <div style={{overflow:'hidden',width:'100%',display:'flex',justifyContent:'center'}}>
+          <div style={{
+            zoom:scaleRatio<1?scaleRatio:'normal',
+            width:DESIGN_WIDTH,
+            flexShrink:0
+          }}>
 
         {/* AI panels */}
         <div ref={aiPanelAreaRef} style={{
@@ -11133,16 +11137,16 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         </div>
 
         {/* Middle: self info + deck/discard piles + log */}
-        <div style={{display:'flex',gap:isMobile?5:7,flexWrap:isMobile?'wrap':'nowrap'}}>
-          {/* Self panel */}
+        <div style={{display:'flex',gap:isMobile?5:10,flexWrap:'wrap',alignItems:'stretch',width:'100%',justifyContent:'flex-start'}}>
+          {/* Self panel - Fixed width, no grow */}
           <div ref={selfPanelRef} data-pid={0} style={{
             background:'#180f07',
             border:`1.5px solid ${hitIndices.includes(0)?'#cc2222':sanHitIndices.includes(0)?'#8840cc':suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'#c8a96e':'#3a2510'}`,
             borderRadius:3,
             padding:isMobile?'8px 9px':'12px 13px',
-            width:isMobile?'100%':155,
-            flexBasis:isMobile?'calc(58% - 2.5px)':undefined,
-            minHeight:isMobile?undefined:222,
+            width:180,
+            flexBasis:180,
+            flexGrow:0,
             flexShrink:0,
             display:'flex',
             flexDirection:'column',
@@ -11152,6 +11156,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             boxShadow:suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'0 0 0 2px #c8a96e66,0 0 20px #c8a96e44':undefined,
             opacity:guillotinedPids.has(0)?0:1
           }}>
+
             {/* SAN mist: rendered by full-screen SanMistOverlay */}
             {(hpHealIndices.includes(0)||sanHealIndices.includes(0))&&<HealCrossEffect color={sanHealIndices.includes(0)?'#a78bfa':'#4ade80'}/>}
             <div>
