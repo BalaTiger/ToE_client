@@ -5283,29 +5283,28 @@ function PileDisplay({deckCount,discardCount,discardTop,inspectionCount,compact,
     ro.observe(el);
     return()=>ro.disconnect();
   },[]);
-  const effectiveCompact=compact&&pileWrapWidth<260;
-  const widthBonus=Math.max(0,pileWrapWidth-(effectiveCompact?220:280));
-  const pileScale=(effectiveCompact?1.12:1.38)+Math.min(effectiveCompact?0.22:0.56,widthBonus/(effectiveCompact?280:360));
-  const pileLabelFont=effectiveCompact?9:11;
-  const pileMinHeight=effectiveCompact
-    ? 138+Math.min(28,widthBonus*0.08)
-    : 246+Math.min(92,widthBonus*0.22);
+  const effectiveCompact=compact&&pileWrapWidth<320;
+  const widthBonus=Math.max(0,pileWrapWidth-(effectiveCompact?240:320));
+  // Dial back scale slightly for better balance
+  const pileScale=(effectiveCompact?1.5:2.0)+Math.min(effectiveCompact?0.3:0.6,widthBonus/(effectiveCompact?320:480));
+  const pileLabelFont=effectiveCompact?13:15;
+  const pileMinHeight=effectiveCompact ? 140 : 220;
   return(
-    <div ref={pileWrapRef} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',position:'relative',minWidth:0,minHeight:Math.max(baseHeight||0,pileMinHeight)}}>
+    <div ref={pileWrapRef} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',position:'relative',minWidth:0,minHeight:pileMinHeight}}>
       {/* Inspection deck — top-left corner */}
-      <div data-inspection-pile style={{position:'absolute',top:4,left:8,display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
+      <div data-inspection-pile style={{position:'absolute',top:4,left:8,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
         <InspectionPile count={inspectionCount} scale={pileScale}/>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:8,color:'#90a8d8',letterSpacing:1,textAlign:'center'}}>检定牌堆:{inspectionCount}张</div>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:pileLabelFont,color:'#90a8d8',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 8px #000000'}}>检定:{inspectionCount}</div>
       </div>
       {/* Deck — top-right corner */}
-      <div ref={deckRef} data-deck-pile style={{position:'absolute',top:4,right:8,display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
+      <div ref={deckRef} data-deck-pile style={{position:'absolute',top:4,right:8,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
         <DeckPile count={deckCount} scale={pileScale}/>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:8,color:'#7a5a2a',letterSpacing:1,textAlign:'center'}}>牌堆:{deckCount}张</div>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:pileLabelFont,color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 8px #000000'}}>牌堆:{deckCount}</div>
       </div>
       {/* Discard — center */}
       <div ref={discardRef} data-discard-pile style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
         <DiscardPile count={discardCount} topCard={discardTop} scale={pileScale}/>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:8,color:'#7a5a2a',letterSpacing:1,textAlign:'center'}}>弃牌堆:{discardCount}张</div>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:pileLabelFont+2,color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 10px #000000'}}>弃牌堆:{discardCount}</div>
       </div>
     </div>
   );
