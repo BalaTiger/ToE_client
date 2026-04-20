@@ -4209,10 +4209,10 @@ function RoleRevealAnim({role,onDone}){
 // ── Stat Bar ─────────────────────────────────────────────────
 function StatBar({label,val,color,trackColor}){
   return(
-    <div style={{display:'grid',gridTemplateColumns:'28px minmax(0,1fr) 16px',alignItems:'center',columnGap:6,marginBottom:4,width:'100%',boxSizing:'border-box'}}>
-      <span style={{fontFamily:"'Cinzel',serif",color:'#a07838',fontSize:10,letterSpacing:0.5,width:28,textAlign:'left'}}>{label}</span>
-      <div style={{width:'100%',height:10,background:trackColor||'#110804',border:'1px solid #2a1a08',borderRadius:2,overflow:'visible',position:'relative',minWidth:0}}>
-        <div style={{height:'100%',width:`${val*10}%`,background:color,transition:'width .35s',borderRadius:1}}/>
+    <div style={{display:'grid',gridTemplateColumns:'30px 1fr 20px',alignItems:'center',columnGap:6,marginBottom:4,width:'100%',boxSizing:'border-box',overflow:'visible'}}>
+      <span style={{fontFamily:"'Cinzel',serif",color:'#a07838',fontSize:10,fontWeight:700,letterSpacing:0.5,width:30,textAlign:'left',flexShrink:0}}>{label}</span>
+      <div style={{height:10,background:trackColor||'#110804',border:'1.2px solid #2a1a08',borderRadius:2,overflow:'visible',position:'relative',minWidth:0,width:'100%'}}>
+        <div style={{height:'100%',width:`${Math.min(10,val)*10}%`,background:color,transition:'width .35s',borderRadius:1}}/>
         {/* 6点SAN阈值线 */}
         {label === 'SAN' && (
           <div style={{
@@ -4251,7 +4251,7 @@ function StatBar({label,val,color,trackColor}){
           </div>
         )}
       </div>
-      <span style={{fontFamily:"'Cinzel',serif",color:val<=3?'#cc3333':'#c8a96e',fontSize:10,width:16,textAlign:'right',fontWeight:700}}>{val}</span>
+      <span style={{fontFamily:"'Cinzel',serif",color:val<=3?'#cc3333':'#c8a96e',fontSize:10,width:20,textAlign:'right',fontWeight:700,flexShrink:0}}>{val}</span>
     </div>
   );
 }
