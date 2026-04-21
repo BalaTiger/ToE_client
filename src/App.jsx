@@ -6695,6 +6695,8 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
   const rawScale=vw/DESIGN_WIDTH;
   const shouldScale=vw<DESIGN_WIDTH;
   const scaleRatio=shouldScale?Math.min(rawScale,1):1;
+  const narrowDesktopClipFix=vw<=1220;
+  const globalShiftX=narrowDesktopClipFix?Math.min(12,Math.round((1220-vw)*0.5)):0;
   // 基于rem的最小字号（浏览器默认16px）
   const rem=16;
   // 基础字号（UI chrome元素，不补偿）
@@ -11029,7 +11031,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
   const canShowTurnDecisionModal=!anim&&!animExiting&&animQueueRef.current.length===0;
 
   return(<>
-    <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',width:'100%',boxSizing:'border-box',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:7,padding:isMobile?'6px 8px':'8px 10px',position:'relative',overflowX:'hidden',overflowY:'scroll',scrollbarGutter:'stable',
+    <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:7,padding:isMobile?'6px 8px':'8px 10px',position:'relative',left:globalShiftX||undefined,overflowX:'hidden',overflowY:'scroll',scrollbarGutter:'stable',
     animation:deathShake?'deathShakeAnim 2.0s ease-in-out':screenShake?'screenShakeAnim 0.38s ease-in-out':undefined,
     }}>
       {/* Global vignette */}
