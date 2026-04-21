@@ -173,9 +173,34 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLe
         }}
       >
         {/* Top: god name */}
-        <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:nameFsz,color:col,lineHeight:1.2,textShadow:`0 0 8px ${col}66`,wordBreak:'keep-all'}}>{def.name}</div>
+        <div style={{
+          fontFamily:"'Cinzel',serif",
+          fontWeight:700,
+          fontSize:nameFsz,
+          color:col,
+          lineHeight:1.15,
+          textShadow:`0 0 8px ${col}66`,
+          wordBreak:'break-word',
+          overflowWrap:'anywhere',
+          whiteSpace:'normal',
+          textAlign:'center',
+          maxWidth:'100%'
+        }}>{def.name}</div>
         {/* Subtitle */}
-        {!small&&<div style={{fontFamily:"'IM Fell English',serif",fontStyle:'italic',fontSize:subFsz,color:col,lineHeight:1.2,marginTop:2,wordBreak:'keep-all',opacity:0.85}}>{def.subtitle}</div>}
+        {!small&&<div style={{
+          fontFamily:"'IM Fell English',serif",
+          fontStyle:'italic',
+          fontSize:subFsz,
+          color:col,
+          lineHeight:1.15,
+          marginTop:2,
+          wordBreak:'break-word',
+          overflowWrap:'anywhere',
+          whiteSpace:'normal',
+          textAlign:'center',
+          maxWidth:'100%',
+          opacity:0.85
+        }}>{def.subtitle}</div>}
         {/* Divider */}
         {!small&&!compact&&<div style={{height:1,background:`linear-gradient(90deg,${col}88,transparent)`,margin:'4px 0'}}/>}
         {/* God power name small */}

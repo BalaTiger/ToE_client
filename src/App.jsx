@@ -6613,7 +6613,9 @@ export default function Game(){
   const roleTextRef=useRef(null);
   const [roleTextRect,setRoleTextRect]=useState(null);
   const handAreaRef=useRef(null);
+  const mobileGodCardRefs=useRef(new Map());
   const [handAreaRect,setHandAreaRect]=useState(null);
+  const [mobileArmedGodCardIdx,setMobileArmedGodCardIdx]=useState(null);
   const aiPanelAreaRef=useRef(null);
   const [aiPanelAreaRect,setAiPanelAreaRect]=useState(null);
   const deckAreaRef=useRef(null);
@@ -8049,6 +8051,33 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
     autoDiscardRef.current?.();
   },[gs?._mpAutoDiscard]);
 
+  useEffect(()=>{
+    if(!gs||!isMobile){
+      setMobileArmedGodCardIdx(null);
+      return;
+    }
+    if(mobileArmedGodCardIdx==null)return;
+    const mobileMe=gs.players?.[0];
+    const armedCard=mobileMe?.hand?.[mobileArmedGodCardIdx];
+    const isActionPhase=gs.phase==='ACTION'&&isLocalCurrentTurn(gs);
+    const isUpgrade=mobileMe?.godName===armedCard?.godKey&&((mobileMe?.godLevel||0)<3);
+    const canWorshipFromHand=!!armedCard?.isGod&&!isUpgrade&&!gs.godTriggeredThisTurn&&!gs.godFromHandUsed;
+    if(!isActionPhase||!canWorshipFromHand){
+      setMobileArmedGodCardIdx(null);
+    }
+  },[gs,isMobile,mobileArmedGodCardIdx]);
+
+  useEffect(()=>{
+    if(!isMobile||mobileArmedGodCardIdx==null)return;
+    const handlePointerDown=(event)=>{
+      const armedCardEl=mobileGodCardRefs.current.get(mobileArmedGodCardIdx);
+      if(armedCardEl&&armedCardEl.contains(event.target))return;
+      setMobileArmedGodCardIdx(null);
+    };
+    document.addEventListener('pointerdown',handlePointerDown,true);
+    return ()=>document.removeEventListener('pointerdown',handlePointerDown,true);
+  },[isMobile,mobileArmedGodCardIdx]);
+
   // ── Loading Screen ───────────────────────────────────────────
   if(isLoading){
     return(
@@ -9009,6 +9038,8 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
 
   // ── Main Game ──────────────────────────────────────────────
   const me=gs.players[0];
+  const mobileArmedGodCard=isMobile&&mobileArmedGodCardIdx!=null?me.hand[mobileArmedGodCardIdx]:null;
+  const mobileArmedGodTooltipRect=mobileArmedGodCardIdx!=null?(mobileGodCardRefs.current.get(mobileArmedGodCardIdx)?.getBoundingClientRect?.()||null):null;
   const effectiveRole=me._nyaBorrow||me.role;
   const effectiveHandLimit=Math.max(0,(me._nyaHandLimit??4)-(me.handLimitDecrease||0));
   const myTurn=isLocalCurrentTurn(gs);
@@ -10948,6 +10979,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
   // Use a god card from hand: upgrade (same god, unlimited) or worship (different/new, once per turn)
   function worshipFromHand(idx){
     const godCard=me.hand[idx];if(!godCard||!godCard.isGod)return;
+    setMobileArmedGodCardIdx(null);
     const godKey=godCard.godKey;
     const isUpgrade=me.godName===godKey&&(me.godLevel||0)<3;
     // Upgrade: no per-turn limit, not blocked by godTriggeredThisTurn or godFromHandUsed
@@ -11014,7 +11046,13 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       const c=me.hand[idx];
       if(c&&c.isGod){
         const isUpgrade=me.godName===c.godKey&&(me.godLevel||0)<3;
-        if(isUpgrade||(!(gs.godTriggeredThisTurn||gs.godFromHandUsed)))worshipFromHand(idx);
+        const canWorshipFromHand=!isUpgrade&&!gs.godTriggeredThisTurn&&!gs.godFromHandUsed;
+        if(isMobile&&canWorshipFromHand){
+          if(mobileArmedGodCardIdx===idx)worshipFromHand(idx);
+          else setMobileArmedGodCardIdx(idx);
+        }else if(isUpgrade||canWorshipFromHand){
+          worshipFromHand(idx);
+        }
       }
     }
   }
@@ -11658,19 +11696,22 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
           <div style={{display:'flex',gap:7,flexWrap:'wrap'}}>
             {me.hand.map((c,i)=>{
               const clickable=isMyCardClickable(c,i);
-              const isSel=phase==='DISCARD_PHASE'&&(gs.abilityData.discardSelected||[]).includes(i);
+              const isMobileArmedGod=isMobile&&mobileArmedGodCardIdx===i;
+              const isSel=(phase==='DISCARD_PHASE'&&(gs.abilityData.discardSelected||[]).includes(i))||isMobileArmedGod;
               const isMatch=phase==='HUNT_CONFIRM'&&gs.abilityData?.revCard&&(c.letter===gs.abilityData.revCard.letter||c.number===gs.abilityData.revCard.number);
               const isGodUpgrade=c.isGod&&me.godName===c.godKey&&(me.godLevel||0)<3;
               const canUpgradeNow=isGodUpgrade&&phase==='ACTION'&&isVisualPlayerTurn;
               const canWorshipNow=c.isGod&&!isGodUpgrade&&phase==='ACTION'&&isVisualPlayerTurn&&!gs.godTriggeredThisTurn&&!gs.godFromHandUsed;
-              return(<div key={c.id} style={{position:'relative',display:'inline-block'}}>
+              const showWorshipHint=canWorshipNow&&(!isMobile||isMobileArmedGod);
+              return(<div key={c.id} ref={el=>{if(el)mobileGodCardRefs.current.set(i,el);else mobileGodCardRefs.current.delete(i);}} style={{position:'relative',display:'inline-block'}}>
                 <DDCard card={c} onClick={clickable?()=>handleMyCardClick(i):undefined} disabled={!clickable} selected={isSel} highlight={isMatch||canWorshipNow||canUpgradeNow} godLevel={me.godName===c.godKey?me.godLevel:0} compact={isMobile} holderId={0}/>
                 {canUpgradeNow&&<div style={{position:'absolute',top:-7,left:'50%',transform:'translateX(-50%)',fontFamily:"'Cinzel',serif",fontSize:8,color:'#c8a96e',background:'#0a0705',border:'1px solid #8a6020',borderRadius:2,padding:'1px 4px',pointerEvents:'none',whiteSpace:'nowrap',zIndex:10}}>⬆ 升级邪神之力</div>}
-                {canWorshipNow&&<div style={{position:'absolute',top:-7,left:'50%',transform:'translateX(-50%)',fontFamily:"'Cinzel',serif",fontSize:8,color:'#b080e0',background:'#0a0412',border:'1px solid #7040aa',borderRadius:2,padding:'1px 4px',pointerEvents:'none',whiteSpace:'nowrap',zIndex:10}}>⛧ 点击信仰</div>}
+                {showWorshipHint&&<div style={{position:'absolute',top:-7,left:'50%',transform:'translateX(-50%)',fontFamily:"'Cinzel',serif",fontSize:8,color:'#b080e0',background:'#0a0412',border:'1px solid #7040aa',borderRadius:2,padding:'1px 4px',pointerEvents:'none',whiteSpace:'nowrap',zIndex:10}}>⛧ 点击信仰</div>}
               </div>);
             })}
             {me.hand.length===0&&<div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#7a5a2a',fontSize:13,padding:'22px 10px'}}>手中空空如也</div>}
           </div>
+          {isMobile&&mobileArmedGodCard?.isGod&&mobileArmedGodTooltipRect&&<GodTooltip def={GOD_DEFS[mobileArmedGodCard.godKey]} godLevel={me.godName===mobileArmedGodCard.godKey?me.godLevel:1} position={mobileArmedGodTooltipRect}/>}
         </div>
       </div>
       {/* ── Tutorial steps 2 & 3 (shown over game interface) ── */}
@@ -12924,4 +12965,3 @@ const GLOBAL_STYLES=`
     100% { opacity: 0; transform: translateY(70px) scale(0.3); }
   }
 `;
-
