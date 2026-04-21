@@ -11200,7 +11200,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         </div>
 
         {/* Scaled player areas wrapper */}
-        <div style={{overflow:'hidden',width:isMobile&&globalShiftX?`calc(100% + ${globalShiftX}px)`:'100%',display:'flex',justifyContent:isMobile&&globalShiftX?'flex-start':'center'}}>
+        <div style={{overflow:'hidden',width:isMobile&&globalShiftX?`calc(100% + ${globalShiftX}px)`:'100%',position:isMobile&&globalShiftX?'relative':undefined,left:isMobile&&globalShiftX?-Math.ceil(globalShiftX/2):undefined,display:'flex',justifyContent:'center'}}>
           <div style={{
             zoom:scaleRatio<1?scaleRatio:'normal',
             width:DESIGN_WIDTH,
@@ -11240,9 +11240,9 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             border:`1.5px solid ${hitIndices.includes(0)?'#cc2222':sanHitIndices.includes(0)?'#8840cc':suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'#c8a96e':'#3a2510'}`,
             borderRadius:3,
             padding:isMobile?'8px 9px':'12px 13px',
-            width:isMobile?226:214,
-            minWidth:isMobile?226:214,
-            flexBasis:isMobile?226:214,
+            width:isMobile?246:214,
+            minWidth:isMobile?246:214,
+            flexBasis:isMobile?246:214,
             flexGrow:0,
             flexShrink:0,
             display:'flex',
