@@ -153,6 +153,16 @@ function getPlayerHandAnchorCenter(pid){
   return {x:window.innerWidth*0.5,y:window.innerHeight*0.25};
 }
 
+function getPileAnchorCenter(selector,fallback){
+  const pileEl=document.querySelector(selector);
+  if(!pileEl)return fallback;
+  const visualPileEl=pileEl.firstElementChild instanceof HTMLElement
+    ?pileEl.firstElementChild
+    :pileEl;
+  const r=visualPileEl.getBoundingClientRect();
+  return {x:r.left+r.width/2,y:r.top+r.height/2};
+}
+
 // ══════════════════════════════════════════════════════════════、
 //  UTILITIES
 // ══════════════════════════════════════════════════════════════
@@ -2929,14 +2939,12 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false}){
   },[skipTravel]);
 
   const getDeckCenter=()=>{
-    const deckEl=document.querySelector(isInspection?'[data-inspection-pile]':'[data-deck-pile]');
-    if(deckEl){
-      const r=deckEl.getBoundingClientRect();
-      return {x:r.left+r.width/2,y:r.top+r.height/2};
-    }
-    return isInspection
+    return getPileAnchorCenter(
+      isInspection?'[data-inspection-pile]':'[data-deck-pile]',
+      isInspection
       ?{x:window.innerWidth*0.10,y:window.innerHeight*0.14}
-      :{x:window.innerWidth*0.94-35,y:window.innerHeight*0.08};
+      :{x:window.innerWidth*0.94-35,y:window.innerHeight*0.08}
+    );
   };
   const getHandCenter=pid=>{
     return getPlayerHandAnchorCenter(pid);
@@ -3185,24 +3193,21 @@ function KnifeEffect({targets}){
 function DiscardMoveOverlay({anim,exiting}){
   if(!anim)return null;
   const card=anim.card||null;
-  const s=card&&CS[card.letter]?CS[card.letter]:null;
+  const s=card?(card.isGod?GOD_CS:(CS[card.letter]||null)):null;
+  const discardCardTitle=card?.isGod?(card.godKey||'GOD'):card?.key;
+  const discardCardSubtitle=card?.isGod?card.name:'';
   const targetPid=anim.targetPid||0;
 
   // Compute start and end positions using actual DOM elements
   const [cardStyle, setCardStyle] = React.useState({});
   
   React.useEffect(() => {
-    // Find actual discard pile position via DOM query
-    const discardEl = document.querySelector('[data-discard-pile]');
-    let discardX, discardY;
-    if(discardEl){
-      const dr = discardEl.getBoundingClientRect();
-      discardX = dr.left + dr.width/2;
-      discardY = dr.top + dr.height/2;
-    } else {
-      discardX = window.innerWidth * 0.35;
-      discardY = window.innerHeight * 0.50;
-    }
+    const discardPos=getPileAnchorCenter(
+      '[data-discard-pile]',
+      {x:window.innerWidth*0.35,y:window.innerHeight*0.50}
+    );
+    const discardX=discardPos.x;
+    const discardY=discardPos.y;
     
     const startPos=getPlayerHandAnchorCenter(targetPid);
     const startX=startPos.x;
@@ -3242,7 +3247,18 @@ function DiscardMoveOverlay({anim,exiting}){
       {/* Flying card */}
       {Object.keys(cardStyle).length > 0 && (
         <div style={cardStyle}>
-          {card&&s&&<div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:18}}>{card.key}</div>}
+          {card&&s&&(
+            <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'6px 5px',textAlign:'center',lineHeight:1.1}}>
+              <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:card.isGod?17:18,letterSpacing:card.isGod?1.2:0}}>
+                {discardCardTitle}
+              </div>
+              {!!discardCardSubtitle&&(
+                <div style={{marginTop:5,fontFamily:"'Cinzel',serif",fontWeight:600,color:'#e8cc88',fontSize:8.5}}>
+                  {discardCardSubtitle}
+                </div>
+              )}
+            </div>
+          )}
           {(!card||!s)&&<div style={{position:'absolute',inset:0,borderRadius:4,
             background:'repeating-linear-gradient(45deg,#2a1a0820 0px,#2a1a0820 1px,transparent 1px,transparent 4px)'}}/>}
         </div>
@@ -5218,10 +5234,24 @@ function DiscardPile({count,topCard,scale=1}){
             }:{}),
             zIndex:i,
           }}>
-            {isTop&&topCard&&<div style={{
-              position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',
-              fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:Math.round(11*scale),
-            }}>{topCard.isGod?'⛧':topCard.key}</div>}
+            {isTop&&topCard&&(
+              <div style={{
+                position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:`${Math.round(3*scale)}px ${Math.round(2*scale)}px`,textAlign:'center',lineHeight:1.1,
+              }}>
+                <div style={{
+                  fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:Math.round(topCard.isGod?10*scale:11*scale),letterSpacing:topCard.isGod?1:0,
+                }}>
+                  {topCard.isGod?(topCard.godKey||'GOD'):topCard.key}
+                </div>
+                {topCard.isGod&&topCard.name&&(
+                  <div style={{
+                    marginTop:Math.round(2*scale),fontFamily:"'Cinzel',serif",fontWeight:600,color:'#e8cc88',fontSize:Math.round(5*scale),
+                  }}>
+                    {topCard.name}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         );
       })}
@@ -7023,9 +7053,12 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
       // 测量终点
       let destX,destY;
       if(dest==='discard'){
-        const dr=discardPileRef.current?.getBoundingClientRect();
-        destX=dr?dr.left+dr.width/2:window.innerWidth*0.45;
-        destY=dr?dr.top+dr.height/2:window.innerHeight*0.45;
+        const discardPos=getPileAnchorCenter(
+          '[data-discard-pile]',
+          {x:window.innerWidth*0.45,y:window.innerHeight*0.45}
+        );
+        destX=discardPos.x;
+        destY=discardPos.y;
       }else if(dest==='player'){
         const destPos=getPlayerHandAnchorCenter(toPid);
         destX=destPos.x;
@@ -10230,6 +10263,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     const godCard=gs.abilityData?.godCard;if(!godCard)return;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
     let inspectionMeta=makeInspectionMeta(gs);
+    const isDiscardAction=action!=='keepHand'&&action!=='worship'&&action!=='upgrade'&&action!=='forcedConvert';
     const gk=godCard.godKey;
     const alreadyWorship=P[0].godName===gk;
     // SAN deduction and inspections are now handled upfront in handleCardDraw
@@ -10261,6 +10295,21 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     // 保留abilityData中的cthDrawsRemaining信息
     const newGs={...gs,players:P,discard:Disc,log:L,phase:'ACTION',abilityData:gs.abilityData,
       godTriggeredThisTurn:consumesSlot,...inspectionMeta};
+    if(isDiscardAction){
+      const discardLog=L[L.length-1];
+      const queue=[{type:'DISCARD',card:godCard,triggerName:'你',targetPid:0,msgs:[discardLog]}];
+      triggerAnimQueue(queue,newGs,()=>{
+        const win=checkWin(newGs.players,newGs._isMP);
+        if(win){
+          setGs({...newGs,gameOver:win});
+        }else if(gs.abilityData?.fromRest){
+          _cthContinueRestDraws(newGs);
+        }else{
+          setGs(newGs);
+        }
+      });
+      return;
+    }
     const inspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>(gs._inspectionSeq||0));
     // 构建动画队列并执行，在动画完成后检查游戏是否结束
     let queue;
