@@ -504,7 +504,7 @@ const AI_NAMES=['艾伦','贝拉','卡洛斯','黛安娜'];
 const RINFO={
   '寻宝者':{icon:'✦',col:'#7ecfd4',dim:'#2a6068',goal:'集齐宝藏',skillName:'掉包',skillLimited:true},
   '追猎者':{icon:'☩',col:'#cc4444',dim:'#6a1a1a',goal:'消灭所有非追猎者',skillName:'追捕',skillLimited:false},
-  '邪祀者':{icon:'☽',col:'#9060cc',dim:'#3a1060',goal:'使任意角色SAN归零',skillName:'蛊惑',skillLimited:true},
+  '邪祀者':{icon:'☽',col:'#9060cc',dim:'#3a1060',goal:'复活邪神',skillName:'蛊惑',skillLimited:true},
 };
 const [ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST] = Object.keys(RINFO);
 // Aged-manuscript card style per letter
