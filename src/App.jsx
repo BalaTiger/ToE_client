@@ -4207,15 +4207,28 @@ function RoleRevealAnim({role,onDone}){
 
 
 // ── Stat Bar ─────────────────────────────────────────────────
-function StatBar({label,val,color,trackColor,scaleRatio}){
+function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth}){
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
-  const labelCol='clamp(18px, 2.5vw, 30px)';
-  const valueCol='clamp(14px, 2.8vw, 20px)';
+  const isMobileNarrow=!!viewportWidth&&viewportWidth<580;
+  const isNarrowViewport=!!viewportWidth&&viewportWidth<900;
+  const rowWidth=isMobileNarrow?'calc(100% - 34px)':isNarrowViewport?'calc(100% - 22px)':'100%';
+  const labelCol=isMobileNarrow
+    ? '36px'
+    : isNarrowViewport
+      ? '32px'
+      : 'clamp(18px, 2.5vw, 30px)';
+  const valueCol=isMobileNarrow
+    ? 'clamp(18px, 4vw, 24px)'
+    : isNarrowViewport
+      ? 'clamp(16px, 3vw, 22px)'
+      : 'clamp(14px, 2.8vw, 20px)';
   const statFont=`clamp(${8*fontZoom}px, 1.7vw, ${10*fontZoom}px)`;
   const barHeight=`clamp(${8*fontZoom}px, 1.6vw, ${10*fontZoom}px)`;
+  const columnGap=isMobileNarrow?'clamp(6px, 1.6vw, 8px)':isNarrowViewport?'clamp(5px, 1.2vw, 7px)':'clamp(4px, 1vw, 6px)';
+  const labelPaddingRight=isMobileNarrow?4:isNarrowViewport?3:0;
   return(
-    <div style={{display:'grid',gridTemplateColumns:`${labelCol} minmax(0,1fr) ${valueCol}`,alignItems:'center',columnGap:'clamp(4px, 1vw, 6px)',marginBottom:4,width:'100%',boxSizing:'border-box',overflow:'visible'}}>
-      <span style={{fontFamily:"'Cinzel',serif",color:'#a07838',fontSize:statFont,fontWeight:700,letterSpacing:0.3,textAlign:'left',whiteSpace:'nowrap',minWidth:0}}>{label}</span>
+    <div style={{display:'grid',gridTemplateColumns:`${labelCol} minmax(0,1fr) ${valueCol}`,alignItems:'center',columnGap:columnGap,marginBottom:4,width:rowWidth,marginLeft:'auto',marginRight:'auto',boxSizing:'border-box',overflow:'visible'}}>
+      <span style={{fontFamily:"'Cinzel',serif",color:'#a07838',fontSize:statFont,fontWeight:700,letterSpacing:0.3,textAlign:'left',whiteSpace:'nowrap',minWidth:0,paddingRight:labelPaddingRight}}>{label}</span>
       <div style={{height:barHeight,background:trackColor||'#110804',border:'1.2px solid #2a1a08',borderRadius:2,overflow:'visible',position:'relative',minWidth:0,width:'100%'}}>
         <div style={{height:'100%',width:`${Math.min(10,val)*10}%`,background:color,transition:'width .35s',borderRadius:1}}/>
         {/* 6点SAN阈值线 */}
@@ -4541,7 +4554,7 @@ function HealCrossEffect({color='#4ade80'}){
   );
 }
 
-function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio}){
+function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth}){
   const ri=RINFO[player.role];
   // 缩放时反向补偿字体：确保缩放后字体不失真
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
@@ -4584,8 +4597,8 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
         {player.isResting&&!player.isDead&&<span style={{fontSize:_(9),color:'#4ade80',marginLeft:'auto',letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 翻面中</span>}
         {isCurrentTurn&&!player.isDead&&!player.isResting&&<span style={{fontSize:_(9),color:'#c8a96e',marginLeft:'auto',letterSpacing:1}}>▸ 行动</span>}
       </div>
-      <StatBar label="HP"  val={displayStats?.[playerIndex]?.hp ?? player.hp}  color="#8b1515" trackColor="#1a0808" scaleRatio={scaleRatio}/>
-      <StatBar label="SAN" val={displayStats?.[playerIndex]?.san ?? player.san} color="#4a1080" trackColor="#120820" scaleRatio={scaleRatio}/>
+      <StatBar label="HP"  val={displayStats?.[playerIndex]?.hp ?? player.hp}  color="#8b1515" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={viewportWidth}/>
+      <StatBar label="SAN" val={displayStats?.[playerIndex]?.san ?? player.san} color="#4a1080" trackColor="#120820" scaleRatio={scaleRatio} viewportWidth={viewportWidth}/>
       {/* Skull counter + god zone */}
       {((player.godEncounters||0)>0||(player.godZone||[]).length>0)&&(
         <div style={{display:'flex',alignItems:'center',gap:4,marginTop:4,flexWrap:'wrap'}}>
@@ -11215,7 +11228,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
               const onCardSelectForSwap=isSwapTargetCardPhase?((cardIdx)=>swapSelectTargetCard(cardIdx)):isHuntCardFromPublicPhase?((cardIdx)=>huntSelectCardFromPublic(cardIdx)):null;
               return(
                 <div key={p.id} data-pid={pi} style={{position:'relative',zIndex:isSel?101:undefined,alignSelf:'start'}}>
-                <PlayerPanel player={p} playerIndex={pi} isCurrentTurn={visualCurrentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)} isBeingGuillotined={guillotinedPids.has(pi)} displayStats={displayStats} scaleRatio={scaleRatio}/>
+                <PlayerPanel player={p} playerIndex={pi} isCurrentTurn={visualCurrentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)} isBeingGuillotined={guillotinedPids.has(pi)} displayStats={displayStats} scaleRatio={scaleRatio} viewportWidth={vw}/>
                 </div>
               );
             })}
@@ -11267,8 +11280,8 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             )}
             </div>
             <div style={{borderTop:'1px solid #2a1a08',paddingTop:8}}>
-              <StatBar label="HP"  val={displayStats[0]?.hp ?? me.hp}  color="#7a1515" trackColor="#1a0808" scaleRatio={scaleRatio}/>
-              <StatBar label="SAN" val={displayStats[0]?.san ?? me.san} color="#3a1078" trackColor="#120820" scaleRatio={scaleRatio}/>
+              <StatBar label="HP"  val={displayStats[0]?.hp ?? me.hp}  color="#7a1515" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={vw}/>
+              <StatBar label="SAN" val={displayStats[0]?.san ?? me.san} color="#3a1078" trackColor="#120820" scaleRatio={scaleRatio} viewportWidth={vw}/>
             </div>
             {canWin&&phase!=='PLAYER_WIN_PENDING'&&(
               <button onClick={revealWin} style={{
