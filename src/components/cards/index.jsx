@@ -33,22 +33,24 @@ function GodTooltip({def,godLevel,position}){
   const tooltipHeight=def.levels.length*80+40;
   const viewW=window.innerWidth;
   const viewH=window.innerHeight;
+  const centeredTop=Math.max(4,Math.min(position.top+((position.height-tooltipHeight)/2),viewH-tooltipHeight-4));
   
   let left,top;
   if(position.right+tooltipWidth+6<=viewW){
     left=position.right+6;
+    top=centeredTop;
   }else if(position.left-tooltipWidth-6>=0){
     left=position.left-tooltipWidth-6;
+    top=centeredTop;
   }else{
     left=Math.max(4,Math.min(position.left,viewW-tooltipWidth-4));
-  }
-  
-  if(position.bottom+tooltipHeight+4<=viewH){
-    top=position.top;
-  }else if(position.top-tooltipHeight-4>=0){
-    top=position.top-tooltipHeight;
-  }else{
-    top=Math.max(4,Math.min(position.top,viewH-tooltipHeight-4));
+    if(position.bottom+tooltipHeight+4<=viewH){
+      top=position.top;
+    }else if(position.top-tooltipHeight-4>=0){
+      top=position.top-tooltipHeight;
+    }else{
+      top=Math.max(4,Math.min(position.top,viewH-tooltipHeight-4));
+    }
   }
   
   return createPortal(

@@ -125,6 +125,34 @@ function Ellipsis() {
   return <span>{'.'.repeat(dots)}</span>;
 }
 
+function getPlayerHandAnchorRect(pid){
+  const handStripEl=pid===0
+    ? document.querySelector('[data-self-hand-strip]')
+    : document.querySelector(`[data-player-hand-strip="${pid}"]`);
+  return handStripEl?.getBoundingClientRect()||null;
+}
+
+function getPlayerHandAnchorCenter(pid){
+  const handRect=getPlayerHandAnchorRect(pid);
+  if(handRect){
+    return {x:handRect.left+handRect.width/2,y:handRect.top+handRect.height/2};
+  }
+  if(pid===0){
+    const handEl=document.querySelector('[data-hand-area]');
+    if(handEl){
+      const r=handEl.getBoundingClientRect();
+      return {x:r.left+r.width/2,y:r.top+r.height/2};
+    }
+    return {x:window.innerWidth*0.5,y:window.innerHeight*0.8};
+  }
+  const el=document.querySelector(`[data-pid="${pid}"]`);
+  if(el){
+    const r=el.getBoundingClientRect();
+    return {x:r.left+r.width/2,y:r.top+r.height*0.74};
+  }
+  return {x:window.innerWidth*0.5,y:window.innerHeight*0.25};
+}
+
 // ══════════════════════════════════════════════════════════════、
 //  UTILITIES
 // ══════════════════════════════════════════════════════════════
@@ -2911,20 +2939,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false}){
       :{x:window.innerWidth*0.94-35,y:window.innerHeight*0.08};
   };
   const getHandCenter=pid=>{
-    if(pid===0){
-      const handEl=document.querySelector('[data-hand-area]');
-      if(handEl){
-        const r=handEl.getBoundingClientRect();
-        return {x:r.left+r.width/2,y:r.top+r.height/2};
-      }
-      return {x:window.innerWidth*0.5,y:window.innerHeight*0.8};
-    }
-    const el=document.querySelector(`[data-pid="${pid}"]`);
-    if(el){
-      const r=el.getBoundingClientRect();
-      return {x:r.left+r.width/2,y:r.top+r.height*0.74};
-    }
-    return {x:window.innerWidth*0.5,y:window.innerHeight*0.25};
+    return getPlayerHandAnchorCenter(pid);
   };
 
   // Compute destination: target player's hand area
@@ -3189,28 +3204,9 @@ function DiscardMoveOverlay({anim,exiting}){
       discardY = window.innerHeight * 0.50;
     }
     
-    let startX, startY;
-    if(targetPid===0){
-      const handEl = document.querySelector('[data-hand-area]');
-      if(handEl){
-        const hr = handEl.getBoundingClientRect();
-        startX = hr.left + hr.width/2;
-        startY = hr.top + hr.height/2;
-      } else {
-        startX = window.innerWidth * 0.5;
-        startY = window.innerHeight * 0.8;
-      }
-    } else {
-      const el=document.querySelector(`[data-pid="${targetPid}"]`);
-      if(el){
-        const r=el.getBoundingClientRect();
-        startX=r.left+r.width/2;
-        startY=r.top+r.height*0.74;
-      }else{
-        startX = window.innerWidth * 0.5;
-        startY = window.innerHeight * 0.25;
-      }
-    }
+    const startPos=getPlayerHandAnchorCenter(targetPid);
+    const startX=startPos.x;
+    const startY=startPos.y;
     
     if (startX && startY) {
       const tx = discardX - startX;
@@ -4629,7 +4625,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
         width:shouldFillFlatHand?'100%':HAND_AREA_WIDTH,
         maxWidth:'100%',
         overflow:'hidden',
-      }}>
+      }} data-player-hand-strip={playerIndex}>
         {handCards.map((card,ci)=>(
           <div key={card.id||`hand-${playerIndex}-${ci}`} style={{
             marginLeft:shouldFillFlatHand?0:(ci===0?0:(handOverlap>0?-handOverlap:HAND_CARD_GAP)),
@@ -7020,11 +7016,10 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
       setTimeout(()=>setBewitchAnim(null),1200);
     }else if(anim?.type==='CARD_TRANSFER'){
       const{fromPid,dest,toPid,count}=anim;
-      // 测量源点（失去手牌的玩家面板中心）
-      const srcEl=document.querySelector(`[data-pid="${fromPid}"]`);
-      const srcR=srcEl?.getBoundingClientRect();
-      const srcX=srcR?srcR.left+srcR.width/2:window.innerWidth/2;
-      const srcY=srcR?srcR.top+srcR.height/2:window.innerHeight*0.5;
+      // 测量源点（优先取真正的手牌展示区）
+      const srcPos=getPlayerHandAnchorCenter(fromPid);
+      const srcX=srcPos.x;
+      const srcY=srcPos.y;
       // 测量终点
       let destX,destY;
       if(dest==='discard'){
@@ -7032,14 +7027,15 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         destX=dr?dr.left+dr.width/2:window.innerWidth*0.45;
         destY=dr?dr.top+dr.height/2:window.innerHeight*0.45;
       }else if(dest==='player'){
-        const destEl=document.querySelector(`[data-pid="${toPid}"]`);
-        const pr=destEl?.getBoundingClientRect();
-        destX=pr?pr.left+pr.width/2:window.innerWidth*0.5;
-        destY=pr?pr.top+pr.height/2:window.innerHeight*0.25;
+        const destPos=getPlayerHandAnchorCenter(toPid);
+        destX=destPos.x;
+        destY=destPos.y;
       }else{
         // godzone = 同一面板的上部（角色区域）
+        const srcPanelEl=document.querySelector(`[data-pid="${fromPid}"]`);
+        const srcPanelRect=srcPanelEl?.getBoundingClientRect();
         destX=srcX;
-        destY=srcR?srcR.top+srcR.height*0.25:srcY*0.5;
+        destY=srcPanelRect?srcPanelRect.top+srcPanelRect.height*0.25:srcY*0.5;
       }
       const key=`${fromPid}-${dest}-${toPid??'x'}-${Date.now()}`;
       setCardTransfers(prev=>[...prev,{srcX,srcY,destX,destY,count,key}]);
@@ -9039,7 +9035,11 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
   // ── Main Game ──────────────────────────────────────────────
   const me=gs.players[0];
   const mobileArmedGodCard=isMobile&&mobileArmedGodCardIdx!=null?me.hand[mobileArmedGodCardIdx]:null;
-  const mobileArmedGodTooltipRect=mobileArmedGodCardIdx!=null?(mobileGodCardRefs.current.get(mobileArmedGodCardIdx)?.getBoundingClientRect?.()||null):null;
+  const mobileArmedGodTooltipRect=mobileArmedGodCardIdx!=null?(()=>{
+    const wrapEl=mobileGodCardRefs.current.get(mobileArmedGodCardIdx);
+    const cardEl=wrapEl?.firstElementChild||wrapEl;
+    return cardEl?.getBoundingClientRect?.()||null;
+  })():null;
   const effectiveRole=me._nyaBorrow||me.role;
   const effectiveHandLimit=Math.max(0,(me._nyaHandLimit??4)-(me.handLimitDecrease||0));
   const myTurn=isLocalCurrentTurn(gs);
@@ -11693,7 +11693,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
                 确认弃牌{(gs.abilityData.discardSelected||[]).length>0?` (${(gs.abilityData.discardSelected||[]).length})`:''}</button>
             )}
           </div>
-          <div style={{display:'flex',gap:7,flexWrap:'wrap'}}>
+          <div data-self-hand-strip style={{display:'flex',gap:7,flexWrap:'wrap'}}>
             {me.hand.map((c,i)=>{
               const clickable=isMyCardClickable(c,i);
               const isMobileArmedGod=isMobile&&mobileArmedGodCardIdx===i;

@@ -14,4 +14,5 @@
 - Do not "guess-fix" garbled text based on terminal mojibake.
 - If encoding is uncertain, inspect safely first, then confirm with the user.
 - Keep changes minimal and avoid broad rewrites when only one feature is requested.
-
+- Before executing a new coding instruction, compare the planned work against the user's latest message and verify the task has not drifted.
+- If the current action does not directly address the user's latest request, stop and realign before editing files.
