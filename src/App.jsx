@@ -4212,11 +4212,9 @@ function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth}){
   const isMobileNarrow=!!viewportWidth&&viewportWidth<580;
   const isNarrowViewport=!!viewportWidth&&viewportWidth<900;
   const rowWidth=isMobileNarrow?'calc(100% - 34px)':isNarrowViewport?'calc(100% - 22px)':'100%';
-  const labelCol=isMobileNarrow
-    ? '36px'
-    : isNarrowViewport
-      ? '32px'
-      : 'clamp(18px, 2.5vw, 30px)';
+  const labelCol=isNarrowViewport
+    ? `${Math.ceil(20*fontZoom)}px`
+    : 'clamp(18px, 2.5vw, 30px)';
   const valueCol=isMobileNarrow
     ? 'clamp(18px, 4vw, 24px)'
     : isNarrowViewport
@@ -4224,8 +4222,8 @@ function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth}){
       : 'clamp(14px, 2.8vw, 20px)';
   const statFont=`clamp(${8*fontZoom}px, 1.7vw, ${10*fontZoom}px)`;
   const barHeight=`clamp(${8*fontZoom}px, 1.6vw, ${10*fontZoom}px)`;
-  const columnGap=isMobileNarrow?'clamp(6px, 1.6vw, 8px)':isNarrowViewport?'clamp(5px, 1.2vw, 7px)':'clamp(4px, 1vw, 6px)';
-  const labelPaddingRight=isMobileNarrow?4:isNarrowViewport?3:0;
+  const columnGap=isNarrowViewport?'clamp(5px, 1.2vw, 7px)':'clamp(4px, 1vw, 6px)';
+  const labelPaddingRight=isNarrowViewport?Math.ceil(2*fontZoom):0;
   return(
     <div style={{display:'grid',gridTemplateColumns:`${labelCol} minmax(0,1fr) ${valueCol}`,alignItems:'center',columnGap:columnGap,marginBottom:4,width:rowWidth,marginLeft:'auto',marginRight:'auto',boxSizing:'border-box',overflow:'visible'}}>
       <span style={{fontFamily:"'Cinzel',serif",color:'#a07838',fontSize:statFont,fontWeight:700,letterSpacing:0.3,textAlign:'left',whiteSpace:'nowrap',minWidth:0,paddingRight:labelPaddingRight}}>{label}</span>
@@ -11202,7 +11200,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         </div>
 
         {/* Scaled player areas wrapper */}
-        <div style={{overflow:'hidden',width:'100%',display:'flex',justifyContent:'center'}}>
+        <div style={{overflow:'hidden',width:isMobile&&globalShiftX?`calc(100% + ${globalShiftX}px)`:'100%',display:'flex',justifyContent:'center'}}>
           <div style={{
             zoom:scaleRatio<1?scaleRatio:'normal',
             width:DESIGN_WIDTH,
