@@ -6703,7 +6703,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
   const isVerySmall=vw<MIN_FONT_VW;
   // Scale ratio for responsive player areas (based on 1200px design width)
   const DESIGN_WIDTH=1200;
-  const scaledAreaSafeInsetX=isMobile?14:12;
+  const scaledAreaSafeInsetX=isMobile?24:12;
   const narrowDesktopClipFix=vw<=1220;
   const globalShiftX=narrowDesktopClipFix?Math.min(12,Math.round((1220-vw)*0.5)):0;
   const rawScale=vw/DESIGN_WIDTH;
