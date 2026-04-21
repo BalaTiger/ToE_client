@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(awk 'NR>=5772 && NR<=9055 {print NR\": \"$0}' src/App.jsx)",
+      "Bash(awk 'NR>=5772 && NR<=9055' src/App.jsx)",
+      "Bash(awk 'NR>=8158 && NR<=8952' src/App.jsx)",
+      "Bash(awk 'NR>=8955 && NR<=9055' src/App.jsx)",
+      "Bash(awk 'NR>=9055' src/App.jsx)",
+      "Bash(awk 'NR>=8158 && NR<=12384' src/App.jsx)",
+      "Bash(awk 'NR>=9055')",
+      "Bash(awk 'NR>=9055 && NR<=12384')",
+      "Bash(awk 'NR>=8955 && NR<=12384')",
+      "Bash(awk 'NR>=8955 && NR<=12384' src/App.jsx)",
+      "Bash(awk 'NR>=8954 && NR<=9055' src/App.jsx)"
+    ]
+  }
+}
