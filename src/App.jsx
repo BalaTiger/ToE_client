@@ -6708,8 +6708,9 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
   const scaleRatio=shouldScale?Math.min(rawScale,1):1;
   const narrowDesktopClipFix=vw<=1220;
   const globalShiftX=narrowDesktopClipFix?Math.min(12,Math.round((1220-vw)*0.5)):0;
-  const mobileScaledAreaExtraWidth=isMobile&&globalShiftX?globalShiftX+4:0;
-  const mobileScaledAreaOffset=isMobile&&globalShiftX?-(globalShiftX+2):0;
+  const mobilePageScaleCompPx=isMobile?Math.min(8,globalShiftX+2):0;
+  const mobilePageScale=isMobile&&mobilePageScaleCompPx?Math.max(0.97,(vw-mobilePageScaleCompPx)/vw):1;
+  const mobilePageScaleWidth=mobilePageScale<1?`${100/mobilePageScale}%`:'100%';
   // 基于rem的最小字号（浏览器默认16px）
   const rem=16;
   // 基础字号（UI chrome元素，不补偿）
@@ -11193,7 +11194,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         </div>
       )}
 
-      <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',gap:7}}>
+      <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',gap:7,transform:mobilePageScale<1?`scale(${mobilePageScale})`:undefined,transformOrigin:'top center',width:mobilePageScaleWidth}}>
         {/* Header */}
         <div style={{display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid #2a1a08',paddingBottom:6}}>
           <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:baseFontSizes.title,fontWeight:700,color:'#c8a96e',letterSpacing:isMobile?1:2}}>邪神的宝藏</div>
@@ -11202,7 +11203,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         </div>
 
         {/* Scaled player areas wrapper */}
-        <div style={{overflow:'hidden',width:mobileScaledAreaExtraWidth?`calc(100% + ${mobileScaledAreaExtraWidth}px)`:'100%',position:mobileScaledAreaOffset?'relative':undefined,left:mobileScaledAreaOffset||undefined,display:'flex',justifyContent:'center'}}>
+        <div style={{overflow:'hidden',width:'100%',display:'flex',justifyContent:'center'}}>
           <div style={{
             zoom:scaleRatio<1?scaleRatio:'normal',
             width:DESIGN_WIDTH,
