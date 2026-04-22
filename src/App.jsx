@@ -125,11 +125,37 @@ function Ellipsis() {
   return <span>{'.'.repeat(dots)}</span>;
 }
 
+const DESIGN_WIDTH=1200;
+
+function _needsZoomRectCompensation(){
+  const zc=document.querySelector('[data-zoom-container]');
+  if(!zc)return false;
+  const rect=zc.getBoundingClientRect();
+  return rect.width>window.innerWidth*1.05;
+}
+function _getZoomCompensatedRect(el){
+  if(!el)return null;
+  const rect=el.getBoundingClientRect();
+  if(window.innerWidth>=DESIGN_WIDTH)return rect;
+  if(!_needsZoomRectCompensation())return rect;
+  const s=window.innerWidth/DESIGN_WIDTH;
+  return{
+    left:rect.left*s,
+    top:rect.top*s,
+    width:rect.width*s,
+    height:rect.height*s,
+    right:rect.right*s,
+    bottom:rect.bottom*s,
+    x:rect.x*s,
+    y:rect.y*s,
+  };
+}
+
 function getPlayerHandAnchorRect(pid){
   const handStripEl=pid===0
     ? document.querySelector('[data-self-hand-strip]')
     : document.querySelector(`[data-player-hand-strip="${pid}"]`);
-  return handStripEl?.getBoundingClientRect()||null;
+  return _getZoomCompensatedRect(handStripEl);
 }
 
 function getPlayerHandAnchorCenter(pid){
@@ -140,15 +166,15 @@ function getPlayerHandAnchorCenter(pid){
   if(pid===0){
     const handEl=document.querySelector('[data-hand-area]');
     if(handEl){
-      const r=handEl.getBoundingClientRect();
-      return {x:r.left+r.width/2,y:r.top+r.height/2};
+      const r=_getZoomCompensatedRect(handEl);
+      if(r)return {x:r.left+r.width/2,y:r.top+r.height/2};
     }
     return {x:window.innerWidth*0.5,y:window.innerHeight*0.8};
   }
   const el=document.querySelector(`[data-pid="${pid}"]`);
   if(el){
-    const r=el.getBoundingClientRect();
-    return {x:r.left+r.width/2,y:r.top+r.height*0.74};
+    const r=_getZoomCompensatedRect(el);
+    if(r)return {x:r.left+r.width/2,y:r.top+r.height*0.74};
   }
   return {x:window.innerWidth*0.5,y:window.innerHeight*0.25};
 }
@@ -159,7 +185,8 @@ function getPileAnchorCenter(selector,fallback){
   const visualPileEl=pileEl.firstElementChild instanceof HTMLElement
     ?pileEl.firstElementChild
     :pileEl;
-  const r=visualPileEl.getBoundingClientRect();
+  const r=_getZoomCompensatedRect(visualPileEl);
+  if(!r)return fallback;
   return {x:r.left+r.width/2,y:r.top+r.height/2};
 }
 
@@ -5017,8 +5044,8 @@ function CaveDuelAnim({anim,exiting}){
     const measure=()=>{
       const srcEl=document.querySelector(`[data-pid="${sourceIdx}"]`);
       const tgtEl=document.querySelector(`[data-pid="${targetIdx}"]`);
-      const srcR=srcEl?.getBoundingClientRect();
-      const tgtR=tgtEl?.getBoundingClientRect();
+      const srcR=_getZoomCompensatedRect(srcEl);
+      const tgtR=_getZoomCompensatedRect(tgtEl);
       const centerX=window.innerWidth/2;
       const centerY=window.innerHeight*0.44;
       const srcX=srcR?srcR.left+srcR.width/2:centerX-180;
@@ -5026,7 +5053,7 @@ function CaveDuelAnim({anim,exiting}){
       const tgtX=tgtR?tgtR.left+tgtR.width/2:centerX+180;
       const tgtY=tgtR?tgtR.top+tgtR.height*0.7:centerY+80;
       const winnerEl=winnerIdx!=null?document.querySelector(`[data-pid="${winnerIdx}"]`):null;
-      const winnerR=winnerEl?.getBoundingClientRect();
+      const winnerR=_getZoomCompensatedRect(winnerEl);
       const winX=winnerR?winnerR.left+winnerR.width/2:(winnerIdx===sourceIdx?srcX:(winnerIdx===targetIdx?tgtX:centerX));
       const winY=winnerR?winnerR.top+winnerR.height*0.72:(winnerIdx===sourceIdx?srcY:(winnerIdx===targetIdx?tgtY:centerY+120));
       setPts({centerX,centerY,srcX,srcY,tgtX,tgtY,winX,winY});
@@ -6440,7 +6467,7 @@ export default function Game(){
           let sx,sy;
           if(isSelf){
             // 从玩家手牌区域或左下角发射
-            const handRect=document.querySelector('[data-hand-area]')?.getBoundingClientRect();
+            const handRect=_getZoomCompensatedRect(document.querySelector('[data-hand-area]'));
             if(handRect){
               sx=handRect.left+handRect.width/2;
               sy=handRect.top+handRect.height*0.3;
@@ -6454,7 +6481,7 @@ export default function Game(){
             sy=60+Math.random()*40;
           }
           // 终点：弃牌堆中心
-          const dp=discardPileRef.current?.getBoundingClientRect();
+          const dp=_getZoomCompensatedRect(discardPileRef.current);
           const ex=dp?dp.left+dp.width/2:window.innerWidth/2;
           const ey=dp?dp.top+dp.height/2:window.innerHeight*0.45;
           // 随机化
@@ -6929,24 +6956,24 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
   useEffect(()=>{
     const update=()=>{
       if(showTutorial&&tutorialStep>=2&&tutorialStep<=4&&selfPanelRef.current){
-        const r=selfPanelRef.current.getBoundingClientRect();
-        setPanelRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+        const r=_getZoomCompensatedRect(selfPanelRef.current);
+        if(r)setPanelRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
       }
       if(showTutorial&&tutorialStep===5&&roleTextRef.current){
-        const r=roleTextRef.current.getBoundingClientRect();
-        setRoleTextRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+        const r=_getZoomCompensatedRect(roleTextRef.current);
+        if(r)setRoleTextRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
       }
       if(showTutorial&&(tutorialStep===7||tutorialStep===15)&&handAreaRef.current){
-        const r=handAreaRef.current.getBoundingClientRect();
-        setHandAreaRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+        const r=_getZoomCompensatedRect(handAreaRef.current);
+        if(r)setHandAreaRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
       }
       if(showTutorial&&(tutorialStep===9||tutorialStep===11)&&aiPanelAreaRef.current){
-        const r=aiPanelAreaRef.current.getBoundingClientRect();
-        setAiPanelAreaRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+        const r=_getZoomCompensatedRect(aiPanelAreaRef.current);
+        if(r)setAiPanelAreaRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
       }
       if(showTutorial&&(tutorialStep===12||tutorialStep===13)&&deckAreaRef.current){
-        const r=deckAreaRef.current.getBoundingClientRect();
-        setDeckAreaRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+        const r=_getZoomCompensatedRect(deckAreaRef.current);
+        if(r)setDeckAreaRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
       }
     };
     update();
@@ -6972,7 +6999,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         const pts=anim.hitIndices.map((pi,idx)=>{
           const el=document.querySelector(`[data-pid="${pi}"]`);
           if(el){
-            const r=el.getBoundingClientRect();
+            const r=_getZoomCompensatedRect(el);
             return{pi,cx:r.left+r.width/2,cy:r.top+r.height/2,animKey:`${stamp}-${pi}-${idx}`};
           }
           return{pi,cx:window.innerWidth/2,cy:window.innerHeight*0.3,animKey:`${stamp}-${pi}-${idx}`};
@@ -6989,12 +7016,12 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
       // 先测量位置，再触发 screenShake，避免震动影响测量
       requestAnimationFrame(()=>requestAnimationFrame(()=>{
         const srcEl=document.querySelector('[data-pid="0"]');
-        const srcR=srcEl?srcEl.getBoundingClientRect():{left:window.innerWidth*0.5,top:window.innerHeight*0.7,width:0,height:0};
+        const srcR=srcEl?_getZoomCompensatedRect(srcEl):{left:window.innerWidth*0.5,top:window.innerHeight*0.7,width:0,height:0};
         const srcX=srcR.left+srcR.width/2, srcY=srcR.top+srcR.height/2;
         const pts=anim.hitIndices.map(pi=>{
           const el=document.querySelector(`[data-pid="${pi}"]`);
           if(el){
-            const r=el.getBoundingClientRect();
+            const r=_getZoomCompensatedRect(el);
             const cx=r.left+r.width/2, cy=r.top+r.height/2;
             const ox=((pi*17+5)%22)-11, oy=((pi*13+7)%16)-8;
             return{pi,cx,cy,startX:srcX+ox,startY:srcY+oy};
@@ -7029,7 +7056,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
       requestAnimationFrame(()=>requestAnimationFrame(()=>{
         const el=document.querySelector(`[data-pid="${ti}"]`);
         if(el){
-          const r=el.getBoundingClientRect();
+          const r=_getZoomCompensatedRect(el);
           setHuntAnim({cx:r.left+r.width/2, cy:r.top+r.height/2});
         }else{
           setHuntAnim({cx:window.innerWidth/2, cy:window.innerHeight*0.25});
@@ -7040,7 +7067,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
       const bti=anim.targetIdx??1;
       requestAnimationFrame(()=>requestAnimationFrame(()=>{
         const bel=document.querySelector(`[data-pid="${bti}"]`);
-        if(bel){const br=bel.getBoundingClientRect();setBewitchAnim({cx:br.left+br.width/2,cy:br.top+br.height/2});}
+        if(bel){const br=_getZoomCompensatedRect(bel);setBewitchAnim({cx:br.left+br.width/2,cy:br.top+br.height/2});}
         else{setBewitchAnim({cx:window.innerWidth/2,cy:window.innerHeight*0.25});}
       }));
       setTimeout(()=>setBewitchAnim(null),1200);
@@ -7066,7 +7093,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
       }else{
         // godzone = 同一面板的上部（角色区域）
         const srcPanelEl=document.querySelector(`[data-pid="${fromPid}"]`);
-        const srcPanelRect=srcPanelEl?.getBoundingClientRect();
+        const srcPanelRect=_getZoomCompensatedRect(srcPanelEl);
         destX=srcX;
         destY=srcPanelRect?srcPanelRect.top+srcPanelRect.height*0.25:srcY*0.5;
       }
@@ -7079,7 +7106,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         const pts=await Promise.all(anim.hitIndices.map(async idx=>{
           const el=document.querySelector(`[data-pid="${idx}"]`);
           if(!el)return null;
-          const r=el.getBoundingClientRect();
+          const r=_getZoomCompensatedRect(el);
           let snapshotUrl=null;
           try{
             const canvas=await html2canvas(el,{
@@ -9071,7 +9098,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
   const mobileArmedGodTooltipRect=mobileArmedGodCardIdx!=null?(()=>{
     const wrapEl=mobileGodCardRefs.current.get(mobileArmedGodCardIdx);
     const cardEl=wrapEl?.firstElementChild||wrapEl;
-    return cardEl?.getBoundingClientRect?.()||null;
+    return _getZoomCompensatedRect(cardEl);
   })():null;
   const effectiveRole=me._nyaBorrow||me.role;
   const effectiveHandLimit=Math.max(0,(me._nyaHandLimit??4)-(me.handLimitDecrease||0));
@@ -11279,7 +11306,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
 
         {/* Scaled player areas wrapper */}
         <div style={{overflow:'hidden',width:'100%',display:'flex',justifyContent:'center'}}>
-          <div style={{
+          <div data-zoom-container style={{
             zoom:scaleRatio<1?scaleRatio:'normal',
             width:DESIGN_WIDTH,
             flexShrink:0
@@ -11373,7 +11400,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             {isMultiplayer&&(
               <div style={{position:'absolute',top:6,right:6,zIndex:50}}>
                 <button ref={emojiButtonRef} onClick={()=>{
-                  const rect=emojiButtonRef.current?.getBoundingClientRect();
+                  const rect=_getZoomCompensatedRect(emojiButtonRef.current);
                   if(rect){
                     setEmojiButtonPos({
                       top:rect.bottom+8,
@@ -11489,8 +11516,8 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
           const ghostMode=link.mode==='active'?null:link.mode;
           const sourceEl = document.querySelector(`[data-pid="${playerIndex}"]`);
           const partnerEl = document.querySelector(`[data-pid="${partnerIndex}"]`);
-          const sourceRect = sourceEl?.getBoundingClientRect();
-          const partnerRect = partnerEl?.getBoundingClientRect();
+          const sourceRect = _getZoomCompensatedRect(sourceEl);
+          const partnerRect = _getZoomCompensatedRect(partnerEl);
           if (!sourceRect || !partnerRect) return null;
           const x1 = sourceRect.left + sourceRect.width / 2;
           const y1 = sourceRect.top + sourceRect.height * 0.68;
