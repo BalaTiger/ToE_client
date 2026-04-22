@@ -159,6 +159,7 @@ function _getZoomCompensatedRect(el){
   if(!el)return null;
   const rect=el.getBoundingClientRect();
   if(window.innerWidth>=DESIGN_WIDTH)return rect;
+  if(!el.closest?.('[data-zoom-container]'))return rect;
   if(!_needsZoomRectCompensation())return rect;
   const s=window.innerWidth/DESIGN_WIDTH;
   return{
@@ -2779,7 +2780,9 @@ function buildAiHuntEventAnimQueue(evt, actorName){
       {players:evt.beforePlayers,log:beforeLog},
       {players:evt.afterPlayers,log:afterLog}
     );
-    const resultWithChunks=resultQueue.map(step=>({...step}));
+    const resultWithChunks=resultQueue
+      .filter(step=>!(evt.discardedCard&&step.type==='CARD_TRANSFER'&&step.fromPid===evt.hunterIdx&&step.dest==='discard'))
+      .map(step=>({...step}));
     if(followupMsgs.length){
       const firstVisibleIdx=resultWithChunks.findIndex(step=>step.type!=='STATE_PATCH');
       if(firstVisibleIdx>=0){
@@ -3280,8 +3283,8 @@ function DiscardMoveOverlay({anim,exiting}){
         left: startX,
         top: startY,
         transform: 'translate(-50%, -50%) scale(1)',
-        width: 62,
-        height: 84,
+        width: 70,
+        height: 94,
         borderRadius: 4,
         background: s?s.bg:'linear-gradient(135deg,#1e1208,#0e0804)',
         border: s?`1.5px solid ${s.borderBright}`:'1.5px solid #4a3010',
@@ -4632,11 +4635,27 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
   const HAND_CARD_WIDTH=showFaceUp?44:36;
   const HAND_CARD_HEIGHT=showFaceUp?58:50;
   const HAND_CARD_GAP=3;
-  const HAND_AREA_WIDTH=(HAND_CARD_WIDTH*4)+(HAND_CARD_GAP*3);
   const shouldFillFlatHand=handCards.length===4;
   const stretchedHandSlotWidth=`calc((100% - ${HAND_CARD_GAP*3}px) / 4)`;
+  const handStripRef=React.useRef(null);
+  const [handStripWidth,setHandStripWidth]=React.useState(0);
+  React.useLayoutEffect(()=>{
+    const el=handStripRef.current;
+    if(!el)return;
+    const update=()=>setHandStripWidth(el.clientWidth||0);
+    update();
+    if(typeof ResizeObserver==='undefined')return;
+    const ro=new ResizeObserver(update);
+    ro.observe(el);
+    return()=>ro.disconnect();
+  },[]);
+  const computedCardWidth=handStripWidth>0
+    ? Math.max(0,(handStripWidth-(HAND_CARD_GAP*3))/4)
+    : HAND_CARD_WIDTH;
+  const filledHandFrameStyle={width:'100%',minWidth:'100%',height:'auto',aspectRatio:`${HAND_CARD_WIDTH}/${HAND_CARD_HEIGHT}`};
+  const sharedHandFrameStyle=filledHandFrameStyle;
   const handOverlap=handCards.length>4
-    ? Math.max(0, Math.ceil(((handCards.length*HAND_CARD_WIDTH)-HAND_AREA_WIDTH)/(handCards.length-1)))
+    ? Math.max(0, Math.ceil(((handCards.length*computedCardWidth)-handStripWidth)/(handCards.length-1)))
     : 0;
   return(
     <div onClick={isSelectable?onSelect:undefined} style={{
@@ -4696,20 +4715,21 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
         alignItems:'flex-start',
         marginTop:5,
         minWidth:0,
-        width:shouldFillFlatHand?'100%':HAND_AREA_WIDTH,
+        width:'100%',
         maxWidth:'100%',
         overflow:'hidden',
-      }} data-player-hand-strip={playerIndex}>
+      }} data-player-hand-strip={playerIndex} ref={handStripRef}>
         {handCards.map((card,ci)=>(
           <div key={card.id||`hand-${playerIndex}-${ci}`} style={{
             marginLeft:shouldFillFlatHand?0:(ci===0?0:(handOverlap>0?-handOverlap:HAND_CARD_GAP)),
             flex:'0 0 auto',
+            width:shouldFillFlatHand?undefined:(handStripWidth>0?computedCardWidth:stretchedHandSlotWidth),
             position:'relative',
             zIndex:ci+1
           }}>
             {card._back
-              ?<DDCardBack small frameStyle={shouldFillFlatHand?{width:'100%',minWidth:'100%',height:'auto',aspectRatio:`${HAND_CARD_WIDTH}/${HAND_CARD_HEIGHT}`}:{}}/>
-              :<DDCard card={card} small onClick={onCardSelect?()=>onCardSelect(ci):undefined} highlight={!!onCardSelect} holderId={playerIndex} frameStyle={shouldFillFlatHand?{width:'100%',minWidth:'100%',height:'auto',aspectRatio:`${HAND_CARD_WIDTH}/${HAND_CARD_HEIGHT}`}:{}}/>}
+              ?<DDCardBack small frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/>
+              :<DDCard card={card} small onClick={onCardSelect?()=>onCardSelect(ci):undefined} highlight={!!onCardSelect} holderId={playerIndex} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/>}
           </div>
         ))}
       </div>
