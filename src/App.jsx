@@ -2721,6 +2721,24 @@ function buildAnimQueue(oldGs,newGs){
   if((newGs._earthquakeSeq||0)!==(oldGs._earthquakeSeq||0)){
     q.push({type:'EARTHQUAKE',msgs:newMsgs});
   }
+  const fullHandSwapMsg=newMsgs.find(m=>m.includes('交换了全部手牌'));
+  if(fullHandSwapMsg){
+    const swapMatch=fullHandSwapMsg.match(/^(.+?) 与 (.+?) 交换了全部手牌/);
+    const fromName=swapMatch?.[1];
+    const toName=swapMatch?.[2];
+    const resolveSwapPid=(name)=>{
+      if(!name)return-1;
+      if(name==='你')return 0;
+      return effectivePlayers.findIndex(p=>p?.name===name);
+    };
+    const fromPid=resolveSwapPid(fromName);
+    const toPid=resolveSwapPid(toName);
+    if(fromPid>=0&&toPid>=0&&oldGs.players[fromPid]&&oldGs.players[toPid]){
+      q.push({type:'CARD_TRANSFER',fromPid,dest:'player',toPid,count:oldGs.players[fromPid].hand.length});
+      q.push({type:'CARD_TRANSFER',fromPid:toPid,dest:'player',toPid:fromPid,count:oldGs.players[toPid].hand.length});
+      return q;
+    }
+  }
   // Detect hand card losses → CARD_TRANSFER
   const losers=effectivePlayers.filter((p,i)=>oldGs.players[i]&&p.hand.length<oldGs.players[i].hand.length);
   if(losers.length===1){
@@ -2753,6 +2771,28 @@ function buildAnimQueue(oldGs,newGs){
     });
   }
   return q;
+}
+
+function buildFullHandSwapTransferQueueFromLogs(logs, players){
+  const fullHandSwapMsg=(Array.isArray(logs)?logs:[]).find(
+    line=>typeof line==='string'&&line.includes('交换了全部手牌')
+  );
+  if(!fullHandSwapMsg||!Array.isArray(players))return [];
+  const swapMatch=fullHandSwapMsg.match(/^(.+?) 与 (.+?) 交换了全部手牌/);
+  const fromName=swapMatch?.[1];
+  const toName=swapMatch?.[2];
+  const resolveSwapPid=(name)=>{
+    if(!name)return-1;
+    if(name==='你')return 0;
+    return players.findIndex(p=>p?.name===name);
+  };
+  const fromPid=resolveSwapPid(fromName);
+  const toPid=resolveSwapPid(toName);
+  if(fromPid<0||toPid<0||!players[fromPid]||!players[toPid])return [];
+  return [
+    {type:'CARD_TRANSFER',fromPid,dest:'player',toPid,count:players[fromPid].hand.length},
+    {type:'CARD_TRANSFER',fromPid:toPid,dest:'player',toPid:fromPid,count:players[toPid].hand.length,msgs:[fullHandSwapMsg]},
+  ];
 }
 
 function buildAiHuntEventAnimQueue(evt, actorName){
@@ -6818,7 +6858,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         const hasTurnStartDraw=!!gs._playersBeforeThisDraw;
         const aiTurnDrawnCard=hasTurnStartDraw?(rawResult._animAiDrawnCard??rawResult._aiDrawnCard??gs._aiDrawnCard??gs._drawnCard??null):null;
         const aiTurnDiscarded=hasTurnStartDraw?isDrawnCardActuallyDiscarded(rawResult,aiTurnDrawnCard):false;
-        const fakeGs = ps => ({...gs, players: ps});
+        const fakeGs = (ps,log=gs.log) => ({...gs, players: ps, log});
         const queue=[];
         if(gs._preTurnPlayers&&Array.isArray(gs._preTurnStatLogs)&&gs._preTurnStatLogs.length){
           const preTurnQ=bindAnimLogChunks(
@@ -6830,7 +6870,14 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         if(gs._playersBeforeThisDraw) queue.push({type:'YOUR_TURN',name:gs.players[gs.currentTurn]?.name||'???',msgs:gs._turnStartLogs});
         if(aiTurnDrawnCard) queue.push({type:'DRAW_CARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn,msgs:gs._drawLogs});
         if(gs._playersBeforeThisDraw&&aiTurnDrawnCard){
-          const drawEffectQ=bindAnimLogChunks(buildAnimQueue(fakeGs(gs._playersBeforeThisDraw),gs),{statLogs:gs._statLogs});
+          const drawFullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(
+            [...(gs._drawLogs||[]),...(gs._statLogs||[])],
+            gs._playersBeforeThisDraw
+          );
+          const drawEffectQBase=bindAnimLogChunks(buildAnimQueue(fakeGs(gs._playersBeforeThisDraw),gs),{statLogs:gs._statLogs});
+          const drawEffectQ=drawFullHandSwapQ.length
+            ? [...drawFullHandSwapQ,...drawEffectQBase.filter(step=>step.type!=='CARD_TRANSFER')]
+            : drawEffectQBase;
           queue.push(...drawEffectQ);
           if(drawEffectQ.length){
             visualPlayersLockRef.current=copyPlayers(gs._playersBeforeThisDraw);
@@ -6845,6 +6892,14 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         if(aiTurnDiscarded&&aiTurnDrawnCard){
           queue.push({type:'DISCARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn});
           queue.push({type:'STATE_PATCH',players:gs.players,discard:gs.discard});
+        }
+        const fullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(nextLog.slice(oldLog.length),gs.players);
+        const actionStatQBase=buildAnimQueue(gs,fakeGs(newGs.players,nextLog));
+        const actionStatQ=fullHandSwapQ.length
+          ? [...fullHandSwapQ,...actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')]
+          : actionStatQBase;
+        if(actionStatQ.length){
+          queue.push(...actionStatQ);
         }
         if(rawResult._playersBeforeSkillAction){
           queue.push({
@@ -6882,7 +6937,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         const j=newMsgs.join(' ');
         // Helper: build a gs-like object with substituted players for buildAnimQueue
         // fakeGs: use gs.log as the baseline so buildAnimQueue correctly detects new messages
-        const fakeGs = ps => ({...gs, players: ps});
+        const fakeGs = (ps,log=gs.log) => ({...gs, players: ps, log});
         const hasTurnStartDraw=!!gs._playersBeforeThisDraw;
         const aiTurnDrawnCard=hasTurnStartDraw?(rawResult._animAiDrawnCard??rawResult._aiDrawnCard??gs._aiDrawnCard??gs._drawnCard??null):null;
         const aiTurnDiscarded=hasTurnStartDraw?isDrawnCardActuallyDiscarded(rawResult,aiTurnDrawnCard):false;
@@ -6900,7 +6955,14 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         if(aiTurnDrawnCard) queue.push({type:'DRAW_CARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn,msgs:gs._drawLogs});
         // 2b. Stat changes caused by THIS AI's drawn card (draw effects: gs._playersBeforeThisDraw → gs.players)
         if(gs._playersBeforeThisDraw&&aiTurnDrawnCard){
-          const drawEffectQ=bindAnimLogChunks(buildAnimQueue(fakeGs(gs._playersBeforeThisDraw),gs),{statLogs:gs._statLogs});
+          const drawFullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(
+            [...(gs._drawLogs||[]),...(gs._statLogs||[])],
+            gs._playersBeforeThisDraw
+          );
+          const drawEffectQBase=bindAnimLogChunks(buildAnimQueue(fakeGs(gs._playersBeforeThisDraw),gs),{statLogs:gs._statLogs});
+          const drawEffectQ=drawFullHandSwapQ.length
+            ? [...drawFullHandSwapQ,...drawEffectQBase.filter(step=>step.type!=='CARD_TRANSFER')]
+            : drawEffectQBase;
           queue.push(...drawEffectQ);
           if(drawEffectQ.length){
             visualPlayersLockRef.current=copyPlayers(gs._playersBeforeThisDraw);
@@ -6932,13 +6994,18 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
           if(m){const rd1=+m[1],rd2=+m[2],rh=+m[3];queue.push({type:'DICE_ROLL',d1:rd1,d2:rd2,heal:rh,rollerName:rawResult._aiName||gs.players[gs.currentTurn]?.name});}}
         // 4. Skill anim (if used)
         const P_actionEnd=rawResult._playersBeforeNextDraw||newGs.players;
-        const actionStatQ=buildAnimQueue(gs,fakeGs(P_actionEnd));
+        const fullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(newMsgs,gs.players);
+        const actionStatQBase=buildAnimQueue(gs,fakeGs(P_actionEnd,nextLog));
+        const actionStatQ=fullHandSwapQ.length
+          ? [...fullHandSwapQ,...actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')]
+          : actionStatQBase;
         const huntEventQueue=(rawResult._aiHuntEvents||[]).flatMap(evt=>buildAiHuntEventAnimQueue(evt,gs.players[gs.currentTurn]?.name||'???'));
         let orderedActionQ=null;
         const hasActualSwap=newMsgs.some(m=>/^.+对 .+ 【掉包】/.test(m));
+        const hasFullHandSwap=newMsgs.some(m=>m.includes('交换了全部手牌'));
         if(hasActualSwap) queue.push({type:'SKILL_SWAP',msgs:extractSkillLogs(newMsgs,'swap')});
         else if(huntEventQueue.length){
-          orderedActionQ=huntEventQueue;
+          orderedActionQ=hasFullHandSwap?[...actionStatQ,...huntEventQueue]:huntEventQueue;
         }
         else if(j.includes('【追捕】')||(j.includes('追捕')&&!j.includes('停止了追捕')&&!j.includes('放弃追捕'))){
           const huntMsg=newMsgs.find(m=>m.includes('【追捕】')||m.includes('追捕'));
@@ -9005,6 +9072,8 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
     const card=gs.abilityData?.zoneSwapCard;
     if(!card)return;
     const fromRest=gs.abilityData?.fromRest;
+    const myHandCountBefore=gs.players?.[0]?.hand?.length||0;
+    const targetHandCountBefore=gs.players?.[ti]?.hand?.length||0;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
     const res=applyFx(card,0,ti,P,D,Disc,gs);
     P=res.P;D=res.D;Disc=res.Disc;
@@ -9021,8 +9090,13 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
       ...(fromRest?{fromRest:true}:{}),
       ...(gs.abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:gs.abilityData.cthDrawsRemaining}:{}),
     }};
-    if(fromRest){_cthContinueRestDraws(newGs);return;}
-    setGs(newGs);
+    const swapMsgs=extractSkillLogs(L.slice(gs.log.length),'swap');
+    const swapTransfer1={type:'CARD_TRANSFER',fromPid:0,dest:'player',toPid:ti,count:myHandCountBefore};
+    const swapTransfer2={type:'CARD_TRANSFER',fromPid:ti,dest:'player',toPid:0,count:targetHandCountBefore,msgs:[L[L.length-1]]};
+    const statQ=buildAnimQueue(gs,newGs).filter(a=>a.type!=='CARD_TRANSFER');
+    const queue=[{type:'SKILL_SWAP',msgs:swapMsgs},swapTransfer1,swapTransfer2,...statQ];
+    if(fromRest){triggerAnimQueue(queue,null,()=>_cthContinueRestDraws(newGs));return;}
+    triggerAnimQueue(queue,newGs);
   }
   function peekHandSelectTarget(ti){
     // 偷看手牌：选择目标角色后，偷看其一张手牌
@@ -9255,6 +9329,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       roseThornSourceId:roseThornSource,
       roseThornSourceName:sourcePlayer.name,
     }));
+    const giftedCount=gifted.length;
     targetPlayer.hand.push(...gifted);
     const L=[...gs.log,`【玫瑰倒刺】${sourcePlayer.name} 将全部手牌交给了 ${targetPlayer.name}`];
     const nextAbilityData={
@@ -9297,8 +9372,13 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       currentTurn: gs.currentTurn,
       abilityData: nextAbilityData,
     };
-    if (gs.abilityData?.fromRest) { _cthContinueRestDraws(nextGs); return; }
-    setGs(nextGs);
+    const statQ=buildAnimQueue(gs,nextGs).filter(a=>a.type!=='CARD_TRANSFER');
+    const queue=[
+      {type:'CARD_TRANSFER',fromPid:roseThornSource,dest:'player',toPid:ti,count:giftedCount,msgs:[L[L.length-1]]},
+      ...statQ
+    ];
+    if (gs.abilityData?.fromRest) { triggerAnimQueue(queue,null,()=>_cthContinueRestDraws(nextGs)); return; }
+    triggerAnimQueue(queue,nextGs);
   }
 
   function firstComePickSelectCard(cardIndex){
@@ -10204,7 +10284,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         queue.push({type:'DRAW_CARD',card:card,triggerName:'你',targetPid:0});
       });
       // 添加状态变化动画
-      const statQ=buildAnimQueue(gs,newGs);
+    const statQ=buildAnimQueue(gs,newGs).filter(a=>a.type!=='CARD_TRANSFER');
       queue.push(...statQ);
       // 如果下一回合是玩家回合，添加 YOUR_TURN 动画
       if(newGs.currentTurn===0&&newGs.drawReveal?.card){
@@ -10299,6 +10379,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       activeDebugConfig.debugForceGodCardKey,
       activeDebugConfig.debugPlayerRole,
     );
+    roseThornPrevRef.current=null;
     animQueueRef.current=[];
     pendingGsRef.current=null;
     setAnimExiting(false);
@@ -10316,6 +10397,16 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     setGs({...newGs,phase:'ACTION',drawReveal:null});
     setAnim(null);
     setRoleRevealAnim({role:newGs.players[0].role,pendingGs:newGs});
+  }
+  function returnToMainMenu(){
+    if(isMultiplayer)return;
+    roseThornPrevRef.current=null;
+    animQueueRef.current=[];
+    pendingGsRef.current=null;
+    setAnim(null);
+    setAnimExiting(false);
+    setCardTransfers([]);
+    setGs(null);
   }
   function _onRoleRevealDone(pendingGs){
     setRoleRevealAnim(null);
@@ -10478,7 +10569,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     PLAYER_WIN_PENDING:'✦ 你已集齐全部编号！',
     DRAW_REVEAL:         isLocalDrawDecision?'摸牌 — 请确认':(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 摸牌…`:''),
     TREASURE_WIN:         '✦ 你已集齐全部编号！',
-    ZONE_SWAP_SELECT_TARGET: `【强征献礼】选择要交换全部手牌的目标`,
+    ZONE_SWAP_SELECT_TARGET: `【触底反弹】选择要交换全部手牌的目标`,
     DAMAGE_LINK_SELECT_TARGET:'请选择绳索连接目标',
     CAVE_DUEL_SELECT_TARGET:'请选择“穴居人战争”的目标',
     CAVE_DUEL_SELECT_CARD: `⚠ 和${gs.players[gs.abilityData?.caveDuelSource]?.name||'对手'}来一场穴居人式的对决！尽可能亮出数字编号大的牌取胜，如果落败将失去这张牌`,
@@ -10775,7 +10866,27 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         <div style={{display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid #2a1a08',paddingBottom:6}}>
           <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:baseFontSizes.title,fontWeight:700,color:'#c8a96e',letterSpacing:isMobile?1:2}}>邪神的宝藏</div>
           <div style={{fontFamily:"'Cinzel',serif",fontSize:baseFontSizes.subtitle,color:'#b89858',letterSpacing:isMobile?1:2,marginTop:1}}>Treasures of Evils</div>
-          
+          {!isMultiplayer&&(
+            <button
+              onClick={returnToMainMenu}
+              style={{
+                marginLeft:'auto',
+                padding:isMobile?'4px 10px':'5px 12px',
+                background:'#140c06',
+                border:'1.5px solid #5a3a18',
+                color:'#c8a96e',
+                fontFamily:"'Cinzel',serif",
+                fontWeight:700,
+                fontSize:baseFontSizes.small,
+                borderRadius:3,
+                cursor:'pointer',
+                letterSpacing:isMobile?0.5:1,
+                textTransform:'uppercase',
+              }}
+            >
+              返回主界面
+            </button>
+          )}
         </div>
 
         {/* Scaled player areas wrapper */}
