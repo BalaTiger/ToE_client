@@ -1,4 +1,5 @@
 import React from 'react';
+import { CS, GOD_CS } from '../../constants/card';
 
 function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth}){
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
@@ -80,4 +81,74 @@ function HoundsTimerBadge({secondsLeft,active}){
   );
 }
 
-export { HoundsTimerBadge, StatBar };
+const CARD_W=36,CARD_H=50;
+const CARD_BACK_STYLE={
+  width:CARD_W,height:CARD_H,borderRadius:3,
+  background:'#100c08',
+  border:'1.5px solid #3a2510',
+  boxShadow:'inset 0 0 8px #0a0600',
+  position:'absolute',
+};
+const DISCARD_ROTATIONS=[-14,-6,10,3,-18,7,-3,12,-9,5,-15,8];
+const DISCARD_OFFSETS=[
+  {x:0,y:0},{x:4,y:-3},{x:-3,y:2},{x:6,y:1},{x:-5,y:-4},{x:2,y:5},
+  {x:-4,y:3},{x:5,y:-2},{x:-2,y:4},{x:3,y:-5},{x:-6,y:1},{x:1,y:3},
+];
+
+function DiscardPile({count,topCard,scale=1}){
+  const vis=Math.min(count,7);
+  const cardW=Math.round(CARD_W*scale);
+  const cardH=Math.round(CARD_H*scale);
+  const outerW=Math.round((CARD_W+30)*scale);
+  const outerH=Math.round((CARD_H+20)*scale);
+  if(vis===0) return(
+    <div style={{width:outerW,height:outerH,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div style={{width:cardW,height:cardH,borderRadius:3,border:'1px dashed #2a1a08',background:'transparent'}}/>
+    </div>
+  );
+  const s=topCard&&CS[topCard.letter]?CS[topCard.letter]:GOD_CS;
+  return(
+    <div style={{width:outerW,height:outerH,position:'relative',flexShrink:0}}>
+      {Array(vis).fill(0).map((_,i)=>{
+        const rot=DISCARD_ROTATIONS[i%DISCARD_ROTATIONS.length];
+        const off=DISCARD_OFFSETS[i%DISCARD_OFFSETS.length];
+        const isTop=i===vis-1;
+        return(
+          <div key={i} style={{
+            ...CARD_BACK_STYLE,
+            width:cardW,height:cardH,
+            left:Math.round((15+off.x)*scale),top:Math.round((10+off.y)*scale),
+            transform:`rotate(${rot}deg)`,
+            ...(isTop&&topCard?{
+              background:s.bg,
+              border:`1.5px solid ${s.borderBright}`,
+              boxShadow:`0 0 6px ${s.glow}66`,
+            }:{}),
+            zIndex:i,
+          }}>
+            {isTop&&topCard&&(
+              <div style={{
+                position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:`${Math.round(3*scale)}px ${Math.round(2*scale)}px`,textAlign:'center',lineHeight:1.1,
+              }}>
+                <div style={{
+                  fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:Math.round(topCard.isGod?10*scale:11*scale),letterSpacing:topCard.isGod?1:0,
+                }}>
+                  {topCard.isGod?(topCard.godKey||'GOD'):topCard.key}
+                </div>
+                {topCard.isGod&&topCard.name&&(
+                  <div style={{
+                    marginTop:Math.round(2*scale),fontFamily:"'Cinzel',serif",fontWeight:600,color:'#e8cc88',fontSize:Math.round(5*scale),
+                  }}>
+                    {topCard.name}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export { HoundsTimerBadge, StatBar, DiscardPile };

@@ -1,6 +1,6 @@
 import { GodTooltip, AreaTooltip, useCardHoverTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG } from './components/cards';
 import { GodChoiceModal, NyaBorrowModal, DrawRevealModal, TreasureDodgeModal, PeekHandModal, TortoiseOracleModal, AboutModal, FullLogModal, RoadmapModal } from './components/modals';
-import { HoundsTimerBadge, StatBar } from './components/board';
+import { HoundsTimerBadge, StatBar, DiscardPile } from './components/board';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import ReactDOM, { createPortal } from "react-dom";
 import html2canvas from "html2canvas";
@@ -229,6 +229,7 @@ function getPileAnchorCenter(selector,fallback){
 // ══════════════════════════════════════════════════════════════
 const cardsHuntMatch=(a,b)=>{
   if(!a||!b)return false;
+  if(!isZoneCard(a)||!isZoneCard(b))return false;
   if(isBlankZoneCard(a)||isBlankZoneCard(b))return true;
   return a.letter===b.letter||a.number===b.number;
 };
@@ -1573,8 +1574,8 @@ function aiStep(gs){
 
   const buildReturnPack = (nextGs, P_afterAction) => ({
     ...nextGs,
-    _aiDrawnCard: gs._aiDrawnCard ?? gs._drawnCard ?? null,
-    _discardedDrawnCard: gs._discardedDrawnCard ?? false,
+    _animAiDrawnCard: gs._aiDrawnCard ?? gs._drawnCard ?? null,
+    _animDiscardedDrawnCard: gs._discardedDrawnCard ?? false,
     _aiName: ai.name,
     _playersBeforeNextDraw: P_afterAction,
     _playersBeforeSkillAction: playersBeforeSkillAction,
@@ -2116,7 +2117,7 @@ function aiStep(gs){
       if(pool.length){
         if(swapTargetOverride!=null){
           tgt=P[swapTargetOverride.targetIdx];
-        }else if(myProgress>=7){
+        }else if(myNonGod.length>=7){
           tgt=pool[0|Math.random()*pool.length];
         }else{
           const myL=new Set(myNonGod.map(c=>c.letter));
@@ -2174,7 +2175,7 @@ function aiStep(gs){
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
     const _P_afterAction=copyPlayers(P);
     const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:gs.skillUsed});
-    return{...nextGs,_aiDrawnCard:gs._aiDrawnCard??gs._drawnCard??null,_discardedDrawnCard:gs._discardedDrawnCard??false,_aiName:ai.name,_playersBeforeNextDraw:_P_afterAction,_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard,_aiHuntEvents:aiHuntEvents};
+    return{...nextGs,_animAiDrawnCard:gs._aiDrawnCard??gs._drawnCard??null,_animDiscardedDrawnCard:gs._discardedDrawnCard??false,_aiName:ai.name,_playersBeforeNextDraw:_P_afterAction,_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard,_aiHuntEvents:aiHuntEvents};
   }
   const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
   const aiHandLimit=P[ct]._nyaHandLimit??4;
@@ -2196,7 +2197,7 @@ function aiStep(gs){
     throw new Error(`${ai.name} 回合收尾失败: ${e?.message||'未知错误'}`);
   }
 
-  return{...nextGs,_aiDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?null:(gs._aiDrawnCard??gs._drawnCard??null),_discardedDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?false:(gs._discardedDrawnCard??false),_aiName:ai.name,_playersBeforeNextDraw:_P_afterAction,_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard,_aiHuntEvents:aiHuntEvents};
+  return{...nextGs,_animAiDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?null:(gs._aiDrawnCard??gs._drawnCard??null),_animDiscardedDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?false:(gs._discardedDrawnCard??false),_aiName:ai.name,_playersBeforeNextDraw:_P_afterAction,_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard,_aiHuntEvents:aiHuntEvents};
 }
 
 // 检定牌堆
@@ -2685,7 +2686,10 @@ function buildPlayerTurnDrawQueue(oldGs,newGs,seedQueue=[]){
 
 function buildAnimQueue(oldGs,newGs){
   const q=[];
-  const newMsgs=newGs.log.slice(oldGs.log.length);
+  const newInspectionEvents=(newGs?._inspectionEvents||[]).filter(ev=>ev?.seq>(oldGs?._inspectionSeq||0));
+  const effectivePlayers=newInspectionEvents[0]?.beforePlayers||newGs.players;
+  const effectiveLog=newInspectionEvents[0]?.beforeLog||newGs.log;
+  const newMsgs=effectiveLog.slice(oldGs.log.length);
   // 当回合交接时因首牌强制触发效果（如扭伤）直接导致游戏结束，必须补全飞牌和回合展示动画
   if(newGs.gameOver && newGs.currentTurn !== oldGs.currentTurn){
     const dCard = newGs._aiDrawnCard || newGs._drawnCard || newGs.drawReveal?.card;
@@ -2694,12 +2698,12 @@ function buildAnimQueue(oldGs,newGs){
       q.push({type:'DRAW_CARD', card: dCard, triggerName: newGs.players[newGs.currentTurn]?.name||'???', targetPid: newGs.currentTurn, msgs: newGs._drawLogs||[]});
     }
   }
-  const deathIdx=newGs.players.reduce((acc,p,i)=>{if(oldGs.players[i]&&!oldGs.players[i].isDead&&p.isDead)acc.push(i);return acc;},[]);
-  const _ts=newGs.players.map(p=>({hp:p.hp,san:p.san,isDead:p.isDead}));
-  const hpHealIdx=newGs.players.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.hp>oldGs.players[i].hp)acc.push(i);return acc;},[]);
-  const sanHealIdx=newGs.players.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.san>oldGs.players[i].san)acc.push(i);return acc;},[]);
+  const deathIdx=effectivePlayers.reduce((acc,p,i)=>{if(oldGs.players[i]&&!oldGs.players[i].isDead&&p.isDead)acc.push(i);return acc;},[]);
+  const _ts=effectivePlayers.map(p=>({hp:p.hp,san:p.san,isDead:p.isDead}));
+  const hpHealIdx=effectivePlayers.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.hp>oldGs.players[i].hp)acc.push(i);return acc;},[]);
+  const sanHealIdx=effectivePlayers.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.san>oldGs.players[i].san)acc.push(i);return acc;},[]);
   const sameHealTargets=hpHealIdx.length&&sanHealIdx.length&&hpHealIdx.length===sanHealIdx.length&&hpHealIdx.every((v,i)=>v===sanHealIdx[i]);
-  const hpHitIdx=newGs.players.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.hp<oldGs.players[i].hp)acc.push(i);return acc;},[]);
+  const hpHitIdx=effectivePlayers.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.hp<oldGs.players[i].hp)acc.push(i);return acc;},[]);
   if(hpHitIdx.length) q.push({type:'HP_DAMAGE',msgs:newMsgs,hitIndices:hpHitIdx,targetStats:_ts});
   if(sameHealTargets){
     q.push({type:'HP_SAN_HEAL',msgs:newMsgs,hitIndices:hpHealIdx,targetStats:_ts});
@@ -2707,7 +2711,7 @@ function buildAnimQueue(oldGs,newGs){
     if(hpHealIdx.length) q.push({type:'HP_HEAL',msgs:newMsgs,hitIndices:hpHealIdx,targetStats:_ts});
     if(sanHealIdx.length) q.push({type:'SAN_HEAL',msgs:newMsgs,hitIndices:sanHealIdx,targetStats:_ts});
   }
-  const sanHitIdx=newGs.players.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.san<oldGs.players[i].san)acc.push(i);return acc;},[]);
+  const sanHitIdx=effectivePlayers.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.san<oldGs.players[i].san)acc.push(i);return acc;},[]);
   if(sanHitIdx.length) q.push({type:'SAN_DAMAGE',msgs:newMsgs,hitIndices:sanHitIdx,targetStats:_ts});
   if(deathIdx.length){
     q.push({type:'GUILLOTINE',msgs:newMsgs,hitIndices:deathIdx,targetStats:_ts});
@@ -2718,33 +2722,33 @@ function buildAnimQueue(oldGs,newGs){
     q.push({type:'EARTHQUAKE',msgs:newMsgs});
   }
   // Detect hand card losses → CARD_TRANSFER
-  const losers=newGs.players.filter((p,i)=>oldGs.players[i]&&p.hand.length<oldGs.players[i].hand.length);
+  const losers=effectivePlayers.filter((p,i)=>oldGs.players[i]&&p.hand.length<oldGs.players[i].hand.length);
   if(losers.length===1){
     // 普通单向手牌减少（追捕没收、蛊惑、弃牌等）
-    const li=newGs.players.indexOf(losers[0]);
-    const count=(oldGs.players[li].hand.length-newGs.players[li].hand.length);
+    const li=effectivePlayers.indexOf(losers[0]);
+    const count=(oldGs.players[li].hand.length-effectivePlayers[li].hand.length);
     let dest='discard',toPid=null;
-    for(let j=0;j<newGs.players.length;j++){
+    for(let j=0;j<effectivePlayers.length;j++){
       if(j===li||!oldGs.players[j])continue;
-      if(newGs.players[j].hand.length>oldGs.players[j].hand.length){dest='player';toPid=j;break;}
+      if(effectivePlayers[j].hand.length>oldGs.players[j].hand.length){dest='player';toPid=j;break;}
     }
     if(dest==='discard'){
       const oldGZ=oldGs.players[li].godZone?.length||0;
-      const newGZ=newGs.players[li].godZone?.length||0;
+      const newGZ=effectivePlayers[li].godZone?.length||0;
       if(newGZ>oldGZ)dest='godzone';
     }
     // 死亡角色的手牌放入弃牌堆时不生成飞牌动画（追捕击杀的飞牌动画在 buildAiHuntEventAnimQueue 中单独处理）
-    if (!newGs.players[li]?.isDead) {
+    if (!effectivePlayers[li]?.isDead) {
       q.push({type:'CARD_TRANSFER',fromPid:li,dest,toPid,count});
     }
   }else if(losers.length===2){
     // 双向交换（掉包）：为双方各生成一条飞牌动画
     // A→B（发动者把牌给目标），B→A（目标的牌到发动者）
     losers.forEach(loser=>{
-      const li=newGs.players.indexOf(loser);
-      const toPid=newGs.players.findIndex((p,j)=>j!==li&&oldGs.players[j]&&p.hand.length>oldGs.players[j].hand.length);
+      const li=effectivePlayers.indexOf(loser);
+      const toPid=effectivePlayers.findIndex((p,j)=>j!==li&&oldGs.players[j]&&p.hand.length>oldGs.players[j].hand.length);
       if(toPid<0)return;
-      const count=oldGs.players[li].hand.length-newGs.players[li].hand.length;
+      const count=oldGs.players[li].hand.length-effectivePlayers[li].hand.length;
       q.push({type:'CARD_TRANSFER',fromPid:li,dest:'player',toPid,count});
     });
   }
@@ -4863,66 +4867,6 @@ const CARD_BACK_STYLE={
   boxShadow:'0 1px 4px #0008',
   position:'absolute',
 };
-const DISCARD_ROTATIONS=[-14,-6,10,3,-18,7,-3,12,-9,5,-15,8];
-const DISCARD_OFFSETS=[
-  {x:0,y:0},{x:4,y:-3},{x:-3,y:2},{x:6,y:1},{x:-5,y:-4},{x:2,y:5},
-  {x:-4,y:3},{x:5,y:-2},{x:-2,y:4},{x:3,y:-5},{x:-6,y:1},{x:1,y:3},
-];
-function DiscardPile({count,topCard,scale=1}){
-  const vis=Math.min(count,7);
-  const cardW=Math.round(CARD_W*scale);
-  const cardH=Math.round(CARD_H*scale);
-  const outerW=Math.round((CARD_W+30)*scale);
-  const outerH=Math.round((CARD_H+20)*scale);
-  if(vis===0) return(
-    <div style={{width:outerW,height:outerH,display:'flex',alignItems:'center',justifyContent:'center'}}>
-      <div style={{width:cardW,height:cardH,borderRadius:3,border:'1px dashed #2a1a08',background:'transparent'}}/>
-    </div>
-  );
-  const s=topCard&&CS[topCard.letter]?CS[topCard.letter]:GOD_CS;
-  return(
-    <div style={{width:outerW,height:outerH,position:'relative',flexShrink:0}}>
-      {Array(vis).fill(0).map((_,i)=>{
-        const rot=DISCARD_ROTATIONS[i%DISCARD_ROTATIONS.length];
-        const off=DISCARD_OFFSETS[i%DISCARD_OFFSETS.length];
-        const isTop=i===vis-1;
-        return(
-          <div key={i} style={{
-            ...CARD_BACK_STYLE,
-            width:cardW,height:cardH,
-            left:Math.round((15+off.x)*scale),top:Math.round((10+off.y)*scale),
-            transform:`rotate(${rot}deg)`,
-            ...(isTop&&topCard?{
-              background:s.bg,
-              border:`1.5px solid ${s.borderBright}`,
-              boxShadow:`0 0 6px ${s.glow}66`,
-            }:{}),
-            zIndex:i,
-          }}>
-            {isTop&&topCard&&(
-              <div style={{
-                position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:`${Math.round(3*scale)}px ${Math.round(2*scale)}px`,textAlign:'center',lineHeight:1.1,
-              }}>
-                <div style={{
-                  fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:Math.round(topCard.isGod?10*scale:11*scale),letterSpacing:topCard.isGod?1:0,
-                }}>
-                  {topCard.isGod?(topCard.godKey||'GOD'):topCard.key}
-                </div>
-                {topCard.isGod&&topCard.name&&(
-                  <div style={{
-                    marginTop:Math.round(2*scale),fontFamily:"'Cinzel',serif",fontWeight:600,color:'#e8cc88',fontSize:Math.round(5*scale),
-                  }}>
-                    {topCard.name}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 function DeckPile({count,scale=1}){
   const vis=Math.min(count,7);
   const cardW=Math.round(CARD_W*scale);
@@ -5301,6 +5245,7 @@ function useGameAudio(isBattleScreen){
 
 export default function Game(){
   const[gs,setGs]=useState(null);
+  const[visualDiscard,setVisualDiscard]=useState([]);
   const[modal,setModal]=useState(null); // 'about' | 'roadmap' | null
   const[privatePeek,setPrivatePeek]=useState(null); // {card,targetName}
   const [serverAnnouncement, setServerAnnouncement] = useState(null);
@@ -6224,6 +6169,29 @@ export default function Game(){
   const visibleLogCountRef=useRef(Array.isArray(gs?.log)?gs.log.length:0);
   const visibleLogAuthorityRef=useRef(Array.isArray(gs?.log)?gs.log:[]);
   const shakeTimerRef=useRef(null);
+
+  useEffect(()=>{
+    if(typeof document==='undefined')return;
+    const handleVisibilityChange=()=>{
+      if(document.visibilityState!=='visible')return;
+      clearTimeout(shakeTimerRef.current);
+      setSwapAnim(false);
+      setHuntAnim(null);
+      setBewitchAnim(null);
+      setCardTransfers([]);
+      setKnifeTargets([]);
+      setHitIndices([]);
+      setSanTargets([]);
+      setSanHitIndices([]);
+      setHpHealIndices([]);
+      setSanHealIndices([]);
+      setGuillotineTargets([]);
+      setScreenShake(false);
+      setDeathShake(false);
+    };
+    document.addEventListener('visibilitychange',handleVisibilityChange);
+    return()=>document.removeEventListener('visibilitychange',handleVisibilityChange);
+  },[]);
   const lastInspectionSeqRef=useRef(0);
   const [houndsSecLeft,setHoundsSecLeft]=useState(null);
 
@@ -6298,6 +6266,23 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
 
   const shouldDeferLogSync=useCallback((stateLike)=>{
     return !!stateLike?._playersBeforeThisDraw;
+  },[]);
+
+  const getVisualDiscardForState=useCallback((stateLike)=>{
+    const discard=[...(stateLike?.discard||[])];
+    if(stateLike?._playersBeforeThisDraw&&stateLike?._drawnCard&&stateLike?._discardedDrawnCard){
+      return removeCardsFromDiscard(discard,[stateLike._drawnCard]);
+    }
+    return discard;
+  },[]);
+
+  const isDrawnCardActuallyDiscarded=useCallback((stateLike,drawnCard)=>{
+    if(!(stateLike?._animDiscardedDrawnCard ?? stateLike?._discardedDrawnCard) || !drawnCard)return false;
+    return (stateLike?.discard||[]).some(card=>{
+      if(card===drawnCard)return true;
+      if(card?.id!=null&&drawnCard?.id!=null)return card.id===drawnCard.id;
+      return card?.key===drawnCard?.key&&card?.name===drawnCard?.name&&card?.godKey===drawnCard?.godKey;
+    });
   },[]);
 
   useEffect(()=>{if(logRef.current)logRef.current.scrollTop=logRef.current.scrollHeight;},[visibleLog.length]);
@@ -6641,6 +6626,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
       if(next.type==='STATE_PATCH'){
         revealAnimLogs(next);
         visualPlayersLockRef.current=null;
+        setVisualDiscard([...(next.discard||[])]);
         setGs(prev=>prev?{...prev,players:copyPlayers(next.players||prev.players),discard:[...(next.discard||prev.discard)]}:prev);
         advanceQueue();
       }else if(next.type==='CTH_CONTINUE'){
@@ -6673,6 +6659,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
       if(callback){
         callback();
       }else if(next){
+        setVisualDiscard(getVisualDiscardForState(next));
         if(suppressNextBroadcastRef.current){
           // This pendingGs came from a received state; don't echo it back to server
           suppressNextBroadcastRef.current=false;
@@ -6829,8 +6816,8 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         const nextLog=Array.isArray(newGs.log)?newGs.log:oldLog;
         const {currentTurnLogs}=splitTransitionLogs(oldLog,nextLog);
         const hasTurnStartDraw=!!gs._playersBeforeThisDraw;
-        const aiTurnDrawnCard=hasTurnStartDraw?(rawResult._aiDrawnCard??gs._aiDrawnCard??gs._drawnCard??null):null;
-        const aiTurnDiscarded=hasTurnStartDraw?!!rawResult._discardedDrawnCard:false;
+        const aiTurnDrawnCard=hasTurnStartDraw?(rawResult._animAiDrawnCard??rawResult._aiDrawnCard??gs._aiDrawnCard??gs._drawnCard??null):null;
+        const aiTurnDiscarded=hasTurnStartDraw?isDrawnCardActuallyDiscarded(rawResult,aiTurnDrawnCard):false;
         const fakeGs = ps => ({...gs, players: ps});
         const queue=[];
         if(gs._preTurnPlayers&&Array.isArray(gs._preTurnStatLogs)&&gs._preTurnStatLogs.length){
@@ -6847,12 +6834,17 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
           queue.push(...drawEffectQ);
           if(drawEffectQ.length){
             visualPlayersLockRef.current=copyPlayers(gs._playersBeforeThisDraw);
-            queue.push({type:'STATE_PATCH',players:gs.players,discard:gs.discard});
+            queue.push({
+              type:'STATE_PATCH',
+              players:gs.players,
+              discard:aiTurnDiscarded?removeCardsFromDiscard(gs.discard,[aiTurnDrawnCard]):gs.discard
+            });
           }
         }
         // Add discard anim if AI chose to discard the drawn card
         if(aiTurnDiscarded&&aiTurnDrawnCard){
           queue.push({type:'DISCARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn});
+          queue.push({type:'STATE_PATCH',players:gs.players,discard:gs.discard});
         }
         if(rawResult._playersBeforeSkillAction){
           queue.push({
@@ -6892,8 +6884,8 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         // fakeGs: use gs.log as the baseline so buildAnimQueue correctly detects new messages
         const fakeGs = ps => ({...gs, players: ps});
         const hasTurnStartDraw=!!gs._playersBeforeThisDraw;
-        const aiTurnDrawnCard=hasTurnStartDraw?(rawResult._aiDrawnCard??gs._aiDrawnCard??gs._drawnCard??null):null;
-        const aiTurnDiscarded=hasTurnStartDraw?!!rawResult._discardedDrawnCard:false;
+        const aiTurnDrawnCard=hasTurnStartDraw?(rawResult._animAiDrawnCard??rawResult._aiDrawnCard??gs._aiDrawnCard??gs._drawnCard??null):null;
+        const aiTurnDiscarded=hasTurnStartDraw?isDrawnCardActuallyDiscarded(rawResult,aiTurnDrawnCard):false;
         const {currentTurnLogs}=splitTransitionLogs(oldLog,nextLog);
         const queue=[];
         if(gs._preTurnPlayers&&Array.isArray(gs._preTurnStatLogs)&&gs._preTurnStatLogs.length){
@@ -6912,12 +6904,17 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
           queue.push(...drawEffectQ);
           if(drawEffectQ.length){
             visualPlayersLockRef.current=copyPlayers(gs._playersBeforeThisDraw);
-            queue.push({type:'STATE_PATCH',players:gs.players,discard:gs.discard});
+            queue.push({
+              type:'STATE_PATCH',
+              players:gs.players,
+              discard:aiTurnDiscarded?removeCardsFromDiscard(gs.discard,[aiTurnDrawnCard]):gs.discard
+            });
           }
         }
         // 2c. Discard anim if AI chose to discard the drawn card
         if(aiTurnDiscarded&&aiTurnDrawnCard){
           queue.push({type:'DISCARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn});
+          queue.push({type:'STATE_PATCH',players:gs.players,discard:gs.discard});
         }
         if(_playersBeforeSkillAction){
           queue.push({
@@ -7339,6 +7336,11 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
   const mpTurnTimeoutRef=useRef(null);
   const mpTurnStartRef=useRef(null);    // Date.now() when current turn timer started
   const mpTurnPausedElapsedRef=useRef(null); // ms elapsed before HUNT_WAIT_REVEAL pause
+  useEffect(()=>{
+    if(!gs)return;
+    if(anim||animQueueRef.current.length>0||pendingGsRef.current)return;
+    setVisualDiscard(getVisualDiscardForState(gs));
+  },[gs,gs?.discard,anim,getVisualDiscardForState]);
   useEffect(()=>{
     if(!isMultiplayer||!gs||gs.gameOver||!isLocalCurrentTurn(gs))return;
     mpTurnPausedElapsedRef.current=null; // 新回合清除暂停记录
@@ -10889,7 +10891,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             )}
           </div>
           {/* Center: deck/discard piles */}
-          <PileDisplay deckCount={gs.deck.length} discardCount={gs.discard.length} discardTop={gs.discard[gs.discard.length-1]||null} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={vw<430} baseHeight={middleRowHeight} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={scaleRatio}/>
+          <PileDisplay deckCount={gs.deck.length} discardCount={visualDiscard.length} discardTop={visualDiscard[visualDiscard.length-1]||null} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={vw<430} baseHeight={middleRowHeight} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={scaleRatio}/>
           {/* Log — narrow, right-aligned */}
           <div ref={logRef} style={{width:isMobile?'100%':218,flexBasis:isMobile?'100%':undefined,flexShrink:0,background:'#0e0904',border:'1.5px solid #2a1a08',borderRadius:3,padding:'8px 10px',overflowY:'auto',minHeight:isMobile?100:middleRowHeight,maxHeight:isMobile?100:middleRowHeight}}>
             <div style={{fontFamily:"'Cinzel',serif",color:'#7a5a2a',fontSize:fontSizes.small,letterSpacing:2,marginBottom:5,textTransform:'uppercase'}}>— 冒险日志 —</div>
