@@ -1,5 +1,6 @@
 import { GodTooltip, AreaTooltip, useCardHoverTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG } from './components/cards';
 import { GodChoiceModal, NyaBorrowModal, DrawRevealModal, TreasureDodgeModal, PeekHandModal, TortoiseOracleModal, AboutModal, FullLogModal, RoadmapModal } from './components/modals';
+import { HoundsTimerBadge, StatBar } from './components/board';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import ReactDOM, { createPortal } from "react-dom";
 import html2canvas from "html2canvas";
@@ -4280,72 +4281,6 @@ function RoleRevealAnim({role,onDone}){
 
 
 
-// ── Stat Bar ─────────────────────────────────────────────────
-function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth}){
-  const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
-  const isMobileNarrow=!!viewportWidth&&viewportWidth<580;
-  const isNarrowViewport=!!viewportWidth&&viewportWidth<900;
-  const rowWidth=isMobileNarrow?'calc(100% - 34px)':isNarrowViewport?'calc(100% - 22px)':'100%';
-  const labelCol=isNarrowViewport
-    ? `${Math.ceil(20*fontZoom)}px`
-    : 'clamp(18px, 2.5vw, 30px)';
-  const valueCol=isMobileNarrow
-    ? 'clamp(18px, 4vw, 24px)'
-    : isNarrowViewport
-      ? 'clamp(16px, 3vw, 22px)'
-      : 'clamp(14px, 2.8vw, 20px)';
-  const statFont=`clamp(${8*fontZoom}px, 1.7vw, ${10*fontZoom}px)`;
-  const barHeight=`clamp(${8*fontZoom}px, 1.6vw, ${10*fontZoom}px)`;
-  const columnGap=isNarrowViewport?'clamp(5px, 1.2vw, 7px)':'clamp(4px, 1vw, 6px)';
-  const labelPaddingRight=isNarrowViewport?Math.ceil(2*fontZoom):0;
-  return(
-    <div style={{display:'grid',gridTemplateColumns:`${labelCol} minmax(0,1fr) ${valueCol}`,alignItems:'center',columnGap:columnGap,marginBottom:4,width:rowWidth,marginLeft:'auto',marginRight:'auto',boxSizing:'border-box',overflow:'visible'}}>
-      <span style={{fontFamily:"'Cinzel',serif",color:'#a07838',fontSize:statFont,fontWeight:700,letterSpacing:0.3,textAlign:'left',whiteSpace:'nowrap',minWidth:0,paddingRight:labelPaddingRight}}>{label}</span>
-      <div style={{height:barHeight,background:trackColor||'#110804',border:'1.2px solid #2a1a08',borderRadius:2,overflow:'visible',position:'relative',minWidth:0,width:'100%'}}>
-        <div style={{height:'100%',width:`${Math.min(10,val)*10}%`,background:color,transition:'width .35s',borderRadius:1}}/>
-        {/* 6点SAN阈值线 */}
-        {label === 'SAN' && (
-          <div style={{
-            position: 'absolute',
-            left: '60%',
-            top: '-3px',
-            bottom: '-3px',
-            width: '1px',
-            zIndex: 2,
-            transform: 'translateX(-50%)'
-          }}>
-            {/* 上部三角形 */}
-            <div style={{
-              position: 'absolute',
-              bottom: 0,
-              left: '50%',
-              width: 0,
-              height: 0,
-              borderLeft: '1px solid transparent',
-              borderRight: '1px solid transparent',
-              borderBottom: '12px solid #a78bfa',
-              transform: 'translateX(-50%)'
-            }}/>
-            {/* 下部三角形 */}
-            <div style={{
-              position: 'absolute',
-              top: 0,
-              left: '50%',
-              width: 0,
-              height: 0,
-              borderLeft: '1px solid transparent',
-              borderRight: '1px solid transparent',
-              borderTop: '12px solid #a78bfa',
-              transform: 'translateX(-50%)'
-            }}/>
-          </div>
-        )}
-      </div>
-      <span style={{fontFamily:"'Cinzel',serif",color:val<=3?'#cc3333':'#c8a96e',fontSize:statFont,textAlign:'right',fontWeight:700,whiteSpace:'nowrap',minWidth:0,justifySelf:'end'}}>{val}</span>
-    </div>
-  );
-}
-
 // ── Player Panel ─────────────────────────────────────────────
 // ── Purple Mist projectile for SAN damage ──────────────────────
 
@@ -5086,25 +5021,6 @@ function PileDisplay({deckCount,discardCount,discardTop,inspectionCount,compact,
     </div>
   );
 }
-
-function HoundsTimerBadge({secondsLeft,active}){
-  if(!active||secondsLeft==null)return null;
-  return(
-    <div style={{
-      position:'fixed',top:14,left:'50%',transform:'translateX(-50%)',
-      width:88,height:88,borderRadius:'50%',
-      background:'radial-gradient(circle at 35% 30%,#3a0a0a 0%,#170406 58%,#090102 100%)',
-      border:'2px solid #b44a3a',boxShadow:'0 0 26px #b44a3a55, inset 0 0 22px #000000bb',
-      zIndex:720,pointerEvents:'none',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-      color:'#f0d0c8'
-    }}>
-      <div style={{fontSize:22,lineHeight:1,filter:'drop-shadow(0 0 8px #ff8a6a)'}}>🐺</div>
-      <div style={{fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:1,color:'#f2a28e'}}>猎犬</div>
-      <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:20,color:secondsLeft<=5?'#ff7056':'#ffd7b0',textShadow:'0 0 12px currentColor'}}>{secondsLeft}</div>
-    </div>
-  );
-}
-
 
 // ── Flying Emoji ─────────────────────────────────────────────
 const EMOJI_LIST=[
