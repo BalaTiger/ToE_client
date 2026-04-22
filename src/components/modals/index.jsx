@@ -476,9 +476,9 @@ function RoadmapModal({ onClose }) {
             '添加检定牌机制！具体规则请在遗迹内自行探索',
             '停服更新规范化，未来闪断更新/停服更新时会在游戏内广播',
           ].map((t, i) => (
-            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 7 }}>
-              <span style={{ color: '#b07828', flexShrink: 0 }}>·</span>
-              <span style={{ color: '#a08060', fontSize: 12, lineHeight: 1.7, fontStyle: 'italic' }}>{t}</span>
+            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 7 }}>
+              <span style={{ color: '#b07828', flexShrink: 0, fontSize: 12 }}>·</span>
+              <span style={{ color: '#a08060', fontSize: 12, lineHeight: 1.7, fontStyle: 'italic', textAlign: 'left' }}>{t}</span>
             </div>
           ))}
         </div>
@@ -489,9 +489,9 @@ function RoadmapModal({ onClose }) {
           {[
             '新扩展包《析骨为柴》锐意制作中！',
           ].map((t, i) => (
-            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 7 }}>
-              <span style={{ color: '#b07828', flexShrink: 0 }}>·</span>
-              <span style={{ color: '#a08060', fontSize: 12, lineHeight: 1.7, fontStyle: 'italic' }}>{t}</span>
+            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 7 }}>
+              <span style={{ color: '#b07828', flexShrink: 0, fontSize: 12 }}>·</span>
+              <span style={{ color: '#a08060', fontSize: 12, lineHeight: 1.7, fontStyle: 'italic', textAlign: 'left' }}>{t}</span>
             </div>
           ))}
         </div>
