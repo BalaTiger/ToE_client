@@ -159,17 +159,18 @@ function getPlayerHandAnchorRect(pid){
 }
 
 function getPlayerHandAnchorCenter(pid){
+  if(pid===0){
+    // 主控玩家：优先使用手牌区外层容器（比手牌 strip 更稳定）
+    const handAreaEl=document.querySelector('[data-hand-area]');
+    if(handAreaEl){
+      const r=_getZoomCompensatedRect(handAreaEl);
+      if(r)return {x:r.left+r.width/2,y:r.top+r.height*0.45};
+    }
+    return {x:window.innerWidth*0.5,y:window.innerHeight*0.8};
+  }
   const handRect=getPlayerHandAnchorRect(pid);
   if(handRect){
     return {x:handRect.left+handRect.width/2,y:handRect.top+handRect.height/2};
-  }
-  if(pid===0){
-    const handEl=document.querySelector('[data-hand-area]');
-    if(handEl){
-      const r=_getZoomCompensatedRect(handEl);
-      if(r)return {x:r.left+r.width/2,y:r.top+r.height/2};
-    }
-    return {x:window.innerWidth*0.5,y:window.innerHeight*0.8};
   }
   const el=document.querySelector(`[data-pid="${pid}"]`);
   if(el){
