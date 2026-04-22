@@ -2056,7 +2056,7 @@ function aiStep(gs){
         }else{
           const res=applyFx(sc,ti,sc.type==='swapAllHands'?null:ti,P,D,Disc,gs);P=res.P;D=res.D;Disc=res.Disc;L.push(...res.msgs);
           P[ti].hand.push(sc);
-          if(sc.type==='swapAllHands'||res.statePatch?.peekHandTargets||res.statePatch?.caveDuelTargets||res.statePatch?.damageLinkTargets||res.statePatch?.roseThornTargets){
+          if(sc.type==='swapAllHands'||res.statePatch?.peekHandTargets||res.statePatch?.caveDuelTargets||res.statePatch?.damageLinkTargets||res.statePatch?.roseThornTargets||res.statePatch?.abilityData?.type==='firstComePick'){
             const phaseAbilityData={
               ...(sc.type==='swapAllHands'?{
                 zoneSwapCard:sc,
@@ -2078,6 +2078,10 @@ function aiStep(gs){
                 roseThornTargets:res.statePatch.roseThornTargets,
                 roseThornSource:res.statePatch.roseThornSource,
               }:{}),
+              ...(res.statePatch?.abilityData?.type==='firstComePick'?{
+                ...res.statePatch.abilityData,
+                _turnOwner:gs.currentTurn,
+              }:{}),
             };
             const nextPhase=
               sc.type==='swapAllHands'?'ZONE_SWAP_SELECT_TARGET':
@@ -2085,6 +2089,7 @@ function aiStep(gs){
               res.statePatch?.caveDuelTargets?'CAVE_DUEL_SELECT_TARGET':
               res.statePatch?.damageLinkTargets?'DAMAGE_LINK_SELECT_TARGET':
               res.statePatch?.roseThornTargets?'ROSE_THORN_SELECT_TARGET':
+              res.statePatch?.abilityData?.type==='firstComePick'?'FIRST_COME_PICK_SELECT':
               'ACTION';
             const needsPlayerDecision = sc.type==='swapAllHands' || !!res.statePatch?.peekHandTargets || !!res.statePatch?.caveDuelTargets || !!res.statePatch?.damageLinkTargets || !!res.statePatch?.roseThornTargets;
             return {
@@ -2163,6 +2168,10 @@ function aiStep(gs){
         L.push(`${ai.name}（邪祀者）对 ${tgt.name} 【蛊惑】，赠予 ${cardLogText(sc,{alwaysShowName:true})}`);
         P[ti].hand.push(sc);
         const res=applyFx(sc,ti,sc.type==='swapAllHands'?null:ti,P,D,Disc,gs);P=res.P;D=res.D;Disc=res.Disc;L.push(...res.msgs);
+        if(res.statePatch?.abilityData?.type==='firstComePick'){
+          const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
+          return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'FIRST_COME_PICK_SELECT',abilityData:{...res.statePatch.abilityData,_turnOwner:gs.currentTurn},skillUsed:true};
+        }
         const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
         const _P_afterAction=copyPlayers(P);
         const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:true});
@@ -5071,31 +5080,51 @@ function NarratorAvatar({tooltipW}){
 
 // Persistent gamma / brightness slider — top-right corner
 function GammaSlider({gamma,onChange}){
-  const [open,setOpen]=useState(false);
+  const [hover,setHover]=useState(false);
   // Rendered via Portal directly onto document.body so that any CSS filter on ancestor
   // elements does not affect position:fixed coordinates (filter creates a new containing block).
   return ReactDOM.createPortal(
-    <div style={{position:'fixed',top:10,right:12,zIndex:1800,display:'flex',alignItems:'center',gap:6}}>
-      {open&&(
-        <div style={{display:'flex',alignItems:'center',gap:8,background:'#120d06cc',border:'1px solid #3a2510',borderRadius:3,padding:'4px 10px',backdropFilter:'blur(4px)'}}>
-          <span style={{fontFamily:"'Cinzel',serif",fontSize:9,color:'#b07828',letterSpacing:1,whiteSpace:'nowrap'}}>亮度</span>
-          <input
-            type="range" min={0.5} max={2} step={0.05}
-            value={gamma}
-            onChange={e=>onChange(parseFloat(e.target.value))}
-            style={{width:90,accentColor:'#b07828',cursor:'pointer'}}
-          />
-          <span style={{fontFamily:"'Cinzel',serif",fontSize:9,color:'#b07828',width:28,textAlign:'right'}}>{(()=>{const v=Math.round((gamma-1)*100);return v>0?'+'+v:v;})()}%</span>
-          <button onClick={()=>onChange(1)} style={{background:'none',border:'none',color:'#7a5020',fontSize:9,cursor:'pointer',padding:'0 2px',fontFamily:"'Cinzel',serif"}}>重置</button>
-        </div>
-      )}
-      <button
-        onClick={()=>setOpen(o=>!o)}
+    <div
+      style={{position:'fixed',top:0,left:'50%',transform:'translateX(-50%)',zIndex:1800}}
+      onMouseEnter={()=>setHover(true)}
+      onMouseLeave={()=>setHover(false)}
+    >
+      <div
         title="亮度调节"
-        style={{width:26,height:26,borderRadius:'50%',background:'#120d06cc',border:'1px solid #3a2510',color:'#b07828',fontSize:13,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(4px)',boxShadow:'0 2px 8px #00000066',transition:'border-color .2s'}}
-        onMouseEnter={e=>e.currentTarget.style.borderColor='#7a5020'}
-        onMouseLeave={e=>e.currentTarget.style.borderColor='#3a2510'}
-      >☀</button>
+        style={{
+          width:hover?178:32,
+          height:hover?40:18,
+          borderRadius:'0 0 16px 16px',
+          background:'#120d06cc',
+          border:'1.5px solid #5a3a18',
+          borderTop:'none',
+          color:'#b07828',
+          fontSize:13,
+          cursor:'pointer',
+          display:'flex',
+          alignItems:'center',
+          justifyContent:'center',
+          backdropFilter:'blur(4px)',
+          transition:'all 0.2s ease',
+          padding:0,
+          overflow:'hidden',
+          whiteSpace:'nowrap',
+        }}
+      >
+        {hover?(
+          <div style={{display:'flex',alignItems:'center',gap:6,padding:'0 10px'}} onClick={e=>e.stopPropagation()}>
+            <span style={{fontFamily:"'Cinzel',serif",fontSize:9,color:'#b07828',letterSpacing:1,whiteSpace:'nowrap'}}>亮度</span>
+            <input
+              type="range" min={0.5} max={2} step={0.05}
+              value={gamma}
+              onChange={e=>onChange(parseFloat(e.target.value))}
+              style={{width:70,accentColor:'#b07828',cursor:'pointer'}}
+            />
+            <span style={{fontFamily:"'Cinzel',serif",fontSize:9,color:'#b07828',width:28,textAlign:'right'}}>{(()=>{const v=Math.round((gamma-1)*100);return v>0?'+'+v:v;})()}%</span>
+            <button onClick={()=>onChange(1)} style={{background:'none',border:'none',color:'#7a5020',fontSize:9,cursor:'pointer',padding:'0 2px',fontFamily:"'Cinzel',serif"}}>重置</button>
+          </div>
+        ):'☀'}
+      </div>
     </div>,
     document.body
   );
@@ -7262,7 +7291,8 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         const win=checkWin(P,prev._isMP);
         if(win)return {...prev,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{}};
         if(nextPickIndex>=(ad.pickOrder?.length||0)||cards.length===0){
-          return {...prev,players:P,deck:D,discard:Disc,log:L,phase:isAiSeat(prev,ad.pickSource)?'AI_TURN':'ACTION',abilityData:{
+          const nextTurnOwner=ad._turnOwner??prev.currentTurn;
+          return {...prev,players:P,deck:D,discard:Disc,log:L,currentTurn:nextTurnOwner,phase:isAiSeat(prev,nextTurnOwner)?'AI_TURN':'ACTION',abilityData:{
             ...(ad.fromRest?{fromRest:true}:{}),
             ...(ad.cthDrawsRemaining!=null?{cthDrawsRemaining:ad.cthDrawsRemaining}:{}),
           },
@@ -8635,7 +8665,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
 
   // ── Main Game ──────────────────────────────────────────────
   const me=gs.players[0];
-  const mobileArmedGodCard=isMobile&&mobileArmedGodCardIdx!=null?me.hand[mobileArmedGodCardIdx]:null;
+  const mobileArmedGodCard=isMobile&&mobileArmedGodCardIdx!=null?visualMe.hand[mobileArmedGodCardIdx]:null;
   const mobileArmedGodTooltipRect=mobileArmedGodCardIdx!=null?(()=>{
     const wrapEl=mobileGodCardRefs.current.get(mobileArmedGodCardIdx);
     const cardEl=wrapEl?.firstElementChild||wrapEl;
@@ -8652,6 +8682,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
   const visualPlayers=((anim||animExiting||animQueueRef.current.length>0)&&visualPlayersLockRef.current)
     ?visualPlayersLockRef.current
     :gs.players;
+  const visualMe=visualPlayers[0];
   const canWin=effectiveRole==='寻宝者'&&isWinHand(me.hand);
   const phase=gs.phase;
   const ri=RINFO[me.role];
@@ -9635,16 +9666,17 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     if(!isZoneCard(card))return;
     const{huntingAI,aiHunterName}=gs.abilityData;
     let P=copyPlayers(gs.players),Disc=[...gs.discard],L=[...gs.log];
+    let discardedCard=null;
     const myHandBefore=[...(P[0]?.hand||[])];
     const myRevealBefore=!!P[0]?.revealHand;
     L.push(`你亮出 ${cardLogText(card,{alwaysShowName:true})}`);
     const aiHand=P[huntingAI].hand;
     const mi=aiHand.findIndex(c=>cardsHuntMatch(c,card));
     if(mi>=0){
-      const dc=aiHand.splice(mi,1)[0];Disc.push(dc);
+      discardedCard=aiHand.splice(mi,1)[0];Disc.push(discardedCard);
       const huntDamage=3+(P[huntingAI].damageBonus||0);
       applyHpDamageWithLink(P,0,huntDamage,Disc,L);
-      L.push(`${aiHunterName} 弃 ${cardLogText(dc,{alwaysShowName:true})}，你受 ${huntDamage}HP 伤害！`);
+      L.push(`${aiHunterName} 弃 ${cardLogText(discardedCard,{alwaysShowName:true})}，你受 ${huntDamage}HP 伤害！`);
       if(P[0].hp<=0){
         if(myHandBefore.length){
           Disc=removeCardsFromDiscard(Disc,myHandBefore);
@@ -9700,7 +9732,12 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     }
 
     const huntMsgs=extractSkillLogs(L.slice(gs.log.length),'hunt');
-    const queue=[{type:'SKILL_HUNT',msgs:huntMsgs,targetIdx:0},...buildAnimQueue(gs,newGs)];
+    const queue=[{type:'SKILL_HUNT',msgs:huntMsgs,targetIdx:0}];
+    if(discardedCard){
+      queue.push({type:'DISCARD',card:discardedCard,triggerName:aiHunterName||'???',targetPid:huntingAI});
+    }
+    const animQueue=buildAnimQueue(gs,newGs).filter(step=>!(discardedCard&&step.type==='CARD_TRANSFER'&&step.fromPid===huntingAI&&step.dest==='discard'));
+    queue.push(...animQueue);
     const playerNeedsQueuedTurnIntro=
       !win &&
       !wantsToHuntAgain &&
@@ -9814,6 +9851,10 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         roseThornTargets:res.statePatch.roseThornTargets,
         roseThornSource:res.statePatch.roseThornSource,
       }:{}),
+      ...(res.statePatch?.abilityData?.type==='firstComePick'?{
+        ...res.statePatch.abilityData,
+        _turnOwner:gs.currentTurn,
+      }:{}),
     };
     const nextPhase=
       bewitchCard.type==='swapAllHands'?'ZONE_SWAP_SELECT_TARGET':
@@ -9821,6 +9862,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       res.statePatch?.caveDuelTargets?'CAVE_DUEL_SELECT_TARGET':
       res.statePatch?.damageLinkTargets?'DAMAGE_LINK_SELECT_TARGET':
       res.statePatch?.roseThornTargets?'ROSE_THORN_SELECT_TARGET':
+      res.statePatch?.abilityData?.type==='firstComePick'?'FIRST_COME_PICK_SELECT':
       'ACTION';
     const newGs={...gs,players:res.P,deck:res.D,discard:res.Disc,log:L,
       abilityData:phaseAbilityData,
@@ -11260,7 +11302,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         <div ref={handAreaRef} data-hand-area style={{background:'#120900',border:`1.5px solid ${myTurn?'#3a2010':'#2a1a08'}`,borderRadius:3,padding:isMobile?'8px 9px':'11px 13px'}}>
           <div style={{display:'flex',alignItems:'center',marginBottom:9,gap:8}}>
             <span style={{fontFamily:"'Cinzel',serif",color:phase==='DISCARD_PHASE'||phase==='PLAYER_REVEAL_FOR_HUNT'?'#882020':'#3a2510',fontSize:10,letterSpacing:1}}>
-              {phase==='DISCARD_PHASE'?`⚠ 手牌超限 (${me.hand.length}/${effectiveHandLimit})`:phase==='PLAYER_REVEAL_FOR_HUNT'?'⚠ 选择亮出一张区域牌':phase==='HUNT_WAIT_REVEAL'&&!myTurn&&isLocalHuntTargetSeat(gs)?'⚠ 选择亮出一张区域牌':`手牌 (${me.hand.length}/${effectiveHandLimit})`}
+              {phase==='DISCARD_PHASE'?`⚠ 手牌超限 (${visualMe.hand.length}/${effectiveHandLimit})`:phase==='PLAYER_REVEAL_FOR_HUNT'?'⚠ 选择亮出一张区域牌':phase==='HUNT_WAIT_REVEAL'&&!myTurn&&isLocalHuntTargetSeat(gs)?'⚠ 选择亮出一张区域牌':`手牌 (${visualMe.hand.length}/${effectiveHandLimit})`}
             </span>
             {(phase==='ACTION'&&isVisualPlayerTurn&&!isBlocked||cancelable)&&(
               <div style={{display:'flex',gap:8,marginLeft:'auto',flexWrap:'wrap',position:'relative',zIndex:200}}>
@@ -11345,24 +11387,24 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             )}
           </div>
           <div data-self-hand-strip style={{display:'flex',gap:7,flexWrap:'wrap'}}>
-            {me.hand.map((c,i)=>{
+            {visualMe.hand.map((c,i)=>{
               const clickable=isMyCardClickable(c,i);
               const isMobileArmedGod=isMobile&&mobileArmedGodCardIdx===i;
               const isSel=(phase==='DISCARD_PHASE'&&(gs.abilityData.discardSelected||[]).includes(i))||isMobileArmedGod;
               const isMatch=phase==='HUNT_CONFIRM'&&gs.abilityData?.revCard&&(c.letter===gs.abilityData.revCard.letter||c.number===gs.abilityData.revCard.number);
-              const isGodUpgrade=c.isGod&&me.godName===c.godKey&&(me.godLevel||0)<3;
+              const isGodUpgrade=c.isGod&&visualMe.godName===c.godKey&&(visualMe.godLevel||0)<3;
               const canUpgradeNow=isGodUpgrade&&phase==='ACTION'&&isVisualPlayerTurn;
               const canWorshipNow=c.isGod&&!isGodUpgrade&&phase==='ACTION'&&isVisualPlayerTurn&&!gs.godTriggeredThisTurn&&!gs.godFromHandUsed;
               const showWorshipHint=canWorshipNow&&(!isMobile||isMobileArmedGod);
               return(<div key={c.id} ref={el=>{if(el)mobileGodCardRefs.current.set(i,el);else mobileGodCardRefs.current.delete(i);}} style={{position:'relative',display:'inline-block'}}>
-                <DDCard card={c} onClick={clickable?()=>handleMyCardClick(i):undefined} disabled={!clickable} selected={isSel} highlight={isMatch||canWorshipNow||canUpgradeNow} godLevel={me.godName===c.godKey?me.godLevel:0} compact={isMobile} holderId={0}/>
+                <DDCard card={c} onClick={clickable?()=>handleMyCardClick(i):undefined} disabled={!clickable} selected={isSel} highlight={isMatch||canWorshipNow||canUpgradeNow} godLevel={visualMe.godName===c.godKey?visualMe.godLevel:0} compact={isMobile} holderId={0}/>
                 {canUpgradeNow&&<div style={{position:'absolute',top:-7,left:'50%',transform:'translateX(-50%)',fontFamily:"'Cinzel',serif",fontSize:8,color:'#c8a96e',background:'#0a0705',border:'1px solid #8a6020',borderRadius:2,padding:'1px 4px',pointerEvents:'none',whiteSpace:'nowrap',zIndex:10}}>⬆ 升级邪神之力</div>}
                 {showWorshipHint&&<div style={{position:'absolute',top:-7,left:'50%',transform:'translateX(-50%)',fontFamily:"'Cinzel',serif",fontSize:8,color:'#b080e0',background:'#0a0412',border:'1px solid #7040aa',borderRadius:2,padding:'1px 4px',pointerEvents:'none',whiteSpace:'nowrap',zIndex:10}}>⛧ 点击信仰</div>}
               </div>);
             })}
-            {me.hand.length===0&&<div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#7a5a2a',fontSize:13,padding:'22px 10px'}}>手中空空如也</div>}
+            {visualMe.hand.length===0&&<div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#7a5a2a',fontSize:13,padding:'22px 10px'}}>手中空空如也</div>}
           </div>
-          {isMobile&&mobileArmedGodCard?.isGod&&mobileArmedGodTooltipRect&&<GodTooltip def={GOD_DEFS[mobileArmedGodCard.godKey]} godLevel={me.godName===mobileArmedGodCard.godKey?me.godLevel:1} position={mobileArmedGodTooltipRect}/>}
+          {isMobile&&mobileArmedGodCard?.isGod&&mobileArmedGodTooltipRect&&<GodTooltip def={GOD_DEFS[mobileArmedGodCard.godKey]} godLevel={visualMe.godName===mobileArmedGodCard.godKey?visualMe.godLevel:1} position={mobileArmedGodTooltipRect}/>}
         </div>
       </div>
       {/* ── Tutorial steps 2 & 3 (shown over game interface) ── */}
