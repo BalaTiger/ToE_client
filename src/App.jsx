@@ -11836,11 +11836,19 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         const px=Math.max(8,Math.min(panelRect?panelRect.right+14:175,vw-TW-8));
         const py=panelRect?panelRect.top+(panelRect.height/2):260;
         const arrowTop=panelRect?Math.max(16,Math.min(panelRect.height/2,60)):40;
+        const ptop=panelRect?panelRect.top:0;
+        const pbottom=panelRect?panelRect.bottom:0;
+        const pleft=panelRect?panelRect.left:0;
+        const pright=panelRect?panelRect.right:vw;
+        const BG='rgba(0,0,0,0.58)';
+        const W=vw;
         return(
           <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
-            {/* Semi-dark backdrop */}
-            <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
-            {/* Spotlight cutout glow — handled via panel border above */}
+            {/* Four-strip backdrop — leaves self panel undarken */}
+            <div style={{position:'absolute',left:0,top:0,right:0,height:ptop,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',left:0,top:ptop,bottom:0,width:pleft,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',right:0,top:ptop,bottom:0,left:pright,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',left:pleft,right:W-pright,top:pbottom,bottom:0,background:BG,pointerEvents:'none'}}/>
             {/* Tooltip popup */}
             <div style={{
               position:'absolute',
@@ -11880,9 +11888,19 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         const px=Math.max(8,Math.min(panelRect?panelRect.right+14:175,vw-TW-8));
         const py=panelRect?panelRect.top+(panelRect.height/2):260;
         const arrowTop=panelRect?Math.max(16,Math.min(panelRect.height/2,60)):40;
+        const ptop=panelRect?panelRect.top:0;
+        const pbottom=panelRect?panelRect.bottom:0;
+        const pleft=panelRect?panelRect.left:0;
+        const pright=panelRect?panelRect.right:vw;
+        const BG='rgba(0,0,0,0.58)';
+        const W=vw;
         return(
           <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
-            <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
+            {/* Four-strip backdrop — leaves self panel undarken */}
+            <div style={{position:'absolute',left:0,top:0,right:0,height:ptop,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',left:0,top:ptop,bottom:0,width:pleft,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',right:0,top:ptop,bottom:0,left:pright,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',left:pleft,right:W-pright,top:pbottom,bottom:0,background:BG,pointerEvents:'none'}}/>
             <div style={{
               position:'absolute',
               left:px,
@@ -11917,9 +11935,19 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         const px=Math.max(8,Math.min(panelRect?panelRect.right+14:175,vw-TW-8));
         const py=panelRect?panelRect.top+(panelRect.height/2):260;
         const arrowTop=panelRect?Math.max(16,Math.min(panelRect.height/2,60)):40;
+        const ptop=panelRect?panelRect.top:0;
+        const pbottom=panelRect?panelRect.bottom:0;
+        const pleft=panelRect?panelRect.left:0;
+        const pright=panelRect?panelRect.right:vw;
+        const BG='rgba(0,0,0,0.58)';
+        const W=vw;
         return(
           <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
-            <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
+            {/* Four-strip backdrop — leaves self panel undarken */}
+            <div style={{position:'absolute',left:0,top:0,right:0,height:ptop,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',left:0,top:ptop,bottom:0,width:pleft,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',right:0,top:ptop,bottom:0,left:pright,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',left:pleft,right:W-pright,top:pbottom,bottom:0,background:BG,pointerEvents:'none'}}/>
             <div style={{
               position:'absolute',
               left:px,
@@ -12039,9 +12067,9 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         return(
           <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
             {/* Four-strip backdrop — leaves hand cards area undarken, covers button row */}
-            <div style={{position:'absolute',left:0,top:0,right:0,height:hty+46,background:BG,pointerEvents:'none'}}/>
-            <div style={{position:'absolute',left:0,top:hty+46,bottom:0,width:hleft,background:BG,pointerEvents:'none'}}/>
-            <div style={{position:'absolute',right:0,top:hty+46,bottom:0,left:hright,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',left:0,top:0,right:0,height:hty,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',left:0,top:hty,bottom:0,width:hleft,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',right:0,top:hty,bottom:0,left:hright,background:BG,pointerEvents:'none'}}/>
             <div style={{position:'absolute',left:hleft,right:W-hright,top:hbottom,bottom:0,background:BG,pointerEvents:'none'}}/>
             <div style={{
               position:'fixed',
@@ -12368,9 +12396,9 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         const W=window.innerWidth;
         return(
           <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
-            <div style={{position:'absolute',left:0,top:0,right:0,height:hty+46,background:BG,pointerEvents:'none'}}/>
-            <div style={{position:'absolute',left:0,top:hty+46,bottom:0,width:hleft,background:BG,pointerEvents:'none'}}/>
-            <div style={{position:'absolute',right:0,top:hty+46,bottom:0,left:hright,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',left:0,top:0,right:0,height:hty,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',left:0,top:hty,bottom:0,width:hleft,background:BG,pointerEvents:'none'}}/>
+            <div style={{position:'absolute',right:0,top:hty,bottom:0,left:hright,background:BG,pointerEvents:'none'}}/>
             <div style={{position:'absolute',left:hleft,right:W-hright,top:hbottom,bottom:0,background:BG,pointerEvents:'none'}}/>
             <div style={{
               position:'fixed',left:tooltipLeft,bottom:tooltipBottom,
