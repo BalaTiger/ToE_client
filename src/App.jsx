@@ -8254,43 +8254,38 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         {/* Animation overlay — visible even before game starts (first-turn card flip) */}
         <AnimOverlay anim={anim} exiting={animExiting}/>
         <div style={{position:'relative',zIndex:1}}>
-          <div style={{position:'relative',width:'min(520px,92vw)',margin:'0 auto 22px',padding:'26px 0 18px'}}>
+          <div style={{position:'relative',width:'min(520px,92vw)',margin:'0 auto 12px',padding:'18px 0 10px'}}>
             <TitleCandleFlames/>
           <h1 style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:34,fontWeight:700,letterSpacing:3,marginBottom:4,color:'#e8c87a',textShadow:'0 0 40px #c8a96e44,0 2px 0 #0a0705'}}>邪神的宝藏</h1>
           <div style={{fontFamily:"'Cinzel',serif",fontSize:13,letterSpacing:3,color:'#c8a96e',marginBottom:4,opacity:0.85}}>克苏鲁卡牌对战</div>
           <div style={{fontSize:10,letterSpacing:5,color:'#a07838',fontFamily:"'Cinzel',serif",marginBottom:10,textTransform:'uppercase',opacity:0.7}}>Treasures of Evils</div>
           <div style={{width:200,height:1,background:'linear-gradient(90deg,transparent,#5a4020,transparent)',margin:'0 auto 20px'}}/>
-          <p style={{color:'#b89858',maxWidth:380,margin:'0 auto 8px',lineHeight:1.9,fontSize:14,fontStyle:'italic'}}>
+          <p style={{color:'#b89858',maxWidth:380,margin:'0 auto 6px',lineHeight:1.5,fontSize:11,fontStyle:'italic'}}>
             "古神沉眠之时，旅者聚于此地。寻宝者寻觅遗物，追猎者猎杀异类，邪祀者企图唤醒邪神。各怀秘密，命运共织。"
           </p>
           </div>
           {/* Role cards */}
-          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,maxWidth:500,width:'100%',margin:'0 auto 8px',transform:'translateY(-22px)'}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,maxWidth:420,width:'100%',margin:'0 auto 5px'}}>
             {Object.entries(RINFO).map(([role,r])=>(
-              <div key={role} style={{background:'#140f08',border:`1.5px solid ${r.dim}`,borderRadius:3,padding:'16px 12px',textAlign:'center',boxShadow:`0 0 20px ${r.dim}33`}}>
-                <div style={{fontSize:22,marginBottom:6,color:r.col,textShadow:`0 0 12px ${r.col}`}}>{r.icon}</div>
-                <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:r.col,fontSize:12,letterSpacing:2,marginBottom:8}}>{role}</div>
-                <div style={{fontFamily:"'Microsoft YaHei','SimHei',sans-serif",color:'#a07838',fontSize:11,lineHeight:1.6,fontStyle:'italic'}}>{r.goal}</div>
+              <div key={role} style={{background:'#140f08',border:`1.5px solid ${r.dim}`,borderRadius:3,padding:'6px 4px',textAlign:'center',boxShadow:`0 0 8px ${r.dim}18`}}>
+                <div style={{fontSize:14,marginBottom:2,color:r.col}}>{r.icon}</div>
+                <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:r.col,fontSize:9,letterSpacing:1,marginBottom:3}}>{role}</div>
+                <div style={{fontFamily:"'Microsoft YaHei','SimHei',sans-serif",color:'#a07838',fontSize:11,lineHeight:1.35,fontStyle:'italic'}}>{r.goal}</div>
               </div>
             ))}
           </div>
           {/* Rules */}
-          <div style={{background:'#140f08',border:'1.5px solid #2a1a08',borderRadius:3,padding:'16px 22px',maxWidth:420,width:'100%',margin:'0 auto 32px',textAlign:'left'}}>
-            <div style={{fontFamily:"'Cinzel',serif",color:'#b07828',fontSize:10,letterSpacing:3,marginBottom:10,textTransform:'uppercase'}}>— 规则要点 —</div>
+          <div style={{background:'#140f08',border:'1.5px solid #2a1a08',borderRadius:3,padding:'10px 14px',maxWidth:420,width:'100%',margin:'0 auto 10px',textAlign:'left'}}>
+            <div style={{fontFamily:"'Cinzel',serif",color:'#b07828',fontSize:10,letterSpacing:3,marginBottom:6,textTransform:'uppercase'}}>— 规则要点 —</div>
             {[
-              '游戏身份随机分配',
-              '每人初始 HP / SAN 各 10，上限 10',
-              '每回合开始摸 1 张牌；摸到区域牌时可选择收入手牌并触发效果，或直接弃置',
-              '被【蛊惑】获得的牌必须收入手牌并触发效果，不能选择弃置',
-              '可发动身份技能、休息或直接结束回合',
-              '【掉包】与【蛊惑】每回合限用一次；【追捕】同回合可连续发动',
-              '可发动【休息】：翻面自己的角色卡，掷2枚6面骰取最高值回复HP；翻面状态下下回合自动翻回并跳过（不摸牌不弃牌）',
-              '每回合只能使用技能或休息其中之一，二者互斥',
-              '手牌上限 4 张，超出须在回合结束前弃牌',
+              '身份随机分配，HP / SAN 初始 10，上限 10',
+              '每回合摸 1 张牌，区域牌可选择收入手牌或弃置',
+              '技能与休息每回合限用其一',
+              '手牌上限 4 张，超出须弃牌',
             ].map((t,i)=>(
-              <div key={i} style={{display:'flex',gap:8,marginBottom:6,alignItems:'flex-start'}}>
+              <div key={i} style={{display:'flex',gap:8,marginBottom:4,alignItems:'flex-start'}}>
                 <span style={{color:'#a07838',fontSize:9,marginTop:2}}>✦</span>
-                <span style={{color:'#c8a96e',fontSize:12,lineHeight:1.7,fontStyle:'italic'}}>{t}</span>
+                <span style={{color:'#c8a96e',fontSize:11,lineHeight:1.5,fontStyle:'italic'}}>{t}</span>
               </div>
             ))}
           </div>
@@ -8336,7 +8331,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
             </button>
           </div>
           {/* Bottom row: about + roadmap */}
-          <div style={{display:'flex',justifyContent:'space-between',width:'100%',maxWidth:420,margin:'28px auto 0',gap:12}}>
+          <div style={{display:'flex',justifyContent:'space-between',width:'100%',maxWidth:420,margin:'8px auto 0',gap:12}}>
             <button onClick={()=>setModal('about')} style={{
               flex:1,padding:'8px 10px',background:'transparent',
               border:'1px solid #3a2510',color:'#a07838',
