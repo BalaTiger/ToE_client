@@ -11135,11 +11135,6 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     }}>
       {/* Global vignette */}
       <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at 50% 50%,transparent 40%,#00000099 100%)',pointerEvents:'none',zIndex:1}}/>
-      {/* ── 飞行表情覆盖层 ── */}
-      {flyingEmojis.map(fe=>(
-        <FlyingEmoji key={fe.id} {...fe} onDone={id=>setFlyingEmojis(prev=>prev.filter(x=>x.id!==id))}/>
-      ))}
-      {/* emoji picker moved outside filtered container — see Fragment below */}
       {/* ── 断线遮罩（游戏内）── */}
       {isDisconnected&&(
         <div onClick={()=>{setIsDisconnected(false);setIsMultiplayer(false);isMultiplayerRef.current=false;setMyPlayerIndex(0);myPlayerIndexRef.current=0;mpRoleRevealedRef.current=false;setGs(null);}}
@@ -11157,12 +11152,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         </div>
       )}
 
-      {/* Animation overlay */}
-      {!suppressAnim&&<AnimOverlay anim={anim} exiting={animExiting}/>}
-      {/* Guillotine death animation — rendered outside filtered container, see below */}
-      {/* Skill overlays */}
-      {!suppressAnim&&<SwapCupOverlay active={!!swapAnim} casterName={swapAnim?.casterName||''} targetName={swapAnim?.targetName||''}/>}
-
+      {/* Animations rendered outside the zoom container, see Fragment below */}
       {/* Target selection mask + floating prompt */}
       <TargetSelectOverlay drawReveal={gs.drawReveal} phase={isVisualPlayerTurn?phase:null} bewitchCard={gs.abilityData?.bewitchCard}/>
 
@@ -11560,7 +11550,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             ghostMode==='fade'?{animation:'chainExpireFade 720ms ease-out forwards'}:null;
           const bindAnimStyle=ghostMode==='break'?{animation:'chainBindSnap 560ms ease-out forwards'}:
             ghostMode==='fade'?{animation:'chainExpireFade 720ms ease-out forwards'}:null;
-          return (
+          return ReactDOM.createPortal(
             <div
               key={`link-${link.id}`}
               style={{
@@ -11651,7 +11641,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
                 })}
               </svg>
             </div>
-          );
+          ,document.body);
         })}
 
         {/* Hand area */}
@@ -11765,10 +11755,10 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       </div>
       {/* ── Tutorial steps 2 & 3 (shown over game interface) ── */}
       {/* ── Win Animations ── */}
-      {phase==='TREASURE_WIN'&&!showTutorial&&<TreasureMapAnim hand={me.hand} onConfirm={revealWin}/>}
-      {phase==='GOD_RESURRECTION'&&!showTutorial&&<CthulhuResurrectionAnim onConfirm={revealWin}/>}
-      {!showTutorial&&<HoundsTimerBadge active={!!gs?.houndsOfTindalosActive} secondsLeft={houndsSecLeft}/>}
-      {showTutorial&&tutorialStep===2&&(()=>{
+      {ReactDOM.createPortal(
+        <>
+          {!showTutorial&&<HoundsTimerBadge active={!!gs?.houndsOfTindalosActive} secondsLeft={houndsSecLeft}/>}
+          {showTutorial&&tutorialStep===2&&(()=>{
         const TW=Math.min(260,vw-20);
         const px=Math.max(8,Math.min(panelRect?panelRect.right+14:175,vw-TW-8));
         const py=panelRect?panelRect.top+(panelRect.height/2):260;
@@ -12362,7 +12352,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             )}
           </div>
         </div>
-      )}
+      )}</>,document.body)}
       {roleRevealAnim&&<RoleRevealAnim role={roleRevealAnim.role} onDone={()=>_onRoleRevealDone(roleRevealAnim.pendingGs)}/>}
       {phase==='PLAYER_WIN_PENDING'&&!showTutorial&&(
         <TreasureMapAnim hand={me.hand} onConfirm={()=>{
@@ -12449,13 +12439,20 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       </div>
     )}
 
-    {/* Hunt/Bewitch/Guillotine/Knife/SanMist/CardTransfer overlays rendered OUTSIDE the filtered container */}
+    {/* All overlays with position:fixed + getBoundingClientRect() coordinates must render OUTSIDE the zoom container so viewport coords match */}
+    {!suppressAnim&&<AnimOverlay anim={anim} exiting={animExiting}/>}
+    {!suppressAnim&&<SwapCupOverlay active={!!swapAnim} casterName={swapAnim?.casterName||''} targetName={swapAnim?.targetName||''}/>}
+    {flyingEmojis.map(fe=>(
+      <FlyingEmoji key={fe.id} {...fe} onDone={id=>setFlyingEmojis(prev=>prev.filter(x=>x.id!==id))}/>
+    ))}
     {!suppressAnim&&<HuntScopeOverlay active={!!huntAnim} cx={huntAnim?.cx??0} cy={huntAnim?.cy??0}/>}
     {!suppressAnim&&<BewitchEyeOverlay active={!!bewitchAnim} cx={bewitchAnim?.cx??0} cy={bewitchAnim?.cy??0}/>}
     {!suppressAnim&&guillotineTargets.length>0&&<GuillotineAnim targets={guillotineTargets}/>}
     {!suppressAnim&&<KnifeEffect targets={knifeTargets}/>}
     {!suppressAnim&&<SanMistOverlay targets={sanTargets}/>}
     {!suppressAnim&&<CardTransferOverlay transfers={cardTransfers}/>}
+    {phase==='TREASURE_WIN'&&!showTutorial&&<TreasureMapAnim hand={me.hand} onConfirm={revealWin}/>}
+    {phase==='GOD_RESURRECTION'&&!showTutorial&&<CthulhuResurrectionAnim onConfirm={revealWin}/>}
   </>);
 }
 // ══════════════════════════════════════════════════════════════

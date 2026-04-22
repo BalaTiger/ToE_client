@@ -11,7 +11,10 @@
       "Bash(awk 'NR>=9055 && NR<=12384')",
       "Bash(awk 'NR>=8955 && NR<=12384')",
       "Bash(awk 'NR>=8955 && NR<=12384' src/App.jsx)",
-      "Bash(awk 'NR>=8954 && NR<=9055' src/App.jsx)"
+      "Bash(awk 'NR>=8954 && NR<=9055' src/App.jsx)",
+      "Bash(awk 'NR>=1' src/App.jsx)",
+      "Bash(awk 'NR>=11133 && NR<=12440' src/App.jsx)",
+      "Bash(npm run *)"
     ]
   }
 }
