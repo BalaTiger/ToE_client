@@ -127,11 +127,33 @@ function Ellipsis() {
 
 const DESIGN_WIDTH=1200;
 
-function _needsZoomRectCompensation(){
+let _zoomCompensationDetected=null;
+function _detectZoomRectCompensation(){
+  if(typeof document==='undefined')return false;
   const zc=document.querySelector('[data-zoom-container]');
   if(!zc)return false;
-  const rect=zc.getBoundingClientRect();
-  return rect.width>window.innerWidth*1.05;
+  const s=window.innerWidth/DESIGN_WIDTH;
+  if(s>=1)return false;
+  // 特征检测：在 zoom 容器内插入一个已知宽度的测试元素，
+  // 通过 getBoundingClientRect().width 判断浏览器是否已自动缩放了坐标。
+  const test=document.createElement('div');
+  test.style.cssText='position:absolute;left:0;top:0;width:100px;height:1px;visibility:hidden;pointer-events:none;';
+  zc.appendChild(test);
+  const r=test.getBoundingClientRect();
+  zc.removeChild(test);
+  const expected=100*s;
+  // 宽度接近预期 => 浏览器已缩放 => 不需要额外补偿
+  if(Math.abs(r.width-expected)<3)return false;
+  // 宽度接近原始值 => 浏览器未缩放 => 需要补偿
+  if(Math.abs(r.width-100)<3)return true;
+  // 其他情况：保守策略，若宽度明显大于预期则认为未缩放
+  return r.width>expected*1.2;
+}
+function _needsZoomRectCompensation(){
+  if(_zoomCompensationDetected===null){
+    _zoomCompensationDetected=_detectZoomRectCompensation();
+  }
+  return _zoomCompensationDetected;
 }
 function _getZoomCompensatedRect(el){
   if(!el)return null;
@@ -160,16 +182,24 @@ function getPlayerHandAnchorRect(pid){
 
 function getPlayerHandAnchorCenter(pid){
   if(pid===0){
-    // 主控玩家：优先使用手牌区外层容器（比手牌 strip 更稳定）
+    // 主控玩家手牌区独立于角色区域，位于提示文本区下方的 [data-self-hand-strip]
+    const handStripEl=document.querySelector('[data-self-hand-strip]');
+    if(handStripEl){
+      const r=_getZoomCompensatedRect(handStripEl);
+      if(r&&r.width>0&&r.height>0){
+        return {x:r.left+r.width/2,y:r.top+r.height/2};
+      }
+    }
+    // fallback 到外层 hand-area
     const handAreaEl=document.querySelector('[data-hand-area]');
     if(handAreaEl){
       const r=_getZoomCompensatedRect(handAreaEl);
-      if(r)return {x:r.left+r.width/2,y:r.top+r.height*0.45};
+      if(r)return {x:r.left+r.width/2,y:r.top+r.height*0.65};
     }
     return {x:window.innerWidth*0.5,y:window.innerHeight*0.8};
   }
   const handRect=getPlayerHandAnchorRect(pid);
-  if(handRect){
+  if(handRect&&handRect.width>0&&handRect.height>0){
     return {x:handRect.left+handRect.width/2,y:handRect.top+handRect.height/2};
   }
   const el=document.querySelector(`[data-pid="${pid}"]`);
