@@ -15,7 +15,9 @@
       "Bash(awk 'NR>=1' src/App.jsx)",
       "Bash(awk 'NR>=11133 && NR<=12440' src/App.jsx)",
       "Bash(npm run *)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(cat)",
+      "Bash(python3 /tmp/write_skill.py)"
     ]
   }
 }
