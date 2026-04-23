@@ -1291,14 +1291,20 @@ function startNextTurn(gs){
       const extraDraws=P[next].godLevel; // lv1→1, lv2→2, lv3→3
       const whoName=localDisplayName(next,P[next].name);
       L.push(`${whoName}（克苏鲁信徒Lv.${P[next].godLevel}）梦访拉莱耶，翻面跳过回合时额外摸${extraDraws}张牌`);
+      let cthRestDraws=[];
+      let cthRestDrawLogs=[];
+      const _P_beforeCthDraws=copyPlayers(P);
       for(let _d=0;_d<extraDraws;_d++){
         const r2=playerDrawCard(P,D,Disc,next,gs);P=r2.P;D=r2.D;Disc=r2.Disc;
-        if(r2.drawnCard)L.push(`  摸到 ${cardLogText(r2.drawnCard,{alwaysShowName:true})}`);
+        if(r2.drawnCard){
+          L.push(`  摸到 ${cardLogText(r2.drawnCard,{alwaysShowName:true})}`);
+          if(next===0)cthRestDraws.push(r2.drawnCard);
+        }
         if(r2.needGodChoice){
           // AI角色不会触发神牌选择UI，直接处理
           if(next===0){
             const drawLogs=[`${whoName} 摸到 ${cardLogText(r2.drawnCard,{alwaysShowName:true})}`];
-            return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:r2.drawnCard,fromRest:true,cthDrawsRemaining:extraDraws-_d-1,drawerIdx:0},drawReveal:null,selectedCard:null,globalOnlySwapOwner,_turnStartLogs:turnStartLogs,_drawLogs:drawLogs,_statLogs:[]};
+            return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,phase:'GOD_CHOICE',abilityData:{godCard:r2.drawnCard,fromRest:true,cthDrawsRemaining:extraDraws-_d-1,drawerIdx:0},drawReveal:null,selectedCard:null,globalOnlySwapOwner,_turnStartLogs:turnStartLogs,_drawLogs:drawLogs,_statLogs:[],_cthRestDraws:cthRestDraws,_cthRestDrawLogs:cthRestDrawLogs,_playersBeforeCthDraws:_P_beforeCthDraws};
           }
         }
         if(r2.needsDecision){
@@ -1306,7 +1312,7 @@ function startNextTurn(gs){
           if(next===0){
             const split=splitAnimBoundLogs(r2.effectMsgs||[]);
             const drawLogs=[`${whoName} 摸到 ${cardLogText(r2.drawnCard,{alwaysShowName:true})}`,...split.preStat];
-            return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,phase:'DRAW_REVEAL',drawReveal:{card:r2.drawnCard,msgs:[],needsDecision:true,forcedKeep:false,drawerIdx:0,drawerName:P[0].name,fromRest:true},selectedCard:null,abilityData:{fromRest:true,cthDrawsRemaining:extraDraws-_d-1},globalOnlySwapOwner,_turnStartLogs:turnStartLogs,_drawLogs:drawLogs,_statLogs:split.stat};
+            return{...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,phase:'DRAW_REVEAL',drawReveal:{card:r2.drawnCard,msgs:[],needsDecision:true,forcedKeep:false,drawerIdx:0,drawerName:P[0].name,fromRest:true},selectedCard:null,abilityData:{fromRest:true,cthDrawsRemaining:extraDraws-_d-1},globalOnlySwapOwner,_turnStartLogs:turnStartLogs,_drawLogs:drawLogs,_statLogs:split.stat,_cthRestDraws:cthRestDraws,_cthRestDrawLogs:cthRestDrawLogs,_playersBeforeCthDraws:_P_beforeCthDraws};
           }else{
             // AI角色自动选择收入手牌
             const aiRes=applyFx(r2.drawnCard,next,null,P,D,Disc,gs);
@@ -1316,9 +1322,16 @@ function startNextTurn(gs){
         }
         // forced card: already applied, continue
         if(r2.kept){
-          if(r2.effectMsgs.length)L.push(...r2.effectMsgs);
+          if(r2.effectMsgs.length){
+            L.push(...r2.effectMsgs);
+            if(next===0)cthRestDrawLogs.push(...r2.effectMsgs);
+          }
           continue;
         }
+      }
+      if(next===0&&cthRestDraws.length>0){
+        const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:next,skillUsed:false,restUsed:false,godFromHandUsed:false,godTriggeredThisTurn:false,globalOnlySwapOwner});
+        return{...nextGs,_cthRestDraws:cthRestDraws,_cthRestDrawLogs:cthRestDrawLogs,_playersBeforeCthDraws:_P_beforeCthDraws};
       }
     }
     // Skip the turn: advance past player to the next living player
@@ -2055,6 +2068,7 @@ function aiStep(gs){
           gs={...gs,...inspectionMeta,...(gr.inspectionMeta||{})};
         }else{
           const res=applyFx(sc,ti,sc.type==='swapAllHands'?null:ti,P,D,Disc,gs);P=res.P;D=res.D;Disc=res.Disc;L.push(...res.msgs);
+          gs={...gs,...res.statePatch};
           P[ti].hand.push(sc);
           if(sc.type==='swapAllHands'||res.statePatch?.peekHandTargets||res.statePatch?.caveDuelTargets||res.statePatch?.damageLinkTargets||res.statePatch?.roseThornTargets||res.statePatch?.abilityData?.type==='firstComePick'){
             const phaseAbilityData={
@@ -2168,6 +2182,7 @@ function aiStep(gs){
         L.push(`${ai.name}（邪祀者）对 ${tgt.name} 【蛊惑】，赠予 ${cardLogText(sc,{alwaysShowName:true})}`);
         P[ti].hand.push(sc);
         const res=applyFx(sc,ti,sc.type==='swapAllHands'?null:ti,P,D,Disc,gs);P=res.P;D=res.D;Disc=res.Disc;L.push(...res.msgs);
+        gs={...gs,...res.statePatch};
         if(res.statePatch?.abilityData?.type==='firstComePick'){
           const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
           return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'FIRST_COME_PICK_SELECT',abilityData:{...res.statePatch.abilityData,_turnOwner:gs.currentTurn},skillUsed:true};
@@ -6711,7 +6726,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
       }
       try{
         // Strip ALL animation-only temp fields before storing as real game state
-        const{_aiDrawnCard,_aiName,_playersBeforeNextDraw,_aiHuntEvents,_playersBeforeSkillAction,_preSkillLogs,_preSkillDiscard,...stripped}=rawResult;
+        const{_aiDrawnCard,_aiName,_playersBeforeNextDraw,_aiHuntEvents,_playersBeforeSkillAction,_preSkillLogs,_preSkillDiscard,_cthRestDraws,_cthRestDrawLogs,_playersBeforeCthDraws,...stripped}=rawResult;
         newGs=stripped; // reassign: stripped has _playersBeforeThisDraw from startNextTurn
         const oldLog=Array.isArray(gs.log)?gs.log:[];
         const nextLog=Array.isArray(newGs.log)?newGs.log:oldLog;
@@ -6725,6 +6740,14 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         const aiTurnDiscarded=hasTurnStartDraw?isDrawnCardActuallyDiscarded(rawResult,aiTurnDrawnCard):false;
         const {currentTurnLogs}=splitTransitionLogs(oldLog,nextLog);
         const queue=[];
+        // Animate CTH rest-draw forced cards from turn transition
+        if(rawResult._cthRestDraws?.length>0){
+          const cthQueue=rawResult._cthRestDraws.map(card=>({
+            type:'DRAW_CARD',card,triggerName:'你',targetPid:0,
+            msgs:rawResult._cthRestDrawLogs?.filter(l=>l.includes(card.name)||l.includes(card.key))||[]
+          }));
+          queue.push(...cthQueue);
+        }
         if(gs._preTurnPlayers&&Array.isArray(gs._preTurnStatLogs)&&gs._preTurnStatLogs.length){
           const preTurnQ=bindAnimLogChunks(
             buildAnimQueue({...gs,players:gs._preTurnPlayers,log:[]},{...gs,players:gs._playersBeforeThisDraw||gs.players,log:gs._preTurnStatLogs}),
@@ -8451,6 +8474,24 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
     let P=copyPlayers(baseGsAfterDecision.players),D=[...baseGsAfterDecision.deck],Disc=[...baseGsAfterDecision.discard],L=[...baseGsAfterDecision.log];
     const remaining=baseGsAfterDecision.abilityData?.cthDrawsRemaining||0;
     const fromRest=baseGsAfterDecision.abilityData?.fromRest;
+    // Animate any prior rest-draws (forced cards from startNextTurn) first
+    if(baseGsAfterDecision._cthRestDraws?.length>0){
+      const cthQueue=baseGsAfterDecision._cthRestDraws.map(card=>({
+        type:'DRAW_CARD',card,triggerName:'你',targetPid:0,
+        msgs:baseGsAfterDecision._cthRestDrawLogs?.filter(l=>l.includes(card.name)||l.includes(card.key))||[]
+      }));
+      const statQ=bindAnimLogChunks(
+        buildAnimQueue({...baseGsAfterDecision,players:baseGsAfterDecision._playersBeforeCthDraws||baseGsAfterDecision.players},baseGsAfterDecision),
+        {statLogs:baseGsAfterDecision._cthRestDrawLogs||[]}
+      );
+      const cleanedGs={...baseGsAfterDecision,_cthRestDraws:null,_cthRestDrawLogs:null,_playersBeforeCthDraws:null};
+      triggerAnimQueue(
+        [...cthQueue,...statQ,{type:'STATE_PATCH',players:cleanedGs.players,discard:cleanedGs.discard}],
+        null,
+        ()=>{_cthContinueRestDraws(cleanedGs);}
+      );
+      return;
+    }
     if(remaining<=0){
       const nextGs=startNextTurn({...baseGsAfterDecision,players:P,deck:D,discard:Disc,log:L,abilityData:{}});
       applyNextTurnGs(nextGs);
@@ -9485,7 +9526,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     }
 
     const huntMsgs=extractSkillLogs(L.slice(gs.log.length),'hunt');
-    const queue=[{type:'SKILL_HUNT',msgs:huntMsgs,targetIdx:0}];
+    const queue=[];
     if(discardedCard){
       queue.push({type:'DISCARD',card:discardedCard,triggerName:aiHunterName||'???',targetPid:huntingAI});
     }
@@ -9901,6 +9942,20 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
   function applyNextTurnGs(newGs){
     // Guard: never overwrite win/pending-win state
     if(newGs&&(newGs.phase==='PLAYER_WIN_PENDING'||newGs.phase==='TREASURE_WIN'))return setGs(p=>p?.gameOver||p?.phase==='PLAYER_WIN_PENDING'||p?.phase==='TREASURE_WIN'?p:newGs);
+    // Animate CTH rest-draw forced cards that accumulated during startNextTurn
+    if(newGs?._cthRestDraws?.length>0){
+      const cthQueue=newGs._cthRestDraws.map(card=>({
+        type:'DRAW_CARD',card,triggerName:'你',targetPid:0,
+        msgs:newGs._cthRestDrawLogs?.filter(l=>l.includes(card.name)||l.includes(card.key))||[]
+      }));
+      const statQ=bindAnimLogChunks(
+        buildAnimQueue({...gs,players:newGs._playersBeforeCthDraws||gs.players},newGs),
+        {statLogs:newGs._cthRestDrawLogs||[]}
+      );
+      const cleanedGs={...newGs,_cthRestDraws:null,_cthRestDrawLogs:null,_playersBeforeCthDraws:null};
+      triggerAnimQueue([...cthQueue,...statQ],cleanedGs);
+      return;
+    }
     const preTurnStatQ=(newGs&&newGs._preTurnPlayers&&Array.isArray(newGs._preTurnStatLogs)&&newGs._preTurnStatLogs.length)
       ? bindAnimLogChunks(
           buildAnimQueue({...gs,players:newGs._preTurnPlayers,log:[]},{...gs,players:newGs._playersBeforeThisDraw||newGs.players,log:newGs._preTurnStatLogs}),
@@ -10048,19 +10103,37 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
           cthDraws.push(r2.drawnCard);
         }
         if(r2.needGodChoice){
-          setGs(buildLocalCthDecisionState(gs,{
+          const decisionState=buildLocalCthDecisionState(gs,{
             players:P,deck:D,discard:Disc,log:L,drawnCard:r2.drawnCard,remainingDraws:extraDraws-_d-1,needGodChoice:true,
             extraState:{skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true},
-          }));
+          });
+          if(cthDraws.length>0){
+            const queue=[];
+            cthDraws.forEach(card=>{queue.push({type:'DRAW_CARD',card:card,triggerName:'你',targetPid:0});});
+            const statQ=buildAnimQueue(gs,{...gs,players:P,deck:D,discard:Disc,log:L}).filter(a=>a.type!=='CARD_TRANSFER');
+            queue.push(...statQ);
+            triggerAnimQueue(queue,decisionState);
+            return;
+          }
+          setGs(decisionState);
           return;
         }
         if(r2.needsDecision){
           const split=splitAnimBoundLogs(r2.effectMsgs||[]);
-          setGs(buildLocalCthDecisionState(gs,{
+          const decisionState=buildLocalCthDecisionState(gs,{
             players:P,deck:D,discard:Disc,log:L,drawnCard:r2.drawnCard,remainingDraws:extraDraws-_d-1,
             preStatLogs:split.preStat,statLogs:split.stat,
             extraState:{skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false},
-          }));
+          });
+          if(cthDraws.length>0){
+            const queue=[];
+            cthDraws.forEach(card=>{queue.push({type:'DRAW_CARD',card:card,triggerName:'你',targetPid:0});});
+            const statQ=buildAnimQueue(gs,{...gs,players:P,deck:D,discard:Disc,log:L}).filter(a=>a.type!=='CARD_TRANSFER');
+            queue.push(...statQ);
+            triggerAnimQueue(queue,decisionState);
+            return;
+          }
+          setGs(decisionState);
           return;
         }
         // forced card: already applied, continue
