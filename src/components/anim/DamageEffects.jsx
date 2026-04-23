@@ -56,17 +56,28 @@ function GuillotineAnim({targets}){
   const[phase,setPhase]=React.useState('slice'); // slice, slide
 
   React.useEffect(()=>{
-    const t1=setTimeout(()=>setPhase('slide'),180);
+    const t1=setTimeout(()=>setPhase('slide'),170);
     return()=>{clearTimeout(t1);};
   },[]);
 
   if(!targets||!targets.length)return null;
+
+  // 每局每名角色只随机一次斜角，避免 re-render 时角度跳动
+  // 角度分布在 [-30,-22] ∪ [22,30]，避开接近水平的 0° 附近
+  const anglesRef=React.useRef(null);
+  if(!anglesRef.current||anglesRef.current.length!==targets.length){
+    anglesRef.current=targets.map(()=>{
+      const base=22+Math.random()*8; // 22 ~ 30
+      return (Math.random()<0.5?1:-1)*base;
+    });
+  }
 
   return(
     <div style={{position:'fixed',inset:0,zIndex:1400,pointerEvents:'none',overflow:'hidden'}}>
       <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0)',animation:'guillotineVig 1.1s ease-in-out forwards'}}/>
       {targets.map((t,ti)=>{
         const hasSnapshot=!!t.snapshotUrl;
+        const sliceAngle=anglesRef.current[ti];
         return(
           <React.Fragment key={ti}>
             {phase==='slice'&&(
@@ -90,39 +101,46 @@ function GuillotineAnim({targets}){
                 <div style={{
                   position:'absolute',
                   left:-t.w,top:-t.h,width:t.w*3,height:t.h*3,
-                  transform:`rotate(30deg)`,
+                  '--slice-angle': `${sliceAngle}deg`,
                   background:'linear-gradient(90deg, transparent 0%, rgba(255,0,0,0.8) 50%, transparent 100%)',
-                  animation:'sliceEffect 0.5s ease-out forwards',
+                  animation:'sliceEffect 0.11s ease-out forwards',
                 }}/>
                 <div style={{
                   position:'absolute',
                   left:t.x-10,top:t.y-10,width:t.w+20,height:t.h+20,
                   background:'radial-gradient(ellipse at center, rgba(255,255,255,0.8) 0%, rgba(255,100,100,0.6) 50%, transparent 100%)',
-                  animation:'sliceFlash 0.3s ease-out forwards',
+                  animation:'sliceFlash 0.12s ease-out forwards',
                 }}/>
                 <div style={{
                   position:'absolute',
                   left:t.x-20,top:t.y-20,width:t.w+40,height:t.h+40,
                   background:'radial-gradient(ellipse at center, rgba(180,10,10,0.4) 0%, rgba(80,0,0,0.1) 60%, transparent 100%)',
-                  animation:'bloodSpread 1s ease-out forwards',
+                  animation:'bloodSpread 0.42s ease-out forwards',
                 }}/>
               </div>
             )}
             {phase==='slide'&&(
-              <>
+              <div style={{
+                position:'absolute',
+                left:t.cx,top:t.cy,
+                width:t.w,height:t.h,
+                marginLeft:-t.w/2,marginTop:-t.h/2,
+                transform:`rotate(${sliceAngle}deg)`,
+                transformOrigin:'center center',
+              }}>
                 <div style={{
-                  position:'absolute',
-                  left:t.x,top:t.y,width:t.w,height:t.h/2,
+                  position:'absolute',left:0,top:0,width:'100%',height:'50%',
                   overflow:'hidden',
                   borderTopLeftRadius:3,
                   borderTopRightRadius:3,
-                  animation:'slideUp 0.82s cubic-bezier(0.08,0.82,0.22,1) forwards',
+                  transformOrigin:sliceAngle>0?'0% 100%':'100% 100%',
+                  '--pivot-rot':`${sliceAngle>0?-22:22}deg`,
+                  animation:'slideUp 0.72s cubic-bezier(0.08,0.82,0.22,1) forwards',
                   boxShadow:hasSnapshot?'0 6px 18px rgba(0,0,0,0.28)':'none',
                 }}>
                   {hasSnapshot?(
                     <div style={{
-                      position:'absolute',
-                      inset:0,
+                      position:'absolute',inset:0,
                       backgroundImage:`url(${t.snapshotUrl})`,
                       backgroundSize:`${t.w}px ${t.h}px`,
                       backgroundPosition:'center top',
@@ -130,28 +148,25 @@ function GuillotineAnim({targets}){
                     }}/>
                   ):(
                     <div style={{
-                      position:'absolute',
-                      inset:0,
+                      position:'absolute',inset:0,
                       background:'linear-gradient(135deg, rgba(255,100,100,0.3) 0%, rgba(255,0,0,0.2) 100%)',
                     }}/>
                   )}
                 </div>
                 <div style={{
-                  position:'absolute',
-                  left:t.x,top:t.y+t.h/2,width:t.w,height:t.h/2,
+                  position:'absolute',left:0,top:'50%',width:'100%',height:'50%',
                   overflow:'hidden',
                   borderBottomLeftRadius:3,
                   borderBottomRightRadius:3,
-                  animation:'slideDown 0.86s cubic-bezier(0.08,0.82,0.24,1) forwards',
+                  transformOrigin:sliceAngle>0?'0% 0%':'100% 0%',
+                  '--pivot-rot':`${sliceAngle>0?22:-22}deg`,
+                  animation:'slideDown 0.76s cubic-bezier(0.08,0.82,0.24,1) forwards',
                   boxShadow:hasSnapshot?'0 6px 18px rgba(0,0,0,0.28)':'none',
                 }}>
                   {hasSnapshot?(
                     <div style={{
-                      position:'absolute',
-                      left:0,
-                      top:-t.h/2,
-                      width:t.w,
-                      height:t.h,
+                      position:'absolute',left:0,top:-t.h/2,
+                      width:'100%',height:t.h,
                       backgroundImage:`url(${t.snapshotUrl})`,
                       backgroundSize:`${t.w}px ${t.h}px`,
                       backgroundPosition:'center top',
@@ -159,8 +174,7 @@ function GuillotineAnim({targets}){
                     }}/>
                   ):(
                     <div style={{
-                      position:'absolute',
-                      inset:0,
+                      position:'absolute',inset:0,
                       background:'linear-gradient(135deg, rgba(255,100,100,0.3) 0%, rgba(255,0,0,0.2) 100%)',
                     }}/>
                   )}
@@ -168,26 +182,19 @@ function GuillotineAnim({targets}){
                 {hasSnapshot&&(
                   <>
                     <div style={{
-                      position:'absolute',
-                      left:t.x,
-                      top:t.y+(t.h/2)-1,
-                      width:t.w,
-                      height:2,
+                      position:'absolute',left:0,top:'50%',width:'100%',height:2,
                       background:'linear-gradient(90deg, transparent 0%, rgba(255,230,230,0.95) 50%, transparent 100%)',
                       boxShadow:'0 0 12px rgba(255,80,80,0.8)',
                     }}/>
                     <div style={{
-                      position:'absolute',
-                      left:t.x-10,
-                      top:t.y-10,
-                      width:t.w+20,
-                      height:t.h+20,
+                      position:'absolute',left:-10,top:-10,
+                      width:t.w+20,height:t.h+20,
                       background:'radial-gradient(ellipse at center, rgba(180,10,10,0.22) 0%, rgba(80,0,0,0.08) 58%, transparent 100%)',
                       animation:'bloodSpread 1s ease-out forwards',
                     }}/>
                   </>
                 )}
-              </>
+              </div>
             )}
           </React.Fragment>
         );

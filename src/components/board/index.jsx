@@ -331,6 +331,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
       borderRadius:3,padding:'8px 9px',
       cursor:isSelectable?'pointer':'default',
       opacity: isBeingGuillotined ? 0 : (player.isDead && !player._pendingAnimDeath ? 0.32 : 1),
+      filter: player.isDead && !player._pendingAnimDeath ? 'grayscale(0.85) brightness(0.6)' : 'none',
       transition:'all .2s',
       position:'relative',
       overflow:'hidden',

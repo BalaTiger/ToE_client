@@ -64,6 +64,7 @@ function FlowerBloom(){
 function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false}){
   if(!card) return null;
   const isInspection=!!card.effect;
+  const displayTriggerName=isInspection&&(targetPid??0)===0?'你':triggerName;
   const inspectionTone=isInspection?(card.type||'neutral'):null;
   const s=isInspection
     ?({
@@ -209,7 +210,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false}){
 
       <div style={{position:'absolute',inset:0,pointerEvents:'none'}}>{spirits}</div>
 
-      {triggerName&&(
+      {displayTriggerName&&(
         <div style={{
           position:'absolute',bottom:'12%',left:'50%',transform:'translateX(-50%)',
           fontFamily:"'Cinzel',serif",fontWeight:700,letterSpacing:3,fontSize:13,
@@ -217,7 +218,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false}){
           textShadow:isInspection?(inspectionTone==='positive'?'0 0 16px #2dbf6688':inspectionTone==='neutral'?'0 0 16px #8fa0bf66':'0 0 16px #9020cc88'):(cardPolarity==='negative'?'0 0 16px #9020cc88':cardPolarity==='neutral'?'0 0 16px #8fa0bf66':'0 0 16px #c8a96e88'),
           textTransform:'uppercase',whiteSpace:'nowrap',
           animation:'animFadeIn 0.4s ease-out 1.2s both',
-        }}>{triggerName} 翻开卡牌</div>
+        }}>{displayTriggerName} 翻开卡牌</div>
       )}
 
       <div style={{animation:'cardRise 1.2s cubic-bezier(0.15,0,0.35,1) forwards',perspective:700}}>

@@ -1,6 +1,7 @@
-import { GodTooltip, AreaTooltip, useCardHoverTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG } from './components/cards';
+﻿import { GodTooltip, AreaTooltip, useCardHoverTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG } from './components/cards';
 import { GodChoiceModal, NyaBorrowModal, DrawRevealModal, TreasureDodgeModal, PeekHandModal, TortoiseOracleModal, AboutModal, FullLogModal, RoadmapModal } from './components/modals';
 import { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel } from './components/board';
+import { RoomModal, LobbyModal, PrivacyToggleModal, TutorialOverlay, ConnectionErrorModal, DebugControls } from './components/lobby';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import ReactDOM, { createPortal } from "react-dom";
 import html2canvas from "html2canvas";
@@ -210,6 +211,21 @@ function killPlayerState(P,i,Disc,L){
     P[i].godName=null;
     P[i].godLevel=0;
   }
+}
+
+function clearPendingAnimDeathFlags(players,preservePid=null){
+  return (players||[]).map((p,idx)=>{
+    if(!p)return p;
+    if(p._pendingAnimDeath&&idx!==preservePid)return {...p,_pendingAnimDeath:false};
+    return {...p};
+  });
+}
+
+function shouldDelayHuntLootSelection(players,targetIdx,maxToTake,isMP){
+  const target=players?.[targetIdx];
+  if(!target?.isDead||!target?.revealHand)return false;
+  if((target.hand?.length||0)<=maxToTake)return false;
+  return !checkWin(players,isMP);
 }
 
 function applyHpDamageWithLink(P,i,amount,Disc,L){
@@ -942,23 +958,19 @@ function resolveGodEncounterForAI(ci,godCard,P,D,Disc,gs,forcedConvert){
     P[ci].godLevel++;P[ci].godZone.push({...godCard});
     msgs.push(`${P[ci].name} 邪神之力升至Lv.${P[ci].godLevel}（${godCard.power}）`);
     P.forEach((p,i)=>{if(i!==ci&&p.godName===godKey){
-      const inspectionBaseLog=[...(Array.isArray(gs?.log)?gs.log:[]),...msgs];
-      const processed=applySanLossToPlayerWithInspection(i,1,gs?.currentTurn??ci,P,D,Disc,inspectionBaseLog,inspectionMeta);
-      P=processed.P;D=processed.D;Disc=processed.Disc;inspectionMeta=processed.inspectionMeta;
-      const extraMsgs=(processed.L||[]).slice(inspectionBaseLog.length);if(extraMsgs.length)msgs.push(...extraMsgs);
-      clearPlayerGodZone(P[i],Disc);
-      msgs.push(`${P[i].name} 被邪神抛弃，SAN-1`);
+      const abandonBaseLog=[...(Array.isArray(gs?.log)?gs.log:[]),...msgs];
+      const abandoned=abandonGodFollower(i,gs?.currentTurn??ci,P,D,Disc,abandonBaseLog,inspectionMeta);
+      P=abandoned.P;D=abandoned.D;Disc=abandoned.Disc;inspectionMeta=abandoned.inspectionMeta;
+      const extraMsgs=(abandoned.L||[]).slice(abandonBaseLog.length);if(extraMsgs.length)msgs.push(...extraMsgs);
     }});
   } else if(action==='worship'){
     P[ci].godName=godKey;P[ci].godLevel=1;P[ci].godZone=[{...godCard}];
     msgs.push(`${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
     P.forEach((p,i)=>{if(i!==ci&&p.godName===godKey){
-      const inspectionBaseLog=[...(Array.isArray(gs?.log)?gs.log:[]),...msgs];
-      const processed=applySanLossToPlayerWithInspection(i,1,gs?.currentTurn??ci,P,D,Disc,inspectionBaseLog,inspectionMeta);
-      P=processed.P;D=processed.D;Disc=processed.Disc;inspectionMeta=processed.inspectionMeta;
-      const extraMsgs=(processed.L||[]).slice(inspectionBaseLog.length);if(extraMsgs.length)msgs.push(...extraMsgs);
-      clearPlayerGodZone(P[i],Disc);
-      msgs.push(`${P[i].name} 被邪神抛弃，SAN-1`);
+      const abandonBaseLog=[...(Array.isArray(gs?.log)?gs.log:[]),...msgs];
+      const abandoned=abandonGodFollower(i,gs?.currentTurn??ci,P,D,Disc,abandonBaseLog,inspectionMeta);
+      P=abandoned.P;D=abandoned.D;Disc=abandoned.Disc;inspectionMeta=abandoned.inspectionMeta;
+      const extraMsgs=(abandoned.L||[]).slice(abandonBaseLog.length);if(extraMsgs.length)msgs.push(...extraMsgs);
     }});
   } else if(action==='hand'){
     P[ci].hand.push({...godCard});msgs.push(`${P[ci].name}（邪祀者）将邪神牌收入手牌`);
@@ -2118,8 +2130,26 @@ function aiStep(gs){
   }
   const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
   const aiHandLimit=P[ct]._nyaHandLimit??4;
-  while(P[ct].hand.length>aiHandLimit){const c=P[ct].hand.shift();Disc.push(c);L.push(`${ai.name} 弃 ${cardLogText(c,{alwaysShowName:true})}（上限）`);}
-  
+  const discardedCards=[];
+  while(P[ct].hand.length>aiHandLimit){const c=P[ct].hand.shift();Disc.push(c);discardedCards.push(c);L.push(`${ai.name} 弃 ${cardLogText(c,{alwaysShowName:true})}（上限）`);}
+  // 结算玫瑰倒刺：弃掉的标记牌立即造成伤害，日志紧跟在弃牌日志之后
+  if(discardedCards.length){
+    const thornLosses={};
+    discardedCards.forEach(c=>{
+      if(c.roseThornHolderId!=null && P[c.roseThornHolderId] && !P[c.roseThornHolderId].isDead){
+        thornLosses[c.roseThornHolderId]=(thornLosses[c.roseThornHolderId]||0)+1;
+      }
+    });
+    Object.entries(thornLosses).forEach(([holderIdxStr,count])=>{
+      const holderIdx=+holderIdxStr;
+      applyHpDamageWithLink(P,holderIdx,2*count,Disc,L);
+      L.push(`【玫瑰倒刺】${P[holderIdx].name} 失去标记手牌，受到 ${2*count} HP 伤害`);
+    });
+  }
+  const winAfterDiscard=checkWin(P,gs._isMP);
+  if(winAfterDiscard){
+    return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:winAfterDiscard,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:(useSkill||gs.skillUsed),_animAiDrawnCard:gs._aiDrawnCard??gs._drawnCard??null,_animDiscardedDrawnCard:gs._discardedDrawnCard??false,_aiName:ai.name,_playersBeforeNextDraw:copyPlayers(P),_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:_preSkillDiscard,_aiHuntEvents:aiHuntEvents};
+  }
   const _P_afterAction=copyPlayers(P);
   let nextGs;
 
@@ -2136,7 +2166,7 @@ function aiStep(gs){
     throw new Error(`${ai.name} 回合收尾失败: ${e?.message||'未知错误'}`);
   }
 
-  return{...nextGs,_animAiDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?null:(gs._aiDrawnCard??gs._drawnCard??null),_animDiscardedDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?false:(gs._discardedDrawnCard??false),_aiName:ai.name,_playersBeforeNextDraw:_P_afterAction,_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard,_aiHuntEvents:aiHuntEvents};
+  return{...nextGs,_animAiDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?null:(gs._aiDrawnCard??gs._drawnCard??null),_animDiscardedDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?false:(gs._discardedDrawnCard??false),_aiName:ai.name,_playersBeforeNextDraw:_P_afterAction,_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard,_aiHuntEvents:aiHuntEvents,_aiHandLimitDiscards:discardedCards};
 }
 
 // 检定牌堆
@@ -4317,7 +4347,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
   },[gs?.houndsOfTindalosActive,gs?.houndsOfTindalosElapsed,gs?.phase,gs?.currentTurn,gs?.gameOver,showTutorial,anim]);
 
   useEffect(()=>{
-    if(!gs||showTutorial||anim||animQueueRef.current.length>0||gs.gameOver)return;
+    if(!gs||showTutorial||anim||animQueueRef.current.length>0||gs.gameOver||gs.phase==='AI_TURN')return;
     const events=(gs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current);
     if(!events.length)return;
     lastInspectionSeqRef.current=Math.max(...events.map(ev=>ev.seq));
@@ -4584,6 +4614,14 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         setGs(prev=>{
           // Never overwrite a win/pending-win state with stale queued state
           if(prev?.gameOver||prev?.phase==='PLAYER_WIN_PENDING'||prev?.phase==='TREASURE_WIN')return prev;
+          const preservePendingDeathPid=next?.phase==='HUNT_SELECT_CARD_FROM_PUBLIC'
+            ? (next?.abilityData?.huntTi??null)
+            : null;
+          // 清除 _pendingAnimDeath，确保死亡角色面板在动画队列结束后立即置灰
+          // 例外：追捕致死后进入公开挑牌阶段时，先保留死者未置灰状态，直到挑牌完成
+          if(next?.players){
+            return {...next, players: clearPendingAnimDeathFlags(next.players,preservePendingDeathPid)};
+          }
           return next;
         });
       }
@@ -4634,8 +4672,12 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
     }
     // 创建带延迟清理的callback
     const wrappedCallback = hasDeathAnim && pendingDeathPlayers.length ? () => {
+      const preservePendingDeathPid=nextGs?.phase==='HUNT_SELECT_CARD_FROM_PUBLIC'
+        ? (nextGs?.abilityData?.huntTi??null)
+        : null;
       // 清除所有角色的_pendingAnimDeath标记，使面板置灰
-      const cleanedPlayers = nextGs.players.map(p => ({...p, _pendingAnimDeath: false}));
+      // 例外：追捕致死后进入公开挑牌阶段时，先保留死者未置灰状态
+      const cleanedPlayers = clearPendingAnimDeathFlags(nextGs.players,preservePendingDeathPid);
       const finalGs = {...nextGs, players: cleanedPlayers};
       if(callback){
         callback();
@@ -4796,6 +4838,16 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         ];
         const residualLogs=subtractLogOccurrences(currentTurnLogs,explicitCurrentLogs);
         const finalQueue=appendAnimLogChunkToQueueEnd(queue,residualLogs);
+        // 更新玫瑰倒刺快照，防止 useEffect 在动画结束后对已在 aiStep 中结算的弃牌重复触发
+        roseThornPrevRef.current = newGs.players.map((player, idx) => ({
+          idx,
+          marked: [
+            ...((player?.hand||[]).filter(card=>card?.roseThornHolderId===idx).map(card=>card.id)),
+            ...((player?.godZone||[]).filter(card=>card?.roseThornHolderId===idx).map(card=>card.id)),
+          ].filter(id=>id!=null),
+        }));
+        // 确保 pendingGs 中也清除 _pendingAnimDeath，防止 STATE_PATCH 后置灰效果被覆盖
+        newGs={...newGs,players:newGs.players.map(p=>p._pendingAnimDeath?{...p,_pendingAnimDeath:false}:p)};
         // Play draw and discard animations first, then show hunt animation
         triggerAnimQueue(finalQueue, newGs, () => {
           // After draw animations complete, show hunt animation
@@ -4805,7 +4857,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
       }
       try{
         // Strip ALL animation-only temp fields before storing as real game state
-        const{_aiDrawnCard,_aiName,_playersBeforeNextDraw,_aiHuntEvents,_playersBeforeSkillAction,_preSkillLogs,_preSkillDiscard,_cthRestDraws,_cthRestDrawLogs,_playersBeforeCthDraws,...stripped}=rawResult;
+        const{_aiDrawnCard,_aiName,_playersBeforeNextDraw,_aiHuntEvents,_playersBeforeSkillAction,_preSkillLogs,_preSkillDiscard,_cthRestDraws,_cthRestDrawLogs,_playersBeforeCthDraws,_aiHandLimitDiscards,...stripped}=rawResult;
         newGs=stripped; // reassign: stripped has _playersBeforeThisDraw from startNextTurn
         const oldLog=Array.isArray(gs.log)?gs.log:[];
         const nextLog=Array.isArray(newGs.log)?newGs.log:oldLog;
@@ -4862,6 +4914,17 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
           queue.push({type:'DISCARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn});
           queue.push({type:'STATE_PATCH',players:gs.players,discard:gs.discard});
         }
+        // Append inspection events triggered by the draw
+        const drawInspectionEvents=(gs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current);
+        if(drawInspectionEvents.length){
+          lastInspectionSeqRef.current=Math.max(...drawInspectionEvents.map(ev=>ev.seq));
+          const inspectionFlow=buildInspectionEventFlow(
+            {players:drawInspectionEvents[0]?.beforePlayers||gs.players,log:drawInspectionEvents[0]?.beforeLog||gs.log},
+            drawInspectionEvents,
+            {buildAnimQueue,copyPlayers}
+          );
+          queue.push(...inspectionFlow.queue);
+        }
         if(_playersBeforeSkillAction){
           queue.push({
             type:'STATE_PATCH',
@@ -4877,13 +4940,21 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
           const m=restMsg.match(/掷骰 (\d+)\+(\d+)，回复 (\d+)HP/);
           if(m){const rd1=+m[1],rd2=+m[2],rh=+m[3];queue.push({type:'DICE_ROLL',d1:rd1,d2:rd2,heal:rh,rollerName:rawResult._aiName||gs.players[gs.currentTurn]?.name});}}
         // 4. Skill anim (if used)
-        const P_actionEnd=rawResult._playersBeforeNextDraw||newGs.players;
+        // 提前清除 _pendingAnimDeath：STATE_PATCH 后面板立即置灰，不再等到整个队列播完
+        const P_actionEnd=(rawResult._playersBeforeNextDraw||newGs.players).map(p=>p._pendingAnimDeath?{...p,_pendingAnimDeath:false}:p);
         const fullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(newMsgs,gs.players);
         const actionStatQBase=buildAnimQueue(gs,fakeGs(P_actionEnd,nextLog));
         const actionStatQ=fullHandSwapQ.length
           ? [...fullHandSwapQ,...actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')]
           : actionStatQBase;
         const huntEventQueue=(rawResult._aiHuntEvents||[]).flatMap(evt=>buildAiHuntEventAnimQueue(evt,gs.players[gs.currentTurn]?.name||'???'));
+        const handLimitDiscardQueue=(_aiHandLimitDiscards||[]).map((card,idx,arr)=>({
+          type:'DISCARD',
+          card,
+          triggerName:gs.players[gs.currentTurn]?.name||'???',
+          targetPid:gs.currentTurn,
+          msgs:idx===arr.length-1?newMsgs.filter(m=>m.includes('（上限）')):[],
+        }));
         let orderedActionQ=null;
         const hasActualSwap=newMsgs.some(m=>/^.+对 .+ 【掉包】/.test(m));
         const hasFullHandSwap=newMsgs.some(m=>m.includes('交换了全部手牌'));
@@ -4919,7 +4990,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
               giftedCard?.type==='selfDamageHPPeek'||
               giftedCard?.type==='firstComePick'
             )?P_actionEnd[bwti]?.name:null;
-            orderedActionQ=buildBewitchForcedCardQueue(gs.currentTurn,bwti,giftedCard,P_actionEnd[bwti]?.name,[...inspectionRevealQ,...actionStatQ],extractSkillLogs(newMsgs,'bewitch'),bewitchTurnIntroName);
+            orderedActionQ=buildBewitchForcedCardQueue(gs.currentTurn,bwti,giftedCard,P_actionEnd[bwti]?.name,[...actionStatQ,...inspectionRevealQ],extractSkillLogs(newMsgs,'bewitch'),bewitchTurnIntroName);
           }else{
             queue.push({type:'SKILL_BEWITCH',msgs:extractSkillLogs(newMsgs,'bewitch'),targetIdx:bwti>=0?bwti:1});
           }
@@ -4930,6 +5001,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         let nextTurnIntroQueue=[];
         if(isLocalCurrentTurn(newGs)){
           queue.push(...(orderedActionQ||actionStatQ));
+          queue.push(...handLimitDiscardQueue);
           const playerTurnStartMsgs=newGs._turnStartLogs||[];
           const playerDrawMsgs=newGs._drawLogs||[];
           const playerStatQ=(newGs._playersBeforeThisDraw&&newGs.drawReveal?.card)
@@ -4954,6 +5026,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
           // AI next: action stat changes go before queue ends; draw effects for next AI
           // will be shown at the start of that AI's own queue (after their banner + DRAW_CARD)
           queue.push(...(orderedActionQ||actionStatQ));
+          queue.push(...handLimitDiscardQueue);
           // 如果下一个是AI，且它摸首牌直接死亡导致了这局游戏结束，此时不会有真正的下一个AI回合勾子运行了，必须把它的暴毙动画立刻压入队列
           if(newGs.gameOver && newGs.currentTurn !== gs.currentTurn){
             const aiNextStatQ = bindAnimLogChunks(
@@ -4962,6 +5035,17 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
             );
             nextTurnIntroQueue=[...aiNextStatQ];
           }
+        }
+        // Append inspection events triggered by the AI action
+        const actionInspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current);
+        if(actionInspectionEvents.length){
+          lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...actionInspectionEvents.map(ev=>ev.seq));
+          const inspectionFlow=buildInspectionEventFlow(
+            {players:actionInspectionEvents[0]?.beforePlayers||newGs.players,log:actionInspectionEvents[0]?.beforeLog||newGs.log},
+            actionInspectionEvents,
+            {buildAnimQueue,copyPlayers}
+          );
+          queue.push(...inspectionFlow.queue);
         }
         const explicitCurrentLogs=[
           ...(gs._turnStartLogs||[]),
@@ -4981,6 +5065,16 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
           ...(currentTurnQueue.length&&nextTurnIntroQueue.length?[{type:'TURN_BOUNDARY_PAUSE'}]:[]),
           ...nextTurnIntroQueue
         ];
+        // 更新玫瑰倒刺快照，防止 useEffect 在动画结束后对已在 aiStep 中结算的弃牌重复触发
+        roseThornPrevRef.current = newGs.players.map((player, idx) => ({
+          idx,
+          marked: [
+            ...((player?.hand||[]).filter(card=>card?.roseThornHolderId===idx).map(card=>card.id)),
+            ...((player?.godZone||[]).filter(card=>card?.roseThornHolderId===idx).map(card=>card.id)),
+          ].filter(id=>id!=null),
+        }));
+        // 确保 pendingGs 中也清除 _pendingAnimDeath，防止 STATE_PATCH 后置灰效果被覆盖
+        newGs={...newGs,players:newGs.players.map(p=>p._pendingAnimDeath?{...p,_pendingAnimDeath:false}:p)};
         triggerAnimQueue(finalQueue,newGs);
       }catch(e){
         console.error('[AI turn queue error]',e);
@@ -5888,532 +5982,66 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
             </div>
           </div>
         )}
-                {/* ── Room Modal ── */}
-        {roomModal&&(
-          <div style={{position:'fixed',inset:0,background:'#000000cc',zIndex:1500,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={closeRoomModal}>
-            <div onClick={e=>e.stopPropagation()} style={{
-              background:'#0e0a14',border:'2px solid #7a50b0',borderRadius:6,
-              padding:'32px 36px',maxWidth:420,width:'90%',
-              boxShadow:'0 0 60px #5a3a8066',animation:'animPop 0.25s ease-out',
-              position:'relative',
-            }}>
-              <button onClick={closeRoomModal} style={{position:'absolute',top:12,right:14,background:'none',border:'none',color:'#5a4070',fontSize:18,cursor:'pointer',lineHeight:1,padding:'2px 6px'}}>✕</button>
-              <div style={{textAlign:'center',marginBottom:24}}>
-                <div style={{fontSize:28,marginBottom:10,filter:'drop-shadow(0 0 12px #a080d088)'}}>🔮</div>
-                <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:16,color:'#c8a0e8',letterSpacing:2,marginBottom:6}}>联机房间</div>
-                <div style={{width:120,height:1,background:'linear-gradient(90deg,transparent,#7a50b0,transparent)',margin:'0 auto'}}/>
-              </div>
-              <div style={{background:'#160d22',border:'1px solid #5a3a80',borderRadius:4,padding:'16px',textAlign:'center',marginBottom:20}}>
-                <div style={{fontFamily:"'Cinzel',serif",color:'#8060a0',fontSize:10,letterSpacing:3,marginBottom:8,textTransform:'uppercase'}}>— 房间号 —</div>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
-                  <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:28,color:'#e0c0f8',letterSpacing:6,textShadow:'0 0 20px #a080d066'}}>{roomModal.roomId}</div>
-                  <button onClick={()=>{try{navigator.clipboard.writeText(roomModal.roomId).then(()=>addToast('✓ 房间号已复制')).catch(()=>addToast('复制失败，请手动复制'));}catch{addToast('复制失败，请手动复制');}}} title="复制房间号" style={{
-                    background:'#1a0d2e',border:'1px solid #7a50b0',borderRadius:4,
-                    padding:'5px 10px',cursor:'pointer',color:'#c8a0e8',
-                    fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:1,
-                    display:'inline-flex',alignItems:'center',gap:5,flexShrink:0,
-                    boxShadow:'0 0 8px #5a3a8044',
-                  }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#c8a0e8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                    </svg>
-                    复制
-                  </button>
-                </div>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:8}}>
-                  <div style={{color:'#6a5080',fontSize:10,fontStyle:'italic'}}>将此房间号分享给其他玩家</div>
-                  <div style={{fontFamily:"'Cinzel',serif",fontSize:10,color:'#8060a0',letterSpacing:1}}>房间人数：<span style={{color:'#c8a0e8'}}>{roomModal.count||roomModal.players.length}</span>/{roomModal.max||12}</div>
-                </div>
-                {/* 房间隐私状态 */}
-                <div style={{display:'flex',justifyContent:'center',alignItems:'center',gap:8,marginTop:12}}>
-                  <div style={{fontFamily:"'Cinzel',serif",fontSize:10,color:'#8060a0',letterSpacing:1}}>房间状态：</div>
-                  <div style={{display:'flex',alignItems:'center',gap:4}}>
-                    {/* 只有房主可以切换隐私状态 */}
-                    {roomModal.owner === (playerUUIDRef.current||playerUUID) ? (
-                      <button 
-                        onClick={() => handleTogglePrivacy(!roomModal.isPrivate)}
-                        title={roomModal.isPrivate ? '切换为公开' : '切换为私密'}
-                        style={{
-                          display:'flex',
-                          alignItems:'center',
-                          gap:4,
-                          background:'none',
-                          border:'none',
-                          cursor:'pointer',
-                          padding:'4px 8px',
-                          borderRadius:4,
-                          transition:'background-color 0.2s',
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(122, 80, 176, 0.1)'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'none'}
-                      >
-                        <span style={{fontSize:12}}>{roomModal.isPrivate ? '🔒' : '🔓'}</span>
-                        <span style={{fontFamily:"'Cinzel',serif",fontSize:10,color:roomModal.isPrivate ? '#e0c0f8' : '#90d090',letterSpacing:1}}>{roomModal.isPrivate ? '私密' : '公开'}</span>
-                      </button>
-                    ) : (
-                      <div style={{display:'flex',alignItems:'center',gap:4}}>
-                        <span style={{fontSize:12}}>{roomModal.isPrivate ? '🔒' : '🔓'}</span>
-                        <span style={{fontFamily:"'Cinzel',serif",fontSize:10,color:roomModal.isPrivate ? '#e0c0f8' : '#90d090',letterSpacing:1}}>{roomModal.isPrivate ? '私密' : '公开'}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-              {/* 玩家列表 + 准备状态 */}
-              <div style={{marginBottom:16}}>
-                <div style={{fontFamily:"'Cinzel',serif",color:'#6a5080',fontSize:9,letterSpacing:3,marginBottom:10,textTransform:'uppercase'}}>— 当前玩家 —</div>
-                {roomModal.players.map((p)=>(
-                  <div key={p.uuid} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',marginBottom:6,background:'#1a1028',border:`1px solid ${p.ready?'#3a6a3a':'#3a2560'}`,borderRadius:3,transition:'border-color .3s'}}>
-                    <span style={{fontSize:12}}>{p.ready?'✅':'⬜'}</span>
-                    <span style={{fontFamily:"'Cinzel',serif",fontSize:13,color:p.isSpecialName?'#d8b35c':(p.ready?'#90d090':'#c8a0e8'),letterSpacing:0.5,textShadow:p.isSpecialName?'0 0 10px rgba(216,179,92,.22)':'none'}}>{p.username}</span>
-                    {p.uuid===playerUUID&&<span style={{marginLeft:'auto',color:'#7060a0',fontSize:9,fontStyle:'italic'}}>（你）</span>}
-                    {p.isAI&&<span style={{marginLeft:'auto',color:'#a060a0',fontSize:9,fontStyle:'italic'}}>[AI]</span>}
-                  </div>
-                ))}
-              </div>
-              {/* 准备按钮 */}
-              {(()=>{const myPlayerRec=roomModal.players.find(p=>p.uuid===playerUUID);const myReady=myPlayerRec?.ready||false;return(
-                <button onClick={()=>handleSetReady(!myReady)} style={{
-                  width:'100%',padding:'11px',marginBottom:14,
-                  background:myReady?'#0a2a0a':'#1a0a2e',
-                  border:`1.5px solid ${myReady?'#3a8a3a':'#7a50b0'}`,
-                  borderRadius:4,color:myReady?'#80e080':'#c8a0e8',
-                  fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:12,letterSpacing:2,cursor:'pointer',
-                  transition:'all .25s',
-                }}>{myReady?'✅ 已准备（点击取消）':'⬜ 点击准备'}</button>
-              );})()}
-              {/* 倒计时显示 */}
-              {cdType&&cdSecondsLeft!==null&&cdSecondsLeft>0&&(
-                <div style={{
-                  textAlign:'center',padding:'8px 12px',marginBottom:10,borderRadius:4,
-                  background:cdType==='start'?'#0a1a0a':'#1a0a08',
-                  border:`1px solid ${cdType==='start'?'#2a6a2a':'#7a3010'}`,
-                  color:cdType==='start'?'#80e080':'#e08060',
-                  fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:1,
-                }}>
-                  {cdType==='start'
-                    ?`🎮 全员准备！${cdSecondsLeft}s 后开始游戏…`
-                    :`⏳ ${cdSecondsLeft}s 后将踢出未准备的玩家`}
-                </div>
-              )}
-              {(()=>{const myPlayerRec=roomModal.players.find(p=>p.uuid===playerUUID);const myReady=myPlayerRec?.ready||false;return(
-                myReady&&!roomModal.players.every(p=>p.ready)&&(
-                  <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#6a5080',fontSize:11,fontStyle:'italic',fontFamily:"'IM Fell English','Georgia',serif"}}>
-                    <span style={{display:'inline-block',width:10,height:10,border:'1.5px solid #5a3a80',borderTopColor:'#a080d0',borderRadius:'50%',animation:'spinLoader 0.9s linear infinite'}}/>
-                    等待其他玩家就绪…
-                  </div>
-                )
-              );})()}
-            </div>
-          </div>
-        )}
-        {/* ── Game Lobby Modal ── */}
-        {lobbyModal&&(
-          <div style={{position:'fixed',inset:0,background:'#000000cc',zIndex:1500,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={closeLobbyModal}>
-            <div onClick={e=>e.stopPropagation()} style={{
-              background:'#0e0a14',border:'2px solid #7a50b0',borderRadius:6,
-              padding:'32px 36px',maxWidth:500,width:'90%',
-              boxShadow:'0 0 60px #5a3a8066',animation:'animPop 0.25s ease-out',
-              position:'relative',
-            }}>
-              <button onClick={closeLobbyModal} style={{position:'absolute',top:12,right:14,background:'none',border:'none',color:'#5a4070',fontSize:18,cursor:'pointer',lineHeight:1,padding:'2px 6px'}}>✕</button>
-              <div style={{textAlign:'center',marginBottom:24}}>
-                <div style={{fontSize:28,marginBottom:10,filter:'drop-shadow(0 0 12px #a080d088)'}}>🏛️</div>
-                <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:16,color:'#c8a0e8',letterSpacing:2,marginBottom:6}}>游戏大厅</div>
-                <div style={{width:120,height:1,background:'linear-gradient(90deg,transparent,#7a50b0,transparent)',margin:'0 auto'}}/>
-              </div>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-                <div style={{fontFamily:"'Cinzel',serif",color:'#8060a0',fontSize:10,letterSpacing:3,textTransform:'uppercase'}}>— 公开房间 —</div>
-                <button onClick={handleRefreshLobby} style={{
-                  background:'#1a0d2e',border:'1px solid #7a50b0',borderRadius:4,
-                  padding:'4px 8px',cursor:'pointer',color:'#c8a0e8',
-                  fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,
-                  display:'inline-flex',alignItems:'center',gap:4,
-                }}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#c8a0e8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21.5 2v6h-6M2.5 22v-6h6"/>
-                    <path d="M2 12A10 10 0 0 1 22 12"/>
-                  </svg>
-                  刷新
-                </button>
-              </div>
-              <div style={{maxHeight:300,overflowY:'auto',marginBottom:20}}>
-                {lobbyLoading ? (
-                  <div style={{display:'flex',alignItems:'center',justifyContent:'center',padding:40}}>
-                    <span style={{display:'inline-block',width:16,height:16,border:'2px solid #5a3a80',borderTopColor:'#a080d0',borderRadius:'50%',animation:'spinLoader 0.7s linear infinite'}}/>
-                  </div>
-                ) : lobbyRooms.length === 0 ? (
-                  <div style={{textAlign:'center',padding:40,color:'#6a5080',fontFamily:"'IM Fell English','Georgia',serif",fontSize:12,fontStyle:'italic'}}>
-                    暂无公开房间
-                  </div>
-                ) : (
-                  lobbyRooms.map((room)=>(
-                    <div key={room.roomId} style={{
-                      display:'flex',alignItems:'center',justifyContent:'space-between',
-                      padding:'12px 16px',marginBottom:8,
-                      background:'#1a1028',border:'1px solid #4a3070',borderRadius:4,
-                      transition:'all .2s',
-                    }}>
-                      <div>
-                        <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:14,color:'#e0c0f8',letterSpacing:2}}>{room.roomId}</div>
-                        <div style={{fontFamily:"'Cinzel',serif",fontSize:9,color:'#8060a0',letterSpacing:1,marginTop:2}}>
-                          人数：{room.count}/{room.max}
-                        </div>
-                      </div>
-                      <button onClick={()=>handleJoinLobbyRoom(room.roomId)} style={{
-                        background:'#1e0d36',border:'1px solid #7a50b0',borderRadius:3,
-                        padding:'6px 12px',cursor:'pointer',color:'#c8a0e8',
-                        fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:1,
-                        transition:'all .2s',
-                      }}>
-                        加入
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-        {/* ── Privacy Toggle Confirm Modal ── */}
-        {showPrivacyToggleConfirm&&(
-          <div style={{position:'fixed',inset:0,background:'#000000cc',zIndex:1600,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={handleCancelPrivacyToggle}>
-            <div onClick={e=>e.stopPropagation()} style={{
-              background:'#0e0a14',border:'2px solid #7a50b0',borderRadius:6,
-              padding:'28px 32px',maxWidth:400,width:'90%',
-              boxShadow:'0 0 60px #5a3a8066',animation:'animPop 0.25s ease-out',
-              position:'relative',
-            }}>
-              <div style={{textAlign:'center',marginBottom:20}}>
-                <div style={{fontSize:24,marginBottom:12,filter:'drop-shadow(0 0 12px #a080d088)'}}>🔓</div>
-                <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:14,color:'#c8a0e8',letterSpacing:2,marginBottom:10}}>确认公开房间</div>
-                <div style={{width:100,height:1,background:'linear-gradient(90deg,transparent,#7a50b0,transparent)',margin:'0 auto',marginBottom:16}}/>
-                <div style={{color:'#e0c0f8',fontSize:12,lineHeight:1.6,fontFamily:"'IM Fell English','Georgia',serif",textAlign:'center'}}>
-                  该房间将在游戏大厅对所有用户公开，是否继续？
-                </div>
-              </div>
-              <div style={{display:'flex',gap:12,marginBottom:16}}>
-                <div style={{flex:1,display:'flex',alignItems:'center',gap:6}}>
-                  <input 
-                    type="checkbox" 
-                    id="dontShowAgain"
-                    checked={privacyWarnDontShow}
-                    onChange={e=>setPrivacyWarnDontShow(e.target.checked)}
-                    style={{
-                      accentColor:'#7a50b0',
-                      transform:'scale(1.2)',
-                    }}
-                  />
-                  <label htmlFor="dontShowAgain" style={{
-                    color:'#8060a0',fontSize:11,fontFamily:"'Cinzel',serif",letterSpacing:1,
-                    cursor:'pointer',
-                  }}>
-                    下次不再提示
-                  </label>
-                </div>
-              </div>
-              <div style={{display:'flex',gap:12}}>
-                <button onClick={()=>handleConfirmPrivacyToggle()} style={{
-                  flex:1,padding:'10px',background:'#1e0d36',
-                  border:'1.5px solid #7a50b0',borderRadius:4,
-                  color:'#c8a0e8',fontFamily:"'Cinzel Decorative','Cinzel',serif",
-                  fontSize:12,letterSpacing:2,cursor:'pointer',
-                  transition:'all .2s',
-                }}>
-                  公开
-                </button>
-                <button onClick={handleCancelPrivacyToggle} style={{
-                  flex:1,padding:'10px',background:'#1a1030',
-                  border:'1.5px solid #5a3a80',borderRadius:4,
-                  color:'#b090d8',fontFamily:"'Cinzel Decorative','Cinzel',serif",
-                  fontSize:12,letterSpacing:2,cursor:'pointer',
-                  transition:'all .2s',
-                }}>
-                  不公开
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-                {/* ── Tutorial overlay ── */}
-        {showTutorial&&(
-          <div style={{position:'fixed',inset:0,background:'#000000cc',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center'}}>
-            {/* ── Step 1: Greeting ── */}
-            {tutorialStep===1&&(
-              <div style={{background:'#120d06',border:'2px solid #7a5020',borderRadius:4,padding:'36px 40px',maxWidth:380,width:'90%',textAlign:'center',boxShadow:'0 0 60px #7a502066',position:'relative',animation:'animPop 0.25s ease-out'}}>
-                <div style={{fontSize:30,marginBottom:16,filter:'drop-shadow(0 0 14px #c8a96e66)'}}>👁</div>
-                <p style={{color:'#e8c87a',fontSize:15,lineHeight:2,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif"}}>
-                  哈，又是一个不怕死的人！
-                </p>
-                <p style={{color:'#c8a96e',fontSize:14,lineHeight:2,fontStyle:'italic',marginBottom:32,opacity:0.75,fontFamily:"'IM Fell English','Georgia',serif"}}>
-                  等等——我们是不是见过…
-                </p>
-                <div style={{display:'flex',flexDirection:'column',gap:10}}>
-                  <button
-                    onClick={completeTutorial}
-                    style={{padding:'9px 24px',background:'transparent',border:'1.5px solid #3a2510',color:'#b89858',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',transition:'all .2s'}}
-                    onMouseEnter={e=>{e.currentTarget.style.borderColor='#7a5020';e.currentTarget.style.color='#c8a96e';}}
-                    onMouseLeave={e=>{e.currentTarget.style.borderColor='#3a2510';e.currentTarget.style.color='#7a6040';}}
-                  >
-                    我是老手（跳过引导）
-                  </button>
-                  <button
-                    onClick={()=>{_startForTutorial();setTutorialStep(2);}}
-                    style={{padding:'10px 24px',background:'#1c1008',border:'2px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 18px #c8a96e33',transition:'all .2s'}}
-                    onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';e.currentTarget.style.boxShadow='0 0 30px #c8a96e66';}}
-                    onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';e.currentTarget.style.boxShadow='0 0 18px #c8a96e33';}}
-                  >
-                    ✦ 告诉我如何探索
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        {/* -- Room Modal -- */}
+        <RoomModal
+          roomModal={roomModal}
+          playerUUID={playerUUID}
+          playerUUIDRef={playerUUIDRef}
+          cdType={cdType}
+          cdSecondsLeft={cdSecondsLeft}
+          onClose={closeRoomModal}
+          onTogglePrivacy={handleTogglePrivacy}
+          onSetReady={handleSetReady}
+          onCopyRoomId={()=>{try{navigator.clipboard.writeText(roomModal.roomId).then(()=>addToast('✓ 房间号已复制')).catch(()=>addToast('复制失败，请手动复制'));}catch{addToast('复制失败，请手动复制');}}}
+        />
+        {/* -- Game Lobby Modal -- */}
+        <LobbyModal
+          lobbyModal={lobbyModal}
+          lobbyLoading={lobbyLoading}
+          lobbyRooms={lobbyRooms}
+          onClose={closeLobbyModal}
+          onRefresh={handleRefreshLobby}
+          onJoinRoom={handleJoinLobbyRoom}
+        />
+        {/* -- Privacy Toggle Confirm Modal -- */}
+        <PrivacyToggleModal
+          show={showPrivacyToggleConfirm}
+          dontShowAgain={privacyWarnDontShow}
+          onChangeDontShow={setPrivacyWarnDontShow}
+          onConfirm={handleConfirmPrivacyToggle}
+          onCancel={handleCancelPrivacyToggle}
+        />
+        {/* -- Tutorial overlay -- */}
+        <TutorialOverlay
+          show={showTutorial}
+          step={tutorialStep}
+          onComplete={completeTutorial}
+          onStart={()=>{_startForTutorial();setTutorialStep(2);}}
+        />
         {roleRevealAnim&&<RoleRevealAnim role={roleRevealAnim.role} onDone={()=>_onRoleRevealDone(roleRevealAnim.pendingGs)}/>}
-        {/* ── Connection error modal ── */}
-        {connErrModal&&(
-          <div onClick={()=>setConnErrModal(false)} style={{position:'fixed',inset:0,background:'#000000bb',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
-            <div onClick={e=>e.stopPropagation()} style={{background:'#0e0a14',border:'2px solid #5a3a80',borderRadius:6,padding:'32px 36px',maxWidth:360,width:'90%',textAlign:'center',boxShadow:'0 0 60px #5a3a8066',animation:'animPop 0.25s ease-out',cursor:'default'}}>
-              <div style={{fontSize:28,marginBottom:12}}>🔌</div>
-              <p style={{color:'#c8a0e8',fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:14,lineHeight:1.9,marginBottom:24}}>
-                无法连接服务器，<br/>先试试单人玩法吧
-              </p>
-              <div style={{color:'#5a4070',fontSize:10,fontFamily:"'Cinzel',serif",letterSpacing:1}}>点击任意位置关闭</div>
-            </div>
-          </div>
-        )}
+        {/* -- Connection error modal -- */}
+        <ConnectionErrorModal
+          show={connErrModal}
+          onClose={()=>setConnErrModal(false)}
+        />
         <style>{GLOBAL_STYLES}</style>
       </div>
       {/* GammaSlider outside filtered lobby container */}
       <GammaSlider gamma={gamma} onChange={handleGamma}/>
-      {isLocalTestMode&&(
-        <>
-          <button
-            type="button"
-            onClick={()=>setLocalDebugMode(v=>!v)}
-            style={{
-              ...smallBtnStyle,
-              position:'fixed',
-              top:14,
-              left:14,
-              zIndex:120,
-              fontSize:11,
-              padding:'6px 10px',
-              background:localDebugMode?'#2a1608':'#140e08',
-              color:localDebugMode?'#f0cb7a':'#9b7641',
-              borderColor:localDebugMode?'#7a5324':'#3a2510',
-              boxShadow:localDebugMode?'0 0 14px #7a532455':'none',
-            }}
-          >
-            {localDebugMode?'Debug: 开':'Debug: 关'}
-          </button>
-          <button
-            type="button"
-            onClick={(e)=>{e.stopPropagation(); setShowDebugSettings(v=>!v);}}
-            style={{
-              ...smallBtnStyle,
-              position:'fixed',
-              top:14,
-              left:100,
-              zIndex:120,
-              fontSize:11,
-              padding:'6px 10px',
-              background:showDebugSettings?'#2a1608':'#140e08',
-              color:showDebugSettings?'#f0cb7a':'#9b7641',
-              borderColor:showDebugSettings?'#7a5324':'#3a2510',
-              boxShadow:showDebugSettings?'0 0 14px #7a532455':'none',
-            }}
-          >
-            Debug设置
-          </button>
-          {showDebugSettings&&(
-            <div style={{
-              position:'fixed',
-              top:50,
-              left:14,
-              zIndex:120,
-              background:'#1a120a',
-              border:'1px solid #3a2510',
-              borderRadius:4,
-              padding:16,
-              boxShadow:'0 0 20px rgba(0,0,0,0.8)',
-              color:'#c8a96e',
-              minWidth:300,
-            }}>
-              <h3 style={{marginTop:0,marginBottom:16,color:'#f0cb7a'}}>Debug设置</h3>
-              <div style={{marginBottom:12}}>
-                <label style={{display:'block',marginBottom:4,fontSize:12}}>强制摸牌目标</label>
-                <select
-                  value={debugForceCardTarget}
-                  onChange={(e)=>setDebugForceCardTarget(e.target.value)}
-                  style={{
-                    width:'100%',
-                    padding:6,
-                    background:'#2a1608',
-                    color:'#c8a96e',
-                    border:'1px solid #3a2510',
-                    borderRadius:4,
-                  }}
-                >
-                  <option value="player">玩家</option>
-                  <option value="ai1">1号位角色</option>
-                </select>
-              </div>
-              <div style={{marginBottom:12}}>
-                <label style={{display:'block',marginBottom:4,fontSize:12}}>1号位角色是否收入这张牌</label>
-                <select
-                  value={debugForceCardKeep}
-                  onChange={(e)=>setDebugForceCardKeep(e.target.value)}
-                  style={{
-                    width:'100%',
-                    padding:6,
-                    background:'#2a1608',
-                    color:'#c8a96e',
-                    border:'1px solid #3a2510',
-                    borderRadius:4,
-                  }}
-                >
-                  <option value="auto">自动判断</option>
-                  <option value="keep">强制收入</option>
-                  <option value="discard">强制弃置</option>
-                </select>
-              </div>
-              <div style={{marginBottom:12}}>
-                <label style={{display:'block',marginBottom:4,fontSize:12}}>牌类型</label>
-                <select
-                  value={debugForceCardType}
-                  onChange={(e)=>setDebugForceCardType(e.target.value)}
-                  style={{
-                    width:'100%',
-                    padding:6,
-                    background:'#2a1608',
-                    color:'#c8a96e',
-                    border:'1px solid #3a2510',
-                    borderRadius:4,
-                  }}
-                >
-                  <option value="zone">区域牌</option>
-                  <option value="god">神牌</option>
-                </select>
-              </div>
-              {debugForceCardType === 'zone' && (
-                <>
-                  <div style={{marginBottom:12}}>
-                    <label style={{display:'block',marginBottom:4,fontSize:12}}>区域牌编号</label>
-                    <select
-                      value={debugForceZoneCardKey}
-                      onChange={(e)=>{
-                        const newKey = e.target.value;
-                        setDebugForceZoneCardKey(newKey);
-                        // 自动选择第一个可用牌面
-                        const cards = FIXED_ZONE_CARD_VARIANTS_BY_KEY[newKey]||[];
-                        if(cards.length){
-                          setDebugForceZoneCardName(cards[0].name);
-                        }
-                      }}
-                      style={{
-                        width:'100%',
-                        padding:6,
-                        background:'#2a1608',
-                        color:'#c8a96e',
-                        border:'1px solid #3a2510',
-                        borderRadius:4,
-                      }}
-                    >
-                      {ZONE_CARD_KEYS.map(key => (
-                        <option key={key} value={key}>{key}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div style={{marginBottom:12}}>
-                    <label style={{display:'block',marginBottom:4,fontSize:12}}>区域牌</label>
-                    <select
-                      value={debugForceZoneCardName}
-                      onChange={(e)=>setDebugForceZoneCardName(e.target.value)}
-                      style={{
-                        width:'100%',
-                        padding:6,
-                        background:'#2a1608',
-                        color:'#c8a96e',
-                        border:'1px solid #3a2510',
-                        borderRadius:4,
-                      }}
-                    >
-                      {FIXED_ZONE_CARD_VARIANTS_BY_KEY[debugForceZoneCardKey] && FIXED_ZONE_CARD_VARIANTS_BY_KEY[debugForceZoneCardKey].map((card) => (
-                        <option key={card.name} value={card.name}>{card.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </>
-              )}
-              {debugForceCardType === 'god' && (
-                <div style={{marginBottom:12}}>
-                  <label style={{display:'block',marginBottom:4,fontSize:12}}>神牌类型</label>
-                  <select
-                    value={debugForceGodCardKey}
-                    onChange={(e)=>setDebugForceGodCardKey(e.target.value)}
-                    style={{
-                      width:'100%',
-                      padding:6,
-                      background:'#2a1608',
-                      color:'#c8a96e',
-                      border:'1px solid #3a2510',
-                      borderRadius:4,
-                    }}
-                  >
-                    <option value="CTH">克苏鲁</option>
-                    <option value="NYA">Nyarlathotep</option>
-                  </select>
-                </div>
-              )}
-              <div style={{marginBottom:12}}>
-                <label style={{display:'block',marginBottom:4,fontSize:12}}>当前设置</label>
-                <div style={{fontSize:11,color:'#f0cb7a',padding:6,background:'#2a1608',border:'1px solid #3a2510',borderRadius:4}}>
-                  {debugForceCardType === 'zone' 
-                    ? `区域牌: ${debugForceZoneCardKey} - ${debugForceZoneCardName || ''}` 
-                    : `神牌: ${debugForceGodCardKey === 'CTH' ? '克苏鲁' : 'Nyarlathotep'}`
-                  }
-                </div>
-              </div>
-              <div style={{marginBottom:12}}>
-                <label style={{display:'block',marginBottom:4,fontSize:12}}>玩家身份（下局生效）</label>
-                <select
-                  value={debugPlayerRole}
-                  onChange={(e)=>setDebugPlayerRole(e.target.value)}
-                  style={{
-                    width:'100%',
-                    padding:6,
-                    background:'#2a1608',
-                    color:'#c8a96e',
-                    border:'1px solid #3a2510',
-                    borderRadius:4,
-                  }}
-                >
-                  <option value="auto">自动</option>
-                  <option value={ROLE_TREASURE}>{ROLE_TREASURE}</option>
-                  <option value={ROLE_HUNTER}>{ROLE_HUNTER}</option>
-                  <option value={ROLE_CULTIST}>{ROLE_CULTIST}</option>
-                </select>
-              </div>
-              <button
-                type="button"
-                onClick={()=>setShowDebugSettings(false)}
-                style={{
-                  ...smallBtnStyle,
-                  width:'100%',
-                  background:'#2a1608',
-                  color:'#c8a96e',
-                  borderColor:'#3a2510',
-                }}
-              >
-                关闭
-              </button>
-            </div>
-          )}
-        </>
-      )}
+      <DebugControls
+        isLocalTestMode={isLocalTestMode}
+        localDebugMode={localDebugMode}
+        onToggleDebugMode={()=>setLocalDebugMode(v=>!v)}
+        showSettings={showDebugSettings}
+        onToggleShowSettings={()=>setShowDebugSettings(v=>!v)}
+        debugForceCardTarget={debugForceCardTarget} setDebugForceCardTarget={setDebugForceCardTarget}
+        debugForceCardKeep={debugForceCardKeep} setDebugForceCardKeep={setDebugForceCardKeep}
+        debugForceCardType={debugForceCardType} setDebugForceCardType={setDebugForceCardType}
+        debugForceZoneCardKey={debugForceZoneCardKey} setDebugForceZoneCardKey={setDebugForceZoneCardKey}
+        debugForceZoneCardName={debugForceZoneCardName} setDebugForceZoneCardName={setDebugForceZoneCardName}
+        debugForceGodCardKey={debugForceGodCardKey} setDebugForceGodCardKey={setDebugForceGodCardKey}
+        debugPlayerRole={debugPlayerRole} setDebugPlayerRole={setDebugPlayerRole}
+      />
     </>);
   }
 
@@ -7415,7 +7043,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     }
     // 单机/AI目标：由AI策略选择最优亮牌
     const knownHunterCards=P[ti]?.peekMemories?.[0]||[];
-    const rc=aiChooseRevealCard(P[ti].hand,'你',gs.log,knownHunterCards);
+    const rc=aiChooseRevealCard(tHand,'你',gs.log,knownHunterCards);
     const huntConfirmGs={...gs,players:P,phase:'HUNT_CONFIRM',
       abilityData:{...(gs.abilityData||{}),huntTi:ti,revCard:rc},
       log:[...gs.log,`你（追猎者）追捕 ${P[ti].name}，${P[ti].name} 亮出 ${cardLogText(rc,{alwaysShowName:true})}`]};
@@ -7441,11 +7069,14 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       if(P[huntTi].hp<=0){
         const lootableHand=targetHandBefore;
         if(lootableHand.length){
-          Disc=removeCardsFromDiscard(Disc,lootableHand);
-          P[huntTi].hand=[...lootableHand];
-          const handCount=P[huntTi].hand.length;
           const maxToTake=3;
-          if(targetRevealBefore){
+          const handCount=lootableHand.length;
+          const playersForLootCheck=copyPlayers(P);
+          playersForLootCheck[huntTi].hand=[...lootableHand];
+          const shouldOpenLootSelection=shouldDelayHuntLootSelection(playersForLootCheck,huntTi,maxToTake,gs._isMP);
+          if(shouldOpenLootSelection){
+            Disc=removeCardsFromDiscard(Disc,lootableHand);
+            P[huntTi].hand=[...lootableHand];
             // 先播放死亡特效，然后再进入选择手牌的阶段
             const deathGs={...gs,players:P,log:L};
             const queue=buildAnimQueue(gs,deathGs);
@@ -7459,7 +7090,14 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
                 log:[...L,`你（追猎者）从 ${P[huntTi].name} 的公开手牌中任选 ${Math.min(maxToTake,handCount)} 张！`]});
             }
             return;
+          }else if(targetRevealBefore){
+            Disc=removeCardsFromDiscard(Disc,lootableHand);
+            P[0].hand.push(...lootableHand);
+            P[huntTi].hand=[];
+            L.push(`你夺取了 ${P[huntTi].name} 的全部公开手牌（${lootableHand.length} 张）！`);
           }else{
+            Disc=removeCardsFromDiscard(Disc,lootableHand);
+            P[huntTi].hand=[...lootableHand];
             const cardsToTake=Math.min(maxToTake,handCount);
             for(let i=0;i<cardsToTake;i++){
               const randomIndex=Math.floor(Math.random()*P[huntTi].hand.length);
@@ -7497,11 +7135,13 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
   function huntSelectCardFromPublic(cardIdx){
     const{huntTi,maxToTake}=gs.abilityData;
     let P=copyPlayers(gs.players),Disc=[...gs.discard],L=[...gs.log];
+    if(huntTi==null||!P[huntTi]||cardIdx<0||cardIdx>=P[huntTi].hand.length)return;
     const stolenCard=P[huntTi].hand.splice(cardIdx,1)[0];
     P[0].hand.push(stolenCard);
     L.push(`你从 ${P[huntTi].name} 的公开手牌中选择了 ${cardLogText(stolenCard)}！`);
     // 检查是否已经选择了足够的手牌
-    if(P[0].hand.length-gs.players[0].hand.length<maxToTake-1 && P[huntTi].hand.length>0){
+    const selectedCount=P[0].hand.length-gs.players[0].hand.length;
+    if(selectedCount<maxToTake && P[huntTi].hand.length>0){
       // 继续选择手牌
       setGs({...gs,players:P,phase:'HUNT_SELECT_CARD_FROM_PUBLIC',abilityData:{huntTi:huntTi,preSkillRevealed:gs.abilityData?.preSkillRevealed,maxToTake:maxToTake},
         log:L});
@@ -7968,10 +7608,14 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         P[0].isResting=!oldGs.players[0].isResting;
         let L=[...oldGs.log,`你选择【休息】，掷骰 ${d1}+${d2}，回复 ${heal}HP，${oldGs.players[0].isResting?'翻回正常状态':'翻面休息中'}`];
         L.push(`你（克苏鲁信徒Lv.${P[0].godLevel}）梦访拉莱耶，翻面结束回合时额外摸${extraDraws}张牌`);
-        
+        const cthDraws=[];
+
         for(let _d=0;_d<extraDraws;_d++){
           const r2=playerDrawCard(P,D,Disc,0,oldGs);P=r2.P;D=r2.D;Disc=r2.Disc;
-          if(r2.drawnCard)L.push(`  摸到 ${cardLogText(r2.drawnCard,{alwaysShowName:true})}`);
+          if(r2.drawnCard){
+            L.push(`  摸到 ${cardLogText(r2.drawnCard,{alwaysShowName:true})}`);
+            cthDraws.push(r2.drawnCard);
+          }
           if(r2.needGodChoice){
             setGs(buildLocalCthDecisionState(oldGs,{
               players:P,deck:D,discard:Disc,log:L,drawnCard:r2.drawnCard,remainingDraws:extraDraws-_d-1,needGodChoice:true,
@@ -7991,17 +7635,28 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
           // forced card: already applied, continue
           if(r2.kept){
             if(r2.effectMsgs.length)L.push(...r2.effectMsgs);
-            // 继续下一张牌
             continue;
           }
         }
-        
+
         const afterRest={...oldGs,players:P,deck:D,discard:Disc,log:L,restUsed:true,skillUsed:true,currentTurn:0};
         // 翻面状态下主动结束回合：需要弃牌
         const nextGs=P[0].hand.length>effectiveHandLimit
           ?{...afterRest,phase:'DISCARD_PHASE',abilityData:{discardSelected:[]}}
           :startNextTurn(afterRest);
-        setGs(nextGs);
+
+        if(cthDraws.length>0){
+          const queue=[];
+          cthDraws.forEach(card=>{queue.push({type:'DRAW_CARD',card:card,triggerName:'你',targetPid:0});});
+          const statQ=buildAnimQueue(gs,nextGs).filter(a=>a.type!=='CARD_TRANSFER');
+          queue.push(...statQ);
+          if(nextGs.currentTurn===0&&nextGs.drawReveal?.card){
+            queue.push({type:'YOUR_TURN',msgs:nextGs._turnStartLogs},{type:'DRAW_CARD',card:nextGs.drawReveal.card,triggerName:'你',targetPid:0,msgs:nextGs._drawLogs});
+          }
+          triggerAnimQueue(queue,nextGs);
+        }else{
+          setGs(nextGs);
+        }
       };
       
       triggerAnimQueue(queue,{...finalGs,currentTurn:0},handleDraws);
@@ -8063,6 +7718,9 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       if(newGs._drawnCard) queue.push({type:'DRAW_CARD',card:newGs._drawnCard,triggerName:aiName,targetPid:newGs.currentTurn,msgs:newGs._drawLogs});
       if(drawStatQ.length) queue.push(...drawStatQ);
       if(queue.length){
+        if(newGs._playersBeforeThisDraw&&newGs._drawnCard){
+          visualPlayersLockRef.current=copyPlayers(newGs._playersBeforeThisDraw);
+        }
         triggerAnimQueue(queue,newGs);
         return;
       }
@@ -8082,18 +7740,18 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         revealAnimLogs({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
         return;
       }
-      if(newGs.phase==='GOD_CHOICE'&&newGs.abilityData?.godCard){
-        pendingGsRef.current=newGs;
-        const inspectionEvents = (newGs._inspectionEvents||[]).filter(ev=>ev?.seq>(gs._inspectionSeq||0));
-        let inspectionAndTailQueue = [];
-        if(inspectionEvents.length) {
-          lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
-          const inspectionFlow = buildInspectionEventFlow({...gs, players: newGs._playersBeforeThisDraw||gs.players}, inspectionEvents, {buildAnimQueue, copyPlayers});
-          const tailQueue = buildAnimQueue({players: inspectionFlow.players, log: inspectionFlow.log}, newGs);
-          inspectionAndTailQueue = [...inspectionFlow.queue, ...bindAnimLogChunks(tailQueue, {statLogs:newGs._statLogs})];
-        } else {
-          inspectionAndTailQueue = drawStatQ;
-        }
+        if(newGs.phase==='GOD_CHOICE'&&newGs.abilityData?.godCard){
+          pendingGsRef.current=newGs;
+          const inspectionEvents = (newGs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current);
+          let inspectionAndTailQueue = [];
+          if(inspectionEvents.length) {
+            lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
+            const inspectionFlow = buildInspectionEventFlow({...gs, players: newGs._playersBeforeThisDraw||gs.players}, inspectionEvents, {buildAnimQueue, copyPlayers});
+            const tailQueue = buildAnimQueue({players: inspectionFlow.players, log: inspectionFlow.log}, newGs);
+            inspectionAndTailQueue = [...drawStatQ, ...inspectionFlow.queue, ...tailQueue];
+          } else {
+            inspectionAndTailQueue = drawStatQ;
+          }
         animQueueRef.current=[
           {type:'DRAW_CARD',card:newGs.abilityData.godCard,triggerName:'你',targetPid:0,msgs:playerDrawMsgs},
           ...preTurnStatQ,
@@ -8118,6 +7776,9 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       const drawerPid=newGs.currentTurn;
       pendingGsRef.current=newGs;
       animQueueRef.current=[...preTurnStatQ,...drawStatQ];
+      if(newGs._playersBeforeThisDraw){
+        visualPlayersLockRef.current=copyPlayers(newGs._playersBeforeThisDraw);
+      }
       setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
       setAnim({type:'DRAW_CARD',card:newGs._drawnCard,triggerName:drawerName,targetPid:drawerPid,msgs:newGs._drawLogs});
       return;
@@ -8138,7 +7799,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
             const inspectionFlow = buildInspectionEventFlow({...gs, players: newGs._playersBeforeThisDraw||gs.players}, inspectionEvents, {buildAnimQueue, copyPlayers});
             const tailQueue = buildAnimQueue({players: inspectionFlow.players, log: inspectionFlow.log}, newGs);
-            inspectionAndTailQueue = [...inspectionFlow.queue, ...bindAnimLogChunks(tailQueue, {statLogs:newGs._statLogs})];
+            inspectionAndTailQueue = [...drawStatQ, ...inspectionFlow.queue, ...tailQueue];
           } else {
             inspectionAndTailQueue = drawStatQ;
           }
@@ -8146,6 +7807,9 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
           inspectionAndTailQueue = drawStatQ;
         }
         animQueueRef.current=[...preTurnStatQ,...inspectionAndTailQueue];
+        if(newGs._playersBeforeThisDraw){
+          visualPlayersLockRef.current=copyPlayers(newGs._playersBeforeThisDraw);
+        }
         setAnim({type:'DRAW_CARD',card:drawnCard,triggerName:drawerName,targetPid:drawerPid,msgs:newGs._drawLogs});
         return;
       }
@@ -8156,6 +7820,9 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       const drawerPid=newGs.currentTurn;
       pendingGsRef.current=newGs;
       animQueueRef.current=[...preTurnStatQ,...drawStatQ];
+      if(newGs._playersBeforeThisDraw){
+        visualPlayersLockRef.current=copyPlayers(newGs._playersBeforeThisDraw);
+      }
       setAnim({type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:drawerName,targetPid:drawerPid,msgs:newGs._drawLogs});
       return;
     }
@@ -8386,7 +8053,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
             const inspectionFlow = buildInspectionEventFlow({...gs, players: pendingGs._playersBeforeThisDraw||gs.players}, inspectionEvents, {buildAnimQueue, copyPlayers});
             const tailQueue = buildAnimQueue({players: inspectionFlow.players, log: inspectionFlow.log}, pendingGs);
-            inspectionAndTailQueue = [...inspectionFlow.queue, ...bindAnimLogChunks(tailQueue, {statLogs:pendingGs._statLogs})];
+            inspectionAndTailQueue = [...drawStatQ, ...inspectionFlow.queue, ...tailQueue];
           } else {
             inspectionAndTailQueue = drawStatQ;
           }
@@ -8696,7 +8363,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       <TargetSelectOverlay drawReveal={gs.drawReveal} phase={isVisualPlayerTurn?phase:null} bewitchCard={gs.abilityData?.bewitchCard}/>
 
       {/* God choice modal */}
-      {canShowTurnDecisionModal&&phase==='GOD_CHOICE'&&gs.abilityData?.godCard&&isLocalGodChoice&&(()=>{
+      {canShowTurnDecisionModal&&phase==='GOD_CHOICE'&&gs.abilityData?.godCard&&isLocalGodChoice&&gs.currentTurn===0&&(()=>{
         const godCard=gs.abilityData.godCard;
         const gk=godCard.godKey;
         const alreadyWorship=me.godName===gk;
@@ -10434,9 +10101,9 @@ const GLOBAL_STYLES=`
     100% {background:rgba(0,0,0,0)}
   }
   @keyframes sliceEffect {
-    0%{transform:rotate(30deg) translateX(-100%)}
-    50%{transform:rotate(30deg) translateX(0%)}
-    100%{transform:rotate(30deg) translateX(100%)}
+    0%{transform:rotate(calc(var(--slice-angle,30deg) + var(--cut-tilt,0deg) * 0.35)) translateX(-100%)}
+    50%{transform:rotate(calc(var(--slice-angle,30deg) + var(--cut-tilt,0deg) * 0.35)) translateX(0%)}
+    100%{transform:rotate(calc(var(--slice-angle,30deg) + var(--cut-tilt,0deg) * 0.35)) translateX(100%)}
   }
   @keyframes sliceFlash {
     0%{opacity:0}
@@ -10449,16 +10116,14 @@ const GLOBAL_STYLES=`
     100%{opacity:0; transform:scale(1.5)}
   }
   @keyframes slideUp {
-    0%{transform:translate(0,0) rotate(0deg);opacity:1;filter:brightness(1)}
-    22%{transform:translate(-38px,-28px) rotate(-6deg);opacity:0.98;filter:brightness(1.14)}
-    58%{transform:translate(-82px,-62px) rotate(-11deg);opacity:0.78;filter:brightness(1.02)}
-    100%{transform:translate(-108px,-84px) rotate(-14deg);opacity:0;filter:brightness(0.62)}
+    0%{transform:rotate(0deg) translateY(0);opacity:1;filter:brightness(1)}
+    28%{transform:rotate(calc(var(--pivot-rot) * 0.4)) translateY(-10px);opacity:0.96;filter:brightness(1.12)}
+    100%{transform:rotate(var(--pivot-rot)) translateY(-30px);opacity:0;filter:brightness(0.55)}
   }
   @keyframes slideDown {
-    0%{transform:translate(0,0) rotate(0deg);opacity:1;filter:brightness(1)}
-    18%{transform:translate(42px,34px) rotate(6deg);opacity:0.99;filter:brightness(1.16)}
-    56%{transform:translate(88px,86px) rotate(11deg);opacity:0.8;filter:brightness(1.02)}
-    100%{transform:translate(118px,126px) rotate(15deg);opacity:0;filter:brightness(0.6)}
+    0%{transform:rotate(0deg) translateY(0);opacity:1;filter:brightness(1)}
+    24%{transform:rotate(calc(var(--pivot-rot) * 0.4)) translateY(10px);opacity:0.97;filter:brightness(1.14)}
+    100%{transform:rotate(var(--pivot-rot)) translateY(30px);opacity:0;filter:brightness(0.55)}
   }
   @keyframes titleFlameSway {
     0%   {transform:translate(-50%,-50%) scale(var(--flame-scale,1)) rotate(-4deg)}
