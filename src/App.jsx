@@ -3187,26 +3187,43 @@ export default function Game(){
   // Preload audio and video files
   useEffect(() => {
     const preloadResources = async () => {
-        const audioFiles = [
-          '/sounds/BGM/mainTheme.mp3',
-          '/sounds/BGM/battle.mp3',
-          '/sounds/SE/hpDamageVariants/hpDamage1.mp3',
-          '/sounds/SE/hpDamageVariants/hpDamage2.mp3',
-          '/sounds/SE/hpDamageVariants/hpDamage3.mp3',
-          '/sounds/SE/hpDamageVariants/hpDamage4.mp3',
-          '/sounds/SE/hpDamageVariants/hpDamage5.mp3',
-          '/sounds/SE/hpDamageVariants/hpDamage6.mp3'
-        ];
+      const audioFiles = [
+        '/sounds/BGM/mainTheme.mp3',
+        '/sounds/BGM/battle.mp3',
+        '/sounds/SE/hpDamageVariants/hpDamage1.mp3',
+        '/sounds/SE/hpDamageVariants/hpDamage2.mp3',
+        '/sounds/SE/hpDamageVariants/hpDamage3.mp3',
+        '/sounds/SE/hpDamageVariants/hpDamage4.mp3',
+        '/sounds/SE/hpDamageVariants/hpDamage5.mp3',
+        '/sounds/SE/hpDamageVariants/hpDamage6.mp3'
+      ];
       const videoFiles = [
         '/videos/ancient_god_tentacles.mp4'
       ];
-      
-      // Check if resources are already cached
-      const CACHE_KEY = 'toe_resources_cached';
+      const imageFiles = [
+        '/img/bg/bg_main.png',
+        '/img/btn/btn_author.png',
+        '/img/btn/btn_bright_green.png',
+        '/img/btn/btn_bright_purple.png',
+        '/img/btn/btn_dark_green.png',
+        '/img/btn/btn_dark_red.png',
+        '/img/btn/btn_dark_purple.png',
+        '/img/btn/btn_roadmap.png',
+        '/img/deco/deco_cth-no-bg.png',
+        '/img/line/line_split-no-bg.png',
+        '/img/line/line_titleguard-no-bg.png',
+        '/img/logo/logo_cu-no-bg.png',
+        '/img/logo/logo_hu-no-bg.png',
+        '/img/logo/logo_tr-no-bg.png',
+        '/img/title/title_rule.png',
+        '/img/title/texture_toehp.png'
+      ];
+      const RESOURCE_CACHE_VERSION = '2026-04-24-mainui-v1';
+      const CACHE_VERSION_KEY = 'toe_resources_cached_version';
+
       try {
-        const isCached = localStorage.getItem(CACHE_KEY) === '1';
-        if (isCached) {
-          // Skip preloading if resources are already cached
+        const cachedVersion = localStorage.getItem(CACHE_VERSION_KEY);
+        if (cachedVersion === RESOURCE_CACHE_VERSION) {
           setIsLoading(false);
           return;
         }
@@ -3215,14 +3232,14 @@ export default function Game(){
       }
       
       let loadedCount = 0;
-      const totalFiles = audioFiles.length + videoFiles.length;
+      const totalFiles = audioFiles.length + videoFiles.length + imageFiles.length;
       let totalBytes = 0;
       let loadedBytes = 0;
       
       // Calculate total size of all files
       const calculateTotalSize = async () => {
         let total = 0;
-        for (const file of [...audioFiles, ...videoFiles]) {
+        for (const file of [...audioFiles, ...videoFiles, ...imageFiles]) {
           try {
             const response = await fetch(file, { method: 'HEAD' });
             const size = parseInt(response.headers.get('content-length') || '0');
@@ -3310,9 +3327,42 @@ export default function Game(){
         }
       }
       
+      // Preload image files
+      for (const file of imageFiles) {
+        try {
+          setCurrentFile(file.split('/').pop());
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+
+          let fileSize = 0;
+          try {
+            const response = await fetch(file, { method: 'HEAD' });
+            fileSize = parseInt(response.headers.get('content-length') || '0');
+          } catch (error) {
+            console.error(`Failed to get size for ${file}`, error);
+          }
+
+          await new Promise((resolve, reject) => {
+            img.onload = () => {
+              loadedBytes += fileSize;
+              setLoadedSize(loadedBytes);
+              resolve();
+            };
+            img.onerror = reject;
+            img.src = file;
+          });
+          loadedCount++;
+          setLoadingProgress((loadedCount / totalFiles) * 100);
+        } catch (error) {
+          console.error(`Failed to load image: ${file}`, error);
+          loadedCount++;
+          setLoadingProgress((loadedCount / totalFiles) * 100);
+        }
+      }
+
       // Mark resources as cached
       try {
-        localStorage.setItem(CACHE_KEY, '1');
+        localStorage.setItem(CACHE_VERSION_KEY, RESOURCE_CACHE_VERSION);
       } catch {
         // localStorage error, ignore
       }
