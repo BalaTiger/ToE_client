@@ -5769,13 +5769,18 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
     const titleFontSize=Math.round(lerp(60,88,startWideProgress));
     const titleLineHeight=lerp(0.96,0.92,startWideProgress);
     const titleLetterSpacing=Math.round(lerp(4,6,startWideProgress));
+    const startShellPadding=Math.round(lerp(12,24,startWideProgress));
+    const startFramePaddingX=Math.round(lerp(4,10,startWideProgress));
     const roleCardsBaseWidth=Math.round(lerp(420,720,startWideProgress));
     const roleCardsBaseGap=Math.round(lerp(10,12,startWideProgress));
-    const roleCardsScale=Math.min(1,Math.max(0.76,(Math.min(vw,roleCardsBaseWidth)-8)/(roleCardsBaseWidth+roleCardsBaseGap*2)));
-    const roleCardsStageHeight=lerp(126,154,startWideProgress)*roleCardsScale;
+    const roleCardBaseHeight=((roleCardsBaseWidth-roleCardsBaseGap*2)/3)/(301/221);
+    const roleCardsAvailableWidth=Math.max(0, vw-startShellPadding*2-startFramePaddingX*2-8);
+    const roleCardsScale=Math.min(1,roleCardsAvailableWidth/roleCardsBaseWidth);
+    const roleCardsStageHeight=roleCardBaseHeight*roleCardsScale;
     const footerButtonsBaseWidth=Math.round(lerp(420,720,startWideProgress));
     const footerButtonsBaseGap=Math.round(lerp(10,16,startWideProgress));
-    const footerButtonsScale=Math.min(1,Math.max(0.76,(Math.min(vw,footerButtonsBaseWidth)-8)/(footerButtonsBaseWidth+footerButtonsBaseGap)));
+    const footerButtonsAvailableWidth=Math.max(0, vw-startShellPadding*2-startFramePaddingX*2-8);
+    const footerButtonsScale=Math.min(1, footerButtonsAvailableWidth/footerButtonsBaseWidth);
     const footerButtonsStageHeight=lerp(52,60,startWideProgress)*footerButtonsScale;
     return(<>
       <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',background:'#060707',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:Math.round(lerp(12,24,startWideProgress)),position:'relative',overflow:'hidden'}}>
@@ -5846,17 +5851,18 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
               </div>
 
               <div style={{
+                position:'relative',
                 width:'100%',
                 margin:'0 auto 4px',
                 height:roleCardsStageHeight,
-                display:'flex',
-                alignItems:'flex-start',
-                justifyContent:'center',
               }}>
                 <div style={{
+                  position:'absolute',
+                  top:0, left:'50%',
                   width:roleCardsBaseWidth,
+                  marginLeft: -(roleCardsBaseWidth/2),
                   display:'grid',
-                  gridTemplateColumns:'repeat(3, 1fr)',
+                  gridTemplateColumns:'repeat(3, minmax(0,1fr))',
                   gap:roleCardsBaseGap,
                   transform:`scale(${roleCardsScale})`,
                   transformOrigin:'top center',
@@ -5864,8 +5870,10 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
                   {startRoles.map(role=>(
                     <div key={role.key} style={{
                       position:'relative',
-                      minHeight:Math.round(lerp(120,150,startWideProgress)),
-                      padding:`${Math.round(lerp(18,22,startWideProgress))}px ${Math.round(lerp(18,20,startWideProgress))}px ${Math.round(lerp(16,18,startWideProgress))}px`,
+                      width:'100%',
+                      aspectRatio:'301 / 221',
+                      boxSizing:'border-box',
+                      padding:`${Math.round(lerp(18,22,startWideProgress))}px ${Math.round(lerp(8,16,startWideProgress))}px ${Math.round(lerp(16,18,startWideProgress))}px`,
                       backgroundImage:`url('${role.panel}')`,
                       backgroundSize:'100% 100%',
                       backgroundRepeat:'no-repeat',
@@ -5875,10 +5883,11 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
                       alignItems:'center',
                       justifyContent:'center',
                       textAlign:'center',
+                      overflow:'hidden',
                     }}>
                       <img src={role.icon} alt="" style={{width:Math.round(lerp(32,42,startWideProgress)),height:Math.round(lerp(32,42,startWideProgress)),objectFit:'contain',marginBottom:Math.round(lerp(6,8,startWideProgress)),filter:'drop-shadow(0 0 8px rgba(0,0,0,0.28))'}}/>
-                      <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:Math.round(lerp(15,18,startWideProgress)),color:role.accent,letterSpacing:Math.round(lerp(2,3,startWideProgress)),marginBottom:4,fontWeight:700}}>{role.key}</div>
-                      <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:Math.round(lerp(12,13,startWideProgress)),color:'#ceb083',letterSpacing:Math.round(lerp(1,2,startWideProgress)),lineHeight:1.35}}>{role.goal}</div>
+                      <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:Math.round(lerp(15,18,startWideProgress)),color:role.accent,letterSpacing:Math.round(lerp(2,3,startWideProgress)),marginBottom:4,fontWeight:700,whiteSpace:'nowrap'}}>{role.key}</div>
+                      <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:Math.round(lerp(12,13,startWideProgress)),color:'#ceb083',letterSpacing:Math.round(lerp(1,2,startWideProgress)),lineHeight:1.35,whiteSpace:'nowrap'}}>{role.goal}</div>
                     </div>
                   ))}
                 </div>
@@ -5961,17 +5970,18 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
               </div>
 
               <div style={{
+                position:'relative',
                 width:'100%',
                 margin:'0 auto',
                 height:footerButtonsStageHeight,
-                display:'flex',
-                alignItems:'flex-start',
-                justifyContent:'center',
               }}>
                 <div style={{
+                  position:'absolute',
+                  top:0, left:'50%',
                   width:footerButtonsBaseWidth,
+                  marginLeft: -(footerButtonsBaseWidth/2),
                   display:'grid',
-                  gridTemplateColumns:'repeat(2, 1fr)',
+                  gridTemplateColumns:'repeat(2, minmax(0,1fr))',
                   gap:footerButtonsBaseGap,
                   transform:`scale(${footerButtonsScale})`,
                   transformOrigin:'top center',
@@ -5995,6 +6005,8 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
                     display:'flex',
                     alignItems:'center',
                     justifyContent:'flex-start',
+                    whiteSpace:'nowrap',
+                    overflow:'hidden',
                   }}>关于作者 & 意见与反馈</button>
                   <button onClick={()=>setModal('roadmap')} style={{
                     width:'100%',
@@ -6015,6 +6027,8 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
                     display:'flex',
                     alignItems:'center',
                     justifyContent:'flex-start',
+                    whiteSpace:'nowrap',
+                    overflow:'hidden',
                   }}>版本更新计划</button>
                 </div>
               </div>
