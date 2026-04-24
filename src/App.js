@@ -1,4 +1,4 @@
-﻿import { GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG } from './components/cards';
+﻿﻿import { GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG } from './components/cards';
 import { GodChoiceModal, NyaBorrowModal, DrawRevealModal, TreasureDodgeModal, PeekHandModal, TortoiseOracleModal, AboutModal, FullLogModal, RoadmapModal } from './components/modals';
 import { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel } from './components/board';
 import { RoomModal, LobbyModal, PrivacyToggleModal, TutorialOverlay, ConnectionErrorModal, DebugControls } from './components/lobby';
@@ -2067,7 +2067,6 @@ function aiStep(gs){
             const reason3=`${P[ti].name} 因掉包获得最后一张编号，寻宝者获胜！`;
             return{...gs,players:P,deck:D,discard:Disc,log:[...L,reason3],gameOver:{winner:ROLE_TREASURE,reason:reason3,winnerIdx:ti}};
           }
-        }
         }
       }
     }
@@ -5701,262 +5700,103 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
 
   // ── Start Screen ───────────────────────────────────────────
   if(!gs){
-    const startRules=[
-      '身份随机分配，HP / SAN 初始 10，上限 10',
-      '每回合投 1 张牌，区域牌可选择收入手牌或弃置',
-      '技能与休息每回合限用其一',
-      '手牌上限 4 张，超出须弃牌',
-    ];
-    const startRoles=[
-      {key:'寻宝者',goal:'集齐宝藏',icon:'/img/logo/logo_tr-no-bg.png',panel:'/img/btn/btn_dark_green.png',accent:'#8fd0ca'},
-      {key:'追猎者',goal:'消灭所有非追猎者',icon:'/img/logo/logo_hu-no-bg.png',panel:'/img/btn/btn_dark_red.png',accent:'#d26458'},
-      {key:'邪祀者',goal:'复活邪神',icon:'/img/logo/logo_cu-no-bg.png',panel:'/img/btn/btn_dark_purple.png',accent:'#a781cf'},
-    ];
-    const isStartMobile=vw<900;
-    const frameWidth=isStartMobile?'min(100%, 440px)':'min(100%, 860px)';
-    const titleFontSize=isStartMobile?60:88;
-    const titleLineHeight=isStartMobile?0.96:0.92;
-    const titleLetterSpacing=isStartMobile?4:6;
     return(<>
-      <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',background:'#060707',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:isStartMobile?12:24,position:'relative',overflow:'hidden'}}>
-        <div style={{
-          position:'fixed',inset:0,
-          backgroundImage:"url('/img/bg/bg_main.png')",
-          backgroundSize:'cover',
-          backgroundPosition:'center top',
-          backgroundRepeat:'no-repeat',
-          filter:isStartMobile?'brightness(0.92) saturate(0.92)':'brightness(0.94)',
-        }}/>
-        <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at center,rgba(0,0,0,0.06) 28%,rgba(0,0,0,0.52) 100%)',pointerEvents:'none'}}/>
-        <div style={{position:'fixed',inset:0,background:'linear-gradient(180deg,rgba(0,0,0,0.42) 0%,rgba(0,0,0,0.12) 24%,rgba(0,0,0,0.34) 100%)',pointerEvents:'none'}}/>
+      <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:24,position:'relative',overflow:'hidden'}}>
+        {/* Vignette */}
+        <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at center,transparent 30%,#000000bb 100%)',pointerEvents:'none'}}/>
         {/* Animation overlay — visible even before game starts (first-turn card flip) */}
         <AnimOverlay anim={anim} exiting={animExiting}/>
-        <div style={{position:'relative',zIndex:1,width:'100%',display:'flex',justifyContent:'center'}}>
-          <div style={{width:frameWidth,maxWidth:'100%',padding:isStartMobile?'8px 4px 14px':'18px 10px 18px'}}>
-            <div style={{position:'relative',margin:'0 auto',paddingTop:isStartMobile?28:54}}>
-              <div style={{
-                position:'relative',
-                margin:'0 auto 10px',
-                width:isStartMobile?'100%':'92%',
-                minHeight:isStartMobile?240:340,
-                display:'flex',
-                flexDirection:'column',
-                alignItems:'center',
-                justifyContent:'flex-end',
-                paddingBottom:isStartMobile?12:20,
-              }}>
-                <div style={{
-                  position:'relative',
-                  display:'inline-block',
-                  padding:'0 14px',
-                  marginBottom:isStartMobile?8:14,
-                }}>
-                  {/* Base text layer (visible color) */}
-                  <div style={{
-                    fontFamily:"'Cinzel Decorative','Cinzel',serif",
-                    fontSize:titleFontSize,
-                    lineHeight:titleLineHeight,
-                    fontWeight:700,
-                    letterSpacing:titleLetterSpacing,
-                    color:'#d7ccba',
-                    textShadow:'0 2px 0 rgba(20,14,10,0.75), 0 0 24px rgba(228,214,191,0.18)',
-                    whiteSpace:'nowrap',
-                  }}>邪神的宝藏</div>
-                  {/* Texture overlay clipped to text shape */}
-                  <div aria-hidden="true" style={{
-                    position:'absolute',
-                    inset:0,
-                    display:'flex',
-                    alignItems:'center',
-                    justifyContent:'center',
-                  }}>
-                    <span style={{
-                      fontFamily:"'Cinzel Decorative','Cinzel',serif",
-                      fontSize:titleFontSize,
-                      lineHeight:titleLineHeight,
-                      fontWeight:700,
-                      letterSpacing:titleLetterSpacing,
-                      whiteSpace:'nowrap',
-                      backgroundImage:"url('/img/texture/texture_dirty.png')",
-                      backgroundRepeat:'repeat',
-                      backgroundSize:isStartMobile?'180px 180px':'240px 240px',
-                      WebkitBackgroundClip:'text',
-                      backgroundClip:'text',
-                      WebkitTextFillColor:'transparent',
-                      color:'transparent',
-                      mixBlendMode:'overlay',
-                      opacity:0.56,
-                      pointerEvents:'none',
-                    }}>邪神的宝藏</span>
-                  </div>
-                </div>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:isStartMobile?8:14,width:'100%',marginBottom:isStartMobile?10:12}}>
-                  <img src="/img/line/line_titleguard-no-bg.png" alt="" style={{width:isStartMobile?78:128,opacity:0.75}}/>
-                  <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:isStartMobile?18:28,letterSpacing:isStartMobile?4:8,color:'#cbb293',textShadow:'0 0 12px rgba(0,0,0,0.35)',whiteSpace:'nowrap'}}>克苏鲁卡牌对战</div>
-                  <img src="/img/line/line_titleguard-no-bg.png" alt="" style={{width:isStartMobile?78:128,opacity:0.75,transform:'scaleX(-1)'}}/>
-                </div>
-                <div style={{fontFamily:"'Cinzel',serif",fontSize:isStartMobile?11:17,letterSpacing:isStartMobile?6:10,color:'#cbb293',textTransform:'uppercase',marginBottom:isStartMobile?6:10,opacity:0.92}}>Treasures Of Evils</div>
-                <img src="/img/line/line_split-no-bg.png" alt="" style={{width:isStartMobile?'82%':'72%',maxWidth:540,marginBottom:isStartMobile?12:18,opacity:0.82}}/>
-                <p style={{
-                  maxWidth:isStartMobile?360:620,
-                  margin:'0 auto',
-                  padding:'0 12px',
-                  fontFamily:"'Noto Serif SC','SimSun',serif",
-                  color:'#c5a983',
-                  fontSize:isStartMobile?14:16,
-                  lineHeight:1.85,
-                  letterSpacing:1,
-                  textShadow:'0 1px 8px rgba(0,0,0,0.4)',
-                }}>
-                  “古神沉眠之时，旅者聚于此地。寻宝者寻觅遗物，追猎者猎杀异类，
-                  邪祀者企图唤醒邪神。各怀秘密，命运共织。”
-                </p>
+        <div style={{position:'relative',zIndex:1}}>
+          <div style={{position:'relative',width:'min(520px,92vw)',margin:'0 auto 12px',padding:'18px 0 10px'}}>
+            <TitleCandleFlames/>
+          <h1 style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:34,fontWeight:700,letterSpacing:3,marginBottom:4,color:'#e8c87a',textShadow:'0 0 40px #c8a96e44,0 2px 0 #0a0705'}}>邪神的宝藏</h1>
+          <div style={{fontFamily:"'Cinzel',serif",fontSize:13,letterSpacing:3,color:'#c8a96e',marginBottom:4,opacity:0.85}}>克苏鲁卡牌对战</div>
+          <div style={{fontSize:10,letterSpacing:5,color:'#a07838',fontFamily:"'Cinzel',serif",marginBottom:10,textTransform:'uppercase',opacity:0.7}}>Treasures of Evils</div>
+          <div style={{width:200,height:1,background:'linear-gradient(90deg,transparent,#5a4020,transparent)',margin:'0 auto 20px'}}/>
+          <p style={{color:'#b89858',maxWidth:380,margin:'0 auto 6px',lineHeight:1.5,fontSize:11,fontStyle:'italic'}}>
+            "古神沉眠之时，旅者聚于此地。寻宝者寻觅遗物，追猎者猎杀异类，邪祀者企图唤醒邪神。各怀秘密，命运共织。"
+          </p>
+          </div>
+          {/* Role cards */}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,maxWidth:420,width:'100%',margin:'0 auto 5px'}}>
+            {Object.entries(RINFO).map(([role,r])=>(
+              <div key={role} style={{background:'#140f08',border:`1.5px solid ${r.dim}`,borderRadius:3,padding:'6px 4px',textAlign:'center',boxShadow:`0 0 8px ${r.dim}18`}}>
+                <div style={{fontSize:14,marginBottom:2,color:r.col}}>{r.icon}</div>
+                <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:r.col,fontSize:9,letterSpacing:1,marginBottom:3}}>{role}</div>
+                <div style={{fontFamily:"'Microsoft YaHei','SimHei',sans-serif",color:'#a07838',fontSize:11,lineHeight:1.35,fontStyle:'italic'}}>{r.goal}</div>
               </div>
-
-              <div style={{
-                display:'grid',
-                gridTemplateColumns:isStartMobile?'1fr':'repeat(3,1fr)',
-                gap:isStartMobile?10:12,
-                width:'100%',
-                margin:'0 auto 10px',
-              }}>
-                {startRoles.map(role=>(
-                  <div key={role.key} style={{
-                    position:'relative',
-                    minHeight:isStartMobile?152:182,
-                    padding:isStartMobile?'18px 18px 16px':'22px 20px 18px',
-                    backgroundImage:`url('${role.panel}')`,
-                    backgroundSize:'100% 100%',
-                    backgroundRepeat:'no-repeat',
-                    backgroundPosition:'center',
-                    display:'flex',
-                    flexDirection:'column',
-                    alignItems:'center',
-                    justifyContent:'center',
-                    textAlign:'center',
-                  }}>
-                    <img src={role.icon} alt="" style={{width:isStartMobile?40:52,height:isStartMobile?40:52,objectFit:'contain',marginBottom:isStartMobile?8:12,filter:'drop-shadow(0 0 8px rgba(0,0,0,0.28))'}}/>
-                    <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:isStartMobile?18:24,color:role.accent,letterSpacing:isStartMobile?2:3,marginBottom:6,fontWeight:700}}>{role.key}</div>
-                    <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:isStartMobile?14:16,color:'#ceb083',letterSpacing:isStartMobile?1:2,lineHeight:1.35}}>{role.goal}</div>
-                  </div>
-                ))}
+            ))}
+          </div>
+          {/* Rules */}
+          <div style={{background:'#140f08',border:'1.5px solid #2a1a08',borderRadius:3,padding:'10px 14px',maxWidth:420,width:'100%',margin:'0 auto 10px',textAlign:'left'}}>
+            <div style={{fontFamily:"'Cinzel',serif",color:'#b07828',fontSize:10,letterSpacing:3,marginBottom:6,textTransform:'uppercase'}}>— 规则要点 —</div>
+            {[
+              '身份随机分配，HP / SAN 初始 10，上限 10',
+              '每回合摸 1 张牌，区域牌可选择收入手牌或弃置',
+              '技能与休息每回合限用其一',
+              '手牌上限 4 张，超出须弃牌',
+            ].map((t,i)=>(
+              <div key={i} style={{display:'flex',gap:8,marginBottom:4,alignItems:'flex-start'}}>
+                <span style={{color:'#a07838',fontSize:9,marginTop:2}}>✦</span>
+                <span style={{color:'#c8a96e',fontSize:11,lineHeight:1.5,fontStyle:'italic'}}>{t}</span>
               </div>
-
-              <div style={{
-                position:'relative',
-                width:'100%',
-                margin:'0 auto 12px',
-                padding:isStartMobile?'18px 22px 16px':'24px 34px 22px',
-                background:'linear-gradient(180deg,rgba(6,12,14,0.72) 0%,rgba(8,12,13,0.8) 100%)',
-                border:'1px solid rgba(118,93,58,0.52)',
-                boxShadow:'inset 0 0 0 1px rgba(32,24,16,0.72), 0 10px 40px rgba(0,0,0,0.2)',
-                borderRadius:8,
-                overflow:'hidden',
-              }}>
-                <div style={{
-                  position:'absolute',inset:0,
-                  background:'radial-gradient(circle at center, rgba(255,255,255,0.03) 0%, transparent 62%)',
-                  pointerEvents:'none',
+            ))}
+          </div>
+          {/* ── Main action buttons ── */}
+          <div style={{display:'flex',gap:12,justifyContent:'center',alignItems:'center',flexWrap:'wrap'}}>
+            <button onClick={startNewGame} style={{
+              padding:'13px 52px',
+              background:'#1c1008',
+              border:'2px solid #7a5020',
+              color:'#c8a96e',
+              fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:15,
+              borderRadius:2,cursor:'pointer',letterSpacing:3,
+              boxShadow:'0 0 30px #7a502044',
+              textTransform:'uppercase',
+              transition:'all .2s',
+            }}>踏入黑暗</button>
+            <button
+              onClick={handleMultiplayer}
+              disabled={multiLoading}
+              style={{
+                padding:'13px 36px',
+                background: multiLoading?'#180e08':'#0e0a14',
+                border:'2px solid #5a3a80',
+                color: multiLoading?'#5a4070':'#a080d0',
+                fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:15,
+                borderRadius:2,cursor:multiLoading?'not-allowed':'pointer',letterSpacing:3,
+                boxShadow:'0 0 30px #5a3a8033',
+                textTransform:'uppercase',
+                transition:'all .2s',
+                display:'flex',alignItems:'center',gap:8,
+              }}
+            >
+              {multiLoading&&(
+                <span style={{
+                  display:'inline-block',width:14,height:14,
+                  border:'2px solid #5a3a80',borderTopColor:'#a080d0',
+                  borderRadius:'50%',
+                  animation:'spinLoader 0.7s linear infinite',
+                  flexShrink:0,
                 }}/>
-                <div style={{position:'relative',display:'flex',alignItems:'center',justifyContent:'center',gap:isStartMobile?8:12,marginBottom:isStartMobile?10:14}}>
-                  <img src="/img/title/title_rule.png" alt="" style={{width:isStartMobile?72:110,opacity:0.78}}/>
-                  <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:isStartMobile?20:30,color:'#c8b08b',letterSpacing:isStartMobile?4:8,fontWeight:700}}>规则要点</div>
-                  <img src="/img/title/title_rule.png" alt="" style={{width:isStartMobile?72:110,opacity:0.78,transform:'scaleX(-1)'}}/>
-                </div>
-                <div style={{display:'grid',gap:isStartMobile?8:10,textAlign:'left',position:'relative'}}>
-                  {startRules.map((rule,i)=>(
-                    <div key={i} style={{display:'flex',alignItems:'flex-start',gap:isStartMobile?8:12}}>
-                      <span style={{color:'#b8996a',fontSize:isStartMobile?12:14,lineHeight:1.8}}>✦</span>
-                      <span style={{fontFamily:"'Noto Serif SC','SimSun',serif",color:'#d0b28a',fontSize:isStartMobile?14:16,lineHeight:1.75,letterSpacing:isStartMobile?0.5:1}}>{rule}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{position:'relative',display:'grid',gridTemplateColumns:'1fr auto 1fr',gap:isStartMobile?8:12,alignItems:'center',margin:'0 auto 14px',width:'100%'}}>
-                <button onClick={startNewGame} style={{
-                  minHeight:isStartMobile?70:86,
-                  padding:isStartMobile?'10px 18px':'14px 30px',
-                  background:'transparent',
-                  backgroundImage:"url('/img/btn/btn_bright_green.png')",
-                  backgroundSize:'100% 100%',
-                  backgroundRepeat:'no-repeat',
-                  backgroundPosition:'center',
-                  border:'none',
-                  color:'#dbc7a9',
-                  fontFamily:"'Noto Serif SC','SimSun',serif",
-                  fontSize:isStartMobile?24:38,
-                  fontWeight:700,
-                  letterSpacing:isStartMobile?4:8,
-                  cursor:'pointer',
-                  textShadow:'0 2px 6px rgba(0,0,0,0.45)',
-                }}>踏入黑暗</button>
-                <img src="/img/deco/deco_cth-no-bg.png" alt="" style={{width:isStartMobile?46:62,opacity:0.9,filter:'drop-shadow(0 2px 10px rgba(0,0,0,0.35))'}}/>
-                <button
-                  onClick={handleMultiplayer}
-                  disabled={multiLoading}
-                  style={{
-                    minHeight:isStartMobile?70:86,
-                    padding:isStartMobile?'10px 18px':'14px 30px',
-                    background:'transparent',
-                    backgroundImage:"url('/img/btn/btn_bright_purple.png')",
-                    backgroundSize:'100% 100%',
-                    backgroundRepeat:'no-repeat',
-                    backgroundPosition:'center',
-                    border:'none',
-                    color:multiLoading?'#8a7796':'#dbc7c8',
-                    fontFamily:"'Noto Serif SC','SimSun',serif",
-                    fontSize:isStartMobile?24:38,
-                    fontWeight:700,
-                    letterSpacing:isStartMobile?4:8,
-                    cursor:multiLoading?'not-allowed':'pointer',
-                    textShadow:'0 2px 6px rgba(0,0,0,0.45)',
-                    opacity:multiLoading?0.82:1,
-                  }}
-                >{multiLoading?'联机中…':'联机对战'}</button>
-              </div>
-
-              <div style={{display:'grid',gridTemplateColumns:isStartMobile?'1fr':'1fr 1fr',gap:isStartMobile?10:16,width:'100%',margin:'0 auto'}}>
-                <button onClick={()=>setModal('about')} style={{
-                  minHeight:isStartMobile?52:60,
-                  padding:isStartMobile?'8px 12px 8px 0':'10px 16px 10px 0',
-                  background:'transparent',
-                  backgroundImage:"url('/img/btn/btn_author.png')",
-                  backgroundSize:'100% 100%',
-                  backgroundRepeat:'no-repeat',
-                  backgroundPosition:'center',
-                  border:'none',
-                  color:'#a79171',
-                  fontFamily:"'Noto Serif SC','SimSun',serif",
-                  fontSize:isStartMobile?12:15,
-                  letterSpacing:isStartMobile?1:2,
-                  cursor:'pointer',
-                  textAlign:'right',
-                  display:'flex',
-                  alignItems:'center',
-                  justifyContent:'flex-end',
-                }}>关于作者 & 意见与反馈</button>
-                <button onClick={()=>setModal('roadmap')} style={{
-                  minHeight:isStartMobile?52:60,
-                  padding:isStartMobile?'8px 12px 8px 0':'10px 16px 10px 0',
-                  background:'transparent',
-                  backgroundImage:"url('/img/btn/btn_roadmap.png')",
-                  backgroundSize:'100% 100%',
-                  backgroundRepeat:'no-repeat',
-                  backgroundPosition:'center',
-                  border:'none',
-                  color:'#a79171',
-                  fontFamily:"'Noto Serif SC','SimSun',serif",
-                  fontSize:isStartMobile?12:15,
-                  letterSpacing:isStartMobile?1:2,
-                  cursor:'pointer',
-                  textAlign:'right',
-                  display:'flex',
-                  alignItems:'center',
-                  justifyContent:'flex-end',
-                }}>版本更新计划</button>
-              </div>
-            </div>
+              )}
+              联机对战
+            </button>
+          </div>
+          {/* Bottom row: about + roadmap */}
+          <div style={{display:'flex',justifyContent:'space-between',width:'100%',maxWidth:420,margin:'8px auto 0',gap:12}}>
+            <button onClick={()=>setModal('about')} style={{
+              flex:1,padding:'8px 10px',background:'transparent',
+              border:'1px solid #3a2510',color:'#a07838',
+              fontFamily:"'Cinzel',serif",fontSize:10,borderRadius:2,
+              cursor:'pointer',letterSpacing:0.5,transition:'all .15s',
+            }}>关于作者 & 意见与反馈</button>
+            <button onClick={()=>setModal('roadmap')} style={{
+              flex:1,padding:'8px 10px',background:'transparent',
+              border:'1px solid #3a2510',color:'#a07838',
+              fontFamily:"'Cinzel',serif",fontSize:10,borderRadius:2,
+              cursor:'pointer',letterSpacing:0.5,transition:'all .15s',
+            }}>版本更新计划</button>
           </div>
         </div>
         {modal==='about'&&<AboutModal onClose={()=>setModal(null)}/>}

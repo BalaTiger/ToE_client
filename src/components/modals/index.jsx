@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   GOD_DEFS,
   ROLE_CULTIST,
@@ -308,14 +308,15 @@ function PeekHandModal({ card, targetName, onClose }) {
 }
 
 function TortoiseOracleModal({ abilityData, onSelect, myTurn }) {
-  const revealedCards = abilityData?.revealedCards || [];
+  const revealedCards = useMemo(() => abilityData?.revealedCards || [], [abilityData?.revealedCards]);
   const selectableKeys = abilityData?.selectableKeys || [];
   const [revealedCount, setRevealedCount] = useState(0);
   const canPick = !!myTurn;
+  const revealedCardsKey = useMemo(() => revealedCards.map(c => c.id ?? c.key).join('|'), [revealedCards]);
 
   useEffect(() => {
     setRevealedCount(0);
-  }, [revealedCards.map(c => c.id ?? c.key).join('|')]);
+  }, [revealedCardsKey]);
 
   useEffect(() => {
     if (!revealedCards.length) return;

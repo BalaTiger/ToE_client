@@ -145,7 +145,7 @@ function TreasureMapAnim({hand,onConfirm}){
     ts.push(setTimeout(()=>setPhase(N+3),t));t+=600; // map
     ts.push(setTimeout(()=>setPhase(N+4),t));        // button
     return()=>ts.forEach(clearTimeout);
-  },[]);
+  },[fired,N]);
   // Layout: cards in a grid, max 4 per row
   const COLS=Math.min(N,4),ROWS=Math.ceil(N/COLS);
   const CW=72,CH=96,GAP=8;
@@ -276,7 +276,7 @@ function CthulhuResurrectionAnim({onConfirm}){
     ts.push(setTimeout(()=>setPhase(4),t));t+=800;  // glow
     ts.push(setTimeout(()=>setPhase(5),t));        // button
     return()=>ts.forEach(clearTimeout);
-  },[]);
+  },[fired]);
   const darkness=phase>=1;
   const tentacles=phase>=2;
   const cthulhu=phase>=3;
@@ -387,7 +387,7 @@ function RoleRevealAnim({role,onDone}){
     const t1=setTimeout(()=>setOffset(-(BEFORE*ITEM_H)),120);
     const t2=setTimeout(onDone,2500);
     return()=>{clearTimeout(t1);clearTimeout(t2);};
-  },[]);
+  },[onDone]);
   return(
     <div style={{position:'fixed',inset:0,zIndex:3000,background:'linear-gradient(160deg,#060402 0%,#0e0804 100%)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',animation:'animFadeIn 0.3s ease-out'}}>
       <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse at center,transparent 35%,#000000bb 100%)',pointerEvents:'none'}}/>
