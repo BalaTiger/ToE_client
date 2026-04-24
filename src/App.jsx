@@ -5873,7 +5873,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
                       width:'100%',
                       aspectRatio:'301 / 221',
                       boxSizing:'border-box',
-                      padding:`${Math.round(lerp(18,22,startWideProgress))}px ${Math.round(lerp(8,16,startWideProgress))}px ${Math.round(lerp(16,18,startWideProgress))}px`,
+                      padding:`${Math.round(lerp(18,22,startWideProgress))}px ${Math.round(lerp(12,20,startWideProgress))}px ${Math.round(lerp(16,18,startWideProgress))}px`,
                       backgroundImage:`url('${role.panel}')`,
                       backgroundSize:'100% 100%',
                       backgroundRepeat:'no-repeat',
@@ -5886,8 +5886,10 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
                       overflow:'hidden',
                     }}>
                       <img src={role.icon} alt="" style={{width:Math.round(lerp(32,42,startWideProgress)),height:Math.round(lerp(32,42,startWideProgress)),objectFit:'contain',marginBottom:Math.round(lerp(6,8,startWideProgress)),filter:'drop-shadow(0 0 8px rgba(0,0,0,0.28))'}}/>
-                      <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:Math.round(lerp(15,18,startWideProgress)),color:role.accent,letterSpacing:Math.round(lerp(2,3,startWideProgress)),marginBottom:4,fontWeight:700,whiteSpace:'nowrap'}}>{role.key}</div>
-                      <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:Math.round(lerp(12,13,startWideProgress)),color:'#ceb083',letterSpacing:Math.round(lerp(1,2,startWideProgress)),lineHeight:1.35,whiteSpace:'nowrap'}}>{role.goal}</div>
+                      <div style={{transform:`scale(${lerp(0.85, 1, startWideProgress)})`, transformOrigin:'center', display:'flex', flexDirection:'column', alignItems:'center', width:'100%'}}>
+                        <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:Math.round(lerp(15,18,startWideProgress)),color:role.accent,letterSpacing:Math.round(lerp(2,3,startWideProgress)),marginBottom:4,fontWeight:700,whiteSpace:'nowrap'}}>{role.key}</div>
+                        <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:Math.round(lerp(12,13,startWideProgress)),color:'#ceb083',letterSpacing:Math.round(lerp(1,2,startWideProgress)),lineHeight:1.35,whiteSpace:'nowrap'}}>{role.goal}</div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -5924,7 +5926,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
                 </div>
               </div>
 
-              <div style={{position:'relative',display:'grid',gridTemplateColumns:'1fr auto 1fr',gap:Math.round(lerp(8,12,startWideProgress)),alignItems:'center',margin:'0 auto 8px',width:'100%'}}>
+              <div style={{position:'relative',display:'grid',gridTemplateColumns:'1fr auto 1fr',gap:Math.round(lerp(2,6,startWideProgress)),alignItems:'center',margin:'0 auto 2px',width:'100%'}}>
                 <button onClick={startNewGame} style={{
                   width:'100%',
                   aspectRatio:'397 / 133',
@@ -5972,7 +5974,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
               <div style={{
                 position:'relative',
                 width:'100%',
-                margin:'0 auto',
+                margin: `${Math.round(lerp(-18, 0, startWideProgress))}px auto 0`,
                 height:footerButtonsStageHeight,
               }}>
                 <div style={{
