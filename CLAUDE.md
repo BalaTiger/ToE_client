@@ -4,8 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-《邪神的宝藏》(Treasures of Evils) — A Cthulhu-themed card game frontend built with React 19 + Vite.
+《邪神的宝藏》(Treasures of Evils) — A Cthulhu-themed card game frontend built with React 19 + Vite 8 (beta).
 Website: https://www.toegame.online/
+
+This project uses ES modules (`"type": "module"` in package.json).
 
 ## Development Commands
 
@@ -14,7 +16,16 @@ Website: https://www.toegame.online/
 - `npm run preview` — Preview the production build locally
 - `npm run lint` — Run ESLint
 
-There are no tests in this project. Do not attempt to run tests.
+There are no formal tests in this project. Do not attempt to run `npm test`.
+
+### Simulation Scripts (`sim_scripts/`)
+
+Standalone Node.js scripts that replicate game logic outside the React app for balance testing and AI behavior validation:
+- `simulate_claude.js` — Full game simulation with latest card definitions and AI logic
+- `simulate_trae.js` — Alternative simulation variant
+- `analyze_san_cards.js` — SAN card balance analysis
+
+Run directly with Node: `node sim_scripts/simulate_claude.js`
 
 ## Architecture
 
@@ -77,7 +88,7 @@ The game state object shape (simplified):
 
 ## Deployment
 
-GitHub Actions (`.github/workflows/deploy.yml`) deploys the `release` branch to Tencent Cloud OpenCloudOS 9 via SSH on every push to `release`. The server runs `npm ci && npm run build` and copies `dist/*` to `/usr/share/nginx/html/`.
+GitHub Actions workflow at `.github/workflows/deploy.yml` deploys the `release` branch to Tencent Cloud OpenCloudOS 9 via SSH on every push to `release`. The server runs `npm ci && npm run build` and copies `dist/*` to `/usr/share/nginx/html/`.
 
 ## Important Patterns
 

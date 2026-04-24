@@ -577,8 +577,8 @@ function estimateCultistZoneCardScore(card, self, players, ci) {
 
 export function aiChooseRevealCard(targetHand, hunterName, log, knownHunterCards) { // eslint-disable-line no-unused-vars
   const zoneCards = targetHand.filter(isZoneCard);
-  if (!zoneCards.length) return targetHand[0];
-  
+  if (!zoneCards.length) return null;
+
   const scored = zoneCards.map((card, index) => {
     let score = 0;
     if (card.type === 'revealTopCards') score += 5;
@@ -590,7 +590,7 @@ export function aiChooseRevealCard(targetHand, hunterName, log, knownHunterCards
     return { index, score };
   });
   scored.sort((a, b) => b.score - a.score);
-  return targetHand[scored[0]?.index ?? 0];
+  return zoneCards[scored[0]?.index ?? 0];
 }
 
 export function aiChooseHunterLootCards(targetHand, hunterHand, maxToTake = 3) {

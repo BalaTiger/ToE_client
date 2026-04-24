@@ -1,0 +1,78 @@
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\sim_scripts\simulate_claude.js:588:16 'i' is defined but never used.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\sim_scripts\simulate_claude.js:693:32 'tgtPlayer' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\sim_scripts\simulate_claude.js:798:21 'verbose' is assigned a value but never used.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\sim_scripts\simulate_claude.js:805:15 'lastTurn' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\sim_scripts\simulate_claude.js:878:39 'idx' is defined but never used.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\sim_scripts\simulate_trae.js:235:28 'isMP' is defined but never used.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\sim_scripts\simulate_trae.js:302:10 'aiChooseRevealCard' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\sim_scripts\simulate_trae.js:333:9 'living' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:1:35 'useCardHoverTooltip' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:6:20 'createPortal' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:32:3 'getZoneCardPolarity' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:34:3 'zoneCardHasGuaranteedHpLoss' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:35:3 'zoneCardHasGuaranteedSanLoss' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:36:3 'zoneCardIsSacrificeStyle' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:37:3 'zoneCardAppliesWidePressure' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:38:3 'zoneCardProvidesGuaranteedCardGain' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:42:3 'estimateZoneCardKeepScore' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:54:3 'canTreasureHunterWinBySwap' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:55:3 'shouldTreasureHunterSwapToAvoidRegression' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:72:3 'isLocalActorSeat' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:91:3 'isTurnStartLog' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:92:3 'isStatLog' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:93:3 'isSkillHuntLog' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:94:3 'isSkillSwapLog' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:95:3 'isSkillBewitchLog' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:96:3 'isDiscardOnlyLog' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:97:3 'isTransferLog' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:98:3 'isDrawLikeLog' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:104:3 'hasExplicitAnimMsgs' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:105:3 'hasExplicitTurnFlowLogs' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:115:35 'getPlayerHandAnchorRect' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:118:10 'getInspectionCardDesc' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:118:33 'fp' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:118:37 'petalPath' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:276:9 'mergeInspectionResult' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:2107:13 'inspectionMeta' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:2296:13 'player' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:3201:24 'setLoadingError' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:3239:16 'e' is defined but never used.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:3342:16 'e' is defined but never used.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:3362:12 'e' is defined but never used.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:3366:57 'e' is defined but never used.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:3367:54 'e' is defined but never used.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:3377:25 'setDebugForceCard' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:3476:14 '_err' is defined but never used.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:3517:10 'myPlayerIndex' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:3539:9 'emojiQueueRef' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:3540:9 'emojiFlushTimerRef' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:3599:11 'e' is defined but never used.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:3623:28 'uuid' is defined but never used.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:3812:19 'hunterName' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:3875:30 'reason' is defined but never used.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:4147:9 'isSmall' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:4213:9 'shouldDeferLogSync' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:5239:15 'nextPicker' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:5295:13 'sourceName' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:6246:12 'handleDrawConfirm' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:6525:11 'who' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:6928:11 'nextPicker' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:7055:18 'revCard' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:7165:11 'huntTi' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:7247:11 'huntMsgs' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:8194:9 'currentPickerIdx' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:8199:9 'canLocalFirstComePick' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:8200:9 'canLocalTortoiseSelect' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\App.jsx:8202:9 'selectingCardFromPublic' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\components\anim\GenericAnimOverlay.jsx:74:19 'heal' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\components\anim\GenericAnimOverlay.jsx:75:10 'frame' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\components\anim\GenericAnimOverlay.jsx:101:103 'val' is defined but never used.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\components\anim\SkillOverlays.jsx:1:17 'useState' is defined but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\components\board\index.jsx:252:81 'baseHeight' is defined but never used.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\components\board\index.jsx:270:9 'pileLabelFont' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\components\lobby\index.jsx:351:3 'localDebugMode' is defined but never used.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\components\lobby\index.jsx:352:3 'onToggleDebugMode' is defined but never used.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\components\modals\index.jsx:137:17 'msgs' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\game\animQueueHelpers.js:17:91 'turnIntroName' is assigned a value but never used.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\game\setup.js:78:14 'e' is defined but never used.
+C:\Users\zhuzi\Documents\ToE\ToE_client_main\src\game\setup.js:128:14 'e' is defined but never used.

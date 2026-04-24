@@ -14,7 +14,7 @@ export function resolveTurnHighlightForStep(step,nextGs,playersFallback=[]){
   return idx>=0?idx:null;
 }
 
-export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQueue,msgs,turnIntroName=null){
+export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQueue,msgs){
   const ordered=[{type:"SKILL_BEWITCH",msgs,targetIdx:toPid}];
   if(toPid!=null&&toPid>=0){
     ordered.push({type:"CARD_TRANSFER",fromPid,dest:"player",toPid,count:1});

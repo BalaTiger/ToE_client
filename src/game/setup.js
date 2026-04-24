@@ -75,7 +75,7 @@ export function mkRoles(N = 5, isSinglePlayer = false, forcedPlayerRole = null) 
           playerRoleProbabilities[role] = Math.max(0, 1 - (streaks[role] * 0.1));
         });
       }
-    } catch (e) {
+    } catch {
       // Ignore localStorage issues and fall back to default weights.
     }
   }
@@ -125,7 +125,7 @@ export function mkRoles(N = 5, isSinglePlayer = false, forcedPlayerRole = null) 
       streaks[playerRole] = (streaks[playerRole] || 0) + 1;
 
       localStorage.setItem('cthulhu_role_streaks', JSON.stringify(streaks));
-    } catch (e) {
+    } catch {
       // Ignore localStorage issues.
     }
   }
