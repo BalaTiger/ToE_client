@@ -1,4 +1,4 @@
-﻿import { GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG } from './components/cards';
+import { GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG } from './components/cards';
 import { GodChoiceModal, NyaBorrowModal, DrawRevealModal, TreasureDodgeModal, PeekHandModal, TortoiseOracleModal, AboutModal, FullLogModal, RoadmapModal } from './components/modals';
 import { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel } from './components/board';
 import { RoomModal, LobbyModal, PrivacyToggleModal, TutorialOverlay, ConnectionErrorModal, DebugControls } from './components/lobby';
@@ -5784,8 +5784,8 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
                       backgroundClip:'text',
                       WebkitTextFillColor:'transparent',
                       color:'transparent',
-                      mixBlendMode:'overlay',
-                      opacity:0.56,
+                      mixBlendMode:'multiply',
+                      opacity:0.85,
                       pointerEvents:'none',
                     }}>邪神的宝藏</span>
                   </div>
@@ -5823,7 +5823,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
                 {startRoles.map(role=>(
                   <div key={role.key} style={{
                     position:'relative',
-                    minHeight:isStartMobile?152:182,
+                    minHeight:isStartMobile?120:150,
                     padding:isStartMobile?'18px 18px 16px':'22px 20px 18px',
                     backgroundImage:`url('${role.panel}')`,
                     backgroundSize:'100% 100%',
@@ -5835,9 +5835,9 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
                     justifyContent:'center',
                     textAlign:'center',
                   }}>
-                    <img src={role.icon} alt="" style={{width:isStartMobile?40:52,height:isStartMobile?40:52,objectFit:'contain',marginBottom:isStartMobile?8:12,filter:'drop-shadow(0 0 8px rgba(0,0,0,0.28))'}}/>
-                    <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:isStartMobile?18:24,color:role.accent,letterSpacing:isStartMobile?2:3,marginBottom:6,fontWeight:700}}>{role.key}</div>
-                    <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:isStartMobile?14:16,color:'#ceb083',letterSpacing:isStartMobile?1:2,lineHeight:1.35}}>{role.goal}</div>
+                    <img src={role.icon} alt="" style={{width:isStartMobile?32:42,height:isStartMobile?32:42,objectFit:'contain',marginBottom:isStartMobile?6:8,filter:'drop-shadow(0 0 8px rgba(0,0,0,0.28))'}}/>
+                    <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:isStartMobile?15:18,color:role.accent,letterSpacing:isStartMobile?2:3,marginBottom:4,fontWeight:700}}>{role.key}</div>
+                    <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:isStartMobile?12:13,color:'#ceb083',letterSpacing:isStartMobile?1:2,lineHeight:1.35}}>{role.goal}</div>
                   </div>
                 ))}
               </div>
@@ -5860,14 +5860,14 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
                 }}/>
                 <div style={{position:'relative',display:'flex',alignItems:'center',justifyContent:'center',gap:isStartMobile?8:12,marginBottom:isStartMobile?10:14}}>
                   <img src="/img/title/title_rule.png" alt="" style={{width:isStartMobile?72:110,opacity:0.78}}/>
-                  <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:isStartMobile?20:30,color:'#c8b08b',letterSpacing:isStartMobile?4:8,fontWeight:700}}>规则要点</div>
+                  <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:isStartMobile?16:22,color:'#c8b08b',letterSpacing:isStartMobile?4:8,fontWeight:700}}>规则要点</div>
                   <img src="/img/title/title_rule.png" alt="" style={{width:isStartMobile?72:110,opacity:0.78,transform:'scaleX(-1)'}}/>
                 </div>
                 <div style={{display:'grid',gap:isStartMobile?8:10,textAlign:'left',position:'relative'}}>
                   {startRules.map((rule,i)=>(
                     <div key={i} style={{display:'flex',alignItems:'flex-start',gap:isStartMobile?8:12}}>
                       <span style={{color:'#b8996a',fontSize:isStartMobile?12:14,lineHeight:1.8}}>✦</span>
-                      <span style={{fontFamily:"'Noto Serif SC','SimSun',serif",color:'#d0b28a',fontSize:isStartMobile?14:16,lineHeight:1.75,letterSpacing:isStartMobile?0.5:1}}>{rule}</span>
+                      <span style={{fontFamily:"'Noto Serif SC','SimSun',serif",color:'#d0b28a',fontSize:isStartMobile?12:14,lineHeight:1.75,letterSpacing:isStartMobile?0.5:1}}>{rule}</span>
                     </div>
                   ))}
                 </div>
@@ -5883,9 +5883,9 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
                   backgroundRepeat:'no-repeat',
                   backgroundPosition:'center',
                   border:'none',
-                  color:'#dbc7a9',
+                  color:'#b5a68e',
                   fontFamily:"'Noto Serif SC','SimSun',serif",
-                  fontSize:isStartMobile?24:38,
+                  fontSize:isStartMobile?18:26,
                   fontWeight:700,
                   letterSpacing:isStartMobile?4:8,
                   cursor:'pointer',
@@ -5904,9 +5904,9 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
                     backgroundRepeat:'no-repeat',
                     backgroundPosition:'center',
                     border:'none',
-                    color:multiLoading?'#8a7796':'#dbc7c8',
+                    color:multiLoading?'#6a5a70':'#b0a0aa',
                     fontFamily:"'Noto Serif SC','SimSun',serif",
-                    fontSize:isStartMobile?24:38,
+                    fontSize:isStartMobile?18:26,
                     fontWeight:700,
                     letterSpacing:isStartMobile?4:8,
                     cursor:multiLoading?'not-allowed':'pointer',
@@ -5919,7 +5919,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
               <div style={{display:'grid',gridTemplateColumns:isStartMobile?'1fr':'1fr 1fr',gap:isStartMobile?10:16,width:'100%',margin:'0 auto'}}>
                 <button onClick={()=>setModal('about')} style={{
                   minHeight:isStartMobile?52:60,
-                  padding:isStartMobile?'8px 12px 8px 0':'10px 16px 10px 0',
+                  padding:isStartMobile?'8px 8px 8px 22%':'10px 10px 10px 22%',
                   background:'transparent',
                   backgroundImage:"url('/img/btn/btn_author.png')",
                   backgroundSize:'100% 100%',
@@ -5931,14 +5931,14 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
                   fontSize:isStartMobile?12:15,
                   letterSpacing:isStartMobile?1:2,
                   cursor:'pointer',
-                  textAlign:'right',
+                  textAlign:'left',
                   display:'flex',
                   alignItems:'center',
-                  justifyContent:'flex-end',
+                  justifyContent:'flex-start',
                 }}>关于作者 & 意见与反馈</button>
                 <button onClick={()=>setModal('roadmap')} style={{
                   minHeight:isStartMobile?52:60,
-                  padding:isStartMobile?'8px 12px 8px 0':'10px 16px 10px 0',
+                  padding:isStartMobile?'8px 8px 8px 22%':'10px 10px 10px 22%',
                   background:'transparent',
                   backgroundImage:"url('/img/btn/btn_roadmap.png')",
                   backgroundSize:'100% 100%',
@@ -5950,10 +5950,10 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
                   fontSize:isStartMobile?12:15,
                   letterSpacing:isStartMobile?1:2,
                   cursor:'pointer',
-                  textAlign:'right',
+                  textAlign:'left',
                   display:'flex',
                   alignItems:'center',
-                  justifyContent:'flex-end',
+                  justifyContent:'flex-start',
                 }}>版本更新计划</button>
               </div>
             </div>
