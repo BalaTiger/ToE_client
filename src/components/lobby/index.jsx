@@ -348,8 +348,6 @@ function ConnectionErrorModal({ show, onClose }) {
 // ── Debug Settings Panel ──────────────────────────────────────
 function DebugSettingsPanel({
   show,
-  localDebugMode,
-  onToggleDebugMode,
   onToggleShowSettings,
   debugForceCardTarget, setDebugForceCardTarget,
   debugForceCardKeep, setDebugForceCardKeep,

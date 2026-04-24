@@ -134,7 +134,7 @@ function NyaBorrowModal({ deadPlayers, godLevel, onBorrow, onSkip }) {
 // ── Draw Reveal Modal ─────────────────────────────────────────
 function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingText }) {
   if (!drawReveal?.card) return null;
-  const { card, msgs } = drawReveal;
+  const { card } = drawReveal;
   const s = CS[card.letter] || GOD_CS;
   const isBystander = !canChoose && thinkingText;
   return (

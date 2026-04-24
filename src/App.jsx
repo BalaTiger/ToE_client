@@ -1,9 +1,9 @@
-﻿import { GodTooltip, AreaTooltip, useCardHoverTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG } from './components/cards';
+﻿import { GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG } from './components/cards';
 import { GodChoiceModal, NyaBorrowModal, DrawRevealModal, TreasureDodgeModal, PeekHandModal, TortoiseOracleModal, AboutModal, FullLogModal, RoadmapModal } from './components/modals';
 import { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel } from './components/board';
 import { RoomModal, LobbyModal, PrivacyToggleModal, TutorialOverlay, ConnectionErrorModal, DebugControls } from './components/lobby';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import ReactDOM, { createPortal } from "react-dom";
+import ReactDOM from "react-dom";
 import html2canvas from "html2canvas";
 // socket.io-client is loaded at runtime via CDN (only outside Claude Artifacts)
 
@@ -29,17 +29,10 @@ import {
   isZoneCard,
   isBlankZoneCard,
   isNegativeZoneCard,
-  getZoneCardPolarity,
   getZoneCardEffectScope,
-  zoneCardHasGuaranteedHpLoss,
-  zoneCardHasGuaranteedSanLoss,
-  zoneCardIsSacrificeStyle,
-  zoneCardAppliesWidePressure,
-  zoneCardProvidesGuaranteedCardGain,
   zoneCardUsesTargetInteraction,
   isWinHand,
   getLivingPlayerOrder,
-  estimateZoneCardKeepScore,
   cardLogText,
   removeCardsFromDiscard,
   getPrevLivingIndex,
@@ -51,8 +44,6 @@ import {
   chooseAiCultistBewitchPlan,
   aiShouldKeepZoneCard,
   decideAiSkillUsage,
-  canTreasureHunterWinBySwap,
-  shouldTreasureHunterSwapToAvoidRegression,
   canCultistWinByBewitch,
   canCultistEmptyHandByBewitch,
   aiShouldNotRest,
@@ -69,7 +60,6 @@ import {
   isLocalCurrentTurn,
   isAiCurrentTurn,
   localDisplayName,
-  isLocalActorSeat,
   isLocalDrawDecisionPhase,
   isLocalGodChoicePhase,
   isLocalFirstComePicker,
@@ -77,7 +67,6 @@ import {
   canLocalActOnTargetSelectionPhase,
   isLocalSwapGivePhase,
   isLocalBewitchCardPhase,
-  isLocalTortoiseSelectPhase,
   isLocalHuntConfirmPhase,
   isLocalPublicCardPickPhase,
   isLocalHuntTargetSeat,
@@ -88,21 +77,11 @@ import {
   isLocalWinnerSeat,
 } from "./game/rotateState";
 import {
-  isTurnStartLog,
-  isStatLog,
-  isSkillHuntLog,
-  isSkillSwapLog,
-  isSkillBewitchLog,
-  isDiscardOnlyLog,
-  isTransferLog,
-  isDrawLikeLog,
   splitAnimBoundLogs,
   bindAnimLogChunks,
   subtractLogOccurrences,
   splitTransitionLogs,
   appendAnimLogChunkToQueueEnd,
-  hasExplicitAnimMsgs,
-  hasExplicitTurnFlowLogs,
   extractSkillLogs,
   prepareAnimQueueLogs,
 } from "./game/animLogs";
@@ -112,10 +91,9 @@ import {
   buildInspectionRevealQueue,
   buildInspectionEventFlow,
 } from "./game/animQueueHelpers";
-import { _getZoomCompensatedRect, getPlayerHandAnchorRect, getPlayerHandAnchorCenter, getPileAnchorCenter } from './utils/dom';
+import { _getZoomCompensatedRect, getPlayerHandAnchorCenter, getPileAnchorCenter } from './utils/dom';
 import { ANIM_DURATION, ANIM_SPEED_SCALE, CARD_REVEAL_DURATION, ANIM_STEP_GAP } from './components/anim/constants';
 import { SMOKE_COLS, FLOWER_CONFIGS, DICE_FACES, ANIM_CFG } from './components/anim/data';
-import { getInspectionCardDesc, fp, petalPath } from './components/anim/utils';
 import { CardFlipAnim } from './components/anim/CardFlipAnim';
 import { KnifeEffect, GuillotineAnim } from './components/anim/DamageEffects';
 import { DiscardMoveOverlay, CardTransferOverlay } from './components/anim/MoveOverlays';
@@ -272,16 +250,6 @@ function applyFx(card,ci,ti,ps,deck,disc,gs,avoidNegative=false,avoidNegativeFor
   const hurtHP=(i,v)=>{
     if(i==null||!P[i]||P[i].isDead||(avoidNegative&&i===ci)||avoidNegativeFor.includes(i))return;
     applyHpDamageWithLink(P,i,v,Disc,msgs);
-  };
-  const mergeInspectionResult=(inspectionResult, baseLog)=>{
-    P=inspectionResult.players;
-    D=inspectionResult.deck;
-    Disc=inspectionResult.discard;
-    inspectionMeta=mergeInspectionMeta(inspectionMeta,inspectionResult);
-    statePatch={...statePatch,...inspectionMeta};
-    const fullLog=Array.isArray(inspectionResult.log)?inspectionResult.log:baseLog;
-    const extraMsgs=fullLog.slice(baseLog.length);
-    if(extraMsgs.length)msgs.push(...extraMsgs);
   };
   const hurtSAN=(i,v)=>{
     if(i==null||!P[i]||P[i].isDead||(avoidNegative&&i===ci)||avoidNegativeFor.includes(i))return;
@@ -2104,7 +2072,6 @@ function aiStep(gs){
         const tgt=P[plan.targetIdx];
         const ti=plan.targetIdx;
         const sc=plan.card;
-        let inspectionMeta=makeInspectionMeta(gs);
         P[ct].hand=P[ct].hand.filter(c=>c.id!==sc.id);
         L.push(`${ai.name}（邪祀者）对 ${tgt.name} 【蛊惑】，赠予 ${cardLogText(sc,{alwaysShowName:true})}`);
         P[ti].hand.push(sc);
@@ -2293,7 +2260,6 @@ function handleInspection(playerIndex, gs) {
   switch (drawnCard.effect) {
     case 'adjacentDamageHP': {
       // 相邻角色失去1HP
-      const player = P[playerIndex];
       const N = P.length;
       for (let i = 1; i <= N; i++) {
         const leftIdx = (playerIndex - i + N) % N;
@@ -3198,7 +3164,7 @@ export default function Game(){
   // ── Audio Preloading ──────────────────────────────────────────
   const [isLoading, setIsLoading] = useState(true);
   const [loadingProgress, setLoadingProgress] = useState(0);
-  const [loadingError, setLoadingError] = useState(null);
+  const [loadingError] = useState(null);
   const [currentFile, setCurrentFile] = useState('');
   const [totalSize, setTotalSize] = useState(0);
   const [loadedSize, setLoadedSize] = useState(0);
@@ -3236,7 +3202,7 @@ export default function Game(){
           setIsLoading(false);
           return;
         }
-      } catch (e) {
+      } catch {
         // localStorage error, proceed with preloading
       }
       
@@ -3339,7 +3305,7 @@ export default function Game(){
       // Mark resources as cached
       try {
         localStorage.setItem(CACHE_KEY, '1');
-      } catch (e) {
+      } catch {
         // localStorage error, ignore
       }
       
@@ -3359,12 +3325,12 @@ export default function Game(){
       if(window.location.origin==='null')return true;   // sandboxed origin
       if(/localhost|127\.0\.1/.test(window.location.hostname))return false; // local dev: use real localStorage
       return false;                                      // deployed website: use real localStorage
-    }catch(e){return true;}                              // cross-origin frame access blocked → treat as Artifact
+    }catch{return true;}                              // cross-origin frame access blocked → treat as Artifact
   })();
   const TUTORIAL_KEY='cthulhu_tutorial_v2_done'; // v2: bump version to reset all prior cached state
   const safeLS={
-    get:(k)=>{try{return localStorage.getItem(k);}catch(e){return null;}},
-    set:(k,v)=>{try{localStorage.setItem(k,v);}catch(e){}},
+    get:(k)=>{try{return localStorage.getItem(k);}catch{return null;}},
+    set:(k,v)=>{try{localStorage.setItem(k,v);}catch{}},
   };
   const isLocalTestMode=isLocalTestHost();
   const readTutorialDone=()=>isArtifact?false:safeLS.get(TUTORIAL_KEY)==='1';
@@ -3374,7 +3340,7 @@ export default function Game(){
   const [showFullLog,setShowFullLog]=useState(false);
   const [tutorialStep,setTutorialStep]=useState(1);
   const [localDebugMode,setLocalDebugMode]=useState(()=>isLocalTestMode&&safeLS.get(LOCAL_DEBUG_KEY)==='1');
-  const [debugForceCard,setDebugForceCard]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_KEY)||null);
+  const [debugForceCard]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_KEY)||null);
   const [debugForceCardTarget,setDebugForceCardTarget]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_TARGET_KEY)||'player');
   const [debugForceCardKeep,setDebugForceCardKeep]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_KEEP_KEY)||'auto');
   const [debugForceCardType,setDebugForceCardType]=useState('zone');
@@ -3473,7 +3439,7 @@ export default function Game(){
         if(!res.ok) return;
         const data = await res.json();
         if(!cancelled) setServerAnnouncement(data?.announcement||null);
-      }catch(_err){
+      }catch{
         // 静默失败：轮询只做联机公告兜底，不影响单机游玩
       }
     }
@@ -3514,7 +3480,7 @@ export default function Game(){
   // 联机多人游戏状态
   const [isMultiplayer,setIsMultiplayer]=useState(false);
   const isMultiplayerRef=useRef(false);  // 供 socket 闭包读取最新值
-  const [myPlayerIndex,setMyPlayerIndex]=useState(0);
+  const [,setMyPlayerIndex]=useState(0);
   const myPlayerIndexRef=useRef(0);  // 同步 myPlayerIndex 供 socket 闭包使用
   const receivedGsRef=useRef(false); // 收到远端 state 时置 true，阻止 sync useEffect 回发
   const mpRoleRevealedRef=useRef(false); // 每局游戏只触发一次角色揭示
@@ -3536,8 +3502,6 @@ export default function Game(){
   const [flyingEmojis,setFlyingEmojis]=useState([]);  // [{id,emoji,startX,startY,endX,endY,arcHeight,durationMs}]
   const [showEmojiPicker,setShowEmojiPicker]=useState(false);
   const [emojiButtonPos,setEmojiButtonPos]=useState({top:70,right:20});
-  const emojiQueueRef=useRef([]);           // 待发送 emoji 批次
-  const emojiFlushTimerRef=useRef(null);    // 批量 flush 定时器
   const emojiClickDebounceRef=useRef(null); // 防抖：防止短时间内重复点击
   const discardPileRef=useRef(null);        // 弃牌堆位置
 
@@ -3596,7 +3560,7 @@ export default function Game(){
 
     let ioFn;
     try{ ioFn=await loadSocketIO(); }
-    catch(e){
+    catch{
       clearTimeout(connTimeoutRef.current);
       setMultiLoading(false);
       addToast('网络加载失败，请检查连接后重试');
@@ -3620,7 +3584,7 @@ export default function Game(){
       safeLS.set('cthulhu_player_uuid',uuid);
     });
     // userInfo：打开联机选项界面时后端下发，含异常断线标志
-    socket.on('userInfo',({uuid,username,isSpecialName,wasForceReset})=>{
+    socket.on('userInfo',({username,isSpecialName,wasForceReset})=>{
       setPlayerUsername(username);
       setPlayerUsernameSpecial(!!isSpecialName);
       setRenameInput(username);
@@ -3809,7 +3773,6 @@ export default function Game(){
           // 检测是否是AI追捕玩家0
           const isHuntingPlayer0=!rotated.gameOver&&rotated.phase==='PLAYER_REVEAL_FOR_HUNT'&&rotated.abilityData?.huntingAI!=null;
           if(isHuntingPlayer0){
-            const hunterName=rotated.abilityData?.aiHunterName||rotated.players[rotated.abilityData.huntingAI]?.name||'追猎者';
             setGs({...rotated,phase:'ACTION',drawReveal:null,abilityData:{}});
             receivedGsRef.current=true;
             suppressNextBroadcastRef.current=true;
@@ -3872,7 +3835,7 @@ export default function Game(){
       setServerAnnouncement(announcement||null);
     });
     // aiTakeover：被 AI 接管（断线超时），显示断线遮罩
-    socket.on('aiTakeover',({reason})=>{
+    socket.on('aiTakeover',()=>{
       setIsDisconnected(true);
       setIsMultiplayer(false); isMultiplayerRef.current=false;
       setMyPlayerIndex(0); myPlayerIndexRef.current=0;
@@ -4144,7 +4107,6 @@ export default function Game(){
   // ── Responsive layout ──────────────────────────────────────
   const {w:vw}=useWindowSize();
   const isMobile=vw<580;
-  const isSmall=vw<860;
 const MIN_FONT_VW=480; // 最小字号阈值视口宽度
   const isVerySmall=vw<MIN_FONT_VW;
   // Scale ratio for responsive player areas (based on 1200px design width)
@@ -4210,9 +4172,6 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
     applyVisibleLogPrefix(cursor,authority);
   },[applyVisibleLogPrefix]);
 
-  const shouldDeferLogSync=useCallback((stateLike)=>{
-    return !!stateLike?._playersBeforeThisDraw;
-  },[]);
 
   const getVisualDiscardForState=useCallback((stateLike)=>{
     const discard=[...(stateLike?.discard||[])];
@@ -5236,7 +5195,6 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         P[currentPicker].hand.push(chosenCard);
         L.push(`【先到先得】${P[currentPicker].name} 选择了 ${cardLogText(chosenCard,{alwaysShowName:true})}`);
         const nextPickIndex=(ad.pickIndex||0)+1;
-        const nextPicker=ad.pickOrder?.[nextPickIndex];
         const win=checkWin(P,prev._isMP);
         if(win)return {...prev,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{}};
         if(nextPickIndex>=(ad.pickOrder?.length||0)||cards.length===0){
@@ -5292,7 +5250,6 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
     }
     let P = copyPlayers(gs.players), Disc = [...gs.discard], L = [...gs.log];
     losses.forEach(({ idx, lostCount }) => {
-      const sourceName = prev.find(p => p.idx === idx)?.sourceName || gs.players[idx].name;
       applyHpDamageWithLink(P, idx, 2 * lostCount, Disc, L);
       L.push(`【玫瑰倒刺】${P[idx].name} 失去标记手牌，受到 ${2 * lostCount} HP 伤害`);
     });
@@ -6243,10 +6200,6 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
     applyNextTurnGs(nextGs);
   }
 
-  function handleDrawConfirm(){
-    setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-  }
-
   function handleDrawKeep(){
     const dr=gs.drawReveal;if(!dr?.card)return;
     // swapAllHands needs target selection before applying
@@ -6522,7 +6475,6 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
     const drawerIdx=gs.abilityData?.drawerIdx??0;
     const res=applyFx(dr.card,drawerIdx,null,P,D,Disc,gs);
     P=res.P;D=res.D;Disc=res.Disc;P[drawerIdx].hand.push(dr.card);
-    const who=localDisplayName(drawerIdx,P[drawerIdx].name);
     const L=[...gs.log,`你选择不规避负面效果`,...res.msgs];
     // 1. 检查卡牌效果是否让任何人HP归零或SAN归零（通过checkWin）
     const win=checkWin(P,gs._isMP);if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,drawReveal:null});return;}
@@ -6925,7 +6877,6 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     P[0].hand.push(chosenCard);
     const L=[...gs.log,`【先到先得】你选择了 ${cardLogText(chosenCard,{alwaysShowName:true})}`];
     const nextPickIndex=pickIndex+1;
-    const nextPicker=pickOrder[nextPickIndex];
     const win=checkWin(P,gs._isMP);
     if(win){
       setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{}});
@@ -7052,7 +7003,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     triggerAnimQueue([{type:'SKILL_HUNT',targetIdx:ti,msgs:huntMsgs}],huntConfirmGs);
   }
   function huntConfirm(myCardIdx){
-    const{huntTi,revCard}=gs.abilityData;
+    const{huntTi}=gs.abilityData;
     let P=copyPlayers(gs.players),Disc=[...gs.discard],L=[...gs.log];
     if(myCardIdx>=0){
       const targetHandBefore=[...(P[huntTi]?.hand||[])];
@@ -7162,7 +7113,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
   function humanRevealForMPHunt(cardIdx){
     const card=me.hand[cardIdx];
     if(!isZoneCard(card))return;
-    const{huntTi}=gs.abilityData; // huntTi = 被追捕者在当前视角下的 index（非0）
+    // huntTi = 被追捕者在当前视角下的 index（非0）
     // 被追捕者将选择结果推送回规范 gs 并广播：
     // 设置 revCard，切换到 HUNT_CONFIRM 让追猎者（currentTurn=0 视角）完成后续
     const P=copyPlayers(gs.players);
@@ -7244,7 +7195,6 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       newGs = startNextTurn({...baseGs, players:P, discard:Disc, log:L, currentTurn: huntingAI, skillUsed: true});
     }
 
-    const huntMsgs=extractSkillLogs(L.slice(gs.log.length),'hunt');
     const queue=[];
     if(discardedCard){
       queue.push({type:'DISCARD',card:discardedCard,triggerName:aiHunterName||'???',targetPid:huntingAI});
@@ -8191,15 +8141,11 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     FIRST_COME_PICK_SELECT:`【先到先得】${gs.players[gs.abilityData?.pickOrder?.[gs.abilityData?.pickIndex||0]]?.name||'当前角色'} 请选择一张牌`,
   }[phase]||'';
 
-  const currentPickerIdx=gs.abilityData?.pickOrder?.[gs.abilityData?.pickIndex||0];
   const isLocalDamageLinkSelect=!!gs&&isLocalDamageLinkSourcePhase(gs);
   const canLocalTargetSelect=!!gs&&canLocalActOnTargetSelectionPhase(gs);
   const canLocalSwapGive=!!gs&&isLocalSwapGivePhase(gs);
   const canLocalBewitchCard=!!gs&&isLocalBewitchCardPhase(gs);
-  const canLocalFirstComePick=!!gs&&isLocalFirstComePicker(gs);
-  const canLocalTortoiseSelect=!!gs&&isLocalTortoiseSelectPhase(gs);
   const selectingOther=canLocalTargetSelect;
-  const selectingCardFromPublic=phase==='HUNT_SELECT_CARD_FROM_PUBLIC';
   // 多人游戏中 HUNT_CONFIRM 非追猎者不显示操作按钮区域
   const cancelable=['SWAP_SELECT_TARGET','SWAP_SELECT_TARGET_CARD','SWAP_GIVE_CARD','HUNT_SELECT_TARGET','ZONE_SWAP_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','DAMAGE_LINK_SELECT_TARGET','TORTOISE_ORACLE_SELECT','ROSE_THORN_SELECT_TARGET',...(phase==='HUNT_CONFIRM'&&gs._isMP&&!isLocalCurrentTurn(gs)?[]:['HUNT_CONFIRM']),'BEWITCH_SELECT_CARD','BEWITCH_SELECT_TARGET'].includes(phase);
   // In HUNT_CONFIRM, 放弃追捕 replaces ✕取消 — never show both

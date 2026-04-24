@@ -71,8 +71,8 @@ export function GenericAnimOverlay({ anim, exiting }) {
 
 // ── Dice Roll Animation ───────────────────────────────────────
 export function DiceRollAnim({ anim, exiting }) {
-  const { d1, d2, heal, rollerName, dodgeSuccess } = anim;
-  const [frame, setFrame] = React.useState(0);
+  const { d1, d2, rollerName, dodgeSuccess } = anim;
+  const [, setFrame] = React.useState(0);
   const [settled, setSettled] = React.useState(false);
   React.useEffect(() => {
     const FRAMES = 12; let i = 0;
@@ -98,7 +98,7 @@ export function DiceRollAnim({ anim, exiting }) {
         {rollerName || '？'} {isDodgeRoll ? '掷骰子' : '选择休息'}
       </div>
       <div style={{ display: 'flex', gap: 36, marginBottom: 20 }}>
-        {[{ face: face1, val: d1 }, ...(!isDodgeRoll ? [{ face: face2, val: d2 }] : [])].map(({ face, val }, i) => (
+        {[{ face: face1, val: d1 }, ...(!isDodgeRoll ? [{ face: face2, val: d2 }] : [])].map(({ face }, i) => (
           <div key={i} style={{
             fontSize: 88, lineHeight: 1,
             color: '#c8a96e',

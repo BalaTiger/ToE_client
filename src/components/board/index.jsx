@@ -249,7 +249,7 @@ function InspectionPile({count,scale=1}){
   );
 }
 
-function PileDisplay({deckCount,discardCount,discardTop,inspectionCount,compact,baseHeight,deckRef,discardRef,scaleRatio}){
+function PileDisplay({deckCount,discardCount,discardTop,inspectionCount,compact,deckRef,discardRef,scaleRatio}){
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const _ = (px) => px * fontZoom;
   const pileWrapRef=React.useRef(null);
@@ -267,7 +267,6 @@ function PileDisplay({deckCount,discardCount,discardTop,inspectionCount,compact,
   const effectiveCompact=compact&&pileWrapWidth<320;
   const widthBonus=Math.max(0,pileWrapWidth-(effectiveCompact?240:320));
   const pileScale=(effectiveCompact?1.5:2.0)+Math.min(effectiveCompact?0.3:0.6,widthBonus/(effectiveCompact?320:480));
-  const pileLabelFont=effectiveCompact?_(13):_(15);
   const pileMinHeight=effectiveCompact ? 140 : 220;
   return(
     <div ref={pileWrapRef} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',position:'relative',minWidth:0,minHeight:pileMinHeight}}>

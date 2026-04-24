@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { _getZoomCompensatedRect } from '../../utils/dom';
 import { DDCard } from '../../components/cards';
 
