@@ -2,6 +2,7 @@ import { GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay,
 import { GodChoiceModal, NyaBorrowModal, DrawRevealModal, TreasureDodgeModal, PeekHandModal, TortoiseOracleModal, AboutModal, FullLogModal, RoadmapModal } from './components/modals';
 import { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel } from './components/board';
 import { RoomModal, LobbyModal, PrivacyToggleModal, TutorialOverlay, ConnectionErrorModal, DebugControls } from './components/lobby';
+import { StartScreen } from './components/start/StartScreen';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import ReactDOM from "react-dom";
 import html2canvas from "html2canvas";
@@ -102,6 +103,9 @@ import { PaperCupSVG, SwapCupOverlay, HuntScopeOverlay, BewitchEyeOverlay, SanMi
 import { GodResurrectionAnim, TreasureMapAnim, CthulhuResurrectionAnim, RoleRevealAnim } from './components/anim/WinAnims';
 import { TitleCandleFlames } from './components/anim/TitleCandleFlames';
 import { AnimOverlay } from './components/anim/AnimOverlay';
+import { formatFileSize, useResourcePreload } from './hooks/useResourcePreload';
+import { useMultiplayerLobby } from './hooks/useMultiplayerLobby';
+import { useAnimationQueue } from './hooks/useAnimationQueue';
 
 // Ellipsis component for loading animation
 function Ellipsis() {
@@ -3169,210 +3173,8 @@ export default function Game(){
   const[modal,setModal]=useState(null); // 'about' | 'roadmap' | null
   const[privatePeek,setPrivatePeek]=useState(null); // {card,targetName}
   const [serverAnnouncement, setServerAnnouncement] = useState(null);
-  // ── Audio Preloading ──────────────────────────────────────────
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadingProgress, setLoadingProgress] = useState(0);
-  const [loadingError] = useState(null);
-  const [currentFile, setCurrentFile] = useState('');
-  const [totalSize, setTotalSize] = useState(0);
-  const [loadedSize, setLoadedSize] = useState(0);
-  
-  // Helper function to format file size
-  const formatFileSize = (bytes) => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
-  };
-  
-  // Preload audio and video files
-  useEffect(() => {
-    const preloadResources = async () => {
-      const audioFiles = [
-        '/sounds/BGM/mainTheme.mp3',
-        '/sounds/BGM/battle.mp3',
-        '/sounds/SE/hpDamageVariants/hpDamage1.mp3',
-        '/sounds/SE/hpDamageVariants/hpDamage2.mp3',
-        '/sounds/SE/hpDamageVariants/hpDamage3.mp3',
-        '/sounds/SE/hpDamageVariants/hpDamage4.mp3',
-        '/sounds/SE/hpDamageVariants/hpDamage5.mp3',
-        '/sounds/SE/hpDamageVariants/hpDamage6.mp3'
-      ];
-      const videoFiles = [
-        '/videos/ancient_god_tentacles.mp4'
-      ];
-      const imageFiles = [
-        '/img/bg/bg_main.png',
-        '/img/btn/btn_author.png',
-        '/img/btn/btn_bright_green.png',
-        '/img/btn/btn_bright_purple.png',
-        '/img/btn/btn_dark_green.png',
-        '/img/btn/btn_dark_red.png',
-        '/img/btn/btn_dark_purple.png',
-        '/img/btn/btn_roadmap.png',
-        '/img/deco/deco_cth-no-bg.png',
-        '/img/line/line_split-no-bg.png',
-        '/img/line/line_titleguard-no-bg.png',
-        '/img/logo/logo_cu-no-bg.png',
-        '/img/logo/logo_hu-no-bg.png',
-        '/img/logo/logo_tr-no-bg.png',
-        '/img/title/title_rule.png',
-        '/img/title/texture_toehp.png'
-      ];
-      const RESOURCE_CACHE_VERSION = '2026-04-24-mainui-v1';
-      const CACHE_VERSION_KEY = 'toe_resources_cached_version';
-
-      try {
-        const cachedVersion = localStorage.getItem(CACHE_VERSION_KEY);
-        if (cachedVersion === RESOURCE_CACHE_VERSION) {
-          setIsLoading(false);
-          return;
-        }
-      } catch {
-        // localStorage error, proceed with preloading
-      }
-      
-      let loadedCount = 0;
-      const totalFiles = audioFiles.length + videoFiles.length + imageFiles.length;
-      let totalBytes = 0;
-      let loadedBytes = 0;
-      
-      // Calculate total size of all files
-      const calculateTotalSize = async () => {
-        let total = 0;
-        for (const file of [...audioFiles, ...videoFiles, ...imageFiles]) {
-          try {
-            const response = await fetch(file, { method: 'HEAD' });
-            const size = parseInt(response.headers.get('content-length') || '0');
-            total += size;
-          } catch (error) {
-            console.error(`Failed to get size for ${file}`, error);
-          }
-        }
-        return total;
-      };
-      
-      totalBytes = await calculateTotalSize();
-      setTotalSize(totalBytes);
-      
-      // Preload audio files
-      for (const file of audioFiles) {
-        try {
-          setCurrentFile(file.split('/').pop());
-          const audio = new Audio(file);
-          // Set cache control headers
-          audio.crossOrigin = 'anonymous';
-          
-          // Get file size
-          let fileSize = 0;
-          try {
-            const response = await fetch(file, { method: 'HEAD' });
-            fileSize = parseInt(response.headers.get('content-length') || '0');
-          } catch (error) {
-            console.error(`Failed to get size for ${file}`, error);
-          }
-          
-          await new Promise((resolve, reject) => {
-            audio.addEventListener('canplaythrough', () => {
-              loadedBytes += fileSize;
-              setLoadedSize(loadedBytes);
-              resolve();
-            });
-            audio.addEventListener('error', reject);
-            audio.load();
-          });
-          loadedCount++;
-          setLoadingProgress((loadedCount / totalFiles) * 100);
-        } catch (error) {
-          console.error(`Failed to load audio: ${file}`, error);
-          // Continue loading other files even if one fails
-          loadedCount++;
-          setLoadingProgress((loadedCount / totalFiles) * 100);
-        }
-      }
-      
-      // Preload video files
-      for (const file of videoFiles) {
-        try {
-          setCurrentFile(file.split('/').pop());
-          const video = document.createElement('video');
-          video.src = file;
-          video.preload = 'metadata'; // 只加载元数据，更快
-          video.crossOrigin = 'anonymous';
-          
-          // Get file size
-          let fileSize = 0;
-          try {
-            const response = await fetch(file, { method: 'HEAD' });
-            fileSize = parseInt(response.headers.get('content-length') || '0');
-          } catch (error) {
-            console.error(`Failed to get size for ${file}`, error);
-          }
-          
-          await new Promise((resolve, reject) => {
-            video.addEventListener('loadeddata', () => { // 只需要加载第一帧
-              loadedBytes += fileSize;
-              setLoadedSize(loadedBytes);
-              resolve();
-            });
-            video.addEventListener('error', reject);
-            video.load();
-          });
-          loadedCount++;
-          setLoadingProgress((loadedCount / totalFiles) * 100);
-        } catch (error) {
-          console.error(`Failed to load video: ${file}`, error);
-          // Continue loading other files even if one fails
-          loadedCount++;
-          setLoadingProgress((loadedCount / totalFiles) * 100);
-        }
-      }
-      
-      // Preload image files
-      for (const file of imageFiles) {
-        try {
-          setCurrentFile(file.split('/').pop());
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-
-          let fileSize = 0;
-          try {
-            const response = await fetch(file, { method: 'HEAD' });
-            fileSize = parseInt(response.headers.get('content-length') || '0');
-          } catch (error) {
-            console.error(`Failed to get size for ${file}`, error);
-          }
-
-          await new Promise((resolve, reject) => {
-            img.onload = () => {
-              loadedBytes += fileSize;
-              setLoadedSize(loadedBytes);
-              resolve();
-            };
-            img.onerror = reject;
-            img.src = file;
-          });
-          loadedCount++;
-          setLoadingProgress((loadedCount / totalFiles) * 100);
-        } catch (error) {
-          console.error(`Failed to load image: ${file}`, error);
-          loadedCount++;
-          setLoadingProgress((loadedCount / totalFiles) * 100);
-        }
-      }
-
-      // Mark resources as cached
-      try {
-        localStorage.setItem(CACHE_VERSION_KEY, RESOURCE_CACHE_VERSION);
-      } catch {
-        // localStorage error, ignore
-      }
-      
-      // Finish loading after all files are processed
-      setIsLoading(false);
-    };
-    
-    preloadResources();
-  }, []);
+  // ── Audio / Video / Main UI Resource Preloading ──────────────
+  const { isLoading, loadingProgress, loadingError, currentFile, totalSize, loadedSize } = useResourcePreload();
   
   // ── Tutorial ──────────────────────────────────────────────────
   // Detect non-production environments (Claude Artifacts iframe, local dev, etc.)
@@ -3504,33 +3306,41 @@ export default function Game(){
       clearInterval(intervalId);
     };
   },[SERVER_URL]);
-  const [playerUUID,setPlayerUUID]=useState(()=>safeLS.get('cthulhu_player_uuid')||null);
-  const playerUUIDRef=useRef(safeLS.get('cthulhu_player_uuid')||null);
-  const [multiLoading,setMultiLoading]=useState(false);
-  const [toasts,setToasts]=useState([]);
-  const [roomModal,setRoomModal]=useState(null);
-  const roomModalRef=useRef(null);
-  useEffect(()=>{roomModalRef.current=roomModal;},[roomModal]);
-  const [connErrModal,setConnErrModal]=useState(false);
   const socketRef=useRef(null);
   const connTimeoutRef=useRef(null);
-  // 联机选项界面状态
-  const [onlineOptionsModal,setOnlineOptionsModal]=useState(false);
-  const [playerUsername,setPlayerUsername]=useState('');
-  const [playerUsernameSpecial,setPlayerUsernameSpecial]=useState(false);
-  const [renameInput,setRenameInput]=useState('');
-  const [renameCdActive,setRenameCdActive]=useState(false);
-  const [renameInputVisible,setRenameInputVisible]=useState(false);
-  const renameCdTimerRef=useRef(null);
-  const [joinRoomInput,setJoinRoomInput]=useState('');
-  // 游戏大厅状态
-  const [lobbyModal,setLobbyModal]=useState(false);
-  const [lobbyRooms,setLobbyRooms]=useState([]);
-  const [lobbyLoading,setLobbyLoading]=useState(false);
-  // 房间隐私状态
-  const [showPrivacyToggleConfirm,setShowPrivacyToggleConfirm]=useState(false);
-  const [privacyWarnDontShow,setPrivacyWarnDontShow]=useState(false); // checkbox state for modal
-  const [skipPrivacyWarning,setSkipPrivacyWarning]=useState(()=>safeLS.get('cthulhu_skip_privacy_warning')||false);
+  const {
+    playerUUID, setPlayerUUID, playerUUIDRef,
+    multiLoading, setMultiLoading,
+    toasts, addToast,
+    roomModal, setRoomModal, roomModalRef,
+    connErrModal, setConnErrModal,
+    onlineOptionsModal, setOnlineOptionsModal,
+    playerUsername, setPlayerUsername,
+    playerUsernameSpecial, setPlayerUsernameSpecial,
+    renameInput, setRenameInput,
+    renameCdActive,
+    renameInputVisible, setRenameInputVisible,
+    joinRoomInput, setJoinRoomInput,
+    lobbyModal, setLobbyModal,
+    lobbyRooms, setLobbyRooms,
+    lobbyLoading, setLobbyLoading,
+    showPrivacyToggleConfirm, setShowPrivacyToggleConfirm,
+    privacyWarnDontShow, setPrivacyWarnDontShow,
+    handleCreateRoom,
+    handleJoinRoom,
+    handleSetReady,
+    closeOnlineOptions,
+    handleOpenLobby,
+    handleRefreshLobby,
+    handleJoinLobbyRoom,
+    closeLobbyModal,
+    handleTogglePrivacy,
+    handleConfirmPrivacyToggle,
+    handleCancelPrivacyToggle,
+    handleRename,
+    handleRandomUsername,
+    closeRoomModal,
+  } = useMultiplayerLobby({ socketRef });
   // 联机多人游戏状态
   const [isMultiplayer,setIsMultiplayer]=useState(false);
   const isMultiplayerRef=useRef(false);  // 供 socket 闭包读取最新值
@@ -3576,12 +3386,6 @@ export default function Game(){
     document.body.style.filter=gammaFilter||'';
     return()=>{document.body.style.filter='';};
   },[gammaFilter]);
-
-  function addToast(text){
-    const id=Date.now()+Math.random();
-    setToasts(prev=>[...prev,{id,text}]);
-    setTimeout(()=>setToasts(prev=>prev.filter(t=>t.id!==id)),4500);
-  }
 
   // Dynamically load socket.io-client from CDN (skipped in Artifact environment)
   function loadSocketIO(){
@@ -3637,13 +3441,18 @@ export default function Game(){
       playerUUIDRef.current=uuid;
       safeLS.set('cthulhu_player_uuid',uuid);
     });
-    // userInfo：打开联机选项界面时后端下发，含异常断线标志
-    socket.on('userInfo',({username,isSpecialName,wasForceReset})=>{
+    // userInfo：打开联机选项界面时后端下发，含异常断线/房间恢复标志
+    socket.on('userInfo',({username,isSpecialName,wasForceReset,waitingRoomExpired})=>{
       setPlayerUsername(username);
       setPlayerUsernameSpecial(!!isSpecialName);
       setRenameInput(username);
       cleanup();
       setMultiLoading(false);
+      if(waitingRoomExpired){
+        setRoomModal(null);
+        setOnlineOptionsModal(true);
+        addToast('由于你长时间离开页面，您已离线，请重新创建房间。');
+      }
       if(wasForceReset){
         addToast('您上次在游戏房间强制下线，已退出房间');
       }
@@ -3684,6 +3493,11 @@ export default function Game(){
       setRoomModal(null);
       addToast(reason||'你已被踢出房间');
       if(socketRef.current){socketRef.current.disconnect();socketRef.current=null;}
+    });
+    socket.on('roomClosed',({reason})=>{
+      setRoomModal(null);
+      setOnlineOptionsModal(true);
+      addToast(reason||'房间已失效，请重新创建房间。');
     });
     // lobbyRooms：游戏大厅房间列表
     socket.on('lobbyRooms',({rooms})=>{
@@ -3813,6 +3627,9 @@ export default function Game(){
           const ph=rotated.phase;
           const drawnCard=ph==='GOD_CHOICE'?rotated.abilityData?.godCard:rotated.drawReveal?.card;
           if(drawnCard){
+            if(rotated._playersBeforeThisDraw){
+              visualPlayersLockRef.current=copyPlayers(rotated._playersBeforeThisDraw);
+            }
             setGs({...rotated,phase:'ACTION',drawReveal:null,abilityData:{}});
             receivedGsRef.current=true;
             suppressNextBroadcastRef.current=true;
@@ -3915,28 +3732,6 @@ export default function Game(){
     });
   }
 
-  // 联机选项界面 → 创建房间
-  function handleCreateRoom(){
-    if(!socketRef.current)return;
-    socketRef.current.emit('createRoom',{uuid:playerUUID});
-    setMultiLoading(true);
-  }
-
-  // 联机选项界面 → 加入房间
-  function handleJoinRoom(){
-    if(!socketRef.current)return;
-    const rid=joinRoomInput.trim();
-    if(!rid){addToast('请输入房间号');return;}
-    socketRef.current.emit('joinRoom',{uuid:playerUUID,roomId:rid});
-    setMultiLoading(true);
-  }
-
-  // 准备 / 取消准备
-  function handleSetReady(ready){
-    if(!socketRef.current||!playerUUID)return;
-    socketRef.current.emit('setReady',{uuid:playerUUID,ready});
-  }
-
   // 表情：点击 emoji → 加入批次队列 → 300ms 内 flush 打包发送
   function handleEmojiClick(emoji){
     if(emojiClickDebounceRef.current)return;
@@ -3949,101 +3744,6 @@ export default function Game(){
     // 立即发送，不使用队列，避免重复
     socketRef.current.emit('emojiSend',{uuid:playerUUIDRef.current,roomId:roomModalRef.current.roomId,emojis:[emoji]});
     setTimeout(()=>{emojiClickDebounceRef.current=null;},300);
-  }
-
-  // 关闭联机选项界面
-  function closeOnlineOptions(){
-    setOnlineOptionsModal(false);
-    if(renameCdTimerRef.current){clearTimeout(renameCdTimerRef.current);renameCdTimerRef.current=null;}
-    setRenameCdActive(false);
-    if(socketRef.current){socketRef.current.disconnect();socketRef.current=null;}
-  }
-
-  // 打开游戏大厅
-  function handleOpenLobby(){
-    if(!socketRef.current)return;
-    setLobbyLoading(true);
-    socketRef.current.emit('getLobbyRooms');
-    setLobbyModal(true);
-  }
-
-  // 刷新游戏大厅房间列表
-  function handleRefreshLobby(){
-    if(!socketRef.current)return;
-    setLobbyLoading(true);
-    socketRef.current.emit('getLobbyRooms');
-  }
-
-  // 从游戏大厅加入房间
-  function handleJoinLobbyRoom(roomId){
-    if(!socketRef.current)return;
-    socketRef.current.emit('joinRoom',{uuid:playerUUID,roomId:roomId});
-    setMultiLoading(true);
-    setLobbyModal(false);
-  }
-
-  // 关闭游戏大厅
-  function closeLobbyModal(){
-    setLobbyModal(false);
-  }
-
-  // 切换房间隐私状态
-  function handleTogglePrivacy(isPrivate){
-    if(!socketRef.current||!roomModal)return;
-    
-    // 从私密切换为公开，且用户未勾选过"下次不再提示"，则弹出确认框
-    if(!isPrivate && !skipPrivacyWarning){
-      setPrivacyWarnDontShow(false); // 每次弹出时重置勾选状态
-      setShowPrivacyToggleConfirm(true);
-    }else{
-      // 直接切换（公开→私密，或已选择不再提示）
-      socketRef.current.emit('toggleRoomPrivacy',{uuid:playerUUID,roomId:roomModal.roomId,isPrivate});
-    }
-  }
-
-  // 确认切换隐私状态
-  function handleConfirmPrivacyToggle(){
-    if(!socketRef.current||!roomModal)return;
-    
-    // 只有勾选了"下次不再提示"时才记录
-    if(privacyWarnDontShow){
-      setSkipPrivacyWarning(true);
-      safeLS.set('cthulhu_skip_privacy_warning',true);
-    }
-    
-    // 执行切换
-    socketRef.current.emit('toggleRoomPrivacy',{uuid:playerUUID,roomId:roomModal.roomId,isPrivate:false});
-    setShowPrivacyToggleConfirm(false);
-  }
-
-  // 取消切换隐私状态
-  function handleCancelPrivacyToggle(){
-    setShowPrivacyToggleConfirm(false);
-  }
-
-  function startRenameCooldown(){
-    setRenameCdActive(true);
-    renameCdTimerRef.current=setTimeout(()=>{
-      setRenameCdActive(false);
-      renameCdTimerRef.current=null;
-    },5000);
-  }
-
-  // 点击"修改"用户名
-  function handleRename(){
-    if(renameCdActive||!socketRef.current)return;
-    socketRef.current.emit('renameUser',{uuid:playerUUID,newName:renameInput});
-    startRenameCooldown();
-  }
-
-  function handleRandomUsername(){
-    if(!socketRef.current)return;
-    socketRef.current.emit('randomUsername',{uuid:playerUUID});
-  }
-
-  function closeRoomModal(){
-    setRoomModal(null);
-    if(socketRef.current){socketRef.current.disconnect();socketRef.current=null;}
   }
   const selfPanelRef=useRef(null);
   const emojiButtonRef=useRef(null);
@@ -4059,52 +3759,10 @@ export default function Game(){
   const deckAreaRef=useRef(null);
   const [deckAreaRect,setDeckAreaRect]=useState(null);
   const [roleRevealAnim,setRoleRevealAnim]=useState(null); // {role,pendingGs}|null
-  const[anim,setAnim]=useState(null);
-  const[animExiting,setAnimExiting]=useState(false);
   const[hitIndices,setHitIndices]=useState([]);    // HP damage
   
   // --- 新增：用于 UI 延迟显示的 HP/SAN 状态 ---
   const [displayStats, setDisplayStats] = useState(() => gs?.players ? gs.players.map(p => ({ hp: p.hp, san: p.san })) : []);
-  
-  // 1. 兜底与静默同步：当没有动画在播放时，且不处于AI回合（AI回合中draw效果已bake进gs但动画尚未开始），UI 强制对齐真实的底层数据
-  useEffect(() => {
-    if (gs?.players && (!anim && (!animQueueRef.current || animQueueRef.current.length === 0))) {
-      // AI_TURN 阶段：draw效果已经应用到gs.players，但2100ms后才开始播放动画
-      // 此时不应更新displayStats，否则HP条会先于动画跳变
-      if (gs.phase === 'AI_TURN') return;
-      setDisplayStats(gs.players.map(p => ({ hp: p.hp, san: p.san })));
-    }
-  }, [gs?.players, anim, gs?.phase]);
-  
-  // 2. 动画期间的精准延迟对齐：当播放某个角色的受击/治疗动画时，延迟 350ms 更新显示数值
-  //    每个动画项携带 targetStats（来自 buildAnimQueue），表示该动画完成时各角色的目标 HP/SAN
-  useEffect(() => {
-    if (anim && anim.targetStats) {
-      // 收集当前动画可能影响到的所有目标
-      const targets = new Set();
-      if (anim.targetPid !== undefined) targets.add(anim.targetPid);
-      if (anim.targetIdx !== undefined) targets.add(anim.targetIdx);
-      if (Array.isArray(anim.targets)) anim.targets.forEach(t => targets.add(t));
-      if (anim.triggerPid !== undefined) targets.add(anim.triggerPid);
-      if (anim.hitIndices && Array.isArray(anim.hitIndices)) anim.hitIndices.forEach(hi => targets.add(hi));
-
-      if (targets.size > 0) {
-        const ts = anim.targetStats;
-        const timer = setTimeout(() => {
-          setDisplayStats(prev => {
-            const next = [...prev];
-            targets.forEach(pid => {
-              if (next[pid] && ts[pid]) {
-                next[pid] = { hp: ts[pid].hp, san: ts[pid].san };
-              }
-            });
-            return next;
-          });
-        }, 350);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [anim]);
   const[knifeTargets,setKnifeTargets]=useState([]); // pre-measured {pi,cx,cy} for KnifeEffect
   const[sanHitIndices,setSanHitIndices]=useState([]);
   const[sanTargets,setSanTargets]=useState([]); // pre-measured {pi,cx,cy,startX,startY} // SAN damage
@@ -4117,13 +3775,10 @@ export default function Game(){
   const[sanHealIndices,setSanHealIndices]=useState([]); // SAN heal
   const[screenShake,setScreenShake]=useState(false);
   const[deathShake,setDeathShake]=useState(false);
-  const animQueueRef=useRef([]);
-  const pendingGsRef=useRef(null);
   const prevDamageLinksRef=useRef([]);
   const prevLogLenRef=useRef(0);
   const damageLinkGhostTimersRef=useRef(new Map());
   const [damageLinkGhosts,setDamageLinkGhosts]=useState([]);
-  const animCallbackRef=useRef(null); // callback to execute after animation queue
   const timerRef=useRef(null);
   const guillotinedPids=useMemo(()=>new Set((guillotineTargets||[]).map(t=>t?.pi).filter(v=>v!=null)),[guillotineTargets]);
   const logRef=useRef(null);
@@ -4155,6 +3810,22 @@ export default function Game(){
     document.addEventListener('visibilitychange',handleVisibilityChange);
     return()=>document.removeEventListener('visibilitychange',handleVisibilityChange);
   },[]);
+
+  useEffect(()=>{
+    if(typeof document==='undefined')return;
+    const handleWaitingRoomReconnect=()=>{
+      if(document.visibilityState!=='visible')return;
+      if(gs||isMultiplayerRef.current)return;
+      if(!roomModalRef.current?.roomId)return;
+      if(multiLoading)return;
+      if(socketRef.current?.connected)return;
+      connectSocket(socket=>{
+        socket.emit('openOnlineOptions',{uuid:playerUUIDRef.current||playerUUID});
+      });
+    };
+    document.addEventListener('visibilitychange',handleWaitingRoomReconnect);
+    return()=>document.removeEventListener('visibilitychange',handleWaitingRoomReconnect);
+  },[gs,multiLoading,playerUUID,roomModalRef]);
   const lastInspectionSeqRef=useRef(0);
   const [houndsSecLeft,setHoundsSecLeft]=useState(null);
 
@@ -4234,6 +3905,43 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
     }
     return discard;
   },[]);
+
+  const suppressNextBroadcastRef=useRef(false); // set before bystander-anim pendingGs; cleared in advanceQueue
+  const turnHighlightLockRef=useRef(null);
+  const visualPlayersLockRef=useRef(null);
+  const {
+    anim,
+    setAnim,
+    animExiting,
+    setAnimExiting,
+    animQueueRef,
+    pendingGsRef,
+    triggerAnimQueue,
+  } = useAnimationQueue({
+    gs,
+    copyPlayers,
+    setGs,
+    setVisualDiscard,
+    syncVisibleLog,
+    appendVisibleLog,
+    getVisualDiscardForState,
+    resolveTurnHighlightForStep,
+    clearPendingAnimDeathFlags,
+    prepareAnimQueueLogs,
+    startNextTurn,
+    applyNextTurnGs,
+    cthContinueRestDraws:_cthContinueRestDraws,
+    visibleLogRef,
+    visibleLogAuthorityRef,
+    turnHighlightLockRef,
+    visualPlayersLockRef,
+    suppressNextBroadcastRef,
+    receivedGsRef,
+    ANIM_STEP_GAP,
+    CARD_REVEAL_DURATION,
+    ANIM_DURATION,
+    ANIM_SPEED_SCALE,
+  });
 
   const isDrawnCardActuallyDiscarded=useCallback((stateLike,drawnCard)=>{
     if(!(stateLike?._animDiscardedDrawnCard ?? stateLike?._discardedDrawnCard) || !drawnCard)return false;
@@ -4571,149 +4279,6 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
       setSanHealIndices([]);
     }
   },[anim,playHpDamageSound]);
-
-  // Advance to next animation in queue, or apply final game state
-  function revealAnimLogs(animStep){
-    if(!animStep)return;
-    if(Array.isArray(animStep._logChunk)&&animStep._logChunk.length){
-      appendVisibleLog(animStep._logChunk);
-    }
-  }
-
-  function advanceQueue(){
-    setAnimExiting(false);
-    if(animQueueRef.current.length>0){
-      const next=animQueueRef.current.shift();
-      if(next.type==='STATE_PATCH'){
-        revealAnimLogs(next);
-        visualPlayersLockRef.current=null;
-        setVisualDiscard([...(next.discard||[])]);
-        setGs(prev=>prev?{...prev,players:copyPlayers(next.players||prev.players),discard:[...(next.discard||prev.discard)]}:prev);
-        advanceQueue();
-      }else if(next.type==='CTH_CONTINUE'){
-        // 处理拉莱耶之主的剩余摸牌
-        setAnim(null);
-        const currentGs=pendingGsRef.current||gs;
-        pendingGsRef.current=null;
-        const cthDrawsRemaining=next.data?.cthDrawsRemaining||0;
-        if(cthDrawsRemaining>0){
-          _cthContinueRestDraws(currentGs);
-        }else{
-          const nextGs=startNextTurn({...currentGs,currentTurn:0,abilityData:{}});
-          applyNextTurnGs(nextGs);
-        }
-      }else{
-        const nextTurnHighlight=resolveTurnHighlightForStep(next,pendingGsRef.current||gs,gs?.players||[]);
-        if(nextTurnHighlight!=null)turnHighlightLockRef.current=nextTurnHighlight;
-        setAnim(next);
-        revealAnimLogs(next);
-      }
-    }else{
-      const next=pendingGsRef.current;
-      const callback=animCallbackRef.current;
-      pendingGsRef.current=null;
-      animCallbackRef.current=null;
-      turnHighlightLockRef.current=null;
-      visualPlayersLockRef.current=null;
-      setAnim(null);
-      if(next?.log)syncVisibleLog(next.log);
-      if(callback){
-        callback();
-      }else if(next){
-        setVisualDiscard(getVisualDiscardForState(next));
-        if(suppressNextBroadcastRef.current){
-          // This pendingGs came from a received state; don't echo it back to server
-          suppressNextBroadcastRef.current=false;
-          receivedGsRef.current=true;
-        }
-        setGs(prev=>{
-          // Never overwrite a win/pending-win state with stale queued state
-          if(prev?.gameOver||prev?.phase==='PLAYER_WIN_PENDING'||prev?.phase==='TREASURE_WIN')return prev;
-          const preservePendingDeathPid=next?.phase==='HUNT_SELECT_CARD_FROM_PUBLIC'
-            ? (next?.abilityData?.huntTi??null)
-            : null;
-          // 清除 _pendingAnimDeath，确保死亡角色面板在动画队列结束后立即置灰
-          // 例外：追捕致死后进入公开挑牌阶段时，先保留死者未置灰状态，直到挑牌完成
-          if(next?.players){
-            return {...next, players: clearPendingAnimDeathFlags(next.players,preservePendingDeathPid)};
-          }
-          return next;
-        });
-      }
-    }
-  }
-
-  // Animation lifecycle — duration depends on type
-  useEffect(()=>{
-    if(!anim) return;
-    const isCard=anim.type==='DRAW_CARD';
-    const dur=isCard?CARD_REVEAL_DURATION:Math.round((ANIM_DURATION[anim.type]||ANIM_DURATION.default)*ANIM_SPEED_SCALE);
-    let gapTimer=null;
-    const t1=setTimeout(()=>{
-      if(isCard){
-        gapTimer=setTimeout(advanceQueue,ANIM_STEP_GAP);
-      }else{
-        setAnimExiting(true);
-        gapTimer=setTimeout(advanceQueue,ANIM_STEP_GAP);
-      }
-    },dur);
-    return()=>{
-      clearTimeout(t1);
-      if(gapTimer)clearTimeout(gapTimer);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[anim]);
-
-  // Trigger a sequential queue of animations, then apply nextGs or callback
-  function triggerAnimQueue(queue,nextGs,callback){
-    // 检查是否有死亡动画需要等待
-    const hasDeathAnim = queue.some(a => a.type === 'DEATH' || a.type === 'GUILLOTINE');
-    // 检查是否有待播放死亡特效的角色
-    const pendingDeathPlayers = nextGs?.players?.filter(p => p._pendingAnimDeath)?.map((_, i) => i) || [];
-    
-    if(!queue.length){
-      if(callback){
-        if(nextGs?.log)syncVisibleLog(nextGs.log);
-        callback();
-      }else{
-        if(nextGs?.log)syncVisibleLog(nextGs.log);
-        // 动画队列为空但有死亡时，仍需等待死亡特效播放完成
-        if(hasDeathAnim && pendingDeathPlayers.length) {
-          setGs({...nextGs});
-        } else {
-          setGs(nextGs);
-        }
-      }
-      return;
-    }
-    // 创建带延迟清理的callback
-    const wrappedCallback = hasDeathAnim && pendingDeathPlayers.length ? () => {
-      const preservePendingDeathPid=nextGs?.phase==='HUNT_SELECT_CARD_FROM_PUBLIC'
-        ? (nextGs?.abilityData?.huntTi??null)
-        : null;
-      // 清除所有角色的_pendingAnimDeath标记，使面板置灰
-      // 例外：追捕致死后进入公开挑牌阶段时，先保留死者未置灰状态
-      const cleanedPlayers = clearPendingAnimDeathFlags(nextGs.players,preservePendingDeathPid);
-      const finalGs = {...nextGs, players: cleanedPlayers};
-      if(callback){
-        callback();
-      } else {
-        if(finalGs.log)syncVisibleLog(finalGs.log);
-        setGs(finalGs);
-      }
-    } : callback;
-    
-    visibleLogAuthorityRef.current=Array.isArray(nextGs?.log)?nextGs.log:(Array.isArray(visibleLogAuthorityRef.current)?visibleLogAuthorityRef.current:[]);
-    const preparedQueue=prepareAnimQueueLogs(queue,nextGs,visibleLogRef.current);
-    turnHighlightLockRef.current=gs?.currentTurn??null;
-    const firstTurnHighlight=resolveTurnHighlightForStep(preparedQueue[0],nextGs,gs?.players||[]);
-    if(firstTurnHighlight!=null)turnHighlightLockRef.current=firstTurnHighlight;
-    pendingGsRef.current=nextGs;
-    animQueueRef.current=[...preparedQueue.slice(1)];
-    animCallbackRef.current=wrappedCallback;
-    setAnim(preparedQueue[0]);
-    revealAnimLogs(preparedQueue[0]);
-  }
 
   // Detect stuck state: AI's turn but phase is not AI_TURN (e.g. got stuck in DRAW_REVEAL)
   // This can happen in rare edge cases; recover by forcing the turn to advance
@@ -5377,10 +4942,43 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
   const autoDiscardRef=useRef(null);
   const latestGsRef=useRef(null); // always mirrors latest gs for closures reading stale state
   latestGsRef.current=gs; // 同步更新：渲染期间直接镜像，确保 confirmDiscard 等闭包读到最新值
-  const suppressNextBroadcastRef=useRef(false); // set before bystander-anim pendingGs; cleared in advanceQueue
   const mpCthDecisionTimerRef=useRef(null);
-  const turnHighlightLockRef=useRef(null);
-  const visualPlayersLockRef=useRef(null);
+
+  // 1. 兜底与静默同步：当没有动画在播放时，且不处于AI回合（AI回合中draw效果已bake进gs但动画尚未开始），UI 强制对齐真实的底层数据
+  useEffect(() => {
+    if (gs?.players && (!anim && (!animQueueRef.current || animQueueRef.current.length === 0))) {
+      if (gs.phase === 'AI_TURN') return;
+      setDisplayStats(gs.players.map(p => ({ hp: p.hp, san: p.san })));
+    }
+  }, [gs?.players, anim, gs?.phase]);
+
+  // 2. 动画期间的精准延迟对齐：当播放某个角色的受击/治疗动画时，延迟 350ms 更新显示数值
+  useEffect(() => {
+    if (anim && anim.targetStats) {
+      const targets = new Set();
+      if (anim.targetPid !== undefined) targets.add(anim.targetPid);
+      if (anim.targetIdx !== undefined) targets.add(anim.targetIdx);
+      if (Array.isArray(anim.targets)) anim.targets.forEach(t => targets.add(t));
+      if (anim.triggerPid !== undefined) targets.add(anim.triggerPid);
+      if (anim.hitIndices && Array.isArray(anim.hitIndices)) anim.hitIndices.forEach(hi => targets.add(hi));
+
+      if (targets.size > 0) {
+        const ts = anim.targetStats;
+        const timer = setTimeout(() => {
+          setDisplayStats(prev => {
+            const next = [...prev];
+            targets.forEach(pid => {
+              if (next[pid] && ts[pid]) {
+                next[pid] = { hp: ts[pid].hp, san: ts[pid].san };
+              }
+            });
+            return next;
+          });
+        }, 350);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [anim]);
 
   // ── 房间倒计时显示（前端独立计时，服务端计时器版本号变化时重置）───
   useEffect(()=>{
@@ -5751,439 +5349,48 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
 
   // ── Start Screen ───────────────────────────────────────────
   if(!gs){
-    const lerp=(a,b,t)=>a+(b-a)*t;
-    const startRules=[
-      '身份随机分配，HP / SAN 初始 10，上限 10',
-      '每回合投 1 张牌，区域牌可选择收入手牌或弃置',
-      '技能与休息每回合限用其一',
-      '手牌上限 4 张，超出须弃牌',
-    ];
-    const startRoles=[
-      {key:'寻宝者',goal:'集齐宝藏',icon:'/img/logo/logo_tr-no-bg.png',panel:'/img/btn/btn_dark_green.png',accent:'#8fd0ca'},
-      {key:'追猎者',goal:'消灭所有非追猎者',icon:'/img/logo/logo_hu-no-bg.png',panel:'/img/btn/btn_dark_red.png',accent:'#d26458'},
-      {key:'邪祀者',goal:'复活邪神',icon:'/img/logo/logo_cu-no-bg.png',panel:'/img/btn/btn_dark_purple.png',accent:'#a781cf'},
-    ];
-    const isStartMobile=vw<900;
-    const startWideProgress=Math.max(0,Math.min(1,(vw-900)/260));
-    const frameWidth=`min(100%, ${Math.round(lerp(440,860,startWideProgress))}px)`;
-    const titleFontSize=Math.round(lerp(60,88,startWideProgress));
-    const titleLineHeight=lerp(0.96,0.92,startWideProgress);
-    const titleLetterSpacing=Math.round(lerp(4,6,startWideProgress));
-    const roleCardsBaseWidth=Math.round(lerp(420,720,startWideProgress));
-    const roleCardsBaseGap=Math.round(lerp(10,12,startWideProgress));
-    const roleCardsScale=Math.min(1,Math.max(0.76,(Math.min(vw,roleCardsBaseWidth)-8)/(roleCardsBaseWidth+roleCardsBaseGap*2)));
-    const roleCardsStageHeight=lerp(126,154,startWideProgress)*roleCardsScale;
-    const footerButtonsBaseWidth=Math.round(lerp(420,720,startWideProgress));
-    const footerButtonsBaseGap=Math.round(lerp(10,16,startWideProgress));
-    const footerButtonsScale=Math.min(1,Math.max(0.76,(Math.min(vw,footerButtonsBaseWidth)-8)/(footerButtonsBaseWidth+footerButtonsBaseGap)));
-    const footerButtonsStageHeight=lerp(52,60,startWideProgress)*footerButtonsScale;
     return(<>
-      <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',background:'#060707',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:Math.round(lerp(12,24,startWideProgress)),position:'relative',overflow:'hidden'}}>
-        <div style={{
-          position:'fixed',inset:0,
-          backgroundImage:"url('/img/bg/bg_main.png')",
-          backgroundSize:'cover',
-          backgroundPosition:'center top',
-          backgroundRepeat:'no-repeat',
-          filter:`brightness(${lerp(0.92,0.94,startWideProgress)}) saturate(${lerp(0.92,1,startWideProgress)})`,
-        }}/>
-        <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at center,rgba(0,0,0,0.06) 28%,rgba(0,0,0,0.52) 100%)',pointerEvents:'none'}}/>
-        <div style={{position:'fixed',inset:0,background:'linear-gradient(180deg,rgba(0,0,0,0.42) 0%,rgba(0,0,0,0.12) 24%,rgba(0,0,0,0.34) 100%)',pointerEvents:'none'}}/>
-        {/* Animation overlay — visible even before game starts (first-turn card flip) */}
-        <AnimOverlay anim={anim} exiting={animExiting}/>
-        <div style={{position:'relative',zIndex:1,width:'100%',display:'flex',justifyContent:'center'}}>
-          <div style={{width:frameWidth,maxWidth:'100%',padding:`${Math.round(lerp(8,18,startWideProgress))}px ${Math.round(lerp(4,10,startWideProgress))}px ${Math.round(lerp(14,18,startWideProgress))}px`}}>
-            <div style={{position:'relative',margin:'0 auto',paddingTop:Math.round(lerp(28,54,startWideProgress))}}>
-              <div style={{
-                position:'relative',
-                margin:'0 auto 4px',
-                width:`${lerp(100,92,startWideProgress)}%`,
-                minHeight:Math.round(lerp(240,340,startWideProgress)),
-                display:'flex',
-                flexDirection:'column',
-                alignItems:'center',
-                justifyContent:'flex-end',
-                paddingBottom:Math.round(lerp(4,10,startWideProgress)),
-              }}>
-                <div style={{
-                  position:'relative',
-                  display:'inline-block',
-                  marginBottom:Math.round(lerp(8,14,startWideProgress)),
-                }}>
-                  <img
-                    src="/img/title/texture_toehp.png"
-                    alt="邪神的宝藏"
-                    style={{
-                      display:'block',
-                      width:Math.round(lerp(300,442,startWideProgress)),
-                      maxWidth:'100%',
-                      height:'auto',
-                      filter:'drop-shadow(0 2px 0 rgba(20,14,10,0.75)) drop-shadow(0 0 24px rgba(228,214,191,0.18))',
-                    }}
-                  />
-                </div>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:Math.round(lerp(8,14,startWideProgress)),width:'100%',marginBottom:Math.round(lerp(10,12,startWideProgress))}}>
-                  <img src="/img/line/line_titleguard-no-bg.png" alt="" style={{width:Math.round(lerp(78,128,startWideProgress)),opacity:0.75}}/>
-                  <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:Math.round(lerp(18,28,startWideProgress)),letterSpacing:Math.round(lerp(4,8,startWideProgress)),color:'#cbb293',textShadow:'0 0 12px rgba(0,0,0,0.35)',whiteSpace:'nowrap'}}>克苏鲁卡牌对战</div>
-                  <img src="/img/line/line_titleguard-no-bg.png" alt="" style={{width:Math.round(lerp(78,128,startWideProgress)),opacity:0.75,transform:'scaleX(-1)'}}/>
-                </div>
-                <div style={{fontFamily:"'Cinzel',serif",fontSize:Math.round(lerp(11,17,startWideProgress)),letterSpacing:Math.round(lerp(6,10,startWideProgress)),color:'#cbb293',textTransform:'uppercase',marginBottom:Math.round(lerp(2,4,startWideProgress)),opacity:0.92}}>Treasures Of Evils</div>
-                <img src="/img/line/line_split-no-bg.png" alt="" style={{width:`${lerp(82,72,startWideProgress)}%`,maxWidth:540,marginBottom:Math.round(lerp(8,10,startWideProgress)),opacity:0.82}}/>
-                <p style={{
-                  maxWidth:Math.round(lerp(360,620,startWideProgress)),
-                  margin:'0 auto',
-                  padding:'0 12px',
-                  fontFamily:"'Noto Serif SC','SimSun',serif",
-                  color:'#c5a983',
-                  fontSize:Math.round(lerp(14,16,startWideProgress)),
-                  lineHeight:1.62,
-                  letterSpacing:1,
-                  textShadow:'0 1px 8px rgba(0,0,0,0.4)',
-                }}>
-                  “古神沉眠之时，旅者聚于此地。寻宝者寻觅遗物，追猎者猎杀异类，
-                  邪祀者企图唤醒邪神。各怀秘密，命运共织。”
-                </p>
-              </div>
-
-              <div style={{
-                width:'100%',
-                margin:'0 auto 4px',
-                height:roleCardsStageHeight,
-                display:'flex',
-                alignItems:'flex-start',
-                justifyContent:'center',
-              }}>
-                <div style={{
-                  width:roleCardsBaseWidth,
-                  display:'grid',
-                  gridTemplateColumns:'repeat(3, 1fr)',
-                  gap:roleCardsBaseGap,
-                  transform:`scale(${roleCardsScale})`,
-                  transformOrigin:'top center',
-                }}>
-                  {startRoles.map(role=>(
-                    <div key={role.key} style={{
-                      position:'relative',
-                      minHeight:Math.round(lerp(120,150,startWideProgress)),
-                      padding:`${Math.round(lerp(18,22,startWideProgress))}px ${Math.round(lerp(18,20,startWideProgress))}px ${Math.round(lerp(16,18,startWideProgress))}px`,
-                      backgroundImage:`url('${role.panel}')`,
-                      backgroundSize:'100% 100%',
-                      backgroundRepeat:'no-repeat',
-                      backgroundPosition:'center',
-                      display:'flex',
-                      flexDirection:'column',
-                      alignItems:'center',
-                      justifyContent:'center',
-                      textAlign:'center',
-                    }}>
-                      <img src={role.icon} alt="" style={{width:Math.round(lerp(32,42,startWideProgress)),height:Math.round(lerp(32,42,startWideProgress)),objectFit:'contain',marginBottom:Math.round(lerp(6,8,startWideProgress)),filter:'drop-shadow(0 0 8px rgba(0,0,0,0.28))'}}/>
-                      <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:Math.round(lerp(15,18,startWideProgress)),color:role.accent,letterSpacing:Math.round(lerp(2,3,startWideProgress)),marginBottom:4,fontWeight:700}}>{role.key}</div>
-                      <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:Math.round(lerp(12,13,startWideProgress)),color:'#ceb083',letterSpacing:Math.round(lerp(1,2,startWideProgress)),lineHeight:1.35}}>{role.goal}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{
-                position:'relative',
-                width:'100%',
-                margin:'0 auto 8px',
-                padding:`${Math.round(lerp(14,16,startWideProgress))}px ${Math.round(lerp(20,28,startWideProgress))}px ${Math.round(lerp(12,14,startWideProgress))}px`,
-                background:'linear-gradient(180deg,rgba(6,12,14,0.72) 0%,rgba(8,12,13,0.8) 100%)',
-                border:'1px solid rgba(118,93,58,0.52)',
-                boxShadow:'inset 0 0 0 1px rgba(32,24,16,0.72), 0 10px 40px rgba(0,0,0,0.2)',
-                borderRadius:8,
-                overflow:'hidden',
-              }}>
-                <div style={{
-                  position:'absolute',inset:0,
-                  background:'radial-gradient(circle at center, rgba(255,255,255,0.03) 0%, transparent 62%)',
-                  pointerEvents:'none',
-                }}/>
-                <div style={{position:'relative',display:'flex',alignItems:'center',justifyContent:'center',gap:Math.round(lerp(8,12,startWideProgress)),marginBottom:Math.round(lerp(6,8,startWideProgress))}}>
-                  <img src="/img/title/title_rule.png" alt="" style={{width:Math.round(lerp(64,96,startWideProgress)),opacity:0.78}}/>
-                  <div style={{fontFamily:"'Noto Serif SC','SimSun',serif",fontSize:Math.round(lerp(14,18,startWideProgress)),color:'#c8b08b',letterSpacing:Math.round(lerp(3,6,startWideProgress)),fontWeight:700}}>规则要点</div>
-                  <img src="/img/title/title_rule.png" alt="" style={{width:Math.round(lerp(64,96,startWideProgress)),opacity:0.78,transform:'scaleX(-1)'}}/>
-                </div>
-                <div style={{display:'grid',gap:Math.round(lerp(4,5,startWideProgress)),textAlign:'left',position:'relative'}}>
-                  {startRules.map((rule,i)=>(
-                    <div key={i} style={{display:'flex',alignItems:'flex-start',gap:Math.round(lerp(8,12,startWideProgress))}}>
-                      <span style={{color:'#b8996a',fontSize:Math.round(lerp(11,13,startWideProgress)),lineHeight:1.5}}>✦</span>
-                      <span style={{fontFamily:"'Noto Serif SC','SimSun',serif",color:'#d0b28a',fontSize:Math.round(lerp(11,13,startWideProgress)),lineHeight:1.46,letterSpacing:lerp(0.3,0.7,startWideProgress)}}>{rule}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{position:'relative',display:'grid',gridTemplateColumns:'1fr auto 1fr',gap:Math.round(lerp(8,12,startWideProgress)),alignItems:'center',margin:'0 auto 8px',width:'100%'}}>
-                <button onClick={startNewGame} style={{
-                  width:'100%',
-                  aspectRatio:'397 / 133',
-                  padding:`0 ${Math.round(lerp(18,30,startWideProgress))}px`,
-                  background:'transparent',
-                  backgroundImage:"url('/img/btn/btn_bright_green.png')",
-                  backgroundSize:'100% 100%',
-                  backgroundRepeat:'no-repeat',
-                  backgroundPosition:'center',
-                  border:'none',
-                  color:'#b5a68e',
-                  fontFamily:"'Noto Serif SC','SimSun',serif",
-                  fontSize:Math.round(lerp(18,26,startWideProgress)),
-                  fontWeight:700,
-                  letterSpacing:Math.round(lerp(1,2,startWideProgress)),
-                  cursor:'pointer',
-                  textShadow:'0 2px 6px rgba(0,0,0,0.45)',
-                }}>踏入黑暗</button>
-                <img src="/img/deco/deco_cth-no-bg.png" alt="" style={{width:Math.round(lerp(46,62,startWideProgress)),opacity:0.9,filter:'drop-shadow(0 2px 10px rgba(0,0,0,0.35))'}}/>
-                <button
-                  onClick={handleMultiplayer}
-                  disabled={multiLoading}
-                  style={{
-                    width:'100%',
-                    aspectRatio:'397 / 133',
-                    padding:`0 ${Math.round(lerp(18,30,startWideProgress))}px`,
-                    background:'transparent',
-                    backgroundImage:"url('/img/btn/btn_bright_purple.png')",
-                    backgroundSize:'100% 100%',
-                    backgroundRepeat:'no-repeat',
-                    backgroundPosition:'center',
-                    border:'none',
-                    color:multiLoading?'#6a5a70':'#b0a0aa',
-                    fontFamily:"'Noto Serif SC','SimSun',serif",
-                    fontSize:Math.round(lerp(18,26,startWideProgress)),
-                    fontWeight:700,
-                    letterSpacing:Math.round(lerp(1,2,startWideProgress)),
-                    cursor:multiLoading?'not-allowed':'pointer',
-                    textShadow:'0 2px 6px rgba(0,0,0,0.45)',
-                    opacity:multiLoading?0.82:1,
-                  }}
-                >{multiLoading?'联机中…':'联机对战'}</button>
-              </div>
-
-              <div style={{
-                width:'100%',
-                margin:'0 auto',
-                height:footerButtonsStageHeight,
-                display:'flex',
-                alignItems:'flex-start',
-                justifyContent:'center',
-              }}>
-                <div style={{
-                  width:footerButtonsBaseWidth,
-                  display:'grid',
-                  gridTemplateColumns:'repeat(2, 1fr)',
-                  gap:footerButtonsBaseGap,
-                  transform:`scale(${footerButtonsScale})`,
-                  transformOrigin:'top center',
-                }}>
-                  <button onClick={()=>setModal('about')} style={{
-                    width:'100%',
-                    aspectRatio:'426 / 94',
-                    padding:`${Math.round(lerp(8,10,startWideProgress))}px ${Math.round(lerp(8,10,startWideProgress))}px ${Math.round(lerp(8,10,startWideProgress))}px 25%`,
-                    background:'transparent',
-                    backgroundImage:"url('/img/btn/btn_author.png')",
-                    backgroundSize:'100% 100%',
-                    backgroundRepeat:'no-repeat',
-                    backgroundPosition:'center',
-                    border:'none',
-                    color:'#a79171',
-                    fontFamily:"'Noto Serif SC','SimSun',serif",
-                    fontSize:Math.round(lerp(12,15,startWideProgress)),
-                    letterSpacing:Math.round(lerp(1,2,startWideProgress)),
-                    cursor:'pointer',
-                    textAlign:'left',
-                    display:'flex',
-                    alignItems:'center',
-                    justifyContent:'flex-start',
-                  }}>关于作者 & 意见与反馈</button>
-                  <button onClick={()=>setModal('roadmap')} style={{
-                    width:'100%',
-                    aspectRatio:'426 / 94',
-                    padding:`${Math.round(lerp(8,10,startWideProgress))}px ${Math.round(lerp(8,10,startWideProgress))}px ${Math.round(lerp(8,10,startWideProgress))}px 25%`,
-                    background:'transparent',
-                    backgroundImage:"url('/img/btn/btn_roadmap.png')",
-                    backgroundSize:'100% 100%',
-                    backgroundRepeat:'no-repeat',
-                    backgroundPosition:'center',
-                    border:'none',
-                    color:'#a79171',
-                    fontFamily:"'Noto Serif SC','SimSun',serif",
-                    fontSize:Math.round(lerp(12,15,startWideProgress)),
-                    letterSpacing:Math.round(lerp(1,2,startWideProgress)),
-                    cursor:'pointer',
-                    textAlign:'left',
-                    display:'flex',
-                    alignItems:'center',
-                    justifyContent:'flex-start',
-                  }}>版本更新计划</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        {modal==='about'&&<AboutModal onClose={()=>setModal(null)}/>}
-        {modal==='roadmap'&&<RoadmapModal onClose={()=>setModal(null)}/>}
-        {/* ── 断线遮罩（多人游戏断线后禁止操作）── */}
-        {isDisconnected&&(
-          <div onClick={()=>{setIsDisconnected(false);setIsMultiplayer(false);isMultiplayerRef.current=false;setMyPlayerIndex(0);myPlayerIndexRef.current=0;mpRoleRevealedRef.current=false;setGs(null);}}
-            style={{position:'fixed',inset:0,background:'#000000dd',zIndex:9999,
-              display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
-            <div style={{textAlign:'center',color:'#c8a0e8',fontFamily:"'Cinzel Decorative','Cinzel',serif",
-              padding:'36px 48px',background:'#0e0a14',border:'2px solid #7a50b0',borderRadius:6,
-              boxShadow:'0 0 60px #5a3a8066',animation:'animPop 0.25s ease-out',pointerEvents:'none'}}>
-              <div style={{fontSize:48,marginBottom:16,filter:'drop-shadow(0 0 20px #a080d0)'}}>📡</div>
-              <div style={{fontSize:16,letterSpacing:2,marginBottom:8}}>连接已断开</div>
-              <div style={{fontSize:12,color:'#8060a0',letterSpacing:1,fontFamily:"'Cinzel',serif",fontStyle:'italic'}}>
-                您已断线，点击任意位置返回主界面
-              </div>
-            </div>
-          </div>
-        )}
-        {/* ── Toast notifications ── */}
-        <div style={{position:'fixed',top:20,left:'50%',transform:'translateX(-50%)',zIndex:2000,display:'flex',flexDirection:'column',gap:8,alignItems:'center',pointerEvents:'none'}}>
-          {toasts.map(t=>(
-            <div key={t.id} style={{
-              background:'#1a1028',border:'1.5px solid #7a50b0',borderRadius:4,
-              color:'#c8a0e8',fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:0.5,
-              padding:'10px 20px',boxShadow:'0 4px 24px #00000088',
-              animation:'toastIn 0.3s ease-out',
-              maxWidth:'calc(100vw - 32px)',textAlign:'center',
-            }}>{t.text}</div>
-          ))}
-        </div>
-        {/* ── Online Options Modal ── */}
-        {onlineOptionsModal&&(
-          <div style={{position:'fixed',inset:0,background:'#000000cc',zIndex:1500,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={closeOnlineOptions}>
-            <div onClick={e=>e.stopPropagation()} style={{
-              background:'#0e0a14',border:'2px solid #7a50b0',borderRadius:6,
-              padding:'28px 32px',maxWidth:400,width:'90%',
-              boxShadow:'0 0 60px #5a3a8066',animation:'animPop 0.25s ease-out',
-              position:'relative',display:'flex',flexDirection:'column',gap:16,
-            }}>
-              <button onClick={closeOnlineOptions} style={{position:'absolute',top:12,right:14,background:'none',border:'none',color:'#5a4070',fontSize:18,cursor:'pointer',lineHeight:1,padding:'2px 6px'}}>✕</button>
-
-              {/* ── 标题 ── */}
-              <div style={{textAlign:'center',marginBottom:4}}>
-                <div style={{fontSize:26,marginBottom:8,filter:'drop-shadow(0 0 12px #a080d088)'}}>🌐</div>
-                <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:15,color:'#c8a0e8',letterSpacing:2,marginBottom:6}}>联机对战</div>
-                <div style={{width:100,height:1,background:'linear-gradient(90deg,transparent,#7a50b0,transparent)',margin:'0 auto'}}/>
-              </div>
-
-              {/* ── 功能区 A：创建房间 ── */}
-              <div style={{background:'#120920',border:'1px solid #4a3070',borderRadius:4,padding:'16px 18px'}}>
-                <button onClick={handleCreateRoom} disabled={multiLoading} style={{
-                  width:'100%',padding:'12px',background:'#1e0d36',
-                  border:'1.5px solid #7a50b0',borderRadius:4,
-                  color:'#c8a0e8',fontFamily:"'Cinzel Decorative','Cinzel',serif",
-                  fontSize:13,letterSpacing:2,cursor:multiLoading?'not-allowed':'pointer',
-                  display:'flex',alignItems:'center',justifyContent:'center',gap:8,
-                  transition:'all .2s',
-                }}>
-                  {multiLoading&&<span style={{display:'inline-block',width:12,height:12,border:'2px solid #5a3a80',borderTopColor:'#a080d0',borderRadius:'50%',animation:'spinLoader 0.7s linear infinite'}}/>}
-                  创建房间
-                </button>
-              </div>
-
-              {/* ── 功能区 B：游戏大厅 ── */}
-              <div style={{background:'#120920',border:'1px solid #4a3070',borderRadius:4,padding:'16px 18px'}}>
-                <button onClick={handleOpenLobby} disabled={multiLoading} style={{
-                  width:'100%',padding:'12px',background:'#1e0d36',
-                  border:'1.5px solid #7a50b0',borderRadius:4,
-                  color:'#c8a0e8',fontFamily:"'Cinzel Decorative','Cinzel',serif",
-                  fontSize:13,letterSpacing:2,cursor:multiLoading?'not-allowed':'pointer',
-                  display:'flex',alignItems:'center',justifyContent:'center',gap:8,
-                  transition:'all .2s',
-                }}>
-                  {multiLoading&&<span style={{display:'inline-block',width:12,height:12,border:'2px solid #5a3a80',borderTopColor:'#a080d0',borderRadius:'50%',animation:'spinLoader 0.7s linear infinite'}}/>}
-                  游戏大厅
-                </button>
-              </div>
-
-              {/* ── 功能区 C：加入房间 ── */}
-              <div style={{background:'#120920',border:'1px solid #4a3070',borderRadius:4,padding:'16px 18px',display:'flex',flexDirection:'column',gap:10}}>
-                <div style={{fontFamily:"'Cinzel',serif",color:'#6a5080',fontSize:9,letterSpacing:2,textTransform:'uppercase'}}>— 或者输入房间号加入房间 —</div>
-                <input
-                  value={joinRoomInput}
-                  onChange={e=>setJoinRoomInput(e.target.value.toUpperCase())}
-                  onKeyDown={e=>e.key==='Enter'&&handleJoinRoom()}
-                  placeholder="房间号"
-                  maxLength={6}
-                  style={{
-                    background:'#160d22',border:'1px solid #5a3a80',borderRadius:3,
-                    color:'#e0c0f8',fontFamily:"'Cinzel',serif",fontSize:14,
-                    padding:'8px 12px',outline:'none',letterSpacing:3,
-                    textTransform:'uppercase',width:'100%',boxSizing:'border-box',
-                  }}
-                />
-                <button onClick={handleJoinRoom} disabled={multiLoading} style={{
-                  width:'100%',padding:'12px',background:'#1a1030',
-                  border:'1.5px solid #5a3a80',borderRadius:4,
-                  color:'#b090d8',fontFamily:"'Cinzel Decorative','Cinzel',serif",
-                  fontSize:13,letterSpacing:2,cursor:multiLoading?'not-allowed':'pointer',
-                  display:'flex',alignItems:'center',justifyContent:'center',gap:8,
-                  transition:'all .2s',
-                }}>
-                  {multiLoading&&<span style={{display:'inline-block',width:12,height:12,border:'2px solid #5a3a80',borderTopColor:'#a080d0',borderRadius:'50%',animation:'spinLoader 0.7s linear infinite'}}/>}
-                  加入房间
-                </button>
-              </div>
-
-              {/* ── 功能区 C：用户名 ── */}
-              <div style={{background:'#120920',border:'1px solid #4a3070',borderRadius:4,padding:'16px 18px',display:'flex',flexDirection:'column',gap:8}}>
-                <div style={{fontFamily:"'Cinzel',serif",color:'#6a5080',fontSize:9,letterSpacing:2,textTransform:'uppercase'}}>— 你的联机用户名 —</div>
-                {renameInputVisible?(
-                  <div style={{display:'flex',gap:6,alignItems:'center'}}>
-                    <div style={{position:'relative',flex:1,display:'flex',alignItems:'center'}}>
-                      <input
-                        autoFocus
-                        value={renameInput}
-                        onChange={e=>setRenameInput(e.target.value)}
-                        onKeyDown={e=>{if(e.key==='Enter'){handleRename();setRenameInputVisible(false);}else if(e.key==='Escape')setRenameInputVisible(false);}}
-                        maxLength={10}
-                        style={{
-                          flex:1,background:'#160d22',border:'1px solid #5a3a80',borderRadius:3,
-                          color:'#e0c0f8',fontFamily:"'Cinzel',serif",fontSize:13,
-                          padding:'6px 34px 6px 10px',outline:'none',letterSpacing:1,
-                        }}
-                      />
-                      <button
-                        onClick={handleRandomUsername}
-                        title='随机用户名'
-                        style={{
-                          position:'absolute',right:6,top:'50%',transform:'translateY(-50%)',
-                          width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',
-                          background:'none',border:'none',padding:0,
-                          color:'#cda85a',fontSize:14,
-                          cursor:'pointer',lineHeight:1,
-                        }}
-                      >
-                        🎲
-                      </button>
-                    </div>
-                    <button onClick={()=>{handleRename();setRenameInputVisible(false);}} disabled={renameCdActive} style={{
-                      padding:'6px 12px',background:renameCdActive?'#1e1430':'#2e1450',
-                      border:'1px solid '+(renameCdActive?'#3a2560':'#7a50b0'),
-                      borderRadius:3,color:renameCdActive?'#5a4070':'#c8a0e8',
-                      fontFamily:"'Cinzel',serif",fontSize:11,
-                      cursor:renameCdActive?'not-allowed':'pointer',whiteSpace:'nowrap',
-                    }}>{renameCdActive?'冷却中…':'确认'}</button>
-                  </div>
-                ):(
-                  <div style={{display:'flex',alignItems:'center',gap:8}}>
-                    <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:playerUsernameSpecial?'#d8b35c':'#e0c0f8',letterSpacing:1,flex:1,textShadow:playerUsernameSpecial?'0 0 10px rgba(216,179,92,.22)':'none'}}>{playerUsername||'—'}</span>
-                    <button onClick={()=>{setRenameInput(playerUsername);setRenameInputVisible(true);}} style={{
-                      padding:'4px 10px',background:'none',
-                      border:'1px solid #5a3a80',borderRadius:3,
-                      color:'#a080c8',fontFamily:"'Cinzel',serif",fontSize:10,
-                      cursor:'pointer',whiteSpace:'nowrap',
-                    }}>修改</button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-        {/* -- Room Modal -- */}
+      <StartScreen
+        vw={vw}
+        handleUiSfxCapture={handleUiSfxCapture}
+        anim={anim}
+        animExiting={animExiting}
+        startNewGame={startNewGame}
+        handleMultiplayer={handleMultiplayer}
+        multiLoading={multiLoading}
+        onOpenAbout={()=>setModal('about')}
+        onOpenRoadmap={()=>setModal('roadmap')}
+        isDisconnected={isDisconnected}
+        onDisconnectedReset={()=>{
+          setIsDisconnected(false);
+          setIsMultiplayer(false);
+          isMultiplayerRef.current=false;
+          setMyPlayerIndex(0);
+          myPlayerIndexRef.current=0;
+          mpRoleRevealedRef.current=false;
+          setGs(null);
+        }}
+        toasts={toasts}
+        onlineOptionsModal={onlineOptionsModal}
+        closeOnlineOptions={closeOnlineOptions}
+        handleCreateRoom={handleCreateRoom}
+        handleOpenLobby={handleOpenLobby}
+        joinRoomInput={joinRoomInput}
+        setJoinRoomInput={setJoinRoomInput}
+        handleJoinRoom={handleJoinRoom}
+        renameInputVisible={renameInputVisible}
+        renameInput={renameInput}
+        setRenameInput={setRenameInput}
+        handleRename={handleRename}
+        handleRandomUsername={handleRandomUsername}
+        setRenameInputVisible={setRenameInputVisible}
+        renameCdActive={renameCdActive}
+        playerUsername={playerUsername}
+        playerUsernameSpecial={playerUsernameSpecial}
+      />
+      {modal==='about'&&<AboutModal onClose={()=>setModal(null)}/>}
+      {modal==='roadmap'&&<RoadmapModal onClose={()=>setModal(null)}/>}
+      {/* -- Room Modal -- */}
         <RoomModal
           roomModal={roomModal}
           playerUUID={playerUUID}
@@ -6226,7 +5433,6 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
           onClose={()=>setConnErrModal(false)}
         />
         <style>{GLOBAL_STYLES}</style>
-      </div>
       {/* GammaSlider outside filtered lobby container */}
       <GammaSlider gamma={gamma} onChange={handleGamma}/>
       <DebugControls
@@ -8231,6 +7437,9 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         ?pendingGs.abilityData?.godCard
         :pendingGs.drawReveal?.card;
       if(drawnCard){
+        if(pendingGs._playersBeforeThisDraw){
+          visualPlayersLockRef.current=copyPlayers(pendingGs._playersBeforeThisDraw);
+        }
         // 遮蔽真实 phase，动画结束后 advanceQueue 再还原（与 applyNextTurnGs 同样模式）
         suppressNextBroadcastRef.current=true; // pendingGs 已广播过，advanceQueue 不再回传
         pendingGsRef.current=pendingGs;
@@ -8267,7 +7476,13 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       }
       return;
     }
-    if(pendingGs.drawReveal?.card){
+    const localDrawnCard=pendingGs.phase==='GOD_CHOICE'
+      ?pendingGs.abilityData?.godCard
+      :(pendingGs.drawReveal?.card||pendingGs._drawnCard||null);
+    if(localDrawnCard){
+      if(pendingGs._playersBeforeThisDraw){
+        visualPlayersLockRef.current=copyPlayers(pendingGs._playersBeforeThisDraw);
+      }
       // Normal draw: YOUR_TURN → card flip → apply state
       const drawStatQ=bindAnimLogChunks(
         buildAnimQueue({...gs,players:pendingGs._playersBeforeThisDraw||gs.players},pendingGs),
@@ -8275,14 +7490,11 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       );
       triggerAnimQueue([
         {type:'YOUR_TURN',msgs:pendingGs._turnStartLogs},
-        {type:'DRAW_CARD',card:pendingGs.drawReveal.card,triggerName:'你',msgs:pendingGs._drawLogs},
+        {type:'DRAW_CARD',card:localDrawnCard,triggerName:'你',targetPid:0,msgs:pendingGs._drawLogs},
         ...drawStatQ
       ],pendingGs);
     }else{
-      // God card drawn: drawReveal is null, card is in abilityData.godCard
-      const godCard=pendingGs.abilityData?.godCard;
       const queue=[{type:'YOUR_TURN',msgs:pendingGs._turnStartLogs}];
-      if(godCard) queue.push({type:'DRAW_CARD',card:godCard,triggerName:'你',msgs:pendingGs._drawLogs});
       queue.push(...bindAnimLogChunks(
         buildAnimQueue({...gs,players:pendingGs._playersBeforeThisDraw||gs.players},pendingGs),
         {statLogs:pendingGs._statLogs}

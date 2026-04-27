@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CS, GOD_CS, RINFO } from '../../constants/card';
 
 function GodResurrectionAnim({onDone}){
@@ -379,15 +379,19 @@ function AnimOverlay({anim,exiting}){
 // ── Role Reveal Animation (slot-machine, shown at every game start) ──────────
 function RoleRevealAnim({role,onDone}){
   const [offset,setOffset]=useState(0);
+  const onDoneRef=useRef(onDone);
   const ITEM_H=46, BEFORE=9;
   const ROLES_CYCLE=['寻宝者','追猎者','邪祀者','邪祀者','寻宝者','追猎者','寻宝者','邪祀者','追猎者'];
   const items=[...ROLES_CYCLE.slice(0,BEFORE),role];
   const ri=RINFO[role];
   useEffect(()=>{
-    const t1=setTimeout(()=>setOffset(-(BEFORE*ITEM_H)),120);
-    const t2=setTimeout(onDone,2500);
-    return()=>{clearTimeout(t1);clearTimeout(t2);};
+    onDoneRef.current=onDone;
   },[onDone]);
+  useEffect(()=>{
+    const t1=setTimeout(()=>setOffset(-(BEFORE*ITEM_H)),120);
+    const t2=setTimeout(()=>onDoneRef.current&&onDoneRef.current(),2500);
+    return()=>{clearTimeout(t1);clearTimeout(t2);};
+  },[]);
   return(
     <div style={{position:'fixed',inset:0,zIndex:3000,background:'linear-gradient(160deg,#060402 0%,#0e0804 100%)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',animation:'animFadeIn 0.3s ease-out'}}>
       <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse at center,transparent 35%,#000000bb 100%)',pointerEvents:'none'}}/>
