@@ -47,12 +47,7 @@ export function StartScreen({
   const frameWidth = `min(100%, ${Math.round(lerp(440, 860, startWideProgress))}px)`;
   const startShellPadding = Math.round(lerp(12, 24, startWideProgress));
   const startFramePaddingX = Math.round(lerp(4, 10, startWideProgress));
-  const roleCardsBaseWidth = Math.round(lerp(420, 720, startWideProgress));
-  const roleCardsBaseGap = Math.round(lerp(10, 12, startWideProgress));
-  const roleCardBaseHeight = ((roleCardsBaseWidth - roleCardsBaseGap * 2) / 3) / (301 / 221);
-  const roleCardsAvailableWidth = Math.max(0, vw - startShellPadding * 2 - startFramePaddingX * 2 - 8);
-  const roleCardsScale = Math.min(1, roleCardsAvailableWidth / roleCardsBaseWidth);
-  const roleCardsStageHeight = roleCardBaseHeight * roleCardsScale;
+
   const footerButtonsBaseWidth = Math.round(lerp(420, 720, startWideProgress));
   const footerButtonsBaseGap = Math.round(lerp(10, 16, startWideProgress));
   const footerButtonsAvailableWidth = Math.max(0, vw - startShellPadding * 2 - startFramePaddingX * 2 - 8);
@@ -149,53 +144,40 @@ export function StartScreen({
               style={{
                 position: 'relative',
                 width: '100%',
-                margin: '0 auto 4px',
-                height: roleCardsStageHeight,
+                margin: '0 auto 12px',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, minmax(0,1fr))',
+                gap: Math.round(lerp(6, 12, startWideProgress)),
               }}
             >
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: '50%',
-                  width: roleCardsBaseWidth,
-                  marginLeft: -(roleCardsBaseWidth / 2),
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(3, minmax(0,1fr))',
-                  gap: roleCardsBaseGap,
-                  transform: `scale(${roleCardsScale})`,
-                  transformOrigin: 'top center',
-                }}
-              >
-                {startRoles.map((role) => (
-                  <div
-                    key={role.key}
-                    style={{
-                      position: 'relative',
-                      width: '100%',
-                      aspectRatio: '301 / 221',
-                      boxSizing: 'border-box',
-                      padding: `${Math.round(lerp(18, 22, startWideProgress))}px ${Math.round(lerp(12, 20, startWideProgress))}px ${Math.round(lerp(16, 18, startWideProgress))}px`,
-                      backgroundImage: `url('${role.panel}')`,
-                      backgroundSize: '100% 100%',
-                      backgroundRepeat: 'no-repeat',
-                      backgroundPosition: 'center',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      textAlign: 'center',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <img src={role.icon} alt="" style={{ width: Math.round(lerp(32, 42, startWideProgress)), height: Math.round(lerp(32, 42, startWideProgress)), objectFit: 'contain', marginBottom: Math.round(lerp(6, 8, startWideProgress)), filter: 'drop-shadow(0 0 8px rgba(0,0,0,0.28))' }} />
-                    <div style={{ transform: `scale(${lerp(0.85, 1, startWideProgress)})`, transformOrigin: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-                      <div style={{ fontFamily: "'Noto Serif SC','SimSun',serif", fontSize: Math.round(lerp(15, 18, startWideProgress)), color: role.accent, letterSpacing: Math.round(lerp(2, 3, startWideProgress)), marginBottom: 4, fontWeight: 700, whiteSpace: 'nowrap' }}>{role.key}</div>
-                      <div style={{ fontFamily: "'Noto Serif SC','SimSun',serif", fontSize: Math.round(lerp(12, 13, startWideProgress)), color: '#ceb083', letterSpacing: Math.round(lerp(1, 2, startWideProgress)), lineHeight: 1.35, whiteSpace: 'nowrap' }}>{role.goal}</div>
-                    </div>
+              {startRoles.map((role) => (
+                <div
+                  key={role.key}
+                  style={{
+                    position: 'relative',
+                    width: '100%',
+                    aspectRatio: '301 / 221',
+                    boxSizing: 'border-box',
+                    padding: `${Math.round(lerp(12, 22, startWideProgress))}px ${Math.round(lerp(8, 20, startWideProgress))}px ${Math.round(lerp(10, 18, startWideProgress))}px`,
+                    backgroundImage: `url('${role.panel}')`,
+                    backgroundSize: '100% 100%',
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'center',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textAlign: 'center',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <img src={role.icon} alt="" style={{ width: Math.round(lerp(24, 42, startWideProgress)), height: Math.round(lerp(24, 42, startWideProgress)), objectFit: 'contain', marginBottom: Math.round(lerp(4, 8, startWideProgress)), filter: 'drop-shadow(0 0 8px rgba(0,0,0,0.28))' }} />
+                  <div style={{ transform: `scale(${lerp(0.85, 1, startWideProgress)})`, transformOrigin: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '130%' }}>
+                    <div style={{ fontFamily: "'Noto Serif SC','SimSun',serif", fontSize: Math.round(lerp(13, 18, startWideProgress)), color: role.accent, letterSpacing: Math.round(lerp(1, 3, startWideProgress)), marginBottom: 4, fontWeight: 700, whiteSpace: 'nowrap' }}>{role.key}</div>
+                    <div style={{ fontFamily: "'Noto Serif SC','SimSun',serif", fontSize: Math.round(lerp(11, 13, startWideProgress)), color: '#ceb083', letterSpacing: Math.round(lerp(role.goal.length > 5 ? 0 : 1, 2, startWideProgress)), lineHeight: 1.35, whiteSpace: 'nowrap', transform: role.goal.length > 5 ? `scale(${lerp(0.75, 1, startWideProgress)})` : 'none', wordBreak: 'keep-all' }}>{role.goal}</div>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
 
             <div
