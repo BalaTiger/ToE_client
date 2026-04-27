@@ -105,6 +105,7 @@ import { TitleCandleFlames } from './components/anim/TitleCandleFlames';
 import { AnimOverlay } from './components/anim/AnimOverlay';
 import { formatFileSize, useResourcePreload } from './hooks/useResourcePreload';
 import { useMultiplayerLobby } from './hooks/useMultiplayerLobby';
+import { useAnimationQueue } from './hooks/useAnimationQueue';
 
 // Ellipsis component for loading animation
 function Ellipsis() {
@@ -3440,13 +3441,18 @@ export default function Game(){
       playerUUIDRef.current=uuid;
       safeLS.set('cthulhu_player_uuid',uuid);
     });
-    // userInfo：打开联机选项界面时后端下发，含异常断线标志
-    socket.on('userInfo',({username,isSpecialName,wasForceReset})=>{
+    // userInfo：打开联机选项界面时后端下发，含异常断线/房间恢复标志
+    socket.on('userInfo',({username,isSpecialName,wasForceReset,waitingRoomExpired})=>{
       setPlayerUsername(username);
       setPlayerUsernameSpecial(!!isSpecialName);
       setRenameInput(username);
       cleanup();
       setMultiLoading(false);
+      if(waitingRoomExpired){
+        setRoomModal(null);
+        setOnlineOptionsModal(true);
+        addToast('由于你长时间离开页面，您已离线，请重新创建房间。');
+      }
       if(wasForceReset){
         addToast('您上次在游戏房间强制下线，已退出房间');
       }
@@ -3487,6 +3493,11 @@ export default function Game(){
       setRoomModal(null);
       addToast(reason||'你已被踢出房间');
       if(socketRef.current){socketRef.current.disconnect();socketRef.current=null;}
+    });
+    socket.on('roomClosed',({reason})=>{
+      setRoomModal(null);
+      setOnlineOptionsModal(true);
+      addToast(reason||'房间已失效，请重新创建房间。');
     });
     // lobbyRooms：游戏大厅房间列表
     socket.on('lobbyRooms',({rooms})=>{
@@ -3616,6 +3627,9 @@ export default function Game(){
           const ph=rotated.phase;
           const drawnCard=ph==='GOD_CHOICE'?rotated.abilityData?.godCard:rotated.drawReveal?.card;
           if(drawnCard){
+            if(rotated._playersBeforeThisDraw){
+              visualPlayersLockRef.current=copyPlayers(rotated._playersBeforeThisDraw);
+            }
             setGs({...rotated,phase:'ACTION',drawReveal:null,abilityData:{}});
             receivedGsRef.current=true;
             suppressNextBroadcastRef.current=true;
@@ -3745,52 +3759,10 @@ export default function Game(){
   const deckAreaRef=useRef(null);
   const [deckAreaRect,setDeckAreaRect]=useState(null);
   const [roleRevealAnim,setRoleRevealAnim]=useState(null); // {role,pendingGs}|null
-  const[anim,setAnim]=useState(null);
-  const[animExiting,setAnimExiting]=useState(false);
   const[hitIndices,setHitIndices]=useState([]);    // HP damage
   
   // --- 新增：用于 UI 延迟显示的 HP/SAN 状态 ---
   const [displayStats, setDisplayStats] = useState(() => gs?.players ? gs.players.map(p => ({ hp: p.hp, san: p.san })) : []);
-  
-  // 1. 兜底与静默同步：当没有动画在播放时，且不处于AI回合（AI回合中draw效果已bake进gs但动画尚未开始），UI 强制对齐真实的底层数据
-  useEffect(() => {
-    if (gs?.players && (!anim && (!animQueueRef.current || animQueueRef.current.length === 0))) {
-      // AI_TURN 阶段：draw效果已经应用到gs.players，但2100ms后才开始播放动画
-      // 此时不应更新displayStats，否则HP条会先于动画跳变
-      if (gs.phase === 'AI_TURN') return;
-      setDisplayStats(gs.players.map(p => ({ hp: p.hp, san: p.san })));
-    }
-  }, [gs?.players, anim, gs?.phase]);
-  
-  // 2. 动画期间的精准延迟对齐：当播放某个角色的受击/治疗动画时，延迟 350ms 更新显示数值
-  //    每个动画项携带 targetStats（来自 buildAnimQueue），表示该动画完成时各角色的目标 HP/SAN
-  useEffect(() => {
-    if (anim && anim.targetStats) {
-      // 收集当前动画可能影响到的所有目标
-      const targets = new Set();
-      if (anim.targetPid !== undefined) targets.add(anim.targetPid);
-      if (anim.targetIdx !== undefined) targets.add(anim.targetIdx);
-      if (Array.isArray(anim.targets)) anim.targets.forEach(t => targets.add(t));
-      if (anim.triggerPid !== undefined) targets.add(anim.triggerPid);
-      if (anim.hitIndices && Array.isArray(anim.hitIndices)) anim.hitIndices.forEach(hi => targets.add(hi));
-
-      if (targets.size > 0) {
-        const ts = anim.targetStats;
-        const timer = setTimeout(() => {
-          setDisplayStats(prev => {
-            const next = [...prev];
-            targets.forEach(pid => {
-              if (next[pid] && ts[pid]) {
-                next[pid] = { hp: ts[pid].hp, san: ts[pid].san };
-              }
-            });
-            return next;
-          });
-        }, 350);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [anim]);
   const[knifeTargets,setKnifeTargets]=useState([]); // pre-measured {pi,cx,cy} for KnifeEffect
   const[sanHitIndices,setSanHitIndices]=useState([]);
   const[sanTargets,setSanTargets]=useState([]); // pre-measured {pi,cx,cy,startX,startY} // SAN damage
@@ -3803,13 +3775,10 @@ export default function Game(){
   const[sanHealIndices,setSanHealIndices]=useState([]); // SAN heal
   const[screenShake,setScreenShake]=useState(false);
   const[deathShake,setDeathShake]=useState(false);
-  const animQueueRef=useRef([]);
-  const pendingGsRef=useRef(null);
   const prevDamageLinksRef=useRef([]);
   const prevLogLenRef=useRef(0);
   const damageLinkGhostTimersRef=useRef(new Map());
   const [damageLinkGhosts,setDamageLinkGhosts]=useState([]);
-  const animCallbackRef=useRef(null); // callback to execute after animation queue
   const timerRef=useRef(null);
   const guillotinedPids=useMemo(()=>new Set((guillotineTargets||[]).map(t=>t?.pi).filter(v=>v!=null)),[guillotineTargets]);
   const logRef=useRef(null);
@@ -3841,6 +3810,22 @@ export default function Game(){
     document.addEventListener('visibilitychange',handleVisibilityChange);
     return()=>document.removeEventListener('visibilitychange',handleVisibilityChange);
   },[]);
+
+  useEffect(()=>{
+    if(typeof document==='undefined')return;
+    const handleWaitingRoomReconnect=()=>{
+      if(document.visibilityState!=='visible')return;
+      if(gs||isMultiplayerRef.current)return;
+      if(!roomModalRef.current?.roomId)return;
+      if(multiLoading)return;
+      if(socketRef.current?.connected)return;
+      connectSocket(socket=>{
+        socket.emit('openOnlineOptions',{uuid:playerUUIDRef.current||playerUUID});
+      });
+    };
+    document.addEventListener('visibilitychange',handleWaitingRoomReconnect);
+    return()=>document.removeEventListener('visibilitychange',handleWaitingRoomReconnect);
+  },[gs,multiLoading,playerUUID,roomModalRef]);
   const lastInspectionSeqRef=useRef(0);
   const [houndsSecLeft,setHoundsSecLeft]=useState(null);
 
@@ -3920,6 +3905,43 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
     }
     return discard;
   },[]);
+
+  const suppressNextBroadcastRef=useRef(false); // set before bystander-anim pendingGs; cleared in advanceQueue
+  const turnHighlightLockRef=useRef(null);
+  const visualPlayersLockRef=useRef(null);
+  const {
+    anim,
+    setAnim,
+    animExiting,
+    setAnimExiting,
+    animQueueRef,
+    pendingGsRef,
+    triggerAnimQueue,
+  } = useAnimationQueue({
+    gs,
+    copyPlayers,
+    setGs,
+    setVisualDiscard,
+    syncVisibleLog,
+    appendVisibleLog,
+    getVisualDiscardForState,
+    resolveTurnHighlightForStep,
+    clearPendingAnimDeathFlags,
+    prepareAnimQueueLogs,
+    startNextTurn,
+    applyNextTurnGs,
+    cthContinueRestDraws:_cthContinueRestDraws,
+    visibleLogRef,
+    visibleLogAuthorityRef,
+    turnHighlightLockRef,
+    visualPlayersLockRef,
+    suppressNextBroadcastRef,
+    receivedGsRef,
+    ANIM_STEP_GAP,
+    CARD_REVEAL_DURATION,
+    ANIM_DURATION,
+    ANIM_SPEED_SCALE,
+  });
 
   const isDrawnCardActuallyDiscarded=useCallback((stateLike,drawnCard)=>{
     if(!(stateLike?._animDiscardedDrawnCard ?? stateLike?._discardedDrawnCard) || !drawnCard)return false;
@@ -4257,149 +4279,6 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
       setSanHealIndices([]);
     }
   },[anim,playHpDamageSound]);
-
-  // Advance to next animation in queue, or apply final game state
-  function revealAnimLogs(animStep){
-    if(!animStep)return;
-    if(Array.isArray(animStep._logChunk)&&animStep._logChunk.length){
-      appendVisibleLog(animStep._logChunk);
-    }
-  }
-
-  function advanceQueue(){
-    setAnimExiting(false);
-    if(animQueueRef.current.length>0){
-      const next=animQueueRef.current.shift();
-      if(next.type==='STATE_PATCH'){
-        revealAnimLogs(next);
-        visualPlayersLockRef.current=null;
-        setVisualDiscard([...(next.discard||[])]);
-        setGs(prev=>prev?{...prev,players:copyPlayers(next.players||prev.players),discard:[...(next.discard||prev.discard)]}:prev);
-        advanceQueue();
-      }else if(next.type==='CTH_CONTINUE'){
-        // 处理拉莱耶之主的剩余摸牌
-        setAnim(null);
-        const currentGs=pendingGsRef.current||gs;
-        pendingGsRef.current=null;
-        const cthDrawsRemaining=next.data?.cthDrawsRemaining||0;
-        if(cthDrawsRemaining>0){
-          _cthContinueRestDraws(currentGs);
-        }else{
-          const nextGs=startNextTurn({...currentGs,currentTurn:0,abilityData:{}});
-          applyNextTurnGs(nextGs);
-        }
-      }else{
-        const nextTurnHighlight=resolveTurnHighlightForStep(next,pendingGsRef.current||gs,gs?.players||[]);
-        if(nextTurnHighlight!=null)turnHighlightLockRef.current=nextTurnHighlight;
-        setAnim(next);
-        revealAnimLogs(next);
-      }
-    }else{
-      const next=pendingGsRef.current;
-      const callback=animCallbackRef.current;
-      pendingGsRef.current=null;
-      animCallbackRef.current=null;
-      turnHighlightLockRef.current=null;
-      visualPlayersLockRef.current=null;
-      setAnim(null);
-      if(next?.log)syncVisibleLog(next.log);
-      if(callback){
-        callback();
-      }else if(next){
-        setVisualDiscard(getVisualDiscardForState(next));
-        if(suppressNextBroadcastRef.current){
-          // This pendingGs came from a received state; don't echo it back to server
-          suppressNextBroadcastRef.current=false;
-          receivedGsRef.current=true;
-        }
-        setGs(prev=>{
-          // Never overwrite a win/pending-win state with stale queued state
-          if(prev?.gameOver||prev?.phase==='PLAYER_WIN_PENDING'||prev?.phase==='TREASURE_WIN')return prev;
-          const preservePendingDeathPid=next?.phase==='HUNT_SELECT_CARD_FROM_PUBLIC'
-            ? (next?.abilityData?.huntTi??null)
-            : null;
-          // 清除 _pendingAnimDeath，确保死亡角色面板在动画队列结束后立即置灰
-          // 例外：追捕致死后进入公开挑牌阶段时，先保留死者未置灰状态，直到挑牌完成
-          if(next?.players){
-            return {...next, players: clearPendingAnimDeathFlags(next.players,preservePendingDeathPid)};
-          }
-          return next;
-        });
-      }
-    }
-  }
-
-  // Animation lifecycle — duration depends on type
-  useEffect(()=>{
-    if(!anim) return;
-    const isCard=anim.type==='DRAW_CARD';
-    const dur=isCard?CARD_REVEAL_DURATION:Math.round((ANIM_DURATION[anim.type]||ANIM_DURATION.default)*ANIM_SPEED_SCALE);
-    let gapTimer=null;
-    const t1=setTimeout(()=>{
-      if(isCard){
-        gapTimer=setTimeout(advanceQueue,ANIM_STEP_GAP);
-      }else{
-        setAnimExiting(true);
-        gapTimer=setTimeout(advanceQueue,ANIM_STEP_GAP);
-      }
-    },dur);
-    return()=>{
-      clearTimeout(t1);
-      if(gapTimer)clearTimeout(gapTimer);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[anim]);
-
-  // Trigger a sequential queue of animations, then apply nextGs or callback
-  function triggerAnimQueue(queue,nextGs,callback){
-    // 检查是否有死亡动画需要等待
-    const hasDeathAnim = queue.some(a => a.type === 'DEATH' || a.type === 'GUILLOTINE');
-    // 检查是否有待播放死亡特效的角色
-    const pendingDeathPlayers = nextGs?.players?.filter(p => p._pendingAnimDeath)?.map((_, i) => i) || [];
-    
-    if(!queue.length){
-      if(callback){
-        if(nextGs?.log)syncVisibleLog(nextGs.log);
-        callback();
-      }else{
-        if(nextGs?.log)syncVisibleLog(nextGs.log);
-        // 动画队列为空但有死亡时，仍需等待死亡特效播放完成
-        if(hasDeathAnim && pendingDeathPlayers.length) {
-          setGs({...nextGs});
-        } else {
-          setGs(nextGs);
-        }
-      }
-      return;
-    }
-    // 创建带延迟清理的callback
-    const wrappedCallback = hasDeathAnim && pendingDeathPlayers.length ? () => {
-      const preservePendingDeathPid=nextGs?.phase==='HUNT_SELECT_CARD_FROM_PUBLIC'
-        ? (nextGs?.abilityData?.huntTi??null)
-        : null;
-      // 清除所有角色的_pendingAnimDeath标记，使面板置灰
-      // 例外：追捕致死后进入公开挑牌阶段时，先保留死者未置灰状态
-      const cleanedPlayers = clearPendingAnimDeathFlags(nextGs.players,preservePendingDeathPid);
-      const finalGs = {...nextGs, players: cleanedPlayers};
-      if(callback){
-        callback();
-      } else {
-        if(finalGs.log)syncVisibleLog(finalGs.log);
-        setGs(finalGs);
-      }
-    } : callback;
-    
-    visibleLogAuthorityRef.current=Array.isArray(nextGs?.log)?nextGs.log:(Array.isArray(visibleLogAuthorityRef.current)?visibleLogAuthorityRef.current:[]);
-    const preparedQueue=prepareAnimQueueLogs(queue,nextGs,visibleLogRef.current);
-    turnHighlightLockRef.current=gs?.currentTurn??null;
-    const firstTurnHighlight=resolveTurnHighlightForStep(preparedQueue[0],nextGs,gs?.players||[]);
-    if(firstTurnHighlight!=null)turnHighlightLockRef.current=firstTurnHighlight;
-    pendingGsRef.current=nextGs;
-    animQueueRef.current=[...preparedQueue.slice(1)];
-    animCallbackRef.current=wrappedCallback;
-    setAnim(preparedQueue[0]);
-    revealAnimLogs(preparedQueue[0]);
-  }
 
   // Detect stuck state: AI's turn but phase is not AI_TURN (e.g. got stuck in DRAW_REVEAL)
   // This can happen in rare edge cases; recover by forcing the turn to advance
@@ -5063,10 +4942,43 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
   const autoDiscardRef=useRef(null);
   const latestGsRef=useRef(null); // always mirrors latest gs for closures reading stale state
   latestGsRef.current=gs; // 同步更新：渲染期间直接镜像，确保 confirmDiscard 等闭包读到最新值
-  const suppressNextBroadcastRef=useRef(false); // set before bystander-anim pendingGs; cleared in advanceQueue
   const mpCthDecisionTimerRef=useRef(null);
-  const turnHighlightLockRef=useRef(null);
-  const visualPlayersLockRef=useRef(null);
+
+  // 1. 兜底与静默同步：当没有动画在播放时，且不处于AI回合（AI回合中draw效果已bake进gs但动画尚未开始），UI 强制对齐真实的底层数据
+  useEffect(() => {
+    if (gs?.players && (!anim && (!animQueueRef.current || animQueueRef.current.length === 0))) {
+      if (gs.phase === 'AI_TURN') return;
+      setDisplayStats(gs.players.map(p => ({ hp: p.hp, san: p.san })));
+    }
+  }, [gs?.players, anim, gs?.phase]);
+
+  // 2. 动画期间的精准延迟对齐：当播放某个角色的受击/治疗动画时，延迟 350ms 更新显示数值
+  useEffect(() => {
+    if (anim && anim.targetStats) {
+      const targets = new Set();
+      if (anim.targetPid !== undefined) targets.add(anim.targetPid);
+      if (anim.targetIdx !== undefined) targets.add(anim.targetIdx);
+      if (Array.isArray(anim.targets)) anim.targets.forEach(t => targets.add(t));
+      if (anim.triggerPid !== undefined) targets.add(anim.triggerPid);
+      if (anim.hitIndices && Array.isArray(anim.hitIndices)) anim.hitIndices.forEach(hi => targets.add(hi));
+
+      if (targets.size > 0) {
+        const ts = anim.targetStats;
+        const timer = setTimeout(() => {
+          setDisplayStats(prev => {
+            const next = [...prev];
+            targets.forEach(pid => {
+              if (next[pid] && ts[pid]) {
+                next[pid] = { hp: ts[pid].hp, san: ts[pid].san };
+              }
+            });
+            return next;
+          });
+        }, 350);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [anim]);
 
   // ── 房间倒计时显示（前端独立计时，服务端计时器版本号变化时重置）───
   useEffect(()=>{
@@ -7525,6 +7437,9 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         ?pendingGs.abilityData?.godCard
         :pendingGs.drawReveal?.card;
       if(drawnCard){
+        if(pendingGs._playersBeforeThisDraw){
+          visualPlayersLockRef.current=copyPlayers(pendingGs._playersBeforeThisDraw);
+        }
         // 遮蔽真实 phase，动画结束后 advanceQueue 再还原（与 applyNextTurnGs 同样模式）
         suppressNextBroadcastRef.current=true; // pendingGs 已广播过，advanceQueue 不再回传
         pendingGsRef.current=pendingGs;
@@ -7561,7 +7476,13 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       }
       return;
     }
-    if(pendingGs.drawReveal?.card){
+    const localDrawnCard=pendingGs.phase==='GOD_CHOICE'
+      ?pendingGs.abilityData?.godCard
+      :(pendingGs.drawReveal?.card||pendingGs._drawnCard||null);
+    if(localDrawnCard){
+      if(pendingGs._playersBeforeThisDraw){
+        visualPlayersLockRef.current=copyPlayers(pendingGs._playersBeforeThisDraw);
+      }
       // Normal draw: YOUR_TURN → card flip → apply state
       const drawStatQ=bindAnimLogChunks(
         buildAnimQueue({...gs,players:pendingGs._playersBeforeThisDraw||gs.players},pendingGs),
@@ -7569,14 +7490,11 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       );
       triggerAnimQueue([
         {type:'YOUR_TURN',msgs:pendingGs._turnStartLogs},
-        {type:'DRAW_CARD',card:pendingGs.drawReveal.card,triggerName:'你',msgs:pendingGs._drawLogs},
+        {type:'DRAW_CARD',card:localDrawnCard,triggerName:'你',targetPid:0,msgs:pendingGs._drawLogs},
         ...drawStatQ
       ],pendingGs);
     }else{
-      // God card drawn: drawReveal is null, card is in abilityData.godCard
-      const godCard=pendingGs.abilityData?.godCard;
       const queue=[{type:'YOUR_TURN',msgs:pendingGs._turnStartLogs}];
-      if(godCard) queue.push({type:'DRAW_CARD',card:godCard,triggerName:'你',msgs:pendingGs._drawLogs});
       queue.push(...bindAnimLogChunks(
         buildAnimQueue({...gs,players:pendingGs._playersBeforeThisDraw||gs.players},pendingGs),
         {statLogs:pendingGs._statLogs}

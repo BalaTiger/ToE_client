@@ -213,9 +213,9 @@ export function StartScreen({
             >
               <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at center, rgba(255,255,255,0.03) 0%, transparent 62%)', pointerEvents: 'none' }} />
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: Math.round(lerp(8, 12, startWideProgress)), marginBottom: Math.round(lerp(6, 8, startWideProgress)) }}>
-                <img src="/img/title/title_rule.png" alt="" style={{ width: Math.round(lerp(64, 96, startWideProgress)), opacity: 0.78 }} />
+                <div style={{ width: Math.round(lerp(64, 96, startWideProgress)), height: 3, background: 'linear-gradient(180deg, transparent 0%, rgba(176,142,92,0.16) 18%, rgba(176,142,92,0.82) 50%, rgba(176,142,92,0.24) 82%, transparent 100%)', boxShadow: '0 0 8px rgba(126,93,48,0.2)' }} />
                 <div style={{ fontFamily: "'Noto Serif SC','SimSun',serif", fontSize: Math.round(lerp(14, 18, startWideProgress)), color: '#c8b08b', letterSpacing: Math.round(lerp(3, 6, startWideProgress)), fontWeight: 700 }}>规则要点</div>
-                <img src="/img/title/title_rule.png" alt="" style={{ width: Math.round(lerp(64, 96, startWideProgress)), opacity: 0.78, transform: 'scaleX(-1)' }} />
+                <div style={{ width: Math.round(lerp(64, 96, startWideProgress)), height: 3, background: 'linear-gradient(180deg, transparent 0%, rgba(176,142,92,0.16) 18%, rgba(176,142,92,0.82) 50%, rgba(176,142,92,0.24) 82%, transparent 100%)', boxShadow: '0 0 8px rgba(126,93,48,0.2)' }} />
               </div>
               <div style={{ display: 'grid', gap: Math.round(lerp(4, 5, startWideProgress)), textAlign: 'left', position: 'relative' }}>
                 {startRules.map((rule, i) => (
