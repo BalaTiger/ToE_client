@@ -104,6 +104,7 @@ import { GodResurrectionAnim, TreasureMapAnim, CthulhuResurrectionAnim, RoleReve
 import { TitleCandleFlames } from './components/anim/TitleCandleFlames';
 import { AnimOverlay } from './components/anim/AnimOverlay';
 import { formatFileSize, useResourcePreload } from './hooks/useResourcePreload';
+import { useMultiplayerLobby } from './hooks/useMultiplayerLobby';
 
 // Ellipsis component for loading animation
 function Ellipsis() {
@@ -3304,33 +3305,41 @@ export default function Game(){
       clearInterval(intervalId);
     };
   },[SERVER_URL]);
-  const [playerUUID,setPlayerUUID]=useState(()=>safeLS.get('cthulhu_player_uuid')||null);
-  const playerUUIDRef=useRef(safeLS.get('cthulhu_player_uuid')||null);
-  const [multiLoading,setMultiLoading]=useState(false);
-  const [toasts,setToasts]=useState([]);
-  const [roomModal,setRoomModal]=useState(null);
-  const roomModalRef=useRef(null);
-  useEffect(()=>{roomModalRef.current=roomModal;},[roomModal]);
-  const [connErrModal,setConnErrModal]=useState(false);
   const socketRef=useRef(null);
   const connTimeoutRef=useRef(null);
-  // 联机选项界面状态
-  const [onlineOptionsModal,setOnlineOptionsModal]=useState(false);
-  const [playerUsername,setPlayerUsername]=useState('');
-  const [playerUsernameSpecial,setPlayerUsernameSpecial]=useState(false);
-  const [renameInput,setRenameInput]=useState('');
-  const [renameCdActive,setRenameCdActive]=useState(false);
-  const [renameInputVisible,setRenameInputVisible]=useState(false);
-  const renameCdTimerRef=useRef(null);
-  const [joinRoomInput,setJoinRoomInput]=useState('');
-  // 游戏大厅状态
-  const [lobbyModal,setLobbyModal]=useState(false);
-  const [lobbyRooms,setLobbyRooms]=useState([]);
-  const [lobbyLoading,setLobbyLoading]=useState(false);
-  // 房间隐私状态
-  const [showPrivacyToggleConfirm,setShowPrivacyToggleConfirm]=useState(false);
-  const [privacyWarnDontShow,setPrivacyWarnDontShow]=useState(false); // checkbox state for modal
-  const [skipPrivacyWarning,setSkipPrivacyWarning]=useState(()=>safeLS.get('cthulhu_skip_privacy_warning')||false);
+  const {
+    playerUUID, setPlayerUUID, playerUUIDRef,
+    multiLoading, setMultiLoading,
+    toasts, addToast,
+    roomModal, setRoomModal, roomModalRef,
+    connErrModal, setConnErrModal,
+    onlineOptionsModal, setOnlineOptionsModal,
+    playerUsername, setPlayerUsername,
+    playerUsernameSpecial, setPlayerUsernameSpecial,
+    renameInput, setRenameInput,
+    renameCdActive,
+    renameInputVisible, setRenameInputVisible,
+    joinRoomInput, setJoinRoomInput,
+    lobbyModal, setLobbyModal,
+    lobbyRooms, setLobbyRooms,
+    lobbyLoading, setLobbyLoading,
+    showPrivacyToggleConfirm, setShowPrivacyToggleConfirm,
+    privacyWarnDontShow, setPrivacyWarnDontShow,
+    handleCreateRoom,
+    handleJoinRoom,
+    handleSetReady,
+    closeOnlineOptions,
+    handleOpenLobby,
+    handleRefreshLobby,
+    handleJoinLobbyRoom,
+    closeLobbyModal,
+    handleTogglePrivacy,
+    handleConfirmPrivacyToggle,
+    handleCancelPrivacyToggle,
+    handleRename,
+    handleRandomUsername,
+    closeRoomModal,
+  } = useMultiplayerLobby({ socketRef });
   // 联机多人游戏状态
   const [isMultiplayer,setIsMultiplayer]=useState(false);
   const isMultiplayerRef=useRef(false);  // 供 socket 闭包读取最新值
@@ -3376,12 +3385,6 @@ export default function Game(){
     document.body.style.filter=gammaFilter||'';
     return()=>{document.body.style.filter='';};
   },[gammaFilter]);
-
-  function addToast(text){
-    const id=Date.now()+Math.random();
-    setToasts(prev=>[...prev,{id,text}]);
-    setTimeout(()=>setToasts(prev=>prev.filter(t=>t.id!==id)),4500);
-  }
 
   // Dynamically load socket.io-client from CDN (skipped in Artifact environment)
   function loadSocketIO(){
@@ -3715,28 +3718,6 @@ export default function Game(){
     });
   }
 
-  // 联机选项界面 → 创建房间
-  function handleCreateRoom(){
-    if(!socketRef.current)return;
-    socketRef.current.emit('createRoom',{uuid:playerUUID});
-    setMultiLoading(true);
-  }
-
-  // 联机选项界面 → 加入房间
-  function handleJoinRoom(){
-    if(!socketRef.current)return;
-    const rid=joinRoomInput.trim();
-    if(!rid){addToast('请输入房间号');return;}
-    socketRef.current.emit('joinRoom',{uuid:playerUUID,roomId:rid});
-    setMultiLoading(true);
-  }
-
-  // 准备 / 取消准备
-  function handleSetReady(ready){
-    if(!socketRef.current||!playerUUID)return;
-    socketRef.current.emit('setReady',{uuid:playerUUID,ready});
-  }
-
   // 表情：点击 emoji → 加入批次队列 → 300ms 内 flush 打包发送
   function handleEmojiClick(emoji){
     if(emojiClickDebounceRef.current)return;
@@ -3749,101 +3730,6 @@ export default function Game(){
     // 立即发送，不使用队列，避免重复
     socketRef.current.emit('emojiSend',{uuid:playerUUIDRef.current,roomId:roomModalRef.current.roomId,emojis:[emoji]});
     setTimeout(()=>{emojiClickDebounceRef.current=null;},300);
-  }
-
-  // 关闭联机选项界面
-  function closeOnlineOptions(){
-    setOnlineOptionsModal(false);
-    if(renameCdTimerRef.current){clearTimeout(renameCdTimerRef.current);renameCdTimerRef.current=null;}
-    setRenameCdActive(false);
-    if(socketRef.current){socketRef.current.disconnect();socketRef.current=null;}
-  }
-
-  // 打开游戏大厅
-  function handleOpenLobby(){
-    if(!socketRef.current)return;
-    setLobbyLoading(true);
-    socketRef.current.emit('getLobbyRooms');
-    setLobbyModal(true);
-  }
-
-  // 刷新游戏大厅房间列表
-  function handleRefreshLobby(){
-    if(!socketRef.current)return;
-    setLobbyLoading(true);
-    socketRef.current.emit('getLobbyRooms');
-  }
-
-  // 从游戏大厅加入房间
-  function handleJoinLobbyRoom(roomId){
-    if(!socketRef.current)return;
-    socketRef.current.emit('joinRoom',{uuid:playerUUID,roomId:roomId});
-    setMultiLoading(true);
-    setLobbyModal(false);
-  }
-
-  // 关闭游戏大厅
-  function closeLobbyModal(){
-    setLobbyModal(false);
-  }
-
-  // 切换房间隐私状态
-  function handleTogglePrivacy(isPrivate){
-    if(!socketRef.current||!roomModal)return;
-    
-    // 从私密切换为公开，且用户未勾选过"下次不再提示"，则弹出确认框
-    if(!isPrivate && !skipPrivacyWarning){
-      setPrivacyWarnDontShow(false); // 每次弹出时重置勾选状态
-      setShowPrivacyToggleConfirm(true);
-    }else{
-      // 直接切换（公开→私密，或已选择不再提示）
-      socketRef.current.emit('toggleRoomPrivacy',{uuid:playerUUID,roomId:roomModal.roomId,isPrivate});
-    }
-  }
-
-  // 确认切换隐私状态
-  function handleConfirmPrivacyToggle(){
-    if(!socketRef.current||!roomModal)return;
-    
-    // 只有勾选了"下次不再提示"时才记录
-    if(privacyWarnDontShow){
-      setSkipPrivacyWarning(true);
-      safeLS.set('cthulhu_skip_privacy_warning',true);
-    }
-    
-    // 执行切换
-    socketRef.current.emit('toggleRoomPrivacy',{uuid:playerUUID,roomId:roomModal.roomId,isPrivate:false});
-    setShowPrivacyToggleConfirm(false);
-  }
-
-  // 取消切换隐私状态
-  function handleCancelPrivacyToggle(){
-    setShowPrivacyToggleConfirm(false);
-  }
-
-  function startRenameCooldown(){
-    setRenameCdActive(true);
-    renameCdTimerRef.current=setTimeout(()=>{
-      setRenameCdActive(false);
-      renameCdTimerRef.current=null;
-    },5000);
-  }
-
-  // 点击"修改"用户名
-  function handleRename(){
-    if(renameCdActive||!socketRef.current)return;
-    socketRef.current.emit('renameUser',{uuid:playerUUID,newName:renameInput});
-    startRenameCooldown();
-  }
-
-  function handleRandomUsername(){
-    if(!socketRef.current)return;
-    socketRef.current.emit('randomUsername',{uuid:playerUUID});
-  }
-
-  function closeRoomModal(){
-    setRoomModal(null);
-    if(socketRef.current){socketRef.current.disconnect();socketRef.current=null;}
   }
   const selfPanelRef=useRef(null);
   const emojiButtonRef=useRef(null);
