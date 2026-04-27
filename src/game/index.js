@@ -3,3 +3,4 @@ export * from './coreUtils';
 export * from './ai';
 export * from './setup';
 export * from './animQueueCore';
+export * from './turnAnimState';
