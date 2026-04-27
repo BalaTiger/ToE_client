@@ -39,7 +39,7 @@ function RoomModal({
   const myReady = myPlayerRec?.ready || false;
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 1500, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
+    <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 1500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div onClick={e => e.stopPropagation()} style={{
         background: '#0e0a14', border: '2px solid #7a50b0', borderRadius: 6,
         padding: '32px 36px', maxWidth: 420, width: '90%',
