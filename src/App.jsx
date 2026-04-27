@@ -51,6 +51,9 @@ import {
   isCultistEndingTurnUnreasonable,
   mkDeck,
   mkRoles,
+  buildAnimQueue,
+  buildFullHandSwapTransferQueueFromLogs,
+  buildAiHuntEventAnimQueue,
 } from "./game";
 import {
   rotateGsForViewer,
@@ -2524,15 +2527,6 @@ function convertGodFollower(targetIndex,startIndex,P,D,Disc,L,inspectionMeta,log
 //  ANIMATION SYSTEM  ─ queue-based, game freezes until all done
 // ══════════════════════════════════════════════════════════════
 
-// Evil card types: cause HP or SAN damage to others
-const EVIL_TYPES=new Set([
-  'selfDamageHP','selfDamageSAN','selfDamageHPSAN',
-  'selfDamageDiscardHP','selfDamageDiscardSAN',
-  'selfDamageRestHP','selfDamageRestSAN','adjDamageHP','adjDamageSAN','adjDamageBoth',
-  'allDamageHP','allDamageSAN','allDamageBoth','allDiscard','selfRenounceGod',
-]);
-
-
 // Duration (ms) per animation type
 const AI_AUTO_STEP_DELAY=900;
 const AI_PICK_STEP_DELAY=1300;
@@ -2607,168 +2601,6 @@ function buildPlayerTurnDrawQueue(oldGs,newGs,seedQueue=[]){
     queue.push(...statQ);
   }
   return queue;
-}
-
-function buildAnimQueue(oldGs,newGs){
-  const q=[];
-  const newInspectionEvents=(newGs?._inspectionEvents||[]).filter(ev=>ev?.seq>(oldGs?._inspectionSeq||0));
-  const effectivePlayers=newInspectionEvents[0]?.beforePlayers||newGs.players;
-  const effectiveLog=newInspectionEvents[0]?.beforeLog||newGs.log;
-  const newMsgs=effectiveLog.slice(oldGs.log.length);
-  // 当回合交接时因首牌强制触发效果（如扭伤）直接导致游戏结束，必须补全飞牌和回合展示动画
-  if(newGs.gameOver && newGs.currentTurn !== oldGs.currentTurn){
-    const dCard = newGs._aiDrawnCard || newGs._drawnCard || newGs.drawReveal?.card;
-    if(dCard){
-      q.push({type:'YOUR_TURN', name:newGs.players[newGs.currentTurn]?.name||'???', msgs: newGs._turnStartLogs||[]});
-      q.push({type:'DRAW_CARD', card: dCard, triggerName: newGs.players[newGs.currentTurn]?.name||'???', targetPid: newGs.currentTurn, msgs: newGs._drawLogs||[]});
-    }
-  }
-  const deathIdx=effectivePlayers.reduce((acc,p,i)=>{if(oldGs.players[i]&&!oldGs.players[i].isDead&&p.isDead)acc.push(i);return acc;},[]);
-  const _ts=effectivePlayers.map(p=>({hp:p.hp,san:p.san,isDead:p.isDead}));
-  const hpHealIdx=effectivePlayers.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.hp>oldGs.players[i].hp)acc.push(i);return acc;},[]);
-  const sanHealIdx=effectivePlayers.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.san>oldGs.players[i].san)acc.push(i);return acc;},[]);
-  const sameHealTargets=hpHealIdx.length&&sanHealIdx.length&&hpHealIdx.length===sanHealIdx.length&&hpHealIdx.every((v,i)=>v===sanHealIdx[i]);
-  const hpHitIdx=effectivePlayers.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.hp<oldGs.players[i].hp)acc.push(i);return acc;},[]);
-  if(hpHitIdx.length) q.push({type:'HP_DAMAGE',msgs:newMsgs,hitIndices:hpHitIdx,targetStats:_ts});
-  if(sameHealTargets){
-    q.push({type:'HP_SAN_HEAL',msgs:newMsgs,hitIndices:hpHealIdx,targetStats:_ts});
-  }else{
-    if(hpHealIdx.length) q.push({type:'HP_HEAL',msgs:newMsgs,hitIndices:hpHealIdx,targetStats:_ts});
-    if(sanHealIdx.length) q.push({type:'SAN_HEAL',msgs:newMsgs,hitIndices:sanHealIdx,targetStats:_ts});
-  }
-  const sanHitIdx=effectivePlayers.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.san<oldGs.players[i].san)acc.push(i);return acc;},[]);
-  if(sanHitIdx.length) q.push({type:'SAN_DAMAGE',msgs:newMsgs,hitIndices:sanHitIdx,targetStats:_ts});
-  if(deathIdx.length){
-    q.push({type:'GUILLOTINE',msgs:newMsgs,hitIndices:deathIdx,targetStats:_ts});
-    q.push({type:'DEATH',msgs:newMsgs,hitIndices:deathIdx,targetStats:_ts});
-  }
-  // 仅在地动山摇效果实际结算时播放，不因追捕亮牌等日志文本误触发
-  if((newGs._earthquakeSeq||0)!==(oldGs._earthquakeSeq||0)){
-    q.push({type:'EARTHQUAKE',msgs:newMsgs});
-  }
-  const fullHandSwapMsg=newMsgs.find(m=>m.includes('交换了全部手牌'));
-  if(fullHandSwapMsg){
-    const swapMatch=fullHandSwapMsg.match(/^(.+?) 与 (.+?) 交换了全部手牌/);
-    const fromName=swapMatch?.[1];
-    const toName=swapMatch?.[2];
-    const resolveSwapPid=(name)=>{
-      if(!name)return-1;
-      if(name==='你')return 0;
-      return effectivePlayers.findIndex(p=>p?.name===name);
-    };
-    const fromPid=resolveSwapPid(fromName);
-    const toPid=resolveSwapPid(toName);
-    if(fromPid>=0&&toPid>=0&&oldGs.players[fromPid]&&oldGs.players[toPid]){
-      q.push({type:'CARD_TRANSFER',fromPid,dest:'player',toPid,count:oldGs.players[fromPid].hand.length});
-      q.push({type:'CARD_TRANSFER',fromPid:toPid,dest:'player',toPid:fromPid,count:oldGs.players[toPid].hand.length});
-      return q;
-    }
-  }
-  // Detect hand card losses → CARD_TRANSFER
-  const losers=effectivePlayers.filter((p,i)=>oldGs.players[i]&&p.hand.length<oldGs.players[i].hand.length);
-  if(losers.length===1){
-    // 普通单向手牌减少（追捕没收、蛊惑、弃牌等）
-    const li=effectivePlayers.indexOf(losers[0]);
-    const count=(oldGs.players[li].hand.length-effectivePlayers[li].hand.length);
-    let dest='discard',toPid=null;
-    for(let j=0;j<effectivePlayers.length;j++){
-      if(j===li||!oldGs.players[j])continue;
-      if(effectivePlayers[j].hand.length>oldGs.players[j].hand.length){dest='player';toPid=j;break;}
-    }
-    if(dest==='discard'){
-      const oldGZ=oldGs.players[li].godZone?.length||0;
-      const newGZ=effectivePlayers[li].godZone?.length||0;
-      if(newGZ>oldGZ)dest='godzone';
-    }
-    // 死亡角色的手牌放入弃牌堆时不生成飞牌动画（追捕击杀的飞牌动画在 buildAiHuntEventAnimQueue 中单独处理）
-    if (!effectivePlayers[li]?.isDead) {
-      q.push({type:'CARD_TRANSFER',fromPid:li,dest,toPid,count});
-    }
-  }else if(losers.length===2){
-    // 双向交换（掉包）：为双方各生成一条飞牌动画
-    // A→B（发动者把牌给目标），B→A（目标的牌到发动者）
-    losers.forEach(loser=>{
-      const li=effectivePlayers.indexOf(loser);
-      const toPid=effectivePlayers.findIndex((p,j)=>j!==li&&oldGs.players[j]&&p.hand.length>oldGs.players[j].hand.length);
-      if(toPid<0)return;
-      const count=oldGs.players[li].hand.length-effectivePlayers[li].hand.length;
-      q.push({type:'CARD_TRANSFER',fromPid:li,dest:'player',toPid,count});
-    });
-  }
-  return q;
-}
-
-function buildFullHandSwapTransferQueueFromLogs(logs, players){
-  const fullHandSwapMsg=(Array.isArray(logs)?logs:[]).find(
-    line=>typeof line==='string'&&line.includes('交换了全部手牌')
-  );
-  if(!fullHandSwapMsg||!Array.isArray(players))return [];
-  const swapMatch=fullHandSwapMsg.match(/^(.+?) 与 (.+?) 交换了全部手牌/);
-  const fromName=swapMatch?.[1];
-  const toName=swapMatch?.[2];
-  const resolveSwapPid=(name)=>{
-    if(!name)return-1;
-    if(name==='你')return 0;
-    return players.findIndex(p=>p?.name===name);
-  };
-  const fromPid=resolveSwapPid(fromName);
-  const toPid=resolveSwapPid(toName);
-  if(fromPid<0||toPid<0||!players[fromPid]||!players[toPid])return [];
-  return [
-    {type:'CARD_TRANSFER',fromPid,dest:'player',toPid,count:players[fromPid].hand.length},
-    {type:'CARD_TRANSFER',fromPid:toPid,dest:'player',toPid:fromPid,count:players[toPid].hand.length,msgs:[fullHandSwapMsg]},
-  ];
-}
-
-function buildAiHuntEventAnimQueue(evt, actorName){
-  const huntMsgs=Array.isArray(evt.msgs)&&evt.msgs.length?[evt.msgs[0]]:[];
-  const followupMsgs=Array.isArray(evt.msgs)?evt.msgs.slice(1):[];
-  const perHuntQueue=[{type:'SKILL_HUNT',msgs:huntMsgs,_logChunk:huntMsgs,targetIdx:evt.targetIdx>=0?evt.targetIdx:1}];
-  const takeFollowup=(predicate)=>{
-    const idx=followupMsgs.findIndex(predicate);
-    if(idx<0)return [];
-    return followupMsgs.splice(idx,1);
-  };
-  if(evt.discardedCard){
-    const discardChunk=takeFollowup(line=>/^弃 \[/.test(line||''));
-    perHuntQueue.push({type:'DISCARD',card:evt.discardedCard,triggerName:actorName||'???',targetPid:evt.hunterIdx,_logChunk:discardChunk});
-    if(evt.afterDiscardPlayers){
-      perHuntQueue.push({type:'STATE_PATCH',players:evt.afterDiscardPlayers,discard:evt.afterDiscardDiscard});
-    }
-  }
-  if(evt.beforePlayers&&evt.afterPlayers){
-    if(evt.afterPlayers[evt.targetIdx]?.isDead && evt.hunterIdx!=null){
-      const hunterBefore=evt.beforePlayers[evt.hunterIdx]?.hand?.length||0;
-      const hunterAfter=evt.afterPlayers[evt.hunterIdx]?.hand?.length||0;
-      const cardsTaken=Math.max(0,hunterAfter-hunterBefore+(evt.discardedCard?1:0));
-      if(cardsTaken>0){
-        perHuntQueue.push({type:'CARD_TRANSFER',fromPid:evt.targetIdx,dest:'player',toPid:evt.hunterIdx,count:cardsTaken});
-      }
-    }
-    const beforeLog=Array.isArray(evt.beforeLog)?evt.beforeLog:[];
-    const afterLog=Array.isArray(evt.afterLog)?evt.afterLog:[...beforeLog,...(evt.msgs||[])];
-    const resultQueue=buildAnimQueue(
-      {players:evt.beforePlayers,log:beforeLog},
-      {players:evt.afterPlayers,log:afterLog}
-    );
-    const resultWithChunks=resultQueue
-      .filter(step=>!(evt.discardedCard&&step.type==='CARD_TRANSFER'&&step.fromPid===evt.hunterIdx&&step.dest==='discard'))
-      .map(step=>({...step}));
-    if(followupMsgs.length){
-      const firstVisibleIdx=resultWithChunks.findIndex(step=>step.type!=='STATE_PATCH');
-      if(firstVisibleIdx>=0){
-        resultWithChunks[firstVisibleIdx]._logChunk=[
-          ...(Array.isArray(resultWithChunks[firstVisibleIdx]._logChunk)?resultWithChunks[firstVisibleIdx]._logChunk:[]),
-          ...followupMsgs,
-        ];
-      }
-    }
-    perHuntQueue.push(...resultWithChunks);
-    perHuntQueue.push({type:'STATE_PATCH',players:evt.afterPlayers,discard:evt.afterResultDiscard});
-  }else if(followupMsgs.length){
-    perHuntQueue.push({type:'TURN_BOUNDARY_PAUSE',_logChunk:[...followupMsgs]});
-  }
-  return perHuntQueue;
 }
 
 // ── Bewitch effect description helper ─────────────────────────

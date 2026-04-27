@@ -44,6 +44,7 @@ src/
 │  ├─ index.js          # 桶文件，统一导出game下所有模块
 │  ├─ ai.js            # AI决策策略、评分器、目标选择
 │  ├─ animLogs.js      # 动画日志编排辅助函数
+│  ├─ animQueueCore.js # 动画队列核心纯函数（状态差分 -> 动画步骤）
 │  ├─ animQueueHelpers.js  # 动画队列外围辅助函数
 │  ├─ coreUtils.js     # 洗牌、拷贝、区域牌判断等规则工具
 │  ├─ rotateState.js   # 联机视角旋转、seat语义判断
@@ -186,6 +187,7 @@ App.jsx 通过 `import { xxx } from './game'` 统一导入，便于扩展和维�
 - 规则纯函数 -> `game/coreUtils.js`
 - AI 策略与评分器 -> `game/ai.js`
 - 开局生成 -> `game/setup.js`
+- 动画队列核心纯函数 -> `game/animQueueCore.js`
 - 联机视角旋转与 seat helper -> `game/rotateState.js`
 - 动画日志辅助 -> `game/animLogs.js`
 - 动画队列外围辅助 -> `game/animQueueHelpers.js`
