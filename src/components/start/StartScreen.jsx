@@ -172,9 +172,9 @@ export function StartScreen({
                   }}
                 >
                   <img src={role.icon} alt="" style={{ width: Math.round(lerp(24, 42, startWideProgress)), height: Math.round(lerp(24, 42, startWideProgress)), objectFit: 'contain', marginBottom: Math.round(lerp(4, 8, startWideProgress)), filter: 'drop-shadow(0 0 8px rgba(0,0,0,0.28))' }} />
-                  <div style={{ transform: `scale(${lerp(0.85, 1, startWideProgress)})`, transformOrigin: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '130%' }}>
+                  <div style={{ transform: `scale(${lerp(0.85, 1, startWideProgress)})`, transformOrigin: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '130%', WebkitTextSizeAdjust: '100%', textSizeAdjust: '100%' }}>
                     <div style={{ fontFamily: "'Noto Serif SC','SimSun',serif", fontSize: Math.round(lerp(13, 18, startWideProgress)), color: role.accent, letterSpacing: Math.round(lerp(1, 3, startWideProgress)), marginBottom: 4, fontWeight: 700, whiteSpace: 'nowrap' }}>{role.key}</div>
-                    <div style={{ fontFamily: "'Noto Serif SC','SimSun',serif", fontSize: Math.round(lerp(11, 13, startWideProgress)), color: '#ceb083', letterSpacing: Math.round(lerp(role.goal.length > 5 ? 0 : 1, 2, startWideProgress)), lineHeight: 1.35, whiteSpace: 'nowrap', transform: role.goal.length > 5 ? `scale(${lerp(0.75, 1, startWideProgress)})` : 'none', wordBreak: 'keep-all' }}>{role.goal}</div>
+                    <div style={{ fontFamily: "'Noto Serif SC','SimSun',serif", fontSize: Math.round(lerp(11, 13, startWideProgress)), color: '#ceb083', letterSpacing: Math.round(lerp(role.goal.length > 5 ? 0 : 1, 2, startWideProgress)), lineHeight: 1.35, whiteSpace: 'nowrap', wordBreak: 'keep-all' }}>{role.goal}</div>
                   </div>
                 </div>
               ))}
