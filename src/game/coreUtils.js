@@ -165,3 +165,27 @@ export const getNextLivingIndex = (players, ci) => {
   }
   return null;
 };
+
+export function killPlayerState(P, i, Disc, L) {
+  if (i == null || !P[i] || P[i].isDead) return;
+  P[i]._pendingAnimDeath = true;
+  P[i].isDead = true;
+  P[i].roleRevealed = true;
+  L.push(`☠ ${P[i].name}（${P[i].role}）倒下了！`);
+  Disc.push(...P[i].hand);
+  P[i].hand = [];
+  if (P[i].godZone?.length) {
+    Disc.push(...P[i].godZone);
+    P[i].godZone = [];
+    P[i].godName = null;
+    P[i].godLevel = 0;
+  }
+}
+
+export function clearPendingAnimDeathFlags(players, preservePid = null) {
+  return (players || []).map((p, idx) => {
+    if (!p) return p;
+    if (p._pendingAnimDeath && idx !== preservePid) return { ...p, _pendingAnimDeath: false };
+    return { ...p };
+  });
+}
