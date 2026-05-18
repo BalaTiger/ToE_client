@@ -1,10 +1,10 @@
-import { GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG } from './components/cards';
+import { GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay } from './components/cards';
 import { GodChoiceModal, NyaBorrowModal, DrawRevealModal, TreasureDodgeModal, PeekHandModal, TortoiseOracleModal, AboutModal, FullLogModal, RoadmapModal } from './components/modals';
 import { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel } from './components/board';
 import { RoomModal, LobbyModal, PrivacyToggleModal, TutorialOverlay, ConnectionErrorModal, DebugControls } from './components/lobby';
 import { StartScreen } from './components/start/StartScreen';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import ReactDOM from "react-dom";
+import { createPortal } from "react-dom";
 import html2canvas from "html2canvas";
 // socket.io-client is loaded at runtime via CDN (only outside Claude Artifacts)
 
@@ -2700,7 +2700,7 @@ function GammaSlider({gamma,onChange}){
   const [hover,setHover]=useState(false);
   // Rendered via Portal directly onto document.body so that any CSS filter on ancestor
   // elements does not affect position:fixed coordinates (filter creates a new containing block).
-  return ReactDOM.createPortal(
+  return createPortal(
     <div
       style={{position:'fixed',top:0,left:'50%',transform:'translateX(-50%)',zIndex:1800}}
       onMouseEnter={()=>setHover(true)}
@@ -3085,10 +3085,10 @@ export default function Game(){
     renameCdActive,
     renameInputVisible, setRenameInputVisible,
     joinRoomInput, setJoinRoomInput,
-    lobbyModal, setLobbyModal,
+    lobbyModal,
     lobbyRooms, setLobbyRooms,
     lobbyLoading, setLobbyLoading,
-    showPrivacyToggleConfirm, setShowPrivacyToggleConfirm,
+    showPrivacyToggleConfirm,
     privacyWarnDontShow, setPrivacyWarnDontShow,
     handleCreateRoom,
     handleJoinRoom,
@@ -4179,8 +4179,13 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         const hasFullHandSwap=newMsgs.some(m=>m.includes('交换了全部手牌'));
 
         if(huntEventQueue.length){
-          if(hasFullHandSwap) queue.push(...actionStatQ, ...huntEventQueue);
-          else queue.push(...huntEventQueue);
+          if(hasFullHandSwap){
+            const huntStatHitSet=new Set(huntEventQueue.flatMap(s=>['GUILLOTINE','DEATH','HP_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','SAN_DAMAGE'].includes(s.type)?(s.hitIndices||[]):[]));
+            const dedupedActionStatQ=actionStatQ.filter(s=>!(['GUILLOTINE','DEATH','HP_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','SAN_DAMAGE'].includes(s.type)&&(s.hitIndices||[]).some(i=>huntStatHitSet.has(i))));
+            queue.push(...dedupedActionStatQ, ...huntEventQueue);
+          } else {
+            queue.push(...huntEventQueue);
+          }
         } else if(actionStatQ.length){
           queue.push(...actionStatQ);
         }
@@ -4314,7 +4319,13 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         const hasFullHandSwap=newMsgs.some(m=>m.includes('交换了全部手牌'));
         if(hasActualSwap) queue.push({type:'SKILL_SWAP',msgs:extractSkillLogs(newMsgs,'swap')});
         else if(huntEventQueue.length){
-          orderedActionQ=hasFullHandSwap?[...actionStatQ,...huntEventQueue]:huntEventQueue;
+          if(hasFullHandSwap){
+            const huntStatHitSet=new Set(huntEventQueue.flatMap(s=>['GUILLOTINE','DEATH','HP_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','SAN_DAMAGE'].includes(s.type)?(s.hitIndices||[]):[]));
+            const dedupedActionStatQ=actionStatQ.filter(s=>!(['GUILLOTINE','DEATH','HP_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','SAN_DAMAGE'].includes(s.type)&&(s.hitIndices||[]).some(i=>huntStatHitSet.has(i))));
+            orderedActionQ=[...dedupedActionStatQ,...huntEventQueue];
+          } else {
+            orderedActionQ=huntEventQueue;
+          }
         }
         else if(j.includes('【追捕】')||(j.includes('追捕')&&!j.includes('停止了追捕')&&!j.includes('放弃追捕'))){
           const huntMsg=newMsgs.find(m=>m.includes('【追捕】')||m.includes('追捕'));
@@ -6908,7 +6919,6 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         ];
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
         setAnim({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
-        revealAnimLogs({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
         return;
       }
         if(newGs.phase==='GOD_CHOICE'&&newGs.abilityData?.godCard){
@@ -6930,7 +6940,6 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         ];
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
         setAnim({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
-        revealAnimLogs({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
         return;
       }
       if(playerTurnStartMsgs.length&&newGs.phase==='ACTION'&&(preTurnStatQ.length||drawStatQ.length)){
@@ -6938,7 +6947,6 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         animQueueRef.current=[...preTurnStatQ,...drawStatQ];
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
         setAnim({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
-        revealAnimLogs({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
         return;
       }
     }
@@ -7949,7 +7957,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             ghostMode==='fade'?{animation:'chainExpireFade 720ms ease-out forwards'}:null;
           const bindAnimStyle=ghostMode==='break'?{animation:'chainBindSnap 560ms ease-out forwards'}:
             ghostMode==='fade'?{animation:'chainExpireFade 720ms ease-out forwards'}:null;
-          return ReactDOM.createPortal(
+          return createPortal(
             <div
               key={`link-${link.id}`}
               style={{
@@ -8154,7 +8162,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       </div>
       {/* ── Tutorial steps 2 & 3 (shown over game interface) ── */}
       {/* ── Win Animations ── */}
-      {ReactDOM.createPortal(
+      {createPortal(
         <>
           {!showTutorial&&<HoundsTimerBadge active={!!gs?.houndsOfTindalosActive} secondsLeft={houndsSecLeft}/>}
           {showTutorial&&tutorialStep===2&&(()=>{
@@ -8814,7 +8822,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         {localDebugMode?'Debug: 开':'Debug: 关'}
       </button>
     )}
-    {isMultiplayer&&showEmojiPicker&&ReactDOM.createPortal(
+    {isMultiplayer&&showEmojiPicker&&createPortal(
       <>
         <div onClick={()=>setShowEmojiPicker(false)} style={{position:'fixed',inset:0,zIndex:49}}/>
         <div style={{
