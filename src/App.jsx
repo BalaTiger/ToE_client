@@ -27,7 +27,6 @@ import {
   clamp,
   copyPlayers,
   isZoneCard,
-  isBlankZoneCard,
   isNegativeZoneCard,
   getZoneCardEffectScope,
   zoneCardUsesTargetInteraction,
@@ -61,6 +60,10 @@ import {
   withClearedTurnAnimFields,
   buildLocalCthDecisionState,
   buildPlayerTurnDrawQueue,
+  cardsHuntMatch,
+  moveEligibleBlankZones,
+  clearPlayerGodZone,
+  discardAiHandToLimit,
 } from "./game";
 import {
   rotateGsForViewer,
@@ -132,12 +135,6 @@ const safeLS={
   get:(k)=>{try{return localStorage.getItem(k);}catch{/* ignore */ return null;}},
   set:(k,v)=>{try{localStorage.setItem(k,v);}catch{/* ignore */}},
 };
-const cardsHuntMatch=(a,b)=>{
-  if(!a||!b)return false;
-  if(!isZoneCard(a)||!isZoneCard(b))return true;
-  if(isBlankZoneCard(a)||isBlankZoneCard(b))return true;
-  return a.letter===b.letter||a.number===b.number;
-};
 const LOCAL_DEBUG_KEY='cthulhu_local_debug_mode';
 const DEBUG_FORCE_CARD_KEY='cthulhu_debug_force_card';
 const DEBUG_FORCE_CARD_TARGET_KEY='cthulhu_debug_force_card_target';
@@ -158,26 +155,6 @@ const isLocalDebugEnabled=()=>{
 // Cards: A1×3 A2×3 … D4×3 — 3 copies each, 48 total
 // Each card has exactly 3 copies → 48 cards total.
 // Letter sums: A=12 B=12 C=12 D=12 ✓  Number sums: col1=12 col2=12 col3=12 col4=12 ✓
-function moveEligibleBlankZones(players,log=[]){
-  let changed=false;
-  const P=copyPlayers(players);
-  const L=[...log];
-  P.forEach(player=>{
-    if(!player||player.isDead)return;
-    const blankZones=(player.zoneCards||[]).filter(isBlankZoneCard);
-    if(!blankZones.length)return;
-    if(player.hand.length<=3){
-      blankZones.forEach(blank=>{
-        player.hand.push(blank);
-        L.push(`${player.name} 手牌不大于3张，将空白区域牌收入手牌`);
-      });
-      player.zoneCards=(player.zoneCards||[]).filter(c=>!isBlankZoneCard(c));
-      changed=true;
-    }
-  });
-  return changed?{players:P,log:L}:null;
-}
-
 function shouldDelayHuntLootSelection(players,targetIdx,maxToTake,isMP){
   const target=players?.[targetIdx];
   if(!target?.isDead||!target?.revealHand)return false;
@@ -799,15 +776,6 @@ function startNextTurn(gs){
 // ══════════════════════════════════════════════════════════════
 //  AI STEP
 // ══════════════════════════════════════════════════════════════
-function discardAiHandToLimit(P, ct, Disc, L) {
-  const aiHandLimit = P[ct]._nyaHandLimit ?? 4;
-  while(P[ct].hand.length > aiHandLimit) {
-    const c = P[ct].hand.shift();
-    Disc.push(c);
-    L.push(`${P[ct].name} 弃 ${cardLogText(c, {alwaysShowName:true})}（上限）`);
-  }
-}
-
 function aiStep(gs){
   const{players:ps,currentTurn:ct,abilityData}=gs;
   let P=copyPlayers(ps),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
@@ -1473,15 +1441,6 @@ function aiStep(gs){
   }
 
   return{...nextGs,_animAiDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?null:(gs._aiDrawnCard??gs._drawnCard??null),_animDiscardedDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?false:(gs._discardedDrawnCard??false),_aiName:ai.name,_playersBeforeNextDraw:_P_afterAction,_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard,_aiHuntEvents:aiHuntEvents,_aiHandLimitDiscards:discardedCards};
-}
-
-function clearPlayerGodZone(targetPlayer,discard){
-  if(targetPlayer?.godZone?.length)discard.push(...targetPlayer.godZone);
-  if(targetPlayer){
-    targetPlayer.godZone=[];
-    targetPlayer.godName=null;
-    targetPlayer.godLevel=0;
-  }
 }
 
 function applySanLossToPlayerWithInspection(targetIndex,amount,startIndex,P,D,Disc,L,inspectionMeta){

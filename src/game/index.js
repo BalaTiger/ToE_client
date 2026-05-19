@@ -2,6 +2,7 @@
 export * from './coreUtils';
 export * from './effectEngine';
 export * from './ai';
+export * from './aiTurn';
 export * from './setup';
 export * from './animQueueCore';
 export * from './turnAnimState';
