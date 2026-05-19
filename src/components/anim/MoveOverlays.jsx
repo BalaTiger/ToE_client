@@ -5,17 +5,13 @@ import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom'
 // ── Discard Move Overlay ──────────────────────────────────────
 // Shows a card-back flying from the actor's hand area to the discard pile
 export function DiscardMoveOverlay({ anim, exiting }) {
-  if (!anim) return null;
-  const card = anim.card || null;
-  const s = card ? (card.isGod ? GOD_CS : (CS[card.letter] || null)) : null;
-  const discardCardTitle = card?.isGod ? (card.godKey || 'GOD') : card?.key;
-  const discardCardSubtitle = card?.isGod ? card.name : '';
-  const targetPid = anim.targetPid || 0;
-
-  // Compute start and end positions using actual DOM elements
   const [cardStyle, setCardStyle] = React.useState({});
 
   React.useEffect(() => {
+    if (!anim) return;
+    const card = anim.card || null;
+    const s = card ? (card.isGod ? GOD_CS : (CS[card.letter] || null)) : null;
+    const targetPid = anim.targetPid || 0;
     const discardPos = getPileAnchorCenter(
       '[data-discard-pile]',
       { x: window.innerWidth * 0.35, y: window.innerHeight * 0.50 }
@@ -50,7 +46,13 @@ export function DiscardMoveOverlay({ anim, exiting }) {
         '--ty': `${ty}px`
       });
     }
-  }, [anim, targetPid, s]);
+  }, [anim]);
+
+  if (!anim) return null;
+  const card = anim.card || null;
+  const s = card ? (card.isGod ? GOD_CS : (CS[card.letter] || null)) : null;
+  const discardCardTitle = card?.isGod ? (card.godKey || 'GOD') : card?.key;
+  const discardCardSubtitle = card?.isGod ? card.name : '';
 
   return (
     <div style={{

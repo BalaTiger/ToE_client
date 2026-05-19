@@ -26,7 +26,6 @@ const smallBtnStyle = {
 function RoomModal({
   roomModal,
   playerUUID,
-  playerUUIDRef,
   cdType,
   cdSecondsLeft,
   onClose,
@@ -78,7 +77,7 @@ function RoomModal({
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 12 }}>
             <div style={{ fontFamily: "'Cinzel',serif", fontSize: 10, color: '#8060a0', letterSpacing: 1 }}>房间状态：</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              {roomModal.owner === (playerUUIDRef?.current || playerUUID) ? (
+              {roomModal.owner === playerUUID ? (
                 <button
                   onClick={() => onTogglePrivacy(!roomModal.isPrivate)}
                   title={roomModal.isPrivate ? '切换为公开' : '切换为私密'}

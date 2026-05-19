@@ -1,6 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { CS, GOD_CS, GOD_DEFS } from '../../constants/card';
+import { useCardHoverTooltip } from './useCardHoverTooltip';
 
 function OctopusSVG({col,size=32}){
   return(
@@ -117,30 +118,9 @@ function AreaTooltip({card,position}){
   );
 }
 
-function useCardHoverTooltip() {
-  const [hover, setHover] = React.useState(false);
-  const [tooltipPosition, setTooltipPosition] = React.useState(null);
-  const cardRef = React.useRef(null);
-
-  const handleMouseEnter = () => {
-    setHover(true);
-    if (cardRef.current) {
-      const rect = cardRef.current.getBoundingClientRect();
-      setTooltipPosition(rect);
-    }
-  };
-
-  const handleMouseLeave = () => {
-    setHover(false);
-    setTooltipPosition(null);
-  };
-
-  return { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseLeave };
-}
-
 function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel,frameStyle}){
-  const def=GOD_DEFS[card.godKey];if(!def)return null;
   const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseLeave } = useCardHoverTooltip();
+  const def=GOD_DEFS[card.godKey];if(!def)return null;
   const w=small?44:compact?62:82,h=small?58:compact?82:108;
   const col=def.col;
   // fit text: long subtitle gets smaller font
@@ -221,6 +201,7 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLe
 }
 
 function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel,holderId,frameStyle}){
+  const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseLeave } = useCardHoverTooltip();
   if(!card)return null;
   if(card.isGod) return <GodDDCard card={card} onClick={onClick} disabled={disabled} selected={selected} highlight={highlight} small={small} compact={compact} godLevel={godLevel} frameStyle={frameStyle}/>;
   if(card.type==='blankZone'){
@@ -246,7 +227,6 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
       </div>
     );
   }
-  const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseLeave } = useCardHoverTooltip();
   const s=CS[card.letter]||GOD_CS;
   const w=small?44:compact?62:82,h=small?58:compact?82:108;
   const isRoseThornMarked=card?.roseThornHolderId!=null&&holderId===card.roseThornHolderId;
@@ -329,4 +309,4 @@ function GodCardDisplay({card,level=1}){
     </div>
   );
 }
-export { GodTooltip, AreaTooltip, useCardHoverTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG };
+export { GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG };

@@ -52,8 +52,6 @@ import {
   canCultistEmptyHandByBewitch,
   aiShouldNotRest,
   isCultistEndingTurnUnreasonable,
-  mkDeck,
-  mkRoles,
   initGame,
   INSPECTION_DECK,
   buildAnimQueue,
@@ -2191,37 +2189,35 @@ export default function Game(){
 
   // ── Responsive layout ──────────────────────────────────────
   const {w:vw}=useWindowSize();
-  const isMobile=vw<580;
-const MIN_FONT_VW=480; // 最小字号阈值视口宽度
-  const isVerySmall=vw<MIN_FONT_VW;
-  // Scale ratio for responsive player areas (based on 1200px design width)
   const DESIGN_WIDTH=1200;
-  const scaledAreaSafeInsetX=isMobile?24:12;
-  const narrowDesktopClipFix=vw<=1220;
-  const globalShiftX=narrowDesktopClipFix?Math.min(12,Math.round((1220-vw)*0.5)):0;
-  const rawScale=vw/DESIGN_WIDTH;
-  const shouldScale=vw<DESIGN_WIDTH;
-  const scaleRatio=shouldScale?Math.min(rawScale,1):1;
-  // 基于rem的最小字号（浏览器默认16px）
-  const rem=16;
-  // 基础字号（UI chrome元素，不补偿）
-  const baseFontSizes={
-    title: isMobile?0.75*rem:isVerySmall?0.75*rem:0.875*rem,    // 标题
-    subtitle: isMobile?0.5*rem:isVerySmall?0.5*rem:0.625*rem,   // 副标题
-    body: isMobile?0.625*rem:isVerySmall?0.625*rem:0.6875*rem, // 正文
-    small: isMobile?0.5*rem:isVerySmall?0.5*rem:0.5625*rem,    // 小字
-    tiny: isMobile?0.4375*rem:isVerySmall?0.4375*rem:0.5*rem,  // 极小
-  };
-  // 内容字号（需要补偿缩放）
-  const fontZoomCompensate = scaleRatio < 1 ? 1 / scaleRatio : 1;
-  const fontSizes={
-    title: baseFontSizes.title * fontZoomCompensate,
-    subtitle: baseFontSizes.subtitle * fontZoomCompensate,
-    body: baseFontSizes.body * fontZoomCompensate,
-    small: baseFontSizes.small * fontZoomCompensate,
-    tiny: baseFontSizes.tiny * fontZoomCompensate,
-  };
-  const middleRowHeight=isMobile?248:282;
+  const { isMobile, scaleRatio, baseFontSizes, fontSizes, scaledAreaSafeInsetX, globalShiftX, middleRowHeight } = useMemo(() => {
+    const isMobile = vw < 580;
+    const isVerySmall = vw < 480;
+    const scaledAreaSafeInsetX = isMobile ? 24 : 12;
+    const narrowDesktopClipFix = vw <= 1220;
+    const globalShiftX = narrowDesktopClipFix ? Math.min(12, Math.round((1220 - vw) * 0.5)) : 0;
+    const rawScale = vw / DESIGN_WIDTH;
+    const shouldScale = vw < DESIGN_WIDTH;
+    const scaleRatio = shouldScale ? Math.min(rawScale, 1) : 1;
+    const rem = 16;
+    const baseFontSizes = {
+      title: isMobile ? 0.75 * rem : isVerySmall ? 0.75 * rem : 0.875 * rem,
+      subtitle: isMobile ? 0.5 * rem : isVerySmall ? 0.5 * rem : 0.625 * rem,
+      body: isMobile ? 0.625 * rem : isVerySmall ? 0.625 * rem : 0.6875 * rem,
+      small: isMobile ? 0.5 * rem : isVerySmall ? 0.5 * rem : 0.5625 * rem,
+      tiny: isMobile ? 0.4375 * rem : isVerySmall ? 0.4375 * rem : 0.5 * rem,
+    };
+    const fontZoomCompensate = scaleRatio < 1 ? 1 / scaleRatio : 1;
+    const fontSizes = {
+      title: baseFontSizes.title * fontZoomCompensate,
+      subtitle: baseFontSizes.subtitle * fontZoomCompensate,
+      body: baseFontSizes.body * fontZoomCompensate,
+      small: baseFontSizes.small * fontZoomCompensate,
+      tiny: baseFontSizes.tiny * fontZoomCompensate,
+    };
+    const middleRowHeight = isMobile ? 248 : 282;
+    return { isMobile, scaleRatio, baseFontSizes, fontSizes, scaledAreaSafeInsetX, globalShiftX, middleRowHeight };
+  }, [vw]);
 
   const applyVisibleLogPrefix=useCallback((count,authorityOverride)=>{
     const authority=Array.isArray(authorityOverride)?authorityOverride:(Array.isArray(visibleLogAuthorityRef.current)?visibleLogAuthorityRef.current:[]);
@@ -2595,7 +2591,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
       let cancelled=false;
       requestAnimationFrame(()=>requestAnimationFrame(async ()=>{
         const pts=await Promise.all(anim.hitIndices.map(async idx=>{
-          const el=document.querySelector(`[data-pid="${idx}"]`);
+          const el=document.querySelector(`[data-death-panel="${idx}"]`);
           if(!el)return null;
           const r=_getZoomCompensatedRect(el);
           let snapshotUrl=null;
@@ -2605,7 +2601,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
               backgroundColor:null,
               useCORS:true,
               logging:false,
-              scale:Math.min(window.devicePixelRatio||1,2),
+              scale:1,
             });
             snapshotUrl=canvas.toDataURL("image/png");
           }catch(err){
@@ -3773,7 +3769,6 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         <RoomModal
           roomModal={roomModal}
           playerUUID={playerUUID}
-          playerUUIDRef={playerUUIDRef}
           cdType={cdType}
           cdSecondsLeft={cdSecondsLeft}
           onClose={closeRoomModal}
@@ -6318,7 +6313,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         {/* Middle: self info + deck/discard piles + log */}
         <div style={{display:'flex',gap:isMobile?5:10,flexWrap:'wrap',alignItems:'stretch',width:'100%',justifyContent:'flex-start'}}>
           {/* Self panel - Fixed width, no grow */}
-          <div ref={selfPanelRef} data-pid={0} style={{
+          <div ref={selfPanelRef} data-pid={0} data-death-panel={0} style={{
             background:'#180f07',
             border:`1.5px solid ${hitIndices.includes(0)?'#cc2222':sanHitIndices.includes(0)?'#8840cc':suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'#c8a96e':'#3a2510'}`,
             borderRadius:3,

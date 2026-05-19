@@ -62,6 +62,13 @@ function FlowerBloom(){
 }
 
 function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false}){
+  const [traveled,setTraveled]=React.useState(skipTravel);
+  React.useEffect(()=>{
+    if(skipTravel){setTraveled(true);return undefined;}
+    const t=setTimeout(()=>setTraveled(true),650);
+    return()=>clearTimeout(t);
+  },[skipTravel]);
+
   if(!card) return null;
   const isInspection=!!card.effect;
   const displayTriggerName=isInspection&&(targetPid??0)===0?'你':triggerName;
@@ -81,13 +88,6 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false}){
   const isNeutralInspection=isInspection&&inspectionTone==='neutral';
   const isPositiveInspection=isInspection&&inspectionTone==='positive';
 
-  const [traveled,setTraveled]=React.useState(skipTravel);
-  React.useEffect(()=>{
-    if(skipTravel){setTraveled(true);return undefined;}
-    const t=setTimeout(()=>setTraveled(true),650);
-    return()=>clearTimeout(t);
-  },[skipTravel]);
-
   const getDeckCenter=()=>{
     return getPileAnchorCenter(
       isInspection?'[data-inspection-pile]':'[data-deck-pile]',
@@ -99,13 +99,11 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false}){
   const getHandCenter=pid=>{
     return getPlayerHandAnchorCenter(pid);
   };
-
-  const destStyle=React.useMemo(()=>{
+  const destStyle=(()=>{
     const src=getDeckCenter();
     const dest=getHandCenter(targetPid??0);
     return{'--dest-x':`${dest.x-35}px`,'--dest-y':`${dest.y-47}px`,'--src-x':`${src.x-35}px`,'--src-y':`${src.y-47}px`};
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[]);
+  })();
 
   if(!traveled) return(
     <div style={{position:'fixed',inset:0,zIndex:999,background:'rgba(4,4,2,0)',pointerEvents:'none'}}>

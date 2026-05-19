@@ -157,11 +157,12 @@ const CROSS_POSITIONS=[
   [18,65],[32,50],[50,72],[65,42],[80,60],[22,38],[70,28],[45,82],[55,18],[35,78],
   [75,52],[12,55],[88,35],[42,25],[60,68],
 ];
+const CROSS_SIZES=CROSS_POSITIONS.map(()=>6+(Math.random()*5|0));
 function HealCrossEffect({color='#4ade80'}){
   return(
     <div style={{position:'absolute',inset:0,overflow:'hidden',pointerEvents:'none',zIndex:50}}>
       {CROSS_POSITIONS.map(([lp,tp],i)=>{
-        const sz=6+Math.random()*5|0;
+        const sz=CROSS_SIZES[i];
         const delay=(0.05*i).toFixed(2);
         return(
           <div key={i} style={{
@@ -322,7 +323,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
     ? Math.max(0, Math.ceil(((handCards.length*computedCardWidth)-handStripWidth)/(handCards.length-1)))
     : 0;
   return(
-    <div onClick={isSelectable?onSelect:undefined} style={{
+    <div data-death-panel={playerIndex} onClick={isSelectable?onSelect:undefined} style={{
       width:'100%',
       background:isCurrentTurn?'#1c1408':'#140f08',
       border:`1.5px solid ${borderColor}`,

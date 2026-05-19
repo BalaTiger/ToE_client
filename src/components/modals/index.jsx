@@ -312,7 +312,8 @@ function TortoiseOracleModal({ abilityData, onSelect, myTurn }) {
   const revealedCardsKey = useMemo(() => revealedCards.map(c => c.id ?? c.key).join('|'), [revealedCards]);
 
   useEffect(() => {
-    setRevealedCount(0);
+    const t = setTimeout(() => setRevealedCount(0), 0);
+    return () => clearTimeout(t);
   }, [revealedCardsKey]);
 
   useEffect(() => {
