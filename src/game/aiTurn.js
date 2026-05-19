@@ -2,11 +2,15 @@ import { copyPlayers, isZoneCard, isBlankZoneCard, cardLogText } from './coreUti
 
 /**
  * 检查两张卡是否满足追捕匹配规则。
- * 非区域卡或空白区域卡默认匹配；否则字母或数字相同即匹配。
+ * - 被捕者展示非区域牌：追捕者弃任意牌都成功
+ * - 追捕者弃非区域牌去匹配区域牌：失败
+ * - 空白区域牌默认匹配
+ * - 否则字母或数字相同即匹配
  */
 export function cardsHuntMatch(a, b) {
   if (!a || !b) return false;
-  if (!isZoneCard(a) || !isZoneCard(b)) return true;
+  if (!isZoneCard(b)) return true;      // 被捕者展示非区域牌 → 追捕者弃任意牌成功
+  if (!isZoneCard(a)) return false;     // 追捕者弃非区域牌去匹配区域牌 → 失败
   if (isBlankZoneCard(a) || isBlankZoneCard(b)) return true;
   return a.letter === b.letter || a.number === b.number;
 }
