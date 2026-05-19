@@ -46,7 +46,7 @@ export function formatFileSize(bytes) {
 export function useResourcePreload() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadingProgress, setLoadingProgress] = useState(0);
-  const [loadingError] = useState(null);
+  const [loadingError, setLoadingError] = useState(null);
   const [currentFile, setCurrentFile] = useState('');
   const [totalSize, setTotalSize] = useState(0);
   const [loadedSize, setLoadedSize] = useState(0);
@@ -112,6 +112,7 @@ export function useResourcePreload() {
           setLoadingProgress((loadedCount / totalFiles) * 100);
         } catch (error) {
           console.error(`Failed to load audio: ${file}`, error);
+          setLoadingError(prev => prev || (error?.message ? `音频加载失败: ${error.message}` : '音频加载失败'));
           loadedCount++;
           setLoadingProgress((loadedCount / totalFiles) * 100);
         }
@@ -146,6 +147,7 @@ export function useResourcePreload() {
           setLoadingProgress((loadedCount / totalFiles) * 100);
         } catch (error) {
           console.error(`Failed to load video: ${file}`, error);
+          setLoadingError(prev => prev || (error?.message ? `视频加载失败: ${error.message}` : '视频加载失败'));
           loadedCount++;
           setLoadingProgress((loadedCount / totalFiles) * 100);
         }
@@ -178,6 +180,7 @@ export function useResourcePreload() {
           setLoadingProgress((loadedCount / totalFiles) * 100);
         } catch (error) {
           console.error(`Failed to load image: ${file}`, error);
+          setLoadingError(prev => prev || (error?.message ? `图片加载失败: ${error.message}` : '图片加载失败'));
           loadedCount++;
           setLoadingProgress((loadedCount / totalFiles) * 100);
         }

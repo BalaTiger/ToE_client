@@ -1,10 +1,11 @@
-import { GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG } from './components/cards';
+import { GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay } from './components/cards';
 import { GodChoiceModal, NyaBorrowModal, DrawRevealModal, TreasureDodgeModal, PeekHandModal, TortoiseOracleModal, AboutModal, FullLogModal, RoadmapModal } from './components/modals';
 import { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel } from './components/board';
 import { RoomModal, LobbyModal, PrivacyToggleModal, TutorialOverlay, ConnectionErrorModal, DebugControls } from './components/lobby';
+import InGameTutorialOverlay from './components/tutorial/InGameTutorialOverlay';
 import { StartScreen } from './components/start/StartScreen';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import ReactDOM from "react-dom";
+import { createPortal } from "react-dom";
 import html2canvas from "html2canvas";
 // socket.io-client is loaded at runtime via CDN (only outside Claude Artifacts)
 
@@ -33,11 +34,13 @@ import {
   getZoneCardEffectScope,
   zoneCardUsesTargetInteraction,
   isWinHand,
-  getLivingPlayerOrder,
   cardLogText,
   removeCardsFromDiscard,
-  getPrevLivingIndex,
-  getNextLivingIndex,
+  makeInspectionMeta,
+  clearPendingAnimDeathFlags,
+  applyHpDamageWithLink,
+  applyFx,
+  applyInspectionForSanLoss,
   aiChooseRevealCard,
   aiChooseHunterLootCards,
   chooseFirstComePickForAI,
@@ -45,12 +48,21 @@ import {
   chooseAiCultistBewitchPlan,
   aiShouldKeepZoneCard,
   decideAiSkillUsage,
+  getHunterChaseTargets,
+  shouldHunterKeepChasing,
   canCultistWinByBewitch,
   canCultistEmptyHandByBewitch,
   aiShouldNotRest,
   isCultistEndingTurnUnreasonable,
   mkDeck,
   mkRoles,
+  buildAnimQueue,
+  buildFullHandSwapTransferQueueFromLogs,
+  buildAiHuntEventAnimQueue,
+  EMPTY_TURN_ANIM_FIELDS,
+  withClearedTurnAnimFields,
+  buildLocalCthDecisionState,
+  buildPlayerTurnDrawQueue,
 } from "./game";
 import {
   rotateGsForViewer,
@@ -131,7 +143,7 @@ const safeLS={
 };
 const cardsHuntMatch=(a,b)=>{
   if(!a||!b)return false;
-  if(!isZoneCard(a)||!isZoneCard(b))return false;
+  if(!isZoneCard(a)||!isZoneCard(b))return true;
   if(isBlankZoneCard(a)||isBlankZoneCard(b))return true;
   return a.letter===b.letter||a.number===b.number;
 };
@@ -181,662 +193,11 @@ function moveEligibleBlankZones(players,log=[]){
   return changed?{players:P,log:L}:null;
 }
 
-function killPlayerState(P,i,Disc,L){
-  if(i==null||!P[i]||P[i].isDead)return;
-  // 标记待播放死亡特效的角色（用于面板延迟置灰）
-  // 死亡特效播放完成后在 triggerAnimQueue 中清除此标记
-  P[i]._pendingAnimDeath = true;
-  P[i].isDead=true;
-  P[i].roleRevealed=true;
-  L.push(`☠ ${P[i].name}（${P[i].role}）倒下了！`);
-  Disc.push(...P[i].hand);
-  P[i].hand=[];
-  if(P[i].godZone?.length){
-    Disc.push(...P[i].godZone);
-    P[i].godZone=[];
-    P[i].godName=null;
-    P[i].godLevel=0;
-  }
-}
-
-function clearPendingAnimDeathFlags(players,preservePid=null){
-  return (players||[]).map((p,idx)=>{
-    if(!p)return p;
-    if(p._pendingAnimDeath&&idx!==preservePid)return {...p,_pendingAnimDeath:false};
-    return {...p};
-  });
-}
-
 function shouldDelayHuntLootSelection(players,targetIdx,maxToTake,isMP){
   const target=players?.[targetIdx];
   if(!target?.isDead||!target?.revealHand)return false;
   if((target.hand?.length||0)<=maxToTake)return false;
   return !checkWin(players,isMP);
-}
-
-function applyHpDamageWithLink(P,i,amount,Disc,L){
-  if(i==null||!P[i]||P[i].isDead||!(amount>0))return;
-  P[i].hp=clamp(P[i].hp-amount);
-  if(P[i].damageLink?.active){
-    const partnerIdx=P[i].damageLink.partner;
-    if(partnerIdx!=null&&P[partnerIdx]&&!P[partnerIdx].isDead){
-      P[i].damageLink.active=false;
-      if(P[partnerIdx].damageLink)P[partnerIdx].damageLink.active=false;
-      const linkDamage=3;
-      P[i].hp=clamp(P[i].hp-linkDamage);
-      P[partnerIdx].hp=clamp(P[partnerIdx].hp-linkDamage);
-      L.push(`【两人一绳】绳索断裂！${P[i].name} 和 ${P[partnerIdx].name} 各失去 ${linkDamage} HP`);
-      if(P[i].hp<=0)killPlayerState(P,i,Disc,L);
-      if(P[partnerIdx].hp<=0)killPlayerState(P,partnerIdx,Disc,L);
-    }
-  }
-  if(P[i].hp<=0)killPlayerState(P,i,Disc,L);
-}
-
-
-
-// ══════════════════════════════════════════════════════════════
-//  EFFECT ENGINE
-// ══════════════════════════════════════════════════════════════
-function getAdjacentTargets(players,ci){
-  const prev=getPrevLivingIndex(players,ci);
-  const next=getNextLivingIndex(players,ci);
-  return [ci,...[prev,next].filter((idx,pos,arr)=>idx!=null&&arr.indexOf(idx)===pos)];
-}
-function getLivingAdjacentTargets(players,ci){
-  return getAdjacentTargets(players,ci).filter((idx,pos,arr)=>idx!==ci&&idx!=null&&players[idx]&&!players[idx].isDead&&arr.indexOf(idx)===pos);
-}
-
-function applyFx(card,ci,ti,ps,deck,disc,gs,avoidNegative=false,avoidNegativeFor=[],isAI=false){
-  let P=copyPlayers(ps),D=[...deck],Disc=[...disc],msgs=[];
-  let statePatch={};
-  let inspectionMeta=makeInspectionMeta(gs);
-  const pendingInspectionTargets=[];
-  const dmgBonus=P[ci]?.damageBonus||0;
-  const healHP=(i,v)=>{if(i==null||!P[i]||P[i].isDead)return;P[i].hp=clamp(P[i].hp+v);};
-  const healSAN=(i,v)=>{if(i==null||!P[i]||P[i].isDead)return;P[i].san=clamp(P[i].san+v);};
-  const hurtHP=(i,v)=>{
-    if(i==null||!P[i]||P[i].isDead||(avoidNegative&&i===ci)||avoidNegativeFor.includes(i))return;
-    applyHpDamageWithLink(P,i,v,Disc,msgs);
-  };
-  const hurtSAN=(i,v)=>{
-    if(i==null||!P[i]||P[i].isDead||(avoidNegative&&i===ci)||avoidNegativeFor.includes(i))return;
-    P[i].san=clamp(P[i].san-v);
-    const newSan=P[i].san;
-    if(newSan<=6){
-      pendingInspectionTargets.push(i);
-    }
-  };
-  const dealHP=(i,v)=>hurtHP(i,v+dmgBonus);
-  const dealSAN=(i,v)=>hurtSAN(i,v+dmgBonus);
-  const randDiscard = (i, count = 1) => {
-    if (i == null || !P[i] || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return;
-    for (let n = 0; n < count; n++) {
-      if (P[i].hand.length) {
-        const x = 0 | Math.random() * P[i].hand.length;
-        const c = P[i].hand.splice(x, 1)[0];
-        // 空白区域牌被弃置时消失，不进入弃牌堆
-        if (c.type !== 'blankZone') {
-          Disc.push(c);
-          msgs.push(`${P[i].name} 失去了 ${cardLogText(c,{alwaysShowName:true})}`);
-        } else {
-          msgs.push(`${P[i].name} 的空白区域牌消失了`);
-        }
-      }
-    }
-  }; 
-  const toggleRest=i=>{if(i==null||!P[i]||P[i].isDead||(avoidNegative&&i===ci)||avoidNegativeFor.includes(i))return;P[i].isResting=!P[i].isResting;msgs.push(`${P[i].name}${P[i].isResting?'进入':'离开'}休息状态`);};
-  const adjacent=getAdjacentTargets(P,ci);
-  const others=P.map((_,i)=>i).filter(i=>i!==ci&&!P[i].isDead);
-  const allLiving=P.map((_,i)=>i).filter(i=>!P[i].isDead);
-  const actor=P[ci];
-  
-  // 辅助函数：检查条件
-  const checkCondition=(condType,condVal,actor)=>{
-    switch(condType){
-      case 'handHigh': return actor.hand.length>=condVal;
-      case 'handLow': return actor.hand.length<=condVal;
-      case 'hpLow': return actor.hp<=condVal;
-      case 'sanHigh': return actor.san>=condVal;
-      default: return false;
-    }
-  };
-  
-  // 辅助函数：应用条件伤害
-  const applyConditionalDamage=(type,card)=>{
-    if(!avoidNegative&&!avoidNegativeFor.includes(ci)){
-      let totalDamage=card.val||0;
-      let bonusDamage=0;
-      const conditionMet=checkCondition(card.condType,card.condVal,actor);
-      if(conditionMet){
-        bonusDamage=card.bonus||0;
-        totalDamage+=bonusDamage;
-      }
-      if(type==='hp'){
-        hurtHP(ci,totalDamage);
-      }else if(type==='san'){
-        hurtSAN(ci,totalDamage);
-      }
-      const bonusText=bonusDamage>0?`（其中${card.val}点基础伤害+${bonusDamage}点额外伤害）`:'';
-      msgs.push(`${actor.name} 失去 ${totalDamage} ${type=== 'hp' ? 'HP' : 'SAN'}${bonusText}`);
-    }
-  };
-  
-  // 辅助函数：应用AOE伤害
-  const applyAOEDamage=(targets,damageType,value,hpVal,sanVal)=>{
-    let affected=false;
-    targets.forEach(i=>{
-      if(!avoidNegativeFor.includes(i)){
-        if(damageType==='both'||damageType.includes('hp'))dealHP(i,hpVal||value);
-        if(damageType==='both'||damageType.includes('san'))dealSAN(i,sanVal||value);
-        if(i!==ci||!avoidNegative)affected=true;
-      }
-    });
-    if(affected){
-      if(hpVal&&sanVal){
-        msgs.push(`${actor.name} 与相邻角色各失去 ${hpVal+dmgBonus} HP 和 ${sanVal} SAN`);
-      }else{
-        const damageDesc=damageType==='hp'?'HP':(damageType==='san'?'SAN':'HP 和 SAN');
-        msgs.push(`${actor.name} 与相邻角色各失去 ${value+dmgBonus} ${damageDesc}`);
-      }
-    }
-  };
-  
-  // 辅助函数：应用全局AOE伤害
-  const applyGlobalAOEDamage=(damageType,value)=>{
-    let affected=false;
-    allLiving.forEach(i=>{
-      if(!avoidNegativeFor.includes(i)){
-        if(damageType==='both'||damageType.includes('hp'))dealHP(i,value);
-        if(damageType==='both'||damageType.includes('san'))dealSAN(i,value);
-        if(i!==ci||!avoidNegative)affected=true;
-      }
-    });
-    if(affected){
-      const damageDesc=damageType==='hp'?'HP':(damageType==='san'?'SAN':'HP 和 SAN');
-      msgs.push(`全体存活角色失去 ${value+dmgBonus} ${damageDesc}`);
-    }
-  };
-
-  // 辅助函数：自身先受伤，再对相邻角色造成伤害
-  const applySelfAndAdjacentDamage=({selfHp=0,selfSan=0,adjHp=0,adjSan=0})=>{
-    const avoidSelf=avoidNegative||avoidNegativeFor.includes(ci);
-    const adjacentTargets=getLivingAdjacentTargets(P,ci);
-    if(!avoidSelf&&selfHp)hurtHP(ci,selfHp);
-    if(!avoidSelf&&selfSan)hurtSAN(ci,selfSan);
-    if(!avoidSelf&&selfHp&&selfSan){
-      msgs.push(`${actor.name} 失去 ${selfHp} HP 和 ${selfSan} SAN`);
-    }else if(!avoidSelf&&selfHp){
-      msgs.push(`${actor.name} 失去 ${selfHp} HP`);
-    }else if(!avoidSelf&&selfSan){
-      msgs.push(`${actor.name} 失去 ${selfSan} SAN`);
-    }
-    let adjacentAffected=false;
-    adjacentTargets.forEach(i=>{
-      if(!avoidNegativeFor.includes(i)){
-        adjacentAffected=true;
-        if(adjHp)dealHP(i,adjHp);
-        if(adjSan)dealSAN(i,adjSan);
-      }
-    });
-    if(adjacentAffected&&adjHp&&adjSan){
-      msgs.push(`${actor.name} 周围的角色各失去 ${adjHp+dmgBonus} HP 和 ${adjSan+dmgBonus} SAN`);
-    }else if(adjacentAffected&&adjHp){
-      msgs.push(`${actor.name} 周围的角色各失去 ${adjHp+dmgBonus} HP`);
-    }else if(adjacentAffected&&adjSan){
-      msgs.push(`${actor.name} 周围的角色各失去 ${adjSan+dmgBonus} SAN`);
-    }
-    return !avoidSelf||adjacentAffected;
-  };
-  switch(card.type){
-    case 'selfHealHP': healHP(ci,card.val);msgs.push(`${actor.name} 回复了 ${card.val} HP`);break;
-    case 'selfHealSAN': healSAN(ci,card.val);msgs.push(`${actor.name} 回复了 ${card.val} SAN`);break;
-    case 'selfHealBoth': healHP(ci,1);healSAN(ci,1);msgs.push(`${actor.name} 回复了 1 HP 和 1 SAN`);break;
-    case 'selfHealBoth21': healHP(ci,2);healSAN(ci,1);msgs.push(`${actor.name} 回复了 2 HP 和 1 SAN`);break;
-    case 'selfHealAdjDamageHP': {
-      healHP(ci,card.val);
-      const adjacentTargets=getLivingAdjacentTargets(P,ci);
-      adjacentTargets.forEach(i=>dealHP(i,card.val));
-      msgs.push(`${actor.name} 回复了 ${card.val} HP，相邻角色各失去 ${card.val+dmgBonus} HP`);
-      break;
-    }
-    case 'selfHealAdjHealHP': healHP(ci,card.val);adjacent.filter(i=>i!==ci).forEach(i=>healHP(i,card.adjVal||1));msgs.push(`${actor.name} 回复了 ${card.val} HP，相邻角色各回复 ${card.adjVal||1} HP`);break;
-    case 'adjHealHP': adjacent.forEach(i=>healHP(i,card.val));msgs.push(`${actor.name} 与相邻角色各回复 ${card.val} HP`);break;
-    case 'selfRevealHandHP': actor.hp=10;actor.revealHand=true;actor.pickInsteadOfRandom=true;msgs.push(`${actor.name} HP 回满，手牌公开且盲抽改为挑选`);break;
-    case 'selfRevealHandSAN': actor.san=Math.min(10,actor.san+card.val);actor.revealHand=true;actor.pickInsteadOfRandom=true;msgs.push(`${actor.name} 回复 ${card.val} SAN，手牌公开且盲抽改为挑选`);break;
-    case 'globalOnlySwap': statePatch={globalOnlySwapOwner:ci};msgs.push(`直到 ${actor.name} 的下回合开始前，所有角色技能都视为“掉包”`);break;
-    case 'selfDamageHP': hurtHP(ci,card.val);if(!avoidNegative&&!avoidNegativeFor.includes(ci))msgs.push(`${actor.name} 失去 ${card.val} HP`);break;
-    case 'selfDamageSAN': hurtSAN(ci,card.val);if(!avoidNegative&&!avoidNegativeFor.includes(ci))msgs.push(`${actor.name} 失去 ${card.val} SAN`);break;
-    case 'selfDamageHPCond': applyConditionalDamage('hp',card);break;
-    case 'selfDamageSANCond': applyConditionalDamage('san',card);break;
-    case 'selfDamageHPSAN': 
-      // 复合效果：负面效果（失去HP和SAN）
-      // 规避时所有负面效果都不触发
-      const hv=card.hpVal||0,sv=card.sanVal||0;
-      if(!avoidNegative&&!avoidNegativeFor.includes(ci)){
-        hurtHP(ci,hv);
-        hurtSAN(ci,sv);
-        msgs.push(`${actor.name} 失去 ${hv} HP 和 ${sv} SAN`);
-      }
-      break;
-    case 'selfDamageDiscardHP': 
-      // 复合效果：负面效果（失去HP）+ 随机弃1张牌
-      if(!avoidNegative&&!avoidNegativeFor.includes(ci)){
-        hurtHP(ci,card.val);
-        msgs.push(`${actor.name} 失去 ${card.val} HP`);
-        randDiscard(ci,1);
-      }
-      break;
-    case 'selfDamageDiscardSAN': 
-      // 复合效果：负面效果（失去SAN）+ 随机弃1张牌
-      if(!avoidNegative&&!avoidNegativeFor.includes(ci)){
-        hurtSAN(ci,card.val);
-        msgs.push(`${actor.name} 失去 ${card.val} SAN`);
-        randDiscard(ci,1);
-      }
-      break;
-    case 'selfDamageRestHP': 
-      // 复合效果：负面效果（失去HP）+ 翻面（切换休息状态）
-      if(!avoidNegative&&!avoidNegativeFor.includes(ci)){
-        hurtHP(ci,card.val);
-        msgs.push(`${actor.name} 失去 ${card.val} HP`);
-        toggleRest(ci);
-      }
-      break;
-    case 'selfDamageRestSAN': 
-      // 复合效果：负面效果（失去SAN）+ 翻面（切换休息状态）
-      if(!avoidNegative&&!avoidNegativeFor.includes(ci)){
-        hurtSAN(ci,card.val);
-        msgs.push(`${actor.name} 失去 ${card.val} SAN`);
-        toggleRest(ci);
-      }
-      break;
-    case 'adjDamageHP': applyAOEDamage(adjacent,'hp',card.val);break;
-    case 'adjDamageSAN': applyAOEDamage(adjacent,'san',card.val);break;
-    case 'adjDamageBoth': applyAOEDamage(adjacent,'both',card.val,card.hpVal,card.sanVal);break;
-    case 'allDamageHP': applyGlobalAOEDamage('hp',card.val);break;
-    case 'allDamageSAN': applyGlobalAOEDamage('san',card.val);break;
-    case 'allDamageBoth': applyGlobalAOEDamage('both',card.val);break;
-    case 'adjRest': 
-      // AOE负面效果：相邻角色翻面（切换休息状态）
-      // 支持规避：被规避的角色不会翻面
-      adjacent.forEach(i=>{
-        if(!avoidNegativeFor.includes(i)){
-          toggleRest(i);
-        }
-      });
-      break;
-    case 'selfHealHPSelfDamageSAN':      // 魅魔梦境：回复2HP，失去1SAN
-      healHP(ci,card.hpVal);
-      if(!avoidNegative&&!avoidNegativeFor.includes(ci)){
-        hurtSAN(ci,card.sanVal);
-        msgs.push(`${actor.name} 回复 ${card.hpVal} HP，失去 ${card.sanVal} SAN`);
-      }else{
-        msgs.push(`${actor.name} 回复 ${card.hpVal} HP`);
-      }
-      break;
-    case 'allDiscard': 
-      // AOE负面效果：全体存活角色各随机弃1张牌
-      // 支持规避：被规避的角色不会弃牌
-      allLiving.forEach(i=>{
-        if(!avoidNegativeFor.includes(i)){
-          randDiscard(i,1);
-        }
-      });
-      statePatch={...statePatch,_earthquakeSeq:(gs?._earthquakeSeq||0)+1};
-      break;
-    case 'selfRenounceGod':
-      if(actor.godName){
-        if(actor.godZone?.length)Disc.push(...actor.godZone);
-        actor.godZone=[];actor.godName=null;actor.godLevel=0;
-        msgs.push(`${actor.name} 放弃信仰`);
-      }
-      break;
-    case 'sacHealHP': 
-      // 复合效果：负面效果（失去1 SAN）+ 正面效果（全体回复1 HP）
-      // 规避只针对负面效果，正面效果一定会触发
-      if(!avoidNegative&&!avoidNegativeFor.includes(ci)){
-        hurtSAN(ci,1);
-        msgs.push(`${actor.name} 失去 1 SAN`);
-      }
-      allLiving.forEach(i=>healHP(i,card.val));
-      msgs.push(`随后全体回复 ${card.val} HP`);
-      break;
-    case 'sacHealSelfSAN': 
-      // 复合效果：负面效果（失去3 HP）+ 正面效果（回复1 SAN）
-      // 规避只针对负面效果，正面效果一定会触发
-      if(!avoidNegative&&!avoidNegativeFor.includes(ci)){
-        hurtHP(ci,3);
-        msgs.push(`${actor.name} 失去 3 HP`);
-      }
-      healSAN(ci,card.val);
-      msgs.push(`${actor.name} 回复 ${card.val} SAN`);
-      break;
-    case 'sacHealSelfSANCultist': 
-      // 复合效果：负面效果（失去3 HP）+ 正面效果（回复2 SAN）
-      // 若本局未信仰过邪神，只执行后半句效果
-      // 规避只针对负面效果，正面效果一定会触发
-      if(!avoidNegative&&!avoidNegativeFor.includes(ci)&&actor.hasBelievedGod){
-        hurtHP(ci,3);
-        msgs.push(`${actor.name} 失去 3 HP`);
-      }
-      healSAN(ci,card.val);
-      msgs.push(`${actor.name} 回复 ${card.val} SAN`);
-      break;
-    case 'selfDamageHPPeek': 
-      // 复合效果：负面效果（失去HP）+ 偷看一名角色的手牌
-      // 规避时只跳过对自己不利的失去HP，偷看效果仍然触发
-      if(!avoidNegative&&!avoidNegativeFor.includes(ci)){
-        hurtHP(ci,card.val);
-        msgs.push(`${actor.name} 失去 ${card.val} HP`);
-      }
-      // 检查是否有除自己以外手牌未公开的角色
-      {
-        const validTargets=others.filter(i=>!P[i].revealHand);
-        if(validTargets.length>0){
-          // 设置状态补丁，用于触发偷看手牌的目标选择
-          statePatch={peekHandTargets:validTargets,peekHandSource:ci};
-          msgs.push(`${actor.name} 准备偷看一名角色的手牌`);
-        }else{
-          msgs.push(`所有其他角色的手牌都已公开，无法偷看`);
-        }
-      }
-      break;
-    case 'swapAllHands':{
-      // Swap entire hand with the target (ti); if no ti provided, pick the living player with most cards
-      const swapTarget=ti!=null?ti:others.reduce((best,i)=>P[i].hand.length>P[best].hand.length?i:best,others[0]??ci);
-      if(swapTarget!=null&&swapTarget!==ci&&P[swapTarget]&&!P[swapTarget].isDead){
-        const myHand=[...P[ci].hand];
-        P[ci].hand=[...P[swapTarget].hand];
-        P[swapTarget].hand=myHand;
-        msgs.push(`${actor.name} 与 ${P[swapTarget].name} 交换了全部手牌（${P[ci].hand.length} 张 ↔ ${P[swapTarget].hand.length} 张）`);
-      }else{
-        msgs.push(`${actor.name} 无法找到交换目标`);
-      }
-      break;
-    }
-    case 'selfBerserk': 
-      // 复合效果：负面效果（失去1 SAN）+ 正面效果（伤害+1）
-      // 规避只针对负面效果，正面效果一定会触发
-      if(!avoidNegative&&!avoidNegativeFor.includes(ci)){
-        hurtSAN(ci,1);
-        msgs.push(`${actor.name} 失去 1 SAN`);
-      }
-      P[ci].damageBonus=(P[ci].damageBonus||0)+1;
-      msgs.push(`${actor.name} 本回合造成的伤害+1`);
-      break;
-    case 'selfDamageSkipDraw': 
-      // 复合效果：负面效果（失去HP）+ 下回合开始时不能摸牌
-      // 规避时所有效果都不触发
-      if(!avoidNegative&&!avoidNegativeFor.includes(ci)){
-        hurtHP(ci,card.val);
-        if(P[ci]&&!P[ci].isDead){
-          msgs.push(`${actor.name} 失去 ${card.val} HP`);
-          // 设置跳过下回合摸牌的标记
-          P[ci].skipNextDraw=true;
-          msgs.push(`${actor.name} 下回合开始时不能摸牌`);
-        }
-      }
-      break;
-    case 'selfDamageAdjDamageBoth': 
-      // 复合效果：负面效果（失去HP和SAN）+ 相邻角色失去HP和SAN
-      // 规避时只跳过对自己不利的部分，相邻角色受伤仍然触发
-      applySelfAndAdjacentDamage({
-        selfHp:card.hpVal||0,
-        selfSan:card.sanVal||0,
-        adjHp:card.adjHpVal||0,
-        adjSan:card.adjSanVal||0,
-      });
-      break;
-    case 'selfDamageAdjDamageHP':
-      // 复合效果：负面效果（自身失去HP）+ 相邻角色各失去HP
-      // 规避时只跳过对自己不利的部分，相邻角色受伤仍然触发
-      applySelfAndAdjacentDamage({
-        selfHp:card.val||0,
-        adjHp:card.adjVal||1,
-      });
-      break;
-    case 'allDamageHPRandomExtra':
-      // 钻地魔虫：全体存活角色失去1HP，然后随机选择一名角色失去1HP
-      {
-        const avoidSelf=avoidNegative||avoidNegativeFor.includes(ci);
-        const deferredGlobalLogs=[];
-        const affectedTargets=P.map((p,i)=>i).filter(i=>!P[i].isDead&&!avoidNegativeFor.includes(i)&&!(avoidSelf&&i===ci));
-        // 全体存活角色失去1HP
-        affectedTargets.forEach(i=>{
-          const localMsgs=[];
-          applyHpDamageWithLink(P,i,(card.val||0)+dmgBonus,Disc,localMsgs);
-          deferredGlobalLogs.push(...localMsgs);
-        });
-        if(affectedTargets.length){
-          if(avoidSelf&&affectedTargets.length===allLiving.length-1){
-            msgs.push(`除${actor.name}外，全体存活角色失去 ${card.val} HP`);
-          }else{
-            msgs.push(`全体存活角色失去 ${card.val} HP`);
-          }
-        }
-        if(deferredGlobalLogs.length)msgs.push(...deferredGlobalLogs);
-        // 随机选择一名存活角色失去1HP
-        const alivePlayers=P.map((p,i)=>i).filter(i=>!P[i].isDead&&!avoidNegativeFor.includes(i)&&!(avoidSelf&&i===ci));
-        if(alivePlayers.length>0){
-          const randomTarget=alivePlayers[Math.floor(Math.random()*alivePlayers.length)];
-          const localMsgs=[];
-          applyHpDamageWithLink(P,randomTarget,(card.val||0)+dmgBonus,Disc,localMsgs);
-          msgs.push(`${P[randomTarget].name} 额外失去 ${card.val} HP`);
-          if(localMsgs.length)msgs.push(...localMsgs);
-        }
-      }
-      break;
-    case 'damageLink':
-      // 两人一绳：你和另一名角色间架起链条，传导一次HP伤害后消失。你的下一回合开始时链条也会消失
-      if(!avoidNegative&&!avoidNegativeFor.includes(ci)){
-        // 检查是否有其他存活角色
-        const validTargets=others.filter(i=>!P[i].isDead);
-        if(validTargets.length===0){
-          msgs.push(`没有其他存活角色，无法架起链条`);
-        }else{
-          // 设置状态补丁，用于触发两人一绳的目标选择
-          statePatch={damageLinkTargets:validTargets,damageLinkSource:ci};
-          msgs.push(`${actor.name} 准备使用两人一绳`);
-        }
-      }
-      break;
-    case 'caveDuel':
-      // 穴居人战争：你与另一名角色各亮一张手牌，数字编号更大的一方收下这两张牌
-      // 隐藏规则：
-      // 1. 如果摸到"穴居人战争"之前没有牌，强制展示"穴居人战争"
-      // 2. 在选择另一名角色时，必须选有手牌的
-      // 3. 亮出的邪神牌视为数字编号为0
-      if(!avoidNegative&&!avoidNegativeFor.includes(ci)){
-        // 检查是否有其他有手牌的角色
-        const validTargets=others.filter(i=>P[i].hand.length>0);
-        if(validTargets.length===0){
-          msgs.push(`没有其他角色有手牌，无法进行穴居人战争`);
-        }else{
-          // 设置状态补丁，用于触发穴居人战争的目标选择
-          statePatch={caveDuelTargets:validTargets,caveDuelSource:ci};
-          msgs.push(`${actor.name} 准备进行穴居人战争`);
-        }
-      }
-      break;
-    case 'placeBlankZone':
-      // 关键拼图：你的角色上放一张空白区域牌（可代表任意字母和数字组合），手牌不大于3张时你将它收入手牌
-      if(!avoidNegative&&!avoidNegativeFor.includes(ci)){
-        // 创建空白区域牌
-        const blankZone={
-          id:`blank-${ci}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
-          name:'空白区域牌',
-          key:'BLANK',
-          isZone:true,
-          type:'blankZone',
-          desc:'可代表任意字母和数字组合'
-        };
-        // 将空白区域牌放在角色上
-        if(!P[ci].zoneCards)P[ci].zoneCards=[];
-        P[ci].zoneCards.push(blankZone);
-        msgs.push(`${actor.name} 放置了一张空白区域牌`);
-        // 检查手牌是否不大于3张，如果是则收入手牌
-        if(P[ci].hand.length<=3){
-          P[ci].hand.push(blankZone);
-          P[ci].zoneCards.pop();
-          msgs.push(`${actor.name} 手牌不大于3张，将空白区域牌收入手牌`);
-        }
-      }
-      break;
-    case 'revealTopCards':
-      // 灵龟卜祝：展示牌堆顶的4张牌，然后选择你手中最多的一个字母或数字编号，将这4张牌中该编号的牌收入手牌（不触发效果）
-      if(!avoidNegative&&!avoidNegativeFor.includes(ci)){
-        // 展示牌堆顶的4张牌
-        const revealedCards=[];
-        const isZoneMatchKey=(card,key)=>{
-          if(!isZoneCard(card))return false;
-          return /^[A-Z]$/.test(key)?card.letter===key:/^\d$/.test(key)?String(card.number)===String(key):false;
-        };
-        for(let i=0;i<card.val&&D.length>0;i++){
-          revealedCards.push(D.shift());
-        }
-        if(revealedCards.length>0){
-          msgs.push(`${actor.name} 展示了牌堆顶的 ${revealedCards.length} 张牌：${revealedCards.map(c=>cardLogText(c)).join(' ')}`);
-          // 分别统计字母和数字的出现次数
-          const letterCountMap={};
-          const numberCountMap={};
-          P[ci].hand.forEach(card=>{
-            if(isZoneCard(card)&&card.key){  
-              // 提取字母和数字
-              const letter=card.key.match(/[A-Z]/);
-              const number=card.key.match(/\d/);
-              if(letter){
-                const l=letter[0];
-                letterCountMap[l]=(letterCountMap[l]||0)+1;
-              }
-              if(number){
-                const n=number[0];
-                numberCountMap[n]=(numberCountMap[n]||0)+1;
-              }
-            }
-          });
-          // 找到字母中出现次数最多的编号
-          let maxLetterCount=0;
-          const maxLetters=[];
-          Object.entries(letterCountMap).forEach(([key,count])=>{
-            if(count>maxLetterCount){
-              maxLetterCount=count;
-              maxLetters.length=0;
-              maxLetters.push(key);
-            }else if(count===maxLetterCount){
-              maxLetters.push(key);
-            }
-          });
-          // 找到数字中出现次数最多的编号
-          let maxNumberCount=0;
-          const maxNumbers=[];
-          Object.entries(numberCountMap).forEach(([key,count])=>{
-            if(count>maxNumberCount){
-              maxNumberCount=count;
-              maxNumbers.length=0;
-              maxNumbers.push(key);
-            }else if(count===maxNumberCount){
-              maxNumbers.push(key);
-            }
-          });
-          // 收集所有可选择的编号
-          const selectableKeys=[];
-          if(maxLetters.length>0) selectableKeys.push(...maxLetters);
-          if(maxNumbers.length>0) selectableKeys.push(...maxNumbers);
-          if(selectableKeys.length>0){
-            // 对于AI，随机选择一个编号
-            if(isAI){
-              const selectedKey=selectableKeys[Math.floor(Math.random()*selectableKeys.length)];
-              msgs.push(`${actor.name} 选择了编号 ${selectedKey}`);
-              // 将4张牌中该编号的牌收入手牌
-              const matchedCards=revealedCards.filter(c=>isZoneMatchKey(c,selectedKey));
-              if(matchedCards.length>0){
-                P[ci].hand.push(...matchedCards);
-                msgs.push(`${actor.name} 收入了 ${matchedCards.length} 张编号为 ${selectedKey} 的牌`);
-                // 剩余的牌放入弃牌堆
-                const remainingCards=revealedCards.filter(c=>!isZoneMatchKey(c,selectedKey));
-                if(remainingCards.length>0){
-                  Disc.push(...remainingCards);
-                }
-              }else{
-                msgs.push(`展示的牌中没有编号为 ${selectedKey} 的牌`);
-                Disc.push(...revealedCards);
-              }
-            }else{
-              // 对于玩家，需要显示选择界面
-              return {
-                P,
-                D,
-                Disc,
-                msgs,
-                statePatch: {
-                  abilityData: {
-                    type: 'tortoiseOracleSelect',
-                    playerIndex: ci,
-                    revealedCards,
-                    selectableKeys
-                  }
-                }
-              };
-            }
-          }else{
-            msgs.push(`${actor.name} 手中没有牌，无法选择编号`);
-            Disc.push(...revealedCards);
-          }
-        }else{
-          msgs.push(`牌堆已空，无法展示牌`);
-        }
-      }
-      break;
-    case 'firstComePick':
-      if(!avoidNegative&&!avoidNegativeFor.includes(ci)){
-        const revealCount=P.filter(p=>!p.isDead).length;
-        const revealedCards=[];
-        while(revealedCards.length<revealCount){
-          if(!D.length&&Disc.length){
-            D=shuffle(Disc);
-            Disc=[];
-          }
-          if(!D.length)break;
-          revealedCards.push(D.shift());
-        }
-        if(revealedCards.length){
-          const pickOrder=getLivingPlayerOrder(P,ci);
-          msgs.push(`${actor.name} 翻开了 ${revealedCards.length} 张牌：[${revealedCards.map(c=>c.key||c.name).join('] [')}]`);
-          msgs.push(`【先到先得】从 ${actor.name} 开始，每名存活角色依次挑选一张收入手牌`);
-          statePatch={
-            ...statePatch,
-            abilityData:{
-              type:'firstComePick',
-              revealedCards,
-              pickOrder,
-              pickIndex:0,
-              pickSource:ci,
-            }
-          };
-        }
-      }
-      break;
-    case 'roseThornGiftAllHand':
-      if(!avoidNegative&&!avoidNegativeFor.includes(ci)){
-        const validTargets=others.filter(i=>!P[i].isDead);
-        if(validTargets.length===0){
-          msgs.push(`没有其他存活角色，无法施加玫瑰倒刺`);
-        }else{
-          statePatch={...statePatch,roseThornTargets:validTargets,roseThornSource:ci};
-          msgs.push(`${actor.name} 准备使用玫瑰倒刺`);
-        }
-      }
-      break;
-  }
-  if(pendingInspectionTargets.length){
-    const inspectionBaseLog=[...(Array.isArray(gs?.log)?gs.log:[]),...msgs];
-    const processed=processInspectionTargets(pendingInspectionTargets,gs?.currentTurn??ci,P,D,Disc,inspectionBaseLog,inspectionMeta);
-    P=processed.P;D=processed.D;Disc=processed.Disc;inspectionMeta=processed.inspectionMeta;
-    msgs=[...msgs,...processed.log.slice(inspectionBaseLog.length)];
-    statePatch={...statePatch,...inspectionMeta};
-  }
-  return{P,D,Disc,msgs,statePatch};
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -975,23 +336,6 @@ function aiHandleGodCard(ci,godCard,P,D,Disc,L,gs,skipEffectMsg=false){
   P=gres.P;D=gres.D;Disc=gres.Disc;
   L.push(...gres.msgs);
   return{P,D,Disc,L,inspectionMeta:gres.inspectionMeta};
-}
-
-function getHunterChaseTargets(players,hunterIdx,huntAbandoned=[]){
-  return players
-    .map((player,idx)=>({player,idx}))
-    .filter(({player,idx})=>!player.isDead && idx!==hunterIdx && player.role!==ROLE_HUNTER && !huntAbandoned.includes(idx))
-    .filter(({player})=>(player.hand||[]).some(isZoneCard));
-}
-
-function shouldHunterKeepChasing(players,hunterIdx,huntAbandoned=[]){
-  const hunter=players[hunterIdx];
-  if(!hunter||hunter.isDead)return false;
-  const hunterZoneCards=(hunter.hand||[]).filter(isZoneCard);
-  const hunterHandLimit=hunter._nyaHandLimit??4;
-  const hunterOverLimit=hunterZoneCards.length>hunterHandLimit;
-  const someoneWounded=players.some((p,i)=>i!==hunterIdx&&!p.isDead&&p.hp<10);
-  return hunterZoneCards.length>0 && getHunterChaseTargets(players,hunterIdx,huntAbandoned).length>0 && (hunterOverLimit||someoneWounded);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1767,7 +1111,6 @@ function aiStep(gs){
   const aiSkillDecision=decideAiSkillUsage(gs,P,ct,aiEffRole,getHunterTargets());
   let useSkill=aiSkillDecision.useSkill;
   let cultistBewitchPlan = null;
-  const hunterZoneCards = P[ct].hand.filter(isZoneCard);
   if (aiEffRole === ROLE_CULTIST && useSkill) {
     cultistBewitchPlan = chooseAiCultistBewitchPlan(P, ct);
     if (!cultistBewitchPlan && !P[ct].roleRevealed) {
@@ -1806,8 +1149,8 @@ function aiStep(gs){
     // ── v2 MCTS 目标选择 ────────────────────────────────────
     let tgt;
     if(aiEffRole===ROLE_HUNTER){
-      if(hunterZoneCards.length === 0) huntContinue = false;
-      while (huntContinue && P[ct].hand.some(isZoneCard)) {
+      if(P[ct].hand.length === 0) huntContinue = false;
+      while (huntContinue && P[ct].hand.length > 0) {
         const validTargets = getHunterTargets();
         if (validTargets.length > 0) {
           const sortedTargets = [...validTargets].sort((a, b) => {
@@ -1818,9 +1161,9 @@ function aiStep(gs){
           // 遍历所有目标，直到找到可以追捕的目标或用完所有目标
           let foundTarget = false;
           for (const { player: tgt, idx: ti } of sortedTargets) {
-            const zoneH = P[ti].hand.filter(isZoneCard);
+            const targetHand = P[ti].hand;
             if (ti === 0) {
-              L.push(`${ai.name}（追猎者）向你发动【追捕】！请选择亮出一张区域牌`);
+              L.push(`${ai.name}（追猎者）向你发动【追捕】！请选择亮出一张手牌`);
               const updatedAbandoned = [...newAbandoned, ti];
               return {...gs, players:P, deck:D, discard:Disc, log:L,
                 phase:'PLAYER_REVEAL_FOR_HUNT',
@@ -1832,7 +1175,7 @@ function aiStep(gs){
               const targetHandBefore=[...(P[ti]?.hand||[])];
               const targetRevealBefore=!!P[ti]?.revealHand;
               const knownHunterCards=P[ti]?.peekMemories?.[ct]||[];
-              const rc = aiChooseRevealCard(zoneH, ai.name, L, knownHunterCards);
+              const rc = aiChooseRevealCard(targetHand, ai.name, L, knownHunterCards);
               L.push(`${ai.name}（追猎者）对 ${tgt.name} 【追捕】，亮出 ${cardLogText(rc)}`);
               const mi = P[ct].hand.findIndex(c => cardsHuntMatch(c,rc));
               if (mi >= 0) {
@@ -2233,254 +1576,6 @@ function initGame(playerNames, debugForceCard, debugForceCardTarget, debugForceC
   return startNextTurn(base);
 }
 
-// 处理检定牌翻开和结算
-function handleInspection(playerIndex, gs) {
-  let newGs = {...gs};
-  const beforePlayers = copyPlayers(gs.players||[]);
-  const beforeLog = [...(Array.isArray(gs.log)?gs.log:[])];
-  const beforeLogLen = Array.isArray(gs.log)?gs.log.length:0;
-  // 检查检定牌堆是否为空，如果为空则洗牌
-  if (newGs.inspectionDeck.length === 0) {
-    newGs.inspectionDeck = shuffle([...newGs.inspectionDiscard]);
-    newGs.inspectionDiscard = [];
-  }
-  // 翻开检定牌
-  const drawnCard = newGs.inspectionDeck.shift();
-  // 结算检定牌效果
-  const L = [...(Array.isArray(newGs.log)?newGs.log:[])];
-  const P = [...newGs.players];
-  L.push(`${P[playerIndex].name} 的SAN检定结果为"${drawnCard.name}"`);
-  const killPlayer = i => {
-    if(i==null || !P[i] || P[i].isDead) return;
-    // 标记待播放死亡特效的角色（用于面板延迟置灰）
-    P[i]._pendingAnimDeath = true;
-    P[i].isDead = true;
-    P[i].roleRevealed = true;
-    L.push(`☠ ${P[i].name}（${P[i].role}）倒下了！`);
-    if(P[i].hand?.length){
-      newGs.discard.push(...P[i].hand);
-      P[i].hand = [];
-    }
-    if(P[i].godZone?.length){
-      newGs.discard.push(...P[i].godZone);
-      P[i].godZone = [];
-      P[i].godName = null;
-      P[i].godLevel = 0;
-    }
-  };
-  switch (drawnCard.effect) {
-    case 'adjacentDamageHP': {
-      // 相邻角色失去1HP
-      const N = P.length;
-      for (let i = 1; i <= N; i++) {
-        const leftIdx = (playerIndex - i + N) % N;
-        if (!P[leftIdx].isDead) {
-          P[leftIdx].hp = Math.max(0, P[leftIdx].hp - drawnCard.value);
-          L.push(`${P[leftIdx].name} 被乱抓，失去 ${drawnCard.value} HP`);
-          if(P[leftIdx].hp<=0) killPlayer(leftIdx);
-          break;
-        }
-      }
-      for (let i = 1; i <= N; i++) {
-        const rightIdx = (playerIndex + i) % N;
-        if (!P[rightIdx].isDead) {
-          P[rightIdx].hp = Math.max(0, P[rightIdx].hp - drawnCard.value);
-          L.push(`${P[rightIdx].name} 被乱抓，失去 ${drawnCard.value} HP`);
-          if(P[rightIdx].hp<=0) killPlayer(rightIdx);
-          break;
-        }
-      }
-      break;
-    }
-    case 'selfDamageHP': {
-      // 失去1HP
-      P[playerIndex].hp = Math.max(0, P[playerIndex].hp - drawnCard.value);
-      L.push(`${P[playerIndex].name} 自残，失去 ${drawnCard.value} HP`);
-      if(P[playerIndex].hp<=0) killPlayer(playerIndex);
-      break;
-    }
-    case 'disableRest': {
-      // 下一回合禁用"休息"
-      P[playerIndex].disableRestNextTurn = true;
-      L.push(`${P[playerIndex].name} 失眠，下一回合禁用休息`);
-      break;
-    }
-    case 'nothing': {
-      // 什么也不做
-      break;
-    }
-    case 'flip': {
-      // 翻面
-      P[playerIndex].isResting = !P[playerIndex].isResting;
-      L.push(`${P[playerIndex].name} 昏睡，${P[playerIndex].isResting ? '翻面' : '醒来'}`);
-      break;
-    }
-    case 'discardRandom': {
-      // 随机弃一张牌
-      if (P[playerIndex].hand.length > 0) {
-        const randomIndex = Math.floor(Math.random() * P[playerIndex].hand.length);
-        const discardedCard = P[playerIndex].hand.splice(randomIndex, 1)[0];
-        newGs.discard.push(discardedCard);
-        L.push(`${P[playerIndex].name} 迫害妄想，弃置了一张牌`);
-      }
-      break;
-    }
-    case 'disableSkill': {
-      // 下一回合禁用技能
-      P[playerIndex].disableSkillNextTurn = true;
-      L.push(`${P[playerIndex].name} 失忆，下一回合禁用技能`);
-      break;
-    }
-    case 'handLimitDecrease': {
-      // 下一回合手牌上限-1
-      P[playerIndex].handLimitDecreaseNextTurn = 1;
-      L.push(`${P[playerIndex].name} 乏力，下一回合手牌上限-1`);
-      break;
-    }
-    case 'healSAN': {
-      // 恢复1SAN
-      P[playerIndex].san = Math.min(10, P[playerIndex].san + drawnCard.value);
-      L.push(`${P[playerIndex].name} 超人意志，恢复 ${drawnCard.value} SAN`);
-      break;
-    }
-    case 'drawCard': {
-      // 从牌堆摸一张牌
-      if (newGs.deck.length === 0) {
-        newGs.deck = shuffle([...newGs.discard]);
-        newGs.discard = [];
-      }
-      if (newGs.deck.length > 0) {
-        const newCard = newGs.deck.shift();
-        P[playerIndex].hand.push(newCard);
-        L.push(`${P[playerIndex].name} 揭开真相，摸到一张牌`);
-      }
-      break;
-    }
-    case 'sealLoosening': {
-      // 连续翻出两次时邪神复活（无视SAN值条件）
-      newGs.sealLooseningCount++;
-      L.push(`${P[playerIndex].name} 感到封印松动`);
-      if (newGs.sealLooseningCount >= 2) {
-        // 邪神复活逻辑
-        L.push('封印完全松动，邪神复活了！');
-        // 这里可以添加邪神复活的具体逻辑
-        newGs.sealLooseningCount = 0;
-      }
-      break;
-    }
-    case 'houndsOfTindalos': {
-      // 廷达罗斯猎犬离开检定牌堆并沿场地奔跑，对第一个回合用时超过15秒的玩家造成4点HP伤害，之后返回检定牌堆
-      newGs.houndsOfTindalosActive = true;
-      newGs.houndsOfTindalosTarget = null;
-      newGs.houndsOfTindalosElapsed = 0;
-      L.push('廷达罗斯猎犬出现了！');
-      break;
-    }
-  }
-  const finalLog=drawnCard.effect==='nothing'
-    ?L.filter(line=>line!==`${P[playerIndex].name} 获得暂时的平静`)
-    :L;
-  if (drawnCard.effect === 'houndsOfTindalos') {
-    newGs.inspectionDiscard = [];
-  } else {
-    newGs.inspectionDeck = shuffle([...(newGs.inspectionDeck||[]), drawnCard]);
-    newGs.inspectionDiscard = [];
-  }
-  newGs._inspectionSeq = (gs?._inspectionSeq || 0) + 1;
-  newGs._inspectionCard = drawnCard;
-  newGs._inspectionTarget = playerIndex;
-  newGs._inspectionPrevLogLen = beforeLogLen;
-  newGs._inspectionBeforePlayers = beforePlayers;
-  newGs._inspectionEvents = [
-    ...((gs?._inspectionEvents)||[]),
-    {
-      seq:newGs._inspectionSeq,
-      card:drawnCard,
-      target:playerIndex,
-      prevLogLen:beforeLogLen,
-      beforePlayers,
-      beforeLog,
-      afterPlayers:copyPlayers(P),
-      afterLog:[...finalLog],
-    }
-  ];
-  // 更新游戏状态
-  newGs.players = P;
-  newGs.log = finalLog;
-  return newGs;
-}
-
-function mergeInspectionMeta(target, inspectionResult){
-  return {
-    ...target,
-    inspectionDeck: inspectionResult.inspectionDeck,
-    inspectionDiscard: inspectionResult.inspectionDiscard,
-    sealLooseningCount: inspectionResult.sealLooseningCount,
-    houndsOfTindalosActive: inspectionResult.houndsOfTindalosActive,
-    houndsOfTindalosTarget: inspectionResult.houndsOfTindalosTarget,
-    houndsOfTindalosElapsed: inspectionResult.houndsOfTindalosElapsed,
-    _inspectionSeq: inspectionResult._inspectionSeq,
-    _inspectionCard: inspectionResult._inspectionCard,
-    _inspectionTarget: inspectionResult._inspectionTarget,
-    _inspectionPrevLogLen: inspectionResult._inspectionPrevLogLen,
-    _inspectionBeforePlayers: inspectionResult._inspectionBeforePlayers,
-    _inspectionEvents: inspectionResult._inspectionEvents,
-  };
-}
-
-function makeInspectionMeta(gs){
-  return {
-    inspectionDeck: gs?.inspectionDeck??[],
-    inspectionDiscard: gs?.inspectionDiscard??[],
-    sealLooseningCount: gs?.sealLooseningCount??0,
-    houndsOfTindalosActive: gs?.houndsOfTindalosActive??false,
-    houndsOfTindalosTarget: gs?.houndsOfTindalosTarget??null,
-    houndsOfTindalosElapsed: gs?.houndsOfTindalosElapsed??0,
-    _inspectionSeq: gs?._inspectionSeq||0,
-    _inspectionCard: gs?._inspectionCard||null,
-    _inspectionTarget: gs?._inspectionTarget??null,
-    _inspectionPrevLogLen: gs?._inspectionPrevLogLen??null,
-    _inspectionBeforePlayers: gs?._inspectionBeforePlayers??null,
-    _inspectionEvents: gs?._inspectionEvents??[],
-  };
-}
-
-function sortInspectionTargets(targets,startIndex,totalPlayers){
-  const uniq=[...new Set((targets||[]).filter(i=>i!=null))];
-  return uniq.sort((a,b)=>(((a-startIndex)+totalPlayers)%totalPlayers)-(((b-startIndex)+totalPlayers)%totalPlayers));
-}
-
-function processInspectionTargets(targets,startIndex,P,D,Disc,baseLog,inspectionMeta){
-  let nextP=P,nextD=D,nextDisc=Disc,nextLog=[...baseLog],nextMeta={...inspectionMeta};
-  const ordered=sortInspectionTargets(targets,startIndex,nextP.length||1);
-  for(const idx of ordered){
-    const inspectionResult=handleInspection(idx,{
-      players:nextP,
-      deck:nextD,
-      discard:nextDisc,
-      log:nextLog,
-      inspectionDeck:nextMeta.inspectionDeck,
-      inspectionDiscard:nextMeta.inspectionDiscard,
-      sealLooseningCount:nextMeta.sealLooseningCount,
-      houndsOfTindalosActive:nextMeta.houndsOfTindalosActive,
-      houndsOfTindalosTarget:nextMeta.houndsOfTindalosTarget,
-      houndsOfTindalosElapsed:nextMeta.houndsOfTindalosElapsed,
-      _inspectionSeq:nextMeta._inspectionSeq,
-    });
-    nextP=inspectionResult.players;
-    nextD=inspectionResult.deck;
-    nextDisc=inspectionResult.discard;
-    nextLog=inspectionResult.log||nextLog;
-    nextMeta=mergeInspectionMeta(nextMeta,inspectionResult);
-  }
-  return {P:nextP,D:nextD,Disc:nextDisc,log:nextLog,inspectionMeta:nextMeta};
-}
-
-function applyInspectionForSanLoss(targetIndex,newSan,startIndex,P,D,Disc,baseLog,inspectionMeta){
-  if(newSan>6)return {P,D,Disc,log:baseLog,inspectionMeta};
-  return processInspectionTargets([targetIndex],startIndex,P,D,Disc,baseLog,inspectionMeta);
-}
-
 function clearPlayerGodZone(targetPlayer,discard){
   if(targetPlayer?.godZone?.length)discard.push(...targetPlayer.godZone);
   if(targetPlayer){
@@ -2524,252 +1619,9 @@ function convertGodFollower(targetIndex,startIndex,P,D,Disc,L,inspectionMeta,log
 //  ANIMATION SYSTEM  ─ queue-based, game freezes until all done
 // ══════════════════════════════════════════════════════════════
 
-// Evil card types: cause HP or SAN damage to others
-const EVIL_TYPES=new Set([
-  'selfDamageHP','selfDamageSAN','selfDamageHPSAN',
-  'selfDamageDiscardHP','selfDamageDiscardSAN',
-  'selfDamageRestHP','selfDamageRestSAN','adjDamageHP','adjDamageSAN','adjDamageBoth',
-  'allDamageHP','allDamageSAN','allDamageBoth','allDiscard','selfRenounceGod',
-]);
-
-
 // Duration (ms) per animation type
 const AI_AUTO_STEP_DELAY=900;
 const AI_PICK_STEP_DELAY=1300;
-
-const EMPTY_TURN_ANIM_FIELDS=Object.freeze({
-  _playersBeforeThisDraw:null,
-  _turnStartLogs:[],
-  _drawLogs:[],
-  _statLogs:[],
-  _preTurnPlayers:null,
-  _preTurnStatLogs:[],
-});
-function withClearedTurnAnimFields(state,extra={}){
-  return {...state,...EMPTY_TURN_ANIM_FIELDS,...extra};
-}
-function buildLocalCthDecisionState(baseState,{
-  players,
-  deck,
-  discard,
-  log,
-  drawnCard,
-  remainingDraws,
-  needGodChoice=false,
-  preStatLogs=[],
-  statLogs=[],
-  extraState={},
-}){
-  const drawLogs=[`你 摸到 ${cardLogText(drawnCard,{alwaysShowName:true})}`,...(needGodChoice?[]:preStatLogs)];
-  if(needGodChoice){
-    return {
-      ...baseState,
-      players,
-      deck,
-      discard,
-      log,
-      currentTurn:0,
-      phase:'GOD_CHOICE',
-      abilityData:{godCard:drawnCard,fromRest:true,cthDrawsRemaining:remainingDraws,drawerIdx:0},
-      drawReveal:null,
-      selectedCard:null,
-      _turnStartLogs:[],
-      _drawLogs:drawLogs,
-      _statLogs:[],
-      ...extraState,
-    };
-  }
-  return {
-    ...baseState,
-    players,
-    deck,
-    discard,
-    log,
-    currentTurn:0,
-    phase:'DRAW_REVEAL',
-    drawReveal:{card:drawnCard,msgs:[],needsDecision:true,forcedKeep:false,drawerIdx:0,drawerName:players[0].name,fromRest:true},
-    selectedCard:null,
-    abilityData:{fromRest:true,cthDrawsRemaining:remainingDraws},
-    _turnStartLogs:[],
-    _drawLogs:drawLogs,
-    _statLogs:statLogs,
-    ...extraState,
-  };
-}
-function buildPlayerTurnDrawQueue(oldGs,newGs,seedQueue=[]){
-  const queue=[...(Array.isArray(seedQueue)?seedQueue:[])];
-  if(isLocalCurrentTurn(newGs)&&newGs.drawReveal?.card){
-    queue.push(
-      {type:'YOUR_TURN',msgs:newGs._turnStartLogs},
-      {type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:'你',targetPid:0,msgs:newGs._drawLogs}
-    );
-    const statQ=bindAnimLogChunks(buildAnimQueue(oldGs,newGs),{statLogs:newGs._statLogs});
-    queue.push(...statQ);
-  }
-  return queue;
-}
-
-function buildAnimQueue(oldGs,newGs){
-  const q=[];
-  const newInspectionEvents=(newGs?._inspectionEvents||[]).filter(ev=>ev?.seq>(oldGs?._inspectionSeq||0));
-  const effectivePlayers=newInspectionEvents[0]?.beforePlayers||newGs.players;
-  const effectiveLog=newInspectionEvents[0]?.beforeLog||newGs.log;
-  const newMsgs=effectiveLog.slice(oldGs.log.length);
-  // 当回合交接时因首牌强制触发效果（如扭伤）直接导致游戏结束，必须补全飞牌和回合展示动画
-  if(newGs.gameOver && newGs.currentTurn !== oldGs.currentTurn){
-    const dCard = newGs._aiDrawnCard || newGs._drawnCard || newGs.drawReveal?.card;
-    if(dCard){
-      q.push({type:'YOUR_TURN', name:newGs.players[newGs.currentTurn]?.name||'???', msgs: newGs._turnStartLogs||[]});
-      q.push({type:'DRAW_CARD', card: dCard, triggerName: newGs.players[newGs.currentTurn]?.name||'???', targetPid: newGs.currentTurn, msgs: newGs._drawLogs||[]});
-    }
-  }
-  const deathIdx=effectivePlayers.reduce((acc,p,i)=>{if(oldGs.players[i]&&!oldGs.players[i].isDead&&p.isDead)acc.push(i);return acc;},[]);
-  const _ts=effectivePlayers.map(p=>({hp:p.hp,san:p.san,isDead:p.isDead}));
-  const hpHealIdx=effectivePlayers.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.hp>oldGs.players[i].hp)acc.push(i);return acc;},[]);
-  const sanHealIdx=effectivePlayers.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.san>oldGs.players[i].san)acc.push(i);return acc;},[]);
-  const sameHealTargets=hpHealIdx.length&&sanHealIdx.length&&hpHealIdx.length===sanHealIdx.length&&hpHealIdx.every((v,i)=>v===sanHealIdx[i]);
-  const hpHitIdx=effectivePlayers.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.hp<oldGs.players[i].hp)acc.push(i);return acc;},[]);
-  if(hpHitIdx.length) q.push({type:'HP_DAMAGE',msgs:newMsgs,hitIndices:hpHitIdx,targetStats:_ts});
-  if(sameHealTargets){
-    q.push({type:'HP_SAN_HEAL',msgs:newMsgs,hitIndices:hpHealIdx,targetStats:_ts});
-  }else{
-    if(hpHealIdx.length) q.push({type:'HP_HEAL',msgs:newMsgs,hitIndices:hpHealIdx,targetStats:_ts});
-    if(sanHealIdx.length) q.push({type:'SAN_HEAL',msgs:newMsgs,hitIndices:sanHealIdx,targetStats:_ts});
-  }
-  const sanHitIdx=effectivePlayers.reduce((acc,p,i)=>{if(oldGs.players[i]&&p.san<oldGs.players[i].san)acc.push(i);return acc;},[]);
-  if(sanHitIdx.length) q.push({type:'SAN_DAMAGE',msgs:newMsgs,hitIndices:sanHitIdx,targetStats:_ts});
-  if(deathIdx.length){
-    q.push({type:'GUILLOTINE',msgs:newMsgs,hitIndices:deathIdx,targetStats:_ts});
-    q.push({type:'DEATH',msgs:newMsgs,hitIndices:deathIdx,targetStats:_ts});
-  }
-  // 仅在地动山摇效果实际结算时播放，不因追捕亮牌等日志文本误触发
-  if((newGs._earthquakeSeq||0)!==(oldGs._earthquakeSeq||0)){
-    q.push({type:'EARTHQUAKE',msgs:newMsgs});
-  }
-  const fullHandSwapMsg=newMsgs.find(m=>m.includes('交换了全部手牌'));
-  if(fullHandSwapMsg){
-    const swapMatch=fullHandSwapMsg.match(/^(.+?) 与 (.+?) 交换了全部手牌/);
-    const fromName=swapMatch?.[1];
-    const toName=swapMatch?.[2];
-    const resolveSwapPid=(name)=>{
-      if(!name)return-1;
-      if(name==='你')return 0;
-      return effectivePlayers.findIndex(p=>p?.name===name);
-    };
-    const fromPid=resolveSwapPid(fromName);
-    const toPid=resolveSwapPid(toName);
-    if(fromPid>=0&&toPid>=0&&oldGs.players[fromPid]&&oldGs.players[toPid]){
-      q.push({type:'CARD_TRANSFER',fromPid,dest:'player',toPid,count:oldGs.players[fromPid].hand.length});
-      q.push({type:'CARD_TRANSFER',fromPid:toPid,dest:'player',toPid:fromPid,count:oldGs.players[toPid].hand.length});
-      return q;
-    }
-  }
-  // Detect hand card losses → CARD_TRANSFER
-  const losers=effectivePlayers.filter((p,i)=>oldGs.players[i]&&p.hand.length<oldGs.players[i].hand.length);
-  if(losers.length===1){
-    // 普通单向手牌减少（追捕没收、蛊惑、弃牌等）
-    const li=effectivePlayers.indexOf(losers[0]);
-    const count=(oldGs.players[li].hand.length-effectivePlayers[li].hand.length);
-    let dest='discard',toPid=null;
-    for(let j=0;j<effectivePlayers.length;j++){
-      if(j===li||!oldGs.players[j])continue;
-      if(effectivePlayers[j].hand.length>oldGs.players[j].hand.length){dest='player';toPid=j;break;}
-    }
-    if(dest==='discard'){
-      const oldGZ=oldGs.players[li].godZone?.length||0;
-      const newGZ=effectivePlayers[li].godZone?.length||0;
-      if(newGZ>oldGZ)dest='godzone';
-    }
-    // 死亡角色的手牌放入弃牌堆时不生成飞牌动画（追捕击杀的飞牌动画在 buildAiHuntEventAnimQueue 中单独处理）
-    if (!effectivePlayers[li]?.isDead) {
-      q.push({type:'CARD_TRANSFER',fromPid:li,dest,toPid,count});
-    }
-  }else if(losers.length===2){
-    // 双向交换（掉包）：为双方各生成一条飞牌动画
-    // A→B（发动者把牌给目标），B→A（目标的牌到发动者）
-    losers.forEach(loser=>{
-      const li=effectivePlayers.indexOf(loser);
-      const toPid=effectivePlayers.findIndex((p,j)=>j!==li&&oldGs.players[j]&&p.hand.length>oldGs.players[j].hand.length);
-      if(toPid<0)return;
-      const count=oldGs.players[li].hand.length-effectivePlayers[li].hand.length;
-      q.push({type:'CARD_TRANSFER',fromPid:li,dest:'player',toPid,count});
-    });
-  }
-  return q;
-}
-
-function buildFullHandSwapTransferQueueFromLogs(logs, players){
-  const fullHandSwapMsg=(Array.isArray(logs)?logs:[]).find(
-    line=>typeof line==='string'&&line.includes('交换了全部手牌')
-  );
-  if(!fullHandSwapMsg||!Array.isArray(players))return [];
-  const swapMatch=fullHandSwapMsg.match(/^(.+?) 与 (.+?) 交换了全部手牌/);
-  const fromName=swapMatch?.[1];
-  const toName=swapMatch?.[2];
-  const resolveSwapPid=(name)=>{
-    if(!name)return-1;
-    if(name==='你')return 0;
-    return players.findIndex(p=>p?.name===name);
-  };
-  const fromPid=resolveSwapPid(fromName);
-  const toPid=resolveSwapPid(toName);
-  if(fromPid<0||toPid<0||!players[fromPid]||!players[toPid])return [];
-  return [
-    {type:'CARD_TRANSFER',fromPid,dest:'player',toPid,count:players[fromPid].hand.length},
-    {type:'CARD_TRANSFER',fromPid:toPid,dest:'player',toPid:fromPid,count:players[toPid].hand.length,msgs:[fullHandSwapMsg]},
-  ];
-}
-
-function buildAiHuntEventAnimQueue(evt, actorName){
-  const huntMsgs=Array.isArray(evt.msgs)&&evt.msgs.length?[evt.msgs[0]]:[];
-  const followupMsgs=Array.isArray(evt.msgs)?evt.msgs.slice(1):[];
-  const perHuntQueue=[{type:'SKILL_HUNT',msgs:huntMsgs,_logChunk:huntMsgs,targetIdx:evt.targetIdx>=0?evt.targetIdx:1}];
-  const takeFollowup=(predicate)=>{
-    const idx=followupMsgs.findIndex(predicate);
-    if(idx<0)return [];
-    return followupMsgs.splice(idx,1);
-  };
-  if(evt.discardedCard){
-    const discardChunk=takeFollowup(line=>/^弃 \[/.test(line||''));
-    perHuntQueue.push({type:'DISCARD',card:evt.discardedCard,triggerName:actorName||'???',targetPid:evt.hunterIdx,_logChunk:discardChunk});
-    if(evt.afterDiscardPlayers){
-      perHuntQueue.push({type:'STATE_PATCH',players:evt.afterDiscardPlayers,discard:evt.afterDiscardDiscard});
-    }
-  }
-  if(evt.beforePlayers&&evt.afterPlayers){
-    if(evt.afterPlayers[evt.targetIdx]?.isDead && evt.hunterIdx!=null){
-      const hunterBefore=evt.beforePlayers[evt.hunterIdx]?.hand?.length||0;
-      const hunterAfter=evt.afterPlayers[evt.hunterIdx]?.hand?.length||0;
-      const cardsTaken=Math.max(0,hunterAfter-hunterBefore+(evt.discardedCard?1:0));
-      if(cardsTaken>0){
-        perHuntQueue.push({type:'CARD_TRANSFER',fromPid:evt.targetIdx,dest:'player',toPid:evt.hunterIdx,count:cardsTaken});
-      }
-    }
-    const beforeLog=Array.isArray(evt.beforeLog)?evt.beforeLog:[];
-    const afterLog=Array.isArray(evt.afterLog)?evt.afterLog:[...beforeLog,...(evt.msgs||[])];
-    const resultQueue=buildAnimQueue(
-      {players:evt.beforePlayers,log:beforeLog},
-      {players:evt.afterPlayers,log:afterLog}
-    );
-    const resultWithChunks=resultQueue
-      .filter(step=>!(evt.discardedCard&&step.type==='CARD_TRANSFER'&&step.fromPid===evt.hunterIdx&&step.dest==='discard'))
-      .map(step=>({...step}));
-    if(followupMsgs.length){
-      const firstVisibleIdx=resultWithChunks.findIndex(step=>step.type!=='STATE_PATCH');
-      if(firstVisibleIdx>=0){
-        resultWithChunks[firstVisibleIdx]._logChunk=[
-          ...(Array.isArray(resultWithChunks[firstVisibleIdx]._logChunk)?resultWithChunks[firstVisibleIdx]._logChunk:[]),
-          ...followupMsgs,
-        ];
-      }
-    }
-    perHuntQueue.push(...resultWithChunks);
-    perHuntQueue.push({type:'STATE_PATCH',players:evt.afterPlayers,discard:evt.afterResultDiscard});
-  }else if(followupMsgs.length){
-    perHuntQueue.push({type:'TURN_BOUNDARY_PAUSE',_logChunk:[...followupMsgs]});
-  }
-  return perHuntQueue;
-}
 
 // ── Bewitch effect description helper ─────────────────────────
 function getBewitchEffectDesc(card){
@@ -2917,26 +1769,14 @@ function useWindowSize(){
   return sz;
 }
 
-const NARRATOR_AVATAR="data:image/png;base64,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";
 
-// Small narrator portrait used in tutorial popups
-function NarratorAvatar({tooltipW}){
-  const sz=Math.max(36,Math.floor((tooltipW||260)/4));
-  return(
-    <img src={NARRATOR_AVATAR} alt="narrator"
-      style={{width:sz,height:sz,borderRadius:3,objectFit:'cover',objectPosition:'top',
-        border:'1.5px solid #5a3a10',flexShrink:0,
-        boxShadow:'0 0 8px #7a502055',imageRendering:'auto'}}
-    />
-  );
-}
 
 // Persistent gamma / brightness slider — top-right corner
 function GammaSlider({gamma,onChange}){
   const [hover,setHover]=useState(false);
   // Rendered via Portal directly onto document.body so that any CSS filter on ancestor
   // elements does not affect position:fixed coordinates (filter creates a new containing block).
-  return ReactDOM.createPortal(
+  return createPortal(
     <div
       style={{position:'fixed',top:0,left:'50%',transform:'translateX(-50%)',zIndex:1800}}
       onMouseEnter={()=>setHover(true)}
@@ -3321,10 +2161,10 @@ export default function Game(){
     renameCdActive,
     renameInputVisible, setRenameInputVisible,
     joinRoomInput, setJoinRoomInput,
-    lobbyModal, setLobbyModal,
+    lobbyModal,
     lobbyRooms, setLobbyRooms,
     lobbyLoading, setLobbyLoading,
-    showPrivacyToggleConfirm, setShowPrivacyToggleConfirm,
+    showPrivacyToggleConfirm,
     privacyWarnDontShow, setPrivacyWarnDontShow,
     handleCreateRoom,
     handleJoinRoom,
@@ -4016,11 +2856,11 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
   },[gs?.players,gs?.log]);
 
   useEffect(()=>{
-    if(!gs||anim||animQueueRef.current.length>0||gs.gameOver)return;
+    if(!gs||anim||animQueueRef.current.length>0||gs.gameOver||gs.phase==='PLAYER_WIN_PENDING'||gs.phase==='TREASURE_WIN')return;
     const normalized=moveEligibleBlankZones(gs.players,gs.log||[]);
     if(!normalized)return;
     setGs(prev=>{
-      if(!prev||prev.gameOver)return prev;
+      if(!prev||prev.gameOver||prev.phase==='PLAYER_WIN_PENDING'||prev.phase==='TREASURE_WIN')return prev;
       const recheck=moveEligibleBlankZones(prev.players,prev.log||[]);
       if(!recheck)return prev;
       return {...prev,players:recheck.players,log:recheck.log};
@@ -4394,14 +3234,13 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
           queue.push({type:'DISCARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn});
           queue.push({type:'STATE_PATCH',players:gs.players,discard:gs.discard});
         }
-        const fullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(nextLog.slice(oldLog.length),gs.players);
+        const newMsgs=nextLog.slice(oldLog.length);
+        const fullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(newMsgs,gs.players);
         const actionStatQBase=buildAnimQueue(gs,fakeGs(newGs.players,nextLog));
         const actionStatQ=fullHandSwapQ.length
           ? [...fullHandSwapQ,...actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')]
           : actionStatQBase;
-        if(actionStatQ.length){
-          queue.push(...actionStatQ);
-        }
+
         if(rawResult._playersBeforeSkillAction){
           queue.push({
             type:'STATE_PATCH',
@@ -4411,8 +3250,21 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
           });
           queue.push({type:'TURN_BOUNDARY_PAUSE'});
         }
+
         const huntEventQueue=(rawResult._aiHuntEvents||[]).flatMap(evt=>buildAiHuntEventAnimQueue(evt,gs.players[gs.currentTurn]?.name||'???'));
-        queue.push(...huntEventQueue);
+        const hasFullHandSwap=newMsgs.some(m=>m.includes('交换了全部手牌'));
+
+        if(huntEventQueue.length){
+          if(hasFullHandSwap){
+            const huntStatHitSet=new Set(huntEventQueue.flatMap(s=>['GUILLOTINE','DEATH','HP_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','SAN_DAMAGE'].includes(s.type)?(s.hitIndices||[]):[]));
+            const dedupedActionStatQ=actionStatQ.filter(s=>!(['GUILLOTINE','DEATH','HP_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','SAN_DAMAGE'].includes(s.type)&&(s.hitIndices||[]).some(i=>huntStatHitSet.has(i))));
+            queue.push(...dedupedActionStatQ, ...huntEventQueue);
+          } else {
+            queue.push(...huntEventQueue);
+          }
+        } else if(actionStatQ.length){
+          queue.push(...actionStatQ);
+        }
         const explicitCurrentLogs=[
           ...(gs._turnStartLogs||[]),
           ...(gs._drawLogs||[]),
@@ -4543,7 +3395,13 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
         const hasFullHandSwap=newMsgs.some(m=>m.includes('交换了全部手牌'));
         if(hasActualSwap) queue.push({type:'SKILL_SWAP',msgs:extractSkillLogs(newMsgs,'swap')});
         else if(huntEventQueue.length){
-          orderedActionQ=hasFullHandSwap?[...actionStatQ,...huntEventQueue]:huntEventQueue;
+          if(hasFullHandSwap){
+            const huntStatHitSet=new Set(huntEventQueue.flatMap(s=>['GUILLOTINE','DEATH','HP_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','SAN_DAMAGE'].includes(s.type)?(s.hitIndices||[]):[]));
+            const dedupedActionStatQ=actionStatQ.filter(s=>!(['GUILLOTINE','DEATH','HP_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','SAN_DAMAGE'].includes(s.type)&&(s.hitIndices||[]).some(i=>huntStatHitSet.has(i))));
+            orderedActionQ=[...dedupedActionStatQ,...huntEventQueue];
+          } else {
+            orderedActionQ=huntEventQueue;
+          }
         }
         else if(j.includes('【追捕】')||(j.includes('追捕')&&!j.includes('停止了追捕')&&!j.includes('放弃追捕'))){
           const huntMsg=newMsgs.find(m=>m.includes('【追捕】')||m.includes('追捕'));
@@ -5101,9 +3959,9 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
     if(!myTurn){
       // 只有被追捕方执行超时逻辑
       const t=setTimeout(()=>{
-        const zoneCards=me.hand.filter(isZoneCard);
-        if(!zoneCards.length)return;
-        const rc=zoneCards[0|Math.random()*zoneCards.length];
+        const hand=me.hand;
+        if(!hand.length)return;
+        const rc=hand[0|Math.random()*hand.length];
         const L=[...gs.log,`(超时) ${me.name} 随机亮出 ${cardLogText(rc,{alwaysShowName:true})}`];
         setGs({...gs,log:L,phase:'HUNT_CONFIRM',abilityData:{...gs.abilityData,revCard:rc}});
       },20000);
@@ -6427,9 +5285,8 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
 
   function huntSelectTarget(ti){
     let P=copyPlayers(gs.players);P[0].roleRevealed=true;
-    const tHand=P[ti].hand.filter(isZoneCard);
-    if(!tHand.length){
-      setGs({...gs,players:P,phase:'ACTION',abilityData:{},log:[...gs.log,`${P[ti].name} 手中无区域牌，追捕失败`]});
+    if(!P[ti].hand.length){
+      setGs({...gs,players:P,phase:'ACTION',abilityData:{},log:[...gs.log,`${P[ti].name} 手中无牌，追捕失败`]});
       return;
     }
     if(gs._isMP){
@@ -6437,14 +5294,14 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       // 暂停房主回合计时器：进入 HUNT_WAIT_REVEAL 子阶段，目标玩家选完后恢复
       const huntWaitGs={...gs,players:P,phase:'HUNT_WAIT_REVEAL',
         abilityData:{...(gs.abilityData||{}),huntTi:ti},
-        log:[...gs.log,`你（追猎者）追捕 ${P[ti].name}，等待对方亮出一张区域牌…`]};
+        log:[...gs.log,`你（追猎者）追捕 ${P[ti].name}，等待对方亮出一张手牌…`]};
       const huntMsgs=extractSkillLogs(huntWaitGs.log.slice(gs.log.length),'hunt');
       triggerAnimQueue([{type:'SKILL_HUNT',targetIdx:ti,msgs:huntMsgs}],huntWaitGs);
       return;
     }
     // 单机/AI目标：由AI策略选择最优亮牌
     const knownHunterCards=P[ti]?.peekMemories?.[0]||[];
-    const rc=aiChooseRevealCard(tHand,'你',gs.log,knownHunterCards);
+    const rc=aiChooseRevealCard(P[ti].hand,'你',gs.log,knownHunterCards);
     const huntConfirmGs={...gs,players:P,phase:'HUNT_CONFIRM',
       abilityData:{...(gs.abilityData||{}),huntTi:ti,revCard:rc},
       log:[...gs.log,`你（追猎者）追捕 ${P[ti].name}，${P[ti].name} 亮出 ${cardLogText(rc,{alwaysShowName:true})}`]};
@@ -6559,10 +5416,10 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     }
   }
 
-  // 多人游戏：被追捕的真人玩家选择亮出一张区域牌
+  // 多人游戏：被追捕的真人玩家选择亮出一张手牌
   function humanRevealForMPHunt(cardIdx){
     const card=me.hand[cardIdx];
-    if(!isZoneCard(card))return;
+    if(!card)return;
     // huntTi = 被追捕者在当前视角下的 index（非0）
     // 被追捕者将选择结果推送回规范 gs 并广播：
     // 设置 revCard，切换到 HUNT_CONFIRM 让追猎者（currentTurn=0 视角）完成后续
@@ -6574,10 +5431,10 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     // gs sync useEffect 将广播给追猎者
   }
 
-  // Called when player picks their zone card to reveal during an AI hunt
+  // Called when player picks their card to reveal during an AI hunt
   function playerRevealForHunt(cardIdx){
     const card=me.hand[cardIdx];
-    if(!isZoneCard(card))return;
+    if(!card)return;
     const{huntingAI,aiHunterName}=gs.abilityData;
     let P=copyPlayers(gs.players),Disc=[...gs.discard],L=[...gs.log];
     let discardedCard=null;
@@ -7137,7 +5994,6 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         ];
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
         setAnim({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
-        revealAnimLogs({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
         return;
       }
         if(newGs.phase==='GOD_CHOICE'&&newGs.abilityData?.godCard){
@@ -7159,7 +6015,6 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         ];
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
         setAnim({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
-        revealAnimLogs({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
         return;
       }
       if(playerTurnStartMsgs.length&&newGs.phase==='ACTION'&&(preTurnStatQ.length||drawStatQ.length)){
@@ -7167,7 +6022,6 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         animQueueRef.current=[...preTurnStatQ,...drawStatQ];
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
         setAnim({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
-        revealAnimLogs({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
         return;
       }
     }
@@ -7566,28 +6420,29 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
 
   // Phase labels
   const cardHintText='鼠标悬停查看卡牌详情（移动端请点击卡牌）';
+  const canShowTurnDecisionModal=!anim&&!animExiting&&animQueueRef.current.length===0;
   const phaseLabel={
     ACTION:               isLocalCurrentTurn(gs)?'你的回合 — 可发动技能、休息，或结束回合':'等候其他旅者…',
     SWAP_SELECT_TARGET:   '【掉包】选择目标角色',
     SWAP_SELECT_TARGET_CARD: `【掉包】${gs.players[gs.abilityData?.swapTi]?.name}的手牌已公开，请选择要抽取的牌`,
     SWAP_GIVE_CARD:       `${gs.players[gs.abilityData?.swapTi]?.revealHand ? '抽到' : '暗抽到'} ${cardLogText(gs.abilityData?.takenCard)}，选一张手牌还给对方`,
     HUNT_SELECT_TARGET:   '【追捕】选择猎物',
-    HUNT_CONFIRM:         isLocalHuntConfirmPhase(gs)?`${cardLogText(gs.abilityData?.revCard,{alwaysShowName:true})} 已亮出！弃出匹配手牌造成3HP，或放弃`:(gs._isMP?'请等待追猎者做出选择…':`${cardLogText(gs.abilityData?.revCard,{alwaysShowName:true})} 已亮出`),
+    HUNT_CONFIRM:         isLocalHuntConfirmPhase(gs)?`${cardLogText(gs.abilityData?.revCard,{alwaysShowName:true})} 已亮出！${gs.abilityData?.revCard&&!isZoneCard(gs.abilityData.revCard)?'弃出任意手牌':'弃出匹配手牌'}造成3HP，或放弃`:(gs._isMP?'请等待追猎者做出选择…':`${cardLogText(gs.abilityData?.revCard,{alwaysShowName:true})} 已亮出`),
     HUNT_SELECT_CARD_FROM_PUBLIC: `【追捕】从 ${gs.players[gs.abilityData?.huntTi]?.name} 的公开手牌中选择一张`,
-    PLAYER_REVEAL_FOR_HUNT:`⚠ ${gs.abilityData?.aiHunterName||'追猎者'} 正在追捕你！请选择一张区域牌亮出`,
+    PLAYER_REVEAL_FOR_HUNT:`⚠ ${gs.abilityData?.aiHunterName||'追猎者'} 正在追捕你！请选择一张手牌亮出`,
     HUNT_WAIT_REVEAL:isLocalCurrentTurn(gs)
-      ?`等待 ${gs.players[gs.abilityData?.huntTi??1]?.name||'对方'} 亮出区域牌…`
+      ?`等待 ${gs.players[gs.abilityData?.huntTi??1]?.name||'对方'} 亮出手牌…`
       :isLocalHuntTargetSeat(gs)
-        ?`⚠ 追猎者正在追捕你！请选择一张区域牌亮出（20秒）`
-        :`等待 ${gs.players[gs.abilityData?.huntTi??1]?.name||'对方'} 亮出区域牌…`,
-    TREASURE_DODGE_DECISION: isLocalTreasureDodgePhase(gs)?'【寻宝者】触发负面区域牌！是否掷骰子规避？':(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 做出选择…`:`${gs.players[gs.currentTurn]?.name} 正在思考…`),
+        ?`⚠ 追猎者正在追捕你！请选择一张手牌亮出（20秒）`
+        :`等待 ${gs.players[gs.abilityData?.huntTi??1]?.name||'对方'} 亮出手牌…`,
+    TREASURE_DODGE_DECISION: isLocalTreasureDodgePhase(gs)?(canShowTurnDecisionModal?'【寻宝者】触发负面区域牌！是否掷骰子规避？':'规避判定中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 做出选择…`:`${gs.players[gs.currentTurn]?.name} 正在思考…`),
     BEWITCH_SELECT_CARD:  '【蛊惑】选择要赠送的手牌',
-    GOD_CHOICE:          isLocalGodChoice?'邪神降临！选择如何回应':(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 回应邪神…`:'邪神降临！选择如何回应'),
-    NYA_BORROW:          isLocalNyaBorrowPhase(gs)?'「千人千貌」——借用已死角色的身份？':(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 借用身份…`:'「千人千貌」——借用已死角色的身份？'),
+    GOD_CHOICE:          isLocalGodChoice?(canShowTurnDecisionModal?'邪神降临！选择如何回应':'面临抉择中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 回应邪神…`:'邪神降临！选择如何回应'),
+    NYA_BORROW:          isLocalNyaBorrowPhase(gs)?(canShowTurnDecisionModal?'「千人千貌」——借用已死角色的身份？':'身份借用中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 借用身份…`:'「千人千貌」——借用已死角色的身份？'),
     DISCARD_PHASE:(()=>{const sel=gs.abilityData.discardSelected||[];const need=me.hand.length-effectiveHandLimit;return`手牌超限 (${me.hand.length}/${effectiveHandLimit}) — 需弃 ${need} 张，已选 ${sel.length}/${need}`;})(),
     AI_TURN:gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 行动…`:`${gs.players[gs.currentTurn]?.name} 正在行动…`,
     PLAYER_WIN_PENDING:'✦ 你已集齐全部编号！',
-    DRAW_REVEAL:         isLocalDrawDecision?'摸牌 — 请确认':(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 摸牌…`:''),
+    DRAW_REVEAL:         isLocalDrawDecision?(canShowTurnDecisionModal?'摸牌 — 请确认':'摸牌中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 摸牌…`:''),
     TREASURE_WIN:         '✦ 你已集齐全部编号！',
     ZONE_SWAP_SELECT_TARGET: `【触底反弹】选择要交换全部手牌的目标`,
     DAMAGE_LINK_SELECT_TARGET:'请选择绳索连接目标',
@@ -7670,8 +6525,8 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
   }
 
   function canPlayerRespondWithZoneCard(card){
-    if(phase==='PLAYER_REVEAL_FOR_HUNT')return isZoneCard(card);
-    if(phase==='HUNT_WAIT_REVEAL'&&!myTurn&&isLocalHuntTargetSeat(gs))return isZoneCard(card);
+    if(phase==='PLAYER_REVEAL_FOR_HUNT')return !!card;
+    if(phase==='HUNT_WAIT_REVEAL'&&!myTurn&&isLocalHuntTargetSeat(gs))return !!card;
     return false;
   }
 
@@ -7735,7 +6590,6 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
   }
 
   const skillLimited=gs.skillUsed&&skillRi.skillLimited;
-  const canShowTurnDecisionModal=!anim&&!animExiting&&animQueueRef.current.length===0;
 
   return(<>
     <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:7,padding:isMobile?'6px 8px':'8px 10px',position:'relative',left:globalShiftX||undefined,overflowX:'hidden',overflowY:'scroll',scrollbarGutter:'stable',
@@ -8178,7 +7032,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             ghostMode==='fade'?{animation:'chainExpireFade 720ms ease-out forwards'}:null;
           const bindAnimStyle=ghostMode==='break'?{animation:'chainBindSnap 560ms ease-out forwards'}:
             ghostMode==='fade'?{animation:'chainExpireFade 720ms ease-out forwards'}:null;
-          return ReactDOM.createPortal(
+          return createPortal(
             <div
               key={`link-${link.id}`}
               style={{
@@ -8276,7 +7130,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         <div ref={handAreaRef} data-hand-area style={{background:'#120900',border:`1.5px solid ${myTurn?'#3a2010':'#2a1a08'}`,borderRadius:3,padding:isMobile?'8px 9px':'11px 13px'}}>
           <div style={{display:'flex',alignItems:'center',marginBottom:9,gap:8}}>
             <span style={{fontFamily:"'Cinzel',serif",color:phase==='DISCARD_PHASE'||phase==='PLAYER_REVEAL_FOR_HUNT'?'#882020':'#3a2510',fontSize:10,letterSpacing:1}}>
-              {phase==='DISCARD_PHASE'?`⚠ 手牌超限 (${visualMe.hand.length}/${effectiveHandLimit})`:phase==='PLAYER_REVEAL_FOR_HUNT'?'⚠ 选择亮出一张区域牌':phase==='HUNT_WAIT_REVEAL'&&!myTurn&&isLocalHuntTargetSeat(gs)?'⚠ 选择亮出一张区域牌':`手牌 (${visualMe.hand.length}/${effectiveHandLimit})`}
+              {phase==='DISCARD_PHASE'?`⚠ 手牌超限 (${visualMe.hand.length}/${effectiveHandLimit})`:phase==='PLAYER_REVEAL_FOR_HUNT'?'⚠ 选择亮出一张手牌':phase==='HUNT_WAIT_REVEAL'&&!myTurn&&isLocalHuntTargetSeat(gs)?'⚠ 选择亮出一张手牌':`手牌 (${visualMe.hand.length}/${effectiveHandLimit})`}
             </span>
             {(phase==='ACTION'&&isVisualPlayerTurn&&!isBlocked||cancelable)&&(
               <div style={{display:'flex',gap:8,marginLeft:'auto',flexWrap:'wrap',position:'relative',zIndex:200}}>
@@ -8365,7 +7219,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
               const clickable=isMyCardClickable(c,i);
               const isMobileArmedGod=isMobile&&mobileArmedGodCardIdx===i;
               const isSel=(phase==='DISCARD_PHASE'&&(gs.abilityData.discardSelected||[]).includes(i))||isMobileArmedGod;
-              const isMatch=phase==='HUNT_CONFIRM'&&gs.abilityData?.revCard&&(c.letter===gs.abilityData.revCard.letter||c.number===gs.abilityData.revCard.number);
+              const isMatch=phase==='HUNT_CONFIRM'&&gs.abilityData?.revCard&&cardsHuntMatch(c,gs.abilityData.revCard);
               const isGodUpgrade=c.isGod&&visualMe.godName===c.godKey&&(visualMe.godLevel||0)<3;
               const canUpgradeNow=isGodUpgrade&&phase==='ACTION'&&isVisualPlayerTurn;
               const canWorshipNow=c.isGod&&!isGodUpgrade&&phase==='ACTION'&&isVisualPlayerTurn&&!gs.godTriggeredThisTurn&&!gs.godFromHandUsed;
@@ -8381,637 +7235,30 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
           {isMobile&&mobileArmedGodCard?.isGod&&mobileArmedGodTooltipRect&&<GodTooltip def={GOD_DEFS[mobileArmedGodCard.godKey]} godLevel={visualMe.godName===mobileArmedGodCard.godKey?visualMe.godLevel:1} position={mobileArmedGodTooltipRect}/>}
         </div>
       </div>
-      {/* ── Tutorial steps 2 & 3 (shown over game interface) ── */}
-      {/* ── Win Animations ── */}
-      {ReactDOM.createPortal(
+      {/* ── Overlays ── */}
+      {createPortal(
         <>
           {!showTutorial&&<HoundsTimerBadge active={!!gs?.houndsOfTindalosActive} secondsLeft={houndsSecLeft}/>}
-          {showTutorial&&tutorialStep===2&&(()=>{
-        const TW=Math.min(260,vw-20);
-        const px=Math.max(8,Math.min(panelRect?panelRect.right+14:175,vw-TW-8));
-        const py=panelRect?panelRect.top+(panelRect.height/2):260;
-        const arrowTop=panelRect?Math.max(16,Math.min(panelRect.height/2,60)):40;
-        const ptop=panelRect?panelRect.top:0;
-        const pbottom=panelRect?panelRect.bottom:0;
-        const pleft=panelRect?panelRect.left:0;
-        const pright=panelRect?panelRect.right:vw;
-        const BG='rgba(0,0,0,0.58)';
-        const W=vw;
-        return(
-          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
-            {/* Four-strip backdrop — leaves self panel undarken */}
-            <div style={{position:'absolute',left:0,top:0,right:0,height:ptop,background:BG,pointerEvents:'none'}}/>
-            <div style={{position:'absolute',left:0,top:ptop,bottom:0,width:pleft,background:BG,pointerEvents:'none'}}/>
-            <div style={{position:'absolute',right:0,top:ptop,bottom:0,left:pright,background:BG,pointerEvents:'none'}}/>
-            <div style={{position:'absolute',left:pleft,right:W-pright,top:pbottom,bottom:0,background:BG,pointerEvents:'none'}}/>
-            {/* Tooltip popup */}
-            <div style={{
-              position:'absolute',
-              left:px,
-              top:Math.max(8,py-90),
-              width:TW,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
-              padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
-              animation:'animPop 0.25s ease-out',
-              zIndex:901,
-            }}>
-              {/* Arrow pointing left */}
-              <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                这么说吧，你此行的目标是一个危险的遗迹，遗迹里有着…很可怕的东西。
-              </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                这里会显示你的当前状态，当<span style={{color:'#e05050',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc222288'}}>HP</span>归零，你就会倒下。
-              </p>
-              <button
-                onClick={()=>setTutorialStep(3)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
-              >
-                下一步 →
-              </button>
-            </div></div>
-            </div>
-          </div>
-        );
-      })()}
-      {showTutorial&&tutorialStep===3&&(()=>{
-        const TW=Math.min(260,vw-20);
-        const px=Math.max(8,Math.min(panelRect?panelRect.right+14:175,vw-TW-8));
-        const py=panelRect?panelRect.top+(panelRect.height/2):260;
-        const arrowTop=panelRect?Math.max(16,Math.min(panelRect.height/2,60)):40;
-        const ptop=panelRect?panelRect.top:0;
-        const pbottom=panelRect?panelRect.bottom:0;
-        const pleft=panelRect?panelRect.left:0;
-        const pright=panelRect?panelRect.right:vw;
-        const BG='rgba(0,0,0,0.58)';
-        const W=vw;
-        return(
-          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
-            {/* Four-strip backdrop — leaves self panel undarken */}
-            <div style={{position:'absolute',left:0,top:0,right:0,height:ptop,background:BG,pointerEvents:'none'}}/>
-            <div style={{position:'absolute',left:0,top:ptop,bottom:0,width:pleft,background:BG,pointerEvents:'none'}}/>
-            <div style={{position:'absolute',right:0,top:ptop,bottom:0,left:pright,background:BG,pointerEvents:'none'}}/>
-            <div style={{position:'absolute',left:pleft,right:W-pright,top:pbottom,bottom:0,background:BG,pointerEvents:'none'}}/>
-            <div style={{
-              position:'absolute',
-              left:px,
-              top:Math.max(8,py-90),
-              width:TW,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
-              padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
-              animation:'animPop 0.25s ease-out',
-              zIndex:901,
-            }}>
-              <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                <span style={{color:'#e05050',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc222288'}}>HP</span>下方是你的<span style={{color:'#a78bfa',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #8844cc88'}}>SAN</span>值，象征心智。
-              </p>
-              <button
-                onClick={()=>setTutorialStep(4)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
-              >
-                下一步 →
-              </button>
-            </div></div>
-            </div>
-          </div>
-        );
-      })()}
-      {showTutorial&&tutorialStep===4&&(()=>{
-        const TW=Math.min(260,vw-20);
-        const px=Math.max(8,Math.min(panelRect?panelRect.right+14:175,vw-TW-8));
-        const py=panelRect?panelRect.top+(panelRect.height/2):260;
-        const arrowTop=panelRect?Math.max(16,Math.min(panelRect.height/2,60)):40;
-        const ptop=panelRect?panelRect.top:0;
-        const pbottom=panelRect?panelRect.bottom:0;
-        const pleft=panelRect?panelRect.left:0;
-        const pright=panelRect?panelRect.right:vw;
-        const BG='rgba(0,0,0,0.58)';
-        const W=vw;
-        return(
-          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
-            {/* Four-strip backdrop — leaves self panel undarken */}
-            <div style={{position:'absolute',left:0,top:0,right:0,height:ptop,background:BG,pointerEvents:'none'}}/>
-            <div style={{position:'absolute',left:0,top:ptop,bottom:0,width:pleft,background:BG,pointerEvents:'none'}}/>
-            <div style={{position:'absolute',right:0,top:ptop,bottom:0,left:pright,background:BG,pointerEvents:'none'}}/>
-            <div style={{position:'absolute',left:pleft,right:W-pright,top:pbottom,bottom:0,background:BG,pointerEvents:'none'}}/>
-            <div style={{
-              position:'absolute',
-              left:px,
-              top:Math.max(8,py-90),
-              width:TW,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
-              padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
-              animation:'animPop 0.25s ease-out',
-              zIndex:901,
-            }}>
-              <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                当一个人完全丧失心智，被遗迹里那些邪祟占据身体，所有人都会大祸临头！
-              </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                哦，不过<span style={{color:'#9060cc',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #7040aa88'}}>邪祀者</span>可能会挺高兴…
-              </p>
-              <button
-                onClick={()=>setTutorialStep(5)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
-              >
-                下一步 →
-              </button>
-            </div></div>
-            </div>
-          </div>
-        );
-      })()}
-      {showTutorial&&tutorialStep===5&&(()=>{
-        const TW=Math.min(260,vw-20);
-        const rx=Math.max(8,Math.min(roleTextRect?roleTextRect.right+14:175,vw-TW-8));
-        const ry=roleTextRect?roleTextRect.top+(roleTextRect.height/2):120;
-        const arrowTop=12;
-        return(
-          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
-            <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
-            <div style={{
-              position:'absolute',
-              left:rx,
-              top:Math.max(8,ry-20),
-              width:TW,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
-              padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
-              animation:'animPop 0.25s ease-out',
-              zIndex:901,
-            }}>
-              <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                说到<span style={{color:'#9060cc',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #7040aa88'}}>邪祀者</span>，你知道你这次的<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>身份</span>吗？
-              </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                每次探索中你的<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>身份</span>都有可能不一样。不知道的话，你可要记好了：
-              </p>
-              <button
-                onClick={()=>setTutorialStep(6)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
-              >
-                下一步 →
-              </button>
-            </div></div>
-            </div>
-          </div>
-        );
-      })()}
-      {showTutorial&&tutorialStep===6&&(()=>{
-        return(
-          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none',display:'flex',alignItems:'center',justifyContent:'center'}}>
-            <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
-            <div style={{
-              position:'relative',zIndex:901,
-              width:Math.min(280,vw-20),pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
-              padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
-              animation:'animPop 0.25s ease-out',
-            }}>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                首先是<span style={{color:'#c8a96e',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #c8a96e88'}}>寻宝者</span>。他们贪婪、无惧危险，进入遗迹只为独占<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>宝藏</span>。他们不会跟任何人合作，包括其他<span style={{color:'#c8a96e',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #c8a96e88'}}>寻宝者</span>。
-              </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                至于他们大闹一通后，邪恶的古神会不会第二天就复活？他们才不管。
-              </p>
-              <button
-                onClick={()=>setTutorialStep(7)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
-              >
-                下一步 →
-              </button>
-            </div></div>
-            </div>
-          </div>
-        );
-      })()}
-      {showTutorial&&tutorialStep===7&&(()=>{
-        // Position tooltip above hand area, centered horizontally over it, arrow pointing down
-        const TOOLTIP_W=Math.min(265,vw-20);
-        const hcx=handAreaRect?handAreaRect.left+(handAreaRect.width/2):200;
-        const hty=handAreaRect?handAreaRect.top:400;
-        const hbottom=handAreaRect?handAreaRect.bottom:500;
-        const hleft=handAreaRect?handAreaRect.left:0;
-        const hright=handAreaRect?handAreaRect.right:window.innerWidth;
-        const tooltipLeft=Math.max(8,Math.min(hcx-TOOLTIP_W/2, window.innerWidth-TOOLTIP_W-8));
-        const tooltipBottom=window.innerHeight-hty+14;
-        const arrowLeft=Math.max(16,Math.min(hcx-tooltipLeft-8, TOOLTIP_W-24));
-        const BG='rgba(0,0,0,0.58)';
-        const W=window.innerWidth, H=window.innerHeight;
-        return(
-          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
-            {/* Four-strip backdrop — leaves hand cards area undarken, covers button row */}
-            <div style={{position:'absolute',left:0,top:0,right:0,height:hty,background:BG,pointerEvents:'none'}}/>
-            <div style={{position:'absolute',left:0,top:hty,bottom:0,width:hleft,background:BG,pointerEvents:'none'}}/>
-            <div style={{position:'absolute',right:0,top:hty,bottom:0,left:hright,background:BG,pointerEvents:'none'}}/>
-            <div style={{position:'absolute',left:hleft,right:W-hright,top:hbottom,bottom:0,background:BG,pointerEvents:'none'}}/>
-            <div style={{
-              position:'fixed',
-              left:tooltipLeft,
-              bottom:tooltipBottom,
-              width:TOOLTIP_W,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
-              padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
-              animation:'animPop 0.25s ease-out',
-              zIndex:901,
-            }}>
-              {/* Arrow pointing down */}
-              <div style={{position:'absolute',bottom:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderTop:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',bottom:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderTop:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                你问我如何寻得<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>宝藏</span>？翻遍所有地方，就这么简单。
-              </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                先驱在遗迹地图上标记了ABCD四列、1234四行。如果你是<span style={{color:'#c8a96e',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #c8a96e88'}}>寻宝者</span>，手牌中有<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>所有列和所有行</span>的编号，你就赢了。
-              </p>
-              <button
-                onClick={()=>setTutorialStep(8)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
-              >
-                下一步 →
-              </button>
-            </div></div>
-            </div>
-          </div>
-        );
-      })()}
-      {/* ── Step 8: 追猎者 description (centered modal, no arrow) ── */}
-      {showTutorial&&tutorialStep===8&&(()=>{
-        return(
-          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none',display:'flex',alignItems:'center',justifyContent:'center'}}>
-            <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
-            <div style={{
-              position:'relative',zIndex:901,
-              width:Math.min(280,vw-20),pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
-              padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
-              animation:'animPop 0.25s ease-out',
-            }}>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                接着是<span style={{color:'#dd6a30',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc440088'}}>追猎者</span>，他们<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>团结一心</span>，是遗迹的卫士。
-              </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                所有闯入者，都是他们的敌人，是可能复活邪神的潜在威胁。
-              </p>
-              <button
-                onClick={()=>setTutorialStep(9)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
-              >
-                下一步 →
-              </button>
-            </div></div>
-            </div>
-          </div>
-        );
-      })()}
-      {/* ── Step 9: 追猎者 win condition, tooltip pointing UP at AI panels area ── */}
-      {showTutorial&&tutorialStep===9&&(()=>{
-        const TOOLTIP_W=Math.min(265,vw-20);
-        const aty =aiPanelAreaRect?aiPanelAreaRect.top:0;
-        const abottom=aiPanelAreaRect?aiPanelAreaRect.bottom:120;
-        const aleft =aiPanelAreaRect?aiPanelAreaRect.left:0;
-        const aright=aiPanelAreaRect?aiPanelAreaRect.right:vw;
-        const acx   =aleft+(aright-aleft)/2;
-        const tooltipLeft=Math.max(8,Math.min(acx-TOOLTIP_W/2,vw-TOOLTIP_W-8));
-        const tooltipTop =abottom+14;
-        const arrowLeft  =Math.max(16,Math.min(acx-tooltipLeft-8,TOOLTIP_W-24));
-        const BG='rgba(0,0,0,0.58)';
-        const W=vw;
-        return(
-          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
-            {/* Four-strip backdrop — leaves AI panels area undarken */}
-            {aty>0&&<div style={{position:'absolute',left:0,top:0,right:0,height:aty,background:BG}}/>}
-            <div style={{position:'absolute',left:0,top:aty,bottom:0,width:aleft,background:BG}}/>
-            <div style={{position:'absolute',left:aright,top:aty,right:0,bottom:0,background:BG}}/>
-            <div style={{position:'absolute',left:aleft,right:W-aright,top:abottom,bottom:0,background:BG}}/>
-            <div style={{
-              position:'fixed',
-              left:tooltipLeft,
-              top:tooltipTop,
-              width:TOOLTIP_W,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
-              padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
-              animation:'animPop 0.25s ease-out',
-              zIndex:901,
-            }}>
-              {/* Arrow pointing UP */}
-              <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                如果你是<span style={{color:'#dd6a30',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc440088'}}>追猎者</span>，你要肃清所有非<span style={{color:'#dd6a30',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc440088'}}>追猎者</span>角色，将他们的<span style={{color:'#e05050',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc222288'}}>HP</span>全部清零，就能获胜。
-              </p>
-              <button
-                onClick={()=>setTutorialStep(10)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
-              >
-                下一步 →
-              </button>
-            </div></div>
-            </div>
-          </div>
-        );
-      })()}
-      {/* ── Step 10: 邪祀者 description (centered modal, no arrow) ── */}
-      {showTutorial&&tutorialStep===10&&(()=>{
-        return(
-          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none',display:'flex',alignItems:'center',justifyContent:'center'}}>
-            <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
-            <div style={{
-              position:'relative',zIndex:901,
-              width:Math.min(280,vw-20),pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
-              padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
-              animation:'animPop 0.25s ease-out',
-            }}>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                最后是<span style={{color:'#9060cc',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #7040aa88'}}>邪祀者</span>，他们一心复活邪神，基于利害关系相互合作，精于算计他人。
-              </p>
-              <button
-                onClick={()=>setTutorialStep(11)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
-              >
-                下一步 →
-              </button>
-            </div></div>
-            </div>
-          </div>
-        );
-      })()}
-      {/* ── Step 11: 邪祀者 win condition, four-strip spotlight on AI panels ── */}
-      {showTutorial&&tutorialStep===11&&(()=>{
-        const TOOLTIP_W=Math.min(265,vw-20);
-        const aty    =aiPanelAreaRect?aiPanelAreaRect.top:0;
-        const abottom=aiPanelAreaRect?aiPanelAreaRect.bottom:120;
-        const aleft  =aiPanelAreaRect?aiPanelAreaRect.left:0;
-        const aright =aiPanelAreaRect?aiPanelAreaRect.right:vw;
-        const acx    =aleft+(aright-aleft)/2;
-        const tooltipLeft=Math.max(8,Math.min(acx-TOOLTIP_W/2,vw-TOOLTIP_W-8));
-        const tooltipTop =abottom+14;
-        const arrowLeft  =Math.max(16,Math.min(acx-tooltipLeft-8,TOOLTIP_W-24));
-        const BG='rgba(0,0,0,0.58)';
-        const W=vw;
-        return(
-          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
-            {/* Four-strip backdrop — leaves AI panels area undarken */}
-            {aty>0&&<div style={{position:'absolute',left:0,top:0,right:0,height:aty,background:BG}}/>}
-            <div style={{position:'absolute',left:0,top:aty,bottom:0,width:aleft,background:BG}}/>
-            <div style={{position:'absolute',left:aright,top:aty,right:0,bottom:0,background:BG}}/>
-            <div style={{position:'absolute',left:aleft,right:W-aright,top:abottom,bottom:0,background:BG}}/>
-            <div style={{
-              position:'fixed',
-              left:tooltipLeft,
-              top:tooltipTop,
-              width:TOOLTIP_W,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
-              padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
-              animation:'animPop 0.25s ease-out',
-              zIndex:901,
-            }}>
-              {/* Arrow pointing UP */}
-              <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                如果你是<span style={{color:'#9060cc',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #7040aa88'}}>邪祀者</span>，你要专注于腐化一名角色的心智。当他<span style={{color:'#a78bfa',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #8844cc88'}}>SAN</span>值清零，被邪神占据身体，你就赢了。
-              </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                当然，如果你准备自己丧失心智，成为邪神的宿主…那也未尝不可。
-              </p>
-              <button
-                onClick={()=>setTutorialStep(12)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
-              >
-                下一步 →
-              </button>
-            </div></div>
-            </div>
-          </div>
-        );
-      })()}
-      {showTutorial&&tutorialStep===12&&(()=>{
-        const TOOLTIP_W=Math.min(265,vw-20);
-        const pty    =deckAreaRect?deckAreaRect.top:0;
-        const pbottom=deckAreaRect?deckAreaRect.bottom:200;
-        const pleft  =deckAreaRect?deckAreaRect.left:0;
-        const pright =deckAreaRect?deckAreaRect.right:vw;
-        const pcx    =pleft+(pright-pleft)/2;
-        const tooltipLeft=Math.max(8,Math.min(pcx-TOOLTIP_W/2,vw-TOOLTIP_W-8));
-        const tooltipTop =pbottom+14;
-        const arrowLeft  =Math.max(16,Math.min(pcx-tooltipLeft-8,TOOLTIP_W-24));
-        const BG='rgba(0,0,0,0.58)';
-        const W=vw;
-        return(
-          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
-            {pty>0&&<div style={{position:'absolute',left:0,top:0,right:0,height:pty,background:BG}}/>}
-            <div style={{position:'absolute',left:0,top:pty,bottom:0,width:pleft,background:BG}}/>
-            <div style={{position:'absolute',left:pright,top:pty,right:0,bottom:0,background:BG}}/>
-            <div style={{position:'absolute',left:pleft,right:W-pright,top:pbottom,bottom:0,background:BG}}/>
-            <div style={{
-              position:'fixed',left:tooltipLeft,top:tooltipTop,
-              width:TOOLTIP_W,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
-              padding:'18px 20px',boxShadow:'0 0 40px #7a502066',
-              animation:'animPop 0.25s ease-out',zIndex:901,
-            }}>
-              <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                每回合你将从<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>牌堆</span>摸一张牌，探索一个新区域，同时也会发生<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>随机事件</span>。
-              </p>
-              <button
-                onClick={()=>setTutorialStep(13)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
-              >下一步 →</button>
-            </div></div>
-            </div>
-          </div>
-        );
-      })()}
-      {showTutorial&&tutorialStep===13&&(()=>{
-        const TOOLTIP_W=Math.min(265,vw-20);
-        const pty    =deckAreaRect?deckAreaRect.top:0;
-        const pbottom=deckAreaRect?deckAreaRect.bottom:200;
-        const pleft  =deckAreaRect?deckAreaRect.left:0;
-        const pright =deckAreaRect?deckAreaRect.right:vw;
-        const pcx    =pleft+(pright-pleft)/2;
-        const tooltipLeft=Math.max(8,Math.min(pcx-TOOLTIP_W/2,vw-TOOLTIP_W-8));
-        const tooltipTop =pbottom+14;
-        const arrowLeft  =Math.max(16,Math.min(pcx-tooltipLeft-8,TOOLTIP_W-24));
-        const BG='rgba(0,0,0,0.58)';
-        const W=vw;
-        return(
-          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
-            {pty>0&&<div style={{position:'absolute',left:0,top:0,right:0,height:pty,background:BG}}/>}
-            <div style={{position:'absolute',left:0,top:pty,bottom:0,width:pleft,background:BG}}/>
-            <div style={{position:'absolute',left:pright,top:pty,right:0,bottom:0,background:BG}}/>
-            <div style={{position:'absolute',left:pleft,right:W-pright,top:pbottom,bottom:0,background:BG}}/>
-            <div style={{
-              position:'fixed',left:tooltipLeft,top:tooltipTop,
-              width:TOOLTIP_W,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
-              padding:'18px 20px',boxShadow:'0 0 40px #7a502066',
-              animation:'animPop 0.25s ease-out',zIndex:901,
-            }}>
-              <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                也有可能，你遇到的不是新区域，而是<span style={{color:'#c060e0',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #9030cc88'}}>邪神的化身</span>。
-              </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                是否<span style={{color:'#c060e0',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #9030cc88'}}>信仰</span>祂，分享祂的权能，取决于你。小心越陷越深。
-              </p>
-              <button
-                onClick={()=>setTutorialStep(14)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
-              >下一步 →</button>
-            </div></div>
-            </div>
-          </div>
-        );
-      })()}
-      {showTutorial&&tutorialStep===14&&(()=>{
-        return(
-          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none',display:'flex',alignItems:'center',justifyContent:'center'}}>
-            <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
-            <div style={{
-              position:'relative',zIndex:901,
-              width:Math.min(280,vw-20),pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
-              padding:'18px 20px',boxShadow:'0 0 40px #7a502066',
-              animation:'animPop 0.25s ease-out',
-            }}>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                你问我还能遇到什么？天知道。
-              </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                我已经老了，或许你<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>以后</span>能遇到更多事。
-              </p>
-              <button
-                onClick={()=>setTutorialStep(15)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
-              >下一步 →</button>
-            </div></div>
-            </div>
-          </div>
-        );
-      })()}
-      {/* ── Step 15: hand area spotlight (same layout as step 7) ── */}
-      {showTutorial&&tutorialStep===15&&(()=>{
-        const TOOLTIP_W=Math.min(265,vw-20);
-        const hcx=handAreaRect?handAreaRect.left+(handAreaRect.width/2):200;
-        const hty=handAreaRect?handAreaRect.top:400;
-        const hbottom=handAreaRect?handAreaRect.bottom:500;
-        const hleft=handAreaRect?handAreaRect.left:0;
-        const hright=handAreaRect?handAreaRect.right:window.innerWidth;
-        const tooltipLeft=Math.max(8,Math.min(hcx-TOOLTIP_W/2,window.innerWidth-TOOLTIP_W-8));
-        const tooltipBottom=window.innerHeight-hty+14;
-        const arrowLeft=Math.max(16,Math.min(hcx-tooltipLeft-8,TOOLTIP_W-24));
-        const BG='rgba(0,0,0,0.58)';
-        const W=window.innerWidth;
-        return(
-          <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
-            <div style={{position:'absolute',left:0,top:0,right:0,height:hty,background:BG,pointerEvents:'none'}}/>
-            <div style={{position:'absolute',left:0,top:hty,bottom:0,width:hleft,background:BG,pointerEvents:'none'}}/>
-            <div style={{position:'absolute',right:0,top:hty,bottom:0,left:hright,background:BG,pointerEvents:'none'}}/>
-            <div style={{position:'absolute',left:hleft,right:W-hright,top:hbottom,bottom:0,background:BG,pointerEvents:'none'}}/>
-            <div style={{
-              position:'fixed',left:tooltipLeft,bottom:tooltipBottom,
-              width:TOOLTIP_W,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
-              padding:'18px 20px',boxShadow:'0 0 40px #7a502066',
-              animation:'animPop 0.25s ease-out',zIndex:901,
-            }}>
-              <div style={{position:'absolute',bottom:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderTop:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',bottom:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderTop:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                务必注意，你的行囊有限。回合结束时，如果你的<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>手牌多于4张</span>，那就丢掉多余的东西，轻装上路。
-              </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
-                我还有很多没教你，比如各身份都有自己的<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>技能</span>。不过想要生存并获胜，你得自己学了。
-              </p>
-              <button
-                onClick={()=>setTutorialStep(16)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
-              >下一步 →</button>
-            </div></div>
-            </div>
-          </div>
-        );
-      })()}
-      {/* ── Step 16: closing modal, "完成引导" ── */}
-      {showTutorial&&tutorialStep===16&&(
-        <div style={{position:'fixed',inset:0,background:'#000000cc',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center'}}>
-          <div style={{background:'#120d06',border:'2px solid #7a5020',borderRadius:4,padding:'36px 40px',maxWidth:380,width:'90%',textAlign:'center',boxShadow:'0 0 60px #7a502066',animation:'animPop 0.25s ease-out'}}>
-            <img src={NARRATOR_AVATAR} alt="narrator" style={{width:Math.min(80,Math.floor((vw-20)/4)),height:Math.min(80,Math.floor((vw-20)/4)),borderRadius:4,objectFit:'cover',objectPosition:'top',border:'2px solid #5a3a10',boxShadow:'0 0 16px #7a502066',margin:'0 auto 14px',display:'block'}} />
-            <div style={{width:160,height:1,background:'linear-gradient(90deg,transparent,#5a4020,transparent)',margin:'0 auto 20px'}}/>
-            <p style={{color:'#c8a96e',fontSize:13,lineHeight:1.9,fontStyle:'italic',marginBottom:14,opacity:0.85}}>
-              如果你开始害怕这座遗迹，像我一样逃离还来得及。如果你依然无所畏惧…
-            </p>
-            <p style={{color:'#e8c87a',fontSize:17,lineHeight:1.9,fontWeight:700,fontStyle:'italic',marginBottom:28,fontFamily:"'IM Fell English','Georgia',serif",textShadow:'0 0 16px #c8a96e66'}}>
-              那就<span style={{color:'#f0d890',textShadow:'0 0 20px #e8c87a99',fontWeight:700}}>开始探索</span>吧！
-            </p>
-            <button
-              onClick={completeTutorial}
-              style={{padding:'10px 36px',background:'#1c1008',border:'2px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:13,borderRadius:2,cursor:'pointer',letterSpacing:2,textTransform:'uppercase',boxShadow:'0 0 20px #c8a96e44',transition:'all .2s'}}
-              onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';e.currentTarget.style.boxShadow='0 0 30px #c8a96e88';}}
-              onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';e.currentTarget.style.boxShadow='0 0 20px #c8a96e44';}}
-            >
-              ✦ 完成引导
-            </button>
-            {isArtifact&&(
-              <div style={{marginTop:14,fontSize:10,color:'#7a5a2a',fontFamily:"'Cinzel',serif",letterSpacing:0.5}}>
-                （当前为预览环境，引导完成状态不会被保存）
-              </div>
-            )}
-          </div>
-        </div>
-      )}</>,document.body)}
+          <InGameTutorialOverlay
+            showTutorial={showTutorial}
+            tutorialStep={tutorialStep}
+            vw={vw}
+            panelRect={panelRect}
+            roleTextRect={roleTextRect}
+            handAreaRect={handAreaRect}
+            aiPanelAreaRect={aiPanelAreaRect}
+            deckAreaRect={deckAreaRect}
+            isArtifact={isArtifact}
+            setTutorialStep={setTutorialStep}
+            completeTutorial={completeTutorial}
+          />
+        </>,document.body)}
       {roleRevealAnim&&<RoleRevealAnim role={roleRevealAnim.role} onDone={()=>_onRoleRevealDone(roleRevealAnim.pendingGs)}/>}
       {phase==='PLAYER_WIN_PENDING'&&!showTutorial&&(
         <TreasureMapAnim hand={me.hand} onConfirm={()=>{
+          animQueueRef.current=[];
+          pendingGsRef.current=null;
+          setAnim(null);
           setGs({...gs,
             players:gs.players.map((p,i)=>i===0?{...p,roleRevealed:true,revealHand:true}:p),
             gameOver:{winner:'寻宝者',reason:gs.abilityData?.winReason||'你集齐了全部编号并获胜！',winnerIdx:0}});
@@ -9043,7 +7290,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         {localDebugMode?'Debug: 开':'Debug: 关'}
       </button>
     )}
-    {isMultiplayer&&showEmojiPicker&&ReactDOM.createPortal(
+    {isMultiplayer&&showEmojiPicker&&createPortal(
       <>
         <div onClick={()=>setShowEmojiPicker(false)} style={{position:'fixed',inset:0,zIndex:49}}/>
         <div style={{

@@ -165,3 +165,49 @@ export const getNextLivingIndex = (players, ci) => {
   }
   return null;
 };
+
+export function killPlayerState(P, i, Disc, L) {
+  if (i == null || !P[i] || P[i].isDead) return;
+  P[i]._pendingAnimDeath = true;
+  P[i].isDead = true;
+  P[i].roleRevealed = true;
+  L.push(`☠ ${P[i].name}（${P[i].role}）倒下了！`);
+  Disc.push(...P[i].hand);
+  P[i].hand = [];
+  if (P[i].godZone?.length) {
+    Disc.push(...P[i].godZone);
+    P[i].godZone = [];
+    P[i].godName = null;
+    P[i].godLevel = 0;
+  }
+}
+
+export function clearPendingAnimDeathFlags(players, preservePid = null) {
+  return (players || []).map((p, idx) => {
+    if (!p) return p;
+    if (p._pendingAnimDeath && idx !== preservePid) return { ...p, _pendingAnimDeath: false };
+    return { ...p };
+  });
+}
+
+export function makeInspectionMeta(gs){
+  return {
+    inspectionDeck: gs?.inspectionDeck??[],
+    inspectionDiscard: gs?.inspectionDiscard??[],
+    sealLooseningCount: gs?.sealLooseningCount??0,
+    houndsOfTindalosActive: gs?.houndsOfTindalosActive??false,
+    houndsOfTindalosTarget: gs?.houndsOfTindalosTarget??null,
+    houndsOfTindalosElapsed: gs?.houndsOfTindalosElapsed??0,
+    _inspectionSeq: gs?._inspectionSeq||0,
+    _inspectionCard: gs?._inspectionCard||null,
+    _inspectionTarget: gs?._inspectionTarget??null,
+    _inspectionPrevLogLen: gs?._inspectionPrevLogLen??null,
+    _inspectionBeforePlayers: gs?._inspectionBeforePlayers??null,
+    _inspectionEvents: gs?._inspectionEvents??[],
+  };
+}
+
+export function sortInspectionTargets(targets,startIndex,totalPlayers){
+  const uniq=[...new Set((targets||[]).filter(i=>i!=null))];
+  return uniq.sort((a,b)=>(((a-startIndex)+totalPlayers)%totalPlayers)-(((b-startIndex)+totalPlayers)%totalPlayers));
+}

@@ -4,6 +4,11 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   base: '/',
+  test: {
+    globals: true,
+    environment: 'node',
+    include: ['src/**/*.{test,spec}.{js,jsx}'],
+  },
   // Dev/preview only: local proxy for multiplayer testing.
   // Production connectivity still depends on runtime server URL / reverse proxy.
   server: {

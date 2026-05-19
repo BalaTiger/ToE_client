@@ -577,20 +577,23 @@ function estimateCultistZoneCardScore(card, self, players, ci) {
 
 export function aiChooseRevealCard(targetHand, hunterName, log, knownHunterCards) { // eslint-disable-line no-unused-vars
   const zoneCards = targetHand.filter(isZoneCard);
-  if (!zoneCards.length) return null;
-
-  const scored = zoneCards.map((card, index) => {
-    let score = 0;
-    if (card.type === 'revealTopCards') score += 5;
-    if (card.type === 'firstComePick') score += 4;
-    if (card.type === 'swapAllHands') score = 10;
-    if (card.type === 'caveDuel') score += 3;
-    const isNegative = isNegativeZoneCard(card);
-    if (isNegative) score -= 100;
-    return { index, score };
-  });
-  scored.sort((a, b) => b.score - a.score);
-  return zoneCards[scored[0]?.index ?? 0];
+  if (zoneCards.length) {
+    const scored = zoneCards.map((card, index) => {
+      let score = 0;
+      if (card.type === 'revealTopCards') score += 5;
+      if (card.type === 'firstComePick') score += 4;
+      if (card.type === 'swapAllHands') score = 10;
+      if (card.type === 'caveDuel') score += 3;
+      const isNegative = isNegativeZoneCard(card);
+      if (isNegative) score -= 100;
+      return { index, score };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    return zoneCards[scored[0]?.index ?? 0];
+  }
+  // 没有区域牌时，选择第一个非区域牌
+  const nonZone = targetHand.find(c => !isZoneCard(c));
+  return nonZone || null;
 }
 
 export function aiChooseHunterLootCards(targetHand, hunterHand, maxToTake = 3) {
@@ -626,17 +629,16 @@ export function getHunterChaseTargets(players, hunterIdx, huntAbandoned = []) {
   return players
     .map((player, idx) => ({ player, idx }))
     .filter(({ player, idx }) => !player.isDead && idx !== hunterIdx && player.role !== ROLE_HUNTER && !huntAbandoned.includes(idx))
-    .filter(({ player }) => (player.hand || []).some(isZoneCard));
+    .filter(({ player }) => (player.hand || []).length > 0);
 }
 
 export function shouldHunterKeepChasing(players, hunterIdx, huntAbandoned = []) {
   const hunter = players[hunterIdx];
   if (!hunter || hunter.isDead) return false;
-  const hunterZoneCards = (hunter.hand || []).filter(isZoneCard);
   const hunterHandLimit = hunter._nyaHandLimit ?? 4;
-  const hunterOverLimit = hunterZoneCards.length > hunterHandLimit;
+  const hunterOverLimit = (hunter.hand || []).length > hunterHandLimit;
   const someoneWounded = players.some((p, i) => i !== hunterIdx && !p.isDead && p.hp < 10);
-  return hunterZoneCards.length > 0 && getHunterChaseTargets(players, hunterIdx, huntAbandoned).length > 0 && (hunterOverLimit || someoneWounded);
+  return (hunter.hand || []).length > 0 && getHunterChaseTargets(players, hunterIdx, huntAbandoned).length > 0 && (hunterOverLimit || someoneWounded);
 }
 
 function getCthulhuRestBias(ai) {
