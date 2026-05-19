@@ -134,9 +134,9 @@ function TreasureMapAnim({hand,onConfirm}){
   const N=winCards.length; // 4 to 8
   // Phase: 0=init, 1..N = card N flies in, N+1=all in (glow builds), N+2=flash, N+3=map revealed, N+4=button shown
   const [phase,setPhase]=useState(0);
-  const [fired,setFired]=useState(false);
+  const firedRef=useRef(false);
   useEffect(()=>{
-    if(fired)return;setFired(true);
+    if(firedRef.current)return;firedRef.current=true;
     const ts=[];
     let t=300;
     for(let i=1;i<=N;i++){const _i=i;ts.push(setTimeout(()=>setPhase(_i),t));t+=350;}
@@ -144,8 +144,8 @@ function TreasureMapAnim({hand,onConfirm}){
     ts.push(setTimeout(()=>setPhase(N+2),t));t+=500; // flash
     ts.push(setTimeout(()=>setPhase(N+3),t));t+=600; // map
     ts.push(setTimeout(()=>setPhase(N+4),t));        // button
-    return()=>ts.forEach(clearTimeout);
-  },[fired,N]);
+    return()=>{ts.forEach(clearTimeout);firedRef.current=false;};
+  },[N]);
   // Layout: cards in a grid, max 4 per row
   const COLS=Math.min(N,4),ROWS=Math.ceil(N/COLS);
   const CW=72,CH=96,GAP=8;
@@ -265,9 +265,9 @@ function TreasureMapAnim({hand,onConfirm}){
 function CthulhuResurrectionAnim({onConfirm}){
   // Phase: 0=init, 1=darkness, 2=tentacles emerge, 3=cthulhu appears, 4=glow, 5=button shown
   const [phase,setPhase]=useState(0);
-  const [fired,setFired]=useState(false);
+  const firedRef=useRef(false);
   useEffect(()=>{
-    if(fired)return;setFired(true);
+    if(firedRef.current)return;firedRef.current=true;
     const ts=[];
     let t=300;
     ts.push(setTimeout(()=>setPhase(1),t));t+=1000; // darkness
@@ -275,8 +275,8 @@ function CthulhuResurrectionAnim({onConfirm}){
     ts.push(setTimeout(()=>setPhase(3),t));t+=1000; // cthulhu appears
     ts.push(setTimeout(()=>setPhase(4),t));t+=800;  // glow
     ts.push(setTimeout(()=>setPhase(5),t));        // button
-    return()=>ts.forEach(clearTimeout);
-  },[fired]);
+    return()=>{ts.forEach(clearTimeout);firedRef.current=false;};
+  },[]);
   const darkness=phase>=1;
   const tentacles=phase>=2;
   const cthulhu=phase>=3;

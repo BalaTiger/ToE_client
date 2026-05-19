@@ -39,8 +39,13 @@ import {
   removeCardsFromDiscard,
   getPrevLivingIndex,
   getNextLivingIndex,
+  makeInspectionMeta,
+  sortInspectionTargets,
   killPlayerState,
   clearPendingAnimDeathFlags,
+  applyHpDamageWithLink,
+  getAdjacentTargets,
+  getLivingAdjacentTargets,
   aiChooseRevealCard,
   aiChooseHunterLootCards,
   chooseFirstComePickForAI,
@@ -143,7 +148,7 @@ const safeLS={
 };
 const cardsHuntMatch=(a,b)=>{
   if(!a||!b)return false;
-  if(!isZoneCard(a)||!isZoneCard(b))return false;
+  if(!isZoneCard(a)||!isZoneCard(b))return true;
   if(isBlankZoneCard(a)||isBlankZoneCard(b))return true;
   return a.letter===b.letter||a.number===b.number;
 };
@@ -198,39 +203,6 @@ function shouldDelayHuntLootSelection(players,targetIdx,maxToTake,isMP){
   if(!target?.isDead||!target?.revealHand)return false;
   if((target.hand?.length||0)<=maxToTake)return false;
   return !checkWin(players,isMP);
-}
-
-function applyHpDamageWithLink(P,i,amount,Disc,L){
-  if(i==null||!P[i]||P[i].isDead||!(amount>0))return;
-  P[i].hp=clamp(P[i].hp-amount);
-  if(P[i].damageLink?.active){
-    const partnerIdx=P[i].damageLink.partner;
-    if(partnerIdx!=null&&P[partnerIdx]&&!P[partnerIdx].isDead){
-      P[i].damageLink.active=false;
-      if(P[partnerIdx].damageLink)P[partnerIdx].damageLink.active=false;
-      const linkDamage=3;
-      P[i].hp=clamp(P[i].hp-linkDamage);
-      P[partnerIdx].hp=clamp(P[partnerIdx].hp-linkDamage);
-      L.push(`【两人一绳】绳索断裂！${P[i].name} 和 ${P[partnerIdx].name} 各失去 ${linkDamage} HP`);
-      if(P[i].hp<=0)killPlayerState(P,i,Disc,L);
-      if(P[partnerIdx].hp<=0)killPlayerState(P,partnerIdx,Disc,L);
-    }
-  }
-  if(P[i].hp<=0)killPlayerState(P,i,Disc,L);
-}
-
-
-
-// ══════════════════════════════════════════════════════════════
-//  EFFECT ENGINE
-// ══════════════════════════════════════════════════════════════
-function getAdjacentTargets(players,ci){
-  const prev=getPrevLivingIndex(players,ci);
-  const next=getNextLivingIndex(players,ci);
-  return [ci,...[prev,next].filter((idx,pos,arr)=>idx!=null&&arr.indexOf(idx)===pos)];
-}
-function getLivingAdjacentTargets(players,ci){
-  return getAdjacentTargets(players,ci).filter((idx,pos,arr)=>idx!==ci&&idx!=null&&players[idx]&&!players[idx].isDead&&arr.indexOf(idx)===pos);
 }
 
 function applyFx(card,ci,ti,ps,deck,disc,gs,avoidNegative=false,avoidNegativeFor=[],isAI=false){
@@ -1736,7 +1708,6 @@ function aiStep(gs){
   const aiSkillDecision=decideAiSkillUsage(gs,P,ct,aiEffRole,getHunterTargets());
   let useSkill=aiSkillDecision.useSkill;
   let cultistBewitchPlan = null;
-  const hunterZoneCards = P[ct].hand.filter(isZoneCard);
   if (aiEffRole === ROLE_CULTIST && useSkill) {
     cultistBewitchPlan = chooseAiCultistBewitchPlan(P, ct);
     if (!cultistBewitchPlan && !P[ct].roleRevealed) {
@@ -1775,8 +1746,8 @@ function aiStep(gs){
     // ── v2 MCTS 目标选择 ────────────────────────────────────
     let tgt;
     if(aiEffRole===ROLE_HUNTER){
-      if(hunterZoneCards.length === 0) huntContinue = false;
-      while (huntContinue && P[ct].hand.some(isZoneCard)) {
+      if(P[ct].hand.length === 0) huntContinue = false;
+      while (huntContinue && P[ct].hand.length > 0) {
         const validTargets = getHunterTargets();
         if (validTargets.length > 0) {
           const sortedTargets = [...validTargets].sort((a, b) => {
@@ -1787,9 +1758,9 @@ function aiStep(gs){
           // 遍历所有目标，直到找到可以追捕的目标或用完所有目标
           let foundTarget = false;
           for (const { player: tgt, idx: ti } of sortedTargets) {
-            const zoneH = P[ti].hand.filter(isZoneCard);
+            const targetHand = P[ti].hand;
             if (ti === 0) {
-              L.push(`${ai.name}（追猎者）向你发动【追捕】！请选择亮出一张区域牌`);
+              L.push(`${ai.name}（追猎者）向你发动【追捕】！请选择亮出一张手牌`);
               const updatedAbandoned = [...newAbandoned, ti];
               return {...gs, players:P, deck:D, discard:Disc, log:L,
                 phase:'PLAYER_REVEAL_FOR_HUNT',
@@ -1801,7 +1772,7 @@ function aiStep(gs){
               const targetHandBefore=[...(P[ti]?.hand||[])];
               const targetRevealBefore=!!P[ti]?.revealHand;
               const knownHunterCards=P[ti]?.peekMemories?.[ct]||[];
-              const rc = aiChooseRevealCard(zoneH, ai.name, L, knownHunterCards);
+              const rc = aiChooseRevealCard(targetHand, ai.name, L, knownHunterCards);
               L.push(`${ai.name}（追猎者）对 ${tgt.name} 【追捕】，亮出 ${cardLogText(rc)}`);
               const mi = P[ct].hand.findIndex(c => cardsHuntMatch(c,rc));
               if (mi >= 0) {
@@ -2397,27 +2368,6 @@ function mergeInspectionMeta(target, inspectionResult){
   };
 }
 
-function makeInspectionMeta(gs){
-  return {
-    inspectionDeck: gs?.inspectionDeck??[],
-    inspectionDiscard: gs?.inspectionDiscard??[],
-    sealLooseningCount: gs?.sealLooseningCount??0,
-    houndsOfTindalosActive: gs?.houndsOfTindalosActive??false,
-    houndsOfTindalosTarget: gs?.houndsOfTindalosTarget??null,
-    houndsOfTindalosElapsed: gs?.houndsOfTindalosElapsed??0,
-    _inspectionSeq: gs?._inspectionSeq||0,
-    _inspectionCard: gs?._inspectionCard||null,
-    _inspectionTarget: gs?._inspectionTarget??null,
-    _inspectionPrevLogLen: gs?._inspectionPrevLogLen??null,
-    _inspectionBeforePlayers: gs?._inspectionBeforePlayers??null,
-    _inspectionEvents: gs?._inspectionEvents??[],
-  };
-}
-
-function sortInspectionTargets(targets,startIndex,totalPlayers){
-  const uniq=[...new Set((targets||[]).filter(i=>i!=null))];
-  return uniq.sort((a,b)=>(((a-startIndex)+totalPlayers)%totalPlayers)-(((b-startIndex)+totalPlayers)%totalPlayers));
-}
 
 function processInspectionTargets(targets,startIndex,P,D,Disc,baseLog,inspectionMeta){
   let nextP=P,nextD=D,nextDisc=Disc,nextLog=[...baseLog],nextMeta={...inspectionMeta};
@@ -3730,11 +3680,11 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
   },[gs?.players,gs?.log]);
 
   useEffect(()=>{
-    if(!gs||anim||animQueueRef.current.length>0||gs.gameOver)return;
+    if(!gs||anim||animQueueRef.current.length>0||gs.gameOver||gs.phase==='PLAYER_WIN_PENDING'||gs.phase==='TREASURE_WIN')return;
     const normalized=moveEligibleBlankZones(gs.players,gs.log||[]);
     if(!normalized)return;
     setGs(prev=>{
-      if(!prev||prev.gameOver)return prev;
+      if(!prev||prev.gameOver||prev.phase==='PLAYER_WIN_PENDING'||prev.phase==='TREASURE_WIN')return prev;
       const recheck=moveEligibleBlankZones(prev.players,prev.log||[]);
       if(!recheck)return prev;
       return {...prev,players:recheck.players,log:recheck.log};
@@ -4833,9 +4783,9 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
     if(!myTurn){
       // 只有被追捕方执行超时逻辑
       const t=setTimeout(()=>{
-        const zoneCards=me.hand.filter(isZoneCard);
-        if(!zoneCards.length)return;
-        const rc=zoneCards[0|Math.random()*zoneCards.length];
+        const hand=me.hand;
+        if(!hand.length)return;
+        const rc=hand[0|Math.random()*hand.length];
         const L=[...gs.log,`(超时) ${me.name} 随机亮出 ${cardLogText(rc,{alwaysShowName:true})}`];
         setGs({...gs,log:L,phase:'HUNT_CONFIRM',abilityData:{...gs.abilityData,revCard:rc}});
       },20000);
@@ -6159,9 +6109,8 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
 
   function huntSelectTarget(ti){
     let P=copyPlayers(gs.players);P[0].roleRevealed=true;
-    const tHand=P[ti].hand.filter(isZoneCard);
-    if(!tHand.length){
-      setGs({...gs,players:P,phase:'ACTION',abilityData:{},log:[...gs.log,`${P[ti].name} 手中无区域牌，追捕失败`]});
+    if(!P[ti].hand.length){
+      setGs({...gs,players:P,phase:'ACTION',abilityData:{},log:[...gs.log,`${P[ti].name} 手中无牌，追捕失败`]});
       return;
     }
     if(gs._isMP){
@@ -6169,14 +6118,14 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       // 暂停房主回合计时器：进入 HUNT_WAIT_REVEAL 子阶段，目标玩家选完后恢复
       const huntWaitGs={...gs,players:P,phase:'HUNT_WAIT_REVEAL',
         abilityData:{...(gs.abilityData||{}),huntTi:ti},
-        log:[...gs.log,`你（追猎者）追捕 ${P[ti].name}，等待对方亮出一张区域牌…`]};
+        log:[...gs.log,`你（追猎者）追捕 ${P[ti].name}，等待对方亮出一张手牌…`]};
       const huntMsgs=extractSkillLogs(huntWaitGs.log.slice(gs.log.length),'hunt');
       triggerAnimQueue([{type:'SKILL_HUNT',targetIdx:ti,msgs:huntMsgs}],huntWaitGs);
       return;
     }
     // 单机/AI目标：由AI策略选择最优亮牌
     const knownHunterCards=P[ti]?.peekMemories?.[0]||[];
-    const rc=aiChooseRevealCard(tHand,'你',gs.log,knownHunterCards);
+    const rc=aiChooseRevealCard(P[ti].hand,'你',gs.log,knownHunterCards);
     const huntConfirmGs={...gs,players:P,phase:'HUNT_CONFIRM',
       abilityData:{...(gs.abilityData||{}),huntTi:ti,revCard:rc},
       log:[...gs.log,`你（追猎者）追捕 ${P[ti].name}，${P[ti].name} 亮出 ${cardLogText(rc,{alwaysShowName:true})}`]};
@@ -6291,10 +6240,10 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     }
   }
 
-  // 多人游戏：被追捕的真人玩家选择亮出一张区域牌
+  // 多人游戏：被追捕的真人玩家选择亮出一张手牌
   function humanRevealForMPHunt(cardIdx){
     const card=me.hand[cardIdx];
-    if(!isZoneCard(card))return;
+    if(!card)return;
     // huntTi = 被追捕者在当前视角下的 index（非0）
     // 被追捕者将选择结果推送回规范 gs 并广播：
     // 设置 revCard，切换到 HUNT_CONFIRM 让追猎者（currentTurn=0 视角）完成后续
@@ -6306,10 +6255,10 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     // gs sync useEffect 将广播给追猎者
   }
 
-  // Called when player picks their zone card to reveal during an AI hunt
+  // Called when player picks their card to reveal during an AI hunt
   function playerRevealForHunt(cardIdx){
     const card=me.hand[cardIdx];
-    if(!isZoneCard(card))return;
+    if(!card)return;
     const{huntingAI,aiHunterName}=gs.abilityData;
     let P=copyPlayers(gs.players),Disc=[...gs.discard],L=[...gs.log];
     let discardedCard=null;
@@ -7302,14 +7251,14 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     SWAP_SELECT_TARGET_CARD: `【掉包】${gs.players[gs.abilityData?.swapTi]?.name}的手牌已公开，请选择要抽取的牌`,
     SWAP_GIVE_CARD:       `${gs.players[gs.abilityData?.swapTi]?.revealHand ? '抽到' : '暗抽到'} ${cardLogText(gs.abilityData?.takenCard)}，选一张手牌还给对方`,
     HUNT_SELECT_TARGET:   '【追捕】选择猎物',
-    HUNT_CONFIRM:         isLocalHuntConfirmPhase(gs)?`${cardLogText(gs.abilityData?.revCard,{alwaysShowName:true})} 已亮出！弃出匹配手牌造成3HP，或放弃`:(gs._isMP?'请等待追猎者做出选择…':`${cardLogText(gs.abilityData?.revCard,{alwaysShowName:true})} 已亮出`),
+    HUNT_CONFIRM:         isLocalHuntConfirmPhase(gs)?`${cardLogText(gs.abilityData?.revCard,{alwaysShowName:true})} 已亮出！${gs.abilityData?.revCard&&!isZoneCard(gs.abilityData.revCard)?'弃出任意手牌':'弃出匹配手牌'}造成3HP，或放弃`:(gs._isMP?'请等待追猎者做出选择…':`${cardLogText(gs.abilityData?.revCard,{alwaysShowName:true})} 已亮出`),
     HUNT_SELECT_CARD_FROM_PUBLIC: `【追捕】从 ${gs.players[gs.abilityData?.huntTi]?.name} 的公开手牌中选择一张`,
-    PLAYER_REVEAL_FOR_HUNT:`⚠ ${gs.abilityData?.aiHunterName||'追猎者'} 正在追捕你！请选择一张区域牌亮出`,
+    PLAYER_REVEAL_FOR_HUNT:`⚠ ${gs.abilityData?.aiHunterName||'追猎者'} 正在追捕你！请选择一张手牌亮出`,
     HUNT_WAIT_REVEAL:isLocalCurrentTurn(gs)
-      ?`等待 ${gs.players[gs.abilityData?.huntTi??1]?.name||'对方'} 亮出区域牌…`
+      ?`等待 ${gs.players[gs.abilityData?.huntTi??1]?.name||'对方'} 亮出手牌…`
       :isLocalHuntTargetSeat(gs)
-        ?`⚠ 追猎者正在追捕你！请选择一张区域牌亮出（20秒）`
-        :`等待 ${gs.players[gs.abilityData?.huntTi??1]?.name||'对方'} 亮出区域牌…`,
+        ?`⚠ 追猎者正在追捕你！请选择一张手牌亮出（20秒）`
+        :`等待 ${gs.players[gs.abilityData?.huntTi??1]?.name||'对方'} 亮出手牌…`,
     TREASURE_DODGE_DECISION: isLocalTreasureDodgePhase(gs)?(canShowTurnDecisionModal?'【寻宝者】触发负面区域牌！是否掷骰子规避？':'规避判定中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 做出选择…`:`${gs.players[gs.currentTurn]?.name} 正在思考…`),
     BEWITCH_SELECT_CARD:  '【蛊惑】选择要赠送的手牌',
     GOD_CHOICE:          isLocalGodChoice?(canShowTurnDecisionModal?'邪神降临！选择如何回应':'面临抉择中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 回应邪神…`:'邪神降临！选择如何回应'),
@@ -7400,8 +7349,8 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
   }
 
   function canPlayerRespondWithZoneCard(card){
-    if(phase==='PLAYER_REVEAL_FOR_HUNT')return isZoneCard(card);
-    if(phase==='HUNT_WAIT_REVEAL'&&!myTurn&&isLocalHuntTargetSeat(gs))return isZoneCard(card);
+    if(phase==='PLAYER_REVEAL_FOR_HUNT')return !!card;
+    if(phase==='HUNT_WAIT_REVEAL'&&!myTurn&&isLocalHuntTargetSeat(gs))return !!card;
     return false;
   }
 
@@ -8005,7 +7954,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         <div ref={handAreaRef} data-hand-area style={{background:'#120900',border:`1.5px solid ${myTurn?'#3a2010':'#2a1a08'}`,borderRadius:3,padding:isMobile?'8px 9px':'11px 13px'}}>
           <div style={{display:'flex',alignItems:'center',marginBottom:9,gap:8}}>
             <span style={{fontFamily:"'Cinzel',serif",color:phase==='DISCARD_PHASE'||phase==='PLAYER_REVEAL_FOR_HUNT'?'#882020':'#3a2510',fontSize:10,letterSpacing:1}}>
-              {phase==='DISCARD_PHASE'?`⚠ 手牌超限 (${visualMe.hand.length}/${effectiveHandLimit})`:phase==='PLAYER_REVEAL_FOR_HUNT'?'⚠ 选择亮出一张区域牌':phase==='HUNT_WAIT_REVEAL'&&!myTurn&&isLocalHuntTargetSeat(gs)?'⚠ 选择亮出一张区域牌':`手牌 (${visualMe.hand.length}/${effectiveHandLimit})`}
+              {phase==='DISCARD_PHASE'?`⚠ 手牌超限 (${visualMe.hand.length}/${effectiveHandLimit})`:phase==='PLAYER_REVEAL_FOR_HUNT'?'⚠ 选择亮出一张手牌':phase==='HUNT_WAIT_REVEAL'&&!myTurn&&isLocalHuntTargetSeat(gs)?'⚠ 选择亮出一张手牌':`手牌 (${visualMe.hand.length}/${effectiveHandLimit})`}
             </span>
             {(phase==='ACTION'&&isVisualPlayerTurn&&!isBlocked||cancelable)&&(
               <div style={{display:'flex',gap:8,marginLeft:'auto',flexWrap:'wrap',position:'relative',zIndex:200}}>
@@ -8094,7 +8043,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
               const clickable=isMyCardClickable(c,i);
               const isMobileArmedGod=isMobile&&mobileArmedGodCardIdx===i;
               const isSel=(phase==='DISCARD_PHASE'&&(gs.abilityData.discardSelected||[]).includes(i))||isMobileArmedGod;
-              const isMatch=phase==='HUNT_CONFIRM'&&gs.abilityData?.revCard&&(c.letter===gs.abilityData.revCard.letter||c.number===gs.abilityData.revCard.number);
+              const isMatch=phase==='HUNT_CONFIRM'&&gs.abilityData?.revCard&&cardsHuntMatch(c,gs.abilityData.revCard);
               const isGodUpgrade=c.isGod&&visualMe.godName===c.godKey&&(visualMe.godLevel||0)<3;
               const canUpgradeNow=isGodUpgrade&&phase==='ACTION'&&isVisualPlayerTurn;
               const canWorshipNow=c.isGod&&!isGodUpgrade&&phase==='ACTION'&&isVisualPlayerTurn&&!gs.godTriggeredThisTurn&&!gs.godFromHandUsed;
@@ -8131,6 +8080,9 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       {roleRevealAnim&&<RoleRevealAnim role={roleRevealAnim.role} onDone={()=>_onRoleRevealDone(roleRevealAnim.pendingGs)}/>}
       {phase==='PLAYER_WIN_PENDING'&&!showTutorial&&(
         <TreasureMapAnim hand={me.hand} onConfirm={()=>{
+          animQueueRef.current=[];
+          pendingGsRef.current=null;
+          setAnim(null);
           setGs({...gs,
             players:gs.players.map((p,i)=>i===0?{...p,roleRevealed:true,revealHand:true}:p),
             gameOver:{winner:'寻宝者',reason:gs.abilityData?.winReason||'你集齐了全部编号并获胜！',winnerIdx:0}});

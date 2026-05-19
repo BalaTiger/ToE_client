@@ -189,3 +189,25 @@ export function clearPendingAnimDeathFlags(players, preservePid = null) {
     return { ...p };
   });
 }
+
+export function makeInspectionMeta(gs){
+  return {
+    inspectionDeck: gs?.inspectionDeck??[],
+    inspectionDiscard: gs?.inspectionDiscard??[],
+    sealLooseningCount: gs?.sealLooseningCount??0,
+    houndsOfTindalosActive: gs?.houndsOfTindalosActive??false,
+    houndsOfTindalosTarget: gs?.houndsOfTindalosTarget??null,
+    houndsOfTindalosElapsed: gs?.houndsOfTindalosElapsed??0,
+    _inspectionSeq: gs?._inspectionSeq||0,
+    _inspectionCard: gs?._inspectionCard||null,
+    _inspectionTarget: gs?._inspectionTarget??null,
+    _inspectionPrevLogLen: gs?._inspectionPrevLogLen??null,
+    _inspectionBeforePlayers: gs?._inspectionBeforePlayers??null,
+    _inspectionEvents: gs?._inspectionEvents??[],
+  };
+}
+
+export function sortInspectionTargets(targets,startIndex,totalPlayers){
+  const uniq=[...new Set((targets||[]).filter(i=>i!=null))];
+  return uniq.sort((a,b)=>(((a-startIndex)+totalPlayers)%totalPlayers)-(((b-startIndex)+totalPlayers)%totalPlayers));
+}

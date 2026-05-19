@@ -31,6 +31,8 @@ import {
   getNextLivingIndex,
   killPlayerState,
   clearPendingAnimDeathFlags,
+  makeInspectionMeta,
+  sortInspectionTargets,
 } from '../coreUtils';
 import {
   resetIds,
@@ -420,5 +422,58 @@ describe('clearPendingAnimDeathFlags', () => {
   it('空输入安全', () => {
     expect(clearPendingAnimDeathFlags(null)).toEqual([]);
     expect(clearPendingAnimDeathFlags([])).toEqual([]);
+  });
+});
+
+describe('makeInspectionMeta', () => {
+  it('返回默认值当 gs 为空', () => {
+    const meta = makeInspectionMeta(null);
+    expect(meta.inspectionDeck).toEqual([]);
+    expect(meta.inspectionDiscard).toEqual([]);
+    expect(meta.sealLooseningCount).toBe(0);
+    expect(meta.houndsOfTindalosActive).toBe(false);
+    expect(meta.houndsOfTindalosTarget).toBe(null);
+    expect(meta.houndsOfTindalosElapsed).toBe(0);
+    expect(meta._inspectionSeq).toBe(0);
+    expect(meta._inspectionCard).toBe(null);
+    expect(meta._inspectionEvents).toEqual([]);
+  });
+
+  it('复制 gs 中的值', () => {
+    const gs = {
+      inspectionDeck: [1, 2],
+      inspectionDiscard: [3],
+      sealLooseningCount: 2,
+      houndsOfTindalosActive: true,
+      houndsOfTindalosTarget: 1,
+      houndsOfTindalosElapsed: 5,
+      _inspectionSeq: 3,
+      _inspectionCard: { name: 'test' },
+      _inspectionTarget: 2,
+      _inspectionPrevLogLen: 10,
+      _inspectionBeforePlayers: [],
+      _inspectionEvents: [{ type: 'test' }],
+    };
+    const meta = makeInspectionMeta(gs);
+    expect(meta.inspectionDeck).toEqual([1, 2]);
+    expect(meta.sealLooseningCount).toBe(2);
+    expect(meta.houndsOfTindalosActive).toBe(true);
+    expect(meta._inspectionSeq).toBe(3);
+  });
+});
+
+describe('sortInspectionTargets', () => {
+  it('按从 startIndex 开始的循环顺序排序', () => {
+    expect(sortInspectionTargets([3, 1, 2], 0, 5)).toEqual([1, 2, 3]);
+    expect(sortInspectionTargets([0, 2, 4], 3, 5)).toEqual([4, 0, 2]);
+  });
+
+  it('去重并过滤 null', () => {
+    expect(sortInspectionTargets([1, 1, 2, null, undefined], 0, 5)).toEqual([1, 2]);
+  });
+
+  it('空数组安全', () => {
+    expect(sortInspectionTargets([], 0, 5)).toEqual([]);
+    expect(sortInspectionTargets(null, 0, 5)).toEqual([]);
   });
 });
