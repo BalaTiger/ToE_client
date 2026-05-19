@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   ROLE_TREASURE,
   ROLE_HUNTER,
@@ -40,7 +40,6 @@ import {
   makeZoneCard,
   makeGodCard,
   makeBlankZoneCard,
-  makeFullDeck,
   makeStandardPlayers,
 } from './factory';
 

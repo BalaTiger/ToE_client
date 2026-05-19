@@ -5,7 +5,7 @@ import {
   getLivingAdjacentTargets,
   applyFx,
 } from '../effectEngine';
-import { resetIds, makePlayer, makeStandardPlayers, makeZoneCard, makeBlankZoneCard, makeGodCard, makeGs } from './factory';
+import { resetIds, makePlayer, makeStandardPlayers, makeZoneCard, makeGodCard, makeGs } from './factory';
 
 describe('applyHpDamageWithLink', () => {
   beforeEach(() => resetIds());
@@ -158,11 +158,10 @@ describe('applyFx', () => {
 
   it('selfDamageHP: 失去HP', () => {
     const players = makeStandardPlayers(3);
-    const card = makeZoneCard('A2', 2); // adjDamageHP, but let's use a dedicated selfDamageHP
     // A1 variant 1 is selfDamageDiscardHP which includes selfDamageHP
-    const card2 = { ...makeZoneCard('A1', 1), type: 'selfDamageHP', val: 3 };
+    const card = { ...makeZoneCard('A1', 1), type: 'selfDamageHP', val: 3 };
     const gs = makeGs({ players });
-    const res = applyFx(card2, 0, null, players, [], [], gs);
+    const res = applyFx(card, 0, null, players, [], [], gs);
     expect(res.P[0].hp).toBe(7);
     expect(res.msgs[0]).toContain('失去 3 HP');
   });

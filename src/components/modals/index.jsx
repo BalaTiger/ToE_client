@@ -7,10 +7,7 @@ import {
 } from '../../constants/card';
 import { DDCard, DDCardBack, GodCardDisplay } from '../cards';
 
-const buildPublicUrl = path => {
-  const base = ((window.__PUBLIC_BASE__) || '/').replace(/\/?$/, '/');
-  return `${base}${String(path).replace(/^\/+/, '')}`;
-};
+import { buildPublicUrl } from '../../utils/url';
 
 // ── God Choice Modal (player encounters a god card) ────────────
 function GodChoiceModal({ godCard, player, onWorship, onKeepHand, onDiscard, isConvert, forcedConvert }) {

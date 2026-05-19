@@ -6,14 +6,12 @@ import InGameTutorialOverlay from './components/tutorial/InGameTutorialOverlay';
 import { StartScreen } from './components/start/StartScreen';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
-import html2canvas from "html2canvas";
 // socket.io-client is loaded at runtime via CDN (only outside Claude Artifacts)
 
 import {
   FIXED_ZONE_CARD_VARIANTS_BY_KEY,
   LETTERS,
   NUMS,
-  AI_NAMES,
   RINFO,
   ROLE_TREASURE, // 直接写名字，不要带方括号
   ROLE_HUNTER,   // 直接写名字
@@ -56,6 +54,8 @@ import {
   isCultistEndingTurnUnreasonable,
   mkDeck,
   mkRoles,
+  initGame,
+  INSPECTION_DECK,
   buildAnimQueue,
   buildFullHandSwapTransferQueueFromLogs,
   buildAiHuntEventAnimQueue,
@@ -118,21 +118,13 @@ import { AnimOverlay } from './components/anim/AnimOverlay';
 import { formatFileSize, useResourcePreload } from './hooks/useResourcePreload';
 import { useMultiplayerLobby } from './hooks/useMultiplayerLobby';
 import { useAnimationQueue } from './hooks/useAnimationQueue';
-
-// Ellipsis component for loading animation
-function Ellipsis() {
-  const [dots, setDots] = useState(0);
-  
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setDots((prev) => (prev + 1) % 4);
-    }, 500);
-    
-    return () => clearInterval(interval);
-  }, []);
-  
-  return <span>{'.'.repeat(dots)}</span>;
-}
+import { useWindowSize } from './hooks/useWindowSize';
+import { useGameAudio } from './hooks/useGameAudio';
+import { Ellipsis } from './components/ui/Ellipsis';
+import { FlyingEmoji } from './components/ui/FlyingEmoji';
+import { EMOJI_LIST } from './components/ui/emojiData';
+import { GammaSlider } from './components/ui/GammaSlider';
+import { TargetSelectOverlay } from './components/ui/TargetSelectOverlay';
 
 // ══════════════════════════════════════════════════════════════
 //  UTILITIES
@@ -146,12 +138,6 @@ const cardsHuntMatch=(a,b)=>{
   if(!isZoneCard(a)||!isZoneCard(b))return true;
   if(isBlankZoneCard(a)||isBlankZoneCard(b))return true;
   return a.letter===b.letter||a.number===b.number;
-};
-const buildPublicUrl=path=>{
-  // Use window.__PUBLIC_BASE__ if set by the host page (Vite injects BASE_URL there),
-  // otherwise fall back to '/' which works for the default deployment config.
-  const base=((window.__PUBLIC_BASE__)||'/').replace(/\/?$/,'/');
-  return `${base}${String(path).replace(/^\/+/,'')}`;
 };
 const LOCAL_DEBUG_KEY='cthulhu_local_debug_mode';
 const DEBUG_FORCE_CARD_KEY='cthulhu_debug_force_card';
@@ -1490,92 +1476,6 @@ function aiStep(gs){
   return{...nextGs,_animAiDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?null:(gs._aiDrawnCard??gs._drawnCard??null),_animDiscardedDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?false:(gs._discardedDrawnCard??false),_aiName:ai.name,_playersBeforeNextDraw:_P_afterAction,_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard,_aiHuntEvents:aiHuntEvents,_aiHandLimitDiscards:discardedCards};
 }
 
-// 检定牌堆
-const INSPECTION_DECK = [
-  ...Array(4).fill({name: '乱抓', effect: 'adjacentDamageHP', value: 1, type: 'negative'}),
-  ...Array(4).fill({name: '自残', effect: 'selfDamageHP', value: 1, type: 'negative'}),
-  ...Array(4).fill({name: '失眠', effect: 'disableRest', value: 1, type: 'negative'}),
-  ...Array(2).fill({name: '暂时的平静', effect: 'nothing', value: 0, type: 'neutral'}),
-  ...Array(2).fill({name: '昏睡', effect: 'flip', value: 1, type: 'negative'}),
-  ...Array(2).fill({name: '迫害妄想', effect: 'discardRandom', value: 1, type: 'negative'}),
-  ...Array(2).fill({name: '失忆', effect: 'disableSkill', value: 1, type: 'negative'}),
-  ...Array(2).fill({name: '乏力', effect: 'handLimitDecrease', value: 1, type: 'negative'}),
-  {name: '超人意志', effect: 'healSAN', value: 1, type: 'positive'},
-  {name: '揭开真相', effect: 'drawCard', value: 1, type: 'positive'},
-  {name: '封印松动', effect: 'sealLoosening', value: 1, type: 'negative'},
-  {name: '廷达罗斯猎犬', effect: 'houndsOfTindalos', value: 1, type: 'negative'}
-];
-
-// ══════════════════════════════════════════════════════════════
-//  INIT
-// ══════════════════════════════════════════════════════════════
-function initGame(playerNames, debugForceCard, debugForceCardTarget, debugForceCardKeep, debugForceCardType, debugForceZoneCardKey, debugForceZoneCardName, debugForceGodCardKey, debugPlayerRole){
-  const names=playerNames||['你',...AI_NAMES];
-  const N=names.length;
-  const isSinglePlayer = !playerNames;
-  let deck=mkDeck();
-  
-  // Debug: 强制摸牌
-  let targetCard = null;
-  if((debugForceCard || (debugForceCardType && (debugForceZoneCardKey || debugForceGodCardKey))) && (debugForceCardTarget === 'player' || debugForceCardTarget === 'ai1')){
-    
-    if(debugForceCardType === 'zone' && debugForceZoneCardKey && debugForceZoneCardName){
-      // 查找指定编号和牌面的区域牌
-      targetCard = deck.find(card => card.key === debugForceZoneCardKey && card.name === debugForceZoneCardName);
-    } else if(debugForceCardType === 'god' && debugForceGodCardKey){
-      // 查找指定类型的神牌
-      targetCard = deck.find(card => card.isGod && card.godKey === debugForceGodCardKey);
-    } else if(debugForceCard){
-      // 兼容旧的设置方式
-      targetCard = deck.find(card => card.key === debugForceCard);
-    }
-    
-    if(targetCard){
-      // 从牌堆中移除目标牌，暂时保留
-      deck = deck.filter(card => card.id !== targetCard.id);
-    }
-  }
-  
-  const roles=mkRoles(N, isSinglePlayer);
-  if (
-    isSinglePlayer &&
-    [ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST].includes(debugPlayerRole)
-  ) {
-    roles[0] = debugPlayerRole;
-  }
-  const players=names.map((name,i)=>({
-    id:i,
-    name,
-    role:roles[i],
-    roleRevealed:false,
-    hp:10,
-    san:10,
-    hand:[],
-    zoneCards:[],
-    isDead:false,
-    isResting:false,
-    godEncounters:0,
-    godZone:[],
-    godName:null,
-    godLevel:0,
-    peekMemories:{},
-    disableRest:false,
-    disableSkill:false,
-    handLimitDecrease:0,
-    disableRestNextTurn:false,
-    disableSkillNextTurn:false,
-    handLimitDecreaseNextTurn:0
-  }));
-  
-  // 发初始手牌
-  for(let r=0;r<4;r++)players.forEach(p=>p.hand.push(deck.shift()));
-  
-  const inspectionDeck=shuffle([...INSPECTION_DECK]);
-  const base={players,deck,discard:[],inspectionDeck,inspectionDiscard:[],currentTurn:-1,phase:'DRAW_REVEAL',drawReveal:null,selectedCard:null,abilityData:{},log:['游戏开始。每人获得四张初始手牌。'],gameOver:null,skillUsed:false,restUsed:false,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,globalOnlySwapOwner:null,_turnKey:0,_isMP:!!playerNames,turn:0,sealLooseningCount:0,houndsOfTindalosActive:false,houndsOfTindalosTarget:null,houndsOfTindalosElapsed:0,debugForceCard:targetCard,debugForceCardTarget};
-  base.debugForceCardKeep=playerNames?'auto':debugForceCardKeep;
-  return startNextTurn(base);
-}
-
 function clearPlayerGodZone(targetPlayer,discard){
   if(targetPlayer?.godZone?.length)discard.push(...targetPlayer.godZone);
   if(targetPlayer){
@@ -1623,390 +1523,9 @@ function convertGodFollower(targetIndex,startIndex,P,D,Disc,L,inspectionMeta,log
 const AI_AUTO_STEP_DELAY=900;
 const AI_PICK_STEP_DELAY=1300;
 
-// ── Bewitch effect description helper ─────────────────────────
-function getBewitchEffectDesc(card){
-  if(!card) return '';
-  if(card.isGod){
-    return `你将把「${card.name}」送给目标角色，使该角色遭遇邪神并失去SAN值（第N次遭遇失去N点），该角色可能被迫信仰${card.name}`;
-  }
-  return `你将把【${card.key} ${card.name}】送给目标角色，并强制其收入手牌后立刻结算：“你”与相邻角色都以该目标为基准计算`;
-}
-
-// ── Target Select Overlay ─────────────────────────────────────
-function TargetSelectOverlay({drawReveal,phase,bewitchCard}){
-  const isActive=['DRAW_SELECT_TARGET','SWAP_SELECT_TARGET','HUNT_SELECT_TARGET','BEWITCH_SELECT_TARGET','ROSE_THORN_SELECT_TARGET'].includes(phase);
-  if(!isActive) return null;
-  const isBewitch=phase==='BEWITCH_SELECT_TARGET';
-  // HUNT_SELECT_TARGET阶段不显示卡牌
-  const showCard=phase!=='HUNT_SELECT_TARGET';
-  const card=showCard?(isBewitch?bewitchCard:(drawReveal?.card)):null;
-  const s=card?(card.isGod?GOD_CS:(CS[card.letter]||GOD_CS)):null;
-  const bewitchDesc=isBewitch?getBewitchEffectDesc(card):null;
-  const phaseHint={
-    DRAW_SELECT_TARGET:'请点击目标角色以施加牌效',
-    SWAP_SELECT_TARGET:'请点击目标角色以发动【掉包】',
-    PEEK_HAND_SELECT_TARGET:'请点击目标角色以偷看其一张手牌',
-    HUNT_SELECT_TARGET:'请点击目标角色以发动【追捕】',
-    BEWITCH_SELECT_TARGET:'请选择蛊惑目标',
-    CAVE_DUEL_SELECT_TARGET:'请选择一名有手牌的角色进行【穴居人战争】',
-    DAMAGE_LINK_SELECT_TARGET:'请选择一名角色建立【两人一绳】链条',
-    ROSE_THORN_SELECT_TARGET:'请选择承受【玫瑰倒刺】的目标',
-    FIRST_COME_PICK_SELECT:'请从翻开的牌中选择一张收入手牌',
-  }[phase]||'请选择目标';
-  // 掉包选择目标牌阶段不显示此遮罩
-  if(phase==='SWAP_SELECT_TARGET_CARD') return null;
-  return(
-    <>
-      {/* Dark mask */}
-      <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.38)',zIndex:100,pointerEvents:'none'}}/>
-      {/* Centering flex container — position:fixed, flex centers child, NO transform on child */}
-      <div style={{
-        position:'fixed',inset:0,
-        display:'flex',alignItems:'center',justifyContent:'center',
-        zIndex:102,pointerEvents:'none',
-      }}>
-        {/* Prompt box — no CSS animation to avoid first-frame position flash */}
-        <div style={{
-          background:'rgba(10,6,2,0.93)',
-          border:`1.5px solid ${s?s.borderBright:'#5a3010'}`,
-          borderRadius:4,padding:'18px 28px',
-          boxShadow:`0 0 40px ${s?s.glow+'66':'#3a201044'}, 0 0 80px #000a`,
-          textAlign:'center',minWidth:260,maxWidth:340,
-        }}>
-          {card&&(
-            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10,justifyContent:'center'}}>
-              <div style={{
-                background:s.bg,border:`1.5px solid ${s.borderBright}`,borderRadius:3,
-                padding:'5px 9px',minWidth:48,textAlign:'center',
-              }}>
-                {card.isGod
-                  ?<div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:20,lineHeight:1.2}}>⛧</div>
-                  :<div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:27,lineHeight:1}}>{card.key}</div>
-                }
-                <div style={{fontFamily:"'Cinzel',serif",color:'#e8cc88',fontSize:card.isGod?10:14.25,marginTop:2}}>{card.name}</div>
-              </div>
-              <div style={{textAlign:'left'}}>
-                <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#d4b468',fontSize:15,maxWidth:180,lineHeight:1.4}}>{card.isGod?card.subtitle:card.desc}</div>
-              </div>
-            </div>
-          )}
-          {/* Bewitch effect preview */}
-          {isBewitch&&bewitchDesc&&(
-            <div style={{
-              background:'rgba(80,20,100,0.22)',
-              border:'1px solid #7040aa55',
-              borderRadius:3,padding:'7px 10px',
-              marginBottom:10,textAlign:'left',
-            }}>
-              <div style={{fontFamily:"'Cinzel',serif",color:'#9060cc',fontSize:9,letterSpacing:2,marginBottom:4,textTransform:'uppercase'}}>☽ 蛊惑效果预览</div>
-              <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#d4b0e8',fontSize:13,lineHeight:1.6}}>
-                {bewitchDesc}
-              </div>
-            </div>
-          )}
-          <div style={{
-            fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:18,
-            color:'#e8cc88',letterSpacing:2,textTransform:'uppercase',
-          }}>{phaseHint}</div>
-          <div style={{fontFamily:"'Cinzel',serif",color:'#c8a055',fontSize:13.5,letterSpacing:1,marginTop:6}}>↑ 点击上方高亮角色</div>
-        </div>
-      </div>
-    </>
-  );
-}
-
 // ══════════════════════════════════════════════════════════════
 //  MAIN GAME
 // ══════════════════════════════════════════════════════════════
-// ── Flying Emoji ─────────────────────────────────────────────
-
-// ── Flying Emoji ─────────────────────────────────────────────
-const EMOJI_LIST=[
-  '😂','🎉','👍','🔥',
-  '😡','😢','😱','💀',
-  '🤔','😏','👀','😴',
-];
-function FlyingEmoji({id,emoji,startX,startY,endX,endY,arcHeight,durationMs,onDone}){
-  const ref=useRef(null);
-  useEffect(()=>{
-    const t0=performance.now();
-    let raf;
-    function frame(now){
-      const t=Math.min((now-t0)/durationMs,1);
-      const x=startX+(endX-startX)*t;
-      const y=startY+(endY-startY)*t - arcHeight*4*t*(1-t);
-      const opacity=t<0.65?1:Math.max(0,1-(t-0.65)/0.35);
-      const scale=0.7+0.6*Math.sin(Math.PI*t);
-      if(ref.current){
-        ref.current.style.left=x+'px';
-        ref.current.style.top=y+'px';
-        ref.current.style.opacity=opacity;
-        ref.current.style.transform=`translate(-50%,-50%) scale(${scale})`;
-      }
-      if(t<1){raf=requestAnimationFrame(frame);}
-      else{onDone(id);}
-    }
-    raf=requestAnimationFrame(frame);
-    return()=>cancelAnimationFrame(raf);
-  },[arcHeight,durationMs,endX,endY,id,onDone,startX,startY]);
-  return(
-    <div ref={ref} style={{
-      position:'fixed',left:startX,top:startY,fontSize:26,
-      pointerEvents:'none',zIndex:5000,
-      transform:'translate(-50%,-50%)',userSelect:'none',
-      willChange:'left,top,opacity,transform',
-    }}>{emoji}</div>
-  );
-}
-
-function useWindowSize(){
-  const[sz,setSz]=useState({w:typeof window!=='undefined'?window.innerWidth:1200,h:typeof window!=='undefined'?window.innerHeight:800});
-  useEffect(()=>{
-    const h=()=>setSz({w:window.innerWidth,h:window.innerHeight});
-    window.addEventListener('resize',h);
-    return()=>window.removeEventListener('resize',h);
-  },[]);
-  return sz;
-}
-
-
-
-// Persistent gamma / brightness slider — top-right corner
-function GammaSlider({gamma,onChange}){
-  const [hover,setHover]=useState(false);
-  // Rendered via Portal directly onto document.body so that any CSS filter on ancestor
-  // elements does not affect position:fixed coordinates (filter creates a new containing block).
-  return createPortal(
-    <div
-      style={{position:'fixed',top:0,left:'50%',transform:'translateX(-50%)',zIndex:1800}}
-      onMouseEnter={()=>setHover(true)}
-      onMouseLeave={()=>setHover(false)}
-    >
-      <div
-        title="亮度调节"
-        style={{
-          width:hover?178:32,
-          height:hover?40:18,
-          borderRadius:'0 0 16px 16px',
-          background:'#120d06cc',
-          border:'1.5px solid #5a3a18',
-          borderTop:'none',
-          color:'#b07828',
-          fontSize:13,
-          cursor:'pointer',
-          display:'flex',
-          alignItems:'center',
-          justifyContent:'center',
-          backdropFilter:'blur(4px)',
-          transition:'all 0.2s ease',
-          padding:0,
-          overflow:'hidden',
-          whiteSpace:'nowrap',
-        }}
-      >
-        {hover?(
-          <div style={{display:'flex',alignItems:'center',gap:6,padding:'0 10px'}} onClick={e=>e.stopPropagation()}>
-            <span style={{fontFamily:"'Cinzel',serif",fontSize:9,color:'#b07828',letterSpacing:1,whiteSpace:'nowrap'}}>亮度</span>
-            <input
-              type="range" min={0.5} max={2} step={0.05}
-              value={gamma}
-              onChange={e=>onChange(parseFloat(e.target.value))}
-              style={{width:70,accentColor:'#b07828',cursor:'pointer'}}
-            />
-            <span style={{fontFamily:"'Cinzel',serif",fontSize:9,color:'#b07828',width:28,textAlign:'right'}}>{(()=>{const v=Math.round((gamma-1)*100);return v>0?'+'+v:v;})()}%</span>
-            <button onClick={()=>onChange(1)} style={{background:'none',border:'none',color:'#7a5020',fontSize:9,cursor:'pointer',padding:'0 2px',fontFamily:"'Cinzel',serif"}}>重置</button>
-          </div>
-        ):'☀'}
-      </div>
-    </div>,
-    document.body
-  );
-}
-
-function useGameAudio(isBattleScreen){
-  const [audioReady,setAudioReady]=useState(false);
-  const readyRef=useRef(false);
-  const bgmRefs=useRef({main:null,battle:null});
-  const sfxRefs=useRef({open:null,close:null,hpDamage:[]});
-  const currentTrackRef=useRef(null);
-  const fadeTokenRef=useRef(0);
-  const targetVolumesRef=useRef({main:0.32,battle:0.24});
-
-  useEffect(()=>{
-    const main=new Audio(buildPublicUrl('sounds/BGM/mainTheme.mp3'));
-    const battle=new Audio(buildPublicUrl('sounds/BGM/battle.mp3'));
-    const open=new Audio(buildPublicUrl('sounds/SE/open.mp3'));
-    const close=new Audio(buildPublicUrl('sounds/SE/close.mp3'));
-    const hpDamageVariants=Array.from({length:6},(_,i)=>new Audio(buildPublicUrl(`sounds/SE/hpDamageVariants/hpDamage${i+1}.mp3`)));
-    [main,battle].forEach(audio=>{
-      audio.loop=true;
-      audio.preload='auto';
-      audio.volume=0;
-    });
-    [open,close].forEach(audio=>{
-      audio.preload='auto';
-      audio.volume=0.6;
-    });
-    hpDamageVariants.forEach(audio=>{
-      audio.preload='auto';
-      audio.volume=0.7;
-    });
-    bgmRefs.current={main,battle};
-    sfxRefs.current={open,close,hpDamage:hpDamageVariants};
-    return()=>{
-      [main,battle,open,close,...hpDamageVariants].forEach(audio=>{
-        try{
-          audio.pause();
-          audio.currentTime=0;
-        }catch{/* ignore */}
-      });
-    };
-  },[]);
-
-  const syncTrack=useCallback((instant=false)=>{
-    if(!audioReady)return;
-    const nextKey=isBattleScreen?'battle':'main';
-    const prevKey=currentTrackRef.current;
-    if(prevKey===nextKey)return;
-    const nextAudio=bgmRefs.current[nextKey];
-    const prevAudio=prevKey?bgmRefs.current[prevKey]:null;
-    if(!nextAudio)return;
-    currentTrackRef.current=nextKey;
-    const token=++fadeTokenRef.current;
-    const nextTarget=targetVolumesRef.current[nextKey];
-    const prevStart=prevAudio?.volume??0;
-    const duration=instant?0:420;
-    try{
-      nextAudio.loop=true;
-      nextAudio.volume=instant?nextTarget:0;
-      nextAudio.play().catch(()=>{});
-    }catch{/* ignore */}
-    if(!prevAudio||duration===0){
-      if(prevAudio&&prevAudio!==nextAudio){
-        try{
-          prevAudio.pause();
-          prevAudio.currentTime=0;
-          prevAudio.volume=0;
-        }catch{/* ignore */}
-      }
-      nextAudio.volume=nextTarget;
-      return;
-    }
-    const start=performance.now();
-    const step=now=>{
-      if(fadeTokenRef.current!==token)return;
-      const progress=Math.min((now-start)/duration,1);
-      try{prevAudio.volume=prevStart*(1-progress);}catch{/* ignore */}
-      try{nextAudio.volume=nextTarget*progress;}catch{/* ignore */}
-      if(progress<1){
-        requestAnimationFrame(step);
-        return;
-      }
-      try{
-        prevAudio.pause();
-        prevAudio.currentTime=0;
-        prevAudio.volume=0;
-      }catch{/* ignore */}
-      try{nextAudio.volume=nextTarget;}catch{/* ignore */}
-    };
-    requestAnimationFrame(step);
-  },[audioReady,isBattleScreen]);
-
-  useEffect(()=>{
-    syncTrack(false);
-  },[audioReady,isBattleScreen,syncTrack]);
-
-  useEffect(()=>{
-    if(audioReady)return;
-    const preview=isBattleScreen?bgmRefs.current.battle:bgmRefs.current.main;
-    if(!preview)return;
-    try{
-      preview.loop=true;
-      preview.volume=targetVolumesRef.current[isBattleScreen?'battle':'main'];
-      preview.play().then(()=>{
-        if(!readyRef.current){
-          readyRef.current=true;
-          setAudioReady(true);
-          currentTrackRef.current=isBattleScreen?'battle':'main';
-        }
-      }).catch(()=>{});
-    }catch{/* ignore */}
-  },[audioReady,isBattleScreen]);
-
-  const noteUserGesture=useCallback(()=>{
-    if(!readyRef.current){
-      readyRef.current=true;
-      setAudioReady(true);
-      queueMicrotask(()=>syncTrack(true));
-    }
-  },[syncTrack]);
-
-  useEffect(()=>{
-    if(audioReady)return;
-    const unlock=()=>noteUserGesture();
-    const opts={capture:true,once:true};
-    window.addEventListener('pointerdown',unlock,opts);
-    window.addEventListener('keydown',unlock,opts);
-    window.addEventListener('touchstart',unlock,opts);
-    return()=>{
-      window.removeEventListener('pointerdown',unlock,opts);
-      window.removeEventListener('keydown',unlock,opts);
-      window.removeEventListener('touchstart',unlock,opts);
-    };
-  },[audioReady,noteUserGesture]);
-
-  const playSfx=useCallback(kind=>{
-    noteUserGesture();
-    const audio=sfxRefs.current[kind];
-    if(!audio)return;
-    try{
-      audio.pause();
-      audio.currentTime=0;
-      audio.play().catch(()=>{});
-    }catch{/* ignore */}
-  },[noteUserGesture]);
-
-  const playTickSound=useCallback(()=>{
-    noteUserGesture();
-    try{
-      const ctx=new (window.AudioContext||window.webkitAudioContext)();
-      const osc=ctx.createOscillator();
-      const gain=ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.frequency.value=800;
-      osc.type='sine';
-      gain.gain.setValueAtTime(0.15,ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.05);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime+0.05);
-    }catch{/* ignore */}
-  },[noteUserGesture]);
-
-  const playHpDamageSound=useCallback(()=>{
-    noteUserGesture();
-    const variants=sfxRefs.current.hpDamage||[];
-    if(!variants.length)return;
-    const audio=variants[Math.floor(Math.random()*variants.length)];
-    if(!audio)return;
-    try{
-      audio.pause();
-      audio.currentTime=0;
-      audio.play().catch(()=>{});
-    }catch{/* ignore */}
-  },[noteUserGesture]);
-  
-    const playOpenSound=useCallback(()=>playSfx('open'),[playSfx]);
-    const playCloseSound=useCallback(()=>playSfx('close'),[playSfx]);
-    return{
-      noteUserGesture,
-      playOpenSound,
-      playCloseSound,
-      playTickSound,
-      playHpDamageSound,
-    };
-  }
-
 export default function Game(){
   const[gs,setGs]=useState(null);
   const[visualDiscard,setVisualDiscard]=useState([]);
@@ -2370,6 +1889,7 @@ export default function Game(){
           activeDebugConfig.debugForceZoneCardName,
           activeDebugConfig.debugForceGodCardKey,
           activeDebugConfig.debugPlayerRole,
+          startNextTurn,
         );
         animQueueRef.current=[];
         pendingGsRef.current=null;
@@ -3080,6 +2600,7 @@ const MIN_FONT_VW=480; // 最小字号阈值视口宽度
           const r=_getZoomCompensatedRect(el);
           let snapshotUrl=null;
           try{
+            const { default: html2canvas } = await import('html2canvas');
             const canvas=await html2canvas(el,{
               backgroundColor:null,
               useCORS:true,
@@ -6246,6 +5767,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       activeDebugConfig.debugForceZoneCardName,
       activeDebugConfig.debugForceGodCardKey,
       activeDebugConfig.debugPlayerRole,
+      startNextTurn,
     );
     roseThornPrevRef.current=null;
     animQueueRef.current=[];
