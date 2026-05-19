@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+function useSyncedRef(value) {
+  const ref = useRef(value);
+  useEffect(() => { ref.current = value; }, [value]);
+  return ref;
+}
+
 export function useMultiplayerLobby({ socketRef }) {
   const [playerUUID, setPlayerUUID] = useState(() => {
     try { return localStorage.getItem('cthulhu_player_uuid') || null; }
     catch { return null; }
   });
-  const playerUUIDRef = useRef(playerUUID);
+  const playerUUIDRef = useSyncedRef(playerUUID);
   const [multiLoading, setMultiLoading] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [roomModal, setRoomModal] = useState(null);
-  const roomModalRef = useRef(null);
+  const roomModalRef = useSyncedRef(roomModal);
   const [connErrModal, setConnErrModal] = useState(false);
   const [onlineOptionsModal, setOnlineOptionsModal] = useState(false);
   const [playerUsername, setPlayerUsername] = useState('');
@@ -28,14 +34,6 @@ export function useMultiplayerLobby({ socketRef }) {
     try { return localStorage.getItem('cthulhu_skip_privacy_warning') || false; }
     catch { return false; }
   });
-
-  useEffect(() => {
-    playerUUIDRef.current = playerUUID;
-  }, [playerUUID]);
-
-  useEffect(() => {
-    roomModalRef.current = roomModal;
-  }, [roomModal]);
 
   useEffect(() => () => {
     if (renameCdTimerRef.current) {
@@ -188,13 +186,11 @@ export function useMultiplayerLobby({ socketRef }) {
     joinRoomInput,
     setJoinRoomInput,
     lobbyModal,
-    setLobbyModal,
     lobbyRooms,
     setLobbyRooms,
     lobbyLoading,
     setLobbyLoading,
     showPrivacyToggleConfirm,
-    setShowPrivacyToggleConfirm,
     privacyWarnDontShow,
     setPrivacyWarnDontShow,
     handleCreateRoom,

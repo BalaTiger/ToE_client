@@ -118,6 +118,7 @@ import { useMultiplayerLobby } from './hooks/useMultiplayerLobby';
 import { useAnimationQueue } from './hooks/useAnimationQueue';
 import { useWindowSize } from './hooks/useWindowSize';
 import { useGameAudio } from './hooks/useGameAudio';
+import { useAiWatchdog, BAD_PHASES } from './hooks/useAiWatchdog';
 import { Ellipsis } from './components/ui/Ellipsis';
 import { FlyingEmoji } from './components/ui/FlyingEmoji';
 import { EMOJI_LIST } from './components/ui/emojiData';
@@ -2637,51 +2638,26 @@ export default function Game(){
     }
   },[anim,playHpDamageSound]);
 
-  // Detect stuck state: AI's turn but phase is not AI_TURN (e.g. got stuck in DRAW_REVEAL)
-  // This can happen in rare edge cases; recover by forcing the turn to advance
-  useEffect(()=>{
-    if(!gs||isMultiplayerGame(gs)||gs.gameOver||anim||showTutorial)return;
-    if(!isAiCurrentTurn(gs))return; // player's turn, normal
-    const aiPhase=gs.phase;
-    // AI is in a phase that requires player interaction — this is a stuck state
-    const badPhases=['ACTION','DRAW_REVEAL','DRAW_SELECT_TARGET','GOD_CHOICE','NYA_BORROW',
-                     'SWAP_SELECT_TARGET','SWAP_GIVE_CARD','BEWITCH_SELECT_CARD','BEWITCH_SELECT_TARGET',
-                     'HUNT_SELECT_TARGET','HUNT_CONFIRM','DISCARD_PHASE',
-                     'DAMAGE_LINK_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','ROSE_THORN_SELECT_TARGET'];
-    if(!badPhases.includes(aiPhase))return;
-    console.warn('[stuck-recovery] AI in bad phase',aiPhase,'at turn',gs.currentTurn);
-    const t=setTimeout(()=>{
-      setGs(p=>{
-        if(!p||isMultiplayerGame(p)||!isAiCurrentTurn(p))return p;
-        if(!badPhases.includes(p.phase))return p;
+  // ── AI watchdog: stuck recovery + hard hang guard ───────────
+  const handleAiRecover=useCallback((type,detail)=>{
+    setGs(p=>{
+      if(!p||isMultiplayerGame(p)||p.gameOver)return p;
+      if(type==='stuck'){
+        if(!isAiCurrentTurn(p)||!BAD_PHASES.includes(p.phase))return p;
         const safeLog=[...p.log,`${p.players[p.currentTurn]?.name||'该AI'} 的回合状态异常，系统强制推进流程`];
         return startNextTurn({...p,log:safeLog,currentTurn:p.currentTurn,skillUsed:true,restUsed:false,huntAbandoned:[]});
-      });
-    },500);
-    return()=>clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[gs?.currentTurn,gs?.phase,gs?._isMP,anim,gs?.gameOver,showTutorial]);
-
-  // Hard watchdog: if an AI turn stays in AI_TURN without any progress, recover even when the normal
-  // AI-turn effect failed to arm (for example because some stale animation flag never cleared).
-  useEffect(()=>{
-    if(!gs||isMultiplayerGame(gs)||gs.gameOver||showTutorial)return;
-    if(!isAiCurrentTurn(gs)||gs.phase!=='AI_TURN')return;
-    const guardTurnKey=gs._turnKey;
-    const guardTurn=gs.currentTurn;
-    const guardLogLen=gs.log?.length||0;
-    const watchdog=setTimeout(()=>{
-      setGs(p=>{
-        if(!p||isMultiplayerGame(p)||p.gameOver||!isAiCurrentTurn(p)||p.phase!=='AI_TURN')return p;
-        if((guardTurnKey!=null&&p._turnKey!==guardTurnKey)||p.currentTurn!==guardTurn)return p;
-        if((p.log?.length||0)!==guardLogLen)return p;
+      }
+      if(type==='hang'){
+        if(!isAiCurrentTurn(p)||p.phase!=='AI_TURN')return p;
+        if((detail.turnKey!=null&&p._turnKey!==detail.turnKey)||p.currentTurn!==detail.turn)return p;
+        if((p.log?.length||0)!==detail.logLen)return p;
         const safeLog=[...p.log,`${p.players[p.currentTurn]?.name||'该AI'} 的AI回合疑似卡死，系统强制推进流程`];
         return startNextTurn({...p,log:safeLog,currentTurn:p.currentTurn,skillUsed:true,restUsed:false,huntAbandoned:[]});
-      });
-    },20000);
-    return()=>clearTimeout(watchdog);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[gs?.currentTurn,gs?.phase,gs?._turnKey,gs?.log?.length,gs?._isMP,gs?.gameOver,showTutorial]);
+      }
+      return p;
+    });
+  },[]);
+  useAiWatchdog({gs,anim,showTutorial,onRecover:handleAiRecover});
 
   // AI turn
   useEffect(()=>{
