@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  ROLE_TREASURE,
-  ROLE_HUNTER,
-  ROLE_CULTIST,
   LETTERS,
   NUMS,
 } from '../../constants/card';
+import {
+  ROLE_TREASURE,
+  ROLE_HUNTER,
+  ROLE_CULTIST,
+} from '../coreUtils';
 import {
   shuffle,
   clamp,

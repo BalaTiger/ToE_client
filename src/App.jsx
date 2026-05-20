@@ -12,13 +12,11 @@ import {
   FIXED_ZONE_CARD_VARIANTS_BY_KEY,
   LETTERS,
   NUMS,
-  RINFO,
-  ROLE_TREASURE, // 直接写名字，不要带方括号
-  ROLE_HUNTER,   // 直接写名字
-  ROLE_CULTIST,  // 直接写名字
+  INSPECTION_DECK,
   CS,
   GOD_CS,
-  GOD_DEFS
+  GOD_DEFS,
+  createBlackGoatYoungCard,
 } from "./constants/card";
 
 // 导入拆分出的游戏工具模块（通过 game/index.js 统一导出）
@@ -44,7 +42,10 @@ import {
   chooseAiRoseThornTarget,
   shouldHunterKeepChasing,
   initGame,
-  INSPECTION_DECK,
+  RINFO,
+  ROLE_TREASURE,
+  ROLE_HUNTER,
+  ROLE_CULTIST,
   buildAnimQueue,
   buildFullHandSwapTransferQueueFromLogs,
   buildAiHuntEventAnimQueue,
@@ -54,6 +55,7 @@ import {
   buildPlayerTurnDrawQueue,
   cardsHuntMatch,
   moveEligibleBlankZones,
+  isBlackGoatYoung,
   aiStep,
   startNextTurn as _startNextTurn,
   checkWin,
@@ -1520,7 +1522,9 @@ export default function Game(){
           queue.push({type:'STATE_PATCH',players:gs.players,discard:gs.discard});
         }
         // Append inspection events triggered by the draw
-        const drawInspectionEvents=(gs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current);
+        let afterInspectionPlayers=gs.players;
+        let afterInspectionLog=gs.log;
+        const drawInspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current);
         if(drawInspectionEvents.length){
           lastInspectionSeqRef.current=Math.max(...drawInspectionEvents.map(ev=>ev.seq));
           const inspectionFlow=buildInspectionEventFlow(
@@ -1529,6 +1533,8 @@ export default function Game(){
             {buildAnimQueue,copyPlayers}
           );
           queue.push(...inspectionFlow.queue);
+          afterInspectionPlayers=inspectionFlow.players;
+          afterInspectionLog=inspectionFlow.log;
         }
         if(_playersBeforeSkillAction){
           queue.push({
@@ -1548,7 +1554,7 @@ export default function Game(){
         // 提前清除 _pendingAnimDeath：STATE_PATCH 后面板立即置灰，不再等到整个队列播完
         const P_actionEnd=(rawResult._playersBeforeNextDraw||newGs.players).map(p=>p._pendingAnimDeath?{...p,_pendingAnimDeath:false}:p);
         const fullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(newMsgs,gs.players);
-        const actionStatQBase=buildAnimQueue(gs,fakeGs(P_actionEnd,nextLog));
+        const actionStatQBase=buildAnimQueue(fakeGs(afterInspectionPlayers,afterInspectionLog),fakeGs(P_actionEnd,nextLog));
         const actionStatQ=fullHandSwapQ.length
           ? [...fullHandSwapQ,...actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')]
           : actionStatQBase;
@@ -1590,7 +1596,7 @@ export default function Game(){
           const giftedCard=(bwti>=0&&giftedLabel)
             ? (P_actionEnd[bwti]?.hand||[]).find(c=>c.key===giftedLabel||c.name===giftedLabel)
             : null;
-          const inspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>(gs._inspectionSeq||0));
+          const inspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current);
           const inspectionRevealQ=buildInspectionRevealQueue(inspectionEvents);
           if(giftedCard&&bwti>=0){
             if(inspectionEvents.length){
@@ -3854,8 +3860,11 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     // Only worship/forcedConvert consume the worship-this-turn slot.
     // Upgrade, discard, and keepHand do not.
     const consumesSlot=action==='worship'||action==='forcedConvert';
+    // SHU: 进入目标选择阶段而非直接给牌
+    const isShuBlessing=(action==='worship'||action==='upgrade'||action==='forcedConvert')&&gk==='SHU';
+    const shuOffspringCount=isShuBlessing?(GOD_DEFS.SHU.levels[P[0].godLevel-1]?.offspringCount||0):0;
     // 保留abilityData中的cthDrawsRemaining信息
-    const newGs={...gs,players:P,discard:Disc,log:L,phase:'ACTION',abilityData:gs.abilityData,
+    const newGs={...gs,players:P,discard:Disc,log:L,phase:isShuBlessing?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessing?{...gs.abilityData,shuOffspringCount}:gs.abilityData,
       godTriggeredThisTurn:consumesSlot,...inspectionMeta};
     if(isDiscardAction){
       const discardLog=L[L.length-1];
@@ -3959,8 +3968,16 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     let P=copyPlayers(baseGs.players);
     const sorted=[...selected].sort((a,b)=>b-a);const discarded=[];
     sorted.forEach(i=>{const c=P[0].hand.splice(i,1)[0];discarded.push(c);});
-    let D=[...baseGs.deck],Disc=[...baseGs.discard,...discarded];
-    let L=[...baseGs.log,`弃置：${discarded.map(c=>cardLogText(c,{alwaysShowName:true})).join(' ')}`];
+    // 黑山羊幼仔弃置时销毁
+    const { kept: keptDisc, destroyed: destroyedDisc } = (()=>{
+      const k=[],d=[];
+      for(const c of discarded) if(isBlackGoatYoung(c)) d.push(c); else k.push(c);
+      return { kept:k, destroyed:d };
+    })();
+    let D=[...baseGs.deck],Disc=[...baseGs.discard,...keptDisc];
+    let L=[...baseGs.log];
+    if(keptDisc.length) L.push(`弃置：${keptDisc.map(c=>cardLogText(c,{alwaysShowName:true})).join(' ')}`);
+    if(destroyedDisc.length) L.push(`黑山羊幼仔 ×${destroyedDisc.length} 被销毁`);
     // CTH power: draw when ending turn while face-down
     if(P[0].isResting&&P[0].godName==='CTH'&&P[0].godLevel>=1){
       const extraDraws=P[0].godLevel;
@@ -4341,12 +4358,13 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     let P=copyPlayers(gs.players);
     const discarded=[];
     while(P[0].hand.length>limit){const c_=P[0].hand.pop();discarded.push(c_);}
-    let D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
+    // 黑山羊幼仔弃置时销毁
+    const keptDisc=[];const destroyedDisc=[];
+    for(const c of discarded) if(isBlackGoatYoung(c)) destroyedDisc.push(c); else keptDisc.push(c);
+    let D=[...gs.deck],Disc=[...gs.discard,...keptDisc],L=[...gs.log];
     const cthDraws=[];
-    if(discarded.length){
-      Disc=[...Disc,...discarded];
-      L.push(`(超时) 弃置：${discarded.map(c_=>cardLogText(c_,{alwaysShowName:true})).join(' ')}`);
-    }
+    if(keptDisc.length) L.push(`(超时) 弃置：${keptDisc.map(c_=>cardLogText(c_,{alwaysShowName:true})).join(' ')}`);
+    if(destroyedDisc.length) L.push(`黑山羊幼仔 ×${destroyedDisc.length} 被销毁`);
     // CTH power: draw when ending turn while face-down
     if(P[0].isResting&&P[0].godName==='CTH'&&P[0].godLevel>=1){
       const extraDraws=P[0].godLevel;
@@ -4607,6 +4625,8 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         :`等待 ${gs.players[gs.abilityData?.huntTi??1]?.name||'对方'} 亮出手牌…`,
     TREASURE_DODGE_DECISION: isLocalTreasureDodgePhase(gs)?(canShowTurnDecisionModal?'【寻宝者】触发负面区域牌！是否掷骰子规避？':'规避判定中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 做出选择…`:`${gs.players[gs.currentTurn]?.name} 正在思考…`),
     BEWITCH_SELECT_CARD:  '【蛊惑】选择要赠送的手牌',
+    MULTIPLY_SELECT_TARGET: '【繁衍】选择另一名角色传播黑山羊幼仔',
+    SHU_SELECT_TARGET: '【黑暗子嗣】选择一名角色获得黑山羊幼仔',
     GOD_CHOICE:          isLocalGodChoice?(canShowTurnDecisionModal?'邪神降临！选择如何回应':'面临抉择中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 回应邪神…`:'邪神降临！选择如何回应'),
     NYA_BORROW:          isLocalNyaBorrowPhase(gs)?(canShowTurnDecisionModal?'「千人千貌」——借用已死角色的身份？':'身份借用中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 借用身份…`:'「千人千貌」——借用已死角色的身份？'),
     DISCARD_PHASE:(()=>{const sel=gs.abilityData.discardSelected||[];const need=me.hand.length-effectiveHandLimit;return`手牌超限 (${me.hand.length}/${effectiveHandLimit}) — 需弃 ${need} 张，已选 ${sel.length}/${need}`;})(),
@@ -4628,7 +4648,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
   const canLocalBewitchCard=!!gs&&isLocalBewitchCardPhase(gs);
   const selectingOther=canLocalTargetSelect;
   // 多人游戏中 HUNT_CONFIRM 非追猎者不显示操作按钮区域
-  const cancelable=['SWAP_SELECT_TARGET','SWAP_SELECT_TARGET_CARD','SWAP_GIVE_CARD','HUNT_SELECT_TARGET','ZONE_SWAP_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','DAMAGE_LINK_SELECT_TARGET','TORTOISE_ORACLE_SELECT','ROSE_THORN_SELECT_TARGET',...(phase==='HUNT_CONFIRM'&&gs._isMP&&!isLocalCurrentTurn(gs)?[]:['HUNT_CONFIRM']),'BEWITCH_SELECT_CARD','BEWITCH_SELECT_TARGET'].includes(phase);
+  const cancelable=['SWAP_SELECT_TARGET','SWAP_SELECT_TARGET_CARD','SWAP_GIVE_CARD','HUNT_SELECT_TARGET','ZONE_SWAP_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','DAMAGE_LINK_SELECT_TARGET','TORTOISE_ORACLE_SELECT','ROSE_THORN_SELECT_TARGET','MULTIPLY_SELECT_TARGET','SHU_SELECT_TARGET',...(phase==='HUNT_CONFIRM'&&gs._isMP&&!isLocalCurrentTurn(gs)?[]:['HUNT_CONFIRM']),'BEWITCH_SELECT_CARD','BEWITCH_SELECT_TARGET'].includes(phase);
   // In HUNT_CONFIRM, 放弃追捕 replaces ✕取消 — never show both
   const showCancelBtn=cancelable&&phase!=='HUNT_CONFIRM'&&isLocalCurrentTurn(gs)&&(!phase.includes('DAMAGE_LINK')||isLocalDamageLinkSelect)&&!anim;
 
@@ -4657,6 +4677,23 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     else if(phase==='CAVE_DUEL_SELECT_TARGET')caveDuelSelectTarget(pi);
     else if(phase==='DAMAGE_LINK_SELECT_TARGET')damageLinkSelectTarget(pi);
     else if(phase==='ROSE_THORN_SELECT_TARGET')roseThornSelectTarget(pi);
+    else if(phase==='MULTIPLY_SELECT_TARGET'){
+      if(pi===0) return;
+      let P=copyPlayers(gs.players);
+      if(!P[0].hand.some(isBlackGoatYoung)) return;
+      P[pi].hand.push(createBlackGoatYoungCard());
+      const L=[...gs.log,`【繁衍】你将黑山羊幼仔传播给了 ${P[pi].name}`];
+      setGs({...gs,players:P,log:L,phase:'ACTION',abilityData:{},multiplyUsed:true});
+    }
+    else if(phase==='SHU_SELECT_TARGET'){
+      const count=gs.abilityData?.shuOffspringCount||0;
+      if(!count) { setGs({...gs,phase:'ACTION',abilityData:{}}); return; }
+      let P=copyPlayers(gs.players);
+      for(let i=0;i<count;i++) P[pi].hand.push(createBlackGoatYoungCard());
+      const targetName=P[pi].name;
+      const L=[...gs.log,`【黑暗子嗣】${targetName==='你'?'你':targetName} 获得${count}张黑山羊幼仔`];
+      setGs({...gs,players:P,log:L,phase:'ACTION',abilityData:{}});
+    }
   }
   // Use a god card from hand: upgrade (same god, unlimited) or worship (different/new, once per turn)
   function worshipFromHand(idx){
@@ -4687,11 +4724,14 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     } else {
       P[0].godName=godKey;P[0].godLevel=1;P[0].godZone=[{...godCard}];
     }
+    // SHU: 进入目标选择阶段而非直接给牌
+    const isShuBlessingHand=godKey==='SHU';
+    const shuOffspringCountHand=isShuBlessingHand?(GOD_DEFS.SHU.levels[P[0].godLevel-1]?.offspringCount||0):0;
     P.forEach((p,i)=>{if(i>0&&p.godName===godKey){const abandoned=abandonGodFollower(i,gs.currentTurn,P,D,Disc,L,inspectionMeta);P=abandoned.P;D=abandoned.D;Disc=abandoned.Disc;L=abandoned.L;inspectionMeta=abandoned.inspectionMeta;}});
     const win=checkWin(P,gs._isMP);
     // Upgrade does not consume the worship slot; worship/convert does
     syncVisibleLog(L);
-    setGs({...gs,players:P,deck:D,discard:Disc,log:L,...inspectionMeta,...(!isUpgrade?{godFromHandUsed:true}:{}),...(win?{gameOver:win}:{})});
+    setGs({...gs,players:P,deck:D,discard:Disc,log:L,phase:isShuBlessingHand?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessingHand?{shuOffspringCount:shuOffspringCountHand}:gs.abilityData,...inspectionMeta,...(!isUpgrade?{godFromHandUsed:true}:{}),...(win?{gameOver:win}:{})});
   }
 
   function canPlayerRespondWithZoneCard(card){
@@ -4966,9 +5006,9 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         {/* Middle: self info + deck/discard piles + log */}
         <div style={{display:'flex',gap:isMobile?5:10,flexWrap:'wrap',alignItems:'stretch',width:'100%',justifyContent:'flex-start'}}>
           {/* Self panel - Fixed width, no grow */}
-          <div ref={selfPanelRef} data-pid={0} data-death-panel={0} style={{
+          <div ref={selfPanelRef} data-pid={0} data-death-panel={0} onClick={phase==='SHU_SELECT_TARGET'&&!isBlocked?()=>handleAIClick(0):undefined} style={{
             background:'#180f07',
-            border:`1.5px solid ${hitIndices.includes(0)?'#cc2222':sanHitIndices.includes(0)?'#8840cc':suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'#c8a96e':'#3a2510'}`,
+            border:`1.5px solid ${hitIndices.includes(0)?'#cc2222':sanHitIndices.includes(0)?'#8840cc':phase==='SHU_SELECT_TARGET'?'#4ade80':suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'#c8a96e':'#3a2510'}`,
             borderRadius:3,
             padding:isMobile?'8px 9px':'12px 13px',
             width:isMobile?258:214,
@@ -4982,8 +5022,9 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             minHeight:middleRowHeight,
             position:'relative',
             overflow:'visible',
-            boxShadow:suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'0 0 0 2px #c8a96e66,0 0 20px #c8a96e44':undefined,
-            opacity:guillotinedPids.has(0)?0:1
+            boxShadow:phase==='SHU_SELECT_TARGET'?'0 0 14px #4ade8088,inset 0 0 12px #4ade8022':suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'0 0 0 2px #c8a96e66,0 0 20px #c8a96e44':undefined,
+            opacity:guillotinedPids.has(0)?0:1,
+            cursor:phase==='SHU_SELECT_TARGET'&&!isBlocked?'pointer':'default',
           }}>
 
             {/* SAN mist: rendered by full-screen SanMistOverlay */}
@@ -5309,9 +5350,26 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
                   // 对于追猎者，只要休息被使用，就不能再使用技能；只要技能被使用，就不能再休息，但技能可以多次使用
                   const skillRole=gs.globalOnlySwapOwner!=null?'寻宝者':me.role;
                   const isHunter = skillRole === '追猎者';
-                  const restLimited = gs.restUsed || (isHunter ? gs.skillUsed : gs.skillUsed);
-                  const skillRestLimited = isHunter ? gs.restUsed : (skillLimited || gs.restUsed || gs.skillUsed);
+                  const restLimited = gs.restUsed || gs.multiplyUsed || (isHunter ? gs.skillUsed : gs.skillUsed);
+                  const skillRestLimited = isHunter ? (gs.restUsed || gs.multiplyUsed) : (skillLimited || gs.restUsed || gs.skillUsed || gs.multiplyUsed);
+                  const hasBgy = me.hand.some(isBlackGoatYoung);
+                  const multiplyLimited = gs.skillUsed || gs.restUsed || gs.multiplyUsed;
                   return(<>
+                    {hasBgy&&(
+                      <button onClick={()=>setGs({...gs,phase:'MULTIPLY_SELECT_TARGET',abilityData:{...gs.abilityData}})} disabled={multiplyLimited}
+                        style={{
+                          padding:isMobile?'5px 10px':'6px 14px',background:multiplyLimited?'#130a04':'#0e1a0e',
+                          border:`1.5px solid ${multiplyLimited?'#2a1a08':'#2a5a2a'}`,
+                          color:multiplyLimited?'#3a2510':'#4ade80',
+                          fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:baseFontSizes.body,
+                          borderRadius:2,cursor:multiplyLimited?'not-allowed':'pointer',letterSpacing:isMobile?0.5:1,
+                          boxShadow:multiplyLimited?'none':'0 0 10px #4ade8044',
+                          textTransform:'uppercase',opacity:multiplyLimited?0.4:1,
+                        }}>
+                        ☣ 繁衍
+                        {multiplyLimited&&<span style={{fontSize:9,marginLeft:4,color:'#7a5a2a'}}>(已用)</span>}
+                      </button>
+                    )}
                     <button onClick={useAbility} disabled={skillRestLimited}
                       style={{
                         padding:isMobile?'5px 10px':'6px 16px',background:'#1c1208',

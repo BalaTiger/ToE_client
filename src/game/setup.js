@@ -3,47 +3,57 @@ import {
   LETTERS,
   NUMS,
   GOD_DEFS,
-  AI_NAMES,
-  ROLE_TREASURE,
-  ROLE_HUNTER,
-  ROLE_CULTIST,
+  EXPANSIONS,
+  INSPECTION_DECK,
 } from '../constants/card';
-import { shuffle } from './coreUtils';
+import { shuffle, ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
 
-export function mkDeck() {
+export function mkDeck(expansionKey = 'temporary') {
+  const expansion = EXPANSIONS[expansionKey] || EXPANSIONS['temporary'];
   let id = 0;
-  const zoneCards = LETTERS.flatMap(letter => NUMS.flatMap(number => {
-    const key = `${letter}${number}`;
-    return (FIXED_ZONE_CARD_VARIANTS_BY_KEY[key] || []).map(cardDef => ({
-      ...cardDef,
-      id: id++,
-      key,
-      letter,
-      number,
-      isZone: true,
-    }));
-  }));
+  const zoneCards = [];
 
-  const godCards = [
-    ...Array(4).fill(0).map(() => ({
-      id: id++,
-      isGod: true,
-      godKey: 'NYA',
-      key: 'NYA',
-      type: 'god',
-      needsTarget: false,
-      ...GOD_DEFS.NYA,
-    })),
-    ...Array(4).fill(0).map(() => ({
-      id: id++,
-      isGod: true,
-      godKey: 'CTH',
-      key: 'CTH',
-      type: 'god',
-      needsTarget: false,
-      ...GOD_DEFS.CTH,
-    })),
-  ];
+  LETTERS.forEach(letter => {
+    NUMS.forEach(number => {
+      const key = `${letter}${number}`;
+      const variants = FIXED_ZONE_CARD_VARIANTS_BY_KEY[key] || [];
+      variants.forEach(cardDef => {
+        if (expansionKey === 'temporary') {
+          // 临时拓展包保留当前牌组（排除新增卡牌）
+          if (cardDef.name === '逆流' || cardDef.name === '鲜红夜宴') return;
+        } else if (cardDef.expansion !== expansionKey) {
+          return;
+        }
+        zoneCards.push({
+          ...cardDef,
+          id: id++,
+          key,
+          letter,
+          number,
+          isZone: true,
+        });
+      });
+    });
+  });
+
+  const godCards = [];
+  (expansion.godCardKeys || []).forEach(godKey => {
+    const def = GOD_DEFS[godKey];
+    if (def) {
+      const copies = expansion.godCopies || 4;
+      for (let i = 0; i < copies; i++) {
+        godCards.push({
+          id: id++,
+          isGod: true,
+          godKey,
+          key: godKey,
+          type: 'god',
+          needsTarget: false,
+          ...def,
+        });
+      }
+    }
+  });
 
   return shuffle([...zoneCards, ...godCards]);
 }
@@ -138,20 +148,14 @@ export function mkRoles(N = 5, isSinglePlayer = false, forcedPlayerRole = null) 
 //  INSPECTION DECK
 // ══════════════════════════════════════════════════════════════
 
-export const INSPECTION_DECK = [
-  ...Array(4).fill({ name: '乱抓', effect: 'adjacentDamageHP', value: 1, type: 'negative' }),
-  ...Array(4).fill({ name: '自残', effect: 'selfDamageHP', value: 1, type: 'negative' }),
-  ...Array(4).fill({ name: '失眠', effect: 'disableRest', value: 1, type: 'negative' }),
-  ...Array(2).fill({ name: '暂时的平静', effect: 'nothing', value: 0, type: 'neutral' }),
-  ...Array(2).fill({ name: '昏睡', effect: 'flip', value: 1, type: 'negative' }),
-  ...Array(2).fill({ name: '迫害妄想', effect: 'discardRandom', value: 1, type: 'negative' }),
-  ...Array(2).fill({ name: '失忆', effect: 'disableSkill', value: 1, type: 'negative' }),
-  ...Array(2).fill({ name: '乏力', effect: 'handLimitDecrease', value: 1, type: 'negative' }),
-  { name: '超人意志', effect: 'healSAN', value: 1, type: 'positive' },
-  { name: '揭开真相', effect: 'drawCard', value: 1, type: 'positive' },
-  { name: '封印松动', effect: 'sealLoosening', value: 1, type: 'negative' },
-  { name: '廷达罗斯猎犬', effect: 'houndsOfTindalos', value: 1, type: 'negative' }
-];
+const AI_NAMES = ['艾伦','贝拉','卡洛斯','黛安娜'];
+const RINFO = {
+  '寻宝者':{icon:'✦',col:'#7ecfd4',dim:'#2a6068',goal:'集齐宝藏',skillName:'掉包',skillLimited:true},
+  '追猎者':{icon:'☩',col:'#cc4444',dim:'#6a1a1a',goal:'消灭所有非追猎者',skillName:'追捕',skillLimited:false},
+  '邪祀者':{icon:'☽',col:'#9060cc',dim:'#3a1060',goal:'复活邪神',skillName:'蛊惑',skillLimited:true},
+};
+
+export { AI_NAMES, RINFO };
 
 // ══════════════════════════════════════════════════════════════
 //  INIT GAME
@@ -167,12 +171,13 @@ export function initGame(
   debugForceZoneCardName,
   debugForceGodCardKey,
   debugPlayerRole,
-  startNextTurn
+  startNextTurn,
+  expansionKey = 'temporary'
 ) {
   const names = playerNames || ['你', ...AI_NAMES];
   const N = names.length;
   const isSinglePlayer = !playerNames;
-  let deck = mkDeck();
+  let deck = mkDeck(expansionKey);
 
   // Debug: 强制摸牌
   let targetCard = null;
@@ -231,7 +236,7 @@ export function initGame(
 
   const inspectionDeck = shuffle([...INSPECTION_DECK]);
   const base = {
-    players, deck, discard: [], inspectionDeck, inspectionDiscard: [], currentTurn: -1, phase: 'DRAW_REVEAL', drawReveal: null, selectedCard: null, abilityData: {}, log: ['游戏开始。每人获得四张初始手牌。'], gameOver: null, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner: null, _turnKey: 0, _isMP: !!playerNames, turn: 0, sealLooseningCount: 0, houndsOfTindalosActive: false, houndsOfTindalosTarget: null, houndsOfTindalosElapsed: 0, debugForceCard: targetCard, debugForceCardTarget
+    players, deck, discard: [], inspectionDeck, inspectionDiscard: [], currentTurn: -1, phase: 'DRAW_REVEAL', drawReveal: null, selectedCard: null, abilityData: {}, log: ['游戏开始。每人获得四张初始手牌。'], gameOver: null, skillUsed: false, restUsed: false, multiplyUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner: null, _turnKey: 0, _isMP: !!playerNames, turn: 0, turnDirection: 1, sealLooseningCount: 0, houndsOfTindalosActive: false, houndsOfTindalosTarget: null, houndsOfTindalosElapsed: 0, debugForceCard: targetCard, debugForceCardTarget
   };
   base.debugForceCardKeep = playerNames ? 'auto' : debugForceCardKeep;
   return startNextTurn(base);

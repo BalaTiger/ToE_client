@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   GOD_DEFS,
-  ROLE_CULTIST,
   CS,
   GOD_CS
 } from '../../constants/card';
+import { ROLE_CULTIST } from '../../game';
 import { DDCard, DDCardBack, GodCardDisplay } from '../cards';
 
 import { buildPublicUrl } from '../../utils/url';

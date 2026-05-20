@@ -118,6 +118,34 @@ function AreaTooltip({card,position}){
   );
 }
 
+function BgyTooltip({desc,position}){
+  if(!position) return null;
+  const tooltipWidth=214;
+  const tooltipHeight=80;
+  const viewW=window.innerWidth;
+  const viewH=window.innerHeight;
+  let left,top;
+  if(position.right+tooltipWidth+6<=viewW){ left=position.right+6; }
+  else if(position.left-tooltipWidth-6>=0){ left=position.left-tooltipWidth-6; }
+  else{ left=Math.max(4,Math.min(position.left,viewW-tooltipWidth-4)); }
+  if(position.bottom+tooltipHeight+4<=viewH){ top=position.top; }
+  else if(position.top-tooltipHeight-4>=0){ top=position.top-tooltipHeight; }
+  else{ top=Math.max(4,Math.min(position.top,viewH-tooltipHeight-4)); }
+  return createPortal(
+    <div style={{
+      position:'fixed',left:`${left}px`,top:`${top}px`,zIndex:99999,
+      background:'#0a0705',border:'1.5px solid #2a5a2a',borderRadius:4,
+      padding:'12px 15px',width:200,pointerEvents:'none',
+      boxShadow:'0 0 20px #4ade8055',
+      opacity:1,filter:'none',
+    }}>
+      <div style={{fontFamily:"'Cinzel',serif",fontSize:10,color:'#4ade80',letterSpacing:1,marginBottom:5}}>BGY · 黑山羊幼仔</div>
+      <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:11,color:'#7aca7a',lineHeight:1.5}}>{desc}</div>
+    </div>,
+    document.body
+  );
+}
+
 function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel,frameStyle}){
   const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseLeave } = useCardHoverTooltip();
   const def=GOD_DEFS[card.godKey];if(!def)return null;
@@ -225,6 +253,35 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
         <div style={{fontSize:small?14:compact?18:22,color:'#d8b45a',textShadow:'0 0 10px #d8b45a88'}}>◇</div>
         {!small&&<div style={{fontFamily:"'IM Fell English','Georgia',serif",fontSize:compact?9:10,color:'#c5a86a',fontStyle:'italic',lineHeight:1.35,textAlign:'center'}}>任意字母与数字</div>}
       </div>
+    );
+  }
+  if(card.isBlackGoatYoung){
+    const w=small?44:compact?62:82,h=small?58:compact?82:108;
+    return(
+      <>
+        <div
+          ref={cardRef}
+          onClick={disabled?undefined:onClick}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          style={{
+            width:w,minWidth:w,height:h,flexShrink:0,
+            background:'linear-gradient(160deg,#0a1a0a,#081208)',
+            border:`1.5px solid ${selected?'#c8a96e':highlight?'#4ade80':'#2a5a2a'}`,
+            boxShadow:selected?'0 0 14px #c8a96e88,inset 0 0 12px #c8a96e22':highlight?'0 0 10px #4ade8066':'inset 0 1px 0 #2a5a2a44',
+            borderRadius:3,cursor:(onClick&&!disabled)?'pointer':'default',opacity:disabled?0.35:1,
+            transform:selected?'translateY(-5px)':undefined,transition:'all .14s',
+            display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+            padding:small?'4px 3px':compact?'5px 5px':'7px 8px',userSelect:'none',position:'relative',overflow:'hidden',
+            ...frameStyle,
+          }}
+        >
+          <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:small?11:compact?13:16,color:'#4ade80',letterSpacing:1}}>BGY</div>
+          <div style={{fontSize:small?14:compact?18:22,color:'#4ade80',textShadow:'0 0 10px #4ade8088'}}>☣</div>
+          {!small&&<div style={{fontFamily:"'IM Fell English','Georgia',serif",fontSize:compact?8:9,color:'#7aca7a',fontStyle:'italic',lineHeight:1.3,textAlign:'center',marginTop:2}}>黑山羊幼仔</div>}
+        </div>
+        {!small&&hover&&<BgyTooltip desc={card.desc} position={tooltipPosition}/>}
+      </>
     );
   }
   const s=CS[card.letter]||GOD_CS;

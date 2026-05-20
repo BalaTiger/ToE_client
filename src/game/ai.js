@@ -204,6 +204,14 @@ function estimateHunterZoneCardScore(card, self, players, ci) {
       if (score === 0) score = -100;
       break;
     }
+    case 'allHealHPDamageSAN': {
+      const aliveOthers = players.filter((p, i) => i !== ci && !p.isDead).length;
+      score = aliveOthers * 2.2 + (10 - self.san) * 0.5;
+      break;
+    }
+    case 'reverseTurnOrder':
+      score = 0.3;
+      break;
     case 'allDamageHPRandomExtra': {
       const aliveOthers = players.filter((p, i) => i !== ci && !p.isDead).length;
       score = aliveOthers * 2.6;
@@ -369,6 +377,14 @@ function estimateTreasureZoneCardScore(card, self, players, ci) {
     case 'selfRenounceGod':
       score = -(self.godName ? 2.8 : 1.0);
       break;
+    case 'allHealHPDamageSAN': {
+      const aliveOthers = players.filter((p, i) => i !== ci && !p.isDead).length;
+      score = -aliveOthers * 2.8 - (self.san <= 4 ? 6 : 0);
+      break;
+    }
+    case 'reverseTurnOrder':
+      score = 0.1;
+      break;
     default: {
       const polarity = getZoneCardPolarity(card);
       if (zoneCardAppliesWidePressure(card) && (polarity === 'negative' || card.type === 'allDiscard')) {
@@ -486,6 +502,8 @@ function estimateCultistZoneCardScore(card, self, players, ci) {
         return { targets: livingPlayers.map((_, i) => i), hpDelta: 0, sanDelta: 0, hpLoss: 0, sanLoss: card.val };
       case 'allDamageBoth':
         return { targets: livingPlayers.map((_, i) => i), hpDelta: 0, sanDelta: 0, hpLoss: card.val, sanLoss: card.val };
+      case 'allHealHPDamageSAN':
+        return { targets: livingPlayers.map((_, i) => i), hpDelta: card.hpVal, sanDelta: -card.sanVal, hpLoss: 0, sanLoss: card.sanVal };
       case 'selfDamageAdjDamageBoth':
         return {
           targets: [ci, ...getAdjacentTargets(players, ci)],

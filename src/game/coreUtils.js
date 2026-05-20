@@ -33,6 +33,19 @@ export const isZoneCard = (card) => !!card?.isZone;
 
 export const isBlankZoneCard = (card) => card?.type === 'blankZone';
 
+export const isBlackGoatYoung = (card) => !!card?.isBlackGoatYoung;
+
+export const separateBlackGoatYoung = (cards) => {
+  if (!cards) return { kept: [], destroyed: [] };
+  const kept = [];
+  const destroyed = [];
+  for (const c of cards) {
+    if (isBlackGoatYoung(c)) destroyed.push(c);
+    else kept.push(c);
+  }
+  return { kept, destroyed };
+};
+
 export const getZoneCardPolarity = (card) => {
   if (!card) return null;
   if (card.polarity) return card.polarity;
@@ -68,7 +81,8 @@ export const zoneCardHasGuaranteedSanLoss = (card) => {
   if (!card?.type) return false;
   return [
     'selfDamageSAN', 'selfDamageDiscardSAN', 'selfDamageHPSAN', 'selfDamageRestSAN',
-    'allDamageSAN', 'allDamageBoth', 'adjDamageSAN', 'adjDamageBoth', 'selfDamageAdjDamageBoth'
+    'allDamageSAN', 'allDamageBoth', 'adjDamageSAN', 'adjDamageBoth', 'selfDamageAdjDamageBoth',
+    'allHealHPDamageSAN'
   ].includes(card.type);
 };
 
@@ -172,7 +186,9 @@ export function killPlayerState(P, i, Disc, L) {
   P[i].isDead = true;
   P[i].roleRevealed = true;
   L.push(`☠ ${P[i].name}（${P[i].role}）倒下了！`);
-  Disc.push(...P[i].hand);
+  const { kept, destroyed } = separateBlackGoatYoung(P[i].hand);
+  if (kept.length) Disc.push(...kept);
+  if (destroyed.length) L.push(`${P[i].name} 的 ${destroyed.length} 张黑山羊幼仔被销毁`);
   P[i].hand = [];
   if (P[i].godZone?.length) {
     Disc.push(...P[i].godZone);

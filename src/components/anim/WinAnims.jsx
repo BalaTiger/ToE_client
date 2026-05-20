@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CS, GOD_CS, RINFO } from '../../constants/card';
+import { CS, GOD_CS } from '../../constants/card';
+import { RINFO } from '../../game';
 
 function GodResurrectionAnim({onDone}){
   const [textPhase, setTextPhase] = useState(0); // 0: black, 1: transitioning, 2: red with blood

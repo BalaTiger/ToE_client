@@ -17,7 +17,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 2,
       "slotKey": "A1",
       "polarity": "positive",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     },
     {
       "name": "坠落",
@@ -27,16 +28,18 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "forced": true,
       "slotKey": "A1",
       "polarity": "negative",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     },
     {
-      "name": "惊扰蝙蝠",
+      "name": "腐臭",
       "desc": "你与相邻角色失去1HP",
       "type": "adjDamageHP",
       "val": 1,
       "slotKey": "A1",
       "polarity": "negative",
-      "effectScope": "adjacent"
+      "effectScope": "adjacent",
+      "expansion": "析骨为柴"
     }
   ],
   "A2": [
@@ -47,7 +50,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 1,
       "slotKey": "A2",
       "polarity": "positive",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     },
     {
       "name": "遭遇塌方",
@@ -56,16 +60,18 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 3,
       "slotKey": "A2",
       "polarity": "negative",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     },
     {
-      "name": "地刺陷阱",
+      "name": "亡者军团",
       "desc": "你与相邻角色失去3HP",
       "type": "adjDamageHP",
       "val": 3,
       "slotKey": "A2",
       "polarity": "negative",
-      "effectScope": "adjacent"
+      "effectScope": "adjacent",
+      "expansion": "地神的潜影"
     }
   ],
   "A3": [
@@ -76,7 +82,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 10,
       "slotKey": "A3",
       "polarity": "positive",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     },
     {
       "name": "目击尸体",
@@ -88,7 +95,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "condVal": 8,
       "slotKey": "A3",
       "polarity": "negative",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "析骨为柴"
     },
     {
       "name": "磷火",
@@ -97,7 +105,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 1,
       "slotKey": "A3",
       "polarity": "negative",
-      "effectScope": "adjacent"
+      "effectScope": "adjacent",
+      "expansion": "析骨为柴"
     }
   ],
   "A4": [
@@ -108,7 +117,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 0,
       "slotKey": "A4",
       "polarity": "neutral",
-      "effectScope": "target"
+      "effectScope": "target",
+      "expansion": "先贤的馈赠"
     },
     {
       "name": "邪恶壁画",
@@ -117,7 +127,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 3,
       "slotKey": "A4",
       "polarity": "negative",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "先贤的馈赠"
     },
     {
       "name": "空谷传音",
@@ -126,7 +137,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 1,
       "slotKey": "A4",
       "polarity": "negative",
-      "effectScope": "all"
+      "effectScope": "all",
+      "expansion": "地神的潜影"
     }
   ],
   "B1": [
@@ -137,7 +149,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 1,
       "slotKey": "B1",
       "polarity": "positive",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     },
     {
       "name": "忏悔独白",
@@ -146,7 +159,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 1,
       "slotKey": "B1",
       "polarity": "negative",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "先贤的馈赠"
     },
     {
       "name": "幽闭恐惧",
@@ -155,27 +169,30 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 2,
       "slotKey": "B1",
       "polarity": "negative",
-      "effectScope": "adjacent"
+      "effectScope": "adjacent",
+      "expansion": "地神的潜影"
     }
   ],
   "B2": [
     {
-      "name": "强心剂",
+      "name": "新鲜空气",
       "desc": "你回复2HP",
       "type": "selfHealHP",
       "val": 2,
       "slotKey": "B2",
       "polarity": "positive",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     },
     {
-      "name": "深陷沼泽",
+      "name": "黑泥沼",
       "desc": "你失去2SAN并翻面（切换休息状态）",
       "type": "selfDamageRestSAN",
       "val": 2,
       "slotKey": "B2",
       "polarity": "negative",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "群星呼唤"
     },
     {
       "name": "地动山摇",
@@ -185,7 +202,18 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "forced": true,
       "slotKey": "B2",
       "polarity": "negative",
-      "effectScope": "all"
+      "effectScope": "all",
+      "expansion": "地神的潜影"
+    },
+    {
+      "name": "逆流",
+      "desc": "本回合结束时，若回合轮换方向是顺时针，则改为逆时针，反之亦然",
+      "type": "reverseTurnOrder",
+      "val": 0,
+      "slotKey": "B2",
+      "polarity": "neutral",
+      "effectScope": "self",
+      "expansion": "群星呼唤"
     }
   ],
   "B3": [
@@ -197,17 +225,19 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "adjVal": 1,
       "slotKey": "B3",
       "polarity": "positive",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     },
     {
-      "name": "黑暗侵蚀",
+      "name": "石棺",
       "desc": "你失去2HP与1SAN",
       "type": "selfDamageHPSAN",
       "hpVal": 2,
       "sanVal": 1,
       "slotKey": "B3",
       "polarity": "negative",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     },
     {
       "name": "窒息矿坑",
@@ -216,21 +246,23 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 0,
       "slotKey": "B3",
       "polarity": "negative",
-      "effectScope": "adjacent"
+      "effectScope": "adjacent",
+      "expansion": "地神的潜影"
     }
   ],
   "B4": [
     {
-      "name": "腐蚀之雾",
+      "name": "地刺陷阱",
       "desc": "你失去2HP，相邻角色各失去1HP",
       "type": "selfDamageAdjDamageHP",
       "val": 2,
       "slotKey": "B4",
       "polarity": "negative",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     },
     {
-      "name": "落石砸击",
+      "name": "落井下石",
       "desc": "你失去2HP，若你当前HP≤5则额外失去2HP",
       "type": "selfDamageHPCond",
       "val": 2,
@@ -239,7 +271,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "condVal": 5,
       "slotKey": "B4",
       "polarity": "negative",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     },
     {
       "name": "两人一绳",
@@ -249,6 +282,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "polarity": "neutral",
       "effectScope": "target",
       "slotKey": "B4",
+      "expansion": "地神的潜影"
     }
   ],
   "C1": [
@@ -259,56 +293,62 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 1,
       "slotKey": "C1",
       "polarity": "positive",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "先贤的馈赠"
     },
     {
-      "name": "行囊破裂",
+      "name": "宝箱怪",
       "desc": "你失去2HP与2SAN",
       "type": "selfDamageHPSAN",
       "hpVal": 2,
       "sanVal": 2,
       "slotKey": "C1",
       "polarity": "negative",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "先贤的馈赠"
     },
     {
-      "name": "毁灭风暴",
+      "name": "活火山",
       "desc": "全体角色失去3HP",
       "type": "allDamageHP",
       "val": 3,
       "slotKey": "C1",
       "polarity": "negative",
-      "effectScope": "all"
+      "effectScope": "all",
+      "expansion": "地神的潜影"
     }
   ],
   "C2": [
     {
-      "name": "急救药包",
+      "name": "地下泉",
       "desc": "你回复3HP",
       "type": "selfHealHP",
       "val": 3,
       "slotKey": "C2",
       "polarity": "positive",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     },
     {
-      "name": "毒液飞溅",
+      "name": "目击食人族",
       "desc": "你失去3HP与1SAN",
       "type": "selfDamageHPSAN",
       "hpVal": 3,
       "sanVal": 1,
       "slotKey": "C2",
       "polarity": "negative",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "析骨为柴"
     },
     {
-      "name": "混乱气流",
+      "name": "惊扰蝙蝠",
       "desc": "你与相邻角色各失去2HP",
       "type": "adjDamageHP",
       "val": 2,
       "slotKey": "C2",
       "polarity": "negative",
-      "effectScope": "adjacent"
+      "effectScope": "adjacent",
+      "expansion": "地神的潜影"
     }
   ],
   "C3": [
@@ -319,17 +359,19 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 1,
       "slotKey": "C3",
       "polarity": "positive",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     },
     {
-      "name": "惊慌失措",
+      "name": "行囊破裂",
       "desc": "你失去2SAN，随机弃1张牌（强制触发）",
       "type": "selfDamageDiscardSAN",
       "val": 2,
       "forced": true,
       "slotKey": "C3",
       "polarity": "negative",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "temporary"
     },
     {
       "name": "瘟疫蔓延",
@@ -339,7 +381,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "sanVal": 1,
       "slotKey": "C3",
       "polarity": "negative",
-      "effectScope": "adjacent"
+      "effectScope": "adjacent",
+      "expansion": "temporary"
     }
   ],
   "C4": [
@@ -350,7 +393,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 0,
       "slotKey": "C4",
       "polarity": "neutral",
-      "effectScope": "target"
+      "effectScope": "target",
+      "expansion": "地神的潜影"
     },
     {
       "name": "恶毒诅咒",
@@ -360,7 +404,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "sanVal": 2,
       "slotKey": "C4",
       "polarity": "negative",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "temporary"
     },
     {
       "name": "末日预兆",
@@ -369,7 +414,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 1,
       "slotKey": "C4",
       "polarity": "negative",
-      "effectScope": "all"
+      "effectScope": "all",
+      "expansion": "temporary"
     }
   ],
   "D1": [
@@ -380,7 +426,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 2,
       "slotKey": "D1",
       "polarity": "neutral",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     },
     {
       "name": "致命尖刺",
@@ -392,7 +439,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "condVal": 4,
       "slotKey": "D1",
       "polarity": "negative",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "temporary"
     },
     {
       "name": "钻地魔虫",
@@ -401,7 +449,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 1,
       "slotKey": "D1",
       "polarity": "negative",
-      "effectScope": "all"
+      "effectScope": "all",
+      "expansion": "地神的潜影"
     }
   ],
   "D2": [
@@ -412,7 +461,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 0,
       "slotKey": "D2",
       "polarity": "neutral",
-      "effectScope": "target"
+      "effectScope": "target",
+      "expansion": "地神的潜影"
     },
     {
       "name": "恐怖直视",
@@ -424,16 +474,18 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "condVal": 2,
       "slotKey": "D2",
       "polarity": "negative",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "temporary"
     },
     {
-      "name": "目击食人者",
+      "name": "火中取栗",
       "desc": "你失去3HP，选一名角色偷看其一张手牌",
       "type": "selfDamageHPPeek",
       "val": 3,
       "slotKey": "D2",
       "polarity": "negative",
-      "effectScope": "all"
+      "effectScope": "all",
+      "expansion": "析骨为柴"
     }
   ],
   "D3": [
@@ -444,7 +496,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 4,
       "slotKey": "D3",
       "polarity": "positive",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "析骨为柴"
     },
     {
       "name": "先到先得",
@@ -453,7 +506,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 0,
       "slotKey": "D3",
       "polarity": "positive",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "先贤的馈赠"
     },
     {
       "name": "玫瑰倒刺",
@@ -462,7 +516,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 0,
       "slotKey": "D3",
       "polarity": "neutral",
-      "effectScope": "target"
+      "effectScope": "target",
+      "expansion": "先贤的馈赠"
     }
   ],
   "D4": [
@@ -473,7 +528,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 1,
       "slotKey": "D4",
       "polarity": "neutral",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "析骨为柴"
     },
     {
       "name": "扭伤",
@@ -483,7 +539,8 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "forced": true,
       "slotKey": "D4",
       "polarity": "negative",
-      "effectScope": "self"
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     },
     {
       "name": "同归深渊",
@@ -495,18 +552,23 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "adjSanVal": 1,
       "slotKey": "D4",
       "polarity": "negative",
-      "effectScope": "all"
+      "effectScope": "all",
+      "expansion": "temporary"
+    },
+    {
+      "name": "鲜红夜宴",
+      "desc": "所有人回复2HP，失去2SAN",
+      "type": "allHealHPDamageSAN",
+      "hpVal": 2,
+      "sanVal": 2,
+      "slotKey": "D4",
+      "polarity": "neutral",
+      "effectScope": "all",
+      "expansion": "析骨为柴"
     }
   ]
 };
 const LETTERS=['A','B','C','D'], NUMS=[1,2,3,4];
-const AI_NAMES=['艾伦','贝拉','卡洛斯','黛安娜'];
-const RINFO={
-  '寻宝者':{icon:'✦',col:'#7ecfd4',dim:'#2a6068',goal:'集齐宝藏',skillName:'掉包',skillLimited:true},
-  '追猎者':{icon:'☩',col:'#cc4444',dim:'#6a1a1a',goal:'消灭所有非追猎者',skillName:'追捕',skillLimited:false},
-  '邪祀者':{icon:'☽',col:'#9060cc',dim:'#3a1060',goal:'复活邪神',skillName:'蛊惑',skillLimited:true},
-};
-const [ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST] = Object.keys(RINFO);
 // Aged-manuscript card style per letter
 const CS={
   A:{bg:'#100d1a',border:'#3a2a6a',borderBright:'#6050a0',text:'#b0a0e8',glow:'#3a2a6a'},
@@ -535,18 +597,188 @@ const GOD_DEFS={
       {extraDraws:3,desc:'在角色翻面状态下结束或跳过回合时，立即摸3张牌'},
     ],
   },
+  SHU:{
+    godKey:'SHU',name:'森之领主',subtitle:'莎布·尼古拉丝之化身',power:'黑暗子嗣',
+    col:'#2a5a20',bgCol:'#081008',
+    levels:[
+      {offspringCount:1,desc:'获得此邪神之力时，指定一名角色（可以为自己），立即在其手牌中加入1张"黑山羊幼仔"'},
+      {offspringCount:2,desc:'获得此邪神之力时，指定一名角色（可以为自己），立即在其手牌中加入2张"黑山羊幼仔"'},
+      {offspringCount:3,desc:'获得此邪神之力时，指定一名角色（可以为自己），立即在其手牌中加入3张"黑山羊幼仔"'},
+    ],
+  },
+  ZHU:{
+    godKey:'ZHU',name:'烛九阴',subtitle:'钟山之神',power:'衔烛照幽',
+    col:'#c0a020',bgCol:'#181008',
+    levels:[
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+    ],
+  },
+  FUL:{
+    godKey:'FUL',name:'弗栗多',subtitle:'阿修罗之龙',power:'禁锢甘霖',
+    col:'#2080a0',bgCol:'#081018',
+    levels:[
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+    ],
+  },
+  APO:{
+    godKey:'APO',name:'阿波菲斯',subtitle:'混沌巨蛇',power:'噬日灭世',
+    col:'#8020a0',bgCol:'#100818',
+    levels:[
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+    ],
+  },
+  GEE:{
+    godKey:'GEE',name:'戈耳工',subtitle:'石化之视',power:'美杜莎之瞳',
+    col:'#608020',bgCol:'#0a1008',
+    levels:[
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+    ],
+  },
+  XUA:{
+    godKey:'XUA',name:'轩辕坟三妖',subtitle:'女娲座下',power:'惑乱殷商',
+    col:'#a04080',bgCol:'#180810',
+    levels:[
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+    ],
+  },
+  BAQ:{
+    godKey:'BAQ',name:'八岐大蛇',subtitle:'祸津日神',power:'八山八海',
+    col:'#a06020',bgCol:'#181008',
+    levels:[
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+    ],
+  },
+  HAS:{
+    godKey:'HAS',name:'无可名状者',subtitle:'哈斯塔之化身',power:'黄衣之印',
+    col:'#d0c020',bgCol:'#181808',
+    levels:[
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+    ],
+  },
+  KTH:{
+    godKey:'KTH',name:'爆燃者',subtitle:'克图格亚之化身',power:'炎之精',
+    col:'#e05010',bgCol:'#180808',
+    levels:[
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+    ],
+  },
+  TRA:{
+    godKey:'TRA',name:'荣冠亡者特拉维科利',subtitle:'不死君王',power:'亡者军团',
+    col:'#4060a0',bgCol:'#080818',
+    levels:[
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+    ],
+  },
+  FAN:{
+    godKey:'FAN',name:'堕落的范·海辛',subtitle:'吸血鬼猎手',power:'血之诅咒',
+    col:'#801020',bgCol:'#180808',
+    levels:[
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+    ],
+  },
+  DIX:{
+    godKey:'DIX',name:'尸林魔君帝辛',subtitle:'商纣王',power:'酒池肉林',
+    col:'#604020',bgCol:'#100808',
+    levels:[
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+      {desc:'效果待设计'},
+    ],
+  },
 };
+
+// ── EXPANSION PACK CONFIG ─────────────────────────────────────
+const EXPANSIONS = {
+  temporary: {
+    name: '临时拓展包',
+    description: '当前牌组，包含所有现有卡牌',
+    // 临时包包含 FIXED_ZONE_CARD_VARIANTS_BY_KEY 中所有卡牌
+    godCardKeys: ['NYA', 'CTH', 'SHU'],
+    godCopies: 4,
+  },
+  '地神的潜影': {
+    name: '地神的潜影',
+    description: '来自地底深处的低语……',
+    godCardKeys: ['NYA', 'SHU', 'ZHU', 'FUL', 'APO'],
+    godCopies: 4,
+  },
+  '先贤的馈赠': {
+    name: '先贤的馈赠',
+    description: '古老文明遗留的神秘礼物',
+    godCardKeys: ['GEE', 'XUA', 'BAQ'],
+    godCopies: 4,
+  },
+  '群星呼唤': {
+    name: '群星呼唤',
+    description: '当星辰归位之时……',
+    godCardKeys: ['CTH', 'HAS', 'KTH'],
+    godCopies: 4,
+  },
+  '析骨为柴': {
+    name: '析骨为柴',
+    description: '以骨为柴，以血为火',
+    godCardKeys: ['TRA', 'FAN', 'DIX'],
+    godCopies: 4,
+  },
+};
+
+export const INSPECTION_DECK = [
+  ...Array(4).fill({ name: '乱抓', effect: 'adjacentDamageHP', value: 1, type: 'negative' }),
+  ...Array(4).fill({ name: '自残', effect: 'selfDamageHP', value: 1, type: 'negative' }),
+  ...Array(4).fill({ name: '失眠', effect: 'disableRest', value: 1, type: 'negative' }),
+  ...Array(2).fill({ name: '暂时的平静', effect: 'nothing', value: 0, type: 'neutral' }),
+  ...Array(2).fill({ name: '昏睡', effect: 'flip', value: 1, type: 'negative' }),
+  ...Array(2).fill({ name: '迫害妄想', effect: 'discardRandom', value: 1, type: 'negative' }),
+  ...Array(2).fill({ name: '失忆', effect: 'disableSkill', value: 1, type: 'negative' }),
+  ...Array(2).fill({ name: '乏力', effect: 'handLimitDecrease', value: 1, type: 'negative' }),
+  { name: '超人意志', effect: 'healSAN', value: 1, type: 'positive' },
+  { name: '揭开真相', effect: 'drawCard', value: 1, type: 'positive' },
+  { name: '封印松动', effect: 'sealLoosening', value: 1, type: 'negative' },
+  { name: '廷达罗斯猎犬', effect: 'houndsOfTindalos', value: 1, type: 'negative' }
+];
+
+let _bgyId = 0;
+export function createBlackGoatYoungCard() {
+  return {
+    id: `bgy-${_bgyId++}`,
+    name: '黑山羊幼仔',
+    desc: '这张牌在手牌中始终亮明。你获得行动选项"繁衍"：指定另一名角色，立即在其手牌中加入1张"黑山羊幼仔"。回合开始时，若你持有此牌，你扣减1HP和1SAN',
+    type: 'blackGoatYoung',
+    isBlackGoatYoung: true,
+    polarity: 'neutral',
+    effectScope: 'self',
+    letter: 'B',
+    number: 0,
+    key: 'BGY',
+  };
+}
 
 export {
   FIXED_ZONE_CARD_VARIANTS_BY_KEY,
   LETTERS,
   NUMS,
-  AI_NAMES,
-  RINFO,
-  ROLE_TREASURE, // 直接写名字，不要带方括号
-  ROLE_HUNTER,   // 直接写名字
-  ROLE_CULTIST,  // 直接写名字
   CS,
   GOD_CS,
-  GOD_DEFS
+  GOD_DEFS,
+  EXPANSIONS,
 };

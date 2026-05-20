@@ -6,17 +6,15 @@ import {
   cardLogText,
   isWinHand,
   makeInspectionMeta,
+  isBlackGoatYoung,
+  killPlayerState,
 } from './coreUtils';
 import { aiShouldKeepZoneCard } from './ai';
 import { clearPlayerGodZone } from './aiTurn';
 import { splitAnimBoundLogs } from './animLogs';
 import { localDisplayName } from './rotateState';
-import {
-  GOD_DEFS,
-  ROLE_TREASURE,
-  ROLE_HUNTER,
-  ROLE_CULTIST,
-} from '../constants/card';
+import { GOD_DEFS, createBlackGoatYoungCard } from '../constants/card';
+import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
 import { applyFx, applyInspectionForSanLoss } from './effectEngine';
 
 export function checkWin(players, isMP) {
@@ -62,6 +60,13 @@ export function shouldTriggerGodResurrection(gs) {
   const hasCultists = gs.players.some(p => p.role === ROLE_CULTIST);
   if (!hasCultists) return false;
   return gs.players.some(p => !p.isDead && p.san <= 0 && p.hp > 0);
+}
+
+/** AI 自动选择 SHU 黑暗子嗣的目标。默认优先给自己，若自己是寻宝者则随机给其他存活角色。 */
+function _chooseAiShuTarget(ci, P) {
+  if (P[ci].role !== ROLE_TREASURE) return ci;
+  const others = P.map((p, i) => i).filter(i => i !== ci && !P[i].isDead);
+  return others.length > 0 ? others[Math.floor(Math.random() * others.length)] : ci;
 }
 
 export function applySanLossToPlayerWithInspection(targetIndex, amount, startIndex, P, D, Disc, L, inspectionMeta) {
@@ -118,6 +123,12 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
   if (action === 'upgrade') {
     P[ci].godLevel++; P[ci].godZone.push({ ...godCard });
     msgs.push(`${P[ci].name} 邪神之力升至Lv.${P[ci].godLevel}（${godCard.power}）`);
+    if (godKey === 'SHU') {
+      const count = GOD_DEFS.SHU.levels[P[ci].godLevel - 1]?.offspringCount || 0;
+      const shuTargetIdx = _chooseAiShuTarget(ci, P);
+      for (let i = 0; i < count; i++) P[shuTargetIdx].hand.push(createBlackGoatYoungCard());
+      if (count) msgs.push(`【黑暗子嗣】${P[shuTargetIdx].name} 获得${count}张黑山羊幼仔`);
+    }
     P.forEach((p, i) => {
       if (i !== ci && p.godName === godKey) {
         const abandonBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
@@ -129,6 +140,12 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
   } else if (action === 'worship') {
     P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }];
     msgs.push(`${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
+    if (godKey === 'SHU') {
+      const count = GOD_DEFS.SHU.levels[0]?.offspringCount || 0;
+      const shuTargetIdx = _chooseAiShuTarget(ci, P);
+      for (let i = 0; i < count; i++) P[shuTargetIdx].hand.push(createBlackGoatYoungCard());
+      if (count) msgs.push(`【黑暗子嗣】${P[shuTargetIdx].name} 获得${count}张黑山羊幼仔`);
+    }
     P.forEach((p, i) => {
       if (i !== ci && p.godName === godKey) {
         const abandonBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
@@ -290,6 +307,8 @@ export function playerDrawCard(ps, deck, disc, ci = 0, gs = {}) {
 
 export function startNextTurn(gs, opts = {}) {
   const { isDebugMode = false } = opts;
+  // Reset multiplyUsed at the start of every turn
+  gs = { ...gs, multiplyUsed: false };
   const N = gs.players.length;
   let P = copyPlayers(gs.players), D = [...gs.deck], Disc = [...gs.discard], L = [...gs.log];
   const _P_beforeTurn = copyPlayers(P);
@@ -298,7 +317,8 @@ export function startNextTurn(gs, opts = {}) {
   let drawLogs = [];
   let statLogs = [];
   let preTurnStatLogs = [];
-  for (let i = 1; i <= N; i++) { next = (gs.currentTurn + i) % N; if (!P[next].isDead) break; }
+  const turnDir = gs.turnDirection || 1;
+  for (let i = 1; i <= N; i++) { next = (gs.currentTurn + i * turnDir + N) % N; if (!P[next].isDead) break; }
   // 增加回合数
   const newTurn = (gs.turn || 0) + 1;
   // Clear any NYA temp borrow for the player whose turn just ended
@@ -349,6 +369,28 @@ export function startNextTurn(gs, opts = {}) {
     globalOnlySwapOwner = null;
     L.push('"全员技能变为掉包"的效果结束了');
   }
+  // 黑山羊幼仔回合开始伤害（所有存活玩家）
+  for (let pi = 0; pi < P.length; pi++) {
+    if (P[pi].isDead) continue;
+    const bgyCount = P[pi].hand.filter(isBlackGoatYoung).length;
+    if (bgyCount > 0) {
+      P[pi].hp = clamp(P[pi].hp - bgyCount);
+      P[pi].san = clamp(P[pi].san - bgyCount);
+      L.push(`【黑山羊幼仔】${P[pi].name} 失去 ${bgyCount} HP 和 ${bgyCount} SAN`);
+      if (P[pi].san <= 6) {
+        const baseLog = [...L];
+        const processed = applyInspectionForSanLoss(pi, P[pi].san, next, P, D, Disc, baseLog, makeInspectionMeta(gs));
+        P = processed.P; D = processed.D; Disc = processed.Disc;
+        L.push(...processed.log.slice(baseLog.length));
+      }
+      if (P[pi].hp <= 0) {
+        killPlayerState(P, pi, Disc, L);
+      }
+    }
+  }
+  const winAfterBgy = checkWin(P, gs._isMP);
+  if (winAfterBgy) return { ...gs, players: P, deck: D, discard: Disc, log: L, gameOver: winAfterBgy, multiplyUsed: false };
+
   // If this player was resting: wake up (flip card face-up), skip their turn entirely
   if (P[next].isResting) {
     P[next].isResting = false;

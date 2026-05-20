@@ -3,10 +3,8 @@ import {
   FIXED_ZONE_CARD_VARIANTS_BY_KEY,
   LETTERS,
   NUMS,
-  ROLE_TREASURE,
-  ROLE_HUNTER,
-  ROLE_CULTIST,
 } from '../../constants/card';
+import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from '../../game';
 
 const ZONE_CARD_KEYS = LETTERS.flatMap(L => NUMS.map(N => `${L}${N}`));
 
@@ -493,6 +491,7 @@ function DebugSettingsPanel({
           >
             <option value="CTH">克苏鲁</option>
             <option value="NYA">Nyarlathotep</option>
+            <option value="SHU">森之领主</option>
           </select>
         </div>
       )}
@@ -501,7 +500,7 @@ function DebugSettingsPanel({
         <div style={{ fontSize: 11, color: '#f0cb7a', padding: 6, background: '#2a1608', border: '1px solid #3a2510', borderRadius: 4 }}>
           {debugForceCardType === 'zone'
             ? `区域牌: ${debugForceZoneCardKey} - ${debugForceZoneCardName || ''}`
-            : `神牌: ${debugForceGodCardKey === 'CTH' ? '克苏鲁' : 'Nyarlathotep'}`
+            : `神牌: ${debugForceGodCardKey === 'CTH' ? '克苏鲁' : debugForceGodCardKey === 'SHU' ? '森之领主' : 'Nyarlathotep'}`
           }
         </div>
       </div>
