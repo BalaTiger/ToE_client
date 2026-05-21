@@ -13,6 +13,7 @@ const ROTATE_ABILITYDATA_INDEX_FIELDS = [
   'damageLinkSource',
   'roseThornSource',
   'pickSource',
+  'targetIdx',
 ];
 const ROTATE_ABILITYDATA_INDEX_ARRAY_FIELDS = [
   'peekHandTargets',
@@ -125,6 +126,14 @@ export function isLocalGodChoicePhase(gs) {
 export function isLocalFirstComePicker(gs) {
   const currentPickerIdx = gs?.abilityData?.pickOrder?.[gs?.abilityData?.pickIndex || 0];
   return gs?.phase === 'FIRST_COME_PICK_SELECT' && isLocalSeatIndex(currentPickerIdx);
+}
+
+export function isLocalSameAbyssTargetPhase(gs) {
+  return gs?.phase === 'SAME_ABYSS_SELECT' && isLocalSeatIndex(gs?.abilityData?.targetIdx);
+}
+
+export function isLocalSphinxGuessPhase(gs) {
+  return gs?.phase === 'SPHINX_GUESS' && isLocalCurrentTurn(gs);
 }
 
 export function isLocalDamageLinkSourcePhase(gs) {

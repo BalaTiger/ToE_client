@@ -77,6 +77,8 @@ import {
   isLocalDrawDecisionPhase,
   isLocalGodChoicePhase,
   isLocalFirstComePicker,
+  isLocalSameAbyssTargetPhase,
+  isLocalSphinxGuessPhase,
   isLocalDamageLinkSourcePhase,
   canLocalActOnTargetSelectionPhase,
   isLocalSwapGivePhase,
@@ -1353,7 +1355,7 @@ export default function Game(){
       let rawResult,newGs;
       try{
         rawResult=aiStep(gs, { isDebugMode: isLocalDebugEnabled() });
-        const{_aiDrawnCard:_a,_aiName:_n,_playersBeforeNextDraw:_pbn,_aiHuntEvents:_he,_playersBeforeSkillAction:_pbsa,_preSkillLogs:_psl,_preSkillDiscard:_psd,...stripped}=rawResult;
+        const{_aiDrawnCard:_a,_aiName:_n,_playersBeforeNextDraw:_pbn,_aiHuntEvents:_he,_playersBeforeSkillAction:_pbsa,_preSkillLogs:_psl,_preSkillDiscard:_psd,_animMultiplyEvent:_ame,_animSphinxReveal:_asr,...stripped}=rawResult;
         newGs=stripped;
       }catch(e){
         console.error('[aiStep error]',e);
@@ -1373,13 +1375,6 @@ export default function Game(){
         const aiTurnDiscarded=hasTurnStartDraw?isDrawnCardActuallyDiscarded(rawResult,aiTurnDrawnCard):false;
         const fakeGs = (ps,log=gs.log) => ({...gs, players: ps, log});
         const queue=[];
-        if(gs._preTurnPlayers&&Array.isArray(gs._preTurnStatLogs)&&gs._preTurnStatLogs.length){
-          const preTurnQ=bindAnimLogChunks(
-            buildAnimQueue({...gs,players:gs._preTurnPlayers,log:[]},{...gs,players:gs._playersBeforeThisDraw||gs.players,log:gs._preTurnStatLogs}),
-            {statLogs:gs._preTurnStatLogs}
-          );
-          queue.push(...preTurnQ);
-        }
         if(gs._playersBeforeThisDraw) queue.push({type:'YOUR_TURN',name:gs.players[gs.currentTurn]?.name||'???',msgs:gs._turnStartLogs});
         if(aiTurnDrawnCard) queue.push({type:'DRAW_CARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn,msgs:gs._drawLogs});
         if(gs._playersBeforeThisDraw&&aiTurnDrawnCard){
@@ -1464,7 +1459,7 @@ export default function Game(){
       }
       try{
         // Strip ALL animation-only temp fields before storing as real game state
-        const{_aiDrawnCard,_aiName,_playersBeforeNextDraw,_aiHuntEvents,_playersBeforeSkillAction,_preSkillLogs,_preSkillDiscard,_cthRestDraws,_cthRestDrawLogs,_playersBeforeCthDraws,_aiHandLimitDiscards,...stripped}=rawResult;
+        const{_aiDrawnCard,_aiName,_playersBeforeNextDraw,_aiHuntEvents,_playersBeforeSkillAction,_preSkillLogs,_preSkillDiscard,_cthRestDraws,_cthRestDrawLogs,_playersBeforeCthDraws,_aiHandLimitDiscards,_animMultiplyEvent,_animSphinxReveal,...stripped}=rawResult;
         newGs=stripped; // reassign: stripped has _playersBeforeThisDraw from startNextTurn
         const oldLog=Array.isArray(gs.log)?gs.log:[];
         const nextLog=Array.isArray(newGs.log)?newGs.log:oldLog;
@@ -1485,13 +1480,6 @@ export default function Game(){
             msgs:rawResult._cthRestDrawLogs?.filter(l=>l.includes(card.name)||l.includes(card.key))||[]
           }));
           queue.push(...cthQueue);
-        }
-        if(gs._preTurnPlayers&&Array.isArray(gs._preTurnStatLogs)&&gs._preTurnStatLogs.length){
-          const preTurnQ=bindAnimLogChunks(
-            buildAnimQueue({...gs,players:gs._preTurnPlayers,log:[]},{...gs,players:gs._playersBeforeThisDraw||gs.players,log:gs._preTurnStatLogs}),
-            {statLogs:gs._preTurnStatLogs}
-          );
-          queue.push(...preTurnQ);
         }
         if(gs._playersBeforeThisDraw) queue.push({type:'YOUR_TURN',name:gs.players[gs.currentTurn]?.name||'???',msgs:gs._turnStartLogs});
         // 2. Draw card anim for THIS AI (card drawn at turn start, stored in gs._drawnCard)
@@ -1612,12 +1600,50 @@ export default function Game(){
             queue.push({type:'SKILL_BEWITCH',msgs:extractSkillLogs(newMsgs,'bewitch'),targetIdx:bwti>=0?bwti:1});
           }
         }
+        // Inject custom animations for multiply and sphinx reveal
+        const sphinxReveal=rawResult._animSphinxReveal;
+        const multiplyEvent=rawResult._animMultiplyEvent;
+        const animInjections=[];
+        if(sphinxReveal){
+          const guessMsg=newMsgs.find(m=>m.includes('猜测牌堆顶的牌'));
+          const resultMsg=newMsgs.find(m=>m.includes('猜测正确')||m.includes('猜测错误'));
+          animInjections.push({
+            type:'DRAW_CARD',
+            card:sphinxReveal.card,
+            triggerName:'斯芬克斯',
+            targetPid:sphinxReveal.actorIdx,
+            skipTravel:true,
+            msgs:guessMsg?[guessMsg]:[]
+          });
+          if(sphinxReveal.guessCorrect){
+            animInjections.push({
+              type:'CARD_TRANSFER',
+              fromPid:-1,
+              dest:'player',
+              toPid:sphinxReveal.actorIdx,
+              count:1,
+              msgs:resultMsg?[resultMsg]:[]
+            });
+          }
+        }
+        if(multiplyEvent){
+          const multiplyMsg=newMsgs.find(m=>m.includes('【繁衍】'));
+          animInjections.push({
+            type:'CARD_TRANSFER',
+            fromPid:multiplyEvent.fromIdx,
+            dest:'player',
+            toPid:multiplyEvent.toIdx,
+            count:1,
+            msgs:multiplyMsg?[multiplyMsg]:[]
+          });
+        }
+        const finalActionQ=[...animInjections,...(orderedActionQ||actionStatQ)];
         // 5. Stat changes from THIS AI's action only (not next draw — those belong to next AI's queue)
         //    Compare gs (after this AI's draw) → _playersBeforeNextDraw (after action, before next draw)
         // 6. Advance to next player's turn
         let nextTurnIntroQueue=[];
         if(isLocalCurrentTurn(newGs)){
-          queue.push(...(orderedActionQ||actionStatQ));
+          queue.push(...finalActionQ);
           queue.push(...handLimitDiscardQueue);
           const playerTurnStartMsgs=newGs._turnStartLogs||[];
           const playerDrawMsgs=newGs._drawLogs||[];
@@ -1642,7 +1668,7 @@ export default function Game(){
         }else{
           // AI next: action stat changes go before queue ends; draw effects for next AI
           // will be shown at the start of that AI's own queue (after their banner + DRAW_CARD)
-          queue.push(...(orderedActionQ||actionStatQ));
+          queue.push(...finalActionQ);
           queue.push(...handLimitDiscardQueue);
           // 如果下一个是AI，且它摸首牌直接死亡导致了这局游戏结束，此时不会有真正的下一个AI回合勾子运行了，必须把它的暴毙动画立刻压入队列
           if(newGs.gameOver && newGs.currentTurn !== gs.currentTurn){
@@ -1876,7 +1902,6 @@ export default function Game(){
             _drawLogs:[],
             _statLogs:[],
             _preTurnPlayers:null,
-            _preTurnStatLogs:[],
           };
         }
         return {...prev,players:P,deck:D,discard:Disc,log:L,phase:'FIRST_COME_PICK_SELECT',abilityData:{...ad,revealedCards:cards,pickIndex:nextPickIndex}};
@@ -2784,6 +2809,16 @@ export default function Game(){
       setGs({...newGs,phase:'FIRST_COME_PICK_SELECT',abilityData:phaseData});
       return;
     }
+    if(res.statePatch?.abilityData?.type === 'sameAbyssChoice'){
+      syncVisibleLog(L);
+      setGs({...newGs,phase:'SAME_ABYSS_SELECT',abilityData:{...gs.abilityData,...res.statePatch.abilityData}});
+      return;
+    }
+    if(res.statePatch?.abilityData?.type === 'sphinxGuess'){
+      syncVisibleLog(L);
+      setGs({...newGs,phase:'SPHINX_GUESS',abilityData:{...gs.abilityData,...res.statePatch.abilityData}});
+      return;
+    }
     // CTH fromRest: 先播放当前这张牌的结算动画，再继续剩余摸牌/进入下一回合
     if(dr.fromRest&&!win){
       const split=splitAnimBoundLogs(L.slice(gs.log.length));
@@ -3205,7 +3240,6 @@ export default function Game(){
       _drawLogs:[],
       _statLogs:[],
       _preTurnPlayers:null,
-      _preTurnStatLogs:[],
     };
     const duelAnim={type:'CAVE_DUEL',sourceIdx:caveDuelSource,targetIdx:ti,sourceCard,targetCard,winnerIdx,msgs:L.slice(-1)};
     if(gs.abilityData?.fromRest){
@@ -3386,7 +3420,6 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         _drawLogs:[],
         _statLogs:[],
         _preTurnPlayers:null,
-        _preTurnStatLogs:[],
       };
       if(abilityData.fromRest&&isLocalSeatIndex(abilityData.pickSource)){_cthContinueRestDraws(newGs);return;}
       setGs(newGs);
@@ -3691,7 +3724,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       (
         !!newGs.drawReveal?.card ||
         (newGs.phase==='GOD_CHOICE'&&!!newGs.abilityData?.godCard) ||
-        ((newGs._turnStartLogs?.length||0)>0&&(Array.isArray(newGs._preTurnStatLogs)&&newGs._preTurnStatLogs.length>0))
+        false
       );
     if(playerNeedsQueuedTurnIntro){
       triggerAnimQueue(queue,null,()=>applyNextTurnGs(newGs));
@@ -3735,6 +3768,89 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       pendingGsRef.current=newGs;
       animQueueRef.current=[...queue.slice(1)];
       setGs(p=>p?{...p,phase:'ACTION',abilityData:{}}:p);
+      setAnim(queue[0]);
+    }else setGs(newGs);
+  }
+
+  function sameAbyssSelect(choice){
+    const{targetIdx,actorHandCount,discardCount}=gs.abilityData||{};
+    if(gs.phase!=='SAME_ABYSS_SELECT'||!isLocalSameAbyssTargetPhase(gs))return;
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
+    const L=[...gs.log];
+    const target=P[targetIdx];
+    if(!target)return;
+    if(choice==='discard'&&discardCount>0){
+      for(let d=0;d<discardCount;d++){
+        if(target.hand.length>actorHandCount){
+          const c=target.hand.shift();
+          if(isBlackGoatYoung(c)){
+            L.push(`${target.name} 的黑山羊幼仔被销毁`);
+          }else if(c.type!=='blankZone'){
+            Disc.push(c);
+          }
+        }
+      }
+      L.push(`【同归深渊】${target.name} 选择弃置手牌至 ${actorHandCount} 张`);
+    }else{
+      L.push(`【同归深渊】${target.name} 选择承受伤害，失去 4 HP`);
+      const localMsgs=[];
+      applyHpDamageWithLink(P,targetIdx,4,Disc,localMsgs,gs.currentTurn,D);
+      if(localMsgs.length)L.push(...localMsgs);
+    }
+    const win=checkWin(P,gs._isMP);
+    if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{}});return;}
+    const nextTurn=gs.abilityData?._turnOwner??gs.currentTurn;
+    const resumesAiTurn=isAiSeat(gs,nextTurn)&&!P[nextTurn]?.isDead;
+    const nextPhase=resumesAiTurn?'AI_TURN':'ACTION';
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:nextPhase,currentTurn:nextTurn,abilityData:{}};
+    const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
+    if(queue.length){
+      pendingGsRef.current=newGs;
+      animQueueRef.current=[...queue.slice(1)];
+      setGs(p=>p?{...p,phase:nextPhase,abilityData:{}}:p);
+      setAnim(queue[0]);
+    }else setGs(newGs);
+  }
+
+  function sphinxGuess(guessYes){
+    if(gs.phase!=='SPHINX_GUESS'||!isLocalSphinxGuessPhase(gs))return;
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
+    const L=[...gs.log];
+    const topCard=D[0];
+    const isZone=isZoneCard(topCard);
+    const actualCard=D.shift();
+    L.push(`你猜测牌堆顶的牌${guessYes?'是':'不是'}区域牌`);
+    const guessCorrect=(guessYes&&isZone)||(!guessYes&&!isZone);
+    if(guessCorrect){
+      L.push(`猜测正确！你收入了 ${cardLogText(actualCard)}`);
+      P[gs.currentTurn].hand.push(actualCard);
+    }else{
+      L.push(`猜测错误！你失去 3 HP`);
+      const localMsgs=[];
+      applyHpDamageWithLink(P,gs.currentTurn,3,Disc,localMsgs,gs.currentTurn,D);
+      if(localMsgs.length)L.push(...localMsgs);
+      Disc.push(actualCard);
+    }
+    const win=checkWin(P,gs._isMP);
+    if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{}});return;}
+    const nextTurn=gs.abilityData?._turnOwner??gs.currentTurn;
+    const resumesAiTurn=isAiSeat(gs,nextTurn)&&!P[nextTurn]?.isDead;
+    const nextPhase=resumesAiTurn?'AI_TURN':'ACTION';
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:nextPhase,currentTurn:nextTurn,abilityData:{}};
+    const logDelta=L.slice(gs.log.length);
+    const revealStep={type:'DRAW_CARD',card:actualCard,triggerName:'斯芬克斯',targetPid:gs.currentTurn,skipTravel:true,msgs:[logDelta[0]]};
+    let queue=[revealStep];
+    if(guessCorrect){
+      const gainMsg=logDelta.find(m=>m.includes('猜测正确'));
+      queue.push({type:'CARD_TRANSFER',fromPid:-1,dest:'player',toPid:gs.currentTurn,count:1,msgs:gainMsg?[gainMsg]:[]});
+    }else{
+      const resultQueue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(logDelta));
+      queue.push(...resultQueue);
+    }
+    if(queue.length){
+      pendingGsRef.current=newGs;
+      animQueueRef.current=[...queue.slice(1)];
+      setGs(p=>p?{...p,phase:nextPhase,abilityData:{}}:p);
       setAnim(queue[0]);
     }else setGs(newGs);
   }
@@ -4135,12 +4251,6 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       triggerAnimQueue([...cthQueue,...statQ],cleanedGs);
       return;
     }
-    const preTurnStatQ=(newGs&&newGs._preTurnPlayers&&Array.isArray(newGs._preTurnStatLogs)&&newGs._preTurnStatLogs.length)
-      ? bindAnimLogChunks(
-          buildAnimQueue({...gs,players:newGs._preTurnPlayers,log:[]},{...gs,players:newGs._playersBeforeThisDraw||newGs.players,log:newGs._preTurnStatLogs}),
-          {statLogs:newGs._preTurnStatLogs}
-      )
-      : [];
     const drawStatQ=newGs?bindAnimLogChunks(
       buildAnimQueue({...gs,players:newGs._playersBeforeThisDraw||gs.players},newGs),
       {statLogs:newGs._statLogs}
@@ -4152,13 +4262,11 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       (
         (Array.isArray(newGs._turnStartLogs)&&newGs._turnStartLogs.length>0) ||
         !!newGs._drawnCard ||
-        preTurnStatQ.length>0 ||
         drawStatQ.length>0
       )
     ){
       const aiName=newGs.players[newGs.currentTurn]?.name||'???';
       const queue=[];
-      if(preTurnStatQ.length) queue.push(...preTurnStatQ);
       if(newGs._playersBeforeThisDraw) queue.push({type:'YOUR_TURN',name:aiName,msgs:newGs._turnStartLogs});
       if(newGs._drawnCard) queue.push({type:'DRAW_CARD',card:newGs._drawnCard,triggerName:aiName,targetPid:newGs.currentTurn,msgs:newGs._drawLogs});
       if(drawStatQ.length) queue.push(...drawStatQ);
@@ -4177,8 +4285,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         pendingGsRef.current=newGs;
         animQueueRef.current=[
           {type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:'你',targetPid:0,msgs:playerDrawMsgs},
-          ...preTurnStatQ,
-          ...drawStatQ
+                    ...drawStatQ
         ];
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
         setAnim({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
@@ -4198,26 +4305,25 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
           }
         animQueueRef.current=[
           {type:'DRAW_CARD',card:newGs.abilityData.godCard,triggerName:'你',targetPid:0,msgs:playerDrawMsgs},
-          ...preTurnStatQ,
-          ...inspectionAndTailQueue,
+                    ...inspectionAndTailQueue,
         ];
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
         setAnim({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
         return;
       }
-      if(playerTurnStartMsgs.length&&newGs.phase==='ACTION'&&(preTurnStatQ.length||drawStatQ.length)){
+      if(playerTurnStartMsgs.length&&newGs.phase==='ACTION'&&drawStatQ.length){
         pendingGsRef.current=newGs;
-        animQueueRef.current=[...preTurnStatQ,...drawStatQ];
+        animQueueRef.current=[...drawStatQ];
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
         setAnim({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
         return;
       }
     }
-    if(['FIRST_COME_PICK_SELECT','DAMAGE_LINK_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','ROSE_THORN_SELECT_TARGET'].includes(newGs.phase)&&newGs._drawnCard){
+    if(['FIRST_COME_PICK_SELECT','DAMAGE_LINK_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','ROSE_THORN_SELECT_TARGET','SAME_ABYSS_SELECT','SPHINX_GUESS'].includes(newGs.phase)&&newGs._drawnCard){
       const drawerName=newGs.players[newGs.currentTurn]?.name||'???';
       const drawerPid=newGs.currentTurn;
       pendingGsRef.current=newGs;
-      animQueueRef.current=[...preTurnStatQ,...drawStatQ];
+      animQueueRef.current=[...drawStatQ];
       if(newGs._playersBeforeThisDraw){
         visualPlayersLockRef.current=copyPlayers(newGs._playersBeforeThisDraw);
       }
@@ -4248,7 +4354,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         } else {
           inspectionAndTailQueue = drawStatQ;
         }
-        animQueueRef.current=[...preTurnStatQ,...inspectionAndTailQueue];
+        animQueueRef.current=[...inspectionAndTailQueue];
         if(newGs._playersBeforeThisDraw){
           visualPlayersLockRef.current=copyPlayers(newGs._playersBeforeThisDraw);
         }
@@ -4261,7 +4367,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       const drawerName=newGs.players[newGs.currentTurn]?.name||'???';
       const drawerPid=newGs.currentTurn;
       pendingGsRef.current=newGs;
-      animQueueRef.current=[...preTurnStatQ,...drawStatQ];
+      animQueueRef.current=[...drawStatQ];
       if(newGs._playersBeforeThisDraw){
         visualPlayersLockRef.current=copyPlayers(newGs._playersBeforeThisDraw);
       }
@@ -4642,6 +4748,8 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     CAVE_DUEL_SELECT_CARD: `⚠ 和${gs.players[gs.abilityData?.caveDuelSource]?.name||'对手'}来一场穴居人式的对决！尽可能亮出数字编号大的牌取胜，如果落败将失去这张牌`,
     ROSE_THORN_SELECT_TARGET:'【玫瑰倒刺】选择承受倒刺的目标',
     FIRST_COME_PICK_SELECT:`【先到先得】${gs.players[gs.abilityData?.pickOrder?.[gs.abilityData?.pickIndex||0]]?.name||'当前角色'} 请选择一张牌`,
+    SAME_ABYSS_SELECT: isLocalSameAbyssTargetPhase(gs)?'【同归深渊】你手牌最多，须做出选择':'等待同归深渊目标做出选择…',
+    SPHINX_GUESS: isLocalSphinxGuessPhase(gs)?'【斯芬克斯】猜测牌堆顶的牌是否是区域牌':'等待斯芬克斯猜测…',
   }[phase]||'';
 
   const isLocalDamageLinkSelect=!!gs&&isLocalDamageLinkSourcePhase(gs);
@@ -4650,7 +4758,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
   const canLocalBewitchCard=!!gs&&isLocalBewitchCardPhase(gs);
   const selectingOther=canLocalTargetSelect;
   // 多人游戏中 HUNT_CONFIRM 非追猎者不显示操作按钮区域
-  const cancelable=['SWAP_SELECT_TARGET','SWAP_SELECT_TARGET_CARD','SWAP_GIVE_CARD','HUNT_SELECT_TARGET','ZONE_SWAP_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','DAMAGE_LINK_SELECT_TARGET','TORTOISE_ORACLE_SELECT','ROSE_THORN_SELECT_TARGET','MULTIPLY_SELECT_TARGET','SHU_SELECT_TARGET',...(phase==='HUNT_CONFIRM'&&gs._isMP&&!isLocalCurrentTurn(gs)?[]:['HUNT_CONFIRM']),'BEWITCH_SELECT_CARD','BEWITCH_SELECT_TARGET'].includes(phase);
+  const cancelable=['SWAP_SELECT_TARGET','SWAP_SELECT_TARGET_CARD','SWAP_GIVE_CARD','HUNT_SELECT_TARGET','ZONE_SWAP_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','DAMAGE_LINK_SELECT_TARGET','TORTOISE_ORACLE_SELECT','ROSE_THORN_SELECT_TARGET','MULTIPLY_SELECT_TARGET','SHU_SELECT_TARGET','SAME_ABYSS_SELECT','SPHINX_GUESS',...(phase==='HUNT_CONFIRM'&&gs._isMP&&!isLocalCurrentTurn(gs)?[]:['HUNT_CONFIRM']),'BEWITCH_SELECT_CARD','BEWITCH_SELECT_TARGET'].includes(phase);
   // In HUNT_CONFIRM, 放弃追捕 replaces ✕取消 — never show both
   const showCancelBtn=cancelable&&phase!=='HUNT_CONFIRM'&&isLocalCurrentTurn(gs)&&(!phase.includes('DAMAGE_LINK')||isLocalDamageLinkSelect)&&!anim;
 
@@ -4684,8 +4792,16 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       let P=copyPlayers(gs.players);
       if(!P[0].hand.some(isBlackGoatYoung)) return;
       P[pi].hand.push(createBlackGoatYoungCard());
-      const L=[...gs.log,`【繁衍】你将黑山羊幼仔传播给了 ${P[pi].name}`];
-      setGs({...gs,players:P,log:L,phase:'ACTION',abilityData:{},multiplyUsed:true});
+      const logMsg=`【繁衍】你将黑山羊幼仔传播给了 ${P[pi].name}`;
+      const L=[...gs.log,logMsg];
+      const newGs={...gs,players:P,log:L,phase:'ACTION',abilityData:{},multiplyUsed:true};
+      const queue=[{type:'CARD_TRANSFER',fromPid:0,dest:'player',toPid:pi,count:1,msgs:[logMsg]}];
+      if(queue.length){
+        pendingGsRef.current=newGs;
+        animQueueRef.current=[...queue.slice(1)];
+        setGs(p=>p?{...p,phase:'ACTION',abilityData:{},multiplyUsed:true}:p);
+        setAnim(queue[0]);
+      }else setGs(newGs);
     }
     else if(phase==='SHU_SELECT_TARGET'){
       const count=gs.abilityData?.shuOffspringCount||0;
@@ -4939,6 +5055,62 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
                 其他角色选择中…
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 同归深渊选择 modal */}
+      {!suppressAnim&&phase==='SAME_ABYSS_SELECT'&&gs.abilityData&&(
+        <div style={{position:'fixed',inset:0,display:'flex',alignItems:'flex-start',justifyContent:'center',paddingTop:isMobile?'7vh':'5vh',zIndex:400,pointerEvents:'none'}}>
+          <div style={{background:'#150e07ee',border:'2px solid #d7b46a',boxShadow:'0 0 60px #d7b46a33, 0 0 120px #000a',borderRadius:4,padding:'20px 24px',maxWidth:560,width:'92%',textAlign:'center',pointerEvents:'auto'}}>
+            <div style={{fontFamily:"'Cinzel',serif",color:'#e6c577',fontSize:16,letterSpacing:2,marginBottom:10}}>── 同归深渊 ──</div>
+            <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#b09090',fontSize:14,marginBottom:18,lineHeight:1.5}}>
+              你手牌最多（{gs.players[gs.abilityData?.targetIdx]?.hand?.length||0} 张）。将手牌弃至与 {gs.players[gs.currentTurn]?.name||'对方'} 数量相等（{gs.abilityData?.actorHandCount||0} 张），或者失去 4 HP。
+            </div>
+            <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
+              {isLocalSameAbyssTargetPhase(gs)?(
+                <>
+                  <button onClick={()=>sameAbyssSelect('discard')} style={{padding:'8px 16px',background:'#1a1008',border:'1.5px solid #8a6a3a',color:'#c8a96e',fontFamily:"'Cinzel',serif",fontSize:13,cursor:'pointer',borderRadius:3}}>
+                    弃置手牌至 {gs.abilityData?.actorHandCount||0} 张
+                  </button>
+                  <button onClick={()=>sameAbyssSelect('hp')} style={{padding:'8px 16px',background:'#1a1008',border:'1.5px solid #8a3a3a',color:'#c87878',fontFamily:"'Cinzel',serif",fontSize:13,cursor:'pointer',borderRadius:3}}>
+                    失去 4 HP
+                  </button>
+                </>
+              ):(
+                <div style={{fontFamily:"'Cinzel',serif",fontSize:12,color:'#a07838',letterSpacing:1}}>
+                  等待 {gs.players[gs.abilityData?.targetIdx]?.name||'目标'} 做出选择…
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 斯芬克斯猜测 modal */}
+      {!suppressAnim&&phase==='SPHINX_GUESS'&&gs.abilityData&&(
+        <div style={{position:'fixed',inset:0,display:'flex',alignItems:'flex-start',justifyContent:'center',paddingTop:isMobile?'7vh':'5vh',zIndex:400,pointerEvents:'none'}}>
+          <div style={{background:'#150e07ee',border:'2px solid #d7b46a',boxShadow:'0 0 60px #d7b46a33, 0 0 120px #000a',borderRadius:4,padding:'20px 24px',maxWidth:560,width:'92%',textAlign:'center',pointerEvents:'auto'}}>
+            <div style={{fontFamily:"'Cinzel',serif",color:'#e6c577',fontSize:16,letterSpacing:2,marginBottom:10}}>── 斯芬克斯 ──</div>
+            <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#b09090',fontSize:14,marginBottom:18,lineHeight:1.5}}>
+              猜测牌堆顶的牌是否是区域牌。若猜对，收入这张牌；若猜错，失去 3 HP。
+            </div>
+            <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
+              {isLocalSphinxGuessPhase(gs)?(
+                <>
+                  <button onClick={()=>sphinxGuess(true)} style={{padding:'8px 16px',background:'#1a1008',border:'1.5px solid #8a6a3a',color:'#c8a96e',fontFamily:"'Cinzel',serif",fontSize:13,cursor:'pointer',borderRadius:3}}>
+                    是区域牌
+                  </button>
+                  <button onClick={()=>sphinxGuess(false)} style={{padding:'8px 16px',background:'#1a1008',border:'1.5px solid #8a6a3a',color:'#c8a96e',fontFamily:"'Cinzel',serif",fontSize:13,cursor:'pointer',borderRadius:3}}>
+                    不是区域牌
+                  </button>
+                </>
+              ):(
+                <div style={{fontFamily:"'Cinzel',serif",fontSize:12,color:'#a07838',letterSpacing:1}}>
+                  等待 {gs.players[gs.currentTurn]?.name||'对方'} 做出猜测…
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

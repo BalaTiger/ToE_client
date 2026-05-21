@@ -32,6 +32,15 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "expansion": "地神的潜影"
     },
     {
+      "name": "斯芬克斯",
+      "desc": "猜测牌堆顶的牌是否是区域牌。若猜对，则收入这张牌。若猜错，失去3HP",
+      "type": "sphinxGuess",
+      "slotKey": "A1",
+      "polarity": "positive",
+      "effectScope": "self",
+      "expansion": "地神的潜影"
+    },
+    {
       "name": "腐臭",
       "desc": "你与相邻角色失去1HP",
       "type": "adjDamageHP",
@@ -544,16 +553,13 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "同归深渊",
-      "desc": "你失去2HP与2SAN，相邻角色各失去1HP与1SAN",
-      "type": "selfDamageAdjDamageBoth",
+      "desc": "你失去2HP，场上手牌最多的一位角色须选择：将手牌弃至与你数量相等，或者失去4HP",
+      "type": "sameAbyssChoice",
       "hpVal": 2,
-      "sanVal": 2,
-      "adjHpVal": 1,
-      "adjSanVal": 1,
       "slotKey": "D4",
       "polarity": "negative",
       "effectScope": "all",
-      "expansion": "temporary"
+      "expansion": "地神的潜影"
     },
     {
       "name": "鲜红夜宴",
@@ -771,7 +777,7 @@ export function createBlackGoatYoungCard() {
   return {
     id: `bgy-${_bgyId++}`,
     name: '黑山羊幼仔',
-    desc: '这张牌在手牌中始终亮明。你获得行动选项"繁衍"：指定另一名角色，立即在其手牌中加入1张"黑山羊幼仔"。回合开始时，若你持有此牌，你扣减1HP和1SAN',
+    desc: '这张牌在手牌中始终亮明。你获得行动选项"繁衍"：指定另一名角色，立即在其手牌中加入1张"黑山羊幼仔"。回合开始时，若你持有此牌，你失去1HP和1SAN',
     type: 'blackGoatYoung',
     isBlackGoatYoung: true,
     polarity: 'neutral',

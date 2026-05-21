@@ -643,6 +643,94 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         if (localMsgs.length) msgs.push(...localMsgs);
       }
     },
+    sameAbyssChoice: () => {
+      if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
+        msgs.push(`${actor.name} 失去 ${card.hpVal || 2} HP`);
+        hurtHP(ci, card.hpVal || 2);
+      }
+      const livingPlayers = P.map((p, i) => i).filter(i => !P[i].isDead);
+      if (livingPlayers.length === 0) return;
+      let maxHand = -1;
+      let maxHandPlayers = [];
+      livingPlayers.forEach(i => {
+        if (P[i].hand.length > maxHand) {
+          maxHand = P[i].hand.length;
+          maxHandPlayers = [i];
+        } else if (P[i].hand.length === maxHand) {
+          maxHandPlayers.push(i);
+        }
+      });
+      const targetIdx = maxHandPlayers[0];
+      const actorHandCount = P[ci].hand.length;
+      const discardCount = Math.max(0, P[targetIdx].hand.length - actorHandCount);
+      msgs.push(`【同归深渊】${P[targetIdx].name} 手牌最多（${P[targetIdx].hand.length} 张），须做出选择`);
+      if (targetIdx === 0) {
+        return {
+          P, D, Disc, msgs,
+          statePatch: {
+            abilityData: {
+              type: 'sameAbyssChoice',
+              targetIdx,
+              actorHandCount,
+              discardCount,
+            }
+          }
+        };
+      }
+      const target = P[targetIdx];
+      if (discardCount > 0 && target.hp <= 5) {
+        for (let d = 0; d < discardCount; d++) {
+          if (target.hand.length > actorHandCount) {
+            const c = target.hand.shift();
+            if (isBlackGoatYoung(c)) {
+              msgs.push(`${target.name} 的黑山羊幼仔被销毁`);
+            } else if (c.type !== 'blankZone') {
+              Disc.push(c);
+            }
+          }
+        }
+        msgs.push(`【同归深渊】${target.name} 选择弃置手牌至 ${actorHandCount} 张`);
+      } else {
+        msgs.push(`【同归深渊】${target.name} 选择承受伤害，失去 4 HP`);
+        hurtHP(targetIdx, 4);
+      }
+    },
+    sphinxGuess: () => {
+      if (D.length === 0) {
+        msgs.push('牌堆已空，无法猜测');
+        return;
+      }
+      const topCard = D[0];
+      const isZone = isZoneCard(topCard);
+      if (isAI) {
+        const guessYes = Math.random() < 0.5;
+        msgs.push(`${actor.name} 猜测牌堆顶的牌${guessYes ? '是' : '不是'}区域牌`);
+        const actualCard = D.shift();
+        const guessCorrect = (guessYes && isZone) || (!guessYes && !isZone);
+        if (guessCorrect) {
+          msgs.push(`猜测正确！${actor.name} 收入了 ${cardLogText(actualCard)}`);
+          P[ci].hand.push(actualCard);
+        } else {
+          msgs.push(`猜测错误！${actor.name} 失去 3 HP`);
+          hurtHP(ci, 3);
+          Disc.push(actualCard);
+        }
+        statePatch = {
+          ...statePatch,
+          _animSphinxReveal: { card: actualCard, guessYes, guessCorrect, actorIdx: ci }
+        };
+      } else {
+        return {
+          P, D, Disc, msgs,
+          statePatch: {
+            abilityData: {
+              type: 'sphinxGuess',
+              topCard,
+            }
+          }
+        };
+      }
+    },
     damageLink: () => {
       if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
         const validTargets = others.filter(i => !P[i].isDead);

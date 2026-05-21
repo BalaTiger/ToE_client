@@ -101,7 +101,7 @@ export const zoneCardHasGuaranteedHpLoss = (card) => {
   return [
     'selfDamageHP', 'selfDamageDiscardHP', 'selfDamageHPSAN', 'selfDamageRestHP', 'selfDamageHPPeek',
     'allDamageHP', 'allDamageBoth', 'adjDamageHP', 'adjDamageBoth',
-    'selfDamageAdjDamageHP', 'selfDamageAdjDamageBoth', 'allDamageHPRandomExtra'
+    'selfDamageAdjDamageHP', 'selfDamageAdjDamageBoth', 'allDamageHPRandomExtra', 'sameAbyssChoice'
   ].includes(card.type);
 };
 

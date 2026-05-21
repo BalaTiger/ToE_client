@@ -515,6 +515,8 @@ function estimateCultistZoneCardScore(card, self, players, ci) {
           adjHpLoss: card.adjHpVal,
           adjSanLoss: card.adjSanVal
         };
+      case 'sameAbyssChoice':
+        return { targets: [ci], hpDelta: 0, sanDelta: 0, hpLoss: card.hpVal || 2, sanLoss: 0 };
       default:
         return null;
     }
@@ -998,6 +1000,7 @@ export function aiShouldKeepZoneCard(card, ci, players, forced = false) {
   if (card.type === 'swapAllHands') return true;
   if (card.type === 'revealTopCards') return true;
   if (card.type === 'firstComePick') return true;
+  if (card.type === 'sphinxGuess') return true;
 
   if (role === ROLE_HUNTER) {
     return estimateHunterZoneCardScore(card, self, players, ci) > 0;
