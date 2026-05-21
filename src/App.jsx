@@ -1912,15 +1912,16 @@ export default function Game(){
       roseThornPrevRef.current = snapshot;
       return;
     }
-    let P = copyPlayers(gs.players), Disc = [...gs.discard], L = [...gs.log];
+    let P = copyPlayers(gs.players), D = [...gs.deck], Disc = [...gs.discard], L = [...gs.log];
     losses.forEach(({ idx, lostCount }) => {
-      applyHpDamageWithLink(P, idx, 2 * lostCount, Disc, L);
+      applyHpDamageWithLink(P, idx, 2 * lostCount, Disc, L, gs.currentTurn, D);
       L.push(`【玫瑰倒刺】${P[idx].name} 失去标记手牌，受到 ${2 * lostCount} HP 伤害`);
     });
     const win = checkWin(P, gs._isMP);
     const newGs = {
       ...gs,
       players: P,
+      deck: D,
       discard: Disc,
       log: L,
       ...(win ? { gameOver: win } : {})
@@ -3486,13 +3487,13 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
   }
   function huntConfirm(myCardIdx){
     const{huntTi}=gs.abilityData;
-    let P=copyPlayers(gs.players),Disc=[...gs.discard],L=[...gs.log];
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
     if(myCardIdx>=0){
       const targetHandBefore=[...(P[huntTi]?.hand||[])];
       const targetRevealBefore=!!P[huntTi]?.revealHand;
       const dc=P[0].hand.splice(myCardIdx,1)[0];Disc.push(dc);
       const huntDamage=3+(P[0].damageBonus||0);
-      applyHpDamageWithLink(P,huntTi,huntDamage,Disc,L);
+      applyHpDamageWithLink(P,huntTi,huntDamage,Disc,L,gs.currentTurn,D);
       L.push(`弃 ${cardLogText(dc,{alwaysShowName:true})} → ${P[huntTi].name} 受 ${huntDamage}HP 伤害`);
       // 追捕成功时揭晓追猎者身份
       if(!P[0].roleRevealed){
@@ -3511,7 +3512,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             Disc=removeCardsFromDiscard(Disc,lootableHand);
             P[huntTi].hand=[...lootableHand];
             // 先播放死亡特效，然后再进入选择手牌的阶段
-            const deathGs={...gs,players:P,log:L};
+            const deathGs={...gs,players:P,deck:D,log:L};
             const queue=buildAnimQueue(gs,deathGs);
             if(queue.length){
               // 动画播放完成后进入选择手牌的阶段
@@ -3519,7 +3520,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
                 log:[...L,`你（追猎者）从 ${P[huntTi].name} 的公开手牌中任选 ${Math.min(maxToTake,handCount)} 张！`]});
             }else{
               // 没有动画时直接进入选择手牌的阶段
-              setGs({...gs,players:P,phase:'HUNT_SELECT_CARD_FROM_PUBLIC',abilityData:{huntTi:huntTi,preSkillRevealed:gs.abilityData?.preSkillRevealed,maxToTake:Math.min(maxToTake,handCount)},
+              setGs({...gs,players:P,deck:D,phase:'HUNT_SELECT_CARD_FROM_PUBLIC',abilityData:{huntTi:huntTi,preSkillRevealed:gs.abilityData?.preSkillRevealed,maxToTake:Math.min(maxToTake,handCount)},
                 log:[...L,`你（追猎者）从 ${P[huntTi].name} 的公开手牌中任选 ${Math.min(maxToTake,handCount)} 张！`]});
             }
             return;
@@ -3547,7 +3548,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       const win=checkWin(P,gs._isMP);
       // 追猎者在追捕后设置skillUsed为true，这样就不能再休息了
       // 但追猎者仍然可以在同一回合内多次使用追捕技能
-      const newGs={...gs,players:P,discard:Disc,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...(win?{gameOver:win}:{})};
+      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...(win?{gameOver:win}:{})};
       const queue=buildAnimQueue(gs,newGs);
       if(queue.length) triggerAnimQueue(queue,newGs); else setGs(newGs);
     }else{
@@ -3611,7 +3612,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     const card=me.hand[cardIdx];
     if(!card)return;
     const{huntingAI,aiHunterName}=gs.abilityData;
-    let P=copyPlayers(gs.players),Disc=[...gs.discard],L=[...gs.log];
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
     let discardedCard=null;
     const myHandBefore=[...(P[0]?.hand||[])];
     const myRevealBefore=!!P[0]?.revealHand;
@@ -3621,7 +3622,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     if(mi>=0){
       discardedCard=aiHand.splice(mi,1)[0];Disc.push(discardedCard);
       const huntDamage=3+(P[huntingAI].damageBonus||0);
-      applyHpDamageWithLink(P,0,huntDamage,Disc,L);
+      applyHpDamageWithLink(P,0,huntDamage,Disc,L,gs.currentTurn,D);
       L.push(`${aiHunterName} 弃 ${cardLogText(discardedCard,{alwaysShowName:true})}，你受 ${huntDamage}HP 伤害！`);
       if(P[0].hp<=0){
         if(myHandBefore.length){
@@ -3661,7 +3662,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     const newAbandoned = gs.huntAbandoned || []; // AI 在发起追捕时已经把你标记过Abandoned了
     const wantsToHuntAgain = shouldHunterKeepChasing(P,huntingAI,newAbandoned);
 
-    const baseGs={...gs,players:P,discard:Disc,log:L,abilityData:{},phase:'ACTION', huntAbandoned: newAbandoned};
+    const baseGs={...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{},phase:'ACTION', huntAbandoned: newAbandoned};
 
     let newGs;
     if (win) newGs = {...baseGs, gameOver:win};
@@ -3920,7 +3921,8 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     const lv=P[0].godLevel||1;
     const penalty=GOD_DEFS.NYA.levels[Math.max(0,lv-1)].handPenalty;
     P[0]={...P[0],_nyaBorrow:deadPlayer.role,_nyaHandLimit:4-penalty};
-    const L=[...gs.log,`你借用 ${deadPlayer.name} 的身份「${deadPlayer.role}」（本回合）`];
+    const borrowerName=gs._isMP?P[0].name:'你';
+    const L=[...gs.log,`${borrowerName} 借用 ${deadPlayer.name} 的身份「${deadPlayer.role}」（本回合）`];
     // Now do the draw
     let D=[...gs.deck],Disc=[...gs.discard];
     const res=playerDrawCard(P,D,Disc,0,gs);
@@ -5083,7 +5085,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             )}
           </div>
           {/* Center: deck/discard piles */}
-          <PileDisplay deckCount={gs.deck.length} discardCount={visualDiscard.length} discardTop={visualDiscard[visualDiscard.length-1]||null} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={vw<430} baseHeight={middleRowHeight} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={scaleRatio}/>
+          <PileDisplay deckCount={gs.deck.length} discardCount={visualDiscard.length} discardTop={visualDiscard[visualDiscard.length-1]||null} discardCards={visualDiscard} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={vw<430} baseHeight={middleRowHeight} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={scaleRatio}/>
           {/* Log — narrow, right-aligned */}
           <div ref={logRef} style={{width:isMobile?'100%':218,flexBasis:isMobile?'100%':undefined,flexShrink:0,background:'#0e0904',border:'1.5px solid #2a1a08',borderRadius:3,padding:'8px 10px',overflowY:'auto',minHeight:isMobile?100:middleRowHeight,maxHeight:isMobile?100:middleRowHeight}}>
             <div style={{fontFamily:"'Cinzel',serif",color:'#7a5a2a',fontSize:fontSizes.small,letterSpacing:2,marginBottom:5,textTransform:'uppercase'}}>— 冒险日志 —</div>

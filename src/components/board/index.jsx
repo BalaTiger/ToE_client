@@ -252,11 +252,41 @@ function InspectionPile({count,scale=1}){
   );
 }
 
-function PileDisplay({deckCount,discardCount,discardTop,inspectionCount,compact,deckRef,discardRef,scaleRatio}){
+function DiscardOverlay({cards,onClose}){
+  if(!cards||!cards.length)return null;
+  return(
+    <div onClick={onClose} style={{
+      position:'fixed',inset:0,zIndex:99999,
+      background:'rgba(0,0,0,0.85)',
+      display:'flex',alignItems:'center',justifyContent:'center',
+      padding:'40px 20px',
+    }}>
+      <div onClick={e=>e.stopPropagation()} style={{
+        maxWidth:900,width:'100%',maxHeight:'85vh',
+        display:'flex',flexDirection:'column',alignItems:'center',gap:16,
+      }}>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:18,color:'#c8a96e',letterSpacing:2,textShadow:'0 0 12px #000'}}>弃牌堆 ({cards.length}张)</div>
+        <div style={{
+          display:'flex',flexWrap:'wrap',justifyContent:'center',gap:10,
+          overflowY:'auto',padding:'10px 6px',width:'100%',
+        }}>
+          {[...cards].reverse().map((c,i)=>(
+            <DDCard key={c.id||`disc-${i}`} card={c} small/>
+          ))}
+        </div>
+        <div style={{fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontSize:12,color:'#7a5a2a',marginTop:4}}>点击任意位置关闭</div>
+      </div>
+    </div>
+  );
+}
+
+function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,deckRef,discardRef,scaleRatio}){
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const _ = (px) => px * fontZoom;
   const pileWrapRef=React.useRef(null);
   const [pileWrapWidth,setPileWrapWidth]=React.useState(0);
+  const [discardHover,setDiscardHover]=React.useState(false);
+  const [showDiscardOverlay,setShowDiscardOverlay]=React.useState(false);
   React.useLayoutEffect(()=>{
     const el=pileWrapRef.current;
     if(!el)return;
@@ -284,10 +314,35 @@ function PileDisplay({deckCount,discardCount,discardTop,inspectionCount,compact,
         <div style={{fontFamily:"'Cinzel',serif",fontSize:_(11),color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 8px #000000'}}>牌堆:{deckCount}</div>
       </div>
       {/* Discard — center */}
-      <div ref={discardRef} data-discard-pile style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
+      <div
+        ref={discardRef}
+        data-discard-pile
+        onMouseEnter={()=>{if(discardCards&&discardCards.length>0)setDiscardHover(true);}}
+        onMouseLeave={()=>setDiscardHover(false)}
+        onClick={()=>{if(discardCards&&discardCards.length>0)setShowDiscardOverlay(true);}}
+        style={{
+          display:'flex',flexDirection:'column',alignItems:'center',gap:4,
+          cursor:discardCards&&discardCards.length?'pointer':'default',
+          padding:'6px 10px',borderRadius:6,
+          border:discardHover?'1.5px solid #c8a96e':'1.5px solid transparent',
+          boxShadow:discardHover?'0 0 14px #c8a96e66,inset 0 0 12px #c8a96e22':'none',
+          transition:'all .18s',
+          position:'relative',
+        }}
+      >
         <DiscardPile count={discardCount} topCard={discardTop} scale={pileScale}/>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:_(12),color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 10px #000000'}}>弃牌堆:{discardCount}</div>
+        {discardHover&&discardCards&&discardCards.length>0&&(
+          <div style={{
+            position:'absolute',bottom:'-18px',left:'50%',transform:'translateX(-50%)',
+            fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontSize:10,color:'#c8a96e',
+            whiteSpace:'nowrap',textShadow:'0 0 6px #000',pointerEvents:'none',
+          }}>点击查看</div>
+        )}
       </div>
+      {showDiscardOverlay&&(
+        <DiscardOverlay cards={discardCards} onClose={()=>setShowDiscardOverlay(false)}/>
+      )}
     </div>
   );
 }

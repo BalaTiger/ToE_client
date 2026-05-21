@@ -696,6 +696,15 @@ const GOD_DEFS={
       {desc:'效果待设计'},
     ],
   },
+  VRITRA:{
+    godKey:'VRITRA',name:'弗栗多',subtitle:'巨龙之化身',power:'不灭之躯',
+    col:'#c04020',bgCol:'#1a0808',
+    levels:[
+      {immortalCount:6,desc:'当你在回合外受到致命伤害，展示牌堆顶部的6张牌，若没有邪神牌和圣物牌，将HP恢复至1，然后弃置这些牌'},
+      {immortalCount:4,desc:'当你在回合外受到致命伤害，展示牌堆顶部的4张牌，若没有邪神牌和圣物牌，将HP恢复至1，然后弃置这些牌'},
+      {immortalCount:2,desc:'当你在回合外受到致命伤害，展示牌堆顶部的2张牌，若没有邪神牌和圣物牌，将HP恢复至1，然后弃置这些牌'},
+    ],
+  },
   DIX:{
     godKey:'DIX',name:'尸林魔君帝辛',subtitle:'商纣王',power:'酒池肉林',
     col:'#604020',bgCol:'#100808',
@@ -713,7 +722,7 @@ const EXPANSIONS = {
     name: '临时拓展包',
     description: '当前牌组，包含所有现有卡牌',
     // 临时包包含 FIXED_ZONE_CARD_VARIANTS_BY_KEY 中所有卡牌
-    godCardKeys: ['NYA', 'CTH', 'SHU'],
+    godCardKeys: ['NYA', 'CTH', 'SHU', 'VRITRA'],
     godCopies: 4,
   },
   '地神的潜影': {

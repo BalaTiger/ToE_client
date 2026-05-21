@@ -492,6 +492,7 @@ function DebugSettingsPanel({
             <option value="CTH">克苏鲁</option>
             <option value="NYA">Nyarlathotep</option>
             <option value="SHU">森之领主</option>
+            <option value="VRITRA">弗栗多</option>
           </select>
         </div>
       )}
@@ -500,7 +501,7 @@ function DebugSettingsPanel({
         <div style={{ fontSize: 11, color: '#f0cb7a', padding: 6, background: '#2a1608', border: '1px solid #3a2510', borderRadius: 4 }}>
           {debugForceCardType === 'zone'
             ? `区域牌: ${debugForceZoneCardKey} - ${debugForceZoneCardName || ''}`
-            : `神牌: ${debugForceGodCardKey === 'CTH' ? '克苏鲁' : debugForceGodCardKey === 'SHU' ? '森之领主' : 'Nyarlathotep'}`
+            : `神牌: ${debugForceGodCardKey === 'CTH' ? '克苏鲁' : debugForceGodCardKey === 'SHU' ? '森之领主' : debugForceGodCardKey === 'VRITRA' ? '弗栗多' : 'Nyarlathotep'}`
           }
         </div>
       </div>

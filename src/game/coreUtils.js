@@ -1,6 +1,7 @@
 import {
   LETTERS,
   NUMS,
+  GOD_DEFS,
 } from '../constants/card';
 
 export const ROLE_TREASURE = '寻宝者';
@@ -45,6 +46,33 @@ export const separateBlackGoatYoung = (cards) => {
   }
   return { kept, destroyed };
 };
+
+export function tryVritraImmortal(P, i, currentTurn, D, Disc, L) {
+  if (currentTurn == null || D == null || currentTurn === i) return false;
+  if (!P[i] || P[i].isDead || P[i].hp > 0) return false;
+  if (P[i].godName !== 'VRITRA') return false;
+  const count = GOD_DEFS.VRITRA.levels[(P[i].godLevel || 1) - 1]?.immortalCount || 0;
+  if (!count) return false;
+  const revealed = [];
+  const deckCopy = [...D];
+  for (let k = 0; k < count && deckCopy.length > 0; k++) {
+    revealed.push(deckCopy.shift());
+  }
+  const hasGod = revealed.some(c => c && c.isGod);
+  if (hasGod) {
+    Disc.push(...revealed);
+    L.push(`【不灭之躯】${P[i].name} 濒死之际激发龙血之力，但翻开的牌中出现了邪神牌，力量消散…`);
+    D.length = 0;
+    D.push(...deckCopy);
+    return false;
+  }
+  P[i].hp = 1;
+  Disc.push(...revealed);
+  L.push(`【不灭之躯】${P[i].name} 在濒死之际激发龙血之力，HP恢复至1！`);
+  D.length = 0;
+  D.push(...deckCopy);
+  return true;
+}
 
 export const getZoneCardPolarity = (card) => {
   if (!card) return null;

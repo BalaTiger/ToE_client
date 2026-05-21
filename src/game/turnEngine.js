@@ -305,6 +305,89 @@ export function playerDrawCard(ps, deck, disc, ci = 0, gs = {}) {
   return handleCardDraw(ci, ps, deck, disc, false, gs);
 }
 
+// ══════════════════════════════════════════════════════════════
+// 回合开始事件优先级定义
+// 规则：
+// 1. 被动事件优先于主动事件
+// 2. 同为被动/主动时：神牌 > 神牌衍生 > 其他卡牌
+// 新增事件必须按优先级插入到 startNextTurn 的正确位置
+// ══════════════════════════════════════════════════════════════
+const TURN_START_PRIORITY = {
+  PASSIVE_GOD: 1,
+  PASSIVE_GOD_DERIVATIVE: 2,
+  PASSIVE_OTHER: 3,
+  ACTIVE_GOD: 4,
+  ACTIVE_OTHER: 5,
+};
+
+// [PASSIVE_GOD_DERIVATIVE] 黑山羊幼仔回合开始伤害
+function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs) {
+  if (P[next].isDead) return { P, D, Disc, L, winAfterBgy: null };
+
+  const bgyCount = P[next].hand.filter(isBlackGoatYoung).length;
+  if (bgyCount > 0) {
+    P[next].hp = clamp(P[next].hp - bgyCount);
+    P[next].san = clamp(P[next].san - bgyCount);
+    L.push(`【黑山羊幼仔】${P[next].name} 失去 ${bgyCount} HP 和 ${bgyCount} SAN`);
+    if (P[next].san <= 6) {
+      const baseLog = [...L];
+      const processed = applyInspectionForSanLoss(next, P[next].san, next, P, D, Disc, baseLog, makeInspectionMeta(gs));
+      P = processed.P; D = processed.D; Disc = processed.Disc;
+      L.push(...processed.log.slice(baseLog.length));
+    }
+    if (P[next].hp <= 0) {
+      killPlayerState(P, next, Disc, L);
+    }
+  }
+
+  const winAfterBgy = checkWin(P, gs._isMP);
+  return { P, D, Disc, L, winAfterBgy };
+}
+
+// [PASSIVE_OTHER] 两人一绳治愈
+function turnStartEvent_LinkHeal(P, pendingLinkHeals, L) {
+  for (const heal of pendingLinkHeals) {
+    if (!P[heal.i].isDead) { P[heal.i].hp = clamp(P[heal.i].hp + heal.amount); }
+    if (!P[heal.partnerIdx].isDead) { P[heal.partnerIdx].hp = clamp(P[heal.partnerIdx].hp + heal.amount); }
+    L.push(heal.msg);
+  }
+  return { P, L };
+}
+
+// [ACTIVE_GOD] NYA 偷身份
+function turnStartEvent_NyaBorrow(P, next, L, gs) {
+  if (P[next].godName !== 'NYA' || P[next].godLevel < 1) return { shouldEnterPhase: false };
+
+  if (next === 0) {
+    const deadOthers = P.filter((p, i) => i > 0 && p.isDead);
+    if (deadOthers.length > 0) return { shouldEnterPhase: true, logMsg: '你的邪神之力「千人千貌」：可借用已死角色的身份' };
+  } else if (gs._isMP) {
+    const deadOthers = P.filter((p, i) => i !== next && p.isDead);
+    if (deadOthers.length > 0) return { shouldEnterPhase: true, logMsg: `${P[next].name} 的邪神之力「千人千貌」：可借用已死角色的身份` };
+  } else {
+    const deadPlayers = P.filter((p, i) => i > 0 && p.isDead && i !== next);
+    if (deadPlayers.length) {
+      const aiRole = P[next].role;
+      let borrow = deadPlayers[0];
+      if (aiRole === ROLE_CULTIST) borrow = deadPlayers.find(p => p.role === ROLE_HUNTER) || deadPlayers[0];
+      const handLimit = 4 - (GOD_DEFS.NYA.levels[P[next].godLevel - 1].handPenalty);
+      P[next] = { ...P[next], _nyaBorrow: borrow.role, _nyaHandLimit: handLimit };
+      L.push(`${P[next].name}（NYA Lv.${P[next].godLevel}）千人千貌：本回合借用 [${borrow.role}]`);
+    }
+  }
+  return { shouldEnterPhase: false };
+}
+
+function endPreviousTurnCleanup(P, prevTurn) {
+  if (!P[prevTurn]) return P;
+  const p = { ...P[prevTurn] };
+  delete p._nyaBorrow;
+  delete p._nyaHandLimit;
+  delete p.damageBonus;
+  P[prevTurn] = p;
+  return P;
+}
+
 export function startNextTurn(gs, opts = {}) {
   const { isDebugMode = false } = opts;
   // Reset multiplyUsed at the start of every turn
@@ -317,14 +400,13 @@ export function startNextTurn(gs, opts = {}) {
   let drawLogs = [];
   let statLogs = [];
   let preTurnStatLogs = [];
+  let pendingLinkHeals = [];
   const turnDir = gs.turnDirection || 1;
   for (let i = 1; i <= N; i++) { next = (gs.currentTurn + i * turnDir + N) % N; if (!P[next].isDead) break; }
   // 增加回合数
   const newTurn = (gs.turn || 0) + 1;
-  // Clear any NYA temp borrow for the player whose turn just ended
-  if (P[gs.currentTurn] && P[gs.currentTurn]._nyaBorrow) delete P[gs.currentTurn]._nyaBorrow;
-  if (P[gs.currentTurn] && P[gs.currentTurn]._nyaHandLimit) delete P[gs.currentTurn]._nyaHandLimit;
-  if (P[gs.currentTurn] && P[gs.currentTurn].damageBonus) delete P[gs.currentTurn].damageBonus;
+  // 清理上回合玩家的临时状态
+  P = endPreviousTurnCleanup(P, gs.currentTurn);
   // 清理过期的两人一绳链条
   P.forEach((p, i) => {
     const shouldExpire = p.damageLink && (
@@ -338,10 +420,8 @@ export function startNextTurn(gs, opts = {}) {
         const partnerIdx = p.damageLink.partner;
         if (P[partnerIdx] && !P[partnerIdx].isDead) {
           const healAmount = 4;
-          P[i].hp = clamp(P[i].hp + healAmount);
-          P[partnerIdx].hp = clamp(P[partnerIdx].hp + healAmount);
           const linkMsg = `【两人一绳】绳索未断裂！${P[i].name} 和 ${P[partnerIdx].name} 各回复 ${healAmount} HP`;
-          L.push(linkMsg);
+          pendingLinkHeals.push({ i, partnerIdx, amount: healAmount, msg: linkMsg });
           preTurnStatLogs.push(linkMsg);
         }
       }
@@ -369,33 +449,18 @@ export function startNextTurn(gs, opts = {}) {
     globalOnlySwapOwner = null;
     L.push('"全员技能变为掉包"的效果结束了');
   }
-  // 黑山羊幼仔回合开始伤害（所有存活玩家）
-  for (let pi = 0; pi < P.length; pi++) {
-    if (P[pi].isDead) continue;
-    const bgyCount = P[pi].hand.filter(isBlackGoatYoung).length;
-    if (bgyCount > 0) {
-      P[pi].hp = clamp(P[pi].hp - bgyCount);
-      P[pi].san = clamp(P[pi].san - bgyCount);
-      L.push(`【黑山羊幼仔】${P[pi].name} 失去 ${bgyCount} HP 和 ${bgyCount} SAN`);
-      if (P[pi].san <= 6) {
-        const baseLog = [...L];
-        const processed = applyInspectionForSanLoss(pi, P[pi].san, next, P, D, Disc, baseLog, makeInspectionMeta(gs));
-        P = processed.P; D = processed.D; Disc = processed.Disc;
-        L.push(...processed.log.slice(baseLog.length));
-      }
-      if (P[pi].hp <= 0) {
-        killPlayerState(P, pi, Disc, L);
-      }
-    }
-  }
-  const winAfterBgy = checkWin(P, gs._isMP);
-  if (winAfterBgy) return { ...gs, players: P, deck: D, discard: Disc, log: L, gameOver: winAfterBgy, multiplyUsed: false };
-
   // If this player was resting: wake up (flip card face-up), skip their turn entirely
   if (P[next].isResting) {
     P[next].isResting = false;
     turnStartLogs = [`── ${P[next].name} 的回合开始 ──`];
     L.push(...turnStartLogs);
+    // [PASSIVE_GOD_DERIVATIVE] 黑山羊幼仔回合开始伤害
+    const bgy = turnStartEvent_BgyDamage(P, next, D, Disc, L, gs);
+    P = bgy.P; D = bgy.D; Disc = bgy.Disc; L = bgy.L;
+    if (bgy.winAfterBgy) return { ...gs, players: P, deck: D, discard: Disc, log: L, gameOver: bgy.winAfterBgy, multiplyUsed: false };
+    // [PASSIVE_OTHER] 两人一绳治愈
+    const link = turnStartEvent_LinkHeal(P, pendingLinkHeals, L);
+    P = link.P; L = link.L;
     L.push(`${P[next].name} 从休息中醒来，跳过本回合`);
     // CTH power: draw when ending/skipping turn while face-down
     if (P[next].godName === 'CTH' && P[next].godLevel >= 1) {
@@ -451,6 +516,13 @@ export function startNextTurn(gs, opts = {}) {
   }
   turnStartLogs = [`── ${P[next].name} 的回合开始 ──`];
   L.push(...turnStartLogs);
+  // [PASSIVE_GOD_DERIVATIVE] 黑山羊幼仔回合开始伤害
+  const bgy = turnStartEvent_BgyDamage(P, next, D, Disc, L, gs);
+  P = bgy.P; D = bgy.D; Disc = bgy.Disc; L = bgy.L;
+  if (bgy.winAfterBgy) return { ...gs, players: P, deck: D, discard: Disc, log: L, gameOver: bgy.winAfterBgy, multiplyUsed: false };
+  // [PASSIVE_OTHER] 两人一绳治愈
+  const link = turnStartEvent_LinkHeal(P, pendingLinkHeals, L);
+  P = link.P; L = link.L;
   if (next === 0) {
     // Debug: 强制摸牌 - 玩家
     if (gs.debugForceCard && gs.debugForceCardTarget === 'player') {
@@ -461,12 +533,10 @@ export function startNextTurn(gs, opts = {}) {
       gs.debugForceCard = null;
       gs.debugForceCardTarget = null;
     }
-    // NYA power: borrow dead role before drawing
-    if (P[0].godName === 'NYA' && P[0].godLevel >= 1) {
-      const deadOthers = P.filter((p, i) => i > 0 && p.isDead);
-      if (deadOthers.length > 0) {
-        return { ...gs, players: P, deck: D, discard: Disc, log: [...L, '你的邪神之力「千人千貌」：可借用已死角色的身份'], currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'NYA_BORROW', abilityData: {}, drawReveal: null, selectedCard: null, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null };
-      }
+    // [ACTIVE_GOD] NYA 偷身份
+    const nya = turnStartEvent_NyaBorrow(P, 0, L, gs);
+    if (nya.shouldEnterPhase) {
+      return { ...gs, players: P, deck: D, discard: Disc, log: [...L, nya.logMsg], currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'NYA_BORROW', abilityData: {}, drawReveal: null, selectedCard: null, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null };
     }
     // 检查是否需要跳过摸牌
     if (P[0].skipNextDraw) {
@@ -527,6 +597,11 @@ export function startNextTurn(gs, opts = {}) {
     return { ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: 0, drawerName: P[0].name }, selectedCard: null, abilityData: {}, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _preTurnStatLogs: preTurnStatLogs };
   } else if (gs._isMP) {
     // Multiplayer: next player is human — draw their card and enter DRAW_REVEAL
+    // [ACTIVE_GOD] NYA 偷身份
+    const nyaMp = turnStartEvent_NyaBorrow(P, next, L, gs);
+    if (nyaMp.shouldEnterPhase) {
+      return { ...gs, players: P, deck: D, discard: Disc, log: [...L, nyaMp.logMsg], currentTurn: next, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'NYA_BORROW', abilityData: {}, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null };
+    }
     // 检查是否需要跳过摸牌
     if (P[next].skipNextDraw) {
       delete P[next].skipNextDraw;
@@ -554,19 +629,8 @@ export function startNextTurn(gs, opts = {}) {
     }
     return { ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: next, drawerName: P[next].name }, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _preTurnStatLogs: preTurnStatLogs };
   } else {
-    // NYA power: AI borrows a dead role before drawing
-    if (P[next].godName === 'NYA' && P[next].godLevel >= 1) {
-      const deadPlayers = P.filter((p, i) => i > 0 && p.isDead && i !== next);
-      if (deadPlayers.length) {
-        // Prefer borrowing 追猎者 if hunter, else pick best available
-        const aiRole = P[next].role;
-        let borrow = deadPlayers[0];
-        if (aiRole === ROLE_CULTIST) borrow = deadPlayers.find(p => p.role === ROLE_HUNTER) || deadPlayers[0];
-        const handLimit = 4 - (GOD_DEFS.NYA.levels[P[next].godLevel - 1].handPenalty);
-        P[next] = { ...P[next], _nyaBorrow: borrow.role, _nyaHandLimit: handLimit };
-        L.push(`${P[next].name}（NYA Lv.${P[next].godLevel}）千人千貌：本回合借用 [${borrow.role}]`);
-      }
-    }
+    // [ACTIVE_GOD] NYA 偷身份（AI 自动处理）
+    turnStartEvent_NyaBorrow(P, next, L, gs);
     // 检查是否需要跳过摸牌
     if (P[next].skipNextDraw) {
       delete P[next].skipNextDraw;

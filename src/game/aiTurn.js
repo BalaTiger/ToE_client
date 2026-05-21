@@ -528,7 +528,7 @@ export function aiStep(gs, opts = {}) {
                 const afterDiscardDiscard=[...Disc];
                 const huntDamage=3+(P[ct].damageBonus||0);
                 L.push(`弃 ${cardLogText(dc,{alwaysShowName:true})} → ${tgt.name} 受 ${huntDamage}HP 伤害！`);
-                applyHpDamageWithLink(P,ti,huntDamage,Disc,L);
+                applyHpDamageWithLink(P,ti,huntDamage,Disc,L,gs.currentTurn,D);
                 if (P[ti].hp <= 0) {
                   if (targetHandBefore.length) {
                     Disc=removeCardsFromDiscard(Disc,targetHandBefore);
@@ -791,7 +791,7 @@ export function aiStep(gs, opts = {}) {
     });
     Object.entries(thornLosses).forEach(([holderIdxStr,count])=>{
       const holderIdx=+holderIdxStr;
-      applyHpDamageWithLink(P,holderIdx,2*count,Disc,L);
+      applyHpDamageWithLink(P,holderIdx,2*count,Disc,L,gs.currentTurn,D);
       L.push(`【玫瑰倒刺】${P[holderIdx].name} 失去标记手牌，受到 ${2*count} HP 伤害`);
     });
   }

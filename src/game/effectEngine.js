@@ -11,9 +11,10 @@ import {
   isBlackGoatYoung,
   makeInspectionMeta,
   sortInspectionTargets,
+  tryVritraImmortal,
 } from './coreUtils';
 
-export function applyHpDamageWithLink(P, i, amount, Disc, L) {
+export function applyHpDamageWithLink(P, i, amount, Disc, L, currentTurn, D) {
   if (i == null || !P[i] || P[i].isDead || !(amount > 0)) return;
   P[i].hp = clamp(P[i].hp - amount);
   if (P[i].damageLink?.active) {
@@ -25,11 +26,23 @@ export function applyHpDamageWithLink(P, i, amount, Disc, L) {
       P[i].hp = clamp(P[i].hp - linkDamage);
       P[partnerIdx].hp = clamp(P[partnerIdx].hp - linkDamage);
       L.push(`【两人一绳】绳索断裂！${P[i].name} 和 ${P[partnerIdx].name} 各失去 ${linkDamage} HP`);
-      if (P[i].hp <= 0) killPlayerState(P, i, Disc, L);
-      if (P[partnerIdx].hp <= 0) killPlayerState(P, partnerIdx, Disc, L);
+      if (P[i].hp <= 0) {
+        if (currentTurn == null || D == null || !tryVritraImmortal(P, i, currentTurn, D, Disc, L)) {
+          killPlayerState(P, i, Disc, L);
+        }
+      }
+      if (P[partnerIdx].hp <= 0) {
+        if (currentTurn == null || D == null || !tryVritraImmortal(P, partnerIdx, currentTurn, D, Disc, L)) {
+          killPlayerState(P, partnerIdx, Disc, L);
+        }
+      }
     }
   }
-  if (P[i].hp <= 0) killPlayerState(P, i, Disc, L);
+  if (P[i].hp <= 0) {
+    if (currentTurn == null || D == null || !tryVritraImmortal(P, i, currentTurn, D, Disc, L)) {
+      killPlayerState(P, i, Disc, L);
+    }
+  }
 }
 
 export function getAdjacentTargets(players, ci) {
@@ -66,6 +79,9 @@ function handleInspection(playerIndex, gs) {
   L.push(`${P[playerIndex].name} 的SAN检定结果为"${drawnCard.name}"`);
   const killPlayer = (i) => {
     if (i == null || !P[i] || P[i].isDead) return;
+    if (newGs.currentTurn != null && newGs.deck != null && tryVritraImmortal(P, i, newGs.currentTurn, newGs.deck, newGs.discard, L)) {
+      return;
+    }
     // 标记待播放死亡特效的角色（用于面板延迟置灰）
     P[i]._pendingAnimDeath = true;
     P[i].isDead = true;
@@ -287,7 +303,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   const healSAN = (i, v) => { if (i == null || !P[i] || P[i].isDead) return; P[i].san = clamp(P[i].san + v); };
   const hurtHP = (i, v) => {
     if (i == null || !P[i] || P[i].isDead || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return;
-    applyHpDamageWithLink(P, i, v, Disc, msgs);
+    applyHpDamageWithLink(P, i, v, Disc, msgs, gs?.currentTurn, D);
   };
   const hurtSAN = (i, v) => {
     if (i == null || !P[i] || P[i].isDead || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return;
@@ -607,7 +623,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const affectedTargets = P.map((p, i) => i).filter(i => !P[i].isDead && !avoidNegativeFor.includes(i) && !(avoidSelf && i === ci));
       affectedTargets.forEach(i => {
         const localMsgs = [];
-        applyHpDamageWithLink(P, i, (card.val || 0) + dmgBonus, Disc, localMsgs);
+        applyHpDamageWithLink(P, i, (card.val || 0) + dmgBonus, Disc, localMsgs, gs?.currentTurn, D);
         deferredGlobalLogs.push(...localMsgs);
       });
       if (affectedTargets.length) {
@@ -622,7 +638,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       if (alivePlayers.length > 0) {
         const randomTarget = alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
         const localMsgs = [];
-        applyHpDamageWithLink(P, randomTarget, (card.val || 0) + dmgBonus, Disc, localMsgs);
+        applyHpDamageWithLink(P, randomTarget, (card.val || 0) + dmgBonus, Disc, localMsgs, gs?.currentTurn, D);
         msgs.push(`${P[randomTarget].name} 额外失去 ${card.val} HP`);
         if (localMsgs.length) msgs.push(...localMsgs);
       }
