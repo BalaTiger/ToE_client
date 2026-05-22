@@ -304,7 +304,7 @@ function PeekHandModal({ card, targetName, onClose }) {
   );
 }
 
-function TortoiseOracleModal({ abilityData, onSelect, myTurn }) {
+function TortoiseOracleModal({ abilityData, onSelect, myTurn, expansionKey = 'temporary' }) {
   const revealedCards = useMemo(() => abilityData?.revealedCards || [], [abilityData?.revealedCards]);
   const selectableKeys = abilityData?.selectableKeys || [];
   const [revealedCount, setRevealedCount] = useState(0);
@@ -334,7 +334,7 @@ function TortoiseOracleModal({ abilityData, onSelect, myTurn }) {
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 18, minHeight: 120 }}>
           {revealedCards.map((card, index) => (
             <div key={card.id ?? `${card.key}-${index}`} style={{ opacity: index < revealedCount ? 1 : 0.28, transform: index < revealedCount ? 'scale(1)' : 'scale(0.95)', transition: 'all .18s' }}>
-              {index < revealedCount ? <DDCard card={card} compact /> : <DDCardBack />}
+              {index < revealedCount ? <DDCard card={card} compact /> : <DDCardBack expansionKey={expansionKey} />}
             </div>
           ))}
         </div>

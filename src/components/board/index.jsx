@@ -1,5 +1,5 @@
 import React from 'react';
-import { CS, GOD_CS, GOD_DEFS } from '../../constants/card';
+import { CS, GOD_CS, GOD_DEFS, getCardBackImage } from '../../constants/card';
 import { RINFO } from '../../game';
 import { isBlackGoatYoung } from '../../game/coreUtils';
 import { DDCard, DDCardBack } from '../cards';
@@ -98,12 +98,13 @@ const DISCARD_OFFSETS=[
   {x:-4,y:3},{x:5,y:-2},{x:-2,y:4},{x:3,y:-5},{x:-6,y:1},{x:1,y:3},
 ];
 
-function DiscardPile({count,topCard,scale=1}){
+function DiscardPile({count,topCard,scale=1,expansionKey='temporary'}){
   const vis=Math.min(count,7);
   const cardW=Math.round(CARD_W*scale);
   const cardH=Math.round(CARD_H*scale);
   const outerW=Math.round((CARD_W+30)*scale);
   const outerH=Math.round((CARD_H+20)*scale);
+  const cardBackImage=getCardBackImage(expansionKey);
   if(vis===0) return(
     <div style={{width:outerW,height:outerH,display:'flex',alignItems:'center',justifyContent:'center'}}>
       <div style={{width:cardW,height:cardH,borderRadius:3,border:'1px dashed #2a1a08',background:'transparent'}}/>
@@ -126,7 +127,13 @@ function DiscardPile({count,topCard,scale=1}){
               background:s.bg,
               border:`1.5px solid ${s.borderBright}`,
               boxShadow:`0 0 6px ${s.glow}66`,
-            }:{}),
+            }:{
+              backgroundImage:`url('${cardBackImage}')`,
+              backgroundSize:'cover',
+              backgroundPosition:'center',
+              backgroundRepeat:'no-repeat',
+              boxShadow:'0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
+            }),
             zIndex:i,
           }}>
             {isTop&&topCard&&(
@@ -187,12 +194,13 @@ function HealCrossEffect({color='#4ade80'}){
 
 // ── Deck / Inspection / PileDisplay ─────────────────────────────
 
-function DeckPile({count,scale=1}){
+function DeckPile({count,scale=1,expansionKey='temporary'}){
   const vis=Math.min(count,7);
   const cardW=Math.round(CARD_W*scale);
   const cardH=Math.round(CARD_H*scale);
   const outerW=Math.round((CARD_W+12)*scale);
   const outerH=Math.round((CARD_H+12)*scale);
+  const cardBackImage=getCardBackImage(expansionKey);
   if(vis===0) return(
     <div style={{width:outerW,height:outerH,display:'flex',alignItems:'center',justifyContent:'center'}}>
       <div style={{width:cardW,height:cardH,borderRadius:3,border:'1px dashed #2a1a08',background:'transparent'}}/>
@@ -206,15 +214,16 @@ function DeckPile({count,scale=1}){
           width:cardW,height:cardH,
           left:Math.round(i*1.4*scale),top:Math.round((vis-1-i)*1.4*scale),
           zIndex:i,
-          background:'linear-gradient(135deg,#1e1208,#0e0804)',
+          backgroundColor:'#100c08',
+          backgroundImage:`url('${cardBackImage}')`,
+          backgroundSize:'cover',
+          backgroundPosition:'center',
+          backgroundRepeat:'no-repeat',
           border:'1.5px solid #4a3010',
+          boxShadow:'0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
         };
         return(
           <div key={i} style={style}>
-            {i===vis-1&&<div style={{
-              position:'absolute',inset:0,borderRadius:3,
-              background:'repeating-linear-gradient(45deg,#2a1a0820 0px,#2a1a0820 1px,transparent 1px,transparent 4px)',
-            }}/>}
           </div>
         );
       })}
@@ -280,7 +289,7 @@ function DiscardOverlay({cards,onClose}){
   );
 }
 
-function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,deckRef,discardRef,scaleRatio}){
+function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,deckRef,discardRef,scaleRatio,expansionKey='temporary'}){
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const _ = (px) => px * fontZoom;
   const pileWrapRef=React.useRef(null);
@@ -310,7 +319,7 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
       </div>
       {/* Deck — top-right corner */}
       <div ref={deckRef} data-deck-pile style={{position:'absolute',top:4,right:8,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-        <DeckPile count={deckCount} scale={pileScale}/>
+        <DeckPile count={deckCount} scale={pileScale} expansionKey={expansionKey}/>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:_(11),color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 8px #000000'}}>牌堆:{deckCount}</div>
       </div>
       {/* Discard — center */}
@@ -330,7 +339,7 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
           position:'relative',
         }}
       >
-        <DiscardPile count={discardCount} topCard={discardTop} scale={pileScale}/>
+        <DiscardPile count={discardCount} topCard={discardTop} scale={pileScale} expansionKey={expansionKey}/>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:_(12),color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 10px #000000'}}>弃牌堆:{discardCount}</div>
         {discardHover&&discardCards&&discardCards.length>0&&(
           <div style={{
@@ -348,7 +357,7 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
 }
 
 // ── PlayerPanel ─────────────────────────────────────────────────
-function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth}){
+function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='temporary'}){
   const ri=RINFO[player.role];
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const _ = (px) => px * fontZoom;
@@ -452,7 +461,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
               zIndex:ci+1
             }}>
               {card._back
-                ?<DDCardBack small frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/>
+                ?<DDCardBack small expansionKey={expansionKey} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/>
                 :<DDCard card={card} small onClick={onCardSelect?()=>onCardSelect(ci):undefined} highlight={!!onCardSelect} holderId={playerIndex} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/>}
             </div>
           );

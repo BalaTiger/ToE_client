@@ -1,16 +1,17 @@
 import React from 'react';
-import { CS, GOD_CS } from '../../constants/card';
+import { CS, GOD_CS, getCardBackImage } from '../../constants/card';
 import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 
 // ── Discard Move Overlay ──────────────────────────────────────
 // Shows a card-back flying from the actor's hand area to the discard pile
-export function DiscardMoveOverlay({ anim, exiting }) {
+export function DiscardMoveOverlay({ anim, exiting, expansionKey = 'temporary' }) {
   const [cardStyle, setCardStyle] = React.useState({});
 
   React.useEffect(() => {
     if (!anim) return;
     const card = anim.card || null;
     const s = card ? (card.isGod ? GOD_CS : (CS[card.letter] || null)) : null;
+    const cardBackImage = getCardBackImage(expansionKey);
     const targetPid = anim.targetPid || 0;
     const discardPos = getPileAnchorCenter(
       '[data-discard-pile]',
@@ -35,7 +36,12 @@ export function DiscardMoveOverlay({ anim, exiting }) {
         width: 70,
         height: 94,
         borderRadius: 4,
-        background: s ? s.bg : 'linear-gradient(135deg,#1e1208,#0e0804)',
+        backgroundColor: s ? undefined : '#100c08',
+        backgroundImage: s ? undefined : `url('${cardBackImage}')`,
+        backgroundSize: s ? undefined : 'cover',
+        backgroundPosition: s ? undefined : 'center',
+        backgroundRepeat: s ? undefined : 'no-repeat',
+        background: s ? s.bg : undefined,
         border: s ? `1.5px solid ${s.borderBright}` : '1.5px solid #4a3010',
         boxShadow: '0 6px 24px rgba(0,0,0,0.65)',
         display: 'flex',
@@ -46,7 +52,7 @@ export function DiscardMoveOverlay({ anim, exiting }) {
         '--ty': `${ty}px`
       });
     }
-  }, [anim]);
+  }, [anim, expansionKey]);
 
   if (!anim) return null;
   const card = anim.card || null;
@@ -76,10 +82,6 @@ export function DiscardMoveOverlay({ anim, exiting }) {
               )}
             </div>
           )}
-          {(!card || !s) && <div style={{
-            position: 'absolute', inset: 0, borderRadius: 4,
-            background: 'repeating-linear-gradient(45deg,#2a1a0820 0px,#2a1a0820 1px,transparent 1px,transparent 4px)'
-          }} />}
         </div>
       )}
     </div>
@@ -88,8 +90,9 @@ export function DiscardMoveOverlay({ anim, exiting }) {
 
 // ── Card Transfer Overlay (hand cards flying to dest) ───────────
 // Receives pre-measured positions from parent useEffect([anim])
-export function CardTransferOverlay({ transfers }) {
+export function CardTransferOverlay({ transfers, expansionKey = 'temporary' }) {
   if (!transfers || !transfers.length) return null;
+  const cardBackImage = getCardBackImage(expansionKey);
   return (
     <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 480, overflow: 'hidden' }}>
       {transfers.flatMap(({ srcX, srcY, destX, destY, count, key }) =>
@@ -103,7 +106,11 @@ export function CardTransferOverlay({ transfers }) {
               position: 'absolute',
               left: srcX, top: srcY,
               width: 28, height: 40, marginLeft: -14, marginTop: -20,
-              background: 'linear-gradient(135deg,#2e1c0a,#1a0e06)',
+              backgroundColor: '#100c08',
+              backgroundImage: `url('${cardBackImage}')`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
               border: '1.5px solid #6a4020',
               borderRadius: 3,
               boxShadow: '0 2px 8px rgba(0,0,0,0.6)',
@@ -111,11 +118,6 @@ export function CardTransferOverlay({ transfers }) {
               animation: `cardTransferFly 0.62s cubic-bezier(0.25,0,0.35,1) ${idx * 0.07}s both`,
               zIndex: 481 + idx,
             }}>
-              <div style={{
-                position: 'absolute', inset: 0, borderRadius: 3,
-                background: 'repeating-linear-gradient(45deg,#3a2010 0px,#3a2010 1px,transparent 1px,transparent 5px)',
-                opacity: 0.4,
-              }} />
             </div>
           );
         })

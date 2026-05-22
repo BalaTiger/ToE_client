@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { CS, GOD_CS, GOD_DEFS } from '../../constants/card';
+import { CS, GOD_CS, GOD_DEFS, getCardBackImage } from '../../constants/card';
 import { useCardHoverTooltip } from './useCardHoverTooltip';
 
 function OctopusSVG({col,size=32}){
@@ -332,18 +332,22 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
   );
 }
 
-function DDCardBack({small,frameStyle}){
+function DDCardBack({small,frameStyle,expansionKey='temporary'}){
+  const cardBackImage=getCardBackImage(expansionKey);
   return(
     <div style={{
       width:small?36:50,height:small?50:68,flexShrink:0,
-      background:'#100c08',
+      backgroundColor:'#100c08',
+      backgroundImage:`url('${cardBackImage}')`,
+      backgroundSize:'cover',
+      backgroundPosition:'center',
+      backgroundRepeat:'no-repeat',
       border:'1.5px solid #3a2510',
-      boxShadow:'inset 0 0 8px #0a0600',
+      boxShadow:'0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
       borderRadius:3,
       display:'flex',alignItems:'center',justifyContent:'center',
       ...frameStyle,
     }}>
-      <div style={{color:'#7a5a2a',fontSize:small?14:18,fontFamily:"serif"}}>✦</div>
     </div>
   );
 }

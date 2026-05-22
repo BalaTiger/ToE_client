@@ -757,6 +757,18 @@ const EXPANSIONS = {
   },
 };
 
+const CARD_BACK_IMAGE_BY_EXPANSION = {
+  temporary: '/img/card/cardback_earth_shadow.png',
+  '地神的潜影': '/img/card/cardback_earth_shadow.png',
+  '先贤的馈赠': '/img/card/cardback_sage_gift.png',
+  '群星呼唤': '/img/card/cardback_stars_call.png',
+  '析骨为柴': '/img/card/cardback_bone_fuel.png',
+};
+
+function getCardBackImage(expansionKey = 'temporary') {
+  return CARD_BACK_IMAGE_BY_EXPANSION[expansionKey] || CARD_BACK_IMAGE_BY_EXPANSION.temporary;
+}
+
 export const INSPECTION_DECK = [
   ...Array(4).fill({ name: '乱抓', effect: 'adjacentDamageHP', value: 1, type: 'negative' }),
   ...Array(4).fill({ name: '自残', effect: 'selfDamageHP', value: 1, type: 'negative' }),
@@ -796,4 +808,6 @@ export {
   GOD_CS,
   GOD_DEFS,
   EXPANSIONS,
+  CARD_BACK_IMAGE_BY_EXPANSION,
+  getCardBackImage,
 };
