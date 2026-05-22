@@ -60,10 +60,15 @@ import {
   startNextTurn as _startNextTurn,
   checkWin,
   playerDrawCard,
+  aiDrawAndApply,
   resolveGodEncounterForAI,
   shouldTriggerGodResurrection,
   abandonGodFollower,
   convertGodFollower,
+  buildZhuLight,
+  getZhuLitDeckCards,
+  getZhuTopGuard,
+  moveTopDeckCardToBottom,
 } from "./game";
 import {
   rotateGsForViewer,
@@ -104,7 +109,6 @@ import {
 import {
   resolveTurnHighlightForStep,
   buildBewitchForcedCardQueue,
-  buildInspectionRevealQueue,
   buildInspectionEventFlow,
 } from "./game/animQueueHelpers";
 import { _getZoomCompensatedRect, getPlayerHandAnchorCenter, getPlayerAreaAnchorCenter, getPileAnchorCenter } from './utils/dom';
@@ -1360,6 +1364,18 @@ export default function Game(){
   },[]);
   useAiWatchdog({gs,anim,showTutorial,onRecover:handleAiRecover});
 
+  useEffect(()=>{
+    if(!gs||gs.phase!=='ZHU_HIDE_AI_DRAW'||gs.gameOver||anim||animExiting||showTutorial)return;
+    if(gs.abilityData?.zhuIntroShown)return;
+    if(!(gs._turnStartLogs||[]).length)return;
+    setGs(prev=>{
+      if(!prev||prev.phase!=='ZHU_HIDE_AI_DRAW')return prev;
+      return {...prev,abilityData:{...prev.abilityData,zhuIntroShown:true}};
+    });
+    setAnim({type:'YOUR_TURN',name:gs.players[gs.currentTurn]?.name||'???',msgs:gs._turnStartLogs});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[gs?.phase,gs?.abilityData?.zhuIntroShown,gs?._turnKey,anim,animExiting,showTutorial]);
+
   // AI turn
   useEffect(()=>{
     if(!gs||gs.phase!=='AI_TURN'||gs.gameOver||gs.phase==='PLAYER_WIN_PENDING'||anim||showTutorial||isMultiplayerGame(gs))return;
@@ -1532,7 +1548,7 @@ export default function Game(){
         // Append inspection events triggered by the draw
         let afterInspectionPlayers=gs.players;
         let afterInspectionLog=gs.log;
-        const drawInspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current);
+        const drawInspectionEvents=(gs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current);
         if(drawInspectionEvents.length){
           lastInspectionSeqRef.current=Math.max(...drawInspectionEvents.map(ev=>ev.seq));
           const inspectionFlow=buildInspectionEventFlow(
@@ -1560,9 +1576,13 @@ export default function Game(){
           if(m){const rd1=+m[1],rd2=+m[2],rh=+m[3];queue.push({type:'DICE_ROLL',d1:rd1,d2:rd2,heal:rh,rollerName:rawResult._aiName||gs.players[gs.currentTurn]?.name});}}
         // 4. Skill anim (if used)
         // 提前清除 _pendingAnimDeath：STATE_PATCH 后面板立即置灰，不再等到整个队列播完
+        const pendingActionInspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current);
+        const firstActionInspection=pendingActionInspectionEvents[0]||null;
         const P_actionEnd=(rawResult._playersBeforeNextDraw||newGs.players).map(p=>p._pendingAnimDeath?{...p,_pendingAnimDeath:false}:p);
+        const P_actionPreInspection=(firstActionInspection?.beforePlayers||P_actionEnd).map(p=>p._pendingAnimDeath?{...p,_pendingAnimDeath:false}:p);
+        const actionLogPreInspection=firstActionInspection?.beforeLog||nextLog;
         const fullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(newMsgs,gs.players);
-        const actionStatQBase=buildAnimQueue(fakeGs(afterInspectionPlayers,afterInspectionLog),fakeGs(P_actionEnd,nextLog));
+        const actionStatQBase=buildAnimQueue(fakeGs(afterInspectionPlayers,afterInspectionLog),fakeGs(P_actionPreInspection,actionLogPreInspection));
         const actionStatQ=fullHandSwapQ.length
           ? [...fullHandSwapQ,...actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')]
           : actionStatQBase;
@@ -1602,10 +1622,19 @@ export default function Game(){
           const giftedMatch=bwMsg?.match(/赠予 \[([^\]]+)\]/);
           const giftedLabel=giftedMatch?.[1];
           const giftedCard=(bwti>=0&&giftedLabel)
-            ? (P_actionEnd[bwti]?.hand||[]).find(c=>c.key===giftedLabel||c.name===giftedLabel)
+            ? ((P_actionPreInspection[bwti]?.hand||P_actionEnd[bwti]?.hand||[]).find(c=>c.key===giftedLabel||c.name===giftedLabel))
             : null;
-          const inspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current);
-          const inspectionRevealQ=buildInspectionRevealQueue(inspectionEvents);
+          const inspectionEvents=pendingActionInspectionEvents;
+          const inspectionFlow=inspectionEvents.length
+            ?buildInspectionEventFlow(
+              {players:P_actionPreInspection,log:actionLogPreInspection},
+              inspectionEvents,
+              {buildAnimQueue,copyPlayers}
+            )
+            :{queue:[],players:P_actionPreInspection,log:actionLogPreInspection};
+          const postInspectionQ=inspectionEvents.length
+            ?buildAnimQueue({players:inspectionFlow.players,log:inspectionFlow.log},fakeGs(P_actionEnd,nextLog))
+            :[];
           if(giftedCard&&bwti>=0){
             if(inspectionEvents.length){
               lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
@@ -1615,15 +1644,20 @@ export default function Game(){
               giftedCard?.type==='selfDamageHPPeek'||
               giftedCard?.type==='firstComePick'
             )?P_actionEnd[bwti]?.name:null;
-            orderedActionQ=buildBewitchForcedCardQueue(gs.currentTurn,bwti,giftedCard,P_actionEnd[bwti]?.name,[...actionStatQ,...inspectionRevealQ],extractSkillLogs(newMsgs,'bewitch'),bewitchTurnIntroName);
+            orderedActionQ=buildBewitchForcedCardQueue(gs.currentTurn,bwti,giftedCard,P_actionEnd[bwti]?.name,[...actionStatQ,...inspectionFlow.queue,...postInspectionQ],extractSkillLogs(newMsgs,'bewitch'),bewitchTurnIntroName);
           }else{
             queue.push({type:'SKILL_BEWITCH',msgs:extractSkillLogs(newMsgs,'bewitch'),targetIdx:bwti>=0?bwti:1});
+            if(inspectionEvents.length){
+              lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
+              orderedActionQ=[...actionStatQ,...inspectionFlow.queue,...postInspectionQ];
+            }
           }
         }
         // Inject custom animations for multiply and sphinx reveal
         const sphinxReveal=rawResult._animSphinxReveal;
         const multiplyEvent=rawResult._animMultiplyEvent;
         const animInjections=[];
+        const postActionInjections=[];
         if(sphinxReveal){
           const guessMsg=newMsgs.find(m=>m.includes('猜测牌堆顶的牌'));
           const resultMsg=newMsgs.find(m=>m.includes('猜测正确')||m.includes('猜测错误'));
@@ -1649,7 +1683,7 @@ export default function Game(){
         }
         if(multiplyEvent){
           const multiplyMsg=newMsgs.find(m=>m.includes('【繁衍】'));
-          animInjections.push({
+          postActionInjections.push({
             type:'CARD_TRANSFER',
             fromPid:multiplyEvent.fromIdx,
             dest:'player',
@@ -1660,7 +1694,7 @@ export default function Game(){
             msgs:multiplyMsg?[multiplyMsg]:[]
           });
         }
-        const finalActionQ=[...animInjections,...(orderedActionQ||actionStatQ)];
+        const finalActionQ=[...animInjections,...(orderedActionQ||actionStatQ),...postActionInjections];
         // 5. Stat changes from THIS AI's action only (not next draw — those belong to next AI's queue)
         //    Compare gs (after this AI's draw) → _playersBeforeNextDraw (after action, before next draw)
         // 6. Advance to next player's turn
@@ -2655,8 +2689,38 @@ export default function Game(){
     ?visualPlayersLockRef.current
     :gs.players;
   const visualMe=visualPlayers[0];
-  const canWin=effectiveRole==='寻宝者'&&isWinHand(me.hand);
   const phase=gs.phase;
+  const zhuLightForView=gs.zhuLight;
+  const zhuHiddenCardId=anim?.type==='ZHU_HIDE_CARD'?anim.card?.id:null;
+  const zhuLitCardsForView=visualMe?.godName==='ZHU'
+    ?getZhuLitDeckCards(zhuLightForView,gs.deck)
+    :[];
+  const pendingZhuDrawAnyCard=phase==='DRAW_REVEAL'&&gs.drawReveal?.card&&!gs.drawReveal?.zhuResolved&&zhuLightForView?.cardIds?.includes(gs.drawReveal.card.id)
+    ?gs.drawReveal.card
+    :null;
+  const pendingZhuGodAnyCard=phase==='GOD_CHOICE'&&gs.abilityData?.godCard&&!gs.abilityData?.zhuResolved&&zhuLightForView?.cardIds?.includes(gs.abilityData.godCard.id)
+    ?gs.abilityData.godCard
+    :null;
+  const pendingZhuSphinxAnyCard=phase==='SPHINX_GUESS'&&gs.deck?.[0]?.id&&zhuLightForView?.cardIds?.includes(gs.deck[0].id)
+    ?gs.deck[0]
+    :null;
+  const pendingZhuAiDrawAnyCard=phase==='ZHU_HIDE_AI_DRAW'&&(gs.abilityData?.zhuIntroShown||!(gs._turnStartLogs||[]).length)
+    ?(gs.abilityData?.zhuGuard?.card||getZhuTopGuard(gs,gs.deck)?.card||null)
+    :null;
+  const pendingZhuAnyCard=pendingZhuDrawAnyCard||pendingZhuGodAnyCard||pendingZhuSphinxAnyCard||pendingZhuAiDrawAnyCard;
+  const pendingZhuDrawCard=visualMe?.godName==='ZHU'&&pendingZhuDrawAnyCard
+    ?gs.drawReveal.card
+    :null;
+  const pendingZhuGodCard=visualMe?.godName==='ZHU'&&pendingZhuGodAnyCard
+    ?gs.abilityData.godCard
+    :null;
+  const pendingZhuSphinxCard=visualMe?.godName==='ZHU'&&pendingZhuSphinxAnyCard
+    ?gs.deck[0]
+    :null;
+  const pendingZhuAiDrawCard=visualMe?.godName==='ZHU'&&pendingZhuAiDrawAnyCard
+    ?pendingZhuAiDrawAnyCard
+    :null;
+  const canWin=effectiveRole==='寻宝者'&&isWinHand(me.hand);
   const ri=RINFO[me.role];
   const skillRi=gs.globalOnlySwapOwner!=null?RINFO['寻宝者']:(RINFO[effectiveRole]||ri);
   const effectiveSkillName=skillRi.skillName||ri.skillName;
@@ -2864,6 +2928,182 @@ export default function Game(){
       syncVisibleLog(L);
       setGs(newGs);
     }
+  }
+
+  function handleZhuHideDrawnCard(hide){
+    const dr=gs.drawReveal;
+    if(!dr?.card)return;
+    const nextZhuLight=gs.zhuLight
+      ?{...gs.zhuLight,cardIds:(gs.zhuLight.cardIds||[]).filter(id=>id!==dr.card.id)}
+      :gs.zhuLight;
+    if(!hide){
+      setGs({...gs,zhuLight:nextZhuLight,drawReveal:{...dr,zhuResolved:true}});
+      return;
+    }
+    let P=copyPlayers(gs.players);
+    let D=[...gs.deck,dr.card];
+    let Disc=[...gs.discard];
+    const drawerIdx=dr.drawerIdx??gs.currentTurn??0;
+    const res=playerDrawCard(P,D,Disc,drawerIdx,{...gs,zhuLight:nextZhuLight,_zhuBypassTopGuard:true});
+    P=res.P;D=res.D;Disc=res.Disc;
+    const L=[...gs.log,`【衔烛照幽】你将 ${cardLogText(dr.card,{alwaysShowName:true})} 藏到了牌堆底`];
+    if(!res.drawnCard){
+      triggerAnimQueue([{type:'ZHU_HIDE_CARD',card:dr.card}],{...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,zhuLight:nextZhuLight});
+      return;
+    }
+    if(res.needGodChoice){
+      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'GOD_CHOICE',
+        abilityData:{...gs.abilityData,godCard:res.drawnCard,drawerIdx,godEncounterCost:res.godEncounterCost},
+        drawReveal:null,zhuLight:nextZhuLight};
+      triggerAnimQueue([{type:'ZHU_HIDE_CARD',card:dr.card},{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
+      return;
+    }
+    if(res.kept){
+      const newGs={...gs,players:P,deck:D,discard:Disc,log:[...L,...(res.effectMsgs||[])],phase:'ACTION',
+        drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:false,forcedKeep:false,drawerIdx,drawerName:P[drawerIdx]?.name},
+        zhuLight:nextZhuLight,...(res.statePatch||{})};
+      triggerAnimQueue([{type:'ZHU_HIDE_CARD',card:dr.card},{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
+      return;
+    }
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'DRAW_REVEAL',
+      drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:!!res.needsDecision,forcedKeep:!!res.forcedKeep,drawerIdx,drawerName:P[drawerIdx]?.name},
+      zhuLight:nextZhuLight};
+    triggerAnimQueue([{type:'ZHU_HIDE_CARD',card:dr.card},{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
+  }
+
+  function handleZhuHideGodCard(hide){
+    const godCard=gs.abilityData?.godCard;
+    if(!godCard)return;
+    const nextZhuLight=gs.zhuLight
+      ?{...gs.zhuLight,cardIds:(gs.zhuLight.cardIds||[]).filter(id=>id!==godCard.id)}
+      :gs.zhuLight;
+    if(!hide){
+      setGs({...gs,zhuLight:nextZhuLight,abilityData:{...gs.abilityData,zhuResolved:true}});
+      return;
+    }
+    let P=copyPlayers(gs.players);
+    let D=[...gs.deck,godCard];
+    let Disc=[...gs.discard];
+    const drawerIdx=gs.abilityData?.drawerIdx??gs.currentTurn??0;
+    const res=playerDrawCard(P,D,Disc,drawerIdx,{...gs,zhuLight:nextZhuLight,_zhuBypassTopGuard:true});
+    P=res.P;D=res.D;Disc=res.Disc;
+    const L=[...gs.log,`【衔烛照幽】你将 ${cardLogText(godCard,{alwaysShowName:true})} 藏到了牌堆底`];
+    if(!res.drawnCard){
+      triggerAnimQueue([{type:'ZHU_HIDE_CARD',card:godCard}],{...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:{},zhuLight:nextZhuLight});
+      return;
+    }
+    if(res.needGodChoice){
+      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'GOD_CHOICE',
+        abilityData:{...gs.abilityData,godCard:res.drawnCard,drawerIdx,godEncounterCost:res.godEncounterCost},
+        drawReveal:null,zhuLight:nextZhuLight};
+      triggerAnimQueue([{type:'ZHU_HIDE_CARD',card:godCard},{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
+      return;
+    }
+    if(res.kept){
+      const newGs={...gs,players:P,deck:D,discard:Disc,log:[...L,...(res.effectMsgs||[])],phase:'ACTION',
+        drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:false,forcedKeep:false,drawerIdx,drawerName:P[drawerIdx]?.name},
+        abilityData:{},zhuLight:nextZhuLight,...(res.statePatch||{})};
+      triggerAnimQueue([{type:'ZHU_HIDE_CARD',card:godCard},{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
+      return;
+    }
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'DRAW_REVEAL',
+      drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:!!res.needsDecision,forcedKeep:!!res.forcedKeep,drawerIdx,drawerName:P[drawerIdx]?.name},
+      abilityData:{},zhuLight:nextZhuLight};
+    triggerAnimQueue([{type:'ZHU_HIDE_CARD',card:godCard},{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
+  }
+
+  function handleZhuHideTopCardDuringSphinx(hide){
+    const card=gs.deck?.[0];
+    if(!card)return;
+    const nextZhuLight=gs.zhuLight
+      ?{...gs.zhuLight,cardIds:(gs.zhuLight.cardIds||[]).filter(id=>id!==card.id)}
+      :gs.zhuLight;
+    if(!hide){
+      setGs({...gs,zhuLight:nextZhuLight});
+      return;
+    }
+    const D=moveTopDeckCardToBottom(gs.deck);
+    const L=[...gs.log,`【衔烛照幽】你将 ${cardLogText(card,{alwaysShowName:true})} 藏到了牌堆底`];
+    triggerAnimQueue([{type:'ZHU_HIDE_CARD',card}],{...gs,deck:D,log:L,zhuLight:nextZhuLight});
+  }
+
+  function handleZhuHideAiDrawCard(hide){
+    const guard=gs.abilityData?.zhuGuard||getZhuTopGuard(gs,gs.deck);
+    const card=guard?.card||gs.deck?.[0];
+    if(!card)return;
+    const drawerIdx=gs.abilityData?.drawerIdx??gs.currentTurn??0;
+    const nextZhuLight=gs.zhuLight
+      ?{...gs.zhuLight,cardIds:(gs.zhuLight.cardIds||[]).filter(id=>id!==card.id)}
+      :gs.zhuLight;
+    let P=copyPlayers(gs.players);
+    let D=hide?moveTopDeckCardToBottom(gs.deck):[...gs.deck];
+    let Disc=[...gs.discard];
+    const beforeDrawPlayers=copyPlayers(P);
+    const res=aiDrawAndApply(drawerIdx,P,D,Disc,{...gs,zhuLight:nextZhuLight,_zhuBypassTopGuard:true});
+    P=res.P;D=res.D;Disc=res.Disc;
+    const split=splitAnimBoundLogs(res.effectMsgs||[]);
+    const L=[
+      ...gs.log,
+      ...(hide?[`【衔烛照幽】你将 ${cardLogText(card,{alwaysShowName:true})} 藏到了牌堆底`]:[]),
+      ...(split.preStat||[]),
+      ...(split.stat||[]),
+    ];
+    let nextPhase='AI_TURN';
+    if(res.statePatch?.abilityData?.type==='firstComePick')nextPhase='FIRST_COME_PICK_SELECT';
+    else if(res.statePatch?.abilityData?.type==='sameAbyssChoice')nextPhase='SAME_ABYSS_SELECT';
+    else if(res.statePatch?.abilityData?.type==='sphinxGuess')nextPhase='SPHINX_GUESS';
+    else if(res.statePatch?.peekHandTargets)nextPhase='PEEK_HAND_SELECT_TARGET';
+    else if(res.statePatch?.damageLinkTargets)nextPhase='DAMAGE_LINK_SELECT_TARGET';
+    const win=checkWin(P,gs._isMP);
+    const nextAbilityData={
+      ...(res.statePatch?.abilityData||{}),
+      ...(res.statePatch?.peekHandTargets?{
+        peekHandTargets:res.statePatch.peekHandTargets,
+        peekHandSource:res.statePatch.peekHandSource,
+      }:{}),
+      ...(res.statePatch?.damageLinkTargets?{
+        damageLinkTargets:res.statePatch.damageLinkTargets,
+        damageLinkSource:res.statePatch.damageLinkSource,
+      }:{}),
+      ...(res.statePatch?.caveDuelTargets?{
+        caveDuelTargets:res.statePatch.caveDuelTargets,
+        caveDuelSource:res.statePatch.caveDuelSource,
+      }:{}),
+      ...(res.statePatch?.roseThornTargets?{
+        roseThornTargets:res.statePatch.roseThornTargets,
+        roseThornSource:res.statePatch.roseThornSource,
+      }:{}),
+    };
+    const newGs={
+      ...gs,
+      ...(res.statePatch||{}),
+      players:P,
+      deck:D,
+      discard:Disc,
+      log:L,
+      zhuLight:nextZhuLight,
+      phase:nextPhase,
+      abilityData:nextAbilityData,
+      drawReveal:null,
+      selectedCard:null,
+      _aiDrawnCard:null,
+      _drawnCard:null,
+      _discardedDrawnCard:false,
+      _playersBeforeThisDraw:null,
+      _drawLogs:[],
+      _statLogs:[],
+      ...(win?{gameOver:win}:{}),
+    };
+    const drawQueue=[];
+    if(gs._playersBeforeThisDraw&&!gs.abilityData?.zhuIntroShown)drawQueue.push({type:'YOUR_TURN',name:gs.players[gs.currentTurn]?.name||'???',msgs:gs._turnStartLogs});
+    if(hide)drawQueue.push({type:'ZHU_HIDE_CARD',card});
+    if(res.drawnCard)drawQueue.push({type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:split.preStat});
+    const statQ=bindAnimLogChunks(
+      buildAnimQueue({...gs,players:beforeDrawPlayers,log:gs.log},{...newGs,players:P,log:L}),
+      {statLogs:split.stat}
+    ).filter(step=>step.type!=='DRAW_CARD');
+    if(statQ.length)visualPlayersLockRef.current=copyPlayers(beforeDrawPlayers);
+    triggerAnimQueue([...drawQueue,...statQ,{type:'STATE_PATCH',players:P,discard:Disc}],newGs);
   }
 
   // Generic Treasure Hunter dodge handler
@@ -3878,6 +4118,31 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     }else setGs(newGs);
   }
 
+  function buildPostBewitchStatQueue(oldGs,newGs){
+    const inspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>(oldGs._inspectionSeq||0));
+    if(!inspectionEvents.length)return buildAnimQueue(oldGs,newGs);
+    lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
+    const firstEvent=inspectionEvents[0];
+    const preInspectionGs={
+      ...newGs,
+      players:firstEvent?.beforePlayers||newGs.players,
+      log:firstEvent?.beforeLog||newGs.log,
+      _inspectionEvents:oldGs._inspectionEvents||[],
+      _inspectionSeq:oldGs._inspectionSeq||0,
+    };
+    const preQueue=buildAnimQueue(oldGs,preInspectionGs);
+    const inspectionFlow=buildInspectionEventFlow(
+      {players:preInspectionGs.players,log:preInspectionGs.log},
+      inspectionEvents,
+      {buildAnimQueue,copyPlayers}
+    );
+    const tailQueue=buildAnimQueue(
+      {players:inspectionFlow.players,log:inspectionFlow.log},
+      newGs
+    );
+    return [...preQueue,...inspectionFlow.queue,...tailQueue];
+  }
+
   function bewitchSelectTarget(ti){
     const{bewitchCard,bewitchIdx}=gs.abilityData;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
@@ -3907,7 +4172,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       P=gres.P;D=gres.D;Disc=gres.Disc;L.push(...gres.msgs);
       const win=checkWin(P,gs._isMP);
       const newGs={...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...inspectionMeta,...(gres.inspectionMeta||{}),...(win?{gameOver:win}:{})};
-      const statQueue=buildAnimQueue(gs,newGs);
+      const statQueue=buildPostBewitchStatQueue(gs,newGs);
       const bewitchMsgs=extractSkillLogs(L.slice(gs.log.length),'bewitch');
       triggerAnimQueue(buildBewitchForcedCardQueue(0,ti,bewitchCard,P[ti]?.name,statQueue,bewitchMsgs),newGs);
       return;
@@ -3953,7 +4218,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       abilityData:phaseAbilityData,
       phase:nextPhase,
       skillUsed:true,...(res.statePatch||{}),...(win?{gameOver:win}:{})};
-      const statQueue=buildAnimQueue(gs,newGs);
+      const statQueue=buildPostBewitchStatQueue(gs,newGs);
       const bewitchTurnIntroName=isAiSeat(gs,ti)&&(
         zoneCardUsesTargetInteraction(bewitchCard)||
         bewitchCard?.type==='selfDamageHPPeek'||
@@ -3997,6 +4262,9 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     } else {
       Disc.push({...godCard});L.push('你放弃了邪神的馈赠');
     }
+    const nextZhuLight=(action==='worship'||action==='upgrade'||action==='forcedConvert')
+      ?buildZhuLight(P,D,0,gs.zhuLight)
+      :gs.zhuLight;
     // Only worship/forcedConvert consume the worship-this-turn slot.
     // Upgrade, discard, and keepHand do not.
     const consumesSlot=action==='worship'||action==='forcedConvert';
@@ -4004,7 +4272,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     const isShuBlessing=(action==='worship'||action==='upgrade'||action==='forcedConvert')&&gk==='SHU';
     const shuOffspringCount=isShuBlessing?(GOD_DEFS.SHU.levels[P[0].godLevel-1]?.offspringCount||0):0;
     // 保留abilityData中的cthDrawsRemaining信息
-    const newGs={...gs,players:P,discard:Disc,log:L,phase:isShuBlessing?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessing?{...gs.abilityData,shuOffspringCount}:gs.abilityData,
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,phase:isShuBlessing?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessing?{...gs.abilityData,shuOffspringCount}:gs.abilityData,
       godTriggeredThisTurn:consumesSlot,...inspectionMeta};
     if(isDiscardAction){
       const discardLog=L[L.length-1];
@@ -4759,6 +5027,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     MULTIPLY_SELECT_TARGET: '【繁衍】选择另一名角色传播黑山羊幼仔',
     SHU_SELECT_TARGET: '【黑暗子嗣】选择一名角色获得黑山羊幼仔',
     GOD_CHOICE:          isLocalGodChoice?(canShowTurnDecisionModal?'邪神降临！选择如何回应':'面临抉择中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 回应邪神…`:'邪神降临！选择如何回应'),
+    ZHU_HIDE_AI_DRAW:    visualMe?.godName==='ZHU'?(canShowTurnDecisionModal?'【衔烛照幽】是否藏牌？':'衔烛照幽判定中…'):'请等待其他玩家选择…',
     NYA_BORROW:          isLocalNyaBorrowPhase(gs)?(canShowTurnDecisionModal?'「千人千貌」——借用已死角色的身份？':'身份借用中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 借用身份…`:'「千人千貌」——借用已死角色的身份？'),
     DISCARD_PHASE:(()=>{const sel=gs.abilityData.discardSelected||[];const need=me.hand.length-effectiveHandLimit;return`手牌超限 (${me.hand.length}/${effectiveHandLimit}) — 需弃 ${need} 张，已选 ${sel.length}/${need}`;})(),
     AI_TURN:gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 行动…`:`${gs.players[gs.currentTurn]?.name} 正在行动…`,
@@ -4878,9 +5147,10 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     const shuOffspringCountHand=isShuBlessingHand?(GOD_DEFS.SHU.levels[P[0].godLevel-1]?.offspringCount||0):0;
     P.forEach((p,i)=>{if(i>0&&p.godName===godKey){const abandoned=abandonGodFollower(i,gs.currentTurn,P,D,Disc,L,inspectionMeta);P=abandoned.P;D=abandoned.D;Disc=abandoned.Disc;L=abandoned.L;inspectionMeta=abandoned.inspectionMeta;}});
     const win=checkWin(P,gs._isMP);
+    const nextZhuLight=buildZhuLight(P,D,0,gs.zhuLight);
     // Upgrade does not consume the worship slot; worship/convert does
     syncVisibleLog(L);
-    setGs({...gs,players:P,deck:D,discard:Disc,log:L,phase:isShuBlessingHand?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessingHand?{shuOffspringCount:shuOffspringCountHand}:gs.abilityData,...inspectionMeta,...(!isUpgrade?{godFromHandUsed:true}:{}),...(win?{gameOver:win}:{})});
+    setGs({...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,phase:isShuBlessingHand?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessingHand?{shuOffspringCount:shuOffspringCountHand}:gs.abilityData,...inspectionMeta,...(!isUpgrade?{godFromHandUsed:true}:{}),...(win?{gameOver:win}:{})});
   }
 
   function canPlayerRespondWithZoneCard(card){
@@ -4979,7 +5249,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       <TargetSelectOverlay drawReveal={gs.drawReveal} phase={isVisualPlayerTurn?phase:null} bewitchCard={gs.abilityData?.bewitchCard}/>
 
       {/* God choice modal */}
-      {canShowTurnDecisionModal&&phase==='GOD_CHOICE'&&gs.abilityData?.godCard&&isLocalGodChoice&&gs.currentTurn===0&&(()=>{
+      {!pendingZhuGodAnyCard&&canShowTurnDecisionModal&&phase==='GOD_CHOICE'&&gs.abilityData?.godCard&&isLocalGodChoice&&gs.currentTurn===0&&(()=>{
         const godCard=gs.abilityData.godCard;
         const gk=godCard.godKey;
         const alreadyWorship=me.godName===gk;
@@ -5001,8 +5271,27 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         const deadOthers=gs.players.filter((p,i)=>i>0&&p.isDead);
         return(<NyaBorrowModal deadPlayers={deadOthers} godLevel={me.godLevel} onBorrow={nyaBorrow} onSkip={nyaSkip}/>);
       })()}
+      {!suppressAnim&&canShowTurnDecisionModal&&(pendingZhuDrawCard||pendingZhuGodCard||pendingZhuSphinxCard||pendingZhuAiDrawCard)&&(
+        <div style={{position:'fixed',inset:0,display:'flex',alignItems:'center',justifyContent:'center',zIndex:520,pointerEvents:'none'}}>
+          <div style={{background:'#130f07f2',border:`2px solid ${GOD_DEFS.ZHU.col}`,boxShadow:`0 0 60px ${GOD_DEFS.ZHU.col}44,0 0 120px #000c`,borderRadius:4,padding:'22px 26px',maxWidth:520,width:'92%',textAlign:'center',pointerEvents:'auto'}}>
+            <div style={{fontFamily:"'Cinzel',serif",color:GOD_DEFS.ZHU.col,fontSize:16,letterSpacing:2,marginBottom:12}}>── 衔烛照幽 ──</div>
+            <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#d8c078',fontSize:14,lineHeight:1.6,marginBottom:18}}>
+              是否将 {cardLogText(pendingZhuDrawCard||pendingZhuGodCard||pendingZhuSphinxCard||pendingZhuAiDrawCard,{alwaysShowName:true})} 藏到牌堆底？
+            </div>
+            <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
+              <button onClick={()=>pendingZhuDrawCard?handleZhuHideDrawnCard(true):pendingZhuGodCard?handleZhuHideGodCard(true):pendingZhuSphinxCard?handleZhuHideTopCardDuringSphinx(true):handleZhuHideAiDrawCard(true)} style={{padding:'8px 18px',background:'#1b1408',border:`1.5px solid ${GOD_DEFS.ZHU.col}`,color:'#f2df8a',fontFamily:"'Cinzel',serif",fontSize:13,cursor:'pointer',borderRadius:3}}>是</button>
+              <button onClick={()=>pendingZhuDrawCard?handleZhuHideDrawnCard(false):pendingZhuGodCard?handleZhuHideGodCard(false):pendingZhuSphinxCard?handleZhuHideTopCardDuringSphinx(false):handleZhuHideAiDrawCard(false)} style={{padding:'8px 18px',background:'#100c08',border:'1.5px solid #6a5430',color:'#c8a96e',fontFamily:"'Cinzel',serif",fontSize:13,cursor:'pointer',borderRadius:3}}>否</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {!suppressAnim&&pendingZhuAnyCard&&visualMe?.godName!=='ZHU'&&(
+        <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%, -50%)',background:'rgba(0,0,0,0.82)',border:'1.5px solid #6a5430',borderRadius:4,padding:'18px 22px',color:'#c8a96e',fontFamily:"'Cinzel',serif",fontSize:14,letterSpacing:1,zIndex:519,pointerEvents:'none'}}>
+          请等待其他玩家选择…
+        </div>
+      )}
       {/* Draw reveal modal */}
-      {!suppressAnim&&canShowTurnDecisionModal&&phase==='DRAW_REVEAL'&&gs.drawReveal&&gs.drawReveal.needsDecision&&(
+      {!pendingZhuDrawAnyCard&&!suppressAnim&&canShowTurnDecisionModal&&phase==='DRAW_REVEAL'&&gs.drawReveal&&gs.drawReveal.needsDecision&&(
         <DrawRevealModal
           drawReveal={gs.drawReveal}
           onKeep={handleDrawKeep}
@@ -5120,7 +5409,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       )}
 
       {/* 斯芬克斯猜测 modal */}
-      {!suppressAnim&&phase==='SPHINX_GUESS'&&gs.abilityData&&(
+      {!pendingZhuSphinxAnyCard&&!suppressAnim&&phase==='SPHINX_GUESS'&&gs.abilityData&&(
         <div style={{position:'fixed',inset:0,display:'flex',alignItems:'flex-start',justifyContent:'center',paddingTop:isMobile?'7vh':'5vh',zIndex:400,pointerEvents:'none'}}>
           <div style={{background:'#150e07ee',border:'2px solid #d7b46a',boxShadow:'0 0 60px #d7b46a33, 0 0 120px #000a',borderRadius:4,padding:'20px 24px',maxWidth:560,width:'92%',textAlign:'center',pointerEvents:'auto'}}>
             <div style={{fontFamily:"'Cinzel',serif",color:'#e6c577',fontSize:16,letterSpacing:2,marginBottom:10}}>── 斯芬克斯 ──</div>
@@ -5289,7 +5578,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             )}
           </div>
           {/* Center: deck/discard piles */}
-          <PileDisplay deckCount={gs.deck.length} discardCount={visualDiscard.length} discardTop={visualDiscard[visualDiscard.length-1]||null} discardCards={visualDiscard} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={vw<430} baseHeight={middleRowHeight} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={scaleRatio} expansionKey={gs.expansionKey}/>
+          <PileDisplay deckCount={gs.deck.length} discardCount={visualDiscard.length} discardTop={visualDiscard[visualDiscard.length-1]||null} discardCards={visualDiscard} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={vw<430} baseHeight={middleRowHeight} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={scaleRatio} expansionKey={gs.expansionKey} zhuLitCards={zhuLitCardsForView} zhuHiddenCardId={zhuHiddenCardId}/>
           {/* Log — narrow, right-aligned */}
           <div ref={logRef} style={{width:isMobile?'100%':218,flexBasis:isMobile?'100%':undefined,flexShrink:0,background:'#0e0904',border:'1.5px solid #2a1a08',borderRadius:3,padding:'8px 10px',overflowY:'auto',minHeight:isMobile?100:middleRowHeight,maxHeight:isMobile?100:middleRowHeight}}>
             <div style={{fontFamily:"'Cinzel',serif",color:'#7a5a2a',fontSize:fontSizes.small,letterSpacing:2,marginBottom:5,textTransform:'uppercase'}}>— 冒险日志 —</div>
@@ -6365,5 +6654,37 @@ const GLOBAL_STYLES=`
     60%  { opacity: 0.8; transform: translateY(35px) scale(0.9); }
     90%  { opacity: 0.3; transform: translateY(55px) scale(0.6); }
     100% { opacity: 0; transform: translateY(70px) scale(0.3); }
+  }
+  @keyframes zhuHideBgFade {
+    0% { opacity: 0; }
+    18% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  @keyframes zhuHideCardPath {
+    0% { opacity: 0; transform: translate(0,0) rotate(0deg) scale(0.88); }
+    14% { opacity: 1; transform: translate(var(--pull-x),var(--pull-y)) rotate(-7deg) scale(1); }
+    54% { opacity: 1; transform: translate(calc(var(--pull-x) * 0.72),calc(var(--bottom-y) * 0.55)) rotate(-2deg) scale(1.03); }
+    82% { opacity: 1; transform: translate(var(--bottom-x),var(--bottom-y)) rotate(5deg) scale(0.92); }
+    100% { opacity: 0; transform: translate(4px,34px) rotate(0deg) scale(0.62); }
+  }
+  @keyframes zhuHideDepth {
+    0%, 72% { z-index: 6; }
+    73%, 100% { z-index: 2; }
+  }
+  @keyframes zhuHideDeckCap {
+    0%, 66% { opacity: 0; transform: translate(0,0) scale(0.94); }
+    74% { opacity: 0.9; transform: translate(0,0) scale(1); }
+    100% { opacity: 0; transform: translate(0,0) scale(1.02); }
+  }
+  @keyframes zhuHideGlow {
+    0% { opacity: 0; transform: scale(0.6); }
+    20% { opacity: 1; transform: scale(1); }
+    78% { opacity: 0.8; transform: scale(1.12); }
+    100% { opacity: 0; transform: scale(0.45); }
+  }
+  @keyframes zhuLitCardPop {
+    0% { opacity: 0.25; transform: translateX(18px) rotate(0deg) scale(0.98); filter: brightness(0.8); }
+    64% { opacity: 1; transform: translateX(-5px) rotate(calc(var(--zhu-rot) - 3deg)) scale(1.02); filter: brightness(1.35); }
+    100% { opacity: 1; transform: translateX(0) rotate(var(--zhu-rot)) scale(1); filter: brightness(1); }
   }
 `;

@@ -69,6 +69,10 @@ function rotateDrawRevealForViewer(drawReveal, rotateIndex) {
   return rotateIndexedFields(drawReveal, ROTATE_DRAW_REVEAL_INDEX_FIELDS, rotateIndex);
 }
 
+function rotateZhuLightForViewer(zhuLight, rotateIndex) {
+  return rotateIndexedFields(zhuLight, ['ownerIdx'], rotateIndex);
+}
+
 export function rotateGsForViewer(gs, myIndex) {
   if (!gs || myIndex === 0) return gs;
   const N = gs.players.length;
@@ -77,8 +81,9 @@ export function rotateGsForViewer(gs, myIndex) {
   const rotatedTopLevel = rotateTopLevelGsFieldsForViewer(gs, rotateIndex);
   const gameOver = rotateGameOverForViewer(gs.gameOver, rotateIndex);
   const drawReveal = rotateDrawRevealForViewer(gs.drawReveal, rotateIndex);
+  const zhuLight = rotateZhuLightForViewer(gs.zhuLight, rotateIndex);
   const abilityData = rotateAbilityDataForViewer(gs.abilityData || {}, rotateIndex);
-  return { ...rotatedTopLevel, players, gameOver, abilityData, drawReveal };
+  return { ...rotatedTopLevel, players, gameOver, abilityData, drawReveal, zhuLight };
 }
 
 export function derotateGs(gs, myIndex) {

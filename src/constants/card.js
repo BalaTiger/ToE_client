@@ -616,9 +616,9 @@ const GOD_DEFS={
     godKey:'ZHU',name:'烛九阴',subtitle:'钟山之神',power:'衔烛照幽',
     col:'#c0a020',bgCol:'#181008',
     levels:[
-      {desc:'效果待设计'},
-      {desc:'效果待设计'},
-      {desc:'效果待设计'},
+      {zhuLightOffsets:[2],desc:'获得或升级此邪神之力时，以及你的回合开始时，点亮牌库顶部第3张牌。你可以查看被点亮牌的正面；当其即将被翻开时，可将其藏到牌堆底'},
+      {zhuLightOffsets:[1,2,3],desc:'“第3张牌”改为“第2~4张牌”'},
+      {zhuLightOffsets:[0,1,2,3,4],desc:'改为点亮牌库顶部前5张牌'},
     ],
   },
   FUL:{
@@ -703,7 +703,7 @@ const GOD_DEFS={
     ],
   },
   VRITRA:{
-    godKey:'VRITRA',name:'弗栗多',subtitle:'巨龙之化身',power:'不灭之躯',
+    godKey:'VRITRA',shortKey:'VRI',name:'弗栗多',subtitle:'巨龙之化身',power:'不灭之躯',
     col:'#c04020',bgCol:'#1a0808',
     levels:[
       {immortalCount:6,desc:'当你在回合外受到致命伤害，展示牌堆顶部的6张牌，若没有邪神牌和圣物牌，将HP恢复至1，然后弃置这些牌'},
@@ -728,7 +728,7 @@ const EXPANSIONS = {
     name: '临时拓展包',
     description: '当前牌组，包含所有现有卡牌',
     // 临时包包含 FIXED_ZONE_CARD_VARIANTS_BY_KEY 中所有卡牌
-    godCardKeys: ['NYA', 'CTH', 'SHU', 'VRITRA'],
+    godCardKeys: ['NYA', 'CTH', 'SHU', 'ZHU', 'VRITRA'],
     godCopies: 4,
   },
   '地神的潜影': {

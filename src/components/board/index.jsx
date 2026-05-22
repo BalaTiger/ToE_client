@@ -2,7 +2,8 @@ import React from 'react';
 import { CS, GOD_CS, GOD_DEFS, getCardBackImage } from '../../constants/card';
 import { RINFO } from '../../game';
 import { isBlackGoatYoung } from '../../game/coreUtils';
-import { DDCard, DDCardBack } from '../cards';
+import { AreaTooltip, DDCard, DDCardBack, GodTooltip } from '../cards';
+import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
 
 function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth}){
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
@@ -98,6 +99,59 @@ const DISCARD_OFFSETS=[
   {x:-4,y:3},{x:5,y:-2},{x:-2,y:4},{x:3,y:-5},{x:-6,y:1},{x:1,y:3},
 ];
 
+const godShortKey = (godKey) => GOD_DEFS[godKey]?.shortKey || godKey || 'GOD';
+
+function MiniCardLabel({card,scale=1,glowColor='#c8a96e'}){
+  if(!card)return null;
+  const label=card.isGod?godShortKey(card.godKey):(card.key||'?');
+  const name=card.name||'';
+  return(
+    <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:`${Math.max(2,Math.round(3*scale))}px ${Math.max(2,Math.round(2*scale))}px`,textAlign:'center',lineHeight:1.05,background:'radial-gradient(circle at 45% 35%,rgba(255,230,120,0.14),rgba(0,0,0,0) 72%)'}}>
+      <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:(card.isGod?GOD_CS:(CS[card.letter]||GOD_CS)).text,fontSize:Math.max(6,Math.round((card.isGod?8.5:9.5)*scale)),letterSpacing:card.isGod?0.5:0,textShadow:`0 0 8px ${glowColor}`}}>
+        {label}
+      </div>
+      {name&&(
+        <div style={{marginTop:Math.max(1,Math.round(2*scale)),fontFamily:"'IM Fell English','Georgia',serif",fontWeight:600,color:'#e8cc88',fontSize:Math.max(5,Math.round((name.length>6?4.2:4.8)*scale)),lineHeight:1.02,wordBreak:'break-word',overflowWrap:'anywhere',maxWidth:'100%'}}>
+          {name}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ZhuLitMiniCard({lit,deckIndex,scale,cardW,cardH,left,top,zIndex,hidden}){
+  const {hover,tooltipPosition,cardRef,handleMouseEnter,handleMouseLeave}=useCardHoverTooltip();
+  const litCard=lit?.card;
+  const s=litCard?.isGod?GOD_CS:(CS[litCard?.letter]||GOD_CS);
+  if(hidden){
+    return <div style={{...CARD_BACK_STYLE,width:cardW,height:cardH,left,top,zIndex,opacity:0,pointerEvents:'none'}}/>;
+  }
+  return(
+    <>
+      <div
+        ref={cardRef}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        style={{
+          ...CARD_BACK_STYLE,
+          width:cardW,height:cardH,
+          left,top,zIndex,
+          background:s.bg,
+          border:`1.5px solid ${s.borderBright}`,
+          boxShadow:`0 0 ${Math.round(12*scale)}px ${GOD_DEFS.ZHU.col}88, inset 0 0 10px rgba(255,220,120,0.18)`,
+          '--zhu-rot':`${-5+deckIndex*1.5}deg`,
+          animation:`zhuLitCardPop 0.42s cubic-bezier(0.22,1,0.36,1) both`,
+          pointerEvents:'auto',
+        }}
+      >
+        <MiniCardLabel card={litCard} scale={scale} glowColor={GOD_DEFS.ZHU.col}/>
+      </div>
+      {hover&&litCard?.isGod&&<GodTooltip def={GOD_DEFS[litCard.godKey]} godLevel={1} position={tooltipPosition}/>}
+      {hover&&litCard&&!litCard.isGod&&<AreaTooltip card={litCard} position={tooltipPosition}/>}
+    </>
+  );
+}
+
 function DiscardPile({count,topCard,scale=1,expansionKey='temporary'}){
   const vis=Math.min(count,7);
   const cardW=Math.round(CARD_W*scale);
@@ -137,22 +191,7 @@ function DiscardPile({count,topCard,scale=1,expansionKey='temporary'}){
             zIndex:i,
           }}>
             {isTop&&topCard&&(
-              <div style={{
-                position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:`${Math.round(3*scale)}px ${Math.round(2*scale)}px`,textAlign:'center',lineHeight:1.1,
-              }}>
-                <div style={{
-                  fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:Math.round(topCard.isGod?10*scale:11*scale),letterSpacing:topCard.isGod?1:0,
-                }}>
-                  {topCard.isGod?(topCard.godKey||'GOD'):topCard.key}
-                </div>
-                {topCard.isGod&&topCard.name&&(
-                  <div style={{
-                    marginTop:Math.round(2*scale),fontFamily:"'Cinzel',serif",fontWeight:600,color:'#e8cc88',fontSize:Math.round(5*scale),
-                  }}>
-                    {topCard.name}
-                  </div>
-                )}
-              </div>
+              <MiniCardLabel card={topCard} scale={scale} glowColor={s.borderBright}/>
             )}
           </div>
         );
@@ -194,13 +233,14 @@ function HealCrossEffect({color='#4ade80'}){
 
 // ── Deck / Inspection / PileDisplay ─────────────────────────────
 
-function DeckPile({count,scale=1,expansionKey='temporary'}){
+function DeckPile({count,scale=1,expansionKey='temporary',zhuLitCards=[],zhuHiddenCardId=null}){
   const vis=Math.min(count,7);
   const cardW=Math.round(CARD_W*scale);
   const cardH=Math.round(CARD_H*scale);
   const outerW=Math.round((CARD_W+12)*scale);
   const outerH=Math.round((CARD_H+12)*scale);
   const cardBackImage=getCardBackImage(expansionKey);
+  const litByDeckIndex=new Map((zhuLitCards||[]).map(item=>[item.deckIndex,item]));
   if(vis===0) return(
     <div style={{width:outerW,height:outerH,display:'flex',alignItems:'center',justifyContent:'center'}}>
       <div style={{width:cardW,height:cardH,borderRadius:3,border:'1px dashed #2a1a08',background:'transparent'}}/>
@@ -209,6 +249,26 @@ function DeckPile({count,scale=1,expansionKey='temporary'}){
   return(
     <div style={{width:outerW,height:outerH,position:'relative',flexShrink:0}}>
       {Array(vis).fill(0).map((_,i)=>{
+        const deckIndex=vis-1-i;
+        const lit=litByDeckIndex.get(deckIndex);
+        const litCard=lit?.card;
+        if(litCard){
+          const pull=Math.round((18+deckIndex*3)*scale);
+          return(
+            <ZhuLitMiniCard
+              key={`zhu-lit-${litCard.id||deckIndex}-${lit.lightNonce||0}`}
+              lit={lit}
+              deckIndex={deckIndex}
+              scale={scale}
+              cardW={cardW}
+              cardH={cardH}
+              left={Math.round(i*1.4*scale)-pull}
+              top={Math.round((vis-1-i)*1.4*scale)}
+              zIndex={i}
+              hidden={litCard.id===zhuHiddenCardId}
+            />
+          );
+        }
         const style={
           ...CARD_BACK_STYLE,
           width:cardW,height:cardH,
@@ -280,7 +340,7 @@ function DiscardOverlay({cards,onClose}){
           overflowY:'auto',padding:'10px 6px',width:'100%',
         }}>
           {[...cards].reverse().map((c,i)=>(
-            <DDCard key={c.id||`disc-${i}`} card={c} small/>
+            <DDCard key={c.id||`disc-${i}`} card={c}/>
           ))}
         </div>
         <div style={{fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontSize:12,color:'#7a5a2a',marginTop:4}}>点击任意位置关闭</div>
@@ -289,7 +349,7 @@ function DiscardOverlay({cards,onClose}){
   );
 }
 
-function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,deckRef,discardRef,scaleRatio,expansionKey='temporary'}){
+function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,deckRef,discardRef,scaleRatio,expansionKey='temporary',zhuLitCards=[],zhuHiddenCardId=null}){
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const _ = (px) => px * fontZoom;
   const pileWrapRef=React.useRef(null);
@@ -319,7 +379,7 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
       </div>
       {/* Deck — top-right corner */}
       <div ref={deckRef} data-deck-pile style={{position:'absolute',top:4,right:8,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-        <DeckPile count={deckCount} scale={pileScale} expansionKey={expansionKey}/>
+        <DeckPile count={deckCount} scale={pileScale} expansionKey={expansionKey} zhuLitCards={zhuLitCards} zhuHiddenCardId={zhuHiddenCardId}/>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:_(11),color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 8px #000000'}}>牌堆:{deckCount}</div>
       </div>
       {/* Discard — center */}

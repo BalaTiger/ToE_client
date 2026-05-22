@@ -7,3 +7,4 @@ export * from './setup';
 export * from './animQueueCore';
 export * from './turnAnimState';
 export * from './turnEngine';
+export * from './zhuPower';

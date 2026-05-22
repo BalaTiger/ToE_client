@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { CS, GOD_CS, GOD_DEFS, getCardBackImage } from '../../constants/card';
 import { useCardHoverTooltip } from './useCardHoverTooltip';
 
+const godShortKey = (godKey) => GOD_DEFS[godKey]?.shortKey || godKey || 'GOD';
+
 function OctopusSVG({col,size=32}){
   return(
     <svg width={size} height={size} viewBox="0 0 48 48" fill="none" stroke={col} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{opacity:0.55}}>
@@ -154,7 +156,7 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLe
   // fit text: long subtitle gets smaller font
   const nameLen=def.name.length;
   const subLen=def.subtitle.length;
-  const nameFsz=small?7:nameLen>6?10:12;
+  const nameFsz=small?(nameLen>5?5.6:6.2):nameLen>6?10:12;
   const subFsz=small?6:subLen>10?8:9;
   
   return(
@@ -215,6 +217,11 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLe
         {!small&&!compact&&<div style={{height:1,background:`linear-gradient(90deg,${col}88,transparent)`,margin:'4px 0'}}/>}
         {/* God power name small */}
         {!small&&!compact&&<div style={{fontFamily:"'Cinzel',serif",fontSize:7.5,color:col,letterSpacing:0.5,lineHeight:1.3,opacity:0.9}}>「{def.power}」</div>}
+        {small&&(
+          <div style={{marginTop:2,fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:5.4,color:'#e8cc88',lineHeight:1.05,textAlign:'center',wordBreak:'break-word',overflowWrap:'anywhere',maxWidth:'100%'}}>
+            {godShortKey(card.godKey)}
+          </div>
+        )}
         {/* Octopus bottom-left */}
         {!small&&!compact&&(
           <div style={{position:'absolute',bottom:2,left:2}}>
@@ -223,7 +230,7 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLe
         )}
       </div>
       {/* Hover tooltip */}
-      {!small&&hover&&<GodTooltip def={def} godLevel={godLevel||1} position={tooltipPosition}/>}
+      {hover&&<GodTooltip def={def} godLevel={godLevel||1} position={tooltipPosition}/>}
     </>
   );
 }
@@ -280,7 +287,7 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
           <div style={{fontSize:small?14:compact?18:22,color:'#4ade80',textShadow:'0 0 10px #4ade8088'}}>☣</div>
           {!small&&<div style={{fontFamily:"'IM Fell English','Georgia',serif",fontSize:compact?8:9,color:'#7aca7a',fontStyle:'italic',lineHeight:1.3,textAlign:'center',marginTop:2}}>黑山羊幼仔</div>}
         </div>
-        {!small&&hover&&<BgyTooltip desc={card.desc} position={tooltipPosition}/>}
+        {hover&&<BgyTooltip desc={card.desc} position={tooltipPosition}/>}
       </>
     );
   }
@@ -288,7 +295,7 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
   const w=small?44:compact?62:82,h=small?58:compact?82:108;
   const isRoseThornMarked=card?.roseThornHolderId!=null&&holderId===card.roseThornHolderId;
   const nameLen=card.name?.length||0;
-  const nameFontSize=small?12:compact?(nameLen>10?8.1:nameLen>7?8.8:9.5):(nameLen>18?7.8:nameLen>14?8.5:nameLen>10?9.2:10.5);
+  const nameFontSize=small?(nameLen>8?5.1:nameLen>5?5.6:6.2):compact?(nameLen>10?8.1:nameLen>7?8.8:9.5):(nameLen>18?7.8:nameLen>14?8.5:nameLen>10?9.2:10.5);
   const descLen=(card.desc||'').length;
   const descFontSize=compact?(descLen>28?8.1:descLen>20?8.7:9.4):(descLen>34?8.1:descLen>26?8.8:9.5);
   
@@ -320,14 +327,14 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
         {/* Corner ornament */}
         {!small&&!compact&&<div style={{position:'absolute',top:3,right:5,color:s.border,fontSize:9,opacity:0.7}}>✦</div>}
         {isRoseThornMarked&&!small&&<div style={{position:'absolute',top:3,left:5,color:'#ff9ab2',fontSize:compact?8:9,opacity:0.92,textShadow:'0 0 8px rgba(255,90,130,0.55)',fontFamily:"'Cinzel',serif"}}>倒刺</div>}
-        <div style={{color:s.text,fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:small?12:compact?15:18,lineHeight:1,textShadow:`0 0 6px ${s.text}55`}}>{card.key}</div>
-        {!small&&<div style={{color:'#e8cc88',fontFamily:"'IM Fell English','Georgia',serif",fontSize:nameFontSize,fontWeight:600,marginTop:compact?1:2,lineHeight:1.12,wordBreak:'break-word'}}>{card.name}</div>}
+        <div style={{color:s.text,fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:small?10:compact?15:18,lineHeight:1,textShadow:`0 0 6px ${s.text}55`}}>{card.key}</div>
+        <div style={{color:'#e8cc88',fontFamily:"'IM Fell English','Georgia',serif",fontSize:nameFontSize,fontWeight:600,marginTop:small?2:compact?1:2,lineHeight:small?1.08:1.12,wordBreak:'break-word',overflowWrap:'anywhere',textAlign:small?'center':undefined}}>{card.name}</div>
         {!small&&!compact&&<div style={{color:'#d4b468',fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:descFontSize,marginTop:'auto',lineHeight:1.25,wordBreak:'break-word'}}>{card.desc}</div>}
         {/* Bottom ornament */}
         {!small&&!compact&&<div style={{position:'absolute',bottom:3,left:'50%',transform:'translateX(-50%)',color:s.border,fontSize:8,opacity:0.5}}>— ✦ —</div>}
       </div>
       {/* Hover tooltip */}
-      {!small&&hover&&<AreaTooltip card={card} position={tooltipPosition}/>}
+      {hover&&<AreaTooltip card={card} position={tooltipPosition}/>}
     </>
   );
 }
