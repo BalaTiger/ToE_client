@@ -1259,7 +1259,7 @@ export default function Game(){
       }));
       setTimeout(()=>setBewitchAnim(null),1200);
     }else if(anim?.type==='CARD_TRANSFER'){
-      const{fromPid,dest,toPid,count,sourceAnchor}=anim;
+      const{fromPid,dest,toPid,count,sourceAnchor,effect}=anim;
       // 测量源点。普通转牌从手牌区出发；生成型卡牌可从角色区域出发。
       const srcPos=sourceAnchor==='playerArea'
         ? getPlayerAreaAnchorCenter(fromPid)
@@ -1287,8 +1287,8 @@ export default function Game(){
         destY=srcPanelRect?srcPanelRect.top+srcPanelRect.height*0.25:srcY*0.5;
       }
       const key=`${fromPid}-${dest}-${toPid??'x'}-${Date.now()}`;
-      setCardTransfers(prev=>[...prev,{srcX,srcY,destX,destY,count,key}]);
-      setTimeout(()=>setCardTransfers(prev=>prev.filter(t=>t.key!==key)),750);
+      setCardTransfers(prev=>[...prev,{srcX,srcY,destX,destY,count,key,effect}]);
+      setTimeout(()=>setCardTransfers(prev=>prev.filter(t=>t.key!==key)),effect==='blackGoat'?1700:750);
     }else if(anim?.type==='GUILLOTINE'&&anim.hitIndices?.length){
       let cancelled=false;
       requestAnimationFrame(()=>requestAnimationFrame(async ()=>{
@@ -1655,6 +1655,8 @@ export default function Game(){
             dest:'player',
             toPid:multiplyEvent.toIdx,
             count:1,
+            effect:'blackGoat',
+            durationMs:1500,
             msgs:multiplyMsg?[multiplyMsg]:[]
           });
         }
@@ -4816,7 +4818,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       const logMsg=`【繁衍】你将黑山羊幼仔传播给了 ${P[pi].name}`;
       const L=[...gs.log,logMsg];
       const newGs={...gs,players:P,log:L,phase:'ACTION',abilityData:{},multiplyUsed:true};
-      const queue=[{type:'CARD_TRANSFER',fromPid:0,dest:'player',toPid:pi,count:1,msgs:[logMsg]}];
+      const queue=[{type:'CARD_TRANSFER',fromPid:0,dest:'player',toPid:pi,count:1,effect:'blackGoat',durationMs:1500,msgs:[logMsg]}];
       if(queue.length){
         pendingGsRef.current=newGs;
         animQueueRef.current=[...queue.slice(1)];
@@ -6248,6 +6250,27 @@ const GLOBAL_STYLES=`
     0%   { transform: translate(0,0) scale(1)   rotate(0deg);   opacity:1 }
     45%  { transform: translate(calc(var(--tx)*0.55), calc(var(--ty)*0.55)) scale(1.12) rotate(-12deg); opacity:1 }
     100% { transform: translate(var(--tx), var(--ty)) scale(0.72) rotate(-22deg); opacity:0 }
+  }
+  @keyframes goatSigilPulse {
+    0%   { filter:brightness(0.9); opacity:0; }
+    18%  { opacity:0.92; }
+    55%  { filter:brightness(1.35); opacity:0.86; }
+    100% { filter:brightness(0.7); opacity:0; }
+  }
+  @keyframes goatRunSprite {
+    0%, 14.28% { background-position: 0% 0%; }
+    14.29%, 28.56% { background-position: 16.6667% 0%; }
+    28.57%, 42.85% { background-position: 33.3333% 0%; }
+    42.86%, 57.13% { background-position: 50% 0%; }
+    57.14%, 71.42% { background-position: 66.6667% 0%; }
+    71.43%, 85.70% { background-position: 83.3333% 0%; }
+    85.71%, 100% { background-position: 100% 0%; }
+  }
+  @keyframes blackGoatParticleFly {
+    0%   { transform:translate(0,0) scale(0.35); opacity:0; }
+    18%  { opacity:1; }
+    62%  { transform:translate(calc(var(--tx)*0.62 + var(--drift-x)), calc(var(--ty)*0.62 + var(--drift-y))) scale(1.1); opacity:0.9; }
+    100% { transform:translate(calc(var(--tx) + var(--drift-x)), calc(var(--ty) + var(--drift-y))) scale(0.2); opacity:0; }
   }
 
   @keyframes discardCardFly {

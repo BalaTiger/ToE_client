@@ -99,7 +99,11 @@ export function useAnimationQueue({
   useEffect(() => {
     if (!anim) return;
     const isCard = anim.type === 'DRAW_CARD';
-    const dur = isCard ? CARD_REVEAL_DURATION : Math.round((ANIM_DURATION[anim.type] || ANIM_DURATION.default) * ANIM_SPEED_SCALE);
+    const dur = Number.isFinite(anim.durationMs)
+      ? anim.durationMs
+      : isCard
+        ? CARD_REVEAL_DURATION
+        : Math.round((ANIM_DURATION[anim.type] || ANIM_DURATION.default) * ANIM_SPEED_SCALE);
     let gapTimer = null;
     const t1 = setTimeout(() => {
       if (isCard) {
