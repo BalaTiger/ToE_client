@@ -789,7 +789,7 @@ export function createBlackGoatYoungCard() {
   return {
     id: `bgy-${_bgyId++}`,
     name: '黑山羊幼仔',
-    desc: '这张牌在手牌中始终亮明。你获得行动选项"繁衍"：指定另一名角色，立即在其手牌中加入1张"黑山羊幼仔"。回合开始时，若你持有此牌，你失去1HP和1SAN',
+    desc: '这张牌在手牌中始终亮明。你获得行动选项"繁衍"：指定另一名角色，立即在其手牌中加入1张"黑山羊幼仔"。你的回合开始时，若你持有此牌，你失去1HP和1SAN',
     type: 'blackGoatYoung',
     isBlackGoatYoung: true,
     polarity: 'neutral',
