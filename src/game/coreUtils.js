@@ -1,6 +1,7 @@
 import {
   LETTERS,
   NUMS,
+  GOD_DEFS,
 } from '../constants/card';
 
 export const ROLE_TREASURE = '寻宝者';
@@ -33,6 +34,46 @@ export const isZoneCard = (card) => !!card?.isZone;
 
 export const isBlankZoneCard = (card) => card?.type === 'blankZone';
 
+export const isBlackGoatYoung = (card) => !!card?.isBlackGoatYoung;
+
+export const separateBlackGoatYoung = (cards) => {
+  if (!cards) return { kept: [], destroyed: [] };
+  const kept = [];
+  const destroyed = [];
+  for (const c of cards) {
+    if (isBlackGoatYoung(c)) destroyed.push(c);
+    else kept.push(c);
+  }
+  return { kept, destroyed };
+};
+
+export function tryVritraImmortal(P, i, currentTurn, D, Disc, L) {
+  if (currentTurn == null || D == null || currentTurn === i) return false;
+  if (!P[i] || P[i].isDead || P[i].hp > 0) return false;
+  if (P[i].godName !== 'VRITRA') return false;
+  const count = GOD_DEFS.VRITRA.levels[(P[i].godLevel || 1) - 1]?.immortalCount || 0;
+  if (!count) return false;
+  const revealed = [];
+  const deckCopy = [...D];
+  for (let k = 0; k < count && deckCopy.length > 0; k++) {
+    revealed.push(deckCopy.shift());
+  }
+  const hasGod = revealed.some(c => c && c.isGod);
+  if (hasGod) {
+    Disc.push(...revealed);
+    L.push(`【不灭之躯】${P[i].name} 濒死之际激发龙血之力，但翻开的牌中出现了邪神牌，力量消散…`);
+    D.length = 0;
+    D.push(...deckCopy);
+    return false;
+  }
+  P[i].hp = 1;
+  Disc.push(...revealed);
+  L.push(`【不灭之躯】${P[i].name} 在濒死之际激发龙血之力，HP恢复至1！`);
+  D.length = 0;
+  D.push(...deckCopy);
+  return true;
+}
+
 export const getZoneCardPolarity = (card) => {
   if (!card) return null;
   if (card.polarity) return card.polarity;
@@ -60,7 +101,7 @@ export const zoneCardHasGuaranteedHpLoss = (card) => {
   return [
     'selfDamageHP', 'selfDamageDiscardHP', 'selfDamageHPSAN', 'selfDamageRestHP', 'selfDamageHPPeek',
     'allDamageHP', 'allDamageBoth', 'adjDamageHP', 'adjDamageBoth',
-    'selfDamageAdjDamageHP', 'selfDamageAdjDamageBoth', 'allDamageHPRandomExtra'
+    'selfDamageAdjDamageHP', 'selfDamageAdjDamageBoth', 'allDamageHPRandomExtra', 'sameAbyssChoice'
   ].includes(card.type);
 };
 
@@ -68,7 +109,8 @@ export const zoneCardHasGuaranteedSanLoss = (card) => {
   if (!card?.type) return false;
   return [
     'selfDamageSAN', 'selfDamageDiscardSAN', 'selfDamageHPSAN', 'selfDamageRestSAN',
-    'allDamageSAN', 'allDamageBoth', 'adjDamageSAN', 'adjDamageBoth', 'selfDamageAdjDamageBoth'
+    'allDamageSAN', 'allDamageBoth', 'adjDamageSAN', 'adjDamageBoth', 'selfDamageAdjDamageBoth',
+    'allHealHPDamageSAN'
   ].includes(card.type);
 };
 
@@ -172,7 +214,9 @@ export function killPlayerState(P, i, Disc, L) {
   P[i].isDead = true;
   P[i].roleRevealed = true;
   L.push(`☠ ${P[i].name}（${P[i].role}）倒下了！`);
-  Disc.push(...P[i].hand);
+  const { kept, destroyed } = separateBlackGoatYoung(P[i].hand);
+  if (kept.length) Disc.push(...kept);
+  if (destroyed.length) L.push(`${P[i].name} 的 ${destroyed.length} 张黑山羊幼仔被销毁`);
   P[i].hand = [];
   if (P[i].godZone?.length) {
     Disc.push(...P[i].godZone);

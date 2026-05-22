@@ -1,5 +1,36 @@
 import React, { useState, useEffect } from 'react';
 
+// 预生成随机烛火位置（模块级，避免 render 中调用 Math.random）
+const CANDLE_POSITIONS = (() => {
+  const positions = [];
+  // 左侧烛火
+  for (let i = 0; i < 7; i++) {
+    const distance = Math.random(); // 0-1，0表示最近，1表示最远
+    positions.push({
+      side: 'left',
+      x: -120 - Math.random() * 120,
+      y: 60 - distance * 120, // 近处的烛火更低（位置偏下）
+      scale: 0.5 + (1 - distance) * 0.6, // 近处的烛火更大
+      distance: distance,
+      delay: Math.random() * 2 // 随机初始延迟，错开动画
+    });
+  }
+  // 右侧烛火
+  for (let i = 0; i < 7; i++) {
+    const distance = Math.random(); // 0-1，0表示最近，1表示最远
+    positions.push({
+      side: 'right',
+      x: 120 + Math.random() * 120,
+      y: 60 - distance * 120, // 近处的烛火更低（位置偏下）
+      scale: 0.5 + (1 - distance) * 0.6, // 近处的烛火更大
+      distance: distance,
+      delay: Math.random() * 2 // 随机初始延迟，错开动画
+    });
+  }
+  // 按距离排序，近处的烛火排在后面，显示层级更高
+  return positions.sort((a, b) => a.distance - b.distance);
+})();
+
 // 确保将此组件定义在所有其他组件的【外部】，防止重新渲染时被销毁重置
 export function TitleCandleFlames() {
   const [frame, setFrame] = useState(0);
@@ -29,36 +60,7 @@ export function TitleCandleFlames() {
   const col = frame % 4;
   const row = Math.floor(frame / 4);
 
-  // 生成随机烛火位置
-  const candlePositions = React.useMemo(() => {
-    const positions = [];
-    // 左侧烛火
-    for (let i = 0; i < 7; i++) {
-      const distance = Math.random(); // 0-1，0表示最近，1表示最远
-      positions.push({
-        side: 'left',
-        x: -120 - Math.random() * 120,
-        y: 60 - distance * 120, // 近处的烛火更低（位置偏下）
-        scale: 0.5 + (1 - distance) * 0.6, // 近处的烛火更大
-        distance: distance,
-        delay: Math.random() * 2 // 随机初始延迟，错开动画
-      });
-    }
-    // 右侧烛火
-    for (let i = 0; i < 7; i++) {
-      const distance = Math.random(); // 0-1，0表示最近，1表示最远
-      positions.push({
-        side: 'right',
-        x: 120 + Math.random() * 120,
-        y: 60 - distance * 120, // 近处的烛火更低（位置偏下）
-        scale: 0.5 + (1 - distance) * 0.6, // 近处的烛火更大
-        distance: distance,
-        delay: Math.random() * 2 // 随机初始延迟，错开动画
-      });
-    }
-    // 按距离排序，近处的烛火排在后面，显示层级更高
-    return positions.sort((a, b) => a.distance - b.distance);
-  }, []);
+  const candlePositions = CANDLE_POSITIONS;
 
   // 为每个烛火生成随机的初始帧偏移
   const getFrameOffset = (delay) => {

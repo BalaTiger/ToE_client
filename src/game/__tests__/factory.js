@@ -3,10 +3,12 @@ import {
   LETTERS,
   NUMS,
   GOD_DEFS,
+} from '../../constants/card';
+import {
   ROLE_TREASURE,
   ROLE_HUNTER,
   ROLE_CULTIST,
-} from '../../constants/card';
+} from '../coreUtils';
 
 let _testId = 0;
 export function nextId() {

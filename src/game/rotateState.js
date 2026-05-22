@@ -13,6 +13,7 @@ const ROTATE_ABILITYDATA_INDEX_FIELDS = [
   'damageLinkSource',
   'roseThornSource',
   'pickSource',
+  'targetIdx',
 ];
 const ROTATE_ABILITYDATA_INDEX_ARRAY_FIELDS = [
   'peekHandTargets',
@@ -68,6 +69,10 @@ function rotateDrawRevealForViewer(drawReveal, rotateIndex) {
   return rotateIndexedFields(drawReveal, ROTATE_DRAW_REVEAL_INDEX_FIELDS, rotateIndex);
 }
 
+function rotateZhuLightForViewer(zhuLight, rotateIndex) {
+  return rotateIndexedFields(zhuLight, ['ownerIdx'], rotateIndex);
+}
+
 export function rotateGsForViewer(gs, myIndex) {
   if (!gs || myIndex === 0) return gs;
   const N = gs.players.length;
@@ -76,8 +81,9 @@ export function rotateGsForViewer(gs, myIndex) {
   const rotatedTopLevel = rotateTopLevelGsFieldsForViewer(gs, rotateIndex);
   const gameOver = rotateGameOverForViewer(gs.gameOver, rotateIndex);
   const drawReveal = rotateDrawRevealForViewer(gs.drawReveal, rotateIndex);
+  const zhuLight = rotateZhuLightForViewer(gs.zhuLight, rotateIndex);
   const abilityData = rotateAbilityDataForViewer(gs.abilityData || {}, rotateIndex);
-  return { ...rotatedTopLevel, players, gameOver, abilityData, drawReveal };
+  return { ...rotatedTopLevel, players, gameOver, abilityData, drawReveal, zhuLight };
 }
 
 export function derotateGs(gs, myIndex) {
@@ -127,6 +133,14 @@ export function isLocalFirstComePicker(gs) {
   return gs?.phase === 'FIRST_COME_PICK_SELECT' && isLocalSeatIndex(currentPickerIdx);
 }
 
+export function isLocalSameAbyssTargetPhase(gs) {
+  return gs?.phase === 'SAME_ABYSS_SELECT' && isLocalSeatIndex(gs?.abilityData?.targetIdx);
+}
+
+export function isLocalSphinxGuessPhase(gs) {
+  return gs?.phase === 'SPHINX_GUESS' && isLocalCurrentTurn(gs);
+}
+
 export function isLocalDamageLinkSourcePhase(gs) {
   return gs?.phase === 'DAMAGE_LINK_SELECT_TARGET' && isLocalActorSeat(gs, gs?.abilityData?.damageLinkSource);
 }
@@ -135,7 +149,7 @@ export function canLocalActOnTargetSelectionPhase(gs) {
   const phase = gs?.phase;
   return (
     (
-      ['SWAP_SELECT_TARGET', 'HUNT_SELECT_TARGET', 'BEWITCH_SELECT_TARGET', 'ZONE_SWAP_SELECT_TARGET', 'PEEK_HAND_SELECT_TARGET', 'CAVE_DUEL_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET'].includes(phase)
+      ['SWAP_SELECT_TARGET', 'HUNT_SELECT_TARGET', 'BEWITCH_SELECT_TARGET', 'ZONE_SWAP_SELECT_TARGET', 'PEEK_HAND_SELECT_TARGET', 'CAVE_DUEL_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET', 'MULTIPLY_SELECT_TARGET', 'SHU_SELECT_TARGET'].includes(phase)
       && isLocalCurrentTurn(gs)
     )
     || isLocalDamageLinkSourcePhase(gs)

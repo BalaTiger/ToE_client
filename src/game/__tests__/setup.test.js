@@ -3,7 +3,7 @@ import {
   ROLE_TREASURE,
   ROLE_HUNTER,
   ROLE_CULTIST,
-} from '../../constants/card';
+} from '../coreUtils';
 import { mkDeck, mkRoles } from '../setup';
 import { resetIds } from './factory';
 

@@ -1,6 +1,16 @@
 import React from 'react';
 import { ANIM_CFG, DICE_FACES } from './data';
 
+// 预生成石块随机参数（模块级，避免 render 中调用 Math.random）
+const EARTHQUAKE_ROCKS = Array.from({ length: 8 }).map(() => ({
+  width: 10 + Math.random() * 20,
+  height: 10 + Math.random() * 20,
+  borderRadius: Math.random() * 5,
+  left: Math.random() * 100 + '%',
+  duration: 0.8 + Math.random() * 0.4,
+  delay: Math.random() * 0.5,
+}));
+
 // ── Generic Overlay Anim ──────────────────────────────────────
 export function GenericAnimOverlay({ anim, exiting }) {
   if (!anim) return null;
@@ -26,17 +36,17 @@ export function GenericAnimOverlay({ anim, exiting }) {
       {cfg.vig && <div style={{ position: 'absolute', inset: 0, boxShadow: `inset 0 0 120px ${cfg.accent}55`, animation: 'animVig 0.6s ease-in-out', pointerEvents: 'none' }} />}
 
       {/* 地动山摇石块效果 */}
-      {isEarthquake && Array.from({ length: 8 }).map((_, i) => (
+      {isEarthquake && EARTHQUAKE_ROCKS.map((rock, i) => (
         <div key={i} style={{
           position: 'absolute',
-          width: 10 + Math.random() * 20,
-          height: 10 + Math.random() * 20,
+          width: rock.width,
+          height: rock.height,
           background: '#8a6a40',
-          borderRadius: Math.random() * 5,
-          left: Math.random() * 100 + '%',
+          borderRadius: rock.borderRadius,
+          left: rock.left,
           top: -30,
-          animation: `rockFall ${0.8 + Math.random() * 0.4}s ease-in forwards`,
-          animationDelay: Math.random() * 0.5 + 's',
+          animation: `rockFall ${rock.duration}s ease-in forwards`,
+          animationDelay: rock.delay + 's',
           zIndex: 1000,
         }} />
       ))}

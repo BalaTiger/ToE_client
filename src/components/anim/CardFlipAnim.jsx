@@ -1,5 +1,5 @@
 import React from 'react';
-import { CS, GOD_CS } from '../../constants/card';
+import { CS, GOD_CS, getCardBackImage } from '../../constants/card';
 import { getZoneCardPolarity } from '../../game/coreUtils';
 import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 import { SMOKE_COLS, FLOWER_CONFIGS } from './data';
@@ -61,9 +61,17 @@ function FlowerBloom(){
   );
 }
 
-function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false}){
+function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guessCorrect,expansionKey='temporary'}){
+  const [traveled,setTraveled]=React.useState(skipTravel);
+  React.useEffect(()=>{
+    if(skipTravel){setTraveled(true);return undefined;}
+    const t=setTimeout(()=>setTraveled(true),650);
+    return()=>clearTimeout(t);
+  },[skipTravel]);
+
   if(!card) return null;
   const isInspection=!!card.effect;
+  const cardBackImage=getCardBackImage(expansionKey);
   const displayTriggerName=isInspection&&(targetPid??0)===0?'你':triggerName;
   const inspectionTone=isInspection?(card.type||'neutral'):null;
   const s=isInspection
@@ -81,13 +89,6 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false}){
   const isNeutralInspection=isInspection&&inspectionTone==='neutral';
   const isPositiveInspection=isInspection&&inspectionTone==='positive';
 
-  const [traveled,setTraveled]=React.useState(skipTravel);
-  React.useEffect(()=>{
-    if(skipTravel){setTraveled(true);return undefined;}
-    const t=setTimeout(()=>setTraveled(true),650);
-    return()=>clearTimeout(t);
-  },[skipTravel]);
-
   const getDeckCenter=()=>{
     return getPileAnchorCenter(
       isInspection?'[data-inspection-pile]':'[data-deck-pile]',
@@ -99,29 +100,33 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false}){
   const getHandCenter=pid=>{
     return getPlayerHandAnchorCenter(pid);
   };
-
-  const destStyle=React.useMemo(()=>{
+  const destStyle=(()=>{
     const src=getDeckCenter();
     const dest=getHandCenter(targetPid??0);
     return{'--dest-x':`${dest.x-35}px`,'--dest-y':`${dest.y-47}px`,'--src-x':`${src.x-35}px`,'--src-y':`${src.y-47}px`};
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[]);
+  })();
 
   if(!traveled) return(
     <div style={{position:'fixed',inset:0,zIndex:999,background:'rgba(4,4,2,0)',pointerEvents:'none'}}>
       <div style={{
         position:'absolute',
         width:70,height:94,borderRadius:4,
-        background:'linear-gradient(135deg,#1e1208,#0e0804)',
+        backgroundColor:'#100c08',
+        backgroundImage:isInspection?'linear-gradient(135deg,#151c28,#090d15)':`url('${cardBackImage}')`,
+        backgroundSize:'cover',
+        backgroundPosition:'center',
+        backgroundRepeat:'no-repeat',
         border:'1.5px solid #4a3010',
         boxShadow:'0 4px 18px rgba(0,0,0,0.7)',
         ...destStyle,
         animation:'cardTravelToPlayer 0.65s cubic-bezier(0.3,0,0.2,1) forwards',
       }}>
-        <div style={{position:'absolute',inset:0,borderRadius:4,
-          background:'repeating-linear-gradient(45deg,#2a1a0820 0px,#2a1a0820 1px,transparent 1px,transparent 4px)'}}/>
-        <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',
-          fontFamily:"'Cinzel',serif",fontSize:14,color:'#a07838',opacity:0.6}}>✦</div>
+        {isInspection&&<>
+          <div style={{position:'absolute',inset:0,borderRadius:4,
+            background:'repeating-linear-gradient(45deg,#8ca4d220 0px,#8ca4d220 1px,transparent 1px,transparent 4px)'}}/>
+          <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',
+            fontFamily:"'Cinzel',serif",fontSize:14,color:'#d7e6ff',opacity:0.85}}>◈</div>
+        </>}
       </div>
     </div>
   );
@@ -208,6 +213,32 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false}){
 
       {(isPositiveInspection||(!isInspection&&cardPolarity==='positive'))&&<FlowerBloom/>}
 
+      {triggerName==='斯芬克斯'&&guessCorrect!==undefined&&(
+        <div style={{
+          position:'absolute',
+          left:0,right:0,
+          top:'calc(50% - 170px)',
+          display:'flex',
+          justifyContent:'center',
+          pointerEvents:'none',
+          zIndex:1000,
+        }}>
+          <div style={{
+            fontFamily:"'Cinzel Decorative','Cinzel',serif",
+            fontSize:32,
+            fontWeight:700,
+            letterSpacing:2,
+            color:guessCorrect?'#4ade80':'#ef4444',
+            textShadow:guessCorrect
+              ?'0 0 10px rgba(74,222,128,0.7), 0 0 22px rgba(74,222,128,0.4)'
+              :'0 0 10px rgba(239,68,68,0.7), 0 0 22px rgba(239,68,68,0.4)',
+            animation:'animPop 0.5s cubic-bezier(0.34,1.56,0.64,1) 1.0s both',
+          }}>
+            {guessCorrect?'猜对了！':'猜错了！'}
+          </div>
+        </div>
+      )}
+
       <div style={{position:'absolute',inset:0,pointerEvents:'none'}}>{spirits}</div>
 
       {displayTriggerName&&(
@@ -229,20 +260,22 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false}){
         }}>
           <div style={{
             position:'absolute',inset:0,backfaceVisibility:'hidden',transform:'rotateY(180deg)',
-            background:'#0e0a06',border:'2px solid #6a4a20',borderRadius:5,
+            backgroundColor:'#100c08',
+            backgroundImage:isInspection?'linear-gradient(135deg,#151c28,#090d15)':`url('${cardBackImage}')`,
+            backgroundSize:'cover',
+            backgroundPosition:'center',
+            backgroundRepeat:'no-repeat',
+            border:'2px solid #6a4a20',borderRadius:5,
             display:'flex',alignItems:'center',justifyContent:'center',
             boxShadow:'0 0 20px #0a0600',
           }}>
-            <div style={{position:'absolute',inset:6,border:'1px solid #3a2810',borderRadius:3}}/>
-            <div style={{position:'absolute',inset:12,border:'1px solid #2a1a08',borderRadius:2}}/>
-            <div style={{textAlign:'center'}}>
-              <div style={{fontSize:36,color:'#5a3810',lineHeight:1,filter:'drop-shadow(0 0 6px #3a2010)'}}>✦</div>
-              <div style={{fontSize:11,color:'#a07838',fontFamily:"'Cinzel',serif",letterSpacing:2,marginTop:4}}>ARCANA</div>
-            </div>
-            <div style={{position:'absolute',top:6,left:8,fontSize:8,color:'#a07838'}}>✦</div>
-            <div style={{position:'absolute',top:6,right:8,fontSize:8,color:'#a07838'}}>✦</div>
-            <div style={{position:'absolute',bottom:6,left:8,fontSize:8,color:'#a07838'}}>✦</div>
-            <div style={{position:'absolute',bottom:6,right:8,fontSize:8,color:'#a07838'}}>✦</div>
+            {isInspection&&<>
+              <div style={{position:'absolute',inset:6,border:'1px solid #6a7fa8',borderRadius:3,opacity:0.7}}/>
+              <div style={{position:'absolute',inset:12,border:'1px solid #8ca4d266',borderRadius:2}}/>
+              <div style={{textAlign:'center'}}>
+                <div style={{fontSize:36,color:'#d7e6ff',lineHeight:1,filter:'drop-shadow(0 0 6px #9dc1ff)'}}>◈</div>
+              </div>
+            </>}
           </div>
           <div style={{
             position:'absolute',inset:0,backfaceVisibility:'hidden',

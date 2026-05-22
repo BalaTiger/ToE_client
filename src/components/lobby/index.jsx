@@ -3,10 +3,8 @@ import {
   FIXED_ZONE_CARD_VARIANTS_BY_KEY,
   LETTERS,
   NUMS,
-  ROLE_TREASURE,
-  ROLE_HUNTER,
-  ROLE_CULTIST,
 } from '../../constants/card';
+import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from '../../game';
 
 const ZONE_CARD_KEYS = LETTERS.flatMap(L => NUMS.map(N => `${L}${N}`));
 
@@ -26,7 +24,6 @@ const smallBtnStyle = {
 function RoomModal({
   roomModal,
   playerUUID,
-  playerUUIDRef,
   cdType,
   cdSecondsLeft,
   onClose,
@@ -78,7 +75,7 @@ function RoomModal({
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 12 }}>
             <div style={{ fontFamily: "'Cinzel',serif", fontSize: 10, color: '#8060a0', letterSpacing: 1 }}>房间状态：</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              {roomModal.owner === (playerUUIDRef?.current || playerUUID) ? (
+              {roomModal.owner === playerUUID ? (
                 <button
                   onClick={() => onTogglePrivacy(!roomModal.isPrivate)}
                   title={roomModal.isPrivate ? '切换为公开' : '切换为私密'}
@@ -494,18 +491,12 @@ function DebugSettingsPanel({
           >
             <option value="CTH">克苏鲁</option>
             <option value="NYA">Nyarlathotep</option>
+            <option value="ZHU">烛九阴</option>
+            <option value="SHU">森之领主</option>
+            <option value="VRITRA">弗栗多</option>
           </select>
         </div>
       )}
-      <div style={{ marginBottom: 12 }}>
-        <label style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>当前设置</label>
-        <div style={{ fontSize: 11, color: '#f0cb7a', padding: 6, background: '#2a1608', border: '1px solid #3a2510', borderRadius: 4 }}>
-          {debugForceCardType === 'zone'
-            ? `区域牌: ${debugForceZoneCardKey} - ${debugForceZoneCardName || ''}`
-            : `神牌: ${debugForceGodCardKey === 'CTH' ? '克苏鲁' : 'Nyarlathotep'}`
-          }
-        </div>
-      </div>
       <div style={{ marginBottom: 12 }}>
         <label style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>玩家身份（下局生效）</label>
         <select

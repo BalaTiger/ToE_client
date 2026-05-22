@@ -77,6 +77,17 @@ export function getPlayerHandAnchorCenter(pid){
   return {x:window.innerWidth*0.5,y:window.innerHeight*0.25};
 }
 
+export function getPlayerAreaAnchorCenter(pid){
+  const el=document.querySelector(`[data-pid="${pid}"]`);
+  if(el){
+    const r=_getZoomCompensatedRect(el);
+    if(r&&r.width>0&&r.height>0){
+      return {x:r.left+r.width/2,y:r.top+r.height*0.35};
+    }
+  }
+  return getPlayerHandAnchorCenter(pid);
+}
+
 export function getPileAnchorCenter(selector,fallback){
   const pileEl=document.querySelector(selector);
   if(!pileEl)return fallback;

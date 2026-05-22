@@ -1,3 +1,7 @@
+/* eslint-disable react-hooks/purity */
+// ^ Angle randomization for guillotine animation is decorative visual noise.
+//   Moving it out of render requires either a complex cache key scheme or
+//   a PRNG, neither of which is worth the churn for a transient overlay.
 import React from 'react';
 
 function KnifeEffect({targets}){
@@ -60,11 +64,17 @@ function GuillotineAnim({targets}){
     return()=>{clearTimeout(t1);};
   },[]);
 
-  if(!targets||!targets.length)return null;
-
   // 每局每名角色只随机一次斜角，避免 re-render 时角度跳动
   // 角度分布在 [-30,-22] ∪ [22,30]，避开接近水平的 0° 附近
   const anglesRef=React.useRef(null);
+  if(targets?.length>0&&(!anglesRef.current||anglesRef.current.length!==targets.length)){
+    anglesRef.current=targets.map(()=>{
+      const base=22+Math.random()*8; // 22 ~ 30
+      return (Math.random()<0.5?1:-1)*base;
+    });
+  }
+
+  if(!targets||!targets.length)return null;
   if(!anglesRef.current||anglesRef.current.length!==targets.length){
     anglesRef.current=targets.map(()=>{
       const base=22+Math.random()*8; // 22 ~ 30
@@ -107,13 +117,13 @@ function GuillotineAnim({targets}){
                 }}/>
                 <div style={{
                   position:'absolute',
-                  left:t.x-10,top:t.y-10,width:t.w+20,height:t.h+20,
+                  left:-10,top:-10,width:t.w+20,height:t.h+20,
                   background:'radial-gradient(ellipse at center, rgba(255,255,255,0.8) 0%, rgba(255,100,100,0.6) 50%, transparent 100%)',
                   animation:'sliceFlash 0.12s ease-out forwards',
                 }}/>
                 <div style={{
                   position:'absolute',
-                  left:t.x-20,top:t.y-20,width:t.w+40,height:t.h+40,
+                  left:-20,top:-20,width:t.w+40,height:t.h+40,
                   background:'radial-gradient(ellipse at center, rgba(180,10,10,0.4) 0%, rgba(80,0,0,0.1) 60%, transparent 100%)',
                   animation:'bloodSpread 0.42s ease-out forwards',
                 }}/>

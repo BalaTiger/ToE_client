@@ -1,6 +1,9 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { CS, GOD_CS, GOD_DEFS } from '../../constants/card';
+import { CS, GOD_CS, GOD_DEFS, getCardBackImage } from '../../constants/card';
+import { useCardHoverTooltip } from './useCardHoverTooltip';
+
+const godShortKey = (godKey) => GOD_DEFS[godKey]?.shortKey || godKey || 'GOD';
 
 function OctopusSVG({col,size=32}){
   return(
@@ -117,36 +120,43 @@ function AreaTooltip({card,position}){
   );
 }
 
-function useCardHoverTooltip() {
-  const [hover, setHover] = React.useState(false);
-  const [tooltipPosition, setTooltipPosition] = React.useState(null);
-  const cardRef = React.useRef(null);
-
-  const handleMouseEnter = () => {
-    setHover(true);
-    if (cardRef.current) {
-      const rect = cardRef.current.getBoundingClientRect();
-      setTooltipPosition(rect);
-    }
-  };
-
-  const handleMouseLeave = () => {
-    setHover(false);
-    setTooltipPosition(null);
-  };
-
-  return { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseLeave };
+function BgyTooltip({desc,position}){
+  if(!position) return null;
+  const tooltipWidth=214;
+  const tooltipHeight=80;
+  const viewW=window.innerWidth;
+  const viewH=window.innerHeight;
+  let left,top;
+  if(position.right+tooltipWidth+6<=viewW){ left=position.right+6; }
+  else if(position.left-tooltipWidth-6>=0){ left=position.left-tooltipWidth-6; }
+  else{ left=Math.max(4,Math.min(position.left,viewW-tooltipWidth-4)); }
+  if(position.bottom+tooltipHeight+4<=viewH){ top=position.top; }
+  else if(position.top-tooltipHeight-4>=0){ top=position.top-tooltipHeight; }
+  else{ top=Math.max(4,Math.min(position.top,viewH-tooltipHeight-4)); }
+  return createPortal(
+    <div style={{
+      position:'fixed',left:`${left}px`,top:`${top}px`,zIndex:99999,
+      background:'#0a0705',border:'1.5px solid #2a5a2a',borderRadius:4,
+      padding:'12px 15px',width:200,pointerEvents:'none',
+      boxShadow:'0 0 20px #4ade8055',
+      opacity:1,filter:'none',
+    }}>
+      <div style={{fontFamily:"'Cinzel',serif",fontSize:10,color:'#4ade80',letterSpacing:1,marginBottom:5}}>BGY · 黑山羊幼仔</div>
+      <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:11,color:'#7aca7a',lineHeight:1.5}}>{desc}</div>
+    </div>,
+    document.body
+  );
 }
 
 function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel,frameStyle}){
-  const def=GOD_DEFS[card.godKey];if(!def)return null;
   const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseLeave } = useCardHoverTooltip();
+  const def=GOD_DEFS[card.godKey];if(!def)return null;
   const w=small?44:compact?62:82,h=small?58:compact?82:108;
   const col=def.col;
   // fit text: long subtitle gets smaller font
   const nameLen=def.name.length;
   const subLen=def.subtitle.length;
-  const nameFsz=small?7:nameLen>6?10:12;
+  const nameFsz=small?(nameLen>5?5.6:6.2):nameLen>6?10:12;
   const subFsz=small?6:subLen>10?8:9;
   
   return(
@@ -207,6 +217,11 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLe
         {!small&&!compact&&<div style={{height:1,background:`linear-gradient(90deg,${col}88,transparent)`,margin:'4px 0'}}/>}
         {/* God power name small */}
         {!small&&!compact&&<div style={{fontFamily:"'Cinzel',serif",fontSize:7.5,color:col,letterSpacing:0.5,lineHeight:1.3,opacity:0.9}}>「{def.power}」</div>}
+        {small&&(
+          <div style={{marginTop:2,fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:5.4,color:'#e8cc88',lineHeight:1.05,textAlign:'center',wordBreak:'break-word',overflowWrap:'anywhere',maxWidth:'100%'}}>
+            {godShortKey(card.godKey)}
+          </div>
+        )}
         {/* Octopus bottom-left */}
         {!small&&!compact&&(
           <div style={{position:'absolute',bottom:2,left:2}}>
@@ -215,12 +230,13 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLe
         )}
       </div>
       {/* Hover tooltip */}
-      {!small&&hover&&<GodTooltip def={def} godLevel={godLevel||1} position={tooltipPosition}/>}
+      {hover&&<GodTooltip def={def} godLevel={godLevel||1} position={tooltipPosition}/>}
     </>
   );
 }
 
 function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel,holderId,frameStyle}){
+  const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseLeave } = useCardHoverTooltip();
   if(!card)return null;
   if(card.isGod) return <GodDDCard card={card} onClick={onClick} disabled={disabled} selected={selected} highlight={highlight} small={small} compact={compact} godLevel={godLevel} frameStyle={frameStyle}/>;
   if(card.type==='blankZone'){
@@ -246,12 +262,40 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
       </div>
     );
   }
-  const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseLeave } = useCardHoverTooltip();
+  if(card.isBlackGoatYoung){
+    const w=small?44:compact?62:82,h=small?58:compact?82:108;
+    return(
+      <>
+        <div
+          ref={cardRef}
+          onClick={disabled?undefined:onClick}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          style={{
+            width:w,minWidth:w,height:h,flexShrink:0,
+            background:'linear-gradient(160deg,#0a1a0a,#081208)',
+            border:`1.5px solid ${selected?'#c8a96e':highlight?'#4ade80':'#2a5a2a'}`,
+            boxShadow:selected?'0 0 14px #c8a96e88,inset 0 0 12px #c8a96e22':highlight?'0 0 10px #4ade8066':'inset 0 1px 0 #2a5a2a44',
+            borderRadius:3,cursor:(onClick&&!disabled)?'pointer':'default',opacity:disabled?0.35:1,
+            transform:selected?'translateY(-5px)':undefined,transition:'all .14s',
+            display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+            padding:small?'4px 3px':compact?'5px 5px':'7px 8px',userSelect:'none',position:'relative',overflow:'hidden',
+            ...frameStyle,
+          }}
+        >
+          <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:small?11:compact?13:16,color:'#4ade80',letterSpacing:1}}>BGY</div>
+          <div style={{fontSize:small?14:compact?18:22,color:'#4ade80',textShadow:'0 0 10px #4ade8088'}}>☣</div>
+          {!small&&<div style={{fontFamily:"'IM Fell English','Georgia',serif",fontSize:compact?8:9,color:'#7aca7a',fontStyle:'italic',lineHeight:1.3,textAlign:'center',marginTop:2}}>黑山羊幼仔</div>}
+        </div>
+        {hover&&<BgyTooltip desc={card.desc} position={tooltipPosition}/>}
+      </>
+    );
+  }
   const s=CS[card.letter]||GOD_CS;
   const w=small?44:compact?62:82,h=small?58:compact?82:108;
   const isRoseThornMarked=card?.roseThornHolderId!=null&&holderId===card.roseThornHolderId;
   const nameLen=card.name?.length||0;
-  const nameFontSize=small?12:compact?(nameLen>10?8.1:nameLen>7?8.8:9.5):(nameLen>18?7.8:nameLen>14?8.5:nameLen>10?9.2:10.5);
+  const nameFontSize=small?(nameLen>8?5.1:nameLen>5?5.6:6.2):compact?(nameLen>10?8.1:nameLen>7?8.8:9.5):(nameLen>18?7.8:nameLen>14?8.5:nameLen>10?9.2:10.5);
   const descLen=(card.desc||'').length;
   const descFontSize=compact?(descLen>28?8.1:descLen>20?8.7:9.4):(descLen>34?8.1:descLen>26?8.8:9.5);
   
@@ -283,30 +327,34 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
         {/* Corner ornament */}
         {!small&&!compact&&<div style={{position:'absolute',top:3,right:5,color:s.border,fontSize:9,opacity:0.7}}>✦</div>}
         {isRoseThornMarked&&!small&&<div style={{position:'absolute',top:3,left:5,color:'#ff9ab2',fontSize:compact?8:9,opacity:0.92,textShadow:'0 0 8px rgba(255,90,130,0.55)',fontFamily:"'Cinzel',serif"}}>倒刺</div>}
-        <div style={{color:s.text,fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:small?12:compact?15:18,lineHeight:1,textShadow:`0 0 6px ${s.text}55`}}>{card.key}</div>
-        {!small&&<div style={{color:'#e8cc88',fontFamily:"'IM Fell English','Georgia',serif",fontSize:nameFontSize,fontWeight:600,marginTop:compact?1:2,lineHeight:1.12,wordBreak:'break-word'}}>{card.name}</div>}
+        <div style={{color:s.text,fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:small?10:compact?15:18,lineHeight:1,textShadow:`0 0 6px ${s.text}55`}}>{card.key}</div>
+        <div style={{color:'#e8cc88',fontFamily:"'IM Fell English','Georgia',serif",fontSize:nameFontSize,fontWeight:600,marginTop:small?2:compact?1:2,lineHeight:small?1.08:1.12,wordBreak:'break-word',overflowWrap:'anywhere',textAlign:small?'center':undefined}}>{card.name}</div>
         {!small&&!compact&&<div style={{color:'#d4b468',fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:descFontSize,marginTop:'auto',lineHeight:1.25,wordBreak:'break-word'}}>{card.desc}</div>}
         {/* Bottom ornament */}
         {!small&&!compact&&<div style={{position:'absolute',bottom:3,left:'50%',transform:'translateX(-50%)',color:s.border,fontSize:8,opacity:0.5}}>— ✦ —</div>}
       </div>
       {/* Hover tooltip */}
-      {!small&&hover&&<AreaTooltip card={card} position={tooltipPosition}/>}
+      {hover&&<AreaTooltip card={card} position={tooltipPosition}/>}
     </>
   );
 }
 
-function DDCardBack({small,frameStyle}){
+function DDCardBack({small,frameStyle,expansionKey='temporary'}){
+  const cardBackImage=getCardBackImage(expansionKey);
   return(
     <div style={{
       width:small?36:50,height:small?50:68,flexShrink:0,
-      background:'#100c08',
+      backgroundColor:'#100c08',
+      backgroundImage:`url('${cardBackImage}')`,
+      backgroundSize:'cover',
+      backgroundPosition:'center',
+      backgroundRepeat:'no-repeat',
       border:'1.5px solid #3a2510',
-      boxShadow:'inset 0 0 8px #0a0600',
+      boxShadow:'0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
       borderRadius:3,
       display:'flex',alignItems:'center',justifyContent:'center',
       ...frameStyle,
     }}>
-      <div style={{color:'#7a5a2a',fontSize:small?14:18,fontFamily:"serif"}}>✦</div>
     </div>
   );
 }
@@ -329,4 +377,4 @@ function GodCardDisplay({card,level=1}){
     </div>
   );
 }
-export { GodTooltip, AreaTooltip, useCardHoverTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG };
+export { GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG };

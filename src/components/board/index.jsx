@@ -1,6 +1,9 @@
 import React from 'react';
-import { CS, GOD_CS, RINFO, GOD_DEFS } from '../../constants/card';
-import { DDCard, DDCardBack } from '../cards';
+import { CS, GOD_CS, GOD_DEFS, getCardBackImage } from '../../constants/card';
+import { RINFO } from '../../game';
+import { isBlackGoatYoung } from '../../game/coreUtils';
+import { AreaTooltip, DDCard, DDCardBack, GodTooltip } from '../cards';
+import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
 
 function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth}){
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
@@ -96,12 +99,66 @@ const DISCARD_OFFSETS=[
   {x:-4,y:3},{x:5,y:-2},{x:-2,y:4},{x:3,y:-5},{x:-6,y:1},{x:1,y:3},
 ];
 
-function DiscardPile({count,topCard,scale=1}){
+const godShortKey = (godKey) => GOD_DEFS[godKey]?.shortKey || godKey || 'GOD';
+
+function MiniCardLabel({card,scale=1,glowColor='#c8a96e'}){
+  if(!card)return null;
+  const label=card.isGod?godShortKey(card.godKey):(card.key||'?');
+  const name=card.name||'';
+  return(
+    <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:`${Math.max(2,Math.round(3*scale))}px ${Math.max(2,Math.round(2*scale))}px`,textAlign:'center',lineHeight:1.05,background:'radial-gradient(circle at 45% 35%,rgba(255,230,120,0.14),rgba(0,0,0,0) 72%)'}}>
+      <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:(card.isGod?GOD_CS:(CS[card.letter]||GOD_CS)).text,fontSize:Math.max(6,Math.round((card.isGod?8.5:9.5)*scale)),letterSpacing:card.isGod?0.5:0,textShadow:`0 0 8px ${glowColor}`}}>
+        {label}
+      </div>
+      {name&&(
+        <div style={{marginTop:Math.max(1,Math.round(2*scale)),fontFamily:"'IM Fell English','Georgia',serif",fontWeight:600,color:'#e8cc88',fontSize:Math.max(5,Math.round((name.length>6?4.2:4.8)*scale)),lineHeight:1.02,wordBreak:'break-word',overflowWrap:'anywhere',maxWidth:'100%'}}>
+          {name}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ZhuLitMiniCard({lit,deckIndex,scale,cardW,cardH,left,top,zIndex,hidden}){
+  const {hover,tooltipPosition,cardRef,handleMouseEnter,handleMouseLeave}=useCardHoverTooltip();
+  const litCard=lit?.card;
+  const s=litCard?.isGod?GOD_CS:(CS[litCard?.letter]||GOD_CS);
+  if(hidden){
+    return <div style={{...CARD_BACK_STYLE,width:cardW,height:cardH,left,top,zIndex,opacity:0,pointerEvents:'none'}}/>;
+  }
+  return(
+    <>
+      <div
+        ref={cardRef}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        style={{
+          ...CARD_BACK_STYLE,
+          width:cardW,height:cardH,
+          left,top,zIndex,
+          background:s.bg,
+          border:`1.5px solid ${s.borderBright}`,
+          boxShadow:`0 0 ${Math.round(12*scale)}px ${GOD_DEFS.ZHU.col}88, inset 0 0 10px rgba(255,220,120,0.18)`,
+          '--zhu-rot':`${-5+deckIndex*1.5}deg`,
+          animation:`zhuLitCardPop 0.42s cubic-bezier(0.22,1,0.36,1) both`,
+          pointerEvents:'auto',
+        }}
+      >
+        <MiniCardLabel card={litCard} scale={scale} glowColor={GOD_DEFS.ZHU.col}/>
+      </div>
+      {hover&&litCard?.isGod&&<GodTooltip def={GOD_DEFS[litCard.godKey]} godLevel={1} position={tooltipPosition}/>}
+      {hover&&litCard&&!litCard.isGod&&<AreaTooltip card={litCard} position={tooltipPosition}/>}
+    </>
+  );
+}
+
+function DiscardPile({count,topCard,scale=1,expansionKey='temporary'}){
   const vis=Math.min(count,7);
   const cardW=Math.round(CARD_W*scale);
   const cardH=Math.round(CARD_H*scale);
   const outerW=Math.round((CARD_W+30)*scale);
   const outerH=Math.round((CARD_H+20)*scale);
+  const cardBackImage=getCardBackImage(expansionKey);
   if(vis===0) return(
     <div style={{width:outerW,height:outerH,display:'flex',alignItems:'center',justifyContent:'center'}}>
       <div style={{width:cardW,height:cardH,borderRadius:3,border:'1px dashed #2a1a08',background:'transparent'}}/>
@@ -124,26 +181,17 @@ function DiscardPile({count,topCard,scale=1}){
               background:s.bg,
               border:`1.5px solid ${s.borderBright}`,
               boxShadow:`0 0 6px ${s.glow}66`,
-            }:{}),
+            }:{
+              backgroundImage:`url('${cardBackImage}')`,
+              backgroundSize:'cover',
+              backgroundPosition:'center',
+              backgroundRepeat:'no-repeat',
+              boxShadow:'0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
+            }),
             zIndex:i,
           }}>
             {isTop&&topCard&&(
-              <div style={{
-                position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:`${Math.round(3*scale)}px ${Math.round(2*scale)}px`,textAlign:'center',lineHeight:1.1,
-              }}>
-                <div style={{
-                  fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:Math.round(topCard.isGod?10*scale:11*scale),letterSpacing:topCard.isGod?1:0,
-                }}>
-                  {topCard.isGod?(topCard.godKey||'GOD'):topCard.key}
-                </div>
-                {topCard.isGod&&topCard.name&&(
-                  <div style={{
-                    marginTop:Math.round(2*scale),fontFamily:"'Cinzel',serif",fontWeight:600,color:'#e8cc88',fontSize:Math.round(5*scale),
-                  }}>
-                    {topCard.name}
-                  </div>
-                )}
-              </div>
+              <MiniCardLabel card={topCard} scale={scale} glowColor={s.borderBright}/>
             )}
           </div>
         );
@@ -157,11 +205,12 @@ const CROSS_POSITIONS=[
   [18,65],[32,50],[50,72],[65,42],[80,60],[22,38],[70,28],[45,82],[55,18],[35,78],
   [75,52],[12,55],[88,35],[42,25],[60,68],
 ];
+const CROSS_SIZES=CROSS_POSITIONS.map(()=>6+(Math.random()*5|0));
 function HealCrossEffect({color='#4ade80'}){
   return(
     <div style={{position:'absolute',inset:0,overflow:'hidden',pointerEvents:'none',zIndex:50}}>
       {CROSS_POSITIONS.map(([lp,tp],i)=>{
-        const sz=6+Math.random()*5|0;
+        const sz=CROSS_SIZES[i];
         const delay=(0.05*i).toFixed(2);
         return(
           <div key={i} style={{
@@ -184,12 +233,14 @@ function HealCrossEffect({color='#4ade80'}){
 
 // ── Deck / Inspection / PileDisplay ─────────────────────────────
 
-function DeckPile({count,scale=1}){
+function DeckPile({count,scale=1,expansionKey='temporary',zhuLitCards=[],zhuHiddenCardId=null}){
   const vis=Math.min(count,7);
   const cardW=Math.round(CARD_W*scale);
   const cardH=Math.round(CARD_H*scale);
   const outerW=Math.round((CARD_W+12)*scale);
   const outerH=Math.round((CARD_H+12)*scale);
+  const cardBackImage=getCardBackImage(expansionKey);
+  const litByDeckIndex=new Map((zhuLitCards||[]).map(item=>[item.deckIndex,item]));
   if(vis===0) return(
     <div style={{width:outerW,height:outerH,display:'flex',alignItems:'center',justifyContent:'center'}}>
       <div style={{width:cardW,height:cardH,borderRadius:3,border:'1px dashed #2a1a08',background:'transparent'}}/>
@@ -198,20 +249,41 @@ function DeckPile({count,scale=1}){
   return(
     <div style={{width:outerW,height:outerH,position:'relative',flexShrink:0}}>
       {Array(vis).fill(0).map((_,i)=>{
+        const deckIndex=vis-1-i;
+        const lit=litByDeckIndex.get(deckIndex);
+        const litCard=lit?.card;
+        if(litCard){
+          const pull=Math.round((18+deckIndex*3)*scale);
+          return(
+            <ZhuLitMiniCard
+              key={`zhu-lit-${litCard.id||deckIndex}-${lit.lightNonce||0}`}
+              lit={lit}
+              deckIndex={deckIndex}
+              scale={scale}
+              cardW={cardW}
+              cardH={cardH}
+              left={Math.round(i*1.4*scale)-pull}
+              top={Math.round((vis-1-i)*1.4*scale)}
+              zIndex={i}
+              hidden={litCard.id===zhuHiddenCardId}
+            />
+          );
+        }
         const style={
           ...CARD_BACK_STYLE,
           width:cardW,height:cardH,
           left:Math.round(i*1.4*scale),top:Math.round((vis-1-i)*1.4*scale),
           zIndex:i,
-          background:'linear-gradient(135deg,#1e1208,#0e0804)',
+          backgroundColor:'#100c08',
+          backgroundImage:`url('${cardBackImage}')`,
+          backgroundSize:'cover',
+          backgroundPosition:'center',
+          backgroundRepeat:'no-repeat',
           border:'1.5px solid #4a3010',
+          boxShadow:'0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
         };
         return(
           <div key={i} style={style}>
-            {i===vis-1&&<div style={{
-              position:'absolute',inset:0,borderRadius:3,
-              background:'repeating-linear-gradient(45deg,#2a1a0820 0px,#2a1a0820 1px,transparent 1px,transparent 4px)',
-            }}/>}
           </div>
         );
       })}
@@ -249,11 +321,41 @@ function InspectionPile({count,scale=1}){
   );
 }
 
-function PileDisplay({deckCount,discardCount,discardTop,inspectionCount,compact,deckRef,discardRef,scaleRatio}){
+function DiscardOverlay({cards,onClose}){
+  if(!cards||!cards.length)return null;
+  return(
+    <div onClick={onClose} style={{
+      position:'fixed',inset:0,zIndex:99999,
+      background:'rgba(0,0,0,0.85)',
+      display:'flex',alignItems:'center',justifyContent:'center',
+      padding:'40px 20px',
+    }}>
+      <div onClick={e=>e.stopPropagation()} style={{
+        maxWidth:900,width:'100%',maxHeight:'85vh',
+        display:'flex',flexDirection:'column',alignItems:'center',gap:16,
+      }}>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:18,color:'#c8a96e',letterSpacing:2,textShadow:'0 0 12px #000'}}>弃牌堆 ({cards.length}张)</div>
+        <div style={{
+          display:'flex',flexWrap:'wrap',justifyContent:'center',gap:10,
+          overflowY:'auto',padding:'10px 6px',width:'100%',
+        }}>
+          {[...cards].reverse().map((c,i)=>(
+            <DDCard key={c.id||`disc-${i}`} card={c}/>
+          ))}
+        </div>
+        <div style={{fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontSize:12,color:'#7a5a2a',marginTop:4}}>点击任意位置关闭</div>
+      </div>
+    </div>
+  );
+}
+
+function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,deckRef,discardRef,scaleRatio,expansionKey='temporary',zhuLitCards=[],zhuHiddenCardId=null}){
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const _ = (px) => px * fontZoom;
   const pileWrapRef=React.useRef(null);
   const [pileWrapWidth,setPileWrapWidth]=React.useState(0);
+  const [discardHover,setDiscardHover]=React.useState(false);
+  const [showDiscardOverlay,setShowDiscardOverlay]=React.useState(false);
   React.useLayoutEffect(()=>{
     const el=pileWrapRef.current;
     if(!el)return;
@@ -277,25 +379,50 @@ function PileDisplay({deckCount,discardCount,discardTop,inspectionCount,compact,
       </div>
       {/* Deck — top-right corner */}
       <div ref={deckRef} data-deck-pile style={{position:'absolute',top:4,right:8,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-        <DeckPile count={deckCount} scale={pileScale}/>
+        <DeckPile count={deckCount} scale={pileScale} expansionKey={expansionKey} zhuLitCards={zhuLitCards} zhuHiddenCardId={zhuHiddenCardId}/>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:_(11),color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 8px #000000'}}>牌堆:{deckCount}</div>
       </div>
       {/* Discard — center */}
-      <div ref={discardRef} data-discard-pile style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
-        <DiscardPile count={discardCount} topCard={discardTop} scale={pileScale}/>
+      <div
+        ref={discardRef}
+        data-discard-pile
+        onMouseEnter={()=>{if(discardCards&&discardCards.length>0)setDiscardHover(true);}}
+        onMouseLeave={()=>setDiscardHover(false)}
+        onClick={()=>{if(discardCards&&discardCards.length>0)setShowDiscardOverlay(true);}}
+        style={{
+          display:'flex',flexDirection:'column',alignItems:'center',gap:4,
+          cursor:discardCards&&discardCards.length?'pointer':'default',
+          padding:'6px 10px',borderRadius:6,
+          border:discardHover?'1.5px solid #c8a96e':'1.5px solid transparent',
+          boxShadow:discardHover?'0 0 14px #c8a96e66,inset 0 0 12px #c8a96e22':'none',
+          transition:'all .18s',
+          position:'relative',
+        }}
+      >
+        <DiscardPile count={discardCount} topCard={discardTop} scale={pileScale} expansionKey={expansionKey}/>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:_(12),color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 10px #000000'}}>弃牌堆:{discardCount}</div>
+        {discardHover&&discardCards&&discardCards.length>0&&(
+          <div style={{
+            position:'absolute',bottom:'-18px',left:'50%',transform:'translateX(-50%)',
+            fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontSize:10,color:'#c8a96e',
+            whiteSpace:'nowrap',textShadow:'0 0 6px #000',pointerEvents:'none',
+          }}>点击查看</div>
+        )}
       </div>
+      {showDiscardOverlay&&(
+        <DiscardOverlay cards={discardCards} onClose={()=>setShowDiscardOverlay(false)}/>
+      )}
     </div>
   );
 }
 
 // ── PlayerPanel ─────────────────────────────────────────────────
-function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth}){
+function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='temporary'}){
   const ri=RINFO[player.role];
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const _ = (px) => px * fontZoom;
   const borderColor=isBeingHit?'#cc2222':isSanHit?'#8840cc':isCurrentTurn?'#c8a96e':isSelectable?ri.col:'#3a2510';
-  const handCards=showFaceUp?player.hand:player.hand.map((_,ci)=>({id:`back-${playerIndex}-${ci}`,_back:true}));
+  const handCards=showFaceUp?player.hand:player.hand.map((c,ci)=>isBlackGoatYoung(c)?c:{id:`back-${playerIndex}-${ci}`,_back:true});
   const HAND_CARD_WIDTH=showFaceUp?44:36;
   const HAND_CARD_HEIGHT=showFaceUp?58:50;
   const HAND_CARD_GAP=3;
@@ -322,7 +449,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
     ? Math.max(0, Math.ceil(((handCards.length*computedCardWidth)-handStripWidth)/(handCards.length-1)))
     : 0;
   return(
-    <div onClick={isSelectable?onSelect:undefined} style={{
+    <div data-death-panel={playerIndex} onClick={isSelectable?onSelect:undefined} style={{
       width:'100%',
       background:isCurrentTurn?'#1c1408':'#140f08',
       border:`1.5px solid ${borderColor}`,
@@ -394,7 +521,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
               zIndex:ci+1
             }}>
               {card._back
-                ?<DDCardBack small frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/>
+                ?<DDCardBack small expansionKey={expansionKey} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/>
                 :<DDCard card={card} small onClick={onCardSelect?()=>onCardSelect(ci):undefined} highlight={!!onCardSelect} holderId={playerIndex} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/>}
             </div>
           );
