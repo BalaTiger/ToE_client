@@ -30,11 +30,14 @@ const IMAGE_FILES = [
   '/img/logo/logo_cu-no-bg.png',
   '/img/logo/logo_hu-no-bg.png',
   '/img/logo/logo_tr-no-bg.png',
-  '/img/title/title_rule.png',
   '/img/title/texture_toehp.png',
+  '/img/bg/battle/earth_shadow.png',
+  '/img/bg/battle/sage_gift.png',
+  '/img/bg/battle/stars_call.png',
+  '/img/bg/battle/bone_fuel.png',
 ];
 
-const RESOURCE_CACHE_VERSION = '2026-04-24-mainui-v1';
+const RESOURCE_CACHE_VERSION = '2026-05-22-battle-bg-v1';
 const CACHE_VERSION_KEY = 'toe_resources_cached_version';
 
 export function formatFileSize(bytes) {

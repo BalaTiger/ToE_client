@@ -82,6 +82,18 @@ export function buildAnimQueue(oldGs, newGs) {
       q.push({ type: 'CARD_TRANSFER', fromPid: li, dest: 'player', toPid, count });
     });
   }
+  const shuMsg = newMsgs.find(m => m && m.includes('【黑暗子嗣】'));
+  if (shuMsg) {
+    const shuMatch = shuMsg.match(/【黑暗子嗣】(.+?) 获得(\d+)张黑山羊幼仔/);
+    if (shuMatch) {
+      const targetName = shuMatch[1];
+      const count = parseInt(shuMatch[2], 10);
+      const toPid = targetName === '你' ? 0 : effectivePlayers.findIndex(p => p?.name === targetName);
+      if (toPid >= 0 && count > 0) {
+        q.push({ type: 'CARD_TRANSFER', fromPid: oldGs.currentTurn, dest: 'player', toPid, count, msgs: [shuMsg] });
+      }
+    }
+  }
   return q;
 }
 

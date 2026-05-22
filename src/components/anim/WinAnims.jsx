@@ -367,7 +367,7 @@ function CthulhuResurrectionAnim({onConfirm}){
 function AnimOverlay({anim,exiting}){
   if(!anim) return null;
   if(anim.type==='YOUR_TURN') return <YourTurnAnim name={anim.name}/>;
-  if(anim.type==='DRAW_CARD') return <CardFlipAnim card={anim.card} triggerName={anim.triggerName} targetPid={anim.targetPid??0} exiting={exiting} skipTravel={!!anim.skipTravel}/>;
+  if(anim.type==='DRAW_CARD') return <CardFlipAnim card={anim.card} triggerName={anim.triggerName} targetPid={anim.targetPid??0} exiting={exiting} skipTravel={!!anim.skipTravel} guessCorrect={anim.guessCorrect}/>;
   if(anim.type==='DICE_ROLL') return <DiceRollAnim anim={anim} exiting={exiting}/>;
   if(anim.type==='DISCARD') return <DiscardMoveOverlay anim={anim} exiting={exiting}/>
   if(anim.type==='CARD_TRANSFER') return null; // rendered via cardTransfers state

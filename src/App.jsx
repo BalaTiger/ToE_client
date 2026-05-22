@@ -153,6 +153,24 @@ const isLocalDebugEnabled=()=>{
   try{return window.localStorage.getItem(LOCAL_DEBUG_KEY)==='1';}
   catch{return false;}
 };
+const BATTLE_BACKGROUND_BY_EXPANSION={
+  temporary:'/img/bg/battle/earth_shadow.png',
+  '地神的潜影':'/img/bg/battle/earth_shadow.png',
+  '先贤的馈赠':'/img/bg/battle/sage_gift.png',
+  '群星呼唤':'/img/bg/battle/stars_call.png',
+  '析骨为柴':'/img/bg/battle/bone_fuel.png',
+};
+function getBattleBackgroundStyle(expansionKey,isMobile){
+  const url=BATTLE_BACKGROUND_BY_EXPANSION[expansionKey]||BATTLE_BACKGROUND_BY_EXPANSION.temporary;
+  return {
+    backgroundColor:'#0a0705',
+    backgroundImage:`linear-gradient(180deg,rgba(6,4,3,0.48),rgba(7,4,2,0.66)), url('${url}')`,
+    backgroundSize:'cover, cover',
+    backgroundPosition:'center center, center center',
+    backgroundRepeat:'no-repeat, no-repeat',
+    backgroundAttachment:isMobile?'scroll, scroll':'fixed, fixed',
+  };
+}
 // Per-card copy counts — tuned for E[HP|HP card] ≈ −2
 // Cards: A1×3 A2×3 … D4×3 — 3 copies each, 48 total
 // Each card has exactly 3 copies → 48 cards total.
@@ -1613,6 +1631,7 @@ export default function Game(){
             triggerName:'斯芬克斯',
             targetPid:sphinxReveal.actorIdx,
             skipTravel:true,
+            guessCorrect:sphinxReveal.guessCorrect,
             msgs:guessMsg?[guessMsg]:[]
           });
           if(sphinxReveal.guessCorrect){
@@ -3838,7 +3857,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     const nextPhase=resumesAiTurn?'AI_TURN':'ACTION';
     const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:nextPhase,currentTurn:nextTurn,abilityData:{}};
     const logDelta=L.slice(gs.log.length);
-    const revealStep={type:'DRAW_CARD',card:actualCard,triggerName:'斯芬克斯',targetPid:gs.currentTurn,skipTravel:true,msgs:[logDelta[0]]};
+    const revealStep={type:'DRAW_CARD',card:actualCard,triggerName:'斯芬克斯',targetPid:gs.currentTurn,skipTravel:true,guessCorrect,msgs:[logDelta[0]]};
     let queue=[revealStep];
     if(guessCorrect){
       const gainMsg=logDelta.find(m=>m.includes('猜测正确'));
@@ -4809,8 +4828,16 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       let P=copyPlayers(gs.players);
       for(let i=0;i<count;i++) P[pi].hand.push(createBlackGoatYoungCard());
       const targetName=P[pi].name;
-      const L=[...gs.log,`【黑暗子嗣】${targetName==='你'?'你':targetName} 获得${count}张黑山羊幼仔`];
-      setGs({...gs,players:P,log:L,phase:'ACTION',abilityData:{}});
+      const logMsg=`【黑暗子嗣】${targetName==='你'?'你':targetName} 获得${count}张黑山羊幼仔`;
+      const L=[...gs.log,logMsg];
+      const newGs={...gs,players:P,log:L,phase:'ACTION',abilityData:{}};
+      const queue=buildAnimQueue(gs,newGs);
+      if(queue.length){
+        pendingGsRef.current=newGs;
+        animQueueRef.current=[...queue.slice(1)];
+        setGs(p=>p?{...p,phase:'ACTION',abilityData:{}}:p);
+        setAnim(queue[0]);
+      }else setGs(newGs);
     }
   }
   // Use a god card from hand: upgrade (same god, unlimited) or worship (different/new, once per turn)
@@ -4918,9 +4945,10 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
   }
 
   const skillLimited=gs.skillUsed&&skillRi.skillLimited;
+  const battleBackgroundStyle=getBattleBackgroundStyle(gs.expansionKey,isMobile);
 
   return(<>
-    <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:7,padding:isMobile?'6px 8px':'8px 10px',position:'relative',left:globalShiftX||undefined,overflowX:'hidden',overflowY:'scroll',scrollbarGutter:'stable',
+    <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...battleBackgroundStyle,color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:7,padding:isMobile?'6px 8px':'8px 10px',position:'relative',left:globalShiftX||undefined,overflowX:'hidden',overflowY:'scroll',scrollbarGutter:'stable',
     animation:deathShake?'deathShakeAnim 2.0s ease-in-out':screenShake?'screenShakeAnim 0.38s ease-in-out':undefined,
     }}>
       {/* Global vignette */}

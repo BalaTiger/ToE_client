@@ -61,7 +61,7 @@ function FlowerBloom(){
   );
 }
 
-function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false}){
+function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guessCorrect}){
   const [traveled,setTraveled]=React.useState(skipTravel);
   React.useEffect(()=>{
     if(skipTravel){setTraveled(true);return undefined;}
@@ -205,6 +205,32 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false}){
       }}/>
 
       {(isPositiveInspection||(!isInspection&&cardPolarity==='positive'))&&<FlowerBloom/>}
+
+      {triggerName==='斯芬克斯'&&guessCorrect!==undefined&&(
+        <div style={{
+          position:'absolute',
+          left:0,right:0,
+          top:'calc(50% - 170px)',
+          display:'flex',
+          justifyContent:'center',
+          pointerEvents:'none',
+          zIndex:1000,
+        }}>
+          <div style={{
+            fontFamily:"'Cinzel Decorative','Cinzel',serif",
+            fontSize:32,
+            fontWeight:700,
+            letterSpacing:2,
+            color:guessCorrect?'#4ade80':'#ef4444',
+            textShadow:guessCorrect
+              ?'0 0 10px rgba(74,222,128,0.7), 0 0 22px rgba(74,222,128,0.4)'
+              :'0 0 10px rgba(239,68,68,0.7), 0 0 22px rgba(239,68,68,0.4)',
+            animation:'animPop 0.5s cubic-bezier(0.34,1.56,0.64,1) 1.0s both',
+          }}>
+            {guessCorrect?'猜对了！':'猜错了！'}
+          </div>
+        </div>
+      )}
 
       <div style={{position:'absolute',inset:0,pointerEvents:'none'}}>{spirits}</div>
 
