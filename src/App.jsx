@@ -107,7 +107,7 @@ import {
   buildInspectionRevealQueue,
   buildInspectionEventFlow,
 } from "./game/animQueueHelpers";
-import { _getZoomCompensatedRect, getPlayerHandAnchorCenter, getPileAnchorCenter } from './utils/dom';
+import { _getZoomCompensatedRect, getPlayerHandAnchorCenter, getPlayerAreaAnchorCenter, getPileAnchorCenter } from './utils/dom';
 import { ANIM_DURATION, ANIM_SPEED_SCALE, CARD_REVEAL_DURATION, ANIM_STEP_GAP } from './components/anim/constants';
 import { SMOKE_COLS, FLOWER_CONFIGS, DICE_FACES, ANIM_CFG } from './components/anim/data';
 import { CardFlipAnim } from './components/anim/CardFlipAnim';
@@ -1259,9 +1259,11 @@ export default function Game(){
       }));
       setTimeout(()=>setBewitchAnim(null),1200);
     }else if(anim?.type==='CARD_TRANSFER'){
-      const{fromPid,dest,toPid,count}=anim;
-      // 测量源点（优先取真正的手牌展示区）
-      const srcPos=getPlayerHandAnchorCenter(fromPid);
+      const{fromPid,dest,toPid,count,sourceAnchor}=anim;
+      // 测量源点。普通转牌从手牌区出发；生成型卡牌可从角色区域出发。
+      const srcPos=sourceAnchor==='playerArea'
+        ? getPlayerAreaAnchorCenter(fromPid)
+        : getPlayerHandAnchorCenter(fromPid);
       const srcX=srcPos.x;
       const srcY=srcPos.y;
       // 测量终点

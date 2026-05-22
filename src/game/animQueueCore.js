@@ -90,7 +90,7 @@ export function buildAnimQueue(oldGs, newGs) {
       const count = parseInt(shuMatch[2], 10);
       const toPid = targetName === '你' ? 0 : effectivePlayers.findIndex(p => p?.name === targetName);
       if (toPid >= 0 && count > 0) {
-        q.push({ type: 'CARD_TRANSFER', fromPid: oldGs.currentTurn, dest: 'player', toPid, count, msgs: [shuMsg] });
+        q.push({ type: 'CARD_TRANSFER', fromPid: oldGs.currentTurn, dest: 'player', toPid, count, sourceAnchor: 'playerArea', msgs: [shuMsg] });
       }
     }
   }
