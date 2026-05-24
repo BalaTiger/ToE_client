@@ -168,12 +168,35 @@ describe('applyFx', () => {
 
   it('adjDamageHP: 相邻角色失去HP', () => {
     const players = makeStandardPlayers(5);
-    const card = makeZoneCard('A1', 2); // adjDamageHP val=1
+    const card = { type: 'adjDamageHP', name: '测试', key: 'TEST', val: 1 };
     const gs = makeGs({ players });
     const res = applyFx(card, 0, null, players, [], [], gs);
     expect(res.P[0].hp).toBe(9); // self takes 1
     expect(res.P[4].hp).toBe(9); // left neighbor
     expect(res.P[1].hp).toBe(9); // right neighbor
+  });
+
+  it('adjDamageSAN: 自己与相邻角色都失去SAN', () => {
+    const players = makeStandardPlayers(5);
+    const card = { type: 'adjDamageSAN', name: '测试', key: 'TEST', val: 1 };
+    const gs = makeGs({ players });
+    const res = applyFx(card, 0, null, players, [], [], gs);
+    expect(res.P[0].san).toBe(9);
+    expect(res.P[4].san).toBe(9);
+    expect(res.P[1].san).toBe(9);
+  });
+
+  it('adjDamageBoth: 自己与相邻角色都失去HP和SAN', () => {
+    const players = makeStandardPlayers(5);
+    const card = { type: 'adjDamageBoth', name: '测试', key: 'TEST', hpVal: 2, sanVal: 1 };
+    const gs = makeGs({ players });
+    const res = applyFx(card, 0, null, players, [], [], gs);
+    expect(res.P[0].hp).toBe(8);
+    expect(res.P[0].san).toBe(9);
+    expect(res.P[4].hp).toBe(8);
+    expect(res.P[4].san).toBe(9);
+    expect(res.P[1].hp).toBe(8);
+    expect(res.P[1].san).toBe(9);
   });
 
   it('swapAllHands: 交换全部手牌', () => {
@@ -348,12 +371,22 @@ describe('applyFx', () => {
 
   it('avoidNegativeFor: 指定角色规避', () => {
     const players = makeStandardPlayers(5);
-    const card = makeZoneCard('A1', 2); // adjDamageHP val=1
+    const card = { type: 'adjDamageHP', name: '测试', key: 'TEST', val: 1 };
     const gs = makeGs({ players });
     const res = applyFx(card, 0, null, players, [], [], gs, false, [1]);
     expect(res.P[0].hp).toBe(9); // actor still hit
     expect(res.P[1].hp).toBe(10); // avoided
     expect(res.P[4].hp).toBe(9); // not avoided
+  });
+
+  it('avoidNegativeFor: 规避自己时相邻角色仍受伤', () => {
+    const players = makeStandardPlayers(5);
+    const card = { type: 'adjDamageHP', name: '测试', key: 'TEST', val: 1 };
+    const gs = makeGs({ players });
+    const res = applyFx(card, 0, null, players, [], [], gs, false, [0]);
+    expect(res.P[0].hp).toBe(10); // actor avoided
+    expect(res.P[1].hp).toBe(9); // right neighbor still hit
+    expect(res.P[4].hp).toBe(9); // left neighbor still hit
   });
 
   it('selfDamageHPPeek: 规避时仍触发偷看', () => {
@@ -369,7 +402,7 @@ describe('applyFx', () => {
     const players = makeStandardPlayers(3);
     players[1].isDead = true;
     players[1].hp = 0;
-    const card = makeZoneCard('A1', 2); // adjDamageHP val=1
+    const card = { type: 'adjDamageHP', name: '测试', key: 'TEST', val: 1 };
     const gs = makeGs({ players });
     const res = applyFx(card, 0, null, players, [], [], gs);
     expect(res.P[1].hp).toBe(0); // dead player unaffected

@@ -5,28 +5,57 @@ import {
   ROLE_CULTIST,
 } from '../coreUtils';
 import { mkDeck, mkRoles } from '../setup';
+import { EXPANSIONS } from '../../constants/card';
 import { resetIds } from './factory';
 
 describe('mkDeck', () => {
   beforeEach(() => resetIds());
 
-  it('返回 56 张牌', () => {
-    const deck = mkDeck();
-    expect(deck).toHaveLength(56);
-  });
+  const EXPECTED_ZONE_CARD_COUNT = 48;
+  const EXPECTED_SPECIAL_CARD_COUNT = 20;
+  const EXPECTED_FORMAL_DECK_COUNT = EXPECTED_ZONE_CARD_COUNT + EXPECTED_SPECIAL_CARD_COUNT;
 
-  it('包含 48 张区域牌', () => {
-    const deck = mkDeck();
+  it('临时拓展包允许因测试牌超出正式牌堆数量', () => {
+    const deck = mkDeck('temporary');
     const zoneCards = deck.filter(c => c.isZone);
-    expect(zoneCards).toHaveLength(48);
+    const specialCards = deck.filter(c => c.isGod);
+
+    expect(zoneCards.length).toBeGreaterThanOrEqual(EXPECTED_ZONE_CARD_COUNT);
+    expect(specialCards).toHaveLength(EXPECTED_SPECIAL_CARD_COUNT);
+    expect(deck.length).toBeGreaterThanOrEqual(EXPECTED_FORMAL_DECK_COUNT);
   });
 
-  it('包含 8 张神牌（4 NYA + 4 CTH）', () => {
-    const deck = mkDeck();
-    const godCards = deck.filter(c => c.isGod);
-    expect(godCards).toHaveLength(8);
-    expect(godCards.filter(c => c.godKey === 'NYA')).toHaveLength(4);
-    expect(godCards.filter(c => c.godKey === 'CTH')).toHaveLength(4);
+  it('记录当前临时拓展包牌堆规模', () => {
+    const deck = mkDeck('temporary');
+    const zoneCards = deck.filter(c => c.isZone);
+    const specialCards = deck.filter(c => c.isGod);
+
+    expect(zoneCards).toHaveLength(49);
+    expect(specialCards).toHaveLength(20);
+    expect(deck).toHaveLength(69);
+  });
+
+  it('各拓展包神牌/圣物牌数量与拓展包配置一致', () => {
+    for (const [expansionKey, expansion] of Object.entries(EXPANSIONS)) {
+      const deck = mkDeck(expansionKey);
+      const specialCards = deck.filter(c => c.isGod);
+      const copies = expansion.godCopies || 4;
+
+      expect(specialCards).toHaveLength((expansion.godCardKeys || []).length * copies);
+      for (const godKey of expansion.godCardKeys || []) {
+        expect(specialCards.filter(c => c.godKey === godKey)).toHaveLength(copies);
+      }
+    }
+  });
+
+  it('未完成拓展包不强制满足正式 68 张目标', () => {
+    for (const expansionKey of Object.keys(EXPANSIONS).filter(key => key !== 'temporary')) {
+      const deck = mkDeck(expansionKey);
+      const zoneCards = deck.filter(c => c.isZone);
+
+      expect(zoneCards.length).toBeLessThanOrEqual(EXPECTED_ZONE_CARD_COUNT);
+      expect(deck.length).toBeLessThanOrEqual(EXPECTED_FORMAL_DECK_COUNT);
+    }
   });
 
   it('所有区域牌都有唯一 id', () => {

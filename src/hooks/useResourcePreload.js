@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { buildPublicUrl } from "../utils/url";
 
 const AUDIO_FILES = [
   '/sounds/BGM/mainTheme.mp3',
@@ -37,13 +38,70 @@ const IMAGE_FILES = [
   '/img/bg/battle/bone_fuel.png',
 ];
 
+const RESOURCE_FILES = [
+  ...AUDIO_FILES.map(path => ({ path, type: 'audio' })),
+  ...VIDEO_FILES.map(path => ({ path, type: 'video' })),
+  ...IMAGE_FILES.map(path => ({ path, type: 'image' })),
+];
+
 const RESOURCE_CACHE_VERSION = '2026-05-22-battle-bg-v1';
 const CACHE_VERSION_KEY = 'toe_resources_cached_version';
+
+const LOAD_ERROR_LABELS = {
+  audio: '音频加载失败',
+  video: '视频加载失败',
+  image: '图片加载失败',
+};
 
 export function formatFileSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+async function getResourceSize(resource) {
+  try {
+    const response = await fetch(buildPublicUrl(resource.path), { method: 'HEAD' });
+    return parseInt(response.headers.get('content-length') || '0', 10) || 0;
+  } catch (error) {
+    console.error(`Failed to get size for ${resource.path}`, error);
+    return 0;
+  }
+}
+
+function loadResource(resource) {
+  const url = buildPublicUrl(resource.path);
+
+  if (resource.type === 'audio') {
+    const audio = new Audio(url);
+    audio.crossOrigin = 'anonymous';
+    audio.preload = 'auto';
+    return new Promise((resolve, reject) => {
+      audio.addEventListener('canplaythrough', resolve, { once: true });
+      audio.addEventListener('error', reject, { once: true });
+      audio.load();
+    });
+  }
+
+  if (resource.type === 'video') {
+    const video = document.createElement('video');
+    video.src = url;
+    video.preload = 'metadata';
+    video.crossOrigin = 'anonymous';
+    return new Promise((resolve, reject) => {
+      video.addEventListener('loadeddata', resolve, { once: true });
+      video.addEventListener('error', reject, { once: true });
+      video.load();
+    });
+  }
+
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  return new Promise((resolve, reject) => {
+    img.onload = resolve;
+    img.onerror = reject;
+    img.src = url;
+  });
 }
 
 export function useResourcePreload() {
@@ -55,150 +113,70 @@ export function useResourcePreload() {
   const [loadedSize, setLoadedSize] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+    const setIfMounted = setter => value => {
+      if (!cancelled) setter(value);
+    };
+    const setSafeIsLoading = setIfMounted(setIsLoading);
+    const setSafeLoadingProgress = setIfMounted(setLoadingProgress);
+    const setSafeLoadingError = setIfMounted(setLoadingError);
+    const setSafeCurrentFile = setIfMounted(setCurrentFile);
+    const setSafeTotalSize = setIfMounted(setTotalSize);
+    const setSafeLoadedSize = setIfMounted(setLoadedSize);
+
     const preloadResources = async () => {
       try {
         const cachedVersion = localStorage.getItem(CACHE_VERSION_KEY);
         if (cachedVersion === RESOURCE_CACHE_VERSION) {
-          setIsLoading(false);
+          setSafeIsLoading(false);
           return;
         }
       } catch {
-        // localStorage error, proceed with preloading
+        // localStorage error, proceed with preloading.
       }
 
       let loadedCount = 0;
-      const totalFiles = AUDIO_FILES.length + VIDEO_FILES.length + IMAGE_FILES.length;
-      let totalBytes = 0;
       let loadedBytes = 0;
+      const totalFiles = RESOURCE_FILES.length;
+      const resources = await Promise.all(
+        RESOURCE_FILES.map(async resource => ({
+          ...resource,
+          size: await getResourceSize(resource),
+        }))
+      );
+      const totalBytes = resources.reduce((sum, resource) => sum + resource.size, 0);
+      setSafeTotalSize(totalBytes);
 
-      const calculateTotalSize = async () => {
-        let total = 0;
-        for (const file of [...AUDIO_FILES, ...VIDEO_FILES, ...IMAGE_FILES]) {
-          try {
-            const response = await fetch(file, { method: 'HEAD' });
-            const size = parseInt(response.headers.get('content-length') || '0', 10);
-            total += size;
-          } catch (error) {
-            console.error(`Failed to get size for ${file}`, error);
-          }
-        }
-        return total;
-      };
-
-      totalBytes = await calculateTotalSize();
-      setTotalSize(totalBytes);
-
-      for (const file of AUDIO_FILES) {
+      for (const resource of resources) {
+        if (cancelled) return;
         try {
-          setCurrentFile(file.split('/').pop());
-          const audio = new Audio(file);
-          audio.crossOrigin = 'anonymous';
-
-          let fileSize = 0;
-          try {
-            const response = await fetch(file, { method: 'HEAD' });
-            fileSize = parseInt(response.headers.get('content-length') || '0', 10);
-          } catch (error) {
-            console.error(`Failed to get size for ${file}`, error);
-          }
-
-          await new Promise((resolve, reject) => {
-            audio.addEventListener('canplaythrough', () => {
-              loadedBytes += fileSize;
-              setLoadedSize(loadedBytes);
-              resolve();
-            });
-            audio.addEventListener('error', reject);
-            audio.load();
-          });
-          loadedCount++;
-          setLoadingProgress((loadedCount / totalFiles) * 100);
+          setSafeCurrentFile(resource.path.split('/').pop());
+          await loadResource(resource);
         } catch (error) {
-          console.error(`Failed to load audio: ${file}`, error);
-          setLoadingError(prev => prev || (error?.message ? `音频加载失败: ${error.message}` : '音频加载失败'));
-          loadedCount++;
-          setLoadingProgress((loadedCount / totalFiles) * 100);
+          console.error(`Failed to load ${resource.type}: ${resource.path}`, error);
+          const errorLabel = LOAD_ERROR_LABELS[resource.type] || '资源加载失败';
+          setSafeLoadingError(prev => prev || (error?.message ? `${errorLabel}: ${error.message}` : errorLabel));
         }
-      }
 
-      for (const file of VIDEO_FILES) {
-        try {
-          setCurrentFile(file.split('/').pop());
-          const video = document.createElement('video');
-          video.src = file;
-          video.preload = 'metadata';
-          video.crossOrigin = 'anonymous';
-
-          let fileSize = 0;
-          try {
-            const response = await fetch(file, { method: 'HEAD' });
-            fileSize = parseInt(response.headers.get('content-length') || '0', 10);
-          } catch (error) {
-            console.error(`Failed to get size for ${file}`, error);
-          }
-
-          await new Promise((resolve, reject) => {
-            video.addEventListener('loadeddata', () => {
-              loadedBytes += fileSize;
-              setLoadedSize(loadedBytes);
-              resolve();
-            });
-            video.addEventListener('error', reject);
-            video.load();
-          });
-          loadedCount++;
-          setLoadingProgress((loadedCount / totalFiles) * 100);
-        } catch (error) {
-          console.error(`Failed to load video: ${file}`, error);
-          setLoadingError(prev => prev || (error?.message ? `视频加载失败: ${error.message}` : '视频加载失败'));
-          loadedCount++;
-          setLoadingProgress((loadedCount / totalFiles) * 100);
-        }
-      }
-
-      for (const file of IMAGE_FILES) {
-        try {
-          setCurrentFile(file.split('/').pop());
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-
-          let fileSize = 0;
-          try {
-            const response = await fetch(file, { method: 'HEAD' });
-            fileSize = parseInt(response.headers.get('content-length') || '0', 10);
-          } catch (error) {
-            console.error(`Failed to get size for ${file}`, error);
-          }
-
-          await new Promise((resolve, reject) => {
-            img.onload = () => {
-              loadedBytes += fileSize;
-              setLoadedSize(loadedBytes);
-              resolve();
-            };
-            img.onerror = reject;
-            img.src = file;
-          });
-          loadedCount++;
-          setLoadingProgress((loadedCount / totalFiles) * 100);
-        } catch (error) {
-          console.error(`Failed to load image: ${file}`, error);
-          setLoadingError(prev => prev || (error?.message ? `图片加载失败: ${error.message}` : '图片加载失败'));
-          loadedCount++;
-          setLoadingProgress((loadedCount / totalFiles) * 100);
-        }
+        loadedBytes += resource.size;
+        loadedCount++;
+        setSafeLoadedSize(loadedBytes);
+        setSafeLoadingProgress((loadedCount / totalFiles) * 100);
       }
 
       try {
         localStorage.setItem(CACHE_VERSION_KEY, RESOURCE_CACHE_VERSION);
       } catch {
-        // localStorage error, ignore
+        // localStorage error, ignore.
       }
 
-      setIsLoading(false);
+      setSafeIsLoading(false);
     };
 
     preloadResources();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return {
