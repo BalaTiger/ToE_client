@@ -128,6 +128,9 @@ import { useAnimationQueue } from './hooks/useAnimationQueue';
 import { useWindowSize } from './hooks/useWindowSize';
 import { useGameAudio } from './hooks/useGameAudio';
 import { useAiWatchdog, BAD_PHASES } from './hooks/useAiWatchdog';
+import { useRoomCountdown } from './hooks/useRoomCountdown';
+import { useMpCthDecisionTimer, useMpDiscardTimer } from './hooks/useMultiplayerTimers';
+import { useVisualDiscardSync } from './hooks/useVisualDiscardSync';
 import { Ellipsis } from './components/ui/Ellipsis';
 import { FlyingEmoji } from './components/ui/FlyingEmoji';
 import { EMOJI_LIST } from './components/ui/emojiData';
@@ -411,18 +414,10 @@ export default function Game(){
   const mpRoleRevealedRef=useRef(false); // 每局游戏只触发一次角色揭示
   const gameEndSentRef=useRef(false);      // 防止 gameEnd 重复发送
   const [isDisconnected,setIsDisconnected]=useState(false);
-  const [mpCthSec,setMpCthSec]=useState(null);
   const [mpTurnSec,setMpTurnSec]=useState(null);       // 回合倒计时剩余秒数（显示用）
-  const [mpDiscardSec,setMpDiscardSec]=useState(null); // 弃牌阶段倒计时
   const [mpHuntSec,setMpHuntSec]=useState(null);       // 追捕亮牌倒计时（被追捕方显示）
-  // 房间倒计时显示（前端独立计时）
-  const [cdSecondsLeft,setCdSecondsLeft]=useState(null);
-  const [cdType,setCdType]=useState(null);   // 'start' | 'kick'
-  const cdIntervalRef=useRef(null);
   const mpTurnIntervalRef=useRef(null);
   const mpHuntIntervalRef=useRef(null);
-  const mpDiscardIntervalRef=useRef(null);
-  const mpCthIntervalRef=useRef(null);
   // 表情功能
   const [flyingEmojis,setFlyingEmojis]=useState([]);  // [{id,emoji,startX,startY,endX,endY,arcHeight,durationMs}]
   const [showEmojiPicker,setShowEmojiPicker]=useState(false);
@@ -2059,7 +2054,6 @@ export default function Game(){
   const autoDiscardRef=useRef(null);
   const latestGsRef=useRef(null); // always mirrors latest gs for closures reading stale state
   latestGsRef.current=gs; // 同步更新：渲染期间直接镜像，确保 confirmDiscard 等闭包读到最新值
-  const mpCthDecisionTimerRef=useRef(null);
 
   // 1. 兜底与静默同步：当没有动画在播放时，且不处于AI回合（AI回合中draw效果已bake进gs但动画尚未开始），UI 强制对齐真实的底层数据
   useEffect(() => {
@@ -2097,35 +2091,16 @@ export default function Game(){
     }
   }, [anim]);
 
-  // ── 房间倒计时显示（前端独立计时，服务端计时器版本号变化时重置）───
-  useEffect(()=>{
-    if(cdIntervalRef.current){clearInterval(cdIntervalRef.current);cdIntervalRef.current=null;}
-    const cd=roomModal?.countdown;
-    if(!cd){setCdSecondsLeft(null);setCdType(null);return;}
-    setCdType(cd.type);
-    setCdSecondsLeft(cd.seconds);
-    cdIntervalRef.current=setInterval(()=>{
-      setCdSecondsLeft(s=>{
-        const next=s===null||s<=1?0:s-1;
-        if(next===0)clearInterval(cdIntervalRef.current);
-        if(next>0&&next<=10)playTickSound();
-        return next;
-      });
-    },1000);
-    return()=>{if(cdIntervalRef.current)clearInterval(cdIntervalRef.current);};
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[roomModal?.countdown?.version,playTickSound]);
+  const { cdSecondsLeft, cdType } = useRoomCountdown(roomModal, playTickSound);
+  const mpCthSec = useMpCthDecisionTimer({ isMpCthDecisionPhase, gs, playTickSound, setGs });
+  const mpDiscardSec = useMpDiscardTimer({ isMultiplayer, gs, isLocalCurrentTurn, playTickSound, setGs });
 
   // ── 多人游戏：回合计时器（45s）─────────────────────────────────
   // 只在回合切换时重置（currentTurn/_turnKey 变化），不监听 phase 避免每次 phase 变化都重置
   const mpTurnTimeoutRef=useRef(null);
   const mpTurnStartRef=useRef(null);    // Date.now() when current turn timer started
   const mpTurnPausedElapsedRef=useRef(null); // ms elapsed before HUNT_WAIT_REVEAL pause
-  useEffect(()=>{
-    if(!gs)return;
-    if(anim||animQueueRef.current.length>0||pendingGsRef.current)return;
-    setVisualDiscard(getVisualDiscardForState(gs));
-  },[gs,gs?.discard,anim,getVisualDiscardForState]);
+  useVisualDiscardSync({ gs, anim, animQueueRef, pendingGsRef, getVisualDiscardForState, setVisualDiscard });
   useEffect(()=>{
     if(!isMultiplayer||!gs||gs.gameOver||!isLocalCurrentTurn(gs))return;
     mpTurnPausedElapsedRef.current=null; // 新回合清除暂停记录
@@ -2234,25 +2209,6 @@ export default function Game(){
   },[gs?.phase,gs?.currentTurn,isMultiplayer]);
 
   useEffect(()=>{
-    if(!isMpCthDecisionPhase||!gs||gs.gameOver)return;
-    setMpCthSec(15);
-    mpCthIntervalRef.current=setInterval(()=>{
-      setMpCthSec(s=>{
-        const next=s===null||s<=1?0:s-1;
-        if(next===0)clearInterval(mpCthIntervalRef.current);
-        if(next>0&&next<=5)playTickSound();
-        return next;
-      });
-    },1000);
-    mpCthDecisionTimerRef.current=setTimeout(()=>setGs(p=>p?{...p,_mpAutoCthDecision:true}:p),15000);
-    return()=>{
-      clearTimeout(mpCthDecisionTimerRef.current);mpCthDecisionTimerRef.current=null;
-      clearInterval(mpCthIntervalRef.current);setMpCthSec(null);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[isMpCthDecisionPhase,gs?.phase,gs?.drawReveal?.card?.id,gs?.abilityData?.godCard?.id,gs?.gameOver,playTickSound]);
-
-  useEffect(()=>{
     if(!gs?._mpAutoCthDecision)return;
     if(isBlocked)return;
     const base={...gs,_mpAutoCthDecision:undefined};
@@ -2352,23 +2308,6 @@ export default function Game(){
     applyNextTurnGs(nextGs);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[gs?._mpEndTurn,isBlocked]);
-
-  // ── 多人游戏：弃牌计时器（15s）─────────────────────────────────
-  useEffect(()=>{
-    if(!isMultiplayer||!gs||gs.gameOver||gs.phase!=='DISCARD_PHASE'||!isLocalCurrentTurn(gs))return;
-    setMpDiscardSec(15);
-    mpDiscardIntervalRef.current=setInterval(()=>{
-      setMpDiscardSec(s=>{
-        const next=s===null||s<=1?0:s-1;
-        if(next===0)clearInterval(mpDiscardIntervalRef.current);
-        if(next>0&&next<=10)playTickSound();
-        return next;
-      });
-    },1000);
-    const t=setTimeout(()=>setGs(p=>p?{...p,_mpAutoDiscard:true}:p),15000);
-    return()=>{clearTimeout(t);clearInterval(mpDiscardIntervalRef.current);setMpDiscardSec(null);};
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[isMultiplayer,gs?.phase,gs?.currentTurn,gs?._turnKey,gs?.gameOver,playTickSound]);
 
   // 执行自动从右侧弃牌
   useEffect(()=>{

@@ -5,10 +5,10 @@ export function resolveTurnHighlightForStep(step,nextGs,playersFallback=[]){
   const stepName=
     step.name ||
     (Array.isArray(step.msgs)
-      ? (step.msgs.find(line=>isTurnStartLog(line))||"").replace(/^鈹€鈹€ (.+) 鐨勫洖鍚堝紑濮?鈹€鈹€$/,"$1")
+      ? (step.msgs.find(line=>isTurnStartLog(line))||"").replace(/^── (.+) 的回合开始 ──$/,"$1")
       : "");
   if(!stepName)return null;
-  if(stepName==="浣?")return 0;
+  if(stepName==="你")return 0;
   const players=(nextGs?.players||playersFallback||[]);
   const idx=players.findIndex(p=>p?.name===stepName);
   return idx>=0?idx:null;
@@ -32,7 +32,7 @@ export function buildInspectionRevealQueue(events){
   return (events||[]).map(ev=>({
     type:"DRAW_CARD",
     card:ev.card,
-    triggerName:"妫€瀹氱墝",
+    triggerName:"检定牌",
     targetPid:ev.target??0,
   }));
 }
@@ -51,7 +51,7 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
     queue.push({
       type:"DRAW_CARD",
       card:ev.card,
-      triggerName:"妫€瀹氱墝",
+      triggerName:"检定牌",
       targetPid:ev.target??0,
     });
     const effectQ=buildAnimQueue({players:beforePlayers,log:beforeLog},{players:afterPlayers,log:afterLog});
