@@ -8,6 +8,7 @@ export const EMPTY_TURN_ANIM_FIELDS = Object.freeze({
   _turnStartLogs: [],
   _drawLogs: [],
   _statLogs: [],
+  _statEvents: [],
   _preTurnPlayers: null,
 });
 

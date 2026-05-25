@@ -164,6 +164,9 @@ describe('applyFx', () => {
     const res = applyFx(card, 0, null, players, [], [], gs);
     expect(res.P[0].hp).toBe(7);
     expect(res.msgs[0]).toContain('失去 3 HP');
+    expect(res.statePatch._statEvents).toMatchObject([
+      { type: 'HP_LOSS', target: 0, from: { hp: 10 }, to: { hp: 7 } },
+    ]);
   });
 
   it('adjDamageHP: 相邻角色失去HP', () => {

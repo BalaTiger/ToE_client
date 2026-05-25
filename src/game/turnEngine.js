@@ -17,6 +17,13 @@ import { GOD_DEFS, createBlackGoatYoungCard } from '../constants/card';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
 import { applyFx, applyInspectionForSanLoss } from './effectEngine';
 import { buildZhuLight, getZhuTopGuard } from './zhuPower';
+import { buildStatEvents } from './statEvents';
+
+function buildGodEncounterStatPatch(beforePlayers, afterPlayers, effectMsg, gs) {
+  const statEventSeq = (gs?._statEventSeq || 0) + 1;
+  const statEvents = buildStatEvents(beforePlayers, afterPlayers, [effectMsg], { reason: '邪神遭遇', seq: statEventSeq });
+  return statEvents.length ? { _statEvents: statEvents, _statEventSeq: statEventSeq } : {};
+}
 
 export function checkWin(players, isMP) {
   const hasHunters = players.some(p => p.role === ROLE_HUNTER);
@@ -208,6 +215,7 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
 
   // God card handling
   if (drawnCard.isGod) {
+    const beforeEncounterPlayers = copyPlayers(P);
     P[ci].godEncounters = (P[ci].godEncounters || 0) + 1;
     const cost = P[ci].godEncounters;
     // 邪祀者遭遇邪神时不扣减SAN且强制亮明身份
@@ -223,8 +231,11 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
         : `${whoName} 遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）失去${cost}SAN`;
       L2.push(effectMsg);
       // AI处理邪神牌时，仍然立即扣减SAN值
+      let statPatch = {};
       if (P[ci].role !== ROLE_CULTIST) {
-        P[ci].san = clamp(P[ci].san - cost); const newSan = P[ci].san; {
+        P[ci].san = clamp(P[ci].san - cost);
+        statPatch = buildGodEncounterStatPatch(beforeEncounterPlayers, P, effectMsg, gs);
+        const newSan = P[ci].san; {
           const baseLog = gs?.log || [];
           const processed = applyInspectionForSanLoss(ci, newSan, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta);
           P = processed.P; D = processed.D; Disc = processed.Disc; inspectionMeta = processed.inspectionMeta; L2.push(...processed.log.slice(baseLog.length));
@@ -232,7 +243,7 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
       }
       const gr = aiHandleGodCard(ci, drawnCard, P, D, Disc, L2, gs, true);
       P = gr.P; D = gr.D; Disc = gr.Disc;
-      return { P, D, Disc, drawnCard, effectMsgs: L2, kept: true, statePatch: { ...inspectionMeta, ...(gr.inspectionMeta || {}) } };
+      return { P, D, Disc, drawnCard, effectMsgs: L2, kept: true, statePatch: { ...inspectionMeta, ...(gr.inspectionMeta || {}), ...statPatch } };
     } else {
       let effectMsg = P[ci].role === ROLE_CULTIST
         ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`
@@ -240,9 +251,11 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
 
       let inspectionMeta = makeInspectionMeta(gs);
       let effectMsgs = [effectMsg];
+      let statPatch = {};
 
       if (P[ci].role !== ROLE_CULTIST && cost > 0) {
         P[ci].san = clamp(P[ci].san - cost);
+        statPatch = buildGodEncounterStatPatch(beforeEncounterPlayers, P, effectMsg, gs);
         const newSan = P[ci].san;
         const baseLog = gs?.log ? [...gs.log, effectMsg] : [effectMsg];
         const processed = applyInspectionForSanLoss(ci, newSan, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta);
@@ -256,7 +269,7 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
         effectMsgs,
         needGodChoice: true, needsDecision: false,
         godEncounterCost: 0,
-        statePatch: inspectionMeta
+        statePatch: { ...inspectionMeta, ...statPatch }
       };
     }
   }

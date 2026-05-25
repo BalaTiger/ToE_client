@@ -70,6 +70,7 @@ import {
   getZhuTopGuard,
   moveTopDeckCardToBottom,
   resolveMpTimeoutToAction,
+  applyStatEventsToDisplayStats,
 } from "./game";
 import {
   rotateGsForViewer,
@@ -2075,6 +2076,9 @@ export default function Game(){
         const ts = anim.targetStats;
         const timer = setTimeout(() => {
           setDisplayStats(prev => {
+            if (Array.isArray(anim.statEvents) && anim.statEvents.length) {
+              return applyStatEventsToDisplayStats(prev, anim.statEvents);
+            }
             const next = [...prev];
             targets.forEach(pid => {
               if (next[pid] && ts[pid]) {

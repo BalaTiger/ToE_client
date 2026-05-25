@@ -1,9 +1,12 @@
+import { makeTargetStats, statEventsToAnimQueue } from './statEvents';
+
 export function buildAnimQueue(oldGs, newGs) {
   const q = [];
   const newInspectionEvents = (newGs?._inspectionEvents || []).filter(ev => ev?.seq > (oldGs?._inspectionSeq || 0));
   const effectivePlayers = newInspectionEvents[0]?.beforePlayers || newGs.players;
   const effectiveLog = newInspectionEvents[0]?.beforeLog || newGs.log;
-  const newMsgs = effectiveLog.slice(oldGs.log.length);
+  const oldLog = Array.isArray(oldGs?.log) ? oldGs.log : [];
+  const newMsgs = (Array.isArray(effectiveLog) ? effectiveLog : []).slice(oldLog.length);
   if (newGs.gameOver && newGs.currentTurn !== oldGs.currentTurn) {
     const dCard = newGs._aiDrawnCard || newGs._drawnCard || newGs.drawReveal?.card;
     if (dCard) {
@@ -12,26 +15,38 @@ export function buildAnimQueue(oldGs, newGs) {
     }
   }
   const deathIdx = effectivePlayers.reduce((acc, p, i) => { if (oldGs.players[i] && !oldGs.players[i].isDead && p.isDead) acc.push(i); return acc; }, []);
-  const targetStats = effectivePlayers.map(p => ({ hp: p.hp, san: p.san, isDead: p.isDead }));
-  const hasHpHealLog = newMsgs.some(line => /(?:回复|恢复|回满).*HP|HP\s*回满/.test(line || ''));
-  const hasSanHealLog = newMsgs.some(line => /(?:回复|恢复).*SAN/.test(line || ''));
-  const hpHealIdx = hasHpHealLog
-    ? effectivePlayers.reduce((acc, p, i) => { if (oldGs.players[i] && p.hp > oldGs.players[i].hp) acc.push(i); return acc; }, [])
+  const oldStatSeq = oldGs?._statEventSeq || 0;
+  const newStatSeq = newGs?._statEventSeq || 0;
+  const explicitStatEvents = Array.isArray(newGs?._statEvents)
+    ? newGs._statEvents.filter(ev => newGs?._statEventSeq == null || ev?.seq == null || ev.seq > oldStatSeq)
     : [];
-  const sanHealIdx = hasSanHealLog
-    ? effectivePlayers.reduce((acc, p, i) => { if (oldGs.players[i] && p.san > oldGs.players[i].san) acc.push(i); return acc; }, [])
-    : [];
-  const sameHealTargets = hpHealIdx.length && sanHealIdx.length && hpHealIdx.length === sanHealIdx.length && hpHealIdx.every((v, i) => v === sanHealIdx[i]);
-  const hpHitIdx = effectivePlayers.reduce((acc, p, i) => { if (oldGs.players[i] && p.hp < oldGs.players[i].hp) acc.push(i); return acc; }, []);
-  if (hpHitIdx.length) q.push({ type: 'HP_DAMAGE', msgs: newMsgs, hitIndices: hpHitIdx, targetStats });
-  if (sameHealTargets) {
-    q.push({ type: 'HP_SAN_HEAL', msgs: newMsgs, hitIndices: hpHealIdx, targetStats });
+  const hasFreshExplicitStatEvents = explicitStatEvents.length > 0 && (newGs?._statEventSeq == null || newStatSeq > oldStatSeq);
+  const targetStats = hasFreshExplicitStatEvents
+    ? makeTargetStats(effectivePlayers, explicitStatEvents)
+    : effectivePlayers.map(p => ({ hp: p.hp, san: p.san, isDead: p.isDead }));
+  if (hasFreshExplicitStatEvents) {
+    q.push(...statEventsToAnimQueue(explicitStatEvents, effectivePlayers, newMsgs));
   } else {
-    if (hpHealIdx.length) q.push({ type: 'HP_HEAL', msgs: newMsgs, hitIndices: hpHealIdx, targetStats });
-    if (sanHealIdx.length) q.push({ type: 'SAN_HEAL', msgs: newMsgs, hitIndices: sanHealIdx, targetStats });
+    const hasHpHealLog = newMsgs.some(line => /(?:回复|恢复|回满).*HP|HP\s*回满/.test(line || ''));
+    const hasSanHealLog = newMsgs.some(line => /(?:回复|恢复).*SAN/.test(line || ''));
+    const hpHealIdx = hasHpHealLog
+      ? effectivePlayers.reduce((acc, p, i) => { if (oldGs.players[i] && p.hp > oldGs.players[i].hp) acc.push(i); return acc; }, [])
+      : [];
+    const sanHealIdx = hasSanHealLog
+      ? effectivePlayers.reduce((acc, p, i) => { if (oldGs.players[i] && p.san > oldGs.players[i].san) acc.push(i); return acc; }, [])
+      : [];
+    const sameHealTargets = hpHealIdx.length && sanHealIdx.length && hpHealIdx.length === sanHealIdx.length && hpHealIdx.every((v, i) => v === sanHealIdx[i]);
+    const hpHitIdx = effectivePlayers.reduce((acc, p, i) => { if (oldGs.players[i] && p.hp < oldGs.players[i].hp) acc.push(i); return acc; }, []);
+    if (hpHitIdx.length) q.push({ type: 'HP_DAMAGE', msgs: newMsgs, hitIndices: hpHitIdx, targetStats });
+    if (sameHealTargets) {
+      q.push({ type: 'HP_SAN_HEAL', msgs: newMsgs, hitIndices: hpHealIdx, targetStats });
+    } else {
+      if (hpHealIdx.length) q.push({ type: 'HP_HEAL', msgs: newMsgs, hitIndices: hpHealIdx, targetStats });
+      if (sanHealIdx.length) q.push({ type: 'SAN_HEAL', msgs: newMsgs, hitIndices: sanHealIdx, targetStats });
+    }
+    const sanHitIdx = effectivePlayers.reduce((acc, p, i) => { if (oldGs.players[i] && p.san < oldGs.players[i].san) acc.push(i); return acc; }, []);
+    if (sanHitIdx.length) q.push({ type: 'SAN_DAMAGE', msgs: newMsgs, hitIndices: sanHitIdx, targetStats });
   }
-  const sanHitIdx = effectivePlayers.reduce((acc, p, i) => { if (oldGs.players[i] && p.san < oldGs.players[i].san) acc.push(i); return acc; }, []);
-  if (sanHitIdx.length) q.push({ type: 'SAN_DAMAGE', msgs: newMsgs, hitIndices: sanHitIdx, targetStats });
   if (deathIdx.length) {
     q.push({ type: 'GUILLOTINE', msgs: newMsgs, hitIndices: deathIdx, targetStats });
     q.push({ type: 'DEATH', msgs: newMsgs, hitIndices: deathIdx, targetStats });

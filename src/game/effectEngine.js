@@ -13,6 +13,7 @@ import {
   sortInspectionTargets,
   tryVritraImmortal,
 } from './coreUtils';
+import { buildStatEvents } from './statEvents';
 
 export function applyHpDamageWithLink(P, i, amount, Disc, L, currentTurn, D) {
   if (i == null || !P[i] || P[i].isDead || !(amount > 0)) return;
@@ -295,9 +296,11 @@ export function applyInspectionForSanLoss(targetIndex, newSan, startIndex, P, D,
 
 export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false, avoidNegativeFor = [], isAI = false) {
   let P = copyPlayers(ps), D = [...deck], Disc = [...disc], msgs = [];
+  const beforePlayers = copyPlayers(P);
   let statePatch = {};
   let inspectionMeta = makeInspectionMeta(gs);
   const pendingInspectionTargets = [];
+  let directStatEvents = null;
   const dmgBonus = P[ci]?.damageBonus || 0;
   const healHP = (i, v) => { if (i == null || !P[i] || P[i].isDead) return; P[i].hp = clamp(P[i].hp + v); };
   const healSAN = (i, v) => { if (i == null || !P[i] || P[i].isDead) return; P[i].san = clamp(P[i].san + v); };
@@ -338,6 +341,19 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   const others = P.map((_, i) => i).filter(i => i !== ci && !P[i].isDead);
   const allLiving = P.map((_, i) => i).filter(i => !P[i].isDead);
   const actor = P[ci];
+  const finish = (result, explicitStatEvents = null) => {
+    const statEventSeq = (gs?._statEventSeq || 0) + 1;
+    const statEvents = explicitStatEvents || buildStatEvents(beforePlayers, result.P || P, result.msgs || msgs, { reason: card?.name || card?.type || '', seq: statEventSeq });
+    const nextStatePatch = {
+      ...(result.statePatch || {}),
+      ...(statEvents.length ? { _statEvents: statEvents, _statEventSeq: statEventSeq } : {}),
+    };
+    return {
+      ...result,
+      statePatch: nextStatePatch,
+      ...(statEvents.length ? { statEvents } : {}),
+    };
+  };
 
   // 辅助函数：检查条件
   const checkCondition = (condType, condVal, actor) => {
@@ -926,8 +942,10 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   const handler = handlers[card.type];
   if (handler) {
     const earlyReturn = handler();
-    if (earlyReturn) return earlyReturn;
+    if (earlyReturn) return finish(earlyReturn);
   }
+  const directStatEventSeq = (gs?._statEventSeq || 0) + 1;
+  directStatEvents = buildStatEvents(beforePlayers, P, msgs, { reason: card?.name || card?.type || '', seq: directStatEventSeq });
   if (pendingInspectionTargets.length) {
     const inspectionBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
     const processed = processInspectionTargets(pendingInspectionTargets, gs?.currentTurn ?? ci, P, D, Disc, inspectionBaseLog, inspectionMeta);
@@ -935,5 +953,5 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     msgs = [...msgs, ...processed.log.slice(inspectionBaseLog.length)];
     statePatch = { ...statePatch, ...inspectionMeta };
   }
-  return { P, D, Disc, msgs, statePatch };
+  return finish({ P, D, Disc, msgs, statePatch }, directStatEvents);
 }
