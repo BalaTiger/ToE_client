@@ -5,7 +5,7 @@ import {
   ROLE_CULTIST,
 } from '../coreUtils';
 import { mkDeck, mkRoles } from '../setup';
-import { EXPANSIONS } from '../../constants/card';
+import { EXPANSIONS, getCardDisplayKey } from '../../constants/card';
 import { resetIds } from './factory';
 
 describe('mkDeck', () => {
@@ -92,6 +92,13 @@ describe('mkDeck', () => {
     const ids2 = deck2.map(c => c.id);
     // 极低概率两次 shuffle 结果完全相同
     expect(ids1).not.toEqual(ids2);
+  });
+
+  it('神牌显示编号使用短缩写', () => {
+    const deck = mkDeck('temporary');
+    const vritra = deck.find(card => card.isGod && card.godKey === 'VRI');
+    expect(vritra.key).toBe('VRI');
+    expect(getCardDisplayKey(vritra)).toBe('VRI');
   });
 });
 

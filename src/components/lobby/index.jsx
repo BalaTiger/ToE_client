@@ -493,7 +493,7 @@ function DebugSettingsPanel({
             <option value="NYA">Nyarlathotep</option>
             <option value="ZHU">烛九阴</option>
             <option value="SHU">森之领主</option>
-            <option value="VRITRA">弗栗多</option>
+            <option value="VRI">弗栗多</option>
           </select>
         </div>
       )}

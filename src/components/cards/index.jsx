@@ -1,9 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { CS, GOD_CS, GOD_DEFS, getCardBackImage } from '../../constants/card';
+import { CS, GOD_CS, GOD_DEFS, getCardBackImage, getCardDisplayKey, getGodShortKey } from '../../constants/card';
 import { useCardHoverTooltip } from './useCardHoverTooltip';
-
-const godShortKey = (godKey) => GOD_DEFS[godKey]?.shortKey || godKey || 'GOD';
 
 function OctopusSVG({col,size=32}){
   return(
@@ -219,7 +217,7 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLe
         {!small&&!compact&&<div style={{fontFamily:"'Cinzel',serif",fontSize:7.5,color:col,letterSpacing:0.5,lineHeight:1.3,opacity:0.9}}>「{def.power}」</div>}
         {small&&(
           <div style={{marginTop:2,fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:5.4,color:'#e8cc88',lineHeight:1.05,textAlign:'center',wordBreak:'break-word',overflowWrap:'anywhere',maxWidth:'100%'}}>
-            {godShortKey(card.godKey)}
+            {getGodShortKey(card.godKey)}
           </div>
         )}
         {/* Octopus bottom-left */}
@@ -327,7 +325,7 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
         {/* Corner ornament */}
         {!small&&!compact&&<div style={{position:'absolute',top:3,right:5,color:s.border,fontSize:9,opacity:0.7}}>✦</div>}
         {isRoseThornMarked&&!small&&<div style={{position:'absolute',top:3,left:5,color:'#ff9ab2',fontSize:compact?8:9,opacity:0.92,textShadow:'0 0 8px rgba(255,90,130,0.55)',fontFamily:"'Cinzel',serif"}}>倒刺</div>}
-        <div style={{color:s.text,fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:small?10:compact?15:18,lineHeight:1,textShadow:`0 0 6px ${s.text}55`}}>{card.key}</div>
+        <div style={{color:s.text,fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:small?10:compact?15:18,lineHeight:1,textShadow:`0 0 6px ${s.text}55`}}>{getCardDisplayKey(card)}</div>
         <div style={{color:'#e8cc88',fontFamily:"'IM Fell English','Georgia',serif",fontSize:nameFontSize,fontWeight:600,marginTop:small?2:compact?1:2,lineHeight:small?1.08:1.12,wordBreak:'break-word',overflowWrap:'anywhere',textAlign:small?'center':undefined}}>{card.name}</div>
         {!small&&!compact&&<div style={{color:'#d4b468',fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:descFontSize,marginTop:'auto',lineHeight:1.25,wordBreak:'break-word'}}>{card.desc}</div>}
         {/* Bottom ornament */}

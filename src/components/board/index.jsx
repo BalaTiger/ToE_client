@@ -1,5 +1,5 @@
 import React from 'react';
-import { CS, GOD_CS, GOD_DEFS, getCardBackImage } from '../../constants/card';
+import { CS, GOD_CS, GOD_DEFS, getCardBackImage, getCardDisplayKey } from '../../constants/card';
 import { RINFO } from '../../game';
 import { isBlackGoatYoung } from '../../game/coreUtils';
 import { AreaTooltip, DDCard, DDCardBack, GodTooltip } from '../cards';
@@ -99,11 +99,9 @@ const DISCARD_OFFSETS=[
   {x:-4,y:3},{x:5,y:-2},{x:-2,y:4},{x:3,y:-5},{x:-6,y:1},{x:1,y:3},
 ];
 
-const godShortKey = (godKey) => GOD_DEFS[godKey]?.shortKey || godKey || 'GOD';
-
 function MiniCardLabel({card,scale=1,glowColor='#c8a96e',ambient=true}){
   if(!card)return null;
-  const label=card.isGod?godShortKey(card.godKey):(card.key||'?');
+  const label=getCardDisplayKey(card);
   const name=card.name||'';
   return(
     <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:`${Math.max(2,Math.round(3*scale))}px ${Math.max(2,Math.round(2*scale))}px`,textAlign:'center',lineHeight:1.05,background:ambient?'radial-gradient(circle at 45% 35%,rgba(255,230,120,0.14),rgba(0,0,0,0) 72%)':'transparent'}}>

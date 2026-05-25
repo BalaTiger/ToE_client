@@ -1,5 +1,5 @@
 import React from 'react';
-import { CS, GOD_CS, GOD_DEFS, getCardBackImage } from '../../constants/card';
+import { CS, GOD_CS, getCardBackImage, getCardDisplayKey } from '../../constants/card';
 import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 
 const BLACK_GOAT_PARTICLES = [
@@ -10,8 +10,6 @@ const BLACK_GOAT_PARTICLES = [
   { x: -24, y: 4, size: 4, delay: 0.20, dur: 0.50, glow: 0.75 },
   { x: 8, y: 24, size: 5, delay: 0.25, dur: 0.64, glow: 0.80 },
 ];
-
-const godShortKey = (godKey) => GOD_DEFS[godKey]?.shortKey || godKey || 'GOD';
 
 function BlackGoatTrail({ txPx, tyPx, delay = 0, duration = 1.28 }) {
   const shouldFlipGoat = txPx > 0;
@@ -103,7 +101,7 @@ function MiniCardFace({ card, width = 70, height = 94 }) {
         letterSpacing: card?.isGod ? 1.2 : 0,
         textShadow: `0 0 8px ${s.borderBright}`,
       }}>
-        {card?.isGod ? godShortKey(card.godKey) : (card?.key || '?')}
+        {getCardDisplayKey(card)}
       </div>
       <div style={{
         marginTop: 7,
@@ -255,7 +253,7 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = 'temporary' }
   if (!anim) return null;
   const card = anim.card || null;
   const s = card ? (card.isGod ? GOD_CS : (CS[card.letter] || null)) : null;
-  const discardCardTitle = card?.isGod ? godShortKey(card.godKey) : card?.key;
+  const discardCardTitle = getCardDisplayKey(card);
   const discardCardSubtitle = card?.isGod ? card.name : '';
 
   return (

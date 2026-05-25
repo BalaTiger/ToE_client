@@ -37,6 +37,15 @@ export function getZhuLitDeckCards(zhuLight, deck = []) {
     .filter(item => item.card?.id && idSet.has(item.card.id));
 }
 
+export function removeZhuLightCard(zhuLight, cardOrId) {
+  const cardId = typeof cardOrId === 'object' ? cardOrId?.id : cardOrId;
+  if (!zhuLight || !cardId) return zhuLight;
+  return {
+    ...zhuLight,
+    cardIds: (zhuLight.cardIds || []).filter(id => id !== cardId),
+  };
+}
+
 export function getZhuTopGuard(gs = {}, deck = gs.deck || []) {
   const zhuLight = buildZhuLight(gs.players || [], deck, gs.currentTurn, gs.zhuLight);
   const topCard = deck[0];

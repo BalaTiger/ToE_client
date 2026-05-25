@@ -50,8 +50,8 @@ export const separateBlackGoatYoung = (cards) => {
 export function tryVritraImmortal(P, i, currentTurn, D, Disc, L) {
   if (currentTurn == null || D == null || currentTurn === i) return false;
   if (!P[i] || P[i].isDead || P[i].hp > 0) return false;
-  if (P[i].godName !== 'VRITRA') return false;
-  const count = GOD_DEFS.VRITRA.levels[(P[i].godLevel || 1) - 1]?.immortalCount || 0;
+  if (P[i].godName !== 'VRI') return false;
+  const count = GOD_DEFS.VRI.levels[(P[i].godLevel || 1) - 1]?.immortalCount || 0;
   if (!count) return false;
   const revealed = [];
   const deckCopy = [...D];

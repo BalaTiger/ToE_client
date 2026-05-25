@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   GOD_DEFS,
   CS,
-  GOD_CS
+  GOD_CS,
+  getCardDisplayKey
 } from '../../constants/card';
 import { ROLE_CULTIST } from '../../game';
 import { DDCard, DDCardBack, GodCardDisplay } from '../cards';
@@ -150,7 +151,7 @@ function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingTex
           borderRadius: 4, padding: '18px 22px', display: 'inline-flex', flexDirection: 'column', alignItems: 'center',
           minWidth: 120, marginBottom: 16, boxShadow: `0 0 30px ${s.glow}55`,
         }}>
-          <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, color: s.text, fontSize: 51, lineHeight: 1 }}>{card.key}</div>
+          <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, color: s.text, fontSize: 51, lineHeight: 1 }}>{getCardDisplayKey(card)}</div>
           <div style={{ fontFamily: "'Cinzel',serif", color: '#e8cc88', fontSize: 19.5, fontWeight: 600, marginTop: 6 }}>{card.name}</div>
           <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#d4b468', fontSize: 16.5, marginTop: 8, lineHeight: 1.4, maxWidth: 200 }}>{card.desc}</div>
         </div>
@@ -207,7 +208,7 @@ function TreasureDodgeModal({ drawReveal, onRoll, onSkip, thinkingText }) {
           borderRadius: 4, padding: '18px 22px', display: 'inline-flex', flexDirection: 'column', alignItems: 'center',
           minWidth: 120, marginBottom: 16, boxShadow: `0 0 30px ${s.glow}55`,
         }}>
-          <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, color: s.text, fontSize: 51, lineHeight: 1 }}>{card.key}</div>
+          <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, color: s.text, fontSize: 51, lineHeight: 1 }}>{getCardDisplayKey(card)}</div>
           <div style={{ fontFamily: "'Cinzel',serif", color: '#e8cc88', fontSize: 19.5, fontWeight: 600, marginTop: 6 }}>{card.name}</div>
           <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#d4b468', fontSize: 16.5, marginTop: 8, lineHeight: 1.4, maxWidth: 200 }}>{card.desc}</div>
         </div>
@@ -281,7 +282,7 @@ function PeekHandModal({ card, targetName, onClose }) {
             border: `1.5px solid ${col}`,
             boxShadow: `0 0 18px ${col}33, inset 0 0 18px #00000044`
           }}>
-            <div style={{ fontFamily: "'Cinzel',serif", fontSize: 24, lineHeight: 1, color: col, marginBottom: 6 }}>{card.key}</div>
+            <div style={{ fontFamily: "'Cinzel',serif", fontSize: 24, lineHeight: 1, color: col, marginBottom: 6 }}>{getCardDisplayKey(card)}</div>
             <div style={{ fontFamily: "'Noto Serif SC','Songti SC',serif", fontWeight: 700, fontSize: 16, color: '#f1dfbf', marginBottom: 8 }}>{card.name}</div>
             <div style={{ fontSize: 11, lineHeight: 1.6, color: '#cfbd99', whiteSpace: 'pre-wrap' }}>
               {card.desc || ''}

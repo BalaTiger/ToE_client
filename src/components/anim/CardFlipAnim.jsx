@@ -1,5 +1,5 @@
 import React from 'react';
-import { CS, GOD_CS, getCardBackImage } from '../../constants/card';
+import { CS, GOD_CS, getCardBackImage, getCardDisplayKey } from '../../constants/card';
 import { getZoneCardPolarity } from '../../game/coreUtils';
 import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 import { SMOKE_COLS, FLOWER_CONFIGS } from './data';
@@ -284,7 +284,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
             boxShadow:(isNeutralInspection||isNeutralCard)?'0 0 18px rgba(120,136,155,0.22)':`0 0 30px ${s.glow}88, 0 0 60px ${isEvil?'#6010aa':'#c8a96e'}44`,
           }}>
             <div style={{position:'absolute',top:4,right:6,fontSize:8,color:s.border,opacity:0.7}}>✦</div>
-            <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:isInspection?18:28,lineHeight:1,letterSpacing:isInspection?2:0}}>{isInspection?'检定':card.key}</div>
+            <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:isInspection?18:28,lineHeight:1,letterSpacing:isInspection?2:0}}>{isInspection?'检定':getCardDisplayKey(card)}</div>
             <div style={{fontFamily:"'Cinzel',serif",color:isInspection?s.text:'#c8a96e',fontSize:isInspection?16:11.5,fontWeight:600,marginTop:6,lineHeight:1.3}}>{card.name}</div>
             <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:isInspection?(inspectionTone==='positive'?'#aeeac0':inspectionTone==='neutral'?'#b8c4d8':'#e2a8e8'):'#b89858',fontSize:9.5,marginTop:8,lineHeight:1.4}}>{isInspection?getInspectionCardDesc(card):card.desc}</div>
             {isInspection&&(

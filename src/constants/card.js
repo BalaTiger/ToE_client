@@ -631,15 +631,6 @@ const GOD_DEFS={
       {zhuLightOffsets:[0,1,2,3,4],desc:'改为点亮牌库顶部前5张牌'},
     ],
   },
-  FUL:{
-    godKey:'FUL',name:'弗栗多',subtitle:'阿修罗之龙',power:'禁锢甘霖',
-    col:'#2080a0',bgCol:'#081018',
-    levels:[
-      {desc:'效果待设计'},
-      {desc:'效果待设计'},
-      {desc:'效果待设计'},
-    ],
-  },
   APO:{
     godKey:'APO',name:'阿波菲斯',subtitle:'混沌巨蛇',power:'噬日灭世',
     col:'#8020a0',bgCol:'#100818',
@@ -712,8 +703,8 @@ const GOD_DEFS={
       {desc:'效果待设计'},
     ],
   },
-  VRITRA:{
-    godKey:'VRITRA',shortKey:'VRI',name:'弗栗多',subtitle:'巨龙之化身',power:'不灭之躯',
+  VRI:{
+    godKey:'VRI',name:'弗栗多',subtitle:'巨龙之化身',power:'不灭之躯',
     col:'#c04020',bgCol:'#1a0808',
     levels:[
       {immortalCount:6,desc:'当你在回合外受到致命伤害，展示牌堆顶部的6张牌，若没有邪神牌和圣物牌，将HP恢复至1，然后弃置这些牌'},
@@ -738,13 +729,13 @@ const EXPANSIONS = {
     name: '临时拓展包',
     description: '当前牌组，包含所有现有卡牌',
     // 临时包包含 FIXED_ZONE_CARD_VARIANTS_BY_KEY 中所有卡牌
-    godCardKeys: ['NYA', 'CTH', 'SHU', 'ZHU', 'VRITRA'],
+    godCardKeys: ['NYA', 'CTH', 'SHU', 'ZHU', 'VRI'],
     godCopies: 4,
   },
   '地神的潜影': {
     name: '地神的潜影',
     description: '来自地底深处的低语……',
-    godCardKeys: ['NYA', 'SHU', 'ZHU', 'FUL', 'APO'],
+    godCardKeys: ['NYA', 'SHU', 'ZHU', 'VRI', 'APO'],
     godCopies: 4,
   },
   '先贤的馈赠': {
@@ -810,6 +801,16 @@ export function createBlackGoatYoungCard() {
   };
 }
 
+function getGodShortKey(godKey) {
+  return GOD_DEFS[godKey]?.shortKey || godKey || 'GOD';
+}
+
+function getCardDisplayKey(card) {
+  if (!card) return '?';
+  if (card.isGod) return getGodShortKey(card.godKey);
+  return card.key || '?';
+}
+
 export {
   FIXED_ZONE_CARD_VARIANTS_BY_KEY,
   LETTERS,
@@ -820,4 +821,6 @@ export {
   EXPANSIONS,
   CARD_BACK_IMAGE_BY_EXPANSION,
   getCardBackImage,
+  getGodShortKey,
+  getCardDisplayKey,
 };

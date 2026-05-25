@@ -18,6 +18,7 @@ export function useAnimationQueue({
   visibleLogAuthorityRef,
   turnHighlightLockRef,
   visualPlayersLockRef,
+  visualZhuLightLockRef,
   suppressNextBroadcastRef,
   receivedGsRef,
   ANIM_STEP_GAP,
@@ -45,6 +46,7 @@ export function useAnimationQueue({
       if (next.type === 'STATE_PATCH') {
         revealAnimLogs(next);
         visualPlayersLockRef.current = null;
+        if (visualZhuLightLockRef) visualZhuLightLockRef.current = null;
         setVisualDiscard([...(next.discard || [])]);
         setGs(prev => prev ? { ...prev, players: copyPlayers(next.players || prev.players), discard: [...(next.discard || prev.discard)] } : prev);
         advanceQueue();
@@ -72,6 +74,7 @@ export function useAnimationQueue({
       animCallbackRef.current = null;
       turnHighlightLockRef.current = null;
       visualPlayersLockRef.current = null;
+      if (visualZhuLightLockRef) visualZhuLightLockRef.current = null;
       setAnim(null);
       if (next?.log) syncVisibleLog(next.log);
       if (callback) {

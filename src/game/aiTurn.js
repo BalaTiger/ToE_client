@@ -36,6 +36,7 @@ import { withClearedTurnAnimFields } from './turnAnimState';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
 import { createBlackGoatYoungCard } from '../constants/card';
 import { buildStatEvents } from './statEvents';
+import { END_TURN_EVENT, getEndTurnReplayHandCards } from './endTurnEvents';
 
 /**
  * 检查两张卡是否满足追捕匹配规则。
@@ -107,9 +108,7 @@ export function discardAiHandToLimit(P, ct, Disc, L) {
 
 function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
   const handCards = P[ct]?.hand || [];
-  const corridorIndex = handCards.findIndex(card => card?.type === 'endTurnReplayHand');
-  if (corridorIndex <= 0) return { P, D, Disc, L, statePatch: {} };
-  const replayIds = handCards.slice(0, corridorIndex).map(card => card?.id).filter(id => id != null);
+  const replayIds = getEndTurnReplayHandCards(P[ct]).map(card => card?.id).filter(id => id != null);
   if (!replayIds.length) return { P, D, Disc, L, statePatch: {} };
   L.push(`【无尽通道】${P[ct].name} 展示所有手牌：${handCards.map(card => cardLogText(card, { alwaysShowName: true })).join(' ')}`);
   let statePatch = {};
@@ -138,7 +137,7 @@ function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
       statePatch = { ...statePatch, ...inspectionMeta, ...(gr.inspectionMeta || {}) };
       continue;
     }
-    const keep = card?.type === 'endTurnReplayHand' || !isZoneCard(card) || aiShouldKeepZoneCard(card, ct, P, false);
+    const keep = card?.type === END_TURN_EVENT.END_TURN_REPLAY_HAND || !isZoneCard(card) || aiShouldKeepZoneCard(card, ct, P, false);
     if (!keep) {
       const [discarded] = P[ct].hand.splice(handIdx, 1);
       if (isBlackGoatYoung(discarded)) L.push(`${P[ct].name} 的黑山羊幼仔被销毁`);

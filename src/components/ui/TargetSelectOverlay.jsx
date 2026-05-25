@@ -1,11 +1,11 @@
-import { CS, GOD_CS } from '../../constants/card';
+import { CS, GOD_CS, getCardDisplayKey } from '../../constants/card';
 
 function getBewitchEffectDesc(card) {
   if (!card) return '';
   if (card.isGod) {
     return `你将把「${card.name}」送给目标角色，使该角色遭遇邪神并失去SAN值（第N次遭遇失去N点），该角色可能被迫信仰${card.name}`;
   }
-  return `你将把【${card.key} ${card.name}】送给目标角色，并强制其收入手牌后立刻结算：“你”与相邻角色都以该目标为基准计算`;
+  return `你将把【${getCardDisplayKey(card)} ${card.name}】送给目标角色，并强制其收入手牌后立刻结算：“你”与相邻角色都以该目标为基准计算`;
 }
 
 export function TargetSelectOverlay({ drawReveal, phase, bewitchCard }) {
@@ -50,8 +50,8 @@ export function TargetSelectOverlay({ drawReveal, phase, bewitchCard }) {
                 padding: '5px 9px', minWidth: 48, textAlign: 'center',
               }}>
                 {card.isGod
-                  ? <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, color: s.text, fontSize: 20, lineHeight: 1.2 }}>⛧</div>
-                  : <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, color: s.text, fontSize: 27, lineHeight: 1 }}>{card.key}</div>
+                  ? <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, color: s.text, fontSize: 20, lineHeight: 1.2 }}>{getCardDisplayKey(card)}</div>
+                  : <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, color: s.text, fontSize: 27, lineHeight: 1 }}>{getCardDisplayKey(card)}</div>
                 }
                 <div style={{ fontFamily: "'Cinzel',serif", color: '#e8cc88', fontSize: card.isGod ? 10 : 14.25, marginTop: 2 }}>{card.name}</div>
               </div>
