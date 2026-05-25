@@ -803,6 +803,6 @@ export function startNextTurn(gs, opts = {}) {
         globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner)
       };
     }
-    return { ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, currentTurn: next, phase: nextPhase, drawReveal: null, selectedCard: null, abilityData: nextAbilityData, huntAbandoned: [], _drawnCard: res.drawnCard ?? null, _discardedDrawnCard: !!res.discardedDrawnCard, _playersBeforeThisDraw: _P_beforeDraw, _turnKey: (gs._turnKey || 0) + 1, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}), globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) };
+    return { ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, currentTurn: next, phase: nextPhase, drawReveal: null, selectedCard: null, abilityData: nextAbilityData, huntAbandoned: [], _aiDrawnCard: res.drawnCard ?? null, _drawnCard: res.drawnCard ?? null, _discardedDrawnCard: !!res.discardedDrawnCard, _playersBeforeThisDraw: _P_beforeDraw, _turnKey: (gs._turnKey || 0) + 1, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}), globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) };
   }
 }

@@ -153,6 +153,27 @@ function sortByLowestHpThenSan(a, b) {
   return (a.player.hp - b.player.hp) || (a.player.san - b.player.san) || (a.idx - b.idx);
 }
 
+function estimateSameAbyssSelfFollowupPenalty(card, self, players, ci) {
+  if (card?.type !== 'sameAbyssChoice' || !self || self.isDead) return 0;
+  const living = players
+    .map((player, idx) => ({ player, idx }))
+    .filter(({ player }) => player && !player.isDead);
+  if (!living.length) return 0;
+  const selfHandAfterKeep = (self.hand?.length || 0) + 1;
+  const maxOtherHand = Math.max(
+    0,
+    ...living
+      .filter(({ idx }) => idx !== ci)
+      .map(({ player }) => player.hand?.length || 0)
+  );
+  if (selfHandAfterKeep < maxOtherHand) return 0;
+  const actorHandCount = selfHandAfterKeep;
+  const discardCount = Math.max(0, selfHandAfterKeep - actorHandCount);
+  const hpLoss = 4;
+  const deathRisk = self.hp <= hpLoss ? 8 : 0;
+  return hpLoss * 2.2 + discardCount * 1.5 + deathRisk + 2;
+}
+
 function estimateHunterZoneCardScore(card, self, players, ci) {
   let score = 0;
   switch (card.type) {
@@ -192,6 +213,9 @@ function estimateHunterZoneCardScore(card, self, players, ci) {
       break;
     case 'firstComePick':
       score = 1.2;
+      break;
+    case 'sameAbyssChoice':
+      score = -(card.hpVal || 2) * 2.1 - estimateSameAbyssSelfFollowupPenalty(card, self, players, ci);
       break;
     case 'roseThornGiftAllHand': {
       const hunters = players.filter((p, i) => i !== ci && !p.isDead && p.role === ROLE_HUNTER);
@@ -355,6 +379,9 @@ function estimateTreasureZoneCardScore(card, self, players, ci) {
       break;
     case 'firstComePick':
       score = 3.8;
+      break;
+    case 'sameAbyssChoice':
+      score = -(card.hpVal || 2) * 2.2 - estimateSameAbyssSelfFollowupPenalty(card, self, players, ci);
       break;
     case 'roseThornGiftAllHand':
       score = -100;
@@ -943,6 +970,11 @@ export function aiShouldKeepZoneCard(card, ci, players, forced = false) {
   
   const self = players[ci];
   const role = self?._nyaBorrow || self?.role;
+
+  if (card.type === 'sameAbyssChoice') {
+    const selfPenalty = estimateSameAbyssSelfFollowupPenalty(card, self, players, ci);
+    if (selfPenalty > 0 && (self?.hp || 0) <= (card.hpVal || 2) + 4) return false;
+  }
 
   if (card.type === 'roseThornGiftAllHand') {
     const hand = self?.hand || [];

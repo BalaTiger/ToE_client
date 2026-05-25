@@ -1,5 +1,6 @@
 import React from 'react';
-import { CS, GOD_CS, getCardBackImage, getCardDisplayKey } from '../../constants/card';
+import { CS, GOD_CS, getCardBackImage } from '../../constants/card';
+import { MiniCardFace } from '../cards';
 import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 
 const BLACK_GOAT_PARTICLES = [
@@ -74,49 +75,6 @@ function BlackGoatTrail({ txPx, tyPx, delay = 0, duration = 1.28 }) {
 
 // ── Discard Move Overlay ──────────────────────────────────────
 // Shows a card-back flying from the actor's hand area to the discard pile
-function MiniCardFace({ card, width = 70, height = 94 }) {
-  const s = card ? (card.isGod ? GOD_CS : (CS[card.letter] || GOD_CS)) : GOD_CS;
-  return (
-    <div style={{
-      width,
-      height,
-      borderRadius: 4,
-      background: s.bg,
-      border: `1.5px solid ${s.borderBright}`,
-      boxShadow: `0 0 22px ${s.glow || s.borderBright}66, 0 8px 26px rgba(0,0,0,0.72)`,
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '7px 6px',
-      textAlign: 'center',
-      overflow: 'hidden',
-    }}>
-      <div style={{
-        fontFamily: "'Cinzel',serif",
-        fontWeight: 700,
-        color: s.text,
-        fontSize: card?.isGod ? 17 : 20,
-        lineHeight: 1,
-        letterSpacing: card?.isGod ? 1.2 : 0,
-        textShadow: `0 0 8px ${s.borderBright}`,
-      }}>
-        {getCardDisplayKey(card)}
-      </div>
-      <div style={{
-        marginTop: 7,
-        fontFamily: "'Cinzel',serif",
-        fontWeight: 600,
-        color: '#e7cf8a',
-        fontSize: 8.5,
-        lineHeight: 1.15,
-      }}>
-        {card?.name || ''}
-      </div>
-    </div>
-  );
-}
-
 export function ZhuHideCardOverlay({ anim, exiting }) {
   const [style, setStyle] = React.useState(null);
 
@@ -253,8 +211,6 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = 'temporary' }
   if (!anim) return null;
   const card = anim.card || null;
   const s = card ? (card.isGod ? GOD_CS : (CS[card.letter] || null)) : null;
-  const discardCardTitle = getCardDisplayKey(card);
-  const discardCardSubtitle = card?.isGod ? card.name : '';
 
   return (
     <div style={{
@@ -267,16 +223,7 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = 'temporary' }
       {Object.keys(cardStyle).length > 0 && (
         <div style={cardStyle}>
           {card && s && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '6px 5px', textAlign: 'center', lineHeight: 1.1 }}>
-              <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, color: s.text, fontSize: card.isGod ? 17 : 18, letterSpacing: card.isGod ? 1.2 : 0 }}>
-                {discardCardTitle}
-              </div>
-              {!!discardCardSubtitle && (
-                <div style={{ marginTop: 5, fontFamily: "'Cinzel',serif", fontWeight: 600, color: '#e8cc88', fontSize: 8.5 }}>
-                  {discardCardSubtitle}
-                </div>
-              )}
-            </div>
+            <MiniCardFace card={card} width={70} height={94} ambient={false} frameStyle={{boxShadow:'none',border:'none',background:'transparent'}}/>
           )}
         </div>
       )}

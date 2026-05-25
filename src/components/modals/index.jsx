@@ -2,11 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   GOD_DEFS,
   CS,
-  GOD_CS,
-  getCardDisplayKey
+  GOD_CS
 } from '../../constants/card';
 import { ROLE_CULTIST } from '../../game';
-import { DDCard, DDCardBack, GodCardDisplay } from '../cards';
+import { DDCard, DDCardBack, GodCardDisplay, PreviewCard } from '../cards';
 
 import { buildPublicUrl } from '../../utils/url';
 
@@ -145,16 +144,7 @@ function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingTex
         animation: 'animPop 0.22s ease-out',
       }}>
         <div style={{ fontFamily: "'Cinzel',serif", color: '#a07838', fontSize: 15, letterSpacing: 3, marginBottom: 16, textTransform: 'uppercase' }}>── 区域探寻 ──</div>
-        {/* Big card */}
-        <div style={{
-          background: s.bg, border: `2px solid ${s.borderBright}`,
-          borderRadius: 4, padding: '18px 22px', display: 'inline-flex', flexDirection: 'column', alignItems: 'center',
-          minWidth: 120, marginBottom: 16, boxShadow: `0 0 30px ${s.glow}55`,
-        }}>
-          <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, color: s.text, fontSize: 51, lineHeight: 1 }}>{getCardDisplayKey(card)}</div>
-          <div style={{ fontFamily: "'Cinzel',serif", color: '#e8cc88', fontSize: 19.5, fontWeight: 600, marginTop: 6 }}>{card.name}</div>
-          <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#d4b468', fontSize: 16.5, marginTop: 8, lineHeight: 1.4, maxWidth: 200 }}>{card.desc}</div>
-        </div>
+        <PreviewCard card={card}/>
 
         {isBystander ? (
           <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#c8a96e', fontSize: 15, marginTop: 16 }}>
@@ -202,16 +192,7 @@ function TreasureDodgeModal({ drawReveal, onRoll, onSkip, thinkingText }) {
         animation: 'animPop 0.22s ease-out',
       }}>
         <div style={{ fontFamily: "'Cinzel',serif", color: '#a07838', fontSize: 15, letterSpacing: 3, marginBottom: 16, textTransform: 'uppercase' }}>── 寻宝者能力 ──</div>
-        {/* Big card */}
-        <div style={{
-          background: s.bg, border: `2px solid ${s.borderBright}`,
-          borderRadius: 4, padding: '18px 22px', display: 'inline-flex', flexDirection: 'column', alignItems: 'center',
-          minWidth: 120, marginBottom: 16, boxShadow: `0 0 30px ${s.glow}55`,
-        }}>
-          <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, color: s.text, fontSize: 51, lineHeight: 1 }}>{getCardDisplayKey(card)}</div>
-          <div style={{ fontFamily: "'Cinzel',serif", color: '#e8cc88', fontSize: 19.5, fontWeight: 600, marginTop: 6 }}>{card.name}</div>
-          <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#d4b468', fontSize: 16.5, marginTop: 8, lineHeight: 1.4, maxWidth: 200 }}>{card.desc}</div>
-        </div>
+        <PreviewCard card={card}/>
 
         <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#c8a96e', fontSize: 14, marginTop: 12, lineHeight: 1.6 }}>
           这张牌带有负面效果！作为寻宝者，你可以掷骰子尝试规避。
@@ -255,7 +236,6 @@ function TreasureDodgeModal({ drawReveal, onRoll, onSkip, thinkingText }) {
 
 function PeekHandModal({ card, targetName, onClose }) {
   if (!card) return null;
-  const col = card.isGod ? GOD_CS : (CS[card.letter] || '#c8a96e');
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1200,
@@ -276,18 +256,12 @@ function PeekHandModal({ card, targetName, onClose }) {
           你偷看了 {targetName} 的一张手牌
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-          <div style={{
-            width: 120, minHeight: 164, borderRadius: 8, padding: '10px 10px 12px',
-            background: 'linear-gradient(180deg,#1b120b,#0d0906)',
-            border: `1.5px solid ${col}`,
-            boxShadow: `0 0 18px ${col}33, inset 0 0 18px #00000044`
-          }}>
-            <div style={{ fontFamily: "'Cinzel',serif", fontSize: 24, lineHeight: 1, color: col, marginBottom: 6 }}>{getCardDisplayKey(card)}</div>
-            <div style={{ fontFamily: "'Noto Serif SC','Songti SC',serif", fontWeight: 700, fontSize: 16, color: '#f1dfbf', marginBottom: 8 }}>{card.name}</div>
-            <div style={{ fontSize: 11, lineHeight: 1.6, color: '#cfbd99', whiteSpace: 'pre-wrap' }}>
-              {card.desc || ''}
-            </div>
-          </div>
+          <PreviewCard
+            card={card}
+            codeFontSize={24}
+            desc={card.isGod?(card.subtitle||card.power||''):(card.desc||'')}
+            frameStyle={{width:120,minHeight:164,borderRadius:8,padding:'10px 10px 12px',marginBottom:0,boxShadow:`0 0 18px ${card.isGod?GOD_CS.glow:(CS[card.letter]||GOD_CS).glow}33, inset 0 0 18px #00000044`}}
+          />
         </div>
         <div style={{ display: 'flex', justifyContent: 'center' }}>
           <button onClick={onClose} style={{

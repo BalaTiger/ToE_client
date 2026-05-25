@@ -1,8 +1,8 @@
 import React from 'react';
-import { CS, GOD_CS, GOD_DEFS, getCardBackImage, getCardDisplayKey } from '../../constants/card';
+import { CS, GOD_CS, GOD_DEFS, getCardBackImage } from '../../constants/card';
 import { RINFO } from '../../game';
 import { isBlackGoatYoung } from '../../game/coreUtils';
-import { AreaTooltip, DDCard, DDCardBack, GodTooltip } from '../cards';
+import { AreaTooltip, CardCodeLabel, DDCard, DDCardBack, GodTooltip } from '../cards';
 import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
 
 function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth}){
@@ -101,13 +101,10 @@ const DISCARD_OFFSETS=[
 
 function MiniCardLabel({card,scale=1,glowColor='#c8a96e',ambient=true}){
   if(!card)return null;
-  const label=getCardDisplayKey(card);
   const name=card.name||'';
   return(
     <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:`${Math.max(2,Math.round(3*scale))}px ${Math.max(2,Math.round(2*scale))}px`,textAlign:'center',lineHeight:1.05,background:ambient?'radial-gradient(circle at 45% 35%,rgba(255,230,120,0.14),rgba(0,0,0,0) 72%)':'transparent'}}>
-      <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:(card.isGod?GOD_CS:(CS[card.letter]||GOD_CS)).text,fontSize:Math.max(6,Math.round((card.isGod?8.5:9.5)*scale)),letterSpacing:card.isGod?0.5:0,textShadow:`0 0 8px ${glowColor}`}}>
-        {label}
-      </div>
+      <CardCodeLabel card={card} scale={scale} textShadow={`0 0 8px ${glowColor}`}/>
       {name&&(
         <div style={{marginTop:Math.max(1,Math.round(2*scale)),fontFamily:"'IM Fell English','Georgia',serif",fontWeight:600,color:'#e8cc88',fontSize:Math.max(5,Math.round((name.length>6?4.2:4.8)*scale)),lineHeight:1.02,wordBreak:'break-word',overflowWrap:'anywhere',maxWidth:'100%'}}>
           {name}

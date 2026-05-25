@@ -92,4 +92,25 @@ describe('buildAnimQueue stat animations', () => {
 
     expect(queue.map(step => step.type)).toEqual(['SAN_DAMAGE']);
   });
+
+  it('下一回合摸牌队列可用已消费 statEventSeq 避免重播上一回合伤害', () => {
+    const oldGs = makeGs({
+      players: [makePlayer({ hp: 10, san: 10 }), makePlayer({ hp: 8, san: 9 })],
+      log: ['旧日志'],
+      _statEventSeq: 0,
+    });
+    const previousEvents = [
+      { type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 8, san: 10 }, seq: 1 },
+      { type: 'SAN_LOSS', target: 1, from: { hp: 8, san: 10 }, to: { hp: 8, san: 9 }, seq: 1 },
+    ];
+    const newGs = makeGs({
+      players: [makePlayer({ hp: 10, san: 10 }), makePlayer({ hp: 8, san: 9 })],
+      log: ['旧日志', '你 摸到 [D2] 穴居人战争'],
+      _statEvents: previousEvents,
+      _statEventSeq: 1,
+    });
+
+    expect(buildAnimQueue(oldGs, newGs).some(step => step.type === 'HP_DAMAGE')).toBe(true);
+    expect(buildAnimQueue({ ...oldGs, _statEventSeq: 1 }, newGs).some(step => step.type === 'HP_DAMAGE')).toBe(false);
+  });
 });

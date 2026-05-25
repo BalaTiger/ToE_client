@@ -104,5 +104,51 @@ describe('animQueueHelpers', () => {
     expect(flow.queue.map(step => step.type)).toEqual(['DRAW_CARD', 'SAN_HEAL']);
     expect(flow.queue[1]).toMatchObject({ hitIndices: [0] });
     expect(flow.queue[1].statEvents).toMatchObject([{ type: 'SAN_GAIN', seq: 7 }]);
+    expect(flow.statEventSeq).toBe(7);
+  });
+
+  it('检定后的尾队列不会重放检定前已经存在的 HP statEvent', () => {
+    const oldHpEvent = {
+      type: 'HP_LOSS',
+      target: 1,
+      from: { hp: 10, san: 10, isDead: false },
+      to: { hp: 8, san: 10, isDead: false },
+      reason: '旧伤害',
+      seq: 3,
+    };
+    const card = { name: '乏力', effect: 'handLimitDecrease', type: 'negative' };
+    const beforePlayers = [
+      makePlayer({ name: '卡洛斯', hp: 10, san: 3 }),
+      makePlayer({ name: '贝拉', hp: 8, san: 10 }),
+    ];
+    const afterPlayers = copyPlayers(beforePlayers);
+    afterPlayers[0].handLimitDecreaseNextTurn = 1;
+    const events = [{
+      card,
+      target: 0,
+      beforePlayers,
+      beforeLog: ['卡洛斯 的SAN检定结果为"乏力"'],
+      afterPlayers,
+      afterLog: ['卡洛斯 的SAN检定结果为"乏力"', '卡洛斯 乏力，下一回合手牌上限-1'],
+      statEventSeq: null,
+      statEvents: [],
+    }];
+    const flow = buildInspectionEventFlow(
+      { players: beforePlayers, log: [], _statEventSeq: 3 },
+      events,
+      { buildAnimQueue, copyPlayers },
+    );
+    const tailQueue = buildAnimQueue(
+      { players: flow.players, log: flow.log, _statEventSeq: flow.statEventSeq },
+      {
+        players: afterPlayers,
+        log: flow.log,
+        _statEvents: [oldHpEvent],
+        _statEventSeq: 3,
+      },
+    );
+
+    expect(flow.queue.map(step => step.type)).toEqual(['DRAW_CARD']);
+    expect(tailQueue.some(step => step.type === 'HP_DAMAGE')).toBe(false);
   });
 });

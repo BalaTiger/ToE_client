@@ -16,9 +16,7 @@ export function useAnimationQueue({
   cthContinueRestDraws,
   visibleLogRef,
   visibleLogAuthorityRef,
-  turnHighlightLockRef,
-  visualPlayersLockRef,
-  visualZhuLightLockRef,
+  visualStateLocks,
   suppressNextBroadcastRef,
   receivedGsRef,
   ANIM_STEP_GAP,
@@ -45,10 +43,17 @@ export function useAnimationQueue({
       const next = animQueueRef.current.shift();
       if (next.type === 'STATE_PATCH') {
         revealAnimLogs(next);
-        visualPlayersLockRef.current = null;
-        if (visualZhuLightLockRef) visualZhuLightLockRef.current = null;
+        visualStateLocks.clear({players:true,zhuLight:true});
         setVisualDiscard([...(next.discard || [])]);
         setGs(prev => prev ? { ...prev, players: copyPlayers(next.players || prev.players), discard: [...(next.discard || prev.discard)] } : prev);
+        advanceQueue();
+      } else if (next.type === 'VISUAL_LOCK') {
+        visualStateLocks.lock({
+          players: next.players,
+          zhuLight: next.zhuLight,
+          hiddenZhuCardId: next.hiddenZhuCardId,
+          turnHighlight: next.turnHighlight,
+        });
         advanceQueue();
       } else if (next.type === 'CTH_CONTINUE') {
         setAnim(null);
@@ -63,7 +68,7 @@ export function useAnimationQueue({
         }
       } else {
         const nextTurnHighlight = resolveTurnHighlightForStep(next, pendingGsRef.current || gs, gs?.players || []);
-        if (nextTurnHighlight != null) turnHighlightLockRef.current = nextTurnHighlight;
+        if (nextTurnHighlight != null) visualStateLocks.lock({turnHighlight:nextTurnHighlight});
         setAnim(next);
         revealAnimLogs(next);
       }
@@ -72,9 +77,7 @@ export function useAnimationQueue({
       const callback = animCallbackRef.current;
       pendingGsRef.current = null;
       animCallbackRef.current = null;
-      turnHighlightLockRef.current = null;
-      visualPlayersLockRef.current = null;
-      if (visualZhuLightLockRef) visualZhuLightLockRef.current = null;
+      visualStateLocks.clear({turnHighlight:true,players:true,zhuLight:true});
       setAnim(null);
       if (next?.log) syncVisibleLog(next.log);
       if (callback) {
@@ -158,14 +161,31 @@ export function useAnimationQueue({
 
     visibleLogAuthorityRef.current = Array.isArray(nextGs?.log) ? nextGs.log : (Array.isArray(visibleLogAuthorityRef.current) ? visibleLogAuthorityRef.current : []);
     const preparedQueue = prepareAnimQueueLogs(queue, nextGs, visibleLogRef.current);
-    turnHighlightLockRef.current = gs?.currentTurn ?? null;
-    const firstTurnHighlight = resolveTurnHighlightForStep(preparedQueue[0], nextGs, gs?.players || []);
-    if (firstTurnHighlight != null) turnHighlightLockRef.current = firstTurnHighlight;
+    visualStateLocks.lock({turnHighlight:gs?.currentTurn ?? null});
+    const playableQueue = [...preparedQueue];
+    while (playableQueue[0]?.type === 'VISUAL_LOCK') {
+      const visualLock = playableQueue.shift();
+      visualStateLocks.lock({
+        players: visualLock.players,
+        zhuLight: visualLock.zhuLight,
+        hiddenZhuCardId: visualLock.hiddenZhuCardId,
+        turnHighlight: visualLock.turnHighlight,
+      });
+    }
+    if (!playableQueue.length) {
+      pendingGsRef.current = nextGs;
+      animQueueRef.current = [];
+      animCallbackRef.current = wrappedCallback;
+      advanceQueue();
+      return;
+    }
+    const firstTurnHighlight = resolveTurnHighlightForStep(playableQueue[0], nextGs, gs?.players || []);
+    if (firstTurnHighlight != null) visualStateLocks.lock({turnHighlight:firstTurnHighlight});
     pendingGsRef.current = nextGs;
-    animQueueRef.current = [...preparedQueue.slice(1)];
+    animQueueRef.current = [...playableQueue.slice(1)];
     animCallbackRef.current = wrappedCallback;
-    setAnim(preparedQueue[0]);
-    revealAnimLogs(preparedQueue[0]);
+    setAnim(playableQueue[0]);
+    revealAnimLogs(playableQueue[0]);
   }
 
   return {

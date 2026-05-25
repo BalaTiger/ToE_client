@@ -41,6 +41,7 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
   const queue=[];
   let cursorPlayers=copyPlayers(baseGs?.players||[]);
   let cursorLog=[...(Array.isArray(baseGs?.log)?baseGs.log:[])];
+  let cursorStatEventSeq=baseGs?._statEventSeq||0;
   (events||[]).forEach(ev=>{
     const beforePlayers=copyPlayers(ev?.beforePlayers||cursorPlayers);
     const beforeLog=[...(Array.isArray(ev?.beforeLog)?ev.beforeLog:cursorLog)];
@@ -65,6 +66,7 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
     if(effectQ.length)queue.push(...effectQ);
     cursorPlayers=afterPlayers;
     cursorLog=afterLog;
+    if(ev?.statEventSeq!=null)cursorStatEventSeq=Math.max(cursorStatEventSeq,ev.statEventSeq);
   });
-  return {queue,players:cursorPlayers,log:cursorLog};
+  return {queue,players:cursorPlayers,log:cursorLog,statEventSeq:cursorStatEventSeq};
 }

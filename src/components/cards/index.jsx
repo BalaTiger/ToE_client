@@ -26,33 +26,38 @@ function OctopusSVG({col,size=32}){
   );
 }
 
+function getTooltipPlacement(position,{width=214,height=100}={}){
+  if(!position)return null;
+  const viewW=window.innerWidth;
+  const viewH=window.innerHeight;
+  const centeredTop=Math.max(4,Math.min(position.top+((position.height-height)/2),viewH-height-4));
+  let left,top;
+  if(position.right+width+6<=viewW){
+    left=position.right+6;
+    top=centeredTop;
+  }else if(position.left-width-6>=0){
+    left=position.left-width-6;
+    top=centeredTop;
+  }else{
+    left=Math.max(4,Math.min(position.left,viewW-width-4));
+    if(position.bottom+height+4<=viewH){
+      top=position.top;
+    }else if(position.top-height-4>=0){
+      top=position.top-height;
+    }else{
+      top=Math.max(4,Math.min(position.top,viewH-height-4));
+    }
+  }
+  return{left,top};
+}
+
 function GodTooltip({def,godLevel,position}){
   const lvIdx=Math.max(0,(godLevel||1)-1);
   if(!position) return null;
   
   const tooltipWidth=214;
   const tooltipHeight=def.levels.length*80+40;
-  const viewW=window.innerWidth;
-  const viewH=window.innerHeight;
-  const centeredTop=Math.max(4,Math.min(position.top+((position.height-tooltipHeight)/2),viewH-tooltipHeight-4));
-  
-  let left,top;
-  if(position.right+tooltipWidth+6<=viewW){
-    left=position.right+6;
-    top=centeredTop;
-  }else if(position.left-tooltipWidth-6>=0){
-    left=position.left-tooltipWidth-6;
-    top=centeredTop;
-  }else{
-    left=Math.max(4,Math.min(position.left,viewW-tooltipWidth-4));
-    if(position.bottom+tooltipHeight+4<=viewH){
-      top=position.top;
-    }else if(position.top-tooltipHeight-4>=0){
-      top=position.top-tooltipHeight;
-    }else{
-      top=Math.max(4,Math.min(position.top,viewH-tooltipHeight-4));
-    }
-  }
+  const {left,top}=getTooltipPlacement(position,{width:tooltipWidth,height:tooltipHeight});
   
   return createPortal(
     <div style={{
@@ -81,25 +86,7 @@ function AreaTooltip({card,position}){
   
   const tooltipWidth=214;
   const tooltipHeight=100;
-  const viewW=window.innerWidth;
-  const viewH=window.innerHeight;
-  
-  let left,top;
-  if(position.right+tooltipWidth+6<=viewW){
-    left=position.right+6;
-  }else if(position.left-tooltipWidth-6>=0){
-    left=position.left-tooltipWidth-6;
-  }else{
-    left=Math.max(4,Math.min(position.left,viewW-tooltipWidth-4));
-  }
-  
-  if(position.bottom+tooltipHeight+4<=viewH){
-    top=position.top;
-  }else if(position.top-tooltipHeight-4>=0){
-    top=position.top-tooltipHeight;
-  }else{
-    top=Math.max(4,Math.min(position.top,viewH-tooltipHeight-4));
-  }
+  const {left,top}=getTooltipPlacement(position,{width:tooltipWidth,height:tooltipHeight});
   
   return createPortal(
     <div style={{
@@ -122,15 +109,7 @@ function BgyTooltip({desc,position}){
   if(!position) return null;
   const tooltipWidth=214;
   const tooltipHeight=80;
-  const viewW=window.innerWidth;
-  const viewH=window.innerHeight;
-  let left,top;
-  if(position.right+tooltipWidth+6<=viewW){ left=position.right+6; }
-  else if(position.left-tooltipWidth-6>=0){ left=position.left-tooltipWidth-6; }
-  else{ left=Math.max(4,Math.min(position.left,viewW-tooltipWidth-4)); }
-  if(position.bottom+tooltipHeight+4<=viewH){ top=position.top; }
-  else if(position.top-tooltipHeight-4>=0){ top=position.top-tooltipHeight; }
-  else{ top=Math.max(4,Math.min(position.top,viewH-tooltipHeight-4)); }
+  const {left,top}=getTooltipPlacement(position,{width:tooltipWidth,height:tooltipHeight});
   return createPortal(
     <div style={{
       position:'fixed',left:`${left}px`,top:`${top}px`,zIndex:99999,
@@ -143,6 +122,105 @@ function BgyTooltip({desc,position}){
       <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:11,color:'#7aca7a',lineHeight:1.5}}>{desc}</div>
     </div>,
     document.body
+  );
+}
+
+function CardCodeLabel({card,scale=1,color,textShadow,fontSize,letterSpacing,style}){
+  const isGod=!!card?.isGod;
+  const code=getCardDisplayKey(card);
+  return(
+    <div style={{
+      fontFamily:"'Cinzel',serif",
+      fontWeight:700,
+      color:color||(card?(isGod?GOD_CS:(CS[card.letter]||GOD_CS)).text:GOD_CS.text),
+      fontSize:fontSize??Math.max(6,Math.round((isGod?8.5:9.5)*scale)),
+      lineHeight:1,
+      letterSpacing:letterSpacing??(isGod?0.5:0),
+      textShadow:textShadow,
+      ...style,
+    }}>
+      {code}
+    </div>
+  );
+}
+
+function MiniCardFace({card,width=70,height=94,scale=1,glowColor,ambient=true,showName=true,frameStyle,labelStyle,nameStyle}){
+  const s=card?(card.isGod?GOD_CS:(CS[card.letter]||GOD_CS)):GOD_CS;
+  const name=card?.name||'';
+  return(
+    <div style={{
+      width,
+      height,
+      borderRadius:4,
+      background:s.bg,
+      border:`1.5px solid ${s.borderBright}`,
+      boxShadow:`0 0 22px ${(s.glow||s.borderBright)}66, 0 8px 26px rgba(0,0,0,0.72)`,
+      display:'flex',
+      flexDirection:'column',
+      alignItems:'center',
+      justifyContent:'center',
+      padding:'7px 6px',
+      textAlign:'center',
+      overflow:'hidden',
+      position:'relative',
+      ...frameStyle,
+    }}>
+      {ambient&&<div style={{position:'absolute',inset:0,background:'radial-gradient(circle at 45% 35%,rgba(255,230,120,0.14),rgba(0,0,0,0) 72%)',pointerEvents:'none'}}/>}
+      <CardCodeLabel
+        card={card}
+        scale={scale}
+        fontSize={labelStyle?.fontSize??(card?.isGod?17:20)}
+        letterSpacing={labelStyle?.letterSpacing??(card?.isGod?1.2:0)}
+        textShadow={labelStyle?.textShadow??`0 0 8px ${glowColor||s.borderBright}`}
+        style={{position:'relative',...(labelStyle||{})}}
+      />
+      {showName&&name&&(
+        <div style={{
+          position:'relative',
+          marginTop:7,
+          fontFamily:"'Cinzel',serif",
+          fontWeight:600,
+          color:'#e7cf8a',
+          fontSize:8.5,
+          lineHeight:1.15,
+          wordBreak:'break-word',
+          overflowWrap:'anywhere',
+          maxWidth:'100%',
+          ...nameStyle,
+        }}>
+          {name}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PreviewCard({card,minWidth=120,codeFontSize=51,frameStyle,desc}){
+  if(!card)return null;
+  const s=card.isGod?GOD_CS:(CS[card.letter]||GOD_CS);
+  const bodyText=desc??(card.isGod?(card.subtitle||card.power||''):(card.desc||''));
+  return(
+    <div style={{
+      background:s.bg,
+      border:`2px solid ${s.borderBright}`,
+      borderRadius:4,
+      padding:'18px 22px',
+      display:'inline-flex',
+      flexDirection:'column',
+      alignItems:'center',
+      minWidth,
+      marginBottom:16,
+      boxShadow:`0 0 30px ${s.glow}55`,
+      ...frameStyle,
+    }}>
+      <CardCodeLabel card={card} fontSize={codeFontSize}/>
+      <div style={{fontFamily:"'Cinzel',serif",color:'#e8cc88',fontSize:19.5,fontWeight:600,marginTop:6,textAlign:'center'}}>{card.name}</div>
+      {!!bodyText&&(
+        <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#d4b468',fontSize:16.5,marginTop:8,lineHeight:1.4,maxWidth:200,textAlign:'center'}}>
+          {bodyText}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -325,7 +403,7 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
         {/* Corner ornament */}
         {!small&&!compact&&<div style={{position:'absolute',top:3,right:5,color:s.border,fontSize:9,opacity:0.7}}>✦</div>}
         {isRoseThornMarked&&!small&&<div style={{position:'absolute',top:3,left:5,color:'#ff9ab2',fontSize:compact?8:9,opacity:0.92,textShadow:'0 0 8px rgba(255,90,130,0.55)',fontFamily:"'Cinzel',serif"}}>倒刺</div>}
-        <div style={{color:s.text,fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:small?10:compact?15:18,lineHeight:1,textShadow:`0 0 6px ${s.text}55`}}>{getCardDisplayKey(card)}</div>
+        <CardCodeLabel card={card} fontSize={small?10:compact?15:18} textShadow={`0 0 6px ${s.text}55`}/>
         <div style={{color:'#e8cc88',fontFamily:"'IM Fell English','Georgia',serif",fontSize:nameFontSize,fontWeight:600,marginTop:small?2:compact?1:2,lineHeight:small?1.08:1.12,wordBreak:'break-word',overflowWrap:'anywhere',textAlign:small?'center':undefined}}>{card.name}</div>
         {!small&&!compact&&<div style={{color:'#d4b468',fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:descFontSize,marginTop:'auto',lineHeight:1.25,wordBreak:'break-word'}}>{card.desc}</div>}
         {/* Bottom ornament */}
@@ -375,4 +453,4 @@ function GodCardDisplay({card,level=1}){
     </div>
   );
 }
-export { GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG };
+export { CardCodeLabel, MiniCardFace, PreviewCard, GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG };
