@@ -69,6 +69,7 @@ import {
   getZhuLitDeckCards,
   getZhuTopGuard,
   moveTopDeckCardToBottom,
+  resolveMpTimeoutToAction,
 } from "./game";
 import {
   rotateGsForViewer,
@@ -129,7 +130,7 @@ import { useWindowSize } from './hooks/useWindowSize';
 import { useGameAudio } from './hooks/useGameAudio';
 import { useAiWatchdog, BAD_PHASES } from './hooks/useAiWatchdog';
 import { useRoomCountdown } from './hooks/useRoomCountdown';
-import { useMpCthDecisionTimer, useMpDiscardTimer } from './hooks/useMultiplayerTimers';
+import { useMpCthDecisionTimer, useMpDiscardTimer, useMpHuntRevealTimer, useMpTurnTimer } from './hooks/useMultiplayerTimers';
 import { useVisualDiscardSync } from './hooks/useVisualDiscardSync';
 import { Ellipsis } from './components/ui/Ellipsis';
 import { FlyingEmoji } from './components/ui/FlyingEmoji';
@@ -414,10 +415,6 @@ export default function Game(){
   const mpRoleRevealedRef=useRef(false); // 每局游戏只触发一次角色揭示
   const gameEndSentRef=useRef(false);      // 防止 gameEnd 重复发送
   const [isDisconnected,setIsDisconnected]=useState(false);
-  const [mpTurnSec,setMpTurnSec]=useState(null);       // 回合倒计时剩余秒数（显示用）
-  const [mpHuntSec,setMpHuntSec]=useState(null);       // 追捕亮牌倒计时（被追捕方显示）
-  const mpTurnIntervalRef=useRef(null);
-  const mpHuntIntervalRef=useRef(null);
   // 表情功能
   const [flyingEmojis,setFlyingEmojis]=useState([]);  // [{id,emoji,startX,startY,endX,endY,arcHeight,durationMs}]
   const [showEmojiPicker,setShowEmojiPicker]=useState(false);
@@ -2094,119 +2091,12 @@ export default function Game(){
   const { cdSecondsLeft, cdType } = useRoomCountdown(roomModal, playTickSound);
   const mpCthSec = useMpCthDecisionTimer({ isMpCthDecisionPhase, gs, playTickSound, setGs });
   const mpDiscardSec = useMpDiscardTimer({ isMultiplayer, gs, isLocalCurrentTurn, playTickSound, setGs });
+  const timerMe = gs?.players?.[0] || null;
+  const timerMyTurn = !!gs && isLocalCurrentTurn(gs);
+  const mpTurnSec = useMpTurnTimer({ isMultiplayer, gs, isLocalCurrentTurn, isMpCthDecisionPhase, playTickSound, setGs });
+  const mpHuntSec = useMpHuntRevealTimer({ isMultiplayer, gs, myTurn: timerMyTurn, me: timerMe, playTickSound, setGs });
 
-  // ── 多人游戏：回合计时器（45s）─────────────────────────────────
-  // 只在回合切换时重置（currentTurn/_turnKey 变化），不监听 phase 避免每次 phase 变化都重置
-  const mpTurnTimeoutRef=useRef(null);
-  const mpTurnStartRef=useRef(null);    // Date.now() when current turn timer started
-  const mpTurnPausedElapsedRef=useRef(null); // ms elapsed before HUNT_WAIT_REVEAL pause
   useVisualDiscardSync({ gs, anim, animQueueRef, pendingGsRef, getVisualDiscardForState, setVisualDiscard });
-  useEffect(()=>{
-    if(!isMultiplayer||!gs||gs.gameOver||!isLocalCurrentTurn(gs))return;
-    mpTurnPausedElapsedRef.current=null; // 新回合清除暂停记录
-    mpTurnStartRef.current=Date.now();
-    setMpTurnSec(45);
-    mpTurnIntervalRef.current=setInterval(()=>{
-      setMpTurnSec(s=>{
-        const next=(s===null||s<=1)?0:s-1;
-        if(next===0)clearInterval(mpTurnIntervalRef.current);
-        if(next>0&&next<=10)playTickSound();
-        return next;
-      });
-    },1000);
-    mpTurnTimeoutRef.current=setTimeout(()=>setGs(p=>p?{...p,_mpEndTurn:true}:p),45000);
-    return()=>{
-      clearTimeout(mpTurnTimeoutRef.current);mpTurnTimeoutRef.current=null;
-      clearInterval(mpTurnIntervalRef.current);setMpTurnSec(null);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[isMultiplayer,gs?.currentTurn,gs?._turnKey,gs?.gameOver,playTickSound]);
-
-  // 进入弃牌阶段：完全停止计时（下回合从头来）
-  useEffect(()=>{
-    if(!isMultiplayer||gs?.phase!=='DISCARD_PHASE')return;
-    clearTimeout(mpTurnTimeoutRef.current);mpTurnTimeoutRef.current=null;
-    clearInterval(mpTurnIntervalRef.current);
-    setMpTurnSec(null);
-  },[isMultiplayer,gs?.phase]);
-
-  useEffect(()=>{
-    if(!isMpCthDecisionPhase)return;
-    clearTimeout(mpTurnTimeoutRef.current);mpTurnTimeoutRef.current=null;
-    clearInterval(mpTurnIntervalRef.current);
-    setMpTurnSec(null);
-  },[isMpCthDecisionPhase]);
-
-  // 进入 HUNT_WAIT_REVEAL：暂停计时（保存已消耗 ms，退出后续算剩余时间）
-  useEffect(()=>{
-    if(!isMultiplayer||gs?.phase!=='HUNT_WAIT_REVEAL')return;
-    // 计算已消耗时间（ms）
-    const elapsed=mpTurnStartRef.current?Date.now()-mpTurnStartRef.current:0;
-    mpTurnPausedElapsedRef.current=elapsed;
-    // 停止 interval 和 timeout（不清 mpTurnSec 显示——JSX 中由 phase 条件隐藏）
-    clearTimeout(mpTurnTimeoutRef.current);mpTurnTimeoutRef.current=null;
-    clearInterval(mpTurnIntervalRef.current);
-  },[isMultiplayer,gs?.phase]);
-
-  // 离开 HUNT_WAIT_REVEAL（进入 HUNT_CONFIRM 等）：从暂停时刻续计剩余时间
-  useEffect(()=>{
-    if(!isMultiplayer||!gs||gs.gameOver)return;
-    if(gs.phase==='HUNT_WAIT_REVEAL')return; // 还在等待中
-    if(mpTurnPausedElapsedRef.current===null)return; // 没有暂停记录
-    if(!isLocalCurrentTurn(gs))return; // 不是我的回合
-    const elapsedBefore=mpTurnPausedElapsedRef.current;
-    mpTurnPausedElapsedRef.current=null;
-    const remMs=Math.max(0,45000-elapsedBefore);
-    const remSec=Math.round(remMs/1000);
-    if(remSec<=0){setGs(p=>p?{...p,_mpEndTurn:true}:p);return;}
-    // 重置起点为"现在−已消耗时间"，这样主 effect cleanup 能正确计算剩余
-    mpTurnStartRef.current=Date.now()-elapsedBefore;
-    setMpTurnSec(remSec);
-    mpTurnIntervalRef.current=setInterval(()=>{
-      setMpTurnSec(s=>{
-        const next=(s===null||s<=1)?0:s-1;
-        if(next===0)clearInterval(mpTurnIntervalRef.current);
-        if(next>0&&next<=10)playTickSound();
-        return next;
-      });
-    },1000);
-    mpTurnTimeoutRef.current=setTimeout(()=>setGs(p=>p?{...p,_mpEndTurn:true}:p),remMs);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[isMultiplayer,gs?.phase,gs?.currentTurn,gs?.gameOver,playTickSound]);
-
-  // HUNT_WAIT_REVEAL 期间 45s 计时暂停 + 被追捕者 20s 超时随机亮牌
-  const huntRevealTimerRef=useRef(null);
-  useEffect(()=>{
-    if(!isMultiplayer||!gs||gs.gameOver)return;
-    // 被追捕方（!myTurn）显示倒计时并执行超时逻辑
-    // 追猎者（myTurn）也进入此 phase，两边都显示倒计时
-    if(gs.phase!=='HUNT_WAIT_REVEAL')return;
-    setMpHuntSec(20);
-    mpHuntIntervalRef.current=setInterval(()=>{
-      setMpHuntSec(s=>{
-        const next=s===null||s<=1?0:s-1;
-        if(next===0)clearInterval(mpHuntIntervalRef.current);
-        if(next>0&&next<=10)playTickSound();
-        return next;
-      });
-    },1000);
-    if(!myTurn){
-      // 只有被追捕方执行超时逻辑
-      const t=setTimeout(()=>{
-        const hand=me.hand;
-        if(!hand.length)return;
-        const rc=hand[0|Math.random()*hand.length];
-        const L=[...gs.log,`(超时) ${me.name} 随机亮出 ${cardLogText(rc,{alwaysShowName:true})}`];
-        setGs({...gs,log:L,phase:'HUNT_CONFIRM',abilityData:{...gs.abilityData,revCard:rc}});
-      },20000);
-      huntRevealTimerRef.current=t;
-    }
-    return()=>{
-      clearTimeout(huntRevealTimerRef.current);huntRevealTimerRef.current=null;
-      clearInterval(mpHuntIntervalRef.current);setMpHuntSec(null);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[gs?.phase,gs?.currentTurn,isMultiplayer]);
 
   useEffect(()=>{
     if(!gs?._mpAutoCthDecision)return;
@@ -2248,56 +2138,8 @@ export default function Game(){
     if(isBlocked)return;
     // HUNT_WAIT_REVEAL 期间追猎者等待对方亮牌，暂不处理超时结束回合
     if(gs.phase==='HUNT_WAIT_REVEAL')return;
-    // 纯函数：将当前 gs 的任意子阶段解析到 ACTION / DISCARD_PHASE
-    function resolveToAction(g){
-      const phase=g.phase;
-      if(phase==='ACTION'||phase==='DISCARD_PHASE')return g;
-      if(phase==='DRAW_REVEAL'){
-        const dr=g.drawReveal;
-        if(!dr?.card)return{...g,phase:'ACTION',drawReveal:null};
-        if(dr.needsDecision){
-          if(dr.forcedKeep){
-            let P=copyPlayers(g.players),D=[...g.deck],Disc=[...g.discard];
-            const res=applyFx(dr.card,dr.drawerIdx??0,null,P,D,Disc,g);
-            P=res.P;D=res.D;Disc=res.Disc;P[dr.drawerIdx??0].hand.push(dr.card);
-            return{...g,players:P,deck:D,discard:Disc,log:[...g.log,`(超时) ${dr.drawerName||'该玩家'}被迫收入 ${cardLogText(dr.card,{alwaysShowName:true})}`,...res.msgs],phase:'ACTION',drawReveal:null,abilityData:{},...(res.statePatch||{})};
-          }
-          return{...g,discard:[...g.discard,dr.card],log:[...g.log,`(超时) ${dr.drawerName||'该玩家'}弃置了 ${cardLogText(dr.card,{alwaysShowName:true})}`],phase:'ACTION',drawReveal:null,abilityData:{}};
-        }
-        return{...g,phase:'ACTION',drawReveal:null};
-      }
-      if(phase==='GOD_CHOICE'){
-        const godCard=g.abilityData?.godCard;
-        if(!godCard)return{...g,phase:'ACTION',abilityData:{}};
-        const Disc=[...g.discard,{...godCard}];
-        return{...g,discard:Disc,log:[...g.log,'(超时) 放弃了邪神的馈赠'],phase:'ACTION',abilityData:{}};
-      }
-      if(phase==='NYA_BORROW'){
-        // 跳过借身，直接摸牌
-        let P=copyPlayers(g.players),D=[...g.deck],Disc=[...g.discard];
-        const res=playerDrawCard(P,D,Disc,0,g);
-        P=res.P;D=res.D;Disc=res.Disc;
-        const L=[...g.log,'(超时) 跳过借身'];
-        if(res.needGodChoice){
-          // 连锁：摸到邪神牌 → 自动放弃
-          Disc.push({...res.drawnCard});
-          return{...g,players:P,deck:D,discard:Disc,log:[...L,'(超时) 放弃了邪神的馈赠'],phase:'ACTION',abilityData:{}};
-        }
-        if(res.needsDecision){
-          return{...g,players:P,deck:D,discard:[...Disc,res.drawnCard],log:[...L,`(超时) 弃置了 ${cardLogText(res.drawnCard,{alwaysShowName:true})}`],phase:'ACTION',drawReveal:null,abilityData:{}};
-        }
-        // 普通牌
-        return{...g,players:P,deck:D,discard:Disc,
-          log:[...L,...res.effectMsgs],
-          phase:'ACTION',
-          drawReveal:res.drawnCard?{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:false}:null,
-          abilityData:{}};
-      }
-      return g;
-    }
-
     // 直接从 gs 读取，避免 functional update（functional update 内无法调用 setAnim）
-    const base=resolveToAction({...gs,_mpEndTurn:undefined});
+    const base=resolveMpTimeoutToAction({...gs,_mpEndTurn:undefined});
     const win=checkWin(base.players,true);
     if(win){setGs({...base,gameOver:win});return;}
     if(base.players[0].hand.length>4){

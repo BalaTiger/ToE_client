@@ -1,4 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
+import { cardLogText } from '../game/coreUtils';
+
+function startSecondCountdown({ seconds, warningAt, setSeconds, intervalRef, playTickSound }) {
+  setSeconds(seconds);
+  const intervalId = setInterval(() => {
+    setSeconds(s => {
+      const next = s === null || s <= 1 ? 0 : s - 1;
+      if (next === 0) clearInterval(intervalId);
+      if (next > 0 && next <= warningAt) playTickSound();
+      return next;
+    });
+  }, 1000);
+  intervalRef.current = intervalId;
+  return intervalId;
+}
 
 export function useMpCthDecisionTimer({
   isMpCthDecisionPhase,
@@ -65,4 +80,136 @@ export function useMpDiscardTimer({
   }, [isMultiplayer, gs?.phase, gs?.currentTurn, gs?._turnKey, gs?.gameOver, playTickSound]);
 
   return mpDiscardSec;
+}
+
+export function useMpTurnTimer({
+  isMultiplayer,
+  gs,
+  isLocalCurrentTurn,
+  isMpCthDecisionPhase,
+  playTickSound,
+  setGs,
+}) {
+  const [mpTurnSec, setMpTurnSec] = useState(null);
+  const mpTurnIntervalRef = useRef(null);
+  const mpTurnTimeoutRef = useRef(null);
+  const mpTurnStartRef = useRef(null);
+  const mpTurnPausedElapsedRef = useRef(null);
+
+  useEffect(() => {
+    if (!isMultiplayer || !gs || gs.gameOver || !isLocalCurrentTurn(gs)) return;
+    mpTurnPausedElapsedRef.current = null;
+    mpTurnStartRef.current = Date.now();
+    const intervalId = startSecondCountdown({
+      seconds: 45,
+      warningAt: 10,
+      setSeconds: setMpTurnSec,
+      intervalRef: mpTurnIntervalRef,
+      playTickSound,
+    });
+    mpTurnTimeoutRef.current = setTimeout(() => setGs(p => p ? { ...p, _mpEndTurn: true } : p), 45000);
+    return () => {
+      clearTimeout(mpTurnTimeoutRef.current);
+      mpTurnTimeoutRef.current = null;
+      clearInterval(intervalId);
+      setMpTurnSec(null);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMultiplayer, gs?.currentTurn, gs?._turnKey, gs?.gameOver, playTickSound]);
+
+  useEffect(() => {
+    if (!isMultiplayer || gs?.phase !== 'DISCARD_PHASE') return;
+    clearTimeout(mpTurnTimeoutRef.current);
+    mpTurnTimeoutRef.current = null;
+    clearInterval(mpTurnIntervalRef.current);
+    setMpTurnSec(null);
+  }, [isMultiplayer, gs?.phase]);
+
+  useEffect(() => {
+    if (!isMpCthDecisionPhase) return;
+    clearTimeout(mpTurnTimeoutRef.current);
+    mpTurnTimeoutRef.current = null;
+    clearInterval(mpTurnIntervalRef.current);
+    setMpTurnSec(null);
+  }, [isMpCthDecisionPhase]);
+
+  useEffect(() => {
+    if (!isMultiplayer || gs?.phase !== 'HUNT_WAIT_REVEAL') return;
+    const elapsed = mpTurnStartRef.current ? Date.now() - mpTurnStartRef.current : 0;
+    mpTurnPausedElapsedRef.current = elapsed;
+    clearTimeout(mpTurnTimeoutRef.current);
+    mpTurnTimeoutRef.current = null;
+    clearInterval(mpTurnIntervalRef.current);
+  }, [isMultiplayer, gs?.phase]);
+
+  useEffect(() => {
+    if (!isMultiplayer || !gs || gs.gameOver) return;
+    if (gs.phase === 'HUNT_WAIT_REVEAL') return;
+    if (mpTurnPausedElapsedRef.current === null) return;
+    if (!isLocalCurrentTurn(gs)) return;
+    const elapsedBefore = mpTurnPausedElapsedRef.current;
+    mpTurnPausedElapsedRef.current = null;
+    const remMs = Math.max(0, 45000 - elapsedBefore);
+    const remSec = Math.round(remMs / 1000);
+    if (remSec <= 0) {
+      setGs(p => p ? { ...p, _mpEndTurn: true } : p);
+      return;
+    }
+    mpTurnStartRef.current = Date.now() - elapsedBefore;
+    startSecondCountdown({
+      seconds: remSec,
+      warningAt: 10,
+      setSeconds: setMpTurnSec,
+      intervalRef: mpTurnIntervalRef,
+      playTickSound,
+    });
+    mpTurnTimeoutRef.current = setTimeout(() => setGs(p => p ? { ...p, _mpEndTurn: true } : p), remMs);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMultiplayer, gs?.phase, gs?.currentTurn, gs?.gameOver, playTickSound]);
+
+  return mpTurnSec;
+}
+
+export function useMpHuntRevealTimer({
+  isMultiplayer,
+  gs,
+  myTurn,
+  me,
+  playTickSound,
+  setGs,
+}) {
+  const [mpHuntSec, setMpHuntSec] = useState(null);
+  const mpHuntIntervalRef = useRef(null);
+  const huntRevealTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (!isMultiplayer || !gs || gs.gameOver) return;
+    if (gs.phase !== 'HUNT_WAIT_REVEAL') return;
+    const intervalId = startSecondCountdown({
+      seconds: 20,
+      warningAt: 10,
+      setSeconds: setMpHuntSec,
+      intervalRef: mpHuntIntervalRef,
+      playTickSound,
+    });
+    if (!myTurn) {
+      const timeoutId = setTimeout(() => {
+        const hand = me?.hand || [];
+        if (!hand.length) return;
+        const rc = hand[0 | Math.random() * hand.length];
+        const L = [...gs.log, `(超时) ${me?.name || '该玩家'} 随机亮出 ${cardLogText(rc, { alwaysShowName: true })}`];
+        setGs({ ...gs, log: L, phase: 'HUNT_CONFIRM', abilityData: { ...gs.abilityData, revCard: rc } });
+      }, 20000);
+      huntRevealTimerRef.current = timeoutId;
+    }
+    return () => {
+      clearTimeout(huntRevealTimerRef.current);
+      huntRevealTimerRef.current = null;
+      clearInterval(intervalId);
+      setMpHuntSec(null);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gs?.phase, gs?.currentTurn, isMultiplayer]);
+
+  return mpHuntSec;
 }
