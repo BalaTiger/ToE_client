@@ -1,5 +1,13 @@
 import { isTurnStartLog } from "./animLogs";
 
+export function statePatchStep(patch={}){
+  const step={type:"STATE_PATCH"};
+  Object.entries(patch).forEach(([key,value])=>{
+    if(value!==undefined)step[key]=value;
+  });
+  return step;
+}
+
 export function resolveTurnHighlightForStep(step,nextGs,playersFallback=[]){
   if(!step||step.type!=="YOUR_TURN")return null;
   const stepName=

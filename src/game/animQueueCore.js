@@ -1,4 +1,5 @@
 import { makeTargetStats, statEventsToAnimQueue } from './statEvents';
+import { statePatchStep } from './animQueueHelpers';
 
 export function buildAnimQueue(oldGs, newGs) {
   const q = [];
@@ -157,7 +158,7 @@ export function buildAiHuntEventAnimQueue(evt, actorName) {
     const discardChunk = takeFollowup(line => /^弃 \[/.test(line || ''));
     perHuntQueue.push({ type: 'DISCARD', card: evt.discardedCard, triggerName: actorName || '???', targetPid: evt.hunterIdx, _logChunk: discardChunk });
     if (evt.afterDiscardPlayers) {
-      perHuntQueue.push({ type: 'STATE_PATCH', players: evt.afterDiscardPlayers, discard: evt.afterDiscardDiscard });
+      perHuntQueue.push(statePatchStep({ players: evt.afterDiscardPlayers, discard: evt.afterDiscardDiscard }));
     }
   }
   if (evt.beforePlayers && evt.afterPlayers) {
@@ -188,7 +189,7 @@ export function buildAiHuntEventAnimQueue(evt, actorName) {
       }
     }
     perHuntQueue.push(...resultWithChunks);
-    perHuntQueue.push({ type: 'STATE_PATCH', players: evt.afterPlayers, discard: evt.afterResultDiscard });
+    perHuntQueue.push(statePatchStep({ players: evt.afterPlayers, discard: evt.afterResultDiscard }));
   } else if (followupMsgs.length) {
     perHuntQueue.push({ type: 'TURN_BOUNDARY_PAUSE', _logChunk: [...followupMsgs] });
   }

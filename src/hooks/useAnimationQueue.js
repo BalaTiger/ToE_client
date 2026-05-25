@@ -37,6 +37,37 @@ export function useAnimationQueue({
     }
   }
 
+  function applyStatePatch(prev, patchStep) {
+    if (!prev) return prev;
+    const has = key => Object.prototype.hasOwnProperty.call(patchStep, key);
+    const patch = {};
+    if (has('players')) patch.players = copyPlayers(patchStep.players || prev.players);
+    if (has('discard')) patch.discard = [...(patchStep.discard || [])];
+    if (has('deck')) patch.deck = [...(patchStep.deck || [])];
+    if (has('log')) patch.log = [...(patchStep.log || [])];
+    if (has('abilityData')) patch.abilityData = { ...(patchStep.abilityData || {}) };
+    [
+      'phase',
+      'currentTurn',
+      'drawReveal',
+      'selectedCard',
+      'zhuLight',
+      'skillUsed',
+      'restUsed',
+      'huntAbandoned',
+      'godFromHandUsed',
+      'godTriggeredThisTurn',
+      'globalOnlySwapOwner',
+      '_statEventSeq',
+      '_statEvents',
+      '_inspectionSeq',
+      '_inspectionEvents',
+    ].forEach(key => {
+      if (has(key)) patch[key] = patchStep[key];
+    });
+    return { ...prev, ...patch };
+  }
+
   function advanceQueue() {
     setAnimExiting(false);
     if (animQueueRef.current.length > 0) {
@@ -44,8 +75,10 @@ export function useAnimationQueue({
       if (next.type === 'STATE_PATCH') {
         revealAnimLogs(next);
         visualStateLocks.clear({players:true,zhuLight:true});
-        setVisualDiscard([...(next.discard || [])]);
-        setGs(prev => prev ? { ...prev, players: copyPlayers(next.players || prev.players), discard: [...(next.discard || prev.discard)] } : prev);
+        if (Object.prototype.hasOwnProperty.call(next, 'discard')) {
+          setVisualDiscard([...(next.discard || [])]);
+        }
+        setGs(prev => applyStatePatch(prev, next));
         advanceQueue();
       } else if (next.type === 'VISUAL_LOCK') {
         visualStateLocks.lock({

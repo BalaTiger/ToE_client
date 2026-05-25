@@ -117,6 +117,7 @@ import {
   resolveTurnHighlightForStep,
   buildBewitchForcedCardQueue,
   buildInspectionEventFlow,
+  statePatchStep,
 } from "./game/animQueueHelpers";
 import { _getZoomCompensatedRect, getPlayerHandAnchorCenter, getPlayerAreaAnchorCenter, getPileAnchorCenter } from './utils/dom';
 import { ANIM_DURATION, ANIM_SPEED_SCALE, CARD_REVEAL_DURATION, ANIM_STEP_GAP } from './components/anim/constants';
@@ -700,7 +701,7 @@ export default function Game(){
               {type:'DRAW_CARD',card:drawnCard,triggerName:drawerName,targetPid:drawerPid,msgs:rotated._drawLogs},
               ...drawEffectQ,
             ];
-            if(drawEffectQ.length)queue.push({type:'STATE_PATCH',players:rotated.players,discard:rotated.discard});
+            if(drawEffectQ.length)queue.push(statePatchStep({players:rotated.players,discard:rotated.discard}));
             triggerAnimQueue(queue,rotated);
           }else{
             setGs(rotated);
@@ -1491,17 +1492,16 @@ export default function Game(){
           queue.push(...drawEffectQ);
           if(drawEffectQ.length){
             visualStateLocks.lock({players:gs._playersBeforeThisDraw,zhuLight:gs.zhuLight||null});
-            queue.push({
-              type:'STATE_PATCH',
+            queue.push(statePatchStep({
               players:gs.players,
               discard:aiTurnDiscarded?removeCardsFromDiscard(gs.discard,[aiTurnDrawnCard]):gs.discard
-            });
+            }));
           }
         }
         // Add discard anim if AI chose to discard the drawn card
         if(aiTurnDiscarded&&aiTurnDrawnCard){
           queue.push({type:'DISCARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn});
-          queue.push({type:'STATE_PATCH',players:gs.players,discard:gs.discard});
+          queue.push(statePatchStep({players:gs.players,discard:gs.discard}));
         }
         const newMsgs=nextLog.slice(oldLog.length);
         const fullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(newMsgs,gs.players);
@@ -1514,12 +1514,11 @@ export default function Game(){
           : actionStatQBase;
 
         if(rawResult._playersBeforeSkillAction){
-          queue.push({
-            type:'STATE_PATCH',
+          queue.push(statePatchStep({
             players:rawResult._playersBeforeSkillAction,
             discard:rawResult._preSkillDiscard||newGs.discard,
             msgs:rawResult._preSkillLogs||[],
-          });
+          }));
           queue.push({type:'VISUAL_LOCK',players:rawResult._playersBeforeSkillAction,zhuLight:gs.zhuLight||null});
           queue.push({type:'TURN_BOUNDARY_PAUSE'});
         }
@@ -1603,17 +1602,16 @@ export default function Game(){
           queue.push(...drawEffectQ);
           if(drawEffectQ.length){
             visualStateLocks.lock({players:gs._playersBeforeThisDraw,zhuLight:gs.zhuLight||null});
-            queue.push({
-              type:'STATE_PATCH',
+            queue.push(statePatchStep({
               players:gs.players,
               discard:aiTurnDiscarded?removeCardsFromDiscard(gs.discard,[aiTurnDrawnCard]):gs.discard
-            });
+            }));
           }
         }
         // 2c. Discard anim if AI chose to discard the drawn card
         if(aiTurnDiscarded&&aiTurnDrawnCard){
           queue.push({type:'DISCARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn});
-          queue.push({type:'STATE_PATCH',players:gs.players,discard:gs.discard});
+          queue.push(statePatchStep({players:gs.players,discard:gs.discard}));
         }
         // Append inspection events triggered by the draw
         let afterInspectionPlayers=gs.players;
@@ -1631,12 +1629,11 @@ export default function Game(){
           afterInspectionLog=inspectionFlow.log;
         }
         if(_playersBeforeSkillAction){
-          queue.push({
-            type:'STATE_PATCH',
+          queue.push(statePatchStep({
             players:_playersBeforeSkillAction,
             discard:_preSkillDiscard||newGs.discard,
             msgs:_preSkillLogs||[],
-          });
+          }));
           queue.push({type:'VISUAL_LOCK',players:_playersBeforeSkillAction,zhuLight:gs.zhuLight||null});
           queue.push({type:'TURN_BOUNDARY_PAUSE'});
         }
@@ -1844,7 +1841,7 @@ export default function Game(){
         const currentTurnQueue=appendAnimLogChunkToQueueEnd(queue,residualLogs);
         const currentTurnStatePatch=
           rawResult._playersBeforeNextDraw
-            ? [{type:'STATE_PATCH',players:P_actionEnd,discard:newGs.discard}]
+            ? [statePatchStep({players:P_actionEnd,discard:newGs.discard})]
             : [];
         const finalQueue=[
           ...currentTurnQueue,
@@ -2642,7 +2639,7 @@ export default function Game(){
       );
       const cleanedGs={...baseGsAfterDecision,_cthRestDraws:null,_cthRestDrawLogs:null,_playersBeforeCthDraws:null};
       triggerAnimQueue(
-        [...cthQueue,...statQ,{type:'STATE_PATCH',players:cleanedGs.players,discard:cleanedGs.discard}],
+        [...cthQueue,...statQ,statePatchStep({players:cleanedGs.players,discard:cleanedGs.discard})],
         null,
         ()=>{_cthContinueRestDraws(cleanedGs);}
       );
@@ -2678,7 +2675,7 @@ export default function Game(){
           abilityData:{...(fromRest?{fromRest:true}:{}),cthDrawsRemaining:remaining-_d-1}};
         const statQ=bindAnimLogChunks(buildAnimQueue(baseGsAfterDecision,forcedGs),{statLogs:split.stat});
         triggerAnimQueue(
-          [{type:'DRAW_CARD',card:r2.drawnCard,triggerName:'你',targetPid:0,msgs:split.preStat.length?split.preStat:(drawMsg?[`${drawMsg}（强制触发）`]:[])},...statQ,{type:'STATE_PATCH',players:P,discard:Disc}],
+          [{type:'DRAW_CARD',card:r2.drawnCard,triggerName:'你',targetPid:0,msgs:split.preStat.length?split.preStat:(drawMsg?[`${drawMsg}（强制触发）`]:[])},...statQ,statePatchStep({players:P,discard:Disc})],
           null,
           ()=>{
             setGs(forcedGs);
@@ -2886,7 +2883,7 @@ export default function Game(){
       const split=splitAnimBoundLogs(L.slice(gs.log.length));
       const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),{preStatLogs:split.preStat,statLogs:split.stat});
       if(queue.length){
-        triggerAnimQueue([...queue,{type:'STATE_PATCH',players:P,discard:Disc}],null,()=>_cthContinueRestDraws(newGs));
+        triggerAnimQueue([...queue,statePatchStep({players:P,discard:Disc})],null,()=>_cthContinueRestDraws(newGs));
       }else{
         syncVisibleLog(L);
         _cthContinueRestDraws(newGs);
@@ -3072,7 +3069,7 @@ export default function Game(){
     if(statQ.length){
       visualStateLocks.lock({players:beforeDrawPlayers,zhuLight:gs.zhuLight||null});
     }
-    triggerAnimQueue([...drawQueue,...statQ,{type:'STATE_PATCH',players:P,discard:Disc}],newGs);
+    triggerAnimQueue([...drawQueue,...statQ,statePatchStep({players:P,discard:Disc})],newGs);
   }
 
   // Generic Treasure Hunter dodge handler
