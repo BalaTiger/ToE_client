@@ -76,6 +76,8 @@ import {
   getCthRestDrawCount,
   getEndTurnReplayHandCards,
   hasEndTurnReplayHandEvent,
+  deriveEffectDecisionState,
+  hasEffectDecisionState,
 } from "./game";
 import {
   rotateGsForViewer,
@@ -1765,6 +1767,7 @@ export default function Game(){
             durationMs:1500,
             msgs:multiplyMsg?[multiplyMsg]:[]
           });
+          postActionInjections.push(statePatchStep({players:P_actionEnd,discard:newGs.discard}));
         }
         if(damageLinkEstablishedMsg){
           postActionInjections.push({
@@ -1840,7 +1843,7 @@ export default function Game(){
         const residualLogs=subtractLogOccurrences(currentTurnLogs,explicitCurrentLogs);
         const currentTurnQueue=appendAnimLogChunkToQueueEnd(queue,residualLogs);
         const currentTurnStatePatch=
-          rawResult._playersBeforeNextDraw
+          rawResult._playersBeforeNextDraw&&!multiplyEvent
             ? [statePatchStep({players:P_actionEnd,discard:newGs.discard})]
             : [];
         const finalQueue=[
@@ -2814,68 +2817,17 @@ export default function Game(){
     // 保留abilityData中的fromRest和cthDrawsRemaining信息
     const replayPatch=dr.fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
     const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:gs.abilityData,...(res.statePatch||{}),...replayPatch};
-    // 检查是否需要偷看手牌
-    if(res.statePatch?.peekHandTargets){
+    if(hasEffectDecisionState(res.statePatch)){
+      const {phase,abilityData}=deriveEffectDecisionState(res.statePatch,{
+        baseAbilityData:gs.abilityData,
+        fallbackPhase:'ACTION',
+        extraAbilityData:{
+          ...(dr.fromRest?{fromRest:true}:{}),
+          ...(gs.abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:gs.abilityData.cthDrawsRemaining}:{}),
+        },
+      });
       syncVisibleLog(L);
-      setGs({...newGs,phase:'PEEK_HAND_SELECT_TARGET',abilityData:{
-        ...gs.abilityData,
-        peekHandTargets:res.statePatch.peekHandTargets,
-        peekHandSource:res.statePatch.peekHandSource,
-      }});
-      return;
-    }
-    // 检查是否需要进行穴居人战争
-    if(res.statePatch?.caveDuelTargets){
-      syncVisibleLog(L);
-      setGs({...newGs,phase:'CAVE_DUEL_SELECT_TARGET',abilityData:{
-        ...gs.abilityData,
-        caveDuelTargets:res.statePatch.caveDuelTargets,
-        caveDuelSource:res.statePatch.caveDuelSource,
-      }});
-      return;
-    }
-    // 检查是否需要进行两人一绳
-    if(res.statePatch?.damageLinkTargets){
-      syncVisibleLog(L);
-      setGs({...newGs,phase:'DAMAGE_LINK_SELECT_TARGET',abilityData:{
-        ...gs.abilityData,
-        damageLinkTargets:res.statePatch.damageLinkTargets,
-        damageLinkSource:res.statePatch.damageLinkSource,
-      }});
-      return;
-    }
-    if(res.statePatch?.roseThornTargets){
-      syncVisibleLog(L);
-      setGs({...newGs,phase:'ROSE_THORN_SELECT_TARGET',abilityData:{
-        ...gs.abilityData,
-        roseThornTargets:res.statePatch.roseThornTargets,
-        roseThornSource:res.statePatch.roseThornSource,
-      }});
-      return;
-    }
-    // 检查是否需要灵龟卜祝选择
-    if(res.statePatch?.abilityData?.type === 'tortoiseOracleSelect'){
-      syncVisibleLog(L);
-      setGs({...newGs,phase:'TORTOISE_ORACLE_SELECT',abilityData:{
-        ...gs.abilityData,
-        ...res.statePatch.abilityData
-      }});
-      return;
-    }
-    if(res.statePatch?.abilityData?.type === 'firstComePick'){
-      const phaseData={...gs.abilityData,...res.statePatch.abilityData,...(dr.fromRest?{fromRest:true}:{}),...(gs.abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:gs.abilityData.cthDrawsRemaining}: {})};
-      syncVisibleLog(L);
-      setGs({...newGs,phase:'FIRST_COME_PICK_SELECT',abilityData:phaseData});
-      return;
-    }
-    if(res.statePatch?.abilityData?.type === 'sameAbyssChoice'){
-      syncVisibleLog(L);
-      setGs({...newGs,phase:'SAME_ABYSS_SELECT',abilityData:{...gs.abilityData,...res.statePatch.abilityData}});
-      return;
-    }
-    if(res.statePatch?.abilityData?.type === 'sphinxGuess'){
-      syncVisibleLog(L);
-      setGs({...newGs,phase:'SPHINX_GUESS',abilityData:{...gs.abilityData,...res.statePatch.abilityData}});
+      setGs({...newGs,phase,abilityData});
       return;
     }
     // CTH fromRest: 先播放当前这张牌的结算动画，再继续剩余摸牌/进入下一回合
@@ -3012,32 +2964,8 @@ export default function Game(){
       ...(split.preStat||[]),
       ...(split.stat||[]),
     ];
-    let nextPhase='AI_TURN';
-    if(res.statePatch?.abilityData?.type==='firstComePick')nextPhase='FIRST_COME_PICK_SELECT';
-    else if(res.statePatch?.abilityData?.type==='sameAbyssChoice')nextPhase='SAME_ABYSS_SELECT';
-    else if(res.statePatch?.abilityData?.type==='sphinxGuess')nextPhase='SPHINX_GUESS';
-    else if(res.statePatch?.peekHandTargets)nextPhase='PEEK_HAND_SELECT_TARGET';
-    else if(res.statePatch?.damageLinkTargets)nextPhase='DAMAGE_LINK_SELECT_TARGET';
     const win=checkWin(P,gs._isMP);
-    const nextAbilityData={
-      ...(res.statePatch?.abilityData||{}),
-      ...(res.statePatch?.peekHandTargets?{
-        peekHandTargets:res.statePatch.peekHandTargets,
-        peekHandSource:res.statePatch.peekHandSource,
-      }:{}),
-      ...(res.statePatch?.damageLinkTargets?{
-        damageLinkTargets:res.statePatch.damageLinkTargets,
-        damageLinkSource:res.statePatch.damageLinkSource,
-      }:{}),
-      ...(res.statePatch?.caveDuelTargets?{
-        caveDuelTargets:res.statePatch.caveDuelTargets,
-        caveDuelSource:res.statePatch.caveDuelSource,
-      }:{}),
-      ...(res.statePatch?.roseThornTargets?{
-        roseThornTargets:res.statePatch.roseThornTargets,
-        roseThornSource:res.statePatch.roseThornSource,
-      }:{}),
-    };
+    const {phase:nextPhase,abilityData:nextAbilityData}=deriveEffectDecisionState(res.statePatch,{fallbackPhase:'AI_TURN'});
     const newGs={
       ...gs,
       ...(res.statePatch||{}),
@@ -4164,40 +4092,15 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     const res=applyFx(bewitchCard,ti,bewitchCard.type==='swapAllHands'?null:ti,P,D,Disc,gs);L.push(...res.msgs);
     res.P[ti].hand.push(bewitchCard);
     const win=checkWin(res.P,gs._isMP);
-    const phaseAbilityData={
-      ...(bewitchCard.type==='swapAllHands'?{
+    const {phase:nextPhase,abilityData:phaseAbilityData}=deriveEffectDecisionState(res.statePatch,{
+      fallbackPhase:'ACTION',
+      leadingPhase:bewitchCard.type==='swapAllHands'?'ZONE_SWAP_SELECT_TARGET':null,
+      leadingAbilityData:bewitchCard.type==='swapAllHands'?{
         zoneSwapCard:bewitchCard,
         zoneSwapSource:ti,
-      }:{}),
-      ...(res.statePatch?.peekHandTargets?{
-        peekHandTargets:res.statePatch.peekHandTargets,
-        peekHandSource:res.statePatch.peekHandSource,
-      }:{}),
-      ...(res.statePatch?.caveDuelTargets?{
-        caveDuelTargets:res.statePatch.caveDuelTargets,
-        caveDuelSource:res.statePatch.caveDuelSource,
-      }:{}),
-      ...(res.statePatch?.damageLinkTargets?{
-        damageLinkTargets:res.statePatch.damageLinkTargets,
-        damageLinkSource:res.statePatch.damageLinkSource,
-      }:{}),
-      ...(res.statePatch?.roseThornTargets?{
-        roseThornTargets:res.statePatch.roseThornTargets,
-        roseThornSource:res.statePatch.roseThornSource,
-      }:{}),
-      ...(res.statePatch?.abilityData?.type==='firstComePick'?{
-        ...res.statePatch.abilityData,
-        _turnOwner:gs.currentTurn,
-      }:{}),
-    };
-    const nextPhase=
-      bewitchCard.type==='swapAllHands'?'ZONE_SWAP_SELECT_TARGET':
-      res.statePatch?.peekHandTargets?'PEEK_HAND_SELECT_TARGET':
-      res.statePatch?.caveDuelTargets?'CAVE_DUEL_SELECT_TARGET':
-      res.statePatch?.damageLinkTargets?'DAMAGE_LINK_SELECT_TARGET':
-      res.statePatch?.roseThornTargets?'ROSE_THORN_SELECT_TARGET':
-      res.statePatch?.abilityData?.type==='firstComePick'?'FIRST_COME_PICK_SELECT':
-      'ACTION';
+      }:{},
+      turnOwner:gs.currentTurn,
+    });
     const newGs={...gs,players:res.P,deck:res.D,discard:res.Disc,log:L,
       abilityData:phaseAbilityData,
       phase:nextPhase,
@@ -5122,13 +5025,12 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       const logMsg=`【繁衍】你将黑山羊幼仔传播给了 ${P[pi].name}`;
       const L=[...gs.log,logMsg];
       const newGs={...gs,players:P,log:L,phase:'ACTION',abilityData:{},multiplyUsed:true};
-      const queue=[{type:'CARD_TRANSFER',fromPid:0,dest:'player',toPid:pi,count:1,effect:'blackGoat',durationMs:1500,msgs:[logMsg]}];
-      if(queue.length){
-        pendingGsRef.current=newGs;
-        animQueueRef.current=[...queue.slice(1)];
-        setGs(p=>p?{...p,phase:'ACTION',abilityData:{},multiplyUsed:true}:p);
-        setAnim(queue[0]);
-      }else setGs(newGs);
+      const queue=[
+        {type:'CARD_TRANSFER',fromPid:0,dest:'player',toPid:pi,count:1,effect:'blackGoat',durationMs:1500,msgs:[logMsg]},
+        statePatchStep({players:P}),
+      ];
+      setGs(p=>p?{...p,phase:'ACTION',abilityData:{},multiplyUsed:true}:p);
+      triggerAnimQueue(queue,newGs);
     }
     else if(phase==='SHU_SELECT_TARGET'){
       const count=gs.abilityData?.shuOffspringCount||0;
@@ -5139,7 +5041,8 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       const logMsg=`【黑暗子嗣】${targetName==='你'?'你':targetName} 获得${count}张黑山羊幼仔`;
       const L=[...gs.log,logMsg];
       const newGs={...gs,players:P,log:L,phase:'ACTION',abilityData:{}};
-      const queue=buildAnimQueue(gs,newGs);
+      const baseQueue=buildAnimQueue(gs,newGs);
+      const queue=baseQueue.length?[...baseQueue,statePatchStep({players:P})]:[];
       if(queue.length){
         pendingGsRef.current=newGs;
         animQueueRef.current=[...queue.slice(1)];

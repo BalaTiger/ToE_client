@@ -18,6 +18,7 @@ import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
 import { applyFx, applyInspectionForSanLoss } from './effectEngine';
 import { buildZhuLight, getZhuTopGuard } from './zhuPower';
 import { buildStatEvents } from './statEvents';
+import { deriveEffectDecisionState } from './effectStatePatch';
 
 function appendStatEventsToInspectionMeta(inspectionMeta, beforePlayers, afterPlayers, logs, reason) {
   const statEventSeq = (inspectionMeta?._statEventSeq || 0) + 1;
@@ -745,32 +746,10 @@ export function startNextTurn(gs, opts = {}) {
       if (drawLogs.length) L.push(...drawLogs);
       if (statLogs.length) L.push(...statLogs);
     }
-    let nextPhase = 'AI_TURN';
-    if (res.statePatch?.abilityData?.type === 'firstComePick') nextPhase = 'FIRST_COME_PICK_SELECT';
-    else if (res.statePatch?.abilityData?.type === 'sameAbyssChoice') nextPhase = 'SAME_ABYSS_SELECT';
-    else if (res.statePatch?.abilityData?.type === 'sphinxGuess') nextPhase = 'SPHINX_GUESS';
-    else if (res.statePatch?.peekHandTargets) nextPhase = 'PEEK_HAND_SELECT_TARGET';
-    else if (res.statePatch?.damageLinkTargets) nextPhase = 'DAMAGE_LINK_SELECT_TARGET';
-    const nextAbilityData = {
-      ...gs.abilityData,
-      ...(res.statePatch?.abilityData || {}),
-      ...(res.statePatch?.peekHandTargets ? {
-        peekHandTargets: res.statePatch.peekHandTargets,
-        peekHandSource: res.statePatch.peekHandSource,
-      } : {}),
-      ...(res.statePatch?.damageLinkTargets ? {
-        damageLinkTargets: res.statePatch.damageLinkTargets,
-        damageLinkSource: res.statePatch.damageLinkSource,
-      } : {}),
-      ...(res.statePatch?.caveDuelTargets ? {
-        caveDuelTargets: res.statePatch.caveDuelTargets,
-        caveDuelSource: res.statePatch.caveDuelSource,
-      } : {}),
-      ...(res.statePatch?.roseThornTargets ? {
-        roseThornTargets: res.statePatch.roseThornTargets,
-        roseThornSource: res.statePatch.roseThornSource,
-      } : {}),
-    };
+    const { phase: nextPhase, abilityData: nextAbilityData } = deriveEffectDecisionState(res.statePatch, {
+      baseAbilityData: gs.abilityData,
+      fallbackPhase: 'AI_TURN',
+    });
     const aiTurnAnimMeta = {
       currentTurn: next,
       phase: nextPhase,

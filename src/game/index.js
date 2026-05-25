@@ -11,3 +11,4 @@ export * from './zhuPower';
 export * from './multiplayerTimeouts';
 export * from './statEvents';
 export * from './endTurnEvents';
+export * from './effectStatePatch';

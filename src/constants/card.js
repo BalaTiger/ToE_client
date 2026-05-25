@@ -49,6 +49,17 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "polarity": "negative",
       "effectScope": "adjacent",
       "expansion": "析骨为柴"
+    },
+    {
+      "name": "神圣菇肉",
+      "desc": "你恢复5HP，失去2SAN",
+      "type": "selfHealHPSelfDamageSAN",
+      "hpVal": 5,
+      "sanVal": 2,
+      "slotKey": "A1",
+      "polarity": "neutral",
+      "effectScope": "self",
+      "expansion": "析骨为柴"
     }
   ],
   "A2": [
@@ -122,6 +133,17 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "desc": "回合结束时，若此牌在手中，展示所有手牌，使所有“无尽通道”左边的牌视为被重新摸到并依次结算",
       "type": "endTurnReplayHand",
       "val": 0,
+      "slotKey": "A3",
+      "polarity": "neutral",
+      "effectScope": "self",
+      "expansion": "地神的潜影"
+    },
+    {
+      "name": "可生食木乃伊",
+      "desc": "你恢复3HP，失去1SAN",
+      "type": "selfHealHPSelfDamageSAN",
+      "hpVal": 3,
+      "sanVal": 1,
       "slotKey": "A3",
       "polarity": "neutral",
       "effectScope": "self",
@@ -573,10 +595,10 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "鲜红夜宴",
-      "desc": "所有人回复2HP，失去2SAN",
+      "desc": "所有人回复2HP，失去1SAN",
       "type": "allHealHPDamageSAN",
       "hpVal": 2,
-      "sanVal": 2,
+      "sanVal": 1,
       "slotKey": "D4",
       "polarity": "neutral",
       "effectScope": "all",

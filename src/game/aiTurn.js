@@ -37,6 +37,7 @@ import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
 import { createBlackGoatYoungCard } from '../constants/card';
 import { buildStatEvents } from './statEvents';
 import { END_TURN_EVENT, getEndTurnReplayHandCards } from './endTurnEvents';
+import { deriveEffectDecisionState, hasEffectDecisionState } from './effectStatePatch';
 
 /**
  * 检查两张卡是否满足追捕匹配规则。
@@ -151,7 +152,7 @@ function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
     P = res.P; D = res.D; Disc = res.Disc;
     if (res.msgs?.length) L.push(...res.msgs);
     statePatch = { ...statePatch, ...(res.statePatch || {}) };
-    if (res.statePatch?.abilityData || res.statePatch?.peekHandTargets || res.statePatch?.caveDuelTargets || res.statePatch?.damageLinkTargets || res.statePatch?.roseThornTargets) {
+    if (hasEffectDecisionState(res.statePatch)) {
       break;
     }
   }
@@ -718,51 +719,16 @@ export function aiStep(gs, opts = {}) {
         gs=bwRes.gs;P=bwRes.P;D=bwRes.D;Disc=bwRes.Disc;L=bwRes.L;
         if(!sc.isGod&&bwRes.fxResult){
           const res=bwRes.fxResult;
-          if(sc.type==='swapAllHands'||res.statePatch?.peekHandTargets||res.statePatch?.caveDuelTargets||res.statePatch?.damageLinkTargets||res.statePatch?.roseThornTargets||res.statePatch?.abilityData?.type==='firstComePick'||res.statePatch?.abilityData?.type==='sameAbyssChoice'||res.statePatch?.abilityData?.type==='sphinxGuess'){
-            const phaseAbilityData={
-              ...(sc.type==='swapAllHands'?{
+          if(sc.type==='swapAllHands'||hasEffectDecisionState(res.statePatch)){
+            const {phase:nextPhase,abilityData:phaseAbilityData}=deriveEffectDecisionState(res.statePatch,{
+              fallbackPhase:'ACTION',
+              leadingPhase:sc.type==='swapAllHands'?'ZONE_SWAP_SELECT_TARGET':null,
+              leadingAbilityData:sc.type==='swapAllHands'?{
                 zoneSwapCard:sc,
                 zoneSwapSource:ti,
-              }:{}),
-              ...(res.statePatch?.peekHandTargets?{
-                peekHandTargets:res.statePatch.peekHandTargets,
-                peekHandSource:res.statePatch.peekHandSource,
-              }:{}),
-              ...(res.statePatch?.caveDuelTargets?{
-                caveDuelTargets:res.statePatch.caveDuelTargets,
-                caveDuelSource:res.statePatch.caveDuelSource,
-              }:{}),
-              ...(res.statePatch?.damageLinkTargets?{
-                damageLinkTargets:res.statePatch.damageLinkTargets,
-                damageLinkSource:res.statePatch.damageLinkSource,
-              }:{}),
-              ...(res.statePatch?.roseThornTargets?{
-                roseThornTargets:res.statePatch.roseThornTargets,
-                roseThornSource:res.statePatch.roseThornSource,
-              }:{}),
-              ...(res.statePatch?.abilityData?.type==='firstComePick'?{
-                ...res.statePatch.abilityData,
-                _turnOwner:gs.currentTurn,
-              }:{}),
-              ...(res.statePatch?.abilityData?.type==='sameAbyssChoice'?{
-                ...res.statePatch.abilityData,
-                _turnOwner:gs.currentTurn,
-              }:{}),
-              ...(res.statePatch?.abilityData?.type==='sphinxGuess'?{
-                ...res.statePatch.abilityData,
-                _turnOwner:gs.currentTurn,
-              }:{}),
-            };
-            const nextPhase=
-              sc.type==='swapAllHands'?'ZONE_SWAP_SELECT_TARGET':
-              res.statePatch?.peekHandTargets?'PEEK_HAND_SELECT_TARGET':
-              res.statePatch?.caveDuelTargets?'CAVE_DUEL_SELECT_TARGET':
-              res.statePatch?.damageLinkTargets?'DAMAGE_LINK_SELECT_TARGET':
-              res.statePatch?.roseThornTargets?'ROSE_THORN_SELECT_TARGET':
-              res.statePatch?.abilityData?.type==='firstComePick'?'FIRST_COME_PICK_SELECT':
-              res.statePatch?.abilityData?.type==='sameAbyssChoice'?'SAME_ABYSS_SELECT':
-              res.statePatch?.abilityData?.type==='sphinxGuess'?'SPHINX_GUESS':
-              'ACTION';
+              }:{},
+              turnOwner:gs.currentTurn,
+            });
             const needsPlayerDecision = sc.type==='swapAllHands' || !!res.statePatch?.peekHandTargets || !!res.statePatch?.caveDuelTargets || !!res.statePatch?.damageLinkTargets || !!res.statePatch?.roseThornTargets || res.statePatch?.abilityData?.type==='sphinxGuess';
             return {
               ...gs,
@@ -841,17 +807,10 @@ export function aiStep(gs, opts = {}) {
         gs=bwRes.gs;P=bwRes.P;D=bwRes.D;Disc=bwRes.Disc;L=bwRes.L;
         if(!sc.isGod&&bwRes.fxResult){
           const res=bwRes.fxResult;
-          if(res.statePatch?.abilityData?.type==='firstComePick'){
+          if(hasEffectDecisionState(res.statePatch)){
+            const {phase,abilityData}=deriveEffectDecisionState(res.statePatch,{fallbackPhase:'ACTION',turnOwner:gs.currentTurn});
             const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
-            return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'FIRST_COME_PICK_SELECT',abilityData:{...res.statePatch.abilityData,_turnOwner:gs.currentTurn},skillUsed:true};
-          }
-          if(res.statePatch?.abilityData?.type==='sameAbyssChoice'){
-            const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
-            return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'SAME_ABYSS_SELECT',abilityData:{...res.statePatch.abilityData,_turnOwner:gs.currentTurn},skillUsed:true};
-          }
-          if(res.statePatch?.abilityData?.type==='sphinxGuess'){
-            const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
-            return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'SPHINX_GUESS',abilityData:{...res.statePatch.abilityData,_turnOwner:gs.currentTurn},currentTurn:ti,skillUsed:true};
+            return {...gs,players:P,deck:D,discard:Disc,log:L,phase,abilityData,currentTurn:res.statePatch?.abilityData?.type==='sphinxGuess'?ti:gs.currentTurn,skillUsed:true};
           }
         }
         const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
@@ -908,5 +867,17 @@ export function aiStep(gs, opts = {}) {
     throw new Error(`${ai.name} 回合收尾失败: ${e?.message||'未知错误'}`);
   }
 
-  return{...nextGs,_animAiDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?null:(gs._aiDrawnCard??gs._drawnCard??null),_animDiscardedDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?false:(gs._discardedDrawnCard??false),_aiName:ai.name,_playersBeforeNextDraw:_P_afterAction,_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard,_aiHuntEvents:aiHuntEvents,_aiHandLimitDiscards:discardedCards};
+  return{
+    ...nextGs,
+    _animAiDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?null:(gs._aiDrawnCard??gs._drawnCard??null),
+    _animDiscardedDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?false:(gs._discardedDrawnCard??false),
+    _aiName:ai.name,
+    _playersBeforeNextDraw:_P_afterAction,
+    _playersBeforeSkillAction:playersBeforeSkillAction,
+    _preSkillLogs:preSkillLogs,
+    _preSkillDiscard:preSkillDiscard,
+    _aiHuntEvents:aiHuntEvents,
+    _aiHandLimitDiscards:discardedCards,
+    ...(animMultiplyEvent?{_animMultiplyEvent:animMultiplyEvent}:{}),
+  };
 }
