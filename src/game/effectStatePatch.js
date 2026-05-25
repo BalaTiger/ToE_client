@@ -10,6 +10,7 @@ const ABILITY_DECISION_PHASES = {
   firstComePick: 'FIRST_COME_PICK_SELECT',
   sameAbyssChoice: 'SAME_ABYSS_SELECT',
   sphinxGuess: 'SPHINX_GUESS',
+  graveDigPickGod: 'GRAVE_DIG_SELECT',
 };
 
 export function hasEffectDecisionState(statePatch) {
@@ -53,4 +54,3 @@ export function deriveEffectDecisionState(statePatch, {
 
   return { phase, abilityData, hasDecision: phase !== fallbackPhase || hasEffectDecisionState(statePatch) };
 }
-

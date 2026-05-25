@@ -180,6 +180,16 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "polarity": "negative",
       "effectScope": "all",
       "expansion": "地神的潜影"
+    },
+    {
+      "name": "掘墓",
+      "desc": "从弃牌堆中选一张邪神牌放入你的手牌",
+      "type": "graveDigGod",
+      "val": 1,
+      "slotKey": "A4",
+      "polarity": "positive",
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     }
   ],
   "B1": [

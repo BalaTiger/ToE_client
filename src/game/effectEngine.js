@@ -567,6 +567,32 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         msgs.push(`${actor.name} 放弃信仰`);
       }
     },
+    graveDigGod: () => {
+      const godCards = Disc
+        .map((discardCard, discardIndex) => ({ card: discardCard, discardIndex }))
+        .filter(item => item.card?.isGod);
+      if (!godCards.length) {
+        msgs.push('弃牌堆中没有邪神牌，无法掘墓');
+        return;
+      }
+      if (isAI) {
+        const picked = godCards[godCards.length - 1];
+        const [godCard] = Disc.splice(picked.discardIndex, 1);
+        P[ci].hand.push(godCard);
+        msgs.push(`${actor.name} 从弃牌堆中取回 ${cardLogText(godCard, { alwaysShowName: true })}`);
+      } else {
+        statePatch = {
+          ...statePatch,
+          abilityData: {
+            type: 'graveDigPickGod',
+            playerIndex: ci,
+            godCards: godCards.map(item => item.card),
+            discardIndices: godCards.map(item => item.discardIndex),
+          }
+        };
+        msgs.push(`${actor.name} 准备从弃牌堆中取回一张邪神牌`);
+      }
+    },
     sacHealHP: () => {
       if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
         hurtSAN(ci, 1);

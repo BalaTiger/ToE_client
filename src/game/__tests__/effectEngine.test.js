@@ -365,6 +365,32 @@ describe('applyFx', () => {
     expect(res.statePatch.abilityData.revealedCards).toHaveLength(3);
   });
 
+  it('graveDigGod: 玩家从弃牌堆选择邪神牌', () => {
+    const players = makeStandardPlayers(3);
+    const discard = [makeZoneCard('A1', 0), makeGodCard('NYA'), makeGodCard('SHU')];
+    const card = { type: 'graveDigGod', name: '掘墓', key: 'A4' };
+    const gs = makeGs({ players, discard });
+    const res = applyFx(card, 0, null, players, [], discard, gs);
+    expect(res.statePatch.abilityData).toMatchObject({
+      type: 'graveDigPickGod',
+      playerIndex: 0,
+      discardIndices: [1, 2],
+    });
+    expect(res.statePatch.abilityData.godCards.map(c => c.godKey)).toEqual(['NYA', 'SHU']);
+  });
+
+  it('graveDigGod: AI 自动取回弃牌堆最后一张邪神牌', () => {
+    const players = makeStandardPlayers(3);
+    const nya = makeGodCard('NYA');
+    const shu = makeGodCard('SHU');
+    const discard = [makeZoneCard('A1', 0), nya, shu];
+    const card = { type: 'graveDigGod', name: '掘墓', key: 'A4' };
+    const gs = makeGs({ players, discard });
+    const res = applyFx(card, 0, null, players, [], discard, gs, false, [], true);
+    expect(res.P[0].hand.map(c => c.godKey)).toEqual(['SHU']);
+    expect(res.Disc.map(c => c.godKey).filter(Boolean)).toEqual(['NYA']);
+  });
+
   it('roseThornGiftAllHand: 设置目标选择状态', () => {
     const players = makeStandardPlayers(3);
     const card = { type: 'roseThornGiftAllHand', name: '玫瑰倒刺', key: 'ROSE' };

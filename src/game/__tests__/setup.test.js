@@ -30,9 +30,9 @@ describe('mkDeck', () => {
     const zoneCards = deck.filter(c => c.isZone);
     const specialCards = deck.filter(c => c.isGod);
 
-    expect(zoneCards).toHaveLength(52);
+    expect(zoneCards).toHaveLength(53);
     expect(specialCards).toHaveLength(20);
-    expect(deck).toHaveLength(72);
+    expect(deck).toHaveLength(73);
   });
 
   it('临时拓展包包含无尽通道', () => {
