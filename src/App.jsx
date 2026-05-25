@@ -1815,9 +1815,10 @@ export default function Game(){
 
   // Auto-freeze game the instant player 寻宝者 has a winning hand
   useEffect(()=>{
-    if(!gs||gs.gameOver||gs.phase!=='ACTION'||showTutorial)return;
+    if(!gs||gs.gameOver||showTutorial)return;
+    if(gs.phase==='TREASURE_WIN'||gs.phase==='PLAYER_WIN_PENDING')return;
     const p0=gs.players[0];
-    if(p0&&!p0.isDead&&p0.role===ROLE_TREASURE&&isWinHand(p0.hand)){
+    if(p0&&!p0.isDead&&(p0._nyaBorrow||p0.role)===ROLE_TREASURE&&isWinHand(p0.hand)){
       setGs(g=>g?{...g,phase:'TREASURE_WIN'}:g);
     }
   },[gs,anim,showTutorial]);
@@ -2501,7 +2502,6 @@ export default function Game(){
   const pendingZhuAiDrawCard=visualMe?.godName==='ZHU'&&pendingZhuAiDrawAnyCard
     ?pendingZhuAiDrawAnyCard
     :null;
-  const canWin=effectiveRole==='寻宝者'&&isWinHand(me.hand);
   const ri=RINFO[me.role];
   const skillRi=gs.globalOnlySwapOwner!=null?RINFO['寻宝者']:(RINFO[effectiveRole]||ri);
   const effectiveSkillName=skillRi.skillName||ri.skillName;
@@ -5329,15 +5329,6 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
               <StatBar label="HP"  val={displayStats[0]?.hp ?? me.hp}  color="#7a1515" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={vw}/>
               <StatBar label="SAN" val={displayStats[0]?.san ?? me.san} color="#3a1078" trackColor="#120820" scaleRatio={scaleRatio} viewportWidth={vw}/>
             </div>
-            {canWin&&phase!=='PLAYER_WIN_PENDING'&&(
-              <button onClick={revealWin} style={{
-                padding:'7px 4px',background:'#1c1208',border:'1.5px solid #c8a96e',
-                color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,
-                borderRadius:2,cursor:'pointer',letterSpacing:1,
-                boxShadow:'0 0 16px #c8a96e44',animation:'animGlow 1.5s ease-in-out infinite',
-                textTransform:'uppercase',
-              }}>✦ 亮牌获胜</button>
-            )}
             {/* 表情按钮（多人游戏时显示） */}
             {isMultiplayer&&(
               <div style={{position:'absolute',top:6,right:6,zIndex:50}}>
