@@ -101,12 +101,12 @@ const DISCARD_OFFSETS=[
 
 const godShortKey = (godKey) => GOD_DEFS[godKey]?.shortKey || godKey || 'GOD';
 
-function MiniCardLabel({card,scale=1,glowColor='#c8a96e'}){
+function MiniCardLabel({card,scale=1,glowColor='#c8a96e',ambient=true}){
   if(!card)return null;
   const label=card.isGod?godShortKey(card.godKey):(card.key||'?');
   const name=card.name||'';
   return(
-    <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:`${Math.max(2,Math.round(3*scale))}px ${Math.max(2,Math.round(2*scale))}px`,textAlign:'center',lineHeight:1.05,background:'radial-gradient(circle at 45% 35%,rgba(255,230,120,0.14),rgba(0,0,0,0) 72%)'}}>
+    <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:`${Math.max(2,Math.round(3*scale))}px ${Math.max(2,Math.round(2*scale))}px`,textAlign:'center',lineHeight:1.05,background:ambient?'radial-gradient(circle at 45% 35%,rgba(255,230,120,0.14),rgba(0,0,0,0) 72%)':'transparent'}}>
       <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:(card.isGod?GOD_CS:(CS[card.letter]||GOD_CS)).text,fontSize:Math.max(6,Math.round((card.isGod?8.5:9.5)*scale)),letterSpacing:card.isGod?0.5:0,textShadow:`0 0 8px ${glowColor}`}}>
         {label}
       </div>
@@ -179,8 +179,8 @@ function DiscardPile({count,topCard,scale=1,expansionKey='temporary'}){
             transform:`rotate(${rot}deg)`,
             ...(isTop&&topCard?{
               background:s.bg,
-              border:`1.5px solid ${s.borderBright}`,
-              boxShadow:`0 0 6px ${s.glow}66`,
+              border:`1.5px solid ${s.border}`,
+              boxShadow:'0 1px 5px rgba(0,0,0,0.5), inset 0 0 8px rgba(0,0,0,0.35)',
             }:{
               backgroundImage:`url('${cardBackImage}')`,
               backgroundSize:'cover',
@@ -191,7 +191,7 @@ function DiscardPile({count,topCard,scale=1,expansionKey='temporary'}){
             zIndex:i,
           }}>
             {isTop&&topCard&&(
-              <MiniCardLabel card={topCard} scale={scale} glowColor={s.borderBright}/>
+              <MiniCardLabel card={topCard} scale={scale} glowColor="rgba(0,0,0,0.65)" ambient={false}/>
             )}
           </div>
         );

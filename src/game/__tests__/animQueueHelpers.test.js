@@ -5,6 +5,7 @@ import {
   resolveTurnHighlightForStep,
 } from '../animQueueHelpers';
 import { copyPlayers } from '../coreUtils';
+import { buildAnimQueue } from '../animQueueCore';
 import { makePlayer, makeZoneCard } from './factory';
 
 describe('animQueueHelpers', () => {
@@ -69,5 +70,39 @@ describe('animQueueHelpers', () => {
       'DAMAGE',
     ]);
     expect(flow.queue[2]).toMatchObject({ triggerName: '检定牌', card, targetPid: 0 });
+  });
+
+  it('检定效果动画优先使用显式 statEvents', () => {
+    const card = { name: '超人意志', effect: 'healSAN', value: 1 };
+    const beforePlayers = [makePlayer({ name: '玩家', hp: 10, san: 5 })];
+    const afterPlayers = copyPlayers(beforePlayers);
+    afterPlayers[0].san = 6;
+    const events = [{
+      card,
+      target: 0,
+      beforePlayers,
+      beforeLog: ['玩家 的SAN检定结果为"超人意志"'],
+      afterPlayers,
+      afterLog: ['玩家 的SAN检定结果为"超人意志"', '检定结算完成'],
+      statEventSeq: 7,
+      statEvents: [{
+        type: 'SAN_GAIN',
+        target: 0,
+        from: { hp: 10, san: 5, isDead: false },
+        to: { hp: 10, san: 6, isDead: false },
+        reason: '超人意志',
+        seq: 7,
+      }],
+    }];
+
+    const flow = buildInspectionEventFlow(
+      { players: beforePlayers, log: [] },
+      events,
+      { buildAnimQueue, copyPlayers },
+    );
+
+    expect(flow.queue.map(step => step.type)).toEqual(['DRAW_CARD', 'SAN_HEAL']);
+    expect(flow.queue[1]).toMatchObject({ hitIndices: [0] });
+    expect(flow.queue[1].statEvents).toMatchObject([{ type: 'SAN_GAIN', seq: 7 }]);
   });
 });

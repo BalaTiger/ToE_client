@@ -19,10 +19,15 @@ import { applyFx, applyInspectionForSanLoss } from './effectEngine';
 import { buildZhuLight, getZhuTopGuard } from './zhuPower';
 import { buildStatEvents } from './statEvents';
 
-function buildGodEncounterStatPatch(beforePlayers, afterPlayers, effectMsg, gs) {
-  const statEventSeq = (gs?._statEventSeq || 0) + 1;
-  const statEvents = buildStatEvents(beforePlayers, afterPlayers, [effectMsg], { reason: '邪神遭遇', seq: statEventSeq });
-  return statEvents.length ? { _statEvents: statEvents, _statEventSeq: statEventSeq } : {};
+function appendStatEventsToInspectionMeta(inspectionMeta, beforePlayers, afterPlayers, logs, reason) {
+  const statEventSeq = (inspectionMeta?._statEventSeq || 0) + 1;
+  const statEvents = buildStatEvents(beforePlayers, afterPlayers, logs, { reason, seq: statEventSeq });
+  if (!statEvents.length) return inspectionMeta;
+  return {
+    ...inspectionMeta,
+    _statEvents: [...(inspectionMeta?._statEvents || []), ...statEvents],
+    _statEventSeq: statEventSeq,
+  };
 }
 
 export function checkWin(players, isMP) {
@@ -77,9 +82,17 @@ function _chooseAiShuTarget(ci, P) {
   return others.length > 0 ? others[Math.floor(Math.random() * others.length)] : ci;
 }
 
-export function applySanLossToPlayerWithInspection(targetIndex, amount, startIndex, P, D, Disc, L, inspectionMeta) {
+export function applySanLossToPlayerWithInspection(targetIndex, amount, startIndex, P, D, Disc, L, inspectionMeta, reason = 'SAN损失') {
+  const beforePlayers = copyPlayers(P);
   P[targetIndex].san = clamp(P[targetIndex].san - amount);
-  const processed = applyInspectionForSanLoss(targetIndex, P[targetIndex].san, startIndex, P, D, Disc, L, inspectionMeta);
+  const nextInspectionMeta = appendStatEventsToInspectionMeta(
+    inspectionMeta,
+    beforePlayers,
+    P,
+    L.slice(-1),
+    reason,
+  );
+  const processed = applyInspectionForSanLoss(targetIndex, P[targetIndex].san, startIndex, P, D, Disc, L, nextInspectionMeta);
   return {
     P: processed.P,
     D: processed.D,
@@ -215,7 +228,6 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
 
   // God card handling
   if (drawnCard.isGod) {
-    const beforeEncounterPlayers = copyPlayers(P);
     P[ci].godEncounters = (P[ci].godEncounters || 0) + 1;
     const cost = P[ci].godEncounters;
     // 邪祀者遭遇邪神时不扣减SAN且强制亮明身份
@@ -231,19 +243,14 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
         : `${whoName} 遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）失去${cost}SAN`;
       L2.push(effectMsg);
       // AI处理邪神牌时，仍然立即扣减SAN值
-      let statPatch = {};
       if (P[ci].role !== ROLE_CULTIST) {
-        P[ci].san = clamp(P[ci].san - cost);
-        statPatch = buildGodEncounterStatPatch(beforeEncounterPlayers, P, effectMsg, gs);
-        const newSan = P[ci].san; {
-          const baseLog = gs?.log || [];
-          const processed = applyInspectionForSanLoss(ci, newSan, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta);
-          P = processed.P; D = processed.D; Disc = processed.Disc; inspectionMeta = processed.inspectionMeta; L2.push(...processed.log.slice(baseLog.length));
-        }
+        const baseLog = [...(gs?.log || []), effectMsg];
+        const processed = applySanLossToPlayerWithInspection(ci, cost, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta, '邪神遭遇');
+        P = processed.P; D = processed.D; Disc = processed.Disc; inspectionMeta = processed.inspectionMeta; L2.push(...processed.L.slice(baseLog.length));
       }
       const gr = aiHandleGodCard(ci, drawnCard, P, D, Disc, L2, gs, true);
       P = gr.P; D = gr.D; Disc = gr.Disc;
-      return { P, D, Disc, drawnCard, effectMsgs: L2, kept: true, statePatch: { ...inspectionMeta, ...(gr.inspectionMeta || {}), ...statPatch } };
+      return { P, D, Disc, drawnCard, effectMsgs: L2, kept: true, statePatch: { ...inspectionMeta, ...(gr.inspectionMeta || {}) } };
     } else {
       let effectMsg = P[ci].role === ROLE_CULTIST
         ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`
@@ -251,17 +258,13 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
 
       let inspectionMeta = makeInspectionMeta(gs);
       let effectMsgs = [effectMsg];
-      let statPatch = {};
 
       if (P[ci].role !== ROLE_CULTIST && cost > 0) {
-        P[ci].san = clamp(P[ci].san - cost);
-        statPatch = buildGodEncounterStatPatch(beforeEncounterPlayers, P, effectMsg, gs);
-        const newSan = P[ci].san;
         const baseLog = gs?.log ? [...gs.log, effectMsg] : [effectMsg];
-        const processed = applyInspectionForSanLoss(ci, newSan, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta);
+        const processed = applySanLossToPlayerWithInspection(ci, cost, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta, '邪神遭遇');
         P = processed.P; D = processed.D; Disc = processed.Disc;
         inspectionMeta = processed.inspectionMeta;
-        effectMsgs.push(...processed.log.slice(baseLog.length));
+        effectMsgs.push(...processed.L.slice(baseLog.length));
       }
 
       return {
@@ -269,7 +272,7 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
         effectMsgs,
         needGodChoice: true, needsDecision: false,
         godEncounterCost: 0,
-        statePatch: { ...inspectionMeta, ...statPatch }
+        statePatch: { ...inspectionMeta }
       };
     }
   }
@@ -350,18 +353,27 @@ const TURN_START_PRIORITY = {
 };
 
 // [PASSIVE_GOD_DERIVATIVE] 黑山羊幼仔回合开始伤害
-function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs) {
-  if (P[next].isDead) return { P, D, Disc, L, winAfterBgy: null };
+function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta) {
+  if (P[next].isDead) return { P, D, Disc, L, inspectionMeta, winAfterBgy: null };
 
   const bgyCount = P[next].hand.filter(isBlackGoatYoung).length;
   if (bgyCount > 0) {
+    const beforePlayers = copyPlayers(P);
     P[next].hp = clamp(P[next].hp - bgyCount);
     P[next].san = clamp(P[next].san - bgyCount);
     L.push(`【黑山羊幼仔】${P[next].name} 失去 ${bgyCount} HP 和 ${bgyCount} SAN`);
+    inspectionMeta = appendStatEventsToInspectionMeta(
+      inspectionMeta,
+      beforePlayers,
+      P,
+      L.slice(-1),
+      '黑山羊幼仔',
+    );
     if (P[next].san <= 6) {
       const baseLog = [...L];
-      const processed = applyInspectionForSanLoss(next, P[next].san, next, P, D, Disc, baseLog, makeInspectionMeta(gs));
+      const processed = applyInspectionForSanLoss(next, P[next].san, next, P, D, Disc, baseLog, inspectionMeta);
       P = processed.P; D = processed.D; Disc = processed.Disc;
+      inspectionMeta = processed.inspectionMeta;
       L.push(...processed.log.slice(baseLog.length));
     }
     if (P[next].hp <= 0) {
@@ -370,18 +382,26 @@ function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs) {
   }
 
   const winAfterBgy = checkWin(P, gs._isMP);
-  return { P, D, Disc, L, winAfterBgy };
+  return { P, D, Disc, L, inspectionMeta, winAfterBgy };
 }
 
 // [PASSIVE_OTHER] 两人一绳治愈
-function turnStartEvent_LinkHeal(P, pendingLinkHeals, L, statLogs = null) {
+function turnStartEvent_LinkHeal(P, pendingLinkHeals, L, inspectionMeta, statLogs = null) {
   for (const heal of pendingLinkHeals) {
+    const beforePlayers = copyPlayers(P);
     if (!P[heal.i].isDead) { P[heal.i].hp = clamp(P[heal.i].hp + heal.amount); }
     if (!P[heal.partnerIdx].isDead) { P[heal.partnerIdx].hp = clamp(P[heal.partnerIdx].hp + heal.amount); }
     L.push(heal.msg);
+    inspectionMeta = appendStatEventsToInspectionMeta(
+      inspectionMeta,
+      beforePlayers,
+      P,
+      [heal.msg],
+      '两人一绳',
+    );
     if (statLogs) statLogs.push(heal.msg);
   }
-  return { P, L };
+  return { P, L, inspectionMeta };
 }
 
 // [ACTIVE_GOD] NYA 偷身份
@@ -435,6 +455,7 @@ export function startNextTurn(gs, opts = {}) {
   let statLogs = [];
   let zhuLight = null;
   let pendingLinkHeals = [];
+  let inspectionMeta = makeInspectionMeta(gs);
   const turnDir = gs.turnDirection || 1;
   for (let i = 1; i <= N; i++) { next = (gs.currentTurn + i * turnDir + N) % N; if (!P[next].isDead) break; }
   // 增加回合数
@@ -489,12 +510,12 @@ export function startNextTurn(gs, opts = {}) {
     zhuLight = turnStartEvent_ZhuLight(P, D, next, gs);
     L.push(...turnStartLogs);
     // [PASSIVE_GOD_DERIVATIVE] 黑山羊幼仔回合开始伤害
-    const bgy = turnStartEvent_BgyDamage(P, next, D, Disc, L, gs);
-    P = bgy.P; D = bgy.D; Disc = bgy.Disc; L = bgy.L;
+    const bgy = turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta);
+    P = bgy.P; D = bgy.D; Disc = bgy.Disc; L = bgy.L; inspectionMeta = bgy.inspectionMeta; gs = { ...gs, ...inspectionMeta };
     if (bgy.winAfterBgy) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: bgy.winAfterBgy, multiplyUsed: false };
     // [PASSIVE_OTHER] 两人一绳治愈
-    const link = turnStartEvent_LinkHeal(P, pendingLinkHeals, L);
-    P = link.P; L = link.L;
+    const link = turnStartEvent_LinkHeal(P, pendingLinkHeals, L, inspectionMeta);
+    P = link.P; L = link.L; inspectionMeta = link.inspectionMeta; gs = { ...gs, ...inspectionMeta };
     L.push(`${P[next].name} 从休息中醒来，跳过本回合`);
     // CTH power: draw when ending/skipping turn while face-down
     if (P[next].godName === 'CTH' && P[next].godLevel >= 1) {
@@ -552,12 +573,12 @@ export function startNextTurn(gs, opts = {}) {
   L.push(...turnStartLogs);
   zhuLight = turnStartEvent_ZhuLight(P, D, next, gs);
   // [PASSIVE_GOD_DERIVATIVE] 黑山羊幼仔回合开始伤害
-  const bgy = turnStartEvent_BgyDamage(P, next, D, Disc, L, gs);
-  P = bgy.P; D = bgy.D; Disc = bgy.Disc; L = bgy.L;
+  const bgy = turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta);
+  P = bgy.P; D = bgy.D; Disc = bgy.Disc; L = bgy.L; inspectionMeta = bgy.inspectionMeta; gs = { ...gs, ...inspectionMeta };
   if (bgy.winAfterBgy) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: bgy.winAfterBgy, multiplyUsed: false };
   // [PASSIVE_OTHER] 两人一绳治愈
-  const link = turnStartEvent_LinkHeal(P, pendingLinkHeals, L, statLogs);
-  P = link.P; L = link.L;
+  const link = turnStartEvent_LinkHeal(P, pendingLinkHeals, L, inspectionMeta, statLogs);
+  P = link.P; L = link.L; inspectionMeta = link.inspectionMeta; gs = { ...gs, ...inspectionMeta };
   if (next === 0) {
     // Debug: 强制摸牌 - 玩家
     if (gs.debugForceCard && gs.debugForceCardTarget === 'player') {

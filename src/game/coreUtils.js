@@ -248,6 +248,8 @@ export function makeInspectionMeta(gs){
     _inspectionPrevLogLen: gs?._inspectionPrevLogLen??null,
     _inspectionBeforePlayers: gs?._inspectionBeforePlayers??null,
     _inspectionEvents: gs?._inspectionEvents??[],
+    _statEvents: gs?._statEvents??[],
+    _statEventSeq: gs?._statEventSeq||0,
   };
 }
 

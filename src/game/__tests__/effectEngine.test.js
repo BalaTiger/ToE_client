@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   applyHpDamageWithLink,
+  applyInspectionForSanLoss,
   getAdjacentTargets,
   getLivingAdjacentTargets,
   applyFx,
 } from '../effectEngine';
+import { makeInspectionMeta } from '../coreUtils';
 import { resetIds, makePlayer, makeStandardPlayers, makeZoneCard, makeGodCard, makeGs } from './factory';
 
 describe('applyHpDamageWithLink', () => {
@@ -410,5 +412,38 @@ describe('applyFx', () => {
     const res = applyFx(card, 0, null, players, [], [], gs);
     expect(res.P[1].hp).toBe(0); // dead player unaffected
     expect(res.P[1].isDead).toBe(true);
+  });
+});
+
+describe('applyInspectionForSanLoss', () => {
+  beforeEach(() => resetIds());
+
+  it('检定造成的属性变化会生成显式 statEvents', () => {
+    const players = [makePlayer({ name: '你', hp: 10, san: 6 })];
+    const inspectionCard = { name: '自残', effect: 'selfDamageHP', value: 1, type: 'negative' };
+    const gs = makeGs({
+      players,
+      inspectionDeck: [inspectionCard],
+      inspectionDiscard: [],
+      _statEventSeq: 4,
+    });
+
+    const res = applyInspectionForSanLoss(
+      0,
+      players[0].san,
+      0,
+      players,
+      [],
+      [],
+      [],
+      makeInspectionMeta(gs),
+    );
+
+    expect(res.P[0].hp).toBe(9);
+    expect(res.inspectionMeta._statEventSeq).toBe(5);
+    expect(res.inspectionMeta._inspectionEvents[0].statEventSeq).toBe(5);
+    expect(res.inspectionMeta._inspectionEvents[0].statEvents).toMatchObject([
+      { type: 'HP_LOSS', target: 0, from: { hp: 10 }, to: { hp: 9 }, seq: 5 },
+    ]);
   });
 });

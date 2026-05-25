@@ -35,7 +35,7 @@ import {
   clearPendingAnimDeathFlags,
   applyHpDamageWithLink,
   applyFx,
-  applyInspectionForSanLoss,
+  applySanLossToPlayerWithInspection,
   aiChooseRevealCard,
   aiChooseHunterLootCards,
   chooseFirstComePickForAI,
@@ -71,6 +71,7 @@ import {
   moveTopDeckCardToBottom,
   resolveMpTimeoutToAction,
   applyStatEventsToDisplayStats,
+  buildStatEvents,
 } from "./game";
 import {
   rotateGsForViewer,
@@ -1099,6 +1100,7 @@ export default function Game(){
         const nextElapsed=(prev.houndsOfTindalosElapsed||0)+1;
         if(nextElapsed<15)return {...prev,houndsOfTindalosElapsed:nextElapsed};
         const P=copyPlayers(prev.players),Disc=[...prev.discard],L=[...prev.log];
+        const beforePlayers=copyPlayers(P);
         const ti=prev.currentTurn;
         if(P[ti]&&!P[ti].isDead){
           P[ti].hp=clamp(P[ti].hp-4);
@@ -1112,8 +1114,20 @@ export default function Game(){
             if(P[ti].godZone?.length){Disc.push(...P[ti].godZone);P[ti].godZone=[];P[ti].godName=null;P[ti].godLevel=0;}
           }
         }
+        const statEventSeq=(prev._statEventSeq||0)+1;
+        const statEvents=buildStatEvents(beforePlayers,P,L.slice(-2),{reason:'廷达罗斯猎犬',seq:statEventSeq});
         const houndsCard=INSPECTION_DECK.find(c=>c.effect==='houndsOfTindalos');
-        const nextGs={...prev,players:P,discard:Disc,log:L,houndsOfTindalosActive:false,houndsOfTindalosTarget:ti,houndsOfTindalosElapsed:0,inspectionDeck:houndsCard?shuffle([...(prev.inspectionDeck||[]),houndsCard]):prev.inspectionDeck};
+        const nextGs={
+          ...prev,
+          players:P,
+          discard:Disc,
+          log:L,
+          houndsOfTindalosActive:false,
+          houndsOfTindalosTarget:ti,
+          houndsOfTindalosElapsed:0,
+          inspectionDeck:houndsCard?shuffle([...(prev.inspectionDeck||[]),houndsCard]):prev.inspectionDeck,
+          ...(statEvents.length?{_statEvents:[...(prev._statEvents||[]),...statEvents],_statEventSeq:statEventSeq}:{}),
+        };
         const win=checkWin(P,prev._isMP);
         return win?{...nextGs,gameOver:win}:nextGs;
       });
@@ -2054,6 +2068,14 @@ export default function Game(){
   const latestGsRef=useRef(null); // always mirrors latest gs for closures reading stale state
   latestGsRef.current=gs; // 同步更新：渲染期间直接镜像，确保 confirmDiscard 等闭包读到最新值
 
+  useEffect(()=>{
+    if(!gs?._endTurnReplay||showTutorial||anim||animQueueRef.current.length>0||pendingGsRef.current)return;
+    if(gs.phase==='ACTION'&&!gs.drawReveal&&!gs.gameOver){
+      continueEndTurnReplay(gs);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[gs?._endTurnReplay,gs?.phase,gs?.drawReveal,gs?.gameOver,anim,showTutorial]);
+
   // 1. 兜底与静默同步：当没有动画在播放时，且不处于AI回合（AI回合中draw效果已bake进gs但动画尚未开始），UI 强制对齐真实的底层数据
   useEffect(() => {
     if (gs?.players && (!anim && (!animQueueRef.current || animQueueRef.current.length === 0))) {
@@ -2577,15 +2599,91 @@ export default function Game(){
         return;
       }
     }
+    if(hasPendingEndTurnReplay(P)&&beginEndTurnReplay(baseGsAfterDecision,P,D,Disc,L))return;
     const nextGs=startNextTurn({...baseGsAfterDecision,players:P,deck:D,discard:Disc,log:L,abilityData:{}});
     applyNextTurnGs(nextGs);
+  }
+
+  function hasPendingEndTurnReplay(P){
+    const corridorIndex=(P?.[0]?.hand||[]).findIndex(card=>card?.type==='endTurnReplayHand');
+    return corridorIndex>0;
+  }
+
+  function beginEndTurnReplay(baseGs,P,D,Disc,L,preQueue=[]){
+    const handCards=[...(P?.[0]?.hand||[])];
+    const corridorIndex=handCards.findIndex(card=>card?.type==='endTurnReplayHand');
+    if(corridorIndex<=0)return false;
+    const replayCards=handCards.slice(0,corridorIndex).filter(card=>card?.id!=null);
+    if(!replayCards.length)return false;
+    const replay={cards:replayCards.map(card=>card.id),index:0};
+    const introLog=`【无尽通道】你展示所有手牌：${handCards.map(card=>cardLogText(card,{alwaysShowName:true})).join(' ')}`;
+    const nextState={...baseGs,players:P,deck:D,discard:Disc,log:[...L,introLog],currentTurn:0,phase:'ACTION',drawReveal:null,abilityData:{},_endTurnReplay:replay};
+    if(preQueue.length){
+      triggerAnimQueue(preQueue,nextState,()=>continueEndTurnReplay(nextState));
+      return true;
+    }
+    continueEndTurnReplay(nextState);
+    return true;
+  }
+
+  function continueEndTurnReplay(stateLike){
+    if(!stateLike?._endTurnReplay)return false;
+    const replay=stateLike._endTurnReplay;
+    let P=copyPlayers(stateLike.players||[]);
+    let index=replay.index||0;
+    while(index<(replay.cards||[]).length){
+      const cardId=replay.cards[index];
+      const card=(P[0]?.hand||[]).find(c=>c?.id===cardId);
+      if(!card)break;
+      if(card.isGod){
+        P[0].godEncounters=(P[0].godEncounters||0)+1;
+        const cost=P[0].godEncounters;
+        if(P[0].role===ROLE_CULTIST)P[0].roleRevealed=true;
+        const effectMsg=P[0].role===ROLE_CULTIST
+          ?`你（邪祀者）遭遇邪神 ${card.name}！（第${P[0].godEncounters}次）免疫SAN损耗`
+          :`你 遭遇邪神 ${card.name}！（第${P[0].godEncounters}次）失去${cost}SAN`;
+        let D=[...(stateLike.deck||[])],Disc=[...(stateLike.discard||[])];
+        let L=[...(stateLike.log||[]),effectMsg];
+        let inspectionMeta=makeInspectionMeta(stateLike);
+        if(P[0].role!==ROLE_CULTIST&&cost>0){
+          const processed=applySanLossToPlayerWithInspection(0,cost,stateLike.currentTurn??0,P,D,Disc,L,inspectionMeta,'邪神遭遇');
+          P=processed.P;D=processed.D;Disc=processed.Disc;L=processed.L;inspectionMeta=processed.inspectionMeta;
+        }
+        const newGs={...stateLike,players:P,deck:D,discard:Disc,log:L,phase:'GOD_CHOICE',
+          abilityData:{...(stateLike.abilityData||{}),godCard:card,drawerIdx:0,godEncounterCost:0,fromEndTurnReplay:true},
+          drawReveal:null,selectedCard:null,_endTurnReplay:{...replay,index},...inspectionMeta};
+        const split=splitAnimBoundLogs(L.slice((stateLike.log||[]).length));
+        const statQ=bindAnimLogChunks(buildAnimQueue(stateLike,newGs),{statLogs:split.stat});
+        triggerAnimQueue([{type:'DRAW_CARD',card,triggerName:'无尽通道',targetPid:0,skipTravel:true,msgs:split.preStat.length?split.preStat:[effectMsg]},...statQ],newGs);
+        return true;
+      }
+      const drawReveal={
+        card,
+        msgs:[],
+        needsDecision:true,
+        forcedKeep:false,
+        drawerIdx:0,
+        drawerName:P[0]?.name||'你',
+        fromEndTurnReplay:true,
+      };
+      setGs({...stateLike,players:P,phase:'DRAW_REVEAL',drawReveal,abilityData:{...(stateLike.abilityData||{})},_endTurnReplay:{...replay,index}});
+      triggerAnimQueue([{type:'DRAW_CARD',card,triggerName:'无尽通道',targetPid:0,skipTravel:true,msgs:[`【无尽通道】重新摸到 ${cardLogText(card,{alwaysShowName:true})}`]}],null);
+      return true;
+    }
+    const cleaned={...stateLike,players:P,phase:'ACTION',drawReveal:null,abilityData:{},_endTurnReplay:null};
+    const nextGs=startNextTurn({...cleaned,currentTurn:0});
+    applyNextTurnGs(nextGs);
+    return true;
   }
 
   function handleDrawKeep(){
     const dr=gs.drawReveal;if(!dr?.card)return;
     // swapAllHands needs target selection before applying
     if(dr.card.type==='swapAllHands'){
-      setGs({...gs,phase:'ZONE_SWAP_SELECT_TARGET',drawReveal:null,abilityData:{zoneSwapCard:dr.card,fromRest:dr.fromRest,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining},log:[...gs.log,`你摸到 ${cardLogText(dr.card,{alwaysShowName:true})}，请选择交换手牌的目标`]});
+      const replayPatch=dr.fromEndTurnReplay&&gs._endTurnReplay
+        ?{_endTurnReplay:{...gs._endTurnReplay,index:(gs._endTurnReplay.index||0)+1}}
+        :{};
+      setGs({...gs,phase:'ZONE_SWAP_SELECT_TARGET',drawReveal:null,abilityData:{zoneSwapCard:dr.card,fromRest:dr.fromRest,fromEndTurnReplay:dr.fromEndTurnReplay,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining},log:[...gs.log,`你摸到 ${cardLogText(dr.card,{alwaysShowName:true})}，请选择交换手牌的目标`],...replayPatch});
       return;
     }
     // 检查是否为AOE负面效果，且当前玩家是寻宝者
@@ -2613,7 +2711,8 @@ export default function Game(){
       return;
     }
     const res=applyFx(dr.card,drawerIdx,null,P,D,Disc,gs,false,[],false);
-    P=res.P;D=res.D;Disc=res.Disc;P[drawerIdx].hand.push(dr.card);
+    P=res.P;D=res.D;Disc=res.Disc;
+    if(!dr.fromEndTurnReplay)P[drawerIdx].hand.push(dr.card);
     const who=localDisplayName(drawerIdx,P[drawerIdx].name);
     const L=[...gs.log,`${who} 收入了 ${cardLogText(dr.card,{alwaysShowName:true})}`,...res.msgs];
     // 1. 检查卡牌效果是否让任何人HP归零或SAN归零（通过checkWin）
@@ -2626,7 +2725,10 @@ export default function Game(){
       return;
     }
     // 保留abilityData中的fromRest和cthDrawsRemaining信息
-    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:gs.abilityData,...(res.statePatch||{})};
+    const replayPatch=dr.fromEndTurnReplay&&gs._endTurnReplay
+      ?{_endTurnReplay:{...gs._endTurnReplay,index:(gs._endTurnReplay.index||0)+1}}
+      :{};
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:gs.abilityData,...(res.statePatch||{}),...replayPatch};
     // 检查是否需要偷看手牌
     if(res.statePatch?.peekHandTargets){
       syncVisibleLog(L);
@@ -2916,7 +3018,8 @@ export default function Game(){
       res = applyFx(dr.card, drawerIdx, null, P, D, Disc, gs, dodgeSuccess, [], false);
     }
     
-    P = res.P; D = res.D; Disc = res.Disc; P[drawerIdx].hand.push(dr.card);
+    P = res.P; D = res.D; Disc = res.Disc;
+    if(!dr.fromEndTurnReplay)P[drawerIdx].hand.push(dr.card);
     
     if (dodgeSuccess && !isAOE) {
       L.push(`${who} 收入了 ${cardLogText(dr.card,{alwaysShowName:true})}（负面效果已规避）`, ...res.msgs);
@@ -2946,7 +3049,10 @@ export default function Game(){
       return { P, D, Disc, L: pendingWinGs.log, pendingWinGs, d1, dodgeSuccess, who };
     }
     
-    const newGs = { ...gs, players: P, deck: D, discard: Disc, log: L, phase: 'ACTION', drawReveal: null, abilityData: { fromRest: gs.abilityData?.fromRest, cthDrawsRemaining: gs.abilityData?.cthDrawsRemaining } };
+    const replayPatch=dr.fromEndTurnReplay&&gs._endTurnReplay
+      ?{_endTurnReplay:{...gs._endTurnReplay,index:(gs._endTurnReplay.index||0)+1}}
+      :{};
+    const newGs = { ...gs, players: P, deck: D, discard: Disc, log: L, phase: 'ACTION', drawReveal: null, abilityData: { fromRest: gs.abilityData?.fromRest, cthDrawsRemaining: gs.abilityData?.cthDrawsRemaining }, ...replayPatch };
     return { P, D, Disc, L, newGs, d1, dodgeSuccess, who };
   }
 
@@ -2985,7 +3091,8 @@ export default function Game(){
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
     const drawerIdx=dr.drawerIdx??0;
     const res=applyFx(dr.card,drawerIdx,null,P,D,Disc,gs,false,[],false);
-    P=res.P;D=res.D;Disc=res.Disc;P[drawerIdx].hand.push(dr.card);
+    P=res.P;D=res.D;Disc=res.Disc;
+    if(!dr.fromEndTurnReplay)P[drawerIdx].hand.push(dr.card);
     const who=localDisplayName(drawerIdx,P[drawerIdx].name);
     const L=[...gs.log,`${who} 收入了 ${cardLogText(dr.card,{alwaysShowName:true})}`,...res.msgs];
     // 1. 检查卡牌效果是否让任何人HP归零或SAN归零（通过checkWin）
@@ -2996,7 +3103,10 @@ export default function Game(){
       setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,'你集齐了全部编号！'],phase:'PLAYER_WIN_PENDING',drawReveal:null,abilityData:{winReason:'你集齐了全部编号并获胜！'}});
       return;
     }
-    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:{fromRest:gs.abilityData?.fromRest,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining}};
+    const replayPatch=dr.fromEndTurnReplay&&gs._endTurnReplay
+      ?{_endTurnReplay:{...gs._endTurnReplay,index:(gs._endTurnReplay.index||0)+1}}
+      :{};
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:{fromRest:gs.abilityData?.fromRest,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining},...replayPatch};
     if(dr.fromRest&&!win){_cthContinueRestDraws(newGs);return;}
     const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
     if(queue.length){
@@ -3041,7 +3151,8 @@ export default function Game(){
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
     const drawerIdx=gs.abilityData?.drawerIdx??0;
     const res=applyFx(dr.card,drawerIdx,null,P,D,Disc,gs);
-    P=res.P;D=res.D;Disc=res.Disc;P[drawerIdx].hand.push(dr.card);
+    P=res.P;D=res.D;Disc=res.Disc;
+    if(!dr.fromEndTurnReplay)P[drawerIdx].hand.push(dr.card);
     const L=[...gs.log,`你选择不规避负面效果`,...res.msgs];
     // 1. 检查卡牌效果是否让任何人HP归零或SAN归零（通过checkWin）
     const win=checkWin(P,gs._isMP);if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,drawReveal:null});return;}
@@ -3051,7 +3162,10 @@ export default function Game(){
       setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,'你集齐了全部编号！'],phase:'PLAYER_WIN_PENDING',drawReveal:null,abilityData:{winReason:'你集齐了全部编号并获胜！'}});
       return;
     }
-    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:{fromRest:gs.abilityData?.fromRest,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining}};
+    const replayPatch=dr.fromEndTurnReplay&&gs._endTurnReplay
+      ?{_endTurnReplay:{...gs._endTurnReplay,index:(gs._endTurnReplay.index||0)+1}}
+      :{};
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:{fromRest:gs.abilityData?.fromRest,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining},...replayPatch};
     if(dr.fromRest&&!win){_cthContinueRestDraws(newGs);return;}
     const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
     if(queue.length){
@@ -3070,7 +3184,16 @@ export default function Game(){
     const discardCard=dr.card;
     const discardLog=`${who} 弃置了 ${cardLogText(dr.card,{alwaysShowName:true})}`;
     const queue=[{type:'DISCARD',card:discardCard,triggerName:who,msgs:[discardLog]}];
-    const newGs={...gs,discard:[...gs.discard,dr.card],log:[...gs.log,discardLog],phase:'ACTION',drawReveal:null,abilityData:gs.abilityData};
+    const P=copyPlayers(gs.players);
+    const nextDiscard=[...gs.discard,dr.card];
+    if(dr.fromEndTurnReplay){
+      const idx=(P[drawerIdx]?.hand||[]).findIndex(card=>card?.id===dr.card?.id);
+      if(idx>=0)P[drawerIdx].hand.splice(idx,1);
+    }
+    const replayPatch=dr.fromEndTurnReplay&&gs._endTurnReplay
+      ?{_endTurnReplay:{...gs._endTurnReplay,index:(gs._endTurnReplay.index||0)+1}}
+      :{};
+    const newGs={...gs,players:P,discard:nextDiscard,log:[...gs.log,discardLog],phase:'ACTION',drawReveal:null,abilityData:gs.abilityData,...replayPatch};
     // CTH fromRest: after discarding, process remaining draws then advance turn
     if(dr.fromRest){
       // 播放动画后继续处理剩余抽牌
@@ -3123,12 +3246,13 @@ export default function Game(){
     const card=gs.abilityData?.zoneSwapCard;
     if(!card)return;
     const fromRest=gs.abilityData?.fromRest;
+    const fromEndTurnReplay=gs.abilityData?.fromEndTurnReplay;
     const myHandCountBefore=gs.players?.[0]?.hand?.length||0;
     const targetHandCountBefore=gs.players?.[ti]?.hand?.length||0;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
     const res=applyFx(card,0,ti,P,D,Disc,gs);
     P=res.P;D=res.D;Disc=res.Disc;
-    P[0].hand.push(card); // 区域牌留在手中（效果已执行）
+    if(!fromEndTurnReplay)P[0].hand.push(card); // 区域牌留在手中（效果已执行）
     const L=[...gs.log,...res.msgs];
     const win=checkWin(P,gs._isMP);
     if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{}});return;}
@@ -3947,10 +4071,12 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
           effectMsg += '，身份揭晓：邪祀者';
         }
       } else {
-        P[ti].san=clamp(P[ti].san-cost);const newSan=P[ti].san;{const processed=applyInspectionForSanLoss(ti,newSan,gs.currentTurn,P,D,Disc,L,inspectionMeta);P=processed.P;D=processed.D;Disc=processed.Disc;inspectionMeta=processed.inspectionMeta;L.splice(0,L.length,...processed.log);}
         effectMsg = `${P[ti].name} 遭遇邪神 ${bewitchCard.name}（第${P[ti].godEncounters}次），失去${cost}SAN`;
+        L.push(effectMsg);
+        const processed=applySanLossToPlayerWithInspection(ti,cost,gs.currentTurn,P,D,Disc,L,inspectionMeta,'邪神遭遇');
+        P=processed.P;D=processed.D;Disc=processed.Disc;inspectionMeta=processed.inspectionMeta;L.splice(0,L.length,...processed.L);
       }
-      L.push(effectMsg);
+      if(P[ti].role === '邪祀者')L.push(effectMsg);
       const forcedConvert=!!(P[ti].godName&&P[ti].godName!==bewitchCard.godKey);
       const godResolveGs={...gs,players:P,deck:D,discard:Disc,log:L,...inspectionMeta};
       const gres=resolveGodEncounterForAI(ti,bewitchCard,P,D,Disc,godResolveGs,forcedConvert);
@@ -4021,13 +4147,18 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     const godCard=gs.abilityData?.godCard;if(!godCard)return;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
     let inspectionMeta=makeInspectionMeta(gs);
+    const fromEndTurnReplay=!!gs.abilityData?.fromEndTurnReplay;
+    if(fromEndTurnReplay&&action!=='keepHand'){
+      const handIdx=(P[0]?.hand||[]).findIndex(card=>card?.id===godCard.id);
+      if(handIdx>=0)P[0].hand.splice(handIdx,1);
+    }
     const isDiscardAction=action!=='keepHand'&&action!=='worship'&&action!=='upgrade'&&action!=='forcedConvert';
     const gk=godCard.godKey;
     const alreadyWorship=P[0].godName===gk;
     // SAN deduction and inspections are now handled upfront in handleCardDraw
     
     if(action==='keepHand'){
-      P[0].hand.push({...godCard});
+      if(!fromEndTurnReplay)P[0].hand.push({...godCard});
       L.push('你（邪祀者）将邪神牌秘密收入手牌');
     } else if(action==='worship'||action==='upgrade'||action==='forcedConvert'){
       if(action==='forcedConvert'||(P[0].godName&&P[0].godName!==gk)){
@@ -4056,22 +4187,28 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     // SHU: 进入目标选择阶段而非直接给牌
     const isShuBlessing=(action==='worship'||action==='upgrade'||action==='forcedConvert')&&gk==='SHU';
     const shuOffspringCount=isShuBlessing?(GOD_DEFS.SHU.levels[P[0].godLevel-1]?.offspringCount||0):0;
+    const replayPatch=fromEndTurnReplay&&gs._endTurnReplay
+      ?{_endTurnReplay:{...gs._endTurnReplay,index:(gs._endTurnReplay.index||0)+1}}
+      :{};
     // 保留abilityData中的cthDrawsRemaining信息
     const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,phase:isShuBlessing?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessing?{...gs.abilityData,shuOffspringCount}:gs.abilityData,
-      godTriggeredThisTurn:consumesSlot,...inspectionMeta};
+      godTriggeredThisTurn:consumesSlot,...inspectionMeta,...replayPatch};
+    const finishGodChoice=(state)=>{
+      const win=checkWin(state.players,state._isMP);
+      if(win){
+        setGs({...state,gameOver:win});
+      }else if(gs.abilityData?.fromRest){
+        _cthContinueRestDraws(state);
+      }else if(fromEndTurnReplay&&state.phase==='ACTION'){
+        continueEndTurnReplay(state);
+      }else{
+        setGs(state);
+      }
+    };
     if(isDiscardAction){
       const discardLog=L[L.length-1];
       const queue=[{type:'DISCARD',card:godCard,triggerName:'你',targetPid:0,msgs:[discardLog]}];
-      triggerAnimQueue(queue,newGs,()=>{
-        const win=checkWin(newGs.players,newGs._isMP);
-        if(win){
-          setGs({...newGs,gameOver:win});
-        }else if(gs.abilityData?.fromRest){
-          _cthContinueRestDraws(newGs);
-        }else{
-          setGs(newGs);
-        }
-      });
+      triggerAnimQueue(queue,newGs,()=>finishGodChoice(newGs));
       return;
     }
     const inspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>(gs._inspectionSeq||0));
@@ -4089,20 +4226,12 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
     }
     if(queue.length){
-      triggerAnimQueue(queue,newGs,()=>{
-        const win=checkWin(newGs.players,newGs._isMP);
-        if(win){
-          setGs({...newGs,gameOver:win});
-        }else if(gs.abilityData?.fromRest){
-          _cthContinueRestDraws(newGs);
-        }else{
-          setGs(newGs);
-        }
-      });
+      triggerAnimQueue(queue,newGs,()=>finishGodChoice(newGs));
     }else{
       const win=checkWin(P,gs._isMP);
       const finalGs={...newGs,...(win?{gameOver:win}:{})};
       if(!win&&gs.abilityData?.fromRest){_cthContinueRestDraws(finalGs);return;}
+      if(!win&&fromEndTurnReplay&&finalGs.phase==='ACTION'){continueEndTurnReplay(finalGs);return;}
       setGs(finalGs);
     }
   }
@@ -4170,6 +4299,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     })();
     let D=[...baseGs.deck],Disc=[...baseGs.discard,...keptDisc];
     let L=[...baseGs.log];
+    const cthDraws=[];
     if(keptDisc.length) L.push(`弃置：${keptDisc.map(c=>cardLogText(c,{alwaysShowName:true})).join(' ')}`);
     if(destroyedDisc.length) L.push(`黑山羊幼仔 ×${destroyedDisc.length} 被销毁`);
     // CTH power: draw when ending turn while face-down
@@ -4178,7 +4308,10 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       L.push(`你（克苏鲁信徒Lv.${P[0].godLevel}）梦访拉莱耶，翻面结束回合时额外摸${extraDraws}张牌`);
         for(let _d=0;_d<extraDraws;_d++){
           const r2=playerDrawCard(P,D,Disc,0,baseGs);P=r2.P;D=r2.D;Disc=r2.Disc;
-          if(r2.drawnCard)L.push(`  摸到 ${cardLogText(r2.drawnCard,{alwaysShowName:true})}`);
+          if(r2.drawnCard){
+            L.push(`  摸到 ${cardLogText(r2.drawnCard,{alwaysShowName:true})}`);
+            cthDraws.push(r2.drawnCard);
+          }
           if(r2.needGodChoice){
           setGs(buildLocalCthDecisionState(baseGs,{
             players:P,deck:D,discard:Disc,log:L,drawnCard:r2.drawnCard,remainingDraws:extraDraws-_d-1,needGodChoice:true,
@@ -4197,6 +4330,12 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         }
       }
     }
+    if(hasPendingEndTurnReplay(P)){
+      const discardQueue=[{type:'DISCARD',msgs:L.slice(-discarded.length-1)}];
+      const cthQueue=cthDraws.map(card=>({type:'DRAW_CARD',card,triggerName:'你',targetPid:0}));
+      const statQ=cthDraws.length?buildAnimQueue(baseGs,{...baseGs,players:P,deck:D,discard:Disc,log:L}).filter(a=>a.type!=='CARD_TRANSFER'):[];
+      if(beginEndTurnReplay(baseGs,P,D,Disc,L,[...discardQueue,...cthQueue,...statQ]))return;
+    }
     const newGs=startNextTurn({...baseGs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,abilityData:{}});
     const queue=buildPlayerTurnDrawQueue(gs,newGs,[{type:'DISCARD',msgs:L.slice(-discarded.length-1)}]);
     triggerAnimQueue(queue,newGs);
@@ -4207,16 +4346,21 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     const d1=1+(Math.random()*6|0), d2=1+(Math.random()*6|0);
     const heal=Math.max(d1,d2);
     let P=copyPlayers(gs.players);
+    const beforeRestPlayers=copyPlayers(P);
     P[0].hp=clamp(P[0].hp+heal);
     // Toggle resting state: if already resting, wake up; otherwise, go to rest
     const wasResting=P[0].isResting;
     P[0].isResting=!P[0].isResting;
-    let L=[...gs.log,`你选择【休息】，掷骰 ${d1}+${d2}，回复 ${heal}HP，${wasResting?'翻回正常状态':'翻面休息中'}`];
+    const restLog=`你选择【休息】，掷骰 ${d1}+${d2}，回复 ${heal}HP，${wasResting?'翻回正常状态':'翻面休息中'}`;
+    let L=[...gs.log,restLog];
+    const restStatEventSeq=(gs._statEventSeq||0)+1;
+    const restStatEvents=buildStatEvents(beforeRestPlayers,P,[restLog],{reason:'休息',seq:restStatEventSeq});
+    const restStatPatch=restStatEvents.length?{_statEvents:[...(gs._statEvents||[]),...restStatEvents],_statEventSeq:restStatEventSeq}:{};
     const win=checkWin(P,gs._isMP);
-    if(win){setGs({...gs,players:P,log:L,gameOver:win});return;}
+    if(win){setGs({...gs,players:P,log:L,gameOver:win,...restStatPatch});return;}
     
     const oldGs={...gs,players:copyPlayers(gs.players)};
-    const newGs={...gs,players:P,log:L,restUsed:true,skillUsed:true};
+    const newGs={...gs,players:P,log:L,restUsed:true,skillUsed:true,...restStatPatch};
     
     // 如果手牌超限，先进入弃牌阶段，弃牌后再触发拉莱耶之主摸牌
     if(P[0].hand.length>effectiveHandLimit){
@@ -4228,7 +4372,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     }
     
     let D=[...gs.deck],Disc=[...gs.discard];
-    const finalGs={...gs,players:P,deck:D,discard:Disc,log:L,restUsed:true,skillUsed:true};
+    const finalGs={...gs,players:P,deck:D,discard:Disc,log:L,restUsed:true,skillUsed:true,...restStatPatch};
     // 处理拉莱耶之主的摸牌效果：在点击休息的当回合，回合结束阶段也要摸牌
     if(P[0].isResting&&P[0].godName==='CTH'&&P[0].godLevel>=1){
       const extraDraws=P[0].godLevel;
@@ -4241,9 +4385,14 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       // 动画完成后处理摸牌
       const handleDraws=()=>{
         let D=[...gs.deck],Disc=[...gs.discard],P=copyPlayers(gs.players);
+        const beforeCthRestPlayers=copyPlayers(P);
         P[0].hp=clamp(P[0].hp+heal);
         P[0].isResting=!oldGs.players[0].isResting;
-        let L=[...oldGs.log,`你选择【休息】，掷骰 ${d1}+${d2}，回复 ${heal}HP，${oldGs.players[0].isResting?'翻回正常状态':'翻面休息中'}`];
+        const cthRestLog=`你选择【休息】，掷骰 ${d1}+${d2}，回复 ${heal}HP，${oldGs.players[0].isResting?'翻回正常状态':'翻面休息中'}`;
+        let L=[...oldGs.log,cthRestLog];
+        const cthRestStatEventSeq=(oldGs._statEventSeq||0)+1;
+        const cthRestStatEvents=buildStatEvents(beforeCthRestPlayers,P,[cthRestLog],{reason:'休息',seq:cthRestStatEventSeq});
+        const cthRestStatPatch=cthRestStatEvents.length?{_statEvents:[...(oldGs._statEvents||[]),...cthRestStatEvents],_statEventSeq:cthRestStatEventSeq}:{};
         L.push(`你（克苏鲁信徒Lv.${P[0].godLevel}）梦访拉莱耶，翻面结束回合时额外摸${extraDraws}张牌`);
         const cthDraws=[];
 
@@ -4256,7 +4405,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
           if(r2.needGodChoice){
             setGs(buildLocalCthDecisionState(oldGs,{
               players:P,deck:D,discard:Disc,log:L,drawnCard:r2.drawnCard,remainingDraws:extraDraws-_d-1,needGodChoice:true,
-              extraState:{skillUsed:true,restUsed:true,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true},
+              extraState:{skillUsed:true,restUsed:true,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,...cthRestStatPatch},
             }));
             return;
           }
@@ -4265,7 +4414,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             setGs(buildLocalCthDecisionState(oldGs,{
               players:P,deck:D,discard:Disc,log:L,drawnCard:r2.drawnCard,remainingDraws:extraDraws-_d-1,
               preStatLogs:split.preStat,statLogs:split.stat,
-              extraState:{skillUsed:true,restUsed:true,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false},
+              extraState:{skillUsed:true,restUsed:true,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,...cthRestStatPatch},
             }));
             return;
           }
@@ -4276,11 +4425,18 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
           }
         }
 
-        const afterRest={...oldGs,players:P,deck:D,discard:Disc,log:L,restUsed:true,skillUsed:true,currentTurn:0};
+        const afterRest={...oldGs,players:P,deck:D,discard:Disc,log:L,restUsed:true,skillUsed:true,currentTurn:0,...cthRestStatPatch};
         // 翻面状态下主动结束回合：需要弃牌
         const nextGs=P[0].hand.length>effectiveHandLimit
           ?{...afterRest,phase:'DISCARD_PHASE',abilityData:{discardSelected:[]}}
-          :startNextTurn(afterRest);
+          :hasPendingEndTurnReplay(P)
+            ?null
+            :startNextTurn(afterRest);
+        if(!nextGs){
+          const cthQueue=cthDraws.map(card=>({type:'DRAW_CARD',card,triggerName:'你',targetPid:0}));
+          const statQ=cthDraws.length?buildAnimQueue(gs,afterRest).filter(a=>a.type!=='CARD_TRANSFER'):[];
+          if(beginEndTurnReplay(afterRest,P,D,Disc,L,[...cthQueue,...statQ]))return;
+        }
 
         if(cthDraws.length>0){
           const queue=[];
@@ -4305,6 +4461,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     const statQueue=buildAnimQueue(oldGs,{...finalGs,players:P});
     const queue=[{type:'DICE_ROLL',d1,d2,heal,rollerName:'你'},...statQueue];
     const afterRest={...finalGs,currentTurn:0};
+    if(hasPendingEndTurnReplay(P)&&beginEndTurnReplay(afterRest,P,D,Disc,L,queue))return;
     const pendingGs=startNextTurn(afterRest);
     triggerAnimQueue(queue,pendingGs);
   }
@@ -4514,6 +4671,11 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         }
       }
     }
+    if(hasPendingEndTurnReplay(P)){
+      const replayPreQueue=cthDraws.map(card=>({type:'DRAW_CARD',card,triggerName:'你',targetPid:0}));
+      const statQ=cthDraws.length?buildAnimQueue(gs,{...gs,players:P,deck:D,discard:Disc,log:L}).filter(a=>a.type!=='CARD_TRANSFER'):[];
+      if(beginEndTurnReplay(gs,P,D,Disc,L,[...replayPreQueue,...statQ]))return;
+    }
     const newGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0});
     if(cthDraws.length>0){
       // 构建CTH摸牌动画队列
@@ -4576,6 +4738,12 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
           return;
         }
       }
+    }
+    if(hasPendingEndTurnReplay(P)){
+      const discardQueue=discarded.length?[{type:'DISCARD',msgs:L.slice(-discarded.length-1)}]:[];
+      const cthQueue=cthDraws.map(card=>({type:'DRAW_CARD',card,triggerName:'你',targetPid:0}));
+      const statQ=cthDraws.length?buildAnimQueue(gs,{...gs,players:P,deck:D,discard:Disc,log:L}).filter(a=>a.type!=='CARD_TRANSFER'):[];
+      if(beginEndTurnReplay(gs,P,D,Disc,L,[...discardQueue,...cthQueue,...statQ]))return;
     }
     const newGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,abilityData:{}});
     if(discarded.length||cthDraws.length>0){
@@ -5438,11 +5606,11 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
 
         {/* 两人一绳锁链图像 */}
         {[
-          ...gs.players.flatMap((player,playerIndex)=>{
+          ...visualPlayers.flatMap((player,playerIndex)=>{
             if(!player.damageLink||!player.damageLink.active)return [];
             const partnerIndex=player.damageLink.partner;
             if(partnerIndex==null||partnerIndex<=playerIndex)return [];
-            const partner=gs.players[partnerIndex];
+            const partner=visualPlayers[partnerIndex];
             if(!partner?.damageLink?.active||partner.damageLink.partner!==playerIndex)return [];
             return [{id:`active-${playerIndex}-${partnerIndex}`,a:playerIndex,b:partnerIndex,mode:'active'}];
           }),

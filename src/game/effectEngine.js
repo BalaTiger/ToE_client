@@ -211,6 +211,12 @@ function handleInspection(playerIndex, gs) {
   const finalLog = drawnCard.effect === 'nothing'
     ? L.filter(line => line !== `${P[playerIndex].name} 获得暂时的平静`)
     : L;
+  const afterPlayers = copyPlayers(P);
+  const statEventSeq = (gs?._statEventSeq || 0) + 1;
+  const statEvents = buildStatEvents(beforePlayers, afterPlayers, finalLog.slice(beforeLogLen), {
+    reason: drawnCard.name || 'SAN检定',
+    seq: statEventSeq,
+  });
   if (drawnCard.effect === 'houndsOfTindalos') {
     newGs.inspectionDiscard = [];
   } else {
@@ -222,6 +228,11 @@ function handleInspection(playerIndex, gs) {
   newGs._inspectionTarget = playerIndex;
   newGs._inspectionPrevLogLen = beforeLogLen;
   newGs._inspectionBeforePlayers = beforePlayers;
+  newGs._statEventSeq = statEvents.length ? statEventSeq : (gs?._statEventSeq || 0);
+  newGs._statEvents = [
+    ...((gs?._statEvents) || []),
+    ...statEvents,
+  ];
   newGs._inspectionEvents = [
     ...((gs?._inspectionEvents) || []),
     {
@@ -231,8 +242,10 @@ function handleInspection(playerIndex, gs) {
       prevLogLen: beforeLogLen,
       beforePlayers,
       beforeLog,
-      afterPlayers: copyPlayers(P),
+      afterPlayers,
       afterLog: [...finalLog],
+      statEvents,
+      statEventSeq: statEvents.length ? statEventSeq : null,
     }
   ];
   // 更新游戏状态
@@ -256,6 +269,8 @@ function mergeInspectionMeta(target, inspectionResult) {
     _inspectionPrevLogLen: inspectionResult._inspectionPrevLogLen,
     _inspectionBeforePlayers: inspectionResult._inspectionBeforePlayers,
     _inspectionEvents: inspectionResult._inspectionEvents,
+    _statEvents: inspectionResult._statEvents,
+    _statEventSeq: inspectionResult._statEventSeq,
   };
 }
 
@@ -275,6 +290,8 @@ export function processInspectionTargets(targets, startIndex, P, D, Disc, baseLo
       houndsOfTindalosTarget: nextMeta.houndsOfTindalosTarget,
       houndsOfTindalosElapsed: nextMeta.houndsOfTindalosElapsed,
       _inspectionSeq: nextMeta._inspectionSeq,
+      _statEvents: nextMeta._statEvents,
+      _statEventSeq: nextMeta._statEventSeq,
     });
     nextP = inspectionResult.players;
     nextD = inspectionResult.deck;
@@ -472,6 +489,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     selfRevealHandHP: () => { actor.hp = 10; actor.revealHand = true; actor.pickInsteadOfRandom = true; msgs.push(`${actor.name} HP 回满，手牌公开且盲抽改为挑选`); },
     selfRevealHandSAN: () => { actor.san = Math.min(10, actor.san + card.val); actor.revealHand = true; actor.pickInsteadOfRandom = true; msgs.push(`${actor.name} 回复 ${card.val} SAN，手牌公开且盲抽改为挑选`); },
     globalOnlySwap: () => { statePatch = { globalOnlySwapOwner: ci }; msgs.push(`直到 ${actor.name} 的下回合开始前，所有角色技能都视为"掉包"`); },
+    endTurnReplayHand: () => {},
     selfDamageHP: () => { if (!avoidNegative && !avoidNegativeFor.includes(ci)) msgs.push(`${actor.name} 失去 ${card.val} HP`); hurtHP(ci, card.val); },
     selfDamageSAN: () => { hurtSAN(ci, card.val); if (!avoidNegative && !avoidNegativeFor.includes(ci)) msgs.push(`${actor.name} 失去 ${card.val} SAN`); },
     selfDamageHPCond: () => { applyConditionalDamage('hp', card); },

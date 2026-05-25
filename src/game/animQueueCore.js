@@ -17,8 +17,12 @@ export function buildAnimQueue(oldGs, newGs) {
   const deathIdx = effectivePlayers.reduce((acc, p, i) => { if (oldGs.players[i] && !oldGs.players[i].isDead && p.isDead) acc.push(i); return acc; }, []);
   const oldStatSeq = oldGs?._statEventSeq || 0;
   const newStatSeq = newGs?._statEventSeq || 0;
+  const inspectionStatSeqs = new Set(newInspectionEvents.map(ev => ev?.statEventSeq).filter(seq => seq != null));
   const explicitStatEvents = Array.isArray(newGs?._statEvents)
-    ? newGs._statEvents.filter(ev => newGs?._statEventSeq == null || ev?.seq == null || ev.seq > oldStatSeq)
+    ? newGs._statEvents.filter(ev => (
+      (newGs?._statEventSeq == null || ev?.seq == null || ev.seq > oldStatSeq) &&
+      !inspectionStatSeqs.has(ev?.seq)
+    ))
     : [];
   const hasFreshExplicitStatEvents = explicitStatEvents.length > 0 && (newGs?._statEventSeq == null || newStatSeq > oldStatSeq);
   const targetStats = hasFreshExplicitStatEvents

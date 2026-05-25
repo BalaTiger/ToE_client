@@ -19,13 +19,15 @@ import {
   getHunterChaseTargets,
   canCultistWinByBewitch,
   canCultistEmptyHandByBewitch,
+  aiShouldKeepZoneCard,
   aiShouldNotRest,
   isCultistEndingTurnUnreasonable,
 } from './ai';
-import { applyFx, applyInspectionForSanLoss, applyHpDamageWithLink } from './effectEngine';
+import { applyFx, applyHpDamageWithLink } from './effectEngine';
 import {
   checkWin,
   aiHandleGodCard,
+  applySanLossToPlayerWithInspection,
   abandonGodFollower,
   convertGodFollower,
   startNextTurn,
@@ -33,6 +35,7 @@ import {
 import { withClearedTurnAnimFields } from './turnAnimState';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
 import { createBlackGoatYoungCard } from '../constants/card';
+import { buildStatEvents } from './statEvents';
 
 /**
  * 检查两张卡是否满足追捕匹配规则。
@@ -102,6 +105,60 @@ export function discardAiHandToLimit(P, ct, Disc, L) {
   }
 }
 
+function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
+  const handCards = P[ct]?.hand || [];
+  const corridorIndex = handCards.findIndex(card => card?.type === 'endTurnReplayHand');
+  if (corridorIndex <= 0) return { P, D, Disc, L, statePatch: {} };
+  const replayIds = handCards.slice(0, corridorIndex).map(card => card?.id).filter(id => id != null);
+  if (!replayIds.length) return { P, D, Disc, L, statePatch: {} };
+  L.push(`【无尽通道】${P[ct].name} 展示所有手牌：${handCards.map(card => cardLogText(card, { alwaysShowName: true })).join(' ')}`);
+  let statePatch = {};
+  for (const cardId of replayIds) {
+    const handIdx = (P[ct].hand || []).findIndex(card => card?.id === cardId);
+    if (handIdx < 0 || P[ct].isDead) break;
+    const card = P[ct].hand[handIdx];
+    L.push(`【无尽通道】${P[ct].name} 重新摸到 ${cardLogText(card, { alwaysShowName: true })}`);
+    if (card.isGod) {
+      P[ct].hand.splice(handIdx, 1);
+      P[ct].godEncounters = (P[ct].godEncounters || 0) + 1;
+      const godCost = P[ct].godEncounters;
+      const effectMsg = P[ct].role === ROLE_CULTIST
+        ? `${P[ct].name}（邪祀者）遭遇邪神 ${card.name}！（第${P[ct].godEncounters}次）免疫SAN损耗`
+        : `${P[ct].name} 遭遇邪神 ${card.name}！（第${P[ct].godEncounters}次）失去${godCost}SAN`;
+      L.push(effectMsg);
+      let inspectionMeta = makeInspectionMeta({ ...gs, ...statePatch });
+      if (P[ct].role === ROLE_CULTIST) {
+        P[ct].roleRevealed = true;
+      } else {
+        const processed = applySanLossToPlayerWithInspection(ct, godCost, gs.currentTurn ?? ct, P, D, Disc, L, inspectionMeta, '邪神遭遇');
+        P = processed.P; D = processed.D; Disc = processed.Disc; L = processed.L; inspectionMeta = processed.inspectionMeta;
+      }
+      const gr = aiHandleGodCard(ct, card, P, D, Disc, L, { ...gs, ...statePatch, ...inspectionMeta }, true);
+      P = gr.P; D = gr.D; Disc = gr.Disc;
+      statePatch = { ...statePatch, ...inspectionMeta, ...(gr.inspectionMeta || {}) };
+      continue;
+    }
+    const keep = card?.type === 'endTurnReplayHand' || !isZoneCard(card) || aiShouldKeepZoneCard(card, ct, P, false);
+    if (!keep) {
+      const [discarded] = P[ct].hand.splice(handIdx, 1);
+      if (isBlackGoatYoung(discarded)) L.push(`${P[ct].name} 的黑山羊幼仔被销毁`);
+      else {
+        Disc.push(discarded);
+        L.push(`${P[ct].name} 弃置了 ${cardLogText(discarded, { alwaysShowName: true })}`);
+      }
+      continue;
+    }
+    const res = applyFx(card, ct, null, P, D, Disc, { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L }, false, [], true);
+    P = res.P; D = res.D; Disc = res.Disc;
+    if (res.msgs?.length) L.push(...res.msgs);
+    statePatch = { ...statePatch, ...(res.statePatch || {}) };
+    if (res.statePatch?.abilityData || res.statePatch?.peekHandTargets || res.statePatch?.caveDuelTargets || res.statePatch?.damageLinkTargets || res.statePatch?.roseThornTargets) {
+      break;
+    }
+  }
+  return { P, D, Disc, L, statePatch };
+}
+
 export function aiStep(gs, opts = {}) {
   const{players:ps,currentTurn:ct,abilityData}=gs;
   let P=copyPlayers(ps),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
@@ -132,18 +189,20 @@ export function aiStep(gs, opts = {}) {
     let fxResult = null;
     if (_sc.isGod) {
       _P[_ti].godEncounters = (_P[_ti].godEncounters || 0) + 1;
+      const godCost = _P[_ti].godEncounters;
+      const effectMsg = _P[_ti].role === ROLE_CULTIST
+        ? `${_P[_ti].name}（邪祀者）遭遇邪神 ${_sc.name}！（第${_P[_ti].godEncounters}次）免疫SAN损耗`
+        : `${_P[_ti].name} 遭遇邪神 ${_sc.name}！（第${_P[_ti].godEncounters}次）失去${godCost}SAN`;
+      _L.push(effectMsg);
       if (_P[_ti].role === ROLE_CULTIST) {
         _P[_ti].roleRevealed = true;
       } else {
-        const godCost = _P[_ti].godEncounters;
-        _P[_ti].san = clamp(_P[_ti].san - godCost);
-        const newSan = _P[_ti].san;
-        const processed = applyInspectionForSanLoss(_ti, newSan, _gs.currentTurn, _P, _D, _Disc, _L, inspectionMeta);
+        const processed = applySanLossToPlayerWithInspection(_ti, godCost, _gs.currentTurn, _P, _D, _Disc, _L, inspectionMeta, '邪神遭遇');
         _P = processed.P; _D = processed.D; _Disc = processed.Disc;
         inspectionMeta = processed.inspectionMeta;
-        _L.splice(0, _L.length, ...processed.log);
+        _L.splice(0, _L.length, ...processed.L);
       }
-      const gr = aiHandleGodCard(_ti, _sc, _P, _D, _Disc, _L, _gs);
+      const gr = aiHandleGodCard(_ti, _sc, _P, _D, _Disc, _L, _gs, true);
       _P = gr.P; _D = gr.D; _Disc = gr.Disc;
       _gs = { ..._gs, ...inspectionMeta, ...(gr.inspectionMeta || {}) };
     } else {
@@ -441,12 +500,18 @@ export function aiStep(gs, opts = {}) {
   }
   if(shouldRest){
     const d1=(1+Math.random()*6|0),d2=(1+Math.random()*6|0),heal=Math.max(d1,d2);
+    const beforeRestPlayers=copyPlayers(P);
     P[ct].hp=clamp(P[ct].hp+heal);P[ct].isResting=true;
     L.push(`${ai.name} 选择【休息】，掷骰 ${d1}+${d2}，回复 ${heal}HP，翻面休息中`);
-    const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
+    const restStatEventSeq=(gs._statEventSeq||0)+1;
+    const restStatEvents=buildStatEvents(beforeRestPlayers,P,L.slice(-1),{reason:'休息',seq:restStatEventSeq});
+    const restStatPatch=restStatEvents.length?{_statEvents:[...(gs._statEvents||[]),...restStatEvents],_statEventSeq:restStatEventSeq}:{};
+    const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,...restStatPatch};
     discardAiHandToLimit(P, ct, Disc, L);
+    const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,{...gs,...restStatPatch});
+    P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;
     const _P_afterRest=copyPlayers(P);
-    const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,restUsed:true,skillUsed:false}, opts);
+    const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,restUsed:true,skillUsed:false,...restStatPatch,...replayed.statePatch}, opts);
     return buildReturnPack(nextGs, _P_afterRest);
   }
 // 追猎者/邪祀者积极发动技能(65%); 寻宝者随进度提升(35%→55%)
@@ -478,6 +543,8 @@ export function aiStep(gs, opts = {}) {
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
     discardAiHandToLimit(P, ct, Disc, L);
     L.push(`${ai.name} 未使用技能，结束回合`);
+    const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,gs);
+    P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};
     const _P_afterAction=copyPlayers(P);
     const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:gs.skillUsed}, opts);
     return buildReturnPack(nextGs, _P_afterAction);
@@ -824,6 +891,8 @@ export function aiStep(gs, opts = {}) {
   if(winAfterDiscard){
     return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:winAfterDiscard,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:(useSkill||gs.skillUsed),_animAiDrawnCard:gs._aiDrawnCard??gs._drawnCard??null,_animDiscardedDrawnCard:gs._discardedDrawnCard??false,_aiName:ai.name,_playersBeforeNextDraw:copyPlayers(P),_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard,_aiHuntEvents:aiHuntEvents};
   }
+  const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,gs);
+  P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};
   const _P_afterAction=copyPlayers(P);
   let nextGs;
 

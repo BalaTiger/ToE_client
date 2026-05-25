@@ -30,9 +30,20 @@ describe('mkDeck', () => {
     const zoneCards = deck.filter(c => c.isZone);
     const specialCards = deck.filter(c => c.isGod);
 
-    expect(zoneCards).toHaveLength(49);
+    expect(zoneCards).toHaveLength(50);
     expect(specialCards).toHaveLength(20);
-    expect(deck).toHaveLength(69);
+    expect(deck).toHaveLength(70);
+  });
+
+  it('临时拓展包包含无尽通道', () => {
+    const deck = mkDeck('temporary');
+    const endlessCorridor = deck.find(c => c.name === '无尽通道');
+
+    expect(endlessCorridor).toMatchObject({
+      key: 'A3',
+      type: 'endTurnReplayHand',
+      expansion: '地神的潜影',
+    });
   });
 
   it('各拓展包神牌/圣物牌数量与拓展包配置一致', () => {

@@ -116,6 +116,16 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "polarity": "negative",
       "effectScope": "adjacent",
       "expansion": "析骨为柴"
+    },
+    {
+      "name": "无尽通道",
+      "desc": "回合结束时，若此牌在手中，展示所有手牌，使所有“无尽通道”左边的牌视为被重新摸到并依次结算",
+      "type": "endTurnReplayHand",
+      "val": 0,
+      "slotKey": "A3",
+      "polarity": "neutral",
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     }
   ],
   "A4": [

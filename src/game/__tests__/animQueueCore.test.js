@@ -64,4 +64,32 @@ describe('buildAnimQueue stat animations', () => {
 
     expect(buildAnimQueue(oldGs, newGs).some(step => step.type === 'HP_DAMAGE')).toBe(false);
   });
+
+  it('检定事件的 stat events 不会在检定翻牌前被普通队列提前消费', () => {
+    const oldGs = makeGs({
+      players: [makePlayer({ hp: 10, san: 7 })],
+      log: [],
+      _statEventSeq: 0,
+    });
+    const beforeInspectionPlayers = [makePlayer({ hp: 10, san: 6 })];
+    const newGs = makeGs({
+      players: [makePlayer({ hp: 9, san: 6 })],
+      log: ['遭遇邪神，失去1SAN', '你 的SAN检定结果为"自残"', '你 自残，失去 1 HP'],
+      _statEvents: [
+        { type: 'SAN_LOSS', target: 0, from: { hp: 10, san: 7 }, to: { hp: 10, san: 6 }, seq: 1 },
+        { type: 'HP_LOSS', target: 0, from: { hp: 10, san: 6 }, to: { hp: 9, san: 6 }, seq: 2 },
+      ],
+      _statEventSeq: 2,
+      _inspectionEvents: [{
+        seq: 1,
+        statEventSeq: 2,
+        beforePlayers: beforeInspectionPlayers,
+        beforeLog: ['遭遇邪神，失去1SAN'],
+      }],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+
+    expect(queue.map(step => step.type)).toEqual(['SAN_DAMAGE']);
+  });
 });

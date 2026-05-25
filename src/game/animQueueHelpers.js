@@ -54,7 +54,14 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
       triggerName:"检定牌",
       targetPid:ev.target??0,
     });
-    const effectQ=buildAnimQueue({players:beforePlayers,log:beforeLog},{players:afterPlayers,log:afterLog});
+    const effectQ=buildAnimQueue(
+      {players:beforePlayers,log:beforeLog,_statEventSeq:(ev?.statEventSeq||0)-1},
+      {
+        players:afterPlayers,
+        log:afterLog,
+        ...(Array.isArray(ev?.statEvents)&&ev.statEvents.length?{_statEvents:ev.statEvents,_statEventSeq:ev.statEventSeq}:{}),
+      }
+    );
     if(effectQ.length)queue.push(...effectQ);
     cursorPlayers=afterPlayers;
     cursorLog=afterLog;
