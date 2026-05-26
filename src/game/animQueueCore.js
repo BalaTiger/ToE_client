@@ -1,5 +1,5 @@
 import { makeTargetStats, statEventsToAnimQueue } from './statEvents';
-import { buryToDeckStep, statePatchStep } from './animQueueHelpers';
+import { buildFullHandSwapStepsFromLogs, buryToDeckStep, statePatchStep } from './animQueueHelpers';
 
 export function buildAnimQueue(oldGs, newGs) {
   const q = [];
@@ -113,19 +113,9 @@ export function buildAnimQueue(oldGs, newGs) {
   }
   const fullHandSwapMsg = newMsgs.find(m => m.includes('交换了全部手牌'));
   if (fullHandSwapMsg) {
-    const swapMatch = fullHandSwapMsg.match(/^(.+?) 与 (.+?) 交换了全部手牌/);
-    const fromName = swapMatch?.[1];
-    const toName = swapMatch?.[2];
-    const resolveSwapPid = (name) => {
-      if (!name) return -1;
-      if (name === '你') return 0;
-      return effectivePlayers.findIndex(p => p?.name === name);
-    };
-    const fromPid = resolveSwapPid(fromName);
-    const toPid = resolveSwapPid(toName);
-    if (fromPid >= 0 && toPid >= 0 && oldGs.players[fromPid] && oldGs.players[toPid]) {
-      q.push({ type: 'CARD_TRANSFER', fromPid, dest: 'player', toPid, count: oldGs.players[fromPid].hand.length });
-      q.push({ type: 'CARD_TRANSFER', fromPid: toPid, dest: 'player', toPid: fromPid, count: oldGs.players[toPid].hand.length });
+    const fullHandSwapQ = buildFullHandSwapStepsFromLogs([fullHandSwapMsg], oldGs.players);
+    if (fullHandSwapQ.length) {
+      q.push(...fullHandSwapQ);
       return q;
     }
   }
@@ -185,26 +175,8 @@ export function buildAnimQueue(oldGs, newGs) {
   return q;
 }
 
-export function buildFullHandSwapTransferQueueFromLogs(logs, players) {
-  const fullHandSwapMsg = (Array.isArray(logs) ? logs : []).find(
-    line => typeof line === 'string' && line.includes('交换了全部手牌')
-  );
-  if (!fullHandSwapMsg || !Array.isArray(players)) return [];
-  const swapMatch = fullHandSwapMsg.match(/^(.+?) 与 (.+?) 交换了全部手牌/);
-  const fromName = swapMatch?.[1];
-  const toName = swapMatch?.[2];
-  const resolveSwapPid = (name) => {
-    if (!name) return -1;
-    if (name === '你') return 0;
-    return players.findIndex(p => p?.name === name);
-  };
-  const fromPid = resolveSwapPid(fromName);
-  const toPid = resolveSwapPid(toName);
-  if (fromPid < 0 || toPid < 0 || !players[fromPid] || !players[toPid]) return [];
-  return [
-    { type: 'CARD_TRANSFER', fromPid, dest: 'player', toPid, count: players[fromPid].hand.length },
-    { type: 'CARD_TRANSFER', fromPid: toPid, dest: 'player', toPid: fromPid, count: players[toPid].hand.length, msgs: [fullHandSwapMsg] },
-  ];
+export function buildFullHandSwapTransferQueueFromLogs(logs, players, options = {}) {
+  return buildFullHandSwapStepsFromLogs(logs, players, options);
 }
 
 export function buildAiHuntEventAnimQueue(evt, actorName) {

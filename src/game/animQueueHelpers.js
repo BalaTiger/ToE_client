@@ -25,6 +25,49 @@ export function buryToDeckStep({fromPid=0,msgs=[],players=null}={}){
   };
 }
 
+function resolvePlayerPidByLogName(name,players=[]){
+  if(!name)return -1;
+  if(name==="你")return 0;
+  return players.findIndex(p=>p?.name===name);
+}
+
+export function fullHandSwapTransferSteps({fromPid,toPid,fromCount=0,toCount=0,msgs=[]}={}){
+  if(fromPid==null||fromPid<0||toPid==null||toPid<0)return [];
+  return [
+    {type:"CARD_TRANSFER",fromPid,dest:"player",toPid,count:fromCount},
+    {type:"CARD_TRANSFER",fromPid:toPid,dest:"player",toPid:fromPid,count:toCount,msgs},
+  ];
+}
+
+export function fullHandSwapSteps({fromPid,toPid,fromCount=0,toCount=0,msgs=[],playersBefore=null,zhuLight=null}={}){
+  const transfers=fullHandSwapTransferSteps({fromPid,toPid,fromCount,toCount,msgs});
+  if(!transfers.length)return [];
+  return [
+    ...(playersBefore?[{type:"VISUAL_LOCK",players:playersBefore,zhuLight:zhuLight||null}]:[]),
+    ...transfers,
+  ];
+}
+
+export function buildFullHandSwapStepsFromLogs(logs,players,options={}){
+  const fullHandSwapMsg=(Array.isArray(logs)?logs:[]).find(
+    line=>typeof line==="string"&&line.includes("交换了全部手牌")
+  );
+  if(!fullHandSwapMsg||!Array.isArray(players))return [];
+  const swapMatch=fullHandSwapMsg.match(/^(.+?) 与 (.+?) 交换了全部手牌/);
+  const fromPid=resolvePlayerPidByLogName(swapMatch?.[1],players);
+  const toPid=resolvePlayerPidByLogName(swapMatch?.[2],players);
+  if(fromPid<0||toPid<0||!players[fromPid]||!players[toPid])return [];
+  return fullHandSwapSteps({
+    fromPid,
+    toPid,
+    fromCount:players[fromPid].hand?.length||0,
+    toCount:players[toPid].hand?.length||0,
+    msgs:[fullHandSwapMsg],
+    playersBefore:options.playersBefore||null,
+    zhuLight:options.zhuLight||null,
+  });
+}
+
 export function resolveTurnHighlightForStep(step,nextGs,playersFallback=[]){
   if(!step||step.type!=="YOUR_TURN")return null;
   const stepName=

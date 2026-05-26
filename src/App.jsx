@@ -122,6 +122,7 @@ import {
   statePatchStep,
   zhuHideCardStep,
   buryToDeckStep,
+  fullHandSwapSteps,
 } from "./game/animQueueHelpers";
 import { _getZoomCompensatedRect, getPlayerHandAnchorCenter, getPlayerAreaAnchorCenter, getPileAnchorCenter } from './utils/dom';
 import { ANIM_DURATION, ANIM_SPEED_SCALE, CARD_REVEAL_DURATION, ANIM_STEP_GAP } from './components/anim/constants';
@@ -1512,13 +1513,13 @@ export default function Game(){
           queue.push(statePatchStep({players:gs.players,discard:gs.discard}));
         }
         const newMsgs=nextLog.slice(oldLog.length);
-        const fullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(newMsgs,gs.players);
-        const fullHandSwapLockQ=fullHandSwapQ.length
-          ? [{type:'VISUAL_LOCK',players:rawResult._playersBeforeSkillAction||gs.players,zhuLight:gs.zhuLight||null}]
-          : [];
+        const fullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(newMsgs,gs.players,{
+          playersBefore:rawResult._playersBeforeSkillAction||gs.players,
+          zhuLight:gs.zhuLight||null,
+        });
         const actionStatQBase=buildAnimQueue(gs,fakeGs(newGs.players,nextLog));
         const actionStatQ=fullHandSwapQ.length
-          ? [...fullHandSwapLockQ,...fullHandSwapQ,...actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')]
+          ? [...fullHandSwapQ,...actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')]
           : actionStatQBase;
 
         if(rawResult._playersBeforeSkillAction){
@@ -1657,13 +1658,13 @@ export default function Game(){
         const P_actionEnd=(rawResult._playersBeforeNextDraw||newGs.players).map(p=>p._pendingAnimDeath?{...p,_pendingAnimDeath:false}:p);
         const P_actionPreInspection=(firstActionInspection?.beforePlayers||P_actionEnd).map(p=>p._pendingAnimDeath?{...p,_pendingAnimDeath:false}:p);
         const actionLogPreInspection=firstActionInspection?.beforeLog||nextLog;
-        const fullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(newMsgs,afterInspectionPlayers);
-        const fullHandSwapLockQ=fullHandSwapQ.length
-          ? [{type:'VISUAL_LOCK',players:afterInspectionPlayers,zhuLight:gs.zhuLight||null}]
-          : [];
+        const fullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(newMsgs,afterInspectionPlayers,{
+          playersBefore:afterInspectionPlayers,
+          zhuLight:gs.zhuLight||null,
+        });
         const actionStatQBase=buildAnimQueue(fakeGs(afterInspectionPlayers,afterInspectionLog),fakeGs(P_actionPreInspection,actionLogPreInspection));
         const actionStatQ=fullHandSwapQ.length
-          ? [...fullHandSwapLockQ,...fullHandSwapQ,...actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')]
+          ? [...fullHandSwapQ,...actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')]
           : actionStatQBase;
         const huntEventQueue=(rawResult._aiHuntEvents||[]).flatMap(evt=>buildAiHuntEventAnimQueue(evt,gs.players[gs.currentTurn]?.name||'???'));
         const handLimitDiscardQueue=(_aiHandLimitDiscards||[]).map((card,idx,arr)=>({
@@ -3342,11 +3343,17 @@ export default function Game(){
       ...(gs.abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:gs.abilityData.cthDrawsRemaining}:{}),
     }};
     const swapMsgs=extractSkillLogs(L.slice(gs.log.length),'swap');
-    const swapTransfer1={type:'CARD_TRANSFER',fromPid:0,dest:'player',toPid:ti,count:myHandCountBefore};
-    const swapTransfer2={type:'CARD_TRANSFER',fromPid:ti,dest:'player',toPid:0,count:targetHandCountBefore,msgs:[L[L.length-1]]};
+    const swapSteps=fullHandSwapSteps({
+      fromPid:0,
+      toPid:ti,
+      fromCount:myHandCountBefore,
+      toCount:targetHandCountBefore,
+      msgs:[L[L.length-1]],
+      playersBefore:gs.players,
+      zhuLight:gs.zhuLight||null,
+    });
     const statQ=buildAnimQueue(gs,newGs).filter(a=>a.type!=='CARD_TRANSFER');
-    const queue=[{type:'SKILL_SWAP',msgs:swapMsgs},swapTransfer1,swapTransfer2,...statQ];
-    visualStateLocks.lock({players:gs.players,zhuLight:gs.zhuLight||null});
+    const queue=[{type:'SKILL_SWAP',msgs:swapMsgs},...swapSteps,...statQ];
     if(fromRest){triggerAnimQueue(queue,null,()=>_cthContinueRestDraws(newGs));return;}
     triggerAnimQueue(queue,newGs);
   }
@@ -3779,21 +3786,31 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         gameOver:{winner:'寻宝者',reason,winnerIdx:swapTi},phase:'ACTION',skillUsed:true};
       const statQ2=buildAnimQueue(gs,newGs).filter(a=>a.type!=='CARD_TRANSFER');
       triggerAnimQueue([{type:'SKILL_SWAP',msgs:[reason]},
-        {type:'CARD_TRANSFER',fromPid:0,dest:'player',toPid:swapTi,count:1},
-        {type:'CARD_TRANSFER',fromPid:swapTi,dest:'player',toPid:0,count:1},
+        ...fullHandSwapSteps({
+          fromPid:0,
+          toPid:swapTi,
+          fromCount:1,
+          toCount:1,
+          playersBefore:gs.players,
+          zhuLight:gs.zhuLight||null,
+        }),
         ...statQ2],newGs);
       return;
     }
     const win=checkWin(P,gs._isMP);
     const newGs={...gs,players:P,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...(win?{gameOver:win}:{})};
-    // 手动注入飞牌动画：掉包是两步操作，buildAnimQueue 无法从单步 diff 检测到双向交换
-    // event1：player 0 把 given 牌给 swapTi
-    // event2：swapTi 的 takenCard 飞向 player 0（已在 swapSelectTarget 里取出）
-    const swapTransfer1={type:'CARD_TRANSFER',fromPid:0,dest:'player',toPid:swapTi,count:1};
-    const swapTransfer2={type:'CARD_TRANSFER',fromPid:swapTi,dest:'player',toPid:0,count:1,msgs:[L[L.length-1]]};
+    const swapSteps=fullHandSwapSteps({
+      fromPid:0,
+      toPid:swapTi,
+      fromCount:1,
+      toCount:1,
+      msgs:[L[L.length-1]],
+      playersBefore:gs.players,
+      zhuLight:gs.zhuLight||null,
+    });
     const statQ=buildAnimQueue(gs,newGs).filter(a=>a.type!=='CARD_TRANSFER');
     const swapMsgs=extractSkillLogs(L.slice(gs.log.length),'swap');
-    triggerAnimQueue([{type:'SKILL_SWAP',msgs:swapMsgs},swapTransfer1,swapTransfer2,...statQ],newGs);
+    triggerAnimQueue([{type:'SKILL_SWAP',msgs:swapMsgs},...swapSteps,...statQ],newGs);
   }
 
   function huntSelectTarget(ti){

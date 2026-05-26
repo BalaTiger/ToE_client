@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildBewitchForcedCardQueue,
+  buildFullHandSwapStepsFromLogs,
   buildInspectionEventFlow,
   buryToDeckStep,
+  fullHandSwapSteps,
   resolveTurnHighlightForStep,
   zhuHideCardStep,
 } from '../animQueueHelpers';
@@ -31,6 +33,44 @@ describe('animQueueHelpers', () => {
       msgs: ['活埋'],
       visualSetupPatch: { players },
     });
+  });
+
+  it('整手交换 helper 可统一生成视觉锁和双向飞牌', () => {
+    const players = [
+      makePlayer({ name: '你', hand: [{ id: 'a' }, { id: 'b' }] }),
+      makePlayer({ name: '艾伦', hand: [{ id: 'c' }] }),
+    ];
+
+    expect(fullHandSwapSteps({
+      fromPid: 0,
+      toPid: 1,
+      fromCount: 2,
+      toCount: 1,
+      msgs: ['交换完成'],
+      playersBefore: players,
+      zhuLight: { owner: 0 },
+    })).toEqual([
+      { type: 'VISUAL_LOCK', players, zhuLight: { owner: 0 } },
+      { type: 'CARD_TRANSFER', fromPid: 0, dest: 'player', toPid: 1, count: 2 },
+      { type: 'CARD_TRANSFER', fromPid: 1, dest: 'player', toPid: 0, count: 1, msgs: ['交换完成'] },
+    ]);
+  });
+
+  it('可从交换全部手牌日志解析整手交换步骤', () => {
+    const players = [
+      makePlayer({ name: '你', hand: [{ id: 'a' }] }),
+      makePlayer({ name: '艾伦', hand: [{ id: 'b' }, { id: 'c' }] }),
+    ];
+
+    const queue = buildFullHandSwapStepsFromLogs(
+      ['你 与 艾伦 交换了全部手牌（1 张 ↔ 2 张）'],
+      players,
+      { playersBefore: players }
+    );
+
+    expect(queue.map(step => step.type)).toEqual(['VISUAL_LOCK', 'CARD_TRANSFER', 'CARD_TRANSFER']);
+    expect(queue[1]).toMatchObject({ fromPid: 0, toPid: 1, count: 1 });
+    expect(queue[2]).toMatchObject({ fromPid: 1, toPid: 0, count: 2 });
   });
 
   it('蛊惑强制赠牌动画先播放技能，再飞牌入目标手牌，最后播放结算状态', () => {
