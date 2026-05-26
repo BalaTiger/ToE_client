@@ -3329,17 +3329,11 @@ export default function Game(){
       // 单机游戏：显示具体卡牌信息
       L=[...gs.log,`你偷看了 ${targetPlayer.name} 的一张手牌：${cardLogText(peekedCard,{alwaysShowName:true})}`];
     }
-    const resumesAiTurn = isAiSeat(gs, gs.currentTurn) && !P[gs.currentTurn]?.isDead;
-    const nextPhase = resumesAiTurn ? 'AI_TURN' : 'ACTION';
-    const nextGs = {...gs, players: P, log: L, phase: nextPhase, currentTurn: gs.currentTurn, skillUsed: gs.skillUsed, abilityData: {
-      ...(gs.abilityData?.fromRest?{fromRest:true}:{}),
-      ...(gs.abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:gs.abilityData.cthDrawsRemaining}:{}),
-    }};
+    const nextGs=buildTargetContinuationGs({players:P,log:L});
     if(isLocalSeatIndex(peekHandSource)){
       setPrivatePeek({card:peekedCard,targetName:targetPlayer.name});
     }
-    if(gs.abilityData?.fromRest){_cthContinueRestDraws(nextGs);return;}
-    setGs(nextGs);
+    finishTargetContinuation({nextGs,continueRest:!!gs.abilityData?.fromRest});
   }
   function caveDuelSelectTarget(ti){
     // 穴居人战争：选择目标角色后，双方各亮一张手牌，数字编号更大的一方收下这两张牌
@@ -3481,23 +3475,14 @@ export default function Game(){
     sourcePlayer.damageLink={partner:ti,active:true,expiryOwner:damageLinkSource};
     targetPlayer.damageLink={partner:damageLinkSource,active:true,expiryOwner:damageLinkSource};
 const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.name} 间架起链条，一方受到HP伤害时另一方受等量伤害`];
-    const resumesAiTurn = isAiSeat(gs, gs.currentTurn) && !P[gs.currentTurn]?.isDead;
-    const nextPhase = resumesAiTurn ? 'AI_TURN' : 'ACTION';
-    const nextGs = {
-      ...gs,
-      players: P,
-      log: L,
-      phase: nextPhase,
-      currentTurn: gs.currentTurn,
-      abilityData: {
-        ...(gs.abilityData?.fromRest ? { fromRest: true } : {}),
-        ...(gs.abilityData?.cthDrawsRemaining != null ? { cthDrawsRemaining: gs.abilityData.cthDrawsRemaining } : {}),
-      },
-    };
-    if (gs.abilityData?.fromRest) { _cthContinueRestDraws(nextGs); return; }
-    syncVisibleLog(L);
-    visualStateLocks.lock({players:gs.players,zhuLight:gs.zhuLight||null});
-    triggerAnimQueue([cardTransferStep({fromPid:damageLinkSource,toPid:ti,effect:'damageLink',durationMs:1900,msgs:L.slice(-1)})], nextGs);
+    const nextGs=buildTargetContinuationGs({players:P,log:L});
+    if(!gs.abilityData?.fromRest)visualStateLocks.lock({players:gs.players,zhuLight:gs.zhuLight||null});
+    finishTargetContinuation({
+      queue:gs.abilityData?.fromRest?[]:[cardTransferStep({fromPid:damageLinkSource,toPid:ti,effect:'damageLink',durationMs:1900,msgs:L.slice(-1)})],
+      nextGs,
+      continueRest:!!gs.abilityData?.fromRest,
+      syncLog:!gs.abilityData?.fromRest,
+    });
   }
 
   function roseThornSelectTarget(ti){
@@ -3628,15 +3613,18 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     P[actorIdx].hand.push(godCard);
     const actorName=localDisplayName(actorIdx,P[actorIdx]?.name);
     const L=[...gs.log,`【掘墓】${actorName} 从弃牌堆中取回 ${cardLogText(godCard,{alwaysShowName:true})}`];
-    const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',abilityData:{
-      ...(abilityData.fromRest?{fromRest:true}:{}),
-      ...(abilityData.cthDrawsRemaining!=null?{cthDrawsRemaining:abilityData.cthDrawsRemaining}:{}),
-    }};
-    if(abilityData.fromRest&&isLocalSeatIndex(actorIdx)){
-      _cthContinueRestDraws(nextGs);
-      return;
-    }
-    setGs(nextGs);
+    const nextGs=buildTargetContinuationGs({
+      players:P,
+      deck:D,
+      discard:Disc,
+      log:L,
+      abilityData,
+      canResumeAi:false,
+    });
+    finishTargetContinuation({
+      nextGs,
+      continueRest:!!(abilityData.fromRest&&isLocalSeatIndex(actorIdx)),
+    });
   }
 
   function buryAliveSelectCard(cardIndex){
@@ -3653,15 +3641,12 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     const nextTargetIndex=(abilityData.targetIndex||0)+1;
     if(nextTargetIndex>=targets.length){
       const turnOwner=abilityData._turnOwner??gs.currentTurn;
-      const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:turnOwner,phase:isAiSeat(gs,turnOwner)?'AI_TURN':'ACTION',abilityData:{
-        ...(abilityData.fromRest?{fromRest:true}:{}),
-        ...(abilityData.cthDrawsRemaining!=null?{cthDrawsRemaining:abilityData.cthDrawsRemaining}:{}),
-      }};
-      if(abilityData.fromRest&&isLocalSeatIndex(abilityData.source)){
-        triggerAnimQueue([buryToDeckStep({fromPid:actorIdx,msgs:L.slice(-1),players:gs.players}),statePatchStep({players:P,deck:D,log:L})],null,()=>_cthContinueRestDraws(nextGs));
-        return;
-      }
-      triggerAnimQueue([buryToDeckStep({fromPid:actorIdx,msgs:L.slice(-1),players:gs.players}),statePatchStep({players:P,deck:D,log:L})],nextGs);
+      const nextGs=buildTargetContinuationGs({players:P,deck:D,discard:Disc,log:L,turnOwner,abilityData});
+      finishTargetContinuation({
+        queue:[buryToDeckStep({fromPid:actorIdx,msgs:L.slice(-1),players:gs.players}),statePatchStep({players:P,deck:D,log:L})],
+        nextGs,
+        continueRest:!!(abilityData.fromRest&&isLocalSeatIndex(abilityData.source)),
+      });
       return;
     }
     const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'BURY_ALIVE_SELECT',abilityData:{...abilityData,targetIndex:nextTargetIndex}};
