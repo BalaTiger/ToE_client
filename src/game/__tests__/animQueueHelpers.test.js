@@ -4,6 +4,7 @@ import {
   buildFullHandSwapStepsFromLogs,
   buildInspectionEventFlow,
   buryToDeckStep,
+  cardTransferStep,
   fullHandSwapSteps,
   resolveTurnHighlightForStep,
   zhuHideCardStep,
@@ -33,6 +34,14 @@ describe('animQueueHelpers', () => {
       msgs: ['活埋'],
       visualSetupPatch: { players },
     });
+    expect(cardTransferStep({ fromPid: 0, dest: 'player', toPid: 1, count: 1 })).toEqual({
+      type: 'CARD_TRANSFER',
+      fromPid: 0,
+      dest: 'player',
+      toPid: 1,
+      count: 1,
+    });
+    expect(cardTransferStep()).toEqual({ type: 'CARD_TRANSFER' });
   });
 
   it('整手交换 helper 可统一生成视觉锁和双向飞牌', () => {

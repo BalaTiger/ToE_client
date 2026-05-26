@@ -1,5 +1,5 @@
 import { makeTargetStats, statEventsToAnimQueue } from './statEvents';
-import { buildFullHandSwapStepsFromLogs, buryToDeckStep, statePatchStep } from './animQueueHelpers';
+import { buildFullHandSwapStepsFromLogs, buryToDeckStep, cardTransferStep, statePatchStep } from './animQueueHelpers';
 
 export function buildAnimQueue(oldGs, newGs) {
   const q = [];
@@ -149,7 +149,7 @@ export function buildAnimQueue(oldGs, newGs) {
       if (newGZ > oldGZ) dest = 'godzone';
     }
     if (!effectivePlayers[li]?.isDead) {
-      q.push({ type: 'CARD_TRANSFER', fromPid: li, dest, toPid, count });
+      q.push(cardTransferStep({ fromPid: li, dest, toPid, count }));
     }
   } else if (losers.length === 2) {
     losers.forEach(loser => {
@@ -157,7 +157,7 @@ export function buildAnimQueue(oldGs, newGs) {
       const toPid = effectivePlayers.findIndex((p, j) => j !== li && oldGs.players[j] && p.hand.length > oldGs.players[j].hand.length);
       if (toPid < 0) return;
       const count = oldGs.players[li].hand.length - effectivePlayers[li].hand.length;
-      q.push({ type: 'CARD_TRANSFER', fromPid: li, dest: 'player', toPid, count });
+      q.push(cardTransferStep({ fromPid: li, dest: 'player', toPid, count }));
     });
   }
   const shuMsg = newMsgs.find(m => m && m.includes('【黑暗子嗣】'));
@@ -168,7 +168,7 @@ export function buildAnimQueue(oldGs, newGs) {
       const count = parseInt(shuMatch[2], 10);
       const toPid = targetName === '你' ? 0 : effectivePlayers.findIndex(p => p?.name === targetName);
       if (toPid >= 0 && count > 0) {
-        q.push({ type: 'CARD_TRANSFER', fromPid: oldGs.currentTurn, dest: 'player', toPid, count, sourceAnchor: 'playerArea', effect: 'blackGoat', durationMs: 1500, msgs: [shuMsg] });
+        q.push(cardTransferStep({ fromPid: oldGs.currentTurn, dest: 'player', toPid, count, sourceAnchor: 'playerArea', effect: 'blackGoat', durationMs: 1500, msgs: [shuMsg] }));
       }
     }
   }
@@ -201,7 +201,7 @@ export function buildAiHuntEventAnimQueue(evt, actorName) {
       const hunterAfter = evt.afterPlayers[evt.hunterIdx]?.hand?.length || 0;
       const cardsTaken = Math.max(0, hunterAfter - hunterBefore + (evt.discardedCard ? 1 : 0));
       if (cardsTaken > 0) {
-        perHuntQueue.push({ type: 'CARD_TRANSFER', fromPid: evt.targetIdx, dest: 'player', toPid: evt.hunterIdx, count: cardsTaken });
+        perHuntQueue.push(cardTransferStep({ fromPid: evt.targetIdx, dest: 'player', toPid: evt.hunterIdx, count: cardsTaken }));
       }
     }
     const beforeLog = Array.isArray(evt.beforeLog) ? evt.beforeLog : [];

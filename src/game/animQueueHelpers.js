@@ -25,6 +25,14 @@ export function buryToDeckStep({fromPid=0,msgs=[],players=null}={}){
   };
 }
 
+export function cardTransferStep(options={}){
+  const step={type:"CARD_TRANSFER"};
+  Object.entries(options).forEach(([key,value])=>{
+    if(value!==undefined)step[key]=value;
+  });
+  return step;
+}
+
 function resolvePlayerPidByLogName(name,players=[]){
   if(!name)return -1;
   if(name==="你")return 0;
@@ -34,8 +42,8 @@ function resolvePlayerPidByLogName(name,players=[]){
 export function fullHandSwapTransferSteps({fromPid,toPid,fromCount=0,toCount=0,msgs=[]}={}){
   if(fromPid==null||fromPid<0||toPid==null||toPid<0)return [];
   return [
-    {type:"CARD_TRANSFER",fromPid,dest:"player",toPid,count:fromCount},
-    {type:"CARD_TRANSFER",fromPid:toPid,dest:"player",toPid:fromPid,count:toCount,msgs},
+    cardTransferStep({fromPid,dest:"player",toPid,count:fromCount}),
+    cardTransferStep({fromPid:toPid,dest:"player",toPid:fromPid,count:toCount,msgs}),
   ];
 }
 
@@ -85,7 +93,7 @@ export function resolveTurnHighlightForStep(step,nextGs,playersFallback=[]){
 export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQueue,msgs){
   const ordered=[{type:"SKILL_BEWITCH",msgs,targetIdx:toPid}];
   if(toPid!=null&&toPid>=0){
-    ordered.push({type:"CARD_TRANSFER",fromPid,dest:"player",toPid,count:1});
+    ordered.push(cardTransferStep({fromPid,dest:"player",toPid,count:1}));
   }
   // 注意：被蛊惑者的操作是在当前回合内完成的，不应视为"回合开始"
   // 因此不再添加 YOUR_TURN 动画步骤
