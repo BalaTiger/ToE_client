@@ -876,6 +876,8 @@ export default function Game(){
   const prevLogLenRef=useRef(0);
   const damageLinkGhostTimersRef=useRef(new Map());
   const [damageLinkGhosts,setDamageLinkGhosts]=useState([]);
+  const damageLinkEstablishTimersRef=useRef(new Map());
+  const [damageLinkEstablishAnims,setDamageLinkEstablishAnims]=useState([]);
   const timerRef=useRef(null);
   const guillotinedPids=useMemo(()=>new Set((guillotineTargets||[]).map(t=>t?.pi).filter(v=>v!=null)),[guillotineTargets]);
   const logRef=useRef(null);
@@ -904,6 +906,7 @@ export default function Game(){
       setScreenShake(false);
       setDeathShake(false);
       setEarthquakeVisualPlayers(null);
+      setDamageLinkEstablishAnims([]);
     };
     document.addEventListener('visibilitychange',handleVisibilityChange);
     return()=>document.removeEventListener('visibilitychange',handleVisibilityChange);
@@ -1086,7 +1089,7 @@ export default function Game(){
     if(!same)syncVisibleLog(nextLog);
   },[gs?.log,anim,syncVisibleLog,gs?._playersBeforeThisDraw]);
 
-  useEffect(()=>()=>{damageLinkGhostTimersRef.current.forEach(t=>clearTimeout(t));damageLinkGhostTimersRef.current.clear();},[]);
+  useEffect(()=>()=>{damageLinkGhostTimersRef.current.forEach(t=>clearTimeout(t));damageLinkGhostTimersRef.current.clear();damageLinkEstablishTimersRef.current.forEach(t=>clearTimeout(t));damageLinkEstablishTimersRef.current.clear();},[]);
 
   useEffect(()=>{
     const prevTimers=damageLinkGhostTimersRef.current;
@@ -1340,6 +1343,17 @@ export default function Game(){
       setTimeout(()=>setBewitchAnim(null),1200);
     }else if(anim?.type==='CARD_TRANSFER'){
       const{fromPid,dest,toPid,count,sourceAnchor,effect}=anim;
+      if(effect==='damageLink'&&fromPid!=null&&toPid!=null){
+        const key=`damage-link-${fromPid}-${toPid}-${Date.now()}`;
+        setDamageLinkEstablishAnims(prev=>[...prev,{id:key,key,a:fromPid,b:toPid,mode:'establish'}]);
+        const establishDuration=Number.isFinite(anim.durationMs)?anim.durationMs:1900;
+        const timer=setTimeout(()=>{
+          setDamageLinkEstablishAnims(prev=>prev.filter(link=>link.id!==key));
+          damageLinkEstablishTimersRef.current.delete(key);
+        },establishDuration+ANIM_STEP_GAP+260);
+        damageLinkEstablishTimersRef.current.set(key,timer);
+        return;
+      }
       // 测量源点。普通转牌从手牌区出发；生成型卡牌可从角色区域出发。
       const srcPos=sourceAnchor==='playerArea'
         ? getPlayerAreaAnchorCenter(fromPid)
@@ -1776,8 +1790,17 @@ export default function Game(){
           postActionInjections.push(statePatchStep({players:P_actionEnd,discard:newGs.discard}));
         }
         if(damageLinkEstablishedMsg){
+          const damageLinkPair=P_actionEnd.flatMap((player,idx)=>{
+            const partnerIdx=player?.damageLink?.partner;
+            if(!player?.damageLink?.active||partnerIdx==null||partnerIdx<=idx)return [];
+            const partner=P_actionEnd[partnerIdx];
+            if(!partner?.damageLink?.active||partner.damageLink.partner!==idx)return [];
+            return [{fromPid:idx,toPid:partnerIdx}];
+          })[0]||{};
           postActionInjections.push(cardTransferStep({
-            durationMs:700,
+            ...damageLinkPair,
+            effect:'damageLink',
+            durationMs:1900,
             msgs:[damageLinkEstablishedMsg],
           }));
         }
@@ -3571,7 +3594,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     if (gs.abilityData?.fromRest) { _cthContinueRestDraws(nextGs); return; }
     syncVisibleLog(L);
     visualStateLocks.lock({players:gs.players,zhuLight:gs.zhuLight||null});
-    triggerAnimQueue([cardTransferStep()], nextGs);
+    triggerAnimQueue([cardTransferStep({fromPid:damageLinkSource,toPid:ti,effect:'damageLink',durationMs:1900,msgs:L.slice(-1)})], nextGs);
   }
 
   function roseThornSelectTarget(ti){
@@ -5787,6 +5810,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             if(!partner?.damageLink?.active||partner.damageLink.partner!==playerIndex)return [];
             return [{id:`active-${playerIndex}-${partnerIndex}`,a:playerIndex,b:partnerIndex,mode:'active'}];
           }),
+          ...damageLinkEstablishAnims,
           ...damageLinkGhosts
         ].map((link) => {
           const playerIndex=link.a;
@@ -5801,7 +5825,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
           const y1 = sourceRect.top + sourceRect.height * 0.68;
           const x2 = partnerRect.left + partnerRect.width / 2;
           const y2 = partnerRect.top + partnerRect.height * 0.68;
-          const makeBindStrands=(rect,anchorX,anchorY,keyPrefix)=>{
+          const makeBindStrands=(rect,anchorX,anchorY,keyPrefix,side)=>{
             const bindSpacing=13;
             const ringRx=6.2;
             const ringRy=2.8;
@@ -5832,14 +5856,16 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
                   ry:ringRy,
                   rot:tilt,
                   opacity:0.9-rowIdx*0.12,
+                  side,
+                  order:i+rowIdx*count,
                   key:`${keyPrefix}-${rowIdx}-${i}`,
                 };
               });
             });
           };
           const bindRings=[
-            ...makeBindStrands(sourceRect,x1,y1,`bind-${playerIndex}`),
-            ...makeBindStrands(partnerRect,x2,y2,`bind-${partnerIndex}`),
+            ...makeBindStrands(sourceRect,x1,y1,`bind-${playerIndex}`,'source'),
+            ...makeBindStrands(partnerRect,x2,y2,`bind-${partnerIndex}`,'target'),
           ];
           const dx = x2 - x1;
           const dy = y2 - y1;
@@ -5871,6 +5897,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
             ghostMode==='fade'?{animation:'chainExpireFade 720ms ease-out forwards'}:null;
           const bindAnimStyle=ghostMode==='break'?{animation:'chainBindSnap 560ms ease-out forwards'}:
             ghostMode==='fade'?{animation:'chainExpireFade 720ms ease-out forwards'}:null;
+          const isEstablishing=ghostMode==='establish';
           return createPortal(
             <div
               key={`link-${link.id}`}
@@ -5906,7 +5933,11 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
                     key={ring.key}
                     transform={`translate(${ring.cx} ${ring.cy}) rotate(${ring.rot})`}
                   >
-                    <g style={bindAnimStyle||undefined}>
+                    <g style={isEstablishing?{
+                      opacity:0,
+                      animation:`chainBindGrow 520ms cubic-bezier(0.22,1,0.36,1) ${ring.side==='source'?Math.min(0.32,ring.order*0.018):1.16+Math.min(0.32,ring.order*0.018)}s forwards`,
+                      transformOrigin:'0px 0px',
+                    }:(bindAnimStyle||undefined)}>
                       <ellipse
                         cx="0"
                         cy="0"
@@ -5934,7 +5965,11 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
                   stroke="rgba(16,10,4,0.48)"
                   strokeWidth="4.2"
                   strokeLinecap="round"
-                  style={{filter:`url(#chainGlow-${link.id})`}}
+                  style={{
+                    filter:`url(#chainGlow-${link.id})`,
+                    opacity:isEstablishing?0:1,
+                    animation:isEstablishing?'chainPathShadowIn 1.1s ease-out 0.38s forwards':undefined,
+                  }}
                 />
                 <path
                   d={chainPath}
@@ -5942,9 +5977,13 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
                   stroke={`url(#chainGrad-${link.id})`}
                   strokeWidth="1.35"
                   strokeLinecap="round"
-                  strokeDasharray="6 8"
+                  pathLength="100"
+                  strokeDasharray={isEstablishing?'100 100':'6 8'}
+                  strokeDashoffset={isEstablishing?100:0}
                   style={{
-                    animation: ghostMode==='break'
+                    animation: isEstablishing
+                      ? 'chainPathEstablish 1.15s cubic-bezier(0.22,1,0.36,1) 0.38s forwards'
+                      : ghostMode==='break'
                       ? `chainMainSnap 560ms ease-out forwards`
                       : ghostMode==='fade'
                         ? `chainExpireFade 720ms ease-out forwards`
@@ -5970,7 +6009,10 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
                     >
                       <g
                         style={{
-                          animation: ghostMode==='break'
+                          opacity:isEstablishing?0:1,
+                          animation: isEstablishing
+                            ? `chainLinkArrive 560ms cubic-bezier(0.22,1,0.36,1) ${0.44+t*0.78}s forwards`
+                            : ghostMode==='break'
                             ? `chainMainSnap 560ms ease-out forwards`
                             : ghostMode==='fade'
                               ? `chainExpireFade 720ms ease-out forwards`
@@ -6317,6 +6359,27 @@ const GLOBAL_STYLES=`
   @keyframes animGlow    { 0%,100%{box-shadow:0 0 8px #c8a96e33} 50%{box-shadow:0 0 22px #c8a96e88} }
   @keyframes chainMove    { 0%{stroke-dashoffset: 20} 100%{stroke-dashoffset: 0} }
   @keyframes chainLinkDrift { 0%{transform:rotate(-3deg)} 100%{transform:rotate(3deg)} }
+  @keyframes chainBindGrow {
+    0%{opacity:0;transform:scale(0.35) rotate(-16deg);filter:brightness(0.7)}
+    72%{opacity:1;transform:scale(1.08) rotate(4deg);filter:brightness(1.35)}
+    100%{opacity:1;transform:scale(1) rotate(0deg);filter:brightness(1)}
+  }
+  @keyframes chainPathShadowIn {
+    0%{opacity:0}
+    35%{opacity:0.25}
+    100%{opacity:1}
+  }
+  @keyframes chainPathEstablish {
+    0%{opacity:0;stroke-dashoffset:100}
+    12%{opacity:1}
+    78%{stroke-dashoffset:0}
+    100%{opacity:1;stroke-dashoffset:0}
+  }
+  @keyframes chainLinkArrive {
+    0%{opacity:0;transform:scale(0.2) rotate(-24deg);filter:brightness(0.8)}
+    55%{opacity:1;transform:scale(1.22) rotate(6deg);filter:brightness(1.45)}
+    100%{opacity:1;transform:scale(1) rotate(0deg);filter:brightness(1)}
+  }
   @keyframes chainBreakFade { 0%{opacity:1} 35%{opacity:1} 100%{opacity:0} }
   @keyframes chainExpireFade { 0%{opacity:1} 100%{opacity:0} }
   @keyframes chainMainSnap { 0%{transform:scaleX(1)} 35%{transform:scaleX(0.88)} 100%{transform:scaleX(0.18);opacity:0} }
