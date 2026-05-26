@@ -258,7 +258,7 @@ export function aiStep(gs, opts = {}) {
       L.push(`【玫瑰倒刺】${P[ct].name} 将全部手牌交给了 ${P[targetIdx].name}`);
       if(!P[targetIdx].isDead&&P[targetIdx].role===ROLE_TREASURE&&isWinHand(P[targetIdx].hand)){
         P[targetIdx].roleRevealed=true;
-        return{
+        return withClearedTurnAnimFields({
           ...gs,
           players:P,
           deck:D,
@@ -267,18 +267,10 @@ export function aiStep(gs, opts = {}) {
           gameOver:{winner:ROLE_TREASURE,reason:`${P[targetIdx].name} 集齐了全部编号并获胜！`,winnerIdx:targetIdx},
           abilityData:{},
           phase:'AI_TURN',
-          _aiDrawnCard:null,
-          _drawnCard:null,
-          _discardedDrawnCard:false,
-          _playersBeforeThisDraw:null,
-          _turnStartLogs:[],
-          _drawLogs:[],
-          _statLogs:[],
-          _preTurnPlayers:null,
-        };
+        });
       }
     }
-    return{
+    return withClearedTurnAnimFields({
       ...gs,
       players:P,
       deck:D,
@@ -286,16 +278,7 @@ export function aiStep(gs, opts = {}) {
       log:L,
       abilityData:{},
       phase:'AI_TURN',
-      // 玫瑰倒刺的起手摸牌/翻牌动画在进入本分支前已经播过；继续当前 AI 回合时不应再重播
-      _aiDrawnCard:null,
-      _drawnCard:null,
-      _discardedDrawnCard:false,
-      _playersBeforeThisDraw:null,
-      _turnStartLogs:[],
-      _drawLogs:[],
-      _statLogs:[],
-      _preTurnPlayers:null,
-    };
+    });
   }
   if(P[ct].isDead){
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
@@ -332,7 +315,7 @@ export function aiStep(gs, opts = {}) {
       let targetCardIndex, targetCard;
       if(targetIdx===0){
         // 玩家作为目标角色，需要选择牌
-        return{
+        return withClearedTurnAnimFields({
           ...gs,
           players:P,
           deck:D,
@@ -341,16 +324,7 @@ export function aiStep(gs, opts = {}) {
           abilityData:{...abilityData,caveDuelTarget:targetIdx,sourceCardIndex:sourceCardIndex,sourceCard:sourceCard},
           currentTurn:ct,
           phase:'CAVE_DUEL_SELECT_CARD',
-          // 起手翻牌动画在进入该响应阶段前已经播过；这里清掉临时字段，避免后续重复播放
-          _aiDrawnCard:null,
-          _drawnCard:null,
-          _discardedDrawnCard:false,
-          _playersBeforeThisDraw:null,
-          _turnStartLogs:[],
-          _drawLogs:[],
-          _statLogs:[],
-          _preTurnPlayers:null,
-        };
+        });
       }else{
         // AI作为目标角色，选择数字编号最大的牌
         let maxTargetNumber=-1;
@@ -388,7 +362,7 @@ export function aiStep(gs, opts = {}) {
       }
     }
     // 清除能力数据
-    return{
+    return withClearedTurnAnimFields({
       ...gs,
       players:P,
       deck:D,
@@ -397,16 +371,7 @@ export function aiStep(gs, opts = {}) {
       abilityData:{},
       currentTurn:ct,
       phase:'AI_TURN',
-      // 穴居人战争的起手摸牌/翻牌动画在进入该分支前已经播过；继续当前 AI 回合时不应再重播
-      _aiDrawnCard:null,
-      _drawnCard:null,
-      _discardedDrawnCard:false,
-      _playersBeforeThisDraw:null,
-      _turnStartLogs:[],
-      _drawLogs:[],
-      _statLogs:[],
-      _preTurnPlayers:null,
-    };
+    });
   }
   if((ai._nyaBorrow||ai.role)===ROLE_TREASURE&&isWinHand(ai.hand)){P[ct].roleRevealed=true;return{...gs,players:P,log:[...L,`${ai.name} 宣告获胜！`],gameOver:{winner:ROLE_TREASURE,reason:`${ai.name} 集齐了全部编号并获胜！`,winnerIdx:ct}};}
   // AI worship-from-hand: face-down god cards in hand can be worshipped (no skull counter, once per turn)
@@ -468,7 +433,7 @@ export function aiStep(gs, opts = {}) {
     }
   }
   if (didMultiply) {
-    gs = { ...gs, multiplyUsed: true };
+    gs = { ...gs, multiplyUsed: true, skillUsed: true };
   }
 
   // ── AI Rest (新版策略) ───────────────────────────────────────
@@ -528,7 +493,7 @@ export function aiStep(gs, opts = {}) {
       useSkill = false;
     }
   }
-  if (aiEffRole === ROLE_CULTIST && !useSkill) {
+  if (aiEffRole === ROLE_CULTIST && !useSkill && !gs.skillUsed && !gs.multiplyUsed && !gs.restUsed) {
     const canWin = canCultistWinByBewitch(P, ct);
     const canEmpty = canCultistEmptyHandByBewitch(P, ct);
     if ((ai.hp <= 4 && (canWin || canEmpty)) || (ai.hp <= 2 && canWin)) {
@@ -797,7 +762,7 @@ export function aiStep(gs, opts = {}) {
       }
     }
   }else if(!P[ct].isDead){
-    if(aiEffRole===ROLE_CULTIST&&isCultistEndingTurnUnreasonable(P,ct)){
+    if(aiEffRole===ROLE_CULTIST&&!gs.skillUsed&&!gs.multiplyUsed&&!gs.restUsed&&isCultistEndingTurnUnreasonable(P,ct)){
       cultistBewitchPlan=chooseAiCultistBewitchPlan(P,ct);
       if(cultistBewitchPlan){
         const plan=cultistBewitchPlan;
@@ -859,7 +824,7 @@ export function aiStep(gs, opts = {}) {
   const hasZoneCards = P[ct].hand.filter(isZoneCard).length > 0;
   try{
     if (aiEffRole === ROLE_HUNTER && huntContinue && hasZoneCards && hasValidTargets) {
-        nextGs = withClearedTurnAnimFields({...gs, players:P, deck:D, discard:Disc, log:L, phase: 'AI_TURN', currentTurn: ct, huntAbandoned: newAbandoned, skillUsed: false, _drawnCard: null, _discardedDrawnCard:false});
+        nextGs = withClearedTurnAnimFields({...gs, players:P, deck:D, discard:Disc, log:L, phase: 'AI_TURN', currentTurn: ct, huntAbandoned: newAbandoned, skillUsed: false});
     } else {
         nextGs = startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct, huntAbandoned: newAbandoned, skillUsed: (useSkill || gs.skillUsed)}, opts);
     }

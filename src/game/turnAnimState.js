@@ -4,6 +4,9 @@ import { bindAnimLogChunks } from './animLogs';
 import { buildAnimQueue } from './animQueueCore';
 
 export const EMPTY_TURN_ANIM_FIELDS = Object.freeze({
+  _aiDrawnCard: null,
+  _drawnCard: null,
+  _discardedDrawnCard: false,
   _playersBeforeThisDraw: null,
   _turnStartLogs: [],
   _drawLogs: [],

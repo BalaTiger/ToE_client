@@ -2,14 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ANIM_STEP_GAP } from '../components/anim/constants';
 import { _getZoomCompensatedRect, getPileAnchorCenter, getPlayerAreaAnchorCenter, getPlayerHandAnchorCenter } from '../utils/dom';
 
-function isDebugEnabled() {
-  try {
-    return window?.localStorage?.getItem('cthulhu_local_debug_mode') === '1';
-  } catch {
-    return false;
-  }
-}
-
 export function useCardTransferAnimationEffects({ anim }) {
   const [cardTransfers, setCardTransfers] = useState([]);
   const [damageLinkEstablishAnims, setDamageLinkEstablishAnims] = useState([]);
@@ -31,20 +23,6 @@ export function useCardTransferAnimationEffects({ anim }) {
     if (!anim || anim.type !== 'CARD_TRANSFER') return;
 
     const { fromPid, dest, toPid, count, sourceAnchor, effect } = anim;
-    if (isDebugEnabled()) {
-      const roseThornMsgs = (Array.isArray(anim.msgs) ? anim.msgs : []).filter(msg => typeof msg === 'string' && msg.includes('【玫瑰倒刺】'));
-      console.log('[Debug][CARD_TRANSFER播放]', {
-        fromPid,
-        dest,
-        toPid,
-        count,
-        sourceAnchor,
-        effect,
-        msgs: anim.msgs,
-        roseThornMsgs,
-        at: Date.now(),
-      });
-    }
     let cancelled = false;
     let raf1 = 0;
     let raf2 = 0;

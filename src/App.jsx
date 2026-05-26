@@ -49,7 +49,6 @@ import {
   buildAnimQueue,
   buildFullHandSwapTransferQueueFromLogs,
   buildAiHuntEventAnimQueue,
-  EMPTY_TURN_ANIM_FIELDS,
   withClearedTurnAnimFields,
   buildLocalCthDecisionState,
   buildPlayerTurnDrawQueue,
@@ -263,52 +262,61 @@ function getTurnStartDrawBaselineLog(state){
   return animatedLogCount>0?log.slice(0,Math.max(0,log.length-animatedLogCount)):log;
 }
 
-function hasRoseThornAnimSignal(queue=[],nextGs=null,currentGs=null){
-  const steps=Array.isArray(queue)?queue:[];
-  return (
-    steps.some(step=>
-      step?.type==='CARD_TRANSFER'||
-      (Array.isArray(step?.msgs)&&step.msgs.some(msg=>typeof msg==='string'&&msg.includes('【玫瑰倒刺】')))
-    )||
-    nextGs?.phase==='ROSE_THORN_SELECT_TARGET'||
-    currentGs?.phase==='ROSE_THORN_SELECT_TARGET'||
-    nextGs?.abilityData?.roseThornSource!=null||
-    currentGs?.abilityData?.roseThornSource!=null
-  );
+function getTurnStartStatLogs(state){
+  const log=Array.isArray(state?.log)?state.log:[];
+  const turnStartLogs=Array.isArray(state?._turnStartLogs)?state._turnStartLogs:[];
+  if(!turnStartLogs.length)return [];
+  const turnStartIdx=log.lastIndexOf(turnStartLogs[0]);
+  if(turnStartIdx<0)return [];
+  const delta=log.slice(turnStartIdx);
+  const drawLogs=Array.isArray(state?._drawLogs)?state._drawLogs:[];
+  const firstDrawIdx=drawLogs.length?delta.findIndex(line=>line===drawLogs[0]):-1;
+  const beforeDrawLogs=firstDrawIdx>=0?delta.slice(0,firstDrawIdx):delta;
+  return subtractLogOccurrences(beforeDrawLogs,turnStartLogs);
 }
 
-function debugRoseThornAnimQueue({queue,nextGs,currentGs,label='triggerAnimQueue'}){
-  if(!isLocalDebugEnabled()||!hasRoseThornAnimSignal(queue,nextGs,currentGs))return;
-  const steps=(Array.isArray(queue)?queue:[]).map((step,index)=>({
-    index,
-    type:step?.type,
-    fromPid:step?.fromPid,
-    dest:step?.dest,
-    toPid:step?.toPid,
-    count:step?.count,
-    effect:step?.effect,
-    msgs:Array.isArray(step?.msgs)?step.msgs:undefined,
-    logChunk:Array.isArray(step?._logChunk)?step._logChunk:undefined,
-  }));
-  const stack=(new Error().stack||'').split('\n').slice(2,8).map(line=>line.trim());
-  console.groupCollapsed(`[Debug][玫瑰倒刺动画] ${label}: ${steps.length} steps`);
-  console.log('current', {
-    phase:currentGs?.phase,
-    currentTurn:currentGs?.currentTurn,
-    turnKey:currentGs?._turnKey,
-    logLength:currentGs?.log?.length,
-    abilityData:currentGs?.abilityData,
-  });
-  console.log('next', {
-    phase:nextGs?.phase,
-    currentTurn:nextGs?.currentTurn,
-    turnKey:nextGs?._turnKey,
-    logLength:nextGs?.log?.length,
-    abilityData:nextGs?.abilityData,
-  });
-  console.table(steps);
-  console.log('stack', stack);
-  console.groupEnd();
+function buildTurnStartStatQueue(state){
+  if(!state?._preTurnPlayers||!state?._playersBeforeThisDraw)return [];
+  const statLogs=getTurnStartStatLogs(state);
+  const statEvents=buildStatEvents(
+    state._preTurnPlayers,
+    state._playersBeforeThisDraw,
+    statLogs,
+    {reason:'回合开始',seq:1}
+  );
+  if(!statEvents.length)return [];
+  const oldGs={
+    ...state,
+    players:state._preTurnPlayers,
+    log:[],
+    _statEventSeq:0,
+    _statEvents:[],
+    _inspectionEvents:[],
+  };
+  const newGs={
+    ...state,
+    players:state._playersBeforeThisDraw,
+    log:statLogs,
+    _statEventSeq:1,
+    _statEvents:statEvents,
+    _inspectionEvents:[],
+  };
+  return bindAnimLogChunks(buildAnimQueue(oldGs,newGs),{statLogs});
+}
+
+function buildTurnStartIntroQueue(state,name){
+  if(!state?._playersBeforeThisDraw)return [];
+  const turnStartStatQ=buildTurnStartStatQueue(state);
+  const queue=[];
+  if(turnStartStatQ.length){
+    queue.push({type:'VISUAL_LOCK',players:state._preTurnPlayers||state._playersBeforeThisDraw,zhuLight:state.zhuLight||null});
+  }
+  queue.push({type:'YOUR_TURN',name:name||state.players?.[state.currentTurn]?.name||'???',msgs:state._turnStartLogs});
+  queue.push(...turnStartStatQ);
+  if(turnStartStatQ.length){
+    queue.push(statePatchStep({players:state._playersBeforeThisDraw}));
+  }
+  return queue;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1060,7 +1068,7 @@ export default function Game(){
     setAnimExiting,
     animQueueRef,
     pendingGsRef,
-    triggerAnimQueue: rawTriggerAnimQueue,
+    triggerAnimQueue,
   } = useAnimationQueue({
     gs,
     copyPlayers,
@@ -1086,10 +1094,6 @@ export default function Game(){
     ANIM_DURATION,
     ANIM_SPEED_SCALE,
   });
-  const triggerAnimQueue=(queue,nextGs,callback)=>{
-    debugRoseThornAnimQueue({queue,nextGs,currentGs:gs});
-    rawTriggerAnimQueue(queue,nextGs,callback);
-  };
   const earthquakeShake=useEarthquakeAnimationEffects({
     anim,
     localDebugMode,
@@ -1344,7 +1348,7 @@ export default function Game(){
         const aiTurnDiscarded=hasTurnStartDraw?isDrawnCardActuallyDiscarded(rawResult,aiTurnDrawnCard):false;
         const fakeGs = (ps,log=gs.log) => ({...gs, players: ps, log});
         const queue=[];
-        if(gs._playersBeforeThisDraw) queue.push({type:'YOUR_TURN',name:gs.players[gs.currentTurn]?.name||'???',msgs:gs._turnStartLogs});
+        queue.push(...buildTurnStartIntroQueue(gs,gs.players[gs.currentTurn]?.name||'???'));
         if(aiTurnDrawnCard) queue.push({type:'DRAW_CARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn,msgs:gs._drawLogs});
         if(gs._playersBeforeThisDraw&&aiTurnDrawnCard){
           const drawBaselineLog=getTurnStartDrawBaselineLog(gs);
@@ -1456,7 +1460,7 @@ export default function Game(){
           }));
           queue.push(...cthQueue);
         }
-        if(gs._playersBeforeThisDraw) queue.push({type:'YOUR_TURN',name:gs.players[gs.currentTurn]?.name||'???',msgs:gs._turnStartLogs});
+        queue.push(...buildTurnStartIntroQueue(gs,gs.players[gs.currentTurn]?.name||'???'));
         // 2. Draw card anim for THIS AI (card drawn at turn start, stored in gs._drawnCard)
         if(aiTurnDrawnCard) queue.push({type:'DRAW_CARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn,msgs:gs._drawLogs});
         // 2b. Stat changes caused by THIS AI's drawn card (draw effects: gs._playersBeforeThisDraw → gs.players)
@@ -1654,7 +1658,10 @@ export default function Game(){
             msgs:[damageLinkEstablishedMsg],
           }));
         }
-        const finalActionQ=[...animInjections,...(orderedActionQ||actionStatQ),...postActionInjections];
+        const actionQForMultiply=multiplyEvent
+          ? (orderedActionQ||actionStatQ).filter(step=>step.type!=='CARD_TRANSFER')
+          : (orderedActionQ||actionStatQ);
+        const finalActionQ=[...animInjections,...actionQForMultiply,...postActionInjections];
         // 5. Stat changes from THIS AI's action only (not next draw — those belong to next AI's queue)
         //    Compare gs (after this AI's draw) → _playersBeforeNextDraw (after action, before next draw)
         // 6. Advance to next player's turn
@@ -1926,20 +1933,10 @@ export default function Game(){
         if(win)return {...prev,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{}};
         if(nextPickIndex>=(ad.pickOrder?.length||0)||cards.length===0){
           const nextTurnOwner=ad._turnOwner??prev.currentTurn;
-          return {...prev,players:P,deck:D,discard:Disc,log:L,currentTurn:nextTurnOwner,phase:isAiSeat(prev,nextTurnOwner)?'AI_TURN':'ACTION',abilityData:{
+          return withClearedTurnAnimFields({...prev,players:P,deck:D,discard:Disc,log:L,currentTurn:nextTurnOwner,phase:isAiSeat(prev,nextTurnOwner)?'AI_TURN':'ACTION',abilityData:{
             ...(ad.fromRest?{fromRest:true}:{}),
             ...(ad.cthDrawsRemaining!=null?{cthDrawsRemaining:ad.cthDrawsRemaining}:{}),
-          },
-            // 先到先得的起手摸牌/翻牌动画在进入共享选牌阶段前已经播过；结束后继续当前回合时不应再重播
-            _aiDrawnCard:null,
-            _drawnCard:null,
-            _discardedDrawnCard:false,
-            _playersBeforeThisDraw:null,
-            _turnStartLogs:[],
-            _drawLogs:[],
-            _statLogs:[],
-            _preTurnPlayers:null,
-          };
+          }});
         }
         return {...prev,players:P,deck:D,discard:Disc,log:L,phase:'FIRST_COME_PICK_SELECT',abilityData:{...ad,revealedCards:cards,pickIndex:nextPickIndex}};
       });
@@ -2499,10 +2496,21 @@ export default function Game(){
   const visualCurrentTurn=((anim||animExiting||animQueueRef.current.length>0)&&turnHighlightLockRef.current!=null)
     ?turnHighlightLockRef.current
     :gs.currentTurn;
+  const isAwaitingAiTurnDrawQueue=gs.phase==='AI_TURN'
+    &&gs._playersBeforeThisDraw
+    &&!anim
+    &&!animExiting
+    &&animQueueRef.current.length===0
+    &&!pendingGsRef.current;
+  const awaitingAiTurnPlayers=isAwaitingAiTurnDrawQueue
+    ?(gs._preTurnPlayers||gs._playersBeforeThisDraw)
+    :null;
   const visualPlayers=earthquakeVisualPlayers
     ?earthquakeVisualPlayers
     :((anim||animExiting||animQueueRef.current.length>0)&&visualPlayersLockRef.current)
     ?visualPlayersLockRef.current
+    :awaitingAiTurnPlayers
+    ?awaitingAiTurnPlayers
     :gs.players;
   const visualMe=visualPlayers[0];
   const phase=gs.phase;
@@ -3366,20 +3374,10 @@ export default function Game(){
     }
     const winnerIdx=sourceNumber>targetNumber?caveDuelSource:targetNumber>sourceNumber?ti:null;
     const resumesAiTurn = isAiSeat(gs, gs.currentTurn) && !gs.abilityData?.fromRest;
-    const nextGs={...gs,players:P,log:L,phase:resumesAiTurn?'AI_TURN':'ACTION',currentTurn:gs.currentTurn,abilityData:{
+    const nextGs=withClearedTurnAnimFields({...gs,players:P,log:L,phase:resumesAiTurn?'AI_TURN':'ACTION',currentTurn:gs.currentTurn,abilityData:{
       ...(gs.abilityData?.fromRest?{fromRest:true}:{}),
       ...(gs.abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:gs.abilityData.cthDrawsRemaining}:{}),
-    },
-      // 对决开始前那次 AI 起手横幅/翻牌已经播过；结算后继续当前回合时不应再重播
-      _aiDrawnCard:null,
-      _drawnCard:null,
-      _discardedDrawnCard:false,
-      _playersBeforeThisDraw:null,
-      _turnStartLogs:[],
-      _drawLogs:[],
-      _statLogs:[],
-      _preTurnPlayers:null,
-    };
+    }});
     const duelAnim={type:'CAVE_DUEL',sourceIdx:caveDuelSource,targetIdx:ti,sourceCard,targetCard,winnerIdx,msgs:L.slice(-1)};
     if(gs.abilityData?.fromRest){
       syncVisibleLog(L);
@@ -3504,7 +3502,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     }
     const resumesAiTurn = isAiSeat(gs, gs.currentTurn) && !P[gs.currentTurn]?.isDead;
     const nextPhase = resumesAiTurn ? 'AI_TURN' : 'ACTION';
-    const nextGs = {
+    const nextGs = withClearedTurnAnimFields({
       ...gs,
       players: P,
       deck: D,
@@ -3513,18 +3511,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       phase: nextPhase,
       currentTurn: gs.currentTurn,
       abilityData: nextAbilityData,
-      // 玫瑰倒刺是在摸牌后的目标选择阶段继续结算的。
-      // 结算完回到 AI_TURN 时，起手摸牌/翻牌动画已经播放过，必须清掉这些临时字段；
-      // 否则 AI_TURN 队列会把旧摸牌效果和下一名玩家的摸牌效果一起重播。
-      _aiDrawnCard:null,
-      _drawnCard:null,
-      _discardedDrawnCard:false,
-      _playersBeforeThisDraw:null,
-      _turnStartLogs:[],
-      _drawLogs:[],
-      _statLogs:[],
-      _preTurnPlayers:null,
-    };
+    });
     const turnStartDrawQueue=[];
     const drawnCard=gs._aiDrawnCard||gs._drawnCard||gs.drawReveal?.card||null;
     if(gs._playersBeforeThisDraw&&drawnCard){
@@ -3575,20 +3562,10 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     }
     if(nextPickIndex>=pickOrder.length||revealedCards.length===0){
       const resumesAiTurn = isAiSeat(gs, gs.currentTurn);
-      const newGs = {...gs, players: P, deck: D, discard: Disc, log: L, phase: resumesAiTurn ? 'AI_TURN' : 'ACTION', currentTurn: gs.currentTurn, abilityData: {
+      const newGs = withClearedTurnAnimFields({...gs, players: P, deck: D, discard: Disc, log: L, phase: resumesAiTurn ? 'AI_TURN' : 'ACTION', currentTurn: gs.currentTurn, abilityData: {
         ...(abilityData.fromRest?{fromRest:true}:{}),
         ...(abilityData.cthDrawsRemaining!=null?{cthDrawsRemaining:abilityData.cthDrawsRemaining}:{}),
-      },
-        // 先到先得的起手摸牌/翻牌动画在进入共享选牌阶段前已经播过；结束后继续当前回合时不应再重播
-        _aiDrawnCard:null,
-        _drawnCard:null,
-        _discardedDrawnCard:false,
-        _playersBeforeThisDraw:null,
-        _turnStartLogs:[],
-        _drawLogs:[],
-        _statLogs:[],
-        _preTurnPlayers:null,
-      };
+      }});
       if(abilityData.fromRest&&isLocalSeatIndex(abilityData.pickSource)){_cthContinueRestDraws(newGs);return;}
       setGs(newGs);
       return;
@@ -3932,7 +3909,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     let newGs;
     if (win) newGs = {...baseGs, gameOver:win};
     // 决定是让 AI 重新进入 AI_TURN 继续追杀，还是结束该回合
-      else if (wantsToHuntAgain) newGs = withClearedTurnAnimFields({...baseGs, phase: 'AI_TURN', currentTurn: huntingAI, skillUsed: false, restUsed: false, _drawnCard: null, _aiDrawnCard: null, _discardedDrawnCard:false, _aiName: aiHunterName});
+      else if (wantsToHuntAgain) newGs = withClearedTurnAnimFields({...baseGs, phase: 'AI_TURN', currentTurn: huntingAI, skillUsed: false, restUsed: false, _aiName: aiHunterName});
     else{
       const aiHandLimit=P[huntingAI]._nyaHandLimit??4;
       while(P[huntingAI].hand.length>aiHandLimit){
@@ -4535,7 +4512,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     ){
       const aiName=newGs.players[newGs.currentTurn]?.name||'???';
       const queue=[];
-      if(newGs._playersBeforeThisDraw) queue.push({type:'YOUR_TURN',name:aiName,msgs:newGs._turnStartLogs});
+      queue.push(...buildTurnStartIntroQueue(newGs,aiName));
       if(newGs._drawnCard) queue.push({type:'DRAW_CARD',card:newGs._drawnCard,triggerName:aiName,targetPid:newGs.currentTurn,msgs:newGs._drawLogs});
       if(drawStatQ.length) queue.push(...drawStatQ);
       if(queue.length){
