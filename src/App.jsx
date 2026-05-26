@@ -142,6 +142,7 @@ import { useAnimationQueue } from './hooks/useAnimationQueue';
 import { useEarthquakeAnimationEffects } from './hooks/useEarthquakeAnimationEffects';
 import { useCardTransferAnimationEffects } from './hooks/useCardTransferAnimationEffects';
 import { useDamageAnimationEffects } from './hooks/useDamageAnimationEffects';
+import { useSkillAnimationEffects } from './hooks/useSkillAnimationEffects';
 import { useWindowSize } from './hooks/useWindowSize';
 import { useGameAudio } from './hooks/useGameAudio';
 import { useAiWatchdog, BAD_PHASES } from './hooks/useAiWatchdog';
@@ -860,9 +861,6 @@ export default function Game(){
   
   // --- 新增：用于 UI 延迟显示的 HP/SAN 状态 ---
   const [displayStats, setDisplayStats] = useState(() => gs?.players ? gs.players.map(p => ({ hp: p.hp, san: p.san })) : []);
-  const[swapAnim,setSwapAnim]=useState(false);        // cup shuffle
-  const[huntAnim,setHuntAnim]=useState(null);          // scope + vignette {targetIdx}
-  const[bewitchAnim,setBewitchAnim]=useState(null);   // horus eye {cx,cy}
   const[earthquakeVisualPlayers,setEarthquakeVisualPlayers]=useState(null);
   const prevDamageLinksRef=useRef([]);
   const prevLogLenRef=useRef(0);
@@ -1037,6 +1035,12 @@ export default function Game(){
     clearCardTransferAnimations,
   } = useCardTransferAnimationEffects({ anim });
   const {
+    swapAnim,
+    huntAnim,
+    bewitchAnim,
+    clearSkillAnimations,
+  } = useSkillAnimationEffects({ anim });
+  const {
     hitIndices,
     knifeTargets,
     sanHitIndices,
@@ -1054,16 +1058,14 @@ export default function Game(){
     if(typeof document==='undefined')return;
     const handleVisibilityChange=()=>{
       if(document.visibilityState!=='visible')return;
-      setSwapAnim(false);
-      setHuntAnim(null);
-      setBewitchAnim(null);
+      clearSkillAnimations();
       clearCardTransferAnimations();
       clearDamageAnimations();
       setEarthquakeVisualPlayers(null);
     };
     document.addEventListener('visibilitychange',handleVisibilityChange);
     return()=>document.removeEventListener('visibilitychange',handleVisibilityChange);
-  },[clearCardTransferAnimations,clearDamageAnimations]);
+  },[clearSkillAnimations,clearCardTransferAnimations,clearDamageAnimations]);
 
   const isDrawnCardActuallyDiscarded=useCallback((stateLike,drawnCard)=>{
     if(!(stateLike?._animDiscardedDrawnCard ?? stateLike?._discardedDrawnCard) || !drawnCard)return false;
@@ -1254,37 +1256,7 @@ export default function Game(){
   },[showTutorial,tutorialStep,gs]);
 
   useEffect(()=>{
-    if(anim?.type==='SKILL_SWAP'){
-      // Extract caster and target names from msgs (e.g. "X 对 Y 掉包")
-      const swapMsg=anim.msgs?.find(m=>m.includes('掉包'));
-      const swapMatch=swapMsg?.match(/^(.+?)对 (.+?) 【掉包】/);
-      setSwapAnim({casterName:swapMatch?.[1]||'', targetName:swapMatch?.[2]||''});
-      setTimeout(()=>setSwapAnim(null),900);
-    }else if(anim?.type==='SKILL_HUNT'){
-      const ti=anim.targetIdx??1;
-      // 双 rAF：第一帧触发 layout，第二帧读取稳定后的位置
-      // 同时排除 screenShake 偏移：用容器基准消除水平位移
-      requestAnimationFrame(()=>requestAnimationFrame(()=>{
-        const el=document.querySelector(`[data-pid="${ti}"]`);
-        if(el){
-          const r=_getZoomCompensatedRect(el);
-          setHuntAnim({cx:r.left+r.width/2, cy:r.top+r.height/2});
-        }else{
-          setHuntAnim({cx:window.innerWidth/2, cy:window.innerHeight*0.25});
-        }
-      }));
-      setTimeout(()=>setHuntAnim(null),1300);
-    }else if(anim?.type==='SKILL_BEWITCH'){
-      const bti=anim.targetIdx??1;
-      requestAnimationFrame(()=>requestAnimationFrame(()=>{
-        const bel=document.querySelector(`[data-pid="${bti}"]`);
-        if(bel){const br=_getZoomCompensatedRect(bel);setBewitchAnim({cx:br.left+br.width/2,cy:br.top+br.height/2});}
-        else{setBewitchAnim({cx:window.innerWidth/2,cy:window.innerHeight*0.25});}
-      }));
-      setTimeout(()=>setBewitchAnim(null),1200);
-    }else if(!anim){
-      setEarthquakeVisualPlayers(null);
-    }
+    if(!anim)setEarthquakeVisualPlayers(null);
   },[anim]);
 
   // ── AI watchdog: stuck recovery + hard hang guard ───────────
