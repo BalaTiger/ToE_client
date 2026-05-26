@@ -144,6 +144,7 @@ import { useEarthquakeAnimationEffects } from './hooks/useEarthquakeAnimationEff
 import { useCardTransferAnimationEffects } from './hooks/useCardTransferAnimationEffects';
 import { useDamageAnimationEffects } from './hooks/useDamageAnimationEffects';
 import { useSkillAnimationEffects } from './hooks/useSkillAnimationEffects';
+import { useDamageLinkGhosts } from './hooks/useDamageLinkGhosts';
 import { useWindowSize } from './hooks/useWindowSize';
 import { useGameAudio } from './hooks/useGameAudio';
 import { useAiWatchdog, BAD_PHASES } from './hooks/useAiWatchdog';
@@ -863,10 +864,6 @@ export default function Game(){
   // --- 新增：用于 UI 延迟显示的 HP/SAN 状态 ---
   const [displayStats, setDisplayStats] = useState(() => gs?.players ? gs.players.map(p => ({ hp: p.hp, san: p.san })) : []);
   const[earthquakeVisualPlayers,setEarthquakeVisualPlayers]=useState(null);
-  const prevDamageLinksRef=useRef([]);
-  const prevLogLenRef=useRef(0);
-  const damageLinkGhostTimersRef=useRef(new Map());
-  const [damageLinkGhosts,setDamageLinkGhosts]=useState([]);
   const timerRef=useRef(null);
   const logRef=useRef(null);
   const [visibleLog,setVisibleLog]=useState(Array.isArray(gs?.log)?gs.log:[]);
@@ -1041,6 +1038,7 @@ export default function Game(){
     bewitchAnim,
     clearSkillAnimations,
   } = useSkillAnimationEffects({ anim });
+  const damageLinkGhosts = useDamageLinkGhosts({ players: gs?.players, log: gs?.log });
   const {
     hitIndices,
     knifeTargets,
@@ -1087,58 +1085,6 @@ export default function Game(){
     const same=curLog.length===nextLog.length&&curLog.every((line,i)=>line===nextLog[i]);
     if(!same)syncVisibleLog(nextLog);
   },[gs?.log,anim,syncVisibleLog,gs?._playersBeforeThisDraw]);
-
-  useEffect(()=>()=>{damageLinkGhostTimersRef.current.forEach(t=>clearTimeout(t));damageLinkGhostTimersRef.current.clear();},[]);
-
-  useEffect(()=>{
-    const prevTimers=damageLinkGhostTimersRef.current;
-    if(!gs?.players){
-      prevDamageLinksRef.current=[];
-      prevLogLenRef.current=Array.isArray(gs?.log)?gs.log.length:0;
-      setDamageLinkGhosts([]);
-      prevTimers.forEach(t=>clearTimeout(t));
-      prevTimers.clear();
-      return;
-    }
-    const extractPairs=(players)=>players.flatMap((p,i)=>{
-      if(!p?.damageLink?.active)return [];
-      const j=p.damageLink.partner;
-      if(j==null||j<=i||!players[j]?.damageLink?.active||players[j].damageLink.partner!==i)return [];
-      return [{a:i,b:j}];
-    });
-    const prevPairs=prevDamageLinksRef.current;
-    const currentPairs=extractPairs(gs.players);
-    const currentKeys=new Set(currentPairs.map(p=>`${p.a}-${p.b}`));
-    const newLogs=(Array.isArray(gs.log)?gs.log:[]).slice(prevLogLenRef.current);
-    prevPairs.forEach(pair=>{
-      const key=`${pair.a}-${pair.b}`;
-      if(currentKeys.has(key))return;
-      const aName=gs.players[pair.a]?.name;
-      const bName=gs.players[pair.b]?.name;
-      const breakMsg=`【两人一绳】绳索断裂！${aName} 和 ${bName}`;
-      const expireMsg=`【两人一绳】绳索未断裂！${aName} 和 ${bName}`;
-      const mode=newLogs.some(m=>typeof m==='string'&&m.includes(breakMsg))?'break'
-        : newLogs.some(m=>typeof m==='string'&&m.includes(expireMsg))?'fade'
-        : 'fade';
-      const ghostId=`${key}-${Date.now()}-${mode}`;
-      setDamageLinkGhosts(prev=>[...prev.filter(g=>g.key!==key),{id:ghostId,key,a:pair.a,b:pair.b,mode}]);
-      if(prevTimers.has(key))clearTimeout(prevTimers.get(key));
-      const timeoutMs=mode==='break'?560:720;
-      const timer=setTimeout(()=>{
-        setDamageLinkGhosts(prev=>prev.filter(g=>g.id!==ghostId));
-        prevTimers.delete(key);
-      },timeoutMs);
-      prevTimers.set(key,timer);
-    });
-    prevDamageLinksRef.current=currentPairs;
-    prevLogLenRef.current=Array.isArray(gs.log)?gs.log.length:0;
-    return ()=>{
-      if(!gs?.players){
-        prevTimers.forEach(t=>clearTimeout(t));
-        prevTimers.clear();
-      }
-    };
-  },[gs?.players,gs?.log]);
 
   useEffect(()=>{
     if(!gs||anim||animQueueRef.current.length>0||gs.gameOver||gs.phase==='PLAYER_WIN_PENDING'||gs.phase==='TREASURE_WIN')return;
