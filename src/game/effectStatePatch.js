@@ -11,6 +11,7 @@ const ABILITY_DECISION_PHASES = {
   sameAbyssChoice: 'SAME_ABYSS_SELECT',
   sphinxGuess: 'SPHINX_GUESS',
   graveDigPickGod: 'GRAVE_DIG_SELECT',
+  buryAliveSelect: 'BURY_ALIVE_SELECT',
 };
 
 export function hasEffectDecisionState(statePatch) {

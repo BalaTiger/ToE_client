@@ -77,6 +77,16 @@ export function buildAnimQueue(oldGs, newGs) {
       return q;
     }
   }
+  const buryMsgs = newMsgs.filter(m => typeof m === 'string' && m.includes('【活埋】') && m.includes('放到了牌堆底'));
+  if (buryMsgs.length) {
+    buryMsgs.forEach(msg => {
+      const match = msg.match(/^【活埋】(.+?) 将 /);
+      const name = match?.[1];
+      const fromPid = name === '你' ? 0 : effectivePlayers.findIndex(p => p?.name === name);
+      q.push({ type: 'BURY_TO_DECK', fromPid: fromPid >= 0 ? fromPid : 0, msgs: [msg] });
+    });
+    return q;
+  }
   const losers = effectivePlayers.filter((p, i) => oldGs.players[i] && p.hand.length < oldGs.players[i].hand.length);
   if (losers.length === 1) {
     const li = effectivePlayers.indexOf(losers[0]);

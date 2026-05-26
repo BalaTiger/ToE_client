@@ -95,7 +95,6 @@ export function ZhuHideCardOverlay({ anim, exiting }) {
   }, [anim]);
 
   if (!anim?.card) return null;
-  const cardBackImage = getCardBackImage(anim.expansionKey || 'temporary');
 
   return (
     <div style={{
@@ -104,29 +103,11 @@ export function ZhuHideCardOverlay({ anim, exiting }) {
       zIndex: 992,
       pointerEvents: 'none',
       overflow: 'hidden',
-      animation: exiting ? 'animFadeOut 0.18s ease-in forwards' : 'none',
+      animation: `zhuHideOverlayDepth 1.15s steps(1,end) forwards${exiting ? ', animFadeOut 0.18s ease-in forwards' : ''}`,
     }}>
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(10,7,2,0.24)', animation: 'zhuHideBgFade 1.15s ease both' }} />
       {style && (
         <>
-          <div style={{
-            position: 'absolute',
-            left: style.left,
-            top: style.top,
-            width: 78,
-            height: 104,
-            marginLeft: -39,
-            marginTop: -52,
-            borderRadius: 5,
-            backgroundImage: `url('${cardBackImage}')`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            border: '1.5px solid #4a3010',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.7), inset 0 0 12px rgba(0,0,0,0.5)',
-            opacity: 0,
-            zIndex: 4,
-            animation: 'zhuHideDeckCap 1.15s ease forwards',
-          }} />
           <div style={{
             position: 'absolute',
             left: style.left,
@@ -227,6 +208,77 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = 'temporary' }
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+export function BuryToDeckOverlay({ anim, exiting, expansionKey = 'temporary' }) {
+  const [style, setStyle] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!anim) return;
+    const start = getPlayerHandAnchorCenter(anim.fromPid ?? 0);
+    const deck = getPileAnchorCenter(
+      '[data-deck-pile]',
+      { x: window.innerWidth * 0.94 - 35, y: window.innerHeight * 0.08 }
+    );
+    const tx = deck.x - start.x;
+    const ty = deck.y - start.y;
+    setStyle({
+      left: start.x,
+      top: start.y,
+      deckLeft: deck.x,
+      deckTop: deck.y,
+      '--tx': `${tx}px`,
+      '--ty': `${ty}px`,
+    });
+  }, [anim]);
+
+  if (!anim || !style) return null;
+  const cardBackImage = getCardBackImage(expansionKey);
+
+  return (
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      zIndex: 992,
+      pointerEvents: 'none',
+      overflow: 'hidden',
+      animation: `buryToDeckOverlayDepth 1.15s steps(1,end) forwards${exiting ? ', animFadeOut 0.18s ease-in forwards' : ''}`,
+    }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(10,7,2,0.18)', animation: 'zhuHideBgFade 1.15s ease both' }} />
+      <div style={{
+        position: 'absolute',
+        left: style.left,
+        top: style.top,
+        width: 58,
+        height: 82,
+        marginLeft: -29,
+        marginTop: -41,
+        '--tx': style['--tx'],
+        '--ty': style['--ty'],
+        zIndex: 6,
+        animation: 'buryToDeckPath 1.15s cubic-bezier(0.28,0,0.22,1) forwards, buryToDeckDepth 1.15s steps(1,end) forwards',
+      }}>
+        <div style={{
+          position: 'absolute',
+          inset: -20,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle,rgba(120,80,34,0.28),rgba(60,36,12,0.14) 42%,rgba(0,0,0,0) 72%)',
+          filter: 'blur(1px)',
+          animation: 'zhuHideGlow 1.15s ease forwards',
+        }} />
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          borderRadius: 4,
+          backgroundImage: `url('${cardBackImage}')`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          border: '1.5px solid #4a3010',
+          boxShadow: '0 6px 18px rgba(0,0,0,0.65), inset 0 0 10px rgba(0,0,0,0.5)',
+        }} />
+      </div>
     </div>
   );
 }

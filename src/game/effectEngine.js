@@ -593,6 +593,38 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         msgs.push(`${actor.name} 准备从弃牌堆中取回一张邪神牌`);
       }
     },
+    buryAlive: () => {
+      const targets = getAdjacentTargets(P, ci).filter(i =>
+        P[i] &&
+        !P[i].isDead &&
+        P[i].hand.length > 0 &&
+        !(avoidNegative && i === ci) &&
+        !avoidNegativeFor.includes(i)
+      );
+      if (!targets.length) {
+        msgs.push('没有角色有手牌，无法活埋');
+        return;
+      }
+      if (isAI) {
+        targets.forEach(targetIdx => {
+          if (!P[targetIdx]?.hand?.length) return;
+          const [buriedCard] = P[targetIdx].hand.splice(0, 1);
+          D.push(buriedCard);
+          msgs.push(`【活埋】${P[targetIdx].name} 将 ${cardLogText(buriedCard, { alwaysShowName: true })} 放到了牌堆底`);
+        });
+      } else {
+        statePatch = {
+          ...statePatch,
+          abilityData: {
+            type: 'buryAliveSelect',
+            source: ci,
+            targets,
+            targetIndex: 0,
+          }
+        };
+        msgs.push(`${actor.name} 与相邻角色准备各将一张手牌放到牌堆底`);
+      }
+    },
     sacHealHP: () => {
       if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
         hurtSAN(ci, 1);

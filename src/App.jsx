@@ -2058,6 +2058,39 @@ export default function Game(){
     return()=>clearTimeout(t);
   },[gs,anim,showTutorial]);
 
+  useEffect(()=>{
+    if(!gs||gs.phase!=='BURY_ALIVE_SELECT'||gs.gameOver||anim||showTutorial)return;
+    const ad=gs.abilityData||{};
+    const targets=ad.targets||[];
+    const targetIdx=targets[ad.targetIndex||0];
+    if(targetIdx==null||isLocalSeatIndex(targetIdx))return;
+    const t=setTimeout(()=>{
+      if(!gs||gs.phase!=='BURY_ALIVE_SELECT')return;
+      const currentAd=gs.abilityData||{};
+      const currentTargets=currentAd.targets||[];
+      const currentTarget=currentTargets[currentAd.targetIndex||0];
+      if(currentTarget==null||isLocalSeatIndex(currentTarget))return;
+      let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
+      if(!P[currentTarget]?.hand?.length)return;
+      const [buriedCard]=P[currentTarget].hand.splice(0,1);
+      D.push(buriedCard);
+      L.push(`【活埋】${P[currentTarget].name} 将 ${cardLogText(buriedCard,{alwaysShowName:true})} 放到了牌堆底`);
+      const nextTargetIndex=(currentAd.targetIndex||0)+1;
+      const nextGs=nextTargetIndex>=currentTargets.length
+        ? (()=>{const turnOwner=currentAd._turnOwner??gs.currentTurn;return {...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:turnOwner,phase:isAiSeat(gs,turnOwner)?'AI_TURN':'ACTION',abilityData:{
+          ...(currentAd.fromRest?{fromRest:true}:{}),
+          ...(currentAd.cthDrawsRemaining!=null?{cthDrawsRemaining:currentAd.cthDrawsRemaining}:{}),
+        }};})()
+        : {...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{...currentAd,targetIndex:nextTargetIndex}};
+      triggerAnimQueue([
+        {type:'BURY_TO_DECK',fromPid:currentTarget,msgs:L.slice(-1)},
+        statePatchStep({players:P,deck:D,log:L}),
+      ],nextGs);
+    },AI_PICK_STEP_DELAY);
+    return()=>clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[gs,anim,showTutorial]);
+
   const getRoseThornMarkedIds=(player,idx)=>[
     ...((player?.hand||[]).filter(card=>card?.roseThornHolderId===idx).map(card=>card.id)),
     ...((player?.godZone||[]).filter(card=>card?.roseThornHolderId===idx).map(card=>card.id)),
@@ -3057,8 +3090,32 @@ export default function Game(){
     }
     
     const replayPatch=dr.fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
-    const newGs = { ...gs, players: P, deck: D, discard: Disc, log: L, phase: 'ACTION', drawReveal: null, abilityData: { fromRest: gs.abilityData?.fromRest, cthDrawsRemaining: gs.abilityData?.cthDrawsRemaining }, ...replayPatch };
-    return { P, D, Disc, L, newGs, d1, dodgeSuccess, who };
+    const decisionState=deriveEffectDecisionState(res.statePatch,{
+      baseAbilityData:gs.abilityData,
+      fallbackPhase:'ACTION',
+      extraAbilityData:{
+        ...(dr.fromRest?{fromRest:true}:{}),
+        ...(gs.abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:gs.abilityData.cthDrawsRemaining}:{}),
+      },
+    });
+    const fallbackAbilityData={fromRest:gs.abilityData?.fromRest,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining};
+    const newGs = {
+      ...gs,
+      players: P,
+      deck: D,
+      discard: Disc,
+      log: L,
+      phase: decisionState.hasDecision?decisionState.phase:'ACTION',
+      drawReveal: null,
+      abilityData: decisionState.hasDecision?decisionState.abilityData:fallbackAbilityData,
+      ...(res.statePatch||{}),
+      ...replayPatch
+    };
+    if(decisionState.hasDecision){
+      newGs.phase=decisionState.phase;
+      newGs.abilityData=decisionState.abilityData;
+    }
+    return { P, D, Disc, L, newGs, d1, dodgeSuccess, who, hasDecision:decisionState.hasDecision };
   }
 
   function handleTreasureDodgeRoll(){
@@ -3075,7 +3132,7 @@ export default function Game(){
       setAnim({type:'DICE_ROLL',d1:result.d1,d2:0,heal:0,rollerName:result.who,dodgeSuccess:result.dodgeSuccess});
       return;
     }
-    if(dr.fromRest&&!result.win){
+    if(dr.fromRest&&!result.win&&!result.hasDecision){
       // 播放骰子动画后再处理剩余摸牌
       pendingGsRef.current=result.newGs;
       animQueueRef.current=[{type:'CTH_CONTINUE',data:{cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining}}];
@@ -3109,8 +3166,20 @@ export default function Game(){
       return;
     }
     const replayPatch=dr.fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
-    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:{fromRest:gs.abilityData?.fromRest,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining},...replayPatch};
-    if(dr.fromRest&&!win){_cthContinueRestDraws(newGs);return;}
+    const decisionState=deriveEffectDecisionState(res.statePatch,{
+      baseAbilityData:gs.abilityData,
+      fallbackPhase:'ACTION',
+      extraAbilityData:{
+        ...(dr.fromRest?{fromRest:true}:{}),
+        ...(gs.abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:gs.abilityData.cthDrawsRemaining}:{}),
+      },
+    });
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:decisionState.hasDecision?decisionState.phase:'ACTION',drawReveal:null,abilityData:decisionState.hasDecision?decisionState.abilityData:{fromRest:gs.abilityData?.fromRest,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining},...(res.statePatch||{}),...replayPatch};
+    if(decisionState.hasDecision){
+      newGs.phase=decisionState.phase;
+      newGs.abilityData=decisionState.abilityData;
+    }
+    if(dr.fromRest&&!win&&!decisionState.hasDecision){_cthContinueRestDraws(newGs);return;}
     const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
     if(queue.length){
       pendingGsRef.current=newGs;
@@ -3624,6 +3693,35 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       return;
     }
     setGs(nextGs);
+  }
+
+  function buryAliveSelectCard(cardIndex){
+    const abilityData=gs.abilityData||{};
+    const targets=abilityData.targets||[];
+    const actorIdx=targets[abilityData.targetIndex||0];
+    if(!isLocalSeatIndex(actorIdx)||cardIndex<0)return;
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
+    if(!P[actorIdx]?.hand?.[cardIndex])return;
+    const [buriedCard]=P[actorIdx].hand.splice(cardIndex,1);
+    D.push(buriedCard);
+    const actorName=localDisplayName(actorIdx,P[actorIdx]?.name);
+    const L=[...gs.log,`【活埋】${actorName} 将 ${cardLogText(buriedCard,{alwaysShowName:true})} 放到了牌堆底`];
+    const nextTargetIndex=(abilityData.targetIndex||0)+1;
+    if(nextTargetIndex>=targets.length){
+      const turnOwner=abilityData._turnOwner??gs.currentTurn;
+      const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:turnOwner,phase:isAiSeat(gs,turnOwner)?'AI_TURN':'ACTION',abilityData:{
+        ...(abilityData.fromRest?{fromRest:true}:{}),
+        ...(abilityData.cthDrawsRemaining!=null?{cthDrawsRemaining:abilityData.cthDrawsRemaining}:{}),
+      }};
+      if(abilityData.fromRest&&isLocalSeatIndex(abilityData.source)){
+        triggerAnimQueue([{type:'BURY_TO_DECK',fromPid:actorIdx,msgs:L.slice(-1)},statePatchStep({players:P,deck:D,log:L})],null,()=>_cthContinueRestDraws(nextGs));
+        return;
+      }
+      triggerAnimQueue([{type:'BURY_TO_DECK',fromPid:actorIdx,msgs:L.slice(-1)},statePatchStep({players:P,deck:D,log:L})],nextGs);
+      return;
+    }
+    const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'BURY_ALIVE_SELECT',abilityData:{...abilityData,targetIndex:nextTargetIndex}};
+    triggerAnimQueue([{type:'BURY_TO_DECK',fromPid:actorIdx,msgs:L.slice(-1)},statePatchStep({players:P,deck:D,log:L})],nextGs);
   }
 
   function swapSelectTargetCard(cardIdx){
@@ -4553,7 +4651,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         return;
       }
     }
-    if(['FIRST_COME_PICK_SELECT','DAMAGE_LINK_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','ROSE_THORN_SELECT_TARGET','SAME_ABYSS_SELECT','SPHINX_GUESS','GRAVE_DIG_SELECT'].includes(newGs.phase)&&newGs._drawnCard){
+    if(['FIRST_COME_PICK_SELECT','DAMAGE_LINK_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','ROSE_THORN_SELECT_TARGET','SAME_ABYSS_SELECT','SPHINX_GUESS','GRAVE_DIG_SELECT','BURY_ALIVE_SELECT'].includes(newGs.phase)&&newGs._drawnCard){
       const drawerName=newGs.players[newGs.currentTurn]?.name||'???';
       const drawerPid=newGs.currentTurn;
       pendingGsRef.current=newGs;
@@ -5003,6 +5101,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     CAVE_DUEL_SELECT_CARD: `⚠ 和${gs.players[gs.abilityData?.caveDuelSource]?.name||'对手'}来一场穴居人式的对决！尽可能亮出数字编号大的牌取胜，如果落败将失去这张牌`,
     ROSE_THORN_SELECT_TARGET:'【玫瑰倒刺】选择承受倒刺的目标',
     GRAVE_DIG_SELECT: isLocalSeatIndex(gs.abilityData?.playerIndex)?'【掘墓】从弃牌堆选择一张邪神牌':'等待掘墓选择…',
+    BURY_ALIVE_SELECT: (()=>{const target=gs.abilityData?.targets?.[gs.abilityData?.targetIndex||0];return isLocalSeatIndex(target)?'【活埋】选择一张手牌放到牌堆底':`等待 ${gs.players[target]?.name||'目标'} 选择活埋手牌…`;})(),
     FIRST_COME_PICK_SELECT:`【先到先得】${gs.players[gs.abilityData?.pickOrder?.[gs.abilityData?.pickIndex||0]]?.name||'当前角色'} 请选择一张牌`,
     SAME_ABYSS_SELECT: isLocalSameAbyssTargetPhase(gs)?'【同归深渊】你手牌最多，须做出选择':'等待同归深渊目标做出选择…',
     SPHINX_GUESS: isLocalSphinxGuessPhase(gs)?'【斯芬克斯】猜测牌堆顶的牌是否是区域牌':'等待斯芬克斯猜测…',
@@ -5124,7 +5223,12 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
   }
 
   function canPlayerRespondWithAnyHandCard(){
-    return phase==='CAVE_DUEL_SELECT_CARD'&&isLocalCaveDuelTargetSeat(gs);
+    if(phase==='CAVE_DUEL_SELECT_CARD'&&isLocalCaveDuelTargetSeat(gs))return true;
+    if(phase==='BURY_ALIVE_SELECT'){
+      const target=gs.abilityData?.targets?.[gs.abilityData?.targetIndex||0];
+      return isLocalSeatIndex(target);
+    }
+    return false;
   }
 
   function handleMyCardClick(idx){
@@ -5143,6 +5247,9 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       if(targetPlayer&&idx<targetPlayer.hand.length){
         huntSelectCardFromPublic(idx);
       }
+    }
+    else if(phase==='BURY_ALIVE_SELECT'&&canPlayerRespondWithAnyHandCard()){
+      buryAliveSelectCard(idx);
     }
     else if((phase==='CAVE_DUEL_SELECT_CARD'&&isLocalCurrentTurn(gs))||canPlayerRespondWithAnyHandCard()){
       caveDuelSelectCard(idx);
@@ -6654,14 +6761,28 @@ const GLOBAL_STYLES=`
     82% { opacity: 1; transform: translate(var(--bottom-x),var(--bottom-y)) rotate(5deg) scale(0.92); }
     100% { opacity: 0; transform: translate(4px,34px) rotate(0deg) scale(0.62); }
   }
-  @keyframes zhuHideDepth {
-    0%, 72% { z-index: 6; }
-    73%, 100% { z-index: 2; }
+  @keyframes buryToDeckPath {
+    0% { opacity: 0; transform: translate(0,0) rotate(0deg) scale(0.86); }
+    12% { opacity: 1; transform: translate(calc(var(--tx) * 0.18),calc(var(--ty) * 0.18 - 26px)) rotate(-8deg) scale(1.03); }
+    54% { opacity: 1; transform: translate(calc(var(--tx) * 0.68),calc(var(--ty) * 0.68 - 18px)) rotate(-2deg) scale(1.02); }
+    82% { opacity: 1; transform: translate(var(--tx),var(--ty)) rotate(5deg) scale(0.84); }
+    100% { opacity: 0; transform: translate(calc(var(--tx) + 4px),calc(var(--ty) + 34px)) rotate(0deg) scale(0.58); }
   }
-  @keyframes zhuHideDeckCap {
-    0%, 66% { opacity: 0; transform: translate(0,0) scale(0.94); }
-    74% { opacity: 0.9; transform: translate(0,0) scale(1); }
-    100% { opacity: 0; transform: translate(0,0) scale(1.02); }
+  @keyframes buryToDeckDepth {
+    0%, 56% { z-index: 6; }
+    57%, 100% { z-index: 2; }
+  }
+  @keyframes buryToDeckOverlayDepth {
+    0%, 56% { z-index: 992; }
+    57%, 100% { z-index: 1; }
+  }
+  @keyframes zhuHideDepth {
+    0%, 14% { z-index: 6; }
+    15%, 100% { z-index: 2; }
+  }
+  @keyframes zhuHideOverlayDepth {
+    0%, 14% { z-index: 992; }
+    15%, 100% { z-index: 1; }
   }
   @keyframes zhuHideGlow {
     0% { opacity: 0; transform: scale(0.6); }

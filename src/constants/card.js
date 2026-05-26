@@ -190,6 +190,16 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "polarity": "positive",
       "effectScope": "self",
       "expansion": "地神的潜影"
+    },
+    {
+      "name": "活埋",
+      "desc": "你与相邻角色从手牌中选择一张牌放到牌堆底",
+      "type": "buryAlive",
+      "val": 1,
+      "slotKey": "A4",
+      "polarity": "negative",
+      "effectScope": "adjacent",
+      "expansion": "地神的潜影"
     }
   ],
   "B1": [

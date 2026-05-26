@@ -391,6 +391,52 @@ describe('applyFx', () => {
     expect(res.Disc.map(c => c.godKey).filter(Boolean)).toEqual(['NYA']);
   });
 
+  it('buryAlive: 玩家触发时设置多目标手牌选择状态', () => {
+    const players = makeStandardPlayers(5);
+    players[0].hand = [makeZoneCard('A1', 0)];
+    players[1].hand = [makeZoneCard('B2', 0)];
+    players[4].hand = [];
+    const card = { type: 'buryAlive', name: '活埋', key: 'A4' };
+    const gs = makeGs({ players });
+    const res = applyFx(card, 0, null, players, [], [], gs);
+    expect(res.statePatch.abilityData).toMatchObject({
+      type: 'buryAliveSelect',
+      source: 0,
+      targets: [0, 1],
+      targetIndex: 0,
+    });
+  });
+
+  it('buryAlive: 规避触发者时相邻角色仍需选择埋牌', () => {
+    const players = makeStandardPlayers(5);
+    players[0].hand = [makeZoneCard('A1', 0)];
+    players[1].hand = [makeZoneCard('B2', 0)];
+    players[4].hand = [makeZoneCard('C3', 0)];
+    const card = { type: 'buryAlive', name: '活埋', key: 'A4' };
+    const gs = makeGs({ players });
+    const res = applyFx(card, 0, null, players, [], [], gs, true, []);
+    expect(res.statePatch.abilityData).toMatchObject({
+      type: 'buryAliveSelect',
+      source: 0,
+      targets: [4, 1],
+      targetIndex: 0,
+    });
+  });
+
+  it('buryAlive: AI 自动将自己与相邻角色手牌放到牌堆底', () => {
+    const players = makeStandardPlayers(5);
+    players[0].hand = [makeZoneCard('A1', 0)];
+    players[1].hand = [makeZoneCard('B2', 0)];
+    players[4].hand = [makeZoneCard('C3', 0)];
+    const card = { type: 'buryAlive', name: '活埋', key: 'A4' };
+    const gs = makeGs({ players });
+    const res = applyFx(card, 0, null, players, [], [], gs, false, [], true);
+    expect(res.P[0].hand).toHaveLength(0);
+    expect(res.P[1].hand).toHaveLength(0);
+    expect(res.P[4].hand).toHaveLength(0);
+    expect(res.D.map(c => c.key)).toEqual(['A1', 'C3', 'B2']);
+  });
+
   it('roseThornGiftAllHand: 设置目标选择状态', () => {
     const players = makeStandardPlayers(3);
     const card = { type: 'roseThornGiftAllHand', name: '玫瑰倒刺', key: 'ROSE' };
