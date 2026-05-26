@@ -3248,6 +3248,54 @@ export default function Game(){
     if(fromRest){triggerAnimQueue(queue,null,()=>_cthContinueRestDraws(newGs));return;}
     triggerAnimQueue(queue,newGs);
   }
+
+  function buildTargetContinuationAbilityData(abilityData=gs.abilityData){
+    return {
+      ...(abilityData?.fromRest?{fromRest:true}:{}),
+      ...(abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:abilityData.cthDrawsRemaining}:{}),
+    };
+  }
+
+  function buildTargetContinuationGs({
+    players,
+    deck=gs.deck,
+    discard=gs.discard,
+    log,
+    turnOwner=gs.currentTurn,
+    abilityData=gs.abilityData,
+    phase=null,
+    clearTurnAnim=true,
+    canResumeAi=true,
+  }){
+    const nextPhase=phase||(
+      canResumeAi&&isAiSeat(gs,turnOwner)&&!players?.[turnOwner]?.isDead&&!abilityData?.fromRest
+        ?'AI_TURN'
+        :'ACTION'
+    );
+    const nextGs={
+      ...gs,
+      players,
+      deck,
+      discard,
+      log,
+      currentTurn:turnOwner,
+      phase:nextPhase,
+      abilityData:buildTargetContinuationAbilityData(abilityData),
+    };
+    return clearTurnAnim?withClearedTurnAnimFields(nextGs):nextGs;
+  }
+
+  function finishTargetContinuation({queue=[],nextGs,continueRest=false,syncLog=false}){
+    if(syncLog&&nextGs?.log)syncVisibleLog(nextGs.log);
+    if(continueRest){
+      if(queue.length)triggerAnimQueue(queue,null,()=>_cthContinueRestDraws(nextGs));
+      else _cthContinueRestDraws(nextGs);
+      return;
+    }
+    if(queue.length)triggerAnimQueue(queue,nextGs);
+    else setGs(nextGs);
+  }
+
   function peekHandSelectTarget(ti){
     // 偷看手牌：选择目标角色后，偷看其一张手牌
     const {peekHandTargets,peekHandSource}=gs.abilityData;
@@ -3373,19 +3421,14 @@ export default function Game(){
       L=[...gs.log,`【穴居人战争】${P[caveDuelSource].name} 亮出 ${cardLogText(sourceCard,{alwaysShowName:true})}，${P[ti].name} 亮出 ${cardLogText(targetCard,{alwaysShowName:true})}，平局，各自收回自己的牌`];
     }
     const winnerIdx=sourceNumber>targetNumber?caveDuelSource:targetNumber>sourceNumber?ti:null;
-    const resumesAiTurn = isAiSeat(gs, gs.currentTurn) && !gs.abilityData?.fromRest;
-    const nextGs=withClearedTurnAnimFields({...gs,players:P,log:L,phase:resumesAiTurn?'AI_TURN':'ACTION',currentTurn:gs.currentTurn,abilityData:{
-      ...(gs.abilityData?.fromRest?{fromRest:true}:{}),
-      ...(gs.abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:gs.abilityData.cthDrawsRemaining}:{}),
-    }});
+    const nextGs=buildTargetContinuationGs({players:P,log:L});
     const duelAnim={type:'CAVE_DUEL',sourceIdx:caveDuelSource,targetIdx:ti,sourceCard,targetCard,winnerIdx,msgs:L.slice(-1)};
-    if(gs.abilityData?.fromRest){
-      syncVisibleLog(L);
-      triggerAnimQueue([duelAnim],nextGs,()=>_cthContinueRestDraws(nextGs));
-      return;
-    }
-    syncVisibleLog(L);
-    triggerAnimQueue([duelAnim],nextGs);
+    finishTargetContinuation({
+      queue:[duelAnim],
+      nextGs,
+      continueRest:!!gs.abilityData?.fromRest,
+      syncLog:true,
+    });
   }
   
   function caveDuelSelectCard(cardIndex){
@@ -3561,13 +3604,11 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       return;
     }
     if(nextPickIndex>=pickOrder.length||revealedCards.length===0){
-      const resumesAiTurn = isAiSeat(gs, gs.currentTurn);
-      const newGs = withClearedTurnAnimFields({...gs, players: P, deck: D, discard: Disc, log: L, phase: resumesAiTurn ? 'AI_TURN' : 'ACTION', currentTurn: gs.currentTurn, abilityData: {
-        ...(abilityData.fromRest?{fromRest:true}:{}),
-        ...(abilityData.cthDrawsRemaining!=null?{cthDrawsRemaining:abilityData.cthDrawsRemaining}:{}),
-      }});
-      if(abilityData.fromRest&&isLocalSeatIndex(abilityData.pickSource)){_cthContinueRestDraws(newGs);return;}
-      setGs(newGs);
+      const newGs=buildTargetContinuationGs({players:P,deck:D,discard:Disc,log:L,abilityData});
+      finishTargetContinuation({
+        nextGs:newGs,
+        continueRest:!!(abilityData.fromRest&&isLocalSeatIndex(abilityData.pickSource)),
+      });
       return;
     }
     const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'FIRST_COME_PICK_SELECT',abilityData:{...abilityData,revealedCards,pickIndex:nextPickIndex}};
