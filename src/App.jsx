@@ -866,11 +866,16 @@ export default function Game(){
   const[sanHealIndices,setSanHealIndices]=useState([]); // SAN heal
   const[screenShake,setScreenShake]=useState(false);
   const[deathShake,setDeathShake]=useState(false);
+  const[earthquakeShake,setEarthquakeShake]=useState(false);
+  const[earthquakeVisualPlayers,setEarthquakeVisualPlayers]=useState(null);
   const prevDamageLinksRef=useRef([]);
   const prevLogLenRef=useRef(0);
   const damageLinkGhostTimersRef=useRef(new Map());
   const [damageLinkGhosts,setDamageLinkGhosts]=useState([]);
   const timerRef=useRef(null);
+  const earthquakeTimerRef=useRef(null);
+  const earthquakeDiscardTimersRef=useRef([]);
+  const earthquakeDebugAnimRef=useRef(null);
   const guillotinedPids=useMemo(()=>new Set((guillotineTargets||[]).map(t=>t?.pi).filter(v=>v!=null)),[guillotineTargets]);
   const logRef=useRef(null);
   const [visibleLog,setVisibleLog]=useState(Array.isArray(gs?.log)?gs.log:[]);
@@ -897,6 +902,8 @@ export default function Game(){
       setGuillotineTargets([]);
       setScreenShake(false);
       setDeathShake(false);
+      setEarthquakeShake(false);
+      setEarthquakeVisualPlayers(null);
     };
     document.addEventListener('visibilitychange',handleVisibilityChange);
     return()=>document.removeEventListener('visibilitychange',handleVisibilityChange);
@@ -1249,7 +1256,34 @@ export default function Game(){
 
   // When HP_DAMAGE anim fires: trigger knife effects + screen shake
   useEffect(()=>{
-    if(anim?.type==='HP_DAMAGE'&&anim.hitIndices?.length){
+    if(anim?.type==='EARTHQUAKE'){
+      setEarthquakeShake(true);
+      clearTimeout(earthquakeTimerRef.current);
+      earthquakeDiscardTimersRef.current.forEach(clearTimeout);
+      earthquakeDiscardTimersRef.current=[];
+      if(anim.beforePlayers){
+        visualStateLocks.lock({players:anim.beforePlayers,zhuLight:gs?.zhuLight||null});
+        setEarthquakeVisualPlayers(copyPlayers(anim.beforePlayers));
+      }
+      if(Array.isArray(anim.beforeDiscard))setVisualDiscard([...anim.beforeDiscard]);
+      (anim.discardEvents||[]).forEach(event=>{
+        if(!event?.afterPlayers)return;
+        const timer=setTimeout(()=>{
+          visualStateLocks.lock({players:event.afterPlayers,zhuLight:gs?.zhuLight||null});
+          setEarthquakeVisualPlayers(copyPlayers(event.afterPlayers));
+          if(Array.isArray(event.afterDiscard))setVisualDiscard([...event.afterDiscard]);
+        },(event.delayMs||0)+(event.durationMs||0));
+        earthquakeDiscardTimersRef.current.push(timer);
+      });
+      earthquakeTimerRef.current=setTimeout(()=>setEarthquakeShake(false),2500);
+      if(localDebugMode&&earthquakeDebugAnimRef.current!==anim){
+        earthquakeDebugAnimRef.current=anim;
+        const debugLine='[调试动画] 地动山摇动画开始播放';
+        visibleLogRef.current=[...visibleLogRef.current,debugLine];
+        visibleLogCountRef.current=visibleLogRef.current.length;
+        setVisibleLog(visibleLogRef.current);
+      }
+    }else if(anim?.type==='HP_DAMAGE'&&anim.hitIndices?.length){
       playHpDamageSound();
       setHitIndices(anim.hitIndices);
       // 与 SKILL_HUNT / BEWITCH 相同：双 rAF 测量 DOM 位置，避免 grid layout race
@@ -1409,8 +1443,14 @@ export default function Game(){
       setGuillotineTargets([]);
       setHpHealIndices([]);
       setSanHealIndices([]);
+      setEarthquakeShake(false);
+      setEarthquakeVisualPlayers(null);
+      clearTimeout(earthquakeTimerRef.current);
+      earthquakeDiscardTimersRef.current.forEach(clearTimeout);
+      earthquakeDiscardTimersRef.current=[];
+      earthquakeDebugAnimRef.current=null;
     }
-  },[anim,playHpDamageSound]);
+  },[anim,playHpDamageSound,localDebugMode,visualStateLocks,gs?.zhuLight]);
 
   // ── AI watchdog: stuck recovery + hard hang guard ───────────
   const handleAiRecover=useCallback((type,detail)=>{
@@ -2609,7 +2649,9 @@ export default function Game(){
   const visualCurrentTurn=((anim||animExiting||animQueueRef.current.length>0)&&turnHighlightLockRef.current!=null)
     ?turnHighlightLockRef.current
     :gs.currentTurn;
-  const visualPlayers=((anim||animExiting||animQueueRef.current.length>0)&&visualPlayersLockRef.current)
+  const visualPlayers=earthquakeVisualPlayers
+    ?earthquakeVisualPlayers
+    :((anim||animExiting||animQueueRef.current.length>0)&&visualPlayersLockRef.current)
     ?visualPlayersLockRef.current
     :gs.players;
   const visualMe=visualPlayers[0];
@@ -5294,7 +5336,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
 
   return(<>
     <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...battleBackgroundStyle,color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:7,padding:isMobile?'6px 8px':'8px 10px',position:'relative',left:globalShiftX||undefined,overflowX:'hidden',overflowY:'scroll',scrollbarGutter:'stable',
-    animation:deathShake?'deathShakeAnim 2.0s ease-in-out':screenShake?'screenShakeAnim 0.38s ease-in-out':undefined,
+    animation:deathShake?'deathShakeAnim 2.0s ease-in-out':earthquakeShake?'earthquakeSceneShake 1.25s linear 2':screenShake?'screenShakeAnim 0.38s ease-in-out':undefined,
     }}>
       {/* Global vignette */}
       <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at 50% 50%,transparent 40%,#00000099 100%)',pointerEvents:'none',zIndex:1}}/>
@@ -6239,10 +6281,6 @@ const GLOBAL_STYLES=`
   @keyframes chainExpireFade { 0%{opacity:1} 100%{opacity:0} }
   @keyframes chainMainSnap { 0%{transform:scaleX(1)} 35%{transform:scaleX(0.88)} 100%{transform:scaleX(0.18);opacity:0} }
   @keyframes chainBindSnap { 0%{transform:translateX(0)} 20%{transform:translateX(-2px)} 40%{transform:translateX(2px)} 70%{transform:translateX(-1px)} 100%{transform:translateX(0);opacity:0} }
-  @keyframes earthquakeShake { 0%,100%{transform:translateX(0)} 10%{transform:translateX(-8px)} 20%{transform:translateX(8px)} 30%{transform:translateX(-6px)} 40%{transform:translateX(6px)} 50%{transform:translateX(-4px)} 60%{transform:translateX(4px)} 70%{transform:translateX(-2px)} 80%{transform:translateX(2px)} }
-  @keyframes earthquakeFlash { 0%,100%{filter:grayscale(0%)} 50%{filter:grayscale(100%)} }
-  @keyframes rockFall { 0%{top:-30px;opacity:1} 100%{top:100vh;opacity:0} }
-
   /* Card flip animation */
   @keyframes cardRise {
     0%   { transform:translateY(90px); opacity:0; }
@@ -6492,6 +6530,45 @@ const GLOBAL_STYLES=`
     50%{transform:translateX(-5px)}
     70%{transform:translateX(6px)}
     85%{transform:translateX(-3px)}
+  }
+  @keyframes earthquakeSceneShake {
+    0%, 100% {transform:translateX(0)}
+    6.67% {transform:translateX(-5px)}
+    13.33% {transform:translateX(5px)}
+    20% {transform:translateX(0)}
+    26.67% {transform:translateX(4px)}
+    33.33% {transform:translateX(-4px)}
+    40% {transform:translateX(0)}
+    46.67% {transform:translateX(-5px)}
+    53.33% {transform:translateX(5px)}
+    60% {transform:translateX(0)}
+    66.67% {transform:translateX(4px)}
+    73.33% {transform:translateX(-4px)}
+    80% {transform:translateX(0)}
+    86.67% {transform:translateX(-3px)}
+    93.33% {transform:translateX(3px)}
+  }
+  @keyframes earthquakeBlackout {
+    0%, 2%, 6%, 10%, 39%, 45%, 100% {opacity:0}
+    4%, 8% {opacity:0.86; background:#000}
+    42% {opacity:0.56; background:#000}
+  }
+  @keyframes earthquakeWhiteFlash {
+    0%, 18%, 24%, 66%, 72%, 100% {opacity:0}
+    21% {opacity:0.86; background:#fff}
+    69% {opacity:0.52; background:#fff}
+  }
+  @keyframes earthquakePebble {
+    0% {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.72)}
+    8% {opacity:0.95}
+    34% {opacity:0.95; transform:translate(var(--pebble-mid-dx),calc(-1 * var(--pebble-lift))) rotate(calc(var(--pebble-rot) * 0.36)) scale(1)}
+    100% {opacity:0; transform:translate(var(--pebble-dx),var(--pebble-drop)) rotate(var(--pebble-rot)) scale(0.88)}
+  }
+  @keyframes earthquakeDiscardFly {
+    0% {opacity:0; transform:translate(0,0) rotate(-4deg) scale(0.96)}
+    8% {opacity:1}
+    56% {opacity:1; transform:translate(var(--mid-tx),var(--mid-ty)) rotate(8deg) scale(1.04)}
+    100% {opacity:0; transform:translate(var(--tx),var(--ty)) rotate(16deg) scale(0.72)}
   }
   @keyframes deathShakeAnim {
     0%,100%{transform:translate(0,0)}

@@ -267,6 +267,10 @@ describe('applyFx', () => {
     expect(res.P[0].hand).toHaveLength(0);
     expect(res.P[1].hand).toHaveLength(0);
     expect(res.Disc.length).toBeGreaterThanOrEqual(1);
+    expect(res.statePatch._earthquakeBeforePlayers[0].hand).toHaveLength(1);
+    expect(res.statePatch._earthquakeBeforeDiscard).toEqual([]);
+    expect(res.statePatch._earthquakeDiscardEvents).toHaveLength(2);
+    expect(res.statePatch._earthquakeDiscardEvents[0].afterPlayers[0].hand).toHaveLength(0);
   });
 
   it('selfHealAdjDamageHP: 治疗自己并伤害相邻', () => {

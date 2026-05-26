@@ -194,6 +194,10 @@ export function useAnimationQueue({
 
     visibleLogAuthorityRef.current = Array.isArray(nextGs?.log) ? nextGs.log : (Array.isArray(visibleLogAuthorityRef.current) ? visibleLogAuthorityRef.current : []);
     const preparedQueue = prepareAnimQueueLogs(queue, nextGs, visibleLogRef.current);
+    const earthquakeStep = preparedQueue.find(step => step?.type === 'EARTHQUAKE' && Array.isArray(step.beforeDiscard));
+    if (earthquakeStep) {
+      setVisualDiscard([...(earthquakeStep.beforeDiscard || [])]);
+    }
     visualStateLocks.lock({turnHighlight:gs?.currentTurn ?? null});
     const playableQueue = [...preparedQueue];
     while (playableQueue[0]?.type === 'VISUAL_LOCK') {

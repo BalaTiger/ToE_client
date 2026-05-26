@@ -553,12 +553,36 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       }
     },
     allDiscard: () => {
+      const beforeEarthquakePlayers = copyPlayers(P);
+      const beforeEarthquakeDiscard = [...Disc];
+      const earthquakeDiscardEvents = [];
       allLiving.forEach(i => {
-        if (!avoidNegativeFor.includes(i)) {
-          randDiscard(i, 1);
+        if (!avoidNegativeFor.includes(i) && P[i]?.hand?.length) {
+          const x = 0 | Math.random() * P[i].hand.length;
+          const c = P[i].hand.splice(x, 1)[0];
+          if (isBlackGoatYoung(c)) {
+            msgs.push(`${P[i].name} 的黑山羊幼仔被销毁`);
+          } else if (c.type !== 'blankZone') {
+            Disc.push(c);
+            msgs.push(`${P[i].name} 失去了 ${cardLogText(c, { alwaysShowName: true })}`);
+            earthquakeDiscardEvents.push({
+              playerIndex: i,
+              card: c,
+              afterPlayers: copyPlayers(P),
+              afterDiscard: [...Disc],
+            });
+          } else {
+            msgs.push(`${P[i].name} 的空白区域牌消失了`);
+          }
         }
       });
-      statePatch = { ...statePatch, _earthquakeSeq: (gs?._earthquakeSeq || 0) + 1 };
+      statePatch = {
+        ...statePatch,
+        _earthquakeSeq: (gs?._earthquakeSeq || 0) + 1,
+        _earthquakeBeforePlayers: beforeEarthquakePlayers,
+        _earthquakeBeforeDiscard: beforeEarthquakeDiscard,
+        _earthquakeDiscardEvents: earthquakeDiscardEvents,
+      };
     },
     selfRenounceGod: () => {
       if (actor.godName) {

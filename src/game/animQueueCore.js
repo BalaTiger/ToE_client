@@ -56,8 +56,47 @@ export function buildAnimQueue(oldGs, newGs) {
     q.push({ type: 'GUILLOTINE', msgs: newMsgs, hitIndices: deathIdx, targetStats });
     q.push({ type: 'DEATH', msgs: newMsgs, hitIndices: deathIdx, targetStats });
   }
-  if ((newGs._earthquakeSeq || 0) !== (oldGs._earthquakeSeq || 0)) {
-    q.push({ type: 'EARTHQUAKE', msgs: newMsgs });
+  const effectLogCandidates = [
+    ...newMsgs,
+    ...(Array.isArray(newGs?._drawLogs) ? newGs._drawLogs : []),
+    ...(Array.isArray(newGs?._statLogs) ? newGs._statLogs : []),
+    ...(Array.isArray(newGs?.drawReveal?.msgs) ? newGs.drawReveal.msgs : []),
+  ];
+  const hasEarthquakeTriggerLog = effectLogCandidates.some(line =>
+    typeof line === 'string' &&
+    line.includes('地动山摇') &&
+    (line.includes('强制触发') || line.includes('全体角色'))
+  );
+  if ((newGs._earthquakeSeq || 0) !== (oldGs._earthquakeSeq || 0) || hasEarthquakeTriggerLog) {
+    const beforeEarthquakePlayers = newGs?._earthquakeBeforePlayers || oldGs.players;
+    let stagedPlayers = beforeEarthquakePlayers.map(p => ({ ...p, hand: [...(p?.hand || [])] }));
+    const discardEvents = Array.isArray(newGs?._earthquakeDiscardEvents)
+      ? newGs._earthquakeDiscardEvents.map((event, index, events) => {
+        const playerIndex = event?.playerIndex;
+        if (playerIndex != null && newGs.players?.[playerIndex]) {
+          stagedPlayers = stagedPlayers.map((player, i) => (
+            i === playerIndex
+              ? { ...newGs.players[playerIndex], hand: [...(newGs.players[playerIndex].hand || [])] }
+              : player
+          ));
+        }
+        return {
+          ...event,
+          afterPlayers: stagedPlayers.map(p => ({ ...p, hand: [...(p?.hand || [])] })),
+          delayMs: 420 + (events.length > 1 ? Math.round((1600 / (events.length - 1)) * index) : 0),
+          durationMs: 620,
+        };
+      })
+      : [];
+    q.push({
+      type: 'EARTHQUAKE',
+      msgs: effectLogCandidates,
+      beforePlayers: beforeEarthquakePlayers,
+      beforeDiscard: Array.isArray(newGs?._earthquakeBeforeDiscard)
+        ? newGs._earthquakeBeforeDiscard
+        : (Array.isArray(oldGs?.discard) ? oldGs.discard : []),
+      discardEvents,
+    });
   }
   const fullHandSwapMsg = newMsgs.find(m => m.includes('交换了全部手牌'));
   if (fullHandSwapMsg) {
