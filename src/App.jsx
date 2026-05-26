@@ -3296,6 +3296,37 @@ export default function Game(){
     else setGs(nextGs);
   }
 
+  function buildPendingTurnStartDrawQueue(state){
+    const drawnCard=state?._aiDrawnCard||state?._drawnCard||state?.drawReveal?.card||null;
+    if(!state?._playersBeforeThisDraw||!drawnCard)return [];
+    const introQ=buildTurnStartIntroQueue(state,state.players?.[state.currentTurn]?.name||'???');
+    const drawBaselineLog=getTurnStartDrawBaselineLog(state);
+    const drawStatQ=bindAnimLogChunks(
+      buildAnimQueue(
+        {
+          ...state,
+          players:state._playersBeforeThisDraw,
+          log:drawBaselineLog,
+          _statEventSeq:state._statEventSeq||0,
+          _statEvents:[],
+          _inspectionEvents:[],
+        },
+        {
+          ...state,
+          _statEvents:[],
+          _inspectionEvents:[],
+        }
+      ),
+      {statLogs:state._statLogs}
+    ).filter(step=>step.type!=='CARD_TRANSFER');
+    return [
+      ...introQ,
+      {type:'DRAW_CARD',card:drawnCard,triggerName:state.players?.[state.currentTurn]?.name||'???',targetPid:state.currentTurn,msgs:state._drawLogs||[]},
+      ...drawStatQ,
+      statePatchStep({players:state.players,discard:state.discard}),
+    ];
+  }
+
   function peekHandSelectTarget(ti){
     // 偷看手牌：选择目标角色后，偷看其一张手牌
     const {peekHandTargets,peekHandSource}=gs.abilityData;
@@ -3500,10 +3531,6 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     const giftedCount=gifted.length;
     targetPlayer.hand.push(...gifted);
     const L=[...gs.log,`【玫瑰倒刺】${sourcePlayer.name} 将全部手牌交给了 ${targetPlayer.name}`];
-    const nextAbilityData={
-      ...(gs.abilityData?.fromRest?{fromRest:true}:{}),
-      ...(gs.abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:gs.abilityData.cthDrawsRemaining}:{}),
-    };
     const win=checkWin(P,gs._isMP);
     if(win){
       setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{}});
@@ -3528,42 +3555,15 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       });
       return;
     }
-    const resumesAiTurn = isAiSeat(gs, gs.currentTurn) && !P[gs.currentTurn]?.isDead;
-    const nextPhase = resumesAiTurn ? 'AI_TURN' : 'ACTION';
-    const nextGs = withClearedTurnAnimFields({
-      ...gs,
-      players: P,
-      deck: D,
-      discard: Disc,
-      log: L,
-      phase: nextPhase,
-      currentTurn: gs.currentTurn,
-      abilityData: nextAbilityData,
-    });
-    const turnStartDrawQueue=[];
-    const drawnCard=gs._aiDrawnCard||gs._drawnCard||gs.drawReveal?.card||null;
-    if(gs._playersBeforeThisDraw&&drawnCard){
-      const drawBaselineLog=getTurnStartDrawBaselineLog(gs);
-      const drawStatQ=bindAnimLogChunks(
-        buildAnimQueue({...gs,players:gs._playersBeforeThisDraw,log:drawBaselineLog},gs),
-        {statLogs:gs._statLogs}
-      ).filter(step=>step.type!=='CARD_TRANSFER');
-      turnStartDrawQueue.push(
-        {type:'VISUAL_LOCK',players:gs._playersBeforeThisDraw,zhuLight:gs.zhuLight||null},
-        {type:'YOUR_TURN',name:gs.players[gs.currentTurn]?.name||'???',msgs:gs._turnStartLogs||[]},
-        {type:'DRAW_CARD',card:drawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn,msgs:gs._drawLogs||[]},
-        ...drawStatQ,
-        statePatchStep({players:gs.players,discard:gs.discard})
-      );
-    }
+    const nextGs=buildTargetContinuationGs({players:P,deck:D,discard:Disc,log:L});
+    const turnStartDrawQueue=buildPendingTurnStartDrawQueue(gs);
     const statQ=buildAnimQueue(gs,nextGs).filter(a=>a.type!=='CARD_TRANSFER');
     const queue=[
       ...turnStartDrawQueue,
       cardTransferStep({fromPid:roseThornSource,dest:'player',toPid:ti,count:giftedCount,msgs:[L[L.length-1]]}),
       ...statQ
     ];
-    if (gs.abilityData?.fromRest) { triggerAnimQueue(queue,null,()=>_cthContinueRestDraws(nextGs)); return; }
-    triggerAnimQueue(queue,nextGs);
+    finishTargetContinuation({queue,nextGs,continueRest:!!gs.abilityData?.fromRest});
   }
 
   function firstComePickSelectCard(cardIndex){
