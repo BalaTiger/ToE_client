@@ -8,6 +8,23 @@ export function statePatchStep(patch={}){
   return step;
 }
 
+export function zhuHideCardStep(card){
+  return {
+    type:"ZHU_HIDE_CARD",
+    card,
+    ...(card?.id!=null?{visualSetupPatch:{hiddenZhuCardId:card.id}}:{}),
+  };
+}
+
+export function buryToDeckStep({fromPid=0,msgs=[],players=null}={}){
+  return {
+    type:"BURY_TO_DECK",
+    fromPid,
+    msgs,
+    ...(players?{visualSetupPatch:{players}}:{}),
+  };
+}
+
 export function resolveTurnHighlightForStep(step,nextGs,playersFallback=[]){
   if(!step||step.type!=="YOUR_TURN")return null;
   const stepName=

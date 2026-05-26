@@ -120,6 +120,8 @@ import {
   buildBewitchForcedCardQueue,
   buildInspectionEventFlow,
   statePatchStep,
+  zhuHideCardStep,
+  buryToDeckStep,
 } from "./game/animQueueHelpers";
 import { _getZoomCompensatedRect, getPlayerHandAnchorCenter, getPlayerAreaAnchorCenter, getPileAnchorCenter } from './utils/dom';
 import { ANIM_DURATION, ANIM_SPEED_SCALE, CARD_REVEAL_DURATION, ANIM_STEP_GAP } from './components/anim/constants';
@@ -135,6 +137,7 @@ import { AnimOverlay } from './components/anim/AnimOverlay';
 import { formatFileSize, useResourcePreload } from './hooks/useResourcePreload';
 import { useMultiplayerLobby } from './hooks/useMultiplayerLobby';
 import { useAnimationQueue } from './hooks/useAnimationQueue';
+import { useEarthquakeAnimationEffects } from './hooks/useEarthquakeAnimationEffects';
 import { useWindowSize } from './hooks/useWindowSize';
 import { useGameAudio } from './hooks/useGameAudio';
 import { useAiWatchdog, BAD_PHASES } from './hooks/useAiWatchdog';
@@ -866,16 +869,12 @@ export default function Game(){
   const[sanHealIndices,setSanHealIndices]=useState([]); // SAN heal
   const[screenShake,setScreenShake]=useState(false);
   const[deathShake,setDeathShake]=useState(false);
-  const[earthquakeShake,setEarthquakeShake]=useState(false);
   const[earthquakeVisualPlayers,setEarthquakeVisualPlayers]=useState(null);
   const prevDamageLinksRef=useRef([]);
   const prevLogLenRef=useRef(0);
   const damageLinkGhostTimersRef=useRef(new Map());
   const [damageLinkGhosts,setDamageLinkGhosts]=useState([]);
   const timerRef=useRef(null);
-  const earthquakeTimerRef=useRef(null);
-  const earthquakeDiscardTimersRef=useRef([]);
-  const earthquakeDebugAnimRef=useRef(null);
   const guillotinedPids=useMemo(()=>new Set((guillotineTargets||[]).map(t=>t?.pi).filter(v=>v!=null)),[guillotineTargets]);
   const logRef=useRef(null);
   const [visibleLog,setVisibleLog]=useState(Array.isArray(gs?.log)?gs.log:[]);
@@ -902,7 +901,6 @@ export default function Game(){
       setGuillotineTargets([]);
       setScreenShake(false);
       setDeathShake(false);
-      setEarthquakeShake(false);
       setEarthquakeVisualPlayers(null);
     };
     document.addEventListener('visibilitychange',handleVisibilityChange);
@@ -1037,6 +1035,7 @@ export default function Game(){
     gs,
     copyPlayers,
     setGs,
+    setVisualPlayersOverride:setEarthquakeVisualPlayers,
     setVisualDiscard,
     syncVisibleLog,
     appendVisibleLog,
@@ -1057,6 +1056,13 @@ export default function Game(){
     ANIM_DURATION,
     ANIM_SPEED_SCALE,
   });
+  const earthquakeShake=useEarthquakeAnimationEffects({
+    anim,
+    localDebugMode,
+    visibleLogRef,
+    visibleLogCountRef,
+    setVisibleLog,
+  });
 
   const isDrawnCardActuallyDiscarded=useCallback((stateLike,drawnCard)=>{
     if(!(stateLike?._animDiscardedDrawnCard ?? stateLike?._discardedDrawnCard) || !drawnCard)return false;
@@ -1066,14 +1072,6 @@ export default function Game(){
       return card?.key===drawnCard?.key&&card?.name===drawnCard?.name&&card?.godKey===drawnCard?.godKey;
     });
   },[]);
-
-  useEffect(()=>{
-    if(anim?.type==='ZHU_HIDE_CARD'&&anim.card?.id){
-      visualStateLocks.lock({hiddenZhuCardId:anim.card.id});
-    }else if(!anim&&!animExiting&&animQueueRef.current.length===0&&!pendingGsRef.current){
-      visualStateLocks.clear({hiddenZhuCardId:true});
-    }
-  },[anim,animExiting,animQueueRef,pendingGsRef,visualStateLocks]);
 
   useEffect(()=>{if(logRef.current)logRef.current.scrollTop=logRef.current.scrollHeight;},[visibleLog.length]);
 
@@ -1256,34 +1254,7 @@ export default function Game(){
 
   // When HP_DAMAGE anim fires: trigger knife effects + screen shake
   useEffect(()=>{
-    if(anim?.type==='EARTHQUAKE'){
-      setEarthquakeShake(true);
-      clearTimeout(earthquakeTimerRef.current);
-      earthquakeDiscardTimersRef.current.forEach(clearTimeout);
-      earthquakeDiscardTimersRef.current=[];
-      if(anim.beforePlayers){
-        visualStateLocks.lock({players:anim.beforePlayers,zhuLight:gs?.zhuLight||null});
-        setEarthquakeVisualPlayers(copyPlayers(anim.beforePlayers));
-      }
-      if(Array.isArray(anim.beforeDiscard))setVisualDiscard([...anim.beforeDiscard]);
-      (anim.discardEvents||[]).forEach(event=>{
-        if(!event?.afterPlayers)return;
-        const timer=setTimeout(()=>{
-          visualStateLocks.lock({players:event.afterPlayers,zhuLight:gs?.zhuLight||null});
-          setEarthquakeVisualPlayers(copyPlayers(event.afterPlayers));
-          if(Array.isArray(event.afterDiscard))setVisualDiscard([...event.afterDiscard]);
-        },(event.delayMs||0)+(event.durationMs||0));
-        earthquakeDiscardTimersRef.current.push(timer);
-      });
-      earthquakeTimerRef.current=setTimeout(()=>setEarthquakeShake(false),2500);
-      if(localDebugMode&&earthquakeDebugAnimRef.current!==anim){
-        earthquakeDebugAnimRef.current=anim;
-        const debugLine='[调试动画] 地动山摇动画开始播放';
-        visibleLogRef.current=[...visibleLogRef.current,debugLine];
-        visibleLogCountRef.current=visibleLogRef.current.length;
-        setVisibleLog(visibleLogRef.current);
-      }
-    }else if(anim?.type==='HP_DAMAGE'&&anim.hitIndices?.length){
+    if(anim?.type==='HP_DAMAGE'&&anim.hitIndices?.length){
       playHpDamageSound();
       setHitIndices(anim.hitIndices);
       // 与 SKILL_HUNT / BEWITCH 相同：双 rAF 测量 DOM 位置，避免 grid layout race
@@ -1443,14 +1414,9 @@ export default function Game(){
       setGuillotineTargets([]);
       setHpHealIndices([]);
       setSanHealIndices([]);
-      setEarthquakeShake(false);
       setEarthquakeVisualPlayers(null);
-      clearTimeout(earthquakeTimerRef.current);
-      earthquakeDiscardTimersRef.current.forEach(clearTimeout);
-      earthquakeDiscardTimersRef.current=[];
-      earthquakeDebugAnimRef.current=null;
     }
-  },[anim,playHpDamageSound,localDebugMode,visualStateLocks,gs?.zhuLight]);
+  },[anim,playHpDamageSound]);
 
   // ── AI watchdog: stuck recovery + hard hang guard ───────────
   const handleAiRecover=useCallback((type,detail)=>{
@@ -2123,7 +2089,7 @@ export default function Game(){
         }};})()
         : {...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{...currentAd,targetIndex:nextTargetIndex}};
       triggerAnimQueue([
-        {type:'BURY_TO_DECK',fromPid:currentTarget,msgs:L.slice(-1)},
+        buryToDeckStep({fromPid:currentTarget,msgs:L.slice(-1),players:gs.players}),
         statePatchStep({players:P,deck:D,log:L}),
       ],nextGs);
     },AI_PICK_STEP_DELAY);
@@ -2945,27 +2911,27 @@ export default function Game(){
     P=res.P;D=res.D;Disc=res.Disc;
     const L=[...gs.log,`【衔烛照幽】你将 ${cardLogText(dr.card,{alwaysShowName:true})} 藏到了牌堆底`];
     if(!res.drawnCard){
-      triggerAnimQueue([{type:'ZHU_HIDE_CARD',card:dr.card}],{...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,zhuLight:nextZhuLight});
+      triggerAnimQueue([zhuHideCardStep(dr.card)],{...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,zhuLight:nextZhuLight});
       return;
     }
     if(res.needGodChoice){
       const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'GOD_CHOICE',
         abilityData:{...gs.abilityData,godCard:res.drawnCard,drawerIdx,godEncounterCost:res.godEncounterCost},
         drawReveal:null,zhuLight:nextZhuLight};
-      triggerAnimQueue([{type:'ZHU_HIDE_CARD',card:dr.card},{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
+      triggerAnimQueue([zhuHideCardStep(dr.card),{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
       return;
     }
     if(res.kept){
       const newGs={...gs,players:P,deck:D,discard:Disc,log:[...L,...(res.effectMsgs||[])],phase:'ACTION',
         drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:false,forcedKeep:false,drawerIdx,drawerName:P[drawerIdx]?.name},
         zhuLight:nextZhuLight,...(res.statePatch||{})};
-      triggerAnimQueue([{type:'ZHU_HIDE_CARD',card:dr.card},{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
+      triggerAnimQueue([zhuHideCardStep(dr.card),{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
       return;
     }
     const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'DRAW_REVEAL',
       drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:!!res.needsDecision,forcedKeep:!!res.forcedKeep,drawerIdx,drawerName:P[drawerIdx]?.name},
       zhuLight:nextZhuLight};
-    triggerAnimQueue([{type:'ZHU_HIDE_CARD',card:dr.card},{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
+    triggerAnimQueue([zhuHideCardStep(dr.card),{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
   }
 
   function handleZhuHideGodCard(hide){
@@ -2984,27 +2950,27 @@ export default function Game(){
     P=res.P;D=res.D;Disc=res.Disc;
     const L=[...gs.log,`【衔烛照幽】你将 ${cardLogText(godCard,{alwaysShowName:true})} 藏到了牌堆底`];
     if(!res.drawnCard){
-      triggerAnimQueue([{type:'ZHU_HIDE_CARD',card:godCard}],{...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:{},zhuLight:nextZhuLight});
+      triggerAnimQueue([zhuHideCardStep(godCard)],{...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:{},zhuLight:nextZhuLight});
       return;
     }
     if(res.needGodChoice){
       const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'GOD_CHOICE',
         abilityData:{...gs.abilityData,godCard:res.drawnCard,drawerIdx,godEncounterCost:res.godEncounterCost},
         drawReveal:null,zhuLight:nextZhuLight};
-      triggerAnimQueue([{type:'ZHU_HIDE_CARD',card:godCard},{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
+      triggerAnimQueue([zhuHideCardStep(godCard),{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
       return;
     }
     if(res.kept){
       const newGs={...gs,players:P,deck:D,discard:Disc,log:[...L,...(res.effectMsgs||[])],phase:'ACTION',
         drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:false,forcedKeep:false,drawerIdx,drawerName:P[drawerIdx]?.name},
         abilityData:{},zhuLight:nextZhuLight,...(res.statePatch||{})};
-      triggerAnimQueue([{type:'ZHU_HIDE_CARD',card:godCard},{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
+      triggerAnimQueue([zhuHideCardStep(godCard),{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
       return;
     }
     const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'DRAW_REVEAL',
       drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:!!res.needsDecision,forcedKeep:!!res.forcedKeep,drawerIdx,drawerName:P[drawerIdx]?.name},
       abilityData:{},zhuLight:nextZhuLight};
-    triggerAnimQueue([{type:'ZHU_HIDE_CARD',card:godCard},{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
+    triggerAnimQueue([zhuHideCardStep(godCard),{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
   }
 
   function handleZhuHideTopCardDuringSphinx(hide){
@@ -3017,7 +2983,7 @@ export default function Game(){
     }
     const D=moveTopDeckCardToBottom(gs.deck);
     const L=[...gs.log,`【衔烛照幽】你将 ${cardLogText(card,{alwaysShowName:true})} 藏到了牌堆底`];
-    triggerAnimQueue([{type:'ZHU_HIDE_CARD',card}],{...gs,deck:D,log:L,zhuLight:nextZhuLight});
+    triggerAnimQueue([zhuHideCardStep(card)],{...gs,deck:D,log:L,zhuLight:nextZhuLight});
   }
 
   function handleZhuHideAiDrawCard(hide){
@@ -3063,7 +3029,7 @@ export default function Game(){
     };
     const drawQueue=[];
     if(gs._playersBeforeThisDraw&&!gs.abilityData?.zhuIntroShown)drawQueue.push({type:'YOUR_TURN',name:gs.players[gs.currentTurn]?.name||'???',msgs:gs._turnStartLogs});
-    if(hide)drawQueue.push({type:'ZHU_HIDE_CARD',card});
+    if(hide)drawQueue.push(zhuHideCardStep(card));
     if(res.drawnCard)drawQueue.push({type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:split.preStat});
     const statQ=bindAnimLogChunks(
       buildAnimQueue({...gs,players:beforeDrawPlayers,log:gs.log},{...newGs,players:P,log:L}),
@@ -3756,14 +3722,14 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
         ...(abilityData.cthDrawsRemaining!=null?{cthDrawsRemaining:abilityData.cthDrawsRemaining}:{}),
       }};
       if(abilityData.fromRest&&isLocalSeatIndex(abilityData.source)){
-        triggerAnimQueue([{type:'BURY_TO_DECK',fromPid:actorIdx,msgs:L.slice(-1)},statePatchStep({players:P,deck:D,log:L})],null,()=>_cthContinueRestDraws(nextGs));
+        triggerAnimQueue([buryToDeckStep({fromPid:actorIdx,msgs:L.slice(-1),players:gs.players}),statePatchStep({players:P,deck:D,log:L})],null,()=>_cthContinueRestDraws(nextGs));
         return;
       }
-      triggerAnimQueue([{type:'BURY_TO_DECK',fromPid:actorIdx,msgs:L.slice(-1)},statePatchStep({players:P,deck:D,log:L})],nextGs);
+      triggerAnimQueue([buryToDeckStep({fromPid:actorIdx,msgs:L.slice(-1),players:gs.players}),statePatchStep({players:P,deck:D,log:L})],nextGs);
       return;
     }
     const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'BURY_ALIVE_SELECT',abilityData:{...abilityData,targetIndex:nextTargetIndex}};
-    triggerAnimQueue([{type:'BURY_TO_DECK',fromPid:actorIdx,msgs:L.slice(-1)},statePatchStep({players:P,deck:D,log:L})],nextGs);
+    triggerAnimQueue([buryToDeckStep({fromPid:actorIdx,msgs:L.slice(-1),players:gs.players}),statePatchStep({players:P,deck:D,log:L})],nextGs);
   }
 
   function swapSelectTargetCard(cardIdx){

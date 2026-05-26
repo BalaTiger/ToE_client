@@ -1,5 +1,5 @@
 import { makeTargetStats, statEventsToAnimQueue } from './statEvents';
-import { statePatchStep } from './animQueueHelpers';
+import { buryToDeckStep, statePatchStep } from './animQueueHelpers';
 
 export function buildAnimQueue(oldGs, newGs) {
   const q = [];
@@ -69,6 +69,9 @@ export function buildAnimQueue(oldGs, newGs) {
   );
   if ((newGs._earthquakeSeq || 0) !== (oldGs._earthquakeSeq || 0) || hasEarthquakeTriggerLog) {
     const beforeEarthquakePlayers = newGs?._earthquakeBeforePlayers || oldGs.players;
+    const beforeEarthquakeDiscard = Array.isArray(newGs?._earthquakeBeforeDiscard)
+      ? newGs._earthquakeBeforeDiscard
+      : (Array.isArray(oldGs?.discard) ? oldGs.discard : []);
     let stagedPlayers = beforeEarthquakePlayers.map(p => ({ ...p, hand: [...(p?.hand || [])] }));
     const discardEvents = Array.isArray(newGs?._earthquakeDiscardEvents)
       ? newGs._earthquakeDiscardEvents.map((event, index, events) => {
@@ -92,10 +95,20 @@ export function buildAnimQueue(oldGs, newGs) {
       type: 'EARTHQUAKE',
       msgs: effectLogCandidates,
       beforePlayers: beforeEarthquakePlayers,
-      beforeDiscard: Array.isArray(newGs?._earthquakeBeforeDiscard)
-        ? newGs._earthquakeBeforeDiscard
-        : (Array.isArray(oldGs?.discard) ? oldGs.discard : []),
+      beforeDiscard: beforeEarthquakeDiscard,
       discardEvents,
+      visualSetupTiming: 'queueStart',
+      visualSetupPatch: { discard: beforeEarthquakeDiscard },
+      visualTimeline: [
+        { atMs: 0, patch: { players: beforeEarthquakePlayers, discard: beforeEarthquakeDiscard } },
+        ...discardEvents.map(event => ({
+          atMs: (event.delayMs || 0) + (event.durationMs || 0),
+          patch: {
+            players: event.afterPlayers,
+            ...(Array.isArray(event.afterDiscard) ? { discard: event.afterDiscard } : {}),
+          },
+        })),
+      ],
     });
   }
   const fullHandSwapMsg = newMsgs.find(m => m.includes('交换了全部手牌'));
@@ -122,7 +135,7 @@ export function buildAnimQueue(oldGs, newGs) {
       const match = msg.match(/^【活埋】(.+?) 将 /);
       const name = match?.[1];
       const fromPid = name === '你' ? 0 : effectivePlayers.findIndex(p => p?.name === name);
-      q.push({ type: 'BURY_TO_DECK', fromPid: fromPid >= 0 ? fromPid : 0, msgs: [msg] });
+      q.push(buryToDeckStep({ fromPid: fromPid >= 0 ? fromPid : 0, msgs: [msg], players: oldGs.players }));
     });
     return q;
   }

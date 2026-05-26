@@ -169,9 +169,34 @@ describe('buildAnimQueue stat animations', () => {
 
     expect(earthquake.beforePlayers).toBe(beforePlayers);
     expect(earthquake.beforeDiscard).toEqual([]);
+    expect(earthquake.visualSetupTiming).toBe('queueStart');
+    expect(earthquake.visualSetupPatch).toEqual({ discard: [] });
     expect(earthquake.discardEvents).toHaveLength(1);
     expect(earthquake.discardEvents[0].delayMs).toBe(420);
     expect(earthquake.discardEvents[0].durationMs).toBe(620);
     expect(earthquake.discardEvents[0].afterPlayers[0].hand).toEqual([{ id: 'quake' }]);
+    expect(earthquake.visualTimeline[0]).toEqual({ atMs: 0, patch: { players: beforePlayers, discard: [] } });
+    expect(earthquake.visualTimeline[1].atMs).toBe(1040);
+    expect(earthquake.visualTimeline[1].patch.players[0].hand).toEqual([{ id: 'quake' }]);
+  });
+
+  it('活埋动画锁定埋牌前的手牌显示', () => {
+    const beforePlayers = [makePlayer({ name: '你', hand: [{ id: 'a' }] })];
+    const afterPlayers = [makePlayer({ name: '你', hand: [] })];
+    const oldGs = makeGs({
+      players: beforePlayers,
+      log: ['旧日志'],
+    });
+    const newGs = makeGs({
+      players: afterPlayers,
+      log: ['旧日志', '【活埋】你 将 [A1] 测试牌 放到了牌堆底'],
+    });
+
+    const bury = buildAnimQueue(oldGs, newGs).find(step => step.type === 'BURY_TO_DECK');
+
+    expect(bury).toMatchObject({
+      fromPid: 0,
+      visualSetupPatch: { players: beforePlayers },
+    });
   });
 });

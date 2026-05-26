@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   buildBewitchForcedCardQueue,
   buildInspectionEventFlow,
+  buryToDeckStep,
   resolveTurnHighlightForStep,
+  zhuHideCardStep,
 } from '../animQueueHelpers';
 import { copyPlayers } from '../coreUtils';
 import { buildAnimQueue } from '../animQueueCore';
@@ -14,6 +16,21 @@ describe('animQueueHelpers', () => {
     const players = [makePlayer({ name: '测试角色A' }), makePlayer({ name: '测试角色B' })];
 
     expect(resolveTurnHighlightForStep(step, { players })).toBe(1);
+  });
+
+  it('通用移动动画步骤携带各自的视觉预锁', () => {
+    const players = [makePlayer({ hand: [{ id: 'old-card' }] })];
+
+    expect(zhuHideCardStep({ id: 'zhu-card' })).toMatchObject({
+      type: 'ZHU_HIDE_CARD',
+      visualSetupPatch: { hiddenZhuCardId: 'zhu-card' },
+    });
+    expect(buryToDeckStep({ fromPid: 0, msgs: ['活埋'], players })).toMatchObject({
+      type: 'BURY_TO_DECK',
+      fromPid: 0,
+      msgs: ['活埋'],
+      visualSetupPatch: { players },
+    });
   });
 
   it('蛊惑强制赠牌动画先播放技能，再飞牌入目标手牌，最后播放结算状态', () => {
