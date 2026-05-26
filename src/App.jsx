@@ -141,6 +141,7 @@ import { useMultiplayerLobby } from './hooks/useMultiplayerLobby';
 import { useAnimationQueue } from './hooks/useAnimationQueue';
 import { useEarthquakeAnimationEffects } from './hooks/useEarthquakeAnimationEffects';
 import { useCardTransferAnimationEffects } from './hooks/useCardTransferAnimationEffects';
+import { useDamageAnimationEffects } from './hooks/useDamageAnimationEffects';
 import { useWindowSize } from './hooks/useWindowSize';
 import { useGameAudio } from './hooks/useGameAudio';
 import { useAiWatchdog, BAD_PHASES } from './hooks/useAiWatchdog';
@@ -613,7 +614,7 @@ export default function Game(){
         animQueueRef.current=[];
         pendingGsRef.current=null;
         setAnimExiting(false);
-        setHitIndices([]);
+        clearDamageAnimations();
         setAnim(null);
         const rotatedGs=rotateGsForViewer(rawGs,0);
         // 开局广播先于 useEffect([gs])（soket 同步发送，useEffect 在 render 后触发）
@@ -641,7 +642,7 @@ export default function Game(){
       animQueueRef.current=[];
       pendingGsRef.current=null;
       setAnimExiting(false);
-      setHitIndices([]);
+      clearDamageAnimations();
       setAnim(null);
       // 仅第一次收到（游戏开局）时显示角色揭示动画
       // 条件：任何有效首帧（不限 phase，只要游戏未结束）
@@ -856,34 +857,23 @@ export default function Game(){
   const deckAreaRef=useRef(null);
   const [deckAreaRect,setDeckAreaRect]=useState(null);
   const [roleRevealAnim,setRoleRevealAnim]=useState(null); // {role,pendingGs}|null
-  const[hitIndices,setHitIndices]=useState([]);    // HP damage
   
   // --- 新增：用于 UI 延迟显示的 HP/SAN 状态 ---
   const [displayStats, setDisplayStats] = useState(() => gs?.players ? gs.players.map(p => ({ hp: p.hp, san: p.san })) : []);
-  const[knifeTargets,setKnifeTargets]=useState([]); // pre-measured {pi,cx,cy} for KnifeEffect
-  const[sanHitIndices,setSanHitIndices]=useState([]);
-  const[sanTargets,setSanTargets]=useState([]); // pre-measured {pi,cx,cy,startX,startY} // SAN damage
   const[swapAnim,setSwapAnim]=useState(false);        // cup shuffle
   const[huntAnim,setHuntAnim]=useState(null);          // scope + vignette {targetIdx}
-  const[guillotineTargets,setGuillotineTargets]=useState([]); // pre-measured {x,y,w,h,cx,cy}
   const[bewitchAnim,setBewitchAnim]=useState(null);   // horus eye {cx,cy}
-  const[hpHealIndices,setHpHealIndices]=useState([]); // HP heal
-  const[sanHealIndices,setSanHealIndices]=useState([]); // SAN heal
-  const[screenShake,setScreenShake]=useState(false);
-  const[deathShake,setDeathShake]=useState(false);
   const[earthquakeVisualPlayers,setEarthquakeVisualPlayers]=useState(null);
   const prevDamageLinksRef=useRef([]);
   const prevLogLenRef=useRef(0);
   const damageLinkGhostTimersRef=useRef(new Map());
   const [damageLinkGhosts,setDamageLinkGhosts]=useState([]);
   const timerRef=useRef(null);
-  const guillotinedPids=useMemo(()=>new Set((guillotineTargets||[]).map(t=>t?.pi).filter(v=>v!=null)),[guillotineTargets]);
   const logRef=useRef(null);
   const [visibleLog,setVisibleLog]=useState(Array.isArray(gs?.log)?gs.log:[]);
   const visibleLogRef=useRef(Array.isArray(gs?.log)?gs.log:[]);
   const visibleLogCountRef=useRef(Array.isArray(gs?.log)?gs.log.length:0);
   const visibleLogAuthorityRef=useRef(Array.isArray(gs?.log)?gs.log:[]);
-  const shakeTimerRef=useRef(null);
 
   useEffect(()=>{
     if(typeof document==='undefined')return;
@@ -1046,30 +1036,34 @@ export default function Game(){
     damageLinkEstablishAnims,
     clearCardTransferAnimations,
   } = useCardTransferAnimationEffects({ anim });
+  const {
+    hitIndices,
+    knifeTargets,
+    sanHitIndices,
+    sanTargets,
+    guillotineTargets,
+    hpHealIndices,
+    sanHealIndices,
+    screenShake,
+    deathShake,
+    clearDamageAnimations,
+  } = useDamageAnimationEffects({ anim, playHpDamageSound });
+  const guillotinedPids=useMemo(()=>new Set((guillotineTargets||[]).map(t=>t?.pi).filter(v=>v!=null)),[guillotineTargets]);
 
   useEffect(()=>{
     if(typeof document==='undefined')return;
     const handleVisibilityChange=()=>{
       if(document.visibilityState!=='visible')return;
-      clearTimeout(shakeTimerRef.current);
       setSwapAnim(false);
       setHuntAnim(null);
       setBewitchAnim(null);
       clearCardTransferAnimations();
-      setKnifeTargets([]);
-      setHitIndices([]);
-      setSanTargets([]);
-      setSanHitIndices([]);
-      setHpHealIndices([]);
-      setSanHealIndices([]);
-      setGuillotineTargets([]);
-      setScreenShake(false);
-      setDeathShake(false);
+      clearDamageAnimations();
       setEarthquakeVisualPlayers(null);
     };
     document.addEventListener('visibilitychange',handleVisibilityChange);
     return()=>document.removeEventListener('visibilitychange',handleVisibilityChange);
-  },[clearCardTransferAnimations]);
+  },[clearCardTransferAnimations,clearDamageAnimations]);
 
   const isDrawnCardActuallyDiscarded=useCallback((stateLike,drawnCard)=>{
     if(!(stateLike?._animDiscardedDrawnCard ?? stateLike?._discardedDrawnCard) || !drawnCard)return false;
@@ -1259,63 +1253,8 @@ export default function Game(){
     }
   },[showTutorial,tutorialStep,gs]);
 
-  // When HP_DAMAGE anim fires: trigger knife effects + screen shake
   useEffect(()=>{
-    if(anim?.type==='HP_DAMAGE'&&anim.hitIndices?.length){
-      playHpDamageSound();
-      setHitIndices(anim.hitIndices);
-      // 与 SKILL_HUNT / BEWITCH 相同：双 rAF 测量 DOM 位置，避免 grid layout race
-      // 先测量位置，再触发 screenShake，避免震动影响测量
-      requestAnimationFrame(()=>requestAnimationFrame(()=>{
-        const stamp=`${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
-        const pts=anim.hitIndices.map((pi,idx)=>{
-          const el=document.querySelector(`[data-pid="${pi}"]`);
-          if(el){
-            const r=_getZoomCompensatedRect(el);
-            return{pi,cx:r.left+r.width/2,cy:r.top+r.height/2,animKey:`${stamp}-${pi}-${idx}`};
-          }
-          return{pi,cx:window.innerWidth/2,cy:window.innerHeight*0.3,animKey:`${stamp}-${pi}-${idx}`};
-        });
-        setKnifeTargets(pts);
-        // 测量完成后再触发震动
-        setScreenShake(true);
-        clearTimeout(shakeTimerRef.current);
-        shakeTimerRef.current=setTimeout(()=>{setScreenShake(false);},400);
-      }));
-    }else if(anim?.type==='SAN_DAMAGE'&&anim.hitIndices?.length){
-      // 与 SKILL_HUNT / BEWITCH 相同：双 rAF 测量 DOM 位置，避免 grid layout race
-      setSanHitIndices(anim.hitIndices); // 仍然保留用于面板边框高亮
-      // 先测量位置，再触发 screenShake，避免震动影响测量
-      requestAnimationFrame(()=>requestAnimationFrame(()=>{
-        const srcEl=document.querySelector('[data-pid="0"]');
-        const srcR=srcEl?_getZoomCompensatedRect(srcEl):{left:window.innerWidth*0.5,top:window.innerHeight*0.7,width:0,height:0};
-        const srcX=srcR.left+srcR.width/2, srcY=srcR.top+srcR.height/2;
-        const pts=anim.hitIndices.map(pi=>{
-          const el=document.querySelector(`[data-pid="${pi}"]`);
-          if(el){
-            const r=_getZoomCompensatedRect(el);
-            const cx=r.left+r.width/2, cy=r.top+r.height/2;
-            const ox=((pi*17+5)%22)-11, oy=((pi*13+7)%16)-8;
-            return{pi,cx,cy,startX:srcX+ox,startY:srcY+oy};
-          }
-          return{pi,cx:window.innerWidth/2,cy:window.innerHeight*0.3,startX:srcX,startY:srcY};
-        });
-        setSanTargets(pts);
-        // 测量完成后再触发震动
-        setScreenShake(true);
-        clearTimeout(shakeTimerRef.current);
-        shakeTimerRef.current=setTimeout(()=>setScreenShake(false),280);
-      }));
-      // 面板边框高亮恢复（850ms），但 sanTargets 不在这里清除：
-      // 由 !anim 分支统一清除，避免与紧跟的 SAN_DAMAGE 动画产生竞态导致位置跳变
-      setTimeout(()=>setSanHitIndices([]),850);
-    }else if(anim?.type==='HP_HEAL'&&anim.hitIndices?.length){
-      setHpHealIndices(anim.hitIndices);
-      setTimeout(()=>setHpHealIndices([]),1300);
-    }else if(anim?.type==='SAN_HEAL'&&anim.hitIndices?.length){
-      setSanHealIndices(anim.hitIndices);
-      setTimeout(()=>setSanHealIndices([]),1300);
-    }else if(anim?.type==='SKILL_SWAP'){
+    if(anim?.type==='SKILL_SWAP'){
       // Extract caster and target names from msgs (e.g. "X 对 Y 掉包")
       const swapMsg=anim.msgs?.find(m=>m.includes('掉包'));
       const swapMatch=swapMsg?.match(/^(.+?)对 (.+?) 【掉包】/);
@@ -1343,55 +1282,10 @@ export default function Game(){
         else{setBewitchAnim({cx:window.innerWidth/2,cy:window.innerHeight*0.25});}
       }));
       setTimeout(()=>setBewitchAnim(null),1200);
-    }else if(anim?.type==='GUILLOTINE'&&anim.hitIndices?.length){
-      let cancelled=false;
-      requestAnimationFrame(()=>requestAnimationFrame(async ()=>{
-        const pts=await Promise.all(anim.hitIndices.map(async idx=>{
-          const el=document.querySelector(`[data-death-panel="${idx}"]`);
-          if(!el)return null;
-          const r=_getZoomCompensatedRect(el);
-          let snapshotUrl=null;
-          try{
-            const { default: html2canvas } = await import('html2canvas');
-            const canvas=await html2canvas(el,{
-              backgroundColor:null,
-              useCORS:true,
-              logging:false,
-              scale:1,
-            });
-            snapshotUrl=canvas.toDataURL("image/png");
-          }catch(err){
-            console.warn("[death-snapshot] capture failed for pid",idx,err);
-          }
-          return{pi:idx,x:r.left,y:r.top,w:r.width,h:r.height,cx:r.left+r.width/2,cy:r.top+r.height/2,snapshotUrl};
-        }));
-        if(!cancelled){
-          setGuillotineTargets(pts.filter(Boolean));
-        }
-      }));
-      const shakeTimer=setTimeout(()=>{
-        setDeathShake(true);
-        clearTimeout(shakeTimerRef.current);
-        shakeTimerRef.current=setTimeout(()=>setDeathShake(false),220);
-      },120);
-      return()=>{
-        cancelled=true;
-        clearTimeout(shakeTimer);
-      };
-    }else if(anim?.type==='DEATH'){
-      setGuillotineTargets([]);
-      setDeathShake(false);
     }else if(!anim){
-      setHitIndices([]);
-      setKnifeTargets([]);
-      setSanHitIndices([]);
-      setSanTargets([]);
-      setGuillotineTargets([]);
-      setHpHealIndices([]);
-      setSanHealIndices([]);
       setEarthquakeVisualPlayers(null);
     }
-  },[anim,playHpDamageSound]);
+  },[anim]);
 
   // ── AI watchdog: stuck recovery + hard hang guard ───────────
   const handleAiRecover=useCallback((type,detail)=>{
@@ -4897,7 +4791,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     animQueueRef.current=[];
     pendingGsRef.current=null;
     setAnimExiting(false);
-    setHitIndices([]);
+    clearDamageAnimations();
     setShowGodResurrection(false); // reset for next game
     if(silent){
       // Tutorial preview: set game state immediately, no animation, no pending draw
