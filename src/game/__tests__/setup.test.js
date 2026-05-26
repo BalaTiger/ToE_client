@@ -4,7 +4,7 @@ import {
   ROLE_HUNTER,
   ROLE_CULTIST,
 } from '../coreUtils';
-import { mkDeck, mkRoles } from '../setup';
+import { initGame, mkDeck, mkRoles } from '../setup';
 import { EXPANSIONS, getCardDisplayKey } from '../../constants/card';
 import { resetIds } from './factory';
 
@@ -163,5 +163,47 @@ describe('mkRoles', () => {
     const roles = mkRoles(4, true);
     expect(roles).toHaveLength(4);
     expect(roles[0]).toBeTruthy();
+  });
+});
+
+describe('initGame debug force draw', () => {
+  beforeEach(() => resetIds());
+
+  it('单机 Debug 可强制第 4 个 AI 摸指定区域牌', () => {
+    const gs = initGame(
+      null,
+      null,
+      'ai4',
+      'keep',
+      'zone',
+      'D3',
+      '玫瑰倒刺',
+      null,
+      null,
+      state => state,
+      'temporary'
+    );
+
+    expect(gs.debugForceCard).toMatchObject({ key: 'D3', name: '玫瑰倒刺' });
+    expect(gs.debugForceCardTarget).toBe('ai4');
+    expect(gs.debugForceCardKeep).toBe('keep');
+  });
+
+  it('联机 Debug 不接受 AI 强制摸牌目标', () => {
+    const gs = initGame(
+      ['你', '艾伦', '贝拉', '卡洛斯', '黛安娜'],
+      null,
+      'ai4',
+      'keep',
+      'zone',
+      'D3',
+      '玫瑰倒刺',
+      null,
+      null,
+      state => state,
+      'temporary'
+    );
+
+    expect(gs.debugForceCard).toBeNull();
   });
 });

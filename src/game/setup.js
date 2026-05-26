@@ -167,6 +167,11 @@ const zhCount = (count) => ({
   5: '五',
 }[count] || String(count));
 
+function isDebugForceCardTargetAllowed(target, isSinglePlayer) {
+  if (target === 'player') return true;
+  return isSinglePlayer && /^ai[1-4]$/.test(target || '');
+}
+
 // ══════════════════════════════════════════════════════════════
 //  INIT GAME
 // ══════════════════════════════════════════════════════════════
@@ -191,7 +196,7 @@ export function initGame(
 
   // Debug: 强制摸牌
   let targetCard = null;
-  if ((debugForceCard || (debugForceCardType && (debugForceZoneCardKey || debugForceGodCardKey))) && (debugForceCardTarget === 'player' || debugForceCardTarget === 'ai1')) {
+  if ((debugForceCard || (debugForceCardType && (debugForceZoneCardKey || debugForceGodCardKey))) && isDebugForceCardTargetAllowed(debugForceCardTarget, isSinglePlayer)) {
 
     if (debugForceCardType === 'zone' && debugForceZoneCardKey && debugForceZoneCardName) {
       // 查找指定编号和牌面的区域牌

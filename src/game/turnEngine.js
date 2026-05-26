@@ -31,6 +31,23 @@ function appendStatEventsToInspectionMeta(inspectionMeta, beforePlayers, afterPl
   };
 }
 
+function getDebugForceTargetIndex(target) {
+  if (target === 'player') return 0;
+  const match = String(target || '').match(/^ai([1-4])$/);
+  return match ? Number(match[1]) : null;
+}
+
+function applyDebugForceDrawToTop(gs, next, deck) {
+  const targetIndex = getDebugForceTargetIndex(gs?.debugForceCardTarget);
+  if (!gs?.debugForceCard || targetIndex !== next) return false;
+  deck.unshift(gs.debugForceCard);
+  gs.debugForceCardKeepPending = gs.debugForceCardKeep || 'auto';
+  gs.debugForceCardKeepTarget = next;
+  gs.debugForceCard = null;
+  gs.debugForceCardTarget = null;
+  return true;
+}
+
 export function checkWin(players, isMP) {
   const hasHunters = players.some(p => p.role === ROLE_HUNTER);
   const hasCultists = players.some(p => p.role === ROLE_CULTIST);
@@ -295,7 +312,7 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
 
   // AI auto-decision
   if (isAI) {
-    const keepOverride = ci === 1 && gs?.debugForceCardKeepPending
+    const keepOverride = gs?.debugForceCardKeepTarget === ci && gs?.debugForceCardKeepPending
       ? gs.debugForceCardKeepPending
       : 'auto';
     const keep = keepOverride === 'keep' ? true : keepOverride === 'discard' ? false : aiShouldKeepZoneCard(drawnCard, ci, P, false);
@@ -324,6 +341,19 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
     const res = applyFx(drawnCard, ci, null, P, D, Disc, gs, false, [], isAI);
     P = res.P; D = res.D; Disc = res.Disc; P[ci].hand.push(drawnCard);
     return { P, D, Disc, drawnCard, effectMsgs: [`${P[ci].name} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，选择收入手牌并触发效果`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false, _aiDrawnCard: drawnCard };
+  }
+
+  const playerKeepOverride = gs?.debugForceCardKeepTarget === ci && gs?.debugForceCardKeepPending
+    ? gs.debugForceCardKeepPending
+    : 'auto';
+  if (playerKeepOverride === 'keep') {
+    const res = applyFx(drawnCard, ci, null, P, D, Disc, gs, false, [], isAI);
+    P = res.P; D = res.D; Disc = res.Disc; P[ci].hand.push(drawnCard);
+    return { P, D, Disc, drawnCard, effectMsgs: [`${whoName} 收入了 ${cardLogText(drawnCard, { alwaysShowName: true })}`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false };
+  }
+  if (playerKeepOverride === 'discard') {
+    Disc.push(drawnCard);
+    return { P, D, Disc, drawnCard, effectMsgs: [`${whoName} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，选择弃置`], kept: true, needsDecision: false, discardedDrawnCard: true };
   }
 
   // Player needs decision
@@ -582,14 +612,7 @@ export function startNextTurn(gs, opts = {}) {
   P = link.P; L = link.L; inspectionMeta = link.inspectionMeta; gs = { ...gs, ...inspectionMeta };
   if (next === 0) {
     // Debug: 强制摸牌 - 玩家
-    if (gs.debugForceCard && gs.debugForceCardTarget === 'player') {
-      // 将指定的牌放在牌堆顶部
-      D.unshift(gs.debugForceCard);
-      gs.debugForceCardKeepPending = gs.debugForceCardKeep || 'auto';
-      // 清除debug设置，避免后续回合再次触发
-      gs.debugForceCard = null;
-      gs.debugForceCardTarget = null;
-    }
+    applyDebugForceDrawToTop(gs, next, D);
     // [ACTIVE_GOD] NYA 偷身份
     const nya = turnStartEvent_NyaBorrow(P, 0, L, gs);
     if (nya.shouldEnterPhase) {
@@ -648,7 +671,11 @@ export function startNextTurn(gs, opts = {}) {
     const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: win, ...playerTurnAnimMeta };
     // 强制触发牌：效果已执行，直接进入 ACTION；drawReveal 保留卡牌供翻牌动画使用，但不广播 DRAW_REVEAL
     if (res.kept) {
-      return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'ACTION', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: 0, drawerName: P[0].name }, selectedCard: null, abilityData: {}, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}) };
+      const decisionState = deriveEffectDecisionState(res.statePatch, {
+        baseAbilityData: {},
+        fallbackPhase: 'ACTION',
+      });
+      return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: decisionState.phase, drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: 0, drawerName: P[0].name }, selectedCard: null, abilityData: decisionState.abilityData, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}) };
     }
     return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: 0, drawerName: P[0].name }, selectedCard: null, abilityData: {}, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
   } else if (gs._isMP) {
@@ -694,14 +721,7 @@ export function startNextTurn(gs, opts = {}) {
       const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: win, debugForceCard: null, debugForceCardTarget: null };
       return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null }, opts);
     }
-    // Debug: 强制摸牌 - AI1
-    if (gs.debugForceCard && gs.debugForceCardTarget === 'ai1' && next === 1) { // 假设第一名AI的索引是1
-      // 将指定的牌放在牌堆顶部
-      D.unshift(gs.debugForceCard);
-      // 清除debug设置，避免后续回合再次触发
-      gs.debugForceCard = null;
-      gs.debugForceCardTarget = null;
-    }
+    applyDebugForceDrawToTop(gs, next, D);
     const _P_beforeDraw = copyPlayers(P);
     const zhuGuard = getZhuTopGuard({ ...gs, players: P, deck: D, currentTurn: next, zhuLight }, D);
     if (zhuGuard) {
@@ -733,6 +753,7 @@ export function startNextTurn(gs, opts = {}) {
     }
     const res = aiDrawAndApply(next, P, D, Disc, gs);
     gs.debugForceCardKeepPending = null;
+    gs.debugForceCardKeepTarget = null;
     P = res.P; D = res.D; Disc = res.Disc;
     if (res.drawnCard && isDebugMode) {
       const debugDrawLog = `[调试] ${P[next].name}（${P[next]._nyaBorrow || P[next].role}）起手摸到 ${cardLogText(res.drawnCard, { alwaysShowName: true })}`;

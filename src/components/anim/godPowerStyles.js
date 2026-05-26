@@ -1,4 +1,25 @@
-export const BLACK_GOAT_ANIMATION_STYLES = `
+export const GOD_POWER_ANIMATION_STYLES = `
+  @keyframes zhuHideCardPath {
+    0% { opacity: 0; transform: translate(0,0) rotate(0deg) scale(0.88); }
+    14% { opacity: 1; transform: translate(var(--pull-x),var(--pull-y)) rotate(-7deg) scale(1); }
+    54% { opacity: 1; transform: translate(calc(var(--pull-x) * 0.72),calc(var(--bottom-y) * 0.55)) rotate(-2deg) scale(1.03); }
+    82% { opacity: 1; transform: translate(var(--bottom-x),var(--bottom-y)) rotate(5deg) scale(0.92); }
+    100% { opacity: 0; transform: translate(4px,34px) rotate(0deg) scale(0.62); }
+  }
+  @keyframes zhuHideDepth {
+    0%, 14% { z-index: 6; }
+    15%, 100% { z-index: 2; }
+  }
+  @keyframes zhuHideOverlayDepth {
+    0%, 14% { z-index: 992; }
+    15%, 100% { z-index: 1; }
+  }
+  @keyframes zhuHideGlow {
+    0% { opacity: 0; transform: scale(0.6); }
+    20% { opacity: 1; transform: scale(1); }
+    78% { opacity: 0.8; transform: scale(1.12); }
+    100% { opacity: 0; transform: scale(0.45); }
+  }
   @keyframes goatSigilPulse {
     0%   { filter:brightness(0.9); opacity:0; }
     18%  { opacity:0.92; }

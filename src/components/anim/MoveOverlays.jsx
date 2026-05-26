@@ -105,7 +105,7 @@ export function ZhuHideCardOverlay({ anim, exiting }) {
       overflow: 'hidden',
       animation: `zhuHideOverlayDepth 1.15s steps(1,end) forwards${exiting ? ', animFadeOut 0.18s ease-in forwards' : ''}`,
     }}>
-      <div style={{ position: 'absolute', inset: 0, background: 'rgba(10,7,2,0.24)', animation: 'zhuHideBgFade 1.15s ease both' }} />
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(10,7,2,0.24)', animation: 'moveOverlayBgFade 1.15s ease both' }} />
       {style && (
         <>
           <div style={{
@@ -246,7 +246,7 @@ export function BuryToDeckOverlay({ anim, exiting, expansionKey = 'temporary' })
       overflow: 'hidden',
       animation: `buryToDeckOverlayDepth 1.15s steps(1,end) forwards${exiting ? ', animFadeOut 0.18s ease-in forwards' : ''}`,
     }}>
-      <div style={{ position: 'absolute', inset: 0, background: 'rgba(10,7,2,0.18)', animation: 'zhuHideBgFade 1.15s ease both' }} />
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(10,7,2,0.18)', animation: 'moveOverlayBgFade 1.15s ease both' }} />
       <div style={{
         position: 'absolute',
         left: style.left,
@@ -260,14 +260,6 @@ export function BuryToDeckOverlay({ anim, exiting, expansionKey = 'temporary' })
         zIndex: 6,
         animation: 'buryToDeckPath 1.15s cubic-bezier(0.28,0,0.22,1) forwards, buryToDeckDepth 1.15s steps(1,end) forwards',
       }}>
-        <div style={{
-          position: 'absolute',
-          inset: -20,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle,rgba(120,80,34,0.28),rgba(60,36,12,0.14) 42%,rgba(0,0,0,0) 72%)',
-          filter: 'blur(1px)',
-          animation: 'zhuHideGlow 1.15s ease forwards',
-        }} />
         <div style={{
           position: 'absolute',
           inset: 0,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ROLE_TREASURE } from '../coreUtils';
-import { playerDrawCard, startNextTurn } from '../turnEngine';
-import { makeGodCard, makeGs, makePlayer } from './factory';
+import { aiDrawAndApply, playerDrawCard, startNextTurn } from '../turnEngine';
+import { makeGodCard, makeGs, makePlayer, makeStandardPlayers } from './factory';
 import { createBlackGoatYoungCard } from '../../constants/card';
 
 describe('turnEngine stat events', () => {
@@ -17,6 +17,58 @@ describe('turnEngine stat events', () => {
     expect(result.statePatch._statEvents).toMatchObject([
       { type: 'SAN_LOSS', target: 0, from: { san: 10 }, to: { san: 9 }, reason: '邪神遭遇', seq: 1 },
     ]);
+  });
+
+  it('Debug 强制收入可作用于任意 AI 座位的玫瑰倒刺', () => {
+    const players = makeStandardPlayers(5);
+    const roseThorn = {
+      id: 'rose-debug',
+      key: 'D3',
+      letter: 'D',
+      number: 3,
+      name: '玫瑰倒刺',
+      type: 'roseThornGiftAllHand',
+      isZone: true,
+    };
+    const gs = makeGs({
+      players,
+      currentTurn: 4,
+      debugForceCardKeepPending: 'keep',
+      debugForceCardKeepTarget: 4,
+    });
+
+    const result = aiDrawAndApply(4, players, [roseThorn], [], gs);
+
+    expect(result.kept).toBe(true);
+    expect(result.P[4].hand).toContainEqual(expect.objectContaining({ name: '玫瑰倒刺' }));
+    expect(result.statePatch.roseThornSource).toBe(4);
+    expect(result.statePatch.roseThornTargets).toEqual([0, 1, 2, 3]);
+  });
+
+  it('Debug 强制收入也可直接让玩家收入玫瑰倒刺', () => {
+    const players = makeStandardPlayers(5);
+    const roseThorn = {
+      id: 'rose-player-debug',
+      key: 'D3',
+      letter: 'D',
+      number: 3,
+      name: '玫瑰倒刺',
+      type: 'roseThornGiftAllHand',
+      isZone: true,
+    };
+    const gs = makeGs({
+      players,
+      debugForceCardKeepPending: 'keep',
+      debugForceCardKeepTarget: 0,
+    });
+
+    const result = playerDrawCard(players, [roseThorn], [], 0, gs);
+
+    expect(result.needsDecision).toBe(false);
+    expect(result.kept).toBe(true);
+    expect(result.P[0].hand).toContainEqual(expect.objectContaining({ name: '玫瑰倒刺' }));
+    expect(result.statePatch.roseThornSource).toBe(0);
+    expect(result.statePatch.roseThornTargets).toEqual([1, 2, 3, 4]);
   });
 
   it('邪神遭遇触发检定时直接扣 SAN 与检定效果使用连续 stat event seq', () => {

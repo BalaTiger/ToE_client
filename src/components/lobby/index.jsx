@@ -385,11 +385,14 @@ function DebugSettingsPanel({
           }}
         >
           <option value="player">玩家</option>
-          <option value="ai1">1号位角色</option>
+          <option value="ai1">1号位AI</option>
+          <option value="ai2">2号位AI</option>
+          <option value="ai3">3号位AI</option>
+          <option value="ai4">4号位AI</option>
         </select>
       </div>
       <div style={{ marginBottom: 12 }}>
-        <label style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>1号位角色是否收入这张牌</label>
+        <label style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>强制目标是否收入这张牌</label>
         <select
           value={debugForceCardKeep}
           onChange={(e) => setDebugForceCardKeep(e.target.value)}
