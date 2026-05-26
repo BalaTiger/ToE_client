@@ -125,7 +125,7 @@ import {
   cardTransferStep,
   fullHandSwapSteps,
 } from "./game/animQueueHelpers";
-import { _getZoomCompensatedRect, getPlayerHandAnchorCenter, getPlayerAreaAnchorCenter, getPileAnchorCenter } from './utils/dom';
+import { _getZoomCompensatedRect } from './utils/dom';
 import { ANIM_DURATION, ANIM_SPEED_SCALE, CARD_REVEAL_DURATION, ANIM_STEP_GAP } from './components/anim/constants';
 import { SMOKE_COLS, FLOWER_CONFIGS, DICE_FACES, ANIM_CFG } from './components/anim/data';
 import { CardFlipAnim } from './components/anim/CardFlipAnim';
@@ -140,6 +140,7 @@ import { formatFileSize, useResourcePreload } from './hooks/useResourcePreload';
 import { useMultiplayerLobby } from './hooks/useMultiplayerLobby';
 import { useAnimationQueue } from './hooks/useAnimationQueue';
 import { useEarthquakeAnimationEffects } from './hooks/useEarthquakeAnimationEffects';
+import { useCardTransferAnimationEffects } from './hooks/useCardTransferAnimationEffects';
 import { useWindowSize } from './hooks/useWindowSize';
 import { useGameAudio } from './hooks/useGameAudio';
 import { useAiWatchdog, BAD_PHASES } from './hooks/useAiWatchdog';
@@ -864,7 +865,6 @@ export default function Game(){
   const[sanTargets,setSanTargets]=useState([]); // pre-measured {pi,cx,cy,startX,startY} // SAN damage
   const[swapAnim,setSwapAnim]=useState(false);        // cup shuffle
   const[huntAnim,setHuntAnim]=useState(null);          // scope + vignette {targetIdx}
-  const[cardTransfers,setCardTransfers]=useState([]);   // hand card transfer anims
   const[guillotineTargets,setGuillotineTargets]=useState([]); // pre-measured {x,y,w,h,cx,cy}
   const[bewitchAnim,setBewitchAnim]=useState(null);   // horus eye {cx,cy}
   const[hpHealIndices,setHpHealIndices]=useState([]); // HP heal
@@ -876,8 +876,6 @@ export default function Game(){
   const prevLogLenRef=useRef(0);
   const damageLinkGhostTimersRef=useRef(new Map());
   const [damageLinkGhosts,setDamageLinkGhosts]=useState([]);
-  const damageLinkEstablishTimersRef=useRef(new Map());
-  const [damageLinkEstablishAnims,setDamageLinkEstablishAnims]=useState([]);
   const timerRef=useRef(null);
   const guillotinedPids=useMemo(()=>new Set((guillotineTargets||[]).map(t=>t?.pi).filter(v=>v!=null)),[guillotineTargets]);
   const logRef=useRef(null);
@@ -886,31 +884,6 @@ export default function Game(){
   const visibleLogCountRef=useRef(Array.isArray(gs?.log)?gs.log.length:0);
   const visibleLogAuthorityRef=useRef(Array.isArray(gs?.log)?gs.log:[]);
   const shakeTimerRef=useRef(null);
-
-  useEffect(()=>{
-    if(typeof document==='undefined')return;
-    const handleVisibilityChange=()=>{
-      if(document.visibilityState!=='visible')return;
-      clearTimeout(shakeTimerRef.current);
-      setSwapAnim(false);
-      setHuntAnim(null);
-      setBewitchAnim(null);
-      setCardTransfers([]);
-      setKnifeTargets([]);
-      setHitIndices([]);
-      setSanTargets([]);
-      setSanHitIndices([]);
-      setHpHealIndices([]);
-      setSanHealIndices([]);
-      setGuillotineTargets([]);
-      setScreenShake(false);
-      setDeathShake(false);
-      setEarthquakeVisualPlayers(null);
-      setDamageLinkEstablishAnims([]);
-    };
-    document.addEventListener('visibilitychange',handleVisibilityChange);
-    return()=>document.removeEventListener('visibilitychange',handleVisibilityChange);
-  },[]);
 
   useEffect(()=>{
     if(typeof document==='undefined')return;
@@ -1068,6 +1041,35 @@ export default function Game(){
     visibleLogCountRef,
     setVisibleLog,
   });
+  const {
+    cardTransfers,
+    damageLinkEstablishAnims,
+    clearCardTransferAnimations,
+  } = useCardTransferAnimationEffects({ anim });
+
+  useEffect(()=>{
+    if(typeof document==='undefined')return;
+    const handleVisibilityChange=()=>{
+      if(document.visibilityState!=='visible')return;
+      clearTimeout(shakeTimerRef.current);
+      setSwapAnim(false);
+      setHuntAnim(null);
+      setBewitchAnim(null);
+      clearCardTransferAnimations();
+      setKnifeTargets([]);
+      setHitIndices([]);
+      setSanTargets([]);
+      setSanHitIndices([]);
+      setHpHealIndices([]);
+      setSanHealIndices([]);
+      setGuillotineTargets([]);
+      setScreenShake(false);
+      setDeathShake(false);
+      setEarthquakeVisualPlayers(null);
+    };
+    document.addEventListener('visibilitychange',handleVisibilityChange);
+    return()=>document.removeEventListener('visibilitychange',handleVisibilityChange);
+  },[clearCardTransferAnimations]);
 
   const isDrawnCardActuallyDiscarded=useCallback((stateLike,drawnCard)=>{
     if(!(stateLike?._animDiscardedDrawnCard ?? stateLike?._discardedDrawnCard) || !drawnCard)return false;
@@ -1089,7 +1091,7 @@ export default function Game(){
     if(!same)syncVisibleLog(nextLog);
   },[gs?.log,anim,syncVisibleLog,gs?._playersBeforeThisDraw]);
 
-  useEffect(()=>()=>{damageLinkGhostTimersRef.current.forEach(t=>clearTimeout(t));damageLinkGhostTimersRef.current.clear();damageLinkEstablishTimersRef.current.forEach(t=>clearTimeout(t));damageLinkEstablishTimersRef.current.clear();},[]);
+  useEffect(()=>()=>{damageLinkGhostTimersRef.current.forEach(t=>clearTimeout(t));damageLinkGhostTimersRef.current.clear();},[]);
 
   useEffect(()=>{
     const prevTimers=damageLinkGhostTimersRef.current;
@@ -1341,48 +1343,6 @@ export default function Game(){
         else{setBewitchAnim({cx:window.innerWidth/2,cy:window.innerHeight*0.25});}
       }));
       setTimeout(()=>setBewitchAnim(null),1200);
-    }else if(anim?.type==='CARD_TRANSFER'){
-      const{fromPid,dest,toPid,count,sourceAnchor,effect}=anim;
-      if(effect==='damageLink'&&fromPid!=null&&toPid!=null){
-        const key=`damage-link-${fromPid}-${toPid}-${Date.now()}`;
-        setDamageLinkEstablishAnims(prev=>[...prev,{id:key,key,a:fromPid,b:toPid,mode:'establish'}]);
-        const establishDuration=Number.isFinite(anim.durationMs)?anim.durationMs:1900;
-        const timer=setTimeout(()=>{
-          setDamageLinkEstablishAnims(prev=>prev.filter(link=>link.id!==key));
-          damageLinkEstablishTimersRef.current.delete(key);
-        },establishDuration+ANIM_STEP_GAP+260);
-        damageLinkEstablishTimersRef.current.set(key,timer);
-        return;
-      }
-      // 测量源点。普通转牌从手牌区出发；生成型卡牌可从角色区域出发。
-      const srcPos=sourceAnchor==='playerArea'
-        ? getPlayerAreaAnchorCenter(fromPid)
-        : getPlayerHandAnchorCenter(fromPid);
-      const srcX=srcPos.x;
-      const srcY=srcPos.y;
-      // 测量终点
-      let destX,destY;
-      if(dest==='discard'){
-        const discardPos=getPileAnchorCenter(
-          '[data-discard-pile]',
-          {x:window.innerWidth*0.45,y:window.innerHeight*0.45}
-        );
-        destX=discardPos.x;
-        destY=discardPos.y;
-      }else if(dest==='player'){
-        const destPos=getPlayerHandAnchorCenter(toPid);
-        destX=destPos.x;
-        destY=destPos.y;
-      }else{
-        // godzone = 同一面板的上部（角色区域）
-        const srcPanelEl=document.querySelector(`[data-pid="${fromPid}"]`);
-        const srcPanelRect=_getZoomCompensatedRect(srcPanelEl);
-        destX=srcX;
-        destY=srcPanelRect?srcPanelRect.top+srcPanelRect.height*0.25:srcY*0.5;
-      }
-      const key=`${fromPid}-${dest}-${toPid??'x'}-${Date.now()}`;
-      setCardTransfers(prev=>[...prev,{srcX,srcY,destX,destY,count,key,effect}]);
-      setTimeout(()=>setCardTransfers(prev=>prev.filter(t=>t.key!==key)),effect==='blackGoat'?1700:750);
     }else if(anim?.type==='GUILLOTINE'&&anim.hitIndices?.length){
       let cancelled=false;
       requestAnimationFrame(()=>requestAnimationFrame(async ()=>{
@@ -1426,7 +1386,6 @@ export default function Game(){
       setKnifeTargets([]);
       setSanHitIndices([]);
       setSanTargets([]);
-      setCardTransfers([]);
       setGuillotineTargets([]);
       setHpHealIndices([]);
       setSanHealIndices([]);
@@ -4960,7 +4919,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     pendingGsRef.current=null;
     setAnim(null);
     setAnimExiting(false);
-    setCardTransfers([]);
+    clearCardTransferAnimations();
     setGs(null);
   }
   function _onRoleRevealDone(pendingGs){
