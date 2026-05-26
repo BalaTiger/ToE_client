@@ -134,6 +134,10 @@ import { DiscardMoveOverlay, CardTransferOverlay } from './components/anim/MoveO
 import { GenericAnimOverlay, DiceRollAnim, YourTurnAnim } from './components/anim/GenericAnimOverlay';
 import { PaperCupSVG, SwapCupOverlay, HuntScopeOverlay, BewitchEyeOverlay, SanMistOverlay, CaveDuelAnim } from './components/anim/SkillOverlays';
 import { DamageLinkOverlay } from './components/anim/DamageLinkOverlay';
+import { DAMAGE_LINK_ANIMATION_STYLES } from './components/anim/damageLinkStyles';
+import { EARTHQUAKE_ANIMATION_STYLES } from './components/anim/earthquakeStyles';
+import { MOVE_ANIMATION_STYLES } from './components/anim/moveStyles';
+import { BLACK_GOAT_ANIMATION_STYLES } from './components/anim/blackGoatStyles';
 import { GodResurrectionAnim, TreasureMapAnim, CthulhuResurrectionAnim, RoleRevealAnim } from './components/anim/WinAnims';
 import { TitleCandleFlames } from './components/anim/TitleCandleFlames';
 import { AnimOverlay } from './components/anim/AnimOverlay';
@@ -5865,18 +5869,6 @@ const GLOBAL_STYLES=`
     body{font-size:12px;}
   }
 
-  /* Generic overlay */
-  @keyframes cardTravelToDeck {
-    0%   {top:8%;right:6%;transform:scale(0.85);opacity:0.9}
-    30%  {opacity:1}
-    100% {top:50%;right:50%;transform:translate(50%,-50%) scale(1.1);opacity:1}
-  }
-  /* Card flies from deck (top-right) to a specific player panel */
-  @keyframes cardTravelToPlayer {
-    0%   {left:var(--src-x);top:var(--src-y);transform:translate(0,0) scale(0.85);opacity:0.9}
-    30%  {opacity:1}
-    100% {left:var(--dest-x);top:var(--dest-y);transform:translate(0,0) scale(1.0);opacity:1}
-  }
   @keyframes animFadeIn  { from{opacity:0} to{opacity:1} }
   @keyframes animFadeOut { from{opacity:1} to{opacity:0} }
   @keyframes animPop     { 0%{transform:scale(0.5);opacity:0} 60%{transform:scale(1.1)} 100%{transform:scale(1);opacity:1} }
@@ -5885,33 +5877,10 @@ const GLOBAL_STYLES=`
   @keyframes animShake   { 0%,100%{transform:translateX(0)} 15%{transform:translateX(-12px)} 35%{transform:translateX(14px)} 55%{transform:translateX(-9px)} 75%{transform:translateX(9px)} }
   @keyframes animVig     { 0%,100%{opacity:0} 50%{opacity:1} }
   @keyframes animGlow    { 0%,100%{box-shadow:0 0 8px #c8a96e33} 50%{box-shadow:0 0 22px #c8a96e88} }
-  @keyframes chainMove    { 0%{stroke-dashoffset: 20} 100%{stroke-dashoffset: 0} }
-  @keyframes chainLinkDrift { 0%{transform:rotate(-3deg)} 100%{transform:rotate(3deg)} }
-  @keyframes chainBindGrow {
-    0%{opacity:0;transform:scale(0.35) rotate(-16deg);filter:brightness(0.7)}
-    72%{opacity:1;transform:scale(1.08) rotate(4deg);filter:brightness(1.35)}
-    100%{opacity:1;transform:scale(1) rotate(0deg);filter:brightness(1)}
-  }
-  @keyframes chainPathShadowIn {
-    0%{opacity:0}
-    35%{opacity:0.25}
-    100%{opacity:1}
-  }
-  @keyframes chainPathEstablish {
-    0%{opacity:0;stroke-dashoffset:100}
-    12%{opacity:1}
-    78%{stroke-dashoffset:0}
-    100%{opacity:1;stroke-dashoffset:0}
-  }
-  @keyframes chainLinkArrive {
-    0%{opacity:0;transform:scale(0.2) rotate(-24deg);filter:brightness(0.8)}
-    55%{opacity:1;transform:scale(1.22) rotate(6deg);filter:brightness(1.45)}
-    100%{opacity:1;transform:scale(1) rotate(0deg);filter:brightness(1)}
-  }
-  @keyframes chainBreakFade { 0%{opacity:1} 35%{opacity:1} 100%{opacity:0} }
-  @keyframes chainExpireFade { 0%{opacity:1} 100%{opacity:0} }
-  @keyframes chainMainSnap { 0%{transform:scaleX(1)} 35%{transform:scaleX(0.88)} 100%{transform:scaleX(0.18);opacity:0} }
-  @keyframes chainBindSnap { 0%{transform:translateX(0)} 20%{transform:translateX(-2px)} 40%{transform:translateX(2px)} 70%{transform:translateX(-1px)} 100%{transform:translateX(0);opacity:0} }
+  ${DAMAGE_LINK_ANIMATION_STYLES}
+  ${EARTHQUAKE_ANIMATION_STYLES}
+  ${MOVE_ANIMATION_STYLES}
+  ${BLACK_GOAT_ANIMATION_STYLES}
   /* Card flip animation */
   @keyframes cardRise {
     0%   { transform:translateY(90px); opacity:0; }
@@ -6162,45 +6131,6 @@ const GLOBAL_STYLES=`
     70%{transform:translateX(6px)}
     85%{transform:translateX(-3px)}
   }
-  @keyframes earthquakeSceneShake {
-    0%, 100% {transform:translateX(0)}
-    6.67% {transform:translateX(-5px)}
-    13.33% {transform:translateX(5px)}
-    20% {transform:translateX(0)}
-    26.67% {transform:translateX(4px)}
-    33.33% {transform:translateX(-4px)}
-    40% {transform:translateX(0)}
-    46.67% {transform:translateX(-5px)}
-    53.33% {transform:translateX(5px)}
-    60% {transform:translateX(0)}
-    66.67% {transform:translateX(4px)}
-    73.33% {transform:translateX(-4px)}
-    80% {transform:translateX(0)}
-    86.67% {transform:translateX(-3px)}
-    93.33% {transform:translateX(3px)}
-  }
-  @keyframes earthquakeBlackout {
-    0%, 2%, 6%, 10%, 39%, 45%, 100% {opacity:0}
-    4%, 8% {opacity:0.86; background:#000}
-    42% {opacity:0.56; background:#000}
-  }
-  @keyframes earthquakeWhiteFlash {
-    0%, 18%, 24%, 66%, 72%, 100% {opacity:0}
-    21% {opacity:0.86; background:#fff}
-    69% {opacity:0.52; background:#fff}
-  }
-  @keyframes earthquakePebble {
-    0% {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.72)}
-    8% {opacity:0.95}
-    34% {opacity:0.95; transform:translate(var(--pebble-mid-dx),calc(-1 * var(--pebble-lift))) rotate(calc(var(--pebble-rot) * 0.36)) scale(1)}
-    100% {opacity:0; transform:translate(var(--pebble-dx),var(--pebble-drop)) rotate(var(--pebble-rot)) scale(0.88)}
-  }
-  @keyframes earthquakeDiscardFly {
-    0% {opacity:0; transform:translate(0,0) rotate(-4deg) scale(0.96)}
-    8% {opacity:1}
-    56% {opacity:1; transform:translate(var(--mid-tx),var(--mid-ty)) rotate(8deg) scale(1.04)}
-    100% {opacity:0; transform:translate(var(--tx),var(--ty)) rotate(16deg) scale(0.72)}
-  }
   @keyframes deathShakeAnim {
     0%,100%{transform:translate(0,0)}
     4%  {transform:translate(-14px,-10px)}
@@ -6336,56 +6266,6 @@ const GLOBAL_STYLES=`
     50%     {opacity:1;   transform:scale(1.1)}
   }
 
-  /* Discard card fly — hand (bottom-centre) → discard pile (centre-left area) */
-  @keyframes cardTransferFly {
-    0%   { transform: translate(0,0) scale(1)   rotate(0deg);   opacity:1 }
-    45%  { transform: translate(calc(var(--tx)*0.55), calc(var(--ty)*0.55)) scale(1.12) rotate(-12deg); opacity:1 }
-    100% { transform: translate(var(--tx), var(--ty)) scale(0.72) rotate(-22deg); opacity:0 }
-  }
-  @keyframes goatSigilPulse {
-    0%   { filter:brightness(0.9); opacity:0; }
-    18%  { opacity:0.92; }
-    55%  { filter:brightness(1.35); opacity:0.86; }
-    100% { filter:brightness(0.7); opacity:0; }
-  }
-  @keyframes goatRunSprite {
-    0%, 14.28% { background-position: 0% 0%; }
-    14.29%, 28.56% { background-position: 16.6667% 0%; }
-    28.57%, 42.85% { background-position: 33.3333% 0%; }
-    42.86%, 57.13% { background-position: 50% 0%; }
-    57.14%, 71.42% { background-position: 66.6667% 0%; }
-    71.43%, 85.70% { background-position: 83.3333% 0%; }
-    85.71%, 100% { background-position: 100% 0%; }
-  }
-  @keyframes blackGoatParticleFly {
-    0%   { transform:translate(0,0) scale(0.35); opacity:0; }
-    18%  { opacity:1; }
-    62%  { transform:translate(calc(var(--tx)*0.62 + var(--drift-x)), calc(var(--ty)*0.62 + var(--drift-y))) scale(1.1); opacity:0.9; }
-    100% { transform:translate(calc(var(--tx) + var(--drift-x)), calc(var(--ty) + var(--drift-y))) scale(0.2); opacity:0; }
-  }
-
-  @keyframes discardCardFly {
-    0%   {bottom:14%;left:50%;transform:translateX(-50%) scale(1);opacity:1}
-    40%  {bottom:36%;left:38%;transform:translateX(-50%) scale(1.08) rotate(-8deg);opacity:1}
-    100% {bottom:44%;left:28%;transform:translateX(-50%) scale(0.85) rotate(-18deg);opacity:0.7}
-  }
-  @keyframes discardCardFlyFromAI {
-    0%   {transform:translate(-50%, -50%) scale(1);opacity:1}
-    40%  {transform:translate(calc(-50% - 12vw), calc(-50% - 22vh)) scale(1.08) rotate(-8deg);opacity:1}
-    100% {transform:translate(calc(-50% - 22vw), calc(-50% - 30vh)) scale(0.85) rotate(-18deg);opacity:0.7}
-  }
-  @keyframes discardCardFlyCustom {
-    0%   {transform:translate(-50%, -50%) scale(1) rotate(0deg);opacity:1}
-    40%  {transform:translate(calc(-50% + var(--tx) * 0.4), calc(-50% + var(--ty) * 0.4)) scale(1.08) rotate(-8deg);opacity:1}
-    100% {transform:translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(0.85) rotate(-18deg);opacity:0.7}
-  }
-  @keyframes discardBgFade {
-    0%   {opacity:0}
-    20%  {opacity:1}
-    80%  {opacity:0.8}
-    100% {opacity:0}
-  }
-
   /* Turn indicator */
   @keyframes turnIndicatorFade {
     from{opacity:0;transform:translateX(-50%) translateY(-8px)}
@@ -6456,47 +6336,6 @@ const GLOBAL_STYLES=`
     60%  { opacity: 0.8; transform: translateY(35px) scale(0.9); }
     90%  { opacity: 0.3; transform: translateY(55px) scale(0.6); }
     100% { opacity: 0; transform: translateY(70px) scale(0.3); }
-  }
-  @keyframes zhuHideBgFade {
-    0% { opacity: 0; }
-    18% { opacity: 1; }
-    100% { opacity: 0; }
-  }
-  @keyframes zhuHideCardPath {
-    0% { opacity: 0; transform: translate(0,0) rotate(0deg) scale(0.88); }
-    14% { opacity: 1; transform: translate(var(--pull-x),var(--pull-y)) rotate(-7deg) scale(1); }
-    54% { opacity: 1; transform: translate(calc(var(--pull-x) * 0.72),calc(var(--bottom-y) * 0.55)) rotate(-2deg) scale(1.03); }
-    82% { opacity: 1; transform: translate(var(--bottom-x),var(--bottom-y)) rotate(5deg) scale(0.92); }
-    100% { opacity: 0; transform: translate(4px,34px) rotate(0deg) scale(0.62); }
-  }
-  @keyframes buryToDeckPath {
-    0% { opacity: 0; transform: translate(0,0) rotate(0deg) scale(0.86); }
-    12% { opacity: 1; transform: translate(calc(var(--tx) * 0.18),calc(var(--ty) * 0.18 - 26px)) rotate(-8deg) scale(1.03); }
-    54% { opacity: 1; transform: translate(calc(var(--tx) * 0.68),calc(var(--ty) * 0.68 - 18px)) rotate(-2deg) scale(1.02); }
-    82% { opacity: 1; transform: translate(var(--tx),var(--ty)) rotate(5deg) scale(0.84); }
-    100% { opacity: 0; transform: translate(calc(var(--tx) + 4px),calc(var(--ty) + 34px)) rotate(0deg) scale(0.58); }
-  }
-  @keyframes buryToDeckDepth {
-    0%, 56% { z-index: 6; }
-    57%, 100% { z-index: 2; }
-  }
-  @keyframes buryToDeckOverlayDepth {
-    0%, 56% { z-index: 992; }
-    57%, 100% { z-index: 1; }
-  }
-  @keyframes zhuHideDepth {
-    0%, 14% { z-index: 6; }
-    15%, 100% { z-index: 2; }
-  }
-  @keyframes zhuHideOverlayDepth {
-    0%, 14% { z-index: 992; }
-    15%, 100% { z-index: 1; }
-  }
-  @keyframes zhuHideGlow {
-    0% { opacity: 0; transform: scale(0.6); }
-    20% { opacity: 1; transform: scale(1); }
-    78% { opacity: 0.8; transform: scale(1.12); }
-    100% { opacity: 0; transform: scale(0.45); }
   }
   @keyframes zhuLitCardPop {
     0% { opacity: 0.25; transform: translateX(18px) rotate(0deg) scale(0.98); filter: brightness(0.8); }
