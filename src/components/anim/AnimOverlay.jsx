@@ -4,19 +4,40 @@ import { DiceRollAnim, GenericAnimOverlay, YourTurnAnim } from './GenericAnimOve
 import { BuryToDeckOverlay, DiscardMoveOverlay, ZhuHideCardOverlay } from './MoveOverlays';
 import { CaveDuelAnim } from './SkillOverlays';
 
-function AnimOverlay({anim,exiting,expansionKey='temporary'}){
-  if(!anim) return null;
-  if(anim.type==='YOUR_TURN') return <YourTurnAnim name={anim.name}/>;
-  if(anim.type==='DRAW_CARD') return <CardFlipAnim card={anim.card} triggerName={anim.triggerName} targetPid={anim.targetPid??0} exiting={exiting} skipTravel={!!anim.skipTravel} guessCorrect={anim.guessCorrect} expansionKey={expansionKey}/>;
-  if(anim.type==='DICE_ROLL') return <DiceRollAnim anim={anim} exiting={exiting}/>;
-  if(anim.type==='DISCARD') return <DiscardMoveOverlay anim={anim} exiting={exiting} expansionKey={expansionKey}/>
-  if(anim.type==='CARD_TRANSFER') return null; // rendered via cardTransfers state
-  if(anim.type==='BURY_TO_DECK') return <BuryToDeckOverlay anim={anim} exiting={exiting} expansionKey={expansionKey}/>;
-  if(anim.type==='ZHU_HIDE_CARD') return <ZhuHideCardOverlay anim={anim} exiting={exiting}/>;
-  if(anim.type==='CAVE_DUEL') return <CaveDuelAnim anim={anim} exiting={exiting}/>;
-  if(anim.type==='TURN_BOUNDARY_PAUSE') return null;
-  if(['HP_DAMAGE','HP_HEAL','SAN_HEAL','SAN_DAMAGE'].includes(anim.type)) return null;
-  return <GenericAnimOverlay anim={anim} exiting={exiting}/>;
+const NO_OVERLAY_TYPES = new Set([
+  'CARD_TRANSFER',
+  'TURN_BOUNDARY_PAUSE',
+  'HP_DAMAGE',
+  'HP_HEAL',
+  'SAN_HEAL',
+  'SAN_DAMAGE',
+]);
+
+const ANIM_RENDERERS = {
+  YOUR_TURN: ({ anim }) => <YourTurnAnim name={anim.name} />,
+  DRAW_CARD: ({ anim, exiting, expansionKey }) => (
+    <CardFlipAnim
+      card={anim.card}
+      triggerName={anim.triggerName}
+      targetPid={anim.targetPid ?? 0}
+      exiting={exiting}
+      skipTravel={!!anim.skipTravel}
+      guessCorrect={anim.guessCorrect}
+      expansionKey={expansionKey}
+    />
+  ),
+  DICE_ROLL: ({ anim, exiting }) => <DiceRollAnim anim={anim} exiting={exiting} />,
+  DISCARD: ({ anim, exiting, expansionKey }) => <DiscardMoveOverlay anim={anim} exiting={exiting} expansionKey={expansionKey} />,
+  BURY_TO_DECK: ({ anim, exiting, expansionKey }) => <BuryToDeckOverlay anim={anim} exiting={exiting} expansionKey={expansionKey} />,
+  ZHU_HIDE_CARD: ({ anim, exiting }) => <ZhuHideCardOverlay anim={anim} exiting={exiting} />,
+  CAVE_DUEL: ({ anim, exiting }) => <CaveDuelAnim anim={anim} exiting={exiting} />,
+};
+
+function AnimOverlay({ anim, exiting, expansionKey = 'temporary' }) {
+  if (!anim || NO_OVERLAY_TYPES.has(anim.type)) return null;
+  const render = ANIM_RENDERERS[anim.type];
+  if (render) return render({ anim, exiting, expansionKey });
+  return <GenericAnimOverlay anim={anim} exiting={exiting} />;
 }
 
 
