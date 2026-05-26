@@ -2,7 +2,7 @@ import React from 'react';
 import { CardFlipAnim } from './CardFlipAnim';
 import { DiceRollAnim, GenericAnimOverlay, YourTurnAnim } from './GenericAnimOverlay';
 import { BuryToDeckOverlay, DiscardMoveOverlay, ZhuHideCardOverlay } from './MoveOverlays';
-import { CaveDuelAnim } from './SkillOverlays';
+import { CaveDuelAnim } from './AreaCardOverlays';
 
 const NO_OVERLAY_TYPES = new Set([
   'CARD_TRANSFER',

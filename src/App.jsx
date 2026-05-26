@@ -132,12 +132,15 @@ import { CardFlipAnim } from './components/anim/CardFlipAnim';
 import { KnifeEffect, GuillotineAnim } from './components/anim/DamageEffects';
 import { DiscardMoveOverlay, CardTransferOverlay } from './components/anim/MoveOverlays';
 import { GenericAnimOverlay, DiceRollAnim, YourTurnAnim } from './components/anim/GenericAnimOverlay';
-import { PaperCupSVG, SwapCupOverlay, HuntScopeOverlay, BewitchEyeOverlay, SanMistOverlay, CaveDuelAnim } from './components/anim/SkillOverlays';
+import { PaperCupSVG, SwapCupOverlay, HuntScopeOverlay, BewitchEyeOverlay, SanMistOverlay } from './components/anim/SkillOverlays';
+import { CaveDuelAnim } from './components/anim/AreaCardOverlays';
 import { DamageLinkOverlay } from './components/anim/DamageLinkOverlay';
 import { DAMAGE_LINK_ANIMATION_STYLES } from './components/anim/damageLinkStyles';
 import { EARTHQUAKE_ANIMATION_STYLES } from './components/anim/earthquakeStyles';
 import { MOVE_ANIMATION_STYLES } from './components/anim/moveStyles';
 import { BLACK_GOAT_ANIMATION_STYLES } from './components/anim/blackGoatStyles';
+import { SKILL_ANIMATION_STYLES } from './components/anim/skillStyles';
+import { AREA_CARD_ANIMATION_STYLES } from './components/anim/areaCardStyles';
 import { GodResurrectionAnim, TreasureMapAnim, CthulhuResurrectionAnim, RoleRevealAnim } from './components/anim/WinAnims';
 import { TitleCandleFlames } from './components/anim/TitleCandleFlames';
 import { AnimOverlay } from './components/anim/AnimOverlay';
@@ -5881,6 +5884,8 @@ const GLOBAL_STYLES=`
   ${EARTHQUAKE_ANIMATION_STYLES}
   ${MOVE_ANIMATION_STYLES}
   ${BLACK_GOAT_ANIMATION_STYLES}
+  ${SKILL_ANIMATION_STYLES}
+  ${AREA_CARD_ANIMATION_STYLES}
   /* Card flip animation */
   @keyframes cardRise {
     0%   { transform:translateY(90px); opacity:0; }
@@ -6007,62 +6012,6 @@ const GLOBAL_STYLES=`
     0%  {opacity:0.90}
     60% {opacity:0.85}
     100%{opacity:0}
-  }
-
-  /* Swap cup shuffle */
-  @keyframes swapBgFade {
-    0%  {opacity:0} 15% {opacity:1} 75% {opacity:1} 100% {opacity:0}
-  }
-  @keyframes swapCupL {
-    0%   {transform:translateX(0)} 
-    20%  {transform:translateX(60px)} 
-    45%  {transform:translateX(60px) translateY(-30px)} 
-    70%  {transform:translateX(-60px) translateY(-30px)} 
-    85%  {transform:translateX(-60px)}
-    100% {transform:translateX(0)}
-  }
-  @keyframes swapCupR {
-    0%   {transform:translateX(0)} 
-    20%  {transform:translateX(-60px)} 
-    45%  {transform:translateX(-60px) translateY(30px)} 
-    70%  {transform:translateX(60px) translateY(30px)} 
-    85%  {transform:translateX(60px)}
-    100% {transform:translateX(0)}
-  }
-  @keyframes swapLabelPop {
-    0% {opacity:0;transform:scale(0.5)} 40% {opacity:1;transform:scale(1.2)} 100% {opacity:1;transform:scale(1)}
-  }
-
-  /* Hunt scope */
-  @keyframes huntVigFade {
-    0% {opacity:0} 18% {opacity:1} 80% {opacity:1} 100% {opacity:0}
-  }
-  @keyframes huntScopeMove {
-    0%   {transform:translate(calc(var(--wobX,18px)),calc(var(--wobY,-22px)))}
-    15%  {transform:translate(-16px, 20px)}
-    30%  {transform:translate(12px, -14px)}
-    50%  {transform:translate(-8px, 10px)}
-    70%  {transform:translate(4px, -5px)}
-    85%  {transform:translate(0px, 0px)}
-    100% {transform:translate(0px, 0px)}
-  }
-  @keyframes huntDotPulse {
-    0%  {transform:scale(1);opacity:1}
-    50% {transform:scale(2.2);opacity:0.8}
-    100%{transform:scale(1);opacity:1}
-  }
-
-  /* Bewitch eye */
-  @keyframes bewitchEyePulse {
-    0%  {transform:scale(1);opacity:1}
-    50% {transform:scale(1.45);opacity:0.9;filter:drop-shadow(0 0 22px rgba(220,110,255,1)) drop-shadow(0 0 40px rgba(180,60,255,0.8))}
-    100%{transform:scale(1);opacity:1}
-  }
-  @keyframes bewitchEyeGhost {
-    0%  {transform:scale(1);   opacity:0}
-    8%  {transform:scale(1.05);opacity:0.80}
-    30% {transform:scale(1.8); opacity:0.55}
-    100%{transform:scale(4.5); opacity:0}
   }
 
   /* SAN Damage — full-screen blob from near-center to target panel */
@@ -6277,30 +6226,6 @@ const GLOBAL_STYLES=`
     38% {opacity:1; transform:scale(1.0)}
     75% {opacity:1; transform:scale(1.0)}
     100%{opacity:0; transform:scale(1.05)}
-  }
-  @keyframes caveDuelCardPath {
-    0% { transform: translate(var(--fromX), var(--fromY)) rotate(-9deg) scale(0.92); opacity: 0; }
-    12% { opacity: 1; }
-    38% { transform: translate(var(--midX), var(--midY)) rotate(0deg) scale(1.04); opacity: 1; }
-    68% { transform: translate(var(--midX), var(--midY)) rotate(0deg) scale(1.04); opacity: 1; }
-    100% { transform: translate(var(--toX), var(--toY)) rotate(6deg) scale(0.95); opacity: 1; }
-  }
-  @keyframes caveDuelScorePop {
-    0% { opacity: 0; transform: translateY(10px) scale(0.7); }
-    35% { opacity: 1; transform: translateY(0) scale(1.08); }
-    100% { opacity: 1; transform: translateY(0) scale(1); }
-  }
-  @keyframes caveDuelVsPop {
-    0% { opacity: 0; transform: translateX(-50%) scale(0.4); }
-    40% { opacity: 1; transform: translateX(-50%) scale(1.12); }
-    100% { opacity: 0.92; transform: translateX(-50%) scale(1); }
-  }
-  @keyframes caveDuelDancePop {
-    0% { opacity: 0; transform: translateY(10px) rotate(-8deg) scale(0.6); }
-    30% { opacity: 1; transform: translateY(0) rotate(8deg) scale(1.12); }
-    55% { opacity: 1; transform: translateY(-2px) rotate(-7deg) scale(1); }
-    80% { opacity: 1; transform: translateY(0) rotate(7deg) scale(1.04); }
-    100% { opacity: 0.96; transform: translateY(0) rotate(-4deg) scale(1); }
   }
   @keyframes treasureAssemble {
     0%   {opacity:0; transform:translate(var(--ox),var(--oy)) scale(0.55) rotate(-8deg)}
