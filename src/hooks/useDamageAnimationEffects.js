@@ -92,7 +92,8 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound }) {
           : { left: window.innerWidth * 0.5, top: window.innerHeight * 0.7, width: 0, height: 0 };
         const srcX = srcR.left + srcR.width / 2;
         const srcY = srcR.top + srcR.height / 2;
-        const pts = anim.hitIndices.map(pi => {
+        const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const pts = anim.hitIndices.map((pi, idx) => {
           const el = document.querySelector(`[data-pid="${pi}"]`);
           if (el) {
             const r = _getZoomCompensatedRect(el);
@@ -100,9 +101,9 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound }) {
             const cy = r.top + r.height / 2;
             const ox = ((pi * 17 + 5) % 22) - 11;
             const oy = ((pi * 13 + 7) % 16) - 8;
-            return { pi, cx, cy, startX: srcX + ox, startY: srcY + oy };
+            return { pi, cx, cy, startX: srcX + ox, startY: srcY + oy, animKey: `${stamp}-${pi}-${idx}` };
           }
-          return { pi, cx: window.innerWidth / 2, cy: window.innerHeight * 0.3, startX: srcX, startY: srcY };
+          return { pi, cx: window.innerWidth / 2, cy: window.innerHeight * 0.3, startX: srcX, startY: srcY, animKey: `${stamp}-${pi}-${idx}` };
         });
         setSanHitIndices(anim.hitIndices);
         setSanTargets(pts);
@@ -110,6 +111,7 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound }) {
         clearTimeout(shakeTimerRef.current);
         shakeTimerRef.current = addTimer(() => setScreenShake(false), 280);
         addTimer(() => setSanHitIndices([]), 850);
+        addTimer(() => setSanTargets([]), 900);
       });
       return cleanupRaf;
     }

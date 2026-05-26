@@ -29,6 +29,19 @@ describe('buildAnimQueue stat animations', () => {
     expect(buildAnimQueue(oldGs, newGs).some(step => step.type === 'SAN_HEAL')).toBe(true);
   });
 
+  it('恢复 HP 同时失去 SAN 时同时播放治疗和 SAN 损失动画', () => {
+    const oldGs = makeGs({
+      players: [makePlayer({ hp: 5, san: 8 })],
+      log: [],
+    });
+    const newGs = makeGs({
+      players: [makePlayer({ hp: 10, san: 6 })],
+      log: ['你 回复 5 HP，失去 2 SAN'],
+    });
+
+    expect(buildAnimQueue(oldGs, newGs).map(step => step.type)).toEqual(['HP_HEAL', 'SAN_DAMAGE']);
+  });
+
   it('存在显式 stat events 时不再根据状态差分猜测回复动画', () => {
     const oldGs = makeGs({
       players: [makePlayer({ hp: 10, san: 3 })],

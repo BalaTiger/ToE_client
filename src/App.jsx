@@ -263,6 +263,54 @@ function getTurnStartDrawBaselineLog(state){
   return animatedLogCount>0?log.slice(0,Math.max(0,log.length-animatedLogCount)):log;
 }
 
+function hasRoseThornAnimSignal(queue=[],nextGs=null,currentGs=null){
+  const steps=Array.isArray(queue)?queue:[];
+  return (
+    steps.some(step=>
+      step?.type==='CARD_TRANSFER'||
+      (Array.isArray(step?.msgs)&&step.msgs.some(msg=>typeof msg==='string'&&msg.includes('【玫瑰倒刺】')))
+    )||
+    nextGs?.phase==='ROSE_THORN_SELECT_TARGET'||
+    currentGs?.phase==='ROSE_THORN_SELECT_TARGET'||
+    nextGs?.abilityData?.roseThornSource!=null||
+    currentGs?.abilityData?.roseThornSource!=null
+  );
+}
+
+function debugRoseThornAnimQueue({queue,nextGs,currentGs,label='triggerAnimQueue'}){
+  if(!isLocalDebugEnabled()||!hasRoseThornAnimSignal(queue,nextGs,currentGs))return;
+  const steps=(Array.isArray(queue)?queue:[]).map((step,index)=>({
+    index,
+    type:step?.type,
+    fromPid:step?.fromPid,
+    dest:step?.dest,
+    toPid:step?.toPid,
+    count:step?.count,
+    effect:step?.effect,
+    msgs:Array.isArray(step?.msgs)?step.msgs:undefined,
+    logChunk:Array.isArray(step?._logChunk)?step._logChunk:undefined,
+  }));
+  const stack=(new Error().stack||'').split('\n').slice(2,8).map(line=>line.trim());
+  console.groupCollapsed(`[Debug][玫瑰倒刺动画] ${label}: ${steps.length} steps`);
+  console.log('current', {
+    phase:currentGs?.phase,
+    currentTurn:currentGs?.currentTurn,
+    turnKey:currentGs?._turnKey,
+    logLength:currentGs?.log?.length,
+    abilityData:currentGs?.abilityData,
+  });
+  console.log('next', {
+    phase:nextGs?.phase,
+    currentTurn:nextGs?.currentTurn,
+    turnKey:nextGs?._turnKey,
+    logLength:nextGs?.log?.length,
+    abilityData:nextGs?.abilityData,
+  });
+  console.table(steps);
+  console.log('stack', stack);
+  console.groupEnd();
+}
+
 // ══════════════════════════════════════════════════════════════
 //  AI STEP
 // ══════════════════════════════════════════════════════════════
@@ -1012,7 +1060,7 @@ export default function Game(){
     setAnimExiting,
     animQueueRef,
     pendingGsRef,
-    triggerAnimQueue,
+    triggerAnimQueue: rawTriggerAnimQueue,
   } = useAnimationQueue({
     gs,
     copyPlayers,
@@ -1038,6 +1086,10 @@ export default function Game(){
     ANIM_DURATION,
     ANIM_SPEED_SCALE,
   });
+  const triggerAnimQueue=(queue,nextGs,callback)=>{
+    debugRoseThornAnimQueue({queue,nextGs,currentGs:gs});
+    rawTriggerAnimQueue(queue,nextGs,callback);
+  };
   const earthquakeShake=useEarthquakeAnimationEffects({
     anim,
     localDebugMode,
@@ -1324,8 +1376,11 @@ export default function Game(){
           zhuLight:gs.zhuLight||null,
         });
         const actionStatQBase=buildAnimQueue(gs,fakeGs(newGs.players,nextLog));
+        const hasRoseThornGiftAllHand=newMsgs.some(m=>typeof m==='string'&&m.includes('【玫瑰倒刺】')&&m.includes('将全部手牌交给了'));
         const actionStatQ=fullHandSwapQ.length
           ? [...fullHandSwapQ,...actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')]
+          : hasRoseThornGiftAllHand
+            ? actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')
           : actionStatQBase;
 
         if(rawResult._playersBeforeSkillAction){
@@ -1470,8 +1525,11 @@ export default function Game(){
           zhuLight:gs.zhuLight||null,
         });
         const actionStatQBase=buildAnimQueue(fakeGs(afterInspectionPlayers,afterInspectionLog),fakeGs(P_actionPreInspection,actionLogPreInspection));
+        const hasRoseThornGiftAllHand=newMsgs.some(m=>typeof m==='string'&&m.includes('【玫瑰倒刺】')&&m.includes('将全部手牌交给了'));
         const actionStatQ=fullHandSwapQ.length
           ? [...fullHandSwapQ,...actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')]
+          : hasRoseThornGiftAllHand
+            ? actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')
           : actionStatQBase;
         const huntEventQueue=(rawResult._aiHuntEvents||[]).flatMap(evt=>buildAiHuntEventAnimQueue(evt,gs.players[gs.currentTurn]?.name||'???'));
         const handLimitDiscardQueue=(_aiHandLimitDiscards||[]).map((card,idx,arr)=>({
@@ -1813,6 +1871,14 @@ export default function Game(){
     if(roseThornAutoChoiceRef.current===choiceKey)return;
     roseThornAutoChoiceRef.current=choiceKey;
     const t=setTimeout(()=>{
+      const latest=latestGsRef.current;
+      if(
+        !latest||
+        latest.phase!=='ROSE_THORN_SELECT_TARGET'||
+        latest.abilityData?.roseThornSource!==roseThornSource||
+        !Array.isArray(latest.abilityData?.roseThornTargets)||
+        !latest.abilityData.roseThornTargets.includes(targetIndex)
+      )return;
       roseThornSelectTarget(targetIndex);
     },AI_AUTO_STEP_DELAY);
     return()=>clearTimeout(t);
@@ -3447,9 +3513,37 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       phase: nextPhase,
       currentTurn: gs.currentTurn,
       abilityData: nextAbilityData,
+      // 玫瑰倒刺是在摸牌后的目标选择阶段继续结算的。
+      // 结算完回到 AI_TURN 时，起手摸牌/翻牌动画已经播放过，必须清掉这些临时字段；
+      // 否则 AI_TURN 队列会把旧摸牌效果和下一名玩家的摸牌效果一起重播。
+      _aiDrawnCard:null,
+      _drawnCard:null,
+      _discardedDrawnCard:false,
+      _playersBeforeThisDraw:null,
+      _turnStartLogs:[],
+      _drawLogs:[],
+      _statLogs:[],
+      _preTurnPlayers:null,
     };
+    const turnStartDrawQueue=[];
+    const drawnCard=gs._aiDrawnCard||gs._drawnCard||gs.drawReveal?.card||null;
+    if(gs._playersBeforeThisDraw&&drawnCard){
+      const drawBaselineLog=getTurnStartDrawBaselineLog(gs);
+      const drawStatQ=bindAnimLogChunks(
+        buildAnimQueue({...gs,players:gs._playersBeforeThisDraw,log:drawBaselineLog},gs),
+        {statLogs:gs._statLogs}
+      ).filter(step=>step.type!=='CARD_TRANSFER');
+      turnStartDrawQueue.push(
+        {type:'VISUAL_LOCK',players:gs._playersBeforeThisDraw,zhuLight:gs.zhuLight||null},
+        {type:'YOUR_TURN',name:gs.players[gs.currentTurn]?.name||'???',msgs:gs._turnStartLogs||[]},
+        {type:'DRAW_CARD',card:drawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn,msgs:gs._drawLogs||[]},
+        ...drawStatQ,
+        statePatchStep({players:gs.players,discard:gs.discard})
+      );
+    }
     const statQ=buildAnimQueue(gs,nextGs).filter(a=>a.type!=='CARD_TRANSFER');
     const queue=[
+      ...turnStartDrawQueue,
       cardTransferStep({fromPid:roseThornSource,dest:'player',toPid:ti,count:giftedCount,msgs:[L[L.length-1]]}),
       ...statQ
     ];

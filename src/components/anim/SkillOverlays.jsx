@@ -169,13 +169,13 @@ function SanMistOverlay({targets}){
   if(!targets||!targets.length)return null;
   return(
     <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:490,overflow:'hidden'}}>
-      {targets.map(({pi,cx,cy,startX,startY},boltIdx)=>{
+      {targets.map(({pi,cx,cy,startX,startY,animKey},boltIdx)=>{
         const txPx=cx-startX;
         const tyPx=cy-startY;
         const delay=(boltIdx*0.07).toFixed(2)+'s';
         const hitDelay=(boltIdx*0.07+0.46).toFixed(2)+'s';
         return(
-          <React.Fragment key={pi}>
+          <React.Fragment key={animKey||pi}>
             <div style={{
               position:'absolute',left:startX,top:startY,
               width:100,height:90,marginLeft:-50,marginTop:-45,
