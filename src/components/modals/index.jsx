@@ -451,12 +451,11 @@ function RoadmapModal({ onClose }) {
         <div style={{ fontFamily: "'Cinzel',serif", fontSize: 11, color: '#b07828', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16, textAlign: 'center' }}>— 版本更新计划 —</div>
         {/* Current version */}
         <div style={{ marginBottom: 12 }}>
-          <div style={{ fontFamily: "'Cinzel',serif", fontSize: 11, color: '#c8a96e', letterSpacing: 1, marginBottom: 4 }}>当前版本：0.1.2</div>
+          <div style={{ fontFamily: "'Cinzel',serif", fontSize: 11, color: '#c8a96e', letterSpacing: 1, marginBottom: 4 }}>当前版本：0.1.3</div>
           {[
-            '联机对战已开放！欢迎测试',
-            '根据实战表现，不甘落后的追猎者决定擦亮自己的武器',
-            '添加检定牌机制！具体规则请在遗迹内自行探索',
-            '停服更新规范化，未来闪断更新/停服更新时会在游戏内广播',
+            '庆祝九艺夏日游艺节开幕，我们新增了大量游戏内容！祝展会大获成功，越办越好',
+            '大量新卡牌加入！',
+            '地下城入口翻新！',
           ].map((t, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 7 }}>
               <span style={{ color: '#b07828', flexShrink: 0, fontSize: 12 }}>·</span>
