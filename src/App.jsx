@@ -77,6 +77,10 @@ import {
   hasEndTurnReplayHandEvent,
   deriveEffectDecisionState,
   hasEffectDecisionState,
+  getApophisNightForLevel,
+  buildApophisNightLog,
+  resolveApophisTarget as resolveApophisTargetRule,
+  applyBalanceDiscardSideEffects,
 } from "./game";
 import {
   rotateGsForViewer,
@@ -2471,6 +2475,22 @@ export default function Game(){
             >显示游戏日志</button>
           </div>
         </div>
+        <button
+          type="button"
+          className="surveyMascot"
+          onClick={()=>window.open('https://v.wjx.cn/vm/mGJYO4f.aspx','_blank','noopener,noreferrer')}
+          aria-label="点我填写问卷"
+        >
+          <span className="surveyMascotBubble">喜欢这个游戏吗？点我填写问卷吧</span>
+          <span className="surveyMascotBody" aria-hidden="true">
+            <span className="surveyMascotFace">
+              <span className="surveyMascotEye surveyMascotEyeLeft"/>
+              <span className="surveyMascotEye surveyMascotEyeRight"/>
+              <span className="surveyMascotSmile"/>
+            </span>
+            <span className="surveyMascotBook"/>
+          </span>
+        </button>
         {showFullLog&&<FullLogModal log={gs.log||[]} onClose={()=>setShowFullLog(false)}/>}
         {/* AnimOverlay must render on game-over screen too so startNewGame card flip works */}
         <AnimOverlay anim={anim} exiting={animExiting} expansionKey={gs.expansionKey}/>
@@ -3190,6 +3210,13 @@ export default function Game(){
   function swapSelectTarget(ti){
     if(!gs.players[ti].hand.length)return;
     let P=copyPlayers(gs.players);
+    let D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
+    const night=resolveApophisTarget({
+      players:P,deck:D,discard:Disc,log:L,actorIdx:0,selectedIdx:ti,
+      legalTargets:P.map((p,i)=>i).filter(i=>i!==0&&!P[i].isDead&&P[i].hand.length),
+      label:'选择【掉包】目标'
+    });
+    P=night.players;D=night.deck;Disc=night.discard;L=night.log;ti=night.targetIdx;
     // 只有使用自己的掉包技能时才公开身份，通过“绮丽诗篇”获得的掉包技能不公开身份
     if(gs.globalOnlySwapOwner===null){
       P[0].roleRevealed=true;
@@ -3199,14 +3226,16 @@ export default function Game(){
     if(targetPlayer.revealHand){
       setGs({...gs,players:P,phase:'SWAP_SELECT_TARGET_CARD',
         abilityData:{swapTi:ti,preSkillRevealed:gs.abilityData?.preSkillRevealed},
-        log:[...gs.log,`你${gs.globalOnlySwapOwner!==null?'':'（寻宝者）'}对 ${gs.players[ti].name} 【掉包】，请选择要抽取的牌`]});
+        log:[...L,`你${gs.globalOnlySwapOwner!==null?'':'（寻宝者）'}对 ${gs.players[ti].name} 【掉包】，请选择要抽取的牌`],
+        apophisNight:night.apophisNight,...(night.apophisNight?{_statEvents:night.apophisNight._statEvents,_statEventSeq:night.apophisNight._statEventSeq}:{})});
     }else{
       // 否则随机抽取
       const ri2=0|Math.random()*P[ti].hand.length;
       const taken=P[ti].hand.splice(ri2,1)[0];
       setGs({...gs,players:P,phase:'SWAP_GIVE_CARD',
         abilityData:{swapTi:ti,takenCard:taken,preSkillRevealed:gs.abilityData?.preSkillRevealed},
-        log:[...gs.log,`你${gs.globalOnlySwapOwner!==null?'':'（寻宝者）'}对 ${gs.players[ti].name} 【掉包】，暗抽了1张牌`]});
+        log:[...L,`你${gs.globalOnlySwapOwner!==null?'':'（寻宝者）'}对 ${gs.players[ti].name} 【掉包】，暗抽了1张牌`],
+        apophisNight:night.apophisNight,...(night.apophisNight?{_statEvents:night.apophisNight._statEvents,_statEventSeq:night.apophisNight._statEventSeq}:{})});
     }
   }
   function zoneSwapSelectTarget(ti){
@@ -3217,11 +3246,17 @@ export default function Game(){
     const fromEndTurnReplay=gs.abilityData?.fromEndTurnReplay;
     const myHandCountBefore=gs.players?.[0]?.hand?.length||0;
     const targetHandCountBefore=gs.players?.[ti]?.hand?.length||0;
-    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],baseLog=[...gs.log];
+    const night=resolveApophisTarget({
+      players:P,deck:D,discard:Disc,log:baseLog,actorIdx:0,selectedIdx:ti,
+      legalTargets:P.map((p,i)=>i).filter(i=>i!==0&&!P[i].isDead),
+      label:`选择【${card.name||'触底反弹'}】目标`
+    });
+    P=night.players;D=night.deck;Disc=night.discard;baseLog=night.log;ti=night.targetIdx;
     const res=applyFx(card,0,ti,P,D,Disc,gs);
     P=res.P;D=res.D;Disc=res.Disc;
     if(!fromEndTurnReplay)P[0].hand.push(card); // 区域牌留在手中（效果已执行）
-    const L=[...gs.log,...res.msgs];
+    const L=[...baseLog,...res.msgs];
     const win=checkWin(P,gs._isMP);
     if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{}});return;}
     if(P[0].role==='寻宝者'&&isWinHand(P[0].hand)){
@@ -3229,10 +3264,10 @@ export default function Game(){
       setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,'你集齐了全部编号！'],phase:'PLAYER_WIN_PENDING',abilityData:{winReason:'你集齐了全部编号并获胜！'}});
       return;
     }
-    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',abilityData:{
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,apophisNight:night.apophisNight,phase:'ACTION',abilityData:{
       ...(fromRest?{fromRest:true}:{}),
       ...(gs.abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:gs.abilityData.cthDrawsRemaining}:{}),
-    }};
+    },...(night.apophisNight?{_statEvents:night.apophisNight._statEvents,_statEventSeq:night.apophisNight._statEventSeq}:{})};
     const swapMsgs=extractSkillLogs(L.slice(gs.log.length),'swap');
     const swapSteps=fullHandSwapSteps({
       fromPid:0,
@@ -3285,6 +3320,18 @@ export default function Game(){
     return clearTurnAnim?withClearedTurnAnimFields(nextGs):nextGs;
   }
 
+  function resolveApophisTarget({players,deck,discard,log,actorIdx,selectedIdx,legalTargets,label='选中目标'}){
+    const result=resolveApophisTargetRule({gs,players,deck,discard,log,actorIdx,selectedIdx,legalTargets,label});
+    if(result.statePatch?._statEvents){
+      result.apophisNight={...(result.apophisNight||{}),_statEvents:result.statePatch._statEvents,_statEventSeq:result.statePatch._statEventSeq};
+    }
+    return result;
+  }
+
+  function applyHandDiscardSideEffects({players,deck,discard,log,ownerIdx,cards,reason='弃牌'}){
+    return applyBalanceDiscardSideEffects({players,deck,discard,log,ownerIdx,cards,reason});
+  }
+
   function finishTargetContinuation({queue=[],nextGs,continueRest=false,syncLog=false}){
     if(syncLog&&nextGs?.log)syncVisibleLog(nextGs.log);
     if(continueRest){
@@ -3331,7 +3378,13 @@ export default function Game(){
     // 偷看手牌：选择目标角色后，偷看其一张手牌
     const {peekHandTargets,peekHandSource}=gs.abilityData;
     if(!peekHandTargets||!peekHandTargets.includes(ti))return;
-    let P=copyPlayers(gs.players);
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],baseLog=[...gs.log];
+    const night=resolveApophisTarget({
+      players:P,deck:D,discard:Disc,log:baseLog,actorIdx:peekHandSource,selectedIdx:ti,
+      legalTargets:peekHandTargets.filter(i=>P[i]&&!P[i].isDead&&P[i].hand.length),
+      label:'选择偷看目标'
+    });
+    P=night.players;D=night.deck;Disc=night.discard;baseLog=night.log;ti=night.targetIdx;
     const targetPlayer=P[ti];
     if(!targetPlayer?.hand?.length)return;
     // 随机选择一张手牌偷看
@@ -3355,12 +3408,12 @@ export default function Game(){
     if(gs._isMP){
       // 联机对战：显示通用日志，不包含具体卡牌信息
       const sourceName=isLocalSeatIndex(peekHandSource)?gs.players[0].name:(gs.players[peekHandSource]?.name||'某人');
-      L=[...gs.log,`${sourceName} 偷看了 ${targetPlayer.name} 的一张手牌`];
+      L=[...baseLog,`${sourceName} 偷看了 ${targetPlayer.name} 的一张手牌`];
     }else{
       // 单机游戏：显示具体卡牌信息
-      L=[...gs.log,`你偷看了 ${targetPlayer.name} 的一张手牌：${cardLogText(peekedCard,{alwaysShowName:true})}`];
+      L=[...baseLog,`你偷看了 ${targetPlayer.name} 的一张手牌：${cardLogText(peekedCard,{alwaysShowName:true})}`];
     }
-    const nextGs=buildTargetContinuationGs({players:P,log:L});
+    const nextGs={...buildTargetContinuationGs({players:P,deck:D,discard:Disc,log:L}),apophisNight:night.apophisNight,...(night.apophisNight?{_statEvents:night.apophisNight._statEvents,_statEventSeq:night.apophisNight._statEventSeq}:{})};
     if(isLocalSeatIndex(peekHandSource)){
       setPrivatePeek({card:peekedCard,targetName:targetPlayer.name});
     }
@@ -3370,7 +3423,13 @@ export default function Game(){
     // 穴居人战争：选择目标角色后，双方各亮一张手牌，数字编号更大的一方收下这两张牌
     const {caveDuelTargets,caveDuelSource}=gs.abilityData;
     if(!caveDuelTargets||!caveDuelTargets.includes(ti))return;
-    let P=copyPlayers(gs.players);
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],baseLog=[...gs.log];
+    const night=resolveApophisTarget({
+      players:P,deck:D,discard:Disc,log:baseLog,actorIdx:caveDuelSource,selectedIdx:ti,
+      legalTargets:caveDuelTargets.filter(i=>P[i]&&!P[i].isDead&&P[i].hand.length),
+      label:'选择“穴居人战争”目标'
+    });
+    P=night.players;D=night.deck;Disc=night.discard;baseLog=night.log;ti=night.targetIdx;
     const sourcePlayer=P[caveDuelSource];
     const targetPlayer=P[ti];
     // 检查目标角色是否有手牌
@@ -3403,7 +3462,7 @@ export default function Game(){
     let targetCardIndex, targetCard;
     if(ti===0){
       // 玩家作为目标角色，需要选择牌
-      setGs({...gs,phase:'CAVE_DUEL_SELECT_CARD',abilityData:{...gs.abilityData,caveDuelSource:caveDuelSource,caveDuelTarget:ti,sourceCardIndex:sourceCardIndex,sourceCard:sourceCard}});
+      setGs({...gs,players:P,deck:D,discard:Disc,log:baseLog,apophisNight:night.apophisNight,phase:'CAVE_DUEL_SELECT_CARD',abilityData:{...gs.abilityData,caveDuelSource:caveDuelSource,caveDuelTarget:ti,sourceCardIndex:sourceCardIndex,sourceCard:sourceCard},...(night.apophisNight?{_statEvents:night.apophisNight._statEvents,_statEventSeq:night.apophisNight._statEventSeq}:{})});
       return;
     }else{
       // AI作为目标角色，选择数字编号最大的牌
@@ -3419,7 +3478,7 @@ export default function Game(){
       }
       targetCard=targetPlayer.hand[targetCardIndex];
       // 执行穴居人战争效果
-      executeCaveDuel(P, caveDuelSource, ti, sourceCardIndex, targetCardIndex, sourceCard, targetCard, gs);
+      executeCaveDuel(P, caveDuelSource, ti, sourceCardIndex, targetCardIndex, sourceCard, targetCard, {...gs,deck:D,discard:Disc,log:baseLog,apophisNight:night.apophisNight,...(night.apophisNight?{_statEvents:night.apophisNight._statEvents,_statEventSeq:night.apophisNight._statEventSeq}:{})});
     }
   }
   
@@ -3498,15 +3557,21 @@ export default function Game(){
     // 两人一绳：选择目标角色后，建立伤害传导链条
     const {damageLinkTargets,damageLinkSource}=gs.abilityData;
     if(!damageLinkTargets||!damageLinkTargets.includes(ti))return;
-    let P=copyPlayers(gs.players);
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],baseLog=[...gs.log];
+    const night=resolveApophisTarget({
+      players:P,deck:D,discard:Disc,log:baseLog,actorIdx:damageLinkSource,selectedIdx:ti,
+      legalTargets:damageLinkTargets.filter(i=>i!==damageLinkSource&&P[i]&&!P[i].isDead),
+      label:'选择“两人一绳”目标'
+    });
+    P=night.players;D=night.deck;Disc=night.discard;baseLog=night.log;ti=night.targetIdx;
     const sourcePlayer=P[damageLinkSource];
     const targetPlayer=P[ti];
     // 建立链条：在两名玩家之间建立伤害传导关系
     // 使用damageLink字段存储链条信息：{partner: 对方索引, active: 是否激活, expiryOwner: 发起者的下回合开始时过期}
     sourcePlayer.damageLink={partner:ti,active:true,expiryOwner:damageLinkSource};
     targetPlayer.damageLink={partner:damageLinkSource,active:true,expiryOwner:damageLinkSource};
-const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.name} 间架起链条，一方受到HP伤害时另一方受等量伤害`];
-    const nextGs=buildTargetContinuationGs({players:P,log:L});
+const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.name} 间架起链条，一方受到HP伤害时另一方受等量伤害`];
+    const nextGs={...buildTargetContinuationGs({players:P,deck:D,discard:Disc,log:L}),apophisNight:night.apophisNight,...(night.apophisNight?{_statEvents:night.apophisNight._statEvents,_statEventSeq:night.apophisNight._statEventSeq}:{})};
     if(!gs.abilityData?.fromRest)visualStateLocks.lock({players:gs.players,zhuLight:gs.zhuLight||null});
     finishTargetContinuation({
       queue:gs.abilityData?.fromRest?[]:[cardTransferStep({fromPid:damageLinkSource,toPid:ti,effect:'damageLink',durationMs:1900,msgs:L.slice(-1)})],
@@ -3519,7 +3584,13 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
   function roseThornSelectTarget(ti){
     const {roseThornTargets,roseThornSource}=gs.abilityData;
     if(!roseThornTargets||!roseThornTargets.includes(ti)||roseThornSource==null)return;
-    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],baseLog=[...gs.log];
+    const night=resolveApophisTarget({
+      players:P,deck:D,discard:Disc,log:baseLog,actorIdx:roseThornSource,selectedIdx:ti,
+      legalTargets:roseThornTargets.filter(i=>i!==roseThornSource&&P[i]&&!P[i].isDead),
+      label:'选择“玫瑰倒刺”目标'
+    });
+    P=night.players;D=night.deck;Disc=night.discard;baseLog=night.log;ti=night.targetIdx;
     const sourcePlayer=P[roseThornSource];
     const targetPlayer=P[ti];
     const gifted=sourcePlayer.hand.splice(0).map(card=>({
@@ -3530,7 +3601,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     }));
     const giftedCount=gifted.length;
     targetPlayer.hand.push(...gifted);
-    const L=[...gs.log,`【玫瑰倒刺】${sourcePlayer.name} 将全部手牌交给了 ${targetPlayer.name}`];
+    const L=[...baseLog,`【玫瑰倒刺】${sourcePlayer.name} 将全部手牌交给了 ${targetPlayer.name}`];
     const win=checkWin(P,gs._isMP);
     if(win){
       setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{}});
@@ -3555,7 +3626,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       });
       return;
     }
-    const nextGs=buildTargetContinuationGs({players:P,deck:D,discard:Disc,log:L});
+    const nextGs={...buildTargetContinuationGs({players:P,deck:D,discard:Disc,log:L}),apophisNight:night.apophisNight,...(night.apophisNight?{_statEvents:night.apophisNight._statEvents,_statEventSeq:night.apophisNight._statEventSeq}:{})};
     const turnStartDrawQueue=buildPendingTurnStartDrawQueue(gs);
     const statQ=buildAnimQueue(gs,nextGs).filter(a=>a.type!=='CARD_TRANSFER');
     const queue=[
@@ -3728,17 +3799,21 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
   }
 
   function huntSelectTarget(ti){
-    let P=copyPlayers(gs.players);P[0].roleRevealed=true;
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],baseLog=[...gs.log];
+    const legal=P.map((p,i)=>i).filter(i=>i!==0&&!P[i].isDead&&P[i].hand.length&&!(gs.huntAbandoned||[]).includes(i));
+    const night=resolveApophisTarget({players:P,deck:D,discard:Disc,log:baseLog,actorIdx:0,selectedIdx:ti,legalTargets:legal,label:'选择【追捕】目标'});
+    P=night.players;D=night.deck;Disc=night.discard;baseLog=night.log;ti=night.targetIdx;
+    P[0].roleRevealed=true;
     if(!P[ti].hand.length){
-      setGs({...gs,players:P,phase:'ACTION',abilityData:{},log:[...gs.log,`${P[ti].name} 手中无牌，追捕失败`]});
+      setGs({...gs,players:P,deck:D,discard:Disc,apophisNight:night.apophisNight,phase:'ACTION',abilityData:{},log:[...baseLog,`${P[ti].name} 手中无牌，追捕失败`],...(night.apophisNight?{_statEvents:night.apophisNight._statEvents,_statEventSeq:night.apophisNight._statEventSeq}:{})});
       return;
     }
     if(gs._isMP){
       // 多人游戏：目标是真人玩家，让目标自己选择亮出哪张牌（20秒超时随机）
       // 暂停房主回合计时器：进入 HUNT_WAIT_REVEAL 子阶段，目标玩家选完后恢复
-      const huntWaitGs={...gs,players:P,phase:'HUNT_WAIT_REVEAL',
+      const huntWaitGs={...gs,players:P,deck:D,discard:Disc,apophisNight:night.apophisNight,phase:'HUNT_WAIT_REVEAL',
         abilityData:{...(gs.abilityData||{}),huntTi:ti},
-        log:[...gs.log,`你（追猎者）追捕 ${P[ti].name}，等待对方亮出一张手牌…`]};
+        log:[...baseLog,`你（追猎者）追捕 ${P[ti].name}，等待对方亮出一张手牌…`],...(night.apophisNight?{_statEvents:night.apophisNight._statEvents,_statEventSeq:night.apophisNight._statEventSeq}:{})};
       const huntMsgs=extractSkillLogs(huntWaitGs.log.slice(gs.log.length),'hunt');
       triggerAnimQueue([{type:'SKILL_HUNT',targetIdx:ti,msgs:huntMsgs}],huntWaitGs);
       return;
@@ -3746,9 +3821,9 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     // 单机/AI目标：由AI策略选择最优亮牌
     const knownHunterCards=P[ti]?.peekMemories?.[0]||[];
     const rc=aiChooseRevealCard(P[ti].hand,'你',gs.log,knownHunterCards);
-    const huntConfirmGs={...gs,players:P,phase:'HUNT_CONFIRM',
+    const huntConfirmGs={...gs,players:P,deck:D,discard:Disc,apophisNight:night.apophisNight,phase:'HUNT_CONFIRM',
       abilityData:{...(gs.abilityData||{}),huntTi:ti,revCard:rc},
-      log:[...gs.log,`你（追猎者）追捕 ${P[ti].name}，${P[ti].name} 亮出 ${cardLogText(rc,{alwaysShowName:true})}`]};
+      log:[...baseLog,`你（追猎者）追捕 ${P[ti].name}，${P[ti].name} 亮出 ${cardLogText(rc,{alwaysShowName:true})}`],...(night.apophisNight?{_statEvents:night.apophisNight._statEvents,_statEventSeq:night.apophisNight._statEventSeq}:{})};
     // 动画位置测量交给 useEffect([anim]) 中的 SKILL_HUNT 分支（使用 data-pid，正确）
     const huntMsgs=extractSkillLogs(huntConfirmGs.log.slice(gs.log.length),'hunt');
     triggerAnimQueue([{type:'SKILL_HUNT',targetIdx:ti,msgs:huntMsgs}],huntConfirmGs);
@@ -4117,10 +4192,16 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
 
   function bewitchSelectTarget(ti){
     const{bewitchCard,bewitchIdx}=gs.abilityData;
-    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],baseLog=[...gs.log];
+    const night=resolveApophisTarget({
+      players:P,deck:D,discard:Disc,log:baseLog,actorIdx:0,selectedIdx:ti,
+      legalTargets:P.map((p,i)=>i).filter(i=>i!==0&&!P[i].isDead),
+      label:'选择【蛊惑】目标'
+    });
+    P=night.players;D=night.deck;Disc=night.discard;baseLog=night.log;ti=night.targetIdx;
     let inspectionMeta=makeInspectionMeta(gs);
     P[0].roleRevealed=true;P[0].hand.splice(bewitchIdx,1);
-    const L=[...gs.log,`你对 ${P[ti].name} 【蛊惑】，赠予 ${cardLogText(bewitchCard,{alwaysShowName:true})}`];
+    const L=[...baseLog,`你对 ${P[ti].name} 【蛊惑】，赠予 ${cardLogText(bewitchCard,{alwaysShowName:true})}`];
     // God card gifted via bewitch: forced convert if different god, then AI resolves for target
     if(bewitchCard.isGod){
       P[ti].godEncounters=(P[ti].godEncounters||0)+1;
@@ -4145,7 +4226,8 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       const gres=resolveGodEncounterForAI(ti,bewitchCard,P,D,Disc,godResolveGs,forcedConvert);
       P=gres.P;D=gres.D;Disc=gres.Disc;L.push(...gres.msgs);
       const win=checkWin(P,gs._isMP);
-      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...inspectionMeta,...(gres.inspectionMeta||{}),...(win?{gameOver:win}:{})};
+      const nextApophisNight=gres.statePatch?.apophisNight??night.apophisNight;
+      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...inspectionMeta,...(gres.inspectionMeta||{}),...(gres.statePatch||{}),apophisNight:nextApophisNight,...(night.apophisNight?{_statEvents:night.apophisNight._statEvents,_statEventSeq:night.apophisNight._statEventSeq}:{}),...(win?{gameOver:win}:{})};
       const statQueue=buildPostBewitchStatQueue(gs,newGs);
       const bewitchMsgs=extractSkillLogs(L.slice(gs.log.length),'bewitch');
       triggerAnimQueue(buildBewitchForcedCardQueue(0,ti,bewitchCard,P[ti]?.name,statQueue,bewitchMsgs),newGs);
@@ -4164,9 +4246,10 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
       turnOwner:gs.currentTurn,
     });
     const newGs={...gs,players:res.P,deck:res.D,discard:res.Disc,log:L,
+      apophisNight:night.apophisNight,
       abilityData:phaseAbilityData,
       phase:nextPhase,
-      skillUsed:true,...(res.statePatch||{}),...(win?{gameOver:win}:{})};
+      skillUsed:true,...(res.statePatch||{}),...(night.apophisNight?{_statEvents:night.apophisNight._statEvents,_statEventSeq:night.apophisNight._statEventSeq}:{}),...(win?{gameOver:win}:{})};
       const statQueue=buildPostBewitchStatQueue(gs,newGs);
       const bewitchTurnIntroName=isAiSeat(gs,ti)&&(
         zoneCardUsesTargetInteraction(bewitchCard)||
@@ -4219,6 +4302,12 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     const nextZhuLight=(action==='worship'||action==='upgrade'||action==='forcedConvert')
       ?buildZhuLight(P,D,0,gs.zhuLight)
       :gs.zhuLight;
+    const nextApophisNight=(action==='worship'||action==='upgrade'||action==='forcedConvert')&&gk==='APO'
+      ?getApophisNightForLevel(P[0].godLevel)
+      :gs.apophisNight;
+    if((action==='worship'||action==='upgrade'||action==='forcedConvert')&&gk==='APO'){
+      L.push(buildApophisNightLog());
+    }
     // Only worship/forcedConvert consume the worship-this-turn slot.
     // Upgrade, discard, and keepHand do not.
     const consumesSlot=action==='worship'||action==='forcedConvert';
@@ -4227,7 +4316,7 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     const shuOffspringCount=isShuBlessing?(GOD_DEFS.SHU.levels[P[0].godLevel-1]?.offspringCount||0):0;
     const replayPatch=fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
     // 保留abilityData中的cthDrawsRemaining信息
-    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,phase:isShuBlessing?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessing?{...gs.abilityData,shuOffspringCount}:gs.abilityData,
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,apophisNight:nextApophisNight,phase:isShuBlessing?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessing?{...gs.abilityData,shuOffspringCount}:gs.abilityData,
       godTriggeredThisTurn:consumesSlot,...inspectionMeta,...replayPatch};
     const finishGodChoice=(state)=>{
       const win=checkWin(state.players,state._isMP);
@@ -4337,6 +4426,10 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     let L=[...baseGs.log];
     const cthDraws=[];
     if(keptDisc.length) L.push(`弃置：${keptDisc.map(c=>cardLogText(c,{alwaysShowName:true})).join(' ')}`);
+    if(keptDisc.length){
+      const balance=applyHandDiscardSideEffects({players:P,deck:D,discard:Disc,log:L,ownerIdx:0,cards:keptDisc,reason:'手牌上限弃牌'});
+      P=balance.players;D=balance.deck;Disc=balance.discard;L=balance.log;
+    }
     if(destroyedDisc.length) L.push(`黑山羊幼仔 ×${destroyedDisc.length} 被销毁`);
     // CTH power: draw when ending turn while face-down
     const cthDrawCount=getCthRestDrawCount(P[0]);
@@ -4749,6 +4842,10 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     let D=[...gs.deck],Disc=[...gs.discard,...keptDisc],L=[...gs.log];
     const cthDraws=[];
     if(keptDisc.length) L.push(`(超时) 弃置：${keptDisc.map(c_=>cardLogText(c_,{alwaysShowName:true})).join(' ')}`);
+    if(keptDisc.length){
+      const balance=applyHandDiscardSideEffects({players:P,deck:D,discard:Disc,log:L,ownerIdx:0,cards:keptDisc,reason:'手牌上限弃牌'});
+      P=balance.players;D=balance.deck;Disc=balance.discard;L=balance.log;
+    }
     if(destroyedDisc.length) L.push(`黑山羊幼仔 ×${destroyedDisc.length} 被销毁`);
     // CTH power: draw when ending turn while face-down
     const cthDrawCount=getCthRestDrawCount(P[0]);
@@ -5083,12 +5180,18 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     else if(phase==='ROSE_THORN_SELECT_TARGET')roseThornSelectTarget(pi);
     else if(phase==='MULTIPLY_SELECT_TARGET'){
       if(pi===0) return;
-      let P=copyPlayers(gs.players);
+      let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],baseLog=[...gs.log];
+      const night=resolveApophisTarget({
+        players:P,deck:D,discard:Disc,log:baseLog,actorIdx:0,selectedIdx:pi,
+        legalTargets:P.map((p,i)=>i).filter(i=>i!==0&&!P[i].isDead),
+        label:'选择【繁衍】目标'
+      });
+      P=night.players;D=night.deck;Disc=night.discard;baseLog=night.log;pi=night.targetIdx;
       if(!P[0].hand.some(isBlackGoatYoung)) return;
       P[pi].hand.push(createBlackGoatYoungCard());
       const logMsg=`【繁衍】你将黑山羊幼仔传播给了 ${P[pi].name}`;
-      const L=[...gs.log,logMsg];
-      const newGs={...gs,players:P,log:L,phase:'ACTION',abilityData:{},multiplyUsed:true};
+      const L=[...baseLog,logMsg];
+      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,apophisNight:night.apophisNight,phase:'ACTION',abilityData:{},multiplyUsed:true,...(night.apophisNight?{_statEvents:night.apophisNight._statEvents,_statEventSeq:night.apophisNight._statEventSeq}:{})};
       const queue=[
         cardTransferStep({fromPid:0,dest:'player',toPid:pi,count:1,effect:'blackGoat',durationMs:1500,msgs:[logMsg]}),
         statePatchStep({players:P}),
@@ -5099,12 +5202,18 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     else if(phase==='SHU_SELECT_TARGET'){
       const count=gs.abilityData?.shuOffspringCount||0;
       if(!count) { setGs({...gs,phase:'ACTION',abilityData:{}}); return; }
-      let P=copyPlayers(gs.players);
+      let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],baseLog=[...gs.log];
+      const night=resolveApophisTarget({
+        players:P,deck:D,discard:Disc,log:baseLog,actorIdx:0,selectedIdx:pi,
+        legalTargets:P.map((p,i)=>i).filter(i=>!P[i].isDead),
+        label:'选择【黑暗子嗣】目标'
+      });
+      P=night.players;D=night.deck;Disc=night.discard;baseLog=night.log;pi=night.targetIdx;
       for(let i=0;i<count;i++) P[pi].hand.push(createBlackGoatYoungCard());
       const targetName=P[pi].name;
       const logMsg=`【黑暗子嗣】${targetName==='你'?'你':targetName} 获得${count}张黑山羊幼仔`;
-      const L=[...gs.log,logMsg];
-      const newGs={...gs,players:P,log:L,phase:'ACTION',abilityData:{}};
+      const L=[...baseLog,logMsg];
+      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,apophisNight:night.apophisNight,phase:'ACTION',abilityData:{},...(night.apophisNight?{_statEvents:night.apophisNight._statEvents,_statEventSeq:night.apophisNight._statEventSeq}:{})};
       const baseQueue=buildAnimQueue(gs,newGs);
       const queue=baseQueue.length?[...baseQueue,statePatchStep({players:P})]:[];
       if(queue.length){
@@ -5150,9 +5259,11 @@ const L=[...gs.log,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.na
     P.forEach((p,i)=>{if(i>0&&p.godName===godKey){const abandoned=abandonGodFollower(i,gs.currentTurn,P,D,Disc,L,inspectionMeta);P=abandoned.P;D=abandoned.D;Disc=abandoned.Disc;L=abandoned.L;inspectionMeta=abandoned.inspectionMeta;}});
     const win=checkWin(P,gs._isMP);
     const nextZhuLight=buildZhuLight(P,D,0,gs.zhuLight);
+    const nextApophisNight=godKey==='APO'?getApophisNightForLevel(P[0].godLevel):gs.apophisNight;
+    if(godKey==='APO')L.push(buildApophisNightLog());
     // Upgrade does not consume the worship slot; worship/convert does
     syncVisibleLog(L);
-    setGs({...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,phase:isShuBlessingHand?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessingHand?{shuOffspringCount:shuOffspringCountHand}:gs.abilityData,...inspectionMeta,...(!isUpgrade?{godFromHandUsed:true}:{}),...(win?{gameOver:win}:{})});
+    setGs({...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,apophisNight:nextApophisNight,phase:isShuBlessingHand?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessingHand?{shuOffspringCount:shuOffspringCountHand}:gs.abilityData,...inspectionMeta,...(!isUpgrade?{godFromHandUsed:true}:{}),...(win?{gameOver:win}:{})});
   }
 
   function canPlayerRespondWithZoneCard(card){
@@ -5994,6 +6105,103 @@ const GLOBAL_STYLES=`
   @keyframes animShake   { 0%,100%{transform:translateX(0)} 15%{transform:translateX(-12px)} 35%{transform:translateX(14px)} 55%{transform:translateX(-9px)} 75%{transform:translateX(9px)} }
   @keyframes animVig     { 0%,100%{opacity:0} 50%{opacity:1} }
   @keyframes animGlow    { 0%,100%{box-shadow:0 0 8px #c8a96e33} 50%{box-shadow:0 0 22px #c8a96e88} }
+  @keyframes surveyMascotEnter {
+    0% { opacity:0; transform:translateX(135%) translateY(16px) rotate(-5deg); }
+    72% { opacity:1; transform:translateX(-8px) translateY(0) rotate(2deg); }
+    100% { opacity:1; transform:translateX(0) translateY(0) rotate(0deg); }
+  }
+  @keyframes surveyMascotFloat {
+    0%,100% { transform:translateY(0); }
+    50% { transform:translateY(-5px); }
+  }
+  .surveyMascot {
+    position:fixed;
+    right:16px;
+    bottom:16px;
+    z-index:4;
+    display:flex;
+    align-items:flex-end;
+    gap:10px;
+    border:0;
+    background:transparent;
+    padding:0;
+    cursor:pointer;
+    color:#e8c87a;
+    font-family:'IM Fell English','Georgia',serif;
+    opacity:0;
+    transform:translateX(135%) translateY(16px);
+    animation:surveyMascotEnter .55s cubic-bezier(.2,.9,.2,1.1) 1s forwards;
+  }
+  .surveyMascot:hover .surveyMascotBody { filter:drop-shadow(0 0 16px #d8b86899) brightness(1.08); }
+  .surveyMascotBubble {
+    max-width:170px;
+    margin-bottom:18px;
+    padding:9px 11px;
+    border:1.5px solid #7a5720;
+    border-radius:8px;
+    background:linear-gradient(180deg,#211407,#120a04);
+    color:#e8c87a;
+    font-size:13px;
+    line-height:1.35;
+    letter-spacing:.5px;
+    box-shadow:0 6px 18px #00000088,0 0 16px #c8a96e22 inset;
+    text-align:left;
+  }
+  .surveyMascotBody {
+    position:relative;
+    width:76px;
+    height:96px;
+    border-radius:36px 36px 20px 20px;
+    background:linear-gradient(160deg,#4b2748 0%,#25102f 52%,#0f0718 100%);
+    border:2px solid #8a6228;
+    box-shadow:0 10px 24px #000000aa,0 0 18px #9060cc55 inset;
+    animation:surveyMascotFloat 2.4s ease-in-out 1.65s infinite;
+  }
+  .surveyMascotFace {
+    position:absolute;
+    left:16px;
+    top:18px;
+    width:44px;
+    height:38px;
+    border-radius:50% 50% 45% 45%;
+    background:#d8b868;
+    box-shadow:0 0 12px #f0d89055;
+  }
+  .surveyMascotEye {
+    position:absolute;
+    top:13px;
+    width:5px;
+    height:7px;
+    border-radius:50%;
+    background:#160b10;
+  }
+  .surveyMascotEyeLeft { left:12px; }
+  .surveyMascotEyeRight { right:12px; }
+  .surveyMascotSmile {
+    position:absolute;
+    left:15px;
+    top:23px;
+    width:14px;
+    height:7px;
+    border-bottom:2px solid #160b10;
+    border-radius:0 0 12px 12px;
+  }
+  .surveyMascotBook {
+    position:absolute;
+    left:15px;
+    bottom:15px;
+    width:46px;
+    height:25px;
+    border-radius:4px;
+    background:linear-gradient(90deg,#6a1f1f 0 48%,#3a1218 49% 51%,#7a2720 52% 100%);
+    border:1px solid #c8a96e;
+    box-shadow:0 0 10px #c8a96e44;
+  }
+  @media (max-width:580px){
+    .surveyMascot { right:10px; bottom:10px; transform:scale(.88) translateX(135%); transform-origin:right bottom; }
+    .surveyMascotBubble { max-width:138px; font-size:12px; }
+    .surveyMascotBody { width:66px; height:86px; }
+  }
   ${DAMAGE_LINK_ANIMATION_STYLES}
   ${EARTHQUAKE_ANIMATION_STYLES}
   ${MOVE_ANIMATION_STYLES}

@@ -158,6 +158,21 @@ describe('applyFx', () => {
     expect(res.msgs[0]).toContain('回复了 1 HP');
   });
 
+  it('lifeBalance / soulBalance: 摸到时分别回复 HP 和 SAN', () => {
+    const players = makeStandardPlayers(3);
+    players[0].hp = 5;
+    players[0].san = 4;
+    const gs = makeGs({ players });
+
+    const hpRes = applyFx({ type: 'lifeBalance', name: '生命天平', val: 3 }, 0, null, players, [], [], gs);
+    expect(hpRes.P[0].hp).toBe(8);
+    expect(hpRes.msgs[0]).toContain('回复了 3 HP');
+
+    const sanRes = applyFx({ type: 'soulBalance', name: '灵魂天平', val: 3 }, 0, null, hpRes.P, [], [], makeGs({ players: hpRes.P }));
+    expect(sanRes.P[0].san).toBe(7);
+    expect(sanRes.msgs[0]).toContain('回复了 3 SAN');
+  });
+
   it('selfDamageHP: 失去HP', () => {
     const players = makeStandardPlayers(3);
     // A1 variant 1 is selfDamageDiscardHP which includes selfDamageHP

@@ -19,6 +19,7 @@ import { applyFx, applyInspectionForSanLoss } from './effectEngine';
 import { buildZhuLight, getZhuTopGuard } from './zhuPower';
 import { buildStatEvents } from './statEvents';
 import { deriveEffectDecisionState } from './effectStatePatch';
+import { buildApophisNightLog, getApophisNightForLevel } from './apophisNight';
 
 function appendStatEventsToInspectionMeta(inspectionMeta, beforePlayers, afterPlayers, logs, reason) {
   const statEventSeq = (inspectionMeta?._statEventSeq || 0) + 1;
@@ -139,6 +140,7 @@ export function convertGodFollower(targetIndex, startIndex, P, D, Disc, L, inspe
 
 export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConvert) {
   const msgs = []; const godKey = godCard.godKey;
+  let statePatch = {};
   let inspectionMeta = makeInspectionMeta(gs);
   P = P.map(p => ({ ...p, godZone: [...(p.godZone || [])] })); // shallow copy godZone arrays
   if (forcedConvert && P[ci].godName && P[ci].godName !== godKey) {
@@ -162,6 +164,10 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
   if (action === 'upgrade') {
     P[ci].godLevel++; P[ci].godZone.push({ ...godCard });
     msgs.push(`${P[ci].name} 邪神之力升至Lv.${P[ci].godLevel}（${godCard.power}）`);
+    if (godKey === 'APO') {
+      statePatch.apophisNight = getApophisNightForLevel(P[ci].godLevel);
+      msgs.push(buildApophisNightLog());
+    }
     if (godKey === 'SHU') {
       const count = GOD_DEFS.SHU.levels[P[ci].godLevel - 1]?.offspringCount || 0;
       const shuTargetIdx = _chooseAiShuTarget(ci, P);
@@ -179,6 +185,10 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
   } else if (action === 'worship') {
     P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }];
     msgs.push(`${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
+    if (godKey === 'APO') {
+      statePatch.apophisNight = getApophisNightForLevel(P[ci].godLevel);
+      msgs.push(buildApophisNightLog());
+    }
     if (godKey === 'SHU') {
       const count = GOD_DEFS.SHU.levels[0]?.offspringCount || 0;
       const shuTargetIdx = _chooseAiShuTarget(ci, P);
@@ -198,7 +208,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
   } else {
     Disc.push({ ...godCard }); msgs.push(`${P[ci].name} 放弃了邪神的馈赠`);
   }
-  return { P, D, Disc, msgs, inspectionMeta };
+  return { P, D, Disc, msgs, inspectionMeta, statePatch };
 }
 
 export function aiHandleGodCard(ci, godCard, P, D, Disc, L, gs, skipEffectMsg = false) {
@@ -218,7 +228,7 @@ export function aiHandleGodCard(ci, godCard, P, D, Disc, L, gs, skipEffectMsg = 
   const gres = resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConvert);
   P = gres.P; D = gres.D; Disc = gres.Disc;
   L.push(...gres.msgs);
-  return { P, D, Disc, L, inspectionMeta: gres.inspectionMeta };
+  return { P, D, Disc, L, inspectionMeta: gres.inspectionMeta, statePatch: gres.statePatch };
 }
 
 export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
@@ -268,7 +278,7 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
       }
       const gr = aiHandleGodCard(ci, drawnCard, P, D, Disc, L2, gs, true);
       P = gr.P; D = gr.D; Disc = gr.Disc;
-      return { P, D, Disc, drawnCard, effectMsgs: L2, kept: true, statePatch: { ...inspectionMeta, ...(gr.inspectionMeta || {}) } };
+      return { P, D, Disc, drawnCard, effectMsgs: L2, kept: true, statePatch: { ...inspectionMeta, ...(gr.inspectionMeta || {}), ...(gr.statePatch || {}) } };
     } else {
       let effectMsg = P[ci].role === ROLE_CULTIST
         ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`

@@ -224,6 +224,16 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "expansion": "先贤的馈赠"
     },
     {
+      "name": "生命天平",
+      "desc": "你恢复3HP。此牌从你的手牌进入弃牌堆时，你失去3HP",
+      "type": "lifeBalance",
+      "val": 3,
+      "slotKey": "B1",
+      "polarity": "neutral",
+      "effectScope": "self",
+      "expansion": "先贤的馈赠"
+    },
+    {
       "name": "幽闭恐惧",
       "desc": "你与相邻角色失去2SAN",
       "type": "adjDamageSAN",
@@ -365,6 +375,16 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "sanVal": 2,
       "slotKey": "C1",
       "polarity": "negative",
+      "effectScope": "self",
+      "expansion": "先贤的馈赠"
+    },
+    {
+      "name": "灵魂天平",
+      "desc": "你恢复3SAN。此牌从你的手牌进入弃牌堆时，你失去3SAN",
+      "type": "soulBalance",
+      "val": 3,
+      "slotKey": "C1",
+      "polarity": "neutral",
       "effectScope": "self",
       "expansion": "先贤的馈赠"
     },
@@ -641,34 +661,34 @@ const GOD_DEFS={
     godKey:'NYA',name:'伏行之混沌',subtitle:'奈亚拉托提普之化身',power:'千人千貌',
     col:'#b03030',bgCol:'#200808',
     levels:[
-      {handPenalty:2,desc:'借用已死角色身份，本回合技能与胜利条件均变为该身份（手牌上限-2）'},
-      {handPenalty:1,desc:'借用已死角色身份，本回合技能与胜利条件均变为该身份（手牌上限-1）'},
-      {handPenalty:0,desc:'借用已死角色身份，本回合技能与胜利条件均变为该身份'},
+      {handPenalty:2,desc:'你的回合开始时，可借用已死角色身份，本回合技能与胜利条件均变为该身份（手牌上限-2）'},
+      {handPenalty:1,desc:'你的回合开始时，可借用已死角色身份，本回合技能与胜利条件均变为该身份（手牌上限-1）'},
+      {handPenalty:0,desc:'你的回合开始时，可借用已死角色身份，本回合技能与胜利条件均变为该身份'},
     ],
   },
   CTH:{
     godKey:'CTH',name:'拉莱耶之主',subtitle:'克苏鲁之化身',power:'梦访拉莱耶',
     col:'#2060c0',bgCol:'#080820',
     levels:[
-      {extraDraws:1,desc:'在角色翻面状态下结束或跳过回合时，立即摸1张牌'},
-      {extraDraws:2,desc:'在角色翻面状态下结束或跳过回合时，立即摸2张牌'},
-      {extraDraws:3,desc:'在角色翻面状态下结束或跳过回合时，立即摸3张牌'},
+      {extraDraws:1,desc:'在角色翻面状态下结束或跳过回合时，摸1张牌'},
+      {extraDraws:2,desc:'在角色翻面状态下结束或跳过回合时，摸2张牌'},
+      {extraDraws:3,desc:'在角色翻面状态下结束或跳过回合时，摸3张牌'},
     ],
   },
   SHU:{
     godKey:'SHU',name:'森之领主',subtitle:'莎布·尼古拉丝之化身',power:'黑暗子嗣',
     col:'#2a5a20',bgCol:'#081008',
     levels:[
-      {offspringCount:1,desc:'获得此邪神之力时，指定一名角色（可以为自己），立即在其手牌中加入1张"黑山羊幼仔"'},
-      {offspringCount:2,desc:'获得此邪神之力时，指定一名角色（可以为自己），立即在其手牌中加入2张"黑山羊幼仔"'},
-      {offspringCount:3,desc:'获得此邪神之力时，指定一名角色（可以为自己），立即在其手牌中加入3张"黑山羊幼仔"'},
+      {offspringCount:1,desc:'立即指定一名角色（可以为自己），在其手牌中加入1张"黑山羊幼仔"'},
+      {offspringCount:2,desc:'立即指定一名角色（可以为自己），在其手牌中加入2张"黑山羊幼仔"'},
+      {offspringCount:3,desc:'立即指定一名角色（可以为自己），在其手牌中加入3张"黑山羊幼仔"'},
     ],
   },
   ZHU:{
     godKey:'ZHU',name:'烛九阴',subtitle:'钟山之神',power:'衔烛照幽',
     col:'#c0a020',bgCol:'#181008',
     levels:[
-      {zhuLightOffsets:[2],desc:'获得或升级此邪神之力时，以及你的回合开始时，点亮牌库顶部第3张牌。你可以查看被点亮牌的正面；当其即将被翻开时，可将其藏到牌堆底'},
+      {zhuLightOffsets:[2],desc:'立即点亮牌库顶部第3张牌。你可以查看被点亮牌的正面；当其即将被翻开时，可将其藏到牌堆底。你的回合开始时也如此做'},
       {zhuLightOffsets:[1,2,3],desc:'“第3张牌”改为“第2~4张牌”'},
       {zhuLightOffsets:[0,1,2,3,4],desc:'改为点亮牌库顶部前5张牌'},
     ],
@@ -677,9 +697,9 @@ const GOD_DEFS={
     godKey:'APO',name:'阿波菲斯',subtitle:'混沌巨蛇',power:'噬日灭世',
     col:'#8020a0',bgCol:'#100818',
     levels:[
-      {desc:'效果待设计'},
-      {desc:'效果待设计'},
-      {desc:'效果待设计'},
+      {nightThreshold:2,desc:'立即让场地进入黑夜：所有角色选中目标时掷骰子，若小于2则改为错误目标并失去1SAN。选中目标累计12次后黑夜结束'},
+      {nightThreshold:4,desc:'“若小于2”改为“若小于4”，其余不变'},
+      {nightThreshold:6,desc:'“若小于4”改为“若小于6”，其余不变'},
     ],
   },
   GEE:{

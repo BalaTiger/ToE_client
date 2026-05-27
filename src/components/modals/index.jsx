@@ -362,7 +362,7 @@ function AboutModal({ onClose }) {
           <div style={{ flex: 1, paddingTop: 4 }}>
             <div style={{ fontFamily: "'Cinzel',serif", fontSize: 10, color: '#b07828', letterSpacing: 2, marginBottom: 8, textTransform: 'uppercase' }}>— 关于作者 —</div>
             <div style={{ color: '#c8a96e', fontSize: 12, lineHeight: 1.8, fontStyle: 'italic' }}>
-              猫奴，上班党，不回就是在上班，会尽量努力更新。
+              猫奴，社畜，不回就是在上班，会尽量努力更新。
             </div>
             <div style={{ color: '#9a7a42', fontSize: 11, lineHeight: 1.8, marginTop: 8, fontStyle: 'italic' }}>
               如果你遇到与游戏规则有关的bug，记得在游戏结束后点击"显示游戏日志"并复制内容。
@@ -374,6 +374,14 @@ function AboutModal({ onClose }) {
         {/* Bottom half */}
         <div style={{ padding: '16px 20px 22px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
           <div style={{ fontFamily: "'Cinzel',serif", fontSize: 10, color: '#b07828', letterSpacing: 2, textTransform: 'uppercase' }}>— 意见与反馈 —</div>
+          <a
+            href="https://v.wjx.cn/vm/mGJYO4f.aspx"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: '#d8b868', fontSize: 12, letterSpacing: 1, fontStyle: 'italic', textDecoration: 'underline', textUnderlineOffset: 3 }}
+          >
+            问卷链接
+          </a>
           <div style={{ color: '#c8a96e', fontSize: 12, letterSpacing: 1, fontStyle: 'italic' }}>QQ催更群：787317460</div>
           <div style={{ color: '#c8a96e', fontSize: 12, letterSpacing: 1, fontStyle: 'italic' }}>微信催更群二维码</div>
           <img

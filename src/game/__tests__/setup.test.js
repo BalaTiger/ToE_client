@@ -30,9 +30,19 @@ describe('mkDeck', () => {
     const zoneCards = deck.filter(c => c.isZone);
     const specialCards = deck.filter(c => c.isGod);
 
-    expect(zoneCards).toHaveLength(54);
+    expect(zoneCards).toHaveLength(56);
     expect(specialCards).toHaveLength(20);
-    expect(deck).toHaveLength(74);
+    expect(deck).toHaveLength(76);
+  });
+
+  it('先贤的馈赠包含两张天平牌且不在同一编号', () => {
+    const deck = mkDeck('temporary');
+    const lifeBalance = deck.find(c => c.name === '生命天平');
+    const soulBalance = deck.find(c => c.name === '灵魂天平');
+
+    expect(lifeBalance).toMatchObject({ key: 'B1', type: 'lifeBalance', expansion: '先贤的馈赠' });
+    expect(soulBalance).toMatchObject({ key: 'C1', type: 'soulBalance', expansion: '先贤的馈赠' });
+    expect(lifeBalance.key).not.toBe(soulBalance.key);
   });
 
   it('临时拓展包包含无尽通道', () => {

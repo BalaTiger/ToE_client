@@ -38,6 +38,8 @@ import { createBlackGoatYoungCard } from '../constants/card';
 import { buildStatEvents } from './statEvents';
 import { END_TURN_EVENT, getEndTurnReplayHandCards } from './endTurnEvents';
 import { deriveEffectDecisionState, hasEffectDecisionState } from './effectStatePatch';
+import { buildApophisNightLog, getApophisNightForLevel, resolveApophisTarget } from './apophisNight';
+import { applyBalanceDiscardSideEffects } from './balanceCards';
 
 /**
  * 检查两张卡是否满足追捕匹配规则。
@@ -103,6 +105,8 @@ export function discardAiHandToLimit(P, ct, Disc, L) {
     } else {
       Disc.push(c);
       L.push(`${P[ct].name} 弃 ${cardLogText(c, { alwaysShowName: true })}（上限）`);
+      const balance = applyBalanceDiscardSideEffects({ players: P, deck: [], discard: Disc, log: L, ownerIdx: ct, cards: [c], reason: '手牌上限弃牌' });
+      L.splice(0, L.length, ...balance.log);
     }
   }
 }
@@ -135,7 +139,7 @@ function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
       }
       const gr = aiHandleGodCard(ct, card, P, D, Disc, L, { ...gs, ...statePatch, ...inspectionMeta }, true);
       P = gr.P; D = gr.D; Disc = gr.Disc;
-      statePatch = { ...statePatch, ...inspectionMeta, ...(gr.inspectionMeta || {}) };
+      statePatch = { ...statePatch, ...inspectionMeta, ...(gr.inspectionMeta || {}), ...(gr.statePatch || {}) };
       continue;
     }
     const keep = card?.type === END_TURN_EVENT.END_TURN_REPLAY_HAND || !isZoneCard(card) || aiShouldKeepZoneCard(card, ct, P, false);
@@ -145,6 +149,8 @@ function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
       else {
         Disc.push(discarded);
         L.push(`${P[ct].name} 弃置了 ${cardLogText(discarded, { alwaysShowName: true })}`);
+        const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: L, ownerIdx: ct, cards: [discarded], reason: '无尽通道弃牌' });
+        P = balance.players; D = balance.deck; Disc = balance.discard; L = balance.log;
       }
       continue;
     }
@@ -181,6 +187,26 @@ export function aiStep(gs, opts = {}) {
     ...(animMultiplyEvent ? { _animMultiplyEvent: animMultiplyEvent } : {})
   });
 
+  const applyNightTarget = (selectedIdx, legalTargets, label) => {
+    const night = resolveApophisTarget({
+      gs,
+      players: P,
+      deck: D,
+      discard: Disc,
+      log: L,
+      actorIdx: ct,
+      selectedIdx,
+      legalTargets,
+      label,
+    });
+    P = night.players;
+    D = night.deck;
+    Disc = night.discard;
+    L = night.log;
+    gs = { ...gs, ...(night.statePatch || {}) };
+    return night.targetIdx;
+  };
+
   // 提取蛊惑赠予的核心逻辑（主行动路径与强制路径共用）
   const applyBewitchGift = (_gs, _P, _D, _Disc, _L, _ct, _ti, _sc) => {
     let inspectionMeta = makeInspectionMeta(_gs);
@@ -204,7 +230,7 @@ export function aiStep(gs, opts = {}) {
       }
       const gr = aiHandleGodCard(_ti, _sc, _P, _D, _Disc, _L, _gs, true);
       _P = gr.P; _D = gr.D; _Disc = gr.Disc;
-      _gs = { ..._gs, ...inspectionMeta, ...(gr.inspectionMeta || {}) };
+      _gs = { ..._gs, ...inspectionMeta, ...(gr.inspectionMeta || {}), ...(gr.statePatch || {}) };
     } else {
       _P[_ti].hand.push(_sc);
       fxResult = applyFx(_sc, _ti, _sc.type === 'swapAllHands' ? null : _ti, _P, _D, _Disc, _gs);
@@ -238,7 +264,7 @@ export function aiStep(gs, opts = {}) {
   if(Array.isArray(abilityData?.damageLinkTargets)&&abilityData.damageLinkSource===ct){
     const validTargets=abilityData.damageLinkTargets.filter(i=>P[i]&&!P[i].isDead&&i!==ct);
     if(validTargets.length>0){
-      const targetIdx=validTargets[0];
+      const targetIdx=applyNightTarget(validTargets[0],validTargets,'选择【两人一绳】目标');
       P[ct].damageLink={partner:targetIdx,active:true,expiryOwner:ct};
       P[targetIdx].damageLink={partner:ct,active:true,expiryOwner:ct};
       L.push(`【两人一绳】${P[ct].name} 与 ${P[targetIdx].name} 间架起链条，一方受到HP伤害时另一方受等量伤害`);
@@ -252,7 +278,7 @@ export function aiStep(gs, opts = {}) {
   if(abilityData.roseThornTargets&&abilityData.roseThornSource===ct){
     const validTargets=abilityData.roseThornTargets.filter(i=>P[i]&&!P[i].isDead&&i!==ct);
     if(validTargets.length){
-      const targetIdx=chooseAiRoseThornTarget(P, ct, validTargets);
+      const targetIdx=applyNightTarget(chooseAiRoseThornTarget(P, ct, validTargets),validTargets,'选择【玫瑰倒刺】目标');
       const gifted=P[ct].hand.splice(0).map(card=>({...card,roseThornHolderId:targetIdx,roseThornSourceId:ct,roseThornSourceName:P[ct].name}));
       P[targetIdx].hand.push(...gifted);
       L.push(`【玫瑰倒刺】${P[ct].name} 将全部手牌交给了 ${P[targetIdx].name}`);
@@ -293,7 +319,7 @@ export function aiStep(gs, opts = {}) {
     const validTargets=abilityData.caveDuelTargets;
     if(validTargets.length>0){
       // AI随机选择一个目标
-      const targetIdx=validTargets[Math.floor(Math.random()*validTargets.length)];
+      const targetIdx=applyNightTarget(validTargets[Math.floor(Math.random()*validTargets.length)],validTargets,'选择【穴居人战争】目标');
       // 执行穴居人战争效果
       const sourcePlayer=P[ct];
       const targetPlayer=P[targetIdx];
@@ -396,6 +422,10 @@ export function aiStep(gs, opts = {}) {
           P[ct].godLevel++;P[ct].godZone.push({...hgc});
         } else if(!P[ct].godName||alreadyHasGod){
           P[ct].godName=hgc.godKey;P[ct].godLevel=1;P[ct].godZone=[{...hgc}];
+        }
+        if(hgc.godKey==='APO'){
+          gs={...gs,apophisNight:getApophisNightForLevel(P[ct].godLevel)};
+          L.push(buildApophisNightLog());
         }
 
         P.forEach((p,i)=>{if(i!==ct&&p.godName===hgc.godKey){const abandoned=abandonGodFollower(i,gs.currentTurn,P,D,Disc,L,inspectionMeta);P=abandoned.P;D=abandoned.D;Disc=abandoned.Disc;L=abandoned.L;inspectionMeta=abandoned.inspectionMeta;}});
@@ -538,7 +568,9 @@ export function aiStep(gs, opts = {}) {
 
           // 遍历所有目标，直到找到可以追捕的目标或用完所有目标
           let foundTarget = false;
-          for (const { player: tgt, idx: ti } of sortedTargets) {
+          for (const targetEntry of sortedTargets) {
+            let ti = applyNightTarget(targetEntry.idx, validTargets.map(t => t.idx), '选择【追捕】目标');
+            const tgt = P[ti];
             const targetHand = P[ti].hand;
             if (ti === 0) {
               L.push(`${ai.name}（追猎者）向你发动【追捕】！请选择亮出一张手牌`);
@@ -677,8 +709,9 @@ export function aiStep(gs, opts = {}) {
       if(!plan){
         huntContinue = false;
       }else if(P[ct].hand.length){
-        tgt=P[plan.targetIdx];
-        const ti=plan.targetIdx;
+        const legalTargets=alive.map(p=>P.indexOf(p)).filter(i=>i>=0);
+        const ti=applyNightTarget(plan.targetIdx,legalTargets,'选择【蛊惑】目标');
+        tgt=P[ti];
         const sc=plan.card;
         const bwRes=applyBewitchGift(gs,P,D,Disc,L,ct,ti,sc);
         gs=bwRes.gs;P=bwRes.P;D=bwRes.D;Disc=bwRes.Disc;L=bwRes.L;
@@ -735,7 +768,9 @@ export function aiStep(gs, opts = {}) {
           const scoreH=h=>h.filter(c=>!c.isGod&&(!myL.has(c.letter)||!myN.has(c.number))).length;
           tgt=pool.reduce((b,p)=>scoreH(p.hand)>scoreH(b.hand)?p:b,pool[0]);
         }
-        const ti=P.indexOf(tgt);
+        const legalTargets=pool.map(p=>P.indexOf(p)).filter(i=>i>=0);
+        const ti=applyNightTarget(P.indexOf(tgt),legalTargets,'选择【掉包】目标');
+        tgt=P[ti];
         if(P[ti]?.hand.length&&P[ct].hand.length){
           const ri=0|Math.random()*P[ti].hand.length;const taken=P[ti].hand.splice(ri,1)[0];
           const gi=0|Math.random()*P[ct].hand.length;const given=P[ct].hand.splice(gi,1)[0];
@@ -766,7 +801,8 @@ export function aiStep(gs, opts = {}) {
       cultistBewitchPlan=chooseAiCultistBewitchPlan(P,ct);
       if(cultistBewitchPlan){
         const plan=cultistBewitchPlan;
-        const ti=plan.targetIdx;
+        const legalTargets=alive.map(p=>P.indexOf(p)).filter(i=>i>=0);
+        const ti=applyNightTarget(plan.targetIdx,legalTargets,'选择【蛊惑】目标');
         const sc=plan.card;
         const bwRes=applyBewitchGift(gs,P,D,Disc,L,ct,ti,sc);
         gs=bwRes.gs;P=bwRes.P;D=bwRes.D;Disc=bwRes.Disc;L=bwRes.L;
@@ -795,7 +831,11 @@ export function aiStep(gs, opts = {}) {
   const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
   const aiHandLimit=P[ct]._nyaHandLimit??4;
   const discardedCards=[];
-  while(P[ct].hand.length>aiHandLimit){const c=P[ct].hand.shift();Disc.push(c);discardedCards.push(c);L.push(`${ai.name} 弃 ${cardLogText(c,{alwaysShowName:true})}（上限）`);}
+  while(P[ct].hand.length>aiHandLimit){
+    const c=P[ct].hand.shift();Disc.push(c);discardedCards.push(c);L.push(`${ai.name} 弃 ${cardLogText(c,{alwaysShowName:true})}（上限）`);
+    const balance=applyBalanceDiscardSideEffects({players:P,deck:D,discard:Disc,log:L,ownerIdx:ct,cards:[c],reason:'手牌上限弃牌'});
+    P=balance.players;D=balance.deck;Disc=balance.discard;L=balance.log;
+  }
   // 结算玫瑰倒刺：弃掉的标记牌立即造成伤害，日志紧跟在弃牌日志之后
   if(discardedCards.length){
     const thornLosses={};

@@ -14,6 +14,7 @@ import {
   tryVritraImmortal,
 } from './coreUtils';
 import { buildStatEvents } from './statEvents';
+import { applyBalanceDiscardSideEffects } from './balanceCards';
 
 export function applyHpDamageWithLink(P, i, amount, Disc, L, currentTurn, D) {
   if (i == null || !P[i] || P[i].isDead || !(amount > 0)) return;
@@ -347,6 +348,8 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         } else if (c.type !== 'blankZone') {
           Disc.push(c);
           msgs.push(`${P[i].name} 失去了 ${cardLogText(c, { alwaysShowName: true })}`);
+          const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: i, cards: [c], reason: '失去手牌' });
+          msgs.splice(0, msgs.length, ...balance.log);
         } else {
           msgs.push(`${P[i].name} 的空白区域牌消失了`);
         }
@@ -476,6 +479,8 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   const handlers = {
     selfHealHP: () => { healHP(ci, card.val); msgs.push(`${actor.name} 回复了 ${card.val} HP`); },
     selfHealSAN: () => { healSAN(ci, card.val); msgs.push(`${actor.name} 回复了 ${card.val} SAN`); },
+    lifeBalance: () => { healHP(ci, card.val || 3); msgs.push(`${actor.name} 回复了 ${card.val || 3} HP`); },
+    soulBalance: () => { healSAN(ci, card.val || 3); msgs.push(`${actor.name} 回复了 ${card.val || 3} SAN`); },
     selfHealBoth: () => { healHP(ci, 1); healSAN(ci, 1); msgs.push(`${actor.name} 回复了 1 HP 和 1 SAN`); },
     selfHealBoth21: () => { healHP(ci, 2); healSAN(ci, 1); msgs.push(`${actor.name} 回复了 2 HP 和 1 SAN`); },
     selfHealAdjDamageHP: () => {
@@ -565,6 +570,8 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           } else if (c.type !== 'blankZone') {
             Disc.push(c);
             msgs.push(`${P[i].name} 失去了 ${cardLogText(c, { alwaysShowName: true })}`);
+            const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: i, cards: [c], reason: '失去手牌' });
+            msgs.splice(0, msgs.length, ...balance.log);
             earthquakeDiscardEvents.push({
               playerIndex: i,
               card: c,
@@ -802,6 +809,8 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
               msgs.push(`${target.name} 的黑山羊幼仔被销毁`);
             } else if (c.type !== 'blankZone') {
               Disc.push(c);
+              const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: targetIdx, cards: [c], reason: '同归深渊弃牌' });
+              msgs.splice(0, msgs.length, ...balance.log);
             }
           }
         }
