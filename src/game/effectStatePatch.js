@@ -12,6 +12,10 @@ const ABILITY_DECISION_PHASES = {
   sphinxGuess: 'SPHINX_GUESS',
   graveDigPickGod: 'GRAVE_DIG_SELECT',
   buryAliveSelect: 'BURY_ALIVE_SELECT',
+  igniteTorchDiscard: 'IGNITE_TORCH_DISCARD',
+  semiMaterializeTarget: 'SEMI_MATERIALIZE_TARGET',
+  semiMaterializeGuess: 'SEMI_MATERIALIZE_GUESS',
+  tsgSlimeBalance: 'TSG_SLIME_BALANCE',
 };
 
 export function hasEffectDecisionState(statePatch) {

@@ -172,6 +172,40 @@ function isDebugForceCardTargetAllowed(target, isSinglePlayer) {
   return isSinglePlayer && /^ai[1-4]$/.test(target || '');
 }
 
+function nextDebugCardId(deck) {
+  return deck.reduce((max, card) => Math.max(max, Number.isFinite(card?.id) ? card.id : -1), -1) + 1;
+}
+
+function createDebugZoneCard(deck, key, name) {
+  const variants = FIXED_ZONE_CARD_VARIANTS_BY_KEY[key] || [];
+  const cardDef = variants.find(card => card.name === name);
+  if (!cardDef) return null;
+  const letter = key?.[0];
+  const number = Number(key?.slice(1));
+  return {
+    ...cardDef,
+    id: nextDebugCardId(deck),
+    key,
+    letter,
+    number,
+    isZone: true,
+  };
+}
+
+function createDebugGodCard(deck, godKey) {
+  const def = GOD_DEFS[godKey];
+  if (!def) return null;
+  return {
+    id: nextDebugCardId(deck),
+    isGod: true,
+    godKey,
+    key: godKey,
+    type: 'god',
+    needsTarget: false,
+    ...def,
+  };
+}
+
 // ══════════════════════════════════════════════════════════════
 //  INIT GAME
 // ══════════════════════════════════════════════════════════════
@@ -200,10 +234,12 @@ export function initGame(
 
     if (debugForceCardType === 'zone' && debugForceZoneCardKey && debugForceZoneCardName) {
       // 查找指定编号和牌面的区域牌
-      targetCard = deck.find(card => card.key === debugForceZoneCardKey && card.name === debugForceZoneCardName);
+      targetCard = deck.find(card => card.key === debugForceZoneCardKey && card.name === debugForceZoneCardName)
+        || createDebugZoneCard(deck, debugForceZoneCardKey, debugForceZoneCardName);
     } else if (debugForceCardType === 'god' && debugForceGodCardKey) {
       // 查找指定类型的神牌
-      targetCard = deck.find(card => card.isGod && card.godKey === debugForceGodCardKey);
+      targetCard = deck.find(card => card.isGod && card.godKey === debugForceGodCardKey)
+        || createDebugGodCard(deck, debugForceGodCardKey);
     } else if (debugForceCard) {
       // 兼容旧的设置方式
       targetCard = deck.find(card => card.key === debugForceCard);

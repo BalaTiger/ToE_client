@@ -497,6 +497,8 @@ function DebugSettingsPanel({
             <option value="ZHU">烛九阴</option>
             <option value="SHU">森之领主</option>
             <option value="VRI">弗栗多</option>
+            <option value="APO">阿波菲斯</option>
+            <option value="TSG">蟾蜍之神</option>
           </select>
         </div>
       )}

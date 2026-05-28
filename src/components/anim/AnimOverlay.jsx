@@ -3,6 +3,7 @@ import { CardFlipAnim } from './CardFlipAnim';
 import { DiceRollAnim, GenericAnimOverlay, YourTurnAnim } from './GenericAnimOverlay';
 import { BuryToDeckOverlay, DiscardMoveOverlay, ZhuHideCardOverlay } from './MoveOverlays';
 import { CaveDuelAnim } from './AreaCardOverlays';
+import { ApophisEclipseAnim } from './ApophisOverlays';
 
 const NO_OVERLAY_TYPES = new Set([
   'CARD_TRANSFER',
@@ -31,6 +32,7 @@ const ANIM_RENDERERS = {
   BURY_TO_DECK: ({ anim, exiting, expansionKey }) => <BuryToDeckOverlay anim={anim} exiting={exiting} expansionKey={expansionKey} />,
   ZHU_HIDE_CARD: ({ anim, exiting }) => <ZhuHideCardOverlay anim={anim} exiting={exiting} />,
   CAVE_DUEL: ({ anim, exiting }) => <CaveDuelAnim anim={anim} exiting={exiting} />,
+  APOPHIS_ECLIPSE: ({ exiting }) => <ApophisEclipseAnim exiting={exiting} />,
 };
 
 function AnimOverlay({ anim, exiting, expansionKey = 'temporary' }) {

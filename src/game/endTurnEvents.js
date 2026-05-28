@@ -1,3 +1,5 @@
+import { hasGodPowerImmunity } from './godPowerImmunity';
+
 export const END_TURN_PRIORITY = {
   ACTIVE_GOD: 1,
   ACTIVE_GOD_DERIVATIVE: 2,
@@ -13,7 +15,7 @@ export const END_TURN_EVENT = {
 };
 
 export function getCthRestDrawCount(player) {
-  return player?.isResting && player?.godName === 'CTH' && (player?.godLevel || 0) >= 1
+  return player?.isResting && !hasGodPowerImmunity(player) && player?.godName === 'CTH' && (player?.godLevel || 0) >= 1
     ? player.godLevel
     : 0;
 }

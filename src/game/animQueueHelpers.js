@@ -125,6 +125,7 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
     const afterLog=[...(Array.isArray(ev?.afterLog)?ev.afterLog:beforeLog)];
     const preQ=buildAnimQueue({players:cursorPlayers,log:cursorLog},{players:beforePlayers,log:beforeLog});
     if(preQ.length)queue.push(...preQ);
+    queue.push({type:"VISUAL_LOCK",players:beforePlayers});
     queue.push({
       type:"DRAW_CARD",
       card:ev.card,
@@ -140,6 +141,7 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
       }
     );
     if(effectQ.length)queue.push(...effectQ);
+    queue.push(statePatchStep({players:afterPlayers,log:afterLog}));
     cursorPlayers=afterPlayers;
     cursorLog=afterLog;
     if(ev?.statEventSeq!=null)cursorStatEventSeq=Math.max(cursorStatEventSeq,ev.statEventSeq);

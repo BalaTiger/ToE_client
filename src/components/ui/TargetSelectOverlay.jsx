@@ -9,7 +9,7 @@ function getBewitchEffectDesc(card) {
 }
 
 export function TargetSelectOverlay({ drawReveal, phase, bewitchCard }) {
-  const isActive = ['DRAW_SELECT_TARGET', 'SWAP_SELECT_TARGET', 'HUNT_SELECT_TARGET', 'BEWITCH_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET'].includes(phase);
+  const isActive = ['DRAW_SELECT_TARGET', 'SWAP_SELECT_TARGET', 'HUNT_SELECT_TARGET', 'BEWITCH_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET', 'SEMI_MATERIALIZE_TARGET', 'SEMI_MATERIALIZE_GUESS'].includes(phase);
   if (!isActive) return null;
   const isBewitch = phase === 'BEWITCH_SELECT_TARGET';
   const showCard = phase !== 'HUNT_SELECT_TARGET';
@@ -25,6 +25,8 @@ export function TargetSelectOverlay({ drawReveal, phase, bewitchCard }) {
     CAVE_DUEL_SELECT_TARGET: '请选择一名有手牌的角色进行【穴居人战争】',
     DAMAGE_LINK_SELECT_TARGET: '请选择一名角色建立【两人一绳】链条',
     ROSE_THORN_SELECT_TARGET: '请选择承受【玫瑰倒刺】的目标',
+    SEMI_MATERIALIZE_TARGET: '请悄悄指定一名角色',
+    SEMI_MATERIALIZE_GUESS: '请猜测被指定的角色',
     FIRST_COME_PICK_SELECT: '请从翻开的牌中选择一张收入手牌',
   }[phase] || '请选择目标';
   if (phase === 'SWAP_SELECT_TARGET_CARD') return null;

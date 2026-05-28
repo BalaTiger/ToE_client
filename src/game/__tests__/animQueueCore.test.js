@@ -1,8 +1,55 @@
 import { describe, expect, it } from 'vitest';
-import { buildAnimQueue } from '../animQueueCore';
+import { buildAiHuntEventAnimQueue, buildAnimQueue } from '../animQueueCore';
 import { makeGs, makePlayer } from './factory';
 
 describe('buildAnimQueue stat animations', () => {
+  it('阿波菲斯黑夜降临会播放日食动画', () => {
+    const oldGs = makeGs({
+      players: [makePlayer()],
+      log: ['旧日志'],
+      apophisNight: null,
+    });
+    const newGs = makeGs({
+      players: [makePlayer()],
+      log: ['旧日志', '【噬日灭世】黑夜降临，选中目标累计12次后结束'],
+      apophisNight: { active: true, threshold: 2, count: 0, limit: 12 },
+    });
+
+    expect(buildAnimQueue(oldGs, newGs).map(step => step.type)).toContain('APOPHIS_ECLIPSE');
+  });
+
+  it('阿波菲斯黑夜选目标会播放掷骰，追捕偏移时重播锁定动画', () => {
+    const players = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' }), makePlayer({ name: '贝拉' })];
+    const oldGs = makeGs({ players, log: [], _apophisTargetSeq: 1 });
+    const newGs = makeGs({
+      players,
+      log: ['【黑夜】你 选择【追捕】目标掷出 1，目标由 艾伦 错乱为 贝拉，失去1SAN'],
+      _apophisTargetSeq: 2,
+      apophisNight: { active: true, threshold: 2, count: 3, limit: 12 },
+      _apophisTargetEvent: {
+        seq: 2,
+        actorIdx: 0,
+        actorName: '你',
+        selectedIdx: 1,
+        selectedName: '艾伦',
+        targetIdx: 2,
+        targetName: '贝拉',
+        roll: 1,
+        threshold: 2,
+        changed: true,
+        label: '选择【追捕】目标',
+        log: '【黑夜】你 选择【追捕】目标掷出 1，目标由 艾伦 错乱为 贝拉，失去1SAN',
+      },
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+
+    expect(queue[0]).toMatchObject({ type: 'DICE_ROLL', diceMode: 'apophisNight', apophisChanged: true, d1: 1, rollerName: '你' });
+    expect(queue[0]._apophisNight).toEqual(newGs.apophisNight);
+    expect(queue[1]).toMatchObject({ type: 'SKILL_HUNT', targetIdx: 2 });
+    expect(queue[1]._apophisNight).toEqual(newGs.apophisNight);
+  });
+
   it('不会仅因 SAN 数值上升就播放 SAN 回复特效', () => {
     const oldGs = makeGs({
       players: [makePlayer({ san: 3 })],
@@ -211,5 +258,82 @@ describe('buildAnimQueue stat animations', () => {
       fromPid: 0,
       visualSetupPatch: { players: beforePlayers },
     });
+  });
+});
+
+describe('buildAiHuntEventAnimQueue', () => {
+  it('追捕击杀后先播放死亡公告，再暗抽，最后弃置剩余手牌', () => {
+    const hunterDiscard = { id: 'hunter-d1', key: 'D1', name: '钻地魔虫' };
+    const stolenA = { id: 'stolen-a', key: 'A1', name: '坠落' };
+    const stolenB = { id: 'stolen-b', key: 'B1', name: '圣甲虫' };
+    const leftover = { id: 'leftover', key: 'C1', name: '亡者军团' };
+    const beforePlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '卡洛斯', hp: 9, hand: [hunterDiscard] }),
+      makePlayer({ name: '艾伦', hp: 3, hand: [stolenA, stolenB, leftover] }),
+    ];
+    const afterDiscardPlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '卡洛斯', hp: 9, hand: [] }),
+      makePlayer({ name: '艾伦', hp: 3, hand: [stolenA, stolenB, leftover] }),
+    ];
+    const afterDamagePlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '卡洛斯', hp: 9, hand: [] }),
+      makePlayer({ name: '艾伦', hp: 0, isDead: true, hand: [stolenA, stolenB, leftover] }),
+    ];
+    const afterPlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '卡洛斯', hp: 9, hand: [stolenA, stolenB] }),
+      makePlayer({ name: '艾伦', hp: 0, isDead: true, hand: [] }),
+    ];
+
+    const queue = buildAiHuntEventAnimQueue({
+      hunterIdx: 1,
+      targetIdx: 2,
+      discardedCard: hunterDiscard,
+      beforePlayers,
+      afterDiscardPlayers,
+      afterDiscardDiscard: [hunterDiscard],
+      afterDamagePlayers,
+      afterDamageDiscard: [hunterDiscard],
+      afterDamageLog: [
+        '旧日志',
+        '卡洛斯（追猎者）对 艾伦 【追捕】，亮出 [D1]',
+        '弃 [D1] 钻地魔虫 → 艾伦 受 3HP 伤害！',
+        '☠ 艾伦（邪祀者）倒下了！',
+      ],
+      afterPlayers,
+      afterResultDiscard: [hunterDiscard, leftover],
+      beforeLog: ['旧日志'],
+      afterLog: [
+        '旧日志',
+        '卡洛斯（追猎者）对 艾伦 【追捕】，亮出 [D1]',
+        '弃 [D1] 钻地魔虫 → 艾伦 受 3HP 伤害！',
+        '☠ 艾伦（邪祀者）倒下了！',
+        '卡洛斯 从 艾伦 的手牌中暗抽了一张！',
+        '卡洛斯 从 艾伦 的手牌中暗抽了一张！',
+      ],
+      msgs: [
+        '卡洛斯（追猎者）对 艾伦 【追捕】，亮出 [D1]',
+        '弃 [D1] 钻地魔虫 → 艾伦 受 3HP 伤害！',
+        '☠ 艾伦（邪祀者）倒下了！',
+        '卡洛斯 从 艾伦 的手牌中暗抽了一张！',
+        '卡洛斯 从 艾伦 的手牌中暗抽了一张！',
+      ],
+      lootTransferCount: 2,
+      lootDiscardCards: [leftover],
+    }, '卡洛斯');
+
+    const types = queue.map(step => step.type);
+    const deathIdx = types.indexOf('DEATH');
+    const lootIdx = types.findIndex((type, idx) => type === 'CARD_TRANSFER' && idx > deathIdx);
+    const leftoverDiscardIdx = types.findIndex((type, idx) => type === 'DISCARD' && idx > lootIdx && queue[idx].card?.id === leftover.id);
+    const finalPatchIdx = types.length - 1;
+
+    expect(deathIdx).toBeGreaterThan(-1);
+    expect(lootIdx).toBeGreaterThan(deathIdx);
+    expect(leftoverDiscardIdx).toBeGreaterThan(lootIdx);
+    expect(types[finalPatchIdx]).toBe('STATE_PATCH');
   });
 });

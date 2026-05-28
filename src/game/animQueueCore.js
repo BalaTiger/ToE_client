@@ -3,11 +3,37 @@ import { buildFullHandSwapStepsFromLogs, buryToDeckStep, cardTransferStep, state
 
 export function buildAnimQueue(oldGs, newGs) {
   const q = [];
+  const newApophisTargetEvent = newGs?._apophisTargetEvent;
+  if (newApophisTargetEvent?.seq && newApophisTargetEvent.seq > (oldGs?._apophisTargetSeq || 0)) {
+    const apophisNightForAnim = newGs?.apophisNight || null;
+    q.push({
+      type: 'DICE_ROLL',
+      _apophisTargetSeq: newApophisTargetEvent.seq,
+      _apophisNight: apophisNightForAnim,
+      diceMode: 'apophisNight',
+      apophisChanged: !!newApophisTargetEvent.changed,
+      d1: newApophisTargetEvent.roll,
+      d2: 0,
+      heal: 0,
+      rollerName: newApophisTargetEvent.actorName || newGs.players?.[newApophisTargetEvent.actorIdx]?.name || '???',
+      msgs: newApophisTargetEvent.log ? [newApophisTargetEvent.log] : [],
+      _logChunk: newApophisTargetEvent.log ? [newApophisTargetEvent.log] : [],
+    });
+    if (newApophisTargetEvent.changed && /追捕/.test(newApophisTargetEvent.label || '')) {
+      q.push({ type: 'SKILL_HUNT', _apophisTargetSeq: newApophisTargetEvent.seq, _apophisNight: apophisNightForAnim, targetIdx: newApophisTargetEvent.targetIdx, msgs: [] });
+    } else if (newApophisTargetEvent.changed && /蛊惑/.test(newApophisTargetEvent.label || '')) {
+      q.push({ type: 'SKILL_BEWITCH', _apophisTargetSeq: newApophisTargetEvent.seq, _apophisNight: apophisNightForAnim, targetIdx: newApophisTargetEvent.targetIdx, msgs: [] });
+    }
+  }
   const newInspectionEvents = (newGs?._inspectionEvents || []).filter(ev => ev?.seq > (oldGs?._inspectionSeq || 0));
   const effectivePlayers = newInspectionEvents[0]?.beforePlayers || newGs.players;
   const effectiveLog = newInspectionEvents[0]?.beforeLog || newGs.log;
   const oldLog = Array.isArray(oldGs?.log) ? oldGs.log : [];
   const newMsgs = (Array.isArray(effectiveLog) ? effectiveLog : []).slice(oldLog.length);
+  if (newGs?.apophisNight?.active) {
+    const nightMsg = newMsgs.find(line => typeof line === 'string' && line.includes('【噬日灭世】黑夜降临'));
+    if (nightMsg) q.push({ type: 'APOPHIS_ECLIPSE', msgs: [nightMsg] });
+  }
   if (newGs.gameOver && newGs.currentTurn !== oldGs.currentTurn) {
     const dCard = newGs._aiDrawnCard || newGs._drawnCard || newGs.drawReveal?.card;
     if (dCard) {
@@ -196,24 +222,18 @@ export function buildAiHuntEventAnimQueue(evt, actorName) {
     }
   }
   if (evt.beforePlayers && evt.afterPlayers) {
-    if (evt.afterPlayers[evt.targetIdx]?.isDead && evt.hunterIdx != null) {
-      const hunterBefore = evt.beforePlayers[evt.hunterIdx]?.hand?.length || 0;
-      const hunterAfter = evt.afterPlayers[evt.hunterIdx]?.hand?.length || 0;
-      const cardsTaken = Math.max(0, hunterAfter - hunterBefore + (evt.discardedCard ? 1 : 0));
-      if (cardsTaken > 0) {
-        perHuntQueue.push(cardTransferStep({ fromPid: evt.targetIdx, dest: 'player', toPid: evt.hunterIdx, count: cardsTaken }));
-      }
-    }
     const beforeLog = Array.isArray(evt.beforeLog) ? evt.beforeLog : [];
     const afterLog = Array.isArray(evt.afterLog) ? evt.afterLog : [...beforeLog, ...(evt.msgs || [])];
+    const damagePlayers = evt.afterDamagePlayers || evt.afterPlayers;
+    const damageLog = evt.afterDamageLog || afterLog;
     const resultQueue = buildAnimQueue(
-      { players: evt.beforePlayers, log: beforeLog },
-      { players: evt.afterPlayers, log: afterLog }
+      { players: evt.afterDiscardPlayers || evt.beforePlayers, log: beforeLog },
+      { players: damagePlayers, discard: evt.afterDamageDiscard || evt.afterResultDiscard, log: damageLog }
     );
     const resultWithChunks = resultQueue
       .filter(step => !(evt.discardedCard && step.type === 'CARD_TRANSFER' && step.fromPid === evt.hunterIdx && step.dest === 'discard'))
       .map(step => ({ ...step }));
-    if (followupMsgs.length) {
+    if (followupMsgs.length && !evt.afterPlayers[evt.targetIdx]?.isDead) {
       const firstVisibleIdx = resultWithChunks.findIndex(step => step.type !== 'STATE_PATCH');
       if (firstVisibleIdx >= 0) {
         resultWithChunks[firstVisibleIdx]._logChunk = [
@@ -223,6 +243,28 @@ export function buildAiHuntEventAnimQueue(evt, actorName) {
       }
     }
     perHuntQueue.push(...resultWithChunks);
+    if (evt.afterPlayers[evt.targetIdx]?.isDead && evt.hunterIdx != null) {
+      const lootMsgs = followupMsgs.filter(line => /从 .+ 的(?:公开)?手牌中/.test(line || ''));
+      const discardMsgs = followupMsgs.filter(line => /衍生牌|黑山羊幼仔/.test(line || ''));
+      const cardsTaken = Number.isFinite(evt.lootTransferCount) ? evt.lootTransferCount : 0;
+      if (cardsTaken > 0) {
+        perHuntQueue.push(cardTransferStep({ fromPid: evt.targetIdx, dest: 'player', toPid: evt.hunterIdx, count: cardsTaken, msgs: lootMsgs }));
+      } else if (lootMsgs.length) {
+        perHuntQueue.push({ type: 'TURN_BOUNDARY_PAUSE', _logChunk: lootMsgs });
+      }
+      (evt.lootDiscardCards || []).forEach((card, idx, arr) => {
+        perHuntQueue.push({
+          type: 'DISCARD',
+          card,
+          triggerName: evt.afterPlayers[evt.targetIdx]?.name || '???',
+          targetPid: evt.targetIdx,
+          _logChunk: idx === arr.length - 1 ? discardMsgs : [],
+        });
+      });
+      if (!cardsTaken && !(evt.lootDiscardCards || []).length && discardMsgs.length) {
+        perHuntQueue.push({ type: 'TURN_BOUNDARY_PAUSE', _logChunk: discardMsgs });
+      }
+    }
     perHuntQueue.push(statePatchStep({ players: evt.afterPlayers, discard: evt.afterResultDiscard }));
   } else if (followupMsgs.length) {
     perHuntQueue.push({ type: 'TURN_BOUNDARY_PAUSE', _logChunk: [...followupMsgs] });

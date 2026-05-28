@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ROLE_TREASURE } from '../coreUtils';
 import { aiDrawAndApply, playerDrawCard, startNextTurn } from '../turnEngine';
 import { makeGodCard, makeGs, makePlayer, makeStandardPlayers } from './factory';
-import { createBlackGoatYoungCard } from '../../constants/card';
+import { createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../../constants/card';
 
 describe('turnEngine stat events', () => {
   it('摸到邪神牌造成 SAN 损失时产出显式 stat events', () => {
@@ -71,6 +71,45 @@ describe('turnEngine stat events', () => {
     expect(result.statePatch.roseThornTargets).toEqual([1, 2, 3, 4]);
   });
 
+  it('Debug 强制收入只对一张玩家摸牌生效，不会污染下一张普通牌', () => {
+    const players = makeStandardPlayers(5);
+    const forcedCard = {
+      id: 'force-keep',
+      key: 'D3',
+      letter: 'D',
+      number: 3,
+      name: '玫瑰倒刺',
+      type: 'roseThornGiftAllHand',
+      isZone: true,
+    };
+    const normalCard = {
+      id: 'normal-egg',
+      key: 'A1',
+      letter: 'A',
+      number: 1,
+      name: '偷吃龙蛋',
+      type: 'selfHealAdjDamageHP',
+      val: 3,
+      adjVal: 2,
+      isZone: true,
+    };
+    const gs = makeGs({
+      players,
+      debugForceCardKeepPending: 'keep',
+      debugForceCardKeepTarget: 0,
+    });
+
+    const first = playerDrawCard(players, [forcedCard, normalCard], [], 0, gs);
+    expect(first.kept).toBe(true);
+    expect(gs.debugForceCardKeepPending).toBeNull();
+    expect(gs.debugForceCardKeepTarget).toBeNull();
+
+    const second = playerDrawCard(first.P, first.D, first.Disc, 0, gs);
+    expect(second.drawnCard.name).toBe('偷吃龙蛋');
+    expect(second.needsDecision).toBe(true);
+    expect(second.kept).toBeFalsy();
+  });
+
   it('邪神遭遇触发检定时直接扣 SAN 与检定效果使用连续 stat event seq', () => {
     const players = [makePlayer({ role: ROLE_TREASURE, hp: 10, san: 7, godEncounters: 0 })];
     const godCard = makeGodCard('NYA');
@@ -110,6 +149,24 @@ describe('turnEngine stat events', () => {
     ]);
   });
 
+  it('回合开始黑山羊幼仔造成损失时，撒托古亚黏液可打断到平分选择', () => {
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', hp: 8, san: 8, hand: [createBlackGoatYoungCard(), createTsathogguaSlimeCard()] }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0, log: [] });
+
+    const result = startNextTurn(gs);
+
+    expect(result.phase).toBe('TSG_SLIME_BALANCE');
+    expect(result.abilityData).toMatchObject({
+      type: 'tsgSlimeBalance',
+      targetIdx: 1,
+      afterHp: 7,
+      afterSan: 7,
+    });
+  });
+
   it('回合开始的两人一绳未断裂回复产出显式 stat events', () => {
     const players = [
       makePlayer({ name: '你', hp: 4, damageLink: { active: true, partner: 1, expiryOwner: 1 } }),
@@ -125,5 +182,66 @@ describe('turnEngine stat events', () => {
       { type: 'HP_GAIN', target: 0, from: { hp: 4 }, to: { hp: 8 }, reason: '两人一绳', seq: 1 },
       { type: 'HP_GAIN', target: 1, from: { hp: 5 }, to: { hp: 9 }, reason: '两人一绳', seq: 1 },
     ]);
+  });
+
+  it('撒托古亚信徒在回合结束后获得赐福黏液', () => {
+    const players = [
+      makePlayer({ name: '你', godName: 'TSG', godLevel: 2 }),
+      makePlayer({ name: '艾伦' }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0, log: [] });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players[0].hand.filter(c => c.isTsathogguaSlime)).toHaveLength(2);
+    expect(result.log.some(line => line.includes('获得2张撒托古亚的赐福黏液'))).toBe(true);
+  });
+
+  it('撒托古亚信徒摸牌阶段消耗黏液并额外摸牌', () => {
+    const slime = createTsathogguaSlimeCard();
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', godName: 'TSG', godLevel: 1, hand: [slime] }),
+    ];
+    const deck = [
+      { id: 'extra', key: 'A1', letter: 'A', number: 1, name: '额外牌', type: 'selfHealHP', val: 1, isZone: true, polarity: 'positive' },
+      { id: 'normal', key: 'A2', letter: 'A', number: 2, name: '正常牌', type: 'selfHealHP', val: 1, isZone: true, polarity: 'positive' },
+    ];
+    const gs = makeGs({ players, deck, currentTurn: 0, log: [] });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players[1].hand.some(c => c.isTsathogguaSlime)).toBe(false);
+    expect(result.players[1].hand.map(c => c.name)).toEqual(expect.arrayContaining(['额外牌', '正常牌']));
+    expect(result.log.some(line => line.includes('额外摸1张牌'))).toBe(true);
+  });
+
+  it('传授半物质化的额外回合延迟到被指定角色下个回合后', () => {
+    const players = makeStandardPlayers(4);
+    const scheduled = makeGs({
+      players,
+      currentTurn: 0,
+      turn: 3,
+      pendingExtraTurnOwner: 3,
+      pendingExtraTurnAfterPlayer: 1,
+      pendingExtraTurnAfterMinTurn: 4,
+      log: [],
+      deck: [],
+    });
+
+    const beforeTargetTurn = startNextTurn(scheduled);
+    expect(beforeTargetTurn.currentTurn).toBe(1);
+    expect(beforeTargetTurn.pendingExtraTurnOwner).toBe(3);
+    expect(beforeTargetTurn.pendingExtraTurnAfterPlayer).toBe(1);
+
+    const afterTargetTurn = startNextTurn({ ...beforeTargetTurn, currentTurn: 1, turn: 4, phase: 'ACTION' });
+    expect(afterTargetTurn.currentTurn).toBe(3);
+    expect(afterTargetTurn.pendingExtraTurnOwner).toBeNull();
+    expect(afterTargetTurn.pendingExtraTurnAfterPlayer).toBeNull();
+    expect(afterTargetTurn._extraTurnResumeFrom).toBe(1);
+
+    const afterExtraTurn = startNextTurn({ ...afterTargetTurn, currentTurn: 3, turn: 5, phase: 'ACTION' });
+    expect(afterExtraTurn.currentTurn).toBe(2);
+    expect(afterExtraTurn._extraTurnResumeFrom).toBeNull();
   });
 });

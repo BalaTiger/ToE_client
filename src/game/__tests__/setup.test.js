@@ -14,6 +14,10 @@ describe('mkDeck', () => {
   const EXPECTED_ZONE_CARD_COUNT = 48;
   const EXPECTED_SPECIAL_CARD_COUNT = 20;
   const EXPECTED_FORMAL_DECK_COUNT = EXPECTED_ZONE_CARD_COUNT + EXPECTED_SPECIAL_CARD_COUNT;
+  const EXPECTED_EARTH_DEFINED_ZONE_CARD_COUNT = 37;
+  const EXPECTED_EARTH_SPECIAL_CARD_COUNT = 24;
+  const EXPECTED_EARTH_DECK_COUNT = EXPECTED_ZONE_CARD_COUNT + EXPECTED_EARTH_SPECIAL_CARD_COUNT;
+  const EXPECTED_EARTH_CURRENT_DECK_COUNT = EXPECTED_EARTH_DEFINED_ZONE_CARD_COUNT + EXPECTED_EARTH_SPECIAL_CARD_COUNT;
 
   it('临时拓展包允许因测试牌超出正式牌堆数量', () => {
     const deck = mkDeck('temporary');
@@ -56,6 +60,51 @@ describe('mkDeck', () => {
     });
   });
 
+  it('地神的潜影包含夜风呼啸', () => {
+    const deck = mkDeck('地神的潜影');
+    const nightWind = deck.find(c => c.name === '夜风呼啸');
+
+    expect(nightWind).toMatchObject({
+      key: 'C4',
+      type: 'allDamageBoth',
+      expansion: '地神的潜影',
+    });
+  });
+
+  it('地神的潜影包含引燃火把和地底天空', () => {
+    const deck = mkDeck('地神的潜影');
+
+    expect(deck.find(c => c.name === '引燃火把')).toMatchObject({
+      key: 'C3',
+      type: 'igniteTorch',
+      expansion: '地神的潜影',
+    });
+    expect(deck.find(c => c.name === '地底天空')).toMatchObject({
+      key: 'C3',
+      type: 'swapDeckDiscard',
+      expansion: '地神的潜影',
+    });
+  });
+
+  it('地神的潜影记录 16 编号位×3 区域牌与 6 种神牌×4 的目标构成', () => {
+    const deck = mkDeck('地神的潜影');
+    const zoneCards = deck.filter(c => c.isZone);
+    const specialCards = deck.filter(c => c.isGod);
+    const expansion = EXPANSIONS['地神的潜影'];
+
+    expect(expansion.zoneSlotCount * expansion.zoneCardsPerSlot).toBe(EXPECTED_ZONE_CARD_COUNT);
+    expect((expansion.godCardKeys || []).length * (expansion.godCopies || 4)).toBe(EXPECTED_EARTH_SPECIAL_CARD_COUNT);
+    expect(EXPECTED_EARTH_DECK_COUNT).toBe(72);
+    expect(zoneCards).toHaveLength(EXPECTED_EARTH_DEFINED_ZONE_CARD_COUNT);
+    expect(specialCards).toHaveLength(EXPECTED_EARTH_SPECIAL_CARD_COUNT);
+    expect(deck).toHaveLength(EXPECTED_EARTH_CURRENT_DECK_COUNT);
+    expect(specialCards.filter(c => c.godKey === 'TSG')).toHaveLength(4);
+    expect(specialCards.find(c => c.godKey === 'TSG')).toMatchObject({
+      name: '蟾蜍之神',
+      subtitle: '撒托古亚之化身',
+    });
+  });
+
   it('各拓展包神牌/圣物牌数量与拓展包配置一致', () => {
     for (const [expansionKey, expansion] of Object.entries(EXPANSIONS)) {
       const deck = mkDeck(expansionKey);
@@ -69,13 +118,14 @@ describe('mkDeck', () => {
     }
   });
 
-  it('未完成拓展包不强制满足正式 68 张目标', () => {
+  it('未完成拓展包不强制满足正式牌堆数量目标', () => {
     for (const expansionKey of Object.keys(EXPANSIONS).filter(key => key !== 'temporary')) {
       const deck = mkDeck(expansionKey);
       const zoneCards = deck.filter(c => c.isZone);
+      const expectedMax = expansionKey === '地神的潜影' ? EXPECTED_EARTH_DECK_COUNT : EXPECTED_FORMAL_DECK_COUNT;
 
       expect(zoneCards.length).toBeLessThanOrEqual(EXPECTED_ZONE_CARD_COUNT);
-      expect(deck.length).toBeLessThanOrEqual(EXPECTED_FORMAL_DECK_COUNT);
+      expect(deck.length).toBeLessThanOrEqual(expectedMax);
     }
   });
 
@@ -215,5 +265,73 @@ describe('initGame debug force draw', () => {
     );
 
     expect(gs.debugForceCard).toBeNull();
+  });
+
+  it('Debug 可强制摸阿波菲斯，即使当前牌堆未自然包含它', () => {
+    const gs = initGame(
+      null,
+      null,
+      'player',
+      'auto',
+      'god',
+      null,
+      null,
+      'APO',
+      null,
+      state => state,
+      'temporary'
+    );
+
+    expect(gs.debugForceCard).toMatchObject({ isGod: true, godKey: 'APO', name: '阿波菲斯' });
+  });
+
+  it('Debug 可强制摸蟾蜍之神', () => {
+    const gs = initGame(
+      null,
+      null,
+      'player',
+      'auto',
+      'god',
+      null,
+      null,
+      'TSG',
+      null,
+      state => state,
+      'temporary'
+    );
+
+    expect(gs.debugForceCard).toMatchObject({ isGod: true, godKey: 'TSG', name: '蟾蜍之神' });
+  });
+
+  it('Debug 可强制摸生命天平和灵魂天平，即使当前扩展包不同', () => {
+    const life = initGame(
+      null,
+      null,
+      'player',
+      'keep',
+      'zone',
+      'B1',
+      '生命天平',
+      null,
+      null,
+      state => state,
+      '地神的潜影'
+    );
+    const soul = initGame(
+      null,
+      null,
+      'player',
+      'keep',
+      'zone',
+      'C1',
+      '灵魂天平',
+      null,
+      null,
+      state => state,
+      '地神的潜影'
+    );
+
+    expect(life.debugForceCard).toMatchObject({ key: 'B1', name: '生命天平', type: 'lifeBalance' });
+    expect(soul.debugForceCard).toMatchObject({ key: 'C1', name: '灵魂天平', type: 'soulBalance' });
   });
 });

@@ -20,6 +20,13 @@ describe('endTurnEvents', () => {
     ]);
   });
 
+  it('引燃火把免疫时不触发拉莱耶休息摸牌', () => {
+    const player = makePlayer({ isResting: true, godName: 'CTH', godLevel: 2, godPowerImmuneThisTurn: true });
+
+    expect(getCthRestDrawCount(player)).toBe(0);
+    expect(getEndTurnEvents([player], 0)).toEqual([]);
+  });
+
   it('uses only cards left of endless corridor for end-turn replay', () => {
     const leftA = makeZoneCard('A1', 0, { id: 'left-a' });
     const leftB = makeZoneCard('B2', 0, { id: 'left-b' });

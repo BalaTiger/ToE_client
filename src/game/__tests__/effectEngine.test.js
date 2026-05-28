@@ -8,6 +8,7 @@ import {
 } from '../effectEngine';
 import { makeInspectionMeta } from '../coreUtils';
 import { resetIds, makePlayer, makeStandardPlayers, makeZoneCard, makeGodCard, makeGs } from './factory';
+import { createTsathogguaSlimeCard } from '../../constants/card';
 
 describe('applyHpDamageWithLink', () => {
   beforeEach(() => resetIds());
@@ -173,6 +174,67 @@ describe('applyFx', () => {
     expect(sanRes.msgs[0]).toContain('回复了 3 SAN');
   });
 
+  it('igniteTorch: 玩家有手牌时进入弃牌选择', () => {
+    const players = makeStandardPlayers(3);
+    players[0].hand = [{ id: 'old-card', name: '旧手牌', type: 'test' }];
+    const gs = makeGs({ players });
+    const res = applyFx({ type: 'igniteTorch', name: '引燃火把' }, 0, null, players, [], [], gs);
+
+    expect(res.P[0].hand).toHaveLength(1);
+    expect(res.P[0].godPowerImmuneThisTurn).toBeFalsy();
+    expect(res.statePatch.abilityData).toMatchObject({ type: 'igniteTorchDiscard', playerIndex: 0 });
+    expect(res.msgs[0]).toContain('准备弃一张牌');
+  });
+
+  it('igniteTorch: AI 自动弃一张牌并获得本回合邪神之力免疫', () => {
+    const players = makeStandardPlayers(3);
+    players[0].hand = [{ id: 'old-card', name: '旧手牌', type: 'test' }];
+    const gs = makeGs({ players });
+    const res = applyFx({ type: 'igniteTorch', name: '引燃火把' }, 0, null, players, [], [], gs, false, [], true);
+
+    expect(res.P[0].hand).toHaveLength(0);
+    expect(res.P[0].godPowerImmuneThisTurn).toBe(true);
+    expect(res.Disc).toMatchObject([{ id: 'old-card' }]);
+    expect(res.msgs.at(-1)).toContain('本回合不受邪神之力影响');
+  });
+
+  it('swapDeckDiscard: 交换牌堆和弃牌堆', () => {
+    const players = makeStandardPlayers(3);
+    const deck = [{ id: 'deck-1' }, { id: 'deck-2' }];
+    const discard = [{ id: 'disc-1' }];
+    const gs = makeGs({ players, deck, discard });
+    const res = applyFx({ type: 'swapDeckDiscard', name: '地底天空' }, 0, null, players, deck, discard, gs);
+
+    expect(res.D).toEqual(discard);
+    expect(res.Disc).toEqual(deck);
+    expect(res.msgs[0]).toContain('牌堆和弃牌堆交换了');
+  });
+
+  it('semiMaterializeTeach: 进入悄悄指定目标阶段', () => {
+    const players = makeStandardPlayers(3);
+    const gs = makeGs({ players });
+    const res = applyFx({ type: 'semiMaterializeTeach', name: '传授半物质化' }, 0, null, players, [], [], gs);
+
+    expect(res.statePatch.abilityData).toMatchObject({
+      type: 'semiMaterializeTarget',
+      source: 0,
+      legalTargets: [0, 1, 2],
+    });
+    expect(res.msgs[0]).toContain('悄悄指定');
+  });
+
+  it('deadNeighborSkipDraw: 死亡角色相邻者下回合不能摸牌', () => {
+    const players = makeStandardPlayers(5);
+    players[2].isDead = true;
+    const gs = makeGs({ players });
+    const res = applyFx({ type: 'deadNeighborSkipDraw', name: '活死人哨兵' }, 0, null, players, [], [], gs);
+
+    expect(res.P[1]).toMatchObject({ skipNextDraw: true, skipNextDrawReason: '活死人哨兵' });
+    expect(res.P[3]).toMatchObject({ skipNextDraw: true, skipNextDrawReason: '活死人哨兵' });
+    expect(res.P[0].skipNextDraw).toBeFalsy();
+    expect(res.P[4].skipNextDraw).toBeFalsy();
+  });
+
   it('selfDamageHP: 失去HP', () => {
     const players = makeStandardPlayers(3);
     // A1 variant 1 is selfDamageDiscardHP which includes selfDamageHP
@@ -184,6 +246,24 @@ describe('applyFx', () => {
     expect(res.statePatch._statEvents).toMatchObject([
       { type: 'HP_LOSS', target: 0, from: { hp: 10 }, to: { hp: 7 } },
     ]);
+  });
+
+  it('失去 HP 且手中有撒托古亚黏液时进入平分选择', () => {
+    const players = makeStandardPlayers(3);
+    players[0].hand = [createTsathogguaSlimeCard()];
+    const card = { type: 'selfDamageHP', name: '测试', key: 'TEST', val: 3 };
+    const gs = makeGs({ players });
+
+    const res = applyFx(card, 0, null, players, [], [], gs);
+
+    expect(res.P[0].hp).toBe(7);
+    expect(res.statePatch.abilityData).toMatchObject({
+      type: 'tsgSlimeBalance',
+      targetIdx: 0,
+      beforeHp: 10,
+      afterHp: 7,
+      lostHp: 3,
+    });
   });
 
   it('adjDamageHP: 相邻角色失去HP', () => {
@@ -291,10 +371,10 @@ describe('applyFx', () => {
   it('selfHealAdjDamageHP: 治疗自己并伤害相邻', () => {
     const players = makeStandardPlayers(5);
     players[0].hp = 5;
-    const card = makeZoneCard('A1', 0); // selfHealAdjDamageHP val=2
+    const card = makeZoneCard('A1', 0); // selfHealAdjDamageHP val=3 adjVal=2
     const gs = makeGs({ players });
     const res = applyFx(card, 0, null, players, [], [], gs);
-    expect(res.P[0].hp).toBe(7); // healed 2
+    expect(res.P[0].hp).toBe(8); // healed 3
     expect(res.P[1].hp).toBe(8); // adjacent takes 2
     expect(res.P[4].hp).toBe(8); // adjacent takes 2
   });

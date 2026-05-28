@@ -40,6 +40,15 @@ describe('zhuPower', () => {
     expect(buildZhuLight(players, deck, 1, null)).toBeNull();
   });
 
+  it('引燃火把免疫时不点亮烛九阴牌', () => {
+    const deck = makeDeck();
+    const players = [
+      makePlayer({ godName: 'ZHU', godLevel: 2, godPowerImmuneThisTurn: true }),
+      makePlayer(),
+    ];
+    expect(buildZhuLight(players, deck, 0, null)).toBeNull();
+  });
+
   it('keeps only still-in-deck lit cards outside the owner turn', () => {
     const deck = makeDeck();
     const players = [

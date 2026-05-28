@@ -1,4 +1,5 @@
 import { cardLogText } from './coreUtils';
+import { hasGodPowerImmunity } from './godPowerImmunity';
 
 export function getZhuLightOffsets(level = 1) {
   if (level >= 3) return [0, 1, 2, 3, 4];
@@ -7,7 +8,7 @@ export function getZhuLightOffsets(level = 1) {
 }
 
 export function findZhuOwner(players = []) {
-  return players.findIndex(p => p && !p.isDead && p.godName === 'ZHU' && (p.godLevel || 0) > 0);
+  return players.findIndex(p => p && !p.isDead && !hasGodPowerImmunity(p) && p.godName === 'ZHU' && (p.godLevel || 0) > 0);
 }
 
 export function buildZhuLight(players = [], deck = [], currentTurn = -1, previous = null) {

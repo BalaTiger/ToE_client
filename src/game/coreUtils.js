@@ -25,6 +25,10 @@ export const copyPlayers = (ps) => ps.map(p => ({
   godZone: [...(p.godZone || [])],
   zoneCards: [...(p.zoneCards || [])],
   peekMemories: Object.fromEntries(Object.entries(p.peekMemories || {}).map(([k, v]) => [k, [...(v || [])]])),
+  huntQualityMemory: p.huntQualityMemory ? {
+    ...p.huntQualityMemory,
+    handIds: [...(p.huntQualityMemory.handIds || [])],
+  } : null,
   disableRestNextTurn: !!p.disableRestNextTurn,
   disableSkillNextTurn: !!p.disableSkillNextTurn,
   handLimitDecreaseNextTurn: p.handLimitDecreaseNextTurn || 0
@@ -35,13 +39,41 @@ export const isZoneCard = (card) => !!card?.isZone;
 export const isBlankZoneCard = (card) => card?.type === 'blankZone';
 
 export const isBlackGoatYoung = (card) => !!card?.isBlackGoatYoung;
+export const isTsathogguaSlime = (card) => !!card?.isTsathogguaSlime;
+export const isVanishingDerivedCard = (card) => isBlackGoatYoung(card) || isTsathogguaSlime(card);
+
+export function buildTsathogguaSlimeBalanceDecision(playersBefore, playersAfter, extra = {}) {
+  if (!Array.isArray(playersBefore) || !Array.isArray(playersAfter)) return null;
+  for (let i = 0; i < playersAfter.length; i++) {
+    const before = playersBefore[i];
+    const after = playersAfter[i];
+    if (!before || !after || after.isDead) continue;
+    const lostHp = Math.max(0, (before.hp || 0) - (after.hp || 0));
+    const lostSan = Math.max(0, (before.san || 0) - (after.san || 0));
+    if (!(lostHp || lostSan)) continue;
+    if ((after.hand || []).some(isTsathogguaSlime)) {
+      return {
+        type: 'tsgSlimeBalance',
+        targetIdx: i,
+        beforeHp: before.hp,
+        beforeSan: before.san,
+        afterHp: after.hp,
+        afterSan: after.san,
+        lostHp,
+        lostSan,
+        ...extra,
+      };
+    }
+  }
+  return null;
+}
 
 export const separateBlackGoatYoung = (cards) => {
   if (!cards) return { kept: [], destroyed: [] };
   const kept = [];
   const destroyed = [];
   for (const c of cards) {
-    if (isBlackGoatYoung(c)) destroyed.push(c);
+    if (isVanishingDerivedCard(c)) destroyed.push(c);
     else kept.push(c);
   }
   return { kept, destroyed };
@@ -216,7 +248,7 @@ export function killPlayerState(P, i, Disc, L) {
   L.push(`☠ ${P[i].name}（${P[i].role}）倒下了！`);
   const { kept, destroyed } = separateBlackGoatYoung(P[i].hand);
   if (kept.length) Disc.push(...kept);
-  if (destroyed.length) L.push(`${P[i].name} 的 ${destroyed.length} 张黑山羊幼仔被销毁`);
+  if (destroyed.length) L.push(`${P[i].name} 的 ${destroyed.length} 张衍生牌被销毁`);
   P[i].hand = [];
   if (P[i].godZone?.length) {
     Disc.push(...P[i].godZone);

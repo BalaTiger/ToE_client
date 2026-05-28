@@ -367,6 +367,35 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
       </>
     );
   }
+  if(card.isTsathogguaSlime){
+    const w=small?44:compact?62:82,h=small?58:compact?82:108;
+    return(
+      <>
+        <div
+          ref={cardRef}
+          onClick={disabled?undefined:onClick}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          style={{
+            width:w,minWidth:w,height:h,flexShrink:0,
+            background:'linear-gradient(160deg,#0b1f18,#07130f)',
+            border:`1.5px solid ${selected?'#c8a96e':highlight?'#80d8a8':'#2e6b50'}`,
+            boxShadow:selected?'0 0 14px #c8a96e88,inset 0 0 12px #c8a96e22':highlight?'0 0 10px #80d8a866':'inset 0 1px 0 #2e6b5044',
+            borderRadius:3,cursor:(onClick&&!disabled)?'pointer':'default',opacity:disabled?0.35:1,
+            transform:selected?'translateY(-5px)':undefined,transition:'all .14s',
+            display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+            padding:small?'4px 3px':compact?'5px 5px':'7px 8px',userSelect:'none',position:'relative',overflow:'hidden',
+            ...frameStyle,
+          }}
+        >
+          <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:small?11:compact?13:16,color:'#80d8a8',letterSpacing:1}}>SLM</div>
+          <div style={{fontSize:small?14:compact?18:22,color:'#80d8a8',textShadow:'0 0 10px #80d8a888'}}>◌</div>
+          {!small&&<div style={{fontFamily:"'IM Fell English','Georgia',serif",fontSize:compact?8:9,color:'#9ee6bd',fontStyle:'italic',lineHeight:1.3,textAlign:'center',marginTop:2}}>赐福黏液</div>}
+        </div>
+        {hover&&<AreaTooltip card={card} position={tooltipPosition}/>}
+      </>
+    );
+  }
   const s=CS[card.letter]||GOD_CS;
   const w=small?44:compact?62:82,h=small?58:compact?82:108;
   const isRoseThornMarked=card?.roseThornHolderId!=null&&holderId===card.roseThornHolderId;

@@ -9,9 +9,11 @@ import {
   cardLogText,
   isZoneCard,
   isBlackGoatYoung,
+  isTsathogguaSlime,
   makeInspectionMeta,
   sortInspectionTargets,
   tryVritraImmortal,
+  buildTsathogguaSlimeBalanceDecision,
 } from './coreUtils';
 import { buildStatEvents } from './statEvents';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
@@ -343,8 +345,8 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         const x = 0 | Math.random() * P[i].hand.length;
         const c = P[i].hand.splice(x, 1)[0];
         // 黑山羊幼仔被弃置时销毁，不进入弃牌堆
-        if (isBlackGoatYoung(c)) {
-          msgs.push(`${P[i].name} 的黑山羊幼仔被销毁`);
+        if (isBlackGoatYoung(c) || isTsathogguaSlime(c)) {
+          msgs.push(`${P[i].name} 的衍生牌被销毁`);
         } else if (c.type !== 'blankZone') {
           Disc.push(c);
           msgs.push(`${P[i].name} 失去了 ${cardLogText(c, { alwaysShowName: true })}`);
@@ -364,8 +366,10 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   const finish = (result, explicitStatEvents = null) => {
     const statEventSeq = (gs?._statEventSeq || 0) + 1;
     const statEvents = explicitStatEvents || buildStatEvents(beforePlayers, result.P || P, result.msgs || msgs, { reason: card?.name || card?.type || '', seq: statEventSeq });
+    const slimeDecision = statePatch?.abilityData?.type ? null : buildTsathogguaSlimeBalanceDecision(beforePlayers, result.P || P);
     const nextStatePatch = {
       ...(result.statePatch || {}),
+      ...(slimeDecision ? { abilityData: slimeDecision } : {}),
       ...(statEvents.length ? { _statEvents: statEvents, _statEventSeq: statEventSeq } : {}),
     };
     return {
@@ -481,13 +485,25 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     selfHealSAN: () => { healSAN(ci, card.val); msgs.push(`${actor.name} 回复了 ${card.val} SAN`); },
     lifeBalance: () => { healHP(ci, card.val || 3); msgs.push(`${actor.name} 回复了 ${card.val || 3} HP`); },
     soulBalance: () => { healSAN(ci, card.val || 3); msgs.push(`${actor.name} 回复了 ${card.val || 3} SAN`); },
+    allHealHP: () => {
+      allLiving.forEach(i => healHP(i, card.val));
+      msgs.push(`全体存活角色回复 ${card.val} HP`);
+    },
     selfHealBoth: () => { healHP(ci, 1); healSAN(ci, 1); msgs.push(`${actor.name} 回复了 1 HP 和 1 SAN`); },
+    selfHealHPSAN: () => {
+      const hpVal = card.hpVal || 0;
+      const sanVal = card.sanVal || 0;
+      if (hpVal) healHP(ci, hpVal);
+      if (sanVal) healSAN(ci, sanVal);
+      msgs.push(`${actor.name} 回复了 ${hpVal} HP 和 ${sanVal} SAN`);
+    },
     selfHealBoth21: () => { healHP(ci, 2); healSAN(ci, 1); msgs.push(`${actor.name} 回复了 2 HP 和 1 SAN`); },
     selfHealAdjDamageHP: () => {
       healHP(ci, card.val);
+      const adjDamage = card.adjVal || card.val;
       const adjacentTargets = getLivingAdjacentTargets(P, ci);
-      adjacentTargets.forEach(i => dealHP(i, card.val));
-      msgs.push(`${actor.name} 回复了 ${card.val} HP，相邻角色各失去 ${card.val + dmgBonus} HP`);
+      adjacentTargets.forEach(i => dealHP(i, adjDamage));
+      msgs.push(`${actor.name} 回复了 ${card.val} HP，相邻角色各失去 ${adjDamage + dmgBonus} HP`);
     },
     selfHealAdjHealHP: () => { healHP(ci, card.val); adjacent.filter(i => i !== ci).forEach(i => healHP(i, card.adjVal || 1)); msgs.push(`${actor.name} 回复了 ${card.val} HP，相邻角色各回复 ${card.adjVal || 1} HP`); },
     adjHealHP: () => { adjacent.forEach(i => healHP(i, card.val)); msgs.push(`${actor.name} 与相邻角色各回复 ${card.val} HP`); },
@@ -495,6 +511,60 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     selfRevealHandSAN: () => { actor.san = Math.min(10, actor.san + card.val); actor.revealHand = true; actor.pickInsteadOfRandom = true; msgs.push(`${actor.name} 回复 ${card.val} SAN，手牌公开且盲抽改为挑选`); },
     globalOnlySwap: () => { statePatch = { globalOnlySwapOwner: ci }; msgs.push(`直到 ${actor.name} 的下回合开始前，所有角色技能都视为"掉包"`); },
     endTurnReplayHand: () => {},
+    igniteTorch: () => {
+      if (!isAI) {
+        statePatch = {
+          ...statePatch,
+          abilityData: {
+            type: 'igniteTorchDiscard',
+            playerIndex: ci,
+          }
+        };
+        msgs.push(`${actor.name} 准备弃一张牌并引燃火把`);
+        return;
+      }
+      randDiscard(ci, 1);
+      P[ci].godPowerImmuneThisTurn = true;
+      msgs.push(`【引燃火把】${actor.name} 本回合不受邪神之力影响`);
+    },
+    swapDeckDiscard: () => {
+      const oldDeck = D;
+      D = Disc;
+      Disc = oldDeck;
+      msgs.push(`【地底天空】牌堆和弃牌堆交换了`);
+    },
+    semiMaterializeTeach: () => {
+      const legalTargets = P.map((p, i) => i).filter(i => P[i] && !P[i].isDead);
+      if (!legalTargets.length) {
+        msgs.push('没有可指定的角色，无法传授半物质化');
+        return;
+      }
+      statePatch = {
+        ...statePatch,
+        abilityData: {
+          type: 'semiMaterializeTarget',
+          source: ci,
+          legalTargets,
+        }
+      };
+      msgs.push(`${actor.name} 准备悄悄指定一名角色`);
+    },
+    deadNeighborSkipDraw: () => {
+      const skipped = new Set();
+      const N = P.length;
+      P.forEach((p, i) => {
+        if (!p?.isDead) return;
+        [(i - 1 + N) % N, (i + 1) % N].forEach(targetIdx => {
+          if (P[targetIdx] && !P[targetIdx].isDead) skipped.add(targetIdx);
+        });
+      });
+      if (!skipped.size) {
+        msgs.push('没有存活角色与死亡角色相邻');
+        return;
+      }
+      skipped.forEach(i => { P[i].skipNextDraw = true; P[i].skipNextDrawReason = '活死人哨兵'; });
+      msgs.push(`【活死人哨兵】${[...skipped].map(i => P[i].name).join('、')} 下回合不能摸牌`);
+    },
     selfDamageHP: () => { if (!avoidNegative && !avoidNegativeFor.includes(ci)) msgs.push(`${actor.name} 失去 ${card.val} HP`); hurtHP(ci, card.val); },
     selfDamageSAN: () => { hurtSAN(ci, card.val); if (!avoidNegative && !avoidNegativeFor.includes(ci)) msgs.push(`${actor.name} 失去 ${card.val} SAN`); },
     selfDamageHPCond: () => { applyConditionalDamage('hp', card); },
@@ -565,8 +635,8 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         if (!avoidNegativeFor.includes(i) && P[i]?.hand?.length) {
           const x = 0 | Math.random() * P[i].hand.length;
           const c = P[i].hand.splice(x, 1)[0];
-          if (isBlackGoatYoung(c)) {
-            msgs.push(`${P[i].name} 的黑山羊幼仔被销毁`);
+          if (isBlackGoatYoung(c) || isTsathogguaSlime(c)) {
+            msgs.push(`${P[i].name} 的衍生牌被销毁`);
           } else if (c.type !== 'blankZone') {
             Disc.push(c);
             msgs.push(`${P[i].name} 失去了 ${cardLogText(c, { alwaysShowName: true })}`);
@@ -805,8 +875,8 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         for (let d = 0; d < discardCount; d++) {
           if (target.hand.length > actorHandCount) {
             const c = target.hand.shift();
-            if (isBlackGoatYoung(c)) {
-              msgs.push(`${target.name} 的黑山羊幼仔被销毁`);
+            if (isBlackGoatYoung(c) || isTsathogguaSlime(c)) {
+              msgs.push(`${target.name} 的衍生牌被销毁`);
             } else if (c.type !== 'blankZone') {
               Disc.push(c);
               const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: targetIdx, cards: [c], reason: '同归深渊弃牌' });

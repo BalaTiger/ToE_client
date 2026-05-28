@@ -131,11 +131,13 @@ describe('animQueueHelpers', () => {
     expect(flow.queue.map(step => step.type)).toEqual([
       'LOG_STEP',
       'SAN_CHANGE',
+      'VISUAL_LOCK',
       'DRAW_CARD',
       'LOG_STEP',
       'DAMAGE',
+      'STATE_PATCH',
     ]);
-    expect(flow.queue[2]).toMatchObject({ triggerName: '检定牌', card, targetPid: 0 });
+    expect(flow.queue[3]).toMatchObject({ triggerName: '检定牌', card, targetPid: 0 });
   });
 
   it('检定效果动画优先使用显式 statEvents', () => {
@@ -167,9 +169,9 @@ describe('animQueueHelpers', () => {
       { buildAnimQueue, copyPlayers },
     );
 
-    expect(flow.queue.map(step => step.type)).toEqual(['DRAW_CARD', 'SAN_HEAL']);
-    expect(flow.queue[1]).toMatchObject({ hitIndices: [0] });
-    expect(flow.queue[1].statEvents).toMatchObject([{ type: 'SAN_GAIN', seq: 7 }]);
+    expect(flow.queue.map(step => step.type)).toEqual(['VISUAL_LOCK', 'DRAW_CARD', 'SAN_HEAL', 'STATE_PATCH']);
+    expect(flow.queue[2]).toMatchObject({ hitIndices: [0] });
+    expect(flow.queue[2].statEvents).toMatchObject([{ type: 'SAN_GAIN', seq: 7 }]);
     expect(flow.statEventSeq).toBe(7);
   });
 
@@ -214,7 +216,7 @@ describe('animQueueHelpers', () => {
       },
     );
 
-    expect(flow.queue.map(step => step.type)).toEqual(['DRAW_CARD']);
+    expect(flow.queue.map(step => step.type)).toEqual(['VISUAL_LOCK', 'DRAW_CARD', 'STATE_PATCH']);
     expect(tailQueue.some(step => step.type === 'HP_DAMAGE')).toBe(false);
   });
 });

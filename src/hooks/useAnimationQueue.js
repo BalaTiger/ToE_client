@@ -103,6 +103,8 @@ export function useAnimationQueue({
       '_statEvents',
       '_inspectionSeq',
       '_inspectionEvents',
+      '_apophisTargetSeq',
+      '_apophisTargetEvent',
     ].forEach(key => {
       if (has(key)) patch[key] = patchStep[key];
     });

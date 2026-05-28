@@ -1,7 +1,7 @@
 import React from 'react';
 import { CS, GOD_CS, GOD_DEFS, getCardBackImage } from '../../constants/card';
 import { RINFO } from '../../game';
-import { isBlackGoatYoung } from '../../game/coreUtils';
+import { isBlackGoatYoung, isTsathogguaSlime } from '../../game/coreUtils';
 import { AreaTooltip, CardCodeLabel, DDCard, DDCardBack, GodTooltip } from '../cards';
 import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
 
@@ -417,7 +417,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const _ = (px) => px * fontZoom;
   const borderColor=isBeingHit?'#cc2222':isSanHit?'#8840cc':isCurrentTurn?'#c8a96e':isSelectable?ri.col:'#3a2510';
-  const handCards=showFaceUp?player.hand:player.hand.map((c,ci)=>isBlackGoatYoung(c)?c:{id:`back-${playerIndex}-${ci}`,_back:true});
+  const handCards=showFaceUp?player.hand:player.hand.map((c,ci)=>isBlackGoatYoung(c)||isTsathogguaSlime(c)?c:{id:`back-${playerIndex}-${ci}`,_back:true});
   const HAND_CARD_WIDTH=showFaceUp?44:36;
   const HAND_CARD_HEIGHT=showFaceUp?58:50;
   const HAND_CARD_GAP=3;

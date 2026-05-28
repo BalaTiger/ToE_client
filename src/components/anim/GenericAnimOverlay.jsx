@@ -66,6 +66,8 @@ export function DiceRollAnim({ anim, exiting }) {
   const face2 = settled ? DICE_FACES[d2 - 1] : DICE_FACES[Math.floor(Math.random() * 6)];
   const winner = Math.max(d1, d2);
   const isDodgeRoll = d2 === 0;
+  const isApophisRoll = anim.diceMode === 'apophisNight';
+  const apophisSuccess = isApophisRoll && !anim.apophisChanged;
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(4,2,0,0.94)',
@@ -74,7 +76,7 @@ export function DiceRollAnim({ anim, exiting }) {
     }}>
       <div style={{ position: 'absolute', inset: 0, boxShadow: 'inset 0 0 120px #c8a96e22', pointerEvents: 'none' }} />
       <div style={{ fontFamily: "'Cinzel',serif", color: '#b89858', fontSize: 11, letterSpacing: 4, marginBottom: 18, textTransform: 'uppercase' }}>
-        {rollerName || '？'} {isDodgeRoll ? '掷骰子' : '选择休息'}
+        {rollerName || '？'} {isApophisRoll ? '在黑夜中掷骰' : isDodgeRoll ? '掷骰子' : '选择休息'}
       </div>
       <div style={{ display: 'flex', gap: 36, marginBottom: 20 }}>
         {[{ face: face1, val: d1 }, ...(!isDodgeRoll ? [{ face: face2, val: d2 }] : [])].map(({ face }, i) => (
@@ -90,7 +92,19 @@ export function DiceRollAnim({ anim, exiting }) {
       </div>
       {settled && (
         <div style={{ animation: 'animFadeIn 0.3s ease-out' }}>
-          {isDodgeRoll ? (
+          {isApophisRoll ? (
+            <>
+              <div style={{
+                fontFamily: "'Cinzel',serif", fontSize: 13, color: apophisSuccess ? '#c8a96e' : '#e08888', letterSpacing: 3,
+                textAlign: 'center', marginBottom: 6,
+              }}>
+                {apophisSuccess ? '成功命中目标' : `${rollerName || '你'}在一片黑暗中丢失了目标……`}
+              </div>
+              <div style={{ fontFamily: "'IM Fell English',serif", fontStyle: 'italic', color: '#8a6a9a', fontSize: 12, textAlign: 'center', letterSpacing: 1 }}>
+                掷出 {d1} 点，{apophisSuccess ? '目标未偏移' : '目标偏移'}
+              </div>
+            </>
+          ) : isDodgeRoll ? (
             <>
               <div style={{
                 fontFamily: "'Cinzel',serif", fontSize: 13, color: dodgeSuccess ? '#4ade80' : '#e08888', letterSpacing: 3,

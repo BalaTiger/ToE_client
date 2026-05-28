@@ -14,3 +14,4 @@ export * from './endTurnEvents';
 export * from './effectStatePatch';
 export * from './apophisNight';
 export * from './balanceCards';
+export * from './godPowerImmunity';
