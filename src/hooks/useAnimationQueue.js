@@ -118,6 +118,9 @@ export function useAnimationQueue({
       if (next.type === 'STATE_PATCH') {
         revealAnimLogs(next);
         visualStateLocks.clear({players:true,zhuLight:true});
+        if (Object.prototype.hasOwnProperty.call(next, 'players') && setVisualPlayersOverride) {
+          setVisualPlayersOverride(copyPlayers(next.players || []));
+        }
         if (Object.prototype.hasOwnProperty.call(next, 'discard')) {
           setVisualDiscard([...(next.discard || [])]);
         }

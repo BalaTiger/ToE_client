@@ -1,6 +1,6 @@
 import React from 'react';
 import { CS, GOD_CS, getCardBackImage } from '../../constants/card';
-import { MiniCardFace } from '../cards';
+import { DDCard, MiniCardFace } from '../cards';
 import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 
 const BLACK_GOAT_PARTICLES = [
@@ -282,33 +282,48 @@ export function CardTransferOverlay({ transfers, expansionKey = 'temporary' }) {
   const cardBackImage = getCardBackImage(expansionKey);
   return (
     <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 480, overflow: 'hidden' }}>
-      {transfers.flatMap(({ srcX, srcY, destX, destY, count, key, effect }) =>
+      {transfers.flatMap(({ srcX, srcY, destX, destY, count, key, effect, cards }) =>
         Array.from({ length: count }).map((_, idx) => {
+          const card = Array.isArray(cards) ? cards[idx] : null;
           const ox = (idx - (count - 1) / 2) * 14;
           const oy = idx * (-4);
           const txPx = destX - srcX + ox;
           const tyPx = destY - srcY + oy;
           const delay = idx * 0.07;
-          const duration = effect === 'blackGoat' ? 1.28 : 0.62;
+          const duration = effect === 'blackGoat' ? 1.28 : effect === 'tsgSlime' ? 0.82 : 0.62;
+          const isSlime = effect === 'tsgSlime' && card;
+          const cardW = isSlime ? 42 : 28;
+          const cardH = isSlime ? 56 : 40;
           return (
             <div key={`${key}-${idx}`} style={{ position: 'absolute', left: srcX, top: srcY }}>
               {effect === 'blackGoat' && <BlackGoatTrail txPx={txPx} tyPx={tyPx} delay={delay} duration={duration} />}
               <div style={{
                 position: 'absolute',
                 left: 0, top: 0,
-                width: 28, height: 40, marginLeft: -14, marginTop: -20,
+                width: cardW, height: cardH, marginLeft: -cardW / 2, marginTop: -cardH / 2,
                 backgroundColor: '#100c08',
-                backgroundImage: `url('${cardBackImage}')`,
+                backgroundImage: isSlime ? undefined : `url('${cardBackImage}')`,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
                 backgroundRepeat: 'no-repeat',
-                border: effect === 'blackGoat' ? '1.5px solid #4ade80' : '1.5px solid #6a4020',
+                border: effect === 'blackGoat' ? '1.5px solid #4ade80' : effect === 'tsgSlime' ? '1.5px solid #80d8a8' : '1.5px solid #6a4020',
                 borderRadius: 3,
-                boxShadow: effect === 'blackGoat' ? '0 0 16px rgba(74,222,128,0.5), 0 2px 8px rgba(0,0,0,0.6)' : '0 2px 8px rgba(0,0,0,0.6)',
+                boxShadow: effect === 'blackGoat'
+                  ? '0 0 16px rgba(74,222,128,0.5), 0 2px 8px rgba(0,0,0,0.6)'
+                  : effect === 'tsgSlime'
+                    ? '0 0 18px rgba(128,216,168,0.45), 0 2px 8px rgba(0,0,0,0.6)'
+                    : '0 2px 8px rgba(0,0,0,0.6)',
                 '--tx': `${txPx}px`, '--ty': `${tyPx}px`,
                 animation: `cardTransferFly ${duration}s cubic-bezier(0.25,0,0.35,1) ${delay}s both`,
                 zIndex: 481 + idx,
               }}>
+                {isSlime && (
+                  <DDCard
+                    card={card}
+                    small
+                    frameStyle={{ boxShadow: 'none', border: 'none', width: cardW, minWidth: cardW, height: cardH }}
+                  />
+                )}
               </div>
             </div>
           );

@@ -52,6 +52,7 @@ import {
   withClearedTurnAnimFields,
   buildLocalCthDecisionState,
   buildPlayerTurnDrawQueue,
+  buildTsathogguaSlimeGrantQueue,
   cardsHuntMatch,
   moveEligibleBlankZones,
   isBlackGoatYoung,
@@ -82,6 +83,8 @@ import {
   getApophisNightForLevel,
   buildApophisNightLog,
   resolveApophisTarget as resolveApophisTargetRule,
+  buildApophisTargetQueueForState,
+  mergeApophisTargetQueue,
   applyBalanceDiscardSideEffects,
   canGodPowerAffect,
   hasGodPowerImmunity,
@@ -3463,23 +3466,6 @@ export default function Game(){
     return nightResult.statePatch||{apophisNight:nightResult.apophisNight??null};
   }
 
-  function buildApophisTargetQueueForState(oldState,nextState){
-    const seq=nextState?._apophisTargetEvent?.seq;
-    if(!seq||seq<=(oldState?._apophisTargetSeq||0))return [];
-    return buildAnimQueue(oldState,nextState)
-      .filter(step=>step?._apophisTargetSeq===seq);
-  }
-
-  function mergeApophisTargetQueue(queue,nextState){
-    let apophisQ=buildApophisTargetQueueForState(gs,nextState);
-    if(!apophisQ.length)return queue||[];
-    const seq=nextState?._apophisTargetEvent?.seq;
-    if((queue||[]).some(step=>step?._apophisTargetSeq===seq))return queue||[];
-    const queuedTypes=new Set((queue||[]).map(step=>step?.type));
-    apophisQ=apophisQ.filter(step=>!(step?.type?.startsWith('SKILL_')&&queuedTypes.has(step.type)));
-    return [...apophisQ,...(queue||[])];
-  }
-
   function setGsWithApophisTargetAnim(nextState){
     const queue=buildApophisTargetQueueForState(gs,nextState);
     if(queue.length)triggerAnimQueue(queue,nextState);
@@ -3509,7 +3495,7 @@ export default function Game(){
   }
 
   function finishTargetContinuation({queue=[],nextGs,continueRest=false,syncLog=false}){
-    queue=mergeApophisTargetQueue(queue,nextGs);
+    queue=mergeApophisTargetQueue(queue,gs,nextGs);
     if(syncLog&&nextGs?.log)syncVisibleLog(nextGs.log);
     if(continueRest){
       if(queue.length)triggerAnimQueue(queue,null,()=>_cthContinueRestDraws(nextGs));
@@ -4066,7 +4052,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         abilityData:{...(gs.abilityData||{}),huntTi:ti},
         log:[...baseLog,`你（追猎者）追捕 ${P[ti].name}，等待对方亮出一张手牌…`],...apophisNightPatch(night)};
       const huntMsgs=extractSkillLogs(huntWaitGs.log.slice(gs.log.length),'hunt');
-      triggerAnimQueue(mergeApophisTargetQueue([{type:'SKILL_HUNT',targetIdx:ti,msgs:huntMsgs}],huntWaitGs),huntWaitGs);
+      triggerAnimQueue(mergeApophisTargetQueue([{type:'SKILL_HUNT',targetIdx:ti,msgs:huntMsgs}],gs,huntWaitGs),huntWaitGs);
       return;
     }
     // 单机/AI目标：由AI策略选择最优亮牌
@@ -4077,7 +4063,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       log:[...baseLog,`你（追猎者）追捕 ${P[ti].name}，${P[ti].name} 亮出 ${cardLogText(rc,{alwaysShowName:true})}`],...apophisNightPatch(night)};
     // 动画位置测量交给 useEffect([anim]) 中的 SKILL_HUNT 分支（使用 data-pid，正确）
     const huntMsgs=extractSkillLogs(huntConfirmGs.log.slice(gs.log.length),'hunt');
-    triggerAnimQueue(mergeApophisTargetQueue([{type:'SKILL_HUNT',targetIdx:ti,msgs:huntMsgs}],huntConfirmGs),huntConfirmGs);
+    triggerAnimQueue(mergeApophisTargetQueue([{type:'SKILL_HUNT',targetIdx:ti,msgs:huntMsgs}],gs,huntConfirmGs),huntConfirmGs);
   }
   function huntConfirm(myCardIdx){
     const{huntTi}=gs.abilityData;
@@ -4587,10 +4573,16 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       P=gres.P;D=gres.D;Disc=gres.Disc;L.push(...gres.msgs);
       const win=checkWin(P,gs._isMP);
       const nextApophisNight=gres.statePatch?.apophisNight??night.apophisNight;
-      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...inspectionMeta,...(gres.inspectionMeta||{}),...(gres.statePatch||{}),...apophisNightPatch(night),apophisNight:nextApophisNight,...(win?{gameOver:win}:{})};
+      const mergedInspectionMeta={
+        ...inspectionMeta,
+        ...(gres.inspectionMeta||{}),
+        ...((gres.inspectionMeta?.abilityData||inspectionMeta?.abilityData)?{abilityData:gres.inspectionMeta?.abilityData||inspectionMeta.abilityData}:{}),
+      };
+      const hasSlimeDecision=mergedInspectionMeta?.abilityData?.type==='tsgSlimeBalance';
+      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:hasSlimeDecision?'TSG_SLIME_BALANCE':'ACTION',skillUsed:true,...mergedInspectionMeta,...(gres.statePatch||{}),abilityData:hasSlimeDecision?{...mergedInspectionMeta.abilityData,_turnOwner:gs.currentTurn}:{},...apophisNightPatch(night),apophisNight:nextApophisNight,...(win?{gameOver:win}:{})};
       const statQueue=buildPostBewitchStatQueue(gs,newGs);
       const bewitchMsgs=extractSkillLogs(L.slice(gs.log.length),'bewitch');
-      triggerAnimQueue(mergeApophisTargetQueue(buildBewitchForcedCardQueue(0,ti,bewitchCard,P[ti]?.name,statQueue,bewitchMsgs),newGs),newGs);
+      triggerAnimQueue(mergeApophisTargetQueue(buildBewitchForcedCardQueue(0,ti,bewitchCard,P[ti]?.name,statQueue,bewitchMsgs),gs,newGs),newGs);
       return;
     }
     const res=applyFx(bewitchCard,ti,bewitchCard.type==='swapAllHands'?null:ti,P,D,Disc,gs);L.push(...res.msgs);
@@ -4616,7 +4608,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         bewitchCard?.type==='firstComePick'
       )?res.P[ti]?.name:null;
       triggerAnimQueue(
-      mergeApophisTargetQueue(buildBewitchForcedCardQueue(0,ti,bewitchCard,res.P[ti]?.name,statQueue,extractSkillLogs(L.slice(gs.log.length),'bewitch'),bewitchTurnIntroName),newGs),
+      mergeApophisTargetQueue(buildBewitchForcedCardQueue(0,ti,bewitchCard,res.P[ti]?.name,statQueue,extractSkillLogs(L.slice(gs.log.length),'bewitch'),bewitchTurnIntroName),gs,newGs),
       newGs
     );
   }
@@ -5001,6 +4993,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       buildAnimQueue({...gs,players:newGs._playersBeforeThisDraw||gs.players},newGs),
       {statLogs:newGs._statLogs}
     ):[];
+    const preTurnQ=buildTsathogguaSlimeGrantQueue(newGs);
     if(
       newGs?.gameOver &&
       !newGs?._isMP &&
@@ -5020,7 +5013,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         if(newGs._playersBeforeThisDraw&&newGs._drawnCard){
           visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
         }
-        triggerAnimQueue(queue,newGs);
+        triggerAnimQueue([...preTurnQ,...queue],newGs);
         return;
       }
     }
@@ -5034,7 +5027,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                     ...drawStatQ
         ];
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
-        setAnim({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
+        triggerAnimQueue([...preTurnQ,{type:'YOUR_TURN',msgs:playerTurnStartMsgs},...animQueueRef.current],newGs);
         return;
       }
         if(newGs.phase==='GOD_CHOICE'&&newGs.abilityData?.godCard){
@@ -5054,14 +5047,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                     ...inspectionAndTailQueue,
         ];
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
-        setAnim({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
+        triggerAnimQueue([...preTurnQ,{type:'YOUR_TURN',msgs:playerTurnStartMsgs},...animQueueRef.current],newGs);
         return;
       }
       if(playerTurnStartMsgs.length&&newGs.phase==='ACTION'&&drawStatQ.length){
         pendingGsRef.current=newGs;
         animQueueRef.current=[...drawStatQ];
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
-        setAnim({type:'YOUR_TURN',msgs:playerTurnStartMsgs});
+        triggerAnimQueue([...preTurnQ,{type:'YOUR_TURN',msgs:playerTurnStartMsgs},...drawStatQ],newGs);
         return;
       }
     }
@@ -5074,7 +5067,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
       }
       setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
-      setAnim({type:'DRAW_CARD',card:newGs._drawnCard,triggerName:drawerName,targetPid:drawerPid,msgs:newGs._drawLogs});
+      triggerAnimQueue([...preTurnQ,{type:'DRAW_CARD',card:newGs._drawnCard,triggerName:drawerName,targetPid:drawerPid,msgs:newGs._drawLogs},...drawStatQ],newGs);
       return;
     }
     if(newGs._isMP&&newGs.currentTurn!==0){
@@ -5104,7 +5097,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         if(newGs._playersBeforeThisDraw){
           visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
         }
-        setAnim({type:'DRAW_CARD',card:drawnCard,triggerName:drawerName,targetPid:drawerPid,msgs:newGs._drawLogs});
+        triggerAnimQueue([...preTurnQ,{type:'DRAW_CARD',card:drawnCard,triggerName:drawerName,targetPid:drawerPid,msgs:newGs._drawLogs},...inspectionAndTailQueue],newGs);
         return;
       }
     }
@@ -5117,7 +5110,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       if(newGs._playersBeforeThisDraw){
         visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
       }
-      setAnim({type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:drawerName,targetPid:drawerPid,msgs:newGs._drawLogs});
+      triggerAnimQueue([...preTurnQ,{type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:drawerName,targetPid:drawerPid,msgs:newGs._drawLogs},...drawStatQ],newGs);
+      return;
+    }
+    if(preTurnQ.length){
+      triggerAnimQueue(preTurnQ,newGs);
       return;
     }
     setGs(newGs);

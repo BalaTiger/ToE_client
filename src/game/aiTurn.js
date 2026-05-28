@@ -312,6 +312,22 @@ export function aiStep(gs, opts = {}) {
     ...(animMultiplyEvent ? { _animMultiplyEvent: animMultiplyEvent } : {})
   });
 
+  const buildPendingSlimeBalanceState = (state, nextPlayers, nextDeck, nextDiscard, nextLog, extra = {}) => {
+    if (state?.abilityData?.type !== 'tsgSlimeBalance') return null;
+    return {
+      ...state,
+      players: nextPlayers,
+      deck: nextDeck,
+      discard: nextDiscard,
+      log: nextLog,
+      currentTurn: ct,
+      phase: 'TSG_SLIME_BALANCE',
+      abilityData: { ...state.abilityData, _turnOwner: ct },
+      skillUsed: true,
+      ...extra,
+    };
+  };
+
   const applyNightTarget = (selectedIdx, legalTargets, label) => {
     const night = resolveApophisTarget({
       gs,
@@ -353,9 +369,15 @@ export function aiStep(gs, opts = {}) {
         inspectionMeta = processed.inspectionMeta;
         _L.splice(0, _L.length, ...processed.L);
       }
-      const gr = aiHandleGodCard(_ti, _sc, _P, _D, _Disc, _L, _gs, true);
+      const godResolveGs = { ..._gs, ...inspectionMeta };
+      const gr = aiHandleGodCard(_ti, _sc, _P, _D, _Disc, _L, godResolveGs, true);
       _P = gr.P; _D = gr.D; _Disc = gr.Disc;
-      _gs = { ..._gs, ...inspectionMeta, ...(gr.inspectionMeta || {}), ...(gr.statePatch || {}) };
+      const mergedInspectionMeta = {
+        ...inspectionMeta,
+        ...(gr.inspectionMeta || {}),
+        ...((gr.inspectionMeta?.abilityData || inspectionMeta?.abilityData) ? { abilityData: gr.inspectionMeta?.abilityData || inspectionMeta.abilityData } : {}),
+      };
+      _gs = { ..._gs, ...mergedInspectionMeta, ...(gr.statePatch || {}) };
     } else {
       _P[_ti].hand.push(_sc);
       fxResult = applyFx(_sc, _ti, _sc.type === 'swapAllHands' ? null : _ti, _P, _D, _Disc, _gs);
@@ -884,6 +906,18 @@ export function aiStep(gs, opts = {}) {
         const sc=plan.card;
         const bwRes=applyBewitchGift(gs,P,D,Disc,L,ct,ti,sc);
         gs=bwRes.gs;P=bwRes.P;D=bwRes.D;Disc=bwRes.Disc;L=bwRes.L;
+        const pendingSlime=buildPendingSlimeBalanceState(gs,P,D,Disc,L,{
+          huntAbandoned:newAbandoned,
+          _aiDrawnCard:(gs._aiDrawnCard??gs._drawnCard??null),
+          _discardedDrawnCard:(gs._discardedDrawnCard??false),
+          _aiName:ai.name,
+          _playersBeforeNextDraw:copyPlayers(P),
+          _playersBeforeSkillAction:playersBeforeSkillAction,
+          _preSkillLogs:preSkillLogs,
+          _preSkillDiscard:preSkillDiscard,
+          _aiHuntEvents:aiHuntEvents,
+        });
+        if(pendingSlime)return pendingSlime;
         if(!sc.isGod&&bwRes.fxResult){
           const res=bwRes.fxResult;
           if(sc.type==='swapAllHands'||hasEffectDecisionState(res.statePatch)){
@@ -975,6 +1009,18 @@ export function aiStep(gs, opts = {}) {
         const sc=plan.card;
         const bwRes=applyBewitchGift(gs,P,D,Disc,L,ct,ti,sc);
         gs=bwRes.gs;P=bwRes.P;D=bwRes.D;Disc=bwRes.Disc;L=bwRes.L;
+        const pendingSlime=buildPendingSlimeBalanceState(gs,P,D,Disc,L,{
+          huntAbandoned:newAbandoned,
+          _aiDrawnCard:(gs._aiDrawnCard??gs._drawnCard??null),
+          _discardedDrawnCard:(gs._discardedDrawnCard??false),
+          _aiName:ai.name,
+          _playersBeforeNextDraw:copyPlayers(P),
+          _playersBeforeSkillAction:playersBeforeSkillAction,
+          _preSkillLogs:preSkillLogs,
+          _preSkillDiscard:preSkillDiscard,
+          _aiHuntEvents:aiHuntEvents,
+        });
+        if(pendingSlime)return pendingSlime;
         if(!sc.isGod&&bwRes.fxResult){
           const res=bwRes.fxResult;
           if(hasEffectDecisionState(res.statePatch)){

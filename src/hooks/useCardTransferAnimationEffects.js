@@ -22,7 +22,7 @@ export function useCardTransferAnimationEffects({ anim }) {
   useEffect(() => {
     if (!anim || anim.type !== 'CARD_TRANSFER') return;
 
-    const { fromPid, dest, toPid, count, sourceAnchor, effect } = anim;
+    const { fromPid, dest, toPid, count, sourceAnchor, effect, cards } = anim;
     let cancelled = false;
     let raf1 = 0;
     let raf2 = 0;
@@ -79,11 +79,11 @@ export function useCardTransferAnimationEffects({ anim }) {
       }
 
       const key = `${fromPid}-${dest}-${toPid ?? 'x'}-${Date.now()}`;
-      setCardTransfers(prev => [...prev, { srcX, srcY, destX, destY, count, key, effect }]);
+      setCardTransfers(prev => [...prev, { srcX, srcY, destX, destY, count, key, effect, cards }]);
       const timer = setTimeout(() => {
         setCardTransfers(prev => prev.filter(t => t.key !== key));
         cardTransferTimersRef.current.delete(timer);
-      }, effect === 'blackGoat' ? 1700 : 750);
+      }, effect === 'blackGoat' ? 1700 : effect === 'tsgSlime' ? 950 : 750);
       cardTransferTimersRef.current.add(timer);
     });
     return () => {

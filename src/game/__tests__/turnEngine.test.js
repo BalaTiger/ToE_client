@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ROLE_TREASURE } from '../coreUtils';
 import { aiDrawAndApply, playerDrawCard, startNextTurn } from '../turnEngine';
+import { buildTsathogguaSlimeGrantQueue } from '../turnAnimState';
 import { makeGodCard, makeGs, makePlayer, makeStandardPlayers } from './factory';
 import { createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../../constants/card';
 
@@ -195,6 +196,34 @@ describe('turnEngine stat events', () => {
 
     expect(result.players[0].hand.filter(c => c.isTsathogguaSlime)).toHaveLength(2);
     expect(result.log.some(line => line.includes('获得2张撒托古亚的赐福黏液'))).toBe(true);
+    expect(result._tsgSlimeGrantEvents).toHaveLength(1);
+    expect(result._tsgSlimeGrantEvents[0]).toMatchObject({ ownerIdx: 0, count: 2 });
+    expect(result._tsgSlimeGrantEvents[0].playersBefore[0].hand).toHaveLength(0);
+    expect(result._tsgSlimeGrantEvents[0].playersAfter[0].hand.filter(c => c.isTsathogguaSlime)).toHaveLength(2);
+    expect(result._preTurnPlayers[0].hand.filter(c => c.isTsathogguaSlime)).toHaveLength(2);
+  });
+
+  it('撒托古亚黏液获得动画排在下一回合开始前并在动画后刷新手牌', () => {
+    const players = [
+      makePlayer({ name: '你', godName: 'TSG', godLevel: 1 }),
+      makePlayer({ name: '艾伦' }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0, log: [] });
+
+    const result = startNextTurn(gs);
+    const queue = buildTsathogguaSlimeGrantQueue(result);
+
+    expect(queue.map(step => step.type)).toEqual(['VISUAL_LOCK', 'CARD_TRANSFER', 'STATE_PATCH', 'TURN_BOUNDARY_PAUSE']);
+    expect(queue[1]).toMatchObject({
+      fromPid: 0,
+      toPid: 0,
+      sourceAnchor: 'playerArea',
+      effect: 'tsgSlime',
+      count: 1,
+      durationMs: 950,
+    });
+    expect(queue[2].players[0].hand.filter(c => c.isTsathogguaSlime)).toHaveLength(1);
+    expect(queue[3]).toMatchObject({ durationMs: 180 });
   });
 
   it('撒托古亚信徒摸牌阶段消耗黏液并额外摸牌', () => {

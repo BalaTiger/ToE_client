@@ -13,5 +13,6 @@ export * from './statEvents';
 export * from './endTurnEvents';
 export * from './effectStatePatch';
 export * from './apophisNight';
+export * from './apophisAnimQueue';
 export * from './balanceCards';
 export * from './godPowerImmunity';

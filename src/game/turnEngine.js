@@ -527,11 +527,26 @@ function endPreviousTurnCleanup(P, prevTurn) {
 
 function grantTsathogguaSlimeAtEndTurn(P, prevTurn, L) {
   const p = P?.[prevTurn];
-  if (!p || p.isDead || hasGodPowerImmunity(p) || p.godName !== 'TSG' || !p.godLevel) return;
+  if (!p || p.isDead || hasGodPowerImmunity(p) || p.godName !== 'TSG' || !p.godLevel) return null;
   const count = GOD_DEFS.TSG.levels[(p.godLevel || 1) - 1]?.slimeCount || 0;
-  if (!count) return;
-  for (let i = 0; i < count; i++) p.hand.push(createTsathogguaSlimeCard());
-  L.push(`【无定形体】${p.name} 获得${count}张撒托古亚的赐福黏液`);
+  if (!count) return null;
+  const playersBefore = copyPlayers(P);
+  const cards = [];
+  for (let i = 0; i < count; i++) {
+    const card = createTsathogguaSlimeCard();
+    cards.push(card);
+    p.hand.push(card);
+  }
+  const msg = `【无定形体】${p.name} 获得${count}张撒托古亚的赐福黏液`;
+  L.push(msg);
+  return {
+    ownerIdx: prevTurn,
+    count,
+    cards,
+    msgs: [msg],
+    playersBefore,
+    playersAfter: copyPlayers(P),
+  };
 }
 
 function consumeTsathogguaSlimeForDraw(P, next, L) {
@@ -547,10 +562,11 @@ function consumeTsathogguaSlimeForDraw(P, next, L) {
 export function startNextTurn(gs, opts = {}) {
   const { isDebugMode = false } = opts;
   // Reset multiplyUsed at the start of every turn
-  gs = { ...gs, multiplyUsed: false };
+  const inheritedTsgSlimeGrantEvents = Array.isArray(gs._carryTsgSlimeGrantEvents) ? gs._carryTsgSlimeGrantEvents : [];
+  gs = { ...gs, multiplyUsed: false, _tsgSlimeGrantEvents: null, _carryTsgSlimeGrantEvents: null };
   const N = gs.players.length;
   let P = copyPlayers(gs.players), D = [...gs.deck], Disc = [...gs.discard], L = [...gs.log];
-  const _P_beforeTurn = copyPlayers(P);
+  let _P_beforeTurn = copyPlayers(P);
   let next = gs.currentTurn;
   let turnStartLogs = [];
   let drawLogs = [];
@@ -559,7 +575,10 @@ export function startNextTurn(gs, opts = {}) {
   let pendingLinkHeals = [];
   let inspectionMeta = makeInspectionMeta(gs);
   const turnDir = gs.turnDirection || 1;
-  grantTsathogguaSlimeAtEndTurn(P, gs.currentTurn, L);
+  const tsgSlimeGrantEvents = [...inheritedTsgSlimeGrantEvents];
+  const tsgSlimeGrant = grantTsathogguaSlimeAtEndTurn(P, gs.currentTurn, L);
+  if (tsgSlimeGrant) tsgSlimeGrantEvents.push(tsgSlimeGrant);
+  gs = { ...gs, _tsgSlimeGrantEvents: tsgSlimeGrantEvents.length ? tsgSlimeGrantEvents : null };
   const pendingExtraTurnOwner = gs.pendingExtraTurnOwner;
   const pendingExtraTurnAfterPlayer = gs.pendingExtraTurnAfterPlayer;
   const extraTurnDue = pendingExtraTurnOwner != null
@@ -586,6 +605,7 @@ export function startNextTurn(gs, opts = {}) {
   const newTurn = (gs.turn || 0) + 1;
   // 清理上回合玩家的临时状态
   P = endPreviousTurnCleanup(P, gs.currentTurn);
+  _P_beforeTurn = copyPlayers(P);
   // 清理过期的两人一绳链条
   P.forEach((p, i) => {
     const shouldExpire = p.damageLink && (
@@ -694,7 +714,7 @@ export function startNextTurn(gs, opts = {}) {
     }
     // Skip the turn: advance past player to the next living player
     // Hand limit is NOT enforced here — excess cards are kept until the next normal turn ends
-    return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner }, opts);
+    return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents }, opts);
   }
   turnStartLogs = [`── ${P[next].name} 的回合开始 ──`];
   L.push(...turnStartLogs);
@@ -857,7 +877,7 @@ export function startNextTurn(gs, opts = {}) {
       delete P[next].skipNextDrawReason;
       L.push(`${P[next].name} 因${skipReason}而无法摸牌`);
       const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: win, debugForceCard: null, debugForceCardTarget: null };
-      return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null }, opts);
+      return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents }, opts);
     }
     applyDebugForceDrawToTop(gs, next, D);
     const _P_beforeDraw = copyPlayers(P);

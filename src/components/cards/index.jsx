@@ -144,6 +144,75 @@ function CardCodeLabel({card,scale=1,color,textShadow,fontSize,letterSpacing,sty
   );
 }
 
+function SlimeBubbleCluster({style,flip=false,opacity=0.86}){
+  return(
+    <svg
+      viewBox="0 0 100 100"
+      style={{
+        position:'absolute',
+        pointerEvents:'none',
+        overflow:'visible',
+        opacity,
+        transform:flip?'scaleX(-1)':undefined,
+        ...style,
+      }}
+    >
+      <path
+        d="M75 12 C88 17 96 30 96 43 L96 62 C85 63 78 69 69 81 C56 98 27 95 15 75 C4 57 9 30 27 17 C42 6 61 4 75 12 Z"
+        fill="rgba(93,190,128,0.54)"
+        stroke="rgba(170,255,206,0.82)"
+        strokeWidth="5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M95 36 L95 61"
+        stroke="rgba(215,255,232,0.46)"
+        strokeWidth="6"
+        strokeLinecap="round"
+      />
+      <path
+        d="M49 15 C45 31 46 52 53 69"
+        fill="none"
+        stroke="rgba(7,38,28,0.34)"
+        strokeWidth="5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M50 37 C62 38 75 36 91 31"
+        fill="none"
+        stroke="rgba(7,38,28,0.28)"
+        strokeWidth="4"
+        strokeLinecap="round"
+      />
+      <path
+        d="M40 21 C32 24 25 33 24 43"
+        fill="none"
+        stroke="rgba(224,255,236,0.72)"
+        strokeWidth="5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M66 20 C72 23 77 29 78 36"
+        fill="none"
+        stroke="rgba(224,255,236,0.52)"
+        strokeWidth="3.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function SlimeEdgeBubbles({w,h}){
+  return(
+    <>
+      <SlimeBubbleCluster style={{width:w*0.42,height:h*0.31,left:-w*0.2,top:h*0.1,zIndex:0}} opacity={0.72}/>
+      <SlimeBubbleCluster style={{width:w*0.32,height:h*0.25,right:-w*0.15,bottom:h*0.16,zIndex:0}} flip opacity={0.64}/>
+      <SlimeBubbleCluster style={{width:w*0.29,height:h*0.22,left:w*0.04,bottom:-h*0.08,zIndex:2}} opacity={0.88}/>
+      <SlimeBubbleCluster style={{width:w*0.36,height:h*0.25,right:-w*0.03,top:-h*0.1,zIndex:2}} flip opacity={0.9}/>
+    </>
+  );
+}
+
 function MiniCardFace({card,width=70,height=94,scale=1,glowColor,ambient=true,showName=true,frameStyle,labelStyle,nameStyle}){
   const s=card?(card.isGod?GOD_CS:(CS[card.letter]||GOD_CS)):GOD_CS;
   const name=card?.name||'';
@@ -369,6 +438,7 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
   }
   if(card.isTsathogguaSlime){
     const w=small?44:compact?62:82,h=small?58:compact?82:108;
+    const nameSize=small?7.2:compact?9.2:11;
     return(
       <>
         <div
@@ -384,13 +454,24 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
             borderRadius:3,cursor:(onClick&&!disabled)?'pointer':'default',opacity:disabled?0.35:1,
             transform:selected?'translateY(-5px)':undefined,transition:'all .14s',
             display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-            padding:small?'4px 3px':compact?'5px 5px':'7px 8px',userSelect:'none',position:'relative',overflow:'hidden',
+            padding:small?'4px 3px':compact?'5px 5px':'7px 8px',userSelect:'none',position:'relative',overflow:'visible',
             ...frameStyle,
           }}
         >
-          <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:small?11:compact?13:16,color:'#80d8a8',letterSpacing:1}}>SLM</div>
-          <div style={{fontSize:small?14:compact?18:22,color:'#80d8a8',textShadow:'0 0 10px #80d8a888'}}>◌</div>
-          {!small&&<div style={{fontFamily:"'IM Fell English','Georgia',serif",fontSize:compact?8:9,color:'#9ee6bd',fontStyle:'italic',lineHeight:1.3,textAlign:'center',marginTop:2}}>赐福黏液</div>}
+          <SlimeEdgeBubbles w={w} h={h}/>
+          <div style={{
+            fontFamily:"'IM Fell English','Noto Serif SC','Georgia',serif",
+            fontWeight:700,
+            fontSize:nameSize,
+            color:'#d8ffe8',
+            lineHeight:1.18,
+            textAlign:'center',
+            textShadow:'0 0 8px rgba(128,216,168,0.72)',
+            zIndex:1,
+          }}>
+            <div>撒托古亚的</div>
+            <div>赐福黏液</div>
+          </div>
         </div>
         {hover&&<AreaTooltip card={card} position={tooltipPosition}/>}
       </>
