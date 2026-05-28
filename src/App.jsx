@@ -1048,7 +1048,9 @@ export default function Game(){
   const houndsTimerVisible=!!gs?.houndsOfTindalosActive&&(!latestHoundsInspectionSeq||houndsRevealedSeq>=latestHoundsInspectionSeq);
 
   useEffect(()=>{
-    if(anim?.type==='APOPHIS_ECLIPSE')playApophisEclipseSound();
+    if(anim?.type!=='APOPHIS_ECLIPSE')return;
+    const timer=setTimeout(()=>playApophisEclipseSound(),180);
+    return()=>clearTimeout(timer);
   },[anim,playApophisEclipseSound]);
 
   useEffect(()=>{
