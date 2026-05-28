@@ -18,6 +18,70 @@ describe('buildAnimQueue stat animations', () => {
     expect(buildAnimQueue(oldGs, newGs).map(step => step.type)).toContain('APOPHIS_ECLIPSE');
   });
 
+  it('投掷石块会先播放骰子，再播放转盘，最后播放扣血', () => {
+    const playersBefore = [makePlayer({ name: '你', hp: 10 }), makePlayer({ name: '艾伦', hp: 10 })];
+    const playersAfter = [makePlayer({ name: '你', hp: 10 }), makePlayer({ name: '艾伦', hp: 7 })];
+    const oldGs = makeGs({ players: playersBefore, log: [], _randomTargetSeq: 0, _statEventSeq: 0 });
+    const newGs = makeGs({
+      players: playersAfter,
+      log: ['你 掷出 4 点，随机砸向 艾伦（距离1），造成 3 HP 伤害'],
+      _randomTargetSeq: 1,
+      _randomTargetEvents: [{ seq: 1, sourceIdx: 0, targetIdx: 1, label: '投掷石块', roll: 4, distance: 1, damage: 3, diceBefore: true, phaseOrder: 1 }],
+      _statEventSeq: 1,
+      _statEvents: [{ type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10, isDead: false }, to: { hp: 7, san: 10, isDead: false }, seq: 1, phaseOrder: 2 }],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    const diceIdx = queue.findIndex(step => step.type === 'DICE_ROLL' && step.diceMode === 'throwStone');
+    const randomIdx = queue.findIndex(step => step.type === 'RANDOM_TARGET');
+    const hpIdx = queue.findIndex(step => step.type === 'HP_DAMAGE');
+
+    expect(queue[diceIdx]).toMatchObject({ d1: 4 });
+    expect(queue[diceIdx]).not.toHaveProperty('throwStoneDamage');
+    expect(queue[diceIdx]).not.toHaveProperty('throwStoneDistance');
+    expect(queue[randomIdx]).toMatchObject({ sourceIdx: 0, targetIdx: 1, roll: 4, damage: 3 });
+    expect(randomIdx).toBeGreaterThan(diceIdx);
+    expect(hpIdx).toBeGreaterThan(randomIdx);
+  });
+
+  it('钻地魔虫会先播放全场扣血，再播放转盘和随机扣血', () => {
+    const playersBefore = [
+      makePlayer({ name: '你', hp: 10 }),
+      makePlayer({ name: '艾伦', hp: 10 }),
+      makePlayer({ name: '贝拉', hp: 10 }),
+    ];
+    const playersAfter = [
+      makePlayer({ name: '你', hp: 8 }),
+      makePlayer({ name: '艾伦', hp: 6 }),
+      makePlayer({ name: '贝拉', hp: 8 }),
+    ];
+    const oldGs = makeGs({ players: playersBefore, log: [], _randomTargetSeq: 0, _statEventSeq: 0 });
+    const newGs = makeGs({
+      players: playersAfter,
+      log: ['全体存活角色失去 2 HP', '艾伦 额外失去 2 HP'],
+      _randomTargetSeq: 1,
+      _randomTargetEvents: [{ seq: 1, sourceIdx: 0, targetIdx: 1, label: '钻地魔虫', phaseOrder: 1 }],
+      _statEventSeq: 1,
+      _statEvents: [
+        { type: 'HP_LOSS', target: 0, from: { hp: 10, san: 10, isDead: false }, to: { hp: 8, san: 10, isDead: false }, seq: 1, phaseOrder: 0 },
+        { type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10, isDead: false }, to: { hp: 8, san: 10, isDead: false }, seq: 1, phaseOrder: 0 },
+        { type: 'HP_LOSS', target: 2, from: { hp: 10, san: 10, isDead: false }, to: { hp: 8, san: 10, isDead: false }, seq: 1, phaseOrder: 0 },
+        { type: 'HP_LOSS', target: 1, from: { hp: 8, san: 10, isDead: false }, to: { hp: 6, san: 10, isDead: false }, seq: 1, phaseOrder: 2 },
+      ],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    const firstHpIdx = queue.findIndex(step => step.type === 'HP_DAMAGE');
+    const randomIdx = queue.findIndex(step => step.type === 'RANDOM_TARGET');
+    const secondHpIdx = queue.findIndex((step, idx) => step.type === 'HP_DAMAGE' && idx > randomIdx);
+
+    expect(firstHpIdx).toBeGreaterThanOrEqual(0);
+    expect(randomIdx).toBeGreaterThan(firstHpIdx);
+    expect(secondHpIdx).toBeGreaterThan(randomIdx);
+    expect(queue[firstHpIdx].hitIndices).toEqual([0, 1, 2]);
+    expect(queue[secondHpIdx].hitIndices).toEqual([1]);
+  });
+
   it('阿波菲斯黑夜选目标会播放掷骰，追捕偏移时重播锁定动画', () => {
     const players = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' }), makePlayer({ name: '贝拉' })];
     const oldGs = makeGs({ players, log: [], _apophisTargetSeq: 1 });

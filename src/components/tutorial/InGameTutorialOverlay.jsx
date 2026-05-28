@@ -13,6 +13,8 @@ function NarratorAvatar({tooltipW}){
   );
 }
 
+export { NARRATOR_AVATAR };
+
 export default function InGameTutorialOverlay({
   showTutorial,
   tutorialStep,

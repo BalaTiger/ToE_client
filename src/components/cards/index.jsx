@@ -264,10 +264,10 @@ function MiniCardFace({card,width=70,height=94,scale=1,glowColor,ambient=true,sh
   );
 }
 
-function PreviewCard({card,minWidth=120,codeFontSize=51,frameStyle,desc}){
+function PreviewCard({card,minWidth=120,codeFontSize=51,frameStyle,desc,hideIdentity=false}){
   if(!card)return null;
   const s=card.isGod?GOD_CS:(CS[card.letter]||GOD_CS);
-  const bodyText=desc??(card.isGod?(card.subtitle||card.power||''):(card.desc||''));
+  const bodyText=hideIdentity?'':(desc??(card.isGod?(card.subtitle||card.power||''):(card.desc||'')));
   return(
     <div style={{
       background:s.bg,
@@ -283,7 +283,7 @@ function PreviewCard({card,minWidth=120,codeFontSize=51,frameStyle,desc}){
       ...frameStyle,
     }}>
       <CardCodeLabel card={card} fontSize={codeFontSize}/>
-      <div style={{fontFamily:"'Cinzel',serif",color:'#e8cc88',fontSize:19.5,fontWeight:600,marginTop:6,textAlign:'center'}}>{card.name}</div>
+      {!hideIdentity&&<div style={{fontFamily:"'Cinzel',serif",color:'#e8cc88',fontSize:19.5,fontWeight:600,marginTop:6,textAlign:'center'}}>{card.name}</div>}
       {!!bodyText&&(
         <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#d4b468',fontSize:16.5,marginTop:8,lineHeight:1.4,maxWidth:200,textAlign:'center'}}>
           {bodyText}

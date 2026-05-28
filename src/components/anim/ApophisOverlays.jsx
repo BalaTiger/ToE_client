@@ -3,6 +3,7 @@ import React from 'react';
 export function ApophisEclipseAnim({ exiting }) {
   const sunSize = 58;
   const sunTop = 29;
+  const rays = [-76, -52, -29, -8, 17, 42, 68, 96, 126, 154, 183, 212, 239, 267];
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 820, pointerEvents: 'none', overflow: 'hidden' }}>
       <div style={{
@@ -25,6 +26,42 @@ export function ApophisEclipseAnim({ exiting }) {
       <div style={{
         position: 'absolute',
         left: '50%',
+        top: sunTop + sunSize / 2,
+        width: 1,
+        height: 1,
+      }}>
+        {rays.map((deg, i) => (
+          (() => {
+            const downward = (1 - Math.cos((deg * Math.PI) / 180)) / 2;
+            const rayLength = Math.round(170 + downward * 150);
+            const rayWidth = Math.round(14 + downward * 8);
+            return (
+              <div
+                key={deg}
+                style={{
+                  position: 'absolute',
+                  left: -rayWidth / 2,
+                  top: -rayLength,
+                  width: rayWidth,
+                  height: rayLength,
+                  transformOrigin: '50% 100%',
+                  transform: `rotate(${deg}deg)`,
+                  '--ray-angle': `${deg}deg`,
+                  background: 'linear-gradient(to top, rgba(255,220,128,0.34), rgba(255,190,78,0.12) 48%, rgba(255,190,78,0) 100%)',
+                  filter: 'blur(6px)',
+                  mixBlendMode: 'screen',
+                  opacity: 0,
+                  animation: `apophisLightRayFade 1.45s ease both`,
+                  animationDelay: `${i * 0.045}s`,
+                }}
+              />
+            );
+          })()
+        ))}
+      </div>
+      <div style={{
+        position: 'absolute',
+        left: '50%',
         top: sunTop,
         width: sunSize,
         height: sunSize,
@@ -34,6 +71,49 @@ export function ApophisEclipseAnim({ exiting }) {
         boxShadow: '0 0 18px #000, inset 0 0 18px #2a0505',
         animation: 'apophisMoonCover 1.45s cubic-bezier(.18,.82,.22,1) both',
       }} />
+      <div style={{
+        position: 'absolute',
+        left: '50%',
+        top: sunTop - 3,
+        width: sunSize + 6,
+        height: sunSize + 6,
+        marginLeft: -(sunSize + 6) / 2,
+        borderRadius: '50%',
+        boxShadow: 'inset -2px 0 0 rgba(255,226,142,.72), 0 0 18px rgba(255,194,71,.32)',
+        opacity: 0,
+        animation: 'apophisDiamondRing 1.9s ease both',
+      }}>
+        <div style={{
+          position: 'absolute',
+          right: 2,
+          top: 9,
+          width: 8,
+          height: 8,
+          borderRadius: '50%',
+          background: '#fff2b0',
+          boxShadow: '0 0 8px #fff2b0, 0 0 18px #ffc247, 0 0 34px #ff7a22',
+          animation: 'apophisDiamondSpark 1.9s ease both',
+        }}>
+          {[0, 45, 90, 135].map(deg => (
+            <span
+              key={deg}
+              style={{
+                position: 'absolute',
+                left: '50%',
+                top: '50%',
+                width: deg % 90 === 0 ? 38 : 24,
+                height: 2,
+                marginLeft: deg % 90 === 0 ? -19 : -12,
+                marginTop: -1,
+                borderRadius: 999,
+                background: 'linear-gradient(90deg, rgba(255,242,176,0), rgba(255,242,176,.92), rgba(255,242,176,0))',
+                transform: `rotate(${deg}deg)`,
+                filter: 'blur(.4px)',
+              }}
+            />
+          ))}
+        </div>
+      </div>
       <div style={{
         position: 'absolute',
         left: '50%',

@@ -4,6 +4,7 @@ import { DiceRollAnim, GenericAnimOverlay, YourTurnAnim } from './GenericAnimOve
 import { BuryToDeckOverlay, DiscardMoveOverlay, ZhuHideCardOverlay } from './MoveOverlays';
 import { CaveDuelAnim } from './AreaCardOverlays';
 import { ApophisEclipseAnim } from './ApophisOverlays';
+import { RandomTargetOverlay } from './RandomTargetOverlay';
 
 const NO_OVERLAY_TYPES = new Set([
   'CARD_TRANSFER',
@@ -32,6 +33,7 @@ const ANIM_RENDERERS = {
   BURY_TO_DECK: ({ anim, exiting, expansionKey }) => <BuryToDeckOverlay anim={anim} exiting={exiting} expansionKey={expansionKey} />,
   ZHU_HIDE_CARD: ({ anim, exiting }) => <ZhuHideCardOverlay anim={anim} exiting={exiting} />,
   CAVE_DUEL: ({ anim, exiting }) => <CaveDuelAnim anim={anim} exiting={exiting} />,
+  RANDOM_TARGET: ({ anim, exiting }) => <RandomTargetOverlay anim={anim} exiting={exiting} />,
   APOPHIS_ECLIPSE: ({ exiting }) => <ApophisEclipseAnim exiting={exiting} />,
 };
 

@@ -43,6 +43,7 @@ import { deriveEffectDecisionState, hasEffectDecisionState } from './effectState
 import { buildApophisNightLog, getApophisNightForLevel, resolveApophisTarget } from './apophisNight';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { canGodPowerAffect } from './godPowerImmunity';
+import { appendProliferatingZDraws } from './proliferatingZ';
 
 /**
  * 检查两张卡是否满足追捕匹配规则。
@@ -694,10 +695,11 @@ export function aiStep(gs, opts = {}) {
     ? getBlackGoatMultiplyEvent(P, ct)
     : null;
   if (multiplyEvent && shouldAiMultiply({ gs, players: P, sourceIdx: ct, aiEffRole, ai: P[ct], aiSkillDecision, cultistBewitchPlan, huntAbandoned: newAbandoned })) {
-    P[multiplyEvent.toIdx].hand.push(createBlackGoatYoungCard());
+    const goatCard = createBlackGoatYoungCard();
+    P[multiplyEvent.toIdx].hand.push(goatCard);
     L.push(`【繁衍】${P[ct].name} 将黑山羊幼仔传播给了 ${P[multiplyEvent.toIdx].name}`);
     animMultiplyEvent = multiplyEvent;
-    gs = { ...gs, multiplyUsed: true, skillUsed: true };
+    gs = { ...gs, multiplyUsed: true, skillUsed: true, ...appendProliferatingZDraws(gs, P, multiplyEvent.toIdx, goatCard) };
     useSkill = false;
   }
 

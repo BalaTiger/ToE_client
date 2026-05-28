@@ -72,6 +72,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
 
   if(!card) return null;
   const isInspection=!!card.effect;
+  const hideZoneIdentity=!!card.blindZoneIdentity&&!isInspection;
   const cardBackImage=getCardBackImage(expansionKey);
   const displayTriggerName=isInspection&&(targetPid??0)===0?'你':triggerName;
   const inspectionTone=isInspection?(card.type||'neutral'):null;
@@ -289,8 +290,8 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
               ? <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:18,lineHeight:1,letterSpacing:2}}>检定</div>
               : <CardCodeLabel card={card} fontSize={28} letterSpacing={0}/>
             }
-            <div style={{fontFamily:"'Cinzel',serif",color:isInspection?s.text:'#c8a96e',fontSize:isInspection?16:11.5,fontWeight:600,marginTop:6,lineHeight:1.3}}>{card.name}</div>
-            <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:isInspection?(inspectionTone==='positive'?'#aeeac0':inspectionTone==='neutral'?'#b8c4d8':'#e2a8e8'):'#b89858',fontSize:9.5,marginTop:8,lineHeight:1.4}}>{isInspection?getInspectionCardDesc(card):card.desc}</div>
+            {!hideZoneIdentity&&<div style={{fontFamily:"'Cinzel',serif",color:isInspection?s.text:'#c8a96e',fontSize:isInspection?16:11.5,fontWeight:600,marginTop:6,lineHeight:1.3}}>{card.name}</div>}
+            {!hideZoneIdentity&&<div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:isInspection?(inspectionTone==='positive'?'#aeeac0':inspectionTone==='neutral'?'#b8c4d8':'#e2a8e8'):'#b89858',fontSize:9.5,marginTop:8,lineHeight:1.4}}>{isInspection?getInspectionCardDesc(card):card.desc}</div>}
             {isInspection&&(
               <div style={{position:'absolute',left:10,bottom:10,fontSize:9,color:s.border,letterSpacing:2,fontFamily:"'Cinzel',serif"}}>
                 {inspectionTone==='positive'?'正面检定':inspectionTone==='neutral'?'中性检定':'负面检定'}

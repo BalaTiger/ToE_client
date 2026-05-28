@@ -34,6 +34,27 @@ export function buildAnimQueue(oldGs, newGs) {
     const nightMsg = newMsgs.find(line => typeof line === 'string' && line.includes('【噬日灭世】黑夜降临'));
     if (nightMsg) q.push({ type: 'APOPHIS_ECLIPSE', msgs: [nightMsg] });
   }
+  const randomTargetEvents = (newGs?._randomTargetEvents || []).filter(ev => ev?.seq > (oldGs?._randomTargetSeq || 0));
+  const buildRandomTargetQueue = event => {
+    const queue = [];
+    if (event.diceBefore && event.roll != null) {
+      queue.push({
+        type: 'DICE_ROLL',
+        diceMode: 'throwStone',
+        d1: event.roll,
+        d2: 0,
+        rollerName: newGs.players?.[event.sourceIdx]?.name || '角色',
+        msgs: [],
+      });
+    }
+    queue.push({
+      type: 'RANDOM_TARGET',
+      ...event,
+      players: newGs.players,
+      msgs: event.resultText ? [event.resultText] : [],
+    });
+    return queue;
+  };
   if (newGs.gameOver && newGs.currentTurn !== oldGs.currentTurn) {
     const dCard = newGs._aiDrawnCard || newGs._drawnCard || newGs.drawReveal?.card;
     if (dCard) {
@@ -56,8 +77,28 @@ export function buildAnimQueue(oldGs, newGs) {
     ? makeTargetStats(effectivePlayers, explicitStatEvents)
     : effectivePlayers.map(p => ({ hp: p.hp, san: p.san, isDead: p.isDead }));
   if (hasFreshExplicitStatEvents) {
-    q.push(...statEventsToAnimQueue(explicitStatEvents, effectivePlayers, newMsgs));
+    const hasOrderedRandomTarget = randomTargetEvents.some(event => event?.phaseOrder != null);
+    const hasOrderedStat = explicitStatEvents.some(event => event?.phaseOrder != null);
+    if (hasOrderedRandomTarget || hasOrderedStat) {
+      const orders = [
+        ...new Set([
+          ...explicitStatEvents.map(event => event?.phaseOrder ?? 0),
+          ...randomTargetEvents.map(event => event?.phaseOrder ?? 0),
+        ]),
+      ].sort((a, b) => a - b);
+      orders.forEach(order => {
+        const statSlice = explicitStatEvents.filter(event => (event?.phaseOrder ?? 0) === order);
+        if (statSlice.length) q.push(...statEventsToAnimQueue(statSlice, effectivePlayers, order === 0 ? newMsgs : []));
+        randomTargetEvents
+          .filter(event => (event?.phaseOrder ?? 0) === order)
+          .forEach(event => q.push(...buildRandomTargetQueue(event)));
+      });
+    } else {
+      randomTargetEvents.forEach(event => q.push(...buildRandomTargetQueue(event)));
+      q.push(...statEventsToAnimQueue(explicitStatEvents, effectivePlayers, newMsgs));
+    }
   } else {
+    randomTargetEvents.forEach(event => q.push(...buildRandomTargetQueue(event)));
     const hasHpHealLog = newMsgs.some(line => /(?:回复|恢复|回满).*HP|HP\s*回满/.test(line || ''));
     const hasSanHealLog = newMsgs.some(line => /(?:回复|恢复).*SAN/.test(line || ''));
     const hpHealIdx = hasHpHealLog

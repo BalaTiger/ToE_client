@@ -9,7 +9,7 @@ export function useGameAudio(isBattleScreen) {
   const [audioReady, setAudioReady] = useState(false);
   const readyRef = useRef(false);
   const bgmRefs = useRef({ main: null, battle: null });
-  const sfxRefs = useRef({ open: null, close: null, hpDamage: [] });
+  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], apophisEclipse: null });
   const currentTrackRef = useRef(null);
   const fadeTokenRef = useRef(0);
   const targetVolumesRef = useRef({ main: 0.32, battle: 0.24 });
@@ -19,6 +19,7 @@ export function useGameAudio(isBattleScreen) {
     const battle = new Audio(buildPublicUrl('sounds/BGM/battle.mp3'));
     const open = new Audio(buildPublicUrl('sounds/SE/open.mp3'));
     const close = new Audio(buildPublicUrl('sounds/SE/close.mp3'));
+    const apophisEclipse = new Audio(buildPublicUrl('sounds/SE/apophisEclipseDrums.mp3'));
     const hpDamageVariants = Array.from({ length: 6 }, (_, i) =>
       new Audio(buildPublicUrl(`sounds/SE/hpDamageVariants/hpDamage${i + 1}.mp3`))
     );
@@ -31,14 +32,16 @@ export function useGameAudio(isBattleScreen) {
       audio.preload = 'auto';
       audio.volume = 0.6;
     });
+    apophisEclipse.preload = 'auto';
+    apophisEclipse.volume = 0.68;
     hpDamageVariants.forEach(audio => {
       audio.preload = 'auto';
       audio.volume = 0.7;
     });
     bgmRefs.current = { main, battle };
-    sfxRefs.current = { open, close, hpDamage: hpDamageVariants };
+    sfxRefs.current = { open, close, hpDamage: hpDamageVariants, apophisEclipse };
     return () => {
-      [main, battle, open, close, ...hpDamageVariants].forEach(audio => {
+      [main, battle, open, close, apophisEclipse, ...hpDamageVariants].forEach(audio => {
         try {
           audio.pause();
           audio.currentTime = 0;
@@ -182,6 +185,7 @@ export function useGameAudio(isBattleScreen) {
 
   const playOpenSound = useCallback(() => playSfx('open'), [playSfx]);
   const playCloseSound = useCallback(() => playSfx('close'), [playSfx]);
+  const playApophisEclipseSound = useCallback(() => playSfx('apophisEclipse'), [playSfx]);
 
   return {
     noteUserGesture,
@@ -189,5 +193,6 @@ export function useGameAudio(isBattleScreen) {
     playCloseSound,
     playTickSound,
     playHpDamageSound,
+    playApophisEclipseSound,
   };
 }

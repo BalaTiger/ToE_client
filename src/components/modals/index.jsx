@@ -134,6 +134,7 @@ function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingTex
   const { card } = drawReveal;
   const s = CS[card.letter] || GOD_CS;
   const isBystander = !canChoose && thinkingText;
+  const hideIdentity = !!(drawReveal.blindZoneIdentity || card.blindZoneIdentity);
   return (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 300, paddingTop: '10vh' }}>
       <div style={{
@@ -144,7 +145,7 @@ function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingTex
         animation: 'animPop 0.22s ease-out',
       }}>
         <div style={{ fontFamily: "'Cinzel',serif", color: '#a07838', fontSize: 15, letterSpacing: 3, marginBottom: 16, textTransform: 'uppercase' }}>── 区域探寻 ──</div>
-        <PreviewCard card={card}/>
+        <PreviewCard card={card} hideIdentity={hideIdentity}/>
 
         {isBystander ? (
           <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#c8a96e', fontSize: 15, marginTop: 16 }}>

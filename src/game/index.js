@@ -16,3 +16,4 @@ export * from './apophisNight';
 export * from './apophisAnimQueue';
 export * from './balanceCards';
 export * from './godPowerImmunity';
+export * from './proliferatingZ';

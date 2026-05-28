@@ -17,6 +17,7 @@ import {
 } from './coreUtils';
 import { buildStatEvents } from './statEvents';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
+import { appendProliferatingZDraws, makeProliferatingZState } from './proliferatingZ';
 
 export function applyHpDamageWithLink(P, i, amount, Disc, L, currentTurn, D) {
   if (i == null || !P[i] || P[i].isDead || !(amount > 0)) return;
@@ -59,6 +60,27 @@ export function getLivingAdjacentTargets(players, ci) {
   return getAdjacentTargets(players, ci).filter(
     (idx, pos, arr) => idx !== ci && idx != null && players[idx] && !players[idx].isDead && arr.indexOf(idx) === pos
   );
+}
+
+function getLivingCircularDistance(players, fromIdx, toIdx) {
+  const order = getLivingPlayerOrder(players || [], fromIdx);
+  const fromPos = order.indexOf(fromIdx);
+  const toPos = order.indexOf(toIdx);
+  if (fromPos < 0 || toPos < 0) return Infinity;
+  const diff = Math.abs(fromPos - toPos);
+  return Math.min(diff, order.length - diff);
+}
+
+function appendRandomTargetEvent(statePatch, gs, event) {
+  const seq = (gs?._randomTargetSeq || 0) + 1 + (statePatch?._randomTargetEvents?.length || 0);
+  return {
+    ...statePatch,
+    _randomTargetSeq: seq,
+    _randomTargetEvents: [
+      ...(statePatch?._randomTargetEvents || []),
+      { ...event, seq },
+    ],
+  };
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -379,6 +401,12 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     };
   };
 
+  const playerStats = player => ({
+    hp: player?.hp ?? 0,
+    san: player?.san ?? 0,
+    isDead: !!player?.isDead,
+  });
+
   // 辅助函数：检查条件
   const checkCondition = (condType, condVal, actor) => {
     switch (condType) {
@@ -485,6 +513,16 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     selfHealSAN: () => { healSAN(ci, card.val); msgs.push(`${actor.name} 回复了 ${card.val} SAN`); },
     lifeBalance: () => { healHP(ci, card.val || 3); msgs.push(`${actor.name} 回复了 ${card.val || 3} HP`); },
     soulBalance: () => { healSAN(ci, card.val || 3); msgs.push(`${actor.name} 回复了 ${card.val || 3} SAN`); },
+    blindFish: () => {
+      const amount = card.val || 3;
+      healHP(ci, amount);
+      actor.blindNextZoneDecision = true;
+      msgs.push(`${actor.name} 回复了 ${amount} HP，下一张区域牌只能看见编号后决定是否收入`);
+    },
+    proliferatingZ: () => {
+      statePatch = { ...statePatch, proliferatingZ: makeProliferatingZState(ci, gs?.turn || 0), proliferatingZQueue: [] };
+      msgs.push(`【增殖的Z】本回合若有角色获得邪神牌或其衍生牌，其他角色各摸1张牌`);
+    },
     allHealHP: () => {
       allLiving.forEach(i => healHP(i, card.val));
       msgs.push(`全体存活角色回复 ${card.val} HP`);
@@ -680,6 +718,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         const picked = godCards[godCards.length - 1];
         const [godCard] = Disc.splice(picked.discardIndex, 1);
         P[ci].hand.push(godCard);
+        statePatch = { ...statePatch, ...appendProliferatingZDraws({ ...gs, ...statePatch }, P, ci, godCard) };
         msgs.push(`${actor.name} 从弃牌堆中取回 ${cardLogText(godCard, { alwaysShowName: true })}`);
       } else {
         statePatch = {
@@ -814,11 +853,13 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const avoidSelf = avoidNegative || avoidNegativeFor.includes(ci);
       const deferredGlobalLogs = [];
       const affectedTargets = P.map((p, i) => i).filter(i => !P[i].isDead && !avoidNegativeFor.includes(i) && !(avoidSelf && i === ci));
+      const beforeGlobalPlayers = copyPlayers(P);
       affectedTargets.forEach(i => {
         const localMsgs = [];
         applyHpDamageWithLink(P, i, (card.val || 0) + dmgBonus, Disc, localMsgs, gs?.currentTurn, D);
         deferredGlobalLogs.push(...localMsgs);
       });
+      const afterGlobalPlayers = copyPlayers(P);
       if (affectedTargets.length) {
         if (avoidSelf && affectedTargets.length === allLiving.length - 1) {
           msgs.push(`除${actor.name}外，全体存活角色失去 ${card.val} HP`);
@@ -830,11 +871,81 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const alivePlayers = P.map((p, i) => i).filter(i => !P[i].isDead && !avoidNegativeFor.includes(i) && !(avoidSelf && i === ci));
       if (alivePlayers.length > 0) {
         const randomTarget = alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
+        const beforeExtraPlayer = { ...P[randomTarget] };
         const localMsgs = [];
         applyHpDamageWithLink(P, randomTarget, (card.val || 0) + dmgBonus, Disc, localMsgs, gs?.currentTurn, D);
+        statePatch = appendRandomTargetEvent(statePatch, gs, {
+          sourceIdx: ci,
+          targetIdx: randomTarget,
+          label: card.name || '随机目标',
+          resultText: `${P[randomTarget].name} 被选中`,
+          phaseOrder: 1,
+        });
         msgs.push(`${P[randomTarget].name} 额外失去 ${card.val} HP`);
         if (localMsgs.length) msgs.push(...localMsgs);
+        const seq = (gs?._statEventSeq || 0) + 1;
+        directStatEvents = [
+          ...affectedTargets
+            .filter(i => afterGlobalPlayers[i]?.hp < beforeGlobalPlayers[i]?.hp)
+            .map(i => ({
+              type: 'HP_LOSS',
+              target: i,
+              from: playerStats(beforeGlobalPlayers[i]),
+              to: playerStats(afterGlobalPlayers[i]),
+              reason: card?.name || card?.type || '',
+              seq,
+              phaseOrder: 0,
+            })),
+          ...((P[randomTarget]?.hp ?? 0) < (beforeExtraPlayer.hp ?? 0) ? [{
+            type: 'HP_LOSS',
+            target: randomTarget,
+            from: playerStats(beforeExtraPlayer),
+            to: playerStats(P[randomTarget]),
+            reason: card?.name || card?.type || '',
+            seq,
+            phaseOrder: 2,
+          }] : []),
+        ];
       }
+    },
+    throwStone: () => {
+      const candidates = P.map((p, i) => i).filter(i => i !== ci && !P[i].isDead);
+      if (!candidates.length) {
+        msgs.push('没有其他存活角色，无法投掷石块');
+        return;
+      }
+      const roll = 1 + (Math.random() * 6 | 0);
+      const randomTarget = candidates[Math.floor(Math.random() * candidates.length)];
+      const distance = getLivingCircularDistance(P, ci, randomTarget);
+      const damage = Math.max(0, roll - distance) + dmgBonus;
+      const beforeTarget = { ...P[randomTarget] };
+      statePatch = appendRandomTargetEvent(statePatch, gs, {
+        sourceIdx: ci,
+        targetIdx: randomTarget,
+        label: card.name || '投掷石块',
+        roll,
+        distance,
+        damage,
+        resultText: `${P[randomTarget].name} 被选中`,
+        diceBefore: true,
+        phaseOrder: 1,
+      });
+      msgs.push(`${actor.name} 掷出 ${roll} 点，随机砸向 ${P[randomTarget].name}（距离${distance}），造成 ${damage} HP 伤害`);
+      if (damage > 0) {
+        const localMsgs = [];
+        applyHpDamageWithLink(P, randomTarget, damage, Disc, localMsgs, gs?.currentTurn, D);
+        if (localMsgs.length) msgs.push(...localMsgs);
+      }
+      const seq = (gs?._statEventSeq || 0) + 1;
+      directStatEvents = damage > 0 ? [{
+        type: 'HP_LOSS',
+        target: randomTarget,
+        from: playerStats(beforeTarget),
+        to: playerStats(P[randomTarget]),
+        reason: card?.name || card?.type || '',
+        seq,
+        phaseOrder: 2,
+      }] : [];
     },
     sameAbyssChoice: () => {
       if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
@@ -1124,7 +1235,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     if (earlyReturn) return finish(earlyReturn);
   }
   const directStatEventSeq = (gs?._statEventSeq || 0) + 1;
-  directStatEvents = buildStatEvents(beforePlayers, P, msgs, { reason: card?.name || card?.type || '', seq: directStatEventSeq });
+  if (!directStatEvents) directStatEvents = buildStatEvents(beforePlayers, P, msgs, { reason: card?.name || card?.type || '', seq: directStatEventSeq });
   if (pendingInspectionTargets.length) {
     const inspectionBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
     const processed = processInspectionTargets(pendingInspectionTargets, gs?.currentTurn ?? ci, P, D, Disc, inspectionBaseLog, inspectionMeta);

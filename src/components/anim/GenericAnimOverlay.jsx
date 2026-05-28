@@ -67,6 +67,7 @@ export function DiceRollAnim({ anim, exiting }) {
   const winner = Math.max(d1, d2);
   const isDodgeRoll = d2 === 0;
   const isApophisRoll = anim.diceMode === 'apophisNight';
+  const isThrowStoneRoll = anim.diceMode === 'throwStone';
   const apophisSuccess = isApophisRoll && !anim.apophisChanged;
   return (
     <div style={{
@@ -76,7 +77,7 @@ export function DiceRollAnim({ anim, exiting }) {
     }}>
       <div style={{ position: 'absolute', inset: 0, boxShadow: 'inset 0 0 120px #c8a96e22', pointerEvents: 'none' }} />
       <div style={{ fontFamily: "'Cinzel',serif", color: '#b89858', fontSize: 11, letterSpacing: 4, marginBottom: 18, textTransform: 'uppercase' }}>
-        {rollerName || '？'} {isApophisRoll ? '在黑夜中掷骰' : isDodgeRoll ? '掷骰子' : '选择休息'}
+        {rollerName || '？'} {isApophisRoll ? '在黑夜中掷骰' : isThrowStoneRoll ? '投掷石块' : isDodgeRoll ? '掷骰子' : '选择休息'}
       </div>
       <div style={{ display: 'flex', gap: 36, marginBottom: 20 }}>
         {[{ face: face1, val: d1 }, ...(!isDodgeRoll ? [{ face: face2, val: d2 }] : [])].map(({ face }, i) => (
@@ -102,6 +103,18 @@ export function DiceRollAnim({ anim, exiting }) {
               </div>
               <div style={{ fontFamily: "'IM Fell English',serif", fontStyle: 'italic', color: '#8a6a9a', fontSize: 12, textAlign: 'center', letterSpacing: 1 }}>
                 掷出 {d1} 点，{apophisSuccess ? '目标未偏移' : '目标偏移'}
+              </div>
+            </>
+          ) : isThrowStoneRoll ? (
+            <>
+              <div style={{
+                fontFamily: "'Cinzel',serif", fontSize: 13, color: '#c8a96e', letterSpacing: 3,
+                textAlign: 'center', marginBottom: 6,
+              }}>
+                掷出 <span style={{ color: '#e8c87a', fontSize: 18, fontWeight: 700 }}>{d1}</span> 点
+              </div>
+              <div style={{ fontFamily: "'IM Fell English',serif", fontStyle: 'italic', color: '#b89858', fontSize: 12, textAlign: 'center', letterSpacing: 1 }}>
+                石块飞向未知方向…
               </div>
             </>
           ) : isDodgeRoll ? (

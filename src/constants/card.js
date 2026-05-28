@@ -141,9 +141,9 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "可生食木乃伊",
-      "desc": "你回复3HP，失去1SAN",
+      "desc": "你回复2HP，失去1SAN",
       "type": "selfHealHPSelfDamageSAN",
-      "hpVal": 3,
+      "hpVal": 2,
       "sanVal": 1,
       "slotKey": "A3",
       "polarity": "neutral",
@@ -243,6 +243,16 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "polarity": "negative",
       "effectScope": "adjacent",
       "expansion": "地神的潜影"
+    },
+    {
+      "name": "增殖的Z",
+      "desc": "本回合每有角色获得邪神牌或其衍生牌，其他角色各摸一张牌",
+      "type": "proliferatingZ",
+      "val": 0,
+      "slotKey": "B1",
+      "polarity": "positive",
+      "effectScope": "all",
+      "expansion": "地神的潜影"
     }
   ],
   "B2": [
@@ -275,6 +285,16 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "slotKey": "B2",
       "polarity": "negative",
       "effectScope": "all",
+      "expansion": "地神的潜影"
+    },
+    {
+      "name": "投掷石块",
+      "desc": "掷一枚骰子，另一名随机角色失去HP：数值等于骰子点数-你与该角色的距离，最小为0",
+      "type": "throwStone",
+      "val": 0,
+      "slotKey": "B2",
+      "polarity": "neutral",
+      "effectScope": "target",
       "expansion": "地神的潜影"
     },
     {
@@ -397,6 +417,16 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "slotKey": "C1",
       "polarity": "negative",
       "effectScope": "all",
+      "expansion": "地神的潜影"
+    },
+    {
+      "name": "烤盲鱼",
+      "desc": "你恢复3HP，且摸到下张区域牌时，须在只能看见编号的条件下决定是否收入",
+      "type": "blindFish",
+      "val": 3,
+      "slotKey": "C1",
+      "polarity": "positive",
+      "effectScope": "self",
       "expansion": "地神的潜影"
     }
   ],
@@ -591,6 +621,16 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "polarity": "neutral",
       "effectScope": "target",
       "expansion": "先贤的馈赠"
+    },
+    {
+      "name": "鼠群",
+      "desc": "所有角色失去1SAN",
+      "type": "allDamageSAN",
+      "val": 1,
+      "slotKey": "D3",
+      "polarity": "negative",
+      "effectScope": "all",
+      "expansion": "地神的潜影"
     }
   ],
   "D4": [

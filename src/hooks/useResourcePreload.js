@@ -10,6 +10,7 @@ const AUDIO_FILES = [
   '/sounds/SE/hpDamageVariants/hpDamage4.mp3',
   '/sounds/SE/hpDamageVariants/hpDamage5.mp3',
   '/sounds/SE/hpDamageVariants/hpDamage6.mp3',
+  '/sounds/SE/apophisEclipseDrums.mp3',
 ];
 
 const VIDEO_FILES = [
@@ -44,7 +45,7 @@ const RESOURCE_FILES = [
   ...IMAGE_FILES.map(path => ({ path, type: 'image' })),
 ];
 
-const RESOURCE_CACHE_VERSION = '2026-05-22-battle-bg-v1';
+const RESOURCE_CACHE_VERSION = '2026-05-28-apophis-eclipse-audio-v1';
 const CACHE_VERSION_KEY = 'toe_resources_cached_version';
 
 const LOAD_ERROR_LABELS = {

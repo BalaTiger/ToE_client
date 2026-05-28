@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   applyHpDamageWithLink,
   applyInspectionForSanLoss,
@@ -208,6 +208,64 @@ describe('applyFx', () => {
     expect(res.D).toEqual(discard);
     expect(res.Disc).toEqual(deck);
     expect(res.msgs[0]).toContain('牌堆和弃牌堆交换了');
+  });
+
+  it('blindFish: 恢复HP并标记下一次区域牌遮蔽抉择', () => {
+    const players = [makePlayer({ hp: 6 })];
+    const gs = makeGs({ players });
+    const res = applyFx({ type: 'blindFish', name: '烤盲鱼', val: 3 }, 0, null, players, [], [], gs);
+
+    expect(res.P[0].hp).toBe(9);
+    expect(res.P[0].blindNextZoneDecision).toBe(true);
+    expect(res.msgs[0]).toContain('下一张区域牌只能看见编号');
+  });
+
+  it('throwStone: 随机另一名角色并按存活者环形距离计算伤害', () => {
+    const randomSpy = vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0.99) // roll = 6
+      .mockReturnValueOnce(0.4); // candidates [1,3], pick 1
+    const players = [
+      makePlayer({ name: '你', hp: 10 }),
+      makePlayer({ name: '艾伦', hp: 10 }),
+      makePlayer({ name: '贝拉', hp: 10, isDead: true }),
+      makePlayer({ name: '卡洛斯', hp: 10 }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0 });
+    const res = applyFx({ type: 'throwStone', name: '投掷石块' }, 0, null, players, [], [], gs);
+
+    expect(res.P[1].hp).toBe(5);
+    expect(res.P[3].hp).toBe(10);
+    expect(res.msgs[0]).toContain('掷出 6 点');
+    expect(res.msgs[0]).toContain('距离1');
+    expect(res.statePatch._randomTargetEvents[0]).toMatchObject({
+      sourceIdx: 0,
+      targetIdx: 1,
+      roll: 6,
+      distance: 1,
+      damage: 5,
+      label: '投掷石块',
+      diceBefore: true,
+      phaseOrder: 1,
+    });
+    expect(res.statEvents[0]).toMatchObject({ target: 1, phaseOrder: 2 });
+    randomSpy.mockRestore();
+  });
+
+  it('allDamageHPRandomExtra: 全场伤害和随机额外伤害分为两个动画阶段', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.4);
+    const players = [
+      makePlayer({ name: '你', hp: 10 }),
+      makePlayer({ name: '艾伦', hp: 10 }),
+      makePlayer({ name: '贝拉', hp: 10 }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0 });
+    const res = applyFx({ type: 'allDamageHPRandomExtra', name: '钻地魔虫', val: 2 }, 0, null, players, [], [], gs);
+
+    expect(res.statePatch._randomTargetEvents[0]).toMatchObject({ targetIdx: 1, phaseOrder: 1 });
+    expect(res.statEvents.filter(ev => ev.phaseOrder === 0).map(ev => ev.target)).toEqual([0, 1, 2]);
+    expect(res.statEvents.filter(ev => ev.phaseOrder === 2)).toMatchObject([{ target: 1 }]);
+    expect(res.P[1].hp).toBe(6);
+    randomSpy.mockRestore();
   });
 
   it('semiMaterializeTeach: 进入悄悄指定目标阶段', () => {

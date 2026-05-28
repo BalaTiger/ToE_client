@@ -111,6 +111,31 @@ describe('turnEngine stat events', () => {
     expect(second.kept).toBeFalsy();
   });
 
+  it('烤盲鱼标记会让玩家下一次区域牌抉择只暴露编号', () => {
+    const players = [
+      makePlayer({ blindNextZoneDecision: true }),
+    ];
+    const zoneCard = {
+      id: 'blind-next-zone',
+      key: 'A1',
+      letter: 'A',
+      number: 1,
+      name: '偷吃龙蛋',
+      type: 'selfHealAdjDamageHP',
+      val: 3,
+      adjVal: 2,
+      isZone: true,
+    };
+    const gs = makeGs({ players, deck: [zoneCard], log: [] });
+
+    const result = playerDrawCard(players, [zoneCard], [], 0, gs);
+
+    expect(result.needsDecision).toBe(true);
+    expect(result.blindZoneIdentity).toBe(true);
+    expect(result.drawnCard).toMatchObject({ key: 'A1', blindZoneIdentity: true });
+    expect(result.P[0].blindNextZoneDecision).toBe(true);
+  });
+
   it('邪神遭遇触发检定时直接扣 SAN 与检定效果使用连续 stat event seq', () => {
     const players = [makePlayer({ role: ROLE_TREASURE, hp: 10, san: 7, godEncounters: 0 })];
     const godCard = makeGodCard('NYA');
