@@ -25,13 +25,13 @@ export const ENDLESS_CORRIDOR_ANIMATION_STYLES = `
     position: absolute;
     inset: 0;
     transform-style: preserve-3d;
-    animation: endlessCorridorCameraDive 2.3s cubic-bezier(.16,.84,.22,1) both;
+    animation: endlessCorridorCameraDive 2.3s cubic-bezier(.18,.72,.18,1) both;
   }
   .endlessCorridorTunnel {
     position: absolute;
     inset: 0;
     transform-style: preserve-3d;
-    animation: endlessCorridorTunnelPresence 2.3s cubic-bezier(.18,.82,.22,1) both;
+    animation: endlessCorridorTunnelPresence 2.3s cubic-bezier(.18,.72,.18,1) both;
   }
   .endlessCorridorRing {
     position: absolute;
@@ -45,7 +45,7 @@ export const ENDLESS_CORRIDOR_ANIMATION_STYLES = `
     opacity: var(--ring-opacity);
     transform:
       translate3d(calc(-50% + var(--cluster-x)), calc(-50% + var(--cluster-y)), var(--cluster-z));
-    animation: endlessCorridorRingSpread 2.3s cubic-bezier(.18,.82,.22,1) both;
+    animation: endlessCorridorRingSpread 2.3s cubic-bezier(.18,.72,.18,1) both;
     will-change: transform, opacity;
   }
   .endlessCorridorLine {
@@ -115,11 +115,26 @@ export const ENDLESS_CORRIDOR_ANIMATION_STYLES = `
   }
   .endlessCorridorFlash {
     position: absolute;
-    inset: 0;
-    background: #effff5;
+    left: 50%;
+    top: 50%;
+    width: 90px;
+    height: 90px;
+    margin: -45px 0 0 -45px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(239,255,245,1) 0%, rgba(239,255,245,.96) 42%, rgba(184,255,233,.72) 68%, rgba(184,255,233,0) 100%);
     opacity: 0;
     mix-blend-mode: screen;
-    animation: endlessCorridorFlashFill 2.3s ease both;
+    transform: scale(.08);
+    animation: endlessCorridorFlashFill 2.3s cubic-bezier(.16,.72,.18,1) both;
+  }
+  .endlessCorridorOverlay.ending .endlessCorridorFlash {
+    animation: endlessCorridorFlashExit .22s ease forwards;
+  }
+  .endlessCorridorOverlay.ending .endlessCorridorCamera,
+  .endlessCorridorOverlay.ending .endlessCorridorTunnel,
+  .endlessCorridorOverlay.ending .endlessCorridorRing,
+  .endlessCorridorOverlay.ending .endlessCorridorCore {
+    visibility: hidden;
   }
   @keyframes endlessCorridorBackdrop {
     0% { opacity: 0; filter: brightness(.72) saturate(.8); }
@@ -137,15 +152,7 @@ export const ENDLESS_CORRIDOR_ANIMATION_STYLES = `
       transform:
         translate3d(calc(-50% + var(--cluster-x)), calc(-50% + var(--cluster-y)), var(--cluster-z));
     }
-    22% {
-      transform:
-        translate3d(-50%, -50%, var(--depth-z));
-    }
-    62% {
-      transform:
-        translate3d(-50%, -50%, var(--depth-z));
-    }
-    82% {
+    38% {
       transform:
         translate3d(-50%, -50%, var(--depth-z));
     }
@@ -156,34 +163,40 @@ export const ENDLESS_CORRIDOR_ANIMATION_STYLES = `
   }
   @keyframes endlessCorridorCameraDive {
     0% { transform: translateX(-70px) rotateZ(-4deg) translateZ(0) scale(.96); }
-    22% { transform: translateX(-70px) rotateZ(-4deg) translateZ(0) scale(.96); }
-    62% { transform: translateX(0) rotateZ(0deg) translateZ(0) scale(1); }
-    76% { transform: translateX(0) rotateZ(0deg) translateZ(90px) scale(1.04); }
-    90% { transform: translateX(0) rotateZ(0deg) translateZ(260px) scale(1.24); }
-    100% { transform: translateX(0) rotateZ(0deg) translateZ(520px) scale(1.6); }
+    22% { transform: translateX(-58px) rotateZ(-3.2deg) translateZ(0) scale(.965); }
+    58% { transform: translateX(-18px) rotateZ(-1deg) translateZ(16px) scale(.99); }
+    76% { transform: translateX(-4px) rotateZ(-.2deg) translateZ(96px) scale(1.06); }
+    90% { transform: translateX(0) rotateZ(0deg) translateZ(320px) scale(1.3); }
+    100% { transform: translateX(0) rotateZ(0deg) translateZ(580px) scale(1.62); }
   }
   @keyframes endlessCorridorTunnelPresence {
     0% { transform: rotateY(-72deg) skewY(-2deg) scaleX(.96); }
-    22% { transform: rotateY(-72deg) skewY(-2deg) scaleX(.96); }
-    62% { transform: rotateY(0deg) skewY(0deg) scaleX(1); }
-    88% { transform: rotateY(0deg) skewY(0deg) scale(1.04); }
-    100% { transform: rotateY(0deg) skewY(0deg) scale(1.18); }
+    22% { transform: rotateY(-65deg) skewY(-1.7deg) scaleX(.965); }
+    58% { transform: rotateY(-30deg) skewY(-.8deg) scaleX(.985); }
+    78% { transform: rotateY(-6deg) skewY(-.15deg) scale(1.01); }
+    90% { transform: rotateY(0deg) skewY(0deg) scale(1.08); }
+    100% { transform: rotateY(0deg) skewY(0deg) scale(1.16); }
   }
   @keyframes endlessCorridorEntranceRays {
-    0%, 58% { opacity: 0; }
-    70% { opacity: .34; }
-    84% { opacity: .42; }
-    100% { opacity: .1; }
+    0%, 66% { opacity: 0; }
+    78% { opacity: .32; }
+    90% { opacity: .42; }
+    100% { opacity: .16; }
   }
   @keyframes endlessCorridorCoreBloom {
-    0%, 56% { opacity: 0; transform: scale(.18); }
-    70% { opacity: .35; transform: scale(.9); }
-    84% { opacity: .86; transform: scale(2.1); }
-    100% { opacity: 1; transform: scale(8.5); }
+    0%, 66% { opacity: 0; transform: scale(.18); }
+    80% { opacity: .34; transform: scale(.8); }
+    92% { opacity: .76; transform: scale(2.15); }
+    100% { opacity: .54; transform: scale(4.8); }
   }
   @keyframes endlessCorridorFlashFill {
-    0%, 80% { opacity: 0; }
-    92% { opacity: .52; }
-    100% { opacity: .92; }
+    0%, 78% { opacity: 0; transform: scale(.08); }
+    88% { opacity: .36; transform: scale(2.8); }
+    96% { opacity: .86; transform: scale(16); }
+    100% { opacity: .9; transform: scale(24); }
+  }
+  @keyframes endlessCorridorFlashExit {
+    from { opacity: .9; transform: scale(24); }
+    to { opacity: 0; transform: scale(26); }
   }
 `;

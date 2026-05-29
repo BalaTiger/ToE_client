@@ -3,9 +3,9 @@ import React from 'react';
 const RINGS = Array.from({ length: 11 }, (_, i) => i);
 const MID_RING = Math.floor(RINGS.length / 2);
 const SIDE_TUNNEL = {
-  width: 300,
-  height: 200,
-  depthGap: 125,
+  width: 240,
+  height: 160,
+  depthGap: 96,
 };
 
 function sideRing(i) {
@@ -13,9 +13,9 @@ function sideRing(i) {
   return {
     w: SIDE_TUNNEL.width,
     h: SIDE_TUNNEL.height,
-    clusterX: (i - MID_RING) * 3,
-    clusterY: (i - MID_RING) * 1.5,
-    clusterZ: depthOffset * 5,
+    clusterX: (i - MID_RING) * 0.8,
+    clusterY: (i - MID_RING) * 0.4,
+    clusterZ: depthOffset * 1.2,
     depthZ: depthOffset * -SIDE_TUNNEL.depthGap,
   };
 }
