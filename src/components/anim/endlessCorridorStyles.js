@@ -25,13 +25,13 @@ export const ENDLESS_CORRIDOR_ANIMATION_STYLES = `
     position: absolute;
     inset: 0;
     transform-style: preserve-3d;
-    animation: endlessCorridorCameraDive 2.3s cubic-bezier(.18,.72,.18,1) both;
+    animation: endlessCorridorCameraDive 2.3s linear both;
   }
   .endlessCorridorTunnel {
     position: absolute;
     inset: 0;
     transform-style: preserve-3d;
-    animation: endlessCorridorTunnelPresence 2.3s cubic-bezier(.18,.72,.18,1) both;
+    animation: endlessCorridorTunnelPresence 2.3s linear both;
   }
   .endlessCorridorRing {
     position: absolute;
@@ -45,7 +45,7 @@ export const ENDLESS_CORRIDOR_ANIMATION_STYLES = `
     opacity: var(--ring-opacity);
     transform:
       translate3d(calc(-50% + var(--cluster-x)), calc(-50% + var(--cluster-y)), var(--cluster-z));
-    animation: endlessCorridorRingSpread 2.3s cubic-bezier(.18,.72,.18,1) both;
+    animation: endlessCorridorRingSpread 2.3s linear both;
     will-change: transform, opacity;
   }
   .endlessCorridorLine {
@@ -125,7 +125,7 @@ export const ENDLESS_CORRIDOR_ANIMATION_STYLES = `
     opacity: 0;
     mix-blend-mode: screen;
     transform: scale(.08);
-    animation: endlessCorridorFlashFill 2.3s cubic-bezier(.16,.72,.18,1) both;
+    animation: endlessCorridorFlashFill 2.3s linear both;
   }
   .endlessCorridorOverlay.ending .endlessCorridorFlash {
     animation: endlessCorridorFlashExit .22s ease forwards;
@@ -152,7 +152,15 @@ export const ENDLESS_CORRIDOR_ANIMATION_STYLES = `
       transform:
         translate3d(calc(-50% + var(--cluster-x)), calc(-50% + var(--cluster-y)), var(--cluster-z));
     }
-    38% {
+    16% {
+      transform:
+        translate3d(calc(-50% + var(--spread-a-x)), calc(-50% + var(--spread-a-y)), var(--spread-a-z));
+    }
+    30% {
+      transform:
+        translate3d(calc(-50% + var(--spread-b-x)), calc(-50% + var(--spread-b-y)), var(--spread-b-z));
+    }
+    46% {
       transform:
         translate3d(-50%, -50%, var(--depth-z));
     }
@@ -163,36 +171,49 @@ export const ENDLESS_CORRIDOR_ANIMATION_STYLES = `
   }
   @keyframes endlessCorridorCameraDive {
     0% { transform: translateX(-70px) rotateZ(-4deg) translateZ(0) scale(.96); }
-    22% { transform: translateX(-58px) rotateZ(-3.2deg) translateZ(0) scale(.965); }
-    58% { transform: translateX(-18px) rotateZ(-1deg) translateZ(16px) scale(.99); }
-    76% { transform: translateX(-4px) rotateZ(-.2deg) translateZ(96px) scale(1.06); }
-    90% { transform: translateX(0) rotateZ(0deg) translateZ(320px) scale(1.3); }
-    100% { transform: translateX(0) rotateZ(0deg) translateZ(580px) scale(1.62); }
+    10% { transform: translateX(-67px) rotateZ(-3.8deg) translateZ(0) scale(.961); }
+    20% { transform: translateX(-60px) rotateZ(-3.35deg) translateZ(0) scale(.965); }
+    30% { transform: translateX(-49px) rotateZ(-2.7deg) translateZ(4px) scale(.972); }
+    40% { transform: translateX(-37px) rotateZ(-1.95deg) translateZ(13px) scale(.983); }
+    50% { transform: translateX(-25px) rotateZ(-1.25deg) translateZ(30px) scale(.998); }
+    60% { transform: translateX(-15px) rotateZ(-.7deg) translateZ(58px) scale(1.02); }
+    70% { transform: translateX(-7px) rotateZ(-.3deg) translateZ(126px) scale(1.08); }
+    80% { transform: translateX(-1px) rotateZ(-.04deg) translateZ(260px) scale(1.22); }
+    90% { transform: translateX(0) rotateZ(0deg) translateZ(455px) scale(1.46); }
+    100% { transform: translateX(0) rotateZ(0deg) translateZ(700px) scale(1.76); }
   }
   @keyframes endlessCorridorTunnelPresence {
     0% { transform: rotateY(-72deg) skewY(-2deg) scaleX(.96); }
-    22% { transform: rotateY(-65deg) skewY(-1.7deg) scaleX(.965); }
-    58% { transform: rotateY(-30deg) skewY(-.8deg) scaleX(.985); }
-    78% { transform: rotateY(-6deg) skewY(-.15deg) scale(1.01); }
-    90% { transform: rotateY(0deg) skewY(0deg) scale(1.08); }
+    10% { transform: rotateY(-70deg) skewY(-1.9deg) scaleX(.962); }
+    20% { transform: rotateY(-65deg) skewY(-1.7deg) scaleX(.966); }
+    30% { transform: rotateY(-58deg) skewY(-1.45deg) scaleX(.972); }
+    40% { transform: rotateY(-49deg) skewY(-1.18deg) scaleX(.978); }
+    50% { transform: rotateY(-39deg) skewY(-.9deg) scaleX(.986); }
+    60% { transform: rotateY(-25deg) skewY(-.56deg) scaleX(.995); }
+    70% { transform: rotateY(-12deg) skewY(-.26deg) scale(1.01); }
+    80% { transform: rotateY(-2deg) skewY(-.04deg) scale(1.045); }
+    90% { transform: rotateY(0deg) skewY(0deg) scale(1.1); }
     100% { transform: rotateY(0deg) skewY(0deg) scale(1.16); }
   }
   @keyframes endlessCorridorEntranceRays {
-    0%, 66% { opacity: 0; }
-    78% { opacity: .32; }
-    90% { opacity: .42; }
+    0%, 76% { opacity: 0; }
+    86% { opacity: .3; }
+    94% { opacity: .42; }
     100% { opacity: .16; }
   }
   @keyframes endlessCorridorCoreBloom {
-    0%, 66% { opacity: 0; transform: scale(.18); }
-    80% { opacity: .34; transform: scale(.8); }
-    92% { opacity: .76; transform: scale(2.15); }
+    0%, 76% { opacity: 0; transform: scale(.18); }
+    86% { opacity: .28; transform: scale(.72); }
+    94% { opacity: .72; transform: scale(2); }
     100% { opacity: .54; transform: scale(4.8); }
   }
   @keyframes endlessCorridorFlashFill {
-    0%, 78% { opacity: 0; transform: scale(.08); }
-    88% { opacity: .36; transform: scale(2.8); }
-    96% { opacity: .86; transform: scale(16); }
+    0%, 88% { opacity: 0; transform: scale(.08); }
+    90% { opacity: .06; transform: scale(.75); }
+    92% { opacity: .18; transform: scale(2.75); }
+    94% { opacity: .34; transform: scale(6.05); }
+    96% { opacity: .56; transform: scale(10.72); }
+    98% { opacity: .78; transform: scale(16.7); }
     100% { opacity: .9; transform: scale(24); }
   }
   @keyframes endlessCorridorFlashExit {

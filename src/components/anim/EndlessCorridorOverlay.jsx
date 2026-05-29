@@ -10,13 +10,26 @@ const SIDE_TUNNEL = {
 
 function sideRing(i) {
   const depthOffset = i - MID_RING;
+  const clusterX = (i - MID_RING) * 0.8;
+  const clusterY = (i - MID_RING) * 0.4;
+  const clusterZ = depthOffset * 1.2;
+  const depthZ = depthOffset * -SIDE_TUNNEL.depthGap;
+  const spreadAt = t => ({
+    x: clusterX * (1 - t),
+    y: clusterY * (1 - t),
+    z: clusterZ * (1 - t) + depthZ * t,
+  });
+  const spreadA = spreadAt(0.32);
+  const spreadB = spreadAt(0.78);
   return {
     w: SIDE_TUNNEL.width,
     h: SIDE_TUNNEL.height,
-    clusterX: (i - MID_RING) * 0.8,
-    clusterY: (i - MID_RING) * 0.4,
-    clusterZ: depthOffset * 1.2,
-    depthZ: depthOffset * -SIDE_TUNNEL.depthGap,
+    clusterX,
+    clusterY,
+    clusterZ,
+    depthZ,
+    spreadA,
+    spreadB,
   };
 }
 
@@ -38,6 +51,12 @@ export function EndlessCorridorTunnelAnim({ exiting }) {
                     '--cluster-x': `${ring.clusterX}px`,
                     '--cluster-y': `${ring.clusterY}px`,
                     '--cluster-z': `${ring.clusterZ}px`,
+                    '--spread-a-x': `${ring.spreadA.x}px`,
+                    '--spread-a-y': `${ring.spreadA.y}px`,
+                    '--spread-a-z': `${ring.spreadA.z}px`,
+                    '--spread-b-x': `${ring.spreadB.x}px`,
+                    '--spread-b-y': `${ring.spreadB.y}px`,
+                    '--spread-b-z': `${ring.spreadB.z}px`,
                     '--depth-z': `${ring.depthZ}px`,
                     '--ring-w': `${ring.w}px`,
                     '--ring-h': `${ring.h}px`,
