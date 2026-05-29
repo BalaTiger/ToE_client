@@ -1,35 +1,125 @@
 export const ENDLESS_CORRIDOR_ANIMATION_STYLES = `
   .endlessCorridorOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 940;
+    pointer-events: none;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 50%, rgba(13,35,38,.18) 0%, rgba(4,10,16,.9) 58%, rgba(0,0,0,.98) 100%);
     animation: endlessCorridorBackdrop 2.3s cubic-bezier(.16,.84,.28,1) both;
   }
   .endlessCorridorOverlay.ending {
     animation: endlessCorridorOverlayExit .22s ease forwards;
   }
+  .endlessCorridorStage {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 1000px;
+    height: 700px;
+    transform: translate(-50%, -50%);
+    perspective: 980px;
+    perspective-origin: 50% 50%;
+  }
   .endlessCorridorCamera {
-    transform-box: fill-box;
-    transform-origin: 50% 50%;
+    position: absolute;
+    inset: 0;
+    transform-style: preserve-3d;
     animation: endlessCorridorCameraDive 2.3s cubic-bezier(.16,.84,.22,1) both;
   }
   .endlessCorridorTunnel {
-    transform-box: fill-box;
-    transform-origin: 50% 50%;
+    position: absolute;
+    inset: 0;
+    transform-style: preserve-3d;
     animation: endlessCorridorTunnelPresence 2.3s cubic-bezier(.18,.82,.22,1) both;
   }
+  .endlessCorridorRing {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: var(--ring-w);
+    height: var(--ring-h);
+    border: var(--ring-stroke) solid rgba(184,255,233,.72);
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(95,231,208,.32), inset 0 0 8px rgba(65,189,168,.16);
+    opacity: var(--ring-opacity);
+    transform:
+      translate3d(calc(-50% + var(--cluster-x)), calc(-50% + var(--cluster-y)), var(--cluster-z));
+    animation: endlessCorridorRingSpread 2.3s cubic-bezier(.18,.82,.22,1) both;
+    will-change: transform, opacity;
+  }
+  .endlessCorridorLine {
+    position: absolute;
+    display: block;
+    background: linear-gradient(90deg, rgba(95,231,208,0), rgba(216,255,242,.72), rgba(95,231,208,0));
+    opacity: .38;
+    filter: blur(.2px);
+    transform-origin: 0 50%;
+  }
+  .endlessCorridorLineTop,
+  .endlessCorridorLineMid,
+  .endlessCorridorLineBottom {
+    left: 4%;
+    width: 92%;
+    height: 1px;
+    transform: skewX(-24deg);
+  }
+  .endlessCorridorLineTop { top: 16%; }
+  .endlessCorridorLineMid { top: 50%; opacity: .24; }
+  .endlessCorridorLineBottom { top: 84%; }
+  .endlessCorridorLineLeft,
+  .endlessCorridorLineRight {
+    top: 9%;
+    width: 1px;
+    height: 82%;
+    background: linear-gradient(180deg, rgba(95,231,208,0), rgba(216,255,242,.55), rgba(95,231,208,0));
+    transform: skewY(-10deg);
+    opacity: .22;
+  }
+  .endlessCorridorLineLeft { left: 24%; }
+  .endlessCorridorLineRight { right: 24%; }
   .endlessCorridorEntranceRays {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 1px;
+    height: 1px;
     opacity: 0;
     animation: endlessCorridorEntranceRays 2.3s ease both;
   }
+  .endlessCorridorEntranceRays span {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 160px;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(184,255,233,.72), rgba(184,255,233,0));
+    transform-origin: 0 50%;
+  }
+  .endlessCorridorEntranceRays span:nth-child(1) { transform: rotate(34deg); }
+  .endlessCorridorEntranceRays span:nth-child(2) { transform: rotate(-34deg); }
+  .endlessCorridorEntranceRays span:nth-child(3) { transform: rotate(146deg); }
+  .endlessCorridorEntranceRays span:nth-child(4) { transform: rotate(-146deg); }
   .endlessCorridorCore {
-    transform-box: fill-box;
-    transform-origin: 50% 50%;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 60px;
+    height: 60px;
+    margin: -30px 0 0 -30px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(239,255,245,.98) 0%, rgba(184,255,233,.7) 16%, rgba(65,189,168,.22) 48%, rgba(4,16,24,0) 100%);
     opacity: 0;
-    animation: endlessCorridorCoreBloom 2.3s cubic-bezier(.16,.84,.22,1) both;
     mix-blend-mode: screen;
+    animation: endlessCorridorCoreBloom 2.3s cubic-bezier(.16,.84,.22,1) both;
   }
   .endlessCorridorFlash {
+    position: absolute;
+    inset: 0;
+    background: #effff5;
     opacity: 0;
-    animation: endlessCorridorFlashFill 2.3s ease both;
     mix-blend-mode: screen;
+    animation: endlessCorridorFlashFill 2.3s ease both;
   }
   @keyframes endlessCorridorBackdrop {
     0% { opacity: 0; filter: brightness(.72) saturate(.8); }
@@ -42,19 +132,42 @@ export const ENDLESS_CORRIDOR_ANIMATION_STYLES = `
     from { opacity: 1; }
     to { opacity: 0; }
   }
+  @keyframes endlessCorridorRingSpread {
+    0% {
+      transform:
+        translate3d(calc(-50% + var(--cluster-x)), calc(-50% + var(--cluster-y)), var(--cluster-z));
+    }
+    22% {
+      transform:
+        translate3d(-50%, -50%, var(--depth-z));
+    }
+    62% {
+      transform:
+        translate3d(-50%, -50%, var(--depth-z));
+    }
+    82% {
+      transform:
+        translate3d(-50%, -50%, var(--depth-z));
+    }
+    100% {
+      transform:
+        translate3d(-50%, -50%, var(--depth-z));
+    }
+  }
   @keyframes endlessCorridorCameraDive {
-    0% { transform: translateX(-145px) rotateZ(-6deg) scale(.94); }
-    62% { transform: translateX(0) rotateZ(0deg) scale(1); }
-    76% { transform: translateX(0) rotateZ(0deg) scale(1.06); }
-    90% { transform: translateX(0) rotateZ(0deg) scale(1.44); }
-    100% { transform: translateX(0) rotateZ(0deg) scale(2.5); }
+    0% { transform: translateX(-70px) rotateZ(-4deg) translateZ(0) scale(.96); }
+    22% { transform: translateX(-70px) rotateZ(-4deg) translateZ(0) scale(.96); }
+    62% { transform: translateX(0) rotateZ(0deg) translateZ(0) scale(1); }
+    76% { transform: translateX(0) rotateZ(0deg) translateZ(90px) scale(1.04); }
+    90% { transform: translateX(0) rotateZ(0deg) translateZ(260px) scale(1.24); }
+    100% { transform: translateX(0) rotateZ(0deg) translateZ(520px) scale(1.6); }
   }
   @keyframes endlessCorridorTunnelPresence {
-    0% { opacity: .9; transform: skewY(-5deg) scaleX(.96); }
-    56% { opacity: 1; transform: skewY(-1deg) scaleX(1); }
-    68% { opacity: 1; transform: skewY(0deg) scaleX(1); }
-    88% { opacity: .94; transform: skewY(0deg) scale(1.1); }
-    100% { opacity: .25; transform: skewY(0deg) scale(1.62); }
+    0% { transform: rotateY(-72deg) skewY(-2deg) scaleX(.96); }
+    22% { transform: rotateY(-72deg) skewY(-2deg) scaleX(.96); }
+    62% { transform: rotateY(0deg) skewY(0deg) scaleX(1); }
+    88% { transform: rotateY(0deg) skewY(0deg) scale(1.04); }
+    100% { transform: rotateY(0deg) skewY(0deg) scale(1.18); }
   }
   @keyframes endlessCorridorEntranceRays {
     0%, 58% { opacity: 0; }
