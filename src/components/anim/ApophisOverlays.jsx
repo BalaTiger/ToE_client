@@ -1,9 +1,25 @@
 import React from 'react';
 
+const APOPHIS_ECLIPSE_CONFIG = {
+  sunSize: 58,
+  sunTop: 29,
+  rayAngles: [-76, -52, -29, -8, 17, 42, 68, 96, 126, 154, 183, 212, 239, 267],
+  rayBaseLength: 170,
+  rayDownwardExtraLength: 150,
+  rayBaseWidth: 14,
+  rayDownwardExtraWidth: 8,
+};
+
 export function ApophisEclipseAnim({ exiting }) {
-  const sunSize = 58;
-  const sunTop = 29;
-  const rays = [-76, -52, -29, -8, 17, 42, 68, 96, 126, 154, 183, 212, 239, 267];
+  const {
+    sunSize,
+    sunTop,
+    rayAngles,
+    rayBaseLength,
+    rayDownwardExtraLength,
+    rayBaseWidth,
+    rayDownwardExtraWidth,
+  } = APOPHIS_ECLIPSE_CONFIG;
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 820, pointerEvents: 'none', overflow: 'hidden' }}>
       <div style={{
@@ -30,11 +46,11 @@ export function ApophisEclipseAnim({ exiting }) {
         width: 1,
         height: 1,
       }}>
-        {rays.map((deg, i) => (
+        {rayAngles.map((deg, i) => (
           (() => {
             const downward = (1 - Math.cos((deg * Math.PI) / 180)) / 2;
-            const rayLength = Math.round(170 + downward * 150);
-            const rayWidth = Math.round(14 + downward * 8);
+            const rayLength = Math.round(rayBaseLength + downward * rayDownwardExtraLength);
+            const rayWidth = Math.round(rayBaseWidth + downward * rayDownwardExtraWidth);
             return (
               <div
                 key={deg}
