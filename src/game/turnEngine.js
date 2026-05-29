@@ -24,6 +24,7 @@ import { deriveEffectDecisionState } from './effectStatePatch';
 import { buildApophisNightLog, getApophisNightForLevel } from './apophisNight';
 import { canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
 import { appendProliferatingZDraws, clearExpiredProliferatingZ } from './proliferatingZ';
+import { drawCardDecisionText, markBlindZoneCard, shouldBlindZoneDecision } from './blindZoneDecision';
 
 function appendStatEventsToInspectionMeta(inspectionMeta, beforePlayers, afterPlayers, logs, reason) {
   const statEventSeq = (inspectionMeta?._statEventSeq || 0) + 1;
@@ -59,20 +60,6 @@ function consumeDebugForceKeepOverride(gs, ci) {
   gs.debugForceCardKeepPending = null;
   gs.debugForceCardKeepTarget = null;
   return keepOverride;
-}
-
-function shouldBlindZoneDecision(P, ci, card) {
-  return !!(P?.[ci]?.blindNextZoneDecision && card?.isZone && !card?.forced);
-}
-
-function markBlindZoneCard(card, blindZoneIdentity) {
-  return blindZoneIdentity ? { ...card, blindZoneIdentity: true } : card;
-}
-
-function drawCardDecisionText(card) {
-  return card?.blindZoneIdentity
-    ? cardLogText(card)
-    : cardLogText(card, { alwaysShowName: true });
 }
 
 export function checkWin(players, isMP) {

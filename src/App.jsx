@@ -76,8 +76,14 @@ import {
   applyStatEventsToDisplayStats,
   buildStatEvents,
   getCthRestDrawCount,
-  getEndTurnReplayHandCards,
   hasEndTurnReplayHandEvent,
+  buildEndTurnReplayStartState,
+  buildEndTurnReplayGodEncounter,
+  buildEndTurnReplayZoneDraw,
+  buildEndTurnReplayFinishedState,
+  endlessCorridorTunnelStep,
+  getCurrentEndTurnReplayCard,
+  advanceEndTurnReplayPatch,
   deriveEffectDecisionState,
   hasEffectDecisionState,
   getApophisNightForLevel,
@@ -89,6 +95,12 @@ import {
   canGodPowerAffect,
   hasGodPowerImmunity,
   appendProliferatingZDraws,
+  buildProliferatingZDrawFlow,
+  clearBlindZoneDecisionFlag,
+  drawCardDecisionText,
+  revealBlindDrawCard,
+  getCthRestDrawRemaining,
+  buildCthRestDrawFinishedState,
 } from "./game";
 import {
   rotateGsForViewer,
@@ -159,6 +171,7 @@ import { SKILL_ANIMATION_STYLES } from './components/anim/skillStyles';
 import { AREA_CARD_ANIMATION_STYLES } from './components/anim/areaCardStyles';
 import { DAMAGE_ANIMATION_STYLES } from './components/anim/damageStyles';
 import { APOPHIS_ANIMATION_STYLES } from './components/anim/apophisStyles';
+import { ENDLESS_CORRIDOR_ANIMATION_STYLES } from './components/anim/endlessCorridorStyles';
 import { GodResurrectionAnim, TreasureMapAnim, CthulhuResurrectionAnim, RoleRevealAnim } from './components/anim/WinAnims';
 import { TitleCandleFlames } from './components/anim/TitleCandleFlames';
 import { AnimOverlay } from './components/anim/AnimOverlay';
@@ -2706,82 +2719,49 @@ export default function Game(){
   const huntAbandoned=gs.huntAbandoned||[];
 
   // ── Action handlers ────────────────────────────────────────
-  function revealBlindDrawCard(card){
-    if(!card?.blindZoneIdentity)return card;
-    const { blindZoneIdentity, ...rest } = card;
-    return rest;
-  }
-
-  function clearBlindZoneDecisionFlag(players, drawerIdx, drawReveal){
-    if(drawReveal?.blindZoneIdentity||drawReveal?.card?.blindZoneIdentity){
-      if(players?.[drawerIdx])players[drawerIdx].blindNextZoneDecision=false;
-    }
-  }
-
-  function drawCardDecisionText(card){
-    return card?.blindZoneIdentity
-      ?cardLogText(card)
-      :cardLogText(card,{alwaysShowName:true});
-  }
-
   // CTH 「梦访拉莱耶」: after a draw decision (keep/discard/god) triggered while resting,
   // process any remaining draws (cthDrawsRemaining) then advance the turn.
   function continueProliferatingZDraws(stateLike){
-    const queue=[...(stateLike?.proliferatingZQueue||[])];
-    if(!queue.length)return false;
-    const entry=queue.shift();
-    const drawerIdx=entry.drawerIdx;
-    if(drawerIdx==null||!stateLike.players?.[drawerIdx]||stateLike.players[drawerIdx].isDead){
-      setGs({...stateLike,proliferatingZQueue:queue});
+    const flow=buildProliferatingZDrawFlow(stateLike,{
+      copyPlayers,
+      localDisplayName,
+      isAiSeat,
+      aiDrawAndApply,
+      playerDrawCard,
+      drawCardDecisionText,
+      hasEffectDecisionState,
+      deriveEffectDecisionState,
+      splitAnimBoundLogs,
+      bindAnimLogChunks,
+      buildAnimQueue,
+      statePatchStep,
+    });
+    if(!flow.handled)return false;
+    if(flow.action==='setState'){
+      setGs(flow.state);
       return true;
     }
-    let P=copyPlayers(stateLike.players),D=[...stateLike.deck],Disc=[...stateLike.discard],L=[...stateLike.log];
-    const triggerName=localDisplayName(drawerIdx,P[drawerIdx]?.name||'该角色');
-    const reasonNames=(entry.gainedCardNames||[]).join('、')||'邪神牌或其衍生牌';
-    L.push(`【增殖的Z】因${localDisplayName(entry.gainOwnerIdx,P[entry.gainOwnerIdx]?.name||'角色')}获得${reasonNames}，${triggerName}摸1张牌`);
-    const drawBase={...stateLike,players:P,deck:D,discard:Disc,log:L,proliferatingZQueue:queue};
-    const isAiDrawer=isAiSeat(drawBase,drawerIdx);
-    const res=isAiDrawer
-      ?aiDrawAndApply(drawerIdx,P,D,Disc,drawBase)
-      :playerDrawCard(P,D,Disc,drawerIdx,drawBase);
-    P=res.P;D=res.D;Disc=res.Disc;
-    const drawMsg=res.drawnCard?`${triggerName} 摸到 ${drawCardDecisionText(res.drawnCard)}`:'';
-    if(res.needGodChoice){
-      const newGs={...drawBase,players:P,deck:D,discard:Disc,log:L,phase:'GOD_CHOICE',
-        abilityData:{...(drawBase.abilityData||{}),godCard:res.drawnCard,drawerIdx,godEncounterCost:res.godEncounterCost,fromProliferatingZ:true},
-        drawReveal:null,selectedCard:null};
-      triggerAnimQueue([{type:'DRAW_CARD',card:res.drawnCard,triggerName,targetPid:drawerIdx,msgs:drawMsg?[drawMsg]:[]}],newGs);
+    if(flow.action==='triggerQueueAndContinue'){
+      triggerAnimQueue(flow.queue,null,()=>continueProliferatingZDraws(flow.state));
       return true;
     }
-    if(res.needsDecision){
-      const newGs={...drawBase,players:P,deck:D,discard:Disc,log:L,phase:'DRAW_REVEAL',
-        drawReveal:{card:res.drawnCard,msgs:res.effectMsgs||[],needsDecision:true,forcedKeep:!!res.forcedKeep,drawerIdx,drawerName:P[drawerIdx]?.name,fromProliferatingZ:true},
-        abilityData:{...(drawBase.abilityData||{}),fromProliferatingZ:true},selectedCard:null};
-      triggerAnimQueue([{type:'DRAW_CARD',card:res.drawnCard,triggerName,targetPid:drawerIdx,msgs:drawMsg?[drawMsg]:[]}],newGs);
+    if(flow.action==='triggerQueue'){
+      triggerAnimQueue(flow.queue,flow.state);
       return true;
     }
-    if(res.drawnCard&&res.effectMsgs?.length)L.push(...res.effectMsgs);
-    const newGs={...drawBase,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,selectedCard:null,
-      abilityData:{...(drawBase.abilityData||{})},...(res.statePatch||{})};
-    if(hasEffectDecisionState(res.statePatch)){
-      const decisionState=deriveEffectDecisionState(res.statePatch,{
-        baseAbilityData:{...(drawBase.abilityData||{}),fromProliferatingZ:true},
-        fallbackPhase:'ACTION',
-        extraAbilityData:{fromProliferatingZ:true},
-      });
-      setGs({...newGs,phase:decisionState.phase,abilityData:decisionState.abilityData});
-      return true;
-    }
-    const split=splitAnimBoundLogs(L.slice((stateLike.log||[]).length));
-    const statQ=bindAnimLogChunks(buildAnimQueue(stateLike,newGs),{preStatLogs:split.preStat,statLogs:split.stat});
-    const drawStep=res.drawnCard?[{type:'DRAW_CARD',card:res.drawnCard,triggerName,targetPid:drawerIdx,msgs:drawMsg?[drawMsg]:[]}]:[];
-    triggerAnimQueue([...drawStep,...statQ,statePatchStep({players:P,discard:Disc})],null,()=>continueProliferatingZDraws(newGs));
-    return true;
+    return false;
+  }
+
+  function finishCthRestDraws(baseGsAfterDecision,P,D,Disc,L){
+    const finishedGs=buildCthRestDrawFinishedState({stateLike:baseGsAfterDecision,players:P,deck:D,discard:Disc,log:L});
+    if(hasPendingEndTurnReplay(P)&&beginEndTurnReplay(finishedGs,P,D,Disc,L))return;
+    const nextGs=startNextTurn(finishedGs);
+    applyNextTurnGs(nextGs);
   }
 
   function _cthContinueRestDraws(baseGsAfterDecision){
     let P=copyPlayers(baseGsAfterDecision.players),D=[...baseGsAfterDecision.deck],Disc=[...baseGsAfterDecision.discard],L=[...baseGsAfterDecision.log];
-    const remaining=baseGsAfterDecision.abilityData?.cthDrawsRemaining||0;
+    const remaining=getCthRestDrawRemaining(baseGsAfterDecision);
     const fromRest=baseGsAfterDecision.abilityData?.fromRest;
     // Animate any prior rest-draws (forced cards from startNextTurn) first
     if(baseGsAfterDecision._cthRestDraws?.length>0){
@@ -2802,8 +2782,7 @@ export default function Game(){
       return;
     }
     if(remaining<=0){
-      const nextGs=startNextTurn({...baseGsAfterDecision,players:P,deck:D,discard:Disc,log:L,abilityData:{}});
-      applyNextTurnGs(nextGs);
+      finishCthRestDraws(baseGsAfterDecision,P,D,Disc,L);
       return;
     }
     for(let _d=0;_d<remaining;_d++){
@@ -2841,9 +2820,7 @@ export default function Game(){
         return;
       }
     }
-    if(hasPendingEndTurnReplay(P)&&beginEndTurnReplay(baseGsAfterDecision,P,D,Disc,L))return;
-    const nextGs=startNextTurn({...baseGsAfterDecision,players:P,deck:D,discard:Disc,log:L,abilityData:{}});
-    applyNextTurnGs(nextGs);
+    finishCthRestDraws(baseGsAfterDecision,P,D,Disc,L);
   }
 
   function hasPendingEndTurnReplay(P){
@@ -2851,17 +2828,9 @@ export default function Game(){
   }
 
   function beginEndTurnReplay(baseGs,P,D,Disc,L,preQueue=[]){
-    const handCards=[...(P?.[0]?.hand||[])];
-    const replayCards=getEndTurnReplayHandCards(P?.[0]);
-    if(!replayCards.length)return false;
-    const replay={cards:replayCards.map(card=>card.id),index:0};
-    const introLog=`【无尽通道】你展示所有手牌：${handCards.map(card=>cardLogText(card,{alwaysShowName:true})).join(' ')}`;
-    const nextState={...baseGs,players:P,deck:D,discard:Disc,log:[...L,introLog],currentTurn:0,phase:'ACTION',drawReveal:null,abilityData:{},_endTurnReplay:replay};
-    if(preQueue.length){
-      triggerAnimQueue(preQueue,nextState,()=>continueEndTurnReplay(nextState));
-      return true;
-    }
-    continueEndTurnReplay(nextState);
+    const nextState=buildEndTurnReplayStartState({baseGs,players:P,deck:D,discard:Disc,log:L,actorIndex:0,actorLabel:'你'});
+    if(!nextState)return false;
+    triggerAnimQueue([...preQueue,endlessCorridorTunnelStep()],nextState,()=>continueEndTurnReplay(nextState));
     return true;
   }
 
@@ -2869,56 +2838,36 @@ export default function Game(){
     if(!stateLike?._endTurnReplay)return false;
     const replay=stateLike._endTurnReplay;
     let P=copyPlayers(stateLike.players||[]);
-    let index=replay.index||0;
-    while(index<(replay.cards||[]).length){
-      const cardId=replay.cards[index];
-      const card=(P[0]?.hand||[]).find(c=>c?.id===cardId);
-      if(!card)break;
+    const currentReplay=getCurrentEndTurnReplayCard({...stateLike,players:P});
+    if(currentReplay){
+      const {actorIndex,index,card}=currentReplay;
       if(card.isGod){
-        P[0].godEncounters=(P[0].godEncounters||0)+1;
-        const cost=P[0].godEncounters;
-        if(P[0].role===ROLE_CULTIST)P[0].roleRevealed=true;
-        const effectMsg=P[0].role===ROLE_CULTIST
-          ?`你（邪祀者）遭遇邪神 ${card.name}！（第${P[0].godEncounters}次）免疫SAN损耗`
-          :`你 遭遇邪神 ${card.name}！（第${P[0].godEncounters}次）失去${cost}SAN`;
+        const encounter=buildEndTurnReplayGodEncounter({stateLike,players:P,replay,actorIndex,index,card,isCultist:P[actorIndex].role===ROLE_CULTIST,actorLabel:'你'});
+        P=encounter.players;
         let D=[...(stateLike.deck||[])],Disc=[...(stateLike.discard||[])];
-        let L=[...(stateLike.log||[]),effectMsg];
+        let L=[...(stateLike.log||[]),encounter.effectMsg];
         let inspectionMeta=makeInspectionMeta(stateLike);
-        if(P[0].role!==ROLE_CULTIST&&cost>0){
-          const processed=applySanLossToPlayerWithInspection(0,cost,stateLike.currentTurn??0,P,D,Disc,L,inspectionMeta,'邪神遭遇');
+        if(P[actorIndex].role!==ROLE_CULTIST&&encounter.cost>0){
+          const processed=applySanLossToPlayerWithInspection(actorIndex,encounter.cost,stateLike.currentTurn??0,P,D,Disc,L,inspectionMeta,'邪神遭遇');
           P=processed.P;D=processed.D;Disc=processed.Disc;L=processed.L;inspectionMeta=processed.inspectionMeta;
         }
         const newGs={...stateLike,players:P,deck:D,discard:Disc,log:L,phase:'GOD_CHOICE',
-          abilityData:{...(stateLike.abilityData||{}),godCard:card,drawerIdx:0,godEncounterCost:0,fromEndTurnReplay:true},
-          drawReveal:null,selectedCard:null,_endTurnReplay:{...replay,index},...inspectionMeta};
+          abilityData:encounter.abilityData,
+          drawReveal:null,selectedCard:null,...encounter.replayPatch,...inspectionMeta};
         const split=splitAnimBoundLogs(L.slice((stateLike.log||[]).length));
         const statQ=bindAnimLogChunks(buildAnimQueue(stateLike,newGs),{statLogs:split.stat});
-        triggerAnimQueue([{type:'DRAW_CARD',card,triggerName:'无尽通道',targetPid:0,skipTravel:true,msgs:split.preStat.length?split.preStat:[effectMsg]},...statQ],newGs);
+        triggerAnimQueue([{type:'DRAW_CARD',card,triggerName:'无尽通道',targetPid:actorIndex,skipTravel:true,msgs:split.preStat.length?split.preStat:[encounter.effectMsg]},...statQ],newGs);
         return true;
       }
-      const drawReveal={
-        card,
-        msgs:[],
-        needsDecision:true,
-        forcedKeep:false,
-        drawerIdx:0,
-        drawerName:P[0]?.name||'你',
-        fromEndTurnReplay:true,
-      };
-      setGs({...stateLike,players:P,phase:'DRAW_REVEAL',drawReveal,abilityData:{...(stateLike.abilityData||{})},_endTurnReplay:{...replay,index}});
-      triggerAnimQueue([{type:'DRAW_CARD',card,triggerName:'无尽通道',targetPid:0,skipTravel:true,msgs:[`【无尽通道】重新摸到 ${cardLogText(card,{alwaysShowName:true})}`]}],null);
+      const zoneDraw=buildEndTurnReplayZoneDraw({stateLike,players:P,replay,actorIndex,index,card,actorName:P[actorIndex]?.name||'你'});
+      setGs(zoneDraw.state);
+      triggerAnimQueue([zoneDraw.drawStep],null);
       return true;
     }
-    const cleaned={...stateLike,players:P,phase:'ACTION',drawReveal:null,abilityData:{},_endTurnReplay:null};
-    const nextGs=startNextTurn({...cleaned,currentTurn:0});
+    const cleaned=buildEndTurnReplayFinishedState({stateLike,players:P});
+    const nextGs=startNextTurn(cleaned);
     applyNextTurnGs(nextGs);
     return true;
-  }
-
-  function advanceEndTurnReplayPatch(stateLike){
-    return stateLike?._endTurnReplay
-      ?{_endTurnReplay:{...stateLike._endTurnReplay,index:(stateLike._endTurnReplay.index||0)+1}}
-      :{};
   }
 
   function handleDrawKeep(){
@@ -6776,6 +6725,7 @@ const GLOBAL_STYLES=`
   ${AREA_CARD_ANIMATION_STYLES}
   ${DAMAGE_ANIMATION_STYLES}
   ${APOPHIS_ANIMATION_STYLES}
+  ${ENDLESS_CORRIDOR_ANIMATION_STYLES}
   /* Card flip animation */
   @keyframes cardRise {
     0%   { transform:translateY(90px); opacity:0; }

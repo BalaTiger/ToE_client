@@ -4,6 +4,7 @@ import { DiceRollAnim, GenericAnimOverlay, YourTurnAnim } from './GenericAnimOve
 import { BuryToDeckOverlay, DiscardMoveOverlay, ZhuHideCardOverlay } from './MoveOverlays';
 import { CaveDuelAnim } from './AreaCardOverlays';
 import { ApophisEclipseAnim } from './ApophisOverlays';
+import { EndlessCorridorTunnelAnim } from './EndlessCorridorOverlay';
 import { RandomTargetOverlay } from './RandomTargetOverlay';
 
 const NO_OVERLAY_TYPES = new Set([
@@ -35,6 +36,7 @@ const ANIM_RENDERERS = {
   CAVE_DUEL: ({ anim, exiting }) => <CaveDuelAnim anim={anim} exiting={exiting} />,
   RANDOM_TARGET: ({ anim, exiting }) => <RandomTargetOverlay anim={anim} exiting={exiting} />,
   APOPHIS_ECLIPSE: ({ exiting }) => <ApophisEclipseAnim exiting={exiting} />,
+  ENDLESS_CORRIDOR_TUNNEL: ({ exiting }) => <EndlessCorridorTunnelAnim exiting={exiting} />,
 };
 
 function AnimOverlay({ anim, exiting, expansionKey = 'temporary' }) {
