@@ -177,7 +177,7 @@ import { TitleCandleFlames } from './components/anim/TitleCandleFlames';
 import { AnimOverlay } from './components/anim/AnimOverlay';
 import { ApophisNightBadge } from './components/anim/ApophisOverlays';
 import { formatFileSize, useResourcePreload } from './hooks/useResourcePreload';
-import { useMultiplayerLobby } from './hooks/useMultiplayerLobby';
+import { getMultiplayerIdentityStorage, useMultiplayerLobby } from './hooks/useMultiplayerLobby';
 import { useAnimationQueue } from './hooks/useAnimationQueue';
 import { useEarthquakeAnimationEffects } from './hooks/useEarthquakeAnimationEffects';
 import { useCardTransferAnimationEffects } from './hooks/useCardTransferAnimationEffects';
@@ -549,6 +549,7 @@ export default function Game(){
   const myPlayerIndexRef=useRef(0);  // 同步 myPlayerIndex 供 socket 闭包使用
   const receivedGsRef=useRef(false); // 收到远端 state 时置 true，阻止 sync useEffect 回发
   const mpRoleRevealedRef=useRef(false); // 每局游戏只触发一次角色揭示
+  const mpOpeningRoleRevealPendingRef=useRef(false); // 开局角色揭示期间忽略重复首帧同步，避免抢跑首回合动画
   const gameEndSentRef=useRef(false);      // 防止 gameEnd 重复发送
   const [isDisconnected,setIsDisconnected]=useState(false);
   // 表情功能
@@ -628,7 +629,7 @@ export default function Game(){
     socket.on('uuidAssigned',({uuid})=>{
       setPlayerUUID(uuid);
       playerUUIDRef.current=uuid;
-      safeLS.set('cthulhu_player_uuid',uuid);
+      try { getMultiplayerIdentityStorage()?.setItem('cthulhu_player_uuid', uuid); } catch { /* ignore */ }
     });
     // userInfo：打开联机选项界面时后端下发，含异常断线/房间恢复标志
     socket.on('userInfo',({username,isSpecialName,wasForceReset,waitingRoomExpired})=>{
@@ -705,6 +706,7 @@ export default function Game(){
       setIsDisconnected(false);
       addToast('多人游戏开始！');
       mpRoleRevealedRef.current=false; // 每局重置角色揭示标志
+      mpOpeningRoleRevealPendingRef.current=false;
       gameEndSentRef.current=false;       // 每局重置 gameEnd 发送标志
       if(isLocalSeatIndex(safeIdx)){
         // 房主：初始化游戏并广播给所有人
@@ -736,6 +738,7 @@ export default function Game(){
         // 与单机一致：先用遮蔽态渲染棋盘背景，动画结束后才解锁真实 phase
         setGs({...rotatedGs,phase:'ACTION',drawReveal:null,abilityData:{}});
         setAnim(null);
+        mpOpeningRoleRevealPendingRef.current=true;
         setRoleRevealAnim({role:rotatedGs.players[0].role,pendingGs:rotatedGs});
         // 广播原始 gs（未旋转）给所有人
         socket.emit('mpStateSync',{roomId,gs:rawGs});
@@ -748,6 +751,10 @@ export default function Game(){
       if(!rawGs)return;
       const myIdx=myPlayerIndexRef.current;
       const rotated=rotateGsForViewer(rawGs,myIdx);
+      if(mpOpeningRoleRevealPendingRef.current&&!rotated.gameOver){
+        receivedGsRef.current=true;
+        return;
+      }
       receivedGsRef.current=true;
       animQueueRef.current=[];
       pendingGsRef.current=null;
@@ -763,6 +770,7 @@ export default function Game(){
       });
       if(replayAction?.type===MP_REMOTE_REPLAY.ROLE_REVEAL){
         mpRoleRevealedRef.current=true;
+        mpOpeningRoleRevealPendingRef.current=true;
         syncVisibleLog(rotated.log||[]);
         setGs(replayAction.maskedGs);
         setAnim(null);
@@ -1053,6 +1061,12 @@ export default function Game(){
     ANIM_DURATION,
     ANIM_SPEED_SCALE,
   });
+
+  useEffect(()=>{
+    if(!mpOpeningRoleRevealPendingRef.current)return;
+    if(roleRevealAnim||anim||animQueueRef.current.length>0||pendingGsRef.current)return;
+    mpOpeningRoleRevealPendingRef.current=false;
+  },[roleRevealAnim,anim]);
 
   const latestHoundsInspectionSeq=useMemo(()=>{
     const events=Array.isArray(gs?._inspectionEvents)?gs._inspectionEvents:[];
@@ -5418,10 +5432,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   }
   function _onRoleRevealDone(pendingGs){
     setRoleRevealAnim(null);
-    if(!pendingGs)return; // tutorial path: game already set
+    if(!pendingGs){
+      mpOpeningRoleRevealPendingRef.current=false;
+      return;
+    } // tutorial path: game already set
     // 开局时所有玩家的 pendingGs 已随 gameStart 广播过，
     // advanceQueue→setGs 不应再触发 useEffect 广播（否则非房主播完动画后会打断房主动画）
     receivedGsRef.current=true;
+    if(pendingGs._isMP)suppressNextBroadcastRef.current=true;
     // 多人游戏中非当前操作玩家：播「XX的回合」+ 翻牌动画（与当前玩家体验一致）
     if(pendingGs._isMP&&pendingGs.currentTurn!==0){
       const activeName=pendingGs.players[pendingGs.currentTurn]?.name||'???';

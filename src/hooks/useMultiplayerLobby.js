@@ -6,9 +6,20 @@ function useSyncedRef(value) {
   return ref;
 }
 
+function isLocalTestHost() {
+  if (typeof window === 'undefined') return false;
+  const host = (window.location.hostname || '').toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+}
+
+export function getMultiplayerIdentityStorage() {
+  if (typeof window === 'undefined') return null;
+  return isLocalTestHost() ? window.sessionStorage : window.localStorage;
+}
+
 export function useMultiplayerLobby({ socketRef }) {
   const [playerUUID, setPlayerUUID] = useState(() => {
-    try { return localStorage.getItem('cthulhu_player_uuid') || null; }
+    try { return getMultiplayerIdentityStorage()?.getItem('cthulhu_player_uuid') || null; }
     catch { return null; }
   });
   const playerUUIDRef = useSyncedRef(playerUUID);

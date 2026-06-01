@@ -76,6 +76,23 @@ describe('buildMpRemoteReplayAction', () => {
     expect(buildAnimQueue).toHaveBeenCalledOnce();
   });
 
+  it('builds a local draw animation after role reveal without exposing the decision phase first', () => {
+    const action = buildAction(makeState({
+      currentTurn: 0,
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card, drawerIdx: 0, needsDecision: true },
+      _turnStartLogs: ['── 你 的回合开始 ──'],
+      _drawLogs: ['你 摸到 测试牌'],
+      _playersBeforeThisDraw: [player('你-before'), player('艾伦-before'), player('贝拉-before')],
+    }));
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.START_ANIM);
+    expect(action.maskedGs).toMatchObject({ phase: 'ACTION', drawReveal: null, abilityData: {} });
+    expect(action.anim).toMatchObject({ type: 'YOUR_TURN', msgs: ['── 你 的回合开始 ──'] });
+    expect(action.queue[0]).toMatchObject({ type: 'DRAW_CARD', card, triggerName: '你', targetPid: 0 });
+    expect(action.pendingGs.phase).toBe('DRAW_REVEAL');
+  });
+
   it('masks discard phase for non-active remote players', () => {
     const action = buildAction(makeState({ phase: 'DISCARD_PHASE', currentTurn: 1, abilityData: { discardSelected: [] } }));
 
@@ -83,4 +100,3 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.gs).toMatchObject({ phase: 'ACTION', abilityData: {} });
   });
 });
-
