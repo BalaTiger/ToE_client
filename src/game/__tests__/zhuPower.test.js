@@ -5,6 +5,7 @@ import {
   getZhuLitDeckCards,
   getZhuTopGuard,
   moveTopDeckCardToBottom,
+  removeZhuLightCard,
 } from '../zhuPower';
 import { makePlayer, makeZoneCard } from './factory';
 
@@ -39,6 +40,15 @@ describe('zhuPower', () => {
     expect(buildZhuLight(players, deck, 1, null)).toBeNull();
   });
 
+  it('引燃火把免疫时不点亮烛九阴牌', () => {
+    const deck = makeDeck();
+    const players = [
+      makePlayer({ godName: 'ZHU', godLevel: 2, godPowerImmuneThisTurn: true }),
+      makePlayer(),
+    ];
+    expect(buildZhuLight(players, deck, 0, null)).toBeNull();
+  });
+
   it('keeps only still-in-deck lit cards outside the owner turn', () => {
     const deck = makeDeck();
     const players = [
@@ -71,5 +81,15 @@ describe('zhuPower', () => {
     const guard = getZhuTopGuard({ players, deck, currentTurn: 0, zhuLight }, deck);
     expect(guard.card.id).toBe('card-0');
     expect(moveTopDeckCardToBottom(deck).map(card => card.id)).toEqual(['card-1', 'card-2', 'card-3', 'card-4', 'card-5', 'card-0']);
+  });
+
+  it('removes a lit card id from the light list', () => {
+    const zhuLight = { ownerIdx: 0, level: 3, cardIds: ['card-0', 'card-1', 'card-2'], lightNonce: 7 };
+    expect(removeZhuLightCard(zhuLight, { id: 'card-1' })).toEqual({
+      ownerIdx: 0,
+      level: 3,
+      cardIds: ['card-0', 'card-2'],
+      lightNonce: 7,
+    });
   });
 });

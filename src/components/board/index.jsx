@@ -1,8 +1,8 @@
 import React from 'react';
 import { CS, GOD_CS, GOD_DEFS, getCardBackImage } from '../../constants/card';
 import { RINFO } from '../../game';
-import { isBlackGoatYoung } from '../../game/coreUtils';
-import { AreaTooltip, DDCard, DDCardBack, GodTooltip } from '../cards';
+import { isBlackGoatYoung, isTsathogguaSlime } from '../../game/coreUtils';
+import { AreaTooltip, CardCodeLabel, DDCard, DDCardBack, GodTooltip } from '../cards';
 import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
 
 function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth}){
@@ -99,17 +99,12 @@ const DISCARD_OFFSETS=[
   {x:-4,y:3},{x:5,y:-2},{x:-2,y:4},{x:3,y:-5},{x:-6,y:1},{x:1,y:3},
 ];
 
-const godShortKey = (godKey) => GOD_DEFS[godKey]?.shortKey || godKey || 'GOD';
-
-function MiniCardLabel({card,scale=1,glowColor='#c8a96e'}){
+function MiniCardLabel({card,scale=1,glowColor='#c8a96e',ambient=true}){
   if(!card)return null;
-  const label=card.isGod?godShortKey(card.godKey):(card.key||'?');
   const name=card.name||'';
   return(
-    <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:`${Math.max(2,Math.round(3*scale))}px ${Math.max(2,Math.round(2*scale))}px`,textAlign:'center',lineHeight:1.05,background:'radial-gradient(circle at 45% 35%,rgba(255,230,120,0.14),rgba(0,0,0,0) 72%)'}}>
-      <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:(card.isGod?GOD_CS:(CS[card.letter]||GOD_CS)).text,fontSize:Math.max(6,Math.round((card.isGod?8.5:9.5)*scale)),letterSpacing:card.isGod?0.5:0,textShadow:`0 0 8px ${glowColor}`}}>
-        {label}
-      </div>
+    <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:`${Math.max(2,Math.round(3*scale))}px ${Math.max(2,Math.round(2*scale))}px`,textAlign:'center',lineHeight:1.05,background:ambient?'radial-gradient(circle at 45% 35%,rgba(255,230,120,0.14),rgba(0,0,0,0) 72%)':'transparent'}}>
+      <CardCodeLabel card={card} scale={scale} textShadow={`0 0 8px ${glowColor}`}/>
       {name&&(
         <div style={{marginTop:Math.max(1,Math.round(2*scale)),fontFamily:"'IM Fell English','Georgia',serif",fontWeight:600,color:'#e8cc88',fontSize:Math.max(5,Math.round((name.length>6?4.2:4.8)*scale)),lineHeight:1.02,wordBreak:'break-word',overflowWrap:'anywhere',maxWidth:'100%'}}>
           {name}
@@ -179,8 +174,8 @@ function DiscardPile({count,topCard,scale=1,expansionKey='temporary'}){
             transform:`rotate(${rot}deg)`,
             ...(isTop&&topCard?{
               background:s.bg,
-              border:`1.5px solid ${s.borderBright}`,
-              boxShadow:`0 0 6px ${s.glow}66`,
+              border:`1.5px solid ${s.border}`,
+              boxShadow:'0 1px 5px rgba(0,0,0,0.5), inset 0 0 8px rgba(0,0,0,0.35)',
             }:{
               backgroundImage:`url('${cardBackImage}')`,
               backgroundSize:'cover',
@@ -191,7 +186,7 @@ function DiscardPile({count,topCard,scale=1,expansionKey='temporary'}){
             zIndex:i,
           }}>
             {isTop&&topCard&&(
-              <MiniCardLabel card={topCard} scale={scale} glowColor={s.borderBright}/>
+              <MiniCardLabel card={topCard} scale={scale} glowColor="rgba(0,0,0,0.65)" ambient={false}/>
             )}
           </div>
         );
@@ -422,7 +417,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const _ = (px) => px * fontZoom;
   const borderColor=isBeingHit?'#cc2222':isSanHit?'#8840cc':isCurrentTurn?'#c8a96e':isSelectable?ri.col:'#3a2510';
-  const handCards=showFaceUp?player.hand:player.hand.map((c,ci)=>isBlackGoatYoung(c)?c:{id:`back-${playerIndex}-${ci}`,_back:true});
+  const handCards=showFaceUp?player.hand:player.hand.map((c,ci)=>isBlackGoatYoung(c)||isTsathogguaSlime(c)?c:{id:`back-${playerIndex}-${ci}`,_back:true});
   const HAND_CARD_WIDTH=showFaceUp?44:36;
   const HAND_CARD_HEIGHT=showFaceUp?58:50;
   const HAND_CARD_GAP=3;

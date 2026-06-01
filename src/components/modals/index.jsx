@@ -5,7 +5,7 @@ import {
   GOD_CS
 } from '../../constants/card';
 import { ROLE_CULTIST } from '../../game';
-import { DDCard, DDCardBack, GodCardDisplay } from '../cards';
+import { DDCard, DDCardBack, GodCardDisplay, PreviewCard } from '../cards';
 
 import { buildPublicUrl } from '../../utils/url';
 
@@ -134,6 +134,7 @@ function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingTex
   const { card } = drawReveal;
   const s = CS[card.letter] || GOD_CS;
   const isBystander = !canChoose && thinkingText;
+  const hideIdentity = !!(drawReveal.blindZoneIdentity || card.blindZoneIdentity);
   return (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 300, paddingTop: '10vh' }}>
       <div style={{
@@ -144,16 +145,7 @@ function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingTex
         animation: 'animPop 0.22s ease-out',
       }}>
         <div style={{ fontFamily: "'Cinzel',serif", color: '#a07838', fontSize: 15, letterSpacing: 3, marginBottom: 16, textTransform: 'uppercase' }}>── 区域探寻 ──</div>
-        {/* Big card */}
-        <div style={{
-          background: s.bg, border: `2px solid ${s.borderBright}`,
-          borderRadius: 4, padding: '18px 22px', display: 'inline-flex', flexDirection: 'column', alignItems: 'center',
-          minWidth: 120, marginBottom: 16, boxShadow: `0 0 30px ${s.glow}55`,
-        }}>
-          <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, color: s.text, fontSize: 51, lineHeight: 1 }}>{card.key}</div>
-          <div style={{ fontFamily: "'Cinzel',serif", color: '#e8cc88', fontSize: 19.5, fontWeight: 600, marginTop: 6 }}>{card.name}</div>
-          <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#d4b468', fontSize: 16.5, marginTop: 8, lineHeight: 1.4, maxWidth: 200 }}>{card.desc}</div>
-        </div>
+        <PreviewCard card={card} hideIdentity={hideIdentity}/>
 
         {isBystander ? (
           <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#c8a96e', fontSize: 15, marginTop: 16 }}>
@@ -201,16 +193,7 @@ function TreasureDodgeModal({ drawReveal, onRoll, onSkip, thinkingText }) {
         animation: 'animPop 0.22s ease-out',
       }}>
         <div style={{ fontFamily: "'Cinzel',serif", color: '#a07838', fontSize: 15, letterSpacing: 3, marginBottom: 16, textTransform: 'uppercase' }}>── 寻宝者能力 ──</div>
-        {/* Big card */}
-        <div style={{
-          background: s.bg, border: `2px solid ${s.borderBright}`,
-          borderRadius: 4, padding: '18px 22px', display: 'inline-flex', flexDirection: 'column', alignItems: 'center',
-          minWidth: 120, marginBottom: 16, boxShadow: `0 0 30px ${s.glow}55`,
-        }}>
-          <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, color: s.text, fontSize: 51, lineHeight: 1 }}>{card.key}</div>
-          <div style={{ fontFamily: "'Cinzel',serif", color: '#e8cc88', fontSize: 19.5, fontWeight: 600, marginTop: 6 }}>{card.name}</div>
-          <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#d4b468', fontSize: 16.5, marginTop: 8, lineHeight: 1.4, maxWidth: 200 }}>{card.desc}</div>
-        </div>
+        <PreviewCard card={card}/>
 
         <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#c8a96e', fontSize: 14, marginTop: 12, lineHeight: 1.6 }}>
           这张牌带有负面效果！作为寻宝者，你可以掷骰子尝试规避。
@@ -254,7 +237,6 @@ function TreasureDodgeModal({ drawReveal, onRoll, onSkip, thinkingText }) {
 
 function PeekHandModal({ card, targetName, onClose }) {
   if (!card) return null;
-  const col = card.isGod ? GOD_CS : (CS[card.letter] || '#c8a96e');
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1200,
@@ -275,18 +257,12 @@ function PeekHandModal({ card, targetName, onClose }) {
           你偷看了 {targetName} 的一张手牌
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-          <div style={{
-            width: 120, minHeight: 164, borderRadius: 8, padding: '10px 10px 12px',
-            background: 'linear-gradient(180deg,#1b120b,#0d0906)',
-            border: `1.5px solid ${col}`,
-            boxShadow: `0 0 18px ${col}33, inset 0 0 18px #00000044`
-          }}>
-            <div style={{ fontFamily: "'Cinzel',serif", fontSize: 24, lineHeight: 1, color: col, marginBottom: 6 }}>{card.key}</div>
-            <div style={{ fontFamily: "'Noto Serif SC','Songti SC',serif", fontWeight: 700, fontSize: 16, color: '#f1dfbf', marginBottom: 8 }}>{card.name}</div>
-            <div style={{ fontSize: 11, lineHeight: 1.6, color: '#cfbd99', whiteSpace: 'pre-wrap' }}>
-              {card.desc || ''}
-            </div>
-          </div>
+          <PreviewCard
+            card={card}
+            codeFontSize={24}
+            desc={card.isGod?(card.subtitle||card.power||''):(card.desc||'')}
+            frameStyle={{width:120,minHeight:164,borderRadius:8,padding:'10px 10px 12px',marginBottom:0,boxShadow:`0 0 18px ${card.isGod?GOD_CS.glow:(CS[card.letter]||GOD_CS).glow}33, inset 0 0 18px #00000044`}}
+          />
         </div>
         <div style={{ display: 'flex', justifyContent: 'center' }}>
           <button onClick={onClose} style={{
@@ -387,7 +363,7 @@ function AboutModal({ onClose }) {
           <div style={{ flex: 1, paddingTop: 4 }}>
             <div style={{ fontFamily: "'Cinzel',serif", fontSize: 10, color: '#b07828', letterSpacing: 2, marginBottom: 8, textTransform: 'uppercase' }}>— 关于作者 —</div>
             <div style={{ color: '#c8a96e', fontSize: 12, lineHeight: 1.8, fontStyle: 'italic' }}>
-              猫奴，上班党，不回就是在上班，会尽量努力更新。
+              猫奴，社畜，不回就是在上班，会尽量努力更新。
             </div>
             <div style={{ color: '#9a7a42', fontSize: 11, lineHeight: 1.8, marginTop: 8, fontStyle: 'italic' }}>
               如果你遇到与游戏规则有关的bug，记得在游戏结束后点击"显示游戏日志"并复制内容。
@@ -399,6 +375,14 @@ function AboutModal({ onClose }) {
         {/* Bottom half */}
         <div style={{ padding: '16px 20px 22px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
           <div style={{ fontFamily: "'Cinzel',serif", fontSize: 10, color: '#b07828', letterSpacing: 2, textTransform: 'uppercase' }}>— 意见与反馈 —</div>
+          <a
+            href="https://v.wjx.cn/vm/mGJYO4f.aspx"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: '#d8b868', fontSize: 12, letterSpacing: 1, fontStyle: 'italic', textDecoration: 'underline', textUnderlineOffset: 3 }}
+          >
+            问卷链接
+          </a>
           <div style={{ color: '#c8a96e', fontSize: 12, letterSpacing: 1, fontStyle: 'italic' }}>QQ催更群：787317460</div>
           <div style={{ color: '#c8a96e', fontSize: 12, letterSpacing: 1, fontStyle: 'italic' }}>微信催更群二维码</div>
           <img
@@ -468,12 +452,11 @@ function RoadmapModal({ onClose }) {
         <div style={{ fontFamily: "'Cinzel',serif", fontSize: 11, color: '#b07828', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16, textAlign: 'center' }}>— 版本更新计划 —</div>
         {/* Current version */}
         <div style={{ marginBottom: 12 }}>
-          <div style={{ fontFamily: "'Cinzel',serif", fontSize: 11, color: '#c8a96e', letterSpacing: 1, marginBottom: 4 }}>当前版本：0.1.2</div>
+          <div style={{ fontFamily: "'Cinzel',serif", fontSize: 11, color: '#c8a96e', letterSpacing: 1, marginBottom: 4 }}>当前版本：0.1.3</div>
           {[
-            '联机对战已开放！欢迎测试',
-            '根据实战表现，不甘落后的追猎者决定擦亮自己的武器',
-            '添加检定牌机制！具体规则请在遗迹内自行探索',
-            '停服更新规范化，未来闪断更新/停服更新时会在游戏内广播',
+            '庆祝九艺夏日游艺节开幕，我们新增了大量游戏内容！祝展会大获成功，越办越好',
+            '大量新卡牌加入！',
+            '地下城入口翻新！',
           ].map((t, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 7 }}>
               <span style={{ color: '#b07828', flexShrink: 0, fontSize: 12 }}>·</span>

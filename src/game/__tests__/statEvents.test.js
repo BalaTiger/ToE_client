@@ -1,0 +1,76 @@
+import { describe, expect, it } from 'vitest';
+import {
+  applyStatEventsToDisplayStats,
+  buildStatEvents,
+  statEventsToAnimQueue,
+} from '../statEvents';
+import { makePlayer } from './factory';
+
+describe('statEvents', () => {
+  it('从玩家前后状态生成 HP/SAN 事件', () => {
+    const before = [
+      makePlayer({ hp: 10, san: 8 }),
+      makePlayer({ hp: 5, san: 3 }),
+    ];
+    const after = [
+      makePlayer({ hp: 7, san: 8 }),
+      makePlayer({ hp: 5, san: 5 }),
+    ];
+
+    expect(buildStatEvents(before, after, ['结算'], { reason: '测试', seq: 7 })).toMatchObject([
+      { type: 'HP_LOSS', target: 0, reason: '测试', seq: 7 },
+      { type: 'SAN_GAIN', target: 1, reason: '测试', seq: 7 },
+    ]);
+  });
+
+  it('将显式事件转换成动画队列', () => {
+    const players = [
+      makePlayer({ hp: 7, san: 8 }),
+      makePlayer({ hp: 5, san: 5 }),
+    ];
+    const events = [
+      { type: 'HP_LOSS', target: 0, from: { hp: 10, san: 8 }, to: { hp: 7, san: 8 } },
+      { type: 'SAN_GAIN', target: 1, from: { hp: 5, san: 3 }, to: { hp: 5, san: 5 } },
+    ];
+
+    const queue = statEventsToAnimQueue(events, players, ['结算']);
+
+    expect(queue.map(step => step.type)).toEqual(['HP_DAMAGE', 'SAN_HEAL']);
+    expect(queue[0]).toMatchObject({ hitIndices: [0], msgs: ['结算'] });
+    expect(queue[1]).toMatchObject({ hitIndices: [1], targetStats: [{ hp: 7, san: 8, isDead: false }, { hp: 5, san: 5, isDead: false }] });
+  });
+
+  it('两人一绳断裂会拆成原伤害、断裂、绳索伤害三段', () => {
+    const before = [
+      makePlayer({ name: '你', hp: 10, damageLink: { active: true, partner: 1 } }),
+      makePlayer({ name: '艾伦', hp: 10, damageLink: { active: true, partner: 0 } }),
+    ];
+    const after = [
+      makePlayer({ name: '你', hp: 5, damageLink: { active: false, partner: 1 } }),
+      makePlayer({ name: '艾伦', hp: 7, damageLink: { active: false, partner: 0 } }),
+    ];
+    const logs = ['你 失去 2 HP', '【两人一绳】绳索断裂！你 和 艾伦 各失去 3 HP'];
+
+    const events = buildStatEvents(before, after, logs, { reason: '测试', seq: 9 });
+    const queue = statEventsToAnimQueue(events, after, logs);
+
+    expect(events.map(event => event.type)).toEqual(['HP_LOSS', 'DAMAGE_LINK_BREAK', 'HP_LOSS', 'HP_LOSS']);
+    expect(queue.map(step => step.type)).toEqual(['HP_DAMAGE', 'STATE_PATCH', 'TURN_BOUNDARY_PAUSE', 'HP_DAMAGE']);
+    expect(queue[0].hitIndices).toEqual([0]);
+    expect(queue[0].msgs).toEqual(['你 失去 2 HP']);
+    expect(queue[1]._logChunk).toEqual(['【两人一绳】绳索断裂！你 和 艾伦 各失去 3 HP']);
+    expect(queue[1].players[0].damageLink.active).toBe(false);
+    expect(queue[1].players[0].hp).toBe(8);
+    expect(queue[3].hitIndices.sort()).toEqual([0, 1]);
+  });
+
+  it('按事件目标更新显示数值', () => {
+    const displayStats = [{ hp: 10, san: 8 }, { hp: 5, san: 3 }];
+    const events = [{ type: 'SAN_LOSS', target: 1, from: { hp: 5, san: 3 }, to: { hp: 5, san: 1 } }];
+
+    expect(applyStatEventsToDisplayStats(displayStats, events)).toEqual([
+      { hp: 10, san: 8 },
+      { hp: 5, san: 1 },
+    ]);
+  });
+});

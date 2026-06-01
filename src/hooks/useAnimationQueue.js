@@ -4,6 +4,7 @@ export function useAnimationQueue({
   gs,
   copyPlayers,
   setGs,
+  setVisualPlayersOverride,
   setVisualDiscard,
   syncVisibleLog,
   appendVisibleLog,
@@ -16,8 +17,7 @@ export function useAnimationQueue({
   cthContinueRestDraws,
   visibleLogRef,
   visibleLogAuthorityRef,
-  turnHighlightLockRef,
-  visualPlayersLockRef,
+  visualStateLocks,
   suppressNextBroadcastRef,
   receivedGsRef,
   ANIM_STEP_GAP,
@@ -30,6 +30,7 @@ export function useAnimationQueue({
   const animQueueRef = useRef([]);
   const pendingGsRef = useRef(null);
   const animCallbackRef = useRef(null);
+  const visualTimelineTimersRef = useRef([]);
 
   function revealAnimLogs(animStep) {
     if (!animStep) return;
@@ -38,15 +39,100 @@ export function useAnimationQueue({
     }
   }
 
+  function clearVisualTimelineTimers() {
+    visualTimelineTimersRef.current.forEach(clearTimeout);
+    visualTimelineTimersRef.current = [];
+  }
+
+  function applyVisualPatch(patch = {}) {
+    if (Object.prototype.hasOwnProperty.call(patch, 'players')) {
+      const players = patch.players ? copyPlayers(patch.players) : null;
+      visualStateLocks.lock({ players });
+      if (setVisualPlayersOverride) setVisualPlayersOverride(players);
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'discard')) {
+      setVisualDiscard([...(patch.discard || [])]);
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'zhuLight')) {
+      visualStateLocks.lock({ zhuLight: patch.zhuLight || null });
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'hiddenZhuCardId')) {
+      visualStateLocks.lock({ hiddenZhuCardId: patch.hiddenZhuCardId || null });
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'turnHighlight')) {
+      visualStateLocks.lock({ turnHighlight: patch.turnHighlight });
+    }
+  }
+
+  function scheduleVisualTimeline(animStep) {
+    clearVisualTimelineTimers();
+    const timeline = Array.isArray(animStep?.visualTimeline) ? animStep.visualTimeline : [];
+    timeline.forEach(item => {
+      const at = Math.max(0, item?.atMs || 0);
+      const patch = item?.patch || {};
+      if (at <= 0) {
+        applyVisualPatch(patch);
+        return;
+      }
+      visualTimelineTimersRef.current.push(setTimeout(() => applyVisualPatch(patch), at));
+    });
+  }
+
+  function applyStatePatch(prev, patchStep) {
+    if (!prev) return prev;
+    const has = key => Object.prototype.hasOwnProperty.call(patchStep, key);
+    const patch = {};
+    if (has('players')) patch.players = copyPlayers(patchStep.players || prev.players);
+    if (has('discard')) patch.discard = [...(patchStep.discard || [])];
+    if (has('deck')) patch.deck = [...(patchStep.deck || [])];
+    if (has('log')) patch.log = [...(patchStep.log || [])];
+    if (has('abilityData')) patch.abilityData = { ...(patchStep.abilityData || {}) };
+    [
+      'phase',
+      'currentTurn',
+      'drawReveal',
+      'selectedCard',
+      'zhuLight',
+      'skillUsed',
+      'restUsed',
+      'huntAbandoned',
+      'godFromHandUsed',
+      'godTriggeredThisTurn',
+      'globalOnlySwapOwner',
+      '_statEventSeq',
+      '_statEvents',
+      '_inspectionSeq',
+      '_inspectionEvents',
+      '_apophisTargetSeq',
+      '_apophisTargetEvent',
+    ].forEach(key => {
+      if (has(key)) patch[key] = patchStep[key];
+    });
+    return { ...prev, ...patch };
+  }
+
   function advanceQueue() {
     setAnimExiting(false);
     if (animQueueRef.current.length > 0) {
       const next = animQueueRef.current.shift();
       if (next.type === 'STATE_PATCH') {
         revealAnimLogs(next);
-        visualPlayersLockRef.current = null;
-        setVisualDiscard([...(next.discard || [])]);
-        setGs(prev => prev ? { ...prev, players: copyPlayers(next.players || prev.players), discard: [...(next.discard || prev.discard)] } : prev);
+        visualStateLocks.clear({players:true,zhuLight:true});
+        if (Object.prototype.hasOwnProperty.call(next, 'players') && setVisualPlayersOverride) {
+          setVisualPlayersOverride(copyPlayers(next.players || []));
+        }
+        if (Object.prototype.hasOwnProperty.call(next, 'discard')) {
+          setVisualDiscard([...(next.discard || [])]);
+        }
+        setGs(prev => applyStatePatch(prev, next));
+        advanceQueue();
+      } else if (next.type === 'VISUAL_LOCK') {
+        visualStateLocks.lock({
+          players: next.players,
+          zhuLight: next.zhuLight,
+          hiddenZhuCardId: next.hiddenZhuCardId,
+          turnHighlight: next.turnHighlight,
+        });
         advanceQueue();
       } else if (next.type === 'CTH_CONTINUE') {
         setAnim(null);
@@ -61,7 +147,8 @@ export function useAnimationQueue({
         }
       } else {
         const nextTurnHighlight = resolveTurnHighlightForStep(next, pendingGsRef.current || gs, gs?.players || []);
-        if (nextTurnHighlight != null) turnHighlightLockRef.current = nextTurnHighlight;
+        if (nextTurnHighlight != null) visualStateLocks.lock({turnHighlight:nextTurnHighlight});
+        if (next.visualSetupPatch) applyVisualPatch(next.visualSetupPatch);
         setAnim(next);
         revealAnimLogs(next);
       }
@@ -70,8 +157,9 @@ export function useAnimationQueue({
       const callback = animCallbackRef.current;
       pendingGsRef.current = null;
       animCallbackRef.current = null;
-      turnHighlightLockRef.current = null;
-      visualPlayersLockRef.current = null;
+      clearVisualTimelineTimers();
+      visualStateLocks.clear({turnHighlight:true,players:true,zhuLight:true,hiddenZhuCardId:true});
+      if (setVisualPlayersOverride) setVisualPlayersOverride(null);
       setAnim(null);
       if (next?.log) syncVisibleLog(next.log);
       if (callback) {
@@ -98,6 +186,7 @@ export function useAnimationQueue({
 
   useEffect(() => {
     if (!anim) return;
+    scheduleVisualTimeline(anim);
     const isCard = anim.type === 'DRAW_CARD';
     const dur = Number.isFinite(anim.durationMs)
       ? anim.durationMs
@@ -116,6 +205,7 @@ export function useAnimationQueue({
     return () => {
       clearTimeout(t1);
       if (gapTimer) clearTimeout(gapTimer);
+      clearVisualTimelineTimers();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anim]);
@@ -155,14 +245,36 @@ export function useAnimationQueue({
 
     visibleLogAuthorityRef.current = Array.isArray(nextGs?.log) ? nextGs.log : (Array.isArray(visibleLogAuthorityRef.current) ? visibleLogAuthorityRef.current : []);
     const preparedQueue = prepareAnimQueueLogs(queue, nextGs, visibleLogRef.current);
-    turnHighlightLockRef.current = gs?.currentTurn ?? null;
-    const firstTurnHighlight = resolveTurnHighlightForStep(preparedQueue[0], nextGs, gs?.players || []);
-    if (firstTurnHighlight != null) turnHighlightLockRef.current = firstTurnHighlight;
+    const setupStep = preparedQueue.find(step => step?.visualSetupPatch && step.visualSetupTiming === 'queueStart');
+    if (setupStep) {
+      applyVisualPatch(setupStep.visualSetupPatch);
+    }
+    visualStateLocks.lock({turnHighlight:gs?.currentTurn ?? null});
+    const playableQueue = [...preparedQueue];
+    while (playableQueue[0]?.type === 'VISUAL_LOCK') {
+      const visualLock = playableQueue.shift();
+      visualStateLocks.lock({
+        players: visualLock.players,
+        zhuLight: visualLock.zhuLight,
+        hiddenZhuCardId: visualLock.hiddenZhuCardId,
+        turnHighlight: visualLock.turnHighlight,
+      });
+    }
+    if (!playableQueue.length) {
+      pendingGsRef.current = nextGs;
+      animQueueRef.current = [];
+      animCallbackRef.current = wrappedCallback;
+      advanceQueue();
+      return;
+    }
+    const firstTurnHighlight = resolveTurnHighlightForStep(playableQueue[0], nextGs, gs?.players || []);
+    if (firstTurnHighlight != null) visualStateLocks.lock({turnHighlight:firstTurnHighlight});
+    if (playableQueue[0].visualSetupPatch) applyVisualPatch(playableQueue[0].visualSetupPatch);
     pendingGsRef.current = nextGs;
-    animQueueRef.current = [...preparedQueue.slice(1)];
+    animQueueRef.current = [...playableQueue.slice(1)];
     animCallbackRef.current = wrappedCallback;
-    setAnim(preparedQueue[0]);
-    revealAnimLogs(preparedQueue[0]);
+    setAnim(playableQueue[0]);
+    revealAnimLogs(playableQueue[0]);
   }
 
   return {

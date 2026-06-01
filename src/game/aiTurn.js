@@ -4,6 +4,7 @@ import {
   isZoneCard,
   isBlankZoneCard,
   isBlackGoatYoung,
+  isTsathogguaSlime,
   separateBlackGoatYoung,
   isWinHand,
   cardLogText,
@@ -16,16 +17,19 @@ import {
   chooseAiRoseThornTarget,
   chooseAiCultistBewitchPlan,
   decideAiSkillUsage,
+  shouldAiRest,
   getHunterChaseTargets,
   canCultistWinByBewitch,
   canCultistEmptyHandByBewitch,
+  aiShouldKeepZoneCard,
   aiShouldNotRest,
   isCultistEndingTurnUnreasonable,
 } from './ai';
-import { applyFx, applyInspectionForSanLoss, applyHpDamageWithLink } from './effectEngine';
+import { applyFx, applyHpDamageWithLink } from './effectEngine';
 import {
   checkWin,
   aiHandleGodCard,
+  applySanLossToPlayerWithInspection,
   abandonGodFollower,
   convertGodFollower,
   startNextTurn,
@@ -33,6 +37,13 @@ import {
 import { withClearedTurnAnimFields } from './turnAnimState';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
 import { createBlackGoatYoungCard } from '../constants/card';
+import { buildStatEvents } from './statEvents';
+import { END_TURN_EVENT, getEndTurnReplayHandCards } from './endTurnEvents';
+import { deriveEffectDecisionState, hasEffectDecisionState } from './effectStatePatch';
+import { buildApophisNightLog, getApophisNightForLevel, resolveApophisTarget } from './apophisNight';
+import { applyBalanceDiscardSideEffects } from './balanceCards';
+import { canGodPowerAffect } from './godPowerImmunity';
+import { appendProliferatingZDraws } from './proliferatingZ';
 
 /**
  * 检查两张卡是否满足追捕匹配规则。
@@ -43,7 +54,7 @@ import { createBlackGoatYoungCard } from '../constants/card';
  */
 export function cardsHuntMatch(a, b) {
   if (!a || !b) return false;
-  if (isBlackGoatYoung(a) || isBlackGoatYoung(b)) return false; // BGY 不可被任何卡牌匹配
+  if (isBlackGoatYoung(a) || isBlackGoatYoung(b) || isTsathogguaSlime(a) || isTsathogguaSlime(b)) return false; // 衍生牌不可被任何卡牌匹配
   if (!isZoneCard(b)) return true;      // 被捕者展示非区域牌 → 追捕者弃任意牌成功
   if (!isZoneCard(a)) return false;     // 追捕者弃非区域牌去匹配区域牌 → 失败
   if (isBlankZoneCard(a) || isBlankZoneCard(b)) return true;
@@ -74,6 +85,128 @@ export function moveEligibleBlankZones(players, log = []) {
   return changed ? { players: P, log: L } : null;
 }
 
+function getBlackGoatMultiplyEvent(players, sourceIdx) {
+  const source = players?.[sourceIdx];
+  if (!source || source.isDead || !(source.hand || []).some(isBlackGoatYoung)) return null;
+  const targetCandidates = players
+    .map((p, i) => ({ p, i }))
+    .filter(({ p, i }) => !p.isDead && i !== sourceIdx && canGodPowerAffect(p))
+    .sort((a, b) => {
+      const aBgy = a.p.hand.filter(isBlackGoatYoung).length;
+      const bBgy = b.p.hand.filter(isBlackGoatYoung).length;
+      if (aBgy !== bBgy) return aBgy - bBgy;
+      return a.p.hp - b.p.hp;
+    });
+  if (!targetCandidates.length) return null;
+  return { fromIdx: sourceIdx, toIdx: targetCandidates[0].i };
+}
+
+function hasTreasureSwapBuffer(hand = []) {
+  const zoneCards = hand.filter(c => isZoneCard(c) && !c.isGod);
+  const letters = new Set();
+  const numbers = new Set();
+  for (const card of zoneCards) {
+    const duplicateLetter = card.letter && letters.has(card.letter);
+    const duplicateNumber = card.number != null && numbers.has(card.number);
+    if (duplicateLetter || duplicateNumber) return true;
+    if (card.letter) letters.add(card.letter);
+    if (card.number != null) numbers.add(card.number);
+  }
+  return false;
+}
+
+function bestCultistBewitchSanLoss(hand = []) {
+  return hand.reduce((best, card) => {
+    if (!card || card.isGod || isBlackGoatYoung(card)) return best;
+    switch (card.type) {
+      case 'selfDamageSAN':
+      case 'selfDamageDiscardSAN':
+      case 'selfDamageRestSAN':
+      case 'selfDamageSANCond':
+        return Math.max(best, card.val || 0);
+      case 'selfDamageHPSAN':
+      case 'adjDamageBoth':
+        return Math.max(best, card.sanVal || 0);
+      case 'allDamageSAN':
+      case 'allDamageBoth':
+        return Math.max(best, card.val || 0);
+      case 'allHealHPDamageSAN':
+        return Math.max(best, card.sanVal || 0);
+      default:
+        return best;
+    }
+  }, 0);
+}
+
+function getHunterLowQualityConfidence(gs, players, hunterIdx) {
+  const hunter = players?.[hunterIdx];
+  const memory = hunter?.huntQualityMemory;
+  if (!memory || !Array.isArray(memory.handIds) || memory.handIds.length === 0) return 0;
+  const currentIds = new Set((hunter.hand || []).map(card => card?.id).filter(id => id != null));
+  const retained = memory.handIds.filter(id => currentIds.has(id)).length;
+  const retention = retained / memory.handIds.length;
+  if (retention < 0.5) return 0;
+
+  const livingCount = Math.max(1, players.filter(p => p && !p.isDead).length);
+  const turnGap = Math.max(0, (gs?.turn || 0) - (memory.turn || 0));
+  const elapsedRounds = Math.floor(turnGap / livingCount);
+  if (elapsedRounds >= 3) return 0;
+
+  const timeFactor = elapsedRounds <= 0 ? 1 : elapsedRounds === 1 ? 0.75 : 0.45;
+  const handSizeDrift = Math.max(0, (hunter.hand || []).length - (memory.handSize || memory.handIds.length));
+  const driftPenalty = handSizeDrift <= 1 ? 1 : handSizeDrift === 2 ? 0.75 : 0.45;
+  return retention * timeFactor * driftPenalty;
+}
+
+function hasImmediateHunterKill(players, hunterIdx, huntAbandoned = []) {
+  const hunter = players?.[hunterIdx];
+  if (!hunter || hunter.isDead || !(hunter.hand || []).some(isZoneCard)) return false;
+  const damage = 3 + (hunter.damageBonus || 0);
+  return getHunterChaseTargets(players, hunterIdx, huntAbandoned)
+    .some(({ player }) => player.hp <= damage);
+}
+
+function markHunterLowQualityHand(players, hunterIdx, gs, attemptedTargets) {
+  const hunter = players?.[hunterIdx];
+  if (!hunter || hunter.isDead) return;
+  const handIds = (hunter.hand || [])
+    .filter(card => card && !isBlackGoatYoung(card))
+    .map(card => card.id)
+    .filter(id => id != null);
+  if (!handIds.length || attemptedTargets <= 0) {
+    hunter.huntQualityMemory = null;
+    return;
+  }
+  hunter.huntQualityMemory = {
+    turn: gs?.turn || 0,
+    handIds,
+    handSize: hunter.hand.length,
+    failedTargetCount: attemptedTargets,
+  };
+}
+
+function clearHunterLowQualityHand(players, hunterIdx) {
+  const hunter = players?.[hunterIdx];
+  if (hunter) hunter.huntQualityMemory = null;
+}
+
+function shouldAiMultiply({ gs, players, sourceIdx, aiEffRole, ai, aiSkillDecision, cultistBewitchPlan, huntAbandoned }) {
+  if (!ai || ai.isDead) return false;
+  if (aiEffRole === ROLE_TREASURE) {
+    return !(aiSkillDecision?.canSwapHands && hasTreasureSwapBuffer(ai.hand));
+  }
+  if (aiEffRole === ROLE_HUNTER) {
+    if (hasImmediateHunterKill(players, sourceIdx, huntAbandoned)) return false;
+    const lowQualityConfidence = getHunterLowQualityConfidence(gs, players, sourceIdx);
+    return lowQualityConfidence >= 0.55 || !aiSkillDecision?.shouldHunterUseSkill;
+  }
+  if (aiEffRole === ROLE_CULTIST) {
+    const bestSanLoss = bestCultistBewitchSanLoss(ai.hand);
+    return !cultistBewitchPlan || bestSanLoss <= 1;
+  }
+  return true;
+}
+
 /**
  * 清空玩家的神牌区域，并将神牌移入弃牌堆。
  */
@@ -93,13 +226,69 @@ export function discardAiHandToLimit(P, ct, Disc, L) {
   const aiHandLimit = P[ct]._nyaHandLimit ?? 4;
   while (P[ct].hand.length > aiHandLimit) {
     const c = P[ct].hand.shift();
-    if (isBlackGoatYoung(c)) {
-      L.push(`${P[ct].name} 的黑山羊幼仔被销毁`);
+    if (isBlackGoatYoung(c) || isTsathogguaSlime(c)) {
+      L.push(`${P[ct].name} 的衍生牌被销毁`);
     } else {
       Disc.push(c);
       L.push(`${P[ct].name} 弃 ${cardLogText(c, { alwaysShowName: true })}（上限）`);
+      const balance = applyBalanceDiscardSideEffects({ players: P, deck: [], discard: Disc, log: L, ownerIdx: ct, cards: [c], reason: '手牌上限弃牌' });
+      L.splice(0, L.length, ...balance.log);
     }
   }
+}
+
+function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
+  const handCards = P[ct]?.hand || [];
+  const replayIds = getEndTurnReplayHandCards(P[ct]).map(card => card?.id).filter(id => id != null);
+  if (!replayIds.length) return { P, D, Disc, L, statePatch: {} };
+  L.push(`【无尽通道】${P[ct].name} 展示所有手牌：${handCards.map(card => cardLogText(card, { alwaysShowName: true })).join(' ')}`);
+  let statePatch = {};
+  for (const cardId of replayIds) {
+    const handIdx = (P[ct].hand || []).findIndex(card => card?.id === cardId);
+    if (handIdx < 0 || P[ct].isDead) break;
+    const card = P[ct].hand[handIdx];
+    L.push(`【无尽通道】${P[ct].name} 重新摸到 ${cardLogText(card, { alwaysShowName: true })}`);
+    if (card.isGod) {
+      P[ct].hand.splice(handIdx, 1);
+      P[ct].godEncounters = (P[ct].godEncounters || 0) + 1;
+      const godCost = P[ct].godEncounters;
+      const effectMsg = P[ct].role === ROLE_CULTIST
+        ? `${P[ct].name}（邪祀者）遭遇邪神 ${card.name}！（第${P[ct].godEncounters}次）免疫SAN损耗`
+        : `${P[ct].name} 遭遇邪神 ${card.name}！（第${P[ct].godEncounters}次）失去${godCost}SAN`;
+      L.push(effectMsg);
+      let inspectionMeta = makeInspectionMeta({ ...gs, ...statePatch });
+      if (P[ct].role === ROLE_CULTIST) {
+        P[ct].roleRevealed = true;
+      } else {
+        const processed = applySanLossToPlayerWithInspection(ct, godCost, gs.currentTurn ?? ct, P, D, Disc, L, inspectionMeta, '邪神遭遇');
+        P = processed.P; D = processed.D; Disc = processed.Disc; L = processed.L; inspectionMeta = processed.inspectionMeta;
+      }
+      const gr = aiHandleGodCard(ct, card, P, D, Disc, L, { ...gs, ...statePatch, ...inspectionMeta }, true);
+      P = gr.P; D = gr.D; Disc = gr.Disc;
+      statePatch = { ...statePatch, ...inspectionMeta, ...(gr.inspectionMeta || {}), ...(gr.statePatch || {}) };
+      continue;
+    }
+    const keep = card?.type === END_TURN_EVENT.END_TURN_REPLAY_HAND || !isZoneCard(card) || aiShouldKeepZoneCard(card, ct, P, false);
+    if (!keep) {
+      const [discarded] = P[ct].hand.splice(handIdx, 1);
+      if (isBlackGoatYoung(discarded) || isTsathogguaSlime(discarded)) L.push(`${P[ct].name} 的衍生牌被销毁`);
+      else {
+        Disc.push(discarded);
+        L.push(`${P[ct].name} 弃置了 ${cardLogText(discarded, { alwaysShowName: true })}`);
+        const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: L, ownerIdx: ct, cards: [discarded], reason: '无尽通道弃牌' });
+        P = balance.players; D = balance.deck; Disc = balance.discard; L = balance.log;
+      }
+      continue;
+    }
+    const res = applyFx(card, ct, null, P, D, Disc, { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L }, false, [], true);
+    P = res.P; D = res.D; Disc = res.Disc;
+    if (res.msgs?.length) L.push(...res.msgs);
+    statePatch = { ...statePatch, ...(res.statePatch || {}) };
+    if (hasEffectDecisionState(res.statePatch)) {
+      break;
+    }
+  }
+  return { P, D, Disc, L, statePatch };
 }
 
 export function aiStep(gs, opts = {}) {
@@ -124,6 +313,42 @@ export function aiStep(gs, opts = {}) {
     ...(animMultiplyEvent ? { _animMultiplyEvent: animMultiplyEvent } : {})
   });
 
+  const buildPendingSlimeBalanceState = (state, nextPlayers, nextDeck, nextDiscard, nextLog, extra = {}) => {
+    if (state?.abilityData?.type !== 'tsgSlimeBalance') return null;
+    return {
+      ...state,
+      players: nextPlayers,
+      deck: nextDeck,
+      discard: nextDiscard,
+      log: nextLog,
+      currentTurn: ct,
+      phase: 'TSG_SLIME_BALANCE',
+      abilityData: { ...state.abilityData, _turnOwner: ct },
+      skillUsed: true,
+      ...extra,
+    };
+  };
+
+  const applyNightTarget = (selectedIdx, legalTargets, label) => {
+    const night = resolveApophisTarget({
+      gs,
+      players: P,
+      deck: D,
+      discard: Disc,
+      log: L,
+      actorIdx: ct,
+      selectedIdx,
+      legalTargets,
+      label,
+    });
+    P = night.players;
+    D = night.deck;
+    Disc = night.discard;
+    L = night.log;
+    gs = { ...gs, ...(night.statePatch || {}) };
+    return night.targetIdx;
+  };
+
   // 提取蛊惑赠予的核心逻辑（主行动路径与强制路径共用）
   const applyBewitchGift = (_gs, _P, _D, _Disc, _L, _ct, _ti, _sc) => {
     let inspectionMeta = makeInspectionMeta(_gs);
@@ -132,20 +357,28 @@ export function aiStep(gs, opts = {}) {
     let fxResult = null;
     if (_sc.isGod) {
       _P[_ti].godEncounters = (_P[_ti].godEncounters || 0) + 1;
+      const godCost = _P[_ti].godEncounters;
+      const effectMsg = _P[_ti].role === ROLE_CULTIST
+        ? `${_P[_ti].name}（邪祀者）遭遇邪神 ${_sc.name}！（第${_P[_ti].godEncounters}次）免疫SAN损耗`
+        : `${_P[_ti].name} 遭遇邪神 ${_sc.name}！（第${_P[_ti].godEncounters}次）失去${godCost}SAN`;
+      _L.push(effectMsg);
       if (_P[_ti].role === ROLE_CULTIST) {
         _P[_ti].roleRevealed = true;
       } else {
-        const godCost = _P[_ti].godEncounters;
-        _P[_ti].san = clamp(_P[_ti].san - godCost);
-        const newSan = _P[_ti].san;
-        const processed = applyInspectionForSanLoss(_ti, newSan, _gs.currentTurn, _P, _D, _Disc, _L, inspectionMeta);
+        const processed = applySanLossToPlayerWithInspection(_ti, godCost, _gs.currentTurn, _P, _D, _Disc, _L, inspectionMeta, '邪神遭遇');
         _P = processed.P; _D = processed.D; _Disc = processed.Disc;
         inspectionMeta = processed.inspectionMeta;
-        _L.splice(0, _L.length, ...processed.log);
+        _L.splice(0, _L.length, ...processed.L);
       }
-      const gr = aiHandleGodCard(_ti, _sc, _P, _D, _Disc, _L, _gs);
+      const godResolveGs = { ..._gs, ...inspectionMeta };
+      const gr = aiHandleGodCard(_ti, _sc, _P, _D, _Disc, _L, godResolveGs, true);
       _P = gr.P; _D = gr.D; _Disc = gr.Disc;
-      _gs = { ..._gs, ...inspectionMeta, ...(gr.inspectionMeta || {}) };
+      const mergedInspectionMeta = {
+        ...inspectionMeta,
+        ...(gr.inspectionMeta || {}),
+        ...((gr.inspectionMeta?.abilityData || inspectionMeta?.abilityData) ? { abilityData: gr.inspectionMeta?.abilityData || inspectionMeta.abilityData } : {}),
+      };
+      _gs = { ..._gs, ...mergedInspectionMeta, ...(gr.statePatch || {}) };
     } else {
       _P[_ti].hand.push(_sc);
       fxResult = applyFx(_sc, _ti, _sc.type === 'swapAllHands' ? null : _ti, _P, _D, _Disc, _gs);
@@ -172,6 +405,43 @@ export function aiStep(gs, opts = {}) {
     return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'SPHINX_GUESS',abilityData};
   }
 
+  if(abilityData?.type==='semiMaterializeTarget'){
+    const source=abilityData.source??ct;
+    const legalTargets=(abilityData.legalTargets||P.map((p,i)=>i).filter(i=>p&&!p.isDead)).filter(i=>P[i]&&!P[i].isDead);
+    if(source===0)return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'SEMI_MATERIALIZE_TARGET',abilityData};
+    const secretTarget=legalTargets.length?legalTargets[Math.floor(Math.random()*legalTargets.length)]:source;
+    L.push(`【传授半物质化】${P[source].name} 悄悄指定了一名角色`);
+    const N=P.length,dir=gs.turnDirection||1,guessOrder=[];
+    for(let step=1;step<=N;step++){
+      const idx=(source+step*dir+N)%N;
+      if(idx!==source&&P[idx]&&!P[idx].isDead)guessOrder.push(idx);
+    }
+    return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'SEMI_MATERIALIZE_GUESS',abilityData:{...abilityData,type:'semiMaterializeGuess',secretTarget,guessOrder,guessIndex:0,guesserIdx:guessOrder[0]}};
+  }
+
+  if(abilityData?.type==='semiMaterializeGuess'){
+    const order=abilityData.guessOrder||[];
+    let guessIndex=abilityData.guessIndex||0;
+    const source=abilityData.source??ct;
+    const secretTarget=abilityData.secretTarget;
+    while(guessIndex<order.length){
+      const guesserIdx=order[guessIndex];
+      if(!P[guesserIdx]||P[guesserIdx].isDead){guessIndex++;continue;}
+      if(guesserIdx===0)return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'SEMI_MATERIALIZE_GUESS',abilityData:{...abilityData,guessIndex,guesserIdx}};
+      const candidates=P.map((p,i)=>i).filter(i=>p&&!p.isDead);
+      const guessedIdx=candidates.length?candidates[Math.floor(Math.random()*candidates.length)]:secretTarget;
+      L.push(`【传授半物质化】${P[guesserIdx].name} 猜测目标是 ${P[guessedIdx]?.name||'未知角色'}`);
+      if(guessedIdx===secretTarget){
+        L.push(`【传授半物质化】${P[guesserIdx].name} 将在 ${P[secretTarget]?.name||'被指定者'} 的下个回合后获得一个额外回合`);
+        return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'AI_TURN',abilityData:{},pendingExtraTurnOwner:guesserIdx,pendingExtraTurnAfterPlayer:secretTarget,pendingExtraTurnAfterMinTurn:(gs.turn||0)+1,currentTurn:abilityData._turnOwner??gs.currentTurn};
+      }
+      guessIndex++;
+    }
+    L.push('【传授半物质化】无人猜中目标');
+    L.push(`【传授半物质化】${P[source].name} 将在 ${P[secretTarget]?.name||'被指定者'} 的下个回合后获得一个额外回合`);
+    return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'AI_TURN',abilityData:{},pendingExtraTurnOwner:source,pendingExtraTurnAfterPlayer:secretTarget,pendingExtraTurnAfterMinTurn:(gs.turn||0)+1,currentTurn:abilityData._turnOwner??gs.currentTurn};
+  }
+
   if(Array.isArray(abilityData?.peekHandTargets)&&abilityData.peekHandSource===ct){
     return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'PEEK_HAND_SELECT_TARGET',abilityData};
   }
@@ -179,7 +449,7 @@ export function aiStep(gs, opts = {}) {
   if(Array.isArray(abilityData?.damageLinkTargets)&&abilityData.damageLinkSource===ct){
     const validTargets=abilityData.damageLinkTargets.filter(i=>P[i]&&!P[i].isDead&&i!==ct);
     if(validTargets.length>0){
-      const targetIdx=validTargets[0];
+      const targetIdx=applyNightTarget(validTargets[0],validTargets,'选择【两人一绳】目标');
       P[ct].damageLink={partner:targetIdx,active:true,expiryOwner:ct};
       P[targetIdx].damageLink={partner:ct,active:true,expiryOwner:ct};
       L.push(`【两人一绳】${P[ct].name} 与 ${P[targetIdx].name} 间架起链条，一方受到HP伤害时另一方受等量伤害`);
@@ -193,13 +463,13 @@ export function aiStep(gs, opts = {}) {
   if(abilityData.roseThornTargets&&abilityData.roseThornSource===ct){
     const validTargets=abilityData.roseThornTargets.filter(i=>P[i]&&!P[i].isDead&&i!==ct);
     if(validTargets.length){
-      const targetIdx=chooseAiRoseThornTarget(P, ct, validTargets);
+      const targetIdx=applyNightTarget(chooseAiRoseThornTarget(P, ct, validTargets),validTargets,'选择【玫瑰倒刺】目标');
       const gifted=P[ct].hand.splice(0).map(card=>({...card,roseThornHolderId:targetIdx,roseThornSourceId:ct,roseThornSourceName:P[ct].name}));
       P[targetIdx].hand.push(...gifted);
       L.push(`【玫瑰倒刺】${P[ct].name} 将全部手牌交给了 ${P[targetIdx].name}`);
       if(!P[targetIdx].isDead&&P[targetIdx].role===ROLE_TREASURE&&isWinHand(P[targetIdx].hand)){
         P[targetIdx].roleRevealed=true;
-        return{
+        return withClearedTurnAnimFields({
           ...gs,
           players:P,
           deck:D,
@@ -208,18 +478,10 @@ export function aiStep(gs, opts = {}) {
           gameOver:{winner:ROLE_TREASURE,reason:`${P[targetIdx].name} 集齐了全部编号并获胜！`,winnerIdx:targetIdx},
           abilityData:{},
           phase:'AI_TURN',
-          _aiDrawnCard:null,
-          _drawnCard:null,
-          _discardedDrawnCard:false,
-          _playersBeforeThisDraw:null,
-          _turnStartLogs:[],
-          _drawLogs:[],
-          _statLogs:[],
-          _preTurnPlayers:null,
-        };
+        });
       }
     }
-    return{
+    return withClearedTurnAnimFields({
       ...gs,
       players:P,
       deck:D,
@@ -227,16 +489,7 @@ export function aiStep(gs, opts = {}) {
       log:L,
       abilityData:{},
       phase:'AI_TURN',
-      // 玫瑰倒刺的起手摸牌/翻牌动画在进入本分支前已经播过；继续当前 AI 回合时不应再重播
-      _aiDrawnCard:null,
-      _drawnCard:null,
-      _discardedDrawnCard:false,
-      _playersBeforeThisDraw:null,
-      _turnStartLogs:[],
-      _drawLogs:[],
-      _statLogs:[],
-      _preTurnPlayers:null,
-    };
+    });
   }
   if(P[ct].isDead){
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
@@ -251,7 +504,7 @@ export function aiStep(gs, opts = {}) {
     const validTargets=abilityData.caveDuelTargets;
     if(validTargets.length>0){
       // AI随机选择一个目标
-      const targetIdx=validTargets[Math.floor(Math.random()*validTargets.length)];
+      const targetIdx=applyNightTarget(validTargets[Math.floor(Math.random()*validTargets.length)],validTargets,'选择【穴居人战争】目标');
       // 执行穴居人战争效果
       const sourcePlayer=P[ct];
       const targetPlayer=P[targetIdx];
@@ -273,7 +526,7 @@ export function aiStep(gs, opts = {}) {
       let targetCardIndex, targetCard;
       if(targetIdx===0){
         // 玩家作为目标角色，需要选择牌
-        return{
+        return withClearedTurnAnimFields({
           ...gs,
           players:P,
           deck:D,
@@ -282,16 +535,7 @@ export function aiStep(gs, opts = {}) {
           abilityData:{...abilityData,caveDuelTarget:targetIdx,sourceCardIndex:sourceCardIndex,sourceCard:sourceCard},
           currentTurn:ct,
           phase:'CAVE_DUEL_SELECT_CARD',
-          // 起手翻牌动画在进入该响应阶段前已经播过；这里清掉临时字段，避免后续重复播放
-          _aiDrawnCard:null,
-          _drawnCard:null,
-          _discardedDrawnCard:false,
-          _playersBeforeThisDraw:null,
-          _turnStartLogs:[],
-          _drawLogs:[],
-          _statLogs:[],
-          _preTurnPlayers:null,
-        };
+        });
       }else{
         // AI作为目标角色，选择数字编号最大的牌
         let maxTargetNumber=-1;
@@ -329,7 +573,7 @@ export function aiStep(gs, opts = {}) {
       }
     }
     // 清除能力数据
-    return{
+    return withClearedTurnAnimFields({
       ...gs,
       players:P,
       deck:D,
@@ -338,16 +582,7 @@ export function aiStep(gs, opts = {}) {
       abilityData:{},
       currentTurn:ct,
       phase:'AI_TURN',
-      // 穴居人战争的起手摸牌/翻牌动画在进入该分支前已经播过；继续当前 AI 回合时不应再重播
-      _aiDrawnCard:null,
-      _drawnCard:null,
-      _discardedDrawnCard:false,
-      _playersBeforeThisDraw:null,
-      _turnStartLogs:[],
-      _drawLogs:[],
-      _statLogs:[],
-      _preTurnPlayers:null,
-    };
+    });
   }
   if((ai._nyaBorrow||ai.role)===ROLE_TREASURE&&isWinHand(ai.hand)){P[ct].roleRevealed=true;return{...gs,players:P,log:[...L,`${ai.name} 宣告获胜！`],gameOver:{winner:ROLE_TREASURE,reason:`${ai.name} 集齐了全部编号并获胜！`,winnerIdx:ct}};}
   // AI worship-from-hand: face-down god cards in hand can be worshipped (no skull counter, once per turn)
@@ -373,6 +608,10 @@ export function aiStep(gs, opts = {}) {
         } else if(!P[ct].godName||alreadyHasGod){
           P[ct].godName=hgc.godKey;P[ct].godLevel=1;P[ct].godZone=[{...hgc}];
         }
+        if(hgc.godKey==='APO'&&canGodPowerAffect(P[ct])){
+          gs={...gs,apophisNight:getApophisNightForLevel(P[ct].godLevel)};
+          L.push(buildApophisNightLog());
+        }
 
         P.forEach((p,i)=>{if(i!==ct&&p.godName===hgc.godKey){const abandoned=abandonGodFollower(i,gs.currentTurn,P,D,Disc,L,inspectionMeta);P=abandoned.P;D=abandoned.D;Disc=abandoned.Disc;L=abandoned.L;inspectionMeta=abandoned.inspectionMeta;}});
         playersBeforeSkillAction=copyPlayers(P);
@@ -383,34 +622,7 @@ export function aiStep(gs, opts = {}) {
       }
     }
   }
-  // ── AI 黑山羊幼仔繁衍 ─────────────────────────────────────────
-  let didMultiply = false;
   let animMultiplyEvent = null;
-  if (!gs.multiplyUsed && !gs.skillUsed && !gs.restUsed) {
-    const bgyInHand = ai.hand.filter(isBlackGoatYoung);
-    if (bgyInHand.length > 0) {
-      const targetCandidates = P.map((p, i) => ({ p, i }))
-        .filter(({ p, i }) => !p.isDead && i !== ct)
-        .sort((a, b) => {
-          const aBgy = a.p.hand.filter(isBlackGoatYoung).length;
-          const bBgy = b.p.hand.filter(isBlackGoatYoung).length;
-          if (aBgy !== bBgy) return aBgy - bBgy;
-          return a.p.hp - b.p.hp;
-        });
-      if (targetCandidates.length > 0) {
-        const ti = targetCandidates[0].i;
-        if (ai.hand.some(isBlackGoatYoung)) {
-          P[ti].hand.push(createBlackGoatYoungCard());
-          L.push(`【繁衍】${ai.name} 将黑山羊幼仔传播给了 ${P[ti].name}`);
-          didMultiply = true;
-          animMultiplyEvent = { fromIdx: ct, toIdx: ti };
-        }
-      }
-    }
-  }
-  if (didMultiply) {
-    gs = { ...gs, multiplyUsed: true };
-  }
 
   // ── AI Rest (新版策略) ───────────────────────────────────────
   // HP≤4时积极休息（已进入斩杀线）
@@ -418,18 +630,11 @@ export function aiStep(gs, opts = {}) {
   // 邪祀者HP≤4：除非蛊惑可获胜或清空手牌，否则休息
   // 邪祀者HP≤2：除非蛊惑可获胜，否则必须休息（已进入AOE斩杀线）
   // 追猎者HP≤5：积极休息
-  const aiEffRole=gs.globalOnlySwapOwner!=null?ROLE_TREASURE:(ai._nyaBorrow||ai.role);
-  const noRestReason=aiShouldNotRest(gs,ai,aiEffRole,P,ct);
+  const aiEffRole=gs.globalOnlySwapOwner!=null?ROLE_TREASURE:(P[ct]._nyaBorrow||P[ct].role);
+  const noRestReason=aiShouldNotRest(gs,P[ct],aiEffRole,P,ct);
   const shouldRest=(()=>{
-    if(gs.restUsed||gs.skillUsed||gs.multiplyUsed)return false;
-    if(ai.hp>=9)return false;
     if(noRestReason?.shouldNotRest)return false;
-    if(aiEffRole===ROLE_TREASURE)return ai.hp<=7&&Math.random()<0.70;
-    if(aiEffRole===ROLE_HUNTER){
-      if(ai.hp<=5)return Math.random()<0.75;
-      return false;
-    }
-    return ai.hp<=4&&Math.random()<0.65;
+    return shouldAiRest(gs, P[ct], aiEffRole);
   })();
   let swapTargetOverride=null;
   if(noRestReason?.shouldNotRest){
@@ -441,12 +646,18 @@ export function aiStep(gs, opts = {}) {
   }
   if(shouldRest){
     const d1=(1+Math.random()*6|0),d2=(1+Math.random()*6|0),heal=Math.max(d1,d2);
+    const beforeRestPlayers=copyPlayers(P);
     P[ct].hp=clamp(P[ct].hp+heal);P[ct].isResting=true;
     L.push(`${ai.name} 选择【休息】，掷骰 ${d1}+${d2}，回复 ${heal}HP，翻面休息中`);
-    const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
+    const restStatEventSeq=(gs._statEventSeq||0)+1;
+    const restStatEvents=buildStatEvents(beforeRestPlayers,P,L.slice(-1),{reason:'休息',seq:restStatEventSeq});
+    const restStatPatch=restStatEvents.length?{_statEvents:[...(gs._statEvents||[]),...restStatEvents],_statEventSeq:restStatEventSeq}:{};
+    const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,...restStatPatch};
     discardAiHandToLimit(P, ct, Disc, L);
+    const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,{...gs,...restStatPatch});
+    P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;
     const _P_afterRest=copyPlayers(P);
-    const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,restUsed:true,skillUsed:false}, opts);
+    const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,restUsed:true,skillUsed:false,...restStatPatch,...replayed.statePatch}, opts);
     return buildReturnPack(nextGs, _P_afterRest);
   }
 // 追猎者/邪祀者积极发动技能(65%); 寻宝者随进度提升(35%→55%)
@@ -463,7 +674,7 @@ export function aiStep(gs, opts = {}) {
       useSkill = false;
     }
   }
-  if (aiEffRole === ROLE_CULTIST && !useSkill) {
+  if (aiEffRole === ROLE_CULTIST && !useSkill && !gs.skillUsed && !gs.multiplyUsed && !gs.restUsed) {
     const canWin = canCultistWinByBewitch(P, ct);
     const canEmpty = canCultistEmptyHandByBewitch(P, ct);
     if ((ai.hp <= 4 && (canWin || canEmpty)) || (ai.hp <= 2 && canWin)) {
@@ -473,11 +684,31 @@ export function aiStep(gs, opts = {}) {
       }
     }
   }
+  if (aiEffRole === ROLE_TREASURE && aiSkillDecision.canSwapHands && hasTreasureSwapBuffer(P[ct].hand)) {
+    useSkill = true;
+  }
+  if (aiEffRole === ROLE_CULTIST && cultistBewitchPlan && bestCultistBewitchSanLoss(P[ct].hand) > 1) {
+    useSkill = true;
+  }
+
+  const multiplyEvent = (!gs.multiplyUsed && !gs.skillUsed && !gs.restUsed && canGodPowerAffect(P[ct]))
+    ? getBlackGoatMultiplyEvent(P, ct)
+    : null;
+  if (multiplyEvent && shouldAiMultiply({ gs, players: P, sourceIdx: ct, aiEffRole, ai: P[ct], aiSkillDecision, cultistBewitchPlan, huntAbandoned: newAbandoned })) {
+    const goatCard = createBlackGoatYoungCard();
+    P[multiplyEvent.toIdx].hand.push(goatCard);
+    L.push(`【繁衍】${P[ct].name} 将黑山羊幼仔传播给了 ${P[multiplyEvent.toIdx].name}`);
+    animMultiplyEvent = multiplyEvent;
+    gs = { ...gs, multiplyUsed: true, skillUsed: true, ...appendProliferatingZDraws(gs, P, multiplyEvent.toIdx, goatCard) };
+    useSkill = false;
+  }
 
   if(aiEffRole!==ROLE_HUNTER && alive.length===0){
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
     discardAiHandToLimit(P, ct, Disc, L);
     L.push(`${ai.name} 未使用技能，结束回合`);
+    const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,gs);
+    P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};
     const _P_afterAction=copyPlayers(P);
     const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:gs.skillUsed}, opts);
     return buildReturnPack(nextGs, _P_afterAction);
@@ -506,7 +737,9 @@ export function aiStep(gs, opts = {}) {
 
           // 遍历所有目标，直到找到可以追捕的目标或用完所有目标
           let foundTarget = false;
-          for (const { player: tgt, idx: ti } of sortedTargets) {
+          for (const targetEntry of sortedTargets) {
+            let ti = applyNightTarget(targetEntry.idx, validTargets.map(t => t.idx), '选择【追捕】目标');
+            const tgt = P[ti];
             const targetHand = P[ti].hand;
             if (ti === 0) {
               L.push(`${ai.name}（追猎者）向你发动【追捕】！请选择亮出一张手牌`);
@@ -526,6 +759,7 @@ export function aiStep(gs, opts = {}) {
               const mi = P[ct].hand.findIndex(c => cardsHuntMatch(c,rc));
               if (mi >= 0) {
                 const dc = P[ct].hand.splice(mi, 1)[0]; Disc.push(dc);
+                clearHunterLowQualityHand(P, ct);
                 const blankZoneUpdate=moveEligibleBlankZones(P,L);
                 if(blankZoneUpdate){
                   P=blankZoneUpdate.players;
@@ -537,9 +771,17 @@ export function aiStep(gs, opts = {}) {
                 L.push(`弃 ${cardLogText(dc,{alwaysShowName:true})} → ${tgt.name} 受 ${huntDamage}HP 伤害！`);
                 applyHpDamageWithLink(P,ti,huntDamage,Disc,L,gs.currentTurn,D);
                 if (P[ti].hp <= 0) {
+                  let afterDamagePlayers=null;
+                  let afterDamageDiscard=null;
+                  let afterDamageLog=null;
+                  let lootTransferCount=0;
+                  let lootDiscardCards=[];
                   if (targetHandBefore.length) {
                     Disc=removeCardsFromDiscard(Disc,targetHandBefore);
                     P[ti].hand=[...targetHandBefore];
+                    afterDamagePlayers=copyPlayers(P);
+                    afterDamageDiscard=[...Disc];
+                    afterDamageLog=[...L];
                     const maxToTake=3;
                     if (targetRevealBefore) {
                       const chosenCards=aiChooseHunterLootCards(P[ti].hand,P[ct].hand,maxToTake);
@@ -548,10 +790,12 @@ export function aiStep(gs, opts = {}) {
                         if(idx>=0){
                           P[ti].hand.splice(idx,1);
                           P[ct].hand.push(stolenCard);
+                          lootTransferCount++;
                           L.push(`${ai.name} 从 ${tgt.name} 的公开手牌中选择了 ${cardLogText(stolenCard)}！`);
                         }
                       });
                       const { kept: kept1, destroyed: destroyed1 } = separateBlackGoatYoung(P[ti].hand);
+                      lootDiscardCards=[...kept1];
                       if (kept1.length) Disc.push(...kept1);
                       if (destroyed1.length) L.push(`${P[ti].name} 的 ${destroyed1.length} 张黑山羊幼仔被销毁`);
                       P[ti].hand = [];
@@ -561,13 +805,19 @@ export function aiStep(gs, opts = {}) {
                         const randomIndex = Math.floor(Math.random() * P[ti].hand.length);
                         const stolenCard = P[ti].hand.splice(randomIndex, 1)[0];
                         P[ct].hand.push(stolenCard);
+                        lootTransferCount++;
                         L.push(`${ai.name} 从 ${tgt.name} 的手牌中暗抽了一张！`);
                       }
                       const { kept: kept2, destroyed: destroyed2 } = separateBlackGoatYoung(P[ti].hand);
+                      lootDiscardCards=[...kept2];
                       if (kept2.length) Disc.push(...kept2);
                       if (destroyed2.length) L.push(`${P[ti].name} 的 ${destroyed2.length} 张黑山羊幼仔被销毁`);
                       P[ti].hand = [];
                     }
+                  } else {
+                    afterDamagePlayers=copyPlayers(P);
+                    afterDamageDiscard=[...Disc];
+                    afterDamageLog=[...L];
                   }
                   if (P[ti].godZone?.length) { Disc.push(...P[ti].godZone); P[ti].godZone = []; P[ti].godName = null; P[ti].godLevel = 0; }
                   aiHuntEvents.push({
@@ -577,6 +827,11 @@ export function aiStep(gs, opts = {}) {
                     afterDiscardPlayers,
                     afterDiscardDiscard,
                     beforePlayers:beforeHuntPlayers,
+                    afterDamagePlayers,
+                    afterDamageDiscard,
+                    afterDamageLog,
+                    lootTransferCount,
+                    lootDiscardCards,
                     afterPlayers:copyPlayers(P),
                     afterResultDiscard:[...Disc],
                     beforeLog:L.slice(0,huntLogStart),
@@ -584,7 +839,7 @@ export function aiStep(gs, opts = {}) {
                     msgs:L.slice(huntLogStart),
                   });
                   alive = P.filter((p, i) => !p.isDead && i !== ct);
-                  newAbandoned = [];
+                  newAbandoned = newAbandoned.filter(i => P[i] && !P[i].isDead);
                   foundTarget = true;
                   break;
                 } else {
@@ -627,10 +882,12 @@ export function aiStep(gs, opts = {}) {
           if (!foundTarget) {
             // 所有目标都尝试过了，仍无法追捕
             L.push(`${ai.name} 尝试了所有目标，仍无法追捕`);
+            markHunterLowQualityHand(P, ct, gs, newAbandoned.length);
             huntContinue = false;
           }
         } else {
           L.push(`${ai.name} 环顾四周，没有合适的猎物了`);
+          markHunterLowQualityHand(P, ct, gs, newAbandoned.length);
           huntContinue = false;
         }
 
@@ -645,58 +902,36 @@ export function aiStep(gs, opts = {}) {
       if(!plan){
         huntContinue = false;
       }else if(P[ct].hand.length){
-        tgt=P[plan.targetIdx];
-        const ti=plan.targetIdx;
+        const legalTargets=alive.map(p=>P.indexOf(p)).filter(i=>i>=0);
+        const ti=applyNightTarget(plan.targetIdx,legalTargets,'选择【蛊惑】目标');
+        tgt=P[ti];
         const sc=plan.card;
         const bwRes=applyBewitchGift(gs,P,D,Disc,L,ct,ti,sc);
         gs=bwRes.gs;P=bwRes.P;D=bwRes.D;Disc=bwRes.Disc;L=bwRes.L;
+        const pendingSlime=buildPendingSlimeBalanceState(gs,P,D,Disc,L,{
+          huntAbandoned:newAbandoned,
+          _aiDrawnCard:(gs._aiDrawnCard??gs._drawnCard??null),
+          _discardedDrawnCard:(gs._discardedDrawnCard??false),
+          _aiName:ai.name,
+          _playersBeforeNextDraw:copyPlayers(P),
+          _playersBeforeSkillAction:playersBeforeSkillAction,
+          _preSkillLogs:preSkillLogs,
+          _preSkillDiscard:preSkillDiscard,
+          _aiHuntEvents:aiHuntEvents,
+        });
+        if(pendingSlime)return pendingSlime;
         if(!sc.isGod&&bwRes.fxResult){
           const res=bwRes.fxResult;
-          if(sc.type==='swapAllHands'||res.statePatch?.peekHandTargets||res.statePatch?.caveDuelTargets||res.statePatch?.damageLinkTargets||res.statePatch?.roseThornTargets||res.statePatch?.abilityData?.type==='firstComePick'||res.statePatch?.abilityData?.type==='sameAbyssChoice'||res.statePatch?.abilityData?.type==='sphinxGuess'){
-            const phaseAbilityData={
-              ...(sc.type==='swapAllHands'?{
+          if(sc.type==='swapAllHands'||hasEffectDecisionState(res.statePatch)){
+            const {phase:nextPhase,abilityData:phaseAbilityData}=deriveEffectDecisionState(res.statePatch,{
+              fallbackPhase:'ACTION',
+              leadingPhase:sc.type==='swapAllHands'?'ZONE_SWAP_SELECT_TARGET':null,
+              leadingAbilityData:sc.type==='swapAllHands'?{
                 zoneSwapCard:sc,
                 zoneSwapSource:ti,
-              }:{}),
-              ...(res.statePatch?.peekHandTargets?{
-                peekHandTargets:res.statePatch.peekHandTargets,
-                peekHandSource:res.statePatch.peekHandSource,
-              }:{}),
-              ...(res.statePatch?.caveDuelTargets?{
-                caveDuelTargets:res.statePatch.caveDuelTargets,
-                caveDuelSource:res.statePatch.caveDuelSource,
-              }:{}),
-              ...(res.statePatch?.damageLinkTargets?{
-                damageLinkTargets:res.statePatch.damageLinkTargets,
-                damageLinkSource:res.statePatch.damageLinkSource,
-              }:{}),
-              ...(res.statePatch?.roseThornTargets?{
-                roseThornTargets:res.statePatch.roseThornTargets,
-                roseThornSource:res.statePatch.roseThornSource,
-              }:{}),
-              ...(res.statePatch?.abilityData?.type==='firstComePick'?{
-                ...res.statePatch.abilityData,
-                _turnOwner:gs.currentTurn,
-              }:{}),
-              ...(res.statePatch?.abilityData?.type==='sameAbyssChoice'?{
-                ...res.statePatch.abilityData,
-                _turnOwner:gs.currentTurn,
-              }:{}),
-              ...(res.statePatch?.abilityData?.type==='sphinxGuess'?{
-                ...res.statePatch.abilityData,
-                _turnOwner:gs.currentTurn,
-              }:{}),
-            };
-            const nextPhase=
-              sc.type==='swapAllHands'?'ZONE_SWAP_SELECT_TARGET':
-              res.statePatch?.peekHandTargets?'PEEK_HAND_SELECT_TARGET':
-              res.statePatch?.caveDuelTargets?'CAVE_DUEL_SELECT_TARGET':
-              res.statePatch?.damageLinkTargets?'DAMAGE_LINK_SELECT_TARGET':
-              res.statePatch?.roseThornTargets?'ROSE_THORN_SELECT_TARGET':
-              res.statePatch?.abilityData?.type==='firstComePick'?'FIRST_COME_PICK_SELECT':
-              res.statePatch?.abilityData?.type==='sameAbyssChoice'?'SAME_ABYSS_SELECT':
-              res.statePatch?.abilityData?.type==='sphinxGuess'?'SPHINX_GUESS':
-              'ACTION';
+              }:{},
+              turnOwner:gs.currentTurn,
+            });
             const needsPlayerDecision = sc.type==='swapAllHands' || !!res.statePatch?.peekHandTargets || !!res.statePatch?.caveDuelTargets || !!res.statePatch?.damageLinkTargets || !!res.statePatch?.roseThornTargets || res.statePatch?.abilityData?.type==='sphinxGuess';
             return {
               ...gs,
@@ -738,7 +973,9 @@ export function aiStep(gs, opts = {}) {
           const scoreH=h=>h.filter(c=>!c.isGod&&(!myL.has(c.letter)||!myN.has(c.number))).length;
           tgt=pool.reduce((b,p)=>scoreH(p.hand)>scoreH(b.hand)?p:b,pool[0]);
         }
-        const ti=P.indexOf(tgt);
+        const legalTargets=pool.map(p=>P.indexOf(p)).filter(i=>i>=0);
+        const ti=applyNightTarget(P.indexOf(tgt),legalTargets,'选择【掉包】目标');
+        tgt=P[ti];
         if(P[ti]?.hand.length&&P[ct].hand.length){
           const ri=0|Math.random()*P[ti].hand.length;const taken=P[ti].hand.splice(ri,1)[0];
           const gi=0|Math.random()*P[ct].hand.length;const given=P[ct].hand.splice(gi,1)[0];
@@ -765,27 +1002,33 @@ export function aiStep(gs, opts = {}) {
       }
     }
   }else if(!P[ct].isDead){
-    if(aiEffRole===ROLE_CULTIST&&isCultistEndingTurnUnreasonable(P,ct)){
+    if(aiEffRole===ROLE_CULTIST&&!gs.skillUsed&&!gs.multiplyUsed&&!gs.restUsed&&isCultistEndingTurnUnreasonable(P,ct)){
       cultistBewitchPlan=chooseAiCultistBewitchPlan(P,ct);
       if(cultistBewitchPlan){
         const plan=cultistBewitchPlan;
-        const ti=plan.targetIdx;
+        const legalTargets=alive.map(p=>P.indexOf(p)).filter(i=>i>=0);
+        const ti=applyNightTarget(plan.targetIdx,legalTargets,'选择【蛊惑】目标');
         const sc=plan.card;
         const bwRes=applyBewitchGift(gs,P,D,Disc,L,ct,ti,sc);
         gs=bwRes.gs;P=bwRes.P;D=bwRes.D;Disc=bwRes.Disc;L=bwRes.L;
+        const pendingSlime=buildPendingSlimeBalanceState(gs,P,D,Disc,L,{
+          huntAbandoned:newAbandoned,
+          _aiDrawnCard:(gs._aiDrawnCard??gs._drawnCard??null),
+          _discardedDrawnCard:(gs._discardedDrawnCard??false),
+          _aiName:ai.name,
+          _playersBeforeNextDraw:copyPlayers(P),
+          _playersBeforeSkillAction:playersBeforeSkillAction,
+          _preSkillLogs:preSkillLogs,
+          _preSkillDiscard:preSkillDiscard,
+          _aiHuntEvents:aiHuntEvents,
+        });
+        if(pendingSlime)return pendingSlime;
         if(!sc.isGod&&bwRes.fxResult){
           const res=bwRes.fxResult;
-          if(res.statePatch?.abilityData?.type==='firstComePick'){
+          if(hasEffectDecisionState(res.statePatch)){
+            const {phase,abilityData}=deriveEffectDecisionState(res.statePatch,{fallbackPhase:'ACTION',turnOwner:gs.currentTurn});
             const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
-            return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'FIRST_COME_PICK_SELECT',abilityData:{...res.statePatch.abilityData,_turnOwner:gs.currentTurn},skillUsed:true};
-          }
-          if(res.statePatch?.abilityData?.type==='sameAbyssChoice'){
-            const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
-            return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'SAME_ABYSS_SELECT',abilityData:{...res.statePatch.abilityData,_turnOwner:gs.currentTurn},skillUsed:true};
-          }
-          if(res.statePatch?.abilityData?.type==='sphinxGuess'){
-            const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
-            return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'SPHINX_GUESS',abilityData:{...res.statePatch.abilityData,_turnOwner:gs.currentTurn},currentTurn:ti,skillUsed:true};
+            return {...gs,players:P,deck:D,discard:Disc,log:L,phase,abilityData,currentTurn:res.statePatch?.abilityData?.type==='sphinxGuess'?ti:gs.currentTurn,skillUsed:true};
           }
         }
         const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
@@ -805,7 +1048,14 @@ export function aiStep(gs, opts = {}) {
   const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
   const aiHandLimit=P[ct]._nyaHandLimit??4;
   const discardedCards=[];
-  while(P[ct].hand.length>aiHandLimit){const c=P[ct].hand.shift();Disc.push(c);discardedCards.push(c);L.push(`${ai.name} 弃 ${cardLogText(c,{alwaysShowName:true})}（上限）`);}
+  const handLimitBeforePlayers=copyPlayers(P);
+  const handLimitBeforeDiscard=[...Disc];
+  const handLimitBeforeLog=[...L];
+  while(P[ct].hand.length>aiHandLimit){
+    const c=P[ct].hand.shift();Disc.push(c);discardedCards.push(c);L.push(`${ai.name} 弃 ${cardLogText(c,{alwaysShowName:true})}（上限）`);
+    const balance=applyBalanceDiscardSideEffects({players:P,deck:D,discard:Disc,log:L,ownerIdx:ct,cards:[c],reason:'手牌上限弃牌'});
+    P=balance.players;D=balance.deck;Disc=balance.discard;L=balance.log;
+  }
   // 结算玫瑰倒刺：弃掉的标记牌立即造成伤害，日志紧跟在弃牌日志之后
   if(discardedCards.length){
     const thornLosses={};
@@ -824,6 +1074,8 @@ export function aiStep(gs, opts = {}) {
   if(winAfterDiscard){
     return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:winAfterDiscard,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:(useSkill||gs.skillUsed),_animAiDrawnCard:gs._aiDrawnCard??gs._drawnCard??null,_animDiscardedDrawnCard:gs._discardedDrawnCard??false,_aiName:ai.name,_playersBeforeNextDraw:copyPlayers(P),_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard,_aiHuntEvents:aiHuntEvents};
   }
+  const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,gs);
+  P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};
   const _P_afterAction=copyPlayers(P);
   let nextGs;
 
@@ -832,7 +1084,7 @@ export function aiStep(gs, opts = {}) {
   const hasZoneCards = P[ct].hand.filter(isZoneCard).length > 0;
   try{
     if (aiEffRole === ROLE_HUNTER && huntContinue && hasZoneCards && hasValidTargets) {
-        nextGs = withClearedTurnAnimFields({...gs, players:P, deck:D, discard:Disc, log:L, phase: 'AI_TURN', currentTurn: ct, huntAbandoned: newAbandoned, skillUsed: false, _drawnCard: null, _discardedDrawnCard:false});
+        nextGs = withClearedTurnAnimFields({...gs, players:P, deck:D, discard:Disc, log:L, phase: 'AI_TURN', currentTurn: ct, huntAbandoned: newAbandoned, skillUsed: false});
     } else {
         nextGs = startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct, huntAbandoned: newAbandoned, skillUsed: (useSkill || gs.skillUsed)}, opts);
     }
@@ -840,5 +1092,22 @@ export function aiStep(gs, opts = {}) {
     throw new Error(`${ai.name} 回合收尾失败: ${e?.message||'未知错误'}`);
   }
 
-  return{...nextGs,_animAiDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?null:(gs._aiDrawnCard??gs._drawnCard??null),_animDiscardedDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?false:(gs._discardedDrawnCard??false),_aiName:ai.name,_playersBeforeNextDraw:_P_afterAction,_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard,_aiHuntEvents:aiHuntEvents,_aiHandLimitDiscards:discardedCards};
+  return{
+    ...nextGs,
+    _animAiDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?null:(gs._aiDrawnCard??gs._drawnCard??null),
+    _animDiscardedDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?false:(gs._discardedDrawnCard??false),
+    _aiName:ai.name,
+    _playersBeforeNextDraw:_P_afterAction,
+    _playersBeforeSkillAction:playersBeforeSkillAction,
+    _preSkillLogs:preSkillLogs,
+    _preSkillDiscard:preSkillDiscard,
+    _aiHuntEvents:aiHuntEvents,
+    _aiHandLimitDiscards:discardedCards,
+    ...(discardedCards.length?{
+      _aiHandLimitBeforePlayers:handLimitBeforePlayers,
+      _aiHandLimitBeforeDiscard:handLimitBeforeDiscard,
+      _aiHandLimitBeforeLog:handLimitBeforeLog,
+    }:{}),
+    ...(animMultiplyEvent?{_animMultiplyEvent:animMultiplyEvent}:{}),
+  };
 }

@@ -7,16 +7,60 @@
   isWinHand,
   makeInspectionMeta,
   isBlackGoatYoung,
+  isTsathogguaSlime,
   killPlayerState,
+  buildTsathogguaSlimeBalanceDecision,
 } from './coreUtils';
 import { aiShouldKeepZoneCard } from './ai';
 import { clearPlayerGodZone } from './aiTurn';
 import { splitAnimBoundLogs } from './animLogs';
 import { localDisplayName } from './rotateState';
-import { GOD_DEFS, createBlackGoatYoungCard } from '../constants/card';
+import { GOD_DEFS, createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../constants/card';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
 import { applyFx, applyInspectionForSanLoss } from './effectEngine';
 import { buildZhuLight, getZhuTopGuard } from './zhuPower';
+import { buildStatEvents } from './statEvents';
+import { deriveEffectDecisionState } from './effectStatePatch';
+import { buildApophisNightLog, getApophisNightForLevel } from './apophisNight';
+import { canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
+import { appendProliferatingZDraws, clearExpiredProliferatingZ } from './proliferatingZ';
+import { drawCardDecisionText, markBlindZoneCard, shouldBlindZoneDecision } from './blindZoneDecision';
+
+function appendStatEventsToInspectionMeta(inspectionMeta, beforePlayers, afterPlayers, logs, reason) {
+  const statEventSeq = (inspectionMeta?._statEventSeq || 0) + 1;
+  const statEvents = buildStatEvents(beforePlayers, afterPlayers, logs, { reason, seq: statEventSeq });
+  if (!statEvents.length) return inspectionMeta;
+  return {
+    ...inspectionMeta,
+    _statEvents: [...(inspectionMeta?._statEvents || []), ...statEvents],
+    _statEventSeq: statEventSeq,
+  };
+}
+
+function getDebugForceTargetIndex(target) {
+  if (target === 'player') return 0;
+  const match = String(target || '').match(/^ai([1-4])$/);
+  return match ? Number(match[1]) : null;
+}
+
+function applyDebugForceDrawToTop(gs, next, deck) {
+  const targetIndex = getDebugForceTargetIndex(gs?.debugForceCardTarget);
+  if (!gs?.debugForceCard || targetIndex !== next) return false;
+  deck.unshift(gs.debugForceCard);
+  gs.debugForceCardKeepPending = gs.debugForceCardKeep || 'auto';
+  gs.debugForceCardKeepTarget = next;
+  gs.debugForceCard = null;
+  gs.debugForceCardTarget = null;
+  return true;
+}
+
+function consumeDebugForceKeepOverride(gs, ci) {
+  if (gs?.debugForceCardKeepTarget !== ci || !gs?.debugForceCardKeepPending) return 'auto';
+  const keepOverride = gs.debugForceCardKeepPending;
+  gs.debugForceCardKeepPending = null;
+  gs.debugForceCardKeepTarget = null;
+  return keepOverride;
+}
 
 export function checkWin(players, isMP) {
   const hasHunters = players.some(p => p.role === ROLE_HUNTER);
@@ -65,20 +109,31 @@ export function shouldTriggerGodResurrection(gs) {
 
 /** AI 自动选择 SHU 黑暗子嗣的目标。默认优先给自己，若自己是寻宝者则随机给其他存活角色。 */
 function _chooseAiShuTarget(ci, P) {
-  if (P[ci].role !== ROLE_TREASURE) return ci;
-  const others = P.map((p, i) => i).filter(i => i !== ci && !P[i].isDead);
+  if (P[ci].role !== ROLE_TREASURE && canGodPowerAffect(P[ci])) return ci;
+  const others = P.map((p, i) => i).filter(i => i !== ci && !P[i].isDead && canGodPowerAffect(P[i]));
   return others.length > 0 ? others[Math.floor(Math.random() * others.length)] : ci;
 }
 
-export function applySanLossToPlayerWithInspection(targetIndex, amount, startIndex, P, D, Disc, L, inspectionMeta) {
+export function applySanLossToPlayerWithInspection(targetIndex, amount, startIndex, P, D, Disc, L, inspectionMeta, reason = 'SAN损失') {
+  const beforePlayers = copyPlayers(P);
   P[targetIndex].san = clamp(P[targetIndex].san - amount);
-  const processed = applyInspectionForSanLoss(targetIndex, P[targetIndex].san, startIndex, P, D, Disc, L, inspectionMeta);
+  const nextInspectionMeta = appendStatEventsToInspectionMeta(
+    inspectionMeta,
+    beforePlayers,
+    P,
+    L.slice(-1),
+    reason,
+  );
+  const processed = applyInspectionForSanLoss(targetIndex, P[targetIndex].san, startIndex, P, D, Disc, L, nextInspectionMeta);
+  const slimeDecision = buildTsathogguaSlimeBalanceDecision(beforePlayers, processed.P);
   return {
     P: processed.P,
     D: processed.D,
     Disc: processed.Disc,
     L: processed.log,
-    inspectionMeta: processed.inspectionMeta,
+    inspectionMeta: slimeDecision
+      ? { ...processed.inspectionMeta, abilityData: slimeDecision }
+      : processed.inspectionMeta,
   };
 }
 
@@ -101,6 +156,7 @@ export function convertGodFollower(targetIndex, startIndex, P, D, Disc, L, inspe
 
 export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConvert) {
   const msgs = []; const godKey = godCard.godKey;
+  let statePatch = {};
   let inspectionMeta = makeInspectionMeta(gs);
   P = P.map(p => ({ ...p, godZone: [...(p.godZone || [])] })); // shallow copy godZone arrays
   if (forcedConvert && P[ci].godName && P[ci].godName !== godKey) {
@@ -112,6 +168,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     clearPlayerGodZone(P[ci], Disc);
   }
   let action;
+  const proliferatingZGainEvents = [];
   if (P[ci].godName === godKey && P[ci].godLevel < 3) { action = 'upgrade'; }
   else if (P[ci].godName === godKey && P[ci].godLevel >= 3) { action = 'discard'; }
   else if (!P[ci].godName) {
@@ -120,14 +177,53 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     else if ((P[ci]._nyaBorrow || P[ci].role) === ROLE_CULTIST && Math.random() < 0.6) { action = 'hand'; }
     else if (P[ci].san > 4) { action = 'worship'; }
     else { action = 'discard'; }
+  } else if (P[ci].godName !== godKey) {
+    action = P[ci].san > 4 ? 'convert' : 'discard';
   } else { action = 'discard'; }
   if (action === 'upgrade') {
     P[ci].godLevel++; P[ci].godZone.push({ ...godCard });
+    proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
     msgs.push(`${P[ci].name} 邪神之力升至Lv.${P[ci].godLevel}（${godCard.power}）`);
-    if (godKey === 'SHU') {
+    if (godKey === 'APO' && canGodPowerAffect(P[ci])) {
+      statePatch.apophisNight = getApophisNightForLevel(P[ci].godLevel);
+      msgs.push(buildApophisNightLog());
+    }
+    if (godKey === 'SHU' && canGodPowerAffect(P[ci])) {
       const count = GOD_DEFS.SHU.levels[P[ci].godLevel - 1]?.offspringCount || 0;
       const shuTargetIdx = _chooseAiShuTarget(ci, P);
-      for (let i = 0; i < count; i++) P[shuTargetIdx].hand.push(createBlackGoatYoungCard());
+      if (!canGodPowerAffect(P[shuTargetIdx])) return;
+      const goatCards = Array.from({ length: count }, () => createBlackGoatYoungCard());
+      P[shuTargetIdx].hand.push(...goatCards);
+      if (goatCards.length) proliferatingZGainEvents.push({ ownerIdx: shuTargetIdx, cards: goatCards });
+      if (count) msgs.push(`【黑暗子嗣】${P[shuTargetIdx].name} 获得${count}张黑山羊幼仔`);
+    }
+    P.forEach((p, i) => {
+      if (i !== ci && p.godName === godKey) {
+        const abandonBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
+        const abandoned = abandonGodFollower(i, gs?.currentTurn ?? ci, P, D, Disc, abandonBaseLog, inspectionMeta);
+        P = abandoned.P; D = abandoned.D; Disc = abandoned.Disc; inspectionMeta = abandoned.inspectionMeta;
+        const extraMsgs = (abandoned.L || []).slice(abandonBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
+      }
+    });
+  } else if (action === 'convert') {
+    const convertBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
+    const converted = convertGodFollower(ci, gs?.currentTurn ?? ci, P, D, Disc, convertBaseLog, inspectionMeta, `${P[ci].name} 改信新神，SAN-1`);
+    P = converted.P; D = converted.D; Disc = converted.Disc; inspectionMeta = converted.inspectionMeta;
+    const extraMsgs = (converted.L || []).slice(convertBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
+    P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }];
+    proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
+    msgs.push(`${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
+    if (godKey === 'APO' && canGodPowerAffect(P[ci])) {
+      statePatch.apophisNight = getApophisNightForLevel(P[ci].godLevel);
+      msgs.push(buildApophisNightLog());
+    }
+    if (godKey === 'SHU' && canGodPowerAffect(P[ci])) {
+      const count = GOD_DEFS.SHU.levels[0]?.offspringCount || 0;
+      const shuTargetIdx = _chooseAiShuTarget(ci, P);
+      if (!canGodPowerAffect(P[shuTargetIdx])) return;
+      const goatCards = Array.from({ length: count }, () => createBlackGoatYoungCard());
+      P[shuTargetIdx].hand.push(...goatCards);
+      if (goatCards.length) proliferatingZGainEvents.push({ ownerIdx: shuTargetIdx, cards: goatCards });
       if (count) msgs.push(`【黑暗子嗣】${P[shuTargetIdx].name} 获得${count}张黑山羊幼仔`);
     }
     P.forEach((p, i) => {
@@ -140,11 +236,19 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     });
   } else if (action === 'worship') {
     P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }];
+    proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
     msgs.push(`${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
-    if (godKey === 'SHU') {
+    if (godKey === 'APO' && canGodPowerAffect(P[ci])) {
+      statePatch.apophisNight = getApophisNightForLevel(P[ci].godLevel);
+      msgs.push(buildApophisNightLog());
+    }
+    if (godKey === 'SHU' && canGodPowerAffect(P[ci])) {
       const count = GOD_DEFS.SHU.levels[0]?.offspringCount || 0;
       const shuTargetIdx = _chooseAiShuTarget(ci, P);
-      for (let i = 0; i < count; i++) P[shuTargetIdx].hand.push(createBlackGoatYoungCard());
+      if (!canGodPowerAffect(P[shuTargetIdx])) return;
+      const goatCards = Array.from({ length: count }, () => createBlackGoatYoungCard());
+      P[shuTargetIdx].hand.push(...goatCards);
+      if (goatCards.length) proliferatingZGainEvents.push({ ownerIdx: shuTargetIdx, cards: goatCards });
       if (count) msgs.push(`【黑暗子嗣】${P[shuTargetIdx].name} 获得${count}张黑山羊幼仔`);
     }
     P.forEach((p, i) => {
@@ -157,10 +261,17 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     });
   } else if (action === 'hand') {
     P[ci].hand.push({ ...godCard }); msgs.push(`${P[ci].name}（邪祀者）将邪神牌收入手牌`);
+    proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
   } else {
     Disc.push({ ...godCard }); msgs.push(`${P[ci].name} 放弃了邪神的馈赠`);
   }
-  return { P, D, Disc, msgs, inspectionMeta };
+  let zBase = { ...gs, ...statePatch };
+  proliferatingZGainEvents.forEach(event => {
+    const patch = appendProliferatingZDraws(zBase, P, event.ownerIdx, event.cards);
+    if (patch.proliferatingZQueue) zBase = { ...zBase, proliferatingZQueue: patch.proliferatingZQueue };
+  });
+  statePatch = { ...statePatch, ...(zBase.proliferatingZQueue ? { proliferatingZQueue: zBase.proliferatingZQueue } : {}) };
+  return { P, D, Disc, msgs, inspectionMeta, statePatch };
 }
 
 export function aiHandleGodCard(ci, godCard, P, D, Disc, L, gs, skipEffectMsg = false) {
@@ -176,11 +287,10 @@ export function aiHandleGodCard(ci, godCard, P, D, Disc, L, gs, skipEffectMsg = 
     }
     L.push(effectMsg);
   }
-  const forcedConvert = !!(P[ci].godName && P[ci].godName !== godCard.godKey);
-  const gres = resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConvert);
+  const gres = resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, false);
   P = gres.P; D = gres.D; Disc = gres.Disc;
   L.push(...gres.msgs);
-  return { P, D, Disc, L, inspectionMeta: gres.inspectionMeta };
+  return { P, D, Disc, L, inspectionMeta: gres.inspectionMeta, statePatch: gres.statePatch };
 }
 
 export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
@@ -224,15 +334,13 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
       L2.push(effectMsg);
       // AI处理邪神牌时，仍然立即扣减SAN值
       if (P[ci].role !== ROLE_CULTIST) {
-        P[ci].san = clamp(P[ci].san - cost); const newSan = P[ci].san; {
-          const baseLog = gs?.log || [];
-          const processed = applyInspectionForSanLoss(ci, newSan, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta);
-          P = processed.P; D = processed.D; Disc = processed.Disc; inspectionMeta = processed.inspectionMeta; L2.push(...processed.log.slice(baseLog.length));
-        }
+        const baseLog = [...(gs?.log || []), effectMsg];
+        const processed = applySanLossToPlayerWithInspection(ci, cost, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta, '邪神遭遇');
+        P = processed.P; D = processed.D; Disc = processed.Disc; inspectionMeta = processed.inspectionMeta; L2.push(...processed.L.slice(baseLog.length));
       }
       const gr = aiHandleGodCard(ci, drawnCard, P, D, Disc, L2, gs, true);
       P = gr.P; D = gr.D; Disc = gr.Disc;
-      return { P, D, Disc, drawnCard, effectMsgs: L2, kept: true, statePatch: { ...inspectionMeta, ...(gr.inspectionMeta || {}) } };
+      return { P, D, Disc, drawnCard, effectMsgs: L2, kept: true, statePatch: { ...inspectionMeta, ...(gr.inspectionMeta || {}), ...(gr.statePatch || {}) } };
     } else {
       let effectMsg = P[ci].role === ROLE_CULTIST
         ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`
@@ -242,13 +350,11 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
       let effectMsgs = [effectMsg];
 
       if (P[ci].role !== ROLE_CULTIST && cost > 0) {
-        P[ci].san = clamp(P[ci].san - cost);
-        const newSan = P[ci].san;
         const baseLog = gs?.log ? [...gs.log, effectMsg] : [effectMsg];
-        const processed = applyInspectionForSanLoss(ci, newSan, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta);
+        const processed = applySanLossToPlayerWithInspection(ci, cost, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta, '邪神遭遇');
         P = processed.P; D = processed.D; Disc = processed.Disc;
         inspectionMeta = processed.inspectionMeta;
-        effectMsgs.push(...processed.log.slice(baseLog.length));
+        effectMsgs.push(...processed.L.slice(baseLog.length));
       }
 
       return {
@@ -256,7 +362,7 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
         effectMsgs,
         needGodChoice: true, needsDecision: false,
         godEncounterCost: 0,
-        statePatch: inspectionMeta
+        statePatch: { ...inspectionMeta }
       };
     }
   }
@@ -278,10 +384,10 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
 
   // AI auto-decision
   if (isAI) {
-    const keepOverride = ci === 1 && gs?.debugForceCardKeepPending
-      ? gs.debugForceCardKeepPending
-      : 'auto';
-    const keep = keepOverride === 'keep' ? true : keepOverride === 'discard' ? false : aiShouldKeepZoneCard(drawnCard, ci, P, false);
+    const keepOverride = consumeDebugForceKeepOverride(gs, ci);
+    const blindZoneIdentity = shouldBlindZoneDecision(P, ci, drawnCard);
+    if (blindZoneIdentity) P[ci].blindNextZoneDecision = false;
+    const keep = keepOverride === 'keep' ? true : keepOverride === 'discard' ? false : blindZoneIdentity ? Math.random() < 0.5 : aiShouldKeepZoneCard(drawnCard, ci, P, false);
     if (!keep) {
       Disc.push(drawnCard);
       return { P, D, Disc, drawnCard, effectMsgs: [`${P[ci].name} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，评估后选择弃置`], needsDecision: false, _aiDrawnCard: drawnCard, discardedDrawnCard: true };
@@ -309,8 +415,22 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
     return { P, D, Disc, drawnCard, effectMsgs: [`${P[ci].name} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，选择收入手牌并触发效果`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false, _aiDrawnCard: drawnCard };
   }
 
+  const playerKeepOverride = consumeDebugForceKeepOverride(gs, ci);
+  const blindZoneIdentity = shouldBlindZoneDecision(P, ci, drawnCard);
+  if (playerKeepOverride === 'keep') {
+    if (blindZoneIdentity) P[ci].blindNextZoneDecision = false;
+    const res = applyFx(drawnCard, ci, null, P, D, Disc, gs, false, [], isAI);
+    P = res.P; D = res.D; Disc = res.Disc; P[ci].hand.push(drawnCard);
+    return { P, D, Disc, drawnCard, effectMsgs: [`${whoName} 收入了 ${cardLogText(drawnCard, { alwaysShowName: true })}`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false };
+  }
+  if (playerKeepOverride === 'discard') {
+    if (blindZoneIdentity) P[ci].blindNextZoneDecision = false;
+    Disc.push(drawnCard);
+    return { P, D, Disc, drawnCard, effectMsgs: [`${whoName} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，选择弃置`], kept: true, needsDecision: false, discardedDrawnCard: true };
+  }
+
   // Player needs decision
-  return { P, D, Disc, drawnCard, effectMsgs: [], needTarget: false, needsDecision: true, forcedKeep: false };
+  return { P, D, Disc, drawnCard: markBlindZoneCard(drawnCard, blindZoneIdentity), effectMsgs: [], needTarget: false, needsDecision: true, forcedKeep: false, blindZoneIdentity };
 }
 
 export function aiDrawAndApply(ci, ps, deck, disc, gs = {}) {
@@ -337,18 +457,29 @@ const TURN_START_PRIORITY = {
 };
 
 // [PASSIVE_GOD_DERIVATIVE] 黑山羊幼仔回合开始伤害
-function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs) {
-  if (P[next].isDead) return { P, D, Disc, L, winAfterBgy: null };
+function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta) {
+  if (P[next].isDead) return { P, D, Disc, L, inspectionMeta, winAfterBgy: null };
 
   const bgyCount = P[next].hand.filter(isBlackGoatYoung).length;
   if (bgyCount > 0) {
+    const beforePlayers = copyPlayers(P);
     P[next].hp = clamp(P[next].hp - bgyCount);
     P[next].san = clamp(P[next].san - bgyCount);
     L.push(`【黑山羊幼仔】${P[next].name} 失去 ${bgyCount} HP 和 ${bgyCount} SAN`);
+    inspectionMeta = appendStatEventsToInspectionMeta(
+      inspectionMeta,
+      beforePlayers,
+      P,
+      L.slice(-1),
+      '黑山羊幼仔',
+    );
+    const slimeDecision = buildTsathogguaSlimeBalanceDecision(beforePlayers, P);
+    if (slimeDecision) inspectionMeta = { ...inspectionMeta, abilityData: slimeDecision };
     if (P[next].san <= 6) {
       const baseLog = [...L];
-      const processed = applyInspectionForSanLoss(next, P[next].san, next, P, D, Disc, baseLog, makeInspectionMeta(gs));
+      const processed = applyInspectionForSanLoss(next, P[next].san, next, P, D, Disc, baseLog, inspectionMeta);
       P = processed.P; D = processed.D; Disc = processed.Disc;
+      inspectionMeta = processed.inspectionMeta;
       L.push(...processed.log.slice(baseLog.length));
     }
     if (P[next].hp <= 0) {
@@ -357,23 +488,31 @@ function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs) {
   }
 
   const winAfterBgy = checkWin(P, gs._isMP);
-  return { P, D, Disc, L, winAfterBgy };
+  return { P, D, Disc, L, inspectionMeta, winAfterBgy };
 }
 
 // [PASSIVE_OTHER] 两人一绳治愈
-function turnStartEvent_LinkHeal(P, pendingLinkHeals, L, statLogs = null) {
+function turnStartEvent_LinkHeal(P, pendingLinkHeals, L, inspectionMeta, statLogs = null) {
   for (const heal of pendingLinkHeals) {
+    const beforePlayers = copyPlayers(P);
     if (!P[heal.i].isDead) { P[heal.i].hp = clamp(P[heal.i].hp + heal.amount); }
     if (!P[heal.partnerIdx].isDead) { P[heal.partnerIdx].hp = clamp(P[heal.partnerIdx].hp + heal.amount); }
     L.push(heal.msg);
+    inspectionMeta = appendStatEventsToInspectionMeta(
+      inspectionMeta,
+      beforePlayers,
+      P,
+      [heal.msg],
+      '两人一绳',
+    );
     if (statLogs) statLogs.push(heal.msg);
   }
-  return { P, L };
+  return { P, L, inspectionMeta };
 }
 
 // [ACTIVE_GOD] NYA 偷身份
 function turnStartEvent_NyaBorrow(P, next, L, gs) {
-  if (P[next].godName !== 'NYA' || P[next].godLevel < 1) return { shouldEnterPhase: false };
+  if (P[next].godName !== 'NYA' || P[next].godLevel < 1 || hasGodPowerImmunity(P[next])) return { shouldEnterPhase: false };
 
   if (next === 0) {
     const deadOthers = P.filter((p, i) => i > 0 && p.isDead);
@@ -405,29 +544,96 @@ function endPreviousTurnCleanup(P, prevTurn) {
   delete p._nyaBorrow;
   delete p._nyaHandLimit;
   delete p.damageBonus;
+  delete p.godPowerImmuneThisTurn;
   P[prevTurn] = p;
   return P;
+}
+
+function grantTsathogguaSlimeAtEndTurn(P, prevTurn, L) {
+  const p = P?.[prevTurn];
+  if (!p || p.isDead || hasGodPowerImmunity(p) || p.godName !== 'TSG' || !p.godLevel) return null;
+  const count = GOD_DEFS.TSG.levels[(p.godLevel || 1) - 1]?.slimeCount || 0;
+  if (!count) return null;
+  const playersBefore = copyPlayers(P);
+  const cards = [];
+  for (let i = 0; i < count; i++) {
+    const card = createTsathogguaSlimeCard();
+    cards.push(card);
+    p.hand.push(card);
+  }
+  const msg = `【无定形体】${p.name} 获得${count}张撒托古亚的赐福黏液`;
+  L.push(msg);
+  return {
+    ownerIdx: prevTurn,
+    count,
+    cards,
+    msgs: [msg],
+    playersBefore,
+    playersAfter: copyPlayers(P),
+  };
+}
+
+function consumeTsathogguaSlimeForDraw(P, next, L) {
+  const p = P?.[next];
+  if (!p || p.isDead || hasGodPowerImmunity(p) || p.godName !== 'TSG' || !p.godLevel) return 0;
+  const slimes = (p.hand || []).filter(isTsathogguaSlime);
+  if (!slimes.length) return 0;
+  p.hand = p.hand.filter(card => !isTsathogguaSlime(card));
+  L.push(`【无定形体】${p.name} 的${slimes.length}张撒托古亚的赐福黏液消失，本次摸牌阶段额外摸${slimes.length}张牌`);
+  return slimes.length;
 }
 
 export function startNextTurn(gs, opts = {}) {
   const { isDebugMode = false } = opts;
   // Reset multiplyUsed at the start of every turn
-  gs = { ...gs, multiplyUsed: false };
+  const inheritedTsgSlimeGrantEvents = Array.isArray(gs._carryTsgSlimeGrantEvents) ? gs._carryTsgSlimeGrantEvents : [];
+  gs = { ...gs, multiplyUsed: false, _tsgSlimeGrantEvents: null, _carryTsgSlimeGrantEvents: null };
   const N = gs.players.length;
   let P = copyPlayers(gs.players), D = [...gs.deck], Disc = [...gs.discard], L = [...gs.log];
-  const _P_beforeTurn = copyPlayers(P);
+  let _P_beforeTurn = copyPlayers(P);
   let next = gs.currentTurn;
   let turnStartLogs = [];
   let drawLogs = [];
   let statLogs = [];
   let zhuLight = null;
   let pendingLinkHeals = [];
+  let inspectionMeta = makeInspectionMeta(gs);
   const turnDir = gs.turnDirection || 1;
-  for (let i = 1; i <= N; i++) { next = (gs.currentTurn + i * turnDir + N) % N; if (!P[next].isDead) break; }
+  const tsgSlimeGrantEvents = [...inheritedTsgSlimeGrantEvents];
+  const tsgSlimeGrant = grantTsathogguaSlimeAtEndTurn(P, gs.currentTurn, L);
+  if (tsgSlimeGrant) tsgSlimeGrantEvents.push(tsgSlimeGrant);
+  gs = { ...gs, _tsgSlimeGrantEvents: tsgSlimeGrantEvents.length ? tsgSlimeGrantEvents : null };
+  const pendingExtraTurnOwner = gs.pendingExtraTurnOwner;
+  const pendingExtraTurnAfterPlayer = gs.pendingExtraTurnAfterPlayer;
+  const extraTurnDue = pendingExtraTurnOwner != null
+    && (pendingExtraTurnAfterPlayer == null || pendingExtraTurnAfterPlayer === gs.currentTurn)
+    && (gs.pendingExtraTurnAfterMinTurn == null || (gs.turn || 0) >= gs.pendingExtraTurnAfterMinTurn);
+  const hasPendingExtraTurn = extraTurnDue && P[pendingExtraTurnOwner] && !P[pendingExtraTurnOwner].isDead;
+  const shouldClearExpiredExtraTurn = extraTurnDue && !hasPendingExtraTurn;
+  const resumeFromExtraTurn = !hasPendingExtraTurn && gs._extraTurnResumeFrom != null ? gs._extraTurnResumeFrom : null;
+  const turnBase = resumeFromExtraTurn != null ? resumeFromExtraTurn : gs.currentTurn;
+  if (hasPendingExtraTurn) {
+    next = pendingExtraTurnOwner;
+  } else {
+    for (let i = 1; i <= N; i++) { next = (turnBase + i * turnDir + N) % N; if (!P[next].isDead) break; }
+  }
+  const nextProliferatingZ = clearExpiredProliferatingZ(gs, gs.currentTurn);
+  gs = nextProliferatingZ === gs.proliferatingZ
+    ? gs
+    : { ...gs, proliferatingZ: nextProliferatingZ, proliferatingZQueue: [] };
+  const extraTurnPatch = hasPendingExtraTurn
+    ? { pendingExtraTurnOwner: null, pendingExtraTurnAfterPlayer: null, pendingExtraTurnAfterMinTurn: null, _extraTurnResumeFrom: gs.currentTurn }
+    : resumeFromExtraTurn != null
+      ? { pendingExtraTurnOwner: null, _extraTurnResumeFrom: null }
+      : shouldClearExpiredExtraTurn
+        ? { pendingExtraTurnOwner: null, pendingExtraTurnAfterPlayer: null, pendingExtraTurnAfterMinTurn: null }
+        : {};
+  gs = { ...gs, ...extraTurnPatch };
   // 增加回合数
   const newTurn = (gs.turn || 0) + 1;
   // 清理上回合玩家的临时状态
   P = endPreviousTurnCleanup(P, gs.currentTurn);
+  _P_beforeTurn = copyPlayers(P);
   // 清理过期的两人一绳链条
   P.forEach((p, i) => {
     const shouldExpire = p.damageLink && (
@@ -476,15 +682,18 @@ export function startNextTurn(gs, opts = {}) {
     zhuLight = turnStartEvent_ZhuLight(P, D, next, gs);
     L.push(...turnStartLogs);
     // [PASSIVE_GOD_DERIVATIVE] 黑山羊幼仔回合开始伤害
-    const bgy = turnStartEvent_BgyDamage(P, next, D, Disc, L, gs);
-    P = bgy.P; D = bgy.D; Disc = bgy.Disc; L = bgy.L;
+    const bgy = turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta);
+    P = bgy.P; D = bgy.D; Disc = bgy.Disc; L = bgy.L; inspectionMeta = bgy.inspectionMeta; gs = { ...gs, ...inspectionMeta };
     if (bgy.winAfterBgy) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: bgy.winAfterBgy, multiplyUsed: false };
+    if (inspectionMeta?.abilityData?.type === 'tsgSlimeBalance') {
+      return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, phase: 'TSG_SLIME_BALANCE', abilityData: { ...inspectionMeta.abilityData, _turnOwner: next }, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
+    }
     // [PASSIVE_OTHER] 两人一绳治愈
-    const link = turnStartEvent_LinkHeal(P, pendingLinkHeals, L);
-    P = link.P; L = link.L;
+    const link = turnStartEvent_LinkHeal(P, pendingLinkHeals, L, inspectionMeta);
+    P = link.P; L = link.L; inspectionMeta = link.inspectionMeta; gs = { ...gs, ...inspectionMeta };
     L.push(`${P[next].name} 从休息中醒来，跳过本回合`);
     // CTH power: draw when ending/skipping turn while face-down
-    if (P[next].godName === 'CTH' && P[next].godLevel >= 1) {
+    if (P[next].godName === 'CTH' && P[next].godLevel >= 1 && !hasGodPowerImmunity(P[next])) {
       const extraDraws = P[next].godLevel; // lv1→1, lv2→2, lv3→3
       const whoName = localDisplayName(next, P[next].name);
       L.push(`${whoName}（克苏鲁信徒Lv.${P[next].godLevel}）梦访拉莱耶，翻面跳过回合时额外摸${extraDraws}张牌`);
@@ -500,7 +709,7 @@ export function startNextTurn(gs, opts = {}) {
         if (r2.needGodChoice) {
           // AI角色不会触发神牌选择UI，直接处理
           if (next === 0) {
-            const drawLogs = [`${whoName} 摸到 ${cardLogText(r2.drawnCard, { alwaysShowName: true })}`];
+            const drawLogs = [`${whoName} 摸到 ${drawCardDecisionText(r2.drawnCard)}`];
             return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: r2.drawnCard, fromRest: true, cthDrawsRemaining: extraDraws - _d - 1, drawerIdx: 0 }, drawReveal: null, selectedCard: null, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: [], _cthRestDraws: cthRestDraws, _cthRestDrawLogs: cthRestDrawLogs, _playersBeforeCthDraws: _P_beforeCthDraws };
           }
         }
@@ -508,7 +717,7 @@ export function startNextTurn(gs, opts = {}) {
           // AI角色自动处理决策
           if (next === 0) {
             const split = splitAnimBoundLogs(r2.effectMsgs || []);
-            const drawLogs = [`${whoName} 摸到 ${cardLogText(r2.drawnCard, { alwaysShowName: true })}`, ...split.preStat];
+            const drawLogs = [`${whoName} 摸到 ${drawCardDecisionText(r2.drawnCard)}`, ...split.preStat];
             return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: r2.drawnCard, msgs: [], needsDecision: true, forcedKeep: false, drawerIdx: 0, drawerName: P[0].name, fromRest: true }, selectedCard: null, abilityData: { fromRest: true, cthDrawsRemaining: extraDraws - _d - 1 }, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: split.stat, _cthRestDraws: cthRestDraws, _cthRestDrawLogs: cthRestDrawLogs, _playersBeforeCthDraws: _P_beforeCthDraws };
           } else {
             // AI角色自动选择收入手牌
@@ -533,28 +742,24 @@ export function startNextTurn(gs, opts = {}) {
     }
     // Skip the turn: advance past player to the next living player
     // Hand limit is NOT enforced here — excess cards are kept until the next normal turn ends
-    return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner }, opts);
+    return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents }, opts);
   }
   turnStartLogs = [`── ${P[next].name} 的回合开始 ──`];
   L.push(...turnStartLogs);
   zhuLight = turnStartEvent_ZhuLight(P, D, next, gs);
   // [PASSIVE_GOD_DERIVATIVE] 黑山羊幼仔回合开始伤害
-  const bgy = turnStartEvent_BgyDamage(P, next, D, Disc, L, gs);
-  P = bgy.P; D = bgy.D; Disc = bgy.Disc; L = bgy.L;
+  const bgy = turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta);
+  P = bgy.P; D = bgy.D; Disc = bgy.Disc; L = bgy.L; inspectionMeta = bgy.inspectionMeta; gs = { ...gs, ...inspectionMeta };
   if (bgy.winAfterBgy) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: bgy.winAfterBgy, multiplyUsed: false };
+  if (inspectionMeta?.abilityData?.type === 'tsgSlimeBalance') {
+    return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, phase: 'TSG_SLIME_BALANCE', abilityData: { ...inspectionMeta.abilityData, _turnOwner: next }, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
+  }
   // [PASSIVE_OTHER] 两人一绳治愈
-  const link = turnStartEvent_LinkHeal(P, pendingLinkHeals, L, statLogs);
-  P = link.P; L = link.L;
+  const link = turnStartEvent_LinkHeal(P, pendingLinkHeals, L, inspectionMeta, statLogs);
+  P = link.P; L = link.L; inspectionMeta = link.inspectionMeta; gs = { ...gs, ...inspectionMeta };
   if (next === 0) {
     // Debug: 强制摸牌 - 玩家
-    if (gs.debugForceCard && gs.debugForceCardTarget === 'player') {
-      // 将指定的牌放在牌堆顶部
-      D.unshift(gs.debugForceCard);
-      gs.debugForceCardKeepPending = gs.debugForceCardKeep || 'auto';
-      // 清除debug设置，避免后续回合再次触发
-      gs.debugForceCard = null;
-      gs.debugForceCardTarget = null;
-    }
+    applyDebugForceDrawToTop(gs, next, D);
     // [ACTIVE_GOD] NYA 偷身份
     const nya = turnStartEvent_NyaBorrow(P, 0, L, gs);
     if (nya.shouldEnterPhase) {
@@ -562,17 +767,35 @@ export function startNextTurn(gs, opts = {}) {
     }
     // 检查是否需要跳过摸牌
     if (P[0].skipNextDraw) {
+      const skipReason = P[0].skipNextDrawReason || '扭伤';
       delete P[0].skipNextDraw;
-      L.push('你因扭伤而无法摸牌');
+      delete P[0].skipNextDrawReason;
+      L.push(`你因${skipReason}而无法摸牌`);
       const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: win, turn: newTurn, debugForceCard: null, debugForceCardTarget: null };
       return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'ACTION', drawReveal: null, selectedCard: null, abilityData: {}, globalOnlySwapOwner, turn: newTurn, debugForceCard: null, debugForceCardTarget: null };
     }
     const _P_beforeDraw = copyPlayers(P);
+    const tsgExtraDraws = consumeTsathogguaSlimeForDraw(P, 0, L);
+    for (let _d = 0; _d < tsgExtraDraws; _d++) {
+      const rSlime = playerDrawCard(P, D, Disc, 0, gs);
+      P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
+      if (rSlime.drawnCard) {
+        const msg = `【无定形体】你额外摸到 ${drawCardDecisionText(rSlime.drawnCard)}`;
+        L.push(msg); drawLogs.push(msg);
+      }
+      if (rSlime.needGodChoice) {
+        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: rSlime.drawnCard, drawerIdx: 0, godEncounterCost: rSlime.godEncounterCost, fromTsathogguaSlime: true }, drawReveal: null, selectedCard: null, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
+      }
+      if (rSlime.needsDecision) {
+        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: 0, drawerName: P[0].name, fromTsathogguaSlime: true }, selectedCard: null, abilityData: { fromTsathogguaSlime: true }, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
+      }
+      if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
+    }
     const res = playerDrawCard(P, D, Disc, 0, gs);
     P = res.P; D = res.D; Disc = res.Disc;
     // 多人游戏中记录玩家0摸牌信息到日志，让其他玩家可见（单机不需要，DRAW_REVEAL 时可见）
     if (res.drawnCard && !res.kept) {
-      drawLogs.push(`${gs._isMP ? P[0].name : '你'} 摸到 ${cardLogText(res.drawnCard, { alwaysShowName: true })}`);
+      drawLogs.push(`${gs._isMP ? P[0].name : '你'} 摸到 ${drawCardDecisionText(res.drawnCard)}`);
     }
     if (res.effectMsgs?.length) {
       const split = splitAnimBoundLogs(res.effectMsgs);
@@ -613,7 +836,11 @@ export function startNextTurn(gs, opts = {}) {
     const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: win, ...playerTurnAnimMeta };
     // 强制触发牌：效果已执行，直接进入 ACTION；drawReveal 保留卡牌供翻牌动画使用，但不广播 DRAW_REVEAL
     if (res.kept) {
-      return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'ACTION', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: 0, drawerName: P[0].name }, selectedCard: null, abilityData: {}, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}) };
+      const decisionState = deriveEffectDecisionState(res.statePatch, {
+        baseAbilityData: {},
+        fallbackPhase: 'ACTION',
+      });
+      return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: decisionState.phase, drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: 0, drawerName: P[0].name }, selectedCard: null, abilityData: decisionState.abilityData, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}) };
     }
     return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: 0, drawerName: P[0].name }, selectedCard: null, abilityData: {}, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
   } else if (gs._isMP) {
@@ -625,15 +852,34 @@ export function startNextTurn(gs, opts = {}) {
     }
     // 检查是否需要跳过摸牌
     if (P[next].skipNextDraw) {
+      const skipReason = P[next].skipNextDrawReason || '扭伤';
       delete P[next].skipNextDraw;
-      L.push(`${P[next].name} 因扭伤而无法摸牌`);
+      delete P[next].skipNextDrawReason;
+      L.push(`${P[next].name} 因${skipReason}而无法摸牌`);
       const win = checkWin(P, true); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: win };
       return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'ACTION', drawReveal: null, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner };
+    }
+    const _P_beforeMpDraw = copyPlayers(P);
+    const tsgExtraDraws = consumeTsathogguaSlimeForDraw(P, next, L);
+    for (let _d = 0; _d < tsgExtraDraws; _d++) {
+      const rSlime = playerDrawCard(P, D, Disc, next, gs);
+      P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
+      if (rSlime.drawnCard) {
+        const msg = `【无定形体】${P[next].name} 额外摸到 ${drawCardDecisionText(rSlime.drawnCard)}`;
+        L.push(msg); drawLogs.push(msg);
+      }
+      if (rSlime.needGodChoice) {
+        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: rSlime.drawnCard, godEncounterCost: rSlime.godEncounterCost, fromTsathogguaSlime: true }, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw };
+      }
+      if (rSlime.needsDecision) {
+        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: next, drawerName: P[next].name, fromTsathogguaSlime: true }, selectedCard: null, abilityData: { fromTsathogguaSlime: true }, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw };
+      }
+      if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
     }
     const res = playerDrawCard(P, D, Disc, next, gs);
     P = res.P; D = res.D; Disc = res.Disc;
     // 记录摸牌信息到日志（与单机AI摸牌保持一致：[key] 名称）
-    if (res.drawnCard && !res.kept) drawLogs.push(`${P[next].name} 摸到 ${cardLogText(res.drawnCard, { alwaysShowName: true })}`);
+    if (res.drawnCard && !res.kept) drawLogs.push(`${P[next].name} 摸到 ${drawCardDecisionText(res.drawnCard)}`);
     if (res.effectMsgs?.length) {
       const split = splitAnimBoundLogs(res.effectMsgs);
       drawLogs.push(...split.preStat);
@@ -654,20 +900,24 @@ export function startNextTurn(gs, opts = {}) {
     turnStartEvent_NyaBorrow(P, next, L, gs);
     // 检查是否需要跳过摸牌
     if (P[next].skipNextDraw) {
+      const skipReason = P[next].skipNextDrawReason || '扭伤';
       delete P[next].skipNextDraw;
-      L.push(`${P[next].name} 因扭伤而无法摸牌`);
+      delete P[next].skipNextDrawReason;
+      L.push(`${P[next].name} 因${skipReason}而无法摸牌`);
       const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: win, debugForceCard: null, debugForceCardTarget: null };
-      return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null }, opts);
+      return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents }, opts);
     }
-    // Debug: 强制摸牌 - AI1
-    if (gs.debugForceCard && gs.debugForceCardTarget === 'ai1' && next === 1) { // 假设第一名AI的索引是1
-      // 将指定的牌放在牌堆顶部
-      D.unshift(gs.debugForceCard);
-      // 清除debug设置，避免后续回合再次触发
-      gs.debugForceCard = null;
-      gs.debugForceCardTarget = null;
-    }
+    applyDebugForceDrawToTop(gs, next, D);
     const _P_beforeDraw = copyPlayers(P);
+    const tsgExtraDraws = consumeTsathogguaSlimeForDraw(P, next, L);
+    for (let _d = 0; _d < tsgExtraDraws; _d++) {
+      const rSlime = aiDrawAndApply(next, P, D, Disc, gs);
+      P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
+      if (rSlime.drawnCard) {
+        L.push(`【无定形体】${P[next].name} 额外摸到 ${drawCardDecisionText(rSlime.drawnCard)}`);
+      }
+      if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
+    }
     const zhuGuard = getZhuTopGuard({ ...gs, players: P, deck: D, currentTurn: next, zhuLight }, D);
     if (zhuGuard) {
       return {
@@ -698,9 +948,10 @@ export function startNextTurn(gs, opts = {}) {
     }
     const res = aiDrawAndApply(next, P, D, Disc, gs);
     gs.debugForceCardKeepPending = null;
+    gs.debugForceCardKeepTarget = null;
     P = res.P; D = res.D; Disc = res.Disc;
     if (res.drawnCard && isDebugMode) {
-      const debugDrawLog = `[调试] ${P[next].name}（${P[next]._nyaBorrow || P[next].role}）起手摸到 ${cardLogText(res.drawnCard, { alwaysShowName: true })}`;
+      const debugDrawLog = `[调试] ${P[next].name}（${P[next]._nyaBorrow || P[next].role}）起手摸到 ${drawCardDecisionText(res.drawnCard)}`;
       turnStartLogs.push(debugDrawLog);
       L.push(debugDrawLog);
     }
@@ -711,32 +962,10 @@ export function startNextTurn(gs, opts = {}) {
       if (drawLogs.length) L.push(...drawLogs);
       if (statLogs.length) L.push(...statLogs);
     }
-    let nextPhase = 'AI_TURN';
-    if (res.statePatch?.abilityData?.type === 'firstComePick') nextPhase = 'FIRST_COME_PICK_SELECT';
-    else if (res.statePatch?.abilityData?.type === 'sameAbyssChoice') nextPhase = 'SAME_ABYSS_SELECT';
-    else if (res.statePatch?.abilityData?.type === 'sphinxGuess') nextPhase = 'SPHINX_GUESS';
-    else if (res.statePatch?.peekHandTargets) nextPhase = 'PEEK_HAND_SELECT_TARGET';
-    else if (res.statePatch?.damageLinkTargets) nextPhase = 'DAMAGE_LINK_SELECT_TARGET';
-    const nextAbilityData = {
-      ...gs.abilityData,
-      ...(res.statePatch?.abilityData || {}),
-      ...(res.statePatch?.peekHandTargets ? {
-        peekHandTargets: res.statePatch.peekHandTargets,
-        peekHandSource: res.statePatch.peekHandSource,
-      } : {}),
-      ...(res.statePatch?.damageLinkTargets ? {
-        damageLinkTargets: res.statePatch.damageLinkTargets,
-        damageLinkSource: res.statePatch.damageLinkSource,
-      } : {}),
-      ...(res.statePatch?.caveDuelTargets ? {
-        caveDuelTargets: res.statePatch.caveDuelTargets,
-        caveDuelSource: res.statePatch.caveDuelSource,
-      } : {}),
-      ...(res.statePatch?.roseThornTargets ? {
-        roseThornTargets: res.statePatch.roseThornTargets,
-        roseThornSource: res.statePatch.roseThornSource,
-      } : {}),
-    };
+    const { phase: nextPhase, abilityData: nextAbilityData } = deriveEffectDecisionState(res.statePatch, {
+      baseAbilityData: gs.abilityData,
+      fallbackPhase: 'AI_TURN',
+    });
     const aiTurnAnimMeta = {
       currentTurn: next,
       phase: nextPhase,
@@ -769,6 +998,6 @@ export function startNextTurn(gs, opts = {}) {
         globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner)
       };
     }
-    return { ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, currentTurn: next, phase: nextPhase, drawReveal: null, selectedCard: null, abilityData: nextAbilityData, huntAbandoned: [], _drawnCard: res.drawnCard ?? null, _discardedDrawnCard: !!res.discardedDrawnCard, _playersBeforeThisDraw: _P_beforeDraw, _turnKey: (gs._turnKey || 0) + 1, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}), globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) };
+    return { ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, currentTurn: next, phase: nextPhase, drawReveal: null, selectedCard: null, abilityData: nextAbilityData, huntAbandoned: [], _aiDrawnCard: res.drawnCard ?? null, _drawnCard: res.drawnCard ?? null, _discardedDrawnCard: !!res.discardedDrawnCard, _playersBeforeThisDraw: _P_beforeDraw, _turnKey: (gs._turnKey || 0) + 1, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}), globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) };
   }
 }

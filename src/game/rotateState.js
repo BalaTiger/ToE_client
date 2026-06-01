@@ -1,7 +1,16 @@
-const ROTATE_GS_TOP_LEVEL_INDEX_FIELDS = ['currentTurn'];
+const ROTATE_GS_TOP_LEVEL_INDEX_FIELDS = ['currentTurn', 'pendingExtraTurnOwner', 'pendingExtraTurnAfterPlayer', '_extraTurnResumeFrom'];
 const ROTATE_GS_TOP_LEVEL_INDEX_ARRAY_FIELDS = ['huntAbandoned'];
 const ROTATE_GAME_OVER_INDEX_FIELDS = ['winnerIdx', 'winnerIdx2'];
 const ROTATE_DRAW_REVEAL_INDEX_FIELDS = ['drawerIdx'];
+const ROTATE_GS_PLAYER_SNAPSHOT_FIELDS = [
+  '_playersBeforeThisDraw',
+  '_preTurnPlayers',
+  '_earthquakeBeforePlayers',
+  '_playersBeforeNextDraw',
+  '_playersBeforeSkillAction',
+  '_playersBeforeCthDraws',
+  '_aiHandLimitBeforePlayers',
+];
 const ROTATE_ABILITYDATA_INDEX_FIELDS = [
   'drawerIdx',
   'swapTi',
@@ -14,6 +23,10 @@ const ROTATE_ABILITYDATA_INDEX_FIELDS = [
   'roseThornSource',
   'pickSource',
   'targetIdx',
+  'playerIndex',
+  'source',
+  'secretTarget',
+  'guesserIdx',
 ];
 const ROTATE_ABILITYDATA_INDEX_ARRAY_FIELDS = [
   'peekHandTargets',
@@ -21,6 +34,9 @@ const ROTATE_ABILITYDATA_INDEX_ARRAY_FIELDS = [
   'damageLinkTargets',
   'roseThornTargets',
   'pickOrder',
+  'targets',
+  'legalTargets',
+  'guessOrder',
 ];
 
 function rotateIndexedFields(obj, fields, rotateIndex) {
@@ -43,6 +59,24 @@ function rotateIndexedArrayFields(obj, fields, rotateIndex) {
   fields.forEach(field => {
     if (Array.isArray(next[field])) {
       next[field] = next[field].map(rotateIndex);
+      changed = true;
+    }
+  });
+  return changed ? next : obj;
+}
+
+function rotatePlayersArray(players, myIndex) {
+  if (!Array.isArray(players) || myIndex === 0) return players;
+  return [...players.slice(myIndex), ...players.slice(0, myIndex)];
+}
+
+function rotatePlayerSnapshotFields(obj, fields, myIndex) {
+  if (!obj) return obj;
+  let changed = false;
+  const next = { ...obj };
+  fields.forEach(field => {
+    if (Array.isArray(next[field])) {
+      next[field] = rotatePlayersArray(next[field], myIndex);
       changed = true;
     }
   });
@@ -73,17 +107,87 @@ function rotateZhuLightForViewer(zhuLight, rotateIndex) {
   return rotateIndexedFields(zhuLight, ['ownerIdx'], rotateIndex);
 }
 
+function rotateEarthquakeDiscardEvents(events, rotateIndex, myIndex) {
+  if (!Array.isArray(events)) return events;
+  return events.map(event => ({
+    ...event,
+    playerIndex: event.playerIndex != null ? rotateIndex(event.playerIndex) : event.playerIndex,
+    afterPlayers: rotatePlayersArray(event.afterPlayers, myIndex),
+  }));
+}
+
+function rotateAiHuntEvents(events, rotateIndex, myIndex) {
+  if (!Array.isArray(events)) return events;
+  return events.map(event => ({
+    ...event,
+    targetIdx: event.targetIdx != null ? rotateIndex(event.targetIdx) : event.targetIdx,
+    hunterIdx: event.hunterIdx != null ? rotateIndex(event.hunterIdx) : event.hunterIdx,
+    beforePlayers: rotatePlayersArray(event.beforePlayers, myIndex),
+    afterDiscardPlayers: rotatePlayersArray(event.afterDiscardPlayers, myIndex),
+    afterPlayers: rotatePlayersArray(event.afterPlayers, myIndex),
+  }));
+}
+
+function rotateAnimMultiplyEvent(event, rotateIndex) {
+  if (!event) return event;
+  return {
+    ...event,
+    fromIdx: event.fromIdx != null ? rotateIndex(event.fromIdx) : event.fromIdx,
+    toIdx: event.toIdx != null ? rotateIndex(event.toIdx) : event.toIdx,
+  };
+}
+
+function rotateAnimSphinxReveal(event, rotateIndex) {
+  if (!event) return event;
+  return {
+    ...event,
+    actorIdx: event.actorIdx != null ? rotateIndex(event.actorIdx) : event.actorIdx,
+  };
+}
+
+function rotateApophisTargetEvent(event, rotateIndex) {
+  if (!event) return event;
+  return {
+    ...event,
+    actorIdx: event.actorIdx != null ? rotateIndex(event.actorIdx) : event.actorIdx,
+    selectedIdx: event.selectedIdx != null ? rotateIndex(event.selectedIdx) : event.selectedIdx,
+    targetIdx: event.targetIdx != null ? rotateIndex(event.targetIdx) : event.targetIdx,
+  };
+}
+
+function rotateTimedOutDrawDiscardEvent(event, rotateIndex) {
+  if (!event) return event;
+  return {
+    ...event,
+    drawerIdx: event.drawerIdx != null ? rotateIndex(event.drawerIdx) : event.drawerIdx,
+  };
+}
+
 export function rotateGsForViewer(gs, myIndex) {
   if (!gs || myIndex === 0) return gs;
   const N = gs.players.length;
   const rotateIndex = i => (i < 0 ? i : (i - myIndex + N) % N);
-  const players = [...gs.players.slice(myIndex), ...gs.players.slice(0, myIndex)];
+  const players = rotatePlayersArray(gs.players, myIndex);
   const rotatedTopLevel = rotateTopLevelGsFieldsForViewer(gs, rotateIndex);
   const gameOver = rotateGameOverForViewer(gs.gameOver, rotateIndex);
   const drawReveal = rotateDrawRevealForViewer(gs.drawReveal, rotateIndex);
   const zhuLight = rotateZhuLightForViewer(gs.zhuLight, rotateIndex);
   const abilityData = rotateAbilityDataForViewer(gs.abilityData || {}, rotateIndex);
-  return { ...rotatedTopLevel, players, gameOver, abilityData, drawReveal, zhuLight };
+  const rotatedSnapshots = rotatePlayerSnapshotFields(rotatedTopLevel, ROTATE_GS_PLAYER_SNAPSHOT_FIELDS, myIndex);
+  return {
+    ...rotatedSnapshots,
+    players,
+    gameOver,
+    abilityData,
+    drawReveal,
+    zhuLight,
+    ...(gs._earthquakeDiscardEvents ? { _earthquakeDiscardEvents: rotateEarthquakeDiscardEvents(gs._earthquakeDiscardEvents, rotateIndex, myIndex) } : {}),
+    ...(gs._aiHuntEvents ? { _aiHuntEvents: rotateAiHuntEvents(gs._aiHuntEvents, rotateIndex, myIndex) } : {}),
+    ...(gs._animMultiplyEvent ? { _animMultiplyEvent: rotateAnimMultiplyEvent(gs._animMultiplyEvent, rotateIndex) } : {}),
+    ...(gs._animSphinxReveal ? { _animSphinxReveal: rotateAnimSphinxReveal(gs._animSphinxReveal, rotateIndex) } : {}),
+    ...(gs._apophisTargetEvent ? { _apophisTargetEvent: rotateApophisTargetEvent(gs._apophisTargetEvent, rotateIndex) } : {}),
+    ...(gs._mpTimedOutDrawDiscard ? { _mpTimedOutDrawDiscard: rotateTimedOutDrawDiscardEvent(gs._mpTimedOutDrawDiscard, rotateIndex) } : {}),
+  };
 }
 
 export function derotateGs(gs, myIndex) {
@@ -145,14 +249,19 @@ export function isLocalDamageLinkSourcePhase(gs) {
   return gs?.phase === 'DAMAGE_LINK_SELECT_TARGET' && isLocalActorSeat(gs, gs?.abilityData?.damageLinkSource);
 }
 
+export function isLocalSemiMaterializeSourcePhase(gs) {
+  return gs?.phase === 'SEMI_MATERIALIZE_TARGET' && isLocalActorSeat(gs, gs?.abilityData?.source);
+}
+
 export function canLocalActOnTargetSelectionPhase(gs) {
   const phase = gs?.phase;
   return (
     (
-      ['SWAP_SELECT_TARGET', 'HUNT_SELECT_TARGET', 'BEWITCH_SELECT_TARGET', 'ZONE_SWAP_SELECT_TARGET', 'PEEK_HAND_SELECT_TARGET', 'CAVE_DUEL_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET', 'MULTIPLY_SELECT_TARGET', 'SHU_SELECT_TARGET'].includes(phase)
+      ['SWAP_SELECT_TARGET', 'HUNT_SELECT_TARGET', 'BEWITCH_SELECT_TARGET', 'ZONE_SWAP_SELECT_TARGET', 'PEEK_HAND_SELECT_TARGET', 'CAVE_DUEL_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET', 'MULTIPLY_SELECT_TARGET', 'SHU_SELECT_TARGET', 'SEMI_MATERIALIZE_TARGET'].includes(phase)
       && isLocalCurrentTurn(gs)
     )
     || isLocalDamageLinkSourcePhase(gs)
+    || isLocalSemiMaterializeSourcePhase(gs)
   );
 }
 

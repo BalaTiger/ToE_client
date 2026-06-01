@@ -6,9 +6,23 @@ function useSyncedRef(value) {
   return ref;
 }
 
+function isLocalTestHost() {
+  if (typeof window === 'undefined') return false;
+  const host = (window.location.hostname || '').toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+}
+
+export function getMultiplayerIdentityStorage() {
+  if (typeof window === 'undefined') return null;
+  return isLocalTestHost() ? window.sessionStorage : window.localStorage;
+}
+
+const RESERVED_ROLE_NAMES = new Set(['寻宝者', '追猎者', '邪祀者']);
+const RESERVED_ROLE_NAME_MESSAGE = '与游戏身份重复，请换一个名字';
+
 export function useMultiplayerLobby({ socketRef }) {
   const [playerUUID, setPlayerUUID] = useState(() => {
-    try { return localStorage.getItem('cthulhu_player_uuid') || null; }
+    try { return getMultiplayerIdentityStorage()?.getItem('cthulhu_player_uuid') || null; }
     catch { return null; }
   });
   const playerUUIDRef = useSyncedRef(playerUUID);
@@ -141,6 +155,10 @@ export function useMultiplayerLobby({ socketRef }) {
 
   function handleRename() {
     if (renameCdActive || !socketRef.current) return;
+    if (RESERVED_ROLE_NAMES.has(renameInput.trim())) {
+      addToast(RESERVED_ROLE_NAME_MESSAGE);
+      return;
+    }
     socketRef.current.emit('renameUser', { uuid: playerUUID, newName: renameInput });
     startRenameCooldown();
   }

@@ -1,15 +1,6 @@
 import React from 'react';
 import { ANIM_CFG, DICE_FACES } from './data';
-
-// 预生成石块随机参数（模块级，避免 render 中调用 Math.random）
-const EARTHQUAKE_ROCKS = Array.from({ length: 8 }).map(() => ({
-  width: 10 + Math.random() * 20,
-  height: 10 + Math.random() * 20,
-  borderRadius: Math.random() * 5,
-  left: Math.random() * 100 + '%',
-  duration: 0.8 + Math.random() * 0.4,
-  delay: Math.random() * 0.5,
-}));
+import { EarthquakeOverlay } from './EarthquakeOverlay';
 
 // ── Generic Overlay Anim ──────────────────────────────────────
 export function GenericAnimOverlay({ anim, exiting }) {
@@ -17,10 +8,8 @@ export function GenericAnimOverlay({ anim, exiting }) {
   if (['HP_DAMAGE', 'HP_HEAL', 'SAN_HEAL', 'SAN_DAMAGE'].includes(anim.type)) return null;
   const cfg = ANIM_CFG[anim.type];
   if (!cfg) return null;
+  if (anim.type === 'EARTHQUAKE') return <EarthquakeOverlay anim={anim} exiting={exiting} />;
   const msgs = (anim.msgs || []).slice(-4);
-
-  // 地动山摇专属效果
-  const isEarthquake = anim.type === 'EARTHQUAKE';
 
   return (
     <div style={{
@@ -28,28 +17,8 @@ export function GenericAnimOverlay({ anim, exiting }) {
       background: cfg.overlay,
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       animation: exiting ? 'animFadeOut 0.18s ease-in forwards' : 'animFadeIn 0.12s ease-out forwards',
-      ...(isEarthquake && {
-        animation: 'earthquakeShake 1.2s ease-in-out, earthquakeFlash 0.15s ease-in-out 3',
-        filter: isEarthquake ? 'grayscale(0%)' : 'none',
-      }),
     }}>
       {cfg.vig && <div style={{ position: 'absolute', inset: 0, boxShadow: `inset 0 0 120px ${cfg.accent}55`, animation: 'animVig 0.6s ease-in-out', pointerEvents: 'none' }} />}
-
-      {/* 地动山摇石块效果 */}
-      {isEarthquake && EARTHQUAKE_ROCKS.map((rock, i) => (
-        <div key={i} style={{
-          position: 'absolute',
-          width: rock.width,
-          height: rock.height,
-          background: '#8a6a40',
-          borderRadius: rock.borderRadius,
-          left: rock.left,
-          top: -30,
-          animation: `rockFall ${rock.duration}s ease-in forwards`,
-          animationDelay: rock.delay + 's',
-          zIndex: 1000,
-        }} />
-      ))}
 
       <div style={{
         fontSize: 80, lineHeight: 1, marginBottom: 12,
@@ -97,6 +66,9 @@ export function DiceRollAnim({ anim, exiting }) {
   const face2 = settled ? DICE_FACES[d2 - 1] : DICE_FACES[Math.floor(Math.random() * 6)];
   const winner = Math.max(d1, d2);
   const isDodgeRoll = d2 === 0;
+  const isApophisRoll = anim.diceMode === 'apophisNight';
+  const isThrowStoneRoll = anim.diceMode === 'throwStone';
+  const apophisSuccess = isApophisRoll && !anim.apophisChanged;
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(4,2,0,0.94)',
@@ -105,7 +77,7 @@ export function DiceRollAnim({ anim, exiting }) {
     }}>
       <div style={{ position: 'absolute', inset: 0, boxShadow: 'inset 0 0 120px #c8a96e22', pointerEvents: 'none' }} />
       <div style={{ fontFamily: "'Cinzel',serif", color: '#b89858', fontSize: 11, letterSpacing: 4, marginBottom: 18, textTransform: 'uppercase' }}>
-        {rollerName || '？'} {isDodgeRoll ? '掷骰子' : '选择休息'}
+        {rollerName || '？'} {isApophisRoll ? '在黑夜中掷骰' : isThrowStoneRoll ? '投掷石块' : isDodgeRoll ? '掷骰子' : '选择休息'}
       </div>
       <div style={{ display: 'flex', gap: 36, marginBottom: 20 }}>
         {[{ face: face1, val: d1 }, ...(!isDodgeRoll ? [{ face: face2, val: d2 }] : [])].map(({ face }, i) => (
@@ -121,7 +93,31 @@ export function DiceRollAnim({ anim, exiting }) {
       </div>
       {settled && (
         <div style={{ animation: 'animFadeIn 0.3s ease-out' }}>
-          {isDodgeRoll ? (
+          {isApophisRoll ? (
+            <>
+              <div style={{
+                fontFamily: "'Cinzel',serif", fontSize: 13, color: apophisSuccess ? '#c8a96e' : '#e08888', letterSpacing: 3,
+                textAlign: 'center', marginBottom: 6,
+              }}>
+                {apophisSuccess ? '成功命中目标' : `${rollerName || '你'}在一片黑暗中丢失了目标……`}
+              </div>
+              <div style={{ fontFamily: "'IM Fell English',serif", fontStyle: 'italic', color: '#8a6a9a', fontSize: 12, textAlign: 'center', letterSpacing: 1 }}>
+                掷出 {d1} 点，{apophisSuccess ? '目标未偏移' : '目标偏移'}
+              </div>
+            </>
+          ) : isThrowStoneRoll ? (
+            <>
+              <div style={{
+                fontFamily: "'Cinzel',serif", fontSize: 13, color: '#c8a96e', letterSpacing: 3,
+                textAlign: 'center', marginBottom: 6,
+              }}>
+                掷出 <span style={{ color: '#e8c87a', fontSize: 18, fontWeight: 700 }}>{d1}</span> 点
+              </div>
+              <div style={{ fontFamily: "'IM Fell English',serif", fontStyle: 'italic', color: '#b89858', fontSize: 12, textAlign: 'center', letterSpacing: 1 }}>
+                石块飞向未知方向…
+              </div>
+            </>
+          ) : isDodgeRoll ? (
             <>
               <div style={{
                 fontFamily: "'Cinzel',serif", fontSize: 13, color: dodgeSuccess ? '#4ade80' : '#e08888', letterSpacing: 3,

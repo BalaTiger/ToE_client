@@ -2,13 +2,19 @@ import { cardLogText } from './coreUtils';
 import { isLocalCurrentTurn } from './rotateState';
 import { bindAnimLogChunks } from './animLogs';
 import { buildAnimQueue } from './animQueueCore';
+import { cardTransferStep, statePatchStep } from './animQueueHelpers';
 
 export const EMPTY_TURN_ANIM_FIELDS = Object.freeze({
+  _aiDrawnCard: null,
+  _drawnCard: null,
+  _discardedDrawnCard: false,
   _playersBeforeThisDraw: null,
   _turnStartLogs: [],
   _drawLogs: [],
   _statLogs: [],
+  _statEvents: [],
   _preTurnPlayers: null,
+  _tsgSlimeGrantEvents: null,
 });
 
 export function withClearedTurnAnimFields(state, extra = {}) {
@@ -66,6 +72,7 @@ export function buildLocalCthDecisionState(baseState, {
 
 export function buildPlayerTurnDrawQueue(oldGs, newGs, seedQueue = []) {
   const queue = [...(Array.isArray(seedQueue) ? seedQueue : [])];
+  queue.push(...buildTsathogguaSlimeGrantQueue(newGs));
   if (isLocalCurrentTurn(newGs) && newGs.drawReveal?.card) {
     queue.push(
       { type: 'YOUR_TURN', msgs: newGs._turnStartLogs },
@@ -74,5 +81,34 @@ export function buildPlayerTurnDrawQueue(oldGs, newGs, seedQueue = []) {
     const statQ = bindAnimLogChunks(buildAnimQueue(oldGs, newGs), { statLogs: newGs._statLogs });
     queue.push(...statQ);
   }
+  return queue;
+}
+
+export function buildTsathogguaSlimeGrantQueue(state) {
+  const events = Array.isArray(state?._tsgSlimeGrantEvents) ? state._tsgSlimeGrantEvents : [];
+  const queue = [];
+  events.forEach(ev => {
+    if (!ev || ev.ownerIdx == null || !ev.count) return;
+    queue.push(
+      {
+        type: 'VISUAL_LOCK',
+        players: ev.playersBefore,
+        zhuLight: state?.zhuLight || null,
+      },
+      cardTransferStep({
+        fromPid: ev.ownerIdx,
+        dest: 'player',
+        toPid: ev.ownerIdx,
+        count: ev.count,
+        sourceAnchor: 'playerArea',
+        effect: 'tsgSlime',
+        durationMs: 950,
+        cards: ev.cards,
+        msgs: ev.msgs || [],
+      }),
+      statePatchStep({ players: ev.playersAfter }),
+      { type: 'TURN_BOUNDARY_PAUSE', durationMs: 180 }
+    );
+  });
   return queue;
 }

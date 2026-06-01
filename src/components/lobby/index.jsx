@@ -5,6 +5,7 @@ import {
   NUMS,
 } from '../../constants/card';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from '../../game';
+import { NARRATOR_AVATAR } from '../tutorial/InGameTutorialOverlay';
 
 const ZONE_CARD_KEYS = LETTERS.flatMap(L => NUMS.map(N => `${L}${N}`));
 
@@ -295,7 +296,21 @@ function TutorialOverlay({ show, step, onComplete, onStart }) {
       {/* ── Step 1: Greeting ── */}
       {step === 1 && (
         <div style={{ background: '#120d06', border: '2px solid #7a5020', borderRadius: 4, padding: '36px 40px', maxWidth: 380, width: '90%', textAlign: 'center', boxShadow: '0 0 60px #7a502066', position: 'relative', animation: 'animPop 0.25s ease-out' }}>
-          <div style={{ fontSize: 30, marginBottom: 16, filter: 'drop-shadow(0 0 14px #c8a96e66)' }}>👁</div>
+          <img
+            src={NARRATOR_AVATAR}
+            alt="narrator"
+            style={{
+              width: 72,
+              height: 72,
+              borderRadius: 4,
+              objectFit: 'cover',
+              objectPosition: 'top',
+              border: '2px solid #5a3a10',
+              boxShadow: '0 0 16px #7a502066',
+              margin: '0 auto 16px',
+              display: 'block',
+            }}
+          />
           <p style={{ color: '#e8c87a', fontSize: 15, lineHeight: 2, fontStyle: 'italic', marginBottom: 10, fontFamily: "'IM Fell English','Georgia',serif" }}>
             哈，又是一个不怕死的人！
           </p>
@@ -385,11 +400,14 @@ function DebugSettingsPanel({
           }}
         >
           <option value="player">玩家</option>
-          <option value="ai1">1号位角色</option>
+          <option value="ai1">1号位AI</option>
+          <option value="ai2">2号位AI</option>
+          <option value="ai3">3号位AI</option>
+          <option value="ai4">4号位AI</option>
         </select>
       </div>
       <div style={{ marginBottom: 12 }}>
-        <label style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>1号位角色是否收入这张牌</label>
+        <label style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>强制目标是否收入这张牌</label>
         <select
           value={debugForceCardKeep}
           onChange={(e) => setDebugForceCardKeep(e.target.value)}
@@ -493,7 +511,9 @@ function DebugSettingsPanel({
             <option value="NYA">Nyarlathotep</option>
             <option value="ZHU">烛九阴</option>
             <option value="SHU">森之领主</option>
-            <option value="VRITRA">弗栗多</option>
+            <option value="VRI">弗栗多</option>
+            <option value="APO">阿波菲斯</option>
+            <option value="TSG">蟾蜍之神</option>
           </select>
         </div>
       )}

@@ -12,9 +12,10 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "A1": [
     {
       "name": "偷吃龙蛋",
-      "desc": "你回复2HP，相邻角色各失去2HP",
+      "desc": "你回复3HP，相邻角色各失去2HP",
       "type": "selfHealAdjDamageHP",
-      "val": 2,
+      "val": 3,
+      "adjVal": 2,
       "slotKey": "A1",
       "polarity": "positive",
       "effectScope": "self",
@@ -49,6 +50,17 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "polarity": "negative",
       "effectScope": "adjacent",
       "expansion": "析骨为柴"
+    },
+    {
+      "name": "神圣菇肉",
+      "desc": "你回复5HP，失去2SAN",
+      "type": "selfHealHPSelfDamageSAN",
+      "hpVal": 5,
+      "sanVal": 2,
+      "slotKey": "A1",
+      "polarity": "neutral",
+      "effectScope": "self",
+      "expansion": "析骨为柴"
     }
   ],
   "A2": [
@@ -74,9 +86,9 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "亡者军团",
-      "desc": "你与相邻角色失去3HP",
+      "desc": "你与相邻角色失去4HP",
       "type": "adjDamageHP",
-      "val": 3,
+      "val": 4,
       "slotKey": "A2",
       "polarity": "negative",
       "effectScope": "adjacent",
@@ -116,6 +128,27 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "polarity": "negative",
       "effectScope": "adjacent",
       "expansion": "析骨为柴"
+    },
+    {
+      "name": "无尽通道",
+      "desc": "回合结束时，若此牌在手中，展示所有手牌，使所有“无尽通道”左边的牌视为被重新摸到并依次结算",
+      "type": "endTurnReplayHand",
+      "val": 0,
+      "slotKey": "A3",
+      "polarity": "neutral",
+      "effectScope": "self",
+      "expansion": "地神的潜影"
+    },
+    {
+      "name": "可生食木乃伊",
+      "desc": "你回复2HP，失去1SAN",
+      "type": "selfHealHPSelfDamageSAN",
+      "hpVal": 2,
+      "sanVal": 1,
+      "slotKey": "A3",
+      "polarity": "neutral",
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     }
   ],
   "A4": [
@@ -148,6 +181,26 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "polarity": "negative",
       "effectScope": "all",
       "expansion": "地神的潜影"
+    },
+    {
+      "name": "掘墓",
+      "desc": "从弃牌堆中选一张邪神牌放入你的手牌",
+      "type": "graveDigGod",
+      "val": 1,
+      "slotKey": "A4",
+      "polarity": "positive",
+      "effectScope": "self",
+      "expansion": "地神的潜影"
+    },
+    {
+      "name": "活埋",
+      "desc": "你与相邻角色从手牌中选择一张牌放到牌堆底",
+      "type": "buryAlive",
+      "val": 1,
+      "slotKey": "A4",
+      "polarity": "negative",
+      "effectScope": "adjacent",
+      "expansion": "地神的潜影"
     }
   ],
   "B1": [
@@ -172,6 +225,16 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "expansion": "先贤的馈赠"
     },
     {
+      "name": "生命天平",
+      "desc": "你回复3HP。此牌从你的手牌进入弃牌堆时，你失去3HP",
+      "type": "lifeBalance",
+      "val": 3,
+      "slotKey": "B1",
+      "polarity": "neutral",
+      "effectScope": "self",
+      "expansion": "先贤的馈赠"
+    },
+    {
       "name": "幽闭恐惧",
       "desc": "你与相邻角色失去2SAN",
       "type": "adjDamageSAN",
@@ -180,17 +243,27 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "polarity": "negative",
       "effectScope": "adjacent",
       "expansion": "地神的潜影"
+    },
+    {
+      "name": "增殖的Z",
+      "desc": "本回合每有角色获得邪神牌或其衍生牌，其他角色各摸一张牌",
+      "type": "proliferatingZ",
+      "val": 0,
+      "slotKey": "B1",
+      "polarity": "positive",
+      "effectScope": "all",
+      "expansion": "地神的潜影"
     }
   ],
   "B2": [
     {
       "name": "新鲜空气",
-      "desc": "你回复2HP",
-      "type": "selfHealHP",
-      "val": 2,
+      "desc": "所有角色回复1HP",
+      "type": "allHealHP",
+      "val": 1,
       "slotKey": "B2",
       "polarity": "positive",
-      "effectScope": "self",
+      "effectScope": "all",
       "expansion": "地神的潜影"
     },
     {
@@ -215,8 +288,18 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "expansion": "地神的潜影"
     },
     {
+      "name": "投掷石块",
+      "desc": "掷一枚骰子，另一名随机角色失去HP：数值等于骰子点数-你与该角色的距离，最小为0",
+      "type": "throwStone",
+      "val": 0,
+      "slotKey": "B2",
+      "polarity": "neutral",
+      "effectScope": "target",
+      "expansion": "地神的潜影"
+    },
+    {
       "name": "逆流",
-      "desc": "本回合结束时，若回合轮换方向是顺时针，则改为逆时针，反之亦然",
+      "desc": "本回合结束时，若回合轮转方向是顺时针，则改为逆时针，反之亦然",
       "type": "reverseTurnOrder",
       "val": 0,
       "slotKey": "B2",
@@ -228,10 +311,10 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "B3": [
     {
       "name": "猎获穴兽",
-      "desc": "你恢复3HP，相邻角色各恢复1HP",
+      "desc": "你回复3HP，相邻角色各回复2HP",
       "type": "selfHealAdjHealHP",
       "val": 3,
-      "adjVal": 1,
+      "adjVal": 2,
       "slotKey": "B3",
       "polarity": "positive",
       "effectScope": "self",
@@ -262,9 +345,9 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "B4": [
     {
       "name": "地刺陷阱",
-      "desc": "你失去2HP，相邻角色各失去1HP",
-      "type": "selfDamageAdjDamageHP",
-      "val": 2,
+      "desc": "你与相邻角色失去3HP",
+      "type": "adjDamageHP",
+      "val": 3,
       "slotKey": "B4",
       "polarity": "negative",
       "effectScope": "self",
@@ -317,25 +400,45 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "expansion": "先贤的馈赠"
     },
     {
-      "name": "活火山",
-      "desc": "全体角色失去3HP",
-      "type": "allDamageHP",
+      "name": "灵魂天平",
+      "desc": "你回复3SAN。此牌从你的手牌进入弃牌堆时，你失去3SAN",
+      "type": "soulBalance",
       "val": 3,
+      "slotKey": "C1",
+      "polarity": "neutral",
+      "effectScope": "self",
+      "expansion": "先贤的馈赠"
+    },
+    {
+      "name": "活火山",
+      "desc": "全体角色失去4HP",
+      "type": "allDamageHP",
+      "val": 4,
       "slotKey": "C1",
       "polarity": "negative",
       "effectScope": "all",
+      "expansion": "地神的潜影"
+    },
+    {
+      "name": "烤盲鱼",
+      "desc": "你恢复3HP，且摸到下张区域牌时，须在只能看见编号的条件下决定是否收入",
+      "type": "blindFish",
+      "val": 3,
+      "slotKey": "C1",
+      "polarity": "positive",
+      "effectScope": "self",
       "expansion": "地神的潜影"
     }
   ],
   "C2": [
     {
       "name": "地下泉",
-      "desc": "你回复3HP",
-      "type": "selfHealHP",
-      "val": 3,
+      "desc": "所有角色回复2HP",
+      "type": "allHealHP",
+      "val": 2,
       "slotKey": "C2",
       "polarity": "positive",
-      "effectScope": "self",
+      "effectScope": "all",
       "expansion": "地神的潜影"
     },
     {
@@ -363,35 +466,32 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "C3": [
     {
       "name": "龙之心",
-      "desc": "你回复1HP与1SAN",
-      "type": "selfHealBoth",
-      "val": 1,
+      "desc": "你回复4HP与1SAN",
+      "type": "selfHealHPSAN",
+      "hpVal": 4,
+      "sanVal": 1,
       "slotKey": "C3",
       "polarity": "positive",
       "effectScope": "self",
       "expansion": "地神的潜影"
     },
     {
-      "name": "行囊破裂",
-      "desc": "你失去2SAN，随机弃1张牌（强制触发）",
-      "type": "selfDamageDiscardSAN",
-      "val": 2,
-      "forced": true,
+      "name": "引燃火把",
+      "desc": "弃一张牌，本回合你不受邪神之力影响",
+      "type": "igniteTorch",
       "slotKey": "C3",
-      "polarity": "negative",
+      "polarity": "neutral",
       "effectScope": "self",
-      "expansion": "temporary"
+      "expansion": "地神的潜影"
     },
     {
-      "name": "瘟疫蔓延",
-      "desc": "你与相邻角色失去2HP和1SAN",
-      "type": "adjDamageBoth",
-      "hpVal": 2,
-      "sanVal": 1,
+      "name": "地底天空",
+      "desc": "交换牌堆和弃牌堆",
+      "type": "swapDeckDiscard",
       "slotKey": "C3",
-      "polarity": "negative",
-      "effectScope": "adjacent",
-      "expansion": "temporary"
+      "polarity": "neutral",
+      "effectScope": "all",
+      "expansion": "地神的潜影"
     }
   ],
   "C4": [
@@ -406,25 +506,23 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "expansion": "地神的潜影"
     },
     {
-      "name": "恶毒诅咒",
-      "desc": "你失去2HP与2SAN",
-      "type": "selfDamageHPSAN",
-      "hpVal": 2,
-      "sanVal": 2,
+      "name": "传授半物质化",
+      "desc": "悄悄指定一名角色。若其他角色中有人猜中是谁，则在其回合后获得一个额外回合；若无人猜中，你获得该额外回合",
+      "type": "semiMaterializeTeach",
       "slotKey": "C4",
-      "polarity": "negative",
-      "effectScope": "self",
-      "expansion": "temporary"
+      "polarity": "neutral",
+      "effectScope": "target",
+      "expansion": "地神的潜影"
     },
     {
-      "name": "末日预兆",
+      "name": "夜风呼啸",
       "desc": "全体角色失去1HP和1SAN",
       "type": "allDamageBoth",
       "val": 1,
       "slotKey": "C4",
       "polarity": "negative",
       "effectScope": "all",
-      "expansion": "temporary"
+      "expansion": "地神的潜影"
     }
   ],
   "D1": [
@@ -439,23 +537,19 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "expansion": "地神的潜影"
     },
     {
-      "name": "致命尖刺",
-      "desc": "你失去2HP，若你手牌数≥4则额外失去2HP",
-      "type": "selfDamageHPCond",
-      "val": 2,
-      "bonus": 2,
-      "condType": "handHigh",
-      "condVal": 4,
+      "name": "活死人哨兵",
+      "desc": "所有与死亡角色相邻的角色下回合不能摸牌",
+      "type": "deadNeighborSkipDraw",
       "slotKey": "D1",
-      "polarity": "negative",
-      "effectScope": "self",
-      "expansion": "temporary"
+      "polarity": "neutral",
+      "effectScope": "all",
+      "expansion": "地神的潜影"
     },
     {
       "name": "钻地魔虫",
-      "desc": "全体角色失去1HP，随机一名角色再失去1HP",
+      "desc": "全体角色失去2HP，随机一名角色再失去2HP",
       "type": "allDamageHPRandomExtra",
-      "val": 1,
+      "val": 2,
       "slotKey": "D1",
       "polarity": "negative",
       "effectScope": "all",
@@ -527,6 +621,16 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "polarity": "neutral",
       "effectScope": "target",
       "expansion": "先贤的馈赠"
+    },
+    {
+      "name": "鼠群",
+      "desc": "所有角色失去1SAN",
+      "type": "allDamageSAN",
+      "val": 1,
+      "slotKey": "D3",
+      "polarity": "negative",
+      "effectScope": "all",
+      "expansion": "地神的潜影"
     }
   ],
   "D4": [
@@ -563,10 +667,10 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "鲜红夜宴",
-      "desc": "所有人回复2HP，失去2SAN",
+      "desc": "所有人回复2HP，失去1SAN",
       "type": "allHealHPDamageSAN",
       "hpVal": 2,
-      "sanVal": 2,
+      "sanVal": 1,
       "slotKey": "D4",
       "polarity": "neutral",
       "effectScope": "all",
@@ -589,54 +693,45 @@ const GOD_DEFS={
     godKey:'NYA',name:'伏行之混沌',subtitle:'奈亚拉托提普之化身',power:'千人千貌',
     col:'#b03030',bgCol:'#200808',
     levels:[
-      {handPenalty:2,desc:'借用已死角色身份，本回合技能与胜利条件均变为该身份（手牌上限-2）'},
-      {handPenalty:1,desc:'借用已死角色身份，本回合技能与胜利条件均变为该身份（手牌上限-1）'},
-      {handPenalty:0,desc:'借用已死角色身份，本回合技能与胜利条件均变为该身份'},
+      {handPenalty:2,desc:'你的回合开始时，可借用已死角色身份，本回合技能与胜利条件均变为该身份（手牌上限-2）'},
+      {handPenalty:1,desc:'你的回合开始时，可借用已死角色身份，本回合技能与胜利条件均变为该身份（手牌上限-1）'},
+      {handPenalty:0,desc:'你的回合开始时，可借用已死角色身份，本回合技能与胜利条件均变为该身份'},
     ],
   },
   CTH:{
     godKey:'CTH',name:'拉莱耶之主',subtitle:'克苏鲁之化身',power:'梦访拉莱耶',
     col:'#2060c0',bgCol:'#080820',
     levels:[
-      {extraDraws:1,desc:'在角色翻面状态下结束或跳过回合时，立即摸1张牌'},
-      {extraDraws:2,desc:'在角色翻面状态下结束或跳过回合时，立即摸2张牌'},
-      {extraDraws:3,desc:'在角色翻面状态下结束或跳过回合时，立即摸3张牌'},
+      {extraDraws:1,desc:'在角色翻面状态下结束或跳过回合时，摸1张牌'},
+      {extraDraws:2,desc:'在角色翻面状态下结束或跳过回合时，摸2张牌'},
+      {extraDraws:3,desc:'在角色翻面状态下结束或跳过回合时，摸3张牌'},
     ],
   },
   SHU:{
     godKey:'SHU',name:'森之领主',subtitle:'莎布·尼古拉丝之化身',power:'黑暗子嗣',
     col:'#2a5a20',bgCol:'#081008',
     levels:[
-      {offspringCount:1,desc:'获得此邪神之力时，指定一名角色（可以为自己），立即在其手牌中加入1张"黑山羊幼仔"'},
-      {offspringCount:2,desc:'获得此邪神之力时，指定一名角色（可以为自己），立即在其手牌中加入2张"黑山羊幼仔"'},
-      {offspringCount:3,desc:'获得此邪神之力时，指定一名角色（可以为自己），立即在其手牌中加入3张"黑山羊幼仔"'},
+      {offspringCount:1,desc:'立即指定一名角色（可以为自己），在其手牌中加入1张"黑山羊幼仔"'},
+      {offspringCount:2,desc:'立即指定一名角色（可以为自己），在其手牌中加入2张"黑山羊幼仔"'},
+      {offspringCount:3,desc:'立即指定一名角色（可以为自己），在其手牌中加入3张"黑山羊幼仔"'},
     ],
   },
   ZHU:{
     godKey:'ZHU',name:'烛九阴',subtitle:'钟山之神',power:'衔烛照幽',
     col:'#c0a020',bgCol:'#181008',
     levels:[
-      {zhuLightOffsets:[2],desc:'获得或升级此邪神之力时，以及你的回合开始时，点亮牌库顶部第3张牌。你可以查看被点亮牌的正面；当其即将被翻开时，可将其藏到牌堆底'},
+      {zhuLightOffsets:[2],desc:'立即点亮牌库顶部第3张牌。你可以查看被点亮牌的正面；当其即将被翻开时，可将其藏到牌堆底。你的回合开始时也如此做'},
       {zhuLightOffsets:[1,2,3],desc:'“第3张牌”改为“第2~4张牌”'},
       {zhuLightOffsets:[0,1,2,3,4],desc:'改为点亮牌库顶部前5张牌'},
-    ],
-  },
-  FUL:{
-    godKey:'FUL',name:'弗栗多',subtitle:'阿修罗之龙',power:'禁锢甘霖',
-    col:'#2080a0',bgCol:'#081018',
-    levels:[
-      {desc:'效果待设计'},
-      {desc:'效果待设计'},
-      {desc:'效果待设计'},
     ],
   },
   APO:{
     godKey:'APO',name:'阿波菲斯',subtitle:'混沌巨蛇',power:'噬日灭世',
     col:'#8020a0',bgCol:'#100818',
     levels:[
-      {desc:'效果待设计'},
-      {desc:'效果待设计'},
-      {desc:'效果待设计'},
+      {nightThreshold:2,desc:'立即让场地进入黑夜：所有角色选中目标时掷骰子，若小于等于2则改为错误目标并失去1SAN。选中目标累计12次后黑夜结束'},
+      {nightThreshold:4,desc:'“若小于等于2”改为“若小于等于4”，其余不变'},
+      {nightThreshold:6,desc:'“若小于等于4”改为“若小于等于6”，其余不变'},
     ],
   },
   GEE:{
@@ -702,13 +797,22 @@ const GOD_DEFS={
       {desc:'效果待设计'},
     ],
   },
-  VRITRA:{
-    godKey:'VRITRA',shortKey:'VRI',name:'弗栗多',subtitle:'巨龙之化身',power:'不灭之躯',
+  VRI:{
+    godKey:'VRI',name:'弗栗多',subtitle:'巨龙之化身',power:'不灭之躯',
     col:'#c04020',bgCol:'#1a0808',
     levels:[
-      {immortalCount:6,desc:'当你在回合外受到致命伤害，展示牌堆顶部的6张牌，若没有邪神牌和圣物牌，将HP恢复至1，然后弃置这些牌'},
-      {immortalCount:4,desc:'当你在回合外受到致命伤害，展示牌堆顶部的4张牌，若没有邪神牌和圣物牌，将HP恢复至1，然后弃置这些牌'},
-      {immortalCount:2,desc:'当你在回合外受到致命伤害，展示牌堆顶部的2张牌，若没有邪神牌和圣物牌，将HP恢复至1，然后弃置这些牌'},
+      {immortalCount:6,desc:'当你在回合外受到致命伤害，展示牌堆顶部的6张牌，若没有邪神牌和圣物牌，将HP回复至1，然后弃置这些牌'},
+      {immortalCount:4,desc:'当你在回合外受到致命伤害，展示牌堆顶部的4张牌，若没有邪神牌和圣物牌，将HP回复至1，然后弃置这些牌'},
+      {immortalCount:2,desc:'当你在回合外受到致命伤害，展示牌堆顶部的2张牌，若没有邪神牌和圣物牌，将HP回复至1，然后弃置这些牌'},
+    ],
+  },
+  TSG:{
+    godKey:'TSG',name:'蟾蜍之神',subtitle:'撒托古亚之化身',power:'无定形体',
+    col:'#5f8f4a',bgCol:'#081208',
+    levels:[
+      {slimeCount:1,desc:'回合结束时，你获得1张“撒托古亚的赐福黏液”；摸牌阶段，手中每张黏液使你多摸1张牌，随后黏液消失'},
+      {slimeCount:2,desc:'回合结束时，你获得2张“撒托古亚的赐福黏液”；摸牌阶段，手中每张黏液使你多摸1张牌，随后黏液消失'},
+      {slimeCount:3,desc:'回合结束时，你获得3张“撒托古亚的赐福黏液”；摸牌阶段，手中每张黏液使你多摸1张牌，随后黏液消失'},
     ],
   },
   DIX:{
@@ -728,13 +832,15 @@ const EXPANSIONS = {
     name: '临时拓展包',
     description: '当前牌组，包含所有现有卡牌',
     // 临时包包含 FIXED_ZONE_CARD_VARIANTS_BY_KEY 中所有卡牌
-    godCardKeys: ['NYA', 'CTH', 'SHU', 'ZHU', 'VRITRA'],
+    godCardKeys: ['NYA', 'CTH', 'SHU', 'ZHU', 'VRI'],
     godCopies: 4,
   },
   '地神的潜影': {
     name: '地神的潜影',
     description: '来自地底深处的低语……',
-    godCardKeys: ['NYA', 'SHU', 'ZHU', 'FUL', 'APO'],
+    zoneSlotCount: 16,
+    zoneCardsPerSlot: 3,
+    godCardKeys: ['NYA', 'SHU', 'ZHU', 'VRI', 'APO', 'TSG'],
     godCopies: 4,
   },
   '先贤的馈赠': {
@@ -800,6 +906,32 @@ export function createBlackGoatYoungCard() {
   };
 }
 
+let _tsgSlimeId = 0;
+export function createTsathogguaSlimeCard() {
+  return {
+    id: `tsg-slime-${_tsgSlimeId++}`,
+    name: '撒托古亚的赐福黏液',
+    desc: '当你失去HP/SAN时，你可选择牺牲这张牌平分HP和SAN。若你仍信仰蟾蜍之神，摸牌阶段每张黏液使你多摸1张牌，随后黏液消失',
+    type: 'tsathogguaSlime',
+    isTsathogguaSlime: true,
+    polarity: 'neutral',
+    effectScope: 'self',
+    letter: 'T',
+    number: 0,
+    key: 'SLM',
+  };
+}
+
+function getGodShortKey(godKey) {
+  return GOD_DEFS[godKey]?.shortKey || godKey || 'GOD';
+}
+
+function getCardDisplayKey(card) {
+  if (!card) return '?';
+  if (card.isGod) return getGodShortKey(card.godKey);
+  return card.key || '?';
+}
+
 export {
   FIXED_ZONE_CARD_VARIANTS_BY_KEY,
   LETTERS,
@@ -810,4 +942,6 @@ export {
   EXPANSIONS,
   CARD_BACK_IMAGE_BY_EXPANSION,
   getCardBackImage,
+  getGodShortKey,
+  getCardDisplayKey,
 };

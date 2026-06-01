@@ -166,7 +166,10 @@ export function prepareAnimQueueLogs(queue,nextGs,baseLog=[]){
   };
   return queue.map(item=>{
     const step={...item};
-    if(Array.isArray(step._logChunk))return step;
+    if(Array.isArray(step._logChunk)){
+      consumeExplicit(step._logChunk);
+      return step;
+    }
     let chunk=consumeExplicit(step.msgs);
     if(hasExplicitAnimMsgs(step)){
       step._logChunk=chunk;

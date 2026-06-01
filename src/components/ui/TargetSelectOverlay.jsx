@@ -1,15 +1,15 @@
-import { CS, GOD_CS } from '../../constants/card';
+import { CS, GOD_CS, getCardDisplayKey } from '../../constants/card';
 
 function getBewitchEffectDesc(card) {
   if (!card) return '';
   if (card.isGod) {
     return `你将把「${card.name}」送给目标角色，使该角色遭遇邪神并失去SAN值（第N次遭遇失去N点），该角色可能被迫信仰${card.name}`;
   }
-  return `你将把【${card.key} ${card.name}】送给目标角色，并强制其收入手牌后立刻结算：“你”与相邻角色都以该目标为基准计算`;
+  return `你将把【${getCardDisplayKey(card)} ${card.name}】送给目标角色，并强制其收入手牌后立刻结算：“你”与相邻角色都以该目标为基准计算`;
 }
 
 export function TargetSelectOverlay({ drawReveal, phase, bewitchCard }) {
-  const isActive = ['DRAW_SELECT_TARGET', 'SWAP_SELECT_TARGET', 'HUNT_SELECT_TARGET', 'BEWITCH_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET'].includes(phase);
+  const isActive = ['DRAW_SELECT_TARGET', 'SWAP_SELECT_TARGET', 'HUNT_SELECT_TARGET', 'BEWITCH_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET', 'SEMI_MATERIALIZE_TARGET', 'SEMI_MATERIALIZE_GUESS'].includes(phase);
   if (!isActive) return null;
   const isBewitch = phase === 'BEWITCH_SELECT_TARGET';
   const showCard = phase !== 'HUNT_SELECT_TARGET';
@@ -25,6 +25,8 @@ export function TargetSelectOverlay({ drawReveal, phase, bewitchCard }) {
     CAVE_DUEL_SELECT_TARGET: '请选择一名有手牌的角色进行【穴居人战争】',
     DAMAGE_LINK_SELECT_TARGET: '请选择一名角色建立【两人一绳】链条',
     ROSE_THORN_SELECT_TARGET: '请选择承受【玫瑰倒刺】的目标',
+    SEMI_MATERIALIZE_TARGET: '请悄悄指定一名角色',
+    SEMI_MATERIALIZE_GUESS: '请猜测被指定的角色',
     FIRST_COME_PICK_SELECT: '请从翻开的牌中选择一张收入手牌',
   }[phase] || '请选择目标';
   if (phase === 'SWAP_SELECT_TARGET_CARD') return null;
@@ -50,8 +52,8 @@ export function TargetSelectOverlay({ drawReveal, phase, bewitchCard }) {
                 padding: '5px 9px', minWidth: 48, textAlign: 'center',
               }}>
                 {card.isGod
-                  ? <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, color: s.text, fontSize: 20, lineHeight: 1.2 }}>⛧</div>
-                  : <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, color: s.text, fontSize: 27, lineHeight: 1 }}>{card.key}</div>
+                  ? <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, color: s.text, fontSize: 20, lineHeight: 1.2 }}>{getCardDisplayKey(card)}</div>
+                  : <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, color: s.text, fontSize: 27, lineHeight: 1 }}>{getCardDisplayKey(card)}</div>
                 }
                 <div style={{ fontFamily: "'Cinzel',serif", color: '#e8cc88', fontSize: card.isGod ? 10 : 14.25, marginTop: 2 }}>{card.name}</div>
               </div>

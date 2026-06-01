@@ -1,5 +1,6 @@
 import React from 'react';
-import { CS, GOD_CS, GOD_DEFS, getCardBackImage } from '../../constants/card';
+import { CS, GOD_CS, getCardBackImage } from '../../constants/card';
+import { DDCard, MiniCardFace } from '../cards';
 import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 
 const BLACK_GOAT_PARTICLES = [
@@ -10,8 +11,6 @@ const BLACK_GOAT_PARTICLES = [
   { x: -24, y: 4, size: 4, delay: 0.20, dur: 0.50, glow: 0.75 },
   { x: 8, y: 24, size: 5, delay: 0.25, dur: 0.64, glow: 0.80 },
 ];
-
-const godShortKey = (godKey) => GOD_DEFS[godKey]?.shortKey || godKey || 'GOD';
 
 function BlackGoatTrail({ txPx, tyPx, delay = 0, duration = 1.28 }) {
   const shouldFlipGoat = txPx > 0;
@@ -76,49 +75,6 @@ function BlackGoatTrail({ txPx, tyPx, delay = 0, duration = 1.28 }) {
 
 // ── Discard Move Overlay ──────────────────────────────────────
 // Shows a card-back flying from the actor's hand area to the discard pile
-function MiniCardFace({ card, width = 70, height = 94 }) {
-  const s = card ? (card.isGod ? GOD_CS : (CS[card.letter] || GOD_CS)) : GOD_CS;
-  return (
-    <div style={{
-      width,
-      height,
-      borderRadius: 4,
-      background: s.bg,
-      border: `1.5px solid ${s.borderBright}`,
-      boxShadow: `0 0 22px ${s.glow || s.borderBright}66, 0 8px 26px rgba(0,0,0,0.72)`,
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '7px 6px',
-      textAlign: 'center',
-      overflow: 'hidden',
-    }}>
-      <div style={{
-        fontFamily: "'Cinzel',serif",
-        fontWeight: 700,
-        color: s.text,
-        fontSize: card?.isGod ? 17 : 20,
-        lineHeight: 1,
-        letterSpacing: card?.isGod ? 1.2 : 0,
-        textShadow: `0 0 8px ${s.borderBright}`,
-      }}>
-        {card?.isGod ? godShortKey(card.godKey) : (card?.key || '?')}
-      </div>
-      <div style={{
-        marginTop: 7,
-        fontFamily: "'Cinzel',serif",
-        fontWeight: 600,
-        color: '#e7cf8a',
-        fontSize: 8.5,
-        lineHeight: 1.15,
-      }}>
-        {card?.name || ''}
-      </div>
-    </div>
-  );
-}
-
 export function ZhuHideCardOverlay({ anim, exiting }) {
   const [style, setStyle] = React.useState(null);
 
@@ -139,7 +95,6 @@ export function ZhuHideCardOverlay({ anim, exiting }) {
   }, [anim]);
 
   if (!anim?.card) return null;
-  const cardBackImage = getCardBackImage(anim.expansionKey || 'temporary');
 
   return (
     <div style={{
@@ -148,29 +103,11 @@ export function ZhuHideCardOverlay({ anim, exiting }) {
       zIndex: 992,
       pointerEvents: 'none',
       overflow: 'hidden',
-      animation: exiting ? 'animFadeOut 0.18s ease-in forwards' : 'none',
+      animation: `zhuHideOverlayDepth 1.15s steps(1,end) forwards${exiting ? ', animFadeOut 0.18s ease-in forwards' : ''}`,
     }}>
-      <div style={{ position: 'absolute', inset: 0, background: 'rgba(10,7,2,0.24)', animation: 'zhuHideBgFade 1.15s ease both' }} />
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(10,7,2,0.24)', animation: 'moveOverlayBgFade 1.15s ease both' }} />
       {style && (
         <>
-          <div style={{
-            position: 'absolute',
-            left: style.left,
-            top: style.top,
-            width: 78,
-            height: 104,
-            marginLeft: -39,
-            marginTop: -52,
-            borderRadius: 5,
-            backgroundImage: `url('${cardBackImage}')`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            border: '1.5px solid #4a3010',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.7), inset 0 0 12px rgba(0,0,0,0.5)',
-            opacity: 0,
-            zIndex: 4,
-            animation: 'zhuHideDeckCap 1.15s ease forwards',
-          }} />
           <div style={{
             position: 'absolute',
             left: style.left,
@@ -255,8 +192,6 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = 'temporary' }
   if (!anim) return null;
   const card = anim.card || null;
   const s = card ? (card.isGod ? GOD_CS : (CS[card.letter] || null)) : null;
-  const discardCardTitle = card?.isGod ? godShortKey(card.godKey) : card?.key;
-  const discardCardSubtitle = card?.isGod ? card.name : '';
 
   return (
     <div style={{
@@ -269,19 +204,73 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = 'temporary' }
       {Object.keys(cardStyle).length > 0 && (
         <div style={cardStyle}>
           {card && s && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '6px 5px', textAlign: 'center', lineHeight: 1.1 }}>
-              <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, color: s.text, fontSize: card.isGod ? 17 : 18, letterSpacing: card.isGod ? 1.2 : 0 }}>
-                {discardCardTitle}
-              </div>
-              {!!discardCardSubtitle && (
-                <div style={{ marginTop: 5, fontFamily: "'Cinzel',serif", fontWeight: 600, color: '#e8cc88', fontSize: 8.5 }}>
-                  {discardCardSubtitle}
-                </div>
-              )}
-            </div>
+            <MiniCardFace card={card} width={70} height={94} ambient={false} frameStyle={{boxShadow:'none',border:'none',background:'transparent'}}/>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+export function BuryToDeckOverlay({ anim, exiting, expansionKey = 'temporary' }) {
+  const [style, setStyle] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!anim) return;
+    const start = getPlayerHandAnchorCenter(anim.fromPid ?? 0);
+    const deck = getPileAnchorCenter(
+      '[data-deck-pile]',
+      { x: window.innerWidth * 0.94 - 35, y: window.innerHeight * 0.08 }
+    );
+    const tx = deck.x - start.x;
+    const ty = deck.y - start.y;
+    setStyle({
+      left: start.x,
+      top: start.y,
+      deckLeft: deck.x,
+      deckTop: deck.y,
+      '--tx': `${tx}px`,
+      '--ty': `${ty}px`,
+    });
+  }, [anim]);
+
+  if (!anim || !style) return null;
+  const cardBackImage = getCardBackImage(expansionKey);
+
+  return (
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      zIndex: 992,
+      pointerEvents: 'none',
+      overflow: 'hidden',
+      animation: `buryToDeckOverlayDepth 1.15s steps(1,end) forwards${exiting ? ', animFadeOut 0.18s ease-in forwards' : ''}`,
+    }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(10,7,2,0.18)', animation: 'moveOverlayBgFade 1.15s ease both' }} />
+      <div style={{
+        position: 'absolute',
+        left: style.left,
+        top: style.top,
+        width: 58,
+        height: 82,
+        marginLeft: -29,
+        marginTop: -41,
+        '--tx': style['--tx'],
+        '--ty': style['--ty'],
+        zIndex: 6,
+        animation: 'buryToDeckPath 1.15s cubic-bezier(0.28,0,0.22,1) forwards, buryToDeckDepth 1.15s steps(1,end) forwards',
+      }}>
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          borderRadius: 4,
+          backgroundImage: `url('${cardBackImage}')`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          border: '1.5px solid #4a3010',
+          boxShadow: '0 6px 18px rgba(0,0,0,0.65), inset 0 0 10px rgba(0,0,0,0.5)',
+        }} />
+      </div>
     </div>
   );
 }
@@ -293,33 +282,48 @@ export function CardTransferOverlay({ transfers, expansionKey = 'temporary' }) {
   const cardBackImage = getCardBackImage(expansionKey);
   return (
     <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 480, overflow: 'hidden' }}>
-      {transfers.flatMap(({ srcX, srcY, destX, destY, count, key, effect }) =>
+      {transfers.flatMap(({ srcX, srcY, destX, destY, count, key, effect, cards }) =>
         Array.from({ length: count }).map((_, idx) => {
+          const card = Array.isArray(cards) ? cards[idx] : null;
           const ox = (idx - (count - 1) / 2) * 14;
           const oy = idx * (-4);
           const txPx = destX - srcX + ox;
           const tyPx = destY - srcY + oy;
           const delay = idx * 0.07;
-          const duration = effect === 'blackGoat' ? 1.28 : 0.62;
+          const duration = effect === 'blackGoat' ? 1.28 : effect === 'tsgSlime' ? 0.82 : 0.62;
+          const isSlime = effect === 'tsgSlime' && card;
+          const cardW = isSlime ? 42 : 28;
+          const cardH = isSlime ? 56 : 40;
           return (
             <div key={`${key}-${idx}`} style={{ position: 'absolute', left: srcX, top: srcY }}>
               {effect === 'blackGoat' && <BlackGoatTrail txPx={txPx} tyPx={tyPx} delay={delay} duration={duration} />}
               <div style={{
                 position: 'absolute',
                 left: 0, top: 0,
-                width: 28, height: 40, marginLeft: -14, marginTop: -20,
+                width: cardW, height: cardH, marginLeft: -cardW / 2, marginTop: -cardH / 2,
                 backgroundColor: '#100c08',
-                backgroundImage: `url('${cardBackImage}')`,
+                backgroundImage: isSlime ? undefined : `url('${cardBackImage}')`,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
                 backgroundRepeat: 'no-repeat',
-                border: effect === 'blackGoat' ? '1.5px solid #4ade80' : '1.5px solid #6a4020',
+                border: effect === 'blackGoat' ? '1.5px solid #4ade80' : effect === 'tsgSlime' ? '1.5px solid #80d8a8' : '1.5px solid #6a4020',
                 borderRadius: 3,
-                boxShadow: effect === 'blackGoat' ? '0 0 16px rgba(74,222,128,0.5), 0 2px 8px rgba(0,0,0,0.6)' : '0 2px 8px rgba(0,0,0,0.6)',
+                boxShadow: effect === 'blackGoat'
+                  ? '0 0 16px rgba(74,222,128,0.5), 0 2px 8px rgba(0,0,0,0.6)'
+                  : effect === 'tsgSlime'
+                    ? '0 0 18px rgba(128,216,168,0.45), 0 2px 8px rgba(0,0,0,0.6)'
+                    : '0 2px 8px rgba(0,0,0,0.6)',
                 '--tx': `${txPx}px`, '--ty': `${tyPx}px`,
                 animation: `cardTransferFly ${duration}s cubic-bezier(0.25,0,0.35,1) ${delay}s both`,
                 zIndex: 481 + idx,
               }}>
+                {isSlime && (
+                  <DDCard
+                    card={card}
+                    small
+                    frameStyle={{ boxShadow: 'none', border: 'none', width: cardW, minWidth: cardW, height: cardH }}
+                  />
+                )}
               </div>
             </div>
           );

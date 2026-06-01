@@ -9,10 +9,15 @@ import {
   cardLogText,
   isZoneCard,
   isBlackGoatYoung,
+  isTsathogguaSlime,
   makeInspectionMeta,
   sortInspectionTargets,
   tryVritraImmortal,
+  buildTsathogguaSlimeBalanceDecision,
 } from './coreUtils';
+import { buildStatEvents } from './statEvents';
+import { applyBalanceDiscardSideEffects } from './balanceCards';
+import { appendProliferatingZDraws, makeProliferatingZState } from './proliferatingZ';
 
 export function applyHpDamageWithLink(P, i, amount, Disc, L, currentTurn, D) {
   if (i == null || !P[i] || P[i].isDead || !(amount > 0)) return;
@@ -55,6 +60,27 @@ export function getLivingAdjacentTargets(players, ci) {
   return getAdjacentTargets(players, ci).filter(
     (idx, pos, arr) => idx !== ci && idx != null && players[idx] && !players[idx].isDead && arr.indexOf(idx) === pos
   );
+}
+
+function getLivingCircularDistance(players, fromIdx, toIdx) {
+  const order = getLivingPlayerOrder(players || [], fromIdx);
+  const fromPos = order.indexOf(fromIdx);
+  const toPos = order.indexOf(toIdx);
+  if (fromPos < 0 || toPos < 0) return Infinity;
+  const diff = Math.abs(fromPos - toPos);
+  return Math.min(diff, order.length - diff);
+}
+
+function appendRandomTargetEvent(statePatch, gs, event) {
+  const seq = (gs?._randomTargetSeq || 0) + 1 + (statePatch?._randomTargetEvents?.length || 0);
+  return {
+    ...statePatch,
+    _randomTargetSeq: seq,
+    _randomTargetEvents: [
+      ...(statePatch?._randomTargetEvents || []),
+      { ...event, seq },
+    ],
+  };
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -210,6 +236,12 @@ function handleInspection(playerIndex, gs) {
   const finalLog = drawnCard.effect === 'nothing'
     ? L.filter(line => line !== `${P[playerIndex].name} 获得暂时的平静`)
     : L;
+  const afterPlayers = copyPlayers(P);
+  const statEventSeq = (gs?._statEventSeq || 0) + 1;
+  const statEvents = buildStatEvents(beforePlayers, afterPlayers, finalLog.slice(beforeLogLen), {
+    reason: drawnCard.name || 'SAN检定',
+    seq: statEventSeq,
+  });
   if (drawnCard.effect === 'houndsOfTindalos') {
     newGs.inspectionDiscard = [];
   } else {
@@ -221,6 +253,11 @@ function handleInspection(playerIndex, gs) {
   newGs._inspectionTarget = playerIndex;
   newGs._inspectionPrevLogLen = beforeLogLen;
   newGs._inspectionBeforePlayers = beforePlayers;
+  newGs._statEventSeq = statEvents.length ? statEventSeq : (gs?._statEventSeq || 0);
+  newGs._statEvents = [
+    ...((gs?._statEvents) || []),
+    ...statEvents,
+  ];
   newGs._inspectionEvents = [
     ...((gs?._inspectionEvents) || []),
     {
@@ -230,8 +267,10 @@ function handleInspection(playerIndex, gs) {
       prevLogLen: beforeLogLen,
       beforePlayers,
       beforeLog,
-      afterPlayers: copyPlayers(P),
+      afterPlayers,
       afterLog: [...finalLog],
+      statEvents,
+      statEventSeq: statEvents.length ? statEventSeq : null,
     }
   ];
   // 更新游戏状态
@@ -255,6 +294,8 @@ function mergeInspectionMeta(target, inspectionResult) {
     _inspectionPrevLogLen: inspectionResult._inspectionPrevLogLen,
     _inspectionBeforePlayers: inspectionResult._inspectionBeforePlayers,
     _inspectionEvents: inspectionResult._inspectionEvents,
+    _statEvents: inspectionResult._statEvents,
+    _statEventSeq: inspectionResult._statEventSeq,
   };
 }
 
@@ -274,6 +315,8 @@ export function processInspectionTargets(targets, startIndex, P, D, Disc, baseLo
       houndsOfTindalosTarget: nextMeta.houndsOfTindalosTarget,
       houndsOfTindalosElapsed: nextMeta.houndsOfTindalosElapsed,
       _inspectionSeq: nextMeta._inspectionSeq,
+      _statEvents: nextMeta._statEvents,
+      _statEventSeq: nextMeta._statEventSeq,
     });
     nextP = inspectionResult.players;
     nextD = inspectionResult.deck;
@@ -295,9 +338,11 @@ export function applyInspectionForSanLoss(targetIndex, newSan, startIndex, P, D,
 
 export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false, avoidNegativeFor = [], isAI = false) {
   let P = copyPlayers(ps), D = [...deck], Disc = [...disc], msgs = [];
+  const beforePlayers = copyPlayers(P);
   let statePatch = {};
   let inspectionMeta = makeInspectionMeta(gs);
   const pendingInspectionTargets = [];
+  let directStatEvents = null;
   const dmgBonus = P[ci]?.damageBonus || 0;
   const healHP = (i, v) => { if (i == null || !P[i] || P[i].isDead) return; P[i].hp = clamp(P[i].hp + v); };
   const healSAN = (i, v) => { if (i == null || !P[i] || P[i].isDead) return; P[i].san = clamp(P[i].san + v); };
@@ -322,11 +367,13 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         const x = 0 | Math.random() * P[i].hand.length;
         const c = P[i].hand.splice(x, 1)[0];
         // 黑山羊幼仔被弃置时销毁，不进入弃牌堆
-        if (isBlackGoatYoung(c)) {
-          msgs.push(`${P[i].name} 的黑山羊幼仔被销毁`);
+        if (isBlackGoatYoung(c) || isTsathogguaSlime(c)) {
+          msgs.push(`${P[i].name} 的衍生牌被销毁`);
         } else if (c.type !== 'blankZone') {
           Disc.push(c);
           msgs.push(`${P[i].name} 失去了 ${cardLogText(c, { alwaysShowName: true })}`);
+          const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: i, cards: [c], reason: '失去手牌' });
+          msgs.splice(0, msgs.length, ...balance.log);
         } else {
           msgs.push(`${P[i].name} 的空白区域牌消失了`);
         }
@@ -338,6 +385,27 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   const others = P.map((_, i) => i).filter(i => i !== ci && !P[i].isDead);
   const allLiving = P.map((_, i) => i).filter(i => !P[i].isDead);
   const actor = P[ci];
+  const finish = (result, explicitStatEvents = null) => {
+    const statEventSeq = (gs?._statEventSeq || 0) + 1;
+    const statEvents = explicitStatEvents || buildStatEvents(beforePlayers, result.P || P, result.msgs || msgs, { reason: card?.name || card?.type || '', seq: statEventSeq });
+    const slimeDecision = statePatch?.abilityData?.type ? null : buildTsathogguaSlimeBalanceDecision(beforePlayers, result.P || P);
+    const nextStatePatch = {
+      ...(result.statePatch || {}),
+      ...(slimeDecision ? { abilityData: slimeDecision } : {}),
+      ...(statEvents.length ? { _statEvents: statEvents, _statEventSeq: statEventSeq } : {}),
+    };
+    return {
+      ...result,
+      statePatch: nextStatePatch,
+      ...(statEvents.length ? { statEvents } : {}),
+    };
+  };
+
+  const playerStats = player => ({
+    hp: player?.hp ?? 0,
+    san: player?.san ?? 0,
+    isDead: !!player?.isDead,
+  });
 
   // 辅助函数：检查条件
   const checkCondition = (condType, condVal, actor) => {
@@ -443,19 +511,98 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   const handlers = {
     selfHealHP: () => { healHP(ci, card.val); msgs.push(`${actor.name} 回复了 ${card.val} HP`); },
     selfHealSAN: () => { healSAN(ci, card.val); msgs.push(`${actor.name} 回复了 ${card.val} SAN`); },
+    lifeBalance: () => { healHP(ci, card.val || 3); msgs.push(`${actor.name} 回复了 ${card.val || 3} HP`); },
+    soulBalance: () => { healSAN(ci, card.val || 3); msgs.push(`${actor.name} 回复了 ${card.val || 3} SAN`); },
+    blindFish: () => {
+      const amount = card.val || 3;
+      healHP(ci, amount);
+      actor.blindNextZoneDecision = true;
+      msgs.push(`${actor.name} 回复了 ${amount} HP，下一张区域牌只能看见编号后决定是否收入`);
+    },
+    proliferatingZ: () => {
+      statePatch = { ...statePatch, proliferatingZ: makeProliferatingZState(ci, gs?.turn || 0), proliferatingZQueue: [] };
+      msgs.push(`【增殖的Z】本回合若有角色获得邪神牌或其衍生牌，其他角色各摸1张牌`);
+    },
+    allHealHP: () => {
+      allLiving.forEach(i => healHP(i, card.val));
+      msgs.push(`全体存活角色回复 ${card.val} HP`);
+    },
     selfHealBoth: () => { healHP(ci, 1); healSAN(ci, 1); msgs.push(`${actor.name} 回复了 1 HP 和 1 SAN`); },
+    selfHealHPSAN: () => {
+      const hpVal = card.hpVal || 0;
+      const sanVal = card.sanVal || 0;
+      if (hpVal) healHP(ci, hpVal);
+      if (sanVal) healSAN(ci, sanVal);
+      msgs.push(`${actor.name} 回复了 ${hpVal} HP 和 ${sanVal} SAN`);
+    },
     selfHealBoth21: () => { healHP(ci, 2); healSAN(ci, 1); msgs.push(`${actor.name} 回复了 2 HP 和 1 SAN`); },
     selfHealAdjDamageHP: () => {
       healHP(ci, card.val);
+      const adjDamage = card.adjVal || card.val;
       const adjacentTargets = getLivingAdjacentTargets(P, ci);
-      adjacentTargets.forEach(i => dealHP(i, card.val));
-      msgs.push(`${actor.name} 回复了 ${card.val} HP，相邻角色各失去 ${card.val + dmgBonus} HP`);
+      adjacentTargets.forEach(i => dealHP(i, adjDamage));
+      msgs.push(`${actor.name} 回复了 ${card.val} HP，相邻角色各失去 ${adjDamage + dmgBonus} HP`);
     },
     selfHealAdjHealHP: () => { healHP(ci, card.val); adjacent.filter(i => i !== ci).forEach(i => healHP(i, card.adjVal || 1)); msgs.push(`${actor.name} 回复了 ${card.val} HP，相邻角色各回复 ${card.adjVal || 1} HP`); },
     adjHealHP: () => { adjacent.forEach(i => healHP(i, card.val)); msgs.push(`${actor.name} 与相邻角色各回复 ${card.val} HP`); },
     selfRevealHandHP: () => { actor.hp = 10; actor.revealHand = true; actor.pickInsteadOfRandom = true; msgs.push(`${actor.name} HP 回满，手牌公开且盲抽改为挑选`); },
     selfRevealHandSAN: () => { actor.san = Math.min(10, actor.san + card.val); actor.revealHand = true; actor.pickInsteadOfRandom = true; msgs.push(`${actor.name} 回复 ${card.val} SAN，手牌公开且盲抽改为挑选`); },
     globalOnlySwap: () => { statePatch = { globalOnlySwapOwner: ci }; msgs.push(`直到 ${actor.name} 的下回合开始前，所有角色技能都视为"掉包"`); },
+    endTurnReplayHand: () => {},
+    igniteTorch: () => {
+      if (!isAI) {
+        statePatch = {
+          ...statePatch,
+          abilityData: {
+            type: 'igniteTorchDiscard',
+            playerIndex: ci,
+          }
+        };
+        msgs.push(`${actor.name} 准备弃一张牌并引燃火把`);
+        return;
+      }
+      randDiscard(ci, 1);
+      P[ci].godPowerImmuneThisTurn = true;
+      msgs.push(`【引燃火把】${actor.name} 本回合不受邪神之力影响`);
+    },
+    swapDeckDiscard: () => {
+      const oldDeck = D;
+      D = Disc;
+      Disc = oldDeck;
+      msgs.push(`【地底天空】牌堆和弃牌堆交换了`);
+    },
+    semiMaterializeTeach: () => {
+      const legalTargets = P.map((p, i) => i).filter(i => P[i] && !P[i].isDead);
+      if (!legalTargets.length) {
+        msgs.push('没有可指定的角色，无法传授半物质化');
+        return;
+      }
+      statePatch = {
+        ...statePatch,
+        abilityData: {
+          type: 'semiMaterializeTarget',
+          source: ci,
+          legalTargets,
+        }
+      };
+      msgs.push(`${actor.name} 准备悄悄指定一名角色`);
+    },
+    deadNeighborSkipDraw: () => {
+      const skipped = new Set();
+      const N = P.length;
+      P.forEach((p, i) => {
+        if (!p?.isDead) return;
+        [(i - 1 + N) % N, (i + 1) % N].forEach(targetIdx => {
+          if (P[targetIdx] && !P[targetIdx].isDead) skipped.add(targetIdx);
+        });
+      });
+      if (!skipped.size) {
+        msgs.push('没有存活角色与死亡角色相邻');
+        return;
+      }
+      skipped.forEach(i => { P[i].skipNextDraw = true; P[i].skipNextDrawReason = '活死人哨兵'; });
+      msgs.push(`【活死人哨兵】${[...skipped].map(i => P[i].name).join('、')} 下回合不能摸牌`);
+    },
     selfDamageHP: () => { if (!avoidNegative && !avoidNegativeFor.includes(ci)) msgs.push(`${actor.name} 失去 ${card.val} HP`); hurtHP(ci, card.val); },
     selfDamageSAN: () => { hurtSAN(ci, card.val); if (!avoidNegative && !avoidNegativeFor.includes(ci)) msgs.push(`${actor.name} 失去 ${card.val} SAN`); },
     selfDamageHPCond: () => { applyConditionalDamage('hp', card); },
@@ -519,18 +666,103 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       }
     },
     allDiscard: () => {
+      const beforeEarthquakePlayers = copyPlayers(P);
+      const beforeEarthquakeDiscard = [...Disc];
+      const earthquakeDiscardEvents = [];
       allLiving.forEach(i => {
-        if (!avoidNegativeFor.includes(i)) {
-          randDiscard(i, 1);
+        if (!avoidNegativeFor.includes(i) && P[i]?.hand?.length) {
+          const x = 0 | Math.random() * P[i].hand.length;
+          const c = P[i].hand.splice(x, 1)[0];
+          if (isBlackGoatYoung(c) || isTsathogguaSlime(c)) {
+            msgs.push(`${P[i].name} 的衍生牌被销毁`);
+          } else if (c.type !== 'blankZone') {
+            Disc.push(c);
+            msgs.push(`${P[i].name} 失去了 ${cardLogText(c, { alwaysShowName: true })}`);
+            const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: i, cards: [c], reason: '失去手牌' });
+            msgs.splice(0, msgs.length, ...balance.log);
+            earthquakeDiscardEvents.push({
+              playerIndex: i,
+              card: c,
+              afterPlayers: copyPlayers(P),
+              afterDiscard: [...Disc],
+            });
+          } else {
+            msgs.push(`${P[i].name} 的空白区域牌消失了`);
+          }
         }
       });
-      statePatch = { ...statePatch, _earthquakeSeq: (gs?._earthquakeSeq || 0) + 1 };
+      statePatch = {
+        ...statePatch,
+        _earthquakeSeq: (gs?._earthquakeSeq || 0) + 1,
+        _earthquakeBeforePlayers: beforeEarthquakePlayers,
+        _earthquakeBeforeDiscard: beforeEarthquakeDiscard,
+        _earthquakeDiscardEvents: earthquakeDiscardEvents,
+      };
     },
     selfRenounceGod: () => {
       if (actor.godName) {
         if (actor.godZone?.length) Disc.push(...actor.godZone);
         actor.godZone = []; actor.godName = null; actor.godLevel = 0;
         msgs.push(`${actor.name} 放弃信仰`);
+      }
+    },
+    graveDigGod: () => {
+      const godCards = Disc
+        .map((discardCard, discardIndex) => ({ card: discardCard, discardIndex }))
+        .filter(item => item.card?.isGod);
+      if (!godCards.length) {
+        msgs.push('弃牌堆中没有邪神牌，无法掘墓');
+        return;
+      }
+      if (isAI) {
+        const picked = godCards[godCards.length - 1];
+        const [godCard] = Disc.splice(picked.discardIndex, 1);
+        P[ci].hand.push(godCard);
+        statePatch = { ...statePatch, ...appendProliferatingZDraws({ ...gs, ...statePatch }, P, ci, godCard) };
+        msgs.push(`${actor.name} 从弃牌堆中取回 ${cardLogText(godCard, { alwaysShowName: true })}`);
+      } else {
+        statePatch = {
+          ...statePatch,
+          abilityData: {
+            type: 'graveDigPickGod',
+            playerIndex: ci,
+            godCards: godCards.map(item => item.card),
+            discardIndices: godCards.map(item => item.discardIndex),
+          }
+        };
+        msgs.push(`${actor.name} 准备从弃牌堆中取回一张邪神牌`);
+      }
+    },
+    buryAlive: () => {
+      const targets = getAdjacentTargets(P, ci).filter(i =>
+        P[i] &&
+        !P[i].isDead &&
+        P[i].hand.length > 0 &&
+        !(avoidNegative && i === ci) &&
+        !avoidNegativeFor.includes(i)
+      );
+      if (!targets.length) {
+        msgs.push('没有角色有手牌，无法活埋');
+        return;
+      }
+      if (isAI) {
+        targets.forEach(targetIdx => {
+          if (!P[targetIdx]?.hand?.length) return;
+          const [buriedCard] = P[targetIdx].hand.splice(0, 1);
+          D.push(buriedCard);
+          msgs.push(`【活埋】${P[targetIdx].name} 将 ${cardLogText(buriedCard, { alwaysShowName: true })} 放到了牌堆底`);
+        });
+      } else {
+        statePatch = {
+          ...statePatch,
+          abilityData: {
+            type: 'buryAliveSelect',
+            source: ci,
+            targets,
+            targetIndex: 0,
+          }
+        };
+        msgs.push(`${actor.name} 与相邻角色准备各将一张手牌放到牌堆底`);
       }
     },
     sacHealHP: () => {
@@ -621,11 +853,13 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const avoidSelf = avoidNegative || avoidNegativeFor.includes(ci);
       const deferredGlobalLogs = [];
       const affectedTargets = P.map((p, i) => i).filter(i => !P[i].isDead && !avoidNegativeFor.includes(i) && !(avoidSelf && i === ci));
+      const beforeGlobalPlayers = copyPlayers(P);
       affectedTargets.forEach(i => {
         const localMsgs = [];
         applyHpDamageWithLink(P, i, (card.val || 0) + dmgBonus, Disc, localMsgs, gs?.currentTurn, D);
         deferredGlobalLogs.push(...localMsgs);
       });
+      const afterGlobalPlayers = copyPlayers(P);
       if (affectedTargets.length) {
         if (avoidSelf && affectedTargets.length === allLiving.length - 1) {
           msgs.push(`除${actor.name}外，全体存活角色失去 ${card.val} HP`);
@@ -637,11 +871,81 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const alivePlayers = P.map((p, i) => i).filter(i => !P[i].isDead && !avoidNegativeFor.includes(i) && !(avoidSelf && i === ci));
       if (alivePlayers.length > 0) {
         const randomTarget = alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
+        const beforeExtraPlayer = { ...P[randomTarget] };
         const localMsgs = [];
         applyHpDamageWithLink(P, randomTarget, (card.val || 0) + dmgBonus, Disc, localMsgs, gs?.currentTurn, D);
+        statePatch = appendRandomTargetEvent(statePatch, gs, {
+          sourceIdx: ci,
+          targetIdx: randomTarget,
+          label: card.name || '随机目标',
+          resultText: `${P[randomTarget].name} 被选中`,
+          phaseOrder: 1,
+        });
         msgs.push(`${P[randomTarget].name} 额外失去 ${card.val} HP`);
         if (localMsgs.length) msgs.push(...localMsgs);
+        const seq = (gs?._statEventSeq || 0) + 1;
+        directStatEvents = [
+          ...affectedTargets
+            .filter(i => afterGlobalPlayers[i]?.hp < beforeGlobalPlayers[i]?.hp)
+            .map(i => ({
+              type: 'HP_LOSS',
+              target: i,
+              from: playerStats(beforeGlobalPlayers[i]),
+              to: playerStats(afterGlobalPlayers[i]),
+              reason: card?.name || card?.type || '',
+              seq,
+              phaseOrder: 0,
+            })),
+          ...((P[randomTarget]?.hp ?? 0) < (beforeExtraPlayer.hp ?? 0) ? [{
+            type: 'HP_LOSS',
+            target: randomTarget,
+            from: playerStats(beforeExtraPlayer),
+            to: playerStats(P[randomTarget]),
+            reason: card?.name || card?.type || '',
+            seq,
+            phaseOrder: 2,
+          }] : []),
+        ];
       }
+    },
+    throwStone: () => {
+      const candidates = P.map((p, i) => i).filter(i => i !== ci && !P[i].isDead);
+      if (!candidates.length) {
+        msgs.push('没有其他存活角色，无法投掷石块');
+        return;
+      }
+      const roll = 1 + (Math.random() * 6 | 0);
+      const randomTarget = candidates[Math.floor(Math.random() * candidates.length)];
+      const distance = getLivingCircularDistance(P, ci, randomTarget);
+      const damage = Math.max(0, roll - distance) + dmgBonus;
+      const beforeTarget = { ...P[randomTarget] };
+      statePatch = appendRandomTargetEvent(statePatch, gs, {
+        sourceIdx: ci,
+        targetIdx: randomTarget,
+        label: card.name || '投掷石块',
+        roll,
+        distance,
+        damage,
+        resultText: `${P[randomTarget].name} 被选中`,
+        diceBefore: true,
+        phaseOrder: 1,
+      });
+      msgs.push(`${actor.name} 掷出 ${roll} 点，随机砸向 ${P[randomTarget].name}（距离${distance}），造成 ${damage} HP 伤害`);
+      if (damage > 0) {
+        const localMsgs = [];
+        applyHpDamageWithLink(P, randomTarget, damage, Disc, localMsgs, gs?.currentTurn, D);
+        if (localMsgs.length) msgs.push(...localMsgs);
+      }
+      const seq = (gs?._statEventSeq || 0) + 1;
+      directStatEvents = damage > 0 ? [{
+        type: 'HP_LOSS',
+        target: randomTarget,
+        from: playerStats(beforeTarget),
+        to: playerStats(P[randomTarget]),
+        reason: card?.name || card?.type || '',
+        seq,
+        phaseOrder: 2,
+      }] : [];
     },
     sameAbyssChoice: () => {
       if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
@@ -682,10 +986,12 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         for (let d = 0; d < discardCount; d++) {
           if (target.hand.length > actorHandCount) {
             const c = target.hand.shift();
-            if (isBlackGoatYoung(c)) {
-              msgs.push(`${target.name} 的黑山羊幼仔被销毁`);
+            if (isBlackGoatYoung(c) || isTsathogguaSlime(c)) {
+              msgs.push(`${target.name} 的衍生牌被销毁`);
             } else if (c.type !== 'blankZone') {
               Disc.push(c);
+              const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: targetIdx, cards: [c], reason: '同归深渊弃牌' });
+              msgs.splice(0, msgs.length, ...balance.log);
             }
           }
         }
@@ -926,8 +1232,10 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   const handler = handlers[card.type];
   if (handler) {
     const earlyReturn = handler();
-    if (earlyReturn) return earlyReturn;
+    if (earlyReturn) return finish(earlyReturn);
   }
+  const directStatEventSeq = (gs?._statEventSeq || 0) + 1;
+  if (!directStatEvents) directStatEvents = buildStatEvents(beforePlayers, P, msgs, { reason: card?.name || card?.type || '', seq: directStatEventSeq });
   if (pendingInspectionTargets.length) {
     const inspectionBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
     const processed = processInspectionTargets(pendingInspectionTargets, gs?.currentTurn ?? ci, P, D, Disc, inspectionBaseLog, inspectionMeta);
@@ -935,5 +1243,5 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     msgs = [...msgs, ...processed.log.slice(inspectionBaseLog.length)];
     statePatch = { ...statePatch, ...inspectionMeta };
   }
-  return { P, D, Disc, msgs, statePatch };
+  return finish({ P, D, Disc, msgs, statePatch }, directStatEvents);
 }

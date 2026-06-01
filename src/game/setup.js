@@ -157,6 +157,55 @@ const RINFO = {
 
 export { AI_NAMES, RINFO };
 
+export const INITIAL_HAND_SIZE = 4;
+
+const zhCount = (count) => ({
+  1: '一',
+  2: '两',
+  3: '三',
+  4: '四',
+  5: '五',
+}[count] || String(count));
+
+function isDebugForceCardTargetAllowed(target, isSinglePlayer) {
+  if (target === 'player') return true;
+  return isSinglePlayer && /^ai[1-4]$/.test(target || '');
+}
+
+function nextDebugCardId(deck) {
+  return deck.reduce((max, card) => Math.max(max, Number.isFinite(card?.id) ? card.id : -1), -1) + 1;
+}
+
+function createDebugZoneCard(deck, key, name) {
+  const variants = FIXED_ZONE_CARD_VARIANTS_BY_KEY[key] || [];
+  const cardDef = variants.find(card => card.name === name);
+  if (!cardDef) return null;
+  const letter = key?.[0];
+  const number = Number(key?.slice(1));
+  return {
+    ...cardDef,
+    id: nextDebugCardId(deck),
+    key,
+    letter,
+    number,
+    isZone: true,
+  };
+}
+
+function createDebugGodCard(deck, godKey) {
+  const def = GOD_DEFS[godKey];
+  if (!def) return null;
+  return {
+    id: nextDebugCardId(deck),
+    isGod: true,
+    godKey,
+    key: godKey,
+    type: 'god',
+    needsTarget: false,
+    ...def,
+  };
+}
+
 // ══════════════════════════════════════════════════════════════
 //  INIT GAME
 // ══════════════════════════════════════════════════════════════
@@ -181,14 +230,16 @@ export function initGame(
 
   // Debug: 强制摸牌
   let targetCard = null;
-  if ((debugForceCard || (debugForceCardType && (debugForceZoneCardKey || debugForceGodCardKey))) && (debugForceCardTarget === 'player' || debugForceCardTarget === 'ai1')) {
+  if ((debugForceCard || (debugForceCardType && (debugForceZoneCardKey || debugForceGodCardKey))) && isDebugForceCardTargetAllowed(debugForceCardTarget, isSinglePlayer)) {
 
     if (debugForceCardType === 'zone' && debugForceZoneCardKey && debugForceZoneCardName) {
       // 查找指定编号和牌面的区域牌
-      targetCard = deck.find(card => card.key === debugForceZoneCardKey && card.name === debugForceZoneCardName);
+      targetCard = deck.find(card => card.key === debugForceZoneCardKey && card.name === debugForceZoneCardName)
+        || createDebugZoneCard(deck, debugForceZoneCardKey, debugForceZoneCardName);
     } else if (debugForceCardType === 'god' && debugForceGodCardKey) {
       // 查找指定类型的神牌
-      targetCard = deck.find(card => card.isGod && card.godKey === debugForceGodCardKey);
+      targetCard = deck.find(card => card.isGod && card.godKey === debugForceGodCardKey)
+        || createDebugGodCard(deck, debugForceGodCardKey);
     } else if (debugForceCard) {
       // 兼容旧的设置方式
       targetCard = deck.find(card => card.key === debugForceCard);
@@ -232,11 +283,11 @@ export function initGame(
   }));
 
   // 发初始手牌
-  for (let r = 0; r < 4; r++) players.forEach(p => p.hand.push(deck.shift()));
+  for (let r = 0; r < INITIAL_HAND_SIZE; r++) players.forEach(p => p.hand.push(deck.shift()));
 
   const inspectionDeck = shuffle([...INSPECTION_DECK]);
   const base = {
-    players, deck, discard: [], inspectionDeck, inspectionDiscard: [], currentTurn: -1, phase: 'DRAW_REVEAL', drawReveal: null, selectedCard: null, abilityData: {}, log: ['游戏开始。每人获得四张初始手牌。'], gameOver: null, skillUsed: false, restUsed: false, multiplyUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner: null, expansionKey, _turnKey: 0, _isMP: !!playerNames, turn: 0, turnDirection: 1, sealLooseningCount: 0, houndsOfTindalosActive: false, houndsOfTindalosTarget: null, houndsOfTindalosElapsed: 0, debugForceCard: targetCard, debugForceCardTarget
+    players, deck, discard: [], inspectionDeck, inspectionDiscard: [], currentTurn: -1, phase: 'DRAW_REVEAL', drawReveal: null, selectedCard: null, abilityData: {}, log: [`游戏开始。每人获得${zhCount(INITIAL_HAND_SIZE)}张初始手牌。`], gameOver: null, skillUsed: false, restUsed: false, multiplyUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner: null, apophisNight: null, expansionKey, _turnKey: 0, _isMP: !!playerNames, turn: 0, turnDirection: 1, sealLooseningCount: 0, houndsOfTindalosActive: false, houndsOfTindalosTarget: null, houndsOfTindalosElapsed: 0, debugForceCard: targetCard, debugForceCardTarget
   };
   base.debugForceCardKeep = playerNames ? 'auto' : debugForceCardKeep;
   return startNextTurn(base);

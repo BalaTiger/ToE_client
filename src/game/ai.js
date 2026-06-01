@@ -12,6 +12,7 @@ import {
   zoneCardAppliesWidePressure,
   zoneCardProvidesGuaranteedCardGain,
   zoneCardUsesTargetInteraction,
+  isBlackGoatYoung,
   ROLE_TREASURE,
   ROLE_HUNTER,
   ROLE_CULTIST,
@@ -67,8 +68,12 @@ function zoneCardGiftHpHealValue(card) {
   switch (card.type) {
     case 'selfHealHP':
       return card.val || 0;
+    case 'allHealHP':
+      return card.val || 0;
     case 'selfHealBoth':
       return card.val || 1;
+    case 'selfHealHPSAN':
+      return card.hpVal || 0;
     case 'selfHealBoth21':
       return 2;
     case 'selfRevealHandHP':
@@ -153,12 +158,35 @@ function sortByLowestHpThenSan(a, b) {
   return (a.player.hp - b.player.hp) || (a.player.san - b.player.san) || (a.idx - b.idx);
 }
 
+function estimateSameAbyssSelfFollowupPenalty(card, self, players, ci) {
+  if (card?.type !== 'sameAbyssChoice' || !self || self.isDead) return 0;
+  const living = players
+    .map((player, idx) => ({ player, idx }))
+    .filter(({ player }) => player && !player.isDead);
+  if (!living.length) return 0;
+  const selfHandAfterKeep = (self.hand?.length || 0) + 1;
+  const maxOtherHand = Math.max(
+    0,
+    ...living
+      .filter(({ idx }) => idx !== ci)
+      .map(({ player }) => player.hand?.length || 0)
+  );
+  if (selfHandAfterKeep < maxOtherHand) return 0;
+  const actorHandCount = selfHandAfterKeep;
+  const discardCount = Math.max(0, selfHandAfterKeep - actorHandCount);
+  const hpLoss = 4;
+  const deathRisk = self.hp <= hpLoss ? 8 : 0;
+  return hpLoss * 2.2 + discardCount * 1.5 + deathRisk + 2;
+}
+
 function estimateHunterZoneCardScore(card, self, players, ci) {
   let score = 0;
   switch (card.type) {
     case 'selfHealHP': score = (10 - self.hp) * 1.5; break;
+    case 'allHealHP': score = players.filter(p => !p.isDead).reduce((sum, p) => sum + (10 - p.hp) * 0.35, 0); break;
     case 'selfHealSAN': score = (10 - self.san) * 1.4; break;
     case 'selfHealBoth': score = (10 - self.hp) + (10 - self.san); break;
+    case 'selfHealHPSAN': score = (10 - self.hp) * 1.5 + (10 - self.san) * 0.8; break;
     case 'selfHealBoth21': score = (10 - self.hp) * 1.5 + (10 - self.san) * 0.8; break;
     case 'sacHealSelfSAN': score = (10 - self.san) * 1.8 - 1.2; break;
     case 'selfRevealHandHP': score = (10 - self.hp) * 2.2 + 1.5; break;
@@ -192,6 +220,9 @@ function estimateHunterZoneCardScore(card, self, players, ci) {
       break;
     case 'firstComePick':
       score = 1.2;
+      break;
+    case 'sameAbyssChoice':
+      score = -(card.hpVal || 2) * 2.1 - estimateSameAbyssSelfFollowupPenalty(card, self, players, ci);
       break;
     case 'roseThornGiftAllHand': {
       const hunters = players.filter((p, i) => i !== ci && !p.isDead && p.role === ROLE_HUNTER);
@@ -320,8 +351,10 @@ function estimateTreasureZoneCardScore(card, self, players, ci) {
   const closeToWin = progress >= 6;
   switch (card.type) {
     case 'selfHealHP': score = (10 - self.hp) * 1.5; break;
+    case 'allHealHP': score = players.filter(p => !p.isDead).reduce((sum, p) => sum + (10 - p.hp) * 0.35, 0); break;
     case 'selfHealSAN': score = (10 - self.san) * 1.6; break;
     case 'selfHealBoth': score = (10 - self.hp) + (10 - self.san) * 1.1; break;
+    case 'selfHealHPSAN': score = (10 - self.hp) * 1.5 + (10 - self.san) * 1.0; break;
     case 'selfHealBoth21': score = (10 - self.hp) * 1.5 + (10 - self.san) * 1.0; break;
     case 'sacHealSelfSAN': score = (10 - self.san) * 1.8 - 1.2; break;
     case 'selfRevealHandHP': score = (10 - self.hp) * 2.2 + 1.2; break;
@@ -355,6 +388,9 @@ function estimateTreasureZoneCardScore(card, self, players, ci) {
       break;
     case 'firstComePick':
       score = 3.8;
+      break;
+    case 'sameAbyssChoice':
+      score = -(card.hpVal || 2) * 2.2 - estimateSameAbyssSelfFollowupPenalty(card, self, players, ci);
       break;
     case 'roseThornGiftAllHand':
       score = -100;
@@ -462,10 +498,14 @@ function estimateCultistZoneCardScore(card, self, players, ci) {
     switch (card.type) {
       case 'selfHealHP':
         return { targets: [ci], hpDelta: card.val, sanDelta: 0, hpLoss: 0, sanLoss: 0 };
+      case 'allHealHP':
+        return { targets: players.map((p, i) => i).filter(i => !players[i].isDead), hpDelta: card.val, sanDelta: 0, hpLoss: 0, sanLoss: 0 };
       case 'selfHealSAN':
         return { targets: [ci], hpDelta: 0, sanDelta: card.val, hpLoss: 0, sanLoss: 0 };
       case 'selfHealBoth':
         return { targets: [ci], hpDelta: card.val, sanDelta: card.val, hpLoss: 0, sanLoss: 0 };
+      case 'selfHealHPSAN':
+        return { targets: [ci], hpDelta: card.hpVal, sanDelta: card.sanVal, hpLoss: 0, sanLoss: 0 };
       case 'selfHealBoth21':
         return { targets: [ci], hpDelta: 2, sanDelta: 1, hpLoss: 0, sanLoss: 0 };
       case 'selfHealHPSelfDamageSAN':
@@ -668,7 +708,7 @@ function getCthulhuRestBias(ai) {
 
 export function shouldAiRest(gs, ai, aiEffRole) {
   if (!ai || ai.isDead) return false;
-  if (gs?.restUsed || gs?.skillUsed) return false;
+  if (gs?.restUsed || gs?.skillUsed || gs?.multiplyUsed || ai.disableRest) return false;
   if (ai.hp >= 9) return false;
 
   const cthBias = getCthulhuRestBias(ai);
@@ -808,7 +848,7 @@ export function chooseAiCultistBewitchPlan(players, sourceIdx) {
     .filter(({ player, idx }) => idx !== sourceIdx && !player.isDead);
   if (!targets.length || !(self.hand || []).length) return null;
 
-  const hand = [...self.hand];
+  const hand = [...self.hand].filter(card => !isBlackGoatYoung(card));
   const regionCards = hand.filter(card => !card.isGod);
   const godCards = hand.filter(card => card.isGod);
 
@@ -943,6 +983,11 @@ export function aiShouldKeepZoneCard(card, ci, players, forced = false) {
   
   const self = players[ci];
   const role = self?._nyaBorrow || self?.role;
+
+  if (card.type === 'sameAbyssChoice') {
+    const selfPenalty = estimateSameAbyssSelfFollowupPenalty(card, self, players, ci);
+    if (selfPenalty > 0 && (self?.hp || 0) <= (card.hpVal || 2) + 4) return false;
+  }
 
   if (card.type === 'roseThornGiftAllHand') {
     const hand = self?.hand || [];
@@ -1122,7 +1167,7 @@ export function canCultistEmptyHandByBewitch(players, ti) {
   const hand = self.hand || [];
   if (hand.length === 0) return true;
 
-  const regionCards = hand.filter(c => !c.isGod);
+  const regionCards = hand.filter(c => !c.isGod && !isBlackGoatYoung(c));
   return regionCards.length > 0;
 }
 
