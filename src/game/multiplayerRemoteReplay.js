@@ -1,5 +1,5 @@
 import { bindAnimLogChunks } from './animLogs';
-import { statePatchStep } from './animQueueHelpers';
+import { buildBewitchForcedCardQueue, statePatchStep } from './animQueueHelpers';
 import { isLocalCurrentTurn, isLocalSeatIndex, localDisplayName } from './rotateState';
 
 export const MP_REMOTE_REPLAY = {
@@ -43,6 +43,42 @@ function hasDrawAnimationState(state) {
 
 function buildMaskedActionState(state) {
   return { ...state, phase: 'ACTION', drawReveal: null, abilityData: {} };
+}
+
+function getLogDelta(previousGs, rotated) {
+  const prevLog = Array.isArray(previousGs?.log) ? previousGs.log : [];
+  const nextLog = Array.isArray(rotated?.log) ? rotated.log : [];
+  let start = 0;
+  while (start < prevLog.length && start < nextLog.length && prevLog[start] === nextLog[start]) start += 1;
+  return nextLog.slice(start);
+}
+
+function buildTimedOutDrawDiscardStep(previousGs, logDelta = []) {
+  const previousDraw = previousGs?.drawReveal;
+  if (!previousDraw?.card || !previousDraw.needsDecision || previousDraw.forcedKeep) return null;
+  const discardMsg = logDelta.find(line => /（?超时\)? .*弃置了/.test(line || '') || /\(超时\).*弃置了/.test(line || ''));
+  if (!discardMsg) return null;
+  const drawerIdx = previousDraw.drawerIdx ?? previousGs?.currentTurn ?? 0;
+  const drawerName = previousDraw.drawerName || previousGs?.players?.[drawerIdx]?.name || '???';
+  return {
+    type: 'DISCARD',
+    card: previousDraw.card,
+    triggerName: drawerName,
+    targetPid: drawerIdx,
+    msgs: [discardMsg],
+  };
+}
+
+function findCardByLabel(players, label) {
+  if (!label) return null;
+  for (const player of players || []) {
+    const zones = [player?.hand, player?.godZone, player?.zoneCards].filter(Array.isArray);
+    for (const zone of zones) {
+      const found = zone.find(card => card?.key === label || card?.name === label || card?.godKey === label);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 function buildDrawEffectQueue({
@@ -105,6 +141,30 @@ export function buildMpRemoteReplayAction({
     };
   }
 
+  const logDelta = getLogDelta(previousGs, rotated);
+  const timedOutDrawDiscardStep = buildTimedOutDrawDiscardStep(previousGs, logDelta);
+  const bewitchMsg = logDelta.find(line => /【蛊惑】/.test(line || ''));
+  if (bewitchMsg) {
+    const targetName = bewitchMsg.match(/对 (.+?) 【蛊惑】/)?.[1];
+    const targetIdx = targetName ? rotated.players?.findIndex(p => p?.name === targetName) : -1;
+    const giftLabel = bewitchMsg.match(/赠予 \[([^\]]+)\]/)?.[1] || bewitchMsg.match(/赠予 ([^，。]+)/)?.[1];
+    const giftCard = findCardByLabel(rotated.players, giftLabel);
+    const statQueue = bindAnimLogChunks(
+      buildAnimQueue(previousGs || buildMaskedActionState(rotated), rotated),
+      { statLogs: logDelta },
+    );
+    const queue = giftCard && targetIdx >= 0
+      ? buildBewitchForcedCardQueue(rotated.currentTurn, targetIdx, giftCard, rotated.players?.[targetIdx]?.name, statQueue, logDelta)
+      : [{ type: 'SKILL_BEWITCH', msgs: logDelta, targetIdx: targetIdx >= 0 ? targetIdx : 1 }, ...statQueue];
+    if (queue.length) queue.push(statePatchStep({ players: rotated.players, discard: rotated.discard, log: rotated.log }));
+    return {
+      type: MP_REMOTE_REPLAY.ANIM_QUEUE,
+      maskedGs: buildMaskedActionState(rotated),
+      pendingGs: rotated,
+      queue,
+    };
+  }
+
   const nonSelfDraw = hasDrawAnimationState(rotated) && !isLocalCurrentTurn(rotated);
   if (nonSelfDraw && !isLocalSeatIndex(rotated.drawReveal?.drawerIdx ?? rotated.currentTurn)) {
     const drawnCard = getDrawnCard(rotated);
@@ -118,6 +178,8 @@ export function buildMpRemoteReplayAction({
       buildFullHandSwapTransferQueueFromLogs,
     });
     const queue = [
+      ...(timedOutDrawDiscardStep ? [timedOutDrawDiscardStep] : []),
+      { type: 'YOUR_TURN', name: drawerName, msgs: rotated._turnStartLogs },
       { type: 'DRAW_CARD', card: drawnCard, triggerName: drawerName, targetPid: drawerPid, msgs: rotated._drawLogs },
       ...drawEffectQ,
     ];
@@ -141,8 +203,9 @@ export function buildMpRemoteReplayAction({
       type: MP_REMOTE_REPLAY.START_ANIM,
       maskedGs: buildMaskedActionState(rotated),
       pendingGs: rotated,
-      anim: { type: 'YOUR_TURN', msgs: rotated._turnStartLogs },
+      anim: timedOutDrawDiscardStep || { type: 'YOUR_TURN', msgs: rotated._turnStartLogs },
       queue: [
+        ...(timedOutDrawDiscardStep ? [{ type: 'YOUR_TURN', msgs: rotated._turnStartLogs }] : []),
         { type: 'DRAW_CARD', card: drawnCard, triggerName: '你', targetPid: 0, msgs: rotated._drawLogs },
         ...bindAnimLogChunks(
           buildAnimQueue({ ...previousGs, players: rotated._playersBeforeThisDraw || previousGs?.players }, rotated),

@@ -352,6 +352,10 @@ function buildTurnStartIntroQueue(state,name){
   return queue;
 }
 
+function getHandLimitForPlayer(player){
+  return Math.max(0,(player?._nyaHandLimit??4)-(player?.handLimitDecrease||0));
+}
+
 // ══════════════════════════════════════════════════════════════
 //  AI STEP
 // ══════════════════════════════════════════════════════════════
@@ -550,6 +554,8 @@ export default function Game(){
   const receivedGsRef=useRef(false); // 收到远端 state 时置 true，阻止 sync useEffect 回发
   const mpRoleRevealedRef=useRef(false); // 每局游戏只触发一次角色揭示
   const mpOpeningRoleRevealPendingRef=useRef(false); // 开局角色揭示期间忽略重复首帧同步，避免抢跑首回合动画
+  const pendingMpRawGsRef=useRef(null); // 动画播放中收到的新同步包，等当前队列落地后再处理
+  const mpTurnExpiredRef=useRef(false); // 回合倒计时归零后保持到自动结束真正执行，避免动作动画期间丢失
   const gameEndSentRef=useRef(false);      // 防止 gameEnd 重复发送
   const [isDisconnected,setIsDisconnected]=useState(false);
   // 表情功能
@@ -587,6 +593,73 @@ export default function Game(){
       s.onerror=()=>reject(new Error('socket.io-client 加载失败'));
       document.head.appendChild(s);
     });
+  }
+
+  function isMpReplayBusy(){
+    return !!roleRevealAnim||!!anim||!!animExiting||animQueueRef.current.length>0||!!pendingGsRef.current;
+  }
+
+  function processIncomingMpStateSync(rawGs,{allowBuffer=true}={}){
+    if(!rawGs)return;
+    const myIdx=myPlayerIndexRef.current;
+    const rotated=rotateGsForViewer(rawGs,myIdx);
+    if(gs&&rotated._turnKey===gs._turnKey&&rotated.currentTurn===gs.currentTurn&&rotated.phase===gs.phase&&(rotated.log?.length||0)<=(gs.log?.length||0)){
+      receivedGsRef.current=true;
+      return;
+    }
+    if(mpOpeningRoleRevealPendingRef.current&&!rotated.gameOver){
+      receivedGsRef.current=true;
+      return;
+    }
+    if(allowBuffer&&isMpReplayBusy()){
+      receivedGsRef.current=true;
+      pendingMpRawGsRef.current=rawGs;
+      return;
+    }
+    receivedGsRef.current=true;
+    animQueueRef.current=[];
+    pendingGsRef.current=null;
+    setAnimExiting(false);
+    clearDamageAnimations();
+    setAnim(null);
+    const replayAction=buildMpRemoteReplayAction({
+      rotated,
+      previousGs:gs,
+      roleRevealed:mpRoleRevealedRef.current,
+      buildAnimQueue,
+      buildFullHandSwapTransferQueueFromLogs,
+    });
+    if(replayAction?.type===MP_REMOTE_REPLAY.ROLE_REVEAL){
+      mpRoleRevealedRef.current=true;
+      mpOpeningRoleRevealPendingRef.current=true;
+      syncVisibleLog(rotated.log||[]);
+      setGs(replayAction.maskedGs);
+      setAnim(null);
+      setRoleRevealAnim({role:replayAction.role,pendingGs:replayAction.pendingGs});
+    }else if(replayAction?.type===MP_REMOTE_REPLAY.DICE_ROLL){
+      setGs(replayAction.maskedGs);
+      receivedGsRef.current=true;
+      suppressNextBroadcastRef.current=true;
+      pendingGsRef.current=replayAction.pendingGs;
+      animQueueRef.current=[];
+      setAnim(replayAction.anim);
+    }else if(replayAction?.type===MP_REMOTE_REPLAY.ANIM_QUEUE){
+      if(replayAction.visualLock)visualStateLocks.lock(replayAction.visualLock);
+      setGs(replayAction.maskedGs);
+      receivedGsRef.current=true;
+      suppressNextBroadcastRef.current=true;
+      triggerAnimQueue(replayAction.queue,replayAction.pendingGs);
+    }else if(replayAction?.type===MP_REMOTE_REPLAY.START_ANIM){
+      if(replayAction.visualLock)visualStateLocks.lock(replayAction.visualLock);
+      setGs(replayAction.maskedGs);
+      receivedGsRef.current=true;
+      suppressNextBroadcastRef.current=true;
+      pendingGsRef.current=replayAction.pendingGs;
+      animQueueRef.current=replayAction.queue||[];
+      setAnim(replayAction.anim);
+    }else if(replayAction?.type===MP_REMOTE_REPLAY.SET_STATE){
+      setGs(replayAction.gs);
+    }
   }
 
   // ── 连接后端（联机选项界面专用）─────────────────────────────
@@ -748,57 +821,7 @@ export default function Game(){
     // mpStateSync：收到房主广播的 raw gs 后，必须先 rotate 到本地视角，
     // 后续所有“本地玩家 / 当前行动者 / 当前响应者”判断都应基于 rotated + helper。
     socket.on('mpStateSync',({gs:rawGs})=>{
-      if(!rawGs)return;
-      const myIdx=myPlayerIndexRef.current;
-      const rotated=rotateGsForViewer(rawGs,myIdx);
-      if(mpOpeningRoleRevealPendingRef.current&&!rotated.gameOver){
-        receivedGsRef.current=true;
-        return;
-      }
-      receivedGsRef.current=true;
-      animQueueRef.current=[];
-      pendingGsRef.current=null;
-      setAnimExiting(false);
-      clearDamageAnimations();
-      setAnim(null);
-      const replayAction=buildMpRemoteReplayAction({
-        rotated,
-        previousGs:gs,
-        roleRevealed:mpRoleRevealedRef.current,
-        buildAnimQueue,
-        buildFullHandSwapTransferQueueFromLogs,
-      });
-      if(replayAction?.type===MP_REMOTE_REPLAY.ROLE_REVEAL){
-        mpRoleRevealedRef.current=true;
-        mpOpeningRoleRevealPendingRef.current=true;
-        syncVisibleLog(rotated.log||[]);
-        setGs(replayAction.maskedGs);
-        setAnim(null);
-        setRoleRevealAnim({role:replayAction.role,pendingGs:replayAction.pendingGs});
-      }else if(replayAction?.type===MP_REMOTE_REPLAY.DICE_ROLL){
-        setGs(replayAction.maskedGs);
-        receivedGsRef.current=true;
-        suppressNextBroadcastRef.current=true;
-        pendingGsRef.current=replayAction.pendingGs;
-        animQueueRef.current=[];
-        setAnim(replayAction.anim);
-      }else if(replayAction?.type===MP_REMOTE_REPLAY.ANIM_QUEUE){
-        if(replayAction.visualLock)visualStateLocks.lock(replayAction.visualLock);
-        setGs(replayAction.maskedGs);
-        receivedGsRef.current=true;
-        suppressNextBroadcastRef.current=true;
-        triggerAnimQueue(replayAction.queue,replayAction.pendingGs);
-      }else if(replayAction?.type===MP_REMOTE_REPLAY.START_ANIM){
-        if(replayAction.visualLock)visualStateLocks.lock(replayAction.visualLock);
-        setGs(replayAction.maskedGs);
-        receivedGsRef.current=true;
-        suppressNextBroadcastRef.current=true;
-        pendingGsRef.current=replayAction.pendingGs;
-        animQueueRef.current=replayAction.queue||[];
-        setAnim(replayAction.anim);
-      }else if(replayAction?.type===MP_REMOTE_REPLAY.SET_STATE){
-        setGs(replayAction.gs);
-      }
+      processIncomingMpStateSync(rawGs);
     });
     // emojiReceived：收到其他玩家发的表情
     socket.on('emojiReceived',({fromUuid,emojis})=>{
@@ -1069,6 +1092,15 @@ export default function Game(){
     if(roleRevealAnim||anim||animQueueRef.current.length>0||pendingGsRef.current)return;
     mpOpeningRoleRevealPendingRef.current=false;
   },[roleRevealAnim,anim]);
+
+  useEffect(()=>{
+    if(roleRevealAnim||anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
+    const pendingRaw=pendingMpRawGsRef.current;
+    if(!pendingRaw)return;
+    pendingMpRawGsRef.current=null;
+    processIncomingMpStateSync(pendingRaw,{allowBuffer:false});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[roleRevealAnim,anim,animExiting,gs?.phase,gs?._turnKey,gs?.log?.length]);
 
   const latestHoundsInspectionSeq=useMemo(()=>{
     const events=Array.isArray(gs?._inspectionEvents)?gs._inspectionEvents:[];
@@ -1810,8 +1842,10 @@ export default function Game(){
   // TREASURE_WIN / PLAYER_WIN_PENDING 是本地过渡态，不广播（等 revealWin→gameOver 再广播）
   useEffect(()=>{
     if(!gs||!isMultiplayer||!socketRef.current)return;
+    if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
     if(gs.gameOver)return; // gameEnd event 单独处理
     if(gs.phase==='TREASURE_WIN'||gs.phase==='PLAYER_WIN_PENDING')return; // local-only phases
+    if(gs._mpEndTurn||gs._mpAutoDiscard||gs._mpAutoCthDecision)return; // local timeout transition markers
     if(receivedGsRef.current){receivedGsRef.current=false;return;}
     const room=roomModal;
     if(!room?.roomId)return;
@@ -2288,6 +2322,18 @@ export default function Game(){
     onTimeout:performMpDecisionTimeout,
   });
 
+  useEffect(()=>{
+    if(!isMultiplayer||!gs||gs.gameOver)return;
+    if(!isLocalCurrentTurn(gs)||gs.phase!=='ACTION'){
+      mpTurnExpiredRef.current=false;
+      return;
+    }
+    if(mpTurnSec===0)mpTurnExpiredRef.current=true;
+    if(!mpTurnExpiredRef.current||gs._mpEndTurn)return;
+    if(isBlocked||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
+    setGs(p=>p?{...p,_mpEndTurn:true}:p);
+  },[isMultiplayer,gs?.phase,gs?.currentTurn,gs?._turnKey,gs?._mpEndTurn,gs?.gameOver,mpTurnSec,isBlocked,animExiting]);
+
   useVisualDiscardSync({ gs, anim, animQueueRef, pendingGsRef, getVisualDiscardForState, setVisualDiscard });
 
   useEffect(()=>{
@@ -2331,15 +2377,30 @@ export default function Game(){
     // HUNT_WAIT_REVEAL 期间追猎者等待对方亮牌，暂不处理超时结束回合
     if(gs.phase==='HUNT_WAIT_REVEAL')return;
     // 直接从 gs 读取，避免 functional update（functional update 内无法调用 setAnim）
+    mpTurnExpiredRef.current=false;
+    const timeoutSource=gs;
     const base=resolveMpTimeoutToAction({...gs,_mpEndTurn:undefined});
-    const win=checkWin(base.players,true);
-    if(win){setGs({...base,gameOver:win});return;}
-    if(base.players[0].hand.length>4){
-      setGs({...base,phase:'DISCARD_PHASE',abilityData:{discardSelected:[]}});
+    const finishTimeoutTurn=(resolvedBase)=>{
+      const win=checkWin(resolvedBase.players,true);
+      if(win){setGs({...resolvedBase,gameOver:win});return;}
+      const baseHandLimit=getHandLimitForPlayer(resolvedBase.players?.[0]);
+      if(resolvedBase.players[0].hand.length>baseHandLimit){
+        setGs({...resolvedBase,phase:'DISCARD_PHASE',abilityData:{discardSelected:[]}});
+        return;
+      }
+      const nextGs=startNextTurn({...resolvedBase,currentTurn:0});
+      applyNextTurnGs(nextGs);
+    };
+    const dr=timeoutSource.drawReveal;
+    const shouldAnimateDrawDiscard=timeoutSource.phase==='DRAW_REVEAL'&&dr?.card&&dr.needsDecision&&!dr.forcedKeep;
+    if(shouldAnimateDrawDiscard){
+      const drawerIdx=dr.drawerIdx??0;
+      const who=localDisplayName(drawerIdx,(dr.drawerName||timeoutSource.players?.[drawerIdx]?.name||'该玩家'));
+      const discardMsg=`(超时) ${who} 弃置了 ${cardLogText(dr.card,{alwaysShowName:true})}`;
+      triggerAnimQueue([{type:'DISCARD',card:dr.card,triggerName:who,targetPid:drawerIdx,msgs:[discardMsg]}],base,()=>finishTimeoutTurn(base));
       return;
     }
-    const nextGs=startNextTurn({...base,currentTurn:0});
-    applyNextTurnGs(nextGs);
+    finishTimeoutTurn(base);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[gs?._mpEndTurn,isBlocked]);
 
@@ -2667,7 +2728,8 @@ export default function Game(){
     return _getZoomCompensatedRect(cardEl);
   })():null;
   const effectiveRole=me._nyaBorrow||me.role;
-  const effectiveHandLimit=Math.max(0,(me._nyaHandLimit??4)-(me.handLimitDecrease||0));
+  const effectiveHandLimit=getHandLimitForPlayer(me);
+  const currentTurnPlayer=gs?.players?.[gs?.currentTurn];
   const myTurn=isLocalCurrentTurn(gs);
   // 只有当底层是玩家回合，且没有正在播放的动画，且动画队列为空时，才算真正轮到玩家
   const isVisualPlayerTurn = myTurn && !anim && (animQueueRef.current.length === 0);
@@ -5169,7 +5231,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       if(drawnCard&&(ph==='DRAW_REVEAL'||ph==='GOD_CHOICE'||ph==='DRAW_SELECT_TARGET'||ph==='ACTION')){
         const drawerName=newGs.players[newGs.currentTurn]?.name||'???';
         const drawerPid=newGs.currentTurn;
-        receivedGsRef.current=true;
         pendingGsRef.current=newGs;
         let inspectionAndTailQueue = [];
         if(ph==='GOD_CHOICE'){
@@ -5189,7 +5250,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         if(newGs._playersBeforeThisDraw){
           visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
         }
-        triggerAnimQueue([...preTurnQ,{type:'DRAW_CARD',card:drawnCard,triggerName:drawerName,targetPid:drawerPid,msgs:newGs._drawLogs},...inspectionAndTailQueue],newGs);
+        triggerAnimQueue([...preTurnQ,{type:'YOUR_TURN',name:drawerName,msgs:newGs._turnStartLogs},{type:'DRAW_CARD',card:drawnCard,triggerName:drawerName,targetPid:drawerPid,msgs:newGs._drawLogs},...inspectionAndTailQueue],newGs);
         return;
       }
     }
@@ -5613,7 +5674,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     GOD_CHOICE:          isLocalGodChoice?(canShowTurnDecisionModal?'邪神降临！选择如何回应':'面临抉择中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 回应邪神…`:'邪神降临！选择如何回应'),
     ZHU_HIDE_AI_DRAW:    visualMe?.godName==='ZHU'?(canShowTurnDecisionModal?'【衔烛照幽】是否藏牌？':'衔烛照幽判定中…'):'请等待其他玩家选择…',
     NYA_BORROW:          isLocalNyaBorrowPhase(gs)?(canShowTurnDecisionModal?'「千人千貌」——借用已死角色的身份？':'身份借用中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 借用身份…`:'「千人千貌」——借用已死角色的身份？'),
-    DISCARD_PHASE:(()=>{const sel=gs.abilityData.discardSelected||[];const need=me.hand.length-effectiveHandLimit;return`手牌超限 (${me.hand.length}/${effectiveHandLimit}) — 需弃 ${need} 张，已选 ${sel.length}/${need}`;})(),
+    DISCARD_PHASE:(()=>{
+      if(!isLocalCurrentTurn(gs))return`等待 ${currentTurnPlayer?.name||'当前玩家'} 弃牌…`;
+      const sel=gs.abilityData.discardSelected||[];
+      const need=Math.max(0,me.hand.length-effectiveHandLimit);
+      return`手牌超限 (${me.hand.length}/${effectiveHandLimit}) — 需弃 ${need} 张，已选 ${sel.length}/${need}`;
+    })(),
     AI_TURN:gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 行动…`:`${gs.players[gs.currentTurn]?.name} 正在行动…`,
     PLAYER_WIN_PENDING:'✦ 你已集齐全部编号！',
     DRAW_REVEAL:         isLocalDrawDecision?(canShowTurnDecisionModal?'摸牌 — 请确认':'摸牌中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 摸牌…`:''),
@@ -5828,7 +5894,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(isBlocked)return false;
     if(canLocalSwapGive)return true;
     if(canLocalBewitchCard)return true;
-    if(phase==='DISCARD_PHASE'){const sel=gs.abilityData.discardSelected||[];const max=me.hand.length-4;return sel.includes(idx)||sel.length<max;}
+    if(phase==='DISCARD_PHASE'&&isLocalCurrentTurn(gs)){
+      const sel=gs.abilityData.discardSelected||[];
+      const max=Math.max(0,me.hand.length-effectiveHandLimit);
+      return sel.includes(idx)||sel.length<max;
+    }
     if(isLocalHuntConfirmPhase(gs)){const rc=gs.abilityData?.revCard;return!!(rc&&cardsHuntMatch(c,rc));}
     if(canPlayerRespondWithZoneCard(c))return true;
     if(isLocalPublicCardPickPhase(gs)){
@@ -6348,7 +6418,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         <div ref={handAreaRef} data-hand-area style={{background:'#120900',border:`1.5px solid ${myTurn?'#3a2010':'#2a1a08'}`,borderRadius:3,padding:isMobile?'8px 9px':'11px 13px'}}>
           <div style={{display:'flex',alignItems:'center',marginBottom:9,gap:8}}>
             <span style={{fontFamily:"'Cinzel',serif",color:phase==='DISCARD_PHASE'||phase==='PLAYER_REVEAL_FOR_HUNT'||isLocalHuntRevealPrompt?promptWarningTextColor:promptActiveTextColor,fontSize:10,letterSpacing:1}}>
-              {phase==='DISCARD_PHASE'?`⚠ 手牌超限 (${visualMe.hand.length}/${effectiveHandLimit})`:phase==='PLAYER_REVEAL_FOR_HUNT'?'⚠ 选择亮出一张手牌':isLocalHuntRevealPrompt?'⚠ 选择亮出一张手牌':`手牌 (${visualMe.hand.length}/${effectiveHandLimit})`}
+              {phase==='DISCARD_PHASE'
+                ?(isLocalCurrentTurn(gs)
+                  ?`⚠ 手牌超限 (${visualMe.hand.length}/${effectiveHandLimit})`
+                  :`等待 ${currentTurnPlayer?.name||'当前玩家'} 弃牌…`)
+                :phase==='PLAYER_REVEAL_FOR_HUNT'?'⚠ 选择亮出一张手牌':isLocalHuntRevealPrompt?'⚠ 选择亮出一张手牌':`手牌 (${visualMe.hand.length}/${effectiveHandLimit})`}
             </span>
             {(phase==='ACTION'&&isVisualPlayerTurn&&!isBlocked||cancelable)&&(
               <div style={{display:'flex',gap:8,marginLeft:'auto',flexWrap:'wrap',position:'relative',zIndex:200}}>
@@ -6434,7 +6508,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                 )}
               </div>
             )}
-            {phase==='DISCARD_PHASE'&&(
+            {phase==='DISCARD_PHASE'&&isLocalCurrentTurn(gs)&&(
               <button onClick={confirmDiscard}
                 disabled={!(gs.abilityData.discardSelected||[]).length}
                 style={{
@@ -6453,7 +6527,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             {visualMe.hand.map((c,i)=>{
               const clickable=isMyCardClickable(c,i);
               const isMobileArmedGod=isMobile&&mobileArmedGodCardIdx===i;
-              const isSel=(phase==='DISCARD_PHASE'&&(gs.abilityData.discardSelected||[]).includes(i))||isMobileArmedGod;
+              const isSel=(phase==='DISCARD_PHASE'&&isLocalCurrentTurn(gs)&&(gs.abilityData.discardSelected||[]).includes(i))||isMobileArmedGod;
               const isMatch=phase==='HUNT_CONFIRM'&&gs.abilityData?.revCard&&cardsHuntMatch(c,gs.abilityData.revCard);
               const isGodUpgrade=c.isGod&&visualMe.godName===c.godKey&&(visualMe.godLevel||0)<3;
               const canUpgradeNow=isGodUpgrade&&phase==='ACTION'&&isVisualPlayerTurn;

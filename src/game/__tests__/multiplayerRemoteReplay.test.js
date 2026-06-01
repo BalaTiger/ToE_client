@@ -70,7 +70,8 @@ describe('buildMpRemoteReplayAction', () => {
 
     expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
     expect(action.maskedGs).toMatchObject({ phase: 'ACTION', drawReveal: null, abilityData: {} });
-    expect(action.queue[0]).toMatchObject({ type: 'DRAW_CARD', card, triggerName: '艾伦', targetPid: 1 });
+    expect(action.queue[0]).toMatchObject({ type: 'YOUR_TURN', name: '艾伦' });
+    expect(action.queue[1]).toMatchObject({ type: 'DRAW_CARD', card, triggerName: '艾伦', targetPid: 1 });
     expect(action.queue.at(-1)).toMatchObject({ type: 'STATE_PATCH' });
     expect(action.visualLock.players[1].name).toBe('艾伦-before');
     expect(buildAnimQueue).toHaveBeenCalledOnce();
@@ -91,6 +92,35 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.anim).toMatchObject({ type: 'YOUR_TURN', msgs: ['── 你 的回合开始 ──'] });
     expect(action.queue[0]).toMatchObject({ type: 'DRAW_CARD', card, triggerName: '你', targetPid: 0 });
     expect(action.pendingGs.phase).toBe('DRAW_REVEAL');
+  });
+
+  it('replays a timed-out draw discard before the next local turn draw', () => {
+    const previousGs = makeState({
+      currentTurn: 1,
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card, drawerIdx: 1, drawerName: '艾伦', needsDecision: true, forcedKeep: false },
+      log: ['艾伦 摸到 测试牌'],
+    });
+    const nextCard = { id: 'c2', name: '下一张', type: 'zone' };
+    const action = buildMpRemoteReplayAction({
+      rotated: makeState({
+        currentTurn: 0,
+        phase: 'DRAW_REVEAL',
+        drawReveal: { card: nextCard, drawerIdx: 0, needsDecision: true },
+        log: ['艾伦 摸到 测试牌', '(超时) 艾伦 弃置了 测试牌', '── 你 的回合开始 ──', '你 摸到 下一张'],
+        _turnStartLogs: ['── 你 的回合开始 ──'],
+        _drawLogs: ['你 摸到 下一张'],
+      }),
+      previousGs,
+      roleRevealed: true,
+      buildAnimQueue: vi.fn(() => []),
+      buildFullHandSwapTransferQueueFromLogs: vi.fn(() => []),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.START_ANIM);
+    expect(action.anim).toMatchObject({ type: 'DISCARD', card, targetPid: 1 });
+    expect(action.queue[0]).toMatchObject({ type: 'YOUR_TURN', msgs: ['── 你 的回合开始 ──'] });
+    expect(action.queue[1]).toMatchObject({ type: 'DRAW_CARD', card: nextCard, triggerName: '你', targetPid: 0 });
   });
 
   it('masks discard phase for non-active remote players', () => {
