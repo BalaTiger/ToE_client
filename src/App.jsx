@@ -2397,7 +2397,46 @@ export default function Game(){
       const drawerIdx=dr.drawerIdx??0;
       const who=localDisplayName(drawerIdx,(dr.drawerName||timeoutSource.players?.[drawerIdx]?.name||'该玩家'));
       const discardMsg=`(超时) ${who} 弃置了 ${cardLogText(dr.card,{alwaysShowName:true})}`;
-      triggerAnimQueue([{type:'DISCARD',card:dr.card,triggerName:who,targetPid:drawerIdx,msgs:[discardMsg]}],base,()=>finishTimeoutTurn(base));
+      const win=checkWin(base.players,true);
+      if(win){
+        triggerAnimQueue([{type:'DISCARD',card:dr.card,triggerName:who,targetPid:drawerIdx,msgs:[discardMsg]}],{...base,gameOver:win});
+        return;
+      }
+      const baseHandLimit=getHandLimitForPlayer(base.players?.[0]);
+      if(base.players[0].hand.length>baseHandLimit){
+        triggerAnimQueue([{type:'DISCARD',card:dr.card,triggerName:who,targetPid:drawerIdx,msgs:[discardMsg]}],{...base,phase:'DISCARD_PHASE',abilityData:{discardSelected:[]}});
+        return;
+      }
+      const nextGs=startNextTurn({...base,currentTurn:0});
+      if(isMultiplayer&&socketRef.current&&roomModal?.roomId){
+        suppressNextBroadcastRef.current=true;
+        receivedGsRef.current=true;
+        socketRef.current.emit('mpStateSync',{roomId:roomModal.roomId,gs:derotateGs(nextGs,myPlayerIndexRef.current)});
+      }
+      const drawStatQ=bindAnimLogChunks(
+        buildAnimQueue({...gs,players:nextGs._playersBeforeThisDraw||gs.players},nextGs),
+        {statLogs:nextGs._statLogs}
+      );
+      const preTurnQ=buildTsathogguaSlimeGrantQueue(nextGs);
+      const ph=nextGs.phase;
+      const drawnCard=ph==='GOD_CHOICE'?nextGs.abilityData?.godCard:nextGs.drawReveal?.card;
+      const nextActorName=nextGs.players?.[nextGs.currentTurn]?.name||'???';
+      const nextActorPid=nextGs.currentTurn;
+      const queue=[{type:'DISCARD',card:dr.card,triggerName:who,targetPid:drawerIdx,msgs:[discardMsg]},...preTurnQ];
+      if(drawnCard&&(ph==='DRAW_REVEAL'||ph==='GOD_CHOICE'||ph==='DRAW_SELECT_TARGET'||ph==='ACTION')){
+        queue.push({type:'YOUR_TURN',name:nextActorName,msgs:nextGs._turnStartLogs});
+        queue.push({type:'DRAW_CARD',card:drawnCard,triggerName:nextActorPid===0?'你':nextActorName,targetPid:nextActorPid,msgs:nextGs._drawLogs});
+        queue.push(...drawStatQ);
+      }else if(nextGs._turnStartLogs?.length){
+        queue.push({type:'YOUR_TURN',name:nextActorPid===0?undefined:nextActorName,msgs:nextGs._turnStartLogs});
+        queue.push(...drawStatQ);
+      }else{
+        queue.push(...drawStatQ);
+      }
+      if(nextGs._playersBeforeThisDraw){
+        visualStateLocks.lock({players:nextGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||nextGs.zhuLight||null});
+      }
+      triggerAnimQueue(queue,nextGs);
       return;
     }
     finishTimeoutTurn(base);
