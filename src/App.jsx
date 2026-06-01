@@ -877,7 +877,6 @@ export default function Game(){
   function handleEmojiClick(emoji){
     if(emojiClickDebounceRef.current)return;
     emojiClickDebounceRef.current=Date.now();
-    setShowEmojiPicker(false);
     if(!socketRef.current||!roomModalRef.current?.roomId){
       setTimeout(()=>{emojiClickDebounceRef.current=null;},300);
       return;
@@ -886,6 +885,9 @@ export default function Game(){
     socketRef.current.emit('emojiSend',{uuid:playerUUIDRef.current,roomId:roomModalRef.current.roomId,emojis:[emoji]});
     setTimeout(()=>{emojiClickDebounceRef.current=null;},300);
   }
+  const handleFlyingEmojiDone=useCallback(id=>{
+    setFlyingEmojis(prev=>prev.filter(x=>x.id!==id));
+  },[]);
   const selfPanelRef=useRef(null);
   const emojiButtonRef=useRef(null);
   const [panelRect,setPanelRect]=useState(null);
@@ -6580,7 +6582,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     {!suppressAnim&&<AnimOverlay anim={anim} exiting={animExiting} expansionKey={gs.expansionKey}/>}
     {!suppressAnim&&<SwapCupOverlay active={!!swapAnim} casterName={swapAnim?.casterName||''} targetName={swapAnim?.targetName||''}/>}
     {flyingEmojis.map(fe=>(
-      <FlyingEmoji key={fe.id} {...fe} onDone={id=>setFlyingEmojis(prev=>prev.filter(x=>x.id!==id))}/>
+      <FlyingEmoji key={fe.id} {...fe} onDone={handleFlyingEmojiDone}/>
     ))}
     {!suppressAnim&&<HuntScopeOverlay active={!!huntAnim} cx={huntAnim?.cx??0} cy={huntAnim?.cy??0}/>}
     {!suppressAnim&&<BewitchEyeOverlay active={!!bewitchAnim} cx={bewitchAnim?.cx??0} cy={bewitchAnim?.cy??0}/>}
