@@ -123,6 +123,29 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.queue[1]).toMatchObject({ type: 'DRAW_CARD', card: nextCard, triggerName: '你', targetPid: 0 });
   });
 
+  it('uses explicit timed-out draw metadata when previous local state is already masked', () => {
+    const nextCard = { id: 'c2', name: '下一张', type: 'zone' };
+    const action = buildMpRemoteReplayAction({
+      rotated: makeState({
+        currentTurn: 0,
+        phase: 'DRAW_REVEAL',
+        drawReveal: { card: nextCard, drawerIdx: 0, needsDecision: true },
+        log: ['(超时) 艾伦 弃置了 测试牌', '── 你 的回合开始 ──', '你 摸到 下一张'],
+        _turnStartLogs: ['── 你 的回合开始 ──'],
+        _drawLogs: ['你 摸到 下一张'],
+        _mpTimedOutDrawDiscard: { card, drawerIdx: 1, drawerName: '艾伦' },
+      }),
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION', drawReveal: null }),
+      roleRevealed: true,
+      buildAnimQueue: vi.fn(() => []),
+      buildFullHandSwapTransferQueueFromLogs: vi.fn(() => []),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.START_ANIM);
+    expect(action.anim).toMatchObject({ type: 'DISCARD', card, triggerName: '艾伦', targetPid: 1 });
+    expect(action.pendingGs._mpTimedOutDrawDiscard).toBeNull();
+  });
+
   it('masks discard phase for non-active remote players', () => {
     const action = buildAction(makeState({ phase: 'DISCARD_PHASE', currentTurn: 1, abilityData: { discardSelected: [] } }));
 

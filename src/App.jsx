@@ -2407,7 +2407,15 @@ export default function Game(){
         triggerAnimQueue([{type:'DISCARD',card:dr.card,triggerName:who,targetPid:drawerIdx,msgs:[discardMsg]}],{...base,phase:'DISCARD_PHASE',abilityData:{discardSelected:[]}});
         return;
       }
-      const nextGs=startNextTurn({...base,currentTurn:0});
+      const timeoutDiscardEvent={
+        card:dr.card,
+        drawerIdx,
+        drawerName:timeoutSource.players?.[drawerIdx]?.name||dr.drawerName||'该玩家',
+      };
+      const nextGs={
+        ...startNextTurn({...base,currentTurn:0}),
+        _mpTimedOutDrawDiscard:timeoutDiscardEvent,
+      };
       if(isMultiplayer&&socketRef.current&&roomModal?.roomId){
         suppressNextBroadcastRef.current=true;
         receivedGsRef.current=true;
@@ -2436,7 +2444,7 @@ export default function Game(){
       if(nextGs._playersBeforeThisDraw){
         visualStateLocks.lock({players:nextGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||nextGs.zhuLight||null});
       }
-      triggerAnimQueue(queue,nextGs);
+      triggerAnimQueue(queue,{...nextGs,_mpTimedOutDrawDiscard:null});
       return;
     }
     finishTimeoutTurn(base);

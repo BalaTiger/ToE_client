@@ -155,6 +155,14 @@ function rotateApophisTargetEvent(event, rotateIndex) {
   };
 }
 
+function rotateTimedOutDrawDiscardEvent(event, rotateIndex) {
+  if (!event) return event;
+  return {
+    ...event,
+    drawerIdx: event.drawerIdx != null ? rotateIndex(event.drawerIdx) : event.drawerIdx,
+  };
+}
+
 export function rotateGsForViewer(gs, myIndex) {
   if (!gs || myIndex === 0) return gs;
   const N = gs.players.length;
@@ -178,6 +186,7 @@ export function rotateGsForViewer(gs, myIndex) {
     ...(gs._animMultiplyEvent ? { _animMultiplyEvent: rotateAnimMultiplyEvent(gs._animMultiplyEvent, rotateIndex) } : {}),
     ...(gs._animSphinxReveal ? { _animSphinxReveal: rotateAnimSphinxReveal(gs._animSphinxReveal, rotateIndex) } : {}),
     ...(gs._apophisTargetEvent ? { _apophisTargetEvent: rotateApophisTargetEvent(gs._apophisTargetEvent, rotateIndex) } : {}),
+    ...(gs._mpTimedOutDrawDiscard ? { _mpTimedOutDrawDiscard: rotateTimedOutDrawDiscardEvent(gs._mpTimedOutDrawDiscard, rotateIndex) } : {}),
   };
 }
 

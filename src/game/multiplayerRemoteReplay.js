@@ -1,5 +1,6 @@
 import { bindAnimLogChunks } from './animLogs';
 import { buildBewitchForcedCardQueue, statePatchStep } from './animQueueHelpers';
+import { cardLogText } from './coreUtils';
 import { isLocalCurrentTurn, isLocalSeatIndex, localDisplayName } from './rotateState';
 
 export const MP_REMOTE_REPLAY = {
@@ -45,6 +46,10 @@ function buildMaskedActionState(state) {
   return { ...state, phase: 'ACTION', drawReveal: null, abilityData: {} };
 }
 
+function clearRemoteReplayHints(state) {
+  return state ? { ...state, _mpTimedOutDrawDiscard: null } : state;
+}
+
 function getLogDelta(previousGs, rotated) {
   const prevLog = Array.isArray(previousGs?.log) ? previousGs.log : [];
   const nextLog = Array.isArray(rotated?.log) ? rotated.log : [];
@@ -53,7 +58,19 @@ function getLogDelta(previousGs, rotated) {
   return nextLog.slice(start);
 }
 
-function buildTimedOutDrawDiscardStep(previousGs, logDelta = []) {
+function buildTimedOutDrawDiscardStep(rotated, previousGs, logDelta = []) {
+  const explicit = rotated?._mpTimedOutDrawDiscard;
+  if (explicit?.card) {
+    const drawerIdx = explicit.drawerIdx ?? 0;
+    const drawerName = explicit.drawerName || rotated?.players?.[drawerIdx]?.name || '???';
+    return {
+      type: 'DISCARD',
+      card: explicit.card,
+      triggerName: localDisplayName(drawerIdx, drawerName),
+      targetPid: drawerIdx,
+      msgs: [`(超时) ${localDisplayName(drawerIdx, drawerName)} 弃置了 ${cardLogText(explicit.card, { alwaysShowName: true })}`],
+    };
+  }
   const previousDraw = previousGs?.drawReveal;
   if (!previousDraw?.card || !previousDraw.needsDecision || previousDraw.forcedKeep) return null;
   const discardMsg = logDelta.find(line => /（?超时\)? .*弃置了/.test(line || '') || /\(超时\).*弃置了/.test(line || ''));
@@ -142,7 +159,7 @@ export function buildMpRemoteReplayAction({
   }
 
   const logDelta = getLogDelta(previousGs, rotated);
-  const timedOutDrawDiscardStep = buildTimedOutDrawDiscardStep(previousGs, logDelta);
+  const timedOutDrawDiscardStep = buildTimedOutDrawDiscardStep(rotated, previousGs, logDelta);
   const bewitchMsg = logDelta.find(line => /【蛊惑】/.test(line || ''));
   if (bewitchMsg) {
     const targetName = bewitchMsg.match(/对 (.+?) 【蛊惑】/)?.[1];
@@ -160,7 +177,7 @@ export function buildMpRemoteReplayAction({
     return {
       type: MP_REMOTE_REPLAY.ANIM_QUEUE,
       maskedGs: buildMaskedActionState(rotated),
-      pendingGs: rotated,
+      pendingGs: clearRemoteReplayHints(rotated),
       queue,
     };
   }
@@ -187,7 +204,7 @@ export function buildMpRemoteReplayAction({
     return {
       type: MP_REMOTE_REPLAY.ANIM_QUEUE,
       maskedGs: buildMaskedActionState(rotated),
-      pendingGs: rotated,
+      pendingGs: clearRemoteReplayHints(rotated),
       queue,
       visualLock: rotated._playersBeforeThisDraw
         ? { players: beforeDrawPlayers, zhuLight: previousGs?.zhuLight || rotated.zhuLight || null }
@@ -202,7 +219,7 @@ export function buildMpRemoteReplayAction({
     return {
       type: MP_REMOTE_REPLAY.START_ANIM,
       maskedGs: buildMaskedActionState(rotated),
-      pendingGs: rotated,
+      pendingGs: clearRemoteReplayHints(rotated),
       anim: timedOutDrawDiscardStep || { type: 'YOUR_TURN', msgs: rotated._turnStartLogs },
       queue: [
         ...(timedOutDrawDiscardStep ? [{ type: 'YOUR_TURN', msgs: rotated._turnStartLogs }] : []),
