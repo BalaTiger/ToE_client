@@ -595,6 +595,24 @@ export default function Game(){
     });
   }
 
+  function copyRoomIdToClipboard(roomId,{created=false}={}){
+    const successMsg=created
+      ?`创建成功！房间号已复制：${roomId}`
+      :'✓ 房间号已复制';
+    const failMsg=created
+      ?`创建成功！房间号：${roomId}（复制失败，请手动复制）`
+      :'复制失败，请手动复制';
+    try{
+      const writer=navigator?.clipboard?.writeText;
+      if(!writer)throw new Error('clipboard unavailable');
+      writer.call(navigator.clipboard,String(roomId))
+        .then(()=>addToast(successMsg))
+        .catch(()=>addToast(failMsg));
+    }catch{
+      addToast(failMsg);
+    }
+  }
+
   function isMpReplayBusy(){
     return !!roleRevealAnim||!!anim||!!animExiting||animQueueRef.current.length>0||!!pendingGsRef.current;
   }
@@ -735,7 +753,7 @@ export default function Game(){
     socket.on('roomCreated',({roomId,owner,isPrivate,players,count,max,countdown})=>{
       setMultiLoading(false);
       setOnlineOptionsModal(false);
-      addToast(`创建成功！房间号：${roomId}`);
+      copyRoomIdToClipboard(roomId,{created:true});
       setRoomModal({roomId,owner,isPrivate,players,count:count||1,max:max||12,countdown:countdown||null});
     });
     // roomUpdated：加入/变动/倒计时更新
@@ -2597,7 +2615,7 @@ export default function Game(){
           onClose={closeRoomModal}
           onTogglePrivacy={handleTogglePrivacy}
           onSetReady={handleSetReady}
-          onCopyRoomId={()=>{try{navigator.clipboard.writeText(roomModal.roomId).then(()=>addToast('✓ 房间号已复制')).catch(()=>addToast('复制失败，请手动复制'));}catch{addToast('复制失败，请手动复制');}}}
+          onCopyRoomId={()=>copyRoomIdToClipboard(roomModal.roomId)}
         />
         {/* -- Game Lobby Modal -- */}
         <LobbyModal
