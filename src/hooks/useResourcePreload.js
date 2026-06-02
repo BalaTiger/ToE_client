@@ -17,8 +17,7 @@ const VIDEO_FILES = [
   '/videos/ancient_god_tentacles.mp4',
 ];
 
-const IMAGE_FILES = [
-  '/img/bg/bg_main.png',
+const CRITICAL_IMAGE_FILES = [
   '/img/btn/btn_author.png',
   '/img/btn/btn_bright_green.png',
   '/img/btn/btn_bright_purple.png',
@@ -33,6 +32,11 @@ const IMAGE_FILES = [
   '/img/logo/logo_hu-no-bg.png',
   '/img/logo/logo_tr-no-bg.png',
   '/img/title/texture_toehp.png',
+  '/img/loading.png',
+];
+
+const DEFERRED_IMAGE_FILES = [
+  '/img/bg/bg_main.png',
   '/img/bg/battle/earth_shadow.png',
   '/img/bg/battle/sage_gift.png',
   '/img/bg/battle/stars_call.png',
@@ -42,10 +46,14 @@ const IMAGE_FILES = [
 const RESOURCE_FILES = [
   ...AUDIO_FILES.map(path => ({ path, type: 'audio' })),
   ...VIDEO_FILES.map(path => ({ path, type: 'video' })),
-  ...IMAGE_FILES.map(path => ({ path, type: 'image' })),
+  ...CRITICAL_IMAGE_FILES.map(path => ({ path, type: 'image' })),
 ];
 
-const RESOURCE_CACHE_VERSION = '2026-05-28-apophis-eclipse-audio-v1';
+const DEFERRED_RESOURCE_FILES = [
+  ...DEFERRED_IMAGE_FILES.map(path => ({ path, type: 'image' })),
+];
+
+const RESOURCE_CACHE_VERSION = '2026-06-02-critical-preload-v1';
 const CACHE_VERSION_KEY = 'toe_resources_cached_version';
 
 const LOAD_ERROR_LABELS = {
@@ -105,6 +113,24 @@ function loadResource(resource) {
   });
 }
 
+function scheduleDeferredPreload(resources) {
+  const run = async () => {
+    for (const resource of resources) {
+      try {
+        await loadResource(resource);
+      } catch (error) {
+        console.warn(`Deferred resource failed: ${resource.path}`, error);
+      }
+    }
+  };
+
+  if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(run, { timeout: 3000 });
+  } else {
+    setTimeout(run, 0);
+  }
+}
+
 export function useResourcePreload() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -130,6 +156,7 @@ export function useResourcePreload() {
         const cachedVersion = localStorage.getItem(CACHE_VERSION_KEY);
         if (cachedVersion === RESOURCE_CACHE_VERSION) {
           setSafeIsLoading(false);
+          scheduleDeferredPreload(DEFERRED_RESOURCE_FILES);
           return;
         }
       } catch {
@@ -172,6 +199,7 @@ export function useResourcePreload() {
       }
 
       setSafeIsLoading(false);
+      scheduleDeferredPreload(DEFERRED_RESOURCE_FILES);
     };
 
     preloadResources();

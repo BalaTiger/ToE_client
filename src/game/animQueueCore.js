@@ -215,7 +215,7 @@ export function buildAnimQueue(oldGs, newGs) {
       const newGZ = effectivePlayers[li].godZone?.length || 0;
       if (newGZ > oldGZ) dest = 'godzone';
     }
-    if (!effectivePlayers[li]?.isDead) {
+    if (!effectivePlayers[li]?.isDead && dest !== 'godzone') {
       q.push(cardTransferStep({ fromPid: li, dest, toPid, count }));
     }
   } else if (losers.length === 2) {

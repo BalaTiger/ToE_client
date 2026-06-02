@@ -1,7 +1,20 @@
 import { bindAnimLogChunks } from './animLogs';
-import { buildBewitchForcedCardQueue, statePatchStep } from './animQueueHelpers';
+import { buildBewitchForcedCardQueue, fullHandSwapSteps, statePatchStep } from './animQueueHelpers';
 import { cardLogText } from './coreUtils';
 import { isLocalCurrentTurn, isLocalSeatIndex, localDisplayName } from './rotateState';
+import {
+  buildDrawCardStepFromVisualEvents,
+  buildStatStepsFromVisualEvents,
+  buildTimedOutDrawDiscardStepFromVisualEvents,
+  buildTurnStartStepFromVisualEvents,
+  clearVisualEvents,
+  getVisualEventIdsFromState,
+  getBewitchGiftVisualEvent,
+  getSwapCardsVisualEvent,
+  getHuntRevealVisualEvent,
+  getHuntTargetVisualEvent,
+  pruneConsumedVisualEvents,
+} from './visualEvents';
 
 export const MP_REMOTE_REPLAY = {
   ROLE_REVEAL: 'ROLE_REVEAL',
@@ -47,7 +60,7 @@ function buildMaskedActionState(state) {
 }
 
 function clearRemoteReplayHints(state) {
-  return state ? { ...state, _mpTimedOutDrawDiscard: null } : state;
+  return state ? clearVisualEvents({ ...state, _mpTimedOutDrawDiscard: null }) : state;
 }
 
 function getLogDelta(previousGs, rotated) {
@@ -59,6 +72,8 @@ function getLogDelta(previousGs, rotated) {
 }
 
 function buildTimedOutDrawDiscardStep(rotated, previousGs, logDelta = []) {
+  const visualEventStep = buildTimedOutDrawDiscardStepFromVisualEvents(rotated);
+  if (visualEventStep) return visualEventStep;
   const explicit = rotated?._mpTimedOutDrawDiscard;
   if (explicit?.card) {
     const drawerIdx = explicit.drawerIdx ?? 0;
@@ -98,6 +113,25 @@ function findCardByLabel(players, label) {
   return null;
 }
 
+function isStatAnimationStep(step) {
+  if (!step) return false;
+  if (Array.isArray(step.statEvents) && step.statEvents.length) return true;
+  if (['HP_DAMAGE', 'HP_HEAL', 'SAN_DAMAGE', 'SAN_HEAL', 'HP_SAN_HEAL'].includes(step.type)) return true;
+  if (step.type === 'STATE_PATCH' && Array.isArray(step._logChunk) && step._logChunk.length) return true;
+  if (step.type === 'TURN_BOUNDARY_PAUSE') return true;
+  return false;
+}
+
+function hasDrawStatEvidence(state, visualStatQ = []) {
+  return visualStatQ.length > 0 || (Array.isArray(state?._statLogs) && state._statLogs.length > 0);
+}
+
+function filterFallbackDrawEffects(queue, state, visualStatQ = []) {
+  return hasDrawStatEvidence(state, visualStatQ)
+    ? queue
+    : queue.filter(step => !isStatAnimationStep(step));
+}
+
 function buildDrawEffectQueue({
   rotated,
   previousGs,
@@ -113,9 +147,14 @@ function buildDrawEffectQueue({
     buildAnimQueue({ ...rotated, players: beforeDrawPlayers, log: getTurnStartDrawBaselineLog(rotated) }, rotated),
     { statLogs: rotated._statLogs },
   );
+  const visualStatQ = buildStatStepsFromVisualEvents(rotated, beforeDrawPlayers);
+  const filteredDrawEffectQBase = filterFallbackDrawEffects(drawEffectQBase, rotated, visualStatQ);
+  const drawEffectQWithVisualStats = visualStatQ.length
+    ? [...visualStatQ, ...filteredDrawEffectQBase.filter(step => !isStatAnimationStep(step))]
+    : filteredDrawEffectQBase;
   const drawEffectQ = drawFullHandSwapQ.length
-    ? [...drawFullHandSwapQ, ...drawEffectQBase.filter(step => step.type !== 'CARD_TRANSFER')]
-    : drawEffectQBase;
+    ? [...drawFullHandSwapQ, ...drawEffectQWithVisualStats.filter(step => step.type !== 'CARD_TRANSFER')]
+    : drawEffectQWithVisualStats;
   return { beforeDrawPlayers, drawEffectQ };
 }
 
@@ -125,15 +164,25 @@ export function buildMpRemoteReplayAction({
   roleRevealed,
   buildAnimQueue,
   buildFullHandSwapTransferQueueFromLogs,
+  consumedVisualEventIds,
 }) {
   if (!rotated) return null;
+  const hadVisualEventsBeforePrune = Array.isArray(rotated._visualEvents) && rotated._visualEvents.length > 0;
+  rotated = pruneConsumedVisualEvents(rotated, consumedVisualEventIds);
+  const visualEventIds = getVisualEventIdsFromState(rotated);
+  if (hadVisualEventsBeforePrune && visualEventIds.length === 0 && !hasDrawAnimationState(rotated)) {
+    return { type: MP_REMOTE_REPLAY.SET_STATE, gs: clearRemoteReplayHints(rotated) };
+  }
+  const withConsumedVisualEvents = action => (
+    visualEventIds.length ? { ...action, consumedVisualEventIds: visualEventIds } : action
+  );
   if (!roleRevealed && !rotated.gameOver) {
-    return {
+    return withConsumedVisualEvents({
       type: MP_REMOTE_REPLAY.ROLE_REVEAL,
       maskedGs: buildMaskedActionState(rotated),
       pendingGs: rotated,
       role: rotated.players?.[0]?.role,
-    };
+    });
   }
 
   const lastLog = rotated.log?.[rotated.log.length - 1] || '';
@@ -160,8 +209,86 @@ export function buildMpRemoteReplayAction({
 
   const logDelta = getLogDelta(previousGs, rotated);
   const timedOutDrawDiscardStep = buildTimedOutDrawDiscardStep(rotated, previousGs, logDelta);
+  const isDrawAnimationState = hasDrawAnimationState(rotated);
+  const swapEvent = getSwapCardsVisualEvent(rotated);
+  if (swapEvent) {
+    const queue = [
+      { type: 'SKILL_SWAP', msgs: swapEvent.msgs || logDelta },
+      ...fullHandSwapSteps({
+        fromPid: swapEvent.sourceIdx,
+        toPid: swapEvent.targetIdx,
+        fromCount: swapEvent.sourceCount || 1,
+        toCount: swapEvent.targetCount || 1,
+        msgs: swapEvent.msgs || logDelta,
+        playersBefore: previousGs?.players || null,
+        zhuLight: previousGs?.zhuLight || rotated.zhuLight || null,
+      }),
+      statePatchStep({ players: rotated.players, discard: rotated.discard, log: rotated.log, drawReveal: null, phase: rotated.phase, abilityData: rotated.abilityData }),
+    ];
+    return withConsumedVisualEvents({
+      type: MP_REMOTE_REPLAY.ANIM_QUEUE,
+      maskedGs: buildMaskedActionState(rotated),
+      pendingGs: clearRemoteReplayHints({ ...rotated, drawReveal: null }),
+      queue,
+    });
+  }
+  const bewitchEvent = getBewitchGiftVisualEvent(rotated);
+  if (bewitchEvent && !isDrawAnimationState) {
+    const fallbackStatQueue = bindAnimLogChunks(
+      buildAnimQueue(previousGs || buildMaskedActionState(rotated), rotated),
+      { statLogs: logDelta },
+    );
+    const visualStatQ = buildStatStepsFromVisualEvents(rotated, previousGs?.players || rotated.players);
+    const statQueue = visualStatQ.length
+      ? [...visualStatQ, ...fallbackStatQueue.filter(step => !isStatAnimationStep(step))]
+      : fallbackStatQueue;
+    const queue = buildBewitchForcedCardQueue(
+      bewitchEvent.sourceIdx ?? rotated.currentTurn,
+      bewitchEvent.targetIdx,
+      bewitchEvent.card,
+      bewitchEvent.targetName || rotated.players?.[bewitchEvent.targetIdx]?.name,
+      statQueue,
+      bewitchEvent.msgs || logDelta,
+    );
+    if (queue.length) queue.push(statePatchStep({ players: rotated.players, discard: rotated.discard, log: rotated.log }));
+    return withConsumedVisualEvents({
+      type: MP_REMOTE_REPLAY.ANIM_QUEUE,
+      maskedGs: buildMaskedActionState(rotated),
+      pendingGs: clearRemoteReplayHints(rotated),
+      queue,
+    });
+  }
+  const huntEvent = getHuntTargetVisualEvent(rotated);
+  if (huntEvent && !isDrawAnimationState && rotated.phase !== 'PLAYER_REVEAL_FOR_HUNT') {
+    return withConsumedVisualEvents({
+      type: MP_REMOTE_REPLAY.START_ANIM,
+      maskedGs: buildMaskedActionState(rotated),
+      pendingGs: clearRemoteReplayHints(rotated),
+      anim: { type: 'SKILL_HUNT', msgs: huntEvent.msgs || logDelta, targetIdx: huntEvent.targetIdx },
+      queue: [],
+    });
+  }
+  const huntRevealEvent = getHuntRevealVisualEvent(rotated);
+  if (huntRevealEvent && !isDrawAnimationState) {
+    const targetIdx = huntRevealEvent.targetIdx ?? rotated.abilityData?.huntTi ?? 1;
+    const targetName = rotated.players?.[targetIdx]?.name || huntRevealEvent.targetName || '对方';
+    return withConsumedVisualEvents({
+      type: MP_REMOTE_REPLAY.START_ANIM,
+      maskedGs: buildMaskedActionState(rotated),
+      pendingGs: clearRemoteReplayHints(rotated),
+      anim: {
+        type: 'DRAW_CARD',
+        card: huntRevealEvent.card,
+        triggerName: localDisplayName(targetIdx, targetName),
+        targetPid: targetIdx,
+        skipTravel: true,
+        msgs: huntRevealEvent.msgs || logDelta,
+      },
+      queue: [],
+    });
+  }
   const bewitchMsg = logDelta.find(line => /【蛊惑】/.test(line || ''));
-  if (bewitchMsg) {
+  if (bewitchMsg && !isDrawAnimationState) {
     const targetName = bewitchMsg.match(/对 (.+?) 【蛊惑】/)?.[1];
     const targetIdx = targetName ? rotated.players?.findIndex(p => p?.name === targetName) : -1;
     const giftLabel = bewitchMsg.match(/赠予 \[([^\]]+)\]/)?.[1] || bewitchMsg.match(/赠予 ([^，。]+)/)?.[1];
@@ -174,12 +301,12 @@ export function buildMpRemoteReplayAction({
       ? buildBewitchForcedCardQueue(rotated.currentTurn, targetIdx, giftCard, rotated.players?.[targetIdx]?.name, statQueue, logDelta)
       : [{ type: 'SKILL_BEWITCH', msgs: logDelta, targetIdx: targetIdx >= 0 ? targetIdx : 1 }, ...statQueue];
     if (queue.length) queue.push(statePatchStep({ players: rotated.players, discard: rotated.discard, log: rotated.log }));
-    return {
+    return withConsumedVisualEvents({
       type: MP_REMOTE_REPLAY.ANIM_QUEUE,
       maskedGs: buildMaskedActionState(rotated),
       pendingGs: clearRemoteReplayHints(rotated),
       queue,
-    };
+    });
   }
 
   const nonSelfDraw = hasDrawAnimationState(rotated) && !isLocalCurrentTurn(rotated);
@@ -188,6 +315,8 @@ export function buildMpRemoteReplayAction({
     if (!drawnCard) return { type: MP_REMOTE_REPLAY.SET_STATE, gs: rotated };
     const drawerPid = rotated.currentTurn;
     const drawerName = rotated.players?.[drawerPid]?.name || '???';
+    const turnStartStep = buildTurnStartStepFromVisualEvents(rotated) || { type: 'YOUR_TURN', name: drawerName, msgs: rotated._turnStartLogs };
+    const drawCardStep = buildDrawCardStepFromVisualEvents(rotated) || { type: 'DRAW_CARD', card: drawnCard, triggerName: drawerName, targetPid: drawerPid, msgs: rotated._drawLogs };
     const { beforeDrawPlayers, drawEffectQ } = buildDrawEffectQueue({
       rotated,
       previousGs,
@@ -196,12 +325,12 @@ export function buildMpRemoteReplayAction({
     });
     const queue = [
       ...(timedOutDrawDiscardStep ? [timedOutDrawDiscardStep] : []),
-      { type: 'YOUR_TURN', name: drawerName, msgs: rotated._turnStartLogs },
-      { type: 'DRAW_CARD', card: drawnCard, triggerName: drawerName, targetPid: drawerPid, msgs: rotated._drawLogs },
+      turnStartStep,
+      drawCardStep,
       ...drawEffectQ,
     ];
     if (drawEffectQ.length) queue.push(statePatchStep({ players: rotated.players, discard: rotated.discard }));
-    return {
+    return withConsumedVisualEvents({
       type: MP_REMOTE_REPLAY.ANIM_QUEUE,
       maskedGs: buildMaskedActionState(rotated),
       pendingGs: clearRemoteReplayHints(rotated),
@@ -209,30 +338,38 @@ export function buildMpRemoteReplayAction({
       visualLock: rotated._playersBeforeThisDraw
         ? { players: beforeDrawPlayers, zhuLight: previousGs?.zhuLight || rotated.zhuLight || null }
         : null,
-    };
+    });
   }
 
   const localDraw = hasDrawAnimationState(rotated) && isLocalCurrentTurn(rotated);
   if (localDraw) {
     const drawnCard = getDrawnCard(rotated);
     if (!drawnCard) return { type: MP_REMOTE_REPLAY.SET_STATE, gs: rotated };
-    return {
+    const turnStartStep = buildTurnStartStepFromVisualEvents(rotated) || { type: 'YOUR_TURN', msgs: rotated._turnStartLogs };
+    const drawCardStep = buildDrawCardStepFromVisualEvents(rotated) || { type: 'DRAW_CARD', card: drawnCard, triggerName: '你', targetPid: 0, msgs: rotated._drawLogs };
+    const visualStatQ = buildStatStepsFromVisualEvents(rotated, rotated._playersBeforeThisDraw || previousGs?.players || rotated.players);
+    const fallbackEffectQ = bindAnimLogChunks(
+      buildAnimQueue({ ...previousGs, players: rotated._playersBeforeThisDraw || previousGs?.players }, rotated),
+      { statLogs: rotated._statLogs },
+    );
+    const filteredFallbackEffectQ = filterFallbackDrawEffects(fallbackEffectQ, rotated, visualStatQ);
+    const drawEffectQ = visualStatQ.length
+      ? [...visualStatQ, ...filteredFallbackEffectQ.filter(step => !isStatAnimationStep(step))]
+      : filteredFallbackEffectQ;
+    return withConsumedVisualEvents({
       type: MP_REMOTE_REPLAY.START_ANIM,
       maskedGs: buildMaskedActionState(rotated),
       pendingGs: clearRemoteReplayHints(rotated),
-      anim: timedOutDrawDiscardStep || { type: 'YOUR_TURN', msgs: rotated._turnStartLogs },
+      anim: timedOutDrawDiscardStep || turnStartStep,
       queue: [
-        ...(timedOutDrawDiscardStep ? [{ type: 'YOUR_TURN', msgs: rotated._turnStartLogs }] : []),
-        { type: 'DRAW_CARD', card: drawnCard, triggerName: '你', targetPid: 0, msgs: rotated._drawLogs },
-        ...bindAnimLogChunks(
-          buildAnimQueue({ ...previousGs, players: rotated._playersBeforeThisDraw || previousGs?.players }, rotated),
-          { statLogs: rotated._statLogs },
-        ),
+        ...(timedOutDrawDiscardStep ? [turnStartStep] : []),
+        drawCardStep,
+        ...drawEffectQ,
       ],
       visualLock: rotated._playersBeforeThisDraw
         ? { players: rotated._playersBeforeThisDraw, zhuLight: previousGs?.zhuLight || rotated.zhuLight || null }
         : null,
-    };
+    });
   }
 
   const isHuntingPlayer0 = !rotated.gameOver && rotated.phase === 'PLAYER_REVEAL_FOR_HUNT' && rotated.abilityData?.huntingAI != null;
@@ -240,7 +377,7 @@ export function buildMpRemoteReplayAction({
     return {
       type: MP_REMOTE_REPLAY.START_ANIM,
       maskedGs: buildMaskedActionState(rotated),
-      pendingGs: rotated,
+      pendingGs: clearRemoteReplayHints(rotated),
       anim: { type: 'SKILL_HUNT', msgs: rotated.log.slice(-3), targetIdx: 0 },
       queue: [],
     };
@@ -253,5 +390,5 @@ export function buildMpRemoteReplayAction({
     };
   }
 
-  return { type: MP_REMOTE_REPLAY.SET_STATE, gs: rotated };
+  return withConsumedVisualEvents({ type: MP_REMOTE_REPLAY.SET_STATE, gs: rotated });
 }

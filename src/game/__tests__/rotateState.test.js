@@ -61,6 +61,21 @@ describe('rotateGsForViewer', () => {
       ],
       _animMultiplyEvent: { fromIdx: 1, toIdx: 3, sourceCardIndex: 4 },
       _animSphinxReveal: { actorIdx: 0, card: { name: '斯芬克斯' } },
+      _visualEvents: [
+        { type: 'turnStart', playerIdx: 3 },
+        { type: 'drawCard', playerIdx: 1, card: { name: '测试牌' } },
+        { type: 'timedOutDrawDiscard', drawerIdx: 0, card: { name: '弃牌' } },
+        { type: 'bewitchGift', sourceIdx: 3, targetIdx: 1, card: { name: '蛊惑牌' } },
+        { type: 'huntTarget', sourceIdx: 0, targetIdx: 3 },
+        { type: 'huntReveal', sourceIdx: 3, targetIdx: 0, card: { name: '亮出牌' } },
+        {
+          type: 'statEvents',
+          statEvents: [
+            { type: 'HP_LOSS', target: 1, from: { hp: 10 }, to: { hp: 8 } },
+            { type: 'DAMAGE_LINK_BREAK', pair: [0, 3], players: [player('v0'), player('v1'), player('v2'), player('v3')] },
+          ],
+        },
+      ],
     };
 
     const rotated = rotateGsForViewer(gs, 2);
@@ -76,6 +91,15 @@ describe('rotateGsForViewer', () => {
     expect(names(rotated._aiHuntEvents[0].afterPlayers)).toEqual(['a2', 'a3', 'a0', 'a1']);
     expect(rotated._animMultiplyEvent).toMatchObject({ fromIdx: 3, toIdx: 1, sourceCardIndex: 4 });
     expect(rotated._animSphinxReveal).toMatchObject({ actorIdx: 2 });
+    expect(rotated._visualEvents[0].playerIdx).toBe(1);
+    expect(rotated._visualEvents[1].playerIdx).toBe(3);
+    expect(rotated._visualEvents[2].drawerIdx).toBe(2);
+    expect(rotated._visualEvents[3]).toMatchObject({ sourceIdx: 1, targetIdx: 3 });
+    expect(rotated._visualEvents[4]).toMatchObject({ sourceIdx: 2, targetIdx: 1 });
+    expect(rotated._visualEvents[5]).toMatchObject({ sourceIdx: 1, targetIdx: 2 });
+    expect(rotated._visualEvents[6].statEvents[0].target).toBe(3);
+    expect(rotated._visualEvents[6].statEvents[1].pair).toEqual([2, 1]);
+    expect(names(rotated._visualEvents[6].statEvents[1].players)).toEqual(['v2', 'v3', 'v0', 'v1']);
   });
 
   it('derotates rotated animation snapshots back to host order', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildAiHuntEventAnimQueue, buildAnimQueue } from '../animQueueCore';
-import { makeGs, makePlayer } from './factory';
+import { makeGodCard, makeGs, makePlayer } from './factory';
 
 describe('buildAnimQueue stat animations', () => {
   it('阿波菲斯黑夜降临会播放日食动画', () => {
@@ -151,6 +151,20 @@ describe('buildAnimQueue stat animations', () => {
     });
 
     expect(buildAnimQueue(oldGs, newGs).map(step => step.type)).toEqual(['HP_HEAL', 'SAN_DAMAGE']);
+  });
+
+  it('手牌邪神牌进入 godZone 时不播放通用飞牌动画', () => {
+    const godCard = makeGodCard('NYA');
+    const oldGs = makeGs({
+      players: [makePlayer({ hand: [godCard], godZone: [] })],
+      log: [],
+    });
+    const newGs = makeGs({
+      players: [makePlayer({ hand: [], godZone: [godCard], godName: 'NYA', godLevel: 1 })],
+      log: ['你从手牌直接信仰 伏行之混沌，获得千人千貌(Lv.1)（骷髅头不计）'],
+    });
+
+    expect(buildAnimQueue(oldGs, newGs).some(step => step.type === 'CARD_TRANSFER')).toBe(false);
   });
 
   it('存在显式 stat events 时不再根据状态差分猜测回复动画', () => {

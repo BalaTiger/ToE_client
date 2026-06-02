@@ -111,6 +111,101 @@ describe('turnEngine stat events', () => {
     expect(second.kept).toBeFalsy();
   });
 
+  it('联机玩家正常摸牌状态携带摸牌前玩家快照', () => {
+    const players = makeStandardPlayers(2);
+    const normalCard = {
+      id: 'mp-normal-draw',
+      key: 'A1',
+      letter: 'A',
+      number: 1,
+      name: '偷吃龙蛋',
+      type: 'selfHealAdjDamageHP',
+      val: 3,
+      adjVal: 2,
+      isZone: true,
+    };
+    const gs = makeGs({
+      players,
+      currentTurn: 0,
+      deck: [normalCard],
+      _isMP: true,
+      log: [],
+    });
+
+    const result = startNextTurn(gs);
+
+    expect(result.phase).toBe('DRAW_REVEAL');
+    expect(result.drawReveal.card).toMatchObject({ id: 'mp-normal-draw', name: '偷吃龙蛋' });
+    expect(result._playersBeforeThisDraw).toHaveLength(2);
+    expect(result._playersBeforeThisDraw[1]).toMatchObject({ hp: 10, san: 10 });
+  });
+
+  it('联机状态即使残留 Debug 强制摸牌字段，也不会替换牌堆顶', () => {
+    const players = makeStandardPlayers(2);
+    const normalCard = {
+      id: 'normal-egg',
+      key: 'A1',
+      letter: 'A',
+      number: 1,
+      name: '偷吃龙蛋',
+      type: 'selfHealAdjDamageHP',
+      val: 3,
+      adjVal: 2,
+      isZone: true,
+    };
+    const forcedCard = {
+      id: 'force-rose',
+      key: 'D3',
+      letter: 'D',
+      number: 3,
+      name: '玫瑰倒刺',
+      type: 'roseThornGiftAllHand',
+      isZone: true,
+    };
+    const gs = makeGs({
+      players,
+      deck: [normalCard],
+      currentTurn: -1,
+      _isMP: true,
+      debugForceCard: forcedCard,
+      debugForceCardTarget: 'player',
+      debugForceCardKeep: 'keep',
+    });
+
+    const result = startNextTurn(gs);
+
+    expect(result.drawReveal.card.name).toBe('偷吃龙蛋');
+    expect(result.debugForceCard).toBeNull();
+    expect(result.debugForceCardTarget).toBeNull();
+  });
+
+  it('联机状态即使残留 Debug 强制收入字段，也不会跳过玩家抉择', () => {
+    const players = makeStandardPlayers(2);
+    const roseThorn = {
+      id: 'rose-mp-stale-debug',
+      key: 'D3',
+      letter: 'D',
+      number: 3,
+      name: '玫瑰倒刺',
+      type: 'roseThornGiftAllHand',
+      isZone: true,
+    };
+    const gs = makeGs({
+      players,
+      _isMP: true,
+      debugForceCardKeepPending: 'keep',
+      debugForceCardKeepTarget: 0,
+    });
+
+    const result = playerDrawCard(players, [roseThorn], [], 0, gs);
+
+    expect(result.needsDecision).toBe(true);
+    expect(result.kept).toBeFalsy();
+    expect(result.P[0].hand).not.toContainEqual(expect.objectContaining({ name: '玫瑰倒刺' }));
+    expect(gs.debugForceCardKeepPending).toBeNull();
+    expect(gs.debugForceCardKeepTarget).toBeNull();
+  });
+
   it('烤盲鱼标记会让玩家下一次区域牌抉择只暴露编号', () => {
     const players = [
       makePlayer({ blindNextZoneDecision: true }),
