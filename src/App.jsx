@@ -109,6 +109,7 @@ import {
   createHuntTargetEvent,
   createHuntRevealEvent,
   markConsumedVisualEvents,
+  pruneConsumedVisualEvents,
 } from "./game";
 import {
   rotateGsForViewer,
@@ -155,6 +156,7 @@ import {
   resolveTurnHighlightForStep,
   buildBewitchForcedCardQueue,
   buildInspectionEventFlow,
+  buildInspectionAwareAnimQueue,
   statePatchStep,
   zhuHideCardStep,
   buryToDeckStep,
@@ -1207,6 +1209,23 @@ export default function Game(){
   } = useDamageAnimationEffects({ anim, playHpDamageSound });
   const guillotinedPids=useMemo(()=>new Set((guillotineTargets||[]).map(t=>t?.pi).filter(v=>v!=null)),[guillotineTargets]);
 
+  const clearBattleAnimationState=useCallback(()=>{
+    animQueueRef.current=[];
+    pendingGsRef.current=null;
+    setAnimExiting(false);
+    setAnim(null);
+    clearSkillAnimations();
+    clearCardTransferAnimations();
+    clearDamageAnimations();
+    setEarthquakeVisualPlayers(null);
+    visualStateLocks.clear({turnHighlight:true,players:true,zhuLight:true,hiddenZhuCardId:true});
+  },[clearSkillAnimations,clearCardTransferAnimations,clearDamageAnimations,visualStateLocks]);
+
+  useEffect(()=>{
+    if(!gs?.gameOver&&gs?.phase!=='GOD_RESURRECTION')return;
+    clearBattleAnimationState();
+  },[gs?.gameOver,gs?.phase,clearBattleAnimationState]);
+
   useEffect(()=>{
     if(typeof document==='undefined')return;
     const handleVisibilityChange=()=>{
@@ -1903,9 +1922,15 @@ export default function Game(){
     if(latestGsRef.current!==gs)return; // 避免较早 render 的同步 effect 在玩家已推进状态后广播旧 visualEvents
     const room=roomModal;
     if(!room?.roomId)return;
-    const rawGs=derotateGs(gs,myPlayerIndexRef.current);
+    const hasVisualEvents=Array.isArray(gs._visualEvents)&&gs._visualEvents.length>0;
+    const broadcastGs=hasVisualEvents?pruneConsumedVisualEvents(gs,consumedVisualEventIdsRef.current):gs;
+    const freshVisualEvents=Array.isArray(broadcastGs._visualEvents)?broadcastGs._visualEvents:[];
+    const rawGs=derotateGs(broadcastGs,myPlayerIndexRef.current);
     socketRef.current.emit('mpStateSync',{roomId:room.roomId,gs:rawGs});
-    if(Array.isArray(gs._visualEvents)&&gs._visualEvents.length){
+    if(hasVisualEvents){
+      if(freshVisualEvents.length){
+        markConsumedVisualEvents(consumedVisualEventIdsRef.current,freshVisualEvents);
+      }
       receivedGsRef.current=true;
       setGs(prev=>prev?{...prev,_visualEvents:[]}:prev);
     }
@@ -2152,24 +2177,9 @@ export default function Game(){
   useEffect(()=>{
     if(!gs||gs.gameOver||gs.phase==='GOD_RESURRECTION'||showTutorial)return;
     if(!shouldTriggerGodResurrection(gs))return;
-    // Check if any player has SAN <= 0 (which would trigger cultist victory)
-    for(const p of gs.players){
-      if(!p.isDead&&p.san<=0){
-        const hasCultists=gs.players.some(q=>q.role===ROLE_CULTIST);
-        if(hasCultists){
-          const hasPendingAnim=!!anim||animQueueRef.current.length>0||!!pendingGsRef.current;
-          if(hasPendingAnim){
-            if(!gs._pendingGodResurrection){
-              setGs(g=>g?{...g,_pendingGodResurrection:true}:g);
-            }
-          }else{
-            setGs(g=>g?{...g,phase:'GOD_RESURRECTION',_pendingGodResurrection:undefined}:g);
-          }
-          return;
-        }
-      }
-    }
-  },[gs,anim,showTutorial]);
+    clearBattleAnimationState();
+    setGs(g=>g?{...g,phase:'GOD_RESURRECTION',_pendingGodResurrection:undefined}:g);
+  },[gs,showTutorial,clearBattleAnimationState]);
 
   // isBlocked 提升到 useEffect 之前，避免依赖数组 TDZ 报错
   const isBlocked=!!anim||showTutorial;
@@ -2478,6 +2488,9 @@ export default function Game(){
       if(isMultiplayer&&socketRef.current&&roomModal?.roomId){
         suppressNextBroadcastRef.current=true;
         receivedGsRef.current=true;
+        if(nextGs._visualEvents?.length){
+          markConsumedVisualEvents(consumedVisualEventIdsRef.current,nextGs._visualEvents);
+        }
         socketRef.current.emit('mpStateSync',{roomId:roomModal.roomId,gs:derotateGs(nextGs,myPlayerIndexRef.current)});
       }
       const drawStatQ=bindAnimLogChunks(
@@ -2545,6 +2558,8 @@ export default function Game(){
   },[isMobile,mobileArmedGodCardIdx]);
 
   // ── Loading Screen ───────────────────────────────────────────
+  const handleGodResurrectionDone=useCallback(()=>setShowGodResurrection(true),[]);
+
   if(isLoading){
     return(
       <div style={{minHeight:'100vh',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:24,position:'relative',overflow:'hidden'}}>
@@ -2720,7 +2735,7 @@ export default function Game(){
 
     // 邪祀者获胜：先全屏播放邪神复活特效，onConfirm 后再显示结算
     if(winner===ROLE_CULTIST&&!showGodResurrection){
-      return <GodResurrectionAnim onDone={()=>setShowGodResurrection(true)}/>;
+      return <GodResurrectionAnim onDone={handleGodResurrectionDone}/>;
     }
     return(
       <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:24,position:'relative'}}>
@@ -2819,8 +2834,6 @@ export default function Game(){
           </span>
         </button>
         {showFullLog&&<FullLogModal log={gs.log||[]} onClose={()=>setShowFullLog(false)}/>}
-        {/* AnimOverlay must render on game-over screen too so startNewGame card flip works */}
-        <AnimOverlay anim={anim} exiting={animExiting} expansionKey={gs.expansionKey}/>
         {roleRevealAnim&&<RoleRevealAnim role={roleRevealAnim.role} onDone={()=>_onRoleRevealDone(roleRevealAnim.pendingGs)}/>}
         <style>{GLOBAL_STYLES}</style>
       </div>
@@ -4788,28 +4801,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   }
 
   function buildPostBewitchStatQueue(oldGs,newGs){
-    const inspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>(oldGs._inspectionSeq||0));
-    if(!inspectionEvents.length)return buildAnimQueue(oldGs,newGs);
-    lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
-    const firstEvent=inspectionEvents[0];
-    const preInspectionGs={
-      ...newGs,
-      players:firstEvent?.beforePlayers||newGs.players,
-      log:firstEvent?.beforeLog||newGs.log,
-      _inspectionEvents:oldGs._inspectionEvents||[],
-      _inspectionSeq:oldGs._inspectionSeq||0,
-    };
-    const preQueue=buildAnimQueue(oldGs,preInspectionGs);
-    const inspectionFlow=buildInspectionEventFlow(
-      {players:preInspectionGs.players,log:preInspectionGs.log},
-      inspectionEvents,
-      {buildAnimQueue,copyPlayers}
-    );
-    const tailQueue=buildAnimQueue(
-      {players:inspectionFlow.players,log:inspectionFlow.log,_statEventSeq:inspectionFlow.statEventSeq},
-      newGs
-    );
-    return [...preQueue,...inspectionFlow.queue,...tailQueue];
+    const result=buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPlayers});
+    if(result.inspectionEvents.length){
+      lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...result.inspectionEvents.map(ev=>ev.seq||0));
+    }
+    return result.queue;
   }
 
   function bewitchSelectTarget(ti){
@@ -5261,7 +5257,13 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   function broadcastMpStateBeforeLocalReplay(nextGs){
     if(!nextGs?._isMP||!isMultiplayer||!socketRef.current||!roomModal?.roomId)return false;
     if(nextGs.gameOver||nextGs.phase==='TREASURE_WIN'||nextGs.phase==='PLAYER_WIN_PENDING')return false;
-    socketRef.current.emit('mpStateSync',{roomId:roomModal.roomId,gs:derotateGs(nextGs,myPlayerIndexRef.current)});
+    const hasVisualEvents=Array.isArray(nextGs._visualEvents)&&nextGs._visualEvents.length>0;
+    const broadcastGs=hasVisualEvents?pruneConsumedVisualEvents(nextGs,consumedVisualEventIdsRef.current):nextGs;
+    const freshVisualEvents=Array.isArray(broadcastGs._visualEvents)?broadcastGs._visualEvents:[];
+    if(freshVisualEvents.length){
+      markConsumedVisualEvents(consumedVisualEventIdsRef.current,freshVisualEvents);
+    }
+    socketRef.current.emit('mpStateSync',{roomId:roomModal.roomId,gs:derotateGs(broadcastGs,myPlayerIndexRef.current)});
     suppressNextBroadcastRef.current=true;
     return true;
   }
@@ -5749,10 +5751,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   }
 
   function revealWin(){
-    // Kill any running animation so we can't be overwritten by a stale pendingGs
-    animQueueRef.current=[];
-    pendingGsRef.current=null;
-    setAnim(null);
+    clearBattleAnimationState();
     setGs(prev=>{
       if(!prev)return prev;
       // Determine winner based on current phase

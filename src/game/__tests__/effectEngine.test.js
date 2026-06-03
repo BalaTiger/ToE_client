@@ -174,6 +174,47 @@ describe('applyFx', () => {
     expect(sanRes.msgs[0]).toContain('回复了 3 SAN');
   });
 
+  it('SAN 被区域牌效果降至 0 时不翻检定牌', () => {
+    const players = makeStandardPlayers(3);
+    players[0].hp = 10;
+    players[0].san = 3;
+    const inspectionCard = { name: '自残', effect: 'selfDamageHP', value: 1, type: 'negative' };
+    const gs = makeGs({
+      players,
+      inspectionDeck: [inspectionCard],
+      inspectionDiscard: [],
+      _inspectionSeq: 2,
+    });
+
+    const res = applyFx({ type: 'selfDamageSAN', name: '测试SAN归零', val: 3 }, 0, null, players, [], [], gs);
+
+    expect(res.P[0].san).toBe(0);
+    expect(res.P[0].hp).toBe(10);
+    expect(res.statePatch._inspectionEvents || []).toEqual([]);
+    expect(res.statePatch._inspectionSeq).toBeUndefined();
+  });
+
+  it('同一效果已造成 SAN 归零时，不继续处理其他低 SAN 检定', () => {
+    const players = makeStandardPlayers(3);
+    players[0].hp = 10;
+    players[0].san = 2;
+    players[1].hp = 10;
+    players[1].san = 6;
+    const inspectionCard = { name: '自残', effect: 'selfDamageHP', value: 1, type: 'negative' };
+    const gs = makeGs({
+      players,
+      inspectionDeck: [inspectionCard, inspectionCard],
+      inspectionDiscard: [],
+    });
+
+    const res = applyFx({ type: 'allDamageSAN', name: '测试全体SAN', val: 2 }, 0, null, players, [], [], gs);
+
+    expect(res.P[0].san).toBe(0);
+    expect(res.P[1].san).toBe(4);
+    expect(res.P[1].hp).toBe(10);
+    expect(res.statePatch._inspectionEvents || []).toEqual([]);
+  });
+
   it('igniteTorch: 玩家有手牌时进入弃牌选择', () => {
     const players = makeStandardPlayers(3);
     players[0].hand = [{ id: 'old-card', name: '旧手牌', type: 'test' }];
@@ -646,6 +687,35 @@ describe('applyFx', () => {
 
 describe('applyInspectionForSanLoss', () => {
   beforeEach(() => resetIds());
+
+  it('SAN 归零时不再翻检定牌', () => {
+    const players = [makePlayer({ name: '你', hp: 10, san: 0 })];
+    const inspectionCard = { name: '自残', effect: 'selfDamageHP', value: 1, type: 'negative' };
+    const gs = makeGs({
+      players,
+      inspectionDeck: [inspectionCard],
+      inspectionDiscard: [],
+      _inspectionSeq: 7,
+      _statEventSeq: 4,
+    });
+
+    const res = applyInspectionForSanLoss(
+      0,
+      players[0].san,
+      0,
+      players,
+      [],
+      [],
+      ['你 失去 2 SAN'],
+      makeInspectionMeta(gs),
+    );
+
+    expect(res.P[0].hp).toBe(10);
+    expect(res.inspectionMeta._inspectionSeq).toBe(7);
+    expect(res.inspectionMeta._statEventSeq).toBe(4);
+    expect(res.inspectionMeta._inspectionEvents || []).toEqual([]);
+    expect(res.log).toEqual(['你 失去 2 SAN']);
+  });
 
   it('检定造成的属性变化会生成显式 statEvents', () => {
     const players = [makePlayer({ name: '你', hp: 10, san: 6 })];

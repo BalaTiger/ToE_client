@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { buildAnimQueue } from '../animQueueCore';
 import { buildMpRemoteReplayAction, MP_REMOTE_REPLAY } from '../multiplayerRemoteReplay';
 
 const card = { id: 'c1', name: '测试牌', type: 'zone' };
@@ -273,6 +274,93 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.pendingGs._visualEvents).toEqual([]);
   });
 
+  it('keeps inspection damage after the inspection card reveal for remote bewitch replay', () => {
+    const godGift = { id: 'god1', name: '伏行之混沌', godKey: 'NYA', isGod: true, type: 'god' };
+    const scratchCard = { id: 'ins1', name: '乱抓', effect: 'scratch', value: 1 };
+    const beforeBewitchPlayers = [
+      { ...player('你'), role: '邪祀者', hand: [godGift] },
+      { ...player('卡洛斯'), hp: 10, san: 10, hand: [] },
+      player('贝拉'),
+    ];
+    const beforeInspectionPlayers = [
+      { ...player('你'), role: '邪祀者', hand: [] },
+      { ...player('卡洛斯'), hp: 10, san: 7, hand: [godGift] },
+      player('贝拉'),
+    ];
+    const afterInspectionPlayers = [
+      { ...player('你'), role: '邪祀者', hand: [] },
+      { ...player('卡洛斯'), hp: 9, san: 7, hand: [godGift] },
+      player('贝拉'),
+    ];
+    const beforeInspectionLog = [
+      '你对 卡洛斯 【蛊惑】，赠予 伏行之混沌',
+      '卡洛斯 遭遇邪神 伏行之混沌（第3次），失去3SAN',
+    ];
+    const afterInspectionLog = [
+      ...beforeInspectionLog,
+      '卡洛斯 的SAN检定结果为"乱抓"',
+      '卡洛斯 被乱抓，失去 1 HP',
+    ];
+    const action = buildAction(makeState({
+      currentTurn: 0,
+      phase: 'ACTION',
+      players: afterInspectionPlayers,
+      log: afterInspectionLog,
+      _statEventSeq: 1,
+      _statEvents: [{
+        seq: 1,
+        type: 'HP_LOSS',
+        target: 1,
+        from: { hp: 10, san: 7, isDead: false },
+        to: { hp: 9, san: 7, isDead: false },
+        reason: '乱抓',
+      }],
+      _inspectionSeq: 1,
+      _inspectionEvents: [{
+        seq: 1,
+        card: scratchCard,
+        target: 1,
+        beforePlayers: beforeInspectionPlayers,
+        beforeLog: beforeInspectionLog,
+        afterPlayers: afterInspectionPlayers,
+        afterLog: afterInspectionLog,
+        statEvents: [{
+          seq: 1,
+          type: 'HP_LOSS',
+          target: 1,
+          from: { hp: 10, san: 7, isDead: false },
+          to: { hp: 9, san: 7, isDead: false },
+          reason: '乱抓',
+        }],
+        statEventSeq: 1,
+      }],
+      _visualEvents: [{
+        type: 'bewitchGift',
+        sourceIdx: 0,
+        targetIdx: 1,
+        targetName: '卡洛斯',
+        card: godGift,
+        msgs: ['你对 卡洛斯 【蛊惑】，赠予 伏行之混沌'],
+      }],
+    }), {
+      previousGs: makeState({
+        currentTurn: 0,
+        phase: 'BEWITCH_SELECT_TARGET',
+        players: beforeBewitchPlayers,
+        log: [],
+      }),
+      buildAnimQueue,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    const giftRevealIdx = action.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card === godGift);
+    const inspectionRevealIdx = action.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card === scratchCard);
+    const hpDamageIdx = action.queue.findIndex(step => step.type === 'HP_DAMAGE');
+    expect(giftRevealIdx).toBeGreaterThan(-1);
+    expect(inspectionRevealIdx).toBeGreaterThan(giftRevealIdx);
+    expect(hpDamageIdx).toBeGreaterThan(inspectionRevealIdx);
+  });
+
   it('uses swap visualEvents as silent hand transfer without draw replay', () => {
     const staleDrawCard = { id: 'stale-draw', name: '上一张摸牌', key: 'A1', type: 'zone' };
     const action = buildAction(makeState({
@@ -388,6 +476,89 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.queue[0]).toMatchObject({ type: 'YOUR_TURN', name: '贝拉' });
     expect(action.queue[1]).toMatchObject({ type: 'DRAW_CARD', card: nextCard, triggerName: '贝拉', targetPid: 2 });
     expect(action.queue.some(step => step.type === 'SKILL_BEWITCH')).toBe(false);
+  });
+
+  it('does not treat older bewitch logs followed by draw confirmation as a new bewitch action', () => {
+    const gifted = { id: 'gift1', name: '蛊惑礼物', key: 'A1', type: 'zone' };
+    const kept = { id: 'kept1', name: '收入牌', key: 'B2', type: 'zone' };
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players: [
+        { ...player('你'), hand: [gifted] },
+        { ...player('艾伦'), hand: [kept] },
+        player('贝拉'),
+      ],
+      log: [
+        '你（邪祀者）对 艾伦 【蛊惑】，赠予 [A1] 蛊惑礼物',
+        '── 艾伦 的回合开始 ──',
+        '艾伦 摸到 [B2] 收入牌',
+        '艾伦 收入了 [B2] 收入牌',
+      ],
+    }), {
+      previousGs: makeState({
+        currentTurn: 1,
+        phase: 'DRAW_REVEAL',
+        players: [
+          { ...player('你'), hand: [] },
+          player('艾伦'),
+          player('贝拉'),
+        ],
+        log: [],
+      }),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.SET_STATE);
+    expect(action.gs.log.at(-1)).toBe('艾伦 收入了 [B2] 收入牌');
+  });
+
+  it('does not replay stale bewitch visualEvents when a later draw is confirmed', () => {
+    const gifted = { id: 'gift1', name: '蛊惑礼物', key: 'A1', type: 'zone' };
+    const kept = { id: 'kept1', name: '收入牌', key: 'B2', type: 'zone' };
+    const staleEvent = {
+      type: 'bewitchGift',
+      sourceIdx: 0,
+      targetIdx: 1,
+      targetName: '艾伦',
+      card: gifted,
+      msgs: ['你（邪祀者）对 艾伦 【蛊惑】，赠予 [A1] 蛊惑礼物'],
+    };
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players: [
+        { ...player('你'), hand: [{ id: 'a-hand-1', name: '你的第一张手牌', key: 'C1', type: 'zone' }] },
+        { ...player('艾伦'), hand: [gifted, kept] },
+        player('贝拉'),
+      ],
+      log: [
+        '你（邪祀者）对 艾伦 【蛊惑】，赠予 [A1] 蛊惑礼物',
+        '── 艾伦 的回合开始 ──',
+        '艾伦 摸到 [B2] 收入牌',
+        '艾伦 收入了 [B2] 收入牌',
+      ],
+      _visualEvents: [staleEvent],
+    }), {
+      previousGs: makeState({
+        currentTurn: 1,
+        phase: 'DRAW_REVEAL',
+        drawReveal: { card: kept, drawerIdx: 1, needsDecision: true },
+        players: [
+          { ...player('你'), hand: [{ id: 'a-hand-1', name: '你的第一张手牌', key: 'C1', type: 'zone' }] },
+          { ...player('艾伦'), hand: [gifted] },
+          player('贝拉'),
+        ],
+        log: [
+          '你（邪祀者）对 艾伦 【蛊惑】，赠予 [A1] 蛊惑礼物',
+          '── 艾伦 的回合开始 ──',
+          '艾伦 摸到 [B2] 收入牌',
+        ],
+      }),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.SET_STATE);
+    expect(action.gs._visualEvents).toEqual([]);
+    expect(action.consumedVisualEventIds?.length).toBeGreaterThan(0);
   });
 
   it('ignores a consumed stale bewitch event when the next draw state arrives', () => {

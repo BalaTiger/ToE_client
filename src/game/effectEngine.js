@@ -328,7 +328,7 @@ export function processInspectionTargets(targets, startIndex, P, D, Disc, baseLo
 }
 
 export function applyInspectionForSanLoss(targetIndex, newSan, startIndex, P, D, Disc, baseLog, inspectionMeta) {
-  if (newSan > 6) return { P, D, Disc, log: baseLog, inspectionMeta };
+  if (newSan > 6 || newSan <= 0) return { P, D, Disc, log: baseLog, inspectionMeta };
   return processInspectionTargets([targetIndex], startIndex, P, D, Disc, baseLog, inspectionMeta);
 }
 
@@ -354,7 +354,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     if (i == null || !P[i] || P[i].isDead || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return;
     P[i].san = clamp(P[i].san - v);
     const newSan = P[i].san;
-    if (newSan <= 6) {
+    if (newSan > 0 && newSan <= 6) {
       pendingInspectionTargets.push(i);
     }
   };
@@ -406,6 +406,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     san: player?.san ?? 0,
     isDead: !!player?.isDead,
   });
+  const hasLivingSanDepleted = players => players.some(p => p && !p.isDead && p.hp > 0 && p.san <= 0);
 
   // 辅助函数：检查条件
   const checkCondition = (condType, condVal, actor) => {
@@ -1236,9 +1237,12 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   }
   const directStatEventSeq = (gs?._statEventSeq || 0) + 1;
   if (!directStatEvents) directStatEvents = buildStatEvents(beforePlayers, P, msgs, { reason: card?.name || card?.type || '', seq: directStatEventSeq });
-  if (pendingInspectionTargets.length) {
+  const inspectionTargets = hasLivingSanDepleted(P)
+    ? []
+    : pendingInspectionTargets.filter(i => P[i]?.san > 0 && P[i].san <= 6);
+  if (inspectionTargets.length) {
     const inspectionBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
-    const processed = processInspectionTargets(pendingInspectionTargets, gs?.currentTurn ?? ci, P, D, Disc, inspectionBaseLog, inspectionMeta);
+    const processed = processInspectionTargets(inspectionTargets, gs?.currentTurn ?? ci, P, D, Disc, inspectionBaseLog, inspectionMeta);
     P = processed.P; D = processed.D; Disc = processed.Disc; inspectionMeta = processed.inspectionMeta;
     msgs = [...msgs, ...processed.log.slice(inspectionBaseLog.length)];
     statePatch = { ...statePatch, ...inspectionMeta };

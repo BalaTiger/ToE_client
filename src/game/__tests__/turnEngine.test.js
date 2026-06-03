@@ -1,11 +1,41 @@
 import { describe, expect, it } from 'vitest';
-import { ROLE_TREASURE } from '../coreUtils';
-import { aiDrawAndApply, playerDrawCard, startNextTurn } from '../turnEngine';
+import { makeInspectionMeta, ROLE_TREASURE } from '../coreUtils';
+import { aiDrawAndApply, applySanLossToPlayerWithInspection, playerDrawCard, startNextTurn } from '../turnEngine';
 import { buildTsathogguaSlimeGrantQueue } from '../turnAnimState';
 import { makeGodCard, makeGs, makePlayer, makeStandardPlayers } from './factory';
 import { createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../../constants/card';
 
 describe('turnEngine stat events', () => {
+  it('SAN 损失降至 0 时不排入检定事件', () => {
+    const players = [makePlayer({ name: '你', hp: 10, san: 2 })];
+    const inspectionCard = { name: '自残', effect: 'selfDamageHP', value: 1, type: 'negative' };
+    const gs = makeGs({
+      players,
+      inspectionDeck: [inspectionCard],
+      inspectionDiscard: [],
+      _inspectionSeq: 3,
+      _statEventSeq: 8,
+    });
+
+    const result = applySanLossToPlayerWithInspection(
+      0,
+      2,
+      0,
+      players,
+      [],
+      [],
+      ['你 失去 2 SAN'],
+      makeInspectionMeta(gs),
+      '蛊惑',
+    );
+
+    expect(result.P[0].san).toBe(0);
+    expect(result.P[0].hp).toBe(10);
+    expect(result.L).toEqual(['你 失去 2 SAN']);
+    expect(result.inspectionMeta._inspectionSeq).toBe(3);
+    expect(result.inspectionMeta._inspectionEvents || []).toEqual([]);
+  });
+
   it('摸到邪神牌造成 SAN 损失时产出显式 stat events', () => {
     const players = [makePlayer({ role: ROLE_TREASURE, san: 10, godEncounters: 0 })];
     const godCard = makeGodCard('NYA');

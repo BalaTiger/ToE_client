@@ -1,8 +1,13 @@
 import { cardLogText } from './coreUtils';
-import { isLocalCurrentTurn } from './rotateState';
+import { isLocalCurrentTurn, localDisplayName } from './rotateState';
 import { bindAnimLogChunks } from './animLogs';
-import { buildAnimQueue } from './animQueueCore';
+import { buildAnimQueue, buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
 import { cardTransferStep, statePatchStep } from './animQueueHelpers';
+import {
+  buildDrawCardStepFromVisualEvents,
+  buildStatStepsFromVisualEvents,
+  buildTurnStartStepFromVisualEvents,
+} from './visualEvents';
 
 export const EMPTY_TURN_ANIM_FIELDS = Object.freeze({
   _aiDrawnCard: null,
@@ -111,4 +116,131 @@ export function buildTsathogguaSlimeGrantQueue(state) {
     );
   });
   return queue;
+}
+
+export function getTurnStartDrawBaselineLog(state) {
+  const log = Array.isArray(state?.log) ? state.log : [];
+  const animatedLogCount = [
+    ...(state?._turnStartLogs || []),
+    ...(state?._drawLogs || []),
+    ...(state?._statLogs || []),
+  ].length;
+  return animatedLogCount > 0 ? log.slice(0, Math.max(0, log.length - animatedLogCount)) : log;
+}
+
+export function getTurnStartDrawnCard(state) {
+  return state?.phase === 'GOD_CHOICE'
+    ? state.abilityData?.godCard
+    : state?.drawReveal?.card;
+}
+
+export function getTurnStartDrawerIdx(state) {
+  if (state?.phase === 'GOD_CHOICE') {
+    return state.abilityData?.drawerIdx ?? state.currentTurn ?? 0;
+  }
+  return state?.drawReveal?.drawerIdx ?? state?.currentTurn ?? 0;
+}
+
+function isStatAnimationStep(step) {
+  if (!step) return false;
+  if (Array.isArray(step.statEvents) && step.statEvents.length) return true;
+  if (['HP_DAMAGE', 'HP_HEAL', 'SAN_DAMAGE', 'SAN_HEAL', 'HP_SAN_HEAL'].includes(step.type)) return true;
+  if (step.type === 'STATE_PATCH' && Array.isArray(step._logChunk) && step._logChunk.length) return true;
+  if (step.type === 'TURN_BOUNDARY_PAUSE') return true;
+  return false;
+}
+
+function hasDrawStatEvidence(state, visualStatQ = []) {
+  return visualStatQ.length > 0 || (Array.isArray(state?._statLogs) && state._statLogs.length > 0);
+}
+
+function filterFallbackDrawEffects(queue, state, visualStatQ = []) {
+  return hasDrawStatEvidence(state, visualStatQ)
+    ? queue
+    : queue.filter(step => !isStatAnimationStep(step));
+}
+
+export function buildTurnStartDrawReplayQueue({
+  oldGs,
+  newGs,
+  effectOldGs,
+  timedOutDrawDiscardStep = null,
+  buildQueue = buildAnimQueue,
+  buildFullHandSwapTransferQueue = buildFullHandSwapTransferQueueFromLogs,
+} = {}) {
+  const drawnCard = getTurnStartDrawnCard(newGs);
+  if (!drawnCard) {
+    return {
+      drawnCard: null,
+      beforeDrawPlayers: newGs?.players || oldGs?.players || [],
+      drawEffectQ: [],
+      queue: [],
+      startAnim: timedOutDrawDiscardStep || null,
+      startQueue: [],
+      visualLock: null,
+    };
+  }
+  const drawerPid = getTurnStartDrawerIdx(newGs);
+  const drawerName = newGs?.players?.[drawerPid]?.name || '???';
+  const beforeDrawPlayers = newGs?._playersBeforeThisDraw || oldGs?.players || newGs?.players || [];
+  const turnStartStep = buildTurnStartStepFromVisualEvents(newGs) || {
+    type: 'YOUR_TURN',
+    ...(drawerPid === 0 ? {} : { name: drawerName }),
+    msgs: newGs?._turnStartLogs,
+  };
+  const drawCardStep = buildDrawCardStepFromVisualEvents(newGs) || {
+    type: 'DRAW_CARD',
+    card: drawnCard,
+    triggerName: localDisplayName(drawerPid, drawerName),
+    targetPid: drawerPid,
+    msgs: newGs?._drawLogs,
+  };
+  const drawFullHandSwapQ = buildFullHandSwapTransferQueue(
+    [...(newGs?._drawLogs || []), ...(newGs?._statLogs || [])],
+    beforeDrawPlayers,
+  );
+  const fallbackOldGs = effectOldGs || {
+    ...(oldGs || newGs || {}),
+    players: beforeDrawPlayers,
+    log: getTurnStartDrawBaselineLog(newGs),
+  };
+  const drawEffectQBase = bindAnimLogChunks(
+    buildQueue(fallbackOldGs, newGs),
+    { statLogs: newGs?._statLogs },
+  );
+  const visualStatQ = buildStatStepsFromVisualEvents(newGs, beforeDrawPlayers);
+  const filteredDrawEffectQBase = filterFallbackDrawEffects(drawEffectQBase, newGs, visualStatQ);
+  const drawEffectQWithVisualStats = visualStatQ.length
+    ? [...visualStatQ, ...filteredDrawEffectQBase.filter(step => !isStatAnimationStep(step))]
+    : filteredDrawEffectQBase;
+  const drawEffectQ = drawFullHandSwapQ.length
+    ? [...drawFullHandSwapQ, ...drawEffectQWithVisualStats.filter(step => step.type !== 'CARD_TRANSFER')]
+    : drawEffectQWithVisualStats;
+  const queue = [
+    ...(timedOutDrawDiscardStep ? [timedOutDrawDiscardStep] : []),
+    turnStartStep,
+    drawCardStep,
+    ...drawEffectQ,
+  ];
+  const startAnim = timedOutDrawDiscardStep || turnStartStep;
+  const startQueue = [
+    ...(timedOutDrawDiscardStep ? [turnStartStep] : []),
+    drawCardStep,
+    ...drawEffectQ,
+  ];
+  return {
+    drawnCard,
+    drawerPid,
+    drawerName,
+    beforeDrawPlayers,
+    turnStartStep,
+    drawCardStep,
+    drawEffectQ,
+    queue,
+    startAnim,
+    startQueue,
+    visualLock: newGs?._playersBeforeThisDraw
+      ? { players: beforeDrawPlayers, zhuLight: oldGs?.zhuLight || newGs?.zhuLight || null }
+      : null,
+  };
 }
