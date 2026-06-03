@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import { buildAnimQueue } from '../animQueueCore';
 import { buildMpRemoteReplayAction, MP_REMOTE_REPLAY } from '../multiplayerRemoteReplay';
+import { createEarthquakeEvent } from '../visualEvents';
 
 const card = { id: 'c1', name: '测试牌', type: 'zone' };
 
@@ -94,6 +96,74 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.pendingGs.phase).toBe('DRAW_REVEAL');
   });
 
+  it('does not flip a Zhu-lit card before the hide decision resolves', () => {
+    const litCard = { id: 'lit-card', name: '被点亮牌', type: 'zone' };
+    const action = buildAction(makeState({
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card: litCard, drawerIdx: 1, needsDecision: true },
+      zhuLight: { ownerIdx: 0, cardIds: ['lit-card'] },
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _drawLogs: ['艾伦 摸到 被点亮牌'],
+    }));
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.START_ANIM);
+    expect(action.anim).toMatchObject({ type: 'YOUR_TURN', name: '艾伦' });
+    expect(action.queue.some(step => step.type === 'DRAW_CARD')).toBe(false);
+    expect(action.pendingGs.phase).toBe('DRAW_REVEAL');
+    expect(action.pendingGs.drawReveal.card).toBe(litCard);
+  });
+
+  it('flips a Zhu-lit card after choosing not to hide without replaying the turn banner', () => {
+    const litCard = { id: 'lit-card', name: '被点亮牌', type: 'zone' };
+    const previousGs = makeState({
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card: litCard, drawerIdx: 1, needsDecision: true },
+      zhuLight: { ownerIdx: 0, cardIds: ['lit-card'] },
+    });
+    const action = buildMpRemoteReplayAction({
+      rotated: makeState({
+        phase: 'DRAW_REVEAL',
+        drawReveal: { card: litCard, drawerIdx: 1, needsDecision: true, zhuResolved: true },
+        zhuLight: { ownerIdx: 0, cardIds: [] },
+        _turnStartLogs: [],
+        _drawLogs: ['艾伦 摸到 被点亮牌'],
+      }),
+      previousGs,
+      roleRevealed: true,
+      buildAnimQueue: vi.fn(() => []),
+      buildFullHandSwapTransferQueueFromLogs: vi.fn(() => []),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue[0]).toMatchObject({ type: 'DRAW_CARD', card: litCard, triggerName: '艾伦', targetPid: 1 });
+    expect(action.queue.some(step => step.type === 'YOUR_TURN')).toBe(false);
+  });
+
+  it('does not replay stale previous-turn stat differences between local draw flip and decision', () => {
+    const nextCard = { id: 'next-local', name: '本回合摸牌', type: 'zone' };
+    const staleSanDamage = { type: 'SAN_DAMAGE', hitIndices: [0], msgs: ['你 失去 2 SAN'] };
+    const action = buildAction(makeState({
+      currentTurn: 0,
+      phase: 'DRAW_REVEAL',
+      players: [{ ...player('你'), san: 8 }, player('艾伦'), player('贝拉')],
+      drawReveal: { card: nextCard, drawerIdx: 0, needsDecision: true },
+      _turnStartLogs: ['── 你 的回合开始 ──'],
+      _drawLogs: ['你 摸到 本回合摸牌'],
+      _statLogs: [],
+    }), {
+      previousGs: makeState({
+        currentTurn: 1,
+        phase: 'ACTION',
+        players: [player('你'), player('艾伦'), player('贝拉')],
+      }),
+      buildAnimQueue: vi.fn(() => [staleSanDamage]),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.START_ANIM);
+    expect(action.queue[0]).toMatchObject({ type: 'DRAW_CARD', card: nextCard, triggerName: '你', targetPid: 0 });
+    expect(action.queue.some(step => step.type === 'SAN_DAMAGE')).toBe(false);
+  });
+
   it('replays a timed-out draw discard before the next local turn draw', () => {
     const previousGs = makeState({
       currentTurn: 1,
@@ -144,6 +214,695 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.type).toBe(MP_REMOTE_REPLAY.START_ANIM);
     expect(action.anim).toMatchObject({ type: 'DISCARD', card, triggerName: '艾伦', targetPid: 1 });
     expect(action.pendingGs._mpTimedOutDrawDiscard).toBeNull();
+  });
+
+  it('prefers visualEvents for timed-out draw discard replay', () => {
+    const nextCard = { id: 'c2', name: '下一张', type: 'zone' };
+    const action = buildMpRemoteReplayAction({
+      rotated: makeState({
+        currentTurn: 0,
+        phase: 'DRAW_REVEAL',
+        drawReveal: { card: nextCard, drawerIdx: 0, needsDecision: true },
+        _turnStartLogs: ['── 你 的回合开始 ──'],
+        _drawLogs: ['你 摸到 下一张'],
+        _visualEvents: [{ type: 'timedOutDrawDiscard', card, drawerIdx: 1, drawerName: '艾伦' }],
+      }),
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION', drawReveal: null }),
+      roleRevealed: true,
+      buildAnimQueue: vi.fn(() => []),
+      buildFullHandSwapTransferQueueFromLogs: vi.fn(() => []),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.START_ANIM);
+    expect(action.anim).toMatchObject({ type: 'DISCARD', card, triggerName: '艾伦', targetPid: 1 });
+    expect(action.pendingGs._visualEvents).toEqual([]);
+  });
+
+  it('prefers visualEvents for turn banner and draw-card replay', () => {
+    const eventCard = { id: 'ev-card', name: '事件牌', type: 'zone' };
+    const fallbackCard = { id: 'fallback-card', name: '旧字段牌', type: 'zone' };
+    const action = buildAction(makeState({
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card: fallbackCard, drawerIdx: 1, needsDecision: true },
+      _turnStartLogs: ['旧回合文字'],
+      _drawLogs: ['旧摸牌文字'],
+      _visualEvents: [
+        { type: 'turnStart', playerIdx: 1, playerName: '艾伦', msgs: ['事件回合文字'] },
+        { type: 'drawCard', playerIdx: 1, playerName: '艾伦', card: eventCard, msgs: ['事件摸牌文字'] },
+      ],
+    }));
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue[0]).toMatchObject({ type: 'YOUR_TURN', name: '艾伦', msgs: ['事件回合文字'] });
+    expect(action.queue[1]).toMatchObject({ type: 'DRAW_CARD', card: eventCard, triggerName: '艾伦', targetPid: 1, msgs: ['事件摸牌文字'] });
+    expect(action.pendingGs._visualEvents).toEqual([]);
+  });
+
+  it('prefers stat visualEvents over legacy stat animation inference', () => {
+    const hpLossEvent = {
+      type: 'HP_LOSS',
+      target: 1,
+      from: { hp: 10, san: 10, isDead: false },
+      to: { hp: 7, san: 10, isDead: false },
+    };
+    const legacyBuildAnimQueue = vi.fn(() => [
+      { type: 'HP_DAMAGE', hitIndices: [2], statEvents: [{ type: 'HP_LOSS', target: 2 }] },
+    ]);
+    const action = buildAction(
+      makeState({
+        phase: 'DRAW_REVEAL',
+        drawReveal: { card, drawerIdx: 1, needsDecision: true },
+        _playersBeforeThisDraw: [player('你-before'), player('艾伦-before'), player('贝拉-before')],
+        _visualEvents: [
+          { type: 'turnStart', playerIdx: 1, playerName: '艾伦', msgs: [] },
+          { type: 'drawCard', playerIdx: 1, playerName: '艾伦', card, msgs: [] },
+          { type: 'statEvents', statEvents: [hpLossEvent], msgs: ['事件 HP 变化'] },
+        ],
+      }),
+      { buildAnimQueue: legacyBuildAnimQueue },
+    );
+
+    const hpDamageSteps = action.queue.filter(step => step.type === 'HP_DAMAGE');
+    expect(hpDamageSteps).toHaveLength(1);
+    expect(hpDamageSteps[0]).toMatchObject({ hitIndices: [1], msgs: ['事件 HP 变化'] });
+    expect(hpDamageSteps[0].statEvents).toMatchObject([hpLossEvent]);
+  });
+
+  it('uses bewitch visualEvents instead of log parsing for gift animation', () => {
+    const gift = { id: 'gift1', name: '蛊惑礼物', key: 'A1', type: 'zone' };
+    const hpLossEvent = {
+      type: 'HP_LOSS',
+      target: 2,
+      from: { hp: 10, san: 10, isDead: false },
+      to: { hp: 8, san: 10, isDead: false },
+    };
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      log: ['没有蛊惑关键字的日志'],
+      _visualEvents: [
+        { type: 'bewitchGift', sourceIdx: 1, targetIdx: 2, targetName: '贝拉', card: gift, msgs: ['事件蛊惑'] },
+        { type: 'statEvents', statEvents: [hpLossEvent], msgs: ['事件伤害'] },
+      ],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION', players: [player('你'), player('艾伦'), player('贝拉')] }),
+      buildAnimQueue: vi.fn(() => [{ type: 'HP_DAMAGE', hitIndices: [0], statEvents: [{ type: 'HP_LOSS', target: 0 }] }]),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.map(step => step.type).slice(0, 3)).toEqual(['SKILL_BEWITCH', 'CARD_TRANSFER', 'DRAW_CARD']);
+    expect(action.queue[0]).toMatchObject({ targetIdx: 2, msgs: ['事件蛊惑'] });
+    expect(action.queue[1]).toMatchObject({ fromPid: 1, toPid: 2, count: 1 });
+    expect(action.queue[2]).toMatchObject({ card: gift, triggerName: '贝拉', targetPid: 2, skipTravel: true });
+    expect(action.queue.find(step => step.type === 'HP_DAMAGE')).toMatchObject({ hitIndices: [2], msgs: ['事件伤害'] });
+    expect(action.pendingGs._visualEvents).toEqual([]);
+  });
+
+  it('keeps inspection damage after the inspection card reveal for remote bewitch replay', () => {
+    const godGift = { id: 'god1', name: '伏行之混沌', godKey: 'NYA', isGod: true, type: 'god' };
+    const scratchCard = { id: 'ins1', name: '乱抓', effect: 'scratch', value: 1 };
+    const beforeBewitchPlayers = [
+      { ...player('你'), role: '邪祀者', hand: [godGift] },
+      { ...player('卡洛斯'), hp: 10, san: 10, hand: [] },
+      player('贝拉'),
+    ];
+    const beforeInspectionPlayers = [
+      { ...player('你'), role: '邪祀者', hand: [] },
+      { ...player('卡洛斯'), hp: 10, san: 7, hand: [godGift] },
+      player('贝拉'),
+    ];
+    const afterInspectionPlayers = [
+      { ...player('你'), role: '邪祀者', hand: [] },
+      { ...player('卡洛斯'), hp: 9, san: 7, hand: [godGift] },
+      player('贝拉'),
+    ];
+    const beforeInspectionLog = [
+      '你对 卡洛斯 【蛊惑】，赠予 伏行之混沌',
+      '卡洛斯 遭遇邪神 伏行之混沌（第3次），失去3SAN',
+    ];
+    const afterInspectionLog = [
+      ...beforeInspectionLog,
+      '卡洛斯 的SAN检定结果为"乱抓"',
+      '卡洛斯 被乱抓，失去 1 HP',
+    ];
+    const action = buildAction(makeState({
+      currentTurn: 0,
+      phase: 'ACTION',
+      players: afterInspectionPlayers,
+      log: afterInspectionLog,
+      _statEventSeq: 1,
+      _statEvents: [{
+        seq: 1,
+        type: 'HP_LOSS',
+        target: 1,
+        from: { hp: 10, san: 7, isDead: false },
+        to: { hp: 9, san: 7, isDead: false },
+        reason: '乱抓',
+      }],
+      _inspectionSeq: 1,
+      _inspectionEvents: [{
+        seq: 1,
+        card: scratchCard,
+        target: 1,
+        beforePlayers: beforeInspectionPlayers,
+        beforeLog: beforeInspectionLog,
+        afterPlayers: afterInspectionPlayers,
+        afterLog: afterInspectionLog,
+        statEvents: [{
+          seq: 1,
+          type: 'HP_LOSS',
+          target: 1,
+          from: { hp: 10, san: 7, isDead: false },
+          to: { hp: 9, san: 7, isDead: false },
+          reason: '乱抓',
+        }],
+        statEventSeq: 1,
+      }],
+      _visualEvents: [{
+        type: 'bewitchGift',
+        sourceIdx: 0,
+        targetIdx: 1,
+        targetName: '卡洛斯',
+        card: godGift,
+        msgs: ['你对 卡洛斯 【蛊惑】，赠予 伏行之混沌'],
+      }],
+    }), {
+      previousGs: makeState({
+        currentTurn: 0,
+        phase: 'BEWITCH_SELECT_TARGET',
+        players: beforeBewitchPlayers,
+        log: [],
+      }),
+      buildAnimQueue,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    const giftRevealIdx = action.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card === godGift);
+    const inspectionRevealIdx = action.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card === scratchCard);
+    const hpDamageIdx = action.queue.findIndex(step => step.type === 'HP_DAMAGE');
+    expect(giftRevealIdx).toBeGreaterThan(-1);
+    expect(inspectionRevealIdx).toBeGreaterThan(giftRevealIdx);
+    expect(hpDamageIdx).toBeGreaterThan(inspectionRevealIdx);
+  });
+
+  it('keeps god encounter inspection damage after inspection reveal during multiplayer draw replay', () => {
+    const godCard = { id: 'god-vri', name: '弗栗多', godKey: 'VRI', isGod: true, type: 'god' };
+    const selfHarmCard = { id: 'ins-self', name: '自残', effect: 'selfDamageHP', value: 1 };
+    const beforeDrawPlayers = [
+      { ...player('你'), hp: 10, san: 10 },
+      { ...player('黛安娜'), hp: 10, san: 8 },
+      player('贝拉'),
+    ];
+    const beforeInspectionPlayers = [
+      { ...player('你'), hp: 10, san: 10 },
+      { ...player('黛安娜'), hp: 10, san: 6 },
+      player('贝拉'),
+    ];
+    const afterInspectionPlayers = [
+      { ...player('你'), hp: 10, san: 10 },
+      { ...player('黛安娜'), hp: 9, san: 6 },
+      player('贝拉'),
+    ];
+    const beforeInspectionLog = [
+      '── 黛安娜 的回合开始 ──',
+      '黛安娜 摸到 弗栗多',
+      '黛安娜 遭遇邪神 弗栗多！（第2次）失去2SAN',
+    ];
+    const afterInspectionLog = [
+      ...beforeInspectionLog,
+      '黛安娜 的SAN检定结果为"自残"',
+      '黛安娜 自残，失去 1 HP',
+    ];
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'GOD_CHOICE',
+      players: afterInspectionPlayers,
+      abilityData: { godCard, drawerIdx: 1, godEncounterCost: 0 },
+      log: afterInspectionLog,
+      _turnStartLogs: ['── 黛安娜 的回合开始 ──'],
+      _drawLogs: ['黛安娜 摸到 弗栗多', '黛安娜 遭遇邪神 弗栗多！（第2次）失去2SAN'],
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _statEventSeq: 2,
+      _statEvents: [
+        {
+          seq: 1,
+          type: 'SAN_LOSS',
+          target: 1,
+          from: { hp: 10, san: 8, isDead: false },
+          to: { hp: 10, san: 6, isDead: false },
+          reason: '邪神遭遇',
+        },
+        {
+          seq: 2,
+          type: 'HP_LOSS',
+          target: 1,
+          from: { hp: 10, san: 6, isDead: false },
+          to: { hp: 9, san: 6, isDead: false },
+          reason: '自残',
+        },
+      ],
+      _inspectionSeq: 1,
+      _inspectionEvents: [{
+        seq: 1,
+        card: selfHarmCard,
+        target: 1,
+        beforePlayers: beforeInspectionPlayers,
+        beforeLog: beforeInspectionLog,
+        afterPlayers: afterInspectionPlayers,
+        afterLog: afterInspectionLog,
+        statEvents: [{
+          seq: 2,
+          type: 'HP_LOSS',
+          target: 1,
+          from: { hp: 10, san: 6, isDead: false },
+          to: { hp: 9, san: 6, isDead: false },
+          reason: '自残',
+        }],
+        statEventSeq: 2,
+      }],
+      _visualEvents: [
+        { type: 'turnStart', playerIdx: 1, playerName: '黛安娜', msgs: ['── 黛安娜 的回合开始 ──'] },
+        { type: 'drawCard', playerIdx: 1, playerName: '黛安娜', card: godCard, msgs: ['黛安娜 摸到 弗栗多'] },
+        { type: 'statEvents', statEvents: [
+          {
+            seq: 1,
+            type: 'SAN_LOSS',
+            target: 1,
+            from: { hp: 10, san: 8, isDead: false },
+            to: { hp: 10, san: 6, isDead: false },
+          },
+          {
+            seq: 2,
+            type: 'HP_LOSS',
+            target: 1,
+            from: { hp: 10, san: 6, isDead: false },
+            to: { hp: 9, san: 6, isDead: false },
+          },
+        ], msgs: ['黛安娜 遭遇邪神 弗栗多！（第2次）失去2SAN', '黛安娜 自残，失去 1 HP'] },
+      ],
+    }), {
+      previousGs: makeState({
+        currentTurn: 0,
+        phase: 'ACTION',
+        players: beforeDrawPlayers,
+        log: [],
+      }),
+      buildAnimQueue,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    const godRevealIdx = action.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card === godCard);
+    const sanDamageIdx = action.queue.findIndex(step => step.type === 'SAN_DAMAGE');
+    const inspectionRevealIdx = action.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card === selfHarmCard);
+    const hpDamageIdx = action.queue.findIndex(step => step.type === 'HP_DAMAGE');
+    expect(godRevealIdx).toBeGreaterThan(-1);
+    expect(sanDamageIdx).toBeGreaterThan(godRevealIdx);
+    expect(inspectionRevealIdx).toBeGreaterThan(sanDamageIdx);
+    expect(hpDamageIdx).toBeGreaterThan(inspectionRevealIdx);
+    expect(action.queue[sanDamageIdx].msgs).not.toContain('黛安娜 自残，失去 1 HP');
+    expect(action.queue[hpDamageIdx].msgs).toContain('黛安娜 自残，失去 1 HP');
+  });
+
+  it('uses swap visualEvents as silent hand transfer without draw replay', () => {
+    const staleDrawCard = { id: 'stale-draw', name: '上一张摸牌', key: 'A1', type: 'zone' };
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      drawReveal: { card: staleDrawCard, drawerIdx: 1, needsDecision: false },
+      log: ['艾伦（寻宝者）对 你 【掉包】，暗抽了1张牌', '拿走 [B2] 旧牌，还给 你 [C3] 新牌'],
+      _visualEvents: [
+        { type: 'swapCards', sourceIdx: 1, targetIdx: 0, sourceCount: 1, targetCount: 1, msgs: ['拿走 [B2] 旧牌，还给 你 [C3] 新牌'] },
+      ],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'SWAP_GIVE_CARD' }),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.map(step => step.type)).toEqual(['SKILL_SWAP', 'VISUAL_LOCK', 'CARD_TRANSFER', 'CARD_TRANSFER', 'STATE_PATCH']);
+    expect(action.queue.some(step => step.type === 'DRAW_CARD')).toBe(false);
+    expect(action.pendingGs.drawReveal).toBeNull();
+    expect(action.pendingGs._visualEvents).toEqual([]);
+  });
+
+  it('does not replay already consumed visualEvents from repeated sync packets', () => {
+    const gift = { id: 'gift1', name: '蛊惑礼物', key: 'A1', type: 'zone' };
+    const rotated = makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      log: ['艾伦（邪祀者）对 贝拉 【蛊惑】，赠予 [A1] 蛊惑礼物'],
+      _visualEvents: [
+        { type: 'bewitchGift', sourceIdx: 1, targetIdx: 2, targetName: '贝拉', card: gift, msgs: ['事件蛊惑'] },
+      ],
+    });
+    const first = buildAction(rotated, {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION', players: [player('你'), player('艾伦'), player('贝拉')] }),
+    });
+    expect(first.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(first.consumedVisualEventIds?.length).toBeGreaterThan(0);
+
+    const second = buildAction(rotated, {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION', players: [player('你'), player('艾伦'), player('贝拉')] }),
+      consumedVisualEventIds: new Set(first.consumedVisualEventIds),
+    });
+    expect(second.type).toBe(MP_REMOTE_REPLAY.SET_STATE);
+    expect(second.gs._visualEvents).toEqual([]);
+  });
+
+  it('does not let stale bewitch visualEvents override the next draw replay', () => {
+    const gift = { id: 'gift1', name: '蛊惑礼物', key: 'A1', type: 'zone' };
+    const nextCard = { id: 'next1', name: '下一回合摸牌', key: 'B2', type: 'zone' };
+    const action = buildAction(makeState({
+      currentTurn: 2,
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card: nextCard, drawerIdx: 2, needsDecision: true },
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉 摸到 下一回合摸牌'],
+      _visualEvents: [
+        { type: 'bewitchGift', sourceIdx: 1, targetIdx: 2, targetName: '贝拉', card: gift, msgs: ['旧蛊惑事件'] },
+        { type: 'turnStart', playerIdx: 2, playerName: '贝拉', msgs: ['── 贝拉 的回合开始 ──'] },
+        { type: 'drawCard', playerIdx: 2, playerName: '贝拉', card: nextCard, msgs: ['贝拉 摸到 下一回合摸牌'] },
+      ],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION' }),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue[0]).toMatchObject({ type: 'YOUR_TURN', name: '贝拉' });
+    expect(action.queue[1]).toMatchObject({ type: 'DRAW_CARD', card: nextCard, triggerName: '贝拉', targetPid: 2 });
+    expect(action.queue.some(step => step.type === 'SKILL_BEWITCH')).toBe(false);
+    expect(action.pendingGs._visualEvents).toEqual([]);
+  });
+
+  it('prefers the actual draw state even when only a stale bewitch visualEvent remains', () => {
+    const gift = { id: 'gift1', name: '蛊惑礼物', key: 'A1', type: 'zone' };
+    const nextCard = { id: 'next1', name: '下一回合摸牌', key: 'B2', type: 'zone' };
+    const action = buildAction(makeState({
+      currentTurn: 2,
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card: nextCard, drawerIdx: 2, needsDecision: true },
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉 摸到 下一回合摸牌'],
+      _visualEvents: [
+        { type: 'bewitchGift', sourceIdx: 1, targetIdx: 2, targetName: '贝拉', card: gift, msgs: ['旧蛊惑事件'] },
+      ],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION' }),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue[0]).toMatchObject({ type: 'YOUR_TURN', name: '贝拉' });
+    expect(action.queue[1]).toMatchObject({ type: 'DRAW_CARD', card: nextCard, triggerName: '贝拉', targetPid: 2 });
+    expect(action.queue.some(step => step.type === 'SKILL_BEWITCH')).toBe(false);
+  });
+
+  it('does not let stale bewitch log fallback override the next draw replay', () => {
+    const gift = { id: 'gift1', name: '蛊惑礼物', key: 'A1', type: 'zone' };
+    const nextCard = { id: 'next1', name: '下一回合摸牌', key: 'B2', type: 'zone' };
+    const action = buildAction(makeState({
+      currentTurn: 2,
+      phase: 'DRAW_REVEAL',
+      players: [player('你'), player('艾伦'), { ...player('贝拉'), hand: [gift] }],
+      log: [
+        '艾伦（邪祀者）对 贝拉 【蛊惑】，赠予 [A1] 蛊惑礼物',
+        '── 贝拉 的回合开始 ──',
+        '贝拉 摸到 下一回合摸牌',
+      ],
+      drawReveal: { card: nextCard, drawerIdx: 2, needsDecision: true },
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉 摸到 下一回合摸牌'],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION', log: [] }),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue[0]).toMatchObject({ type: 'YOUR_TURN', name: '贝拉' });
+    expect(action.queue[1]).toMatchObject({ type: 'DRAW_CARD', card: nextCard, triggerName: '贝拉', targetPid: 2 });
+    expect(action.queue.some(step => step.type === 'SKILL_BEWITCH')).toBe(false);
+  });
+
+  it('does not treat older bewitch logs followed by draw confirmation as a new bewitch action', () => {
+    const gifted = { id: 'gift1', name: '蛊惑礼物', key: 'A1', type: 'zone' };
+    const kept = { id: 'kept1', name: '收入牌', key: 'B2', type: 'zone' };
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players: [
+        { ...player('你'), hand: [gifted] },
+        { ...player('艾伦'), hand: [kept] },
+        player('贝拉'),
+      ],
+      log: [
+        '你（邪祀者）对 艾伦 【蛊惑】，赠予 [A1] 蛊惑礼物',
+        '── 艾伦 的回合开始 ──',
+        '艾伦 摸到 [B2] 收入牌',
+        '艾伦 收入了 [B2] 收入牌',
+      ],
+    }), {
+      previousGs: makeState({
+        currentTurn: 1,
+        phase: 'DRAW_REVEAL',
+        players: [
+          { ...player('你'), hand: [] },
+          player('艾伦'),
+          player('贝拉'),
+        ],
+        log: [],
+      }),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.SET_STATE);
+    expect(action.gs.log.at(-1)).toBe('艾伦 收入了 [B2] 收入牌');
+  });
+
+  it('does not replay stale bewitch visualEvents when a later draw is confirmed', () => {
+    const gifted = { id: 'gift1', name: '蛊惑礼物', key: 'A1', type: 'zone' };
+    const kept = { id: 'kept1', name: '收入牌', key: 'B2', type: 'zone' };
+    const staleEvent = {
+      type: 'bewitchGift',
+      sourceIdx: 0,
+      targetIdx: 1,
+      targetName: '艾伦',
+      card: gifted,
+      msgs: ['你（邪祀者）对 艾伦 【蛊惑】，赠予 [A1] 蛊惑礼物'],
+    };
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players: [
+        { ...player('你'), hand: [{ id: 'a-hand-1', name: '你的第一张手牌', key: 'C1', type: 'zone' }] },
+        { ...player('艾伦'), hand: [gifted, kept] },
+        player('贝拉'),
+      ],
+      log: [
+        '你（邪祀者）对 艾伦 【蛊惑】，赠予 [A1] 蛊惑礼物',
+        '── 艾伦 的回合开始 ──',
+        '艾伦 摸到 [B2] 收入牌',
+        '艾伦 收入了 [B2] 收入牌',
+      ],
+      _visualEvents: [staleEvent],
+    }), {
+      previousGs: makeState({
+        currentTurn: 1,
+        phase: 'DRAW_REVEAL',
+        drawReveal: { card: kept, drawerIdx: 1, needsDecision: true },
+        players: [
+          { ...player('你'), hand: [{ id: 'a-hand-1', name: '你的第一张手牌', key: 'C1', type: 'zone' }] },
+          { ...player('艾伦'), hand: [gifted] },
+          player('贝拉'),
+        ],
+        log: [
+          '你（邪祀者）对 艾伦 【蛊惑】，赠予 [A1] 蛊惑礼物',
+          '── 艾伦 的回合开始 ──',
+          '艾伦 摸到 [B2] 收入牌',
+        ],
+      }),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.SET_STATE);
+    expect(action.gs._visualEvents).toEqual([]);
+    expect(action.consumedVisualEventIds?.length).toBeGreaterThan(0);
+  });
+
+  it('ignores a consumed stale bewitch event when the next draw state arrives', () => {
+    const gift = { id: 'gift1', name: '蛊惑礼物', key: 'A1', type: 'zone' };
+    const nextCard = { id: 'next1', name: '下一回合摸牌', key: 'B2', type: 'zone' };
+    const staleEvent = { type: 'bewitchGift', sourceIdx: 1, targetIdx: 2, targetName: '贝拉', card: gift, msgs: ['旧蛊惑事件'] };
+    const first = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      _visualEvents: [staleEvent],
+    }));
+    const action = buildAction(makeState({
+      currentTurn: 2,
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card: nextCard, drawerIdx: 2, needsDecision: true },
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉 摸到 下一回合摸牌'],
+      _visualEvents: [staleEvent],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION' }),
+      consumedVisualEventIds: new Set(first.consumedVisualEventIds),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue[0]).toMatchObject({ type: 'YOUR_TURN', name: '贝拉' });
+    expect(action.queue[1]).toMatchObject({ type: 'DRAW_CARD', card: nextCard, triggerName: '贝拉', targetPid: 2 });
+    expect(action.queue.some(step => step.type === 'SKILL_BEWITCH')).toBe(false);
+  });
+
+  it('uses earthquake visualEvents in remote draw replay and clears them afterward', () => {
+    const quakeCard = { id: 'quake', name: '地动山摇', key: 'B2', type: 'allDiscard' };
+    const beforePlayers = [
+      { ...player('你-before'), hand: [{ id: 'you-card' }] },
+      { ...player('艾伦-before'), hand: [{ id: 'allen-card' }] },
+      { ...player('贝拉-before'), hand: [{ id: 'bella-card' }] },
+    ];
+    const afterPlayers = [
+      { ...player('你-after'), hand: [{ id: 'you-card' }] },
+      { ...player('艾伦-after'), hand: [] },
+      { ...player('贝拉-after'), hand: [{ id: 'bella-card' }] },
+    ];
+    const event = createEarthquakeEvent({
+      beforePlayers,
+      beforeDiscard: [],
+      discardEvents: [{ playerIndex: 1, card, afterPlayers, afterDiscard: [card] }],
+      msgs: ['艾伦 摸到 [B2] 地动山摇（强制触发）', '艾伦 失去了 测试牌'],
+    });
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'DRAW_REVEAL',
+      players: afterPlayers,
+      drawReveal: { card: quakeCard, drawerIdx: 1, needsDecision: false },
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _drawLogs: ['艾伦 摸到 [B2] 地动山摇（强制触发）'],
+      _playersBeforeThisDraw: beforePlayers,
+      _visualEvents: [event],
+    }), {
+      previousGs: makeState({ currentTurn: 0, phase: 'ACTION', players: beforePlayers }),
+      buildAnimQueue,
+    });
+    const types = action.queue.map(step => step.type);
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(types).toContain('EARTHQUAKE');
+    expect(action.pendingGs._visualEvents).toEqual([]);
+    expect(action.consumedVisualEventIds?.length).toBeGreaterThan(0);
+  });
+
+  it('uses hunt visualEvents for target lock animation', () => {
+    const drawLog = '艾伦 摸到 [B2] 地动山摇（强制触发）';
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'HUNT_WAIT_REVEAL',
+      abilityData: { huntTi: 2 },
+      log: [drawLog, '没有追捕关键字的日志'],
+      _drawLogs: [drawLog],
+      _playersBeforeThisDraw: [player('你-before'), player('艾伦-before'), player('贝拉-before')],
+      _earthquakeSeq: 1,
+      _earthquakeBeforePlayers: [player('你-quake'), player('艾伦-quake'), player('贝拉-quake')],
+      _earthquakeBeforeDiscard: [{ id: 'old-discard' }],
+      _earthquakeDiscardEvents: [{ playerIndex: 1, card, afterPlayers: [player('你-after'), player('艾伦-after'), player('贝拉-after')] }],
+      _statEvents: [{ type: 'HP_LOSS', target: 2, seq: 9 }],
+      _visualEvents: [
+        { type: 'huntTarget', sourceIdx: 1, targetIdx: 2, msgs: ['事件追捕'] },
+      ],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION' }),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.START_ANIM);
+    expect(action.anim).toMatchObject({ type: 'SKILL_HUNT', targetIdx: 2, msgs: ['事件追捕'] });
+    expect(action.pendingGs._visualEvents).toEqual([]);
+    expect(action.pendingGs._earthquakeSeq).toBe(1);
+    expect(action.pendingGs._drawLogs).toEqual([]);
+    expect(action.pendingGs._playersBeforeThisDraw).toBeNull();
+    expect(action.pendingGs._earthquakeBeforePlayers).toBeNull();
+    expect(action.pendingGs._earthquakeBeforeDiscard).toBeNull();
+    expect(action.pendingGs._earthquakeDiscardEvents).toBeNull();
+    expect(action.pendingGs._statEvents).toEqual([{ type: 'HP_LOSS', target: 2, seq: 9 }]);
+  });
+
+  it('uses hunt reveal visualEvents for hand-to-player-area reveal animation', () => {
+    const revealedCard = { id: 'rev1', name: '亮出的牌', key: 'C3', type: 'zone' };
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'HUNT_CONFIRM',
+      abilityData: { huntTi: 2, revCard: revealedCard },
+      log: ['贝拉 亮出 [C3] 亮出的牌'],
+      _visualEvents: [
+        { type: 'huntReveal', sourceIdx: 1, targetIdx: 2, card: revealedCard, msgs: ['贝拉 亮出 [C3] 亮出的牌'] },
+      ],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'HUNT_WAIT_REVEAL' }),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.START_ANIM);
+    expect(action.anim).toMatchObject({
+      type: 'HUNT_REVEAL_CARD',
+      card: revealedCard,
+      targetPid: 2,
+      msgs: ['贝拉 亮出 [C3] 亮出的牌'],
+    });
+    expect(action.pendingGs.phase).toBe('HUNT_CONFIRM');
+    expect(action.pendingGs._visualEvents).toEqual([]);
+  });
+
+  it('plays previous hand-limit discard before the next local draw replay', () => {
+    const nextCard = { id: 'next-card', name: '下一张牌', key: 'B2', type: 'zone' };
+    const discarded = { id: 'discarded-card', name: '超限弃牌', key: 'A1', type: 'zone' };
+    const action = buildAction(makeState({
+      currentTurn: 0,
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card: nextCard, drawerIdx: 0, needsDecision: true },
+      _turnStartLogs: ['── 你 的回合开始 ──'],
+      _drawLogs: ['你 摸到 [B2] 下一张牌'],
+      _playersBeforeThisDraw: [
+        { ...player('你'), hand: [] },
+        { ...player('艾伦'), hand: [discarded] },
+        player('贝拉'),
+      ],
+      log: ['弃置：[A1] 超限弃牌', '── 你 的回合开始 ──', '你 摸到 [B2] 下一张牌'],
+      _visualEvents: [
+        { type: 'handLimitDiscard', playerIdx: 1, playerName: '艾伦', cards: [discarded], msgs: ['弃置：[A1] 超限弃牌'] },
+        { type: 'turnStart', playerIdx: 0, playerName: '你', msgs: ['── 你 的回合开始 ──'] },
+        { type: 'drawCard', playerIdx: 0, playerName: '你', card: nextCard, msgs: ['你 摸到 [B2] 下一张牌'] },
+      ],
+    }), {
+      previousGs: makeState({
+        currentTurn: 1,
+        phase: 'DISCARD_PHASE',
+        players: [
+          { ...player('你'), hand: [] },
+          { ...player('艾伦'), hand: [discarded] },
+          player('贝拉'),
+        ],
+      }),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.START_ANIM);
+    expect(action.anim).toMatchObject({ type: 'DISCARD', targetPid: 1, card: discarded });
+    expect(action.queue[0]).toMatchObject({ type: 'YOUR_TURN' });
+    expect(action.queue[1]).toMatchObject({ type: 'DRAW_CARD', card: nextCard, targetPid: 0 });
+    expect(action.pendingGs._visualEvents).toEqual([]);
+  });
+
+  it('does not play hunt reveal animation for the hunted local player', () => {
+    const revealedCard = { id: 'rev1', name: '亮出的牌', key: 'C3', type: 'zone' };
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'HUNT_CONFIRM',
+      abilityData: { huntTi: 0, revCard: revealedCard },
+      log: ['你亮出 [C3] 亮出的牌'],
+      _visualEvents: [
+        { type: 'huntReveal', sourceIdx: 1, targetIdx: 0, card: revealedCard, msgs: ['你亮出 [C3] 亮出的牌'] },
+      ],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'HUNT_WAIT_REVEAL' }),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.SET_STATE);
+    expect(action.gs.phase).toBe('HUNT_CONFIRM');
+    expect(action.gs._visualEvents).toEqual([]);
   });
 
   it('masks discard phase for non-active remote players', () => {

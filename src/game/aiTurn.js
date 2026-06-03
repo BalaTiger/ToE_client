@@ -823,6 +823,7 @@ export function aiStep(gs, opts = {}) {
                   aiHuntEvents.push({
                     targetIdx:ti,
                     hunterIdx:ct,
+                    revealedCard:rc,
                     discardedCard:dc,
                     afterDiscardPlayers,
                     afterDiscardDiscard,
@@ -846,6 +847,7 @@ export function aiStep(gs, opts = {}) {
                   aiHuntEvents.push({
                     targetIdx:ti,
                     hunterIdx:ct,
+                    revealedCard:rc,
                     discardedCard:dc,
                     afterDiscardPlayers,
                     afterDiscardDiscard,
@@ -865,6 +867,7 @@ export function aiStep(gs, opts = {}) {
                 aiHuntEvents.push({
                   targetIdx:ti,
                   hunterIdx:ct,
+                  revealedCard:rc,
                   beforePlayers:beforeHuntPlayers,
                   afterPlayers:copyPlayers(P),
                   afterResultDiscard:[...Disc],

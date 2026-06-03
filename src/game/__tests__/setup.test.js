@@ -288,6 +288,25 @@ describe('initGame debug force draw', () => {
     expect(gs.debugForceCard).toBeNull();
   });
 
+  it('联机 Debug 不接受玩家强制摸牌目标', () => {
+    const gs = initGame(
+      ['你', '艾伦', '贝拉', '卡洛斯', '黛安娜'],
+      null,
+      'player',
+      'keep',
+      'zone',
+      'D3',
+      '玫瑰倒刺',
+      null,
+      null,
+      state => state,
+      'temporary'
+    );
+
+    expect(gs.debugForceCard).toBeNull();
+    expect(gs.debugForceCardTarget).toBe('player');
+  });
+
   it('Debug 可强制摸阿波菲斯，即使当前牌堆未自然包含它', () => {
     const gs = initGame(
       null,

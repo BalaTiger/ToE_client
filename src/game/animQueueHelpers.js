@@ -148,3 +148,40 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
   });
   return {queue,players:cursorPlayers,log:cursorLog,statEventSeq:cursorStatEventSeq};
 }
+
+export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPlayers}){
+  const baseOldGs=oldGs||{};
+  const inspectionEvents=(newGs?._inspectionEvents||[]).filter(ev=>ev?.seq>(baseOldGs._inspectionSeq||0));
+  if(!inspectionEvents.length){
+    return {
+      queue:buildAnimQueue(baseOldGs,newGs),
+      inspectionEvents:[],
+      inspectionSeq:baseOldGs._inspectionSeq||0,
+    };
+  }
+  const firstEvent=inspectionEvents[0];
+  const preInspectionGs={
+    ...newGs,
+    players:firstEvent?.beforePlayers||newGs.players,
+    log:firstEvent?.beforeLog||newGs.log,
+    _inspectionEvents:baseOldGs._inspectionEvents||[],
+    _inspectionSeq:baseOldGs._inspectionSeq||0,
+    _statEvents:baseOldGs._statEvents||[],
+    _statEventSeq:baseOldGs._statEventSeq||0,
+  };
+  const preQueue=buildAnimQueue(baseOldGs,preInspectionGs);
+  const inspectionFlow=buildInspectionEventFlow(
+    {players:preInspectionGs.players,log:preInspectionGs.log},
+    inspectionEvents,
+    {buildAnimQueue,copyPlayers}
+  );
+  const tailQueue=buildAnimQueue(
+    {players:inspectionFlow.players,log:inspectionFlow.log,_statEventSeq:inspectionFlow.statEventSeq},
+    newGs
+  );
+  return {
+    queue:[...preQueue,...inspectionFlow.queue,...tailQueue],
+    inspectionEvents,
+    inspectionSeq:inspectionFlow.statEventSeq,
+  };
+}

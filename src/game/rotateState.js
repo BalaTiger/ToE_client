@@ -163,6 +163,52 @@ function rotateTimedOutDrawDiscardEvent(event, rotateIndex) {
   };
 }
 
+function rotateEarthquakeVisualEvent(event, rotateIndex, myIndex) {
+  if (!event) return event;
+  return {
+    ...event,
+    beforePlayers: rotatePlayersArray(event.beforePlayers, myIndex),
+    discardEvents: Array.isArray(event.discardEvents)
+      ? rotateEarthquakeDiscardEvents(event.discardEvents, rotateIndex, myIndex)
+      : event.discardEvents,
+  };
+}
+
+function rotateVisualEvents(events, rotateIndex, myIndex) {
+  if (!Array.isArray(events)) return events;
+  return events.map(event => {
+    if (event?.type === 'timedOutDrawDiscard') return rotateTimedOutDrawDiscardEvent(event, rotateIndex);
+    if (event?.type === 'earthquake') return rotateEarthquakeVisualEvent(event, rotateIndex, myIndex);
+    if (event?.type === 'turnStart' || event?.type === 'drawCard' || event?.type === 'handLimitDiscard') {
+      return {
+        ...event,
+        playerIdx: event.playerIdx != null ? rotateIndex(event.playerIdx) : event.playerIdx,
+      };
+    }
+    if (event?.type === 'bewitchGift' || event?.type === 'swapCards' || event?.type === 'huntTarget' || event?.type === 'huntReveal') {
+      return {
+        ...event,
+        sourceIdx: event.sourceIdx != null ? rotateIndex(event.sourceIdx) : event.sourceIdx,
+        targetIdx: event.targetIdx != null ? rotateIndex(event.targetIdx) : event.targetIdx,
+      };
+    }
+    if (event?.type === 'statEvents') {
+      return {
+        ...event,
+        statEvents: Array.isArray(event.statEvents)
+          ? event.statEvents.map(statEvent => ({
+            ...statEvent,
+            target: statEvent?.target != null ? rotateIndex(statEvent.target) : statEvent?.target,
+            pair: Array.isArray(statEvent?.pair) ? statEvent.pair.map(rotateIndex) : statEvent?.pair,
+            players: rotatePlayersArray(statEvent?.players, myIndex),
+          }))
+          : event.statEvents,
+      };
+    }
+    return event;
+  });
+}
+
 export function rotateGsForViewer(gs, myIndex) {
   if (!gs || myIndex === 0) return gs;
   const N = gs.players.length;
@@ -187,6 +233,7 @@ export function rotateGsForViewer(gs, myIndex) {
     ...(gs._animSphinxReveal ? { _animSphinxReveal: rotateAnimSphinxReveal(gs._animSphinxReveal, rotateIndex) } : {}),
     ...(gs._apophisTargetEvent ? { _apophisTargetEvent: rotateApophisTargetEvent(gs._apophisTargetEvent, rotateIndex) } : {}),
     ...(gs._mpTimedOutDrawDiscard ? { _mpTimedOutDrawDiscard: rotateTimedOutDrawDiscardEvent(gs._mpTimedOutDrawDiscard, rotateIndex) } : {}),
+    ...(gs._visualEvents ? { _visualEvents: rotateVisualEvents(gs._visualEvents, rotateIndex, myIndex) } : {}),
   };
 }
 

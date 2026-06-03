@@ -230,7 +230,7 @@ export function initGame(
 
   // Debug: 强制摸牌
   let targetCard = null;
-  if ((debugForceCard || (debugForceCardType && (debugForceZoneCardKey || debugForceGodCardKey))) && isDebugForceCardTargetAllowed(debugForceCardTarget, isSinglePlayer)) {
+  if (isSinglePlayer && (debugForceCard || (debugForceCardType && (debugForceZoneCardKey || debugForceGodCardKey))) && isDebugForceCardTargetAllowed(debugForceCardTarget, isSinglePlayer)) {
 
     if (debugForceCardType === 'zone' && debugForceZoneCardKey && debugForceZoneCardName) {
       // 查找指定编号和牌面的区域牌

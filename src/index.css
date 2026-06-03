@@ -30,13 +30,35 @@ body {
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
-  /* 新增：背景图相关样式 */
-  background-image: url('/bg.png'); /* 背景图路径（图片放 public 文件夹下） */
-  background-size: cover; /* 背景图覆盖整个页面 */
-  background-position: center; /* 背景图居中显示 */
-  background-attachment: fixed; /* 滚动时背景固定 */
-  /* 新增：背景色兜底（图片加载失败时显示原有深色背景） */
   background-color: #242424;
+  background-image: url('/bg_preview.jpg');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  transition: opacity 900ms ease;
+}
+
+body.toe-html-bg-ready::before {
+  background-image: url('/bg.png');
+  opacity: 1;
 }
 
 h1 {

@@ -1,7 +1,7 @@
 import React from 'react';
 import { CardFlipAnim } from './CardFlipAnim';
 import { DiceRollAnim, GenericAnimOverlay, YourTurnAnim } from './GenericAnimOverlay';
-import { BuryToDeckOverlay, DiscardMoveOverlay, ZhuHideCardOverlay } from './MoveOverlays';
+import { BuryToDeckOverlay, DiscardMoveOverlay, HuntRevealCardOverlay, ZhuHideCardOverlay } from './MoveOverlays';
 import { CaveDuelAnim } from './AreaCardOverlays';
 import { ApophisEclipseAnim } from './ApophisOverlays';
 import { EndlessCorridorTunnelAnim } from './EndlessCorridorOverlay';
@@ -14,6 +14,7 @@ const NO_OVERLAY_TYPES = new Set([
   'HP_HEAL',
   'SAN_HEAL',
   'SAN_DAMAGE',
+  'BLACK_GOAT_PULSE',
 ]);
 
 const ANIM_RENDERERS = {
@@ -30,6 +31,7 @@ const ANIM_RENDERERS = {
     />
   ),
   DICE_ROLL: ({ anim, exiting }) => <DiceRollAnim anim={anim} exiting={exiting} />,
+  HUNT_REVEAL_CARD: ({ anim, exiting }) => <HuntRevealCardOverlay anim={anim} exiting={exiting} />,
   DISCARD: ({ anim, exiting, expansionKey }) => <DiscardMoveOverlay anim={anim} exiting={exiting} expansionKey={expansionKey} />,
   BURY_TO_DECK: ({ anim, exiting, expansionKey }) => <BuryToDeckOverlay anim={anim} exiting={exiting} expansionKey={expansionKey} />,
   ZHU_HIDE_CARD: ({ anim, exiting }) => <ZhuHideCardOverlay anim={anim} exiting={exiting} />,

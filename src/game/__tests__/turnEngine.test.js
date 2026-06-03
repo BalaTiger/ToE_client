@@ -1,11 +1,41 @@
 import { describe, expect, it } from 'vitest';
-import { ROLE_TREASURE } from '../coreUtils';
-import { aiDrawAndApply, playerDrawCard, startNextTurn } from '../turnEngine';
+import { makeInspectionMeta, ROLE_TREASURE } from '../coreUtils';
+import { aiDrawAndApply, applySanLossToPlayerWithInspection, playerDrawCard, startNextTurn } from '../turnEngine';
 import { buildTsathogguaSlimeGrantQueue } from '../turnAnimState';
 import { makeGodCard, makeGs, makePlayer, makeStandardPlayers } from './factory';
 import { createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../../constants/card';
 
 describe('turnEngine stat events', () => {
+  it('SAN 损失降至 0 时不排入检定事件', () => {
+    const players = [makePlayer({ name: '你', hp: 10, san: 2 })];
+    const inspectionCard = { name: '自残', effect: 'selfDamageHP', value: 1, type: 'negative' };
+    const gs = makeGs({
+      players,
+      inspectionDeck: [inspectionCard],
+      inspectionDiscard: [],
+      _inspectionSeq: 3,
+      _statEventSeq: 8,
+    });
+
+    const result = applySanLossToPlayerWithInspection(
+      0,
+      2,
+      0,
+      players,
+      [],
+      [],
+      ['你 失去 2 SAN'],
+      makeInspectionMeta(gs),
+      '蛊惑',
+    );
+
+    expect(result.P[0].san).toBe(0);
+    expect(result.P[0].hp).toBe(10);
+    expect(result.L).toEqual(['你 失去 2 SAN']);
+    expect(result.inspectionMeta._inspectionSeq).toBe(3);
+    expect(result.inspectionMeta._inspectionEvents || []).toEqual([]);
+  });
+
   it('摸到邪神牌造成 SAN 损失时产出显式 stat events', () => {
     const players = [makePlayer({ role: ROLE_TREASURE, san: 10, godEncounters: 0 })];
     const godCard = makeGodCard('NYA');
@@ -109,6 +139,101 @@ describe('turnEngine stat events', () => {
     expect(second.drawnCard.name).toBe('偷吃龙蛋');
     expect(second.needsDecision).toBe(true);
     expect(second.kept).toBeFalsy();
+  });
+
+  it('联机玩家正常摸牌状态携带摸牌前玩家快照', () => {
+    const players = makeStandardPlayers(2);
+    const normalCard = {
+      id: 'mp-normal-draw',
+      key: 'A1',
+      letter: 'A',
+      number: 1,
+      name: '偷吃龙蛋',
+      type: 'selfHealAdjDamageHP',
+      val: 3,
+      adjVal: 2,
+      isZone: true,
+    };
+    const gs = makeGs({
+      players,
+      currentTurn: 0,
+      deck: [normalCard],
+      _isMP: true,
+      log: [],
+    });
+
+    const result = startNextTurn(gs);
+
+    expect(result.phase).toBe('DRAW_REVEAL');
+    expect(result.drawReveal.card).toMatchObject({ id: 'mp-normal-draw', name: '偷吃龙蛋' });
+    expect(result._playersBeforeThisDraw).toHaveLength(2);
+    expect(result._playersBeforeThisDraw[1]).toMatchObject({ hp: 10, san: 10 });
+  });
+
+  it('联机状态即使残留 Debug 强制摸牌字段，也不会替换牌堆顶', () => {
+    const players = makeStandardPlayers(2);
+    const normalCard = {
+      id: 'normal-egg',
+      key: 'A1',
+      letter: 'A',
+      number: 1,
+      name: '偷吃龙蛋',
+      type: 'selfHealAdjDamageHP',
+      val: 3,
+      adjVal: 2,
+      isZone: true,
+    };
+    const forcedCard = {
+      id: 'force-rose',
+      key: 'D3',
+      letter: 'D',
+      number: 3,
+      name: '玫瑰倒刺',
+      type: 'roseThornGiftAllHand',
+      isZone: true,
+    };
+    const gs = makeGs({
+      players,
+      deck: [normalCard],
+      currentTurn: -1,
+      _isMP: true,
+      debugForceCard: forcedCard,
+      debugForceCardTarget: 'player',
+      debugForceCardKeep: 'keep',
+    });
+
+    const result = startNextTurn(gs);
+
+    expect(result.drawReveal.card.name).toBe('偷吃龙蛋');
+    expect(result.debugForceCard).toBeNull();
+    expect(result.debugForceCardTarget).toBeNull();
+  });
+
+  it('联机状态即使残留 Debug 强制收入字段，也不会跳过玩家抉择', () => {
+    const players = makeStandardPlayers(2);
+    const roseThorn = {
+      id: 'rose-mp-stale-debug',
+      key: 'D3',
+      letter: 'D',
+      number: 3,
+      name: '玫瑰倒刺',
+      type: 'roseThornGiftAllHand',
+      isZone: true,
+    };
+    const gs = makeGs({
+      players,
+      _isMP: true,
+      debugForceCardKeepPending: 'keep',
+      debugForceCardKeepTarget: 0,
+    });
+
+    const result = playerDrawCard(players, [roseThorn], [], 0, gs);
+
+    expect(result.needsDecision).toBe(true);
+    expect(result.kept).toBeFalsy();
+    expect(result.P[0].hand).not.toContainEqual(expect.objectContaining({ name: '玫瑰倒刺' }));
+    expect(gs.debugForceCardKeepPending).toBeNull();
+    expect(gs.debugForceCardKeepTarget).toBeNull();
   });
 
   it('烤盲鱼标记会让玩家下一次区域牌抉择只暴露编号', () => {

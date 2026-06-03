@@ -149,10 +149,11 @@ export function DiceRollAnim({ anim, exiting }) {
 }
 
 export function YourTurnAnim({ name }) {
-  const text = name ? `${name}的回合` : '你的回合';
-  const col = name ? '#c8a0e8' : '#e8c87a';
-  const glow = name ? '#a080d099' : '#c8a96e99';
-  const glow2 = name ? '#a080d044' : '#c8a96e44';
+  const isLocal = !name || name === '你';
+  const text = isLocal ? '你的回合' : `${name}的回合`;
+  const col = isLocal ? '#e8c87a' : '#c8a0e8';
+  const glow = isLocal ? '#c8a96e99' : '#a080d099';
+  const glow2 = isLocal ? '#c8a96e44' : '#a080d044';
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 2500, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
       <div style={{

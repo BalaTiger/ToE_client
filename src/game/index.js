@@ -21,3 +21,4 @@ export * from './proliferatingZFlow';
 export * from './blindZoneDecision';
 export * from './endTurnReplayFlow';
 export * from './cthRestDrawFlow';
+export * from './visualEvents';

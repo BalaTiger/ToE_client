@@ -10,12 +10,13 @@ import { DDCard, DDCardBack, GodCardDisplay, PreviewCard } from '../cards';
 import { buildPublicUrl } from '../../utils/url';
 
 // ── God Choice Modal (player encounters a god card) ────────────
-function GodChoiceModal({ godCard, player, onWorship, onKeepHand, onDiscard, isConvert, forcedConvert }) {
+function GodChoiceModal({ godCard, player, onWorship, onKeepHand, onDiscard, isConvert, forcedConvert, canChoose = true, thinkingText = '' }) {
   if (!godCard) return null;
   const def = GOD_DEFS[godCard.godKey];
   const isCultist = player.role === ROLE_CULTIST;
   const alreadyWorship = player.godName === godCard.godKey;
   const canUpgrade = alreadyWorship && (player.godLevel || 0) < 3;
+  const isBystander = !canChoose && thinkingText;
   return (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 400, paddingTop: '10vh' }}>
       <div style={{
@@ -51,28 +52,34 @@ function GodChoiceModal({ godCard, player, onWorship, onKeepHand, onDiscard, isC
           </div>
         )}
         <GodCardDisplay card={godCard} level={alreadyWorship ? (player.godLevel + 1) : 1} />
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center', marginTop: 8 }}>
-          {!forcedConvert && (
-            <button onClick={onWorship} style={{ padding: '9px 22px', background: def.bgCol, border: `1.5px solid ${def.col}`, color: def.col, fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: 'pointer', letterSpacing: 1, filter: `drop-shadow(0 0 4px ${def.col}66)` }}>
-              {canUpgrade ? '⬆ 升级邪神之力' : isConvert ? '⛧ 改信新神' : '⛧ 信仰邪神'}
-            </button>
-          )}
-          {!alreadyWorship && !forcedConvert && isCultist && (
-            <button onClick={onKeepHand} style={{ padding: '9px 22px', background: '#180830', border: `1.5px solid #b080ee`, color: '#b080ee', fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: 'pointer', letterSpacing: 1, filter: 'drop-shadow(0 0 4px #9060cc66)' }}>
-              ☽ 秘密收入手牌
-            </button>
-          )}
-          {!forcedConvert && (
-            <button onClick={onDiscard} style={{ padding: '9px 22px', background: '#120a08', border: '1.5px solid #6a4828', color: '#d4a858', fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: 'pointer', letterSpacing: 1 }}>
-              放弃
-            </button>
-          )}
-          {forcedConvert && (
-            <button onClick={onWorship} style={{ padding: '9px 22px', background: def.bgCol, border: `1.5px solid ${def.col}`, color: def.col, fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: 'pointer', letterSpacing: 1, filter: `drop-shadow(0 0 4px ${def.col}66)` }}>
-              ⛧ 接受改信
-            </button>
-          )}
-        </div>
+        {isBystander ? (
+          <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#c8a96e', fontSize: 15, marginTop: 8 }}>
+            {thinkingText}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center', marginTop: 8 }}>
+            {!forcedConvert && (
+              <button onClick={onWorship} style={{ padding: '9px 22px', background: def.bgCol, border: `1.5px solid ${def.col}`, color: def.col, fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: 'pointer', letterSpacing: 1, filter: `drop-shadow(0 0 4px ${def.col}66)` }}>
+                {canUpgrade ? '⬆ 升级邪神之力' : isConvert ? '⛧ 改信新神' : '⛧ 信仰邪神'}
+              </button>
+            )}
+            {!alreadyWorship && !forcedConvert && isCultist && (
+              <button onClick={onKeepHand} style={{ padding: '9px 22px', background: '#180830', border: `1.5px solid #b080ee`, color: '#b080ee', fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: 'pointer', letterSpacing: 1, filter: 'drop-shadow(0 0 4px #9060cc66)' }}>
+                ☽ 秘密收入手牌
+              </button>
+            )}
+            {!forcedConvert && (
+              <button onClick={onDiscard} style={{ padding: '9px 22px', background: '#120a08', border: '1.5px solid #6a4828', color: '#d4a858', fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: 'pointer', letterSpacing: 1 }}>
+                放弃
+              </button>
+            )}
+            {forcedConvert && (
+              <button onClick={onWorship} style={{ padding: '9px 22px', background: def.bgCol, border: `1.5px solid ${def.col}`, color: def.col, fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: 'pointer', letterSpacing: 1, filter: `drop-shadow(0 0 4px ${def.col}66)` }}>
+                ⛧ 接受改信
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
