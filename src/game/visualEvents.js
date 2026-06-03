@@ -11,6 +11,7 @@ export const VISUAL_EVENT = {
   SWAP_CARDS: 'swapCards',
   HUNT_TARGET: 'huntTarget',
   HUNT_REVEAL: 'huntReveal',
+  EARTHQUAKE: 'earthquake',
 };
 
 function cardIdentity(card) {
@@ -32,6 +33,9 @@ function makeVisualEventId(event) {
   if (event.card) parts.push(`c${cardIdentity(event.card)}`);
   if (Array.isArray(event.statEvents) && event.statEvents.length) {
     parts.push(`seq${event.statEvents.map(ev => ev?.seq ?? `${ev?.type || 'stat'}:${ev?.target ?? ''}`).join(',')}`);
+  }
+  if (Array.isArray(event.discardEvents) && event.discardEvents.length) {
+    parts.push(`quake${event.discardEvents.map(ev => `${ev?.playerIndex ?? ''}:${cardIdentity(ev?.card)}`).join(',')}`);
   }
   const msgKey = msgsIdentity(event.msgs);
   if (msgKey) parts.push(`m${msgKey}`);
@@ -131,6 +135,86 @@ export function createHuntRevealEvent({ sourceIdx = 0, targetIdx = 0, card, msgs
     card,
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'action');
+}
+
+export function buildHuntRevealStepFromVisualEvent(event, state) {
+  if (!event?.card || event.targetIdx == null || event.targetIdx === 0) return null;
+  const targetIdx = event.targetIdx;
+  const targetName = event.targetName || state?.players?.[targetIdx]?.name || '对方';
+  return {
+    type: 'HUNT_REVEAL_CARD',
+    card: event.card,
+    targetPid: targetIdx,
+    targetName: localDisplayName(targetIdx, targetName),
+    msgs: Array.isArray(event.msgs) ? event.msgs : [],
+  };
+}
+
+export function createEarthquakeEvent({
+  beforePlayers = [],
+  beforeDiscard = [],
+  discardEvents = [],
+  msgs = [],
+} = {}) {
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.EARTHQUAKE,
+    beforePlayers: Array.isArray(beforePlayers) ? beforePlayers : [],
+    beforeDiscard: Array.isArray(beforeDiscard) ? beforeDiscard : [],
+    discardEvents: Array.isArray(discardEvents) ? discardEvents.filter(Boolean) : [],
+    msgs: Array.isArray(msgs) ? msgs : [],
+  }, 'effect');
+}
+
+export function buildEarthquakeAnimStep({
+  beforePlayers = [],
+  beforeDiscard = [],
+  discardEvents = [],
+  finalPlayers = [],
+  msgs = [],
+} = {}) {
+  const initialPlayers = Array.isArray(beforePlayers) ? beforePlayers : [];
+  const initialDiscard = Array.isArray(beforeDiscard) ? beforeDiscard : [];
+  const finalPlayerList = Array.isArray(finalPlayers) ? finalPlayers : [];
+  let stagedPlayers = initialPlayers.map(p => ({ ...p, hand: [...(p?.hand || [])] }));
+  const normalizedDiscardEvents = Array.isArray(discardEvents)
+    ? discardEvents.map((event, index, events) => {
+      const playerIndex = event?.playerIndex;
+      if (playerIndex != null && finalPlayerList?.[playerIndex]) {
+        stagedPlayers = stagedPlayers.map((player, i) => (
+          i === playerIndex
+            ? { ...finalPlayerList[playerIndex], hand: [...(finalPlayerList[playerIndex].hand || [])] }
+            : player
+        ));
+      } else if (Array.isArray(event?.afterPlayers)) {
+        stagedPlayers = event.afterPlayers.map(p => ({ ...p, hand: [...(p?.hand || [])] }));
+      }
+      return {
+        ...event,
+        afterPlayers: stagedPlayers.map(p => ({ ...p, hand: [...(p?.hand || [])] })),
+        delayMs: 420 + (events.length > 1 ? Math.round((1600 / (events.length - 1)) * index) : 0),
+        durationMs: 620,
+      };
+    })
+    : [];
+  return {
+    type: 'EARTHQUAKE',
+    msgs: Array.isArray(msgs) ? msgs : [],
+    beforePlayers: initialPlayers,
+    beforeDiscard: initialDiscard,
+    discardEvents: normalizedDiscardEvents,
+    visualSetupTiming: 'queueStart',
+    visualSetupPatch: { discard: initialDiscard },
+    visualTimeline: [
+      { atMs: 0, patch: { players: initialPlayers, discard: initialDiscard } },
+      ...normalizedDiscardEvents.map(event => ({
+        atMs: (event.delayMs || 0) + (event.durationMs || 0),
+        patch: {
+          players: event.afterPlayers,
+          ...(Array.isArray(event.afterDiscard) ? { discard: event.afterDiscard } : {}),
+        },
+      })),
+    ],
+  };
 }
 
 export function buildTurnStartDrawVisualEvents(state) {
@@ -250,6 +334,18 @@ export function buildStatStepsFromVisualEvents(state, players) {
   return statEventsToAnimQueue(event.statEvents, players || state?.players || [], event.msgs || []);
 }
 
+export function buildEarthquakeStepFromVisualEvents(state) {
+  const event = getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.EARTHQUAKE);
+  if (!event) return null;
+  return buildEarthquakeAnimStep({
+    beforePlayers: event.beforePlayers,
+    beforeDiscard: event.beforeDiscard,
+    discardEvents: event.discardEvents,
+    finalPlayers: state?.players,
+    msgs: event.msgs,
+  });
+}
+
 export function getBewitchGiftVisualEvent(state) {
   return getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.BEWITCH_GIFT && ev.card);
 }
@@ -264,4 +360,9 @@ export function getHuntTargetVisualEvent(state) {
 
 export function getHuntRevealVisualEvent(state) {
   return getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.HUNT_REVEAL && ev.targetIdx != null && ev.card);
+}
+
+export function buildHuntRevealStepFromVisualEvents(state) {
+  const event = getHuntRevealVisualEvent(state);
+  return event ? buildHuntRevealStepFromVisualEvent(event, state) : null;
 }

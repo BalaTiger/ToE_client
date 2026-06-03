@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildAnimQueue } from '../animQueueCore';
 import { buildMpRemoteReplayAction, MP_REMOTE_REPLAY } from '../multiplayerRemoteReplay';
+import { createEarthquakeEvent } from '../visualEvents';
 
 const card = { id: 'c1', name: '测试牌', type: 'zone' };
 
@@ -588,12 +589,59 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.queue.some(step => step.type === 'SKILL_BEWITCH')).toBe(false);
   });
 
+  it('uses earthquake visualEvents in remote draw replay and clears them afterward', () => {
+    const quakeCard = { id: 'quake', name: '地动山摇', key: 'B2', type: 'allDiscard' };
+    const beforePlayers = [
+      { ...player('你-before'), hand: [{ id: 'you-card' }] },
+      { ...player('艾伦-before'), hand: [{ id: 'allen-card' }] },
+      { ...player('贝拉-before'), hand: [{ id: 'bella-card' }] },
+    ];
+    const afterPlayers = [
+      { ...player('你-after'), hand: [{ id: 'you-card' }] },
+      { ...player('艾伦-after'), hand: [] },
+      { ...player('贝拉-after'), hand: [{ id: 'bella-card' }] },
+    ];
+    const event = createEarthquakeEvent({
+      beforePlayers,
+      beforeDiscard: [],
+      discardEvents: [{ playerIndex: 1, card, afterPlayers, afterDiscard: [card] }],
+      msgs: ['艾伦 摸到 [B2] 地动山摇（强制触发）', '艾伦 失去了 测试牌'],
+    });
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'DRAW_REVEAL',
+      players: afterPlayers,
+      drawReveal: { card: quakeCard, drawerIdx: 1, needsDecision: false },
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _drawLogs: ['艾伦 摸到 [B2] 地动山摇（强制触发）'],
+      _playersBeforeThisDraw: beforePlayers,
+      _visualEvents: [event],
+    }), {
+      previousGs: makeState({ currentTurn: 0, phase: 'ACTION', players: beforePlayers }),
+      buildAnimQueue,
+    });
+    const types = action.queue.map(step => step.type);
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(types).toContain('EARTHQUAKE');
+    expect(action.pendingGs._visualEvents).toEqual([]);
+    expect(action.consumedVisualEventIds?.length).toBeGreaterThan(0);
+  });
+
   it('uses hunt visualEvents for target lock animation', () => {
+    const drawLog = '艾伦 摸到 [B2] 地动山摇（强制触发）';
     const action = buildAction(makeState({
       currentTurn: 1,
       phase: 'HUNT_WAIT_REVEAL',
       abilityData: { huntTi: 2 },
-      log: ['没有追捕关键字的日志'],
+      log: [drawLog, '没有追捕关键字的日志'],
+      _drawLogs: [drawLog],
+      _playersBeforeThisDraw: [player('你-before'), player('艾伦-before'), player('贝拉-before')],
+      _earthquakeSeq: 1,
+      _earthquakeBeforePlayers: [player('你-quake'), player('艾伦-quake'), player('贝拉-quake')],
+      _earthquakeBeforeDiscard: [{ id: 'old-discard' }],
+      _earthquakeDiscardEvents: [{ playerIndex: 1, card, afterPlayers: [player('你-after'), player('艾伦-after'), player('贝拉-after')] }],
+      _statEvents: [{ type: 'HP_LOSS', target: 2, seq: 9 }],
       _visualEvents: [
         { type: 'huntTarget', sourceIdx: 1, targetIdx: 2, msgs: ['事件追捕'] },
       ],
@@ -604,9 +652,16 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.type).toBe(MP_REMOTE_REPLAY.START_ANIM);
     expect(action.anim).toMatchObject({ type: 'SKILL_HUNT', targetIdx: 2, msgs: ['事件追捕'] });
     expect(action.pendingGs._visualEvents).toEqual([]);
+    expect(action.pendingGs._earthquakeSeq).toBe(1);
+    expect(action.pendingGs._drawLogs).toEqual([]);
+    expect(action.pendingGs._playersBeforeThisDraw).toBeNull();
+    expect(action.pendingGs._earthquakeBeforePlayers).toBeNull();
+    expect(action.pendingGs._earthquakeBeforeDiscard).toBeNull();
+    expect(action.pendingGs._earthquakeDiscardEvents).toBeNull();
+    expect(action.pendingGs._statEvents).toEqual([{ type: 'HP_LOSS', target: 2, seq: 9 }]);
   });
 
-  it('uses hunt reveal visualEvents for revealed card animation', () => {
+  it('uses hunt reveal visualEvents for hand-to-player-area reveal animation', () => {
     const revealedCard = { id: 'rev1', name: '亮出的牌', key: 'C3', type: 'zone' };
     const action = buildAction(makeState({
       currentTurn: 1,
@@ -622,15 +677,32 @@ describe('buildMpRemoteReplayAction', () => {
 
     expect(action.type).toBe(MP_REMOTE_REPLAY.START_ANIM);
     expect(action.anim).toMatchObject({
-      type: 'DRAW_CARD',
+      type: 'HUNT_REVEAL_CARD',
       card: revealedCard,
-      triggerName: '贝拉',
       targetPid: 2,
-      skipTravel: true,
       msgs: ['贝拉 亮出 [C3] 亮出的牌'],
     });
     expect(action.pendingGs.phase).toBe('HUNT_CONFIRM');
     expect(action.pendingGs._visualEvents).toEqual([]);
+  });
+
+  it('does not play hunt reveal animation for the hunted local player', () => {
+    const revealedCard = { id: 'rev1', name: '亮出的牌', key: 'C3', type: 'zone' };
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'HUNT_CONFIRM',
+      abilityData: { huntTi: 0, revCard: revealedCard },
+      log: ['你亮出 [C3] 亮出的牌'],
+      _visualEvents: [
+        { type: 'huntReveal', sourceIdx: 1, targetIdx: 0, card: revealedCard, msgs: ['你亮出 [C3] 亮出的牌'] },
+      ],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'HUNT_WAIT_REVEAL' }),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.SET_STATE);
+    expect(action.gs.phase).toBe('HUNT_CONFIRM');
+    expect(action.gs._visualEvents).toEqual([]);
   });
 
   it('masks discard phase for non-active remote players', () => {

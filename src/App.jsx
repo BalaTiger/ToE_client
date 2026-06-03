@@ -50,6 +50,7 @@ import {
   buildFullHandSwapTransferQueueFromLogs,
   buildAiHuntEventAnimQueue,
   withClearedTurnAnimFields,
+  withClearedReplayAnimFields,
   buildLocalCthDecisionState,
   buildPlayerTurnDrawQueue,
   buildTsathogguaSlimeGrantQueue,
@@ -108,6 +109,7 @@ import {
   createSwapCardsEvent,
   createHuntTargetEvent,
   createHuntRevealEvent,
+  buildHuntRevealStepFromVisualEvents,
   markConsumedVisualEvents,
   pruneConsumedVisualEvents,
 } from "./game";
@@ -168,7 +170,7 @@ import { ANIM_DURATION, ANIM_SPEED_SCALE, CARD_REVEAL_DURATION, ANIM_STEP_GAP } 
 import { SMOKE_COLS, FLOWER_CONFIGS, DICE_FACES, ANIM_CFG } from './components/anim/data';
 import { CardFlipAnim } from './components/anim/CardFlipAnim';
 import { KnifeEffect, GuillotineAnim } from './components/anim/DamageEffects';
-import { DiscardMoveOverlay, CardTransferOverlay } from './components/anim/MoveOverlays';
+import { CardTransferOverlay, DiscardMoveOverlay, HuntRevealedCardBadge } from './components/anim/MoveOverlays';
 import { GenericAnimOverlay, DiceRollAnim, YourTurnAnim } from './components/anim/GenericAnimOverlay';
 import { PaperCupSVG, SwapCupOverlay, HuntScopeOverlay, BewitchEyeOverlay, SanMistOverlay } from './components/anim/SkillOverlays';
 import { CaveDuelAnim } from './components/anim/AreaCardOverlays';
@@ -1136,6 +1138,7 @@ export default function Game(){
     visualStateLocks,
     suppressNextBroadcastRef,
     receivedGsRef,
+    normalizePendingGs:withClearedReplayAnimFields,
     ANIM_STEP_GAP,
     CARD_REVEAL_DURATION,
     ANIM_DURATION,
@@ -2916,6 +2919,20 @@ export default function Game(){
   const effectiveSkillName=skillRi.skillName||ri.skillName;
   const suppressAnim=showTutorial&&tutorialStep>=2; // hide all anims during tutorial steps 2+
   const huntAbandoned=gs.huntAbandoned||[];
+  const isResolvingHuntReveal=gs.phase==='HUNT_CONFIRM'
+    &&pendingGsRef.current
+    &&pendingGsRef.current.phase!=='HUNT_CONFIRM';
+  const huntRevealStateForView=isResolvingHuntReveal
+    ?pendingGsRef.current
+    :(animExiting&&pendingGsRef.current?.phase==='HUNT_CONFIRM')
+    ?pendingGsRef.current
+    :gs;
+  const huntRevealTargetPid=huntRevealStateForView?.abilityData?.huntTi;
+  const huntRevealBadge=(
+    huntRevealStateForView?.phase==='HUNT_CONFIRM'
+    &&huntRevealStateForView?.abilityData?.revCard
+    &&!isLocalSeatIndex(huntRevealTargetPid)
+  )?{card:huntRevealStateForView.abilityData.revCard,targetPid:huntRevealTargetPid}:null;
 
   // ── Action handlers ────────────────────────────────────────
   // CTH 「梦访拉莱耶」: after a draw decision (keep/discard/god) triggered while resting,
@@ -4343,8 +4360,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     // 动画位置测量交给 useEffect([anim]) 中的 SKILL_HUNT 分支（使用 data-pid，正确）
     const huntMsgs=extractSkillLogs(huntConfirmGs.log.slice(gs.log.length),'hunt');
     const huntEvent=createHuntTargetEvent({sourceIdx:0,targetIdx:ti,msgs:huntMsgs});
-    const huntConfirmGsWithEvent={...huntConfirmGs,_visualEvents:huntEvent?[huntEvent]:[]};
-    triggerAnimQueue(mergeApophisTargetQueue([{type:'SKILL_HUNT',targetIdx:ti,msgs:huntMsgs}],gs,huntConfirmGsWithEvent),huntConfirmGsWithEvent);
+    const revealEvent=createHuntRevealEvent({sourceIdx:0,targetIdx:ti,card:rc,msgs:[huntConfirmGs.log[huntConfirmGs.log.length-1]]});
+    const revealStep=buildHuntRevealStepFromVisualEvents({...huntConfirmGs,_visualEvents:[revealEvent].filter(Boolean)});
+    triggerAnimQueue(mergeApophisTargetQueue([{type:'SKILL_HUNT',targetIdx:ti,msgs:huntMsgs},...(revealStep?[revealStep]:[])],gs,{...huntConfirmGs,_visualEvents:huntEvent?[huntEvent]:[]}),huntConfirmGs);
   }
   function huntConfirm(myCardIdx){
     const{huntTi}=gs.abilityData;
@@ -6084,17 +6102,23 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       <TargetSelectOverlay drawReveal={gs.drawReveal} phase={isVisualPlayerTurn?phase:null} bewitchCard={gs.abilityData?.bewitchCard}/>
 
       {/* God choice modal */}
-      {!pendingZhuGodAnyCard&&canShowTurnDecisionModal&&phase==='GOD_CHOICE'&&gs.abilityData?.godCard&&isLocalGodChoice&&gs.currentTurn===0&&(()=>{
+      {!pendingZhuGodAnyCard&&canShowTurnDecisionModal&&phase==='GOD_CHOICE'&&gs.abilityData?.godCard&&(isLocalGodChoice||gs._isMP)&&(()=>{
         const godCard=gs.abilityData.godCard;
+        const actorIdx=gs.abilityData?.drawerIdx??gs.currentTurn??0;
+        const actor=gs.players[actorIdx]||me;
+        const canChooseGod=isLocalGodChoice&&actorIdx===0;
         const gk=godCard.godKey;
-        const alreadyWorship=me.godName===gk;
-        const isConvert=!!(me.godName&&me.godName!==gk);
+        const alreadyWorship=actor.godName===gk;
+        const isConvert=!!(actor.godName&&actor.godName!==gk);
         const forcedConvert=gs.abilityData?.forcedConvert||false;
-        const canUpgrade=alreadyWorship&&(me.godLevel||0)<3;
+        const canUpgrade=alreadyWorship&&(actor.godLevel||0)<3;
+        const thinkingText=gs._isMP&&!canChooseGod?`${actor.name||'对方'}正在回应邪神…`:'';
         return(
           <GodChoiceModal
-            godCard={godCard} player={me}
+            godCard={godCard} player={actor}
             isConvert={isConvert} forcedConvert={forcedConvert}
+            canChoose={canChooseGod}
+            thinkingText={thinkingText}
             onWorship={()=>godResolvePlayer(alreadyWorship&&canUpgrade?'upgrade':isConvert?'worship':'worship')}
             onKeepHand={()=>godResolvePlayer('keepHand')}
             onDiscard={()=>godResolvePlayer('discard')}
@@ -6792,6 +6816,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
 
     {/* All overlays with position:fixed + getBoundingClientRect() coordinates must render OUTSIDE the zoom container so viewport coords match */}
     {!suppressAnim&&<AnimOverlay anim={anim} exiting={animExiting} expansionKey={gs.expansionKey}/>}
+    {!suppressAnim&&huntRevealBadge&&<HuntRevealedCardBadge card={huntRevealBadge.card} targetPid={huntRevealBadge.targetPid}/>}
     {!suppressAnim&&<SwapCupOverlay active={!!swapAnim} casterName={swapAnim?.casterName||''} targetName={swapAnim?.targetName||''}/>}
     {flyingEmojis.map(fe=>(
       <FlyingEmoji key={fe.id} {...fe} onDone={handleFlyingEmojiDone}/>

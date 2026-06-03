@@ -20,10 +20,20 @@ export const EMPTY_TURN_ANIM_FIELDS = Object.freeze({
   _statEvents: [],
   _preTurnPlayers: null,
   _tsgSlimeGrantEvents: null,
+  _earthquakeBeforePlayers: null,
+  _earthquakeBeforeDiscard: null,
+  _earthquakeDiscardEvents: null,
 });
 
 export function withClearedTurnAnimFields(state, extra = {}) {
   return { ...state, ...EMPTY_TURN_ANIM_FIELDS, ...extra };
+}
+
+export function withClearedReplayAnimFields(state, extra = {}) {
+  return withClearedTurnAnimFields(state, {
+    _statEvents: Array.isArray(state?._statEvents) ? state._statEvents : [],
+    ...extra,
+  });
 }
 
 export function buildLocalCthDecisionState(baseState, {

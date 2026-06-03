@@ -1,5 +1,6 @@
 import { makeTargetStats, statEventsToAnimQueue } from './statEvents';
 import { buildFullHandSwapStepsFromLogs, buryToDeckStep, cardTransferStep, statePatchStep } from './animQueueHelpers';
+import { buildEarthquakeStepFromVisualEvents, buildHuntRevealStepFromVisualEvent } from './visualEvents';
 
 export function buildAnimQueue(oldGs, newGs) {
   const q = [];
@@ -123,60 +124,9 @@ export function buildAnimQueue(oldGs, newGs) {
     q.push({ type: 'GUILLOTINE', msgs: newMsgs, hitIndices: deathIdx, targetStats });
     q.push({ type: 'DEATH', msgs: newMsgs, hitIndices: deathIdx, targetStats });
   }
-  const effectLogCandidates = [
-    ...newMsgs,
-    ...(Array.isArray(newGs?._drawLogs) ? newGs._drawLogs : []),
-    ...(Array.isArray(newGs?._statLogs) ? newGs._statLogs : []),
-    ...(Array.isArray(newGs?.drawReveal?.msgs) ? newGs.drawReveal.msgs : []),
-  ];
-  const hasEarthquakeTriggerLog = effectLogCandidates.some(line =>
-    typeof line === 'string' &&
-    line.includes('地动山摇') &&
-    (line.includes('强制触发') || line.includes('全体角色'))
-  );
-  if ((newGs._earthquakeSeq || 0) !== (oldGs._earthquakeSeq || 0) || hasEarthquakeTriggerLog) {
-    const beforeEarthquakePlayers = newGs?._earthquakeBeforePlayers || oldGs.players;
-    const beforeEarthquakeDiscard = Array.isArray(newGs?._earthquakeBeforeDiscard)
-      ? newGs._earthquakeBeforeDiscard
-      : (Array.isArray(oldGs?.discard) ? oldGs.discard : []);
-    let stagedPlayers = beforeEarthquakePlayers.map(p => ({ ...p, hand: [...(p?.hand || [])] }));
-    const discardEvents = Array.isArray(newGs?._earthquakeDiscardEvents)
-      ? newGs._earthquakeDiscardEvents.map((event, index, events) => {
-        const playerIndex = event?.playerIndex;
-        if (playerIndex != null && newGs.players?.[playerIndex]) {
-          stagedPlayers = stagedPlayers.map((player, i) => (
-            i === playerIndex
-              ? { ...newGs.players[playerIndex], hand: [...(newGs.players[playerIndex].hand || [])] }
-              : player
-          ));
-        }
-        return {
-          ...event,
-          afterPlayers: stagedPlayers.map(p => ({ ...p, hand: [...(p?.hand || [])] })),
-          delayMs: 420 + (events.length > 1 ? Math.round((1600 / (events.length - 1)) * index) : 0),
-          durationMs: 620,
-        };
-      })
-      : [];
-    q.push({
-      type: 'EARTHQUAKE',
-      msgs: effectLogCandidates,
-      beforePlayers: beforeEarthquakePlayers,
-      beforeDiscard: beforeEarthquakeDiscard,
-      discardEvents,
-      visualSetupTiming: 'queueStart',
-      visualSetupPatch: { discard: beforeEarthquakeDiscard },
-      visualTimeline: [
-        { atMs: 0, patch: { players: beforeEarthquakePlayers, discard: beforeEarthquakeDiscard } },
-        ...discardEvents.map(event => ({
-          atMs: (event.delayMs || 0) + (event.durationMs || 0),
-          patch: {
-            players: event.afterPlayers,
-            ...(Array.isArray(event.afterDiscard) ? { discard: event.afterDiscard } : {}),
-          },
-        })),
-      ],
-    });
+  const earthquakeVisualStep = buildEarthquakeStepFromVisualEvents(newGs);
+  if (earthquakeVisualStep) {
+    q.push(earthquakeVisualStep);
   }
   const fullHandSwapMsg = newMsgs.find(m => m.includes('交换了全部手牌'));
   if (fullHandSwapMsg) {
@@ -250,6 +200,12 @@ export function buildAiHuntEventAnimQueue(evt, actorName) {
   const huntMsgs = Array.isArray(evt.msgs) && evt.msgs.length ? [evt.msgs[0]] : [];
   const followupMsgs = Array.isArray(evt.msgs) ? evt.msgs.slice(1) : [];
   const perHuntQueue = [{ type: 'SKILL_HUNT', msgs: huntMsgs, _logChunk: huntMsgs, targetIdx: evt.targetIdx >= 0 ? evt.targetIdx : 1 }];
+  const revealStep = buildHuntRevealStepFromVisualEvent({
+    targetIdx: evt.targetIdx,
+    card: evt.revealedCard,
+    msgs: [],
+  }, { players: evt.beforePlayers });
+  if (revealStep) perHuntQueue.push(revealStep);
   const takeFollowup = (predicate) => {
     const idx = followupMsgs.findIndex(predicate);
     if (idx < 0) return [];

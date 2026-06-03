@@ -20,6 +20,7 @@ export function useAnimationQueue({
   visualStateLocks,
   suppressNextBroadcastRef,
   receivedGsRef,
+  normalizePendingGs = state => state,
   ANIM_STEP_GAP,
   CARD_REVEAL_DURATION,
   ANIM_DURATION,
@@ -111,6 +112,8 @@ export function useAnimationQueue({
     return { ...prev, ...patch };
   }
 
+  const normalizePendingState = state => (state ? normalizePendingGs(state) : state);
+
   function advanceQueue() {
     setAnimExiting(false);
     if (animQueueRef.current.length > 0) {
@@ -154,6 +157,7 @@ export function useAnimationQueue({
       }
     } else {
       const next = pendingGsRef.current;
+      const normalizedNext = normalizePendingState(next);
       const callback = animCallbackRef.current;
       pendingGsRef.current = null;
       animCallbackRef.current = null;
@@ -164,21 +168,21 @@ export function useAnimationQueue({
       if (next?.log) syncVisibleLog(next.log);
       if (callback) {
         callback();
-      } else if (next) {
-        setVisualDiscard(getVisualDiscardForState(next));
+      } else if (normalizedNext) {
+        setVisualDiscard(getVisualDiscardForState(normalizedNext));
         if (suppressNextBroadcastRef.current) {
           suppressNextBroadcastRef.current = false;
           receivedGsRef.current = true;
         }
         setGs(prev => {
           if (prev?.gameOver || prev?.phase === 'PLAYER_WIN_PENDING' || prev?.phase === 'TREASURE_WIN') return prev;
-          const preservePendingDeathPid = next?.phase === 'HUNT_SELECT_CARD_FROM_PUBLIC'
-            ? (next?.abilityData?.huntTi ?? null)
+          const preservePendingDeathPid = normalizedNext?.phase === 'HUNT_SELECT_CARD_FROM_PUBLIC'
+            ? (normalizedNext?.abilityData?.huntTi ?? null)
             : null;
-          if (next?.players) {
-            return { ...next, players: clearPendingAnimDeathFlags(next.players, preservePendingDeathPid) };
+          if (normalizedNext?.players) {
+            return { ...normalizedNext, players: clearPendingAnimDeathFlags(normalizedNext.players, preservePendingDeathPid) };
           }
-          return next;
+          return normalizedNext;
         });
       }
     }
@@ -219,11 +223,12 @@ export function useAnimationQueue({
         if (nextGs?.log) syncVisibleLog(nextGs.log);
         callback();
       } else {
+        const normalizedNextGs = normalizePendingState(nextGs);
         if (nextGs?.log) syncVisibleLog(nextGs.log);
         if (hasDeathAnim && pendingDeathPlayers.length) {
-          setGs({ ...nextGs });
+          setGs({ ...normalizedNextGs });
         } else {
-          setGs(nextGs);
+          setGs(normalizedNextGs);
         }
       }
       return;
@@ -234,7 +239,7 @@ export function useAnimationQueue({
         ? (nextGs?.abilityData?.huntTi ?? null)
         : null;
       const cleanedPlayers = clearPendingAnimDeathFlags(nextGs.players, preservePendingDeathPid);
-      const finalGs = { ...nextGs, players: cleanedPlayers };
+      const finalGs = normalizePendingState({ ...nextGs, players: cleanedPlayers });
       if (callback) {
         callback();
       } else {

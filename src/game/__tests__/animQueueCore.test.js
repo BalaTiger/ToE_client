@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildAiHuntEventAnimQueue, buildAnimQueue } from '../animQueueCore';
+import { createEarthquakeEvent } from '../visualEvents';
 import { makeGodCard, makeGs, makePlayer } from './factory';
 
 describe('buildAnimQueue stat animations', () => {
@@ -252,36 +253,56 @@ describe('buildAnimQueue stat animations', () => {
     expect(buildAnimQueue({ ...oldGs, _statEventSeq: 1 }, newGs).some(step => step.type === 'HP_DAMAGE')).toBe(false);
   });
 
-  it('地动山摇强制触发日志会显式产生独立地震动画', () => {
+  it('地动山摇 visualEvent 会显式产生独立地震动画', () => {
     const oldGs = makeGs({
       players: [makePlayer()],
       log: ['旧日志'],
-      _earthquakeSeq: 1,
     });
+    const event = createEarthquakeEvent({ msgs: ['你 摸到 [B2] 地动山摇（强制触发）'] });
     const newGs = makeGs({
       players: [makePlayer()],
       log: ['旧日志', '你 摸到 [B2] 地动山摇（强制触发）'],
-      _earthquakeSeq: 1,
+      _visualEvents: [event],
     });
 
     expect(buildAnimQueue(oldGs, newGs).map(step => step.type)).toContain('EARTHQUAKE');
   });
 
-  it('开局遮蔽态已带最新日志时仍能从摸牌日志产生地震动画', () => {
+  it('开局遮蔽态已带最新日志时仍能从地震 visualEvent 产生动画', () => {
     const drawLog = '你 摸到 [B2] 地动山摇（强制触发）';
+    const beforePlayers = [makePlayer({ hand: [{ id: 'before' }] })];
+    const event = createEarthquakeEvent({ beforePlayers, beforeDiscard: [], msgs: [drawLog] });
     const oldGs = makeGs({
       players: [makePlayer()],
       log: ['游戏开始。每人获得四张初始手牌。', drawLog],
-      _earthquakeSeq: 1,
     });
     const newGs = makeGs({
       players: [makePlayer()],
       log: ['游戏开始。每人获得四张初始手牌。', drawLog],
       _drawLogs: [drawLog],
-      _earthquakeSeq: 1,
+      _playersBeforeThisDraw: beforePlayers,
+      _visualEvents: [event],
     });
 
     expect(buildAnimQueue(oldGs, newGs).map(step => step.type)).toContain('EARTHQUAKE');
+  });
+
+  it('后续行动不会因为残留地动山摇摸牌日志重播地震动画', () => {
+    const drawLog = '你 摸到 [B2] 地动山摇（强制触发）';
+    const oldGs = makeGs({
+      players: [makePlayer(), makePlayer()],
+      log: ['游戏开始。每人获得四张初始手牌。', drawLog],
+      _drawLogs: [drawLog],
+      _earthquakeSeq: 1,
+    });
+    const newGs = makeGs({
+      players: [makePlayer(), makePlayer({ hp: 7 })],
+      log: ['游戏开始。每人获得四张初始手牌。', drawLog, '弃 [A1] 测试 → 艾伦 受 3HP 伤害！'],
+      _drawLogs: [drawLog],
+      _earthquakeSeq: 1,
+    });
+
+    expect(buildAnimQueue(oldGs, newGs).map(step => step.type)).not.toContain('EARTHQUAKE');
   });
 
   it('地震动画携带结算前手牌和分段弃牌事件', () => {
@@ -292,15 +313,16 @@ describe('buildAnimQueue stat animations', () => {
       players: beforePlayers,
       discard: [],
       log: ['旧日志'],
-      _earthquakeSeq: 1,
+    });
+    const event = createEarthquakeEvent({
+      beforePlayers,
+      beforeDiscard: [],
+      discardEvents: [{ playerIndex: 0, card: { id: 'a', letter: 'A' }, afterPlayers: midEffectPlayers }],
     });
     const newGs = makeGs({
       players: finalPlayers,
       log: ['旧日志'],
-      _earthquakeSeq: 2,
-      _earthquakeBeforePlayers: beforePlayers,
-      _earthquakeBeforeDiscard: [],
-      _earthquakeDiscardEvents: [{ playerIndex: 0, card: { id: 'a', letter: 'A' }, afterPlayers: midEffectPlayers }],
+      _visualEvents: [event],
     });
 
     const earthquake = buildAnimQueue(oldGs, newGs).find(step => step.type === 'EARTHQUAKE');
@@ -340,6 +362,26 @@ describe('buildAnimQueue stat animations', () => {
 });
 
 describe('buildAiHuntEventAnimQueue', () => {
+  it('AI追捕亮牌使用角色区域亮牌动画而非摸牌翻牌', () => {
+    const revealedCard = { id: 'rev-a', key: 'A1', name: '坠落' };
+    const beforePlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '卡洛斯' }),
+      makePlayer({ name: '艾伦', hand: [revealedCard] }),
+    ];
+
+    const queue = buildAiHuntEventAnimQueue({
+      hunterIdx: 1,
+      targetIdx: 2,
+      revealedCard,
+      beforePlayers,
+      msgs: ['卡洛斯（追猎者）对 艾伦 【追捕】，亮出 [A1]'],
+    }, '卡洛斯');
+
+    expect(queue.map(step => step.type)).toEqual(['SKILL_HUNT', 'HUNT_REVEAL_CARD']);
+    expect(queue[1]).toMatchObject({ card: revealedCard, targetPid: 2 });
+  });
+
   it('追捕击杀后先播放死亡公告，再暗抽，最后弃置剩余手牌', () => {
     const hunterDiscard = { id: 'hunter-d1', key: 'D1', name: '钻地魔虫' };
     const stolenA = { id: 'stolen-a', key: 'A1', name: '坠落' };

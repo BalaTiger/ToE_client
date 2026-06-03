@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { cardLogText } from '../game/coreUtils';
+import { createHuntRevealEvent } from '../game/visualEvents';
 
 function startSecondCountdown({ seconds, warningAt, setSeconds, intervalRef, playTickSound }) {
   setSeconds(seconds);
@@ -200,7 +201,19 @@ export function useMpHuntRevealTimer({
         if (!hand.length) return;
         const rc = hand[0 | Math.random() * hand.length];
         const L = [...gs.log, `(超时) ${me?.name || '该玩家'} 随机亮出 ${cardLogText(rc, { alwaysShowName: true })}`];
-        setGs({ ...gs, log: L, phase: 'HUNT_CONFIRM', abilityData: { ...gs.abilityData, revCard: rc } });
+        const huntRevealEvent = createHuntRevealEvent({
+          sourceIdx: gs.currentTurn ?? 0,
+          targetIdx: gs.abilityData?.huntTi ?? 0,
+          card: rc,
+          msgs: L.slice(gs.log.length),
+        });
+        setGs({
+          ...gs,
+          log: L,
+          phase: 'HUNT_CONFIRM',
+          abilityData: { ...gs.abilityData, revCard: rc },
+          ...(huntRevealEvent ? { _visualEvents: [huntRevealEvent] } : { _visualEvents: [] }),
+        });
       }, 20000);
       huntRevealTimerRef.current = timeoutId;
     }

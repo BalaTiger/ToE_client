@@ -163,10 +163,22 @@ function rotateTimedOutDrawDiscardEvent(event, rotateIndex) {
   };
 }
 
+function rotateEarthquakeVisualEvent(event, rotateIndex, myIndex) {
+  if (!event) return event;
+  return {
+    ...event,
+    beforePlayers: rotatePlayersArray(event.beforePlayers, myIndex),
+    discardEvents: Array.isArray(event.discardEvents)
+      ? rotateEarthquakeDiscardEvents(event.discardEvents, rotateIndex, myIndex)
+      : event.discardEvents,
+  };
+}
+
 function rotateVisualEvents(events, rotateIndex, myIndex) {
   if (!Array.isArray(events)) return events;
   return events.map(event => {
     if (event?.type === 'timedOutDrawDiscard') return rotateTimedOutDrawDiscardEvent(event, rotateIndex);
+    if (event?.type === 'earthquake') return rotateEarthquakeVisualEvent(event, rotateIndex, myIndex);
     if (event?.type === 'turnStart' || event?.type === 'drawCard') {
       return {
         ...event,

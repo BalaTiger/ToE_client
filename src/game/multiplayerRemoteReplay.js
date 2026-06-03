@@ -2,7 +2,7 @@ import { bindAnimLogChunks, isDrawLikeLog, isTurnStartLog } from './animLogs';
 import { buildBewitchForcedCardQueue, buildInspectionAwareAnimQueue, fullHandSwapSteps, statePatchStep } from './animQueueHelpers';
 import { cardLogText, copyPlayers } from './coreUtils';
 import { isLocalCurrentTurn, isLocalSeatIndex, localDisplayName } from './rotateState';
-import { buildTurnStartDrawReplayQueue, getTurnStartDrawBaselineLog } from './turnAnimState';
+import { buildTurnStartDrawReplayQueue, getTurnStartDrawBaselineLog, withClearedReplayAnimFields } from './turnAnimState';
 import {
   buildStatStepsFromVisualEvents,
   buildTimedOutDrawDiscardStepFromVisualEvents,
@@ -11,6 +11,7 @@ import {
   getBewitchGiftVisualEvent,
   getSwapCardsVisualEvent,
   getHuntRevealVisualEvent,
+  buildHuntRevealStepFromVisualEvent,
   getHuntTargetVisualEvent,
   pruneConsumedVisualEvents,
 } from './visualEvents';
@@ -43,7 +44,7 @@ function buildMaskedActionState(state) {
 }
 
 function clearRemoteReplayHints(state) {
-  return state ? clearVisualEvents({ ...state, _mpTimedOutDrawDiscard: null }) : state;
+  return state ? withClearedReplayAnimFields(clearVisualEvents({ ...state, _mpTimedOutDrawDiscard: null })) : state;
 }
 
 function getLogDelta(previousGs, rotated) {
@@ -259,20 +260,18 @@ export function buildMpRemoteReplayAction({
   }
   const huntRevealEvent = getHuntRevealVisualEvent(rotated);
   if (huntRevealEvent && !isDrawAnimationState) {
-    const targetIdx = huntRevealEvent.targetIdx ?? rotated.abilityData?.huntTi ?? 1;
-    const targetName = rotated.players?.[targetIdx]?.name || huntRevealEvent.targetName || '对方';
+    const revealStep = buildHuntRevealStepFromVisualEvent(huntRevealEvent, rotated);
+    if (!revealStep) {
+      return withConsumedVisualEvents({
+        type: MP_REMOTE_REPLAY.SET_STATE,
+        gs: clearRemoteReplayHints(rotated),
+      });
+    }
     return withConsumedVisualEvents({
       type: MP_REMOTE_REPLAY.START_ANIM,
       maskedGs: buildMaskedActionState(rotated),
       pendingGs: clearRemoteReplayHints(rotated),
-      anim: {
-        type: 'DRAW_CARD',
-        card: huntRevealEvent.card,
-        triggerName: localDisplayName(targetIdx, targetName),
-        targetPid: targetIdx,
-        skipTravel: true,
-        msgs: huntRevealEvent.msgs || logDelta,
-      },
+      anim: { ...revealStep, msgs: revealStep.msgs?.length ? revealStep.msgs : logDelta },
       queue: [],
     });
   }
@@ -364,6 +363,6 @@ export function buildMpRemoteReplayAction({
 
   return withConsumedVisualEvents({
     type: MP_REMOTE_REPLAY.SET_STATE,
-    gs: visualEventIds.length ? clearRemoteReplayHints(rotated) : rotated,
+    gs: clearRemoteReplayHints(rotated),
   });
 }

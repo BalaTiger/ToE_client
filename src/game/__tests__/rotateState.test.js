@@ -75,6 +75,18 @@ describe('rotateGsForViewer', () => {
             { type: 'DAMAGE_LINK_BREAK', pair: [0, 3], players: [player('v0'), player('v1'), player('v2'), player('v3')] },
           ],
         },
+        {
+          type: 'earthquake',
+          beforePlayers: [player('eq0'), player('eq1'), player('eq2'), player('eq3')],
+          beforeDiscard: [{ name: 'oldDiscard' }],
+          discardEvents: [
+            {
+              playerIndex: 3,
+              card: { name: '地动山摇弃牌' },
+              afterPlayers: [player('eqA0'), player('eqA1'), player('eqA2'), player('eqA3')],
+            },
+          ],
+        },
       ],
     };
 
@@ -100,6 +112,9 @@ describe('rotateGsForViewer', () => {
     expect(rotated._visualEvents[6].statEvents[0].target).toBe(3);
     expect(rotated._visualEvents[6].statEvents[1].pair).toEqual([2, 1]);
     expect(names(rotated._visualEvents[6].statEvents[1].players)).toEqual(['v2', 'v3', 'v0', 'v1']);
+    expect(names(rotated._visualEvents[7].beforePlayers)).toEqual(['eq2', 'eq3', 'eq0', 'eq1']);
+    expect(rotated._visualEvents[7].discardEvents[0].playerIndex).toBe(1);
+    expect(names(rotated._visualEvents[7].discardEvents[0].afterPlayers)).toEqual(['eqA2', 'eqA3', 'eqA0', 'eqA1']);
   });
 
   it('derotates rotated animation snapshots back to host order', () => {
@@ -118,6 +133,15 @@ describe('rotateGsForViewer', () => {
       ],
       _animMultiplyEvent: { fromIdx: 0, toIdx: 2 },
       _animSphinxReveal: { actorIdx: 1 },
+      _visualEvents: [
+        {
+          type: 'earthquake',
+          beforePlayers: [player('eq0'), player('eq1'), player('eq2')],
+          discardEvents: [
+            { playerIndex: 2, afterPlayers: [player('eqA0'), player('eqA1'), player('eqA2')] },
+          ],
+        },
+      ],
     };
 
     const restored = derotateGs(rotateGsForViewer(gs, 1), 1);
@@ -135,5 +159,8 @@ describe('rotateGsForViewer', () => {
     expect(names(restored._aiHuntEvents[0].beforePlayers)).toEqual(['b0', 'b1', 'b2']);
     expect(restored._animMultiplyEvent).toEqual(gs._animMultiplyEvent);
     expect(restored._animSphinxReveal).toEqual(gs._animSphinxReveal);
+    expect(names(restored._visualEvents[0].beforePlayers)).toEqual(['eq0', 'eq1', 'eq2']);
+    expect(restored._visualEvents[0].discardEvents[0].playerIndex).toBe(2);
+    expect(names(restored._visualEvents[0].discardEvents[0].afterPlayers)).toEqual(['eqA0', 'eqA1', 'eqA2']);
   });
 });

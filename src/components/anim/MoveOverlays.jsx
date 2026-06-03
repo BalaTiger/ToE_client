@@ -1,7 +1,7 @@
 import React from 'react';
 import { CS, GOD_CS, getCardBackImage } from '../../constants/card';
 import { DDCard, MiniCardFace } from '../cards';
-import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
+import { getPileAnchorCenter, getPlayerAreaAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 
 const BLACK_GOAT_PARTICLES = [
   { x: -18, y: -18, size: 7, delay: 0.00, dur: 0.58, glow: 1.00 },
@@ -329,6 +329,89 @@ export function CardTransferOverlay({ transfers, expansionKey = 'temporary' }) {
           );
         })
       )}
+    </div>
+  );
+}
+
+function useHuntRevealCardPosition(targetPid) {
+  const [pos, setPos] = React.useState(null);
+
+  React.useEffect(() => {
+    function measure() {
+      const start = getPlayerHandAnchorCenter(targetPid ?? 0);
+      const end = getPlayerAreaAnchorCenter(targetPid ?? 0);
+      setPos({
+        startX: start.x,
+        startY: start.y,
+        endX: end.x,
+        endY: end.y,
+        '--tx': `${end.x - start.x}px`,
+        '--ty': `${end.y - start.y}px`,
+      });
+    }
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [targetPid]);
+
+  return pos;
+}
+
+export function HuntRevealCardOverlay({ anim, exiting }) {
+  const pos = useHuntRevealCardPosition(anim?.targetPid ?? 0);
+  if (!anim?.card || !pos) return null;
+  return (
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      zIndex: 650,
+      pointerEvents: 'none',
+      overflow: 'hidden',
+      animation: exiting ? 'animFadeOut 0.18s ease-in forwards' : 'none',
+    }}>
+      <div style={{
+        position: 'absolute',
+        left: pos.startX,
+        top: pos.startY,
+        width: 70,
+        height: 94,
+        marginLeft: -35,
+        marginTop: -47,
+        '--tx': pos['--tx'],
+        '--ty': pos['--ty'],
+        animation: 'huntRevealCardFly 0.82s cubic-bezier(0.22,0.82,0.22,1) both',
+        filter: 'drop-shadow(0 10px 18px rgba(0,0,0,0.72))',
+      }}>
+        <MiniCardFace card={anim.card} width={70} height={94} ambient={false} frameStyle={{ boxShadow: 'none' }} />
+      </div>
+    </div>
+  );
+}
+
+export function HuntRevealedCardBadge({ card, targetPid }) {
+  const pos = useHuntRevealCardPosition(targetPid);
+  if (!card || !pos) return null;
+  return (
+    <div style={{
+      position: 'fixed',
+      left: pos.endX,
+      top: pos.endY,
+      width: 70,
+      height: 94,
+      marginLeft: -35,
+      marginTop: -47,
+      zIndex: 455,
+      pointerEvents: 'none',
+      filter: 'drop-shadow(0 8px 16px rgba(0,0,0,0.7))',
+    }}>
+      <div style={{
+        position: 'absolute',
+        inset: -5,
+        borderRadius: 8,
+        border: '1px solid rgba(220,40,40,0.55)',
+        boxShadow: '0 0 16px rgba(220,40,40,0.35)',
+      }} />
+      <MiniCardFace card={card} width={70} height={94} ambient={false} frameStyle={{ boxShadow: 'none' }} />
     </div>
   );
 }

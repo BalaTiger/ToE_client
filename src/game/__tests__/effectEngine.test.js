@@ -9,6 +9,7 @@ import {
 import { makeInspectionMeta } from '../coreUtils';
 import { resetIds, makePlayer, makeStandardPlayers, makeZoneCard, makeGodCard, makeGs } from './factory';
 import { createTsathogguaSlimeCard } from '../../constants/card';
+import { VISUAL_EVENT } from '../visualEvents';
 
 describe('applyHpDamageWithLink', () => {
   beforeEach(() => resetIds());
@@ -461,10 +462,12 @@ describe('applyFx', () => {
     expect(res.P[0].hand).toHaveLength(0);
     expect(res.P[1].hand).toHaveLength(0);
     expect(res.Disc.length).toBeGreaterThanOrEqual(1);
-    expect(res.statePatch._earthquakeBeforePlayers[0].hand).toHaveLength(1);
-    expect(res.statePatch._earthquakeBeforeDiscard).toEqual([]);
-    expect(res.statePatch._earthquakeDiscardEvents).toHaveLength(2);
-    expect(res.statePatch._earthquakeDiscardEvents[0].afterPlayers[0].hand).toHaveLength(0);
+    const event = res.statePatch._visualEvents?.[0];
+    expect(event).toMatchObject({ type: VISUAL_EVENT.EARTHQUAKE, beforeDiscard: [] });
+    expect(event.beforePlayers[0].hand).toHaveLength(1);
+    expect(event.discardEvents).toHaveLength(2);
+    expect(event.discardEvents[0].afterPlayers[0].hand).toHaveLength(0);
+    expect(res.statePatch._earthquakeSeq).toBeUndefined();
   });
 
   it('selfHealAdjDamageHP: 治疗自己并伤害相邻', () => {

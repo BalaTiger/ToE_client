@@ -18,6 +18,7 @@ import {
 import { buildStatEvents } from './statEvents';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { appendProliferatingZDraws, makeProliferatingZState } from './proliferatingZ';
+import { createEarthquakeEvent } from './visualEvents';
 
 export function applyHpDamageWithLink(P, i, amount, Disc, L, currentTurn, D) {
   if (i == null || !P[i] || P[i].isDead || !(amount > 0)) return;
@@ -692,12 +693,17 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           }
         }
       });
+      const earthquakeEvent = createEarthquakeEvent({
+        beforePlayers: beforeEarthquakePlayers,
+        beforeDiscard: beforeEarthquakeDiscard,
+        discardEvents: earthquakeDiscardEvents,
+        msgs: msgs.slice(),
+      });
       statePatch = {
         ...statePatch,
-        _earthquakeSeq: (gs?._earthquakeSeq || 0) + 1,
-        _earthquakeBeforePlayers: beforeEarthquakePlayers,
-        _earthquakeBeforeDiscard: beforeEarthquakeDiscard,
-        _earthquakeDiscardEvents: earthquakeDiscardEvents,
+        _visualEvents: earthquakeEvent
+          ? [...(statePatch._visualEvents || []), earthquakeEvent]
+          : (statePatch._visualEvents || []),
       };
     },
     selfRenounceGod: () => {
