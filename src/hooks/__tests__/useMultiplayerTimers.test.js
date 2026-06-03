@@ -1,0 +1,52 @@
+import { describe, expect, it } from 'vitest';
+import { getMpTurnTimerMode } from '../useMultiplayerTimers';
+
+const isLocalCurrentTurn = gs => gs.currentTurn === 0;
+
+function makeGs(patch = {}) {
+  return {
+    _isMP: true,
+    _turnKey: 1,
+    currentTurn: 0,
+    phase: 'ACTION',
+    gameOver: null,
+    ...patch,
+  };
+}
+
+function getMode(patch = {}, extra = {}) {
+  return getMpTurnTimerMode({
+    isMultiplayer: true,
+    gs: makeGs(patch),
+    isLocalCurrentTurn,
+    isMpCthDecisionPhase: false,
+    isMpDecisionPhase: false,
+    isTurnTimerSuspended: false,
+    ...extra,
+  });
+}
+
+describe('getMpTurnTimerMode', () => {
+  it('本地 ACTION 阶段才运行回合计时', () => {
+    expect(getMode()).toBe('running');
+  });
+
+  it('动画队列或 pending 状态期间暂停回合计时', () => {
+    expect(getMode({}, { isTurnTimerSuspended: true })).toBe('paused');
+  });
+
+  it('追捕亮牌和本地决策阶段暂停而不是重启回合计时', () => {
+    expect(getMode({ phase: 'HUNT_WAIT_REVEAL' })).toBe('paused');
+    expect(getMode({}, { isMpDecisionPhase: true })).toBe('paused');
+  });
+
+  it('弃牌阶段和他人回合不保留行动回合计时', () => {
+    expect(getMode({ phase: 'DISCARD_PHASE' })).toBe('stopped');
+    expect(getMode({ currentTurn: 1 })).toBe('stopped');
+  });
+
+  it('摸牌抉择落到 ACTION 前不启动 45 秒行动计时', () => {
+    expect(getMode({ phase: 'DRAW_REVEAL' })).toBe('stopped');
+    expect(getMode({ phase: 'GOD_CHOICE' })).toBe('stopped');
+  });
+});

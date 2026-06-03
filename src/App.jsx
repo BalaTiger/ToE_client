@@ -53,6 +53,7 @@ import {
   withClearedReplayAnimFields,
   buildLocalCthDecisionState,
   buildPlayerTurnDrawQueue,
+  buildTurnStartDrawReplayQueue,
   buildTsathogguaSlimeGrantQueue,
   cardsHuntMatch,
   moveEligibleBlankZones,
@@ -102,7 +103,9 @@ import {
   revealBlindDrawCard,
   getCthRestDrawRemaining,
   buildCthRestDrawFinishedState,
+  getTurnStartDrawerIdx,
   createTimedOutDrawDiscardEvent,
+  createHandLimitDiscardEvent,
   buildTurnStartDrawVisualEvents,
   buildFreshStatVisualEvents,
   createBewitchGiftEvent,
@@ -655,12 +658,51 @@ export default function Game(){
     return !!roleRevealAnim||!!anim||!!animExiting||animQueueRef.current.length>0||!!pendingGsRef.current;
   }
 
+  function getPendingZhuHideCardForState(state){
+    if(!state||state.gameOver)return null;
+    const ids=state.zhuLight?.cardIds||[];
+    if(state.phase==='DRAW_REVEAL'){
+      const card=state.drawReveal?.card;
+      return card?.id&&!state.drawReveal?.zhuResolved&&ids.includes(card.id)?card:null;
+    }
+    if(state.phase==='GOD_CHOICE'){
+      const card=state.abilityData?.godCard;
+      return card?.id&&!state.abilityData?.zhuResolved&&ids.includes(card.id)?card:null;
+    }
+    if(state.phase==='SPHINX_GUESS'){
+      const card=state.deck?.[0];
+      return card?.id&&ids.includes(card.id)?card:null;
+    }
+    if(state.phase==='ZHU_HIDE_AI_DRAW'){
+      return state.abilityData?.zhuGuard?.card||getZhuTopGuard(state,state.deck)?.card||null;
+    }
+    return null;
+  }
+
+  function isLocalZhuHideDecisionPhase(state){
+    if(!getPendingZhuHideCardForState(state))return false;
+    return state?.zhuLight?.ownerIdx===0||state?.players?.[0]?.godName==='ZHU';
+  }
+
+  function getMpReplayStateSignature(state){
+    const ad=state?.abilityData||{};
+    const dr=state?.drawReveal||{};
+    return [
+      dr.card?.id||'',
+      dr.zhuResolved?'zhuDrawDone':'',
+      ad.godCard?.id||'',
+      ad.zhuResolved?'zhuGodDone':'',
+      ad.zhuIntroShown?'zhuIntro':'',
+      (state?.zhuLight?.cardIds||[]).join(','),
+    ].join('|');
+  }
+
   function processIncomingMpStateSync(rawGs,{allowBuffer=true}={}){
     if(!rawGs)return;
     const myIdx=myPlayerIndexRef.current;
     const rotated=rotateGsForViewer(rawGs,myIdx);
     const previousGs=latestGsRef.current||gs;
-    if(previousGs&&rotated._turnKey===previousGs._turnKey&&rotated.currentTurn===previousGs.currentTurn&&rotated.phase===previousGs.phase&&(rotated.log?.length||0)<=(previousGs.log?.length||0)){
+    if(previousGs&&rotated._turnKey===previousGs._turnKey&&rotated.currentTurn===previousGs.currentTurn&&rotated.phase===previousGs.phase&&(rotated.log?.length||0)<=(previousGs.log?.length||0)&&getMpReplayStateSignature(rotated)===getMpReplayStateSignature(previousGs)){
       return;
     }
     if(mpOpeningRoleRevealPendingRef.current&&!rotated.gameOver){
@@ -2437,6 +2479,9 @@ export default function Game(){
       ad.targetIndex??'',
       ad.playerIndex??'',
       ad.source??'',
+      ad.zhuResolved?'zhuGodDone':'',
+      state?.drawReveal?.zhuResolved?'zhuDrawDone':'',
+      getPendingZhuHideCardForState(state)?.id||'',
       state?.log?.length??0,
     ].join(':');
   }
@@ -2476,6 +2521,7 @@ export default function Game(){
 
   function isLocalMpDecisionPhase(state=gs){
     if(!state||state.gameOver)return false;
+    if(isLocalZhuHideDecisionPhase(state))return true;
     if(isLocalTreasureDodgePhase(state))return true;
     if(isLocalTreasureAoEDodgePhase(state))return true;
     if(isLocalNyaBorrowPhase(state))return true;
@@ -2504,6 +2550,12 @@ export default function Game(){
   function performMpDecisionTimeout(){
     if(!gs||isBlocked)return;
     if(!isLocalMpDecisionPhase(gs))return;
+    if(isLocalZhuHideDecisionPhase(gs)){
+      if(gs.phase==='DRAW_REVEAL'){handleZhuHideDrawnCard(false);return;}
+      if(gs.phase==='GOD_CHOICE'){handleZhuHideGodCard(false);return;}
+      if(gs.phase==='SPHINX_GUESS'){handleZhuHideTopCardDuringSphinx(false);return;}
+      if(gs.phase==='ZHU_HIDE_AI_DRAW'){handleZhuHideAiDrawCard(false);return;}
+    }
     if(gs.phase==='TREASURE_DODGE_DECISION'){handleTreasureDodgeSkip();return;}
     if(gs.phase==='TREASURE_AOE_DODGE_DECISION'){handleTreasureAOEDodgeSkip();return;}
     if(gs.phase==='NYA_BORROW'){nyaSkip();return;}
@@ -2554,7 +2606,26 @@ export default function Game(){
     &&animQueueRef.current.length===0
     &&!pendingGsRef.current
     &&isLocalMpDecisionPhase(gs);
-  const mpTurnSec = useMpTurnTimer({ isMultiplayer, gs, isLocalCurrentTurn, isMpCthDecisionPhase, isMpDecisionPhase: isLocalMpDecisionActive, playTickSound, setGs });
+  const pendingGsForTurnTimer=pendingGsRef.current;
+  const isMpTurnTimerSuspended=!!(roleRevealAnim||anim||animExiting||animQueueRef.current.length>0||pendingGsForTurnTimer);
+  const isMpTurnTransitionPending=!!(
+    gs
+    &&pendingGsForTurnTimer
+    &&(
+      pendingGsForTurnTimer.currentTurn!==gs.currentTurn
+      ||pendingGsForTurnTimer._turnKey!==gs._turnKey
+    )
+  );
+  const mpTurnSec = useMpTurnTimer({
+    isMultiplayer,
+    gs,
+    isLocalCurrentTurn,
+    isMpCthDecisionPhase,
+    isMpDecisionPhase: isLocalMpDecisionActive,
+    isTurnTimerSuspended: isMpTurnTimerSuspended,
+    playTickSound,
+    setGs,
+  });
   const mpHuntSec = useMpHuntRevealTimer({ isMultiplayer, gs, isLocalHuntTarget: timerIsHuntTarget, me: timerMe, playTickSound, setGs });
   const mpDecisionSec=useMpDecisionTimer({
     isMultiplayer,
@@ -2567,6 +2638,10 @@ export default function Game(){
 
   useEffect(()=>{
     if(!isMultiplayer||!gs||gs.gameOver)return;
+    if(isMpTurnTransitionPending){
+      mpTurnExpiredRef.current=false;
+      return;
+    }
     if(!isLocalCurrentTurn(gs)||gs.phase!=='ACTION'){
       mpTurnExpiredRef.current=false;
       return;
@@ -2575,7 +2650,7 @@ export default function Game(){
     if(!mpTurnExpiredRef.current||gs._mpEndTurn)return;
     if(isBlocked||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
     setGs(p=>p?{...p,_mpEndTurn:true}:p);
-  },[isMultiplayer,gs?.phase,gs?.currentTurn,gs?._turnKey,gs?._mpEndTurn,gs?.gameOver,mpTurnSec,isBlocked,animExiting]);
+  },[isMultiplayer,gs?.phase,gs?.currentTurn,gs?._turnKey,gs?._mpEndTurn,gs?.gameOver,mpTurnSec,isBlocked,animExiting,isMpTurnTransitionPending]);
 
   useVisualDiscardSync({ gs, anim, animQueueRef, pendingGsRef, getVisualDiscardForState, setVisualDiscard });
 
@@ -3364,38 +3439,39 @@ export default function Game(){
     const dr=gs.drawReveal;
     if(!dr?.card)return;
     const nextZhuLight=removeZhuLightCard(gs.zhuLight,dr.card);
+    const drawerIdx=dr.drawerIdx??gs.currentTurn??0;
     if(!hide){
-      setGs({...gs,zhuLight:nextZhuLight,drawReveal:{...dr,zhuResolved:true}});
+      const newGs={...gs,zhuLight:nextZhuLight,drawReveal:{...dr,zhuResolved:true},_turnStartLogs:[]};
+      triggerAnimQueue([{type:'DRAW_CARD',card:dr.card,triggerName:localDisplayName(drawerIdx,gs.players?.[drawerIdx]?.name),targetPid:drawerIdx,msgs:gs._drawLogs||[]}],newGs);
       return;
     }
     let P=copyPlayers(gs.players);
     let D=[...gs.deck,dr.card];
     let Disc=[...gs.discard];
-    const drawerIdx=dr.drawerIdx??gs.currentTurn??0;
     const res=playerDrawCard(P,D,Disc,drawerIdx,{...gs,zhuLight:nextZhuLight,_zhuBypassTopGuard:true});
     P=res.P;D=res.D;Disc=res.Disc;
     const L=[...gs.log,`【衔烛照幽】你将 ${cardLogText(dr.card,{alwaysShowName:true})} 藏到了牌堆底`];
     if(!res.drawnCard){
-      triggerAnimQueue([zhuHideCardStep(dr.card)],{...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,zhuLight:nextZhuLight});
+      triggerAnimQueue([zhuHideCardStep(dr.card)],{...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,zhuLight:nextZhuLight,_turnStartLogs:[]});
       return;
     }
     if(res.needGodChoice){
       const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'GOD_CHOICE',
         abilityData:{...gs.abilityData,godCard:res.drawnCard,drawerIdx,godEncounterCost:res.godEncounterCost},
-        drawReveal:null,zhuLight:nextZhuLight};
+        drawReveal:null,zhuLight:nextZhuLight,_turnStartLogs:[]};
       triggerAnimQueue([zhuHideCardStep(dr.card),{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
       return;
     }
     if(res.kept){
       const newGs={...gs,players:P,deck:D,discard:Disc,log:[...L,...(res.effectMsgs||[])],phase:'ACTION',
         drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:false,forcedKeep:false,drawerIdx,drawerName:P[drawerIdx]?.name},
-        zhuLight:nextZhuLight,...(res.statePatch||{})};
+        zhuLight:nextZhuLight,_turnStartLogs:[],...(res.statePatch||{})};
       triggerAnimQueue([zhuHideCardStep(dr.card),{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
       return;
     }
     const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'DRAW_REVEAL',
       drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:!!res.needsDecision,forcedKeep:!!res.forcedKeep,drawerIdx,drawerName:P[drawerIdx]?.name},
-      zhuLight:nextZhuLight};
+      zhuLight:nextZhuLight,_turnStartLogs:[]};
     triggerAnimQueue([zhuHideCardStep(dr.card),{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
   }
 
@@ -3403,38 +3479,39 @@ export default function Game(){
     const godCard=gs.abilityData?.godCard;
     if(!godCard)return;
     const nextZhuLight=removeZhuLightCard(gs.zhuLight,godCard);
+    const drawerIdx=gs.abilityData?.drawerIdx??gs.currentTurn??0;
     if(!hide){
-      setGs({...gs,zhuLight:nextZhuLight,abilityData:{...gs.abilityData,zhuResolved:true}});
+      const newGs={...gs,zhuLight:nextZhuLight,abilityData:{...gs.abilityData,zhuResolved:true},_turnStartLogs:[]};
+      triggerAnimQueue([{type:'DRAW_CARD',card:godCard,triggerName:localDisplayName(drawerIdx,gs.players?.[drawerIdx]?.name),targetPid:drawerIdx,msgs:gs._drawLogs||[]}],newGs);
       return;
     }
     let P=copyPlayers(gs.players);
     let D=[...gs.deck,godCard];
     let Disc=[...gs.discard];
-    const drawerIdx=gs.abilityData?.drawerIdx??gs.currentTurn??0;
     const res=playerDrawCard(P,D,Disc,drawerIdx,{...gs,zhuLight:nextZhuLight,_zhuBypassTopGuard:true});
     P=res.P;D=res.D;Disc=res.Disc;
     const L=[...gs.log,`【衔烛照幽】你将 ${cardLogText(godCard,{alwaysShowName:true})} 藏到了牌堆底`];
     if(!res.drawnCard){
-      triggerAnimQueue([zhuHideCardStep(godCard)],{...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:{},zhuLight:nextZhuLight});
+      triggerAnimQueue([zhuHideCardStep(godCard)],{...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:{},zhuLight:nextZhuLight,_turnStartLogs:[]});
       return;
     }
     if(res.needGodChoice){
       const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'GOD_CHOICE',
         abilityData:{...gs.abilityData,godCard:res.drawnCard,drawerIdx,godEncounterCost:res.godEncounterCost},
-        drawReveal:null,zhuLight:nextZhuLight};
+        drawReveal:null,zhuLight:nextZhuLight,_turnStartLogs:[]};
       triggerAnimQueue([zhuHideCardStep(godCard),{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
       return;
     }
     if(res.kept){
       const newGs={...gs,players:P,deck:D,discard:Disc,log:[...L,...(res.effectMsgs||[])],phase:'ACTION',
         drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:false,forcedKeep:false,drawerIdx,drawerName:P[drawerIdx]?.name},
-        abilityData:{},zhuLight:nextZhuLight,...(res.statePatch||{})};
+        abilityData:{},zhuLight:nextZhuLight,_turnStartLogs:[],...(res.statePatch||{})};
       triggerAnimQueue([zhuHideCardStep(godCard),{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
       return;
     }
     const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'DRAW_REVEAL',
       drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:!!res.needsDecision,forcedKeep:!!res.forcedKeep,drawerIdx,drawerName:P[drawerIdx]?.name},
-      abilityData:{},zhuLight:nextZhuLight};
+      abilityData:{},zhuLight:nextZhuLight,_turnStartLogs:[]};
     triggerAnimQueue([zhuHideCardStep(godCard),{type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:res.effectMsgs||[]}],newGs);
   }
 
@@ -5312,8 +5389,19 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       if(beginEndTurnReplay(baseGs,P,D,Disc,L,[...discardQueue,...cthQueue,...statQ]))return;
     }
     const postDiscardGs={...baseGs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,abilityData:{},...balanceStatePatch};
-    const newGs=startNextTurn(postDiscardGs);
-    const queue=buildPlayerTurnDrawQueue(postDiscardGs,newGs,[{type:'DISCARD',msgs:L.slice(-discarded.length-1)},...balanceQueue,statePatchStep({players:P,discard:Disc})]);
+    let newGs=startNextTurn(postDiscardGs);
+    const discardAnimMsgs=L.slice(-discarded.length-1);
+    const handLimitDiscardEvent=baseGs._isMP?createHandLimitDiscardEvent({
+      playerIdx:0,
+      playerName:P[0]?.name||'你',
+      cards:keptDisc.length?keptDisc:discarded,
+      msgs:discardAnimMsgs,
+    }):null;
+    if(handLimitDiscardEvent){
+      newGs={...newGs,_visualEvents:[handLimitDiscardEvent,...(newGs._visualEvents||[])]};
+    }
+    const queue=buildPlayerTurnDrawQueue(postDiscardGs,newGs,[{type:'DISCARD',msgs:discardAnimMsgs},...balanceQueue,statePatchStep({players:P,discard:Disc})]);
+    if(newGs._isMP&&newGs.currentTurn!==0)broadcastMpStateBeforeLocalReplay(newGs);
     triggerAnimQueue(queue,newGs);
   }
 
@@ -5443,6 +5531,27 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     triggerAnimQueue(queue,pendingGs);
   }
 
+  function markTurnDrawInspectionEventsSeen(events=[]){
+    const seqs=(Array.isArray(events)?events:[]).map(ev=>ev?.seq||0).filter(Boolean);
+    if(seqs.length)lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...seqs);
+  }
+
+  function buildAppTurnStartDrawReplay(newGs,{oldGs=gs,effectOldGs=null,timedOutDrawDiscardStep=null}={}){
+    const replayOldGs=oldGs&&lastInspectionSeqRef.current>(oldGs._inspectionSeq||0)
+      ?{...oldGs,_inspectionSeq:lastInspectionSeqRef.current}
+      :oldGs;
+    const replay=buildTurnStartDrawReplayQueue({
+      oldGs:replayOldGs,
+      newGs,
+      effectOldGs,
+      timedOutDrawDiscardStep,
+      buildQueue:buildAnimQueue,
+      buildFullHandSwapTransferQueue:buildFullHandSwapTransferQueueFromLogs,
+    });
+    markTurnDrawInspectionEventsSeen(replay.inspectionEvents);
+    return replay;
+  }
+
   // 多人游戏：当下一回合是他人时，为当前玩家播放翻牌动画（否则他们的本地 gs 更新无动画）
   function broadcastMpStateBeforeLocalReplay(nextGs){
     if(!nextGs?._isMP||!isMultiplayer||!socketRef.current||!roomModal?.roomId)return false;
@@ -5480,6 +5589,27 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       {statLogs:newGs._statLogs}
     ):[];
     const preTurnQ=buildTsathogguaSlimeGrantQueue(newGs);
+    const pendingZhuHideCard=getPendingZhuHideCardForState(newGs);
+    if(pendingZhuHideCard&&newGs.phase!=='ZHU_HIDE_AI_DRAW'){
+      const drawerPid=getTurnStartDrawerIdx(newGs);
+      const drawerName=newGs.players?.[drawerPid]?.name||'???';
+      const queue=[...preTurnQ];
+      if((newGs._turnStartLogs||[]).length){
+        queue.push({type:'YOUR_TURN',...(drawerPid===0?{}:{name:drawerName}),msgs:newGs._turnStartLogs});
+      }
+      if(newGs._isMP&&newGs.currentTurn!==0)broadcastMpStateBeforeLocalReplay(newGs);
+      if(queue.length){
+        pendingGsRef.current=newGs;
+        if(newGs._playersBeforeThisDraw){
+          visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
+        }
+        setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
+        triggerAnimQueue(queue,newGs);
+        return;
+      }
+      setGs(newGs);
+      return;
+    }
     if(
       newGs?.gameOver &&
       !newGs?._isMP &&
@@ -5505,35 +5635,17 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }
     if(newGs.currentTurn===0){
       const playerTurnStartMsgs=newGs._turnStartLogs||[];
-      const playerDrawMsgs=newGs._drawLogs||[];
-      if(newGs.drawReveal?.card){
+      const localTurnDrawReplay=(
+        newGs.drawReveal?.card||
+        (newGs.phase==='GOD_CHOICE'&&newGs.abilityData?.godCard)
+      )
+        ?buildAppTurnStartDrawReplay(newGs,{oldGs:gs,effectOldGs:{...gs,players:newGs._playersBeforeThisDraw||gs.players}})
+        :null;
+      if(localTurnDrawReplay?.drawnCard){
         pendingGsRef.current=newGs;
-        animQueueRef.current=[
-          {type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:'你',targetPid:0,msgs:playerDrawMsgs},
-                    ...drawStatQ
-        ];
+        if(localTurnDrawReplay.visualLock)visualStateLocks.lock(localTurnDrawReplay.visualLock);
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
-        triggerAnimQueue([...preTurnQ,{type:'YOUR_TURN',msgs:playerTurnStartMsgs},...animQueueRef.current],newGs);
-        return;
-      }
-        if(newGs.phase==='GOD_CHOICE'&&newGs.abilityData?.godCard){
-          pendingGsRef.current=newGs;
-          const inspectionEvents = (newGs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current);
-          let inspectionAndTailQueue = [];
-          if(inspectionEvents.length) {
-            lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
-            const inspectionFlow = buildInspectionEventFlow({...gs, players: newGs._playersBeforeThisDraw||gs.players}, inspectionEvents, {buildAnimQueue, copyPlayers});
-            const tailQueue = buildAnimQueue({players: inspectionFlow.players, log: inspectionFlow.log, _statEventSeq: inspectionFlow.statEventSeq}, newGs);
-            inspectionAndTailQueue = [...drawStatQ, ...inspectionFlow.queue, ...tailQueue];
-          } else {
-            inspectionAndTailQueue = drawStatQ;
-          }
-        animQueueRef.current=[
-          {type:'DRAW_CARD',card:newGs.abilityData.godCard,triggerName:'你',targetPid:0,msgs:playerDrawMsgs},
-                    ...inspectionAndTailQueue,
-        ];
-        setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
-        triggerAnimQueue([...preTurnQ,{type:'YOUR_TURN',msgs:playerTurnStartMsgs},...animQueueRef.current],newGs);
+        triggerAnimQueue([...preTurnQ,...localTurnDrawReplay.queue],newGs);
         return;
       }
       if(playerTurnStartMsgs.length&&newGs.phase==='ACTION'&&drawStatQ.length){
@@ -5562,29 +5674,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const drawnCard=ph==='GOD_CHOICE'?newGs.abilityData?.godCard:newGs.drawReveal?.card;
       // Also handle forced-card path (phase:'ACTION' but drawReveal.card set for animation)
       if(drawnCard&&(ph==='DRAW_REVEAL'||ph==='GOD_CHOICE'||ph==='DRAW_SELECT_TARGET'||ph==='ACTION')){
-        const drawerName=newGs.players[newGs.currentTurn]?.name||'???';
-        const drawerPid=newGs.currentTurn;
+        const replay=buildAppTurnStartDrawReplay(newGs,{oldGs:gs,effectOldGs:{...gs,players:newGs._playersBeforeThisDraw||gs.players}});
         pendingGsRef.current=newGs;
-        let inspectionAndTailQueue = [];
-        if(ph==='GOD_CHOICE'){
-          const inspectionEvents = (newGs._inspectionEvents||[]).filter(ev=>ev?.seq>(gs._inspectionSeq||0));
-          if(inspectionEvents.length) {
-            lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
-            const inspectionFlow = buildInspectionEventFlow({...gs, players: newGs._playersBeforeThisDraw||gs.players}, inspectionEvents, {buildAnimQueue, copyPlayers});
-            const tailQueue = buildAnimQueue({players: inspectionFlow.players, log: inspectionFlow.log, _statEventSeq: inspectionFlow.statEventSeq}, newGs);
-            inspectionAndTailQueue = [...drawStatQ, ...inspectionFlow.queue, ...tailQueue];
-          } else {
-            inspectionAndTailQueue = drawStatQ;
-          }
-        } else {
-          inspectionAndTailQueue = drawStatQ;
-        }
-        animQueueRef.current=[...inspectionAndTailQueue];
-        if(newGs._playersBeforeThisDraw){
-          visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
-        }
+        if(replay.visualLock)visualStateLocks.lock(replay.visualLock);
         broadcastMpStateBeforeLocalReplay(newGs);
-        triggerAnimQueue([...preTurnQ,{type:'YOUR_TURN',name:drawerName,msgs:newGs._turnStartLogs},{type:'DRAW_CARD',card:drawnCard,triggerName:drawerName,targetPid:drawerPid,msgs:newGs._drawLogs},...inspectionAndTailQueue],newGs);
+        triggerAnimQueue([...preTurnQ,...replay.queue],newGs);
         return;
       }
     }
@@ -5753,11 +5847,21 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       if(beginEndTurnReplay(gs,P,D,Disc,L,[...discardQueue,...cthQueue,...statQ]))return;
     }
     const postDiscardGs={...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,abilityData:{},...balanceStatePatch};
-    const newGs=startNextTurn(postDiscardGs);
+    let newGs=startNextTurn(postDiscardGs);
+    const discardAnimMsgs=L.slice(-discarded.length-1);
+    const handLimitDiscardEvent=gs._isMP&&discarded.length?createHandLimitDiscardEvent({
+      playerIdx:0,
+      playerName:P[0]?.name||'你',
+      cards:keptDisc.length?keptDisc:discarded,
+      msgs:discardAnimMsgs,
+    }):null;
+    if(handLimitDiscardEvent){
+      newGs={...newGs,_visualEvents:[handLimitDiscardEvent,...(newGs._visualEvents||[])]};
+    }
     if(discarded.length||cthDraws.length>0){
       const queue=[];
       if(discarded.length){
-        queue.push({type:'DISCARD',msgs:L.slice(-discarded.length-1)});
+        queue.push({type:'DISCARD',msgs:discardAnimMsgs});
         queue.push(...balanceQueue);
         queue.push(statePatchStep({players:P,discard:Disc}));
       }
@@ -5769,6 +5873,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       // 添加状态变化动画
       const statQ=buildAnimQueue(postDiscardGs,newGs);
       queue.push(...statQ);
+      if(newGs._isMP&&newGs.currentTurn!==0)broadcastMpStateBeforeLocalReplay(newGs);
       triggerAnimQueue(buildPlayerTurnDrawQueue(postDiscardGs,newGs,queue),newGs);
     }else if(newGs.currentTurn===0&&newGs.drawReveal?.card){
       triggerAnimQueue(buildPlayerTurnDrawQueue(postDiscardGs,newGs),newGs);
@@ -5839,49 +5944,35 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     // advanceQueue→setGs 不应再触发 useEffect 广播（否则非房主播完动画后会打断房主动画）
     receivedGsRef.current=true;
     if(pendingGs._isMP)suppressNextBroadcastRef.current=true;
+    if(pendingGs._isMP&&getPendingZhuHideCardForState(pendingGs)&&pendingGs.phase!=='ZHU_HIDE_AI_DRAW'){
+      const drawerPid=getTurnStartDrawerIdx(pendingGs);
+      const drawerName=pendingGs.players?.[drawerPid]?.name||'???';
+      if((pendingGs._turnStartLogs||[]).length){
+        if(pendingGs._playersBeforeThisDraw){
+          visualStateLocks.lock({players:pendingGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||pendingGs.zhuLight||null});
+        }
+        triggerAnimQueue([{type:'YOUR_TURN',...(drawerPid===0?{}:{name:drawerName}),msgs:pendingGs._turnStartLogs}],pendingGs);
+      }else{
+        setGs(pendingGs);
+      }
+      return;
+    }
     // 多人游戏中非当前操作玩家：播「XX的回合」+ 翻牌动画（与当前玩家体验一致）
     if(pendingGs._isMP&&pendingGs.currentTurn!==0){
-      const activeName=pendingGs.players[pendingGs.currentTurn]?.name||'???';
-      const drawerPid=pendingGs.currentTurn;
       const ph=pendingGs.phase;
       const drawnCard=ph==='GOD_CHOICE'
         ?pendingGs.abilityData?.godCard
         :pendingGs.drawReveal?.card;
+      const drawerPid=getTurnStartDrawerIdx(pendingGs);
+      const activeName=pendingGs.players[drawerPid]?.name||'???';
       if(drawnCard){
-        if(pendingGs._playersBeforeThisDraw){
-          visualStateLocks.lock({players:pendingGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||pendingGs.zhuLight||null});
-        }
+        const replay=buildAppTurnStartDrawReplay(pendingGs,{oldGs:gs,effectOldGs:{...gs,players:pendingGs._playersBeforeThisDraw||gs.players}});
+        if(replay.visualLock)visualStateLocks.lock(replay.visualLock);
         // 遮蔽真实 phase，动画结束后 advanceQueue 再还原（与 applyNextTurnGs 同样模式）
         suppressNextBroadcastRef.current=true; // pendingGs 已广播过，advanceQueue 不再回传
         pendingGsRef.current=pendingGs;
-        
-        let inspectionAndTailQueue = [];
-        const drawStatQ=bindAnimLogChunks(
-          buildAnimQueue({...gs,players:pendingGs._playersBeforeThisDraw||gs.players},pendingGs),
-          {statLogs:pendingGs._statLogs}
-        );
-        
-        if(ph==='GOD_CHOICE'){
-          const inspectionEvents = (pendingGs._inspectionEvents||[]).filter(ev=>ev?.seq>(gs._inspectionSeq||0));
-          if(inspectionEvents.length) {
-            lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
-            const inspectionFlow = buildInspectionEventFlow({...gs, players: pendingGs._playersBeforeThisDraw||gs.players}, inspectionEvents, {buildAnimQueue, copyPlayers});
-            const tailQueue = buildAnimQueue({players: inspectionFlow.players, log: inspectionFlow.log, _statEventSeq: inspectionFlow.statEventSeq}, pendingGs);
-            inspectionAndTailQueue = [...drawStatQ, ...inspectionFlow.queue, ...tailQueue];
-          } else {
-            inspectionAndTailQueue = drawStatQ;
-          }
-        } else {
-          inspectionAndTailQueue = drawStatQ;
-        }
-        
-        animQueueRef.current=[...inspectionAndTailQueue];
         setGs({...pendingGs,phase:'ACTION',drawReveal:null,abilityData:{}});
-        triggerAnimQueue([
-          {type:'YOUR_TURN',name:activeName,msgs:pendingGs._turnStartLogs},
-          {type:'DRAW_CARD',card:drawnCard,triggerName:activeName,targetPid:drawerPid,msgs:pendingGs._drawLogs},
-          ...inspectionAndTailQueue,
-        ],pendingGs);
+        triggerAnimQueue(replay.queue,pendingGs);
       }else{
         triggerAnimQueue([{type:'YOUR_TURN',name:activeName,msgs:pendingGs._turnStartLogs}],pendingGs);
       }
@@ -5891,19 +5982,21 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       ?pendingGs.abilityData?.godCard
       :(pendingGs.drawReveal?.card||pendingGs._drawnCard||null);
     if(localDrawnCard){
-      if(pendingGs._playersBeforeThisDraw){
-        visualStateLocks.lock({players:pendingGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||pendingGs.zhuLight||null});
+      const replay=buildAppTurnStartDrawReplay(pendingGs,{oldGs:gs,effectOldGs:{...gs,players:pendingGs._playersBeforeThisDraw||gs.players}});
+      if(replay.drawnCard){
+        if(replay.visualLock)visualStateLocks.lock(replay.visualLock);
+        triggerAnimQueue(replay.queue,pendingGs);
+      }else{
+        const drawStatQ=bindAnimLogChunks(
+          buildAnimQueue({...gs,players:pendingGs._playersBeforeThisDraw||gs.players},pendingGs),
+          {statLogs:pendingGs._statLogs}
+        );
+        triggerAnimQueue([
+          {type:'YOUR_TURN',msgs:pendingGs._turnStartLogs},
+          {type:'DRAW_CARD',card:localDrawnCard,triggerName:'你',targetPid:0,msgs:pendingGs._drawLogs},
+          ...drawStatQ
+        ],pendingGs);
       }
-      // Normal draw: YOUR_TURN → card flip → apply state
-      const drawStatQ=bindAnimLogChunks(
-        buildAnimQueue({...gs,players:pendingGs._playersBeforeThisDraw||gs.players},pendingGs),
-        {statLogs:pendingGs._statLogs}
-      );
-      triggerAnimQueue([
-        {type:'YOUR_TURN',msgs:pendingGs._turnStartLogs},
-        {type:'DRAW_CARD',card:localDrawnCard,triggerName:'你',targetPid:0,msgs:pendingGs._drawLogs},
-        ...drawStatQ
-      ],pendingGs);
     }else{
       const queue=[{type:'YOUR_TURN',msgs:pendingGs._turnStartLogs}];
       queue.push(...bindAnimLogChunks(

@@ -16,6 +16,25 @@ function startSecondCountdown({ seconds, warningAt, setSeconds, intervalRef, pla
   return intervalId;
 }
 
+export function getMpTurnTimerOwnerKey(gs) {
+  if (!gs) return '';
+  return `${gs._turnKey ?? 'turn'}:${gs.currentTurn ?? 'none'}`;
+}
+
+export function getMpTurnTimerMode({
+  isMultiplayer,
+  gs,
+  isLocalCurrentTurn,
+  isMpCthDecisionPhase,
+  isMpDecisionPhase = false,
+  isTurnTimerSuspended = false,
+}) {
+  if (!isMultiplayer || !gs || gs.gameOver || !isLocalCurrentTurn(gs)) return 'stopped';
+  if (gs.phase === 'DISCARD_PHASE' || isMpCthDecisionPhase) return 'stopped';
+  if (isTurnTimerSuspended || gs.phase === 'HUNT_WAIT_REVEAL' || isMpDecisionPhase) return 'paused';
+  return gs.phase === 'ACTION' ? 'running' : 'stopped';
+}
+
 export function useMpCthDecisionTimer({
   isMpCthDecisionPhase,
   gs,
@@ -89,6 +108,7 @@ export function useMpTurnTimer({
   isLocalCurrentTurn,
   isMpCthDecisionPhase,
   isMpDecisionPhase = false,
+  isTurnTimerSuspended = false,
   playTickSound,
   setGs,
 }) {
@@ -97,78 +117,67 @@ export function useMpTurnTimer({
   const mpTurnTimeoutRef = useRef(null);
   const mpTurnStartRef = useRef(null);
   const mpTurnPausedElapsedRef = useRef(null);
+  const mpTurnOwnerRef = useRef(null);
 
   useEffect(() => {
-    if (!isMultiplayer || !gs || gs.gameOver || !isLocalCurrentTurn(gs)) return;
-    mpTurnPausedElapsedRef.current = null;
-    mpTurnStartRef.current = Date.now();
-    const intervalId = startSecondCountdown({
-      seconds: 45,
-      warningAt: 10,
-      setSeconds: setMpTurnSec,
-      intervalRef: mpTurnIntervalRef,
-      playTickSound,
-    });
-    mpTurnTimeoutRef.current = setTimeout(() => setGs(p => p ? { ...p, _mpEndTurn: true } : p), 45000);
-    return () => {
+    const clearTurnTimer = () => {
       clearTimeout(mpTurnTimeoutRef.current);
       mpTurnTimeoutRef.current = null;
-      clearInterval(intervalId);
+      clearInterval(mpTurnIntervalRef.current);
+      mpTurnIntervalRef.current = null;
       setMpTurnSec(null);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMultiplayer, gs?.currentTurn, gs?._turnKey, gs?.gameOver, playTickSound]);
-
-  useEffect(() => {
-    if (!isMultiplayer || gs?.phase !== 'DISCARD_PHASE') return;
-    clearTimeout(mpTurnTimeoutRef.current);
-    mpTurnTimeoutRef.current = null;
-    clearInterval(mpTurnIntervalRef.current);
-    setMpTurnSec(null);
-  }, [isMultiplayer, gs?.phase]);
-
-  useEffect(() => {
-    if (!isMpCthDecisionPhase && !isMpDecisionPhase) return;
-    clearTimeout(mpTurnTimeoutRef.current);
-    mpTurnTimeoutRef.current = null;
-    clearInterval(mpTurnIntervalRef.current);
-    setMpTurnSec(null);
-  }, [isMpCthDecisionPhase, isMpDecisionPhase]);
-
-  useEffect(() => {
-    if (!isMultiplayer || (gs?.phase !== 'HUNT_WAIT_REVEAL' && !isMpDecisionPhase)) return;
-    const elapsed = mpTurnStartRef.current ? Date.now() - mpTurnStartRef.current : 0;
-    mpTurnPausedElapsedRef.current = elapsed;
-    clearTimeout(mpTurnTimeoutRef.current);
-    mpTurnTimeoutRef.current = null;
-    clearInterval(mpTurnIntervalRef.current);
-  }, [isMultiplayer, gs?.phase, isMpDecisionPhase]);
-
-  useEffect(() => {
-    if (!isMultiplayer || !gs || gs.gameOver) return;
-    if (gs.phase === 'HUNT_WAIT_REVEAL') return;
-    if (isMpDecisionPhase) return;
-    if (mpTurnPausedElapsedRef.current === null) return;
-    if (!isLocalCurrentTurn(gs)) return;
-    const elapsedBefore = mpTurnPausedElapsedRef.current;
-    mpTurnPausedElapsedRef.current = null;
-    const remMs = Math.max(0, 45000 - elapsedBefore);
-    const remSec = Math.round(remMs / 1000);
-    if (remSec <= 0) {
-      setGs(p => p ? { ...p, _mpEndTurn: true } : p);
-      return;
+    const mode = getMpTurnTimerMode({
+      isMultiplayer,
+      gs,
+      isLocalCurrentTurn,
+      isMpCthDecisionPhase,
+      isMpDecisionPhase,
+      isTurnTimerSuspended,
+    });
+    const ownerKey = getMpTurnTimerOwnerKey(gs);
+    if (mode === 'stopped') {
+      clearTurnTimer();
+      mpTurnStartRef.current = null;
+      mpTurnPausedElapsedRef.current = null;
+      mpTurnOwnerRef.current = null;
+      return clearTurnTimer;
     }
+    if (mode === 'paused') {
+      if (mpTurnStartRef.current && mpTurnOwnerRef.current === ownerKey) {
+        mpTurnPausedElapsedRef.current = Date.now() - mpTurnStartRef.current;
+      }
+      clearTurnTimer();
+      return clearTurnTimer;
+    }
+
+    const pausedElapsed = mpTurnOwnerRef.current === ownerKey ? mpTurnPausedElapsedRef.current : null;
+    const elapsedBefore = Math.max(0, pausedElapsed || 0);
+    const remMs = Math.max(0, 45000 - elapsedBefore);
+    mpTurnPausedElapsedRef.current = null;
+    mpTurnOwnerRef.current = ownerKey;
     mpTurnStartRef.current = Date.now() - elapsedBefore;
-    startSecondCountdown({
-      seconds: remSec,
+    if (remMs <= 0) {
+      setGs(p => p ? { ...p, _mpEndTurn: true } : p);
+      return clearTurnTimer;
+    }
+    const intervalId = startSecondCountdown({
+      seconds: Math.max(1, Math.ceil(remMs / 1000)),
       warningAt: 10,
       setSeconds: setMpTurnSec,
       intervalRef: mpTurnIntervalRef,
       playTickSound,
     });
     mpTurnTimeoutRef.current = setTimeout(() => setGs(p => p ? { ...p, _mpEndTurn: true } : p), remMs);
+    return () => {
+      clearTimeout(mpTurnTimeoutRef.current);
+      mpTurnTimeoutRef.current = null;
+      clearInterval(intervalId);
+      mpTurnIntervalRef.current = null;
+      setMpTurnSec(null);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMultiplayer, gs?.phase, gs?.currentTurn, gs?.gameOver, isMpDecisionPhase, playTickSound]);
+  }, [isMultiplayer, gs?.phase, gs?.currentTurn, gs?._turnKey, gs?.gameOver, isMpCthDecisionPhase, isMpDecisionPhase, isTurnTimerSuspended, playTickSound]);
 
   return mpTurnSec;
 }

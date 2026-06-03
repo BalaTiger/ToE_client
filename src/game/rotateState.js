@@ -179,7 +179,7 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
   return events.map(event => {
     if (event?.type === 'timedOutDrawDiscard') return rotateTimedOutDrawDiscardEvent(event, rotateIndex);
     if (event?.type === 'earthquake') return rotateEarthquakeVisualEvent(event, rotateIndex, myIndex);
-    if (event?.type === 'turnStart' || event?.type === 'drawCard') {
+    if (event?.type === 'turnStart' || event?.type === 'drawCard' || event?.type === 'handLimitDiscard') {
       return {
         ...event,
         playerIdx: event.playerIdx != null ? rotateIndex(event.playerIdx) : event.playerIdx,

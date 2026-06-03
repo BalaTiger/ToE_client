@@ -2,10 +2,16 @@ import { bindAnimLogChunks, isDrawLikeLog, isTurnStartLog } from './animLogs';
 import { buildBewitchForcedCardQueue, buildInspectionAwareAnimQueue, fullHandSwapSteps, statePatchStep } from './animQueueHelpers';
 import { cardLogText, copyPlayers } from './coreUtils';
 import { isLocalCurrentTurn, isLocalSeatIndex, localDisplayName } from './rotateState';
-import { buildTurnStartDrawReplayQueue, getTurnStartDrawBaselineLog, withClearedReplayAnimFields } from './turnAnimState';
+import {
+  buildTurnStartDrawReplayQueue,
+  getTurnStartDrawBaselineLog,
+  getTurnStartDrawerIdx,
+  withClearedReplayAnimFields,
+} from './turnAnimState';
 import {
   buildStatStepsFromVisualEvents,
   buildTimedOutDrawDiscardStepFromVisualEvents,
+  buildHandLimitDiscardStepsFromVisualEvents,
   clearVisualEvents,
   getVisualEventIdsFromState,
   getBewitchGiftVisualEvent,
@@ -26,6 +32,7 @@ export const MP_REMOTE_REPLAY = {
 
 function hasDrawAnimationState(state) {
   if (state?.gameOver) return false;
+  if (isPendingZhuHideState(state)) return false;
   return (
     state.phase === 'DRAW_REVEAL'
     || state.phase === 'DRAW_SELECT_TARGET'
@@ -37,6 +44,39 @@ function hasDrawAnimationState(state) {
       && state.drawReveal?.drawerIdx != null
     )
   );
+}
+
+function isPendingZhuHideState(state) {
+  const ids = state?.zhuLight?.cardIds || [];
+  if (!ids.length && state?.phase !== 'ZHU_HIDE_AI_DRAW') return false;
+  if (state?.phase === 'DRAW_REVEAL') {
+    const card = state.drawReveal?.card;
+    return !!(card?.id && !state.drawReveal?.zhuResolved && ids.includes(card.id));
+  }
+  if (state?.phase === 'GOD_CHOICE') {
+    const card = state.abilityData?.godCard;
+    return !!(card?.id && !state.abilityData?.zhuResolved && ids.includes(card.id));
+  }
+  return state?.phase === 'ZHU_HIDE_AI_DRAW';
+}
+
+function buildZhuHideWaitAction(rotated) {
+  const drawerPid = getTurnStartDrawerIdx(rotated);
+  const drawerName = rotated?.players?.[drawerPid]?.name || '???';
+  if (!Array.isArray(rotated?._turnStartLogs) || !rotated._turnStartLogs.length) {
+    return { type: MP_REMOTE_REPLAY.SET_STATE, gs: clearRemoteReplayHints(rotated) };
+  }
+  return {
+    type: MP_REMOTE_REPLAY.START_ANIM,
+    maskedGs: buildMaskedActionState(rotated),
+    pendingGs: clearRemoteReplayHints(rotated),
+    anim: {
+      type: 'YOUR_TURN',
+      ...(drawerPid === 0 ? {} : { name: drawerName }),
+      msgs: rotated._turnStartLogs,
+    },
+    queue: [],
+  };
 }
 
 function buildMaskedActionState(state) {
@@ -198,7 +238,12 @@ export function buildMpRemoteReplayAction({
 
   const logDelta = getLogDelta(previousGs, rotated);
   const timedOutDrawDiscardStep = buildTimedOutDrawDiscardStep(rotated, previousGs, logDelta);
+  const handLimitDiscardSteps = buildHandLimitDiscardStepsFromVisualEvents(rotated);
   const isDrawAnimationState = hasDrawAnimationState(rotated);
+  const previousPendingZhuHide = isPendingZhuHideState(previousGs);
+  if (isPendingZhuHideState(rotated)) {
+    return withConsumedVisualEvents(buildZhuHideWaitAction(rotated));
+  }
   const swapEvent = getSwapCardsVisualEvent(rotated);
   if (swapEvent) {
     const queue = [
@@ -305,12 +350,15 @@ export function buildMpRemoteReplayAction({
       oldGs: previousGs,
       newGs: rotated,
       timedOutDrawDiscardStep,
+      preTurnSteps: handLimitDiscardSteps,
       buildQueue: buildAnimQueue,
       buildFullHandSwapTransferQueue: buildFullHandSwapTransferQueueFromLogs,
       effectOldGs: { ...rotated, players: beforeDrawPlayers, log: getTurnStartDrawBaselineLog(rotated) },
     });
     if (!replay.drawnCard) return { type: MP_REMOTE_REPLAY.SET_STATE, gs: rotated };
-    const queue = [...replay.queue];
+    const queue = previousPendingZhuHide
+      ? [replay.drawCardStep, ...replay.drawEffectQ]
+      : [...replay.queue];
     if (replay.drawEffectQ.length) queue.push(statePatchStep({ players: rotated.players, discard: rotated.discard }));
     return withConsumedVisualEvents({
       type: MP_REMOTE_REPLAY.ANIM_QUEUE,
@@ -328,11 +376,22 @@ export function buildMpRemoteReplayAction({
       oldGs: previousGs,
       newGs: rotated,
       timedOutDrawDiscardStep,
+      preTurnSteps: handLimitDiscardSteps,
       buildQueue: buildAnimQueue,
       buildFullHandSwapTransferQueue: buildFullHandSwapTransferQueueFromLogs,
       effectOldGs: { ...previousGs, players: beforeDrawPlayers },
     });
     if (!replay.drawnCard) return { type: MP_REMOTE_REPLAY.SET_STATE, gs: rotated };
+    if (previousPendingZhuHide) {
+      return withConsumedVisualEvents({
+        type: MP_REMOTE_REPLAY.START_ANIM,
+        maskedGs: buildMaskedActionState(rotated),
+        pendingGs: clearRemoteReplayHints(rotated),
+        anim: replay.drawCardStep,
+        queue: replay.drawEffectQ,
+        visualLock: replay.visualLock,
+      });
+    }
     return withConsumedVisualEvents({
       type: MP_REMOTE_REPLAY.START_ANIM,
       maskedGs: buildMaskedActionState(rotated),

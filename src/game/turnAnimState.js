@@ -1,13 +1,15 @@
-import { cardLogText } from './coreUtils';
-import { isLocalCurrentTurn, localDisplayName } from './rotateState';
+import { cardLogText, copyPlayers } from './coreUtils';
+import { localDisplayName } from './rotateState';
 import { bindAnimLogChunks } from './animLogs';
 import { buildAnimQueue, buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
-import { cardTransferStep, statePatchStep } from './animQueueHelpers';
+import { buildInspectionEventFlow, cardTransferStep, statePatchStep } from './animQueueHelpers';
 import {
   buildDrawCardStepFromVisualEvents,
-  buildStatStepsFromVisualEvents,
   buildTurnStartStepFromVisualEvents,
+  getVisualEvents,
+  VISUAL_EVENT,
 } from './visualEvents';
+import { statEventsToAnimQueue } from './statEvents';
 
 export const EMPTY_TURN_ANIM_FIELDS = Object.freeze({
   _aiDrawnCard: null,
@@ -88,13 +90,9 @@ export function buildLocalCthDecisionState(baseState, {
 export function buildPlayerTurnDrawQueue(oldGs, newGs, seedQueue = []) {
   const queue = [...(Array.isArray(seedQueue) ? seedQueue : [])];
   queue.push(...buildTsathogguaSlimeGrantQueue(newGs));
-  if (isLocalCurrentTurn(newGs) && newGs.drawReveal?.card) {
-    queue.push(
-      { type: 'YOUR_TURN', msgs: newGs._turnStartLogs },
-      { type: 'DRAW_CARD', card: newGs.drawReveal.card, triggerName: '你', targetPid: 0, msgs: newGs._drawLogs }
-    );
-    const statQ = bindAnimLogChunks(buildAnimQueue(oldGs, newGs), { statLogs: newGs._statLogs });
-    queue.push(...statQ);
+  const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+  if (replay.drawnCard) {
+    queue.push(...replay.queue);
   }
   return queue;
 }
@@ -170,24 +168,71 @@ function filterFallbackDrawEffects(queue, state, visualStatQ = []) {
     : queue.filter(step => !isStatAnimationStep(step));
 }
 
+function getFreshInspectionEvents(oldGs, newGs) {
+  const oldSeq = oldGs?._inspectionSeq || 0;
+  return (newGs?._inspectionEvents || []).filter(ev => ev?.seq > oldSeq);
+}
+
+function getInspectionStatSeqs(inspectionEvents = []) {
+  return new Set(
+    inspectionEvents
+      .flatMap(ev => [
+        ev?.statEventSeq,
+        ...(Array.isArray(ev?.statEvents) ? ev.statEvents.map(statEvent => statEvent?.seq) : []),
+      ])
+      .filter(seq => seq != null)
+  );
+}
+
+function getInspectionLogLines(inspectionEvents = []) {
+  const lines = [];
+  inspectionEvents.forEach(ev => {
+    const beforeLog = Array.isArray(ev?.beforeLog) ? ev.beforeLog : [];
+    const afterLog = Array.isArray(ev?.afterLog) ? ev.afterLog : [];
+    let prefix = 0;
+    while (prefix < beforeLog.length && prefix < afterLog.length && beforeLog[prefix] === afterLog[prefix]) prefix += 1;
+    lines.push(...afterLog.slice(prefix));
+  });
+  return new Set(lines.filter(line => typeof line === 'string' && line.length));
+}
+
+function withoutLogLines(lines = [], excluded = new Set()) {
+  if (!excluded?.size) return lines;
+  return (Array.isArray(lines) ? lines : []).filter(line => !excluded.has(line));
+}
+
+function buildFilteredStatStepsFromVisualEvents(state, players, shouldKeepEvent, excludedMsgs = new Set()) {
+  const event = getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.STAT_EVENTS && Array.isArray(ev.statEvents) && ev.statEvents.length);
+  if (!event) return [];
+  const statEvents = event.statEvents.filter(statEvent => shouldKeepEvent(statEvent));
+  if (!statEvents.length) return [];
+  return statEventsToAnimQueue(statEvents, players || state?.players || [], withoutLogLines(event.msgs || [], excludedMsgs));
+}
+
 export function buildTurnStartDrawReplayQueue({
   oldGs,
   newGs,
   effectOldGs,
   timedOutDrawDiscardStep = null,
+  preTurnSteps = [],
   buildQueue = buildAnimQueue,
   buildFullHandSwapTransferQueue = buildFullHandSwapTransferQueueFromLogs,
 } = {}) {
+  const boundarySteps = [
+    ...(timedOutDrawDiscardStep ? [timedOutDrawDiscardStep] : []),
+    ...(Array.isArray(preTurnSteps) ? preTurnSteps.filter(Boolean) : []),
+  ];
   const drawnCard = getTurnStartDrawnCard(newGs);
   if (!drawnCard) {
     return {
       drawnCard: null,
       beforeDrawPlayers: newGs?.players || oldGs?.players || [],
       drawEffectQ: [],
-      queue: [],
-      startAnim: timedOutDrawDiscardStep || null,
-      startQueue: [],
+      queue: [...boundarySteps],
+      startAnim: boundarySteps[0] || null,
+      startQueue: boundarySteps.slice(1),
       visualLock: null,
+      inspectionEvents: [],
     };
   }
   const drawerPid = getTurnStartDrawerIdx(newGs);
@@ -214,27 +259,61 @@ export function buildTurnStartDrawReplayQueue({
     players: beforeDrawPlayers,
     log: getTurnStartDrawBaselineLog(newGs),
   };
+  const inspectionEvents = getFreshInspectionEvents(oldGs, newGs);
+  const inspectionStatSeqs = getInspectionStatSeqs(inspectionEvents);
+  const inspectionLogLines = getInspectionLogLines(inspectionEvents);
   const drawEffectQBase = bindAnimLogChunks(
     buildQueue(fallbackOldGs, newGs),
-    { statLogs: newGs?._statLogs },
+    { statLogs: withoutLogLines(newGs?._statLogs, inspectionLogLines) },
   );
-  const visualStatQ = buildStatStepsFromVisualEvents(newGs, beforeDrawPlayers);
+  const visualStatQ = buildFilteredStatStepsFromVisualEvents(
+    newGs,
+    beforeDrawPlayers,
+    statEvent => !inspectionStatSeqs.has(statEvent?.seq),
+    inspectionLogLines
+  );
   const filteredDrawEffectQBase = filterFallbackDrawEffects(drawEffectQBase, newGs, visualStatQ);
   const drawEffectQWithVisualStats = visualStatQ.length
     ? [...visualStatQ, ...filteredDrawEffectQBase.filter(step => !isStatAnimationStep(step))]
     : filteredDrawEffectQBase;
-  const drawEffectQ = drawFullHandSwapQ.length
-    ? [...drawFullHandSwapQ, ...drawEffectQWithVisualStats.filter(step => step.type !== 'CARD_TRANSFER')]
+  const inspectionQ = [];
+  if (inspectionEvents.length) {
+    const firstInspection = inspectionEvents[0];
+    const inspectionFlow = buildInspectionEventFlow(
+      {
+        players: copyPlayers(firstInspection?.beforePlayers || beforeDrawPlayers),
+        log: [...(firstInspection?.beforeLog || getTurnStartDrawBaselineLog(newGs))],
+      },
+      inspectionEvents,
+      { buildAnimQueue: buildQueue, copyPlayers }
+    );
+    const maxInspectionSeq = Math.max(oldGs?._inspectionSeq || 0, ...inspectionEvents.map(ev => ev?.seq || 0));
+    const tailQueue = buildQueue(
+      {
+        players: inspectionFlow.players,
+        log: inspectionFlow.log,
+        _statEventSeq: inspectionFlow.statEventSeq,
+        _inspectionSeq: maxInspectionSeq,
+      },
+      newGs
+    );
+    inspectionQ.push(...inspectionFlow.queue, ...tailQueue);
+  }
+  const drawEffectQWithInspections = inspectionQ.length
+    ? [...drawEffectQWithVisualStats, ...inspectionQ]
     : drawEffectQWithVisualStats;
+  const drawEffectQ = drawFullHandSwapQ.length
+    ? [...drawFullHandSwapQ, ...drawEffectQWithInspections.filter(step => step.type !== 'CARD_TRANSFER')]
+    : drawEffectQWithInspections;
   const queue = [
-    ...(timedOutDrawDiscardStep ? [timedOutDrawDiscardStep] : []),
+    ...boundarySteps,
     turnStartStep,
     drawCardStep,
     ...drawEffectQ,
   ];
-  const startAnim = timedOutDrawDiscardStep || turnStartStep;
+  const startAnim = boundarySteps[0] || turnStartStep;
   const startQueue = [
-    ...(timedOutDrawDiscardStep ? [turnStartStep] : []),
+    ...(boundarySteps.length ? [...boundarySteps.slice(1), turnStartStep] : []),
     drawCardStep,
     ...drawEffectQ,
   ];
@@ -249,6 +328,7 @@ export function buildTurnStartDrawReplayQueue({
     queue,
     startAnim,
     startQueue,
+    inspectionEvents,
     visualLock: newGs?._playersBeforeThisDraw
       ? { players: beforeDrawPlayers, zhuLight: oldGs?.zhuLight || newGs?.zhuLight || null }
       : null,

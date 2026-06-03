@@ -11,6 +11,7 @@ export const VISUAL_EVENT = {
   SWAP_CARDS: 'swapCards',
   HUNT_TARGET: 'huntTarget',
   HUNT_REVEAL: 'huntReveal',
+  HAND_LIMIT_DISCARD: 'handLimitDiscard',
   EARTHQUAKE: 'earthquake',
 };
 
@@ -31,6 +32,9 @@ function makeVisualEventId(event) {
   if (event.sourceIdx != null) parts.push(`s${event.sourceIdx}`);
   if (event.targetIdx != null) parts.push(`t${event.targetIdx}`);
   if (event.card) parts.push(`c${cardIdentity(event.card)}`);
+  if (Array.isArray(event.cards) && event.cards.length) {
+    parts.push(`cards${event.cards.map(cardIdentity).join(',')}`);
+  }
   if (Array.isArray(event.statEvents) && event.statEvents.length) {
     parts.push(`seq${event.statEvents.map(ev => ev?.seq ?? `${ev?.type || 'stat'}:${ev?.target ?? ''}`).join(',')}`);
   }
@@ -135,6 +139,18 @@ export function createHuntRevealEvent({ sourceIdx = 0, targetIdx = 0, card, msgs
     card,
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'action');
+}
+
+export function createHandLimitDiscardEvent({ playerIdx = 0, playerName = '该玩家', cards = [], msgs = [] } = {}) {
+  const normalizedCards = Array.isArray(cards) ? cards.filter(Boolean) : [];
+  if (!normalizedCards.length && !(Array.isArray(msgs) && msgs.length)) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.HAND_LIMIT_DISCARD,
+    playerIdx,
+    playerName,
+    cards: normalizedCards,
+    msgs: Array.isArray(msgs) ? msgs : [],
+  }, 'turn');
 }
 
 export function buildHuntRevealStepFromVisualEvent(event, state) {
@@ -300,6 +316,21 @@ export function buildTimedOutDrawDiscardStepFromVisualEvents(state) {
     targetPid: drawerIdx,
     msgs: [`(超时) ${displayName} 弃置了 ${cardLogText(event.card, { alwaysShowName: true })}`],
   };
+}
+
+export function buildHandLimitDiscardStepsFromVisualEvents(state) {
+  const event = getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.HAND_LIMIT_DISCARD);
+  if (!event) return [];
+  const playerIdx = event.playerIdx ?? 0;
+  const playerName = event.playerName || state?.players?.[playerIdx]?.name || '???';
+  const displayName = localDisplayName(playerIdx, playerName);
+  return [{
+    type: 'DISCARD',
+    card: Array.isArray(event.cards) ? event.cards[0] : null,
+    triggerName: displayName,
+    targetPid: playerIdx,
+    msgs: Array.isArray(event.msgs) ? event.msgs : [],
+  }];
 }
 
 export function buildTurnStartStepFromVisualEvents(state) {
