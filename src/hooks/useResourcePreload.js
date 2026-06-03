@@ -49,6 +49,34 @@ const RESOURCE_FILES = [
   ...CRITICAL_IMAGE_FILES.map(path => ({ path, type: 'image' })),
 ];
 
+const RESOURCE_SIZE_FALLBACK = {
+  '/sounds/BGM/mainTheme.mp3': 4025782,
+  '/sounds/BGM/battle.mp3': 1961472,
+  '/sounds/SE/hpDamageVariants/hpDamage1.mp3': 4428,
+  '/sounds/SE/hpDamageVariants/hpDamage2.mp3': 3331,
+  '/sounds/SE/hpDamageVariants/hpDamage3.mp3': 3175,
+  '/sounds/SE/hpDamageVariants/hpDamage4.mp3': 4478,
+  '/sounds/SE/hpDamageVariants/hpDamage5.mp3': 3332,
+  '/sounds/SE/hpDamageVariants/hpDamage6.mp3': 7141,
+  '/sounds/SE/apophisEclipseDrums.mp3': 40773,
+  '/videos/ancient_god_tentacles.mp4': 1245936,
+  '/img/btn/btn_author.png': 24830,
+  '/img/btn/btn_bright_green.png': 69629,
+  '/img/btn/btn_bright_purple.png': 71888,
+  '/img/btn/btn_dark_green.png': 77892,
+  '/img/btn/btn_dark_red.png': 79375,
+  '/img/btn/btn_dark_purple.png': 80330,
+  '/img/btn/btn_roadmap.png': 26210,
+  '/img/deco/deco_cth-no-bg.png': 21078,
+  '/img/line/line_split-no-bg.png': 10753,
+  '/img/line/line_titleguard-no-bg.png': 2336,
+  '/img/logo/logo_cu-no-bg.png': 5277,
+  '/img/logo/logo_hu-no-bg.png': 5418,
+  '/img/logo/logo_tr-no-bg.png': 7888,
+  '/img/title/texture_toehp.png': 278527,
+  '/img/loading.png': 14538,
+};
+
 const DEFERRED_RESOURCE_FILES = [
   ...DEFERRED_IMAGE_FILES.map(path => ({ path, type: 'image' })),
 ];
@@ -68,14 +96,22 @@ export function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+function getFallbackResourceSize(resource) {
+  return RESOURCE_SIZE_FALLBACK[resource.path] || 0;
+}
+
 async function getResourceSize(resource) {
+  const fallbackSize = getFallbackResourceSize(resource);
   try {
     const response = await fetch(buildPublicUrl(resource.path), { method: 'HEAD' });
-    return parseInt(response.headers.get('content-length') || '0', 10) || 0;
+    if (response.ok) {
+      const headerSize = parseInt(response.headers.get('content-length') || '0', 10) || 0;
+      if (headerSize > 0) return headerSize;
+    }
   } catch (error) {
-    console.error(`Failed to get size for ${resource.path}`, error);
-    return 0;
+    // Some static hosts do not support HEAD/content-length; fallback sizes keep the UI useful.
   }
+  return fallbackSize;
 }
 
 function loadResource(resource) {

@@ -15,6 +15,9 @@ export const VISUAL_EVENT = {
   EARTHQUAKE: 'earthquake',
 };
 
+const visualEventInstanceId = Math.random().toString(36).slice(2, 10);
+let earthquakeEventSeq = 0;
+
 function cardIdentity(card) {
   if (!card) return 'none';
   return card.id || card.uid || [card.key, card.godKey, card.name, card.type].filter(Boolean).join(':') || 'card';
@@ -174,6 +177,7 @@ export function createEarthquakeEvent({
 } = {}) {
   return withVisualEventMeta({
     type: VISUAL_EVENT.EARTHQUAKE,
+    id: `${VISUAL_EVENT.EARTHQUAKE}:${visualEventInstanceId}:${++earthquakeEventSeq}`,
     beforePlayers: Array.isArray(beforePlayers) ? beforePlayers : [],
     beforeDiscard: Array.isArray(beforeDiscard) ? beforeDiscard : [],
     discardEvents: Array.isArray(discardEvents) ? discardEvents.filter(Boolean) : [],

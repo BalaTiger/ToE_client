@@ -789,6 +789,32 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.consumedVisualEventIds?.length).toBeGreaterThan(0);
   });
 
+  it('does not mistake a new earthquake with the same visible payload for an already consumed one', () => {
+    const quakeCard = { id: 'quake', name: '地动山摇', key: 'B2', type: 'allDiscard' };
+    const drawLog = '艾伦 摸到 [B2] 地动山摇（强制触发）';
+    const firstEvent = createEarthquakeEvent({ beforePlayers: [], beforeDiscard: [], discardEvents: [], msgs: [drawLog] });
+    const secondEvent = createEarthquakeEvent({ beforePlayers: [], beforeDiscard: [], discardEvents: [], msgs: [drawLog] });
+    expect(secondEvent.id).not.toBe(firstEvent.id);
+
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      drawReveal: { card: quakeCard, drawerIdx: 1, needsDecision: false },
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _drawLogs: [drawLog],
+      _playersBeforeThisDraw: [player('你-before'), player('艾伦-before'), player('贝拉-before')],
+      _visualEvents: [secondEvent],
+    }), {
+      previousGs: makeState({ currentTurn: 0, phase: 'ACTION' }),
+      consumedVisualEventIds: new Set([firstEvent.id]),
+      buildAnimQueue,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.map(step => step.type)).toContain('EARTHQUAKE');
+    expect(action.consumedVisualEventIds).toContain(secondEvent.id);
+  });
+
   it('uses hunt visualEvents for target lock animation', () => {
     const drawLog = '艾伦 摸到 [B2] 地动山摇（强制触发）';
     const action = buildAction(makeState({

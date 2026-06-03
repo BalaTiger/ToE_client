@@ -33,6 +33,7 @@ import {
   removeCardsFromDiscard,
   makeInspectionMeta,
   clearPendingAnimDeathFlags,
+  killPlayerState,
   applyHpDamageWithLink,
   applyFx,
   applySanLossToPlayerWithInspection,
@@ -608,6 +609,19 @@ export default function Game(){
   const consumedVisualEventIdsRef=useRef(new Set()); // 联机视觉事件去重，避免重复同步包重播旧动画
   const gameEndSentRef=useRef(false);      // 防止 gameEnd 重复发送
   const [isDisconnected,setIsDisconnected]=useState(false);
+  function resetDisconnectedToStart(){
+    setIsDisconnected(false);
+    closeRoomModal();
+    setOnlineOptionsModal(false);
+    closeLobbyModal();
+    setIsMultiplayer(false);
+    isMultiplayerRef.current=false;
+    setMyPlayerIndex(0);
+    myPlayerIndexRef.current=0;
+    mpRoleRevealedRef.current=false;
+    consumedVisualEventIdsRef.current=new Set();
+    setGs(null);
+  }
   // 表情功能
   const [flyingEmojis,setFlyingEmojis]=useState([]);  // [{id,emoji,startX,startY,endX,endY,arcHeight,durationMs}]
   const [showEmojiPicker,setShowEmojiPicker]=useState(false);
@@ -711,6 +725,14 @@ export default function Game(){
     const myIdx=myPlayerIndexRef.current;
     const rotated=rotateGsForViewer(rawGs,myIdx);
     const previousGs=latestGsRef.current||gs;
+    const localIsTerminal=!!previousGs?.gameOver||previousGs?.phase==='GOD_RESURRECTION';
+    const incomingIsTerminal=!!rotated?.gameOver||rotated?.phase==='GOD_RESURRECTION';
+    if(localIsTerminal&&!incomingIsTerminal){
+      return;
+    }
+    if(previousGs?.gameOver&&rotated?.gameOver){
+      return;
+    }
     if(previousGs&&rotated._turnKey===previousGs._turnKey&&rotated.currentTurn===previousGs.currentTurn&&rotated.phase===previousGs.phase&&(rotated.log?.length||0)<=(previousGs.log?.length||0)&&getMpReplayStateSignature(rotated)===getMpReplayStateSignature(previousGs)){
       return;
     }
@@ -906,6 +928,8 @@ export default function Game(){
   function handleMpAiTakeover(payload){
     if(!payload||payload.authorityUuid!==playerUUIDRef.current)return;
     if(!isMultiplayerRef.current)return;
+    const latest=latestGsRef.current;
+    if(latest?.gameOver||latest?.phase==='GOD_RESURRECTION')return;
     if(isMpReplayBusy()){
       pendingMpAiTakeoverRef.current=payload;
       return;
@@ -2477,6 +2501,7 @@ export default function Game(){
       state?.phase||'',
       state?.currentTurn??'',
       state?._turnKey??'',
+      state?.drawReveal?.card?.id||'',
       ad.pickIndex??'',
       ad.targetIdx??'',
       ad.caveDuelSource??'',
@@ -2494,6 +2519,19 @@ export default function Game(){
       getPendingZhuHideCardForState(state)?.id||'',
       state?.log?.length??0,
     ].join(':');
+  }
+
+  function isLocalMpDrawChoicePhase(state=gs){
+    if(!isLocalDrawDecisionPhase(state))return false;
+    const dr=state?.drawReveal;
+    if(!dr?.needsDecision||dr.forcedKeep||dr.fromRest)return false;
+    return !getPendingZhuHideCardForState(state);
+  }
+
+  function isLocalMpGodChoicePhase(state=gs){
+    if(!isLocalGodChoicePhase(state))return false;
+    if(state?.abilityData?.fromRest)return false;
+    return !getPendingZhuHideCardForState(state);
   }
 
   function getDefaultTargetForMpDecision(state=gs){
@@ -2532,6 +2570,8 @@ export default function Game(){
   function isLocalMpDecisionPhase(state=gs){
     if(!state||state.gameOver)return false;
     if(isLocalZhuHideDecisionPhase(state))return true;
+    if(isLocalMpDrawChoicePhase(state))return true;
+    if(isLocalMpGodChoicePhase(state))return true;
     if(isLocalTreasureDodgePhase(state))return true;
     if(isLocalTreasureAoEDodgePhase(state))return true;
     if(isLocalNyaBorrowPhase(state))return true;
@@ -2566,6 +2606,8 @@ export default function Game(){
       if(gs.phase==='SPHINX_GUESS'){handleZhuHideTopCardDuringSphinx(false);return;}
       if(gs.phase==='ZHU_HIDE_AI_DRAW'){handleZhuHideAiDrawCard(false);return;}
     }
+    if(isLocalMpDrawChoicePhase(gs)){handleDrawDiscard();return;}
+    if(isLocalMpGodChoicePhase(gs)){godResolvePlayer('discard');return;}
     if(gs.phase==='TREASURE_DODGE_DECISION'){handleTreasureDodgeSkip();return;}
     if(gs.phase==='TREASURE_AOE_DODGE_DECISION'){handleTreasureAOEDodgeSkip();return;}
     if(gs.phase==='NYA_BORROW'){nyaSkip();return;}
@@ -2893,16 +2935,7 @@ export default function Game(){
         onOpenAbout={()=>setModal('about')}
         onOpenRoadmap={()=>setModal('roadmap')}
         isDisconnected={isDisconnected}
-        onDisconnectedReset={()=>{
-          setIsDisconnected(false);
-          setIsMultiplayer(false);
-          isMultiplayerRef.current=false;
-          setMyPlayerIndex(0);
-          myPlayerIndexRef.current=0;
-          mpRoleRevealedRef.current=false;
-          consumedVisualEventIdsRef.current=new Set();
-          setGs(null);
-        }}
+        onDisconnectedReset={resetDisconnectedToStart}
         toasts={toasts}
         onlineOptionsModal={onlineOptionsModal}
         closeOnlineOptions={closeOnlineOptions}
@@ -4055,6 +4088,7 @@ export default function Game(){
     const targetIdx=abilityData.targetIdx;
     if(targetIdx==null||!gs.players?.[targetIdx])return;
     let P=copyPlayers(gs.players);
+    let Disc=[...(gs.discard||[])];
     const target=P[targetIdx];
     let L=[...gs.log];
     if(useSlime){
@@ -4071,8 +4105,14 @@ export default function Game(){
     }else{
       L.push(`【撒托古亚的赐福黏液】${localDisplayName(targetIdx,target.name)} 没有牺牲黏液`);
     }
+    const sanWin=checkWin(P,gs._isMP);
+    if(!sanWin&&target.hp<=0){
+      killPlayerState(P,targetIdx,Disc,L);
+    }
+    const win=sanWin||checkWin(P,gs._isMP);
     const nextGs=buildTargetContinuationGs({
       players:P,
+      discard:Disc,
       log:L,
       abilityData,
       turnOwner:abilityData._turnOwner??gs.currentTurn,
@@ -4080,8 +4120,8 @@ export default function Game(){
     const queue=useSlime?[statePatchStep({players:P})]:[];
     finishTargetContinuation({
       queue,
-      nextGs:{...nextGs,phase:'ACTION',abilityData:buildTargetContinuationAbilityData(abilityData)},
-      continueRest:!!abilityData.fromRest,
+      nextGs:{...nextGs,phase:'ACTION',abilityData:buildTargetContinuationAbilityData(abilityData),...(win?{gameOver:win}:{})},
+      continueRest:!win&&!!abilityData.fromRest,
     });
   }
 
@@ -6382,7 +6422,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at 50% 50%,transparent 40%,#00000099 100%)',pointerEvents:'none',zIndex:1}}/>
       {/* ── 断线遮罩（游戏内）── */}
       {isDisconnected&&(
-        <div onClick={()=>{setIsDisconnected(false);setIsMultiplayer(false);isMultiplayerRef.current=false;setMyPlayerIndex(0);myPlayerIndexRef.current=0;mpRoleRevealedRef.current=false;consumedVisualEventIdsRef.current=new Set();setGs(null);}}
+        <div onClick={resetDisconnectedToStart}
           style={{position:'fixed',inset:0,background:'#000000dd',zIndex:9999,
             display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
           <div style={{textAlign:'center',color:'#c8a0e8',fontFamily:"'Cinzel Decorative','Cinzel',serif",

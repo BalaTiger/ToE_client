@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeInspectionMeta, ROLE_TREASURE } from '../coreUtils';
+import { makeInspectionMeta, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
 import { aiDrawAndApply, applySanLossToPlayerWithInspection, playerDrawCard, startNextTurn } from '../turnEngine';
 import { buildTsathogguaSlimeGrantQueue } from '../turnAnimState';
 import { makeGodCard, makeGs, makePlayer, makeStandardPlayers } from './factory';
@@ -157,6 +157,7 @@ describe('turnEngine stat events', () => {
     const gs = makeGs({
       players,
       currentTurn: 0,
+      _turnKey: 7,
       deck: [normalCard],
       _isMP: true,
       log: [],
@@ -165,6 +166,7 @@ describe('turnEngine stat events', () => {
     const result = startNextTurn(gs);
 
     expect(result.phase).toBe('DRAW_REVEAL');
+    expect(result._turnKey).toBe(8);
     expect(result.drawReveal.card).toMatchObject({ id: 'mp-normal-draw', name: '偷吃龙蛋' });
     expect(result._playersBeforeThisDraw).toHaveLength(2);
     expect(result._playersBeforeThisDraw[1]).toMatchObject({ hp: 10, san: 10 });
@@ -298,6 +300,27 @@ describe('turnEngine stat events', () => {
       { type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 9, san: 9 }, seq: 1 },
       { type: 'SAN_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 9, san: 9 }, seq: 1 },
     ]);
+  });
+
+  it('黑山羊幼仔使邪祀者 HP/SAN 同时归零时，SAN 归零胜负优先于死亡胜负', () => {
+    const players = [
+      makePlayer({ name: '追猎者', role: ROLE_HUNTER }),
+      makePlayer({ name: '邪祀者', role: ROLE_CULTIST, hp: 1, san: 1, hand: [createBlackGoatYoungCard()] }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 0,
+      _isMP: true,
+      log: [],
+      inspectionDeck: [{ name: '自残', effect: 'selfDamageHP', value: 1, type: 'negative' }],
+      inspectionDiscard: [],
+    });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players[1]).toMatchObject({ hp: 0, san: 0, isDead: false });
+    expect(result.gameOver?.winner).toBe(ROLE_CULTIST);
+    expect(result._inspectionEvents || []).toEqual([]);
   });
 
   it('回合开始黑山羊幼仔造成损失时，撒托古亚黏液可打断到平分选择', () => {
