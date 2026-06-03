@@ -548,6 +548,8 @@ export default function Game(){
   },[SERVER_URL]);
   const socketRef=useRef(null);
   const connTimeoutRef=useRef(null);
+  const mpAiTakeoverSeqRef=useRef(0);
+  const pendingMpAiTakeoverRef=useRef(null);
   const {
     playerUUID, setPlayerUUID, playerUUIDRef,
     multiLoading, setMultiLoading,
@@ -657,7 +659,8 @@ export default function Game(){
     if(!rawGs)return;
     const myIdx=myPlayerIndexRef.current;
     const rotated=rotateGsForViewer(rawGs,myIdx);
-    if(gs&&rotated._turnKey===gs._turnKey&&rotated.currentTurn===gs.currentTurn&&rotated.phase===gs.phase&&(rotated.log?.length||0)<=(gs.log?.length||0)){
+    const previousGs=latestGsRef.current||gs;
+    if(previousGs&&rotated._turnKey===previousGs._turnKey&&rotated.currentTurn===previousGs.currentTurn&&rotated.phase===previousGs.phase&&(rotated.log?.length||0)<=(previousGs.log?.length||0)){
       return;
     }
     if(mpOpeningRoleRevealPendingRef.current&&!rotated.gameOver){
@@ -675,7 +678,7 @@ export default function Game(){
     setAnim(null);
     const replayAction=buildMpRemoteReplayAction({
       rotated,
-      previousGs:gs,
+      previousGs,
       roleRevealed:mpRoleRevealedRef.current,
       buildAnimQueue,
       buildFullHandSwapTransferQueueFromLogs,
@@ -715,6 +718,157 @@ export default function Game(){
     }else if(replayAction?.type===MP_REMOTE_REPLAY.SET_STATE){
       setGs(replayAction.gs);
     }
+  }
+
+  function rotateRawSeatIndex(rawSeatIndex,stateLike){
+    const N=stateLike?.players?.length||roomModalRef.current?.players?.length||0;
+    if(rawSeatIndex==null||rawSeatIndex<0||!N)return -1;
+    const myIdx=myPlayerIndexRef.current||0;
+    return (rawSeatIndex-myIdx+N)%N;
+  }
+
+  function isMpAiTakeoverRelevant(stateLike,takeoverIdx){
+    if(!stateLike||takeoverIdx<0||stateLike.gameOver)return false;
+    const phase=stateLike.phase;
+    if(phase==='DRAW_REVEAL'){
+      return !!stateLike.drawReveal?.needsDecision&&(stateLike.drawReveal.drawerIdx??stateLike.currentTurn)===takeoverIdx;
+    }
+    if(phase==='GOD_CHOICE'){
+      return !!stateLike.abilityData?.godCard&&(stateLike.abilityData.drawerIdx??stateLike.currentTurn)===takeoverIdx;
+    }
+    if(phase==='HUNT_WAIT_REVEAL'){
+      return stateLike.currentTurn===takeoverIdx||stateLike.abilityData?.huntTi===takeoverIdx;
+    }
+    if(phase==='DISCARD_PHASE'||phase==='ACTION')return stateLike.currentTurn===takeoverIdx;
+    const currentTurnPhases=new Set([
+      'DRAW_SELECT_TARGET','SWAP_SELECT_TARGET','SWAP_GIVE_CARD','HUNT_SELECT_TARGET','HUNT_CONFIRM',
+      'BEWITCH_SELECT_TARGET','BEWITCH_SELECT_CARD','ZONE_SWAP_SELECT_TARGET','PEEK_HAND_SELECT_TARGET',
+      'CAVE_DUEL_SELECT_TARGET','CAVE_DUEL_SELECT_CARD','ROSE_THORN_SELECT_TARGET','MULTIPLY_SELECT_TARGET',
+      'SHU_SELECT_TARGET','FIRST_COME_PICK_SELECT','SAME_ABYSS_SELECT','SPHINX_GUESS','GRAVE_DIG_SELECT',
+      'BURY_ALIVE_SELECT','TORTOISE_ORACLE_SELECT','NYA_BORROW','SEMI_MATERIALIZE_TARGET'
+    ]);
+    return currentTurnPhases.has(phase)&&stateLike.currentTurn===takeoverIdx;
+  }
+
+  function withTimeoutDrawDiscardVisual(stateLike,timeoutSource){
+    const dr=timeoutSource?.drawReveal;
+    if(timeoutSource?.phase!=='DRAW_REVEAL'||!dr?.card||!dr.needsDecision||dr.forcedKeep)return stateLike;
+    const event=createTimedOutDrawDiscardEvent({
+      card:dr.card,
+      drawerIdx:dr.drawerIdx??timeoutSource.currentTurn??0,
+      drawerName:timeoutSource.players?.[dr.drawerIdx??timeoutSource.currentTurn??0]?.name||dr.drawerName||'该玩家',
+    });
+    if(!event)return stateLike;
+    return {
+      ...stateLike,
+      _mpTimedOutDrawDiscard:event,
+      _visualEvents:[event],
+    };
+  }
+
+  function autoDiscardSeatAndAdvance(baseGs,seatIdx){
+    const player=baseGs?.players?.[seatIdx];
+    if(!player)return baseGs;
+    const limit=getHandLimitForPlayer(player);
+    let P=copyPlayers(baseGs.players);
+    const discarded=[];
+    while((P[seatIdx]?.hand?.length||0)>limit){
+      const card=P[seatIdx].hand.pop();
+      if(card)discarded.push(card);
+    }
+    let D=[...(baseGs.deck||[])];
+    let Disc=[...(baseGs.discard||[])];
+    let L=[...(baseGs.log||[])];
+    const keptDisc=[];
+    const destroyedDisc=[];
+    for(const card of discarded){
+      if(isBlackGoatYoung(card)||isTsathogguaSlime(card))destroyedDisc.push(card);
+      else keptDisc.push(card);
+    }
+    const actorName=localDisplayName(seatIdx,P[seatIdx]?.name||'该玩家');
+    let balanceStatePatch={};
+    if(keptDisc.length){
+      Disc=[...Disc,...keptDisc];
+      L.push(`(AI接管) ${actorName} 弃置：${keptDisc.map(card=>cardLogText(card,{alwaysShowName:true})).join(' ')}`);
+      const balance=applyHandDiscardSideEffectsWithAnim({baseGs,players:P,deck:D,discard:Disc,log:L,ownerIdx:seatIdx,cards:keptDisc,reason:'手牌上限弃牌'});
+      P=balance.players;D=balance.deck;Disc=balance.discard;L=balance.log;
+      balanceStatePatch=balance.statePatch||{};
+    }
+    if(destroyedDisc.length)L.push(`(AI接管) ${actorName} 的衍生牌 ×${destroyedDisc.length} 被销毁`);
+    const postDiscardGs={...baseGs,players:P,deck:D,discard:Disc,log:L,currentTurn:seatIdx,phase:'ACTION',drawReveal:null,selectedCard:null,abilityData:{},...balanceStatePatch};
+    const win=checkWin(P,true);
+    if(win)return {...postDiscardGs,gameOver:win};
+    return startNextTurn(postDiscardGs);
+  }
+
+  function finishMpAiTakeoverTurn(baseGs,timeoutSource,takeoverIdx){
+    if(!baseGs)return null;
+    const actorIdx=baseGs.currentTurn??takeoverIdx;
+    const win=checkWin(baseGs.players,true);
+    if(win)return withTimeoutDrawDiscardVisual({...baseGs,gameOver:win},timeoutSource);
+    const actor=baseGs.players?.[actorIdx];
+    if(actor&&(actor.hand?.length||0)>getHandLimitForPlayer(actor)){
+      return withTimeoutDrawDiscardVisual(autoDiscardSeatAndAdvance(baseGs,actorIdx),timeoutSource);
+    }
+    return withTimeoutDrawDiscardVisual(startNextTurn({...baseGs,currentTurn:actorIdx,phase:'ACTION',drawReveal:null,selectedCard:null}),timeoutSource);
+  }
+
+  function resolveMpAiTakeoverState(sourceGs,takeoverIdx){
+    if(!isMpAiTakeoverRelevant(sourceGs,takeoverIdx))return null;
+    const phase=sourceGs.phase;
+    if(phase==='HUNT_WAIT_REVEAL'){
+      if(sourceGs.abilityData?.huntTi===takeoverIdx){
+        const hand=sourceGs.players?.[takeoverIdx]?.hand||[];
+        if(!hand.length)return null;
+        const rc=hand[0];
+        const actorName=localDisplayName(takeoverIdx,sourceGs.players?.[takeoverIdx]?.name||'该玩家');
+        const msg=`(AI接管) ${actorName} 亮出 ${cardLogText(rc,{alwaysShowName:true})}`;
+        const event=createHuntRevealEvent({
+          sourceIdx:sourceGs.currentTurn??0,
+          targetIdx:takeoverIdx,
+          card:rc,
+          msgs:[msg],
+        });
+        return {
+          ...sourceGs,
+          log:[...(sourceGs.log||[]),msg],
+          phase:'HUNT_CONFIRM',
+          abilityData:{...sourceGs.abilityData,revCard:rc},
+          ...(event?{_visualEvents:[event]}:{_visualEvents:[]}),
+        };
+      }
+      const actorName=localDisplayName(takeoverIdx,sourceGs.players?.[takeoverIdx]?.name||'该玩家');
+      const skipped={...sourceGs,log:[...(sourceGs.log||[]),`(AI接管) ${actorName} 放弃追捕`],phase:'ACTION',abilityData:{}};
+      return finishMpAiTakeoverTurn(skipped,sourceGs,takeoverIdx);
+    }
+    if(phase==='DISCARD_PHASE')return autoDiscardSeatAndAdvance(sourceGs,takeoverIdx);
+    if(phase==='DRAW_REVEAL'||phase==='GOD_CHOICE'||phase==='NYA_BORROW'){
+      const base=resolveMpTimeoutToAction({...sourceGs,_mpEndTurn:undefined,_mpAutoDiscard:undefined,_mpAutoCthDecision:undefined});
+      return finishMpAiTakeoverTurn(base,sourceGs,takeoverIdx);
+    }
+    if(phase==='ACTION')return finishMpAiTakeoverTurn(sourceGs,sourceGs,takeoverIdx);
+    const actorName=localDisplayName(takeoverIdx,sourceGs.players?.[takeoverIdx]?.name||'该玩家');
+    const skipped={...sourceGs,log:[...(sourceGs.log||[]),`(AI接管) ${actorName} 跳过当前操作`],phase:'ACTION',abilityData:{}};
+    return finishMpAiTakeoverTurn(skipped,sourceGs,takeoverIdx);
+  }
+
+  function handleMpAiTakeover(payload){
+    if(!payload||payload.authorityUuid!==playerUUIDRef.current)return;
+    if(!isMultiplayerRef.current)return;
+    if(isMpReplayBusy()){
+      pendingMpAiTakeoverRef.current=payload;
+      return;
+    }
+    const sourceGs=payload.gs?rotateGsForViewer(payload.gs,myPlayerIndexRef.current):latestGsRef.current;
+    const takeoverIdx=rotateRawSeatIndex(payload.playerIndex,sourceGs);
+    const nextGs=resolveMpAiTakeoverState(sourceGs,takeoverIdx);
+    if(!nextGs)return;
+    const roomId=payload.roomId||roomModalRef.current?.roomId;
+    const rawNextGs=derotateGs(nextGs,myPlayerIndexRef.current);
+    if(socketRef.current?.connected&&roomId){
+      socketRef.current.emit('mpStateSync',{roomId,gs:rawNextGs});
+    }
+    processIncomingMpStateSync(rawNextGs,{allowBuffer:false});
   }
 
   // ── 连接后端（联机选项界面专用）─────────────────────────────
@@ -836,6 +990,8 @@ export default function Game(){
       mpRoleRevealedRef.current=false; // 每局重置角色揭示标志
       mpOpeningRoleRevealPendingRef.current=false;
       consumedVisualEventIdsRef.current=new Set();
+      mpAiTakeoverSeqRef.current=0;
+      pendingMpAiTakeoverRef.current=null;
       gameEndSentRef.current=false;       // 每局重置 gameEnd 发送标志
       if(isLocalSeatIndex(safeIdx)){
         // 房主：初始化游戏并广播给所有人
@@ -878,6 +1034,12 @@ export default function Game(){
     // 后续所有“本地玩家 / 当前行动者 / 当前响应者”判断都应基于 rotated + helper。
     socket.on('mpStateSync',({gs:rawGs})=>{
       processIncomingMpStateSync(rawGs);
+    });
+    socket.on('mpAiTakeover',(payload)=>{
+      if(!payload)return;
+      if(payload.seq&&payload.seq<=mpAiTakeoverSeqRef.current)return;
+      if(payload.seq)mpAiTakeoverSeqRef.current=payload.seq;
+      handleMpAiTakeover(payload);
     });
     // emojiReceived：收到其他玩家发的表情
     socket.on('emojiReceived',({fromUuid,emojis})=>{
@@ -932,6 +1094,7 @@ export default function Game(){
       setMyPlayerIndex(0); myPlayerIndexRef.current=0;
       mpRoleRevealedRef.current=false;
       consumedVisualEventIdsRef.current=new Set();
+      pendingMpAiTakeoverRef.current=null;
     });
     // 多人游戏中 socket 断线（网络中断等）
     socket.on('disconnect',()=>{
@@ -1157,6 +1320,15 @@ export default function Game(){
     if(!pendingRaw)return;
     pendingMpRawGsRef.current=null;
     processIncomingMpStateSync(pendingRaw,{allowBuffer:false});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[roleRevealAnim,anim,animExiting,gs?.phase,gs?._turnKey,gs?.log?.length]);
+
+  useEffect(()=>{
+    if(roleRevealAnim||anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
+    const pendingTakeover=pendingMpAiTakeoverRef.current;
+    if(!pendingTakeover)return;
+    pendingMpAiTakeoverRef.current=null;
+    handleMpAiTakeover(pendingTakeover);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[roleRevealAnim,anim,animExiting,gs?.phase,gs?._turnKey,gs?.log?.length]);
 
