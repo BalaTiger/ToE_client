@@ -412,7 +412,7 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
 }
 
 // ── PlayerPanel ─────────────────────────────────────────────────
-function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='temporary'}){
+function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='temporary',blackGoatPulseActive=false}){
   const ri=RINFO[player.role];
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const _ = (px) => px * fontZoom;
@@ -502,13 +502,13 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
         minWidth:0,
         width:'100%',
         maxWidth:'100%',
-        overflow:'hidden',
+        overflow:blackGoatPulseActive?'visible':'hidden',
       }} data-player-hand-strip={playerIndex} ref={handStripRef}>
         {handCards.map((card,ci)=>{
           const marginLeft=shouldFillFlatHand?0:(ci===0?0:(handOverlap>0?-handOverlap:HAND_CARD_GAP));
           const width=shouldFillFlatHand?undefined:(handStripWidth>0?computedCardWidth:stretchedHandSlotWidth);
           return(
-            <div key={card.id||`hand-${playerIndex}-${ci}`} style={{
+            <div key={card.id||`hand-${playerIndex}-${ci}`} className={blackGoatPulseActive&&isBlackGoatYoung(card)?'black-goat-card-pulse':''} style={{
               marginLeft,
               flex:'0 0 auto',
               width,

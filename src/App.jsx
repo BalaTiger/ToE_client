@@ -54,6 +54,7 @@ import {
   buildLocalCthDecisionState,
   buildPlayerTurnDrawQueue,
   buildTurnStartDrawReplayQueue,
+  buildTurnStartPreDrawEffectQueue,
   buildTsathogguaSlimeGrantQueue,
   cardsHuntMatch,
   moveEligibleBlankZones,
@@ -362,12 +363,20 @@ function buildTurnStartStatQueue(state){
     _statEvents:statEvents,
     _inspectionEvents:[],
   };
-  return bindAnimLogChunks(buildAnimQueue(oldGs,newGs),{statLogs});
+  const queue=bindAnimLogChunks(buildAnimQueue(oldGs,newGs),{statLogs});
+  if(statLogs.some(line=>typeof line==='string'&&line.includes('黑山羊幼仔'))){
+    queue.unshift({type:'BLACK_GOAT_PULSE',targetPid:state.currentTurn,msgs:[]});
+  }
+  return queue;
 }
 
 function buildTurnStartIntroQueue(state,name){
   if(!state?._playersBeforeThisDraw)return [];
-  const turnStartStatQ=buildTurnStartStatQueue(state);
+  const preDrawQueue=buildTurnStartPreDrawEffectQueue({
+    oldGs:{...state,players:state._preTurnPlayers||state.players,_statEventSeq:0},
+    newGs:state,
+  });
+  const turnStartStatQ=preDrawQueue.length?preDrawQueue:buildTurnStartStatQueue(state);
   const queue=[];
   if(turnStartStatQ.length){
     queue.push({type:'VISUAL_LOCK',players:state._preTurnPlayers||state._playersBeforeThisDraw,zhuLight:state.zhuLight||null});
@@ -2303,6 +2312,7 @@ export default function Game(){
 
   useEffect(()=>{
     if(!gs||gs.phase!=='BURY_ALIVE_SELECT'||gs.gameOver||anim||showTutorial)return;
+    if(isMultiplayerGame(gs))return;
     const ad=gs.abilityData||{};
     const targets=ad.targets||[];
     const targetIdx=targets[ad.targetIndex||0];
@@ -2324,7 +2334,7 @@ export default function Game(){
           ...(currentAd.fromRest?{fromRest:true}:{}),
           ...(currentAd.cthDrawsRemaining!=null?{cthDrawsRemaining:currentAd.cthDrawsRemaining}:{}),
         }};})()
-        : {...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{...currentAd,targetIndex:nextTargetIndex}};
+        : {...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{...currentAd,targetIndex:nextTargetIndex,buryAliveSelectedIndex:null}};
       triggerAnimQueue([
         buryToDeckStep({fromPid:currentTarget,msgs:L.slice(-1),players:gs.players}),
         statePatchStep({players:P,deck:D,log:L}),
@@ -4493,8 +4503,23 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       });
       return;
     }
-    const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'BURY_ALIVE_SELECT',abilityData:{...abilityData,targetIndex:nextTargetIndex}};
+    const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'BURY_ALIVE_SELECT',abilityData:{...abilityData,targetIndex:nextTargetIndex,buryAliveSelectedIndex:null}};
     triggerAnimQueue([buryToDeckStep({fromPid:actorIdx,msgs:L.slice(-1),players:gs.players}),statePatchStep({players:P,deck:D,log:L})],nextGs);
+  }
+
+  function toggleBuryAliveSelect(idx){
+    const abilityData=gs.abilityData||{};
+    const targets=abilityData.targets||[];
+    const actorIdx=targets[abilityData.targetIndex||0];
+    if(!isLocalSeatIndex(actorIdx)||idx<0)return;
+    const nextIdx=abilityData.buryAliveSelectedIndex===idx?null:idx;
+    setGs({...gs,abilityData:{...abilityData,buryAliveSelectedIndex:nextIdx}});
+  }
+
+  function confirmBuryAliveSelection(){
+    const idx=gs.abilityData?.buryAliveSelectedIndex;
+    if(idx==null||idx<0)return;
+    buryAliveSelectCard(idx);
   }
 
   function swapSelectTargetCard(cardIdx){
@@ -5589,6 +5614,15 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       {statLogs:newGs._statLogs}
     ):[];
     const preTurnQ=buildTsathogguaSlimeGrantQueue(newGs);
+    if(newGs?.phase==='NYA_BORROW'&&Array.isArray(newGs._turnStartLogs)&&newGs._turnStartLogs.length){
+      const introQ=buildTurnStartIntroQueue(newGs,newGs.players?.[newGs.currentTurn]?.name||'???');
+      if(introQ.length){
+        pendingGsRef.current=newGs;
+        setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
+        triggerAnimQueue([...preTurnQ,...introQ],newGs);
+        return;
+      }
+    }
     const pendingZhuHideCard=getPendingZhuHideCardForState(newGs);
     if(pendingZhuHideCard&&newGs.phase!=='ZHU_HIDE_AI_DRAW'){
       const drawerPid=getTurnStartDrawerIdx(newGs);
@@ -6290,7 +6324,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       }
     }
     else if(phase==='BURY_ALIVE_SELECT'&&canPlayerRespondWithAnyHandCard()){
-      buryAliveSelectCard(idx);
+      toggleBuryAliveSelect(idx);
     }
     else if(phase==='IGNITE_TORCH_DISCARD'&&canPlayerRespondWithAnyHandCard()){
       igniteTorchDiscardCard(idx);
@@ -6338,6 +6372,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
 
   const skillLimited=gs.skillUsed&&skillRi.skillLimited;
   const battleBackgroundStyle=getBattleBackgroundStyle(gs.expansionKey,isMobile);
+  const blackGoatPulsePid=anim?.type==='BLACK_GOAT_PULSE'?(anim.targetPid??anim.targetIdx??0):null;
 
   return(<>
     <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...battleBackgroundStyle,color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:7,padding:isMobile?'6px 8px':'8px 10px',position:'relative',left:globalShiftX||undefined,overflowX:'hidden',overflowY:'scroll',scrollbarGutter:'stable',
@@ -6671,7 +6706,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
               const onCardSelectForSwap=isSwapTargetCardPhase?((cardIdx)=>swapSelectTargetCard(cardIdx)):isHuntCardFromPublicPhase?((cardIdx)=>huntSelectCardFromPublic(cardIdx)):null;
               return(
                 <div key={p.id} data-pid={pi} style={{position:'relative',zIndex:isSel?101:undefined,alignSelf:'start'}}>
-                <PlayerPanel player={p} playerIndex={pi} isCurrentTurn={visualCurrentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)} isBeingGuillotined={guillotinedPids.has(pi)} displayStats={displayStats} scaleRatio={scaleRatio} viewportWidth={vw} expansionKey={gs.expansionKey}/>
+                <PlayerPanel player={p} playerIndex={pi} isCurrentTurn={visualCurrentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)} isBeingGuillotined={guillotinedPids.has(pi)} displayStats={displayStats} scaleRatio={scaleRatio} viewportWidth={vw} expansionKey={gs.expansionKey} blackGoatPulseActive={blackGoatPulsePid===pi}/>
                 </div>
               );
             })}
@@ -6949,18 +6984,36 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                 }}>
                 确认弃牌{(gs.abilityData.discardSelected||[]).length>0?` (${(gs.abilityData.discardSelected||[]).length})`:''}</button>
             )}
+            {phase==='BURY_ALIVE_SELECT'&&canPlayerRespondWithAnyHandCard()&&(
+              <button onClick={confirmBuryAliveSelection}
+                disabled={gs.abilityData?.buryAliveSelectedIndex==null}
+                style={{
+                  marginLeft:'auto',padding:'6px 18px',
+                  background:gs.abilityData?.buryAliveSelectedIndex!=null?'#2a1a08':'#180e08',
+                  border:`1.5px solid ${gs.abilityData?.buryAliveSelectedIndex!=null?'#c8a96e':'#3a2510'}`,
+                  color:gs.abilityData?.buryAliveSelectedIndex!=null?'#f0cb7a':'#3a2510',
+                  fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,
+                  borderRadius:2,cursor:gs.abilityData?.buryAliveSelectedIndex!=null?'pointer':'default',
+                  letterSpacing:1,textTransform:'uppercase',
+                  opacity:gs.abilityData?.buryAliveSelectedIndex!=null?1:0.4,
+                }}>
+                确认活埋
+              </button>
+            )}
           </div>
           <div data-self-hand-strip style={{display:'flex',gap:7,flexWrap:'wrap'}}>
             {visualMe.hand.map((c,i)=>{
               const clickable=isMyCardClickable(c,i);
               const isMobileArmedGod=isMobile&&mobileArmedGodCardIdx===i;
-              const isSel=(phase==='DISCARD_PHASE'&&isLocalCurrentTurn(gs)&&(gs.abilityData.discardSelected||[]).includes(i))||isMobileArmedGod;
+              const isBuryAliveSelected=phase==='BURY_ALIVE_SELECT'&&canPlayerRespondWithAnyHandCard()&&gs.abilityData?.buryAliveSelectedIndex===i;
+              const isSel=(phase==='DISCARD_PHASE'&&isLocalCurrentTurn(gs)&&(gs.abilityData.discardSelected||[]).includes(i))||isMobileArmedGod||isBuryAliveSelected;
               const isMatch=phase==='HUNT_CONFIRM'&&gs.abilityData?.revCard&&cardsHuntMatch(c,gs.abilityData.revCard);
               const isGodUpgrade=c.isGod&&visualMe.godName===c.godKey&&(visualMe.godLevel||0)<3;
               const canUpgradeNow=isGodUpgrade&&phase==='ACTION'&&isVisualPlayerTurn;
               const canWorshipNow=c.isGod&&!isGodUpgrade&&phase==='ACTION'&&isVisualPlayerTurn;
               const showWorshipHint=canWorshipNow&&(!isMobile||isMobileArmedGod);
-              return(<div key={c.id} ref={el=>{if(el)mobileGodCardRefs.current.set(i,el);else mobileGodCardRefs.current.delete(i);}} style={{position:'relative',display:'inline-block'}}>
+              const isBlackGoatPulsing=blackGoatPulsePid===0&&isBlackGoatYoung(c);
+              return(<div key={c.id} ref={el=>{if(el)mobileGodCardRefs.current.set(i,el);else mobileGodCardRefs.current.delete(i);}} className={isBlackGoatPulsing?'black-goat-card-pulse':''} style={{position:'relative',display:'inline-block'}}>
                 <DDCard card={c} onClick={clickable?()=>handleMyCardClick(i):undefined} disabled={!clickable} selected={isSel} highlight={isMatch||canWorshipNow||canUpgradeNow} godLevel={visualMe.godName===c.godKey?visualMe.godLevel:0} compact={isMobile} holderId={0}/>
                 {canUpgradeNow&&<div style={{position:'absolute',top:-7,left:'50%',transform:'translateX(-50%)',fontFamily:"'Cinzel',serif",fontSize:8,color:'#c8a96e',background:'#0a0705',border:'1px solid #8a6020',borderRadius:2,padding:'1px 4px',pointerEvents:'none',whiteSpace:'nowrap',zIndex:10}}>⬆ 升级邪神之力</div>}
                 {showWorshipHint&&<div style={{position:'absolute',top:-7,left:'50%',transform:'translateX(-50%)',fontFamily:"'Cinzel',serif",fontSize:8,color:'#b080e0',background:'#0a0412',border:'1px solid #7040aa',borderRadius:2,padding:'1px 4px',pointerEvents:'none',whiteSpace:'nowrap',zIndex:10}}>⛧ 点击信仰</div>}
@@ -7142,6 +7195,52 @@ const GLOBAL_STYLES=`
   @keyframes animShake   { 0%,100%{transform:translateX(0)} 15%{transform:translateX(-12px)} 35%{transform:translateX(14px)} 55%{transform:translateX(-9px)} 75%{transform:translateX(9px)} }
   @keyframes animVig     { 0%,100%{opacity:0} 50%{opacity:1} }
   @keyframes animGlow    { 0%,100%{box-shadow:0 0 8px #c8a96e33} 50%{box-shadow:0 0 22px #c8a96e88} }
+  @keyframes blackGoatCardHop {
+    0%{transform:translateY(0) scale(1);filter:brightness(1) drop-shadow(0 0 0 rgba(74,222,128,0));}
+    18%{transform:translateY(-7px) scale(1.02);filter:brightness(1.22) drop-shadow(0 0 8px rgba(74,222,128,.38));}
+    46%{transform:translateY(-20px) scale(1.045);filter:brightness(1.72) drop-shadow(0 0 18px rgba(74,222,128,.72));}
+    72%{transform:translateY(3px) scale(.995);filter:brightness(1.08) drop-shadow(0 0 5px rgba(74,222,128,.24));}
+    86%{transform:translateY(-2px) scale(1.005);filter:brightness(1.04) drop-shadow(0 0 4px rgba(74,222,128,.18));}
+    100%{transform:translateY(0) scale(1);filter:brightness(1) drop-shadow(0 0 0 rgba(74,222,128,0));}
+  }
+  @keyframes blackGoatCardAura {
+    0%{opacity:0;transform:scale(.74);}
+    38%{opacity:.95;transform:scale(1.05);}
+    100%{opacity:0;transform:scale(1.32);}
+  }
+  @keyframes blackGoatCardSparks {
+    0%{opacity:0;transform:translateY(4px) scale(.6);}
+    44%{opacity:1;transform:translateY(-13px) scale(1);}
+    100%{opacity:0;transform:translateY(-28px) scale(.72);}
+  }
+  .black-goat-card-pulse{
+    position:relative;
+    animation:blackGoatCardHop .76s cubic-bezier(.22,.82,.28,1.18) both;
+    z-index:80!important;
+  }
+  .black-goat-card-pulse::before{
+    content:'';
+    position:absolute;
+    inset:-9px;
+    border-radius:8px;
+    pointer-events:none;
+    background:radial-gradient(circle,rgba(74,222,128,.24),rgba(74,222,128,.08) 42%,transparent 68%);
+    box-shadow:0 0 18px rgba(74,222,128,.45),inset 0 0 12px rgba(190,255,205,.2);
+    animation:blackGoatCardAura .76s ease-out both;
+  }
+  .black-goat-card-pulse::after{
+    content:'';
+    position:absolute;
+    left:50%;
+    top:42%;
+    width:4px;
+    height:4px;
+    border-radius:50%;
+    pointer-events:none;
+    background:#9dffb2;
+    box-shadow:-18px -2px 0 #4ade80,16px -7px 0 #b7ffbf,-8px 14px 0 #6ee78f,21px 11px 0 #4ade80,0 -20px 0 #d6ffd8;
+    animation:blackGoatCardSparks .76s ease-out both;
+  }
   @keyframes surveyMascotEnter {
     0% { opacity:0; transform:translateX(135%) translateY(16px) rotate(-5deg); }
     72% { opacity:1; transform:translateX(-8px) translateY(0) rotate(2deg); }
