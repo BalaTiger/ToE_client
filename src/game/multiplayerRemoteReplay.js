@@ -48,6 +48,21 @@ function hasDrawAnimationState(state) {
   );
 }
 
+function hasFreshTurnDrawReplayState(state) {
+  if (!state || state.gameOver) return false;
+  if (
+    state.phase === 'DRAW_REVEAL'
+    || state.phase === 'DRAW_SELECT_TARGET'
+    || state.phase === 'GOD_CHOICE'
+  ) {
+    return true;
+  }
+  return (
+    (Array.isArray(state._turnStartLogs) && state._turnStartLogs.length > 0)
+    || (Array.isArray(state._drawLogs) && state._drawLogs.length > 0)
+  );
+}
+
 function isPendingZhuHideState(state) {
   const ids = state?.zhuLight?.cardIds || [];
   if (!ids.length && state?.phase !== 'ZHU_HIDE_AI_DRAW') return false;
@@ -219,7 +234,7 @@ export function buildMpRemoteReplayAction({
   const hadVisualEventsBeforePrune = Array.isArray(rotated._visualEvents) && rotated._visualEvents.length > 0;
   rotated = pruneConsumedVisualEvents(rotated, consumedVisualEventIds);
   const visualEventIds = getVisualEventIdsFromState(rotated);
-  if (hadVisualEventsBeforePrune && visualEventIds.length === 0 && !hasDrawAnimationState(rotated)) {
+  if (hadVisualEventsBeforePrune && visualEventIds.length === 0 && !hasFreshTurnDrawReplayState(rotated)) {
     return { type: MP_REMOTE_REPLAY.SET_STATE, gs: clearRemoteReplayHints(rotated) };
   }
   const withConsumedVisualEvents = action => (
@@ -308,8 +323,9 @@ export function buildMpRemoteReplayAction({
   const bewitchEvent = getBewitchGiftVisualEvent(rotated);
   if (bewitchEvent && !isDrawAnimationState && isFreshBewitchVisualEvent(bewitchEvent, logDelta)) {
     const oldGs = previousGs || buildMaskedActionState(rotated);
+    const inspectionReplay = buildInspectionAwareAnimQueue(oldGs, rotated, { buildAnimQueue, copyPlayers });
     const fallbackStatQueue = bindAnimLogChunks(
-      buildInspectionAwareAnimQueue(oldGs, rotated, { buildAnimQueue, copyPlayers }).queue,
+      inspectionReplay.queue,
       { statLogs: logDelta },
     );
     const visualStatQ = buildStatStepsFromVisualEvents(rotated, previousGs?.players || rotated.players);
@@ -330,6 +346,7 @@ export function buildMpRemoteReplayAction({
       maskedGs: buildMaskedActionState(rotated),
       pendingGs: clearRemoteReplayHints(rotated),
       queue,
+      inspectionEvents: inspectionReplay.inspectionEvents,
     });
   }
   const huntEvent = getHuntTargetVisualEvent(rotated);
@@ -366,8 +383,9 @@ export function buildMpRemoteReplayAction({
     const giftLabel = bewitchMsg.match(/赠予 \[([^\]]+)\]/)?.[1] || bewitchMsg.match(/赠予 ([^，。]+)/)?.[1];
     const giftCard = findCardByLabel(rotated.players, giftLabel);
     const oldGs = previousGs || buildMaskedActionState(rotated);
+    const inspectionReplay = buildInspectionAwareAnimQueue(oldGs, rotated, { buildAnimQueue, copyPlayers });
     const statQueue = bindAnimLogChunks(
-      buildInspectionAwareAnimQueue(oldGs, rotated, { buildAnimQueue, copyPlayers }).queue,
+      inspectionReplay.queue,
       { statLogs: logDelta },
     );
     const queue = giftCard && targetIdx >= 0
@@ -379,6 +397,7 @@ export function buildMpRemoteReplayAction({
       maskedGs: buildMaskedActionState(rotated),
       pendingGs: clearRemoteReplayHints(rotated),
       queue,
+      inspectionEvents: inspectionReplay.inspectionEvents,
     });
   }
 
@@ -405,6 +424,7 @@ export function buildMpRemoteReplayAction({
       pendingGs: clearRemoteReplayHints(rotated),
       queue,
       visualLock: replay.visualLock,
+      inspectionEvents: replay.inspectionEvents,
     });
   }
 
@@ -429,6 +449,7 @@ export function buildMpRemoteReplayAction({
         anim: replay.drawCardStep,
         queue: replay.drawEffectQ,
         visualLock: replay.visualLock,
+        inspectionEvents: replay.inspectionEvents,
       });
     }
     return withConsumedVisualEvents({
@@ -438,6 +459,7 @@ export function buildMpRemoteReplayAction({
       anim: replay.startAnim,
       queue: replay.startQueue,
       visualLock: replay.visualLock,
+      inspectionEvents: replay.inspectionEvents,
     });
   }
 

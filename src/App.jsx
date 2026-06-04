@@ -777,6 +777,7 @@ export default function Game(){
     if(replayAction?.consumedVisualEventIds?.length){
       markConsumedVisualEvents(consumedVisualEventIdsRef.current,replayAction.consumedVisualEventIds.map(id=>({id,type:'consumed'})));
     }
+    markInspectionEventsSeen(replayAction?.inspectionEvents);
     if(replayAction?.type===MP_REMOTE_REPLAY.ROLE_REVEAL){
       mpRoleRevealedRef.current=true;
       mpOpeningRoleRevealPendingRef.current=true;
@@ -1268,6 +1269,10 @@ export default function Game(){
     return()=>document.removeEventListener('visibilitychange',handleWaitingRoomReconnect);
   },[gs,multiLoading,playerUUID,roomModalRef]);
   const lastInspectionSeqRef=useRef(0);
+  function markInspectionEventsSeen(events=[]){
+    const seqs=(Array.isArray(events)?events:[]).map(ev=>ev?.seq||0).filter(Boolean);
+    if(seqs.length)lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...seqs);
+  }
   const [houndsSecLeft,setHoundsSecLeft]=useState(null);
   const [houndsRevealedSeq,setHoundsRevealedSeq]=useState(0);
 
@@ -1600,7 +1605,7 @@ export default function Game(){
     if(!gs||showTutorial||anim||animQueueRef.current.length>0||gs.gameOver||gs.phase==='AI_TURN')return;
     const events=(gs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current);
     if(!events.length)return;
-    lastInspectionSeqRef.current=Math.max(...events.map(ev=>ev.seq));
+    markInspectionEventsSeen(events);
     const flow=buildInspectionEventFlow(
       {players:events[0]?.beforePlayers||gs.players,log:events[0]?.beforeLog||gs.log},
       events,

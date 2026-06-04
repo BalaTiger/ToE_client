@@ -397,6 +397,8 @@ describe('buildMpRemoteReplayAction', () => {
     });
 
     expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.inspectionEvents).toHaveLength(1);
+    expect(action.inspectionEvents[0].card).toBe(scratchCard);
     const giftRevealIdx = action.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card === godGift);
     const inspectionRevealIdx = action.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card === scratchCard);
     const hpDamageIdx = action.queue.findIndex(step => step.type === 'HP_DAMAGE');
@@ -595,6 +597,76 @@ describe('buildMpRemoteReplayAction', () => {
     const second = buildAction(rotated, {
       previousGs: makeState({ currentTurn: 1, phase: 'ACTION', players: [player('你'), player('艾伦'), player('贝拉')] }),
       consumedVisualEventIds: new Set(first.consumedVisualEventIds),
+    });
+    expect(second.type).toBe(MP_REMOTE_REPLAY.SET_STATE);
+    expect(second.gs._visualEvents).toEqual([]);
+  });
+
+  it('does not replay consumed bewitch inspection animations from repeated sync packets', () => {
+    const gift = { id: 'gift1', name: '蛊惑礼物', key: 'A1', type: 'zone' };
+    const inspectionCard = { id: 'inspect-paranoia', name: '迫害妄想', effect: 'discardRandom', value: 1 };
+    const beforePlayers = [
+      player('你'),
+      { ...player('艾伦'), role: '邪祀者', hand: [gift] },
+      { ...player('贝拉'), san: 8 },
+    ];
+    const beforeInspectionPlayers = [
+      player('你'),
+      { ...player('艾伦'), role: '邪祀者', hand: [] },
+      { ...player('贝拉'), san: 6, hand: [gift] },
+    ];
+    const beforeInspectionLog = [
+      '艾伦（邪祀者）对 贝拉 【蛊惑】，赠予 [A1] 蛊惑礼物',
+      '贝拉 遭遇邪神 蛊惑礼物（第1次），失去2SAN',
+    ];
+    const afterInspectionLog = [
+      ...beforeInspectionLog,
+      '贝拉 的SAN检定结果为"迫害妄想"',
+    ];
+    const bewitchEvent = {
+      type: 'bewitchGift',
+      id: 'bewitch-repeat-inspection',
+      sourceIdx: 1,
+      targetIdx: 2,
+      targetName: '贝拉',
+      card: gift,
+      msgs: ['艾伦（邪祀者）对 贝拉 【蛊惑】，赠予 [A1] 蛊惑礼物'],
+    };
+    const rotated = makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players: beforeInspectionPlayers,
+      log: afterInspectionLog,
+      _inspectionSeq: 1,
+      _inspectionEvents: [{
+        seq: 1,
+        card: inspectionCard,
+        target: 2,
+        beforePlayers: beforeInspectionPlayers,
+        beforeLog: beforeInspectionLog,
+        afterPlayers: beforeInspectionPlayers,
+        afterLog: afterInspectionLog,
+        statEvents: [],
+        statEventSeq: 0,
+      }],
+      _visualEvents: [bewitchEvent],
+    });
+    const repeatedRotated = {
+      ...rotated,
+      drawReveal: { card: gift, drawerIdx: 2, needsDecision: false },
+    };
+    const first = buildAction(rotated, {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION', players: beforePlayers, log: [] }),
+      buildAnimQueue,
+    });
+    expect(first.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(first.queue.some(step => step.type === 'SAN_DAMAGE')).toBe(true);
+    expect(first.queue.some(step => step.type === 'DRAW_CARD' && step.card === inspectionCard)).toBe(true);
+
+    const second = buildAction(repeatedRotated, {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION', players: beforePlayers, log: [] }),
+      consumedVisualEventIds: new Set(first.consumedVisualEventIds),
+      buildAnimQueue,
     });
     expect(second.type).toBe(MP_REMOTE_REPLAY.SET_STATE);
     expect(second.gs._visualEvents).toEqual([]);
