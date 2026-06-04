@@ -1,0 +1,31 @@
+export function rotatePlayersArray(players, myIndex) {
+  if (!Array.isArray(players) || myIndex === 0) return players;
+  return [...players.slice(myIndex), ...players.slice(0, myIndex)];
+}
+
+export function rotateStatEvent(statEvent, rotateIndex, myIndex) {
+  if (!statEvent) return statEvent;
+  return {
+    ...statEvent,
+    target: statEvent?.target != null ? rotateIndex(statEvent.target) : statEvent?.target,
+    pair: Array.isArray(statEvent?.pair) ? statEvent.pair.map(rotateIndex) : statEvent?.pair,
+    players: rotatePlayersArray(statEvent?.players, myIndex),
+  };
+}
+
+export function rotateStatEvents(events, rotateIndex, myIndex) {
+  return Array.isArray(events)
+    ? events.map(event => rotateStatEvent(event, rotateIndex, myIndex))
+    : events;
+}
+
+export function rotateInspectionEvents(events, rotateIndex, myIndex) {
+  if (!Array.isArray(events)) return events;
+  return events.map(event => ({
+    ...event,
+    target: event?.target != null ? rotateIndex(event.target) : event?.target,
+    beforePlayers: rotatePlayersArray(event?.beforePlayers, myIndex),
+    afterPlayers: rotatePlayersArray(event?.afterPlayers, myIndex),
+    statEvents: rotateStatEvents(event?.statEvents, rotateIndex, myIndex),
+  }));
+}

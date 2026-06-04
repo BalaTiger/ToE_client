@@ -19,6 +19,11 @@ import { buildStatEvents } from './statEvents';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { appendProliferatingZDraws, makeProliferatingZState } from './proliferatingZ';
 import { createEarthquakeEvent } from './visualEvents';
+import {
+  addTurnScopedDamageBonus,
+  getCurrentExecutionTurnOwner,
+  grantTurnScopedGodPowerImmunity,
+} from './turnScopedEffects';
 
 export function applyHpDamageWithLink(P, i, amount, Disc, L, currentTurn, D) {
   if (i == null || !P[i] || P[i].isDead || !(amount > 0)) return;
@@ -357,6 +362,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   let inspectionMeta = makeInspectionMeta(gs);
   const pendingInspectionTargets = [];
   let directStatEvents = null;
+  const executionTurnOwner = getCurrentExecutionTurnOwner(gs, ci);
   const dmgBonus = P[ci]?.damageBonus || 0;
   const healHP = (i, v) => { if (i == null || !P[i] || P[i].isDead) return; P[i].hp = clamp(P[i].hp + v); };
   const healSAN = (i, v) => { if (i == null || !P[i] || P[i].isDead) return; P[i].san = clamp(P[i].san + v); };
@@ -562,7 +568,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       msgs.push(`${actor.name} 回复了 ${amount} HP，下一张区域牌只能看见编号后决定是否收入`);
     },
     proliferatingZ: () => {
-      statePatch = { ...statePatch, proliferatingZ: makeProliferatingZState(gs?.currentTurn ?? ci, gs?.turn || 0), proliferatingZQueue: [] };
+      statePatch = { ...statePatch, proliferatingZ: makeProliferatingZState(executionTurnOwner, gs?.turn || 0), proliferatingZQueue: [] };
       msgs.push(`【增殖的Z】本回合若有角色获得邪神牌或其衍生牌，其他角色各摸1张牌`);
     },
     petrifyingFormula: () => {
@@ -677,8 +683,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         return;
       }
       randDiscard(ci, 1);
-      P[ci].godPowerImmuneThisTurn = true;
-      P[ci].godPowerImmuneTurnOwner = gs?.currentTurn ?? ci;
+      grantTurnScopedGodPowerImmunity(P[ci], executionTurnOwner);
       msgs.push(`【引燃火把】${actor.name} 本回合不受邪神之力影响`);
     },
     swapDeckDiscard: () => {
@@ -941,8 +946,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         hurtSAN(ci, 1);
         msgs.push(`${actor.name} 失去 1 SAN`);
       }
-      P[ci].damageBonus = (P[ci].damageBonus || 0) + 1;
-      P[ci].damageBonusTurnOwner = gs?.currentTurn ?? ci;
+      addTurnScopedDamageBonus(P[ci], executionTurnOwner, 1);
       msgs.push(`${actor.name} 本回合造成的伤害+1`);
     },
     selfDamageSkipDraw: () => {

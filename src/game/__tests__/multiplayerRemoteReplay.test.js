@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildAnimQueue } from '../animQueueCore';
 import { buildMpRemoteReplayAction, MP_REMOTE_REPLAY } from '../multiplayerRemoteReplay';
 import { rotateGsForViewer } from '../rotateState';
-import { createEarthquakeEvent, createHuntResultEvent, createSwapCardsEvent } from '../visualEvents';
+import { createEarthquakeEvent, createEndlessCorridorReplayEvent, createHuntResultEvent, createSwapCardsEvent } from '../visualEvents';
 
 const card = { id: 'c1', name: '测试牌', type: 'zone' };
 
@@ -56,6 +56,56 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.type).toBe(MP_REMOTE_REPLAY.DICE_ROLL);
     expect(action.anim).toMatchObject({ type: 'DICE_ROLL', d1: 5, rollerName: '艾伦', dodgeSuccess: true });
     expect(action.pendingGs.log).toEqual(['艾伦 掷出 5 点']);
+  });
+
+  it('replays throw-stone random target queue instead of treating its roll as treasure dodge', () => {
+    const beforePlayers = [player('你'), player('艾伦'), { ...player('贝拉'), hp: 10 }];
+    const afterPlayers = [player('你'), player('艾伦'), { ...player('贝拉'), hp: 7 }];
+    const log = ['艾伦 掷出 4 点，随机砸向 贝拉（距离1），造成 3 HP 伤害'];
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      players: afterPlayers,
+      log,
+      _randomTargetSeq: 1,
+      _randomTargetEvents: [{
+        seq: 1,
+        sourceIdx: 1,
+        targetIdx: 2,
+        label: '投掷石块',
+        roll: 4,
+        distance: 1,
+        damage: 3,
+        diceBefore: true,
+        phaseOrder: 1,
+        resultText: '贝拉 被选中',
+      }],
+      _statEventSeq: 1,
+      _statEvents: [{
+        type: 'HP_LOSS',
+        target: 2,
+        from: { hp: 10, san: 10, isDead: false },
+        to: { hp: 7, san: 10, isDead: false },
+        seq: 1,
+        phaseOrder: 2,
+      }],
+    }), {
+      previousGs: makeState({
+        currentTurn: 1,
+        players: beforePlayers,
+        log: [],
+        _randomTargetSeq: 0,
+        _statEventSeq: 0,
+      }),
+      buildAnimQueue,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.map(step => step.type)).toEqual(['DICE_ROLL', 'RANDOM_TARGET', 'HP_DAMAGE', 'STATE_PATCH']);
+    expect(action.queue[0]).toMatchObject({ diceMode: 'throwStone', d1: 4, rollerName: '艾伦' });
+    expect(action.queue[0]).not.toHaveProperty('dodgeSuccess');
+    expect(action.queue[1]).toMatchObject({ sourceIdx: 1, targetIdx: 2, label: '投掷石块', roll: 4, damage: 3 });
+    expect(action.queue[2]).toMatchObject({ hitIndices: [2] });
+    expect(action.queue.at(-1)).toMatchObject({ players: afterPlayers, log });
   });
 
   it('builds a remote draw animation queue without exposing the decision phase first', () => {
@@ -528,9 +578,15 @@ describe('buildMpRemoteReplayAction', () => {
 
   it('uses swap visualEvents as silent hand transfer without draw replay', () => {
     const staleDrawCard = { id: 'stale-draw', name: '上一张摸牌', key: 'A1', type: 'zone' };
+    const players = [player('你'), player('艾伦'), player('贝拉')];
+    const discard = [{ id: 'discarded' }];
+    const abilityData = { swapDone: true };
     const action = buildAction(makeState({
       currentTurn: 1,
       phase: 'ACTION',
+      players,
+      discard,
+      abilityData,
       drawReveal: { card: staleDrawCard, drawerIdx: 1, needsDecision: false },
       log: ['艾伦（寻宝者）对 你 【掉包】，暗抽了1张牌', '拿走 [B2] 旧牌，还给 你 [C3] 新牌'],
       _visualEvents: [
@@ -542,6 +598,15 @@ describe('buildMpRemoteReplayAction', () => {
 
     expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
     expect(action.queue.map(step => step.type)).toEqual(['SKILL_SWAP', 'VISUAL_LOCK', 'CARD_TRANSFER', 'CARD_TRANSFER', 'STATE_PATCH']);
+    expect(action.queue.at(-1)).toMatchObject({
+      type: 'STATE_PATCH',
+      players,
+      discard,
+      log: ['艾伦（寻宝者）对 你 【掉包】，暗抽了1张牌', '拿走 [B2] 旧牌，还给 你 [C3] 新牌'],
+      drawReveal: null,
+      phase: 'ACTION',
+      abilityData,
+    });
     expect(action.queue.some(step => step.type === 'DRAW_CARD')).toBe(false);
     expect(action.pendingGs.drawReveal).toBeNull();
     expect(action.pendingGs._visualEvents).toEqual([]);
@@ -954,6 +1019,45 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.consumedVisualEventIds?.length).toBeGreaterThan(0);
   });
 
+  it('replays earthquake visualEvents even after the draw state has already resolved', () => {
+    const beforePlayers = [
+      { ...player('你-before'), hand: [{ id: 'you-card' }] },
+      { ...player('艾伦-before'), hand: [{ id: 'allen-card' }] },
+      { ...player('贝拉-before'), hand: [{ id: 'bella-card' }] },
+    ];
+    const afterPlayers = [
+      { ...player('你-after'), hand: [{ id: 'you-card' }] },
+      { ...player('艾伦-after'), hand: [] },
+      { ...player('贝拉-after'), hand: [{ id: 'bella-card' }] },
+    ];
+    const log = ['艾伦 收入了 [B2] 地动山摇', '艾伦 失去了 测试牌'];
+    const event = createEarthquakeEvent({
+      beforePlayers,
+      beforeDiscard: [],
+      discardEvents: [{ playerIndex: 1, card, afterPlayers, afterDiscard: [card] }],
+      msgs: log,
+    });
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players: afterPlayers,
+      discard: [card],
+      drawReveal: null,
+      log,
+      _visualEvents: [event],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'DRAW_REVEAL', players: beforePlayers, log: [] }),
+      buildAnimQueue,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.map(step => step.type)).toEqual(['EARTHQUAKE', 'STATE_PATCH']);
+    expect(action.queue[0]).toMatchObject({ beforePlayers, beforeDiscard: [] });
+    expect(action.queue.at(-1)).toMatchObject({ players: afterPlayers, discard: [card], log, phase: 'ACTION' });
+    expect(action.pendingGs._visualEvents).toEqual([]);
+    expect(action.consumedVisualEventIds?.length).toBeGreaterThan(0);
+  });
+
   it('does not mistake a new earthquake with the same visible payload for an already consumed one', () => {
     const quakeCard = { id: 'quake', name: '地动山摇', key: 'B2', type: 'allDiscard' };
     const drawLog = '艾伦 摸到 [B2] 地动山摇（强制触发）';
@@ -978,6 +1082,55 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
     expect(action.queue.map(step => step.type)).toContain('EARTHQUAKE');
     expect(action.consumedVisualEventIds).toContain(secondEvent.id);
+  });
+
+  it('prioritizes endless corridor replay queue before next-turn intro on remote final state', () => {
+    const nextCard = { id: 'next', name: '下一回合牌', key: 'B1', type: 'zone' };
+    const replayEvent = createEndlessCorridorReplayEvent({
+      actorIdx: 1,
+      actorName: '艾伦',
+      beforePlayers: [player('你-before'), player('艾伦-before'), player('贝拉-before')],
+      beforeDiscard: [{ id: 'old-discard' }],
+      queue: [
+        { type: 'ENDLESS_CORRIDOR_TUNNEL' },
+        { type: 'DRAW_CARD', card, triggerName: '无尽通道', targetPid: 1, skipTravel: true, msgs: ['【无尽通道】重新摸到 测试牌'] },
+        { type: 'DISCARD', card, triggerName: '艾伦', targetPid: 1, msgs: ['艾伦 弃置了 测试牌'] },
+      ],
+      msgs: ['【无尽通道】艾伦展示所有手牌：测试牌'],
+    });
+    const action = buildAction(makeState({
+      currentTurn: 2,
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card: nextCard, drawerIdx: 2, needsDecision: true },
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉 摸到 下一回合牌'],
+      _visualEvents: [replayEvent],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION' }),
+      buildAnimQueue,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.slice(0, 3).map(step => step.type)).toEqual(['ENDLESS_CORRIDOR_TUNNEL', 'DRAW_CARD', 'DISCARD']);
+    expect(action.queue[0]).toMatchObject({
+      visualSetupTiming: 'queueStart',
+      visualSetupPatch: {
+        players: [player('你-before'), player('艾伦-before'), player('贝拉-before')],
+        discard: [{ id: 'old-discard' }],
+      },
+    });
+    const nextTurnIdx = action.queue.findIndex(step => step.type === 'YOUR_TURN');
+    expect(nextTurnIdx).toBeGreaterThan(2);
+    expect(action.queue[nextTurnIdx]).toMatchObject({ type: 'YOUR_TURN', name: '贝拉' });
+    expect(action.queue[nextTurnIdx + 1]).toMatchObject({ type: 'DRAW_CARD', card: nextCard, triggerName: '贝拉', targetPid: 2 });
+    expect(action.queue.at(-1)).toMatchObject({
+      type: 'STATE_PATCH',
+      currentTurn: 2,
+      phase: 'DRAW_REVEAL',
+      drawReveal: expect.objectContaining({ card: nextCard, drawerIdx: 2 }),
+    });
+    expect(action.pendingGs._visualEvents).toEqual([]);
+    expect(action.consumedVisualEventIds).toContain(replayEvent.id);
   });
 
   it('uses hunt visualEvents for target lock animation', () => {
@@ -1086,6 +1239,14 @@ describe('buildMpRemoteReplayAction', () => {
     const types = action.queue.map(step => step.type);
     expect(types[0]).toBe('DISCARD');
     expect(types.indexOf('HP_DAMAGE')).toBeGreaterThan(types.indexOf('DISCARD'));
+    expect(action.queue.at(-1)).toMatchObject({
+      type: 'STATE_PATCH',
+      players: afterPlayers,
+      discard: [discardedCard],
+      log: ['旧日志', '弃 [C3] 同编号牌 → 贝拉 受 3HP 伤害'],
+      phase: 'ACTION',
+      abilityData: {},
+    });
     expect(action.queue.some(step => step.type === 'SKILL_HUNT')).toBe(false);
     expect(action.queue.some(step => step.type === 'HUNT_REVEAL_CARD')).toBe(false);
     expect(action.visualLock.players).toEqual(beforePlayers);

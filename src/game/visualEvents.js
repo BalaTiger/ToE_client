@@ -14,11 +14,13 @@ export const VISUAL_EVENT = {
   HUNT_RESULT: 'huntResult',
   HAND_LIMIT_DISCARD: 'handLimitDiscard',
   EARTHQUAKE: 'earthquake',
+  ENDLESS_CORRIDOR_REPLAY: 'endlessCorridorReplay',
 };
 
 const visualEventInstanceId = Math.random().toString(36).slice(2, 10);
 let actionEventSeq = 0;
 let earthquakeEventSeq = 0;
+let endlessCorridorEventSeq = 0;
 
 function cardIdentity(card) {
   if (!card) return 'none';
@@ -174,6 +176,30 @@ export function createHandLimitDiscardEvent({ playerIdx = 0, playerName = '该�
     playerName,
     cards: normalizedCards,
     msgs: Array.isArray(msgs) ? msgs : [],
+  }, 'turn');
+}
+
+export function createEndlessCorridorReplayEvent({
+  actorIdx = 0,
+  actorName = '该玩家',
+  queue = [],
+  msgs = [],
+  beforePlayers = null,
+  beforeDiscard = null,
+  zhuLight = null,
+} = {}) {
+  const replayQueue = Array.isArray(queue) ? queue.filter(Boolean) : [];
+  if (!replayQueue.length) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY,
+    id: `${VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY}:${visualEventInstanceId}:${++endlessCorridorEventSeq}`,
+    actorIdx,
+    actorName,
+    queue: replayQueue,
+    msgs: Array.isArray(msgs) ? msgs : [],
+    beforePlayers: Array.isArray(beforePlayers) ? beforePlayers : null,
+    beforeDiscard: Array.isArray(beforeDiscard) ? beforeDiscard : null,
+    zhuLight: zhuLight || null,
   }, 'turn');
 }
 
@@ -391,7 +417,7 @@ export function buildStatStepsFromVisualEvents(state, players) {
 }
 
 export function buildEarthquakeStepFromVisualEvents(state) {
-  const event = getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.EARTHQUAKE);
+  const event = getEarthquakeVisualEvent(state);
   if (!event) return null;
   return buildEarthquakeAnimStep({
     beforePlayers: event.beforePlayers,
@@ -400,6 +426,14 @@ export function buildEarthquakeStepFromVisualEvents(state) {
     finalPlayers: state?.players,
     msgs: event.msgs,
   });
+}
+
+export function getEarthquakeVisualEvent(state) {
+  return getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.EARTHQUAKE);
+}
+
+export function getEndlessCorridorReplayVisualEvent(state) {
+  return getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY && Array.isArray(ev.queue) && ev.queue.length);
 }
 
 export function getBewitchGiftVisualEvent(state) {

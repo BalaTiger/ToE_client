@@ -1,3 +1,5 @@
+import { rotateInspectionEvents, rotatePlayersArray, rotateStatEvents } from './rotateEvents';
+
 const ROTATE_GS_TOP_LEVEL_INDEX_FIELDS = ['currentTurn', 'pendingExtraTurnOwner', 'pendingExtraTurnAfterPlayer', '_extraTurnResumeFrom'];
 const ROTATE_GS_TOP_LEVEL_INDEX_ARRAY_FIELDS = ['huntAbandoned'];
 const ROTATE_GAME_OVER_INDEX_FIELDS = ['winnerIdx', 'winnerIdx2'];
@@ -66,11 +68,6 @@ function rotateIndexedArrayFields(obj, fields, rotateIndex) {
   return changed ? next : obj;
 }
 
-function rotatePlayersArray(players, myIndex) {
-  if (!Array.isArray(players) || myIndex === 0) return players;
-  return [...players.slice(myIndex), ...players.slice(0, myIndex)];
-}
-
 function rotatePlayerSnapshotFields(obj, fields, myIndex) {
   if (!obj) return obj;
   let changed = false;
@@ -117,33 +114,6 @@ function rotateEarthquakeDiscardEvents(events, rotateIndex, myIndex) {
   }));
 }
 
-function rotateStatEvent(statEvent, rotateIndex, myIndex) {
-  if (!statEvent) return statEvent;
-  return {
-    ...statEvent,
-    target: statEvent?.target != null ? rotateIndex(statEvent.target) : statEvent?.target,
-    pair: Array.isArray(statEvent?.pair) ? statEvent.pair.map(rotateIndex) : statEvent?.pair,
-    players: rotatePlayersArray(statEvent?.players, myIndex),
-  };
-}
-
-function rotateStatEvents(events, rotateIndex, myIndex) {
-  return Array.isArray(events)
-    ? events.map(event => rotateStatEvent(event, rotateIndex, myIndex))
-    : events;
-}
-
-function rotateInspectionEvents(events, rotateIndex, myIndex) {
-  if (!Array.isArray(events)) return events;
-  return events.map(event => ({
-    ...event,
-    target: event?.target != null ? rotateIndex(event.target) : event?.target,
-    beforePlayers: rotatePlayersArray(event?.beforePlayers, myIndex),
-    afterPlayers: rotatePlayersArray(event?.afterPlayers, myIndex),
-    statEvents: rotateStatEvents(event?.statEvents, rotateIndex, myIndex),
-  }));
-}
-
 function rotateAiHuntEvents(events, rotateIndex, myIndex) {
   if (!Array.isArray(events)) return events;
   return events.map(event => ({
@@ -185,6 +155,15 @@ function rotateApophisTargetEvent(event, rotateIndex) {
   };
 }
 
+function rotateRandomTargetEvents(events, rotateIndex) {
+  if (!Array.isArray(events)) return events;
+  return events.map(event => ({
+    ...event,
+    sourceIdx: event.sourceIdx != null ? rotateIndex(event.sourceIdx) : event.sourceIdx,
+    targetIdx: event.targetIdx != null ? rotateIndex(event.targetIdx) : event.targetIdx,
+  }));
+}
+
 function rotateTimedOutDrawDiscardEvent(event, rotateIndex) {
   if (!event) return event;
   return {
@@ -204,11 +183,61 @@ function rotateEarthquakeVisualEvent(event, rotateIndex, myIndex) {
   };
 }
 
+function rotateAnimQueueStep(step, rotateIndex, myIndex) {
+  if (!step) return step;
+  return {
+    ...step,
+    targetPid: step.targetPid != null ? rotateIndex(step.targetPid) : step.targetPid,
+    targetIdx: step.targetIdx != null ? rotateIndex(step.targetIdx) : step.targetIdx,
+    sourceIdx: step.sourceIdx != null ? rotateIndex(step.sourceIdx) : step.sourceIdx,
+    fromPid: step.fromPid != null && step.fromPid >= 0 ? rotateIndex(step.fromPid) : step.fromPid,
+    toPid: step.toPid != null && step.toPid >= 0 ? rotateIndex(step.toPid) : step.toPid,
+    hitIndices: Array.isArray(step.hitIndices) ? step.hitIndices.map(rotateIndex) : step.hitIndices,
+    players: rotatePlayersArray(step.players, myIndex),
+    beforePlayers: rotatePlayersArray(step.beforePlayers, myIndex),
+    targetStats: rotatePlayersArray(step.targetStats, myIndex),
+    statEvents: rotateStatEvents(step.statEvents, rotateIndex, myIndex),
+    beforeDiscard: Array.isArray(step.beforeDiscard) ? step.beforeDiscard : step.beforeDiscard,
+    discardEvents: Array.isArray(step.discardEvents)
+      ? rotateEarthquakeDiscardEvents(step.discardEvents, rotateIndex, myIndex)
+      : step.discardEvents,
+    visualSetupPatch: step.visualSetupPatch
+      ? {
+        ...step.visualSetupPatch,
+        players: rotatePlayersArray(step.visualSetupPatch.players, myIndex),
+      }
+      : step.visualSetupPatch,
+    visualTimeline: Array.isArray(step.visualTimeline)
+      ? step.visualTimeline.map(item => ({
+        ...item,
+        patch: item?.patch
+          ? { ...item.patch, players: rotatePlayersArray(item.patch.players, myIndex) }
+          : item?.patch,
+      }))
+      : step.visualTimeline,
+  };
+}
+
+function rotateEndlessCorridorReplayVisualEvent(event, rotateIndex, myIndex) {
+  if (!event) return event;
+  return {
+    ...event,
+    actorIdx: event.actorIdx != null ? rotateIndex(event.actorIdx) : event.actorIdx,
+    beforePlayers: rotatePlayersArray(event.beforePlayers, myIndex),
+    beforeDiscard: Array.isArray(event.beforeDiscard) ? event.beforeDiscard : event.beforeDiscard,
+    zhuLight: rotateZhuLightForViewer(event.zhuLight, rotateIndex),
+    queue: Array.isArray(event.queue)
+      ? event.queue.map(step => rotateAnimQueueStep(step, rotateIndex, myIndex))
+      : event.queue,
+  };
+}
+
 function rotateVisualEvents(events, rotateIndex, myIndex) {
   if (!Array.isArray(events)) return events;
   return events.map(event => {
     if (event?.type === 'timedOutDrawDiscard') return rotateTimedOutDrawDiscardEvent(event, rotateIndex);
     if (event?.type === 'earthquake') return rotateEarthquakeVisualEvent(event, rotateIndex, myIndex);
+    if (event?.type === 'endlessCorridorReplay') return rotateEndlessCorridorReplayVisualEvent(event, rotateIndex, myIndex);
     if (event?.type === 'turnStart' || event?.type === 'drawCard' || event?.type === 'handLimitDiscard') {
       return {
         ...event,
@@ -261,6 +290,7 @@ export function rotateGsForViewer(gs, myIndex) {
     ...(gs._animMultiplyEvent ? { _animMultiplyEvent: rotateAnimMultiplyEvent(gs._animMultiplyEvent, rotateIndex) } : {}),
     ...(gs._animSphinxReveal ? { _animSphinxReveal: rotateAnimSphinxReveal(gs._animSphinxReveal, rotateIndex) } : {}),
     ...(gs._apophisTargetEvent ? { _apophisTargetEvent: rotateApophisTargetEvent(gs._apophisTargetEvent, rotateIndex) } : {}),
+    ...(gs._randomTargetEvents ? { _randomTargetEvents: rotateRandomTargetEvents(gs._randomTargetEvents, rotateIndex) } : {}),
     ...(gs._mpTimedOutDrawDiscard ? { _mpTimedOutDrawDiscard: rotateTimedOutDrawDiscardEvent(gs._mpTimedOutDrawDiscard, rotateIndex) } : {}),
     ...(gs._visualEvents ? { _visualEvents: rotateVisualEvents(gs._visualEvents, rotateIndex, myIndex) } : {}),
   };

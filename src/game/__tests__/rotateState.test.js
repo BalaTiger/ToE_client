@@ -75,6 +75,9 @@ describe('rotateGsForViewer', () => {
           afterPlayers: [player('a0'), player('a1'), player('a2'), player('a3')],
         },
       ],
+      _randomTargetEvents: [
+        { seq: 1, sourceIdx: 3, targetIdx: 1, label: '投掷石块' },
+      ],
       _animMultiplyEvent: { fromIdx: 1, toIdx: 3, sourceCardIndex: 4 },
       _animSphinxReveal: { actorIdx: 0, card: { name: '斯芬克斯' } },
       _visualEvents: [
@@ -113,6 +116,26 @@ describe('rotateGsForViewer', () => {
             },
           ],
         },
+        {
+          type: 'endlessCorridorReplay',
+          actorIdx: 3,
+          beforePlayers: [player('ecB0'), player('ecB1'), player('ecB2'), player('ecB3')],
+          queue: [
+            { type: 'DRAW_CARD', targetPid: 3, card: { name: '通道牌' } },
+            {
+              type: 'SAN_DAMAGE',
+              hitIndices: [1],
+              targetStats: [
+                { hp: 10, san: 10 },
+                { hp: 10, san: 8 },
+                { hp: 10, san: 10 },
+                { hp: 10, san: 10 },
+              ],
+              statEvents: [{ type: 'SAN_LOSS', target: 1, from: { san: 10 }, to: { san: 8 } }],
+            },
+            { type: 'STATE_PATCH', players: [player('ec0'), player('ec1'), player('ec2'), player('ec3')] },
+          ],
+        },
       ],
     };
 
@@ -134,6 +157,7 @@ describe('rotateGsForViewer', () => {
     expect(names(rotated._aiHuntEvents[0].beforePlayers)).toEqual(['b2', 'b3', 'b0', 'b1']);
     expect(names(rotated._aiHuntEvents[0].afterDiscardPlayers)).toEqual(['d2', 'd3', 'd0', 'd1']);
     expect(names(rotated._aiHuntEvents[0].afterPlayers)).toEqual(['a2', 'a3', 'a0', 'a1']);
+    expect(rotated._randomTargetEvents[0]).toMatchObject({ sourceIdx: 1, targetIdx: 3, label: '投掷石块' });
     expect(rotated._animMultiplyEvent).toMatchObject({ fromIdx: 3, toIdx: 1, sourceCardIndex: 4 });
     expect(rotated._animSphinxReveal).toMatchObject({ actorIdx: 2 });
     expect(rotated._visualEvents[0].playerIdx).toBe(1);
@@ -153,6 +177,13 @@ describe('rotateGsForViewer', () => {
     expect(names(rotated._visualEvents[8].beforePlayers)).toEqual(['eq2', 'eq3', 'eq0', 'eq1']);
     expect(rotated._visualEvents[8].discardEvents[0].playerIndex).toBe(1);
     expect(names(rotated._visualEvents[8].discardEvents[0].afterPlayers)).toEqual(['eqA2', 'eqA3', 'eqA0', 'eqA1']);
+    expect(rotated._visualEvents[9].actorIdx).toBe(1);
+    expect(names(rotated._visualEvents[9].beforePlayers)).toEqual(['ecB2', 'ecB3', 'ecB0', 'ecB1']);
+    expect(rotated._visualEvents[9].queue[0].targetPid).toBe(1);
+    expect(rotated._visualEvents[9].queue[1].hitIndices).toEqual([3]);
+    expect(rotated._visualEvents[9].queue[1].statEvents[0].target).toBe(3);
+    expect(rotated._visualEvents[9].queue[1].targetStats.map(stat => stat.san)).toEqual([10, 10, 10, 8]);
+    expect(names(rotated._visualEvents[9].queue[2].players)).toEqual(['ec2', 'ec3', 'ec0', 'ec1']);
   });
 
   it('derotates rotated animation snapshots back to host order', () => {
@@ -179,6 +210,9 @@ describe('rotateGsForViewer', () => {
       ],
       _aiHuntEvents: [
         { hunterIdx: 1, targetIdx: 0, beforePlayers: [player('b0'), player('b1'), player('b2')] },
+      ],
+      _randomTargetEvents: [
+        { seq: 1, sourceIdx: 1, targetIdx: 0, label: '投掷石块' },
       ],
       _animMultiplyEvent: { fromIdx: 0, toIdx: 2 },
       _animSphinxReveal: { actorIdx: 1 },
@@ -213,6 +247,7 @@ describe('rotateGsForViewer', () => {
     expect(restored._aiHuntEvents[0].hunterIdx).toBe(1);
     expect(restored._aiHuntEvents[0].targetIdx).toBe(0);
     expect(names(restored._aiHuntEvents[0].beforePlayers)).toEqual(['b0', 'b1', 'b2']);
+    expect(restored._randomTargetEvents[0]).toMatchObject({ sourceIdx: 1, targetIdx: 0, label: '投掷石块' });
     expect(restored._animMultiplyEvent).toEqual(gs._animMultiplyEvent);
     expect(restored._animSphinxReveal).toEqual(gs._animSphinxReveal);
     expect(names(restored._visualEvents[0].beforePlayers)).toEqual(['eq0', 'eq1', 'eq2']);
