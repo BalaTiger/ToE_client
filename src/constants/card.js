@@ -656,7 +656,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "D4": [
     {
       "name": "狂化",
-      "desc": "你失去1SAN，直到回合结束，你造成的伤害+1",
+      "desc": "你失去1SAN，直到当前回合结束，你造成的伤害+1",
       "type": "selfBerserk",
       "val": 1,
       "slotKey": "D4",

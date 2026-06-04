@@ -4532,6 +4532,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       P=balance.players;D=balance.deck;Disc=balance.discard;L=balance.log;
     }
     P[actorIdx].godPowerImmuneThisTurn=true;
+    P[actorIdx].godPowerImmuneTurnOwner=gs.currentTurn??actorIdx;
     L.push(`【引燃火把】${localDisplayName(actorIdx,P[actorIdx]?.name)} 本回合不受邪神之力影响`);
     const nextGs=buildTargetContinuationGs({
       players:P,

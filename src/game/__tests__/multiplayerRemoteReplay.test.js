@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildAnimQueue } from '../animQueueCore';
 import { buildMpRemoteReplayAction, MP_REMOTE_REPLAY } from '../multiplayerRemoteReplay';
+import { rotateGsForViewer } from '../rotateState';
 import { createEarthquakeEvent, createHuntResultEvent, createSwapCardsEvent } from '../visualEvents';
 
 const card = { id: 'c1', name: '测试牌', type: 'zone' };
@@ -675,6 +676,61 @@ describe('buildMpRemoteReplayAction', () => {
     });
     expect(second.type).toBe(MP_REMOTE_REPLAY.SET_STATE);
     expect(second.gs._visualEvents).toEqual([]);
+  });
+
+  it('targets bewitch SAN damage at the bewitched player after rotating to their view', () => {
+    const gift = { id: 'gift1', name: '蛊惑礼物', key: 'A1', type: 'zone' };
+    const rawBeforePlayers = [
+      player('你'),
+      { ...player('艾伦'), role: '邪祀者', hand: [gift] },
+      { ...player('贝拉'), san: 8 },
+    ];
+    const rawAfterPlayers = [
+      player('你'),
+      { ...player('艾伦'), role: '邪祀者', hand: [] },
+      { ...player('贝拉'), san: 6, hand: [gift] },
+    ];
+    const rawState = makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players: rawAfterPlayers,
+      log: [
+        '艾伦（邪祀者）对 贝拉 【蛊惑】，赠予 [A1] 蛊惑礼物',
+        '贝拉 遭遇邪神 蛊惑礼物（第1次），失去2SAN',
+      ],
+      _statEventSeq: 1,
+      _statEvents: [{
+        seq: 1,
+        type: 'SAN_LOSS',
+        target: 2,
+        from: { hp: 10, san: 8, isDead: false },
+        to: { hp: 10, san: 6, isDead: false },
+        reason: '邪神遭遇',
+      }],
+      _visualEvents: [{
+        type: 'bewitchGift',
+        id: 'bewitch-san-target',
+        sourceIdx: 1,
+        targetIdx: 2,
+        targetName: '贝拉',
+        card: gift,
+        msgs: ['艾伦（邪祀者）对 贝拉 【蛊惑】，赠予 [A1] 蛊惑礼物'],
+      }],
+    });
+    const rotated = rotateGsForViewer(rawState, 2);
+    const previousGs = rotateGsForViewer(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players: rawBeforePlayers,
+      log: [],
+      _statEventSeq: 0,
+    }), 2);
+    const action = buildAction(rotated, { previousGs, buildAnimQueue });
+
+    expect(rotated._visualEvents[0]).toMatchObject({ sourceIdx: 2, targetIdx: 0 });
+    expect(rotated._statEvents[0].target).toBe(0);
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.find(step => step.type === 'SAN_DAMAGE')).toMatchObject({ hitIndices: [0] });
   });
 
   it('does not let stale bewitch visualEvents override the next draw replay', () => {

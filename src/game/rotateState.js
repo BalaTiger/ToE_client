@@ -10,6 +10,7 @@ const ROTATE_GS_PLAYER_SNAPSHOT_FIELDS = [
   '_playersBeforeSkillAction',
   '_playersBeforeCthDraws',
   '_aiHandLimitBeforePlayers',
+  '_inspectionBeforePlayers',
 ];
 const ROTATE_ABILITYDATA_INDEX_FIELDS = [
   'drawerIdx',
@@ -116,6 +117,33 @@ function rotateEarthquakeDiscardEvents(events, rotateIndex, myIndex) {
   }));
 }
 
+function rotateStatEvent(statEvent, rotateIndex, myIndex) {
+  if (!statEvent) return statEvent;
+  return {
+    ...statEvent,
+    target: statEvent?.target != null ? rotateIndex(statEvent.target) : statEvent?.target,
+    pair: Array.isArray(statEvent?.pair) ? statEvent.pair.map(rotateIndex) : statEvent?.pair,
+    players: rotatePlayersArray(statEvent?.players, myIndex),
+  };
+}
+
+function rotateStatEvents(events, rotateIndex, myIndex) {
+  return Array.isArray(events)
+    ? events.map(event => rotateStatEvent(event, rotateIndex, myIndex))
+    : events;
+}
+
+function rotateInspectionEvents(events, rotateIndex, myIndex) {
+  if (!Array.isArray(events)) return events;
+  return events.map(event => ({
+    ...event,
+    target: event?.target != null ? rotateIndex(event.target) : event?.target,
+    beforePlayers: rotatePlayersArray(event?.beforePlayers, myIndex),
+    afterPlayers: rotatePlayersArray(event?.afterPlayers, myIndex),
+    statEvents: rotateStatEvents(event?.statEvents, rotateIndex, myIndex),
+  }));
+}
+
 function rotateAiHuntEvents(events, rotateIndex, myIndex) {
   if (!Array.isArray(events)) return events;
   return events.map(event => ({
@@ -200,14 +228,7 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
     if (event?.type === 'statEvents') {
       return {
         ...event,
-        statEvents: Array.isArray(event.statEvents)
-          ? event.statEvents.map(statEvent => ({
-            ...statEvent,
-            target: statEvent?.target != null ? rotateIndex(statEvent.target) : statEvent?.target,
-            pair: Array.isArray(statEvent?.pair) ? statEvent.pair.map(rotateIndex) : statEvent?.pair,
-            players: rotatePlayersArray(statEvent?.players, myIndex),
-          }))
-          : event.statEvents,
+        statEvents: rotateStatEvents(event.statEvents, rotateIndex, myIndex),
       };
     }
     return event;
@@ -234,6 +255,9 @@ export function rotateGsForViewer(gs, myIndex) {
     zhuLight,
     ...(gs._earthquakeDiscardEvents ? { _earthquakeDiscardEvents: rotateEarthquakeDiscardEvents(gs._earthquakeDiscardEvents, rotateIndex, myIndex) } : {}),
     ...(gs._aiHuntEvents ? { _aiHuntEvents: rotateAiHuntEvents(gs._aiHuntEvents, rotateIndex, myIndex) } : {}),
+    ...(gs._statEvents ? { _statEvents: rotateStatEvents(gs._statEvents, rotateIndex, myIndex) } : {}),
+    ...(gs._inspectionEvents ? { _inspectionEvents: rotateInspectionEvents(gs._inspectionEvents, rotateIndex, myIndex) } : {}),
+    ...(gs._inspectionTarget != null ? { _inspectionTarget: rotateIndex(gs._inspectionTarget) } : {}),
     ...(gs._animMultiplyEvent ? { _animMultiplyEvent: rotateAnimMultiplyEvent(gs._animMultiplyEvent, rotateIndex) } : {}),
     ...(gs._animSphinxReveal ? { _animSphinxReveal: rotateAnimSphinxReveal(gs._animSphinxReveal, rotateIndex) } : {}),
     ...(gs._apophisTargetEvent ? { _apophisTargetEvent: rotateApophisTargetEvent(gs._apophisTargetEvent, rotateIndex) } : {}),

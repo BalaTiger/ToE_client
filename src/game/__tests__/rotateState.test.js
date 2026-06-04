@@ -48,6 +48,22 @@ describe('rotateGsForViewer', () => {
           afterPlayers: [player('q0'), player('q1'), player('q2'), player('q3')],
         },
       ],
+      _statEvents: [
+        { type: 'SAN_LOSS', target: 1, from: { san: 8 }, to: { san: 6 }, seq: 4 },
+      ],
+      _inspectionTarget: 1,
+      _inspectionBeforePlayers: [player('ib0'), player('ib1'), player('ib2'), player('ib3')],
+      _inspectionEvents: [
+        {
+          seq: 2,
+          target: 1,
+          beforePlayers: [player('insB0'), player('insB1'), player('insB2'), player('insB3')],
+          afterPlayers: [player('insA0'), player('insA1'), player('insA2'), player('insA3')],
+          statEvents: [
+            { type: 'HP_LOSS', target: 1, from: { hp: 10 }, to: { hp: 9 }, seq: 5 },
+          ],
+        },
+      ],
       _aiHuntEvents: [
         {
           hunterIdx: 3,
@@ -104,6 +120,13 @@ describe('rotateGsForViewer', () => {
 
     expect(rotated._earthquakeDiscardEvents[0].playerIndex).toBe(2);
     expect(names(rotated._earthquakeDiscardEvents[0].afterPlayers)).toEqual(['q2', 'q3', 'q0', 'q1']);
+    expect(rotated._statEvents[0].target).toBe(3);
+    expect(rotated._inspectionTarget).toBe(3);
+    expect(names(rotated._inspectionBeforePlayers)).toEqual(['ib2', 'ib3', 'ib0', 'ib1']);
+    expect(rotated._inspectionEvents[0].target).toBe(3);
+    expect(names(rotated._inspectionEvents[0].beforePlayers)).toEqual(['insB2', 'insB3', 'insB0', 'insB1']);
+    expect(names(rotated._inspectionEvents[0].afterPlayers)).toEqual(['insA2', 'insA3', 'insA0', 'insA1']);
+    expect(rotated._inspectionEvents[0].statEvents[0].target).toBe(3);
     expect(rotated._aiHuntEvents[0].hunterIdx).toBe(1);
     expect(rotated._aiHuntEvents[0].targetIdx).toBe(3);
     expect(rotated._aiHuntEvents[0].sourceCardIndex).toBe(2);
@@ -143,6 +166,17 @@ describe('rotateGsForViewer', () => {
       _earthquakeDiscardEvents: [
         { playerIndex: 2, afterPlayers: [player('q0'), player('q1'), player('q2')] },
       ],
+      _statEvents: [{ type: 'SAN_LOSS', target: 2, seq: 1 }],
+      _inspectionTarget: 2,
+      _inspectionBeforePlayers: [player('ib0'), player('ib1'), player('ib2')],
+      _inspectionEvents: [
+        {
+          target: 2,
+          beforePlayers: [player('insB0'), player('insB1'), player('insB2')],
+          afterPlayers: [player('insA0'), player('insA1'), player('insA2')],
+          statEvents: [{ type: 'HP_LOSS', target: 2, seq: 2 }],
+        },
+      ],
       _aiHuntEvents: [
         { hunterIdx: 1, targetIdx: 0, beforePlayers: [player('b0'), player('b1'), player('b2')] },
       ],
@@ -169,6 +203,13 @@ describe('rotateGsForViewer', () => {
     expect(names(restored._playersBeforeThisDraw)).toEqual(names(gs._playersBeforeThisDraw));
     expect(restored._earthquakeDiscardEvents[0].playerIndex).toBe(2);
     expect(names(restored._earthquakeDiscardEvents[0].afterPlayers)).toEqual(['q0', 'q1', 'q2']);
+    expect(restored._statEvents[0].target).toBe(2);
+    expect(restored._inspectionTarget).toBe(2);
+    expect(names(restored._inspectionBeforePlayers)).toEqual(['ib0', 'ib1', 'ib2']);
+    expect(restored._inspectionEvents[0].target).toBe(2);
+    expect(names(restored._inspectionEvents[0].beforePlayers)).toEqual(['insB0', 'insB1', 'insB2']);
+    expect(names(restored._inspectionEvents[0].afterPlayers)).toEqual(['insA0', 'insA1', 'insA2']);
+    expect(restored._inspectionEvents[0].statEvents[0].target).toBe(2);
     expect(restored._aiHuntEvents[0].hunterIdx).toBe(1);
     expect(restored._aiHuntEvents[0].targetIdx).toBe(0);
     expect(names(restored._aiHuntEvents[0].beforePlayers)).toEqual(['b0', 'b1', 'b2']);

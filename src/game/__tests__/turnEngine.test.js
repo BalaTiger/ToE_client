@@ -466,4 +466,45 @@ describe('turnEngine stat events', () => {
     expect(afterExtraTurn.currentTurn).toBe(2);
     expect(afterExtraTurn._extraTurnResumeFrom).toBeNull();
   });
+
+  it('当前执行回合结束时清除其他角色身上的本回合临时效果', () => {
+    const players = makeStandardPlayers(3);
+    players[1].damageBonus = 1;
+    players[1].damageBonusTurnOwner = 0;
+    players[1].godPowerImmuneThisTurn = true;
+    players[1].godPowerImmuneTurnOwner = 0;
+    const gs = makeGs({ players, currentTurn: 0, turn: 8, deck: [] });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players[1].damageBonus).toBeUndefined();
+    expect(result.players[1].damageBonusTurnOwner).toBeUndefined();
+    expect(result.players[1].godPowerImmuneThisTurn).toBeUndefined();
+    expect(result.players[1].godPowerImmuneTurnOwner).toBeUndefined();
+  });
+
+  it('狂化被蛊惑给其他角色时不会保留到该角色下一回合', () => {
+    const players = makeStandardPlayers(2);
+    players[1].damageBonus = 1;
+    players[1].damageBonusTurnOwner = 0;
+    const gs = makeGs({ players, currentTurn: 0, turn: 8, deck: [] });
+
+    const result = startNextTurn(gs);
+
+    expect(result.currentTurn).toBe(1);
+    expect(result.players[1].damageBonus).toBeUndefined();
+    expect(result.players[1].damageBonusTurnOwner).toBeUndefined();
+  });
+
+  it('不会清除尚未到期的其他执行回合临时效果', () => {
+    const players = makeStandardPlayers(3);
+    players[1].damageBonus = 1;
+    players[1].damageBonusTurnOwner = 2;
+    const gs = makeGs({ players, currentTurn: 0, turn: 8, deck: [] });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players[1].damageBonus).toBe(1);
+    expect(result.players[1].damageBonusTurnOwner).toBe(2);
+  });
 });

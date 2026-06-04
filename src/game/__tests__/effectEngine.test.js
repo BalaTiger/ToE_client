@@ -451,6 +451,24 @@ describe('applyFx', () => {
     expect(res.msgs.some(m => m.includes('伤害+1'))).toBe(true);
   });
 
+  it('selfBerserk: 蛊惑触发时绑定当前执行回合而不是被蛊惑者回合', () => {
+    const players = makeStandardPlayers(3);
+    const card = { type: 'selfBerserk', name: '狂化', key: 'D4' };
+    const gs = makeGs({ players, currentTurn: 0, turn: 7 });
+    const res = applyFx(card, 1, null, players, [], [], gs);
+
+    expect(res.P[1]).toMatchObject({ damageBonus: 1, damageBonusTurnOwner: 0 });
+  });
+
+  it('igniteTorch: AI 自动弃牌时免疫绑定当前执行回合', () => {
+    const players = makeStandardPlayers(3);
+    players[1].hand = [{ id: 'old-card', name: '旧手牌', type: 'test' }];
+    const gs = makeGs({ players, currentTurn: 0 });
+    const res = applyFx({ type: 'igniteTorch', name: '引燃火把' }, 1, null, players, [], [], gs, false, [], true);
+
+    expect(res.P[1]).toMatchObject({ godPowerImmuneThisTurn: true, godPowerImmuneTurnOwner: 0 });
+  });
+
   it('allDiscard: 全体随机弃1张牌', () => {
     const players = makeStandardPlayers(3);
     players[0].hand = [makeZoneCard('A1', 0)];

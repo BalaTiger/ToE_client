@@ -562,7 +562,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       msgs.push(`${actor.name} 回复了 ${amount} HP，下一张区域牌只能看见编号后决定是否收入`);
     },
     proliferatingZ: () => {
-      statePatch = { ...statePatch, proliferatingZ: makeProliferatingZState(ci, gs?.turn || 0), proliferatingZQueue: [] };
+      statePatch = { ...statePatch, proliferatingZ: makeProliferatingZState(gs?.currentTurn ?? ci, gs?.turn || 0), proliferatingZQueue: [] };
       msgs.push(`【增殖的Z】本回合若有角色获得邪神牌或其衍生牌，其他角色各摸1张牌`);
     },
     petrifyingFormula: () => {
@@ -678,6 +678,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       }
       randDiscard(ci, 1);
       P[ci].godPowerImmuneThisTurn = true;
+      P[ci].godPowerImmuneTurnOwner = gs?.currentTurn ?? ci;
       msgs.push(`【引燃火把】${actor.name} 本回合不受邪神之力影响`);
     },
     swapDeckDiscard: () => {
@@ -941,6 +942,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         msgs.push(`${actor.name} 失去 1 SAN`);
       }
       P[ci].damageBonus = (P[ci].damageBonus || 0) + 1;
+      P[ci].damageBonusTurnOwner = gs?.currentTurn ?? ci;
       msgs.push(`${actor.name} 本回合造成的伤害+1`);
     },
     selfDamageSkipDraw: () => {

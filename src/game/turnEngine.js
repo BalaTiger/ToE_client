@@ -553,13 +553,28 @@ function turnStartEvent_ZhuLight(P, D, next, gs) {
   return buildZhuLight(P, D, next, gs.zhuLight);
 }
 
+function clearExecutedTurnTempEffects(P, endingTurn) {
+  return P.map(player => {
+    if (!player) return player;
+    const next = { ...player };
+    if (next.damageBonusTurnOwner === endingTurn) {
+      delete next.damageBonus;
+      delete next.damageBonusTurnOwner;
+    }
+    if (next.godPowerImmuneTurnOwner === endingTurn) {
+      delete next.godPowerImmuneThisTurn;
+      delete next.godPowerImmuneTurnOwner;
+    }
+    return next;
+  });
+}
+
 function endPreviousTurnCleanup(P, prevTurn) {
+  P = clearExecutedTurnTempEffects(P, prevTurn);
   if (!P[prevTurn]) return P;
   const p = { ...P[prevTurn] };
   delete p._nyaBorrow;
   delete p._nyaHandLimit;
-  delete p.damageBonus;
-  delete p.godPowerImmuneThisTurn;
   P[prevTurn] = p;
   return P;
 }
