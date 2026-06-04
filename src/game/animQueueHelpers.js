@@ -175,13 +175,20 @@ export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPl
     inspectionEvents,
     {buildAnimQueue,copyPlayers}
   );
+  const maxInspectionSeq=Math.max(baseOldGs._inspectionSeq||0,...inspectionEvents.map(ev=>ev?.seq||0));
+  const tailStatEventSeq=Math.max(inspectionFlow.statEventSeq,newGs?._statEventSeq||0);
   const tailQueue=buildAnimQueue(
-    {players:inspectionFlow.players,log:inspectionFlow.log,_statEventSeq:inspectionFlow.statEventSeq},
+    {
+      players:inspectionFlow.players,
+      log:inspectionFlow.log,
+      _statEventSeq:tailStatEventSeq,
+      _inspectionSeq:maxInspectionSeq,
+    },
     newGs
   );
   return {
     queue:[...preQueue,...inspectionFlow.queue,...tailQueue],
     inspectionEvents,
-    inspectionSeq:inspectionFlow.statEventSeq,
+    inspectionSeq:maxInspectionSeq,
   };
 }

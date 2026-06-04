@@ -660,8 +660,13 @@ describe('buildMpRemoteReplayAction', () => {
       buildAnimQueue,
     });
     expect(first.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
-    expect(first.queue.some(step => step.type === 'SAN_DAMAGE')).toBe(true);
-    expect(first.queue.some(step => step.type === 'DRAW_CARD' && step.card === inspectionCard)).toBe(true);
+    const sanDamageIndices = first.queue
+      .map((step, idx) => (step.type === 'SAN_DAMAGE' ? idx : -1))
+      .filter(idx => idx >= 0);
+    const inspectionRevealIdx = first.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card === inspectionCard);
+    expect(sanDamageIndices).toHaveLength(1);
+    expect(inspectionRevealIdx).toBeGreaterThan(-1);
+    expect(sanDamageIndices[0]).toBeLessThan(inspectionRevealIdx);
 
     const second = buildAction(repeatedRotated, {
       previousGs: makeState({ currentTurn: 1, phase: 'ACTION', players: beforePlayers, log: [] }),
