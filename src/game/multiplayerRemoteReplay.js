@@ -1,6 +1,6 @@
 import { bindAnimLogChunks } from './animLogs';
 import { buildAiHuntEventAnimQueue } from './animQueueCore';
-import { fullHandSwapSteps } from './animQueueHelpers';
+import { cardTransferStep, fullHandSwapSteps } from './animQueueHelpers';
 import {
   buildBewitchGiftReplay,
   buildInspectionReplay,
@@ -33,6 +33,7 @@ import {
   buildHuntRevealStepFromVisualEvent,
   getHuntTargetVisualEvent,
   getHuntResultVisualEvent,
+  getSphinxResultVisualEvent,
   getEndlessCorridorReplayVisualEvent,
   pruneConsumedVisualEvents,
 } from './visualEvents';
@@ -327,6 +328,50 @@ export function buildMpRemoteReplayAction({
       queue,
       visualLock: {
         players: huntResultEvent.beforePlayers || previousGs?.players || null,
+        zhuLight: previousGs?.zhuLight || rotated.zhuLight || null,
+      },
+    });
+  }
+  const sphinxResultEvent = getSphinxResultVisualEvent(rotated);
+  if (sphinxResultEvent && isFreshActionReplayEvent(sphinxResultEvent, logDelta)) {
+    const resultQueue = [
+      {
+        type: 'DRAW_CARD',
+        card: sphinxResultEvent.card,
+        triggerName: '斯芬克斯',
+        targetPid: sphinxResultEvent.actorIdx,
+        skipTravel: true,
+        guessCorrect: !!sphinxResultEvent.guessCorrect,
+        msgs: (sphinxResultEvent.msgs || logDelta).slice(0, 1),
+      },
+    ];
+    if (sphinxResultEvent.guessCorrect) {
+      const gainMsg = (sphinxResultEvent.msgs || logDelta).find(m => (m || '').includes('猜测正确'));
+      resultQueue.push(cardTransferStep({
+        fromPid: -1,
+        dest: 'player',
+        toPid: sphinxResultEvent.actorIdx,
+        count: 1,
+        msgs: gainMsg ? [gainMsg] : [],
+      }));
+    } else {
+      resultQueue.push(...bindAnimLogChunks(
+        buildAnimQueue(previousGs || buildMaskedActionState(rotated), rotated),
+        { statLogs: sphinxResultEvent.msgs || logDelta },
+      ));
+    }
+    const queue = appendFinalStatePatch(
+      resultQueue,
+      rotated,
+      ['players', 'deck', 'discard', 'log', 'phase', 'abilityData'],
+    );
+    return withConsumedVisualEvents({
+      type: MP_REMOTE_REPLAY.ANIM_QUEUE,
+      maskedGs: buildMaskedActionState(rotated),
+      pendingGs: clearRemoteReplayHints(rotated),
+      queue,
+      visualLock: {
+        players: previousGs?.players || null,
         zhuLight: previousGs?.zhuLight || rotated.zhuLight || null,
       },
     });

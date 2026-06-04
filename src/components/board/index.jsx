@@ -589,7 +589,15 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
               zIndex:ci+1
             }}>
               {card._back
-                ?<DDCardBack small expansionKey={expansionKey} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/>
+                ?<div
+                  onClick={onCardSelect?()=>onCardSelect(ci):undefined}
+                  style={{
+                    cursor:onCardSelect?'pointer':'default',
+                    outline:onCardSelect?'1px solid #c8a96e88':'none',
+                    boxShadow:onCardSelect?'0 0 10px #c8a96e44':'none',
+                    borderRadius:3,
+                  }}
+                ><DDCardBack small expansionKey={expansionKey} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/></div>
                 :<DDCard card={card} small onClick={onCardSelect?()=>onCardSelect(ci):undefined} highlight={!!onCardSelect} holderId={playerIndex} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/>}
             </div>
           );

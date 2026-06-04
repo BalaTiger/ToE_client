@@ -247,6 +247,9 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
     if (event?.type === 'huntResult') {
       return rotateAiHuntEvents([event], rotateIndex, myIndex)[0];
     }
+    if (event?.type === 'sphinxResult') {
+      return rotateAnimSphinxReveal(event, rotateIndex);
+    }
     if (event?.type === 'bewitchGift' || event?.type === 'swapCards' || event?.type === 'huntTarget' || event?.type === 'huntReveal') {
       return {
         ...event,

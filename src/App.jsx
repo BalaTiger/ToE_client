@@ -118,6 +118,7 @@ import {
   createHuntTargetEvent,
   createHuntRevealEvent,
   createHuntResultEvent,
+  createSphinxResultEvent,
   buildHuntRevealStepFromVisualEvents,
   markConsumedVisualEvents,
   pruneConsumedVisualEvents,
@@ -836,7 +837,7 @@ export default function Game(){
     }
     if(phase==='DISCARD_PHASE'||phase==='ACTION')return stateLike.currentTurn===takeoverIdx;
     const currentTurnPhases=new Set([
-      'DRAW_SELECT_TARGET','SWAP_SELECT_TARGET','SWAP_GIVE_CARD','HUNT_SELECT_TARGET','HUNT_CONFIRM',
+      'DRAW_SELECT_TARGET','SWAP_SELECT_TARGET','SWAP_STEAL_CARD','SWAP_GIVE_CARD','HUNT_SELECT_TARGET','HUNT_CONFIRM',
       'BEWITCH_SELECT_TARGET','BEWITCH_SELECT_CARD','ZONE_SWAP_SELECT_TARGET','PEEK_HAND_SELECT_TARGET',
       'CAVE_DUEL_SELECT_TARGET','CAVE_DUEL_SELECT_CARD','ROSE_THORN_SELECT_TARGET','MULTIPLY_SELECT_TARGET',
       'SHU_SELECT_TARGET','FIRST_COME_PICK_SELECT','SAME_ABYSS_SELECT','SPHINX_GUESS','GRAVE_DIG_SELECT',
@@ -2197,6 +2198,7 @@ export default function Game(){
     if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
     if(gs.gameOver)return; // gameEnd event 单独处理
     if(gs.phase==='TREASURE_WIN'||gs.phase==='PLAYER_WIN_PENDING')return; // local-only phases
+    if(gs.phase==='SWAP_STEAL_CARD'||gs.phase==='SWAP_GIVE_CARD')return; // 掉包暗抽中间态含私密牌信息，最终结算再同步
     if(gs._mpEndTurn||gs._mpAutoDiscard||gs._mpAutoCthDecision)return; // local timeout transition markers
     if(gs._endTurnReplay)return; // 无尽通道跨多段动画，结束后携带完整 replay event 再同步
     if(receivedGsRef.current){receivedGsRef.current=false;return;}
@@ -2535,6 +2537,7 @@ export default function Game(){
       state?._turnKey??'',
       state?.drawReveal?.card?.id||'',
       ad.pickIndex??'',
+      ad.swapTi??'',
       ad.targetIdx??'',
       ad.caveDuelSource??'',
       ad.caveDuelTarget??'',
@@ -2609,6 +2612,7 @@ export default function Game(){
     if(isLocalNyaBorrowPhase(state))return true;
     if(isLocalTortoiseSelectPhase(state))return !!state.abilityData?.selectableKeys?.length;
     if(isLocalFirstComePicker(state))return true;
+    if(state.phase==='SWAP_STEAL_CARD'&&isLocalCurrentTurn(state))return !!state.players?.[state.abilityData?.swapTi]?.hand?.length;
     if(isLocalPublicCardPickPhase(state))return true;
     if(state.phase==='GRAVE_DIG_SELECT'&&isLocalSeatIndex(state.abilityData?.playerIndex))return !!state.abilityData?.godCards?.length;
     if(isLocalSameAbyssTargetPhase(state))return true;
@@ -2649,6 +2653,7 @@ export default function Game(){
       return;
     }
     if(gs.phase==='FIRST_COME_PICK_SELECT'){firstComePickSelectCard(0);return;}
+    if(gs.phase==='SWAP_STEAL_CARD'){swapSelectTargetCard(0);return;}
     if(gs.phase==='HUNT_SELECT_CARD_FROM_PUBLIC'){huntSelectCardFromPublic(0);return;}
     if(gs.phase==='GRAVE_DIG_SELECT'){graveDigSelectGod(0);return;}
     if(gs.phase==='SAME_ABYSS_SELECT'){sameAbyssSelect('hp');return;}
@@ -2787,7 +2792,7 @@ export default function Game(){
       if(win){setGs({...resolvedBase,gameOver:win});return;}
       const baseHandLimit=getHandLimitForPlayer(resolvedBase.players?.[0]);
       if(resolvedBase.players[0].hand.length>baseHandLimit){
-        setGs({...resolvedBase,phase:'DISCARD_PHASE',abilityData:{discardSelected:[]}});
+        setGs({...resolvedBase,phase:'DISCARD_PHASE',abilityData:{discardSelected:[],fromEndTurn:true}});
         return;
       }
       const nextGs=startNextTurn({...resolvedBase,currentTurn:0});
@@ -2806,7 +2811,7 @@ export default function Game(){
       }
       const baseHandLimit=getHandLimitForPlayer(base.players?.[0]);
       if(base.players[0].hand.length>baseHandLimit){
-        triggerAnimQueue([{type:'DISCARD',card:dr.card,triggerName:who,targetPid:drawerIdx,msgs:[discardMsg]}],{...base,phase:'DISCARD_PHASE',abilityData:{discardSelected:[]}});
+        triggerAnimQueue([{type:'DISCARD',card:dr.card,triggerName:who,targetPid:drawerIdx,msgs:[discardMsg]}],{...base,phase:'DISCARD_PHASE',abilityData:{discardSelected:[],fromEndTurn:true}});
         return;
       }
       const timeoutDiscardEvent=createTimedOutDrawDiscardEvent({
@@ -3167,12 +3172,6 @@ export default function Game(){
 
   // ── Main Game ──────────────────────────────────────────────
   const me=gs.players[0];
-  const mobileArmedGodCard=isMobile&&mobileArmedGodCardIdx!=null?visualMe.hand[mobileArmedGodCardIdx]:null;
-  const mobileArmedGodTooltipRect=mobileArmedGodCardIdx!=null?(()=>{
-    const wrapEl=mobileGodCardRefs.current.get(mobileArmedGodCardIdx);
-    const cardEl=wrapEl?.firstElementChild||wrapEl;
-    return _getZoomCompensatedRect(cardEl);
-  })():null;
   const effectiveRole=me._nyaBorrow||me.role;
   const effectiveHandLimit=getHandLimitForPlayer(me);
   const currentTurnPlayer=gs?.players?.[gs?.currentTurn];
@@ -3199,6 +3198,12 @@ export default function Game(){
     ?awaitingAiTurnPlayers
     :gs.players;
   const visualMe=visualPlayers[0];
+  const mobileArmedGodCard=isMobile&&mobileArmedGodCardIdx!=null?visualMe.hand[mobileArmedGodCardIdx]:null;
+  const mobileArmedGodTooltipRect=mobileArmedGodCardIdx!=null?(()=>{
+    const wrapEl=mobileGodCardRefs.current.get(mobileArmedGodCardIdx);
+    const cardEl=wrapEl?.firstElementChild||wrapEl;
+    return _getZoomCompensatedRect(cardEl);
+  })():null;
   const phase=gs.phase;
   const zhuLightForView=((anim||animExiting||animQueueRef.current.length>0)&&visualZhuLightLockRef.current)
     ?visualZhuLightLockRef.current
@@ -3992,22 +3997,11 @@ export default function Game(){
     }
     const targetPlayer=P[ti];
     // 如果目标玩家手牌公开，让玩家选择一张牌
-    if(targetPlayer.revealHand){
-      setGsWithApophisTargetAnim({...gs,players:P,phase:'SWAP_SELECT_TARGET_CARD',
-        drawReveal:null,
-        abilityData:{swapTi:ti,preSkillRevealed:gs.abilityData?.preSkillRevealed},
-        log:[...L,`你${gs.globalOnlySwapOwner!==null?'':'（寻宝者）'}对 ${gs.players[ti].name} 【掉包】，请选择要抽取的牌`],
-        ...apophisNightPatch(night)});
-    }else{
-      // 否则随机抽取
-      const ri2=0|Math.random()*P[ti].hand.length;
-      const taken=P[ti].hand.splice(ri2,1)[0];
-      setGsWithApophisTargetAnim({...gs,players:P,phase:'SWAP_GIVE_CARD',
-        drawReveal:null,
-        abilityData:{swapTi:ti,takenCard:taken,preSkillRevealed:gs.abilityData?.preSkillRevealed},
-        log:[...L,`你${gs.globalOnlySwapOwner!==null?'':'（寻宝者）'}对 ${gs.players[ti].name} 【掉包】，暗抽了1张牌`],
-        ...apophisNightPatch(night)});
-    }
+    setGsWithApophisTargetAnim({...gs,players:P,phase:targetPlayer.revealHand?'SWAP_SELECT_TARGET_CARD':'SWAP_STEAL_CARD',
+      drawReveal:null,
+      abilityData:{swapTi:ti,preSkillRevealed:gs.abilityData?.preSkillRevealed},
+      log:[...L,`你${gs.globalOnlySwapOwner!==null?'':'（寻宝者）'}对 ${gs.players[ti].name} 【掉包】，请选择要抽取的牌`],
+      ...apophisNightPatch(night)});
   }
   function zoneSwapSelectTarget(ti){
     // 强征献礼：与目标交换全部手牌
@@ -4650,18 +4644,24 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   function swapSelectTargetCard(cardIdx){
     const{swapTi}=gs.abilityData;
     let P=copyPlayers(gs.players);
+    const targetWasRevealed=!!P[swapTi]?.revealHand;
     const taken=P[swapTi].hand.splice(cardIdx,1)[0];
     setGs({...gs,players:P,phase:'SWAP_GIVE_CARD',drawReveal:null,
       abilityData:{...gs.abilityData,takenCard:taken},
-      log:[...gs.log,`你选择抽取了 ${cardLogText(taken,{alwaysShowName:true})}`]}
+      log:[...gs.log,targetWasRevealed
+        ?`你选择抽取了 ${cardLogText(taken,{alwaysShowName:true})}`
+        :'你暗抽了1张牌'
+      ]}
     );
   }
   function swapGiveCard(idx){
     const{swapTi,takenCard}=gs.abilityData;
     let P=copyPlayers(gs.players);
+    const targetWasRevealed=!!gs.players?.[swapTi]?.revealHand;
     const given=P[0].hand.splice(idx,1)[0];
     P[0].hand.push(takenCard);P[swapTi].hand.push(given);
-    const L=[...gs.log,`拿走 ${cardLogText(takenCard,{alwaysShowName:true})}，还给 ${P[swapTi].name} ${cardLogText(given,{alwaysShowName:true})}`];
+    const takenText=targetWasRevealed?cardLogText(takenCard,{alwaysShowName:true}):'暗抽牌';
+    const L=[...gs.log,`拿走 ${takenText}，还给 ${P[swapTi].name} ${cardLogText(given,{alwaysShowName:true})}`];
     const swapVisualEvent=createSwapCardsEvent({
       sourceIdx:0,
       targetIdx:swapTi,
@@ -5175,18 +5175,25 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     );
     const logDelta=L.slice(gs.log.length);
     const revealStep={type:'DRAW_CARD',card:actualCard,triggerName:'斯芬克斯',targetPid:gs.currentTurn,skipTravel:true,guessCorrect,msgs:[logDelta[0]]};
+    const sphinxEvent=createSphinxResultEvent({
+      actorIdx:gs.currentTurn,
+      card:actualCard,
+      guessCorrect,
+      msgs:logDelta,
+    });
+    const newGsWithEvent=sphinxEvent?{...newGs,_visualEvents:[sphinxEvent]}:newGs;
     let queue=[revealStep];
     if(guessCorrect){
       const gainMsg=logDelta.find(m=>m.includes('猜测正确'));
       queue.push(cardTransferStep({fromPid:-1,dest:'player',toPid:gs.currentTurn,count:1,msgs:gainMsg?[gainMsg]:[]}));
     }else{
-      const resultQueue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(logDelta));
+      const resultQueue=bindAnimLogChunks(buildAnimQueue(gs,newGsWithEvent),splitAnimBoundLogs(logDelta));
       queue.push(...resultQueue);
     }
     if(queue.length){
       setGs(p=>p?{...p,phase:nextPhase,abilityData:{}}:p);
-      triggerAnimQueue(queue,newGs);
-    }else setGs(newGs);
+      triggerAnimQueue(queue,newGsWithEvent);
+    }else setGs(newGsWithEvent);
   }
 
   function buildSemiMaterializeGuessOrder(P, sourceIdx){
@@ -5331,7 +5338,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const hasSlimeDecision=mergedInspectionMeta?.abilityData?.type==='tsgSlimeBalance';
       const bewitchMsgs=extractSkillLogs(L.slice(gs.log.length),'bewitch');
       const bewitchEvent=createBewitchGiftEvent({sourceIdx:0,targetIdx:ti,targetName:P[ti]?.name,card:bewitchCard,msgs:bewitchMsgs});
-      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:hasSlimeDecision?'TSG_SLIME_BALANCE':'ACTION',skillUsed:true,...mergedInspectionMeta,...(gres.statePatch||{}),abilityData:hasSlimeDecision?{...mergedInspectionMeta.abilityData,_turnOwner:gs.currentTurn}:{},...apophisNightPatch(night),apophisNight:nextApophisNight,_visualEvents:bewitchEvent?[bewitchEvent]:[],...(win?{gameOver:win}:{})};
+      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:hasSlimeDecision?'TSG_SLIME_BALANCE':'ACTION',drawReveal:null,skillUsed:true,...mergedInspectionMeta,...(gres.statePatch||{}),abilityData:hasSlimeDecision?{...mergedInspectionMeta.abilityData,_turnOwner:gs.currentTurn}:{},...apophisNightPatch(night),apophisNight:nextApophisNight,_visualEvents:bewitchEvent?[bewitchEvent]:[],...(win?{gameOver:win}:{})};
       const statQueue=buildPostBewitchStatQueue(gs,newGs);
       broadcastMpStateBeforeLocalReplay(newGs);
       triggerAnimQueue(mergeApophisTargetQueue(buildBewitchForcedCardQueue(0,ti,bewitchCard,P[ti]?.name,statQueue,bewitchMsgs),gs,newGs),newGs);
@@ -5351,7 +5358,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     });
     const bewitchMsgs=extractSkillLogs(L.slice(gs.log.length),'bewitch');
     const bewitchEvent=createBewitchGiftEvent({sourceIdx:0,targetIdx:ti,targetName:res.P[ti]?.name,card:bewitchCard,msgs:bewitchMsgs});
-    const newGs={...gs,players:res.P,deck:res.D,discard:res.Disc,log:L,
+    const newGs={...gs,players:res.P,deck:res.D,discard:res.Disc,log:L,drawReveal:null,
       abilityData:phaseAbilityData,
       phase:nextPhase,
       skillUsed:true,...(res.statePatch||{}),...apophisNightPatch(night),_visualEvents:bewitchEvent?[bewitchEvent]:[],...(win?{gameOver:win}:{})};
@@ -5546,6 +5553,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const selected=(latestGs||gs).abilityData?.discardSelected||[];
     if(!selected.length)return;
     const baseGs=latestGs||gs;
+    const shouldStopEndTurnDiscardTimer=!!(baseGs._isMP&&baseGs.abilityData?.fromEndTurn);
     let P=copyPlayers(baseGs.players);
     const sorted=[...selected].sort((a,b)=>b-a);const discarded=[];
     sorted.forEach(i=>{const c=P[0].hand.splice(i,1)[0];discarded.push(c);});
@@ -5568,6 +5576,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       balanceStatePatch=balance.statePatch;
     }
     if(destroyedDisc.length) L.push(`衍生牌 ×${destroyedDisc.length} 被销毁`);
+    const handLimitAfterDiscard=getHandLimitForPlayer(P[0]);
+    const endTurnDiscardResolved=shouldStopEndTurnDiscardTimer&&P[0].hand.length<=handLimitAfterDiscard;
+    if(endTurnDiscardResolved){
+      setGs(prev=>prev?{...prev,_mpEndTurnDiscardResolved:true}:prev);
+    }
     // CTH power: draw when ending turn while face-down
     const cthDrawCount=getCthRestDrawCount(P[0]);
     if(cthDrawCount>0){
@@ -5603,7 +5616,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const statQ=cthDraws.length?buildAnimQueue(baseGs,{...baseGs,players:P,deck:D,discard:Disc,log:L}).filter(a=>a.type!=='CARD_TRANSFER'):[];
       if(beginEndTurnReplay(baseGs,P,D,Disc,L,[...discardQueue,...cthQueue,...statQ]))return;
     }
-    const postDiscardGs={...baseGs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,abilityData:{},...balanceStatePatch};
+    const postDiscardGs={...baseGs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,abilityData:{},_mpEndTurnDiscardResolved:undefined,...balanceStatePatch};
     let newGs=startNextTurn(postDiscardGs);
     const discardAnimMsgs=L.slice(-discarded.length-1);
     const handLimitDiscardEvent=baseGs._isMP?createHandLimitDiscardEvent({
@@ -5929,7 +5942,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(isBlocked)return;
     if(me.hand.length>effectiveHandLimit){
       // 需要弃牌时，不立即触发CTH效果，等待弃牌后再触发
-      setGs({...gs,phase:'DISCARD_PHASE',abilityData:{discardSelected:[]}});
+      setGs({...gs,phase:'DISCARD_PHASE',abilityData:{discardSelected:[],fromEndTurn:true}});
       return;
     }
     // 不需要弃牌时，直接触发CTH效果
@@ -6302,8 +6315,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   const phaseLabel={
     ACTION:               isLocalCurrentTurn(gs)?'你的回合 — 可发动技能、休息，或结束回合':'等候其他旅者…',
     SWAP_SELECT_TARGET:   '【掉包】选择目标角色',
+    SWAP_STEAL_CARD:      `【掉包】从 ${gs.players[gs.abilityData?.swapTi]?.name} 的手牌中暗抽一张`,
     SWAP_SELECT_TARGET_CARD: `【掉包】${gs.players[gs.abilityData?.swapTi]?.name}的手牌已公开，请选择要抽取的牌`,
-    SWAP_GIVE_CARD:       `${gs.players[gs.abilityData?.swapTi]?.revealHand ? '抽到' : '暗抽到'} ${cardLogText(gs.abilityData?.takenCard)}，选一张手牌还给对方`,
+    SWAP_GIVE_CARD:       isLocalSwapGivePhase(gs)
+      ?`${gs.players[gs.abilityData?.swapTi]?.revealHand ? '抽到' : '暗抽到'} ${cardLogText(gs.abilityData?.takenCard)}，选一张手牌还给对方`
+      :'等待掉包者归还手牌…',
     HUNT_SELECT_TARGET:   '【追捕】选择猎物',
     HUNT_CONFIRM:         isLocalHuntConfirmPhase(gs)?`${cardLogText(gs.abilityData?.revCard,{alwaysShowName:true})} 已亮出！${gs.abilityData?.revCard&&!isZoneCard(gs.abilityData.revCard)?'弃出任意手牌':'弃出匹配手牌'}造成3HP，或放弃`:(gs._isMP?'请等待追猎者做出选择…':`${cardLogText(gs.abilityData?.revCard,{alwaysShowName:true})} 已亮出`),
     HUNT_SELECT_CARD_FROM_PUBLIC: `【追捕】从 ${gs.players[gs.abilityData?.huntTi]?.name} 的公开手牌中选择一张`,
@@ -6355,7 +6371,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   const canLocalBewitchCard=!!gs&&!isSpectating&&isLocalBewitchCardPhase(gs);
   const selectingOther=canLocalTargetSelect||canLocalSemiMaterializeGuess;
   // 多人游戏中 HUNT_CONFIRM 非追猎者不显示操作按钮区域
-  const cancelable=['SWAP_SELECT_TARGET','SWAP_SELECT_TARGET_CARD','SWAP_GIVE_CARD','HUNT_SELECT_TARGET','ZONE_SWAP_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','DAMAGE_LINK_SELECT_TARGET','TORTOISE_ORACLE_SELECT','ROSE_THORN_SELECT_TARGET','MULTIPLY_SELECT_TARGET','SHU_SELECT_TARGET','SAME_ABYSS_SELECT','SPHINX_GUESS','GRAVE_DIG_SELECT',...(phase==='HUNT_CONFIRM'&&gs._isMP&&!isLocalCurrentTurn(gs)?[]:['HUNT_CONFIRM']),'BEWITCH_SELECT_CARD','BEWITCH_SELECT_TARGET'].includes(phase);
+  const cancelable=['SWAP_SELECT_TARGET','SWAP_STEAL_CARD','SWAP_SELECT_TARGET_CARD','SWAP_GIVE_CARD','HUNT_SELECT_TARGET','ZONE_SWAP_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','DAMAGE_LINK_SELECT_TARGET','TORTOISE_ORACLE_SELECT','ROSE_THORN_SELECT_TARGET','MULTIPLY_SELECT_TARGET','SHU_SELECT_TARGET','SAME_ABYSS_SELECT','SPHINX_GUESS','GRAVE_DIG_SELECT',...(phase==='HUNT_CONFIRM'&&gs._isMP&&!isLocalCurrentTurn(gs)?[]:['HUNT_CONFIRM']),'BEWITCH_SELECT_CARD','BEWITCH_SELECT_TARGET'].includes(phase);
   // In HUNT_CONFIRM, 放弃追捕 replaces ✕取消 — never show both
   const showCancelBtn=cancelable&&phase!=='HUNT_CONFIRM'&&!isSpectating&&isLocalCurrentTurn(gs)&&(!phase.includes('DAMAGE_LINK')||isLocalDamageLinkSelect)&&!anim;
 
@@ -6365,7 +6381,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(!canLocalTargetSelect&&!canLocalSemiMaterializeGuess)return;
     if(phase==='SWAP_SELECT_TARGET')swapSelectTarget(pi);
     else if(phase==='ZONE_SWAP_SELECT_TARGET')zoneSwapSelectTarget(pi);
-    else if(phase==='SWAP_SELECT_TARGET_CARD'){
+    else if(phase==='SWAP_SELECT_TARGET_CARD'||phase==='SWAP_STEAL_CARD'){
       // 在手牌公开状态下选择目标牌
       if(pi===gs.abilityData?.swapTi){
         // 点击的是目标玩家，显示其手牌供选择
@@ -6926,11 +6942,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           {visualPlayers.slice(1).map((p,i)=>{
             const pi=i+1;
             const isSel=selectingOther&&!p.isDead&&!isBlocked&&!(phase==='HUNT_SELECT_TARGET'&&huntAbandoned.includes(pi));
-            // 在SWAP_SELECT_TARGET_CARD阶段，如果这是目标玩家，显示其手牌并允许选择
-            const isSwapTargetCardPhase=phase==='SWAP_SELECT_TARGET_CARD'&&myTurn&&gs.abilityData?.swapTi===pi;
+            // 掉包：公开手牌时正面选择；暗抽时保留暗牌/明牌状态但允许点选槽位
+            const isSwapTargetCardPhase=(phase==='SWAP_SELECT_TARGET_CARD'||phase==='SWAP_STEAL_CARD')&&myTurn&&gs.abilityData?.swapTi===pi;
+            const isSwapPublicTargetCardPhase=phase==='SWAP_SELECT_TARGET_CARD'&&myTurn&&gs.abilityData?.swapTi===pi;
             // 在HUNT_SELECT_CARD_FROM_PUBLIC阶段，如果这是死者玩家，显示其手牌并允许选择
             const isHuntCardFromPublicPhase=phase==='HUNT_SELECT_CARD_FROM_PUBLIC'&&myTurn&&gs.abilityData?.huntTi===pi;
-            const showFaceUpForSwap=isSwapTargetCardPhase||isHuntCardFromPublicPhase||p.revealHand;
+            const showFaceUpForSwap=isSwapPublicTargetCardPhase||isHuntCardFromPublicPhase||p.revealHand;
               const onCardSelectForSwap=isSwapTargetCardPhase?((cardIdx)=>swapSelectTargetCard(cardIdx)):isHuntCardFromPublicPhase?((cardIdx)=>huntSelectCardFromPublic(cardIdx)):null;
               return(
                 <div key={p.id} data-pid={pi} style={{position:'relative',zIndex:isSel?101:undefined,alignSelf:'start'}}>

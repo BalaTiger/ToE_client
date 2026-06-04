@@ -35,6 +35,21 @@ export function getMpTurnTimerMode({
   return gs.phase === 'ACTION' ? 'running' : 'stopped';
 }
 
+export function shouldRunMpDiscardTimer({
+  isMultiplayer,
+  gs,
+  isLocalCurrentTurn,
+}) {
+  return !!(
+    isMultiplayer &&
+    gs &&
+    !gs.gameOver &&
+    gs.phase === 'DISCARD_PHASE' &&
+    isLocalCurrentTurn(gs) &&
+    !gs._mpEndTurnDiscardResolved
+  );
+}
+
 export function useMpCthDecisionTimer({
   isMpCthDecisionPhase,
   gs,
@@ -80,7 +95,7 @@ export function useMpDiscardTimer({
   const mpDiscardIntervalRef = useRef(null);
 
   useEffect(() => {
-    if (!isMultiplayer || !gs || gs.gameOver || gs.phase !== 'DISCARD_PHASE' || !isLocalCurrentTurn(gs)) return;
+    if (!shouldRunMpDiscardTimer({ isMultiplayer, gs, isLocalCurrentTurn })) return;
     setMpDiscardSec(15);
     mpDiscardIntervalRef.current = setInterval(() => {
       setMpDiscardSec(s => {
@@ -97,7 +112,7 @@ export function useMpDiscardTimer({
       setMpDiscardSec(null);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMultiplayer, gs?.phase, gs?.currentTurn, gs?._turnKey, gs?.gameOver, playTickSound]);
+  }, [isMultiplayer, gs?.phase, gs?.currentTurn, gs?._turnKey, gs?._mpEndTurnDiscardResolved, gs?.gameOver, playTickSound]);
 
   return mpDiscardSec;
 }

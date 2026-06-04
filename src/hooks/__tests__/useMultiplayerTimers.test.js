@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getMpTurnTimerMode } from '../useMultiplayerTimers';
+import { getMpTurnTimerMode, shouldRunMpDiscardTimer } from '../useMultiplayerTimers';
 
 const isLocalCurrentTurn = gs => gs.currentTurn === 0;
 
@@ -48,5 +48,23 @@ describe('getMpTurnTimerMode', () => {
   it('摸牌抉择落到 ACTION 前不启动 45 秒行动计时', () => {
     expect(getMode({ phase: 'DRAW_REVEAL' })).toBe('stopped');
     expect(getMode({ phase: 'GOD_CHOICE' })).toBe('stopped');
+  });
+});
+
+describe('shouldRunMpDiscardTimer', () => {
+  it('普通本地弃牌阶段运行弃牌计时', () => {
+    expect(shouldRunMpDiscardTimer({
+      isMultiplayer: true,
+      gs: makeGs({ phase: 'DISCARD_PHASE' }),
+      isLocalCurrentTurn,
+    })).toBe(true);
+  });
+
+  it('结束回合后的弃牌确认完成后停止弃牌计时', () => {
+    expect(shouldRunMpDiscardTimer({
+      isMultiplayer: true,
+      gs: makeGs({ phase: 'DISCARD_PHASE', _mpEndTurnDiscardResolved: true }),
+      isLocalCurrentTurn,
+    })).toBe(false);
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildAnimQueue } from '../animQueueCore';
 import { buildMpRemoteReplayAction, MP_REMOTE_REPLAY } from '../multiplayerRemoteReplay';
 import { rotateGsForViewer } from '../rotateState';
-import { createEarthquakeEvent, createEndlessCorridorReplayEvent, createHuntResultEvent, createSwapCardsEvent } from '../visualEvents';
+import { createEarthquakeEvent, createEndlessCorridorReplayEvent, createHuntResultEvent, createSphinxResultEvent, createSwapCardsEvent } from '../visualEvents';
 
 const card = { id: 'c1', name: '测试牌', type: 'zone' };
 
@@ -1299,6 +1299,132 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.queue.map(step => step.type)).toContain('DISCARD');
     expect(action.queue.map(step => step.type)).toContain('HP_DAMAGE');
     expect(action.visualLock.players).toEqual(beforePlayers);
+  });
+
+  it('uses sphinx result visualEvents for correct guess animation', () => {
+    const sphinxCard = { id: 'sphinx1', name: '斯芬克斯', key: 'SPH', type: 'zone' };
+    const beforePlayers = [player('你'), player('艾伦'), player('贝拉')];
+    const afterPlayers = [
+      player('你'),
+      { ...player('艾伦'), hand: [sphinxCard] },
+      player('贝拉'),
+    ];
+    const event = createSphinxResultEvent({
+      actorIdx: 1,
+      card: sphinxCard,
+      guessCorrect: true,
+      msgs: ['艾伦 猜测正确，获得 斯芬克斯'],
+    });
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players: afterPlayers,
+      log: ['艾伦 猜测正确，获得 斯芬克斯'],
+      _visualEvents: [event],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION', players: beforePlayers, log: [] }),
+      buildAnimQueue: vi.fn(() => []),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.map(step => step.type)).toEqual(['DRAW_CARD', 'CARD_TRANSFER', 'STATE_PATCH']);
+    expect(action.queue[0]).toMatchObject({
+      type: 'DRAW_CARD',
+      card: sphinxCard,
+      triggerName: '斯芬克斯',
+      targetPid: 1,
+      skipTravel: true,
+      guessCorrect: true,
+    });
+    expect(action.queue[1]).toMatchObject({
+      fromPid: -1,
+      dest: 'player',
+      toPid: 1,
+      count: 1,
+    });
+    expect(action.pendingGs._visualEvents).toEqual([]);
+  });
+
+  it('uses sphinx result visualEvents for wrong guess animation', () => {
+    const sphinxCard = { id: 'sphinx1', name: '斯芬克斯', key: 'SPH', type: 'zone' };
+    const beforePlayers = [player('你'), player('艾伦'), player('贝拉')];
+    const afterPlayers = [
+      { ...player('你'), hp: 8 },
+      player('艾伦'),
+      player('贝拉'),
+    ];
+    const event = createSphinxResultEvent({
+      actorIdx: 1,
+      card: sphinxCard,
+      guessCorrect: false,
+      msgs: ['艾伦 猜测错误', '艾伦 失去 2 HP'],
+    });
+    const wrongGuessAnimQueue = vi.fn(() => [{ type: 'HP_DAMAGE', hitIndices: [1] }]);
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players: afterPlayers,
+      log: ['艾伦 猜测错误', '艾伦 失去 2 HP'],
+      _visualEvents: [event],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION', players: beforePlayers, log: [] }),
+      buildAnimQueue: wrongGuessAnimQueue,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue[0]).toMatchObject({
+      type: 'DRAW_CARD',
+      card: sphinxCard,
+      triggerName: '斯芬克斯',
+      targetPid: 1,
+      skipTravel: true,
+      guessCorrect: false,
+    });
+    expect(action.queue.some(step => step.type === 'HP_DAMAGE')).toBe(true);
+    expect(action.pendingGs._visualEvents).toEqual([]);
+  });
+
+  it('targets sphinx result at the correct player after rotating to their view', () => {
+    const sphinxCard = { id: 'sphinx1', name: '斯芬克斯', key: 'SPH', type: 'zone' };
+    const rawBeforePlayers = [player('你'), player('艾伦'), player('贝拉')];
+    const rawAfterPlayers = [
+      player('你'),
+      { ...player('艾伦'), hand: [sphinxCard] },
+      player('贝拉'),
+    ];
+    const rawState = makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players: rawAfterPlayers,
+      log: ['艾伦 猜测正确，获得 斯芬克斯'],
+      _visualEvents: [createSphinxResultEvent({
+        actorIdx: 1,
+        card: sphinxCard,
+        guessCorrect: true,
+        msgs: ['艾伦 猜测正确，获得 斯芬克斯'],
+      })],
+    });
+    const rotated = rotateGsForViewer(rawState, 2);
+    const previousGs = rotateGsForViewer(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players: rawBeforePlayers,
+      log: [],
+    }), 2);
+    const action = buildAction(rotated, { previousGs, buildAnimQueue: vi.fn(() => []) });
+
+    expect(rotated._visualEvents[0]).toMatchObject({ actorIdx: 2, guessCorrect: true });
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue[0]).toMatchObject({
+      type: 'DRAW_CARD',
+      targetPid: 2,
+      triggerName: '斯芬克斯',
+      guessCorrect: true,
+    });
+    expect(action.queue[1]).toMatchObject({
+      type: 'CARD_TRANSFER',
+      toPid: 2,
+    });
   });
 
   it('plays previous hand-limit discard before the next local draw replay', () => {

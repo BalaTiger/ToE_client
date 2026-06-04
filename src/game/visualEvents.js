@@ -12,6 +12,7 @@ export const VISUAL_EVENT = {
   HUNT_TARGET: 'huntTarget',
   HUNT_REVEAL: 'huntReveal',
   HUNT_RESULT: 'huntResult',
+  SPHINX_RESULT: 'sphinxResult',
   HAND_LIMIT_DISCARD: 'handLimitDiscard',
   EARTHQUAKE: 'earthquake',
   ENDLESS_CORRIDOR_REPLAY: 'endlessCorridorReplay',
@@ -164,6 +165,18 @@ export function createHuntResultEvent(event = {}) {
     hunterIdx: event.hunterIdx,
     targetIdx: event.targetIdx,
     msgs: Array.isArray(event.msgs) ? event.msgs : [],
+  }, 'action');
+}
+
+export function createSphinxResultEvent({ actorIdx = 0, card, guessCorrect = false, msgs = [] } = {}) {
+  if (!card) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.SPHINX_RESULT,
+    id: `${VISUAL_EVENT.SPHINX_RESULT}:${visualEventInstanceId}:${++actionEventSeq}`,
+    actorIdx,
+    card,
+    guessCorrect: !!guessCorrect,
+    msgs: Array.isArray(msgs) ? msgs : [],
   }, 'action');
 }
 
@@ -454,6 +467,10 @@ export function getHuntRevealVisualEvent(state) {
 
 export function getHuntResultVisualEvent(state) {
   return getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.HUNT_RESULT && ev.hunterIdx != null && ev.targetIdx != null);
+}
+
+export function getSphinxResultVisualEvent(state) {
+  return getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.SPHINX_RESULT && ev.actorIdx != null && ev.card);
 }
 
 export function buildHuntRevealStepFromVisualEvents(state) {
