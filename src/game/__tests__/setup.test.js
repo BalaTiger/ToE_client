@@ -14,7 +14,7 @@ describe('mkDeck', () => {
   const EXPECTED_ZONE_CARD_COUNT = 48;
   const EXPECTED_SPECIAL_CARD_COUNT = 20;
   const EXPECTED_FORMAL_DECK_COUNT = EXPECTED_ZONE_CARD_COUNT + EXPECTED_SPECIAL_CARD_COUNT;
-  const EXPECTED_EARTH_DEFINED_ZONE_CARD_COUNT = 41;
+  const EXPECTED_EARTH_DEFINED_ZONE_CARD_COUNT = 43;
   const EXPECTED_EARTH_SPECIAL_CARD_COUNT = 24;
   const EXPECTED_EARTH_DECK_COUNT = EXPECTED_ZONE_CARD_COUNT + EXPECTED_EARTH_SPECIAL_CARD_COUNT;
   const EXPECTED_EARTH_CURRENT_DECK_COUNT = EXPECTED_EARTH_DEFINED_ZONE_CARD_COUNT + EXPECTED_EARTH_SPECIAL_CARD_COUNT;
@@ -34,9 +34,9 @@ describe('mkDeck', () => {
     const zoneCards = deck.filter(c => c.isZone);
     const specialCards = deck.filter(c => c.isGod);
 
-    expect(zoneCards).toHaveLength(60);
+    expect(zoneCards).toHaveLength(62);
     expect(specialCards).toHaveLength(20);
-    expect(deck).toHaveLength(80);
+    expect(deck).toHaveLength(82);
   });
 
   it('先贤的馈赠包含两张天平牌且不在同一编号', () => {
@@ -86,12 +86,28 @@ describe('mkDeck', () => {
     });
   });
 
-  it('地神的潜影包含烤盲鱼', () => {
+  it('地神的潜影包含烤盲鱼和石化配方', () => {
     const deck = mkDeck('地神的潜影');
 
     expect(deck.find(c => c.name === '烤盲鱼')).toMatchObject({
       key: 'C1',
       type: 'blindFish',
+      expansion: '地神的潜影',
+    });
+    expect(deck.find(c => c.name === '石化配方')).toMatchObject({
+      key: 'C1',
+      type: 'petrifyingFormula',
+      expansion: '地神的潜影',
+    });
+  });
+
+  it('地神的潜影包含荆棘山路', () => {
+    const deck = mkDeck('地神的潜影');
+
+    expect(deck.find(c => c.name === '荆棘山路')).toMatchObject({
+      key: 'D2',
+      type: 'selfDamageHP',
+      val: 1,
       expansion: '地神的潜影',
     });
   });

@@ -84,6 +84,19 @@ function appendRandomTargetEvent(statePatch, gs, event) {
   };
 }
 
+function appendPetrifyEvent(statePatch, gs, event) {
+  const seq = (gs?._petrifySeq || 0) + 1 + (statePatch?._petrifyEvents?.length || 0);
+  return {
+    ...statePatch,
+    _petrifySeq: seq,
+    _petrifyEvents: [
+      ...((gs?._petrifyEvents) || []),
+      ...((statePatch?._petrifyEvents) || []),
+      { ...event, seq },
+    ],
+  };
+}
+
 // ══════════════════════════════════════════════════════════════
 //  INSPECTION SYSTEM
 // ══════════════════════════════════════════════════════════════
@@ -407,6 +420,33 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     san: player?.san ?? 0,
     isDead: !!player?.isDead,
   });
+  const killPlayerByPetrification = (idx) => {
+    if (idx == null || !P[idx] || P[idx].isDead) return;
+    const target = P[idx];
+    target._pendingAnimDeath = true;
+    target._petrified = true;
+    target.isDead = true;
+    target.roleRevealed = true;
+    msgs.push(`☠ ${target.name}（${target.role}）被石化了！`);
+    const kept = [];
+    let destroyed = 0;
+    (target.hand || []).forEach(handCard => {
+      if (isBlackGoatYoung(handCard) || isTsathogguaSlime(handCard)) {
+        destroyed += 1;
+      } else if (handCard.type !== 'blankZone') {
+        kept.push(handCard);
+      }
+    });
+    if (kept.length) Disc.push(...kept);
+    if (destroyed) msgs.push(`${target.name} 的 ${destroyed} 张衍生牌被销毁`);
+    target.hand = [];
+    if (target.godZone?.length) {
+      Disc.push(...target.godZone);
+      target.godZone = [];
+      target.godName = null;
+      target.godLevel = 0;
+    }
+  };
   const hasLivingSanDepleted = players => players.some(p => p && !p.isDead && p.hp > 0 && p.san <= 0);
 
   // 辅助函数：检查条件
@@ -524,6 +564,79 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     proliferatingZ: () => {
       statePatch = { ...statePatch, proliferatingZ: makeProliferatingZState(ci, gs?.turn || 0), proliferatingZQueue: [] };
       msgs.push(`【增殖的Z】本回合若有角色获得邪神牌或其衍生牌，其他角色各摸1张牌`);
+    },
+    petrifyingFormula: () => {
+      const priorState = gs?.petrifyingFormula || {};
+      const accomplices = new Set(Array.isArray(priorState.accomplices) ? priorState.accomplices : []);
+      accomplices.add(ci);
+      const priorProgress = Number.isFinite(priorState.progress) ? priorState.progress : 4;
+      const progress = Math.max(1, priorProgress - 1);
+      statePatch = {
+        ...statePatch,
+        petrifyingFormula: {
+          active: true,
+          progress,
+          accomplices: [...accomplices],
+        },
+      };
+      msgs.push(`【石化配方】${actor.name} 协助调配药水，调配进度降至 ${progress}`);
+      if (progress > 1) return;
+
+      const candidates = P.map((p, i) => ({ player: p, idx: i }))
+        .filter(item => item.player && !item.player.isDead);
+      if (!candidates.length) {
+        statePatch = {
+          ...statePatch,
+          petrifyingFormula: { active: false, progress: null, accomplices: [] },
+        };
+        return;
+      }
+      const minHp = Math.min(...candidates.map(item => item.player.hp));
+      const targetIdx = candidates.find(item => item.player.hp === minHp)?.idx;
+      const beforePetrifyTarget = { ...P[targetIdx] };
+      killPlayerByPetrification(targetIdx);
+      msgs.push(`【石化配方】场上 HP 最低的 ${beforePetrifyTarget.name} 立即死亡并石化`);
+
+      const beforeAccomplicePlayers = copyPlayers(P);
+      const sanEvents = [];
+      [...accomplices].forEach(idx => {
+        if (P[idx] && !P[idx].isDead) {
+          P[idx].san = clamp(P[idx].san - 1);
+          msgs.push(`【石化配方】共犯 ${P[idx].name} 失去 1 SAN`);
+          sanEvents.push(idx);
+          if (P[idx].san > 0 && P[idx].san <= 6) pendingInspectionTargets.push(idx);
+        }
+      });
+      statePatch = {
+        ...statePatch,
+        petrifyingFormula: { active: false, progress: null, accomplices: [] },
+      };
+      statePatch = appendPetrifyEvent(statePatch, gs, {
+        targetIdx,
+        targetName: beforePetrifyTarget.name,
+        accomplices: [...accomplices],
+      });
+      const seq = (gs?._statEventSeq || 0) + 1;
+      directStatEvents = [
+        {
+          type: 'PETRIFY_DEATH',
+          target: targetIdx,
+          from: playerStats(beforePetrifyTarget),
+          to: playerStats(P[targetIdx]),
+          reason: card?.name || card?.type || '',
+          seq,
+          phaseOrder: 0,
+        },
+        ...sanEvents.map(idx => ({
+          type: 'SAN_LOSS',
+          target: idx,
+          from: playerStats(beforeAccomplicePlayers[idx]),
+          to: playerStats(P[idx]),
+          reason: card?.name || card?.type || '',
+          seq,
+          phaseOrder: 1,
+        })),
+      ];
     },
     allHealHP: () => {
       allLiving.forEach(i => healHP(i, card.val));

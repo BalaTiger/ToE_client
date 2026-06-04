@@ -344,7 +344,79 @@ function DiscardOverlay({cards,onClose}){
   );
 }
 
-function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,deckRef,discardRef,scaleRatio,expansionKey='temporary',zhuLitCards=[],zhuHiddenCardId=null}){
+function PetrifyingFormulaDie({ state, fontSize }) {
+  if (!state?.active || !Number.isFinite(state.progress)) return null;
+  const dots = Math.max(1, Math.min(6, state.progress));
+  const pipLayouts = {
+    1: [[50, 50]],
+    2: [[32, 32], [68, 68]],
+    3: [[30, 30], [50, 50], [70, 70]],
+    4: [[30, 30], [70, 30], [30, 70], [70, 70]],
+    5: [[30, 30], [70, 30], [50, 50], [30, 70], [70, 70]],
+    6: [[30, 26], [70, 26], [30, 50], [70, 50], [30, 74], [70, 74]],
+  };
+  const dieSize = 42;
+  const faceRadius = 7;
+  return (
+    <div
+      title={`石化配方进度：${dots}`}
+      style={{
+        position: 'absolute',
+        left: 16,
+        bottom: 12,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 5,
+        pointerEvents: 'none',
+        zIndex: 2,
+      }}
+    >
+      <div style={{
+        position: 'relative',
+        width: dieSize,
+        height: dieSize,
+        filter: 'drop-shadow(0 4px 8px #00000088) drop-shadow(0 0 10px #9fb6a855)',
+      }}>
+        <div style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          width: dieSize,
+          height: dieSize,
+          borderRadius: faceRadius,
+          background: 'linear-gradient(145deg,#eef4e8 0%,#c2d0c2 58%,#8fa197 100%)',
+          border: '1.5px solid #dce7db',
+          boxShadow: 'inset -5px -5px 10px #64766b88,inset 4px 4px 9px #ffffffaa',
+        }}>
+          {(pipLayouts[dots] || pipLayouts[1]).map(([x, y], idx) => (
+            <span key={idx} style={{
+              position: 'absolute',
+              left: `${x}%`,
+              top: `${y}%`,
+              width: 8.5,
+              height: 8.5,
+              borderRadius: '50%',
+              background: 'radial-gradient(circle at 35% 35%,#3b4b42,#111b17 72%)',
+              boxShadow: 'inset 1px 1px 2px #000000cc,0 0 2px #ffffff55',
+              transform: 'translate(-50%,-50%)',
+            }}/>
+          ))}
+        </div>
+      </div>
+      <div style={{
+        fontFamily: "'Microsoft YaHei','SimHei',sans-serif",
+        fontSize: fontSize(10),
+        color: '#b9c8bc',
+        fontWeight: 700,
+        textShadow: '0 0 8px #000',
+        whiteSpace: 'nowrap',
+      }}>石化配方进度</div>
+    </div>
+  );
+}
+
+function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,deckRef,discardRef,scaleRatio,expansionKey='temporary',zhuLitCards=[],zhuHiddenCardId=null,petrifyingFormula=null}){
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const _ = (px) => px * fontZoom;
   const pileWrapRef=React.useRef(null);
@@ -377,6 +449,7 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
         <DeckPile count={deckCount} scale={pileScale} expansionKey={expansionKey} zhuLitCards={zhuLitCards} zhuHiddenCardId={zhuHiddenCardId}/>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:_(11),color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 8px #000000'}}>牌堆:{deckCount}</div>
       </div>
+      <PetrifyingFormulaDie state={petrifyingFormula} fontSize={_}/>
       {/* Discard — center */}
       <div
         ref={discardRef}

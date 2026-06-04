@@ -428,6 +428,16 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "polarity": "positive",
       "effectScope": "self",
       "expansion": "地神的潜影"
+    },
+    {
+      "name": "石化配方",
+      "desc": "收入这张牌视为协助调配药水，调配进度从3开始倒数。进度为1时，场上HP最低的角色立即死亡并石化，所有共犯失去1SAN",
+      "type": "petrifyingFormula",
+      "val": 1,
+      "slotKey": "C1",
+      "polarity": "neutral",
+      "effectScope": "all",
+      "expansion": "地神的潜影"
     }
   ],
   "C2": [
@@ -565,6 +575,16 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "slotKey": "D2",
       "polarity": "neutral",
       "effectScope": "target",
+      "expansion": "地神的潜影"
+    },
+    {
+      "name": "荆棘山路",
+      "desc": "你失去1HP",
+      "type": "selfDamageHP",
+      "val": 1,
+      "slotKey": "D2",
+      "polarity": "negative",
+      "effectScope": "self",
       "expansion": "地神的潜影"
     },
     {

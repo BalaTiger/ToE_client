@@ -1,9 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import { makeInspectionMeta, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
-import { aiDrawAndApply, applySanLossToPlayerWithInspection, playerDrawCard, startNextTurn } from '../turnEngine';
+import { aiDrawAndApply, applySanLossToPlayerWithInspection, checkWin, playerDrawCard, startNextTurn } from '../turnEngine';
 import { buildTsathogguaSlimeGrantQueue } from '../turnAnimState';
 import { makeGodCard, makeGs, makePlayer, makeStandardPlayers } from './factory';
 import { createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../../constants/card';
+
+describe('checkWin death handling', () => {
+  it('单人模式下本地玩家死亡会立即失败', () => {
+    const players = makeStandardPlayers(3);
+    players[0].isDead = true;
+    players[0].hp = 0;
+
+    expect(checkWin(players, false)).toMatchObject({
+      winner: 'LOSE',
+    });
+  });
+
+  it('联机模式下本地玩家死亡不会直接结束对局', () => {
+    const players = makeStandardPlayers(3);
+    players[0].isDead = true;
+    players[0].hp = 0;
+
+    expect(checkWin(players, true)).toBeNull();
+  });
+});
 
 describe('turnEngine stat events', () => {
   it('SAN 损失降至 0 时不排入检定事件', () => {

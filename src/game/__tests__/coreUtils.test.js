@@ -150,12 +150,15 @@ describe('card type predicates', () => {
     const negative = makeZoneCard('A1', 1);
     const blank = makeBlankZoneCard();
     const throwStone = makeZoneCard('B2', 3);
+    const petrifyingFormula = makeZoneCard('C1', 2);
 
     expect(isPositiveZoneCard(positive)).toBe(true);
     expect(isNegativeZoneCard(negative)).toBe(true);
     expect(isNeutralZoneCard(blank)).toBe(true);
     expect(isNeutralZoneCard(throwStone)).toBe(true);
     expect(isNegativeZoneCard(throwStone)).toBe(false);
+    expect(isNeutralZoneCard(petrifyingFormula)).toBe(true);
+    expect(isNegativeZoneCard(petrifyingFormula)).toBe(false);
 
     expect(isNegativeZoneCard(positive)).toBe(false);
     expect(isPositiveZoneCard(negative)).toBe(false);

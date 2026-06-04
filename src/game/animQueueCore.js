@@ -63,7 +63,6 @@ export function buildAnimQueue(oldGs, newGs) {
       q.push({ type: 'DRAW_CARD', card: dCard, triggerName: newGs.players[newGs.currentTurn]?.name || '???', targetPid: newGs.currentTurn, msgs: newGs._drawLogs || [] });
     }
   }
-  const deathIdx = effectivePlayers.reduce((acc, p, i) => { if (oldGs.players[i] && !oldGs.players[i].isDead && p.isDead) acc.push(i); return acc; }, []);
   const oldStatSeq = oldGs?._statEventSeq || 0;
   const newStatSeq = newGs?._statEventSeq || 0;
   const inspectionStatSeqs = new Set(newInspectionEvents.map(ev => ev?.statEventSeq).filter(seq => seq != null));
@@ -73,6 +72,13 @@ export function buildAnimQueue(oldGs, newGs) {
       !inspectionStatSeqs.has(ev?.seq)
     ))
     : [];
+  const petrifyDeathTargets = new Set(explicitStatEvents
+    .filter(event => event?.type === 'PETRIFY_DEATH' && event?.target != null)
+    .map(event => Number(event.target)));
+  const deathIdx = effectivePlayers.reduce((acc, p, i) => {
+    if (oldGs.players[i] && !oldGs.players[i].isDead && p.isDead && !petrifyDeathTargets.has(i)) acc.push(i);
+    return acc;
+  }, []);
   const hasFreshExplicitStatEvents = explicitStatEvents.length > 0 && (newGs?._statEventSeq == null || newStatSeq > oldStatSeq);
   const targetStats = hasFreshExplicitStatEvents
     ? makeTargetStats(effectivePlayers, explicitStatEvents)

@@ -609,6 +609,7 @@ export default function Game(){
   const consumedVisualEventIdsRef=useRef(new Set()); // 联机视觉事件去重，避免重复同步包重播旧动画
   const gameEndSentRef=useRef(false);      // 防止 gameEnd 重复发送
   const [isDisconnected,setIsDisconnected]=useState(false);
+  const [exitMatchConfirm,setExitMatchConfirm]=useState(null);
   function resetDisconnectedToStart(){
     setIsDisconnected(false);
     closeRoomModal();
@@ -620,6 +621,21 @@ export default function Game(){
     myPlayerIndexRef.current=0;
     mpRoleRevealedRef.current=false;
     consumedVisualEventIdsRef.current=new Set();
+    setGs(null);
+  }
+  function leaveMultiplayerMatchToStart(){
+    setExitMatchConfirm(null);
+    setShowEmojiPicker(false);
+    setShowFullLog(false);
+    setShowGodResurrection(false);
+    setIsMultiplayer(false);
+    isMultiplayerRef.current=false;
+    setMyPlayerIndex(0);
+    myPlayerIndexRef.current=0;
+    mpRoleRevealedRef.current=false;
+    consumedVisualEventIdsRef.current=new Set();
+    gameEndSentRef.current=false;
+    closeRoomModal();
     setGs(null);
   }
   // 表情功能
@@ -888,6 +904,10 @@ export default function Game(){
 
   function resolveMpAiTakeoverState(sourceGs,takeoverIdx){
     if(!isMpAiTakeoverRelevant(sourceGs,takeoverIdx))return null;
+    if(sourceGs.players?.[takeoverIdx]?.isDead){
+      if(sourceGs.currentTurn!==takeoverIdx)return null;
+      return startNextTurn({...sourceGs,currentTurn:takeoverIdx,phase:'ACTION',drawReveal:null,selectedCard:null,abilityData:{}});
+    }
     const phase=sourceGs.phase;
     if(phase==='HUNT_WAIT_REVEAL'){
       if(sourceGs.abilityData?.huntTi===takeoverIdx){
@@ -2432,8 +2452,9 @@ export default function Game(){
     setGs(g=>g?{...g,phase:'GOD_RESURRECTION',_pendingGodResurrection:undefined}:g);
   },[gs,showTutorial,clearBattleAnimationState]);
 
+  const isSpectating=!!(gs?._isMP&&gs?.players?.[0]?.isDead&&!gs?.gameOver);
   // isBlocked 提升到 useEffect 之前，避免依赖数组 TDZ 报错
-  const isBlocked=!!anim||showTutorial;
+  const isBlocked=!!anim||showTutorial||isSpectating;
   const isLocalDrawDecision=!!(gs&&isLocalDrawDecisionPhase(gs));
   const isLocalGodChoice=!!(gs&&isLocalGodChoicePhase(gs));
   const isMpCthDecisionPhase=!!(
@@ -3146,7 +3167,7 @@ export default function Game(){
   const currentTurnPlayer=gs?.players?.[gs?.currentTurn];
   const myTurn=isLocalCurrentTurn(gs);
   // 只有当底层是玩家回合，且没有正在播放的动画，且动画队列为空时，才算真正轮到玩家
-  const isVisualPlayerTurn = myTurn && !anim && (animQueueRef.current.length === 0);
+  const isVisualPlayerTurn = myTurn && !isSpectating && !anim && (animQueueRef.current.length === 0);
   const visualCurrentTurn=((anim||animExiting||animQueueRef.current.length>0)&&turnHighlightLockRef.current!=null)
     ?turnHighlightLockRef.current
     :gs.currentTurn;
@@ -4662,6 +4683,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const huntMsgs=extractSkillLogs(huntWaitGs.log.slice(gs.log.length),'hunt');
       const huntEvent=createHuntTargetEvent({sourceIdx:0,targetIdx:ti,msgs:huntMsgs});
       const huntWaitGsWithEvent={...huntWaitGs,_visualEvents:huntEvent?[huntEvent]:[]};
+      broadcastMpStateBeforeLocalReplay(huntWaitGsWithEvent);
       triggerAnimQueue(mergeApophisTargetQueue([{type:'SKILL_HUNT',targetIdx:ti,msgs:huntMsgs}],gs,huntWaitGsWithEvent),huntWaitGsWithEvent);
       return;
     }
@@ -5187,6 +5209,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const bewitchEvent=createBewitchGiftEvent({sourceIdx:0,targetIdx:ti,targetName:P[ti]?.name,card:bewitchCard,msgs:bewitchMsgs});
       const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:hasSlimeDecision?'TSG_SLIME_BALANCE':'ACTION',skillUsed:true,...mergedInspectionMeta,...(gres.statePatch||{}),abilityData:hasSlimeDecision?{...mergedInspectionMeta.abilityData,_turnOwner:gs.currentTurn}:{},...apophisNightPatch(night),apophisNight:nextApophisNight,_visualEvents:bewitchEvent?[bewitchEvent]:[],...(win?{gameOver:win}:{})};
       const statQueue=buildPostBewitchStatQueue(gs,newGs);
+      broadcastMpStateBeforeLocalReplay(newGs);
       triggerAnimQueue(mergeApophisTargetQueue(buildBewitchForcedCardQueue(0,ti,bewitchCard,P[ti]?.name,statQueue,bewitchMsgs),gs,newGs),newGs);
       return;
     }
@@ -5214,6 +5237,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         bewitchCard?.type==='selfDamageHPPeek'||
         bewitchCard?.type==='firstComePick'
       )?res.P[ti]?.name:null;
+      broadcastMpStateBeforeLocalReplay(newGs);
       triggerAnimQueue(
       mergeApophisTargetQueue(buildBewitchForcedCardQueue(0,ti,bewitchCard,res.P[ti]?.name,statQueue,bewitchMsgs,bewitchTurnIntroName),gs,newGs),
       newGs
@@ -6141,7 +6165,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
 
   // Phase labels
   const cardHintText='鼠标悬停查看卡牌详情（移动端请点击卡牌）';
-  const canShowTurnDecisionModal=!anim&&!animExiting&&animQueueRef.current.length===0;
+  const canShowTurnDecisionModal=!isSpectating&&!anim&&!animExiting&&animQueueRef.current.length===0;
   const promptWarningTextColor='#cc3030';
   const promptActiveTextColor='#836934';
   const promptCautionTextColor='#9d5d26';
@@ -6195,17 +6219,18 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     SAME_ABYSS_SELECT: isLocalSameAbyssTargetPhase(gs)?'【同归深渊】你手牌最多，须做出选择':'等待同归深渊目标做出选择…',
     SPHINX_GUESS: isLocalSphinxGuessPhase(gs)?'【斯芬克斯】猜测牌堆顶的牌是否是区域牌':'等待斯芬克斯猜测…',
   }[phase]||'';
+  const displayPhaseLabel=isSpectating?'观战中……':phaseLabel;
 
   const isLocalDamageLinkSelect=!!gs&&isLocalDamageLinkSourcePhase(gs);
-  const canLocalTargetSelect=!!gs&&canLocalActOnTargetSelectionPhase(gs);
-  const canLocalSemiMaterializeGuess=!!gs&&phase==='SEMI_MATERIALIZE_GUESS'&&isLocalSeatIndex(gs.abilityData?.guesserIdx);
-  const canLocalSwapGive=!!gs&&isLocalSwapGivePhase(gs);
-  const canLocalBewitchCard=!!gs&&isLocalBewitchCardPhase(gs);
+  const canLocalTargetSelect=!!gs&&!isSpectating&&canLocalActOnTargetSelectionPhase(gs);
+  const canLocalSemiMaterializeGuess=!!gs&&!isSpectating&&phase==='SEMI_MATERIALIZE_GUESS'&&isLocalSeatIndex(gs.abilityData?.guesserIdx);
+  const canLocalSwapGive=!!gs&&!isSpectating&&isLocalSwapGivePhase(gs);
+  const canLocalBewitchCard=!!gs&&!isSpectating&&isLocalBewitchCardPhase(gs);
   const selectingOther=canLocalTargetSelect||canLocalSemiMaterializeGuess;
   // 多人游戏中 HUNT_CONFIRM 非追猎者不显示操作按钮区域
   const cancelable=['SWAP_SELECT_TARGET','SWAP_SELECT_TARGET_CARD','SWAP_GIVE_CARD','HUNT_SELECT_TARGET','ZONE_SWAP_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','DAMAGE_LINK_SELECT_TARGET','TORTOISE_ORACLE_SELECT','ROSE_THORN_SELECT_TARGET','MULTIPLY_SELECT_TARGET','SHU_SELECT_TARGET','SAME_ABYSS_SELECT','SPHINX_GUESS','GRAVE_DIG_SELECT',...(phase==='HUNT_CONFIRM'&&gs._isMP&&!isLocalCurrentTurn(gs)?[]:['HUNT_CONFIRM']),'BEWITCH_SELECT_CARD','BEWITCH_SELECT_TARGET'].includes(phase);
   // In HUNT_CONFIRM, 放弃追捕 replaces ✕取消 — never show both
-  const showCancelBtn=cancelable&&phase!=='HUNT_CONFIRM'&&isLocalCurrentTurn(gs)&&(!phase.includes('DAMAGE_LINK')||isLocalDamageLinkSelect)&&!anim;
+  const showCancelBtn=cancelable&&phase!=='HUNT_CONFIRM'&&!isSpectating&&isLocalCurrentTurn(gs)&&(!phase.includes('DAMAGE_LINK')||isLocalDamageLinkSelect)&&!anim;
 
 
   function handleAIClick(pi){
@@ -6432,6 +6457,20 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             <div style={{fontSize:16,letterSpacing:2,marginBottom:8}}>连接已断开</div>
             <div style={{fontSize:12,color:'#8060a0',letterSpacing:1,fontFamily:"'Cinzel',serif",fontStyle:'italic'}}>
               您已断线，点击任意位置返回主界面
+            </div>
+          </div>
+        </div>
+      )}
+      {exitMatchConfirm&&(
+        <div style={{position:'fixed',inset:0,zIndex:10020,background:'rgba(0,0,0,0.78)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+          <div style={{width:'min(420px,92vw)',background:'#120b06',border:'2px solid #5a3010',borderRadius:4,boxShadow:'0 0 50px #000c',padding:'22px 24px',textAlign:'center'}}>
+            <div style={{fontFamily:"'Cinzel',serif",fontSize:15,color:'#c8a96e',letterSpacing:2,marginBottom:14}}>退出对局</div>
+            <div style={{fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontSize:14,color:'#b89858',lineHeight:1.6,marginBottom:20}}>
+              {exitMatchConfirm.message}
+            </div>
+            <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
+              <button onClick={leaveMultiplayerMatchToStart} style={{padding:'8px 20px',background:'#2a0c08',border:'1.5px solid #8a3028',color:'#e08070',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:12,borderRadius:2,cursor:'pointer',letterSpacing:1}}>确认退出</button>
+              <button onClick={()=>setExitMatchConfirm(null)} style={{padding:'8px 20px',background:'#1a1008',border:'1.5px solid #5a4020',color:'#c8a96e',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:12,borderRadius:2,cursor:'pointer',letterSpacing:1}}>取消</button>
             </div>
           </div>
         </div>
@@ -6695,7 +6734,31 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         <div style={{display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid #2a1a08',paddingBottom:6}}>
           <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:baseFontSizes.title,fontWeight:700,color:'#c8a96e',letterSpacing:isMobile?1:2}}>邪神的宝藏</div>
           <div style={{fontFamily:"'Cinzel',serif",fontSize:baseFontSizes.subtitle,color:'#b89858',letterSpacing:isMobile?1:2,marginTop:1}}>Treasures of Evils</div>
-          {!isMultiplayer&&(
+          {isMultiplayer?(
+            <button
+              onClick={()=>setExitMatchConfirm({
+                message:isSpectating
+                  ?'你将离开游戏房间，确定要退出吗？'
+                  :'对局还在进行中，是否退出对局并离开房间？',
+              })}
+              style={{
+                marginLeft:'auto',
+                padding:isMobile?'4px 10px':'5px 12px',
+                background:'#180c08',
+                border:'1.5px solid #6a2a20',
+                color:'#d08a72',
+                fontFamily:"'Cinzel',serif",
+                fontWeight:700,
+                fontSize:baseFontSizes.small,
+                borderRadius:3,
+                cursor:'pointer',
+                letterSpacing:isMobile?0.5:1,
+                textTransform:'uppercase',
+              }}
+            >
+              退出对局
+            </button>
+          ):(
             <button
               onClick={returnToMainMenu}
               style={{
@@ -6779,7 +6842,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             {/* SAN mist: rendered by full-screen SanMistOverlay */}
             {(hpHealIndices.includes(0)||sanHealIndices.includes(0))&&<HealCrossEffect color={sanHealIndices.includes(0)?'#a78bfa':'#4ade80'}/>}
             <div>
-              <div ref={roleTextRef} style={{fontFamily:"'Cinzel',serif",color:'#7a5a2a',fontSize:fontSizes.small,letterSpacing:2,marginBottom:3,textTransform:'uppercase'}}>你的身份</div>
+              <div ref={roleTextRef} style={{fontFamily:"'Cinzel',serif",color:'#7a5a2a',fontSize:fontSizes.small,letterSpacing:2,marginBottom:3,textTransform:'uppercase'}}>{isSpectating?'观战身份':'你的身份'}</div>
               <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:fontSizes.body,color:ri.col,textShadow:`0 0 12px ${ri.col}66`,letterSpacing:1}}>{ri.icon} {me.role}</div>
               <div style={{fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontStyle:'italic',color:'#a07838',fontSize:fontSizes.small,marginTop:4,lineHeight:1.6,whiteSpace:'nowrap'}}>{ri.goal}</div>
               {me.isResting&&<div style={{marginTop:4,fontSize:fontSizes.small,color:'#4ade80',fontFamily:"'Cinzel',serif",letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 翻面中 — 下回合跳过</div>}
@@ -6823,7 +6886,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             )}
           </div>
           {/* Center: deck/discard piles */}
-          <PileDisplay deckCount={gs.deck.length} discardCount={visualDiscard.length} discardTop={visualDiscard[visualDiscard.length-1]||null} discardCards={visualDiscard} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={vw<430} baseHeight={middleRowHeight} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={scaleRatio} expansionKey={gs.expansionKey} zhuLitCards={zhuLitCardsForView} zhuHiddenCardId={zhuHiddenCardId}/>
+        <PileDisplay deckCount={gs.deck.length} discardCount={visualDiscard.length} discardTop={visualDiscard[visualDiscard.length-1]||null} discardCards={visualDiscard} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={vw<430} baseHeight={middleRowHeight} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={scaleRatio} expansionKey={gs.expansionKey} zhuLitCards={zhuLitCardsForView} zhuHiddenCardId={zhuHiddenCardId} petrifyingFormula={gs.petrifyingFormula}/>
           {/* Log — narrow, right-aligned */}
           <div ref={logRef} style={{width:isMobile?'100%':218,flexBasis:isMobile?'100%':undefined,flexShrink:0,background:'#0e0904',border:'1.5px solid #2a1a08',borderRadius:3,padding:'8px 10px',overflowY:'auto',minHeight:isMobile?100:middleRowHeight,maxHeight:isMobile?100:middleRowHeight}}>
             <div style={{fontFamily:"'Cinzel',serif",color:'#7a5a2a',fontSize:fontSizes.small,letterSpacing:2,marginBottom:5,textTransform:'uppercase'}}>— 冒险日志 —</div>
@@ -6878,32 +6941,32 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           borderRadius:3,padding:isMobile?'5px 10px':'7px 14px',minHeight:isMobile?32:38,
           display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',
         }}>
-          <div style={{flex:1,fontFamily:"'Cinzel',serif",color:isPhaseWarningText?promptWarningTextColor:phaseLabel?promptActiveTextColor:promptMutedTextColor,fontSize:baseFontSizes.body,letterSpacing:isMobile?0.5:1}}>
-            <div>{phaseLabel}</div>
-            {phase==='ACTION'&&<div style={{fontSize:baseFontSizes.small,color:'#5a4a3a',marginTop:2}}>{cardHintText}</div>}
+          <div style={{flex:1,fontFamily:"'Cinzel',serif",color:isPhaseWarningText&&!isSpectating?promptWarningTextColor:displayPhaseLabel?promptActiveTextColor:promptMutedTextColor,fontSize:baseFontSizes.body,letterSpacing:isMobile?0.5:1}}>
+            <div>{displayPhaseLabel}</div>
+            {phase==='ACTION'&&!isSpectating&&<div style={{fontSize:baseFontSizes.small,color:'#5a4a3a',marginTop:2}}>{cardHintText}</div>}
           </div>
-          {isMultiplayer&&mpCthSec!==null&&isMpCthDecisionPhase&&(
+          {isMultiplayer&&!isSpectating&&mpCthSec!==null&&isMpCthDecisionPhase&&(
             <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:mpCthSec<=5?promptWarningTextColor:mpCthSec<=10?promptCautionTextColor:promptActiveTextColor,letterSpacing:1,flexShrink:0}}>
               ⏱ 抉择 {mpCthSec}s
             </div>
           )}
           {/* 多人回合计时器 */}
-          {isMultiplayer&&mpTurnSec!==null&&myTurn&&phase!=='AI_TURN'&&phase!=='HUNT_WAIT_REVEAL'&&!isMpCthDecisionPhase&&!isLocalMpDecisionActive&&(
+          {isMultiplayer&&!isSpectating&&mpTurnSec!==null&&myTurn&&phase!=='AI_TURN'&&phase!=='HUNT_WAIT_REVEAL'&&!isMpCthDecisionPhase&&!isLocalMpDecisionActive&&(
             <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:mpTurnSec<=10?promptWarningTextColor:mpTurnSec<=20?promptCautionTextColor:promptSafeTextColor,letterSpacing:1,flexShrink:0}}>
               ⏱ {mpTurnSec}s
             </div>
           )}
-          {isMultiplayer&&mpDiscardSec!==null&&phase==='DISCARD_PHASE'&&(
+          {isMultiplayer&&!isSpectating&&mpDiscardSec!==null&&phase==='DISCARD_PHASE'&&(
             <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:mpDiscardSec<=5?promptWarningTextColor:promptCautionTextColor,letterSpacing:1,flexShrink:0}}>
               ⏱ 弃牌 {mpDiscardSec}s
             </div>
           )}
-          {isMultiplayer&&mpHuntSec!==null&&phase==='HUNT_WAIT_REVEAL'&&(
+          {isMultiplayer&&!isSpectating&&mpHuntSec!==null&&phase==='HUNT_WAIT_REVEAL'&&(
             <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:mpHuntSec<=5?promptWarningTextColor:mpHuntSec<=10?promptCautionTextColor:promptActiveTextColor,letterSpacing:1,flexShrink:0}}>
               ⏱ 亮牌 {mpHuntSec}s
             </div>
           )}
-          {isMultiplayer&&mpDecisionSec!==null&&isLocalMpDecisionActive&&(
+          {isMultiplayer&&!isSpectating&&mpDecisionSec!==null&&isLocalMpDecisionActive&&(
             <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:mpDecisionSec<=5?promptWarningTextColor:mpDecisionSec<=10?promptCautionTextColor:promptActiveTextColor,letterSpacing:1,flexShrink:0}}>
               ⏱ 选择 {mpDecisionSec}s
             </div>
@@ -6919,14 +6982,16 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         {/* Hand area */}
         <div ref={handAreaRef} data-hand-area style={{background:'#120900',border:`1.5px solid ${myTurn?'#3a2010':'#2a1a08'}`,borderRadius:3,padding:isMobile?'8px 9px':'11px 13px'}}>
           <div style={{display:'flex',alignItems:'center',marginBottom:9,gap:8}}>
-            <span style={{fontFamily:"'Cinzel',serif",color:phase==='DISCARD_PHASE'||phase==='PLAYER_REVEAL_FOR_HUNT'||isLocalHuntRevealPrompt?promptWarningTextColor:promptActiveTextColor,fontSize:10,letterSpacing:1}}>
-              {phase==='DISCARD_PHASE'
+            <span style={{fontFamily:"'Cinzel',serif",color:!isSpectating&&(phase==='DISCARD_PHASE'||phase==='PLAYER_REVEAL_FOR_HUNT'||isLocalHuntRevealPrompt)?promptWarningTextColor:promptActiveTextColor,fontSize:10,letterSpacing:1}}>
+              {isSpectating
+                ?`观战手牌 (${visualMe.hand.length}/${effectiveHandLimit})`
+                :phase==='DISCARD_PHASE'
                 ?(isLocalCurrentTurn(gs)
                   ?`⚠ 手牌超限 (${visualMe.hand.length}/${effectiveHandLimit})`
                   :`等待 ${currentTurnPlayer?.name||'当前玩家'} 弃牌…`)
                 :phase==='PLAYER_REVEAL_FOR_HUNT'?'⚠ 选择亮出一张手牌':isLocalHuntRevealPrompt?'⚠ 选择亮出一张手牌':`手牌 (${visualMe.hand.length}/${effectiveHandLimit})`}
             </span>
-            {(phase==='ACTION'&&isVisualPlayerTurn&&!isBlocked||cancelable)&&(
+            {(!isSpectating&&(phase==='ACTION'&&isVisualPlayerTurn&&!isBlocked||cancelable))&&(
               <div style={{display:'flex',gap:8,marginLeft:'auto',flexWrap:'wrap',position:'relative',zIndex:200}}>
                 {phase==='ACTION'&&isVisualPlayerTurn&&!isBlocked&&(()=>{
                   // 对于其他职业，只要技能或休息中的任意一个被使用，那么两者都不能再使用

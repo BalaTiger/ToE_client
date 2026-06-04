@@ -686,6 +686,55 @@ describe('applyFx', () => {
     expect(res.P[1].hp).toBe(0); // dead player unaffected
     expect(res.P[1].isDead).toBe(true);
   });
+
+  it('petrifyingFormula: 首次收入从3点进度开始并记录共犯', () => {
+    const players = makeStandardPlayers(3);
+    const card = { type: 'petrifyingFormula', name: '石化配方', key: 'C1' };
+    const gs = makeGs({ players });
+    const res = applyFx(card, 0, null, players, [], [], gs);
+
+    expect(res.statePatch.petrifyingFormula).toEqual({
+      active: true,
+      progress: 3,
+      accomplices: [0],
+    });
+    expect(res.P.some(p => p.isDead)).toBe(false);
+  });
+
+  it('petrifyingFormula: 进度到1时石化HP最低角色，共犯失去1SAN并清空名单', () => {
+    const players = makeStandardPlayers(4);
+    players[1].hp = 2;
+    players[0].san = 8;
+    players[2].san = 7;
+    const card = { type: 'petrifyingFormula', name: '石化配方', key: 'C1' };
+    const gs = makeGs({
+      players,
+      inspectionDeck: [{ name: '暂时的平静', effect: 'nothing', value: 0, type: 'neutral' }],
+      inspectionDiscard: [],
+      petrifyingFormula: {
+        active: true,
+        progress: 2,
+        accomplices: [0],
+      },
+    });
+
+    const res = applyFx(card, 2, null, players, [], [], gs);
+
+    expect(res.P[1].isDead).toBe(true);
+    expect(res.P[1]._petrified).toBe(true);
+    expect(res.P[0].san).toBe(7);
+    expect(res.P[2].san).toBe(6);
+    expect(res.statePatch.petrifyingFormula).toEqual({
+      active: false,
+      progress: null,
+      accomplices: [],
+    });
+    expect(res.statEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'PETRIFY_DEATH', target: 1 }),
+      expect.objectContaining({ type: 'SAN_LOSS', target: 0 }),
+      expect.objectContaining({ type: 'SAN_LOSS', target: 2 }),
+    ]));
+  });
 });
 
 describe('applyInspectionForSanLoss', () => {

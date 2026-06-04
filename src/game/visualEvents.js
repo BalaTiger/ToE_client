@@ -16,6 +16,7 @@ export const VISUAL_EVENT = {
 };
 
 const visualEventInstanceId = Math.random().toString(36).slice(2, 10);
+let actionEventSeq = 0;
 let earthquakeEventSeq = 0;
 
 function cardIdentity(card) {
@@ -105,6 +106,7 @@ export function createBewitchGiftEvent({ sourceIdx = 0, targetIdx = 0, targetNam
   if (!card) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.BEWITCH_GIFT,
+    id: `${VISUAL_EVENT.BEWITCH_GIFT}:${visualEventInstanceId}:${++actionEventSeq}`,
     sourceIdx,
     targetIdx,
     targetName,
@@ -127,6 +129,7 @@ export function createSwapCardsEvent({ sourceIdx = 0, targetIdx = 0, sourceCount
 export function createHuntTargetEvent({ sourceIdx = 0, targetIdx = 0, msgs = [] } = {}) {
   return withVisualEventMeta({
     type: VISUAL_EVENT.HUNT_TARGET,
+    id: `${VISUAL_EVENT.HUNT_TARGET}:${visualEventInstanceId}:${++actionEventSeq}`,
     sourceIdx,
     targetIdx,
     msgs: Array.isArray(msgs) ? msgs : [],
@@ -137,6 +140,7 @@ export function createHuntRevealEvent({ sourceIdx = 0, targetIdx = 0, card, msgs
   if (!card) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.HUNT_REVEAL,
+    id: `${VISUAL_EVENT.HUNT_REVEAL}:${visualEventInstanceId}:${++actionEventSeq}`,
     sourceIdx,
     targetIdx,
     card,
