@@ -5192,6 +5192,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }
     if(queue.length){
       setGs(p=>p?{...p,phase:nextPhase,abilityData:{}}:p);
+      broadcastMpStateBeforeLocalReplay(newGsWithEvent);
       triggerAnimQueue(queue,newGsWithEvent);
     }else setGs(newGsWithEvent);
   }
