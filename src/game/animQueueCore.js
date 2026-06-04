@@ -204,14 +204,16 @@ export function buildFullHandSwapTransferQueueFromLogs(logs, players, options = 
 
 export function buildAiHuntEventAnimQueue(evt, actorName) {
   const huntMsgs = Array.isArray(evt.msgs) && evt.msgs.length ? [evt.msgs[0]] : [];
-  const followupMsgs = Array.isArray(evt.msgs) ? evt.msgs.slice(1) : [];
-  const perHuntQueue = [{ type: 'SKILL_HUNT', msgs: huntMsgs, _logChunk: huntMsgs, targetIdx: evt.targetIdx >= 0 ? evt.targetIdx : 1 }];
+  const followupMsgs = Array.isArray(evt.msgs) ? evt.msgs.slice(evt.skipIntro ? 0 : 1) : [];
+  const perHuntQueue = evt.skipIntro
+    ? []
+    : [{ type: 'SKILL_HUNT', msgs: huntMsgs, _logChunk: huntMsgs, targetIdx: evt.targetIdx >= 0 ? evt.targetIdx : 1 }];
   const revealStep = buildHuntRevealStepFromVisualEvent({
     targetIdx: evt.targetIdx,
     card: evt.revealedCard,
     msgs: [],
   }, { players: evt.beforePlayers });
-  if (revealStep) perHuntQueue.push(revealStep);
+  if (revealStep && !evt.skipReveal) perHuntQueue.push(revealStep);
   const takeFollowup = (predicate) => {
     const idx = followupMsgs.findIndex(predicate);
     if (idx < 0) return [];

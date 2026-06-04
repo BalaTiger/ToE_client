@@ -69,6 +69,16 @@ describe('rotateGsForViewer', () => {
         { type: 'huntTarget', sourceIdx: 0, targetIdx: 3 },
         { type: 'huntReveal', sourceIdx: 3, targetIdx: 0, card: { name: '亮出牌' } },
         {
+          type: 'huntResult',
+          sourceIdx: 3,
+          hunterIdx: 3,
+          targetIdx: 1,
+          beforePlayers: [player('hrB0'), player('hrB1'), player('hrB2'), player('hrB3')],
+          afterDiscardPlayers: [player('hrD0'), player('hrD1'), player('hrD2'), player('hrD3')],
+          afterDamagePlayers: [player('hrM0'), player('hrM1'), player('hrM2'), player('hrM3')],
+          afterPlayers: [player('hrA0'), player('hrA1'), player('hrA2'), player('hrA3')],
+        },
+        {
           type: 'statEvents',
           statEvents: [
             { type: 'HP_LOSS', target: 1, from: { hp: 10 }, to: { hp: 8 } },
@@ -109,12 +119,17 @@ describe('rotateGsForViewer', () => {
     expect(rotated._visualEvents[3]).toMatchObject({ sourceIdx: 1, targetIdx: 3 });
     expect(rotated._visualEvents[4]).toMatchObject({ sourceIdx: 2, targetIdx: 1 });
     expect(rotated._visualEvents[5]).toMatchObject({ sourceIdx: 1, targetIdx: 2 });
-    expect(rotated._visualEvents[6].statEvents[0].target).toBe(3);
-    expect(rotated._visualEvents[6].statEvents[1].pair).toEqual([2, 1]);
-    expect(names(rotated._visualEvents[6].statEvents[1].players)).toEqual(['v2', 'v3', 'v0', 'v1']);
-    expect(names(rotated._visualEvents[7].beforePlayers)).toEqual(['eq2', 'eq3', 'eq0', 'eq1']);
-    expect(rotated._visualEvents[7].discardEvents[0].playerIndex).toBe(1);
-    expect(names(rotated._visualEvents[7].discardEvents[0].afterPlayers)).toEqual(['eqA2', 'eqA3', 'eqA0', 'eqA1']);
+    expect(rotated._visualEvents[6]).toMatchObject({ sourceIdx: 1, hunterIdx: 1, targetIdx: 3 });
+    expect(names(rotated._visualEvents[6].beforePlayers)).toEqual(['hrB2', 'hrB3', 'hrB0', 'hrB1']);
+    expect(names(rotated._visualEvents[6].afterDiscardPlayers)).toEqual(['hrD2', 'hrD3', 'hrD0', 'hrD1']);
+    expect(names(rotated._visualEvents[6].afterDamagePlayers)).toEqual(['hrM2', 'hrM3', 'hrM0', 'hrM1']);
+    expect(names(rotated._visualEvents[6].afterPlayers)).toEqual(['hrA2', 'hrA3', 'hrA0', 'hrA1']);
+    expect(rotated._visualEvents[7].statEvents[0].target).toBe(3);
+    expect(rotated._visualEvents[7].statEvents[1].pair).toEqual([2, 1]);
+    expect(names(rotated._visualEvents[7].statEvents[1].players)).toEqual(['v2', 'v3', 'v0', 'v1']);
+    expect(names(rotated._visualEvents[8].beforePlayers)).toEqual(['eq2', 'eq3', 'eq0', 'eq1']);
+    expect(rotated._visualEvents[8].discardEvents[0].playerIndex).toBe(1);
+    expect(names(rotated._visualEvents[8].discardEvents[0].afterPlayers)).toEqual(['eqA2', 'eqA3', 'eqA0', 'eqA1']);
   });
 
   it('derotates rotated animation snapshots back to host order', () => {

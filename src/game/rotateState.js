@@ -121,9 +121,11 @@ function rotateAiHuntEvents(events, rotateIndex, myIndex) {
   return events.map(event => ({
     ...event,
     targetIdx: event.targetIdx != null ? rotateIndex(event.targetIdx) : event.targetIdx,
+    sourceIdx: event.sourceIdx != null ? rotateIndex(event.sourceIdx) : event.sourceIdx,
     hunterIdx: event.hunterIdx != null ? rotateIndex(event.hunterIdx) : event.hunterIdx,
     beforePlayers: rotatePlayersArray(event.beforePlayers, myIndex),
     afterDiscardPlayers: rotatePlayersArray(event.afterDiscardPlayers, myIndex),
+    afterDamagePlayers: rotatePlayersArray(event.afterDamagePlayers, myIndex),
     afterPlayers: rotatePlayersArray(event.afterPlayers, myIndex),
   }));
 }
@@ -184,6 +186,9 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
         ...event,
         playerIdx: event.playerIdx != null ? rotateIndex(event.playerIdx) : event.playerIdx,
       };
+    }
+    if (event?.type === 'huntResult') {
+      return rotateAiHuntEvents([event], rotateIndex, myIndex)[0];
     }
     if (event?.type === 'bewitchGift' || event?.type === 'swapCards' || event?.type === 'huntTarget' || event?.type === 'huntReveal') {
       return {

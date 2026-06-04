@@ -11,6 +11,7 @@ export const VISUAL_EVENT = {
   SWAP_CARDS: 'swapCards',
   HUNT_TARGET: 'huntTarget',
   HUNT_REVEAL: 'huntReveal',
+  HUNT_RESULT: 'huntResult',
   HAND_LIMIT_DISCARD: 'handLimitDiscard',
   EARTHQUAKE: 'earthquake',
 };
@@ -118,6 +119,7 @@ export function createBewitchGiftEvent({ sourceIdx = 0, targetIdx = 0, targetNam
 export function createSwapCardsEvent({ sourceIdx = 0, targetIdx = 0, sourceCount = 1, targetCount = 1, msgs = [] } = {}) {
   return withVisualEventMeta({
     type: VISUAL_EVENT.SWAP_CARDS,
+    id: `${VISUAL_EVENT.SWAP_CARDS}:${visualEventInstanceId}:${++actionEventSeq}`,
     sourceIdx,
     targetIdx,
     sourceCount,
@@ -145,6 +147,21 @@ export function createHuntRevealEvent({ sourceIdx = 0, targetIdx = 0, card, msgs
     targetIdx,
     card,
     msgs: Array.isArray(msgs) ? msgs : [],
+  }, 'action');
+}
+
+export function createHuntResultEvent(event = {}) {
+  if (!event || event.hunterIdx == null || event.targetIdx == null) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.HUNT_RESULT,
+    id: `${VISUAL_EVENT.HUNT_RESULT}:${visualEventInstanceId}:${++actionEventSeq}`,
+    skipIntro: true,
+    skipReveal: true,
+    ...event,
+    sourceIdx: event.sourceIdx ?? event.hunterIdx,
+    hunterIdx: event.hunterIdx,
+    targetIdx: event.targetIdx,
+    msgs: Array.isArray(event.msgs) ? event.msgs : [],
   }, 'action');
 }
 
@@ -399,6 +416,10 @@ export function getHuntTargetVisualEvent(state) {
 
 export function getHuntRevealVisualEvent(state) {
   return getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.HUNT_REVEAL && ev.targetIdx != null && ev.card);
+}
+
+export function getHuntResultVisualEvent(state) {
+  return getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.HUNT_RESULT && ev.hunterIdx != null && ev.targetIdx != null);
 }
 
 export function buildHuntRevealStepFromVisualEvents(state) {

@@ -114,6 +114,7 @@ import {
   createSwapCardsEvent,
   createHuntTargetEvent,
   createHuntRevealEvent,
+  createHuntResultEvent,
   buildHuntRevealStepFromVisualEvents,
   markConsumedVisualEvents,
   pruneConsumedVisualEvents,
@@ -4620,6 +4621,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           :`你与 ${tname} 互换后双方均集齐编号，两位寻宝者共同获胜！`;
         const newGs={...gs,players:P,drawReveal:null,log:[...L,reason],abilityData:{},_visualEvents:swapVisualEvent?[swapVisualEvent]:[],
           gameOver:{winner:'寻宝者',reason,winnerIdx:0,winnerIdx2:swapTi}};
+        broadcastMpStateBeforeLocalReplay(newGs);
         triggerAnimQueue([{type:'SKILL_SWAP',msgs:[reason]}],newGs);
         return;
       }
@@ -4636,6 +4638,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const newGs={...gs,players:P,drawReveal:null,log:L,abilityData:{},_visualEvents:swapVisualEvent?[swapVisualEvent]:[],
         gameOver:{winner:'寻宝者',reason,winnerIdx:swapTi},phase:'ACTION',skillUsed:true};
       const statQ2=buildAnimQueue(gs,newGs).filter(a=>a.type!=='CARD_TRANSFER');
+      broadcastMpStateBeforeLocalReplay(newGs);
       triggerAnimQueue([{type:'SKILL_SWAP',msgs:[reason]},
         ...fullHandSwapSteps({
           fromPid:0,
@@ -4661,6 +4664,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     });
     const statQ=buildAnimQueue(gs,newGs).filter(a=>a.type!=='CARD_TRANSFER');
     const swapMsgs=extractSkillLogs(L.slice(gs.log.length),'swap');
+    broadcastMpStateBeforeLocalReplay(newGs);
     triggerAnimQueue([{type:'SKILL_SWAP',msgs:swapMsgs},...swapSteps,...statQ],newGs);
   }
 
@@ -4704,18 +4708,27 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const{huntTi}=gs.abilityData;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
     if(myCardIdx>=0){
+      const huntLogStart=L.length;
       const targetHandBefore=[...(P[huntTi]?.hand||[])];
       const targetRevealBefore=!!P[huntTi]?.revealHand;
+      const beforeHuntPlayers=copyPlayers(P);
       const beforeLossPlayers=copyPlayers(P);
       const dc=P[0].hand.splice(myCardIdx,1)[0];Disc.push(dc);
+      const afterDiscardPlayers=copyPlayers(P);
+      const afterDiscardDiscard=[...Disc];
       const huntDamage=3+(P[0].damageBonus||0);
-      applyHpDamageWithLink(P,huntTi,huntDamage,Disc,L,gs.currentTurn,D);
       L.push(`弃 ${cardLogText(dc,{alwaysShowName:true})} → ${P[huntTi].name} 受 ${huntDamage}HP 伤害`);
+      applyHpDamageWithLink(P,huntTi,huntDamage,Disc,L,gs.currentTurn,D);
       // 追捕成功时揭晓追猎者身份
       if(!P[0].roleRevealed){
         P[0].roleRevealed=true;
         L.push(`${P[0].name} 的身份揭晓：追猎者`);
       }
+      let afterDamagePlayers=null;
+      let afterDamageDiscard=null;
+      let afterDamageLog=null;
+      let lootTransferCount=0;
+      let lootDiscardCards=[];
       if(P[huntTi].hp<=0){
         const lootableHand=targetHandBefore;
         if(lootableHand.length){
@@ -4727,37 +4740,68 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           if(shouldOpenLootSelection){
             Disc=removeCardsFromDiscard(Disc,lootableHand);
             P[huntTi].hand=[...lootableHand];
-            // 先播放死亡特效，然后再进入选择手牌的阶段
-            const deathGs={...gs,players:P,deck:D,log:L};
-            const queue=buildAnimQueue(gs,deathGs);
-            if(queue.length){
-              // 动画播放完成后进入选择手牌的阶段
-              triggerAnimQueue(queue,{...deathGs,phase:'HUNT_SELECT_CARD_FROM_PUBLIC',abilityData:{huntTi:huntTi,preSkillRevealed:gs.abilityData?.preSkillRevealed,maxToTake:Math.min(maxToTake,handCount)},
-                log:[...L,`你（追猎者）从 ${P[huntTi].name} 的公开手牌中任选 ${Math.min(maxToTake,handCount)} 张！`]});
-            }else{
-              // 没有动画时直接进入选择手牌的阶段
-              setGs({...gs,players:P,deck:D,phase:'HUNT_SELECT_CARD_FROM_PUBLIC',abilityData:{huntTi:huntTi,preSkillRevealed:gs.abilityData?.preSkillRevealed,maxToTake:Math.min(maxToTake,handCount)},
-                log:[...L,`你（追猎者）从 ${P[huntTi].name} 的公开手牌中任选 ${Math.min(maxToTake,handCount)} 张！`]});
-            }
+            afterDamagePlayers=copyPlayers(P);
+            afterDamageDiscard=[...Disc];
+            afterDamageLog=[...L];
+            const huntResultEvent=createHuntResultEvent({
+              hunterIdx:0,
+              targetIdx:huntTi,
+              revealedCard:gs.abilityData?.revCard,
+              discardedCard:dc,
+              beforePlayers:beforeHuntPlayers,
+              afterDiscardPlayers,
+              afterDiscardDiscard,
+              afterDamagePlayers,
+              afterDamageDiscard,
+              afterDamageLog,
+              afterPlayers:copyPlayers(P),
+              afterResultDiscard:[...Disc],
+              beforeLog:L.slice(0,huntLogStart),
+              afterLog:[...L],
+              msgs:L.slice(huntLogStart),
+            });
+            const lootSelectGs={...gs,players:P,deck:D,discard:Disc,log:[...L,`你（追猎者）从 ${P[huntTi].name} 的公开手牌中任选 ${Math.min(maxToTake,handCount)} 张！`],
+              phase:'HUNT_SELECT_CARD_FROM_PUBLIC',
+              abilityData:{huntTi:huntTi,preSkillRevealed:gs.abilityData?.preSkillRevealed,maxToTake:Math.min(maxToTake,handCount)},
+              _visualEvents:huntResultEvent?[huntResultEvent]:[]};
+            const queue=huntResultEvent
+              ? buildAiHuntEventAnimQueue(huntResultEvent,P[0]?.name||'???')
+              : buildAnimQueue(gs,lootSelectGs);
+            broadcastMpStateBeforeLocalReplay(lootSelectGs);
+            if(queue.length) triggerAnimQueue(queue,lootSelectGs); else setGs(lootSelectGs);
             return;
           }else if(targetRevealBefore){
             Disc=removeCardsFromDiscard(Disc,lootableHand);
+            P[huntTi].hand=[...lootableHand];
+            afterDamagePlayers=copyPlayers(P);
+            afterDamageDiscard=[...Disc];
+            afterDamageLog=[...L];
             P[0].hand.push(...lootableHand);
+            lootTransferCount=lootableHand.length;
             P[huntTi].hand=[];
             L.push(`你夺取了 ${P[huntTi].name} 的全部公开手牌（${lootableHand.length} 张）！`);
           }else{
             Disc=removeCardsFromDiscard(Disc,lootableHand);
             P[huntTi].hand=[...lootableHand];
+            afterDamagePlayers=copyPlayers(P);
+            afterDamageDiscard=[...Disc];
+            afterDamageLog=[...L];
             const cardsToTake=Math.min(maxToTake,handCount);
             for(let i=0;i<cardsToTake;i++){
               const randomIndex=Math.floor(Math.random()*P[huntTi].hand.length);
               const stolenCard=P[huntTi].hand.splice(randomIndex,1)[0];
               P[0].hand.push(stolenCard);
+              lootTransferCount++;
               L.push(`你从 ${P[huntTi].name} 的手牌中暗抽了一张 ${cardLogText(stolenCard)}！`);
             }
-            Disc.push(...P[huntTi].hand);
+            lootDiscardCards=[...P[huntTi].hand];
+            Disc.push(...lootDiscardCards);
             P[huntTi].hand=[];
           }
+        }else{
+          afterDamagePlayers=copyPlayers(P);
+          afterDamageDiscard=[...Disc];
+          afterDamageLog=[...L];
         }
         if(P[huntTi].godZone?.length){Disc.push(...P[huntTi].godZone);P[huntTi].godZone=[];P[huntTi].godName=null;P[huntTi].godLevel=0;}
       }
@@ -4769,8 +4813,31 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         beforeLossPlayers,
         {_turnOwner:gs.currentTurn}
       );
-      const queue=buildAnimQueue(gs,newGs);
-      if(queue.length) triggerAnimQueue(queue,newGs); else setGs(newGs);
+      const huntResultEvent=createHuntResultEvent({
+        hunterIdx:0,
+        targetIdx:huntTi,
+        revealedCard:gs.abilityData?.revCard,
+        discardedCard:dc,
+        beforePlayers:beforeHuntPlayers,
+        afterDiscardPlayers,
+        afterDiscardDiscard,
+        afterDamagePlayers,
+        afterDamageDiscard,
+        afterDamageLog,
+        lootTransferCount,
+        lootDiscardCards,
+        afterPlayers:copyPlayers(newGs.players),
+        afterResultDiscard:[...(newGs.discard||[])],
+        beforeLog:L.slice(0,huntLogStart),
+        afterLog:[...L],
+        msgs:L.slice(huntLogStart),
+      });
+      const newGsWithEvent=huntResultEvent?{...newGs,_visualEvents:[huntResultEvent]}:newGs;
+      const queue=huntResultEvent
+        ? buildAiHuntEventAnimQueue(huntResultEvent,P[0]?.name||'???')
+        : buildAnimQueue(gs,newGsWithEvent);
+      broadcastMpStateBeforeLocalReplay(newGsWithEvent);
+      if(queue.length) triggerAnimQueue(queue,newGsWithEvent); else setGs(newGsWithEvent);
     }else{
       const newAbandoned=[...(gs.huntAbandoned||[]),huntTi];
       L.push(`放弃追捕 ${P[huntTi].name}`);

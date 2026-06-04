@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildAnimQueue } from '../animQueueCore';
 import { buildMpRemoteReplayAction, MP_REMOTE_REPLAY } from '../multiplayerRemoteReplay';
-import { createEarthquakeEvent } from '../visualEvents';
+import { createEarthquakeEvent, createHuntResultEvent, createSwapCardsEvent } from '../visualEvents';
 
 const card = { id: 'c1', name: '测试牌', type: 'zone' };
 
@@ -544,6 +544,38 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.pendingGs._visualEvents).toEqual([]);
   });
 
+  it('does not let stale swap visualEvents override the next draw replay', () => {
+    const nextCard = { id: 'next1', name: '下一回合摸牌', key: 'B2', type: 'zone' };
+    const staleSwapEvent = createSwapCardsEvent({
+      sourceIdx: 1,
+      targetIdx: 0,
+      sourceCount: 1,
+      targetCount: 1,
+      msgs: ['拿走 [B2] 旧牌，还给 你 [C3] 新牌'],
+    });
+    const action = buildAction(makeState({
+      currentTurn: 2,
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card: nextCard, drawerIdx: 2, needsDecision: true },
+      log: [
+        '艾伦（寻宝者）对 你 【掉包】，暗抽了1张牌',
+        '拿走 [B2] 旧牌，还给 你 [C3] 新牌',
+        '── 贝拉 的回合开始 ──',
+        '贝拉 摸到 下一回合摸牌',
+      ],
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉 摸到 下一回合摸牌'],
+      _visualEvents: [staleSwapEvent],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION', log: [] }),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue[0]).toMatchObject({ type: 'YOUR_TURN', name: '贝拉' });
+    expect(action.queue[1]).toMatchObject({ type: 'DRAW_CARD', card: nextCard, triggerName: '贝拉', targetPid: 2 });
+    expect(action.queue.some(step => step.type === 'SKILL_SWAP')).toBe(false);
+  });
+
   it('does not replay already consumed visualEvents from repeated sync packets', () => {
     const gift = { id: 'gift1', name: '蛊惑礼物', key: 'A1', type: 'zone' };
     const rotated = makeState({
@@ -871,6 +903,108 @@ describe('buildMpRemoteReplayAction', () => {
     });
     expect(action.pendingGs.phase).toBe('HUNT_CONFIRM');
     expect(action.pendingGs._visualEvents).toEqual([]);
+  });
+
+  it('uses hunt result visualEvents to show discard before damage for remote players', () => {
+    const discardedCard = { id: 'hunter-card', name: '同编号牌', key: 'C3', type: 'zone' };
+    const revealedCard = { id: 'rev1', name: '亮出的牌', key: 'C3', type: 'zone' };
+    const beforePlayers = [
+      player('你'),
+      { ...player('艾伦'), hand: [discardedCard] },
+      { ...player('贝拉'), hp: 10, hand: [revealedCard] },
+    ];
+    const afterDiscardPlayers = [
+      player('你'),
+      { ...player('艾伦'), hand: [] },
+      { ...player('贝拉'), hp: 10, hand: [revealedCard] },
+    ];
+    const afterPlayers = [
+      player('你'),
+      { ...player('艾伦'), hand: [] },
+      { ...player('贝拉'), hp: 7, hand: [revealedCard] },
+    ];
+    const event = createHuntResultEvent({
+      hunterIdx: 1,
+      targetIdx: 2,
+      revealedCard,
+      discardedCard,
+      beforePlayers,
+      afterDiscardPlayers,
+      afterDiscardDiscard: [discardedCard],
+      afterPlayers,
+      afterResultDiscard: [discardedCard],
+      beforeLog: ['旧日志'],
+      afterLog: ['旧日志', '弃 [C3] 同编号牌 → 贝拉 受 3HP 伤害'],
+      msgs: ['弃 [C3] 同编号牌 → 贝拉 受 3HP 伤害'],
+    });
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players: afterPlayers,
+      discard: [discardedCard],
+      log: ['旧日志', '弃 [C3] 同编号牌 → 贝拉 受 3HP 伤害'],
+      _visualEvents: [event],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'HUNT_CONFIRM', players: beforePlayers, log: ['旧日志'] }),
+      buildAnimQueue,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    const types = action.queue.map(step => step.type);
+    expect(types[0]).toBe('DISCARD');
+    expect(types.indexOf('HP_DAMAGE')).toBeGreaterThan(types.indexOf('DISCARD'));
+    expect(action.queue.some(step => step.type === 'SKILL_HUNT')).toBe(false);
+    expect(action.queue.some(step => step.type === 'HUNT_REVEAL_CARD')).toBe(false);
+    expect(action.visualLock.players).toEqual(beforePlayers);
+    expect(action.pendingGs._visualEvents).toEqual([]);
+  });
+
+  it('uses hunt result visualEvents for the hunted local player after they revealed a card', () => {
+    const discardedCard = { id: 'hunter-card', name: '同编号牌', key: 'C3', type: 'zone' };
+    const beforePlayers = [
+      { ...player('你'), hp: 10 },
+      { ...player('艾伦'), hand: [discardedCard] },
+      player('贝拉'),
+    ];
+    const afterDiscardPlayers = [
+      { ...player('你'), hp: 10 },
+      { ...player('艾伦'), hand: [] },
+      player('贝拉'),
+    ];
+    const afterPlayers = [
+      { ...player('你'), hp: 7 },
+      { ...player('艾伦'), hand: [] },
+      player('贝拉'),
+    ];
+    const event = createHuntResultEvent({
+      hunterIdx: 1,
+      targetIdx: 0,
+      discardedCard,
+      beforePlayers,
+      afterDiscardPlayers,
+      afterDiscardDiscard: [discardedCard],
+      afterPlayers,
+      afterResultDiscard: [discardedCard],
+      beforeLog: ['旧日志'],
+      afterLog: ['旧日志', '弃 [C3] 同编号牌 → 你 受 3HP 伤害'],
+      msgs: ['弃 [C3] 同编号牌 → 你 受 3HP 伤害'],
+    });
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players: afterPlayers,
+      discard: [discardedCard],
+      log: ['旧日志', '弃 [C3] 同编号牌 → 你 受 3HP 伤害'],
+      _visualEvents: [event],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'HUNT_CONFIRM', players: beforePlayers, log: ['旧日志'] }),
+      buildAnimQueue,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.map(step => step.type)).toContain('DISCARD');
+    expect(action.queue.map(step => step.type)).toContain('HP_DAMAGE');
+    expect(action.visualLock.players).toEqual(beforePlayers);
   });
 
   it('plays previous hand-limit discard before the next local draw replay', () => {

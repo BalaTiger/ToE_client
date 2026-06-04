@@ -1,4 +1,5 @@
 import { bindAnimLogChunks, isDrawLikeLog, isTurnStartLog } from './animLogs';
+import { buildAiHuntEventAnimQueue } from './animQueueCore';
 import { buildBewitchForcedCardQueue, buildInspectionAwareAnimQueue, fullHandSwapSteps, statePatchStep } from './animQueueHelpers';
 import { cardLogText, copyPlayers } from './coreUtils';
 import { isLocalCurrentTurn, isLocalSeatIndex, localDisplayName } from './rotateState';
@@ -19,6 +20,7 @@ import {
   getHuntRevealVisualEvent,
   buildHuntRevealStepFromVisualEvent,
   getHuntTargetVisualEvent,
+  getHuntResultVisualEvent,
   pruneConsumedVisualEvents,
 } from './visualEvents';
 
@@ -187,6 +189,24 @@ function isFreshBewitchVisualEvent(event, logDelta = []) {
   return !logs.some(isLaterDrawBoundaryLog);
 }
 
+function isFreshActionVisualEvent(event, logDelta = []) {
+  const logs = Array.isArray(logDelta) ? logDelta : [];
+  const eventMsgs = Array.isArray(event?.msgs) ? event.msgs.filter(Boolean) : [];
+  let eventIdx = -1;
+  if (eventMsgs.length) {
+    for (let i = logs.length - 1; i >= 0; i -= 1) {
+      if (eventMsgs.includes(logs[i])) {
+        eventIdx = i;
+        break;
+      }
+    }
+  }
+  if (eventIdx >= 0) {
+    return !logs.slice(eventIdx + 1).some(isLaterDrawBoundaryLog);
+  }
+  return !logs.some(isLaterDrawBoundaryLog);
+}
+
 export function buildMpRemoteReplayAction({
   rotated,
   previousGs,
@@ -245,7 +265,7 @@ export function buildMpRemoteReplayAction({
     return withConsumedVisualEvents(buildZhuHideWaitAction(rotated));
   }
   const swapEvent = getSwapCardsVisualEvent(rotated);
-  if (swapEvent) {
+  if (swapEvent && isFreshActionVisualEvent(swapEvent, logDelta)) {
     const queue = [
       { type: 'SKILL_SWAP', msgs: swapEvent.msgs || logDelta },
       ...fullHandSwapSteps({
@@ -264,6 +284,25 @@ export function buildMpRemoteReplayAction({
       maskedGs: buildMaskedActionState(rotated),
       pendingGs: clearRemoteReplayHints({ ...rotated, drawReveal: null }),
       queue,
+      visualLock: {
+        players: previousGs?.players || null,
+        zhuLight: previousGs?.zhuLight || rotated.zhuLight || null,
+      },
+    });
+  }
+  const huntResultEvent = getHuntResultVisualEvent(rotated);
+  if (huntResultEvent && isFreshActionVisualEvent(huntResultEvent, logDelta)) {
+    const queue = buildAiHuntEventAnimQueue(huntResultEvent, rotated.players?.[huntResultEvent.hunterIdx]?.name || '???');
+    if (queue.length) queue.push(statePatchStep({ players: rotated.players, discard: rotated.discard, log: rotated.log, phase: rotated.phase, abilityData: rotated.abilityData }));
+    return withConsumedVisualEvents({
+      type: MP_REMOTE_REPLAY.ANIM_QUEUE,
+      maskedGs: buildMaskedActionState(rotated),
+      pendingGs: clearRemoteReplayHints(rotated),
+      queue,
+      visualLock: {
+        players: huntResultEvent.beforePlayers || previousGs?.players || null,
+        zhuLight: previousGs?.zhuLight || rotated.zhuLight || null,
+      },
     });
   }
   const bewitchEvent = getBewitchGiftVisualEvent(rotated);

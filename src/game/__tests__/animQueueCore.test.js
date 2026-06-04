@@ -382,6 +382,46 @@ describe('buildAiHuntEventAnimQueue', () => {
     expect(queue[1]).toMatchObject({ card: revealedCard, targetPid: 2 });
   });
 
+  it('联机追捕结算事件可跳过已播放的追捕和亮牌动画', () => {
+    const hunterDiscard = { id: 'hunter-d1', key: 'D1', name: '钻地魔虫' };
+    const beforePlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '卡洛斯', hp: 9, hand: [hunterDiscard] }),
+      makePlayer({ name: '艾伦', hp: 9 }),
+    ];
+    const afterDiscardPlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '卡洛斯', hp: 9, hand: [] }),
+      makePlayer({ name: '艾伦', hp: 9 }),
+    ];
+    const afterPlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '卡洛斯', hp: 9, hand: [] }),
+      makePlayer({ name: '艾伦', hp: 6 }),
+    ];
+
+    const queue = buildAiHuntEventAnimQueue({
+      hunterIdx: 1,
+      targetIdx: 2,
+      discardedCard: hunterDiscard,
+      beforePlayers,
+      afterDiscardPlayers,
+      afterDiscardDiscard: [hunterDiscard],
+      afterPlayers,
+      afterResultDiscard: [hunterDiscard],
+      beforeLog: ['旧日志'],
+      afterLog: ['旧日志', '弃 [D1] 钻地魔虫 → 艾伦 受 3HP 伤害'],
+      msgs: ['弃 [D1] 钻地魔虫 → 艾伦 受 3HP 伤害'],
+      skipIntro: true,
+      skipReveal: true,
+    }, '卡洛斯');
+
+    expect(queue.map(step => step.type)).not.toContain('SKILL_HUNT');
+    expect(queue.map(step => step.type)).not.toContain('HUNT_REVEAL_CARD');
+    expect(queue[0]).toMatchObject({ type: 'DISCARD', card: hunterDiscard });
+    expect(queue.map(step => step.type)).toContain('HP_DAMAGE');
+  });
+
   it('追捕击杀后先播放死亡公告，再暗抽，最后弃置剩余手牌', () => {
     const hunterDiscard = { id: 'hunter-d1', key: 'D1', name: '钻地魔虫' };
     const stolenA = { id: 'stolen-a', key: 'A1', name: '坠落' };
