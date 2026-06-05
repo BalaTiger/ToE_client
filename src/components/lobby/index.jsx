@@ -388,7 +388,6 @@ function DebugSettingsPanel({
   debugPlayerRole, setDebugPlayerRole,
   debugExpansionKey, setDebugExpansionKey,
 }) {
-  if (!show) return null;
   const [zoneLetterTab, setZoneLetterTab] = useState('A');
   const [zoneNumTab, setZoneNumTab] = useState('1');
   const playableExpansionKeys = getPlayableExpansionKeys();
@@ -402,9 +401,6 @@ function DebugSettingsPanel({
   const selectedZoneName = selectedZoneCard?.name || debugForceZoneCardName;
   const godKeys = EXPANSIONS[selectedExpansionKey]?.godCardKeys || [];
   const selectedGodKey = godKeys.includes(debugForceGodCardKey) ? debugForceGodCardKey : godKeys[0];
-  const selectedCardId = debugForceCardType === 'god'
-    ? `god:${selectedGodKey}`
-    : `zone:${selectedZoneKey}:${selectedZoneName}`;
   const selectStyle = {
     width: '100%',
     padding: 6,
@@ -476,6 +472,7 @@ function DebugSettingsPanel({
     setDebugForceZoneCardName,
     setDebugForceGodCardKey,
   ]);
+  if (!show) return null;
   return (
     <div style={{
       position: 'fixed',

@@ -182,7 +182,7 @@ import {
   cardTransferStep,
   fullHandSwapSteps,
 } from "./game/animQueueHelpers";
-import { _getZoomCompensatedRect } from './utils/dom';
+import { _getZoomCompensatedRect, getPlayerHandAnchorCenter } from './utils/dom';
 import { ANIM_DURATION, ANIM_SPEED_SCALE, CARD_REVEAL_DURATION, ANIM_STEP_GAP } from './components/anim/constants';
 import { SMOKE_COLS, FLOWER_CONFIGS, DICE_FACES, ANIM_CFG } from './components/anim/data';
 import { CardFlipAnim } from './components/anim/CardFlipAnim';
@@ -478,6 +478,10 @@ export default function Game(){
   const [debugPlayerRole,setDebugPlayerRole]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_PLAYER_ROLE_KEY)||'auto');
   const [debugExpansionKey,setDebugExpansionKey]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_EXPANSION_KEY)||'地神的潜影');
   const [showDebugSettings,setShowDebugSettings]=useState(false);
+  // Swap blind-draw overlay state: null | { phase:'shuffling'|'selecting'|'flying', targetPi, handSnapshot[], selectedIdx?, flyFromRect?, flyToRect? }
+  const [swapBlindDraw,setSwapBlindDraw]=useState(null);
+  const swapBlindDrawRef=useRef(null);
+  useEffect(()=>{swapBlindDrawRef.current=swapBlindDraw;},[swapBlindDraw]);
   const isBattleScreen=!!gs;
   const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playApophisEclipseSound}=useGameAudio(isBattleScreen);
   const activeDebugConfig=useMemo(()=>{
@@ -3004,6 +3008,30 @@ export default function Game(){
     return ()=>document.removeEventListener('pointerdown',handlePointerDown,true);
   },[isMobile,mobileArmedGodCardIdx]);
 
+  // ── Swap blind-draw overlay trigger (must be before any early return) ──
+  useEffect(()=>{
+    if(!gs||gs.phase!=='SWAP_STEAL_CARD'||!isLocalCurrentTurn(gs)||gs.abilityData?.swapTi==null)return;
+    const targetPi=gs.abilityData.swapTi;
+    const targetPlayer=gs.players[targetPi];
+    if(!targetPlayer||!targetPlayer.hand?.length)return;
+    const handSnapshot=targetPlayer.hand.map((card,idx)=>({
+      idx,
+      card,
+      isFaceUp:!!targetPlayer.revealHand||isBlackGoatYoung(card)||isTsathogguaSlime(card),
+    }));
+    setSwapBlindDraw({phase:'shuffling',targetPi,handSnapshot});
+    const timer=setTimeout(()=>{
+      setSwapBlindDraw(prev=>prev&&prev.targetPi===targetPi?{...prev,phase:'selecting'}:prev);
+    },1200);
+    return()=>clearTimeout(timer);
+  },[gs?.phase,gs?.abilityData?.swapTi]);
+  // Clean up overlay when leaving SWAP_STEAL_CARD
+  useEffect(()=>{
+    if(gs?.phase!=='SWAP_STEAL_CARD'&&swapBlindDrawRef.current){
+      setSwapBlindDraw(null);
+    }
+  },[gs?.phase]);
+
   // ── Loading Screen ───────────────────────────────────────────
   const handleGodResurrectionDone=useCallback(()=>setShowGodResurrection(true),[]);
 
@@ -5035,6 +5063,23 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     triggerAnimQueue(queue, nextGs);
   }
 
+  function handleSwapBlindDrawSelect(cardIdx){
+    if(!swapBlindDrawRef.current)return;
+    const toPos=getPlayerHandAnchorCenter(0);
+    // 遮罩中的牌排成一排，估算每张牌的屏幕位置作为飞行动画起点
+    const handCount=swapBlindDrawRef.current.handSnapshot.length;
+    const cardSpacing=52;
+    const totalWidth=(handCount-1)*cardSpacing;
+    const fromPos={
+      x:window.innerWidth/2+(cardIdx*cardSpacing-totalWidth/2),
+      y:window.innerHeight/2,
+    };
+    setSwapBlindDraw(prev=>prev?{...prev,phase:'flying',selectedIdx:cardIdx,flyFrom:fromPos,flyTo:toPos}:null);
+    setTimeout(()=>{
+      setSwapBlindDraw(null);
+      swapSelectTargetCard(cardIdx);
+    },700);
+  }
   function swapSelectTargetCard(cardIdx){
     const{swapTi}=gs.abilityData;
     let P=copyPlayers(gs.players);
@@ -7458,13 +7503,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           {visualPlayers.slice(1).map((p,i)=>{
             const pi=i+1;
             const isSel=selectingOther&&!p.isDead&&!isBlocked&&!(phase==='HUNT_SELECT_TARGET'&&huntAbandoned.includes(pi));
-            // 掉包：公开手牌时正面选择；暗抽时保留暗牌/明牌状态但允许点选槽位
-            const isSwapTargetCardPhase=(phase==='SWAP_SELECT_TARGET_CARD'||phase==='SWAP_STEAL_CARD')&&myTurn&&gs.abilityData?.swapTi===pi;
+            // 掉包：公开手牌时正面选择；暗抽时改为全屏遮罩选择，不再点击手牌区
             const isSwapPublicTargetCardPhase=phase==='SWAP_SELECT_TARGET_CARD'&&myTurn&&gs.abilityData?.swapTi===pi;
             // 在HUNT_SELECT_CARD_FROM_PUBLIC阶段，如果这是死者玩家，显示其手牌并允许选择
             const isHuntCardFromPublicPhase=phase==='HUNT_SELECT_CARD_FROM_PUBLIC'&&myTurn&&gs.abilityData?.huntTi===pi;
             const showFaceUpForSwap=isSwapPublicTargetCardPhase||isHuntCardFromPublicPhase||p.revealHand;
-              const onCardSelectForSwap=isSwapTargetCardPhase?((cardIdx)=>swapSelectTargetCard(cardIdx)):isHuntCardFromPublicPhase?((cardIdx)=>huntSelectCardFromPublic(cardIdx)):null;
+            const onCardSelectForSwap=isSwapPublicTargetCardPhase?((cardIdx)=>swapSelectTargetCard(cardIdx)):isHuntCardFromPublicPhase?((cardIdx)=>huntSelectCardFromPublic(cardIdx)):null;
               return(
                 <div key={p.id} data-pid={pi} style={{position:'relative',zIndex:isSel?101:undefined,alignSelf:'start'}}>
                 <PlayerPanel player={p} playerIndex={pi} isCurrentTurn={visualCurrentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)} isBeingGuillotined={guillotinedPids.has(pi)} displayStats={displayStats} scaleRatio={scaleRatio} viewportWidth={vw} expansionKey={gs.expansionKey} blackGoatPulseActive={blackGoatPulsePid===pi}/>
@@ -7859,6 +7903,110 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           />
         </>,document.body)}
       {roleRevealAnim&&<RoleRevealAnim role={roleRevealAnim.role} onDone={()=>_onRoleRevealDone(roleRevealAnim.pendingGs)}/>}
+
+      {/* ── Swap Blind-Draw Overlay ── */}
+      {swapBlindDraw&&(
+        <div style={{
+          position:'fixed',inset:0,zIndex:550,
+          background:'rgba(5,3,1,0.88)',
+          display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:28,
+          animation:'animFadeIn 0.25s ease both',
+        }}>
+          {/* 标题 */}
+          <div style={{
+            fontFamily:"'Cinzel',serif",color:'#c8a96e',fontSize:18,letterSpacing:2,textAlign:'center',
+            textShadow:'0 0 20px rgba(200,169,110,0.3)',
+          }}>
+            从 {gs.players[swapBlindDraw.targetPi]?.name} 的手牌中暗抽一张
+          </div>
+          {/* 牌区域 */}
+          <div style={{
+            display:'flex',gap:10,alignItems:'center',justifyContent:'center',
+            flexWrap:'wrap',maxWidth:'90vw',perspective:'900px',
+          }}>
+            {swapBlindDraw.handSnapshot.map(({idx,card,isFaceUp})=>{
+              const isShuffling=swapBlindDraw.phase==='shuffling';
+              const isSelecting=swapBlindDraw.phase==='selecting';
+              const isFlying=swapBlindDraw.phase==='flying'&&swapBlindDraw.selectedIdx===idx;
+              const isOtherFlying=swapBlindDraw.phase==='flying'&&swapBlindDraw.selectedIdx!==idx;
+              const seed=idx*137+idx*31;
+              const startX=`${(Math.sin(seed)*220).toFixed(1)}px`;
+              const startY=`${(Math.cos(seed*1.3)*180-80).toFixed(1)}px`;
+              const startRz=`${(Math.sin(seed*0.7)*35).toFixed(1)}deg`;
+              const pileX=`${(Math.sin(seed*2.1)*8).toFixed(1)}px`;
+              const pileY=`${(Math.cos(seed*1.7)*6).toFixed(1)}px`;
+              const handCount=swapBlindDraw.handSnapshot.length;
+              const cardSpacing=52;
+              const totalWidth=(handCount-1)*cardSpacing;
+              const finalX=`${(idx*cardSpacing-totalWidth/2).toFixed(1)}px`;
+              const finalY='0px';
+              return(
+                <div
+                  key={idx}
+                  onClick={isSelecting?()=>handleSwapBlindDrawSelect(idx):undefined}
+                  style={{
+                    position:'relative',
+                    width:44,height:58,
+                    cursor:isSelecting?'pointer':'default',
+                    transformStyle:'preserve-3d',
+                    transition:isSelecting?'transform 0.18s ease':'none',
+                    ...(isShuffling?{
+                      '--start-x':startX,'--start-y':startY,'--start-rz':startRz,
+                      '--pile-x':pileX,'--pile-y':pileY,
+                      '--final-x':finalX,'--final-y':finalY,
+                      '--final-ry':isFaceUp?'0deg':'180deg',
+                      '--pile-ry':isFaceUp?'0deg':`${(Math.sin(seed)*20).toFixed(1)}deg`,
+                      animation:'swapBlindShuffleIn 1.2s cubic-bezier(0.25,0,0.35,1) both',
+                      animationDelay:`${(idx*0.09).toFixed(2)}s`,
+                    }:isFlying?{
+                      '--fly-tx':`${(swapBlindDraw.flyTo?.x||0)-(swapBlindDraw.flyFrom?.x||0)}px`,
+                      '--fly-ty':`${(swapBlindDraw.flyTo?.y||0)-(swapBlindDraw.flyFrom?.y||0)}px`,
+                      animation:'swapBlindFlyCard 0.7s cubic-bezier(0.25,0,0.35,1) forwards',
+                      zIndex:100,
+                    }:isOtherFlying?{
+                      opacity:0,transition:'opacity 0.15s',
+                    }:{}),
+                  }}
+                >
+                  {/* 正面 */}
+                  <div style={{
+                    position:'absolute',inset:0,backfaceVisibility:'hidden',
+                    transform:isFaceUp?'none':'rotateY(180deg)',
+                    borderRadius:3,overflow:'hidden',
+                  }}>
+                    <DDCard card={card} small holderId={swapBlindDraw.targetPi}/>
+                  </div>
+                  {/* 背面 */}
+                  <div style={{
+                    position:'absolute',inset:0,backfaceVisibility:'hidden',
+                    transform:isFaceUp?'rotateY(180deg)':'none',
+                    borderRadius:3,overflow:'hidden',
+                  }}>
+                    <DDCardBack small expansionKey={gs.expansionKey}/>
+                  </div>
+                  {/* 悬停提示（选择阶段） */}
+                  {isSelecting&&isFaceUp&&<div style={{
+                    position:'absolute',bottom:-18,left:'50%',transform:'translateX(-50%)',
+                    fontSize:10,color:'#c8a96e',fontFamily:"'Cinzel',serif",
+                    whiteSpace:'nowrap',pointerEvents:'none',opacity:0.8,
+                  }}>{card.name}</div>}
+                </div>
+              );
+            })}
+          </div>
+          {/* 底部提示 */}
+          {swapBlindDraw.phase==='selecting'&&<div style={{
+            fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',
+            color:'#7a5a2a',fontSize:13,letterSpacing:1,
+            animation:'animFadeIn 0.4s ease 0.6s both',
+          }}>点击一张牌进行暗抽</div>}
+          {swapBlindDraw.phase==='shuffling'&&<div style={{
+            fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',
+            color:'#5a4020',fontSize:13,letterSpacing:1,
+          }}>洗牌中…</div>}
+        </div>
+      )}
+
       {phase==='PLAYER_WIN_PENDING'&&!showTutorial&&(
         <TreasureMapAnim hand={me.hand} onConfirm={()=>{
           animQueueRef.current=[];
@@ -8008,6 +8156,20 @@ const GLOBAL_STYLES=`
   @keyframes spinLoader  { to{transform:rotate(360deg)} }
   @keyframes toastIn     { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
   @keyframes animShake   { 0%,100%{transform:translateX(0)} 15%{transform:translateX(-12px)} 35%{transform:translateX(14px)} 55%{transform:translateX(-9px)} 75%{transform:translateX(9px)} }
+  @keyframes swapBlindShuffleIn {
+    0%   { transform: translate(var(--start-x,0), var(--start-y,0)) rotateZ(var(--start-rz,0deg)) rotateY(var(--start-ry,0deg)) scale(0.7); opacity: 0; }
+    40%  { opacity: 1; }
+    70%  { transform: translate(var(--pile-x,0), var(--pile-y,0)) rotateZ(0deg) rotateY(var(--pile-ry,0deg)) scale(1); }
+    100% { transform: translate(var(--final-x,0), var(--final-y,0)) rotateZ(0deg) rotateY(var(--final-ry,0deg)) scale(1); opacity: 1; }
+  }
+  @keyframes swapBlindFlyCard {
+    0%   { transform: translate(0,0) scale(1); opacity: 1; }
+    100% { transform: translate(var(--fly-tx,0), var(--fly-ty,0)) scale(0.55); opacity: 0; }
+  }
+  @keyframes swapBlindGlowPulse {
+    0%,100% { box-shadow: 0 0 12px rgba(200,169,110,0.25); }
+    50%     { box-shadow: 0 0 28px rgba(200,169,110,0.55); }
+  }
   @keyframes animVig     { 0%,100%{opacity:0} 50%{opacity:1} }
   @keyframes animGlow    { 0%,100%{box-shadow:0 0 8px #c8a96e33} 50%{box-shadow:0 0 22px #c8a96e88} }
   @keyframes blackGoatCardHop {
