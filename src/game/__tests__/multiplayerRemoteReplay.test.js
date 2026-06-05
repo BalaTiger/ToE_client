@@ -1133,6 +1133,44 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.consumedVisualEventIds).toContain(replayEvent.id);
   });
 
+  it('replays 拉莱耶之主 turn-end draws on the actor seat after rotating to a remote viewer', () => {
+    const cthCard = { id: 'cth-draw', name: '拉莱耶摸牌', key: 'D2', type: 'zone' };
+    const nextCard = { id: 'next-card', name: '下一回合牌', key: 'B1', type: 'zone' };
+    // Raw frame (post-derotate on the actor's client): actor 艾伦 at seat 1, next turn 你 at seat 0.
+    const replayEvent = createEndlessCorridorReplayEvent({
+      actorIdx: 1,
+      actorName: '艾伦',
+      beforePlayers: [player('你'), player('艾伦-before'), player('贝拉')],
+      beforeDiscard: [],
+      queue: [
+        { type: 'DRAW_CARD', card: cthCard, triggerName: '艾伦', targetPid: 1, msgs: ['  摸到 拉莱耶摸牌'] },
+      ],
+      msgs: ['艾伦（克苏鲁信徒Lv.1）梦访拉莱耶，翻面结束回合时额外摸1张牌'],
+    });
+    const rawState = makeState({
+      currentTurn: 0,
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card: nextCard, drawerIdx: 0, needsDecision: true },
+      _turnStartLogs: ['── 你 的回合开始 ──'],
+      _drawLogs: ['你 摸到 下一回合牌'],
+      _visualEvents: [replayEvent],
+    });
+    // Viewer at raw seat 2 (贝拉): rotateIndex i -> (i-2+3)%3, so actor 1 -> 2, next-turn 0 -> 1.
+    const rotated = rotateGsForViewer(rawState, 2);
+    const previousGs = rotateGsForViewer(makeState({ currentTurn: 1, phase: 'ACTION' }), 2);
+    const action = buildAction(rotated, { previousGs, buildAnimQueue });
+
+    expect(rotated._visualEvents[0]).toMatchObject({ actorIdx: 2 });
+    expect(rotated._visualEvents[0].queue[0]).toMatchObject({ targetPid: 2, triggerName: '艾伦' });
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue[0]).toMatchObject({ type: 'DRAW_CARD', card: cthCard, targetPid: 2, triggerName: '艾伦' });
+    const nextTurnIdx = action.queue.findIndex(step => step.type === 'YOUR_TURN');
+    expect(nextTurnIdx).toBeGreaterThan(0);
+    expect(action.queue[nextTurnIdx + 1]).toMatchObject({ type: 'DRAW_CARD', card: nextCard, targetPid: 1 });
+    expect(action.queue.at(-1)).toMatchObject({ type: 'STATE_PATCH', currentTurn: 1 });
+    expect(action.pendingGs._visualEvents).toEqual([]);
+  });
+
   it('uses hunt visualEvents for target lock animation', () => {
     const drawLog = '艾伦 摸到 [B2] 地动山摇（强制触发）';
     const action = buildAction(makeState({

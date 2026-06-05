@@ -134,6 +134,10 @@ export function buildAnimQueue(oldGs, newGs) {
   if (earthquakeVisualStep) {
     q.push(earthquakeVisualStep);
   }
+  // [EQ-DEBUG] 地动山摇动画排查：事件是否存在、步骤是否产出
+  if (Array.isArray(newGs?._visualEvents) && newGs._visualEvents.some(e => e?.type === 'earthquake')) {
+    try { console.log('[EQ-DEBUG] buildAnimQueue: earthquake event present, stepBuilt =', !!earthquakeVisualStep, '| discardEvents =', earthquakeVisualStep?.discardEvents?.length, '| queueSoFar =', q.map(s => s.type)); } catch { /* noop */ }
+  }
   const fullHandSwapMsg = newMsgs.find(m => m.includes('交换了全部手牌'));
   if (fullHandSwapMsg) {
     const fullHandSwapQ = buildFullHandSwapStepsFromLogs([fullHandSwapMsg], oldGs.players);

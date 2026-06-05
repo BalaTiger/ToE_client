@@ -298,16 +298,17 @@ function startNextTurn(gs) {
     ? { ...gs, _visualEvents: [] }
     : gs;
   const nextGs = _startNextTurn(cleanInputGs, { isDebugMode: isLocalDebugEnabled() });
-  const nextGsWithoutStaleVisualEvents = Array.isArray(nextGs._visualEvents) && nextGs._visualEvents.length
-    ? { ...nextGs, _visualEvents: [] }
-    : nextGs;
+  // 输入的 _visualEvents 已在 cleanInputGs 清空，故 nextGs._visualEvents 只含本回合引擎新产生的
+  // 效果型视觉事件（如强制摸到「地动山摇」的 earthquake），必须保留，再叠加回合开始/摸牌/属性事件。
+  const engineVisualEvents = Array.isArray(nextGs._visualEvents) ? nextGs._visualEvents : [];
   const visualEvents = [
-    ...buildTurnStartDrawVisualEvents(nextGsWithoutStaleVisualEvents),
-    ...buildFreshStatVisualEvents(nextGsWithoutStaleVisualEvents, gs?._statEventSeq || 0),
+    ...buildTurnStartDrawVisualEvents(nextGs),
+    ...buildFreshStatVisualEvents(nextGs, gs?._statEventSeq || 0),
+    ...engineVisualEvents,
   ];
   return visualEvents.length
-    ? { ...nextGsWithoutStaleVisualEvents, _visualEvents: visualEvents }
-    : nextGsWithoutStaleVisualEvents;
+    ? { ...nextGs, _visualEvents: visualEvents }
+    : nextGs;
 }
 
 function maxStatEventSeqFromSteps(steps=[]){
@@ -613,6 +614,7 @@ export default function Game(){
   const mpTurnExpiredRef=useRef(false); // 回合倒计时归零后保持到自动结束真正执行，避免动作动画期间丢失
   const consumedVisualEventIdsRef=useRef(new Set()); // 联机视觉事件去重，避免重复同步包重播旧动画
   const endTurnReplaySyncQueueRef=useRef(null); // 记录本地无尽通道完整动画队列，供联机远端同步
+  const endlessCorridorReplayIdRef=useRef(null); // 联机同步时复用同一个 endlessCorridorReplay id，避免远端重复播放
   const gameEndSentRef=useRef(false);      // 防止 gameEnd 重复发送
   const [isDisconnected,setIsDisconnected]=useState(false);
   const [exitMatchConfirm,setExitMatchConfirm]=useState(null);
@@ -3317,6 +3319,19 @@ export default function Game(){
         {statLogs:baseGsAfterDecision._cthRestDrawLogs||[]}
       );
       const cleanedGs={...baseGsAfterDecision,_cthRestDraws:null,_cthRestDrawLogs:null,_playersBeforeCthDraws:null};
+      if(baseGsAfterDecision._isMP){
+        // 决策后剩余的强制 CTH 摸牌：同样用 endlessCorridorReplay 事件广播，远端按 actor 座位旋转后播放。
+        const cthEvent=buildCthRestDrawReplayEvent({
+          beforePlayers:baseGsAfterDecision._playersBeforeCthDraws||baseGsAfterDecision.players,
+          beforeDiscard:baseGsAfterDecision.discard,
+          zhuLight:baseGsAfterDecision.zhuLight||null,
+          actorName:baseGsAfterDecision._playersBeforeCthDraws?.[0]?.name||baseGsAfterDecision.players?.[0]?.name||'你',
+          cthDraws:baseGsAfterDecision._cthRestDraws,
+          cthDrawLogs:baseGsAfterDecision._cthRestDrawLogs,
+          statSteps:statQ,
+        });
+        if(!cthEvent||!broadcastCthRestDrawReplay(baseGsAfterDecision,cthEvent))broadcastMpStateBeforeLocalReplay(baseGsAfterDecision);
+      }
       triggerAnimQueue(
         [...cthQueue,...statQ,statePatchStep({players:cleanedGs.players,discard:cleanedGs.discard})],
         null,
@@ -3335,6 +3350,7 @@ export default function Game(){
       if(r2.needGodChoice){
         const newGs={...baseGsAfterDecision,players:P,deck:D,discard:Disc,log:L,phase:'GOD_CHOICE',
           abilityData:{godCard:r2.drawnCard,fromRest:true,cthDrawsRemaining:remaining-_d-1,drawerIdx:0},drawReveal:null,selectedCard:null};
+        if(newGs._isMP)broadcastMpStateBeforeLocalReplay(newGs);
         triggerAnimQueue([{type:'DRAW_CARD',card:r2.drawnCard,triggerName:'你',targetPid:0,msgs:drawMsg?[drawMsg]:[]}],newGs);
         return;
       }
@@ -3342,6 +3358,7 @@ export default function Game(){
         const newGs={...baseGsAfterDecision,players:P,deck:D,discard:Disc,log:L,phase:'DRAW_REVEAL',
           drawReveal:{card:r2.drawnCard,msgs:[],needsDecision:true,forcedKeep:false,drawerIdx:0,drawerName:P[0].name,fromRest:true},
           selectedCard:null,abilityData:{fromRest:true,cthDrawsRemaining:remaining-_d-1}};
+        if(newGs._isMP)broadcastMpStateBeforeLocalReplay(newGs);
         triggerAnimQueue([{type:'DRAW_CARD',card:r2.drawnCard,triggerName:'你',targetPid:0,msgs:drawMsg?[drawMsg]:[]}],newGs);
         return;
       }
@@ -3352,6 +3369,7 @@ export default function Game(){
         const forcedGs={...baseGsAfterDecision,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,selectedCard:null,
           abilityData:{...(fromRest?{fromRest:true}:{}),cthDrawsRemaining:remaining-_d-1}};
         const statQ=bindAnimLogChunks(buildAnimQueue(baseGsAfterDecision,forcedGs),{statLogs:split.stat});
+        if(forcedGs._isMP)broadcastMpStateBeforeLocalReplay(forcedGs);
         triggerAnimQueue(
           [{type:'DRAW_CARD',card:r2.drawnCard,triggerName:'你',targetPid:0,msgs:split.preStat.length?split.preStat:(drawMsg?[`${drawMsg}（强制触发）`]:[])},...statQ,statePatchStep({players:P,discard:Disc})],
           null,
@@ -3403,7 +3421,13 @@ export default function Game(){
       beforePlayers:sync.beforePlayers,
       beforeDiscard:sync.beforeDiscard,
       zhuLight:sync.zhuLight,
+      id:endlessCorridorReplayIdRef.current||undefined,
     });
+    // 移除已消费的 id，确保最终广播时 visual event 不被 prune，远端能收到完整队列
+    if(event?.id&&consumedVisualEventIdsRef.current?.has(event.id)){
+      consumedVisualEventIdsRef.current.delete(event.id);
+    }
+    endlessCorridorReplayIdRef.current=null;
     return event?{...state,_visualEvents:[event,...(state?._visualEvents||[])]}:state;
   }
 
@@ -3413,6 +3437,23 @@ export default function Game(){
     startEndTurnReplaySyncQueue(0,P?.[0]?.name||'你',{...baseGs,players:P,discard:Disc});
     const queue=[...preQueue,endlessCorridorTunnelStep()];
     appendEndTurnReplaySyncQueue(queue,nextState.log?.slice((baseGs.log||[]).length)||[]);
+    // 提前广播初始无尽通道动画，让远端同步开始播放
+    const sync=endTurnReplaySyncQueueRef.current;
+    if(sync){
+      endlessCorridorReplayIdRef.current=`endlessCorridorReplay:${Math.random().toString(36).slice(2,10)}`;
+      const tempEvent=createEndlessCorridorReplayEvent({
+        actorIdx:sync.actorIndex,
+        actorName:sync.actorName,
+        queue:[...sync.queue],
+        msgs:[...sync.msgs],
+        beforePlayers:sync.beforePlayers,
+        beforeDiscard:sync.beforeDiscard,
+        zhuLight:sync.zhuLight,
+        id:endlessCorridorReplayIdRef.current,
+      });
+      const broadcastState=tempEvent?{...nextState,_visualEvents:[tempEvent]}:nextState;
+      if(broadcastState._isMP)broadcastMpStateBeforeLocalReplay(broadcastState);
+    }
     triggerAnimQueue(queue,nextState,()=>continueEndTurnReplay(nextState));
     return true;
   }
@@ -5689,6 +5730,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         const cthRestStatPatch=cthRestStatEvents.length?{_statEvents:[...(oldGs._statEvents||[]),...cthRestStatEvents],_statEventSeq:cthRestStatEventSeq}:{};
         L.push(`你（克苏鲁信徒Lv.${P[0].godLevel}）梦访拉莱耶，翻面结束回合时额外摸${extraDraws}张牌`);
         const cthDraws=[];
+        const cthBeforeDrawPlayers=copyPlayers(P); // 休息翻面、摸牌前快照，供远端动画起点
+        const cthDrawLogStart=L.length;
 
         for(let _d=0;_d<extraDraws;_d++){
           const r2=playerDrawCard(P,D,Disc,0,oldGs);P=r2.P;D=r2.D;Disc=r2.Disc;
@@ -5719,6 +5762,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           }
         }
 
+        const cthAfterDrawPlayers=copyPlayers(P); // 摸牌后、进入下家回合前快照
+        const cthAfterDrawDiscard=[...Disc];
+        const cthDrawLogs=L.slice(cthDrawLogStart);
         const afterRest={...oldGs,players:P,deck:D,discard:Disc,log:L,restUsed:true,skillUsed:true,currentTurn:0,...cthRestStatPatch};
         // 翻面状态下主动结束回合：需要弃牌
         const nextGs=P[0].hand.length>effectiveHandLimit
@@ -5739,6 +5785,23 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           queue.push(...statQ);
           if(nextGs.currentTurn===0&&nextGs.drawReveal?.card){
             queue.push({type:'YOUR_TURN',msgs:nextGs._turnStartLogs},{type:'DRAW_CARD',card:nextGs.drawReveal.card,triggerName:'你',targetPid:0,msgs:nextGs._drawLogs});
+          }
+          if(nextGs._isMP){
+            // 参考"无尽通道"：提前广播这批 CTH 翻牌动画，远端按 actor 座位旋转后同步播放，再衔接下家回合。
+            const cthStatSteps=buildAnimQueue(
+              {...oldGs,players:cthBeforeDrawPlayers,discard:gs.discard},
+              {...oldGs,players:cthAfterDrawPlayers,discard:cthAfterDrawDiscard,log:L}
+            ).filter(a=>a.type!=='CARD_TRANSFER');
+            const cthEvent=buildCthRestDrawReplayEvent({
+              beforePlayers:cthBeforeDrawPlayers,
+              beforeDiscard:gs.discard,
+              zhuLight:gs.zhuLight||nextGs.zhuLight||null,
+              actorName:cthBeforeDrawPlayers?.[0]?.name||'你',
+              cthDraws,
+              cthDrawLogs,
+              statSteps:cthStatSteps,
+            });
+            broadcastCthRestDrawReplay(nextGs,cthEvent);
           }
           triggerAnimQueue(queue,nextGs);
         }else{
@@ -5781,6 +5844,41 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     return replay;
   }
 
+  // 拉莱耶之主(CTH) 在翻面结束/跳过回合时的强制摸牌：参考"无尽通道"的同步方式，
+  // 构建一个 endlessCorridorReplay 视觉事件，让联机远端能与本地同步播放整批摸牌动画。
+  // 远端 buildMpRemoteReplayAction 会按 actorIdx/targetPid 旋转到正确座位，再衔接下家回合开始动画。
+  function buildCthRestDrawReplayEvent({beforePlayers,beforeDiscard,zhuLight,actorName,cthDraws,cthDrawLogs,statSteps=[]}){
+    const draws=(Array.isArray(cthDraws)?cthDraws:[]).filter(Boolean);
+    if(!draws.length)return null;
+    const logs=Array.isArray(cthDrawLogs)?cthDrawLogs.filter(Boolean):[];
+    // 远端按事件队列原样播放（不再经 localDisplayName 推导），故 triggerName 用 actor 真实昵称而非"你"。
+    const triggerLabel=actorName||'你';
+    const drawSteps=draws.map(card=>({
+      type:'DRAW_CARD',card,triggerName:triggerLabel,targetPid:0,
+      msgs:logs.filter(l=>l.includes(card.name)||(card.key&&l.includes(card.key))),
+    }));
+    return createEndlessCorridorReplayEvent({
+      actorIdx:0,
+      actorName:actorName||'你',
+      queue:[...drawSteps,...(Array.isArray(statSteps)?statSteps:[])],
+      msgs:logs,
+      beforePlayers:copyPlayers(beforePlayers||[]),
+      beforeDiscard:[...(beforeDiscard||[])],
+      zhuLight:zhuLight||null,
+    });
+  }
+
+  // 把 CTH 摸牌事件附加到 nextGs 上并提前广播给远端（本地仍按既有队列播放）。
+  // 广播副本里清掉 _cthRestDraws 等字段，避免远端走旧的、写死 targetPid:0 的分支。
+  function broadcastCthRestDrawReplay(nextGs,event){
+    if(!nextGs?._isMP||!event)return false;
+    return broadcastMpStateBeforeLocalReplay({
+      ...nextGs,
+      _cthRestDraws:null,_cthRestDrawLogs:null,_playersBeforeCthDraws:null,
+      _visualEvents:[event,...(Array.isArray(nextGs._visualEvents)?nextGs._visualEvents:[])],
+    });
+  }
+
   // 多人游戏：当下一回合是他人时，为当前玩家播放翻牌动画（否则他们的本地 gs 更新无动画）
   function broadcastMpStateBeforeLocalReplay(nextGs){
     if(!nextGs?._isMP||!isMultiplayer||!socketRef.current||!roomModal?.roomId)return false;
@@ -5797,6 +5895,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   }
 
   function applyNextTurnGs(newGs){
+    // [EQ-DEBUG]
+    try{ if((newGs?._visualEvents||[]).some(e=>e?.type==='earthquake')||newGs?.drawReveal?.card?.type==='allDiscard') console.log('[EQ-DEBUG] applyNextTurnGs: currentTurn=',newGs.currentTurn,'phase=',newGs.phase,'drawCard=',newGs?.drawReveal?.card?.name,'visualEvents=',(newGs._visualEvents||[]).map(e=>e?.type)); }catch{ /* noop */ }
     // Guard: never overwrite win/pending-win state
     if(newGs&&(newGs.phase==='PLAYER_WIN_PENDING'||newGs.phase==='TREASURE_WIN'))return setGs(p=>p?.gameOver||p?.phase==='PLAYER_WIN_PENDING'||p?.phase==='TREASURE_WIN'?p:newGs);
     // Animate CTH rest-draw forced cards that accumulated during startNextTurn
@@ -5810,6 +5910,19 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         {statLogs:newGs._cthRestDrawLogs||[]}
       );
       const cleanedGs={...newGs,_cthRestDraws:null,_cthRestDrawLogs:null,_playersBeforeCthDraws:null};
+      if(newGs._isMP){
+        // 翻面跳过回合触发的 CTH 摸牌：用 endlessCorridorReplay 事件广播，远端按 actor 座位旋转后播放，
+        // 再衔接下家回合开始动画（替代远端写死 targetPid:0 的 _cthRestDraws 分支）。
+        const cthEvent=buildCthRestDrawReplayEvent({
+          beforePlayers:newGs._playersBeforeCthDraws||gs.players,
+          beforeDiscard:gs.discard,
+          zhuLight:gs.zhuLight||newGs.zhuLight||null,
+          actorName:newGs._playersBeforeCthDraws?.[0]?.name||gs.players?.[0]?.name||'你',
+          cthDraws:newGs._cthRestDraws,
+          cthDrawLogs:newGs._cthRestDrawLogs,
+        });
+        if(!cthEvent||!broadcastCthRestDrawReplay(newGs,cthEvent))broadcastMpStateBeforeLocalReplay(newGs);
+      }
       triggerAnimQueue([...cthQueue,...statQ],cleanedGs);
       return;
     }
@@ -5835,7 +5948,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       if((newGs._turnStartLogs||[]).length){
         queue.push({type:'YOUR_TURN',...(drawerPid===0?{}:{name:drawerName}),msgs:newGs._turnStartLogs});
       }
-      if(newGs._isMP&&newGs.currentTurn!==0)broadcastMpStateBeforeLocalReplay(newGs);
+      if(newGs._isMP&&(newGs.currentTurn!==0||(Array.isArray(newGs._visualEvents)&&newGs._visualEvents.length>0)))broadcastMpStateBeforeLocalReplay(newGs);
       if(queue.length){
         pendingGsRef.current=newGs;
         if(newGs._playersBeforeThisDraw){
@@ -5949,10 +6062,13 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     // 不需要弃牌时，直接触发CTH效果
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
     const cthDraws=[];
+    const cthBeforeDrawPlayers=copyPlayers(P); // CTH 摸牌前快照，供远端动画起点
+    let cthDrawLogStart=L.length;
     const cthDrawCount=getCthRestDrawCount(P[0]);
     if(cthDrawCount>0){
       const extraDraws=cthDrawCount;
       L.push(`你（克苏鲁信徒Lv.${P[0].godLevel}）梦访拉莱耶，翻面结束回合时额外摸${extraDraws}张牌`);
+      cthDrawLogStart=L.length-1;
       for(let _d=0;_d<extraDraws;_d++){
         const r2=playerDrawCard(P,D,Disc,0,gs);P=r2.P;D=r2.D;Disc=r2.Disc;
         if(r2.drawnCard){
@@ -6006,6 +6122,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const statQ=cthDraws.length?buildAnimQueue(gs,{...gs,players:P,deck:D,discard:Disc,log:L}).filter(a=>a.type!=='CARD_TRANSFER'):[];
       if(beginEndTurnReplay(gs,P,D,Disc,L,[...replayPreQueue,...statQ]))return;
     }
+    const cthAfterDrawPlayers=copyPlayers(P); // 摸牌后、进入下家回合前快照
+    const cthAfterDrawDiscard=[...Disc];
+    const cthDrawLogs=L.slice(cthDrawLogStart);
     const newGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0});
     if(cthDraws.length>0){
       // 构建CTH摸牌动画队列
@@ -6019,6 +6138,23 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       // 如果下一回合是玩家回合，添加 YOUR_TURN 动画
       if(newGs.currentTurn===0&&newGs.drawReveal?.card){
         queue.push({type:'YOUR_TURN',msgs:newGs._turnStartLogs},{type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:'你',targetPid:0,msgs:newGs._drawLogs});
+      }
+      if(newGs._isMP){
+        // 参考"无尽通道"：提前广播这批 CTH 翻牌动画，远端按 actor 座位旋转后同步播放，再衔接下家回合。
+        const cthStatSteps=buildAnimQueue(
+          {...gs,players:cthBeforeDrawPlayers,discard:gs.discard},
+          {...gs,players:cthAfterDrawPlayers,discard:cthAfterDrawDiscard,log:L}
+        ).filter(a=>a.type!=='CARD_TRANSFER');
+        const cthEvent=buildCthRestDrawReplayEvent({
+          beforePlayers:cthBeforeDrawPlayers,
+          beforeDiscard:gs.discard,
+          zhuLight:gs.zhuLight||newGs.zhuLight||null,
+          actorName:cthBeforeDrawPlayers?.[0]?.name||'你',
+          cthDraws,
+          cthDrawLogs,
+          statSteps:cthStatSteps,
+        });
+        broadcastCthRestDrawReplay(newGs,cthEvent);
       }
       triggerAnimQueue(queue,newGs);
     }else if(newGs.currentTurn===0&&newGs.drawReveal?.card){
@@ -6178,6 +6314,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       mpOpeningRoleRevealPendingRef.current=false;
       return;
     } // tutorial path: game already set
+    // [EQ-DEBUG] 地动山摇排查：开局/回合首抽进入 role-reveal 回放编排
+    try{ if((pendingGs._visualEvents||[]).some(e=>e?.type==='earthquake')||pendingGs?.drawReveal?.card?.type==='allDiscard') console.log('[EQ-DEBUG] _onRoleRevealDone entry: isMP=',pendingGs._isMP,'currentTurn=',pendingGs.currentTurn,'phase=',pendingGs.phase,'drawCard=',pendingGs?.drawReveal?.card?.name,'visualEvents=',(pendingGs._visualEvents||[]).map(e=>e?.type)); }catch{ /* noop */ }
     // 开局时所有玩家的 pendingGs 已随 gameStart 广播过，
     // advanceQueue→setGs 不应再触发 useEffect 广播（否则非房主播完动画后会打断房主动画）
     receivedGsRef.current=true;
@@ -6221,6 +6359,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       :(pendingGs.drawReveal?.card||pendingGs._drawnCard||null);
     if(localDrawnCard){
       const replay=buildAppTurnStartDrawReplay(pendingGs,{oldGs:gs,effectOldGs:{...gs,players:pendingGs._playersBeforeThisDraw||gs.players}});
+      // [EQ-DEBUG]
+      try{ if((replay.queue||[]).some(s=>s.type==='EARTHQUAKE')||localDrawnCard?.type==='allDiscard') console.log('[EQ-DEBUG] _onRoleRevealDone localDraw: replay.drawnCard=',!!replay.drawnCard,'queue=',(replay.queue||[]).map(s=>s.type)); }catch{ /* noop */ }
       if(replay.drawnCard){
         if(replay.visualLock)visualStateLocks.lock(replay.visualLock);
         triggerAnimQueue(replay.queue,pendingGs);

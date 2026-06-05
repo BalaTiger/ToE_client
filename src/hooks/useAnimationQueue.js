@@ -152,6 +152,7 @@ export function useAnimationQueue({
         const nextTurnHighlight = resolveTurnHighlightForStep(next, pendingGsRef.current || gs, gs?.players || []);
         if (nextTurnHighlight != null) visualStateLocks.lock({turnHighlight:nextTurnHighlight});
         if (next.visualSetupPatch) applyVisualPatch(next.visualSetupPatch);
+        if (next?.type === 'EARTHQUAKE') { try { console.log('[EQ-DEBUG] advanceQueue: setting EARTHQUAKE as active anim; remainingQueue =', animQueueRef.current.map(s => s.type)); } catch { /* noop */ } }
         setAnim(next);
         revealAnimLogs(next);
       }
@@ -190,6 +191,9 @@ export function useAnimationQueue({
 
   useEffect(() => {
     if (!anim) return;
+    if (anim.type === 'EARTHQUAKE') {
+      try { console.log('[EQ-DEBUG] anim EARTHQUAKE became active: discardEvents =', anim.discardEvents?.length, ', visualTimeline =', anim.visualTimeline?.length, ', durationMs =', anim.durationMs); } catch { /* noop */ }
+    }
     scheduleVisualTimeline(anim);
     const isCard = anim.type === 'DRAW_CARD';
     const dur = Number.isFinite(anim.durationMs)
@@ -215,6 +219,9 @@ export function useAnimationQueue({
   }, [anim]);
 
   function triggerAnimQueue(queue, nextGs, callback) {
+    if (Array.isArray(queue) && queue.some(s => s?.type === 'EARTHQUAKE')) {
+      try { console.log('[EQ-DEBUG] triggerAnimQueue received queue =', queue.map(s => s.type), '| hasCallback =', !!callback, '| nextGs.phase =', nextGs?.phase); } catch { /* noop */ }
+    }
     const hasDeathAnim = queue.some(a => a.type === 'DEATH' || a.type === 'GUILLOTINE');
     const pendingDeathPlayers = nextGs?.players?.filter(p => p._pendingAnimDeath)?.map((_, i) => i) || [];
 

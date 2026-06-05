@@ -200,12 +200,13 @@ export function createEndlessCorridorReplayEvent({
   beforePlayers = null,
   beforeDiscard = null,
   zhuLight = null,
+  id = null,
 } = {}) {
   const replayQueue = Array.isArray(queue) ? queue.filter(Boolean) : [];
   if (!replayQueue.length) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY,
-    id: `${VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY}:${visualEventInstanceId}:${++endlessCorridorEventSeq}`,
+    id: id || `${VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY}:${visualEventInstanceId}:${++endlessCorridorEventSeq}`,
     actorIdx,
     actorName,
     queue: replayQueue,

@@ -248,6 +248,55 @@ export function buildMpRemoteReplayAction({
       });
     }
   }
+  const hasCthRestDraws = Array.isArray(rotated._cthRestDraws) && rotated._cthRestDraws.length > 0;
+  const isCthRestDraw = rotated.drawReveal?.fromRest || rotated.abilityData?.fromRest;
+  if (hasCthRestDraws || isCthRestDraw) {
+    const queue = [];
+    if (hasCthRestDraws) {
+      queue.push(...rotated._cthRestDraws.map(card => ({
+        type: 'DRAW_CARD',
+        card,
+        triggerName: localDisplayName(0, rotated.players?.[0]?.name),
+        targetPid: 0,
+        msgs: rotated._cthRestDrawLogs?.filter(l => l.includes(card.name) || l.includes(card.key)) || [],
+      })));
+    }
+    if (isCthRestDraw) {
+      const isGodChoice = rotated.phase === 'GOD_CHOICE';
+      const card = isGodChoice ? rotated.abilityData?.godCard : rotated.drawReveal?.card;
+      const drawerIdx = isGodChoice ? (rotated.abilityData?.drawerIdx ?? 0) : (rotated.drawReveal?.drawerIdx ?? 0);
+      const drawerName = rotated.players?.[drawerIdx]?.name || '???';
+      const msgs = isGodChoice ? rotated._drawLogs : (rotated._drawLogs || []);
+      if (card) {
+        queue.push({
+          type: 'DRAW_CARD',
+          card,
+          triggerName: localDisplayName(drawerIdx, drawerName),
+          targetPid: drawerIdx,
+          msgs: Array.isArray(msgs) ? msgs.filter(Boolean) : [],
+        });
+      }
+    }
+    const pendingGs = {
+      ...rotated,
+      _cthRestDraws: null,
+      _cthRestDrawLogs: null,
+      _playersBeforeCthDraws: null,
+    };
+    const patchedQueue = appendFinalStatePatch(
+      queue,
+      pendingGs,
+      ['players', 'deck', 'discard', 'log', 'phase', 'abilityData'],
+    );
+    if (patchedQueue.length) {
+      return withConsumedVisualEvents({
+        type: MP_REMOTE_REPLAY.ANIM_QUEUE,
+        maskedGs: buildMaskedActionState(rotated),
+        pendingGs: clearRemoteReplayHints(pendingGs),
+        queue: patchedQueue,
+      });
+    }
+  }
   if (isPendingZhuHideState(rotated)) {
     return withConsumedVisualEvents(buildZhuHideWaitAction(rotated));
   }
