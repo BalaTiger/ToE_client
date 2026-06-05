@@ -45,13 +45,7 @@ function getDebugForceTargetIndex(target) {
 }
 
 function applyDebugForceDrawToTop(gs, next, deck) {
-  if (gs?._isMP) {
-    gs.debugForceCard = null;
-    gs.debugForceCardTarget = null;
-    gs.debugForceCardKeepPending = null;
-    gs.debugForceCardKeepTarget = null;
-    return false;
-  }
+  // [TEMP-DEBUG-MP] 临时放开联机：原本 if (gs?._isMP) { 清空调试字段; return false; }
   const targetIndex = getDebugForceTargetIndex(gs?.debugForceCardTarget);
   if (!gs?.debugForceCard || targetIndex !== next) return false;
   deck.unshift(gs.debugForceCard);
@@ -63,11 +57,7 @@ function applyDebugForceDrawToTop(gs, next, deck) {
 }
 
 function consumeDebugForceKeepOverride(gs, ci) {
-  if (gs?._isMP) {
-    gs.debugForceCardKeepPending = null;
-    gs.debugForceCardKeepTarget = null;
-    return 'auto';
-  }
+  // [TEMP-DEBUG-MP] 临时放开联机：原本 if (gs?._isMP) { 清空; return 'auto'; }
   if (gs?.debugForceCardKeepTarget !== ci || !gs?.debugForceCardKeepPending) return 'auto';
   const keepOverride = gs.debugForceCardKeepPending;
   gs.debugForceCardKeepPending = null;

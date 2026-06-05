@@ -360,11 +360,16 @@ export function buildTurnStartDrawReplayQueue({
     [...(newGs?._drawLogs || []), ...(newGs?._statLogs || [])],
     beforeDrawPlayers,
   );
-  const fallbackOldGs = effectOldGs || {
+  const fallbackOldGsRaw = effectOldGs || {
     ...(oldGs || newGs || {}),
     players: beforeDrawPlayers,
     log: getTurnStartDrawBaselineLog(newGs),
   };
+  // 摸牌效果的基线状态代表「摸牌效果发生之前」，不应携带本次摸牌产生的视觉事件
+  // （如地动山摇 earthquake）。清掉后，buildAnimQueue 才会把它判定为新事件并播放首次动画。
+  const fallbackOldGs = Array.isArray(fallbackOldGsRaw?._visualEvents) && fallbackOldGsRaw._visualEvents.length
+    ? { ...fallbackOldGsRaw, _visualEvents: [] }
+    : fallbackOldGsRaw;
   const inspectionEvents = getFreshInspectionEvents(oldGs, newGs);
   const preDrawMsgs = getTurnStartPreDrawMsgs(newGs);
   const turnStartInspectionEvents = inspectionEvents.filter(ev => {

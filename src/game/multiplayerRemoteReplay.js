@@ -530,7 +530,10 @@ export function buildMpRemoteReplayAction({
     }
   }
 
-  const nonSelfDraw = hasDrawAnimationState(rotated) && !isLocalCurrentTurn(rotated);
+  // 强制收入的牌（如地动山摇）摸到后 drawReveal.card 会在本回合一直残留（needsDecision:false, phase:ACTION），
+  // 使 hasDrawAnimationState 持续为真。必须叠加 hasFreshTurnDrawReplayState（要求本次同步带有回合开始/摸牌日志）
+  // 才认定为「新摸牌」，否则后续无视觉事件的行动（如放弃追捕）会被误判为回合首抽而重播「XX的回合」+翻牌。
+  const nonSelfDraw = hasDrawAnimationState(rotated) && hasFreshTurnDrawReplayState(rotated) && !isLocalCurrentTurn(rotated);
   if (nonSelfDraw && !isLocalSeatIndex(rotated.drawReveal?.drawerIdx ?? rotated.currentTurn)) {
     const beforeDrawPlayers = rotated._playersBeforeThisDraw || previousGs?.players || rotated.players;
     const replay = buildTurnStartDrawReplayQueue({
@@ -559,7 +562,7 @@ export function buildMpRemoteReplayAction({
     });
   }
 
-  const localDraw = hasDrawAnimationState(rotated) && isLocalCurrentTurn(rotated);
+  const localDraw = hasDrawAnimationState(rotated) && hasFreshTurnDrawReplayState(rotated) && isLocalCurrentTurn(rotated);
   if (localDraw) {
     const beforeDrawPlayers = rotated._playersBeforeThisDraw || previousGs?.players || rotated.players;
     const replay = buildTurnStartDrawReplayQueue({

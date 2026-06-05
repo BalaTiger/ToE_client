@@ -230,7 +230,8 @@ export function initGame(
 
   // Debug: 强制摸牌
   let targetCard = null;
-  if (isSinglePlayer && (debugForceCard || (debugForceCardType && (debugForceZoneCardKey || debugForceGodCardKey))) && isDebugForceCardTargetAllowed(debugForceCardTarget, isSinglePlayer)) {
+  // [TEMP-DEBUG-MP] 临时放开联机强制摸牌（原条件含 isSinglePlayer &&）。测试结束后恢复为 isSinglePlayer && (...)
+  if ((debugForceCard || (debugForceCardType && (debugForceZoneCardKey || debugForceGodCardKey))) && isDebugForceCardTargetAllowed(debugForceCardTarget, isSinglePlayer)) {
 
     if (debugForceCardType === 'zone' && debugForceZoneCardKey && debugForceZoneCardName) {
       // 查找指定编号和牌面的区域牌

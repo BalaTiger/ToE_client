@@ -502,6 +502,9 @@ export default function Game(){
     debugForceGodCardKey,
     debugPlayerRole,
   ]);
+  // [TEMP-DEBUG-MP] 临时：让一次性 socket 监听里的 gameStart 能读到最新调试配置（用于联机强制摸牌测试）
+  const activeDebugConfigRef=useRef(activeDebugConfig);
+  useEffect(()=>{activeDebugConfigRef.current=activeDebugConfig;},[activeDebugConfig]);
   useEffect(()=>{
     if(!isLocalTestMode)return;
     safeLS.set(LOCAL_DEBUG_KEY,localDebugMode?'1':'0');
@@ -1100,15 +1103,17 @@ export default function Game(){
       if(isLocalSeatIndex(safeIdx)){
         // 房主：初始化游戏并广播给所有人
         const names=players.map(p=>p.username);
+        // [TEMP-DEBUG-MP] 临时：房主开局把调试强制摸牌配置传入 initGame（原本 9 个调试参数全部传 null）
+        const _dbg=activeDebugConfigRef.current||{};
         const rawGs=initGame(
           names,
-          null,
-          null,
-          'auto',
-          null,
-          null,
-          null,
-          null,
+          _dbg.debugForceCard||null,
+          _dbg.debugForceCardTarget||null,
+          _dbg.debugForceCardKeep||'auto',
+          _dbg.debugForceCardType||null,
+          _dbg.debugForceZoneCardKey||null,
+          _dbg.debugForceZoneCardName||null,
+          _dbg.debugForceGodCardKey||null,
           null,
           startNextTurn,
         );
