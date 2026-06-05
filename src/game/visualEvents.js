@@ -443,7 +443,8 @@ export function buildEarthquakeStepFromVisualEvents(state) {
 }
 
 export function getEarthquakeVisualEvent(state) {
-  return getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.EARTHQUAKE);
+  const events = getVisualEvents(state).filter(ev => ev?.type === VISUAL_EVENT.EARTHQUAKE);
+  return events.length ? events[events.length - 1] : undefined;
 }
 
 export function getEndlessCorridorReplayVisualEvent(state) {

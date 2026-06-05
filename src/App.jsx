@@ -5385,7 +5385,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const hasSlimeDecision=mergedInspectionMeta?.abilityData?.type==='tsgSlimeBalance';
       const bewitchMsgs=extractSkillLogs(L.slice(gs.log.length),'bewitch');
       const bewitchEvent=createBewitchGiftEvent({sourceIdx:0,targetIdx:ti,targetName:P[ti]?.name,card:bewitchCard,msgs:bewitchMsgs});
-      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:hasSlimeDecision?'TSG_SLIME_BALANCE':'ACTION',drawReveal:null,skillUsed:true,...mergedInspectionMeta,...(gres.statePatch||{}),abilityData:hasSlimeDecision?{...mergedInspectionMeta.abilityData,_turnOwner:gs.currentTurn}:{},...apophisNightPatch(night),apophisNight:nextApophisNight,_visualEvents:bewitchEvent?[bewitchEvent]:[],...(win?{gameOver:win}:{})};
+      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:hasSlimeDecision?'TSG_SLIME_BALANCE':'ACTION',drawReveal:null,skillUsed:true,...mergedInspectionMeta,...(gres.statePatch||{}),abilityData:hasSlimeDecision?{...mergedInspectionMeta.abilityData,_turnOwner:gs.currentTurn}:{},...apophisNightPatch(night),apophisNight:nextApophisNight,_visualEvents:[...(gres.statePatch?._visualEvents||[]),...(bewitchEvent?[bewitchEvent]:[])],...(win?{gameOver:win}:{})};
       const statQueue=buildPostBewitchStatQueue(gs,newGs);
       broadcastMpStateBeforeLocalReplay(newGs);
       triggerAnimQueue(mergeApophisTargetQueue(buildBewitchForcedCardQueue(0,ti,bewitchCard,P[ti]?.name,statQueue,bewitchMsgs),gs,newGs),newGs);
@@ -5408,7 +5408,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const newGs={...gs,players:res.P,deck:res.D,discard:res.Disc,log:L,drawReveal:null,
       abilityData:phaseAbilityData,
       phase:nextPhase,
-      skillUsed:true,...(res.statePatch||{}),...apophisNightPatch(night),_visualEvents:bewitchEvent?[bewitchEvent]:[],...(win?{gameOver:win}:{})};
+      skillUsed:true,...(res.statePatch||{}),...apophisNightPatch(night),_visualEvents:[...(res.statePatch?._visualEvents||[]),...(bewitchEvent?[bewitchEvent]:[])],...(win?{gameOver:win}:{})};
       const statQueue=buildPostBewitchStatQueue(gs,newGs);
       const bewitchTurnIntroName=isAiSeat(gs,ti)&&(
         zoneCardUsesTargetInteraction(bewitchCard)||
