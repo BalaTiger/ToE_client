@@ -8,8 +8,9 @@ import {
 } from '../constants/card';
 import { shuffle, ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
 
-export function mkDeck(expansionKey = 'temporary') {
-  const expansion = EXPANSIONS[expansionKey] || EXPANSIONS['temporary'];
+export function mkDeck(expansionKey = '地神的潜影') {
+  const resolvedExpansionKey = EXPANSIONS[expansionKey] ? expansionKey : '地神的潜影';
+  const expansion = EXPANSIONS[resolvedExpansionKey];
   let id = 0;
   const zoneCards = [];
 
@@ -18,10 +19,7 @@ export function mkDeck(expansionKey = 'temporary') {
       const key = `${letter}${number}`;
       const variants = FIXED_ZONE_CARD_VARIANTS_BY_KEY[key] || [];
       variants.forEach(cardDef => {
-        if (expansionKey === 'temporary') {
-          // 临时拓展包保留当前牌组（排除新增卡牌）
-          if (cardDef.name === '逆流' || cardDef.name === '鲜红夜宴') return;
-        } else if (cardDef.expansion !== expansionKey) {
+        if (cardDef.expansion !== resolvedExpansionKey) {
           return;
         }
         zoneCards.push({
@@ -176,9 +174,9 @@ function nextDebugCardId(deck) {
   return deck.reduce((max, card) => Math.max(max, Number.isFinite(card?.id) ? card.id : -1), -1) + 1;
 }
 
-function createDebugZoneCard(deck, key, name) {
+function createDebugZoneCard(deck, key, name, expansionKey = '地神的潜影') {
   const variants = FIXED_ZONE_CARD_VARIANTS_BY_KEY[key] || [];
-  const cardDef = variants.find(card => card.name === name);
+  const cardDef = variants.find(card => card.name === name && card.expansion === expansionKey);
   if (!cardDef) return null;
   const letter = key?.[0];
   const number = Number(key?.slice(1));
@@ -192,7 +190,9 @@ function createDebugZoneCard(deck, key, name) {
   };
 }
 
-function createDebugGodCard(deck, godKey) {
+function createDebugGodCard(deck, godKey, expansionKey = '地神的潜影') {
+  const expansion = EXPANSIONS[expansionKey] || EXPANSIONS['地神的潜影'];
+  if (!(expansion.godCardKeys || []).includes(godKey)) return null;
   const def = GOD_DEFS[godKey];
   if (!def) return null;
   return {
@@ -221,7 +221,7 @@ export function initGame(
   debugForceGodCardKey,
   debugPlayerRole,
   startNextTurn,
-  expansionKey = 'temporary'
+  expansionKey = '地神的潜影'
 ) {
   const names = playerNames || ['你', ...AI_NAMES];
   const N = names.length;
@@ -230,17 +230,16 @@ export function initGame(
 
   // Debug: 强制摸牌
   let targetCard = null;
-  // [TEMP-DEBUG-MP] 临时放开联机强制摸牌（原条件含 isSinglePlayer &&）。测试结束后恢复为 isSinglePlayer && (...)
-  if ((debugForceCard || (debugForceCardType && (debugForceZoneCardKey || debugForceGodCardKey))) && isDebugForceCardTargetAllowed(debugForceCardTarget, isSinglePlayer)) {
+  if (isSinglePlayer && (debugForceCard || (debugForceCardType && (debugForceZoneCardKey || debugForceGodCardKey))) && isDebugForceCardTargetAllowed(debugForceCardTarget, isSinglePlayer)) {
 
     if (debugForceCardType === 'zone' && debugForceZoneCardKey && debugForceZoneCardName) {
       // 查找指定编号和牌面的区域牌
       targetCard = deck.find(card => card.key === debugForceZoneCardKey && card.name === debugForceZoneCardName)
-        || createDebugZoneCard(deck, debugForceZoneCardKey, debugForceZoneCardName);
+        || createDebugZoneCard(deck, debugForceZoneCardKey, debugForceZoneCardName, expansionKey);
     } else if (debugForceCardType === 'god' && debugForceGodCardKey) {
       // 查找指定类型的神牌
       targetCard = deck.find(card => card.isGod && card.godKey === debugForceGodCardKey)
-        || createDebugGodCard(deck, debugForceGodCardKey);
+        || createDebugGodCard(deck, debugForceGodCardKey, expansionKey);
     } else if (debugForceCard) {
       // 兼容旧的设置方式
       targetCard = deck.find(card => card.key === debugForceCard);
@@ -288,7 +287,7 @@ export function initGame(
 
   const inspectionDeck = shuffle([...INSPECTION_DECK]);
   const base = {
-    players, deck, discard: [], inspectionDeck, inspectionDiscard: [], currentTurn: -1, phase: 'DRAW_REVEAL', drawReveal: null, selectedCard: null, abilityData: {}, log: [`游戏开始。每人获得${zhCount(INITIAL_HAND_SIZE)}张初始手牌。`], gameOver: null, skillUsed: false, restUsed: false, multiplyUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner: null, apophisNight: null, expansionKey, _turnKey: 0, _isMP: !!playerNames, turn: 0, turnDirection: 1, sealLooseningCount: 0, houndsOfTindalosActive: false, houndsOfTindalosTarget: null, houndsOfTindalosElapsed: 0, debugForceCard: targetCard, debugForceCardTarget
+    players, deck, discard: [], inspectionDeck, inspectionDiscard: [], currentTurn: -1, phase: 'DRAW_REVEAL', drawReveal: null, selectedCard: null, abilityData: {}, log: [`游戏开始。每人获得${zhCount(INITIAL_HAND_SIZE)}张初始手牌。`], gameOver: null, skillUsed: false, restUsed: false, multiplyUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner: null, geomagneticReversalActive: false, apophisNight: null, expansionKey, _turnKey: 0, _isMP: !!playerNames, turn: 0, turnDirection: 1, sealLooseningCount: 0, houndsOfTindalosActive: false, houndsOfTindalosTarget: null, houndsOfTindalosElapsed: 0, debugForceCard: targetCard, debugForceCardTarget
   };
   base.debugForceCardKeep = playerNames ? 'auto' : debugForceCardKeep;
   return startNextTurn(base);

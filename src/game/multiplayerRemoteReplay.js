@@ -25,8 +25,7 @@ import {
   buildHandLimitDiscardStepsFromVisualEvents,
   clearVisualEvents,
   getVisualEventIdsFromState,
-  buildEarthquakeStepFromVisualEvents,
-  getEarthquakeVisualEvent,
+  buildCardEffectStepsFromVisualEvents,
   getBewitchGiftVisualEvent,
   getSwapCardsVisualEvent,
   getHuntRevealVisualEvent,
@@ -512,11 +511,12 @@ export function buildMpRemoteReplayAction({
       inspectionEvents: replay.inspectionEvents,
     });
   }
-  const earthquakeEvent = getEarthquakeVisualEvent(rotated);
-  if (earthquakeEvent && !isDrawAnimationState && isFreshActionReplayEvent(earthquakeEvent, logDelta)) {
-    const earthquakeStep = buildEarthquakeStepFromVisualEvents(rotated);
+  const cardEffectSteps = !isDrawAnimationState
+    ? buildCardEffectStepsFromVisualEvents(rotated, previousGs, event => isFreshActionReplayEvent(event, logDelta))
+    : [];
+  if (cardEffectSteps.length) {
     const queue = appendFinalStatePatch(
-      earthquakeStep ? [earthquakeStep] : [],
+      cardEffectSteps,
       rotated,
       ['players', 'discard', 'log', 'phase', 'abilityData'],
     );

@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { createPortal } from 'react-dom';
 import { CS, GOD_CS, GOD_DEFS, getCardBackImage, getCardDisplayKey, getGodShortKey } from '../../constants/card';
 import { useCardHoverTooltip } from './useCardHoverTooltip';
@@ -525,7 +525,7 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
   );
 }
 
-function DDCardBack({small,frameStyle,expansionKey='temporary'}){
+function DDCardBack({small,frameStyle,expansionKey='地神的潜影'}){
   const cardBackImage=getCardBackImage(expansionKey);
   return(
     <div style={{
@@ -564,3 +564,4 @@ function GodCardDisplay({card,level=1}){
   );
 }
 export { CardCodeLabel, MiniCardFace, PreviewCard, GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG };
+

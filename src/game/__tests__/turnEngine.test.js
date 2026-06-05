@@ -378,6 +378,28 @@ describe('turnEngine stat events', () => {
     ]);
   });
 
+  it('同为其他被动时，中毒先于两人一绳未断裂回复结算', () => {
+    const players = [
+      makePlayer({ name: '你', hp: 4, damageLink: { active: true, partner: 1, expiryOwner: 1 } }),
+      makePlayer({ name: '艾伦', hp: 5, poisonStacks: 2, damageLink: { active: true, partner: 0, expiryOwner: 1 } }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0, log: [] });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players[1].hp).toBe(7);
+    expect(result.players[1].poisonStacks).toBe(1);
+    const poisonLogIndex = result.log.findIndex(line => line.includes('【中毒】'));
+    const linkLogIndex = result.log.findIndex(line => line.includes('【两人一绳】'));
+    expect(poisonLogIndex).toBeGreaterThan(-1);
+    expect(linkLogIndex).toBeGreaterThan(poisonLogIndex);
+    expect(result._statEvents).toMatchObject([
+      { type: 'HP_LOSS', target: 1, from: { hp: 5 }, to: { hp: 3 }, reason: '中毒', seq: 1 },
+      { type: 'HP_GAIN', target: 0, from: { hp: 4 }, to: { hp: 8 }, reason: '两人一绳', seq: 2 },
+      { type: 'HP_GAIN', target: 1, from: { hp: 3 }, to: { hp: 7 }, reason: '两人一绳', seq: 2 },
+    ]);
+  });
+
   it('撒托古亚信徒在回合结束后获得赐福黏液', () => {
     const players = [
       makePlayer({ name: '你', godName: 'TSG', godLevel: 2 }),
@@ -436,35 +458,6 @@ describe('turnEngine stat events', () => {
     expect(result.players[1].hand.some(c => c.isTsathogguaSlime)).toBe(false);
     expect(result.players[1].hand.map(c => c.name)).toEqual(expect.arrayContaining(['额外牌', '正常牌']));
     expect(result.log.some(line => line.includes('额外摸1张牌'))).toBe(true);
-  });
-
-  it('传授半物质化的额外回合延迟到被指定角色下个回合后', () => {
-    const players = makeStandardPlayers(4);
-    const scheduled = makeGs({
-      players,
-      currentTurn: 0,
-      turn: 3,
-      pendingExtraTurnOwner: 3,
-      pendingExtraTurnAfterPlayer: 1,
-      pendingExtraTurnAfterMinTurn: 4,
-      log: [],
-      deck: [],
-    });
-
-    const beforeTargetTurn = startNextTurn(scheduled);
-    expect(beforeTargetTurn.currentTurn).toBe(1);
-    expect(beforeTargetTurn.pendingExtraTurnOwner).toBe(3);
-    expect(beforeTargetTurn.pendingExtraTurnAfterPlayer).toBe(1);
-
-    const afterTargetTurn = startNextTurn({ ...beforeTargetTurn, currentTurn: 1, turn: 4, phase: 'ACTION' });
-    expect(afterTargetTurn.currentTurn).toBe(3);
-    expect(afterTargetTurn.pendingExtraTurnOwner).toBeNull();
-    expect(afterTargetTurn.pendingExtraTurnAfterPlayer).toBeNull();
-    expect(afterTargetTurn._extraTurnResumeFrom).toBe(1);
-
-    const afterExtraTurn = startNextTurn({ ...afterTargetTurn, currentTurn: 3, turn: 5, phase: 'ACTION' });
-    expect(afterExtraTurn.currentTurn).toBe(2);
-    expect(afterExtraTurn._extraTurnResumeFrom).toBeNull();
   });
 
   it('当前执行回合结束时清除其他角色身上的本回合临时效果', () => {

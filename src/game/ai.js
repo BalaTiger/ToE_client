@@ -179,6 +179,14 @@ function estimateSameAbyssSelfFollowupPenalty(card, self, players, ci) {
   return hpLoss * 2.2 + discardCount * 1.5 + deathRisk + 2;
 }
 
+function estimateEtherealizeZoneCardScore(self, players, ci) {
+  if (!self || self.isDead) return -1;
+  if (!getLivingAdjacentTargets(players, ci).length) return -1;
+  const stackCount = (self.hand?.length || 0) + 1;
+  const danger = Math.max(0, 5 - (self.hp || 0)) * 1.2 + Math.max(0, 5 - (self.san || 0)) * 1.2;
+  return stackCount * 0.9 + danger + (self.etherealizeStacks || 0) * 0.25 - 0.6;
+}
+
 function estimateHunterZoneCardScore(card, self, players, ci) {
   let score = 0;
   switch (card.type) {
@@ -217,6 +225,9 @@ function estimateHunterZoneCardScore(card, self, players, ci) {
       break;
     case 'damageLink':
       score = 4.2;
+      break;
+    case 'etherealize':
+      score = estimateEtherealizeZoneCardScore(self, players, ci);
       break;
     case 'firstComePick':
       score = 1.2;
@@ -385,6 +396,9 @@ function estimateTreasureZoneCardScore(card, self, players, ci) {
       break;
     case 'damageLink':
       score = 0.1;
+      break;
+    case 'etherealize':
+      score = estimateEtherealizeZoneCardScore(self, players, ci);
       break;
     case 'firstComePick':
       score = 3.8;
@@ -602,6 +616,8 @@ function estimateCultistZoneCardScore(card, self, players, ci) {
     return totalScore;
   }
   switch (card.type) {
+    case 'etherealize':
+      return estimateEtherealizeZoneCardScore(self, players, ci);
     case 'selfRenounceGod':
       return -(self.godName ? 1 : 0.5);
     case 'selfBerserk':

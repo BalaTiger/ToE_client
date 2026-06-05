@@ -25,3 +25,4 @@ export * from './visualEvents';
 export * from './turnScopedEffects';
 export * from './animReplayEvents';
 export * from './animStatePatch';
+export * from './etherealize';

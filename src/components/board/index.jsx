@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { CS, GOD_CS, GOD_DEFS, getCardBackImage } from '../../constants/card';
 import { RINFO } from '../../game';
 import { isBlackGoatYoung, isTsathogguaSlime } from '../../game/coreUtils';
@@ -147,7 +147,7 @@ function ZhuLitMiniCard({lit,deckIndex,scale,cardW,cardH,left,top,zIndex,hidden}
   );
 }
 
-function DiscardPile({count,topCard,scale=1,expansionKey='temporary'}){
+function DiscardPile({count,topCard,scale=1,expansionKey='地神的潜影'}){
   const vis=Math.min(count,7);
   const cardW=Math.round(CARD_W*scale);
   const cardH=Math.round(CARD_H*scale);
@@ -228,7 +228,7 @@ function HealCrossEffect({color='#4ade80'}){
 
 // ── Deck / Inspection / PileDisplay ─────────────────────────────
 
-function DeckPile({count,scale=1,expansionKey='temporary',zhuLitCards=[],zhuHiddenCardId=null}){
+function DeckPile({count,scale=1,expansionKey='地神的潜影',zhuLitCards=[],zhuHiddenCardId=null}){
   const vis=Math.min(count,7);
   const cardW=Math.round(CARD_W*scale);
   const cardH=Math.round(CARD_H*scale);
@@ -416,7 +416,7 @@ function PetrifyingFormulaDie({ state, fontSize }) {
   );
 }
 
-function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,deckRef,discardRef,scaleRatio,expansionKey='temporary',zhuLitCards=[],zhuHiddenCardId=null,petrifyingFormula=null}){
+function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,deckRef,discardRef,scaleRatio,expansionKey='地神的潜影',zhuLitCards=[],zhuHiddenCardId=null,petrifyingFormula=null}){
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const _ = (px) => px * fontZoom;
   const pileWrapRef=React.useRef(null);
@@ -485,7 +485,7 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
 }
 
 // ── PlayerPanel ─────────────────────────────────────────────────
-function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='temporary',blackGoatPulseActive=false}){
+function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='地神的潜影',blackGoatPulseActive=false}){
   const ri=RINFO[player.role];
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const _ = (px) => px * fontZoom;
@@ -545,7 +545,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
       <StatBar label="HP"  val={displayStats?.[playerIndex]?.hp ?? player.hp}  color="#8b1515" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={viewportWidth}/>
       <StatBar label="SAN" val={displayStats?.[playerIndex]?.san ?? player.san} color="#4a1080" trackColor="#120820" scaleRatio={scaleRatio} viewportWidth={viewportWidth}/>
       {/* Skull counter + god zone */}
-      {((player.godEncounters||0)>0||(player.godZone||[]).length>0)&&(
+      {((player.godEncounters||0)>0||(player.godZone||[]).length>0||(player.etherealizeStacks||0)>0||(player.poisonStacks||0)>0)&&(
         <div style={{display:'flex',alignItems:'center',gap:4,marginTop:4,flexWrap:'wrap'}}>
           {(player.godEncounters||0)>0&&(
             <span style={{fontSize:9,color:'#8b6060',letterSpacing:1,fontFamily:"'Cinzel',serif"}}>
@@ -559,6 +559,32 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
               borderRadius:2,padding:'1px 4px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
             }}>
               {GOD_DEFS[player.godName]?.power} Lv.{player.godLevel}
+            </span>
+          )}
+          {(player.etherealizeStacks||0)>0&&(
+            <span
+              title="虚化：回合外即将失去 HP/SAN 时，可消耗 1 层令相邻角色失去"
+              style={{
+                fontSize:8,color:'#b9d8f0',
+                background:'#0c1118',border:'1px solid #87a9c866',
+                borderRadius:2,padding:'1px 4px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
+                boxShadow:'0 0 8px #87a9c822',
+              }}
+            >
+              虚化 {player.etherealizeStacks}
+            </span>
+          )}
+          {(player.poisonStacks||0)>0&&(
+            <span
+              title="中毒：回合开始时失去等同层数的 HP，并消耗 1 层"
+              style={{
+                fontSize:8,color:'#b7f5a8',
+                background:'#0d160a',border:'1px solid #74c36566',
+                borderRadius:2,padding:'1px 4px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
+                boxShadow:'0 0 8px #74c36522',
+              }}
+            >
+              中毒 {player.poisonStacks}
             </span>
           )}
         </div>
@@ -608,3 +634,4 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
 }
 
 export { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel };
+

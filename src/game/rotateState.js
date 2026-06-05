@@ -1,6 +1,6 @@
 import { rotateInspectionEvents, rotatePlayersArray, rotateStatEvents } from './rotateEvents';
 
-const ROTATE_GS_TOP_LEVEL_INDEX_FIELDS = ['currentTurn', 'pendingExtraTurnOwner', 'pendingExtraTurnAfterPlayer', '_extraTurnResumeFrom'];
+const ROTATE_GS_TOP_LEVEL_INDEX_FIELDS = ['currentTurn'];
 const ROTATE_GS_TOP_LEVEL_INDEX_ARRAY_FIELDS = ['huntAbandoned'];
 const ROTATE_GAME_OVER_INDEX_FIELDS = ['winnerIdx', 'winnerIdx2'];
 const ROTATE_DRAW_REVEAL_INDEX_FIELDS = ['drawerIdx'];
@@ -26,10 +26,9 @@ const ROTATE_ABILITYDATA_INDEX_FIELDS = [
   'roseThornSource',
   'pickSource',
   'targetIdx',
+  'redirectTargetIdx',
   'playerIndex',
   'source',
-  'secretTarget',
-  'guesserIdx',
 ];
 const ROTATE_ABILITYDATA_INDEX_ARRAY_FIELDS = [
   'peekHandTargets',
@@ -39,7 +38,7 @@ const ROTATE_ABILITYDATA_INDEX_ARRAY_FIELDS = [
   'pickOrder',
   'targets',
   'legalTargets',
-  'guessOrder',
+  'adjacentTargets',
 ];
 
 function rotateIndexedFields(obj, fields, rotateIndex) {
@@ -172,14 +171,37 @@ function rotateTimedOutDrawDiscardEvent(event, rotateIndex) {
   };
 }
 
-function rotateEarthquakeVisualEvent(event, rotateIndex, myIndex) {
+function rotateCardEffectPayload(payload, rotateIndex, myIndex) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+  const rotatedIndices = rotateIndexedFields(payload, ['actorIdx', 'sourceIdx', 'targetIdx', 'playerIdx', 'drawerIdx'], rotateIndex);
+  const rotatedIndexArrays = rotateIndexedArrayFields(rotatedIndices, ['targetIndices', 'hitIndices', 'targets'], rotateIndex);
+  return {
+    ...rotatedIndexArrays,
+    players: rotatePlayersArray(rotatedIndexArrays.players, myIndex),
+    beforePlayers: rotatePlayersArray(rotatedIndexArrays.beforePlayers, myIndex),
+    afterPlayers: rotatePlayersArray(rotatedIndexArrays.afterPlayers, myIndex),
+    discardEvents: Array.isArray(rotatedIndexArrays.discardEvents)
+      ? rotateEarthquakeDiscardEvents(rotatedIndexArrays.discardEvents, rotateIndex, myIndex)
+      : rotatedIndexArrays.discardEvents,
+    statEvents: Array.isArray(rotatedIndexArrays.statEvents)
+      ? rotateStatEvents(rotatedIndexArrays.statEvents, rotateIndex, myIndex)
+      : rotatedIndexArrays.statEvents,
+  };
+}
+
+function rotateCardEffectVisualEvent(event, rotateIndex, myIndex) {
   if (!event) return event;
   return {
     ...event,
+    actorIdx: event.actorIdx != null ? rotateIndex(event.actorIdx) : event.actorIdx,
     beforePlayers: rotatePlayersArray(event.beforePlayers, myIndex),
     discardEvents: Array.isArray(event.discardEvents)
       ? rotateEarthquakeDiscardEvents(event.discardEvents, rotateIndex, myIndex)
       : event.discardEvents,
+    statEvents: Array.isArray(event.statEvents)
+      ? rotateStatEvents(event.statEvents, rotateIndex, myIndex)
+      : event.statEvents,
+    payload: rotateCardEffectPayload(event.payload, rotateIndex, myIndex),
   };
 }
 
@@ -236,7 +258,7 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
   if (!Array.isArray(events)) return events;
   return events.map(event => {
     if (event?.type === 'timedOutDrawDiscard') return rotateTimedOutDrawDiscardEvent(event, rotateIndex);
-    if (event?.type === 'earthquake') return rotateEarthquakeVisualEvent(event, rotateIndex, myIndex);
+    if (event?.type === 'earthquake' || event?.type === 'cardEffect') return rotateCardEffectVisualEvent(event, rotateIndex, myIndex);
     if (event?.type === 'endlessCorridorReplay') return rotateEndlessCorridorReplayVisualEvent(event, rotateIndex, myIndex);
     if (event?.type === 'turnStart' || event?.type === 'drawCard' || event?.type === 'handLimitDiscard') {
       return {
@@ -358,19 +380,19 @@ export function isLocalDamageLinkSourcePhase(gs) {
   return gs?.phase === 'DAMAGE_LINK_SELECT_TARGET' && isLocalActorSeat(gs, gs?.abilityData?.damageLinkSource);
 }
 
-export function isLocalSemiMaterializeSourcePhase(gs) {
-  return gs?.phase === 'SEMI_MATERIALIZE_TARGET' && isLocalActorSeat(gs, gs?.abilityData?.source);
+export function isLocalEtherealizeTargetPhase(gs) {
+  return gs?.phase === 'ETHEREALIZE_SELECT_TARGET' && isLocalSeatIndex(gs?.abilityData?.targetIdx);
 }
 
 export function canLocalActOnTargetSelectionPhase(gs) {
   const phase = gs?.phase;
   return (
     (
-      ['SWAP_SELECT_TARGET', 'HUNT_SELECT_TARGET', 'BEWITCH_SELECT_TARGET', 'ZONE_SWAP_SELECT_TARGET', 'PEEK_HAND_SELECT_TARGET', 'CAVE_DUEL_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET', 'MULTIPLY_SELECT_TARGET', 'SHU_SELECT_TARGET', 'SEMI_MATERIALIZE_TARGET'].includes(phase)
+      ['SWAP_SELECT_TARGET', 'HUNT_SELECT_TARGET', 'BEWITCH_SELECT_TARGET', 'ZONE_SWAP_SELECT_TARGET', 'PEEK_HAND_SELECT_TARGET', 'CAVE_DUEL_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET', 'MULTIPLY_SELECT_TARGET', 'SHU_SELECT_TARGET'].includes(phase)
       && isLocalCurrentTurn(gs)
     )
     || isLocalDamageLinkSourcePhase(gs)
-    || isLocalSemiMaterializeSourcePhase(gs)
+    || isLocalEtherealizeTargetPhase(gs)
   );
 }
 

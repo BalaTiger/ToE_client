@@ -10,6 +10,8 @@ import {
   cardLogText,
   removeCardsFromDiscard,
   makeInspectionMeta,
+  buildEtherealizeLoss,
+  buildEtherealizeRedirectDecision,
 } from './coreUtils';
 import {
   aiChooseRevealCard,
@@ -405,43 +407,6 @@ export function aiStep(gs, opts = {}) {
     return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'SPHINX_GUESS',abilityData};
   }
 
-  if(abilityData?.type==='semiMaterializeTarget'){
-    const source=abilityData.source??ct;
-    const legalTargets=(abilityData.legalTargets||P.map((p,i)=>i).filter(i=>p&&!p.isDead)).filter(i=>P[i]&&!P[i].isDead);
-    if(source===0)return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'SEMI_MATERIALIZE_TARGET',abilityData};
-    const secretTarget=legalTargets.length?legalTargets[Math.floor(Math.random()*legalTargets.length)]:source;
-    L.push(`【传授半物质化】${P[source].name} 悄悄指定了一名角色`);
-    const N=P.length,dir=gs.turnDirection||1,guessOrder=[];
-    for(let step=1;step<=N;step++){
-      const idx=(source+step*dir+N)%N;
-      if(idx!==source&&P[idx]&&!P[idx].isDead)guessOrder.push(idx);
-    }
-    return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'SEMI_MATERIALIZE_GUESS',abilityData:{...abilityData,type:'semiMaterializeGuess',secretTarget,guessOrder,guessIndex:0,guesserIdx:guessOrder[0]}};
-  }
-
-  if(abilityData?.type==='semiMaterializeGuess'){
-    const order=abilityData.guessOrder||[];
-    let guessIndex=abilityData.guessIndex||0;
-    const source=abilityData.source??ct;
-    const secretTarget=abilityData.secretTarget;
-    while(guessIndex<order.length){
-      const guesserIdx=order[guessIndex];
-      if(!P[guesserIdx]||P[guesserIdx].isDead){guessIndex++;continue;}
-      if(guesserIdx===0)return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'SEMI_MATERIALIZE_GUESS',abilityData:{...abilityData,guessIndex,guesserIdx}};
-      const candidates=P.map((p,i)=>i).filter(i=>p&&!p.isDead);
-      const guessedIdx=candidates.length?candidates[Math.floor(Math.random()*candidates.length)]:secretTarget;
-      L.push(`【传授半物质化】${P[guesserIdx].name} 猜测目标是 ${P[guessedIdx]?.name||'未知角色'}`);
-      if(guessedIdx===secretTarget){
-        L.push(`【传授半物质化】${P[guesserIdx].name} 将在 ${P[secretTarget]?.name||'被指定者'} 的下个回合后获得一个额外回合`);
-        return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'AI_TURN',abilityData:{},pendingExtraTurnOwner:guesserIdx,pendingExtraTurnAfterPlayer:secretTarget,pendingExtraTurnAfterMinTurn:(gs.turn||0)+1,currentTurn:abilityData._turnOwner??gs.currentTurn};
-      }
-      guessIndex++;
-    }
-    L.push('【传授半物质化】无人猜中目标');
-    L.push(`【传授半物质化】${P[source].name} 将在 ${P[secretTarget]?.name||'被指定者'} 的下个回合后获得一个额外回合`);
-    return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'AI_TURN',abilityData:{},pendingExtraTurnOwner:source,pendingExtraTurnAfterPlayer:secretTarget,pendingExtraTurnAfterMinTurn:(gs.turn||0)+1,currentTurn:abilityData._turnOwner??gs.currentTurn};
-  }
-
   if(Array.isArray(abilityData?.peekHandTargets)&&abilityData.peekHandSource===ct){
     return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'PEEK_HAND_SELECT_TARGET',abilityData};
   }
@@ -769,6 +734,21 @@ export function aiStep(gs, opts = {}) {
                 const afterDiscardDiscard=[...Disc];
                 const huntDamage=3+(P[ct].damageBonus||0);
                 L.push(`弃 ${cardLogText(dc,{alwaysShowName:true})} → ${tgt.name} 受 ${huntDamage}HP 伤害！`);
+                const etherealizeLoss=buildEtherealizeLoss({players:P,targetIdx:ti,currentTurn:gs.currentTurn,lostHp:huntDamage,source:'追捕'});
+                if(etherealizeLoss){
+                  return buildReturnPack({
+                    ...gs,
+                    players:P,
+                    deck:D,
+                    discard:Disc,
+                    log:L,
+                    currentTurn:ct,
+                    phase:'ETHEREALIZE_DECISION',
+                    abilityData:buildEtherealizeRedirectDecision([etherealizeLoss],{_turnOwner:ct}),
+                    skillUsed:true,
+                    huntAbandoned:newAbandoned,
+                  },copyPlayers(P));
+                }
                 applyHpDamageWithLink(P,ti,huntDamage,Disc,L,gs.currentTurn,D);
                 if (P[ti].hp <= 0) {
                   let afterDamagePlayers=null;
@@ -1069,9 +1049,21 @@ export function aiStep(gs, opts = {}) {
     });
     Object.entries(thornLosses).forEach(([holderIdxStr,count])=>{
       const holderIdx=+holderIdxStr;
-      applyHpDamageWithLink(P,holderIdx,2*count,Disc,L,gs.currentTurn,D);
       L.push(`【玫瑰倒刺】${P[holderIdx].name} 失去标记手牌，受到 ${2*count} HP 伤害`);
+      const etherealizeLoss=buildEtherealizeLoss({players:P,targetIdx:holderIdx,currentTurn:gs.currentTurn,lostHp:2*count,source:'玫瑰倒刺'});
+      if(etherealizeLoss){
+        const decision=buildEtherealizeRedirectDecision([etherealizeLoss],{_turnOwner:ct});
+        P[holderIdx]._pendingRoseThornEtherealize=true;
+        gs={...gs,phase:'ETHEREALIZE_DECISION',abilityData:decision};
+      }else{
+        applyHpDamageWithLink(P,holderIdx,2*count,Disc,L,gs.currentTurn,D);
+      }
     });
+    const pendingDecision=gs.phase==='ETHEREALIZE_DECISION'&&gs.abilityData?.type==='etherealizeRedirect';
+    if(pendingDecision){
+      P.forEach(p=>{if(p)delete p._pendingRoseThornEtherealize;});
+      return buildReturnPack({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,skillUsed:(useSkill||gs.skillUsed)},copyPlayers(P));
+    }
   }
   const winAfterDiscard=checkWin(P,gs._isMP);
   if(winAfterDiscard){

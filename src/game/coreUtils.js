@@ -40,7 +40,8 @@ export const isBlankZoneCard = (card) => card?.type === 'blankZone';
 
 export const isBlackGoatYoung = (card) => !!card?.isBlackGoatYoung;
 export const isTsathogguaSlime = (card) => !!card?.isTsathogguaSlime;
-export const isVanishingDerivedCard = (card) => isBlackGoatYoung(card) || isTsathogguaSlime(card);
+export const isGeomagneticRestore = (card) => !!card?.isGeomagneticRestore;
+export const isVanishingDerivedCard = (card) => isBlackGoatYoung(card) || isTsathogguaSlime(card) || isGeomagneticRestore(card);
 
 export function buildTsathogguaSlimeBalanceDecision(playersBefore, playersAfter, extra = {}) {
   if (!Array.isArray(playersBefore) || !Array.isArray(playersAfter)) return null;
@@ -66,6 +67,72 @@ export function buildTsathogguaSlimeBalanceDecision(playersBefore, playersAfter,
     }
   }
   return null;
+}
+
+export function getLivingAdjacentIndices(players, ci) {
+  if (!Array.isArray(players) || ci == null || !players[ci]) return [];
+  const prev = getPrevLivingIndex(players, ci);
+  const next = getNextLivingIndex(players, ci);
+  return [prev, next].filter((idx, pos, arr) => (
+    idx != null &&
+    idx !== ci &&
+    players[idx] &&
+    !players[idx].isDead &&
+    arr.indexOf(idx) === pos
+  ));
+}
+
+export function buildEtherealizeLoss({ players, targetIdx, currentTurn, lostHp = 0, lostSan = 0, source = 'damage' } = {}) {
+  if (!Array.isArray(players) || targetIdx == null || !players[targetIdx] || players[targetIdx].isDead) return null;
+  if (!(lostHp > 0) && !(lostSan > 0)) return null;
+  if (currentTurn == null || currentTurn === targetIdx) return null;
+  const target = players[targetIdx];
+  if (!((target.etherealizeStacks || 0) > 0)) return null;
+  const adjacentTargets = getLivingAdjacentIndices(players, targetIdx);
+  if (!adjacentTargets.length) return null;
+  return {
+    targetIdx,
+    lostHp: Math.max(0, lostHp || 0),
+    lostSan: Math.max(0, lostSan || 0),
+    beforeHp: target.hp,
+    beforeSan: target.san,
+    adjacentTargets,
+    source,
+  };
+}
+
+export function appendEtherealizeLoss(pendingLosses, loss) {
+  if (!loss) return Array.isArray(pendingLosses) ? pendingLosses : [];
+  const next = Array.isArray(pendingLosses) ? [...pendingLosses] : [];
+  const last = next[next.length - 1];
+  if (last && last.targetIdx === loss.targetIdx && last.source === loss.source) {
+    next[next.length - 1] = {
+      ...last,
+      lostHp: (last.lostHp || 0) + (loss.lostHp || 0),
+      lostSan: (last.lostSan || 0) + (loss.lostSan || 0),
+      adjacentTargets: loss.adjacentTargets || last.adjacentTargets,
+    };
+    return next;
+  }
+  next.push(loss);
+  return next;
+}
+
+export function buildEtherealizeRedirectDecision(pendingLosses, extra = {}) {
+  const losses = (Array.isArray(pendingLosses) ? pendingLosses : []).filter(loss => (
+    loss &&
+    loss.targetIdx != null &&
+    ((loss.lostHp || 0) > 0 || (loss.lostSan || 0) > 0)
+  ));
+  if (!losses.length) return null;
+  const first = losses[0];
+  return {
+    type: 'etherealizeRedirect',
+    ...first,
+    pendingLosses: losses,
+    pendingIndex: 0,
+    ...extra,
+  };
 }
 
 export const separateBlackGoatYoung = (cards) => {

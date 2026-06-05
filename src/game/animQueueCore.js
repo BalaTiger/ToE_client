@@ -1,6 +1,6 @@
 import { makeTargetStats, statEventsToAnimQueue } from './statEvents';
 import { buildFullHandSwapStepsFromLogs, buryToDeckStep, cardTransferStep, statePatchStep } from './animQueueHelpers';
-import { buildEarthquakeStepFromVisualEvents, buildHuntRevealStepFromVisualEvent, getEarthquakeVisualEvent } from './visualEvents';
+import { buildCardEffectStepsFromVisualEvents, buildHuntRevealStepFromVisualEvent } from './visualEvents';
 
 export function buildAnimQueue(oldGs, newGs) {
   const q = [];
@@ -130,20 +130,19 @@ export function buildAnimQueue(oldGs, newGs) {
     q.push({ type: 'GUILLOTINE', msgs: newMsgs, hitIndices: deathIdx, targetStats });
     q.push({ type: 'DEATH', msgs: newMsgs, hitIndices: deathIdx, targetStats });
   }
-  // 地动山摇：仅当事件是「本次转移新出现」（不在 oldGs._visualEvents 中）时才播放动画。
-  // 事件 id 在创建时固定并随状态保留，后续行动携带同一事件时会命中 oldGs → 跳过，避免重复播放。
-  const earthquakeEventForAnim = getEarthquakeVisualEvent(newGs);
-  const earthquakeAlreadyInOld = !!earthquakeEventForAnim
-    && (oldGs?._visualEvents || []).some(e => e?.id != null && e.id === earthquakeEventForAnim.id);
-  const earthquakeVisualStep = (earthquakeEventForAnim && !earthquakeAlreadyInOld)
-    ? buildEarthquakeStepFromVisualEvents(newGs)
-    : null;
-  if (earthquakeVisualStep) {
-    q.push(earthquakeVisualStep);
-  }
-  // [EQ-DEBUG] 地动山摇动画排查：事件是否存在、是否被判定为旧事件、步骤是否产出
-  if (earthquakeEventForAnim) {
-    try { console.log('[EQ-DEBUG] buildAnimQueue: earthquake event present, alreadyInOld =', earthquakeAlreadyInOld, ', stepBuilt =', !!earthquakeVisualStep, '| queueSoFar =', q.map(s => s.type)); } catch { /* noop */ }
+  q.push(...buildCardEffectStepsFromVisualEvents(newGs, oldGs));
+  const moldyRoll = newGs?._moldyFoodDiceRoll;
+  const moldySeq = moldyRoll?.seq ?? newGs?._moldyFoodDiceSeq;
+  const oldMoldySeq = oldGs?._moldyFoodDiceSeq || oldGs?._moldyFoodDiceRoll?.seq || 0;
+  if (moldyRoll && moldyRoll.d1 != null && (moldySeq == null || moldySeq > oldMoldySeq)) {
+    q.unshift({
+      type: 'DICE_ROLL',
+      diceMode: 'moldyFood',
+      d1: moldyRoll.d1,
+      d2: 0,
+      rollerName: newGs.players?.[moldyRoll.actorIdx]?.name || '角色',
+      msgs: [],
+    });
   }
   const fullHandSwapMsg = newMsgs.find(m => m.includes('交换了全部手牌'));
   if (fullHandSwapMsg) {

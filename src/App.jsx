@@ -1,5 +1,6 @@
 ﻿import { GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay } from './components/cards';
 import { GodChoiceModal, NyaBorrowModal, DrawRevealModal, TreasureDodgeModal, PeekHandModal, TortoiseOracleModal, AboutModal, FullLogModal, RoadmapModal } from './components/modals';
+import { DecipherStoneCarvingOverlay } from './components/modals/DecipherStoneCarvingOverlay';
 import { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel } from './components/board';
 import { RoomModal, LobbyModal, PrivacyToggleModal, TutorialOverlay, ConnectionErrorModal, DebugControls } from './components/lobby';
 import InGameTutorialOverlay from './components/tutorial/InGameTutorialOverlay';
@@ -61,6 +62,8 @@ import {
   moveEligibleBlankZones,
   isBlackGoatYoung,
   isTsathogguaSlime,
+  buildEtherealizeLoss,
+  buildEtherealizeRedirectDecision,
   buildTsathogguaSlimeBalanceDecision,
   aiStep,
   startNextTurn as _startNextTurn,
@@ -120,8 +123,11 @@ import {
   createHuntResultEvent,
   createSphinxResultEvent,
   buildHuntRevealStepFromVisualEvents,
+  buildHuntRevealStepFromVisualEvent,
   markConsumedVisualEvents,
   pruneConsumedVisualEvents,
+  chooseAiEtherealizeRedirectTarget,
+  shouldAiUseEtherealize,
 } from "./game";
 import {
   rotateGsForViewer,
@@ -138,6 +144,7 @@ import {
   isLocalSameAbyssTargetPhase,
   isLocalSphinxGuessPhase,
   isLocalDamageLinkSourcePhase,
+  isLocalEtherealizeTargetPhase,
   canLocalActOnTargetSelectionPhase,
   isLocalSwapGivePhase,
   isLocalBewitchCardPhase,
@@ -230,7 +237,12 @@ const LOCAL_DEBUG_KEY='cthulhu_local_debug_mode';
 const DEBUG_FORCE_CARD_KEY='cthulhu_debug_force_card';
 const DEBUG_FORCE_CARD_TARGET_KEY='cthulhu_debug_force_card_target';
 const DEBUG_FORCE_CARD_KEEP_KEY='cthulhu_debug_force_card_keep';
+const DEBUG_FORCE_CARD_TYPE_KEY='cthulhu_debug_force_card_type';
+const DEBUG_FORCE_ZONE_CARD_KEY='cthulhu_debug_force_zone_card_key';
+const DEBUG_FORCE_ZONE_CARD_NAME_KEY='cthulhu_debug_force_zone_card_name';
+const DEBUG_FORCE_GOD_CARD_KEY='cthulhu_debug_force_god_card_key';
 const DEBUG_PLAYER_ROLE_KEY='cthulhu_debug_player_role';
+const DEBUG_EXPANSION_KEY='cthulhu_debug_expansion';
 const ZONE_CARD_KEYS = LETTERS.flatMap(L => NUMS.map(N => `${L}${N}`));
 const isLocalTestHost=()=>{
   if(typeof window==='undefined')return false;
@@ -243,14 +255,13 @@ const isLocalDebugEnabled=()=>{
   catch{return false;}
 };
 const BATTLE_BACKGROUND_BY_EXPANSION={
-  temporary:'/img/bg/battle/earth_shadow.png',
   '地神的潜影':'/img/bg/battle/earth_shadow.png',
   '先贤的馈赠':'/img/bg/battle/sage_gift.png',
   '群星呼唤':'/img/bg/battle/stars_call.png',
   '析骨为柴':'/img/bg/battle/bone_fuel.png',
 };
 function getBattleBackgroundStyle(expansionKey,isMobile){
-  const url=BATTLE_BACKGROUND_BY_EXPANSION[expansionKey]||BATTLE_BACKGROUND_BY_EXPANSION.temporary;
+  const url=BATTLE_BACKGROUND_BY_EXPANSION[expansionKey]||BATTLE_BACKGROUND_BY_EXPANSION['地神的潜影'];
   return {
     backgroundColor:'#0a0705',
     backgroundImage:`linear-gradient(180deg,rgba(6,4,3,0.48),rgba(7,4,2,0.66)), url('${url}')`,
@@ -458,13 +469,14 @@ export default function Game(){
   const [debugForceCard]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_KEY)||null);
   const [debugForceCardTarget,setDebugForceCardTarget]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_TARGET_KEY)||'player');
   const [debugForceCardKeep,setDebugForceCardKeep]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_KEEP_KEY)||'auto');
-  const [debugForceCardType,setDebugForceCardType]=useState('zone');
-  const [debugForceZoneCardKey,setDebugForceZoneCardKey]=useState('A1');
+  const [debugForceCardType,setDebugForceCardType]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_TYPE_KEY)||'zone');
+  const [debugForceZoneCardKey,setDebugForceZoneCardKey]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_ZONE_CARD_KEY)||'A1');
   const [debugForceZoneCardName,setDebugForceZoneCardName]=useState(
-    ()=>FIXED_ZONE_CARD_VARIANTS_BY_KEY.A1?.[0]?.name||''
+    ()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_ZONE_CARD_NAME_KEY)||FIXED_ZONE_CARD_VARIANTS_BY_KEY.A1?.find(card=>card.expansion==='地神的潜影')?.name||''
   );
-  const [debugForceGodCardKey,setDebugForceGodCardKey]=useState('CTH');
+  const [debugForceGodCardKey,setDebugForceGodCardKey]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_GOD_CARD_KEY)||'NYA');
   const [debugPlayerRole,setDebugPlayerRole]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_PLAYER_ROLE_KEY)||'auto');
+  const [debugExpansionKey,setDebugExpansionKey]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_EXPANSION_KEY)||'地神的潜影');
   const [showDebugSettings,setShowDebugSettings]=useState(false);
   const isBattleScreen=!!gs;
   const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playApophisEclipseSound}=useGameAudio(isBattleScreen);
@@ -479,6 +491,7 @@ export default function Game(){
         debugForceZoneCardName:null,
         debugForceGodCardKey:null,
         debugPlayerRole:'auto',
+        debugExpansionKey:'地神的潜影',
       };
     }
     return{
@@ -490,6 +503,7 @@ export default function Game(){
       debugForceZoneCardName,
       debugForceGodCardKey,
       debugPlayerRole,
+      debugExpansionKey,
     };
   },[
     localDebugMode,
@@ -501,10 +515,8 @@ export default function Game(){
     debugForceZoneCardName,
     debugForceGodCardKey,
     debugPlayerRole,
+    debugExpansionKey,
   ]);
-  // [TEMP-DEBUG-MP] 临时：让一次性 socket 监听里的 gameStart 能读到最新调试配置（用于联机强制摸牌测试）
-  const activeDebugConfigRef=useRef(activeDebugConfig);
-  useEffect(()=>{activeDebugConfigRef.current=activeDebugConfig;},[activeDebugConfig]);
   useEffect(()=>{
     if(!isLocalTestMode)return;
     safeLS.set(LOCAL_DEBUG_KEY,localDebugMode?'1':'0');
@@ -515,12 +527,21 @@ export default function Game(){
     safeLS.set(DEBUG_FORCE_CARD_KEY,debugForceCard||'');
     safeLS.set(DEBUG_FORCE_CARD_TARGET_KEY,debugForceCardTarget);
     safeLS.set(DEBUG_FORCE_CARD_KEEP_KEY,debugForceCardKeep);
-  },[isLocalTestMode,debugForceCard,debugForceCardTarget,debugForceCardKeep]);
+    safeLS.set(DEBUG_FORCE_CARD_TYPE_KEY,debugForceCardType);
+    safeLS.set(DEBUG_FORCE_ZONE_CARD_KEY,debugForceZoneCardKey);
+    safeLS.set(DEBUG_FORCE_ZONE_CARD_NAME_KEY,debugForceZoneCardName);
+    safeLS.set(DEBUG_FORCE_GOD_CARD_KEY,debugForceGodCardKey);
+  },[isLocalTestMode,debugForceCard,debugForceCardTarget,debugForceCardKeep,debugForceCardType,debugForceZoneCardKey,debugForceZoneCardName,debugForceGodCardKey]);
 
   useEffect(()=>{
     if(!isLocalTestMode)return;
     safeLS.set(DEBUG_PLAYER_ROLE_KEY,debugPlayerRole);
   },[isLocalTestMode,debugPlayerRole]);
+
+  useEffect(()=>{
+    if(!isLocalTestMode)return;
+    safeLS.set(DEBUG_EXPANSION_KEY,debugExpansionKey);
+  },[isLocalTestMode,debugExpansionKey]);
 
   function isCloseButtonText(text){
     const normalized=(text||'').replace(/\s+/g,'');
@@ -846,7 +867,7 @@ export default function Game(){
       'BEWITCH_SELECT_TARGET','BEWITCH_SELECT_CARD','ZONE_SWAP_SELECT_TARGET','PEEK_HAND_SELECT_TARGET',
       'CAVE_DUEL_SELECT_TARGET','CAVE_DUEL_SELECT_CARD','ROSE_THORN_SELECT_TARGET','MULTIPLY_SELECT_TARGET',
       'SHU_SELECT_TARGET','FIRST_COME_PICK_SELECT','SAME_ABYSS_SELECT','SPHINX_GUESS','GRAVE_DIG_SELECT',
-      'BURY_ALIVE_SELECT','TORTOISE_ORACLE_SELECT','NYA_BORROW','SEMI_MATERIALIZE_TARGET'
+    'BURY_ALIVE_SELECT','TORTOISE_ORACLE_SELECT','NYA_BORROW','ETHEREALIZE_DECISION','ETHEREALIZE_SELECT_TARGET'
     ]);
     return currentTurnPhases.has(phase)&&stateLike.currentTurn===takeoverIdx;
   }
@@ -1103,17 +1124,15 @@ export default function Game(){
       if(isLocalSeatIndex(safeIdx)){
         // 房主：初始化游戏并广播给所有人
         const names=players.map(p=>p.username);
-        // [TEMP-DEBUG-MP] 临时：房主开局把调试强制摸牌配置传入 initGame（原本 9 个调试参数全部传 null）
-        const _dbg=activeDebugConfigRef.current||{};
         const rawGs=initGame(
           names,
-          _dbg.debugForceCard||null,
-          _dbg.debugForceCardTarget||null,
-          _dbg.debugForceCardKeep||'auto',
-          _dbg.debugForceCardType||null,
-          _dbg.debugForceZoneCardKey||null,
-          _dbg.debugForceZoneCardName||null,
-          _dbg.debugForceGodCardKey||null,
+          null,
+          null,
+          'auto',
+          null,
+          null,
+          null,
+          null,
           null,
           startNextTurn,
         );
@@ -1581,6 +1600,22 @@ export default function Game(){
         const beforePlayers=copyPlayers(P);
         const ti=prev.currentTurn;
         if(P[ti]&&!P[ti].isDead){
+          const loss=buildEtherealizeLoss({players:P,targetIdx:ti,currentTurn:prev.currentTurn,lostHp:4,source:'廷达罗斯猎犬'});
+          if(loss){
+            L.push(`廷达罗斯猎犬扑向 ${P[ti].name}`);
+            const decision=buildEtherealizeRedirectDecision([loss],{_turnOwner:prev.currentTurn});
+            return {
+              ...prev,
+              players:P,
+              discard:Disc,
+              log:L,
+              phase:'ETHEREALIZE_DECISION',
+              abilityData:{...decision},
+              houndsOfTindalosActive:false,
+              houndsOfTindalosTarget:ti,
+              houndsOfTindalosElapsed:0,
+            };
+          }
           P[ti].hp=clamp(P[ti].hp-4);
           L.push(`廷达罗斯猎犬撕咬 ${P[ti].name}，其失去 4 HP`);
           if(P[ti].hp<=0){
@@ -2375,6 +2410,34 @@ export default function Game(){
   },[gs,anim,showTutorial]);
 
   useEffect(()=>{
+    if(!gs||gs.phase!=='ETHEREALIZE_DECISION'||gs.gameOver||anim||showTutorial)return;
+    const targetIdx=gs.abilityData?.targetIdx;
+    if(targetIdx==null||isLocalSeatIndex(targetIdx))return;
+    if(!isAiSeat(gs,targetIdx)&&isMultiplayerGame(gs))return;
+    const t=setTimeout(()=>resolveEtherealizeRedirect(shouldAiUseEtherealize({
+      player:gs.players?.[targetIdx],
+      lostHp:gs.abilityData?.lostHp||0,
+      lostSan:gs.abilityData?.lostSan||0,
+    })),AI_AUTO_STEP_DELAY);
+    return()=>clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[gs,anim,showTutorial]);
+
+  useEffect(()=>{
+    if(!gs||gs.phase!=='ETHEREALIZE_SELECT_TARGET'||gs.gameOver||anim||showTutorial)return;
+    const sourceIdx=gs.abilityData?.targetIdx;
+    if(sourceIdx==null||isLocalSeatIndex(sourceIdx))return;
+    if(!isAiSeat(gs,sourceIdx)&&isMultiplayerGame(gs))return;
+    const validTargets=(gs.abilityData?.adjacentTargets||[]).filter(i=>gs.players?.[i]&&!gs.players[i].isDead);
+    if(!validTargets.length)return;
+    const targetIdx=chooseAiEtherealizeRedirectTarget(gs.players,validTargets);
+    if(targetIdx==null)return;
+    const t=setTimeout(()=>etherealizeSelectTarget(targetIdx),AI_AUTO_STEP_DELAY);
+    return()=>clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[gs,anim,showTutorial]);
+
+  useEffect(()=>{
     if(!gs||gs.phase!=='BURY_ALIVE_SELECT'||gs.gameOver||anim||showTutorial)return;
     if(isMultiplayerGame(gs))return;
     const ad=gs.abilityData||{};
@@ -2438,12 +2501,15 @@ export default function Game(){
     }
     let P = copyPlayers(gs.players), D = [...gs.deck], Disc = [...gs.discard], L = [...gs.log];
     const beforeLossPlayers = copyPlayers(P);
+    let pendingEtherealizeLosses=[];
     losses.forEach(({ idx, lostCount }) => {
-      applyHpDamageWithLink(P, idx, 2 * lostCount, Disc, L, gs.currentTurn, D);
       L.push(`【玫瑰倒刺】${P[idx].name} 失去标记手牌，受到 ${2 * lostCount} HP 伤害`);
+      const loss=buildEtherealizeLoss({players:P,targetIdx:idx,currentTurn:gs.currentTurn,lostHp:2*lostCount,source:'玫瑰倒刺'});
+      if(loss)pendingEtherealizeLosses.push(loss);
+      else applyHpDamageWithLink(P, idx, 2 * lostCount, Disc, L, gs.currentTurn, D);
     });
     const win = checkWin(P, gs._isMP);
-    const newGs = withTsathogguaSlimeBalanceDecision({
+    let newGs = withTsathogguaSlimeBalanceDecision({
       ...gs,
       players: P,
       deck: D,
@@ -2451,6 +2517,10 @@ export default function Game(){
       log: L,
       ...(win ? { gameOver: win } : {})
     }, beforeLossPlayers, { _turnOwner: gs.currentTurn });
+    if(!win&&pendingEtherealizeLosses.length){
+      const decision=buildEtherealizeRedirectDecision(pendingEtherealizeLosses,{_turnOwner:gs.currentTurn});
+      newGs={...newGs,phase:'ETHEREALIZE_DECISION',abilityData:{...newGs.abilityData,...decision}};
+    }
     roseThornPrevRef.current = P.map((player, idx) => ({
       idx,
       marked: getRoseThornMarkedIds(player, idx),
@@ -2591,15 +2661,19 @@ export default function Game(){
     if(state.phase==='ROSE_THORN_SELECT_TARGET')return firstValid(ad.roseThornTargets);
     if(state.phase==='MULTIPLY_SELECT_TARGET')return firstValid(P.map((_,i)=>i).filter(i=>i!==0&&canGodPowerAffect(P[i])));
     if(state.phase==='SHU_SELECT_TARGET')return firstValid(P.map((_,i)=>i).filter(i=>canGodPowerAffect(P[i])));
-    if(state.phase==='SEMI_MATERIALIZE_TARGET')return firstValid(ad.legalTargets);
-    if(state.phase==='SEMI_MATERIALIZE_GUESS')return firstValid(P.map((_,i)=>i).filter(i=>!P[i]?.isDead));
+    if(state.phase==='ETHEREALIZE_SELECT_TARGET')return firstValid(ad.adjacentTargets);
     if(state.phase==='IGNITE_TORCH_DISCARD')return firstValid([ad.playerIndex]);
+    if(state.phase==='ALBINO_CREATURE_SELECT_CARD')return firstValid([ad.playerIndex]);
     return null;
   }
 
   function getDefaultHandCardIndexForMpDecision(state=gs){
     const hand=state?.players?.[0]?.hand||[];
     if(!hand.length)return -1;
+    if(state?.phase==='ALBINO_CREATURE_SELECT_CARD'){
+      const fireCardIds=state?.abilityData?.fireCardIds||[];
+      return hand.findIndex(c=>fireCardIds.includes(c?.id));
+    }
     if(state?.phase!=='CAVE_DUEL_SELECT_CARD')return 0;
     return hand.reduce((bestIdx,card,idx)=>{
       const best=hand[bestIdx];
@@ -2624,8 +2698,8 @@ export default function Game(){
     if(state.phase==='GRAVE_DIG_SELECT'&&isLocalSeatIndex(state.abilityData?.playerIndex))return !!state.abilityData?.godCards?.length;
     if(isLocalSameAbyssTargetPhase(state))return true;
     if(isLocalSphinxGuessPhase(state))return true;
-    if(state.phase==='SEMI_MATERIALIZE_GUESS')return isLocalSeatIndex(state.abilityData?.guesserIdx);
     if(state.phase==='TSG_SLIME_BALANCE')return isLocalSeatIndex(state.abilityData?.targetIdx);
+    if(state.phase==='ETHEREALIZE_DECISION')return isLocalSeatIndex(state.abilityData?.targetIdx);
     if(canLocalActOnTargetSelectionPhase(state))return getDefaultTargetForMpDecision(state)!=null;
     if(state.phase==='BURY_ALIVE_SELECT'){
       const target=state.abilityData?.targets?.[state.abilityData?.targetIndex||0];
@@ -2633,6 +2707,12 @@ export default function Game(){
     }
     if(state.phase==='IGNITE_TORCH_DISCARD'&&isLocalSeatIndex(state.abilityData?.playerIndex)){
       return getDefaultHandCardIndexForMpDecision(state)>=0;
+    }
+    if(state.phase==='ALBINO_CREATURE_SELECT_CARD'&&isLocalSeatIndex(state.abilityData?.playerIndex)){
+      return getDefaultHandCardIndexForMpDecision(state)>=0;
+    }
+    if(state.phase==='DECIPHER_STONE_CARVING'&&isLocalSeatIndex(state.abilityData?.playerIndex)){
+      return true;
     }
     if(state.phase==='CAVE_DUEL_SELECT_CARD'&&(isLocalCurrentTurn(state)||isLocalCaveDuelTargetSeat(state))){
       return getDefaultHandCardIndexForMpDecision(state)>=0;
@@ -2665,12 +2745,8 @@ export default function Game(){
     if(gs.phase==='GRAVE_DIG_SELECT'){graveDigSelectGod(0);return;}
     if(gs.phase==='SAME_ABYSS_SELECT'){sameAbyssSelect('hp');return;}
     if(gs.phase==='SPHINX_GUESS'){sphinxGuess(false);return;}
-    if(gs.phase==='SEMI_MATERIALIZE_GUESS'){
-      const targetIdx=getDefaultTargetForMpDecision(gs);
-      if(targetIdx!=null)semiMaterializeGuess(targetIdx);
-      return;
-    }
     if(gs.phase==='TSG_SLIME_BALANCE'){resolveTsathogguaSlimeBalance(false);return;}
+    if(gs.phase==='ETHEREALIZE_DECISION'){resolveEtherealizeRedirect(false);return;}
     if(gs.phase==='BURY_ALIVE_SELECT'){
       const cardIdx=getDefaultHandCardIndexForMpDecision(gs);
       if(cardIdx>=0)buryAliveSelectCard(cardIdx);
@@ -2679,6 +2755,31 @@ export default function Game(){
     if(gs.phase==='IGNITE_TORCH_DISCARD'){
       const cardIdx=getDefaultHandCardIndexForMpDecision(gs);
       if(cardIdx>=0)igniteTorchDiscardCard(cardIdx);
+      return;
+    }
+    if(gs.phase==='ALBINO_CREATURE_SELECT_CARD'){
+      const cardIdx=getDefaultHandCardIndexForMpDecision(gs);
+      if(cardIdx>=0)albinoCreatureSelectCard(cardIdx);
+      return;
+    }
+    if(gs.phase==='DECIPHER_STONE_CARVING'){
+      const ad=gs.abilityData||{};
+      const revealed=ad.revealedCards||[];
+      if(revealed.length){
+        const sorted=[...revealed].sort((a,b)=>{
+          const scoreA=a.isGod?-10:(isPositiveZoneCard(a)?5:(isNegativeZoneCard(a)?2:3));
+          const scoreB=b.isGod?-10:(isPositiveZoneCard(b)?5:(isNegativeZoneCard(b)?2:3));
+          return scoreB-scoreA;
+        });
+        const handCard=sorted[0];
+        const remaining=revealed.filter(c=>c.id!==handCard.id);
+        const mid=Math.ceil(remaining.length/2);
+        decipherStoneCarvingConfirm({
+          handCard,
+          deckTopCards:remaining.slice(0,mid),
+          deckBottomCards:remaining.slice(mid),
+        });
+      }
       return;
     }
     if(gs.phase==='CAVE_DUEL_SELECT_CARD'){
@@ -3057,6 +3158,7 @@ export default function Game(){
         debugForceZoneCardName={debugForceZoneCardName} setDebugForceZoneCardName={setDebugForceZoneCardName}
         debugForceGodCardKey={debugForceGodCardKey} setDebugForceGodCardKey={setDebugForceGodCardKey}
         debugPlayerRole={debugPlayerRole} setDebugPlayerRole={setDebugPlayerRole}
+        debugExpansionKey={debugExpansionKey} setDebugExpansionKey={setDebugExpansionKey}
       />
     </>);
   }
@@ -3596,7 +3698,7 @@ export default function Game(){
     if(queue.length){
       if(dr.fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:Disc})],L.slice(gs.log.length));
       setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-      triggerAnimQueue(queue,newGs);
+      triggerAnimQueue([...queue,statePatchStep({players:P,discard:Disc})],newGs);
     }else{
       syncVisibleLog(L);
       setGs(newGs);
@@ -4150,6 +4252,154 @@ export default function Game(){
     };
   }
 
+  function getNextEtherealizeDecisionFromAbilityData(abilityData, consumedIndex=null){
+    const losses=(abilityData?.pendingLosses||[]).filter(Boolean);
+    const start=consumedIndex==null?(abilityData?.pendingIndex??0):consumedIndex+1;
+    for(let i=start;i<losses.length;i++){
+      const loss=losses[i];
+      const target=gs.players?.[loss.targetIdx];
+      if(target&&!target.isDead&&(target.etherealizeStacks||0)>0){
+        return {...abilityData,...loss,type:'etherealizeRedirect',pendingIndex:i,pendingLosses:losses};
+      }
+    }
+    return null;
+  }
+
+  function applyLossDirectly({players,deck,discard,log,targetIdx,lostHp=0,lostSan=0,source='虚化',currentTurn=gs.currentTurn}){
+    let P=players,D=deck,Disc=discard,L=log;
+    let inspectionMeta=makeInspectionMeta({...gs,players:P,deck:D,discard:Disc,log:L});
+    if(lostHp>0){
+      applyHpDamageWithLink(P,targetIdx,lostHp,Disc,L,currentTurn,D);
+      L.push(`${localDisplayName(targetIdx,P[targetIdx]?.name)} 失去 ${lostHp} HP`);
+    }
+    if(lostSan>0&&P[targetIdx]&&!P[targetIdx].isDead){
+      L.push(`${localDisplayName(targetIdx,P[targetIdx]?.name)} 失去 ${lostSan} SAN`);
+      const processed=applySanLossToPlayerWithInspection(targetIdx,lostSan,currentTurn,P,D,Disc,L,inspectionMeta,source,{skipEtherealize:true});
+      P=processed.P;D=processed.D;Disc=processed.Disc;L=processed.L;inspectionMeta=processed.inspectionMeta;
+    }
+    return {P,D,Disc,L,inspectionMeta};
+  }
+
+  function applyHpDamageOrEtherealize({players,deck,discard,log,targetIdx,amount,source='HP伤害',currentTurn=gs.currentTurn}){
+    const loss=buildEtherealizeLoss({players,targetIdx,currentTurn,lostHp:amount,source});
+    if(loss)return {players,deck,discard,log,pendingLosses:[loss],redirected:true};
+    applyHpDamageWithLink(players,targetIdx,amount,discard,log,currentTurn,deck);
+    return {players,deck,discard,log,pendingLosses:[],redirected:false};
+  }
+
+  function finishEtherealizeDecision({players,deck,discard,log,abilityData,queue=[]}){
+    const turnOwner=abilityData._turnOwner??gs.currentTurn;
+    const nextDecision=getNextEtherealizeDecisionFromAbilityData(abilityData,abilityData.pendingIndex??0);
+    const extraPatch={
+      ...(abilityData._statEvents?{_statEvents:abilityData._statEvents}:{}),
+      ...(abilityData._statEventSeq!=null?{_statEventSeq:abilityData._statEventSeq}:{}),
+      ...(abilityData.inspectionDeck?{inspectionDeck:abilityData.inspectionDeck}:{}),
+      ...(abilityData.inspectionDiscard?{inspectionDiscard:abilityData.inspectionDiscard}:{}),
+      ...(abilityData.sealLooseningCount!=null?{sealLooseningCount:abilityData.sealLooseningCount}:{}),
+      ...(abilityData.houndsOfTindalosActive!=null?{houndsOfTindalosActive:abilityData.houndsOfTindalosActive}:{}),
+      ...(abilityData.houndsOfTindalosTarget!=null?{houndsOfTindalosTarget:abilityData.houndsOfTindalosTarget}:{}),
+      ...(abilityData.houndsOfTindalosElapsed!=null?{houndsOfTindalosElapsed:abilityData.houndsOfTindalosElapsed}:{}),
+      ...(abilityData._inspectionSeq!=null?{_inspectionSeq:abilityData._inspectionSeq}:{}),
+      ...(abilityData._inspectionEvents?{_inspectionEvents:abilityData._inspectionEvents}:{}),
+    };
+    let nextGs=buildTargetContinuationGs({
+      players,
+      deck,
+      discard,
+      log,
+      turnOwner,
+      abilityData:nextDecision||abilityData,
+      phase:nextDecision?'ETHEREALIZE_DECISION':null,
+      canResumeAi:!nextDecision,
+      extraPatch,
+    });
+    if(nextDecision){
+      nextGs={...nextGs,phase:'ETHEREALIZE_DECISION',abilityData:nextDecision};
+    }
+    const win=checkWin(players,gs._isMP);
+    if(win)nextGs={...nextGs,phase:'ACTION',abilityData:{},gameOver:win};
+    const queueWithStats=queue.length?queue:buildAnimQueue(gs,{...gs,players,deck,discard,log,...extraPatch});
+    const queueWithPatch=queueWithStats.length
+      ?[...queueWithStats,statePatchStep({players,deck,discard,log,...extraPatch})]
+      :queueWithStats;
+    finishTargetContinuation({
+      queue:queueWithPatch,
+      nextGs,
+      continueRest:!win&&!nextDecision&&!!abilityData.fromRest,
+    });
+  }
+
+  function resolveEtherealizeRedirect(useEtherealize){
+    const abilityData=gs.abilityData||{};
+    const targetIdx=abilityData.targetIdx;
+    if(targetIdx==null||!gs.players?.[targetIdx])return;
+    if(useEtherealize){
+      setGs({...gs,phase:'ETHEREALIZE_SELECT_TARGET',abilityData:{...abilityData,type:'etherealizeSelectTarget'}});
+      return;
+    }
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
+    const beforePlayers=copyPlayers(P);
+    const result=applyLossDirectly({
+      players:P,
+      deck:D,
+      discard:Disc,
+      log:L,
+      targetIdx,
+      lostHp:abilityData.lostHp||0,
+      lostSan:abilityData.lostSan||0,
+      source:'虚化未发动',
+      currentTurn:abilityData._turnOwner??gs.currentTurn,
+    });
+    P=result.P;D=result.D;Disc=result.Disc;L=result.L;
+    const statEventSeq=(gs._statEventSeq||0)+1;
+    const statEvents=buildStatEvents(beforePlayers,P,L.slice(gs.log.length),{reason:'虚化未发动',seq:statEventSeq});
+    const statPatch=statEvents.length?{_statEvents:[...(gs._statEvents||[]),...statEvents],_statEventSeq:statEventSeq}:result.inspectionMeta;
+    finishEtherealizeDecision({
+      players:P,
+      deck:D,
+      discard:Disc,
+      log:L,
+      abilityData:{...abilityData,...statPatch},
+      queue:buildAnimQueue(gs,{...gs,players:P,deck:D,discard:Disc,log:L}),
+    });
+  }
+
+  function etherealizeSelectTarget(redirectTargetIdx){
+    const abilityData=gs.abilityData||{};
+    const sourceIdx=abilityData.targetIdx;
+    const validTargets=abilityData.adjacentTargets||[];
+    if(sourceIdx==null||!validTargets.includes(redirectTargetIdx))return;
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
+    const source=P[sourceIdx];
+    if(!source||source.isDead)return;
+    source.etherealizeStacks=Math.max(0,(source.etherealizeStacks||0)-1);
+    L.push(`【半物质化】${localDisplayName(sourceIdx,source.name)} 消耗1层虚化，将即将失去的${abilityData.lostHp?`${abilityData.lostHp}HP`:''}${abilityData.lostHp&&abilityData.lostSan?'和':''}${abilityData.lostSan?`${abilityData.lostSan}SAN`:''}转移给 ${localDisplayName(redirectTargetIdx,P[redirectTargetIdx]?.name)}`);
+    const beforePlayers=copyPlayers(P);
+    const result=applyLossDirectly({
+      players:P,
+      deck:D,
+      discard:Disc,
+      log:L,
+      targetIdx:redirectTargetIdx,
+      lostHp:abilityData.lostHp||0,
+      lostSan:abilityData.lostSan||0,
+      source:'半物质化',
+      currentTurn:abilityData._turnOwner??gs.currentTurn,
+    });
+    P=result.P;D=result.D;Disc=result.Disc;L=result.L;
+    const statEventSeq=(gs._statEventSeq||0)+1;
+    const statEvents=buildStatEvents(beforePlayers,P,L.slice(gs.log.length),{reason:'半物质化',seq:statEventSeq});
+    const statPatch=statEvents.length?{_statEvents:[...(gs._statEvents||[]),...statEvents],_statEventSeq:statEventSeq}:result.inspectionMeta;
+    finishEtherealizeDecision({
+      players:P,
+      deck:D,
+      discard:Disc,
+      log:L,
+      abilityData:{...abilityData,...statPatch},
+      queue:buildAnimQueue(gs,{...gs,players:P,deck:D,discard:Disc,log:L}),
+    });
+  }
+
   function resolveApophisTarget({players,deck,discard,log,actorIdx,selectedIdx,legalTargets,label='选中目标'}){
     const result=resolveApophisTargetRule({gs,players,deck,discard,log,actorIdx,selectedIdx,legalTargets,label});
     if(result.statePatch?._statEvents){
@@ -4687,6 +4937,104 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     buryAliveSelectCard(idx);
   }
 
+  function albinoCreatureSelectCard(cardIndex){
+    const abilityData=gs.abilityData||{};
+    const actorIdx=abilityData.playerIndex;
+    if(!isLocalSeatIndex(actorIdx)||cardIndex<0)return;
+    const chosenCard=gs.players?.[actorIdx]?.hand?.[cardIndex];
+    if(!chosenCard)return;
+    const fireCardIds=abilityData.fireCardIds||[];
+    if(!fireCardIds.includes(chosenCard.id))return;
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
+    const actorName=localDisplayName(actorIdx,P[actorIdx]?.name);
+    const L=[...gs.log,`【白化生物】${actorName} 亮出了 ${cardLogText(chosenCard,{alwaysShowName:true})}`];
+    const candidates=P.map((p,i)=>i).filter(i=>!P[i].isDead);
+    let randomTarget=-1;
+    let statEvents=[];
+    if(candidates.length>0){
+      randomTarget=candidates[Math.floor(Math.random()*candidates.length)];
+      const beforeTarget={...P[randomTarget]};
+      applyHpDamageWithLink(P,randomTarget,2,Disc,L,gs.currentTurn,D);
+      P[randomTarget].san=Math.max(0,P[randomTarget].san-2);
+      L.push(`${P[randomTarget].name} 失去 2 HP 和 2 SAN`);
+      const statEventSeq=(gs?._statEventSeq||0)+1;
+      statEvents=[{
+        type:'HP_LOSS',
+        target:randomTarget,
+        from:{hp:beforeTarget.hp,san:beforeTarget.san,isDead:beforeTarget.isDead},
+        to:{hp:P[randomTarget].hp,san:P[randomTarget].san,isDead:P[randomTarget].isDead},
+        reason:'白化生物',
+        seq:statEventSeq,
+        phaseOrder:0,
+      }];
+      if(P[randomTarget].hp<=0){
+        killPlayerState(P,randomTarget,Disc,L);
+      }
+    }
+    const win=checkWin(P,gs._isMP);
+    const revealEvent=createHuntRevealEvent({sourceIdx:actorIdx,targetIdx:actorIdx,card:chosenCard,msgs:[L[L.length-2]]});
+    const revealStep=buildHuntRevealStepFromVisualEvent({...revealEvent,targetIdx:actorIdx,targetName:P[actorIdx]?.name},{players:P},{allowTargetZero:true});
+    const queue=[];
+    if(revealStep)queue.push(revealStep);
+    queue.push(...buildAnimQueue(gs,{...gs,players:P,deck:D,discard:Disc,log:L}));
+    const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',abilityData:{},drawReveal:null,selectedCard:null,
+      _visualEvents:[revealEvent].filter(Boolean),
+      ...(win?{gameOver:win}:{}),
+      ...(statEvents.length?{_statEvents:statEvents,_statEventSeq:statEvents[0].seq}:{}),
+    };
+    triggerAnimQueue(queue,nextGs);
+  }
+
+  function decipherStoneCarvingConfirm({ handCard, deckTopCards, deckBottomCards }) {
+    const abilityData = gs.abilityData || {};
+    const actorIdx = abilityData.playerIndex;
+    if (!isLocalSeatIndex(actorIdx) || !handCard) return;
+    let P = copyPlayers(gs.players), D = [...gs.deck], Disc = [...gs.discard];
+    const revealedCards = Array.isArray(abilityData.revealedCards) ? abilityData.revealedCards : [];
+    const revealedById = new Map(revealedCards.map(card => [card.id, card]));
+    const selectedHandCard = revealedById.get(handCard.id);
+    if (!selectedHandCard) return;
+    const normalizeZoneCards = cards => (Array.isArray(cards) ? cards : [])
+      .map(card => revealedById.get(card.id))
+      .filter(Boolean);
+    const normalizedTop = normalizeZoneCards(deckTopCards);
+    const normalizedBottom = normalizeZoneCards(deckBottomCards);
+    const consumedIds = new Set([selectedHandCard.id, ...normalizedTop.map(card => card.id), ...normalizedBottom.map(card => card.id)]);
+    if (consumedIds.size !== revealedCards.length) return;
+    const actorName = localDisplayName(actorIdx, P[actorIdx]?.name);
+    let L = [...gs.log, `【解读石刻】${actorName} 选择将 ${cardLogText(selectedHandCard, { alwaysShowName: true })} 收入手牌`];
+    P[actorIdx].hand.push(selectedHandCard);
+    let inspectionMeta = makeInspectionMeta(gs);
+    if (selectedHandCard.isGod) {
+      L.push(`【解读石刻】${actorName} 因选择邪神牌失去 1 SAN`);
+      const processed = applySanLossToPlayerWithInspection(actorIdx, 1, gs.currentTurn ?? actorIdx, P, D, Disc, L, inspectionMeta, '解读石刻');
+      P = processed.P;
+      D = processed.D;
+      Disc = processed.Disc;
+      L = processed.L;
+      inspectionMeta = processed.inspectionMeta;
+    }
+    // deckTopCards: 越靠右越顶部，所以 reverse 后 unshift
+    if (normalizedTop.length) {
+      D.unshift(...[...normalizedTop].reverse());
+      L.push(`【解读石刻】${normalizedTop.length} 张牌放回牌堆顶`);
+    }
+    // deckBottomCards: 越靠左越底部，所以直接 push
+    if (normalizedBottom.length) {
+      D.push(...normalizedBottom);
+      L.push(`【解读石刻】${normalizedBottom.length} 张牌放到牌堆底`);
+    }
+    const win = checkWin(P, gs._isMP);
+    const nextGs = {
+      ...gs, players: P, deck: D, discard: Disc, log: L,
+      phase: 'ACTION', abilityData: {}, drawReveal: null, selectedCard: null,
+      ...inspectionMeta,
+      ...(win ? { gameOver: win } : {}),
+    };
+    const queue = buildAnimQueue(gs, nextGs);
+    triggerAnimQueue(queue, nextGs);
+  }
+
   function swapSelectTargetCard(cardIdx){
     const{swapTi}=gs.abilityData;
     let P=copyPlayers(gs.players);
@@ -4827,6 +5175,27 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const afterDiscardDiscard=[...Disc];
       const huntDamage=3+(P[0].damageBonus||0);
       L.push(`弃 ${cardLogText(dc,{alwaysShowName:true})} → ${P[huntTi].name} 受 ${huntDamage}HP 伤害`);
+      const huntEtherealizeLoss=buildEtherealizeLoss({players:P,targetIdx:huntTi,currentTurn:gs.currentTurn,lostHp:huntDamage,source:'追捕'});
+      if(huntEtherealizeLoss){
+        P[0].roleRevealed=true;
+        const newGs={
+          ...gs,
+          players:P,
+          deck:D,
+          discard:Disc,
+          log:L,
+          abilityData:{
+            ...buildEtherealizeRedirectDecision([huntEtherealizeLoss],{_turnOwner:gs.currentTurn}),
+            huntTi:undefined,
+            revCard:undefined,
+          },
+          phase:'ETHEREALIZE_DECISION',
+          skillUsed:true,
+        };
+        const queue=buildAnimQueue(gs,newGs);
+        if(queue.length)triggerAnimQueue(queue,newGs);else setGs(newGs);
+        return;
+      }
       applyHpDamageWithLink(P,huntTi,huntDamage,Disc,L,gs.currentTurn,D);
       // 追捕成功时揭晓追猎者身份
       if(!P[0].roleRevealed){
@@ -5028,8 +5397,27 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(mi>=0){
       discardedCard=aiHand.splice(mi,1)[0];Disc.push(discardedCard);
       const huntDamage=3+(P[huntingAI].damageBonus||0);
-      applyHpDamageWithLink(P,0,huntDamage,Disc,L,gs.currentTurn,D);
       L.push(`${aiHunterName} 弃 ${cardLogText(discardedCard,{alwaysShowName:true})}，你受 ${huntDamage}HP 伤害！`);
+      const huntEtherealizeLoss=buildEtherealizeLoss({players:P,targetIdx:0,currentTurn:gs.currentTurn,lostHp:huntDamage,source:'追捕'});
+      if(huntEtherealizeLoss){
+        const newGs={
+          ...gs,
+          players:P,
+          deck:D,
+          discard:Disc,
+          log:L,
+          phase:'ETHEREALIZE_DECISION',
+          abilityData:{
+            ...buildEtherealizeRedirectDecision([huntEtherealizeLoss],{_turnOwner:gs.currentTurn}),
+          },
+          huntAbandoned:gs.huntAbandoned||[],
+          skillUsed:true,
+        };
+        const queue=buildAnimQueue(gs,newGs);
+        if(queue.length)triggerAnimQueue(queue,newGs);else setGs(newGs);
+        return;
+      }
+      applyHpDamageWithLink(P,0,huntDamage,Disc,L,gs.currentTurn,D);
       if(P[0].hp<=0){
         if(myHandBefore.length){
           Disc=removeCardsFromDiscard(Disc,myHandBefore);
@@ -5169,8 +5557,21 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }else{
       L.push(`【同归深渊】${target.name} 选择承受伤害，失去 4 HP`);
       const localMsgs=[];
-      applyHpDamageWithLink(P,targetIdx,4,Disc,localMsgs,gs.currentTurn,D);
-      if(localMsgs.length)L.push(...localMsgs);
+      const loss=buildEtherealizeLoss({players:P,targetIdx,currentTurn:gs.currentTurn,lostHp:4,source:'同归深渊'});
+      if(loss){
+        const newGs={
+          ...gs,
+          players:P,deck:D,discard:Disc,log:L,
+          phase:'ETHEREALIZE_DECISION',
+          abilityData:{...buildEtherealizeRedirectDecision([loss],{_turnOwner:gs.abilityData?._turnOwner??gs.currentTurn})},
+        };
+        const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
+        if(queue.length)triggerAnimQueue(queue,newGs);else setGs(newGs);
+        return;
+      }else{
+        applyHpDamageWithLink(P,targetIdx,4,Disc,localMsgs,gs.currentTurn,D);
+        if(localMsgs.length)L.push(...localMsgs);
+      }
     }
     const win=checkWin(P,gs._isMP);
     if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{}});return;}
@@ -5205,8 +5606,21 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }else{
       L.push(`猜测错误！你失去 3 HP`);
       const localMsgs=[];
-      applyHpDamageWithLink(P,gs.currentTurn,3,Disc,localMsgs,gs.currentTurn,D);
-      if(localMsgs.length)L.push(...localMsgs);
+      const loss=buildEtherealizeLoss({players:P,targetIdx:gs.currentTurn,currentTurn:gs.currentTurn,lostHp:3,source:'斯芬克斯'});
+      if(loss){
+        const newGs={
+          ...gs,
+          players:P,deck:D,discard:Disc,log:L,
+          phase:'ETHEREALIZE_DECISION',
+          abilityData:{...buildEtherealizeRedirectDecision([loss],{_turnOwner:gs.abilityData?._turnOwner??gs.currentTurn})},
+        };
+        const queue=[{type:'DRAW_CARD',card:actualCard,triggerName:'斯芬克斯',targetPid:gs.currentTurn,skipTravel:true,guessCorrect:false,msgs:[L[L.length-2]||L[L.length-1]]}];
+        triggerAnimQueue(queue,newGs);
+        return;
+      }else{
+        applyHpDamageWithLink(P,gs.currentTurn,3,Disc,localMsgs,gs.currentTurn,D);
+        if(localMsgs.length)L.push(...localMsgs);
+      }
       Disc.push(actualCard);
     }
     const win=checkWin(P,gs._isMP);
@@ -5241,95 +5655,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       broadcastMpStateBeforeLocalReplay(newGsWithEvent);
       triggerAnimQueue(queue,newGsWithEvent);
     }else setGs(newGsWithEvent);
-  }
-
-  function buildSemiMaterializeGuessOrder(P, sourceIdx){
-    const N=P.length;
-    const dir=gs.turnDirection||1;
-    const order=[];
-    for(let step=1;step<=N;step++){
-      const idx=(sourceIdx+step*dir+N)%N;
-      if(idx!==sourceIdx&&P[idx]&&!P[idx].isDead)order.push(idx);
-    }
-    return order;
-  }
-
-  function finishSemiMaterialize(P,D,Disc,L,abilityData,winnerIdx){
-    const winnerName=localDisplayName(winnerIdx,P[winnerIdx]?.name);
-    const targetName=localDisplayName(abilityData.secretTarget,P[abilityData.secretTarget]?.name);
-    L.push(`【传授半物质化】${winnerName} 将在 ${targetName} 的下个回合后获得一个额外回合`);
-    const nextGs=buildTargetContinuationGs({
-      players:P,
-      deck:D,
-      discard:Disc,
-      log:L,
-      abilityData,
-      canResumeAi:false,
-    });
-    finishTargetContinuation({
-      nextGs:{
-        ...nextGs,
-        pendingExtraTurnOwner:winnerIdx,
-        pendingExtraTurnAfterPlayer:abilityData.secretTarget,
-        pendingExtraTurnAfterMinTurn:(gs.turn||0)+1,
-      },
-    });
-  }
-
-  function continueSemiMaterializeGuesses(P,D,Disc,L,abilityData){
-    const order=abilityData.guessOrder||[];
-    let guessIndex=abilityData.guessIndex||0;
-    const secretTarget=abilityData.secretTarget;
-    const source=abilityData.source;
-    while(guessIndex<order.length){
-      const guesserIdx=order[guessIndex];
-      if(!P[guesserIdx]||P[guesserIdx].isDead){guessIndex++;continue;}
-      if(isLocalSeatIndex(guesserIdx)){
-        setGs({...gs,players:P,deck:D,discard:Disc,log:L,phase:'SEMI_MATERIALIZE_GUESS',abilityData:{...abilityData,guessIndex,guesserIdx}});
-        return;
-      }
-      const candidates=P.map((p,i)=>i).filter(i=>p&&!p.isDead);
-      const guessedIdx=candidates.length?candidates[Math.floor(Math.random()*candidates.length)]:secretTarget;
-      L.push(`【传授半物质化】${P[guesserIdx].name} 猜测目标是 ${P[guessedIdx]?.name||'未知角色'}`);
-      if(guessedIdx===secretTarget){
-        finishSemiMaterialize(P,D,Disc,L,abilityData,guesserIdx);
-        return;
-      }
-      guessIndex++;
-    }
-    L.push('【传授半物质化】无人猜中目标');
-    finishSemiMaterialize(P,D,Disc,L,abilityData,source);
-  }
-
-  function semiMaterializeSelectTarget(targetIdx){
-    if(phase!=='SEMI_MATERIALIZE_TARGET')return;
-    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
-    const source=gs.abilityData?.source??gs.currentTurn;
-    if(!P[targetIdx]||P[targetIdx].isDead)return;
-    L.push(`【传授半物质化】${localDisplayName(source,P[source]?.name)} 悄悄指定了一名角色`);
-    const abilityData={
-      ...gs.abilityData,
-      type:'semiMaterializeGuess',
-      source,
-      secretTarget:targetIdx,
-      guessOrder:buildSemiMaterializeGuessOrder(P,source),
-      guessIndex:0,
-    };
-    continueSemiMaterializeGuesses(P,D,Disc,L,abilityData);
-  }
-
-  function semiMaterializeGuess(guessedIdx){
-    if(phase!=='SEMI_MATERIALIZE_GUESS')return;
-    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
-    const abilityData=gs.abilityData||{};
-    const guesserIdx=abilityData.guesserIdx;
-    if(!isLocalSeatIndex(guesserIdx)||!P[guessedIdx]||P[guessedIdx].isDead)return;
-    L.push(`【传授半物质化】你猜测目标是 ${localDisplayName(guessedIdx,P[guessedIdx]?.name)}`);
-    if(guessedIdx===abilityData.secretTarget){
-      finishSemiMaterialize(P,D,Disc,L,abilityData,guesserIdx);
-      return;
-    }
-    continueSemiMaterializeGuesses(P,D,Disc,L,{...abilityData,guessIndex:(abilityData.guessIndex||0)+1});
   }
 
   function buildPostBewitchStatQueue(oldGs,newGs){
@@ -6281,6 +6606,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       activeDebugConfig.debugForceGodCardKey,
       activeDebugConfig.debugPlayerRole,
       startNextTurn,
+      activeDebugConfig.debugExpansionKey,
     );
     roseThornPrevRef.current=null;
     consumedVisualEventIdsRef.current=new Set();
@@ -6479,10 +6805,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     BEWITCH_SELECT_CARD:  '【蛊惑】选择要赠送的手牌',
     MULTIPLY_SELECT_TARGET: '【繁衍】选择另一名角色传播黑山羊幼仔',
     SHU_SELECT_TARGET: '【黑暗子嗣】选择一名角色获得黑山羊幼仔',
-    SEMI_MATERIALIZE_TARGET: '【传授半物质化】悄悄指定一名角色',
-    SEMI_MATERIALIZE_GUESS: isLocalSeatIndex(gs.abilityData?.guesserIdx)?'【传授半物质化】猜测被指定的角色':'请等待其他玩家猜测…',
     IGNITE_TORCH_DISCARD: isLocalSeatIndex(gs.abilityData?.playerIndex)?'【引燃火把】选择一张手牌弃置':'请等待其他玩家选择…',
+    DECIPHER_STONE_CARVING: isLocalSeatIndex(gs.abilityData?.playerIndex)?'【解读石刻】拖动卡牌到对应区域':'请等待其他玩家解读石刻…',
+    ALBINO_CREATURE_SELECT_CARD: isLocalSeatIndex(gs.abilityData?.playerIndex)?'【白化生物】选择一张带"火"字的手牌亮出':'请等待其他玩家选择…',
     TSG_SLIME_BALANCE: isLocalSeatIndex(gs.abilityData?.targetIdx)?'【赐福黏液】是否牺牲黏液平分HP和SAN？':'请等待其他玩家选择…',
+    ETHEREALIZE_DECISION: isLocalSeatIndex(gs.abilityData?.targetIdx)?'【半物质化】是否消耗1层虚化转移伤害？':'请等待其他玩家选择…',
+    ETHEREALIZE_SELECT_TARGET: isLocalEtherealizeTargetPhase(gs)?'【半物质化】选择相邻角色承受伤害':'请等待其他玩家选择…',
     GOD_CHOICE:          isLocalGodChoice?(canShowTurnDecisionModal?'邪神降临！选择如何回应':'面临抉择中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 回应邪神…`:'邪神降临！选择如何回应'),
     ZHU_HIDE_AI_DRAW:    visualMe?.godName==='ZHU'?(canShowTurnDecisionModal?'【衔烛照幽】是否藏牌？':'衔烛照幽判定中…'):'请等待其他玩家选择…',
     NYA_BORROW:          isLocalNyaBorrowPhase(gs)?(canShowTurnDecisionModal?'「千人千貌」——借用已死角色的身份？':'身份借用中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 借用身份…`:'「千人千貌」——借用已死角色的身份？'),
@@ -6512,10 +6840,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
 
   const isLocalDamageLinkSelect=!!gs&&isLocalDamageLinkSourcePhase(gs);
   const canLocalTargetSelect=!!gs&&!isSpectating&&canLocalActOnTargetSelectionPhase(gs);
-  const canLocalSemiMaterializeGuess=!!gs&&!isSpectating&&phase==='SEMI_MATERIALIZE_GUESS'&&isLocalSeatIndex(gs.abilityData?.guesserIdx);
   const canLocalSwapGive=!!gs&&!isSpectating&&isLocalSwapGivePhase(gs);
   const canLocalBewitchCard=!!gs&&!isSpectating&&isLocalBewitchCardPhase(gs);
-  const selectingOther=canLocalTargetSelect||canLocalSemiMaterializeGuess;
+  const selectingOther=canLocalTargetSelect;
   // 多人游戏中 HUNT_CONFIRM 非追猎者不显示操作按钮区域
   const cancelable=['SWAP_SELECT_TARGET','SWAP_STEAL_CARD','SWAP_SELECT_TARGET_CARD','SWAP_GIVE_CARD','HUNT_SELECT_TARGET','ZONE_SWAP_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','DAMAGE_LINK_SELECT_TARGET','TORTOISE_ORACLE_SELECT','ROSE_THORN_SELECT_TARGET','MULTIPLY_SELECT_TARGET','SHU_SELECT_TARGET','SAME_ABYSS_SELECT','SPHINX_GUESS','GRAVE_DIG_SELECT',...(phase==='HUNT_CONFIRM'&&gs._isMP&&!isLocalCurrentTurn(gs)?[]:['HUNT_CONFIRM']),'BEWITCH_SELECT_CARD','BEWITCH_SELECT_TARGET'].includes(phase);
   // In HUNT_CONFIRM, 放弃追捕 replaces ✕取消 — never show both
@@ -6524,7 +6851,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
 
   function handleAIClick(pi){
     if(gs.players[pi].isDead||isBlocked)return;
-    if(!canLocalTargetSelect&&!canLocalSemiMaterializeGuess)return;
+    if(!canLocalTargetSelect)return;
     if(phase==='SWAP_SELECT_TARGET')swapSelectTarget(pi);
     else if(phase==='ZONE_SWAP_SELECT_TARGET')zoneSwapSelectTarget(pi);
     else if(phase==='SWAP_SELECT_TARGET_CARD'||phase==='SWAP_STEAL_CARD'){
@@ -6546,8 +6873,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     else if(phase==='CAVE_DUEL_SELECT_TARGET')caveDuelSelectTarget(pi);
     else if(phase==='DAMAGE_LINK_SELECT_TARGET')damageLinkSelectTarget(pi);
     else if(phase==='ROSE_THORN_SELECT_TARGET')roseThornSelectTarget(pi);
-    else if(phase==='SEMI_MATERIALIZE_TARGET')semiMaterializeSelectTarget(pi);
-    else if(phase==='SEMI_MATERIALIZE_GUESS')semiMaterializeGuess(pi);
+    else if(phase==='ETHEREALIZE_SELECT_TARGET')etherealizeSelectTarget(pi);
     else if(phase==='MULTIPLY_SELECT_TARGET'){
       if(pi===0) return;
       let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],baseLog=[...gs.log];
@@ -6657,6 +6983,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(phase==='IGNITE_TORCH_DISCARD')return isLocalSeatIndex(gs.abilityData?.playerIndex);
     return false;
   }
+  function canPlayerRespondWithFireHandCard(){
+    if(phase!=='ALBINO_CREATURE_SELECT_CARD')return false;
+    if(!isLocalSeatIndex(gs.abilityData?.playerIndex))return false;
+    return true;
+  }
 
   function handleMyCardClick(idx){
     if(isBlocked)return;
@@ -6680,6 +7011,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }
     else if(phase==='IGNITE_TORCH_DISCARD'&&canPlayerRespondWithAnyHandCard()){
       igniteTorchDiscardCard(idx);
+    }
+    else if(phase==='ALBINO_CREATURE_SELECT_CARD'&&canPlayerRespondWithFireHandCard()){
+      albinoCreatureSelectCard(idx);
     }
     else if((phase==='CAVE_DUEL_SELECT_CARD'&&isLocalCurrentTurn(gs))||canPlayerRespondWithAnyHandCard()){
       caveDuelSelectCard(idx);
@@ -6715,6 +7049,10 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       return targetPlayer&&idx<targetPlayer.hand.length;
     }
     if((phase==='CAVE_DUEL_SELECT_CARD'&&isLocalCurrentTurn(gs))||canPlayerRespondWithAnyHandCard())return true;
+    if(phase==='ALBINO_CREATURE_SELECT_CARD'&&canPlayerRespondWithFireHandCard()){
+      const fireCardIds=gs.abilityData?.fireCardIds||[];
+      return fireCardIds.includes(c?.id);
+    }
     // God cards in ACTION phase are always clickable; worshipFromHand resolves upgrade/worship/convert.
     if(phase==='ACTION'&&isVisualPlayerTurn&&c.isGod){
       return true;
@@ -6884,6 +7222,29 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         </div>
       )}
 
+      {!suppressAnim&&canShowTurnDecisionModal&&phase==='ETHEREALIZE_DECISION'&&gs.abilityData&&(
+        <div style={{position:'fixed',inset:0,display:'flex',alignItems:'center',justifyContent:'center',zIndex:430,pointerEvents:'none'}}>
+          <div style={{background:'#0c1118f2',border:'2px solid #87a9c8',boxShadow:'0 0 60px #87a9c833, 0 0 120px #000c',borderRadius:4,padding:'22px 26px',maxWidth:540,width:'92%',textAlign:'center',pointerEvents:'auto'}}>
+            <div style={{fontFamily:"'Cinzel',serif",color:'#b9d8f0',fontSize:16,letterSpacing:2,marginBottom:12}}>── 半物质化 ──</div>
+            <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#d8c078',fontSize:14,lineHeight:1.6,marginBottom:18}}>
+              {isLocalSeatIndex(gs.abilityData?.targetIdx)
+                ? `是否消耗1层虚化，转移即将失去的 ${gs.abilityData?.lostHp||0} HP / ${gs.abilityData?.lostSan||0} SAN？`
+                : `等待 ${gs.players[gs.abilityData?.targetIdx]?.name||'目标'} 选择是否消耗虚化…`}
+            </div>
+            {isLocalSeatIndex(gs.abilityData?.targetIdx)?(
+              <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
+                <button onClick={()=>resolveEtherealizeRedirect(true)} style={{padding:'8px 18px',background:'#101a22',border:'1.5px solid #87a9c8',color:'#d9efff',fontFamily:"'Cinzel',serif",fontSize:13,cursor:'pointer',borderRadius:3}}>是</button>
+                <button onClick={()=>resolveEtherealizeRedirect(false)} style={{padding:'8px 18px',background:'#100c08',border:'1.5px solid #6a5430',color:'#c8a96e',fontFamily:"'Cinzel',serif",fontSize:13,cursor:'pointer',borderRadius:3}}>否</button>
+              </div>
+            ):(
+              <div style={{fontFamily:"'Cinzel',serif",fontSize:12,color:'#a07838',letterSpacing:1}}>
+                请等待其他玩家选择…
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {!suppressAnim&&phase==='TORTOISE_ORACLE_SELECT'&&gs.abilityData&&(
         <TortoiseOracleModal abilityData={gs.abilityData} onSelect={tortoiseOracleSelect} myTurn={myTurn} expansionKey={gs.expansionKey}/>
       )}
@@ -7014,6 +7375,15 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             </div>
           </div>
         </div>
+      )}
+
+      {!suppressAnim&&phase==='DECIPHER_STONE_CARVING'&&gs.abilityData&&(
+        <DecipherStoneCarvingOverlay
+          revealedCards={gs.abilityData?.revealedCards||[]}
+          actorName={isLocalSeatIndex(gs.abilityData?.playerIndex)?'你':(gs.players?.[gs.abilityData?.playerIndex]?.name||'该玩家')}
+          readOnly={!isLocalSeatIndex(gs.abilityData?.playerIndex)}
+          onConfirm={decipherStoneCarvingConfirm}
+        />
       )}
 
       <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',gap:7}}>
@@ -7149,6 +7519,48 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                 <div style={{fontSize:fontSizes.small,color:GOD_DEFS[me.godName]?.col,fontFamily:"'Cinzel',serif",letterSpacing:0.5,fontWeight:700,textShadow:`0 0 6px ${GOD_DEFS[me.godName]?.col}66`}}>{GOD_DEFS[me.godName]?.name}</div>
                 <div style={{fontSize:fontSizes.small,color:'#d4b0b0',fontFamily:"'IM Fell English',serif",fontStyle:'italic'}}>{GOD_DEFS[me.godName]?.power} Lv.{me.godLevel}</div>
                 <div style={{fontSize:fontSizes.tiny,color:'#a07878',fontStyle:'italic',marginTop:1,lineHeight:1.4}}>{GOD_DEFS[me.godName]?.levels[(me.godLevel||1)-1]?.desc}</div>
+              </div>
+            )}
+            {(visualMe.etherealizeStacks||0)>0&&(
+              <div
+                title="虚化：回合外即将失去 HP/SAN 时，可消耗 1 层令相邻角色失去"
+                style={{
+                  marginTop:4,
+                  display:'inline-flex',
+                  alignSelf:'flex-start',
+                  fontSize:fontSizes.small,
+                  color:'#b9d8f0',
+                  background:'#0c1118',
+                  border:'1px solid #87a9c866',
+                  borderRadius:3,
+                  padding:'2px 6px',
+                  fontFamily:"'Cinzel',serif",
+                  letterSpacing:0.5,
+                  boxShadow:'0 0 8px #87a9c822',
+                }}
+              >
+                虚化 {visualMe.etherealizeStacks}
+              </div>
+            )}
+            {(visualMe.poisonStacks||0)>0&&(
+              <div
+                title="中毒：回合开始时失去等同层数的 HP，并消耗 1 层"
+                style={{
+                  marginTop:4,
+                  display:'inline-flex',
+                  alignSelf:'flex-start',
+                  fontSize:fontSizes.small,
+                  color:'#b7f5a8',
+                  background:'#0d160a',
+                  border:'1px solid #74c36566',
+                  borderRadius:3,
+                  padding:'2px 6px',
+                  fontFamily:"'Cinzel',serif",
+                  letterSpacing:0.5,
+                  boxShadow:'0 0 8px #74c36522',
+                }}
+              >
+                中毒 {visualMe.poisonStacks}
               </div>
             )}
             {!!me.zoneCards?.length&&(
@@ -7410,13 +7822,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
               const isBuryAliveSelected=phase==='BURY_ALIVE_SELECT'&&canPlayerRespondWithAnyHandCard()&&gs.abilityData?.buryAliveSelectedIndex===i;
               const isSel=(phase==='DISCARD_PHASE'&&isLocalCurrentTurn(gs)&&(gs.abilityData.discardSelected||[]).includes(i))||isMobileArmedGod||isBuryAliveSelected;
               const isMatch=phase==='HUNT_CONFIRM'&&gs.abilityData?.revCard&&cardsHuntMatch(c,gs.abilityData.revCard);
+              const isAlbinoFireCard=phase==='ALBINO_CREATURE_SELECT_CARD'&&canPlayerRespondWithFireHandCard()&&(gs.abilityData?.fireCardIds||[]).includes(c?.id);
               const isGodUpgrade=c.isGod&&visualMe.godName===c.godKey&&(visualMe.godLevel||0)<3;
               const canUpgradeNow=isGodUpgrade&&phase==='ACTION'&&isVisualPlayerTurn;
               const canWorshipNow=c.isGod&&!isGodUpgrade&&phase==='ACTION'&&isVisualPlayerTurn;
               const showWorshipHint=canWorshipNow&&(!isMobile||isMobileArmedGod);
               const isBlackGoatPulsing=blackGoatPulsePid===0&&isBlackGoatYoung(c);
               return(<div key={c.id} ref={el=>{if(el)mobileGodCardRefs.current.set(i,el);else mobileGodCardRefs.current.delete(i);}} className={isBlackGoatPulsing?'black-goat-card-pulse':''} style={{position:'relative',display:'inline-block'}}>
-                <DDCard card={c} onClick={clickable?()=>handleMyCardClick(i):undefined} disabled={!clickable} selected={isSel} highlight={isMatch||canWorshipNow||canUpgradeNow} godLevel={visualMe.godName===c.godKey?visualMe.godLevel:0} compact={isMobile} holderId={0}/>
+                <DDCard card={c} onClick={clickable?()=>handleMyCardClick(i):undefined} disabled={!clickable} selected={isSel} highlight={isMatch||canWorshipNow||canUpgradeNow||isAlbinoFireCard} godLevel={visualMe.godName===c.godKey?visualMe.godLevel:0} compact={isMobile} holderId={0}/>
                 {canUpgradeNow&&<div style={{position:'absolute',top:-7,left:'50%',transform:'translateX(-50%)',fontFamily:"'Cinzel',serif",fontSize:8,color:'#c8a96e',background:'#0a0705',border:'1px solid #8a6020',borderRadius:2,padding:'1px 4px',pointerEvents:'none',whiteSpace:'nowrap',zIndex:10}}>⬆ 升级邪神之力</div>}
                 {showWorshipHint&&<div style={{position:'absolute',top:-7,left:'50%',transform:'translateX(-50%)',fontFamily:"'Cinzel',serif",fontSize:8,color:'#b080e0',background:'#0a0412',border:'1px solid #7040aa',borderRadius:2,padding:'1px 4px',pointerEvents:'none',whiteSpace:'nowrap',zIndex:10}}>⛧ 点击信仰</div>}
               </div>);

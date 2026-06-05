@@ -8,7 +8,11 @@
   makeInspectionMeta,
   isBlackGoatYoung,
   isTsathogguaSlime,
+  isGeomagneticRestore,
   killPlayerState,
+  tryVritraImmortal,
+  buildEtherealizeLoss,
+  buildEtherealizeRedirectDecision,
   buildTsathogguaSlimeBalanceDecision,
 } from './coreUtils';
 import { aiShouldKeepZoneCard } from './ai';
@@ -45,7 +49,12 @@ function getDebugForceTargetIndex(target) {
 }
 
 function applyDebugForceDrawToTop(gs, next, deck) {
-  // [TEMP-DEBUG-MP] 临时放开联机：原本 if (gs?._isMP) { 清空调试字段; return false; }
+  if (gs?._isMP) {
+    gs.debugForceCard = null;
+    gs.debugForceCardTarget = null;
+    gs.debugForceCardKeep = null;
+    return false;
+  }
   const targetIndex = getDebugForceTargetIndex(gs?.debugForceCardTarget);
   if (!gs?.debugForceCard || targetIndex !== next) return false;
   deck.unshift(gs.debugForceCard);
@@ -57,7 +66,11 @@ function applyDebugForceDrawToTop(gs, next, deck) {
 }
 
 function consumeDebugForceKeepOverride(gs, ci) {
-  // [TEMP-DEBUG-MP] 临时放开联机：原本 if (gs?._isMP) { 清空; return 'auto'; }
+  if (gs?._isMP) {
+    gs.debugForceCardKeepPending = null;
+    gs.debugForceCardKeepTarget = null;
+    return 'auto';
+  }
   if (gs?.debugForceCardKeepTarget !== ci || !gs?.debugForceCardKeepPending) return 'auto';
   const keepOverride = gs.debugForceCardKeepPending;
   gs.debugForceCardKeepPending = null;
@@ -117,8 +130,27 @@ function _chooseAiShuTarget(ci, P) {
   return others.length > 0 ? others[Math.floor(Math.random() * others.length)] : ci;
 }
 
-export function applySanLossToPlayerWithInspection(targetIndex, amount, startIndex, P, D, Disc, L, inspectionMeta, reason = 'SAN损失') {
+export function applySanLossToPlayerWithInspection(targetIndex, amount, startIndex, P, D, Disc, L, inspectionMeta, reason = 'SAN损失', options = {}) {
   const beforePlayers = copyPlayers(P);
+  const etherealizeLoss = options.skipEtherealize ? null : buildEtherealizeLoss({
+      players: P,
+      targetIdx: targetIndex,
+      currentTurn: startIndex,
+      lostSan: amount,
+      source: reason,
+    });
+  if (etherealizeLoss) {
+    return {
+      P,
+      D,
+      Disc,
+      L,
+      inspectionMeta: {
+        ...inspectionMeta,
+        abilityData: buildEtherealizeRedirectDecision([etherealizeLoss], { _turnOwner: startIndex }),
+      },
+    };
+  }
   P[targetIndex].san = clamp(P[targetIndex].san - amount);
   const nextInspectionMeta = appendStatEventsToInspectionMeta(
     inspectionMeta,
@@ -300,6 +332,38 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
   let P = copyPlayers(ps), D = [...deck], Disc = [...disc];
   if (!D.length && Disc.length) { D = shuffle(Disc); Disc = []; }
   if (!D.length) return { P, D, Disc, drawnCard: null, effectMsgs: [], needsDecision: false };
+
+  const whoName = ci === 0 ? '你' : P[ci].name;
+
+  // 地磁反转：从弃牌堆暗抽
+  if (gs?.geomagneticReversalActive && Disc.length > 0) {
+    const shuffledDisc = shuffle([...Disc]);
+    Disc = [];
+    const drawnFromDisc = shuffledDisc.shift();
+
+    if (isGeomagneticRestore(drawnFromDisc)) {
+      // 反转复原：消除地磁反转效果，不进入手牌
+      return {
+        P, D, Disc: shuffledDisc,
+        drawnCard: null,
+        effectMsgs: [`【反转复原】${whoName} 抽到了反转复原，地磁反转效果被消除！`],
+        needsDecision: false,
+        statePatch: { geomagneticReversalActive: false },
+      };
+    }
+
+    // 暗抽：直接进入手牌，效果不触发
+    P[ci].hand.push(drawnFromDisc);
+    return {
+      P, D, Disc: shuffledDisc,
+      drawnCard: drawnFromDisc,
+      effectMsgs: [`【地磁反转】${whoName} 从弃牌堆暗抽了一张牌`],
+      needsDecision: false,
+      kept: true,
+      statePatch: { geomagneticReversalActive: true },
+    };
+  }
+
   if (gs?._zhuRequestDecision && !gs?._zhuBypassTopGuard) {
     const zhuGuard = getZhuTopGuard({ ...gs, players: P, deck: D }, D);
     if (zhuGuard) {
@@ -317,7 +381,6 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
   }
 
   const drawnCard = D.shift();
-  const whoName = ci === 0 ? '你' : P[ci].name;
 
   // God card handling
   if (drawnCard.isGod) {
@@ -516,6 +579,35 @@ function turnStartEvent_LinkHeal(P, pendingLinkHeals, L, inspectionMeta, statLog
   return { P, L, inspectionMeta };
 }
 
+// [PASSIVE_OTHER] 中毒回合开始伤害
+function turnStartEvent_PoisonDamage(P, next, D, Disc, L, gs, inspectionMeta, statLogs = null) {
+  if (P[next].isDead) return { P, D, Disc, L, inspectionMeta, winAfterPoison: null };
+  const poisonStacks = P[next].poisonStacks || 0;
+  if (poisonStacks <= 0) return { P, D, Disc, L, inspectionMeta, winAfterPoison: null };
+
+  const beforePlayers = copyPlayers(P);
+  P[next].hp = clamp(P[next].hp - poisonStacks);
+  P[next].poisonStacks = Math.max(0, poisonStacks - 1);
+  if (P[next].poisonStacks <= 0) delete P[next].poisonStacks;
+  const msg = `【中毒】${P[next].name} 失去 ${poisonStacks} HP，消耗1层中毒`;
+  L.push(msg);
+  if (statLogs) statLogs.push(msg);
+  inspectionMeta = appendStatEventsToInspectionMeta(
+    inspectionMeta,
+    beforePlayers,
+    P,
+    [msg],
+    '中毒',
+  );
+  if (P[next].hp <= 0) {
+    if (!tryVritraImmortal(P, next, next, D, Disc, L)) {
+      killPlayerState(P, next, Disc, L);
+    }
+  }
+  const winAfterPoison = checkWin(P, gs._isMP);
+  return { P, D, Disc, L, inspectionMeta, winAfterPoison };
+}
+
 // [ACTIVE_GOD] NYA 偷身份
 function turnStartEvent_NyaBorrow(P, next, L, gs) {
   if (P[next].godName !== 'NYA' || P[next].godLevel < 1 || hasGodPowerImmunity(P[next])) return { shouldEnterPhase: false };
@@ -608,32 +700,11 @@ export function startNextTurn(gs, opts = {}) {
   const tsgSlimeGrant = grantTsathogguaSlimeAtEndTurn(P, gs.currentTurn, L);
   if (tsgSlimeGrant) tsgSlimeGrantEvents.push(tsgSlimeGrant);
   gs = { ...gs, _tsgSlimeGrantEvents: tsgSlimeGrantEvents.length ? tsgSlimeGrantEvents : null };
-  const pendingExtraTurnOwner = gs.pendingExtraTurnOwner;
-  const pendingExtraTurnAfterPlayer = gs.pendingExtraTurnAfterPlayer;
-  const extraTurnDue = pendingExtraTurnOwner != null
-    && (pendingExtraTurnAfterPlayer == null || pendingExtraTurnAfterPlayer === gs.currentTurn)
-    && (gs.pendingExtraTurnAfterMinTurn == null || (gs.turn || 0) >= gs.pendingExtraTurnAfterMinTurn);
-  const hasPendingExtraTurn = extraTurnDue && P[pendingExtraTurnOwner] && !P[pendingExtraTurnOwner].isDead;
-  const shouldClearExpiredExtraTurn = extraTurnDue && !hasPendingExtraTurn;
-  const resumeFromExtraTurn = !hasPendingExtraTurn && gs._extraTurnResumeFrom != null ? gs._extraTurnResumeFrom : null;
-  const turnBase = resumeFromExtraTurn != null ? resumeFromExtraTurn : gs.currentTurn;
-  if (hasPendingExtraTurn) {
-    next = pendingExtraTurnOwner;
-  } else {
-    for (let i = 1; i <= N; i++) { next = (turnBase + i * turnDir + N) % N; if (!P[next].isDead) break; }
-  }
+  for (let i = 1; i <= N; i++) { next = (gs.currentTurn + i * turnDir + N) % N; if (!P[next].isDead) break; }
   const nextProliferatingZ = clearExpiredProliferatingZ(gs, gs.currentTurn);
   gs = nextProliferatingZ === gs.proliferatingZ
     ? gs
     : { ...gs, proliferatingZ: nextProliferatingZ, proliferatingZQueue: [] };
-  const extraTurnPatch = hasPendingExtraTurn
-    ? { pendingExtraTurnOwner: null, pendingExtraTurnAfterPlayer: null, pendingExtraTurnAfterMinTurn: null, _extraTurnResumeFrom: gs.currentTurn }
-    : resumeFromExtraTurn != null
-      ? { pendingExtraTurnOwner: null, _extraTurnResumeFrom: null }
-      : shouldClearExpiredExtraTurn
-        ? { pendingExtraTurnOwner: null, pendingExtraTurnAfterPlayer: null, pendingExtraTurnAfterMinTurn: null }
-        : {};
-  gs = { ...gs, ...extraTurnPatch };
   // 增加回合数
   const newTurn = (gs.turn || 0) + 1;
   const newTurnKey = (gs._turnKey || 0) + 1;
@@ -694,6 +765,10 @@ export function startNextTurn(gs, opts = {}) {
     if (inspectionMeta?.abilityData?.type === 'tsgSlimeBalance') {
       return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, phase: 'TSG_SLIME_BALANCE', abilityData: { ...inspectionMeta.abilityData, _turnOwner: next }, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
     }
+    // [PASSIVE_OTHER] 中毒回合开始伤害
+    const poison = turnStartEvent_PoisonDamage(P, next, D, Disc, L, gs, inspectionMeta);
+    P = poison.P; D = poison.D; Disc = poison.Disc; L = poison.L; inspectionMeta = poison.inspectionMeta; gs = { ...gs, ...inspectionMeta };
+    if (poison.winAfterPoison) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: poison.winAfterPoison, multiplyUsed: false };
     // [PASSIVE_OTHER] 两人一绳治愈
     const link = turnStartEvent_LinkHeal(P, pendingLinkHeals, L, inspectionMeta);
     P = link.P; L = link.L; inspectionMeta = link.inspectionMeta; gs = { ...gs, ...inspectionMeta };
@@ -760,6 +835,10 @@ export function startNextTurn(gs, opts = {}) {
   if (inspectionMeta?.abilityData?.type === 'tsgSlimeBalance') {
     return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, phase: 'TSG_SLIME_BALANCE', abilityData: { ...inspectionMeta.abilityData, _turnOwner: next }, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
   }
+  // [PASSIVE_OTHER] 中毒回合开始伤害
+  const poison = turnStartEvent_PoisonDamage(P, next, D, Disc, L, gs, inspectionMeta, statLogs);
+  P = poison.P; D = poison.D; Disc = poison.Disc; L = poison.L; inspectionMeta = poison.inspectionMeta; gs = { ...gs, ...inspectionMeta };
+  if (poison.winAfterPoison) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: poison.winAfterPoison, multiplyUsed: false };
   // [PASSIVE_OTHER] 两人一绳治愈
   const link = turnStartEvent_LinkHeal(P, pendingLinkHeals, L, inspectionMeta, statLogs);
   P = link.P; L = link.L; inspectionMeta = link.inspectionMeta; gs = { ...gs, ...inspectionMeta };
