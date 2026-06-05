@@ -1,4 +1,6 @@
-const ROTATE_GS_TOP_LEVEL_INDEX_FIELDS = ['currentTurn', 'pendingExtraTurnOwner', 'pendingExtraTurnAfterPlayer', '_extraTurnResumeFrom'];
+import { rotateInspectionEvents, rotatePlayersArray, rotateStatEvents } from './rotateEvents';
+
+const ROTATE_GS_TOP_LEVEL_INDEX_FIELDS = ['currentTurn'];
 const ROTATE_GS_TOP_LEVEL_INDEX_ARRAY_FIELDS = ['huntAbandoned'];
 const ROTATE_GAME_OVER_INDEX_FIELDS = ['winnerIdx', 'winnerIdx2'];
 const ROTATE_DRAW_REVEAL_INDEX_FIELDS = ['drawerIdx'];
@@ -10,6 +12,7 @@ const ROTATE_GS_PLAYER_SNAPSHOT_FIELDS = [
   '_playersBeforeSkillAction',
   '_playersBeforeCthDraws',
   '_aiHandLimitBeforePlayers',
+  '_inspectionBeforePlayers',
 ];
 const ROTATE_ABILITYDATA_INDEX_FIELDS = [
   'drawerIdx',
@@ -23,10 +26,9 @@ const ROTATE_ABILITYDATA_INDEX_FIELDS = [
   'roseThornSource',
   'pickSource',
   'targetIdx',
+  'redirectTargetIdx',
   'playerIndex',
   'source',
-  'secretTarget',
-  'guesserIdx',
 ];
 const ROTATE_ABILITYDATA_INDEX_ARRAY_FIELDS = [
   'peekHandTargets',
@@ -36,7 +38,7 @@ const ROTATE_ABILITYDATA_INDEX_ARRAY_FIELDS = [
   'pickOrder',
   'targets',
   'legalTargets',
-  'guessOrder',
+  'adjacentTargets',
 ];
 
 function rotateIndexedFields(obj, fields, rotateIndex) {
@@ -63,11 +65,6 @@ function rotateIndexedArrayFields(obj, fields, rotateIndex) {
     }
   });
   return changed ? next : obj;
-}
-
-function rotatePlayersArray(players, myIndex) {
-  if (!Array.isArray(players) || myIndex === 0) return players;
-  return [...players.slice(myIndex), ...players.slice(0, myIndex)];
 }
 
 function rotatePlayerSnapshotFields(obj, fields, myIndex) {
@@ -121,9 +118,11 @@ function rotateAiHuntEvents(events, rotateIndex, myIndex) {
   return events.map(event => ({
     ...event,
     targetIdx: event.targetIdx != null ? rotateIndex(event.targetIdx) : event.targetIdx,
+    sourceIdx: event.sourceIdx != null ? rotateIndex(event.sourceIdx) : event.sourceIdx,
     hunterIdx: event.hunterIdx != null ? rotateIndex(event.hunterIdx) : event.hunterIdx,
     beforePlayers: rotatePlayersArray(event.beforePlayers, myIndex),
     afterDiscardPlayers: rotatePlayersArray(event.afterDiscardPlayers, myIndex),
+    afterDamagePlayers: rotatePlayersArray(event.afterDamagePlayers, myIndex),
     afterPlayers: rotatePlayersArray(event.afterPlayers, myIndex),
   }));
 }
@@ -155,6 +154,15 @@ function rotateApophisTargetEvent(event, rotateIndex) {
   };
 }
 
+function rotateRandomTargetEvents(events, rotateIndex) {
+  if (!Array.isArray(events)) return events;
+  return events.map(event => ({
+    ...event,
+    sourceIdx: event.sourceIdx != null ? rotateIndex(event.sourceIdx) : event.sourceIdx,
+    targetIdx: event.targetIdx != null ? rotateIndex(event.targetIdx) : event.targetIdx,
+  }));
+}
+
 function rotateTimedOutDrawDiscardEvent(event, rotateIndex) {
   if (!event) return event;
   return {
@@ -163,14 +171,86 @@ function rotateTimedOutDrawDiscardEvent(event, rotateIndex) {
   };
 }
 
-function rotateEarthquakeVisualEvent(event, rotateIndex, myIndex) {
+function rotateCardEffectPayload(payload, rotateIndex, myIndex) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+  const rotatedIndices = rotateIndexedFields(payload, ['actorIdx', 'sourceIdx', 'targetIdx', 'playerIdx', 'drawerIdx'], rotateIndex);
+  const rotatedIndexArrays = rotateIndexedArrayFields(rotatedIndices, ['targetIndices', 'hitIndices', 'targets'], rotateIndex);
+  return {
+    ...rotatedIndexArrays,
+    players: rotatePlayersArray(rotatedIndexArrays.players, myIndex),
+    beforePlayers: rotatePlayersArray(rotatedIndexArrays.beforePlayers, myIndex),
+    afterPlayers: rotatePlayersArray(rotatedIndexArrays.afterPlayers, myIndex),
+    discardEvents: Array.isArray(rotatedIndexArrays.discardEvents)
+      ? rotateEarthquakeDiscardEvents(rotatedIndexArrays.discardEvents, rotateIndex, myIndex)
+      : rotatedIndexArrays.discardEvents,
+    statEvents: Array.isArray(rotatedIndexArrays.statEvents)
+      ? rotateStatEvents(rotatedIndexArrays.statEvents, rotateIndex, myIndex)
+      : rotatedIndexArrays.statEvents,
+  };
+}
+
+function rotateCardEffectVisualEvent(event, rotateIndex, myIndex) {
   if (!event) return event;
   return {
     ...event,
+    actorIdx: event.actorIdx != null ? rotateIndex(event.actorIdx) : event.actorIdx,
     beforePlayers: rotatePlayersArray(event.beforePlayers, myIndex),
     discardEvents: Array.isArray(event.discardEvents)
       ? rotateEarthquakeDiscardEvents(event.discardEvents, rotateIndex, myIndex)
       : event.discardEvents,
+    statEvents: Array.isArray(event.statEvents)
+      ? rotateStatEvents(event.statEvents, rotateIndex, myIndex)
+      : event.statEvents,
+    payload: rotateCardEffectPayload(event.payload, rotateIndex, myIndex),
+  };
+}
+
+function rotateAnimQueueStep(step, rotateIndex, myIndex) {
+  if (!step) return step;
+  return {
+    ...step,
+    targetPid: step.targetPid != null ? rotateIndex(step.targetPid) : step.targetPid,
+    targetIdx: step.targetIdx != null ? rotateIndex(step.targetIdx) : step.targetIdx,
+    sourceIdx: step.sourceIdx != null ? rotateIndex(step.sourceIdx) : step.sourceIdx,
+    fromPid: step.fromPid != null && step.fromPid >= 0 ? rotateIndex(step.fromPid) : step.fromPid,
+    toPid: step.toPid != null && step.toPid >= 0 ? rotateIndex(step.toPid) : step.toPid,
+    hitIndices: Array.isArray(step.hitIndices) ? step.hitIndices.map(rotateIndex) : step.hitIndices,
+    players: rotatePlayersArray(step.players, myIndex),
+    beforePlayers: rotatePlayersArray(step.beforePlayers, myIndex),
+    targetStats: rotatePlayersArray(step.targetStats, myIndex),
+    statEvents: rotateStatEvents(step.statEvents, rotateIndex, myIndex),
+    beforeDiscard: Array.isArray(step.beforeDiscard) ? step.beforeDiscard : step.beforeDiscard,
+    discardEvents: Array.isArray(step.discardEvents)
+      ? rotateEarthquakeDiscardEvents(step.discardEvents, rotateIndex, myIndex)
+      : step.discardEvents,
+    visualSetupPatch: step.visualSetupPatch
+      ? {
+        ...step.visualSetupPatch,
+        players: rotatePlayersArray(step.visualSetupPatch.players, myIndex),
+      }
+      : step.visualSetupPatch,
+    visualTimeline: Array.isArray(step.visualTimeline)
+      ? step.visualTimeline.map(item => ({
+        ...item,
+        patch: item?.patch
+          ? { ...item.patch, players: rotatePlayersArray(item.patch.players, myIndex) }
+          : item?.patch,
+      }))
+      : step.visualTimeline,
+  };
+}
+
+function rotateEndlessCorridorReplayVisualEvent(event, rotateIndex, myIndex) {
+  if (!event) return event;
+  return {
+    ...event,
+    actorIdx: event.actorIdx != null ? rotateIndex(event.actorIdx) : event.actorIdx,
+    beforePlayers: rotatePlayersArray(event.beforePlayers, myIndex),
+    beforeDiscard: Array.isArray(event.beforeDiscard) ? event.beforeDiscard : event.beforeDiscard,
+    zhuLight: rotateZhuLightForViewer(event.zhuLight, rotateIndex),
+    queue: Array.isArray(event.queue)
+      ? event.queue.map(step => rotateAnimQueueStep(step, rotateIndex, myIndex))
+      : event.queue,
   };
 }
 
@@ -178,12 +258,19 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
   if (!Array.isArray(events)) return events;
   return events.map(event => {
     if (event?.type === 'timedOutDrawDiscard') return rotateTimedOutDrawDiscardEvent(event, rotateIndex);
-    if (event?.type === 'earthquake') return rotateEarthquakeVisualEvent(event, rotateIndex, myIndex);
+    if (event?.type === 'earthquake' || event?.type === 'cardEffect') return rotateCardEffectVisualEvent(event, rotateIndex, myIndex);
+    if (event?.type === 'endlessCorridorReplay') return rotateEndlessCorridorReplayVisualEvent(event, rotateIndex, myIndex);
     if (event?.type === 'turnStart' || event?.type === 'drawCard' || event?.type === 'handLimitDiscard') {
       return {
         ...event,
         playerIdx: event.playerIdx != null ? rotateIndex(event.playerIdx) : event.playerIdx,
       };
+    }
+    if (event?.type === 'huntResult') {
+      return rotateAiHuntEvents([event], rotateIndex, myIndex)[0];
+    }
+    if (event?.type === 'sphinxResult') {
+      return rotateAnimSphinxReveal(event, rotateIndex);
     }
     if (event?.type === 'bewitchGift' || event?.type === 'swapCards' || event?.type === 'huntTarget' || event?.type === 'huntReveal') {
       return {
@@ -195,14 +282,7 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
     if (event?.type === 'statEvents') {
       return {
         ...event,
-        statEvents: Array.isArray(event.statEvents)
-          ? event.statEvents.map(statEvent => ({
-            ...statEvent,
-            target: statEvent?.target != null ? rotateIndex(statEvent.target) : statEvent?.target,
-            pair: Array.isArray(statEvent?.pair) ? statEvent.pair.map(rotateIndex) : statEvent?.pair,
-            players: rotatePlayersArray(statEvent?.players, myIndex),
-          }))
-          : event.statEvents,
+        statEvents: rotateStatEvents(event.statEvents, rotateIndex, myIndex),
       };
     }
     return event;
@@ -229,9 +309,13 @@ export function rotateGsForViewer(gs, myIndex) {
     zhuLight,
     ...(gs._earthquakeDiscardEvents ? { _earthquakeDiscardEvents: rotateEarthquakeDiscardEvents(gs._earthquakeDiscardEvents, rotateIndex, myIndex) } : {}),
     ...(gs._aiHuntEvents ? { _aiHuntEvents: rotateAiHuntEvents(gs._aiHuntEvents, rotateIndex, myIndex) } : {}),
+    ...(gs._statEvents ? { _statEvents: rotateStatEvents(gs._statEvents, rotateIndex, myIndex) } : {}),
+    ...(gs._inspectionEvents ? { _inspectionEvents: rotateInspectionEvents(gs._inspectionEvents, rotateIndex, myIndex) } : {}),
+    ...(gs._inspectionTarget != null ? { _inspectionTarget: rotateIndex(gs._inspectionTarget) } : {}),
     ...(gs._animMultiplyEvent ? { _animMultiplyEvent: rotateAnimMultiplyEvent(gs._animMultiplyEvent, rotateIndex) } : {}),
     ...(gs._animSphinxReveal ? { _animSphinxReveal: rotateAnimSphinxReveal(gs._animSphinxReveal, rotateIndex) } : {}),
     ...(gs._apophisTargetEvent ? { _apophisTargetEvent: rotateApophisTargetEvent(gs._apophisTargetEvent, rotateIndex) } : {}),
+    ...(gs._randomTargetEvents ? { _randomTargetEvents: rotateRandomTargetEvents(gs._randomTargetEvents, rotateIndex) } : {}),
     ...(gs._mpTimedOutDrawDiscard ? { _mpTimedOutDrawDiscard: rotateTimedOutDrawDiscardEvent(gs._mpTimedOutDrawDiscard, rotateIndex) } : {}),
     ...(gs._visualEvents ? { _visualEvents: rotateVisualEvents(gs._visualEvents, rotateIndex, myIndex) } : {}),
   };
@@ -296,19 +380,19 @@ export function isLocalDamageLinkSourcePhase(gs) {
   return gs?.phase === 'DAMAGE_LINK_SELECT_TARGET' && isLocalActorSeat(gs, gs?.abilityData?.damageLinkSource);
 }
 
-export function isLocalSemiMaterializeSourcePhase(gs) {
-  return gs?.phase === 'SEMI_MATERIALIZE_TARGET' && isLocalActorSeat(gs, gs?.abilityData?.source);
+export function isLocalEtherealizeTargetPhase(gs) {
+  return gs?.phase === 'ETHEREALIZE_SELECT_TARGET' && isLocalSeatIndex(gs?.abilityData?.targetIdx);
 }
 
 export function canLocalActOnTargetSelectionPhase(gs) {
   const phase = gs?.phase;
   return (
     (
-      ['SWAP_SELECT_TARGET', 'HUNT_SELECT_TARGET', 'BEWITCH_SELECT_TARGET', 'ZONE_SWAP_SELECT_TARGET', 'PEEK_HAND_SELECT_TARGET', 'CAVE_DUEL_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET', 'MULTIPLY_SELECT_TARGET', 'SHU_SELECT_TARGET', 'SEMI_MATERIALIZE_TARGET'].includes(phase)
+      ['SWAP_SELECT_TARGET', 'HUNT_SELECT_TARGET', 'BEWITCH_SELECT_TARGET', 'ZONE_SWAP_SELECT_TARGET', 'PEEK_HAND_SELECT_TARGET', 'CAVE_DUEL_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET', 'MULTIPLY_SELECT_TARGET', 'SHU_SELECT_TARGET'].includes(phase)
       && isLocalCurrentTurn(gs)
     )
     || isLocalDamageLinkSourcePhase(gs)
-    || isLocalSemiMaterializeSourcePhase(gs)
+    || isLocalEtherealizeTargetPhase(gs)
   );
 }
 

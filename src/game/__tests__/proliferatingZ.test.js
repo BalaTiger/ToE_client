@@ -36,7 +36,7 @@ describe('proliferatingZ', () => {
     expect(players[1].hand).toHaveLength(0);
   });
 
-  it('在发动者本回合结束时清除状态', () => {
+  it('在当前执行回合结束时清除状态', () => {
     const state = makeProliferatingZState(2, 4);
     expect(clearExpiredProliferatingZ({ proliferatingZ: state }, 2)).toBeNull();
     expect(clearExpiredProliferatingZ({ proliferatingZ: state }, 1)).toBe(state);

@@ -11,9 +11,19 @@ export const VISUAL_EVENT = {
   SWAP_CARDS: 'swapCards',
   HUNT_TARGET: 'huntTarget',
   HUNT_REVEAL: 'huntReveal',
+  HUNT_RESULT: 'huntResult',
+  SPHINX_RESULT: 'sphinxResult',
   HAND_LIMIT_DISCARD: 'handLimitDiscard',
+  CARD_EFFECT: 'cardEffect',
   EARTHQUAKE: 'earthquake',
+  ENDLESS_CORRIDOR_REPLAY: 'endlessCorridorReplay',
 };
+
+const visualEventInstanceId = Math.random().toString(36).slice(2, 10);
+let actionEventSeq = 0;
+let cardEffectEventSeq = 0;
+let earthquakeEventSeq = 0;
+let endlessCorridorEventSeq = 0;
 
 function cardIdentity(card) {
   if (!card) return 'none';
@@ -41,6 +51,7 @@ function makeVisualEventId(event) {
   if (Array.isArray(event.discardEvents) && event.discardEvents.length) {
     parts.push(`quake${event.discardEvents.map(ev => `${ev?.playerIndex ?? ''}:${cardIdentity(ev?.card)}`).join(',')}`);
   }
+  if (event.effectKey) parts.push(`effect${event.effectKey}`);
   const msgKey = msgsIdentity(event.msgs);
   if (msgKey) parts.push(`m${msgKey}`);
   return parts.join('|');
@@ -102,6 +113,7 @@ export function createBewitchGiftEvent({ sourceIdx = 0, targetIdx = 0, targetNam
   if (!card) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.BEWITCH_GIFT,
+    id: `${VISUAL_EVENT.BEWITCH_GIFT}:${visualEventInstanceId}:${++actionEventSeq}`,
     sourceIdx,
     targetIdx,
     targetName,
@@ -113,6 +125,7 @@ export function createBewitchGiftEvent({ sourceIdx = 0, targetIdx = 0, targetNam
 export function createSwapCardsEvent({ sourceIdx = 0, targetIdx = 0, sourceCount = 1, targetCount = 1, msgs = [] } = {}) {
   return withVisualEventMeta({
     type: VISUAL_EVENT.SWAP_CARDS,
+    id: `${VISUAL_EVENT.SWAP_CARDS}:${visualEventInstanceId}:${++actionEventSeq}`,
     sourceIdx,
     targetIdx,
     sourceCount,
@@ -124,6 +137,7 @@ export function createSwapCardsEvent({ sourceIdx = 0, targetIdx = 0, sourceCount
 export function createHuntTargetEvent({ sourceIdx = 0, targetIdx = 0, msgs = [] } = {}) {
   return withVisualEventMeta({
     type: VISUAL_EVENT.HUNT_TARGET,
+    id: `${VISUAL_EVENT.HUNT_TARGET}:${visualEventInstanceId}:${++actionEventSeq}`,
     sourceIdx,
     targetIdx,
     msgs: Array.isArray(msgs) ? msgs : [],
@@ -134,9 +148,37 @@ export function createHuntRevealEvent({ sourceIdx = 0, targetIdx = 0, card, msgs
   if (!card) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.HUNT_REVEAL,
+    id: `${VISUAL_EVENT.HUNT_REVEAL}:${visualEventInstanceId}:${++actionEventSeq}`,
     sourceIdx,
     targetIdx,
     card,
+    msgs: Array.isArray(msgs) ? msgs : [],
+  }, 'action');
+}
+
+export function createHuntResultEvent(event = {}) {
+  if (!event || event.hunterIdx == null || event.targetIdx == null) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.HUNT_RESULT,
+    id: `${VISUAL_EVENT.HUNT_RESULT}:${visualEventInstanceId}:${++actionEventSeq}`,
+    skipIntro: true,
+    skipReveal: true,
+    ...event,
+    sourceIdx: event.sourceIdx ?? event.hunterIdx,
+    hunterIdx: event.hunterIdx,
+    targetIdx: event.targetIdx,
+    msgs: Array.isArray(event.msgs) ? event.msgs : [],
+  }, 'action');
+}
+
+export function createSphinxResultEvent({ actorIdx = 0, card, guessCorrect = false, msgs = [] } = {}) {
+  if (!card) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.SPHINX_RESULT,
+    id: `${VISUAL_EVENT.SPHINX_RESULT}:${visualEventInstanceId}:${++actionEventSeq}`,
+    actorIdx,
+    card,
+    guessCorrect: !!guessCorrect,
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'action');
 }
@@ -153,8 +195,34 @@ export function createHandLimitDiscardEvent({ playerIdx = 0, playerName = '该�
   }, 'turn');
 }
 
-export function buildHuntRevealStepFromVisualEvent(event, state) {
-  if (!event?.card || event.targetIdx == null || event.targetIdx === 0) return null;
+export function createEndlessCorridorReplayEvent({
+  actorIdx = 0,
+  actorName = '该玩家',
+  queue = [],
+  msgs = [],
+  beforePlayers = null,
+  beforeDiscard = null,
+  zhuLight = null,
+  id = null,
+} = {}) {
+  const replayQueue = Array.isArray(queue) ? queue.filter(Boolean) : [];
+  if (!replayQueue.length) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY,
+    id: id || `${VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY}:${visualEventInstanceId}:${++endlessCorridorEventSeq}`,
+    actorIdx,
+    actorName,
+    queue: replayQueue,
+    msgs: Array.isArray(msgs) ? msgs : [],
+    beforePlayers: Array.isArray(beforePlayers) ? beforePlayers : null,
+    beforeDiscard: Array.isArray(beforeDiscard) ? beforeDiscard : null,
+    zhuLight: zhuLight || null,
+  }, 'turn');
+}
+
+export function buildHuntRevealStepFromVisualEvent(event, state, opts = {}) {
+  if (!event?.card || event.targetIdx == null) return null;
+  if (event.targetIdx === 0 && !opts.allowTargetZero) return null;
   const targetIdx = event.targetIdx;
   const targetName = event.targetName || state?.players?.[targetIdx]?.name || '对方';
   return {
@@ -172,12 +240,41 @@ export function createEarthquakeEvent({
   discardEvents = [],
   msgs = [],
 } = {}) {
+  return createCardEffectEvent({
+    effectKey: 'earthquake',
+    id: `${VISUAL_EVENT.EARTHQUAKE}:${visualEventInstanceId}:${++earthquakeEventSeq}`,
+    beforePlayers,
+    beforeDiscard,
+    discardEvents,
+    msgs,
+  });
+}
+
+export function createCardEffectEvent({
+  effectKey,
+  card = null,
+  actorIdx = null,
+  id = null,
+  beforePlayers = [],
+  beforeDiscard = [],
+  discardEvents = [],
+  statEvents = [],
+  msgs = [],
+  payload = {},
+} = {}) {
+  if (!effectKey) return null;
   return withVisualEventMeta({
-    type: VISUAL_EVENT.EARTHQUAKE,
+    type: VISUAL_EVENT.CARD_EFFECT,
+    id: id || `${VISUAL_EVENT.CARD_EFFECT}:${effectKey}:${visualEventInstanceId}:${++cardEffectEventSeq}`,
+    effectKey,
+    card: card || null,
+    actorIdx,
     beforePlayers: Array.isArray(beforePlayers) ? beforePlayers : [],
     beforeDiscard: Array.isArray(beforeDiscard) ? beforeDiscard : [],
     discardEvents: Array.isArray(discardEvents) ? discardEvents.filter(Boolean) : [],
+    statEvents: Array.isArray(statEvents) ? statEvents.filter(Boolean) : [],
     msgs: Array.isArray(msgs) ? msgs : [],
+    payload: payload && typeof payload === 'object' ? payload : {},
   }, 'effect');
 }
 
@@ -366,7 +463,48 @@ export function buildStatStepsFromVisualEvents(state, players) {
 }
 
 export function buildEarthquakeStepFromVisualEvents(state) {
-  const event = getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.EARTHQUAKE);
+  const event = getEarthquakeVisualEvent(state);
+  if (!event) return null;
+  return buildCardEffectAnimStep(event, state);
+}
+
+export function buildCardEffectAnimStep(event, state) {
+  if (!event) return null;
+  if (event.effectKey === 'earthquake' || event.type === VISUAL_EVENT.EARTHQUAKE) {
+    return buildEarthquakeAnimStep({
+      beforePlayers: event.beforePlayers,
+      beforeDiscard: event.beforeDiscard,
+      discardEvents: event.discardEvents,
+      finalPlayers: state?.players,
+      msgs: event.msgs,
+    });
+  }
+  return null;
+}
+
+export function getCardEffectVisualEvents(state, effectKey = null) {
+  const events = getVisualEvents(state).filter(ev => (
+    ev?.type === VISUAL_EVENT.CARD_EFFECT ||
+    ev?.type === VISUAL_EVENT.EARTHQUAKE
+  ));
+  const normalized = events.map(ev => (
+    ev.type === VISUAL_EVENT.EARTHQUAKE
+      ? { ...ev, type: VISUAL_EVENT.CARD_EFFECT, effectKey: 'earthquake' }
+      : ev
+  ));
+  return effectKey ? normalized.filter(ev => ev.effectKey === effectKey) : normalized;
+}
+
+export function buildCardEffectStepsFromVisualEvents(state, oldState = null, predicate = null) {
+  const oldIds = new Set(getVisualEventIds(getCardEffectVisualEvents(oldState)));
+  return getCardEffectVisualEvents(state)
+    .filter(event => event?.id && !oldIds.has(event.id))
+    .filter(event => (typeof predicate === 'function' ? predicate(event) : true))
+    .map(event => buildCardEffectAnimStep(event, state))
+    .filter(Boolean);
+}
+
+export function buildEarthquakeStepFromVisualEvent(event, state) {
   if (!event) return null;
   return buildEarthquakeAnimStep({
     beforePlayers: event.beforePlayers,
@@ -375,6 +513,15 @@ export function buildEarthquakeStepFromVisualEvents(state) {
     finalPlayers: state?.players,
     msgs: event.msgs,
   });
+}
+
+export function getEarthquakeVisualEvent(state) {
+  const events = getCardEffectVisualEvents(state, 'earthquake');
+  return events.length ? events[events.length - 1] : undefined;
+}
+
+export function getEndlessCorridorReplayVisualEvent(state) {
+  return getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY && Array.isArray(ev.queue) && ev.queue.length);
 }
 
 export function getBewitchGiftVisualEvent(state) {
@@ -391,6 +538,14 @@ export function getHuntTargetVisualEvent(state) {
 
 export function getHuntRevealVisualEvent(state) {
   return getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.HUNT_REVEAL && ev.targetIdx != null && ev.card);
+}
+
+export function getHuntResultVisualEvent(state) {
+  return getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.HUNT_RESULT && ev.hunterIdx != null && ev.targetIdx != null);
+}
+
+export function getSphinxResultVisualEvent(state) {
+  return getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.SPHINX_RESULT && ev.actorIdx != null && ev.card);
 }
 
 export function buildHuntRevealStepFromVisualEvents(state) {

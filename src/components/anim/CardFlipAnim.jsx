@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { CS, GOD_CS, getCardBackImage } from '../../constants/card';
 import { CardCodeLabel } from '../cards';
 import { getZoneCardPolarity } from '../../game/coreUtils';
@@ -62,7 +62,7 @@ function FlowerBloom(){
   );
 }
 
-function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guessCorrect,expansionKey='temporary'}){
+function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guessCorrect,expansionKey='地神的潜影'}){
   const [traveled,setTraveled]=React.useState(skipTravel);
   React.useEffect(()=>{
     if(skipTravel){setTraveled(true);return undefined;}
@@ -306,3 +306,4 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
 }
 
 export { FlowerBloom, CardFlipAnim };
+

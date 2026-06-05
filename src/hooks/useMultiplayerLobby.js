@@ -169,6 +169,9 @@ export function useMultiplayerLobby({ socketRef }) {
   }
 
   function closeRoomModal() {
+    if (socketRef.current && roomModalRef.current?.roomId) {
+      socketRef.current.emit('leaveRoom', { uuid: playerUUID, roomId: roomModalRef.current.roomId });
+    }
     setRoomModal(null);
     if (socketRef.current) {
       socketRef.current.disconnect();

@@ -310,17 +310,31 @@ describe('applyFx', () => {
     randomSpy.mockRestore();
   });
 
-  it('semiMaterializeTeach: 进入悄悄指定目标阶段', () => {
+  it('etherealize: 根据当前手牌数获得虚化层数', () => {
     const players = makeStandardPlayers(3);
+    players[0].hand = [{ id: 'h1' }, { id: 'h2' }, { id: 'h3' }];
     const gs = makeGs({ players });
-    const res = applyFx({ type: 'semiMaterializeTeach', name: '传授半物质化' }, 0, null, players, [], [], gs);
+    const res = applyFx({ id: 'eth-1', type: 'etherealize', name: '半物质化' }, 0, null, players, [], [], gs);
 
-    expect(res.statePatch.abilityData).toMatchObject({
-      type: 'semiMaterializeTarget',
-      source: 0,
-      legalTargets: [0, 1, 2],
-    });
-    expect(res.msgs[0]).toContain('悄悄指定');
+    expect(res.P[0].etherealizeStacks).toBe(4);
+    expect(res.msgs[0]).toContain('获得 4 层虚化');
+  });
+
+  it('snakePoisonTrap: 按存活人数随机分配中毒层数且可重复命中', () => {
+    const players = makeStandardPlayers(4);
+    players[2].isDead = true;
+    const randomSpy = vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0.1)
+      .mockReturnValueOnce(0.1)
+      .mockReturnValueOnce(0.9);
+    const card = { type: 'snakePoisonTrap', name: '群蛇陷阱' };
+    const gs = makeGs({ players });
+
+    const res = applyFx(card, 0, null, players, [], [], gs);
+
+    expect(res.P.map(p => p.poisonStacks || 0)).toEqual([2, 0, 0, 1]);
+    expect(res.msgs[0]).toContain('分配了 3 层中毒');
+    randomSpy.mockRestore();
   });
 
   it('deadNeighborSkipDraw: 死亡角色相邻者下回合不能摸牌', () => {
@@ -333,6 +347,49 @@ describe('applyFx', () => {
     expect(res.P[3]).toMatchObject({ skipNextDraw: true, skipNextDrawReason: '活死人哨兵' });
     expect(res.P[0].skipNextDraw).toBeFalsy();
     expect(res.P[4].skipNextDraw).toBeFalsy();
+  });
+
+  it('moldyFood: 掷出双数时恢复 2 HP', () => {
+    const players = makeStandardPlayers(3);
+    players[0].hp = 6;
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.3); // d1 = 2
+    const gs = makeGs({ players, _moldyFoodDiceSeq: 0 });
+
+    const res = applyFx({ type: 'moldyFood', name: '霉变食物' }, 0, null, players, [], [], gs);
+
+    expect(res.P[0].hp).toBe(8);
+    expect(res.P[0].skipNextDraw).toBeFalsy();
+    expect(res.statePatch._moldyFoodDiceRoll).toMatchObject({ d1: 2, isEven: true, actorIdx: 0, seq: 1 });
+    randomSpy.mockRestore();
+  });
+
+  it('moldyFood: 掷出单数时失去 1 HP 并统一设置下回合不能摸牌', () => {
+    const players = makeStandardPlayers(3);
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.01); // d1 = 1
+    const gs = makeGs({ players, _moldyFoodDiceSeq: 4 });
+
+    const res = applyFx({ type: 'moldyFood', name: '霉变食物' }, 0, null, players, [], [], gs);
+
+    expect(res.P[0].hp).toBe(9);
+    expect(res.P[0]).toMatchObject({ skipNextDraw: true, skipNextDrawReason: '霉变食物' });
+    expect(res.statePatch._moldyFoodDiceRoll).toMatchObject({ d1: 1, isEven: false, actorIdx: 0, seq: 5 });
+    randomSpy.mockRestore();
+  });
+
+  it('decipherStoneCarving: 玩家收入后进入解读阶段', () => {
+    const players = makeStandardPlayers(3);
+    const deck = [makeZoneCard('A1', 0), makeZoneCard('B2', 0), makeGodCard('NYA')];
+    const gs = makeGs({ players, deck });
+
+    const res = applyFx({ type: 'decipherStoneCarving', name: '解读石刻', key: 'A1', val: 3 }, 0, null, players, deck, [], gs);
+
+    expect(res.statePatch.abilityData).toMatchObject({
+      type: 'decipherStoneCarving',
+      playerIndex: 0,
+    });
+    expect(res.statePatch.abilityData.revealedCards).toHaveLength(3);
+    expect(res.statePatch.abilityData.deckTopCards).toHaveLength(3);
+    expect(res.statePatch.abilityData.deckBottomCards).toEqual([]);
   });
 
   it('selfDamageHP: 失去HP', () => {
@@ -451,6 +508,24 @@ describe('applyFx', () => {
     expect(res.msgs.some(m => m.includes('伤害+1'))).toBe(true);
   });
 
+  it('selfBerserk: 蛊惑触发时绑定当前执行回合而不是被蛊惑者回合', () => {
+    const players = makeStandardPlayers(3);
+    const card = { type: 'selfBerserk', name: '狂化', key: 'D4' };
+    const gs = makeGs({ players, currentTurn: 0, turn: 7 });
+    const res = applyFx(card, 1, null, players, [], [], gs);
+
+    expect(res.P[1]).toMatchObject({ damageBonus: 1, damageBonusTurnOwner: 0 });
+  });
+
+  it('igniteTorch: AI 自动弃牌时免疫绑定当前执行回合', () => {
+    const players = makeStandardPlayers(3);
+    players[1].hand = [{ id: 'old-card', name: '旧手牌', type: 'test' }];
+    const gs = makeGs({ players, currentTurn: 0 });
+    const res = applyFx({ type: 'igniteTorch', name: '引燃火把' }, 1, null, players, [], [], gs, false, [], true);
+
+    expect(res.P[1]).toMatchObject({ godPowerImmuneThisTurn: true, godPowerImmuneTurnOwner: 0 });
+  });
+
   it('allDiscard: 全体随机弃1张牌', () => {
     const players = makeStandardPlayers(3);
     players[0].hand = [makeZoneCard('A1', 0)];
@@ -463,7 +538,7 @@ describe('applyFx', () => {
     expect(res.P[1].hand).toHaveLength(0);
     expect(res.Disc.length).toBeGreaterThanOrEqual(1);
     const event = res.statePatch._visualEvents?.[0];
-    expect(event).toMatchObject({ type: VISUAL_EVENT.EARTHQUAKE, beforeDiscard: [] });
+    expect(event).toMatchObject({ type: VISUAL_EVENT.CARD_EFFECT, effectKey: 'earthquake', beforeDiscard: [] });
     expect(event.beforePlayers[0].hand).toHaveLength(1);
     expect(event.discardEvents).toHaveLength(2);
     expect(event.discardEvents[0].afterPlayers[0].hand).toHaveLength(0);
@@ -473,7 +548,7 @@ describe('applyFx', () => {
   it('selfHealAdjDamageHP: 治疗自己并伤害相邻', () => {
     const players = makeStandardPlayers(5);
     players[0].hp = 5;
-    const card = makeZoneCard('A1', 0); // selfHealAdjDamageHP val=3 adjVal=2
+    const card = { id: 'dragon-egg', name: '偷吃龙蛋', key: 'D3', type: 'selfHealAdjDamageHP', val: 3, adjVal: 2 };
     const gs = makeGs({ players });
     const res = applyFx(card, 0, null, players, [], [], gs);
     expect(res.P[0].hp).toBe(8); // healed 3
@@ -685,6 +760,55 @@ describe('applyFx', () => {
     const res = applyFx(card, 0, null, players, [], [], gs);
     expect(res.P[1].hp).toBe(0); // dead player unaffected
     expect(res.P[1].isDead).toBe(true);
+  });
+
+  it('petrifyingFormula: 首次收入从3点进度开始并记录共犯', () => {
+    const players = makeStandardPlayers(3);
+    const card = { type: 'petrifyingFormula', name: '石化配方', key: 'C1' };
+    const gs = makeGs({ players });
+    const res = applyFx(card, 0, null, players, [], [], gs);
+
+    expect(res.statePatch.petrifyingFormula).toEqual({
+      active: true,
+      progress: 3,
+      accomplices: [0],
+    });
+    expect(res.P.some(p => p.isDead)).toBe(false);
+  });
+
+  it('petrifyingFormula: 进度到1时石化HP最低角色，共犯失去1SAN并清空名单', () => {
+    const players = makeStandardPlayers(4);
+    players[1].hp = 2;
+    players[0].san = 8;
+    players[2].san = 7;
+    const card = { type: 'petrifyingFormula', name: '石化配方', key: 'C1' };
+    const gs = makeGs({
+      players,
+      inspectionDeck: [{ name: '暂时的平静', effect: 'nothing', value: 0, type: 'neutral' }],
+      inspectionDiscard: [],
+      petrifyingFormula: {
+        active: true,
+        progress: 2,
+        accomplices: [0],
+      },
+    });
+
+    const res = applyFx(card, 2, null, players, [], [], gs);
+
+    expect(res.P[1].isDead).toBe(true);
+    expect(res.P[1]._petrified).toBe(true);
+    expect(res.P[0].san).toBe(7);
+    expect(res.P[2].san).toBe(6);
+    expect(res.statePatch.petrifyingFormula).toEqual({
+      active: false,
+      progress: null,
+      accomplices: [],
+    });
+    expect(res.statEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'PETRIFY_DEATH', target: 1 }),
+      expect.objectContaining({ type: 'SAN_LOSS', target: 0 }),
+      expect.objectContaining({ type: 'SAN_LOSS', target: 2 }),
+    ]));
   });
 });
 

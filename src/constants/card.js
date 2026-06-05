@@ -11,17 +11,6 @@
 const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "A1": [
     {
-      "name": "偷吃龙蛋",
-      "desc": "你回复3HP，相邻角色各失去2HP",
-      "type": "selfHealAdjDamageHP",
-      "val": 3,
-      "adjVal": 2,
-      "slotKey": "A1",
-      "polarity": "positive",
-      "effectScope": "self",
-      "expansion": "地神的潜影"
-    },
-    {
       "name": "坠落",
       "desc": "你失去3HP，随机弃1张牌（强制触发）",
       "type": "selfDamageDiscardHP",
@@ -33,11 +22,21 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "expansion": "地神的潜影"
     },
     {
-      "name": "斯芬克斯",
-      "desc": "猜测牌堆顶的牌是否是区域牌。若猜对，则收入这张牌。若猜错，失去3HP",
-      "type": "sphinxGuess",
+      "name": "解读石刻",
+      "desc": "从牌堆顶翻开3张牌，选1张收入手牌，其余牌以任意顺序放回牌堆顶部或底部。若选择邪神牌，你失去1SAN",
+      "type": "decipherStoneCarving",
+      "val": 3,
       "slotKey": "A1",
-      "polarity": "positive",
+      "polarity": "neutral",
+      "effectScope": "self",
+      "expansion": "地神的潜影"
+    },
+    {
+      "name": "霉变食物",
+      "desc": "掷一枚骰子：若为双数，你恢复2HP；否则失去1HP，下回合开始时不能摸牌",
+      "type": "moldyFood",
+      "slotKey": "A1",
+      "polarity": "neutral",
       "effectScope": "self",
       "expansion": "地神的潜影"
     },
@@ -321,10 +320,10 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "expansion": "地神的潜影"
     },
     {
-      "name": "石棺",
-      "desc": "你失去2HP与1SAN",
+      "name": "封入石棺",
+      "desc": "你失去1HP与1SAN",
       "type": "selfDamageHPSAN",
-      "hpVal": 2,
+      "hpVal": 1,
       "sanVal": 1,
       "slotKey": "B3",
       "polarity": "negative",
@@ -421,12 +420,22 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "烤盲鱼",
-      "desc": "你恢复3HP，且摸到下张区域牌时，须在只能看见编号的条件下决定是否收入",
+      "desc": "你回复3HP，且摸到下张区域牌时，须在只能看见编号的条件下决定是否收入",
       "type": "blindFish",
       "val": 3,
       "slotKey": "C1",
       "polarity": "positive",
       "effectScope": "self",
+      "expansion": "地神的潜影"
+    },
+    {
+      "name": "石化配方",
+      "desc": "收入这张牌视为协助调配药水，调配进度从3开始倒数。进度为1时，场上HP最低的角色立即死亡并石化，所有共犯失去1SAN",
+      "type": "petrifyingFormula",
+      "val": 1,
+      "slotKey": "C1",
+      "polarity": "neutral",
+      "effectScope": "all",
       "expansion": "地神的潜影"
     }
   ],
@@ -460,6 +469,15 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "slotKey": "C2",
       "polarity": "negative",
       "effectScope": "adjacent",
+      "expansion": "地神的潜影"
+    },
+    {
+      "name": "地磁反转",
+      "desc": "将一张\"反转复原\"洗入弃牌堆。所有人即将摸牌时，改为重洗弃牌堆并暗抽一张",
+      "type": "geomagneticReversal",
+      "slotKey": "C2",
+      "polarity": "negative",
+      "effectScope": "all",
       "expansion": "地神的潜影"
     }
   ],
@@ -506,9 +524,9 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "expansion": "地神的潜影"
     },
     {
-      "name": "传授半物质化",
-      "desc": "悄悄指定一名角色。若其他角色中有人猜中是谁，则在其回合后获得一个额外回合；若无人猜中，你获得该额外回合",
-      "type": "semiMaterializeTeach",
+      "name": "半物质化",
+      "desc": "根据手牌数获得同层数的「虚化」：自己回合外即将失去HP/SAN时，可消耗1层「虚化」改为令相邻角色失去",
+      "type": "etherealize",
       "slotKey": "C4",
       "polarity": "neutral",
       "effectScope": "target",
@@ -538,7 +556,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "活死人哨兵",
-      "desc": "所有与死亡角色相邻的角色下回合不能摸牌",
+      "desc": "所有与死亡角色相邻的角色下回合开始时不能摸牌",
       "type": "deadNeighborSkipDraw",
       "slotKey": "D1",
       "polarity": "neutral",
@@ -568,17 +586,24 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "expansion": "地神的潜影"
     },
     {
-      "name": "恐怖直视",
-      "desc": "你失去1SAN，若你手牌数≤2则额外失去2SAN",
-      "type": "selfDamageSANCond",
+      "name": "荆棘山路",
+      "desc": "你失去1HP",
+      "type": "selfDamageHP",
       "val": 1,
-      "bonus": 2,
-      "condType": "handLow",
-      "condVal": 2,
       "slotKey": "D2",
       "polarity": "negative",
       "effectScope": "self",
-      "expansion": "temporary"
+      "expansion": "地神的潜影"
+    },
+    {
+      "name": "群蛇陷阱",
+      "desc": "将等同于存活人数的“中毒”层数随机分配给存活角色。中毒角色回合开始时失去等同层数的HP，并消耗1层中毒",
+      "type": "snakePoisonTrap",
+      "val": 1,
+      "slotKey": "D2",
+      "polarity": "negative",
+      "effectScope": "all",
+      "expansion": "地神的潜影"
     },
     {
       "name": "火中取栗",
@@ -631,12 +656,32 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "polarity": "negative",
       "effectScope": "all",
       "expansion": "地神的潜影"
+    },
+    {
+      "name": "偷吃龙蛋",
+      "desc": "你回复3HP，相邻角色各失去2HP",
+      "type": "selfHealAdjDamageHP",
+      "val": 3,
+      "adjVal": 2,
+      "slotKey": "D3",
+      "polarity": "positive",
+      "effectScope": "self",
+      "expansion": "地神的潜影"
+    },
+    {
+      "name": "白化生物",
+      "desc": "亮出带有\"火\"字的一张手牌，随机角色失去2HP和2SAN，否则你失去2HP和2SAN",
+      "type": "albinoCreature",
+      "slotKey": "D3",
+      "polarity": "negative",
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     }
   ],
   "D4": [
     {
       "name": "狂化",
-      "desc": "你失去1SAN，直到回合结束，你造成的伤害+1",
+      "desc": "你失去1SAN，直到当前回合结束，你造成的伤害+1",
       "type": "selfBerserk",
       "val": 1,
       "slotKey": "D4",
@@ -646,7 +691,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "扭伤",
-      "desc": "你失去1HP，下回合开始时你不能摸牌（强制触发）",
+      "desc": "你失去1HP，下回合开始时不能摸牌（强制触发）",
       "type": "selfDamageSkipDraw",
       "val": 1,
       "forced": true,
@@ -675,6 +720,15 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "polarity": "neutral",
       "effectScope": "all",
       "expansion": "析骨为柴"
+    },
+    {
+      "name": "斯芬克斯",
+      "desc": "猜测牌堆顶的牌是否是区域牌。若猜对，则收入这张牌（不触发效果）。若猜错，失去3HP",
+      "type": "sphinxGuess",
+      "slotKey": "D4",
+      "polarity": "positive",
+      "effectScope": "self",
+      "expansion": "地神的潜影"
     }
   ]
 };
@@ -828,13 +882,6 @@ const GOD_DEFS={
 
 // ── EXPANSION PACK CONFIG ─────────────────────────────────────
 const EXPANSIONS = {
-  temporary: {
-    name: '临时拓展包',
-    description: '当前牌组，包含所有现有卡牌',
-    // 临时包包含 FIXED_ZONE_CARD_VARIANTS_BY_KEY 中所有卡牌
-    godCardKeys: ['NYA', 'CTH', 'SHU', 'ZHU', 'VRI'],
-    godCopies: 4,
-  },
   '地神的潜影': {
     name: '地神的潜影',
     description: '来自地底深处的低语……',
@@ -864,15 +911,14 @@ const EXPANSIONS = {
 };
 
 const CARD_BACK_IMAGE_BY_EXPANSION = {
-  temporary: '/img/card/cardback_earth_shadow.png',
   '地神的潜影': '/img/card/cardback_earth_shadow.png',
   '先贤的馈赠': '/img/card/cardback_sage_gift.png',
   '群星呼唤': '/img/card/cardback_stars_call.png',
   '析骨为柴': '/img/card/cardback_bone_fuel.png',
 };
 
-function getCardBackImage(expansionKey = 'temporary') {
-  return CARD_BACK_IMAGE_BY_EXPANSION[expansionKey] || CARD_BACK_IMAGE_BY_EXPANSION.temporary;
+function getCardBackImage(expansionKey = '地神的潜影') {
+  return CARD_BACK_IMAGE_BY_EXPANSION[expansionKey] || CARD_BACK_IMAGE_BY_EXPANSION['地神的潜影'];
 }
 
 export const INSPECTION_DECK = [
@@ -911,7 +957,7 @@ export function createTsathogguaSlimeCard() {
   return {
     id: `tsg-slime-${_tsgSlimeId++}`,
     name: '撒托古亚的赐福黏液',
-    desc: '当你失去HP/SAN时，你可选择牺牲这张牌平分HP和SAN。若你仍信仰蟾蜍之神，摸牌阶段每张黏液使你多摸1张牌，随后黏液消失',
+    desc: '当你失去HP/SAN后，你可选择牺牲这张牌平分HP和SAN。若你仍信仰蟾蜍之神，摸牌阶段每张黏液使你多摸1张牌，随后黏液消失',
     type: 'tsathogguaSlime',
     isTsathogguaSlime: true,
     polarity: 'neutral',
@@ -919,6 +965,22 @@ export function createTsathogguaSlimeCard() {
     letter: 'T',
     number: 0,
     key: 'SLM',
+  };
+}
+
+let _gmRestoreId = 0;
+export function createGeomagneticRestoreCard() {
+  return {
+    id: `gmr-${_gmRestoreId++}`,
+    name: '反转复原',
+    desc: '这张牌消失并消除当前"地磁反转"效果',
+    type: 'geomagneticRestore',
+    isGeomagneticRestore: true,
+    polarity: 'neutral',
+    effectScope: 'self',
+    letter: 'R',
+    number: 0,
+    key: 'GMR',
   };
 }
 

@@ -68,7 +68,9 @@ export function DiceRollAnim({ anim, exiting }) {
   const isDodgeRoll = d2 === 0;
   const isApophisRoll = anim.diceMode === 'apophisNight';
   const isThrowStoneRoll = anim.diceMode === 'throwStone';
+  const isMoldyFoodRoll = anim.diceMode === 'moldyFood';
   const apophisSuccess = isApophisRoll && !anim.apophisChanged;
+  const moldyEven = isMoldyFoodRoll && (d1 % 2 === 0);
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(4,2,0,0.94)',
@@ -77,7 +79,7 @@ export function DiceRollAnim({ anim, exiting }) {
     }}>
       <div style={{ position: 'absolute', inset: 0, boxShadow: 'inset 0 0 120px #c8a96e22', pointerEvents: 'none' }} />
       <div style={{ fontFamily: "'Cinzel',serif", color: '#b89858', fontSize: 11, letterSpacing: 4, marginBottom: 18, textTransform: 'uppercase' }}>
-        {rollerName || '？'} {isApophisRoll ? '在黑夜中掷骰' : isThrowStoneRoll ? '投掷石块' : isDodgeRoll ? '掷骰子' : '选择休息'}
+        {rollerName || '？'} {isApophisRoll ? '在黑夜中掷骰' : isThrowStoneRoll ? '投掷石块' : isMoldyFoodRoll ? '品尝霉变食物' : isDodgeRoll ? '掷骰子' : '选择休息'}
       </div>
       <div style={{ display: 'flex', gap: 36, marginBottom: 20 }}>
         {[{ face: face1, val: d1 }, ...(!isDodgeRoll ? [{ face: face2, val: d2 }] : [])].map(({ face }, i) => (
@@ -115,6 +117,18 @@ export function DiceRollAnim({ anim, exiting }) {
               </div>
               <div style={{ fontFamily: "'IM Fell English',serif", fontStyle: 'italic', color: '#b89858', fontSize: 12, textAlign: 'center', letterSpacing: 1 }}>
                 石块飞向未知方向…
+              </div>
+            </>
+          ) : isMoldyFoodRoll ? (
+            <>
+              <div style={{
+                fontFamily: "'Cinzel',serif", fontSize: 13, color: moldyEven ? '#4ade80' : '#e08888', letterSpacing: 3,
+                textAlign: 'center', marginBottom: 6,
+              }}>
+                {moldyEven ? '双数！食物尚可食用' : '单数！食物已经腐坏'}
+              </div>
+              <div style={{ fontFamily: "'IM Fell English',serif", fontStyle: 'italic', color: '#b89858', fontSize: 12, textAlign: 'center', letterSpacing: 1 }}>
+                掷出 {d1} 点，{moldyEven ? '恢复 2 HP' : '失去 1 HP 且下回合不能摸牌'}
               </div>
             </>
           ) : isDodgeRoll ? (

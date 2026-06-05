@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import {
   GOD_DEFS,
   CS,
@@ -287,7 +287,7 @@ function PeekHandModal({ card, targetName, onClose }) {
   );
 }
 
-function TortoiseOracleModal({ abilityData, onSelect, myTurn, expansionKey = 'temporary' }) {
+function TortoiseOracleModal({ abilityData, onSelect, myTurn, expansionKey = '地神的潜影' }) {
   const revealedCards = useMemo(() => abilityData?.revealedCards || [], [abilityData?.revealedCards]);
   const selectableKeys = abilityData?.selectableKeys || [];
   const [revealedCount, setRevealedCount] = useState(0);
@@ -500,3 +500,4 @@ export {
   FullLogModal,
   RoadmapModal
 };
+

@@ -35,6 +35,8 @@ import {
   clearPendingAnimDeathFlags,
   makeInspectionMeta,
   sortInspectionTargets,
+  buildEtherealizeLoss,
+  buildEtherealizeRedirectDecision,
 } from '../coreUtils';
 import {
   resetIds,
@@ -150,12 +152,15 @@ describe('card type predicates', () => {
     const negative = makeZoneCard('A1', 1);
     const blank = makeBlankZoneCard();
     const throwStone = makeZoneCard('B2', 3);
+    const petrifyingFormula = makeZoneCard('C1', 2);
 
     expect(isPositiveZoneCard(positive)).toBe(true);
     expect(isNegativeZoneCard(negative)).toBe(true);
     expect(isNeutralZoneCard(blank)).toBe(true);
     expect(isNeutralZoneCard(throwStone)).toBe(true);
     expect(isNegativeZoneCard(throwStone)).toBe(false);
+    expect(isNeutralZoneCard(petrifyingFormula)).toBe(true);
+    expect(isNegativeZoneCard(petrifyingFormula)).toBe(false);
 
     expect(isNegativeZoneCard(positive)).toBe(false);
     expect(isPositiveZoneCard(negative)).toBe(false);
@@ -463,6 +468,59 @@ describe('makeInspectionMeta', () => {
     expect(meta.sealLooseningCount).toBe(2);
     expect(meta.houndsOfTindalosActive).toBe(true);
     expect(meta._inspectionSeq).toBe(3);
+  });
+});
+
+describe('etherealize redirect helpers', () => {
+  it('回合外即将损失且有虚化层数时生成转移决策', () => {
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '贝拉', etherealizeStacks: 2, hp: 7, san: 8 }),
+      makePlayer({ name: '卡洛斯' }),
+    ];
+
+    const loss = buildEtherealizeLoss({
+      players,
+      targetIdx: 1,
+      currentTurn: 0,
+      lostHp: 3,
+      source: '测试伤害',
+    });
+
+    expect(loss).toMatchObject({
+      targetIdx: 1,
+      lostHp: 3,
+      beforeHp: 7,
+      beforeSan: 8,
+      source: '测试伤害',
+    });
+    expect(loss.adjacentTargets).toEqual([0, 2]);
+  });
+
+  it('自己回合内或没有层数时不会生成转移决策', () => {
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '贝拉', etherealizeStacks: 0 }),
+      makePlayer({ name: '卡洛斯' }),
+    ];
+
+    expect(buildEtherealizeLoss({ players, targetIdx: 1, currentTurn: 1, lostHp: 1 })).toBe(null);
+    expect(buildEtherealizeLoss({ players, targetIdx: 1, currentTurn: 0, lostHp: 1 })).toBe(null);
+  });
+
+  it('多个损失会生成按顺序处理的首个虚化决策', () => {
+    const decision = buildEtherealizeRedirectDecision([
+      { targetIdx: 1, lostHp: 1, adjacentTargets: [0, 2], source: 'A' },
+      { targetIdx: 2, lostSan: 2, adjacentTargets: [1, 0], source: 'B' },
+    ], { _turnOwner: 0 });
+
+    expect(decision).toMatchObject({
+      type: 'etherealizeRedirect',
+      targetIdx: 1,
+      pendingIndex: 0,
+      _turnOwner: 0,
+    });
+    expect(decision.pendingLosses).toHaveLength(2);
   });
 });
 

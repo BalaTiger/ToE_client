@@ -1,6 +1,6 @@
 import { makeTargetStats, statEventsToAnimQueue } from './statEvents';
 import { buildFullHandSwapStepsFromLogs, buryToDeckStep, cardTransferStep, statePatchStep } from './animQueueHelpers';
-import { buildEarthquakeStepFromVisualEvents, buildHuntRevealStepFromVisualEvent } from './visualEvents';
+import { buildCardEffectStepsFromVisualEvents, buildHuntRevealStepFromVisualEvent } from './visualEvents';
 
 export function buildAnimQueue(oldGs, newGs) {
   const q = [];
@@ -63,7 +63,6 @@ export function buildAnimQueue(oldGs, newGs) {
       q.push({ type: 'DRAW_CARD', card: dCard, triggerName: newGs.players[newGs.currentTurn]?.name || '???', targetPid: newGs.currentTurn, msgs: newGs._drawLogs || [] });
     }
   }
-  const deathIdx = effectivePlayers.reduce((acc, p, i) => { if (oldGs.players[i] && !oldGs.players[i].isDead && p.isDead) acc.push(i); return acc; }, []);
   const oldStatSeq = oldGs?._statEventSeq || 0;
   const newStatSeq = newGs?._statEventSeq || 0;
   const inspectionStatSeqs = new Set(newInspectionEvents.map(ev => ev?.statEventSeq).filter(seq => seq != null));
@@ -73,6 +72,13 @@ export function buildAnimQueue(oldGs, newGs) {
       !inspectionStatSeqs.has(ev?.seq)
     ))
     : [];
+  const petrifyDeathTargets = new Set(explicitStatEvents
+    .filter(event => event?.type === 'PETRIFY_DEATH' && event?.target != null)
+    .map(event => Number(event.target)));
+  const deathIdx = effectivePlayers.reduce((acc, p, i) => {
+    if (oldGs.players[i] && !oldGs.players[i].isDead && p.isDead && !petrifyDeathTargets.has(i)) acc.push(i);
+    return acc;
+  }, []);
   const hasFreshExplicitStatEvents = explicitStatEvents.length > 0 && (newGs?._statEventSeq == null || newStatSeq > oldStatSeq);
   const targetStats = hasFreshExplicitStatEvents
     ? makeTargetStats(effectivePlayers, explicitStatEvents)
@@ -124,9 +130,19 @@ export function buildAnimQueue(oldGs, newGs) {
     q.push({ type: 'GUILLOTINE', msgs: newMsgs, hitIndices: deathIdx, targetStats });
     q.push({ type: 'DEATH', msgs: newMsgs, hitIndices: deathIdx, targetStats });
   }
-  const earthquakeVisualStep = buildEarthquakeStepFromVisualEvents(newGs);
-  if (earthquakeVisualStep) {
-    q.push(earthquakeVisualStep);
+  q.push(...buildCardEffectStepsFromVisualEvents(newGs, oldGs));
+  const moldyRoll = newGs?._moldyFoodDiceRoll;
+  const moldySeq = moldyRoll?.seq ?? newGs?._moldyFoodDiceSeq;
+  const oldMoldySeq = oldGs?._moldyFoodDiceSeq || oldGs?._moldyFoodDiceRoll?.seq || 0;
+  if (moldyRoll && moldyRoll.d1 != null && (moldySeq == null || moldySeq > oldMoldySeq)) {
+    q.unshift({
+      type: 'DICE_ROLL',
+      diceMode: 'moldyFood',
+      d1: moldyRoll.d1,
+      d2: 0,
+      rollerName: newGs.players?.[moldyRoll.actorIdx]?.name || '角色',
+      msgs: [],
+    });
   }
   const fullHandSwapMsg = newMsgs.find(m => m.includes('交换了全部手牌'));
   if (fullHandSwapMsg) {
@@ -198,14 +214,16 @@ export function buildFullHandSwapTransferQueueFromLogs(logs, players, options = 
 
 export function buildAiHuntEventAnimQueue(evt, actorName) {
   const huntMsgs = Array.isArray(evt.msgs) && evt.msgs.length ? [evt.msgs[0]] : [];
-  const followupMsgs = Array.isArray(evt.msgs) ? evt.msgs.slice(1) : [];
-  const perHuntQueue = [{ type: 'SKILL_HUNT', msgs: huntMsgs, _logChunk: huntMsgs, targetIdx: evt.targetIdx >= 0 ? evt.targetIdx : 1 }];
+  const followupMsgs = Array.isArray(evt.msgs) ? evt.msgs.slice(evt.skipIntro ? 0 : 1) : [];
+  const perHuntQueue = evt.skipIntro
+    ? []
+    : [{ type: 'SKILL_HUNT', msgs: huntMsgs, _logChunk: huntMsgs, targetIdx: evt.targetIdx >= 0 ? evt.targetIdx : 1 }];
   const revealStep = buildHuntRevealStepFromVisualEvent({
     targetIdx: evt.targetIdx,
     card: evt.revealedCard,
     msgs: [],
   }, { players: evt.beforePlayers });
-  if (revealStep) perHuntQueue.push(revealStep);
+  if (revealStep && !evt.skipReveal) perHuntQueue.push(revealStep);
   const takeFollowup = (predicate) => {
     const idx = followupMsgs.findIndex(predicate);
     if (idx < 0) return [];

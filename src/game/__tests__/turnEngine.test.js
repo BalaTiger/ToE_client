@@ -1,9 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { makeInspectionMeta, ROLE_TREASURE } from '../coreUtils';
-import { aiDrawAndApply, applySanLossToPlayerWithInspection, playerDrawCard, startNextTurn } from '../turnEngine';
+import { makeInspectionMeta, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
+import { aiDrawAndApply, applySanLossToPlayerWithInspection, checkWin, playerDrawCard, startNextTurn } from '../turnEngine';
 import { buildTsathogguaSlimeGrantQueue } from '../turnAnimState';
 import { makeGodCard, makeGs, makePlayer, makeStandardPlayers } from './factory';
 import { createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../../constants/card';
+
+describe('checkWin death handling', () => {
+  it('单人模式下本地玩家死亡会立即失败', () => {
+    const players = makeStandardPlayers(3);
+    players[0].isDead = true;
+    players[0].hp = 0;
+
+    expect(checkWin(players, false)).toMatchObject({
+      winner: 'LOSE',
+    });
+  });
+
+  it('联机模式下本地玩家死亡不会直接结束对局', () => {
+    const players = makeStandardPlayers(3);
+    players[0].isDead = true;
+    players[0].hp = 0;
+
+    expect(checkWin(players, true)).toBeNull();
+  });
+});
 
 describe('turnEngine stat events', () => {
   it('SAN 损失降至 0 时不排入检定事件', () => {
@@ -157,6 +177,7 @@ describe('turnEngine stat events', () => {
     const gs = makeGs({
       players,
       currentTurn: 0,
+      _turnKey: 7,
       deck: [normalCard],
       _isMP: true,
       log: [],
@@ -165,6 +186,7 @@ describe('turnEngine stat events', () => {
     const result = startNextTurn(gs);
 
     expect(result.phase).toBe('DRAW_REVEAL');
+    expect(result._turnKey).toBe(8);
     expect(result.drawReveal.card).toMatchObject({ id: 'mp-normal-draw', name: '偷吃龙蛋' });
     expect(result._playersBeforeThisDraw).toHaveLength(2);
     expect(result._playersBeforeThisDraw[1]).toMatchObject({ hp: 10, san: 10 });
@@ -300,6 +322,27 @@ describe('turnEngine stat events', () => {
     ]);
   });
 
+  it('黑山羊幼仔使邪祀者 HP/SAN 同时归零时，SAN 归零胜负优先于死亡胜负', () => {
+    const players = [
+      makePlayer({ name: '追猎者', role: ROLE_HUNTER }),
+      makePlayer({ name: '邪祀者', role: ROLE_CULTIST, hp: 1, san: 1, hand: [createBlackGoatYoungCard()] }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 0,
+      _isMP: true,
+      log: [],
+      inspectionDeck: [{ name: '自残', effect: 'selfDamageHP', value: 1, type: 'negative' }],
+      inspectionDiscard: [],
+    });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players[1]).toMatchObject({ hp: 0, san: 0, isDead: false });
+    expect(result.gameOver?.winner).toBe(ROLE_CULTIST);
+    expect(result._inspectionEvents || []).toEqual([]);
+  });
+
   it('回合开始黑山羊幼仔造成损失时，撒托古亚黏液可打断到平分选择', () => {
     const players = [
       makePlayer({ name: '你' }),
@@ -332,6 +375,28 @@ describe('turnEngine stat events', () => {
     expect(result._statEvents).toMatchObject([
       { type: 'HP_GAIN', target: 0, from: { hp: 4 }, to: { hp: 8 }, reason: '两人一绳', seq: 1 },
       { type: 'HP_GAIN', target: 1, from: { hp: 5 }, to: { hp: 9 }, reason: '两人一绳', seq: 1 },
+    ]);
+  });
+
+  it('同为其他被动时，中毒先于两人一绳未断裂回复结算', () => {
+    const players = [
+      makePlayer({ name: '你', hp: 4, damageLink: { active: true, partner: 1, expiryOwner: 1 } }),
+      makePlayer({ name: '艾伦', hp: 5, poisonStacks: 2, damageLink: { active: true, partner: 0, expiryOwner: 1 } }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0, log: [] });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players[1].hp).toBe(7);
+    expect(result.players[1].poisonStacks).toBe(1);
+    const poisonLogIndex = result.log.findIndex(line => line.includes('【中毒】'));
+    const linkLogIndex = result.log.findIndex(line => line.includes('【两人一绳】'));
+    expect(poisonLogIndex).toBeGreaterThan(-1);
+    expect(linkLogIndex).toBeGreaterThan(poisonLogIndex);
+    expect(result._statEvents).toMatchObject([
+      { type: 'HP_LOSS', target: 1, from: { hp: 5 }, to: { hp: 3 }, reason: '中毒', seq: 1 },
+      { type: 'HP_GAIN', target: 0, from: { hp: 4 }, to: { hp: 8 }, reason: '两人一绳', seq: 2 },
+      { type: 'HP_GAIN', target: 1, from: { hp: 3 }, to: { hp: 7 }, reason: '两人一绳', seq: 2 },
     ]);
   });
 
@@ -395,32 +460,44 @@ describe('turnEngine stat events', () => {
     expect(result.log.some(line => line.includes('额外摸1张牌'))).toBe(true);
   });
 
-  it('传授半物质化的额外回合延迟到被指定角色下个回合后', () => {
-    const players = makeStandardPlayers(4);
-    const scheduled = makeGs({
-      players,
-      currentTurn: 0,
-      turn: 3,
-      pendingExtraTurnOwner: 3,
-      pendingExtraTurnAfterPlayer: 1,
-      pendingExtraTurnAfterMinTurn: 4,
-      log: [],
-      deck: [],
-    });
+  it('当前执行回合结束时清除其他角色身上的本回合临时效果', () => {
+    const players = makeStandardPlayers(3);
+    players[1].damageBonus = 1;
+    players[1].damageBonusTurnOwner = 0;
+    players[1].godPowerImmuneThisTurn = true;
+    players[1].godPowerImmuneTurnOwner = 0;
+    const gs = makeGs({ players, currentTurn: 0, turn: 8, deck: [] });
 
-    const beforeTargetTurn = startNextTurn(scheduled);
-    expect(beforeTargetTurn.currentTurn).toBe(1);
-    expect(beforeTargetTurn.pendingExtraTurnOwner).toBe(3);
-    expect(beforeTargetTurn.pendingExtraTurnAfterPlayer).toBe(1);
+    const result = startNextTurn(gs);
 
-    const afterTargetTurn = startNextTurn({ ...beforeTargetTurn, currentTurn: 1, turn: 4, phase: 'ACTION' });
-    expect(afterTargetTurn.currentTurn).toBe(3);
-    expect(afterTargetTurn.pendingExtraTurnOwner).toBeNull();
-    expect(afterTargetTurn.pendingExtraTurnAfterPlayer).toBeNull();
-    expect(afterTargetTurn._extraTurnResumeFrom).toBe(1);
+    expect(result.players[1].damageBonus).toBeUndefined();
+    expect(result.players[1].damageBonusTurnOwner).toBeUndefined();
+    expect(result.players[1].godPowerImmuneThisTurn).toBeUndefined();
+    expect(result.players[1].godPowerImmuneTurnOwner).toBeUndefined();
+  });
 
-    const afterExtraTurn = startNextTurn({ ...afterTargetTurn, currentTurn: 3, turn: 5, phase: 'ACTION' });
-    expect(afterExtraTurn.currentTurn).toBe(2);
-    expect(afterExtraTurn._extraTurnResumeFrom).toBeNull();
+  it('狂化被蛊惑给其他角色时不会保留到该角色下一回合', () => {
+    const players = makeStandardPlayers(2);
+    players[1].damageBonus = 1;
+    players[1].damageBonusTurnOwner = 0;
+    const gs = makeGs({ players, currentTurn: 0, turn: 8, deck: [] });
+
+    const result = startNextTurn(gs);
+
+    expect(result.currentTurn).toBe(1);
+    expect(result.players[1].damageBonus).toBeUndefined();
+    expect(result.players[1].damageBonusTurnOwner).toBeUndefined();
+  });
+
+  it('不会清除尚未到期的其他执行回合临时效果', () => {
+    const players = makeStandardPlayers(3);
+    players[1].damageBonus = 1;
+    players[1].damageBonusTurnOwner = 2;
+    const gs = makeGs({ players, currentTurn: 0, turn: 8, deck: [] });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players[1].damageBonus).toBe(1);
+    expect(result.players[1].damageBonusTurnOwner).toBe(2);
   });
 });

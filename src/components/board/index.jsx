@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { CS, GOD_CS, GOD_DEFS, getCardBackImage } from '../../constants/card';
 import { RINFO } from '../../game';
 import { isBlackGoatYoung, isTsathogguaSlime } from '../../game/coreUtils';
@@ -147,7 +147,7 @@ function ZhuLitMiniCard({lit,deckIndex,scale,cardW,cardH,left,top,zIndex,hidden}
   );
 }
 
-function DiscardPile({count,topCard,scale=1,expansionKey='temporary'}){
+function DiscardPile({count,topCard,scale=1,expansionKey='地神的潜影'}){
   const vis=Math.min(count,7);
   const cardW=Math.round(CARD_W*scale);
   const cardH=Math.round(CARD_H*scale);
@@ -228,7 +228,7 @@ function HealCrossEffect({color='#4ade80'}){
 
 // ── Deck / Inspection / PileDisplay ─────────────────────────────
 
-function DeckPile({count,scale=1,expansionKey='temporary',zhuLitCards=[],zhuHiddenCardId=null}){
+function DeckPile({count,scale=1,expansionKey='地神的潜影',zhuLitCards=[],zhuHiddenCardId=null}){
   const vis=Math.min(count,7);
   const cardW=Math.round(CARD_W*scale);
   const cardH=Math.round(CARD_H*scale);
@@ -344,7 +344,79 @@ function DiscardOverlay({cards,onClose}){
   );
 }
 
-function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,deckRef,discardRef,scaleRatio,expansionKey='temporary',zhuLitCards=[],zhuHiddenCardId=null}){
+function PetrifyingFormulaDie({ state, fontSize }) {
+  if (!state?.active || !Number.isFinite(state.progress)) return null;
+  const dots = Math.max(1, Math.min(6, state.progress));
+  const pipLayouts = {
+    1: [[50, 50]],
+    2: [[32, 32], [68, 68]],
+    3: [[30, 30], [50, 50], [70, 70]],
+    4: [[30, 30], [70, 30], [30, 70], [70, 70]],
+    5: [[30, 30], [70, 30], [50, 50], [30, 70], [70, 70]],
+    6: [[30, 26], [70, 26], [30, 50], [70, 50], [30, 74], [70, 74]],
+  };
+  const dieSize = 42;
+  const faceRadius = 7;
+  return (
+    <div
+      title={`石化配方进度：${dots}`}
+      style={{
+        position: 'absolute',
+        left: 16,
+        bottom: 12,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 5,
+        pointerEvents: 'none',
+        zIndex: 2,
+      }}
+    >
+      <div style={{
+        position: 'relative',
+        width: dieSize,
+        height: dieSize,
+        filter: 'drop-shadow(0 4px 8px #00000088) drop-shadow(0 0 10px #9fb6a855)',
+      }}>
+        <div style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          width: dieSize,
+          height: dieSize,
+          borderRadius: faceRadius,
+          background: 'linear-gradient(145deg,#eef4e8 0%,#c2d0c2 58%,#8fa197 100%)',
+          border: '1.5px solid #dce7db',
+          boxShadow: 'inset -5px -5px 10px #64766b88,inset 4px 4px 9px #ffffffaa',
+        }}>
+          {(pipLayouts[dots] || pipLayouts[1]).map(([x, y], idx) => (
+            <span key={idx} style={{
+              position: 'absolute',
+              left: `${x}%`,
+              top: `${y}%`,
+              width: 8.5,
+              height: 8.5,
+              borderRadius: '50%',
+              background: 'radial-gradient(circle at 35% 35%,#3b4b42,#111b17 72%)',
+              boxShadow: 'inset 1px 1px 2px #000000cc,0 0 2px #ffffff55',
+              transform: 'translate(-50%,-50%)',
+            }}/>
+          ))}
+        </div>
+      </div>
+      <div style={{
+        fontFamily: "'Microsoft YaHei','SimHei',sans-serif",
+        fontSize: fontSize(10),
+        color: '#b9c8bc',
+        fontWeight: 700,
+        textShadow: '0 0 8px #000',
+        whiteSpace: 'nowrap',
+      }}>石化配方进度</div>
+    </div>
+  );
+}
+
+function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,deckRef,discardRef,scaleRatio,expansionKey='地神的潜影',zhuLitCards=[],zhuHiddenCardId=null,petrifyingFormula=null}){
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const _ = (px) => px * fontZoom;
   const pileWrapRef=React.useRef(null);
@@ -377,6 +449,7 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
         <DeckPile count={deckCount} scale={pileScale} expansionKey={expansionKey} zhuLitCards={zhuLitCards} zhuHiddenCardId={zhuHiddenCardId}/>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:_(11),color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 8px #000000'}}>牌堆:{deckCount}</div>
       </div>
+      <PetrifyingFormulaDie state={petrifyingFormula} fontSize={_}/>
       {/* Discard — center */}
       <div
         ref={discardRef}
@@ -412,7 +485,7 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
 }
 
 // ── PlayerPanel ─────────────────────────────────────────────────
-function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='temporary',blackGoatPulseActive=false}){
+function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='地神的潜影',blackGoatPulseActive=false}){
   const ri=RINFO[player.role];
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const _ = (px) => px * fontZoom;
@@ -472,7 +545,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
       <StatBar label="HP"  val={displayStats?.[playerIndex]?.hp ?? player.hp}  color="#8b1515" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={viewportWidth}/>
       <StatBar label="SAN" val={displayStats?.[playerIndex]?.san ?? player.san} color="#4a1080" trackColor="#120820" scaleRatio={scaleRatio} viewportWidth={viewportWidth}/>
       {/* Skull counter + god zone */}
-      {((player.godEncounters||0)>0||(player.godZone||[]).length>0)&&(
+      {((player.godEncounters||0)>0||(player.godZone||[]).length>0||(player.etherealizeStacks||0)>0||(player.poisonStacks||0)>0)&&(
         <div style={{display:'flex',alignItems:'center',gap:4,marginTop:4,flexWrap:'wrap'}}>
           {(player.godEncounters||0)>0&&(
             <span style={{fontSize:9,color:'#8b6060',letterSpacing:1,fontFamily:"'Cinzel',serif"}}>
@@ -486,6 +559,32 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
               borderRadius:2,padding:'1px 4px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
             }}>
               {GOD_DEFS[player.godName]?.power} Lv.{player.godLevel}
+            </span>
+          )}
+          {(player.etherealizeStacks||0)>0&&(
+            <span
+              title="虚化：回合外即将失去 HP/SAN 时，可消耗 1 层令相邻角色失去"
+              style={{
+                fontSize:8,color:'#b9d8f0',
+                background:'#0c1118',border:'1px solid #87a9c866',
+                borderRadius:2,padding:'1px 4px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
+                boxShadow:'0 0 8px #87a9c822',
+              }}
+            >
+              虚化 {player.etherealizeStacks}
+            </span>
+          )}
+          {(player.poisonStacks||0)>0&&(
+            <span
+              title="中毒：回合开始时失去等同层数的 HP，并消耗 1 层"
+              style={{
+                fontSize:8,color:'#b7f5a8',
+                background:'#0d160a',border:'1px solid #74c36566',
+                borderRadius:2,padding:'1px 4px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
+                boxShadow:'0 0 8px #74c36522',
+              }}
+            >
+              中毒 {player.poisonStacks}
             </span>
           )}
         </div>
@@ -516,7 +615,15 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
               zIndex:ci+1
             }}>
               {card._back
-                ?<DDCardBack small expansionKey={expansionKey} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/>
+                ?<div
+                  onClick={onCardSelect?()=>onCardSelect(ci):undefined}
+                  style={{
+                    cursor:onCardSelect?'pointer':'default',
+                    outline:onCardSelect?'1px solid #c8a96e88':'none',
+                    boxShadow:onCardSelect?'0 0 10px #c8a96e44':'none',
+                    borderRadius:3,
+                  }}
+                ><DDCardBack small expansionKey={expansionKey} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/></div>
                 :<DDCard card={card} small onClick={onCardSelect?()=>onCardSelect(ci):undefined} highlight={!!onCardSelect} holderId={playerIndex} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/>}
             </div>
           );
@@ -527,3 +634,4 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
 }
 
 export { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel };
+

@@ -10,6 +10,58 @@ afterEach(() => {
 });
 
 describe('aiShouldKeepZoneCard', () => {
+  it('AI 会收入能获得多层防护的半物质化', () => {
+    const card = {
+      id: 'eth-card',
+      key: 'C4',
+      name: '半物质化',
+      type: 'etherealize',
+      isZone: true,
+      letter: 'C',
+      number: 4,
+      polarity: 'neutral',
+    };
+    const players = [
+      makePlayer({ name: '你', hand: [{ id: 'p-card' }] }),
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_HUNTER,
+        hp: 6,
+        san: 6,
+        hand: [{ id: 'h1' }, { id: 'h2' }, { id: 'h3' }],
+      }),
+      makePlayer({ name: '卡洛斯', hand: [{ id: 'c-card' }] }),
+    ];
+
+    expect(aiShouldKeepZoneCard(card, 1, players)).toBe(true);
+  });
+
+  it('AI 孤立时不会收入无法转移伤害的半物质化', () => {
+    const card = {
+      id: 'eth-card',
+      key: 'C4',
+      name: '半物质化',
+      type: 'etherealize',
+      isZone: true,
+      letter: 'C',
+      number: 4,
+      polarity: 'neutral',
+    };
+    const players = [
+      makePlayer({ name: '你', isDead: true }),
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_HUNTER,
+        hp: 6,
+        san: 6,
+        hand: [{ id: 'h1' }, { id: 'h2' }, { id: 'h3' }],
+      }),
+      makePlayer({ name: '卡洛斯', isDead: true }),
+    ];
+
+    expect(aiShouldKeepZoneCard(card, 1, players)).toBe(false);
+  });
+
   it('AI 自己会成为同归深渊目标时不会收入', () => {
     const card = {
       id: 1,

@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  EXPANSIONS,
   FIXED_ZONE_CARD_VARIANTS_BY_KEY,
+  GOD_DEFS,
   LETTERS,
   NUMS,
 } from '../../constants/card';
@@ -8,6 +10,22 @@ import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from '../../game';
 import { NARRATOR_AVATAR } from '../tutorial/InGameTutorialOverlay';
 
 const ZONE_CARD_KEYS = LETTERS.flatMap(L => NUMS.map(N => `${L}${N}`));
+
+function getExpansionZoneCards(expansionKey) {
+  return ZONE_CARD_KEYS.flatMap(key => (FIXED_ZONE_CARD_VARIANTS_BY_KEY[key] || [])
+    .filter(card => card.expansion === expansionKey)
+    .map(card => ({ ...card, key })));
+}
+
+function getPlayableExpansionKeys() {
+  return Object.entries(EXPANSIONS)
+    .filter(([key, expansion]) => {
+      const expectedZoneCount = (expansion.zoneSlotCount || 16) * (expansion.zoneCardsPerSlot || 3);
+      const expectedGodCount = (expansion.godCardKeys || []).length * (expansion.godCopies || 4);
+      return getExpansionZoneCards(key).length === expectedZoneCount && expectedGodCount === 24;
+    })
+    .map(([key]) => key);
+}
 
 const smallBtnStyle = {
   padding: '4px 12px',
@@ -368,7 +386,92 @@ function DebugSettingsPanel({
   debugForceZoneCardName, setDebugForceZoneCardName,
   debugForceGodCardKey, setDebugForceGodCardKey,
   debugPlayerRole, setDebugPlayerRole,
+  debugExpansionKey, setDebugExpansionKey,
 }) {
+  const [zoneLetterTab, setZoneLetterTab] = useState('A');
+  const [zoneNumTab, setZoneNumTab] = useState('1');
+  const playableExpansionKeys = getPlayableExpansionKeys();
+  const selectedExpansionKey = playableExpansionKeys.includes(debugExpansionKey)
+    ? debugExpansionKey
+    : (playableExpansionKeys[0] || '地神的潜影');
+  const zoneCards = getExpansionZoneCards(selectedExpansionKey);
+  const selectedZoneCard = zoneCards.find(card => card.key === debugForceZoneCardKey && card.name === debugForceZoneCardName)
+    || zoneCards[0];
+  const selectedZoneKey = selectedZoneCard?.key || debugForceZoneCardKey;
+  const selectedZoneName = selectedZoneCard?.name || debugForceZoneCardName;
+  const godKeys = EXPANSIONS[selectedExpansionKey]?.godCardKeys || [];
+  const selectedGodKey = godKeys.includes(debugForceGodCardKey) ? debugForceGodCardKey : godKeys[0];
+  const selectStyle = {
+    width: '100%',
+    padding: 6,
+    background: '#2a1608',
+    color: '#c8a96e',
+    border: '1px solid #3a2510',
+    borderRadius: 4,
+  };
+  const sectionStyle = {
+    border: '1px solid #3a2510',
+    borderRadius: 4,
+    padding: 10,
+    marginBottom: 12,
+    background: 'rgba(10,6,3,0.36)',
+  };
+  const sectionTitleStyle = {
+    margin: '0 0 10px',
+    fontSize: 12,
+    color: '#f0cb7a',
+    fontFamily: "'Cinzel',serif",
+    letterSpacing: 1,
+  };
+  const fieldStyle = { marginBottom: 10 };
+  const labelStyle = { display: 'block', marginBottom: 4, fontSize: 12, color: '#a98a55' };
+  const handleExpansionChange = (nextKey) => {
+    setDebugExpansionKey(nextKey);
+    const nextZoneCards = getExpansionZoneCards(nextKey);
+    if (nextZoneCards.length) {
+      setDebugForceZoneCardKey(nextZoneCards[0].key);
+      setDebugForceZoneCardName(nextZoneCards[0].name);
+    }
+    const nextGodKey = EXPANSIONS[nextKey]?.godCardKeys?.[0];
+    if (nextGodKey) setDebugForceGodCardKey(nextGodKey);
+  };
+  const handlePickCard = (value) => {
+    const [kind, key, ...nameParts] = value.split(':');
+    if (kind === 'god') {
+      setDebugForceCardType('god');
+      setDebugForceGodCardKey(key);
+      return;
+    }
+    setDebugForceCardType('zone');
+    setDebugForceZoneCardKey(key);
+    setDebugForceZoneCardName(nameParts.join(':'));
+  };
+  useEffect(() => {
+    if (selectedExpansionKey !== debugExpansionKey) {
+      setDebugExpansionKey(selectedExpansionKey);
+      return;
+    }
+    if (selectedZoneKey && selectedZoneName && (selectedZoneKey !== debugForceZoneCardKey || selectedZoneName !== debugForceZoneCardName)) {
+      setDebugForceZoneCardKey(selectedZoneKey);
+      setDebugForceZoneCardName(selectedZoneName);
+    }
+    if (selectedGodKey && selectedGodKey !== debugForceGodCardKey) {
+      setDebugForceGodCardKey(selectedGodKey);
+    }
+  }, [
+    selectedExpansionKey,
+    debugExpansionKey,
+    selectedZoneKey,
+    selectedZoneName,
+    debugForceZoneCardKey,
+    debugForceZoneCardName,
+    selectedGodKey,
+    debugForceGodCardKey,
+    setDebugExpansionKey,
+    setDebugForceZoneCardKey,
+    setDebugForceZoneCardName,
+    setDebugForceGodCardKey,
+  ]);
   if (!show) return null;
   return (
     <div style={{
@@ -383,159 +486,213 @@ function DebugSettingsPanel({
       boxShadow: '0 0 20px rgba(0,0,0,0.8)',
       color: '#c8a96e',
       minWidth: 300,
+      maxWidth: 360,
     }}>
       <h3 style={{ marginTop: 0, marginBottom: 16, color: '#f0cb7a' }}>Debug设置</h3>
-      <div style={{ marginBottom: 12 }}>
-        <label style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>强制摸牌目标</label>
-        <select
-          value={debugForceCardTarget}
-          onChange={(e) => setDebugForceCardTarget(e.target.value)}
-          style={{
-            width: '100%',
-            padding: 6,
-            background: '#2a1608',
-            color: '#c8a96e',
-            border: '1px solid #3a2510',
-            borderRadius: 4,
-          }}
-        >
-          <option value="player">玩家</option>
-          <option value="ai1">1号位AI</option>
-          <option value="ai2">2号位AI</option>
-          <option value="ai3">3号位AI</option>
-          <option value="ai4">4号位AI</option>
-        </select>
-      </div>
-      <div style={{ marginBottom: 12 }}>
-        <label style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>强制目标是否收入这张牌</label>
-        <select
-          value={debugForceCardKeep}
-          onChange={(e) => setDebugForceCardKeep(e.target.value)}
-          style={{
-            width: '100%',
-            padding: 6,
-            background: '#2a1608',
-            color: '#c8a96e',
-            border: '1px solid #3a2510',
-            borderRadius: 4,
-          }}
-        >
-          <option value="auto">自动判断</option>
-          <option value="keep">强制收入</option>
-          <option value="discard">强制弃置</option>
-        </select>
-      </div>
-      <div style={{ marginBottom: 12 }}>
-        <label style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>牌类型</label>
-        <select
-          value={debugForceCardType}
-          onChange={(e) => setDebugForceCardType(e.target.value)}
-          style={{
-            width: '100%',
-            padding: 6,
-            background: '#2a1608',
-            color: '#c8a96e',
-            border: '1px solid #3a2510',
-            borderRadius: 4,
-          }}
-        >
-          <option value="zone">区域牌</option>
-          <option value="god">神牌</option>
-        </select>
-      </div>
-      {debugForceCardType === 'zone' && (
-        <>
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>区域牌编号</label>
-            <select
-              value={debugForceZoneCardKey}
-              onChange={(e) => {
-                const newKey = e.target.value;
-                setDebugForceZoneCardKey(newKey);
-                const cards = FIXED_ZONE_CARD_VARIANTS_BY_KEY[newKey] || [];
-                if (cards.length) {
-                  setDebugForceZoneCardName(cards[0].name);
-                }
-              }}
-              style={{
-                width: '100%',
-                padding: 6,
-                background: '#2a1608',
-                color: '#c8a96e',
-                border: '1px solid #3a2510',
-                borderRadius: 4,
-              }}
-            >
-              {ZONE_CARD_KEYS.map(key => (
-                <option key={key} value={key}>{key}</option>
-              ))}
-            </select>
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>区域牌</label>
-            <select
-              value={debugForceZoneCardName}
-              onChange={(e) => setDebugForceZoneCardName(e.target.value)}
-              style={{
-                width: '100%',
-                padding: 6,
-                background: '#2a1608',
-                color: '#c8a96e',
-                border: '1px solid #3a2510',
-                borderRadius: 4,
-              }}
-            >
-              {FIXED_ZONE_CARD_VARIANTS_BY_KEY[debugForceZoneCardKey] && FIXED_ZONE_CARD_VARIANTS_BY_KEY[debugForceZoneCardKey].map((card) => (
-                <option key={card.name} value={card.name}>{card.name}</option>
-              ))}
-            </select>
-          </div>
-        </>
-      )}
-      {debugForceCardType === 'god' && (
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>神牌类型</label>
-          <select
-            value={debugForceGodCardKey}
-            onChange={(e) => setDebugForceGodCardKey(e.target.value)}
-            style={{
-              width: '100%',
-              padding: 6,
-              background: '#2a1608',
-              color: '#c8a96e',
-              border: '1px solid #3a2510',
-              borderRadius: 4,
-            }}
-          >
-            <option value="CTH">克苏鲁</option>
-            <option value="NYA">Nyarlathotep</option>
-            <option value="ZHU">烛九阴</option>
-            <option value="SHU">森之领主</option>
-            <option value="VRI">弗栗多</option>
-            <option value="APO">阿波菲斯</option>
-            <option value="TSG">蟾蜍之神</option>
-          </select>
-        </div>
-      )}
-      <div style={{ marginBottom: 12 }}>
-        <label style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>玩家身份（下局生效）</label>
+      <div style={sectionStyle}>
+        <h4 style={sectionTitleStyle}>下局身份</h4>
         <select
           value={debugPlayerRole}
           onChange={(e) => setDebugPlayerRole(e.target.value)}
-          style={{
-            width: '100%',
-            padding: 6,
-            background: '#2a1608',
-            color: '#c8a96e',
-            border: '1px solid #3a2510',
-            borderRadius: 4,
-          }}
+          style={selectStyle}
         >
           <option value="auto">自动</option>
           <option value={ROLE_TREASURE}>{ROLE_TREASURE}</option>
           <option value={ROLE_HUNTER}>{ROLE_HUNTER}</option>
           <option value={ROLE_CULTIST}>{ROLE_CULTIST}</option>
         </select>
+      </div>
+
+      <div style={sectionStyle}>
+        <h4 style={sectionTitleStyle}>下局拓展包</h4>
+        <select
+          value={selectedExpansionKey}
+          onChange={(e) => handleExpansionChange(e.target.value)}
+          style={selectStyle}
+        >
+          {playableExpansionKeys.map(key => (
+            <option key={key} value={key}>{EXPANSIONS[key]?.name || key}</option>
+          ))}
+        </select>
+      </div>
+
+      <div style={sectionStyle}>
+        <h4 style={sectionTitleStyle}>强制摸牌设置</h4>
+        <div style={fieldStyle}>
+          <label style={labelStyle}>目标</label>
+          <select
+            value={debugForceCardTarget}
+            onChange={(e) => setDebugForceCardTarget(e.target.value)}
+            style={selectStyle}
+          >
+            <option value="player">玩家</option>
+            <option value="ai1">1号位AI</option>
+            <option value="ai2">2号位AI</option>
+            <option value="ai3">3号位AI</option>
+            <option value="ai4">4号位AI</option>
+          </select>
+        </div>
+        <div style={fieldStyle}>
+          <label style={labelStyle}>是否收入</label>
+          <select
+            value={debugForceCardKeep}
+            onChange={(e) => setDebugForceCardKeep(e.target.value)}
+            style={selectStyle}
+          >
+            <option value="auto">自动判断</option>
+            <option value="keep">强制收入</option>
+            <option value="discard">强制弃置</option>
+          </select>
+        </div>
+        <label style={labelStyle}>选牌器</label>
+        {/* ── 顶部页签：区域牌 / 神牌 ── */}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+          {['zone', 'god'].map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => {
+                setDebugForceCardType(tab);
+                if (tab === 'zone') {
+                  const cards = zoneCards.filter(c => c.key.startsWith(zoneLetterTab));
+                  if (cards.length) handlePickCard(`zone:${cards[0].key}:${cards[0].name}`);
+                } else {
+                  if (godKeys.length) handlePickCard(`god:${godKeys[0]}`);
+                }
+              }}
+              style={{
+                flex: 1,
+                padding: '5px 0',
+                background: debugForceCardType === tab ? '#3a2510' : '#1a120a',
+                color: debugForceCardType === tab ? '#f0cb7a' : '#9b7641',
+                border: `1px solid ${debugForceCardType === tab ? '#7a5324' : '#3a2510'}`,
+                borderRadius: 4,
+                fontSize: 12,
+                fontFamily: "'Cinzel',serif",
+                cursor: 'pointer',
+              }}
+            >
+              {tab === 'zone' ? '区域牌' : '神牌'}
+            </button>
+          ))}
+        </div>
+
+        {/* ── 区域牌：字母页签 + 数字页签 + 牌按钮 ── */}
+        {debugForceCardType === 'zone' && (
+          <div style={{ display: 'flex', gap: 6, minHeight: 160 }}>
+            {/* 左侧字母页签 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: 32 }}>
+              {LETTERS.map(L => (
+                <button
+                  key={L}
+                  type="button"
+                  onClick={() => {
+                    setZoneLetterTab(L);
+                    const cards = zoneCards.filter(c => c.key === `${L}${zoneNumTab}`);
+                    if (cards.length) handlePickCard(`zone:${cards[0].key}:${cards[0].name}`);
+                  }}
+                  style={{
+                    padding: '5px 0',
+                    background: zoneLetterTab === L ? '#3a2510' : '#1a120a',
+                    color: zoneLetterTab === L ? '#f0cb7a' : '#9b7641',
+                    border: `1px solid ${zoneLetterTab === L ? '#7a5324' : '#3a2510'}`,
+                    borderRadius: 4,
+                    fontSize: 12,
+                    fontFamily: "'Cinzel',serif",
+                    cursor: 'pointer',
+                    fontWeight: zoneLetterTab === L ? 'bold' : 'normal',
+                  }}
+                >
+                  {L}
+                </button>
+              ))}
+            </div>
+            {/* 中间数字页签 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: 32 }}>
+              {NUMS.map(N => (
+                <button
+                  key={N}
+                  type="button"
+                  onClick={() => {
+                    setZoneNumTab(N);
+                    const cards = zoneCards.filter(c => c.key === `${zoneLetterTab}${N}`);
+                    if (cards.length) handlePickCard(`zone:${cards[0].key}:${cards[0].name}`);
+                  }}
+                  style={{
+                    padding: '5px 0',
+                    background: zoneNumTab === N ? '#3a2510' : '#1a120a',
+                    color: zoneNumTab === N ? '#f0cb7a' : '#9b7641',
+                    border: `1px solid ${zoneNumTab === N ? '#7a5324' : '#3a2510'}`,
+                    borderRadius: 4,
+                    fontSize: 12,
+                    fontFamily: "'Cinzel',serif",
+                    cursor: 'pointer',
+                    fontWeight: zoneNumTab === N ? 'bold' : 'normal',
+                  }}
+                >
+                  {N}
+                </button>
+              ))}
+            </div>
+            {/* 右侧牌按钮 */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, overflowY: 'auto', maxHeight: 160 }}>
+              {zoneCards
+                .filter(card => card.key === `${zoneLetterTab}${zoneNumTab}`)
+                .map(card => {
+                  const isSelected = selectedZoneKey === card.key && selectedZoneName === card.name;
+                  return (
+                    <button
+                      key={`zone:${card.key}:${card.name}`}
+                      type="button"
+                      onClick={() => handlePickCard(`zone:${card.key}:${card.name}`)}
+                      style={{
+                        padding: '5px 8px',
+                        textAlign: 'left',
+                        background: isSelected ? '#3a2510' : '#1a120a',
+                        color: isSelected ? '#f0cb7a' : '#c8a96e',
+                        border: `1px solid ${isSelected ? '#7a5324' : '#3a2510'}`,
+                        borderRadius: 4,
+                        fontSize: 12,
+                        fontFamily: "'IM Fell English','Noto Serif SC',serif",
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {card.key} · {card.name}
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+        )}
+
+        {/* ── 神牌：直接显示所有选项 ── */}
+        {debugForceCardType === 'god' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, overflowY: 'auto', maxHeight: 160 }}>
+            {godKeys.map(godKey => {
+              const isSelected = selectedGodKey === godKey;
+              return (
+                <button
+                  key={`god:${godKey}`}
+                  type="button"
+                  onClick={() => handlePickCard(`god:${godKey}`)}
+                  style={{
+                    padding: '5px 8px',
+                    textAlign: 'left',
+                    background: isSelected ? '#3a2510' : '#1a120a',
+                    color: isSelected ? '#f0cb7a' : '#c8a96e',
+                    border: `1px solid ${isSelected ? '#7a5324' : '#3a2510'}`,
+                    borderRadius: 4,
+                    fontSize: 12,
+                    fontFamily: "'IM Fell English','Noto Serif SC',serif",
+                    cursor: 'pointer',
+                  }}
+                >
+                  {godKey} · {GOD_DEFS[godKey]?.name || godKey}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
       <button
         type="button"
@@ -568,6 +725,7 @@ function DebugControls({
   debugForceZoneCardName, setDebugForceZoneCardName,
   debugForceGodCardKey, setDebugForceGodCardKey,
   debugPlayerRole, setDebugPlayerRole,
+  debugExpansionKey, setDebugExpansionKey,
 }) {
   if (!isLocalTestMode) return null;
   return (
@@ -622,6 +780,7 @@ function DebugControls({
         debugForceZoneCardName={debugForceZoneCardName} setDebugForceZoneCardName={setDebugForceZoneCardName}
         debugForceGodCardKey={debugForceGodCardKey} setDebugForceGodCardKey={setDebugForceGodCardKey}
         debugPlayerRole={debugPlayerRole} setDebugPlayerRole={setDebugPlayerRole}
+        debugExpansionKey={debugExpansionKey} setDebugExpansionKey={setDebugExpansionKey}
       />
     </>
   );

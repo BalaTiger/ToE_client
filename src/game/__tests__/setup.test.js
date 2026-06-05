@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+﻿import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   ROLE_TREASURE,
   ROLE_HUNTER,
@@ -12,35 +12,22 @@ describe('mkDeck', () => {
   beforeEach(() => resetIds());
 
   const EXPECTED_ZONE_CARD_COUNT = 48;
-  const EXPECTED_SPECIAL_CARD_COUNT = 20;
-  const EXPECTED_FORMAL_DECK_COUNT = EXPECTED_ZONE_CARD_COUNT + EXPECTED_SPECIAL_CARD_COUNT;
-  const EXPECTED_EARTH_DEFINED_ZONE_CARD_COUNT = 41;
   const EXPECTED_EARTH_SPECIAL_CARD_COUNT = 24;
   const EXPECTED_EARTH_DECK_COUNT = EXPECTED_ZONE_CARD_COUNT + EXPECTED_EARTH_SPECIAL_CARD_COUNT;
-  const EXPECTED_EARTH_CURRENT_DECK_COUNT = EXPECTED_EARTH_DEFINED_ZONE_CARD_COUNT + EXPECTED_EARTH_SPECIAL_CARD_COUNT;
 
-  it('临时拓展包允许因测试牌超出正式牌堆数量', () => {
-    const deck = mkDeck('temporary');
+  it('默认牌堆使用地神的潜影并满足 72 张正式构成', () => {
+    const deck = mkDeck();
     const zoneCards = deck.filter(c => c.isZone);
     const specialCards = deck.filter(c => c.isGod);
 
-    expect(zoneCards.length).toBeGreaterThanOrEqual(EXPECTED_ZONE_CARD_COUNT);
-    expect(specialCards).toHaveLength(EXPECTED_SPECIAL_CARD_COUNT);
-    expect(deck.length).toBeGreaterThanOrEqual(EXPECTED_FORMAL_DECK_COUNT);
-  });
-
-  it('记录当前临时拓展包牌堆规模', () => {
-    const deck = mkDeck('temporary');
-    const zoneCards = deck.filter(c => c.isZone);
-    const specialCards = deck.filter(c => c.isGod);
-
-    expect(zoneCards).toHaveLength(60);
-    expect(specialCards).toHaveLength(20);
-    expect(deck).toHaveLength(80);
+    expect(zoneCards).toHaveLength(EXPECTED_ZONE_CARD_COUNT);
+    expect(specialCards).toHaveLength(EXPECTED_EARTH_SPECIAL_CARD_COUNT);
+    expect(deck).toHaveLength(EXPECTED_EARTH_DECK_COUNT);
+    expect(deck.every(c => c.isGod || c.expansion === '地神的潜影')).toBe(true);
   });
 
   it('先贤的馈赠包含两张天平牌且不在同一编号', () => {
-    const deck = mkDeck('temporary');
+    const deck = mkDeck('先贤的馈赠');
     const lifeBalance = deck.find(c => c.name === '生命天平');
     const soulBalance = deck.find(c => c.name === '灵魂天平');
 
@@ -49,8 +36,8 @@ describe('mkDeck', () => {
     expect(lifeBalance.key).not.toBe(soulBalance.key);
   });
 
-  it('临时拓展包包含无尽通道', () => {
-    const deck = mkDeck('temporary');
+  it('地神的潜影包含无尽通道', () => {
+    const deck = mkDeck('地神的潜影');
     const endlessCorridor = deck.find(c => c.name === '无尽通道');
 
     expect(endlessCorridor).toMatchObject({
@@ -86,12 +73,28 @@ describe('mkDeck', () => {
     });
   });
 
-  it('地神的潜影包含烤盲鱼', () => {
+  it('地神的潜影包含烤盲鱼和石化配方', () => {
     const deck = mkDeck('地神的潜影');
 
     expect(deck.find(c => c.name === '烤盲鱼')).toMatchObject({
       key: 'C1',
       type: 'blindFish',
+      expansion: '地神的潜影',
+    });
+    expect(deck.find(c => c.name === '石化配方')).toMatchObject({
+      key: 'C1',
+      type: 'petrifyingFormula',
+      expansion: '地神的潜影',
+    });
+  });
+
+  it('地神的潜影包含荆棘山路', () => {
+    const deck = mkDeck('地神的潜影');
+
+    expect(deck.find(c => c.name === '荆棘山路')).toMatchObject({
+      key: 'D2',
+      type: 'selfDamageHP',
+      val: 1,
       expansion: '地神的潜影',
     });
   });
@@ -107,6 +110,36 @@ describe('mkDeck', () => {
     });
   });
 
+  it('地神的潜影包含群蛇陷阱', () => {
+    const deck = mkDeck('地神的潜影');
+
+    expect(deck.find(c => c.name === '群蛇陷阱')).toMatchObject({
+      key: 'D2',
+      type: 'snakePoisonTrap',
+      polarity: 'negative',
+      expansion: '地神的潜影',
+    });
+  });
+
+  it('地神的潜影包含解读石刻、霉变食物，且斯芬克斯位于 D4', () => {
+    const deck = mkDeck('地神的潜影');
+
+    expect(deck.find(c => c.name === '解读石刻')).toMatchObject({
+      key: 'A1',
+      type: 'decipherStoneCarving',
+      expansion: '地神的潜影',
+    });
+    expect(deck.find(c => c.name === '霉变食物')).toMatchObject({
+      key: 'A1',
+      type: 'moldyFood',
+      expansion: '地神的潜影',
+    });
+    expect(deck.find(c => c.name === '斯芬克斯')).toMatchObject({
+      key: 'D4',
+      expansion: '地神的潜影',
+    });
+  });
+
   it('地神的潜影记录 16 编号位×3 区域牌与 6 种神牌×4 的目标构成', () => {
     const deck = mkDeck('地神的潜影');
     const zoneCards = deck.filter(c => c.isZone);
@@ -116,9 +149,9 @@ describe('mkDeck', () => {
     expect(expansion.zoneSlotCount * expansion.zoneCardsPerSlot).toBe(EXPECTED_ZONE_CARD_COUNT);
     expect((expansion.godCardKeys || []).length * (expansion.godCopies || 4)).toBe(EXPECTED_EARTH_SPECIAL_CARD_COUNT);
     expect(EXPECTED_EARTH_DECK_COUNT).toBe(72);
-    expect(zoneCards).toHaveLength(EXPECTED_EARTH_DEFINED_ZONE_CARD_COUNT);
+    expect(zoneCards).toHaveLength(EXPECTED_ZONE_CARD_COUNT);
     expect(specialCards).toHaveLength(EXPECTED_EARTH_SPECIAL_CARD_COUNT);
-    expect(deck).toHaveLength(EXPECTED_EARTH_CURRENT_DECK_COUNT);
+    expect(deck).toHaveLength(EXPECTED_EARTH_DECK_COUNT);
     expect(specialCards.filter(c => c.godKey === 'TSG')).toHaveLength(4);
     expect(specialCards.find(c => c.godKey === 'TSG')).toMatchObject({
       name: '蟾蜍之神',
@@ -140,13 +173,12 @@ describe('mkDeck', () => {
   });
 
   it('未完成拓展包不强制满足正式牌堆数量目标', () => {
-    for (const expansionKey of Object.keys(EXPANSIONS).filter(key => key !== 'temporary')) {
+    for (const expansionKey of Object.keys(EXPANSIONS).filter(key => key !== '地神的潜影')) {
       const deck = mkDeck(expansionKey);
       const zoneCards = deck.filter(c => c.isZone);
-      const expectedMax = expansionKey === '地神的潜影' ? EXPECTED_EARTH_DECK_COUNT : EXPECTED_FORMAL_DECK_COUNT;
 
       expect(zoneCards.length).toBeLessThanOrEqual(EXPECTED_ZONE_CARD_COUNT);
-      expect(deck.length).toBeLessThanOrEqual(expectedMax);
+      expect(deck.length).toBeLessThanOrEqual(EXPECTED_EARTH_DECK_COUNT);
     }
   });
 
@@ -176,7 +208,7 @@ describe('mkDeck', () => {
   });
 
   it('神牌显示编号使用短缩写', () => {
-    const deck = mkDeck('temporary');
+    const deck = mkDeck('地神的潜影');
     const vritra = deck.find(card => card.isGod && card.godKey === 'VRI');
     expect(vritra.key).toBe('VRI');
     expect(getCardDisplayKey(vritra)).toBe('VRI');
@@ -258,14 +290,14 @@ describe('initGame debug force draw', () => {
       'keep',
       'zone',
       'D3',
-      '玫瑰倒刺',
+      '鼠群',
       null,
       null,
       state => state,
-      'temporary'
+      '地神的潜影'
     );
 
-    expect(gs.debugForceCard).toMatchObject({ key: 'D3', name: '玫瑰倒刺' });
+    expect(gs.debugForceCard).toMatchObject({ key: 'D3', name: '鼠群' });
     expect(gs.debugForceCardTarget).toBe('ai4');
     expect(gs.debugForceCardKeep).toBe('keep');
   });
@@ -282,7 +314,7 @@ describe('initGame debug force draw', () => {
       null,
       null,
       state => state,
-      'temporary'
+      '地神的潜影'
     );
 
     expect(gs.debugForceCard).toBeNull();
@@ -300,7 +332,7 @@ describe('initGame debug force draw', () => {
       null,
       null,
       state => state,
-      'temporary'
+      '地神的潜影'
     );
 
     expect(gs.debugForceCard).toBeNull();
@@ -319,7 +351,7 @@ describe('initGame debug force draw', () => {
       'APO',
       null,
       state => state,
-      'temporary'
+      '地神的潜影'
     );
 
     expect(gs.debugForceCard).toMatchObject({ isGod: true, godKey: 'APO', name: '阿波菲斯' });
@@ -337,13 +369,13 @@ describe('initGame debug force draw', () => {
       'TSG',
       null,
       state => state,
-      'temporary'
+      '地神的潜影'
     );
 
     expect(gs.debugForceCard).toMatchObject({ isGod: true, godKey: 'TSG', name: '蟾蜍之神' });
   });
 
-  it('Debug 可强制摸生命天平和灵魂天平，即使当前扩展包不同', () => {
+  it('Debug 强制摸牌只允许选择当前扩展包内的卡牌', () => {
     const life = initGame(
       null,
       null,
@@ -371,7 +403,8 @@ describe('initGame debug force draw', () => {
       '地神的潜影'
     );
 
-    expect(life.debugForceCard).toMatchObject({ key: 'B1', name: '生命天平', type: 'lifeBalance' });
-    expect(soul.debugForceCard).toMatchObject({ key: 'C1', name: '灵魂天平', type: 'soulBalance' });
+    expect(life.debugForceCard).toBeNull();
+    expect(soul.debugForceCard).toBeNull();
   });
 });
+

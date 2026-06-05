@@ -6,6 +6,7 @@ const STAT_EVENT_TYPES = new Set([
   'HP_SAN_LOSS',
   'HP_SAN_GAIN',
   'DAMAGE_LINK_BREAK',
+  'PETRIFY_DEATH',
 ]);
 
 function statOf(player) {
@@ -209,6 +210,16 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
   const sanHeal = [...byType.SAN_HEAL];
   const sameHealTargets = hpHeal.length && sanHeal.length && hpHeal.length === sanHeal.length && hpHeal.every((v, i) => v === sanHeal[i]);
   const queue = [];
+  const petrifyEvents = events.filter(event => event.type === 'PETRIFY_DEATH');
+  petrifyEvents.forEach(event => {
+    queue.push({
+      type: 'PETRIFY_DEATH',
+      msgs,
+      hitIndices: [event.target],
+      targetStats,
+      statEvents: events,
+    });
+  });
   const push = (type, hitIndices) => {
     if (hitIndices.length) queue.push({ type, msgs, hitIndices, targetStats, statEvents: events });
   };

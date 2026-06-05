@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { CS, GOD_CS, getCardBackImage } from '../../constants/card';
 import { DDCard, MiniCardFace } from '../cards';
 import { getPileAnchorCenter, getPlayerAreaAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
@@ -139,7 +139,7 @@ export function ZhuHideCardOverlay({ anim, exiting }) {
   );
 }
 
-export function DiscardMoveOverlay({ anim, exiting, expansionKey = 'temporary' }) {
+export function DiscardMoveOverlay({ anim, exiting, expansionKey = '地神的潜影' }) {
   const [cardStyle, setCardStyle] = React.useState({});
 
   React.useEffect(() => {
@@ -212,7 +212,7 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = 'temporary' }
   );
 }
 
-export function BuryToDeckOverlay({ anim, exiting, expansionKey = 'temporary' }) {
+export function BuryToDeckOverlay({ anim, exiting, expansionKey = '地神的潜影' }) {
   const [style, setStyle] = React.useState(null);
 
   React.useEffect(() => {
@@ -277,7 +277,7 @@ export function BuryToDeckOverlay({ anim, exiting, expansionKey = 'temporary' })
 
 // ── Card Transfer Overlay (hand cards flying to dest) ───────────
 // Receives pre-measured positions from parent useEffect([anim])
-export function CardTransferOverlay({ transfers, expansionKey = 'temporary' }) {
+export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影' }) {
   if (!transfers || !transfers.length) return null;
   const cardBackImage = getCardBackImage(expansionKey);
   return (
@@ -415,3 +415,4 @@ export function HuntRevealedCardBadge({ card, targetPid }) {
     </div>
   );
 }
+

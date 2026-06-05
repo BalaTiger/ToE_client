@@ -34,5 +34,6 @@ export const ANIM_CFG={
   // SKILL_SWAP/HUNT/BEWITCH use dedicated overlay components, not GenericAnimOverlay
   // DISCARD uses DiscardMoveOverlay, not GenericAnimOverlay
   DEATH:        {overlay:'rgba(12,2,2,0.96)', accent:'#ff2020', icon:'☠',  title:'死亡降临',  shake:false},
+  PETRIFY_DEATH:{overlay:'rgba(6,10,9,0.96)', accent:'#9fb6a8', icon:'◆',  title:'石化凝结',  shake:false},
   EARTHQUAKE:   {overlay:'rgba(10,8,5,0.92)', accent:'#d4b468', icon:'⚡',  title:'地动山摇',  shake:true},
 };

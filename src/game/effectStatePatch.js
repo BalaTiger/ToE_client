@@ -13,9 +13,11 @@ const ABILITY_DECISION_PHASES = {
   graveDigPickGod: 'GRAVE_DIG_SELECT',
   buryAliveSelect: 'BURY_ALIVE_SELECT',
   igniteTorchDiscard: 'IGNITE_TORCH_DISCARD',
-  semiMaterializeTarget: 'SEMI_MATERIALIZE_TARGET',
-  semiMaterializeGuess: 'SEMI_MATERIALIZE_GUESS',
   tsgSlimeBalance: 'TSG_SLIME_BALANCE',
+  etherealizeRedirect: 'ETHEREALIZE_DECISION',
+  etherealizeSelectTarget: 'ETHEREALIZE_SELECT_TARGET',
+  albinoCreatureSelectCard: 'ALBINO_CREATURE_SELECT_CARD',
+  decipherStoneCarving: 'DECIPHER_STONE_CARVING',
 };
 
 export function hasEffectDecisionState(statePatch) {

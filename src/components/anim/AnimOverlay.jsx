@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { CardFlipAnim } from './CardFlipAnim';
 import { DiceRollAnim, GenericAnimOverlay, YourTurnAnim } from './GenericAnimOverlay';
 import { BuryToDeckOverlay, DiscardMoveOverlay, HuntRevealCardOverlay, ZhuHideCardOverlay } from './MoveOverlays';
@@ -41,7 +41,7 @@ const ANIM_RENDERERS = {
   ENDLESS_CORRIDOR_TUNNEL: ({ exiting }) => <EndlessCorridorTunnelAnim exiting={exiting} />,
 };
 
-function AnimOverlay({ anim, exiting, expansionKey = 'temporary' }) {
+function AnimOverlay({ anim, exiting, expansionKey = '地神的潜影' }) {
   if (!anim || NO_OVERLAY_TYPES.has(anim.type)) return null;
   const render = ANIM_RENDERERS[anim.type];
   if (render) return render({ anim, exiting, expansionKey });
@@ -50,3 +50,4 @@ function AnimOverlay({ anim, exiting, expansionKey = 'temporary' }) {
 
 
 export { AnimOverlay };
+

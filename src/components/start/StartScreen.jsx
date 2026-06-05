@@ -32,6 +32,7 @@ export function StartScreen({
   playerUsernameSpecial,
 }) {
   const lerp = (a, b, t) => a + (b - a) * t;
+  const onlineOptionsBackdropMouseDownRef = React.useRef(false);
   const startRules = [
     '身份随机分配，HP / SAN 初始 10，上限 10',
     '每回合投 1 张牌，区域牌可选择收入手牌或弃置',
@@ -387,8 +388,23 @@ export function StartScreen({
       </div>
 
       {onlineOptionsModal && (
-        <div style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 1500, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={closeOnlineOptions}>
+        <div
+          style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 1500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onMouseDown={(e) => {
+            onlineOptionsBackdropMouseDownRef.current = e.target === e.currentTarget;
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && onlineOptionsBackdropMouseDownRef.current) {
+              closeOnlineOptions();
+            }
+            onlineOptionsBackdropMouseDownRef.current = false;
+          }}
+        >
           <div
+            onMouseDown={(e) => {
+              onlineOptionsBackdropMouseDownRef.current = false;
+              e.stopPropagation();
+            }}
             onClick={(e) => e.stopPropagation()}
             style={{
               background: '#0e0a14',
