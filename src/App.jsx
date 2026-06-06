@@ -6595,7 +6595,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const statQ=cthDraws.length?buildAnimQueue(gs,{...gs,players:P,deck:D,discard:Disc,log:L}).filter(a=>a.type!=='CARD_TRANSFER'):[];
       if(beginEndTurnReplay(gs,P,D,Disc,L,[...discardQueue,...cthQueue,...statQ]))return;
     }
-    const postDiscardGs={...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,abilityData:{},...balanceStatePatch};
+    const postDiscardGs={...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,abilityData:{},_mpEndTurnDiscardResolved:true,...balanceStatePatch};
     let newGs=startNextTurn(postDiscardGs);
     const discardAnimMsgs=L.slice(-discarded.length-1);
     const handLimitDiscardEvent=gs._isMP&&discarded.length?createHandLimitDiscardEvent({
@@ -7709,7 +7709,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
               ⏱ {mpTurnSec}s
             </div>
           )}
-          {isMultiplayer&&!isSpectating&&mpDiscardSec!==null&&phase==='DISCARD_PHASE'&&(
+          {isMultiplayer&&!isSpectating&&mpDiscardSec!==null&&phase==='DISCARD_PHASE'&&!isBlocked&&(
             <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:mpDiscardSec<=5?promptWarningTextColor:promptCautionTextColor,letterSpacing:1,flexShrink:0}}>
               ⏱ 弃牌 {mpDiscardSec}s
             </div>
@@ -7735,10 +7735,10 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         {/* Hand area */}
         <div ref={handAreaRef} data-hand-area style={{background:'#120900',border:`1.5px solid ${myTurn?'#3a2010':'#2a1a08'}`,borderRadius:3,padding:isMobile?'8px 9px':'11px 13px'}}>
           <div style={{display:'flex',alignItems:'center',marginBottom:9,gap:8}}>
-            <span style={{fontFamily:"'Cinzel',serif",color:!isSpectating&&(phase==='DISCARD_PHASE'||phase==='PLAYER_REVEAL_FOR_HUNT'||isLocalHuntRevealPrompt)?promptWarningTextColor:promptActiveTextColor,fontSize:10,letterSpacing:1}}>
+            <span style={{fontFamily:"'Cinzel',serif",color:!isSpectating&&((phase==='DISCARD_PHASE'&&!isBlocked)||phase==='PLAYER_REVEAL_FOR_HUNT'||isLocalHuntRevealPrompt)?promptWarningTextColor:promptActiveTextColor,fontSize:10,letterSpacing:1}}>
               {isSpectating
                 ?`手牌 (${visualMe.hand.length}/${effectiveHandLimit})`
-                :phase==='DISCARD_PHASE'
+                :(phase==='DISCARD_PHASE'&&!isBlocked)
                 ?(isLocalCurrentTurn(gs)
                   ?`⚠ 手牌超限 (${visualMe.hand.length}/${effectiveHandLimit})`
                   :`等待 ${currentTurnPlayer?.name||'当前玩家'} 弃牌…`)
@@ -7828,7 +7828,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                 )}
               </div>
             )}
-            {phase==='DISCARD_PHASE'&&isLocalCurrentTurn(gs)&&(
+            {phase==='DISCARD_PHASE'&&isLocalCurrentTurn(gs)&&!isBlocked&&(
               <button onClick={confirmDiscard}
                 disabled={!(gs.abilityData.discardSelected||[]).length}
                 style={{
@@ -7864,7 +7864,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
               const clickable=isMyCardClickable(c,i);
               const isMobileArmedGod=isMobile&&mobileArmedGodCardIdx===i;
               const isBuryAliveSelected=phase==='BURY_ALIVE_SELECT'&&canPlayerRespondWithAnyHandCard()&&gs.abilityData?.buryAliveSelectedIndex===i;
-              const isSel=(phase==='DISCARD_PHASE'&&isLocalCurrentTurn(gs)&&(gs.abilityData.discardSelected||[]).includes(i))||isMobileArmedGod||isBuryAliveSelected;
+              const isSel=(phase==='DISCARD_PHASE'&&!isBlocked&&isLocalCurrentTurn(gs)&&(gs.abilityData.discardSelected||[]).includes(i))||isMobileArmedGod||isBuryAliveSelected;
               const isMatch=phase==='HUNT_CONFIRM'&&gs.abilityData?.revCard&&cardsHuntMatch(c,gs.abilityData.revCard);
               const isAlbinoFireCard=phase==='ALBINO_CREATURE_SELECT_CARD'&&canPlayerRespondWithFireHandCard()&&(gs.abilityData?.fireCardIds||[]).includes(c?.id);
               const isGodUpgrade=c.isGod&&visualMe.godName===c.godKey&&(visualMe.godLevel||0)<3;
