@@ -354,6 +354,7 @@ export function buildTurnStartDrawReplayQueue({
     card: drawnCard,
     triggerName: localDisplayName(drawerPid, drawerName),
     targetPid: drawerPid,
+    sourcePile: newGs?.drawReveal?.sourcePile || newGs?._drawSourcePile || (newGs?.geomagneticReversalActive ? 'discard' : 'deck'),
     msgs: newGs?._drawLogs,
   };
   const drawFullHandSwapQ = buildFullHandSwapTransferQueue(

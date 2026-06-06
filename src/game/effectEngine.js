@@ -23,7 +23,7 @@ import {
 import { buildStatEvents } from './statEvents';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { appendProliferatingZDraws, makeProliferatingZState } from './proliferatingZ';
-import { createEarthquakeEvent } from './visualEvents';
+import { createCardEffectEvent, createEarthquakeEvent } from './visualEvents';
 import { createGeomagneticRestoreCard } from '../constants/card';
 import {
   addTurnScopedDamageBonus,
@@ -794,11 +794,28 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       msgs.push(`【地底天空】牌堆和弃牌堆交换了`);
     },
     geomagneticReversal: () => {
+      const beforePlayers = copyPlayers(P);
+      const beforeDiscard = [...Disc];
       const restoreCard = createGeomagneticRestoreCard();
       Disc.push(restoreCard);
       Disc = shuffle(Disc);
       statePatch = { ...statePatch, geomagneticReversalActive: true };
       msgs.push(`【地磁反转】一张"反转复原"被洗入弃牌堆，场地被地磁反转笼罩！`);
+      const event = createCardEffectEvent({
+        effectKey: 'geomagneticReversal',
+        card,
+        actorIdx: ci,
+        beforePlayers,
+        beforeDiscard,
+        msgs: [msgs[msgs.length - 1]],
+        payload: { restoreCard },
+      });
+      if (event) {
+        statePatch = {
+          ...statePatch,
+          _visualEvents: [...(statePatch._visualEvents || []), event],
+        };
+      }
     },
     etherealize: () => {
       const hand = actor.hand || [];
@@ -887,7 +904,26 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     adjDamageHP: () => { applyAOEDamage(adjacent, 'hp', card.val); },
     adjDamageSAN: () => { applyAOEDamage(adjacent, 'san', card.val); },
     adjDamageBoth: () => { applyAOEDamage(adjacent, 'both', card.val, card.hpVal, card.sanVal); },
-    allDamageHP: () => { applyGlobalAOEDamage('hp', card.val); },
+    allDamageHP: () => {
+      const beforePlayers = card?.name === '活火山' ? copyPlayers(P) : null;
+      applyGlobalAOEDamage('hp', card.val);
+      if (card?.name === '活火山') {
+        const event = createCardEffectEvent({
+          effectKey: 'volcano',
+          card,
+          actorIdx: ci,
+          beforePlayers,
+          beforeDiscard: [...Disc],
+          msgs: msgs.slice(-1),
+        });
+        if (event) {
+          statePatch = {
+            ...statePatch,
+            _visualEvents: [...(statePatch._visualEvents || []), event],
+          };
+        }
+      }
+    },
     allDamageSAN: () => { applyGlobalAOEDamage('san', card.val); },
     allDamageBoth: () => { applyGlobalAOEDamage('both', card.val); },
     adjRest: () => {

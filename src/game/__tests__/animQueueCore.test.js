@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildAiHuntEventAnimQueue, buildAnimQueue } from '../animQueueCore';
-import { createEarthquakeEvent } from '../visualEvents';
+import { createCardEffectEvent, createEarthquakeEvent } from '../visualEvents';
 import { makeGodCard, makeGs, makePlayer } from './factory';
 
 describe('buildAnimQueue stat animations', () => {
@@ -266,6 +266,72 @@ describe('buildAnimQueue stat animations', () => {
     });
 
     expect(buildAnimQueue(oldGs, newGs).map(step => step.type)).toContain('EARTHQUAKE');
+  });
+
+  it('地磁反转 visualEvent 会显式产生指南针动画', () => {
+    const oldGs = makeGs({
+      players: [makePlayer()],
+      discard: [],
+      log: ['旧日志'],
+    });
+    const restoreCard = { id: 'gmr-test', name: '反转复原', type: 'geomagneticRestore', isGeomagneticRestore: true };
+    const event = createCardEffectEvent({
+      effectKey: 'geomagneticReversal',
+      card: { id: 'gm', name: '地磁反转', key: 'C2', type: 'geomagneticReversal' },
+      actorIdx: 0,
+      beforePlayers: oldGs.players,
+      beforeDiscard: [],
+      msgs: ['【地磁反转】一张"反转复原"被洗入弃牌堆，场地被地磁反转笼罩！'],
+      payload: { restoreCard },
+    });
+    const newGs = makeGs({
+      players: [makePlayer()],
+      discard: [restoreCard],
+      log: ['旧日志', '【地磁反转】一张"反转复原"被洗入弃牌堆，场地被地磁反转笼罩！'],
+      _visualEvents: [event],
+    });
+
+    const step = buildAnimQueue(oldGs, newGs).find(item => item.type === 'GEOMAGNETIC_REVERSAL');
+
+    expect(step).toMatchObject({
+      type: 'GEOMAGNETIC_REVERSAL',
+      actorIdx: 0,
+      restoreCard,
+      visualSetupTiming: 'queueStart',
+    });
+  });
+
+  it('活火山 visualEvent 会显式产生喷发动画', () => {
+    const beforePlayers = [makePlayer({ name: '你', hp: 10 })];
+    const afterPlayers = [makePlayer({ name: '你', hp: 6 })];
+    const oldGs = makeGs({
+      players: beforePlayers,
+      discard: [],
+      log: ['旧日志'],
+    });
+    const event = createCardEffectEvent({
+      effectKey: 'volcano',
+      card: { id: 'volcano', name: '活火山', key: 'C1', type: 'allDamageHP' },
+      actorIdx: 0,
+      beforePlayers,
+      beforeDiscard: [],
+      msgs: ['全体存活角色失去 4 HP'],
+    });
+    const newGs = makeGs({
+      players: afterPlayers,
+      discard: [],
+      log: ['旧日志', '全体存活角色失去 4 HP'],
+      _visualEvents: [event],
+    });
+
+    const step = buildAnimQueue(oldGs, newGs).find(item => item.type === 'VOLCANO');
+
+    expect(step).toMatchObject({
+      type: 'VOLCANO',
+      actorIdx: 0,
+      beforePlayers,
+      visualSetupTiming: 'queueStart',
+    });
   });
 
   it('开局遮蔽态已带最新日志时仍能从地震 visualEvent 产生动画', () => {

@@ -88,13 +88,14 @@ export function createTurnStartEvent({ playerIdx = 0, playerName = '该玩家', 
   }, 'turn');
 }
 
-export function createDrawCardEvent({ playerIdx = 0, playerName = '该玩家', card, msgs = [] } = {}) {
+export function createDrawCardEvent({ playerIdx = 0, playerName = '该玩家', card, msgs = [], sourcePile = null } = {}) {
   if (!card) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.DRAW_CARD,
     playerIdx,
     playerName,
     card,
+    ...(sourcePile ? { sourcePile } : {}),
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'turn');
 }
@@ -351,6 +352,7 @@ export function buildTurnStartDrawVisualEvents(state) {
       playerIdx: drawerIdx,
       playerName: state.players?.[drawerIdx]?.name || '该玩家',
       card: drawCard,
+      sourcePile: state.drawReveal?.sourcePile || state.abilityData?.sourcePile || state._drawSourcePile || null,
       msgs: state._drawLogs,
     });
     if (drawEvent) events.push(drawEvent);
@@ -452,6 +454,7 @@ export function buildDrawCardStepFromVisualEvents(state) {
     card: event.card,
     triggerName: localDisplayName(playerIdx, playerName),
     targetPid: playerIdx,
+    sourcePile: event.sourcePile || state?.drawReveal?.sourcePile || state?._drawSourcePile || 'deck',
     msgs: Array.isArray(event.msgs) ? event.msgs : [],
   };
 }
@@ -478,6 +481,70 @@ export function buildCardEffectAnimStep(event, state) {
       finalPlayers: state?.players,
       msgs: event.msgs,
     });
+  }
+  if (event.effectKey === 'geomagneticReversal') {
+    const payload = event.payload || {};
+    return {
+      type: 'GEOMAGNETIC_REVERSAL',
+      card: event.card,
+      actorIdx: event.actorIdx,
+      restoreCard: payload.restoreCard || null,
+      beforePlayers: event.beforePlayers || [],
+      beforeDiscard: event.beforeDiscard || [],
+      msgs: Array.isArray(event.msgs) ? event.msgs : [],
+      visualSetupTiming: 'queueStart',
+      visualSetupPatch: {
+        ...(Array.isArray(event.beforePlayers) ? { players: event.beforePlayers } : {}),
+        ...(Array.isArray(event.beforeDiscard) ? { discard: event.beforeDiscard } : {}),
+      },
+      visualTimeline: [
+        {
+          atMs: 0,
+          patch: {
+            ...(Array.isArray(event.beforePlayers) ? { players: event.beforePlayers } : {}),
+            ...(Array.isArray(event.beforeDiscard) ? { discard: event.beforeDiscard } : {}),
+          },
+        },
+        {
+          atMs: 2050,
+          patch: {
+            players: state?.players,
+            discard: state?.discard,
+          },
+        },
+      ],
+    };
+  }
+  if (event.effectKey === 'volcano') {
+    return {
+      type: 'VOLCANO',
+      card: event.card,
+      actorIdx: event.actorIdx,
+      beforePlayers: event.beforePlayers || [],
+      beforeDiscard: event.beforeDiscard || [],
+      msgs: Array.isArray(event.msgs) ? event.msgs : [],
+      visualSetupTiming: 'queueStart',
+      visualSetupPatch: {
+        ...(Array.isArray(event.beforePlayers) ? { players: event.beforePlayers } : {}),
+        ...(Array.isArray(event.beforeDiscard) ? { discard: event.beforeDiscard } : {}),
+      },
+      visualTimeline: [
+        {
+          atMs: 0,
+          patch: {
+            ...(Array.isArray(event.beforePlayers) ? { players: event.beforePlayers } : {}),
+            ...(Array.isArray(event.beforeDiscard) ? { discard: event.beforeDiscard } : {}),
+          },
+        },
+        {
+          atMs: 1250,
+          patch: {
+            players: state?.players,
+            discard: state?.discard,
+          },
+        },
+      ],
+    };
   }
   return null;
 }

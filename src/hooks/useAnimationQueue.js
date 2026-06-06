@@ -160,12 +160,6 @@ export function useAnimationQueue({
       const next = pendingGsRef.current;
       const normalizedNext = normalizePendingState(next);
       const callback = animCallbackRef.current;
-      pendingGsRef.current = null;
-      animCallbackRef.current = null;
-      clearVisualTimelineTimers();
-      visualStateLocks.clear({turnHighlight:true,players:true,zhuLight:true,hiddenZhuCardId:true});
-      if (setVisualPlayersOverride) setVisualPlayersOverride(null);
-      setAnim(null);
       if (next?.log) syncVisibleLog(next.log);
       if (callback) {
         callback();
@@ -186,6 +180,12 @@ export function useAnimationQueue({
           return normalizedNext;
         });
       }
+      pendingGsRef.current = null;
+      animCallbackRef.current = null;
+      clearVisualTimelineTimers();
+      visualStateLocks.clear({turnHighlight:true,players:true,zhuLight:true,hiddenZhuCardId:true});
+      if (setVisualPlayersOverride) setVisualPlayersOverride(null);
+      setAnim(null);
     }
   }
 

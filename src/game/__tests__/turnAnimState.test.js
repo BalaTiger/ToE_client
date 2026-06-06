@@ -77,4 +77,30 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(types.indexOf('DRAW_CARD')).toBeGreaterThan(types.indexOf('STATE_PATCH'));
     expect(replay.queue.find(step => step.type === 'BLACK_GOAT_PULSE')).toMatchObject({ targetPid: 1, count: 1 });
   });
+
+  it('地磁反转摸牌动画从弃牌堆起飞', () => {
+    const card = { id: 'disc-card', name: '弃牌堆牌', key: 'C1', type: 'zone' };
+    const oldGs = {
+      players: [player('你')],
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: [],
+    };
+    const newGs = {
+      players: [{ ...player('你'), hand: [card] }],
+      currentTurn: 0,
+      phase: 'ACTION',
+      drawReveal: { card, drawerIdx: 0, needsDecision: false, sourcePile: 'discard' },
+      _playersBeforeThisDraw: [player('你')],
+      _turnStartLogs: ['── 你 的回合开始 ──'],
+      _drawLogs: ['【地磁反转】你 从弃牌堆暗抽了一张牌'],
+      _drawSourcePile: 'discard',
+      log: ['── 你 的回合开始 ──', '【地磁反转】你 从弃牌堆暗抽了一张牌'],
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const drawStep = replay.queue.find(step => step.type === 'DRAW_CARD');
+
+    expect(drawStep).toMatchObject({ card, targetPid: 0, sourcePile: 'discard' });
+  });
 });

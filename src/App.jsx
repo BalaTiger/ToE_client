@@ -5085,6 +5085,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     let P=copyPlayers(gs.players);
     const targetWasRevealed=!!P[swapTi]?.revealHand;
     const taken=P[swapTi].hand.splice(cardIdx,1)[0];
+    if(!taken)return;
+    P[0].hand.push(taken);
     setGs({...gs,players:P,phase:'SWAP_GIVE_CARD',drawReveal:null,
       abilityData:{...gs.abilityData,takenCard:taken},
       log:[...gs.log,targetWasRevealed
@@ -5098,7 +5100,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     let P=copyPlayers(gs.players);
     const targetWasRevealed=!!gs.players?.[swapTi]?.revealHand;
     const given=P[0].hand.splice(idx,1)[0];
-    P[0].hand.push(takenCard);P[swapTi].hand.push(given);
+    if(!given)return;
+    P[swapTi].hand.push(given);
     const takenText=targetWasRevealed?cardLogText(takenCard,{alwaysShowName:true}):'暗抽牌';
     const L=[...gs.log,`拿走 ${takenText}，还给 ${P[swapTi].name} ${cardLogText(given,{alwaysShowName:true})}`];
     const swapVisualEvent=createSwapCardsEvent({
@@ -5142,28 +5145,17 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const statQ2=buildAnimQueue(gs,newGs).filter(a=>a.type!=='CARD_TRANSFER');
       broadcastMpStateBeforeLocalReplay(newGs);
       triggerAnimQueue([{type:'SKILL_SWAP',msgs:[reason]},
-        ...fullHandSwapSteps({
-          fromPid:0,
-          toPid:swapTi,
-          fromCount:1,
-          toCount:1,
-          playersBefore:gs.players,
-          zhuLight:gs.zhuLight||null,
-        }),
+        {type:'VISUAL_LOCK',players:gs.players,zhuLight:gs.zhuLight||null},
+        cardTransferStep({fromPid:0,dest:'player',toPid:swapTi,count:1,msgs:[L[L.length-2]]}),
         ...statQ2],newGs);
       return;
     }
     const win=checkWin(P,gs._isMP);
     const newGs={...gs,players:P,drawReveal:null,log:L,abilityData:{},phase:'ACTION',skillUsed:true,_visualEvents:swapVisualEvent?[swapVisualEvent]:[],...(win?{gameOver:win}:{})};
-    const swapSteps=fullHandSwapSteps({
-      fromPid:0,
-      toPid:swapTi,
-      fromCount:1,
-      toCount:1,
-      msgs:[L[L.length-1]],
-      playersBefore:gs.players,
-      zhuLight:gs.zhuLight||null,
-    });
+    const swapSteps=[
+      {type:'VISUAL_LOCK',players:gs.players,zhuLight:gs.zhuLight||null},
+      cardTransferStep({fromPid:0,dest:'player',toPid:swapTi,count:1,msgs:[L[L.length-1]]}),
+    ];
     const statQ=buildAnimQueue(gs,newGs).filter(a=>a.type!=='CARD_TRANSFER');
     const swapMsgs=extractSkillLogs(L.slice(gs.log.length),'swap');
     broadcastMpStateBeforeLocalReplay(newGs);
@@ -6782,6 +6774,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     P[0]={...P[0],roleRevealed:prev};
     if(gs.phase==='SWAP_GIVE_CARD'&&gs.abilityData.takenCard){
       // Return the card secretly taken from the target
+      const takenIdx=P[0].hand.findIndex(card=>card?.id===gs.abilityData.takenCard?.id);
+      if(takenIdx>=0)P[0].hand.splice(takenIdx,1);
       P[gs.abilityData.swapTi].hand.push(gs.abilityData.takenCard);
     }
     setGs({...gs,players:P,phase:'ACTION',abilityData:{}});
@@ -7735,10 +7729,10 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         {/* Hand area */}
         <div ref={handAreaRef} data-hand-area style={{background:'#120900',border:`1.5px solid ${myTurn?'#3a2010':'#2a1a08'}`,borderRadius:3,padding:isMobile?'8px 9px':'11px 13px'}}>
           <div style={{display:'flex',alignItems:'center',marginBottom:9,gap:8}}>
-            <span style={{fontFamily:"'Cinzel',serif",color:!isSpectating&&((phase==='DISCARD_PHASE'&&!isBlocked)||phase==='PLAYER_REVEAL_FOR_HUNT'||isLocalHuntRevealPrompt)?promptWarningTextColor:promptActiveTextColor,fontSize:10,letterSpacing:1}}>
+            <span style={{fontFamily:"'Cinzel',serif",color:!isSpectating&&((phase==='DISCARD_PHASE'&&!anim&&!animExiting&&!pendingGsRef.current)||phase==='PLAYER_REVEAL_FOR_HUNT'||isLocalHuntRevealPrompt)?promptWarningTextColor:promptActiveTextColor,fontSize:10,letterSpacing:1}}>
               {isSpectating
                 ?`手牌 (${visualMe.hand.length}/${effectiveHandLimit})`
-                :(phase==='DISCARD_PHASE'&&!isBlocked)
+                :(phase==='DISCARD_PHASE'&&!anim&&!animExiting&&!pendingGsRef.current)
                 ?(isLocalCurrentTurn(gs)
                   ?`⚠ 手牌超限 (${visualMe.hand.length}/${effectiveHandLimit})`
                   :`等待 ${currentTurnPlayer?.name||'当前玩家'} 弃牌…`)

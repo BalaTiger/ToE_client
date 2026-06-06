@@ -62,7 +62,7 @@ function FlowerBloom(){
   );
 }
 
-function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guessCorrect,expansionKey='地神的潜影'}){
+function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guessCorrect,expansionKey='地神的潜影',sourcePile='deck'}){
   const [traveled,setTraveled]=React.useState(skipTravel);
   React.useEffect(()=>{
     if(skipTravel){setTraveled(true);return undefined;}
@@ -91,7 +91,13 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
   const isNeutralInspection=isInspection&&inspectionTone==='neutral';
   const isPositiveInspection=isInspection&&inspectionTone==='positive';
 
-  const getDeckCenter=()=>{
+  const getSourceCenter=()=>{
+    if(!isInspection&&sourcePile==='discard'){
+      return getPileAnchorCenter(
+        '[data-discard-pile]',
+        {x:window.innerWidth*0.35,y:window.innerHeight*0.50}
+      );
+    }
     return getPileAnchorCenter(
       isInspection?'[data-inspection-pile]':'[data-deck-pile]',
       isInspection
@@ -103,7 +109,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
     return getPlayerHandAnchorCenter(pid);
   };
   const destStyle=(()=>{
-    const src=getDeckCenter();
+    const src=getSourceCenter();
     const dest=getHandCenter(targetPid??0);
     return{'--dest-x':`${dest.x-35}px`,'--dest-y':`${dest.y-47}px`,'--src-x':`${src.x-35}px`,'--src-y':`${src.y-47}px`};
   })();
