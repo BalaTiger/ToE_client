@@ -836,6 +836,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         msgs.push('【群蛇陷阱】没有存活角色可被中毒');
         return;
       }
+      const beforePlayers = copyPlayers(P);
       const assignments = new Map();
       for (let n = 0; n < targets.length; n += 1) {
         const targetIdx = targets[Math.floor(Math.random() * targets.length)];
@@ -846,6 +847,22 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         .map(([idx, count]) => `${P[idx].name}+${count}`)
         .join('、');
       msgs.push(`【群蛇陷阱】分配了 ${targets.length} 层中毒：${summary}`);
+      const assignmentList = [...assignments.entries()].map(([idx, count]) => ({ idx, count, name: P[idx].name }));
+      const event = createCardEffectEvent({
+        effectKey: 'snakeTrap',
+        card,
+        actorIdx: ci,
+        beforePlayers,
+        afterPlayers: copyPlayers(P),
+        msgs: [msgs[msgs.length - 1]],
+        payload: { assignmentList, totalLayers: targets.length },
+      });
+      if (event) {
+        statePatch = {
+          ...statePatch,
+          _visualEvents: [...(statePatch._visualEvents || []), event],
+        };
+      }
     },
     deadNeighborSkipDraw: () => {
       const skipped = new Set();

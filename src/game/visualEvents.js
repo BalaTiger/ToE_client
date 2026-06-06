@@ -314,6 +314,36 @@ function buildSyncedCardEffectTimeline({
   };
 }
 
+export function buildSnakeTrapAnimStep(event, state) {
+  const payload = event.payload || {};
+  const assignmentList = Array.isArray(payload.assignmentList) ? payload.assignmentList : [];
+  const beforePlayers = Array.isArray(event.beforePlayers) ? event.beforePlayers : [];
+  const afterPlayers = Array.isArray(event.afterPlayers) ? event.afterPlayers : state?.players || [];
+  const totalLayers = payload.totalLayers || assignmentList.length;
+  const sync = buildSyncedCardEffectTimeline({
+    beforePlayers,
+    beforeDiscard: event.beforeDiscard || [],
+    afterPlayers,
+    afterDiscard: event.afterDiscard || state?.discard,
+    state,
+    finalAtMs: 2600,
+  });
+  const snakeRays = 12;
+  const rayAngles = Array.from({ length: snakeRays }, (_, i) => (i * 360) / snakeRays);
+  return {
+    type: 'SNAKE_TRAP',
+    card: event.card,
+    actorIdx: event.actorIdx,
+    beforePlayers,
+    afterPlayers,
+    msgs: Array.isArray(event.msgs) ? event.msgs : [],
+    assignmentList,
+    totalLayers,
+    rayAngles,
+    ...sync,
+  };
+}
+
 export function buildEarthquakeAnimStep({
   beforePlayers = [],
   beforeDiscard = [],
@@ -578,6 +608,9 @@ export function buildCardEffectAnimStep(event, state) {
       msgs: Array.isArray(event.msgs) ? event.msgs : [],
       ...sync,
     };
+  }
+  if (event.effectKey === 'snakeTrap') {
+    return buildSnakeTrapAnimStep(event, state);
   }
   return null;
 }

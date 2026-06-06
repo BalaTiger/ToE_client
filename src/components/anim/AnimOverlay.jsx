@@ -4,6 +4,7 @@ import { DiceRollAnim, GenericAnimOverlay, YourTurnAnim } from './GenericAnimOve
 import { BuryToDeckOverlay, DiscardMoveOverlay, HuntRevealCardOverlay, ZhuHideCardOverlay } from './MoveOverlays';
 import { CaveDuelAnim, GeomagneticReversalAnim, GeomagneticRestoreShuffleAnim, VolcanoAnim } from './AreaCardOverlays';
 import { ApophisEclipseAnim } from './ApophisOverlays';
+import { SnakeTrapOverlay } from './SnakeTrapOverlay';
 import { EndlessCorridorTunnelAnim } from './EndlessCorridorOverlay';
 import { RandomTargetOverlay } from './RandomTargetOverlay';
 
@@ -40,6 +41,7 @@ const ANIM_RENDERERS = {
   GEOMAGNETIC_REVERSAL: ({ anim, exiting }) => <GeomagneticReversalAnim anim={anim} exiting={exiting} />,
   GEOMAGNETIC_RESTORE_SHUFFLE: ({ anim, exiting }) => <GeomagneticRestoreShuffleAnim anim={anim} exiting={exiting} />,
   VOLCANO: ({ anim, exiting }) => <VolcanoAnim anim={anim} exiting={exiting} />,
+  SNAKE_TRAP: ({ anim, exiting }) => <SnakeTrapOverlay anim={anim} exiting={exiting} />,
   RANDOM_TARGET: ({ anim, exiting }) => <RandomTargetOverlay anim={anim} exiting={exiting} />,
   APOPHIS_ECLIPSE: ({ exiting }) => <ApophisEclipseAnim exiting={exiting} />,
   ENDLESS_CORRIDOR_TUNNEL: ({ exiting }) => <EndlessCorridorTunnelAnim exiting={exiting} />,

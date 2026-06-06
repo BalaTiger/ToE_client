@@ -200,6 +200,7 @@ import { SKILL_ANIMATION_STYLES } from './components/anim/skillStyles';
 import { AREA_CARD_ANIMATION_STYLES } from './components/anim/areaCardStyles';
 import { DAMAGE_ANIMATION_STYLES } from './components/anim/damageStyles';
 import { APOPHIS_ANIMATION_STYLES } from './components/anim/apophisStyles';
+import { SNAKE_TRAP_ANIMATION_STYLES } from './components/anim/snakeTrapStyles';
 import { ENDLESS_CORRIDOR_ANIMATION_STYLES } from './components/anim/endlessCorridorStyles';
 import { GodResurrectionAnim, TreasureMapAnim, CthulhuResurrectionAnim, RoleRevealAnim } from './components/anim/WinAnims';
 import { TitleCandleFlames } from './components/anim/TitleCandleFlames';
@@ -6822,7 +6823,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   const promptSafeTextColor='#577457';
   const promptMutedTextColor='#3a2510';
   const isLocalHuntRevealPrompt=phase==='HUNT_WAIT_REVEAL'&&!myTurn&&isLocalHuntTargetSeat(gs);
-  const isPhaseWarningText=['DISCARD_PHASE','PLAYER_REVEAL_FOR_HUNT','CAVE_DUEL_SELECT_CARD'].includes(phase)||isLocalHuntRevealPrompt;
+  const isDiscardPhaseResolving=phase==='DISCARD_PHASE'&&(!!anim||!!animExiting||!!pendingGsRef.current);
+  const pendingAfterDiscardGs=isDiscardPhaseResolving?pendingGsRef.current:null;
+  const isPhaseWarningText=(!isDiscardPhaseResolving&&['DISCARD_PHASE','PLAYER_REVEAL_FOR_HUNT','CAVE_DUEL_SELECT_CARD'].includes(phase))||isLocalHuntRevealPrompt;
   const phaseLabel={
     ACTION:               isLocalCurrentTurn(gs)?'你的回合 — 可发动技能、休息，或结束回合':'等候其他旅者…',
     SWAP_SELECT_TARGET:   '【掉包】选择目标角色',
@@ -6854,6 +6857,13 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     ZHU_HIDE_AI_DRAW:    visualMe?.godName==='ZHU'?(canShowTurnDecisionModal?'【衔烛照幽】是否藏牌？':'衔烛照幽判定中…'):'请等待其他玩家选择…',
     NYA_BORROW:          isLocalNyaBorrowPhase(gs)?(canShowTurnDecisionModal?'「千人千貌」——借用已死角色的身份？':'身份借用中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 借用身份…`:'「千人千貌」——借用已死角色的身份？'),
     DISCARD_PHASE:(()=>{
+      if(isDiscardPhaseResolving){
+        const pendingTurn=pendingAfterDiscardGs?.currentTurn;
+        const pendingPlayer=pendingAfterDiscardGs?.players?.[pendingTurn];
+        if(pendingAfterDiscardGs?.phase==='DRAW_REVEAL')return pendingTurn===0?'你的回合即将开始…':`等候 ${pendingPlayer?.name||'当前玩家'} 摸牌…`;
+        if(pendingAfterDiscardGs?.phase==='AI_TURN')return pendingPlayer?`${pendingPlayer.name} 正在行动…`:'下一回合准备中…';
+        return pendingTurn===0?'你的回合即将开始…':`等候 ${pendingPlayer?.name||'下一名玩家'} 行动…`;
+      }
       if(!isLocalCurrentTurn(gs))return`等待 ${currentTurnPlayer?.name||'当前玩家'} 弃牌…`;
       const sel=gs.abilityData.discardSelected||[];
       const need=Math.max(0,me.hand.length-effectiveHandLimit);
@@ -7703,7 +7713,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
               ⏱ {mpTurnSec}s
             </div>
           )}
-          {isMultiplayer&&!isSpectating&&mpDiscardSec!==null&&phase==='DISCARD_PHASE'&&!isBlocked&&(
+          {isMultiplayer&&!isSpectating&&mpDiscardSec!==null&&phase==='DISCARD_PHASE'&&!isDiscardPhaseResolving&&!isBlocked&&(
             <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:mpDiscardSec<=5?promptWarningTextColor:promptCautionTextColor,letterSpacing:1,flexShrink:0}}>
               ⏱ 弃牌 {mpDiscardSec}s
             </div>
@@ -7822,7 +7832,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                 )}
               </div>
             )}
-            {phase==='DISCARD_PHASE'&&isLocalCurrentTurn(gs)&&!isBlocked&&(
+            {phase==='DISCARD_PHASE'&&!isDiscardPhaseResolving&&isLocalCurrentTurn(gs)&&!isBlocked&&(
               <button onClick={confirmDiscard}
                 disabled={!(gs.abilityData.discardSelected||[]).length}
                 style={{
@@ -8317,6 +8327,7 @@ const GLOBAL_STYLES=`
   ${AREA_CARD_ANIMATION_STYLES}
   ${DAMAGE_ANIMATION_STYLES}
   ${APOPHIS_ANIMATION_STYLES}
+  ${SNAKE_TRAP_ANIMATION_STYLES}
   ${ENDLESS_CORRIDOR_ANIMATION_STYLES}
   /* Card flip animation */
   @keyframes cardRise {
