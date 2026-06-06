@@ -3,20 +3,6 @@ import { DDCard } from '../../components/cards';
 import { _getZoomCompensatedRect, getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 
 function GeomagneticReversalAnim({anim,exiting}){
-  const [restorePath,setRestorePath]=React.useState(null);
-  useEffect(()=>{
-    const measure=()=>{
-      const from=getPlayerHandAnchorCenter(anim?.actorIdx??0);
-      const to=getPileAnchorCenter('[data-discard-pile]',{x:window.innerWidth*0.35,y:window.innerHeight*0.50});
-      setRestorePath({
-        left:from.x-42,
-        top:from.y-59,
-        '--gm-restore-tx':`${to.x-from.x}px`,
-        '--gm-restore-ty':`${to.y-from.y}px`,
-      });
-    };
-    requestAnimationFrame(()=>requestAnimationFrame(measure));
-  },[anim?.actorIdx]);
   const msgs=(anim?.msgs||[]).slice(-3);
   return(
     <div style={{
@@ -55,11 +41,40 @@ function GeomagneticReversalAnim({anim,exiting}){
           <circle cx="0" cy="0" r="4" fill="#e8c87a"/>
         </svg>
       </div>
-      <div className="geomagnetic-restore-card" style={restorePath||undefined}>
-        <DDCard card={anim?.restoreCard||{name:'反转复原',key:'GMR',letter:'R',number:0,type:'geomagneticRestore'}} compact/>
-      </div>
       {msgs.length>0&&(
         <div className="geomagnetic-msgs">
+          {msgs.map((msg,i)=><div key={i}>{msg}</div>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GeomagneticRestoreShuffleAnim({anim,exiting}){
+  const [path,setPath]=React.useState(null);
+  useEffect(()=>{
+    const measure=()=>{
+      const from=getPlayerHandAnchorCenter(anim?.actorIdx??0);
+      const to=getPileAnchorCenter('[data-discard-pile]',{x:window.innerWidth*0.35,y:window.innerHeight*0.50});
+      setPath({
+        left:from.x-42,
+        top:from.y-59,
+        '--gm-restore-tx':`${to.x-from.x}px`,
+        '--gm-restore-ty':`${to.y-from.y}px`,
+      });
+    };
+    requestAnimationFrame(()=>requestAnimationFrame(measure));
+  },[anim?.actorIdx]);
+  const msgs=(anim?.msgs||[]).slice(-3);
+  return(
+    <div className={`geomagnetic-restore-overlay${exiting?' geomagnetic-restore-exiting':''}`}>
+      <div className="geomagnetic-restore-vignette"/>
+      <div className="geomagnetic-restore-card" style={path||undefined}>
+        <DDCard card={anim?.restoreCard||anim?.card||{name:'反转复原',key:'GMR',letter:'R',number:0,type:'geomagneticRestore'}} compact/>
+      </div>
+      <div className="geomagnetic-restore-ripple" style={path||undefined}/>
+      {msgs.length>0&&(
+        <div className="geomagnetic-msgs geomagnetic-restore-msgs">
           {msgs.map((msg,i)=><div key={i}>{msg}</div>)}
         </div>
       )}
@@ -210,4 +225,4 @@ function CaveDuelAnim({anim,exiting}){
   );
 }
 
-export { CaveDuelAnim, GeomagneticReversalAnim, VolcanoAnim };
+export { CaveDuelAnim, GeomagneticReversalAnim, GeomagneticRestoreShuffleAnim, VolcanoAnim };

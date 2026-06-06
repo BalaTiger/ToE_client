@@ -195,6 +195,7 @@ function rotateCardEffectVisualEvent(event, rotateIndex, myIndex) {
     ...event,
     actorIdx: event.actorIdx != null ? rotateIndex(event.actorIdx) : event.actorIdx,
     beforePlayers: rotatePlayersArray(event.beforePlayers, myIndex),
+    afterPlayers: rotatePlayersArray(event.afterPlayers, myIndex),
     discardEvents: Array.isArray(event.discardEvents)
       ? rotateEarthquakeDiscardEvents(event.discardEvents, rotateIndex, myIndex)
       : event.discardEvents,

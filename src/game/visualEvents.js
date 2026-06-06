@@ -258,6 +258,8 @@ export function createCardEffectEvent({
   id = null,
   beforePlayers = [],
   beforeDiscard = [],
+  afterPlayers = null,
+  afterDiscard = null,
   discardEvents = [],
   statEvents = [],
   msgs = [],
@@ -272,11 +274,44 @@ export function createCardEffectEvent({
     actorIdx,
     beforePlayers: Array.isArray(beforePlayers) ? beforePlayers : [],
     beforeDiscard: Array.isArray(beforeDiscard) ? beforeDiscard : [],
+    afterPlayers: Array.isArray(afterPlayers) ? afterPlayers : null,
+    afterDiscard: Array.isArray(afterDiscard) ? afterDiscard : null,
     discardEvents: Array.isArray(discardEvents) ? discardEvents.filter(Boolean) : [],
     statEvents: Array.isArray(statEvents) ? statEvents.filter(Boolean) : [],
     msgs: Array.isArray(msgs) ? msgs : [],
     payload: payload && typeof payload === 'object' ? payload : {},
   }, 'effect');
+}
+
+function buildSyncedCardEffectTimeline({
+  beforePlayers = [],
+  beforeDiscard = [],
+  afterPlayers = null,
+  afterDiscard = null,
+  state = null,
+  finalAtMs = 0,
+} = {}) {
+  const initialPlayers = Array.isArray(beforePlayers) ? beforePlayers : [];
+  const initialDiscard = Array.isArray(beforeDiscard) ? beforeDiscard : [];
+  const finalPlayers = Array.isArray(afterPlayers) ? afterPlayers : state?.players;
+  const finalDiscard = Array.isArray(afterDiscard) ? afterDiscard : state?.discard;
+  return {
+    visualSetupTiming: 'queueStart',
+    visualSetupPatch: {
+      players: initialPlayers,
+      discard: initialDiscard,
+    },
+    visualTimeline: [
+      { atMs: 0, patch: { players: initialPlayers, discard: initialDiscard } },
+      {
+        atMs: finalAtMs,
+        patch: {
+          players: finalPlayers,
+          discard: finalDiscard,
+        },
+      },
+    ],
+  };
 }
 
 export function buildEarthquakeAnimStep({
@@ -484,38 +519,56 @@ export function buildCardEffectAnimStep(event, state) {
   }
   if (event.effectKey === 'geomagneticReversal') {
     const payload = event.payload || {};
+    const baseSync = buildSyncedCardEffectTimeline({
+      beforePlayers: event.beforePlayers,
+      beforeDiscard: event.beforeDiscard,
+      afterPlayers: event.beforePlayers,
+      afterDiscard: event.beforeDiscard,
+      state,
+      finalAtMs: 0,
+    });
+    const restoreSync = buildSyncedCardEffectTimeline({
+      beforePlayers: event.beforePlayers,
+      beforeDiscard: event.beforeDiscard,
+      afterPlayers: event.afterPlayers || state?.players,
+      afterDiscard: event.afterDiscard || state?.discard,
+      state,
+      finalAtMs: 880,
+    });
     return {
-      type: 'GEOMAGNETIC_REVERSAL',
-      card: event.card,
-      actorIdx: event.actorIdx,
-      restoreCard: payload.restoreCard || null,
-      beforePlayers: event.beforePlayers || [],
-      beforeDiscard: event.beforeDiscard || [],
-      msgs: Array.isArray(event.msgs) ? event.msgs : [],
-      visualSetupTiming: 'queueStart',
-      visualSetupPatch: {
-        ...(Array.isArray(event.beforePlayers) ? { players: event.beforePlayers } : {}),
-        ...(Array.isArray(event.beforeDiscard) ? { discard: event.beforeDiscard } : {}),
-      },
-      visualTimeline: [
+      type: 'COMPOSITE',
+      steps: [
         {
-          atMs: 0,
-          patch: {
-            ...(Array.isArray(event.beforePlayers) ? { players: event.beforePlayers } : {}),
-            ...(Array.isArray(event.beforeDiscard) ? { discard: event.beforeDiscard } : {}),
-          },
+          type: 'GEOMAGNETIC_REVERSAL',
+          card: event.card,
+          actorIdx: event.actorIdx,
+          beforePlayers: event.beforePlayers || [],
+          beforeDiscard: event.beforeDiscard || [],
+          msgs: [],
+          ...baseSync,
         },
         {
-          atMs: 2050,
-          patch: {
-            players: state?.players,
-            discard: state?.discard,
-          },
+          type: 'GEOMAGNETIC_RESTORE_SHUFFLE',
+          card: payload.restoreCard || null,
+          actorIdx: event.actorIdx,
+          restoreCard: payload.restoreCard || null,
+          beforePlayers: event.beforePlayers || [],
+          beforeDiscard: event.beforeDiscard || [],
+          msgs: Array.isArray(event.msgs) ? event.msgs : [],
+          ...restoreSync,
         },
       ],
     };
   }
   if (event.effectKey === 'volcano') {
+    const sync = buildSyncedCardEffectTimeline({
+      beforePlayers: event.beforePlayers,
+      beforeDiscard: event.beforeDiscard,
+      afterPlayers: event.afterPlayers || state?.players,
+      afterDiscard: event.afterDiscard || state?.discard,
+      state,
+      finalAtMs: 1250,
+    });
     return {
       type: 'VOLCANO',
       card: event.card,
@@ -523,27 +576,7 @@ export function buildCardEffectAnimStep(event, state) {
       beforePlayers: event.beforePlayers || [],
       beforeDiscard: event.beforeDiscard || [],
       msgs: Array.isArray(event.msgs) ? event.msgs : [],
-      visualSetupTiming: 'queueStart',
-      visualSetupPatch: {
-        ...(Array.isArray(event.beforePlayers) ? { players: event.beforePlayers } : {}),
-        ...(Array.isArray(event.beforeDiscard) ? { discard: event.beforeDiscard } : {}),
-      },
-      visualTimeline: [
-        {
-          atMs: 0,
-          patch: {
-            ...(Array.isArray(event.beforePlayers) ? { players: event.beforePlayers } : {}),
-            ...(Array.isArray(event.beforeDiscard) ? { discard: event.beforeDiscard } : {}),
-          },
-        },
-        {
-          atMs: 1250,
-          patch: {
-            players: state?.players,
-            discard: state?.discard,
-          },
-        },
-      ],
+      ...sync,
     };
   }
   return null;
@@ -567,7 +600,10 @@ export function buildCardEffectStepsFromVisualEvents(state, oldState = null, pre
   return getCardEffectVisualEvents(state)
     .filter(event => event?.id && !oldIds.has(event.id))
     .filter(event => (typeof predicate === 'function' ? predicate(event) : true))
-    .map(event => buildCardEffectAnimStep(event, state))
+    .flatMap(event => {
+      const step = buildCardEffectAnimStep(event, state);
+      return step?.type === 'COMPOSITE' ? step.steps : [step];
+    })
     .filter(Boolean);
 }
 

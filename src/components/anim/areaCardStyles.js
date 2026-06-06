@@ -258,6 +258,24 @@ export const AREA_CARD_ANIMATION_STYLES = `
     opacity: 0;
     animation: geomagneticNoise 2.2s linear both;
   }
+  .geomagnetic-restore-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    pointer-events: none;
+    overflow: hidden;
+    animation: animFadeIn 0.12s ease-out forwards;
+  }
+  .geomagnetic-restore-overlay.geomagnetic-restore-exiting {
+    animation: animFadeOut 0.18s ease-in forwards;
+  }
+  .geomagnetic-restore-vignette {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 50% 70%, rgba(94,234,212,0.12), transparent 38%),
+      linear-gradient(180deg, rgba(2,8,10,0.2), rgba(2,8,10,0.48));
+  }
   .geomagnetic-restore-card {
     position: absolute;
     left: calc(50% - 42px);
@@ -265,8 +283,23 @@ export const AREA_CARD_ANIMATION_STYLES = `
     width: 84px;
     height: 118px;
     opacity: 0;
-    animation: geomagneticRestoreFly 1.05s cubic-bezier(0.25,0,0.28,1) 1.4s both;
+    animation: geomagneticRestoreFly 1.05s cubic-bezier(0.25,0,0.28,1) both;
     filter: drop-shadow(0 0 12px rgba(94,234,212,0.72));
+  }
+  .geomagnetic-restore-ripple {
+    position: absolute;
+    left: calc(50% - 42px);
+    top: calc(78% - 59px);
+    width: 84px;
+    height: 118px;
+    border-radius: 8px;
+    border: 1px solid rgba(94,234,212,0.55);
+    opacity: 0;
+    box-shadow: 0 0 28px rgba(94,234,212,0.36), inset 0 0 18px rgba(94,234,212,0.24);
+    animation: geomagneticRestoreRipple 1.05s cubic-bezier(0.25,0,0.28,1) both;
+  }
+  .geomagnetic-restore-msgs {
+    animation-delay: 0.2s;
   }
   .geomagnetic-msgs {
     position: absolute;
@@ -322,6 +355,11 @@ export const AREA_CARD_ANIMATION_STYLES = `
     16% { opacity: 1; transform: translate(0,-18px) rotate(4deg) scale(0.98); }
     58% { opacity: 1; transform: translate(calc(var(--gm-restore-tx, -220px) * 0.56), calc(var(--gm-restore-ty, -120px) * 0.42 - 34px)) rotate(178deg) scale(0.88); }
     100% { opacity: 0.2; transform: translate(var(--gm-restore-tx, -220px), var(--gm-restore-ty, -120px)) rotate(360deg) scale(0.48); }
+  }
+  @keyframes geomagneticRestoreRipple {
+    0%, 62% { opacity: 0; transform: translate(var(--gm-restore-tx, -220px), var(--gm-restore-ty, -120px)) scale(0.28); }
+    74% { opacity: 0.82; transform: translate(var(--gm-restore-tx, -220px), var(--gm-restore-ty, -120px)) scale(0.58); }
+    100% { opacity: 0; transform: translate(var(--gm-restore-tx, -220px), var(--gm-restore-ty, -120px)) scale(1.25); }
   }
   @keyframes caveDuelCardPath {
     0% { transform: translate(var(--fromX), var(--fromY)) rotate(-9deg) scale(0.92); opacity: 0; }

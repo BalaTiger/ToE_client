@@ -807,6 +807,8 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         actorIdx: ci,
         beforePlayers,
         beforeDiscard,
+        afterPlayers: copyPlayers(P),
+        afterDiscard: [...Disc],
         msgs: [msgs[msgs.length - 1]],
         payload: { restoreCard },
       });
@@ -914,6 +916,8 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           actorIdx: ci,
           beforePlayers,
           beforeDiscard: [...Disc],
+          afterPlayers: copyPlayers(P),
+          afterDiscard: [...Disc],
           msgs: msgs.slice(-1),
         });
         if (event) {

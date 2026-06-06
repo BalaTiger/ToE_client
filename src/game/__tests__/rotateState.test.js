@@ -128,6 +128,7 @@ describe('rotateGsForViewer', () => {
           effectKey: 'earthquake',
           actorIdx: 0,
           beforePlayers: [player('ce0'), player('ce1'), player('ce2'), player('ce3')],
+          afterPlayers: [player('ceF0'), player('ceF1'), player('ceF2'), player('ceF3')],
           discardEvents: [
             {
               playerIndex: 1,
@@ -202,6 +203,7 @@ describe('rotateGsForViewer', () => {
     expect(names(rotated._visualEvents[9].discardEvents[0].afterPlayers)).toEqual(['eqA2', 'eqA3', 'eqA0', 'eqA1']);
     expect(rotated._visualEvents[10]).toMatchObject({ type: 'cardEffect', effectKey: 'earthquake', actorIdx: 2 });
     expect(names(rotated._visualEvents[10].beforePlayers)).toEqual(['ce2', 'ce3', 'ce0', 'ce1']);
+    expect(names(rotated._visualEvents[10].afterPlayers)).toEqual(['ceF2', 'ceF3', 'ceF0', 'ceF1']);
     expect(rotated._visualEvents[10].discardEvents[0].playerIndex).toBe(3);
     expect(names(rotated._visualEvents[10].discardEvents[0].afterPlayers)).toEqual(['ceA2', 'ceA3', 'ceA0', 'ceA1']);
     expect(rotated._visualEvents[10].statEvents[0].target).toBe(1);
