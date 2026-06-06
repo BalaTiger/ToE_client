@@ -456,7 +456,9 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     const statEventSeq = (gs?._statEventSeq || 0) + 1;
     const statEvents = explicitStatEvents || buildStatEvents(beforePlayers, result.P || P, result.msgs || msgs, { reason: card?.name || card?.type || '', seq: statEventSeq });
     const etherealizeDecision = statePatch?.abilityData?.type ? null : buildEtherealizeRedirectDecision(pendingEtherealizeLosses, { _turnOwner: gs?.currentTurn ?? ci });
-    const slimeDecision = etherealizeDecision || statePatch?.abilityData?.type ? null : buildTsathogguaSlimeBalanceDecision(beforePlayers, result.P || P);
+    const slimeDecision = etherealizeDecision || statePatch?.abilityData?.type
+      ? null
+      : buildTsathogguaSlimeBalanceDecision(beforePlayers, result.P || P, { _turnOwner: gs?.currentTurn ?? ci });
     const nextStatePatch = {
       ...(result.statePatch || {}),
       ...(etherealizeDecision ? { abilityData: etherealizeDecision } : {}),

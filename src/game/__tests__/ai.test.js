@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { aiShouldKeepZoneCard } from '../ai';
+import { aiChooseRevealCard, aiShouldKeepZoneCard } from '../ai';
 import { aiStep } from '../aiTurn';
 import { ROLE_CULTIST, ROLE_HUNTER } from '../coreUtils';
 import { createBlackGoatYoungCard } from '../../constants/card';
@@ -85,6 +85,17 @@ describe('aiShouldKeepZoneCard', () => {
     ];
 
     expect(aiShouldKeepZoneCard(card, 1, players)).toBe(false);
+  });
+});
+
+describe('aiChooseRevealCard', () => {
+  it('AI 被追捕时不会亮出黑山羊幼仔或撒托古亚黏液', () => {
+    const blackGoatYoung = createBlackGoatYoungCard();
+    const slime = { id: 'slime-1', name: '撒托古亚的赐福黏液', isTsathogguaSlime: true };
+    const revealable = { id: 'zone-1', name: '可亮出的区域牌', type: 'drawCard', key: 'A1', isZone: true };
+
+    expect(aiChooseRevealCard([blackGoatYoung, slime, revealable])).toBe(revealable);
+    expect(aiChooseRevealCard([blackGoatYoung, slime])).toBeNull();
   });
 });
 

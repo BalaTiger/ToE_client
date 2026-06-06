@@ -160,7 +160,7 @@ export function applySanLossToPlayerWithInspection(targetIndex, amount, startInd
     reason,
   );
   const processed = applyInspectionForSanLoss(targetIndex, P[targetIndex].san, startIndex, P, D, Disc, L, nextInspectionMeta);
-  const slimeDecision = buildTsathogguaSlimeBalanceDecision(beforePlayers, processed.P);
+  const slimeDecision = buildTsathogguaSlimeBalanceDecision(beforePlayers, processed.P, { _turnOwner: startIndex });
   return {
     P: processed.P,
     D: processed.D,
@@ -540,7 +540,7 @@ function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta) {
       L.slice(-1),
       '黑山羊幼仔',
     );
-    const slimeDecision = buildTsathogguaSlimeBalanceDecision(beforePlayers, P);
+    const slimeDecision = buildTsathogguaSlimeBalanceDecision(beforePlayers, P, { _turnOwner: next });
     if (slimeDecision) inspectionMeta = { ...inspectionMeta, abilityData: slimeDecision };
     if (slimeDecision) return { P, D, Disc, L, inspectionMeta, winAfterBgy: null };
     const winAfterSanDepletion = checkWin(P, gs._isMP);

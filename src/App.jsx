@@ -5398,7 +5398,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   // 多人游戏：被追捕的真人玩家选择亮出一张手牌
   function humanRevealForMPHunt(cardIdx){
     const card=me.hand[cardIdx];
-    if(!card)return;
+    if(!card||isBlackGoatYoung(card)||isTsathogguaSlime(card))return;
     // huntTi = 被追捕者在当前视角下的 index（非0）
     // 被追捕者将选择结果推送回规范 gs 并广播：
     // 设置 revCard，切换到 HUNT_CONFIRM 让追猎者（currentTurn=0 视角）完成后续
@@ -5421,7 +5421,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   // Called when player picks their card to reveal during an AI hunt
   function playerRevealForHunt(cardIdx){
     const card=me.hand[cardIdx];
-    if(!card)return;
+    if(!card||isBlackGoatYoung(card)||isTsathogguaSlime(card))return;
     const{huntingAI,aiHunterName}=gs.abilityData;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
     let discardedCard=null;
@@ -5696,7 +5696,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   }
 
   function buildPostBewitchStatQueue(oldGs,newGs){
-    const result=buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPlayers});
+    const apophisSeq=newGs?._apophisTargetEvent?.seq;
+    const queueOldGs=apophisSeq&&apophisSeq>(oldGs?._apophisTargetSeq||0)
+      ?{...oldGs,_apophisTargetSeq:apophisSeq}
+      :oldGs;
+    const result=buildInspectionAwareAnimQueue(queueOldGs,newGs,{buildAnimQueue,copyPlayers});
     if(result.inspectionEvents.length){
       lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...result.inspectionEvents.map(ev=>ev.seq||0));
     }
@@ -7018,8 +7022,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   }
 
   function canPlayerRespondWithZoneCard(card){
-    if(phase==='PLAYER_REVEAL_FOR_HUNT')return !!card;
-    if(phase==='HUNT_WAIT_REVEAL'&&!myTurn&&isLocalHuntTargetSeat(gs))return !!card;
+    const canRevealForHunt=!!card&&!isBlackGoatYoung(card)&&!isTsathogguaSlime(card);
+    if(phase==='PLAYER_REVEAL_FOR_HUNT')return canRevealForHunt;
+    if(phase==='HUNT_WAIT_REVEAL'&&!myTurn&&isLocalHuntTargetSeat(gs))return canRevealForHunt;
     return false;
   }
 

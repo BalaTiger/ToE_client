@@ -10,10 +10,10 @@ export function mergeApophisTargetQueue(queue = [], oldState, nextState, buildQu
   const apophisQueue = buildApophisTargetQueueForState(oldState, nextState, buildQueue);
   if (!apophisQueue.length) return queue || [];
   const seq = nextState?._apophisTargetEvent?.seq;
-  if ((queue || []).some(step => step?._apophisTargetSeq === seq)) return queue || [];
+  const baseQueue = (queue || []).filter(step => step?._apophisTargetSeq !== seq);
 
-  const queuedTypes = new Set((queue || []).map(step => step?.type));
+  const queuedTypes = new Set(baseQueue.map(step => step?.type));
   const dedupedApophisQueue = apophisQueue.filter(step => !(step?.type?.startsWith('SKILL_') && queuedTypes.has(step.type)));
-  return [...dedupedApophisQueue, ...(queue || [])];
+  return [...dedupedApophisQueue, ...baseQueue];
 }
 

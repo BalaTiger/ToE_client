@@ -153,7 +153,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "A4": [
     {
       "name": "绮丽诗篇",
-      "desc": "直到下回合，所有人技能变为“掉包”",
+      "desc": "直到下回合，所有角色技能变为“掉包”",
       "type": "globalOnlySwap",
       "val": 0,
       "slotKey": "A4",
@@ -173,7 +173,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "空谷传音",
-      "desc": "全体角色失去1SAN",
+      "desc": "所有角色失去1SAN",
       "type": "allDamageSAN",
       "val": 1,
       "slotKey": "A4",
@@ -277,7 +277,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "地动山摇",
-      "desc": "全体角色各随机弃1张牌（强制触发）",
+      "desc": "所有角色各随机弃1张牌（强制触发）",
       "type": "allDiscard",
       "val": 1,
       "forced": true,
@@ -410,7 +410,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "活火山",
-      "desc": "全体角色失去4HP",
+      "desc": "所有角色失去4HP",
       "type": "allDamageHP",
       "val": 4,
       "slotKey": "C1",
@@ -473,7 +473,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "地磁反转",
-      "desc": "将一张\"反转复原\"洗入弃牌堆。所有人即将摸牌时，改为重洗弃牌堆并暗抽一张",
+      "desc": "将一张\"反转复原\"洗入弃牌堆。角色即将摸牌时，改为重洗弃牌堆并暗抽一张",
       "type": "geomagneticReversal",
       "slotKey": "C2",
       "polarity": "negative",
@@ -534,7 +534,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "夜风呼啸",
-      "desc": "全体角色失去1HP和1SAN",
+      "desc": "所有角色失去1HP和1SAN",
       "type": "allDamageBoth",
       "val": 1,
       "slotKey": "C4",
@@ -565,7 +565,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "钻地魔虫",
-      "desc": "全体角色失去2HP，随机一名角色再失去2HP",
+      "desc": "所有角色失去2HP，随机一名角色再失去2HP",
       "type": "allDamageHPRandomExtra",
       "val": 2,
       "slotKey": "D1",
@@ -712,7 +712,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "鲜红夜宴",
-      "desc": "所有人回复2HP，失去1SAN",
+      "desc": "所有角色回复2HP，失去1SAN",
       "type": "allHealHPDamageSAN",
       "hpVal": 2,
       "sanVal": 1,

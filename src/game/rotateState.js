@@ -171,6 +171,16 @@ function rotateTimedOutDrawDiscardEvent(event, rotateIndex) {
   };
 }
 
+function rotateTsathogguaSlimeGrantEvents(events, rotateIndex, myIndex) {
+  if (!Array.isArray(events)) return events;
+  return events.map(event => ({
+    ...event,
+    ownerIdx: event.ownerIdx != null ? rotateIndex(event.ownerIdx) : event.ownerIdx,
+    playersBefore: rotatePlayersArray(event.playersBefore, myIndex),
+    playersAfter: rotatePlayersArray(event.playersAfter, myIndex),
+  }));
+}
+
 function rotateCardEffectPayload(payload, rotateIndex, myIndex) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
   const rotatedIndices = rotateIndexedFields(payload, ['actorIdx', 'sourceIdx', 'targetIdx', 'playerIdx', 'drawerIdx'], rotateIndex);
@@ -318,6 +328,7 @@ export function rotateGsForViewer(gs, myIndex) {
     ...(gs._apophisTargetEvent ? { _apophisTargetEvent: rotateApophisTargetEvent(gs._apophisTargetEvent, rotateIndex) } : {}),
     ...(gs._randomTargetEvents ? { _randomTargetEvents: rotateRandomTargetEvents(gs._randomTargetEvents, rotateIndex) } : {}),
     ...(gs._mpTimedOutDrawDiscard ? { _mpTimedOutDrawDiscard: rotateTimedOutDrawDiscardEvent(gs._mpTimedOutDrawDiscard, rotateIndex) } : {}),
+    ...(gs._tsgSlimeGrantEvents ? { _tsgSlimeGrantEvents: rotateTsathogguaSlimeGrantEvents(gs._tsgSlimeGrantEvents, rotateIndex, myIndex) } : {}),
     ...(gs._visualEvents ? { _visualEvents: rotateVisualEvents(gs._visualEvents, rotateIndex, myIndex) } : {}),
   };
 }

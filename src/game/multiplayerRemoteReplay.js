@@ -14,6 +14,7 @@ import { appendFinalStatePatch, finalStatePatch } from './animStatePatch';
 import { cardLogText, copyPlayers } from './coreUtils';
 import { isLocalCurrentTurn, isLocalSeatIndex, localDisplayName } from './rotateState';
 import {
+  buildTsathogguaSlimeGrantQueue,
   buildTurnStartDrawReplayQueue,
   getTurnStartDrawBaselineLog,
   getTurnStartDrawerIdx,
@@ -197,6 +198,10 @@ export function buildMpRemoteReplayAction({
   const logDelta = getLogDelta(previousGs, rotated);
   const timedOutDrawDiscardStep = buildTimedOutDrawDiscardStep(rotated, previousGs, logDelta);
   const handLimitDiscardSteps = buildHandLimitDiscardStepsFromVisualEvents(rotated);
+  const preTurnSteps = [
+    ...handLimitDiscardSteps,
+    ...buildTsathogguaSlimeGrantQueue(rotated),
+  ];
   const isDrawAnimationState = hasDrawAnimationState(rotated);
   const previousPendingZhuHide = isPendingZhuHideState(previousGs);
   const endlessCorridorReplayEvent = getEndlessCorridorReplayVisualEvent(rotated);
@@ -218,7 +223,7 @@ export function buildMpRemoteReplayAction({
       oldGs: previousGs,
       newGs: rotated,
       timedOutDrawDiscardStep,
-      preTurnSteps: handLimitDiscardSteps,
+      preTurnSteps,
       buildQueue: buildAnimQueue,
       buildFullHandSwapTransferQueue: buildFullHandSwapTransferQueueFromLogs,
       effectOldGs: { ...rotated, players: rotated._playersBeforeThisDraw || previousGs?.players || rotated.players, log: getTurnStartDrawBaselineLog(rotated) },
@@ -540,7 +545,7 @@ export function buildMpRemoteReplayAction({
       oldGs: previousGs,
       newGs: rotated,
       timedOutDrawDiscardStep,
-      preTurnSteps: handLimitDiscardSteps,
+      preTurnSteps,
       buildQueue: buildAnimQueue,
       buildFullHandSwapTransferQueue: buildFullHandSwapTransferQueueFromLogs,
       effectOldGs: { ...rotated, players: beforeDrawPlayers, log: getTurnStartDrawBaselineLog(rotated) },
@@ -569,7 +574,7 @@ export function buildMpRemoteReplayAction({
       oldGs: previousGs,
       newGs: rotated,
       timedOutDrawDiscardStep,
-      preTurnSteps: handLimitDiscardSteps,
+      preTurnSteps,
       buildQueue: buildAnimQueue,
       buildFullHandSwapTransferQueue: buildFullHandSwapTransferQueueFromLogs,
       effectOldGs: { ...previousGs, players: beforeDrawPlayers },

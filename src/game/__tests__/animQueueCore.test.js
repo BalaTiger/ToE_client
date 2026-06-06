@@ -81,6 +81,13 @@ describe('buildAnimQueue stat animations', () => {
     expect(secondHpIdx).toBeGreaterThan(randomIdx);
     expect(queue[firstHpIdx].hitIndices).toEqual([0, 1, 2]);
     expect(queue[secondHpIdx].hitIndices).toEqual([1]);
+    expect(queue[firstHpIdx].visualSetupTiming).toBe('queueStart');
+    expect(queue[firstHpIdx].visualTimeline[0].patch.players.map(p => p.hp)).toEqual([10, 10, 10]);
+    expect(queue[firstHpIdx].visualTimeline[1].patch.players.map(p => p.hp)).toEqual([8, 8, 8]);
+    expect(queue[randomIdx].visualSetupPatch.players.map(p => p.hp)).toEqual([8, 8, 8]);
+    expect(queue[randomIdx].visualTimeline[0].patch.players.map(p => p.hp)).toEqual([8, 8, 8]);
+    expect(queue[secondHpIdx].visualSetupPatch.players.map(p => p.hp)).toEqual([8, 8, 8]);
+    expect(queue[secondHpIdx].visualTimeline.at(-1).patch.players.map(p => p.hp)).toEqual([8, 6, 8]);
   });
 
   it('阿波菲斯黑夜选目标会播放掷骰，追捕偏移时重播锁定动画', () => {

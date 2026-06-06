@@ -78,6 +78,14 @@ describe('rotateGsForViewer', () => {
       _randomTargetEvents: [
         { seq: 1, sourceIdx: 3, targetIdx: 1, label: '投掷石块' },
       ],
+      _tsgSlimeGrantEvents: [
+        {
+          ownerIdx: 0,
+          count: 1,
+          playersBefore: [player('tsgB0'), player('tsgB1'), player('tsgB2'), player('tsgB3')],
+          playersAfter: [player('tsgA0'), player('tsgA1'), player('tsgA2'), player('tsgA3')],
+        },
+      ],
       _animMultiplyEvent: { fromIdx: 1, toIdx: 3, sourceCardIndex: 4 },
       _animSphinxReveal: { actorIdx: 0, card: { name: '斯芬克斯' } },
       _visualEvents: [
@@ -181,6 +189,9 @@ describe('rotateGsForViewer', () => {
     expect(names(rotated._aiHuntEvents[0].afterDiscardPlayers)).toEqual(['d2', 'd3', 'd0', 'd1']);
     expect(names(rotated._aiHuntEvents[0].afterPlayers)).toEqual(['a2', 'a3', 'a0', 'a1']);
     expect(rotated._randomTargetEvents[0]).toMatchObject({ sourceIdx: 1, targetIdx: 3, label: '投掷石块' });
+    expect(rotated._tsgSlimeGrantEvents[0].ownerIdx).toBe(2);
+    expect(names(rotated._tsgSlimeGrantEvents[0].playersBefore)).toEqual(['tsgB2', 'tsgB3', 'tsgB0', 'tsgB1']);
+    expect(names(rotated._tsgSlimeGrantEvents[0].playersAfter)).toEqual(['tsgA2', 'tsgA3', 'tsgA0', 'tsgA1']);
     expect(rotated._animMultiplyEvent).toMatchObject({ fromIdx: 3, toIdx: 1, sourceCardIndex: 4 });
     expect(rotated._animSphinxReveal).toMatchObject({ actorIdx: 2 });
     expect(rotated._visualEvents[0].playerIdx).toBe(1);

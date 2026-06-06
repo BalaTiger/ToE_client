@@ -2,6 +2,68 @@ import { makeTargetStats, statEventsToAnimQueue } from './statEvents';
 import { buildFullHandSwapStepsFromLogs, buryToDeckStep, cardTransferStep, statePatchStep } from './animQueueHelpers';
 import { buildCardEffectStepsFromVisualEvents, buildHuntRevealStepFromVisualEvent } from './visualEvents';
 
+function clonePlayersForTimeline(players = []) {
+  return players.map(player => ({
+    ...player,
+    hand: [...(player?.hand || [])],
+    godZone: [...(player?.godZone || [])],
+    zoneCards: [...(player?.zoneCards || [])],
+  }));
+}
+
+function playersAfterStatEvents(basePlayers = [], statEvents = []) {
+  const next = clonePlayersForTimeline(basePlayers);
+  statEvents.forEach(event => {
+    if (event?.target == null || !next[event.target]) return;
+    const target = next[event.target];
+    const to = event.to || {};
+    if (Object.prototype.hasOwnProperty.call(to, 'hp')) target.hp = to.hp;
+    if (Object.prototype.hasOwnProperty.call(to, 'san')) target.san = to.san;
+    if (Object.prototype.hasOwnProperty.call(to, 'isDead')) target.isDead = to.isDead;
+  });
+  return next;
+}
+
+function attachVisualTimelineToSteps(steps = [], beforePlayers = [], beforeDiscard = [], afterPlayers = [], afterDiscard = []) {
+  let cursorPlayers = clonePlayersForTimeline(beforePlayers);
+  let cursorDiscard = Array.isArray(beforeDiscard) ? [...beforeDiscard] : [];
+  return steps.map(step => {
+    if (!step || step.type === 'STATE_PATCH') return step;
+    const hasStatEvents = Array.isArray(step.statEvents) && step.statEvents.length;
+    const nextPlayers = hasStatEvents
+      ? playersAfterStatEvents(cursorPlayers, step.statEvents)
+      : cursorPlayers;
+    const nextDiscard = step.type === 'DISCARD' && step.card
+      ? [...cursorDiscard, step.card]
+      : cursorDiscard;
+    const timedStep = {
+      ...step,
+      visualSetupTiming: step.visualSetupTiming || 'queueStart',
+      visualSetupPatch: {
+        ...(step.visualSetupPatch || {}),
+        players: cursorPlayers,
+        discard: cursorDiscard,
+      },
+      visualTimeline: Array.isArray(step.visualTimeline) ? step.visualTimeline : [
+        { atMs: 0, patch: { players: cursorPlayers, discard: cursorDiscard } },
+        { atMs: 360, patch: { players: nextPlayers, discard: nextDiscard } },
+      ],
+    };
+    cursorPlayers = nextPlayers;
+    cursorDiscard = nextDiscard;
+    return timedStep;
+  }).map((step, index, arr) => {
+    if (index !== arr.length - 1 || step?.type === 'STATE_PATCH') return step;
+    return {
+      ...step,
+      visualTimeline: [
+        ...(Array.isArray(step.visualTimeline) ? step.visualTimeline : []),
+        { atMs: 520, patch: { players: afterPlayers, discard: afterDiscard } },
+      ],
+    };
+  });
+}
+
 export function buildAnimQueue(oldGs, newGs) {
   const q = [];
   const newApophisTargetEvent = newGs?._apophisTargetEvent;
@@ -93,13 +155,25 @@ export function buildAnimQueue(oldGs, newGs) {
           ...randomTargetEvents.map(event => event?.phaseOrder ?? 0),
         ]),
       ].sort((a, b) => a - b);
+      const orderedSteps = [];
+      let orderedCursorPlayers = clonePlayersForTimeline(oldGs?.players || effectivePlayers);
       orders.forEach(order => {
         const statSlice = explicitStatEvents.filter(event => (event?.phaseOrder ?? 0) === order);
-        if (statSlice.length) q.push(...statEventsToAnimQueue(statSlice, effectivePlayers, order === 0 ? newMsgs : []));
+        if (statSlice.length) {
+          orderedSteps.push(...statEventsToAnimQueue(statSlice, orderedCursorPlayers, order === 0 ? newMsgs : []));
+          orderedCursorPlayers = playersAfterStatEvents(orderedCursorPlayers, statSlice);
+        }
         randomTargetEvents
           .filter(event => (event?.phaseOrder ?? 0) === order)
-          .forEach(event => q.push(...buildRandomTargetQueue(event)));
+          .forEach(event => orderedSteps.push(...buildRandomTargetQueue(event)));
       });
+      q.push(...attachVisualTimelineToSteps(
+        orderedSteps,
+        oldGs?.players || effectivePlayers,
+        oldGs?.discard || [],
+        newGs.players || effectivePlayers,
+        newGs.discard || oldGs?.discard || [],
+      ));
     } else {
       randomTargetEvents.forEach(event => q.push(...buildRandomTargetQueue(event)));
       q.push(...statEventsToAnimQueue(explicitStatEvents, effectivePlayers, newMsgs));

@@ -1504,6 +1504,60 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.pendingGs._visualEvents).toEqual([]);
   });
 
+  it('replays Tsathoggua slime grants to the believer seat before the next local draw replay', () => {
+    const nextCard = { id: 'next-card', name: '下一张牌', key: 'B2', type: 'zone' };
+    const slime = { id: 'slime-1', name: '撒托古亚的赐福黏液', isTsathogguaSlime: true };
+    const beforeGrantPlayers = [
+      { ...player('蟾蜍信徒'), hand: [] },
+      player('艾伦'),
+      player('你'),
+    ];
+    const afterGrantPlayers = [
+      { ...player('蟾蜍信徒'), hand: [slime] },
+      player('艾伦'),
+      player('你'),
+    ];
+    const rawState = makeState({
+      currentTurn: 1,
+      phase: 'DRAW_REVEAL',
+      players: afterGrantPlayers,
+      drawReveal: { card: nextCard, drawerIdx: 1, needsDecision: true },
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _drawLogs: ['艾伦 摸到 [B2] 下一张牌'],
+      _playersBeforeThisDraw: afterGrantPlayers,
+      _tsgSlimeGrantEvents: [{
+        ownerIdx: 0,
+        count: 1,
+        cards: [slime],
+        msgs: ['蟾蜍信徒 获得1张撒托古亚的赐福黏液'],
+        playersBefore: beforeGrantPlayers,
+        playersAfter: afterGrantPlayers,
+      }],
+      log: ['蟾蜍信徒 获得1张撒托古亚的赐福黏液', '── 艾伦 的回合开始 ──', '艾伦 摸到 [B2] 下一张牌'],
+    });
+    const rawPreviousGs = makeState({
+      currentTurn: 0,
+      phase: 'ACTION',
+      players: beforeGrantPlayers,
+    });
+    const rotated = rotateGsForViewer(rawState, 2);
+    const previousGs = rotateGsForViewer(rawPreviousGs, 2);
+    const action = buildAction(rotated, {
+      previousGs,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue[0]).toMatchObject({ type: 'VISUAL_LOCK' });
+    expect(action.queue[0].players[0].name).toBe('你');
+    expect(action.queue[0].players[1].name).toBe('蟾蜍信徒');
+    expect(action.queue[1]).toMatchObject({ type: 'CARD_TRANSFER', effect: 'tsgSlime', fromPid: 1, toPid: 1 });
+    expect(action.queue[2]).toMatchObject({ type: 'STATE_PATCH' });
+    expect(action.queue[2].players[1].hand).toContain(slime);
+    expect(action.queue[3]).toMatchObject({ type: 'TURN_BOUNDARY_PAUSE' });
+    expect(action.queue[4]).toMatchObject({ type: 'YOUR_TURN', name: '艾伦' });
+    expect(action.queue[5]).toMatchObject({ type: 'DRAW_CARD', card: nextCard, targetPid: 2 });
+  });
+
   it('does not play hunt reveal animation for the hunted local player', () => {
     const revealedCard = { id: 'rev1', name: '亮出的牌', key: 'C3', type: 'zone' };
     const action = buildAction(makeState({

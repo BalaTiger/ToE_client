@@ -21,12 +21,18 @@ function KnifeEffect({targets}){
             <div style={{
               position:'absolute',left:startX,top:startY,
               width:32,height:32,marginLeft:-16,marginTop:-16,
-              fontSize:32,lineHeight:1,textAlign:'center',
               filter:'drop-shadow(0 0 4px rgba(200,50,50,0.7))',
               '--tx':`${txPx}px`,'--ty':`${tyPx}px`,'--angle':`${angle}deg`,
               animation:`knifeStrikeGlobal 0.28s cubic-bezier(0.2,0,0.8,1) ${delay} both`,
               transformOrigin:'center center',
-            }}>🗡️</div>
+            }}>
+              <svg viewBox="0 0 64 64" width="32" height="32" aria-hidden="true" style={{display:'block',overflow:'visible'}}>
+                <path d="M62 32 L34 18 L27 27 L8 46 L16 54 L35 35 L44 42 Z" fill="#d8dde6" stroke="#fff7e6" strokeWidth="2" strokeLinejoin="round"/>
+                <path d="M35 27 L18 44" stroke="#7e8794" strokeWidth="3" strokeLinecap="round"/>
+                <path d="M11 49 L4 56" stroke="#5b341f" strokeWidth="6" strokeLinecap="round"/>
+                <path d="M24 25 L42 43" stroke="#c8a96e" strokeWidth="4" strokeLinecap="round"/>
+              </svg>
+            </div>
             <div style={{
               position:'absolute',left:cx,top:cy,
               width:80,height:80,marginLeft:-40,marginTop:-40,
