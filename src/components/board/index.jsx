@@ -98,6 +98,19 @@ const DISCARD_OFFSETS=[
   {x:0,y:0},{x:4,y:-3},{x:-3,y:2},{x:6,y:1},{x:-5,y:-4},{x:2,y:5},
   {x:-4,y:3},{x:5,y:-2},{x:-2,y:4},{x:3,y:-5},{x:-6,y:1},{x:1,y:3},
 ];
+const BOARD_THEME_BY_EXPANSION={
+  '地神的潜影':{
+    text:'#c8a96e',strong:'#e8c87a',muted:'#a07838',panel:'#140f08',panelActive:'#1c1408',
+    line:'#3a2510',lineDim:'#2a1a08',glow:'#c8a96e',
+  },
+  '群星呼唤':{
+    text:'#9dd8f0',strong:'#d8f6ff',muted:'#6aa5c8',panel:'#061b26',panelActive:'#08283a',
+    line:'#1f6f86',lineDim:'#124253',glow:'#62d5ff',
+  },
+};
+function getBoardTheme(expansionKey){
+  return BOARD_THEME_BY_EXPANSION[expansionKey]||BOARD_THEME_BY_EXPANSION['地神的潜影'];
+}
 
 function MiniCardLabel({card,scale=1,glowColor='#c8a96e',ambient=true}){
   if(!card)return null;
@@ -417,6 +430,7 @@ function PetrifyingFormulaDie({ state, fontSize }) {
 }
 
 function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,deckRef,discardRef,scaleRatio,expansionKey='地神的潜影',zhuLitCards=[],zhuHiddenCardId=null,petrifyingFormula=null}){
+  const theme=getBoardTheme(expansionKey);
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const _ = (px) => px * fontZoom;
   const pileWrapRef=React.useRef(null);
@@ -447,7 +461,7 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
       {/* Deck — top-right corner */}
       <div ref={deckRef} data-deck-pile style={{position:'absolute',top:4,right:8,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
         <DeckPile count={deckCount} scale={pileScale} expansionKey={expansionKey} zhuLitCards={zhuLitCards} zhuHiddenCardId={zhuHiddenCardId}/>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:_(11),color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 8px #000000'}}>牌堆:{deckCount}</div>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:_(11),color:theme.text,fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:`0 0 10px ${theme.glow}55,0 0 8px #000000`}}>牌堆:{deckCount}</div>
       </div>
       <PetrifyingFormulaDie state={petrifyingFormula} fontSize={_}/>
       {/* Discard — center */}
@@ -461,18 +475,18 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
           display:'flex',flexDirection:'column',alignItems:'center',gap:4,
           cursor:discardCards&&discardCards.length?'pointer':'default',
           padding:'6px 10px',borderRadius:6,
-          border:discardHover?'1.5px solid #c8a96e':'1.5px solid transparent',
-          boxShadow:discardHover?'0 0 14px #c8a96e66,inset 0 0 12px #c8a96e22':'none',
+          border:discardHover?`1.5px solid ${theme.glow}`:'1.5px solid transparent',
+          boxShadow:discardHover?`0 0 14px ${theme.glow}66,inset 0 0 12px ${theme.glow}22`:'none',
           transition:'all .18s',
           position:'relative',
         }}
       >
         <DiscardPile count={discardCount} topCard={discardTop} scale={pileScale} expansionKey={expansionKey}/>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:_(12),color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 10px #000000'}}>弃牌堆:{discardCount}</div>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:_(12),color:theme.text,fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:`0 0 10px ${theme.glow}55,0 0 10px #000000`}}>弃牌堆:{discardCount}</div>
         {discardHover&&discardCards&&discardCards.length>0&&(
           <div style={{
             position:'absolute',bottom:'-18px',left:'50%',transform:'translateX(-50%)',
-            fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontSize:10,color:'#c8a96e',
+            fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontSize:10,color:theme.text,
             whiteSpace:'nowrap',textShadow:'0 0 6px #000',pointerEvents:'none',
           }}>点击查看</div>
         )}
@@ -487,9 +501,10 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
 // ── PlayerPanel ─────────────────────────────────────────────────
 function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='地神的潜影',blackGoatPulseActive=false}){
   const ri=RINFO[player.role];
+  const theme=getBoardTheme(expansionKey);
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const _ = (px) => px * fontZoom;
-  const borderColor=isBeingHit?'#cc2222':isSanHit?'#8840cc':isCurrentTurn?'#c8a96e':isSelectable?ri.col:'#3a2510';
+  const borderColor=isBeingHit?'#cc2222':isSanHit?'#8840cc':isCurrentTurn?theme.glow:isSelectable?ri.col:theme.line;
   const handCards=showFaceUp?player.hand:player.hand.map((c,ci)=>isBlackGoatYoung(c)||isTsathogguaSlime(c)?c:{id:`back-${playerIndex}-${ci}`,_back:true});
   const HAND_CARD_WIDTH=showFaceUp?44:36;
   const HAND_CARD_HEIGHT=showFaceUp?58:50;
@@ -519,9 +534,9 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
   return(
     <div data-death-panel={playerIndex} onClick={isSelectable?onSelect:undefined} style={{
       width:'100%',
-      background:isCurrentTurn?'#1c1408':'#140f08',
+      background:isCurrentTurn?theme.panelActive:theme.panel,
       border:`1.5px solid ${borderColor}`,
-      boxShadow:isCurrentTurn?`0 0 20px #c8a96e22,inset 0 0 16px #c8a96e08`:isSelectable?`0 0 14px ${ri.col}44`:'none',
+      boxShadow:isCurrentTurn?`0 0 20px ${theme.glow}28,inset 0 0 16px ${theme.glow}10`:isSelectable?`0 0 14px ${ri.col}44`:'none',
       borderRadius:3,padding:'8px 9px',
       cursor:isSelectable?'pointer':'default',
       opacity: isBeingGuillotined ? 0 : (player.isDead && !player._pendingAnimDeath ? 0.32 : 1),
@@ -534,13 +549,13 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
       {/* Name plate */}
       <div style={{
         display:'flex',alignItems:'center',gap:6,marginBottom:6,
-        borderBottom:'1px solid #2a1a08',paddingBottom:5,
+        borderBottom:`1px solid ${theme.lineDim}`,paddingBottom:5,
       }}>
-        <span style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:_(11),color:isCurrentTurn?'#e8c87a':'#c8a96e',letterSpacing:1}}>{player.name}</span>
+        <span style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:_(11),color:isCurrentTurn?theme.strong:theme.text,letterSpacing:1}}>{player.name}</span>
         {(player.roleRevealed||player.isDead)&&<span style={{fontSize:_(10),color:ri.col,fontFamily:"'Cinzel',serif",letterSpacing:1,marginLeft:2}}>{ri.icon} {player.role}</span>}
         {player.isDead&&<span style={{fontSize:_(11),color:'#882020',marginLeft:'auto'}}>☠</span>}
         {player.isResting&&!player.isDead&&<span style={{fontSize:_(9),color:'#4ade80',marginLeft:'auto',letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 翻面中</span>}
-        {isCurrentTurn&&!player.isDead&&!player.isResting&&<span style={{fontSize:_(9),color:'#c8a96e',marginLeft:'auto',letterSpacing:1}}>▸ 行动</span>}
+        {isCurrentTurn&&!player.isDead&&!player.isResting&&<span style={{fontSize:_(9),color:theme.text,marginLeft:'auto',letterSpacing:1}}>▸ 行动</span>}
       </div>
       <StatBar label="HP"  val={displayStats?.[playerIndex]?.hp ?? player.hp}  color="#8b1515" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={viewportWidth}/>
       <StatBar label="SAN" val={displayStats?.[playerIndex]?.san ?? player.san} color="#4a1080" trackColor="#120820" scaleRatio={scaleRatio} viewportWidth={viewportWidth}/>
@@ -619,8 +634,8 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
                   onClick={onCardSelect?()=>onCardSelect(ci):undefined}
                   style={{
                     cursor:onCardSelect?'pointer':'default',
-                    outline:onCardSelect?'1px solid #c8a96e88':'none',
-                    boxShadow:onCardSelect?'0 0 10px #c8a96e44':'none',
+                    outline:onCardSelect?`1px solid ${theme.glow}88`:'none',
+                    boxShadow:onCardSelect?`0 0 10px ${theme.glow}44`:'none',
                     borderRadius:3,
                   }}
                 ><DDCardBack small expansionKey={expansionKey} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/></div>

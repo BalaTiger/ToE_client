@@ -4,7 +4,14 @@ import {
   ROLE_HUNTER,
   ROLE_CULTIST,
 } from '../coreUtils';
-import { initGame, mkDeck, mkRoles } from '../setup';
+import {
+  applyTemporaryStarsCallDeckReplacement,
+  EXPANSION_RANDOM_KEY,
+  initGame,
+  mkDeck,
+  mkRoles,
+  resolveBattleExpansionPlan,
+} from '../setup';
 import { EXPANSIONS, getCardDisplayKey } from '../../constants/card';
 import { resetIds } from './factory';
 
@@ -212,6 +219,58 @@ describe('mkDeck', () => {
     const vritra = deck.find(card => card.isGod && card.godKey === 'VRI');
     expect(vritra.key).toBe('VRI');
     expect(getCardDisplayKey(vritra)).toBe('VRI');
+  });
+
+  it('随机拓展包可临时启用群星呼唤主题并沿用地神牌堆', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.1);
+
+    const plan = resolveBattleExpansionPlan(EXPANSION_RANDOM_KEY);
+
+    expect(plan).toMatchObject({
+      expansionKey: '群星呼唤',
+      deckExpansionKey: '地神的潜影',
+      temporaryStarsCall: true,
+    });
+  });
+
+  it('临时群星呼唤牌堆用4张拉莱耶之主替换一种地神神牌', () => {
+    const baseDeck = mkDeck('地神的潜影');
+    const replacedGodKey = 'NYA';
+    const result = applyTemporaryStarsCallDeckReplacement(baseDeck, replacedGodKey);
+    const godCards = result.deck.filter(card => card.isGod);
+
+    expect(result).toMatchObject({ replacedGodKey, insertedGodKey: 'CTH' });
+    expect(result.deck).toHaveLength(baseDeck.length);
+    expect(godCards.filter(card => card.godKey === replacedGodKey)).toHaveLength(0);
+    expect(godCards.filter(card => card.godKey === 'CTH')).toHaveLength(4);
+    expect(result.deck.filter(card => card.isZone).every(card => card.expansion === '地神的潜影')).toBe(true);
+  });
+
+  it('初始化随机到群星呼唤时使用群星主题和临时替换后的地神牌堆', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.1);
+    const gs = initGame(
+      null,
+      null,
+      null,
+      'auto',
+      null,
+      null,
+      null,
+      null,
+      null,
+      state => state,
+      EXPANSION_RANDOM_KEY,
+    );
+    const allCards = [
+      ...gs.deck,
+      ...gs.players.flatMap(player => player.hand || []),
+    ];
+
+    expect(gs.expansionKey).toBe('群星呼唤');
+    expect(gs.deckExpansionKey).toBe('地神的潜影');
+    expect(gs.temporaryStarsCallReplacement).toMatchObject({ insertedGodKey: 'CTH' });
+    expect(allCards.filter(card => card.isGod && card.godKey === 'CTH')).toHaveLength(4);
+    expect(allCards.filter(card => card.isZone).every(card => card.expansion === '地神的潜影')).toBe(true);
   });
 });
 

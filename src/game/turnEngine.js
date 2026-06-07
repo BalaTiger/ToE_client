@@ -194,6 +194,25 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
   let statePatch = {};
   let inspectionMeta = makeInspectionMeta(gs);
   P = P.map(p => ({ ...p, godZone: [...(p.godZone || [])] })); // shallow copy godZone arrays
+  const applyImmediateGodPower = () => {
+    if (!canGodPowerAffect(P[ci])) return;
+    if (godKey === 'APO') {
+      statePatch.apophisNight = getApophisNightForLevel(P[ci].godLevel);
+      msgs.push(buildApophisNightLog());
+    }
+    if (godKey === 'ZHU') {
+      statePatch.zhuLight = buildZhuLight(P, D, ci, gs?.zhuLight);
+    }
+    if (godKey === 'SHU') {
+      const count = GOD_DEFS.SHU.levels[(P[ci].godLevel || 1) - 1]?.offspringCount || 0;
+      const shuTargetIdx = _chooseAiShuTarget(ci, P);
+      if (!canGodPowerAffect(P[shuTargetIdx])) return;
+      const goatCards = Array.from({ length: count }, () => createBlackGoatYoungCard());
+      P[shuTargetIdx].hand.push(...goatCards);
+      if (goatCards.length) proliferatingZGainEvents.push({ ownerIdx: shuTargetIdx, cards: goatCards });
+      if (count) msgs.push(`【黑暗子嗣】${P[shuTargetIdx].name} 获得${count}张黑山羊幼仔`);
+    }
+  };
   if (forcedConvert && P[ci].godName && P[ci].godName !== godKey) {
     msgs.push(`${P[ci].name} 被迫改信新神，SAN-1`);
     const inspectionBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
@@ -219,19 +238,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     P[ci].godLevel++; P[ci].godZone.push({ ...godCard });
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
     msgs.push(`${P[ci].name} 邪神之力升至Lv.${P[ci].godLevel}（${godCard.power}）`);
-    if (godKey === 'APO' && canGodPowerAffect(P[ci])) {
-      statePatch.apophisNight = getApophisNightForLevel(P[ci].godLevel);
-      msgs.push(buildApophisNightLog());
-    }
-    if (godKey === 'SHU' && canGodPowerAffect(P[ci])) {
-      const count = GOD_DEFS.SHU.levels[P[ci].godLevel - 1]?.offspringCount || 0;
-      const shuTargetIdx = _chooseAiShuTarget(ci, P);
-      if (!canGodPowerAffect(P[shuTargetIdx])) return;
-      const goatCards = Array.from({ length: count }, () => createBlackGoatYoungCard());
-      P[shuTargetIdx].hand.push(...goatCards);
-      if (goatCards.length) proliferatingZGainEvents.push({ ownerIdx: shuTargetIdx, cards: goatCards });
-      if (count) msgs.push(`【黑暗子嗣】${P[shuTargetIdx].name} 获得${count}张黑山羊幼仔`);
-    }
+    applyImmediateGodPower();
     P.forEach((p, i) => {
       if (i !== ci && p.godName === godKey) {
         const abandonBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
@@ -248,19 +255,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }];
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
     msgs.push(`${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
-    if (godKey === 'APO' && canGodPowerAffect(P[ci])) {
-      statePatch.apophisNight = getApophisNightForLevel(P[ci].godLevel);
-      msgs.push(buildApophisNightLog());
-    }
-    if (godKey === 'SHU' && canGodPowerAffect(P[ci])) {
-      const count = GOD_DEFS.SHU.levels[0]?.offspringCount || 0;
-      const shuTargetIdx = _chooseAiShuTarget(ci, P);
-      if (!canGodPowerAffect(P[shuTargetIdx])) return;
-      const goatCards = Array.from({ length: count }, () => createBlackGoatYoungCard());
-      P[shuTargetIdx].hand.push(...goatCards);
-      if (goatCards.length) proliferatingZGainEvents.push({ ownerIdx: shuTargetIdx, cards: goatCards });
-      if (count) msgs.push(`【黑暗子嗣】${P[shuTargetIdx].name} 获得${count}张黑山羊幼仔`);
-    }
+    applyImmediateGodPower();
     P.forEach((p, i) => {
       if (i !== ci && p.godName === godKey) {
         const abandonBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
@@ -273,19 +268,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }];
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
     msgs.push(`${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
-    if (godKey === 'APO' && canGodPowerAffect(P[ci])) {
-      statePatch.apophisNight = getApophisNightForLevel(P[ci].godLevel);
-      msgs.push(buildApophisNightLog());
-    }
-    if (godKey === 'SHU' && canGodPowerAffect(P[ci])) {
-      const count = GOD_DEFS.SHU.levels[0]?.offspringCount || 0;
-      const shuTargetIdx = _chooseAiShuTarget(ci, P);
-      if (!canGodPowerAffect(P[shuTargetIdx])) return;
-      const goatCards = Array.from({ length: count }, () => createBlackGoatYoungCard());
-      P[shuTargetIdx].hand.push(...goatCards);
-      if (goatCards.length) proliferatingZGainEvents.push({ ownerIdx: shuTargetIdx, cards: goatCards });
-      if (count) msgs.push(`【黑暗子嗣】${P[shuTargetIdx].name} 获得${count}张黑山羊幼仔`);
-    }
+    applyImmediateGodPower();
     P.forEach((p, i) => {
       if (i !== ci && p.godName === godKey) {
         const abandonBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];

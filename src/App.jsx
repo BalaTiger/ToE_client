@@ -44,6 +44,7 @@ import {
   chooseAiRoseThornTarget,
   shouldHunterKeepChasing,
   initGame,
+  EXPANSION_RANDOM_KEY,
   RINFO,
   ROLE_TREASURE,
   ROLE_HUNTER,
@@ -261,11 +262,55 @@ const BATTLE_BACKGROUND_BY_EXPANSION={
   '群星呼唤':'/img/bg/battle/stars_call.png',
   '析骨为柴':'/img/bg/battle/bone_fuel.png',
 };
+const BATTLE_THEME_BY_EXPANSION={
+  '地神的潜影':{
+    tintTop:'rgba(6,4,3,0.48)',
+    tintBottom:'rgba(7,4,2,0.66)',
+    bg:'#0a0705',
+    text:'#c8a96e',
+    strong:'#e8c87a',
+    muted:'#a07838',
+    panel:'#140f08',
+    panelActive:'#1c1408',
+    line:'#3a2510',
+    lineDim:'#2a1a08',
+    glow:'#c8a96e',
+    accent:'#7a5324',
+  },
+  '群星呼唤':{
+    tintTop:'rgba(2,10,22,0.42)',
+    tintBottom:'rgba(1,18,30,0.72)',
+    bg:'#031018',
+    text:'#9dd8f0',
+    strong:'#d8f6ff',
+    muted:'#6aa5c8',
+    panel:'#061b26',
+    panelActive:'#08283a',
+    line:'#1f6f86',
+    lineDim:'#124253',
+    glow:'#62d5ff',
+    accent:'#78e2ff',
+  },
+};
+function getBattleTheme(expansionKey){
+  return BATTLE_THEME_BY_EXPANSION[expansionKey]||BATTLE_THEME_BY_EXPANSION['地神的潜影'];
+}
 function getBattleBackgroundStyle(expansionKey,isMobile){
   const url=BATTLE_BACKGROUND_BY_EXPANSION[expansionKey]||BATTLE_BACKGROUND_BY_EXPANSION['地神的潜影'];
+  const theme=getBattleTheme(expansionKey);
   return {
-    backgroundColor:'#0a0705',
-    backgroundImage:`linear-gradient(180deg,rgba(6,4,3,0.48),rgba(7,4,2,0.66)), url('${url}')`,
+    '--toe-bg':theme.bg,
+    '--toe-text':theme.text,
+    '--toe-strong':theme.strong,
+    '--toe-muted':theme.muted,
+    '--toe-panel':theme.panel,
+    '--toe-panel-active':theme.panelActive,
+    '--toe-line':theme.line,
+    '--toe-line-dim':theme.lineDim,
+    '--toe-glow':theme.glow,
+    '--toe-accent':theme.accent,
+    backgroundColor:theme.bg,
+    backgroundImage:`linear-gradient(180deg,${theme.tintTop},${theme.tintBottom}), url('${url}')`,
     backgroundSize:'cover, cover',
     backgroundPosition:'center center, center center',
     backgroundRepeat:'no-repeat, no-repeat',
@@ -496,7 +541,7 @@ export default function Game(){
         debugForceZoneCardName:null,
         debugForceGodCardKey:null,
         debugPlayerRole:'auto',
-        debugExpansionKey:'地神的潜影',
+        debugExpansionKey:EXPANSION_RANDOM_KEY,
       };
     }
     return{
@@ -5743,7 +5788,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const gres=resolveGodEncounterForAI(ti,bewitchCard,P,D,Disc,godResolveGs,forcedConvert);
       P=gres.P;D=gres.D;Disc=gres.Disc;L.push(...gres.msgs);
       const win=checkWin(P,gs._isMP);
-      const nextApophisNight=gres.statePatch?.apophisNight??night.apophisNight;
+      const nightPatch=apophisNightPatch(night);
+      const nextApophisNight=gres.statePatch?.apophisNight??nightPatch.apophisNight??gs.apophisNight;
       const mergedInspectionMeta={
         ...inspectionMeta,
         ...(gres.inspectionMeta||{}),
@@ -5752,7 +5798,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const hasSlimeDecision=mergedInspectionMeta?.abilityData?.type==='tsgSlimeBalance';
       const bewitchMsgs=extractSkillLogs(L.slice(gs.log.length),'bewitch');
       const bewitchEvent=createBewitchGiftEvent({sourceIdx:0,targetIdx:ti,targetName:P[ti]?.name,card:bewitchCard,msgs:bewitchMsgs});
-      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:hasSlimeDecision?'TSG_SLIME_BALANCE':'ACTION',drawReveal:null,skillUsed:true,...mergedInspectionMeta,...(gres.statePatch||{}),abilityData:hasSlimeDecision?{...mergedInspectionMeta.abilityData,_turnOwner:gs.currentTurn}:{},...apophisNightPatch(night),apophisNight:nextApophisNight,_visualEvents:[...(gres.statePatch?._visualEvents||[]),...(bewitchEvent?[bewitchEvent]:[])],...(win?{gameOver:win}:{})};
+      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:hasSlimeDecision?'TSG_SLIME_BALANCE':'ACTION',drawReveal:null,skillUsed:true,...mergedInspectionMeta,...nightPatch,...(gres.statePatch||{}),abilityData:hasSlimeDecision?{...mergedInspectionMeta.abilityData,_turnOwner:gs.currentTurn}:{},apophisNight:nextApophisNight,_visualEvents:[...(gres.statePatch?._visualEvents||[]),...(bewitchEvent?[bewitchEvent]:[])],...(win?{gameOver:win}:{})};
       const statQueue=buildPostBewitchStatQueue(gs,newGs);
       broadcastMpStateBeforeLocalReplay(newGs);
       triggerAnimQueue(mergeApophisTargetQueue(buildBewitchForcedCardQueue(0,ti,bewitchCard,P[ti]?.name,statQueue,bewitchMsgs),gs,newGs),newGs);
@@ -7119,7 +7165,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   const blackGoatPulsePid=anim?.type==='BLACK_GOAT_PULSE'?(anim.targetPid??anim.targetIdx??0):null;
 
   return(<>
-    <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...battleBackgroundStyle,color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:7,padding:isMobile?'6px 8px':'8px 10px',position:'relative',left:globalShiftX||undefined,overflowX:'hidden',overflowY:'scroll',scrollbarGutter:'stable',
+    <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...battleBackgroundStyle,color:'var(--toe-text,#c8a96e)',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:7,padding:isMobile?'6px 8px':'8px 10px',position:'relative',left:globalShiftX||undefined,overflowX:'hidden',overflowY:'scroll',scrollbarGutter:'stable',
     animation:deathShake?'deathShakeAnim 2.0s ease-in-out':earthquakeShake?'earthquakeSceneShake 1.25s linear 2':screenShake?'screenShakeAnim 0.38s ease-in-out':undefined,
     }}>
       {/* Global vignette */}
