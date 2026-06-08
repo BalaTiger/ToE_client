@@ -4,7 +4,8 @@ import { buildPublicUrl } from "../utils/url";
 
 const AUDIO_FILES = [
   '/sounds/BGM/mainTheme.mp3',
-  '/sounds/BGM/battle.mp3',
+  '/sounds/BGM/battle_earth_shadow.mp3',
+  '/sounds/BGM/battle_stars_call.mp3',
   '/sounds/SE/hpDamageVariants/hpDamage1.mp3',
   '/sounds/SE/hpDamageVariants/hpDamage2.mp3',
   '/sounds/SE/hpDamageVariants/hpDamage3.mp3',
@@ -60,7 +61,8 @@ const RESOURCE_FILES = [
 
 const RESOURCE_SIZE_FALLBACK = {
   '/sounds/BGM/mainTheme.mp3': 4025782,
-  '/sounds/BGM/battle.mp3': 1961472,
+  '/sounds/BGM/battle_earth_shadow.mp3': 1961472,
+  '/sounds/BGM/battle_stars_call.mp3': 8628480,
   '/sounds/SE/hpDamageVariants/hpDamage1.mp3': 4428,
   '/sounds/SE/hpDamageVariants/hpDamage2.mp3': 3331,
   '/sounds/SE/hpDamageVariants/hpDamage3.mp3': 3175,

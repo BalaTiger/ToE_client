@@ -5,25 +5,35 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { buildPublicUrl } from '../utils/url';
 
-export function useGameAudio(isBattleScreen) {
+const BATTLE_BGM_BY_EXPANSION = {
+  '地神的潜影': 'battleEarth',
+  '群星呼唤': 'battleStars',
+};
+
+function getBattleBgmKey(expansionKey) {
+  return BATTLE_BGM_BY_EXPANSION[expansionKey] || BATTLE_BGM_BY_EXPANSION['地神的潜影'];
+}
+
+export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
   const [audioReady, setAudioReady] = useState(false);
   const readyRef = useRef(false);
-  const bgmRefs = useRef({ main: null, battle: null });
+  const bgmRefs = useRef({ main: null, battleEarth: null, battleStars: null });
   const sfxRefs = useRef({ open: null, close: null, hpDamage: [], apophisEclipse: null });
   const currentTrackRef = useRef(null);
   const fadeTokenRef = useRef(0);
-  const targetVolumesRef = useRef({ main: 0.32, battle: 0.24 });
+  const targetVolumesRef = useRef({ main: 0.32, battleEarth: 0.24, battleStars: 0.214 });
 
   useEffect(() => {
     const main = new Audio(buildPublicUrl('sounds/BGM/mainTheme.mp3'));
-    const battle = new Audio(buildPublicUrl('sounds/BGM/battle.mp3'));
+    const battleEarth = new Audio(buildPublicUrl('sounds/BGM/battle_earth_shadow.mp3'));
+    const battleStars = new Audio(buildPublicUrl('sounds/BGM/battle_stars_call.mp3'));
     const open = new Audio(buildPublicUrl('sounds/SE/open.mp3'));
     const close = new Audio(buildPublicUrl('sounds/SE/close.mp3'));
     const apophisEclipse = new Audio(buildPublicUrl('sounds/SE/apophisEclipseDrums.mp3'));
     const hpDamageVariants = Array.from({ length: 6 }, (_, i) =>
       new Audio(buildPublicUrl(`sounds/SE/hpDamageVariants/hpDamage${i + 1}.mp3`))
     );
-    [main, battle].forEach(audio => {
+    [main, battleEarth, battleStars].forEach(audio => {
       audio.loop = true;
       audio.preload = 'auto';
       audio.volume = 0;
@@ -38,10 +48,10 @@ export function useGameAudio(isBattleScreen) {
       audio.preload = 'auto';
       audio.volume = 0.7;
     });
-    bgmRefs.current = { main, battle };
+    bgmRefs.current = { main, battleEarth, battleStars };
     sfxRefs.current = { open, close, hpDamage: hpDamageVariants, apophisEclipse };
     return () => {
-      [main, battle, open, close, apophisEclipse, ...hpDamageVariants].forEach(audio => {
+      [main, battleEarth, battleStars, open, close, apophisEclipse, ...hpDamageVariants].forEach(audio => {
         try {
           audio.pause();
           audio.currentTime = 0;
@@ -52,7 +62,7 @@ export function useGameAudio(isBattleScreen) {
 
   const syncTrack = useCallback((instant = false) => {
     if (!audioReady) return;
-    const nextKey = isBattleScreen ? 'battle' : 'main';
+    const nextKey = isBattleScreen ? getBattleBgmKey(expansionKey) : 'main';
     const prevKey = currentTrackRef.current;
     if (prevKey === nextKey) return;
     const nextAudio = bgmRefs.current[nextKey];
@@ -97,28 +107,29 @@ export function useGameAudio(isBattleScreen) {
       try { nextAudio.volume = nextTarget; } catch { /* ignore */ }
     };
     requestAnimationFrame(step);
-  }, [audioReady, isBattleScreen]);
+  }, [audioReady, isBattleScreen, expansionKey]);
 
   useEffect(() => {
     syncTrack(false);
-  }, [audioReady, isBattleScreen, syncTrack]);
+  }, [audioReady, isBattleScreen, expansionKey, syncTrack]);
 
   useEffect(() => {
     if (audioReady) return;
-    const preview = isBattleScreen ? bgmRefs.current.battle : bgmRefs.current.main;
+    const previewKey = isBattleScreen ? getBattleBgmKey(expansionKey) : 'main';
+    const preview = bgmRefs.current[previewKey];
     if (!preview) return;
     try {
       preview.loop = true;
-      preview.volume = targetVolumesRef.current[isBattleScreen ? 'battle' : 'main'];
+      preview.volume = targetVolumesRef.current[previewKey];
       preview.play().then(() => {
         if (!readyRef.current) {
           readyRef.current = true;
           setAudioReady(true);
-          currentTrackRef.current = isBattleScreen ? 'battle' : 'main';
+          currentTrackRef.current = previewKey;
         }
       }).catch(() => { });
     } catch { /* ignore */ }
-  }, [audioReady, isBattleScreen]);
+  }, [audioReady, isBattleScreen, expansionKey]);
 
   const noteUserGesture = useCallback(() => {
     if (!readyRef.current) {

@@ -197,15 +197,23 @@ def make_bubble_mask(size: int) -> Image.Image:
     return mask.filter(ImageFilter.GaussianBlur(0.8))
 
 
+def bubble_position(index: int, phase: float, width: int, height: int) -> tuple[float, float, int]:
+    radius = 12 + (index % 4) * 4
+    lane = 0.18 + ((index * 31) % 68) / 100
+    x = width * lane + math.sin(phase * math.tau + index * 0.73) * 5
+    travel = height + radius * 4
+    start = height * (0.18 + ((index * 47) % 74) / 100)
+    y = ((start - phase * travel) % travel) - radius * 2
+    return x, y, radius
+
+
 def apply_bubble_lenses(frame: Image.Image, phase: float, mask: Image.Image) -> Image.Image:
     width, height = frame.size
     out = frame.copy()
     mpx = mask.load()
     for i in range(7):
-        radius = 12 + (i % 4) * 4
         drift = phase * math.tau
-        cx = width * (0.18 + ((i * 31) % 68) / 100) + math.sin(drift + i * 0.7) * 9
-        cy = height * (0.20 + ((i * 47) % 64) / 100) + math.sin(drift * 1.0 + i * 1.1) * 15
+        cx, cy, radius = bubble_position(i, phase, width, height)
         ix, iy = int(cx), int(cy)
         if not (radius < ix < width - radius and radius < iy < height - radius and mpx[ix, iy] > 0):
             continue
@@ -237,12 +245,9 @@ def make_stars_sea_particles(width: int, height: int, phase: float, mask: Image.
         draw.ellipse([x - size, y - size, x + size, y + size], fill=(*color, alpha))
 
     for i in range(7):
-        angle = phase * math.tau + i * math.tau / 7
-        cx = width * (0.18 + ((i * 31) % 68) / 100) + math.sin(angle + i * 0.7) * 9
-        cy = height * (0.20 + ((i * 47) % 64) / 100) + math.sin(angle + i * 1.1) * 15
+        cx, cy, r = bubble_position(i, phase, width, height)
         if not (0 <= int(cx) < width and 0 <= int(cy) < height and mpx[int(cx), int(cy)] > 0):
             continue
-        r = 12 + (i % 4) * 4
         bubble_mask = make_bubble_mask(r * 2)
         bubble = Image.new("RGBA", (r * 2, r * 2), (148, 226, 255, 0))
         bubble.putalpha(bubble_mask)

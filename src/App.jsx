@@ -530,7 +530,7 @@ export default function Game(){
   const swapBlindDrawRef=useRef(null);
   useEffect(()=>{swapBlindDrawRef.current=swapBlindDraw;},[swapBlindDraw]);
   const isBattleScreen=!!gs;
-  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playApophisEclipseSound}=useGameAudio(isBattleScreen);
+  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playApophisEclipseSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
   const activeDebugConfig=useMemo(()=>{
     if(!localDebugMode){
       return{
