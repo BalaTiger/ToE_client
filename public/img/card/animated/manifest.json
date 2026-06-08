@@ -9,7 +9,6 @@
     {
       "key": "earth_shadow",
       "frameDir": "/img/card/animated/earth_shadow",
-      "sprite": "/img/card/animated/earth_shadow/spritesheet.png",
       "frames": [
         "frame_00.png",
         "frame_01.png",
@@ -42,7 +41,6 @@
     {
       "key": "stars_call",
       "frameDir": "/img/card/animated/stars_call",
-      "sprite": "/img/card/animated/stars_call/spritesheet.png",
       "frames": [
         "frame_00.png",
         "frame_01.png",

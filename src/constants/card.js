@@ -920,7 +920,6 @@ const CARD_BACK_IMAGE_BY_EXPANSION = {
 const ANIMATED_CARD_BACK_BY_EXPANSION = {
   '地神的潜影': {
     frameDir: '/img/card/animated/earth_shadow',
-    sprite: '/img/card/animated/earth_shadow/spritesheet.png',
     version: 'earth-noiseflow-loop-20260608',
     frameCount: 24,
     fps: 12,
@@ -929,7 +928,6 @@ const ANIMATED_CARD_BACK_BY_EXPANSION = {
   },
   '群星呼唤': {
     frameDir: '/img/card/animated/stars_call',
-    sprite: '/img/card/animated/stars_call/spritesheet.png',
     version: 'stars-bubble-rise-20260608',
     frameCount: 24,
     fps: 12,

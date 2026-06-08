@@ -93,7 +93,7 @@ const DEFERRED_RESOURCE_FILES = [
   ...ANIMATED_CARD_BACK_IMAGE_FILES.map(path => ({ path, type: 'image' })),
 ];
 
-const RESOURCE_CACHE_VERSION = '2026-06-08-cardback-sprite-v2';
+const RESOURCE_CACHE_VERSION = '2026-06-08-cardback-frames-v3';
 const CACHE_VERSION_KEY = 'toe_resources_cached_version';
 
 const LOAD_ERROR_LABELS = {

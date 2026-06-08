@@ -16,7 +16,7 @@ THEMES = {
     "earth_shadow": {
         "source": ROOT / "public/img/card/cardback_earth_shadow.png",
         "out": ROOT / "public/img/card/animated/earth_shadow",
-        "comfy_detail": ROOT / "public/img/card/animated/earth_shadow_comfy_try/earth_cardback_comfy_comp_02.png",
+        "comfy_detail": ROOT / "public/img/card/animated/source_refs/earth_shadow_detail.png",
         "prompt": (
             "Use case: stylized-concept. Asset type: looping game card back animation frames. "
             "Primary request: preserve the provided underground Cthulhu card back exactly in composition, "
@@ -31,7 +31,7 @@ THEMES = {
     "stars_call": {
         "source": ROOT / "public/img/card/cardback_stars_call.png",
         "out": ROOT / "public/img/card/animated/stars_call",
-        "comfy_detail": ROOT / "public/img/card/animated/stars_call_comfy_refraction/stars_cardback_refraction_comp_00.png",
+        "comfy_detail": ROOT / "public/img/card/animated/source_refs/stars_call_detail.png",
         "prompt": (
             "Use case: stylized-concept. Asset type: looping game card back animation frames. "
             "Primary request: preserve the provided ocean-and-stars Cthulhu card back exactly in composition, "
@@ -421,16 +421,6 @@ def write_manifest(entries: list[dict]) -> None:
     out.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def write_spritesheet(frames: list[Image.Image], out_dir: Path) -> None:
-    if not frames:
-        return
-    width, height = frames[0].size
-    sheet = Image.new("RGBA", (width * len(frames), height), (0, 0, 0, 0))
-    for index, frame in enumerate(frames):
-        sheet.alpha_composite(frame, (index * width, 0))
-    sheet.save(out_dir / "spritesheet.png")
-
-
 def main() -> None:
     entries = []
     for key, theme in THEMES.items():
@@ -452,11 +442,9 @@ def main() -> None:
             path = out_dir / f"frame_{i:02d}.png"
             frame.save(path)
             frames.append(frame)
-        write_spritesheet(frames, out_dir)
         entries.append({
             "key": key,
             "frameDir": f"/img/card/animated/{key}",
-            "sprite": f"/img/card/animated/{key}/spritesheet.png",
             "frames": [f"frame_{i:02d}.png" for i in range(FRAME_COUNT)],
             "sourceImage": str(src.relative_to(ROOT)).replace("\\", "/"),
             "comfyPrompt": theme["prompt"],
