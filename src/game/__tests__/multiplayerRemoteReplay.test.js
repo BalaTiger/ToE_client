@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildAnimQueue } from '../animQueueCore';
 import { buildMpRemoteReplayAction, MP_REMOTE_REPLAY } from '../multiplayerRemoteReplay';
 import { rotateGsForViewer } from '../rotateState';
-import { createEarthquakeEvent, createEndlessCorridorReplayEvent, createHuntResultEvent, createSphinxResultEvent, createSwapCardsEvent } from '../visualEvents';
+import { createCardEffectEvent, createEarthquakeEvent, createEndlessCorridorReplayEvent, createHuntResultEvent, createSphinxResultEvent, createSwapCardsEvent } from '../visualEvents';
 
 const card = { id: 'c1', name: '测试牌', type: 'zone' };
 
@@ -1238,6 +1238,52 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.queue.map(step => step.type)).toEqual(['EARTHQUAKE', 'STATE_PATCH']);
     expect(action.queue[0]).toMatchObject({ beforePlayers, beforeDiscard: [] });
     expect(action.queue.at(-1)).toMatchObject({ players: afterPlayers, discard: [card], log, phase: 'ACTION' });
+    expect(action.pendingGs._visualEvents).toEqual([]);
+    expect(action.consumedVisualEventIds?.length).toBeGreaterThan(0);
+  });
+
+  it('replays geomagnetic reversal visualEvents after the draw state has already resolved', () => {
+    const geomagneticCard = { id: 'gm-card', name: '地磁反转', key: 'C2', type: 'geomagneticReversal' };
+    const restoreCard = { id: 'gmr-card', name: '反转复原', type: 'geomagneticRestore', isGeomagneticRestore: true };
+    const beforePlayers = [
+      { ...player('你-before'), hand: [{ id: 'you-card' }] },
+      { ...player('艾伦-before'), hand: [{ id: 'allen-card' }] },
+      { ...player('贝拉-before'), hand: [{ id: 'bella-card' }] },
+    ];
+    const afterPlayers = [
+      { ...player('你-after'), hand: [{ id: 'you-card' }] },
+      { ...player('艾伦-after'), hand: [{ id: 'allen-card' }] },
+      { ...player('贝拉-after'), hand: [{ id: 'bella-card' }] },
+    ];
+    const log = ['艾伦 收入了 [C2] 地磁反转', '【地磁反转】一张"反转复原"被洗入弃牌堆，场地被地磁反转笼罩！'];
+    const event = createCardEffectEvent({
+      effectKey: 'geomagneticReversal',
+      card: geomagneticCard,
+      actorIdx: 1,
+      beforePlayers,
+      beforeDiscard: [],
+      afterPlayers,
+      afterDiscard: [restoreCard],
+      msgs: ['【地磁反转】一张"反转复原"被洗入弃牌堆，场地被地磁反转笼罩！'],
+      payload: { restoreCard },
+    });
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players: afterPlayers,
+      discard: [restoreCard],
+      drawReveal: null,
+      log,
+      _visualEvents: [event],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'DRAW_REVEAL', players: beforePlayers, log: [] }),
+      buildAnimQueue,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.map(step => step.type)).toEqual(['GEOMAGNETIC_REVERSAL', 'GEOMAGNETIC_RESTORE_SHUFFLE', 'STATE_PATCH']);
+    expect(action.queue[0]).toMatchObject({ actorIdx: 1 });
+    expect(action.queue[1]).toMatchObject({ actorIdx: 1, restoreCard });
     expect(action.pendingGs._visualEvents).toEqual([]);
     expect(action.consumedVisualEventIds?.length).toBeGreaterThan(0);
   });

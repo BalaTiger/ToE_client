@@ -1,10 +1,3 @@
-import {
-  ANIMATED_CARD_BACK_BY_EXPANSION,
-  CARD_BACK_IMAGE_BY_EXPANSION,
-  getAnimatedCardBack,
-  getCardBackImage,
-} from './theme';
-
 // ══════════════════════════════════════════════════════════════
 //  DATA
 // ══════════════════════════════════════════════════════════════
@@ -781,9 +774,9 @@ const GOD_DEFS={
     godKey:'ZHU',name:'烛九阴',subtitle:'钟山之神',power:'衔烛照幽',
     col:'#c0a020',bgCol:'#181008',
     levels:[
-      {zhuLightOffsets:[2],desc:'立即点亮牌库顶部第3张牌。你可以查看被点亮牌的正面；当其即将被翻开时，可将其藏到牌堆底。你的回合开始时也如此做'},
-      {zhuLightOffsets:[1,2,3],desc:'“第3张牌”改为“第2~4张牌”'},
-      {zhuLightOffsets:[0,1,2,3,4],desc:'改为点亮牌库顶部前5张牌'},
+      {zhuLightOffsets:[2],desc:'立即点亮牌堆顶第3张牌。你可以查看被点亮牌的正面；当其即将被翻开时，可将其藏到牌堆底。你的回合开始时也如此做'},
+      {zhuLightOffsets:[1,2,3],desc:'立即点亮牌库顶第2~4张牌。你可以查看被点亮牌的正面；当其即将被翻开时，可将其藏到牌堆底。你的回合开始时也如此做'},
+      {zhuLightOffsets:[0,1,2,3,4],desc:'立即点亮牌库顶前5张牌。你可以查看被点亮牌的正面；当其即将被翻开时，可将其藏到牌堆底。你的回合开始时也如此做'},
     ],
   },
   APO:{
@@ -791,8 +784,8 @@ const GOD_DEFS={
     col:'#8020a0',bgCol:'#100818',
     levels:[
       {nightThreshold:2,desc:'立即让场地进入黑夜：所有角色选中目标时掷骰子，若小于等于2则改为错误目标并失去1SAN。选中目标累计12次后黑夜结束'},
-      {nightThreshold:4,desc:'“若小于等于2”改为“若小于等于4”，其余不变'},
-      {nightThreshold:6,desc:'“若小于等于4”改为“若小于等于6”，其余不变'},
+      {nightThreshold:4,desc:'立即让场地进入黑夜：所有角色选中目标时掷骰子，若小于等于4则改为错误目标并失去1SAN。选中目标累计12次后黑夜结束'},
+      {nightThreshold:6,desc:'立即让场地进入黑夜：所有角色选中目标时掷骰子，若小于等于6则改为错误目标并失去1SAN。选中目标累计12次后黑夜结束'},
     ],
   },
   GEE:{
@@ -917,29 +910,38 @@ const EXPANSIONS = {
   },
 };
 
-function getVersionedAssetPath(path, version) {
-  if (!path || !version) return path;
-  return `${path}${path.includes('?') ? '&' : '?'}v=${encodeURIComponent(version)}`;
+const CARD_BACK_IMAGE_BY_EXPANSION = {
+  '地神的潜影': '/img/card/cardback_earth_shadow.png',
+  '先贤的馈赠': '/img/card/cardback_sage_gift.png',
+  '群星呼唤': '/img/card/cardback_stars_call.png',
+  '析骨为柴': '/img/card/cardback_bone_fuel.png',
+};
+
+const ANIMATED_CARD_BACK_BY_EXPANSION = {
+  '地神的潜影': {
+    frameDir: '/img/card/animated/earth_shadow',
+    sprite: '/img/card/animated/earth_shadow/spritesheet.png',
+    frameCount: 24,
+    fps: 12,
+    width: 392,
+    height: 590,
+  },
+  '群星呼唤': {
+    frameDir: '/img/card/animated/stars_call',
+    sprite: '/img/card/animated/stars_call/spritesheet.png',
+    frameCount: 24,
+    fps: 12,
+    width: 392,
+    height: 590,
+  },
+};
+
+function getCardBackImage(expansionKey = '地神的潜影') {
+  return CARD_BACK_IMAGE_BY_EXPANSION[expansionKey] || CARD_BACK_IMAGE_BY_EXPANSION['地神的潜影'];
 }
 
-function formatAnimatedCardBackFramePath(anim, frameIndex, versioned = true) {
-  if (!anim?.frameDir) return null;
-  const path = `${anim.frameDir}/frame_${String(frameIndex).padStart(2, '0')}.png`;
-  return versioned ? getVersionedAssetPath(path, anim.version) : path;
-}
-
-function getAnimatedCardBackFramePaths(expansionKey = '地神的潜影', versioned = true) {
-  const anim = getAnimatedCardBack(expansionKey);
-  if (!anim?.frameDir || !anim?.frameCount) return [];
-  return Array.from({ length: anim.frameCount }, (_, index) => (
-    formatAnimatedCardBackFramePath(anim, index, versioned)
-  )).filter(Boolean);
-}
-
-function getAllAnimatedCardBackFramePaths(versioned = true) {
-  return Object.keys(ANIMATED_CARD_BACK_BY_EXPANSION).flatMap(expansionKey => (
-    getAnimatedCardBackFramePaths(expansionKey, versioned)
-  ));
+function getAnimatedCardBack(expansionKey = '地神的潜影') {
+  return ANIMATED_CARD_BACK_BY_EXPANSION[expansionKey] || null;
 }
 
 export const INSPECTION_DECK = [
@@ -1027,9 +1029,6 @@ export {
   ANIMATED_CARD_BACK_BY_EXPANSION,
   getCardBackImage,
   getAnimatedCardBack,
-  getAnimatedCardBackFramePaths,
-  getAllAnimatedCardBackFramePaths,
-  getVersionedAssetPath,
   getGodShortKey,
   getCardDisplayKey,
 };

@@ -4,6 +4,30 @@
 //   a PRNG, neither of which is worth the churn for a transient overlay.
 import React from 'react';
 
+function PanelSnapshotImage({src,w,h,top=0,filter,opacity=1}){
+  return(
+    <img
+      src={src}
+      alt=""
+      draggable={false}
+      style={{
+        position:'absolute',
+        left:0,
+        top,
+        width:w,
+        height:h,
+        maxWidth:'none',
+        maxHeight:'none',
+        display:'block',
+        pointerEvents:'none',
+        userSelect:'none',
+        filter,
+        opacity,
+      }}
+    />
+  );
+}
+
 function KnifeEffect({targets}){
   if(!targets||!targets.length)return null;
   return(
@@ -27,10 +51,12 @@ function KnifeEffect({targets}){
               transformOrigin:'center center',
             }}>
               <svg viewBox="0 0 64 64" width="32" height="32" aria-hidden="true" style={{display:'block',overflow:'visible'}}>
-                <path d="M62 32 L34 18 L27 27 L8 46 L16 54 L35 35 L44 42 Z" fill="#d8dde6" stroke="#fff7e6" strokeWidth="2" strokeLinejoin="round"/>
-                <path d="M35 27 L18 44" stroke="#7e8794" strokeWidth="3" strokeLinecap="round"/>
-                <path d="M11 49 L4 56" stroke="#5b341f" strokeWidth="6" strokeLinecap="round"/>
-                <path d="M24 25 L42 43" stroke="#c8a96e" strokeWidth="4" strokeLinecap="round"/>
+                <path d="M62 32 L34 18 L22 32 L34 46 Z" fill="#d8dde6" stroke="#fff7e6" strokeWidth="2" strokeLinejoin="round"/>
+                <path d="M22 32 L58 32" stroke="#7e8794" strokeWidth="2.5" strokeLinecap="round"/>
+                <path d="M30 24 L54 32 L30 40" fill="none" stroke="#f4f0de" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" opacity="0.72"/>
+                <path d="M24 22 L29 22 L29 42 L24 42 Z" fill="#c8a96e" stroke="#fff0a8" strokeWidth="1.5" strokeLinejoin="round"/>
+                <path d="M24 27 L8 27 L3 32 L8 37 L24 37 Z" fill="#5b341f" stroke="#b9824d" strokeWidth="2" strokeLinejoin="round"/>
+                <path d="M8 32 L23 32" stroke="#2f1c12" strokeWidth="2.5" strokeLinecap="round"/>
               </svg>
             </div>
             <div style={{
@@ -104,15 +130,7 @@ function GuillotineAnim({targets}){
                 borderRadius:3,
               }}>
                 {hasSnapshot&&(
-                  <div style={{
-                    position:'absolute',
-                    inset:0,
-                    backgroundImage:`url(${t.snapshotUrl})`,
-                    backgroundSize:'100% 100%',
-                    backgroundPosition:'center',
-                    filter:'brightness(0.92) saturate(0.95)',
-                    opacity:0.96,
-                  }}/>
+                  <PanelSnapshotImage src={t.snapshotUrl} w={t.w} h={t.h} filter="brightness(0.92) saturate(0.95)" opacity={0.96}/>
                 )}
                 <div style={{
                   position:'absolute',
@@ -155,13 +173,7 @@ function GuillotineAnim({targets}){
                   boxShadow:hasSnapshot?'0 6px 18px rgba(0,0,0,0.28)':'none',
                 }}>
                   {hasSnapshot?(
-                    <div style={{
-                      position:'absolute',inset:0,
-                      backgroundImage:`url(${t.snapshotUrl})`,
-                      backgroundSize:`${t.w}px ${t.h}px`,
-                      backgroundPosition:'center top',
-                      backgroundRepeat:'no-repeat',
-                    }}/>
+                    <PanelSnapshotImage src={t.snapshotUrl} w={t.w} h={t.h}/>
                   ):(
                     <div style={{
                       position:'absolute',inset:0,
@@ -180,14 +192,7 @@ function GuillotineAnim({targets}){
                   boxShadow:hasSnapshot?'0 6px 18px rgba(0,0,0,0.28)':'none',
                 }}>
                   {hasSnapshot?(
-                    <div style={{
-                      position:'absolute',left:0,top:-t.h/2,
-                      width:'100%',height:t.h,
-                      backgroundImage:`url(${t.snapshotUrl})`,
-                      backgroundSize:`${t.w}px ${t.h}px`,
-                      backgroundPosition:'center top',
-                      backgroundRepeat:'no-repeat',
-                    }}/>
+                    <PanelSnapshotImage src={t.snapshotUrl} w={t.w} h={t.h} top={-t.h/2}/>
                   ):(
                     <div style={{
                       position:'absolute',inset:0,

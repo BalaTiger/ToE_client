@@ -656,7 +656,8 @@ export default function Game(){
   const receivedGsRef=useRef(false); // 收到远端 state 时置 true，阻止 sync useEffect 回发
   const mpRoleRevealedRef=useRef(false); // 每局游戏只触发一次角色揭示
   const mpOpeningRoleRevealPendingRef=useRef(false); // 开局角色揭示期间忽略重复首帧同步，避免抢跑首回合动画
-  const pendingMpRawGsRef=useRef(null); // 动画播放中收到的新同步包，等当前队列落地后再处理
+  const pendingMpRawQueueRef=useRef([]); // 动画播放中收到的公共动画同步包，按顺序落地
+  const pendingMpLatestStateRawRef=useRef(null); // 动画播放中收到的普通状态同步包，只保留最新
   const mpTurnExpiredRef=useRef(false); // 回合倒计时归零后保持到自动结束真正执行，避免动作动画期间丢失
   const consumedVisualEventIdsRef=useRef(new Set()); // 联机视觉事件去重，避免重复同步包重播旧动画
   const endTurnReplaySyncQueueRef=useRef(null); // 记录本地无尽通道完整动画队列，供联机远端同步
@@ -675,6 +676,8 @@ export default function Game(){
     myPlayerIndexRef.current=0;
     mpRoleRevealedRef.current=false;
     consumedVisualEventIdsRef.current=new Set();
+    pendingMpRawQueueRef.current=[];
+    pendingMpLatestStateRawRef.current=null;
     setGs(null);
   }
   function leaveMultiplayerMatchToStart(){
@@ -688,6 +691,8 @@ export default function Game(){
     myPlayerIndexRef.current=0;
     mpRoleRevealedRef.current=false;
     consumedVisualEventIdsRef.current=new Set();
+    pendingMpRawQueueRef.current=[];
+    pendingMpLatestStateRawRef.current=null;
     gameEndSentRef.current=false;
     closeRoomModal();
     setGs(null);
@@ -751,6 +756,30 @@ export default function Game(){
     return !!roleRevealAnim||!!anim||!!animExiting||animQueueRef.current.length>0||!!pendingGsRef.current;
   }
 
+  function isMpReplayAnimationAction(action){
+    return action?.type===MP_REMOTE_REPLAY.ROLE_REVEAL
+      ||action?.type===MP_REMOTE_REPLAY.DICE_ROLL
+      ||action?.type===MP_REMOTE_REPLAY.START_ANIM
+      ||action?.type===MP_REMOTE_REPLAY.ANIM_QUEUE;
+  }
+
+  function enqueuePendingMpRaw(rawGs,replayAction){
+    if(isMpReplayAnimationAction(replayAction)){
+      pendingMpRawQueueRef.current=[...pendingMpRawQueueRef.current,rawGs];
+    }else{
+      pendingMpLatestStateRawRef.current=rawGs;
+    }
+  }
+
+  function maskApophisBadgeForReplayStart(replayAction){
+    const maskedGs=replayAction?.maskedGs;
+    if(!maskedGs)return maskedGs;
+    const hasEclipse=replayAction?.anim?.type==='APOPHIS_ECLIPSE'
+      ||(Array.isArray(replayAction?.queue)&&replayAction.queue.some(step=>step?.type==='APOPHIS_ECLIPSE'));
+    if(!hasEclipse)return maskedGs;
+    return {...maskedGs,apophisNight:latestGsRef.current?.apophisNight||null};
+  }
+
   function getPendingZhuHideCardForState(state){
     if(!state||state.gameOver)return null;
     const ids=state.zhuLight?.cardIds||[];
@@ -790,6 +819,45 @@ export default function Game(){
     ].join('|');
   }
 
+  function applyMpReplayAction(replayAction,rotated){
+    if(replayAction?.consumedVisualEventIds?.length){
+      markConsumedVisualEvents(consumedVisualEventIdsRef.current,replayAction.consumedVisualEventIds.map(id=>({id,type:'consumed'})));
+    }
+    if(replayAction?.type===MP_REMOTE_REPLAY.ROLE_REVEAL){
+      mpRoleRevealedRef.current=true;
+      mpOpeningRoleRevealPendingRef.current=true;
+      syncVisibleLog(rotated.log||[]);
+      setGs(replayAction.maskedGs);
+      setAnim(null);
+      setRoleRevealAnim({role:replayAction.role,pendingGs:replayAction.pendingGs});
+    }else if(replayAction?.type===MP_REMOTE_REPLAY.DICE_ROLL){
+      setGs(maskApophisBadgeForReplayStart(replayAction));
+      receivedGsRef.current=true;
+      suppressNextBroadcastRef.current=true;
+      pendingGsRef.current=replayAction.pendingGs;
+      animQueueRef.current=[];
+      setAnim(replayAction.anim);
+    }else if(replayAction?.type===MP_REMOTE_REPLAY.ANIM_QUEUE){
+      markInspectionEventsSeen(replayAction.inspectionEvents);
+      if(replayAction.visualLock)visualStateLocks.lock(replayAction.visualLock);
+      setGs(maskApophisBadgeForReplayStart(replayAction));
+      receivedGsRef.current=true;
+      suppressNextBroadcastRef.current=true;
+      triggerAnimQueue(replayAction.queue,replayAction.pendingGs);
+    }else if(replayAction?.type===MP_REMOTE_REPLAY.START_ANIM){
+      markInspectionEventsSeen(replayAction.inspectionEvents);
+      if(replayAction.visualLock)visualStateLocks.lock(replayAction.visualLock);
+      setGs(maskApophisBadgeForReplayStart(replayAction));
+      receivedGsRef.current=true;
+      suppressNextBroadcastRef.current=true;
+      pendingGsRef.current=replayAction.pendingGs;
+      animQueueRef.current=replayAction.queue||[];
+      setAnim(replayAction.anim);
+    }else if(replayAction?.type===MP_REMOTE_REPLAY.SET_STATE){
+      setGs(replayAction.gs);
+    }
+  }
+
   function processIncomingMpStateSync(rawGs,{allowBuffer=true}={}){
     if(!rawGs)return;
     const myIdx=myPlayerIndexRef.current;
@@ -809,16 +877,6 @@ export default function Game(){
     if(mpOpeningRoleRevealPendingRef.current&&!rotated.gameOver){
       return;
     }
-    if(allowBuffer&&isMpReplayBusy()){
-      pendingMpRawGsRef.current=rawGs;
-      return;
-    }
-    receivedGsRef.current=true;
-    animQueueRef.current=[];
-    pendingGsRef.current=null;
-    setAnimExiting(false);
-    clearDamageAnimations();
-    setAnim(null);
     const replayAction=buildMpRemoteReplayAction({
       rotated,
       previousGs,
@@ -827,42 +885,17 @@ export default function Game(){
       buildFullHandSwapTransferQueueFromLogs,
       consumedVisualEventIds: consumedVisualEventIdsRef.current,
     });
-    if(replayAction?.consumedVisualEventIds?.length){
-      markConsumedVisualEvents(consumedVisualEventIdsRef.current,replayAction.consumedVisualEventIds.map(id=>({id,type:'consumed'})));
+    if(allowBuffer&&isMpReplayBusy()){
+      enqueuePendingMpRaw(rawGs,replayAction);
+      return;
     }
-    if(replayAction?.type===MP_REMOTE_REPLAY.ROLE_REVEAL){
-      mpRoleRevealedRef.current=true;
-      mpOpeningRoleRevealPendingRef.current=true;
-      syncVisibleLog(rotated.log||[]);
-      setGs(replayAction.maskedGs);
-      setAnim(null);
-      setRoleRevealAnim({role:replayAction.role,pendingGs:replayAction.pendingGs});
-    }else if(replayAction?.type===MP_REMOTE_REPLAY.DICE_ROLL){
-      setGs(replayAction.maskedGs);
-      receivedGsRef.current=true;
-      suppressNextBroadcastRef.current=true;
-      pendingGsRef.current=replayAction.pendingGs;
-      animQueueRef.current=[];
-      setAnim(replayAction.anim);
-    }else if(replayAction?.type===MP_REMOTE_REPLAY.ANIM_QUEUE){
-      markInspectionEventsSeen(replayAction.inspectionEvents);
-      if(replayAction.visualLock)visualStateLocks.lock(replayAction.visualLock);
-      setGs(replayAction.maskedGs);
-      receivedGsRef.current=true;
-      suppressNextBroadcastRef.current=true;
-      triggerAnimQueue(replayAction.queue,replayAction.pendingGs);
-    }else if(replayAction?.type===MP_REMOTE_REPLAY.START_ANIM){
-      markInspectionEventsSeen(replayAction.inspectionEvents);
-      if(replayAction.visualLock)visualStateLocks.lock(replayAction.visualLock);
-      setGs(replayAction.maskedGs);
-      receivedGsRef.current=true;
-      suppressNextBroadcastRef.current=true;
-      pendingGsRef.current=replayAction.pendingGs;
-      animQueueRef.current=replayAction.queue||[];
-      setAnim(replayAction.anim);
-    }else if(replayAction?.type===MP_REMOTE_REPLAY.SET_STATE){
-      setGs(replayAction.gs);
-    }
+    receivedGsRef.current=true;
+    animQueueRef.current=[];
+    pendingGsRef.current=null;
+    setAnimExiting(false);
+    clearDamageAnimations();
+    setAnim(null);
+    applyMpReplayAction(replayAction,rotated);
   }
 
   function rotateRawSeatIndex(rawSeatIndex,stateLike){
@@ -891,6 +924,7 @@ export default function Game(){
       'CAVE_DUEL_SELECT_TARGET','CAVE_DUEL_SELECT_CARD','ROSE_THORN_SELECT_TARGET','MULTIPLY_SELECT_TARGET',
       'SHU_SELECT_TARGET','FIRST_COME_PICK_SELECT','SAME_ABYSS_SELECT','SPHINX_GUESS','GRAVE_DIG_SELECT',
     'BURY_ALIVE_SELECT','TORTOISE_ORACLE_SELECT','NYA_BORROW','ETHEREALIZE_DECISION','ETHEREALIZE_SELECT_TARGET'
+      ,'DECIPHER_STONE_CARVING'
     ]);
     return currentTurnPhases.has(phase)&&stateLike.currentTurn===takeoverIdx;
   }
@@ -958,6 +992,34 @@ export default function Game(){
     return withTimeoutDrawDiscardVisual(startNextTurn({...baseGs,currentTurn:actorIdx,phase:'ACTION',drawReveal:null,selectedCard:null}),timeoutSource);
   }
 
+  function autoResolveDecipherStoneCarving(baseGs,actorIdx){
+    const ad=baseGs?.abilityData||{};
+    const revealed=Array.isArray(ad.revealedCards)?ad.revealedCards:[];
+    if(!revealed.length)return {...baseGs,phase:'ACTION',abilityData:{},drawReveal:null,selectedCard:null};
+    let P=copyPlayers(baseGs.players);
+    let D=[...(baseGs.deck||[])];
+    let Disc=[...(baseGs.discard||[])];
+    let L=[...(baseGs.log||[])];
+    const actorName=localDisplayName(actorIdx,P[actorIdx]?.name||'该玩家');
+    const handCard=revealed[0];
+    const remaining=revealed.slice(1);
+    P[actorIdx].hand.push(handCard);
+    L.push(`(AI接管) 【解读石刻】${actorName} 选择将 ${cardLogText(handCard,{alwaysShowName:true})} 收入手牌`);
+    let inspectionMeta=makeInspectionMeta(baseGs);
+    if(handCard.isGod){
+      L.push(`【解读石刻】${actorName} 因选择邪神牌失去 1 SAN`);
+      const processed=applySanLossToPlayerWithInspection(actorIdx,1,baseGs.currentTurn??actorIdx,P,D,Disc,L,inspectionMeta,'解读石刻');
+      P=processed.P;D=processed.D;Disc=processed.Disc;L=processed.L;inspectionMeta=processed.inspectionMeta;
+    }
+    if(remaining.length){
+      D.unshift(...remaining);
+      L.push(`【解读石刻】${remaining.length} 张牌放回牌堆顶`);
+    }
+    const nextGs={...baseGs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',abilityData:{},drawReveal:null,selectedCard:null,...inspectionMeta};
+    const win=checkWin(P,true);
+    return win?{...nextGs,gameOver:win}:nextGs;
+  }
+
   function resolveMpAiTakeoverState(sourceGs,takeoverIdx){
     if(!isMpAiTakeoverRelevant(sourceGs,takeoverIdx))return null;
     if(sourceGs.players?.[takeoverIdx]?.isDead){
@@ -991,6 +1053,7 @@ export default function Game(){
       return finishMpAiTakeoverTurn(skipped,sourceGs,takeoverIdx);
     }
     if(phase==='DISCARD_PHASE')return autoDiscardSeatAndAdvance(sourceGs,takeoverIdx);
+    if(phase==='DECIPHER_STONE_CARVING')return finishMpAiTakeoverTurn(autoResolveDecipherStoneCarving(sourceGs,takeoverIdx),sourceGs,takeoverIdx);
     if(phase==='DRAW_REVEAL'||phase==='GOD_CHOICE'||phase==='NYA_BORROW'){
       const base=resolveMpTimeoutToAction({...sourceGs,_mpEndTurn:undefined,_mpAutoDiscard:undefined,_mpAutoCthDecision:undefined});
       return finishMpAiTakeoverTurn(base,sourceGs,takeoverIdx);
@@ -1478,9 +1541,9 @@ export default function Game(){
 
   useEffect(()=>{
     if(roleRevealAnim||anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
-    const pendingRaw=pendingMpRawGsRef.current;
+    const pendingRaw=pendingMpRawQueueRef.current.shift()||pendingMpLatestStateRawRef.current;
     if(!pendingRaw)return;
-    pendingMpRawGsRef.current=null;
+    if(pendingRaw===pendingMpLatestStateRawRef.current)pendingMpLatestStateRawRef.current=null;
     processIncomingMpStateSync(pendingRaw,{allowBuffer:false});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[roleRevealAnim,anim,animExiting,gs?.phase,gs?._turnKey,gs?.log?.length]);
@@ -1597,11 +1660,11 @@ export default function Game(){
   },[gs?.log,anim,syncVisibleLog,gs?._playersBeforeThisDraw]);
 
   useEffect(()=>{
-    if(!gs||anim||animQueueRef.current.length>0||gs.gameOver||gs.phase==='PLAYER_WIN_PENDING'||gs.phase==='TREASURE_WIN')return;
+    if(!gs||anim||animQueueRef.current.length>0||gs.gameOver||gs.phase==='PLAYER_WIN_PENDING'||gs.phase==='TREASURE_WIN'||gs.phase==='MP_PLAYER_WIN_WAIT')return;
     const normalized=moveEligibleBlankZones(gs.players,gs.log||[]);
     if(!normalized)return;
     setGs(prev=>{
-      if(!prev||prev.gameOver||prev.phase==='PLAYER_WIN_PENDING'||prev.phase==='TREASURE_WIN')return prev;
+      if(!prev||prev.gameOver||prev.phase==='PLAYER_WIN_PENDING'||prev.phase==='TREASURE_WIN'||prev.phase==='MP_PLAYER_WIN_WAIT')return prev;
       const recheck=moveEligibleBlankZones(prev.players,prev.log||[]);
       if(!recheck)return prev;
       return {...prev,players:recheck.players,log:recheck.log};
@@ -2264,12 +2327,31 @@ export default function Game(){
 
   // ── 多人游戏：本地 gs 变化后广播给房间其他人 ──────────────────
   // receivedGsRef 防止接收远端 state 后回发（避免乒乓死循环）
-  // TREASURE_WIN / PLAYER_WIN_PENDING 是本地过渡态，不广播（等 revealWin→gameOver 再广播）
+  // TREASURE_WIN / PLAYER_WIN_PENDING 的完整界面只给本地胜利者看；
+  // MP 下额外广播一个等待态，避免其他客户端继续推进回合。
   useEffect(()=>{
     if(!gs||!isMultiplayer||!socketRef.current)return;
     if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
     if(gs.gameOver)return; // gameEnd event 单独处理
-    if(gs.phase==='TREASURE_WIN'||gs.phase==='PLAYER_WIN_PENDING')return; // local-only phases
+    if(gs.phase==='PLAYER_WIN_PENDING'||gs.phase==='TREASURE_WIN'){
+      if(receivedGsRef.current){receivedGsRef.current=false;return;}
+      if(latestGsRef.current!==gs)return;
+      const room=roomModal;
+      if(!room?.roomId)return;
+      const waitGs={
+        ...gs,
+        phase:'MP_PLAYER_WIN_WAIT',
+        drawReveal:null,
+        abilityData:{
+          ...(gs.abilityData||{}),
+          winnerIdx:0,
+          waitingForTreasureReveal:true,
+        },
+      };
+      socketRef.current.emit('mpStateSync',{roomId:room.roomId,gs:derotateGs(waitGs,myPlayerIndexRef.current)});
+      return;
+    }
+    if(gs.phase==='MP_PLAYER_WIN_WAIT')return; // wait-only phase
     if(gs.phase==='SWAP_STEAL_CARD'||gs.phase==='SWAP_GIVE_CARD')return; // 掉包暗抽中间态含私密牌信息，最终结算再同步
     if(gs._mpEndTurn||gs._mpAutoDiscard||gs._mpAutoCthDecision)return; // local timeout transition markers
     if(gs._endTurnReplay)return; // 无尽通道跨多段动画，结束后携带完整 replay event 再同步
@@ -2294,7 +2376,7 @@ export default function Game(){
   // Auto-freeze game the instant player 寻宝者 has a winning hand
   useEffect(()=>{
     if(!gs||gs.gameOver||showTutorial)return;
-    if(gs.phase==='TREASURE_WIN'||gs.phase==='PLAYER_WIN_PENDING')return;
+    if(gs.phase==='TREASURE_WIN'||gs.phase==='PLAYER_WIN_PENDING'||gs.phase==='MP_PLAYER_WIN_WAIT')return;
     const p0=gs.players[0];
     if(p0&&!p0.isDead&&(p0._nyaBorrow||p0.role)===ROLE_TREASURE&&isWinHand(p0.hand)){
       setGs(g=>g?{...g,phase:'TREASURE_WIN'}:g);
@@ -2796,18 +2878,12 @@ export default function Game(){
       const ad=gs.abilityData||{};
       const revealed=ad.revealedCards||[];
       if(revealed.length){
-        const sorted=[...revealed].sort((a,b)=>{
-          const scoreA=a.isGod?-10:(isPositiveZoneCard(a)?5:(isNegativeZoneCard(a)?2:3));
-          const scoreB=b.isGod?-10:(isPositiveZoneCard(b)?5:(isNegativeZoneCard(b)?2:3));
-          return scoreB-scoreA;
-        });
-        const handCard=sorted[0];
+        const handCard=revealed[0];
         const remaining=revealed.filter(c=>c.id!==handCard.id);
-        const mid=Math.ceil(remaining.length/2);
         decipherStoneCarvingConfirm({
           handCard,
-          deckTopCards:remaining.slice(0,mid),
-          deckBottomCards:remaining.slice(mid),
+          deckTopCards:[...remaining].reverse(),
+          deckBottomCards:[],
         });
       }
       return;
@@ -3750,6 +3826,7 @@ export default function Game(){
     }
     const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
     if(queue.length){
+      broadcastVisualReplayIfNeeded(newGs);
       if(dr.fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:Disc})],L.slice(gs.log.length));
       setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
       triggerAnimQueue([...queue,statePatchStep({players:P,discard:Disc})],newGs);
@@ -4018,6 +4095,7 @@ export default function Game(){
     }
     const queue=bindAnimLogChunks(buildAnimQueue(gs,result.newGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
     // 无论是否有其他动画，都播放骰子动画
+    broadcastVisualReplayIfNeeded(result.newGs);
     if(dr.fromEndTurnReplay){
       appendEndTurnReplaySyncQueue(
         [{type:'DICE_ROLL',d1:result.d1,d2:0,heal:0,rollerName:result.who,dodgeSuccess:result.dodgeSuccess},...queue,statePatchStep({players:result.P,discard:result.Disc})],
@@ -4066,6 +4144,7 @@ export default function Game(){
     if(dr.fromRest&&!win&&!decisionState.hasDecision){_cthContinueRestDraws(newGs);return;}
     const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
     if(queue.length){
+      broadcastVisualReplayIfNeeded(newGs);
       if(dr.fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:Disc})],L.slice(gs.log.length));
       setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
       triggerAnimQueue(queue,newGs);
@@ -4095,6 +4174,7 @@ export default function Game(){
     }
     const queue=bindAnimLogChunks(buildAnimQueue(gs,result.newGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
     // 无论是否有其他动画，都播放骰子动画
+    broadcastVisualReplayIfNeeded(result.newGs);
     if(dr.fromEndTurnReplay){
       appendEndTurnReplaySyncQueue(
         [{type:'DICE_ROLL',d1:result.d1,d2:0,heal:0,rollerName:'你',dodgeSuccess:result.dodgeSuccess},...queue,statePatchStep({players:result.P,discard:result.Disc})],
@@ -4130,6 +4210,7 @@ export default function Game(){
     if(dr.fromRest&&!win){_cthContinueRestDraws(newGs);return;}
     const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
     if(queue.length){
+      broadcastVisualReplayIfNeeded(newGs);
       if(dr.fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:Disc})],L.slice(gs.log.length));
       setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
       triggerAnimQueue(queue,newGs);
@@ -4288,6 +4369,12 @@ export default function Game(){
       ...extraPatch,
     };
     return clearTurnAnim?withClearedTurnAnimFields(nextGs):nextGs;
+  }
+
+  function broadcastVisualReplayIfNeeded(state){
+    if(!state?._isMP)return;
+    if(!Array.isArray(state._visualEvents)||!state._visualEvents.length)return;
+    broadcastMpStateBeforeLocalReplay(state);
   }
 
   function withTsathogguaSlimeBalanceDecision(nextGs,beforePlayers,extraAbilityData={}){
@@ -5074,9 +5161,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       D.unshift(...[...normalizedTop].reverse());
       L.push(`【解读石刻】${normalizedTop.length} 张牌放回牌堆顶`);
     }
-    // deckBottomCards: 越靠左越底部，所以直接 push
+    // deckBottomCards: 越靠左越底部，所以反向 push，让最左侧成为牌堆最底部
     if (normalizedBottom.length) {
-      D.push(...normalizedBottom);
+      D.push(...[...normalizedBottom].reverse());
       L.push(`【解读石刻】${normalizedBottom.length} 张牌放到牌堆底`);
     }
     const win = checkWin(P, gs._isMP);
@@ -6245,8 +6332,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const queue=[{type:'DICE_ROLL',d1,d2,heal,rollerName:'你'},...statQueue];
     const afterRest={...finalGs,currentTurn:0};
     if(hasPendingEndTurnReplay(P)&&beginEndTurnReplay(afterRest,P,D,Disc,L,queue))return;
-    const pendingGs=startNextTurn(afterRest);
-    triggerAnimQueue(queue,pendingGs);
+    const nextGs=startNextTurn(afterRest);
+    triggerAnimQueue(queue,null,()=>applyNextTurnGs(nextGs));
   }
 
   function markTurnDrawInspectionEventsSeen(events=[]){
@@ -6941,6 +7028,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     })(),
     AI_TURN:gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 行动…`:`${gs.players[gs.currentTurn]?.name} 正在行动…`,
     PLAYER_WIN_PENDING:'✦ 你已集齐全部编号！',
+    MP_PLAYER_WIN_WAIT:'等待其他玩家……',
     DRAW_REVEAL:         isLocalDrawDecision?(canShowTurnDecisionModal?'摸牌 — 请确认':'摸牌中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 摸牌…`:''),
     TREASURE_WIN:         '✦ 你已集齐全部编号！',
     ZONE_SWAP_SELECT_TARGET: `【触底反弹】选择要交换全部手牌的目标`,
@@ -7508,6 +7596,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           revealedCards={gs.abilityData?.revealedCards||[]}
           actorName={isLocalSeatIndex(gs.abilityData?.playerIndex)?'你':(gs.players?.[gs.abilityData?.playerIndex]?.name||'该玩家')}
           readOnly={!isLocalSeatIndex(gs.abilityData?.playerIndex)}
+          expansionKey={gs.expansionKey}
           onConfirm={decipherStoneCarvingConfirm}
         />
       )}
