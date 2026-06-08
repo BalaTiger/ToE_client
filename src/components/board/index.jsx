@@ -111,6 +111,13 @@ const BOARD_THEME_BY_EXPANSION={
 function getBoardTheme(expansionKey){
   return BOARD_THEME_BY_EXPANSION[expansionKey]||BOARD_THEME_BY_EXPANSION['地神的潜影'];
 }
+function getCardBackFrameColors(expansionKey){
+  const theme=getBoardTheme(expansionKey);
+  return {
+    border: theme.line,
+    shadow: '0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
+  };
+}
 
 function MiniCardLabel({card,scale=1,glowColor='#c8a96e',ambient=true}){
   if(!card)return null;
@@ -162,6 +169,7 @@ function ZhuLitMiniCard({lit,deckIndex,scale,cardW,cardH,left,top,zIndex,hidden}
 
 function DiscardPile({count,topCard,scale=1,expansionKey='地神的潜影'}){
   const vis=Math.min(count,7);
+  const frameColors=getCardBackFrameColors(expansionKey);
   const cardW=Math.round(CARD_W*scale);
   const cardH=Math.round(CARD_H*scale);
   const outerW=Math.round((CARD_W+30)*scale);
@@ -188,7 +196,8 @@ function DiscardPile({count,topCard,scale=1,expansionKey='地神的潜影'}){
               border:`1.5px solid ${s.border}`,
               boxShadow:'0 1px 5px rgba(0,0,0,0.5), inset 0 0 8px rgba(0,0,0,0.35)',
             }:{
-              boxShadow:'0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
+              border:`1.5px solid ${frameColors.border}`,
+              boxShadow:frameColors.shadow,
             }),
             zIndex:i,
           };
@@ -242,6 +251,7 @@ function HealCrossEffect({color='#4ade80'}){
 
 function DeckPile({count,scale=1,expansionKey='地神的潜影',zhuLitCards=[],zhuHiddenCardId=null}){
   const vis=Math.min(count,7);
+  const frameColors=getCardBackFrameColors(expansionKey);
   const cardW=Math.round(CARD_W*scale);
   const cardH=Math.round(CARD_H*scale);
   const outerW=Math.round((CARD_W+12)*scale);
@@ -280,8 +290,8 @@ function DeckPile({count,scale=1,expansionKey='地神的潜影',zhuLitCards=[],z
           width:cardW,height:cardH,
           left:Math.round(i*1.4*scale),top:Math.round((vis-1-i)*1.4*scale),
           zIndex:i,
-          border:'1.5px solid #4a3010',
-          boxShadow:'0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
+          border:`1.5px solid ${frameColors.border}`,
+          boxShadow:frameColors.shadow,
         };
         return(
           <AnimatedCardBack key={i} expansionKey={expansionKey} style={style} />
@@ -521,7 +531,10 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
   const filledHandFrameStyle={width:'100%',minWidth:'100%',height:'auto',aspectRatio:`${HAND_CARD_WIDTH}/${HAND_CARD_HEIGHT}`};
   const sharedHandFrameStyle=filledHandFrameStyle;
   const handOverlap=handCards.length>4
-    ? Math.max(0, Math.ceil(((handCards.length*computedCardWidth)-handStripWidth)/(handCards.length-1)))
+    ? Math.min(
+      Math.max(0, computedCardWidth - 12),
+      Math.max(0, Math.ceil(((handCards.length*computedCardWidth)-handStripWidth)/(handCards.length-1)))
+    )
     : 0;
   return(
     <div data-death-panel={playerIndex} onClick={isSelectable?onSelect:undefined} style={{

@@ -8178,10 +8178,10 @@ const smallBtnStyle={
 
 const GLOBAL_STYLES=`
   @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Cinzel:wght@400;600;700&family=IM+Fell+English:ital@0;1&display=swap');
-  * { box-sizing:border-box; scrollbar-width:thin; scrollbar-color:#3a2510 #0a0705; }
+  * { box-sizing:border-box; scrollbar-width:thin; scrollbar-color:var(--toe-line,#3a2510) var(--toe-bg,#0a0705); }
   ::-webkit-scrollbar{width:5px;height:5px;}
-  ::-webkit-scrollbar-track{background:#0a0705;}
-  ::-webkit-scrollbar-thumb{background:#3a2510;border-radius:2px;}
+  ::-webkit-scrollbar-track{background:var(--toe-bg,#0a0705);}
+  ::-webkit-scrollbar-thumb{background:var(--toe-line,#3a2510);border-radius:2px;}
   html,body{ overflow-x:hidden; }
   @keyframes scrollLeft {
     0% { transform: translateX(100%); }

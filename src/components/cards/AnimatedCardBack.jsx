@@ -126,6 +126,7 @@ function AnimatedCardBack({
     <div
       className={className}
       style={{
+        position: 'relative',
         backgroundColor: '#100c08',
         ...(isSprite ? {} : plainCardBackStyle),
         overflow: 'hidden',

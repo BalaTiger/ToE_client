@@ -526,11 +526,17 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
   );
 }
 
+function getCardBackFrameBorder(expansionKey){
+  if(expansionKey==='群星呼唤')return '#1f6f86';
+  return '#3a2510';
+}
+
 function DDCardBack({small,frameStyle,expansionKey='地神的潜影'}){
+  const frameBorder=getCardBackFrameBorder(expansionKey);
   return(
     <AnimatedCardBack expansionKey={expansionKey} style={{
       width:small?36:50,height:small?50:68,flexShrink:0,
-      border:'1.5px solid #3a2510',
+      border:`1.5px solid ${frameBorder}`,
       boxShadow:'0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
       borderRadius:3,
       display:'flex',alignItems:'center',justifyContent:'center',
