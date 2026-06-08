@@ -31,6 +31,7 @@ THEMES = {
     "stars_call": {
         "source": ROOT / "public/img/card/cardback_stars_call.png",
         "out": ROOT / "public/img/card/animated/stars_call",
+        "comfy_detail": ROOT / "public/img/card/animated/stars_call_comfy_refraction/stars_cardback_refraction_comp_00.png",
         "prompt": (
             "Use case: stylized-concept. Asset type: looping game card back animation frames. "
             "Primary request: preserve the provided ocean-and-stars Cthulhu card back exactly in composition, "
@@ -146,6 +147,28 @@ def make_strata_motion_overlay(base: Image.Image, detail: Image.Image, mask: Ima
     return Image.alpha_composite(overlay, vein)
 
 
+def make_water_refraction_overlay(base: Image.Image, detail: Image.Image, mask: Image.Image, phase: float) -> Image.Image:
+    width, height = base.size
+    detail = detail.resize(base.size, Image.Resampling.LANCZOS).convert("RGBA")
+    detail_mix = Image.blend(base, detail, 0.12)
+    detail_mix = ImageEnhance.Contrast(detail_mix).enhance(1.04)
+    detail_mix = ImageEnhance.Color(detail_mix).enhance(1.04)
+
+    warped = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    band_h = 5
+    for y in range(0, height, band_h):
+        band = detail_mix.crop((0, y, width, min(height, y + band_h)))
+        yy = y / max(1, height)
+        dx = int(round(
+            math.sin((yy * 5.0 + phase) * math.tau) * 3.2
+            + math.sin((yy * 9.0 - phase * 2.0) * math.tau) * 1.6
+        ))
+        warped.alpha_composite(ImageChops.offset(band, dx, 0), (0, y))
+
+    inner = Image.composite(warped, base, mask)
+    return inner
+
+
 def make_orbital_particles(width: int, height: int, phase: float, color: tuple[int, int, int], mode: str) -> Image.Image:
     img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -209,8 +232,11 @@ def build_frame(base: Image.Image, index: int, theme: dict, noise_a: Image.Image
     frame = ImageEnhance.Brightness(frame).enhance(pulse)
     frame = ImageEnhance.Color(frame).enhance(1.0 + 0.055 * math.cos(phase * math.tau))
 
-    if mode == "earth" and detail_img is not None and inner_mask is not None:
-        frame = make_strata_motion_overlay(frame, detail_img, inner_mask, phase)
+    if detail_img is not None and inner_mask is not None:
+        if mode == "earth":
+            frame = make_strata_motion_overlay(frame, detail_img, inner_mask, phase)
+        elif mode == "stars":
+            frame = make_water_refraction_overlay(frame, detail_img, inner_mask, phase)
         return frame.resize(SIZE, Image.Resampling.LANCZOS)
 
     noise = Image.blend(
