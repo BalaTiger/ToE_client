@@ -150,23 +150,109 @@ def make_strata_motion_overlay(base: Image.Image, detail: Image.Image, mask: Ima
 def make_water_refraction_overlay(base: Image.Image, detail: Image.Image, mask: Image.Image, phase: float) -> Image.Image:
     width, height = base.size
     detail = detail.resize(base.size, Image.Resampling.LANCZOS).convert("RGBA")
-    detail_mix = Image.blend(base, detail, 0.12)
-    detail_mix = ImageEnhance.Contrast(detail_mix).enhance(1.04)
-    detail_mix = ImageEnhance.Color(detail_mix).enhance(1.04)
+    detail_mix = Image.blend(base, detail, 0.15)
+    detail_mix = ImageEnhance.Contrast(detail_mix).enhance(1.08)
+    detail_mix = ImageEnhance.Color(detail_mix).enhance(1.08)
 
-    warped = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    row_warped = Image.new("RGBA", base.size, (0, 0, 0, 0))
     band_h = 5
     for y in range(0, height, band_h):
         band = detail_mix.crop((0, y, width, min(height, y + band_h)))
         yy = y / max(1, height)
         dx = int(round(
-            math.sin((yy * 5.0 + phase) * math.tau) * 3.2
-            + math.sin((yy * 9.0 - phase * 2.0) * math.tau) * 1.6
+            math.sin((yy * 4.0 + phase) * math.tau) * 5.6
+            + math.sin((yy * 8.0 - phase * 2.0) * math.tau) * 2.4
         ))
-        warped.alpha_composite(ImageChops.offset(band, dx, 0), (0, y))
+        row_warped.alpha_composite(ImageChops.offset(band, dx, 0), (0, y))
+
+    warped = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    band_w = 5
+    for x in range(0, width, band_w):
+        band = row_warped.crop((x, 0, min(width, x + band_w), height))
+        xx = x / max(1, width)
+        dy = int(round(
+            math.sin((xx * 3.0 - phase) * math.tau) * 3.8
+            + math.sin((xx * 7.0 + phase * 2.0) * math.tau) * 1.8
+        ))
+        warped.alpha_composite(ImageChops.offset(band, 0, dy), (x, 0))
 
     inner = Image.composite(warped, base, mask)
     return inner
+
+
+def make_bubble_mask(size: int) -> Image.Image:
+    mask = Image.new("L", (size, size), 0)
+    px = mask.load()
+    center = (size - 1) / 2
+    radius = max(1, center)
+    for y in range(size):
+        for x in range(size):
+            dx = (x - center) / radius
+            dy = (y - center) / radius
+            dist = math.sqrt(dx * dx + dy * dy)
+            if dist <= 1:
+                edge = max(0.0, 1.0 - abs(dist - 0.82) / 0.26)
+                body = max(0.0, 1.0 - dist)
+                px[x, y] = int(22 * body + 116 * edge)
+    return mask.filter(ImageFilter.GaussianBlur(0.8))
+
+
+def apply_bubble_lenses(frame: Image.Image, phase: float, mask: Image.Image) -> Image.Image:
+    width, height = frame.size
+    out = frame.copy()
+    mpx = mask.load()
+    for i in range(7):
+        radius = 12 + (i % 4) * 4
+        drift = phase * math.tau
+        cx = width * (0.18 + ((i * 31) % 68) / 100) + math.sin(drift + i * 0.7) * 9
+        cy = height * (0.20 + ((i * 47) % 64) / 100) + math.sin(drift * 1.0 + i * 1.1) * 15
+        ix, iy = int(cx), int(cy)
+        if not (radius < ix < width - radius and radius < iy < height - radius and mpx[ix, iy] > 0):
+            continue
+        box = (ix - radius, iy - radius, ix + radius, iy + radius)
+        crop = frame.crop(box)
+        shifted = ImageChops.offset(crop, int(round(math.sin(drift + i) * 3)), int(round(math.cos(drift + i * 0.6) * 3)))
+        lens_mask = make_bubble_mask(radius * 2).point(lambda v: min(255, int(v * 1.25)))
+        out.paste(shifted, box, lens_mask)
+    return out
+
+
+def make_stars_sea_particles(width: int, height: int, phase: float, mask: Image.Image) -> Image.Image:
+    img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    mpx = mask.load()
+
+    for i in range(34):
+        base_x = (37 + i * 83) % width
+        base_y = (61 + i * 127) % height
+        drift = phase * math.tau
+        x = base_x + math.sin(drift * 0.5 + i * 0.73) * 4
+        y = base_y + math.sin(drift * 0.5 + i * 0.41) * (5 + (i % 5))
+        if not (0 <= int(x) < width and 0 <= int(y) < height and mpx[int(x), int(y)] > 0):
+            continue
+        size = 0.8 + (i % 3) * 0.28
+        twinkle = 0.5 + 0.5 * math.sin(drift * 3.0 + i * 1.37)
+        alpha = int((18 + twinkle * 42) * (0.75 if i % 3 else 1.0))
+        color = (138, 224, 255) if i % 4 else (230, 245, 255)
+        draw.ellipse([x - size, y - size, x + size, y + size], fill=(*color, alpha))
+
+    for i in range(7):
+        angle = phase * math.tau + i * math.tau / 7
+        cx = width * (0.18 + ((i * 31) % 68) / 100) + math.sin(angle + i * 0.7) * 9
+        cy = height * (0.20 + ((i * 47) % 64) / 100) + math.sin(angle + i * 1.1) * 15
+        if not (0 <= int(cx) < width and 0 <= int(cy) < height and mpx[int(cx), int(cy)] > 0):
+            continue
+        r = 12 + (i % 4) * 4
+        bubble_mask = make_bubble_mask(r * 2)
+        bubble = Image.new("RGBA", (r * 2, r * 2), (148, 226, 255, 0))
+        bubble.putalpha(bubble_mask)
+        shine = Image.new("RGBA", (r * 2, r * 2), (255, 255, 255, 0))
+        shine_draw = ImageDraw.Draw(shine)
+        shine_draw.ellipse([r * 0.48, r * 0.42, r * 0.92, r * 0.82], fill=(255, 255, 255, 56))
+        bubble = Image.alpha_composite(bubble, shine.filter(ImageFilter.GaussianBlur(0.7)))
+        img.alpha_composite(bubble, (int(cx - r), int(cy - r)))
+
+    return Image.composite(img.filter(ImageFilter.GaussianBlur(0.35)), Image.new("RGBA", (width, height), (0, 0, 0, 0)), mask)
 
 
 def make_orbital_particles(width: int, height: int, phase: float, color: tuple[int, int, int], mode: str) -> Image.Image:
@@ -219,7 +305,7 @@ def build_frame(base: Image.Image, index: int, theme: dict, noise_a: Image.Image
     width, height = base.size
     # Include the loop-closing pose in the final frame so frame_23 -> frame_00
     # is mathematically seamless when the sequence is played in a loop.
-    phase = index / max(1, FRAME_COUNT - 1)
+    phase = 0 if index == FRAME_COUNT - 1 else index / max(1, FRAME_COUNT - 1)
     glow = theme["glow"]
     accent = theme["accent"]
     mode = theme["mode"]
@@ -228,15 +314,19 @@ def build_frame(base: Image.Image, index: int, theme: dict, noise_a: Image.Image
     # otherwise the entire texture jitters when the frames are played at card size.
     frame = base.copy()
 
-    pulse = 1.0 + 0.07 * math.sin(phase * math.tau)
+    pulse_amount = 0.11 if mode == "stars" else 0.07
+    color_amount = 0.075 if mode == "stars" else 0.055
+    pulse = 1.0 + pulse_amount * math.sin(phase * math.tau)
     frame = ImageEnhance.Brightness(frame).enhance(pulse)
-    frame = ImageEnhance.Color(frame).enhance(1.0 + 0.055 * math.cos(phase * math.tau))
+    frame = ImageEnhance.Color(frame).enhance(1.0 + color_amount * math.cos(phase * math.tau))
 
     if detail_img is not None and inner_mask is not None:
         if mode == "earth":
             frame = make_strata_motion_overlay(frame, detail_img, inner_mask, phase)
         elif mode == "stars":
             frame = make_water_refraction_overlay(frame, detail_img, inner_mask, phase)
+            frame = apply_bubble_lenses(frame, phase, inner_mask)
+            frame = Image.alpha_composite(frame, make_stars_sea_particles(width, height, phase, inner_mask))
         return frame.resize(SIZE, Image.Resampling.LANCZOS)
 
     noise = Image.blend(
