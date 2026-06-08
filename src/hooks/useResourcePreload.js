@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ANIMATED_CARD_BACK_BY_EXPANSION } from "../constants/card";
+import { ANIMATED_CARD_BACK_BY_EXPANSION, getVersionedAssetPath } from "../constants/card";
 import { buildPublicUrl } from "../utils/url";
 
 const AUDIO_FILES = [
@@ -45,7 +45,7 @@ const DEFERRED_IMAGE_FILES = [
 ];
 
 const ANIMATED_CARD_BACK_IMAGE_FILES = Object.values(ANIMATED_CARD_BACK_BY_EXPANSION).flatMap(anim => {
-  if (anim?.sprite) return [anim.sprite];
+  if (anim?.sprite) return [getVersionedAssetPath(anim.sprite, anim.version)];
   if (!anim?.frameDir || !anim?.frameCount) return [];
   return Array.from({ length: anim.frameCount }, (_, index) => (
     `${anim.frameDir}/frame_${String(index).padStart(2, '0')}.png`
@@ -91,7 +91,7 @@ const DEFERRED_RESOURCE_FILES = [
   ...ANIMATED_CARD_BACK_IMAGE_FILES.map(path => ({ path, type: 'image' })),
 ];
 
-const RESOURCE_CACHE_VERSION = '2026-06-02-critical-preload-v1';
+const RESOURCE_CACHE_VERSION = '2026-06-08-cardback-sprite-v2';
 const CACHE_VERSION_KEY = 'toe_resources_cached_version';
 
 const LOAD_ERROR_LABELS = {

@@ -921,6 +921,7 @@ const ANIMATED_CARD_BACK_BY_EXPANSION = {
   '地神的潜影': {
     frameDir: '/img/card/animated/earth_shadow',
     sprite: '/img/card/animated/earth_shadow/spritesheet.png',
+    version: 'earth-strata-loop-20260608',
     frameCount: 24,
     fps: 12,
     width: 392,
@@ -929,6 +930,7 @@ const ANIMATED_CARD_BACK_BY_EXPANSION = {
   '群星呼唤': {
     frameDir: '/img/card/animated/stars_call',
     sprite: '/img/card/animated/stars_call/spritesheet.png',
+    version: 'stars-20260608',
     frameCount: 24,
     fps: 12,
     width: 392,
@@ -942,6 +944,11 @@ function getCardBackImage(expansionKey = '地神的潜影') {
 
 function getAnimatedCardBack(expansionKey = '地神的潜影') {
   return ANIMATED_CARD_BACK_BY_EXPANSION[expansionKey] || null;
+}
+
+function getVersionedAssetPath(path, version) {
+  if (!path || !version) return path;
+  return `${path}${path.includes('?') ? '&' : '?'}v=${encodeURIComponent(version)}`;
 }
 
 export const INSPECTION_DECK = [
@@ -1029,6 +1036,7 @@ export {
   ANIMATED_CARD_BACK_BY_EXPANSION,
   getCardBackImage,
   getAnimatedCardBack,
+  getVersionedAssetPath,
   getGodShortKey,
   getCardDisplayKey,
 };

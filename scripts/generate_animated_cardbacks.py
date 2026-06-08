@@ -16,6 +16,7 @@ THEMES = {
     "earth_shadow": {
         "source": ROOT / "public/img/card/cardback_earth_shadow.png",
         "out": ROOT / "public/img/card/animated/earth_shadow",
+        "comfy_detail": ROOT / "public/img/card/animated/earth_shadow_comfy_try/earth_cardback_comfy_comp_02.png",
         "prompt": (
             "Use case: stylized-concept. Asset type: looping game card back animation frames. "
             "Primary request: preserve the provided underground Cthulhu card back exactly in composition, "
@@ -79,6 +80,72 @@ def make_vignette(width: int, height: int) -> Image.Image:
     return Image.new("RGBA", (width, height), (0, 0, 0, 0))
 
 
+def make_inner_card_mask(width: int, height: int) -> Image.Image:
+    mask = Image.new("L", (width, height), 0)
+    draw = ImageDraw.Draw(mask)
+    draw.rounded_rectangle([30, 46, width - 30, height - 46], radius=18, fill=190)
+    draw.rounded_rectangle([48, 72, width - 48, height - 72], radius=14, fill=255)
+    return mask.filter(ImageFilter.GaussianBlur(4))
+
+
+def strata_warp(img: Image.Image, phase: float, strength: int = 3) -> Image.Image:
+    width, height = img.size
+    out = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    # Shift horizontal rock bands instead of the whole card. This reads as strata motion
+    # at small card sizes while keeping the border and global composition anchored.
+    band_h = 10
+    for y in range(0, height, band_h):
+        band = img.crop((0, y, width, min(height, y + band_h)))
+        dy = y / max(1, height)
+        dx = int(round(math.sin(dy * math.tau * 3.2 + phase * math.tau) * strength))
+        out.alpha_composite(ImageChops.offset(band, dx, 0), (0, y))
+    return out
+
+
+def make_strata_motion_overlay(base: Image.Image, detail: Image.Image, mask: Image.Image, phase: float) -> Image.Image:
+    width, height = base.size
+    detail = detail.resize(base.size, Image.Resampling.LANCZOS).convert("RGBA")
+    # The model output contributes fixed-position strata texture only. No spatial
+    # offsets are used here; otherwise the small in-game card reads as sliding.
+    detail_mix = Image.blend(base, detail, 0.62)
+    detail_mix = ImageEnhance.Contrast(detail_mix).enhance(1.18)
+    detail_mix = ImageEnhance.Color(detail_mix).enhance(1.10)
+
+    # A stationary traveling mask: different rock regions brighten in sequence,
+    # but no pixels are spatially shifted. This should read as strata activity
+    # without card or texture displacement.
+    travel = Image.new("L", (width, height), 0)
+    tpx = travel.load()
+    mpx = mask.load()
+    for y in range(height):
+        yy = y / max(1, height)
+        for x in range(width):
+            mv = mpx[x, y]
+            if mv <= 0:
+                continue
+            xx = x / max(1, width)
+            band = 0.5 + 0.5 * math.sin((xx * 1.8 + yy * 4.6 - phase) * math.tau)
+            ripple = 0.5 + 0.5 * math.sin((xx * 5.2 - yy * 2.1 + phase * 2.0) * math.tau)
+            amount = 0.20 + 0.58 * max(band, ripple * 0.72)
+            tpx[x, y] = int(mv * amount)
+    pulse_mask = travel.filter(ImageFilter.GaussianBlur(2.0))
+    overlay = Image.composite(detail_mix, base, pulse_mask)
+
+    edges = detail.convert("L").filter(ImageFilter.FIND_EDGES).filter(ImageFilter.GaussianBlur(1.4))
+    edge_phase = Image.new("L", (width, height), 0)
+    epx = edge_phase.load()
+    for y in range(height):
+        yy = y / max(1, height)
+        for x in range(width):
+            xx = x / max(1, width)
+            epx[x, y] = int(255 * (0.35 + 0.65 * (0.5 + 0.5 * math.sin((xx * 2.8 + yy * 5.8 - phase) * math.tau))))
+    edge_alpha = ImageChops.multiply(ImageChops.multiply(edges, mask), edge_phase).point(lambda v: int(v * 0.50 / 255))
+    vein = Image.new("RGBA", (width, height), (214, 166, 92, 0))
+    vein.putalpha(edge_alpha)
+
+    return Image.alpha_composite(overlay, vein)
+
+
 def make_orbital_particles(width: int, height: int, phase: float, color: tuple[int, int, int], mode: str) -> Image.Image:
     img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -125,7 +192,7 @@ def shifted_layer(img: Image.Image, dx: int, dy: int) -> Image.Image:
     return ImageChops.offset(img, dx, dy)
 
 
-def build_frame(base: Image.Image, index: int, theme: dict, noise_a: Image.Image, noise_b: Image.Image) -> Image.Image:
+def build_frame(base: Image.Image, index: int, theme: dict, noise_a: Image.Image, noise_b: Image.Image, detail_img: Image.Image | None = None, inner_mask: Image.Image | None = None) -> Image.Image:
     width, height = base.size
     # Include the loop-closing pose in the final frame so frame_23 -> frame_00
     # is mathematically seamless when the sequence is played in a loop.
@@ -141,6 +208,10 @@ def build_frame(base: Image.Image, index: int, theme: dict, noise_a: Image.Image
     pulse = 1.0 + 0.07 * math.sin(phase * math.tau)
     frame = ImageEnhance.Brightness(frame).enhance(pulse)
     frame = ImageEnhance.Color(frame).enhance(1.0 + 0.055 * math.cos(phase * math.tau))
+
+    if mode == "earth" and detail_img is not None and inner_mask is not None:
+        frame = make_strata_motion_overlay(frame, detail_img, inner_mask, phase)
+        return frame.resize(SIZE, Image.Resampling.LANCZOS)
 
     noise = Image.blend(
         shifted_layer(noise_a, int(phase * width), int(math.sin(phase * math.tau) * 10)),
@@ -211,8 +282,14 @@ def main() -> None:
         frames = []
         noise_a = make_soft_noise(*SIZE, 11, theme["glow"])
         noise_b = make_soft_noise(*SIZE, 29, theme["accent"])
+        detail_img = None
+        inner_mask = None
+        detail_path = theme.get("comfy_detail")
+        if detail_path and detail_path.exists():
+            detail_img = ensure_rgba(Image.open(detail_path)).resize(SIZE, Image.Resampling.LANCZOS)
+            inner_mask = make_inner_card_mask(*SIZE)
         for i in range(FRAME_COUNT):
-            frame = build_frame(base, i, theme, noise_a, noise_b)
+            frame = build_frame(base, i, theme, noise_a, noise_b, detail_img=detail_img, inner_mask=inner_mask)
             path = out_dir / f"frame_{i:02d}.png"
             frame.save(path)
             frames.append(frame)
