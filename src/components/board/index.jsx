@@ -1,11 +1,11 @@
 ﻿import React from 'react';
-import { CS, GOD_CS, GOD_DEFS, getCardBackImage } from '../../constants/card';
+import { CS, GOD_CS, GOD_DEFS } from '../../constants/card';
 import { RINFO } from '../../game';
 import { isBlackGoatYoung, isTsathogguaSlime } from '../../game/coreUtils';
-import { AreaTooltip, CardCodeLabel, DDCard, DDCardBack, GodTooltip } from '../cards';
+import { AnimatedCardBack, AreaTooltip, CardCodeLabel, DDCard, DDCardBack, GodTooltip } from '../cards';
 import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
 
-function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth}){
+function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth,labelColor='var(--toe-muted,#a07838)',valueColor='var(--toe-text,#c8a96e)',lineColor='var(--toe-line-dim,#2a1a08)'}){
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const isMobileNarrow=!!viewportWidth&&viewportWidth<580;
   const isNarrowViewport=!!viewportWidth&&viewportWidth<900;
@@ -24,8 +24,8 @@ function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth}){
   const labelPaddingRight=isNarrowViewport?Math.ceil(2*fontZoom):0;
   return(
     <div style={{display:'grid',gridTemplateColumns:`${labelCol} minmax(0,1fr) ${valueCol}`,alignItems:'center',columnGap:columnGap,marginBottom:4,width:rowWidth,marginLeft:'auto',marginRight:'auto',boxSizing:'border-box',overflow:'visible'}}>
-      <span style={{fontFamily:"'Cinzel',serif",color:'#a07838',fontSize:statFont,fontWeight:700,letterSpacing:0.3,textAlign:'left',whiteSpace:'nowrap',minWidth:0,paddingRight:labelPaddingRight}}>{label}</span>
-      <div style={{height:barHeight,background:trackColor||'#110804',border:'1.2px solid #2a1a08',borderRadius:2,overflow:'visible',position:'relative',minWidth:0,width:'100%'}}>
+      <span style={{fontFamily:"'Cinzel',serif",color:labelColor,fontSize:statFont,fontWeight:700,letterSpacing:0.3,textAlign:'left',whiteSpace:'nowrap',minWidth:0,paddingRight:labelPaddingRight}}>{label}</span>
+      <div style={{height:barHeight,background:trackColor||'#110804',border:`1.2px solid ${lineColor}`,borderRadius:2,overflow:'visible',position:'relative',minWidth:0,width:'100%'}}>
         <div style={{height:'100%',width:`${Math.min(10,val)*10}%`,background:color,transition:'width .35s',borderRadius:1}}/>
         {label === 'SAN' && (
           <div style={{
@@ -62,7 +62,7 @@ function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth}){
           </div>
         )}
       </div>
-      <span style={{fontFamily:"'Cinzel',serif",color:val<=3?'#cc3333':'#c8a96e',fontSize:statFont,textAlign:'right',fontWeight:700,whiteSpace:'nowrap',minWidth:0,justifySelf:'end'}}>{val}</span>
+      <span style={{fontFamily:"'Cinzel',serif",color:val<=3?'#cc3333':valueColor,fontSize:statFont,textAlign:'right',fontWeight:700,whiteSpace:'nowrap',minWidth:0,justifySelf:'end'}}>{val}</span>
     </div>
   );
 }
@@ -166,7 +166,6 @@ function DiscardPile({count,topCard,scale=1,expansionKey='地神的潜影'}){
   const cardH=Math.round(CARD_H*scale);
   const outerW=Math.round((CARD_W+30)*scale);
   const outerH=Math.round((CARD_H+20)*scale);
-  const cardBackImage=getCardBackImage(expansionKey);
   if(vis===0) return(
     <div style={{width:outerW,height:outerH,display:'flex',alignItems:'center',justifyContent:'center'}}>
       <div style={{width:cardW,height:cardH,borderRadius:3,border:'1px dashed #2a1a08',background:'transparent'}}/>
@@ -179,8 +178,7 @@ function DiscardPile({count,topCard,scale=1,expansionKey='地神的潜影'}){
         const rot=DISCARD_ROTATIONS[i%DISCARD_ROTATIONS.length];
         const off=DISCARD_OFFSETS[i%DISCARD_OFFSETS.length];
         const isTop=i===vis-1;
-        return(
-          <div key={i} style={{
+        const style={
             ...CARD_BACK_STYLE,
             width:cardW,height:cardH,
             left:Math.round((15+off.x)*scale),top:Math.round((10+off.y)*scale),
@@ -190,18 +188,19 @@ function DiscardPile({count,topCard,scale=1,expansionKey='地神的潜影'}){
               border:`1.5px solid ${s.border}`,
               boxShadow:'0 1px 5px rgba(0,0,0,0.5), inset 0 0 8px rgba(0,0,0,0.35)',
             }:{
-              backgroundImage:`url('${cardBackImage}')`,
-              backgroundSize:'cover',
-              backgroundPosition:'center',
-              backgroundRepeat:'no-repeat',
               boxShadow:'0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
             }),
             zIndex:i,
-          }}>
-            {isTop&&topCard&&(
+          };
+        if(isTop&&topCard){
+          return(
+            <div key={i} style={style}>
               <MiniCardLabel card={topCard} scale={scale} glowColor="rgba(0,0,0,0.65)" ambient={false}/>
-            )}
-          </div>
+            </div>
+          );
+        }
+        return(
+          <AnimatedCardBack key={i} expansionKey={expansionKey} style={style}/>
         );
       })}
     </div>
@@ -247,7 +246,6 @@ function DeckPile({count,scale=1,expansionKey='地神的潜影',zhuLitCards=[],z
   const cardH=Math.round(CARD_H*scale);
   const outerW=Math.round((CARD_W+12)*scale);
   const outerH=Math.round((CARD_H+12)*scale);
-  const cardBackImage=getCardBackImage(expansionKey);
   const litByDeckIndex=new Map((zhuLitCards||[]).map(item=>[item.deckIndex,item]));
   if(vis===0) return(
     <div style={{width:outerW,height:outerH,display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -282,17 +280,11 @@ function DeckPile({count,scale=1,expansionKey='地神的潜影',zhuLitCards=[],z
           width:cardW,height:cardH,
           left:Math.round(i*1.4*scale),top:Math.round((vis-1-i)*1.4*scale),
           zIndex:i,
-          backgroundColor:'#100c08',
-          backgroundImage:`url('${cardBackImage}')`,
-          backgroundSize:'cover',
-          backgroundPosition:'center',
-          backgroundRepeat:'no-repeat',
           border:'1.5px solid #4a3010',
           boxShadow:'0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
         };
         return(
-          <div key={i} style={style}>
-          </div>
+          <AnimatedCardBack key={i} expansionKey={expansionKey} style={style} />
         );
       })}
     </div>
@@ -557,8 +549,8 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
         {player.isResting&&!player.isDead&&<span style={{fontSize:_(9),color:'#4ade80',marginLeft:'auto',letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 翻面中</span>}
         {isCurrentTurn&&!player.isDead&&!player.isResting&&<span style={{fontSize:_(9),color:theme.text,marginLeft:'auto',letterSpacing:1}}>▸ 行动</span>}
       </div>
-      <StatBar label="HP"  val={displayStats?.[playerIndex]?.hp ?? player.hp}  color="#8b1515" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={viewportWidth}/>
-      <StatBar label="SAN" val={displayStats?.[playerIndex]?.san ?? player.san} color="#4a1080" trackColor="#120820" scaleRatio={scaleRatio} viewportWidth={viewportWidth}/>
+      <StatBar label="HP"  val={displayStats?.[playerIndex]?.hp ?? player.hp}  color="#8b1515" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={viewportWidth} labelColor={theme.muted} valueColor={theme.text} lineColor={theme.lineDim}/>
+      <StatBar label="SAN" val={displayStats?.[playerIndex]?.san ?? player.san} color="#4a1080" trackColor="#120820" scaleRatio={scaleRatio} viewportWidth={viewportWidth} labelColor={theme.muted} valueColor={theme.text} lineColor={theme.lineDim}/>
       {/* Skull counter + god zone */}
       {((player.godEncounters||0)>0||(player.godZone||[]).length>0||(player.etherealizeStacks||0)>0||(player.poisonStacks||0)>0)&&(
         <div style={{display:'flex',alignItems:'center',gap:4,marginTop:4,flexWrap:'wrap'}}>

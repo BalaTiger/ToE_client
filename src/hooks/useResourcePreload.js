@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ANIMATED_CARD_BACK_BY_EXPANSION } from "../constants/card";
 import { buildPublicUrl } from "../utils/url";
 
 const AUDIO_FILES = [
@@ -43,6 +44,14 @@ const DEFERRED_IMAGE_FILES = [
   '/img/bg/battle/bone_fuel.png',
 ];
 
+const ANIMATED_CARD_BACK_IMAGE_FILES = Object.values(ANIMATED_CARD_BACK_BY_EXPANSION).flatMap(anim => {
+  if (anim?.sprite) return [anim.sprite];
+  if (!anim?.frameDir || !anim?.frameCount) return [];
+  return Array.from({ length: anim.frameCount }, (_, index) => (
+    `${anim.frameDir}/frame_${String(index).padStart(2, '0')}.png`
+  ));
+});
+
 const RESOURCE_FILES = [
   ...AUDIO_FILES.map(path => ({ path, type: 'audio' })),
   ...VIDEO_FILES.map(path => ({ path, type: 'video' })),
@@ -79,6 +88,7 @@ const RESOURCE_SIZE_FALLBACK = {
 
 const DEFERRED_RESOURCE_FILES = [
   ...DEFERRED_IMAGE_FILES.map(path => ({ path, type: 'image' })),
+  ...ANIMATED_CARD_BACK_IMAGE_FILES.map(path => ({ path, type: 'image' })),
 ];
 
 const RESOURCE_CACHE_VERSION = '2026-06-02-critical-preload-v1';

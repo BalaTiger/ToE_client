@@ -1,6 +1,7 @@
 ﻿import React from 'react';
-import { CS, GOD_CS, getCardBackImage } from '../../constants/card';
+import { CS, GOD_CS } from '../../constants/card';
 import { DDCard, MiniCardFace } from '../cards';
+import { CardBackLayer } from '../cards/AnimatedCardBack';
 import { getPileAnchorCenter, getPlayerAreaAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 
 const BLACK_GOAT_PARTICLES = [
@@ -146,7 +147,6 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = '地神的潜
     if (!anim) return;
     const card = anim.card || null;
     const s = card ? (card.isGod ? GOD_CS : (CS[card.letter] || null)) : null;
-    const cardBackImage = getCardBackImage(expansionKey);
     const targetPid = anim.targetPid || 0;
     const discardPos = getPileAnchorCenter(
       '[data-discard-pile]',
@@ -172,10 +172,6 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = '地神的潜
         height: 94,
         borderRadius: 4,
         backgroundColor: s ? undefined : '#100c08',
-        backgroundImage: s ? undefined : `url('${cardBackImage}')`,
-        backgroundSize: s ? undefined : 'cover',
-        backgroundPosition: s ? undefined : 'center',
-        backgroundRepeat: s ? undefined : 'no-repeat',
         background: s ? s.bg : undefined,
         border: s ? `1.5px solid ${s.borderBright}` : '1.5px solid #4a3010',
         boxShadow: '0 6px 24px rgba(0,0,0,0.65)',
@@ -187,7 +183,7 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = '地神的潜
         '--ty': `${ty}px`
       });
     }
-  }, [anim, expansionKey]);
+  }, [anim]);
 
   if (!anim) return null;
   const card = anim.card || null;
@@ -202,7 +198,11 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = '地神的潜
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(4,2,0,0.35)', animation: 'discardBgFade 1.0s ease both' }} />
       {/* Flying card */}
       {Object.keys(cardStyle).length > 0 && (
-        <div style={cardStyle}>
+        <div style={{
+          ...cardStyle,
+          overflow: 'hidden',
+        }}>
+          {!s && <CardBackLayer expansionKey={expansionKey}/>}
           {card && s && (
             <MiniCardFace card={card} width={70} height={94} ambient={false} frameStyle={{boxShadow:'none',border:'none',background:'transparent'}}/>
           )}
@@ -235,8 +235,6 @@ export function BuryToDeckOverlay({ anim, exiting, expansionKey = '地神的潜�
   }, [anim]);
 
   if (!anim || !style) return null;
-  const cardBackImage = getCardBackImage(expansionKey);
-
   return (
     <div style={{
       position: 'fixed',
@@ -264,12 +262,13 @@ export function BuryToDeckOverlay({ anim, exiting, expansionKey = '地神的潜�
           position: 'absolute',
           inset: 0,
           borderRadius: 4,
-          backgroundImage: `url('${cardBackImage}')`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
+          backgroundColor: '#100c08',
           border: '1.5px solid #4a3010',
           boxShadow: '0 6px 18px rgba(0,0,0,0.65), inset 0 0 10px rgba(0,0,0,0.5)',
-        }} />
+          overflow: 'hidden',
+        }}>
+          <CardBackLayer expansionKey={expansionKey}/>
+        </div>
       </div>
     </div>
   );
@@ -279,7 +278,6 @@ export function BuryToDeckOverlay({ anim, exiting, expansionKey = '地神的潜�
 // Receives pre-measured positions from parent useEffect([anim])
 export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影' }) {
   if (!transfers || !transfers.length) return null;
-  const cardBackImage = getCardBackImage(expansionKey);
   return (
     <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 480, overflow: 'hidden' }}>
       {transfers.flatMap(({ srcX, srcY, destX, destY, count, key, effect, cards }) =>
@@ -302,10 +300,6 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
                 left: 0, top: 0,
                 width: cardW, height: cardH, marginLeft: -cardW / 2, marginTop: -cardH / 2,
                 backgroundColor: '#100c08',
-                backgroundImage: isSlime ? undefined : `url('${cardBackImage}')`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat',
                 border: effect === 'blackGoat' ? '1.5px solid #4ade80' : effect === 'tsgSlime' ? '1.5px solid #80d8a8' : '1.5px solid #6a4020',
                 borderRadius: 3,
                 boxShadow: effect === 'blackGoat'
@@ -316,7 +310,9 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
                 '--tx': `${txPx}px`, '--ty': `${tyPx}px`,
                 animation: `cardTransferFly ${duration}s cubic-bezier(0.25,0,0.35,1) ${delay}s both`,
                 zIndex: 481 + idx,
+                overflow: 'hidden',
               }}>
+                {!isSlime && <CardBackLayer expansionKey={expansionKey}/>}
                 {isSlime && (
                   <DDCard
                     card={card}

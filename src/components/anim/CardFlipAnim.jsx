@@ -1,5 +1,6 @@
 ﻿import React from 'react';
-import { CS, GOD_CS, getCardBackImage } from '../../constants/card';
+import { CS, GOD_CS } from '../../constants/card';
+import { CardBackLayer } from '../cards/AnimatedCardBack';
 import { CardCodeLabel } from '../cards';
 import { getZoneCardPolarity } from '../../game/coreUtils';
 import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
@@ -70,10 +71,9 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
     return()=>clearTimeout(t);
   },[skipTravel]);
 
+  const isInspection=!!card?.effect;
   if(!card) return null;
-  const isInspection=!!card.effect;
   const hideZoneIdentity=!!card.blindZoneIdentity&&!isInspection;
-  const cardBackImage=getCardBackImage(expansionKey);
   const displayTriggerName=isInspection&&(targetPid??0)===0?'你':triggerName;
   const inspectionTone=isInspection?(card.type||'neutral'):null;
   const s=isInspection
@@ -119,16 +119,15 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
       <div style={{
         position:'absolute',
         width:70,height:94,borderRadius:4,
-        backgroundColor:'#100c08',
-        backgroundImage:isInspection?'linear-gradient(135deg,#151c28,#090d15)':`url('${cardBackImage}')`,
-        backgroundSize:'cover',
-        backgroundPosition:'center',
-        backgroundRepeat:'no-repeat',
+        backgroundColor:isInspection?'#151c28':'#100c08',
+        backgroundImage:isInspection?'linear-gradient(135deg,#151c28,#090d15)':undefined,
         border:'1.5px solid #4a3010',
         boxShadow:'0 4px 18px rgba(0,0,0,0.7)',
+        overflow:'hidden',
         ...destStyle,
         animation:'cardTravelToPlayer 0.65s cubic-bezier(0.3,0,0.2,1) forwards',
       }}>
+        {!isInspection&&<CardBackLayer expansionKey={expansionKey}/>}
         {isInspection&&<>
           <div style={{position:'absolute',inset:0,borderRadius:4,
             background:'repeating-linear-gradient(45deg,#8ca4d220 0px,#8ca4d220 1px,transparent 1px,transparent 4px)'}}/>
@@ -268,15 +267,14 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
         }}>
           <div style={{
             position:'absolute',inset:0,backfaceVisibility:'hidden',transform:'rotateY(180deg)',
-            backgroundColor:'#100c08',
-            backgroundImage:isInspection?'linear-gradient(135deg,#151c28,#090d15)':`url('${cardBackImage}')`,
-            backgroundSize:'cover',
-            backgroundPosition:'center',
-            backgroundRepeat:'no-repeat',
+            backgroundColor:isInspection?'#151c28':'#100c08',
+            backgroundImage:isInspection?'linear-gradient(135deg,#151c28,#090d15)':undefined,
             border:'2px solid #6a4a20',borderRadius:5,
             display:'flex',alignItems:'center',justifyContent:'center',
             boxShadow:'0 0 20px #0a0600',
+            overflow:'hidden',
           }}>
+            {!isInspection&&<CardBackLayer expansionKey={expansionKey}/>}
             {isInspection&&<>
               <div style={{position:'absolute',inset:6,border:'1px solid #6a7fa8',borderRadius:3,opacity:0.7}}/>
               <div style={{position:'absolute',inset:12,border:'1px solid #8ca4d266',borderRadius:2}}/>

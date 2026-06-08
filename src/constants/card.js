@@ -917,8 +917,31 @@ const CARD_BACK_IMAGE_BY_EXPANSION = {
   '析骨为柴': '/img/card/cardback_bone_fuel.png',
 };
 
+const ANIMATED_CARD_BACK_BY_EXPANSION = {
+  '地神的潜影': {
+    frameDir: '/img/card/animated/earth_shadow',
+    sprite: '/img/card/animated/earth_shadow/spritesheet.png',
+    frameCount: 24,
+    fps: 12,
+    width: 392,
+    height: 590,
+  },
+  '群星呼唤': {
+    frameDir: '/img/card/animated/stars_call',
+    sprite: '/img/card/animated/stars_call/spritesheet.png',
+    frameCount: 24,
+    fps: 12,
+    width: 392,
+    height: 590,
+  },
+};
+
 function getCardBackImage(expansionKey = '地神的潜影') {
   return CARD_BACK_IMAGE_BY_EXPANSION[expansionKey] || CARD_BACK_IMAGE_BY_EXPANSION['地神的潜影'];
+}
+
+function getAnimatedCardBack(expansionKey = '地神的潜影') {
+  return ANIMATED_CARD_BACK_BY_EXPANSION[expansionKey] || null;
 }
 
 export const INSPECTION_DECK = [
@@ -1003,7 +1026,9 @@ export {
   GOD_DEFS,
   EXPANSIONS,
   CARD_BACK_IMAGE_BY_EXPANSION,
+  ANIMATED_CARD_BACK_BY_EXPANSION,
   getCardBackImage,
+  getAnimatedCardBack,
   getGodShortKey,
   getCardDisplayKey,
 };

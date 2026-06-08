@@ -278,9 +278,9 @@ const BATTLE_THEME_BY_EXPANSION={
     accent:'#7a5324',
   },
   '群星呼唤':{
-    tintTop:'rgba(2,10,22,0.42)',
-    tintBottom:'rgba(1,18,30,0.72)',
-    bg:'#031018',
+    tintTop:'rgba(1,6,15,0.66)',
+    tintBottom:'rgba(0,10,20,0.84)',
+    bg:'#020911',
     text:'#9dd8f0',
     strong:'#d8f6ff',
     muted:'#6aa5c8',
@@ -298,6 +298,7 @@ function getBattleTheme(expansionKey){
 function getBattleBackgroundStyle(expansionKey,isMobile){
   const url=BATTLE_BACKGROUND_BY_EXPANSION[expansionKey]||BATTLE_BACKGROUND_BY_EXPANSION['地神的潜影'];
   const theme=getBattleTheme(expansionKey);
+  const isStarsCall=expansionKey==='群星呼唤';
   return {
     '--toe-bg':theme.bg,
     '--toe-text':theme.text,
@@ -311,9 +312,9 @@ function getBattleBackgroundStyle(expansionKey,isMobile){
     '--toe-accent':theme.accent,
     backgroundColor:theme.bg,
     backgroundImage:`linear-gradient(180deg,${theme.tintTop},${theme.tintBottom}), url('${url}')`,
-    backgroundSize:'cover, cover',
+    backgroundSize:isStarsCall?'cover, auto 100%':'cover, cover',
     backgroundPosition:'center center, center center',
-    backgroundRepeat:'no-repeat, no-repeat',
+    backgroundRepeat:isStarsCall?'no-repeat, repeat-x':'no-repeat, no-repeat',
     backgroundAttachment:isMobile?'scroll, scroll':'fixed, fixed',
   };
 }
@@ -6867,11 +6868,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   // Phase labels
   const cardHintText='鼠标悬停查看卡牌详情（移动端请点击卡牌）';
   const canShowTurnDecisionModal=!isSpectating&&!anim&&!animExiting&&animQueueRef.current.length===0;
-  const promptWarningTextColor='#cc3030';
-  const promptActiveTextColor='#836934';
-  const promptCautionTextColor='#9d5d26';
-  const promptSafeTextColor='#577457';
-  const promptMutedTextColor='#3a2510';
+  const isStarsCallTheme=gs.expansionKey==='群星呼唤';
+  const promptWarningTextColor=isStarsCallTheme?'#ff7d8a':'#cc3030';
+  const promptActiveTextColor=isStarsCallTheme?'#9dd8f0':'#836934';
+  const promptCautionTextColor=isStarsCallTheme?'#ffd27a':'#9d5d26';
+  const promptSafeTextColor=isStarsCallTheme?'#8de6b8':'#577457';
+  const promptMutedTextColor=isStarsCallTheme?'#4f89a6':'#3a2510';
   const isLocalHuntRevealPrompt=phase==='HUNT_WAIT_REVEAL'&&!myTurn&&isLocalHuntTargetSeat(gs);
   const isDiscardPhaseResolving=phase==='DISCARD_PHASE'&&(!!anim||!!animExiting||!!pendingGsRef.current);
   const pendingAfterDiscardGs=isDiscardPhaseResolving?pendingGsRef.current:null;
@@ -7488,9 +7490,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
 
       <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',gap:7}}>
         {/* Header */}
-        <div style={{display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid #2a1a08',paddingBottom:6}}>
-          <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:baseFontSizes.title,fontWeight:700,color:'#c8a96e',letterSpacing:isMobile?1:2}}>邪神的宝藏</div>
-          <div style={{fontFamily:"'Cinzel',serif",fontSize:baseFontSizes.subtitle,color:'#b89858',letterSpacing:isMobile?1:2,marginTop:1}}>Treasures of Evils</div>
+        <div style={{display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid var(--toe-line-dim,#2a1a08)',paddingBottom:6}}>
+          <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:baseFontSizes.title,fontWeight:700,color:'var(--toe-strong,#c8a96e)',letterSpacing:isMobile?1:2}}>邪神的宝藏</div>
+          <div style={{fontFamily:"'Cinzel',serif",fontSize:baseFontSizes.subtitle,color:'var(--toe-muted,#b89858)',letterSpacing:isMobile?1:2,marginTop:1}}>Treasures of Evils</div>
           {isMultiplayer?(
             <button
               onClick={()=>setExitMatchConfirm({
@@ -7501,8 +7503,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
               style={{
                 marginLeft:'auto',
                 padding:isMobile?'4px 10px':'5px 12px',
-                background:'#180c08',
-                border:'1.5px solid #6a2a20',
+                background:'var(--toe-panel,#180c08)',
+                border:'1.5px solid var(--toe-accent,#6a2a20)',
                 color:'#d08a72',
                 fontFamily:"'Cinzel',serif",
                 fontWeight:700,
@@ -7521,9 +7523,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
               style={{
                 marginLeft:'auto',
                 padding:isMobile?'4px 10px':'5px 12px',
-                background:'#140c06',
-                border:'1.5px solid #5a3a18',
-                color:'#c8a96e',
+                background:'var(--toe-panel,#140c06)',
+                border:'1.5px solid var(--toe-line,#5a3a18)',
+                color:'var(--toe-strong,#c8a96e)',
                 fontFamily:"'Cinzel',serif",
                 fontWeight:700,
                 fontSize:baseFontSizes.small,
@@ -7576,8 +7578,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         <div style={{display:'flex',gap:isMobile?5:10,flexWrap:'wrap',alignItems:'stretch',width:'100%',justifyContent:'flex-start'}}>
           {/* Self panel - Fixed width, no grow */}
           <div ref={selfPanelRef} data-pid={0} data-death-panel={0} onClick={phase==='SHU_SELECT_TARGET'&&!isBlocked?()=>handleAIClick(0):undefined} style={{
-            background:'#180f07',
-            border:`1.5px solid ${hitIndices.includes(0)?'#cc2222':sanHitIndices.includes(0)?'#8840cc':phase==='SHU_SELECT_TARGET'?'#4ade80':suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'#c8a96e':'#3a2510'}`,
+            background:'var(--toe-panel-active,#180f07)',
+            border:`1.5px solid ${hitIndices.includes(0)?'#cc2222':sanHitIndices.includes(0)?'#8840cc':phase==='SHU_SELECT_TARGET'?'#4ade80':suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'var(--toe-strong,#c8a96e)':'var(--toe-line,#3a2510)'}`,
             borderRadius:3,
             padding:isMobile?'8px 9px':'12px 13px',
             width:isMobile?258:214,
@@ -7591,7 +7593,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             minHeight:middleRowHeight,
             position:'relative',
             overflow:'visible',
-            boxShadow:phase==='SHU_SELECT_TARGET'?'0 0 14px #4ade8088,inset 0 0 12px #4ade8022':suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'0 0 0 2px #c8a96e66,0 0 20px #c8a96e44':undefined,
+            boxShadow:phase==='SHU_SELECT_TARGET'?'0 0 14px #4ade8088,inset 0 0 12px #4ade8022':suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'0 0 0 2px var(--toe-glow,#c8a96e),0 0 20px var(--toe-glow,#c8a96e)':undefined,
             opacity:guillotinedPids.has(0)?0:1,
             cursor:phase==='SHU_SELECT_TARGET'&&!isBlocked?'pointer':'default',
           }}>
@@ -7604,12 +7606,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
               transition:'all .2s',
             }}>
             <div>
-              <div ref={roleTextRef} style={{fontFamily:"'Cinzel',serif",color:'#7a5a2a',fontSize:fontSizes.small,letterSpacing:2,marginBottom:3,textTransform:'uppercase'}}>你的身份</div>
+              <div ref={roleTextRef} style={{fontFamily:"'Cinzel',serif",color:'var(--toe-muted,#7a5a2a)',fontSize:fontSizes.small,letterSpacing:2,marginBottom:3,textTransform:'uppercase'}}>你的身份</div>
               <div style={{display:'flex',alignItems:'center',gap:6}}>
                 <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:fontSizes.body,color:ri.col,textShadow:`0 0 12px ${ri.col}66`,letterSpacing:1}}>{ri.icon} {me.role}</div>
                 {me.isDead&&<span style={{fontSize:fontSizes.body,color:'#882020',marginLeft:'auto'}}>☠</span>}
               </div>
-              <div style={{fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontStyle:'italic',color:'#a07838',fontSize:fontSizes.small,marginTop:4,lineHeight:1.6,whiteSpace:'nowrap'}}>{ri.goal}</div>
+              <div style={{fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontStyle:'italic',color:'var(--toe-muted,#a07838)',fontSize:fontSizes.small,marginTop:4,lineHeight:1.6,whiteSpace:'nowrap'}}>{ri.goal}</div>
               {me.isResting&&<div style={{marginTop:4,fontSize:fontSizes.small,color:'#4ade80',fontFamily:"'Cinzel',serif",letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 翻面中 — 下回合跳过</div>}
             {/* God zone display */}
             {(me.godEncounters||0)>0&&<div style={{marginTop:4,fontSize:fontSizes.small,color:'#8b6060',letterSpacing:1}}>{'💀'.repeat(Math.min(me.godEncounters,5))}{me.godEncounters>5?`×${me.godEncounters}`:''} 邪神遭遇</div>}
@@ -7668,9 +7670,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
               </div>
             )}
             </div>
-            <div style={{borderTop:'1px solid #2a1a08',paddingTop:8}}>
-              <StatBar label="HP"  val={displayStats[0]?.hp ?? me.hp}  color="#7a1515" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={vw}/>
-              <StatBar label="SAN" val={displayStats[0]?.san ?? me.san} color="#3a1078" trackColor="#120820" scaleRatio={scaleRatio} viewportWidth={vw}/>
+            <div style={{borderTop:'1px solid var(--toe-line-dim,#2a1a08)',paddingTop:8}}>
+              <StatBar label="HP"  val={displayStats[0]?.hp ?? me.hp}  color="#7a1515" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={vw} labelColor="var(--toe-muted,#a07838)" valueColor="var(--toe-text,#c8a96e)" lineColor="var(--toe-line-dim,#2a1a08)"/>
+              <StatBar label="SAN" val={displayStats[0]?.san ?? me.san} color="#3a1078" trackColor="#120820" scaleRatio={scaleRatio} viewportWidth={vw} labelColor="var(--toe-muted,#a07838)" valueColor="var(--toe-text,#c8a96e)" lineColor="var(--toe-line-dim,#2a1a08)"/>
             </div>
             </div>
             {/* 表情按钮（多人游戏时显示） */}
@@ -7686,9 +7688,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                   }
                   setShowEmojiPicker(v=>!v);
                 }} style={{
-                  background:'#1a1008',border:'1px solid #4a3010',borderRadius:3,
+                  background:'var(--toe-panel,#1a1008)',border:'1px solid var(--toe-line,#4a3010)',borderRadius:3,
                   fontSize:14,cursor:'pointer',padding:'2px 5px',lineHeight:1.2,
-                  color:'#c8a96e',opacity:showEmojiPicker?1:0.7,
+                  color:'var(--toe-strong,#c8a96e)',opacity:showEmojiPicker?1:0.7,
                 }}>😊</button>
               </div>
             )}
@@ -7696,8 +7698,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           {/* Center: deck/discard piles */}
         <PileDisplay deckCount={gs.deck.length} discardCount={visualDiscard.length} discardTop={visualDiscard[visualDiscard.length-1]||null} discardCards={visualDiscard} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={vw<430} baseHeight={middleRowHeight} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={scaleRatio} expansionKey={gs.expansionKey} zhuLitCards={zhuLitCardsForView} zhuHiddenCardId={zhuHiddenCardId} petrifyingFormula={gs.petrifyingFormula}/>
           {/* Log — narrow, right-aligned */}
-          <div ref={logRef} style={{width:isMobile?'100%':218,flexBasis:isMobile?'100%':undefined,flexShrink:0,background:'#0e0904',border:'1.5px solid #2a1a08',borderRadius:3,padding:'8px 10px',overflowY:'auto',minHeight:isMobile?100:middleRowHeight,maxHeight:isMobile?100:middleRowHeight}}>
-            <div style={{fontFamily:"'Cinzel',serif",color:'#7a5a2a',fontSize:fontSizes.small,letterSpacing:2,marginBottom:5,textTransform:'uppercase'}}>— 冒险日志 —</div>
+          <div ref={logRef} style={{width:isMobile?'100%':218,flexBasis:isMobile?'100%':undefined,flexShrink:0,background:'var(--toe-panel,#0e0904)',border:'1.5px solid var(--toe-line-dim,#2a1a08)',borderRadius:3,padding:'8px 10px',overflowY:'auto',minHeight:isMobile?100:middleRowHeight,maxHeight:isMobile?100:middleRowHeight}}>
+            <div style={{fontFamily:"'Cinzel',serif",color:'var(--toe-muted,#7a5a2a)',fontSize:fontSizes.small,letterSpacing:2,marginBottom:5,textTransform:'uppercase'}}>— 冒险日志 —</div>
             {(()=>{
               // 多人游戏：用玩家真实名字替换其他人回合里的"你"
               let logOwner=null; // 当前段落属于哪位玩家（名字）
@@ -7727,10 +7729,10 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                   <div key={i} style={{
                     fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',
                     fontSize:fontSizes.body,lineHeight:1.7,
-                    color:line.includes('──')?'#7a5020':
+                    color:line.includes('──')?'var(--toe-muted,#7a5020)':
                           line.includes('☠')||line.includes('死亡')||line.includes('倒下')?'#882020':
-                          line.includes('获胜')||line.includes('集齐')?'#c8a96e':
-                          '#5a4020',
+                          line.includes('获胜')||line.includes('集齐')?'var(--toe-strong,#c8a96e)':
+                          'var(--toe-line,#5a4020)',
                     fontWeight:line.includes('──')?700:400,
                   }}>{display}</div>
                 );
@@ -7744,14 +7746,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
 
         {/* Phase bar */}
         <div style={{
-          background:'#120900',
-          border:`1px solid ${myTurn&&!['AI_TURN'].includes(phase)?'#5a3010':'#2a1a08'}`,
+          background:'var(--toe-panel,#120900)',
+          border:`1px solid ${myTurn&&!['AI_TURN'].includes(phase)?'var(--toe-line,#5a3010)':'var(--toe-line-dim,#2a1a08)'}`,
           borderRadius:3,padding:isMobile?'5px 10px':'7px 14px',minHeight:isMobile?32:38,
           display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',
         }}>
           <div style={{flex:1,fontFamily:"'Cinzel',serif",color:isPhaseWarningText&&!isSpectating?promptWarningTextColor:displayPhaseLabel?promptActiveTextColor:promptMutedTextColor,fontSize:baseFontSizes.body,letterSpacing:isMobile?0.5:1}}>
             <div>{displayPhaseLabel}</div>
-            {phase==='ACTION'&&!isSpectating&&<div style={{fontSize:baseFontSizes.small,color:'#5a4a3a',marginTop:2}}>{cardHintText}</div>}
+            {phase==='ACTION'&&!isSpectating&&<div style={{fontSize:baseFontSizes.small,color:'var(--toe-muted,#5a4a3a)',marginTop:2}}>{cardHintText}</div>}
           </div>
           {isMultiplayer&&!isSpectating&&mpCthSec!==null&&isMpCthDecisionPhase&&(
             <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:mpCthSec<=5?promptWarningTextColor:mpCthSec<=10?promptCautionTextColor:promptActiveTextColor,letterSpacing:1,flexShrink:0}}>
@@ -7788,7 +7790,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         />
 
         {/* Hand area */}
-        <div ref={handAreaRef} data-hand-area style={{background:'#120900',border:`1.5px solid ${myTurn?'#3a2010':'#2a1a08'}`,borderRadius:3,padding:isMobile?'8px 9px':'11px 13px'}}>
+        <div ref={handAreaRef} data-hand-area style={{background:'var(--toe-panel,#120900)',border:`1.5px solid ${myTurn?'var(--toe-line,#3a2010)':'var(--toe-line-dim,#2a1a08)'}`,borderRadius:3,padding:isMobile?'8px 9px':'11px 13px'}}>
           <div style={{display:'flex',alignItems:'center',marginBottom:9,gap:8}}>
             <span style={{fontFamily:"'Cinzel',serif",color:!isSpectating&&((phase==='DISCARD_PHASE'&&!anim&&!animExiting&&!pendingGsRef.current)||phase==='PLAYER_REVEAL_FOR_HUNT'||isLocalHuntRevealPrompt)?promptWarningTextColor:promptActiveTextColor,fontSize:10,letterSpacing:1}}>
               {isSpectating
@@ -7815,22 +7817,22 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                       <button onClick={()=>setGs({...gs,phase:'MULTIPLY_SELECT_TARGET',abilityData:{...gs.abilityData}})} disabled={multiplyLimited}
                         style={{
                           padding:isMobile?'5px 10px':'6px 14px',background:multiplyLimited?'#130a04':'#0e1a0e',
-                          border:`1.5px solid ${multiplyLimited?'#2a1a08':'#2a5a2a'}`,
-                          color:multiplyLimited?'#3a2510':'#4ade80',
+                          border:`1.5px solid ${multiplyLimited?'var(--toe-line-dim,#2a1a08)':'#2a5a2a'}`,
+                          color:multiplyLimited?'var(--toe-line,#3a2510)':'#4ade80',
                           fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:baseFontSizes.body,
                           borderRadius:2,cursor:multiplyLimited?'not-allowed':'pointer',letterSpacing:isMobile?0.5:1,
                           boxShadow:multiplyLimited?'none':'0 0 10px #4ade8044',
                           textTransform:'uppercase',opacity:multiplyLimited?0.4:1,
                         }}>
                         ☣ 繁衍
-                        {multiplyLimited&&<span style={{fontSize:9,marginLeft:4,color:'#7a5a2a'}}>(已用)</span>}
+                          {multiplyLimited&&<span style={{fontSize:9,marginLeft:4,color:'var(--toe-muted,#7a5a2a)'}}>(已用)</span>}
                       </button>
                     )}
                     <button onClick={useAbility} disabled={skillRestLimited}
                       style={{
                         padding:isMobile?'5px 10px':'6px 16px',background:'#1c1208',
-                        border:`1.5px solid ${skillRestLimited?'#3a2510':skillRi.col}`,
-                        color:skillRestLimited?'#3a2510':skillRi.col,
+                        border:`1.5px solid ${skillRestLimited?'var(--toe-line,#3a2510)':skillRi.col}`,
+                        color:skillRestLimited?'var(--toe-line,#3a2510)':skillRi.col,
                         fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:baseFontSizes.body,
                         borderRadius:2,cursor:skillRestLimited?'not-allowed':'pointer',letterSpacing:isMobile?0.5:1,
                         boxShadow:skillRestLimited?'none':`0 0 10px ${skillRi.col}44`,
@@ -7838,24 +7840,24 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                         position:'relative',
                       }}>
                       {skillRi.icon||ri.icon} {effectiveSkillName}
-                      {skillRestLimited&&<span style={{fontSize:9,marginLeft:4,color:'#5a3020'}}>{gs.restUsed?'(已休息)':'(已用)'}</span>}
+                      {skillRestLimited&&<span style={{fontSize:9,marginLeft:4,color:'var(--toe-muted,#5a3020)'}}>{gs.restUsed?'(已休息)':'(已用)'}</span>}
                     </button>
                     <button onClick={doRest} disabled={restLimited}
                       style={{
                         padding:isMobile?'5px 10px':'6px 14px',background:restLimited?'#130a04':'#0e1a0e',
-                        border:`1.5px solid ${restLimited?'#2a1a08':'#2a5a2a'}`,
-                        color:restLimited?'#3a2510':'#4ade80',
+                        border:`1.5px solid ${restLimited?'var(--toe-line-dim,#2a1a08)':'#2a5a2a'}`,
+                        color:restLimited?'var(--toe-line,#3a2510)':'#4ade80',
                         fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:baseFontSizes.body,
                         borderRadius:2,cursor:restLimited?'not-allowed':'pointer',letterSpacing:isMobile?0.5:1,
                         boxShadow:restLimited?'none':'0 0 10px #4ade8044',
                         textTransform:'uppercase',opacity:restLimited?0.4:1,
                       }}>
                       ♥ 休息
-                      {restLimited&&<span style={{fontSize:9,marginLeft:4,color:'#7a5a2a'}}>(已用)</span>}
+                      {restLimited&&<span style={{fontSize:9,marginLeft:4,color:'var(--toe-muted,#7a5a2a)'}}>(已用)</span>}
                     </button>
                     <button onClick={endTurn} style={{
-                      padding:isMobile?'5px 10px':'6px 16px',background:'#180e08',
-                      border:'1.5px solid #3a2510',color:'#a07838',
+                      padding:isMobile?'5px 10px':'6px 16px',background:'var(--toe-panel,#180e08)',
+                      border:'1.5px solid var(--toe-line,#3a2510)',color:'var(--toe-muted,#a07838)',
                       fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:baseFontSizes.body,
                       borderRadius:2,cursor:'pointer',letterSpacing:isMobile?0.5:1,textTransform:'uppercase',
                     }}>结束回合</button>
