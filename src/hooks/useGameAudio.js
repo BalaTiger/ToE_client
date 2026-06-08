@@ -3,16 +3,8 @@
 //   not React state mutations. The immutability rule falsely flags them because they
 //   are reached via refs (bgmRefs / sfxRefs).
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { BGM_AUDIO_BY_KEY, getBattleBgmKey } from '../constants/theme';
 import { buildPublicUrl } from '../utils/url';
-
-const BATTLE_BGM_BY_EXPANSION = {
-  '地神的潜影': 'battleEarth',
-  '群星呼唤': 'battleStars',
-};
-
-function getBattleBgmKey(expansionKey) {
-  return BATTLE_BGM_BY_EXPANSION[expansionKey] || BATTLE_BGM_BY_EXPANSION['地神的潜影'];
-}
 
 export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
   const [audioReady, setAudioReady] = useState(false);
@@ -21,12 +13,12 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
   const sfxRefs = useRef({ open: null, close: null, hpDamage: [], apophisEclipse: null });
   const currentTrackRef = useRef(null);
   const fadeTokenRef = useRef(0);
-  const targetVolumesRef = useRef({ main: 0.32, battleEarth: 0.24, battleStars: 0.214 });
+  const targetVolumesRef = useRef(Object.fromEntries(Object.entries(BGM_AUDIO_BY_KEY).map(([key, config]) => [key, config.volume])));
 
   useEffect(() => {
-    const main = new Audio(buildPublicUrl('sounds/BGM/mainTheme.mp3'));
-    const battleEarth = new Audio(buildPublicUrl('sounds/BGM/battle_earth_shadow.mp3'));
-    const battleStars = new Audio(buildPublicUrl('sounds/BGM/battle_stars_call.mp3'));
+    const main = new Audio(buildPublicUrl(BGM_AUDIO_BY_KEY.main.path));
+    const battleEarth = new Audio(buildPublicUrl(BGM_AUDIO_BY_KEY.battleEarth.path));
+    const battleStars = new Audio(buildPublicUrl(BGM_AUDIO_BY_KEY.battleStars.path));
     const open = new Audio(buildPublicUrl('sounds/SE/open.mp3'));
     const close = new Audio(buildPublicUrl('sounds/SE/close.mp3'));
     const apophisEclipse = new Audio(buildPublicUrl('sounds/SE/apophisEclipseDrums.mp3'));

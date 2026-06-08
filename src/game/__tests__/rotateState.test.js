@@ -14,7 +14,7 @@ describe('rotateGsForViewer', () => {
     const gs = {
       players: [player('你'), player('艾伦'), player('贝拉')],
       currentTurn: 2,
-      abilityData: { playerIndex: 0, source: 2, targets: [0, 2] },
+      abilityData: { playerIndex: 0, source: 2, _turnOwner: 2, targets: [0, 2] },
       _playersBeforeThisDraw: [player('draw0'), player('draw1'), player('draw2')],
       _preTurnPlayers: [player('turn0'), player('turn1'), player('turn2')],
       _earthquakeBeforePlayers: [player('quake0'), player('quake1'), player('quake2')],
@@ -28,7 +28,7 @@ describe('rotateGsForViewer', () => {
 
     expect(names(rotated.players)).toEqual(['艾伦', '贝拉', '你']);
     expect(rotated.currentTurn).toBe(1);
-    expect(rotated.abilityData).toEqual({ playerIndex: 2, source: 1, targets: [2, 1] });
+    expect(rotated.abilityData).toEqual({ playerIndex: 2, source: 1, _turnOwner: 1, targets: [2, 1] });
     expect(names(rotated._playersBeforeThisDraw)).toEqual(['draw1', 'draw2', 'draw0']);
     expect(names(rotated._preTurnPlayers)).toEqual(['turn1', 'turn2', 'turn0']);
     expect(names(rotated._earthquakeBeforePlayers)).toEqual(['quake1', 'quake2', 'quake0']);

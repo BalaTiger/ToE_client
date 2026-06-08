@@ -840,10 +840,12 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       }
       const beforePlayers = copyPlayers(P);
       const assignments = new Map();
+      const assignmentHits = [];
       for (let n = 0; n < targets.length; n += 1) {
         const targetIdx = targets[Math.floor(Math.random() * targets.length)];
         P[targetIdx].poisonStacks = (P[targetIdx].poisonStacks || 0) + 1;
         assignments.set(targetIdx, (assignments.get(targetIdx) || 0) + 1);
+        assignmentHits.push({ idx: targetIdx, name: P[targetIdx].name });
       }
       const summary = [...assignments.entries()]
         .map(([idx, count]) => `${P[idx].name}+${count}`)
@@ -857,7 +859,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         beforePlayers,
         afterPlayers: copyPlayers(P),
         msgs: [msgs[msgs.length - 1]],
-        payload: { assignmentList, totalLayers: targets.length },
+        payload: { assignmentList, assignmentHits, totalLayers: targets.length },
       });
       if (event) {
         statePatch = {

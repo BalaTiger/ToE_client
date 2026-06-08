@@ -1,5 +1,5 @@
 import React from 'react';
-import { getAnimatedCardBack, getCardBackImage, getVersionedAssetPath } from '../../constants/card';
+import { getAnimatedCardBack, getAnimatedCardBackFramePaths, getCardBackImage } from '../../constants/card';
 
 const decodedFrameCache = new Map();
 
@@ -15,10 +15,6 @@ function useSpriteFrame(enabled, frameCount, fps) {
     return () => window.clearInterval(timer);
   }, [enabled, frameCount, fps]);
   return frame;
-}
-
-function formatFramePath(frameDir, frameIndex) {
-  return `${frameDir}/frame_${String(frameIndex).padStart(2, '0')}.png`;
 }
 
 function useDecodedImage(path, enabled = true) {
@@ -95,19 +91,12 @@ function useCardBackStyle(expansionKey, enabled = true) {
   const anim = getAnimatedCardBack(expansionKey);
   const fallbackImage = getCardBackImage(expansionKey);
   const framePaths = React.useMemo(() => {
-    if (!anim?.frameDir || !anim?.frameCount) return [];
-    return Array.from({ length: anim.frameCount }, (_, index) => (
-      getVersionedAssetPath(formatFramePath(anim.frameDir, index), anim.version)
-    ));
-  }, [anim?.frameDir, anim?.frameCount, anim?.version]);
-  const shouldUseFrames = framePaths.length > 0;
-  const framesReady = useDecodedImages(framePaths, enabled && shouldUseFrames);
-  const sprite = getVersionedAssetPath(anim?.sprite, anim?.version);
-  const spriteReady = useDecodedImage(sprite, enabled && !shouldUseFrames);
-  const ready = shouldUseFrames ? framesReady : spriteReady;
-  const frame = useSpriteFrame(enabled && ready, anim?.frameCount || 0, anim?.fps || 12);
+    return getAnimatedCardBackFramePaths(expansionKey, true);
+  }, [expansionKey]);
+  const framesReady = useDecodedImages(framePaths, enabled && framePaths.length > 0);
+  const frame = useSpriteFrame(enabled && framesReady, anim?.frameCount || 0, anim?.fps || 12);
 
-  if (!enabled || !ready || !anim?.frameCount || (shouldUseFrames ? !framePaths.length : !sprite)) {
+  if (!enabled || !framesReady || !anim?.frameCount || !framePaths.length) {
     return {
       mode: 'image',
       backgroundImage: `url('${fallbackImage}')`,
@@ -116,57 +105,27 @@ function useCardBackStyle(expansionKey, enabled = true) {
       backgroundRepeat: 'no-repeat',
     };
   }
-  if (shouldUseFrames) {
-    return {
-      mode: 'frame',
-      image: framePaths[frame],
-    };
-  }
   return {
-    mode: 'sprite',
-    sprite,
-    frameCount: anim.frameCount,
-    frame,
+    mode: 'frame',
+    image: framePaths[frame],
   };
 }
 
-function CardBackSpriteImage({ cardBackStyle }) {
-  if (cardBackStyle.mode === 'frame') {
-    return (
-      <img
-        src={cardBackStyle.image}
-        alt=""
-        draggable={false}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          objectFit: 'fill',
-          pointerEvents: 'none',
-          userSelect: 'none',
-        }}
-      />
-    );
-  }
-  if (cardBackStyle.mode !== 'sprite') return null;
+function CardBackFrameImage({ cardBackStyle }) {
+  if (cardBackStyle.mode !== 'frame') return null;
   return (
     <img
-      src={cardBackStyle.sprite}
+      src={cardBackStyle.image}
       alt=""
       draggable={false}
       style={{
         position: 'absolute',
-        left: 0,
-        top: 0,
-        width: `${cardBackStyle.frameCount * 100}%`,
+        inset: 0,
+        width: '100%',
         height: '100%',
-        maxWidth: 'none',
         objectFit: 'fill',
-        objectPosition: 'left top',
         pointerEvents: 'none',
         userSelect: 'none',
-        transform: `translateX(-${(cardBackStyle.frame * 100) / cardBackStyle.frameCount}%)`,
       }}
     />
   );
@@ -180,13 +139,9 @@ function AnimatedCardBack({
   children,
 }) {
   const cardBackStyle = useCardBackStyle(expansionKey, animated);
-  const isSprite = cardBackStyle.mode === 'sprite';
   const isFrame = cardBackStyle.mode === 'frame';
   const {
     mode: _mode,
-    sprite: _sprite,
-    frameCount: _frameCount,
-    frame: _spriteFrame,
     image: _frameImage,
     ...plainCardBackStyle
   } = cardBackStyle;
@@ -205,12 +160,12 @@ function AnimatedCardBack({
       style={{
         position: 'relative',
         backgroundColor: '#100c08',
-        ...(isSprite || isFrame ? {} : plainCardBackStyle),
+        ...(isFrame ? {} : plainCardBackStyle),
         overflow: 'hidden',
         ...safeStyle,
       }}
     >
-      {(isSprite || isFrame) && <CardBackSpriteImage cardBackStyle={cardBackStyle}/>}
+      {isFrame && <CardBackFrameImage cardBackStyle={cardBackStyle}/>}
       {children}
     </div>
   );
@@ -222,13 +177,9 @@ function CardBackLayer({
   style,
 }) {
   const cardBackStyle = useCardBackStyle(expansionKey, animated);
-  const isSprite = cardBackStyle.mode === 'sprite';
   const isFrame = cardBackStyle.mode === 'frame';
   const {
     mode: _mode,
-    sprite: _sprite,
-    frameCount: _frameCount,
-    frame: _spriteFrame,
     image: _frameImage,
     ...plainCardBackStyle
   } = cardBackStyle;
@@ -239,12 +190,12 @@ function CardBackLayer({
         inset: 0,
         borderRadius: 'inherit',
         backgroundColor: '#100c08',
-        ...(isSprite || isFrame ? {} : plainCardBackStyle),
+        ...(isFrame ? {} : plainCardBackStyle),
         overflow: 'hidden',
         ...style,
       }}
     >
-      {(isSprite || isFrame) && <CardBackSpriteImage cardBackStyle={cardBackStyle}/>}
+      {isFrame && <CardBackFrameImage cardBackStyle={cardBackStyle}/>}
     </div>
   );
 }

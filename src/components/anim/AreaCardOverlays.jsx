@@ -83,53 +83,80 @@ function GeomagneticRestoreShuffleAnim({anim,exiting}){
 }
 
 function VolcanoAnim({anim,exiting}){
-  const [impact,setImpact]=React.useState(null);
+  const [impacts,setImpacts]=React.useState(null);
   useEffect(()=>{
     const measure=()=>{
       const deck=getPileAnchorCenter('[data-deck-pile]',{x:window.innerWidth*0.94-35,y:window.innerHeight*0.08});
-      setImpact({
-        left:deck.x,
-        top:deck.y+58,
-        '--volcano-impact-x':`${deck.x}px`,
-        '--volcano-impact-y':`${deck.y+58}px`,
-        '--volcano-from-x':`${Math.max(-180,deck.x-window.innerWidth*0.72)}px`,
-        '--volcano-from-y':`${-window.innerHeight*0.55}px`,
-      });
+      const discard=getPileAnchorCenter('[data-discard-pile]',{x:window.innerWidth*0.72,y:window.innerHeight*0.46});
+      const hand=getPlayerHandAnchorCenter(0);
+      const center={x:window.innerWidth*0.50,y:window.innerHeight*0.45};
+      const raw=[
+        {x:deck.x-38,y:deck.y+54,fromX:-window.innerWidth*0.55,fromY:-window.innerHeight*0.55,delay:0.10,scale:0.92,rot:-28},
+        {x:center.x-165,y:center.y-48,fromX:-window.innerWidth*0.68,fromY:-window.innerHeight*0.44,delay:0.22,scale:0.74,rot:-22},
+        {x:discard.x+30,y:discard.y+18,fromX:window.innerWidth*0.48,fromY:-window.innerHeight*0.58,delay:0.34,scale:0.84,rot:30},
+        {x:center.x+145,y:center.y-88,fromX:window.innerWidth*0.62,fromY:-window.innerHeight*0.42,delay:0.46,scale:0.68,rot:24},
+        {x:hand.x-132,y:Math.min(window.innerHeight-112,hand.y-42),fromX:-window.innerWidth*0.54,fromY:-window.innerHeight*0.34,delay:0.58,scale:0.78,rot:-18},
+        {x:center.x+15,y:center.y+78,fromX:window.innerWidth*0.16,fromY:-window.innerHeight*0.62,delay:0.70,scale:0.64,rot:8},
+        {x:hand.x+112,y:Math.min(window.innerHeight-96,hand.y-26),fromX:window.innerWidth*0.54,fromY:-window.innerHeight*0.36,delay:0.82,scale:0.82,rot:34},
+      ];
+      setImpacts(raw.map((p,idx)=>({
+        ...p,
+        x:Math.max(54,Math.min(window.innerWidth-54,p.x)),
+        y:Math.max(76,Math.min(window.innerHeight-54,p.y)),
+        seed:idx,
+      })));
     };
     requestAnimationFrame(()=>requestAnimationFrame(measure));
   },[]);
   const msgs=(anim?.msgs||[]).slice(-3);
-  const styleVars=impact||{
-    left:'72%',
-    top:'25%',
-    '--volcano-impact-x':'72vw',
-    '--volcano-impact-y':'25vh',
-    '--volcano-from-x':'-58vw',
-    '--volcano-from-y':'-55vh',
-  };
+  const meteorImpacts=impacts||[
+    {x:'72vw',y:'25vh',fromX:'-58vw',fromY:'-55vh',delay:0.1,scale:0.9,rot:-28,seed:0},
+    {x:'42vw',y:'42vh',fromX:'-60vw',fromY:'-40vh',delay:0.28,scale:0.74,rot:-22,seed:1},
+    {x:'66vw',y:'52vh',fromX:'48vw',fromY:'-58vh',delay:0.46,scale:0.82,rot:26,seed:2},
+    {x:'50vw',y:'68vh',fromX:'18vw',fromY:'-62vh',delay:0.64,scale:0.66,rot:8,seed:3},
+  ];
   return(
-    <div className={`volcano-overlay${exiting?' volcano-exiting':''}`} style={styleVars}>
+    <div className={`volcano-overlay${exiting?' volcano-exiting':''}`}>
       <div className="volcano-vignette"/>
-      <div className="volcano-meteor">
-        <div className="volcano-meteor-tail"/>
-        <div className="volcano-meteor-rock"/>
-      </div>
-      <div className="volcano-impact-flash"/>
-      <div className="volcano-lava-field">
-        <svg viewBox="-120 -90 240 180" width="240" height="180" aria-hidden="true">
-          <path className="volcano-lava-shape volcano-lava-outer" d="M-104,-4 C-86,-54 -33,-71 11,-54 C55,-88 118,-42 101,13 C122,51 64,86 20,62 C-19,92 -95,58 -77,22 C-123,17 -134,-17 -104,-4Z"/>
-          <path className="volcano-lava-shape volcano-lava-inner" d="M-58,0 C-44,-26 -12,-32 14,-20 C37,-42 70,-15 61,16 C72,36 32,53 5,37 C-17,55 -57,32 -46,12 C-72,11 -78,-8 -58,0Z"/>
-          <path className="volcano-crack" d="M-86,4 C-50,-8 -34,12 -7,2 C20,-8 43,-2 72,-18"/>
-          <path className="volcano-crack volcano-crack-b" d="M-38,38 C-19,22 -1,29 20,17 C41,5 54,12 83,4"/>
-        </svg>
-      </div>
-      <div className="volcano-embers">
-        {Array.from({length:16}).map((_,i)=>(
-          <span key={i} style={{
-            '--ember-x':`${(i%8-3.5)*18}px`,
-            '--ember-y':`${-42-Math.floor(i/8)*24}px`,
-            '--ember-delay':`${0.75+i*0.035}s`,
-          }}/>
+      <div className="volcano-shake-layer">
+        {meteorImpacts.map((impact,idx)=>(
+          <div
+            key={idx}
+            className="volcano-impact"
+            style={{
+              left:typeof impact.x==='number'?`${impact.x}px`:impact.x,
+              top:typeof impact.y==='number'?`${impact.y}px`:impact.y,
+              '--volcano-from-x':typeof impact.fromX==='number'?`${impact.fromX}px`:impact.fromX,
+              '--volcano-from-y':typeof impact.fromY==='number'?`${impact.fromY}px`:impact.fromY,
+              '--volcano-delay':`${impact.delay}s`,
+              '--volcano-scale':impact.scale,
+              '--volcano-rot':`${impact.rot}deg`,
+              '--volcano-lava-rot':`${(impact.seed%2?1:-1)*(5+impact.seed*2)}deg`,
+            }}
+          >
+            <div className="volcano-meteor">
+              <div className="volcano-meteor-tail"/>
+              <div className="volcano-meteor-rock"/>
+            </div>
+            <div className="volcano-impact-flash"/>
+            <div className="volcano-lava-field">
+              <svg viewBox="-120 -90 240 180" width="240" height="180" aria-hidden="true">
+                <path className="volcano-lava-shape volcano-lava-outer" d="M-104,-4 C-86,-54 -33,-71 11,-54 C55,-88 118,-42 101,13 C122,51 64,86 20,62 C-19,92 -95,58 -77,22 C-123,17 -134,-17 -104,-4Z"/>
+                <path className="volcano-lava-shape volcano-lava-inner" d="M-58,0 C-44,-26 -12,-32 14,-20 C37,-42 70,-15 61,16 C72,36 32,53 5,37 C-17,55 -57,32 -46,12 C-72,11 -78,-8 -58,0Z"/>
+                <path className="volcano-crack" d="M-86,4 C-50,-8 -34,12 -7,2 C20,-8 43,-2 72,-18"/>
+                <path className="volcano-crack volcano-crack-b" d="M-38,38 C-19,22 -1,29 20,17 C41,5 54,12 83,4"/>
+              </svg>
+            </div>
+            <div className="volcano-embers">
+              {Array.from({length:8}).map((_,i)=>(
+                <span key={i} style={{
+                  '--ember-x':`${(i%4-1.5)*(16+idx*1.5)}px`,
+                  '--ember-y':`${-28-Math.floor(i/4)*24}px`,
+                  '--ember-delay':`${impact.delay+0.5+i*0.025}s`,
+                }}/>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
       {msgs.length>0&&(

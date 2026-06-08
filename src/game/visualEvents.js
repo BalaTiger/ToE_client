@@ -317,18 +317,21 @@ function buildSyncedCardEffectTimeline({
 export function buildSnakeTrapAnimStep(event, state) {
   const payload = event.payload || {};
   const assignmentList = Array.isArray(payload.assignmentList) ? payload.assignmentList : [];
+  const assignmentHits = Array.isArray(payload.assignmentHits) ? payload.assignmentHits : [];
   const beforePlayers = Array.isArray(event.beforePlayers) ? event.beforePlayers : [];
   const afterPlayers = Array.isArray(event.afterPlayers) ? event.afterPlayers : state?.players || [];
   const totalLayers = payload.totalLayers || assignmentList.length;
+  const livingCount = (beforePlayers.length ? beforePlayers : afterPlayers).filter(p => p && !p.isDead).length;
+  const animMs = Math.max(3200, 1900 + totalLayers * 340);
   const sync = buildSyncedCardEffectTimeline({
     beforePlayers,
     beforeDiscard: event.beforeDiscard || [],
     afterPlayers,
     afterDiscard: event.afterDiscard || state?.discard,
     state,
-    finalAtMs: 2600,
+    finalAtMs: animMs,
   });
-  const snakeRays = 12;
+  const snakeRays = Math.max(1, livingCount || totalLayers || assignmentList.length || 1);
   const rayAngles = Array.from({ length: snakeRays }, (_, i) => (i * 360) / snakeRays);
   return {
     type: 'SNAKE_TRAP',
@@ -338,8 +341,10 @@ export function buildSnakeTrapAnimStep(event, state) {
     afterPlayers,
     msgs: Array.isArray(event.msgs) ? event.msgs : [],
     assignmentList,
+    assignmentHits,
     totalLayers,
     rayAngles,
+    durationMs: animMs,
     ...sync,
   };
 }

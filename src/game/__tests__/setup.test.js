@@ -272,6 +272,35 @@ describe('mkDeck', () => {
     expect(allCards.filter(card => card.isGod && card.godKey === 'CTH')).toHaveLength(4);
     expect(allCards.filter(card => card.isZone).every(card => card.expansion === '地神的潜影')).toBe(true);
   });
+
+  it('联机下发的拓展包计划会固定主题与实际牌堆来源', () => {
+    const gs = initGame(
+      ['A', 'B'],
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      'auto',
+      state => state,
+      {
+        expansionKey: '群星呼唤',
+        deckExpansionKey: '地神的潜影',
+        temporaryStarsCall: true,
+      },
+    );
+    const allCards = [
+      ...gs.deck,
+      ...gs.players.flatMap(player => player.hand || []),
+    ];
+
+    expect(gs.expansionKey).toBe('群星呼唤');
+    expect(gs.deckExpansionKey).toBe('地神的潜影');
+    expect(gs.temporaryStarsCallReplacement).toMatchObject({ insertedGodKey: 'CTH' });
+    expect(allCards.filter(card => card.isZone).every(card => card.expansion === '地神的潜影')).toBe(true);
+  });
 });
 
 describe('mkRoles', () => {

@@ -1,3 +1,10 @@
+import {
+  ANIMATED_CARD_BACK_BY_EXPANSION,
+  CARD_BACK_IMAGE_BY_EXPANSION,
+  getAnimatedCardBack,
+  getCardBackImage,
+} from './theme';
+
 // ══════════════════════════════════════════════════════════════
 //  DATA
 // ══════════════════════════════════════════════════════════════
@@ -910,43 +917,29 @@ const EXPANSIONS = {
   },
 };
 
-const CARD_BACK_IMAGE_BY_EXPANSION = {
-  '地神的潜影': '/img/card/cardback_earth_shadow.png',
-  '先贤的馈赠': '/img/card/cardback_sage_gift.png',
-  '群星呼唤': '/img/card/cardback_stars_call.png',
-  '析骨为柴': '/img/card/cardback_bone_fuel.png',
-};
-
-const ANIMATED_CARD_BACK_BY_EXPANSION = {
-  '地神的潜影': {
-    frameDir: '/img/card/animated/earth_shadow',
-    version: 'earth-noiseflow-loop-20260608',
-    frameCount: 24,
-    fps: 12,
-    width: 392,
-    height: 590,
-  },
-  '群星呼唤': {
-    frameDir: '/img/card/animated/stars_call',
-    version: 'stars-bubble-rise-20260608',
-    frameCount: 24,
-    fps: 12,
-    width: 392,
-    height: 590,
-  },
-};
-
-function getCardBackImage(expansionKey = '地神的潜影') {
-  return CARD_BACK_IMAGE_BY_EXPANSION[expansionKey] || CARD_BACK_IMAGE_BY_EXPANSION['地神的潜影'];
-}
-
-function getAnimatedCardBack(expansionKey = '地神的潜影') {
-  return ANIMATED_CARD_BACK_BY_EXPANSION[expansionKey] || null;
-}
-
 function getVersionedAssetPath(path, version) {
   if (!path || !version) return path;
   return `${path}${path.includes('?') ? '&' : '?'}v=${encodeURIComponent(version)}`;
+}
+
+function formatAnimatedCardBackFramePath(anim, frameIndex, versioned = true) {
+  if (!anim?.frameDir) return null;
+  const path = `${anim.frameDir}/frame_${String(frameIndex).padStart(2, '0')}.png`;
+  return versioned ? getVersionedAssetPath(path, anim.version) : path;
+}
+
+function getAnimatedCardBackFramePaths(expansionKey = '地神的潜影', versioned = true) {
+  const anim = getAnimatedCardBack(expansionKey);
+  if (!anim?.frameDir || !anim?.frameCount) return [];
+  return Array.from({ length: anim.frameCount }, (_, index) => (
+    formatAnimatedCardBackFramePath(anim, index, versioned)
+  )).filter(Boolean);
+}
+
+function getAllAnimatedCardBackFramePaths(versioned = true) {
+  return Object.keys(ANIMATED_CARD_BACK_BY_EXPANSION).flatMap(expansionKey => (
+    getAnimatedCardBackFramePaths(expansionKey, versioned)
+  ));
 }
 
 export const INSPECTION_DECK = [
@@ -1034,6 +1027,8 @@ export {
   ANIMATED_CARD_BACK_BY_EXPANSION,
   getCardBackImage,
   getAnimatedCardBack,
+  getAnimatedCardBackFramePaths,
+  getAllAnimatedCardBackFramePaths,
   getVersionedAssetPath,
   getGodShortKey,
   getCardDisplayKey,

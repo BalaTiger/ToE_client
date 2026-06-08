@@ -28,6 +28,19 @@ function createGodCards(godKey, count, startId = 0) {
 }
 
 export function resolveBattleExpansionPlan(expansionKey = EXPANSION_RANDOM_KEY) {
+  if (typeof expansionKey === 'object' && expansionKey) {
+    const resolvedExpansionKey = EXPANSIONS[expansionKey.expansionKey]
+      ? expansionKey.expansionKey
+      : DEFAULT_EXPANSION_KEY;
+    const resolvedDeckExpansionKey = EXPANSIONS[expansionKey.deckExpansionKey]
+      ? expansionKey.deckExpansionKey
+      : (resolvedExpansionKey === STARS_CALL_KEY ? DEFAULT_EXPANSION_KEY : resolvedExpansionKey);
+    return {
+      expansionKey: resolvedExpansionKey,
+      deckExpansionKey: resolvedDeckExpansionKey,
+      temporaryStarsCall: !!expansionKey.temporaryStarsCall,
+    };
+  }
   if (expansionKey === EXPANSION_RANDOM_KEY || expansionKey == null) {
     if (Math.random() < STARS_CALL_TEMP_REPLACEMENT_CHANCE) {
       return {

@@ -29,6 +29,7 @@ const ROTATE_ABILITYDATA_INDEX_FIELDS = [
   'redirectTargetIdx',
   'playerIndex',
   'source',
+  '_turnOwner',
 ];
 const ROTATE_ABILITYDATA_INDEX_ARRAY_FIELDS = [
   'peekHandTargets',

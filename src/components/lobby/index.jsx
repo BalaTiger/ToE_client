@@ -1,31 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import {
   EXPANSIONS,
-  FIXED_ZONE_CARD_VARIANTS_BY_KEY,
   GOD_DEFS,
   LETTERS,
   NUMS,
 } from '../../constants/card';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from '../../game';
 import { NARRATOR_AVATAR } from '../tutorial/InGameTutorialOverlay';
-
-const ZONE_CARD_KEYS = LETTERS.flatMap(L => NUMS.map(N => `${L}${N}`));
-
-function getExpansionZoneCards(expansionKey) {
-  return ZONE_CARD_KEYS.flatMap(key => (FIXED_ZONE_CARD_VARIANTS_BY_KEY[key] || [])
-    .filter(card => card.expansion === expansionKey)
-    .map(card => ({ ...card, key })));
-}
-
-function getPlayableExpansionKeys() {
-  return Object.entries(EXPANSIONS)
-    .filter(([key, expansion]) => {
-      const expectedZoneCount = (expansion.zoneSlotCount || 16) * (expansion.zoneCardsPerSlot || 3);
-      const expectedGodCount = (expansion.godCardKeys || []).length * (expansion.godCopies || 4);
-      return getExpansionZoneCards(key).length === expectedZoneCount && expectedGodCount === 24;
-    })
-    .map(([key]) => key);
-}
+import {
+  decodeDebugCardValue,
+  encodeDebugGodCardValue,
+  encodeDebugZoneCardValue,
+  getDebugCardSelection,
+  getDebugExpansionSelection,
+  getExpansionDefaults,
+  getFirstZoneCardForSlot,
+  getExpansionZoneCards,
+} from './debugSettingsModel';
 
 const smallBtnStyle = {
   padding: '4px 12px',
@@ -390,17 +381,19 @@ function DebugSettingsPanel({
 }) {
   const [zoneLetterTab, setZoneLetterTab] = useState('A');
   const [zoneNumTab, setZoneNumTab] = useState('1');
-  const playableExpansionKeys = getPlayableExpansionKeys();
-  const selectedExpansionKey = playableExpansionKeys.includes(debugExpansionKey)
-    ? debugExpansionKey
-    : (playableExpansionKeys[0] || '地神的潜影');
-  const zoneCards = getExpansionZoneCards(selectedExpansionKey);
-  const selectedZoneCard = zoneCards.find(card => card.key === debugForceZoneCardKey && card.name === debugForceZoneCardName)
-    || zoneCards[0];
-  const selectedZoneKey = selectedZoneCard?.key || debugForceZoneCardKey;
-  const selectedZoneName = selectedZoneCard?.name || debugForceZoneCardName;
-  const godKeys = EXPANSIONS[selectedExpansionKey]?.godCardKeys || [];
-  const selectedGodKey = godKeys.includes(debugForceGodCardKey) ? debugForceGodCardKey : godKeys[0];
+  const { playableExpansionKeys, selectedExpansionKey } = getDebugExpansionSelection(debugExpansionKey);
+  const {
+    zoneCards,
+    selectedZoneKey,
+    selectedZoneName,
+    godKeys,
+    selectedGodKey,
+  } = getDebugCardSelection({
+    selectedExpansionKey,
+    debugForceZoneCardKey,
+    debugForceZoneCardName,
+    debugForceGodCardKey,
+  });
   const selectStyle = {
     width: '100%',
     padding: 6,
@@ -427,16 +420,15 @@ function DebugSettingsPanel({
   const labelStyle = { display: 'block', marginBottom: 4, fontSize: 12, color: '#a98a55' };
   const handleExpansionChange = (nextKey) => {
     setDebugExpansionKey(nextKey);
-    const nextZoneCards = getExpansionZoneCards(nextKey);
-    if (nextZoneCards.length) {
-      setDebugForceZoneCardKey(nextZoneCards[0].key);
-      setDebugForceZoneCardName(nextZoneCards[0].name);
+    const defaults = getExpansionDefaults(nextKey);
+    if (defaults.zoneCard) {
+      setDebugForceZoneCardKey(defaults.zoneCard.key);
+      setDebugForceZoneCardName(defaults.zoneCard.name);
     }
-    const nextGodKey = EXPANSIONS[nextKey]?.godCardKeys?.[0];
-    if (nextGodKey) setDebugForceGodCardKey(nextGodKey);
+    if (defaults.godKey) setDebugForceGodCardKey(defaults.godKey);
   };
   const handlePickCard = (value) => {
-    const [kind, key, ...nameParts] = value.split(':');
+    const { kind, key, name } = decodeDebugCardValue(value);
     if (kind === 'god') {
       setDebugForceCardType('god');
       setDebugForceGodCardKey(key);
@@ -444,7 +436,7 @@ function DebugSettingsPanel({
     }
     setDebugForceCardType('zone');
     setDebugForceZoneCardKey(key);
-    setDebugForceZoneCardName(nameParts.join(':'));
+    setDebugForceZoneCardName(name);
   };
   useEffect(() => {
     if (selectedExpansionKey !== debugExpansionKey) {
@@ -554,10 +546,10 @@ function DebugSettingsPanel({
               onClick={() => {
                 setDebugForceCardType(tab);
                 if (tab === 'zone') {
-                  const cards = zoneCards.filter(c => c.key.startsWith(zoneLetterTab));
-                  if (cards.length) handlePickCard(`zone:${cards[0].key}:${cards[0].name}`);
+                  const card = getFirstZoneCardForSlot(zoneCards, zoneLetterTab);
+                  if (card) handlePickCard(encodeDebugZoneCardValue(card));
                 } else {
-                  if (godKeys.length) handlePickCard(`god:${godKeys[0]}`);
+                  if (godKeys.length) handlePickCard(encodeDebugGodCardValue(godKeys[0]));
                 }
               }}
               style={{
@@ -588,8 +580,8 @@ function DebugSettingsPanel({
                   type="button"
                   onClick={() => {
                     setZoneLetterTab(L);
-                    const cards = zoneCards.filter(c => c.key === `${L}${zoneNumTab}`);
-                    if (cards.length) handlePickCard(`zone:${cards[0].key}:${cards[0].name}`);
+                    const card = getFirstZoneCardForSlot(zoneCards, `${L}${zoneNumTab}`);
+                    if (card) handlePickCard(encodeDebugZoneCardValue(card));
                   }}
                   style={{
                     padding: '5px 0',
@@ -615,8 +607,8 @@ function DebugSettingsPanel({
                   type="button"
                   onClick={() => {
                     setZoneNumTab(N);
-                    const cards = zoneCards.filter(c => c.key === `${zoneLetterTab}${N}`);
-                    if (cards.length) handlePickCard(`zone:${cards[0].key}:${cards[0].name}`);
+                    const card = getFirstZoneCardForSlot(zoneCards, `${zoneLetterTab}${N}`);
+                    if (card) handlePickCard(encodeDebugZoneCardValue(card));
                   }}
                   style={{
                     padding: '5px 0',
@@ -644,7 +636,7 @@ function DebugSettingsPanel({
                     <button
                       key={`zone:${card.key}:${card.name}`}
                       type="button"
-                      onClick={() => handlePickCard(`zone:${card.key}:${card.name}`)}
+                      onClick={() => handlePickCard(encodeDebugZoneCardValue(card))}
                       style={{
                         padding: '5px 8px',
                         textAlign: 'left',
@@ -674,7 +666,7 @@ function DebugSettingsPanel({
                 <button
                   key={`god:${godKey}`}
                   type="button"
-                  onClick={() => handlePickCard(`god:${godKey}`)}
+                  onClick={() => handlePickCard(encodeDebugGodCardValue(godKey))}
                   style={{
                     padding: '5px 8px',
                     textAlign: 'left',

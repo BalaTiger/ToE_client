@@ -3,8 +3,11 @@ import { GodChoiceModal, NyaBorrowModal, DrawRevealModal, TreasureDodgeModal, Pe
 import { DecipherStoneCarvingOverlay } from './components/modals/DecipherStoneCarvingOverlay';
 import { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel } from './components/board';
 import { RoomModal, LobbyModal, PrivacyToggleModal, TutorialOverlay, ConnectionErrorModal, DebugControls } from './components/lobby';
+import { BattleLogPanel } from './components/log/BattleLogPanel';
+import { BattlePhaseBar } from './components/phase/BattlePhaseBar';
 import InGameTutorialOverlay from './components/tutorial/InGameTutorialOverlay';
 import { StartScreen } from './components/start/StartScreen';
+import { ThemeCornerOrnament, ThemeEdgeRelief } from './components/theme/ThemeOrnaments';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 // socket.io-client is loaded at runtime via CDN (only outside Claude Artifacts)
@@ -19,6 +22,7 @@ import {
   GOD_DEFS,
   createBlackGoatYoungCard,
 } from "./constants/card";
+import { getBattleBackgroundImage, getBattleTheme, getReliefDisplayConfig } from './constants/theme';
 
 // 导入拆分出的游戏工具模块（通过 game/index.js 统一导出）
 import {
@@ -236,6 +240,7 @@ const safeLS={
   set:(k,v)=>{try{localStorage.setItem(k,v);}catch{/* ignore */}},
 };
 const LOCAL_DEBUG_KEY='cthulhu_local_debug_mode';
+const FIRST_BATTLE_DONE_KEY='cthulhu_first_battle_done_v1';
 const DEBUG_FORCE_CARD_KEY='cthulhu_debug_force_card';
 const DEBUG_FORCE_CARD_TARGET_KEY='cthulhu_debug_force_card_target';
 const DEBUG_FORCE_CARD_KEEP_KEY='cthulhu_debug_force_card_keep';
@@ -256,47 +261,8 @@ const isLocalDebugEnabled=()=>{
   try{return window.localStorage.getItem(LOCAL_DEBUG_KEY)==='1';}
   catch{return false;}
 };
-const BATTLE_BACKGROUND_BY_EXPANSION={
-  '地神的潜影':'/img/bg/battle/earth_shadow.png',
-  '先贤的馈赠':'/img/bg/battle/sage_gift.png',
-  '群星呼唤':'/img/bg/battle/stars_call.png',
-  '析骨为柴':'/img/bg/battle/bone_fuel.png',
-};
-const BATTLE_THEME_BY_EXPANSION={
-  '地神的潜影':{
-    tintTop:'rgba(6,4,3,0.48)',
-    tintBottom:'rgba(7,4,2,0.66)',
-    bg:'#0a0705',
-    text:'#c8a96e',
-    strong:'#e8c87a',
-    muted:'#a07838',
-    panel:'#140f08',
-    panelActive:'#1c1408',
-    line:'#3a2510',
-    lineDim:'#2a1a08',
-    glow:'#c8a96e',
-    accent:'#7a5324',
-  },
-  '群星呼唤':{
-    tintTop:'rgba(1,6,15,0.66)',
-    tintBottom:'rgba(0,10,20,0.84)',
-    bg:'#020911',
-    text:'#9dd8f0',
-    strong:'#d8f6ff',
-    muted:'#6aa5c8',
-    panel:'#061b26',
-    panelActive:'#08283a',
-    line:'#1f6f86',
-    lineDim:'#124253',
-    glow:'#62d5ff',
-    accent:'#78e2ff',
-  },
-};
-function getBattleTheme(expansionKey){
-  return BATTLE_THEME_BY_EXPANSION[expansionKey]||BATTLE_THEME_BY_EXPANSION['地神的潜影'];
-}
 function getBattleBackgroundStyle(expansionKey,isMobile){
-  const url=BATTLE_BACKGROUND_BY_EXPANSION[expansionKey]||BATTLE_BACKGROUND_BY_EXPANSION['地神的潜影'];
+  const url=getBattleBackgroundImage(expansionKey);
   const theme=getBattleTheme(expansionKey);
   const isStarsCall=expansionKey==='群星呼唤';
   return {
@@ -319,97 +285,6 @@ function getBattleBackgroundStyle(expansionKey,isMobile){
   };
 }
 
-function ThemeLineOrnament({expansionKey='地神的潜影',corner='tl',size=50,opacity=0.28,style={}}){
-  const suffix=expansionKey==='群星呼唤'?'stars':'earth';
-  const path=`/img/ui/theme_relief/panel_corner_${suffix}.png`;
-  const reliefCfg=getReliefDisplayConfig(expansionKey);
-  const lineOpacity=reliefCfg.corner.lineOpacity;
-  const glowOpacity=reliefCfg.corner.glowOpacity;
-  const shadowOpacity=reliefCfg.corner.shadowOpacity;
-  const pos={
-    tl:{top:5,left:5,transform:'scaleX(-1)'},
-    tr:{top:5,right:5},
-    bl:{bottom:5,left:5,transform:'scale(-1,-1)'},
-    br:{bottom:5,right:5,transform:'scaleY(-1)'},
-  }[corner]||{top:5,right:5};
-  const maskStyle={
-    position:'absolute',
-    inset:0,
-    WebkitMaskImage:`url("${path}")`,
-    maskImage:`url("${path}")`,
-    WebkitMaskRepeat:'no-repeat',
-    maskRepeat:'no-repeat',
-    WebkitMaskSize:'100% 100%',
-    maskSize:'100% 100%',
-    WebkitMaskPosition:'center',
-    maskPosition:'center',
-  };
-  return(
-    <div style={{position:'absolute',width:size,height:size,pointerEvents:'none',opacity,...pos,...style}}>
-      <div style={{...maskStyle,backgroundColor:'#030201',transform:'translate(1px,1px)',opacity:shadowOpacity}}/>
-      <div style={{...maskStyle,backgroundColor:'var(--toe-glow,#c8a96e)',transform:'translate(-0.7px,-0.7px)',opacity:glowOpacity}}/>
-      <div style={{...maskStyle,backgroundColor:'var(--toe-line,#3a2510)',opacity:lineOpacity}}/>
-    </div>
-  );
-}
-
-function getReliefDisplayConfig(expansionKey='地神的潜影'){
-  const configs={
-    '地神的潜影':{
-      corner:{shadowOpacity:0.68,glowOpacity:0.46,lineOpacity:1},
-      hand:{shadowOpacity:0.54,glowOpacity:0.48,lineOpacity:1},
-      log:{shadowOpacity:0.38,glowOpacity:0.13,lineOpacity:0.32},
-      logText:{title:'var(--toe-text,#c8a96e)',turn:'var(--toe-strong,#e5c98b)',body:'var(--toe-text,#b79658)'},
-    },
-    '群星呼唤':{
-      corner:{shadowOpacity:0.66,glowOpacity:0.42,lineOpacity:1},
-      hand:{shadowOpacity:0.62,glowOpacity:0.36,lineOpacity:0.95},
-      log:{shadowOpacity:0.48,glowOpacity:0.045,lineOpacity:0.14},
-      logText:{title:'var(--toe-muted,#7aa8c8)',turn:'var(--toe-strong,#b9e8ff)',body:'var(--toe-line,#71a7d6)'},
-    },
-  };
-  return configs[expansionKey]||configs['地神的潜影'];
-}
-
-function getLogPatternBackground(expansionKey='地神的潜影'){
-  const suffix=expansionKey==='群星呼唤'?'stars':'earth';
-  return `/img/ui/theme_relief/log_relief_${suffix}.png`;
-}
-
-function getLogReliefLayers(expansionKey='地神的潜影'){
-  const {log}=getReliefDisplayConfig(expansionKey);
-  return [
-    {color:'#030201',dx:1,dy:1,opacity:log.shadowOpacity},
-    {color:'var(--toe-glow,#c8a96e)',dx:-0.7,dy:-0.7,opacity:log.glowOpacity},
-    {color:'var(--toe-line,#3a2510)',dx:0,dy:0,opacity:log.lineOpacity},
-  ];
-}
-
-function ThemeEdgeRelief({expansionKey='地神的潜影',side='right',opacity=0.28,style={}}){
-  const suffix=expansionKey==='群星呼唤'?'stars':'earth';
-  const path=`/img/ui/theme_relief/hand_edge_${suffix}.png`;
-  const reliefCfg=getReliefDisplayConfig(expansionKey);
-  const pos=side==='right'?{top:0,bottom:0,right:0}:{top:0,bottom:0,left:0,transform:'scaleX(-1)'};
-  const maskBase={
-    position:'absolute',
-    inset:0,
-    WebkitMaskImage:`url("${path}")`,
-    maskImage:`url("${path}")`,
-    WebkitMaskRepeat:'no-repeat',
-    maskRepeat:'no-repeat',
-    WebkitMaskSize:'100% auto',
-    maskSize:'100% auto',
-    WebkitMaskPosition:'right bottom',
-    maskPosition:'right bottom',
-  };
-  return(
-    <div style={{position:'absolute',width:320,pointerEvents:'none',opacity,...pos,...style}}>
-      <div style={{...maskBase,backgroundColor:'#030201',transform:'translate(1px,1px)',opacity:reliefCfg.hand.shadowOpacity}}/>
-      <div style={{...maskBase,backgroundColor:'var(--toe-glow,#c8a96e)',transform:'translate(-0.7px,-0.7px)',opacity:reliefCfg.hand.glowOpacity}}/>
-      <div style={{...maskBase,backgroundColor:'var(--toe-line,#3a2510)',opacity:reliefCfg.hand.lineOpacity}}/>
-    </div>
-  );
-}
 // Per-card copy counts — tuned for E[HP|HP card] ≈ −2
 // Cards: A1×3 A2×3 … D4×3 — 3 copies each, 48 total
 // Each card has exactly 3 copies → 48 cards total.
@@ -572,8 +447,12 @@ export default function Game(){
   const[modal,setModal]=useState(null); // 'about' | 'roadmap' | null
   const[privatePeek,setPrivatePeek]=useState(null); // {card,targetName}
   const [serverAnnouncement, setServerAnnouncement] = useState(null);
+  const [firstBattleStarted,setFirstBattleStarted]=useState(()=>safeLS.get(FIRST_BATTLE_DONE_KEY)==='1');
+  const [onlineResourcesUnlocked,setOnlineResourcesUnlocked]=useState(false);
   // ── Audio / Video / Main UI Resource Preloading ──────────────
-  const { isLoading, loadingProgress, loadingError, currentFile, totalSize, loadedSize } = useResourcePreload();
+  const { isLoading, loadingProgress, loadingError, currentFile, totalSize, loadedSize } = useResourcePreload({
+    loadAllThemes: firstBattleStarted || onlineResourcesUnlocked,
+  });
   useEffect(() => {
     if (isLoading) {
       document.body.classList.remove('toe-html-bg-ready');
@@ -1248,7 +1127,10 @@ export default function Game(){
       setLobbyRooms(rooms||[]);
     });
     // gameStart：多人游戏开始，只有本地视角中的房主 seat 初始化并广播 raw gs
-    socket.on('gameStart',({roomId,players})=>{
+    socket.on('gameStart',({roomId,players,expansionPlan})=>{
+      setFirstBattleStarted(true);
+      safeLS.set(FIRST_BATTLE_DONE_KEY,'1');
+      setOnlineResourcesUnlocked(true);
       const myIdx=players.findIndex(p=>p.uuid===playerUUIDRef.current);
       const safeIdx=myIdx<0?0:myIdx;
       myPlayerIndexRef.current=safeIdx;
@@ -1267,6 +1149,7 @@ export default function Game(){
       if(isLocalSeatIndex(safeIdx)){
         // 房主：初始化游戏并广播给所有人
         const names=players.map(p=>p.username);
+        const mpExpansionKey=expansionPlan||EXPANSION_RANDOM_KEY;
         const rawGs=initGame(
           names,
           null,
@@ -1278,6 +1161,7 @@ export default function Game(){
           null,
           null,
           startNextTurn,
+          mpExpansionKey,
         );
         animQueueRef.current=[];
         pendingGsRef.current=null;
@@ -1381,6 +1265,7 @@ export default function Game(){
 
   // 点击"联机对战"→ 连接后端，打开联机选项界面
   function handleMultiplayer(){
+    setOnlineResourcesUnlocked(true);
     connectSocket(socket=>{
       socket.emit('openOnlineOptions',{uuid:playerUUID});
       setOnlineOptionsModal(true);
@@ -1435,6 +1320,7 @@ export default function Game(){
       if(!roomModalRef.current?.roomId)return;
       if(multiLoading)return;
       if(socketRef.current?.connected)return;
+      setOnlineResourcesUnlocked(true);
       connectSocket(socket=>{
         socket.emit('openOnlineOptions',{uuid:playerUUIDRef.current||playerUUID});
       });
@@ -4366,6 +4252,7 @@ export default function Game(){
 
   function buildTargetContinuationAbilityData(abilityData=gs.abilityData){
     return {
+      ...(abilityData?._turnOwner!=null?{_turnOwner:abilityData._turnOwner}:{}),
       ...(abilityData?.fromRest?{fromRest:true}:{}),
       ...(abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:abilityData.cthDrawsRemaining}:{}),
     };
@@ -6776,6 +6663,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     _doStartNewGame();
   }
   function _doStartNewGame(silent=false){
+    const shouldForceFirstExpansion=!silent&&!firstBattleStarted;
+    if(shouldForceFirstExpansion){
+      setFirstBattleStarted(true);
+      safeLS.set(FIRST_BATTLE_DONE_KEY,'1');
+    }
+    const resolvedExpansionKey=shouldForceFirstExpansion?'地神的潜影':activeDebugConfig.debugExpansionKey;
     const newGs=initGame(
       null,
       activeDebugConfig.debugForceCard,
@@ -6787,7 +6680,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       activeDebugConfig.debugForceGodCardKey,
       activeDebugConfig.debugPlayerRole,
       startNextTurn,
-      activeDebugConfig.debugExpansionKey,
+      resolvedExpansionKey,
     );
     roseThornPrevRef.current=null;
     consumedVisualEventIdsRef.current=new Set();
@@ -7689,11 +7582,13 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             opacity:guillotinedPids.has(0)?0:1,
             cursor:phase==='SHU_SELECT_TARGET'&&!isBlocked?'pointer':'default',
           }}>
-            <ThemeLineOrnament
+            <ThemeCornerOrnament
               expansionKey={gs.expansionKey}
               corner="tr"
               size={172}
               opacity={0.34}
+              inset={5}
+              useCssVars
               style={{top:0,right:0}}
             />
 
@@ -7797,127 +7692,49 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           {/* Center: deck/discard piles */}
         <PileDisplay deckCount={gs.deck.length} discardCount={visualDiscard.length} discardTop={visualDiscard[visualDiscard.length-1]||null} discardCards={visualDiscard} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={vw<430} baseHeight={middleRowHeight} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={scaleRatio} expansionKey={gs.expansionKey} zhuLitCards={zhuLitCardsForView} zhuHiddenCardId={zhuHiddenCardId} petrifyingFormula={gs.petrifyingFormula}/>
           {/* Log — narrow, right-aligned */}
-          <div ref={logRef} data-log-panel style={{
-            width:isMobile?'100%':218,flexBasis:isMobile?'100%':undefined,flexShrink:0,
-            backgroundColor:'var(--toe-panel,#0e0904)',
-            border:'1.5px solid var(--toe-line-dim,#2a1a08)',borderRadius:3,padding:'8px 10px',overflowY:'auto',minHeight:isMobile?100:middleRowHeight,maxHeight:isMobile?100:middleRowHeight,position:'relative',overflowX:'hidden',
-            scrollbarGutter:'stable',
-          }}>
-            <div style={{
-              position:'sticky',
-              top:0,
-              height:0,
-              zIndex:0,
-              pointerEvents:'none',
-            }}>
-              <div style={{
-                position:'absolute',
-                top:-8,left:-10,right:-18,
-                height:isMobile?100:middleRowHeight,
-              }}>
-                {getLogReliefLayers(gs.expansionKey).map((layer,idx)=>(
-                  <div key={idx} style={{
-                    position:'absolute',
-                    inset:0,
-                    backgroundColor:layer.color,
-                    transform:`translate(${layer.dx}px,${layer.dy}px)`,
-                    opacity:layer.opacity,
-                    WebkitMaskImage:`url("${getLogPatternBackground(gs.expansionKey)}")`,
-                    maskImage:`url("${getLogPatternBackground(gs.expansionKey)}")`,
-                    WebkitMaskSize:isMobile?'188px auto':'232px auto',
-                    maskSize:isMobile?'188px auto':'232px auto',
-                    WebkitMaskRepeat:'repeat-y',
-                    maskRepeat:'repeat-y',
-                    WebkitMaskPosition:'right -2px top 6px',
-                    maskPosition:'right -2px top 6px',
-                  }}/>
-                ))}
-              </div>
-            </div>
-            <div style={{fontFamily:"'Cinzel',serif",color:getReliefDisplayConfig(gs.expansionKey).logText.title,fontSize:fontSizes.small,letterSpacing:2,marginBottom:5,textTransform:'uppercase',position:'relative'}}>— 冒险日志 —</div>
-            {(()=>{
-              // 多人游戏：用玩家真实名字替换其他人回合里的"你"
-              let logOwner=null; // 当前段落属于哪位玩家（名字）
-              const myName=gs.players[0]?.name;
-              return visibleLog.slice(-50).map((line,i)=>{
-                const turnMatch=line.match(/^── (.+?) 的回合开始 ──$/);
-                if(turnMatch) logOwner=turnMatch[1];
-                let display=line;
-                if(gs._isMP&&logOwner&&logOwner!==myName){
-                  const owner=gs.players.find(p=>p.name===logOwner);
-                  const roleTag=owner?`${owner.name}（身份：${owner.role}）`:logOwner;
-                  // 替换各种"你"开头的句式
-                  display=display
-                    .replace(/^你（([^）]+)）/,(_,role)=>`${logOwner}（${role}）`)
-                    .replace(/^你的邪神之力/,`${logOwner}的邪神之力`)
-                    .replace(/^你遭遇/,`${logOwner}遭遇`)
-                    .replace(/^你信仰/,`${logOwner}信仰`)
-                    .replace(/^你放弃/,`${logOwner}放弃`)
-                    .replace(/^你摸到/,`${logOwner}摸到`)
-                    .replace(/^你选择/,`${logOwner}选择`)
-                    .replace(/^你借用/,`${logOwner}借用`)
-                    .replace(/^你（克苏鲁/,`${logOwner}（克苏鲁`)
-                    .replace(/^你$/,roleTag)
-                    .replace(/^你/,logOwner);
-                }
-                return(
-                  <div key={i} style={{
-                    fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',
-                    fontSize:fontSizes.body,lineHeight:1.7,
-                    color:line.includes('──')?getReliefDisplayConfig(gs.expansionKey).logText.turn:
-                          line.includes('☠')||line.includes('死亡')||line.includes('倒下')?'#882020':
-                          line.includes('获胜')||line.includes('集齐')?'var(--toe-strong,#c8a96e)':
-                          getReliefDisplayConfig(gs.expansionKey).logText.body,
-                    fontWeight:line.includes('──')?700:400,
-                    position:'relative',
-                  }}>{display}</div>
-                );
-              });
-            })()}
-          </div>
+          <BattleLogPanel
+            logRef={logRef}
+            visibleLog={visibleLog}
+            players={gs.players}
+            isMultiplayer={!!gs._isMP}
+            expansionKey={gs.expansionKey}
+            isMobile={isMobile}
+            middleRowHeight={middleRowHeight}
+            fontSizes={fontSizes}
+          />
         </div>
             </div>
           </div>
         </div>
 
         {/* Phase bar */}
-        <div style={{
-          background:'var(--toe-panel,#120900)',
-          border:`1px solid ${myTurn&&!['AI_TURN'].includes(phase)?'var(--toe-line,#5a3010)':'var(--toe-line-dim,#2a1a08)'}`,
-          borderRadius:3,padding:isMobile?'5px 10px':'7px 14px',minHeight:isMobile?32:38,
-          display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',
-        }}>
-          <div style={{flex:1,fontFamily:"'Cinzel',serif",color:isPhaseWarningText&&!isSpectating?promptWarningTextColor:displayPhaseLabel?promptActiveTextColor:promptMutedTextColor,fontSize:baseFontSizes.body,letterSpacing:isMobile?0.5:1}}>
-            <div>{displayPhaseLabel}</div>
-            {phase==='ACTION'&&!isSpectating&&<div style={{fontSize:baseFontSizes.small,color:'var(--toe-muted,#5a4a3a)',marginTop:2}}>{cardHintText}</div>}
-          </div>
-          {isMultiplayer&&!isSpectating&&mpCthSec!==null&&isMpCthDecisionPhase&&(
-            <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:mpCthSec<=5?promptWarningTextColor:mpCthSec<=10?promptCautionTextColor:promptActiveTextColor,letterSpacing:1,flexShrink:0}}>
-              ⏱ 抉择 {mpCthSec}s
-            </div>
-          )}
-          {/* 多人回合计时器 */}
-          {isMultiplayer&&!isSpectating&&mpTurnSec!==null&&myTurn&&phase!=='AI_TURN'&&phase!=='HUNT_WAIT_REVEAL'&&!isMpCthDecisionPhase&&!isLocalMpDecisionActive&&(
-            <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:mpTurnSec<=10?promptWarningTextColor:mpTurnSec<=20?promptCautionTextColor:promptSafeTextColor,letterSpacing:1,flexShrink:0}}>
-              ⏱ {mpTurnSec}s
-            </div>
-          )}
-          {isMultiplayer&&!isSpectating&&mpDiscardSec!==null&&phase==='DISCARD_PHASE'&&!isDiscardPhaseResolving&&!isBlocked&&(
-            <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:mpDiscardSec<=5?promptWarningTextColor:promptCautionTextColor,letterSpacing:1,flexShrink:0}}>
-              ⏱ 弃牌 {mpDiscardSec}s
-            </div>
-          )}
-          {isMultiplayer&&!isSpectating&&mpHuntSec!==null&&phase==='HUNT_WAIT_REVEAL'&&(
-            <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:mpHuntSec<=5?promptWarningTextColor:mpHuntSec<=10?promptCautionTextColor:promptActiveTextColor,letterSpacing:1,flexShrink:0}}>
-              ⏱ 亮牌 {mpHuntSec}s
-            </div>
-          )}
-          {isMultiplayer&&!isSpectating&&mpDecisionSec!==null&&isLocalMpDecisionActive&&(
-            <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:mpDecisionSec<=5?promptWarningTextColor:mpDecisionSec<=10?promptCautionTextColor:promptActiveTextColor,letterSpacing:1,flexShrink:0}}>
-              ⏱ 选择 {mpDecisionSec}s
-            </div>
-          )}
-        </div>
+        <BattlePhaseBar
+          myTurn={myTurn}
+          phase={phase}
+          isMobile={isMobile}
+          baseFontSizes={baseFontSizes}
+          displayPhaseLabel={displayPhaseLabel}
+          cardHintText={cardHintText}
+          isPhaseWarningText={isPhaseWarningText}
+          isSpectating={isSpectating}
+          isMultiplayer={isMultiplayer}
+          isMpCthDecisionPhase={isMpCthDecisionPhase}
+          isLocalMpDecisionActive={isLocalMpDecisionActive}
+          isDiscardPhaseResolving={isDiscardPhaseResolving}
+          isBlocked={isBlocked}
+          mpCthSec={mpCthSec}
+          mpTurnSec={mpTurnSec}
+          mpDiscardSec={mpDiscardSec}
+          mpHuntSec={mpHuntSec}
+          mpDecisionSec={mpDecisionSec}
+          colors={{
+            warning: promptWarningTextColor,
+            active: promptActiveTextColor,
+            caution: promptCautionTextColor,
+            safe: promptSafeTextColor,
+            muted: promptMutedTextColor,
+          }}
+        />
 
         <DamageLinkOverlay
           visualPlayers={visualPlayers}

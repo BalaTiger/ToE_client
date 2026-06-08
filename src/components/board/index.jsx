@@ -1,9 +1,11 @@
 ﻿import React from 'react';
 import { CS, GOD_CS, GOD_DEFS } from '../../constants/card';
+import { getBoardTheme } from '../../constants/theme';
 import { RINFO } from '../../game';
 import { isBlackGoatYoung, isTsathogguaSlime } from '../../game/coreUtils';
 import { AnimatedCardBack, AreaTooltip, CardCodeLabel, DDCard, DDCardBack, GodTooltip } from '../cards';
 import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
+import { ThemeCornerOrnament } from '../theme/ThemeOrnaments';
 
 function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth,labelColor='var(--toe-muted,#a07838)',valueColor='var(--toe-text,#c8a96e)',lineColor='var(--toe-line-dim,#2a1a08)'}){
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
@@ -98,79 +100,12 @@ const DISCARD_OFFSETS=[
   {x:0,y:0},{x:4,y:-3},{x:-3,y:2},{x:6,y:1},{x:-5,y:-4},{x:2,y:5},
   {x:-4,y:3},{x:5,y:-2},{x:-2,y:4},{x:3,y:-5},{x:-6,y:1},{x:1,y:3},
 ];
-const BOARD_THEME_BY_EXPANSION={
-  '地神的潜影':{
-    text:'#c8a96e',strong:'#e8c87a',muted:'#a07838',panel:'#140f08',panelActive:'#1c1408',
-    line:'#3a2510',lineDim:'#2a1a08',glow:'#c8a96e',
-  },
-  '群星呼唤':{
-    text:'#9dd8f0',strong:'#d8f6ff',muted:'#6aa5c8',panel:'#061b26',panelActive:'#08283a',
-    line:'#1f6f86',lineDim:'#124253',glow:'#62d5ff',
-  },
-};
-function getBoardTheme(expansionKey){
-  return BOARD_THEME_BY_EXPANSION[expansionKey]||BOARD_THEME_BY_EXPANSION['地神的潜影'];
-}
 function getCardBackFrameColors(expansionKey){
   const theme=getBoardTheme(expansionKey);
   return {
     border: theme.line,
     shadow: '0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
   };
-}
-
-function getThemeReliefMask(expansionKey,kind='panel_corner'){
-  const suffix=expansionKey==='群星呼唤'?'stars':'earth';
-  return `/img/ui/theme_relief/${kind}_${suffix}.png`;
-}
-
-function getBoardReliefDisplayConfig(expansionKey='地神的潜影'){
-  const configs={
-    '地神的潜影':{shadowOpacity:0.72,glowOpacity:0.4,lineOpacity:1},
-    '群星呼唤':{shadowOpacity:0.66,glowOpacity:0.42,lineOpacity:1},
-  };
-  return configs[expansionKey]||configs['地神的潜影'];
-}
-
-function ThemeCornerOrnament({expansionKey='地神的潜影',corner='tl',size=52,opacity=0.3,style={}}){
-  const theme=getBoardTheme(expansionKey);
-  const path=getThemeReliefMask(expansionKey,'panel_corner');
-  const reliefCfg=getBoardReliefDisplayConfig(expansionKey);
-  const lineOpacity=reliefCfg.lineOpacity;
-  const glowOpacity=reliefCfg.glowOpacity;
-  const shadowOpacity=reliefCfg.shadowOpacity;
-  const pos={
-    tl:{top:4,left:4,transform:'scaleX(-1)'},
-    tr:{top:4,right:4},
-    bl:{bottom:4,left:4,transform:'scale(-1,-1)'},
-    br:{bottom:4,right:4,transform:'scaleY(-1)'},
-  }[corner]||{top:4,right:4};
-  const maskStyle={
-    position:'absolute',
-    inset:0,
-    WebkitMaskImage:`url("${path}")`,
-    maskImage:`url("${path}")`,
-    WebkitMaskRepeat:'no-repeat',
-    maskRepeat:'no-repeat',
-    WebkitMaskSize:'100% 100%',
-    maskSize:'100% 100%',
-    WebkitMaskPosition:'center',
-    maskPosition:'center',
-  };
-  return(
-    <div style={{
-      position:'absolute',
-      width:size,height:size,
-      pointerEvents:'none',
-      opacity,
-      ...pos,
-      ...style,
-    }}>
-      <div style={{...maskStyle,backgroundColor:'#030201',transform:'translate(1px,1px)',opacity:shadowOpacity}}/>
-      <div style={{...maskStyle,backgroundColor:theme.glow,transform:'translate(-0.7px,-0.7px)',opacity:glowOpacity}}/>
-      <div style={{...maskStyle,backgroundColor:theme.line,opacity:lineOpacity}}/>
-    </div>
-  );
 }
 
 function MiniCardLabel({card,scale=1,glowColor='#c8a96e',ambient=true}){
