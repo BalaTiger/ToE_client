@@ -318,6 +318,98 @@ function getBattleBackgroundStyle(expansionKey,isMobile){
     backgroundAttachment:isMobile?'scroll, scroll':'fixed, fixed',
   };
 }
+
+function ThemeLineOrnament({expansionKey='地神的潜影',corner='tl',size=50,opacity=0.28,style={}}){
+  const suffix=expansionKey==='群星呼唤'?'stars':'earth';
+  const path=`/img/ui/theme_relief/panel_corner_${suffix}.png`;
+  const reliefCfg=getReliefDisplayConfig(expansionKey);
+  const lineOpacity=reliefCfg.corner.lineOpacity;
+  const glowOpacity=reliefCfg.corner.glowOpacity;
+  const shadowOpacity=reliefCfg.corner.shadowOpacity;
+  const pos={
+    tl:{top:5,left:5,transform:'scaleX(-1)'},
+    tr:{top:5,right:5},
+    bl:{bottom:5,left:5,transform:'scale(-1,-1)'},
+    br:{bottom:5,right:5,transform:'scaleY(-1)'},
+  }[corner]||{top:5,right:5};
+  const maskStyle={
+    position:'absolute',
+    inset:0,
+    WebkitMaskImage:`url("${path}")`,
+    maskImage:`url("${path}")`,
+    WebkitMaskRepeat:'no-repeat',
+    maskRepeat:'no-repeat',
+    WebkitMaskSize:'100% 100%',
+    maskSize:'100% 100%',
+    WebkitMaskPosition:'center',
+    maskPosition:'center',
+  };
+  return(
+    <div style={{position:'absolute',width:size,height:size,pointerEvents:'none',opacity,...pos,...style}}>
+      <div style={{...maskStyle,backgroundColor:'#030201',transform:'translate(1px,1px)',opacity:shadowOpacity}}/>
+      <div style={{...maskStyle,backgroundColor:'var(--toe-glow,#c8a96e)',transform:'translate(-0.7px,-0.7px)',opacity:glowOpacity}}/>
+      <div style={{...maskStyle,backgroundColor:'var(--toe-line,#3a2510)',opacity:lineOpacity}}/>
+    </div>
+  );
+}
+
+function getReliefDisplayConfig(expansionKey='地神的潜影'){
+  const configs={
+    '地神的潜影':{
+      corner:{shadowOpacity:0.68,glowOpacity:0.46,lineOpacity:1},
+      hand:{shadowOpacity:0.54,glowOpacity:0.48,lineOpacity:1},
+      log:{shadowOpacity:0.38,glowOpacity:0.13,lineOpacity:0.32},
+      logText:{title:'var(--toe-text,#c8a96e)',turn:'var(--toe-strong,#e5c98b)',body:'var(--toe-text,#b79658)'},
+    },
+    '群星呼唤':{
+      corner:{shadowOpacity:0.66,glowOpacity:0.42,lineOpacity:1},
+      hand:{shadowOpacity:0.62,glowOpacity:0.36,lineOpacity:0.95},
+      log:{shadowOpacity:0.48,glowOpacity:0.045,lineOpacity:0.14},
+      logText:{title:'var(--toe-muted,#7aa8c8)',turn:'var(--toe-strong,#b9e8ff)',body:'var(--toe-line,#71a7d6)'},
+    },
+  };
+  return configs[expansionKey]||configs['地神的潜影'];
+}
+
+function getLogPatternBackground(expansionKey='地神的潜影'){
+  const suffix=expansionKey==='群星呼唤'?'stars':'earth';
+  return `/img/ui/theme_relief/log_relief_${suffix}.png`;
+}
+
+function getLogReliefLayers(expansionKey='地神的潜影'){
+  const {log}=getReliefDisplayConfig(expansionKey);
+  return [
+    {color:'#030201',dx:1,dy:1,opacity:log.shadowOpacity},
+    {color:'var(--toe-glow,#c8a96e)',dx:-0.7,dy:-0.7,opacity:log.glowOpacity},
+    {color:'var(--toe-line,#3a2510)',dx:0,dy:0,opacity:log.lineOpacity},
+  ];
+}
+
+function ThemeEdgeRelief({expansionKey='地神的潜影',side='right',opacity=0.28,style={}}){
+  const suffix=expansionKey==='群星呼唤'?'stars':'earth';
+  const path=`/img/ui/theme_relief/hand_edge_${suffix}.png`;
+  const reliefCfg=getReliefDisplayConfig(expansionKey);
+  const pos=side==='right'?{top:0,bottom:0,right:0}:{top:0,bottom:0,left:0,transform:'scaleX(-1)'};
+  const maskBase={
+    position:'absolute',
+    inset:0,
+    WebkitMaskImage:`url("${path}")`,
+    maskImage:`url("${path}")`,
+    WebkitMaskRepeat:'no-repeat',
+    maskRepeat:'no-repeat',
+    WebkitMaskSize:'100% auto',
+    maskSize:'100% auto',
+    WebkitMaskPosition:'right bottom',
+    maskPosition:'right bottom',
+  };
+  return(
+    <div style={{position:'absolute',width:320,pointerEvents:'none',opacity,...pos,...style}}>
+      <div style={{...maskBase,backgroundColor:'#030201',transform:'translate(1px,1px)',opacity:reliefCfg.hand.shadowOpacity}}/>
+      <div style={{...maskBase,backgroundColor:'var(--toe-glow,#c8a96e)',transform:'translate(-0.7px,-0.7px)',opacity:reliefCfg.hand.glowOpacity}}/>
+      <div style={{...maskBase,backgroundColor:'var(--toe-line,#3a2510)',opacity:reliefCfg.hand.lineOpacity}}/>
+    </div>
+  );
+}
 // Per-card copy counts — tuned for E[HP|HP card] ≈ −2
 // Cards: A1×3 A2×3 … D4×3 — 3 copies each, 48 total
 // Each card has exactly 3 copies → 48 cards total.
@@ -7597,6 +7689,13 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             opacity:guillotinedPids.has(0)?0:1,
             cursor:phase==='SHU_SELECT_TARGET'&&!isBlocked?'pointer':'default',
           }}>
+            <ThemeLineOrnament
+              expansionKey={gs.expansionKey}
+              corner="tr"
+              size={172}
+              opacity={0.34}
+              style={{top:0,right:0}}
+            />
 
             {/* SAN mist: rendered by full-screen SanMistOverlay */}
             {(hpHealIndices.includes(0)||sanHealIndices.includes(0))&&<HealCrossEffect color={sanHealIndices.includes(0)?'#a78bfa':'#4ade80'}/>}
@@ -7698,8 +7797,44 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           {/* Center: deck/discard piles */}
         <PileDisplay deckCount={gs.deck.length} discardCount={visualDiscard.length} discardTop={visualDiscard[visualDiscard.length-1]||null} discardCards={visualDiscard} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={vw<430} baseHeight={middleRowHeight} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={scaleRatio} expansionKey={gs.expansionKey} zhuLitCards={zhuLitCardsForView} zhuHiddenCardId={zhuHiddenCardId} petrifyingFormula={gs.petrifyingFormula}/>
           {/* Log — narrow, right-aligned */}
-          <div ref={logRef} style={{width:isMobile?'100%':218,flexBasis:isMobile?'100%':undefined,flexShrink:0,background:'var(--toe-panel,#0e0904)',border:'1.5px solid var(--toe-line-dim,#2a1a08)',borderRadius:3,padding:'8px 10px',overflowY:'auto',minHeight:isMobile?100:middleRowHeight,maxHeight:isMobile?100:middleRowHeight}}>
-            <div style={{fontFamily:"'Cinzel',serif",color:'var(--toe-muted,#7a5a2a)',fontSize:fontSizes.small,letterSpacing:2,marginBottom:5,textTransform:'uppercase'}}>— 冒险日志 —</div>
+          <div ref={logRef} data-log-panel style={{
+            width:isMobile?'100%':218,flexBasis:isMobile?'100%':undefined,flexShrink:0,
+            backgroundColor:'var(--toe-panel,#0e0904)',
+            border:'1.5px solid var(--toe-line-dim,#2a1a08)',borderRadius:3,padding:'8px 10px',overflowY:'auto',minHeight:isMobile?100:middleRowHeight,maxHeight:isMobile?100:middleRowHeight,position:'relative',overflowX:'hidden',
+            scrollbarGutter:'stable',
+          }}>
+            <div style={{
+              position:'sticky',
+              top:0,
+              height:0,
+              zIndex:0,
+              pointerEvents:'none',
+            }}>
+              <div style={{
+                position:'absolute',
+                top:-8,left:-10,right:-18,
+                height:isMobile?100:middleRowHeight,
+              }}>
+                {getLogReliefLayers(gs.expansionKey).map((layer,idx)=>(
+                  <div key={idx} style={{
+                    position:'absolute',
+                    inset:0,
+                    backgroundColor:layer.color,
+                    transform:`translate(${layer.dx}px,${layer.dy}px)`,
+                    opacity:layer.opacity,
+                    WebkitMaskImage:`url("${getLogPatternBackground(gs.expansionKey)}")`,
+                    maskImage:`url("${getLogPatternBackground(gs.expansionKey)}")`,
+                    WebkitMaskSize:isMobile?'188px auto':'232px auto',
+                    maskSize:isMobile?'188px auto':'232px auto',
+                    WebkitMaskRepeat:'repeat-y',
+                    maskRepeat:'repeat-y',
+                    WebkitMaskPosition:'right -2px top 6px',
+                    maskPosition:'right -2px top 6px',
+                  }}/>
+                ))}
+              </div>
+            </div>
+            <div style={{fontFamily:"'Cinzel',serif",color:getReliefDisplayConfig(gs.expansionKey).logText.title,fontSize:fontSizes.small,letterSpacing:2,marginBottom:5,textTransform:'uppercase',position:'relative'}}>— 冒险日志 —</div>
             {(()=>{
               // 多人游戏：用玩家真实名字替换其他人回合里的"你"
               let logOwner=null; // 当前段落属于哪位玩家（名字）
@@ -7729,11 +7864,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                   <div key={i} style={{
                     fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',
                     fontSize:fontSizes.body,lineHeight:1.7,
-                    color:line.includes('──')?'var(--toe-muted,#7a5020)':
+                    color:line.includes('──')?getReliefDisplayConfig(gs.expansionKey).logText.turn:
                           line.includes('☠')||line.includes('死亡')||line.includes('倒下')?'#882020':
                           line.includes('获胜')||line.includes('集齐')?'var(--toe-strong,#c8a96e)':
-                          'var(--toe-line,#5a4020)',
+                          getReliefDisplayConfig(gs.expansionKey).logText.body,
                     fontWeight:line.includes('──')?700:400,
+                    position:'relative',
                   }}>{display}</div>
                 );
               });
@@ -7790,7 +7926,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         />
 
         {/* Hand area */}
-        <div ref={handAreaRef} data-hand-area style={{background:'var(--toe-panel,#120900)',border:`1.5px solid ${myTurn?'var(--toe-line,#3a2010)':'var(--toe-line-dim,#2a1a08)'}`,borderRadius:3,padding:isMobile?'8px 9px':'11px 13px'}}>
+        <div ref={handAreaRef} data-hand-area style={{background:'var(--toe-panel,#120900)',border:`1.5px solid ${myTurn?'var(--toe-line,#3a2010)':'var(--toe-line-dim,#2a1a08)'}`,borderRadius:3,padding:isMobile?'8px 9px':'11px 13px',position:'relative',overflow:'hidden'}}>
+          <ThemeEdgeRelief expansionKey={gs.expansionKey} side="right" opacity={0.26} style={{height:'100%'}}/>
           <div style={{display:'flex',alignItems:'center',marginBottom:9,gap:8}}>
             <span style={{fontFamily:"'Cinzel',serif",color:!isSpectating&&((phase==='DISCARD_PHASE'&&!anim&&!animExiting&&!pendingGsRef.current)||phase==='PLAYER_REVEAL_FOR_HUNT'||isLocalHuntRevealPrompt)?promptWarningTextColor:promptActiveTextColor,fontSize:10,letterSpacing:1}}>
               {isSpectating
@@ -8182,6 +8319,8 @@ const GLOBAL_STYLES=`
   ::-webkit-scrollbar{width:5px;height:5px;}
   ::-webkit-scrollbar-track{background:var(--toe-bg,#0a0705);}
   ::-webkit-scrollbar-thumb{background:var(--toe-line,#3a2510);border-radius:2px;}
+  [data-log-panel]::-webkit-scrollbar-track{background:var(--toe-panel,#0e0904);}
+  [data-log-panel]{scrollbar-color:var(--toe-line,#3a2510) var(--toe-panel,#0e0904);}
   html,body{ overflow-x:hidden; }
   @keyframes scrollLeft {
     0% { transform: translateX(100%); }

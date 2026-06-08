@@ -119,6 +119,60 @@ function getCardBackFrameColors(expansionKey){
   };
 }
 
+function getThemeReliefMask(expansionKey,kind='panel_corner'){
+  const suffix=expansionKey==='群星呼唤'?'stars':'earth';
+  return `/img/ui/theme_relief/${kind}_${suffix}.png`;
+}
+
+function getBoardReliefDisplayConfig(expansionKey='地神的潜影'){
+  const configs={
+    '地神的潜影':{shadowOpacity:0.72,glowOpacity:0.4,lineOpacity:1},
+    '群星呼唤':{shadowOpacity:0.66,glowOpacity:0.42,lineOpacity:1},
+  };
+  return configs[expansionKey]||configs['地神的潜影'];
+}
+
+function ThemeCornerOrnament({expansionKey='地神的潜影',corner='tl',size=52,opacity=0.3,style={}}){
+  const theme=getBoardTheme(expansionKey);
+  const path=getThemeReliefMask(expansionKey,'panel_corner');
+  const reliefCfg=getBoardReliefDisplayConfig(expansionKey);
+  const lineOpacity=reliefCfg.lineOpacity;
+  const glowOpacity=reliefCfg.glowOpacity;
+  const shadowOpacity=reliefCfg.shadowOpacity;
+  const pos={
+    tl:{top:4,left:4,transform:'scaleX(-1)'},
+    tr:{top:4,right:4},
+    bl:{bottom:4,left:4,transform:'scale(-1,-1)'},
+    br:{bottom:4,right:4,transform:'scaleY(-1)'},
+  }[corner]||{top:4,right:4};
+  const maskStyle={
+    position:'absolute',
+    inset:0,
+    WebkitMaskImage:`url("${path}")`,
+    maskImage:`url("${path}")`,
+    WebkitMaskRepeat:'no-repeat',
+    maskRepeat:'no-repeat',
+    WebkitMaskSize:'100% 100%',
+    maskSize:'100% 100%',
+    WebkitMaskPosition:'center',
+    maskPosition:'center',
+  };
+  return(
+    <div style={{
+      position:'absolute',
+      width:size,height:size,
+      pointerEvents:'none',
+      opacity,
+      ...pos,
+      ...style,
+    }}>
+      <div style={{...maskStyle,backgroundColor:'#030201',transform:'translate(1px,1px)',opacity:shadowOpacity}}/>
+      <div style={{...maskStyle,backgroundColor:theme.glow,transform:'translate(-0.7px,-0.7px)',opacity:glowOpacity}}/>
+      <div style={{...maskStyle,backgroundColor:theme.line,opacity:lineOpacity}}/>
+    </div>
+  );
+}
+
 function MiniCardLabel({card,scale=1,glowColor='#c8a96e',ambient=true}){
   if(!card)return null;
   const name=card.name||'';
@@ -455,6 +509,8 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
   const pileMinHeight=effectiveCompact ? 140 : 220;
   return(
     <div ref={pileWrapRef} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',position:'relative',minWidth:0,minHeight:pileMinHeight}}>
+      <ThemeCornerOrnament expansionKey={expansionKey} corner="tl" size={56} opacity={0.28}/>
+      <ThemeCornerOrnament expansionKey={expansionKey} corner="tr" size={56} opacity={0.28}/>
       {/* Inspection deck — top-left corner */}
       <div data-inspection-pile style={{position:'absolute',top:4,left:8,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
         <InspectionPile count={inspectionCount} scale={pileScale}/>
@@ -550,6 +606,13 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
       position:'relative',
       overflow:'hidden',
     }}>
+      <ThemeCornerOrnament
+        expansionKey={expansionKey}
+        corner="tr"
+        size={154}
+        opacity={0.36}
+        style={{top:-8,right:-8}}
+      />
       {(isHpHeal||isSanHeal)&&<HealCrossEffect color={isSanHeal?'#a78bfa':'#4ade80'}/>}
       {/* Name plate */}
       <div style={{

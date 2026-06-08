@@ -66,6 +66,25 @@ def make_soft_noise(width: int, height: int, seed: int, color: tuple[int, int, i
     return img.filter(ImageFilter.GaussianBlur(5.0))
 
 
+def make_tileable_field(width: int, height: int, seed: int, color: tuple[int, int, int], alpha_scale: float = 1.0) -> Image.Image:
+    img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    px = img.load()
+    for y in range(height):
+        ny = y / max(1, height)
+        ay = math.tau * ny
+        for x in range(width):
+            nx = x / max(1, width)
+            ax = math.tau * nx
+            v1 = math.sin(ax * 1.0 + seed * 0.11)
+            v2 = math.cos(ay * 1.0 - seed * 0.07)
+            v3 = math.sin((ax + ay) * 1.0 + seed * 0.19)
+            v4 = math.cos((ax * 2.0 - ay * 1.0) + seed * 0.13)
+            v = (v1 * 0.34 + v2 * 0.24 + v3 * 0.27 + v4 * 0.15 + 1.0) * 0.5
+            a = int(max(0.0, (v - 0.36) / 0.64) * 90 * alpha_scale)
+            px[x, y] = (*color, a)
+    return img.filter(ImageFilter.GaussianBlur(4.8))
+
+
 def make_vignette(width: int, height: int) -> Image.Image:
     mask = Image.new("L", (width, height), 0)
     draw = ImageDraw.Draw(mask)
@@ -302,6 +321,24 @@ def make_wave_light(width: int, height: int, phase: float, color: tuple[int, int
     return img.filter(ImageFilter.GaussianBlur(7.0))
 
 
+def make_earth_noise_glow(width: int, height: int, phase: float, color: tuple[int, int, int], accent: tuple[int, int, int], inner_mask: Image.Image) -> Image.Image:
+    field_a = make_tileable_field(width, height, 17, color, 1.0)
+    field_b = make_tileable_field(width, height, 29, accent, 0.9)
+    field_c = make_tileable_field(width, height, 43, color, 0.55)
+    mix = Image.blend(
+        shifted_layer(field_a, int(round(math.sin(phase * math.tau) * 18)), int(round(math.cos(phase * math.tau) * 10))),
+        shifted_layer(field_b, -int(round(math.cos(phase * math.tau) * 16)), int(round(math.sin(phase * math.tau * 1.3) * 12))),
+        0.48,
+    )
+    mix = Image.blend(
+        mix,
+        shifted_layer(field_c, int(round(math.sin((phase + 0.25) * math.tau) * 12)), -int(round(math.cos((phase + 0.25) * math.tau) * 8))),
+        0.34,
+    )
+    masked = Image.composite(mix, Image.new("RGBA", (width, height), (0, 0, 0, 0)), inner_mask)
+    return masked.filter(ImageFilter.GaussianBlur(3.2))
+
+
 def shifted_layer(img: Image.Image, dx: int, dy: int) -> Image.Image:
     return ImageChops.offset(img, dx, dy)
 
@@ -328,6 +365,7 @@ def build_frame(base: Image.Image, index: int, theme: dict, noise_a: Image.Image
     if detail_img is not None and inner_mask is not None:
         if mode == "earth":
             frame = make_strata_motion_overlay(frame, detail_img, inner_mask, phase)
+            frame = Image.alpha_composite(frame, make_earth_noise_glow(width, height, phase, glow, accent, inner_mask))
         elif mode == "stars":
             frame = make_water_refraction_overlay(frame, detail_img, inner_mask, phase)
             frame = apply_bubble_lenses(frame, phase, inner_mask)

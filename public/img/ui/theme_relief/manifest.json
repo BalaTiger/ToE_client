@@ -1,0 +1,38 @@
+[
+  {
+    "key": "panel_corner_earth",
+    "mask": "public/img/ui/theme_relief/panel_corner_earth.png",
+    "raw": "public/img/ui/theme_relief/panel_corner_earth_raw.png",
+    "prompt": "monochrome black background, intricate single-color line art only, UI corner ornament, engraved bas-relief cave strata, underground fissures, stone-carved glyphs, contour lines, dense but elegant linework, upper-right triangular corner composition, all linework grows from the top and right edges, lower-left half must stay nearly empty black, no centered composition, no text, no letters, no filled shapes, no frame, no border, transparent-ready mask design"
+  },
+  {
+    "key": "panel_corner_stars",
+    "mask": "public/img/ui/theme_relief/panel_corner_stars.png",
+    "raw": "public/img/ui/theme_relief/panel_corner_stars_raw.png",
+    "prompt": "monochrome black background, intricate single-color line art only, UI corner ornament, engraved bas-relief star map, ocean wave arcs, bubbles, constellations, celestial compass curves, dense but elegant linework, upper-right triangular corner composition, all linework grows from the top and right edges, lower-left half must stay nearly empty black, no centered composition, no text, no letters, no filled shapes, no frame, no border, transparent-ready mask design"
+  },
+  {
+    "key": "log_relief_earth",
+    "mask": "public/img/ui/theme_relief/log_relief_earth.png",
+    "raw": "public/img/ui/theme_relief/log_relief_earth_raw.png",
+    "prompt": "monochrome black background, intricate single-color line art only, vertical panel background ornament, engraved underground relief pattern, cave strata, cracked stone, ancient glyph nodes, contour lines, low contrast decorative linework, no text, no letters, no border, no frame, tile-friendly"
+  },
+  {
+    "key": "log_relief_stars",
+    "mask": "public/img/ui/theme_relief/log_relief_stars.png",
+    "raw": "public/img/ui/theme_relief/log_relief_stars_raw.png",
+    "prompt": "monochrome black background, intricate single-color line art only, vertical panel background ornament, engraved ocean-and-stars relief pattern, star map arcs, rippling water lines, bubbles, constellation nodes, low contrast decorative linework, no text, no letters, no border, no frame, tile-friendly"
+  },
+  {
+    "key": "hand_edge_stars",
+    "mask": "public/img/ui/theme_relief/hand_edge_stars.png",
+    "raw": "public/img/ui/theme_relief/hand_edge_stars_raw.png",
+    "prompt": "monochrome black background, intricate single-color line art only, UI hand panel ornament, engraved ocean-and-stars bas-relief, star compass arcs, tide curves, bubbles, constellation nodes, bottom-right corner composition, all linework grows from the bottom and right edges, upper-left half must stay nearly empty black, no centered composition, no text, no letters, no filled shapes, no frame, no border, transparent-ready mask design"
+  },
+  {
+    "key": "hand_edge_earth",
+    "mask": "public/img/ui/theme_relief/hand_edge_earth.png",
+    "source": "public/img/ui/theme_relief/log_relief_earth.png",
+    "prompt": "Derived vertical hand-area edge relief mask from the corresponding log relief mask."
+  }
+]
