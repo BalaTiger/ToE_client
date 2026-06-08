@@ -162,7 +162,16 @@ export function useAnimationQueue({
       const callback = animCallbackRef.current;
       if (next?.log) syncVisibleLog(next.log);
       if (callback) {
+        const pendingBeforeCallback = pendingGsRef.current;
+        const callbackBeforeCallback = animCallbackRef.current;
         callback();
+        const callbackStartedNextQueue =
+          pendingGsRef.current !== pendingBeforeCallback ||
+          animCallbackRef.current !== callbackBeforeCallback ||
+          animQueueRef.current.length > 0;
+        if (callbackStartedNextQueue) {
+          return;
+        }
       } else if (normalizedNext) {
         setVisualDiscard(getVisualDiscardForState(normalizedNext));
         if (suppressNextBroadcastRef.current) {

@@ -583,9 +583,10 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
             <span
               title="虚化：回合外即将失去 HP/SAN 时，可消耗 1 层令相邻角色失去"
               style={{
-                fontSize:8,color:'#b9d8f0',
+                fontSize:10,color:'#b9d8f0',
                 background:'#0c1118',border:'1px solid #87a9c866',
-                borderRadius:2,padding:'1px 4px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
+                borderRadius:3,padding:'2px 6px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
+                lineHeight:1.2,
                 boxShadow:'0 0 8px #87a9c822',
               }}
             >
@@ -596,9 +597,10 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
             <span
               title="中毒：回合开始时失去等同层数的 HP，并消耗 1 层"
               style={{
-                fontSize:8,color:'#b7f5a8',
+                fontSize:10,color:'#b7f5a8',
                 background:'#0d160a',border:'1px solid #74c36566',
-                borderRadius:2,padding:'1px 4px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
+                borderRadius:3,padding:'2px 6px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
+                lineHeight:1.2,
                 boxShadow:'0 0 8px #74c36522',
               }}
             >

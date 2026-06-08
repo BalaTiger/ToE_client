@@ -219,6 +219,7 @@ export function buildMpRemoteReplayAction({
         },
       };
     }
+    const isTurnEndCthDecisionDraw = !!(rotated.drawReveal?.fromRest || rotated.abilityData?.fromRest);
     const replay = buildTurnStartDrawReplayQueue({
       oldGs: previousGs,
       newGs: rotated,
@@ -228,7 +229,7 @@ export function buildMpRemoteReplayAction({
       buildFullHandSwapTransferQueue: buildFullHandSwapTransferQueueFromLogs,
       effectOldGs: { ...rotated, players: rotated._playersBeforeThisDraw || previousGs?.players || rotated.players, log: getTurnStartDrawBaselineLog(rotated) },
     });
-    const tailQueue = replay.drawnCard ? replay.queue : [];
+    const tailQueue = replay.drawnCard && !isTurnEndCthDecisionDraw ? replay.queue : [];
     const finalFields = replay.drawnCard
       ? ['players', 'discard', 'log', 'phase', 'abilityData', 'currentTurn', 'drawReveal']
       : ['players', 'discard', 'log', 'phase', 'abilityData', 'currentTurn', 'drawReveal'];
@@ -290,7 +291,7 @@ export function buildMpRemoteReplayAction({
     const patchedQueue = appendFinalStatePatch(
       queue,
       pendingGs,
-      ['players', 'deck', 'discard', 'log', 'phase', 'abilityData'],
+      ['players', 'deck', 'discard', 'log', 'currentTurn', 'phase', 'drawReveal', 'abilityData'],
     );
     if (patchedQueue.length) {
       return withConsumedVisualEvents({

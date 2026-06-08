@@ -830,7 +830,6 @@ export default function Game(){
     if(replayAction?.consumedVisualEventIds?.length){
       markConsumedVisualEvents(consumedVisualEventIdsRef.current,replayAction.consumedVisualEventIds.map(id=>({id,type:'consumed'})));
     }
-    markInspectionEventsSeen(replayAction?.inspectionEvents);
     if(replayAction?.type===MP_REMOTE_REPLAY.ROLE_REVEAL){
       mpRoleRevealedRef.current=true;
       mpOpeningRoleRevealPendingRef.current=true;
@@ -846,12 +845,14 @@ export default function Game(){
       animQueueRef.current=[];
       setAnim(replayAction.anim);
     }else if(replayAction?.type===MP_REMOTE_REPLAY.ANIM_QUEUE){
+      markInspectionEventsSeen(replayAction.inspectionEvents);
       if(replayAction.visualLock)visualStateLocks.lock(replayAction.visualLock);
       setGs(replayAction.maskedGs);
       receivedGsRef.current=true;
       suppressNextBroadcastRef.current=true;
       triggerAnimQueue(replayAction.queue,replayAction.pendingGs);
     }else if(replayAction?.type===MP_REMOTE_REPLAY.START_ANIM){
+      markInspectionEventsSeen(replayAction.inspectionEvents);
       if(replayAction.visualLock)visualStateLocks.lock(replayAction.visualLock);
       setGs(replayAction.maskedGs);
       receivedGsRef.current=true;
@@ -6138,19 +6139,43 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             cthDraws.push(r2.drawnCard);
           }
           if(r2.needGodChoice){
-            setGs(buildLocalCthDecisionState(oldGs,{
+            const decisionState=buildLocalCthDecisionState(oldGs,{
               players:P,deck:D,discard:Disc,log:L,drawnCard:r2.drawnCard,remainingDraws:extraDraws-_d-1,needGodChoice:true,
               extraState:{skillUsed:true,restUsed:true,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:true,...cthRestStatPatch},
-            }));
+            });
+            if(decisionState._isMP){
+              const cthEvent=buildCthRestDrawReplayEvent({
+                beforePlayers:cthBeforeDrawPlayers,
+                beforeDiscard:gs.discard,
+                zhuLight:gs.zhuLight||decisionState.zhuLight||null,
+                actorName:cthBeforeDrawPlayers?.[0]?.name||'你',
+                cthDraws:[r2.drawnCard],
+                cthDrawLogs:L.slice(cthDrawLogStart),
+              });
+              if(!cthEvent||!broadcastCthRestDrawReplay(decisionState,cthEvent))broadcastMpStateBeforeLocalReplay(decisionState);
+            }
+            triggerAnimQueue([{type:'DRAW_CARD',card:r2.drawnCard,triggerName:'你',targetPid:0,msgs:L.slice(cthDrawLogStart)}],decisionState);
             return;
           }
           if(r2.needsDecision){
             const split=splitAnimBoundLogs(r2.effectMsgs||[]);
-            setGs(buildLocalCthDecisionState(oldGs,{
+            const decisionState=buildLocalCthDecisionState(oldGs,{
               players:P,deck:D,discard:Disc,log:L,drawnCard:r2.drawnCard,remainingDraws:extraDraws-_d-1,
               preStatLogs:split.preStat,statLogs:split.stat,
               extraState:{skillUsed:true,restUsed:true,huntAbandoned:[],godFromHandUsed:false,godTriggeredThisTurn:false,...cthRestStatPatch},
-            }));
+            });
+            if(decisionState._isMP){
+              const cthEvent=buildCthRestDrawReplayEvent({
+                beforePlayers:cthBeforeDrawPlayers,
+                beforeDiscard:gs.discard,
+                zhuLight:gs.zhuLight||decisionState.zhuLight||null,
+                actorName:cthBeforeDrawPlayers?.[0]?.name||'你',
+                cthDraws:[r2.drawnCard],
+                cthDrawLogs:L.slice(cthDrawLogStart),
+              });
+              if(!cthEvent||!broadcastCthRestDrawReplay(decisionState,cthEvent))broadcastMpStateBeforeLocalReplay(decisionState);
+            }
+            triggerAnimQueue([{type:'DRAW_CARD',card:r2.drawnCard,triggerName:'你',targetPid:0,msgs:L.slice(cthDrawLogStart)}],decisionState);
             return;
           }
           // forced card: already applied, continue
@@ -6179,8 +6204,10 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         if(cthDraws.length>0){
           const queue=[];
           cthDraws.forEach(card=>{queue.push({type:'DRAW_CARD',card:card,triggerName:'你',targetPid:0});});
+          const preTurnQ=buildTsathogguaSlimeGrantQueue(nextGs);
           const statQ=buildAnimQueue(gs,nextGs).filter(a=>a.type!=='CARD_TRANSFER');
           queue.push(...statQ);
+          queue.push(...preTurnQ);
           if(nextGs.currentTurn===0&&nextGs.drawReveal?.card){
             queue.push({type:'YOUR_TURN',msgs:nextGs._turnStartLogs},{type:'DRAW_CARD',card:nextGs.drawReveal.card,triggerName:'你',targetPid:0,msgs:nextGs._drawLogs});
           }
@@ -6197,6 +6224,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
               actorName:cthBeforeDrawPlayers?.[0]?.name||'你',
               cthDraws,
               cthDrawLogs,
+              preSteps:preTurnQ,
               statSteps:cthStatSteps,
             });
             broadcastCthRestDrawReplay(nextGs,cthEvent);
@@ -6245,7 +6273,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   // 拉莱耶之主(CTH) 在翻面结束/跳过回合时的强制摸牌：参考"无尽通道"的同步方式，
   // 构建一个 endlessCorridorReplay 视觉事件，让联机远端能与本地同步播放整批摸牌动画。
   // 远端 buildMpRemoteReplayAction 会按 actorIdx/targetPid 旋转到正确座位，再衔接下家回合开始动画。
-  function buildCthRestDrawReplayEvent({beforePlayers,beforeDiscard,zhuLight,actorName,cthDraws,cthDrawLogs,statSteps=[]}){
+  function buildCthRestDrawReplayEvent({beforePlayers,beforeDiscard,zhuLight,actorName,cthDraws,cthDrawLogs,preSteps=[],statSteps=[]}){
     const draws=(Array.isArray(cthDraws)?cthDraws:[]).filter(Boolean);
     if(!draws.length)return null;
     const logs=Array.isArray(cthDrawLogs)?cthDrawLogs.filter(Boolean):[];
@@ -6258,7 +6286,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     return createEndlessCorridorReplayEvent({
       actorIdx:0,
       actorName:actorName||'你',
-      queue:[...drawSteps,...(Array.isArray(statSteps)?statSteps:[])],
+      queue:[...(Array.isArray(preSteps)?preSteps:[]),...drawSteps,...(Array.isArray(statSteps)?statSteps:[])],
       msgs:logs,
       beforePlayers:copyPlayers(beforePlayers||[]),
       beforeDiscard:[...(beforeDiscard||[])],
@@ -6299,6 +6327,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(newGs&&(newGs.phase==='PLAYER_WIN_PENDING'||newGs.phase==='TREASURE_WIN'))return setGs(p=>p?.gameOver||p?.phase==='PLAYER_WIN_PENDING'||p?.phase==='TREASURE_WIN'?p:newGs);
     // Animate CTH rest-draw forced cards that accumulated during startNextTurn
     if(newGs?._cthRestDraws?.length>0){
+      const preTurnQ=buildTsathogguaSlimeGrantQueue(newGs);
       const cthQueue=newGs._cthRestDraws.map(card=>({
         type:'DRAW_CARD',card,triggerName:'你',targetPid:0,
         msgs:newGs._cthRestDrawLogs?.filter(l=>l.includes(card.name)||l.includes(card.key))||[]
@@ -6318,10 +6347,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           actorName:newGs._playersBeforeCthDraws?.[0]?.name||gs.players?.[0]?.name||'你',
           cthDraws:newGs._cthRestDraws,
           cthDrawLogs:newGs._cthRestDrawLogs,
+          preSteps:preTurnQ,
         });
         if(!cthEvent||!broadcastCthRestDrawReplay(newGs,cthEvent))broadcastMpStateBeforeLocalReplay(newGs);
       }
-      triggerAnimQueue([...cthQueue,...statQ],cleanedGs);
+      triggerAnimQueue([...preTurnQ,...cthQueue,...statQ],cleanedGs);
       return;
     }
     const drawStatQ=newGs?bindAnimLogChunks(
@@ -6530,9 +6560,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       cthDraws.forEach(card=>{
         queue.push({type:'DRAW_CARD',card:card,triggerName:'你',targetPid:0});
       });
+      const preTurnQ=buildTsathogguaSlimeGrantQueue(newGs);
       // 添加状态变化动画
     const statQ=buildAnimQueue(gs,newGs).filter(a=>a.type!=='CARD_TRANSFER');
       queue.push(...statQ);
+      queue.push(...preTurnQ);
       // 如果下一回合是玩家回合，添加 YOUR_TURN 动画
       if(newGs.currentTurn===0&&newGs.drawReveal?.card){
         queue.push({type:'YOUR_TURN',msgs:newGs._turnStartLogs},{type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:'你',targetPid:0,msgs:newGs._drawLogs});
@@ -6550,6 +6582,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           actorName:cthBeforeDrawPlayers?.[0]?.name||'你',
           cthDraws,
           cthDrawLogs,
+          preSteps:preTurnQ,
           statSteps:cthStatSteps,
         });
         broadcastCthRestDrawReplay(newGs,cthEvent);
@@ -6933,6 +6966,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   const cancelable=['SWAP_SELECT_TARGET','SWAP_STEAL_CARD','SWAP_SELECT_TARGET_CARD','SWAP_GIVE_CARD','HUNT_SELECT_TARGET','ZONE_SWAP_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','DAMAGE_LINK_SELECT_TARGET','TORTOISE_ORACLE_SELECT','ROSE_THORN_SELECT_TARGET','MULTIPLY_SELECT_TARGET','SHU_SELECT_TARGET','SAME_ABYSS_SELECT','SPHINX_GUESS','GRAVE_DIG_SELECT',...(phase==='HUNT_CONFIRM'&&gs._isMP&&!isLocalCurrentTurn(gs)?[]:['HUNT_CONFIRM']),'BEWITCH_SELECT_CARD','BEWITCH_SELECT_TARGET'].includes(phase);
   // In HUNT_CONFIRM, 放弃追捕 replaces ✕取消 — never show both
   const showCancelBtn=cancelable&&phase!=='HUNT_CONFIRM'&&!isSpectating&&isLocalCurrentTurn(gs)&&(!phase.includes('DAMAGE_LINK')||isLocalDamageLinkSelect)&&!anim;
+  const canShowEndTurnButton=phase==='ACTION'
+    &&isVisualPlayerTurn
+    &&!isBlocked
+    &&!animExiting
+    &&animQueueRef.current.length===0
+    &&!pendingGsRef.current;
 
 
   function handleAIClick(pi){
@@ -7488,9 +7527,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
               style={{
                 marginLeft:'auto',
                 padding:isMobile?'4px 10px':'5px 12px',
-                background:'var(--toe-panel,#180c08)',
-                border:'1.5px solid var(--toe-accent,#6a2a20)',
-                color:'#d08a72',
+                background:'#2a0c08',
+                border:'1.5px solid #c2412f',
+                color:'#ffb199',
                 fontFamily:"'Cinzel',serif",
                 fontWeight:700,
                 fontSize:baseFontSizes.small,
@@ -7498,6 +7537,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                 cursor:'pointer',
                 letterSpacing:isMobile?0.5:1,
                 textTransform:'uppercase',
+                boxShadow:'0 0 12px rgba(194,65,47,0.34)',
               }}
             >
               退出对局
@@ -7508,9 +7548,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
               style={{
                 marginLeft:'auto',
                 padding:isMobile?'4px 10px':'5px 12px',
-                background:'var(--toe-panel,#140c06)',
-                border:'1.5px solid var(--toe-line,#5a3a18)',
-                color:'var(--toe-strong,#c8a96e)',
+                background:'#2a0c08',
+                border:'1.5px solid #c2412f',
+                color:'#ffb199',
                 fontFamily:"'Cinzel',serif",
                 fontWeight:700,
                 fontSize:baseFontSizes.small,
@@ -7518,6 +7558,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                 cursor:'pointer',
                 letterSpacing:isMobile?0.5:1,
                 textTransform:'uppercase',
+                boxShadow:'0 0 12px rgba(194,65,47,0.34)',
               }}
             >
               返回主界面
@@ -7809,12 +7850,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                       ♥ 休息
                       {restLimited&&<span style={{fontSize:9,marginLeft:4,color:'var(--toe-muted,#7a5a2a)'}}>(已用)</span>}
                     </button>
-                    <button onClick={endTurn} style={{
-                      padding:isMobile?'5px 10px':'6px 16px',background:'var(--toe-panel,#180e08)',
-                      border:'1.5px solid var(--toe-line,#3a2510)',color:'var(--toe-muted,#a07838)',
-                      fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:baseFontSizes.body,
-                      borderRadius:2,cursor:'pointer',letterSpacing:isMobile?0.5:1,textTransform:'uppercase',
-                    }}>结束回合</button>
+                    {canShowEndTurnButton&&(
+                      <button onClick={endTurn} style={{
+                        padding:isMobile?'5px 10px':'6px 16px',background:'var(--toe-panel,#180e08)',
+                        border:'1.5px solid var(--toe-line,#3a2510)',color:'var(--toe-muted,#a07838)',
+                        fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:baseFontSizes.body,
+                        borderRadius:2,cursor:'pointer',letterSpacing:isMobile?0.5:1,textTransform:'uppercase',
+                      }}>结束回合</button>
+                    )}
                   </>);
                 })()}
                 {showCancelBtn&&(
