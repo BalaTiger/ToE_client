@@ -930,7 +930,7 @@ const ANIMATED_CARD_BACK_BY_EXPANSION = {
   '群星呼唤': {
     frameDir: '/img/card/animated/stars_call',
     sprite: '/img/card/animated/stars_call/spritesheet.png',
-    version: 'stars-20260608',
+    version: 'stars-loop-20260608',
     frameCount: 24,
     fps: 12,
     width: 392,

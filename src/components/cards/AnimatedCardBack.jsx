@@ -100,7 +100,7 @@ function useCardBackStyle(expansionKey, enabled = true) {
       getVersionedAssetPath(formatFramePath(anim.frameDir, index), anim.version)
     ));
   }, [anim?.frameDir, anim?.frameCount, anim?.version]);
-  const shouldUseFrames = expansionKey === '地神的潜影' && framePaths.length > 0;
+  const shouldUseFrames = framePaths.length > 0;
   const framesReady = useDecodedImages(framePaths, enabled && shouldUseFrames);
   const sprite = getVersionedAssetPath(anim?.sprite, anim?.version);
   const spriteReady = useDecodedImage(sprite, enabled && !shouldUseFrames);

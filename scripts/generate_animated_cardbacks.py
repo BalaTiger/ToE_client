@@ -157,7 +157,7 @@ def make_orbital_particles(width: int, height: int, phase: float, color: tuple[i
         radius_y = height * (0.16 + 0.24 * ((i * 53) % 100) / 100)
         wobble = math.sin(angle * 2.0 + i) * 0.08
         x = cx + math.cos(angle + wobble) * radius_x
-        y = cy + math.sin(angle * 0.82 + wobble) * radius_y
+        y = cy + math.sin(angle + wobble) * radius_y
         size = 5.0 + 7.0 * (((i * 19) % 100) / 100)
         alpha = int(40 + 88 * (0.5 + 0.5 * math.sin(angle + i * 0.7)))
         if mode == "earth":
@@ -174,7 +174,7 @@ def make_wave_light(width: int, height: int, phase: float, color: tuple[int, int
     if mode == "stars":
         for i in range(-3, 9):
             y = i * 72 + math.sin(phase * math.tau + i) * 26
-            xoff = math.sin(phase * math.tau * 0.7 + i * 0.5) * 58
+            xoff = math.sin(phase * math.tau + i * 0.5) * 58
             points = []
             for x in range(-60, width + 65, 28):
                 yy = y + math.sin((x * 0.022) + phase * math.tau + i) * 16
