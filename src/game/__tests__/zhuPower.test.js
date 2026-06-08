@@ -61,6 +61,22 @@ describe('zhuPower', () => {
     expect(light.cardIds).toEqual(['card-2', 'card-3', 'card-4']);
   });
 
+  it('adds newly lit cards to existing lit cards on retrigger', () => {
+    const deck = makeDeck();
+    const players = [
+      makePlayer({ godName: 'ZHU', godLevel: 2 }),
+      makePlayer(),
+    ];
+    const previous = { ownerIdx: 0, level: 1, cardIds: ['card-5', 'missing-card'], lightNonce: 3 };
+    const light = buildZhuLight(players, deck, 0, previous);
+    expect(light).toMatchObject({
+      ownerIdx: 0,
+      level: 2,
+      cardIds: ['card-5', 'card-1', 'card-2', 'card-3'],
+      lightNonce: 4,
+    });
+  });
+
   it('clears light when Zhu faith is lost', () => {
     const deck = makeDeck();
     const previous = { ownerIdx: 0, level: 1, cardIds: ['card-2'] };

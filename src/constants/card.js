@@ -944,6 +944,13 @@ function getAnimatedCardBack(expansionKey = '地神的潜影') {
   return ANIMATED_CARD_BACK_BY_EXPANSION[expansionKey] || null;
 }
 
+function getAnimatedCardBackFramePaths(expansionKey = '地神的潜影', publicPaths = false) {
+  const anim = getAnimatedCardBack(expansionKey);
+  if (!anim?.frameDir || !anim?.frameCount) return [];
+  const base = publicPaths ? anim.frameDir : anim.frameDir.replace(/^\//, '');
+  return Array.from({ length: anim.frameCount }, (_, i) => `${base}/frame_${String(i).padStart(2, '0')}.png`);
+}
+
 export const INSPECTION_DECK = [
   ...Array(4).fill({ name: '乱抓', effect: 'adjacentDamageHP', value: 1, type: 'negative' }),
   ...Array(4).fill({ name: '自残', effect: 'selfDamageHP', value: 1, type: 'negative' }),
@@ -969,8 +976,6 @@ export function createBlackGoatYoungCard() {
     isBlackGoatYoung: true,
     polarity: 'neutral',
     effectScope: 'self',
-    letter: 'B',
-    number: 0,
     key: 'BGY',
   };
 }
@@ -985,8 +990,6 @@ export function createTsathogguaSlimeCard() {
     isTsathogguaSlime: true,
     polarity: 'neutral',
     effectScope: 'self',
-    letter: 'T',
-    number: 0,
     key: 'SLM',
   };
 }
@@ -1029,6 +1032,7 @@ export {
   ANIMATED_CARD_BACK_BY_EXPANSION,
   getCardBackImage,
   getAnimatedCardBack,
+  getAnimatedCardBackFramePaths,
   getGodShortKey,
   getCardDisplayKey,
 };
