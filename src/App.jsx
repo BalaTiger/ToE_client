@@ -251,6 +251,32 @@ const isH5PackagedRuntime=()=>{
   }catch{/* ignore */}
   return false;
 };
+const getRuntimeServerUrl=()=>{
+  if(typeof window==='undefined')return '';
+  const configured=window.__TOE_SERVER_URL__;
+  if(configured)return configured;
+  if(typeof __TOE_RUNTIME_TARGET__!=='undefined'&&__TOE_RUNTIME_TARGET__==='dev'){
+    return typeof __TOE_DEV_SERVER_URL__!=='undefined'?__TOE_DEV_SERVER_URL__:'http://127.0.0.1:3002';
+  }
+  if(typeof __TOE_RUNTIME_TARGET__!=='undefined'&&__TOE_RUNTIME_TARGET__==='h5'){
+    return typeof __TOE_H5_SERVER_URL__!=='undefined'?__TOE_H5_SERVER_URL__:'https://toegame.online';
+  }
+  const origin=window.location?.origin;
+  if(!origin||origin==='null')return 'http://127.0.0.1:3002';
+  return origin;
+};
+const getRuntimeSocketPath=()=>{
+  if(typeof window==='undefined')return '/api/socket.io';
+  if(window.__TOE_SOCKET_PATH__)return window.__TOE_SOCKET_PATH__;
+  if(typeof __TOE_RUNTIME_TARGET__!=='undefined'&&__TOE_RUNTIME_TARGET__==='dev'){
+    return typeof __TOE_DEV_SOCKET_PATH__!=='undefined'?__TOE_DEV_SOCKET_PATH__:'/socket.io';
+  }
+  if(typeof __TOE_RUNTIME_TARGET__!=='undefined'&&__TOE_RUNTIME_TARGET__==='h5'){
+    return typeof __TOE_H5_SOCKET_PATH__!=='undefined'?__TOE_H5_SOCKET_PATH__:'/socket.io';
+  }
+  if(window.location?.origin==='null')return '/socket.io';
+  return '/api/socket.io';
+};
 const LOCAL_DEBUG_KEY='cthulhu_local_debug_mode';
 const FIRST_BATTLE_DONE_KEY='cthulhu_first_battle_done_v1';
 const DEBUG_FORCE_CARD_KEY='cthulhu_debug_force_card';
@@ -483,6 +509,7 @@ export default function Game(){
   const isArtifact = (()=>{
     try{
       if(window.self!==window.top)return true;          // inside any iframe (Artifacts)
+      if(isH5Package)return false;                      // packaged H5 / file runtime: allow persistence and multiplayer
       if(window.location.origin==='null')return true;   // sandboxed origin
       if(/localhost|127\.0\.1/.test(window.location.hostname))return false; // local dev: use real localStorage
       return false;                                      // deployed website: use real localStorage
@@ -596,14 +623,8 @@ export default function Game(){
 
   // ── Multiplayer ───────────────────────────────────────────────
   // Prefer explicit runtime/env configuration; default to same-origin reverse proxy.
-  const SERVER_URL =
-    (typeof window!=='undefined'&&window.__TOE_SERVER_URL__) ||
-    (typeof import.meta!=='undefined'&&import.meta.env?.VITE_SERVER_URL) ||
-    (typeof window!=='undefined'?window.location.origin:'');
-  const SOCKET_PATH =
-    (typeof window!=='undefined'&&window.__TOE_SOCKET_PATH__) ||
-    (typeof import.meta!=='undefined'&&import.meta.env?.VITE_SOCKET_PATH) ||
-    '/api/socket.io';
+  const SERVER_URL = getRuntimeServerUrl();
+  const SOCKET_PATH = getRuntimeSocketPath();
   useEffect(()=>{
     if(typeof window==='undefined') return undefined;
     const announcementUrl = `${SERVER_URL.replace(/\/$/,'')}/api/announcement`;
