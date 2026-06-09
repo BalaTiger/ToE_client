@@ -10,6 +10,7 @@ import { StartScreen } from './components/start/StartScreen';
 import { ThemeCornerOrnament, ThemeEdgeRelief } from './components/theme/ThemeOrnaments';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
+import { buildPublicUrl } from './utils/url';
 // socket.io-client is loaded at runtime via CDN (only outside Claude Artifacts)
 
 import {
@@ -239,6 +240,17 @@ const safeLS={
   get:(k)=>{try{return localStorage.getItem(k);}catch{/* ignore */ return null;}},
   set:(k,v)=>{try{localStorage.setItem(k,v);}catch{/* ignore */}},
 };
+const isH5PackagedRuntime=()=>{
+  if(typeof window==='undefined')return false;
+  try{
+    if(window.__TOE_H5_PACKAGE__===true||window.__TOE_H5_PACKAGE__==='1')return true;
+    if(typeof __TOE_H5_BUILD__!=='undefined'&&__TOE_H5_BUILD__)return true;
+    if(window.location?.protocol==='file:')return true;
+    if(window.matchMedia?.('(display-mode: standalone)')?.matches)return true;
+    if(window.navigator?.standalone===true)return true;
+  }catch{/* ignore */}
+  return false;
+};
 const LOCAL_DEBUG_KEY='cthulhu_local_debug_mode';
 const FIRST_BATTLE_DONE_KEY='cthulhu_first_battle_done_v1';
 const DEBUG_FORCE_CARD_KEY='cthulhu_debug_force_card';
@@ -262,7 +274,7 @@ const isLocalDebugEnabled=()=>{
   catch{return false;}
 };
 function getBattleBackgroundStyle(expansionKey,isMobile){
-  const url=getBattleBackgroundImage(expansionKey);
+  const url=buildPublicUrl(getBattleBackgroundImage(expansionKey));
   const theme=getBattleTheme(expansionKey);
   const isStarsCall=expansionKey==='群星呼唤';
   return {
@@ -465,6 +477,7 @@ export default function Game(){
   }, [isLoading]);
   
   // ── Tutorial ──────────────────────────────────────────────────
+  const isH5Package=isH5PackagedRuntime();
   // Detect non-production environments (Claude Artifacts iframe, local dev, etc.)
   // Use multiple signals: iframe check + origin check + localhost
   const isArtifact = (()=>{
@@ -477,7 +490,8 @@ export default function Game(){
   })();
   const TUTORIAL_KEY='cthulhu_tutorial_v2_done'; // v2: bump version to reset all prior cached state
   const isLocalTestMode=isLocalTestHost();
-  const readTutorialDone=()=>isArtifact?false:safeLS.get(TUTORIAL_KEY)==='1';
+  const canPersistTutorial=!isArtifact||isH5Package;
+  const readTutorialDone=()=>canPersistTutorial?safeLS.get(TUTORIAL_KEY)==='1':false;
   const [tutorialDone,setTutorialDone]=useState(readTutorialDone);
   const [showTutorial,setShowTutorial]=useState(false);
   const [showGodResurrection,setShowGodResurrection]=useState(false);
@@ -3150,7 +3164,7 @@ export default function Game(){
           <div style={{marginBottom:32}}>
             <div style={{display:'flex',alignItems:'center',marginBottom:20}}>
               <img 
-                src="/img/loading.png" 
+                src={buildPublicUrl('/img/loading.png')} 
                 style={{
                   height: '16px', 
                   marginRight: '10px',
@@ -6779,7 +6793,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     setShowFullLog(false);
     // 展会临时逻辑：从主界面进入单人局时，即使已完成教程也再次询问是否进入引导。
     // 后续正式版本可移除 forceTutorialPrompt 分支，仅保留首次玩家判断。
-    if(!skipTutorialPrompt&&(forceTutorialPrompt||!tutorialDone)){setTutorialStep(1);setShowTutorial(true);return;}
+    const shouldShowTutorialPrompt=!skipTutorialPrompt&&(isH5Package?!tutorialDone:(forceTutorialPrompt||!tutorialDone));
+    if(shouldShowTutorialPrompt){setTutorialStep(1);setShowTutorial(true);return;}
     _doStartNewGame();
   }
   function _doStartNewGame(silent=false){
@@ -6913,7 +6928,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   function completeTutorial(){
     setShowTutorial(false);
     setTutorialDone(true);
-    if(!isArtifact)safeLS.set(TUTORIAL_KEY,'1');
+    if(canPersistTutorial)safeLS.set(TUTORIAL_KEY,'1');
     // Always start a fresh game — the silent tutorial-preview gs was display-only.
     // _doStartNewGame() will trigger roleReveal → YOUR_TURN → DRAW_CARD in sequence.
     _doStartNewGame();
@@ -8041,6 +8056,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             aiPanelAreaRect={aiPanelAreaRect}
             deckAreaRect={deckAreaRect}
             isArtifact={isArtifact}
+            isH5Package={isH5Package}
             setTutorialStep={setTutorialStep}
             completeTutorial={completeTutorial}
           />

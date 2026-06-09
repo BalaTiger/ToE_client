@@ -3,6 +3,7 @@ import { CS, GOD_CS } from '../../constants/card';
 import { DDCard, MiniCardFace } from '../cards';
 import { CardBackLayer } from '../cards/AnimatedCardBack';
 import { getPileAnchorCenter, getPlayerAreaAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
+import { buildPublicUrl } from '../../utils/url';
 
 const BLACK_GOAT_PARTICLES = [
   { x: -18, y: -18, size: 7, delay: 0.00, dur: 0.58, glow: 1.00 },
@@ -41,7 +42,7 @@ function BlackGoatTrail({ txPx, tyPx, delay = 0, duration = 1.28 }) {
         <div style={{
           width: 72,
           height: 72,
-          backgroundImage: "url('/img/effects/evil_goat_spirit_run_spritesheet.png')",
+          backgroundImage: `url('${buildPublicUrl('/img/effects/evil_goat_spirit_run_spritesheet.png')}')`,
           backgroundSize: '700% 100%',
           backgroundRepeat: 'no-repeat',
           filter: 'drop-shadow(0 0 10px rgba(74,222,128,0.95)) drop-shadow(0 0 18px rgba(21,128,61,0.75))',

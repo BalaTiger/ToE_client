@@ -1,10 +1,11 @@
 import React from 'react';
 import { getBoardTheme, getReliefDisplayConfig } from '../../constants/theme';
 import { ThemeMaskOrnament } from '../ui/ThemeMaskOrnament';
+import { buildPublicUrl } from '../../utils/url';
 
 export function getThemeReliefMask(expansionKey = '地神的潜影', kind = 'panel_corner') {
   const suffix = expansionKey === '群星呼唤' ? 'stars' : 'earth';
-  return `/img/ui/theme_relief/${kind}_${suffix}.png`;
+  return buildPublicUrl(`/img/ui/theme_relief/${kind}_${suffix}.png`);
 }
 
 function getCornerPosition(corner, inset) {

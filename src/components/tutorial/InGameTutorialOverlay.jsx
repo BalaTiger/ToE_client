@@ -25,6 +25,7 @@ export default function InGameTutorialOverlay({
   aiPanelAreaRect,
   deckAreaRect,
   isArtifact,
+  isH5Package,
   setTutorialStep,
   completeTutorial,
 }) {
@@ -646,7 +647,7 @@ export default function InGameTutorialOverlay({
             >
               ✦ 完成引导
             </button>
-            {isArtifact&&(
+            {isArtifact&&!isH5Package&&(
               <div style={{marginTop:14,fontSize:10,color:'#7a5a2a',fontFamily:"'Cinzel',serif",letterSpacing:0.5}}>
                 （当前为预览环境，引导完成状态不会被保存）
               </div>

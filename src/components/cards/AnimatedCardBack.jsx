@@ -1,5 +1,6 @@
 import React from 'react';
 import { getAnimatedCardBack, getAnimatedCardBackFramePaths, getCardBackImage } from '../../constants/card';
+import { buildPublicUrl } from '../../utils/url';
 
 const decodedFrameCache = new Map();
 
@@ -89,9 +90,9 @@ function useDecodedImages(paths, enabled = true) {
 
 function useCardBackStyle(expansionKey, enabled = true) {
   const anim = getAnimatedCardBack(expansionKey);
-  const fallbackImage = getCardBackImage(expansionKey);
+  const fallbackImage = buildPublicUrl(getCardBackImage(expansionKey));
   const framePaths = React.useMemo(() => {
-    return getAnimatedCardBackFramePaths(expansionKey, true);
+    return getAnimatedCardBackFramePaths(expansionKey, true).map(path => buildPublicUrl(path));
   }, [expansionKey]);
   const framesReady = useDecodedImages(framePaths, enabled && framePaths.length > 0);
   const frame = useSpriteFrame(enabled && framesReady, anim?.frameCount || 0, anim?.fps || 12);
