@@ -1,5 +1,6 @@
 import React from "react";
 import { AnimOverlay } from "../anim/AnimOverlay";
+import { buildPublicUrl } from "../../utils/url";
 
 export function StartScreen({
   vw,
@@ -40,9 +41,9 @@ export function StartScreen({
     '手牌上限 4 张，超出须弃牌',
   ];
   const startRoles = [
-    { key: '寻宝者', goal: '集齐宝藏', icon: '/img/logo/logo_tr-no-bg.png', panel: '/img/btn/btn_dark_green.png', accent: '#8fd0ca' },
-    { key: '追猎者', goal: '消灭所有非追猎者', icon: '/img/logo/logo_hu-no-bg.png', panel: '/img/btn/btn_dark_red.png', accent: '#d26458' },
-    { key: '邪祀者', goal: '复活邪神', icon: '/img/logo/logo_cu-no-bg.png', panel: '/img/btn/btn_dark_purple.png', accent: '#a781cf' },
+    { key: '寻宝者', goal: '集齐宝藏', icon: buildPublicUrl('/img/logo/logo_tr-no-bg.png'), panel: buildPublicUrl('/img/btn/btn_dark_green.png'), accent: '#8fd0ca' },
+    { key: '追猎者', goal: '消灭所有非追猎者', icon: buildPublicUrl('/img/logo/logo_hu-no-bg.png'), panel: buildPublicUrl('/img/btn/btn_dark_red.png'), accent: '#d26458' },
+    { key: '邪祀者', goal: '复活邪神', icon: buildPublicUrl('/img/logo/logo_cu-no-bg.png'), panel: buildPublicUrl('/img/btn/btn_dark_purple.png'), accent: '#a781cf' },
   ];
   const startWideProgress = Math.max(0, Math.min(1, (vw - 900) / 260));
   const frameWidth = `min(100%, ${Math.round(lerp(440, 860, startWideProgress))}px)`;
@@ -77,7 +78,7 @@ export function StartScreen({
         style={{
           position: 'fixed',
           inset: 0,
-          backgroundImage: "url('/img/bg/bg_main.png')",
+          backgroundImage: `url('${buildPublicUrl('/img/bg/bg_main.png')}')`,
           backgroundSize: 'cover',
           backgroundPosition: 'center top',
           backgroundRepeat: 'no-repeat',
@@ -105,7 +106,7 @@ export function StartScreen({
             >
               <div style={{ position: 'relative', display: 'inline-block', marginBottom: Math.round(lerp(8, 14, startWideProgress)) }}>
                 <img
-                  src="/img/title/texture_toehp.png"
+                  src={buildPublicUrl('/img/title/texture_toehp.png')}
                   alt="邪神的宝藏"
                   style={{
                     display: 'block',
@@ -117,12 +118,12 @@ export function StartScreen({
                 />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: Math.round(lerp(8, 14, startWideProgress)), width: '100%', marginBottom: Math.round(lerp(10, 12, startWideProgress)) }}>
-                <img src="/img/line/line_titleguard-no-bg.png" alt="" style={{ width: Math.round(lerp(78, 128, startWideProgress)), opacity: 0.75 }} />
+                <img src={buildPublicUrl('/img/line/line_titleguard-no-bg.png')} alt="" style={{ width: Math.round(lerp(78, 128, startWideProgress)), opacity: 0.75 }} />
                 <div style={{ fontFamily: "'Noto Serif SC','SimSun',serif", fontSize: Math.round(lerp(18, 28, startWideProgress)), letterSpacing: Math.round(lerp(4, 8, startWideProgress)), color: '#cbb293', textShadow: '0 0 12px rgba(0,0,0,0.35)', whiteSpace: 'nowrap' }}>克苏鲁卡牌对战</div>
-                <img src="/img/line/line_titleguard-no-bg.png" alt="" style={{ width: Math.round(lerp(78, 128, startWideProgress)), opacity: 0.75, transform: 'scaleX(-1)' }} />
+                <img src={buildPublicUrl('/img/line/line_titleguard-no-bg.png')} alt="" style={{ width: Math.round(lerp(78, 128, startWideProgress)), opacity: 0.75, transform: 'scaleX(-1)' }} />
               </div>
               <div style={{ fontFamily: "'Cinzel',serif", fontSize: Math.round(lerp(11, 17, startWideProgress)), letterSpacing: Math.round(lerp(6, 10, startWideProgress)), color: '#cbb293', textTransform: 'uppercase', marginBottom: Math.round(lerp(2, 4, startWideProgress)), opacity: 0.92 }}>Treasures Of Evils</div>
-              <img src="/img/line/line_split-no-bg.png" alt="" style={{ width: `${lerp(82, 72, startWideProgress)}%`, maxWidth: 540, marginBottom: Math.round(lerp(8, 10, startWideProgress)), opacity: 0.82 }} />
+              <img src={buildPublicUrl('/img/line/line_split-no-bg.png')} alt="" style={{ width: `${lerp(82, 72, startWideProgress)}%`, maxWidth: 540, marginBottom: Math.round(lerp(8, 10, startWideProgress)), opacity: 0.82 }} />
               <p
                 style={{
                   maxWidth: Math.round(lerp(360, 620, startWideProgress)),
@@ -218,7 +219,7 @@ export function StartScreen({
                   aspectRatio: '397 / 133',
                   padding: `0 ${Math.round(lerp(18, 30, startWideProgress))}px`,
                   background: 'transparent',
-                  backgroundImage: "url('/img/btn/btn_bright_green.png')",
+                  backgroundImage: `url('${buildPublicUrl('/img/btn/btn_bright_green.png')}')`,
                   backgroundSize: '100% 100%',
                   backgroundRepeat: 'no-repeat',
                   backgroundPosition: 'center',
@@ -234,7 +235,7 @@ export function StartScreen({
               >
                 踏入黑暗
               </button>
-              <img src="/img/deco/deco_cth-no-bg.png" alt="" style={{ width: Math.round(lerp(46, 62, startWideProgress)), opacity: 0.9, filter: 'drop-shadow(0 2px 10px rgba(0,0,0,0.35))' }} />
+              <img src={buildPublicUrl('/img/deco/deco_cth-no-bg.png')} alt="" style={{ width: Math.round(lerp(46, 62, startWideProgress)), opacity: 0.9, filter: 'drop-shadow(0 2px 10px rgba(0,0,0,0.35))' }} />
               <button
                 onClick={handleMultiplayer}
                 disabled={multiLoading}
@@ -243,7 +244,7 @@ export function StartScreen({
                   aspectRatio: '397 / 133',
                   padding: `0 ${Math.round(lerp(18, 30, startWideProgress))}px`,
                   background: 'transparent',
-                  backgroundImage: "url('/img/btn/btn_bright_purple.png')",
+                  backgroundImage: `url('${buildPublicUrl('/img/btn/btn_bright_purple.png')}')`,
                   backgroundSize: '100% 100%',
                   backgroundRepeat: 'no-repeat',
                   backgroundPosition: 'center',
@@ -284,7 +285,7 @@ export function StartScreen({
                     aspectRatio: '426 / 94',
                     padding: `${Math.round(lerp(8, 10, startWideProgress))}px ${Math.round(lerp(8, 10, startWideProgress))}px ${Math.round(lerp(8, 10, startWideProgress))}px 25%`,
                     background: 'transparent',
-                    backgroundImage: "url('/img/btn/btn_author.png')",
+                    backgroundImage: `url('${buildPublicUrl('/img/btn/btn_author.png')}')`,
                     backgroundSize: '100% 100%',
                     backgroundRepeat: 'no-repeat',
                     backgroundPosition: 'center',
@@ -311,7 +312,7 @@ export function StartScreen({
                     aspectRatio: '426 / 94',
                     padding: `${Math.round(lerp(8, 10, startWideProgress))}px ${Math.round(lerp(8, 10, startWideProgress))}px ${Math.round(lerp(8, 10, startWideProgress))}px 25%`,
                     background: 'transparent',
-                    backgroundImage: "url('/img/btn/btn_roadmap.png')",
+                    backgroundImage: `url('${buildPublicUrl('/img/btn/btn_roadmap.png')}')`,
                     backgroundSize: '100% 100%',
                     backgroundRepeat: 'no-repeat',
                     backgroundPosition: 'center',

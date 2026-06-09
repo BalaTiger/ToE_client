@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { buildPublicUrl } from '../../utils/url';
 
 // 预生成随机烛火位置（模块级，避免 render 中调用 Math.random）
 const CANDLE_POSITIONS = (() => {
@@ -71,7 +72,7 @@ export function TitleCandleFlames() {
     position: 'absolute',
     width: '48px',  // 火焰的实际显示宽度
     height: '48px', // 火焰的实际显示高度（128*128每帧，缩小到48*48）
-    backgroundImage: `url('/img/title_candle.png')`,
+    backgroundImage: `url('${buildPublicUrl('/img/title_candle.png')}')`,
 
     // 4x4的图，背景尺寸必须是容器的 400%
     backgroundSize: '400% 400%',

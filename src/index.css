@@ -31,7 +31,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background-color: #242424;
-  background-image: url('/bg_preview.jpg');
+  background-image: var(--toe-html-bg-preview, url('/bg_preview.jpg'));
   background-size: cover;
   background-position: center;
   background-attachment: fixed;
@@ -57,10 +57,10 @@ body::before {
 }
 
 body.toe-html-bg-ready {
-  background-image: url('/bg.png');
+  background-image: var(--toe-html-bg-full, url('/bg.png'));
 }
 body.toe-html-bg-ready::before {
-  background-image: url('/bg.png');
+  background-image: var(--toe-html-bg-full, url('/bg.png'));
   opacity: 1;
 }
 

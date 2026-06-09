@@ -1,9 +1,10 @@
 import React from 'react';
 import { getReliefDisplayConfig } from '../../constants/theme';
+import { buildPublicUrl } from '../../utils/url';
 
 function getLogPatternBackground(expansionKey = '地神的潜影') {
   const suffix = expansionKey === '群星呼唤' ? 'stars' : 'earth';
-  return `/img/ui/theme_relief/log_relief_${suffix}.png`;
+  return buildPublicUrl(`/img/ui/theme_relief/log_relief_${suffix}.png`);
 }
 
 function getLogReliefLayers(expansionKey = '地神的潜影') {

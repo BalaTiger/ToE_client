@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CS, GOD_CS } from '../../constants/card';
 import { RINFO } from '../../game';
+import { buildPublicUrl } from '../../utils/url';
 
 function GodResurrectionAnim({onDone}){
   const [textPhase, setTextPhase] = useState(0); // 0: black, 1: transitioning, 2: red with blood
@@ -53,7 +54,7 @@ function GodResurrectionAnim({onDone}){
       <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
         <video 
           id="god-resurrection-video"
-          src="/videos/ancient_god_tentacles.mp4" 
+          src={buildPublicUrl('/videos/ancient_god_tentacles.mp4')} 
           autoPlay 
           muted
           playsInline
