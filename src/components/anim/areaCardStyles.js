@@ -6,8 +6,8 @@ export const AREA_CARD_ANIMATION_STYLES = `
     pointer-events: none;
     overflow: hidden;
     background:
-      radial-gradient(circle at 50% 48%, rgba(105,35,8,0.22), rgba(5,2,1,0.66) 72%),
-      linear-gradient(180deg, rgba(46,13,4,0.2), rgba(0,0,0,0.22));
+      radial-gradient(circle at 50% 48%, rgba(105,35,8,0.11), rgba(5,2,1,0.42) 72%),
+      linear-gradient(180deg, rgba(46,13,4,0.09), rgba(0,0,0,0.16));
     animation: animFadeIn 0.16s ease-out both;
   }
   .volcano-overlay.volcano-exiting {
@@ -16,207 +16,18 @@ export const AREA_CARD_ANIMATION_STYLES = `
   .volcano-vignette {
     position: absolute;
     inset: 0;
-    box-shadow: inset 0 0 120px rgba(255,96,16,0.22);
+    box-shadow: inset 0 0 120px rgba(255,96,16,0.12);
     background:
-      radial-gradient(circle at 24% 34%, rgba(255,174,66,0.12), transparent 18%),
-      radial-gradient(circle at 70% 44%, rgba(255,102,26,0.14), transparent 22%),
-      linear-gradient(180deg, rgba(46,13,4,0.18), rgba(0,0,0,0.16));
+      radial-gradient(circle at 24% 34%, rgba(255,174,66,0.06), transparent 18%),
+      radial-gradient(circle at 70% 44%, rgba(255,102,26,0.07), transparent 22%),
+      linear-gradient(180deg, rgba(46,13,4,0.08), rgba(0,0,0,0.12));
   }
-  .volcano-shake-layer {
+  .volcano-canvas {
     position: absolute;
     inset: 0;
-    animation:
-      volcanoMicroQuakeA 0.22s cubic-bezier(0.18,0.84,0.24,1) 0.58s both,
-      volcanoMicroQuakeB 0.2s cubic-bezier(0.18,0.84,0.24,1) 0.94s both,
-      volcanoMicroQuakeC 0.18s cubic-bezier(0.18,0.84,0.24,1) 1.28s both;
-  }
-  .volcano-impact {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    transform: scale(var(--volcano-scale, 1));
-    transform-origin: center;
-  }
-  .volcano-impact::after {
-    content: '';
-    position: absolute;
-    left: -42px;
-    top: -42px;
-    width: 84px;
-    height: 84px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(255,225,130,0.24), rgba(255,78,14,0.12) 36%, rgba(255,78,14,0) 72%);
-    opacity: 0;
-    animation: volcanoGroundGlow 1.22s ease-out calc(var(--volcano-delay, 0s) + 0.52s) both;
-  }
-  .volcano-meteor {
-    position: absolute;
-    left: -38px;
-    top: -38px;
-    width: 76px;
-    height: 76px;
-    transform: translate(var(--volcano-from-x, -58vw), var(--volcano-from-y, -55vh)) rotate(var(--volcano-rot, -28deg)) scale(1.05);
-    animation: volcanoMeteorFall 0.68s cubic-bezier(0.1,0.82,0.18,1) var(--volcano-delay, 0s) both;
-  }
-  .volcano-meteor-tail {
-    position: absolute;
-    left: -186px;
-    top: 18px;
-    width: 228px;
-    height: 28px;
-    border-radius: 50%;
-    background: linear-gradient(90deg, rgba(255,59,10,0), rgba(255,110,21,0.22), rgba(255,205,96,0.92));
-    filter: blur(7px);
-    transform: rotate(-12deg);
-    transform-origin: 100% 50%;
-    animation: volcanoTailPulse 0.68s ease-out var(--volcano-delay, 0s) both;
-  }
-  .volcano-meteor-rock {
-    position: absolute;
-    left: 18px;
-    top: 18px;
-    width: 42px;
-    height: 42px;
-    border-radius: 46% 54% 41% 59% / 48% 38% 62% 52%;
-    background:
-      radial-gradient(circle at 32% 28%, #ffe08a 0 8%, #ff7a18 9% 24%, #53200b 58%, #160905 100%);
-    box-shadow: 0 0 20px rgba(255,120,24,0.9), 0 0 44px rgba(248,65,12,0.56);
-  }
-  .volcano-impact-flash {
-    position: absolute;
-    width: 24px;
-    height: 24px;
-    margin-left: -12px;
-    margin-top: -12px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(255,242,184,1), rgba(255,135,30,0.72) 35%, rgba(255,64,12,0) 72%);
-    opacity: 0;
-    animation: volcanoImpactFlash 0.36s ease-out calc(var(--volcano-delay, 0s) + 0.5s) both;
-  }
-  .volcano-lava-field {
-    position: absolute;
-    width: 240px;
-    height: 180px;
-    margin-left: -120px;
-    margin-top: -90px;
-    opacity: 0;
-    transform-origin: 50% 50%;
-    animation: volcanoLavaShrink 1.35s cubic-bezier(0.12,0.62,0.22,1) calc(var(--volcano-delay, 0s) + 0.54s) both;
-    filter: drop-shadow(0 0 16px rgba(255,90,20,0.66));
-  }
-  .volcano-lava-shape {
-    transform-origin: center;
-  }
-  .volcano-lava-outer {
-    fill: rgba(101,24,8,0.96);
-    stroke: rgba(255,138,42,0.76);
-    stroke-width: 4;
-  }
-  .volcano-lava-inner {
-    fill: rgba(255,113,18,0.78);
-    stroke: rgba(255,222,112,0.82);
-    stroke-width: 2;
-    animation: volcanoLavaPulse 0.26s ease-in-out calc(var(--volcano-delay, 0s) + 0.58s) 3 alternate both;
-  }
-  .volcano-crack {
-    fill: none;
-    stroke: rgba(255,226,118,0.9);
-    stroke-width: 5;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    filter: blur(0.6px);
-  }
-  .volcano-crack-b {
-    stroke-width: 3;
-    opacity: 0.72;
-  }
-  .volcano-embers {
-    position: absolute;
-  }
-  .volcano-embers span {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 6px;
-    height: 6px;
-    margin-left: -3px;
-    margin-top: -3px;
-    border-radius: 50%;
-    background: radial-gradient(circle, #fff4b8, #ff8a1c 48%, rgba(255,61,12,0) 76%);
-    box-shadow: 0 0 10px rgba(255,125,28,0.88);
-    opacity: 0;
-    animation: volcanoEmberBurst 0.92s ease-out var(--ember-delay, 0.78s) both;
-  }
-  .volcano-msgs {
-    position: absolute;
-    left: 50%;
-    bottom: 11%;
-    transform: translateX(-50%);
-    width: min(520px, calc(100vw - 40px));
-    padding: 10px 18px;
-    border: 1px solid rgba(255,130,42,0.32);
-    border-radius: 4px;
-    background: rgba(20,5,2,0.66);
-    color: #f4c978;
-    font-family: 'IM Fell English','Georgia',serif;
-    font-size: 13px;
-    line-height: 1.7;
-    text-align: center;
-    box-shadow: 0 0 22px rgba(255,92,20,0.22);
-    animation: animFadeIn 0.3s ease-out 0.76s both;
-  }
-  @keyframes volcanoMeteorFall {
-    0% { opacity: 0; transform: translate(var(--volcano-from-x, -58vw), var(--volcano-from-y, -55vh)) rotate(var(--volcano-rot, -28deg)) scale(0.74); }
-    12% { opacity: 1; }
-    82% { opacity: 1; transform: translate(-10px,-10px) rotate(calc(var(--volcano-rot, -28deg) + 22deg)) scale(1); }
-    100% { opacity: 0; transform: translate(0,0) rotate(calc(var(--volcano-rot, -28deg) + 36deg)) scale(0.28); }
-  }
-  @keyframes volcanoTailPulse {
-    0% { opacity: 0; transform: rotate(-12deg) scaleX(0.3); }
-    18% { opacity: 0.95; }
-    100% { opacity: 0; transform: rotate(-12deg) scaleX(1.05); }
-  }
-  @keyframes volcanoMicroQuakeA {
-    0%, 100% { transform: translate(0,0); }
-    22% { transform: translate(-5px,3px); }
-    48% { transform: translate(4px,-3px); }
-    72% { transform: translate(-2px,-2px); }
-  }
-  @keyframes volcanoMicroQuakeB {
-    0%, 100% { transform: translate(0,0); }
-    24% { transform: translate(4px,2px); }
-    50% { transform: translate(-5px,-2px); }
-    74% { transform: translate(2px,3px); }
-  }
-  @keyframes volcanoMicroQuakeC {
-    0%, 100% { transform: translate(0,0); }
-    26% { transform: translate(-3px,-2px); }
-    54% { transform: translate(4px,2px); }
-  }
-  @keyframes volcanoImpactFlash {
-    0% { opacity: 0; transform: scale(0.3); }
-    24% { opacity: 1; transform: scale(5.2); }
-    100% { opacity: 0; transform: scale(9); }
-  }
-  @keyframes volcanoLavaShrink {
-    0% { opacity: 0; transform: scale(0.38) rotate(var(--volcano-lava-rot, -5deg)); }
-    14% { opacity: 1; transform: scale(0.86) rotate(2deg); }
-    58% { opacity: 0.88; transform: scale(0.58) rotate(-3deg); }
-    100% { opacity: 0; transform: scale(0.05) rotate(4deg); }
-  }
-  @keyframes volcanoLavaPulse {
-    from { opacity: 0.64; transform: scale(0.94); }
-    to { opacity: 1; transform: scale(1.08); }
-  }
-  @keyframes volcanoEmberBurst {
-    0% { opacity: 0; transform: translate(0,0) scale(0.5); }
-    16% { opacity: 1; }
-    100% { opacity: 0; transform: translate(var(--ember-x), var(--ember-y)) scale(0.15); }
-  }
-  @keyframes volcanoGroundGlow {
-    0% { opacity: 0; transform: scale(0.4); }
-    18% { opacity: 1; transform: scale(1.2); }
-    100% { opacity: 0; transform: scale(0.25); }
+    width: 100%;
+    height: 100%;
+    mix-blend-mode: screen;
   }
   .geomagnetic-title {
     position: absolute;

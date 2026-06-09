@@ -833,7 +833,8 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       }
     },
     snakePoisonTrap: () => {
-      const targets = P.map((p, i) => i).filter(i => P[i] && !P[i].isDead && !avoidNegativeFor.includes(i));
+      const livingTargets = P.map((p, i) => i).filter(i => P[i] && !P[i].isDead);
+      const targets = livingTargets.filter(i => !avoidNegativeFor.includes(i));
       if (!targets.length) {
         msgs.push('【群蛇陷阱】没有存活角色可被中毒');
         return;
@@ -841,7 +842,8 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const beforePlayers = copyPlayers(P);
       const assignments = new Map();
       const assignmentHits = [];
-      for (let n = 0; n < targets.length; n += 1) {
+      const totalLayers = livingTargets.length;
+      for (let n = 0; n < totalLayers; n += 1) {
         const targetIdx = targets[Math.floor(Math.random() * targets.length)];
         P[targetIdx].poisonStacks = (P[targetIdx].poisonStacks || 0) + 1;
         assignments.set(targetIdx, (assignments.get(targetIdx) || 0) + 1);
@@ -850,7 +852,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const summary = [...assignments.entries()]
         .map(([idx, count]) => `${P[idx].name}+${count}`)
         .join('、');
-      msgs.push(`【群蛇陷阱】分配了 ${targets.length} 层中毒：${summary}`);
+      msgs.push(`【群蛇陷阱】分配了 ${totalLayers} 层中毒：${summary}`);
       const assignmentList = [...assignments.entries()].map(([idx, count]) => ({ idx, count, name: P[idx].name }));
       const event = createCardEffectEvent({
         effectKey: 'snakeTrap',
@@ -859,7 +861,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         beforePlayers,
         afterPlayers: copyPlayers(P),
         msgs: [msgs[msgs.length - 1]],
-        payload: { assignmentList, assignmentHits, totalLayers: targets.length },
+        payload: { assignmentList, assignmentHits, totalLayers },
       });
       if (event) {
         statePatch = {
@@ -939,6 +941,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           beforeDiscard: [...Disc],
           afterPlayers: copyPlayers(P),
           afterDiscard: [...Disc],
+          statEvents: directStatEvents || buildStatEvents(beforePlayers, P, msgs.slice(-1), { reason: card?.name || card?.type || '', seq: (gs?._statEventSeq || 0) + 1 }),
           msgs: msgs.slice(-1),
         });
         if (event) {

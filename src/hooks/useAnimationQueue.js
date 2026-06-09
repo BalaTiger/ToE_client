@@ -153,8 +153,11 @@ export function useAnimationQueue({
         if (nextTurnHighlight != null) visualStateLocks.lock({turnHighlight:nextTurnHighlight});
         if (next.visualSetupPatch) applyVisualPatch(next.visualSetupPatch);
         if (next?.type === 'EARTHQUAKE') { try { console.log('[EQ-DEBUG] advanceQueue: setting EARTHQUAKE as active anim; remainingQueue =', animQueueRef.current.map(s => s.type)); } catch { /* noop */ } }
-        setAnim(next);
-        revealAnimLogs(next);
+        const displayStep = next.type === 'YOUR_TURN' && nextTurnHighlight === 0
+          ? { ...next, local: true }
+          : next;
+        setAnim(displayStep);
+        revealAnimLogs(displayStep);
       }
     } else {
       const next = pendingGsRef.current;
@@ -294,8 +297,11 @@ export function useAnimationQueue({
     pendingGsRef.current = nextGs;
     animQueueRef.current = [...playableQueue.slice(1)];
     animCallbackRef.current = wrappedCallback;
-    setAnim(playableQueue[0]);
-    revealAnimLogs(playableQueue[0]);
+    const firstStep = playableQueue[0].type === 'YOUR_TURN' && firstTurnHighlight === 0
+      ? { ...playableQueue[0], local: true }
+      : playableQueue[0];
+    setAnim(firstStep);
+    revealAnimLogs(firstStep);
   }
 
   return {

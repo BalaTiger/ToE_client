@@ -19,7 +19,7 @@ const NO_OVERLAY_TYPES = new Set([
 ]);
 
 const ANIM_RENDERERS = {
-  YOUR_TURN: ({ anim }) => <YourTurnAnim name={anim.name} />,
+  YOUR_TURN: ({ anim }) => <YourTurnAnim name={anim.name} local={!!anim.local} />,
   DRAW_CARD: ({ anim, exiting, expansionKey }) => (
     <CardFlipAnim
       card={anim.card}

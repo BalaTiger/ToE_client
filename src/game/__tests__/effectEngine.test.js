@@ -337,6 +337,25 @@ describe('applyFx', () => {
     randomSpy.mockRestore();
   });
 
+  it('snakePoisonTrap: 寻宝者规避时仍按存活人数分配层数但排除规避者', () => {
+    const players = makeStandardPlayers(4);
+    const randomSpy = vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0.34)
+      .mockReturnValueOnce(0.67)
+      .mockReturnValueOnce(0.99);
+    const card = { type: 'snakePoisonTrap', name: '群蛇陷阱' };
+    const gs = makeGs({ players });
+
+    const res = applyFx(card, 0, null, players, [], [], gs, false, [0], false);
+
+    expect(res.P[0].poisonStacks || 0).toBe(0);
+    expect(res.P.map(p => p.poisonStacks || 0).reduce((sum, n) => sum + n, 0)).toBe(4);
+    expect(res.msgs[0]).toContain('分配了 4 层中毒');
+    expect(res.statePatch._visualEvents[0].payload.totalLayers).toBe(4);
+    randomSpy.mockRestore();
+  });
+
   it('deadNeighborSkipDraw: 死亡角色相邻者下回合不能摸牌', () => {
     const players = makeStandardPlayers(5);
     players[2].isDead = true;

@@ -83,6 +83,7 @@ function GeomagneticRestoreShuffleAnim({anim,exiting}){
 }
 
 function VolcanoAnim({anim,exiting}){
+  const canvasRef=React.useRef(null);
   const [impacts,setImpacts]=React.useState(null);
   useEffect(()=>{
     const measure=()=>{
@@ -90,80 +91,434 @@ function VolcanoAnim({anim,exiting}){
       const discard=getPileAnchorCenter('[data-discard-pile]',{x:window.innerWidth*0.72,y:window.innerHeight*0.46});
       const hand=getPlayerHandAnchorCenter(0);
       const center={x:window.innerWidth*0.50,y:window.innerHeight*0.45};
+      const source={x:window.innerWidth*0.62,y:window.innerHeight*0.5};
       const raw=[
-        {x:deck.x-38,y:deck.y+54,fromX:-window.innerWidth*0.55,fromY:-window.innerHeight*0.55,delay:0.10,scale:0.92,rot:-28},
-        {x:center.x-165,y:center.y-48,fromX:-window.innerWidth*0.68,fromY:-window.innerHeight*0.44,delay:0.22,scale:0.74,rot:-22},
-        {x:discard.x+30,y:discard.y+18,fromX:window.innerWidth*0.48,fromY:-window.innerHeight*0.58,delay:0.34,scale:0.84,rot:30},
-        {x:center.x+145,y:center.y-88,fromX:window.innerWidth*0.62,fromY:-window.innerHeight*0.42,delay:0.46,scale:0.68,rot:24},
-        {x:hand.x-132,y:Math.min(window.innerHeight-112,hand.y-42),fromX:-window.innerWidth*0.54,fromY:-window.innerHeight*0.34,delay:0.58,scale:0.78,rot:-18},
-        {x:center.x+15,y:center.y+78,fromX:window.innerWidth*0.16,fromY:-window.innerHeight*0.62,delay:0.70,scale:0.64,rot:8},
-        {x:hand.x+112,y:Math.min(window.innerHeight-96,hand.y-26),fromX:window.innerWidth*0.54,fromY:-window.innerHeight*0.36,delay:0.82,scale:0.82,rot:34},
+        {x:deck.x-38,y:deck.y+54,delay:0.10,scale:0.92,rot:-28},
+        {x:center.x-165,y:center.y-48,delay:0.22,scale:0.74,rot:-22},
+        {x:discard.x+30,y:discard.y+18,delay:0.34,scale:0.84,rot:30},
+        {x:center.x+145,y:center.y-88,delay:0.46,scale:0.68,rot:24},
+        {x:hand.x-132,y:Math.min(window.innerHeight-112,hand.y-42),delay:0.58,scale:0.78,rot:-18},
+        {x:center.x+15,y:center.y+78,delay:0.70,scale:0.64,rot:8},
+        {x:hand.x+112,y:Math.min(window.innerHeight-96,hand.y-26),delay:0.82,scale:0.82,rot:34},
       ];
       setImpacts(raw.map((p,idx)=>({
         ...p,
         x:Math.max(54,Math.min(window.innerWidth-54,p.x)),
         y:Math.max(76,Math.min(window.innerHeight-54,p.y)),
+        sourceX:source.x+(idx-3)*10,
+        sourceY:source.y+((idx%3)-1)*7,
+        nearBoost:idx===1||idx===3||idx===5?1:0,
+        nearPhase:0.1+(idx%3)*0.035,
         seed:idx,
       })));
     };
     requestAnimationFrame(()=>requestAnimationFrame(measure));
   },[]);
-  const msgs=(anim?.msgs||[]).slice(-3);
-  const meteorImpacts=impacts||[
-    {x:'72vw',y:'25vh',fromX:'-58vw',fromY:'-55vh',delay:0.1,scale:0.9,rot:-28,seed:0},
-    {x:'42vw',y:'42vh',fromX:'-60vw',fromY:'-40vh',delay:0.28,scale:0.74,rot:-22,seed:1},
-    {x:'66vw',y:'52vh',fromX:'48vw',fromY:'-58vh',delay:0.46,scale:0.82,rot:26,seed:2},
-    {x:'50vw',y:'68vh',fromX:'18vw',fromY:'-62vh',delay:0.64,scale:0.66,rot:8,seed:3},
-  ];
+  useEffect(()=>{
+    const canvas=canvasRef.current;
+    if(!canvas||!impacts?.length)return undefined;
+    const ctx=canvas.getContext('2d');
+    let raf=0;
+    const isMobileLike=()=>(
+      (typeof window.matchMedia==='function'&&window.matchMedia('(pointer: coarse)').matches)
+      || Math.min(window.innerWidth,window.innerHeight)<760
+    );
+    const dpr=Math.min(window.devicePixelRatio||1,isMobileLike()?1.35:2);
+    const resize=()=>{
+      const w=window.innerWidth;
+      const h=window.innerHeight;
+      canvas.style.width=`${w}px`;
+      canvas.style.height=`${h}px`;
+      canvas.width=Math.floor(w*dpr);
+      canvas.height=Math.floor(h*dpr);
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+    };
+    const rand=seed=>{
+      let x=Math.sin(seed*127.1+311.7)*43758.5453;
+      return x-Math.floor(x);
+    };
+    const easeOutQuad=x=>1-(1-x)*(1-x);
+    const clamp01=x=>Math.max(0,Math.min(1,x));
+    const specs=impacts.map((impact,idx)=>{
+      const x=typeof impact.x==='number'?impact.x:window.innerWidth*(parseFloat(impact.x)||50)/100;
+      const y=typeof impact.y==='number'?impact.y:window.innerHeight*(parseFloat(impact.y)||50)/100;
+      const sourceX=typeof impact.sourceX==='number'?impact.sourceX:window.innerWidth*0.34;
+      const sourceY=typeof impact.sourceY==='number'?impact.sourceY:-window.innerHeight*0.34;
+      const seed=impact.seed??idx;
+      const scale=impact.scale||1;
+      const fall=0.68+rand(seed+4)*0.16;
+      const delay=impact.delay||0;
+      const baseR=(54+seed*4+18*rand(seed+20))*scale;
+      const debris=Array.from({length:18},(_,i)=>{
+        const a=-Math.PI*0.95+rand(seed*31+i)*Math.PI*1.9;
+        const speed=(42+rand(seed*67+i)*96)*scale;
+        return {
+          a,
+          speed,
+          size:1.6+rand(seed*83+i)*4.8,
+          life:0.42+rand(seed*109+i)*0.62,
+          color:rand(seed*127+i)>.42?'#ff9a22':'#ffd26d',
+        };
+      });
+      const smoke=Array.from({length:16},(_,i)=>({
+        ox:(rand(seed*151+i)-0.5)*48*scale,
+        oy:(rand(seed*163+i)-0.5)*28*scale,
+        vx:(rand(seed*181+i)-0.5)*44*scale,
+        vy:-(18+rand(seed*191+i)*58)*scale,
+        r:14+rand(seed*211+i)*34,
+        life:0.7+rand(seed*229+i)*0.82,
+      }));
+      const lava=Array.from({length:28},(_,i)=>{
+        const a=(i/28)*Math.PI*2;
+        return {
+          a,
+          r:0.68+rand(seed*241+i)*0.58,
+        };
+      });
+      const noise=Array.from({length:64},(_,i)=>({
+        x:(rand(seed*263+i)-0.5)*1.95,
+        y:(rand(seed*281+i)-0.5)*1.72,
+        r:0.02+rand(seed*307+i)*0.065,
+        a:0.08+rand(seed*313+i)*0.18,
+      }));
+      return {
+        ...impact,
+        x,
+        y,
+        startX:sourceX,
+        startY:sourceY,
+        delay,
+        fall,
+        impactAt:delay+fall,
+        scale,
+        seed,
+        baseR,
+        debris,
+        smoke,
+        lava,
+        noise,
+      };
+    });
+    const drawGlow=(x,y,r,color,alpha=1)=>{
+      const g=ctx.createRadialGradient(x,y,0,x,y,r);
+      g.addColorStop(0,`rgba(${color},${alpha})`);
+      g.addColorStop(0.34,`rgba(${color},${alpha*0.42})`);
+      g.addColorStop(1,`rgba(${color},0)`);
+      ctx.fillStyle=g;
+      ctx.beginPath();
+      ctx.arc(x,y,r,0,Math.PI*2);
+      ctx.fill();
+    };
+    const smoothstep=(edge0,edge1,x)=>{
+      const t=clamp01((x-edge0)/(edge1-edge0));
+      return t*t*(3-2*t);
+    };
+    const valueNoise=(x,y,seed)=>{
+      const xi=Math.floor(x), yi=Math.floor(y);
+      const xf=x-xi, yf=y-yi;
+      const h=(ix,iy)=>rand(seed+ix*37.17+iy*91.73);
+      const u=xf*xf*(3-2*xf);
+      const v=yf*yf*(3-2*yf);
+      const a=h(xi,yi), b=h(xi+1,yi), c=h(xi,yi+1), d=h(xi+1,yi+1);
+      return (a+(b-a)*u)+((c+(d-c)*u)-(a+(b-a)*u))*v;
+    };
+    const fractalNoise=(x,y,seed)=>{
+      let amp=0.56;
+      let freq=1;
+      let sum=0;
+      let norm=0;
+      for(let i=0;i<4;i++){
+        sum+=valueNoise(x*freq,y*freq,seed+i*103.9)*amp;
+        norm+=amp;
+        amp*=0.5;
+        freq*=2.05;
+      }
+      return sum/norm;
+    };
+    const buildNoiseLavaPatch=(impact)=>{
+      const maxR=impact.baseR*1.22;
+      const w=Math.ceil(Math.min(270,Math.max(96,maxR*2.55)));
+      const h=Math.ceil(Math.min(250,Math.max(88,maxR*2.35)));
+      const off=document.createElement('canvas');
+      off.width=w;
+      off.height=h;
+      const octx=off.getContext('2d');
+      const img=octx.createImageData(w,h);
+      const cx=w/2;
+      const cy=h/2;
+      const heatPulse=0.92+0.08*Math.sin(impact.seed);
+      for(let py=0;py<h;py++){
+        for(let px=0;px<w;px++){
+          const nx=(px-cx)/(w*0.48);
+          const ny=(py-cy)/(h*0.5);
+          const angle=Math.atan2(ny,nx);
+          const borderNoise=fractalNoise(Math.cos(angle)*1.8+impact.seed*0.2,Math.sin(angle)*1.8,impact.seed*29);
+          const localNoise=fractalNoise(px/34,py/28-impact.seed*0.31,impact.seed*47);
+          const radiusWarp=1+(borderNoise-0.5)*0.34;
+          const dist=Math.sqrt(nx*nx+ny*ny)/radiusWarp;
+          const edge=1-smoothstep(0.72+localNoise*0.1,1.08,dist);
+          if(edge<=0)continue;
+          const core=1-smoothstep(0.18,0.76,dist);
+          const rim=smoothstep(0.64,0.96,dist)*(1-smoothstep(0.96,1.12,dist));
+          const fissure=smoothstep(0.58,0.88,localNoise)*(1-smoothstep(0.9,1.0,dist));
+          const alpha=Math.min(1,edge*(0.74+rim*0.36));
+          const red=58+Math.floor(170*rim+76*fissure);
+          const green=7+Math.floor(38*rim+58*fissure*heatPulse);
+          const blue=3+Math.floor(8*rim);
+          const i=(py*w+px)*4;
+          img.data[i]=core>0.45?Math.max(34,red-90):red;
+          img.data[i+1]=core>0.45?Math.max(4,green-22):green;
+          img.data[i+2]=blue;
+          img.data[i+3]=Math.floor(alpha*235);
+        }
+      }
+      octx.putImageData(img,0,0);
+      octx.globalCompositeOperation='lighter';
+      const glow=octx.createRadialGradient(cx,cy,0,cx,cy,Math.max(w,h)*0.46);
+      glow.addColorStop(0,'rgba(70,8,4,0.04)');
+      glow.addColorStop(0.58,'rgba(255,76,14,0.1)');
+      glow.addColorStop(0.86,'rgba(255,190,72,0.16)');
+      glow.addColorStop(1,'rgba(255,190,72,0)');
+      octx.fillStyle=glow;
+      octx.fillRect(0,0,w,h);
+      return {canvas:off,w,h,maxR};
+    };
+    specs.forEach(impact=>{
+      impact.lavaPatch=buildNoiseLavaPatch(impact);
+    });
+    const drawNoiseLavaPatch=(impact,r,fade)=>{
+      const patch=impact.lavaPatch;
+      if(!patch)return;
+      const scale=r/patch.maxR;
+      ctx.save();
+      ctx.drawImage(patch.canvas,-patch.w*scale/2,-patch.h*scale/2,patch.w*scale,patch.h*scale);
+      ctx.restore();
+    };
+    const drawLavaPool=(impact,age)=>{
+      const grow=clamp01(age/0.24);
+      const fade=1-clamp01((age-0.52)/1.18);
+      if(fade<=0)return;
+      const r=impact.baseR*(0.36+0.92*easeOutQuad(grow))*(1-0.34*clamp01((age-0.58)/1.05));
+      const makeLavaPath=(radius, xScale=1.38, yScale=0.78, wobble=1)=>{
+        ctx.beginPath();
+        impact.lava.forEach((pt,i)=>{
+          const rr=radius*pt.r*(1+0.08*wobble*Math.sin(age*9+i));
+          const px=Math.cos(pt.a)*rr*xScale;
+          const py=Math.sin(pt.a)*rr*yScale;
+          if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+        });
+        ctx.closePath();
+      };
+      ctx.save();
+      ctx.translate(impact.x,impact.y);
+      ctx.rotate((impact.seed%2?-1:1)*(0.12+age*0.18));
+      ctx.globalAlpha=fade;
+      for(let layer=5;layer>=1;layer--){
+        makeLavaPath(r*(1+layer*0.09),1.16+layer*0.012,1.04+layer*0.01,0.45);
+        ctx.fillStyle=`rgba(255,${70+layer*18},18,${0.03*fade*(6-layer)})`;
+        ctx.fill();
+      }
+      drawNoiseLavaPatch(impact,r,fade);
+      makeLavaPath(r*0.92);
+      ctx.save();
+      ctx.globalCompositeOperation='lighter';
+      ctx.clip();
+      impact.noise.forEach(n=>{
+        const nx=n.x*r*0.78;
+        const ny=n.y*r*0.74;
+        const dist=Math.sqrt((nx/(r*1.1))**2+(ny/(r*1.0))**2);
+        if(dist>1)return;
+        const flicker=0.65+0.35*Math.sin(age*12+n.x*9+n.y*7);
+        ctx.globalAlpha=n.a*fade*flicker;
+        ctx.fillStyle=dist<0.42?'rgba(28,5,3,1)':'rgba(255,104,18,1)';
+        ctx.beginPath();
+        ctx.ellipse(nx,ny,n.r*r*(1.1-dist*0.3),n.r*r*(0.95+dist*0.16),n.x*2.2,0,Math.PI*2);
+        ctx.fill();
+      });
+      ctx.restore();
+      makeLavaPath(r*(0.42+0.08*Math.sin(age*9)),1.02,0.92,1.1);
+      const innerGrad=ctx.createRadialGradient(0,0,0,0,0,r*0.72);
+      innerGrad.addColorStop(0,`rgba(46,5,3,${0.88*fade})`);
+      innerGrad.addColorStop(0.45,`rgba(91,13,4,${0.72*fade})`);
+      innerGrad.addColorStop(0.82,`rgba(255,82,12,${0.44*fade})`);
+      innerGrad.addColorStop(1,`rgba(255,212,86,${0.22*fade})`);
+      ctx.fillStyle=innerGrad;
+      ctx.fill();
+      ctx.strokeStyle=`rgba(255,231,126,${0.18*fade})`;
+      ctx.lineWidth=3.2*impact.scale;
+      ctx.stroke();
+      ctx.restore();
+    };
+    const drawMeteor=(impact,time)=>{
+      const local=time-impact.delay;
+      if(local<0||local>impact.fall)return;
+      const p=clamp01(local/impact.fall);
+      const accelP=0.18*p+0.82*p*p;
+      const prevP=clamp01((local-0.05)/impact.fall);
+      const prevAccelP=0.18*prevP+0.82*prevP*prevP;
+      const projectMeteor=(pathP)=>{
+        const w=window.innerWidth;
+        const h=window.innerHeight;
+        const cx=w*0.5;
+        const cy=h*0.5;
+        const unit=Math.min(w,h)*0.56;
+        const focal=1.08;
+        const impactZ=1.18;
+        const sourceZ=-2.7-0.45*impact.nearBoost;
+        const visibleZ=0.34+0.035*((impact.seed||0)%3);
+        const sourceWorldX=0.18;
+        const sourceWorldY=0.02;
+        const impactWorldX=((impact.x-cx)/unit)*(impactZ/focal);
+        const impactWorldY=((impact.y-cy)/unit)*(impactZ/focal);
+        const visibleT=clamp01((visibleZ-sourceZ)/(impactZ-sourceZ));
+        const rayT=visibleT+(1-visibleT)*pathP;
+        const worldX=sourceWorldX+(impactWorldX-sourceWorldX)*rayT;
+        const worldY=sourceWorldY+(impactWorldY-sourceWorldY)*rayT;
+        const worldZ=sourceZ+(impactZ-sourceZ)*rayT;
+        const safeZ=Math.max(0.08,worldZ);
+        return {
+          x:cx+(worldX*focal/safeZ)*unit,
+          y:cy+(worldY*focal/safeZ)*unit,
+          z:safeZ,
+          near:1-smoothstep(visibleZ,0.74,safeZ),
+        };
+      };
+      const current=projectMeteor(accelP);
+      const previous=projectMeteor(prevAccelP);
+      const x=current.x;
+      const y=current.y;
+      const px=previous.x;
+      const py=previous.y;
+      const angle=Math.atan2(y-py,x-px);
+      const speedScale=0.64+0.78*Math.min(1,p*1.18);
+      const nearPhase=impact.nearPhase||0.16;
+      const crossPass=impact.nearBoost?(1-smoothstep(0.02,0.25,p))*current.near:0;
+      const cameraPass=impact.nearBoost
+        ?Math.max(
+          current.near,
+          (1-smoothstep(0,0.28,Math.abs(p-nearPhase)))*0.72,
+        )
+        :Math.max(current.near*0.74,1-smoothstep(0,0.36,Math.abs(p-0.2))*0.46);
+      const depthScale=1+(3.05+3.95*impact.nearBoost)*cameraPass*(1-p*0.32);
+      const appearAlpha=impact.nearBoost?smoothstep(0.004,0.035,p):1;
+      const depthAlpha=(0.58+0.42*Math.min(1,depthScale/5.4))*appearAlpha;
+      ctx.save();
+      ctx.translate(x,y);
+      ctx.rotate(angle);
+      ctx.scale(depthScale,depthScale);
+      if(cameraPass>0.04)ctx.filter=`blur(${((1.35+0.95*impact.nearBoost)*cameraPass).toFixed(2)}px)`;
+      const tailLen=(180+80*impact.scale)*speedScale*(0.8+0.2*cameraPass)*(1-0.22*crossPass);
+      const tailGrad=ctx.createLinearGradient(-tailLen,0,10,0);
+      tailGrad.addColorStop(0,'rgba(60,25,18,0)');
+      tailGrad.addColorStop(0.28,`rgba(132,54,25,${0.12*depthAlpha})`);
+      tailGrad.addColorStop(0.68,`rgba(255,78,18,${0.36*depthAlpha})`);
+      tailGrad.addColorStop(1,`rgba(255,225,122,${0.9*depthAlpha})`);
+      ctx.globalCompositeOperation='lighter';
+      ctx.fillStyle=tailGrad;
+      ctx.beginPath();
+        ctx.ellipse(-tailLen*0.5,0,tailLen*0.52,18*impact.scale*(1+0.22*cameraPass),0,0,Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle=`rgba(64,40,35,${0.14+0.08*appearAlpha})`;
+      for(let i=0;i<6;i++){
+        const jitter=(rand(impact.seed*331+i)-0.5)*38*impact.scale*(1+0.38*cameraPass);
+        ctx.beginPath();
+        ctx.ellipse(-tailLen*(0.18+i*0.12),jitter,(42+rand(impact.seed+i)*45)*(1+0.28*cameraPass),10+rand(impact.seed*17+i)*15,0,0,Math.PI*2);
+        ctx.fill();
+      }
+      const coreR=(18+8*impact.scale)*(1-0.22*p);
+      drawGlow(0,0,coreR*(3.4+1.9*cameraPass),'255,96,20',0.58*depthAlpha);
+      const coreGrad=ctx.createRadialGradient(-coreR*0.28,-coreR*0.34,1,0,0,coreR);
+      coreGrad.addColorStop(0,'#fff0a6');
+      coreGrad.addColorStop(0.28,'#ff8f1e');
+      coreGrad.addColorStop(0.66,'#5b210b');
+      coreGrad.addColorStop(1,'#140805');
+      ctx.fillStyle=coreGrad;
+      ctx.beginPath();
+      for(let i=0;i<9;i++){
+        const a=(i/9)*Math.PI*2;
+        const rr=coreR*(0.78+rand(impact.seed*401+i)*0.34);
+        const vx=Math.cos(a)*rr;
+        const vy=Math.sin(a)*rr;
+        if(i===0)ctx.moveTo(vx,vy);else ctx.lineTo(vx,vy);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.filter='none';
+      ctx.restore();
+    };
+    const drawImpact=(impact,time)=>{
+      const age=time-impact.impactAt;
+      if(age<0)return;
+      if(age<0.26){
+        const f=1-clamp01(age/0.26);
+        drawGlow(impact.x,impact.y,(120+190*(1-f))*impact.scale,'255,225,128',0.9*f);
+        drawGlow(impact.x,impact.y,(62+148*(1-f))*impact.scale,'255,74,12',0.72*f);
+      }
+      drawLavaPool(impact,age);
+      const lowAge=Math.floor(age*18)/18;
+      impact.debris.forEach((d,i)=>{
+        if(lowAge>d.life)return;
+        const p=lowAge/d.life;
+        const x=impact.x+Math.cos(d.a)*d.speed*p;
+        const y=impact.y+Math.sin(d.a)*d.speed*p+90*p*p;
+        ctx.globalAlpha=(1-p)*0.95;
+        ctx.fillStyle=d.color;
+        ctx.beginPath();
+        ctx.arc(x,y,d.size*(1-p*0.5),0,Math.PI*2);
+        ctx.fill();
+      });
+      impact.smoke.forEach((s,i)=>{
+        if(lowAge>s.life)return;
+        const p=lowAge/s.life;
+        const x=impact.x+s.ox+s.vx*p;
+        const y=impact.y+s.oy+s.vy*p-12*Math.sin(p*Math.PI);
+        ctx.globalAlpha=(1-p)*0.26;
+        ctx.fillStyle='rgba(95,74,62,1)';
+        ctx.beginPath();
+        ctx.ellipse(x,y,s.r*(0.55+p),s.r*(0.28+p*0.44),0,0,Math.PI*2);
+        ctx.fill();
+      });
+      ctx.globalAlpha=1;
+    };
+    const started=performance.now();
+    const render=now=>{
+      const time=(now-started)/1000;
+      const w=window.innerWidth;
+      const h=window.innerHeight;
+      ctx.clearRect(0,0,w,h);
+      ctx.globalCompositeOperation='source-over';
+      ctx.fillStyle='rgba(30,7,2,0.08)';
+      ctx.fillRect(0,0,w,h);
+      const shake=specs.reduce((sum,impact)=>{
+        const age=time-impact.impactAt;
+        if(age<0||age>0.22)return sum;
+        return sum+(1-age/0.22)*impact.scale;
+      },0);
+      ctx.save();
+      if(shake>0)ctx.translate(Math.sin(time*178)*shake*5.8,Math.cos(time*151)*shake*4.2);
+      [...specs].sort((a,b)=>{
+        const pa=clamp01((time-a.delay)/a.fall);
+        const pb=clamp01((time-b.delay)/b.fall);
+        const da=1-smoothstep(0,0.34,Math.abs(pa-0.22));
+        const db=1-smoothstep(0,0.34,Math.abs(pb-0.22));
+        return da-db;
+      }).forEach(impact=>drawMeteor(impact,time));
+      specs.forEach(impact=>drawImpact(impact,time));
+      ctx.restore();
+      if(time<2.7&&!exiting)raf=requestAnimationFrame(render);
+    };
+    resize();
+    window.addEventListener('resize',resize);
+    raf=requestAnimationFrame(render);
+    return()=>{
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize',resize);
+    };
+  },[impacts,exiting]);
   return(
     <div className={`volcano-overlay${exiting?' volcano-exiting':''}`}>
       <div className="volcano-vignette"/>
-      <div className="volcano-shake-layer">
-        {meteorImpacts.map((impact,idx)=>(
-          <div
-            key={idx}
-            className="volcano-impact"
-            style={{
-              left:typeof impact.x==='number'?`${impact.x}px`:impact.x,
-              top:typeof impact.y==='number'?`${impact.y}px`:impact.y,
-              '--volcano-from-x':typeof impact.fromX==='number'?`${impact.fromX}px`:impact.fromX,
-              '--volcano-from-y':typeof impact.fromY==='number'?`${impact.fromY}px`:impact.fromY,
-              '--volcano-delay':`${impact.delay}s`,
-              '--volcano-scale':impact.scale,
-              '--volcano-rot':`${impact.rot}deg`,
-              '--volcano-lava-rot':`${(impact.seed%2?1:-1)*(5+impact.seed*2)}deg`,
-            }}
-          >
-            <div className="volcano-meteor">
-              <div className="volcano-meteor-tail"/>
-              <div className="volcano-meteor-rock"/>
-            </div>
-            <div className="volcano-impact-flash"/>
-            <div className="volcano-lava-field">
-              <svg viewBox="-120 -90 240 180" width="240" height="180" aria-hidden="true">
-                <path className="volcano-lava-shape volcano-lava-outer" d="M-104,-4 C-86,-54 -33,-71 11,-54 C55,-88 118,-42 101,13 C122,51 64,86 20,62 C-19,92 -95,58 -77,22 C-123,17 -134,-17 -104,-4Z"/>
-                <path className="volcano-lava-shape volcano-lava-inner" d="M-58,0 C-44,-26 -12,-32 14,-20 C37,-42 70,-15 61,16 C72,36 32,53 5,37 C-17,55 -57,32 -46,12 C-72,11 -78,-8 -58,0Z"/>
-                <path className="volcano-crack" d="M-86,4 C-50,-8 -34,12 -7,2 C20,-8 43,-2 72,-18"/>
-                <path className="volcano-crack volcano-crack-b" d="M-38,38 C-19,22 -1,29 20,17 C41,5 54,12 83,4"/>
-              </svg>
-            </div>
-            <div className="volcano-embers">
-              {Array.from({length:8}).map((_,i)=>(
-                <span key={i} style={{
-                  '--ember-x':`${(i%4-1.5)*(16+idx*1.5)}px`,
-                  '--ember-y':`${-28-Math.floor(i/4)*24}px`,
-                  '--ember-delay':`${impact.delay+0.5+i*0.025}s`,
-                }}/>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-      {msgs.length>0&&(
-        <div className="volcano-msgs">
-          {msgs.map((msg,i)=><div key={i}>{msg}</div>)}
-        </div>
-      )}
+      <canvas ref={canvasRef} className="volcano-canvas" aria-hidden="true"/>
     </div>
   );
 }

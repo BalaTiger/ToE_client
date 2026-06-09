@@ -348,7 +348,10 @@ describe('buildAnimQueue stat animations', () => {
       _visualEvents: [event],
     });
 
-    const step = buildAnimQueue(oldGs, newGs).find(item => item.type === 'VOLCANO');
+    const queue = buildAnimQueue(oldGs, newGs);
+    const volcanoIdx = queue.findIndex(item => item.type === 'VOLCANO');
+    const hpDamageIdx = queue.findIndex(item => item.type === 'HP_DAMAGE');
+    const step = queue[volcanoIdx];
 
     expect(step).toMatchObject({
       type: 'VOLCANO',
@@ -358,7 +361,8 @@ describe('buildAnimQueue stat animations', () => {
       visualSetupPatch: { players: beforePlayers, discard: [] },
     });
     expect(step.visualTimeline[0]).toEqual({ atMs: 0, patch: { players: beforePlayers, discard: [] } });
-    expect(step.visualTimeline[1]).toEqual({ atMs: 1250, patch: { players: afterPlayers, discard: [] } });
+    expect(step.visualTimeline[1]).toEqual({ atMs: 2400, patch: { players: afterPlayers, discard: [] } });
+    expect(hpDamageIdx).toBeGreaterThan(volcanoIdx);
   });
 
   it('开局遮蔽态已带最新日志时仍能从地震 visualEvent 产生动画', () => {
