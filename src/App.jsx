@@ -7917,33 +7917,35 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         </div>
 
         {/* Phase bar */}
-        <BattlePhaseBar
-          myTurn={myTurn}
-          phase={phase}
-          isMobile={isMobile}
-          baseFontSizes={baseFontSizes}
-          displayPhaseLabel={displayPhaseLabel}
-          cardHintText={cardHintText}
-          isPhaseWarningText={isPhaseWarningText}
-          isSpectating={isSpectating}
-          isMultiplayer={isMultiplayer}
-          isMpCthDecisionPhase={isMpCthDecisionPhase}
-          isLocalMpDecisionActive={isLocalMpDecisionActive}
-          isDiscardPhaseResolving={isDiscardPhaseResolving}
-          isBlocked={isBlocked}
-          mpCthSec={mpCthSec}
-          mpTurnSec={mpTurnSec}
-          mpDiscardSec={mpDiscardSec}
-          mpHuntSec={mpHuntSec}
-          mpDecisionSec={mpDecisionSec}
-          colors={{
-            warning: promptWarningTextColor,
-            active: promptActiveTextColor,
-            caution: promptCautionTextColor,
-            safe: promptSafeTextColor,
-            muted: promptMutedTextColor,
-          }}
-        />
+        <div data-prompt-panel>
+          <BattlePhaseBar
+            myTurn={myTurn}
+            phase={phase}
+            isMobile={isMobile}
+            baseFontSizes={baseFontSizes}
+            displayPhaseLabel={displayPhaseLabel}
+            cardHintText={cardHintText}
+            isPhaseWarningText={isPhaseWarningText}
+            isSpectating={isSpectating}
+            isMultiplayer={isMultiplayer}
+            isMpCthDecisionPhase={isMpCthDecisionPhase}
+            isLocalMpDecisionActive={isLocalMpDecisionActive}
+            isDiscardPhaseResolving={isDiscardPhaseResolving}
+            isBlocked={isBlocked}
+            mpCthSec={mpCthSec}
+            mpTurnSec={mpTurnSec}
+            mpDiscardSec={mpDiscardSec}
+            mpHuntSec={mpHuntSec}
+            mpDecisionSec={mpDecisionSec}
+            colors={{
+              warning: promptWarningTextColor,
+              active: promptActiveTextColor,
+              caution: promptCautionTextColor,
+              safe: promptSafeTextColor,
+              muted: promptMutedTextColor,
+            }}
+          />
+        </div>
 
         <DamageLinkOverlay
           visualPlayers={visualPlayers}
