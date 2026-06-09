@@ -939,6 +939,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           beforeDiscard: [...Disc],
           afterPlayers: copyPlayers(P),
           afterDiscard: [...Disc],
+          statEvents: directStatEvents || buildStatEvents(beforePlayers, P, msgs.slice(-1), { reason: card?.name || card?.type || '', seq: (gs?._statEventSeq || 0) + 1 }),
           msgs: msgs.slice(-1),
         });
         if (event) {

@@ -162,8 +162,8 @@ export function DiceRollAnim({ anim, exiting }) {
   );
 }
 
-export function YourTurnAnim({ name }) {
-  const isLocal = !name || name === '你';
+export function YourTurnAnim({ name, local = false }) {
+  const isLocal = local || !name || name === '你';
   const text = isLocal ? '你的回合' : `${name}的回合`;
   const col = isLocal ? '#e8c87a' : '#c8a0e8';
   const glow = isLocal ? '#c8a96e99' : '#a080d099';

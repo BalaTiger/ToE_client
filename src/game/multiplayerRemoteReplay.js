@@ -220,6 +220,7 @@ export function buildMpRemoteReplayAction({
       };
     }
     const isTurnEndCthDecisionDraw = !!(rotated.drawReveal?.fromRest || rotated.abilityData?.fromRest);
+    const isEndTurnReplayDecisionDraw = !!(rotated.drawReveal?.fromEndTurnReplay || rotated.abilityData?.fromEndTurnReplay);
     const replay = buildTurnStartDrawReplayQueue({
       oldGs: previousGs,
       newGs: rotated,
@@ -229,7 +230,7 @@ export function buildMpRemoteReplayAction({
       buildFullHandSwapTransferQueue: buildFullHandSwapTransferQueueFromLogs,
       effectOldGs: { ...rotated, players: rotated._playersBeforeThisDraw || previousGs?.players || rotated.players, log: getTurnStartDrawBaselineLog(rotated) },
     });
-    const tailQueue = replay.drawnCard && !isTurnEndCthDecisionDraw ? replay.queue : [];
+    const tailQueue = replay.drawnCard && !isTurnEndCthDecisionDraw && !isEndTurnReplayDecisionDraw ? replay.queue : [];
     const finalFields = replay.drawnCard
       ? ['players', 'discard', 'log', 'phase', 'abilityData', 'currentTurn', 'drawReveal']
       : ['players', 'discard', 'log', 'phase', 'abilityData', 'currentTurn', 'drawReveal'];
@@ -619,6 +620,27 @@ export function buildMpRemoteReplayAction({
       type: MP_REMOTE_REPLAY.SET_STATE,
       gs: clearRemoteReplayHints({ ...rotated, phase: 'ACTION', abilityData: {} }),
     };
+  }
+
+  if (!isDrawAnimationState) {
+    const replay = buildInspectionReplay(previousGs || buildMaskedActionState(rotated), rotated, { buildAnimQueue, copyPlayers });
+    const replayQueue = replay.inspectionEvents.length
+      ? replay.queue
+      : bindAnimLogChunks(replay.queue, { statLogs: logDelta });
+    if (replayQueue.length) {
+      const queue = appendFinalStatePatch(
+        replayQueue,
+        rotated,
+        ['players', 'discard', 'log', 'phase', 'abilityData'],
+      );
+      return withConsumedVisualEvents({
+        type: MP_REMOTE_REPLAY.ANIM_QUEUE,
+        maskedGs: buildMaskedActionState(rotated),
+        pendingGs: clearRemoteReplayHints(rotated),
+        queue,
+        inspectionEvents: replay.inspectionEvents,
+      });
+    }
   }
 
   return withConsumedVisualEvents({

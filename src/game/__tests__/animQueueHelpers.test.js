@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildBewitchForcedCardQueue,
   buildFullHandSwapStepsFromLogs,
+  buildInspectionAwareAnimQueue,
   buildInspectionEventFlow,
   buryToDeckStep,
   cardTransferStep,
@@ -173,6 +174,89 @@ describe('animQueueHelpers', () => {
     expect(flow.queue[2]).toMatchObject({ hitIndices: [0] });
     expect(flow.queue[2].statEvents).toMatchObject([{ type: 'SAN_GAIN', seq: 7 }]);
     expect(flow.statEventSeq).toBe(7);
+  });
+
+  it('全体 SAN 扣减后的多名检定牌翻牌排在 SAN 扣减动画之后', () => {
+    const calmCard = { name: '暂时的平静', effect: 'calm' };
+    const amnesiaCard = { name: '失忆', effect: 'amnesia' };
+    const oldPlayers = [
+      makePlayer({ name: '诺亚', hp: 9, san: 7 }),
+      makePlayer({ name: '奥托', hp: 10, san: 7 }),
+    ];
+    const afterSanPlayers = copyPlayers(oldPlayers);
+    afterSanPlayers[0].san = 6;
+    afterSanPlayers[1].san = 6;
+    const afterNoahInspectionPlayers = copyPlayers(afterSanPlayers);
+    const finalPlayers = copyPlayers(afterNoahInspectionPlayers);
+    finalPlayers[1].skillDisabledNextTurn = true;
+    const newLog = [
+      '你 收入了 [D3] 鼠群',
+      '全体存活角色失去 1 SAN',
+      '诺亚 的SAN检定结果为"暂时的平静"',
+      '奥托 的SAN检定结果为"失忆"',
+      '奥托 失忆，下一回合禁用技能',
+    ];
+    const result = buildInspectionAwareAnimQueue(
+      {
+        players: oldPlayers,
+        log: [],
+        _statEventSeq: 0,
+        _inspectionSeq: 0,
+      },
+      {
+        players: finalPlayers,
+        log: newLog,
+        _statEventSeq: 1,
+        _statEvents: [{
+          seq: 1,
+          type: 'SAN_LOSS',
+          target: 0,
+          from: { hp: 9, san: 7, isDead: false },
+          to: { hp: 9, san: 6, isDead: false },
+          reason: '鼠群',
+        }, {
+          seq: 1,
+          type: 'SAN_LOSS',
+          target: 1,
+          from: { hp: 10, san: 7, isDead: false },
+          to: { hp: 10, san: 6, isDead: false },
+          reason: '鼠群',
+        }],
+        _inspectionSeq: 2,
+        _inspectionEvents: [{
+          seq: 1,
+          card: calmCard,
+          target: 0,
+          beforePlayers: afterSanPlayers,
+          beforeLog: newLog.slice(0, 2),
+          afterPlayers: afterNoahInspectionPlayers,
+          afterLog: newLog.slice(0, 3),
+          statEvents: [],
+          statEventSeq: null,
+        }, {
+          seq: 2,
+          card: amnesiaCard,
+          target: 1,
+          beforePlayers: afterNoahInspectionPlayers,
+          beforeLog: newLog.slice(0, 3),
+          afterPlayers: finalPlayers,
+          afterLog: newLog,
+          statEvents: [],
+          statEventSeq: null,
+        }],
+      },
+      { buildAnimQueue, copyPlayers },
+    );
+
+    const sanIdx = result.queue.findIndex(step => step.type === 'SAN_DAMAGE');
+    const drawIdxs = result.queue
+      .map((step, idx) => (step.type === 'DRAW_CARD' ? idx : -1))
+      .filter(idx => idx >= 0);
+    expect(sanIdx).toBeGreaterThanOrEqual(0);
+    expect(drawIdxs).toHaveLength(2);
+    expect(drawIdxs[0]).toBeGreaterThan(sanIdx);
+    expect(result.queue[drawIdxs[0]]).toMatchObject({ card: calmCard, triggerName: '检定牌', targetPid: 0 });
+    expect(result.queue[drawIdxs[1]]).toMatchObject({ card: amnesiaCard, triggerName: '检定牌', targetPid: 1 });
   });
 
   it('检定后的尾队列不会重放检定前已经存在的 HP statEvent', () => {

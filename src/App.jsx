@@ -1511,6 +1511,7 @@ export default function Game(){
   },[]);
 
   const suppressNextBroadcastRef=useRef(false); // set before bystander-anim pendingGs; cleared in advanceQueue
+  const committedTargetActionRef=useRef(false); // blocks cancel during the frame after a target action is confirmed
   const turnHighlightLockRef=useRef(null);
   const visualPlayersLockRef=useRef(null);
   const visualZhuLightLockRef=useRef(null);
@@ -1658,8 +1659,9 @@ export default function Game(){
 
   useEffect(()=>{
     if(!gs?.gameOver&&gs?.phase!=='GOD_RESURRECTION')return;
+    if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
     clearBattleAnimationState();
-  },[gs?.gameOver,gs?.phase,clearBattleAnimationState]);
+  },[gs?.gameOver,gs?.phase,anim,animExiting,clearBattleAnimationState]);
 
   useEffect(()=>{
     if(typeof document==='undefined')return;
@@ -2389,7 +2391,13 @@ export default function Game(){
     if(gs.phase==='MP_PLAYER_WIN_WAIT')return; // wait-only phase
     if(gs.phase==='SWAP_STEAL_CARD'||gs.phase==='SWAP_GIVE_CARD')return; // 掉包暗抽中间态含私密牌信息，最终结算再同步
     if(gs._mpEndTurn||gs._mpAutoDiscard||gs._mpAutoCthDecision)return; // local timeout transition markers
-    if(gs._endTurnReplay)return; // 无尽通道跨多段动画，结束后携带完整 replay event 再同步
+    const isEndTurnReplayDecisionState=!!(
+      gs._endTurnReplay&&(
+        (gs.phase==='DRAW_REVEAL'&&gs.drawReveal?.fromEndTurnReplay)||
+        (gs.phase==='GOD_CHOICE'&&gs.abilityData?.fromEndTurnReplay)
+      )
+    );
+    if(gs._endTurnReplay&&!isEndTurnReplayDecisionState)return; // 无尽通道跨多段动画；需要玩家抉择的中间态仍需同步
     if(receivedGsRef.current){receivedGsRef.current=false;return;}
     if(latestGsRef.current!==gs)return; // 避免较早 render 的同步 effect 在玩家已推进状态后广播旧 visualEvents
     const room=roomModal;
@@ -2713,6 +2721,12 @@ export default function Game(){
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[gs?._endTurnReplay,gs?.phase,gs?.drawReveal,gs?.gameOver,anim,showTutorial]);
+
+  useEffect(()=>{
+    if(!['MULTIPLY_SELECT_TARGET','SHU_SELECT_TARGET'].includes(gs?.phase)){
+      committedTargetActionRef.current=false;
+    }
+  },[gs?.phase]);
 
   // 1. 兜底与静默同步：当没有动画在播放时，且不处于AI回合（AI回合中draw效果已bake进gs但动画尚未开始），UI 强制对齐真实的底层数据
   useEffect(() => {
@@ -3734,6 +3748,18 @@ export default function Game(){
     if(!stateLike?._endTurnReplay)return false;
     const replay=stateLike._endTurnReplay;
     let P=copyPlayers(stateLike.players||[]);
+    const broadcastEndTurnReplayDecisionState=(decisionState,queue,msgs)=>{
+      if(!decisionState?._isMP)return decisionState;
+      const event=createEndlessCorridorReplayEvent({
+        actorIdx:replay.actorIndex??0,
+        actorName:P?.[replay.actorIndex??0]?.name||'你',
+        queue:Array.isArray(queue)?queue:[],
+        msgs:Array.isArray(msgs)?msgs:[],
+      });
+      const stateWithEvent=event?{...decisionState,_visualEvents:[event,...(decisionState?._visualEvents||[])]}:decisionState;
+      broadcastMpStateBeforeLocalReplay(stateWithEvent);
+      return stateWithEvent;
+    };
     const currentReplay=getCurrentEndTurnReplayCard({...stateLike,players:P});
     if(currentReplay){
       const {actorIndex,index,card}=currentReplay;
@@ -3754,13 +3780,14 @@ export default function Game(){
         const statQ=bindAnimLogChunks(buildAnimQueue(stateLike,newGs),{statLogs:split.stat});
         const queue=[{type:'DRAW_CARD',card,triggerName:'无尽通道',targetPid:actorIndex,skipTravel:true,msgs:split.preStat.length?split.preStat:[encounter.effectMsg]},...statQ];
         appendEndTurnReplaySyncQueue(queue,L.slice((stateLike.log||[]).length));
-        triggerAnimQueue(queue,newGs);
+        const pendingGs=broadcastEndTurnReplayDecisionState(newGs,queue,L.slice((stateLike.log||[]).length));
+        triggerAnimQueue(queue,pendingGs);
         return true;
       }
       const zoneDraw=buildEndTurnReplayZoneDraw({stateLike,players:P,replay,actorIndex,index,card,actorName:P[actorIndex]?.name||'你'});
       appendEndTurnReplaySyncQueue([zoneDraw.drawStep],zoneDraw.drawStep.msgs);
-      setGs(zoneDraw.state);
-      triggerAnimQueue([zoneDraw.drawStep],null);
+      const pendingGs=broadcastEndTurnReplayDecisionState(zoneDraw.state,[zoneDraw.drawStep],zoneDraw.drawStep.msgs);
+      triggerAnimQueue([zoneDraw.drawStep],pendingGs);
       return true;
     }
     const cleaned=buildEndTurnReplayFinishedState({stateLike,players:P});
@@ -3836,10 +3863,17 @@ export default function Game(){
       setGs({...newGs,phase,abilityData});
       return;
     }
+    const buildDrawKeepEffectQueue=(oldGs,nextGs,logDelta)=>{
+      const result=buildInspectionAwareAnimQueue(oldGs,nextGs,{buildAnimQueue,copyPlayers});
+      if(result.inspectionEvents.length){
+        lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...result.inspectionEvents.map(ev=>ev.seq||0));
+        return result.queue;
+      }
+      return bindAnimLogChunks(result.queue,splitAnimBoundLogs(logDelta));
+    };
     // CTH fromRest: 先播放当前这张牌的结算动画，再继续剩余摸牌/进入下一回合
     if(dr.fromRest&&!win){
-      const split=splitAnimBoundLogs(L.slice(gs.log.length));
-      const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),{preStatLogs:split.preStat,statLogs:split.stat});
+      const queue=buildDrawKeepEffectQueue(gs,newGs,L.slice(gs.log.length));
       if(queue.length){
         triggerAnimQueue([...queue,statePatchStep({players:P,discard:Disc})],null,()=>_cthContinueRestDraws(newGs));
       }else{
@@ -3849,8 +3883,7 @@ export default function Game(){
       return;
     }
     if(dr.fromProliferatingZ&&!win&&newGs.phase==='ACTION'){
-      const split=splitAnimBoundLogs(L.slice(gs.log.length));
-      const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),{preStatLogs:split.preStat,statLogs:split.stat});
+      const queue=buildDrawKeepEffectQueue(gs,newGs,L.slice(gs.log.length));
       if(queue.length){
         triggerAnimQueue([...queue,statePatchStep({players:P,discard:Disc})],null,()=>continueProliferatingZDraws(newGs));
       }else{
@@ -3859,7 +3892,7 @@ export default function Game(){
       }
       return;
     }
-    const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
+    const queue=buildDrawKeepEffectQueue(gs,newGs,L.slice(gs.log.length));
     if(queue.length){
       broadcastVisualReplayIfNeeded(newGs);
       if(dr.fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:Disc})],L.slice(gs.log.length));
@@ -6960,6 +6993,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   }
 
   function cancelAction(){
+    if(committedTargetActionRef.current||gs.abilityData?.committedAction)return;
     // Restore roleRevealed to what it was before skill was triggered,
     // so aborting mid-skill does not permanently reveal the player's role.
     const prev=gs.abilityData?.preSkillRevealed??gs.players[0].roleRevealed;
@@ -7089,7 +7123,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   // 多人游戏中 HUNT_CONFIRM 非追猎者不显示操作按钮区域
   const cancelable=['SWAP_SELECT_TARGET','SWAP_STEAL_CARD','SWAP_SELECT_TARGET_CARD','SWAP_GIVE_CARD','HUNT_SELECT_TARGET','ZONE_SWAP_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','DAMAGE_LINK_SELECT_TARGET','TORTOISE_ORACLE_SELECT','ROSE_THORN_SELECT_TARGET','MULTIPLY_SELECT_TARGET','SHU_SELECT_TARGET','SAME_ABYSS_SELECT','SPHINX_GUESS','GRAVE_DIG_SELECT',...(phase==='HUNT_CONFIRM'&&gs._isMP&&!isLocalCurrentTurn(gs)?[]:['HUNT_CONFIRM']),'BEWITCH_SELECT_CARD','BEWITCH_SELECT_TARGET'].includes(phase);
   // In HUNT_CONFIRM, 放弃追捕 replaces ✕取消 — never show both
-  const showCancelBtn=cancelable&&phase!=='HUNT_CONFIRM'&&!isSpectating&&isLocalCurrentTurn(gs)&&(!phase.includes('DAMAGE_LINK')||isLocalDamageLinkSelect)&&!anim;
+  const showCancelBtn=cancelable&&!committedTargetActionRef.current&&!gs.abilityData?.committedAction&&phase!=='HUNT_CONFIRM'&&!isSpectating&&isLocalCurrentTurn(gs)&&(!phase.includes('DAMAGE_LINK')||isLocalDamageLinkSelect)&&!anim;
   const canShowEndTurnButton=phase==='ACTION'
     &&isVisualPlayerTurn
     &&!isBlocked
@@ -7125,8 +7159,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     else if(phase==='ETHEREALIZE_SELECT_TARGET')etherealizeSelectTarget(pi);
     else if(phase==='MULTIPLY_SELECT_TARGET'){
       if(pi===0) return;
+      committedTargetActionRef.current=true;
+      setGs(p=>p&&p.phase==='MULTIPLY_SELECT_TARGET'?{...p,abilityData:{...(p.abilityData||{}),committedAction:'multiply'}}:p);
       let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],baseLog=[...gs.log];
       if(hasGodPowerImmunity(P[0])){
+        committedTargetActionRef.current=false;
         setGs({...gs,phase:'ACTION',abilityData:{}});
         return;
       }
@@ -7136,7 +7173,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         label:'选择【繁衍】目标'
       });
       P=night.players;D=night.deck;Disc=night.discard;baseLog=night.log;pi=night.targetIdx;
-      if(!P[0].hand.some(isBlackGoatYoung)) return;
+      if(!P[0].hand.some(isBlackGoatYoung)){
+        committedTargetActionRef.current=false;
+        setGs({...gs,phase:'ACTION',abilityData:{}});
+        return;
+      }
       const goatCard=createBlackGoatYoungCard();
       P[pi].hand.push(goatCard);
       const logMsg=`【繁衍】你将黑山羊幼仔传播给了 ${P[pi].name}`;
@@ -7153,6 +7194,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     else if(phase==='SHU_SELECT_TARGET'){
       const count=gs.abilityData?.shuOffspringCount||0;
       if(!count) { setGs({...gs,phase:'ACTION',abilityData:{}}); return; }
+      committedTargetActionRef.current=true;
+      setGs(p=>p&&p.phase==='SHU_SELECT_TARGET'?{...p,abilityData:{...(p.abilityData||{}),committedAction:'shuOffspring'}}:p);
       let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],baseLog=[...gs.log];
       const night=resolveApophisTarget({
         players:P,deck:D,discard:Disc,log:baseLog,actorIdx:0,selectedIdx:pi,

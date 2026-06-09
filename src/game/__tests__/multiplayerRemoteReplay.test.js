@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildAnimQueue } from '../animQueueCore';
+import { copyPlayers } from '../coreUtils';
 import { buildMpRemoteReplayAction, MP_REMOTE_REPLAY } from '../multiplayerRemoteReplay';
 import { rotateGsForViewer } from '../rotateState';
 import { createCardEffectEvent, createEarthquakeEvent, createEndlessCorridorReplayEvent, createHuntResultEvent, createSphinxResultEvent, createSwapCardsEvent } from '../visualEvents';
@@ -456,6 +457,159 @@ describe('buildMpRemoteReplayAction', () => {
     expect(giftRevealIdx).toBeGreaterThan(-1);
     expect(inspectionRevealIdx).toBeGreaterThan(giftRevealIdx);
     expect(hpDamageIdx).toBeGreaterThan(inspectionRevealIdx);
+  });
+
+  it('keeps final SAN loss animation before cultist game over for remote bewitch replay', () => {
+    const godGift = { id: 'god-vri', name: '弗栗多', godKey: 'VRI', isGod: true, type: 'god' };
+    const beforePlayers = [
+      { ...player('你'), role: '邪祀者', hand: [godGift] },
+      { ...player('黛安娜'), role: '寻宝者', hp: 10, san: 5, hand: [] },
+      { ...player('贝拉'), role: '追猎者' },
+    ];
+    const afterPlayers = [
+      { ...player('你'), role: '邪祀者', hand: [] },
+      { ...player('黛安娜'), role: '寻宝者', hp: 10, san: 0, hand: [godGift] },
+      { ...player('贝拉'), role: '追猎者' },
+    ];
+    const action = buildAction(makeState({
+      currentTurn: 0,
+      phase: 'ACTION',
+      players: afterPlayers,
+      log: [
+        '你对 黛安娜 【蛊惑】，赠予 弗栗多',
+        '黛安娜 遭遇邪神 弗栗多（第4次），失去4SAN',
+        '黛安娜 被迫改信新神，SAN-1',
+        '黛安娜 信仰了 弗栗多，获得不灭之躯(Lv.1)',
+      ],
+      gameOver: { winner: '邪祀者', reason: '黛安娜 的理智归零，邪神苏醒！邪祀者（你）获胜！' },
+      _statEventSeq: 2,
+      _statEvents: [
+        {
+          seq: 1,
+          type: 'SAN_LOSS',
+          target: 1,
+          from: { hp: 10, san: 5, isDead: false },
+          to: { hp: 10, san: 1, isDead: false },
+          reason: '邪神遭遇',
+        },
+        {
+          seq: 2,
+          type: 'SAN_LOSS',
+          target: 1,
+          from: { hp: 10, san: 1, isDead: false },
+          to: { hp: 10, san: 0, isDead: false },
+          reason: '改信新神',
+        },
+      ],
+      _visualEvents: [
+        { type: 'bewitchGift', sourceIdx: 0, targetIdx: 1, targetName: '黛安娜', card: godGift, msgs: ['你对 黛安娜 【蛊惑】，赠予 弗栗多'] },
+        { type: 'statEvents', statEvents: [
+          {
+            seq: 1,
+            type: 'SAN_LOSS',
+            target: 1,
+            from: { hp: 10, san: 5, isDead: false },
+            to: { hp: 10, san: 1, isDead: false },
+            reason: '邪神遭遇',
+          },
+          {
+            seq: 2,
+            type: 'SAN_LOSS',
+            target: 1,
+            from: { hp: 10, san: 1, isDead: false },
+            to: { hp: 10, san: 0, isDead: false },
+            reason: '改信新神',
+          },
+        ], msgs: ['黛安娜 遭遇邪神 弗栗多（第4次），失去4SAN', '黛安娜 被迫改信新神，SAN-1'] },
+      ],
+    }), {
+      previousGs: makeState({ currentTurn: 0, phase: 'BEWITCH_SELECT_TARGET', players: beforePlayers, log: [] }),
+      buildAnimQueue,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.map(step => step.type)).toContain('SAN_DAMAGE');
+    expect(action.pendingGs.gameOver?.winner).toBe('邪祀者');
+  });
+
+  it('replays generic area-card SAN inspections for remote players', () => {
+    const ratSwarm = { id: 'rats', name: '鼠群', key: 'D3', type: 'zone' };
+    const calmCard = { id: 'calm', name: '暂时的平静', effect: 'calm' };
+    const amnesiaCard = { id: 'amnesia', name: '失忆', effect: 'amnesia' };
+    const beforePlayers = [
+      { ...player('你'), san: 7, hand: [ratSwarm] },
+      { ...player('诺亚'), san: 7 },
+      { ...player('奥托'), san: 7 },
+    ];
+    const afterSanPlayers = copyPlayers(beforePlayers);
+    afterSanPlayers[1].san = 6;
+    afterSanPlayers[2].san = 6;
+    const finalPlayers = copyPlayers(afterSanPlayers);
+    finalPlayers[2].skillDisabledNextTurn = true;
+    const log = [
+      '你 收入了 [D3] 鼠群',
+      '全体存活角色失去 1 SAN',
+      '诺亚 的SAN检定结果为"暂时的平静"',
+      '奥托 的SAN检定结果为"失忆"',
+      '奥托 失忆，下一回合禁用技能',
+    ];
+    const action = buildAction(makeState({
+      currentTurn: 0,
+      phase: 'ACTION',
+      players: finalPlayers,
+      log,
+      _statEventSeq: 1,
+      _statEvents: [{
+        seq: 1,
+        type: 'SAN_LOSS',
+        target: 1,
+        from: { hp: 10, san: 7, isDead: false },
+        to: { hp: 10, san: 6, isDead: false },
+        reason: '鼠群',
+      }, {
+        seq: 1,
+        type: 'SAN_LOSS',
+        target: 2,
+        from: { hp: 10, san: 7, isDead: false },
+        to: { hp: 10, san: 6, isDead: false },
+        reason: '鼠群',
+      }],
+      _inspectionSeq: 2,
+      _inspectionEvents: [{
+        seq: 1,
+        card: calmCard,
+        target: 1,
+        beforePlayers: afterSanPlayers,
+        beforeLog: log.slice(0, 2),
+        afterPlayers: afterSanPlayers,
+        afterLog: log.slice(0, 3),
+        statEvents: [],
+        statEventSeq: null,
+      }, {
+        seq: 2,
+        card: amnesiaCard,
+        target: 2,
+        beforePlayers: afterSanPlayers,
+        beforeLog: log.slice(0, 3),
+        afterPlayers: finalPlayers,
+        afterLog: log,
+        statEvents: [],
+        statEventSeq: null,
+      }],
+    }), {
+      previousGs: makeState({ currentTurn: 0, phase: 'DRAW_REVEAL', players: beforePlayers, log: [] }),
+      buildAnimQueue,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    const sanIdx = action.queue.findIndex(step => step.type === 'SAN_DAMAGE');
+    const inspectionDrawIdxs = action.queue
+      .map((step, idx) => (step.type === 'DRAW_CARD' && step.triggerName === '检定牌' ? idx : -1))
+      .filter(idx => idx >= 0);
+    expect(sanIdx).toBeGreaterThanOrEqual(0);
+    expect(inspectionDrawIdxs).toHaveLength(2);
+    expect(inspectionDrawIdxs[0]).toBeGreaterThan(sanIdx);
+    expect(action.pendingGs._visualEvents).toEqual([]);
   });
 
   it('keeps god encounter inspection damage after inspection reveal during multiplayer draw replay', () => {
@@ -1360,6 +1514,42 @@ describe('buildMpRemoteReplayAction', () => {
       drawReveal: expect.objectContaining({ card: nextCard, drawerIdx: 2 }),
     });
     expect(action.pendingGs._visualEvents).toEqual([]);
+    expect(action.consumedVisualEventIds).toContain(replayEvent.id);
+  });
+
+  it('replays an endless corridor decision draw without inserting a next-turn banner', () => {
+    const replayCard = { id: 'corridor-zone', name: '重触发区域牌', key: 'A1', type: 'zone' };
+    const replayEvent = createEndlessCorridorReplayEvent({
+      actorIdx: 1,
+      actorName: '艾伦',
+      beforePlayers: [player('你-before'), player('艾伦-before'), player('贝拉-before')],
+      beforeDiscard: [],
+      queue: [
+        { type: 'DRAW_CARD', card: replayCard, triggerName: '无尽通道', targetPid: 1, skipTravel: true, msgs: ['【无尽通道】重新摸到 重触发区域牌'] },
+      ],
+      msgs: ['【无尽通道】重新摸到 重触发区域牌'],
+    });
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card: replayCard, drawerIdx: 1, needsDecision: true, fromEndTurnReplay: true },
+      _endTurnReplay: { actorIndex: 1, cards: ['corridor-zone'], index: 0 },
+      _visualEvents: [replayEvent],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION' }),
+      buildAnimQueue,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.filter(step => step.type === 'DRAW_CARD' && step.card === replayCard)).toHaveLength(1);
+    expect(action.queue.some(step => step.type === 'YOUR_TURN')).toBe(false);
+    expect(action.queue.at(-1)).toMatchObject({
+      type: 'STATE_PATCH',
+      currentTurn: 1,
+      phase: 'DRAW_REVEAL',
+      drawReveal: expect.objectContaining({ card: replayCard, drawerIdx: 1, fromEndTurnReplay: true }),
+    });
+    expect(action.pendingGs._endTurnReplay).toEqual({ actorIndex: 1, cards: ['corridor-zone'], index: 0 });
     expect(action.consumedVisualEventIds).toContain(replayEvent.id);
   });
 

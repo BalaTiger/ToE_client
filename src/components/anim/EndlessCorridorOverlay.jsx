@@ -39,6 +39,14 @@ export function EndlessCorridorTunnelAnim({ exiting }) {
       <div className="endlessCorridorStage">
         <div className="endlessCorridorCamera">
           <div className="endlessCorridorTunnel">
+            <div className="endlessCorridorDepthLines" aria-hidden="true">
+              <span className="endlessCorridorDepthLine endlessCorridorDepthLineTopLeft" />
+              <span className="endlessCorridorDepthLine endlessCorridorDepthLineTopRight" />
+              <span className="endlessCorridorDepthLine endlessCorridorDepthLineBottomLeft" />
+              <span className="endlessCorridorDepthLine endlessCorridorDepthLineBottomRight" />
+              <span className="endlessCorridorDepthLine endlessCorridorDepthLineMidLeft" />
+              <span className="endlessCorridorDepthLine endlessCorridorDepthLineMidRight" />
+            </div>
             {RINGS.map(i => {
               const ring = sideRing(i);
               const opacity = 0.24 + (i / (RINGS.length - 1)) * 0.58;

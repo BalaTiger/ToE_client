@@ -349,6 +349,33 @@ export function buildSnakeTrapAnimStep(event, state) {
   };
 }
 
+function buildStatEventsFromPlayerSnapshots(beforePlayers = [], afterPlayers = [], msgs = [], reason = '卡牌效果') {
+  if (!Array.isArray(beforePlayers) || !Array.isArray(afterPlayers)) return [];
+  const logHint = Array.isArray(msgs) ? msgs[0] : undefined;
+  return beforePlayers.flatMap((before, target) => {
+    const after = afterPlayers[target];
+    if (!before || !after) return [];
+    const hpLoss = Math.max(0, Number(before.hp ?? 0) - Number(after.hp ?? before.hp ?? 0));
+    const hpGain = Math.max(0, Number(after.hp ?? 0) - Number(before.hp ?? after.hp ?? 0));
+    const sanLoss = Math.max(0, Number(before.san ?? 0) - Number(after.san ?? before.san ?? 0));
+    const sanGain = Math.max(0, Number(after.san ?? 0) - Number(before.san ?? after.san ?? 0));
+    const from = { hp: before.hp, san: before.san, isDead: !!before.isDead };
+    const to = { hp: after.hp, san: after.san, isDead: !!after.isDead };
+    const events = [];
+    if (hpLoss && sanLoss) events.push({ type: 'HP_SAN_LOSS', target, from, to, reason, logHint });
+    else {
+      if (hpLoss) events.push({ type: 'HP_LOSS', target, from, to, reason, logHint });
+      if (sanLoss) events.push({ type: 'SAN_LOSS', target, from, to, reason, logHint });
+    }
+    if (hpGain && sanGain) events.push({ type: 'HP_SAN_GAIN', target, from, to, reason, logHint });
+    else {
+      if (hpGain) events.push({ type: 'HP_GAIN', target, from, to, reason, logHint });
+      if (sanGain) events.push({ type: 'SAN_GAIN', target, from, to, reason, logHint });
+    }
+    return events;
+  });
+}
+
 export function buildEarthquakeAnimStep({
   beforePlayers = [],
   beforeDiscard = [],
@@ -596,22 +623,41 @@ export function buildCardEffectAnimStep(event, state) {
     };
   }
   if (event.effectKey === 'volcano') {
+    const volcanoStatEvents = Array.isArray(event.statEvents) && event.statEvents.length
+      ? event.statEvents
+      : buildStatEventsFromPlayerSnapshots(
+        event.beforePlayers,
+        event.afterPlayers || state?.players || [],
+        event.msgs || [],
+        event.card?.name || '活火山'
+      );
     const sync = buildSyncedCardEffectTimeline({
       beforePlayers: event.beforePlayers,
       beforeDiscard: event.beforeDiscard,
       afterPlayers: event.afterPlayers || state?.players,
       afterDiscard: event.afterDiscard || state?.discard,
       state,
-      finalAtMs: 1250,
+      finalAtMs: 2400,
     });
+    const statSteps = statEventsToAnimQueue(
+      volcanoStatEvents,
+      event.beforePlayers || state?.players || [],
+      event.msgs || []
+    );
     return {
-      type: 'VOLCANO',
-      card: event.card,
-      actorIdx: event.actorIdx,
-      beforePlayers: event.beforePlayers || [],
-      beforeDiscard: event.beforeDiscard || [],
-      msgs: Array.isArray(event.msgs) ? event.msgs : [],
-      ...sync,
+      type: 'COMPOSITE',
+      steps: [
+        {
+          type: 'VOLCANO',
+          card: event.card,
+          actorIdx: event.actorIdx,
+          beforePlayers: event.beforePlayers || [],
+          beforeDiscard: event.beforeDiscard || [],
+          msgs: Array.isArray(event.msgs) ? event.msgs : [],
+          ...sync,
+        },
+        ...statSteps,
+      ],
     };
   }
   if (event.effectKey === 'snakeTrap') {

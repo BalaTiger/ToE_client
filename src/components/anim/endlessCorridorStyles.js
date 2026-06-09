@@ -33,6 +33,48 @@ export const ENDLESS_CORRIDOR_ANIMATION_STYLES = `
     transform-style: preserve-3d;
     animation: endlessCorridorTunnelPresence 2.3s linear both;
   }
+  .endlessCorridorDepthLines {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 240px;
+    height: 160px;
+    transform: translate(-50%, -50%);
+    transform-style: preserve-3d;
+    opacity: .74;
+    animation: endlessCorridorDepthLinesReveal 2.3s linear both;
+    will-change: opacity, transform;
+  }
+  .endlessCorridorDepthLine {
+    position: absolute;
+    display: block;
+    left: 50%;
+    top: 50%;
+    width: 960px;
+    height: 2px;
+    margin-left: -480px;
+    margin-top: -1px;
+    background: linear-gradient(90deg, rgba(95,231,208,0), rgba(216,255,242,.58) 12%, rgba(216,255,242,.82) 50%, rgba(216,255,242,.58) 88%, rgba(95,231,208,0));
+    box-shadow: 0 0 8px rgba(95,231,208,.26);
+    transform-origin: 50% 50%;
+    filter: blur(.1px);
+  }
+  .endlessCorridorDepthLineTopLeft { transform: translate(-120px, -80px) rotateY(90deg); }
+  .endlessCorridorDepthLineTopRight { transform: translate(120px, -80px) rotateY(90deg); }
+  .endlessCorridorDepthLineBottomLeft { transform: translate(-120px, 80px) rotateY(90deg); }
+  .endlessCorridorDepthLineBottomRight { transform: translate(120px, 80px) rotateY(90deg); }
+  .endlessCorridorDepthLineMidLeft {
+    width: 820px;
+    margin-left: -410px;
+    opacity: .42;
+    transform: translate(-120px, 0) rotateY(90deg);
+  }
+  .endlessCorridorDepthLineMidRight {
+    width: 820px;
+    margin-left: -410px;
+    opacity: .42;
+    transform: translate(120px, 0) rotateY(90deg);
+  }
   .endlessCorridorRing {
     position: absolute;
     left: 50%;
@@ -194,6 +236,28 @@ export const ENDLESS_CORRIDOR_ANIMATION_STYLES = `
     80% { transform: rotateY(-2deg) skewY(-.04deg) scale(1.045); }
     90% { transform: rotateY(0deg) skewY(0deg) scale(1.1); }
     100% { transform: rotateY(0deg) skewY(0deg) scale(1.16); }
+  }
+  @keyframes endlessCorridorDepthLinesReveal {
+    0%, 12% {
+      opacity: 0;
+      transform: translate(-50%, -50%) scaleZ(.05);
+    }
+    30% {
+      opacity: .18;
+      transform: translate(-50%, -50%) scaleZ(.52);
+    }
+    46% {
+      opacity: .74;
+      transform: translate(-50%, -50%) scaleZ(1);
+    }
+    82% {
+      opacity: .64;
+      transform: translate(-50%, -50%) scaleZ(1);
+    }
+    100% {
+      opacity: .18;
+      transform: translate(-50%, -50%) scaleZ(1);
+    }
   }
   @keyframes endlessCorridorEntranceRays {
     0%, 76% { opacity: 0; }

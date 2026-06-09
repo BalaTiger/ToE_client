@@ -141,26 +141,21 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound }) {
           let snapshotUrl = null;
           try {
             const { default: html2canvas } = await import('html2canvas');
+            const inZoomContainer = !!el.closest?.('[data-zoom-container]');
+            const zoomScale = inZoomContainer && window.innerWidth < 1200
+              ? Math.max(0.1, window.innerWidth / 1200)
+              : 1;
             const canvas = await html2canvas(el, {
               backgroundColor: null,
               useCORS: true,
               logging: false,
-              scale: 1,
+              scale: zoomScale,
+              width: el.offsetWidth || undefined,
+              height: el.offsetHeight || undefined,
+              windowWidth: inZoomContainer ? 1200 : window.innerWidth,
+              windowHeight: window.innerHeight,
             });
-            const outW = Math.max(1, Math.round(r.width));
-            const outH = Math.max(1, Math.round(r.height));
-            const normalized = document.createElement('canvas');
-            normalized.width = outW;
-            normalized.height = outH;
-            const ctx = normalized.getContext('2d');
-            if (ctx) {
-              ctx.imageSmoothingEnabled = true;
-              ctx.imageSmoothingQuality = 'high';
-              ctx.drawImage(canvas, 0, 0, outW, outH);
-              snapshotUrl = normalized.toDataURL('image/png');
-            } else {
-              snapshotUrl = canvas.toDataURL('image/png');
-            }
+            snapshotUrl = canvas.toDataURL('image/png');
           } catch (err) {
             console.warn('[death-snapshot] capture failed for pid', idx, err);
           }
