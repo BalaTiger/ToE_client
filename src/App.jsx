@@ -266,7 +266,7 @@ const getRuntimeServerUrl=()=>{
   return origin;
 };
 const getRuntimeSocketPath=()=>{
-  if(typeof window==='undefined')return '/api/socket.io';
+  if(typeof window==='undefined')return '/socket.io';
   if(window.__TOE_SOCKET_PATH__)return window.__TOE_SOCKET_PATH__;
   if(typeof __TOE_RUNTIME_TARGET__!=='undefined'&&__TOE_RUNTIME_TARGET__==='dev'){
     return typeof __TOE_DEV_SOCKET_PATH__!=='undefined'?__TOE_DEV_SOCKET_PATH__:'/socket.io';
@@ -275,7 +275,7 @@ const getRuntimeSocketPath=()=>{
     return typeof __TOE_H5_SOCKET_PATH__!=='undefined'?__TOE_H5_SOCKET_PATH__:'/socket.io';
   }
   if(window.location?.origin==='null')return '/socket.io';
-  return '/api/socket.io';
+  return '/socket.io';
 };
 const LOCAL_DEBUG_KEY='cthulhu_local_debug_mode';
 const FIRST_BATTLE_DONE_KEY='cthulhu_first_battle_done_v1';
