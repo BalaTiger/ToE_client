@@ -6,8 +6,8 @@ export const AREA_CARD_ANIMATION_STYLES = `
     pointer-events: none;
     overflow: hidden;
     background:
-      radial-gradient(circle at 50% 48%, rgba(105,35,8,0.22), rgba(5,2,1,0.66) 72%),
-      linear-gradient(180deg, rgba(46,13,4,0.2), rgba(0,0,0,0.22));
+      radial-gradient(circle at 50% 48%, rgba(105,35,8,0.11), rgba(5,2,1,0.42) 72%),
+      linear-gradient(180deg, rgba(46,13,4,0.09), rgba(0,0,0,0.16));
     animation: animFadeIn 0.16s ease-out both;
   }
   .volcano-overlay.volcano-exiting {
@@ -16,11 +16,11 @@ export const AREA_CARD_ANIMATION_STYLES = `
   .volcano-vignette {
     position: absolute;
     inset: 0;
-    box-shadow: inset 0 0 120px rgba(255,96,16,0.22);
+    box-shadow: inset 0 0 120px rgba(255,96,16,0.12);
     background:
-      radial-gradient(circle at 24% 34%, rgba(255,174,66,0.12), transparent 18%),
-      radial-gradient(circle at 70% 44%, rgba(255,102,26,0.14), transparent 22%),
-      linear-gradient(180deg, rgba(46,13,4,0.18), rgba(0,0,0,0.16));
+      radial-gradient(circle at 24% 34%, rgba(255,174,66,0.06), transparent 18%),
+      radial-gradient(circle at 70% 44%, rgba(255,102,26,0.07), transparent 22%),
+      linear-gradient(180deg, rgba(46,13,4,0.08), rgba(0,0,0,0.12));
   }
   .volcano-canvas {
     position: absolute;

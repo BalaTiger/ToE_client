@@ -91,19 +91,22 @@ function VolcanoAnim({anim,exiting}){
       const discard=getPileAnchorCenter('[data-discard-pile]',{x:window.innerWidth*0.72,y:window.innerHeight*0.46});
       const hand=getPlayerHandAnchorCenter(0);
       const center={x:window.innerWidth*0.50,y:window.innerHeight*0.45};
+      const source={x:window.innerWidth*1.18,y:-window.innerHeight*0.34};
       const raw=[
-        {x:deck.x-38,y:deck.y+54,fromX:-window.innerWidth*0.55,fromY:-window.innerHeight*0.55,delay:0.10,scale:0.92,rot:-28},
-        {x:center.x-165,y:center.y-48,fromX:-window.innerWidth*0.68,fromY:-window.innerHeight*0.44,delay:0.22,scale:0.74,rot:-22},
-        {x:discard.x+30,y:discard.y+18,fromX:window.innerWidth*0.48,fromY:-window.innerHeight*0.58,delay:0.34,scale:0.84,rot:30},
-        {x:center.x+145,y:center.y-88,fromX:window.innerWidth*0.62,fromY:-window.innerHeight*0.42,delay:0.46,scale:0.68,rot:24},
-        {x:hand.x-132,y:Math.min(window.innerHeight-112,hand.y-42),fromX:-window.innerWidth*0.54,fromY:-window.innerHeight*0.34,delay:0.58,scale:0.78,rot:-18},
-        {x:center.x+15,y:center.y+78,fromX:window.innerWidth*0.16,fromY:-window.innerHeight*0.62,delay:0.70,scale:0.64,rot:8},
-        {x:hand.x+112,y:Math.min(window.innerHeight-96,hand.y-26),fromX:window.innerWidth*0.54,fromY:-window.innerHeight*0.36,delay:0.82,scale:0.82,rot:34},
+        {x:deck.x-38,y:deck.y+54,delay:0.10,scale:0.92,rot:-28},
+        {x:center.x-165,y:center.y-48,delay:0.22,scale:0.74,rot:-22},
+        {x:discard.x+30,y:discard.y+18,delay:0.34,scale:0.84,rot:30},
+        {x:center.x+145,y:center.y-88,delay:0.46,scale:0.68,rot:24},
+        {x:hand.x-132,y:Math.min(window.innerHeight-112,hand.y-42),delay:0.58,scale:0.78,rot:-18},
+        {x:center.x+15,y:center.y+78,delay:0.70,scale:0.64,rot:8},
+        {x:hand.x+112,y:Math.min(window.innerHeight-96,hand.y-26),delay:0.82,scale:0.82,rot:34},
       ];
       setImpacts(raw.map((p,idx)=>({
         ...p,
         x:Math.max(54,Math.min(window.innerWidth-54,p.x)),
         y:Math.max(76,Math.min(window.innerHeight-54,p.y)),
+        sourceX:source.x+(idx-3)*18,
+        sourceY:source.y+((idx%3)-1)*12,
         seed:idx,
       })));
     };
@@ -133,8 +136,8 @@ function VolcanoAnim({anim,exiting}){
     const specs=impacts.map((impact,idx)=>{
       const x=typeof impact.x==='number'?impact.x:window.innerWidth*(parseFloat(impact.x)||50)/100;
       const y=typeof impact.y==='number'?impact.y:window.innerHeight*(parseFloat(impact.y)||50)/100;
-      const fromX=typeof impact.fromX==='number'?impact.fromX:window.innerWidth*(parseFloat(impact.fromX)||0)/100;
-      const fromY=typeof impact.fromY==='number'?impact.fromY:window.innerHeight*(parseFloat(impact.fromY)||0)/100;
+      const sourceX=typeof impact.sourceX==='number'?impact.sourceX:window.innerWidth*0.34;
+      const sourceY=typeof impact.sourceY==='number'?impact.sourceY:-window.innerHeight*0.34;
       const seed=impact.seed??idx;
       const scale=impact.scale||1;
       const fall=0.68+rand(seed+4)*0.16;
@@ -167,7 +170,7 @@ function VolcanoAnim({anim,exiting}){
       });
       const noise=Array.from({length:64},(_,i)=>({
         x:(rand(seed*263+i)-0.5)*1.95,
-        y:(rand(seed*281+i)-0.5)*1.18,
+        y:(rand(seed*281+i)-0.5)*1.72,
         r:0.02+rand(seed*307+i)*0.065,
         a:0.08+rand(seed*313+i)*0.18,
       }));
@@ -175,8 +178,8 @@ function VolcanoAnim({anim,exiting}){
         ...impact,
         x,
         y,
-        startX:x+fromX,
-        startY:y+fromY,
+        startX:sourceX,
+        startY:sourceY,
         delay,
         fall,
         impactAt:delay+fall,
@@ -197,6 +200,79 @@ function VolcanoAnim({anim,exiting}){
       ctx.beginPath();
       ctx.arc(x,y,r,0,Math.PI*2);
       ctx.fill();
+    };
+    const smoothstep=(edge0,edge1,x)=>{
+      const t=clamp01((x-edge0)/(edge1-edge0));
+      return t*t*(3-2*t);
+    };
+    const valueNoise=(x,y,seed)=>{
+      const xi=Math.floor(x), yi=Math.floor(y);
+      const xf=x-xi, yf=y-yi;
+      const h=(ix,iy)=>rand(seed+ix*37.17+iy*91.73);
+      const u=xf*xf*(3-2*xf);
+      const v=yf*yf*(3-2*yf);
+      const a=h(xi,yi), b=h(xi+1,yi), c=h(xi,yi+1), d=h(xi+1,yi+1);
+      return (a+(b-a)*u)+((c+(d-c)*u)-(a+(b-a)*u))*v;
+    };
+    const fractalNoise=(x,y,seed)=>{
+      let amp=0.56;
+      let freq=1;
+      let sum=0;
+      let norm=0;
+      for(let i=0;i<4;i++){
+        sum+=valueNoise(x*freq,y*freq,seed+i*103.9)*amp;
+        norm+=amp;
+        amp*=0.5;
+        freq*=2.05;
+      }
+      return sum/norm;
+    };
+    const drawNoiseLavaPatch=(impact,age,r,fade)=>{
+      const w=Math.ceil(Math.min(270,Math.max(96,r*2.55)));
+      const h=Math.ceil(Math.min(250,Math.max(88,r*2.35)));
+      const off=document.createElement('canvas');
+      off.width=w;
+      off.height=h;
+      const octx=off.getContext('2d');
+      const img=octx.createImageData(w,h);
+      const cx=w/2;
+      const cy=h/2;
+      const heatPulse=0.78+0.22*Math.sin(age*10+impact.seed);
+      for(let py=0;py<h;py++){
+        for(let px=0;px<w;px++){
+          const nx=(px-cx)/(w*0.48);
+          const ny=(py-cy)/(h*0.5);
+          const angle=Math.atan2(ny,nx);
+          const borderNoise=fractalNoise(Math.cos(angle)*1.8+impact.seed*0.2,Math.sin(angle)*1.8-age*0.18,impact.seed*29);
+          const localNoise=fractalNoise(px/34+age*0.42,py/28-impact.seed*0.31,impact.seed*47);
+          const radiusWarp=1+(borderNoise-0.5)*0.34;
+          const dist=Math.sqrt(nx*nx+ny*ny)/radiusWarp;
+          const edge=1-smoothstep(0.72+localNoise*0.1,1.08,dist);
+          if(edge<=0)continue;
+          const core=1-smoothstep(0.18,0.76,dist);
+          const rim=smoothstep(0.64,0.96,dist)*(1-smoothstep(0.96,1.12,dist));
+          const fissure=smoothstep(0.58,0.88,localNoise)*(1-smoothstep(0.9,1.0,dist));
+          const alpha=Math.min(1,edge*(0.74+rim*0.36))*fade;
+          const red=58+Math.floor(170*rim+76*fissure);
+          const green=7+Math.floor(38*rim+58*fissure*heatPulse);
+          const blue=3+Math.floor(8*rim);
+          const i=(py*w+px)*4;
+          img.data[i]=core>0.45?Math.max(34,red-90):red;
+          img.data[i+1]=core>0.45?Math.max(4,green-22):green;
+          img.data[i+2]=blue;
+          img.data[i+3]=Math.floor(alpha*235);
+        }
+      }
+      octx.putImageData(img,0,0);
+      octx.globalCompositeOperation='lighter';
+      const glow=octx.createRadialGradient(cx,cy,0,cx,cy,Math.max(w,h)*0.46);
+      glow.addColorStop(0,`rgba(70,8,4,${0.04*fade})`);
+      glow.addColorStop(0.58,`rgba(255,76,14,${0.1*fade})`);
+      glow.addColorStop(0.86,`rgba(255,190,72,${0.16*fade})`);
+      glow.addColorStop(1,'rgba(255,190,72,0)');
+      octx.fillStyle=glow;
+      octx.fillRect(0,0,w,h);
+      ctx.drawImage(off,-w/2,-h/2,w,h);
     };
     const drawLavaPool=(impact,age)=>{
       const grow=clamp01(age/0.24);
@@ -219,37 +295,29 @@ function VolcanoAnim({anim,exiting}){
       ctx.rotate((impact.seed%2?-1:1)*(0.12+age*0.18));
       ctx.globalAlpha=fade;
       for(let layer=5;layer>=1;layer--){
-        makeLavaPath(r*(1+layer*0.09),1.4+layer*0.015,0.8+layer*0.01,0.45);
+        makeLavaPath(r*(1+layer*0.09),1.16+layer*0.012,1.04+layer*0.01,0.45);
         ctx.fillStyle=`rgba(255,${70+layer*18},18,${0.03*fade*(6-layer)})`;
         ctx.fill();
       }
-      makeLavaPath(r);
-      const outerGrad=ctx.createRadialGradient(0,0,r*0.12,0,0,r*1.45);
-      outerGrad.addColorStop(0,'rgba(58,8,4,0.98)');
-      outerGrad.addColorStop(0.42,'rgba(96,18,5,0.94)');
-      outerGrad.addColorStop(0.78,'rgba(186,47,8,0.78)');
-      outerGrad.addColorStop(1,'rgba(255,144,34,0.26)');
-      ctx.fillStyle=outerGrad;
-      ctx.fill();
-      ctx.lineWidth=(8+3*Math.sin(age*8))*impact.scale;
-      ctx.strokeStyle=`rgba(255,130,28,${0.14*fade})`;
-      ctx.stroke();
+      drawNoiseLavaPatch(impact,age,r,fade);
+      makeLavaPath(r*0.92);
       ctx.save();
+      ctx.globalCompositeOperation='lighter';
       ctx.clip();
       impact.noise.forEach(n=>{
         const nx=n.x*r*0.78;
-        const ny=n.y*r*0.54;
-        const dist=Math.sqrt((nx/(r*1.2))**2+(ny/(r*0.72))**2);
+        const ny=n.y*r*0.74;
+        const dist=Math.sqrt((nx/(r*1.1))**2+(ny/(r*1.0))**2);
         if(dist>1)return;
         const flicker=0.65+0.35*Math.sin(age*12+n.x*9+n.y*7);
         ctx.globalAlpha=n.a*fade*flicker;
         ctx.fillStyle=dist<0.42?'rgba(28,5,3,1)':'rgba(255,104,18,1)';
         ctx.beginPath();
-        ctx.ellipse(nx,ny,n.r*r*(1.4-dist*0.5),n.r*r*(0.6+dist*0.3),n.x*2.2,0,Math.PI*2);
+        ctx.ellipse(nx,ny,n.r*r*(1.1-dist*0.3),n.r*r*(0.95+dist*0.16),n.x*2.2,0,Math.PI*2);
         ctx.fill();
       });
       ctx.restore();
-      makeLavaPath(r*(0.42+0.08*Math.sin(age*9)),1.18,0.58,1.1);
+      makeLavaPath(r*(0.42+0.08*Math.sin(age*9)),1.02,0.92,1.1);
       const innerGrad=ctx.createRadialGradient(0,0,0,0,0,r*0.72);
       innerGrad.addColorStop(0,`rgba(46,5,3,${0.88*fade})`);
       innerGrad.addColorStop(0.45,`rgba(91,13,4,${0.72*fade})`);
