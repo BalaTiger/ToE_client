@@ -35,12 +35,16 @@ function rotateY(point, angle) {
   };
 }
 
-function project(point, cameraZ, focal, cx, cy) {
+function project(point, cameraZ, focal, cx, cy, cameraX = 0, cameraY = 0, roll = 0) {
   const z = Math.max(80, cameraZ - point.z);
   const scale = focal / z;
+  const sx = (point.x - cameraX) * scale;
+  const sy = (point.y - cameraY) * scale;
+  const c = Math.cos(roll);
+  const s = Math.sin(roll);
   return {
-    x: cx + point.x * scale,
-    y: cy + point.y * scale,
+    x: cx + sx * c - sy * s,
+    y: cy + sx * s + sy * c,
     scale,
   };
 }
@@ -48,19 +52,46 @@ function project(point, cameraZ, focal, cx, cy) {
 function getRingPoints(width, height, z) {
   const halfW = width / 2;
   const halfH = height / 2;
-  const leftSamples = [-1, -0.45, 0, 0.45, 1].map(t => ({ x: -halfW, y: t * halfH, z }));
-  const rightSamples = [-1, -0.45, 0, 0.45, 1].map(t => ({ x: halfW, y: t * halfH, z }));
-  const topSamples = [-0.55, 0, 0.55].map(t => ({ x: t * halfW, y: -halfH, z }));
-  const bottomSamples = [-0.55, 0, 0.55].map(t => ({ x: t * halfW, y: halfH, z }));
-  return {
-    corners: [
-      { x: -halfW, y: -halfH, z },
-      { x: halfW, y: -halfH, z },
-      { x: halfW, y: halfH, z },
-      { x: -halfW, y: halfH, z },
-    ],
-    connectors: [...leftSamples, ...rightSamples, ...topSamples, ...bottomSamples],
-  };
+  const contour = [];
+  const rough = (i, amp = 1) => Math.sin(i * 2.17 + z * 0.011) * amp + Math.sin(i * 4.73 + z * 0.007) * amp * 0.45;
+  const push = (x, y, i, amp = 1) => contour.push({
+    x: x + rough(i, amp) * halfW * 0.012,
+    y: y + rough(i + 19, amp) * halfH * 0.012,
+    z,
+  });
+
+  // Horseshoe-like tunnel cross section: broad floor, mostly straight side walls,
+  // and an arched crown. Rock irregularity is kept subtle and follows the wall.
+  const wallTopY = -halfH * 0.28;
+  const floorY = halfH * 0.82;
+  const sideX = halfW * 0.9;
+  let k = 0;
+  for (let i = 0; i <= 6; i += 1) {
+    const t = i / 6;
+    const y = floorY + (wallTopY - floorY) * t;
+    const naturalInset = Math.sin(t * Math.PI) * halfW * 0.035;
+    push(-sideX + naturalInset, y, k++, 0.8);
+  }
+  for (let i = 1; i <= 12; i += 1) {
+    const a = Math.PI - (i / 13) * Math.PI;
+    const x = Math.cos(a) * sideX;
+    const y = wallTopY - Math.sin(a) * halfH * 0.7;
+    push(x, y, k++, 1.15);
+  }
+  for (let i = 6; i >= 0; i -= 1) {
+    const t = i / 6;
+    const y = floorY + (wallTopY - floorY) * t;
+    const naturalInset = Math.sin(t * Math.PI) * halfW * 0.035;
+    push(sideX - naturalInset, y, k++, 0.8);
+  }
+  for (let i = 1; i <= 6; i += 1) {
+    const t = i / 7;
+    const x = sideX + (-sideX - sideX) * t;
+    const y = floorY + Math.sin(t * Math.PI) * halfH * 0.025;
+    push(x, y, k++, 0.65);
+  }
+
+  return { contour };
 }
 
 function drawLine(ctx, a, b, alpha, width = 1.4) {
@@ -99,11 +130,15 @@ function EndlessCorridorCanvas({ exiting }) {
       const cy = h / 2;
       const focal = Math.min(w, h) * 1.08;
       const spread = smoothstep(0.02, 0.26, p);
-      const turn = easeInOut(smoothstep(0.22, 0.78, p));
-      const dive = smoothstep(0.66, 1, p);
-      const yaw = lerp(-1.22, 0, turn);
-      const cameraZ = 1180 - dive * 520;
-      const zoom = 0.82 + dive * 0.58;
+      const turn = easeInOut(smoothstep(0.14, 0.86, p));
+      const approach = easeInOut(smoothstep(0.28, 0.82, p));
+      const dive = easeInOut(smoothstep(0.58, 1, p));
+      const yaw = lerp(-1.18, 0, turn);
+      const cameraX = lerp(-92, 0, approach);
+      const cameraY = lerp(-58, 0, smoothstep(0.18, 0.8, p));
+      const roll = lerp(-0.08, 0.045 * Math.sin((p - 0.58) * Math.PI * 2.1), dive);
+      const cameraZ = 1240 - approach * 260 - dive * 390;
+      const zoom = 0.8 + approach * 0.23 + dive * 0.42;
 
       ctx.clearRect(0, 0, w, h);
       ctx.save();
@@ -119,14 +154,15 @@ function EndlessCorridorCanvas({ exiting }) {
         const finalZ = depthOffset * -TUNNEL.depthGap;
         const z = lerp(collapsedZ, finalZ, spread);
         const sizePulse = 1 + 0.025 * Math.sin(i * 1.7 + p * Math.PI * 2);
-        const points = getRingPoints(TUNNEL.width * zoom * sizePulse, TUNNEL.height * zoom * sizePulse, z);
-        const transformPoint = point => project(rotateY(point, yaw), cameraZ, focal, cx, cy);
+        const widthWarp = 1 + 0.08 * Math.sin(i * 0.9 + p * Math.PI * 1.4);
+        const heightWarp = 1 + 0.035 * Math.cos(i * 1.2 + p * Math.PI);
+        const points = getRingPoints(TUNNEL.width * zoom * sizePulse * widthWarp, TUNNEL.height * zoom * sizePulse * heightWarp, z);
+        const transformPoint = point => project(rotateY(point, yaw), cameraZ, focal, cx, cy, cameraX, cameraY, roll);
         return {
           i,
           z,
           opacity: (0.26 + (i / (RING_COUNT - 1)) * 0.56) * (1 - smoothstep(0.86, 1, p) * 0.7),
-          corners: points.corners.map(transformPoint),
-          connectors: points.connectors.map(transformPoint),
+          contour: points.contour.map(transformPoint),
         };
       });
 
@@ -134,24 +170,18 @@ function EndlessCorridorCanvas({ exiting }) {
         const a = rings[i];
         const b = rings[i + 1];
         const alpha = Math.min(a.opacity, b.opacity) * 0.74;
-        a.connectors.forEach((pt, idx) => {
-          drawLine(ctx, pt, b.connectors[idx], alpha * (idx % 5 === 2 ? 0.92 : 0.58), idx % 5 === 2 ? 1.45 : 1.05);
+        a.contour.forEach((pt, idx) => {
+          const strong = idx % 3 === 0;
+          drawLine(ctx, pt, b.contour[idx], alpha * (strong ? 0.9 : 0.62), strong ? 1.35 : 0.95);
         });
       }
 
       rings.forEach(ring => {
-        const c = ring.corners;
         const alpha = ring.opacity;
-        drawLine(ctx, c[0], c[1], alpha, 2.2);
-        drawLine(ctx, c[1], c[2], alpha, 2.2);
-        drawLine(ctx, c[2], c[3], alpha, 2.2);
-        drawLine(ctx, c[3], c[0], alpha, 2.2);
-        const leftMid = ring.connectors[2];
-        const rightMid = ring.connectors[7];
-        const topMid = ring.connectors[11];
-        const bottomMid = ring.connectors[14];
-        drawLine(ctx, leftMid, rightMid, alpha * 0.25, 0.9);
-        drawLine(ctx, topMid, bottomMid, alpha * 0.18, 0.8);
+        ring.contour.forEach((pt, idx) => {
+          const next = ring.contour[(idx + 1) % ring.contour.length];
+          drawLine(ctx, pt, next, alpha, idx % 3 === 0 ? 2.1 : 1.65);
+        });
       });
 
       ctx.restore();
