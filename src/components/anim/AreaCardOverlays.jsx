@@ -119,7 +119,11 @@ function VolcanoAnim({anim,exiting}){
     if(!canvas||!impacts?.length)return undefined;
     const ctx=canvas.getContext('2d');
     let raf=0;
-    const dpr=Math.min(window.devicePixelRatio||1,2);
+    const isMobileLike=()=>(
+      (typeof window.matchMedia==='function'&&window.matchMedia('(pointer: coarse)').matches)
+      || Math.min(window.innerWidth,window.innerHeight)<760
+    );
+    const dpr=Math.min(window.devicePixelRatio||1,isMobileLike()?1.35:2);
     const resize=()=>{
       const w=window.innerWidth;
       const h=window.innerHeight;
@@ -144,6 +148,7 @@ function VolcanoAnim({anim,exiting}){
       const scale=impact.scale||1;
       const fall=0.68+rand(seed+4)*0.16;
       const delay=impact.delay||0;
+      const baseR=(54+seed*4+18*rand(seed+20))*scale;
       const debris=Array.from({length:18},(_,i)=>{
         const a=-Math.PI*0.95+rand(seed*31+i)*Math.PI*1.9;
         const speed=(42+rand(seed*67+i)*96)*scale;
@@ -187,6 +192,7 @@ function VolcanoAnim({anim,exiting}){
         impactAt:delay+fall,
         scale,
         seed,
+        baseR,
         debris,
         smoke,
         lava,
@@ -229,9 +235,10 @@ function VolcanoAnim({anim,exiting}){
       }
       return sum/norm;
     };
-    const drawNoiseLavaPatch=(impact,age,r,fade)=>{
-      const w=Math.ceil(Math.min(270,Math.max(96,r*2.55)));
-      const h=Math.ceil(Math.min(250,Math.max(88,r*2.35)));
+    const buildNoiseLavaPatch=(impact)=>{
+      const maxR=impact.baseR*1.22;
+      const w=Math.ceil(Math.min(270,Math.max(96,maxR*2.55)));
+      const h=Math.ceil(Math.min(250,Math.max(88,maxR*2.35)));
       const off=document.createElement('canvas');
       off.width=w;
       off.height=h;
@@ -239,14 +246,14 @@ function VolcanoAnim({anim,exiting}){
       const img=octx.createImageData(w,h);
       const cx=w/2;
       const cy=h/2;
-      const heatPulse=0.78+0.22*Math.sin(age*10+impact.seed);
+      const heatPulse=0.92+0.08*Math.sin(impact.seed);
       for(let py=0;py<h;py++){
         for(let px=0;px<w;px++){
           const nx=(px-cx)/(w*0.48);
           const ny=(py-cy)/(h*0.5);
           const angle=Math.atan2(ny,nx);
-          const borderNoise=fractalNoise(Math.cos(angle)*1.8+impact.seed*0.2,Math.sin(angle)*1.8-age*0.18,impact.seed*29);
-          const localNoise=fractalNoise(px/34+age*0.42,py/28-impact.seed*0.31,impact.seed*47);
+          const borderNoise=fractalNoise(Math.cos(angle)*1.8+impact.seed*0.2,Math.sin(angle)*1.8,impact.seed*29);
+          const localNoise=fractalNoise(px/34,py/28-impact.seed*0.31,impact.seed*47);
           const radiusWarp=1+(borderNoise-0.5)*0.34;
           const dist=Math.sqrt(nx*nx+ny*ny)/radiusWarp;
           const edge=1-smoothstep(0.72+localNoise*0.1,1.08,dist);
@@ -254,7 +261,7 @@ function VolcanoAnim({anim,exiting}){
           const core=1-smoothstep(0.18,0.76,dist);
           const rim=smoothstep(0.64,0.96,dist)*(1-smoothstep(0.96,1.12,dist));
           const fissure=smoothstep(0.58,0.88,localNoise)*(1-smoothstep(0.9,1.0,dist));
-          const alpha=Math.min(1,edge*(0.74+rim*0.36))*fade;
+          const alpha=Math.min(1,edge*(0.74+rim*0.36));
           const red=58+Math.floor(170*rim+76*fissure);
           const green=7+Math.floor(38*rim+58*fissure*heatPulse);
           const blue=3+Math.floor(8*rim);
@@ -268,20 +275,30 @@ function VolcanoAnim({anim,exiting}){
       octx.putImageData(img,0,0);
       octx.globalCompositeOperation='lighter';
       const glow=octx.createRadialGradient(cx,cy,0,cx,cy,Math.max(w,h)*0.46);
-      glow.addColorStop(0,`rgba(70,8,4,${0.04*fade})`);
-      glow.addColorStop(0.58,`rgba(255,76,14,${0.1*fade})`);
-      glow.addColorStop(0.86,`rgba(255,190,72,${0.16*fade})`);
+      glow.addColorStop(0,'rgba(70,8,4,0.04)');
+      glow.addColorStop(0.58,'rgba(255,76,14,0.1)');
+      glow.addColorStop(0.86,'rgba(255,190,72,0.16)');
       glow.addColorStop(1,'rgba(255,190,72,0)');
       octx.fillStyle=glow;
       octx.fillRect(0,0,w,h);
-      ctx.drawImage(off,-w/2,-h/2,w,h);
+      return {canvas:off,w,h,maxR};
+    };
+    specs.forEach(impact=>{
+      impact.lavaPatch=buildNoiseLavaPatch(impact);
+    });
+    const drawNoiseLavaPatch=(impact,r,fade)=>{
+      const patch=impact.lavaPatch;
+      if(!patch)return;
+      const scale=r/patch.maxR;
+      ctx.save();
+      ctx.drawImage(patch.canvas,-patch.w*scale/2,-patch.h*scale/2,patch.w*scale,patch.h*scale);
+      ctx.restore();
     };
     const drawLavaPool=(impact,age)=>{
       const grow=clamp01(age/0.24);
       const fade=1-clamp01((age-0.52)/1.18);
       if(fade<=0)return;
-      const baseR=(54+impact.seed*4+18*rand(impact.seed+20))*impact.scale;
-      const r=baseR*(0.36+0.92*easeOutQuad(grow))*(1-0.34*clamp01((age-0.58)/1.05));
+      const r=impact.baseR*(0.36+0.92*easeOutQuad(grow))*(1-0.34*clamp01((age-0.58)/1.05));
       const makeLavaPath=(radius, xScale=1.38, yScale=0.78, wobble=1)=>{
         ctx.beginPath();
         impact.lava.forEach((pt,i)=>{
@@ -301,7 +318,7 @@ function VolcanoAnim({anim,exiting}){
         ctx.fillStyle=`rgba(255,${70+layer*18},18,${0.03*fade*(6-layer)})`;
         ctx.fill();
       }
-      drawNoiseLavaPatch(impact,age,r,fade);
+      drawNoiseLavaPatch(impact,r,fade);
       makeLavaPath(r*0.92);
       ctx.save();
       ctx.globalCompositeOperation='lighter';
@@ -438,9 +455,10 @@ function VolcanoAnim({anim,exiting}){
         drawGlow(impact.x,impact.y,(62+148*(1-f))*impact.scale,'255,74,12',0.72*f);
       }
       drawLavaPool(impact,age);
+      const lowAge=Math.floor(age*18)/18;
       impact.debris.forEach((d,i)=>{
-        if(age>d.life)return;
-        const p=age/d.life;
+        if(lowAge>d.life)return;
+        const p=lowAge/d.life;
         const x=impact.x+Math.cos(d.a)*d.speed*p;
         const y=impact.y+Math.sin(d.a)*d.speed*p+90*p*p;
         ctx.globalAlpha=(1-p)*0.95;
@@ -450,8 +468,8 @@ function VolcanoAnim({anim,exiting}){
         ctx.fill();
       });
       impact.smoke.forEach((s,i)=>{
-        if(age>s.life)return;
-        const p=age/s.life;
+        if(lowAge>s.life)return;
+        const p=lowAge/s.life;
         const x=impact.x+s.ox+s.vx*p;
         const y=impact.y+s.oy+s.vy*p-12*Math.sin(p*Math.PI);
         ctx.globalAlpha=(1-p)*0.26;
