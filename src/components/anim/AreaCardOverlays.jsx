@@ -91,7 +91,7 @@ function VolcanoAnim({anim,exiting}){
       const discard=getPileAnchorCenter('[data-discard-pile]',{x:window.innerWidth*0.72,y:window.innerHeight*0.46});
       const hand=getPlayerHandAnchorCenter(0);
       const center={x:window.innerWidth*0.50,y:window.innerHeight*0.45};
-      const source={x:window.innerWidth*1.18,y:-window.innerHeight*0.34};
+      const source={x:window.innerWidth*0.62,y:window.innerHeight*0.5};
       const raw=[
         {x:deck.x-38,y:deck.y+54,delay:0.10,scale:0.92,rot:-28},
         {x:center.x-165,y:center.y-48,delay:0.22,scale:0.74,rot:-22},
@@ -105,8 +105,10 @@ function VolcanoAnim({anim,exiting}){
         ...p,
         x:Math.max(54,Math.min(window.innerWidth-54,p.x)),
         y:Math.max(76,Math.min(window.innerHeight-54,p.y)),
-        sourceX:source.x+(idx-3)*18,
-        sourceY:source.y+((idx%3)-1)*12,
+        sourceX:source.x+(idx-3)*10,
+        sourceY:source.y+((idx%3)-1)*7,
+        nearBoost:idx===1||idx===3||idx===5?1:0,
+        nearPhase:0.1+(idx%3)*0.035,
         seed:idx,
       })));
     };
@@ -335,37 +337,79 @@ function VolcanoAnim({anim,exiting}){
       if(local<0||local>impact.fall)return;
       const p=clamp01(local/impact.fall);
       const accelP=0.18*p+0.82*p*p;
-      const x=impact.startX+(impact.x-impact.startX)*accelP;
-      const y=impact.startY+(impact.y-impact.startY)*accelP;
       const prevP=clamp01((local-0.05)/impact.fall);
       const prevAccelP=0.18*prevP+0.82*prevP*prevP;
-      const px=impact.startX+(impact.x-impact.startX)*prevAccelP;
-      const py=impact.startY+(impact.y-impact.startY)*prevAccelP;
+      const projectMeteor=(pathP)=>{
+        const w=window.innerWidth;
+        const h=window.innerHeight;
+        const cx=w*0.5;
+        const cy=h*0.5;
+        const unit=Math.min(w,h)*0.56;
+        const focal=1.08;
+        const impactZ=1.18;
+        const sourceZ=-2.7-0.45*impact.nearBoost;
+        const visibleZ=0.34+0.035*((impact.seed||0)%3);
+        const sourceWorldX=0.18;
+        const sourceWorldY=0.02;
+        const impactWorldX=((impact.x-cx)/unit)*(impactZ/focal);
+        const impactWorldY=((impact.y-cy)/unit)*(impactZ/focal);
+        const visibleT=clamp01((visibleZ-sourceZ)/(impactZ-sourceZ));
+        const rayT=visibleT+(1-visibleT)*pathP;
+        const worldX=sourceWorldX+(impactWorldX-sourceWorldX)*rayT;
+        const worldY=sourceWorldY+(impactWorldY-sourceWorldY)*rayT;
+        const worldZ=sourceZ+(impactZ-sourceZ)*rayT;
+        const safeZ=Math.max(0.08,worldZ);
+        return {
+          x:cx+(worldX*focal/safeZ)*unit,
+          y:cy+(worldY*focal/safeZ)*unit,
+          z:safeZ,
+          near:1-smoothstep(visibleZ,0.74,safeZ),
+        };
+      };
+      const current=projectMeteor(accelP);
+      const previous=projectMeteor(prevAccelP);
+      const x=current.x;
+      const y=current.y;
+      const px=previous.x;
+      const py=previous.y;
       const angle=Math.atan2(y-py,x-px);
       const speedScale=0.64+0.78*Math.min(1,p*1.18);
+      const nearPhase=impact.nearPhase||0.16;
+      const crossPass=impact.nearBoost?(1-smoothstep(0.02,0.25,p))*current.near:0;
+      const cameraPass=impact.nearBoost
+        ?Math.max(
+          current.near,
+          (1-smoothstep(0,0.28,Math.abs(p-nearPhase)))*0.72,
+        )
+        :Math.max(current.near*0.74,1-smoothstep(0,0.36,Math.abs(p-0.2))*0.46);
+      const depthScale=1+(3.05+3.95*impact.nearBoost)*cameraPass*(1-p*0.32);
+      const appearAlpha=impact.nearBoost?smoothstep(0.004,0.035,p):1;
+      const depthAlpha=(0.58+0.42*Math.min(1,depthScale/5.4))*appearAlpha;
       ctx.save();
       ctx.translate(x,y);
       ctx.rotate(angle);
-      const tailLen=(180+80*impact.scale)*speedScale;
+      ctx.scale(depthScale,depthScale);
+      if(cameraPass>0.04)ctx.filter=`blur(${((1.35+0.95*impact.nearBoost)*cameraPass).toFixed(2)}px)`;
+      const tailLen=(180+80*impact.scale)*speedScale*(0.8+0.2*cameraPass)*(1-0.22*crossPass);
       const tailGrad=ctx.createLinearGradient(-tailLen,0,10,0);
       tailGrad.addColorStop(0,'rgba(60,25,18,0)');
-      tailGrad.addColorStop(0.28,'rgba(132,54,25,0.16)');
-      tailGrad.addColorStop(0.68,'rgba(255,78,18,0.46)');
-      tailGrad.addColorStop(1,'rgba(255,225,122,0.95)');
+      tailGrad.addColorStop(0.28,`rgba(132,54,25,${0.12*depthAlpha})`);
+      tailGrad.addColorStop(0.68,`rgba(255,78,18,${0.36*depthAlpha})`);
+      tailGrad.addColorStop(1,`rgba(255,225,122,${0.9*depthAlpha})`);
       ctx.globalCompositeOperation='lighter';
       ctx.fillStyle=tailGrad;
       ctx.beginPath();
-      ctx.ellipse(-tailLen*0.5,0,tailLen*0.52,18*impact.scale,0,0,Math.PI*2);
+        ctx.ellipse(-tailLen*0.5,0,tailLen*0.52,18*impact.scale*(1+0.22*cameraPass),0,0,Math.PI*2);
       ctx.fill();
-      ctx.fillStyle='rgba(64,40,35,0.22)';
+      ctx.fillStyle=`rgba(64,40,35,${0.14+0.08*appearAlpha})`;
       for(let i=0;i<6;i++){
-        const jitter=(rand(impact.seed*331+i)-0.5)*38*impact.scale;
+        const jitter=(rand(impact.seed*331+i)-0.5)*38*impact.scale*(1+0.38*cameraPass);
         ctx.beginPath();
-        ctx.ellipse(-tailLen*(0.18+i*0.12),jitter,42+rand(impact.seed+i)*45,10+rand(impact.seed*17+i)*15,0,0,Math.PI*2);
+        ctx.ellipse(-tailLen*(0.18+i*0.12),jitter,(42+rand(impact.seed+i)*45)*(1+0.28*cameraPass),10+rand(impact.seed*17+i)*15,0,0,Math.PI*2);
         ctx.fill();
       }
       const coreR=(18+8*impact.scale)*(1-0.22*p);
-      drawGlow(0,0,coreR*3.4,'255,96,20',0.58);
+      drawGlow(0,0,coreR*(3.4+1.9*cameraPass),'255,96,20',0.58*depthAlpha);
       const coreGrad=ctx.createRadialGradient(-coreR*0.28,-coreR*0.34,1,0,0,coreR);
       coreGrad.addColorStop(0,'#fff0a6');
       coreGrad.addColorStop(0.28,'#ff8f1e');
@@ -382,6 +426,7 @@ function VolcanoAnim({anim,exiting}){
       }
       ctx.closePath();
       ctx.fill();
+      ctx.filter='none';
       ctx.restore();
     };
     const drawImpact=(impact,time)=>{
@@ -433,7 +478,13 @@ function VolcanoAnim({anim,exiting}){
       },0);
       ctx.save();
       if(shake>0)ctx.translate(Math.sin(time*178)*shake*5.8,Math.cos(time*151)*shake*4.2);
-      specs.forEach(impact=>drawMeteor(impact,time));
+      [...specs].sort((a,b)=>{
+        const pa=clamp01((time-a.delay)/a.fall);
+        const pb=clamp01((time-b.delay)/b.fall);
+        const da=1-smoothstep(0,0.34,Math.abs(pa-0.22));
+        const db=1-smoothstep(0,0.34,Math.abs(pb-0.22));
+        return da-db;
+      }).forEach(impact=>drawMeteor(impact,time));
       specs.forEach(impact=>drawImpact(impact,time));
       ctx.restore();
       if(time<2.7&&!exiting)raf=requestAnimationFrame(render);
