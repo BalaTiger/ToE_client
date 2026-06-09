@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getAnimatedCardBackFramePaths } from "../constants/card";
 import { buildPublicUrl } from "../utils/url";
 
-const AUDIO_FILES = [
+const BOOTSTRAP_AUDIO_FILES = [
   '/sounds/BGM/mainTheme.mp3',
-  '/sounds/BGM/battle.mp3',
+  '/sounds/BGM/battle_earth_shadow.mp3',
   '/sounds/SE/hpDamageVariants/hpDamage1.mp3',
   '/sounds/SE/hpDamageVariants/hpDamage2.mp3',
   '/sounds/SE/hpDamageVariants/hpDamage3.mp3',
@@ -11,6 +12,10 @@ const AUDIO_FILES = [
   '/sounds/SE/hpDamageVariants/hpDamage5.mp3',
   '/sounds/SE/hpDamageVariants/hpDamage6.mp3',
   '/sounds/SE/apophisEclipseDrums.mp3',
+];
+
+const DEFERRED_AUDIO_FILES = [
+  '/sounds/BGM/battle_stars_call.mp3',
 ];
 
 const VIDEO_FILES = [
@@ -35,23 +40,62 @@ const CRITICAL_IMAGE_FILES = [
   '/img/loading.png',
 ];
 
-const DEFERRED_IMAGE_FILES = [
-  '/img/bg/bg_main.png',
-  '/img/bg/battle/earth_shadow.png',
-  '/img/bg/battle/sage_gift.png',
-  '/img/bg/battle/stars_call.png',
-  '/img/bg/battle/bone_fuel.png',
-];
+const EARTH_ANIMATED_CARD_BACK_IMAGE_FILES = getAnimatedCardBackFramePaths('地神的潜影', true);
+const STARS_ANIMATED_CARD_BACK_IMAGE_FILES = getAnimatedCardBackFramePaths('群星呼唤', true);
 
-const RESOURCE_FILES = [
-  ...AUDIO_FILES.map(path => ({ path, type: 'audio' })),
-  ...VIDEO_FILES.map(path => ({ path, type: 'video' })),
-  ...CRITICAL_IMAGE_FILES.map(path => ({ path, type: 'image' })),
-];
+// Resource groups are intentionally domain-based:
+// - bootstrap: first paint and first interaction
+// - earthTheme: first-match default theme
+// - otherThemes: assets only needed after the first match or multiplayer entry
+const RESOURCE_GROUPS = {
+  bootstrapAudio: BOOTSTRAP_AUDIO_FILES.map(path => ({ path, type: 'audio' })),
+  deferredAudio: DEFERRED_AUDIO_FILES.map(path => ({ path, type: 'audio' })),
+  bootstrapVideo: VIDEO_FILES.map(path => ({ path, type: 'video' })),
+  criticalUiImage: CRITICAL_IMAGE_FILES.map(path => ({ path, type: 'image' })),
+  earthTheme: [
+    '/img/bg/bg_main.png',
+    '/img/bg/battle/earth_shadow.png',
+    '/img/card/cardback_earth_shadow.png',
+    '/img/ui/theme_relief/panel_corner_earth.png',
+    '/img/ui/theme_relief/log_relief_earth.png',
+    '/img/ui/theme_relief/hand_edge_earth.png',
+    ...EARTH_ANIMATED_CARD_BACK_IMAGE_FILES,
+  ].map(path => ({ path, type: 'image' })),
+  otherThemes: [
+    '/img/bg/battle/sage_gift.png',
+    '/img/bg/battle/stars_call.png',
+    '/img/bg/battle/bone_fuel.png',
+    '/img/card/cardback_sage_gift.png',
+    '/img/card/cardback_stars_call.png',
+    '/img/card/cardback_bone_fuel.png',
+    '/img/ui/theme_relief/panel_corner_stars.png',
+    '/img/ui/theme_relief/log_relief_stars.png',
+    '/img/ui/theme_relief/hand_edge_stars.png',
+    ...STARS_ANIMATED_CARD_BACK_IMAGE_FILES,
+  ].map(path => ({ path, type: 'image' })),
+};
+
+// Profiles describe *when* groups should be loaded, not what they mean semantically.
+const PRELOAD_PROFILES = {
+  bootstrap: [
+    ...RESOURCE_GROUPS.bootstrapAudio,
+    ...RESOURCE_GROUPS.bootstrapVideo,
+    ...RESOURCE_GROUPS.criticalUiImage,
+  ],
+  earthDeferred: [
+    ...RESOURCE_GROUPS.earthTheme,
+  ],
+  allDeferred: [
+    ...RESOURCE_GROUPS.deferredAudio,
+    ...RESOURCE_GROUPS.earthTheme,
+    ...RESOURCE_GROUPS.otherThemes,
+  ],
+};
 
 const RESOURCE_SIZE_FALLBACK = {
   '/sounds/BGM/mainTheme.mp3': 4025782,
-  '/sounds/BGM/battle.mp3': 1961472,
+  '/sounds/BGM/battle_earth_shadow.mp3': 1961472,
+  '/sounds/BGM/battle_stars_call.mp3': 8628480,
   '/sounds/SE/hpDamageVariants/hpDamage1.mp3': 4428,
   '/sounds/SE/hpDamageVariants/hpDamage2.mp3': 3331,
   '/sounds/SE/hpDamageVariants/hpDamage3.mp3': 3175,
@@ -77,11 +121,7 @@ const RESOURCE_SIZE_FALLBACK = {
   '/img/loading.png': 14538,
 };
 
-const DEFERRED_RESOURCE_FILES = [
-  ...DEFERRED_IMAGE_FILES.map(path => ({ path, type: 'image' })),
-];
-
-const RESOURCE_CACHE_VERSION = '2026-06-02-critical-preload-v1';
+const RESOURCE_CACHE_VERSION = '2026-06-08-cardback-frames-v3';
 const CACHE_VERSION_KEY = 'toe_resources_cached_version';
 
 const LOAD_ERROR_LABELS = {
@@ -167,13 +207,18 @@ function scheduleDeferredPreload(resources) {
   }
 }
 
-export function useResourcePreload() {
+export function useResourcePreload({ loadAllThemes = false } = {}) {
   const [isLoading, setIsLoading] = useState(true);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingError, setLoadingError] = useState(null);
   const [currentFile, setCurrentFile] = useState('');
   const [totalSize, setTotalSize] = useState(0);
   const [loadedSize, setLoadedSize] = useState(0);
+  const deferredStageRef = useRef('none');
+  const deferredResources = useMemo(
+    () => (loadAllThemes ? PRELOAD_PROFILES.allDeferred : PRELOAD_PROFILES.earthDeferred),
+    [loadAllThemes]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -192,7 +237,8 @@ export function useResourcePreload() {
         const cachedVersion = localStorage.getItem(CACHE_VERSION_KEY);
         if (cachedVersion === RESOURCE_CACHE_VERSION) {
           setSafeIsLoading(false);
-          scheduleDeferredPreload(DEFERRED_RESOURCE_FILES);
+          deferredStageRef.current = loadAllThemes ? 'all' : 'earth';
+          scheduleDeferredPreload(deferredResources);
           return;
         }
       } catch {
@@ -201,9 +247,9 @@ export function useResourcePreload() {
 
       let loadedCount = 0;
       let loadedBytes = 0;
-      const totalFiles = RESOURCE_FILES.length;
+      const totalFiles = PRELOAD_PROFILES.bootstrap.length;
       const resources = await Promise.all(
-        RESOURCE_FILES.map(async resource => ({
+        PRELOAD_PROFILES.bootstrap.map(async resource => ({
           ...resource,
           size: await getResourceSize(resource),
         }))
@@ -235,14 +281,24 @@ export function useResourcePreload() {
       }
 
       setSafeIsLoading(false);
-      scheduleDeferredPreload(DEFERRED_RESOURCE_FILES);
+      deferredStageRef.current = loadAllThemes ? 'all' : 'earth';
+      scheduleDeferredPreload(deferredResources);
     };
 
     preloadResources();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [deferredResources, loadAllThemes]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const nextStage = loadAllThemes ? 'all' : 'earth';
+    if (deferredStageRef.current === nextStage) return;
+    if (deferredStageRef.current === 'all') return;
+    deferredStageRef.current = nextStage;
+    scheduleDeferredPreload(deferredResources);
+  }, [deferredResources, isLoading, loadAllThemes]);
 
   return {
     isLoading,

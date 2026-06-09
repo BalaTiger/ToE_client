@@ -37,10 +37,10 @@ export const DAMAGE_ANIMATION_STYLES = `
     100% {transform:translate(-64px,64px) rotate(-45deg) scale(0.9); opacity:0;}
   }
   @keyframes knifeStrikeGlobal {
-    0%   {transform:translate(0,0) rotate(calc(var(--angle) + 45deg)); opacity:1;}
-    70%  {transform:translate(var(--tx),var(--ty)) rotate(calc(var(--angle) + 45deg)) scale(1.15); opacity:1;}
-    80%  {transform:translate(var(--tx),var(--ty)) rotate(calc(var(--angle) + 45deg)) scale(1.1); opacity:1;}
-    100% {transform:translate(var(--tx),var(--ty)) rotate(calc(var(--angle) + 45deg)) scale(0.9); opacity:0;}
+    0%   {transform:translate(0,0) rotate(var(--angle)); opacity:1;}
+    70%  {transform:translate(var(--tx),var(--ty)) rotate(var(--angle)) scale(1.15); opacity:1;}
+    80%  {transform:translate(var(--tx),var(--ty)) rotate(var(--angle)) scale(1.1); opacity:1;}
+    100% {transform:translate(var(--tx),var(--ty)) rotate(var(--angle)) scale(0.9); opacity:0;}
   }
   @keyframes hitFlash { 0%{opacity:0} 20%{opacity:1} 100%{opacity:0} }
   @keyframes hitFlashGlobal { 0%{opacity:0} 20%{opacity:1} 100%{opacity:0} }

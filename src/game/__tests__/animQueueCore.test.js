@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildAiHuntEventAnimQueue, buildAnimQueue } from '../animQueueCore';
-import { createEarthquakeEvent } from '../visualEvents';
+import { createCardEffectEvent, createEarthquakeEvent } from '../visualEvents';
 import { makeGodCard, makeGs, makePlayer } from './factory';
 
 describe('buildAnimQueue stat animations', () => {
@@ -81,6 +81,13 @@ describe('buildAnimQueue stat animations', () => {
     expect(secondHpIdx).toBeGreaterThan(randomIdx);
     expect(queue[firstHpIdx].hitIndices).toEqual([0, 1, 2]);
     expect(queue[secondHpIdx].hitIndices).toEqual([1]);
+    expect(queue[firstHpIdx].visualSetupTiming).toBe('queueStart');
+    expect(queue[firstHpIdx].visualTimeline[0].patch.players.map(p => p.hp)).toEqual([10, 10, 10]);
+    expect(queue[firstHpIdx].visualTimeline[1].patch.players.map(p => p.hp)).toEqual([8, 8, 8]);
+    expect(queue[randomIdx].visualSetupPatch.players.map(p => p.hp)).toEqual([8, 8, 8]);
+    expect(queue[randomIdx].visualTimeline[0].patch.players.map(p => p.hp)).toEqual([8, 8, 8]);
+    expect(queue[secondHpIdx].visualSetupPatch.players.map(p => p.hp)).toEqual([8, 8, 8]);
+    expect(queue[secondHpIdx].visualTimeline.at(-1).patch.players.map(p => p.hp)).toEqual([8, 6, 8]);
   });
 
   it('阿波菲斯黑夜选目标会播放掷骰，追捕偏移时重播锁定动画', () => {
@@ -266,6 +273,92 @@ describe('buildAnimQueue stat animations', () => {
     });
 
     expect(buildAnimQueue(oldGs, newGs).map(step => step.type)).toContain('EARTHQUAKE');
+  });
+
+  it('地磁反转 visualEvent 会显式产生指南针动画', () => {
+    const oldGs = makeGs({
+      players: [makePlayer()],
+      discard: [],
+      log: ['旧日志'],
+    });
+    const restoreCard = { id: 'gmr-test', name: '反转复原', type: 'geomagneticRestore', isGeomagneticRestore: true };
+    const event = createCardEffectEvent({
+      effectKey: 'geomagneticReversal',
+      card: { id: 'gm', name: '地磁反转', key: 'C2', type: 'geomagneticReversal' },
+      actorIdx: 0,
+      beforePlayers: oldGs.players,
+      beforeDiscard: [],
+      afterPlayers: oldGs.players,
+      afterDiscard: [restoreCard],
+      msgs: ['【地磁反转】一张"反转复原"被洗入弃牌堆，场地被地磁反转笼罩！'],
+      payload: { restoreCard },
+    });
+    const newGs = makeGs({
+      players: [makePlayer()],
+      discard: [restoreCard],
+      log: ['旧日志', '【地磁反转】一张"反转复原"被洗入弃牌堆，场地被地磁反转笼罩！'],
+      _visualEvents: [event],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    const reversalIdx = queue.findIndex(item => item.type === 'GEOMAGNETIC_REVERSAL');
+    const restoreIdx = queue.findIndex(item => item.type === 'GEOMAGNETIC_RESTORE_SHUFFLE');
+    const step = queue[reversalIdx];
+    const restoreStep = queue[restoreIdx];
+
+    expect(step).toMatchObject({
+      type: 'GEOMAGNETIC_REVERSAL',
+      actorIdx: 0,
+      visualSetupTiming: 'queueStart',
+    });
+    expect(restoreIdx).toBe(reversalIdx + 1);
+    expect(restoreStep).toMatchObject({
+      type: 'GEOMAGNETIC_RESTORE_SHUFFLE',
+      actorIdx: 0,
+      restoreCard,
+      visualSetupTiming: 'queueStart',
+      visualSetupPatch: { players: oldGs.players, discard: [] },
+    });
+    expect(restoreStep.visualTimeline[0]).toEqual({ atMs: 0, patch: { players: oldGs.players, discard: [] } });
+    expect(restoreStep.visualTimeline[1]).toEqual({ atMs: 880, patch: { players: oldGs.players, discard: [restoreCard] } });
+  });
+
+  it('活火山 visualEvent 会显式产生喷发动画', () => {
+    const beforePlayers = [makePlayer({ name: '你', hp: 10 })];
+    const afterPlayers = [makePlayer({ name: '你', hp: 6 })];
+    const oldGs = makeGs({
+      players: beforePlayers,
+      discard: [],
+      log: ['旧日志'],
+    });
+    const event = createCardEffectEvent({
+      effectKey: 'volcano',
+      card: { id: 'volcano', name: '活火山', key: 'C1', type: 'allDamageHP' },
+      actorIdx: 0,
+      beforePlayers,
+      beforeDiscard: [],
+      afterPlayers,
+      afterDiscard: [],
+      msgs: ['全体存活角色失去 4 HP'],
+    });
+    const newGs = makeGs({
+      players: afterPlayers,
+      discard: [],
+      log: ['旧日志', '全体存活角色失去 4 HP'],
+      _visualEvents: [event],
+    });
+
+    const step = buildAnimQueue(oldGs, newGs).find(item => item.type === 'VOLCANO');
+
+    expect(step).toMatchObject({
+      type: 'VOLCANO',
+      actorIdx: 0,
+      beforePlayers,
+      visualSetupTiming: 'queueStart',
+      visualSetupPatch: { players: beforePlayers, discard: [] },
+    });
+    expect(step.visualTimeline[0]).toEqual({ atMs: 0, patch: { players: beforePlayers, discard: [] } });
+    expect(step.visualTimeline[1]).toEqual({ atMs: 1250, patch: { players: afterPlayers, discard: [] } });
   });
 
   it('开局遮蔽态已带最新日志时仍能从地震 visualEvent 产生动画', () => {

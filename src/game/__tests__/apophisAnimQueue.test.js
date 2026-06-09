@@ -28,5 +28,27 @@ describe('apophisAnimQueue', () => {
       { type: 'CARD_TRANSFER' },
     ]);
   });
+
+  it('已有同一次黑夜骰子在后段队列时会移到最前并去重', () => {
+    const baseQueue = [
+      { type: 'SKILL_BEWITCH', targetIdx: 1, msgs: ['蛊惑'] },
+      { type: 'CARD_TRANSFER' },
+      { type: 'DRAW_CARD', card: { id: 'god' } },
+      { type: 'DICE_ROLL', _apophisTargetSeq: 2 },
+      { type: 'SAN_DAMAGE' },
+    ];
+    const buildQueue = () => [
+      { type: 'DICE_ROLL', _apophisTargetSeq: 2 },
+      { type: 'SKILL_BEWITCH', _apophisTargetSeq: 2, targetIdx: 2 },
+    ];
+
+    expect(mergeApophisTargetQueue(baseQueue, oldState, nextState, buildQueue)).toEqual([
+      { type: 'DICE_ROLL', _apophisTargetSeq: 2 },
+      { type: 'SKILL_BEWITCH', targetIdx: 1, msgs: ['蛊惑'] },
+      { type: 'CARD_TRANSFER' },
+      { type: 'DRAW_CARD', card: { id: 'god' } },
+      { type: 'SAN_DAMAGE' },
+    ]);
+  });
 });
 

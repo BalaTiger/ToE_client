@@ -13,6 +13,7 @@ import {
   zoneCardProvidesGuaranteedCardGain,
   zoneCardUsesTargetInteraction,
   isBlackGoatYoung,
+  isTsathogguaSlime,
   ROLE_TREASURE,
   ROLE_HUNTER,
   ROLE_CULTIST,
@@ -652,7 +653,8 @@ function estimateCultistZoneCardScore(card, self, players, ci) {
 }
 
 export function aiChooseRevealCard(targetHand, hunterName, log, knownHunterCards) { // eslint-disable-line no-unused-vars
-  const zoneCards = targetHand.filter(isZoneCard);
+  const revealableHand = targetHand.filter(card => !isBlackGoatYoung(card) && !isTsathogguaSlime(card));
+  const zoneCards = revealableHand.filter(isZoneCard);
   if (zoneCards.length) {
     const scored = zoneCards.map((card, index) => {
       let score = 0;
@@ -668,7 +670,7 @@ export function aiChooseRevealCard(targetHand, hunterName, log, knownHunterCards
     return zoneCards[scored[0]?.index ?? 0];
   }
   // 没有区域牌时，选择第一个非区域牌
-  const nonZone = targetHand.find(c => !isZoneCard(c));
+  const nonZone = revealableHand.find(c => !isZoneCard(c));
   return nonZone || null;
 }
 

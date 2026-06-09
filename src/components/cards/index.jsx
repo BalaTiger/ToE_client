@@ -1,6 +1,7 @@
 ﻿import React from 'react';
 import { createPortal } from 'react-dom';
-import { CS, GOD_CS, GOD_DEFS, getCardBackImage, getCardDisplayKey, getGodShortKey } from '../../constants/card';
+import { CS, GOD_CS, GOD_DEFS, getCardDisplayKey, getGodShortKey } from '../../constants/card';
+import { AnimatedCardBack } from './AnimatedCardBack';
 import { useCardHoverTooltip } from './useCardHoverTooltip';
 
 function OctopusSVG({col,size=32}){
@@ -525,23 +526,23 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
   );
 }
 
+function getCardBackFrameBorder(expansionKey){
+  if(expansionKey==='群星呼唤')return '#1f6f86';
+  return '#3a2510';
+}
+
 function DDCardBack({small,frameStyle,expansionKey='地神的潜影'}){
-  const cardBackImage=getCardBackImage(expansionKey);
+  const frameBorder=getCardBackFrameBorder(expansionKey);
   return(
-    <div style={{
+    <AnimatedCardBack expansionKey={expansionKey} style={{
       width:small?36:50,height:small?50:68,flexShrink:0,
-      backgroundColor:'#100c08',
-      backgroundImage:`url('${cardBackImage}')`,
-      backgroundSize:'cover',
-      backgroundPosition:'center',
-      backgroundRepeat:'no-repeat',
-      border:'1.5px solid #3a2510',
+      border:`1.5px solid ${frameBorder}`,
       boxShadow:'0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
       borderRadius:3,
       display:'flex',alignItems:'center',justifyContent:'center',
       ...frameStyle,
     }}>
-    </div>
+    </AnimatedCardBack>
   );
 }
 
@@ -563,5 +564,5 @@ function GodCardDisplay({card,level=1}){
     </div>
   );
 }
-export { CardCodeLabel, MiniCardFace, PreviewCard, GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG };
+export { CardCodeLabel, MiniCardFace, PreviewCard, GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG, AnimatedCardBack };
 

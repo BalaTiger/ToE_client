@@ -29,6 +29,7 @@ const ROTATE_ABILITYDATA_INDEX_FIELDS = [
   'redirectTargetIdx',
   'playerIndex',
   'source',
+  '_turnOwner',
 ];
 const ROTATE_ABILITYDATA_INDEX_ARRAY_FIELDS = [
   'peekHandTargets',
@@ -171,6 +172,16 @@ function rotateTimedOutDrawDiscardEvent(event, rotateIndex) {
   };
 }
 
+function rotateTsathogguaSlimeGrantEvents(events, rotateIndex, myIndex) {
+  if (!Array.isArray(events)) return events;
+  return events.map(event => ({
+    ...event,
+    ownerIdx: event.ownerIdx != null ? rotateIndex(event.ownerIdx) : event.ownerIdx,
+    playersBefore: rotatePlayersArray(event.playersBefore, myIndex),
+    playersAfter: rotatePlayersArray(event.playersAfter, myIndex),
+  }));
+}
+
 function rotateCardEffectPayload(payload, rotateIndex, myIndex) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
   const rotatedIndices = rotateIndexedFields(payload, ['actorIdx', 'sourceIdx', 'targetIdx', 'playerIdx', 'drawerIdx'], rotateIndex);
@@ -195,6 +206,7 @@ function rotateCardEffectVisualEvent(event, rotateIndex, myIndex) {
     ...event,
     actorIdx: event.actorIdx != null ? rotateIndex(event.actorIdx) : event.actorIdx,
     beforePlayers: rotatePlayersArray(event.beforePlayers, myIndex),
+    afterPlayers: rotatePlayersArray(event.afterPlayers, myIndex),
     discardEvents: Array.isArray(event.discardEvents)
       ? rotateEarthquakeDiscardEvents(event.discardEvents, rotateIndex, myIndex)
       : event.discardEvents,
@@ -317,6 +329,7 @@ export function rotateGsForViewer(gs, myIndex) {
     ...(gs._apophisTargetEvent ? { _apophisTargetEvent: rotateApophisTargetEvent(gs._apophisTargetEvent, rotateIndex) } : {}),
     ...(gs._randomTargetEvents ? { _randomTargetEvents: rotateRandomTargetEvents(gs._randomTargetEvents, rotateIndex) } : {}),
     ...(gs._mpTimedOutDrawDiscard ? { _mpTimedOutDrawDiscard: rotateTimedOutDrawDiscardEvent(gs._mpTimedOutDrawDiscard, rotateIndex) } : {}),
+    ...(gs._tsgSlimeGrantEvents ? { _tsgSlimeGrantEvents: rotateTsathogguaSlimeGrantEvents(gs._tsgSlimeGrantEvents, rotateIndex, myIndex) } : {}),
     ...(gs._visualEvents ? { _visualEvents: rotateVisualEvents(gs._visualEvents, rotateIndex, myIndex) } : {}),
   };
 }

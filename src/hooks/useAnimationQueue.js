@@ -160,15 +160,18 @@ export function useAnimationQueue({
       const next = pendingGsRef.current;
       const normalizedNext = normalizePendingState(next);
       const callback = animCallbackRef.current;
-      pendingGsRef.current = null;
-      animCallbackRef.current = null;
-      clearVisualTimelineTimers();
-      visualStateLocks.clear({turnHighlight:true,players:true,zhuLight:true,hiddenZhuCardId:true});
-      if (setVisualPlayersOverride) setVisualPlayersOverride(null);
-      setAnim(null);
       if (next?.log) syncVisibleLog(next.log);
       if (callback) {
+        const pendingBeforeCallback = pendingGsRef.current;
+        const callbackBeforeCallback = animCallbackRef.current;
         callback();
+        const callbackStartedNextQueue =
+          pendingGsRef.current !== pendingBeforeCallback ||
+          animCallbackRef.current !== callbackBeforeCallback ||
+          animQueueRef.current.length > 0;
+        if (callbackStartedNextQueue) {
+          return;
+        }
       } else if (normalizedNext) {
         setVisualDiscard(getVisualDiscardForState(normalizedNext));
         if (suppressNextBroadcastRef.current) {
@@ -186,6 +189,12 @@ export function useAnimationQueue({
           return normalizedNext;
         });
       }
+      pendingGsRef.current = null;
+      animCallbackRef.current = null;
+      clearVisualTimelineTimers();
+      visualStateLocks.clear({turnHighlight:true,players:true,zhuLight:true,hiddenZhuCardId:true});
+      if (setVisualPlayersOverride) setVisualPlayersOverride(null);
+      setAnim(null);
     }
   }
 

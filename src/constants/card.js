@@ -153,7 +153,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "A4": [
     {
       "name": "绮丽诗篇",
-      "desc": "直到下回合，所有人技能变为“掉包”",
+      "desc": "直到下回合，所有角色技能变为“掉包”",
       "type": "globalOnlySwap",
       "val": 0,
       "slotKey": "A4",
@@ -173,7 +173,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "空谷传音",
-      "desc": "全体角色失去1SAN",
+      "desc": "所有角色失去1SAN",
       "type": "allDamageSAN",
       "val": 1,
       "slotKey": "A4",
@@ -277,7 +277,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "地动山摇",
-      "desc": "全体角色各随机弃1张牌（强制触发）",
+      "desc": "所有角色各随机弃1张牌（强制触发）",
       "type": "allDiscard",
       "val": 1,
       "forced": true,
@@ -410,7 +410,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "活火山",
-      "desc": "全体角色失去4HP",
+      "desc": "所有角色失去4HP",
       "type": "allDamageHP",
       "val": 4,
       "slotKey": "C1",
@@ -473,7 +473,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "地磁反转",
-      "desc": "将一张\"反转复原\"洗入弃牌堆。所有人即将摸牌时，改为重洗弃牌堆并暗抽一张",
+      "desc": "将一张\"反转复原\"洗入弃牌堆。角色即将摸牌时，改为重洗弃牌堆并暗抽一张",
       "type": "geomagneticReversal",
       "slotKey": "C2",
       "polarity": "negative",
@@ -534,7 +534,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "夜风呼啸",
-      "desc": "全体角色失去1HP和1SAN",
+      "desc": "所有角色失去1HP和1SAN",
       "type": "allDamageBoth",
       "val": 1,
       "slotKey": "C4",
@@ -565,7 +565,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "钻地魔虫",
-      "desc": "全体角色失去2HP，随机一名角色再失去2HP",
+      "desc": "所有角色失去2HP，随机一名角色再失去2HP",
       "type": "allDamageHPRandomExtra",
       "val": 2,
       "slotKey": "D1",
@@ -712,7 +712,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "鲜红夜宴",
-      "desc": "所有人回复2HP，失去1SAN",
+      "desc": "所有角色回复2HP，失去1SAN",
       "type": "allHealHPDamageSAN",
       "hpVal": 2,
       "sanVal": 1,
@@ -774,9 +774,9 @@ const GOD_DEFS={
     godKey:'ZHU',name:'烛九阴',subtitle:'钟山之神',power:'衔烛照幽',
     col:'#c0a020',bgCol:'#181008',
     levels:[
-      {zhuLightOffsets:[2],desc:'立即点亮牌库顶部第3张牌。你可以查看被点亮牌的正面；当其即将被翻开时，可将其藏到牌堆底。你的回合开始时也如此做'},
-      {zhuLightOffsets:[1,2,3],desc:'“第3张牌”改为“第2~4张牌”'},
-      {zhuLightOffsets:[0,1,2,3,4],desc:'改为点亮牌库顶部前5张牌'},
+      {zhuLightOffsets:[2],desc:'立即点亮牌堆顶第3张牌。你可以查看被点亮牌的正面；当其即将被翻开时，可将其藏到牌堆底。你的回合开始时也如此做'},
+      {zhuLightOffsets:[1,2,3],desc:'立即点亮牌库顶第2~4张牌。你可以查看被点亮牌的正面；当其即将被翻开时，可将其藏到牌堆底。你的回合开始时也如此做'},
+      {zhuLightOffsets:[0,1,2,3,4],desc:'立即点亮牌库顶前5张牌。你可以查看被点亮牌的正面；当其即将被翻开时，可将其藏到牌堆底。你的回合开始时也如此做'},
     ],
   },
   APO:{
@@ -784,8 +784,8 @@ const GOD_DEFS={
     col:'#8020a0',bgCol:'#100818',
     levels:[
       {nightThreshold:2,desc:'立即让场地进入黑夜：所有角色选中目标时掷骰子，若小于等于2则改为错误目标并失去1SAN。选中目标累计12次后黑夜结束'},
-      {nightThreshold:4,desc:'“若小于等于2”改为“若小于等于4”，其余不变'},
-      {nightThreshold:6,desc:'“若小于等于4”改为“若小于等于6”，其余不变'},
+      {nightThreshold:4,desc:'立即让场地进入黑夜：所有角色选中目标时掷骰子，若小于等于4则改为错误目标并失去1SAN。选中目标累计12次后黑夜结束'},
+      {nightThreshold:6,desc:'立即让场地进入黑夜：所有角色选中目标时掷骰子，若小于等于6则改为错误目标并失去1SAN。选中目标累计12次后黑夜结束'},
     ],
   },
   GEE:{
@@ -917,8 +917,38 @@ const CARD_BACK_IMAGE_BY_EXPANSION = {
   '析骨为柴': '/img/card/cardback_bone_fuel.png',
 };
 
+const ANIMATED_CARD_BACK_BY_EXPANSION = {
+  '地神的潜影': {
+    frameDir: '/img/card/animated/earth_shadow',
+    sprite: '/img/card/animated/earth_shadow/spritesheet.png',
+    frameCount: 24,
+    fps: 12,
+    width: 392,
+    height: 590,
+  },
+  '群星呼唤': {
+    frameDir: '/img/card/animated/stars_call',
+    sprite: '/img/card/animated/stars_call/spritesheet.png',
+    frameCount: 24,
+    fps: 12,
+    width: 392,
+    height: 590,
+  },
+};
+
 function getCardBackImage(expansionKey = '地神的潜影') {
   return CARD_BACK_IMAGE_BY_EXPANSION[expansionKey] || CARD_BACK_IMAGE_BY_EXPANSION['地神的潜影'];
+}
+
+function getAnimatedCardBack(expansionKey = '地神的潜影') {
+  return ANIMATED_CARD_BACK_BY_EXPANSION[expansionKey] || null;
+}
+
+function getAnimatedCardBackFramePaths(expansionKey = '地神的潜影', publicPaths = false) {
+  const anim = getAnimatedCardBack(expansionKey);
+  if (!anim?.frameDir || !anim?.frameCount) return [];
+  const base = publicPaths ? anim.frameDir : anim.frameDir.replace(/^\//, '');
+  return Array.from({ length: anim.frameCount }, (_, i) => `${base}/frame_${String(i).padStart(2, '0')}.png`);
 }
 
 export const INSPECTION_DECK = [
@@ -946,8 +976,6 @@ export function createBlackGoatYoungCard() {
     isBlackGoatYoung: true,
     polarity: 'neutral',
     effectScope: 'self',
-    letter: 'B',
-    number: 0,
     key: 'BGY',
   };
 }
@@ -962,8 +990,6 @@ export function createTsathogguaSlimeCard() {
     isTsathogguaSlime: true,
     polarity: 'neutral',
     effectScope: 'self',
-    letter: 'T',
-    number: 0,
     key: 'SLM',
   };
 }
@@ -1003,7 +1029,10 @@ export {
   GOD_DEFS,
   EXPANSIONS,
   CARD_BACK_IMAGE_BY_EXPANSION,
+  ANIMATED_CARD_BACK_BY_EXPANSION,
   getCardBackImage,
+  getAnimatedCardBack,
+  getAnimatedCardBackFramePaths,
   getGodShortKey,
   getCardDisplayKey,
 };

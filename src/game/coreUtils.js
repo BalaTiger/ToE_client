@@ -237,6 +237,7 @@ export const isWinHand = (hand) => {
   let blankCount = 0;
   for (const c of hand) {
     if (c.isGod) continue;
+    if (isVanishingDerivedCard(c)) continue;
     if (isBlankZoneCard(c)) {
       blankCount += 1;
       continue;

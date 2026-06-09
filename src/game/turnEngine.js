@@ -160,7 +160,7 @@ export function applySanLossToPlayerWithInspection(targetIndex, amount, startInd
     reason,
   );
   const processed = applyInspectionForSanLoss(targetIndex, P[targetIndex].san, startIndex, P, D, Disc, L, nextInspectionMeta);
-  const slimeDecision = buildTsathogguaSlimeBalanceDecision(beforePlayers, processed.P);
+  const slimeDecision = buildTsathogguaSlimeBalanceDecision(beforePlayers, processed.P, { _turnOwner: startIndex });
   return {
     P: processed.P,
     D: processed.D,
@@ -194,6 +194,25 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
   let statePatch = {};
   let inspectionMeta = makeInspectionMeta(gs);
   P = P.map(p => ({ ...p, godZone: [...(p.godZone || [])] })); // shallow copy godZone arrays
+  const applyImmediateGodPower = () => {
+    if (!canGodPowerAffect(P[ci])) return;
+    if (godKey === 'APO') {
+      statePatch.apophisNight = getApophisNightForLevel(P[ci].godLevel);
+      msgs.push(buildApophisNightLog());
+    }
+    if (godKey === 'ZHU') {
+      statePatch.zhuLight = buildZhuLight(P, D, ci, gs?.zhuLight);
+    }
+    if (godKey === 'SHU') {
+      const count = GOD_DEFS.SHU.levels[(P[ci].godLevel || 1) - 1]?.offspringCount || 0;
+      const shuTargetIdx = _chooseAiShuTarget(ci, P);
+      if (!canGodPowerAffect(P[shuTargetIdx])) return;
+      const goatCards = Array.from({ length: count }, () => createBlackGoatYoungCard());
+      P[shuTargetIdx].hand.push(...goatCards);
+      if (goatCards.length) proliferatingZGainEvents.push({ ownerIdx: shuTargetIdx, cards: goatCards });
+      if (count) msgs.push(`【黑暗子嗣】${P[shuTargetIdx].name} 获得${count}张黑山羊幼仔`);
+    }
+  };
   if (forcedConvert && P[ci].godName && P[ci].godName !== godKey) {
     msgs.push(`${P[ci].name} 被迫改信新神，SAN-1`);
     const inspectionBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
@@ -219,19 +238,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     P[ci].godLevel++; P[ci].godZone.push({ ...godCard });
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
     msgs.push(`${P[ci].name} 邪神之力升至Lv.${P[ci].godLevel}（${godCard.power}）`);
-    if (godKey === 'APO' && canGodPowerAffect(P[ci])) {
-      statePatch.apophisNight = getApophisNightForLevel(P[ci].godLevel);
-      msgs.push(buildApophisNightLog());
-    }
-    if (godKey === 'SHU' && canGodPowerAffect(P[ci])) {
-      const count = GOD_DEFS.SHU.levels[P[ci].godLevel - 1]?.offspringCount || 0;
-      const shuTargetIdx = _chooseAiShuTarget(ci, P);
-      if (!canGodPowerAffect(P[shuTargetIdx])) return;
-      const goatCards = Array.from({ length: count }, () => createBlackGoatYoungCard());
-      P[shuTargetIdx].hand.push(...goatCards);
-      if (goatCards.length) proliferatingZGainEvents.push({ ownerIdx: shuTargetIdx, cards: goatCards });
-      if (count) msgs.push(`【黑暗子嗣】${P[shuTargetIdx].name} 获得${count}张黑山羊幼仔`);
-    }
+    applyImmediateGodPower();
     P.forEach((p, i) => {
       if (i !== ci && p.godName === godKey) {
         const abandonBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
@@ -248,19 +255,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }];
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
     msgs.push(`${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
-    if (godKey === 'APO' && canGodPowerAffect(P[ci])) {
-      statePatch.apophisNight = getApophisNightForLevel(P[ci].godLevel);
-      msgs.push(buildApophisNightLog());
-    }
-    if (godKey === 'SHU' && canGodPowerAffect(P[ci])) {
-      const count = GOD_DEFS.SHU.levels[0]?.offspringCount || 0;
-      const shuTargetIdx = _chooseAiShuTarget(ci, P);
-      if (!canGodPowerAffect(P[shuTargetIdx])) return;
-      const goatCards = Array.from({ length: count }, () => createBlackGoatYoungCard());
-      P[shuTargetIdx].hand.push(...goatCards);
-      if (goatCards.length) proliferatingZGainEvents.push({ ownerIdx: shuTargetIdx, cards: goatCards });
-      if (count) msgs.push(`【黑暗子嗣】${P[shuTargetIdx].name} 获得${count}张黑山羊幼仔`);
-    }
+    applyImmediateGodPower();
     P.forEach((p, i) => {
       if (i !== ci && p.godName === godKey) {
         const abandonBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
@@ -273,19 +268,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }];
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
     msgs.push(`${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
-    if (godKey === 'APO' && canGodPowerAffect(P[ci])) {
-      statePatch.apophisNight = getApophisNightForLevel(P[ci].godLevel);
-      msgs.push(buildApophisNightLog());
-    }
-    if (godKey === 'SHU' && canGodPowerAffect(P[ci])) {
-      const count = GOD_DEFS.SHU.levels[0]?.offspringCount || 0;
-      const shuTargetIdx = _chooseAiShuTarget(ci, P);
-      if (!canGodPowerAffect(P[shuTargetIdx])) return;
-      const goatCards = Array.from({ length: count }, () => createBlackGoatYoungCard());
-      P[shuTargetIdx].hand.push(...goatCards);
-      if (goatCards.length) proliferatingZGainEvents.push({ ownerIdx: shuTargetIdx, cards: goatCards });
-      if (count) msgs.push(`【黑暗子嗣】${P[shuTargetIdx].name} 获得${count}张黑山羊幼仔`);
-    }
+    applyImmediateGodPower();
     P.forEach((p, i) => {
       if (i !== ci && p.godName === godKey) {
         const abandonBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
@@ -360,6 +343,7 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
       effectMsgs: [`【地磁反转】${whoName} 从弃牌堆暗抽了一张牌`],
       needsDecision: false,
       kept: true,
+      sourcePile: 'discard',
       statePatch: { geomagneticReversalActive: true },
     };
   }
@@ -539,7 +523,7 @@ function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta) {
       L.slice(-1),
       '黑山羊幼仔',
     );
-    const slimeDecision = buildTsathogguaSlimeBalanceDecision(beforePlayers, P);
+    const slimeDecision = buildTsathogguaSlimeBalanceDecision(beforePlayers, P, { _turnOwner: next });
     if (slimeDecision) inspectionMeta = { ...inspectionMeta, abilityData: slimeDecision };
     if (slimeDecision) return { P, D, Disc, L, inspectionMeta, winAfterBgy: null };
     const winAfterSanDepletion = checkWin(P, gs._isMP);
@@ -908,6 +892,7 @@ export function startNextTurn(gs, opts = {}) {
         forcedKeep: !!res.forcedKeep,
         drawerIdx: 0,
         drawerName: P[0].name,
+        sourcePile: res.sourcePile,
       } : null,
       selectedCard: null,
       abilityData: {},
@@ -926,9 +911,9 @@ export function startNextTurn(gs, opts = {}) {
         baseAbilityData: {},
         fallbackPhase: 'ACTION',
       });
-      return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: decisionState.phase, drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: 0, drawerName: P[0].name }, selectedCard: null, abilityData: decisionState.abilityData, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}) };
+      return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: decisionState.phase, drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: 0, drawerName: P[0].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: decisionState.abilityData, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _drawSourcePile: res.sourcePile, ...(res.statePatch || {}) };
     }
-    return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: 0, drawerName: P[0].name }, selectedCard: null, abilityData: {}, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
+    return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: 0, drawerName: P[0].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _drawSourcePile: res.sourcePile };
   } else if (gs._isMP) {
     // Multiplayer: next player is human — draw their card and enter DRAW_REVEAL
     // [ACTIVE_GOD] NYA 偷身份
@@ -978,9 +963,9 @@ export function startNextTurn(gs, opts = {}) {
     const win = checkWin(P, true); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: win };
     // 强制触发牌：效果已执行，直接进入 ACTION；不向其他玩家广播 DRAW_REVEAL 界面
     if (res.kept) {
-      return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'ACTION', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: next, drawerName: P[next].name }, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, ...(res.statePatch || {}) };
+      return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'ACTION', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, _drawSourcePile: res.sourcePile, ...(res.statePatch || {}) };
     }
-    return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: next, drawerName: P[next].name }, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw };
+    return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, _drawSourcePile: res.sourcePile };
   } else {
     // [ACTIVE_GOD] NYA 偷身份（AI 自动处理）
     turnStartEvent_NyaBorrow(P, next, L, gs);
@@ -1061,6 +1046,7 @@ export function startNextTurn(gs, opts = {}) {
       huntAbandoned: [],
       _aiDrawnCard: res.drawnCard ?? null,
       _drawnCard: res.drawnCard ?? null,
+      _drawSourcePile: res.sourcePile,
       _discardedDrawnCard: !!res.discardedDrawnCard,
       _playersBeforeThisDraw: _P_beforeDraw,
       _turnKey: (gs._turnKey || 0) + 1,

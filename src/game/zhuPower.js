@@ -16,10 +16,13 @@ export function buildZhuLight(players = [], deck = [], currentTurn = -1, previou
   if (ownerIdx < 0) return null;
   const level = players[ownerIdx]?.godLevel || 1;
   const deckIds = new Set(deck.map(card => card?.id).filter(Boolean));
+  const sameOwner = previous?.ownerIdx === ownerIdx;
   const sameOwnerAndLevel = previous?.ownerIdx === ownerIdx && previous?.level === level;
   if (!sameOwnerAndLevel && currentTurn !== ownerIdx) return null;
   if (currentTurn === ownerIdx || !sameOwnerAndLevel) {
-    const cardIds = getZhuLightOffsets(level).map(offset => deck[offset]?.id).filter(Boolean);
+    const previousIds = sameOwner ? (previous?.cardIds || []).filter(id => deckIds.has(id)) : [];
+    const newIds = getZhuLightOffsets(level).map(offset => deck[offset]?.id).filter(Boolean);
+    const cardIds = [...new Set([...previousIds, ...newIds])];
     return { ownerIdx, level, cardIds, lightNonce: (previous?.lightNonce || 0) + 1 };
   }
   return {

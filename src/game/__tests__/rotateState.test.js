@@ -14,7 +14,7 @@ describe('rotateGsForViewer', () => {
     const gs = {
       players: [player('你'), player('艾伦'), player('贝拉')],
       currentTurn: 2,
-      abilityData: { playerIndex: 0, source: 2, targets: [0, 2] },
+      abilityData: { playerIndex: 0, source: 2, _turnOwner: 2, targets: [0, 2] },
       _playersBeforeThisDraw: [player('draw0'), player('draw1'), player('draw2')],
       _preTurnPlayers: [player('turn0'), player('turn1'), player('turn2')],
       _earthquakeBeforePlayers: [player('quake0'), player('quake1'), player('quake2')],
@@ -28,7 +28,7 @@ describe('rotateGsForViewer', () => {
 
     expect(names(rotated.players)).toEqual(['艾伦', '贝拉', '你']);
     expect(rotated.currentTurn).toBe(1);
-    expect(rotated.abilityData).toEqual({ playerIndex: 2, source: 1, targets: [2, 1] });
+    expect(rotated.abilityData).toEqual({ playerIndex: 2, source: 1, _turnOwner: 1, targets: [2, 1] });
     expect(names(rotated._playersBeforeThisDraw)).toEqual(['draw1', 'draw2', 'draw0']);
     expect(names(rotated._preTurnPlayers)).toEqual(['turn1', 'turn2', 'turn0']);
     expect(names(rotated._earthquakeBeforePlayers)).toEqual(['quake1', 'quake2', 'quake0']);
@@ -77,6 +77,14 @@ describe('rotateGsForViewer', () => {
       ],
       _randomTargetEvents: [
         { seq: 1, sourceIdx: 3, targetIdx: 1, label: '投掷石块' },
+      ],
+      _tsgSlimeGrantEvents: [
+        {
+          ownerIdx: 0,
+          count: 1,
+          playersBefore: [player('tsgB0'), player('tsgB1'), player('tsgB2'), player('tsgB3')],
+          playersAfter: [player('tsgA0'), player('tsgA1'), player('tsgA2'), player('tsgA3')],
+        },
       ],
       _animMultiplyEvent: { fromIdx: 1, toIdx: 3, sourceCardIndex: 4 },
       _animSphinxReveal: { actorIdx: 0, card: { name: '斯芬克斯' } },
@@ -128,6 +136,7 @@ describe('rotateGsForViewer', () => {
           effectKey: 'earthquake',
           actorIdx: 0,
           beforePlayers: [player('ce0'), player('ce1'), player('ce2'), player('ce3')],
+          afterPlayers: [player('ceF0'), player('ceF1'), player('ceF2'), player('ceF3')],
           discardEvents: [
             {
               playerIndex: 1,
@@ -180,6 +189,9 @@ describe('rotateGsForViewer', () => {
     expect(names(rotated._aiHuntEvents[0].afterDiscardPlayers)).toEqual(['d2', 'd3', 'd0', 'd1']);
     expect(names(rotated._aiHuntEvents[0].afterPlayers)).toEqual(['a2', 'a3', 'a0', 'a1']);
     expect(rotated._randomTargetEvents[0]).toMatchObject({ sourceIdx: 1, targetIdx: 3, label: '投掷石块' });
+    expect(rotated._tsgSlimeGrantEvents[0].ownerIdx).toBe(2);
+    expect(names(rotated._tsgSlimeGrantEvents[0].playersBefore)).toEqual(['tsgB2', 'tsgB3', 'tsgB0', 'tsgB1']);
+    expect(names(rotated._tsgSlimeGrantEvents[0].playersAfter)).toEqual(['tsgA2', 'tsgA3', 'tsgA0', 'tsgA1']);
     expect(rotated._animMultiplyEvent).toMatchObject({ fromIdx: 3, toIdx: 1, sourceCardIndex: 4 });
     expect(rotated._animSphinxReveal).toMatchObject({ actorIdx: 2 });
     expect(rotated._visualEvents[0].playerIdx).toBe(1);
@@ -202,6 +214,7 @@ describe('rotateGsForViewer', () => {
     expect(names(rotated._visualEvents[9].discardEvents[0].afterPlayers)).toEqual(['eqA2', 'eqA3', 'eqA0', 'eqA1']);
     expect(rotated._visualEvents[10]).toMatchObject({ type: 'cardEffect', effectKey: 'earthquake', actorIdx: 2 });
     expect(names(rotated._visualEvents[10].beforePlayers)).toEqual(['ce2', 'ce3', 'ce0', 'ce1']);
+    expect(names(rotated._visualEvents[10].afterPlayers)).toEqual(['ceF2', 'ceF3', 'ceF0', 'ceF1']);
     expect(rotated._visualEvents[10].discardEvents[0].playerIndex).toBe(3);
     expect(names(rotated._visualEvents[10].discardEvents[0].afterPlayers)).toEqual(['ceA2', 'ceA3', 'ceA0', 'ceA1']);
     expect(rotated._visualEvents[10].statEvents[0].target).toBe(1);

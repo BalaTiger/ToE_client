@@ -1,7 +1,53 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { MiniCardFace } from '../cards';
+import { DDCard, DDCardBack } from '../cards';
 
-export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorName = '你', readOnly = false }) {
+const CARD_W = 44;
+const CARD_H = 58;
+const STACK_GAP = 24;
+
+function StackedCardRow({ cards, zoneKey, dragging, readOnly, onDragStart }) {
+  const count = cards.length;
+  const width = count ? CARD_W + (count - 1) * STACK_GAP : CARD_W;
+  return (
+    <div style={{ position: 'relative', width, height: CARD_H, margin: '0 auto' }}>
+      {cards.map((c, i) => (
+        <div
+          key={c.id}
+          data-card-id={c.id}
+          style={{
+            position: 'absolute',
+            left: i * STACK_GAP,
+            top: 0,
+            width: CARD_W,
+            height: CARD_H,
+            zIndex: i + 1,
+            opacity: dragging?.card?.id === c.id ? 0.3 : 1,
+            cursor: readOnly ? 'default' : 'grab',
+            transition: 'transform 0.12s, opacity 0.12s',
+          }}
+          onMouseDown={e => onDragStart(c, zoneKey, i, e)}
+          onTouchStart={e => onDragStart(c, zoneKey, i, e)}
+        >
+          <DDCard card={c} small frameStyle={{ width: CARD_W, minWidth: CARD_W, height: CARD_H }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DeckStackImage({ expansionKey }) {
+  return (
+    <div style={{ position: 'relative', width: 88, height: 102 }}>
+      {Array.from({ length: 7 }).map((_, i) => (
+        <div key={i} style={{ position: 'absolute', left: i * 5, top: i * 3, zIndex: i }}>
+          <DDCardBack small expansionKey={expansionKey} frameStyle={{ width: 50, height: 68 }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorName = '你', readOnly = false, expansionKey = '地神的潜影' }) {
   const [zones, setZones] = useState({
     top: [...revealedCards],
     hand: [],
@@ -19,13 +65,13 @@ export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorNam
   };
 
   const zonePositions = [
-    { key: 'bottom', label: '牌堆底', style: { left: '8%', top: '20%', width: '22%', height: '55%' } },
-    { key: 'top', label: '牌堆顶', style: { right: '8%', top: '20%', width: '22%', height: '55%' } },
+    { key: 'bottom', label: '牌堆底', style: { left: '5%', top: '28%', width: '31%', height: 104 } },
+    { key: 'top', label: '牌堆顶', style: { right: '5%', top: '28%', width: '31%', height: 104 } },
     { key: 'hand', label: '收入手牌', style: { left: '50%', bottom: '8%', transform: 'translateX(-50%)', width: '55%', height: '28%' } },
   ];
 
   useEffect(() => {
-    setZones({ top: [...revealedCards], hand: [], bottom: [] });
+    setZones({ top: [...revealedCards].reverse(), hand: [], bottom: [] });
   }, [revealedCards]);
 
   function findCardLocation(cardId) {
@@ -161,25 +207,9 @@ export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorNam
               {label}
             </div>
             <div style={{
-              display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', width: '100%', padding: '0 8px',
+              width: '100%', padding: '0 8px', minHeight: CARD_H, display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              {zones[key].map((c, i) => (
-                <div
-                  key={c.id}
-                  data-card-id={c.id}
-                  style={{
-                    width: 64, height: 88, flexShrink: 0,
-                    opacity: dragging?.card?.id === c.id ? 0.3 : 1,
-                    cursor: readOnly ? 'default' : 'grab',
-                    transform: dragging?.card?.id === c.id ? 'scale(1.05)' : 'none',
-                    transition: 'transform 0.12s, opacity 0.12s',
-                  }}
-                  onMouseDown={e => handleDragStart(c, key, i, e)}
-                  onTouchStart={e => handleDragStart(c, key, i, e)}
-                >
-                  <MiniCardFace card={c} width={64} height={88} ambient={false} />
-                </div>
-              ))}
+              <StackedCardRow cards={zones[key]} zoneKey={key} dragging={dragging} readOnly={readOnly} onDragStart={handleDragStart} />
             </div>
           </div>
         ))}
@@ -188,16 +218,8 @@ export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorNam
           position: 'absolute', left: '50%', top: '20%', transform: 'translateX(-50%)',
           display: 'flex', flexDirection: 'column', alignItems: 'center',
         }}>
-          <div style={{
-            width: 70, height: 94,
-            border: '2px solid #5a4a3a',
-            borderRadius: 6,
-            background: 'linear-gradient(145deg, #1a1208, #0e0904)',
-            boxShadow: 'inset 0 0 18px #000, 0 0 18px #3a2a1a55',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <span style={{ fontFamily: "'Cinzel',serif", color: '#5a4a3a', fontSize: 10, letterSpacing: 1 }}>牌堆</span>
-          </div>
+          <DeckStackImage expansionKey={expansionKey} />
+          <span style={{ fontFamily: "'Cinzel',serif", color: '#6f5b3a', fontSize: 10, letterSpacing: 2, marginTop: 4 }}>牌堆</span>
         </div>
       </div>
 
@@ -218,13 +240,13 @@ export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorNam
         <div
           ref={dragCardRef}
           style={{
-            position: 'fixed', left: dragPos.x - 32, top: dragPos.y - 44,
-            width: 64, height: 88, zIndex: 1000, pointerEvents: 'none',
+            position: 'fixed', left: dragPos.x - CARD_W / 2, top: dragPos.y - CARD_H / 2,
+            width: CARD_W, height: CARD_H, zIndex: 1000, pointerEvents: 'none',
             filter: 'drop-shadow(0 10px 18px rgba(0,0,0,0.8))',
             transform: 'scale(1.08)',
           }}
         >
-          <MiniCardFace card={dragging.card} width={64} height={88} ambient={false} />
+          <DDCard card={dragging.card} small frameStyle={{ width: CARD_W, minWidth: CARD_W, height: CARD_H }} />
         </div>
       )}
     </div>

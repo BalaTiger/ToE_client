@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeInspectionMeta, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
-import { aiDrawAndApply, applySanLossToPlayerWithInspection, checkWin, playerDrawCard, startNextTurn } from '../turnEngine';
+import { aiDrawAndApply, applySanLossToPlayerWithInspection, checkWin, playerDrawCard, resolveGodEncounterForAI, startNextTurn } from '../turnEngine';
 import { buildTsathogguaSlimeGrantQueue } from '../turnAnimState';
 import { makeGodCard, makeGs, makePlayer, makeStandardPlayers } from './factory';
 import { createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../../constants/card';
@@ -487,6 +487,58 @@ describe('turnEngine stat events', () => {
     expect(result.currentTurn).toBe(1);
     expect(result.players[1].damageBonus).toBeUndefined();
     expect(result.players[1].damageBonusTurnOwner).toBeUndefined();
+  });
+
+  it('蛊惑强制改信烛九阴后立即点亮牌堆', () => {
+    const deck = [
+      { id: 'deck-0', name: '第一张' },
+      { id: 'deck-1', name: '第二张' },
+      { id: 'deck-2', name: '第三张' },
+      { id: 'deck-3', name: '第四张' },
+    ];
+    const players = [
+      makePlayer({ name: '蛊惑者' }),
+      makePlayer({ name: '目标', godName: 'NYA', godLevel: 1, godZone: [makeGodCard('NYA')] }),
+    ];
+    const gs = makeGs({ players, deck, currentTurn: 0, zhuLight: null });
+
+    const result = resolveGodEncounterForAI(1, makeGodCard('ZHU'), players, deck, [], gs, true);
+
+    expect(result.P[1]).toMatchObject({ godName: 'ZHU', godLevel: 1 });
+    expect(result.statePatch.zhuLight).toMatchObject({
+      ownerIdx: 1,
+      level: 1,
+      cardIds: ['deck-2'],
+    });
+  });
+
+  it('蛊惑强制改信阿波菲斯后立即进入黑夜状态', () => {
+    const players = [
+      makePlayer({ name: '蛊惑者' }),
+      makePlayer({ name: '目标', godName: 'NYA', godLevel: 1, godZone: [makeGodCard('NYA')] }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0, apophisNight: null });
+
+    const result = resolveGodEncounterForAI(1, makeGodCard('APO'), players, [], [], gs, true);
+
+    expect(result.P[1]).toMatchObject({ godName: 'APO', godLevel: 1 });
+    expect(result.statePatch.apophisNight).toMatchObject({ active: true, threshold: 2, count: 0, limit: 12 });
+    expect(result.msgs.some(line => line.includes('黑夜降临'))).toBe(true);
+  });
+
+  it('蛊惑强制改信黑山羊后立即发放黑山羊幼仔', () => {
+    const players = [
+      makePlayer({ name: '蛊惑者' }),
+      makePlayer({ name: '目标', godName: 'NYA', godLevel: 1, godZone: [makeGodCard('NYA')] }),
+      makePlayer({ name: '旁观者' }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0 });
+
+    const result = resolveGodEncounterForAI(1, makeGodCard('SHU'), players, [], [], gs, true);
+
+    expect(result.P[1]).toMatchObject({ godName: 'SHU', godLevel: 1 });
+    expect(result.P.some(player => player.hand.some(card => card.isBlackGoatYoung))).toBe(true);
+    expect(result.msgs.some(line => line.includes('黑暗子嗣'))).toBe(true);
   });
 
   it('不会清除尚未到期的其他执行回合临时效果', () => {

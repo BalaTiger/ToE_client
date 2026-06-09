@@ -23,7 +23,7 @@ import {
 import { buildStatEvents } from './statEvents';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { appendProliferatingZDraws, makeProliferatingZState } from './proliferatingZ';
-import { createEarthquakeEvent } from './visualEvents';
+import { createCardEffectEvent, createEarthquakeEvent } from './visualEvents';
 import { createGeomagneticRestoreCard } from '../constants/card';
 import {
   addTurnScopedDamageBonus,
@@ -456,7 +456,9 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     const statEventSeq = (gs?._statEventSeq || 0) + 1;
     const statEvents = explicitStatEvents || buildStatEvents(beforePlayers, result.P || P, result.msgs || msgs, { reason: card?.name || card?.type || '', seq: statEventSeq });
     const etherealizeDecision = statePatch?.abilityData?.type ? null : buildEtherealizeRedirectDecision(pendingEtherealizeLosses, { _turnOwner: gs?.currentTurn ?? ci });
-    const slimeDecision = etherealizeDecision || statePatch?.abilityData?.type ? null : buildTsathogguaSlimeBalanceDecision(beforePlayers, result.P || P);
+    const slimeDecision = etherealizeDecision || statePatch?.abilityData?.type
+      ? null
+      : buildTsathogguaSlimeBalanceDecision(beforePlayers, result.P || P, { _turnOwner: gs?.currentTurn ?? ci });
     const nextStatePatch = {
       ...(result.statePatch || {}),
       ...(etherealizeDecision ? { abilityData: etherealizeDecision } : {}),
@@ -794,11 +796,30 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       msgs.push(`【地底天空】牌堆和弃牌堆交换了`);
     },
     geomagneticReversal: () => {
+      const beforePlayers = copyPlayers(P);
+      const beforeDiscard = [...Disc];
       const restoreCard = createGeomagneticRestoreCard();
       Disc.push(restoreCard);
       Disc = shuffle(Disc);
       statePatch = { ...statePatch, geomagneticReversalActive: true };
       msgs.push(`【地磁反转】一张"反转复原"被洗入弃牌堆，场地被地磁反转笼罩！`);
+      const event = createCardEffectEvent({
+        effectKey: 'geomagneticReversal',
+        card,
+        actorIdx: ci,
+        beforePlayers,
+        beforeDiscard,
+        afterPlayers: copyPlayers(P),
+        afterDiscard: [...Disc],
+        msgs: [msgs[msgs.length - 1]],
+        payload: { restoreCard },
+      });
+      if (event) {
+        statePatch = {
+          ...statePatch,
+          _visualEvents: [...(statePatch._visualEvents || []), event],
+        };
+      }
     },
     etherealize: () => {
       const hand = actor.hand || [];
@@ -817,16 +838,35 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         msgs.push('【群蛇陷阱】没有存活角色可被中毒');
         return;
       }
+      const beforePlayers = copyPlayers(P);
       const assignments = new Map();
+      const assignmentHits = [];
       for (let n = 0; n < targets.length; n += 1) {
         const targetIdx = targets[Math.floor(Math.random() * targets.length)];
         P[targetIdx].poisonStacks = (P[targetIdx].poisonStacks || 0) + 1;
         assignments.set(targetIdx, (assignments.get(targetIdx) || 0) + 1);
+        assignmentHits.push({ idx: targetIdx, name: P[targetIdx].name });
       }
       const summary = [...assignments.entries()]
         .map(([idx, count]) => `${P[idx].name}+${count}`)
         .join('、');
       msgs.push(`【群蛇陷阱】分配了 ${targets.length} 层中毒：${summary}`);
+      const assignmentList = [...assignments.entries()].map(([idx, count]) => ({ idx, count, name: P[idx].name }));
+      const event = createCardEffectEvent({
+        effectKey: 'snakeTrap',
+        card,
+        actorIdx: ci,
+        beforePlayers,
+        afterPlayers: copyPlayers(P),
+        msgs: [msgs[msgs.length - 1]],
+        payload: { assignmentList, assignmentHits, totalLayers: targets.length },
+      });
+      if (event) {
+        statePatch = {
+          ...statePatch,
+          _visualEvents: [...(statePatch._visualEvents || []), event],
+        };
+      }
     },
     deadNeighborSkipDraw: () => {
       const skipped = new Set();
@@ -887,7 +927,28 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     adjDamageHP: () => { applyAOEDamage(adjacent, 'hp', card.val); },
     adjDamageSAN: () => { applyAOEDamage(adjacent, 'san', card.val); },
     adjDamageBoth: () => { applyAOEDamage(adjacent, 'both', card.val, card.hpVal, card.sanVal); },
-    allDamageHP: () => { applyGlobalAOEDamage('hp', card.val); },
+    allDamageHP: () => {
+      const beforePlayers = card?.name === '活火山' ? copyPlayers(P) : null;
+      applyGlobalAOEDamage('hp', card.val);
+      if (card?.name === '活火山') {
+        const event = createCardEffectEvent({
+          effectKey: 'volcano',
+          card,
+          actorIdx: ci,
+          beforePlayers,
+          beforeDiscard: [...Disc],
+          afterPlayers: copyPlayers(P),
+          afterDiscard: [...Disc],
+          msgs: msgs.slice(-1),
+        });
+        if (event) {
+          statePatch = {
+            ...statePatch,
+            _visualEvents: [...(statePatch._visualEvents || []), event],
+          };
+        }
+      }
+    },
     allDamageSAN: () => { applyGlobalAOEDamage('san', card.val); },
     allDamageBoth: () => { applyGlobalAOEDamage('both', card.val); },
     adjRest: () => {

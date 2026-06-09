@@ -1,11 +1,13 @@
 ﻿import React from 'react';
-import { CS, GOD_CS, GOD_DEFS, getCardBackImage } from '../../constants/card';
+import { CS, GOD_CS, GOD_DEFS } from '../../constants/card';
+import { getBoardTheme } from '../../constants/theme';
 import { RINFO } from '../../game';
 import { isBlackGoatYoung, isTsathogguaSlime } from '../../game/coreUtils';
-import { AreaTooltip, CardCodeLabel, DDCard, DDCardBack, GodTooltip } from '../cards';
+import { AnimatedCardBack, AreaTooltip, CardCodeLabel, DDCard, DDCardBack, GodTooltip } from '../cards';
 import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
+import { ThemeCornerOrnament } from '../theme/ThemeOrnaments';
 
-function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth}){
+function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth,labelColor='var(--toe-muted,#a07838)',valueColor='var(--toe-text,#c8a96e)',lineColor='var(--toe-line-dim,#2a1a08)'}){
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const isMobileNarrow=!!viewportWidth&&viewportWidth<580;
   const isNarrowViewport=!!viewportWidth&&viewportWidth<900;
@@ -24,8 +26,8 @@ function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth}){
   const labelPaddingRight=isNarrowViewport?Math.ceil(2*fontZoom):0;
   return(
     <div style={{display:'grid',gridTemplateColumns:`${labelCol} minmax(0,1fr) ${valueCol}`,alignItems:'center',columnGap:columnGap,marginBottom:4,width:rowWidth,marginLeft:'auto',marginRight:'auto',boxSizing:'border-box',overflow:'visible'}}>
-      <span style={{fontFamily:"'Cinzel',serif",color:'#a07838',fontSize:statFont,fontWeight:700,letterSpacing:0.3,textAlign:'left',whiteSpace:'nowrap',minWidth:0,paddingRight:labelPaddingRight}}>{label}</span>
-      <div style={{height:barHeight,background:trackColor||'#110804',border:'1.2px solid #2a1a08',borderRadius:2,overflow:'visible',position:'relative',minWidth:0,width:'100%'}}>
+      <span style={{fontFamily:"'Cinzel',serif",color:labelColor,fontSize:statFont,fontWeight:700,letterSpacing:0.3,textAlign:'left',whiteSpace:'nowrap',minWidth:0,paddingRight:labelPaddingRight}}>{label}</span>
+      <div style={{height:barHeight,background:trackColor||'#110804',border:`1.2px solid ${lineColor}`,borderRadius:2,overflow:'visible',position:'relative',minWidth:0,width:'100%'}}>
         <div style={{height:'100%',width:`${Math.min(10,val)*10}%`,background:color,transition:'width .35s',borderRadius:1}}/>
         {label === 'SAN' && (
           <div style={{
@@ -62,7 +64,7 @@ function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth}){
           </div>
         )}
       </div>
-      <span style={{fontFamily:"'Cinzel',serif",color:val<=3?'#cc3333':'#c8a96e',fontSize:statFont,textAlign:'right',fontWeight:700,whiteSpace:'nowrap',minWidth:0,justifySelf:'end'}}>{val}</span>
+      <span style={{fontFamily:"'Cinzel',serif",color:val<=3?'#cc3333':valueColor,fontSize:statFont,textAlign:'right',fontWeight:700,whiteSpace:'nowrap',minWidth:0,justifySelf:'end'}}>{val}</span>
     </div>
   );
 }
@@ -98,6 +100,13 @@ const DISCARD_OFFSETS=[
   {x:0,y:0},{x:4,y:-3},{x:-3,y:2},{x:6,y:1},{x:-5,y:-4},{x:2,y:5},
   {x:-4,y:3},{x:5,y:-2},{x:-2,y:4},{x:3,y:-5},{x:-6,y:1},{x:1,y:3},
 ];
+function getCardBackFrameColors(expansionKey){
+  const theme=getBoardTheme(expansionKey);
+  return {
+    border: theme.line,
+    shadow: '0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
+  };
+}
 
 function MiniCardLabel({card,scale=1,glowColor='#c8a96e',ambient=true}){
   if(!card)return null;
@@ -149,11 +158,11 @@ function ZhuLitMiniCard({lit,deckIndex,scale,cardW,cardH,left,top,zIndex,hidden}
 
 function DiscardPile({count,topCard,scale=1,expansionKey='地神的潜影'}){
   const vis=Math.min(count,7);
+  const frameColors=getCardBackFrameColors(expansionKey);
   const cardW=Math.round(CARD_W*scale);
   const cardH=Math.round(CARD_H*scale);
   const outerW=Math.round((CARD_W+30)*scale);
   const outerH=Math.round((CARD_H+20)*scale);
-  const cardBackImage=getCardBackImage(expansionKey);
   if(vis===0) return(
     <div style={{width:outerW,height:outerH,display:'flex',alignItems:'center',justifyContent:'center'}}>
       <div style={{width:cardW,height:cardH,borderRadius:3,border:'1px dashed #2a1a08',background:'transparent'}}/>
@@ -166,8 +175,7 @@ function DiscardPile({count,topCard,scale=1,expansionKey='地神的潜影'}){
         const rot=DISCARD_ROTATIONS[i%DISCARD_ROTATIONS.length];
         const off=DISCARD_OFFSETS[i%DISCARD_OFFSETS.length];
         const isTop=i===vis-1;
-        return(
-          <div key={i} style={{
+        const style={
             ...CARD_BACK_STYLE,
             width:cardW,height:cardH,
             left:Math.round((15+off.x)*scale),top:Math.round((10+off.y)*scale),
@@ -177,18 +185,20 @@ function DiscardPile({count,topCard,scale=1,expansionKey='地神的潜影'}){
               border:`1.5px solid ${s.border}`,
               boxShadow:'0 1px 5px rgba(0,0,0,0.5), inset 0 0 8px rgba(0,0,0,0.35)',
             }:{
-              backgroundImage:`url('${cardBackImage}')`,
-              backgroundSize:'cover',
-              backgroundPosition:'center',
-              backgroundRepeat:'no-repeat',
-              boxShadow:'0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
+              border:`1.5px solid ${frameColors.border}`,
+              boxShadow:frameColors.shadow,
             }),
             zIndex:i,
-          }}>
-            {isTop&&topCard&&(
+          };
+        if(isTop&&topCard){
+          return(
+            <div key={i} style={style}>
               <MiniCardLabel card={topCard} scale={scale} glowColor="rgba(0,0,0,0.65)" ambient={false}/>
-            )}
-          </div>
+            </div>
+          );
+        }
+        return(
+          <AnimatedCardBack key={i} expansionKey={expansionKey} style={style}/>
         );
       })}
     </div>
@@ -230,11 +240,11 @@ function HealCrossEffect({color='#4ade80'}){
 
 function DeckPile({count,scale=1,expansionKey='地神的潜影',zhuLitCards=[],zhuHiddenCardId=null}){
   const vis=Math.min(count,7);
+  const frameColors=getCardBackFrameColors(expansionKey);
   const cardW=Math.round(CARD_W*scale);
   const cardH=Math.round(CARD_H*scale);
   const outerW=Math.round((CARD_W+12)*scale);
   const outerH=Math.round((CARD_H+12)*scale);
-  const cardBackImage=getCardBackImage(expansionKey);
   const litByDeckIndex=new Map((zhuLitCards||[]).map(item=>[item.deckIndex,item]));
   if(vis===0) return(
     <div style={{width:outerW,height:outerH,display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -269,17 +279,11 @@ function DeckPile({count,scale=1,expansionKey='地神的潜影',zhuLitCards=[],z
           width:cardW,height:cardH,
           left:Math.round(i*1.4*scale),top:Math.round((vis-1-i)*1.4*scale),
           zIndex:i,
-          backgroundColor:'#100c08',
-          backgroundImage:`url('${cardBackImage}')`,
-          backgroundSize:'cover',
-          backgroundPosition:'center',
-          backgroundRepeat:'no-repeat',
-          border:'1.5px solid #4a3010',
-          boxShadow:'0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
+          border:`1.5px solid ${frameColors.border}`,
+          boxShadow:frameColors.shadow,
         };
         return(
-          <div key={i} style={style}>
-          </div>
+          <AnimatedCardBack key={i} expansionKey={expansionKey} style={style} />
         );
       })}
     </div>
@@ -417,6 +421,7 @@ function PetrifyingFormulaDie({ state, fontSize }) {
 }
 
 function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,deckRef,discardRef,scaleRatio,expansionKey='地神的潜影',zhuLitCards=[],zhuHiddenCardId=null,petrifyingFormula=null}){
+  const theme=getBoardTheme(expansionKey);
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const _ = (px) => px * fontZoom;
   const pileWrapRef=React.useRef(null);
@@ -439,6 +444,8 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
   const pileMinHeight=effectiveCompact ? 140 : 220;
   return(
     <div ref={pileWrapRef} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',position:'relative',minWidth:0,minHeight:pileMinHeight}}>
+      <ThemeCornerOrnament expansionKey={expansionKey} corner="tl" size={56} opacity={0.28}/>
+      <ThemeCornerOrnament expansionKey={expansionKey} corner="tr" size={56} opacity={0.28}/>
       {/* Inspection deck — top-left corner */}
       <div data-inspection-pile style={{position:'absolute',top:4,left:8,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
         <InspectionPile count={inspectionCount} scale={pileScale}/>
@@ -447,7 +454,7 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
       {/* Deck — top-right corner */}
       <div ref={deckRef} data-deck-pile style={{position:'absolute',top:4,right:8,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
         <DeckPile count={deckCount} scale={pileScale} expansionKey={expansionKey} zhuLitCards={zhuLitCards} zhuHiddenCardId={zhuHiddenCardId}/>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:_(11),color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 8px #000000'}}>牌堆:{deckCount}</div>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:_(11),color:theme.text,fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:`0 0 10px ${theme.glow}55,0 0 8px #000000`}}>牌堆:{deckCount}</div>
       </div>
       <PetrifyingFormulaDie state={petrifyingFormula} fontSize={_}/>
       {/* Discard — center */}
@@ -461,18 +468,18 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
           display:'flex',flexDirection:'column',alignItems:'center',gap:4,
           cursor:discardCards&&discardCards.length?'pointer':'default',
           padding:'6px 10px',borderRadius:6,
-          border:discardHover?'1.5px solid #c8a96e':'1.5px solid transparent',
-          boxShadow:discardHover?'0 0 14px #c8a96e66,inset 0 0 12px #c8a96e22':'none',
+          border:discardHover?`1.5px solid ${theme.glow}`:'1.5px solid transparent',
+          boxShadow:discardHover?`0 0 14px ${theme.glow}66,inset 0 0 12px ${theme.glow}22`:'none',
           transition:'all .18s',
           position:'relative',
         }}
       >
         <DiscardPile count={discardCount} topCard={discardTop} scale={pileScale} expansionKey={expansionKey}/>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:_(12),color:'#c8a96e',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 10px #000000'}}>弃牌堆:{discardCount}</div>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:_(12),color:theme.text,fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:`0 0 10px ${theme.glow}55,0 0 10px #000000`}}>弃牌堆:{discardCount}</div>
         {discardHover&&discardCards&&discardCards.length>0&&(
           <div style={{
             position:'absolute',bottom:'-18px',left:'50%',transform:'translateX(-50%)',
-            fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontSize:10,color:'#c8a96e',
+            fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontSize:10,color:theme.text,
             whiteSpace:'nowrap',textShadow:'0 0 6px #000',pointerEvents:'none',
           }}>点击查看</div>
         )}
@@ -487,9 +494,10 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
 // ── PlayerPanel ─────────────────────────────────────────────────
 function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='地神的潜影',blackGoatPulseActive=false}){
   const ri=RINFO[player.role];
+  const theme=getBoardTheme(expansionKey);
   const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
   const _ = (px) => px * fontZoom;
-  const borderColor=isBeingHit?'#cc2222':isSanHit?'#8840cc':isCurrentTurn?'#c8a96e':isSelectable?ri.col:'#3a2510';
+  const borderColor=isBeingHit?'#cc2222':isSanHit?'#8840cc':isCurrentTurn?theme.glow:isSelectable?ri.col:theme.line;
   const handCards=showFaceUp?player.hand:player.hand.map((c,ci)=>isBlackGoatYoung(c)||isTsathogguaSlime(c)?c:{id:`back-${playerIndex}-${ci}`,_back:true});
   const HAND_CARD_WIDTH=showFaceUp?44:36;
   const HAND_CARD_HEIGHT=showFaceUp?58:50;
@@ -514,14 +522,17 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
   const filledHandFrameStyle={width:'100%',minWidth:'100%',height:'auto',aspectRatio:`${HAND_CARD_WIDTH}/${HAND_CARD_HEIGHT}`};
   const sharedHandFrameStyle=filledHandFrameStyle;
   const handOverlap=handCards.length>4
-    ? Math.max(0, Math.ceil(((handCards.length*computedCardWidth)-handStripWidth)/(handCards.length-1)))
+    ? Math.min(
+      Math.max(0, computedCardWidth - 12),
+      Math.max(0, Math.ceil(((handCards.length*computedCardWidth)-handStripWidth)/(handCards.length-1)))
+    )
     : 0;
   return(
     <div data-death-panel={playerIndex} onClick={isSelectable?onSelect:undefined} style={{
       width:'100%',
-      background:isCurrentTurn?'#1c1408':'#140f08',
+      background:isCurrentTurn?theme.panelActive:theme.panel,
       border:`1.5px solid ${borderColor}`,
-      boxShadow:isCurrentTurn?`0 0 20px #c8a96e22,inset 0 0 16px #c8a96e08`:isSelectable?`0 0 14px ${ri.col}44`:'none',
+      boxShadow:isCurrentTurn?`0 0 20px ${theme.glow}28,inset 0 0 16px ${theme.glow}10`:isSelectable?`0 0 14px ${ri.col}44`:'none',
       borderRadius:3,padding:'8px 9px',
       cursor:isSelectable?'pointer':'default',
       opacity: isBeingGuillotined ? 0 : (player.isDead && !player._pendingAnimDeath ? 0.32 : 1),
@@ -530,20 +541,27 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
       position:'relative',
       overflow:'hidden',
     }}>
+      <ThemeCornerOrnament
+        expansionKey={expansionKey}
+        corner="tr"
+        size={154}
+        opacity={0.36}
+        style={{top:-8,right:-8}}
+      />
       {(isHpHeal||isSanHeal)&&<HealCrossEffect color={isSanHeal?'#a78bfa':'#4ade80'}/>}
       {/* Name plate */}
       <div style={{
         display:'flex',alignItems:'center',gap:6,marginBottom:6,
-        borderBottom:'1px solid #2a1a08',paddingBottom:5,
+        borderBottom:`1px solid ${theme.lineDim}`,paddingBottom:5,
       }}>
-        <span style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:_(11),color:isCurrentTurn?'#e8c87a':'#c8a96e',letterSpacing:1}}>{player.name}</span>
+        <span style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:_(11),color:isCurrentTurn?theme.strong:theme.text,letterSpacing:1}}>{player.name}</span>
         {(player.roleRevealed||player.isDead)&&<span style={{fontSize:_(10),color:ri.col,fontFamily:"'Cinzel',serif",letterSpacing:1,marginLeft:2}}>{ri.icon} {player.role}</span>}
         {player.isDead&&<span style={{fontSize:_(11),color:'#882020',marginLeft:'auto'}}>☠</span>}
         {player.isResting&&!player.isDead&&<span style={{fontSize:_(9),color:'#4ade80',marginLeft:'auto',letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 翻面中</span>}
-        {isCurrentTurn&&!player.isDead&&!player.isResting&&<span style={{fontSize:_(9),color:'#c8a96e',marginLeft:'auto',letterSpacing:1}}>▸ 行动</span>}
+        {isCurrentTurn&&!player.isDead&&!player.isResting&&<span style={{fontSize:_(9),color:theme.text,marginLeft:'auto',letterSpacing:1}}>▸ 行动</span>}
       </div>
-      <StatBar label="HP"  val={displayStats?.[playerIndex]?.hp ?? player.hp}  color="#8b1515" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={viewportWidth}/>
-      <StatBar label="SAN" val={displayStats?.[playerIndex]?.san ?? player.san} color="#4a1080" trackColor="#120820" scaleRatio={scaleRatio} viewportWidth={viewportWidth}/>
+      <StatBar label="HP"  val={displayStats?.[playerIndex]?.hp ?? player.hp}  color="#8b1515" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={viewportWidth} labelColor={theme.muted} valueColor={theme.text} lineColor={theme.lineDim}/>
+      <StatBar label="SAN" val={displayStats?.[playerIndex]?.san ?? player.san} color="#4a1080" trackColor="#120820" scaleRatio={scaleRatio} viewportWidth={viewportWidth} labelColor={theme.muted} valueColor={theme.text} lineColor={theme.lineDim}/>
       {/* Skull counter + god zone */}
       {((player.godEncounters||0)>0||(player.godZone||[]).length>0||(player.etherealizeStacks||0)>0||(player.poisonStacks||0)>0)&&(
         <div style={{display:'flex',alignItems:'center',gap:4,marginTop:4,flexWrap:'wrap'}}>
@@ -565,9 +583,10 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
             <span
               title="虚化：回合外即将失去 HP/SAN 时，可消耗 1 层令相邻角色失去"
               style={{
-                fontSize:8,color:'#b9d8f0',
+                fontSize:10,color:'#b9d8f0',
                 background:'#0c1118',border:'1px solid #87a9c866',
-                borderRadius:2,padding:'1px 4px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
+                borderRadius:3,padding:'2px 6px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
+                lineHeight:1.2,
                 boxShadow:'0 0 8px #87a9c822',
               }}
             >
@@ -578,9 +597,10 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
             <span
               title="中毒：回合开始时失去等同层数的 HP，并消耗 1 层"
               style={{
-                fontSize:8,color:'#b7f5a8',
+                fontSize:10,color:'#b7f5a8',
                 background:'#0d160a',border:'1px solid #74c36566',
-                borderRadius:2,padding:'1px 4px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
+                borderRadius:3,padding:'2px 6px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
+                lineHeight:1.2,
                 boxShadow:'0 0 8px #74c36522',
               }}
             >
@@ -619,8 +639,8 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
                   onClick={onCardSelect?()=>onCardSelect(ci):undefined}
                   style={{
                     cursor:onCardSelect?'pointer':'default',
-                    outline:onCardSelect?'1px solid #c8a96e88':'none',
-                    boxShadow:onCardSelect?'0 0 10px #c8a96e44':'none',
+                    outline:onCardSelect?`1px solid ${theme.glow}88`:'none',
+                    boxShadow:onCardSelect?`0 0 10px ${theme.glow}44`:'none',
                     borderRadius:3,
                   }}
                 ><DDCardBack small expansionKey={expansionKey} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/></div>

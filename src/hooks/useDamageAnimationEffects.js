@@ -147,7 +147,20 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound }) {
               logging: false,
               scale: 1,
             });
-            snapshotUrl = canvas.toDataURL('image/png');
+            const outW = Math.max(1, Math.round(r.width));
+            const outH = Math.max(1, Math.round(r.height));
+            const normalized = document.createElement('canvas');
+            normalized.width = outW;
+            normalized.height = outH;
+            const ctx = normalized.getContext('2d');
+            if (ctx) {
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = 'high';
+              ctx.drawImage(canvas, 0, 0, outW, outH);
+              snapshotUrl = normalized.toDataURL('image/png');
+            } else {
+              snapshotUrl = canvas.toDataURL('image/png');
+            }
           } catch (err) {
             console.warn('[death-snapshot] capture failed for pid', idx, err);
           }

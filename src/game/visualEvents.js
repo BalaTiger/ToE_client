@@ -88,13 +88,14 @@ export function createTurnStartEvent({ playerIdx = 0, playerName = '该玩家', 
   }, 'turn');
 }
 
-export function createDrawCardEvent({ playerIdx = 0, playerName = '该玩家', card, msgs = [] } = {}) {
+export function createDrawCardEvent({ playerIdx = 0, playerName = '该玩家', card, msgs = [], sourcePile = null } = {}) {
   if (!card) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.DRAW_CARD,
     playerIdx,
     playerName,
     card,
+    ...(sourcePile ? { sourcePile } : {}),
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'turn');
 }
@@ -257,6 +258,8 @@ export function createCardEffectEvent({
   id = null,
   beforePlayers = [],
   beforeDiscard = [],
+  afterPlayers = null,
+  afterDiscard = null,
   discardEvents = [],
   statEvents = [],
   msgs = [],
@@ -271,11 +274,79 @@ export function createCardEffectEvent({
     actorIdx,
     beforePlayers: Array.isArray(beforePlayers) ? beforePlayers : [],
     beforeDiscard: Array.isArray(beforeDiscard) ? beforeDiscard : [],
+    afterPlayers: Array.isArray(afterPlayers) ? afterPlayers : null,
+    afterDiscard: Array.isArray(afterDiscard) ? afterDiscard : null,
     discardEvents: Array.isArray(discardEvents) ? discardEvents.filter(Boolean) : [],
     statEvents: Array.isArray(statEvents) ? statEvents.filter(Boolean) : [],
     msgs: Array.isArray(msgs) ? msgs : [],
     payload: payload && typeof payload === 'object' ? payload : {},
   }, 'effect');
+}
+
+function buildSyncedCardEffectTimeline({
+  beforePlayers = [],
+  beforeDiscard = [],
+  afterPlayers = null,
+  afterDiscard = null,
+  state = null,
+  finalAtMs = 0,
+} = {}) {
+  const initialPlayers = Array.isArray(beforePlayers) ? beforePlayers : [];
+  const initialDiscard = Array.isArray(beforeDiscard) ? beforeDiscard : [];
+  const finalPlayers = Array.isArray(afterPlayers) ? afterPlayers : state?.players;
+  const finalDiscard = Array.isArray(afterDiscard) ? afterDiscard : state?.discard;
+  return {
+    visualSetupTiming: 'queueStart',
+    visualSetupPatch: {
+      players: initialPlayers,
+      discard: initialDiscard,
+    },
+    visualTimeline: [
+      { atMs: 0, patch: { players: initialPlayers, discard: initialDiscard } },
+      {
+        atMs: finalAtMs,
+        patch: {
+          players: finalPlayers,
+          discard: finalDiscard,
+        },
+      },
+    ],
+  };
+}
+
+export function buildSnakeTrapAnimStep(event, state) {
+  const payload = event.payload || {};
+  const assignmentList = Array.isArray(payload.assignmentList) ? payload.assignmentList : [];
+  const assignmentHits = Array.isArray(payload.assignmentHits) ? payload.assignmentHits : [];
+  const beforePlayers = Array.isArray(event.beforePlayers) ? event.beforePlayers : [];
+  const afterPlayers = Array.isArray(event.afterPlayers) ? event.afterPlayers : state?.players || [];
+  const totalLayers = payload.totalLayers || assignmentList.length;
+  const livingCount = (beforePlayers.length ? beforePlayers : afterPlayers).filter(p => p && !p.isDead).length;
+  const animMs = Math.max(3200, 1900 + totalLayers * 340);
+  const sync = buildSyncedCardEffectTimeline({
+    beforePlayers,
+    beforeDiscard: event.beforeDiscard || [],
+    afterPlayers,
+    afterDiscard: event.afterDiscard || state?.discard,
+    state,
+    finalAtMs: animMs,
+  });
+  const snakeRays = Math.max(1, livingCount || totalLayers || assignmentList.length || 1);
+  const rayAngles = Array.from({ length: snakeRays }, (_, i) => (i * 360) / snakeRays);
+  return {
+    type: 'SNAKE_TRAP',
+    card: event.card,
+    actorIdx: event.actorIdx,
+    beforePlayers,
+    afterPlayers,
+    msgs: Array.isArray(event.msgs) ? event.msgs : [],
+    assignmentList,
+    assignmentHits,
+    totalLayers,
+    rayAngles,
+    durationMs: animMs,
+    ...sync,
+  };
 }
 
 export function buildEarthquakeAnimStep({
@@ -351,6 +422,7 @@ export function buildTurnStartDrawVisualEvents(state) {
       playerIdx: drawerIdx,
       playerName: state.players?.[drawerIdx]?.name || '该玩家',
       card: drawCard,
+      sourcePile: state.drawReveal?.sourcePile || state.abilityData?.sourcePile || state._drawSourcePile || null,
       msgs: state._drawLogs,
     });
     if (drawEvent) events.push(drawEvent);
@@ -452,6 +524,7 @@ export function buildDrawCardStepFromVisualEvents(state) {
     card: event.card,
     triggerName: localDisplayName(playerIdx, playerName),
     targetPid: playerIdx,
+    sourcePile: event.sourcePile || state?.drawReveal?.sourcePile || state?._drawSourcePile || 'deck',
     msgs: Array.isArray(event.msgs) ? event.msgs : [],
   };
 }
@@ -479,6 +552,71 @@ export function buildCardEffectAnimStep(event, state) {
       msgs: event.msgs,
     });
   }
+  if (event.effectKey === 'geomagneticReversal') {
+    const payload = event.payload || {};
+    const baseSync = buildSyncedCardEffectTimeline({
+      beforePlayers: event.beforePlayers,
+      beforeDiscard: event.beforeDiscard,
+      afterPlayers: event.beforePlayers,
+      afterDiscard: event.beforeDiscard,
+      state,
+      finalAtMs: 0,
+    });
+    const restoreSync = buildSyncedCardEffectTimeline({
+      beforePlayers: event.beforePlayers,
+      beforeDiscard: event.beforeDiscard,
+      afterPlayers: event.afterPlayers || state?.players,
+      afterDiscard: event.afterDiscard || state?.discard,
+      state,
+      finalAtMs: 880,
+    });
+    return {
+      type: 'COMPOSITE',
+      steps: [
+        {
+          type: 'GEOMAGNETIC_REVERSAL',
+          card: event.card,
+          actorIdx: event.actorIdx,
+          beforePlayers: event.beforePlayers || [],
+          beforeDiscard: event.beforeDiscard || [],
+          msgs: [],
+          ...baseSync,
+        },
+        {
+          type: 'GEOMAGNETIC_RESTORE_SHUFFLE',
+          card: payload.restoreCard || null,
+          actorIdx: event.actorIdx,
+          restoreCard: payload.restoreCard || null,
+          beforePlayers: event.beforePlayers || [],
+          beforeDiscard: event.beforeDiscard || [],
+          msgs: Array.isArray(event.msgs) ? event.msgs : [],
+          ...restoreSync,
+        },
+      ],
+    };
+  }
+  if (event.effectKey === 'volcano') {
+    const sync = buildSyncedCardEffectTimeline({
+      beforePlayers: event.beforePlayers,
+      beforeDiscard: event.beforeDiscard,
+      afterPlayers: event.afterPlayers || state?.players,
+      afterDiscard: event.afterDiscard || state?.discard,
+      state,
+      finalAtMs: 1250,
+    });
+    return {
+      type: 'VOLCANO',
+      card: event.card,
+      actorIdx: event.actorIdx,
+      beforePlayers: event.beforePlayers || [],
+      beforeDiscard: event.beforeDiscard || [],
+      msgs: Array.isArray(event.msgs) ? event.msgs : [],
+      ...sync,
+    };
+  }
+  if (event.effectKey === 'snakeTrap') {
+    return buildSnakeTrapAnimStep(event, state);
+  }
   return null;
 }
 
@@ -500,7 +638,10 @@ export function buildCardEffectStepsFromVisualEvents(state, oldState = null, pre
   return getCardEffectVisualEvents(state)
     .filter(event => event?.id && !oldIds.has(event.id))
     .filter(event => (typeof predicate === 'function' ? predicate(event) : true))
-    .map(event => buildCardEffectAnimStep(event, state))
+    .flatMap(event => {
+      const step = buildCardEffectAnimStep(event, state);
+      return step?.type === 'COMPOSITE' ? step.steps : [step];
+    })
     .filter(Boolean);
 }
 

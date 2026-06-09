@@ -8,8 +8,63 @@ import {
 } from '../constants/card';
 import { shuffle, ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
 
+export const EXPANSION_RANDOM_KEY = 'random_battle_expansion';
+export const DEFAULT_EXPANSION_KEY = '地神的潜影';
+export const STARS_CALL_KEY = '群星呼唤';
+const STARS_CALL_TEMP_REPLACEMENT_CHANCE = 0.5;
+
+function createGodCards(godKey, count, startId = 0) {
+  const def = GOD_DEFS[godKey];
+  if (!def) return [];
+  return Array.from({ length: count }, (_, offset) => ({
+    id: startId + offset,
+    isGod: true,
+    godKey,
+    key: godKey,
+    type: 'god',
+    needsTarget: false,
+    ...def,
+  }));
+}
+
+export function resolveBattleExpansionPlan(expansionKey = EXPANSION_RANDOM_KEY) {
+  if (typeof expansionKey === 'object' && expansionKey) {
+    const resolvedExpansionKey = EXPANSIONS[expansionKey.expansionKey]
+      ? expansionKey.expansionKey
+      : DEFAULT_EXPANSION_KEY;
+    const resolvedDeckExpansionKey = EXPANSIONS[expansionKey.deckExpansionKey]
+      ? expansionKey.deckExpansionKey
+      : (resolvedExpansionKey === STARS_CALL_KEY ? DEFAULT_EXPANSION_KEY : resolvedExpansionKey);
+    return {
+      expansionKey: resolvedExpansionKey,
+      deckExpansionKey: resolvedDeckExpansionKey,
+      temporaryStarsCall: !!expansionKey.temporaryStarsCall,
+    };
+  }
+  if (expansionKey === EXPANSION_RANDOM_KEY || expansionKey == null) {
+    if (Math.random() < STARS_CALL_TEMP_REPLACEMENT_CHANCE) {
+      return {
+        expansionKey: STARS_CALL_KEY,
+        deckExpansionKey: DEFAULT_EXPANSION_KEY,
+        temporaryStarsCall: true,
+      };
+    }
+    return {
+      expansionKey: DEFAULT_EXPANSION_KEY,
+      deckExpansionKey: DEFAULT_EXPANSION_KEY,
+      temporaryStarsCall: false,
+    };
+  }
+  const resolvedExpansionKey = EXPANSIONS[expansionKey] ? expansionKey : DEFAULT_EXPANSION_KEY;
+  return {
+    expansionKey: resolvedExpansionKey,
+    deckExpansionKey: resolvedExpansionKey,
+    temporaryStarsCall: false,
+  };
+}
+
 export function mkDeck(expansionKey = '地神的潜影') {
-  const resolvedExpansionKey = EXPANSIONS[expansionKey] ? expansionKey : '地神的潜影';
+  const resolvedExpansionKey = EXPANSIONS[expansionKey] ? expansionKey : DEFAULT_EXPANSION_KEY;
   const expansion = EXPANSIONS[resolvedExpansionKey];
   let id = 0;
   const zoneCards = [];
@@ -54,6 +109,23 @@ export function mkDeck(expansionKey = '地神的潜影') {
   });
 
   return shuffle([...zoneCards, ...godCards]);
+}
+
+export function applyTemporaryStarsCallDeckReplacement(deck = [], replacedGodKey = null) {
+  const earthGodKeys = EXPANSIONS[DEFAULT_EXPANSION_KEY]?.godCardKeys || [];
+  const replacementCandidates = earthGodKeys.filter(godKey => godKey !== 'CTH');
+  const targetGodKey = replacementCandidates.includes(replacedGodKey)
+    ? replacedGodKey
+    : replacementCandidates[Math.floor(Math.random() * replacementCandidates.length)];
+  const keptDeck = deck.filter(card => !(card?.isGod && card.godKey === targetGodKey));
+  const replacementCount = (EXPANSIONS[DEFAULT_EXPANSION_KEY]?.godCopies || 4);
+  const nextId = nextDebugCardId(keptDeck);
+  const cthCards = createGodCards('CTH', replacementCount, nextId);
+  return {
+    deck: shuffle([...keptDeck, ...cthCards]),
+    replacedGodKey: targetGodKey,
+    insertedGodKey: 'CTH',
+  };
 }
 
 export function mkRoles(N = 5, isSinglePlayer = false, forcedPlayerRole = null) {
@@ -221,12 +293,22 @@ export function initGame(
   debugForceGodCardKey,
   debugPlayerRole,
   startNextTurn,
-  expansionKey = '地神的潜影'
+  expansionKey = EXPANSION_RANDOM_KEY
 ) {
   const names = playerNames || ['你', ...AI_NAMES];
   const N = names.length;
   const isSinglePlayer = !playerNames;
-  let deck = mkDeck(expansionKey);
+  const expansionPlan = resolveBattleExpansionPlan(expansionKey);
+  let deck = mkDeck(expansionPlan.deckExpansionKey);
+  let temporaryStarsCallReplacement = null;
+  if (expansionPlan.temporaryStarsCall) {
+    const replacement = applyTemporaryStarsCallDeckReplacement(deck);
+    deck = replacement.deck;
+    temporaryStarsCallReplacement = {
+      replacedGodKey: replacement.replacedGodKey,
+      insertedGodKey: replacement.insertedGodKey,
+    };
+  }
 
   // Debug: 强制摸牌
   let targetCard = null;
@@ -235,11 +317,11 @@ export function initGame(
     if (debugForceCardType === 'zone' && debugForceZoneCardKey && debugForceZoneCardName) {
       // 查找指定编号和牌面的区域牌
       targetCard = deck.find(card => card.key === debugForceZoneCardKey && card.name === debugForceZoneCardName)
-        || createDebugZoneCard(deck, debugForceZoneCardKey, debugForceZoneCardName, expansionKey);
+        || createDebugZoneCard(deck, debugForceZoneCardKey, debugForceZoneCardName, expansionPlan.deckExpansionKey);
     } else if (debugForceCardType === 'god' && debugForceGodCardKey) {
       // 查找指定类型的神牌
       targetCard = deck.find(card => card.isGod && card.godKey === debugForceGodCardKey)
-        || createDebugGodCard(deck, debugForceGodCardKey, expansionKey);
+        || createDebugGodCard(deck, debugForceGodCardKey, expansionPlan.deckExpansionKey);
     } else if (debugForceCard) {
       // 兼容旧的设置方式
       targetCard = deck.find(card => card.key === debugForceCard);
@@ -287,7 +369,7 @@ export function initGame(
 
   const inspectionDeck = shuffle([...INSPECTION_DECK]);
   const base = {
-    players, deck, discard: [], inspectionDeck, inspectionDiscard: [], currentTurn: -1, phase: 'DRAW_REVEAL', drawReveal: null, selectedCard: null, abilityData: {}, log: [`游戏开始。每人获得${zhCount(INITIAL_HAND_SIZE)}张初始手牌。`], gameOver: null, skillUsed: false, restUsed: false, multiplyUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner: null, geomagneticReversalActive: false, apophisNight: null, expansionKey, _turnKey: 0, _isMP: !!playerNames, turn: 0, turnDirection: 1, sealLooseningCount: 0, houndsOfTindalosActive: false, houndsOfTindalosTarget: null, houndsOfTindalosElapsed: 0, debugForceCard: targetCard, debugForceCardTarget
+    players, deck, discard: [], inspectionDeck, inspectionDiscard: [], currentTurn: -1, phase: 'DRAW_REVEAL', drawReveal: null, selectedCard: null, abilityData: {}, log: [`游戏开始。每人获得${zhCount(INITIAL_HAND_SIZE)}张初始手牌。`], gameOver: null, skillUsed: false, restUsed: false, multiplyUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner: null, geomagneticReversalActive: false, apophisNight: null, expansionKey: expansionPlan.expansionKey, deckExpansionKey: expansionPlan.deckExpansionKey, temporaryStarsCallReplacement, _turnKey: 0, _isMP: !!playerNames, turn: 0, turnDirection: 1, sealLooseningCount: 0, houndsOfTindalosActive: false, houndsOfTindalosTarget: null, houndsOfTindalosElapsed: 0, debugForceCard: targetCard, debugForceCardTarget
   };
   base.debugForceCardKeep = playerNames ? 'auto' : debugForceCardKeep;
   return startNextTurn(base);

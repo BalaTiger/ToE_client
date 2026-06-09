@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   LETTERS,
   NUMS,
+  createBlackGoatYoungCard,
+  createTsathogguaSlimeCard,
 } from '../../constants/card';
 import {
   ROLE_TREASURE,
@@ -234,6 +236,26 @@ describe('isWinHand', () => {
       makeGodCard('NYA'),
     ];
     expect(isWinHand(hand)).toBe(true);
+  });
+
+  it('黑山羊幼仔和赐福黏液不计入宝藏编号', () => {
+    const goat = { ...createBlackGoatYoungCard(), letter: 'D', number: 4 };
+    const slime = { ...createTsathogguaSlimeCard(), letter: 'D', number: 4 };
+    const hand = [
+      makeZoneCard('A1', 0),
+      makeZoneCard('B2', 0),
+      makeZoneCard('C3', 0),
+      goat,
+      slime,
+    ];
+    const generatedGoat = createBlackGoatYoungCard();
+    const generatedSlime = createTsathogguaSlimeCard();
+    expect(generatedGoat).not.toHaveProperty('letter');
+    expect(generatedGoat).not.toHaveProperty('number');
+    expect(generatedSlime).not.toHaveProperty('letter');
+    expect(generatedSlime).not.toHaveProperty('number');
+    expect(isWinHand(hand)).toBe(false);
+    expect(isWinHand([...hand, makeZoneCard('D4', 0)])).toBe(true);
   });
 
   it('缺少行列且无空白牌不能赢', () => {
