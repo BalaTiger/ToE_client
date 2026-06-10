@@ -93,9 +93,9 @@ const PRELOAD_PROFILES = {
 };
 
 const RESOURCE_SIZE_FALLBACK = {
-  '/sounds/BGM/mainTheme.mp3': 4025782,
-  '/sounds/BGM/battle_earth_shadow.mp3': 1961472,
-  '/sounds/BGM/battle_stars_call.mp3': 8628480,
+  '/sounds/BGM/mainTheme.mp3': 2517204,
+  '/sounds/BGM/battle_earth_shadow.mp3': 1226925,
+  '/sounds/BGM/battle_stars_call.mp3': 5393805,
   '/sounds/SE/hpDamageVariants/hpDamage1.mp3': 4428,
   '/sounds/SE/hpDamageVariants/hpDamage2.mp3': 3331,
   '/sounds/SE/hpDamageVariants/hpDamage3.mp3': 3175,
@@ -121,7 +121,7 @@ const RESOURCE_SIZE_FALLBACK = {
   '/img/loading.png': 14538,
 };
 
-const RESOURCE_CACHE_VERSION = '2026-06-08-cardback-frames-v3';
+const RESOURCE_CACHE_VERSION = '2026-06-10-audio-160k';
 const CACHE_VERSION_KEY = 'toe_resources_cached_version';
 
 const LOAD_ERROR_LABELS = {
@@ -162,8 +162,24 @@ function loadResource(resource) {
     audio.crossOrigin = 'anonymous';
     audio.preload = 'auto';
     return new Promise((resolve, reject) => {
-      audio.addEventListener('canplaythrough', resolve, { once: true });
-      audio.addEventListener('error', reject, { once: true });
+      const cleanup = () => {
+        audio.removeEventListener('canplaythrough', handleReady);
+        audio.removeEventListener('canplay', handleReady);
+        audio.removeEventListener('loadeddata', handleReady);
+        audio.removeEventListener('error', handleError);
+      };
+      const handleReady = () => {
+        cleanup();
+        resolve();
+      };
+      const handleError = () => {
+        cleanup();
+        reject(new Error(resource.path));
+      };
+      audio.addEventListener('canplaythrough', handleReady, { once: true });
+      audio.addEventListener('canplay', handleReady, { once: true });
+      audio.addEventListener('loadeddata', handleReady, { once: true });
+      audio.addEventListener('error', handleError, { once: true });
       audio.load();
     });
   }
@@ -271,7 +287,9 @@ export function useResourcePreload({ loadAllThemes = false } = {}) {
         loadedBytes += resource.size;
         loadedCount++;
         setSafeLoadedSize(loadedBytes);
-        setSafeLoadingProgress((loadedCount / totalFiles) * 100);
+        setSafeLoadingProgress(totalBytes > 0
+          ? Math.min(100, (loadedBytes / totalBytes) * 100)
+          : (loadedCount / totalFiles) * 100);
       }
 
       try {
