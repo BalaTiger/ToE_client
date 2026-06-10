@@ -169,14 +169,34 @@ export function useMultiplayerLobby({ socketRef }) {
   }
 
   function closeRoomModal() {
-    if (socketRef.current && roomModalRef.current?.roomId) {
-      socketRef.current.emit('leaveRoom', { uuid: playerUUID, roomId: roomModalRef.current.roomId });
-    }
     setRoomModal(null);
-    if (socketRef.current) {
-      socketRef.current.disconnect();
+    const socket = socketRef.current;
+    const roomId = roomModalRef.current?.roomId;
+    if (!socket) return;
+
+    const finishDisconnect = () => {
+      if (socketRef.current !== socket) return;
+      socket.disconnect();
       socketRef.current = null;
+    };
+
+    if (!roomId) {
+      finishDisconnect();
+      return;
     }
+
+    let settled = false;
+    const finishOnce = () => {
+      if (settled) return;
+      settled = true;
+      finishDisconnect();
+    };
+
+    const fallbackTimer = setTimeout(finishOnce, 1200);
+    socket.emit('leaveRoom', { uuid: playerUUID, roomId }, () => {
+      clearTimeout(fallbackTimer);
+      finishOnce();
+    });
   }
 
   return {
