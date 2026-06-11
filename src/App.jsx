@@ -68,6 +68,8 @@ import {
   moveEligibleBlankZones,
   isBlackGoatYoung,
   isTsathogguaSlime,
+  canRevealForHunt,
+  hasHuntRevealableCard,
   buildEtherealizeLoss,
   buildEtherealizeRedirectDecision,
   buildTsathogguaSlimeBalanceDecision,
@@ -457,6 +459,14 @@ function buildTurnStartIntroQueue(state,name){
     queue.push(statePatchStep({players:state._playersBeforeThisDraw}));
   }
   return queue;
+}
+
+function logAiTurnStartDebug(stage,payload={}){
+  try{
+    console.log(`[AI-TURN-DEBUG] ${stage}`,payload);
+  }catch{
+    // noop
+  }
 }
 
 function getHandLimitForPlayer(player){
@@ -1065,9 +1075,13 @@ export default function Game(){
     if(phase==='HUNT_WAIT_REVEAL'){
       if(sourceGs.abilityData?.huntTi===takeoverIdx){
         const hand=sourceGs.players?.[takeoverIdx]?.hand||[];
-        if(!hand.length)return null;
-        const rc=hand[0];
         const actorName=localDisplayName(takeoverIdx,sourceGs.players?.[takeoverIdx]?.name||'该玩家');
+        const rc=hand.find(canRevealForHunt);
+        if(!rc){
+          const hunterIdx=sourceGs.currentTurn??0;
+          const skipped={...sourceGs,log:[...(sourceGs.log||[]),`(AI接管) ${actorName} 没有可亮出的暗牌，追捕失败`],phase:'ACTION',abilityData:{},currentTurn:hunterIdx};
+          return finishMpAiTakeoverTurn(skipped,sourceGs,hunterIdx);
+        }
         const msg=`(AI接管) ${actorName} 亮出 ${cardLogText(rc,{alwaysShowName:true})}`;
         const event=createHuntRevealEvent({
           sourceIdx:sourceGs.currentTurn??0,
@@ -1898,7 +1912,7 @@ export default function Game(){
       let rawResult,newGs;
       try{
         rawResult=aiStep(gs, { isDebugMode: isLocalDebugEnabled() });
-        const{_aiDrawnCard:_a,_aiName:_n,_playersBeforeNextDraw:_pbn,_aiHuntEvents:_he,_playersBeforeSkillAction:_pbsa,_preSkillLogs:_psl,_preSkillDiscard:_psd,_animAiDrawnCard:_aad,_animDiscardedDrawnCard:_add,_animMultiplyEvent:_ame,_animSphinxReveal:_asr,...stripped}=rawResult;
+        const{_aiDrawnCard:_a,_aiName:_n,_playersBeforeNextDraw:_pbn,_aiHuntEvents:_he,_playersBeforeSkillAction:_pbsa,_preSkillLogs:_psl,_preSkillDiscard:_psd,_animAiDrawnCard:_aad,_animDiscardedDrawnCard:_add,_animMultiplyEvent:_ame,_animSphinxReveal:_asr,_aiTurnIntroShown:_aits1,...stripped}=rawResult;
         newGs=stripped;
       }catch(e){
         console.error('[aiStep error]',e);
@@ -1918,7 +1932,7 @@ export default function Game(){
         const aiTurnDiscarded=hasTurnStartDraw?isDrawnCardActuallyDiscarded(rawResult,aiTurnDrawnCard):false;
         const fakeGs = (ps,log=gs.log) => ({...gs, players: ps, log});
         const queue=[];
-        queue.push(...buildTurnStartIntroQueue(gs,gs.players[gs.currentTurn]?.name||'???'));
+        if(!gs._aiTurnIntroShown)queue.push(...buildTurnStartIntroQueue(gs,gs.players[gs.currentTurn]?.name||'???'));
         if(aiTurnDrawnCard) queue.push({type:'DRAW_CARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn,msgs:gs._drawLogs});
         if(gs._playersBeforeThisDraw&&aiTurnDrawnCard){
           const drawBaselineLog=getTurnStartDrawBaselineLog(gs);
@@ -2008,7 +2022,7 @@ export default function Game(){
       }
       try{
         // Strip ALL animation-only temp fields before storing as real game state
-        const{_aiDrawnCard,_aiName,_playersBeforeNextDraw,_aiHuntEvents,_playersBeforeSkillAction,_preSkillLogs,_preSkillDiscard,_cthRestDraws,_cthRestDrawLogs,_playersBeforeCthDraws,_aiHandLimitDiscards,_aiHandLimitBeforePlayers,_aiHandLimitBeforeDiscard,_aiHandLimitBeforeLog,_animAiDrawnCard,_animDiscardedDrawnCard,_animMultiplyEvent,_animSphinxReveal,...stripped}=rawResult;
+        const{_aiDrawnCard,_aiName,_playersBeforeNextDraw,_aiHuntEvents,_playersBeforeSkillAction,_preSkillLogs,_preSkillDiscard,_cthRestDraws,_cthRestDrawLogs,_playersBeforeCthDraws,_aiHandLimitDiscards,_aiHandLimitBeforePlayers,_aiHandLimitBeforeDiscard,_aiHandLimitBeforeLog,_animAiDrawnCard,_animDiscardedDrawnCard,_animMultiplyEvent,_animSphinxReveal,_aiTurnIntroShown:_aits2,...stripped}=rawResult;
         newGs=stripped; // reassign: stripped has _playersBeforeThisDraw from startNextTurn
         const oldLog=Array.isArray(gs.log)?gs.log:[];
         const nextLog=Array.isArray(newGs.log)?newGs.log:oldLog;
@@ -2022,6 +2036,13 @@ export default function Game(){
         const aiTurnDiscarded=hasTurnStartDraw?isDrawnCardActuallyDiscarded(rawResult,aiTurnDrawnCard):false;
         const {currentTurnLogs}=splitTransitionLogs(oldLog,nextLog);
         const queue=[];
+        const aiTurnStartReplay=hasTurnStartDraw
+          ? buildAppTurnStartDrawReplay(gs,{
+              oldGs:{...gs,players:gs._playersBeforeThisDraw,log:getTurnStartDrawBaselineLog(gs)},
+              effectOldGs:{...gs,players:gs._playersBeforeThisDraw,log:getTurnStartDrawBaselineLog(gs)}
+            })
+          : null;
+        const usedAiTurnStartReplay=!!(aiTurnStartReplay?.queue?.length);
         // Animate CTH rest-draw forced cards from turn transition
         if(rawResult._cthRestDraws?.length>0){
           const cthQueue=rawResult._cthRestDraws.map(card=>({
@@ -2030,11 +2051,15 @@ export default function Game(){
           }));
           queue.push(...cthQueue);
         }
-        queue.push(...buildTurnStartIntroQueue(gs,gs.players[gs.currentTurn]?.name||'???'));
+        if(usedAiTurnStartReplay){
+          queue.push(...aiTurnStartReplay.queue);
+        }else if(!gs._aiTurnIntroShown){
+          queue.push(...buildTurnStartIntroQueue(gs,gs.players[gs.currentTurn]?.name||'???'));
+        }
         // 2. Draw card anim for THIS AI (card drawn at turn start, stored in gs._drawnCard)
-        if(aiTurnDrawnCard) queue.push({type:'DRAW_CARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn,msgs:gs._drawLogs});
+        if(!usedAiTurnStartReplay&&aiTurnDrawnCard) queue.push({type:'DRAW_CARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn,msgs:gs._drawLogs});
         // 2b. Stat changes caused by THIS AI's drawn card (draw effects: gs._playersBeforeThisDraw → gs.players)
-        if(gs._playersBeforeThisDraw&&aiTurnDrawnCard){
+        if(!usedAiTurnStartReplay&&gs._playersBeforeThisDraw&&aiTurnDrawnCard){
           const drawBaselineLog=getTurnStartDrawBaselineLog(gs);
           const drawFullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(
             [...(gs._drawLogs||[]),...(gs._statLogs||[])],
@@ -2054,7 +2079,7 @@ export default function Game(){
           }
         }
         // 2c. Discard anim if AI chose to discard the drawn card
-        if(aiTurnDiscarded&&aiTurnDrawnCard){
+        if(!usedAiTurnStartReplay&&aiTurnDiscarded&&aiTurnDrawnCard){
           queue.push({type:'DISCARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn});
           queue.push(statePatchStep({players:gs.players,discard:gs.discard}));
         }
@@ -2279,13 +2304,49 @@ export default function Game(){
           queue.push(...finalActionQ);
           queue.push(...handLimitDiscardQueue);
           queue.push(...handLimitStatQueue);
+          if(newGs.phase==='AI_TURN'&&newGs.currentTurn!==gs.currentTurn&&(newGs._turnStartLogs||[]).length){
+            const nextTurnBaselineLog=getTurnStartDrawBaselineLog(newGs);
+            const nextReplay=buildAppTurnStartDrawReplay(newGs,{
+              oldGs:{
+                ...gs,
+                players:P_actionEnd,
+                discard:newGs.discard,
+                log:nextTurnBaselineLog,
+                _statEventSeq:consumedActionStatSeq,
+              },
+              effectOldGs:{
+                ...gs,
+                players:newGs._playersBeforeThisDraw||P_actionEnd,
+                discard:newGs.discard,
+                log:nextTurnBaselineLog,
+                _statEventSeq:consumedActionStatSeq,
+              },
+            });
+            const nextReplayQueue=[
+              ...(nextReplay.visualLock?[{type:'VISUAL_LOCK',...nextReplay.visualLock}]:[]),
+              ...nextReplay.queue,
+            ];
+            logAiTurnStartDebug('aiEffect:append-next-ai-replay',{
+              fromTurn:gs.currentTurn,
+              toTurn:newGs.currentTurn,
+              name:newGs.players?.[newGs.currentTurn]?.name,
+              drawnCard:nextReplay.drawnCard?.name||null,
+              queue:nextReplayQueue.map(step=>step?.type),
+              turnStartLogs:newGs._turnStartLogs,
+              drawLogs:newGs._drawLogs,
+            });
+            if(nextReplayQueue.length){
+              nextTurnIntroQueue=[...nextTurnIntroQueue,...nextReplayQueue];
+              newGs={...newGs,_aiTurnIntroShown:true};
+            }
+          }
           // 如果下一个是AI，且它摸首牌直接死亡导致了这局游戏结束，此时不会有真正的下一个AI回合勾子运行了，必须把它的暴毙动画立刻压入队列
-          if(newGs.gameOver && newGs.currentTurn !== gs.currentTurn){
+          if(newGs.gameOver && newGs.currentTurn !== gs.currentTurn && !nextTurnIntroQueue.length){
             const aiNextStatQ = bindAnimLogChunks(
               buildAnimQueue(fakeGs(P_actionEnd), newGs),
               {statLogs: newGs._statLogs||[]}
             );
-            nextTurnIntroQueue=[...aiNextStatQ];
+            nextTurnIntroQueue=[...nextTurnIntroQueue,...aiNextStatQ];
           }
         }
         // Append inspection events triggered by the AI action
@@ -2813,7 +2874,7 @@ export default function Game(){
     const P=state.players||[];
     const firstValid=list=>(Array.isArray(list)?list:[]).find(i=>P[i]&&!P[i].isDead)??null;
     if(state.phase==='SWAP_SELECT_TARGET')return firstValid(P.map((_,i)=>i).filter(i=>i!==0&&P[i]?.hand?.length));
-    if(state.phase==='HUNT_SELECT_TARGET')return firstValid(P.map((_,i)=>i).filter(i=>i!==0&&P[i]?.hand?.length&&!(state.huntAbandoned||[]).includes(i)));
+    if(state.phase==='HUNT_SELECT_TARGET')return firstValid(P.map((_,i)=>i).filter(i=>i!==0&&hasHuntRevealableCard(P[i])&&!(state.huntAbandoned||[]).includes(i)));
     if(state.phase==='BEWITCH_SELECT_TARGET')return firstValid(P.map((_,i)=>i).filter(i=>i!==0));
     if(state.phase==='ZONE_SWAP_SELECT_TARGET')return firstValid(P.map((_,i)=>i).filter(i=>i!==0));
     if(state.phase==='PEEK_HAND_SELECT_TARGET')return firstValid(ad.peekHandTargets);
@@ -5346,12 +5407,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
 
   function huntSelectTarget(ti){
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],baseLog=[...gs.log];
-    const legal=P.map((p,i)=>i).filter(i=>i!==0&&!P[i].isDead&&P[i].hand.length&&!(gs.huntAbandoned||[]).includes(i));
+    const legal=P.map((p,i)=>i).filter(i=>i!==0&&!P[i].isDead&&hasHuntRevealableCard(P[i])&&!(gs.huntAbandoned||[]).includes(i));
     const night=resolveApophisTarget({players:P,deck:D,discard:Disc,log:baseLog,actorIdx:0,selectedIdx:ti,legalTargets:legal,label:'选择【追捕】目标'});
     P=night.players;D=night.deck;Disc=night.discard;baseLog=night.log;ti=night.targetIdx;
     P[0].roleRevealed=true;
-    if(!P[ti].hand.length){
-      setGsWithApophisTargetAnim({...gs,players:P,deck:D,discard:Disc,phase:'ACTION',abilityData:{},log:[...baseLog,`${P[ti].name} 手中无牌，追捕失败`],...apophisNightPatch(night)});
+    if(!hasHuntRevealableCard(P[ti])){
+      setGsWithApophisTargetAnim({...gs,players:P,deck:D,discard:Disc,phase:'ACTION',abilityData:{},log:[...baseLog,`${P[ti].name} 手中没有可亮出的暗牌，追捕失败`],...apophisNightPatch(night)});
       return;
     }
     if(gs._isMP){
@@ -5370,6 +5431,10 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     // 单机/AI目标：由AI策略选择最优亮牌
     const knownHunterCards=P[ti]?.peekMemories?.[0]||[];
     const rc=aiChooseRevealCard(P[ti].hand,'你',gs.log,knownHunterCards);
+    if(!rc){
+      setGsWithApophisTargetAnim({...gs,players:P,deck:D,discard:Disc,phase:'ACTION',abilityData:{},log:[...baseLog,`${P[ti].name} 手中没有可亮出的暗牌，追捕失败`],...apophisNightPatch(night)});
+      return;
+    }
     const huntConfirmGs={...gs,players:P,deck:D,discard:Disc,phase:'HUNT_CONFIRM',
       abilityData:{...(gs.abilityData||{}),huntTi:ti,revCard:rc},
       log:[...baseLog,`你（追猎者）追捕 ${P[ti].name}，${P[ti].name} 亮出 ${cardLogText(rc,{alwaysShowName:true})}`],...apophisNightPatch(night)};
@@ -5579,7 +5644,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   // 多人游戏：被追捕的真人玩家选择亮出一张手牌
   function humanRevealForMPHunt(cardIdx){
     const card=me.hand[cardIdx];
-    if(!card||isBlackGoatYoung(card)||isTsathogguaSlime(card))return;
+    if(!canRevealForHunt(card))return;
     // huntTi = 被追捕者在当前视角下的 index（非0）
     // 被追捕者将选择结果推送回规范 gs 并广播：
     // 设置 revCard，切换到 HUNT_CONFIRM 让追猎者（currentTurn=0 视角）完成后续
@@ -6514,6 +6579,36 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       {statLogs:newGs._statLogs}
     ):[];
     const preTurnQ=buildTsathogguaSlimeGrantQueue(newGs);
+    if(
+      newGs?.phase==='AI_TURN' &&
+      !newGs?._isMP &&
+      Array.isArray(newGs._turnStartLogs) &&
+      newGs._turnStartLogs.length > 0
+    ){
+      const replay=buildAppTurnStartDrawReplay(newGs,{
+        oldGs:gs,
+        effectOldGs:{...gs,players:newGs._playersBeforeThisDraw||gs.players}
+      });
+      logAiTurnStartDebug('applyNextTurnGs:ai-branch',{
+        fromTurn:gs?.currentTurn,
+        toTurn:newGs.currentTurn,
+        name:newGs.players?.[newGs.currentTurn]?.name,
+        phase:newGs.phase,
+        turnStartLogs:newGs._turnStartLogs,
+        hasPlayersBeforeThisDraw:!!newGs._playersBeforeThisDraw,
+        drawnCard:newGs._drawnCard?.name||newGs.drawReveal?.card?.name||newGs.abilityData?.godCard?.name||null,
+        drawLogs:newGs._drawLogs,
+        replayDrawnCard:replay.drawnCard?.name||null,
+        replayQueue:replay.queue.map(step=>step?.type),
+      });
+      if(replay.queue.length){
+        if(replay.visualLock)visualStateLocks.lock(replay.visualLock);
+        const introShownGs={...newGs,_aiTurnIntroShown:!!replay.drawnCard};
+        setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
+        triggerAnimQueue([...preTurnQ,...replay.queue],introShownGs);
+        return;
+      }
+    }
     if(newGs?.phase==='NYA_BORROW'&&Array.isArray(newGs._turnStartLogs)&&newGs._turnStartLogs.length){
       const introQ=buildTurnStartIntroQueue(newGs,newGs.players?.[newGs.currentTurn]?.name||'???');
       if(introQ.length){
@@ -7261,9 +7356,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   }
 
   function canPlayerRespondWithZoneCard(card){
-    const canRevealForHunt=!!card&&!isBlackGoatYoung(card)&&!isTsathogguaSlime(card);
-    if(phase==='PLAYER_REVEAL_FOR_HUNT')return canRevealForHunt;
-    if(phase==='HUNT_WAIT_REVEAL'&&!myTurn&&isLocalHuntTargetSeat(gs))return canRevealForHunt;
+    const canReveal=canRevealForHunt(card);
+    if(phase==='PLAYER_REVEAL_FOR_HUNT')return canReveal;
+    if(phase==='HUNT_WAIT_REVEAL'&&!myTurn&&isLocalHuntTargetSeat(gs))return canReveal;
     return false;
   }
 
@@ -7753,7 +7848,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         }}>
           {visualPlayers.slice(1).map((p,i)=>{
             const pi=i+1;
-            const isSel=selectingOther&&!p.isDead&&!isBlocked&&!(phase==='HUNT_SELECT_TARGET'&&huntAbandoned.includes(pi));
+            const isSel=selectingOther&&!p.isDead&&!isBlocked&&!(phase==='HUNT_SELECT_TARGET'&&(!hasHuntRevealableCard(p)||huntAbandoned.includes(pi)));
             // 掉包：公开手牌时正面选择；暗抽时改为全屏遮罩选择，不再点击手牌区
             const isSwapPublicTargetCardPhase=phase==='SWAP_SELECT_TARGET_CARD'&&myTurn&&gs.abilityData?.swapTi===pi;
             // 在HUNT_SELECT_CARD_FROM_PUBLIC阶段，如果这是死者玩家，显示其手牌并允许选择

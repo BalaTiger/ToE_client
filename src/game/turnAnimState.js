@@ -137,6 +137,7 @@ export function getTurnStartDrawBaselineLog(state) {
 }
 
 export function getTurnStartDrawnCard(state) {
+  if (state?._drawnCard || state?._aiDrawnCard) return state._drawnCard || state._aiDrawnCard;
   return state?.phase === 'GOD_CHOICE'
     ? state.abilityData?.godCard
     : state?.drawReveal?.card;

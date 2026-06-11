@@ -14,6 +14,8 @@ import {
   zoneCardUsesTargetInteraction,
   isBlackGoatYoung,
   isTsathogguaSlime,
+  canRevealForHunt,
+  hasHuntRevealableCard,
   ROLE_TREASURE,
   ROLE_HUNTER,
   ROLE_CULTIST,
@@ -653,7 +655,7 @@ function estimateCultistZoneCardScore(card, self, players, ci) {
 }
 
 export function aiChooseRevealCard(targetHand, hunterName, log, knownHunterCards) { // eslint-disable-line no-unused-vars
-  const revealableHand = targetHand.filter(card => !isBlackGoatYoung(card) && !isTsathogguaSlime(card));
+  const revealableHand = targetHand.filter(canRevealForHunt);
   const zoneCards = revealableHand.filter(isZoneCard);
   if (zoneCards.length) {
     const scored = zoneCards.map((card, index) => {
@@ -707,7 +709,7 @@ export function getHunterChaseTargets(players, hunterIdx, huntAbandoned = []) {
   return players
     .map((player, idx) => ({ player, idx }))
     .filter(({ player, idx }) => !player.isDead && idx !== hunterIdx && player.role !== ROLE_HUNTER && !huntAbandoned.includes(idx))
-    .filter(({ player }) => (player.hand || []).length > 0);
+    .filter(({ player }) => hasHuntRevealableCard(player));
 }
 
 export function shouldHunterKeepChasing(players, hunterIdx, huntAbandoned = []) {
@@ -771,15 +773,15 @@ export function decideAiSkillUsage(gs, players, ct, aiEffRole, hunterTargets = [
   else if (myProgress >= 7) skillRate = 0.55;
 
   const canUseSkill = !gs?.restUsed && (aiEffRole === ROLE_HUNTER ? true : !gs?.skillUsed);
-  const hunterZoneCards = (self.hand || []).filter(isZoneCard);
+  const hunterHuntCards = (self.hand || []).filter(canRevealForHunt);
   const hunterHandLimit = self._nyaHandLimit ?? 4;
-  const hunterOverLimit = hunterZoneCards.length > hunterHandLimit;
+  const hunterOverLimit = hunterHuntCards.length > hunterHandLimit;
   const someoneWounded = players.some((p, i) => i !== ct && !p.isDead && p.hp < 10);
 
   const shouldHunterUseSkill =
     canUseSkill &&
     aiEffRole === ROLE_HUNTER &&
-    hunterZoneCards.length > 0 &&
+    hunterHuntCards.length > 0 &&
     hunterTargets.length > 0 &&
     (hunterOverLimit || someoneWounded);
 
@@ -798,7 +800,8 @@ export function decideAiSkillUsage(gs, players, ct, aiEffRole, hunterTargets = [
     canBewitch,
     canSwapHands,
     myProgress,
-    hunterZoneCards,
+    hunterHuntCards,
+    hunterZoneCards: hunterHuntCards,
     hunterHandLimit,
     hunterOverLimit,
     someoneWounded,

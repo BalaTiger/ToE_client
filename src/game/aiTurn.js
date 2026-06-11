@@ -5,6 +5,8 @@ import {
   isBlankZoneCard,
   isBlackGoatYoung,
   isTsathogguaSlime,
+  canRevealForHunt,
+  hasHuntRevealableCard,
   separateBlackGoatYoung,
   isWinHand,
   cardLogText,
@@ -172,7 +174,7 @@ function markHunterLowQualityHand(players, hunterIdx, gs, attemptedTargets) {
   const hunter = players?.[hunterIdx];
   if (!hunter || hunter.isDead) return;
   const handIds = (hunter.hand || [])
-    .filter(card => card && !isBlackGoatYoung(card))
+    .filter(canRevealForHunt)
     .map(card => card.id)
     .filter(id => id != null);
   if (!handIds.length || attemptedTargets <= 0) {
@@ -691,8 +693,8 @@ export function aiStep(gs, opts = {}) {
     // ── v2 MCTS 目标选择 ────────────────────────────────────
     let tgt;
     if(aiEffRole===ROLE_HUNTER){
-      if(P[ct].hand.length === 0) huntContinue = false;
-      while (huntContinue && P[ct].hand.length > 0) {
+        if(!hasHuntRevealableCard(P[ct])) huntContinue = false;
+        while (huntContinue && hasHuntRevealableCard(P[ct])) {
         const validTargets = getHunterTargets();
         if (validTargets.length > 0) {
           const sortedTargets = [...validTargets].sort((a, b) => {
@@ -706,6 +708,10 @@ export function aiStep(gs, opts = {}) {
             let ti = applyNightTarget(targetEntry.idx, validTargets.map(t => t.idx), '选择【追捕】目标');
             const tgt = P[ti];
             const targetHand = P[ti].hand;
+            if (!hasHuntRevealableCard(targetHand)) {
+              newAbandoned = [...new Set([...newAbandoned, ti])];
+              continue;
+            }
             if (ti === 0) {
               L.push(`${ai.name}（追猎者）向你发动【追捕】！请选择亮出一张手牌`);
               const updatedAbandoned = [...newAbandoned, ti];
@@ -720,6 +726,10 @@ export function aiStep(gs, opts = {}) {
               const targetRevealBefore=!!P[ti]?.revealHand;
               const knownHunterCards=P[ti]?.peekMemories?.[ct]||[];
               const rc = aiChooseRevealCard(targetHand, ai.name, L, knownHunterCards);
+              if (!rc) {
+                newAbandoned = [...new Set([...newAbandoned, ti])];
+                continue;
+              }
               L.push(`${ai.name}（追猎者）对 ${tgt.name} 【追捕】，亮出 ${cardLogText(rc)}`);
               const mi = P[ct].hand.findIndex(c => cardsHuntMatch(c,rc));
               if (mi >= 0) {
@@ -1076,7 +1086,7 @@ export function aiStep(gs, opts = {}) {
 
   // AI状态机扭转关键：只有追猎者才能在同一回合内连续追捕并留在 AI_TURN
   const hasValidTargets = getHunterTargets().length > 0;
-  const hasZoneCards = P[ct].hand.filter(isZoneCard).length > 0;
+  const hasZoneCards = P[ct].hand.filter(canRevealForHunt).length > 0;
   try{
     if (aiEffRole === ROLE_HUNTER && huntContinue && hasZoneCards && hasValidTargets) {
         nextGs = withClearedTurnAnimFields({...gs, players:P, deck:D, discard:Disc, log:L, phase: 'AI_TURN', currentTurn: ct, huntAbandoned: newAbandoned, skillUsed: false});

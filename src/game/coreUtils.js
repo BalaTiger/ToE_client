@@ -42,6 +42,11 @@ export const isBlackGoatYoung = (card) => !!card?.isBlackGoatYoung;
 export const isTsathogguaSlime = (card) => !!card?.isTsathogguaSlime;
 export const isGeomagneticRestore = (card) => !!card?.isGeomagneticRestore;
 export const isVanishingDerivedCard = (card) => isBlackGoatYoung(card) || isTsathogguaSlime(card) || isGeomagneticRestore(card);
+export const canRevealForHunt = (card) => !!card && !isBlackGoatYoung(card) && !isTsathogguaSlime(card);
+export const hasHuntRevealableCard = (playerOrHand) => {
+  const hand = Array.isArray(playerOrHand) ? playerOrHand : (playerOrHand?.hand || []);
+  return hand.some(canRevealForHunt);
+};
 
 export function buildTsathogguaSlimeBalanceDecision(playersBefore, playersAfter, extra = {}) {
   if (!Array.isArray(playersBefore) || !Array.isArray(playersAfter)) return null;

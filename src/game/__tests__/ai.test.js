@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { aiChooseRevealCard, aiShouldKeepZoneCard } from '../ai';
+import { aiChooseRevealCard, aiShouldKeepZoneCard, getHunterChaseTargets } from '../ai';
 import { aiStep } from '../aiTurn';
 import { ROLE_CULTIST, ROLE_HUNTER } from '../coreUtils';
 import { createBlackGoatYoungCard } from '../../constants/card';
@@ -96,6 +96,19 @@ describe('aiChooseRevealCard', () => {
 
     expect(aiChooseRevealCard([blackGoatYoung, slime, revealable])).toBe(revealable);
     expect(aiChooseRevealCard([blackGoatYoung, slime])).toBeNull();
+  });
+});
+
+describe('hunter chase target validity', () => {
+  it('追捕目标必须持有可亮出的暗牌', () => {
+    const players = [
+      makePlayer({ name: '追猎者', role: ROLE_HUNTER, hand: [{ id: 'h', key: 'A1', isZone: true, letter: 'A', number: 1 }] }),
+      makePlayer({ name: '只有黑山羊', hand: [createBlackGoatYoungCard()] }),
+      makePlayer({ name: '只有黏液', hand: [{ id: 'slime-1', name: '撒托古亚的赐福黏液', isTsathogguaSlime: true }] }),
+      makePlayer({ name: '有暗牌', hand: [{ id: 'z', key: 'B1', isZone: true, letter: 'B', number: 1 }] }),
+    ];
+
+    expect(getHunterChaseTargets(players, 0).map(t => t.idx)).toEqual([3]);
   });
 });
 

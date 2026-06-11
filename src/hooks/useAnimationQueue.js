@@ -114,6 +114,14 @@ export function useAnimationQueue({
 
   const normalizePendingState = state => (state ? normalizePendingGs(state) : state);
 
+  function logAiTurnQueueDebug(stage, payload = {}) {
+    try {
+      console.log(`[AI-TURN-DEBUG] ${stage}`, payload);
+    } catch {
+      // noop
+    }
+  }
+
   function advanceQueue() {
     setAnimExiting(false);
     if (animQueueRef.current.length > 0) {
@@ -162,6 +170,18 @@ export function useAnimationQueue({
     } else {
       const next = pendingGsRef.current;
       const normalizedNext = normalizePendingState(next);
+      if (next?.phase === 'AI_TURN' || normalizedNext?.phase === 'AI_TURN') {
+        logAiTurnQueueDebug('advanceQueue:complete', {
+          pendingTurn: next?.currentTurn,
+          pendingName: next?.players?.[next?.currentTurn]?.name,
+          pendingTurnStartLogs: next?._turnStartLogs,
+          pendingDrawnCard: next?._drawnCard?.name || next?.drawReveal?.card?.name || next?.abilityData?.godCard?.name || null,
+          pendingHasPlayersBeforeThisDraw: !!next?._playersBeforeThisDraw,
+          normalizedTurnStartLogs: normalizedNext?._turnStartLogs,
+          normalizedDrawnCard: normalizedNext?._drawnCard?.name || normalizedNext?.drawReveal?.card?.name || normalizedNext?.abilityData?.godCard?.name || null,
+          normalizedHasPlayersBeforeThisDraw: !!normalizedNext?._playersBeforeThisDraw,
+        });
+      }
       const callback = animCallbackRef.current;
       if (next?.log) syncVisibleLog(next.log);
       if (callback) {
@@ -236,6 +256,21 @@ export function useAnimationQueue({
     }
     const hasDeathAnim = queue.some(a => a.type === 'DEATH' || a.type === 'GUILLOTINE');
     const pendingDeathPlayers = nextGs?.players?.filter(p => p._pendingAnimDeath)?.map((_, i) => i) || [];
+    if (
+      nextGs?.phase === 'AI_TURN' &&
+      Array.isArray(queue) &&
+      queue.some(step => step?.type === 'YOUR_TURN' || step?.type === 'DRAW_CARD')
+    ) {
+      logAiTurnQueueDebug('triggerAnimQueue:start', {
+        turn: nextGs.currentTurn,
+        name: nextGs.players?.[nextGs.currentTurn]?.name,
+        queue: queue.map(step => step?.type),
+        hasCallback: !!callback,
+        turnStartLogs: nextGs._turnStartLogs,
+        drawnCard: nextGs._drawnCard?.name || nextGs.drawReveal?.card?.name || nextGs.abilityData?.godCard?.name || null,
+        hasPlayersBeforeThisDraw: !!nextGs._playersBeforeThisDraw,
+      });
+    }
 
     if (!queue.length) {
       if (callback) {
