@@ -244,14 +244,28 @@ export function discardAiHandToLimit(P, ct, Disc, L) {
 function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
   const handCards = P[ct]?.hand || [];
   const replayIds = getEndTurnReplayHandCards(P[ct]).map(card => card?.id).filter(id => id != null);
-  if (!replayIds.length) return { P, D, Disc, L, statePatch: {} };
-  L.push(`【无尽通道】${P[ct].name} 展示所有手牌：${handCards.map(card => cardLogText(card, { alwaysShowName: true })).join(' ')}`);
+  if (!replayIds.length) return { P, D, Disc, L, statePatch: {}, replayQueue: [], replayMsgs: [] };
+  const replayQueue = [{ type: 'ENDLESS_CORRIDOR_TUNNEL' }];
+  const replayMsgs = [];
+  const introMsg = `【无尽通道】${P[ct].name} 展示所有手牌：${handCards.map(card => cardLogText(card, { alwaysShowName: true })).join(' ')}`;
+  L.push(introMsg);
+  replayMsgs.push(introMsg);
   let statePatch = {};
   for (const cardId of replayIds) {
     const handIdx = (P[ct].hand || []).findIndex(card => card?.id === cardId);
     if (handIdx < 0 || P[ct].isDead) break;
     const card = P[ct].hand[handIdx];
-    L.push(`【无尽通道】${P[ct].name} 重新摸到 ${cardLogText(card, { alwaysShowName: true })}`);
+    const drawMsg = `【无尽通道】${P[ct].name} 重新摸到 ${cardLogText(card, { alwaysShowName: true })}`;
+    L.push(drawMsg);
+    replayMsgs.push(drawMsg);
+    replayQueue.push({
+      type: 'DRAW_CARD',
+      card,
+      triggerName: '无尽通道',
+      targetPid: ct,
+      skipTravel: true,
+      msgs: [drawMsg],
+    });
     if (card.isGod) {
       P[ct].hand.splice(handIdx, 1);
       P[ct].godEncounters = (P[ct].godEncounters || 0) + 1;
@@ -278,7 +292,16 @@ function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
       if (isBlackGoatYoung(discarded) || isTsathogguaSlime(discarded)) L.push(`${P[ct].name} 的衍生牌被销毁`);
       else {
         Disc.push(discarded);
-        L.push(`${P[ct].name} 弃置了 ${cardLogText(discarded, { alwaysShowName: true })}`);
+        const discardMsg = `${P[ct].name} 弃置了 ${cardLogText(discarded, { alwaysShowName: true })}`;
+        L.push(discardMsg);
+        replayMsgs.push(discardMsg);
+        replayQueue.push({
+          type: 'DISCARD',
+          card: discarded,
+          triggerName: P[ct].name,
+          targetPid: ct,
+          msgs: [discardMsg],
+        });
         const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: L, ownerIdx: ct, cards: [discarded], reason: '无尽通道弃牌' });
         P = balance.players; D = balance.deck; Disc = balance.discard; L = balance.log;
       }
@@ -292,7 +315,7 @@ function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
       break;
     }
   }
-  return { P, D, Disc, L, statePatch };
+  return { P, D, Disc, L, statePatch, replayQueue, replayMsgs };
 }
 
 export function aiStep(gs, opts = {}) {
@@ -624,7 +647,7 @@ export function aiStep(gs, opts = {}) {
     const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,{...gs,...restStatPatch});
     P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;
     const _P_afterRest=copyPlayers(P);
-    const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,restUsed:true,skillUsed:false,...restStatPatch,...replayed.statePatch}, opts);
+    const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,restUsed:true,skillUsed:false,...restStatPatch,...replayed.statePatch,_aiEndTurnReplayQueue:replayed.replayQueue,_aiEndTurnReplayMsgs:replayed.replayMsgs}, opts);
     return buildReturnPack(nextGs, _P_afterRest);
   }
 // 追猎者/邪祀者积极发动技能(65%); 寻宝者随进度提升(35%→55%)
@@ -677,7 +700,7 @@ export function aiStep(gs, opts = {}) {
     const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,gs);
     P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};
     const _P_afterAction=copyPlayers(P);
-    const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:gs.skillUsed}, opts);
+    const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:gs.skillUsed,_aiEndTurnReplayQueue:replayed.replayQueue,_aiEndTurnReplayMsgs:replayed.replayMsgs}, opts);
     return buildReturnPack(nextGs, _P_afterAction);
   }
 
@@ -1091,7 +1114,7 @@ export function aiStep(gs, opts = {}) {
     if (aiEffRole === ROLE_HUNTER && huntContinue && hasZoneCards && hasValidTargets) {
         nextGs = withClearedTurnAnimFields({...gs, players:P, deck:D, discard:Disc, log:L, phase: 'AI_TURN', currentTurn: ct, huntAbandoned: newAbandoned, skillUsed: false});
     } else {
-        nextGs = startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct, huntAbandoned: newAbandoned, skillUsed: (useSkill || gs.skillUsed)}, opts);
+        nextGs = startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct, huntAbandoned: newAbandoned, skillUsed: (useSkill || gs.skillUsed), _aiEndTurnReplayQueue:replayed.replayQueue, _aiEndTurnReplayMsgs: replayed.replayMsgs}, opts);
     }
   }catch(e){
     throw new Error(`${ai.name} 回合收尾失败: ${e?.message||'未知错误'}`);

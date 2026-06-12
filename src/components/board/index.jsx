@@ -571,7 +571,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
             </span>
           )}
           {(player.godZone||[]).length>0&&player.godName&&(
-            <span style={{
+            <span data-god-power-badge={playerIndex} style={{
               fontSize:8,color:GOD_DEFS[player.godName]?.col||'#c06020',
               background:'#100808',border:`1px solid ${GOD_DEFS[player.godName]?.col||'#c06020'}44`,
               borderRadius:2,padding:'1px 4px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,

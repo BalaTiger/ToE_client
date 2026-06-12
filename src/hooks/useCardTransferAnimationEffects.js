@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ANIM_STEP_GAP } from '../components/anim/constants';
-import { _getZoomCompensatedRect, getPileAnchorCenter, getPlayerAreaAnchorCenter, getPlayerHandAnchorCenter } from '../utils/dom';
+import { _getZoomCompensatedRect, getPileAnchorCenter, getPlayerAreaAnchorCenter, getPlayerGodPowerAnchorCenter, getPlayerHandAnchorCenter } from '../utils/dom';
 
 export function useCardTransferAnimationEffects({ anim }) {
   const [cardTransfers, setCardTransfers] = useState([]);
@@ -52,9 +52,11 @@ export function useCardTransferAnimationEffects({ anim }) {
     }
 
     schedule(() => {
-      const srcPos = sourceAnchor === 'playerArea'
-        ? getPlayerAreaAnchorCenter(fromPid)
-        : getPlayerHandAnchorCenter(fromPid);
+      const srcPos = sourceAnchor === 'godPower'
+        ? getPlayerGodPowerAnchorCenter(fromPid)
+        : sourceAnchor === 'playerArea'
+          ? getPlayerAreaAnchorCenter(fromPid)
+          : getPlayerHandAnchorCenter(fromPid);
       const srcX = srcPos.x;
       const srcY = srcPos.y;
 

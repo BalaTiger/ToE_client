@@ -88,6 +88,22 @@ export function getPlayerAreaAnchorCenter(pid){
   return getPlayerHandAnchorCenter(pid);
 }
 
+export function getPlayerGodPowerAnchorCenter(pid){
+  const badgeEl=document.querySelector(`[data-god-power-badge="${pid}"]`);
+  if(badgeEl){
+    const r=_getZoomCompensatedRect(badgeEl);
+    if(r&&r.width>0&&r.height>0){
+      return {x:r.left+r.width/2,y:r.top+r.height/2};
+    }
+  }
+  const panelEl=document.querySelector(`[data-pid="${pid}"]`);
+  const panelRect=_getZoomCompensatedRect(panelEl);
+  if(panelRect&&panelRect.width>0&&panelRect.height>0){
+    return {x:panelRect.left+panelRect.width*0.58,y:panelRect.top+panelRect.height*0.62};
+  }
+  return getPlayerAreaAnchorCenter(pid);
+}
+
 export function getPileAnchorCenter(selector,fallback){
   const pileEl=document.querySelector(selector);
   if(!pileEl)return fallback;

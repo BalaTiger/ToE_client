@@ -356,6 +356,18 @@ export function buildTurnStartDrawReplayQueue({
     sourcePile: newGs?.drawReveal?.sourcePile || newGs?._drawSourcePile || (newGs?.geomagneticReversalActive ? 'discard' : 'deck'),
     msgs: newGs?._drawLogs,
   };
+  const discardedDrawnCard = !!newGs?._discardedDrawnCard;
+  const discardDrawnStep = discardedDrawnCard
+    ? {
+      type: 'DISCARD',
+      card: drawnCard,
+      triggerName: localDisplayName(drawerPid, drawerName),
+      targetPid: drawerPid,
+    }
+    : null;
+  const discardRestoreStep = discardedDrawnCard
+    ? statePatchStep({ players: newGs?.players, discard: newGs?.discard })
+    : null;
   const drawFullHandSwapQ = buildFullHandSwapTransferQueue(
     [...(newGs?._drawLogs || []), ...(newGs?._statLogs || [])],
     beforeDrawPlayers,
@@ -365,11 +377,20 @@ export function buildTurnStartDrawReplayQueue({
     players: beforeDrawPlayers,
     log: getTurnStartDrawBaselineLog(newGs),
   };
+  const drawStatLogSet = new Set((Array.isArray(newGs?._statLogs) ? newGs._statLogs : []).filter(Boolean));
+  const drawStatSeqs = (Array.isArray(newGs?._statEvents) ? newGs._statEvents : [])
+    .filter(event => event?.seq != null && event?.logHint && drawStatLogSet.has(event.logHint))
+    .map(event => event.seq);
+  const drawOldStatSeq = drawStatSeqs.length
+    ? Math.max(0, Math.min(...drawStatSeqs) - 1)
+    : null;
   // 摸牌效果的基线状态代表「摸牌效果发生之前」，不应携带本次摸牌产生的视觉事件
   // （如地动山摇 earthquake）。清掉后，buildAnimQueue 才会把它判定为新事件并播放首次动画。
-  const fallbackOldGs = Array.isArray(fallbackOldGsRaw?._visualEvents) && fallbackOldGsRaw._visualEvents.length
-    ? { ...fallbackOldGsRaw, _visualEvents: [] }
-    : fallbackOldGsRaw;
+  const fallbackOldGs = {
+    ...fallbackOldGsRaw,
+    ...(drawOldStatSeq != null ? { _statEventSeq: drawOldStatSeq } : {}),
+    ...(Array.isArray(fallbackOldGsRaw?._visualEvents) && fallbackOldGsRaw._visualEvents.length ? { _visualEvents: [] } : {}),
+  };
   const inspectionEvents = getFreshInspectionEvents(oldGs, newGs);
   const preDrawMsgs = getTurnStartPreDrawMsgs(newGs);
   const turnStartInspectionEvents = inspectionEvents.filter(ev => {
@@ -423,13 +444,20 @@ export function buildTurnStartDrawReplayQueue({
   const drawEffectQ = drawFullHandSwapQ.length
     ? [...drawFullHandSwapQ, ...drawEffectQWithInspections.filter(step => step.type !== 'CARD_TRANSFER')]
     : drawEffectQWithInspections;
+  const hasDrawEffectVisualStep = drawEffectQ.some(step => step?.type !== 'STATE_PATCH');
+  const drawEffectStatePatch = hasDrawEffectVisualStep
+    ? statePatchStep({ players: newGs?.players, discard: newGs?.discard })
+    : null;
   const queue = [
     ...boundarySteps,
     turnStartStep,
     ...turnStartPreDrawQ,
     ...(turnStartStatePatch ? [turnStartStatePatch] : []),
     drawCardStep,
+    ...(discardDrawnStep ? [discardDrawnStep] : []),
+    ...(discardRestoreStep ? [discardRestoreStep] : []),
     ...drawEffectQ,
+    ...(drawEffectStatePatch ? [drawEffectStatePatch] : []),
   ];
   const startAnim = boundarySteps[0] || turnStartStep;
   const startQueue = [
@@ -437,7 +465,10 @@ export function buildTurnStartDrawReplayQueue({
     ...turnStartPreDrawQ,
     ...(turnStartStatePatch ? [turnStartStatePatch] : []),
     drawCardStep,
+    ...(discardDrawnStep ? [discardDrawnStep] : []),
+    ...(discardRestoreStep ? [discardRestoreStep] : []),
     ...drawEffectQ,
+    ...(drawEffectStatePatch ? [drawEffectStatePatch] : []),
   ];
   return {
     drawnCard,

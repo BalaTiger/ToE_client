@@ -54,17 +54,18 @@ function GeomagneticRestoreShuffleAnim({anim,exiting}){
   const [path,setPath]=React.useState(null);
   useEffect(()=>{
     const measure=()=>{
-      const from={x:window.innerWidth*0.50,y:window.innerHeight*0.45};
-      const to=getPileAnchorCenter('[data-discard-pile]',{x:window.innerWidth*0.72,y:window.innerHeight*0.46});
+      const actorIdx=anim?.actorIdx ?? anim?.targetPid ?? 0;
+      const from=getPlayerHandAnchorCenter(actorIdx);
+      const to=getPileAnchorCenter('[data-discard-pile]',{x:window.innerWidth*0.35,y:window.innerHeight*0.50});
       setPath({
-        left:from.x-42,
-        top:from.y-59,
+        left:from.x,
+        top:from.y,
         '--gm-restore-tx':`${to.x-from.x}px`,
         '--gm-restore-ty':`${to.y-from.y}px`,
       });
     };
     requestAnimationFrame(()=>requestAnimationFrame(measure));
-  },[]);
+  },[anim]);
   const msgs=(anim?.msgs||[]).slice(-3);
   return(
     <div className={`geomagnetic-restore-overlay${exiting?' geomagnetic-restore-exiting':''}`}>

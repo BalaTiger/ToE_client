@@ -26,3 +26,4 @@ export * from './turnScopedEffects';
 export * from './animReplayEvents';
 export * from './animStatePatch';
 export * from './etherealize';
+export * from './tutorialScenario';

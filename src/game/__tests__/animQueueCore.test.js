@@ -175,6 +175,46 @@ describe('buildAnimQueue stat animations', () => {
     expect(buildAnimQueue(oldGs, newGs).some(step => step.type === 'CARD_TRANSFER')).toBe(false);
   });
 
+  it('黑暗子嗣发放黑山羊幼仔从邪神之力标记飞向手牌', () => {
+    const goat = { id: 'goat-1', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const oldGs = makeGs({
+      currentTurn: 1,
+      players: [makePlayer({ name: '你' }), makePlayer({ name: '卡洛斯', hand: [] })],
+      log: [],
+    });
+    const newGs = makeGs({
+      currentTurn: 1,
+      players: [makePlayer({ name: '你' }), makePlayer({ name: '卡洛斯', hand: [goat] })],
+      log: ['【黑暗子嗣】卡洛斯 获得1张黑山羊幼仔'],
+    });
+
+    const transfer = buildAnimQueue(oldGs, newGs).find(step => step.type === 'CARD_TRANSFER');
+
+    expect(transfer).toMatchObject({
+      fromPid: 1,
+      toPid: 1,
+      count: 1,
+      effect: 'blackGoat',
+      sourceAnchor: 'godPower',
+    });
+  });
+
+  it('黑暗子嗣日志没有对应手牌增量时不重复播放发放动画', () => {
+    const goat = { id: 'goat-1', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const oldGs = makeGs({
+      currentTurn: 0,
+      players: [makePlayer({ name: '贝拉' }), makePlayer({ name: '卡洛斯', hand: [goat] })],
+      log: [],
+    });
+    const newGs = makeGs({
+      currentTurn: 1,
+      players: [makePlayer({ name: '贝拉' }), makePlayer({ name: '卡洛斯', hand: [goat] })],
+      log: ['【黑暗子嗣】卡洛斯 获得1张黑山羊幼仔'],
+    });
+
+    expect(buildAnimQueue(oldGs, newGs).some(step => step.type === 'CARD_TRANSFER' && step.effect === 'blackGoat')).toBe(false);
+  });
+
   it('存在显式 stat events 时不再根据状态差分猜测回复动画', () => {
     const oldGs = makeGs({
       players: [makePlayer({ hp: 10, san: 3 })],

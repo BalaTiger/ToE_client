@@ -296,8 +296,10 @@ export function buildAnimQueue(oldGs, newGs) {
       const targetName = shuMatch[1];
       const count = parseInt(shuMatch[2], 10);
       const toPid = targetName === '你' ? 0 : effectivePlayers.findIndex(p => p?.name === targetName);
-      if (toPid >= 0 && count > 0) {
-        q.push(cardTransferStep({ fromPid: oldGs.currentTurn, dest: 'player', toPid, count, sourceAnchor: 'playerArea', effect: 'blackGoat', durationMs: 1500, msgs: [shuMsg] }));
+      const oldHandCount = oldGs.players?.[toPid]?.hand?.length ?? 0;
+      const newHandCount = effectivePlayers?.[toPid]?.hand?.length ?? 0;
+      if (toPid >= 0 && count > 0 && newHandCount >= oldHandCount + count) {
+        q.push(cardTransferStep({ fromPid: oldGs.currentTurn, dest: 'player', toPid, count, sourceAnchor: 'godPower', effect: 'blackGoat', durationMs: 1500, msgs: [shuMsg] }));
       }
     }
   }
