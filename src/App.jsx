@@ -542,6 +542,7 @@ export default function Game(){
   const [showFullLog,setShowFullLog]=useState(false);
   const [tutorialStep,setTutorialStep]=useState(1);
   const [tutorialDiceResultPending,setTutorialDiceResultPending]=useState(false);
+  const [tutorialDiceResultResuming,setTutorialDiceResultResuming]=useState(false);
   const tutorialStepDef=showTutorial&&typeof tutorialStep==='string'?getTutorialStep(tutorialStep):null;
   const isScriptedTutorial=!!tutorialStepDef;
   const isTutorialActionStep=!!tutorialStepDef?.allowedAction;
@@ -1432,6 +1433,8 @@ export default function Game(){
   const [deckAreaRect,setDeckAreaRect]=useState(null);
   const dodgeRollButtonRef=useRef(null);
   const [dodgeRollButtonRect,setDodgeRollButtonRect]=useState(null);
+  const skillButtonRef=useRef(null);
+  const [skillButtonRect,setSkillButtonRect]=useState(null);
   const [roleRevealAnim,setRoleRevealAnim]=useState(null); // {role,pendingGs}|null
   
   // --- 新增：用于 UI 延迟显示的 HP/SAN 状态 ---
@@ -1722,6 +1725,12 @@ export default function Game(){
     });
   },[clearBattleAnimationState,getVisualDiscardForState,syncVisibleLog,pendingGsRef]);
 
+  const handleTutorialResultNext=useCallback(()=>{
+    setTutorialDiceResultResuming(true);
+    // 结束骰子定格，让它正常淡出，随后播放队列中的收入牌飞入手牌动画
+    setAnim(prev=>prev?{...prev,durationMs:0,onSettled:undefined}:prev);
+  },[setAnim]);
+
   const isTutorialActionAllowed=useCallback((action)=>{
     if(!showTutorial||!tutorialStepDef)return true;
     return shouldAllowTutorialAction(tutorialStep,action);
@@ -1930,6 +1939,10 @@ export default function Game(){
         const r=_getZoomCompensatedRect(dodgeRollButtonRef.current);
         if(r)setDodgeRollButtonRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
       }
+      if(showTutorial&&scriptHighlight==='skillButton'&&skillButtonRef.current){
+        const r=_getZoomCompensatedRect(skillButtonRef.current);
+        if(r)setSkillButtonRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+      }
       if(showTutorial&&(tutorialStep===12||tutorialStep===13||scriptHighlight==='deckArea')&&deckAreaRef.current){
         const r=_getZoomCompensatedRect(deckAreaRef.current);
         if(r)setDeckAreaRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
@@ -1941,6 +1954,9 @@ export default function Game(){
       // 两个模态弹窗都有 0.22s 缩放动画，等动画结束后再测量按钮真实位置
       timeoutIds.push(setTimeout(update,220));
       timeoutIds.push(setTimeout(update,320));
+    }
+    if(showTutorial&&typeof tutorialStep==='string'&&tutorialStepDef?.highlight==='skillButton'){
+      timeoutIds.push(setTimeout(update,50));
     }
     if(showTutorial){
       window.addEventListener('scroll',update,true);
@@ -2008,6 +2024,14 @@ export default function Game(){
     setTutorialStep(TUTORIAL_FLOW.TREASURE_DODGE_RESULT);
     setTutorialDiceResultPending(false);
   },[showTutorial,tutorialDiceResultPending,anim,animExiting,animQueueRef,pendingGsRef]);
+
+  // 玩家点“下一步”恢复骰子动画后，等收入牌飞入动画也播完再进入掉包教学
+  useEffect(()=>{
+    if(!showTutorial||!tutorialDiceResultResuming)return;
+    if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
+    setTutorialStep(TUTORIAL_FLOW.TREASURE_USE_SKILL);
+    setTutorialDiceResultResuming(false);
+  },[showTutorial,tutorialDiceResultResuming,anim,animExiting,animQueueRef,pendingGsRef]);
 
   useEffect(()=>{
     if(!anim)setEarthquakeVisualPlayers(null);
@@ -4341,7 +4365,7 @@ export default function Game(){
       newGs.phase=decisionState.phase;
       newGs.abilityData=decisionState.abilityData;
     }
-    return { P, D, Disc, L, newGs, d1, dodgeSuccess, who, hasDecision:decisionState.hasDecision };
+    return { P, D, Disc, L, newGs, d1, dodgeSuccess, who, hasDecision:decisionState.hasDecision, resolutionCard };
   }
 
   function handleTreasureDodgeRoll(){
@@ -4369,6 +4393,8 @@ export default function Game(){
       return;
     }
     const queue=bindAnimLogChunks(buildAnimQueue(gs,result.newGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
+    const drawerIdx=dr.drawerIdx??0;
+    queue.push(cardTransferStep({fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,sourceAnchor:'playerArea',effect:'draw',cards:[result.resolutionCard]}));
     // 无论是否有其他动画，都播放骰子动画
     broadcastVisualReplayIfNeeded(result.newGs);
     if(dr.fromEndTurnReplay){
@@ -8316,7 +8342,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                           {multiplyLimited&&<span style={{fontSize:9,marginLeft:4,color:'var(--toe-muted,#7a5a2a)'}}>(已用)</span>}
                       </button>
                     )}
-                    {showTutorialSkillButton&&<button onClick={useAbility} disabled={skillRestLimited}
+                    {showTutorialSkillButton&&<button ref={skillButtonRef} onClick={useAbility} disabled={skillRestLimited}
                       style={{
                         padding:isMobile?'5px 10px':'6px 16px',background:'#1c1208',
                         border:`1.5px solid ${skillRestLimited?'var(--toe-line,#3a2510)':skillRi.col}`,
@@ -8435,7 +8461,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         <>
           {!showTutorial&&anim?.type!=='APOPHIS_ECLIPSE'&&<ApophisNightBadge night={anim?._apophisNight||gs?.apophisNight}/>}
           {!showTutorial&&<HoundsTimerBadge active={houndsTimerVisible} secondsLeft={houndsSecLeft}/>}
-          {!tutorialDiceResultPending&&<InGameTutorialOverlay
+          {!tutorialDiceResultPending&&!tutorialDiceResultResuming&&<InGameTutorialOverlay
             showTutorial={showTutorial}
             tutorialStep={tutorialStep}
             vw={vw}
@@ -8447,10 +8473,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             drawRevealKeepButtonRect={drawRevealKeepButtonRect}
             deckAreaRect={deckAreaRect}
             dodgeRollButtonRect={dodgeRollButtonRect}
+            skillButtonRect={skillButtonRect}
             isArtifact={isArtifact}
             isH5Package={isH5Package}
             setTutorialStep={setTutorialStep}
             advanceTutorialStep={advanceTutorialStep}
+            onTutorialResultNext={handleTutorialResultNext}
             completeTutorial={completeTutorial}
           />}
         </>,document.body)}

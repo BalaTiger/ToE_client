@@ -58,8 +58,9 @@ function getScriptHighlightRect(step, rects, vw) {
     case 'roleText':
       return rects.roleTextRect;
     case 'handArea':
-    case 'skillButton':
       return rects.handAreaRect;
+    case 'skillButton':
+      return rects.skillButtonRect || rects.handAreaRect;
     case 'opponentPanel':
       return rects.aiPanelAreaRect;
     case 'opponentSanBar':
@@ -95,22 +96,25 @@ function ScriptTutorialOverlay({
   drawRevealKeepButtonRect,
   deckAreaRect,
   dodgeRollButtonRect,
+  skillButtonRect,
   isArtifact,
   isH5Package,
   advanceTutorialStep,
+  onTutorialResultNext,
   completeTutorial,
 }) {
   const step = getTutorialStep(tutorialStep);
   if (!step || step.auto) return null;
-  const rawRect = getScriptHighlightRect(step, { panelRect, roleTextRect, handAreaRect, aiPanelAreaRect, opponentSanBarRect, drawRevealKeepButtonRect, deckAreaRect, dodgeRollButtonRect }, vw);
+  const rawRect = getScriptHighlightRect(step, { panelRect, roleTextRect, handAreaRect, aiPanelAreaRect, opponentSanBarRect, drawRevealKeepButtonRect, deckAreaRect, dodgeRollButtonRect, skillButtonRect }, vw);
   const noSpotlight = rawRect?.noSpotlight;
   const rect = noSpotlight ? null : rawRect;
   if (step?.highlight === 'drawRevealKeepButton' && !rect) return null;
   if (step?.highlight === 'dodgeRollButton' && !rect) return null;
+  if (step?.highlight === 'skillButton' && !rect) return null;
   const BG = 'rgba(0,0,0,0.58)';
   const tooltipW = Math.min(step?.highlight === 'center' ? 360 : 300, vw - 20);
-  const tooltipH = step?.highlight === 'drawRevealKeepButton' || step?.highlight === 'dodgeRollButton' ? 132 : 210;
-  const tooltipGap = step?.highlight === 'drawRevealKeepButton' || step?.highlight === 'dodgeRollButton' ? 8 : 14;
+  const tooltipH = step?.highlight === 'drawRevealKeepButton' || step?.highlight === 'dodgeRollButton' || step?.highlight === 'skillButton' ? 132 : 210;
+  const tooltipGap = step?.highlight === 'drawRevealKeepButton' || step?.highlight === 'dodgeRollButton' || step?.highlight === 'skillButton' ? 8 : 14;
   const tooltipRoom = tooltipH + tooltipGap + 4;
   const centerX = rect ? (rect.left + rect.right) / 2 : window.innerWidth / 2;
   const centerY = rect ? (rect.top + rect.bottom) / 2 : window.innerHeight / 2;
@@ -145,6 +149,10 @@ function ScriptTutorialOverlay({
   const onPrimary = () => {
     if (step?.complete) {
       completeTutorial();
+      return;
+    }
+    if (step?.id === TUTORIAL_FLOW.TREASURE_DODGE_RESULT && onTutorialResultNext) {
+      onTutorialResultNext();
       return;
     }
     if (step?.next) {
@@ -242,10 +250,12 @@ export default function InGameTutorialOverlay({
   drawRevealKeepButtonRect,
   deckAreaRect,
   dodgeRollButtonRect,
+  skillButtonRect,
   isArtifact,
   isH5Package,
   setTutorialStep,
   advanceTutorialStep,
+  onTutorialResultNext,
   completeTutorial,
 }) {
   if (!showTutorial) return null;
@@ -262,9 +272,11 @@ export default function InGameTutorialOverlay({
         drawRevealKeepButtonRect={drawRevealKeepButtonRect}
         deckAreaRect={deckAreaRect}
         dodgeRollButtonRect={dodgeRollButtonRect}
+        skillButtonRect={skillButtonRect}
         isArtifact={isArtifact}
         isH5Package={isH5Package}
         advanceTutorialStep={advanceTutorialStep}
+        onTutorialResultNext={onTutorialResultNext}
         completeTutorial={completeTutorial}
       />
     );
