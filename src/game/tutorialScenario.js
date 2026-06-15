@@ -38,6 +38,7 @@ export const TUTORIAL_FLOW = {
   TREASURE_DRAW_REVEAL: 'treasureDrawReveal',
   TREASURE_DODGE_PROMPT: 'treasureDodgePrompt',
   TREASURE_DODGE_ROLL: 'treasureDodgeRoll',
+  TREASURE_DODGE_RESULT: 'treasureDodgeResult',
   TREASURE_USE_SKILL: 'treasureUseSkill',
   TREASURE_SELECT_TARGET: 'treasureSelectTarget',
   TREASURE_STEAL_CARD: 'treasureStealCard',
@@ -232,6 +233,14 @@ const SKILL_STEPS = [
     highlight: 'dodgeRollButton',
     lock: false,
     allowedAction: { type: 'dodgeRoll' },
+  },
+  {
+    id: TUTORIAL_FLOW.TREASURE_DODGE_RESULT,
+    title: '求生成功',
+    body: '看，你的运气很不错，有惊无险。当你掷出4~6点时，你可以收入区域牌而不承担负面效果。',
+    highlight: 'noSpotlight',
+    lock: true,
+    next: TUTORIAL_FLOW.TREASURE_USE_SKILL,
   },
   {
     id: TUTORIAL_FLOW.TREASURE_USE_SKILL,
@@ -582,7 +591,7 @@ export function shouldAllowTutorialAction(stepId, action) {
 
 export function nextTutorialStepAfterAction(stepId, action) {
   if (stepId === TUTORIAL_FLOW.TREASURE_DRAW_REVEAL && action.type === 'drawKeep') return TUTORIAL_FLOW.TREASURE_DODGE_PROMPT;
-  if (stepId === TUTORIAL_FLOW.TREASURE_DODGE_PROMPT && action.type === 'dodgeRoll') return TUTORIAL_FLOW.TREASURE_USE_SKILL;
+  if (stepId === TUTORIAL_FLOW.TREASURE_DODGE_PROMPT && action.type === 'dodgeRoll') return TUTORIAL_FLOW.TREASURE_DODGE_RESULT;
   if (stepId === TUTORIAL_FLOW.TREASURE_USE_SKILL && action.type === 'useSkill') return TUTORIAL_FLOW.TREASURE_SELECT_TARGET;
   if (stepId === TUTORIAL_FLOW.TREASURE_SELECT_TARGET && action.type === 'selectTarget') return TUTORIAL_FLOW.TREASURE_STEAL_CARD;
   if (stepId === TUTORIAL_FLOW.TREASURE_STEAL_CARD && action.type === 'swapSteal') return TUTORIAL_FLOW.TREASURE_GIVE_CARD;

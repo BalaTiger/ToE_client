@@ -541,6 +541,7 @@ export default function Game(){
   const [showGodResurrection,setShowGodResurrection]=useState(false);
   const [showFullLog,setShowFullLog]=useState(false);
   const [tutorialStep,setTutorialStep]=useState(1);
+  const [tutorialDiceResultPending,setTutorialDiceResultPending]=useState(false);
   const tutorialStepDef=showTutorial&&typeof tutorialStep==='string'?getTutorialStep(tutorialStep):null;
   const isScriptedTutorial=!!tutorialStepDef;
   const isTutorialActionStep=!!tutorialStepDef?.allowedAction;
@@ -1703,19 +1704,23 @@ export default function Game(){
 
   const advanceTutorialStep=useCallback((nextStep)=>{
     if(!nextStep)return;
+    // 如果还有未应用的动画终态，先应用再切换教学步骤，避免丢失状态
+    const pendingBase=pendingGsRef.current;
+    if(pendingBase)pendingGsRef.current=null;
     clearBattleAnimationState();
     setSwapBlindDraw(null);
     setMobileArmedGodCardIdx(null);
     setTutorialStep(nextStep);
     setGs(prev=>{
       if(!prev)return prev;
-      const nextGs=applyTutorialStepState(clearTutorialWinState(prev,nextStep),nextStep);
+      const base=pendingBase?{...pendingBase,players:clearPendingAnimDeathFlags(pendingBase.players)}:prev;
+      const nextGs=applyTutorialStepState(clearTutorialWinState(base,nextStep),nextStep);
       syncVisibleLog(nextGs?.log||[]);
       setVisualDiscard(getVisualDiscardForState(nextGs));
       setDisplayStats((nextGs?.players||[]).map(p=>({hp:p.hp,san:p.san})));
       return nextGs;
     });
-  },[clearBattleAnimationState,getVisualDiscardForState,syncVisibleLog]);
+  },[clearBattleAnimationState,getVisualDiscardForState,syncVisibleLog,pendingGsRef]);
 
   const isTutorialActionAllowed=useCallback((action)=>{
     if(!showTutorial||!tutorialStepDef)return true;
@@ -1995,6 +2000,14 @@ export default function Game(){
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[showTutorial,tutorialStep,gs?.phase,gs?._turnKey,anim,animExiting]);
+
+  // 骰子动画结束后再显示“求生成功”教学弹窗，动画期间隐藏教学遮罩
+  useEffect(()=>{
+    if(!showTutorial||!tutorialDiceResultPending)return;
+    if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
+    setTutorialStep(TUTORIAL_FLOW.TREASURE_DODGE_RESULT);
+    setTutorialDiceResultPending(false);
+  },[showTutorial,tutorialDiceResultPending,anim,animExiting,animQueueRef,pendingGsRef]);
 
   useEffect(()=>{
     if(!anim)setEarthquakeVisualPlayers(null);
@@ -4245,7 +4258,7 @@ export default function Game(){
 
   // Generic Treasure Hunter dodge handler
   function handleTreasureDodge(gs, dr, isAOE = false) {
-    const isTutorialDodge = showTutorial && tutorialStep === TUTORIAL_FLOW.TREASURE_DODGE_ROLL;
+    const isTutorialDodge = showTutorial && (tutorialStep === TUTORIAL_FLOW.TREASURE_DODGE_PROMPT || tutorialStep === TUTORIAL_FLOW.TREASURE_DODGE_ROLL);
     const d1 = isTutorialDodge ? 6 : (1 + (Math.random() * 6 | 0));
     const dodgeSuccess = isTutorialDodge ? true : d1 >= 4;
     let P = copyPlayers(gs.players), D = [...gs.deck], Disc = [...gs.discard];
@@ -4334,6 +4347,8 @@ export default function Game(){
   function handleTreasureDodgeRoll(){
     const dr=gs.drawReveal;if(!dr?.card)return;
     const result=handleTreasureDodge(gs,dr,false);
+    const isTutorialDodgeStep=showTutorial&&(tutorialStep===TUTORIAL_FLOW.TREASURE_DODGE_PROMPT||tutorialStep===TUTORIAL_FLOW.TREASURE_DODGE_ROLL);
+    const diceAnim={type:'DICE_ROLL',d1:result.d1,d2:0,heal:0,rollerName:result.who,dodgeSuccess:result.dodgeSuccess,...(isTutorialDodgeStep?{durationMs:2147483647,onSettled:()=>{setTutorialStep(TUTORIAL_FLOW.TREASURE_DODGE_RESULT);setTutorialDiceResultPending(false);}}:{})};
     if(result.win){
       setGs({...gs,players:result.P,deck:result.D,discard:result.Disc,log:result.L,gameOver:result.win,drawReveal:null});
       return;
@@ -4342,7 +4357,7 @@ export default function Game(){
       pendingGsRef.current=result.pendingWinGs;
       animQueueRef.current=[];
       setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-      setAnim({type:'DICE_ROLL',d1:result.d1,d2:0,heal:0,rollerName:result.who,dodgeSuccess:result.dodgeSuccess});
+      setAnim(diceAnim);
       return;
     }
     if(dr.fromRest&&!result.win&&!result.hasDecision){
@@ -4350,7 +4365,7 @@ export default function Game(){
       pendingGsRef.current=result.newGs;
       animQueueRef.current=[{type:'CTH_CONTINUE',data:{cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining}}];
       setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-      setAnim({type:'DICE_ROLL',d1:result.d1,d2:0,heal:0,rollerName:result.who,dodgeSuccess:result.dodgeSuccess});
+      setAnim(diceAnim);
       return;
     }
     const queue=bindAnimLogChunks(buildAnimQueue(gs,result.newGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
@@ -4365,9 +4380,10 @@ export default function Game(){
     pendingGsRef.current=result.newGs;
     animQueueRef.current=queue;
     setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-    setAnim({type:'DICE_ROLL',d1:result.d1,d2:0,heal:0,rollerName:result.who,dodgeSuccess:result.dodgeSuccess});
-    const tutorialNext=getNextTutorialStepForAction({type:'dodgeRoll'});
-    if(tutorialNext) setTutorialStep(tutorialNext);
+    setAnim(diceAnim);
+    if(isTutorialDodgeStep){
+      setTutorialDiceResultPending(true);
+    }
   }
 
   function handleTreasureDodgeSkip(){
@@ -8419,7 +8435,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         <>
           {!showTutorial&&anim?.type!=='APOPHIS_ECLIPSE'&&<ApophisNightBadge night={anim?._apophisNight||gs?.apophisNight}/>}
           {!showTutorial&&<HoundsTimerBadge active={houndsTimerVisible} secondsLeft={houndsSecLeft}/>}
-          <InGameTutorialOverlay
+          {!tutorialDiceResultPending&&<InGameTutorialOverlay
             showTutorial={showTutorial}
             tutorialStep={tutorialStep}
             vw={vw}
@@ -8436,7 +8452,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             setTutorialStep={setTutorialStep}
             advanceTutorialStep={advanceTutorialStep}
             completeTutorial={completeTutorial}
-          />
+          />}
         </>,document.body)}
       {roleRevealAnim&&<RoleRevealAnim role={roleRevealAnim.role} onDone={()=>_onRoleRevealDone(roleRevealAnim.pendingGs)}/>}
 

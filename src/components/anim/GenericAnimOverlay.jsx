@@ -62,6 +62,9 @@ export function DiceRollAnim({ anim, exiting }) {
     }, 100);
     return () => clearInterval(iv);
   }, []);
+  React.useEffect(() => {
+    if (settled && anim.onSettled) anim.onSettled();
+  }, [settled, anim]);
   const face1 = settled ? DICE_FACES[d1 - 1] : DICE_FACES[Math.floor(Math.random() * 6)];
   const face2 = settled ? DICE_FACES[d2 - 1] : DICE_FACES[Math.floor(Math.random() * 6)];
   const winner = Math.max(d1, d2);
