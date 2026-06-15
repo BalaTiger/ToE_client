@@ -129,7 +129,7 @@ function ScriptTutorialOverlay({
     ? Math.max(18, window.innerHeight / 2 - 140)
     : noSpotlight
     ? (isDodgeResult
-      ? Math.max(10, Math.min(window.innerHeight - tooltipH - 10, centerY + 80))
+      ? Math.max(10, Math.min(window.innerHeight - tooltipH - 10, centerY + 160))
       : Math.max(10, window.innerHeight - tooltipH - 80))
     : actionStep && step?.highlight === 'swapBlind'
     ? 16
