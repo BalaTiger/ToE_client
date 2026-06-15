@@ -136,7 +136,7 @@ function NyaBorrowModal({ deadPlayers, godLevel, onBorrow, onSkip }) {
 }
 
 // ── Draw Reveal Modal ─────────────────────────────────────────
-function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingText }) {
+function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingText, canKeep = true, canDiscard = true, keepButtonRef }) {
   if (!drawReveal?.card) return null;
   const { card } = drawReveal;
   const s = CS[card.letter] || GOD_CS;
@@ -160,10 +160,11 @@ function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingTex
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap', marginTop: 16 }}>
-            <button onClick={onKeep} style={{
+            <button ref={keepButtonRef} disabled={!canKeep} onClick={canKeep ? onKeep : undefined} style={{
               padding: '10px 22px', background: '#1c1008', border: '1.5px solid #c8a96e',
               color: '#e8c87a', fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 14,
-              borderRadius: 2, cursor: 'pointer', letterSpacing: 1,
+              borderRadius: 2, cursor: canKeep ? 'pointer' : 'not-allowed', letterSpacing: 1,
+              opacity: canKeep ? 1 : 0.45,
               boxShadow: '0 0 16px #c8a96e44', transition: 'all .15s',
             }}>
               收入手牌
@@ -171,10 +172,12 @@ function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingTex
                 (触发效果)
               </div>
             </button>
-            <button onClick={onDiscard} style={{
+            <button disabled={!canDiscard} onClick={canDiscard ? onDiscard : undefined} style={{
               padding: '10px 22px', background: '#120a08', border: '1.5px solid #883030',
               color: '#e08888', fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 14,
-              borderRadius: 2, cursor: 'pointer', letterSpacing: 1, transition: 'all .15s',
+              borderRadius: 2, cursor: canDiscard ? 'pointer' : 'not-allowed', letterSpacing: 1,
+              opacity: canDiscard ? 1 : 0.45,
+              transition: 'all .15s',
             }}>
               弃置此牌
             </button>
@@ -186,7 +189,7 @@ function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingTex
 }
 
 // ── Treasure Hunter Dodge Modal ─────────────────────────────
-function TreasureDodgeModal({ drawReveal, onRoll, onSkip, thinkingText }) {
+function TreasureDodgeModal({ drawReveal, onRoll, onSkip, thinkingText, rollButtonRef, canSkip = true }) {
   if (!drawReveal?.card) return null;
   const { card } = drawReveal;
   const s = CS[card.letter] || GOD_CS;
@@ -217,7 +220,7 @@ function TreasureDodgeModal({ drawReveal, onRoll, onSkip, thinkingText }) {
 
         {!thinkingText && (
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap', marginTop: 20 }}>
-            <button onClick={onRoll} style={{
+            <button ref={rollButtonRef} onClick={onRoll} style={{
               padding: '10px 22px', background: '#1c1008', border: '1.5px solid #c8a96e',
               color: '#e8c87a', fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 14,
               borderRadius: 2, cursor: 'pointer', letterSpacing: 1,
@@ -228,6 +231,7 @@ function TreasureDodgeModal({ drawReveal, onRoll, onSkip, thinkingText }) {
                 (尝试规避)
               </div>
             </button>
+            {canSkip && (
             <button onClick={onSkip} style={{
               padding: '10px 22px', background: '#120a08', border: '1.5px solid #883030',
               color: '#e08888', fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 14,
@@ -235,6 +239,7 @@ function TreasureDodgeModal({ drawReveal, onRoll, onSkip, thinkingText }) {
             }}>
               直接触发
             </button>
+            )}
           </div>
         )}
       </div>

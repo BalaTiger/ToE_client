@@ -32,6 +32,7 @@ const TERM_STYLES = {
   身份: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
   技能: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
   宝藏: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
+  求生: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
   牌堆: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
   信仰: { color: '#c060e0', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #9030cc88' },
   HP: { color: '#e05050', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #cc222288' },
@@ -63,6 +64,10 @@ function getScriptHighlightRect(step, rects, vw) {
       return rects.aiPanelAreaRect;
     case 'opponentSanBar':
       return rects.opponentSanBarRect;
+    case 'drawRevealKeepButton':
+      return rects.drawRevealKeepButtonRect;
+    case 'dodgeRollButton':
+      return rects.dodgeRollButtonRect;
     case 'deckArea':
       return rects.deckAreaRect;
     case 'swapBlind':
@@ -87,7 +92,9 @@ function ScriptTutorialOverlay({
   handAreaRect,
   aiPanelAreaRect,
   opponentSanBarRect,
+  drawRevealKeepButtonRect,
   deckAreaRect,
+  dodgeRollButtonRect,
   isArtifact,
   isH5Package,
   advanceTutorialStep,
@@ -95,12 +102,16 @@ function ScriptTutorialOverlay({
 }) {
   const step = getTutorialStep(tutorialStep);
   if (!step || step.auto) return null;
-  const rawRect = getScriptHighlightRect(step, { panelRect, roleTextRect, handAreaRect, aiPanelAreaRect, opponentSanBarRect, deckAreaRect }, vw);
+  const rawRect = getScriptHighlightRect(step, { panelRect, roleTextRect, handAreaRect, aiPanelAreaRect, opponentSanBarRect, drawRevealKeepButtonRect, deckAreaRect, dodgeRollButtonRect }, vw);
   const noSpotlight = rawRect?.noSpotlight;
   const rect = noSpotlight ? null : rawRect;
+  if (step?.highlight === 'drawRevealKeepButton' && !rect) return null;
+  if (step?.highlight === 'dodgeRollButton' && !rect) return null;
   const BG = 'rgba(0,0,0,0.58)';
   const tooltipW = Math.min(step?.highlight === 'center' ? 360 : 300, vw - 20);
-  const tooltipH = 210;
+  const tooltipH = step?.highlight === 'drawRevealKeepButton' || step?.highlight === 'dodgeRollButton' ? 132 : 210;
+  const tooltipGap = step?.highlight === 'drawRevealKeepButton' || step?.highlight === 'dodgeRollButton' ? 8 : 14;
+  const tooltipRoom = tooltipH + tooltipGap + 4;
   const centerX = rect ? (rect.left + rect.right) / 2 : window.innerWidth / 2;
   const centerY = rect ? (rect.top + rect.bottom) / 2 : window.innerHeight / 2;
   const actionStep = !!step?.allowedAction;
@@ -119,12 +130,14 @@ function ScriptTutorialOverlay({
     ? Math.max(10, window.innerHeight - tooltipH - 80)
     : actionStep && step?.highlight === 'swapBlind'
     ? 16
-    : actionStep && rect && rect.top > tooltipH + 18
-    ? Math.max(10, rect.top - tooltipH - 14)
-    : actionStep && rect && rect.bottom + tooltipH + 18 < window.innerHeight
-    ? rect.bottom + 14
+    : actionStep && step?.highlight === 'dodgeRollButton'
+    ? (rect && rect.bottom + tooltipRoom < window.innerHeight ? rect.bottom + tooltipGap : Math.max(10, rect.top - tooltipH - tooltipGap))
+    : actionStep && rect && rect.top > tooltipRoom
+    ? Math.max(10, rect.top - tooltipH - tooltipGap)
+    : actionStep && rect && rect.bottom + tooltipRoom < window.innerHeight
+    ? rect.bottom + tooltipGap
     : Math.max(10, Math.min(centerY - 90, window.innerHeight - 230));
-  const hasButton = step?.next || step?.complete;
+  const hasButton = !actionStep && (step?.next || step?.complete);
   const bodyLines = Array.isArray(step?.body) ? step.body : [step?.body].filter(Boolean);
   const onPrimary = () => {
     if (step?.complete) {
@@ -223,7 +236,9 @@ export default function InGameTutorialOverlay({
   handAreaRect,
   aiPanelAreaRect,
   opponentSanBarRect,
+  drawRevealKeepButtonRect,
   deckAreaRect,
+  dodgeRollButtonRect,
   isArtifact,
   isH5Package,
   setTutorialStep,
@@ -241,7 +256,9 @@ export default function InGameTutorialOverlay({
         handAreaRect={handAreaRect}
         aiPanelAreaRect={aiPanelAreaRect}
         opponentSanBarRect={opponentSanBarRect}
+        drawRevealKeepButtonRect={drawRevealKeepButtonRect}
         deckAreaRect={deckAreaRect}
+        dodgeRollButtonRect={dodgeRollButtonRect}
         isArtifact={isArtifact}
         isH5Package={isH5Package}
         advanceTutorialStep={advanceTutorialStep}

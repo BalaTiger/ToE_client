@@ -216,28 +216,20 @@ const SKILL_STEPS = [
   {
     id: TUTORIAL_FLOW.TREASURE_DRAW_REVEAL,
     title: '收入手牌',
-    body: '',
-    highlight: 'center',
-    lock: true,
-    auto: true,
+    body: '哦，真可惜，不是D4。但我仍然推荐你收入这张牌，接下来自有妙用。',
+    highlight: 'drawRevealKeepButton',
+    lock: false,
+    allowedAction: { type: 'drawKeep' },
     next: TUTORIAL_FLOW.TREASURE_DODGE_PROMPT,
   },
   {
     id: TUTORIAL_FLOW.TREASURE_DODGE_PROMPT,
-    title: '规避判定',
+    title: '求生技能',
     body: [
-      '真可惜，不是D4，但我们先收入这张牌。',
-      `作为${TREASURE}，遇到负面区域牌时可以掷骰子尝试规避。`,
+      `你可能奇怪为什么要拿一张负面效果牌。别忘了，寻宝者的目标是集齐${GOLD('宝藏')}，自然要承担一点探索的风险。`,
+      `更何况，我们还有${GOLD('求生')}技能。现在掷出骰子。`,
     ],
-    highlight: 'noSpotlight',
-    lock: true,
-    next: TUTORIAL_FLOW.TREASURE_DODGE_ROLL,
-  },
-  {
-    id: TUTORIAL_FLOW.TREASURE_DODGE_ROLL,
-    title: '掷骰子',
-    body: '点击骰子按钮掷骰子。本次运气不错，固定掷出6点。',
-    highlight: 'noSpotlight',
+    highlight: 'dodgeRollButton',
     lock: false,
     allowedAction: { type: 'dodgeRoll' },
   },
@@ -589,6 +581,8 @@ export function shouldAllowTutorialAction(stepId, action) {
 }
 
 export function nextTutorialStepAfterAction(stepId, action) {
+  if (stepId === TUTORIAL_FLOW.TREASURE_DRAW_REVEAL && action.type === 'drawKeep') return TUTORIAL_FLOW.TREASURE_DODGE_PROMPT;
+  if (stepId === TUTORIAL_FLOW.TREASURE_DODGE_PROMPT && action.type === 'dodgeRoll') return TUTORIAL_FLOW.TREASURE_USE_SKILL;
   if (stepId === TUTORIAL_FLOW.TREASURE_USE_SKILL && action.type === 'useSkill') return TUTORIAL_FLOW.TREASURE_SELECT_TARGET;
   if (stepId === TUTORIAL_FLOW.TREASURE_SELECT_TARGET && action.type === 'selectTarget') return TUTORIAL_FLOW.TREASURE_STEAL_CARD;
   if (stepId === TUTORIAL_FLOW.TREASURE_STEAL_CARD && action.type === 'swapSteal') return TUTORIAL_FLOW.TREASURE_GIVE_CARD;

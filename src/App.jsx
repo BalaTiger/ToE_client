@@ -545,6 +545,8 @@ export default function Game(){
   const isScriptedTutorial=!!tutorialStepDef;
   const isTutorialActionStep=!!tutorialStepDef?.allowedAction;
   const isTutorialAutoDrawStep=showTutorial&&tutorialStep===TUTORIAL_FLOW.TREASURE_DRAW_CARD;
+  const isTutorialDrawKeepStep=showTutorial&&tutorialStep===TUTORIAL_FLOW.TREASURE_DRAW_REVEAL;
+  const isTutorialDrawKeepHighlightStep=isTutorialDrawKeepStep&&tutorialStepDef?.highlight==='drawRevealKeepButton';
   const [localDebugMode,setLocalDebugMode]=useState(()=>isLocalTestMode&&safeLS.get(LOCAL_DEBUG_KEY)==='1');
   const [debugForceCard]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_KEY)||null);
   const [debugForceCardTarget,setDebugForceCardTarget]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_TARGET_KEY)||'player');
@@ -1423,14 +1425,22 @@ export default function Game(){
   const aiPanelAreaRef=useRef(null);
   const [aiPanelAreaRect,setAiPanelAreaRect]=useState(null);
   const [opponentSanBarRect,setOpponentSanBarRect]=useState(null);
+  const drawRevealKeepButtonRef=useRef(null);
+  const [drawRevealKeepButtonRect,setDrawRevealKeepButtonRect]=useState(null);
   const deckAreaRef=useRef(null);
   const [deckAreaRect,setDeckAreaRect]=useState(null);
+  const dodgeRollButtonRef=useRef(null);
+  const [dodgeRollButtonRect,setDodgeRollButtonRect]=useState(null);
   const [roleRevealAnim,setRoleRevealAnim]=useState(null); // {role,pendingGs}|null
   
   // --- 新增：用于 UI 延迟显示的 HP/SAN 状态 ---
   const [displayStats, setDisplayStats] = useState(() => gs?.players ? gs.players.map(p => ({ hp: p.hp, san: p.san })) : []);
   const[earthquakeVisualPlayers,setEarthquakeVisualPlayers]=useState(null);
   const timerRef=useRef(null);
+
+  React.useLayoutEffect(()=>{
+    if(isTutorialDrawKeepHighlightStep)setDrawRevealKeepButtonRect(null);
+  },[isTutorialDrawKeepHighlightStep,gs?.phase,gs?.drawReveal?.card?.id]);
   const logRef=useRef(null);
   const [visibleLog,setVisibleLog]=useState(Array.isArray(gs?.log)?gs.log:[]);
   const visibleLogRef=useRef(Array.isArray(gs?.log)?gs.log:[]);
@@ -1881,6 +1891,7 @@ export default function Game(){
 
   // Measure player self-panel rect for tutorial steps 2-4 pointer
   useEffect(()=>{
+    const rafIds=[];
     const update=()=>{
       const scriptHighlight=typeof tutorialStep==='string'?tutorialStepDef?.highlight:null;
       if(showTutorial&&((tutorialStep>=2&&tutorialStep<=4)||scriptHighlight==='selfPanel')&&selfPanelRef.current){
@@ -1906,16 +1917,32 @@ export default function Game(){
           if(r)setOpponentSanBarRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
         }
       }
+      if(showTutorial&&scriptHighlight==='drawRevealKeepButton'&&drawRevealKeepButtonRef.current){
+        const r=_getZoomCompensatedRect(drawRevealKeepButtonRef.current);
+        if(r)setDrawRevealKeepButtonRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+      }
+      if(showTutorial&&scriptHighlight==='dodgeRollButton'&&dodgeRollButtonRef.current){
+        const r=_getZoomCompensatedRect(dodgeRollButtonRef.current);
+        if(r)setDodgeRollButtonRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+      }
       if(showTutorial&&(tutorialStep===12||tutorialStep===13||scriptHighlight==='deckArea')&&deckAreaRef.current){
         const r=_getZoomCompensatedRect(deckAreaRef.current);
         if(r)setDeckAreaRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
       }
     };
     update();
+    const timeoutIds=[];
+    if(showTutorial&&typeof tutorialStep==='string'&&(tutorialStepDef?.highlight==='drawRevealKeepButton'||tutorialStepDef?.highlight==='dodgeRollButton')){
+      // 两个模态弹窗都有 0.22s 缩放动画，等动画结束后再测量按钮真实位置
+      timeoutIds.push(setTimeout(update,220));
+      timeoutIds.push(setTimeout(update,320));
+    }
     if(showTutorial){
       window.addEventListener('scroll',update,true);
       window.addEventListener('resize',update);
       return()=>{
+        rafIds.forEach(id=>cancelAnimationFrame(id));
+        timeoutIds.forEach(id=>clearTimeout(id));
         window.removeEventListener('scroll',update,true);
         window.removeEventListener('resize',update);
       };
@@ -1949,10 +1976,12 @@ export default function Game(){
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
         triggerAnimQueue(queue,nextGs,()=>{
           applyTutorialStateSnapshot(nextGs);
+          setDrawRevealKeepButtonRect(null);
           setTutorialStep(TUTORIAL_FLOW.TREASURE_DRAW_REVEAL);
         });
       }else{
         applyTutorialStateSnapshot(nextGs);
+        setDrawRevealKeepButtonRect(null);
         setTutorialStep(TUTORIAL_FLOW.TREASURE_DRAW_REVEAL);
       }
       return;
@@ -4061,6 +4090,11 @@ export default function Game(){
     }
   }
 
+  function handleDrawKeepFromModal(){
+    if(showTutorial&&tutorialStepDef&&!isTutorialActionAllowed({type:'drawKeep'}))return;
+    handleDrawKeep();
+  }
+
   function handleZhuHideDrawnCard(hide){
     const dr=gs.drawReveal;
     if(!dr?.card)return;
@@ -4332,12 +4366,12 @@ export default function Game(){
     animQueueRef.current=queue;
     setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
     setAnim({type:'DICE_ROLL',d1:result.d1,d2:0,heal:0,rollerName:result.who,dodgeSuccess:result.dodgeSuccess});
-    if (showTutorial && tutorialStep === TUTORIAL_FLOW.TREASURE_DODGE_ROLL) {
-      setTutorialStep(TUTORIAL_FLOW.TREASURE_USE_SKILL);
-    }
+    const tutorialNext=getNextTutorialStepForAction({type:'dodgeRoll'});
+    if(tutorialNext) setTutorialStep(tutorialNext);
   }
 
   function handleTreasureDodgeSkip(){
+    if(showTutorial&&tutorialStepDef&&!isTutorialActionAllowed({type:'dodgeRoll'}))return;
     const dr=gs.drawReveal;if(!dr?.card)return;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
     const drawerIdx=dr.drawerIdx??0;
@@ -4478,6 +4512,11 @@ export default function Game(){
       // 播放动画后更新游戏状态
       triggerAnimQueue(queue,newGs);
     }
+  }
+
+  function handleDrawDiscardFromModal(){
+    if(showTutorial&&tutorialStepDef)return;
+    handleDrawDiscard();
   }
 
   function useAbility(){
@@ -7705,10 +7744,13 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       {!pendingZhuDrawAnyCard&&!suppressAnim&&canShowTurnDecisionModal&&phase==='DRAW_REVEAL'&&gs.drawReveal&&gs.drawReveal.needsDecision&&(
         <DrawRevealModal
           drawReveal={gs.drawReveal}
-          onKeep={handleDrawKeep}
-          onDiscard={handleDrawDiscard}
+          onKeep={handleDrawKeepFromModal}
+          onDiscard={handleDrawDiscardFromModal}
           canChoose={isLocalDrawDecision}
           thinkingText={gs._isMP&&!isLocalDrawDecision?`${gs.drawReveal.drawerName||gs.players[gs.currentTurn]?.name||'对方'}正在思考…`:''}
+          canKeep={!isTutorialDrawKeepStep||isTutorialActionAllowed({type:'drawKeep'})}
+          canDiscard={!isTutorialDrawKeepStep}
+          keepButtonRef={drawRevealKeepButtonRef}
         />
       )}
       {/* Treasure hunter dodge modal */}
@@ -7717,6 +7759,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           drawReveal={gs.drawReveal}
           onRoll={handleTreasureDodgeRoll}
           onSkip={handleTreasureDodgeSkip}
+          rollButtonRef={dodgeRollButtonRef}
+          canSkip={!isScriptedTutorial || tutorialStep !== TUTORIAL_FLOW.TREASURE_DODGE_PROMPT}
         />
       )}
       {/* Treasure hunter AOE dodge modal */}
@@ -7726,6 +7770,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           onRoll={handleTreasureAOEDodgeRoll}
           onSkip={handleTreasureAOEDodgeSkip}
           thinkingText={gs._isMP&&!isLocalTreasureAoEDodgePhase(gs)?`其他玩家思考中…`:''}
+          rollButtonRef={dodgeRollButtonRef}
+          canSkip={true}
         />
       )}
       {/* Other players see thinking text during AOE dodge */}
@@ -7967,8 +8013,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             </button>
           ):(
             <button
-              onClick={isTutorialAutoDrawStep?undefined:returnToMainMenu}
-              disabled={isTutorialAutoDrawStep}
+              onClick={(isTutorialAutoDrawStep||isTutorialDrawKeepStep)?undefined:returnToMainMenu}
+              disabled={isTutorialAutoDrawStep||isTutorialDrawKeepStep}
               style={{
                 marginLeft:'auto',
                 padding:isMobile?'4px 10px':'5px 12px',
@@ -7979,8 +8025,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                 fontWeight:700,
                 fontSize:baseFontSizes.small,
                 borderRadius:3,
-                cursor:isTutorialAutoDrawStep?'not-allowed':'pointer',
-                opacity:isTutorialAutoDrawStep?0.45:1,
+                cursor:(isTutorialAutoDrawStep||isTutorialDrawKeepStep)?'not-allowed':'pointer',
+                opacity:(isTutorialAutoDrawStep||isTutorialDrawKeepStep)?0.45:1,
                 letterSpacing:isMobile?0.5:1,
                 textTransform:'uppercase',
                 boxShadow:'0 0 12px rgba(194,65,47,0.34)',
@@ -8382,7 +8428,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             handAreaRect={handAreaRect}
             aiPanelAreaRect={aiPanelAreaRect}
             opponentSanBarRect={opponentSanBarRect}
+            drawRevealKeepButtonRect={drawRevealKeepButtonRect}
             deckAreaRect={deckAreaRect}
+            dodgeRollButtonRect={dodgeRollButtonRect}
             isArtifact={isArtifact}
             isH5Package={isH5Package}
             setTutorialStep={setTutorialStep}
