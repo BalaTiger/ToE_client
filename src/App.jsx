@@ -544,6 +544,7 @@ export default function Game(){
   const tutorialStepDef=showTutorial&&typeof tutorialStep==='string'?getTutorialStep(tutorialStep):null;
   const isScriptedTutorial=!!tutorialStepDef;
   const isTutorialActionStep=!!tutorialStepDef?.allowedAction;
+  const isTutorialAutoDrawStep=showTutorial&&tutorialStep===TUTORIAL_FLOW.TREASURE_DRAW_CARD;
   const [localDebugMode,setLocalDebugMode]=useState(()=>isLocalTestMode&&safeLS.get(LOCAL_DEBUG_KEY)==='1');
   const [debugForceCard]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_KEY)||null);
   const [debugForceCardTarget,setDebugForceCardTarget]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_TARGET_KEY)||'player');
@@ -1421,6 +1422,7 @@ export default function Game(){
   const [mobileArmedGodCardIdx,setMobileArmedGodCardIdx]=useState(null);
   const aiPanelAreaRef=useRef(null);
   const [aiPanelAreaRect,setAiPanelAreaRect]=useState(null);
+  const [opponentSanBarRect,setOpponentSanBarRect]=useState(null);
   const deckAreaRef=useRef(null);
   const [deckAreaRect,setDeckAreaRect]=useState(null);
   const [roleRevealAnim,setRoleRevealAnim]=useState(null); // {role,pendingGs}|null
@@ -1897,6 +1899,13 @@ export default function Game(){
         const r=_getZoomCompensatedRect(aiPanelAreaRef.current);
         if(r)setAiPanelAreaRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
       }
+      if(showTutorial&&scriptHighlight==='opponentSanBar'&&aiPanelAreaRef.current){
+        const sanBarEl=aiPanelAreaRef.current.querySelector('[data-stat-label="SAN"]');
+        if(sanBarEl){
+          const r=_getZoomCompensatedRect(sanBarEl);
+          if(r)setOpponentSanBarRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+        }
+      }
       if(showTutorial&&(tutorialStep===12||tutorialStep===13||scriptHighlight==='deckArea')&&deckAreaRef.current){
         const r=_getZoomCompensatedRect(deckAreaRef.current);
         if(r)setDeckAreaRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
@@ -1912,6 +1921,51 @@ export default function Game(){
       };
     }
   },[showTutorial,tutorialStep,tutorialStepDef,gs]);
+
+  // ── Tutorial: 寻宝者教学关自动摸牌 ───────────
+  useEffect(()=>{
+    if(!showTutorial||!gs||!isScriptedTutorial)return;
+
+    // 进入自动摸牌步骤：复用真实回合开始摸牌回放，动画结束后停在收入弹窗
+    if(tutorialStep===TUTORIAL_FLOW.TREASURE_DRAW_CARD&&gs.phase==='ACTION'&&!anim&&!animExiting&&animQueueRef.current.length===0&&!pendingGsRef.current){
+      const turnStartSourceGs={
+        ...gs,
+        currentTurn:Math.max(0,(gs.players?.length||1)-1),
+        phase:'ACTION',
+        drawReveal:null,
+        selectedCard:null,
+        abilityData:{},
+      };
+      const nextGs=startNextTurn(turnStartSourceGs);
+      const replay=buildAppTurnStartDrawReplay(nextGs,{
+        oldGs:turnStartSourceGs,
+        effectOldGs:{...turnStartSourceGs,players:nextGs._playersBeforeThisDraw||turnStartSourceGs.players},
+      });
+      const queue=replay?.queue?.length
+        ? replay.queue
+        : bindAnimLogChunks(buildAnimQueue(turnStartSourceGs,nextGs),{statLogs:[]});
+      if(queue.length){
+        if(replay?.visualLock)visualStateLocks.lock(replay.visualLock);
+        setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
+        triggerAnimQueue(queue,nextGs,()=>{
+          applyTutorialStateSnapshot(nextGs);
+          setTutorialStep(TUTORIAL_FLOW.TREASURE_DRAW_REVEAL);
+        });
+      }else{
+        applyTutorialStateSnapshot(nextGs);
+        setTutorialStep(TUTORIAL_FLOW.TREASURE_DRAW_REVEAL);
+      }
+      return;
+    }
+
+    // 收入弹窗由真实对局逻辑处理；选择收入后再进入寻宝者规避教学
+    if(tutorialStep===TUTORIAL_FLOW.TREASURE_DRAW_REVEAL){
+      if(gs.phase==='TREASURE_DODGE_DECISION'){
+        setTutorialStep(TUTORIAL_FLOW.TREASURE_DODGE_PROMPT);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[showTutorial,tutorialStep,gs?.phase,gs?._turnKey,anim,animExiting]);
 
   useEffect(()=>{
     if(!anim)setEarthquakeVisualPlayers(null);
@@ -4157,8 +4211,9 @@ export default function Game(){
 
   // Generic Treasure Hunter dodge handler
   function handleTreasureDodge(gs, dr, isAOE = false) {
-    const d1 = 1 + (Math.random() * 6 | 0);
-    const dodgeSuccess = d1 >= 4;
+    const isTutorialDodge = showTutorial && tutorialStep === TUTORIAL_FLOW.TREASURE_DODGE_ROLL;
+    const d1 = isTutorialDodge ? 6 : (1 + (Math.random() * 6 | 0));
+    const dodgeSuccess = isTutorialDodge ? true : d1 >= 4;
     let P = copyPlayers(gs.players), D = [...gs.deck], Disc = [...gs.discard];
     const drawerIdx = isAOE ? (gs.abilityData?.drawerIdx ?? 0) : (dr.drawerIdx ?? 0);
     const who = drawerIdx === 0 ? '你' : P[drawerIdx].name;
@@ -4277,6 +4332,9 @@ export default function Game(){
     animQueueRef.current=queue;
     setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
     setAnim({type:'DICE_ROLL',d1:result.d1,d2:0,heal:0,rollerName:result.who,dodgeSuccess:result.dodgeSuccess});
+    if (showTutorial && tutorialStep === TUTORIAL_FLOW.TREASURE_DODGE_ROLL) {
+      setTutorialStep(TUTORIAL_FLOW.TREASURE_USE_SKILL);
+    }
   }
 
   function handleTreasureDodgeSkip(){
@@ -7909,7 +7967,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             </button>
           ):(
             <button
-              onClick={returnToMainMenu}
+              onClick={isTutorialAutoDrawStep?undefined:returnToMainMenu}
+              disabled={isTutorialAutoDrawStep}
               style={{
                 marginLeft:'auto',
                 padding:isMobile?'4px 10px':'5px 12px',
@@ -7920,7 +7979,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                 fontWeight:700,
                 fontSize:baseFontSizes.small,
                 borderRadius:3,
-                cursor:'pointer',
+                cursor:isTutorialAutoDrawStep?'not-allowed':'pointer',
+                opacity:isTutorialAutoDrawStep?0.45:1,
                 letterSpacing:isMobile?0.5:1,
                 textTransform:'uppercase',
                 boxShadow:'0 0 12px rgba(194,65,47,0.34)',
@@ -8321,6 +8381,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             roleTextRect={roleTextRect}
             handAreaRect={handAreaRect}
             aiPanelAreaRect={aiPanelAreaRect}
+            opponentSanBarRect={opponentSanBarRect}
             deckAreaRect={deckAreaRect}
             isArtifact={isArtifact}
             isH5Package={isH5Package}

@@ -17,6 +17,39 @@ function NarratorAvatar({tooltipW}){
 
 export { NARRATOR_AVATAR };
 
+// 引导文案中的术语高亮映射（颜色与对战中 RINFO 身份颜色保持一致）
+const TERM_STYLES = {
+  所有列和所有行: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
+  邪神的化身: { color: '#c060e0', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #9030cc88' },
+  随机事件: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
+  团结一心: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
+  邪祀者: { color: '#9060cc', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #7040aa88' },
+  寻宝者: { color: '#7ecfd4', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #2a606888' },
+  追猎者: { color: '#cc4444', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #6a1a1a88' },
+  蛊惑: { color: '#9060cc', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #7040aa88' },
+  掉包: { color: '#7ecfd4', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #2a606888' },
+  追捕: { color: '#cc4444', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #6a1a1a88' },
+  身份: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
+  技能: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
+  宝藏: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
+  牌堆: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
+  信仰: { color: '#c060e0', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #9030cc88' },
+  HP: { color: '#e05050', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #cc222288' },
+  SAN: { color: '#a78bfa', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #8844cc88' },
+};
+
+function renderTutorialLine(line) {
+  const terms = Object.keys(TERM_STYLES).sort((a, b) => b.length - a.length);
+  const escaped = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const pattern = new RegExp(`\\[(${escaped.join('|')})\\]`, 'g');
+  const parts = line.split(pattern);
+  return parts.map((part, idx) => {
+    const style = TERM_STYLES[part];
+    if (style) return <span key={idx} style={style}>{part}</span>;
+    return <>{part}</>;
+  });
+}
+
 function getScriptHighlightRect(step, rects, vw) {
   switch (step?.highlight) {
     case 'selfPanel':
@@ -28,6 +61,8 @@ function getScriptHighlightRect(step, rects, vw) {
       return rects.handAreaRect;
     case 'opponentPanel':
       return rects.aiPanelAreaRect;
+    case 'opponentSanBar':
+      return rects.opponentSanBarRect;
     case 'deckArea':
       return rects.deckAreaRect;
     case 'swapBlind':
@@ -37,6 +72,8 @@ function getScriptHighlightRect(step, rects, vw) {
         top: Math.max(90, window.innerHeight * 0.28),
         bottom: Math.min(window.innerHeight - 110, window.innerHeight * 0.72),
       };
+    case 'noSpotlight':
+      return { noSpotlight: true };
     default:
       return null;
   }
@@ -49,6 +86,7 @@ function ScriptTutorialOverlay({
   roleTextRect,
   handAreaRect,
   aiPanelAreaRect,
+  opponentSanBarRect,
   deckAreaRect,
   isArtifact,
   isH5Package,
@@ -56,7 +94,10 @@ function ScriptTutorialOverlay({
   completeTutorial,
 }) {
   const step = getTutorialStep(tutorialStep);
-  const rect = getScriptHighlightRect(step, { panelRect, roleTextRect, handAreaRect, aiPanelAreaRect, deckAreaRect }, vw);
+  if (!step || step.auto) return null;
+  const rawRect = getScriptHighlightRect(step, { panelRect, roleTextRect, handAreaRect, aiPanelAreaRect, opponentSanBarRect, deckAreaRect }, vw);
+  const noSpotlight = rawRect?.noSpotlight;
+  const rect = noSpotlight ? null : rawRect;
   const BG = 'rgba(0,0,0,0.58)';
   const tooltipW = Math.min(step?.highlight === 'center' ? 360 : 300, vw - 20);
   const tooltipH = 210;
@@ -65,7 +106,7 @@ function ScriptTutorialOverlay({
   const actionStep = !!step?.allowedAction;
   const preferRight = rect && rect.right + tooltipW + 20 < window.innerWidth;
   const preferLeft = rect && rect.left - tooltipW - 20 > 0;
-  const tooltipLeft = step?.highlight === 'center'
+  const tooltipLeft = step?.highlight === 'center' || noSpotlight
     ? Math.max(10, Math.min(window.innerWidth / 2 - tooltipW / 2, window.innerWidth - tooltipW - 10))
     : preferRight
     ? rect.right + 14
@@ -74,6 +115,8 @@ function ScriptTutorialOverlay({
     : Math.max(10, Math.min(centerX - tooltipW / 2, window.innerWidth - tooltipW - 10));
   const tooltipTop = step?.highlight === 'center'
     ? Math.max(18, window.innerHeight / 2 - 140)
+    : noSpotlight
+    ? Math.max(10, window.innerHeight - tooltipH - 80)
     : actionStep && step?.highlight === 'swapBlind'
     ? 16
     : actionStep && rect && rect.top > tooltipH + 18
@@ -100,7 +143,7 @@ function ScriptTutorialOverlay({
   } : null;
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 900, pointerEvents: actionStep ? 'none' : 'auto' }}>
-      {r ? (
+      {!noSpotlight && (r ? (
         <>
           <div style={{ position: 'absolute', left: 0, top: 0, right: 0, height: r.top, background: BG, pointerEvents: 'none' }} />
           <div style={{ position: 'absolute', left: 0, top: r.top, bottom: 0, width: r.left, background: BG, pointerEvents: 'none' }} />
@@ -110,7 +153,7 @@ function ScriptTutorialOverlay({
         </>
       ) : (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', pointerEvents: 'none' }} />
-      )}
+      ))}
       <div style={{
         position: 'absolute',
         left: tooltipLeft,
@@ -128,9 +171,6 @@ function ScriptTutorialOverlay({
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
           <NarratorAvatar tooltipW={tooltipW} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ color: '#e8c87a', fontFamily: "'Cinzel',serif", fontSize: 13, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>
-              {step.title}
-            </div>
             {bodyLines.map((line, idx) => (
               <p
                 key={`${step.id}-body-${idx}`}
@@ -144,7 +184,7 @@ function ScriptTutorialOverlay({
                   opacity: 0.92,
                 }}
               >
-                {line}
+                {renderTutorialLine(line)}
               </p>
             ))}
             {actionStep && (
@@ -182,6 +222,7 @@ export default function InGameTutorialOverlay({
   roleTextRect,
   handAreaRect,
   aiPanelAreaRect,
+  opponentSanBarRect,
   deckAreaRect,
   isArtifact,
   isH5Package,
@@ -199,6 +240,7 @@ export default function InGameTutorialOverlay({
         roleTextRect={roleTextRect}
         handAreaRect={handAreaRect}
         aiPanelAreaRect={aiPanelAreaRect}
+        opponentSanBarRect={opponentSanBarRect}
         deckAreaRect={deckAreaRect}
         isArtifact={isArtifact}
         isH5Package={isH5Package}

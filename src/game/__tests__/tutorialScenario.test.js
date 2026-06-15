@@ -8,12 +8,13 @@ describe('tutorial scenarios', () => {
     const gs = createTutorialScenario('treasure');
     const player = gs.players[0];
     const targetCard = gs.players[1].hand[0];
-    const giveCard = player.hand.find(card => card.id === 'tut-treasure-give');
+    const forcedDraw = gs.deck[0];
 
     expect(player.role).toBe('寻宝者');
     expect(targetCard.key).toBe('D4');
-    expect(giveCard).toBeTruthy();
-    expect(isWinHand([...player.hand.filter(card => card.id !== giveCard.id), targetCard])).toBe(true);
+    expect(forcedDraw.key).toBe('B3');
+    expect(forcedDraw.name).toBe('封入石棺');
+    expect(isWinHand([...player.hand.filter(card => card.id !== forcedDraw.id), targetCard])).toBe(true);
   });
 
   it('hunter scenario has a matching hand card and lethal target hp', () => {

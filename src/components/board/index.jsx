@@ -25,7 +25,7 @@ function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth,labelColor
   const columnGap=isNarrowViewport?'clamp(5px, 1.2vw, 7px)':'clamp(4px, 1vw, 6px)';
   const labelPaddingRight=isNarrowViewport?Math.ceil(2*fontZoom):0;
   return(
-    <div style={{display:'grid',gridTemplateColumns:`${labelCol} minmax(0,1fr) ${valueCol}`,alignItems:'center',columnGap:columnGap,marginBottom:4,width:rowWidth,marginLeft:'auto',marginRight:'auto',boxSizing:'border-box',overflow:'visible'}}>
+    <div data-stat-label={label} style={{display:'grid',gridTemplateColumns:`${labelCol} minmax(0,1fr) ${valueCol}`,alignItems:'center',columnGap:columnGap,marginBottom:4,width:rowWidth,marginLeft:'auto',marginRight:'auto',boxSizing:'border-box',overflow:'visible'}}>
       <span style={{fontFamily:"'Cinzel',serif",color:labelColor,fontSize:statFont,fontWeight:700,letterSpacing:0.3,textAlign:'left',whiteSpace:'nowrap',minWidth:0,paddingRight:labelPaddingRight}}>{label}</span>
       <div style={{height:barHeight,background:trackColor||'#110804',border:`1.2px solid ${lineColor}`,borderRadius:2,overflow:'visible',position:'relative',minWidth:0,width:'100%'}}>
         <div style={{height:'100%',width:`${Math.min(10,val)*10}%`,background:color,transition:'width .35s',borderRadius:1}}/>
