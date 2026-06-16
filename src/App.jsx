@@ -1435,6 +1435,8 @@ export default function Game(){
   const [dodgeRollButtonRect,setDodgeRollButtonRect]=useState(null);
   const skillButtonRef=useRef(null);
   const [skillButtonRect,setSkillButtonRect]=useState(null);
+  const swapBlindHandRef=useRef(null);
+  const [swapBlindHandRect,setSwapBlindHandRect]=useState(null);
   const [roleRevealAnim,setRoleRevealAnim]=useState(null); // {role,pendingGs}|null
   
   // --- 新增：用于 UI 延迟显示的 HP/SAN 状态 ---
@@ -1943,6 +1945,10 @@ export default function Game(){
         const r=_getZoomCompensatedRect(skillButtonRef.current);
         if(r)setSkillButtonRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
       }
+      if(showTutorial&&scriptHighlight==='swapBlindHand'&&swapBlindHandRef.current){
+        const r=_getZoomCompensatedRect(swapBlindHandRef.current);
+        if(r)setSwapBlindHandRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+      }
       if(showTutorial&&(tutorialStep===12||tutorialStep===13||scriptHighlight==='deckArea')&&deckAreaRef.current){
         const r=_getZoomCompensatedRect(deckAreaRef.current);
         if(r)setDeckAreaRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
@@ -1957,6 +1963,9 @@ export default function Game(){
     }
     if(showTutorial&&typeof tutorialStep==='string'&&tutorialStepDef?.highlight==='skillButton'){
       timeoutIds.push(setTimeout(update,50));
+    }
+    if(showTutorial&&typeof tutorialStep==='string'&&tutorialStepDef?.highlight==='swapBlindHand'&&swapBlindHandRef.current){
+      timeoutIds.push(setTimeout(update,1200));
     }
     if(showTutorial){
       window.addEventListener('scroll',update,true);
@@ -3406,6 +3415,14 @@ export default function Game(){
     }
   },[gs?.phase]);
 
+  // ── Tutorial: show steal-card hint after blind-draw shuffle ends ──
+  useEffect(()=>{
+    if(!showTutorial)return;
+    if(swapBlindDraw?.phase!=='selecting')return;
+    if(tutorialStep!==TUTORIAL_FLOW.TREASURE_SELECT_TARGET)return;
+    setTutorialStep(TUTORIAL_FLOW.TREASURE_STEAL_CARD);
+  },[showTutorial,swapBlindDraw?.phase,tutorialStep,setTutorialStep]);
+
   // ── Loading Screen ───────────────────────────────────────────
   const handleGodResurrectionDone=useCallback(()=>setShowGodResurrection(true),[]);
 
@@ -4602,7 +4619,8 @@ export default function Game(){
       abilityData:{swapTi:ti,preSkillRevealed:gs.abilityData?.preSkillRevealed},
       log:[...L,`你${gs.globalOnlySwapOwner!==null?'':'（寻宝者）'}对 ${gs.players[ti].name} 【掉包】，请选择要抽取的牌`],
       ...apophisNightPatch(night)});
-    if(tutorialNext)setTutorialStep(tutorialNext);
+    // 教学提示等暗抽洗牌动画结束后再出现，与骰子动画定格类似
+    if(tutorialNext&&tutorialNext!==TUTORIAL_FLOW.TREASURE_STEAL_CARD)setTutorialStep(tutorialNext);
   }
   function zoneSwapSelectTarget(ti){
     // 强征献礼：与目标交换全部手牌
@@ -5573,7 +5591,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         return;
       }
       finishTutorialActionWithState({...gs,players:P,drawReveal:null,log:[...L,`${_wname}集齐了全部编号！`],abilityData:{winReason:`${_wname}通过掉包集齐了全部编号！`},_visualEvents:swapVisualEvent?[swapVisualEvent]:[],
-        phase:'PLAYER_WIN_PENDING'},tutorialNext);
+        phase:'PLAYER_WIN_PENDING'},showTutorial?TUTORIAL_FLOW.TREASURE_MAP_ANIM:tutorialNext);
       return;
     }
     // 检查目标（非自身）是否为寻宝者且掉包后获胜
@@ -7366,6 +7384,16 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     });
   }
 
+  function handleTutorialTreasureMapConfirm(){
+    clearBattleAnimationState();
+    // 先停留在“宝藏完成”教学，身份切换放到 HUNTER_INTRO（带 setup: 'hunter'）时再执行
+    setGs(prev=>{
+      if(!prev)return prev;
+      return {...prev,phase:'ACTION',abilityData:{},drawReveal:null};
+    });
+    setTutorialStep(TUTORIAL_FLOW.TREASURE_RESULT);
+  }
+
   // Phase labels
   const cardHintText='鼠标悬停查看卡牌详情（移动端请点击卡牌）';
   const canShowTurnDecisionModal=!isSpectating&&!anim&&!animExiting&&animQueueRef.current.length===0;
@@ -8474,6 +8502,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             deckAreaRect={deckAreaRect}
             dodgeRollButtonRect={dodgeRollButtonRect}
             skillButtonRect={skillButtonRect}
+            swapBlindHandRect={swapBlindHandRect}
             isArtifact={isArtifact}
             isH5Package={isH5Package}
             setTutorialStep={setTutorialStep}
@@ -8500,7 +8529,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             从 {gs.players[swapBlindDraw.targetPi]?.name} 的手牌中暗抽一张
           </div>
           {/* 牌区域 */}
-          <div style={{
+          <div ref={swapBlindHandRef} style={{
             display:'flex',gap:10,alignItems:'center',justifyContent:'center',
             flexWrap:'wrap',maxWidth:'90vw',perspective:'900px',
           }}>
@@ -8587,8 +8616,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         </div>
       )}
 
-      {phase==='PLAYER_WIN_PENDING'&&!showTutorial&&(
-        <TreasureMapAnim hand={me.hand} onConfirm={()=>{
+      {phase==='PLAYER_WIN_PENDING'&&(
+        <TreasureMapAnim hand={me.hand} onConfirm={showTutorial?handleTutorialTreasureMapConfirm:()=>{
           animQueueRef.current=[];
           pendingGsRef.current=null;
           setAnim(null);

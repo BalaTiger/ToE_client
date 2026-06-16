@@ -33,6 +33,7 @@ const TERM_STYLES = {
   技能: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
   宝藏: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
   求生: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
+  暗抽: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
   牌堆: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
   信仰: { color: '#c060e0', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #9030cc88' },
   HP: { color: '#e05050', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #cc222288' },
@@ -71,6 +72,8 @@ function getScriptHighlightRect(step, rects, vw) {
       return rects.dodgeRollButtonRect;
     case 'deckArea':
       return rects.deckAreaRect;
+    case 'swapBlindHand':
+      return rects.swapBlindHandRect;
     case 'swapBlind':
       return {
         left: Math.max(20, vw * 0.18),
@@ -97,6 +100,7 @@ function ScriptTutorialOverlay({
   deckAreaRect,
   dodgeRollButtonRect,
   skillButtonRect,
+  swapBlindHandRect,
   isArtifact,
   isH5Package,
   advanceTutorialStep,
@@ -105,12 +109,13 @@ function ScriptTutorialOverlay({
 }) {
   const step = getTutorialStep(tutorialStep);
   if (!step || step.auto) return null;
-  const rawRect = getScriptHighlightRect(step, { panelRect, roleTextRect, handAreaRect, aiPanelAreaRect, opponentSanBarRect, drawRevealKeepButtonRect, deckAreaRect, dodgeRollButtonRect, skillButtonRect }, vw);
+  const rawRect = getScriptHighlightRect(step, { panelRect, roleTextRect, handAreaRect, aiPanelAreaRect, opponentSanBarRect, drawRevealKeepButtonRect, deckAreaRect, dodgeRollButtonRect, skillButtonRect, swapBlindHandRect }, vw);
   const noSpotlight = rawRect?.noSpotlight;
   const rect = noSpotlight ? null : rawRect;
   if (step?.highlight === 'drawRevealKeepButton' && !rect) return null;
   if (step?.highlight === 'dodgeRollButton' && !rect) return null;
   if (step?.highlight === 'skillButton' && !rect) return null;
+  if (step?.highlight === 'swapBlindHand' && !rect) return null;
   const BG = 'rgba(0,0,0,0.58)';
   const tooltipW = Math.min(step?.highlight === 'center' ? 360 : 300, vw - 20);
   const tooltipH = step?.highlight === 'drawRevealKeepButton' || step?.highlight === 'dodgeRollButton' || step?.highlight === 'skillButton' ? 132 : 210;
@@ -251,6 +256,7 @@ export default function InGameTutorialOverlay({
   deckAreaRect,
   dodgeRollButtonRect,
   skillButtonRect,
+  swapBlindHandRect,
   isArtifact,
   isH5Package,
   setTutorialStep,
@@ -273,6 +279,7 @@ export default function InGameTutorialOverlay({
         deckAreaRect={deckAreaRect}
         dodgeRollButtonRect={dodgeRollButtonRect}
         skillButtonRect={skillButtonRect}
+        swapBlindHandRect={swapBlindHandRect}
         isArtifact={isArtifact}
         isH5Package={isH5Package}
         advanceTutorialStep={advanceTutorialStep}

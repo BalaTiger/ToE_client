@@ -43,6 +43,7 @@ export const TUTORIAL_FLOW = {
   TREASURE_SELECT_TARGET: 'treasureSelectTarget',
   TREASURE_STEAL_CARD: 'treasureStealCard',
   TREASURE_GIVE_CARD: 'treasureGiveCard',
+  TREASURE_MAP_ANIM: 'treasureMapAnim',
   TREASURE_RESULT: 'treasureResult',
   HUNTER_INTRO: 'hunterIntro',
   HUNTER_USE_SKILL: 'hunterUseSkill',
@@ -227,8 +228,8 @@ const SKILL_STEPS = [
     id: TUTORIAL_FLOW.TREASURE_DODGE_PROMPT,
     title: '求生技能',
     body: [
-      `你可能奇怪为什么要拿一张负面效果牌。别忘了，寻宝者的目标是集齐${GOLD('宝藏')}，自然要承担一点探索的风险。`,
-      `更何况，我们还有${GOLD('求生')}技能。现在掷出骰子。`,
+      `你可能奇怪为什么要拿一张负面效果牌。别忘了，${TREASURE}的目标是集齐${GOLD('宝藏')}，自然要承担一点探索的风险。`,
+      `更何况，作为${TREASURE}，我们还有${GOLD('求生')}技能。现在掷出骰子。`,
     ],
     highlight: 'dodgeRollButton',
     lock: false,
@@ -245,7 +246,10 @@ const SKILL_STEPS = [
   {
     id: TUTORIAL_FLOW.TREASURE_USE_SKILL,
     title: '发动掉包',
-    body: `点击行动区的“${SWAP}”。本教学局会固定让这次${SWAP}集齐${GOLD('宝藏')}。`,
+	body: [
+      `寻宝者的${SWAP}技能可以与其他人交换已经探索过的卡牌————不管他愿不愿意。`,
+      `不同于摸牌，这是另一种集齐${GOLD('宝藏')}的手段。试试吧。`,
+    ],
     highlight: 'skillButton',
     lock: false,
     allowedAction: { type: 'useSkill' },
@@ -253,7 +257,7 @@ const SKILL_STEPS = [
   {
     id: TUTORIAL_FLOW.TREASURE_SELECT_TARGET,
     title: '选择目标',
-    body: '选择对手。正式对局里你未必知道对方手里有什么，但这次目标牌已经安排好了。',
+    body: '选择一个倒霉蛋下手吧。',
     highlight: 'opponentPanel',
     lock: false,
     allowedAction: { type: 'selectTarget', pid: 1 },
@@ -261,27 +265,41 @@ const SKILL_STEPS = [
   {
     id: TUTORIAL_FLOW.TREASURE_STEAL_CARD,
     title: '抽取对手手牌',
-    body: '点击高亮的对手手牌。教学局中这张牌会补齐你的最后一个编号。',
-    highlight: 'swapBlind',
+	body: `掉包中只能${GOLD('暗抽')}————就像偷偷把手伸进别人包里。能否拿到你要的牌，就看运气了。`,
+    highlight: 'swapBlindHand',
     lock: false,
     allowedAction: { type: 'swapSteal', cardIndex: 0 },
   },
   {
     id: TUTORIAL_FLOW.TREASURE_GIVE_CARD,
     title: '交还一张牌',
-    body: '掉包不是白拿。把指定手牌还给对手，完成交换。',
+	body: [
+      `这正是我们要的D4！不过${SWAP}不是抢劫，你需要还一张牌。`,
+      `刚才摸到的那张B3没有用，就选它了。`,
+    ],
     highlight: 'handArea',
     lock: false,
     allowedAction: { type: 'handCard', cardId: 'tut-treasure-forced-draw' },
   },
   {
+    id: TUTORIAL_FLOW.TREASURE_MAP_ANIM,
+    title: '',
+    body: '',
+    highlight: 'noSpotlight',
+    lock: false,
+    auto: true,
+  },
+  {
     id: TUTORIAL_FLOW.TREASURE_RESULT,
     title: '宝藏完成',
-    body: `这就是${TREASURE}最理想的${SWAP}：换到缺失编号并立刻完成胜利条件。教学局会继续切换到${HUNTER}。`,
+	body: [
+      `这是最理想的情况：换到缺失编号，立即胜利。`,
+	  `但即使你的手牌离胜利尚远，只要有没用的牌，也可以积极使用${SWAP}，没准就离宝藏更近一步了。`,
+      `继续教你其他身份。准备好扮演${HUNTER}了吗？`,
+    ],
     highlight: 'handArea',
     lock: true,
     next: TUTORIAL_FLOW.HUNTER_INTRO,
-    setup: 'hunter',
   },
   {
     id: TUTORIAL_FLOW.HUNTER_INTRO,
@@ -290,6 +308,7 @@ const SKILL_STEPS = [
     highlight: 'opponentPanel',
     lock: true,
     next: TUTORIAL_FLOW.HUNTER_USE_SKILL,
+    setup: 'hunter',
   },
   {
     id: TUTORIAL_FLOW.HUNTER_USE_SKILL,
@@ -595,7 +614,7 @@ export function nextTutorialStepAfterAction(stepId, action) {
   if (stepId === TUTORIAL_FLOW.TREASURE_USE_SKILL && action.type === 'useSkill') return TUTORIAL_FLOW.TREASURE_SELECT_TARGET;
   if (stepId === TUTORIAL_FLOW.TREASURE_SELECT_TARGET && action.type === 'selectTarget') return TUTORIAL_FLOW.TREASURE_STEAL_CARD;
   if (stepId === TUTORIAL_FLOW.TREASURE_STEAL_CARD && action.type === 'swapSteal') return TUTORIAL_FLOW.TREASURE_GIVE_CARD;
-  if (stepId === TUTORIAL_FLOW.TREASURE_GIVE_CARD && action.type === 'handCard') return TUTORIAL_FLOW.TREASURE_RESULT;
+  if (stepId === TUTORIAL_FLOW.TREASURE_GIVE_CARD && action.type === 'handCard') return TUTORIAL_FLOW.TREASURE_MAP_ANIM;
   if (stepId === TUTORIAL_FLOW.HUNTER_USE_SKILL && action.type === 'useSkill') return TUTORIAL_FLOW.HUNTER_SELECT_TARGET;
   if (stepId === TUTORIAL_FLOW.HUNTER_SELECT_TARGET && action.type === 'selectTarget') return TUTORIAL_FLOW.HUNTER_REVEAL;
   if (stepId === TUTORIAL_FLOW.HUNTER_CONFIRM_CARD && action.type === 'handCard') return TUTORIAL_FLOW.HUNTER_RESULT;
