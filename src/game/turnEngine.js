@@ -266,12 +266,20 @@ export function abandonGodFollower(targetIndex, startIndex, P, D, Disc, L, inspe
   return { P, D, Disc, L, inspectionMeta };
 }
 
-export function convertGodFollower(targetIndex, startIndex, P, D, Disc, L, inspectionMeta, logMsg) {
+export function convertGodFollower(targetIndex, startIndex, P, D, Disc, L, inspectionMeta, logMsg, nextGodCard = null) {
   const convertLog = logMsg || `${P[targetIndex].name} 改信新神，SAN-1`;
   L = [...L, convertLog];
+  if (nextGodCard?.godKey) {
+    clearPlayerGodZone(P[targetIndex], Disc);
+    P[targetIndex].godName = nextGodCard.godKey;
+    P[targetIndex].godLevel = 1;
+    P[targetIndex].godZone = [{ ...nextGodCard }];
+  }
   const processed = applySanLossToPlayerWithInspection(targetIndex, 1, startIndex, P, D, Disc, L, inspectionMeta);
   P = processed.P; D = processed.D; Disc = processed.Disc; L = processed.L; inspectionMeta = processed.inspectionMeta;
-  clearPlayerGodZone(P[targetIndex], Disc);
+  if (!nextGodCard?.godKey) {
+    clearPlayerGodZone(P[targetIndex], Disc);
+  }
   return { P, D, Disc, L, inspectionMeta };
 }
 
@@ -324,7 +332,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     });
   } else if (action === 'convert') {
     const convertBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
-    const converted = convertGodFollower(ci, gs?.currentTurn ?? ci, P, D, Disc, convertBaseLog, inspectionMeta, `${P[ci].name} 改信新神，SAN-1`);
+    const converted = convertGodFollower(ci, gs?.currentTurn ?? ci, P, D, Disc, convertBaseLog, inspectionMeta, `${P[ci].name} 改信新神，SAN-1`, godCard);
     P = converted.P; D = converted.D; Disc = converted.Disc; inspectionMeta = converted.inspectionMeta;
     const extraMsgs = (converted.L || []).slice(convertBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
     P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }];

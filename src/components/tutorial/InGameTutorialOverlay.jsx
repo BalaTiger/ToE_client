@@ -56,6 +56,15 @@ function renderTutorialLine(line) {
 }
 
 function getScriptHighlightRect(step, rects, vw) {
+  const unionRects = (...items) => {
+    const valid = items.filter(Boolean);
+    if (!valid.length) return null;
+    const top = Math.min(...valid.map(r => r.top));
+    const left = Math.min(...valid.map(r => r.left));
+    const right = Math.max(...valid.map(r => r.right));
+    const bottom = Math.max(...valid.map(r => r.bottom));
+    return { top, left, right, bottom, width: right - left, height: bottom - top };
+  };
   switch (step?.highlight) {
     case 'selfPanel':
       return rects.panelRect;
@@ -77,6 +86,8 @@ function getScriptHighlightRect(step, rects, vw) {
       return rects.opponentGodStatusRect;
     case 'opponentSanBar':
       return rects.opponentSanBarRect;
+    case 'opponentSanAndGodStatus':
+      return unionRects(rects.opponentSanBarRect, rects.opponentGodStatusRect);
     case 'opponentHpBar':
       return rects.opponentHpBarRect;
     case 'drawRevealKeepButton':

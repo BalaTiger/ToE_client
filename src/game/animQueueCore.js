@@ -24,14 +24,31 @@ function playersAfterStatEvents(basePlayers = [], statEvents = []) {
   return next;
 }
 
+function mergeStatValuesIntoPlayers(basePlayers = [], statPlayers = []) {
+  const base = clonePlayersForTimeline(basePlayers);
+  statPlayers.forEach((statPlayer, idx) => {
+    if (!base[idx] || !statPlayer) return;
+    base[idx] = {
+      ...base[idx],
+      hp: statPlayer.hp,
+      san: statPlayer.san,
+      isDead: statPlayer.isDead,
+    };
+  });
+  return base;
+}
+
 function attachVisualTimelineToSteps(steps = [], beforePlayers = [], beforeDiscard = [], afterPlayers = [], afterDiscard = []) {
   let cursorPlayers = clonePlayersForTimeline(beforePlayers);
   let cursorDiscard = Array.isArray(beforeDiscard) ? [...beforeDiscard] : [];
   return steps.map(step => {
     if (!step || step.type === 'STATE_PATCH') return step;
     const hasStatEvents = Array.isArray(step.statEvents) && step.statEvents.length;
-    const nextPlayers = hasStatEvents
+    const statNextPlayers = hasStatEvents
       ? playersAfterStatEvents(cursorPlayers, step.statEvents)
+      : cursorPlayers;
+    const nextPlayers = hasStatEvents
+      ? mergeStatValuesIntoPlayers(afterPlayers, statNextPlayers)
       : cursorPlayers;
     const nextDiscard = step.type === 'DISCARD' && step.card
       ? [...cursorDiscard, step.card]
@@ -196,7 +213,13 @@ export function buildAnimQueue(oldGs, newGs) {
       ));
     } else {
       randomTargetEvents.forEach(event => q.push(...buildRandomTargetQueue(event)));
-      q.push(...statEventsToAnimQueue(statEventsForQueue, effectivePlayers, newMsgs));
+      q.push(...attachVisualTimelineToSteps(
+        statEventsToAnimQueue(statEventsForQueue, effectivePlayers, newMsgs),
+        oldGs?.players || effectivePlayers,
+        oldGs?.discard || [],
+        newGs.players || effectivePlayers,
+        newGs.discard || oldGs?.discard || [],
+      ));
     }
   } else {
     randomTargetEvents.forEach(event => q.push(...buildRandomTargetQueue(event)));

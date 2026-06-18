@@ -514,7 +514,7 @@ const SKILL_STEPS = [
     id: TUTORIAL_FLOW.CULTIST_GOD_CONVERT_CHECK,
     title: '改信代价',
     body: `对手选择改信新神，额外失去 1${SAN}。这次损失后仍未归零，所以会再翻一张检定牌。`,
-    highlight: 'opponentSanBar',
+    highlight: 'opponentSanAndGodStatus',
     lock: true,
     next: TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE,
   },

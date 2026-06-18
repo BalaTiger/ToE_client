@@ -168,26 +168,11 @@ function handleInspection(playerIndex, gs) {
   };
   switch (drawnCard.effect) {
     case 'adjacentDamageHP': {
-      // 相邻角色失去1HP
-      const N = P.length;
-      for (let i = 1; i <= N; i++) {
-        const leftIdx = (playerIndex - i + N) % N;
-        if (!P[leftIdx].isDead) {
-          P[leftIdx].hp = Math.max(0, P[leftIdx].hp - drawnCard.value);
-          L.push(`${P[leftIdx].name} 被乱抓，失去 ${drawnCard.value} HP`);
-          if (P[leftIdx].hp <= 0) killPlayer(leftIdx);
-          break;
-        }
-      }
-      for (let i = 1; i <= N; i++) {
-        const rightIdx = (playerIndex + i) % N;
-        if (!P[rightIdx].isDead) {
-          P[rightIdx].hp = Math.max(0, P[rightIdx].hp - drawnCard.value);
-          L.push(`${P[rightIdx].name} 被乱抓，失去 ${drawnCard.value} HP`);
-          if (P[rightIdx].hp <= 0) killPlayer(rightIdx);
-          break;
-        }
-      }
+      getLivingAdjacentTargets(P, playerIndex).forEach(idx => {
+        P[idx].hp = Math.max(0, P[idx].hp - drawnCard.value);
+        L.push(`${P[idx].name} 被乱抓，失去 ${drawnCard.value} HP`);
+        if (P[idx].hp <= 0) killPlayer(idx);
+      });
       break;
     }
     case 'selfDamageHP': {

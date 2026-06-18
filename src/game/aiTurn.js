@@ -613,7 +613,7 @@ export function aiStep(gs, opts = {}) {
           L.push(`${P[ct].name} 从手牌信仰 ${hgc.name}，获得${hgc.power}(Lv.1)（骷髅头不计）`);
         }
         // Forced convert if worshipping different god
-        if(alreadyHasGod){const converted=convertGodFollower(ct,gs.currentTurn,P,D,Disc,L,inspectionMeta,`${P[ct].name} 改信新神，SAN-1`);P=converted.P;D=converted.D;Disc=converted.Disc;L=converted.L;inspectionMeta=converted.inspectionMeta;}
+        if(alreadyHasGod){const converted=convertGodFollower(ct,gs.currentTurn,P,D,Disc,L,inspectionMeta,`${P[ct].name} 改信新神，SAN-1`,hgc);P=converted.P;D=converted.D;Disc=converted.Disc;L=converted.L;inspectionMeta=converted.inspectionMeta;}
         if(P[ct].godName===hgc.godKey&&P[ct].godLevel<3){
           P[ct].godLevel++;P[ct].godZone.push({...hgc});
         } else if(!P[ct].godName||alreadyHasGod){

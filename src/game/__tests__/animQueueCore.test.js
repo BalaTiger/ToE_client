@@ -90,6 +90,35 @@ describe('buildAnimQueue stat animations', () => {
     expect(queue[secondHpIdx].visualTimeline.at(-1).patch.players.map(p => p.hp)).toEqual([8, 6, 8]);
   });
 
+  it('属性动画的视觉帧会同步玩家的邪神之力变化', () => {
+    const oldGod = makeGodCard('NYA');
+    const newGod = makeGodCard('VRI');
+    const playersBefore = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '贝拉', san: 7, godEncounters: 2, godName: 'NYA', godLevel: 1, godZone: [oldGod] }),
+    ];
+    const playersAfter = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '贝拉', san: 6, godEncounters: 2, godName: 'VRI', godLevel: 1, godZone: [newGod] }),
+    ];
+    const oldGs = makeGs({ players: playersBefore, log: [], _statEventSeq: 0 });
+    const newGs = makeGs({
+      players: playersAfter,
+      log: ['贝拉 被迫改信新神，SAN-1', '贝拉 信仰了 弗栗多，获得不灭之躯(Lv.1)'],
+      _statEventSeq: 1,
+      _statEvents: [
+        { type: 'SAN_LOSS', target: 1, from: { hp: 10, san: 7, isDead: false }, to: { hp: 10, san: 6, isDead: false }, seq: 1 },
+      ],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    const sanStep = queue.find(step => step.type === 'SAN_DAMAGE');
+
+    expect(sanStep.visualTimeline[0].patch.players[1]).toMatchObject({ san: 7, godName: 'NYA', godLevel: 1 });
+    expect(sanStep.visualTimeline[1].patch.players[1]).toMatchObject({ san: 6, godEncounters: 2, godName: 'VRI', godLevel: 1 });
+    expect(sanStep.visualTimeline[1].patch.players[1].godZone[0].godKey).toBe('VRI');
+  });
+
   it('阿波菲斯黑夜选目标会播放掷骰，追捕偏移时重播锁定动画', () => {
     const players = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' }), makePlayer({ name: '贝拉' })];
     const oldGs = makeGs({ players, log: [], _apophisTargetSeq: 1 });

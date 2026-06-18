@@ -452,6 +452,15 @@ describe('applyFx', () => {
     expect(res.P[1].hp).toBe(9); // right neighbor
   });
 
+  it('adjDamageHP: 1v1 时同一个相邻角色只结算一次', () => {
+    const players = makeStandardPlayers(2);
+    const card = { type: 'adjDamageHP', name: '测试', key: 'TEST', val: 1 };
+    const gs = makeGs({ players });
+    const res = applyFx(card, 0, null, players, [], [], gs);
+    expect(res.P[0].hp).toBe(9);
+    expect(res.P[1].hp).toBe(9);
+  });
+
   it('adjDamageSAN: 自己与相邻角色都失去SAN', () => {
     const players = makeStandardPlayers(5);
     const card = { type: 'adjDamageSAN', name: '测试', key: 'TEST', val: 1 };
@@ -889,6 +898,37 @@ describe('applyInspectionForSanLoss', () => {
     expect(res.inspectionMeta._inspectionEvents[0].statEventSeq).toBe(5);
     expect(res.inspectionMeta._inspectionEvents[0].statEvents).toMatchObject([
       { type: 'HP_LOSS', target: 0, from: { hp: 10 }, to: { hp: 9 }, seq: 5 },
+    ]);
+  });
+
+  it('1v1 乱抓只结算同一个相邻角色一次', () => {
+    const players = [
+      makePlayer({ name: '你', hp: 10, san: 6 }),
+      makePlayer({ name: '贝拉', hp: 10, san: 10 }),
+    ];
+    const inspectionCard = { name: '乱抓', effect: 'adjacentDamageHP', value: 1, type: 'negative' };
+    const gs = makeGs({
+      players,
+      inspectionDeck: [inspectionCard],
+      inspectionDiscard: [],
+    });
+
+    const res = applyInspectionForSanLoss(
+      0,
+      players[0].san,
+      0,
+      players,
+      [],
+      [],
+      [],
+      makeInspectionMeta(gs),
+    );
+
+    expect(res.P[0].hp).toBe(10);
+    expect(res.P[1].hp).toBe(9);
+    expect(res.log.filter(line => line.includes('贝拉 被乱抓'))).toHaveLength(1);
+    expect(res.inspectionMeta._inspectionEvents[0].statEvents).toMatchObject([
+      { type: 'HP_LOSS', target: 1, from: { hp: 10 }, to: { hp: 9 } },
     ]);
   });
 });

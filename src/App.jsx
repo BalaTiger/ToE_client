@@ -547,6 +547,7 @@ export default function Game(){
   const [tutorialDiceResultResuming,setTutorialDiceResultResuming]=useState(false);
   const [tutorialInspectionPending,setTutorialInspectionPending]=useState(false);
   const [tutorialInspectionResuming,setTutorialInspectionResuming]=useState(false);
+  const tutorialGodConvertContinuationRef=useRef(null);
   const tutorialStepDef=showTutorial&&typeof tutorialStep==='string'?getTutorialStep(tutorialStep):null;
   const isScriptedTutorial=!!tutorialStepDef;
   const isTutorialActionStep=!!tutorialStepDef?.allowedAction;
@@ -1755,10 +1756,10 @@ export default function Game(){
     triggerAnimQueue(queue,newGs,()=>{
       applyTutorialStateSnapshot(newGs);
       setTutorialInspectionResuming(false);
-      setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_CONVERT_CHECK);
+      setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE);
     });
     return true;
-  },[applyTutorialStateSnapshot,gs,triggerAnimQueue]);
+  },[applyTutorialStateSnapshot,gs,showTutorial,triggerAnimQueue]);
 
   const advanceTutorialStep=useCallback((nextStep)=>{
     if(!nextStep)return;
@@ -2036,7 +2037,7 @@ export default function Game(){
         const r=_getZoomCompensatedRect(aiPanelAreaRef.current);
         if(r)setAiPanelAreaRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
       }
-      if(showTutorial&&scriptHighlight==='opponentSanBar'&&aiPanelAreaRef.current){
+      if(showTutorial&&(scriptHighlight==='opponentSanBar'||scriptHighlight==='opponentSanAndGodStatus')&&aiPanelAreaRef.current){
         const sanBarEl=aiPanelAreaRef.current.querySelector('[data-stat-label="SAN"]');
         if(sanBarEl){
           const r=_getZoomCompensatedRect(sanBarEl);
@@ -2057,7 +2058,7 @@ export default function Game(){
           if(r)setSingleOpponentRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
         }
       }
-      if(showTutorial&&scriptHighlight==='opponentGodStatus'&&aiPanelAreaRef.current){
+      if(showTutorial&&(scriptHighlight==='opponentGodStatus'||scriptHighlight==='opponentSanAndGodStatus')&&aiPanelAreaRef.current){
         const statusEl=aiPanelAreaRef.current.querySelector('[data-player-god-status="1"]');
         if(statusEl){
           const r=_getZoomCompensatedRect(statusEl);
@@ -2248,26 +2249,110 @@ export default function Game(){
     if(replay.inspectionEvents.length){
       lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...replay.inspectionEvents.map(ev=>ev.seq||0));
     }
+    const splitBeforeInspection=showTutorial&&nextTutorialStep===TUTORIAL_FLOW.CULTIST_GOD_CONVERT_CHECK&&replay.inspectionEvents.length;
     const finish=()=>{
       if(nextTutorialStep){
         applyTutorialStateSnapshot(newGs);
         setTutorialStep(nextTutorialStep);
       }
     };
+    if(splitBeforeInspection){
+      const firstInspectionEvent=replay.inspectionEvents[0];
+      if(firstInspectionEvent){
+        const mergePostConvertIdentity=(players=[])=>copyPlayers(players).map((player,idx)=>{
+          const finalPlayer=newGs.players?.[idx];
+          if(!finalPlayer)return player;
+          return {
+            ...player,
+            godName:finalPlayer.godName,
+            godLevel:finalPlayer.godLevel,
+            godZone:[...(finalPlayer.godZone||[])],
+            godEncounters:finalPlayer.godEncounters,
+          };
+        });
+        const pausePlayers=mergePostConvertIdentity(firstInspectionEvent.beforePlayers||newGs.players);
+        const beforeInspectionLog=[...(Array.isArray(replay.inspectionEvents[0]?.beforeLog)?replay.inspectionEvents[0].beforeLog:newGs.log||[])];
+        const firstInspectionStatSeq=firstInspectionEvent.statEventSeq;
+        const pauseStatEvents=(newGs._statEvents||[]).filter(ev=>(
+          firstInspectionStatSeq==null ? true : (ev?.seq!=null&&ev.seq<firstInspectionStatSeq)
+        ));
+        const pauseStatSeq=pauseStatEvents.reduce((max,ev)=>Math.max(max,ev?.seq||0),gs._statEventSeq||0);
+        const pauseGs={
+          ...newGs,
+          players:pausePlayers,
+          log:beforeInspectionLog,
+          _inspectionEvents:gs._inspectionEvents||[],
+          _inspectionSeq:gs._inspectionSeq||0,
+          _statEvents:pauseStatEvents,
+          _statEventSeq:pauseStatSeq,
+        };
+        const preInspectionQueue=buildAnimQueue(gs,pauseGs);
+        const adjustedInspectionEvents=replay.inspectionEvents.map(ev=>({
+          ...ev,
+          beforePlayers:mergePostConvertIdentity(ev.beforePlayers||pausePlayers),
+          afterPlayers:mergePostConvertIdentity(ev.afterPlayers||ev.beforePlayers||pausePlayers),
+        }));
+        const inspectionFlow=buildInspectionEventFlow(
+          {players:pausePlayers,log:beforeInspectionLog,_statEventSeq:pauseStatSeq},
+          adjustedInspectionEvents,
+          {buildAnimQueue,copyPlayers}
+        );
+        const maxInspectionSeq=Math.max(gs._inspectionSeq||0,...adjustedInspectionEvents.map(ev=>ev?.seq||0));
+        const tailStatEventSeq=Math.max(inspectionFlow.statEventSeq,newGs._statEventSeq||0);
+        const tailQueue=buildAnimQueue(
+          {
+            players:inspectionFlow.players,
+            log:inspectionFlow.log,
+            _statEventSeq:tailStatEventSeq,
+            _inspectionSeq:maxInspectionSeq,
+          },
+          newGs
+        );
+        tutorialGodConvertContinuationRef.current={queue:[...inspectionFlow.queue,...tailQueue],finalGs:newGs};
+        const showConvertCheck=()=>{
+          applyTutorialStateSnapshot(pauseGs);
+          setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_CONVERT_CHECK);
+        };
+        if(preInspectionQueue.length){
+          triggerAnimQueue(preInspectionQueue,pauseGs,showConvertCheck);
+        }else{
+          setGs(pauseGs);
+          showConvertCheck();
+        }
+        return;
+      }
+    }
     if(replay.queue.length){
       triggerAnimQueue(replay.queue,newGs,nextTutorialStep?finish:undefined);
     }else{
       setGs(newGs);
       finish();
     }
-  },[applyTutorialStateSnapshot,gs,triggerAnimQueue]);
+  },[applyTutorialStateSnapshot,gs,showTutorial,triggerAnimQueue]);
 
   useEffect(()=>{
+    if(showTutorial&&tutorialStep===TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE){
+      if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
+      const continuation=tutorialGodConvertContinuationRef.current;
+      if(continuation){
+        tutorialGodConvertContinuationRef.current=null;
+        const finish=()=>{
+          applyTutorialStateSnapshot(continuation.finalGs);
+          setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_PLAYER_DRAW);
+        };
+        if(continuation.queue?.length){
+          triggerAnimQueue(continuation.queue,continuation.finalGs,finish);
+        }else{
+          finish();
+        }
+        return;
+      }
+    }
     if(!gs||gs.phase!=='AI_GOD_CHOICE')return;
     if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
     if(showTutorial){
       if(tutorialStep!==TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE)return;
-      resolvePendingAiGodChoice(TUTORIAL_FLOW.CULTIST_GOD_PLAYER_DRAW);
+      resolvePendingAiGodChoice(TUTORIAL_FLOW.CULTIST_GOD_CONVERT_CHECK);
       return;
     }
     resolvePendingAiGodChoice();
@@ -6552,7 +6637,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       L.push('你（邪祀者）将邪神牌秘密收入手牌');
     } else if(action==='worship'||action==='upgrade'||action==='forcedConvert'){
       if(action==='forcedConvert'||(P[0].godName&&P[0].godName!==gk)){
-        const converted=convertGodFollower(0,gs.currentTurn,P,D,Disc,L,inspectionMeta,'改信新神，失去1SAN，旧神牌入弃牌堆');
+        const converted=convertGodFollower(0,gs.currentTurn,P,D,Disc,L,inspectionMeta,'改信新神，失去1SAN，旧神牌入弃牌堆',godCard);
         P=converted.P;D=converted.D;Disc=converted.Disc;L=converted.L;inspectionMeta=converted.inspectionMeta;
       }
       if(alreadyWorship&&action==='upgrade'){
@@ -7855,7 +7940,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(isUpgrade){
       P[0].godLevel++;P[0].godZone.push({...godCard});
     } else if(P[0].godName&&P[0].godName!==godKey){
-      const converted=convertGodFollower(0,gs.currentTurn,P,D,Disc,L,inspectionMeta,'改信新神，SAN-1，旧神牌入弃牌堆');
+      const converted=convertGodFollower(0,gs.currentTurn,P,D,Disc,L,inspectionMeta,'改信新神，SAN-1，旧神牌入弃牌堆',godCard);
       P=converted.P;D=converted.D;Disc=converted.Disc;L=converted.L;inspectionMeta=converted.inspectionMeta;
       P[0].godName=godKey;P[0].godLevel=1;P[0].godZone=[{...godCard}];
     } else {

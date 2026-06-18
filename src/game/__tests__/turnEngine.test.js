@@ -379,6 +379,16 @@ describe('turnEngine stat events', () => {
     expect(afterDecision.msgs.some(msg => msg.includes('改信新神'))).toBe(true);
     expect(afterDecision.P[1].san).toBe(4);
     expect(afterDecision.P[1].godName).toBe('VRI');
+    expect(afterDecision.P[1].godEncounters).toBe(2);
+    expect(afterDecision.inspectionMeta._inspectionEvents).toHaveLength(1);
+    expect(afterDecision.inspectionMeta._inspectionEvents.at(-1).seq).toBe(2);
+    expect(afterDecision.inspectionMeta._inspectionEvents.at(-1).beforePlayers[1]).toMatchObject({
+      san: 4,
+      godEncounters: 2,
+      godName: 'VRI',
+      godLevel: 1,
+    });
+    expect(afterDecision.inspectionMeta._inspectionEvents.at(-1).beforePlayers[1].godZone[0].godKey).toBe('VRI');
   });
 
   it('AI 已拥有高等级邪神之力时会降低改信权重', () => {

@@ -92,6 +92,7 @@ describe('tutorial scenarios', () => {
     expect(getTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_STATUS_MARKERS).next).toBe(TUTORIAL_FLOW.CULTIST_GOD_OPPONENT_DRAW_START);
     expect(getTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_OPPONENT_DRAW_START).auto).toBe(true);
     expect(getTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_OPPONENT_DRAW).auto).toBeUndefined();
+    expect(getTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_CONVERT_CHECK).highlight).toBe('opponentSanAndGodStatus');
     expect(getTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_CONVERT_CHECK).next).toBe(TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE);
     expect(getTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE).auto).toBe(true);
     expect(nextTutorialStepAfterAction(TUTORIAL_FLOW.CULTIST_GOD_KEEP_HAND, { type: 'godKeepHand' })).toBe(TUTORIAL_FLOW.CULTIST_GOD_SELECT_CARD);
