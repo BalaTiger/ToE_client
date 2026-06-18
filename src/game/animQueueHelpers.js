@@ -131,6 +131,7 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
       card:ev.card,
       triggerName:"检定牌",
       targetPid:ev.target??0,
+      inspectionSeq:ev.seq,
     });
     const effectQ=buildAnimQueue(
       {players:beforePlayers,log:beforeLog,_statEventSeq:(ev?.statEventSeq||0)-1},

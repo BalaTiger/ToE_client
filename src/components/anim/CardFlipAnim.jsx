@@ -63,13 +63,22 @@ function FlowerBloom(){
   );
 }
 
-function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guessCorrect,expansionKey='地神的潜影',sourcePile='deck'}){
+function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guessCorrect,expansionKey='地神的潜影',sourcePile='deck',onSettled}){
   const [traveled,setTraveled]=React.useState(skipTravel);
+  const settledRef=React.useRef(false);
   React.useEffect(()=>{
     if(skipTravel){setTraveled(true);return undefined;}
     const t=setTimeout(()=>setTraveled(true),650);
     return()=>clearTimeout(t);
   },[skipTravel]);
+  React.useEffect(()=>{
+    if(!traveled||!onSettled||settledRef.current)return undefined;
+    const t=setTimeout(()=>{
+      settledRef.current=true;
+      onSettled();
+    },1250);
+    return()=>clearTimeout(t);
+  },[traveled,onSettled]);
 
   const isInspection=!!card?.effect;
   if(!card) return null;
@@ -259,7 +268,10 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
         }}>{displayTriggerName} 翻开卡牌</div>
       )}
 
-      <div style={{animation:'cardRise 1.2s cubic-bezier(0.15,0,0.35,1) forwards',perspective:700}}>
+      <div
+        data-inspection-flip-card={isInspection ? 'true' : undefined}
+        style={{animation:'cardRise 1.2s cubic-bezier(0.15,0,0.35,1) forwards',perspective:700}}
+      >
         <div style={{
           width:130,height:175,position:'relative',
           transformStyle:'preserve-3d',

@@ -4,6 +4,7 @@ import { aiDrawAndApply, applySanLossToPlayerWithInspection, checkWin, playerDra
 import { buildTsathogguaSlimeGrantQueue } from '../turnAnimState';
 import { makeGodCard, makeGs, makePlayer, makeStandardPlayers } from './factory';
 import { createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../../constants/card';
+import { applyInspectionForSanLoss } from '../effectEngine';
 
 describe('checkWin death handling', () => {
   it('单人模式下本地玩家死亡会立即失败', () => {
@@ -304,6 +305,147 @@ describe('turnEngine stat events', () => {
       { type: 'HP_LOSS', target: 0, from: { hp: 10 }, to: { hp: 9 }, seq: 2 },
     ]);
     expect(result.statePatch._inspectionEvents[0].statEventSeq).toBe(2);
+  });
+
+  it('AI 邪神遭遇可延后到遭遇扣减后、检定翻牌前', () => {
+    const players = [
+      makePlayer({ name: '你', role: ROLE_CULTIST }),
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_TREASURE,
+        hp: 10,
+        san: 7,
+        godEncounters: 1,
+        godName: 'NYA',
+        godLevel: 1,
+        godZone: [makeGodCard('NYA')],
+      }),
+    ];
+    const godCard = makeGodCard('VRI');
+    const inspectionCard = { name: '失眠', effect: 'disableRest', value: 1, type: 'negative' };
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      deck: [godCard],
+      inspectionDeck: [inspectionCard],
+      inspectionDiscard: [],
+      log: [],
+      deferAiGodChoice: true,
+    });
+
+    const result = aiDrawAndApply(1, players, [godCard], [], gs);
+
+    expect(result.pendingAiGodChoice).toMatchObject({ playerIndex: 1, godCard });
+    expect(result.P[1].san).toBe(5);
+    expect(result.P[1].godName).toBe('NYA');
+    expect(result.effectMsgs.some(msg => msg.includes('改信新神'))).toBe(false);
+    expect(result.statePatch._inspectionEvents).toHaveLength(0);
+    expect(result.statePatch._pendingAiGodChoice).toMatchObject({
+      playerIndex: 1,
+      godCard,
+      pendingEncounterInspection: true,
+    });
+
+    const inspected = applyInspectionForSanLoss(
+      1,
+      result.P[1].san,
+      1,
+      result.P,
+      result.D,
+      result.Disc,
+      result.effectMsgs,
+      { ...gs, players: result.P, deck: result.D, discard: result.Disc, log: result.effectMsgs, ...result.statePatch },
+    );
+    expect(inspected.inspectionMeta._inspectionEvents).toHaveLength(1);
+
+    const afterDecision = resolveGodEncounterForAI(
+      1,
+      godCard,
+      inspected.P,
+      inspected.D,
+      inspected.Disc,
+      {
+        ...gs,
+        players: inspected.P,
+        deck: inspected.D,
+        discard: inspected.Disc,
+        log: inspected.log,
+        ...result.statePatch,
+        ...inspected.inspectionMeta,
+      },
+      false,
+    );
+
+    expect(afterDecision.msgs.some(msg => msg.includes('改信新神'))).toBe(true);
+    expect(afterDecision.P[1].san).toBe(4);
+    expect(afterDecision.P[1].godName).toBe('VRI');
+  });
+
+  it('AI 已拥有高等级邪神之力时会降低改信权重', () => {
+    const oldGod = makeGodCard('CTH');
+    const drawnGod = makeGodCard('ZHU');
+    const players = [
+      makePlayer({ name: '你', role: ROLE_CULTIST }),
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_TREASURE,
+        san: 8,
+        godName: 'CTH',
+        godLevel: 3,
+        godZone: [oldGod, makeGodCard('CTH'), makeGodCard('CTH')],
+      }),
+    ];
+    const gs = makeGs({ players, currentTurn: 1, log: [] });
+
+    const result = resolveGodEncounterForAI(1, drawnGod, players, [], [], gs, false);
+
+    expect(result.P[1]).toMatchObject({ godName: 'CTH', godLevel: 3, san: 8 });
+    expect(result.msgs.some(msg => msg.includes('改信新神'))).toBe(false);
+  });
+
+  it('AI 追猎者不会主动信仰阿波菲斯', () => {
+    const apo = makeGodCard('APO');
+    const players = [
+      makePlayer({ name: '你', role: ROLE_CULTIST }),
+      makePlayer({ name: '追猎者', role: ROLE_HUNTER, san: 8 }),
+      makePlayer({ name: '邪祀者', role: ROLE_CULTIST }),
+    ];
+    const gs = makeGs({ players, currentTurn: 1, log: [] });
+
+    const result = resolveGodEncounterForAI(1, apo, players, [], [], gs, false);
+
+    expect(result.P[1].godName).toBeNull();
+    expect(result.msgs.some(msg => msg.includes('信仰了'))).toBe(false);
+  });
+
+  it('AI 在全员存活时会降低伏行之混沌的信仰权重', () => {
+    const nya = makeGodCard('NYA');
+    const players = [
+      makePlayer({ name: '你', role: ROLE_CULTIST }),
+      makePlayer({ name: '寻宝者', role: ROLE_TREASURE, san: 8 }),
+      makePlayer({ name: '追猎者', role: ROLE_HUNTER }),
+    ];
+    const gs = makeGs({ players, currentTurn: 1, log: [] });
+
+    const result = resolveGodEncounterForAI(1, nya, players, [], [], gs, false);
+
+    expect(result.P[1].godName).toBeNull();
+    expect(result.msgs.some(msg => msg.includes('信仰了'))).toBe(false);
+  });
+
+  it('AI 在已有死亡角色时会提高伏行之混沌的信仰权重', () => {
+    const nya = makeGodCard('NYA');
+    const players = [
+      makePlayer({ name: '你', role: ROLE_CULTIST }),
+      makePlayer({ name: '寻宝者', role: ROLE_TREASURE, san: 8 }),
+      makePlayer({ name: '阵亡寻宝者', role: ROLE_TREASURE, isDead: true }),
+    ];
+    const gs = makeGs({ players, currentTurn: 1, log: [] });
+
+    const result = resolveGodEncounterForAI(1, nya, players, [], [], gs, false);
+
+    expect(result.P[1]).toMatchObject({ godName: 'NYA', godLevel: 1 });
+    expect(result.msgs.some(msg => msg.includes('信仰了'))).toBe(true);
   });
 
   it('回合开始的黑山羊幼仔伤害产出显式 stat events', () => {

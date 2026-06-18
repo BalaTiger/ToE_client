@@ -50,12 +50,26 @@ export const TUTORIAL_FLOW = {
   HUNTER_SELECT_TARGET: 'hunterSelectTarget',
   HUNTER_REVEAL: 'hunterReveal',
   HUNTER_CONFIRM_CARD: 'hunterConfirmCard',
+  HUNTER_SECOND_HUNT_INTRO: 'hunterSecondHuntIntro',
+  HUNTER_USE_SKILL_2: 'hunterUseSkill2',
+  HUNTER_SELECT_TARGET_2: 'hunterSelectTarget2',
+  HUNTER_REVEAL_2: 'hunterReveal2',
+  HUNTER_CONFIRM_CARD_2: 'hunterConfirmCard2',
   HUNTER_RESULT: 'hunterResult',
   CULTIST_ZONE_INTRO: 'cultistZoneIntro',
+  CULTIST_ZONE_USE_SKILL: 'cultistZoneUseSkill',
   CULTIST_ZONE_SELECT_CARD: 'cultistZoneSelectCard',
   CULTIST_ZONE_SELECT_TARGET: 'cultistZoneSelectTarget',
   CULTIST_ZONE_RESULT: 'cultistZoneResult',
   CULTIST_GOD_INTRO: 'cultistGodIntro',
+  CULTIST_GOD_STATUS_MARKERS: 'cultistGodStatusMarkers',
+  CULTIST_GOD_OPPONENT_DRAW_START: 'cultistGodOpponentDrawStart',
+  CULTIST_GOD_OPPONENT_DRAW: 'cultistGodOpponentDraw',
+  CULTIST_GOD_CHECK_INTRO: 'cultistGodCheckIntro',
+  CULTIST_GOD_CONVERT_CHECK: 'cultistGodConvertCheck',
+  CULTIST_GOD_CONVERT_RESOLVE: 'cultistGodConvertResolve',
+  CULTIST_GOD_PLAYER_DRAW: 'cultistGodPlayerDraw',
+  CULTIST_GOD_KEEP_HAND: 'cultistGodKeepHand',
   CULTIST_GOD_SELECT_CARD: 'cultistGodSelectCard',
   CULTIST_GOD_SELECT_TARGET: 'cultistGodSelectTarget',
   CULTIST_GOD_RESULT: 'cultistGodResult',
@@ -258,7 +272,7 @@ const SKILL_STEPS = [
     id: TUTORIAL_FLOW.TREASURE_SELECT_TARGET,
     title: '选择目标',
     body: '选择一个倒霉蛋下手吧。',
-    highlight: 'opponentPanel',
+    highlight: 'singleOpponent',
     lock: false,
     allowedAction: { type: 'selectTarget', pid: 1 },
   },
@@ -295,7 +309,7 @@ const SKILL_STEPS = [
 	body: [
       `这是最理想的情况：换到缺失编号，立即胜利。`,
 	  `但即使你的手牌离胜利尚远，只要有没用的牌，也可以积极使用${SWAP}，没准就离宝藏更近一步了。`,
-      `继续教你其他身份。准备好扮演${HUNTER}了吗？`,
+      `接下来继续教你其他身份。`,
     ],
     highlight: 'handArea',
     lock: true,
@@ -303,9 +317,12 @@ const SKILL_STEPS = [
   },
   {
     id: TUTORIAL_FLOW.HUNTER_INTRO,
-    title: '追猎者：确认猎物',
-    body: `现在你扮演${HUNTER}。对手已经残血，且你手中有一张牌能匹配对手即将亮出的编号。`,
-    highlight: 'opponentPanel',
+    title: '追猎者：连续进攻',
+	body: [
+      `准备好扮演${HUNTER}了吗？`,
+	  `对手的${HP}依然充足，你要在一回合内将其消灭，守护遗迹。`,
+    ],
+    highlight: 'opponentHpBar',
     lock: true,
     next: TUTORIAL_FLOW.HUNTER_USE_SKILL,
     setup: 'hunter',
@@ -313,7 +330,7 @@ const SKILL_STEPS = [
   {
     id: TUTORIAL_FLOW.HUNTER_USE_SKILL,
     title: '发动追捕',
-    body: `点击“${HUNT}”。${HUNTER}可以通过匹配编号造成伤害。`,
+    body: `追猎者的${HUNT}技能可以直接造成伤害。让我们小试牛刀。`,
     highlight: 'skillButton',
     lock: false,
     allowedAction: { type: 'useSkill' },
@@ -321,98 +338,233 @@ const SKILL_STEPS = [
   {
     id: TUTORIAL_FLOW.HUNTER_SELECT_TARGET,
     title: '选择猎物',
-    body: '点击残血对手。',
-    highlight: 'opponentPanel',
+    body: '你需要选择追捕目标。请点击对手。',
+    highlight: 'singleOpponent',
     lock: false,
     allowedAction: { type: 'selectTarget', pid: 1 },
   },
   {
     id: TUTORIAL_FLOW.HUNTER_REVEAL,
     title: '对手亮牌',
-    body: '对手亮出了编号 A1。你需要弃出同编号手牌来完成追捕。',
-    highlight: 'opponentPanel',
+    body: `对手亮出了A1区域牌。`,
+    highlight: 'singleOpponent',
     lock: true,
     next: TUTORIAL_FLOW.HUNTER_CONFIRM_CARD,
   },
   {
     id: TUTORIAL_FLOW.HUNTER_CONFIRM_CARD,
     title: '弃牌造成伤害',
-    body: '点击你手中的 A1。教学局中的对手 HP 已经低到会被这次追捕击倒。',
-    highlight: 'handArea',
+    body: `你手中带有编号A或1的区域牌都能匹配对手亮出的牌，并造成伤害。请点击一张。`,
+    highlight: 'handCards',
     lock: false,
-    allowedAction: { type: 'handCard', cardId: 'tut-hunter-match' },
+    allowedAction: { type: 'handCard', cardId: ['tut-hunter-match-a1', 'tut-hunter-match-b1', 'tut-hunter-match-c1', 'tut-hunter-match-d1'] },
+  },
+  {
+    id: TUTORIAL_FLOW.HUNTER_SECOND_HUNT_INTRO,
+    title: '继续追捕',
+    body: `对手失去了3${HP}，但还没倒下。`,
+    highlight: 'opponentHpBar',
+    lock: true,
+    next: TUTORIAL_FLOW.HUNTER_USE_SKILL_2,
+  },
+  {
+    id: TUTORIAL_FLOW.HUNTER_USE_SKILL_2,
+    title: '再次发动追捕',
+	body: [
+      `与寻宝者、邪祀者不同，追猎者的${HUNT}只要成功造成伤害，就能在本回合内继续使用。`,
+	  `请再次点击。`,
+    ],
+    highlight: 'skillButton',
+    lock: false,
+    allowedAction: { type: 'useSkill' },
+  },
+  {
+    id: TUTORIAL_FLOW.HUNTER_SELECT_TARGET_2,
+    title: '选择猎物',
+    body: '请点击对手。',
+    highlight: 'singleOpponent',
+    lock: false,
+    allowedAction: { type: 'selectTarget', pid: 1 },
+  },
+  {
+    id: TUTORIAL_FLOW.HUNTER_REVEAL_2,
+    title: '对手亮牌',
+    body: `对手再次亮出 A1。`,
+    highlight: 'singleOpponent',
+    lock: true,
+    next: TUTORIAL_FLOW.HUNTER_CONFIRM_CARD_2,
+  },
+  {
+    id: TUTORIAL_FLOW.HUNTER_CONFIRM_CARD_2,
+    title: '完成击杀',
+	body: `再弃一张带有编号A或1的区域牌，对手就会命丧你的剑下！`,
+    highlight: 'handCards',
+    lock: false,
+    allowedAction: { type: 'handCard', cardId: ['tut-hunter-match-a1', 'tut-hunter-match-b1', 'tut-hunter-match-c1', 'tut-hunter-match-d1'] },
   },
   {
     id: TUTORIAL_FLOW.HUNTER_RESULT,
     title: '猎物倒下',
-    body: `${HUNT}成功会造成 ${HP} 伤害。${HUNTER}要不断压缩其他身份的生存空间。`,
-    highlight: 'opponentPanel',
+	body: [
+      `收缴战利品的时间到了。${HUNT}成功击杀后，可以随机夺取最多3张手牌。只要策略合理，一回合横扫全场也是可能的。`,
+	  `反过来说，如果对手亮出卡牌，你却放弃追捕，滚雪球的势头就会被打断。`,
+	  `想要成为优秀的追猎者，时机和目标的选择至关重要。`,
+    ],
+    highlight: 'handArea',
     lock: true,
     next: TUTORIAL_FLOW.CULTIST_ZONE_INTRO,
-    setup: 'cultistZone',
   },
   {
     id: TUTORIAL_FLOW.CULTIST_ZONE_INTRO,
     title: '邪祀者：蛊惑区域牌',
-    body: `现在你扮演${CULTIST}。第一步先用区域牌压低对手 ${SAN}。`,
-    highlight: 'handArea',
+    body: `最后你将扮演${CULTIST}。对手的${SAN}已如风中残烛，我先教你${BEWITCH}的基础用法。`,
+    highlight: 'opponentSanBar',
     lock: true,
-    next: TUTORIAL_FLOW.CULTIST_ZONE_SELECT_CARD,
+    next: TUTORIAL_FLOW.CULTIST_ZONE_USE_SKILL,
+    setup: 'cultistZone',
+  },
+  {
+    id: TUTORIAL_FLOW.CULTIST_ZONE_USE_SKILL,
+    title: '发动蛊惑',
+    body: `点击${BEWITCH}。`,
+    highlight: 'skillButton',
+    lock: false,
+    allowedAction: { type: 'useSkill' },
   },
   {
     id: TUTORIAL_FLOW.CULTIST_ZONE_SELECT_CARD,
     title: '选择蛊惑牌',
-    body: `点击“${BEWITCH}”，然后选择手中的幽闭恐惧。它会让相邻角色失去 ${SAN}。`,
-    highlight: 'handArea',
+    body: `选择“幽闭恐惧”这张区域牌，它能造成${SAN}伤害。`,
+    highlight: 'handCard',
     lock: false,
-    allowedAction: { type: 'useSkillOrHandCard', cardId: 'tut-cult-zone' },
+    allowedAction: { type: 'handCard', cardId: 'tut-cult-zone' },
   },
   {
     id: TUTORIAL_FLOW.CULTIST_ZONE_SELECT_TARGET,
     title: '选择目标',
-    body: '把这张区域牌赠予低 SAN 对手。',
-    highlight: 'opponentPanel',
+	body: [
+      `大部分区域牌只在被收入手中的瞬间产生效果。但邪祀者的${BEWITCH}可以在把手牌送给对手的同时，迫使对手${GOLD('重新触发')}卡牌效果。`,
+	  `现在，把这张牌送给对手。`,
+    ],
+    highlight: 'singleOpponent',
     lock: false,
     allowedAction: { type: 'selectTarget', pid: 1 },
   },
   {
     id: TUTORIAL_FLOW.CULTIST_ZONE_RESULT,
     title: 'SAN 归零',
-    body: `区域牌也能成为${BEWITCH}的武器。对手 ${SAN} 被压到零时，${CULTIST}就接近胜利。`,
-    highlight: 'opponentPanel',
+    body: `对手只剩2${SAN}，摸到“幽闭恐惧”并重新触发后${SAN}刚好归零，邪神复活。`,
+    highlight: 'opponentSanBar',
     lock: true,
     next: TUTORIAL_FLOW.CULTIST_GOD_INTRO,
-    setup: 'cultistGod',
   },
   {
     id: TUTORIAL_FLOW.CULTIST_GOD_INTRO,
     title: '邪神牌、骷髅头与改信',
-    body: '第二步演示邪神牌。对手已有信仰和骷髅头：遭遇邪神的 SAN 损失，加上改信额外 SAN-1，会刚好归零。',
-    highlight: 'opponentPanel',
+	body: [
+      `现在我们换个对手，通过观察对手回合了解${GOLD('邪神牌')}的机制。`,
+	  `寻宝者和追猎者当然可以不了解邪神————但${CULTIST}可不行。`,
+    ],
+    highlight: 'singleOpponent',
     lock: true,
+    next: TUTORIAL_FLOW.CULTIST_GOD_STATUS_MARKERS,
+    setup: 'cultistGod',
+  },
+  {
+    id: TUTORIAL_FLOW.CULTIST_GOD_STATUS_MARKERS,
+    title: '骷髅与邪神之力',
+	body: [
+      `注意到这个${GOLD('骷髅标记')}了吗？它的数量代表了对手在这次探险中信仰邪神的次数。`,
+	  `而旁边的标签，则表示对手此刻正在信仰一位邪神，并接受祂的赐福。`,
+	  `这两个信息的用处，你待会自会明白。`,
+    ],
+    highlight: 'opponentGodStatus',
+    lock: true,
+    next: TUTORIAL_FLOW.CULTIST_GOD_OPPONENT_DRAW_START,
+  },
+  {
+    id: TUTORIAL_FLOW.CULTIST_GOD_OPPONENT_DRAW_START,
+    title: '',
+    body: '',
+    highlight: 'noSpotlight',
+    lock: false,
+    auto: true,
+  },
+  {
+    id: TUTORIAL_FLOW.CULTIST_GOD_OPPONENT_DRAW,
+    title: '遭遇邪神',
+	body: [
+      `还记得刚才对手有7点${SAN}吗？`,
+	  `因为再次遭遇邪神，对手的骷髅数增长至2，并且失去了等同于骷髅数的${SAN}。`,
+	  `不仅如此，注意到${SAN}条上的刻度线了吗？这次结算后对手${SAN}低于刻度线，会发生什么呢？`,
+    ],
+    highlight: 'opponentSanBar',
+    lock: true,
+    next: TUTORIAL_FLOW.CULTIST_GOD_CHECK_INTRO,
+  },
+  {
+    id: TUTORIAL_FLOW.CULTIST_GOD_CHECK_INTRO,
+    title: '检定牌',
+    body: `就是这样！每次${SAN}降至6或以下时，都需要进行检定，触发随机效果。`,
+    highlight: 'inspectionFlipCard',
+    lock: true,
+    next: TUTORIAL_FLOW.CULTIST_GOD_CONVERT_CHECK,
+  },
+  {
+    id: TUTORIAL_FLOW.CULTIST_GOD_CONVERT_CHECK,
+    title: '改信代价',
+    body: `对手选择改信新神，额外失去 1${SAN}。这次损失后仍未归零，所以会再翻一张检定牌。`,
+    highlight: 'opponentSanBar',
+    lock: true,
+    next: TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE,
+  },
+  {
+    id: TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE,
+    title: '',
+    body: '',
+    highlight: 'noSpotlight',
+    lock: false,
+    auto: true,
+  },
+  {
+    id: TUTORIAL_FLOW.CULTIST_GOD_PLAYER_DRAW,
+    title: '轮到你',
+    body: `对手没有继续行动，回合结束。现在轮到你：你会摸到一张邪神牌。作为${CULTIST}，你可以不信仰它，而是秘密收入手牌。`,
+    highlight: 'deckArea',
+    lock: true,
+    next: TUTORIAL_FLOW.CULTIST_GOD_KEEP_HAND,
+    auto: true,
+  },
+  {
+    id: TUTORIAL_FLOW.CULTIST_GOD_KEEP_HAND,
+    title: '收入邪神牌',
+    body: `点击“秘密收入手牌”。这张邪神牌会成为你接下来${BEWITCH}的弹药。`,
+    highlight: 'noSpotlight',
+    lock: false,
+    allowedAction: { type: 'godKeepHand' },
     next: TUTORIAL_FLOW.CULTIST_GOD_SELECT_CARD,
   },
   {
     id: TUTORIAL_FLOW.CULTIST_GOD_SELECT_CARD,
     title: '蛊惑邪神牌',
-    body: `点击“${BEWITCH}”，选择手中的弗栗多。`,
-    highlight: 'handArea',
+    body: `点击“${BEWITCH}”，选择刚才收入手牌的邪神牌。`,
+    highlight: 'handCard',
     lock: false,
     allowedAction: { type: 'useSkillOrHandCard', cardId: 'tut-cult-god' },
   },
   {
     id: TUTORIAL_FLOW.CULTIST_GOD_SELECT_TARGET,
     title: '强迫改信',
-    body: '选择已经信仰烛九阴的对手。不同邪神会触发改信额外 SAN 损失。',
-    highlight: 'opponentPanel',
+    body: `把邪神牌蛊惑给对手。第 3 个骷髅头会让他先失去 3${SAN}，随后强制改信再失去 1${SAN}。`,
+    highlight: 'singleOpponent',
     lock: false,
     allowedAction: { type: 'selectTarget', pid: 1 },
   },
   {
     id: TUTORIAL_FLOW.CULTIST_GOD_RESULT,
     title: '邪神复苏',
-    body: `这次归零来自“骷髅头遭遇损失 + 改信损失”的合计。正式对局中，${CULTIST}要主动制造这种临界点。`,
-    highlight: 'opponentPanel',
+    body: `这次归零来自“骷髅头遭遇损失 + 检定牌风险 + 改信损失”的合计。正式对局中，${CULTIST}要主动制造这种临界点。`,
+    highlight: 'opponentSanBar',
     lock: true,
     next: TUTORIAL_FLOW.COMPLETE,
   },
@@ -488,6 +640,13 @@ function tutorialDeck(excludedIds = []) {
   return mkDeck(DEFAULT_EXPANSION_KEY).filter(card => !excluded.has(card.id));
 }
 
+function safeTutorialInspectionDeck() {
+  const blocked = new Set(['超人意志', '揭开真相', '封印松动', '廷达罗斯猎犬']);
+  return INSPECTION_DECK
+    .filter(card => !blocked.has(card.name))
+    .map((card, idx) => ({ ...card, id: `tut-inspection-${idx}` }));
+}
+
 function baseTutorialState(players, log) {
   return {
     players,
@@ -531,16 +690,18 @@ export function createTutorialScenario(kind = 'treasure') {
     const player = playerBase(0, '你', ROLE_HUNTER);
     const opponent = playerBase(1, '贝拉', ROLE_TREASURE);
     player.hand = [
-      { ...zoneCard('A1', '霉变食物', 'tut-hunter-match'), id: 'tut-hunter-match' },
-      zoneCard('B2', '新鲜空气', 'tut-hunter-extra-1'),
-      zoneCard('C3', '地动山摇', 'tut-hunter-extra-2'),
+      { ...zoneCard('A1', '霉变食物', 'tut-hunter-match-a1'), id: 'tut-hunter-match-a1' },
+      { ...zoneCard('B1', '圣甲虫', 'tut-hunter-match-b1'), id: 'tut-hunter-match-b1' },
+      { ...zoneCard('C1', '关键拼图', 'tut-hunter-match-c1'), id: 'tut-hunter-match-c1' },
+      { ...zoneCard('D1', '钻地魔虫', 'tut-hunter-match-d1'), id: 'tut-hunter-match-d1' },
     ];
-    opponent.hp = 3;
+    opponent.hp = 6;
     opponent.hand = [
-      zoneCard('A1', '解读石刻', 'tut-hunter-reveal'),
-      zoneCard('D4', '斯芬克斯', 'tut-hunter-target-extra'),
+      { ...zoneCard('A1', '解读石刻', 'tut-hunter-target-a1-1'), id: 'tut-hunter-target-a1-1' },
+      { ...zoneCard('A1', '霉变食物', 'tut-hunter-target-a1-2'), id: 'tut-hunter-target-a1-2' },
+      { ...zoneCard('A1', '神圣菇肉', 'tut-hunter-target-a1-3'), id: 'tut-hunter-target-a1-3' },
     ];
-    return baseTutorialState([player, opponent], ['教学局：你现在扮演追猎者。对手 HP 已被压低。']);
+    return baseTutorialState([player, opponent], ['教学局：你现在扮演追猎者。对手有 6 HP，需要连续追捕两次才能击杀。']);
   }
 
   if (kind === 'cultistZone') {
@@ -558,18 +719,27 @@ export function createTutorialScenario(kind = 'treasure') {
   if (kind === 'cultistGod') {
     const player = playerBase(0, '你', ROLE_CULTIST);
     const opponent = playerBase(1, '贝拉', ROLE_TREASURE);
-    const zhu = godCard('ZHU', 'tut-target-zhu');
+    const nya = godCard('NYA', 'tut-target-nya');
+    const opponentDrawGod = { ...godCard('VRI', 'tut-opponent-draw-god'), id: 'tut-opponent-draw-god' };
+    const playerDrawGod = { ...godCard('ZHU', 'tut-cult-god'), id: 'tut-cult-god' };
     player.hand = [
-      { ...godCard('VRI', 'tut-cult-god'), id: 'tut-cult-god' },
       zoneCard('B2', '新鲜空气', 'tut-cult-god-extra'),
     ];
-    opponent.san = 4;
-    opponent.godEncounters = 2;
-    opponent.godName = 'ZHU';
+    opponent.san = 7;
+    opponent.godEncounters = 1;
+    opponent.godName = 'NYA';
     opponent.godLevel = 1;
-    opponent.godZone = [zhu];
+    opponent.godZone = [nya];
     opponent.hand = [zoneCard('C4', '夜风呼啸', 'tut-cult-god-target')];
-    return baseTutorialState([player, opponent], ['教学局：对手已经信仰烛九阴，即将被迫改信。']);
+    const state = baseTutorialState([player, opponent], ['教学局：对手已有 1 个骷髅头、7 SAN，并正在信仰伏行之混沌。']);
+    state.deck = [
+      opponentDrawGod,
+      playerDrawGod,
+      ...state.deck.filter(card => card.id !== opponentDrawGod.id && card.id !== playerDrawGod.id),
+    ];
+    state.inspectionDeck = safeTutorialInspectionDeck();
+    state.inspectionDiscard = [];
+    return state;
   }
 
   const player = playerBase(0, '你', ROLE_TREASURE);
@@ -604,7 +774,10 @@ export function shouldAllowTutorialAction(stepId, action) {
   if (allowed.type !== action.type) return false;
   if (allowed.pid != null && allowed.pid !== action.pid) return false;
   if (allowed.cardIndex != null && allowed.cardIndex !== action.cardIndex) return false;
-  if (allowed.cardId != null && allowed.cardId !== action.cardId) return false;
+  if (allowed.cardId != null) {
+    const allowedIds = Array.isArray(allowed.cardId) ? allowed.cardId : [allowed.cardId];
+    if (!allowedIds.includes(action.cardId)) return false;
+  }
   return true;
 }
 
@@ -617,10 +790,14 @@ export function nextTutorialStepAfterAction(stepId, action) {
   if (stepId === TUTORIAL_FLOW.TREASURE_GIVE_CARD && action.type === 'handCard') return TUTORIAL_FLOW.TREASURE_MAP_ANIM;
   if (stepId === TUTORIAL_FLOW.HUNTER_USE_SKILL && action.type === 'useSkill') return TUTORIAL_FLOW.HUNTER_SELECT_TARGET;
   if (stepId === TUTORIAL_FLOW.HUNTER_SELECT_TARGET && action.type === 'selectTarget') return TUTORIAL_FLOW.HUNTER_REVEAL;
-  if (stepId === TUTORIAL_FLOW.HUNTER_CONFIRM_CARD && action.type === 'handCard') return TUTORIAL_FLOW.HUNTER_RESULT;
-  if (stepId === TUTORIAL_FLOW.CULTIST_ZONE_SELECT_CARD && action.type === 'useSkill') return stepId;
+  if (stepId === TUTORIAL_FLOW.HUNTER_CONFIRM_CARD && action.type === 'handCard') return TUTORIAL_FLOW.HUNTER_SECOND_HUNT_INTRO;
+  if (stepId === TUTORIAL_FLOW.HUNTER_USE_SKILL_2 && action.type === 'useSkill') return TUTORIAL_FLOW.HUNTER_SELECT_TARGET_2;
+  if (stepId === TUTORIAL_FLOW.HUNTER_SELECT_TARGET_2 && action.type === 'selectTarget') return TUTORIAL_FLOW.HUNTER_REVEAL_2;
+  if (stepId === TUTORIAL_FLOW.HUNTER_CONFIRM_CARD_2 && action.type === 'handCard') return TUTORIAL_FLOW.HUNTER_RESULT;
+  if (stepId === TUTORIAL_FLOW.CULTIST_ZONE_USE_SKILL && action.type === 'useSkill') return TUTORIAL_FLOW.CULTIST_ZONE_SELECT_CARD;
   if (stepId === TUTORIAL_FLOW.CULTIST_ZONE_SELECT_CARD && action.type === 'handCard') return TUTORIAL_FLOW.CULTIST_ZONE_SELECT_TARGET;
   if (stepId === TUTORIAL_FLOW.CULTIST_ZONE_SELECT_TARGET && action.type === 'selectTarget') return TUTORIAL_FLOW.CULTIST_ZONE_RESULT;
+  if (stepId === TUTORIAL_FLOW.CULTIST_GOD_KEEP_HAND && action.type === 'godKeepHand') return TUTORIAL_FLOW.CULTIST_GOD_SELECT_CARD;
   if (stepId === TUTORIAL_FLOW.CULTIST_GOD_SELECT_CARD && action.type === 'useSkill') return stepId;
   if (stepId === TUTORIAL_FLOW.CULTIST_GOD_SELECT_CARD && action.type === 'handCard') return TUTORIAL_FLOW.CULTIST_GOD_SELECT_TARGET;
   if (stepId === TUTORIAL_FLOW.CULTIST_GOD_SELECT_TARGET && action.type === 'selectTarget') return TUTORIAL_FLOW.CULTIST_GOD_RESULT;

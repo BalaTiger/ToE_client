@@ -772,7 +772,7 @@ export function decideAiSkillUsage(gs, players, ct, aiEffRole, hunterTargets = [
   else if (aiEffRole === ROLE_CULTIST) skillRate = 0.95;
   else if (myProgress >= 7) skillRate = 0.55;
 
-  const canUseSkill = !gs?.restUsed && (aiEffRole === ROLE_HUNTER ? true : !gs?.skillUsed);
+  const canUseSkill = !self.disableSkill && !gs?.restUsed && (aiEffRole === ROLE_HUNTER ? true : !gs?.skillUsed);
   const hunterHuntCards = (self.hand || []).filter(canRevealForHunt);
   const hunterHandLimit = self._nyaHandLimit ?? 4;
   const hunterOverLimit = hunterHuntCards.length > hunterHandLimit;

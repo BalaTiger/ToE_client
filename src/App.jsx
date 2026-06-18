@@ -43,6 +43,7 @@ import {
   applyHpDamageWithLink,
   applyFx,
   applySanLossToPlayerWithInspection,
+  applyInspectionForSanLoss,
   aiChooseRevealCard,
   aiChooseHunterLootCards,
   chooseFirstComePickForAI,
@@ -217,7 +218,7 @@ import { DAMAGE_ANIMATION_STYLES } from './components/anim/damageStyles';
 import { APOPHIS_ANIMATION_STYLES } from './components/anim/apophisStyles';
 import { SNAKE_TRAP_ANIMATION_STYLES } from './components/anim/snakeTrapStyles';
 import { ENDLESS_CORRIDOR_ANIMATION_STYLES } from './components/anim/endlessCorridorStyles';
-import { GodResurrectionAnim, TreasureMapAnim, CthulhuResurrectionAnim, RoleRevealAnim } from './components/anim/WinAnims';
+import { GodResurrectionAnim, TreasureMapAnim, RoleRevealAnim } from './components/anim/WinAnims';
 import { TitleCandleFlames } from './components/anim/TitleCandleFlames';
 import { AnimOverlay } from './components/anim/AnimOverlay';
 import { ApophisNightBadge } from './components/anim/ApophisOverlays';
@@ -541,8 +542,11 @@ export default function Game(){
   const [showGodResurrection,setShowGodResurrection]=useState(false);
   const [showFullLog,setShowFullLog]=useState(false);
   const [tutorialStep,setTutorialStep]=useState(1);
+  const [tutorialOverlayHidden,setTutorialOverlayHidden]=useState(false);
   const [tutorialDiceResultPending,setTutorialDiceResultPending]=useState(false);
   const [tutorialDiceResultResuming,setTutorialDiceResultResuming]=useState(false);
+  const [tutorialInspectionPending,setTutorialInspectionPending]=useState(false);
+  const [tutorialInspectionResuming,setTutorialInspectionResuming]=useState(false);
   const tutorialStepDef=showTutorial&&typeof tutorialStep==='string'?getTutorialStep(tutorialStep):null;
   const isScriptedTutorial=!!tutorialStepDef;
   const isTutorialActionStep=!!tutorialStepDef?.allowedAction;
@@ -1423,10 +1427,15 @@ export default function Game(){
   const handAreaRef=useRef(null);
   const mobileGodCardRefs=useRef(new Map());
   const [handAreaRect,setHandAreaRect]=useState(null);
+  const [tutorialHandCardRect,setTutorialHandCardRect]=useState(null);
+  const [handCardsRect,setHandCardsRect]=useState(null);
   const [mobileArmedGodCardIdx,setMobileArmedGodCardIdx]=useState(null);
   const aiPanelAreaRef=useRef(null);
   const [aiPanelAreaRect,setAiPanelAreaRect]=useState(null);
   const [opponentSanBarRect,setOpponentSanBarRect]=useState(null);
+  const [opponentHpBarRect,setOpponentHpBarRect]=useState(null);
+  const [singleOpponentRect,setSingleOpponentRect]=useState(null);
+  const [opponentGodStatusRect,setOpponentGodStatusRect]=useState(null);
   const drawRevealKeepButtonRef=useRef(null);
   const [drawRevealKeepButtonRect,setDrawRevealKeepButtonRect]=useState(null);
   const deckAreaRef=useRef(null);
@@ -1707,8 +1716,59 @@ export default function Game(){
     setGs(nextGs);
   },[getVisualDiscardForState,syncVisibleLog]);
 
+  const playPendingAiGodEncounterInspection=useCallback(()=>{
+    const pending=gs?.abilityData;
+    const actorIdx=pending?.playerIndex;
+    if(!gs||gs.phase!=='AI_GOD_CHOICE'||actorIdx==null||!pending?.pendingEncounterInspection)return false;
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
+    let inspectionMeta=makeInspectionMeta(gs);
+    const processed=applyInspectionForSanLoss(actorIdx,P[actorIdx]?.san,gs.currentTurn??actorIdx,P,D,Disc,L,inspectionMeta);
+    P=processed.P;D=processed.D;Disc=processed.Disc;L=processed.log;inspectionMeta=processed.inspectionMeta;
+    const nextAbilityData={...(gs.abilityData||{}),pendingEncounterInspection:false};
+    const newGs={
+      ...gs,
+      players:P,
+      deck:D,
+      discard:Disc,
+      log:L,
+      ...inspectionMeta,
+      abilityData:nextAbilityData,
+      _pendingAiGodChoice:{...(gs._pendingAiGodChoice||{}),pendingEncounterInspection:false},
+    };
+    const replay=buildInspectionAwareAnimQueue(gs,newGs,{buildAnimQueue,copyPlayers});
+    let marked=false;
+    const queue=(replay.queue||[]).map(step=>{
+      if(!marked&&step?.type==='DRAW_CARD'&&step?.inspectionSeq!=null){
+        marked=true;
+        return {
+          ...step,
+          durationMs:2147483647,
+          onSettled:()=>{
+            setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_CHECK_INTRO);
+            setTutorialInspectionPending(false);
+          },
+        };
+      }
+      return step;
+    });
+    setTutorialInspectionPending(true);
+    triggerAnimQueue(queue,newGs,()=>{
+      applyTutorialStateSnapshot(newGs);
+      setTutorialInspectionResuming(false);
+      setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_CONVERT_CHECK);
+    });
+    return true;
+  },[applyTutorialStateSnapshot,gs,triggerAnimQueue]);
+
   const advanceTutorialStep=useCallback((nextStep)=>{
     if(!nextStep)return;
+    if(
+      tutorialStep===TUTORIAL_FLOW.CULTIST_GOD_OPPONENT_DRAW
+      &&nextStep===TUTORIAL_FLOW.CULTIST_GOD_CHECK_INTRO
+      &&playPendingAiGodEncounterInspection()
+    ){
+      return;
+    }
     // 如果还有未应用的动画终态，先应用再切换教学步骤，避免丢失状态
     const pendingBase=pendingGsRef.current;
     if(pendingBase)pendingGsRef.current=null;
@@ -1725,13 +1785,18 @@ export default function Game(){
       setDisplayStats((nextGs?.players||[]).map(p=>({hp:p.hp,san:p.san})));
       return nextGs;
     });
-  },[clearBattleAnimationState,getVisualDiscardForState,syncVisibleLog,pendingGsRef]);
+  },[clearBattleAnimationState,getVisualDiscardForState,playPendingAiGodEncounterInspection,syncVisibleLog,pendingGsRef,tutorialStep]);
 
   const handleTutorialResultNext=useCallback(()=>{
+    if(tutorialStep===TUTORIAL_FLOW.CULTIST_GOD_CHECK_INTRO){
+      setTutorialInspectionResuming(true);
+      setAnim(prev=>prev?{...prev,durationMs:0,onSettled:undefined}:prev);
+      return;
+    }
     setTutorialDiceResultResuming(true);
     // 结束骰子定格，让它正常淡出，随后播放队列中的收入牌飞入手牌动画
     setAnim(prev=>prev?{...prev,durationMs:0,onSettled:undefined}:prev);
-  },[setAnim]);
+  },[setAnim,tutorialStep]);
 
   const isTutorialActionAllowed=useCallback((action)=>{
     if(!showTutorial||!tutorialStepDef)return true;
@@ -1749,17 +1814,37 @@ export default function Game(){
       else setGs(nextGs);
       return;
     }
+    const playTutorialGodResurrection=showTutorial
+      &&(
+        (tutorialStep===TUTORIAL_FLOW.CULTIST_ZONE_SELECT_TARGET&&nextStep===TUTORIAL_FLOW.CULTIST_ZONE_RESULT)||
+        (tutorialStep===TUTORIAL_FLOW.CULTIST_GOD_SELECT_TARGET&&nextStep===TUTORIAL_FLOW.CULTIST_GOD_RESULT)
+      )
+      &&shouldTriggerGodResurrection(nextGs);
     const tutorialGs=clearTutorialWinState(nextGs,nextStep);
-    if(queue?.length){
-      triggerAnimQueue(queue,tutorialGs,()=>{
-        applyTutorialStateSnapshot(tutorialGs);
-        setTutorialStep(nextStep);
-      });
-    }else{
-      applyTutorialStateSnapshot(tutorialGs);
+    const finalTutorialGs=playTutorialGodResurrection
+      ? {...tutorialGs,phase:'GOD_RESURRECTION',gameOver:null,abilityData:{},drawReveal:null,_pendingGodResurrection:undefined}
+      : tutorialGs;
+    const completeStep=()=>{
+      applyTutorialStateSnapshot(finalTutorialGs);
       setTutorialStep(nextStep);
+      if(playTutorialGodResurrection)return;
+      setTutorialOverlayHidden(false);
+    };
+    if(queue?.length){
+      const hideOverlay=playTutorialGodResurrection||tutorialStep===TUTORIAL_FLOW.HUNTER_CONFIRM_CARD||tutorialStep===TUTORIAL_FLOW.HUNTER_CONFIRM_CARD_2;
+      if(hideOverlay)setTutorialOverlayHidden(true);
+      triggerAnimQueue(queue,finalTutorialGs,completeStep);
+    }else{
+      if(playTutorialGodResurrection)setTutorialOverlayHidden(true);
+      completeStep();
     }
-  },[applyTutorialStateSnapshot,triggerAnimQueue]);
+  },[applyTutorialStateSnapshot,showTutorial,triggerAnimQueue,tutorialStep]);
+
+  const completeTutorialGodResurrection=useCallback(()=>{
+    clearBattleAnimationState();
+    setGs(prev=>prev?{...prev,phase:'ACTION',gameOver:null,abilityData:{},drawReveal:null,_pendingGodResurrection:undefined}:prev);
+    setTutorialOverlayHidden(false);
+  },[clearBattleAnimationState]);
 
   useEffect(()=>{
     if(!gs?.gameOver&&gs?.phase!=='GOD_RESURRECTION')return;
@@ -1918,9 +2003,34 @@ export default function Game(){
         const r=_getZoomCompensatedRect(roleTextRef.current);
         if(r)setRoleTextRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
       }
-      if(showTutorial&&(tutorialStep===7||tutorialStep===15||scriptHighlight==='handArea'||scriptHighlight==='skillButton')&&handAreaRef.current){
+      if(showTutorial&&(tutorialStep===7||tutorialStep===15||scriptHighlight==='handArea'||scriptHighlight==='handCard'||scriptHighlight==='skillButton')&&handAreaRef.current){
         const r=_getZoomCompensatedRect(handAreaRef.current);
         if(r)setHandAreaRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+      }
+      if(showTutorial&&scriptHighlight==='handCards'&&handAreaRef.current){
+        const cardEls=handAreaRef.current.querySelectorAll('[data-self-hand-card]');
+        if(cardEls.length){
+          let top=Infinity,left=Infinity,right=-Infinity,bottom=-Infinity;
+          cardEls.forEach(el=>{
+            const r=_getZoomCompensatedRect(el);
+            if(r){
+              top=Math.min(top,r.top);
+              left=Math.min(left,r.left);
+              right=Math.max(right,r.right);
+              bottom=Math.max(bottom,r.bottom);
+            }
+          });
+          if(top!==Infinity){
+            setHandCardsRect({top,left,right,bottom,width:right-left,height:bottom-top});
+          }
+        }
+      }
+      if(showTutorial&&scriptHighlight==='handCard'&&handAreaRef.current){
+        const targetCardId=tutorialStepDef?.allowedAction?.cardId;
+        const cardEls=handAreaRef.current.querySelectorAll('[data-self-hand-card-id]');
+        const targetEl=[...cardEls].find(el=>el.dataset.selfHandCardId===targetCardId);
+        const r=targetEl?_getZoomCompensatedRect(targetEl):null;
+        setTutorialHandCardRect(r?{top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height}:null);
       }
       if(showTutorial&&(tutorialStep===9||tutorialStep===11||scriptHighlight==='opponentPanel'||scriptHighlight==='swapBlind')&&aiPanelAreaRef.current){
         const r=_getZoomCompensatedRect(aiPanelAreaRef.current);
@@ -1931,6 +2041,27 @@ export default function Game(){
         if(sanBarEl){
           const r=_getZoomCompensatedRect(sanBarEl);
           if(r)setOpponentSanBarRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+        }
+      }
+      if(showTutorial&&scriptHighlight==='opponentHpBar'&&aiPanelAreaRef.current){
+        const hpBarEl=aiPanelAreaRef.current.querySelector('[data-stat-label="HP"]');
+        if(hpBarEl){
+          const r=_getZoomCompensatedRect(hpBarEl);
+          if(r)setOpponentHpBarRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+        }
+      }
+      if(showTutorial&&scriptHighlight==='singleOpponent'&&aiPanelAreaRef.current){
+        const opponentEl=aiPanelAreaRef.current.querySelector('[data-pid="1"]');
+        if(opponentEl){
+          const r=_getZoomCompensatedRect(opponentEl);
+          if(r)setSingleOpponentRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+        }
+      }
+      if(showTutorial&&scriptHighlight==='opponentGodStatus'&&aiPanelAreaRef.current){
+        const statusEl=aiPanelAreaRef.current.querySelector('[data-player-god-status="1"]');
+        if(statusEl){
+          const r=_getZoomCompensatedRect(statusEl);
+          if(r)setOpponentGodStatusRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
         }
       }
       if(showTutorial&&scriptHighlight==='drawRevealKeepButton'&&drawRevealKeepButtonRef.current){
@@ -2017,6 +2148,52 @@ export default function Game(){
       return;
     }
 
+    if(tutorialStep===TUTORIAL_FLOW.CULTIST_GOD_OPPONENT_DRAW_START&&gs.phase==='ACTION'&&gs.currentTurn===0&&!anim&&!animExiting&&animQueueRef.current.length===0&&!pendingGsRef.current){
+      const nextGs=startNextTurn({...gs,phase:'ACTION',drawReveal:null,selectedCard:null,abilityData:{}});
+      const replay=buildAppTurnStartDrawReplay(nextGs,{
+        oldGs:gs,
+        effectOldGs:{...gs,players:nextGs._playersBeforeThisDraw||gs.players},
+      });
+      const queue=replay?.queue?.length
+        ? replay.queue
+        : bindAnimLogChunks(buildAnimQueue(gs,nextGs),{statLogs:nextGs._statLogs||[]});
+      if(queue.length){
+        if(replay?.visualLock)visualStateLocks.lock(replay.visualLock);
+        setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
+        triggerAnimQueue(queue,nextGs,()=>{
+          applyTutorialStateSnapshot(nextGs);
+          setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_OPPONENT_DRAW);
+        });
+      }else{
+        applyTutorialStateSnapshot(nextGs);
+        setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_OPPONENT_DRAW);
+      }
+      return;
+    }
+
+    if(tutorialStep===TUTORIAL_FLOW.CULTIST_GOD_PLAYER_DRAW&&gs.currentTurn===1&&!anim&&!animExiting&&animQueueRef.current.length===0&&!pendingGsRef.current){
+      const nextGs=startNextTurn({...gs,phase:'ACTION',drawReveal:null,selectedCard:null,abilityData:{}});
+      const replay=buildAppTurnStartDrawReplay(nextGs,{
+        oldGs:gs,
+        effectOldGs:{...gs,players:nextGs._playersBeforeThisDraw||gs.players},
+      });
+      const queue=replay?.queue?.length
+        ? replay.queue
+        : bindAnimLogChunks(buildAnimQueue(gs,nextGs),{statLogs:nextGs._statLogs||[]});
+      if(queue.length){
+        if(replay?.visualLock)visualStateLocks.lock(replay.visualLock);
+        setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
+        triggerAnimQueue(queue,nextGs,()=>{
+          applyTutorialStateSnapshot(nextGs);
+          setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_KEEP_HAND);
+        });
+      }else{
+        applyTutorialStateSnapshot(nextGs);
+        setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_KEEP_HAND);
+      }
+      return;
+    }
+
     // 收入弹窗由真实对局逻辑处理；选择收入后再进入寻宝者规避教学
     if(tutorialStep===TUTORIAL_FLOW.TREASURE_DRAW_REVEAL){
       if(gs.phase==='TREASURE_DODGE_DECISION'){
@@ -2025,6 +2202,76 @@ export default function Game(){
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[showTutorial,tutorialStep,gs?.phase,gs?._turnKey,anim,animExiting]);
+
+  const resolvePendingAiGodChoice=useCallback((nextTutorialStep=null)=>{
+    const pending=gs?.abilityData;
+    const actorIdx=pending?.playerIndex;
+    const godCard=pending?.godCard;
+    if(!gs||gs.phase!=='AI_GOD_CHOICE'||actorIdx==null||!godCard)return;
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
+    let resolveBaseGs=gs;
+    if(pending?.pendingEncounterInspection){
+      let encounterInspectionMeta=makeInspectionMeta(gs);
+      const inspected=applyInspectionForSanLoss(actorIdx,P[actorIdx]?.san,gs.currentTurn??actorIdx,P,D,Disc,L,encounterInspectionMeta);
+      P=inspected.P;D=inspected.D;Disc=inspected.Disc;L=inspected.log;encounterInspectionMeta=inspected.inspectionMeta;
+      resolveBaseGs={
+        ...gs,
+        players:P,
+        deck:D,
+        discard:Disc,
+        log:L,
+        ...encounterInspectionMeta,
+        abilityData:{...(gs.abilityData||{}),pendingEncounterInspection:false},
+        _pendingAiGodChoice:{...(gs._pendingAiGodChoice||{}),pendingEncounterInspection:false},
+      };
+    }
+    const result=resolveGodEncounterForAI(actorIdx,godCard,P,D,Disc,resolveBaseGs,false);
+    P=result.P;D=result.D;Disc=result.Disc;L.push(...(result.msgs||[]));
+    const hasSlimeDecision=result.inspectionMeta?.abilityData?.type==='tsgSlimeBalance';
+    const win=checkWin(P,gs._isMP);
+    const newGs={
+      ...gs,
+      players:P,
+      deck:D,
+      discard:Disc,
+      log:L,
+      drawReveal:null,
+      selectedCard:null,
+      ...(result.inspectionMeta||{}),
+      ...(result.statePatch||{}),
+      phase:hasSlimeDecision?'TSG_SLIME_BALANCE':'AI_TURN',
+      abilityData:hasSlimeDecision?{...result.inspectionMeta.abilityData,_turnOwner:actorIdx}:{},
+      _pendingAiGodChoice:undefined,
+      ...(win?{gameOver:win}:{}),
+    };
+    const replay=buildInspectionAwareAnimQueue(gs,newGs,{buildAnimQueue,copyPlayers});
+    if(replay.inspectionEvents.length){
+      lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...replay.inspectionEvents.map(ev=>ev.seq||0));
+    }
+    const finish=()=>{
+      if(nextTutorialStep){
+        applyTutorialStateSnapshot(newGs);
+        setTutorialStep(nextTutorialStep);
+      }
+    };
+    if(replay.queue.length){
+      triggerAnimQueue(replay.queue,newGs,nextTutorialStep?finish:undefined);
+    }else{
+      setGs(newGs);
+      finish();
+    }
+  },[applyTutorialStateSnapshot,gs,triggerAnimQueue]);
+
+  useEffect(()=>{
+    if(!gs||gs.phase!=='AI_GOD_CHOICE')return;
+    if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
+    if(showTutorial){
+      if(tutorialStep!==TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE)return;
+      resolvePendingAiGodChoice(TUTORIAL_FLOW.CULTIST_GOD_PLAYER_DRAW);
+      return;
+    }
+    resolvePendingAiGodChoice();
+  },[showTutorial,tutorialStep,gs?.phase,gs?._turnKey,anim,animExiting,resolvePendingAiGodChoice]);
 
   // 骰子动画结束后再显示“求生成功”教学弹窗，动画期间隐藏教学遮罩
   useEffect(()=>{
@@ -3733,6 +3980,10 @@ export default function Game(){
     return _getZoomCompensatedRect(cardEl);
   })():null;
   const phase=gs.phase;
+  const isTutorialGodResurrection=showTutorial&&(
+    tutorialStep===TUTORIAL_FLOW.CULTIST_ZONE_RESULT||
+    tutorialStep===TUTORIAL_FLOW.CULTIST_GOD_RESULT
+  )&&tutorialOverlayHidden&&phase==='GOD_RESURRECTION';
   const zhuLightForView=((anim||animExiting||animQueueRef.current.length>0)&&visualZhuLightLockRef.current)
     ?visualZhuLightLockRef.current
     :gs.zhuLight;
@@ -4587,6 +4838,7 @@ export default function Game(){
     const tutorialNext=getNextTutorialStepForAction(tutorialAction);
     if(skillRole!=='追猎者'&&gs.skillUsed)return;
     // 追猎者可以在同一回合内多次使用追捕技能，即使skillUsed为true
+    // 但如果本回合已经放弃追捕，则disableSkill会被置为true，禁用追捕
     // Snapshot roleRevealed so cancel can restore it if skill is aborted
     const preSkillRevealed=me.roleRevealed;
     if(skillRole==='寻宝者')setGs({...gs,phase:'SWAP_SELECT_TARGET',drawReveal:null,abilityData:{preSkillRevealed}});
@@ -5667,6 +5919,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     finishTutorialActionWithState(huntConfirmGs,tutorialNext,queue);
   }
   function huntConfirm(myCardIdx){
+    if(myCardIdx<0&&showTutorial&&tutorialStepDef)return;
     const chosenCard=myCardIdx>=0?gs.players?.[0]?.hand?.[myCardIdx]:null;
     const tutorialAction={type:'handCard',cardId:chosenCard?.id};
     if(myCardIdx>=0&&!isTutorialActionAllowed(tutorialAction))return;
@@ -5833,8 +6086,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         P[0].roleRevealed=true;
         L.push(`${P[0].name} 的身份揭晓：追猎者`);
       }
-      // 追猎者在放弃追捕后设置skillUsed为true，这样就不能再休息了
-      // 但追猎者仍然可以在同一回合内多次使用追捕技能
+      // 追猎者放弃追捕后本回合禁用追捕技能
+      P[0].disableSkill=true;
       setGs({...gs,players:P,log:L,phase:'ACTION',huntAbandoned:newAbandoned,skillUsed:true,
         abilityData:{...gs.abilityData,huntTi:undefined,revCard:undefined}});
     }
@@ -5965,7 +6218,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const newAbandoned = hadHuntDamage
       ? (gs.huntAbandoned || []).filter(i => i !== 0)
       : [...new Set([...(gs.huntAbandoned || []), 0])];
-    const wantsToHuntAgain = shouldHunterKeepChasing(P,huntingAI,newAbandoned);
+    // AI 追捕失败（放弃）后本回合不再追捕
+    const wantsToHuntAgain = hadHuntDamage && shouldHunterKeepChasing(P,huntingAI,newAbandoned);
+    if(!hadHuntDamage) P[huntingAI].disableSkill=true;
 
     const baseGs={...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{},phase:'ACTION', huntAbandoned: newAbandoned};
 
@@ -6277,6 +6532,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   function godResolvePlayer(action){
     // action: 'worship'|'upgrade'|'keepHand'|'discard'|'forcedConvert'
     const godCard=gs.abilityData?.godCard;if(!godCard)return;
+    const tutorialAction=action==='keepHand'?{type:'godKeepHand'}:{type:'godChoice',action};
+    if(showTutorial&&tutorialStepDef&&!isTutorialActionAllowed(tutorialAction))return;
+    const tutorialNext=showTutorial&&tutorialStepDef?getNextTutorialStepForAction(tutorialAction):null;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
     let inspectionMeta=makeInspectionMeta(gs);
     const fromEndTurnReplay=!!gs.abilityData?.fromEndTurnReplay;
@@ -6338,6 +6596,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const win=checkWin(state.players,state._isMP);
       if(win){
         setGs({...state,gameOver:win});
+      }else if(tutorialNext){
+        setGs(state);
+        setTutorialStep(tutorialNext);
       }else if(gs.abilityData?.fromRest){
         _cthContinueRestDraws(state);
       }else if(fromEndTurnReplay&&state.phase==='ACTION'){
@@ -7774,12 +8035,16 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         const forcedConvert=gs.abilityData?.forcedConvert||false;
         const canUpgrade=alreadyWorship&&(actor.godLevel||0)<3;
         const thinkingText=gs._isMP&&!canChooseGod?`${actor.name||'对方'}正在回应邪神…`:'';
+        const lockTutorialGodKeep=showTutorial&&tutorialStep===TUTORIAL_FLOW.CULTIST_GOD_KEEP_HAND;
         return(
           <GodChoiceModal
             godCard={godCard} player={actor}
             isConvert={isConvert} forcedConvert={forcedConvert}
             canChoose={canChooseGod}
             thinkingText={thinkingText}
+            allowWorship={!lockTutorialGodKeep}
+            allowKeepHand={!lockTutorialGodKeep||isTutorialActionAllowed({type:'godKeepHand'})}
+            allowDiscard={!lockTutorialGodKeep}
             onWorship={()=>godResolvePlayer(alreadyWorship&&canUpgrade?'upgrade':isConvert?'worship':'worship')}
             onKeepHand={()=>godResolvePlayer('keepHand')}
             onDiscard={()=>godResolvePlayer('discard')}
@@ -8417,7 +8682,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                     position:'relative',zIndex:200,
                   }}>✕ 取消</button>
                 )}
-                {phase==='HUNT_CONFIRM'&&(!gs._isMP||isVisualPlayerTurn)&&!anim&&(
+                {phase==='HUNT_CONFIRM'&&!isScriptedTutorial&&(!gs._isMP||isVisualPlayerTurn)&&!anim&&(
                   <button onClick={()=>huntConfirm(-1)} style={{
                     padding:'6px 18px',background:'#1a0c04',
                     border:'2px solid #d4832a',color:'#f0a855',
@@ -8473,8 +8738,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
               const canWorshipNow=c.isGod&&!isGodUpgrade&&phase==='ACTION'&&isVisualPlayerTurn;
               const showWorshipHint=canWorshipNow&&(!isMobile||isMobileArmedGod);
               const isBlackGoatPulsing=blackGoatPulsePid===0&&isBlackGoatYoung(c);
-              return(<div key={c.id} ref={el=>{if(el)mobileGodCardRefs.current.set(i,el);else mobileGodCardRefs.current.delete(i);}} className={isBlackGoatPulsing?'black-goat-card-pulse':''} style={{position:'relative',display:'inline-block'}}>
-                <DDCard card={c} onClick={clickable?()=>handleMyCardClick(i):undefined} disabled={!clickable} selected={isSel} highlight={isMatch||canWorshipNow||canUpgradeNow||isAlbinoFireCard} godLevel={visualMe.godName===c.godKey?visualMe.godLevel:0} compact={isMobile} holderId={0}/>
+              const visuallyDisabled=!clickable&&tutorialStep!==TUTORIAL_FLOW.CULTIST_ZONE_SELECT_CARD;
+              return(<div key={c.id} data-self-hand-card data-self-hand-card-id={c.id} ref={el=>{if(el)mobileGodCardRefs.current.set(i,el);else mobileGodCardRefs.current.delete(i);}} className={isBlackGoatPulsing?'black-goat-card-pulse':''} style={{position:'relative',display:'inline-block'}}>
+                <DDCard card={c} onClick={clickable?()=>handleMyCardClick(i):undefined} disabled={visuallyDisabled} selected={isSel} highlight={isMatch||canWorshipNow||canUpgradeNow||isAlbinoFireCard} godLevel={visualMe.godName===c.godKey?visualMe.godLevel:0} compact={isMobile} holderId={0}/>
                 {canUpgradeNow&&<div style={{position:'absolute',top:-7,left:'50%',transform:'translateX(-50%)',fontFamily:"'Cinzel',serif",fontSize:8,color:'#c8a96e',background:'#0a0705',border:'1px solid #8a6020',borderRadius:2,padding:'1px 4px',pointerEvents:'none',whiteSpace:'nowrap',zIndex:10}}>⬆ 升级邪神之力</div>}
                 {showWorshipHint&&<div style={{position:'absolute',top:-7,left:'50%',transform:'translateX(-50%)',fontFamily:"'Cinzel',serif",fontSize:8,color:'#b080e0',background:'#0a0412',border:'1px solid #7040aa',borderRadius:2,padding:'1px 4px',pointerEvents:'none',whiteSpace:'nowrap',zIndex:10}}>⛧ 点击信仰</div>}
               </div>);
@@ -8489,15 +8755,20 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         <>
           {!showTutorial&&anim?.type!=='APOPHIS_ECLIPSE'&&<ApophisNightBadge night={anim?._apophisNight||gs?.apophisNight}/>}
           {!showTutorial&&<HoundsTimerBadge active={houndsTimerVisible} secondsLeft={houndsSecLeft}/>}
-          {!tutorialDiceResultPending&&!tutorialDiceResultResuming&&<InGameTutorialOverlay
+          {!tutorialOverlayHidden&&!tutorialDiceResultPending&&!tutorialDiceResultResuming&&!tutorialInspectionPending&&!tutorialInspectionResuming&&<InGameTutorialOverlay
             showTutorial={showTutorial}
             tutorialStep={tutorialStep}
             vw={vw}
             panelRect={panelRect}
             roleTextRect={roleTextRect}
             handAreaRect={handAreaRect}
+            tutorialHandCardRect={tutorialHandCardRect}
+            handCardsRect={handCardsRect}
             aiPanelAreaRect={aiPanelAreaRect}
             opponentSanBarRect={opponentSanBarRect}
+            opponentHpBarRect={opponentHpBarRect}
+            singleOpponentRect={singleOpponentRect}
+            opponentGodStatusRect={opponentGodStatusRect}
             drawRevealKeepButtonRect={drawRevealKeepButtonRect}
             deckAreaRect={deckAreaRect}
             dodgeRollButtonRect={dodgeRollButtonRect}
@@ -8718,7 +8989,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     {!suppressAnim&&<SanMistOverlay targets={sanTargets}/>}
     {!suppressAnim&&<CardTransferOverlay transfers={cardTransfers} expansionKey={gs.expansionKey}/>}
     {phase==='TREASURE_WIN'&&!showTutorial&&<TreasureMapAnim hand={me.hand} onConfirm={revealWin}/>}
-    {phase==='GOD_RESURRECTION'&&!showTutorial&&<CthulhuResurrectionAnim onConfirm={revealWin}/>}
+    {phase==='GOD_RESURRECTION'&&(!showTutorial||isTutorialGodResurrection)&&(
+      <GodResurrectionAnim onDone={isTutorialGodResurrection
+        ?completeTutorialGodResurrection
+        :()=>{setShowGodResurrection(true);revealWin();}}
+      />
+    )}
   </>);
 }
 // ══════════════════════════════════════════════════════════════

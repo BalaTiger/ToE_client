@@ -10,7 +10,20 @@ import { DDCard, DDCardBack, GodCardDisplay, PreviewCard } from '../cards';
 import { buildPublicUrl } from '../../utils/url';
 
 // ── God Choice Modal (player encounters a god card) ────────────
-function GodChoiceModal({ godCard, player, onWorship, onKeepHand, onDiscard, isConvert, forcedConvert, canChoose = true, thinkingText = '' }) {
+function GodChoiceModal({
+  godCard,
+  player,
+  onWorship,
+  onKeepHand,
+  onDiscard,
+  isConvert,
+  forcedConvert,
+  canChoose = true,
+  thinkingText = '',
+  allowWorship = true,
+  allowKeepHand = true,
+  allowDiscard = true,
+}) {
   if (!godCard) return null;
   const def = GOD_DEFS[godCard.godKey];
   const isCultist = player.role === ROLE_CULTIST;
@@ -58,22 +71,22 @@ function GodChoiceModal({ godCard, player, onWorship, onKeepHand, onDiscard, isC
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center', marginTop: 8 }}>
-            {!forcedConvert && (
+            {!forcedConvert && allowWorship && (
               <button onClick={onWorship} style={{ padding: '9px 22px', background: def.bgCol, border: `1.5px solid ${def.col}`, color: def.col, fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: 'pointer', letterSpacing: 1, filter: `drop-shadow(0 0 4px ${def.col}66)` }}>
                 {canUpgrade ? '⬆ 升级邪神之力' : isConvert ? '⛧ 改信新神' : '⛧ 信仰邪神'}
               </button>
             )}
-            {!alreadyWorship && !forcedConvert && isCultist && (
+            {!alreadyWorship && !forcedConvert && isCultist && allowKeepHand && (
               <button onClick={onKeepHand} style={{ padding: '9px 22px', background: '#180830', border: `1.5px solid #b080ee`, color: '#b080ee', fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: 'pointer', letterSpacing: 1, filter: 'drop-shadow(0 0 4px #9060cc66)' }}>
                 ☽ 秘密收入手牌
               </button>
             )}
-            {!forcedConvert && (
+            {!forcedConvert && allowDiscard && (
               <button onClick={onDiscard} style={{ padding: '9px 22px', background: '#120a08', border: '1.5px solid #6a4828', color: '#d4a858', fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: 'pointer', letterSpacing: 1 }}>
                 放弃
               </button>
             )}
-            {forcedConvert && (
+            {forcedConvert && allowWorship && (
               <button onClick={onWorship} style={{ padding: '9px 22px', background: def.bgCol, border: `1.5px solid ${def.col}`, color: def.col, fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: 'pointer', letterSpacing: 1, filter: `drop-shadow(0 0 4px ${def.col}66)` }}>
                 ⛧ 接受改信
               </button>
@@ -464,11 +477,11 @@ function RoadmapModal({ onClose }) {
         <div style={{ fontFamily: "'Cinzel',serif", fontSize: 11, color: '#b07828', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16, textAlign: 'center' }}>— 版本更新计划 —</div>
         {/* Current version */}
         <div style={{ marginBottom: 12 }}>
-          <div style={{ fontFamily: "'Cinzel',serif", fontSize: 11, color: '#c8a96e', letterSpacing: 1, marginBottom: 4 }}>当前版本：0.1.3</div>
+          <div style={{ fontFamily: "'Cinzel',serif", fontSize: 11, color: '#c8a96e', letterSpacing: 1, marginBottom: 4 }}>当前版本：0.1.4</div>
           {[
-            '庆祝九艺夏日游艺节开幕，我们新增了大量游戏内容！祝展会大获成功，越办越好',
-            '大量新卡牌加入！',
-            '地下城入口翻新！',
+            '感谢九艺夏日游艺节现场的试玩反馈！新手教程全面翻新，已加入技能讲解',
+            '追猎者追捕技能调整为：放弃追捕后，本回合禁用。现在追猎者必须更谨慎挑选攻击目标，AI追猎者也不会再一直说书了',
+            '联机ID池新增神秘金色ID',
           ].map((t, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 7 }}>
               <span style={{ color: '#b07828', flexShrink: 0, fontSize: 12 }}>·</span>
@@ -505,4 +518,3 @@ export {
   FullLogModal,
   RoadmapModal
 };
-

@@ -30,6 +30,7 @@ const ANIM_RENDERERS = {
       sourcePile={anim.sourcePile}
       guessCorrect={anim.guessCorrect}
       expansionKey={expansionKey}
+      onSettled={anim.onSettled}
     />
   ),
   DICE_ROLL: ({ anim, exiting }) => <DiceRollAnim anim={anim} exiting={exiting} />,

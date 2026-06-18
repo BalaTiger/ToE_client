@@ -21,7 +21,10 @@ export { NARRATOR_AVATAR };
 const TERM_STYLES = {
   所有列和所有行: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
   邪神的化身: { color: '#c060e0', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #9030cc88' },
+  邪神牌: { color: '#c060e0', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #9030cc88' },
+  骷髅标记: { color: '#c060e0', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #9030cc88' },
   随机事件: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
+  重新触发: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
   团结一心: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
   邪祀者: { color: '#9060cc', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #7040aa88' },
   寻宝者: { color: '#7ecfd4', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #2a606888' },
@@ -60,18 +63,36 @@ function getScriptHighlightRect(step, rects, vw) {
       return rects.roleTextRect;
     case 'handArea':
       return rects.handAreaRect;
+    case 'handCard':
+      return rects.tutorialHandCardRect || rects.handAreaRect;
+    case 'handCards':
+      return rects.handCardsRect || rects.handAreaRect;
     case 'skillButton':
       return rects.skillButtonRect || rects.handAreaRect;
     case 'opponentPanel':
       return rects.aiPanelAreaRect;
+    case 'singleOpponent':
+      return rects.singleOpponentRect;
+    case 'opponentGodStatus':
+      return rects.opponentGodStatusRect;
     case 'opponentSanBar':
       return rects.opponentSanBarRect;
+    case 'opponentHpBar':
+      return rects.opponentHpBarRect;
     case 'drawRevealKeepButton':
       return rects.drawRevealKeepButtonRect;
     case 'dodgeRollButton':
       return rects.dodgeRollButtonRect;
     case 'deckArea':
       return rects.deckAreaRect;
+    case 'inspectionFlipCard': {
+      const cardEl = typeof document !== 'undefined'
+        ? document.querySelector('[data-inspection-flip-card="true"]')
+        : null;
+      if (!cardEl) return rects.deckAreaRect;
+      const r = cardEl.getBoundingClientRect();
+      return { top: r.top, left: r.left, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+    }
     case 'swapBlindHand':
       return rects.swapBlindHandRect;
     case 'swapBlind':
@@ -94,8 +115,13 @@ function ScriptTutorialOverlay({
   panelRect,
   roleTextRect,
   handAreaRect,
+  tutorialHandCardRect,
+  handCardsRect,
   aiPanelAreaRect,
   opponentSanBarRect,
+  opponentHpBarRect,
+  singleOpponentRect,
+  opponentGodStatusRect,
   drawRevealKeepButtonRect,
   deckAreaRect,
   dodgeRollButtonRect,
@@ -109,7 +135,7 @@ function ScriptTutorialOverlay({
 }) {
   const step = getTutorialStep(tutorialStep);
   if (!step || step.auto) return null;
-  const rawRect = getScriptHighlightRect(step, { panelRect, roleTextRect, handAreaRect, aiPanelAreaRect, opponentSanBarRect, drawRevealKeepButtonRect, deckAreaRect, dodgeRollButtonRect, skillButtonRect, swapBlindHandRect }, vw);
+  const rawRect = getScriptHighlightRect(step, { panelRect, roleTextRect, handAreaRect, tutorialHandCardRect, handCardsRect, aiPanelAreaRect, opponentSanBarRect, opponentHpBarRect, singleOpponentRect, opponentGodStatusRect, drawRevealKeepButtonRect, deckAreaRect, dodgeRollButtonRect, skillButtonRect, swapBlindHandRect }, vw);
   const noSpotlight = rawRect?.noSpotlight;
   const rect = noSpotlight ? null : rawRect;
   if (step?.highlight === 'drawRevealKeepButton' && !rect) return null;
@@ -118,13 +144,15 @@ function ScriptTutorialOverlay({
   if (step?.highlight === 'swapBlindHand' && !rect) return null;
   const BG = 'rgba(0,0,0,0.58)';
   const tooltipW = Math.min(step?.highlight === 'center' ? 360 : 300, vw - 20);
-  const tooltipH = step?.highlight === 'drawRevealKeepButton' || step?.highlight === 'dodgeRollButton' || step?.highlight === 'skillButton' ? 132 : 210;
-  const tooltipGap = step?.highlight === 'drawRevealKeepButton' || step?.highlight === 'dodgeRollButton' || step?.highlight === 'skillButton' ? 8 : 14;
+  const compactActionTooltip = ['drawRevealKeepButton', 'dodgeRollButton', 'skillButton', 'handCard', 'handCards'].includes(step?.highlight);
+  const tooltipH = compactActionTooltip ? 132 : 210;
+  const tooltipGap = compactActionTooltip ? 8 : 14;
   const tooltipRoom = tooltipH + tooltipGap + 4;
   const centerX = rect ? (rect.left + rect.right) / 2 : window.innerWidth / 2;
   const centerY = rect ? (rect.top + rect.bottom) / 2 : window.innerHeight / 2;
   const actionStep = !!step?.allowedAction;
   const isDodgeResult = step?.id === TUTORIAL_FLOW.TREASURE_DODGE_RESULT;
+  const isInspectionIntro = step?.id === TUTORIAL_FLOW.CULTIST_GOD_CHECK_INTRO;
   const preferRight = rect && rect.right + tooltipW + 20 < window.innerWidth;
   const preferLeft = rect && rect.left - tooltipW - 20 > 0;
   const tooltipLeft = step?.highlight === 'center' || noSpotlight
@@ -156,7 +184,7 @@ function ScriptTutorialOverlay({
       completeTutorial();
       return;
     }
-    if (step?.id === TUTORIAL_FLOW.TREASURE_DODGE_RESULT && onTutorialResultNext) {
+    if ((step?.id === TUTORIAL_FLOW.TREASURE_DODGE_RESULT || step?.id === TUTORIAL_FLOW.CULTIST_GOD_CHECK_INTRO) && onTutorialResultNext) {
       onTutorialResultNext();
       return;
     }
@@ -171,7 +199,7 @@ function ScriptTutorialOverlay({
     bottom: Math.min(window.innerHeight, rect.bottom + 4),
   } : null;
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: isDodgeResult ? 1000 : 900, pointerEvents: actionStep ? 'none' : 'auto' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: (isDodgeResult || isInspectionIntro) ? 1000 : 900, pointerEvents: actionStep ? 'none' : 'auto' }}>
       {!noSpotlight && (r ? (
         <>
           <div style={{ position: 'absolute', left: 0, top: 0, right: 0, height: r.top, background: BG, pointerEvents: 'none' }} />
@@ -250,8 +278,13 @@ export default function InGameTutorialOverlay({
   panelRect,
   roleTextRect,
   handAreaRect,
+  tutorialHandCardRect,
+  handCardsRect,
   aiPanelAreaRect,
   opponentSanBarRect,
+  opponentHpBarRect,
+  singleOpponentRect,
+  opponentGodStatusRect,
   drawRevealKeepButtonRect,
   deckAreaRect,
   dodgeRollButtonRect,
@@ -273,8 +306,13 @@ export default function InGameTutorialOverlay({
         panelRect={panelRect}
         roleTextRect={roleTextRect}
         handAreaRect={handAreaRect}
+        tutorialHandCardRect={tutorialHandCardRect}
+        handCardsRect={handCardsRect}
         aiPanelAreaRect={aiPanelAreaRect}
         opponentSanBarRect={opponentSanBarRect}
+        opponentHpBarRect={opponentHpBarRect}
+        singleOpponentRect={singleOpponentRect}
+        opponentGodStatusRect={opponentGodStatusRect}
         drawRevealKeepButtonRect={drawRevealKeepButtonRect}
         deckAreaRect={deckAreaRect}
         dodgeRollButtonRect={dodgeRollButtonRect}

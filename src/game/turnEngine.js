@@ -130,6 +130,92 @@ function _chooseAiShuTarget(ci, P) {
   return others.length > 0 ? others[Math.floor(Math.random() * others.length)] : ci;
 }
 
+function getAiGodPowerScore(godKey, ci, players, level = 1) {
+  const actor = players?.[ci];
+  if (!actor || actor.isDead || !godKey || hasGodPowerImmunity(actor)) return -2;
+  const role = actor._nyaBorrow || actor.role;
+  const living = (players || []).filter(p => p && !p.isDead);
+  const livingOthers = living.filter(p => p !== actor);
+  const deadOthers = (players || []).filter((p, idx) => idx !== ci && p?.isDead);
+  const lowSanOpponents = livingOthers.filter(p => p.role !== ROLE_CULTIST && p.san <= 6).length;
+  const lowHpActor = actor.hp <= 4;
+  const handCount = actor.hand?.length || 0;
+  const roleDrawValue = role === ROLE_TREASURE ? 1.2 : role === ROLE_CULTIST ? 1.0 : 0.65;
+
+  switch (godKey) {
+    case 'NYA': {
+      let score = -1.2;
+      if (deadOthers.length) score += 1.3 + Math.min(1.2, deadOthers.length * 0.4);
+      if (role === ROLE_TREASURE && deadOthers.some(p => p.role === ROLE_TREASURE)) score += 0.8;
+      if (role === ROLE_CULTIST && deadOthers.some(p => p.role === ROLE_CULTIST)) score += 0.7;
+      if (role === ROLE_HUNTER && deadOthers.some(p => p.role !== ROLE_HUNTER)) score += 0.4;
+      if (!deadOthers.length && living.length >= players.length) score -= role === ROLE_HUNTER ? 0.7 : 1.4;
+      score += (level - 1) * 0.35;
+      return score;
+    }
+    case 'CTH':
+      return 0.65 + roleDrawValue * level + (actor.isResting ? 0.8 : 0) + (handCount <= 2 ? 0.35 : 0);
+    case 'SHU':
+      return role === ROLE_CULTIST
+        ? 1.6 + level * 0.85 + lowSanOpponents * 0.25
+        : role === ROLE_HUNTER
+          ? 0.25 + level * 0.2
+          : 0.15 + level * 0.25;
+    case 'ZHU':
+      return 1.0 + level * 0.45 + (role === ROLE_TREASURE ? 0.35 : 0) + (role === ROLE_CULTIST ? 0.2 : 0);
+    case 'APO':
+      return role === ROLE_HUNTER
+        ? -3.6 - level * 0.65
+        : role === ROLE_CULTIST
+          ? 1.4 + level * 0.7 + lowSanOpponents * 0.35
+          : -0.7 + level * 0.15;
+    case 'VRI':
+      return 0.65 + (role === ROLE_HUNTER ? 0.75 : 0) + (role === ROLE_TREASURE ? 0.45 : 0) + (lowHpActor ? 1.25 : 0) + level * 0.25;
+    case 'TSG':
+      return 0.75 + roleDrawValue * level + (handCount <= 2 ? 0.25 : 0);
+    default:
+      return GOD_DEFS[godKey]?.levels?.some(levelDef => !/待设计/.test(levelDef?.desc || ''))
+        ? 0.25 + level * 0.2
+        : -0.8;
+  }
+}
+
+function chooseAiGodEncounterAction(ci, godCard, players, forcedConvert = false) {
+  const actor = players?.[ci];
+  const godKey = godCard?.godKey;
+  if (!actor || !godKey) return 'discard';
+  const role = actor._nyaBorrow || actor.role;
+  const oldGodKey = actor.godName;
+  const oldLevel = actor.godLevel || 0;
+  const sanAfterConvert = actor.san - 1;
+  const hasCultist = (players || []).some(p => p?.role === ROLE_CULTIST && !p.isDead);
+  const convertSanPenalty = sanAfterConvert <= 0
+    ? 99
+    : sanAfterConvert <= 3
+      ? 2.2
+      : sanAfterConvert <= 6
+        ? (hasCultist && role !== ROLE_CULTIST ? 0.9 : 0.45)
+        : 0.15;
+
+  if (oldGodKey === godKey) return oldLevel < 3 ? 'upgrade' : 'discard';
+  if (forcedConvert) return 'worship';
+
+  const newScore = getAiGodPowerScore(godKey, ci, players, 1);
+  const keepHandScore = role === ROLE_CULTIST ? 1.35 + ((actor.godEncounters || 0) * 0.25) : -99;
+
+  if (!oldGodKey) {
+    const worshipScore = newScore - (actor.san <= 3 ? 0.9 : 0);
+    if (keepHandScore > worshipScore && keepHandScore >= 1.2) return 'hand';
+    return worshipScore >= 0.75 ? 'worship' : 'discard';
+  }
+
+  const oldScore = getAiGodPowerScore(oldGodKey, ci, players, Math.max(1, oldLevel));
+  const resetPenalty = Math.max(0, oldLevel - 1) * 0.75;
+  const convertScore = newScore - oldScore - resetPenalty - convertSanPenalty;
+  if (keepHandScore > convertScore && keepHandScore >= 1.3) return 'hand';
+  return convertScore >= 0.45 ? 'convert' : 'discard';
+}
+
 export function applySanLossToPlayerWithInspection(targetIndex, amount, startIndex, P, D, Disc, L, inspectionMeta, reason = 'SAN损失', options = {}) {
   const beforePlayers = copyPlayers(P);
   const etherealizeLoss = options.skipEtherealize ? null : buildEtherealizeLoss({
@@ -221,19 +307,8 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     const extraMsgs = (processed.L || []).slice(inspectionBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
     clearPlayerGodZone(P[ci], Disc);
   }
-  let action;
   const proliferatingZGainEvents = [];
-  if (P[ci].godName === godKey && P[ci].godLevel < 3) { action = 'upgrade'; }
-  else if (P[ci].godName === godKey && P[ci].godLevel >= 3) { action = 'discard'; }
-  else if (!P[ci].godName) {
-    // If forcedConvert just cleared old god, always worship new god (rule: cannot refuse)
-    if (forcedConvert) { action = 'worship'; }
-    else if ((P[ci]._nyaBorrow || P[ci].role) === ROLE_CULTIST && Math.random() < 0.6) { action = 'hand'; }
-    else if (P[ci].san > 4) { action = 'worship'; }
-    else { action = 'discard'; }
-  } else if (P[ci].godName !== godKey) {
-    action = P[ci].san > 4 ? 'convert' : 'discard';
-  } else { action = 'discard'; }
+  const action = chooseAiGodEncounterAction(ci, godCard, P, forcedConvert);
   if (action === 'upgrade') {
     P[ci].godLevel++; P[ci].godZone.push({ ...godCard });
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
@@ -382,11 +457,58 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
         ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`
         : `${whoName} 遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）失去${cost}SAN`;
       L2.push(effectMsg);
-      // AI处理邪神牌时，仍然立即扣减SAN值
+      // AI处理邪神牌时，仍然立即扣减SAN值；教程可在检定前暂停。
       if (P[ci].role !== ROLE_CULTIST) {
+        const beforePlayers = copyPlayers(P);
+        P[ci].san = clamp(P[ci].san - cost);
+        inspectionMeta = appendStatEventsToInspectionMeta(
+          inspectionMeta,
+          beforePlayers,
+          P,
+          [effectMsg],
+          '邪神遭遇',
+        );
+        if (gs?.deferAiGodChoice) {
+          return {
+            P,
+            D,
+            Disc,
+            drawnCard,
+            effectMsgs: L2,
+            kept: true,
+            pendingAiGodChoice: {
+              playerIndex: ci,
+              godCard: drawnCard,
+              pendingEncounterInspection: P[ci].san > 0 && P[ci].san <= 6,
+            },
+            statePatch: {
+              ...inspectionMeta,
+              _pendingAiGodChoice: {
+                playerIndex: ci,
+                godCard: drawnCard,
+                pendingEncounterInspection: P[ci].san > 0 && P[ci].san <= 6,
+              },
+            },
+          };
+        }
         const baseLog = [...(gs?.log || []), effectMsg];
-        const processed = applySanLossToPlayerWithInspection(ci, cost, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta, '邪神遭遇');
-        P = processed.P; D = processed.D; Disc = processed.Disc; inspectionMeta = processed.inspectionMeta; L2.push(...processed.L.slice(baseLog.length));
+        const processed = applyInspectionForSanLoss(ci, P[ci].san, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta);
+        P = processed.P; D = processed.D; Disc = processed.Disc; inspectionMeta = processed.inspectionMeta; L2.push(...processed.log.slice(baseLog.length));
+      }
+      if (gs?.deferAiGodChoice) {
+        return {
+          P,
+          D,
+          Disc,
+          drawnCard,
+          effectMsgs: L2,
+          kept: true,
+          pendingAiGodChoice: { playerIndex: ci, godCard: drawnCard },
+          statePatch: {
+            ...inspectionMeta,
+            _pendingAiGodChoice: { playerIndex: ci, godCard: drawnCard },
+          },
+        };
       }
       const gr = aiHandleGodCard(ci, drawnCard, P, D, Disc, L2, gs, true);
       P = gr.P; D = gr.D; Disc = gr.Disc;
@@ -1017,7 +1139,7 @@ export function startNextTurn(gs, opts = {}) {
         globalOnlySwapOwner,
       };
     }
-    const res = aiDrawAndApply(next, P, D, Disc, gs);
+    const res = aiDrawAndApply(next, P, D, Disc, { ...gs, deferAiGodChoice: true });
     gs.debugForceCardKeepPending = null;
     gs.debugForceCardKeepTarget = null;
     P = res.P; D = res.D; Disc = res.Disc;
@@ -1033,10 +1155,15 @@ export function startNextTurn(gs, opts = {}) {
       if (drawLogs.length) L.push(...drawLogs);
       if (statLogs.length) L.push(...statLogs);
     }
-    const { phase: nextPhase, abilityData: nextAbilityData } = deriveEffectDecisionState(res.statePatch, {
+    const pendingAiGodChoice = res.pendingAiGodChoice || res.statePatch?._pendingAiGodChoice || null;
+    const { phase: resolvedNextPhase, abilityData: resolvedNextAbilityData } = deriveEffectDecisionState(res.statePatch, {
       baseAbilityData: gs.abilityData,
       fallbackPhase: 'AI_TURN',
     });
+    const nextPhase = pendingAiGodChoice ? 'AI_GOD_CHOICE' : resolvedNextPhase;
+    const nextAbilityData = pendingAiGodChoice
+      ? { ...(gs.abilityData || {}), ...pendingAiGodChoice }
+      : resolvedNextAbilityData;
     const aiTurnAnimMeta = {
       currentTurn: next,
       phase: nextPhase,
@@ -1070,6 +1197,6 @@ export function startNextTurn(gs, opts = {}) {
         globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner)
       };
     }
-    return { ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, currentTurn: next, phase: nextPhase, drawReveal: null, selectedCard: null, abilityData: nextAbilityData, huntAbandoned: [], _aiDrawnCard: res.drawnCard ?? null, _drawnCard: res.drawnCard ?? null, _discardedDrawnCard: !!res.discardedDrawnCard, _playersBeforeThisDraw: _P_beforeDraw, _turnKey: (gs._turnKey || 0) + 1, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}), globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) };
+    return { ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, currentTurn: next, phase: nextPhase, drawReveal: null, selectedCard: null, abilityData: nextAbilityData, huntAbandoned: [], _aiDrawnCard: res.drawnCard ?? null, _drawnCard: res.drawnCard ?? null, _discardedDrawnCard: !!res.discardedDrawnCard, _playersBeforeThisDraw: _P_beforeDraw, _turnKey: (gs._turnKey || 0) + 1, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}), phase: nextPhase, abilityData: nextAbilityData, globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) };
   }
 }

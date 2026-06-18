@@ -194,6 +194,27 @@ function clearHunterLowQualityHand(players, hunterIdx) {
   if (hunter) hunter.huntQualityMemory = null;
 }
 
+function getHunterTargetWeight({ player }) {
+  const missingHp = clamp(10 - (player?.hp ?? 10), 0, 10);
+  return 1 + missingHp * 0.15 + (player?.roleRevealed ? 0.35 : 0);
+}
+
+function weightedHunterTargetOrder(targets) {
+  const pool = targets.map(target => ({ target, weight: getHunterTargetWeight(target) }));
+  const order = [];
+  while (pool.length) {
+    const total = pool.reduce((sum, item) => sum + item.weight, 0);
+    let roll = Math.random() * total;
+    let pick = pool.length - 1;
+    for (let i = 0; i < pool.length; i++) {
+      roll -= pool[i].weight;
+      if (roll < 0) { pick = i; break; }
+    }
+    order.push(pool.splice(pick, 1)[0].target);
+  }
+  return order;
+}
+
 function shouldAiMultiply({ gs, players, sourceIdx, aiEffRole, ai, aiSkillDecision, cultistBewitchPlan, huntAbandoned }) {
   if (!ai || ai.isDead) return false;
   if (aiEffRole === ROLE_TREASURE) {
@@ -720,10 +741,7 @@ export function aiStep(gs, opts = {}) {
         while (huntContinue && hasHuntRevealableCard(P[ct])) {
         const validTargets = getHunterTargets();
         if (validTargets.length > 0) {
-          const sortedTargets = [...validTargets].sort((a, b) => {
-            if (!!a.player.roleRevealed !== !!b.player.roleRevealed) return a.player.roleRevealed ? -1 : 1;
-            return a.player.hp - b.player.hp;
-          });
+          const sortedTargets = weightedHunterTargetOrder(validTargets);
 
           // 遍历所有目标，直到找到可以追捕的目标或用完所有目标
           let foundTarget = false;
@@ -890,8 +908,11 @@ export function aiStep(gs, opts = {}) {
                 });
                 // 将目标添加到已放弃列表，避免同一回合再次选择
                 newAbandoned = [...newAbandoned, ti];
+                // 追猎者放弃追捕后本回合禁用追捕技能
+                P[ct].disableSkill = true;
+                huntContinue = false;
+                break;
               }
-              continue;
             }
           }
 

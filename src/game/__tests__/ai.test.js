@@ -261,14 +261,16 @@ describe('aiStep optional action limits', () => {
     expect(newLogs.some(line => line.includes('【追捕】'))).toBe(true);
   });
 
-  it('追猎者击杀其他目标后不会清空本回合已追捕失败的玩家目标', () => {
-    const hunterCard = { id: 'hunter-d1', key: 'D1', name: '钻地魔虫', type: 'allDamageHP', val: 2, isZone: true, letter: 'D', number: 1 };
-    const targetCard = { id: 'target-d1', key: 'D1', name: '穴兽残骸', type: 'selfHealHP', val: 1, isZone: true, letter: 'D', number: 1 };
+  it('追猎者首追在同等公开条件下按等权随机选择目标', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.26);
+    const hunterCard = { id: 'hunter-a1', key: 'A1', name: '霉变食物', type: 'selfHealHP', val: 1, isZone: true, letter: 'A', number: 1 };
+    const targetCard = name => ({ id: `target-${name}`, key: 'B2', name, type: 'selfHealHP', val: 1, isZone: true, letter: 'B', number: 2 });
     const players = [
-      makePlayer({ name: '你', hp: 1, hand: [{ id: 'p-card', key: 'A1', letter: 'A', number: 1, isZone: true }] }),
+      makePlayer({ name: '你', hp: 8, hand: [targetCard('玩家手牌')] }),
       makePlayer({ name: '卡洛斯', role: ROLE_HUNTER, roleRevealed: true, hp: 9, hand: [hunterCard] }),
-      makePlayer({ name: '艾伦', role: ROLE_CULTIST, hp: 3, hand: [targetCard] }),
-      makePlayer({ name: '贝拉', hp: 9, hand: [{ id: 'b-card', key: 'B1', letter: 'B', number: 1, isZone: true }] }),
+      makePlayer({ name: '艾伦', hp: 8, hand: [targetCard('艾伦手牌')] }),
+      makePlayer({ name: '贝拉', hp: 8, hand: [targetCard('贝拉手牌')] }),
+      makePlayer({ name: '达贡', hp: 8, hand: [targetCard('达贡手牌')] }),
     ];
     const gs = makeGs({
       players,
@@ -276,16 +278,39 @@ describe('aiStep optional action limits', () => {
       phase: 'AI_TURN',
       skillUsed: false,
       restUsed: false,
-      huntAbandoned: [0],
       log: ['旧日志'],
     });
 
     const result = aiStep(gs);
-    const playerHuntPromptCount = result.log.filter(line => line.includes('向你发动【追捕】')).length;
 
-    expect(result.log.some(line => line.includes('艾伦') && line.includes('受 3HP'))).toBe(true);
-    expect(result.phase).not.toBe('PLAYER_REVEAL_FOR_HUNT');
-    expect(playerHuntPromptCount).toBe(0);
-    expect(result.log.some(line => line.includes('对 贝拉 【追捕】'))).toBe(true);
+    expect(result.log.some(line => line.includes('放弃追捕 艾伦'))).toBe(true);
+    expect(result.log.some(line => line.includes('向你发动【追捕】'))).toBe(false);
+  });
+
+  it('追猎者放弃追捕后本回合不再追捕其他目标', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const hunterCard = { id: 'hunter-a1', key: 'A1', name: '霉变食物', type: 'selfHealHP', val: 1, isZone: true, letter: 'A', number: 1 };
+    const failedTargetCard = { id: 'target-b2', key: 'B2', name: '迷途石阶', type: 'selfHealHP', val: 1, isZone: true, letter: 'B', number: 2 };
+    const nextTargetCard = { id: 'target-c3', key: 'C3', name: '地动山摇', type: 'selfHealHP', val: 1, isZone: true, letter: 'C', number: 3 };
+    const players = [
+      makePlayer({ name: '你', hp: 10, hand: [] }),
+      makePlayer({ name: '卡洛斯', role: ROLE_HUNTER, roleRevealed: true, hp: 9, hand: [hunterCard] }),
+      makePlayer({ name: '艾伦', role: ROLE_CULTIST, hp: 3, hand: [failedTargetCard] }),
+      makePlayer({ name: '贝拉', hp: 9, hand: [nextTargetCard] }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      log: ['旧日志'],
+    });
+
+    const result = aiStep(gs);
+
+    expect(result.log.some(line => line.includes('无匹配手牌，放弃追捕 艾伦'))).toBe(true);
+    expect(result.log.some(line => line.includes('对 贝拉 【追捕】'))).toBe(false);
+    expect(result.currentTurn).not.toBe(1);
   });
 });
