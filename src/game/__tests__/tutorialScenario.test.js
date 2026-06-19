@@ -17,19 +17,21 @@ describe('tutorial scenarios', () => {
     expect(isWinHand([...player.hand.filter(card => card.id !== forcedDraw.id), targetCard])).toBe(true);
   });
 
-  it('hunter scenario has all matching hand cards and requires two hunts to kill', () => {
+  it('hunter scenario has two matching hand cards and requires two hunts to kill', () => {
     const gs = createTutorialScenario('hunter');
     const player = gs.players[0];
     const target = gs.players[1];
     const revealCard = target.hand[0];
+    const matching = player.hand.filter(card => cardsHuntMatch(card, revealCard));
 
     expect(player.role).toBe('追猎者');
     expect(target.hp).toBe(6);
     expect(target.hand.length).toBe(3);
     expect([...player.hand, ...target.hand].every(card => card.name && card.desc)).toBe(true);
     expect(target.hand.every(card => card.number === revealCard.number)).toBe(true);
-    expect(player.hand.length).toBeGreaterThanOrEqual(2);
-    expect(player.hand.every(card => cardsHuntMatch(card, revealCard))).toBe(true);
+    expect(player.hand.length).toBe(4);
+    expect(matching.length).toBe(2);
+    expect(matching.every(card => card.letter === revealCard.letter || card.number === revealCard.number)).toBe(true);
   });
 
   it('cultist zone scenario can reduce the opponent san to zero with the gift card', () => {

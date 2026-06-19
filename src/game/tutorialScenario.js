@@ -357,7 +357,7 @@ const SKILL_STEPS = [
     body: `你手中带有编号A或1的区域牌都能匹配对手亮出的牌，并造成伤害。请点击一张。`,
     highlight: 'handCards',
     lock: false,
-    allowedAction: { type: 'handCard', cardId: ['tut-hunter-match-a1', 'tut-hunter-match-b1', 'tut-hunter-match-c1', 'tut-hunter-match-d1'] },
+    allowedAction: { type: 'handCard', cardId: ['tut-hunter-match-a1', 'tut-hunter-match-d1'] },
   },
   {
     id: TUTORIAL_FLOW.HUNTER_SECOND_HUNT_INTRO,
@@ -400,7 +400,7 @@ const SKILL_STEPS = [
 	body: `再弃一张带有编号A或1的区域牌，对手就会命丧你的剑下！`,
     highlight: 'handCards',
     lock: false,
-    allowedAction: { type: 'handCard', cardId: ['tut-hunter-match-a1', 'tut-hunter-match-b1', 'tut-hunter-match-c1', 'tut-hunter-match-d1'] },
+    allowedAction: { type: 'handCard', cardId: ['tut-hunter-match-a1', 'tut-hunter-match-d1'] },
   },
   {
     id: TUTORIAL_FLOW.HUNTER_RESULT,
@@ -694,8 +694,8 @@ export function createTutorialScenario(kind = 'treasure') {
     const opponent = playerBase(1, '贝拉', ROLE_TREASURE);
     player.hand = [
       { ...zoneCard('A1', '霉变食物', 'tut-hunter-match-a1'), id: 'tut-hunter-match-a1' },
-      { ...zoneCard('B1', '圣甲虫', 'tut-hunter-match-b1'), id: 'tut-hunter-match-b1' },
-      { ...zoneCard('C1', '关键拼图', 'tut-hunter-match-c1'), id: 'tut-hunter-match-c1' },
+      { ...zoneCard('B2', '新鲜空气', 'tut-hunter-nonmatch-1'), id: 'tut-hunter-nonmatch-1' },
+      { ...zoneCard('C3', '引燃火把', 'tut-hunter-nonmatch-2'), id: 'tut-hunter-nonmatch-2' },
       { ...zoneCard('D1', '钻地魔虫', 'tut-hunter-match-d1'), id: 'tut-hunter-match-d1' },
     ];
     opponent.hp = 6;

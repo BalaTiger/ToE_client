@@ -39,6 +39,7 @@ const TERM_STYLES = {
   暗抽: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
   牌堆: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
   信仰: { color: '#c060e0', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #9030cc88' },
+  改信: { color: '#c060e0', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #9030cc88' },
   HP: { color: '#e05050', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #cc222288' },
   SAN: { color: '#a78bfa', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #8844cc88' },
 };
