@@ -551,7 +551,6 @@ export default function Game(){
   const tutorialStepDef=showTutorial&&typeof tutorialStep==='string'?getTutorialStep(tutorialStep):null;
   const isScriptedTutorial=!!tutorialStepDef;
   const isTutorialActionStep=!!tutorialStepDef?.allowedAction;
-  const isTutorialAutoDrawStep=showTutorial&&tutorialStep===TUTORIAL_FLOW.TREASURE_DRAW_CARD;
   const isTutorialDrawKeepStep=showTutorial&&tutorialStep===TUTORIAL_FLOW.TREASURE_DRAW_REVEAL;
   const isTutorialDrawKeepHighlightStep=isTutorialDrawKeepStep&&tutorialStepDef?.highlight==='drawRevealKeepButton';
   const [localDebugMode,setLocalDebugMode]=useState(()=>isLocalTestMode&&safeLS.get(LOCAL_DEBUG_KEY)==='1');
@@ -2285,6 +2284,8 @@ export default function Game(){
           _inspectionSeq:gs._inspectionSeq||0,
           _statEvents:pauseStatEvents,
           _statEventSeq:pauseStatSeq,
+          _playersBeforeThisDraw:null,
+          _preTurnPlayers:null,
         };
         const preInspectionQueue=buildAnimQueue(gs,pauseGs);
         const adjustedInspectionEvents=replay.inspectionEvents.map(ev=>({
@@ -2308,7 +2309,7 @@ export default function Game(){
           },
           newGs
         );
-        tutorialGodConvertContinuationRef.current={queue:[...inspectionFlow.queue,...tailQueue],finalGs:newGs};
+        tutorialGodConvertContinuationRef.current={queue:[...inspectionFlow.queue,...tailQueue],finalGs:{...newGs,_playersBeforeThisDraw:null,_preTurnPlayers:null}};
         const showConvertCheck=()=>{
           applyTutorialStateSnapshot(pauseGs);
           setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_CONVERT_CHECK);
@@ -8433,8 +8434,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             </button>
           ):(
             <button
-              onClick={(isTutorialAutoDrawStep||isTutorialDrawKeepStep)?undefined:returnToMainMenu}
-              disabled={isTutorialAutoDrawStep||isTutorialDrawKeepStep}
+              onClick={showTutorial?undefined:returnToMainMenu}
+              disabled={showTutorial}
+              title={showTutorial?'教学中不可返回主界面':undefined}
               style={{
                 marginLeft:'auto',
                 padding:isMobile?'4px 10px':'5px 12px',
@@ -8445,8 +8447,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                 fontWeight:700,
                 fontSize:baseFontSizes.small,
                 borderRadius:3,
-                cursor:(isTutorialAutoDrawStep||isTutorialDrawKeepStep)?'not-allowed':'pointer',
-                opacity:(isTutorialAutoDrawStep||isTutorialDrawKeepStep)?0.45:1,
+                cursor:showTutorial?'not-allowed':'pointer',
+                opacity:showTutorial?0.45:1,
                 letterSpacing:isMobile?0.5:1,
                 textTransform:'uppercase',
                 boxShadow:'0 0 12px rgba(194,65,47,0.34)',
