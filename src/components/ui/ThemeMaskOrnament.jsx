@@ -25,7 +25,7 @@ export function ThemeMaskOrnament({
     ...maskStyle,
   };
   return (
-    <div style={{
+    <div data-theme-ornament style={{
       position: 'absolute',
       width,
       height,

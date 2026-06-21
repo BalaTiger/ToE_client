@@ -138,6 +138,10 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound }) {
           const el = document.querySelector(`[data-death-panel="${idx}"]`);
           if (!el) return null;
           const r = _getZoomCompensatedRect(el);
+          const panelStyle = window.getComputedStyle(el);
+          const panelBackground = panelStyle.background;
+          const panelBorderColor = panelStyle.borderTopColor;
+          const panelBoxShadow = panelStyle.boxShadow;
           let snapshotUrl = null;
           try {
             const { default: html2canvas } = await import('html2canvas');
@@ -154,12 +158,37 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound }) {
               height: el.offsetHeight || undefined,
               windowWidth: inZoomContainer ? 1200 : window.innerWidth,
               windowHeight: window.innerHeight,
+              ignoreElements: node => node?.hasAttribute?.('data-theme-ornament'),
+              onclone: (doc, cloneEl) => {
+                const root = cloneEl || doc.querySelector(`[data-death-panel="${idx}"]`);
+                if (!root?.style) return;
+                root.style.background = 'transparent';
+                root.style.backgroundColor = 'transparent';
+                root.style.borderColor = 'transparent';
+                root.style.boxShadow = 'none';
+              },
             });
             snapshotUrl = canvas.toDataURL('image/png');
           } catch (err) {
             console.warn('[death-snapshot] capture failed for pid', idx, err);
           }
-          return { pi: idx, x: r.left, y: r.top, w: r.width, h: r.height, cx: r.left + r.width / 2, cy: r.top + r.height / 2, snapshotUrl };
+          const snapX = r.left;
+          const snapY = r.top;
+          const snapW = r.width;
+          const snapH = r.height;
+          return {
+            pi: idx,
+            x: snapX,
+            y: snapY,
+            w: snapW,
+            h: snapH,
+            cx: snapX + snapW / 2,
+            cy: snapY + snapH / 2,
+            snapshotUrl,
+            panelBackground,
+            panelBorderColor,
+            panelBoxShadow,
+          };
         }));
         if (!cancelled) setGuillotineTargets(pts.filter(Boolean));
       });
