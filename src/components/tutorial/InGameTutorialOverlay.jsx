@@ -39,6 +39,8 @@ const TERM_STYLES = {
   暗抽: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
   牌堆: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
   手牌多于4张: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
+  以后: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
+  开始探索: { color: '#f0d890', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 20px #e8c87a99' },
   信仰: { color: '#c060e0', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #9030cc88' },
   改信: { color: '#c060e0', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #9030cc88' },
   HP: { color: '#e05050', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #cc222288' },
@@ -254,13 +256,15 @@ function ScriptTutorialOverlay({
               <p
                 key={`${step.id}-body-${idx}`}
                 style={{
-                  color: '#c8a96e',
-                  fontSize: 12,
-                  lineHeight: 1.85,
+                  color: idx === step?.emphasisLineIndex ? '#e8c87a' : '#c8a96e',
+                  fontSize: idx === step?.emphasisLineIndex ? 17 : 12,
+                  lineHeight: idx === step?.emphasisLineIndex ? 1.9 : 1.85,
                   fontStyle: 'italic',
                   marginBottom: idx === bodyLines.length - 1 ? (hasButton ? 16 : 4) : 10,
                   fontFamily: "'IM Fell English','Georgia',serif",
-                  opacity: 0.92,
+                  fontWeight: idx === step?.emphasisLineIndex ? 700 : undefined,
+                  textShadow: idx === step?.emphasisLineIndex ? '0 0 16px #c8a96e66' : undefined,
+                  opacity: idx === step?.emphasisLineIndex ? 1 : 0.92,
                 }}
               >
                 {renderTutorialLine(line)}

@@ -27,6 +27,23 @@ describe('tutorial scenarios', () => {
     });
   });
 
+  it('uses the old closing narration as the final tutorial step', () => {
+    const advice = getTutorialStep(TUTORIAL_FLOW.FINAL_ADVICE);
+    const complete = getTutorialStep(TUTORIAL_FLOW.COMPLETE);
+
+    expect(getTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_RESULT).next).toBe(TUTORIAL_FLOW.FINAL_ADVICE);
+    expect(advice.next).toBe(TUTORIAL_FLOW.COMPLETE);
+    expect(advice.body).toHaveLength(2);
+    expect(advice.body[0]).toContain('探索遗迹必备的知识');
+    expect(advice.body[1]).toContain('我已经老了');
+    expect(complete.complete).toBe(true);
+    expect(complete.title).not.toBe('开始正式对局');
+    expect(complete.body).toHaveLength(2);
+    expect(complete.body[0]).toContain('现在退出还来得及');
+    expect(complete.body[1]).toContain('开始探索');
+    expect(complete.emphasisLineIndex).toBe(1);
+  });
+
   it('hunter scenario has two matching hand cards and requires two hunts to kill', () => {
     const gs = createTutorialScenario('hunter');
     const player = gs.players[0];

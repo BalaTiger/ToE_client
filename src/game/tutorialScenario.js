@@ -75,6 +75,7 @@ export const TUTORIAL_FLOW = {
   CULTIST_GOD_CHOOSE_CARD: 'cultistGodChooseCard',
   CULTIST_GOD_SELECT_TARGET: 'cultistGodSelectTarget',
   CULTIST_GOD_RESULT: 'cultistGodResult',
+  FINAL_ADVICE: 'finalAdvice',
   COMPLETE: 'complete',
 };
 
@@ -598,14 +599,29 @@ const SKILL_STEPS = [
     ],
     highlight: 'opponentSanBar',
     lock: true,
+    next: TUTORIAL_FLOW.FINAL_ADVICE,
+  },
+  {
+    id: TUTORIAL_FLOW.FINAL_ADVICE,
+    title: '最后忠告',
+    body: [
+      '探索遗迹必备的知识，我已经教给你了。',
+      `遗迹里还有更多奥秘，我已经老了，或许你${GOLD('以后')}能遇到。`,
+    ],
+    highlight: 'center',
+    lock: true,
     next: TUTORIAL_FLOW.COMPLETE,
   },
   {
     id: TUTORIAL_FLOW.COMPLETE,
-    title: '开始正式对局',
-    body: `三种${GOLD('身份')}的关键行动已经演示完毕。接下来进入完整五人对局，真正的试探才刚开始。`,
+    title: '开始探索',
+    body: [
+      '如果你开始害怕，现在退出还来得及。如果你依然无所畏惧……',
+      `那就${GOLD('开始探索')}吧！`,
+    ],
     highlight: 'center',
     lock: true,
+    emphasisLineIndex: 1,
     complete: true,
   },
 ];
