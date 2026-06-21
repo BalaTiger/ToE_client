@@ -38,6 +38,7 @@ const TERM_STYLES = {
   求生: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
   暗抽: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
   牌堆: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
+  手牌多于4张: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
   信仰: { color: '#c060e0', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #9030cc88' },
   改信: { color: '#c060e0', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #9030cc88' },
   HP: { color: '#e05050', fontStyle: 'normal', fontWeight: 700, textShadow: '0 0 8px #cc222288' },
@@ -93,6 +94,8 @@ function getScriptHighlightRect(step, rects, vw) {
       return rects.opponentHpBarRect;
     case 'drawRevealKeepButton':
       return rects.drawRevealKeepButtonRect;
+    case 'godKeepHandButton':
+      return rects.godKeepHandButtonRect;
     case 'dodgeRollButton':
       return rects.dodgeRollButtonRect;
     case 'deckArea':
@@ -135,6 +138,7 @@ function ScriptTutorialOverlay({
   singleOpponentRect,
   opponentGodStatusRect,
   drawRevealKeepButtonRect,
+  godKeepHandButtonRect,
   deckAreaRect,
   dodgeRollButtonRect,
   skillButtonRect,
@@ -147,16 +151,17 @@ function ScriptTutorialOverlay({
 }) {
   const step = getTutorialStep(tutorialStep);
   if (!step || step.auto) return null;
-  const rawRect = getScriptHighlightRect(step, { panelRect, roleTextRect, handAreaRect, tutorialHandCardRect, handCardsRect, aiPanelAreaRect, opponentSanBarRect, opponentHpBarRect, singleOpponentRect, opponentGodStatusRect, drawRevealKeepButtonRect, deckAreaRect, dodgeRollButtonRect, skillButtonRect, swapBlindHandRect }, vw);
+  const rawRect = getScriptHighlightRect(step, { panelRect, roleTextRect, handAreaRect, tutorialHandCardRect, handCardsRect, aiPanelAreaRect, opponentSanBarRect, opponentHpBarRect, singleOpponentRect, opponentGodStatusRect, drawRevealKeepButtonRect, godKeepHandButtonRect, deckAreaRect, dodgeRollButtonRect, skillButtonRect, swapBlindHandRect }, vw);
   const noSpotlight = rawRect?.noSpotlight;
   const rect = noSpotlight ? null : rawRect;
   if (step?.highlight === 'drawRevealKeepButton' && !rect) return null;
+  if (step?.highlight === 'godKeepHandButton' && !rect) return null;
   if (step?.highlight === 'dodgeRollButton' && !rect) return null;
   if (step?.highlight === 'skillButton' && !rect) return null;
   if (step?.highlight === 'swapBlindHand' && !rect) return null;
   const BG = 'rgba(0,0,0,0.58)';
   const tooltipW = Math.min(step?.highlight === 'center' ? 360 : 300, vw - 20);
-  const compactActionTooltip = ['drawRevealKeepButton', 'dodgeRollButton', 'skillButton', 'handCard', 'handCards'].includes(step?.highlight);
+  const compactActionTooltip = ['drawRevealKeepButton', 'godKeepHandButton', 'dodgeRollButton', 'skillButton', 'handCard', 'handCards'].includes(step?.highlight);
   const tooltipH = compactActionTooltip ? 132 : 210;
   const tooltipGap = compactActionTooltip ? 8 : 14;
   const tooltipRoom = tooltipH + tooltipGap + 4;
@@ -165,10 +170,13 @@ function ScriptTutorialOverlay({
   const actionStep = !!step?.allowedAction;
   const isDodgeResult = step?.id === TUTORIAL_FLOW.TREASURE_DODGE_RESULT;
   const isInspectionIntro = step?.id === TUTORIAL_FLOW.CULTIST_GOD_CHECK_INTRO;
+  const isGodKeepHandButton = step?.highlight === 'godKeepHandButton';
   const preferRight = rect && rect.right + tooltipW + 20 < window.innerWidth;
   const preferLeft = rect && rect.left - tooltipW - 20 > 0;
   const tooltipLeft = step?.highlight === 'center' || noSpotlight
     ? Math.max(10, Math.min(window.innerWidth / 2 - tooltipW / 2, window.innerWidth - tooltipW - 10))
+    : isGodKeepHandButton && rect
+    ? Math.max(10, Math.min(rect.left - tooltipW - 14, window.innerWidth - tooltipW - 10))
     : preferRight
     ? rect.right + 14
     : preferLeft
@@ -182,6 +190,8 @@ function ScriptTutorialOverlay({
       : Math.max(10, window.innerHeight - tooltipH - 80))
     : actionStep && step?.highlight === 'swapBlind'
     ? 16
+    : actionStep && isGodKeepHandButton && rect
+    ? Math.max(10, Math.min(rect.bottom + tooltipGap, window.innerHeight - tooltipH - 10))
     : actionStep && step?.highlight === 'dodgeRollButton'
     ? (rect && rect.bottom + tooltipRoom < window.innerHeight ? rect.bottom + tooltipGap : Math.max(10, rect.top - tooltipH - tooltipGap))
     : actionStep && rect && rect.top > tooltipRoom
@@ -298,6 +308,7 @@ export default function InGameTutorialOverlay({
   singleOpponentRect,
   opponentGodStatusRect,
   drawRevealKeepButtonRect,
+  godKeepHandButtonRect,
   deckAreaRect,
   dodgeRollButtonRect,
   skillButtonRect,
@@ -326,6 +337,7 @@ export default function InGameTutorialOverlay({
         singleOpponentRect={singleOpponentRect}
         opponentGodStatusRect={opponentGodStatusRect}
         drawRevealKeepButtonRect={drawRevealKeepButtonRect}
+        godKeepHandButtonRect={godKeepHandButtonRect}
         deckAreaRect={deckAreaRect}
         dodgeRollButtonRect={dodgeRollButtonRect}
         skillButtonRect={skillButtonRect}

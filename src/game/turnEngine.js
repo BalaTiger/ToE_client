@@ -20,7 +20,7 @@ import { clearPlayerGodZone } from './aiTurn';
 import { splitAnimBoundLogs } from './animLogs';
 import { localDisplayName } from './rotateState';
 import { GOD_DEFS, createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../constants/card';
-import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
+import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, isRevealedCultist } from './coreUtils';
 import { applyFx, applyInspectionForSanLoss } from './effectEngine';
 import { buildZhuLight, getZhuTopGuard } from './zhuPower';
 import { buildStatEvents } from './statEvents';
@@ -361,6 +361,8 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
       }
     });
   } else if (action === 'hand') {
+    P[ci].roleRevealed = true;
+    P[ci].revealHand = true;
     P[ci].hand.push({ ...godCard }); msgs.push(`${P[ci].name}（邪祀者）将邪神牌收入手牌`);
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
   } else {
@@ -377,11 +379,11 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
 
 export function aiHandleGodCard(ci, godCard, P, D, Disc, L, gs, skipEffectMsg = false) {
   const sanCost = P[ci].godEncounters || 0;
-  // 邪祀者遭遇邪神时不扣减SAN且强制亮明身份
+  // 已揭晓的邪祀者遭遇邪神时免疫SAN损耗；未揭晓时照常结算
   if (!skipEffectMsg) {
+    const revealedCultist = isRevealedCultist(P[ci]);
     let effectMsg = '';
-    if (P[ci].role === ROLE_CULTIST) {
-      P[ci].roleRevealed = true;
+    if (revealedCultist) {
       effectMsg = `${P[ci].name}（邪祀者）遭遇邪神 ${godCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`;
     } else {
       effectMsg = `${P[ci].name} 遭遇邪神 ${godCard.name}！（第${P[ci].godEncounters}次）失去${sanCost}SAN`;
@@ -453,20 +455,17 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
   if (drawnCard.isGod) {
     P[ci].godEncounters = (P[ci].godEncounters || 0) + 1;
     const cost = P[ci].godEncounters;
-    // 邪祀者遭遇邪神时不扣减SAN且强制亮明身份
-    if (P[ci].role === ROLE_CULTIST) {
-      P[ci].roleRevealed = true;
-    }
+    const revealedCultist = isRevealedCultist(P[ci]);
 
     if (isAI) {
       let L2 = [];
       let inspectionMeta = makeInspectionMeta(gs);
-      let effectMsg = P[ci].role === ROLE_CULTIST
+      let effectMsg = revealedCultist
         ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`
         : `${whoName} 遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）失去${cost}SAN`;
       L2.push(effectMsg);
       // AI处理邪神牌时，仍然立即扣减SAN值；教程可在检定前暂停。
-      if (P[ci].role !== ROLE_CULTIST) {
+      if (!revealedCultist) {
         const beforePlayers = copyPlayers(P);
         P[ci].san = clamp(P[ci].san - cost);
         inspectionMeta = appendStatEventsToInspectionMeta(
@@ -522,14 +521,14 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
       P = gr.P; D = gr.D; Disc = gr.Disc;
       return { P, D, Disc, drawnCard, effectMsgs: L2, kept: true, statePatch: { ...inspectionMeta, ...(gr.inspectionMeta || {}), ...(gr.statePatch || {}) } };
     } else {
-      let effectMsg = P[ci].role === ROLE_CULTIST
+      let effectMsg = revealedCultist
         ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`
         : `${whoName} 遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）失去${cost}SAN`;
 
       let inspectionMeta = makeInspectionMeta(gs);
       let effectMsgs = [effectMsg];
 
-      if (P[ci].role !== ROLE_CULTIST && cost > 0) {
+      if (!revealedCultist && cost > 0) {
         const baseLog = gs?.log ? [...gs.log, effectMsg] : [effectMsg];
         const processed = applySanLossToPlayerWithInspection(ci, cost, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta, '邪神遭遇');
         P = processed.P; D = processed.D; Disc = processed.Disc;
@@ -1004,7 +1003,7 @@ export function startNextTurn(gs, opts = {}) {
     if (drawLogs.length) L.push(...drawLogs);
     if (statLogs.length) L.push(...statLogs);
     if (!res.drawnCard) { L.push('牌堆耗尽！'); return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }; }
-    if (res.needGodChoice) { return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: res.drawnCard, drawerIdx: 0, godEncounterCost: res.godEncounterCost }, drawReveal: null, selectedCard: null, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }; }
+    if (res.needGodChoice) { return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: res.drawnCard, drawerIdx: 0, godEncounterCost: res.godEncounterCost }, drawReveal: null, selectedCard: null, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _aiDrawnCard: null, _drawnCard: res.drawnCard ?? null, _drawSourcePile: res.sourcePile }; }
     const playerTurnAnimMeta = {
       currentTurn: 0,
       turn: newTurn,

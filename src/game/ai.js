@@ -132,7 +132,7 @@ function zoneCardGiftRestsTarget(card) {
 
 function estimateGodGiftSanLoss(card, target) {
   if (!card?.isGod || !target || target.isDead) return 0;
-  if ((target._nyaBorrow || target.role) === ROLE_CULTIST) return 0;
+  if ((target._nyaBorrow || target.role) === ROLE_CULTIST && target.roleRevealed) return 0;
   const encounterCost = (target.godEncounters || 0) + 1;
   const convertCost = target.godName && target.godName !== card.godKey ? 1 : 0;
   return encounterCost + convertCost;

@@ -4,7 +4,7 @@ import {
   CS,
   GOD_CS
 } from '../../constants/card';
-import { ROLE_CULTIST } from '../../game';
+import { ROLE_CULTIST, isRevealedCultist } from '../../game';
 import { DDCard, DDCardBack, GodCardDisplay, PreviewCard } from '../cards';
 
 import { buildPublicUrl } from '../../utils/url';
@@ -23,6 +23,7 @@ function GodChoiceModal({
   allowWorship = true,
   allowKeepHand = true,
   allowDiscard = true,
+  keepButtonRef = null,
 }) {
   if (!godCard) return null;
   const def = GOD_DEFS[godCard.godKey];
@@ -30,6 +31,7 @@ function GodChoiceModal({
   const alreadyWorship = player.godName === godCard.godKey;
   const canUpgrade = alreadyWorship && (player.godLevel || 0) < 3;
   const isBystander = !canChoose && thinkingText;
+  const immuneEncounter = isRevealedCultist(player);
   return (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 400, paddingTop: '10vh' }}>
       <div style={{
@@ -47,7 +49,7 @@ function GodChoiceModal({
           <span style={{ color: def.col, filter: `drop-shadow(0 0 6px ${def.col}88)` }}>{godCard.name}</span>
         </div>
         <div style={{ fontSize: 16.5, color: '#c89058', fontStyle: 'italic', fontFamily: "'IM Fell English',serif", marginBottom: 4 }}>
-          {'💀'.repeat(player.godEncounters)} 第{player.godEncounters}次遭遇，失去{player.godEncounters}SAN
+          {'💀'.repeat(player.godEncounters)} {immuneEncounter ? `第${player.godEncounters}次遭遇（邪祀者免疫伤害）` : `第${player.godEncounters}次遭遇，失去${player.godEncounters}SAN`}
           {isConvert && !forcedConvert && <span style={{ color: '#e08888', marginLeft: 8 }}>（改信将失去1SAN）</span>}
         </div>
         {/* Power gain preview */}
@@ -71,23 +73,23 @@ function GodChoiceModal({
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center', marginTop: 8 }}>
-            {!forcedConvert && allowWorship && (
-              <button onClick={onWorship} style={{ padding: '9px 22px', background: def.bgCol, border: `1.5px solid ${def.col}`, color: def.col, fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: 'pointer', letterSpacing: 1, filter: `drop-shadow(0 0 4px ${def.col}66)` }}>
+            {!forcedConvert && (
+              <button disabled={!allowWorship} onClick={allowWorship ? onWorship : undefined} style={{ padding: '9px 22px', background: def.bgCol, border: `1.5px solid ${def.col}`, color: def.col, fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: allowWorship ? 'pointer' : 'not-allowed', letterSpacing: 1, filter: `drop-shadow(0 0 4px ${def.col}66)`, opacity: allowWorship ? 1 : 0.45 }}>
                 {canUpgrade ? '⬆ 升级邪神之力' : isConvert ? '⛧ 改信新神' : '⛧ 信仰邪神'}
               </button>
             )}
             {!alreadyWorship && !forcedConvert && isCultist && allowKeepHand && (
-              <button onClick={onKeepHand} style={{ padding: '9px 22px', background: '#180830', border: `1.5px solid #b080ee`, color: '#b080ee', fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: 'pointer', letterSpacing: 1, filter: 'drop-shadow(0 0 4px #9060cc66)' }}>
-                ☽ 秘密收入手牌
+              <button ref={keepButtonRef} onClick={onKeepHand} style={{ padding: '9px 22px', background: '#180830', border: `1.5px solid #b080ee`, color: '#b080ee', fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: 'pointer', letterSpacing: 1, filter: 'drop-shadow(0 0 4px #9060cc66)' }}>
+                ☽ 收入手牌
               </button>
             )}
-            {!forcedConvert && allowDiscard && (
-              <button onClick={onDiscard} style={{ padding: '9px 22px', background: '#120a08', border: '1.5px solid #6a4828', color: '#d4a858', fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: 'pointer', letterSpacing: 1 }}>
+            {!forcedConvert && (
+              <button disabled={!allowDiscard} onClick={allowDiscard ? onDiscard : undefined} style={{ padding: '9px 22px', background: '#120a08', border: '1.5px solid #6a4828', color: '#d4a858', fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: allowDiscard ? 'pointer' : 'not-allowed', letterSpacing: 1, opacity: allowDiscard ? 1 : 0.45 }}>
                 放弃
               </button>
             )}
-            {forcedConvert && allowWorship && (
-              <button onClick={onWorship} style={{ padding: '9px 22px', background: def.bgCol, border: `1.5px solid ${def.col}`, color: def.col, fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: 'pointer', letterSpacing: 1, filter: `drop-shadow(0 0 4px ${def.col}66)` }}>
+            {forcedConvert && (
+              <button disabled={!allowWorship} onClick={allowWorship ? onWorship : undefined} style={{ padding: '9px 22px', background: def.bgCol, border: `1.5px solid ${def.col}`, color: def.col, fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: allowWorship ? 'pointer' : 'not-allowed', letterSpacing: 1, filter: `drop-shadow(0 0 4px ${def.col}66)`, opacity: allowWorship ? 1 : 0.45 }}>
                 ⛧ 接受改信
               </button>
             )}

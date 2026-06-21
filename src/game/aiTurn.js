@@ -39,7 +39,7 @@ import {
   startNextTurn,
 } from './turnEngine';
 import { withClearedTurnAnimFields } from './turnAnimState';
-import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
+import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, isRevealedCultist } from './coreUtils';
 import { createBlackGoatYoungCard } from '../constants/card';
 import { buildStatEvents } from './statEvents';
 import { END_TURN_EVENT, getEndTurnReplayHandCards } from './endTurnEvents';
@@ -291,14 +291,13 @@ function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
       P[ct].hand.splice(handIdx, 1);
       P[ct].godEncounters = (P[ct].godEncounters || 0) + 1;
       const godCost = P[ct].godEncounters;
-      const effectMsg = P[ct].role === ROLE_CULTIST
+      const revealedCultist = isRevealedCultist(P[ct]);
+      const effectMsg = revealedCultist
         ? `${P[ct].name}（邪祀者）遭遇邪神 ${card.name}！（第${P[ct].godEncounters}次）免疫SAN损耗`
         : `${P[ct].name} 遭遇邪神 ${card.name}！（第${P[ct].godEncounters}次）失去${godCost}SAN`;
       L.push(effectMsg);
       let inspectionMeta = makeInspectionMeta({ ...gs, ...statePatch });
-      if (P[ct].role === ROLE_CULTIST) {
-        P[ct].roleRevealed = true;
-      } else {
+      if (!revealedCultist) {
         const processed = applySanLossToPlayerWithInspection(ct, godCost, gs.currentTurn ?? ct, P, D, Disc, L, inspectionMeta, '邪神遭遇');
         P = processed.P; D = processed.D; Disc = processed.Disc; L = processed.L; inspectionMeta = processed.inspectionMeta;
       }
@@ -406,13 +405,12 @@ export function aiStep(gs, opts = {}) {
     if (_sc.isGod) {
       _P[_ti].godEncounters = (_P[_ti].godEncounters || 0) + 1;
       const godCost = _P[_ti].godEncounters;
-      const effectMsg = _P[_ti].role === ROLE_CULTIST
+      const revealedCultist = isRevealedCultist(_P[_ti]);
+      const effectMsg = revealedCultist
         ? `${_P[_ti].name}（邪祀者）遭遇邪神 ${_sc.name}！（第${_P[_ti].godEncounters}次）免疫SAN损耗`
         : `${_P[_ti].name} 遭遇邪神 ${_sc.name}！（第${_P[_ti].godEncounters}次）失去${godCost}SAN`;
       _L.push(effectMsg);
-      if (_P[_ti].role === ROLE_CULTIST) {
-        _P[_ti].roleRevealed = true;
-      } else {
+      if (!revealedCultist) {
         const processed = applySanLossToPlayerWithInspection(_ti, godCost, _gs.currentTurn, _P, _D, _Disc, _L, inspectionMeta, '邪神遭遇');
         _P = processed.P; _D = processed.D; _Disc = processed.Disc;
         inspectionMeta = processed.inspectionMeta;

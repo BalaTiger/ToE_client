@@ -33,7 +33,6 @@ import {
   isZoneCard,
   isNegativeZoneCard,
   getZoneCardEffectScope,
-  zoneCardUsesTargetInteraction,
   isWinHand,
   cardLogText,
   removeCardsFromDiscard,
@@ -69,6 +68,7 @@ import {
   moveEligibleBlankZones,
   isBlackGoatYoung,
   isTsathogguaSlime,
+  isRevealedCultist,
   canRevealForHunt,
   hasHuntRevealableCard,
   buildEtherealizeLoss,
@@ -548,11 +548,24 @@ export default function Game(){
   const [tutorialInspectionPending,setTutorialInspectionPending]=useState(false);
   const [tutorialInspectionResuming,setTutorialInspectionResuming]=useState(false);
   const tutorialGodConvertContinuationRef=useRef(null);
+  const [tutorialGodPlayerDrawArmed,setTutorialGodPlayerDrawArmed]=useState(false);
   const tutorialStepDef=showTutorial&&typeof tutorialStep==='string'?getTutorialStep(tutorialStep):null;
   const isScriptedTutorial=!!tutorialStepDef;
   const isTutorialActionStep=!!tutorialStepDef?.allowedAction;
   const isTutorialDrawKeepStep=showTutorial&&tutorialStep===TUTORIAL_FLOW.TREASURE_DRAW_REVEAL;
   const isTutorialDrawKeepHighlightStep=isTutorialDrawKeepStep&&tutorialStepDef?.highlight==='drawRevealKeepButton';
+  const clearTurnDrawReplayHints=(state)=>state?({
+    ...state,
+    _playersBeforeThisDraw:null,
+    _preTurnPlayers:null,
+    _turnStartLogs:null,
+    _drawLogs:[],
+    _statLogs:[],
+    _drawnCard:null,
+    _aiDrawnCard:null,
+    _discardedDrawnCard:false,
+    _drawSourcePile:null,
+  }):state;
   const [localDebugMode,setLocalDebugMode]=useState(()=>isLocalTestMode&&safeLS.get(LOCAL_DEBUG_KEY)==='1');
   const [debugForceCard]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_KEY)||null);
   const [debugForceCardTarget,setDebugForceCardTarget]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_TARGET_KEY)||'player');
@@ -1438,6 +1451,8 @@ export default function Game(){
   const [opponentGodStatusRect,setOpponentGodStatusRect]=useState(null);
   const drawRevealKeepButtonRef=useRef(null);
   const [drawRevealKeepButtonRect,setDrawRevealKeepButtonRect]=useState(null);
+  const godKeepHandButtonRef=useRef(null);
+  const [godKeepHandButtonRect,setGodKeepHandButtonRect]=useState(null);
   const deckAreaRef=useRef(null);
   const [deckAreaRect,setDeckAreaRect]=useState(null);
   const dodgeRollButtonRef=useRef(null);
@@ -1775,6 +1790,9 @@ export default function Game(){
     clearBattleAnimationState();
     setSwapBlindDraw(null);
     setMobileArmedGodCardIdx(null);
+    const armGodPlayerDraw=tutorialStep===TUTORIAL_FLOW.CULTIST_GOD_PLAYER_DRAW&&nextStep===TUTORIAL_FLOW.CULTIST_GOD_KEEP_HAND;
+    if(armGodPlayerDraw)setTutorialGodPlayerDrawArmed(true);
+    else setTutorialGodPlayerDrawArmed(false);
     setTutorialStep(nextStep);
     setGs(prev=>{
       if(!prev)return prev;
@@ -2068,6 +2086,10 @@ export default function Game(){
         const r=_getZoomCompensatedRect(drawRevealKeepButtonRef.current);
         if(r)setDrawRevealKeepButtonRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
       }
+      if(showTutorial&&scriptHighlight==='godKeepHandButton'&&godKeepHandButtonRef.current){
+        const r=_getZoomCompensatedRect(godKeepHandButtonRef.current);
+        if(r)setGodKeepHandButtonRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+      }
       if(showTutorial&&scriptHighlight==='dodgeRollButton'&&dodgeRollButtonRef.current){
         const r=_getZoomCompensatedRect(dodgeRollButtonRef.current);
         if(r)setDodgeRollButtonRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
@@ -2087,7 +2109,7 @@ export default function Game(){
     };
     update();
     const timeoutIds=[];
-    if(showTutorial&&typeof tutorialStep==='string'&&(tutorialStepDef?.highlight==='drawRevealKeepButton'||tutorialStepDef?.highlight==='dodgeRollButton')){
+    if(showTutorial&&typeof tutorialStep==='string'&&(tutorialStepDef?.highlight==='drawRevealKeepButton'||tutorialStepDef?.highlight==='godKeepHandButton'||tutorialStepDef?.highlight==='dodgeRollButton')){
       // 两个模态弹窗都有 0.22s 缩放动画，等动画结束后再测量按钮真实位置
       timeoutIds.push(setTimeout(update,220));
       timeoutIds.push(setTimeout(update,320));
@@ -2171,7 +2193,8 @@ export default function Game(){
       return;
     }
 
-    if(tutorialStep===TUTORIAL_FLOW.CULTIST_GOD_PLAYER_DRAW&&gs.currentTurn===1&&!anim&&!animExiting&&animQueueRef.current.length===0&&!pendingGsRef.current){
+    if(tutorialGodPlayerDrawArmed&&tutorialStep===TUTORIAL_FLOW.CULTIST_GOD_KEEP_HAND&&gs.currentTurn===1&&!anim&&!animExiting&&animQueueRef.current.length===0&&!pendingGsRef.current){
+      setTutorialGodPlayerDrawArmed(false);
       const nextGs=startNextTurn({...gs,phase:'ACTION',drawReveal:null,selectedCard:null,abilityData:{}});
       const replay=buildAppTurnStartDrawReplay(nextGs,{
         oldGs:gs,
@@ -2201,7 +2224,7 @@ export default function Game(){
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[showTutorial,tutorialStep,gs?.phase,gs?._turnKey,anim,animExiting]);
+  },[showTutorial,tutorialStep,tutorialGodPlayerDrawArmed,gs?.phase,gs?._turnKey,anim,animExiting]);
 
   const resolvePendingAiGodChoice=useCallback((nextTutorialStep=null)=>{
     const pending=gs?.abilityData;
@@ -2718,12 +2741,7 @@ export default function Game(){
             if(inspectionEvents.length){
               lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
             }
-            const bewitchTurnIntroName=isAiSeat(gs,bwti)&&(
-              zoneCardUsesTargetInteraction(giftedCard)||
-              giftedCard?.type==='selfDamageHPPeek'||
-              giftedCard?.type==='firstComePick'
-            )?P_actionEnd[bwti]?.name:null;
-            orderedActionQ=buildBewitchForcedCardQueue(gs.currentTurn,bwti,giftedCard,P_actionEnd[bwti]?.name,[...actionStatQ,...inspectionFlow.queue,...postInspectionQ],extractSkillLogs(newMsgs,'bewitch'),bewitchTurnIntroName);
+            orderedActionQ=buildBewitchForcedCardQueue(gs.currentTurn,bwti,giftedCard,P_actionEnd[bwti]?.name,[...actionStatQ,...inspectionFlow.queue,...postInspectionQ],extractSkillLogs(newMsgs,'bewitch'));
           }else{
             queue.push({type:'SKILL_BEWITCH',msgs:extractSkillLogs(newMsgs,'bewitch'),targetIdx:bwti>=0?bwti:1});
             if(inspectionEvents.length){
@@ -4341,12 +4359,12 @@ export default function Game(){
     if(currentReplay){
       const {actorIndex,index,card}=currentReplay;
       if(card.isGod){
-        const encounter=buildEndTurnReplayGodEncounter({stateLike,players:P,replay,actorIndex,index,card,isCultist:P[actorIndex].role===ROLE_CULTIST,actorLabel:'你'});
+        const encounter=buildEndTurnReplayGodEncounter({stateLike,players:P,replay,actorIndex,index,card,isCultist:(P[actorIndex]._nyaBorrow||P[actorIndex].role)===ROLE_CULTIST,actorLabel:'你'});
         P=encounter.players;
         let D=[...(stateLike.deck||[])],Disc=[...(stateLike.discard||[])];
         let L=[...(stateLike.log||[]),encounter.effectMsg];
         let inspectionMeta=makeInspectionMeta(stateLike);
-        if(P[actorIndex].role!==ROLE_CULTIST&&encounter.cost>0){
+        if(encounter.abilityData.godEncounterCost>0){
           const processed=applySanLossToPlayerWithInspection(actorIndex,encounter.cost,stateLike.currentTurn??0,P,D,Disc,L,inspectionMeta,'邪神遭遇');
           P=processed.P;D=processed.D;Disc=processed.Disc;L=processed.L;inspectionMeta=processed.inspectionMeta;
         }
@@ -6513,10 +6531,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
 
   function buildPostBewitchStatQueue(oldGs,newGs){
     const apophisSeq=newGs?._apophisTargetEvent?.seq;
-    const queueOldGs=apophisSeq&&apophisSeq>(oldGs?._apophisTargetSeq||0)
-      ?{...oldGs,_apophisTargetSeq:apophisSeq}
-      :oldGs;
-    const result=buildInspectionAwareAnimQueue(queueOldGs,newGs,{buildAnimQueue,copyPlayers});
+    const cleanOldGs=clearTurnDrawReplayHints(oldGs);
+    const queueOldGs=apophisSeq&&apophisSeq>(cleanOldGs?._apophisTargetSeq||0)
+      ?{...cleanOldGs,_apophisTargetSeq:apophisSeq}
+      :cleanOldGs;
+    const result=buildInspectionAwareAnimQueue(queueOldGs,clearTurnDrawReplayHints(newGs),{buildAnimQueue,copyPlayers});
     if(result.inspectionEvents.length){
       lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...result.inspectionEvents.map(ev=>ev.seq||0));
     }
@@ -6542,21 +6561,17 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(bewitchCard.isGod){
       P[ti].godEncounters=(P[ti].godEncounters||0)+1;
       const cost=P[ti].godEncounters;
-      // 邪祀者遭遇邪神时不扣减SAN且强制亮明身份
+      // 仅已揭晓的邪祀者免疫遭遇邪神的SAN损耗
       let effectMsg = '';
-      if (P[ti].role === '邪祀者') {
-        P[ti].roleRevealed = true;
+      if (isRevealedCultist(P[ti])) {
         effectMsg = `${P[ti].name}（邪祀者）遭遇邪神 ${bewitchCard.name}（第${P[ti].godEncounters}次），免疫SAN损耗`;
-        if (!P[ti].roleRevealed) {
-          effectMsg += '，身份揭晓：邪祀者';
-        }
       } else {
         effectMsg = `${P[ti].name} 遭遇邪神 ${bewitchCard.name}（第${P[ti].godEncounters}次），失去${cost}SAN`;
         L.push(effectMsg);
         const processed=applySanLossToPlayerWithInspection(ti,cost,gs.currentTurn,P,D,Disc,L,inspectionMeta,'邪神遭遇');
         P=processed.P;D=processed.D;Disc=processed.Disc;inspectionMeta=processed.inspectionMeta;L.splice(0,L.length,...processed.L);
       }
-      if(P[ti].role === '邪祀者')L.push(effectMsg);
+      if(isRevealedCultist(P[ti]))L.push(effectMsg);
       const forcedConvert=!!(P[ti].godName&&P[ti].godName!==bewitchCard.godKey);
       const godResolveGs={...gs,players:P,deck:D,discard:Disc,log:L,...inspectionMeta};
       const gres=resolveGodEncounterForAI(ti,bewitchCard,P,D,Disc,godResolveGs,forcedConvert);
@@ -6572,7 +6587,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const hasSlimeDecision=mergedInspectionMeta?.abilityData?.type==='tsgSlimeBalance';
       const bewitchMsgs=extractSkillLogs(L.slice(gs.log.length),'bewitch');
       const bewitchEvent=createBewitchGiftEvent({sourceIdx:0,targetIdx:ti,targetName:P[ti]?.name,card:bewitchCard,msgs:bewitchMsgs});
-      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:hasSlimeDecision?'TSG_SLIME_BALANCE':'ACTION',drawReveal:null,skillUsed:true,...mergedInspectionMeta,...nightPatch,...(gres.statePatch||{}),abilityData:hasSlimeDecision?{...mergedInspectionMeta.abilityData,_turnOwner:gs.currentTurn}:{},apophisNight:nextApophisNight,_visualEvents:[...(gres.statePatch?._visualEvents||[]),...(bewitchEvent?[bewitchEvent]:[])],...(win?{gameOver:win}:{})};
+      const newGs=clearTurnDrawReplayHints({...gs,players:P,deck:D,discard:Disc,log:L,phase:hasSlimeDecision?'TSG_SLIME_BALANCE':'ACTION',drawReveal:null,skillUsed:true,...mergedInspectionMeta,...nightPatch,...(gres.statePatch||{}),abilityData:hasSlimeDecision?{...mergedInspectionMeta.abilityData,_turnOwner:gs.currentTurn}:{},apophisNight:nextApophisNight,_visualEvents:[...(gres.statePatch?._visualEvents||[]),...(bewitchEvent?[bewitchEvent]:[])],...(win?{gameOver:win}:{})});
       const statQueue=buildPostBewitchStatQueue(gs,newGs);
       broadcastMpStateBeforeLocalReplay(newGs);
       finishTutorialActionWithState(
@@ -6596,21 +6611,16 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     });
     const bewitchMsgs=extractSkillLogs(L.slice(gs.log.length),'bewitch');
     const bewitchEvent=createBewitchGiftEvent({sourceIdx:0,targetIdx:ti,targetName:res.P[ti]?.name,card:bewitchCard,msgs:bewitchMsgs});
-    const newGs={...gs,players:res.P,deck:res.D,discard:res.Disc,log:L,drawReveal:null,
+    const newGs=clearTurnDrawReplayHints({...gs,players:res.P,deck:res.D,discard:res.Disc,log:L,drawReveal:null,
       abilityData:phaseAbilityData,
       phase:nextPhase,
-      skillUsed:true,...(res.statePatch||{}),...apophisNightPatch(night),_visualEvents:[...(res.statePatch?._visualEvents||[]),...(bewitchEvent?[bewitchEvent]:[])],...(win?{gameOver:win}:{})};
+      skillUsed:true,...(res.statePatch||{}),...apophisNightPatch(night),_visualEvents:[...(res.statePatch?._visualEvents||[]),...(bewitchEvent?[bewitchEvent]:[])],...(win?{gameOver:win}:{})});
       const statQueue=buildPostBewitchStatQueue(gs,newGs);
-      const bewitchTurnIntroName=isAiSeat(gs,ti)&&(
-        zoneCardUsesTargetInteraction(bewitchCard)||
-        bewitchCard?.type==='selfDamageHPPeek'||
-        bewitchCard?.type==='firstComePick'
-      )?res.P[ti]?.name:null;
       broadcastMpStateBeforeLocalReplay(newGs);
       finishTutorialActionWithState(
         newGs,
         tutorialNext,
-        mergeApophisTargetQueue(buildBewitchForcedCardQueue(0,ti,bewitchCard,res.P[ti]?.name,statQueue,bewitchMsgs,bewitchTurnIntroName),gs,newGs)
+        mergeApophisTargetQueue(buildBewitchForcedCardQueue(0,ti,bewitchCard,res.P[ti]?.name,statQueue,bewitchMsgs),gs,newGs)
       );
   }
 
@@ -6634,8 +6644,10 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     // SAN deduction and inspections are now handled upfront in handleCardDraw
     
     if(action==='keepHand'){
+      P[0].roleRevealed=true;
+      P[0].revealHand=true;
       if(!fromEndTurnReplay)P[0].hand.push({...godCard});
-      L.push('你（邪祀者）将邪神牌秘密收入手牌');
+      L.push('你（邪祀者）将邪神牌收入手牌');
     } else if(action==='worship'||action==='upgrade'||action==='forcedConvert'){
       if(action==='forcedConvert'||(P[0].godName&&P[0].godName!==gk)){
         const converted=convertGodFollower(0,gs.currentTurn,P,D,Disc,L,inspectionMeta,'改信新神，失去1SAN，旧神牌入弃牌堆',godCard);
@@ -6722,10 +6734,20 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }else{
       const win=checkWin(P,gs._isMP);
       const finalGs={...newGs,...(win?{gameOver:win}:{})};
-      if(!win&&gs.abilityData?.fromRest){_cthContinueRestDraws(finalGs);return;}
-      if(!win&&fromEndTurnReplay&&finalGs.phase==='ACTION'){continueEndTurnReplay(finalGs);return;}
-      if(!win&&finalGs.phase==='ACTION'&&(finalGs.proliferatingZQueue||[]).length){continueProliferatingZDraws(finalGs);return;}
-      setGs(finalGs);
+      if(win){
+        setGs(finalGs);
+      }else if(tutorialNext){
+        setGs(finalGs);
+        setTutorialStep(tutorialNext);
+      }else if(gs.abilityData?.fromRest){
+        _cthContinueRestDraws(finalGs);
+      }else if(fromEndTurnReplay&&finalGs.phase==='ACTION'){
+        continueEndTurnReplay(finalGs);
+      }else if(finalGs.phase==='ACTION'&&(finalGs.proliferatingZQueue||[]).length){
+        continueProliferatingZDraws(finalGs);
+      }else{
+        setGs(finalGs);
+      }
     }
   }
 
@@ -8134,6 +8156,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             onWorship={()=>godResolvePlayer(alreadyWorship&&canUpgrade?'upgrade':isConvert?'worship':'worship')}
             onKeepHand={()=>godResolvePlayer('keepHand')}
             onDiscard={()=>godResolvePlayer('discard')}
+            keepButtonRef={godKeepHandButtonRef}
           />
         );
       })()}
@@ -8857,6 +8880,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             singleOpponentRect={singleOpponentRect}
             opponentGodStatusRect={opponentGodStatusRect}
             drawRevealKeepButtonRect={drawRevealKeepButtonRect}
+            godKeepHandButtonRect={godKeepHandButtonRect}
             deckAreaRect={deckAreaRect}
             dodgeRollButtonRect={dodgeRollButtonRect}
             skillButtonRect={skillButtonRect}

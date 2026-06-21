@@ -91,6 +91,10 @@ export function resolveTurnHighlightForStep(step,nextGs,playersFallback=[]){
 }
 
 export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQueue,msgs){
+  const isStaleTurnDrawStep = step => (
+    step?.type === "YOUR_TURN" ||
+    (step?.type === "DRAW_CARD" && step.inspectionSeq == null && step.triggerName !== "检定牌")
+  );
   const ordered=[{type:"SKILL_BEWITCH",msgs,targetIdx:toPid}];
   if(toPid!=null&&toPid>=0){
     ordered.push(cardTransferStep({fromPid,dest:"player",toPid,count:1}));
@@ -100,7 +104,7 @@ export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQ
   if(card){
     ordered.push({type:"DRAW_CARD",card,triggerName,targetPid:toPid,skipTravel:true});
   }
-  ordered.push(...(statQueue||[]).filter(a=>a.type!=="CARD_TRANSFER"));
+  ordered.push(...(statQueue||[]).filter(a=>a.type!=="CARD_TRANSFER"&&!isStaleTurnDrawStep(a)));
   return ordered;
 }
 

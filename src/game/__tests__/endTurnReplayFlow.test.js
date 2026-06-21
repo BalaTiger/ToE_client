@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import {
   advanceEndTurnReplayPatch,
   buildEndTurnReplayFinishedState,
@@ -10,7 +10,7 @@ import {
 } from '../endTurnReplayFlow';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
-const corridor = (id = 'corridor') => makeZoneCard('A3', 0, { id, name: '无尽通道', type: 'endTurnReplayHand' });
+const corridor = (id = 'corridor') => makeZoneCard('A3', 0, { id, name: '鏃犲敖閫氶亾', type: 'endTurnReplayHand' });
 
 describe('endTurnReplayFlow', () => {
   it('builds the player replay state from cards left of endless corridor', () => {
@@ -103,7 +103,7 @@ describe('endTurnReplayFlow', () => {
       fromRest: true,
       godCard: god,
       drawerIdx: 0,
-      godEncounterCost: 0,
+      godEncounterCost: 2,
       fromEndTurnReplay: true,
     }));
   });
@@ -122,14 +122,15 @@ describe('endTurnReplayFlow', () => {
       isCultist: true,
     });
 
-    expect(result.players[0].roleRevealed).toBe(true);
+    expect(result.players[0].roleRevealed).toBe(false);
     expect(result.cost).toBe(1);
-    expect(result.effectMsg).toContain('免疫SAN损耗');
+    expect(result.abilityData.godEncounterCost).toBe(1);
+    expect(result.effectMsg).toContain('失去1SAN');
   });
 
   it('builds zone draw state and draw animation step', () => {
     const card = makeZoneCard('A1', 0, { id: 'zone' });
-    const player = makePlayer({ name: '玩家A', hand: [card] });
+    const player = makePlayer({ name: '鐜╁A', hand: [card] });
     const replay = { actorIndex: 0, cards: ['zone'], index: 0 };
 
     const result = buildEndTurnReplayZoneDraw({
@@ -139,7 +140,7 @@ describe('endTurnReplayFlow', () => {
       actorIndex: 0,
       index: 0,
       card,
-      actorName: '玩家A',
+      actorName: '鐜╁A',
     });
 
     expect(result.state).toEqual(expect.objectContaining({
@@ -147,7 +148,7 @@ describe('endTurnReplayFlow', () => {
       drawReveal: expect.objectContaining({
         card,
         drawerIdx: 0,
-        drawerName: '玩家A',
+        drawerName: '鐜╁A',
         fromEndTurnReplay: true,
       }),
       abilityData: { keep: true },
@@ -181,5 +182,41 @@ describe('endTurnReplayFlow', () => {
       abilityData: {},
       _endTurnReplay: null,
     }));
+  });
+  it('uses SAN cost for unrevealed cultist replay encounters', () => {
+    const god = makeGodCard('CTH', { id: 'god' });
+    const player = makePlayer({ godEncounters: 0, roleRevealed: false });
+
+    const result = buildEndTurnReplayGodEncounter({
+      stateLike: makeGs(),
+      players: [player],
+      replay: { actorIndex: 0, cards: ['god'], index: 0 },
+      actorIndex: 0,
+      index: 0,
+      card: god,
+      isCultist: true,
+    });
+
+    expect(result.players[0].roleRevealed).toBe(false);
+    expect(result.abilityData.godEncounterCost).toBe(1);
+    expect(result.effectMsg).toContain('失去1SAN');
+  });
+
+  it('uses zero SAN cost for revealed cultist replay encounters', () => {
+    const god = makeGodCard('CTH', { id: 'god' });
+    const player = makePlayer({ godEncounters: 0, roleRevealed: true });
+
+    const result = buildEndTurnReplayGodEncounter({
+      stateLike: makeGs(),
+      players: [player],
+      replay: { actorIndex: 0, cards: ['god'], index: 0 },
+      actorIndex: 0,
+      index: 0,
+      card: god,
+      isCultist: true,
+    });
+
+    expect(result.abilityData.godEncounterCost).toBe(0);
+    expect(result.effectMsg).toContain('免疫SAN损耗');
   });
 });

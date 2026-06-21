@@ -17,6 +17,16 @@ describe('tutorial scenarios', () => {
     expect(isWinHand([...player.hand.filter(card => card.id !== forcedDraw.id), targetCard])).toBe(true);
   });
 
+  it('shows the bag limit step before the treasure skill scenario', () => {
+    expect(getTutorialStep(TUTORIAL_FLOW.DRAW_GOD_CARD).next).toBe(TUTORIAL_FLOW.BAG_LIMIT);
+    expect(getTutorialStep(TUTORIAL_FLOW.BAG_LIMIT)).toMatchObject({
+      title: '行囊有限',
+      highlight: 'handArea',
+      lock: true,
+      next: TUTORIAL_FLOW.TREASURE_INTRO,
+    });
+  });
+
   it('hunter scenario has two matching hand cards and requires two hunts to kill', () => {
     const gs = createTutorialScenario('hunter');
     const player = gs.players[0];
@@ -100,5 +110,16 @@ describe('tutorial scenarios', () => {
     expect(nextTutorialStepAfterAction(TUTORIAL_FLOW.CULTIST_GOD_KEEP_HAND, { type: 'godKeepHand' })).toBe(TUTORIAL_FLOW.CULTIST_GOD_SELECT_CARD);
     expect(shouldAllowTutorialAction(TUTORIAL_FLOW.CULTIST_GOD_KEEP_HAND, { type: 'godKeepHand' })).toBe(true);
     expect(shouldAllowTutorialAction(TUTORIAL_FLOW.CULTIST_GOD_KEEP_HAND, { type: 'godChoice', action: 'worship' })).toBe(false);
+    expect(getTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_SELECT_CARD).highlight).toBe('skillButton');
+    expect(shouldAllowTutorialAction(TUTORIAL_FLOW.CULTIST_GOD_SELECT_CARD, { type: 'useSkill' })).toBe(true);
+    expect(shouldAllowTutorialAction(TUTORIAL_FLOW.CULTIST_GOD_SELECT_CARD, { type: 'handCard', cardId: 'tut-cult-god' })).toBe(false);
+    expect(nextTutorialStepAfterAction(TUTORIAL_FLOW.CULTIST_GOD_SELECT_CARD, { type: 'useSkill' })).toBe(TUTORIAL_FLOW.CULTIST_GOD_CHOOSE_CARD);
+    expect(getTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_CHOOSE_CARD)).toMatchObject({
+      highlight: 'handCard',
+      allowedAction: { type: 'handCard', cardId: 'tut-cult-god' },
+    });
+    expect(shouldAllowTutorialAction(TUTORIAL_FLOW.CULTIST_GOD_CHOOSE_CARD, { type: 'handCard', cardId: 'tut-cult-god' })).toBe(true);
+    expect(nextTutorialStepAfterAction(TUTORIAL_FLOW.CULTIST_GOD_CHOOSE_CARD, { type: 'handCard', cardId: 'tut-cult-god' })).toBe(TUTORIAL_FLOW.CULTIST_GOD_SELECT_TARGET);
+    expect(getTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_SELECT_TARGET).highlight).toBe('singleOpponent');
   });
 });

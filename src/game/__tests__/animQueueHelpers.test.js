@@ -87,6 +87,8 @@ describe('animQueueHelpers', () => {
     const gift = makeZoneCard('A1', 0);
     const queue = buildBewitchForcedCardQueue(0, 2, gift, '目标角色', [
       { type: 'CARD_TRANSFER', fromPid: 2, dest: 'discard' },
+      { type: 'YOUR_TURN', name: '目标角色' },
+      { type: 'DRAW_CARD', card: { id: 'stale-draw', name: '残留摸牌' } },
       { type: 'DAMAGE', targetPid: 2 },
     ], ['邪祀者对目标角色【蛊惑】']);
 

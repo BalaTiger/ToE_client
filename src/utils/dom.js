@@ -114,3 +114,8 @@ export function getPileAnchorCenter(selector,fallback){
   if(!r)return fallback;
   return {x:r.left+r.width/2,y:r.top+r.height/2};
 }
+
+// 神选弹窗（GodChoiceModal）大致位于屏幕中上方，用于“邪神牌收入手牌”飞入动画的起点
+export function getGodChoiceAnchorCenter(){
+  return {x:window.innerWidth*0.5,y:window.innerHeight*0.18};
+}

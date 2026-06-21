@@ -342,6 +342,7 @@ export function processInspectionTargets(targets, startIndex, P, D, Disc, baseLo
       houndsOfTindalosTarget: nextMeta.houndsOfTindalosTarget,
       houndsOfTindalosElapsed: nextMeta.houndsOfTindalosElapsed,
       _inspectionSeq: nextMeta._inspectionSeq,
+      _inspectionEvents: nextMeta._inspectionEvents,
       _statEvents: nextMeta._statEvents,
       _statEventSeq: nextMeta._statEventSeq,
     });

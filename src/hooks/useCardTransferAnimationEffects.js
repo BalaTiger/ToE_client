@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ANIM_STEP_GAP } from '../components/anim/constants';
-import { _getZoomCompensatedRect, getPileAnchorCenter, getPlayerAreaAnchorCenter, getPlayerGodPowerAnchorCenter, getPlayerHandAnchorCenter } from '../utils/dom';
+import { _getZoomCompensatedRect, getGodChoiceAnchorCenter, getPileAnchorCenter, getPlayerAreaAnchorCenter, getPlayerGodPowerAnchorCenter, getPlayerHandAnchorCenter } from '../utils/dom';
 
 export function useCardTransferAnimationEffects({ anim }) {
   const [cardTransfers, setCardTransfers] = useState([]);
@@ -56,7 +56,9 @@ export function useCardTransferAnimationEffects({ anim }) {
         ? getPlayerGodPowerAnchorCenter(fromPid)
         : sourceAnchor === 'playerArea'
           ? getPlayerAreaAnchorCenter(fromPid)
-          : getPlayerHandAnchorCenter(fromPid);
+          : sourceAnchor === 'godChoice'
+            ? getGodChoiceAnchorCenter()
+            : getPlayerHandAnchorCenter(fromPid);
       const srcX = srcPos.x;
       const srcY = srcPos.y;
 
@@ -81,11 +83,14 @@ export function useCardTransferAnimationEffects({ anim }) {
       }
 
       const key = `${fromPid}-${dest}-${toPid ?? 'x'}-${Date.now()}`;
+      const cleanupMs = Number.isFinite(anim.durationMs)
+        ? anim.durationMs + ANIM_STEP_GAP + 100
+        : effect === 'blackGoat' ? 1700 : effect === 'tsgSlime' ? 950 : 750;
       setCardTransfers(prev => [...prev, { srcX, srcY, destX, destY, count, key, effect, cards }]);
       const timer = setTimeout(() => {
         setCardTransfers(prev => prev.filter(t => t.key !== key));
         cardTransferTimersRef.current.delete(timer);
-      }, effect === 'blackGoat' ? 1700 : effect === 'tsgSlime' ? 950 : 750);
+      }, cleanupMs);
       cardTransferTimersRef.current.add(timer);
     });
     return () => {

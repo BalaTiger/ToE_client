@@ -32,6 +32,7 @@ export const TUTORIAL_FLOW = {
   CULTIST_GOAL_RULES: 'cultistGoalRules',
   DRAW_ZONE_CARD: 'drawZoneCard',
   DRAW_GOD_CARD: 'drawGodCard',
+  BAG_LIMIT: 'bagLimit',
   TREASURE_INTRO: 'treasureIntro',
   TREASURE_START_TURN: 'treasureStartTurn',
   TREASURE_DRAW_CARD: 'treasureDrawCard',
@@ -71,6 +72,7 @@ export const TUTORIAL_FLOW = {
   CULTIST_GOD_PLAYER_DRAW: 'cultistGodPlayerDraw',
   CULTIST_GOD_KEEP_HAND: 'cultistGodKeepHand',
   CULTIST_GOD_SELECT_CARD: 'cultistGodSelectCard',
+  CULTIST_GOD_CHOOSE_CARD: 'cultistGodChooseCard',
   CULTIST_GOD_SELECT_TARGET: 'cultistGodSelectTarget',
   CULTIST_GOD_RESULT: 'cultistGodResult',
   COMPLETE: 'complete',
@@ -195,8 +197,16 @@ const BASE_STEPS = [
     ],
     highlight: 'deckArea',
     lock: true,
-    next: TUTORIAL_FLOW.TREASURE_INTRO,
+    next: TUTORIAL_FLOW.BAG_LIMIT,
     setup: 'treasure',
+  },
+  {
+    id: TUTORIAL_FLOW.BAG_LIMIT,
+    title: '行囊有限',
+    body: `务必注意：你的行囊有限。回合结束时，如果你的${GOLD('手牌多于4张')}，那就丢掉多余的东西，轻装上路。`,
+    highlight: 'handArea',
+    lock: true,
+    next: TUTORIAL_FLOW.TREASURE_INTRO,
   },
 ];
 
@@ -252,7 +262,10 @@ const SKILL_STEPS = [
   {
     id: TUTORIAL_FLOW.TREASURE_DODGE_RESULT,
     title: '求生成功',
-    body: '看，你的运气很不错，有惊无险。当你掷出4~6点时，你可以收入区域牌而不承担负面效果。',
+	body: [
+      `看，你的运气很不错，有惊无险。当你掷出4~6点时，你可以收入区域牌而不承担负面效果。`,
+      `不过这样一来，其他人也都知道你是${TREASURE}了。一般来说，当你使用技能后，会自动揭晓身份。`,
+    ],
     highlight: 'noSpotlight',
     lock: true,
     next: TUTORIAL_FLOW.TREASURE_USE_SKILL,
@@ -279,7 +292,7 @@ const SKILL_STEPS = [
   {
     id: TUTORIAL_FLOW.TREASURE_STEAL_CARD,
     title: '抽取对手手牌',
-	body: `掉包中只能${GOLD('暗抽')}————就像偷偷把手伸进别人包里。能否拿到你要的牌，就看运气了。`,
+	body: `${SWAP}中只能${GOLD('暗抽')}————就像偷偷把手伸进别人包里。能否拿到你要的牌，就看运气了。`,
     highlight: 'swapBlindHand',
     lock: false,
     allowedAction: { type: 'swapSteal', cardIndex: 0 },
@@ -338,7 +351,7 @@ const SKILL_STEPS = [
   {
     id: TUTORIAL_FLOW.HUNTER_SELECT_TARGET,
     title: '选择猎物',
-    body: '你需要选择追捕目标。请点击对手。',
+    body: `你需要选择${HUNT}目标。请点击对手。`,
     highlight: 'singleOpponent',
     lock: false,
     allowedAction: { type: 'selectTarget', pid: 1 },
@@ -371,7 +384,7 @@ const SKILL_STEPS = [
     id: TUTORIAL_FLOW.HUNTER_USE_SKILL_2,
     title: '再次发动追捕',
 	body: [
-      `与寻宝者、邪祀者不同，追猎者的${HUNT}只要成功造成伤害，就能在本回合内继续使用。`,
+      `与${TREASURE}不同，追猎者的${HUNT}只要成功造成伤害，就能在本回合内继续使用。`,
 	  `请再次点击。`,
     ],
     highlight: 'skillButton',
@@ -407,8 +420,8 @@ const SKILL_STEPS = [
     title: '猎物倒下',
 	body: [
       `收缴战利品的时间到了。${HUNT}成功击杀后，可以随机夺取最多3张手牌。只要策略合理，一回合横扫全场也是可能的。`,
-	  `反过来说，如果对手亮出卡牌，你却放弃追捕，滚雪球的势头就会被打断。`,
-	  `想要成为优秀的追猎者，时机和目标的选择至关重要。`,
+	  `反过来说，如果对手亮出卡牌，你却放弃${HUNT}，滚雪球的势头就会被打断。`,
+	  `想要成为优秀的${HUNTER}，时机和目标的选择至关重要。`,
     ],
     highlight: 'handArea',
     lock: true,
@@ -463,7 +476,7 @@ const SKILL_STEPS = [
     title: '邪神牌、骷髅头与改信',
 	body: [
       `现在我们换个对手，通过观察对手回合了解${GOLD('邪神牌')}的机制。`,
-	  `寻宝者和追猎者当然可以不了解邪神————但${CULTIST}可不行。`,
+	  `${TREASURE}和${HUNTER}当然可以不了解邪神————但${CULTIST}可不行。`,
     ],
     highlight: 'singleOpponent',
     lock: true,
@@ -474,8 +487,8 @@ const SKILL_STEPS = [
     id: TUTORIAL_FLOW.CULTIST_GOD_STATUS_MARKERS,
     title: '骷髅与邪神之力',
 	body: [
-      `注意到这个${GOLD('骷髅标记')}了吗？它的数量代表了对手在这次探险中信仰邪神的次数。`,
-	  `而旁边的标签，则表示对手此刻正在信仰一位邪神，并接受祂的赐福。`,
+      `注意${GOLD('骷髅标记')}的数量，它代表了对手在这次探险中${GOD('信仰')}邪神的次数。`,
+	  `而旁边的标签，则表示对手此刻正在${GOD('信仰')}一位邪神，并接受祂的赐福。`,
 	  `这两个信息的用处，你待会自会明白。`,
     ],
     highlight: 'opponentGodStatus',
@@ -494,8 +507,8 @@ const SKILL_STEPS = [
     id: TUTORIAL_FLOW.CULTIST_GOD_OPPONENT_DRAW,
     title: '遭遇邪神',
 	body: [
-      `还记得刚才对手有7点${SAN}吗？`,
-	  `因为再次遭遇邪神，对手的骷髅数增长至2，并且失去了等同于骷髅数的${SAN}。`,
+      `刚才你看到的是，对手在自己回合摸到了${GOLD('邪神牌')}。`,
+	  `还记得刚才对手有7点${SAN}吗？因为再次遭遇邪神，对手的骷髅数增长至2，并且失去了等同于骷髅数的${SAN}。`,
 	  `不仅如此，注意到${SAN}条上的刻度线了吗？这次结算后对手${SAN}低于刻度线，会发生什么呢？`,
     ],
     highlight: 'opponentSanBar',
@@ -515,7 +528,7 @@ const SKILL_STEPS = [
     title: '改信代价',
 	body: [
       `注意到邪神之力标签的变化了吗？对手放弃了原有的信仰，${GOLD('改信')}刚刚遭遇的“弗栗多”。`,
-	  `${GOLD('改信')}者需要额外失去 1${SAN}。让我们看看这次${SAN}检定的结果……`,
+	  `${GOLD('改信')}者需要额外失去1${SAN}。让我们看看这次${SAN}检定的结果……`,
     ],
     highlight: 'opponentSanAndGodStatus',
     lock: true,
@@ -532,17 +545,19 @@ const SKILL_STEPS = [
   {
     id: TUTORIAL_FLOW.CULTIST_GOD_PLAYER_DRAW,
     title: '轮到你',
-    body: `对手没有继续行动，回合结束。现在轮到你：你会摸到一张邪神牌。作为${CULTIST}，你可以不信仰它，而是秘密收入手牌。`,
+    body: `对手${GOLD('改信')}后没有继续行动，回合结束，轮到你摸牌了。`,
     highlight: 'deckArea',
     lock: true,
     next: TUTORIAL_FLOW.CULTIST_GOD_KEEP_HAND,
-    auto: true,
   },
   {
     id: TUTORIAL_FLOW.CULTIST_GOD_KEEP_HAND,
     title: '收入邪神牌',
-    body: `点击“秘密收入手牌”。这张邪神牌会成为你接下来${BEWITCH}的弹药。`,
-    highlight: 'noSpotlight',
+	body: [
+      `看来你也遭遇了${GOLD('邪神牌')}。`,
+	  `一般来说，遭遇邪神只有两个选项：要么${GOD('信仰')}，要么离开。但作为${CULTIST}，你还可以将它收入手牌。注意：这个行为也会揭晓你的身份。`,
+    ],
+    highlight: 'godKeepHandButton',
     lock: false,
     allowedAction: { type: 'godKeepHand' },
     next: TUTORIAL_FLOW.CULTIST_GOD_SELECT_CARD,
@@ -550,15 +565,25 @@ const SKILL_STEPS = [
   {
     id: TUTORIAL_FLOW.CULTIST_GOD_SELECT_CARD,
     title: '蛊惑邪神牌',
-    body: `点击“${BEWITCH}”，选择刚才收入手牌的邪神牌。`,
+    body: `对手还有高达4点${SAN}，而${CULTIST}并不能在一回合内多次${BEWITCH}。有办法通过一次${BEWITCH}直接获胜吗？`,
+    highlight: 'skillButton',
+    lock: false,
+    allowedAction: { type: 'useSkill' },
+    next: TUTORIAL_FLOW.CULTIST_GOD_CHOOSE_CARD,
+  },
+  {
+    id: TUTORIAL_FLOW.CULTIST_GOD_CHOOSE_CARD,
+    title: '选择邪神牌',
+    body: `如果在${BEWITCH}环节选择一张${GOLD('邪神牌')}而不是区域牌，会发生什么呢？亲自验证一下吧。`,
     highlight: 'handCard',
     lock: false,
-    allowedAction: { type: 'useSkillOrHandCard', cardId: 'tut-cult-god' },
+    allowedAction: { type: 'handCard', cardId: 'tut-cult-god' },
+    next: TUTORIAL_FLOW.CULTIST_GOD_SELECT_TARGET,
   },
   {
     id: TUTORIAL_FLOW.CULTIST_GOD_SELECT_TARGET,
     title: '强迫改信',
-    body: `把邪神牌蛊惑给对手。第 3 个骷髅头会让他先失去 3${SAN}，随后强制改信再失去 1${SAN}。`,
+    body: '选择目标。',
     highlight: 'singleOpponent',
     lock: false,
     allowedAction: { type: 'selectTarget', pid: 1 },
@@ -566,7 +591,11 @@ const SKILL_STEPS = [
   {
     id: TUTORIAL_FLOW.CULTIST_GOD_RESULT,
     title: '邪神复苏',
-    body: `这次归零来自“骷髅头遭遇损失 + 检定牌风险 + 改信损失”的合计。正式对局中，${CULTIST}要主动制造这种临界点。`,
+	body: [
+      `你胜利了！让我来告诉你发生了什么……`,
+	  `通过${BEWITCH}送出一张${GOLD('邪神牌')}时，其效果不是强制收入手牌，而是强制${GOD('信仰')}！`,
+	  `对手再次遭遇邪神后，骷髅数增长到3，加上改信惩罚，${SAN}正好归零。`,
+    ],
     highlight: 'opponentSanBar',
     lock: true,
     next: TUTORIAL_FLOW.COMPLETE,
@@ -801,8 +830,8 @@ export function nextTutorialStepAfterAction(stepId, action) {
   if (stepId === TUTORIAL_FLOW.CULTIST_ZONE_SELECT_CARD && action.type === 'handCard') return TUTORIAL_FLOW.CULTIST_ZONE_SELECT_TARGET;
   if (stepId === TUTORIAL_FLOW.CULTIST_ZONE_SELECT_TARGET && action.type === 'selectTarget') return TUTORIAL_FLOW.CULTIST_ZONE_RESULT;
   if (stepId === TUTORIAL_FLOW.CULTIST_GOD_KEEP_HAND && action.type === 'godKeepHand') return TUTORIAL_FLOW.CULTIST_GOD_SELECT_CARD;
-  if (stepId === TUTORIAL_FLOW.CULTIST_GOD_SELECT_CARD && action.type === 'useSkill') return stepId;
-  if (stepId === TUTORIAL_FLOW.CULTIST_GOD_SELECT_CARD && action.type === 'handCard') return TUTORIAL_FLOW.CULTIST_GOD_SELECT_TARGET;
+  if (stepId === TUTORIAL_FLOW.CULTIST_GOD_SELECT_CARD && action.type === 'useSkill') return TUTORIAL_FLOW.CULTIST_GOD_CHOOSE_CARD;
+  if (stepId === TUTORIAL_FLOW.CULTIST_GOD_CHOOSE_CARD && action.type === 'handCard') return TUTORIAL_FLOW.CULTIST_GOD_SELECT_TARGET;
   if (stepId === TUTORIAL_FLOW.CULTIST_GOD_SELECT_TARGET && action.type === 'selectTarget') return TUTORIAL_FLOW.CULTIST_GOD_RESULT;
   return null;
 }

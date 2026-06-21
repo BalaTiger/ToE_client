@@ -6,6 +6,8 @@ import { buildInspectionEventFlow, cardTransferStep, statePatchStep } from './an
 import {
   getVisualEvents,
   VISUAL_EVENT,
+  buildTurnStartStepFromVisualEvents,
+  buildDrawCardStepFromVisualEvents,
 } from './visualEvents';
 import { statEventsToAnimQueue } from './statEvents';
 
@@ -343,12 +345,12 @@ export function buildTurnStartDrawReplayQueue({
   const turnStartStatePatch = hasTurnStartPreDrawQ
     ? statePatchStep({ players: beforeDrawPlayers, discard: newGs?.discard })
     : null;
-  const turnStartStep = {
+  const turnStartStep = buildTurnStartStepFromVisualEvents(newGs) || {
     type: 'YOUR_TURN',
     ...(drawerPid === 0 ? {} : { name: drawerName }),
     msgs: newGs?._turnStartLogs,
   };
-  const drawCardStep = {
+  const drawCardStep = buildDrawCardStepFromVisualEvents(newGs) || {
     type: 'DRAW_CARD',
     card: drawnCard,
     triggerName: localDisplayName(drawerPid, drawerName),

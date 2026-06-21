@@ -24,6 +24,20 @@ describe('checkWin death handling', () => {
 
     expect(checkWin(players, true)).toBeNull();
   });
+  it('unrevealed cultist loses SAN on god encounter and stays unrevealed', () => {
+    const players = [makePlayer({ role: ROLE_CULTIST, san: 10, godEncounters: 0, roleRevealed: false })];
+    const godCard = makeGodCard('NYA');
+    const gs = makeGs({ players, deck: [godCard], log: [] });
+
+    const result = playerDrawCard(players, [godCard], [], 0, gs);
+
+    expect(result.P[0].san).toBe(9);
+    expect(result.P[0].roleRevealed).toBe(false);
+    expect(result.effectMsgs.some(msg => msg.includes('失去1SAN'))).toBe(true);
+    expect(result.statePatch._statEvents).toMatchObject([
+      { type: 'SAN_LOSS', target: 0, from: { san: 10 }, to: { san: 9 }, reason: '邪神遭遇', seq: 1 },
+    ]);
+  });
 });
 
 describe('turnEngine stat events', () => {
@@ -380,7 +394,7 @@ describe('turnEngine stat events', () => {
     expect(afterDecision.P[1].san).toBe(4);
     expect(afterDecision.P[1].godName).toBe('VRI');
     expect(afterDecision.P[1].godEncounters).toBe(2);
-    expect(afterDecision.inspectionMeta._inspectionEvents).toHaveLength(1);
+    expect(afterDecision.inspectionMeta._inspectionEvents).toHaveLength(2);
     expect(afterDecision.inspectionMeta._inspectionEvents.at(-1).seq).toBe(2);
     expect(afterDecision.inspectionMeta._inspectionEvents.at(-1).beforePlayers[1]).toMatchObject({
       san: 4,
@@ -389,6 +403,13 @@ describe('turnEngine stat events', () => {
       godLevel: 1,
     });
     expect(afterDecision.inspectionMeta._inspectionEvents.at(-1).beforePlayers[1].godZone[0].godKey).toBe('VRI');
+    expect(afterDecision.inspectionMeta._inspectionEvents[0].seq).toBe(1);
+    expect(afterDecision.inspectionMeta._inspectionEvents[0].beforePlayers[1]).toMatchObject({
+      san: 5,
+      godEncounters: 2,
+      godName: 'NYA',
+      godLevel: 1,
+    });
   });
 
   it('AI 已拥有高等级邪神之力时会降低改信权重', () => {
@@ -693,6 +714,23 @@ describe('turnEngine stat events', () => {
     expect(result.msgs.some(line => line.includes('黑暗子嗣'))).toBe(true);
   });
 
+  it('蛊惑同种邪神牌时会像自己摸到一样升级邪神之力', () => {
+    const vri = makeGodCard('VRI');
+    const giftedVri = makeGodCard('VRI');
+    const players = [
+      makePlayer({ name: '蛊惑者', role: ROLE_CULTIST }),
+      makePlayer({ name: '目标', godName: 'VRI', godLevel: 1, godZone: [vri] }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0, log: [] });
+
+    const result = resolveGodEncounterForAI(1, giftedVri, players, [], [], gs, true);
+
+    expect(result.P[1]).toMatchObject({ godName: 'VRI', godLevel: 2 });
+    expect(result.P[1].godZone).toHaveLength(2);
+    expect(result.msgs.some(line => line.includes('改信新神'))).toBe(false);
+    expect(result.msgs.some(line => line.includes('邪神之力升至Lv.2'))).toBe(true);
+  });
+
   it('不会清除尚未到期的其他执行回合临时效果', () => {
     const players = makeStandardPlayers(3);
     players[1].damageBonus = 1;
@@ -703,5 +741,36 @@ describe('turnEngine stat events', () => {
 
     expect(result.players[1].damageBonus).toBe(1);
     expect(result.players[1].damageBonusTurnOwner).toBe(2);
+  });
+
+  it('reveals an unrevealed cultist when they keep an encountered god card in hand', () => {
+    const oldGod = makeGodCard('CTH');
+    const drawnGod = makeGodCard('ZHU');
+    const players = [
+      makePlayer({ name: 'Player', role: ROLE_TREASURE }),
+      makePlayer({
+        name: 'Cultist',
+        role: ROLE_CULTIST,
+        roleRevealed: false,
+        revealHand: false,
+        san: 8,
+        godEncounters: 2,
+        godName: 'CTH',
+        godLevel: 3,
+        godZone: [oldGod, makeGodCard('CTH'), makeGodCard('CTH')],
+      }),
+    ];
+    const gs = makeGs({ players, currentTurn: 1, log: [] });
+
+    const result = resolveGodEncounterForAI(1, drawnGod, players, [], [], gs, false);
+
+    expect(result.P[1].hand).toContainEqual(expect.objectContaining({ id: drawnGod.id }));
+    expect(result.P[1]).toMatchObject({
+      roleRevealed: true,
+      revealHand: true,
+      godName: 'CTH',
+      godLevel: 3,
+    });
+    expect(result.msgs.some(msg => msg.includes('邪祀者') && msg.includes('收入手牌'))).toBe(true);
   });
 });
