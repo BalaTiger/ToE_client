@@ -1,12 +1,12 @@
-const DESIGN_WIDTH=1200;
+import { computeScaleRatio } from './scale';
 
 let _zoomCompensationDetected=null;
 function _detectZoomRectCompensation(){
   if(typeof document==='undefined')return false;
   const zc=document.querySelector('[data-zoom-container]');
   if(!zc)return false;
-  const s=window.innerWidth/DESIGN_WIDTH;
-  if(s>=1)return false;
+  const s=computeScaleRatio(window.innerWidth,window.innerHeight);
+  if(s===1)return false;
   const test=document.createElement('div');
   test.style.cssText='position:absolute;left:0;top:0;width:100px;height:1px;visibility:hidden;pointer-events:none;';
   zc.appendChild(test);
@@ -26,10 +26,10 @@ function _needsZoomRectCompensation(){
 export function _getZoomCompensatedRect(el){
   if(!el)return null;
   const rect=el.getBoundingClientRect();
-  if(window.innerWidth>=DESIGN_WIDTH)return rect;
+  const s=computeScaleRatio(window.innerWidth,window.innerHeight);
+  if(s===1)return rect;
   if(!el.closest?.('[data-zoom-container]'))return rect;
   if(!_needsZoomRectCompensation())return rect;
-  const s=window.innerWidth/DESIGN_WIDTH;
   return{
     left:rect.left*s,
     top:rect.top*s,

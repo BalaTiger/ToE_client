@@ -232,6 +232,7 @@ import { useAnimationAudioEffects } from './hooks/useAnimationAudioEffects';
 import { useSkillAnimationEffects } from './hooks/useSkillAnimationEffects';
 import { useDamageLinkGhosts } from './hooks/useDamageLinkGhosts';
 import { useWindowSize } from './hooks/useWindowSize';
+import { computeScaleRatio, getFontZoomCompensate, DESIGN_WIDTH } from './utils/scale';
 import { useGameAudio } from './hooks/useGameAudio';
 import { useAiWatchdog, BAD_PHASES } from './hooks/useAiWatchdog';
 import { useRoomCountdown } from './hooks/useRoomCountdown';
@@ -1502,17 +1503,14 @@ export default function Game(){
   const [houndsRevealedSeq,setHoundsRevealedSeq]=useState(0);
 
   // ── Responsive layout ──────────────────────────────────────
-  const {w:vw}=useWindowSize();
-  const DESIGN_WIDTH=1200;
+  const {w:vw,h:vh}=useWindowSize();
   const { isMobile, scaleRatio, baseFontSizes, fontSizes, scaledAreaSafeInsetX, globalShiftX, middleRowHeight } = useMemo(() => {
     const isMobile = vw < 580;
     const isVerySmall = vw < 480;
     const scaledAreaSafeInsetX = isMobile ? 24 : 12;
     const narrowDesktopClipFix = vw <= 1220;
     const globalShiftX = narrowDesktopClipFix ? Math.min(12, Math.round((1220 - vw) * 0.5)) : 0;
-    const rawScale = vw / DESIGN_WIDTH;
-    const shouldScale = vw < DESIGN_WIDTH;
-    const scaleRatio = shouldScale ? Math.min(rawScale, 1) : 1;
+    const scaleRatio = computeScaleRatio(vw, vh);
     const rem = 16;
     const baseFontSizes = {
       title: isMobile ? 0.75 * rem : isVerySmall ? 0.75 * rem : 0.875 * rem,
@@ -1521,7 +1519,7 @@ export default function Game(){
       small: isMobile ? 0.5 * rem : isVerySmall ? 0.5 * rem : 0.5625 * rem,
       tiny: isMobile ? 0.4375 * rem : isVerySmall ? 0.4375 * rem : 0.5 * rem,
     };
-    const fontZoomCompensate = scaleRatio < 1 ? 1 / scaleRatio : 1;
+    const fontZoomCompensate = getFontZoomCompensate(scaleRatio);
     const fontSizes = {
       title: baseFontSizes.title * fontZoomCompensate,
       subtitle: baseFontSizes.subtitle * fontZoomCompensate,
@@ -1531,7 +1529,7 @@ export default function Game(){
     };
     const middleRowHeight = isMobile ? 248 : 282;
     return { isMobile, scaleRatio, baseFontSizes, fontSizes, scaledAreaSafeInsetX, globalShiftX, middleRowHeight };
-  }, [vw]);
+  }, [vw, vh]);
 
   const applyVisibleLogPrefix=useCallback((count,authorityOverride)=>{
     const authority=Array.isArray(authorityOverride)?authorityOverride:(Array.isArray(visibleLogAuthorityRef.current)?visibleLogAuthorityRef.current:[]);
@@ -8485,7 +8483,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         {/* Scaled player areas wrapper */}
         <div style={{overflow:'hidden',width:'100%',display:'flex',justifyContent:'center'}}>
           <div data-zoom-container style={{
-            zoom:scaleRatio<1?scaleRatio:'normal',
+            zoom:scaleRatio!==1?scaleRatio:'normal',
             width:DESIGN_WIDTH,
             flexShrink:0
           }}>

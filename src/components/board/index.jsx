@@ -6,9 +6,10 @@ import { isBlackGoatYoung, isTsathogguaSlime } from '../../game/coreUtils';
 import { AnimatedCardBack, AreaTooltip, CardCodeLabel, DDCard, DDCardBack, GodTooltip } from '../cards';
 import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
 import { ThemeCornerOrnament } from '../theme/ThemeOrnaments';
+import { getFontZoomCompensate } from '../../utils/scale';
 
 function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth,labelColor='var(--toe-muted,#a07838)',valueColor='var(--toe-text,#c8a96e)',lineColor='var(--toe-line-dim,#2a1a08)'}){
-  const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
+  const fontZoom = getFontZoomCompensate(scaleRatio);
   const isMobileNarrow=!!viewportWidth&&viewportWidth<580;
   const isNarrowViewport=!!viewportWidth&&viewportWidth<900;
   const rowWidth=isMobileNarrow?'calc(100% - 34px)':isNarrowViewport?'calc(100% - 22px)':'100%';
@@ -422,7 +423,7 @@ function PetrifyingFormulaDie({ state, fontSize }) {
 
 function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,deckRef,discardRef,scaleRatio,expansionKey='地神的潜影',zhuLitCards=[],zhuHiddenCardId=null,petrifyingFormula=null}){
   const theme=getBoardTheme(expansionKey);
-  const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
+  const fontZoom = getFontZoomCompensate(scaleRatio);
   const _ = (px) => px * fontZoom;
   const pileWrapRef=React.useRef(null);
   const [pileWrapWidth,setPileWrapWidth]=React.useState(0);
@@ -495,7 +496,7 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
 function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='地神的潜影',blackGoatPulseActive=false}){
   const ri=RINFO[player.role];
   const theme=getBoardTheme(expansionKey);
-  const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
+  const fontZoom = getFontZoomCompensate(scaleRatio);
   const _ = (px) => px * fontZoom;
   const borderColor=isBeingHit?'#cc2222':isSanHit?'#8840cc':isCurrentTurn?theme.glow:isSelectable?ri.col:theme.line;
   const handCards=showFaceUp?player.hand:player.hand.map((c,ci)=>isBlackGoatYoung(c)||isTsathogguaSlime(c)?c:{id:`back-${playerIndex}-${ci}`,_back:true});

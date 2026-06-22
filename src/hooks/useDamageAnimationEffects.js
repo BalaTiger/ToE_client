@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { _getZoomCompensatedRect } from '../utils/dom';
+import { computeScaleRatio } from '../utils/scale';
 
 export function useDamageAnimationEffects({ anim, playHpDamageSound }) {
   const [hitIndices, setHitIndices] = useState([]);
@@ -146,8 +147,9 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound }) {
           try {
             const { default: html2canvas } = await import('html2canvas');
             const inZoomContainer = !!el.closest?.('[data-zoom-container]');
-            const zoomScale = inZoomContainer && window.innerWidth < 1200
-              ? Math.max(0.1, window.innerWidth / 1200)
+            const scaleRatio = computeScaleRatio(window.innerWidth, window.innerHeight);
+            const zoomScale = inZoomContainer && scaleRatio !== 1
+              ? Math.max(0.1, scaleRatio)
               : 1;
             const canvas = await html2canvas(el, {
               backgroundColor: null,
