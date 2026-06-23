@@ -17,6 +17,27 @@ function NarratorAvatar({tooltipW}){
 
 export { NARRATOR_AVATAR };
 
+function buildTutorialMetrics({ vw, scaleRatio = 1, baseBodyFontSize = 11 } = {}) {
+  const visualScale = Math.max(1, scaleRatio || 1);
+  const bodyFont = Math.max(12, Math.round(baseBodyFontSize * visualScale));
+  const sizeScale = bodyFont / 12;
+  const maxWidth = Math.max(220, (vw || 320) - 20);
+  const tooltipWidth = base => Math.min(Math.round(base * sizeScale), maxWidth);
+  return {
+    sizeScale,
+    bodyFont,
+    emphasisFont: Math.round(bodyFont * 1.35),
+    helperFont: Math.max(10, Math.round(bodyFont * 0.84)),
+    buttonFont: Math.max(11, Math.round(bodyFont * 0.92)),
+    noteFont: Math.max(10, Math.round(bodyFont * 0.84)),
+    gap: Math.round(10 * sizeScale),
+    paddingY: Math.round(18 * sizeScale),
+    paddingX: Math.round(20 * sizeScale),
+    buttonPadY: Math.round(8 * sizeScale),
+    tooltipWidth,
+  };
+}
+
 // 引导文案中的术语高亮映射（颜色与对战中 RINFO 身份颜色保持一致）
 const TERM_STYLES = {
   所有列和所有行: { color: '#e8c87a', fontStyle: 'normal', fontWeight: 700 },
@@ -147,6 +168,8 @@ function ScriptTutorialOverlay({
   swapBlindHandRect,
   isArtifact,
   isH5Package,
+  scaleRatio,
+  baseBodyFontSize,
   advanceTutorialStep,
   onTutorialResultNext,
   completeTutorial,
@@ -162,10 +185,11 @@ function ScriptTutorialOverlay({
   if (step?.highlight === 'skillButton' && !rect) return null;
   if (step?.highlight === 'swapBlindHand' && !rect) return null;
   const BG = 'rgba(0,0,0,0.58)';
-  const tooltipW = Math.min(step?.highlight === 'center' ? 360 : 300, vw - 20);
+  const tm = buildTutorialMetrics({ vw, scaleRatio, baseBodyFontSize });
+  const tooltipW = tm.tooltipWidth(step?.highlight === 'center' ? 360 : 300);
   const compactActionTooltip = ['drawRevealKeepButton', 'godKeepHandButton', 'dodgeRollButton', 'skillButton', 'handCard', 'handCards'].includes(step?.highlight);
-  const tooltipH = compactActionTooltip ? 132 : 210;
-  const tooltipGap = compactActionTooltip ? 8 : 14;
+  const tooltipH = Math.round((compactActionTooltip ? 132 : 210) * tm.sizeScale);
+  const tooltipGap = Math.round((compactActionTooltip ? 8 : 14) * tm.sizeScale);
   const tooltipRoom = tooltipH + tooltipGap + 4;
   const centerX = rect ? (rect.left + rect.right) / 2 : window.innerWidth / 2;
   const centerY = rect ? (rect.top + rect.bottom) / 2 : window.innerHeight / 2;
@@ -244,12 +268,12 @@ function ScriptTutorialOverlay({
         background: '#120d06',
         border: '1.5px solid #7a5020',
         borderRadius: 4,
-        padding: '18px 20px',
+        padding: `${tm.paddingY}px ${tm.paddingX}px`,
         boxShadow: '0 0 40px #7a502066',
         animation: 'animPop 0.25s ease-out',
         zIndex: 901,
       }}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', gap: tm.gap, alignItems: 'flex-start' }}>
           <NarratorAvatar tooltipW={tooltipW} />
           <div style={{ flex: 1, minWidth: 0 }}>
             {bodyLines.map((line, idx) => (
@@ -257,7 +281,7 @@ function ScriptTutorialOverlay({
                 key={`${step.id}-body-${idx}`}
                 style={{
                   color: idx === step?.emphasisLineIndex ? '#e8c87a' : '#c8a96e',
-                  fontSize: idx === step?.emphasisLineIndex ? 17 : 12,
+                  fontSize: idx === step?.emphasisLineIndex ? tm.emphasisFont : tm.bodyFont,
                   lineHeight: idx === step?.emphasisLineIndex ? 1.9 : 1.85,
                   fontStyle: 'italic',
                   marginBottom: idx === bodyLines.length - 1 ? (hasButton ? 16 : 4) : 10,
@@ -271,14 +295,14 @@ function ScriptTutorialOverlay({
               </p>
             ))}
             {actionStep && (
-              <div style={{ color: '#8a6a38', fontSize: 10, lineHeight: 1.7, fontFamily: "'Cinzel',serif", letterSpacing: 0.7 }}>
+              <div style={{ color: '#8a6a38', fontSize: tm.helperFont, lineHeight: 1.7, fontFamily: "'Cinzel',serif", letterSpacing: 0.7 }}>
                 按高亮区域完成操作
               </div>
             )}
             {hasButton && (
               <button
                 onClick={onPrimary}
-                style={{ width: '100%', padding: '8px', background: '#1c1008', border: '1.5px solid #c8a96e', color: '#e8c87a', fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 11, borderRadius: 2, cursor: 'pointer', letterSpacing: 1.5, textTransform: 'uppercase', boxShadow: '0 0 12px #c8a96e33', transition: 'all .2s' }}
+                style={{ width: '100%', padding: `${tm.buttonPadY}px`, background: '#1c1008', border: '1.5px solid #c8a96e', color: '#e8c87a', fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: tm.buttonFont, borderRadius: 2, cursor: 'pointer', letterSpacing: 1.5, textTransform: 'uppercase', boxShadow: '0 0 12px #c8a96e33', transition: 'all .2s' }}
                 onMouseEnter={e => { e.currentTarget.style.background = '#2a1a08'; }}
                 onMouseLeave={e => { e.currentTarget.style.background = '#1c1008'; }}
               >
@@ -286,7 +310,7 @@ function ScriptTutorialOverlay({
               </button>
             )}
             {step.complete && isArtifact && !isH5Package && (
-              <div style={{ marginTop: 12, fontSize: 10, color: '#7a5a2a', fontFamily: "'Cinzel',serif", letterSpacing: 0.5 }}>
+              <div style={{ marginTop: 12, fontSize: tm.noteFont, color: '#7a5a2a', fontFamily: "'Cinzel',serif", letterSpacing: 0.5 }}>
                 （当前为预览环境，引导完成状态不会被保存）
               </div>
             )}
@@ -319,6 +343,8 @@ export default function InGameTutorialOverlay({
   swapBlindHandRect,
   isArtifact,
   isH5Package,
+  scaleRatio,
+  baseBodyFontSize,
   setTutorialStep,
   advanceTutorialStep,
   onTutorialResultNext,
@@ -348,16 +374,32 @@ export default function InGameTutorialOverlay({
         swapBlindHandRect={swapBlindHandRect}
         isArtifact={isArtifact}
         isH5Package={isH5Package}
+        scaleRatio={scaleRatio}
+        baseBodyFontSize={baseBodyFontSize}
         advanceTutorialStep={advanceTutorialStep}
         onTutorialResultNext={onTutorialResultNext}
         completeTutorial={completeTutorial}
       />
     );
   }
+  const tm = buildTutorialMetrics({ vw, scaleRatio, baseBodyFontSize });
+  const tooltipWidth = tm.tooltipWidth;
   return (
-    <>
+    <div
+      data-tutorial-overlay
+      style={{
+        '--tutorial-body-font': `${tm.bodyFont}px`,
+        '--tutorial-button-font': `${tm.buttonFont}px`,
+        '--tutorial-note-font': `${tm.noteFont}px`,
+        '--tutorial-button-pad-y': `${tm.buttonPadY}px`,
+      }}
+    >
+      <style>{`
+        [data-tutorial-overlay] p { font-size: var(--tutorial-body-font) !important; }
+        [data-tutorial-overlay] button { font-size: var(--tutorial-button-font) !important; padding-top: var(--tutorial-button-pad-y) !important; padding-bottom: var(--tutorial-button-pad-y) !important; }
+      `}</style>
           {tutorialStep===2&&(()=>{
-        const TW=Math.min(260,vw-20);
+        const TW=tooltipWidth(260);
         const px=Math.max(8,Math.min(panelRect?panelRect.right+14:175,vw-TW-8));
         const py=panelRect?panelRect.top+(panelRect.height/2):260;
         const arrowTop=panelRect?Math.max(16,Math.min(panelRect.height/2,60)):40;
@@ -389,7 +431,7 @@ export default function InGameTutorialOverlay({
               {/* Arrow pointing left */}
               <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid #7a5020'}}/>
               <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
                 这么说吧，你此行的目标是一个危险的遗迹，遗迹里有着…很可怕的东西。
               </p>
               <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
@@ -409,7 +451,7 @@ export default function InGameTutorialOverlay({
         );
       })()}
       {tutorialStep===3&&(()=>{
-        const TW=Math.min(260,vw-20);
+        const TW=tooltipWidth(260);
         const px=Math.max(8,Math.min(panelRect?panelRect.right+14:175,vw-TW-8));
         const py=panelRect?panelRect.top+(panelRect.height/2):260;
         const arrowTop=panelRect?Math.max(16,Math.min(panelRect.height/2,60)):40;
@@ -439,7 +481,7 @@ export default function InGameTutorialOverlay({
             }}>
               <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid #7a5020'}}/>
               <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
                 <span style={{color:'#e05050',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc222288'}}>HP</span>下方是你的<span style={{color:'#a78bfa',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #8844cc88'}}>SAN</span>值，象征心智。
               </p>
               <button
@@ -456,7 +498,7 @@ export default function InGameTutorialOverlay({
         );
       })()}
       {tutorialStep===4&&(()=>{
-        const TW=Math.min(260,vw-20);
+        const TW=tooltipWidth(260);
         const px=Math.max(8,Math.min(panelRect?panelRect.right+14:175,vw-TW-8));
         const py=panelRect?panelRect.top+(panelRect.height/2):260;
         const arrowTop=panelRect?Math.max(16,Math.min(panelRect.height/2,60)):40;
@@ -486,7 +528,7 @@ export default function InGameTutorialOverlay({
             }}>
               <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid #7a5020'}}/>
               <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
                 当一个人完全丧失心智，被遗迹里那些邪祟占据身体，所有人都会大祸临头！
               </p>
               <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
@@ -506,7 +548,7 @@ export default function InGameTutorialOverlay({
         );
       })()}
       {tutorialStep===5&&(()=>{
-        const TW=Math.min(260,vw-20);
+        const TW=tooltipWidth(260);
         const rx=Math.max(8,Math.min(roleTextRect?roleTextRect.right+14:175,vw-TW-8));
         const ry=roleTextRect?roleTextRect.top+(roleTextRect.height/2):120;
         const arrowTop=12;
@@ -526,7 +568,7 @@ export default function InGameTutorialOverlay({
             }}>
               <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid #7a5020'}}/>
               <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
                 说到<span style={{color:'#9060cc',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #7040aa88'}}>邪祀者</span>，你知道你这次的<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>身份</span>吗？
               </p>
               <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
@@ -551,13 +593,13 @@ export default function InGameTutorialOverlay({
             <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
             <div style={{
               position:'relative',zIndex:901,
-              width:Math.min(280,vw-20),pointerEvents:'auto',
+              width:tooltipWidth(280),pointerEvents:'auto',
               background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
               padding:'18px 20px',
               boxShadow:'0 0 40px #7a502066',
               animation:'animPop 0.25s ease-out',
             }}>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
                 首先是<span style={{color:'#c8a96e',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #c8a96e88'}}>寻宝者</span>。他们贪婪、无惧危险，进入遗迹只为独占<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>宝藏</span>。他们不会跟任何人合作，包括其他<span style={{color:'#c8a96e',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #c8a96e88'}}>寻宝者</span>。
               </p>
               <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
@@ -578,7 +620,7 @@ export default function InGameTutorialOverlay({
       })()}
       {tutorialStep===7&&(()=>{
         // Position tooltip above hand area, centered horizontally over it, arrow pointing down
-        const TOOLTIP_W=Math.min(265,vw-20);
+        const TOOLTIP_W=tooltipWidth(265);
         const hcx=handAreaRect?handAreaRect.left+(handAreaRect.width/2):200;
         const hty=handAreaRect?handAreaRect.top:400;
         const hbottom=handAreaRect?handAreaRect.bottom:500;
@@ -610,7 +652,7 @@ export default function InGameTutorialOverlay({
               {/* Arrow pointing down */}
               <div style={{position:'absolute',bottom:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderTop:'9px solid #7a5020'}}/>
               <div style={{position:'absolute',bottom:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderTop:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
                 你问我如何寻得<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>宝藏</span>？翻遍所有地方，就这么简单。
               </p>
               <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
@@ -636,13 +678,13 @@ export default function InGameTutorialOverlay({
             <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
             <div style={{
               position:'relative',zIndex:901,
-              width:Math.min(280,vw-20),pointerEvents:'auto',
+              width:tooltipWidth(280),pointerEvents:'auto',
               background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
               padding:'18px 20px',
               boxShadow:'0 0 40px #7a502066',
               animation:'animPop 0.25s ease-out',
             }}>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
                 接着是<span style={{color:'#dd6a30',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc440088'}}>追猎者</span>，他们<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>团结一心</span>，是遗迹的卫士。
               </p>
               <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
@@ -663,7 +705,7 @@ export default function InGameTutorialOverlay({
       })()}
       {/* ── Step 9: 追猎者 win condition, tooltip pointing UP at AI panels area ── */}
       {tutorialStep===9&&(()=>{
-        const TOOLTIP_W=Math.min(265,vw-20);
+        const TOOLTIP_W=tooltipWidth(265);
         const aty =aiPanelAreaRect?aiPanelAreaRect.top:0;
         const abottom=aiPanelAreaRect?aiPanelAreaRect.bottom:120;
         const aleft =aiPanelAreaRect?aiPanelAreaRect.left:0;
@@ -695,7 +737,7 @@ export default function InGameTutorialOverlay({
               {/* Arrow pointing UP */}
               <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid #7a5020'}}/>
               <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
                 如果你是<span style={{color:'#dd6a30',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc440088'}}>追猎者</span>，你要肃清所有非<span style={{color:'#dd6a30',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc440088'}}>追猎者</span>角色，将他们的<span style={{color:'#e05050',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc222288'}}>HP</span>全部清零，就能获胜。
               </p>
               <button
@@ -718,13 +760,13 @@ export default function InGameTutorialOverlay({
             <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
             <div style={{
               position:'relative',zIndex:901,
-              width:Math.min(280,vw-20),pointerEvents:'auto',
+              width:tooltipWidth(280),pointerEvents:'auto',
               background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
               padding:'18px 20px',
               boxShadow:'0 0 40px #7a502066',
               animation:'animPop 0.25s ease-out',
             }}>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
                 最后是<span style={{color:'#9060cc',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #7040aa88'}}>邪祀者</span>，他们一心复活邪神，基于利害关系相互合作，精于算计他人。
               </p>
               <button
@@ -742,7 +784,7 @@ export default function InGameTutorialOverlay({
       })()}
       {/* ── Step 11: 邪祀者 win condition, four-strip spotlight on AI panels ── */}
       {tutorialStep===11&&(()=>{
-        const TOOLTIP_W=Math.min(265,vw-20);
+        const TOOLTIP_W=tooltipWidth(265);
         const aty    =aiPanelAreaRect?aiPanelAreaRect.top:0;
         const abottom=aiPanelAreaRect?aiPanelAreaRect.bottom:120;
         const aleft  =aiPanelAreaRect?aiPanelAreaRect.left:0;
@@ -774,7 +816,7 @@ export default function InGameTutorialOverlay({
               {/* Arrow pointing UP */}
               <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid #7a5020'}}/>
               <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
                 如果你是<span style={{color:'#9060cc',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #7040aa88'}}>邪祀者</span>，你要专注于腐化一名角色的心智。当他<span style={{color:'#a78bfa',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #8844cc88'}}>SAN</span>值清零，被邪神占据身体，你就赢了。
               </p>
               <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
@@ -794,7 +836,7 @@ export default function InGameTutorialOverlay({
         );
       })()}
       {tutorialStep===12&&(()=>{
-        const TOOLTIP_W=Math.min(265,vw-20);
+        const TOOLTIP_W=tooltipWidth(265);
         const pty    =deckAreaRect?deckAreaRect.top:0;
         const pbottom=deckAreaRect?deckAreaRect.bottom:200;
         const pleft  =deckAreaRect?deckAreaRect.left:0;
@@ -820,7 +862,7 @@ export default function InGameTutorialOverlay({
             }}>
               <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid #7a5020'}}/>
               <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
                 每回合你将从<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>牌堆</span>摸一张牌，探索一个新区域，同时也会发生<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>随机事件</span>。
               </p>
               <button
@@ -835,7 +877,7 @@ export default function InGameTutorialOverlay({
         );
       })()}
       {tutorialStep===13&&(()=>{
-        const TOOLTIP_W=Math.min(265,vw-20);
+        const TOOLTIP_W=tooltipWidth(265);
         const pty    =deckAreaRect?deckAreaRect.top:0;
         const pbottom=deckAreaRect?deckAreaRect.bottom:200;
         const pleft  =deckAreaRect?deckAreaRect.left:0;
@@ -861,7 +903,7 @@ export default function InGameTutorialOverlay({
             }}>
               <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid #7a5020'}}/>
               <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
                 也有可能，你遇到的不是新区域，而是<span style={{color:'#c060e0',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #9030cc88'}}>邪神的化身</span>。
               </p>
               <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
@@ -884,12 +926,12 @@ export default function InGameTutorialOverlay({
             <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
             <div style={{
               position:'relative',zIndex:901,
-              width:Math.min(280,vw-20),pointerEvents:'auto',
+              width:tooltipWidth(280),pointerEvents:'auto',
               background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
               padding:'18px 20px',boxShadow:'0 0 40px #7a502066',
               animation:'animPop 0.25s ease-out',
             }}>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
                 你问我还能遇到什么？天知道。
               </p>
               <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
@@ -908,7 +950,7 @@ export default function InGameTutorialOverlay({
       })()}
       {/* ── Step 15: hand area spotlight (same layout as step 7) ── */}
       {tutorialStep===15&&(()=>{
-        const TOOLTIP_W=Math.min(265,vw-20);
+        const TOOLTIP_W=tooltipWidth(265);
         const hcx=handAreaRect?handAreaRect.left+(handAreaRect.width/2):200;
         const hty=handAreaRect?handAreaRect.top:400;
         const hbottom=handAreaRect?handAreaRect.bottom:500;
@@ -934,7 +976,7 @@ export default function InGameTutorialOverlay({
             }}>
               <div style={{position:'absolute',bottom:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderTop:'9px solid #7a5020'}}/>
               <div style={{position:'absolute',bottom:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderTop:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={Math.min(280,vw-20)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
                 务必注意，你的行囊有限。回合结束时，如果你的<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>手牌多于4张</span>，那就丢掉多余的东西，轻装上路。
               </p>
               <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
@@ -979,6 +1021,7 @@ export default function InGameTutorialOverlay({
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
+

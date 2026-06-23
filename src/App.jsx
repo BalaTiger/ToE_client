@@ -298,6 +298,8 @@ const DEBUG_FORCE_ZONE_CARD_KEY='cthulhu_debug_force_zone_card_key';
 const DEBUG_FORCE_ZONE_CARD_NAME_KEY='cthulhu_debug_force_zone_card_name';
 const DEBUG_FORCE_GOD_CARD_KEY='cthulhu_debug_force_god_card_key';
 const DEBUG_PLAYER_ROLE_KEY='cthulhu_debug_player_role';
+const DEBUG_TUTORIAL_PROMPT_MODE_KEY='cthulhu_debug_tutorial_prompt_mode';
+const DEBUG_FORCE_TUTORIAL_PROMPT_KEY='cthulhu_debug_force_tutorial_prompt';
 const DEBUG_EXPANSION_KEY='cthulhu_debug_expansion';
 const ZONE_CARD_KEYS = LETTERS.flatMap(L => NUMS.map(N => `${L}${N}`));
 const isLocalTestHost=()=>{
@@ -579,7 +581,14 @@ export default function Game(){
   const [debugForceGodCardKey,setDebugForceGodCardKey]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_GOD_CARD_KEY)||'NYA');
   const [debugPlayerRole,setDebugPlayerRole]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_PLAYER_ROLE_KEY)||'auto');
   const [debugExpansionKey,setDebugExpansionKey]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_EXPANSION_KEY)||'地神的潜影');
+  const [debugTutorialPromptMode,setDebugTutorialPromptMode]=useState(()=>{
+    if(!isLocalTestMode)return 'default';
+    const mode=safeLS.get(DEBUG_TUTORIAL_PROMPT_MODE_KEY);
+    if(mode==='show'||mode==='hide')return mode;
+    return safeLS.get(DEBUG_FORCE_TUTORIAL_PROMPT_KEY)==='1'?'show':'default';
+  });
   const [showDebugSettings,setShowDebugSettings]=useState(false);
+  const [pendingRoleSelection,setPendingRoleSelection]=useState(null);
   // Swap blind-draw overlay state: null | { phase:'shuffling'|'selecting'|'flying', targetPi, handSnapshot[], selectedIdx?, flyFromRect?, flyToRect? }
   const [swapBlindDraw,setSwapBlindDraw]=useState(null);
   const swapBlindDrawRef=useRef(null);
@@ -597,6 +606,7 @@ export default function Game(){
         debugForceZoneCardName:null,
         debugForceGodCardKey:null,
         debugPlayerRole:'auto',
+        debugTutorialPromptMode:'default',
         debugExpansionKey:EXPANSION_RANDOM_KEY,
       };
     }
@@ -609,6 +619,7 @@ export default function Game(){
       debugForceZoneCardName,
       debugForceGodCardKey,
       debugPlayerRole,
+      debugTutorialPromptMode,
       debugExpansionKey,
     };
   },[
@@ -621,6 +632,7 @@ export default function Game(){
     debugForceZoneCardName,
     debugForceGodCardKey,
     debugPlayerRole,
+    debugTutorialPromptMode,
     debugExpansionKey,
   ]);
   useEffect(()=>{
@@ -648,6 +660,13 @@ export default function Game(){
     if(!isLocalTestMode)return;
     safeLS.set(DEBUG_EXPANSION_KEY,debugExpansionKey);
   },[isLocalTestMode,debugExpansionKey]);
+
+  useEffect(()=>{
+    if(!isLocalTestMode)return;
+    const mode=(debugTutorialPromptMode==='show'||debugTutorialPromptMode==='hide')?debugTutorialPromptMode:'default';
+    safeLS.set(DEBUG_TUTORIAL_PROMPT_MODE_KEY,mode);
+    safeLS.set(DEBUG_FORCE_TUTORIAL_PROMPT_KEY,mode==='show'?'1':'0');
+  },[isLocalTestMode,debugTutorialPromptMode]);
 
   function isCloseButtonText(text){
     const normalized=(text||'').replace(/\s+/g,'');
@@ -3842,7 +3861,7 @@ export default function Game(){
         handleUiSfxCapture={handleUiSfxCapture}
         anim={anim}
         animExiting={animExiting}
-        startNewGame={()=>startNewGame({forceTutorialPrompt:true})}
+        startNewGame={startNewGame}
         handleMultiplayer={handleMultiplayer}
         multiLoading={multiLoading}
         onOpenAbout={()=>setModal('about')}
@@ -3926,6 +3945,7 @@ export default function Game(){
         debugForceZoneCardName={debugForceZoneCardName} setDebugForceZoneCardName={setDebugForceZoneCardName}
         debugForceGodCardKey={debugForceGodCardKey} setDebugForceGodCardKey={setDebugForceGodCardKey}
         debugPlayerRole={debugPlayerRole} setDebugPlayerRole={setDebugPlayerRole}
+        debugTutorialPromptMode={debugTutorialPromptMode} setDebugTutorialPromptMode={setDebugTutorialPromptMode}
         debugExpansionKey={debugExpansionKey} setDebugExpansionKey={setDebugExpansionKey}
       />
     </>);
@@ -7542,11 +7562,19 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   }
   autoDiscardRef.current=autoDiscardFromRight;
 
-  function startNewGame({forceTutorialPrompt=false, skipTutorialPrompt=false}={}){
+  function startNewGame({skipTutorialPrompt=false}={}){
     setShowFullLog(false);
-    // 展会临时逻辑：从主界面进入单人局时，即使已完成教程也再次询问是否进入引导。
-    // 后续正式版本可移除 forceTutorialPrompt 分支，仅保留首次玩家判断。
-    const shouldShowTutorialPrompt=!skipTutorialPrompt&&(isH5Package?!tutorialDone:(forceTutorialPrompt||!tutorialDone));
+    const debugTutorialPromptModeForNext=activeDebugConfig.debugTutorialPromptMode;
+    const shouldShowTutorialPrompt=!skipTutorialPrompt&&(
+      debugTutorialPromptModeForNext==='show'
+        ? true
+        : debugTutorialPromptModeForNext==='hide'
+          ? false
+          : !tutorialDone
+    );
+    if(!skipTutorialPrompt&&debugTutorialPromptModeForNext!=='default'){
+      setDebugTutorialPromptMode('default');
+    }
     if(shouldShowTutorialPrompt){setTutorialStep(1);setShowTutorial(true);return;}
     _doStartNewGame();
   }
@@ -7584,11 +7612,20 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       setGs({...newGs,phase:'ACTION',drawReveal:null});
       return;
     }
-    // Normal start: show game board immediately as background, then play animations on top
+    // Normal start: show game board immediately as background, then ask for role before reveal
     syncVisibleLog(newGs.log||[]);
     setGs({...newGs,phase:'ACTION',drawReveal:null});
     setAnim(null);
-    setRoleRevealAnim({role:newGs.players[0].role,pendingGs:newGs});
+    setPendingRoleSelection(newGs);
+  }
+  function confirmRoleSelection(selectedRole){
+    if(!pendingRoleSelection)return;
+    const finalGs=selectedRole==='random'
+      ? pendingRoleSelection
+      : {...pendingRoleSelection,players:pendingRoleSelection.players.map((p,i)=>i===0?{...p,role:selectedRole}:p)};
+    setPendingRoleSelection(null);
+    setGs(finalGs);
+    setRoleRevealAnim({role:finalGs.players[0].role,pendingGs:finalGs});
   }
   function returnToMainMenu(){
     if(isMultiplayer)return;
@@ -7599,6 +7636,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     setAnim(null);
     setAnimExiting(false);
     clearCardTransferAnimations();
+    setPendingRoleSelection(null);
     setGs(null);
   }
   function _onRoleRevealDone(pendingGs){
@@ -8094,6 +8132,40 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }}>
       {/* Global vignette */}
       <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at 50% 50%,transparent 40%,#00000099 100%)',pointerEvents:'none',zIndex:1}}/>
+      {pendingRoleSelection&&(
+        <div style={{position:'fixed',inset:0,zIndex:9998,background:'rgba(8,5,3,0.94)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+          <div style={{width:'min(480px,92vw)',background:'#120b06',border:'2px solid #5a3010',borderRadius:4,boxShadow:'0 0 60px #000c',padding:'28px 26px',textAlign:'center'}}>
+            <h2 style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:20,color:'#e8c87a',margin:'0 0 8px',letterSpacing:2}}>选择本局身份</h2>
+            <p style={{fontFamily:"'IM Fell English','Georgia',serif",fontSize:13,color:'#a07838',margin:'0 0 24px',fontStyle:'italic'}}>命运尚未落笔，由你决定扮演何人</p>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:14}}>
+              {[
+                {key:ROLE_TREASURE,...RINFO[ROLE_TREASURE]},
+                {key:ROLE_HUNTER,...RINFO[ROLE_HUNTER]},
+                {key:ROLE_CULTIST,...RINFO[ROLE_CULTIST]},
+                {key:'random',icon:'?',col:'#a07838',dim:'#5a4020',goal:'听凭命运安排',skillName:'随机身份'},
+              ].map(role=>(
+                <button
+                  key={role.key}
+                  type="button"
+                  onClick={()=>confirmRoleSelection(role.key)}
+                  style={{
+                    background:'#1a1208',border:`1.5px solid ${role.dim}`,borderRadius:4,
+                    padding:'18px 12px',cursor:'pointer',color:'#c8a96e',
+                    fontFamily:"'Cinzel',serif",display:'flex',flexDirection:'column',alignItems:'center',gap:6,
+                    transition:'all 0.15s ease',
+                  }}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor=role.col;e.currentTarget.style.boxShadow=`0 0 18px ${role.col}44`;}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor=role.dim;e.currentTarget.style.boxShadow='none';}}
+                >
+                  <span style={{fontSize:30,color:role.col,filter:`drop-shadow(0 0 8px ${role.col}66)`}}>{role.icon}</span>
+                  <span style={{fontSize:14,letterSpacing:1,fontWeight:700}}>{role.key==='random'?'随机身份':role.key}</span>
+                  <span style={{fontSize:10,color:'#806040',letterSpacing:0.5}}>{role.goal}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       {/* ── 断线遮罩（游戏内）── */}
       {isDisconnected&&(
         <div onClick={resetDisconnectedToStart}
@@ -8425,60 +8497,66 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
 
       <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',gap:7}}>
         {/* Header */}
-        <div style={{display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid var(--toe-line-dim,#2a1a08)',paddingBottom:6}}>
-          <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:baseFontSizes.title,fontWeight:700,color:'var(--toe-strong,#c8a96e)',letterSpacing:isMobile?1:2}}>邪神的宝藏</div>
-          <div style={{fontFamily:"'Cinzel',serif",fontSize:baseFontSizes.subtitle,color:'var(--toe-muted,#b89858)',letterSpacing:isMobile?1:2,marginTop:1}}>Treasures of Evils</div>
-          {isMultiplayer?(
-            <button
-              onClick={()=>setExitMatchConfirm({
-                message:isSpectating
-                  ?'你将离开游戏房间，确定要退出吗？'
-                  :'对局还在进行中，是否退出对局并离开房间？',
-              })}
-              style={{
-                marginLeft:'auto',
-                padding:isMobile?'4px 10px':'5px 12px',
-                background:'#2a0c08',
-                border:'1.5px solid #c2412f',
-                color:'#ffb199',
-                fontFamily:"'Cinzel',serif",
-                fontWeight:700,
-                fontSize:baseFontSizes.small,
-                borderRadius:3,
-                cursor:'pointer',
-                letterSpacing:isMobile?0.5:1,
-                textTransform:'uppercase',
-                boxShadow:'0 0 12px rgba(194,65,47,0.34)',
-              }}
-            >
-              退出对局
-            </button>
-          ):(
-            <button
-              onClick={showTutorial?undefined:returnToMainMenu}
-              disabled={showTutorial}
-              title={showTutorial?'教学中不可返回主界面':undefined}
-              style={{
-                marginLeft:'auto',
-                padding:isMobile?'4px 10px':'5px 12px',
-                background:'#2a0c08',
-                border:'1.5px solid #c2412f',
-                color:'#ffb199',
-                fontFamily:"'Cinzel',serif",
-                fontWeight:700,
-                fontSize:baseFontSizes.small,
-                borderRadius:3,
-                cursor:showTutorial?'not-allowed':'pointer',
-                opacity:showTutorial?0.45:1,
-                letterSpacing:isMobile?0.5:1,
-                textTransform:'uppercase',
-                boxShadow:'0 0 12px rgba(194,65,47,0.34)',
-              }}
-            >
-              返回主界面
-            </button>
-          )}
-        </div>
+        {(()=>{
+          const headerScale=scaleRatio>1?scaleRatio:1;
+          const hp=scale=>`${Math.round(scale*headerScale)}px`;
+          return(
+            <div style={{display:'flex',alignItems:'center',gap:hp(10),borderBottom:'1px solid var(--toe-line-dim,#2a1a08)',paddingBottom:hp(6)}}>
+              <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:baseFontSizes.title*headerScale,fontWeight:700,color:'var(--toe-strong,#c8a96e)',letterSpacing:isMobile?1:2}}>邪神的宝藏</div>
+              <div style={{fontFamily:"'Cinzel',serif",fontSize:baseFontSizes.subtitle*headerScale,color:'var(--toe-muted,#b89858)',letterSpacing:isMobile?1:2,marginTop:1}}>Treasures of Evils</div>
+              {isMultiplayer?(
+                <button
+                  onClick={()=>setExitMatchConfirm({
+                    message:isSpectating
+                      ?'你将离开游戏房间，确定要退出吗？'
+                      :'对局还在进行中，是否退出对局并离开房间？',
+                  })}
+                  style={{
+                    marginLeft:'auto',
+                    padding:isMobile?`${hp(4)} ${hp(10)}`:`${hp(5)} ${hp(12)}`,
+                    background:'#2a0c08',
+                    border:'1.5px solid #c2412f',
+                    color:'#ffb199',
+                    fontFamily:"'Cinzel',serif",
+                    fontWeight:700,
+                    fontSize:baseFontSizes.small*headerScale,
+                    borderRadius:3,
+                    cursor:'pointer',
+                    letterSpacing:isMobile?0.5:1,
+                    textTransform:'uppercase',
+                    boxShadow:'0 0 12px rgba(194,65,47,0.34)',
+                  }}
+                >
+                  退出对局
+                </button>
+              ):(
+                <button
+                  onClick={showTutorial?undefined:returnToMainMenu}
+                  disabled={showTutorial}
+                  title={showTutorial?'教学中不可返回主界面':undefined}
+                  style={{
+                    marginLeft:'auto',
+                    padding:isMobile?`${hp(4)} ${hp(10)}`:`${hp(5)} ${hp(12)}`,
+                    background:'#2a0c08',
+                    border:'1.5px solid #c2412f',
+                    color:'#ffb199',
+                    fontFamily:"'Cinzel',serif",
+                    fontWeight:700,
+                    fontSize:baseFontSizes.small*headerScale,
+                    borderRadius:3,
+                    cursor:showTutorial?'not-allowed':'pointer',
+                    opacity:showTutorial?0.45:1,
+                    letterSpacing:isMobile?0.5:1,
+                    textTransform:'uppercase',
+                    boxShadow:'0 0 12px rgba(194,65,47,0.34)',
+                  }}
+                >
+                  返回主界面
+                </button>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Scaled player areas wrapper */}
         <div style={{overflow:'hidden',width:'100%',display:'flex',justifyContent:'center'}}>
@@ -8885,6 +8963,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             swapBlindHandRect={swapBlindHandRect}
             isArtifact={isArtifact}
             isH5Package={isH5Package}
+            scaleRatio={scaleRatio}
+            baseBodyFontSize={baseFontSizes.body}
             setTutorialStep={setTutorialStep}
             advanceTutorialStep={advanceTutorialStep}
             onTutorialResultNext={handleTutorialResultNext}

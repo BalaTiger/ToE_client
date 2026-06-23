@@ -377,6 +377,7 @@ function DebugSettingsPanel({
   debugForceZoneCardName, setDebugForceZoneCardName,
   debugForceGodCardKey, setDebugForceGodCardKey,
   debugPlayerRole, setDebugPlayerRole,
+  debugTutorialPromptMode, setDebugTutorialPromptMode,
   debugExpansionKey, setDebugExpansionKey,
 }) {
   const [zoneLetterTab, setZoneLetterTab] = useState('A');
@@ -505,6 +506,19 @@ function DebugSettingsPanel({
           {playableExpansionKeys.map(key => (
             <option key={key} value={key}>{EXPANSIONS[key]?.name || key}</option>
           ))}
+        </select>
+      </div>
+
+      <div style={sectionStyle}>
+        <h4 style={sectionTitleStyle}>新手引导入口弹窗</h4>
+        <select
+          value={debugTutorialPromptMode}
+          onChange={(e) => setDebugTutorialPromptMode(e.target.value)}
+          style={selectStyle}
+        >
+          <option value="default">下次单人对战：按设备首次逻辑</option>
+          <option value="show">下次单人对战：显示</option>
+          <option value="hide">下次单人对战：不显示</option>
         </select>
       </div>
 
@@ -717,6 +731,7 @@ function DebugControls({
   debugForceZoneCardName, setDebugForceZoneCardName,
   debugForceGodCardKey, setDebugForceGodCardKey,
   debugPlayerRole, setDebugPlayerRole,
+  debugTutorialPromptMode, setDebugTutorialPromptMode,
   debugExpansionKey, setDebugExpansionKey,
 }) {
   if (!isLocalTestMode) return null;
@@ -772,6 +787,7 @@ function DebugControls({
         debugForceZoneCardName={debugForceZoneCardName} setDebugForceZoneCardName={setDebugForceZoneCardName}
         debugForceGodCardKey={debugForceGodCardKey} setDebugForceGodCardKey={setDebugForceGodCardKey}
         debugPlayerRole={debugPlayerRole} setDebugPlayerRole={setDebugPlayerRole}
+        debugTutorialPromptMode={debugTutorialPromptMode} setDebugTutorialPromptMode={setDebugTutorialPromptMode}
         debugExpansionKey={debugExpansionKey} setDebugExpansionKey={setDebugExpansionKey}
       />
     </>
