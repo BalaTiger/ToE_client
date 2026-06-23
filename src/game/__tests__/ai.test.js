@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { aiChooseRevealCard, aiShouldKeepZoneCard, canCultistEmptyHandByBewitch, getHunterChaseTargets } from '../ai';
 import { aiStep, processAiEndTurnReplayHand } from '../aiTurn';
-import { ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
+import { cardLogText, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
 import { createBlackGoatYoungCard } from '../../constants/card';
 import { makeGs, makePlayer, makeZoneCard } from './factory';
 
@@ -501,6 +501,39 @@ describe('aiStep optional action limits', () => {
 
     expect(newLogs.some(line => line.includes('【繁衍】'))).toBe(false);
     expect(newLogs.some(line => line.includes('【追捕】'))).toBe(true);
+  });
+
+  it('AI 寻宝者对玩家掉包时会记录被暗抽和归还的具体牌', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const stolen = makeZoneCard('A1', 0);
+    const returned = makeZoneCard('B2', 0);
+    const players = [
+      makePlayer({ name: '你', hp: 10, hand: [stolen] }),
+      makePlayer({
+        name: '艾伦',
+        role: ROLE_TREASURE,
+        roleRevealed: true,
+        hp: 10,
+        hand: [returned],
+      }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+      globalOnlySwapOwner: null,
+      log: ['旧日志'],
+    });
+
+    const result = aiStep(gs);
+    const newLogs = result.log.slice(gs.log.length);
+
+    expect(newLogs).toContain('艾伦（寻宝者）对 你 【掉包】');
+    expect(newLogs).toContain(`你的手牌${cardLogText(stolen, { alwaysShowName: true })}被暗抽`);
+    expect(newLogs).toContain(`艾伦（寻宝者）给你一张${cardLogText(returned, { alwaysShowName: true })}`);
   });
 
   it('追猎者首追在同等公开条件下按等权随机选择目标', () => {

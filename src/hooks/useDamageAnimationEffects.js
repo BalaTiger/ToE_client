@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { _getZoomCompensatedRect } from '../utils/dom';
-import { computeScaleRatio } from '../utils/scale';
 
 export function useDamageAnimationEffects({ anim, playHpDamageSound }) {
   const [hitIndices, setHitIndices] = useState([]);
@@ -147,23 +146,26 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound }) {
           try {
             const { default: html2canvas } = await import('html2canvas');
             const inZoomContainer = !!el.closest?.('[data-zoom-container]');
-            const scaleRatio = computeScaleRatio(window.innerWidth, window.innerHeight);
-            const zoomScale = inZoomContainer && scaleRatio !== 1
-              ? Math.max(0.1, scaleRatio)
-              : 1;
             const canvas = await html2canvas(el, {
               backgroundColor: null,
               useCORS: true,
               logging: false,
-              scale: zoomScale,
+              scale: Math.min(2, Math.max(1, window.devicePixelRatio || 1)),
               width: el.offsetWidth || undefined,
               height: el.offsetHeight || undefined,
               windowWidth: inZoomContainer ? 1200 : window.innerWidth,
               windowHeight: window.innerHeight,
               ignoreElements: node => node?.hasAttribute?.('data-theme-ornament'),
               onclone: (doc, cloneEl) => {
+                const zoomContainer = doc.querySelector('[data-zoom-container]');
+                if (zoomContainer?.style) {
+                  zoomContainer.style.zoom = 'normal';
+                  zoomContainer.style.transform = 'none';
+                }
                 const root = cloneEl || doc.querySelector(`[data-death-panel="${idx}"]`);
                 if (!root?.style) return;
+                root.style.zoom = 'normal';
+                root.style.transform = 'none';
                 root.style.background = 'transparent';
                 root.style.backgroundColor = 'transparent';
                 root.style.borderColor = 'transparent';

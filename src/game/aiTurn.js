@@ -50,7 +50,7 @@ import { buildApophisNightLog, getApophisNightForLevel, resolveApophisTarget } f
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { buildGodPowerBlockedLog, canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
 import { appendProliferatingZDraws } from './proliferatingZ';
-import { createGodPowerBlockedEvent } from './visualEvents';
+import { createGodPowerBlockedEvent, createSwapCardsEvent } from './visualEvents';
 
 /**
  * 检查两张卡是否满足追捕匹配规则。
@@ -1090,7 +1090,25 @@ export function aiStep(gs, opts = {}) {
           const gi=0|Math.random()*P[ct].hand.length;const given=P[ct].hand.splice(gi,1)[0];
           P[ct].hand.push(taken);P[ti].hand.push(given);
           // 只有使用自己的掉包技能时才显示"（寻宝者）"，通过"绮丽诗篇"获得的掉包技能不显示
-          L.push(`${ai.name}${gs.globalOnlySwapOwner===null?'（寻宝者）':''}对 ${tgt.name} 【掉包】`);
+          const swapActorLabel=`${ai.name}${gs.globalOnlySwapOwner===null?'（寻宝者）':''}`;
+          const swapPublicLog=`${swapActorLabel}对 ${tgt.name} 【掉包】`;
+          L.push(swapPublicLog);
+          if(ti===0&&!gs._isMP){
+            L.push(`你的手牌${cardLogText(taken,{alwaysShowName:true})}被暗抽`);
+            L.push(`${swapActorLabel}给你一张${cardLogText(given,{alwaysShowName:true})}`);
+          }
+          const aiSwapEvent=createSwapCardsEvent({
+            sourceIdx:ct,
+            targetIdx:ti,
+            sourceCount:1,
+            targetCount:1,
+            takenCard:taken,
+            givenCard:given,
+            sourceName:ai.name,
+            sourceLabel:swapActorLabel,
+            msgs:[swapPublicLog],
+          });
+          if(aiSwapEvent)gs={...gs,_visualEvents:[aiSwapEvent,...(gs._visualEvents||[])]};
           // 只有真正的寻宝者才能通过集齐全部编号获胜
           if((ai._nyaBorrow||ai.role)===ROLE_TREASURE&&isWinHand(P[ct].hand)){
             if(gs.globalOnlySwapOwner===null)P[ct].roleRevealed=true;

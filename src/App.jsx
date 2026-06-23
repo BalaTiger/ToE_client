@@ -431,6 +431,39 @@ function getTurnStartDrawBaselineLog(state){
   return animatedLogCount>0?log.slice(0,Math.max(0,log.length-animatedLogCount)):log;
 }
 
+function buildVisibleLogForLocalViewer(log,state){
+  const base=Array.isArray(log)?log:[];
+  const swapEvents=(Array.isArray(state?._visualEvents)?state._visualEvents:[])
+    .filter(event=>event?.type==='swapCards'&&event.targetIdx===0&&event.takenCard&&event.givenCard);
+  if(!swapEvents.length)return base;
+  let result=[...base];
+  swapEvents.forEach(event=>{
+    const sourceName=event.sourceName||state?.players?.[event.sourceIdx]?.name||'对方';
+    const sourceLabel=event.sourceLabel||`${sourceName}（寻宝者）`;
+    const takenText=cardLogText(event.takenCard,{alwaysShowName:true});
+    const givenText=cardLogText(event.givenCard,{alwaysShowName:true});
+    const privateLines=[
+      `你的手牌${takenText}被暗抽`,
+      `${sourceLabel}给你一张${givenText}`,
+    ];
+    if(privateLines.every(line=>result.includes(line)))return;
+    const localName=state?.players?.[0]?.name;
+    const startIdx=result.findIndex(line=>
+      typeof line==='string' &&
+      line.includes('【掉包】') &&
+      (line.includes('对 你') || (localName && line.includes(`对 ${localName}`)))
+    );
+    if(startIdx>=0){
+      result=[
+        ...result.slice(0,startIdx+1),
+        ...privateLines,
+        ...result.slice(startIdx+1),
+      ];
+    }
+  });
+  return result;
+}
+
 function getTurnStartStatLogs(state){
   const log=Array.isArray(state?.log)?state.log:[];
   const turnStartLogs=Array.isArray(state?._turnStartLogs)?state._turnStartLogs:[];
@@ -947,7 +980,7 @@ export default function Game(){
     if(replayAction?.type===MP_REMOTE_REPLAY.ROLE_REVEAL){
       mpRoleRevealedRef.current=true;
       mpOpeningRoleRevealPendingRef.current=true;
-      syncVisibleLog(rotated.log||[]);
+      syncVisibleLog(rotated.log||[],rotated);
       setGs(replayAction.maskedGs);
       setAnim(null);
       setRoleRevealAnim({role:replayAction.role,pendingGs:replayAction.pendingGs});
@@ -1584,8 +1617,11 @@ export default function Game(){
     setVisibleLog(prefix);
   },[]);
 
-  const syncVisibleLog=useCallback((nextLog)=>{
-    const normalized=Array.isArray(nextLog)?nextLog:[];
+  const syncVisibleLog=useCallback((nextLog,stateForLocalView=null)=>{
+    const normalized=buildVisibleLogForLocalViewer(
+      Array.isArray(nextLog)?nextLog:[],
+      stateForLocalView
+    );
     applyVisibleLogPrefix(normalized.length,normalized);
   },[applyVisibleLogPrefix]);
 
@@ -1773,7 +1809,7 @@ export default function Game(){
 
   const applyTutorialStateSnapshot=useCallback((nextGs)=>{
     if(!nextGs)return;
-    syncVisibleLog(nextGs.log||[]);
+    syncVisibleLog(nextGs.log||[],nextGs);
     setVisualDiscard(getVisualDiscardForState(nextGs));
     setDisplayStats((nextGs.players||[]).map(p=>({hp:p.hp,san:p.san})));
     setGs(nextGs);
@@ -1846,7 +1882,7 @@ export default function Game(){
       if(!prev)return prev;
       const base=pendingBase?{...pendingBase,players:clearPendingAnimDeathFlags(pendingBase.players)}:prev;
       const nextGs=applyTutorialStepState(clearTutorialWinState(base,nextStep),nextStep);
-      syncVisibleLog(nextGs?.log||[]);
+      syncVisibleLog(nextGs?.log||[],nextGs);
       setVisualDiscard(getVisualDiscardForState(nextGs));
       setDisplayStats((nextGs?.players||[]).map(p=>({hp:p.hp,san:p.san})));
       return nextGs;
@@ -1948,7 +1984,7 @@ export default function Game(){
     const nextLog=Array.isArray(gs?.log)?gs.log:[];
     const curLog=visibleLogRef.current;
     const same=curLog.length===nextLog.length&&curLog.every((line,i)=>line===nextLog[i]);
-    if(!same)syncVisibleLog(nextLog);
+    if(!same)syncVisibleLog(nextLog,gs);
   },[gs?.log,anim,syncVisibleLog,gs?._playersBeforeThisDraw]);
 
   useEffect(()=>{
@@ -5352,7 +5388,7 @@ export default function Game(){
 
   function finishTargetContinuation({queue=[],nextGs,continueRest=false,syncLog=false}){
     queue=mergeApophisTargetQueue(queue,gs,nextGs);
-    if(syncLog&&nextGs?.log)syncVisibleLog(nextGs.log);
+    if(syncLog&&nextGs?.log)syncVisibleLog(nextGs.log,nextGs);
     if(continueRest){
       if(queue.length)triggerAnimQueue(queue,null,()=>_cthContinueRestDraws(nextGs));
       else _cthContinueRestDraws(nextGs);
@@ -6000,6 +6036,10 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       targetIdx:swapTi,
       sourceCount:1,
       targetCount:1,
+      takenCard,
+      givenCard: given,
+      sourceName:P[0].name,
+      sourceLabel:`${P[0].name}${gs.globalOnlySwapOwner===null?'（寻宝者）':''}`,
       msgs:L.slice(gs.log.length),
     });
     // 只有真正的寻宝者才能通过集齐全部编号获胜
