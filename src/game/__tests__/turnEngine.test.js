@@ -591,6 +591,23 @@ describe('turnEngine stat events', () => {
     expect(result._preTurnPlayers[0].hand.filter(c => c.isTsathogguaSlime)).toHaveLength(2);
   });
 
+  it('火把状态会阻止撒托古亚回合结束获得黏液并记录护罩事件', () => {
+    const players = [
+      makePlayer({ name: '你', godName: 'TSG', godLevel: 2, godPowerImmuneThisTurn: true, godPowerImmuneTurnOwner: 0 }),
+      makePlayer({ name: '艾伦' }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0, log: [] });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players[0].hand.some(c => c.isTsathogguaSlime)).toBe(false);
+    expect(result.log).toContain('【引燃火把】你 本回合不受邪神之力影响');
+    expect(result._tsgSlimeGrantEvents || []).toHaveLength(0);
+    expect(result._visualEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'godPowerBlocked', playerIdx: 0 }),
+    ]));
+  });
+
   it('撒托古亚黏液获得动画排在下一回合开始前并在动画后刷新手牌', () => {
     const players = [
       makePlayer({ name: '你', godName: 'TSG', godLevel: 1 }),
@@ -633,6 +650,25 @@ describe('turnEngine stat events', () => {
     expect(result.log.some(line => line.includes('额外摸1张牌'))).toBe(true);
   });
 
+  it('火把状态会阻止撒托古亚回合开始消耗黏液', () => {
+    const slime = createTsathogguaSlimeCard();
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', godName: 'TSG', godLevel: 1, hand: [slime], godPowerImmuneThisTurn: true, godPowerImmuneTurnOwner: 1 }),
+    ];
+    const deck = [
+      { id: 'normal', key: 'A2', letter: 'A', number: 2, name: '正常牌', type: 'selfHealHP', val: 1, isZone: true, polarity: 'positive' },
+    ];
+    const gs = makeGs({ players, deck, currentTurn: 0, log: [] });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players[1].hand.some(c => c.isTsathogguaSlime)).toBe(true);
+    expect(result.players[1].hand.map(c => c.name)).toEqual(expect.arrayContaining(['正常牌']));
+    expect(result.log).toContain('【引燃火把】艾伦 本回合不受邪神之力影响');
+    expect(result.log.some(line => line.includes('额外摸1张牌'))).toBe(false);
+  });
+
   it('当前执行回合结束时清除其他角色身上的本回合临时效果', () => {
     const players = makeStandardPlayers(3);
     players[1].damageBonus = 1;
@@ -660,6 +696,30 @@ describe('turnEngine stat events', () => {
     expect(result.currentTurn).toBe(1);
     expect(result.players[1].damageBonus).toBeUndefined();
     expect(result.players[1].damageBonusTurnOwner).toBeUndefined();
+  });
+
+  it('进入下一回合时不会继承上一回合已播放的数值 visualEvents', () => {
+    const players = makeStandardPlayers(3);
+    players[2].skipNextDraw = true;
+    players[2].skipNextDrawReason = '测试';
+    const staleStatEvent = {
+      type: 'statEvents',
+      statEvents: [
+        { type: 'HP_GAIN', target: 1, from: { hp: 7 }, to: { hp: 8 }, seq: 1 },
+      ],
+      msgs: ['全体存活角色回复 1 HP'],
+    };
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      turn: 4,
+      deck: [],
+      _visualEvents: [staleStatEvent],
+    });
+
+    const result = startNextTurn(gs);
+
+    expect(result._visualEvents || []).toEqual([]);
   });
 
   it('蛊惑强制改信烛九阴后立即点亮牌堆', () => {
@@ -699,6 +759,23 @@ describe('turnEngine stat events', () => {
     expect(result.msgs.some(line => line.includes('黑夜降临'))).toBe(true);
   });
 
+  it('火把状态下强制改信阿波菲斯不会进入黑夜并记录免疫日志', () => {
+    const players = [
+      makePlayer({ name: '蛊惑者' }),
+      makePlayer({ name: '目标', godName: 'NYA', godLevel: 1, godZone: [makeGodCard('NYA')], godPowerImmuneThisTurn: true, godPowerImmuneTurnOwner: 1 }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0, apophisNight: null });
+
+    const result = resolveGodEncounterForAI(1, makeGodCard('APO'), players, [], [], gs, true);
+
+    expect(result.P[1]).toMatchObject({ godName: 'APO', godLevel: 1 });
+    expect(result.statePatch.apophisNight).toBeUndefined();
+    expect(result.msgs).toContain('【引燃火把】目标 本回合不受邪神之力影响');
+    expect(result.statePatch._visualEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'godPowerBlocked', playerIdx: 1 }),
+    ]));
+  });
+
   it('蛊惑强制改信黑山羊后立即发放黑山羊幼仔', () => {
     const players = [
       makePlayer({ name: '蛊惑者' }),
@@ -712,6 +789,38 @@ describe('turnEngine stat events', () => {
     expect(result.P[1]).toMatchObject({ godName: 'SHU', godLevel: 1 });
     expect(result.P.some(player => player.hand.some(card => card.isBlackGoatYoung))).toBe(true);
     expect(result.msgs.some(line => line.includes('黑暗子嗣'))).toBe(true);
+  });
+
+  it('森之领主发动者有火把免疫时不触发黑暗子嗣', () => {
+    const players = [
+      makePlayer({ name: '蛊惑者', isDead: true }),
+      makePlayer({ name: '目标', role: ROLE_HUNTER, godPowerImmuneThisTurn: true, godPowerImmuneTurnOwner: 1 }),
+      makePlayer({ name: '旁观者' }),
+    ];
+    const gs = makeGs({ players, currentTurn: 1 });
+
+    const result = resolveGodEncounterForAI(1, makeGodCard('SHU'), players, [], [], gs, true);
+
+    expect(result.P[1]).toMatchObject({ godName: 'SHU', godLevel: 1 });
+    expect(result.P[1].hand.some(card => card.isBlackGoatYoung)).toBe(false);
+    expect(result.P[2].hand.some(card => card.isBlackGoatYoung)).toBe(false);
+    expect(result.msgs.some(line => line.includes('黑山羊幼仔'))).toBe(false);
+    expect(result.msgs).toContain('【引燃火把】目标 本回合不受邪神之力影响');
+  });
+
+  it('蛊惑邪神牌给无信仰目标时会强制信仰而不是按AI意愿放弃', () => {
+    const players = [
+      makePlayer({ name: '蛊惑者' }),
+      makePlayer({ name: '目标', godName: null, godLevel: 0, godZone: [] }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0, log: [] });
+
+    const result = resolveGodEncounterForAI(1, makeGodCard('SHU'), players, [], [], gs, true);
+
+    expect(result.P[1]).toMatchObject({ godName: 'SHU', godLevel: 1 });
+    expect(result.P[1].godZone).toHaveLength(1);
+    expect(result.msgs.some(line => line.includes('信仰了 森之领主'))).toBe(true);
+    expect(result.msgs.some(line => line.includes('放弃了邪神的馈赠'))).toBe(false);
   });
 
   it('蛊惑同种邪神牌时会像自己摸到一样升级邪神之力', () => {

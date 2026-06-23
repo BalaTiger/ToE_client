@@ -117,6 +117,7 @@ import {
   applyBalanceDiscardSideEffects,
   canGodPowerAffect,
   hasGodPowerImmunity,
+  buildGodPowerBlockedLog,
   appendProliferatingZDraws,
   buildProliferatingZDrawFlow,
   clearBlindZoneDecisionFlag,
@@ -126,8 +127,11 @@ import {
   buildCthRestDrawFinishedState,
   getTurnStartDrawnCard,
   getTurnStartDrawerIdx,
+  shouldReplaySinglePlayerAiTurnStart,
+  buildSinglePlayerAiTurnStartReplayContext,
   createTimedOutDrawDiscardEvent,
   createHandLimitDiscardEvent,
+  createGodPowerBlockedEvent,
   buildTurnStartDrawVisualEvents,
   buildFreshStatVisualEvents,
   getCurrentExecutionTurnOwner,
@@ -380,7 +384,7 @@ function startNextTurn(gs) {
   const engineVisualEvents = Array.isArray(nextGs._visualEvents) ? nextGs._visualEvents : [];
   const visualEvents = [
     ...buildTurnStartDrawVisualEvents(nextGs),
-    ...buildFreshStatVisualEvents(nextGs, gs?._statEventSeq || 0),
+    ...buildFreshStatVisualEvents(nextGs, maxKnownStatEventSeq(gs)),
     ...engineVisualEvents,
   ];
   return visualEvents.length
@@ -396,6 +400,25 @@ function maxStatEventSeqFromSteps(steps=[]){
     );
     return Math.max(max,localMax);
   },0);
+}
+
+function maxKnownStatEventSeq(state){
+  const explicit=Number.isFinite(state?._statEventSeq)?state._statEventSeq:0;
+  const fromEvents=(Array.isArray(state?._statEvents)?state._statEvents:[]).reduce(
+    (max,event)=>Number.isFinite(event?.seq)?Math.max(max,event.seq):max,
+    0
+  );
+  const fromVisual=(Array.isArray(state?._visualEvents)?state._visualEvents:[]).reduce(
+    (max,event)=>{
+      const local=(Array.isArray(event?.statEvents)?event.statEvents:[]).reduce(
+        (m,statEvent)=>Number.isFinite(statEvent?.seq)?Math.max(m,statEvent.seq):m,
+        0
+      );
+      return Math.max(max,local);
+    },
+    0
+  );
+  return Math.max(explicit,fromEvents,fromVisual);
 }
 
 function getTurnStartDrawBaselineLog(state){
@@ -1624,6 +1647,7 @@ export default function Game(){
       if(turnHighlight)turnHighlightLockRef.current=null;
     },
   }),[]);
+  const normalizeLocalPendingGs=useCallback(state=>withClearedReplayAnimFields(state,{_statEvents:[]}),[]);
   const {
     anim,
     setAnim,
@@ -1652,7 +1676,7 @@ export default function Game(){
     visualStateLocks,
     suppressNextBroadcastRef,
     receivedGsRef,
-    normalizePendingGs:withClearedReplayAnimFields,
+    normalizePendingGs:normalizeLocalPendingGs,
     ANIM_STEP_GAP,
     CARD_REVEAL_DURATION,
     ANIM_DURATION,
@@ -2954,10 +2978,11 @@ export default function Game(){
           visualStateLocks.lock({players:P_actionPreInspection,zhuLight:gs.zhuLight||null});
         }
         if(nextTurnIntroQueue.length){
+          const nextTurnIntroGs=markQueuedAiTurnStartReplayShown(newGs,nextTurnIntroQueue);
           if(currentQueueWithPatch.length){
-            triggerAnimQueue(currentQueueWithPatch,newGs,()=>triggerAnimQueue(nextTurnIntroQueue,newGs));
+            triggerAnimQueue(currentQueueWithPatch,nextTurnIntroGs,()=>triggerAnimQueue(nextTurnIntroQueue,nextTurnIntroGs));
           }else{
-            triggerAnimQueue(nextTurnIntroQueue,newGs);
+            triggerAnimQueue(nextTurnIntroQueue,nextTurnIntroGs);
           }
         }else{
           triggerAnimQueue(currentQueueWithPatch,newGs);
@@ -3051,6 +3076,7 @@ export default function Game(){
   useEffect(()=>{
     if(!gs||gs.gameOver||showTutorial)return;
     if(gs.phase==='TREASURE_WIN'||gs.phase==='PLAYER_WIN_PENDING'||gs.phase==='MP_PLAYER_WIN_WAIT')return;
+    if(gs.phase==='SWAP_STEAL_CARD'||gs.phase==='SWAP_GIVE_CARD')return;
     const p0=gs.players[0];
     if(p0&&!p0.isDead&&(p0._nyaBorrow||p0.role)===ROLE_TREASURE&&isWinHand(p0.hand)){
       setGs(g=>g?{...g,phase:'TREASURE_WIN'}:g);
@@ -3451,7 +3477,7 @@ export default function Game(){
     if(state.phase==='CAVE_DUEL_SELECT_TARGET')return firstValid(ad.caveDuelTargets);
     if(state.phase==='DAMAGE_LINK_SELECT_TARGET')return firstValid(ad.damageLinkTargets);
     if(state.phase==='ROSE_THORN_SELECT_TARGET')return firstValid(ad.roseThornTargets);
-    if(state.phase==='MULTIPLY_SELECT_TARGET')return firstValid(P.map((_,i)=>i).filter(i=>i!==0&&canGodPowerAffect(P[i])));
+    if(state.phase==='MULTIPLY_SELECT_TARGET')return firstValid(P.map((_,i)=>i).filter(i=>i!==0));
     if(state.phase==='SHU_SELECT_TARGET')return firstValid(P.map((_,i)=>i).filter(i=>canGodPowerAffect(P[i])));
     if(state.phase==='ETHEREALIZE_SELECT_TARGET')return firstValid(ad.adjacentTargets);
     if(state.phase==='IGNITE_TORCH_DISCARD')return firstValid([ad.playerIndex]);
@@ -6405,7 +6431,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       ?buildQueuedNextAiTurnStartReplay(newGs,{
         fromTurn:huntingAI,
         playersBeforeDraw:beforeNextTurnGs.players,
-        statEventSeq:animEndGs._statEventSeq||gs._statEventSeq||0,
+        statEventSeq:Math.max(maxKnownStatEventSeq(animEndGs),maxKnownStatEventSeq(gs)),
       })
       :[];
     const playerNeedsQueuedTurnIntro=
@@ -6420,10 +6446,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(playerNeedsQueuedTurnIntro){
       triggerAnimQueue(queue,null,()=>applyNextTurnGs(newGs));
     }else if(nextAiTurnIntroQueue.length){
+      const nextAiTurnIntroGs=markQueuedAiTurnStartReplayShown(newGs,nextAiTurnIntroQueue);
       if(queue.length){
-        triggerAnimQueue(queue,newGs,()=>triggerAnimQueue(nextAiTurnIntroQueue,newGs));
+        triggerAnimQueue(queue,nextAiTurnIntroGs,()=>triggerAnimQueue(nextAiTurnIntroQueue,nextAiTurnIntroGs));
       }else{
-        triggerAnimQueue(nextAiTurnIntroQueue,newGs);
+        triggerAnimQueue(nextAiTurnIntroQueue,nextAiTurnIntroGs);
       }
     }else{
       triggerAnimQueue(queue,newGs);
@@ -6637,7 +6664,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         P=processed.P;D=processed.D;Disc=processed.Disc;inspectionMeta=processed.inspectionMeta;L.splice(0,L.length,...processed.L);
       }
       if(isRevealedCultist(P[ti]))L.push(effectMsg);
-      const forcedConvert=!!(P[ti].godName&&P[ti].godName!==bewitchCard.godKey);
+      const forcedConvert=true;
       const godResolveGs={...gs,players:P,deck:D,discard:Disc,log:L,...inspectionMeta};
       const gres=resolveGodEncounterForAI(ti,bewitchCard,P,D,Disc,godResolveGs,forcedConvert);
       P=gres.P;D=gres.D;Disc=gres.Disc;L.push(...gres.msgs);
@@ -6726,6 +6753,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         P[0].godName=gk;P[0].godLevel=1;P[0].godZone=[{...godCard}];
         L.push(`你信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
       }
+      if(['APO','ZHU','SHU'].includes(gk)&&hasGodPowerImmunity(P[0])){
+        L.push(buildGodPowerBlockedLog(P[0]));
+      }
       // Kick out anyone else worshipping same god
       P.forEach((p,i)=>{if(i>0&&p.godName===gk){const abandoned=abandonGodFollower(i,gs.currentTurn,P,D,Disc,L,inspectionMeta);P=abandoned.P;D=abandoned.D;Disc=abandoned.Disc;L=abandoned.L;inspectionMeta=abandoned.inspectionMeta;}});
     } else {
@@ -6745,6 +6775,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(godPowerImmediate&&gk==='APO'){
       L.push(buildApophisNightLog());
     }
+    const blockedGodPowerEvent=(!godPowerImmediate&&(action==='worship'||action==='upgrade'||action==='forcedConvert')&&['APO','ZHU','SHU'].includes(gk)&&hasGodPowerImmunity(P[0]))
+      ?createGodPowerBlockedEvent({playerIdx:0,playerName:P[0].name,msgs:[buildGodPowerBlockedLog(P[0])]})
+      :null;
     // Only worship/forcedConvert consume the worship-this-turn slot.
     // Upgrade, discard, and keepHand do not.
     const consumesSlot=action==='worship'||action==='forcedConvert';
@@ -6754,6 +6787,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const replayPatch=fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
     // 保留abilityData中的cthDrawsRemaining信息
     const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,apophisNight:nextApophisNight,phase:isShuBlessing?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessing?{...gs.abilityData,shuOffspringCount}:gs.abilityData,
+      _visualEvents:blockedGodPowerEvent?[blockedGodPowerEvent]:[],
       godTriggeredThisTurn:consumesSlot,...inspectionMeta,...replayPatch,...proliferatingZPatch};
     const finishGodChoice=(state)=>{
       const win=checkWin(state.players,state._isMP);
@@ -7213,7 +7247,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     };
   }
 
-  function buildQueuedNextAiTurnStartReplay(nextGs,{fromTurn=null,playersBeforeDraw=null,statEventSeq=0}={}){
+  function buildQueuedNextAiTurnStartReplay(nextGs,{fromTurn=null,playersBeforeDraw=null,statEventSeq=null}={}){
     if(!nextGs||nextGs.gameOver)return [];
     if(!isAiSeat(nextGs,nextGs.currentTurn))return [];
     if(fromTurn!=null&&nextGs.currentTurn===fromTurn)return [];
@@ -7223,7 +7257,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       ...nextGs,
       players:playersBeforeDraw||nextGs._playersBeforeThisDraw||nextGs.players,
       log:getTurnStartDrawBaselineLog(nextGs),
-      _statEventSeq:statEventSeq||0,
+      _statEventSeq:statEventSeq??maxKnownStatEventSeq(nextGs),
       _inspectionSeq:lastInspectionSeqRef.current,
       _visualEvents:[],
     };
@@ -7251,6 +7285,38 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       ...(replay.visualLock?[{type:'VISUAL_LOCK',...replay.visualLock}]:[]),
       ...replay.queue,
     ];
+  }
+
+  function markQueuedAiTurnStartReplayShown(nextGs,queue=[]){
+    return Array.isArray(queue) &&
+      queue.some(step=>step?.type==='YOUR_TURN'||step?.type==='DRAW_CARD') &&
+      shouldReplaySinglePlayerAiTurnStart(nextGs)
+      ? {...nextGs,_aiTurnIntroShown:true}
+      : nextGs;
+  }
+
+  function buildSinglePlayerAiTurnStartReplay(nextGs){
+    const replayContext=buildSinglePlayerAiTurnStartReplayContext(gs,nextGs);
+    if(!replayContext)return null;
+    const replay=buildActorTurnStartReplay(nextGs,{
+      oldGs:replayContext.oldGs,
+      effectOldGs:replayContext.effectOldGs,
+      actorName:replayContext.actorName,
+      forceActorName:true,
+    });
+    logAiTurnStartDebug('applyNextTurnGs:ai-branch',{
+      fromTurn:gs?.currentTurn,
+      toTurn:nextGs.currentTurn,
+      name:replayContext.actorName,
+      phase:nextGs.phase,
+      turnStartLogs:nextGs._turnStartLogs,
+      hasPlayersBeforeThisDraw:!!nextGs._playersBeforeThisDraw,
+      drawnCard:nextGs._drawnCard?.name||nextGs.drawReveal?.card?.name||nextGs.abilityData?.godCard?.name||null,
+      drawLogs:nextGs._drawLogs,
+      replayDrawnCard:replay.drawnCard?.name||null,
+      replayQueue:replay.queue.map(step=>step?.type),
+    });
+    return replay?.queue?.length?replay:null;
   }
 
   // 拉莱耶之主(CTH) 在翻面结束/跳过回合时的强制摸牌：参考"无尽通道"的同步方式，
@@ -7342,38 +7408,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       {statLogs:newGs._statLogs}
     ):[];
     const preTurnQ=buildTsathogguaSlimeGrantQueue(newGs);
-    if(
-      newGs?.phase==='AI_TURN' &&
-      !newGs?._isMP &&
-      Array.isArray(newGs._turnStartLogs) &&
-      newGs._turnStartLogs.length > 0
-    ){
-      const replay=buildActorTurnStartReplay(newGs,{
-        oldGs:gs,
-        effectOldGs:{...gs,players:newGs._playersBeforeThisDraw||gs.players},
-        actorName:newGs.players?.[newGs.currentTurn]?.name||'???',
-        forceActorName:true,
-      });
-      logAiTurnStartDebug('applyNextTurnGs:ai-branch',{
-        fromTurn:gs?.currentTurn,
-        toTurn:newGs.currentTurn,
-        name:newGs.players?.[newGs.currentTurn]?.name,
-        phase:newGs.phase,
-        turnStartLogs:newGs._turnStartLogs,
-        hasPlayersBeforeThisDraw:!!newGs._playersBeforeThisDraw,
-        drawnCard:newGs._drawnCard?.name||newGs.drawReveal?.card?.name||newGs.abilityData?.godCard?.name||null,
-        drawLogs:newGs._drawLogs,
-        replayDrawnCard:replay.drawnCard?.name||null,
-        replayQueue:replay.queue.map(step=>step?.type),
-      });
-      if(replay.queue.length){
-        if(replay.visualLock)visualStateLocks.lock(replay.visualLock);
-        maskDiscardedTurnDrawUntilDiscardAnim(newGs);
-        const introShownGs={...newGs,_aiTurnIntroShown:true};
-        setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
-        triggerAnimQueue([...preTurnQ,...replay.queue],introShownGs);
-        return;
-      }
+    const aiTurnStartReplay=buildSinglePlayerAiTurnStartReplay(newGs);
+    if(aiTurnStartReplay){
+      if(aiTurnStartReplay.visualLock)visualStateLocks.lock(aiTurnStartReplay.visualLock);
+      maskDiscardedTurnDrawUntilDiscardAnim(newGs);
+      const introShownGs={...newGs,_aiTurnIntroShown:true};
+      setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
+      triggerAnimQueue([...preTurnQ,...aiTurnStartReplay.queue],introShownGs);
+      return;
     }
     if(newGs?.phase==='NYA_BORROW'&&Array.isArray(newGs._turnStartLogs)&&newGs._turnStartLogs.length){
       const introQ=buildTurnStartIntroQueue(newGs,newGs.players?.[newGs.currentTurn]?.name||'???');
@@ -8100,14 +8142,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       committedTargetActionRef.current=true;
       setGs(p=>p&&p.phase==='MULTIPLY_SELECT_TARGET'?{...p,abilityData:{...(p.abilityData||{}),committedAction:'multiply'}}:p);
       let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],baseLog=[...gs.log];
-      if(hasGodPowerImmunity(P[0])){
-        committedTargetActionRef.current=false;
-        setGs({...gs,phase:'ACTION',abilityData:{}});
-        return;
-      }
       const night=resolveApophisTarget({
         players:P,deck:D,discard:Disc,log:baseLog,actorIdx:0,selectedIdx:pi,
-        legalTargets:P.map((p,i)=>i).filter(i=>i!==0&&!P[i].isDead&&canGodPowerAffect(P[i])),
+        legalTargets:P.map((p,i)=>i).filter(i=>i!==0&&!P[i].isDead),
         label:'选择【繁衍】目标'
       });
       P=night.players;D=night.deck;Disc=night.discard;baseLog=night.log;pi=night.targetIdx;
@@ -8183,6 +8220,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     } else {
       P[0].godName=godKey;P[0].godLevel=1;P[0].godZone=[{...godCard}];
     }
+    if(['APO','ZHU','SHU'].includes(godKey)&&hasGodPowerImmunity(P[0])){
+      L.push(buildGodPowerBlockedLog(P[0]));
+    }
     // SHU: 进入目标选择阶段而非直接给牌
     const godPowerImmediateHand=canGodPowerAffect(P[0]);
     const isShuBlessingHand=godPowerImmediateHand&&godKey==='SHU';
@@ -8192,7 +8232,10 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const nextZhuLight=godPowerImmediateHand?buildZhuLight(P,D,0,gs.zhuLight):gs.zhuLight;
     const nextApophisNight=godPowerImmediateHand&&godKey==='APO'?getApophisNightForLevel(P[0].godLevel):gs.apophisNight;
     if(godPowerImmediateHand&&godKey==='APO')L.push(buildApophisNightLog());
-    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,apophisNight:nextApophisNight,phase:isShuBlessingHand?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessingHand?{shuOffspringCount:shuOffspringCountHand}:gs.abilityData,...inspectionMeta,...(win?{gameOver:win}:{})};
+    const blockedGodPowerEvent=(!godPowerImmediateHand&&['APO','ZHU','SHU'].includes(godKey)&&hasGodPowerImmunity(P[0]))
+      ?createGodPowerBlockedEvent({playerIdx:0,playerName:P[0].name,msgs:[buildGodPowerBlockedLog(P[0])]})
+      :null;
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,apophisNight:nextApophisNight,phase:isShuBlessingHand?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessingHand?{shuOffspringCount:shuOffspringCountHand}:gs.abilityData,_visualEvents:blockedGodPowerEvent?[blockedGodPowerEvent]:[],...inspectionMeta,...(win?{gameOver:win}:{})};
     const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
     if(queue.length)triggerAnimQueue(queue,newGs);
     else setGs(newGs);
@@ -8976,7 +9019,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                   const restLimited = gs.restUsed || gs.multiplyUsed || (isHunter ? gs.skillUsed : gs.skillUsed);
                   const skillRestLimited = isHunter ? (gs.restUsed || gs.multiplyUsed) : (skillLimited || gs.restUsed || gs.skillUsed || gs.multiplyUsed);
                   const hasBgy = me.hand.some(isBlackGoatYoung);
-                  const multiplyLimited = gs.skillUsed || gs.restUsed || gs.multiplyUsed || hasGodPowerImmunity(me);
+                  const multiplyLimited = gs.skillUsed || gs.restUsed || gs.multiplyUsed;
                   const showTutorialSkillButton=!isScriptedTutorial||isTutorialActionAllowed({type:'useSkill'});
                   const showTutorialRestButton=!isScriptedTutorial;
                   const showTutorialMultiplyButton=!isScriptedTutorial;

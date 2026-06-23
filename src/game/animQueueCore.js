@@ -1,6 +1,6 @@
 import { makeTargetStats, statEventsToAnimQueue } from './statEvents';
 import { buildFullHandSwapStepsFromLogs, buryToDeckStep, cardTransferStep, statePatchStep } from './animQueueHelpers';
-import { buildCardEffectStepsFromVisualEvents, buildHuntRevealStepFromVisualEvent } from './visualEvents';
+import { buildCardEffectStepsFromVisualEvents, buildGodPowerBlockedStepsFromVisualEvents, buildHuntRevealStepFromVisualEvent } from './visualEvents';
 
 function clonePlayersForTimeline(players = []) {
   return players.map(player => ({
@@ -162,6 +162,7 @@ export function buildAnimQueue(oldGs, newGs) {
     ))
     : [];
   const cardEffectSteps = buildCardEffectStepsFromVisualEvents(newGs, oldGs);
+  const godPowerBlockedSteps = buildGodPowerBlockedStepsFromVisualEvents(newGs, oldGs);
   const handledCardEffectStatEvents = collectStepStatEvents(cardEffectSteps);
   const handledCardEffectStatSeqs = new Set(
     handledCardEffectStatEvents
@@ -245,6 +246,7 @@ export function buildAnimQueue(oldGs, newGs) {
       if (sanHitIdx.length) q.push({ type: 'SAN_DAMAGE', msgs: newMsgs, hitIndices: sanHitIdx, targetStats });
     }
   }
+  q.push(...godPowerBlockedSteps);
   q.push(...cardEffectSteps);
   if (deathIdx.length) {
     q.push({ type: 'GUILLOTINE', msgs: newMsgs, hitIndices: deathIdx, targetStats });

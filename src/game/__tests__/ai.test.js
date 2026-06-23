@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { aiChooseRevealCard, aiShouldKeepZoneCard, getHunterChaseTargets } from '../ai';
-import { aiStep } from '../aiTurn';
-import { ROLE_CULTIST, ROLE_HUNTER } from '../coreUtils';
+import { aiChooseRevealCard, aiShouldKeepZoneCard, canCultistEmptyHandByBewitch, getHunterChaseTargets } from '../ai';
+import { aiStep, processAiEndTurnReplayHand } from '../aiTurn';
+import { ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
 import { createBlackGoatYoungCard } from '../../constants/card';
 import { makeGs, makePlayer, makeZoneCard } from './factory';
 
@@ -104,6 +104,28 @@ describe('aiShouldKeepZoneCard', () => {
 
     expect(aiShouldKeepZoneCard(card, 1, players)).toBe(false);
   });
+
+  it('追猎者会收入能清场非追猎者的活火山', () => {
+    const card = {
+      id: 'volcano',
+      key: 'C1',
+      name: '活火山',
+      type: 'allDamageHP',
+      val: 4,
+      isZone: true,
+      letter: 'C',
+      number: 1,
+      polarity: 'negative',
+    };
+    const players = [
+      makePlayer({ name: '你', role: ROLE_TREASURE, hp: 4, san: 8 }),
+      makePlayer({ name: '艾伦', role: ROLE_HUNTER, hp: 3, san: 8 }),
+      makePlayer({ name: '贝拉', role: ROLE_CULTIST, hp: 4, san: 8 }),
+      makePlayer({ name: '卡洛斯', role: ROLE_HUNTER, hp: 8, san: 8 }),
+    ];
+
+    expect(aiShouldKeepZoneCard(card, 1, players)).toBe(true);
+  });
 });
 
 describe('aiChooseRevealCard', () => {
@@ -114,6 +136,63 @@ describe('aiChooseRevealCard', () => {
 
     expect(aiChooseRevealCard([blackGoatYoung, slime, revealable])).toBe(revealable);
     expect(aiChooseRevealCard([blackGoatYoung, slime])).toBeNull();
+  });
+});
+
+describe('AI end-turn endless corridor replay', () => {
+  it('按每张牌依次播放无尽通道、翻牌、弃牌或结算动画', () => {
+    const badCard = {
+      id: 'bad',
+      key: 'D1',
+      name: '危险回声',
+      type: 'selfDamageHP',
+      val: 4,
+      isZone: true,
+      letter: 'D',
+      number: 1,
+      polarity: 'negative',
+    };
+    const healCard = {
+      id: 'heal',
+      key: 'B1',
+      name: '圣甲虫',
+      type: 'selfHealSAN',
+      val: 3,
+      isZone: true,
+      letter: 'B',
+      number: 1,
+      polarity: 'positive',
+    };
+    const corridor = {
+      id: 'corridor',
+      key: 'A3',
+      name: '无尽通道',
+      type: 'endTurnReplayHand',
+      isZone: true,
+      letter: 'A',
+      number: 3,
+    };
+    const players = [
+      makePlayer({ name: '你', hp: 8, san: 8 }),
+      makePlayer({ name: '艾伦', role: ROLE_HUNTER, hp: 6, san: 6, hand: [badCard, healCard, corridor] }),
+    ];
+    const gs = makeGs({ players, currentTurn: 1, phase: 'AI_TURN', log: ['旧日志'] });
+
+    const result = processAiEndTurnReplayHand(
+      gs.players.map(player => ({ ...player, hand: [...(player.hand || [])] })),
+      [],
+      [],
+      [...gs.log],
+      1,
+      gs
+    );
+    const types = result.replayQueue.map(step => step.type);
+
+    expect(types.slice(0, 4)).toEqual(['ENDLESS_CORRIDOR_TUNNEL', 'DRAW_CARD', 'DISCARD', 'STATE_PATCH']);
+    expect(types[4]).toBe('DRAW_CARD');
+    expect(types.indexOf('SAN_HEAL')).toBeGreaterThan(4);
+    expect(types.lastIndexOf('STATE_PATCH')).toBeGreaterThan(types.indexOf('SAN_HEAL'));
+    expect(result.replayQueue[0].msgs).toEqual([expect.stringContaining('【无尽通道】艾伦 展示所有手牌')]);
   });
 });
 
@@ -131,8 +210,13 @@ describe('hunter chase target validity', () => {
 });
 
 describe('aiStep optional action limits', () => {
-  it('3HP 邪祀者空手时不会因清空手牌例外跳过休息', () => {
+  it('3HP 邪祀者有三张手牌时不会因蛊惑清手牌例外跳过休息', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const cultistHand = [
+      makeZoneCard('B1', 0),
+      makeZoneCard('A1', 0),
+      makeZoneCard('C1', 0),
+    ];
     const players = [
       makePlayer({ name: '你', hp: 10, san: 10 }),
       makePlayer({
@@ -141,7 +225,7 @@ describe('aiStep optional action limits', () => {
         roleRevealed: false,
         hp: 3,
         san: 7,
-        hand: [],
+        hand: cultistHand,
       }),
       makePlayer({ name: '卡洛斯', hp: 10, san: 10 }),
     ];
@@ -159,6 +243,74 @@ describe('aiStep optional action limits', () => {
     const newLogs = result.log.slice(gs.log.length);
 
     expect(newLogs.some(line => line.includes('贝拉 选择【休息】'))).toBe(true);
+  });
+
+  it('邪祀者三张手牌不应被视为可通过一次蛊惑清空手牌', () => {
+    const players = [
+      makePlayer({ name: '你', hp: 10, san: 10 }),
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_CULTIST,
+        roleRevealed: true,
+        hp: 4,
+        san: 7,
+        hand: [
+          makeZoneCard('B1', 0),
+          makeZoneCard('A1', 0),
+          makeZoneCard('C1', 0),
+        ],
+      }),
+      makePlayer({ name: '卡洛斯', hp: 10, san: 10 }),
+    ];
+
+    expect(canCultistEmptyHandByBewitch(players, 1)).toBe(false);
+  });
+
+  it('邪祀者蛊惑区域牌让寻宝者集齐时会立即记录完整胜利日志', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const gift = makeZoneCard('B3', 2);
+    const players = [
+      makePlayer({
+        name: '你',
+        role: ROLE_TREASURE,
+        roleRevealed: true,
+        hand: [
+          makeZoneCard('A1', 0),
+          makeZoneCard('C2', 0),
+          makeZoneCard('D4', 0),
+        ],
+      }),
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_CULTIST,
+        roleRevealed: true,
+        hp: 9,
+        san: 8,
+        hand: [gift],
+      }),
+      makePlayer({ name: '艾伦', hp: 10, san: 10 }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+      log: ['旧日志'],
+    });
+
+    const result = aiStep(gs);
+
+    expect(result.gameOver).toMatchObject({
+      winner: ROLE_TREASURE,
+      reason: '你集齐了全部编号并获胜！',
+      winnerIdx: 0,
+    });
+    expect(result.log.slice(gs.log.length)).toEqual(expect.arrayContaining([
+      '贝拉（邪祀者）对 你 【蛊惑】，赠予 [B3] 窒息矿坑',
+      '你集齐了全部编号！',
+    ]));
   });
 
   it('邪祀者只有低 SAN 伤害手牌时优先繁衍且不继续蛊惑', () => {
@@ -199,6 +351,48 @@ describe('aiStep optional action limits', () => {
 
     expect(newLogs.some(line => line.includes('【繁衍】'))).toBe(true);
     expect(newLogs.some(line => line.includes('【蛊惑】'))).toBe(false);
+  });
+
+  it('黑山羊幼仔繁衍不受火把邪神之力免疫限制', () => {
+    const sanCard = {
+      id: 'san-card',
+      key: 'A4',
+      name: '空谷传音',
+      type: 'allDamageSAN',
+      val: 1,
+      isZone: true,
+      letter: 'A',
+      number: 4,
+    };
+    const players = [
+      makePlayer({ name: '你', hp: 6, san: 10, godPowerImmuneThisTurn: true, godPowerImmuneTurnOwner: 0 }),
+      makePlayer({
+        name: '艾伦',
+        role: ROLE_CULTIST,
+        roleRevealed: true,
+        hp: 9,
+        hand: [createBlackGoatYoungCard(), sanCard],
+        godPowerImmuneThisTurn: true,
+        godPowerImmuneTurnOwner: 1,
+      }),
+      makePlayer({ name: '贝拉', hp: 10, san: 10 }),
+    ];
+    const gs = makeGs({
+      players,
+      inspectionDeck: [{ id: 'check-1', name: '乏力', type: 'weak' }],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+      log: ['旧日志'],
+    });
+
+    const result = aiStep(gs);
+    const newLogs = result.log.slice(gs.log.length);
+
+    expect(newLogs).toContain('【繁衍】艾伦 将黑山羊幼仔传播给了 你');
+    expect(result.players[0].hand.some(card => card.isBlackGoatYoung)).toBe(true);
   });
 
   it('邪祀者有更高 SAN 伤害手牌时优先蛊惑而不是繁衍', () => {

@@ -17,6 +17,7 @@ export const VISUAL_EVENT = {
   CARD_EFFECT: 'cardEffect',
   EARTHQUAKE: 'earthquake',
   ENDLESS_CORRIDOR_REPLAY: 'endlessCorridorReplay',
+  GOD_POWER_BLOCKED: 'godPowerBlocked',
 };
 
 const visualEventInstanceId = Math.random().toString(36).slice(2, 10);
@@ -24,6 +25,7 @@ let actionEventSeq = 0;
 let cardEffectEventSeq = 0;
 let earthquakeEventSeq = 0;
 let endlessCorridorEventSeq = 0;
+let godPowerBlockedEventSeq = 0;
 
 function cardIdentity(card) {
   if (!card) return 'none';
@@ -349,6 +351,16 @@ export function buildSnakeTrapAnimStep(event, state) {
   };
 }
 
+export function createGodPowerBlockedEvent({ playerIdx = 0, playerName = '该玩家', msgs = [] } = {}) {
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.GOD_POWER_BLOCKED,
+    id: `${VISUAL_EVENT.GOD_POWER_BLOCKED}:${visualEventInstanceId}:${++godPowerBlockedEventSeq}`,
+    playerIdx,
+    playerName,
+    msgs: Array.isArray(msgs) ? msgs : [],
+  }, 'action');
+}
+
 function buildStatEventsFromPlayerSnapshots(beforePlayers = [], afterPlayers = [], msgs = [], reason = '卡牌效果') {
   if (!Array.isArray(beforePlayers) || !Array.isArray(afterPlayers)) return [];
   const logHint = Array.isArray(msgs) ? msgs[0] : undefined;
@@ -458,8 +470,13 @@ export function buildTurnStartDrawVisualEvents(state) {
 }
 
 export function buildFreshStatVisualEvents(state, previousStatSeq = 0) {
+  const statLogSet = new Set((Array.isArray(state?._statLogs) ? state._statLogs : []).filter(Boolean));
   const freshStatEvents = Array.isArray(state?._statEvents)
-    ? state._statEvents.filter(ev => ev && (ev.seq == null || ev.seq > (previousStatSeq || 0)))
+    ? state._statEvents.filter(ev => (
+      ev &&
+      (ev.seq == null || ev.seq > (previousStatSeq || 0)) &&
+      (!statLogSet.size || !ev.logHint || statLogSet.has(ev.logHint))
+    ))
     : [];
   const event = createStatEventsEvent({ statEvents: freshStatEvents, msgs: state?._statLogs || [] });
   return event ? [event] : [];
@@ -560,6 +577,22 @@ export function buildStatStepsFromVisualEvents(state, players) {
   const event = getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.STAT_EVENTS && Array.isArray(ev.statEvents) && ev.statEvents.length);
   if (!event) return [];
   return statEventsToAnimQueue(event.statEvents, players || state?.players || [], event.msgs || []);
+}
+
+export function buildGodPowerBlockedStepsFromVisualEvents(state, oldState = null) {
+  const oldIds = new Set(getVisualEventIds(getVisualEvents(oldState)));
+  return getVisualEvents(state)
+    .filter(ev => ev?.type === VISUAL_EVENT.GOD_POWER_BLOCKED && ev?.id && !oldIds.has(ev.id))
+    .map(event => {
+      const playerIdx = event.playerIdx ?? 0;
+      const playerName = event.playerName || state?.players?.[playerIdx]?.name || '该玩家';
+      return {
+        type: 'GOD_POWER_BLOCKED',
+        targetPid: playerIdx,
+        name: localDisplayName(playerIdx, playerName),
+        msgs: Array.isArray(event.msgs) ? event.msgs : [],
+      };
+    });
 }
 
 export function buildEarthquakeStepFromVisualEvents(state) {

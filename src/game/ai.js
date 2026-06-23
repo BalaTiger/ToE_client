@@ -190,6 +190,26 @@ function estimateEtherealizeZoneCardScore(self, players, ci) {
   return stackCount * 0.9 + danger + (self.etherealizeStacks || 0) * 0.25 - 0.6;
 }
 
+function estimateHunterGlobalDamageScore(players, hpLoss = 0, sanLoss = 0, dmgBonus = 0) {
+  const nonHunters = players
+    .map((player, idx) => ({ player, idx }))
+    .filter(({ player }) => player && player.role !== ROLE_HUNTER);
+  if (!nonHunters.length) return 0;
+  const killedNonHunters = nonHunters.filter(({ player }) => {
+    if (player.isDead) return true;
+    const nextHp = player.hp - (hpLoss || 0) - dmgBonus;
+    const nextSan = player.san - (sanLoss || 0);
+    return nextHp <= 0 || nextSan <= 0;
+  });
+  const livingNonHunters = nonHunters.filter(({ player }) => !player.isDead);
+  const immediateWin = killedNonHunters.length === nonHunters.length;
+  if (immediateWin) return 120;
+  if (!killedNonHunters.length) return 0;
+  const revealedBonus = killedNonHunters.filter(({ player }) => player.roleRevealed).length * 2;
+  const damagePressure = livingNonHunters.length * Math.max(hpLoss || 0, sanLoss || 0) * 0.25;
+  return 10 + killedNonHunters.length * 8 + revealedBonus + damagePressure;
+}
+
 function estimateHunterZoneCardScore(card, self, players, ci) {
   let score = 0;
   switch (card.type) {
@@ -268,30 +288,28 @@ function estimateHunterZoneCardScore(card, self, players, ci) {
     case 'allDamageSAN':
     case 'allDamageBoth': {
       const dmgBonus = self.damageBonus || 0;
-      const livingPlayers = players.filter(p => !p.isDead);
+      const livingPlayers = players.map((p, idx) => ({ player: p, idx })).filter(({ player }) => player && !player.isDead);
       const hpLoss = card.type === 'allDamageBoth' ? card.val : (card.type === 'allDamageHP' ? card.val : 0);
       const sanLoss = card.type === 'allDamageBoth' ? card.val : (card.type === 'allDamageSAN' ? card.val : 0);
-      const targets = livingPlayers.map((_, i) => i);
-      let hunterKillBonus = 0;
-      let totalKillPotential = 0;
+      const targets = livingPlayers.map(({ idx }) => idx);
+      const hunterWinPressure = estimateHunterGlobalDamageScore(players, hpLoss, sanLoss, dmgBonus);
+      if (hunterWinPressure > 0) {
+        score = hunterWinPressure;
+        break;
+      }
+      let revealedEnemyPressure = 0;
       for (const idx of targets) {
         if (idx === ci) continue;
         const target = players[idx];
-        if (target.role === ROLE_HUNTER && !target.isDead) {
-          const newHp = target.hp - hpLoss - dmgBonus;
-          if (newHp <= 0 && target.san >= 4) {
-            hunterKillBonus += 8;
-            totalKillPotential++;
-          }
+        if (target.role !== ROLE_HUNTER && target.roleRevealed && !target.isDead) {
+          const newHp = target.hp - (hpLoss || 0) - dmgBonus;
+          const newSan = target.san - (sanLoss || 0);
+          if (newHp <= 3 || newSan <= 3) revealedEnemyPressure += 3;
         }
       }
-      if (totalKillPotential > 0) {
-        score = 10 + hunterKillBonus + totalKillPotential * 2;
-      } else {
-        const totalDamageToOthers = targets.filter(idx => idx !== ci).length * (hpLoss || sanLoss);
-        score = totalDamageToOthers * 0.3;
-        if (self.hp <= hpLoss + 1) score -= 5;
-      }
+      const totalDamageToOthers = targets.filter(idx => idx !== ci).length * (hpLoss || sanLoss);
+      score = totalDamageToOthers * 0.3 + revealedEnemyPressure;
+      if (self.hp <= hpLoss + 1) score -= 5;
       break;
     }
     case 'selfDamageHP':
@@ -1185,11 +1203,11 @@ export function canCultistEmptyHandByBewitch(players, ti) {
   const self = players[ti];
   if (!self || self.isDead) return false;
 
-  const hand = self.hand || [];
-  if (hand.length === 0) return false;
+  const playableHand = (self.hand || []).filter(c => !isBlackGoatYoung(c));
+  if (playableHand.length !== 1) return false;
 
-  const regionCards = hand.filter(c => !c.isGod && !isBlackGoatYoung(c));
-  return regionCards.length > 0;
+  const plan = chooseAiCultistBewitchPlan(players, ti);
+  return !!plan && (plan.card?.id === playableHand[0]?.id || plan.card === playableHand[0]);
 }
 
 export function aiShouldNotRest(gs, ai, aiEffRole, players, ti) {

@@ -39,6 +39,8 @@ import {
   startNextTurn,
 } from './turnEngine';
 import { withClearedTurnAnimFields } from './turnAnimState';
+import { buildAnimQueue } from './animQueueCore';
+import { statePatchStep } from './animQueueHelpers';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, isRevealedCultist } from './coreUtils';
 import { createBlackGoatYoungCard } from '../constants/card';
 import { buildStatEvents } from './statEvents';
@@ -46,8 +48,9 @@ import { END_TURN_EVENT, getEndTurnReplayHandCards } from './endTurnEvents';
 import { deriveEffectDecisionState, hasEffectDecisionState } from './effectStatePatch';
 import { buildApophisNightLog, getApophisNightForLevel, resolveApophisTarget } from './apophisNight';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
-import { canGodPowerAffect } from './godPowerImmunity';
+import { buildGodPowerBlockedLog, canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
 import { appendProliferatingZDraws } from './proliferatingZ';
+import { createGodPowerBlockedEvent } from './visualEvents';
 
 /**
  * 检查两张卡是否满足追捕匹配规则。
@@ -94,7 +97,7 @@ function getBlackGoatMultiplyEvent(players, sourceIdx) {
   if (!source || source.isDead || !(source.hand || []).some(isBlackGoatYoung)) return null;
   const targetCandidates = players
     .map((p, i) => ({ p, i }))
-    .filter(({ p, i }) => !p.isDead && i !== sourceIdx && canGodPowerAffect(p))
+    .filter(({ p, i }) => !p.isDead && i !== sourceIdx)
     .sort((a, b) => {
       const aBgy = a.p.hand.filter(isBlackGoatYoung).length;
       const bBgy = b.p.hand.filter(isBlackGoatYoung).length;
@@ -262,13 +265,21 @@ export function discardAiHandToLimit(P, ct, Disc, L) {
   }
 }
 
-function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
+function buildAiEndTurnReplayResolutionQueue({ beforeGs, afterGs }) {
+  return buildAnimQueue(beforeGs, afterGs).filter(step => step?.type !== 'DRAW_CARD');
+}
+
+function replayStatePatch(P, D, Disc, L) {
+  return statePatchStep({ players: P, deck: D, discard: Disc, log: L });
+}
+
+export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
   const handCards = P[ct]?.hand || [];
   const replayIds = getEndTurnReplayHandCards(P[ct]).map(card => card?.id).filter(id => id != null);
   if (!replayIds.length) return { P, D, Disc, L, statePatch: {}, replayQueue: [], replayMsgs: [] };
-  const replayQueue = [{ type: 'ENDLESS_CORRIDOR_TUNNEL' }];
   const replayMsgs = [];
   const introMsg = `【无尽通道】${P[ct].name} 展示所有手牌：${handCards.map(card => cardLogText(card, { alwaysShowName: true })).join(' ')}`;
+  const replayQueue = [{ type: 'ENDLESS_CORRIDOR_TUNNEL', msgs: [introMsg] }];
   L.push(introMsg);
   replayMsgs.push(introMsg);
   let statePatch = {};
@@ -288,6 +299,11 @@ function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
       msgs: [drawMsg],
     });
     if (card.isGod) {
+      const beforePlayers = copyPlayers(P);
+      const beforeDeck = [...D];
+      const beforeDiscard = [...Disc];
+      const beforeLog = [...L];
+      const beforePatch = statePatch;
       P[ct].hand.splice(handIdx, 1);
       P[ct].godEncounters = (P[ct].godEncounters || 0) + 1;
       const godCost = P[ct].godEncounters;
@@ -304,6 +320,11 @@ function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
       const gr = aiHandleGodCard(ct, card, P, D, Disc, L, { ...gs, ...statePatch, ...inspectionMeta }, true);
       P = gr.P; D = gr.D; Disc = gr.Disc;
       statePatch = { ...statePatch, ...inspectionMeta, ...(gr.inspectionMeta || {}), ...(gr.statePatch || {}) };
+      const resolutionQueue = buildAiEndTurnReplayResolutionQueue({
+        beforeGs: { ...gs, ...beforePatch, players: beforePlayers, deck: beforeDeck, discard: beforeDiscard, log: beforeLog },
+        afterGs: { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L },
+      });
+      replayQueue.push(...resolutionQueue, replayStatePatch(P, D, Disc, L));
       continue;
     }
     const keep = card?.type === END_TURN_EVENT.END_TURN_REPLAY_HAND || !isZoneCard(card) || aiShouldKeepZoneCard(card, ct, P, false);
@@ -322,15 +343,36 @@ function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
           targetPid: ct,
           msgs: [discardMsg],
         });
+        const beforeBalancePlayers = copyPlayers(P);
+        const beforeBalanceDeck = [...D];
+        const beforeBalanceDiscard = [...Disc];
+        const beforeBalanceLog = [...L];
+        const beforeBalancePatch = statePatch;
         const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: L, ownerIdx: ct, cards: [discarded], reason: '无尽通道弃牌' });
         P = balance.players; D = balance.deck; Disc = balance.discard; L = balance.log;
+        const balanceQueue = buildAiEndTurnReplayResolutionQueue({
+          beforeGs: { ...gs, ...beforeBalancePatch, players: beforeBalancePlayers, deck: beforeBalanceDeck, discard: beforeBalanceDiscard, log: beforeBalanceLog },
+          afterGs: { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L },
+        });
+        replayQueue.push(...balanceQueue);
       }
+      replayQueue.push(replayStatePatch(P, D, Disc, L));
       continue;
     }
+    const beforePlayers = copyPlayers(P);
+    const beforeDeck = [...D];
+    const beforeDiscard = [...Disc];
+    const beforeLog = [...L];
+    const beforePatch = statePatch;
     const res = applyFx(card, ct, null, P, D, Disc, { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L }, false, [], true);
     P = res.P; D = res.D; Disc = res.Disc;
     if (res.msgs?.length) L.push(...res.msgs);
     statePatch = { ...statePatch, ...(res.statePatch || {}) };
+    const resolutionQueue = buildAiEndTurnReplayResolutionQueue({
+      beforeGs: { ...gs, ...beforePatch, players: beforePlayers, deck: beforeDeck, discard: beforeDiscard, log: beforeLog },
+      afterGs: { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L },
+    });
+    replayQueue.push(...resolutionQueue, replayStatePatch(P, D, Disc, L));
     if (hasEffectDecisionState(res.statePatch)) {
       break;
     }
@@ -433,6 +475,30 @@ export function aiStep(gs, opts = {}) {
       _gs = { ..._gs, ...fxResult.statePatch };
     }
     return { gs: _gs, P: _P, D: _D, Disc: _Disc, L: _L, fxResult };
+  };
+
+  const buildBewitchTreasureWinState = (_gs, _P, _D, _Disc, _L, targetIdx) => {
+    const target = _P[targetIdx];
+    const effectiveRole = target?._nyaBorrow || target?.role;
+    if (!target || target.isDead || effectiveRole !== ROLE_TREASURE || !isWinHand(target.hand)) return null;
+    _P[targetIdx] = { ...target, roleRevealed: true };
+    const isLocalPlayer = targetIdx === 0 && !_gs._isMP;
+    const winnerName = isLocalPlayer ? '你' : _P[targetIdx].name;
+    const winLog = isLocalPlayer ? '你集齐了全部编号！' : `${_P[targetIdx].name} 集齐全部编号并获胜！`;
+    return withClearedTurnAnimFields({
+      ..._gs,
+      players: _P,
+      deck: _D,
+      discard: _Disc,
+      log: [..._L, winLog],
+      abilityData: {},
+      phase: 'AI_TURN',
+      gameOver: {
+        winner: ROLE_TREASURE,
+        reason: isLocalPlayer ? '你集齐了全部编号并获胜！' : `${winnerName} 集齐了全部编号并获胜！`,
+        winnerIdx: targetIdx,
+      },
+    });
   };
 
   if(abilityData?.type==='firstComePick'&&Array.isArray(abilityData.revealedCards)){
@@ -617,6 +683,12 @@ export function aiStep(gs, opts = {}) {
         } else if(!P[ct].godName||alreadyHasGod){
           P[ct].godName=hgc.godKey;P[ct].godLevel=1;P[ct].godZone=[{...hgc}];
         }
+        let handWorshipBlockedEvent = null;
+        if(['APO','ZHU','SHU'].includes(hgc.godKey)&&hasGodPowerImmunity(P[ct])){
+          const blockedLog=buildGodPowerBlockedLog(P[ct]);
+          L.push(blockedLog);
+          handWorshipBlockedEvent=createGodPowerBlockedEvent({playerIdx:ct,playerName:P[ct].name,msgs:[blockedLog]});
+        }
         if(hgc.godKey==='APO'&&canGodPowerAffect(P[ct])){
           gs={...gs,apophisNight:getApophisNightForLevel(P[ct].godLevel)};
           L.push(buildApophisNightLog());
@@ -626,7 +698,7 @@ export function aiStep(gs, opts = {}) {
         playersBeforeSkillAction=copyPlayers(P);
         preSkillLogs=L.slice(worshipLogStart);
         preSkillDiscard=[...Disc];
-        gs={...gs,...inspectionMeta};
+        gs={...gs,...inspectionMeta,...(handWorshipBlockedEvent?{_visualEvents:[handWorshipBlockedEvent,...(gs._visualEvents||[])]}:{})};
         const ww=checkWin(P,gs._isMP);if(ww)return{...gs,players:P,deck:D,discard:Disc,log:L,...inspectionMeta,gameOver:ww};
       }
     }
@@ -700,7 +772,7 @@ export function aiStep(gs, opts = {}) {
     useSkill = true;
   }
 
-  const multiplyEvent = (!gs.multiplyUsed && !gs.skillUsed && !gs.restUsed && canGodPowerAffect(P[ct]))
+  const multiplyEvent = (!gs.multiplyUsed && !gs.skillUsed && !gs.restUsed)
     ? getBlackGoatMultiplyEvent(P, ct)
     : null;
   if (multiplyEvent && shouldAiMultiply({ gs, players: P, sourceIdx: ct, aiEffRole, ai: P[ct], aiSkillDecision, cultistBewitchPlan, huntAbandoned: newAbandoned })) {
@@ -943,6 +1015,8 @@ export function aiStep(gs, opts = {}) {
         const sc=plan.card;
         const bwRes=applyBewitchGift(gs,P,D,Disc,L,ct,ti,sc);
         gs=bwRes.gs;P=bwRes.P;D=bwRes.D;Disc=bwRes.Disc;L=bwRes.L;
+        const treasureWin=buildBewitchTreasureWinState(gs,P,D,Disc,L,ti);
+        if(treasureWin)return buildReturnPack(treasureWin,copyPlayers(P));
         const pendingSlime=buildPendingSlimeBalanceState(gs,P,D,Disc,L,{
           huntAbandoned:newAbandoned,
           _aiDrawnCard:(gs._aiDrawnCard??gs._drawnCard??null),
@@ -1046,6 +1120,8 @@ export function aiStep(gs, opts = {}) {
         const sc=plan.card;
         const bwRes=applyBewitchGift(gs,P,D,Disc,L,ct,ti,sc);
         gs=bwRes.gs;P=bwRes.P;D=bwRes.D;Disc=bwRes.Disc;L=bwRes.L;
+        const treasureWin=buildBewitchTreasureWinState(gs,P,D,Disc,L,ti);
+        if(treasureWin)return buildReturnPack(treasureWin,copyPlayers(P));
         const pendingSlime=buildPendingSlimeBalanceState(gs,P,D,Disc,L,{
           huntAbandoned:newAbandoned,
           _aiDrawnCard:(gs._aiDrawnCard??gs._drawnCard??null),

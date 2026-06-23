@@ -1,9 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import { buildAiHuntEventAnimQueue, buildAnimQueue } from '../animQueueCore';
-import { createCardEffectEvent, createEarthquakeEvent } from '../visualEvents';
+import { buildFreshStatVisualEvents, createCardEffectEvent, createEarthquakeEvent, createGodPowerBlockedEvent } from '../visualEvents';
 import { makeGodCard, makeGs, makePlayer } from './factory';
 
 describe('buildAnimQueue stat animations', () => {
+  it('stat visual event 只包含本次 statLogs 对应的事件，避免重播上个 AI 的 SAN 扣减', () => {
+    const allenLog = '艾伦 遭遇邪神 森之领主！（第1次）失去1SAN';
+    const bellaLog = '贝拉 遭遇邪神 阿波菲斯！（第1次）失去1SAN';
+    const events = buildFreshStatVisualEvents({
+      _statLogs: [bellaLog],
+      _statEvents: [
+        { type: 'SAN_LOSS', target: 1, from: { san: 10 }, to: { san: 9 }, logHint: allenLog, seq: 1 },
+        { type: 'SAN_LOSS', target: 2, from: { san: 10 }, to: { san: 9 }, logHint: bellaLog, seq: 2 },
+      ],
+    }, 0);
+
+    expect(events).toHaveLength(1);
+    expect(events[0].statEvents).toMatchObject([{ target: 2, seq: 2 }]);
+  });
+
   it('阿波菲斯黑夜降临会播放日食动画', () => {
     const oldGs = makeGs({
       players: [makePlayer()],
@@ -524,6 +539,23 @@ describe('buildAnimQueue stat animations', () => {
       fromPid: 0,
       visualSetupPatch: { players: beforePlayers },
     });
+  });
+
+  it('火把免疫邪神之力视觉事件会生成角色面板护罩动画', () => {
+    const players = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' })];
+    const msg = '【引燃火把】艾伦 本回合不受邪神之力影响';
+    const oldGs = makeGs({ players, log: [] });
+    const newGs = makeGs({
+      players,
+      log: [msg],
+      _visualEvents: [createGodPowerBlockedEvent({ playerIdx: 1, playerName: '艾伦', msgs: [msg] })],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+
+    expect(queue).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'GOD_POWER_BLOCKED', targetPid: 1, msgs: [msg] }),
+    ]));
   });
 });
 

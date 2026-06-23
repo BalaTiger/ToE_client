@@ -2,6 +2,115 @@ import React from 'react';
 import { ANIM_CFG, DICE_FACES } from './data';
 import { EarthquakeOverlay } from './EarthquakeOverlay';
 
+export function TorchWardOverlay({ anim, exiting }) {
+  const targetPid = anim?.targetPid ?? 0;
+  const [rect, setRect] = React.useState(null);
+  React.useLayoutEffect(() => {
+    const measure = () => {
+      const el = document.querySelector(`[data-pid="${targetPid}"]`);
+      if (!el) {
+        setRect(null);
+        return;
+      }
+      const r = el.getBoundingClientRect();
+      const pad = Math.max(16, Math.min(40, Math.max(r.width, r.height) * 0.08));
+      setRect({
+        left: r.left - pad,
+        top: r.top - pad,
+        width: r.width + pad * 2,
+        height: r.height + pad * 2,
+      });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', measure, true);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', measure, true);
+    };
+  }, [targetPid]);
+
+  if (!rect) return null;
+  const embers = [
+    { left: '18%', top: '72%', delay: '0s', scale: 0.9 },
+    { left: '34%', top: '14%', delay: '0.08s', scale: 0.65 },
+    { left: '62%', top: '10%', delay: '0.16s', scale: 0.8 },
+    { left: '78%', top: '66%', delay: '0.24s', scale: 0.7 },
+    { left: '50%', top: '88%', delay: '0.32s', scale: 0.55 },
+  ];
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1800, pointerEvents: 'none' }}>
+      <style>{`
+        @keyframes torchWardIgnite {
+          0% { opacity: 0; transform: scale(0.86); filter: blur(8px) brightness(0.8); }
+          18% { opacity: 1; transform: scale(1.03); filter: blur(0) brightness(1.15); }
+          72% { opacity: 0.9; transform: scale(1); filter: blur(0) brightness(1); }
+          100% { opacity: 0; transform: scale(1.08); filter: blur(5px) brightness(0.9); }
+        }
+        @keyframes torchWardFlame {
+          0%, 100% { transform: translateY(0) scaleY(1); opacity: 0.82; }
+          40% { transform: translateY(-5%) scaleY(1.08); opacity: 1; }
+          70% { transform: translateY(3%) scaleY(0.96); opacity: 0.72; }
+        }
+        @keyframes torchWardEmber {
+          0% { transform: translate3d(0, 8px, 0) scale(0.5); opacity: 0; }
+          18% { opacity: 1; }
+          100% { transform: translate3d(0, -34px, 0) scale(1.2); opacity: 0; }
+        }
+      `}</style>
+      <div style={{
+        position: 'absolute',
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        animation: exiting ? 'animFadeOut 0.16s ease-in forwards' : 'torchWardIgnite 1.08s ease-out forwards',
+      }}>
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          borderRadius: '48% 48% 44% 44% / 38% 38% 54% 54%',
+          background: 'radial-gradient(ellipse at center, rgba(255,216,132,0.2) 0%, rgba(255,144,42,0.11) 46%, rgba(255,88,28,0.05) 66%, transparent 74%)',
+          boxShadow: '0 0 22px rgba(255,184,72,0.78), inset 0 0 30px rgba(255,216,132,0.3), inset 0 -18px 28px rgba(255,86,18,0.16)',
+        }} />
+        <div style={{
+          position: 'absolute',
+          inset: '-2%',
+          borderRadius: '50% 50% 46% 46% / 40% 40% 56% 56%',
+          border: '2px solid rgba(255,196,86,0.82)',
+          boxShadow: '0 0 18px rgba(255,142,36,0.85), inset 0 0 16px rgba(255,222,140,0.24)',
+        }} />
+        <div style={{
+          position: 'absolute',
+          left: '9%',
+          right: '9%',
+          bottom: '3%',
+          height: '38%',
+          borderRadius: '50%',
+          background: 'linear-gradient(0deg, rgba(255,92,24,0.42), rgba(255,194,86,0.16) 48%, transparent 78%)',
+          filter: 'blur(5px)',
+          animation: 'torchWardFlame 0.46s ease-in-out infinite',
+        }} />
+        {embers.map((ember, i) => (
+          <div key={i} style={{
+            position: 'absolute',
+            left: ember.left,
+            top: ember.top,
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: '#ffd27a',
+            boxShadow: '0 0 10px #ff8a24',
+            transform: `scale(${ember.scale})`,
+            animation: `torchWardEmber 0.86s ease-out ${ember.delay} forwards`,
+          }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Generic Overlay Anim ──────────────────────────────────────
 export function GenericAnimOverlay({ anim, exiting }) {
   if (!anim) return null;
@@ -171,15 +280,33 @@ export function YourTurnAnim({ name, local = false }) {
   const col = isLocal ? '#e8c87a' : '#c8a0e8';
   const glow = isLocal ? '#c8a96e99' : '#a080d099';
   const glow2 = isLocal ? '#c8a96e44' : '#a080d044';
+  const veil = isLocal ? 'rgba(42, 30, 12, 0.42)' : 'rgba(32, 18, 48, 0.42)';
+  const veilCore = isLocal ? 'rgba(200, 169, 110, 0.16)' : 'rgba(160, 128, 208, 0.16)';
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 2500, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
       <div style={{
+        position: 'absolute',
+        width: 'min(76vw, 1040px)',
+        height: 'clamp(72px, 8.8vh, 152px)',
+        background: `radial-gradient(ellipse at center, ${veilCore} 0%, ${veil} 38%, rgba(0,0,0,0.18) 58%, transparent 78%)`,
+        WebkitMaskImage: 'linear-gradient(90deg, transparent 0%, #000 18%, #000 82%, transparent 100%)',
+        maskImage: 'linear-gradient(90deg, transparent 0%, #000 18%, #000 82%, transparent 100%)',
+        filter: 'blur(10px)',
+        animation: 'yourTurnFade 2.0s ease-in-out forwards',
+      }} />
+      <div style={{
+        position: 'relative',
         fontFamily: "'Cinzel Decorative','Cinzel',serif",
-        fontSize: 32, fontWeight: 700, letterSpacing: 8,
+        fontSize: 'clamp(32px, 4.6vh, 72px)',
+        fontWeight: 700,
+        letterSpacing: 'clamp(1px, 0.12em, 7px)',
         color: col,
         textShadow: `0 0 40px ${glow}, 0 0 80px ${glow2}`,
         animation: 'yourTurnFade 2.0s ease-in-out forwards',
         whiteSpace: 'nowrap',
+        maxWidth: '86vw',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
       }}>{text}</div>
     </div>
   );
