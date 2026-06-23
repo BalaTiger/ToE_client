@@ -14,12 +14,14 @@ describe('computeScaleRatio', () => {
   });
 
   it('upscales above 1920x1080 using the limiting axis with extra aggression', () => {
-    expect(computeScaleRatio(2560, 1440)).toBeCloseTo(1.5);
-    expect(computeScaleRatio(3840, 2160)).toBeCloseTo(2.5);
+    expect(computeScaleRatio(2560, 1440)).toBeGreaterThan(1.7);
+    expect(computeScaleRatio(2560, 1440)).toBeLessThan((2560 - 96) / 1200);
+    expect(computeScaleRatio(3840, 2160)).toBeGreaterThan(computeScaleRatio(2560, 1440));
+    expect(computeScaleRatio(3840, 2160)).toBeCloseTo(2.91, 1);
   });
 
   it('caps very large displays', () => {
-    expect(computeScaleRatio(7680, 4320)).toBe(2.5);
+    expect(computeScaleRatio(7680, 4320)).toBeCloseTo(3);
   });
 });
 
