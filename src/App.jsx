@@ -124,6 +124,7 @@ import {
   revealBlindDrawCard,
   getCthRestDrawRemaining,
   buildCthRestDrawFinishedState,
+  getTurnStartDrawnCard,
   getTurnStartDrawerIdx,
   createTimedOutDrawDiscardEvent,
   createHandLimitDiscardEvent,
@@ -2492,14 +2493,28 @@ export default function Game(){
         const oldLog=Array.isArray(gs.log)?gs.log:[];
         const nextLog=Array.isArray(newGs.log)?newGs.log:oldLog;
         const {currentTurnLogs}=splitTransitionLogs(oldLog,nextLog);
-        const hasTurnStartDraw=!!gs._playersBeforeThisDraw;
+        const hasTurnStartDraw=!!gs._playersBeforeThisDraw&&!gs._aiTurnIntroShown;
         const aiTurnDrawnCard=hasTurnStartDraw?(rawResult._animAiDrawnCard??rawResult._aiDrawnCard??gs._aiDrawnCard??gs._drawnCard??null):null;
         const aiTurnDiscarded=hasTurnStartDraw?isDrawnCardActuallyDiscarded(rawResult,aiTurnDrawnCard):false;
         const fakeGs = (ps,log=gs.log) => ({...gs, players: ps, log});
         const queue=[];
-        if(!gs._aiTurnIntroShown)queue.push(...buildTurnStartIntroQueue(gs,gs.players[gs.currentTurn]?.name||'???'));
-        if(aiTurnDrawnCard) queue.push({type:'DRAW_CARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn,msgs:gs._drawLogs});
-        if(gs._playersBeforeThisDraw&&aiTurnDrawnCard){
+        const aiTurnStartReplay=hasTurnStartDraw
+          ? buildActorTurnStartReplay(gs,{
+              oldGs:{...gs,players:gs._playersBeforeThisDraw,log:getTurnStartDrawBaselineLog(gs)},
+              effectOldGs:{...gs,players:gs._playersBeforeThisDraw,log:getTurnStartDrawBaselineLog(gs)},
+              actorName:gs.players[gs.currentTurn]?.name||'???',
+              forceActorName:true,
+            })
+          : null;
+        const usedAiTurnStartReplay=!!(aiTurnStartReplay?.queue?.length);
+        if(usedAiTurnStartReplay){
+          if(aiTurnStartReplay.visualLock)visualStateLocks.lock(aiTurnStartReplay.visualLock);
+          queue.push(...aiTurnStartReplay.queue);
+        }else if(!gs._aiTurnIntroShown){
+          queue.push(...buildTurnStartIntroQueue(gs,gs.players[gs.currentTurn]?.name||'???'));
+        }
+        if(!usedAiTurnStartReplay&&aiTurnDrawnCard) queue.push({type:'DRAW_CARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn,msgs:gs._drawLogs});
+        if(!usedAiTurnStartReplay&&gs._playersBeforeThisDraw&&aiTurnDrawnCard){
           const drawBaselineLog=getTurnStartDrawBaselineLog(gs);
           const drawFullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(
             [...(gs._drawLogs||[]),...(gs._statLogs||[])],
@@ -2519,7 +2534,7 @@ export default function Game(){
           }
         }
         // Add discard anim if AI chose to discard the drawn card
-        if(aiTurnDiscarded&&aiTurnDrawnCard){
+        if(!usedAiTurnStartReplay&&aiTurnDiscarded&&aiTurnDrawnCard){
           queue.push({type:'DISCARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn});
           queue.push(statePatchStep({players:gs.players,discard:gs.discard}));
         }
@@ -2596,15 +2611,17 @@ export default function Game(){
         // Helper: build a gs-like object with substituted players for buildAnimQueue
         // fakeGs: use gs.log as the baseline so buildAnimQueue correctly detects new messages
         const fakeGs = (ps,log=gs.log) => ({...gs, players: ps, log});
-        const hasTurnStartDraw=!!gs._playersBeforeThisDraw;
+        const hasTurnStartDraw=!!gs._playersBeforeThisDraw&&!gs._aiTurnIntroShown;
         const aiTurnDrawnCard=hasTurnStartDraw?(rawResult._animAiDrawnCard??rawResult._aiDrawnCard??gs._aiDrawnCard??gs._drawnCard??null):null;
         const aiTurnDiscarded=hasTurnStartDraw?isDrawnCardActuallyDiscarded(rawResult,aiTurnDrawnCard):false;
         const {currentTurnLogs}=splitTransitionLogs(oldLog,nextLog);
         const queue=[];
         const aiTurnStartReplay=hasTurnStartDraw
-          ? buildAppTurnStartDrawReplay(gs,{
+          ? buildActorTurnStartReplay(gs,{
               oldGs:{...gs,players:gs._playersBeforeThisDraw,log:getTurnStartDrawBaselineLog(gs)},
-              effectOldGs:{...gs,players:gs._playersBeforeThisDraw,log:getTurnStartDrawBaselineLog(gs)}
+              effectOldGs:{...gs,players:gs._playersBeforeThisDraw,log:getTurnStartDrawBaselineLog(gs)},
+              actorName:gs.players[gs.currentTurn]?.name||'???',
+              forceActorName:true,
             })
           : null;
         const usedAiTurnStartReplay=!!(aiTurnStartReplay?.queue?.length);
@@ -2617,6 +2634,7 @@ export default function Game(){
           queue.push(...cthQueue);
         }
         if(usedAiTurnStartReplay){
+          if(aiTurnStartReplay.visualLock)visualStateLocks.lock(aiTurnStartReplay.visualLock);
           queue.push(...aiTurnStartReplay.queue);
         }else if(!gs._aiTurnIntroShown){
           queue.push(...buildTurnStartIntroQueue(gs,gs.players[gs.currentTurn]?.name||'???'));
@@ -2865,20 +2883,19 @@ export default function Game(){
           }
         }else{
           // AI next: action stat changes go before queue ends; draw effects for next AI
-          // will be shown at the start of that AI's own queue (after their banner + DRAW_CARD)
+          // are appended here before replay hints are normalized away.
           queue.push(...finalActionQ);
           queue.push(...handLimitDiscardQueue);
           queue.push(...handLimitStatQueue);
           queue.push(...aiEndTurnReplayQueue);
-          if(newGs.phase==='AI_TURN'&&newGs.currentTurn!==gs.currentTurn&&(newGs._turnStartLogs||[]).length){
-            logAiTurnStartDebug('aiEffect:defer-next-ai-replay',{
+          nextTurnIntroQueue=[
+            ...nextTurnIntroQueue,
+            ...buildQueuedNextAiTurnStartReplay(newGs,{
               fromTurn:gs.currentTurn,
-              toTurn:newGs.currentTurn,
-              name:newGs.players?.[newGs.currentTurn]?.name,
-              turnStartLogs:newGs._turnStartLogs,
-              drawLogs:newGs._drawLogs,
-            });
-          }
+              playersBeforeDraw:rawResult._playersBeforeNextDraw||P_actionEnd,
+              statEventSeq:consumedActionStatSeq,
+            }),
+          ];
           // 如果下一个是AI，且它摸首牌直接死亡导致了这局游戏结束，此时不会有真正的下一个AI回合勾子运行了，必须把它的暴毙动画立刻压入队列
           if(newGs.gameOver && newGs.currentTurn !== gs.currentTurn && !nextTurnIntroQueue.length){
             const aiNextStatQ = bindAnimLogChunks(
@@ -6347,6 +6364,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const baseGs={...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{},phase:'ACTION', huntAbandoned: newAbandoned};
 
     let newGs;
+    let beforeNextTurnGs=null;
     if (win) newGs = {...baseGs, gameOver:win};
     // 决定是让 AI 重新进入 AI_TURN 继续追杀，还是结束该回合
       else if (wantsToHuntAgain) newGs = withClearedTurnAnimFields({...baseGs, phase: 'AI_TURN', currentTurn: huntingAI, skillUsed: false, restUsed: false, _aiName: aiHunterName});
@@ -6357,7 +6375,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         Disc.push(c);
         L.push(`${aiHunterName} 弃 ${cardLogText(c,{alwaysShowName:true})}（上限）`);
       }
-      newGs = startNextTurn({...baseGs, players:P, discard:Disc, log:L, currentTurn: huntingAI, skillUsed: true});
+      beforeNextTurnGs={...baseGs, players:P, discard:Disc, log:L, currentTurn: huntingAI, skillUsed: true};
+      newGs = startNextTurn(beforeNextTurnGs);
     }
     if(hadHuntDamage)newGs=withTsathogguaSlimeBalanceDecision(newGs,beforeLossPlayers,{_turnOwner:newGs.currentTurn});
 
@@ -6365,8 +6384,16 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(discardedCard){
       queue.push({type:'DISCARD',card:discardedCard,triggerName:aiHunterName||'???',targetPid:huntingAI});
     }
-    const animQueue=buildAnimQueue(gs,newGs).filter(step=>!(discardedCard&&step.type==='CARD_TRANSFER'&&step.fromPid===huntingAI&&step.dest==='discard'));
+    const animEndGs=beforeNextTurnGs||newGs;
+    const animQueue=buildAnimQueue(gs,animEndGs).filter(step=>!(discardedCard&&step.type==='CARD_TRANSFER'&&step.fromPid===huntingAI&&step.dest==='discard'));
     queue.push(...animQueue);
+    const nextAiTurnIntroQueue=beforeNextTurnGs
+      ?buildQueuedNextAiTurnStartReplay(newGs,{
+        fromTurn:huntingAI,
+        playersBeforeDraw:beforeNextTurnGs.players,
+        statEventSeq:animEndGs._statEventSeq||gs._statEventSeq||0,
+      })
+      :[];
     const playerNeedsQueuedTurnIntro=
       !win &&
       !wantsToHuntAgain &&
@@ -6378,6 +6405,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       );
     if(playerNeedsQueuedTurnIntro){
       triggerAnimQueue(queue,null,()=>applyNextTurnGs(newGs));
+    }else if(nextAiTurnIntroQueue.length){
+      triggerAnimQueue([
+        ...queue,
+        ...(queue.length?[{type:'TURN_BOUNDARY_PAUSE'}]:[]),
+        ...nextAiTurnIntroQueue,
+      ],newGs);
     }else{
       triggerAnimQueue(queue,newGs);
     }
@@ -7114,6 +7147,95 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     return replay;
   }
 
+  function withTurnStartActorLabel(replay,state,{actorName=null,forceActorName=false}={}){
+    if(!replay)return replay;
+    const drawerPid=replay.drawerPid??getTurnStartDrawerIdx(state);
+    const displayName=actorName||state?.players?.[drawerPid]?.name||replay.drawerName||'???';
+    if(!forceActorName)return replay;
+    const labelTurnStartStep=step=>step?.type==='YOUR_TURN'
+      ?{...step,name:displayName}
+      :step;
+    const labelDrawCardStep=step=>step?.type==='DRAW_CARD'&&step===replay.drawCardStep
+      ?{...step,triggerName:displayName,targetPid:drawerPid}
+      :step;
+    const labelStep=step=>labelDrawCardStep(labelTurnStartStep(step));
+    const queue=(replay.queue||[]).map(labelStep);
+    const startQueue=(replay.startQueue||[]).map(labelStep);
+    return{
+      ...replay,
+      drawerName:displayName,
+      turnStartStep:replay.turnStartStep?labelStep(replay.turnStartStep):replay.turnStartStep,
+      drawCardStep:replay.drawCardStep?labelStep(replay.drawCardStep):replay.drawCardStep,
+      queue,
+      startAnim:replay.startAnim?labelStep(replay.startAnim):replay.startAnim,
+      startQueue,
+    };
+  }
+
+  function buildActorTurnStartReplay(state,{oldGs=gs,effectOldGs=null,actorName=null,forceActorName=false,timedOutDrawDiscardStep=null}={}){
+    const replay=withTurnStartActorLabel(
+      buildAppTurnStartDrawReplay(state,{oldGs,effectOldGs,timedOutDrawDiscardStep}),
+      state,
+      {actorName,forceActorName}
+    );
+    if(replay?.queue?.length)return replay;
+    const fallbackName=actorName||state?.players?.[state?.currentTurn]?.name||'???';
+    const introQueue=buildTurnStartIntroQueue(state,fallbackName);
+    const queue=introQueue.length||!(state?._turnStartLogs||[]).length
+      ?introQueue
+      :[{type:'YOUR_TURN',name:fallbackName,msgs:state._turnStartLogs}];
+    return{
+      ...(replay||{}),
+      drawnCard:getTurnStartDrawnCard(state)||null,
+      drawerPid:getTurnStartDrawerIdx(state),
+      drawerName:fallbackName,
+      queue,
+      startAnim:queue[0]||null,
+      startQueue:queue.slice(1),
+      visualLock:queue.some(step=>step?.type==='VISUAL_LOCK')
+        ?{players:state?._preTurnPlayers||state?._playersBeforeThisDraw,zhuLight:oldGs?.zhuLight||state?.zhuLight||null}
+        :replay?.visualLock||null,
+      inspectionEvents:replay?.inspectionEvents||[],
+    };
+  }
+
+  function buildQueuedNextAiTurnStartReplay(nextGs,{fromTurn=null,playersBeforeDraw=null,statEventSeq=0}={}){
+    if(!nextGs||nextGs.gameOver)return [];
+    if(!isAiSeat(nextGs,nextGs.currentTurn))return [];
+    if(fromTurn!=null&&nextGs.currentTurn===fromTurn)return [];
+    if(!(nextGs._turnStartLogs||[]).length&&!getTurnStartDrawnCard(nextGs))return [];
+    const nextAiName=nextGs.players?.[nextGs.currentTurn]?.name||'???';
+    const replayOldGs={
+      ...nextGs,
+      players:playersBeforeDraw||nextGs._playersBeforeThisDraw||nextGs.players,
+      log:getTurnStartDrawBaselineLog(nextGs),
+      _statEventSeq:statEventSeq||0,
+      _inspectionSeq:lastInspectionSeqRef.current,
+      _visualEvents:[],
+    };
+    const replay=buildActorTurnStartReplay(nextGs,{
+      oldGs:replayOldGs,
+      effectOldGs:replayOldGs,
+      actorName:nextAiName,
+      forceActorName:true,
+    });
+    logAiTurnStartDebug('buildQueuedNextAiTurnStartReplay',{
+      fromTurn,
+      toTurn:nextGs.currentTurn,
+      name:nextAiName,
+      phase:nextGs.phase,
+      turnStartLogs:nextGs._turnStartLogs,
+      drawLogs:nextGs._drawLogs,
+      drawnCard:getTurnStartDrawnCard(nextGs)?.name||null,
+      replayQueue:replay?.queue?.map(step=>step?.type)||[],
+    });
+    if(!replay?.queue?.length)return [];
+    return[
+      ...(replay.visualLock?[{type:'VISUAL_LOCK',...replay.visualLock}]:[]),
+      ...replay.queue,
+    ];
+  }
+
   // 拉莱耶之主(CTH) 在翻面结束/跳过回合时的强制摸牌：参考"无尽通道"的同步方式，
   // 构建一个 endlessCorridorReplay 视觉事件，让联机远端能与本地同步播放整批摸牌动画。
   // 远端 buildMpRemoteReplayAction 会按 actorIdx/targetPid 旋转到正确座位，再衔接下家回合开始动画。
@@ -7209,9 +7331,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       Array.isArray(newGs._turnStartLogs) &&
       newGs._turnStartLogs.length > 0
     ){
-      const replay=buildAppTurnStartDrawReplay(newGs,{
+      const replay=buildActorTurnStartReplay(newGs,{
         oldGs:gs,
-        effectOldGs:{...gs,players:newGs._playersBeforeThisDraw||gs.players}
+        effectOldGs:{...gs,players:newGs._playersBeforeThisDraw||gs.players},
+        actorName:newGs.players?.[newGs.currentTurn]?.name||'???',
+        forceActorName:true,
       });
       logAiTurnStartDebug('applyNextTurnGs:ai-branch',{
         fromTurn:gs?.currentTurn,
@@ -7227,7 +7351,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       });
       if(replay.queue.length){
         if(replay.visualLock)visualStateLocks.lock(replay.visualLock);
-        const introShownGs={...newGs,_aiTurnIntroShown:!!replay.drawnCard};
+        const introShownGs={...newGs,_aiTurnIntroShown:true};
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
         triggerAnimQueue([...preTurnQ,...replay.queue],introShownGs);
         return;
@@ -7274,14 +7398,23 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       )
     ){
       const aiName=newGs.players[newGs.currentTurn]?.name||'???';
-      const queue=[];
-      queue.push(...buildTurnStartIntroQueue(newGs,aiName));
-      if(newGs._drawnCard) queue.push({type:'DRAW_CARD',card:newGs._drawnCard,triggerName:aiName,targetPid:newGs.currentTurn,msgs:newGs._drawLogs});
-      if(drawStatQ.length) queue.push(...drawStatQ);
+      const replay=buildActorTurnStartReplay(newGs,{
+        oldGs:gs,
+        effectOldGs:{...gs,players:newGs._playersBeforeThisDraw||gs.players},
+        actorName:aiName,
+        forceActorName:true,
+      });
+      const usedReplay=!!(replay?.queue?.length);
+      const queue=usedReplay
+        ? replay.queue
+        : [
+          ...buildTurnStartIntroQueue(newGs,aiName),
+          ...(newGs._drawnCard?[{type:'DRAW_CARD',card:newGs._drawnCard,triggerName:aiName,targetPid:newGs.currentTurn,msgs:newGs._drawLogs}]:[]),
+          ...drawStatQ,
+        ];
       if(queue.length){
-        if(newGs._playersBeforeThisDraw&&newGs._drawnCard){
-          visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
-        }
+        if(replay?.visualLock)visualStateLocks.lock(replay.visualLock);
+        else if(newGs._playersBeforeThisDraw&&newGs._drawnCard)visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
         triggerAnimQueue([...preTurnQ,...queue],newGs);
         return;
       }
@@ -7312,14 +7445,24 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(['FIRST_COME_PICK_SELECT','DAMAGE_LINK_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','ROSE_THORN_SELECT_TARGET','SAME_ABYSS_SELECT','SPHINX_GUESS','GRAVE_DIG_SELECT','BURY_ALIVE_SELECT'].includes(newGs.phase)&&newGs._drawnCard){
       const drawerName=newGs.players[newGs.currentTurn]?.name||'???';
       const drawerPid=newGs.currentTurn;
+      const replay=buildActorTurnStartReplay(newGs,{
+        oldGs:gs,
+        effectOldGs:{...gs,players:newGs._playersBeforeThisDraw||gs.players},
+        actorName:drawerName,
+        forceActorName:drawerPid!==0,
+      });
       pendingGsRef.current=newGs;
-      animQueueRef.current=[...drawStatQ];
-      if(newGs._playersBeforeThisDraw){
-        visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
-      }
+      animQueueRef.current=replay?.queue?.length?[...replay.queue]:[...drawStatQ];
+      if(replay?.visualLock)visualStateLocks.lock(replay.visualLock);
+      else if(newGs._playersBeforeThisDraw)visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
       setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
       if(newGs._isMP&&newGs.currentTurn!==0)broadcastMpStateBeforeLocalReplay(newGs);
-      triggerAnimQueue([...preTurnQ,{type:'DRAW_CARD',card:newGs._drawnCard,triggerName:drawerName,targetPid:drawerPid,msgs:newGs._drawLogs},...drawStatQ],newGs);
+      triggerAnimQueue(
+        replay?.queue?.length
+          ?[...preTurnQ,...replay.queue]
+          :[...preTurnQ,{type:'DRAW_CARD',card:newGs._drawnCard,triggerName:drawerName,targetPid:drawerPid,msgs:newGs._drawLogs},...drawStatQ],
+        newGs
+      );
       return;
     }
     if(newGs._isMP&&newGs.currentTurn!==0){
@@ -7339,12 +7482,22 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(newGs.drawReveal?.card&&newGs.phase==='ACTION'){
       const drawerName=newGs.players[newGs.currentTurn]?.name||'???';
       const drawerPid=newGs.currentTurn;
+      const replay=buildActorTurnStartReplay(newGs,{
+        oldGs:gs,
+        effectOldGs:{...gs,players:newGs._playersBeforeThisDraw||gs.players},
+        actorName:drawerName,
+        forceActorName:drawerPid!==0,
+      });
       pendingGsRef.current=newGs;
-      animQueueRef.current=[...drawStatQ];
-      if(newGs._playersBeforeThisDraw){
-        visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
-      }
-      triggerAnimQueue([...preTurnQ,{type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:drawerName,targetPid:drawerPid,msgs:newGs._drawLogs},...drawStatQ],newGs);
+      animQueueRef.current=replay?.queue?.length?[...replay.queue]:[...drawStatQ];
+      if(replay?.visualLock)visualStateLocks.lock(replay.visualLock);
+      else if(newGs._playersBeforeThisDraw)visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
+      triggerAnimQueue(
+        replay?.queue?.length
+          ?[...preTurnQ,...replay.queue]
+          :[...preTurnQ,{type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:drawerName,targetPid:drawerPid,msgs:newGs._drawLogs},...drawStatQ],
+        newGs
+      );
       return;
     }
     if(preTurnQ.length){
@@ -7624,7 +7777,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       ? pendingRoleSelection
       : {...pendingRoleSelection,players:pendingRoleSelection.players.map((p,i)=>i===0?{...p,role:selectedRole}:p)};
     setPendingRoleSelection(null);
-    setGs(finalGs);
+    setGs(prev=>prev?{...prev,players:finalGs.players,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
     setRoleRevealAnim({role:finalGs.players[0].role,pendingGs:finalGs});
   }
   function returnToMainMenu(){
