@@ -743,7 +743,7 @@ export function shouldAiRest(gs, ai, aiEffRole) {
     return false;
   }
 
-  if (ai.hp <= 3) return Math.random() < Math.min(0.95, 0.86 + cthBias);
+  if (ai.hp <= 3) return true;
   if (ai.hp <= 5) return Math.random() < Math.min(0.88, 0.72 + cthBias);
   return Math.random() < Math.min(0.74, 0.52 + cthBias);
 }
@@ -1186,7 +1186,7 @@ export function canCultistEmptyHandByBewitch(players, ti) {
   if (!self || self.isDead) return false;
 
   const hand = self.hand || [];
-  if (hand.length === 0) return true;
+  if (hand.length === 0) return false;
 
   const regionCards = hand.filter(c => !c.isGod && !isBlackGoatYoung(c));
   return regionCards.length > 0;
@@ -1210,11 +1210,11 @@ export function aiShouldNotRest(gs, ai, aiEffRole, players, ti) {
       return { shouldNotRest: true, reason: 'bewitchWin' };
     }
 
-    if (canCultistEmptyHandByBewitch(players, ti)) {
+    if (ai.hp > 3 && canCultistEmptyHandByBewitch(players, ti)) {
       return { shouldNotRest: true, reason: 'bewitchEmptyHand' };
     }
 
-    if (ai.hp <= 2) {
+    if (ai.hp <= 3) {
       return { shouldNotRest: false, reason: 'hpTooLow' };
     }
 

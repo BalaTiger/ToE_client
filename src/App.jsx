@@ -1588,11 +1588,17 @@ export default function Game(){
 
   const getVisualDiscardForState=useCallback((stateLike)=>{
     const discard=[...(stateLike?.discard||[])];
-    if(stateLike?._playersBeforeThisDraw&&stateLike?._drawnCard&&stateLike?._discardedDrawnCard){
-      return removeCardsFromDiscard(discard,[stateLike._drawnCard]);
+    const turnDrawnCard=stateLike?._drawnCard||stateLike?._aiDrawnCard;
+    if(stateLike?._playersBeforeThisDraw&&turnDrawnCard&&stateLike?._discardedDrawnCard){
+      return removeCardsFromDiscard(discard,[turnDrawnCard]);
     }
     return discard;
   },[]);
+
+  const maskDiscardedTurnDrawUntilDiscardAnim=useCallback((stateLike)=>{
+    if(!stateLike?._playersBeforeThisDraw||!(stateLike?._drawnCard||stateLike?._aiDrawnCard)||!stateLike?._discardedDrawnCard)return;
+    setVisualDiscard(getVisualDiscardForState(stateLike));
+  },[getVisualDiscardForState]);
 
   const suppressNextBroadcastRef=useRef(false); // set before bystander-anim pendingGs; cleared in advanceQueue
   const committedTargetActionRef=useRef(false); // blocks cancel during the frame after a target action is confirmed
@@ -2509,6 +2515,7 @@ export default function Game(){
         const usedAiTurnStartReplay=!!(aiTurnStartReplay?.queue?.length);
         if(usedAiTurnStartReplay){
           if(aiTurnStartReplay.visualLock)visualStateLocks.lock(aiTurnStartReplay.visualLock);
+          maskDiscardedTurnDrawUntilDiscardAnim(gs);
           queue.push(...aiTurnStartReplay.queue);
         }else if(!gs._aiTurnIntroShown){
           queue.push(...buildTurnStartIntroQueue(gs,gs.players[gs.currentTurn]?.name||'???'));
@@ -2635,6 +2642,7 @@ export default function Game(){
         }
         if(usedAiTurnStartReplay){
           if(aiTurnStartReplay.visualLock)visualStateLocks.lock(aiTurnStartReplay.visualLock);
+          maskDiscardedTurnDrawUntilDiscardAnim(gs);
           queue.push(...aiTurnStartReplay.queue);
         }else if(!gs._aiTurnIntroShown){
           queue.push(...buildTurnStartIntroQueue(gs,gs.players[gs.currentTurn]?.name||'???'));
@@ -2928,11 +2936,9 @@ export default function Game(){
           rawResult._playersBeforeNextDraw&&!multiplyEvent
             ? [statePatchStep({players:P_actionEnd,discard:newGs.discard})]
             : [];
-        const finalQueue=[
+        const currentQueueWithPatch=[
           ...currentTurnQueue,
           ...currentTurnStatePatch,
-          ...(currentTurnQueue.length&&nextTurnIntroQueue.length?[{type:'TURN_BOUNDARY_PAUSE'}]:[]),
-          ...nextTurnIntroQueue
         ];
         // 更新玫瑰倒刺快照，防止 useEffect 在动画结束后对已在 aiStep 中结算的弃牌重复触发
         roseThornPrevRef.current = newGs.players.map((player, idx) => ({
@@ -2947,7 +2953,15 @@ export default function Game(){
         if(damageLinkEstablishedMsg){
           visualStateLocks.lock({players:P_actionPreInspection,zhuLight:gs.zhuLight||null});
         }
-        triggerAnimQueue(finalQueue,newGs);
+        if(nextTurnIntroQueue.length){
+          if(currentQueueWithPatch.length){
+            triggerAnimQueue(currentQueueWithPatch,newGs,()=>triggerAnimQueue(nextTurnIntroQueue,newGs));
+          }else{
+            triggerAnimQueue(nextTurnIntroQueue,newGs);
+          }
+        }else{
+          triggerAnimQueue(currentQueueWithPatch,newGs);
+        }
       }catch(e){
         console.error('[AI turn queue error]',e);
         const errMsg=e?.message?`（${e.message}）`:'';
@@ -6406,11 +6420,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(playerNeedsQueuedTurnIntro){
       triggerAnimQueue(queue,null,()=>applyNextTurnGs(newGs));
     }else if(nextAiTurnIntroQueue.length){
-      triggerAnimQueue([
-        ...queue,
-        ...(queue.length?[{type:'TURN_BOUNDARY_PAUSE'}]:[]),
-        ...nextAiTurnIntroQueue,
-      ],newGs);
+      if(queue.length){
+        triggerAnimQueue(queue,newGs,()=>triggerAnimQueue(nextAiTurnIntroQueue,newGs));
+      }else{
+        triggerAnimQueue(nextAiTurnIntroQueue,newGs);
+      }
     }else{
       triggerAnimQueue(queue,newGs);
     }
@@ -7230,7 +7244,10 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       replayQueue:replay?.queue?.map(step=>step?.type)||[],
     });
     if(!replay?.queue?.length)return [];
+    maskDiscardedTurnDrawUntilDiscardAnim(nextGs);
+    const preTurnQ=buildTsathogguaSlimeGrantQueue(nextGs);
     return[
+      ...preTurnQ,
       ...(replay.visualLock?[{type:'VISUAL_LOCK',...replay.visualLock}]:[]),
       ...replay.queue,
     ];
@@ -7351,6 +7368,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       });
       if(replay.queue.length){
         if(replay.visualLock)visualStateLocks.lock(replay.visualLock);
+        maskDiscardedTurnDrawUntilDiscardAnim(newGs);
         const introShownGs={...newGs,_aiTurnIntroShown:true};
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
         triggerAnimQueue([...preTurnQ,...replay.queue],introShownGs);
@@ -7415,6 +7433,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       if(queue.length){
         if(replay?.visualLock)visualStateLocks.lock(replay.visualLock);
         else if(newGs._playersBeforeThisDraw&&newGs._drawnCard)visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
+        if(usedReplay)maskDiscardedTurnDrawUntilDiscardAnim(newGs);
         triggerAnimQueue([...preTurnQ,...queue],newGs);
         return;
       }
@@ -7430,6 +7449,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       if(localTurnDrawReplay?.drawnCard){
         pendingGsRef.current=newGs;
         if(localTurnDrawReplay.visualLock)visualStateLocks.lock(localTurnDrawReplay.visualLock);
+        maskDiscardedTurnDrawUntilDiscardAnim(newGs);
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
         triggerAnimQueue([...preTurnQ,...localTurnDrawReplay.queue],newGs);
         return;
@@ -7455,6 +7475,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       animQueueRef.current=replay?.queue?.length?[...replay.queue]:[...drawStatQ];
       if(replay?.visualLock)visualStateLocks.lock(replay.visualLock);
       else if(newGs._playersBeforeThisDraw)visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
+      if(replay?.queue?.length)maskDiscardedTurnDrawUntilDiscardAnim(newGs);
       setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
       if(newGs._isMP&&newGs.currentTurn!==0)broadcastMpStateBeforeLocalReplay(newGs);
       triggerAnimQueue(
@@ -7473,6 +7494,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         const replay=buildAppTurnStartDrawReplay(newGs,{oldGs:gs,effectOldGs:{...gs,players:newGs._playersBeforeThisDraw||gs.players}});
         pendingGsRef.current=newGs;
         if(replay.visualLock)visualStateLocks.lock(replay.visualLock);
+        maskDiscardedTurnDrawUntilDiscardAnim(newGs);
         broadcastMpStateBeforeLocalReplay(newGs);
         triggerAnimQueue([...preTurnQ,...replay.queue],newGs);
         return;
@@ -7492,6 +7514,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       animQueueRef.current=replay?.queue?.length?[...replay.queue]:[...drawStatQ];
       if(replay?.visualLock)visualStateLocks.lock(replay.visualLock);
       else if(newGs._playersBeforeThisDraw)visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
+      if(replay?.queue?.length)maskDiscardedTurnDrawUntilDiscardAnim(newGs);
       triggerAnimQueue(
         replay?.queue?.length
           ?[...preTurnQ,...replay.queue]
@@ -7828,6 +7851,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       if(drawnCard){
         const replay=buildAppTurnStartDrawReplay(pendingGs,{oldGs:gs,effectOldGs:{...gs,players:pendingGs._playersBeforeThisDraw||gs.players}});
         if(replay.visualLock)visualStateLocks.lock(replay.visualLock);
+        maskDiscardedTurnDrawUntilDiscardAnim(pendingGs);
         // 遮蔽真实 phase，动画结束后 advanceQueue 再还原（与 applyNextTurnGs 同样模式）
         suppressNextBroadcastRef.current=true; // pendingGs 已广播过，advanceQueue 不再回传
         pendingGsRef.current=pendingGs;
@@ -7847,6 +7871,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       try{ if((replay.queue||[]).some(s=>s.type==='EARTHQUAKE')||localDrawnCard?.type==='allDiscard') console.log('[EQ-DEBUG] _onRoleRevealDone localDraw: replay.drawnCard=',!!replay.drawnCard,'queue=',(replay.queue||[]).map(s=>s.type)); }catch{ /* noop */ }
       if(replay.drawnCard){
         if(replay.visualLock)visualStateLocks.lock(replay.visualLock);
+        maskDiscardedTurnDrawUntilDiscardAnim(pendingGs);
         triggerAnimQueue(replay.queue,pendingGs);
       }else{
         const drawStatQ=bindAnimLogChunks(

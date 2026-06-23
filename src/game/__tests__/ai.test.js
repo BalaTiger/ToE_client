@@ -3,7 +3,7 @@ import { aiChooseRevealCard, aiShouldKeepZoneCard, getHunterChaseTargets } from 
 import { aiStep } from '../aiTurn';
 import { ROLE_CULTIST, ROLE_HUNTER } from '../coreUtils';
 import { createBlackGoatYoungCard } from '../../constants/card';
-import { makeGs, makePlayer } from './factory';
+import { makeGs, makePlayer, makeZoneCard } from './factory';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -86,6 +86,24 @@ describe('aiShouldKeepZoneCard', () => {
 
     expect(aiShouldKeepZoneCard(card, 1, players)).toBe(false);
   });
+
+  it('未亮明邪祀者会弃置只回复自己 SAN 的圣甲虫', () => {
+    const card = makeZoneCard('B1', 0);
+    const players = [
+      makePlayer({ name: '你', hp: 8, san: 8 }),
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_CULTIST,
+        roleRevealed: false,
+        hp: 3,
+        san: 7,
+        hand: [],
+      }),
+      makePlayer({ name: '卡洛斯', hp: 8, san: 8 }),
+    ];
+
+    expect(aiShouldKeepZoneCard(card, 1, players)).toBe(false);
+  });
 });
 
 describe('aiChooseRevealCard', () => {
@@ -113,6 +131,36 @@ describe('hunter chase target validity', () => {
 });
 
 describe('aiStep optional action limits', () => {
+  it('3HP 邪祀者空手时不会因清空手牌例外跳过休息', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const players = [
+      makePlayer({ name: '你', hp: 10, san: 10 }),
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_CULTIST,
+        roleRevealed: false,
+        hp: 3,
+        san: 7,
+        hand: [],
+      }),
+      makePlayer({ name: '卡洛斯', hp: 10, san: 10 }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+      log: ['旧日志'],
+    });
+
+    const result = aiStep(gs);
+    const newLogs = result.log.slice(gs.log.length);
+
+    expect(newLogs.some(line => line.includes('贝拉 选择【休息】'))).toBe(true);
+  });
+
   it('邪祀者只有低 SAN 伤害手牌时优先繁衍且不继续蛊惑', () => {
     const sanCard = {
       id: 'san-card',
