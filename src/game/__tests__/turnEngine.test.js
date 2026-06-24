@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { makeInspectionMeta, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
-import { aiDrawAndApply, applySanLossToPlayerWithInspection, checkWin, playerDrawCard, resolveGodEncounterForAI, startNextTurn } from '../turnEngine';
+import { aiDrawAndApply, aiHandleGodCard, applySanLossToPlayerWithInspection, checkWin, playerDrawCard, resolveGodEncounterForAI, startNextTurn } from '../turnEngine';
 import { buildTsathogguaSlimeGrantQueue } from '../turnAnimState';
-import { makeGodCard, makeGs, makePlayer, makeStandardPlayers } from './factory';
+import { makeGodCard, makeGs, makePlayer, makeStandardPlayers, makeZoneCard } from './factory';
 import { createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../../constants/card';
 import { applyInspectionForSanLoss } from '../effectEngine';
+import { makeProliferatingZState } from '../proliferatingZ';
 
 describe('checkWin death handling', () => {
   it('单人模式下本地玩家死亡会立即失败', () => {
@@ -591,6 +592,27 @@ describe('turnEngine stat events', () => {
     expect(result._preTurnPlayers[0].hand.filter(c => c.isTsathogguaSlime)).toHaveLength(2);
   });
 
+  it('其他角色在增殖的Z生效回合公开获得撒托古亚黏液会触发摸牌队列', () => {
+    const players = [
+      makePlayer({ name: 'Z持有者' }),
+      makePlayer({ name: '撒托古亚信徒', godName: 'TSG', godLevel: 1 }),
+      makePlayer({ name: '下家' }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      proliferatingZ: makeProliferatingZState(0, 1),
+      proliferatingZQueue: [],
+    });
+
+    const result = startNextTurn(gs);
+
+    expect(result.log.some(line => line.includes('获得1张撒托古亚的赐福黏液'))).toBe(true);
+    expect(result.proliferatingZQueue).toMatchObject([
+      { drawerIdx: 0, gainOwnerIdx: 1 },
+    ]);
+  });
+
   it('火把状态会阻止撒托古亚回合结束获得黏液并记录护罩事件', () => {
     const players = [
       makePlayer({ name: '你', godName: 'TSG', godLevel: 2, godPowerImmuneThisTurn: true, godPowerImmuneTurnOwner: 0 }),
@@ -789,6 +811,79 @@ describe('turnEngine stat events', () => {
     expect(result.P[1]).toMatchObject({ godName: 'SHU', godLevel: 1 });
     expect(result.P.some(player => player.hand.some(card => card.isBlackGoatYoung))).toBe(true);
     expect(result.msgs.some(line => line.includes('黑暗子嗣'))).toBe(true);
+  });
+
+  it('追猎者信仰森之领主时若更适合追捕，会把黑山羊幼仔给 HP 低于 SAN 的其他角色', () => {
+    const chaseCard = makeZoneCard('A1', 0, { id: 'hunter-card' });
+    const players = [
+      makePlayer({ name: '低HP目标', hp: 3, san: 8, hand: [makeZoneCard('B1', 0)] }),
+      makePlayer({ name: '追猎者', role: ROLE_HUNTER, hand: [chaseCard] }),
+      makePlayer({ name: '低SAN目标', hp: 8, san: 3, hand: [makeZoneCard('C1', 0)] }),
+    ];
+    const gs = makeGs({ players, currentTurn: 1 });
+
+    const result = resolveGodEncounterForAI(1, makeGodCard('SHU'), players, [], [], gs, true);
+
+    expect(result.P[0].hand.some(card => card.isBlackGoatYoung)).toBe(true);
+    expect(result.P[1].hand.some(card => card.isBlackGoatYoung)).toBe(false);
+    expect(result.P[2].hand.some(card => card.isBlackGoatYoung)).toBe(false);
+  });
+
+  it('邪祀者信仰森之领主时若更适合蛊惑，会把黑山羊幼仔给 SAN 低于 HP 的其他角色', () => {
+    const bewitchCard = {
+      id: 'san-gift',
+      key: 'C4',
+      name: '恶毒诅咒',
+      type: 'selfDamageSAN',
+      val: 2,
+      isZone: true,
+      letter: 'C',
+      number: 4,
+    };
+    const players = [
+      makePlayer({ name: '低SAN目标', hp: 8, san: 3 }),
+      makePlayer({ name: '邪祀者', role: ROLE_CULTIST, roleRevealed: true, hand: [bewitchCard] }),
+      makePlayer({ name: '低HP目标', hp: 3, san: 8 }),
+    ];
+    const gs = makeGs({ players, currentTurn: 1 });
+
+    const result = resolveGodEncounterForAI(1, makeGodCard('SHU'), players, [], [], gs, true);
+
+    expect(result.P[0].hand.some(card => card.isBlackGoatYoung)).toBe(true);
+    expect(result.P[1].hand.some(card => card.isBlackGoatYoung)).toBe(false);
+    expect(result.P[2].hand.some(card => card.isBlackGoatYoung)).toBe(false);
+  });
+
+  it('联机真人被蛊惑强制信仰森之领主时延迟到黑暗子嗣目标选择阶段', () => {
+    const players = [
+      makePlayer({ name: '蛊惑者' }),
+      makePlayer({ name: '真人目标', godName: null, godLevel: 0, godZone: [] }),
+      makePlayer({ name: '旁观者' }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0, log: [], _isMP: true });
+    const L = [];
+
+    const result = aiHandleGodCard(
+      1,
+      makeGodCard('SHU'),
+      players,
+      [],
+      [],
+      L,
+      gs,
+      true,
+      true,
+      { deferShuTarget: true },
+    );
+
+    expect(result.P[1]).toMatchObject({ godName: 'SHU', godLevel: 1 });
+    expect(result.P.some(player => player.hand.some(card => card.isBlackGoatYoung))).toBe(false);
+    expect(result.statePatch._deferredShuTarget).toEqual({ chooserIdx: 1, count: 1 });
+    expect(result.statePatch.abilityData).toMatchObject({
+      shuChooserIdx: 1,
+      shuOffspringCount: 1,
+      _turnOwner: 0,
+    });
   });
 
   it('森之领主发动者有火把免疫时不触发黑暗子嗣', () => {

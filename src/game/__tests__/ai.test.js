@@ -3,7 +3,8 @@ import { aiChooseRevealCard, aiShouldKeepZoneCard, canCultistEmptyHandByBewitch,
 import { aiStep, processAiEndTurnReplayHand } from '../aiTurn';
 import { cardLogText, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
 import { createBlackGoatYoungCard } from '../../constants/card';
-import { makeGs, makePlayer, makeZoneCard } from './factory';
+import { makeGs, makeGodCard, makePlayer, makeZoneCard } from './factory';
+import { makeProliferatingZState } from '../proliferatingZ';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -125,6 +126,114 @@ describe('aiShouldKeepZoneCard', () => {
     ];
 
     expect(aiShouldKeepZoneCard(card, 1, players)).toBe(true);
+  });
+
+  it('不同身份按新规则评估增殖的Z', () => {
+    const card = {
+      id: 'z-card',
+      key: 'B1',
+      name: '增殖的Z',
+      type: 'proliferatingZ',
+      isZone: true,
+      letter: 'B',
+      number: 1,
+      polarity: 'positive',
+    };
+    const players = [
+      makePlayer({ name: '你', hand: [] }),
+      makePlayer({ name: '邪祀者', role: ROLE_CULTIST, hand: [] }),
+      makePlayer({ name: '寻宝者', role: ROLE_TREASURE, hand: [] }),
+      makePlayer({ name: '追猎者', role: ROLE_HUNTER, hand: [createBlackGoatYoungCard()] }),
+    ];
+
+    expect(aiShouldKeepZoneCard(card, 1, players)).toBe(true);
+    expect(aiShouldKeepZoneCard(card, 2, players)).toBe(true);
+    expect(aiShouldKeepZoneCard(card, 3, players)).toBe(true);
+  });
+
+  it('满状态邪祀者会弃置没有实际收益的低风险牌', () => {
+    const card = {
+      id: 'heal-hp',
+      key: 'A1',
+      name: '温暖营火',
+      type: 'selfHealHP',
+      val: 2,
+      isZone: true,
+      letter: 'A',
+      number: 1,
+      polarity: 'positive',
+    };
+    const players = [
+      makePlayer({ name: '你', hp: 8, san: 8 }),
+      makePlayer({
+        name: '邪祀者',
+        role: ROLE_CULTIST,
+        hp: 10,
+        san: 10,
+        hand: [makeZoneCard('B2', 0), makeZoneCard('C3', 0)],
+      }),
+    ];
+
+    expect(aiShouldKeepZoneCard(card, 1, players)).toBe(false);
+  });
+
+  it('寻宝者和追猎者会收入无实际治疗收益但能保留手牌价值的低风险牌', () => {
+    const card = {
+      id: 'heal-hp',
+      key: 'A1',
+      name: '温暖营火',
+      type: 'selfHealHP',
+      val: 2,
+      isZone: true,
+      letter: 'A',
+      number: 1,
+      polarity: 'positive',
+    };
+    const players = [
+      makePlayer({
+        name: '寻宝者',
+        role: ROLE_TREASURE,
+        hp: 10,
+        san: 10,
+        hand: [makeZoneCard('B2', 0), makeZoneCard('C3', 0)],
+      }),
+      makePlayer({
+        name: '追猎者',
+        role: ROLE_HUNTER,
+        hp: 10,
+        san: 10,
+        hand: [makeZoneCard('B2', 0), makeZoneCard('C3', 0)],
+      }),
+    ];
+
+    expect(aiShouldKeepZoneCard(card, 0, players)).toBe(true);
+    expect(aiShouldKeepZoneCard(card, 1, players)).toBe(true);
+  });
+
+  it('寻宝者血线安全时会为了补编号收入轻微负面牌', () => {
+    const card = {
+      id: 'risky-axis',
+      key: 'A1',
+      name: '擦伤通道',
+      type: 'selfDamageHP',
+      val: 1,
+      isZone: true,
+      letter: 'A',
+      number: 1,
+      polarity: 'negative',
+    };
+    const players = [
+      makePlayer({
+        name: '寻宝者',
+        role: ROLE_TREASURE,
+        hp: 10,
+        san: 10,
+        hand: [makeZoneCard('B2', 0), makeZoneCard('C3', 0)],
+      }),
+      makePlayer({ name: '艾伦', hp: 10, san: 10 }),
+    ];
+
+    expect(aiShouldKeepZoneCard(card, 0, players)).toBe(true);
   });
 });
 
@@ -311,6 +420,42 @@ describe('aiStep optional action limits', () => {
       '贝拉（邪祀者）对 你 【蛊惑】，赠予 [B3] 窒息矿坑',
       '你集齐了全部编号！',
     ]));
+  });
+
+  it('AI 邪祀者蛊惑邪神牌时目标会被强制信仰而不是按遭遇策略放弃', () => {
+    vi.spyOn(Math, 'random').mockReturnValueOnce(0.99).mockReturnValue(0);
+    const shu = makeGodCard('SHU');
+    const players = [
+      makePlayer({ name: '你', role: ROLE_TREASURE, hp: 10, san: 8, godName: null, godLevel: 0, godZone: [] }),
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_CULTIST,
+        roleRevealed: true,
+        hp: 10,
+        san: 10,
+        hand: [shu],
+      }),
+      makePlayer({ name: '卡洛斯', role: ROLE_HUNTER, hp: 10, san: 10 }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+      log: ['旧日志'],
+    });
+
+    const result = aiStep(gs);
+    const newLogs = result.log.slice(gs.log.length);
+
+    expect(newLogs).toEqual(expect.arrayContaining([
+      '贝拉（邪祀者）对 你 【蛊惑】，赠予 森之领主',
+      '你 信仰了 森之领主，获得黑暗子嗣(Lv.1)',
+    ]));
+    expect(newLogs.some(line => line.includes('放弃了邪神的馈赠'))).toBe(false);
+    expect(result.players[0]).toMatchObject({ godName: 'SHU', godLevel: 1 });
   });
 
   it('邪祀者只有低 SAN 伤害手牌时优先繁衍且不继续蛊惑', () => {
@@ -587,5 +732,58 @@ describe('aiStep optional action limits', () => {
     expect(result.log.some(line => line.includes('无匹配手牌，放弃追捕 艾伦'))).toBe(true);
     expect(result.log.some(line => line.includes('对 贝拉 【追捕】'))).toBe(false);
     expect(result.currentTurn).not.toBe(1);
+  });
+
+  it('AI 穴居人战争胜者拿走对方邪神牌时触发增殖的Z', () => {
+    const sourceCard = makeZoneCard('A1', 0);
+    const targetGod = makeGodCard('SHU');
+    const players = [
+      makePlayer({ name: 'Z持有者', hand: [] }),
+      makePlayer({ name: '艾伦', hand: [sourceCard] }),
+      makePlayer({ name: '贝拉', hand: [targetGod] }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      abilityData: { caveDuelTargets: [2], caveDuelSource: 1 },
+      proliferatingZ: makeProliferatingZState(0, 1),
+      proliferatingZQueue: [],
+      log: ['旧日志'],
+    });
+
+    const result = aiStep(gs);
+
+    expect(result.log.at(-1)).toContain('艾伦 胜出');
+    expect(result.players[1].hand).toEqual(expect.arrayContaining([targetGod]));
+    expect(result.proliferatingZQueue).toMatchObject([
+      { drawerIdx: 0, gainOwnerIdx: 1 },
+    ]);
+  });
+
+  it('AI 作为穴居人战争目标时不会根据发起者亮牌反制选牌', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const sourceCard = makeZoneCard('A2', 0, { id: 'source-2' });
+    const targetWinningCard = makeZoneCard('A3', 0, { id: 'target-3' });
+    const targetBlindPreferredCard = makeGodCard('SHU', { id: 'target-no-number' });
+    const players = [
+      makePlayer({ name: '你', hand: [] }),
+      makePlayer({ name: '艾伦', hand: [sourceCard] }),
+      makePlayer({ name: '贝拉', hand: [targetWinningCard, targetBlindPreferredCard] }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      abilityData: { caveDuelTargets: [2], caveDuelSource: 1 },
+      log: ['旧日志'],
+    });
+
+    const result = aiStep(gs);
+
+    expect(result.log.at(-1)).toContain('艾伦 胜出');
+    expect(result.log.at(-1)).toContain('森之领主');
+    expect(result.players[1].hand).toEqual(expect.arrayContaining([sourceCard, targetBlindPreferredCard]));
+    expect(result.players[2].hand).toEqual(expect.arrayContaining([targetWinningCard]));
   });
 });

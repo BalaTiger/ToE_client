@@ -14,6 +14,7 @@ import {
   makeInspectionMeta,
   buildEtherealizeLoss,
   buildEtherealizeRedirectDecision,
+  compareCaveDuelCards,
 } from './coreUtils';
 import {
   aiChooseRevealCard,
@@ -49,7 +50,7 @@ import { deriveEffectDecisionState, hasEffectDecisionState } from './effectState
 import { buildApophisNightLog, getApophisNightForLevel, resolveApophisTarget } from './apophisNight';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { buildGodPowerBlockedLog, canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
-import { appendProliferatingZDraws } from './proliferatingZ';
+import { appendPublicCardGainTriggers } from './cardGainEvents';
 import { createGodPowerBlockedEvent, createSwapCardsEvent } from './visualEvents';
 
 /**
@@ -66,6 +67,25 @@ export function cardsHuntMatch(a, b) {
   if (!isZoneCard(a)) return false;     // 追捕者弃非区域牌去匹配区域牌 → 失败
   if (isBlankZoneCard(a) || isBlankZoneCard(b)) return true;
   return a.letter === b.letter || a.number === b.number;
+}
+
+function caveDuelBlindChoiceScore(card) {
+  return Number.isFinite(card?.number) ? card.number : 3.5;
+}
+
+function getBestCaveDuelCardIndex(hand = [], opposingCard = null) {
+  if (!hand.length) return -1;
+  if (opposingCard) {
+    const winningIndices = hand
+      .map((card, idx) => ({ card, idx }))
+      .filter(({ card }) => compareCaveDuelCards(card, opposingCard) > 0);
+    if (winningIndices.length) {
+      return winningIndices.sort((a, b) => caveDuelBlindChoiceScore(b.card) - caveDuelBlindChoiceScore(a.card))[0].idx;
+    }
+  }
+  return hand.reduce((bestIdx, card, idx) => (
+    caveDuelBlindChoiceScore(card) > caveDuelBlindChoiceScore(hand[bestIdx]) ? idx : bestIdx
+  ), 0);
 }
 
 /**
@@ -459,7 +479,7 @@ export function aiStep(gs, opts = {}) {
         _L.splice(0, _L.length, ...processed.L);
       }
       const godResolveGs = { ..._gs, ...inspectionMeta };
-      const gr = aiHandleGodCard(_ti, _sc, _P, _D, _Disc, _L, godResolveGs, true);
+      const gr = aiHandleGodCard(_ti, _sc, _P, _D, _Disc, _L, godResolveGs, true, true);
       _P = gr.P; _D = gr.D; _Disc = gr.Disc;
       const mergedInspectionMeta = {
         ...inspectionMeta,
@@ -577,6 +597,7 @@ export function aiStep(gs, opts = {}) {
   if(abilityData.caveDuelTargets&&abilityData.caveDuelSource===ct){
     // 穴居人战争目标选择
     const validTargets=abilityData.caveDuelTargets;
+    let proliferatingZPatch={};
     if(validTargets.length>0){
       // AI随机选择一个目标
       const targetIdx=applyNightTarget(validTargets[Math.floor(Math.random()*validTargets.length)],validTargets,'选择【穴居人战争】目标');
@@ -584,17 +605,8 @@ export function aiStep(gs, opts = {}) {
       const sourcePlayer=P[ct];
       const targetPlayer=P[targetIdx];
 
-      // 源角色（AI）选择数字编号最大的牌
-      let sourceCardIndex=0, sourceCard;
-      let maxSourceNumber=-1;
-      for(let i=0;i<sourcePlayer.hand.length;i++){
-        const card=sourcePlayer.hand[i];
-        const number=card.isGod?0:(card.number||0);
-        if(number>maxSourceNumber){
-          maxSourceNumber=number;
-          sourceCardIndex=i;
-        }
-      }
+      // 源角色（AI）按穴居人战争规则选择牌
+      let sourceCardIndex=getBestCaveDuelCardIndex(sourcePlayer.hand), sourceCard;
       sourceCard=sourcePlayer.hand[sourceCardIndex];
 
       // 目标角色选择牌
@@ -612,34 +624,24 @@ export function aiStep(gs, opts = {}) {
           phase:'CAVE_DUEL_SELECT_CARD',
         });
       }else{
-        // AI作为目标角色，选择数字编号最大的牌
-        let maxTargetNumber=-1;
-        targetCardIndex=0;
-        for(let i=0;i<targetPlayer.hand.length;i++){
-          const card=targetPlayer.hand[i];
-          const number=card.isGod?0:(card.number||0);
-          if(number>maxTargetNumber){
-            maxTargetNumber=number;
-            targetCardIndex=i;
-          }
-        }
+        // AI作为目标角色，按盲选启发式选择，不查看源角色亮牌
+        targetCardIndex=getBestCaveDuelCardIndex(targetPlayer.hand);
         targetCard=targetPlayer.hand[targetCardIndex];
 
-        // 计算数字编号（邪神牌视为0）
-        const sourceNumber=sourceCard.isGod?0:(sourceCard.number||0);
-        const targetNumber=targetCard.isGod?0:(targetCard.number||0);
-        // 比较数字编号
-        if(sourceNumber>targetNumber){
+        const duelCompare=compareCaveDuelCards(sourceCard,targetCard);
+        if(duelCompare>0){
           // 源角色获胜，收下两张牌
           sourcePlayer.hand.splice(sourceCardIndex,1);
           targetPlayer.hand.splice(targetCardIndex,1);
           sourcePlayer.hand.push(sourceCard,targetCard);
+          proliferatingZPatch=appendPublicCardGainTriggers(gs,P,ct,targetCard);
           L.push(`【穴居人战争】${sourcePlayer.name} 亮出 ${cardLogText(sourceCard,{alwaysShowName:true})}，${targetPlayer.name} 亮出 ${cardLogText(targetCard,{alwaysShowName:true})}，${sourcePlayer.name} 胜出，收下两张牌`);
-        }else if(targetNumber>sourceNumber){
+        }else if(duelCompare<0){
           // 目标角色获胜，收下两张牌
           sourcePlayer.hand.splice(sourceCardIndex,1);
           targetPlayer.hand.splice(targetCardIndex,1);
           targetPlayer.hand.push(sourceCard,targetCard);
+          proliferatingZPatch=appendPublicCardGainTriggers(gs,P,targetIdx,sourceCard);
           L.push(`【穴居人战争】${sourcePlayer.name} 亮出 ${cardLogText(sourceCard,{alwaysShowName:true})}，${targetPlayer.name} 亮出 ${cardLogText(targetCard,{alwaysShowName:true})}，${targetPlayer.name} 胜出，收下两张牌`);
         }else{
           // 平局，各自收回自己的牌
@@ -657,6 +659,7 @@ export function aiStep(gs, opts = {}) {
       abilityData:{},
       currentTurn:ct,
       phase:'AI_TURN',
+      ...proliferatingZPatch,
     });
   }
   if((ai._nyaBorrow||ai.role)===ROLE_TREASURE&&isWinHand(ai.hand)){P[ct].roleRevealed=true;return{...gs,players:P,log:[...L,`${ai.name} 宣告获胜！`],gameOver:{winner:ROLE_TREASURE,reason:`${ai.name} 集齐了全部编号并获胜！`,winnerIdx:ct}};}
@@ -780,7 +783,7 @@ export function aiStep(gs, opts = {}) {
     P[multiplyEvent.toIdx].hand.push(goatCard);
     L.push(`【繁衍】${P[ct].name} 将黑山羊幼仔传播给了 ${P[multiplyEvent.toIdx].name}`);
     animMultiplyEvent = multiplyEvent;
-    gs = { ...gs, multiplyUsed: true, skillUsed: true, ...appendProliferatingZDraws(gs, P, multiplyEvent.toIdx, goatCard) };
+    gs = { ...gs, multiplyUsed: true, skillUsed: true, ...appendPublicCardGainTriggers(gs, P, multiplyEvent.toIdx, goatCard) };
     useSkill = false;
   }
 

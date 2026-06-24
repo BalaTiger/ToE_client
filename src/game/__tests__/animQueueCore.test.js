@@ -60,6 +60,26 @@ describe('buildAnimQueue stat animations', () => {
     expect(hpIdx).toBeGreaterThan(randomIdx);
   });
 
+  it('霉变食物骰子动画使用独立模式与规避标记', () => {
+    const oldGs = makeGs({
+      players: [makePlayer({ name: '你', hp: 10 })],
+      log: ['旧日志'],
+      _moldyFoodDiceSeq: 1,
+    });
+    const newGs = makeGs({
+      players: [makePlayer({ name: '你', hp: 10 })],
+      log: ['旧日志', '你 掷出 5 点，成功规避负面效果！', '【霉变食物】你 掷出 1 点（单数），负面效果已规避'],
+      _moldyFoodDiceSeq: 2,
+      _moldyFoodDiceRoll: { d1: 1, isEven: false, actorIdx: 0, seq: 2, negativeAvoided: true },
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    const dice = queue.find(step => step.type === 'DICE_ROLL' && step.diceMode === 'moldyFood');
+
+    expect(dice).toMatchObject({ d1: 1, d2: 0, diceMode: 'moldyFood', negativeAvoided: true, rollerName: '你' });
+    expect(dice).not.toHaveProperty('dodgeSuccess');
+  });
+
   it('钻地魔虫会先播放全场扣血，再播放转盘和随机扣血', () => {
     const playersBefore = [
       makePlayer({ name: '你', hp: 10 }),

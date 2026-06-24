@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
+  FIXED_ZONE_CARD_VARIANTS_BY_KEY,
   LETTERS,
   NUMS,
   createBlackGoatYoungCard,
@@ -19,6 +20,7 @@ import {
   isPositiveZoneCard,
   isNegativeZoneCard,
   isNeutralZoneCard,
+  isDodgeableZoneCard,
   getZoneCardPolarity,
   getZoneCardEffectScope,
   zoneCardHasGuaranteedHpLoss,
@@ -39,6 +41,7 @@ import {
   sortInspectionTargets,
   buildEtherealizeLoss,
   buildEtherealizeRedirectDecision,
+  compareCaveDuelCards,
 } from '../coreUtils';
 import {
   resetIds,
@@ -48,6 +51,31 @@ import {
   makeBlankZoneCard,
   makeStandardPlayers,
 } from './factory';
+
+function makeZoneCardByName(name, overrides = {}) {
+  for (const [slotKey, variants] of Object.entries(FIXED_ZONE_CARD_VARIANTS_BY_KEY)) {
+    const variantIndex = variants.findIndex(card => card.name === name);
+    if (variantIndex >= 0) return makeZoneCard(slotKey, variantIndex, overrides);
+  }
+  throw new Error(`Unknown zone card name ${name}`);
+}
+
+describe('compareCaveDuelCards', () => {
+  it('无编号牌按循环克制关系赢4但输给1到3', () => {
+    const noNumber = makeGodCard('NYA');
+    const n1 = makeZoneCard('A1', 0);
+    const n2 = makeZoneCard('A2', 0);
+    const n3 = makeZoneCard('A3', 0);
+    const n4 = makeZoneCard('A4', 0);
+
+    expect(compareCaveDuelCards(noNumber, n4)).toBe(1);
+    expect(compareCaveDuelCards(n4, noNumber)).toBe(-1);
+    expect(compareCaveDuelCards(noNumber, n1)).toBe(-1);
+    expect(compareCaveDuelCards(noNumber, n2)).toBe(-1);
+    expect(compareCaveDuelCards(noNumber, n3)).toBe(-1);
+    expect(compareCaveDuelCards(noNumber, makeGodCard('SHU'))).toBe(0);
+  });
+});
 
 describe('shuffle', () => {
   beforeEach(() => resetIds());
@@ -144,17 +172,19 @@ describe('card type predicates', () => {
   });
 
   it('getZoneCardPolarity', () => {
-    expect(getZoneCardPolarity(makeZoneCard('A1', 0))).toBe('positive');
-    expect(getZoneCardPolarity(makeZoneCard('A1', 1))).toBe('negative');
+    expect(getZoneCardPolarity(makeZoneCardByName('新鲜空气'))).toBe('positive');
+    expect(getZoneCardPolarity(makeZoneCardByName('坠落'))).toBe('negative');
     expect(getZoneCardPolarity(null)).toBe(null);
   });
 
   it('isPositiveZoneCard / isNegativeZoneCard / isNeutralZoneCard', () => {
-    const positive = makeZoneCard('A1', 0);
-    const negative = makeZoneCard('A1', 1);
+    const positive = makeZoneCardByName('新鲜空气');
+    const negative = makeZoneCardByName('坠落');
     const blank = makeBlankZoneCard();
-    const throwStone = makeZoneCard('B2', 3);
-    const petrifyingFormula = makeZoneCard('C1', 2);
+    const throwStone = makeZoneCardByName('投掷石块');
+    const petrifyingFormula = makeZoneCardByName('石化配方');
+    const geomagneticReversal = makeZoneCardByName('地磁反转');
+    const fireChestnut = makeZoneCardByName('火中取栗');
 
     expect(isPositiveZoneCard(positive)).toBe(true);
     expect(isNegativeZoneCard(negative)).toBe(true);
@@ -163,19 +193,42 @@ describe('card type predicates', () => {
     expect(isNegativeZoneCard(throwStone)).toBe(false);
     expect(isNeutralZoneCard(petrifyingFormula)).toBe(true);
     expect(isNegativeZoneCard(petrifyingFormula)).toBe(false);
+    expect(geomagneticReversal.name).toBe('地磁反转');
+    expect(isNeutralZoneCard(geomagneticReversal)).toBe(true);
+    expect(isNegativeZoneCard(geomagneticReversal)).toBe(false);
+    expect(isNeutralZoneCard(fireChestnut)).toBe(true);
+    expect(isNegativeZoneCard(fireChestnut)).toBe(false);
 
     expect(isNegativeZoneCard(positive)).toBe(false);
     expect(isPositiveZoneCard(negative)).toBe(false);
   });
 
+  it('isDodgeableZoneCard separates dodge prompts from polarity', () => {
+    expect(isDodgeableZoneCard(makeZoneCardByName('坠落'))).toBe(true);
+    expect(isDodgeableZoneCard(makeZoneCardByName('霉变食物'))).toBe(true);
+    expect(isDodgeableZoneCard(makeZoneCardByName('神圣菇肉'))).toBe(true);
+    expect(isDodgeableZoneCard(makeZoneCardByName('可生食木乃伊'))).toBe(true);
+    expect(isDodgeableZoneCard(makeZoneCardByName('秤心仪式'))).toBe(true);
+    expect(isDodgeableZoneCard(makeZoneCardByName('火中取栗'))).toBe(true);
+    expect(isDodgeableZoneCard(makeZoneCardByName('狂化'))).toBe(true);
+    expect(isDodgeableZoneCard(makeZoneCardByName('鲜红夜宴'))).toBe(true);
+    expect(isDodgeableZoneCard(makeZoneCardByName('斯芬克斯'))).toBe(true);
+    expect(isDodgeableZoneCard(makeZoneCardByName('地磁反转'))).toBe(false);
+    expect(isDodgeableZoneCard(makeZoneCardByName('偷吃龙蛋'))).toBe(false);
+    expect(isDodgeableZoneCard(makeZoneCardByName('投掷石块'))).toBe(false);
+  });
+
   it('getZoneCardEffectScope', () => {
     expect(getZoneCardEffectScope(makeZoneCard('A1', 0))).toBe('self');
+    expect(getZoneCardEffectScope(makeZoneCardByName('地刺陷阱'))).toBe('adjacent');
+    expect(getZoneCardEffectScope(makeZoneCardByName('火中取栗'))).toBe('self');
+    expect(getZoneCardEffectScope(makeZoneCardByName('偷吃龙蛋'))).toBe('self');
     expect(getZoneCardEffectScope(null)).toBe(null);
   });
 
   it('zoneCardHasGuaranteedHpLoss', () => {
-    expect(zoneCardHasGuaranteedHpLoss(makeZoneCard('A2', 2))).toBe(true); // adjDamageHP
-    expect(zoneCardHasGuaranteedHpLoss(makeZoneCard('A1', 0))).toBe(false); // selfHealAdjDamageHP
+    expect(zoneCardHasGuaranteedHpLoss(makeZoneCardByName('腐臭'))).toBe(true);
+    expect(zoneCardHasGuaranteedHpLoss(makeZoneCardByName('新鲜空气'))).toBe(false);
   });
 
   it('zoneCardHasGuaranteedSanLoss', () => {

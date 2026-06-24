@@ -38,6 +38,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "slotKey": "A1",
       "polarity": "neutral",
       "effectScope": "self",
+      "dodgeable": true,
       "expansion": "地神的潜影"
     },
     {
@@ -59,6 +60,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "slotKey": "A1",
       "polarity": "neutral",
       "effectScope": "self",
+      "dodgeable": true,
       "expansion": "析骨为柴"
     }
   ],
@@ -75,7 +77,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "遭遇塌方",
-      "desc": "你失去3HP并翻面（切换休息状态）",
+      "desc": "你失去3HP并翻面",
       "type": "selfDamageRestHP",
       "val": 3,
       "slotKey": "A2",
@@ -147,6 +149,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "slotKey": "A3",
       "polarity": "neutral",
       "effectScope": "self",
+      "dodgeable": true,
       "expansion": "地神的潜影"
     }
   ],
@@ -245,7 +248,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "增殖的Z",
-      "desc": "本回合每有角色获得邪神牌或其衍生牌，其他角色各摸一张牌",
+      "desc": "本回合每有其他角色获得邪神牌或其衍生牌，你摸一张牌",
       "type": "proliferatingZ",
       "val": 0,
       "slotKey": "B1",
@@ -267,7 +270,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "黑泥沼",
-      "desc": "你失去2SAN并翻面（切换休息状态）",
+      "desc": "你失去2SAN并翻面",
       "type": "selfDamageRestSAN",
       "val": 2,
       "slotKey": "B2",
@@ -332,7 +335,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "窒息矿坑",
-      "desc": "你与相邻角色翻面（切换休息状态）",
+      "desc": "你与相邻角色翻面",
       "type": "adjRest",
       "val": 0,
       "slotKey": "B3",
@@ -349,7 +352,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "val": 3,
       "slotKey": "B4",
       "polarity": "negative",
-      "effectScope": "self",
+      "effectScope": "adjacent",
       "expansion": "地神的潜影"
     },
     {
@@ -476,7 +479,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "desc": "将一张\"反转复原\"洗入弃牌堆。角色即将摸牌时，改为重洗弃牌堆并暗抽一张",
       "type": "geomagneticReversal",
       "slotKey": "C2",
-      "polarity": "negative",
+      "polarity": "neutral",
       "effectScope": "all",
       "expansion": "地神的潜影"
     }
@@ -552,6 +555,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "slotKey": "D1",
       "polarity": "neutral",
       "effectScope": "self",
+      "dodgeable": true,
       "expansion": "地神的潜影"
     },
     {
@@ -577,7 +581,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "D2": [
     {
       "name": "穴居人战争",
-      "desc": "你与另一名角色各亮一张手牌，数字编号更大的一方收下这两张牌",
+      "desc": "你与另一名角色各亮一张手牌，数字编号更大的一方收下这两张牌（无编号视为小于1但大于4）",
       "type": "caveDuel",
       "val": 0,
       "slotKey": "D2",
@@ -611,8 +615,9 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "type": "selfDamageHPPeek",
       "val": 3,
       "slotKey": "D2",
-      "polarity": "negative",
-      "effectScope": "all",
+      "polarity": "neutral",
+      "effectScope": "self",
+      "dodgeable": true,
       "expansion": "析骨为柴"
     }
   ],
@@ -687,6 +692,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "slotKey": "D4",
       "polarity": "neutral",
       "effectScope": "self",
+      "dodgeable": true,
       "expansion": "析骨为柴"
     },
     {
@@ -719,6 +725,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "slotKey": "D4",
       "polarity": "neutral",
       "effectScope": "all",
+      "dodgeable": true,
       "expansion": "析骨为柴"
     },
     {
@@ -728,6 +735,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "slotKey": "D4",
       "polarity": "positive",
       "effectScope": "self",
+      "dodgeable": true,
       "expansion": "地神的潜影"
     }
   ]

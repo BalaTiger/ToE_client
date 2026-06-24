@@ -2,7 +2,7 @@
   shuffle,
   clamp,
   copyPlayers,
-  isNegativeZoneCard,
+  isDodgeableZoneCard,
   cardLogText,
   isWinHand,
   makeInspectionMeta,
@@ -11,11 +11,12 @@
   isGeomagneticRestore,
   killPlayerState,
   tryVritraImmortal,
+  canRevealForHunt,
   buildEtherealizeLoss,
   buildEtherealizeRedirectDecision,
   buildTsathogguaSlimeBalanceDecision,
 } from './coreUtils';
-import { aiShouldKeepZoneCard } from './ai';
+import { aiShouldKeepZoneCard, chooseAiCultistBewitchPlan, getHunterChaseTargets } from './ai';
 import { clearPlayerGodZone } from './aiTurn';
 import { splitAnimBoundLogs } from './animLogs';
 import { localDisplayName } from './rotateState';
@@ -27,7 +28,8 @@ import { buildStatEvents } from './statEvents';
 import { deriveEffectDecisionState } from './effectStatePatch';
 import { buildApophisNightLog, getApophisNightForLevel } from './apophisNight';
 import { buildGodPowerBlockedLog, canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
-import { appendProliferatingZDraws, clearExpiredProliferatingZ } from './proliferatingZ';
+import { clearExpiredProliferatingZ } from './proliferatingZ';
+import { appendPublicCardGainTriggers } from './cardGainEvents';
 import { drawCardDecisionText, markBlindZoneCard, shouldBlindZoneDecision } from './blindZoneDecision';
 import { clearExpiredTurnScopedEffects } from './turnScopedEffects';
 import { createGodPowerBlockedEvent } from './visualEvents';
@@ -124,11 +126,52 @@ export function shouldTriggerGodResurrection(gs) {
   return gs.players.some(p => !p.isDead && p.san <= 0);
 }
 
-/** AI 自动选择 SHU 黑暗子嗣的目标。默认优先给自己，若自己是寻宝者则随机给其他存活角色。 */
+function getShuOffspringTargets(ci, P) {
+  return P
+    .map((player, idx) => ({ player, idx }))
+    .filter(({ player, idx }) => idx !== ci && player && !player.isDead && canGodPowerAffect(player));
+}
+
+function chooseOtherShuTarget(ci, P, role) {
+  const targets = getShuOffspringTargets(ci, P);
+  if (!targets.length) return ci;
+  if (role === ROLE_HUNTER) {
+    return [...targets].sort((a, b) => {
+      const aPref = a.player.hp < a.player.san ? 0 : 1;
+      const bPref = b.player.hp < b.player.san ? 0 : 1;
+      return aPref - bPref || a.player.hp - b.player.hp || b.player.san - a.player.san || a.idx - b.idx;
+    })[0].idx;
+  }
+  if (role === ROLE_CULTIST) {
+    return [...targets].sort((a, b) => {
+      const aPref = a.player.san < a.player.hp ? 0 : 1;
+      const bPref = b.player.san < b.player.hp ? 0 : 1;
+      return aPref - bPref || a.player.san - b.player.san || b.player.hp - a.player.hp || a.idx - b.idx;
+    })[0].idx;
+  }
+  return targets[Math.floor(Math.random() * targets.length)].idx;
+}
+
+function shouldAiKeepActionForSkill(ci, P, role) {
+  const actor = P?.[ci];
+  if (!actor || actor.isDead) return false;
+  if (role === ROLE_HUNTER) {
+    return (actor.hand || []).some(canRevealForHunt) && getHunterChaseTargets(P, ci).length > 0;
+  }
+  if (role === ROLE_CULTIST) {
+    return !!chooseAiCultistBewitchPlan(P, ci);
+  }
+  return false;
+}
+
+/** AI 自动选择 SHU 黑暗子嗣的目标。会避免让黑山羊幼仔占掉更高价值的追捕/蛊惑行动。 */
 function _chooseAiShuTarget(ci, P) {
-  if (P[ci].role !== ROLE_TREASURE && canGodPowerAffect(P[ci])) return ci;
-  const others = P.map((p, i) => i).filter(i => i !== ci && !P[i].isDead && canGodPowerAffect(P[i]));
-  return others.length > 0 ? others[Math.floor(Math.random() * others.length)] : ci;
+  const actor = P?.[ci];
+  const role = actor?._nyaBorrow || actor?.role;
+  if (role === ROLE_TREASURE) return chooseOtherShuTarget(ci, P, role);
+  if (shouldAiKeepActionForSkill(ci, P, role)) return chooseOtherShuTarget(ci, P, role);
+  if (canGodPowerAffect(actor)) return ci;
+  return chooseOtherShuTarget(ci, P, role);
 }
 
 function getAiGodPowerScore(godKey, ci, players, level = 1) {
@@ -298,7 +341,7 @@ export function convertGodFollower(targetIndex, startIndex, P, D, Disc, L, inspe
   return { P, D, Disc, L, inspectionMeta };
 }
 
-export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConvert) {
+export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConvert, opts = {}) {
   const msgs = []; const godKey = godCard.godKey;
   let statePatch = {};
   const visualEvents = [];
@@ -320,6 +363,19 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     }
     if (godKey === 'SHU') {
       const count = GOD_DEFS.SHU.levels[(P[ci].godLevel || 1) - 1]?.offspringCount || 0;
+      if (opts?.deferShuTarget && count > 0) {
+        statePatch = {
+          ...statePatch,
+          _deferredShuTarget: { chooserIdx: ci, count },
+          abilityData: {
+            ...(statePatch.abilityData || {}),
+            shuOffspringCount: count,
+            shuChooserIdx: ci,
+            _turnOwner: gs?.currentTurn ?? ci,
+          },
+        };
+        return;
+      }
       const shuTargetIdx = _chooseAiShuTarget(ci, P);
       if (!canGodPowerAffect(P[shuTargetIdx])) return;
       const goatCards = Array.from({ length: count }, () => createBlackGoatYoungCard());
@@ -391,7 +447,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
   }
   let zBase = { ...gs, ...statePatch };
   proliferatingZGainEvents.forEach(event => {
-    const patch = appendProliferatingZDraws(zBase, P, event.ownerIdx, event.cards);
+    const patch = appendPublicCardGainTriggers(zBase, P, event.ownerIdx, event.cards);
     if (patch.proliferatingZQueue) zBase = { ...zBase, proliferatingZQueue: patch.proliferatingZQueue };
   });
   statePatch = {
@@ -402,7 +458,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
   return { P, D, Disc, msgs, inspectionMeta, statePatch };
 }
 
-export function aiHandleGodCard(ci, godCard, P, D, Disc, L, gs, skipEffectMsg = false) {
+export function aiHandleGodCard(ci, godCard, P, D, Disc, L, gs, skipEffectMsg = false, forcedConvert = false, opts = {}) {
   const sanCost = P[ci].godEncounters || 0;
   // 已揭晓的邪祀者遭遇邪神时免疫SAN损耗；未揭晓时照常结算
   if (!skipEffectMsg) {
@@ -415,7 +471,7 @@ export function aiHandleGodCard(ci, godCard, P, D, Disc, L, gs, skipEffectMsg = 
     }
     L.push(effectMsg);
   }
-  const gres = resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, false);
+  const gres = resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConvert, opts);
   P = gres.P; D = gres.D; Disc = gres.Disc;
   L.push(...gres.msgs);
   return { P, D, Disc, L, inspectionMeta: gres.inspectionMeta, statePatch: gres.statePatch };
@@ -600,9 +656,9 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
     // AI Treasure Hunter dodge logic
     const effectiveRole = P[ci]._nyaBorrow || P[ci].role;
     const isTreasureHunter = effectiveRole === ROLE_TREASURE;
-    const isNegativeEffect = isNegativeZoneCard(drawnCard);
+    const isDodgeableEffect = isDodgeableZoneCard(drawnCard);
 
-    if (isTreasureHunter && isNegativeEffect) {
+    if (isTreasureHunter && isDodgeableEffect) {
       P[ci].roleRevealed = true;
       const d1 = 1 + (Math.random() * 6 | 0);
       const dodgeSuccess = d1 >= 4;
@@ -853,7 +909,13 @@ export function startNextTurn(gs, opts = {}) {
   const turnDir = gs.turnDirection || 1;
   const tsgSlimeGrantEvents = [...inheritedTsgSlimeGrantEvents];
   const tsgSlimeGrant = grantTsathogguaSlimeAtEndTurn(P, gs.currentTurn, L, visualEvents);
-  if (tsgSlimeGrant) tsgSlimeGrantEvents.push(tsgSlimeGrant);
+  if (tsgSlimeGrant) {
+    tsgSlimeGrantEvents.push(tsgSlimeGrant);
+    const proliferatingZPatch = appendPublicCardGainTriggers(gs, P, tsgSlimeGrant.ownerIdx, tsgSlimeGrant.cards);
+    if (proliferatingZPatch.proliferatingZQueue) {
+      gs = { ...gs, proliferatingZQueue: proliferatingZPatch.proliferatingZQueue };
+    }
+  }
   gs = { ...gs, _tsgSlimeGrantEvents: tsgSlimeGrantEvents.length ? tsgSlimeGrantEvents : null };
   for (let i = 1; i <= N; i++) { next = (gs.currentTurn + i * turnDir + N) % N; if (!P[next].isDead) break; }
   const nextProliferatingZ = clearExpiredProliferatingZ(gs, gs.currentTurn);

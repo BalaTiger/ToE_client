@@ -10,6 +10,7 @@ import { makeInspectionMeta } from '../coreUtils';
 import { resetIds, makePlayer, makeStandardPlayers, makeZoneCard, makeGodCard, makeGs } from './factory';
 import { createTsathogguaSlimeCard } from '../../constants/card';
 import { VISUAL_EVENT } from '../visualEvents';
+import { makeProliferatingZState } from '../proliferatingZ';
 
 describe('applyHpDamageWithLink', () => {
   beforeEach(() => resetIds());
@@ -395,6 +396,34 @@ describe('applyFx', () => {
     randomSpy.mockRestore();
   });
 
+  it('moldyFood: 规避成功时单数分支不造成负面效果但保留独立骰子结果', () => {
+    const players = makeStandardPlayers(3);
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.01); // d1 = 1
+    const gs = makeGs({ players, _moldyFoodDiceSeq: 7 });
+
+    const res = applyFx({ type: 'moldyFood', name: '霉变食物' }, 0, null, players, [], [], gs, true, []);
+
+    expect(res.P[0].hp).toBe(10);
+    expect(res.P[0].skipNextDraw).toBeFalsy();
+    expect(res.msgs).toContain('【霉变食物】测试角色1 掷出 1 点（单数），负面效果已规避');
+    expect(res.statePatch._moldyFoodDiceRoll).toMatchObject({ d1: 1, isEven: false, actorIdx: 0, seq: 8, negativeAvoided: true });
+    randomSpy.mockRestore();
+  });
+
+  it('moldyFood: 规避成功时双数分支仍恢复 HP', () => {
+    const players = makeStandardPlayers(3);
+    players[0].hp = 6;
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.3); // d1 = 2
+    const gs = makeGs({ players, _moldyFoodDiceSeq: 2 });
+
+    const res = applyFx({ type: 'moldyFood', name: '霉变食物' }, 0, null, players, [], [], gs, true, []);
+
+    expect(res.P[0].hp).toBe(8);
+    expect(res.P[0].skipNextDraw).toBeFalsy();
+    expect(res.statePatch._moldyFoodDiceRoll).toMatchObject({ d1: 2, isEven: true, actorIdx: 0, seq: 3, negativeAvoided: false });
+    randomSpy.mockRestore();
+  });
+
   it('decipherStoneCarving: 玩家收入后进入解读阶段', () => {
     const players = makeStandardPlayers(3);
     const deck = [makeZoneCard('A1', 0), makeZoneCard('B2', 0), makeGodCard('NYA')];
@@ -409,6 +438,29 @@ describe('applyFx', () => {
     expect(res.statePatch.abilityData.revealedCards).toHaveLength(3);
     expect(res.statePatch.abilityData.deckTopCards).toHaveLength(3);
     expect(res.statePatch.abilityData.deckBottomCards).toEqual([]);
+  });
+
+  it('decipherStoneCarving: AI 公开选择邪神牌会触发增殖的Z', () => {
+    const players = [
+      makePlayer({ name: 'Z持有者' }),
+      makePlayer({ name: '解读者' }),
+    ];
+    const godCard = makeGodCard('NYA');
+    const deck = [godCard];
+    const gs = makeGs({
+      players,
+      deck,
+      currentTurn: 1,
+      proliferatingZ: makeProliferatingZState(0, 1),
+      proliferatingZQueue: [],
+    });
+
+    const res = applyFx({ type: 'decipherStoneCarving', name: '解读石刻', key: 'A1', val: 1 }, 1, null, players, deck, [], gs, false, [], true);
+
+    expect(res.P[1].hand).toContain(godCard);
+    expect(res.statePatch.proliferatingZQueue).toMatchObject([
+      { drawerIdx: 0, gainOwnerIdx: 1 },
+    ]);
   });
 
   it('selfDamageHP: 失去HP', () => {
@@ -669,6 +721,63 @@ describe('applyFx', () => {
     expect(res.statePatch.abilityData.revealedCards).toHaveLength(3);
   });
 
+  it('sphinxGuess: 玩家规避成功时把负面规避状态带入猜测阶段', () => {
+    const players = makeStandardPlayers(3);
+    const deck = [makeZoneCard('A1', 0)];
+    const card = { type: 'sphinxGuess', name: '斯芬克斯', key: 'D4' };
+    const gs = makeGs({ players });
+
+    const res = applyFx(card, 0, null, players, deck, [], gs, true, []);
+
+    expect(res.statePatch.abilityData).toMatchObject({
+      type: 'sphinxGuess',
+      sphinxAvoidNegative: true,
+      topCard: deck[0],
+    });
+  });
+
+  it('sphinxGuess: AI 规避成功后猜错不失去 HP', () => {
+    const players = makeStandardPlayers(3);
+    const deck = [makeZoneCard('A1', 0)];
+    const card = { type: 'sphinxGuess', name: '斯芬克斯', key: 'D4' };
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.8); // guessYes = false, top card is zone => wrong
+    const gs = makeGs({ players });
+
+    const res = applyFx(card, 0, null, players, deck, [], gs, true, [], true);
+
+    expect(res.P[0].hp).toBe(10);
+    expect(res.Disc).toHaveLength(1);
+    expect(res.msgs).toContain('猜测错误！测试角色1 负面效果已规避');
+    expect(res.statePatch._animSphinxReveal).toMatchObject({ guessCorrect: false, actorIdx: 0 });
+    randomSpy.mockRestore();
+  });
+
+  it('sphinxGuess: AI 公开猜对并收入邪神牌会触发增殖的Z', () => {
+    const players = [
+      makePlayer({ name: 'Z持有者' }),
+      makePlayer({ name: '猜谜者' }),
+    ];
+    const godCard = makeGodCard('SHU');
+    const deck = [godCard];
+    const card = { type: 'sphinxGuess', name: '斯芬克斯', key: 'D4' };
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.8); // guessYes = false, god card is not zone => correct
+    const gs = makeGs({
+      players,
+      deck,
+      currentTurn: 1,
+      proliferatingZ: makeProliferatingZState(0, 1),
+      proliferatingZQueue: [],
+    });
+
+    const res = applyFx(card, 1, null, players, deck, [], gs, false, [], true);
+
+    expect(res.P[1].hand).toContain(godCard);
+    expect(res.statePatch.proliferatingZQueue).toMatchObject([
+      { drawerIdx: 0, gainOwnerIdx: 1 },
+    ]);
+    randomSpy.mockRestore();
+  });
+
   it('graveDigGod: 玩家从弃牌堆选择邪神牌', () => {
     const players = makeStandardPlayers(3);
     const discard = [makeZoneCard('A1', 0), makeGodCard('NYA'), makeGodCard('SHU')];
@@ -758,6 +867,39 @@ describe('applyFx', () => {
     expect(res.P[0].hp).toBe(9); // actor still hit
     expect(res.P[1].hp).toBe(10); // avoided
     expect(res.P[4].hp).toBe(9); // not avoided
+  });
+
+  it('allHealHPDamageSAN: 规避触发者时自己只回血，其他人回血并失去 SAN', () => {
+    const players = makeStandardPlayers(3);
+    players.forEach(player => {
+      player.hp = 5;
+      player.san = 8;
+    });
+    const card = { type: 'allHealHPDamageSAN', name: '鲜红夜宴', key: 'D4', hpVal: 2, sanVal: 1 };
+    const gs = makeGs({ players });
+
+    const res = applyFx(card, 0, null, players, [], [], gs, true, []);
+
+    expect(res.P.map(player => player.hp)).toEqual([7, 7, 7]);
+    expect(res.P.map(player => player.san)).toEqual([8, 7, 7]);
+    expect(res.msgs).toContain('全体存活角色回复 2 HP');
+    const sanLossLog = res.msgs.find(msg => msg.includes('失去 1 SAN'));
+    expect(sanLossLog).not.toBe('全体存活角色失去 1 SAN');
+  });
+
+  it('allHealHPDamageSAN: AOE 规避指定角色时只跳过该角色 SAN 损失', () => {
+    const players = makeStandardPlayers(3);
+    players.forEach(player => {
+      player.hp = 5;
+      player.san = 8;
+    });
+    const card = { type: 'allHealHPDamageSAN', name: '鲜红夜宴', key: 'D4', hpVal: 2, sanVal: 1 };
+    const gs = makeGs({ players });
+
+    const res = applyFx(card, 1, null, players, [], [], gs, false, [0]);
+
+    expect(res.P.map(player => player.hp)).toEqual([7, 7, 7]);
+    expect(res.P.map(player => player.san)).toEqual([8, 7, 7]);
   });
 
   it('avoidNegativeFor: 规避自己时相邻角色仍受伤', () => {

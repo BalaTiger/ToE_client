@@ -510,15 +510,15 @@ function DebugSettingsPanel({
       </div>
 
       <div style={sectionStyle}>
-        <h4 style={sectionTitleStyle}>新手引导入口弹窗</h4>
+        <h4 style={sectionTitleStyle}>新手引导与软引导</h4>
         <select
           value={debugTutorialPromptMode}
           onChange={(e) => setDebugTutorialPromptMode(e.target.value)}
           style={selectStyle}
         >
           <option value="default">下次单人对战：按设备首次逻辑</option>
-          <option value="show">下次单人对战：显示</option>
-          <option value="hide">下次单人对战：不显示</option>
+          <option value="show">下次单人对战：全部重新显示</option>
+          <option value="hide">下次单人对战：全部不显示</option>
         </select>
       </div>
 

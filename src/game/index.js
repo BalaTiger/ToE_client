@@ -18,6 +18,7 @@ export * from './balanceCards';
 export * from './godPowerImmunity';
 export * from './proliferatingZ';
 export * from './proliferatingZFlow';
+export * from './cardGainEvents';
 export * from './blindZoneDecision';
 export * from './endTurnReplayFlow';
 export * from './cthRestDrawFlow';

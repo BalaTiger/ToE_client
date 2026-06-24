@@ -183,6 +183,7 @@ export function DiceRollAnim({ anim, exiting }) {
   const isMoldyFoodRoll = anim.diceMode === 'moldyFood';
   const apophisSuccess = isApophisRoll && !anim.apophisChanged;
   const moldyEven = isMoldyFoodRoll && (d1 % 2 === 0);
+  const moldyNegativeAvoided = isMoldyFoodRoll && !moldyEven && !!anim.negativeAvoided;
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(4,2,0,0.94)',
@@ -237,10 +238,10 @@ export function DiceRollAnim({ anim, exiting }) {
                 fontFamily: "'Cinzel',serif", fontSize: 13, color: moldyEven ? '#4ade80' : '#e08888', letterSpacing: 3,
                 textAlign: 'center', marginBottom: 6,
               }}>
-                {moldyEven ? '双数！食物尚可食用' : '单数！食物已经腐坏'}
+                {moldyEven ? '双数！食物尚可食用' : moldyNegativeAvoided ? '单数！负面效果已规避' : '单数！食物已经腐坏'}
               </div>
               <div style={{ fontFamily: "'IM Fell English',serif", fontStyle: 'italic', color: '#b89858', fontSize: 12, textAlign: 'center', letterSpacing: 1 }}>
-                掷出 {d1} 点，{moldyEven ? '恢复 2 HP' : '失去 1 HP 且下回合不能摸牌'}
+                掷出 {d1} 点，{moldyEven ? '恢复 2 HP' : moldyNegativeAvoided ? '没有负面效果发生' : '失去 1 HP 且下回合不能摸牌'}
               </div>
             </>
           ) : isDodgeRoll ? (

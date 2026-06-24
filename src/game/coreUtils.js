@@ -201,6 +201,12 @@ export const isPositiveZoneCard = (card) => {
 
 export const isNeutralZoneCard = (card) => !isPositiveZoneCard(card) && !isNegativeZoneCard(card);
 
+export const isDodgeableZoneCard = (card) => {
+  if (!card) return false;
+  if (card.dodgeable != null) return !!card.dodgeable;
+  return isNegativeZoneCard(card);
+};
+
 export const zoneCardHasGuaranteedHpLoss = (card) => {
   if (!card?.type) return false;
   return [
@@ -273,6 +279,20 @@ export const cardLogText = (card, opts = {}) => {
   const namePart = card.name || '';
   if (alwaysShowName) return `${codePart} ${namePart}`.trim() || namePart || '???';
   return codePart || namePart || '???';
+};
+
+export const getCaveDuelDisplayNumber = card => (
+  Number.isFinite(card?.number) ? card.number : 0
+);
+
+export const compareCaveDuelCards = (a, b) => {
+  const aHasNumber = Number.isFinite(a?.number);
+  const bHasNumber = Number.isFinite(b?.number);
+  if (aHasNumber && bHasNumber) return Math.sign(a.number - b.number);
+  if (!aHasNumber && !bHasNumber) return 0;
+  const numbered = aHasNumber ? a.number : b.number;
+  if (numbered === 4) return aHasNumber ? -1 : 1;
+  return aHasNumber ? 1 : -1;
 };
 
 export const estimateZoneCardKeepScore = (card, ci, players) => {

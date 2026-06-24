@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { DDCard, DDCardBack } from '../cards';
 
-const CARD_W = 44;
-const CARD_H = 58;
-const STACK_GAP = 24;
+const CARD_W = 82;
+const CARD_H = 108;
+const STACK_GAP = 48;
 
 function StackedCardRow({ cards, zoneKey, dragging, readOnly, onDragStart }) {
   const count = cards.length;
@@ -28,7 +28,7 @@ function StackedCardRow({ cards, zoneKey, dragging, readOnly, onDragStart }) {
           onMouseDown={e => onDragStart(c, zoneKey, i, e)}
           onTouchStart={e => onDragStart(c, zoneKey, i, e)}
         >
-          <DDCard card={c} small frameStyle={{ width: CARD_W, minWidth: CARD_W, height: CARD_H }} />
+          <DDCard card={c} frameStyle={{ width: CARD_W, minWidth: CARD_W, height: CARD_H }} />
         </div>
       ))}
     </div>
@@ -37,10 +37,10 @@ function StackedCardRow({ cards, zoneKey, dragging, readOnly, onDragStart }) {
 
 function DeckStackImage({ expansionKey }) {
   return (
-    <div style={{ position: 'relative', width: 88, height: 102 }}>
+    <div style={{ position: 'relative', width: 122, height: 132 }}>
       {Array.from({ length: 7 }).map((_, i) => (
-        <div key={i} style={{ position: 'absolute', left: i * 5, top: i * 3, zIndex: i }}>
-          <DDCardBack small expansionKey={expansionKey} frameStyle={{ width: 50, height: 68 }} />
+        <div key={i} style={{ position: 'absolute', left: i * 6, top: i * 4, zIndex: i }}>
+          <DDCardBack expansionKey={expansionKey} frameStyle={{ width: 82, height: 108 }} />
         </div>
       ))}
     </div>
@@ -65,9 +65,9 @@ export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorNam
   };
 
   const zonePositions = [
-    { key: 'bottom', label: '牌堆底', style: { left: '5%', top: '28%', width: '31%', height: 104 } },
-    { key: 'top', label: '牌堆顶', style: { right: '5%', top: '28%', width: '31%', height: 104 } },
-    { key: 'hand', label: '收入手牌', style: { left: '50%', bottom: '8%', transform: 'translateX(-50%)', width: '55%', height: '28%' } },
+    { key: 'bottom', label: '牌堆底', style: { left: '4%', top: '24%', width: '34%', height: 158 } },
+    { key: 'top', label: '牌堆顶', style: { right: '4%', top: '24%', width: '34%', height: 158 } },
+    { key: 'hand', label: '收入手牌', style: { left: '50%', bottom: '5%', transform: 'translateX(-50%)', width: '62%', height: 166 } },
   ];
 
   useEffect(() => {
@@ -183,7 +183,7 @@ export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorNam
         {readOnly ? '正在解读石刻。你可以观察其安排。' : '将 1 张牌拖入“收入手牌”，其余牌拖入“牌堆顶”或“牌堆底”'}
       </div>
 
-      <div style={{ position: 'relative', width: '92vw', maxWidth: 900, height: '72vh', maxHeight: 520 }}>
+      <div style={{ position: 'relative', width: '94vw', maxWidth: 980, height: '72vh', maxHeight: 560, minHeight: 470 }}>
         {zonePositions.map(({ key, label, style }) => (
           <div
             key={key}
@@ -207,7 +207,7 @@ export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorNam
               {label}
             </div>
             <div style={{
-              width: '100%', padding: '0 8px', minHeight: CARD_H, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: '100%', padding: '0 8px 8px', minHeight: CARD_H, display: 'flex', alignItems: 'center', justifyContent: 'center', overflowX: 'auto', overflowY: 'visible',
             }}>
               <StackedCardRow cards={zones[key]} zoneKey={key} dragging={dragging} readOnly={readOnly} onDragStart={handleDragStart} />
             </div>
@@ -215,7 +215,7 @@ export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorNam
         ))}
 
         <div style={{
-          position: 'absolute', left: '50%', top: '20%', transform: 'translateX(-50%)',
+          position: 'absolute', left: '50%', top: '17%', transform: 'translateX(-50%)',
           display: 'flex', flexDirection: 'column', alignItems: 'center',
         }}>
           <DeckStackImage expansionKey={expansionKey} />
@@ -246,7 +246,7 @@ export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorNam
             transform: 'scale(1.08)',
           }}
         >
-          <DDCard card={dragging.card} small frameStyle={{ width: CARD_W, minWidth: CARD_W, height: CARD_H }} />
+          <DDCard card={dragging.card} frameStyle={{ width: CARD_W, minWidth: CARD_W, height: CARD_H }} />
         </div>
       )}
     </div>

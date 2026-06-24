@@ -261,6 +261,7 @@ export function buildAnimQueue(oldGs, newGs) {
       diceMode: 'moldyFood',
       d1: moldyRoll.d1,
       d2: 0,
+      negativeAvoided: !!moldyRoll.negativeAvoided,
       rollerName: newGs.players?.[moldyRoll.actorIdx]?.name || '角色',
       msgs: [],
     });
