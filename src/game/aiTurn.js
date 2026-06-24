@@ -15,6 +15,7 @@ import {
   buildEtherealizeLoss,
   buildEtherealizeRedirectDecision,
   compareCaveDuelCards,
+  formatSanLoss,
 } from './coreUtils';
 import {
   aiChooseRevealCard,
@@ -86,6 +87,83 @@ function getBestCaveDuelCardIndex(hand = [], opposingCard = null) {
   return hand.reduce((bestIdx, card, idx) => (
     caveDuelBlindChoiceScore(card) > caveDuelBlindChoiceScore(hand[bestIdx]) ? idx : bestIdx
   ), 0);
+}
+
+function countTreasureAxes(hand = []) {
+  const letters = new Set();
+  const numbers = new Set();
+  hand.forEach(card => {
+    if (!card || card.isGod || !card.isZone) return;
+    if (card.letter) letters.add(card.letter);
+    if (Number.isFinite(card.number)) numbers.add(card.number);
+  });
+  return letters.size + numbers.size;
+}
+
+function treasureGodCardUtility(card) {
+  switch (card?.godKey) {
+    case 'TSG': return 2.2;
+    case 'NYA': return 1.2;
+    case 'VRI': return 0.8;
+    case 'CTH': return 0.4;
+    case 'SHU': return -4.0;
+    case 'APO': return -3.0;
+    default: return -1.5;
+  }
+}
+
+function treasureCardRetentionValue(card, hand = [], index = -1) {
+  if (!card) return -99;
+  if (isBlackGoatYoung(card) || isTsathogguaSlime(card)) return -20;
+  if (card.isGod) return treasureGodCardUtility(card);
+  if (!card.isZone) return 0.2;
+  const without = hand.filter((_, i) => i !== index);
+  const axisContribution = Math.max(0, countTreasureAxes(hand) - countTreasureAxes(without));
+  return axisContribution * 8 + 1;
+}
+
+function treasureHandValue(hand = []) {
+  return countTreasureAxes(hand) * 10
+    + hand.reduce((sum, card, index) => sum + treasureCardRetentionValue(card, hand, index) * 0.2, 0);
+}
+
+function chooseTreasureSwapGiveIndex(hand = []) {
+  if (!hand.length) return -1;
+  return hand.reduce((bestIdx, card, index) => {
+    const score = treasureCardRetentionValue(card, hand, index);
+    const bestScore = treasureCardRetentionValue(hand[bestIdx], hand, bestIdx);
+    return score < bestScore ? index : bestIdx;
+  }, 0);
+}
+
+function evaluateTreasureSwapSteal(selfHand = [], takenCard) {
+  const beforeScore = treasureHandValue(selfHand);
+  const handAfterSteal = [...selfHand, takenCard];
+  const giveIdx = chooseTreasureSwapGiveIndex(handAfterSteal);
+  if (giveIdx < 0) return { score: -Infinity, giveIdx: -1 };
+  const handAfterSwap = handAfterSteal.filter((_, index) => index !== giveIdx);
+  return {
+    score: treasureHandValue(handAfterSwap) - beforeScore,
+    giveIdx,
+  };
+}
+
+function chooseAiTreasureSwapPlan(players = [], sourceIdx, targetIndices = [], overrideTargetIdx = null) {
+  const self = players[sourceIdx];
+  if (!self?.hand?.length) return null;
+  const candidates = overrideTargetIdx != null ? [overrideTargetIdx] : targetIndices;
+  const scoredTargets = candidates
+    .filter(idx => idx != null && idx !== sourceIdx && players[idx] && !players[idx].isDead && players[idx].hand?.length)
+    .map(idx => {
+      const targetHand = players[idx].hand || [];
+      const outcomes = targetHand.map(card => evaluateTreasureSwapSteal(self.hand, card));
+      const expectedScore = outcomes.reduce((sum, outcome) => sum + outcome.score, 0) / Math.max(1, outcomes.length);
+      return { idx, expectedScore };
+    })
+    .sort((a, b) => b.expectedScore - a.expectedScore || a.idx - b.idx);
+  if (!scoredTargets.length) return null;
+  if (overrideTargetIdx == null && scoredTargets[0].expectedScore <= 0.05) return null;
+  return { targetIdx: scoredTargets[0].idx, expectedScore: scoredTargets[0].expectedScore };
 }
 
 /**
@@ -330,7 +408,7 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
       const revealedCultist = isRevealedCultist(P[ct]);
       const effectMsg = revealedCultist
         ? `${P[ct].name}（邪祀者）遭遇邪神 ${card.name}！（第${P[ct].godEncounters}次）免疫SAN损耗`
-        : `${P[ct].name} 遭遇邪神 ${card.name}！（第${P[ct].godEncounters}次）失去${godCost}SAN`;
+        : `${P[ct].name} 遭遇邪神 ${card.name}！（第${P[ct].godEncounters}次）${formatSanLoss(godCost)}`;
       L.push(effectMsg);
       let inspectionMeta = makeInspectionMeta({ ...gs, ...statePatch });
       if (!revealedCultist) {
@@ -470,7 +548,7 @@ export function aiStep(gs, opts = {}) {
       const revealedCultist = isRevealedCultist(_P[_ti]);
       const effectMsg = revealedCultist
         ? `${_P[_ti].name}（邪祀者）遭遇邪神 ${_sc.name}！（第${_P[_ti].godEncounters}次）免疫SAN损耗`
-        : `${_P[_ti].name} 遭遇邪神 ${_sc.name}！（第${_P[_ti].godEncounters}次）失去${godCost}SAN`;
+        : `${_P[_ti].name} 遭遇邪神 ${_sc.name}！（第${_P[_ti].godEncounters}次）${formatSanLoss(godCost)}`;
       _L.push(effectMsg);
       if (!revealedCultist) {
         const processed = applySanLossToPlayerWithInspection(_ti, godCost, _gs.currentTurn, _P, _D, _Disc, _L, inspectionMeta, '邪神遭遇');
@@ -479,7 +557,8 @@ export function aiStep(gs, opts = {}) {
         _L.splice(0, _L.length, ...processed.L);
       }
       const godResolveGs = { ..._gs, ...inspectionMeta };
-      const gr = aiHandleGodCard(_ti, _sc, _P, _D, _Disc, _L, godResolveGs, true, true);
+      const shouldDeferShuTarget = _sc.godKey === 'SHU' && _ti === 0;
+      const gr = aiHandleGodCard(_ti, _sc, _P, _D, _Disc, _L, godResolveGs, true, true, { deferShuTarget: shouldDeferShuTarget });
       _P = gr.P; _D = gr.D; _Disc = gr.Disc;
       const mergedInspectionMeta = {
         ...inspectionMeta,
@@ -495,6 +574,30 @@ export function aiStep(gs, opts = {}) {
       _gs = { ..._gs, ...fxResult.statePatch };
     }
     return { gs: _gs, P: _P, D: _D, Disc: _Disc, L: _L, fxResult };
+  };
+
+  const buildDeferredShuTargetState = (_gs, _P, _D, _Disc, _L) => {
+    if (!_gs?._deferredShuTarget) return null;
+    return {
+      ..._gs,
+      players: _P,
+      deck: _D,
+      discard: _Disc,
+      log: _L,
+      currentTurn: ct,
+      phase: 'SHU_SELECT_TARGET',
+      abilityData: _gs.abilityData,
+      huntAbandoned: newAbandoned,
+      skillUsed: true,
+      _aiDrawnCard: (gs._aiDrawnCard ?? gs._drawnCard ?? null),
+      _discardedDrawnCard: (gs._discardedDrawnCard ?? false),
+      _aiName: ai.name,
+      _playersBeforeNextDraw: copyPlayers(_P),
+      _playersBeforeSkillAction: playersBeforeSkillAction,
+      _preSkillLogs: preSkillLogs,
+      _preSkillDiscard: preSkillDiscard,
+      _aiHuntEvents: aiHuntEvents,
+    };
   };
 
   const buildBewitchTreasureWinState = (_gs, _P, _D, _Disc, _L, targetIdx) => {
@@ -680,7 +783,7 @@ export function aiStep(gs, opts = {}) {
           L.push(`${P[ct].name} 从手牌信仰 ${hgc.name}，获得${hgc.power}(Lv.1)（骷髅头不计）`);
         }
         // Forced convert if worshipping different god
-        if(alreadyHasGod){const converted=convertGodFollower(ct,gs.currentTurn,P,D,Disc,L,inspectionMeta,`${P[ct].name} 改信新神，SAN-1`,hgc);P=converted.P;D=converted.D;Disc=converted.Disc;L=converted.L;inspectionMeta=converted.inspectionMeta;}
+        if(alreadyHasGod){const converted=convertGodFollower(ct,gs.currentTurn,P,D,Disc,L,inspectionMeta,`${P[ct].name} 改信新神，${formatSanLoss(1)}`,hgc);P=converted.P;D=converted.D;Disc=converted.Disc;L=converted.L;inspectionMeta=converted.inspectionMeta;}
         if(P[ct].godName===hgc.godKey&&P[ct].godLevel<3){
           P[ct].godLevel++;P[ct].godZone.push({...hgc});
         } else if(!P[ct].godName||alreadyHasGod){
@@ -716,11 +819,8 @@ export function aiStep(gs, opts = {}) {
   // 追猎者HP≤5：积极休息
   const aiEffRole=gs.globalOnlySwapOwner!=null?ROLE_TREASURE:(P[ct]._nyaBorrow||P[ct].role);
   const noRestReason=aiShouldNotRest(gs,P[ct],aiEffRole,P,ct);
-  const shouldRest=(()=>{
-    if(noRestReason?.shouldNotRest)return false;
-    return shouldAiRest(gs, P[ct], aiEffRole);
-  })();
   let swapTargetOverride=null;
+  let treasureSwapPlan=null;
   if(noRestReason?.shouldNotRest){
     if(noRestReason.reason==='swapWin'){
       swapTargetOverride={targetIdx:noRestReason.targetIdx,reason:'win'};
@@ -728,6 +828,15 @@ export function aiStep(gs, opts = {}) {
       swapTargetOverride={targetIdx:noRestReason.targetIdx,reason:'avoidRegression'};
     }
   }
+  if(aiEffRole===ROLE_TREASURE&&swapTargetOverride?.targetIdx!=null){
+    const treasureSwapTargets=alive.filter(p=>p.hand.length>0).map(p=>P.indexOf(p)).filter(i=>i>=0);
+    treasureSwapPlan=chooseAiTreasureSwapPlan(P,ct,treasureSwapTargets,swapTargetOverride.targetIdx);
+    if(!treasureSwapPlan)swapTargetOverride=null;
+  }
+  const shouldRest=(()=>{
+    if(noRestReason?.shouldNotRest&&(aiEffRole!==ROLE_TREASURE||!!swapTargetOverride))return false;
+    return shouldAiRest(gs, P[ct], aiEffRole);
+  })();
   if(shouldRest){
     const d1=(1+Math.random()*6|0),d2=(1+Math.random()*6|0),heal=Math.max(d1,d2);
     const beforeRestPlayers=copyPlayers(P);
@@ -771,8 +880,18 @@ export function aiStep(gs, opts = {}) {
   if (aiEffRole === ROLE_TREASURE && aiSkillDecision.canSwapHands && hasTreasureSwapBuffer(P[ct].hand)) {
     useSkill = true;
   }
+  if (aiEffRole === ROLE_TREASURE && treasureSwapPlan) {
+    useSkill = true;
+  }
   if (aiEffRole === ROLE_CULTIST && cultistBewitchPlan && bestCultistBewitchSanLoss(P[ct].hand) > 1) {
     useSkill = true;
+  }
+  if (aiEffRole === ROLE_TREASURE && useSkill) {
+    if (!treasureSwapPlan) {
+      const treasureSwapTargets = alive.filter(p => p.hand.length > 0).map(p => P.indexOf(p)).filter(i => i >= 0);
+      treasureSwapPlan = chooseAiTreasureSwapPlan(P, ct, treasureSwapTargets, swapTargetOverride?.targetIdx);
+    }
+    if (!treasureSwapPlan) useSkill = false;
   }
 
   const multiplyEvent = (!gs.multiplyUsed && !gs.skillUsed && !gs.restUsed)
@@ -786,11 +905,15 @@ export function aiStep(gs, opts = {}) {
     gs = { ...gs, multiplyUsed: true, skillUsed: true, ...appendPublicCardGainTriggers(gs, P, multiplyEvent.toIdx, goatCard) };
     useSkill = false;
   }
+  const appendAiEndTurnLog = () => {
+    const usedSkillThisTurn = !!(useSkill || gs.skillUsed || gs.multiplyUsed);
+    L.push(usedSkillThisTurn ? `${ai.name} 结束回合` : `${ai.name} 未使用技能，结束回合`);
+  };
 
   if(aiEffRole!==ROLE_HUNTER && alive.length===0){
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
     discardAiHandToLimit(P, ct, Disc, L);
-    L.push(`${ai.name} 未使用技能，结束回合`);
+    appendAiEndTurnLog();
     const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,gs);
     P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};
     const _P_afterAction=copyPlayers(P);
@@ -1032,6 +1155,8 @@ export function aiStep(gs, opts = {}) {
           _aiHuntEvents:aiHuntEvents,
         });
         if(pendingSlime)return pendingSlime;
+        const deferredShu=buildDeferredShuTargetState(gs,P,D,Disc,L);
+        if(deferredShu)return deferredShu;
         if(!sc.isGod&&bwRes.fxResult){
           const res=bwRes.fxResult;
           if(sc.type==='swapAllHands'||hasEffectDecisionState(res.statePatch)){
@@ -1073,25 +1198,20 @@ export function aiStep(gs, opts = {}) {
       const withH=alive.filter(p=>p.hand.length>0);
       const pool=withH.length?withH:alive;
       if(pool.length){
-        if(swapTargetOverride!=null){
-          tgt=P[swapTargetOverride.targetIdx];
+        if(treasureSwapPlan?.targetIdx!=null){
+          tgt=P[treasureSwapPlan.targetIdx];
         }else{
-          const myNonGod=P[ct].hand.filter(c=>!c.isGod);
-          if(myNonGod.length>=7){
-            tgt=pool[0|Math.random()*pool.length];
-          }else{
-          const myL=new Set(myNonGod.map(c=>c.letter));
-          const myN=new Set(myNonGod.map(c=>c.number));
-          const scoreH=h=>h.filter(c=>!c.isGod&&(!myL.has(c.letter)||!myN.has(c.number))).length;
-          tgt=pool.reduce((b,p)=>scoreH(p.hand)>scoreH(b.hand)?p:b,pool[0]);
+          tgt=pool[0];
         }
         const legalTargets=pool.map(p=>P.indexOf(p)).filter(i=>i>=0);
         const ti=applyNightTarget(P.indexOf(tgt),legalTargets,'选择【掉包】目标');
         tgt=P[ti];
         if(P[ti]?.hand.length&&P[ct].hand.length){
           const ri=0|Math.random()*P[ti].hand.length;const taken=P[ti].hand.splice(ri,1)[0];
-          const gi=0|Math.random()*P[ct].hand.length;const given=P[ct].hand.splice(gi,1)[0];
-          P[ct].hand.push(taken);P[ti].hand.push(given);
+          P[ct].hand.push(taken);
+          const gi=chooseTreasureSwapGiveIndex(P[ct].hand);
+          const given=P[ct].hand.splice(gi,1)[0];
+          P[ti].hand.push(given);
           // 只有使用自己的掉包技能时才显示"（寻宝者）"，通过"绮丽诗篇"获得的掉包技能不显示
           const swapActorLabel=`${ai.name}${gs.globalOnlySwapOwner===null?'（寻宝者）':''}`;
           const swapPublicLog=`${swapActorLabel}对 ${tgt.name} 【掉包】`;
@@ -1130,7 +1250,6 @@ export function aiStep(gs, opts = {}) {
         }
         }
       }
-    }
   }else if(!P[ct].isDead){
     if(aiEffRole===ROLE_CULTIST&&!gs.skillUsed&&!gs.multiplyUsed&&!gs.restUsed&&isCultistEndingTurnUnreasonable(P,ct)){
       cultistBewitchPlan=chooseAiCultistBewitchPlan(P,ct);
@@ -1155,6 +1274,8 @@ export function aiStep(gs, opts = {}) {
           _aiHuntEvents:aiHuntEvents,
         });
         if(pendingSlime)return pendingSlime;
+        const deferredShu=buildDeferredShuTargetState(gs,P,D,Disc,L);
+        if(deferredShu)return deferredShu;
         if(!sc.isGod&&bwRes.fxResult){
           const res=bwRes.fxResult;
           if(hasEffectDecisionState(res.statePatch)){
@@ -1169,7 +1290,7 @@ export function aiStep(gs, opts = {}) {
         return buildReturnPack(nextGs,_P_afterAction);
       }
     }
-    L.push(`${ai.name} 未使用技能，结束回合`);
+    appendAiEndTurnLog();
   }
   if(P[ct].isDead){
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};

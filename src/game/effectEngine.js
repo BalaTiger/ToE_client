@@ -177,7 +177,7 @@ function handleInspection(playerIndex, gs) {
       break;
     }
     case 'selfDamageHP': {
-      // 失去1HP
+      // 失去 1 HP
       P[playerIndex].hp = Math.max(0, P[playerIndex].hp - drawnCard.value);
       L.push(`${P[playerIndex].name} 自残，失去 ${drawnCard.value} HP`);
       if (P[playerIndex].hp <= 0) killPlayer(playerIndex);
@@ -222,7 +222,7 @@ function handleInspection(playerIndex, gs) {
       break;
     }
     case 'healSAN': {
-      // 恢复1SAN
+      // 恢复 1 SAN
       P[playerIndex].san = Math.min(10, P[playerIndex].san + drawnCard.value);
       L.push(`${P[playerIndex].name} 超人意志，恢复 ${drawnCard.value} SAN`);
       break;

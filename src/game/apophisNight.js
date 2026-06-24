@@ -1,6 +1,6 @@
 import { GOD_DEFS } from '../constants/card';
 import { buildStatEvents } from './statEvents';
-import { clamp, copyPlayers } from './coreUtils';
+import { clamp, copyPlayers, formatSanLoss } from './coreUtils';
 import { hasGodPowerImmunity } from './godPowerImmunity';
 
 export function getApophisNightForLevel(level = 1) {
@@ -49,7 +49,7 @@ export function resolveApophisTarget({
     targetIdx = alternatives[Math.floor(Math.random() * alternatives.length)];
     const beforePlayers = copyPlayers(P);
     P[actorIdx].san = clamp((P[actorIdx].san || 0) - 1);
-    eventLog = `【黑夜】${P[actorIdx].name} ${label}掷出 ${roll}，目标由 ${P[selectedIdx].name} 错乱为 ${P[targetIdx].name}，失去1SAN`;
+    eventLog = `【黑夜】${P[actorIdx].name} ${label}掷出 ${roll}，目标由 ${P[selectedIdx].name} 错乱为 ${P[targetIdx].name}，${formatSanLoss(1)}`;
     L = [...L, eventLog];
     const statEventSeq = (gs?._statEventSeq || 0) + 1;
     const statEvents = buildStatEvents(beforePlayers, P, [L[L.length - 1]], { reason: '黑夜', seq: statEventSeq });

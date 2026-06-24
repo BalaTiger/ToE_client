@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeInspectionMeta, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
 import { aiDrawAndApply, aiHandleGodCard, applySanLossToPlayerWithInspection, checkWin, playerDrawCard, resolveGodEncounterForAI, startNextTurn } from '../turnEngine';
-import { buildTsathogguaSlimeGrantQueue } from '../turnAnimState';
+import { buildTsathogguaSlimeGrantQueue, buildTurnStartDrawReplayQueue } from '../turnAnimState';
 import { makeGodCard, makeGs, makePlayer, makeStandardPlayers, makeZoneCard } from './factory';
 import { createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../../constants/card';
 import { applyInspectionForSanLoss } from '../effectEngine';
@@ -34,7 +34,7 @@ describe('checkWin death handling', () => {
 
     expect(result.P[0].san).toBe(9);
     expect(result.P[0].roleRevealed).toBe(false);
-    expect(result.effectMsgs.some(msg => msg.includes('失去1SAN'))).toBe(true);
+    expect(result.effectMsgs.some(msg => msg.includes('失去 1 SAN'))).toBe(true);
     expect(result.statePatch._statEvents).toMatchObject([
       { type: 'SAN_LOSS', target: 0, from: { san: 10 }, to: { san: 9 }, reason: '邪神遭遇', seq: 1 },
     ]);
@@ -84,6 +84,30 @@ describe('turnEngine stat events', () => {
     expect(result.statePatch._statEvents).toMatchObject([
       { type: 'SAN_LOSS', target: 0, from: { san: 10 }, to: { san: 9 }, reason: '邪神遭遇', seq: 1 },
     ]);
+  });
+
+  it('首回合玩家摸到邪神牌时先保留摸牌前 SAN，再在回放中播放扣减', () => {
+    const godCard = makeGodCard('VRI');
+    const players = [
+      makePlayer({ name: '你', role: ROLE_TREASURE, san: 10, godEncounters: 0 }),
+      makePlayer({ name: '艾伦' }),
+    ];
+    const gs = makeGs({
+      players,
+      deck: [godCard],
+      currentTurn: 1,
+      log: ['游戏开始。每人获得四张初始手牌。'],
+    });
+
+    const result = startNextTurn(gs);
+    const queue = buildTurnStartDrawReplayQueue({ oldGs: gs, newGs: result }).queue;
+    const types = queue.map(step => step.type);
+
+    expect(result.phase).toBe('GOD_CHOICE');
+    expect(result.players[0].san).toBe(9);
+    expect(result._playersBeforeThisDraw[0].san).toBe(10);
+    expect(types.slice(0, 3)).toEqual(['YOUR_TURN', 'DRAW_CARD', 'SAN_DAMAGE']);
+    expect(queue.find(step => step.type === 'SAN_DAMAGE')).toMatchObject({ hitIndices: [0] });
   });
 
   it('Debug 强制收入可作用于任意 AI 座位的玫瑰倒刺', () => {
@@ -320,6 +344,49 @@ describe('turnEngine stat events', () => {
       { type: 'HP_LOSS', target: 0, from: { hp: 10 }, to: { hp: 9 }, seq: 2 },
     ]);
     expect(result.statePatch._inspectionEvents[0].statEventSeq).toBe(2);
+  });
+
+  it('SAN 损失后若可牺牲黏液，会先暂停在黏液抉择而不是提前翻检定牌', () => {
+    const slime = createTsathogguaSlimeCard();
+    const players = [makePlayer({
+      name: '你',
+      role: ROLE_TREASURE,
+      hp: 10,
+      san: 7,
+      hand: [slime],
+    })];
+    const inspectionCard = { name: '失眠', effect: 'disableRest', value: 1, type: 'negative' };
+    const gs = makeGs({
+      players,
+      inspectionDeck: [inspectionCard],
+      inspectionDiscard: [],
+      _inspectionSeq: 0,
+      _statEventSeq: 0,
+    });
+    const log = ['你 遭遇邪神 弗栗多！（第1次）失去1SAN'];
+
+    const result = applySanLossToPlayerWithInspection(
+      0,
+      1,
+      0,
+      players,
+      [],
+      [],
+      log,
+      makeInspectionMeta(gs),
+      '邪神遭遇',
+    );
+
+    expect(result.P[0].san).toBe(6);
+    expect(result.inspectionMeta._statEvents).toMatchObject([
+      { type: 'SAN_LOSS', target: 0, from: { san: 7 }, to: { san: 6 }, seq: 1 },
+    ]);
+    expect(result.inspectionMeta._inspectionEvents).toEqual([]);
+    expect(result.inspectionMeta.abilityData).toMatchObject({
+      type: 'tsgSlimeBalance',
+      targetIdx: 0,
+      pendingSanInspection: { targetIndex: 0, startIndex: 0, reason: '邪神遭遇' },
+    });
   });
 
   it('AI 邪神遭遇可延后到遭遇扣减后、检定翻牌前', () => {
@@ -670,6 +737,59 @@ describe('turnEngine stat events', () => {
     expect(result.players[1].hand.some(c => c.isTsathogguaSlime)).toBe(false);
     expect(result.players[1].hand.map(c => c.name)).toEqual(expect.arrayContaining(['额外牌', '正常牌']));
     expect(result.log.some(line => line.includes('额外摸1张牌'))).toBe(true);
+  });
+
+  it('本地玩家黏液额外摸牌进入抉择时保留正常摸牌续接标记', () => {
+    const slime = createTsathogguaSlimeCard();
+    const extraDecisionCard = makeZoneCard('B4', 0);
+    const normalCard = makeZoneCard('A1', 0);
+    const players = [
+      makePlayer({ name: '你', godName: 'TSG', godLevel: 1, hand: [slime] }),
+      makePlayer({ name: '艾伦' }),
+    ];
+    const gs = makeGs({
+      players,
+      deck: [extraDecisionCard, normalCard],
+      currentTurn: -1,
+      log: [],
+    });
+
+    const result = startNextTurn(gs);
+
+    expect(result.phase).toBe('DRAW_REVEAL');
+    expect(result.drawReveal).toMatchObject({
+      card: extraDecisionCard,
+      fromTsathogguaSlime: true,
+    });
+    expect(result.abilityData).toMatchObject({
+      fromTsathogguaSlime: true,
+      continueTurnStartDraw: true,
+    });
+    expect(result.players[0].hand.some(c => c.isTsathogguaSlime)).toBe(false);
+    expect(result.deck[0]).toBe(normalCard);
+    expect(result.log.some(line => line.includes('额外摸到'))).toBe(true);
+    expect(result.log.some(line => line.includes('正常牌'))).toBe(false);
+  });
+
+  it('撒托古亚黏液回合开始消失时播放泡泡破裂而不是弃牌动画', () => {
+    const slime = createTsathogguaSlimeCard();
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', godName: 'TSG', godLevel: 1, hand: [slime] }),
+    ];
+    const deck = [
+      { id: 'extra', key: 'A1', letter: 'A', number: 1, name: '额外牌', type: 'selfHealHP', val: 1, isZone: true, polarity: 'positive' },
+      { id: 'normal', key: 'A2', letter: 'A', number: 2, name: '正常牌', type: 'selfHealHP', val: 1, isZone: true, polarity: 'positive' },
+    ];
+    const gs = makeGs({ players, deck, currentTurn: 0, log: [] });
+    const result = startNextTurn(gs);
+
+    const queue = buildTurnStartDrawReplayQueue({ oldGs: gs, newGs: result }).queue;
+    const popStep = queue.find(step => step.type === 'TSG_SLIME_POP');
+
+    expect(popStep).toMatchObject({ targetPid: 1, count: 1, cards: [slime] });
+    expect(queue.some(step => step.type === 'CARD_TRANSFER' && step.dest === 'discard')).toBe(false);
+    expect(queue.some(step => step.type === 'DISCARD' && step.card?.id === slime.id)).toBe(false);
   });
 
   it('火把状态会阻止撒托古亚回合开始消耗黏液', () => {

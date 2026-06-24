@@ -3,7 +3,7 @@ export function isTurnStartLog(line){
 }
 
 export function isStatLog(line){
-  return new RegExp("造成 \\d+HP 伤害|失去 \\d+ HP|失去 \\d+ SAN|失去 \\d+ HP 和 \\d+ SAN|恢复 \\d+ HP|恢复 \\d+ SAN|各种理智和各种回复额外失去|被玫瑰倒刺刺伤|恢复 1SAN").test(line||"");
+  return new RegExp("造成 \\d+HP 伤害|失去 ?\\d+ ?HP|失去 ?\\d+ ?SAN|失去 ?\\d+ ?HP 和 ?\\d+ ?SAN|(?:HP|SAN)-\\d+|恢复 \\d+ HP|恢复 \\d+ SAN|各种理智和各种回复额外失去|被玫瑰倒刺刺伤|恢复 1SAN").test(line||"");
 }
 
 export function isSkillHuntLog(line){

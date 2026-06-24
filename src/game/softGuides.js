@@ -7,24 +7,22 @@ export const SOFT_GUIDE_IDS = {
 
 export const SOFT_GUIDE_DEFS = {
   [SOFT_GUIDE_IDS.REST]: {
-    title: '休息',
-    eyebrow: '软引导',
+    title: '',
+    eyebrow: '',
     lines: [
-      '你的 HP 不满时，可以在行动阶段选择【休息】。',
-      '休息会掷两枚骰子回复 HP，并让角色进入或离开翻面状态。',
-      '这不是强制行动。你仍然可以先使用身份技能、信仰邪神，或直接结束回合。',
+      '你可以在行动阶段选择【休息】来回复HP。',
+      '先掷出两枚骰子，按照其中更大的点数回复HP，然后将你的角色翻面。',
+      '注意：【休息】后会直接结束回合；本回合使用其他技能后不能再【休息】。',
     ],
     confirmText: '知道了，继续行动',
   },
   [SOFT_GUIDE_IDS.FLIP]: {
-    title: '翻面',
-    eyebrow: '软引导',
+    title: '',
+    eyebrow: '',
     lines: [
       '角色陷入翻面时，会跳过自己的下个回合，然后翻回正常状态。',
-      '翻面既可能来自休息，也可能来自部分区域牌或邪神之力。',
-      '如果翻面的是你，注意手牌上限和回合节奏；如果翻面的是别人，也许正是动手的窗口。',
     ],
-    confirmText: '知道了',
+    confirmText: '我知道了',
   },
 };
 
@@ -60,4 +58,64 @@ export function markAllSoftGuidesDone() {
 
 export function hasNewRestingCharacter(prevPlayers = [], nextPlayers = []) {
   return nextPlayers.some((player, idx) => !!player?.isResting && !prevPlayers[idx]?.isResting);
+}
+
+export function getFirstRestingPlayerIndex(players = []) {
+  return players.findIndex(player => !!player?.isResting && !player?.isDead);
+}
+
+export function getQueuedSoftGuideId({ prevPlayers, nextPlayers, isMultiplayer = false, doneMap = {} } = {}) {
+  if (
+    prevPlayers &&
+    nextPlayers &&
+    !isMultiplayer &&
+    !doneMap[SOFT_GUIDE_IDS.FLIP] &&
+    hasNewRestingCharacter(prevPlayers, nextPlayers)
+  ) {
+    return SOFT_GUIDE_IDS.FLIP;
+  }
+  return null;
+}
+
+export function shouldTriggerRestSoftGuide(gs, doneMap = {}) {
+  const player = gs?.players?.[0];
+  return !!(
+    gs &&
+    !gs._isMP &&
+    !gs.gameOver &&
+    gs.phase === 'ACTION' &&
+    gs.currentTurn === 0 &&
+    player &&
+    !player.isDead &&
+    !player.disableRest &&
+    !gs.restUsed &&
+    !gs.skillUsed &&
+    !gs.multiplyUsed &&
+    Number(player.hp) < 10 &&
+    !doneMap[SOFT_GUIDE_IDS.REST]
+  );
+}
+
+export function canPresentSoftGuide({
+  gs,
+  showTutorial = false,
+  pendingSoftGuideId = null,
+  roleRevealAnim = null,
+  anim = null,
+  animExiting = null,
+  animQueueLength = 0,
+  hasPendingGs = false,
+} = {}) {
+  return !!(
+    gs &&
+    !gs._isMP &&
+    !gs.gameOver &&
+    !showTutorial &&
+    !pendingSoftGuideId &&
+    !roleRevealAnim &&
+    !anim &&
+    !animExiting &&
+    animQueueLength <= 0 &&
+    !hasPendingGs
+  );
 }

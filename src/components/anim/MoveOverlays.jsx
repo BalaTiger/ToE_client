@@ -291,9 +291,10 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
           const delay = idx * 0.07;
           const isGodKeepHand = effect === 'godKeepHand' && card;
           const isSlime = effect === 'tsgSlime' && card;
-          const duration = effect === 'blackGoat' ? 1.28 : effect === 'tsgSlime' ? 0.82 : isGodKeepHand ? 0.78 : 0.62;
-          const cardW = isSlime ? 42 : isGodKeepHand ? 58 : 28;
-          const cardH = isSlime ? 56 : isGodKeepHand ? 82 : 40;
+          const isDecipherStone = effect === 'decipherStone' && card;
+          const duration = effect === 'blackGoat' ? 1.28 : effect === 'tsgSlime' ? 0.82 : isGodKeepHand ? 0.78 : isDecipherStone ? 0.78 : 0.62;
+          const cardW = isSlime ? 42 : isGodKeepHand ? 58 : isDecipherStone ? 58 : 28;
+          const cardH = isSlime ? 56 : isGodKeepHand ? 82 : isDecipherStone ? 76 : 40;
           return (
             <div key={`${key}-${idx}`} style={{ position: 'absolute', left: srcX, top: srcY }}>
               {effect === 'blackGoat' && <BlackGoatTrail txPx={txPx} tyPx={tyPx} delay={delay} duration={duration} />}
@@ -316,7 +317,7 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
                 zIndex: 481 + idx,
                 overflow: 'hidden',
               }}>
-                {!isSlime && <CardBackLayer expansionKey={expansionKey}/>}
+                {!isSlime && !isDecipherStone && <CardBackLayer expansionKey={expansionKey}/>}
                 {isSlime && (
                   <DDCard
                     card={card}
@@ -324,11 +325,150 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
                     frameStyle={{ boxShadow: 'none', border: 'none', width: cardW, minWidth: cardW, height: cardH }}
                   />
                 )}
+                {isDecipherStone && (
+                  <MiniCardFace
+                    card={card}
+                    width={cardW}
+                    height={cardH}
+                    ambient={false}
+                    frameStyle={{ boxShadow: 'none', border: 'none', background: 'transparent' }}
+                  />
+                )}
               </div>
             </div>
           );
         })
       )}
+    </div>
+  );
+}
+
+export function TsathogguaSlimePopOverlay({ anim, exiting }) {
+  const [pos, setPos] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!anim) return;
+    const anchor = getPlayerHandAnchorCenter(anim.targetPid ?? 0);
+    setPos(anchor);
+  }, [anim]);
+
+  if (!anim || !pos) return null;
+  const cards = Array.isArray(anim.cards) && anim.cards.length
+    ? anim.cards
+    : Array.from({ length: Math.max(1, anim.count || 1) }, () => null);
+  const offsets = [
+    { x: 0, y: 0 },
+    { x: -26, y: 10 },
+    { x: 28, y: 8 },
+    { x: -10, y: -18 },
+    { x: 18, y: -16 },
+  ];
+
+  return (
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      zIndex: 992,
+      pointerEvents: 'none',
+      overflow: 'hidden',
+      animation: exiting ? 'animFadeOut 0.18s ease-in forwards' : 'none',
+    }}>
+      <style>{`
+        @keyframes tsgSlimeBubblePop {
+          0% { transform: translate(-50%,-50%) scale(0.62); opacity: 0; filter: blur(0.6px); }
+          22% { transform: translate(-50%,-54%) scale(1.08); opacity: 1; filter: blur(0); }
+          62% { transform: translate(-50%,-62%) scale(1.18); opacity: 0.88; }
+          78% { transform: translate(-50%,-64%) scale(1.34); opacity: 0.78; }
+          100% { transform: translate(-50%,-66%) scale(1.78); opacity: 0; filter: blur(2px); }
+        }
+        @keyframes tsgSlimeCardMelt {
+          0% { transform: scale(1); opacity: 1; }
+          46% { transform: scale(0.98); opacity: 0.94; }
+          76% { transform: scale(0.72); opacity: 0.28; filter: blur(1.2px); }
+          100% { transform: scale(0.22); opacity: 0; filter: blur(3px); }
+        }
+        @keyframes tsgSlimeRingPop {
+          0% { transform: translate(-50%,-50%) scale(0.3); opacity: 0; }
+          34% { opacity: 0; }
+          62% { transform: translate(-50%,-50%) scale(0.92); opacity: 0.9; }
+          100% { transform: translate(-50%,-50%) scale(2.15); opacity: 0; }
+        }
+        @keyframes tsgSlimeDropletPop {
+          0% { transform: translate(-50%,-50%) scale(0.2); opacity: 0; }
+          54% { opacity: 0; }
+          68% { opacity: 1; }
+          100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.12); opacity: 0; }
+        }
+      `}</style>
+      {cards.map((card, idx) => {
+        const off = offsets[idx % offsets.length];
+        const left = pos.x + off.x;
+        const top = pos.y + off.y;
+        const delay = idx * 0.08;
+        const droplets = [
+          [-42, -26], [-18, -48], [18, -44], [44, -18],
+          [38, 24], [10, 44], [-24, 38], [-46, 8],
+        ];
+        return (
+          <div key={card?.id || `slime-pop-${idx}`} style={{ position: 'absolute', left, top }}>
+            <div style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              width: 82,
+              height: 82,
+              borderRadius: '50%',
+              background: 'radial-gradient(circle at 36% 28%,rgba(232,255,246,0.86) 0%,rgba(137,232,190,0.48) 26%,rgba(50,143,111,0.20) 56%,rgba(6,38,31,0) 74%)',
+              border: '1px solid rgba(167,243,208,0.58)',
+              boxShadow: '0 0 24px rgba(128,216,168,0.58), inset -8px -10px 18px rgba(13,72,56,0.36), inset 7px 7px 16px rgba(242,255,250,0.42)',
+              animation: `tsgSlimeBubblePop 0.94s cubic-bezier(0.22,0.78,0.24,1) ${delay}s both`,
+            }} />
+            <div style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              width: 74,
+              height: 74,
+              borderRadius: '50%',
+              border: '2px solid rgba(190,255,226,0.72)',
+              boxShadow: '0 0 16px rgba(128,216,168,0.46)',
+              animation: `tsgSlimeRingPop 0.94s ease-out ${delay}s both`,
+            }} />
+            <div style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              width: 42,
+              height: 56,
+              marginLeft: -21,
+              marginTop: -28,
+              animation: `tsgSlimeCardMelt 0.94s ease-in ${delay}s both`,
+              filter: 'drop-shadow(0 0 14px rgba(128,216,168,0.58))',
+            }}>
+              {card ? (
+                <DDCard card={card} small frameStyle={{ width: 42, minWidth: 42, height: 56, boxShadow: 'none' }} />
+              ) : (
+                <div style={{ width: 42, height: 56, borderRadius: 4, background: 'linear-gradient(160deg,#0b1f18,#07130f)', border: '1.5px solid #80d8a8' }} />
+              )}
+            </div>
+            {droplets.map(([dx, dy], dotIdx) => (
+              <div key={dotIdx} style={{
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                width: dotIdx % 3 === 0 ? 8 : 6,
+                height: dotIdx % 3 === 0 ? 8 : 6,
+                borderRadius: '50%',
+                background: 'radial-gradient(circle,#f0fff8 0%,#9af0c8 42%,rgba(68,180,132,0) 76%)',
+                boxShadow: '0 0 10px rgba(154,240,200,0.75)',
+                '--dx': `${dx}px`,
+                '--dy': `${dy}px`,
+                animation: `tsgSlimeDropletPop 0.94s cubic-bezier(0.16,0.76,0.2,1) ${delay}s both`,
+              }} />
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 }

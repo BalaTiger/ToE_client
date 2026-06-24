@@ -98,7 +98,7 @@ describe('endTurnReplayFlow', () => {
 
     expect(result.players[0].godEncounters).toBe(2);
     expect(result.cost).toBe(2);
-    expect(result.effectMsg).toContain('失去2SAN');
+    expect(result.effectMsg).toContain('失去 2 SAN');
     expect(result.abilityData).toEqual(expect.objectContaining({
       fromRest: true,
       godCard: god,
@@ -125,7 +125,7 @@ describe('endTurnReplayFlow', () => {
     expect(result.players[0].roleRevealed).toBe(false);
     expect(result.cost).toBe(1);
     expect(result.abilityData.godEncounterCost).toBe(1);
-    expect(result.effectMsg).toContain('失去1SAN');
+    expect(result.effectMsg).toContain('失去 1 SAN');
   });
 
   it('builds zone draw state and draw animation step', () => {
@@ -199,7 +199,7 @@ describe('endTurnReplayFlow', () => {
 
     expect(result.players[0].roleRevealed).toBe(false);
     expect(result.abilityData.godEncounterCost).toBe(1);
-    expect(result.effectMsg).toContain('失去1SAN');
+    expect(result.effectMsg).toContain('失去 1 SAN');
   });
 
   it('uses zero SAN cost for revealed cultist replay encounters', () => {

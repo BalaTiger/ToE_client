@@ -53,27 +53,44 @@ function GeomagneticReversalAnim({anim,exiting}){
 function GeomagneticRestoreShuffleAnim({anim,exiting}){
   const [path,setPath]=React.useState(null);
   useEffect(()=>{
+    let rafId=0;
+    let attempts=0;
     const measure=()=>{
       const actorIdx=anim?.actorIdx ?? anim?.targetPid ?? 0;
       const from=getPlayerHandAnchorCenter(actorIdx);
-      const to=getPileAnchorCenter('[data-discard-pile]',{x:window.innerWidth*0.35,y:window.innerHeight*0.50});
+      const to=getPileAnchorCenter('[data-discard-pile]',null);
+      if(!to&&attempts<8){
+        attempts+=1;
+        rafId=requestAnimationFrame(measure);
+        return;
+      }
+      const dest=to||{x:window.innerWidth*0.5,y:window.innerHeight*0.5};
       setPath({
         left:from.x,
         top:from.y,
-        '--gm-restore-tx':`${to.x-from.x}px`,
-        '--gm-restore-ty':`${to.y-from.y}px`,
+        '--gm-restore-tx':`${dest.x-from.x}px`,
+        '--gm-restore-ty':`${dest.y-from.y}px`,
       });
     };
-    requestAnimationFrame(()=>requestAnimationFrame(measure));
+    rafId=requestAnimationFrame(()=>{rafId=requestAnimationFrame(measure);});
+    window.addEventListener('resize',measure);
+    return()=>{
+      if(rafId)cancelAnimationFrame(rafId);
+      window.removeEventListener('resize',measure);
+    };
   },[anim]);
   const msgs=(anim?.msgs||[]).slice(-3);
   return(
     <div className={`geomagnetic-restore-overlay${exiting?' geomagnetic-restore-exiting':''}`}>
       <div className="geomagnetic-restore-vignette"/>
-      <div className="geomagnetic-restore-card" style={path||undefined}>
-        <DDCard card={anim?.restoreCard||anim?.card||{name:'反转复原',key:'GMR',letter:'R',number:0,type:'geomagneticRestore'}} compact/>
-      </div>
-      <div className="geomagnetic-restore-ripple" style={path||undefined}/>
+      {path&&(
+        <>
+          <div className="geomagnetic-restore-card" style={path}>
+            <DDCard card={anim?.restoreCard||anim?.card||{name:'反转复原',key:'GMR',letter:'R',number:0,type:'geomagneticRestore'}} compact/>
+          </div>
+          <div className="geomagnetic-restore-ripple" style={path}/>
+        </>
+      )}
       {msgs.length>0&&(
         <div className="geomagnetic-msgs geomagnetic-restore-msgs">
           {msgs.map((msg,i)=><div key={i}>{msg}</div>)}

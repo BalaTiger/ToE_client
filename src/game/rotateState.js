@@ -273,7 +273,7 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
     if (event?.type === 'timedOutDrawDiscard') return rotateTimedOutDrawDiscardEvent(event, rotateIndex);
     if (event?.type === 'earthquake' || event?.type === 'cardEffect') return rotateCardEffectVisualEvent(event, rotateIndex, myIndex);
     if (event?.type === 'endlessCorridorReplay') return rotateEndlessCorridorReplayVisualEvent(event, rotateIndex, myIndex);
-    if (event?.type === 'turnStart' || event?.type === 'drawCard' || event?.type === 'handLimitDiscard') {
+    if (event?.type === 'turnStart' || event?.type === 'drawCard' || event?.type === 'handLimitDiscard' || event?.type === 'tsgSlimePop') {
       return {
         ...event,
         playerIdx: event.playerIdx != null ? rotateIndex(event.playerIdx) : event.playerIdx,

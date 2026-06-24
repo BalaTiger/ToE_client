@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { aiChooseRevealCard, aiShouldKeepZoneCard, canCultistEmptyHandByBewitch, getHunterChaseTargets } from '../ai';
+import { aiChooseRevealCard, aiShouldKeepZoneCard, canCultistEmptyHandByBewitch, getHunterChaseTargets, shouldAiRest } from '../ai';
 import { aiStep, processAiEndTurnReplayHand } from '../aiTurn';
 import { cardLogText, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
+import { startNextTurn } from '../turnEngine';
 import { createBlackGoatYoungCard } from '../../constants/card';
 import { makeGs, makeGodCard, makePlayer, makeZoneCard } from './factory';
 import { makeProliferatingZState } from '../proliferatingZ';
@@ -210,6 +211,42 @@ describe('aiShouldKeepZoneCard', () => {
     expect(aiShouldKeepZoneCard(card, 1, players)).toBe(true);
   });
 
+  it('满 HP AI 不会仅为手牌价值收入会公开手牌的荧光苔藓', () => {
+    const card = makeZoneCard('A3', 0);
+    const players = [
+      makePlayer({ name: '你', hp: 8, san: 8 }),
+      makePlayer({
+        name: '追猎者',
+        role: ROLE_HUNTER,
+        hp: 10,
+        san: 10,
+        hand: [makeZoneCard('B2', 0), makeZoneCard('C3', 0)],
+      }),
+      makePlayer({ name: '寻宝者', role: ROLE_TREASURE, hp: 10, san: 10, hand: [makeZoneCard('B1', 0)] }),
+    ];
+
+    expect(aiShouldKeepZoneCard(card, 1, players)).toBe(false);
+    expect(aiShouldKeepZoneCard(card, 2, players)).toBe(false);
+  });
+
+  it('低 HP AI 仍会收入荧光苔藓来回满 HP', () => {
+    const card = makeZoneCard('A3', 0);
+    const players = [
+      makePlayer({ name: '你', hp: 8, san: 8 }),
+      makePlayer({
+        name: '追猎者',
+        role: ROLE_HUNTER,
+        hp: 3,
+        san: 10,
+        hand: [makeZoneCard('B2', 0), makeZoneCard('C3', 0)],
+      }),
+      makePlayer({ name: '寻宝者', role: ROLE_TREASURE, hp: 3, san: 10, hand: [makeZoneCard('B1', 0)] }),
+    ];
+
+    expect(aiShouldKeepZoneCard(card, 1, players)).toBe(true);
+    expect(aiShouldKeepZoneCard(card, 2, players)).toBe(true);
+  });
+
   it('寻宝者血线安全时会为了补编号收入轻微负面牌', () => {
     const card = {
       id: 'risky-axis',
@@ -319,6 +356,32 @@ describe('hunter chase target validity', () => {
 });
 
 describe('aiStep optional action limits', () => {
+  it('1HP 追猎者即使随机判定很高也会选择休息', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const hunter = makePlayer({
+      name: '贝拉',
+      role: ROLE_HUNTER,
+      hp: 1,
+      san: 8,
+      hand: [
+        makeZoneCard('A1', 0),
+        makeZoneCard('B1', 0),
+        makeZoneCard('C1', 0),
+        makeZoneCard('D1', 0),
+      ],
+    });
+    const gs = makeGs({
+      players: [makePlayer({ name: '你' }), hunter],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+    });
+
+    expect(shouldAiRest(gs, hunter, ROLE_HUNTER)).toBe(true);
+  });
+
   it('3HP 邪祀者有三张手牌时不会因蛊惑清手牌例外跳过休息', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.99);
     const cultistHand = [
@@ -354,6 +417,46 @@ describe('aiStep optional action limits', () => {
     expect(newLogs.some(line => line.includes('贝拉 选择【休息】'))).toBe(true);
   });
 
+  it('1HP 寻宝者因可掉包而跳过休息时必须实际执行掉包', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const players = [
+      makePlayer({
+        name: '你',
+        hp: 10,
+        hand: [makeZoneCard('D3', 0)],
+      }),
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_TREASURE,
+        roleRevealed: false,
+        hp: 1,
+        san: 8,
+        hand: [
+          makeZoneCard('A1', 0),
+          makeZoneCard('B2', 0),
+          makeZoneCard('C3', 0),
+          makeZoneCard('C4', 0),
+        ],
+      }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+      log: ['旧日志'],
+    });
+
+    const result = aiStep(gs);
+    const newLogs = result.log.slice(gs.log.length);
+
+    expect(newLogs.some(line => line.includes('贝拉对 你 【掉包】'))).toBe(true);
+    expect(newLogs.some(line => line.includes('贝拉 未使用技能，结束回合'))).toBe(false);
+    expect(newLogs.some(line => line.includes('贝拉 选择【休息】'))).toBe(false);
+  });
+
   it('邪祀者三张手牌不应被视为可通过一次蛊惑清空手牌', () => {
     const players = [
       makePlayer({ name: '你', hp: 10, san: 10 }),
@@ -373,6 +476,84 @@ describe('aiStep optional action limits', () => {
     ];
 
     expect(canCultistEmptyHandByBewitch(players, 1)).toBe(false);
+  });
+
+  it('1HP 邪祀者在无法通过蛊惑立即击败任何人时必须休息', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const players = [
+      makePlayer({ name: '你', hp: 10, san: 10 }),
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_CULTIST,
+        roleRevealed: false,
+        hp: 1,
+        san: 8,
+        hand: [
+          makeZoneCard('A1', 0),
+          makeZoneCard('B1', 0),
+          makeZoneCard('C1', 0),
+          makeZoneCard('D1', 0),
+        ],
+      }),
+      makePlayer({ name: '卡洛斯', hp: 8, san: 9 }),
+      makePlayer({ name: '黛安娜', hp: 10, san: 9 }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+      log: ['旧日志'],
+    });
+
+    const result = aiStep(gs);
+    const newLogs = result.log.slice(gs.log.length);
+
+    expect(newLogs.some(line => line.includes('贝拉 选择【休息】'))).toBe(true);
+    expect(newLogs.some(line => line.includes('贝拉 未使用技能，结束回合'))).toBe(false);
+  });
+
+  it('AI 新回合摸牌弃置后会清除上一回合的技能标志，允许低血量邪祀者休息', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const players = [
+      makePlayer({ name: '艾伦', role: ROLE_HUNTER, hp: 8, san: 10 }),
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_CULTIST,
+        roleRevealed: false,
+        hp: 1,
+        san: 8,
+        hand: [
+          makeZoneCard('A1', 0),
+          makeZoneCard('B1', 0),
+          makeZoneCard('C1', 0),
+          makeZoneCard('D1', 0),
+        ],
+      }),
+      makePlayer({ name: '卡洛斯', hp: 8, san: 9 }),
+      makePlayer({ name: '黛安娜', hp: 10, san: 9 }),
+    ];
+    const previousGs = makeGs({
+      players,
+      deck: [makeZoneCard('D4', 0)],
+      currentTurn: 0,
+      phase: 'AI_TURN',
+      skillUsed: true,
+      restUsed: false,
+      multiplyUsed: false,
+      log: ['旧日志'],
+    });
+
+    const bellaTurn = startNextTurn(previousGs);
+    expect(bellaTurn.currentTurn).toBe(1);
+    expect(bellaTurn.skillUsed).toBe(false);
+    expect(bellaTurn.restUsed).toBe(false);
+
+    const result = aiStep(bellaTurn);
+    const newLogs = result.log.slice(bellaTurn.log.length);
+    expect(newLogs.some(line => line.includes('贝拉 选择【休息】'))).toBe(true);
   });
 
   it('邪祀者蛊惑区域牌让寻宝者集齐时会立即记录完整胜利日志', () => {
@@ -456,6 +637,43 @@ describe('aiStep optional action limits', () => {
     ]));
     expect(newLogs.some(line => line.includes('放弃了邪神的馈赠'))).toBe(false);
     expect(result.players[0]).toMatchObject({ godName: 'SHU', godLevel: 1 });
+    expect(result.phase).toBe('SHU_SELECT_TARGET');
+    expect(result.abilityData).toMatchObject({
+      shuChooserIdx: 0,
+      shuOffspringCount: 1,
+      _turnOwner: 1,
+    });
+    expect(result.players.some(player => player.hand.some(card => card.isBlackGoatYoung))).toBe(false);
+  });
+
+  it('AI 已在本回合使用过技能后恢复收尾时不记录未使用技能', () => {
+    const players = [
+      makePlayer({ name: '你', role: ROLE_TREASURE, hp: 10, san: 9, hand: [{ id: 'p1', key: 'A1', name: '玩家手牌' }] }),
+      makePlayer({
+        name: '艾伦',
+        role: ROLE_CULTIST,
+        roleRevealed: true,
+        hp: 10,
+        san: 10,
+        hand: [],
+      }),
+      makePlayer({ name: '贝拉', role: ROLE_HUNTER, hp: 10, san: 10, hand: [{ id: 'b1', key: 'B1', name: '贝拉手牌' }] }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: true,
+      restUsed: false,
+      multiplyUsed: false,
+      log: ['旧日志', '艾伦（邪祀者）对 你 【蛊惑】，赠予 森之领主'],
+    });
+
+    const result = aiStep(gs);
+    const newLogs = result.log.slice(gs.log.length);
+
+    expect(newLogs).toContain('艾伦 结束回合');
+    expect(newLogs.some(line => line.includes('艾伦 未使用技能，结束回合'))).toBe(false);
   });
 
   it('邪祀者只有低 SAN 伤害手牌时优先繁衍且不继续蛊惑', () => {
@@ -652,6 +870,7 @@ describe('aiStep optional action limits', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0);
     const stolen = makeZoneCard('A1', 0);
     const returned = makeZoneCard('B2', 0);
+    const duplicate = makeZoneCard('B2', 0, { id: 'duplicate-b2' });
     const players = [
       makePlayer({ name: '你', hp: 10, hand: [stolen] }),
       makePlayer({
@@ -659,7 +878,7 @@ describe('aiStep optional action limits', () => {
         role: ROLE_TREASURE,
         roleRevealed: true,
         hp: 10,
-        hand: [returned],
+        hand: [returned, duplicate],
       }),
     ];
     const gs = makeGs({
@@ -679,6 +898,39 @@ describe('aiStep optional action limits', () => {
     expect(newLogs).toContain('艾伦（寻宝者）对 你 【掉包】');
     expect(newLogs).toContain(`你的手牌${cardLogText(stolen, { alwaysShowName: true })}被暗抽`);
     expect(newLogs).toContain(`艾伦（寻宝者）给你一张${cardLogText(returned, { alwaysShowName: true })}`);
+  });
+
+  it('AI 寻宝者不会用补编号区域牌换走对自己无益的森之领主', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const forestLord = makeGodCard('SHU');
+    const usefulZone = makeZoneCard('A2', 0);
+    const players = [
+      makePlayer({ name: '你', hp: 10, hand: [forestLord] }),
+      makePlayer({
+        name: '艾伦',
+        role: ROLE_TREASURE,
+        roleRevealed: true,
+        hp: 10,
+        hand: [usefulZone],
+      }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+      globalOnlySwapOwner: null,
+      log: ['旧日志'],
+    });
+
+    const result = aiStep(gs);
+    const newLogs = result.log.slice(gs.log.length);
+
+    expect(newLogs.some(line => line.includes('【掉包】'))).toBe(false);
+    expect(result.players[1].hand).toEqual([usefulZone]);
+    expect(result.players[0].hand).toEqual([forestLord]);
   });
 
   it('追猎者首追在同等公开条件下按等权随机选择目标', () => {

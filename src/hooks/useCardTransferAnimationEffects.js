@@ -22,6 +22,67 @@ export function useCardTransferAnimationEffects({ anim }) {
   useEffect(() => {
     if (!anim || anim.type !== 'CARD_TRANSFER') return;
 
+    const resolveSourcePos = (transfer) => {
+      if (transfer?.sourcePoint && Number.isFinite(transfer.sourcePoint.x) && Number.isFinite(transfer.sourcePoint.y)) {
+        return transfer.sourcePoint;
+      }
+      const transferFromPid = transfer?.fromPid;
+      const transferSourceAnchor = transfer?.sourceAnchor;
+      return transferSourceAnchor === 'godPower'
+        ? getPlayerGodPowerAnchorCenter(transferFromPid)
+        : transferSourceAnchor === 'playerArea'
+          ? getPlayerAreaAnchorCenter(transferFromPid)
+          : transferSourceAnchor === 'godChoice'
+            ? getGodChoiceAnchorCenter()
+            : getPlayerHandAnchorCenter(transferFromPid);
+    };
+
+    const resolveDestPos = (transfer, srcPos) => {
+      const transferDest = transfer?.dest;
+      if (transfer?.destPoint && Number.isFinite(transfer.destPoint.x) && Number.isFinite(transfer.destPoint.y)) {
+        return transfer.destPoint;
+      }
+      if (transferDest === 'discard') {
+        return getPileAnchorCenter(
+          '[data-discard-pile]',
+          { x: window.innerWidth * 0.45, y: window.innerHeight * 0.45 }
+        );
+      }
+      if (transferDest === 'deck' || transferDest === 'deckTop' || transferDest === 'deckBottom') {
+        const deckPos = getPileAnchorCenter(
+          '[data-deck-pile]',
+          { x: window.innerWidth * 0.94 - 35, y: window.innerHeight * 0.08 }
+        );
+        const deckOffset = transferDest === 'deckTop' ? -7 : transferDest === 'deckBottom' ? 7 : 0;
+        return { x: deckPos.x, y: deckPos.y + deckOffset };
+      }
+      if (transferDest === 'player') {
+        return getPlayerHandAnchorCenter(transfer?.toPid);
+      }
+      const srcPanelEl = document.querySelector(`[data-pid="${transfer?.fromPid}"]`);
+      const srcPanelRect = _getZoomCompensatedRect(srcPanelEl);
+      return {
+        x: srcPos.x,
+        y: srcPanelRect ? srcPanelRect.top + srcPanelRect.height * 0.25 : srcPos.y * 0.5,
+      };
+    };
+
+    const buildTransfer = (transfer, idx = 0) => {
+      const srcPos = resolveSourcePos(transfer);
+      const destPos = resolveDestPos(transfer, srcPos);
+      const key = `${transfer?.fromPid ?? 'x'}-${transfer?.dest ?? 'x'}-${transfer?.toPid ?? 'x'}-${Date.now()}-${idx}`;
+      return {
+        srcX: srcPos.x,
+        srcY: srcPos.y,
+        destX: destPos.x,
+        destY: destPos.y,
+        count: transfer?.count ?? 1,
+        key,
+        effect: transfer?.effect,
+        cards: transfer?.cards,
+      };
+    };
+
     const { fromPid, dest, toPid, count, sourceAnchor, effect, cards } = anim;
     let cancelled = false;
     let raf1 = 0;
@@ -52,43 +113,25 @@ export function useCardTransferAnimationEffects({ anim }) {
     }
 
     schedule(() => {
-      const srcPos = sourceAnchor === 'godPower'
-        ? getPlayerGodPowerAnchorCenter(fromPid)
-        : sourceAnchor === 'playerArea'
-          ? getPlayerAreaAnchorCenter(fromPid)
-          : sourceAnchor === 'godChoice'
-            ? getGodChoiceAnchorCenter()
-            : getPlayerHandAnchorCenter(fromPid);
-      const srcX = srcPos.x;
-      const srcY = srcPos.y;
-
-      let destX;
-      let destY;
-      if (dest === 'discard') {
-        const discardPos = getPileAnchorCenter(
-          '[data-discard-pile]',
-          { x: window.innerWidth * 0.45, y: window.innerHeight * 0.45 }
-        );
-        destX = discardPos.x;
-        destY = discardPos.y;
-      } else if (dest === 'player') {
-        const destPos = getPlayerHandAnchorCenter(toPid);
-        destX = destPos.x;
-        destY = destPos.y;
-      } else {
-        const srcPanelEl = document.querySelector(`[data-pid="${fromPid}"]`);
-        const srcPanelRect = _getZoomCompensatedRect(srcPanelEl);
-        destX = srcX;
-        destY = srcPanelRect ? srcPanelRect.top + srcPanelRect.height * 0.25 : srcY * 0.5;
-      }
-
-      const key = `${fromPid}-${dest}-${toPid ?? 'x'}-${Date.now()}`;
+      const transfers = Array.isArray(anim.transfers) && anim.transfers.length
+        ? anim.transfers.map((transfer, idx) => buildTransfer({
+          fromPid,
+          dest,
+          toPid,
+          count,
+          sourceAnchor,
+          effect,
+          cards,
+          ...transfer,
+        }, idx))
+        : [buildTransfer({ fromPid, dest, toPid, count, sourceAnchor, effect, cards })];
       const cleanupMs = Number.isFinite(anim.durationMs)
         ? anim.durationMs + ANIM_STEP_GAP + 100
         : effect === 'blackGoat' ? 1700 : effect === 'tsgSlime' ? 950 : 750;
-      setCardTransfers(prev => [...prev, { srcX, srcY, destX, destY, count, key, effect, cards }]);
+      setCardTransfers(prev => [...prev, ...transfers]);
       const timer = setTimeout(() => {
-        setCardTransfers(prev => prev.filter(t => t.key !== key));
+        const transferKeys = new Set(transfers.map(t => t.key));
+        setCardTransfers(prev => prev.filter(t => !transferKeys.has(t.key)));
         cardTransferTimersRef.current.delete(timer);
       }, cleanupMs);
       cardTransferTimersRef.current.add(timer);

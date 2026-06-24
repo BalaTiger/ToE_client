@@ -231,8 +231,16 @@ function isLowRiskHandValueCard(card) {
     'allDiscard',
     'roseThornGiftAllHand',
     'sameAbyssChoice',
+    'selfRevealHandHP',
+    'selfRevealHandSAN',
     'selfRenounceGod',
   ].includes(card.type);
+}
+
+function estimateRevealHandExposurePenalty(self) {
+  if (!self || (self.revealHand && self.pickInsteadOfRandom)) return 0;
+  const handSize = self.hand?.length || 0;
+  return 2.8 + Math.min(handSize, 5) * 0.8;
 }
 
 function estimateRoleHandValueBias(card, self, role) {
@@ -271,8 +279,8 @@ function estimateHunterZoneCardScore(card, self, players, ci) {
     case 'selfHealHPSAN': score = (10 - self.hp) * 1.5 + (10 - self.san) * 0.8; break;
     case 'selfHealBoth21': score = (10 - self.hp) * 1.5 + (10 - self.san) * 0.8; break;
     case 'sacHealSelfSAN': score = (10 - self.san) * 1.8 - 1.2; break;
-    case 'selfRevealHandHP': score = (10 - self.hp) * 2.2 + 1.5; break;
-    case 'selfRevealHandSAN': score = (10 - self.san) * 2.2 + 1.5; break;
+    case 'selfRevealHandHP': score = (10 - self.hp) * 2.2 - estimateRevealHandExposurePenalty(self); break;
+    case 'selfRevealHandSAN': score = (10 - self.san) * 2.2 - estimateRevealHandExposurePenalty(self); break;
     case 'adjHealHP':
       score = getLivingAdjacentTargets(players, ci).reduce((sum, idx) => sum + (10 - players[idx].hp) * 0.6, 0);
       break;
@@ -444,8 +452,8 @@ function estimateTreasureZoneCardScore(card, self, players, ci) {
     case 'selfHealHPSAN': score = (10 - self.hp) * 1.5 + (10 - self.san) * 1.0; break;
     case 'selfHealBoth21': score = (10 - self.hp) * 1.5 + (10 - self.san) * 1.0; break;
     case 'sacHealSelfSAN': score = (10 - self.san) * 1.8 - 1.2; break;
-    case 'selfRevealHandHP': score = (10 - self.hp) * 2.2 + 1.2; break;
-    case 'selfRevealHandSAN': score = (10 - self.san) * 2.3 + 1.0; break;
+    case 'selfRevealHandHP': score = (10 - self.hp) * 2.2 - estimateRevealHandExposurePenalty(self); break;
+    case 'selfRevealHandSAN': score = (10 - self.san) * 2.3 - estimateRevealHandExposurePenalty(self); break;
     case 'adjHealHP':
       score = getLivingAdjacentTargets(players, ci).reduce((sum, idx) => sum + (10 - players[idx].hp) * 0.3, 0);
       break;
@@ -609,9 +617,9 @@ function estimateCultistZoneCardScore(card, self, players, ci) {
       case 'selfHealHPSelfDamageSAN':
         return { targets: [ci], hpDelta: card.hpVal, sanDelta: -card.sanVal, hpLoss: 0, sanLoss: card.sanVal };
       case 'selfRevealHandHP':
-        return { targets: [ci], hpDelta: 10, sanDelta: 0, hpLoss: 0, sanLoss: 0 };
+        return { targets: [ci], hpDelta: 10, sanDelta: 0, hpLoss: 0, sanLoss: 0, special: 'revealHandExposure' };
       case 'selfRevealHandSAN':
-        return { targets: [ci], hpDelta: 0, sanDelta: 10, hpLoss: 0, sanLoss: 0 };
+        return { targets: [ci], hpDelta: 0, sanDelta: 10, hpLoss: 0, sanLoss: 0, special: 'revealHandExposure' };
       case 'adjHealHP':
         return { targets: getAdjacentTargets(players, ci), hpDelta: card.val, sanDelta: 0, hpLoss: 0, sanLoss: 0 };
       case 'sacHealHP':
@@ -696,6 +704,9 @@ function estimateCultistZoneCardScore(card, self, players, ci) {
         const isSelf = idx === ci;
         totalScore += calcHPSanScore(hpDelta, sanDelta, idx, isSelf);
       });
+    }
+    if (special === 'revealHandExposure') {
+      totalScore -= estimateRevealHandExposurePenalty(self);
     }
     return finishScore(totalScore);
   }
@@ -815,6 +826,7 @@ export function shouldAiRest(gs, ai, aiEffRole) {
   if (ai.hp >= 9) return false;
 
   const cthBias = getCthulhuRestBias(ai);
+  if (ai.hp <= 3) return true;
   if (aiEffRole === ROLE_TREASURE) {
     if (ai.hp <= 4) return Math.random() < Math.min(0.96, 0.88 + cthBias);
     if (ai.hp <= 6) return Math.random() < Math.min(0.90, 0.78 + cthBias);

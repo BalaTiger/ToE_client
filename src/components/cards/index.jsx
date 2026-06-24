@@ -265,28 +265,29 @@ function MiniCardFace({card,width=70,height=94,scale=1,glowColor,ambient=true,sh
   );
 }
 
-function PreviewCard({card,minWidth=120,codeFontSize=51,frameStyle,desc,hideIdentity=false}){
+function PreviewCard({card,minWidth=120,codeFontSize=51,frameStyle,desc,hideIdentity=false,scale=1}){
   if(!card)return null;
   const s=card.isGod?GOD_CS:(CS[card.letter]||GOD_CS);
   const bodyText=hideIdentity?'':(desc??(card.isGod?(card.subtitle||card.power||''):(card.desc||'')));
+  const uiScale=Math.max(1,scale||1);
   return(
     <div style={{
       background:s.bg,
       border:`2px solid ${s.borderBright}`,
       borderRadius:4,
-      padding:'18px 22px',
+      padding:`${18*uiScale}px ${22*uiScale}px`,
       display:'inline-flex',
       flexDirection:'column',
       alignItems:'center',
-      minWidth,
-      marginBottom:16,
+      minWidth:minWidth*uiScale,
+      marginBottom:16*uiScale,
       boxShadow:`0 0 30px ${s.glow}55`,
       ...frameStyle,
     }}>
-      <CardCodeLabel card={card} fontSize={codeFontSize}/>
-      {!hideIdentity&&<div style={{fontFamily:"'Cinzel',serif",color:'#e8cc88',fontSize:19.5,fontWeight:600,marginTop:6,textAlign:'center'}}>{card.name}</div>}
+      <CardCodeLabel card={card} fontSize={codeFontSize*uiScale}/>
+      {!hideIdentity&&<div style={{fontFamily:"'Cinzel',serif",color:'#e8cc88',fontSize:19.5*uiScale,fontWeight:600,marginTop:6*uiScale,textAlign:'center'}}>{card.name}</div>}
       {!!bodyText&&(
-        <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#d4b468',fontSize:16.5,marginTop:8,lineHeight:1.4,maxWidth:200,textAlign:'center'}}>
+        <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#d4b468',fontSize:16.5*uiScale,marginTop:8*uiScale,lineHeight:1.4,maxWidth:200*uiScale,textAlign:'center'}}>
           {bodyText}
         </div>
       )}
@@ -546,21 +547,22 @@ function DDCardBack({small,frameStyle,expansionKey='地神的潜影'}){
   );
 }
 
-function GodCardDisplay({card,level=1}){
+function GodCardDisplay({card,level=1,scale=1}){
   if(!card||!card.isGod)return null;
   const def=GOD_DEFS[card.godKey];if(!def)return null;
   const lvDef=def.levels[Math.max(0,(level||1)-1)];
+  const uiScale=Math.max(1,scale||1);
   return(
     <div style={{
       background:def.bgCol,border:`2px solid ${def.col}`,borderRadius:6,
-      padding:'14px 18px',maxWidth:300,textAlign:'center',
+      padding:`${14*uiScale}px ${18*uiScale}px`,maxWidth:300*uiScale,textAlign:'center',
       boxShadow:`0 0 30px ${def.col}66`,
     }}>
-      <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:11,color:def.col,letterSpacing:2,marginBottom:2}}>{def.name}</div>
-      <div style={{fontFamily:"'IM Fell English',serif",fontStyle:'italic',fontSize:10,color:'#b89090',marginBottom:10}}>{def.subtitle}</div>
-      <div style={{width:'80%',height:1,background:`linear-gradient(90deg,transparent,${def.col},transparent)`,margin:'0 auto 10px'}}/>
-      <div style={{fontFamily:"'Cinzel',serif",fontSize:10,color:def.col,letterSpacing:1,marginBottom:6}}>{def.power}</div>
-      <div style={{fontFamily:"'IM Fell English',serif",fontStyle:'italic',fontSize:11,color:'#b09080',lineHeight:1.6}}>{lvDef?.desc}</div>
+      <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:12*uiScale,color:def.col,letterSpacing:2,marginBottom:3*uiScale}}>{def.name}</div>
+      <div style={{fontFamily:"'IM Fell English',serif",fontStyle:'italic',fontSize:11.5*uiScale,color:'#c79d9d',marginBottom:10*uiScale}}>{def.subtitle}</div>
+      <div style={{width:'80%',height:1,background:`linear-gradient(90deg,transparent,${def.col},transparent)`,margin:`0 auto ${10*uiScale}px`}}/>
+      <div style={{fontFamily:"'Cinzel',serif",fontSize:11.5*uiScale,color:def.col,letterSpacing:1,marginBottom:6*uiScale}}>{def.power}</div>
+      <div style={{fontFamily:"'IM Fell English',serif",fontStyle:'italic',fontSize:12.5*uiScale,color:'#c6a090',lineHeight:1.6}}>{lvDef?.desc}</div>
     </div>
   );
 }

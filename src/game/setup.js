@@ -278,6 +278,12 @@ function createDebugGodCard(deck, godKey, expansionKey = '地神的潜影') {
   };
 }
 
+function isDebugForceCardSwitchEnabled(debugForceCard) {
+  if (debugForceCard === true) return true;
+  if (typeof debugForceCard !== 'string') return false;
+  return ['1', 'true', 'on', 'enabled', 'force'].includes(debugForceCard.trim().toLowerCase());
+}
+
 // ══════════════════════════════════════════════════════════════
 //  INIT GAME
 // ══════════════════════════════════════════════════════════════
@@ -312,19 +318,23 @@ export function initGame(
 
   // Debug: 强制摸牌
   let targetCard = null;
-  if (isSinglePlayer && (debugForceCard || (debugForceCardType && (debugForceZoneCardKey || debugForceGodCardKey))) && isDebugForceCardTargetAllowed(debugForceCardTarget, isSinglePlayer)) {
+  const structuredDebugForceEnabled = isDebugForceCardSwitchEnabled(debugForceCard);
+  const legacyDebugForceCardKey = !structuredDebugForceEnabled && typeof debugForceCard === 'string'
+    ? debugForceCard.trim()
+    : '';
+  if (isSinglePlayer && (structuredDebugForceEnabled || legacyDebugForceCardKey) && isDebugForceCardTargetAllowed(debugForceCardTarget, isSinglePlayer)) {
 
-    if (debugForceCardType === 'zone' && debugForceZoneCardKey && debugForceZoneCardName) {
+    if (structuredDebugForceEnabled && debugForceCardType === 'zone' && debugForceZoneCardKey && debugForceZoneCardName) {
       // 查找指定编号和牌面的区域牌
       targetCard = deck.find(card => card.key === debugForceZoneCardKey && card.name === debugForceZoneCardName)
         || createDebugZoneCard(deck, debugForceZoneCardKey, debugForceZoneCardName, expansionPlan.deckExpansionKey);
-    } else if (debugForceCardType === 'god' && debugForceGodCardKey) {
+    } else if (structuredDebugForceEnabled && debugForceCardType === 'god' && debugForceGodCardKey) {
       // 查找指定类型的神牌
       targetCard = deck.find(card => card.isGod && card.godKey === debugForceGodCardKey)
         || createDebugGodCard(deck, debugForceGodCardKey, expansionPlan.deckExpansionKey);
-    } else if (debugForceCard) {
+    } else if (legacyDebugForceCardKey) {
       // 兼容旧的设置方式
-      targetCard = deck.find(card => card.key === debugForceCard);
+      targetCard = deck.find(card => card.key === legacyDebugForceCardKey);
     }
 
     if (targetCard) {

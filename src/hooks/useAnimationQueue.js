@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { dedupeInferredDiscardTransfers } from '../game/animQueueHelpers';
 
 export function useAnimationQueue({
   gs,
@@ -254,17 +255,18 @@ export function useAnimationQueue({
     if (Array.isArray(queue) && queue.some(s => s?.type === 'EARTHQUAKE')) {
       try { console.log('[EQ-DEBUG] triggerAnimQueue received queue =', queue.map(s => s.type), '| hasCallback =', !!callback, '| nextGs.phase =', nextGs?.phase); } catch { /* noop */ }
     }
-    const hasDeathAnim = queue.some(a => a.type === 'DEATH' || a.type === 'GUILLOTINE');
+    const normalizedQueue = dedupeInferredDiscardTransfers(queue);
+    const hasDeathAnim = normalizedQueue.some(a => a.type === 'DEATH' || a.type === 'GUILLOTINE');
     const pendingDeathPlayers = nextGs?.players?.filter(p => p._pendingAnimDeath)?.map((_, i) => i) || [];
     if (
       nextGs?.phase === 'AI_TURN' &&
-      Array.isArray(queue) &&
-      queue.some(step => step?.type === 'YOUR_TURN' || step?.type === 'DRAW_CARD')
+      Array.isArray(normalizedQueue) &&
+      normalizedQueue.some(step => step?.type === 'YOUR_TURN' || step?.type === 'DRAW_CARD')
     ) {
       logAiTurnQueueDebug('triggerAnimQueue:start', {
         turn: nextGs.currentTurn,
         name: nextGs.players?.[nextGs.currentTurn]?.name,
-        queue: queue.map(step => step?.type),
+        queue: normalizedQueue.map(step => step?.type),
         hasCallback: !!callback,
         turnStartLogs: nextGs._turnStartLogs,
         drawnCard: nextGs._drawnCard?.name || nextGs.drawReveal?.card?.name || nextGs.abilityData?.godCard?.name || null,
@@ -272,7 +274,7 @@ export function useAnimationQueue({
       });
     }
 
-    if (!queue.length) {
+    if (!normalizedQueue.length) {
       if (callback) {
         if (nextGs?.log) syncVisibleLog(nextGs.log);
         callback();
@@ -303,7 +305,7 @@ export function useAnimationQueue({
     } : callback;
 
     visibleLogAuthorityRef.current = Array.isArray(nextGs?.log) ? nextGs.log : (Array.isArray(visibleLogAuthorityRef.current) ? visibleLogAuthorityRef.current : []);
-    const preparedQueue = prepareAnimQueueLogs(queue, nextGs, visibleLogRef.current);
+    const preparedQueue = prepareAnimQueueLogs(normalizedQueue, nextGs, visibleLogRef.current);
     const setupStep = preparedQueue.find(step => step?.visualSetupPatch && step.visualSetupTiming === 'queueStart');
     if (setupStep) {
       applyVisualPatch(setupStep.visualSetupPatch);

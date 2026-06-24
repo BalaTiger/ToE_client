@@ -1,4 +1,4 @@
-import { cardLogText } from './coreUtils';
+import { cardLogText, formatSanLoss } from './coreUtils';
 import { getEndTurnReplayHandCards } from './endTurnEvents';
 
 export function buildEndTurnReplayStartState({
@@ -70,7 +70,7 @@ export function buildEndTurnReplayGodEncounter({
   const cultistImmune = !!(isCultist && P[actorIndex].roleRevealed);
   const effectMsg = cultistImmune
     ? `${actorLabel}（邪祀者）遭遇邪神 ${card.name}！（第${encounterCount}次）免疫SAN损耗`
-    : `${actorLabel} 遭遇邪神 ${card.name}！（第${encounterCount}次）失去${cost}SAN`;
+    : `${actorLabel} 遭遇邪神 ${card.name}！（第${encounterCount}次）${formatSanLoss(cost)}`;
 
   return {
     players: P,

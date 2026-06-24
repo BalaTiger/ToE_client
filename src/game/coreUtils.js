@@ -19,6 +19,12 @@ export const shuffle = (arr) => {
 
 export const clamp = (value, lo = 0, hi = 10) => Math.max(lo, Math.min(hi, value));
 
+export const formatStatLoss = (amount, stat) => `失去 ${amount} ${stat}`;
+
+export const formatSanLoss = (amount) => formatStatLoss(amount, 'SAN');
+
+export const formatHpLoss = (amount) => formatStatLoss(amount, 'HP');
+
 export const copyPlayers = (ps) => ps.map(p => ({
   ...p,
   hand: [...p.hand],

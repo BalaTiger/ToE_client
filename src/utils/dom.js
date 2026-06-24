@@ -110,8 +110,12 @@ export function getPileAnchorCenter(selector,fallback){
   const visualPileEl=pileEl.firstElementChild instanceof HTMLElement
     ?pileEl.firstElementChild
     :pileEl;
-  const r=_getZoomCompensatedRect(visualPileEl);
-  if(!r)return fallback;
+  const visualRect=_getZoomCompensatedRect(visualPileEl);
+  const pileRect=_getZoomCompensatedRect(pileEl);
+  const r=(visualRect&&visualRect.width>0&&visualRect.height>0)
+    ?visualRect
+    :pileRect;
+  if(!r||r.width<=0||r.height<=0)return fallback;
   return {x:r.left+r.width/2,y:r.top+r.height/2};
 }
 

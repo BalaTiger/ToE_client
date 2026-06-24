@@ -99,6 +99,14 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
   const isNeutralCard=!isInspection&&cardPolarity==='neutral';
   const isNeutralInspection=isInspection&&inspectionTone==='neutral';
   const isPositiveInspection=isInspection&&inspectionTone==='positive';
+  const viewportScale=Math.min(window.innerWidth/1280,window.innerHeight/720);
+  const cardScale=Math.max(1.08,Math.min(1.85,viewportScale));
+  const travelScale=Math.max(1,Math.min(1.35,viewportScale));
+  const travelW=Math.round(70*travelScale);
+  const travelH=Math.round(94*travelScale);
+  const flipW=Math.round(130*cardScale);
+  const flipH=Math.round(175*cardScale);
+  const px=value=>Math.round(value*cardScale);
 
   const getSourceCenter=()=>{
     if(!isInspection&&sourcePile==='discard'){
@@ -120,14 +128,14 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
   const destStyle=(()=>{
     const src=getSourceCenter();
     const dest=getHandCenter(targetPid??0);
-    return{'--dest-x':`${dest.x-35}px`,'--dest-y':`${dest.y-47}px`,'--src-x':`${src.x-35}px`,'--src-y':`${src.y-47}px`};
+    return{'--dest-x':`${dest.x-travelW/2}px`,'--dest-y':`${dest.y-travelH/2}px`,'--src-x':`${src.x-travelW/2}px`,'--src-y':`${src.y-travelH/2}px`};
   })();
 
   if(!traveled) return(
     <div style={{position:'fixed',inset:0,zIndex:999,background:'rgba(4,4,2,0)',pointerEvents:'none'}}>
       <div style={{
         position:'absolute',
-        width:70,height:94,borderRadius:4,
+        width:travelW,height:travelH,borderRadius:4,
         backgroundColor:isInspection?'#151c28':'#100c08',
         backgroundImage:isInspection?'linear-gradient(135deg,#151c28,#090d15)':undefined,
         border:'1.5px solid #4a3010',
@@ -255,7 +263,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
         </div>
       )}
 
-      <div style={{position:'absolute',inset:0,pointerEvents:'none'}}>{spirits}</div>
+      <div style={{position:'absolute',inset:0,pointerEvents:'none',transform:`scale(${cardScale})`,transformOrigin:'center'}}>{spirits}</div>
 
       {displayTriggerName&&(
         <div style={{
@@ -273,7 +281,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
         style={{animation:'cardRise 1.2s cubic-bezier(0.15,0,0.35,1) forwards',perspective:700}}
       >
         <div style={{
-          width:130,height:175,position:'relative',
+          width:flipW,height:flipH,position:'relative',
           transformStyle:'preserve-3d',
           animation:'cardFlip 1.2s cubic-bezier(0.2,0,0.3,1) forwards',
         }}>
@@ -288,32 +296,32 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
           }}>
             {!isInspection&&<CardBackLayer expansionKey={expansionKey}/>}
             {isInspection&&<>
-              <div style={{position:'absolute',inset:6,border:'1px solid #6a7fa8',borderRadius:3,opacity:0.7}}/>
-              <div style={{position:'absolute',inset:12,border:'1px solid #8ca4d266',borderRadius:2}}/>
+              <div style={{position:'absolute',inset:px(6),border:'1px solid #6a7fa8',borderRadius:3,opacity:0.7}}/>
+              <div style={{position:'absolute',inset:px(12),border:'1px solid #8ca4d266',borderRadius:2}}/>
               <div style={{textAlign:'center'}}>
-                <div style={{fontSize:36,color:'#d7e6ff',lineHeight:1,filter:'drop-shadow(0 0 6px #9dc1ff)'}}>◈</div>
+                <div style={{fontSize:px(36),color:'#d7e6ff',lineHeight:1,filter:'drop-shadow(0 0 6px #9dc1ff)'}}>◈</div>
               </div>
             </>}
           </div>
           <div style={{
             position:'absolute',inset:0,backfaceVisibility:'hidden',
             background:s.bg,border:`2px solid ${s.borderBright}`,borderRadius:5,
-            padding:'12px 10px',
+            padding:`${px(12)}px ${px(10)}px`,
             boxShadow:(isNeutralInspection||isNeutralCard)?'0 0 18px rgba(120,136,155,0.22)':`0 0 30px ${s.glow}88, 0 0 60px ${isEvil?'#6010aa':'#c8a96e'}44`,
           }}>
-            <div style={{position:'absolute',top:4,right:6,fontSize:8,color:s.border,opacity:0.7}}>✦</div>
+            <div style={{position:'absolute',top:px(4),right:px(6),fontSize:px(8),color:s.border,opacity:0.7}}>✦</div>
             {isInspection
-              ? <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:18,lineHeight:1,letterSpacing:2}}>检定</div>
-              : <CardCodeLabel card={card} fontSize={28} letterSpacing={0}/>
+              ? <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:px(18),lineHeight:1,letterSpacing:2}}>检定</div>
+              : <CardCodeLabel card={card} fontSize={px(28)} letterSpacing={0}/>
             }
-            {!hideZoneIdentity&&<div style={{fontFamily:"'Cinzel',serif",color:isInspection?s.text:'#c8a96e',fontSize:isInspection?16:11.5,fontWeight:600,marginTop:6,lineHeight:1.3}}>{card.name}</div>}
-            {!hideZoneIdentity&&<div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:isInspection?(inspectionTone==='positive'?'#aeeac0':inspectionTone==='neutral'?'#b8c4d8':'#e2a8e8'):'#b89858',fontSize:9.5,marginTop:8,lineHeight:1.4}}>{isInspection?getInspectionCardDesc(card):card.desc}</div>}
+            {!hideZoneIdentity&&<div style={{fontFamily:"'Cinzel',serif",color:isInspection?s.text:'#c8a96e',fontSize:isInspection?px(16):px(11.5),fontWeight:600,marginTop:px(6),lineHeight:1.3}}>{card.name}</div>}
+            {!hideZoneIdentity&&<div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:isInspection?(inspectionTone==='positive'?'#aeeac0':inspectionTone==='neutral'?'#b8c4d8':'#e2a8e8'):'#b89858',fontSize:px(9.5),marginTop:px(8),lineHeight:1.4}}>{isInspection?getInspectionCardDesc(card):card.desc}</div>}
             {isInspection&&(
-              <div style={{position:'absolute',left:10,bottom:10,fontSize:9,color:s.border,letterSpacing:2,fontFamily:"'Cinzel',serif"}}>
+              <div style={{position:'absolute',left:px(10),bottom:px(10),fontSize:px(9),color:s.border,letterSpacing:2,fontFamily:"'Cinzel',serif"}}>
                 {inspectionTone==='positive'?'正面检定':inspectionTone==='neutral'?'中性检定':'负面检定'}
               </div>
             )}
-            <div style={{position:'absolute',bottom:4,left:'50%',transform:'translateX(-50%)',color:s.border,fontSize:7,opacity:0.5}}>— ✦ —</div>
+            <div style={{position:'absolute',bottom:px(4),left:'50%',transform:'translateX(-50%)',color:s.border,fontSize:px(7),opacity:0.5}}>— ✦ —</div>
           </div>
         </div>
       </div>

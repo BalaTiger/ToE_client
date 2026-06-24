@@ -18,6 +18,7 @@ export const VISUAL_EVENT = {
   EARTHQUAKE: 'earthquake',
   ENDLESS_CORRIDOR_REPLAY: 'endlessCorridorReplay',
   GOD_POWER_BLOCKED: 'godPowerBlocked',
+  TSG_SLIME_POP: 'tsgSlimePop',
 };
 
 const visualEventInstanceId = Math.random().toString(36).slice(2, 10);
@@ -26,6 +27,7 @@ let cardEffectEventSeq = 0;
 let earthquakeEventSeq = 0;
 let endlessCorridorEventSeq = 0;
 let godPowerBlockedEventSeq = 0;
+let tsgSlimePopEventSeq = 0;
 
 function cardIdentity(card) {
   if (!card) return 'none';
@@ -361,6 +363,19 @@ export function createGodPowerBlockedEvent({ playerIdx = 0, playerName = '该玩
     id: `${VISUAL_EVENT.GOD_POWER_BLOCKED}:${visualEventInstanceId}:${++godPowerBlockedEventSeq}`,
     playerIdx,
     playerName,
+    msgs: Array.isArray(msgs) ? msgs : [],
+  }, 'action');
+}
+
+export function createTsathogguaSlimePopEvent({ playerIdx = 0, playerName = '该玩家', cards = [], msgs = [] } = {}) {
+  const slimeCards = Array.isArray(cards) ? cards.filter(Boolean) : [];
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.TSG_SLIME_POP,
+    id: `${VISUAL_EVENT.TSG_SLIME_POP}:${visualEventInstanceId}:${++tsgSlimePopEventSeq}`,
+    playerIdx,
+    playerName,
+    count: slimeCards.length || 1,
+    cards: slimeCards,
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'action');
 }

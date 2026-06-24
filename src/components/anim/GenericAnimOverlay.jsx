@@ -297,18 +297,24 @@ export function YourTurnAnim({ name, local = false }) {
       }} />
       <div style={{
         position: 'relative',
-        fontFamily: "'Cinzel Decorative','Cinzel',serif",
-        fontSize: 'clamp(32px, 4.6vh, 72px)',
-        fontWeight: 700,
-        letterSpacing: 'clamp(1px, 0.12em, 7px)',
-        color: col,
-        textShadow: `0 0 40px ${glow}, 0 0 80px ${glow2}`,
+        maxWidth: '90vw',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
         animation: 'yourTurnFade 2.0s ease-in-out forwards',
-        whiteSpace: 'nowrap',
-        maxWidth: '86vw',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-      }}>{text}</div>
+      }}>
+        <span style={{
+          display: 'block',
+          fontFamily: "'Cinzel Decorative','Cinzel',serif",
+          fontSize: 'clamp(32px, min(4.6vh, 11vw), 72px)',
+          fontWeight: 700,
+          letterSpacing: 'clamp(1px, 0.12em, 7px)',
+          color: col,
+          textShadow: '0 2px 10px rgba(0,0,0,0.86)',
+          filter: `drop-shadow(0 0 18px ${glow}) drop-shadow(0 0 44px ${glow2})`,
+          whiteSpace: 'nowrap',
+        }}>{text}</span>
+      </div>
     </div>
   );
 }

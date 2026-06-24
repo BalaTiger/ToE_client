@@ -33,6 +33,34 @@ export function cardTransferStep(options={}){
   return step;
 }
 
+function isInferredDiscardTransfer(step){
+  return step?.type==="CARD_TRANSFER"&&step.dest==="discard"&&!!step.inferredHandLoss;
+}
+
+export function dedupeInferredDiscardTransfers(queue=[]){
+  if(!Array.isArray(queue)||!queue.some(isInferredDiscardTransfer))return Array.isArray(queue)?queue:[];
+  const explicitDiscardPids=new Set();
+  const explicitPopPids=new Set();
+  let hasUnscopedExplicitDiscard=false;
+  const inferredCount=queue.filter(isInferredDiscardTransfer).length;
+  queue.forEach(step=>{
+    if(step?.type==="DISCARD"){
+      if(Number.isInteger(step.targetPid))explicitDiscardPids.add(step.targetPid);
+      else hasUnscopedExplicitDiscard=true;
+    }
+    if(step?.type==="TSG_SLIME_POP"&&Number.isInteger(step.targetPid)){
+      explicitPopPids.add(step.targetPid);
+    }
+  });
+  return queue.filter(step=>{
+    if(!isInferredDiscardTransfer(step))return true;
+    const fromPid=step.fromPid;
+    if(Number.isInteger(fromPid)&&(explicitDiscardPids.has(fromPid)||explicitPopPids.has(fromPid)))return false;
+    if(hasUnscopedExplicitDiscard&&inferredCount===1)return false;
+    return true;
+  });
+}
+
 function resolvePlayerPidByLogName(name,players=[]){
   if(!name)return -1;
   if(name==="你")return 0;

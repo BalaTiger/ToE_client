@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAiHuntEventAnimQueue, buildAnimQueue } from '../animQueueCore';
+import { buildAiHuntEventAnimQueue, buildAnimQueue, buildHandDeltaInferenceQueue } from '../animQueueCore';
 import { buildFreshStatVisualEvents, createCardEffectEvent, createEarthquakeEvent, createGodPowerBlockedEvent } from '../visualEvents';
 import { makeGodCard, makeGs, makePlayer } from './factory';
 
@@ -237,6 +237,83 @@ describe('buildAnimQueue stat animations', () => {
     });
 
     expect(buildAnimQueue(oldGs, newGs).some(step => step.type === 'CARD_TRANSFER')).toBe(false);
+  });
+
+  it('手牌减少推断为弃牌时标记为推断动画', () => {
+    const card = { id: 'c1', name: '普通区域牌', type: 'normal' };
+    const oldGs = makeGs({
+      players: [makePlayer({ hand: [card] })],
+      log: [],
+    });
+    const effectivePlayers = [makePlayer({ hand: [] })];
+
+    const transfer = buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs: [] })[0];
+
+    expect(transfer).toMatchObject({
+      type: 'CARD_TRANSFER',
+      fromPid: 0,
+      dest: 'discard',
+      count: 1,
+      inferredHandLoss: true,
+    });
+  });
+
+  it('撒托古亚黏液手牌减少推断为泡泡破裂而不是弃牌', () => {
+    const slime = { id: 'slime-1', name: '撒托古亚的赐福黏液', isTsathogguaSlime: true };
+    const oldGs = makeGs({
+      players: [makePlayer({ hand: [slime] })],
+      log: [],
+    });
+    const effectivePlayers = [makePlayer({ hand: [] })];
+
+    const queue = buildHandDeltaInferenceQueue({
+      oldGs,
+      effectivePlayers,
+      newMsgs: ['【无定形体】你 的1张撒托古亚的赐福黏液消失'],
+    });
+
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({
+      type: 'TSG_SLIME_POP',
+      targetPid: 0,
+      count: 1,
+      cards: [slime],
+    });
+    expect(queue.some(step => step.type === 'CARD_TRANSFER')).toBe(false);
+  });
+
+  it('手牌减少且其他角色手牌增加时推断为玩家间飞牌', () => {
+    const card = { id: 'c1', name: '被交出的牌', type: 'normal' };
+    const oldGs = makeGs({
+      players: [makePlayer({ hand: [card] }), makePlayer({ hand: [] })],
+      log: [],
+    });
+    const effectivePlayers = [
+      makePlayer({ hand: [] }),
+      makePlayer({ hand: [card] }),
+    ];
+
+    const transfer = buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs: [] })[0];
+
+    expect(transfer).toMatchObject({
+      type: 'CARD_TRANSFER',
+      fromPid: 0,
+      dest: 'player',
+      toPid: 1,
+      count: 1,
+    });
+    expect(transfer).not.toHaveProperty('inferredHandLoss');
+  });
+
+  it('手牌减少但 godZone 增加时不补通用飞牌动画', () => {
+    const godCard = makeGodCard('NYA');
+    const oldGs = makeGs({
+      players: [makePlayer({ hand: [godCard], godZone: [] })],
+      log: [],
+    });
+    const effectivePlayers = [makePlayer({ hand: [], godZone: [godCard] })];
+
+    expect(buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs: [] })).toEqual([]);
   });
 
   it('黑暗子嗣发放黑山羊幼仔从邪神之力标记飞向手牌', () => {

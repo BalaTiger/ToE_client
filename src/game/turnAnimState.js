@@ -210,7 +210,9 @@ function isStatAnimationStep(step) {
 }
 
 function hasDrawStatEvidence(state, visualStatQ = []) {
-  return visualStatQ.length > 0 || (Array.isArray(state?._statLogs) && state._statLogs.length > 0);
+  return visualStatQ.length > 0 ||
+    (Array.isArray(state?._statLogs) && state._statLogs.length > 0) ||
+    (Array.isArray(state?._statEvents) && state._statEvents.length > 0);
 }
 
 function filterFallbackDrawEffects(queue, state, visualStatQ = []) {
@@ -310,6 +312,17 @@ function blackGoatPulseStep(events = []) {
   return { type: 'BLACK_GOAT_PULSE', targetPid: first.target, count: loss, msgs: [] };
 }
 
+function tsgSlimePopStepFromEvent(event) {
+  if (!event) return null;
+  return {
+    type: 'TSG_SLIME_POP',
+    targetPid: event.playerIdx ?? 0,
+    count: event.count || (Array.isArray(event.cards) ? event.cards.length : 1),
+    cards: Array.isArray(event.cards) ? event.cards : [],
+    msgs: Array.isArray(event.msgs) ? event.msgs : [],
+  };
+}
+
 export function buildTurnStartPreDrawEffectQueue({ oldGs, newGs, buildQueue = buildAnimQueue } = {}) {
   const beforeDrawPlayers = newGs?._playersBeforeThisDraw || newGs?.players || oldGs?.players || [];
   const preTurnPlayers = newGs?._preTurnPlayers || oldGs?.players || beforeDrawPlayers;
@@ -323,6 +336,12 @@ export function buildTurnStartPreDrawEffectQueue({ oldGs, newGs, buildQueue = bu
     .filter(event => (event?.msgs || []).some(msg => preDrawMsgs.includes(msg)))
     .map(event => godPowerBlockedStepFromEvent(event, newGs));
   queue.push(...preDrawBlockedSteps);
+  const slimePopSteps = getVisualEvents(newGs)
+    .filter(event => event?.type === VISUAL_EVENT.TSG_SLIME_POP)
+    .filter(event => (event?.msgs || []).some(msg => preDrawMsgs.includes(msg)))
+    .map(tsgSlimePopStepFromEvent)
+    .filter(Boolean);
+  queue.push(...slimePopSteps);
   const blackGoatEvents = statEvents.filter(isBlackGoatTurnStartStatEvent);
   if (blackGoatEvents.length) {
     const pulse = blackGoatPulseStep(blackGoatEvents);
@@ -364,6 +383,7 @@ function filterConsumedTurnStartSteps(queue = [], consumedMsgs = []) {
     if (Array.isArray(step?.statEvents) && step.statEvents.some(isPreDrawTurnStartStatEvent)) return false;
     if (step?.type === 'BLACK_GOAT_PULSE') return false;
     if (step?.type === 'GOD_POWER_BLOCKED' && (step.msgs || []).some(msg => consumedMsgSet.has(msg))) return false;
+    if (step?.type === 'TSG_SLIME_POP' && (step.msgs || []).some(msg => consumedMsgSet.has(msg))) return false;
     return true;
   });
 }

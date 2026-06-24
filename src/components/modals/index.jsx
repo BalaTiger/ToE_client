@@ -9,6 +9,29 @@ import { DDCard, DDCardBack, GodCardDisplay, PreviewCard } from '../cards';
 
 import { buildPublicUrl } from '../../utils/url';
 
+function getDecisionModalMetrics(scaleRatio = 1) {
+  const uiScale = Math.min(1.38, Math.max(1, scaleRatio || 1));
+  return {
+    uiScale,
+    overlay: {
+      position: 'fixed',
+      inset: 0,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 400,
+      padding: `${18 * uiScale}px`,
+      boxSizing: 'border-box',
+      overflow: 'auto',
+    },
+    panel: {
+      maxHeight: `calc(100vh - ${36 * uiScale}px)`,
+      overflow: 'auto',
+    },
+    cardScale: Math.min(1.28, uiScale),
+  };
+}
+
 // ── God Choice Modal (player encounters a god card) ────────────
 function GodChoiceModal({
   godCard,
@@ -24,6 +47,7 @@ function GodChoiceModal({
   allowKeepHand = true,
   allowDiscard = true,
   keepButtonRef = null,
+  scaleRatio = 1,
 }) {
   if (!godCard) return null;
   const def = GOD_DEFS[godCard.godKey];
@@ -32,33 +56,36 @@ function GodChoiceModal({
   const canUpgrade = alreadyWorship && (player.godLevel || 0) < 3;
   const isBystander = !canChoose && thinkingText;
   const immuneEncounter = isRevealedCultist(player);
+  const tm = getDecisionModalMetrics(scaleRatio);
+  const ui = tm.uiScale;
   return (
-    <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 400, paddingTop: '10vh' }}>
+    <div style={tm.overlay}>
       <div style={{
         background: '#150e07dd',
         border: `2px solid ${def.col}`,
         boxShadow: `0 0 60px ${def.col}44, 0 0 120px #000a`,
-        borderRadius: 4, padding: '20px 28px', maxWidth: 320, width: '90%', textAlign: 'center',
+        borderRadius: 4, padding: `${20*ui}px ${28*ui}px`, maxWidth: 340*ui, width: 'min(90vw, 100%)', textAlign: 'center',
         animation: 'animPop 0.22s ease-out',
         display: 'flex',
         flexDirection: 'column',
-        gap: 12
+        gap: 12*ui,
+        ...tm.panel,
       }}>
-        <div style={{ fontFamily: "'Cinzel',serif", color: '#e8cc88', fontSize: 19.5, letterSpacing: 2, marginBottom: 4 }}>
+        <div style={{ fontFamily: "'Cinzel',serif", color: '#e8cc88', fontSize: 19.5*ui, letterSpacing: 2, marginBottom: 4*ui }}>
           {forcedConvert ? '邪祀者强制改信——' : '邪神降临——'}
           <span style={{ color: def.col, filter: `drop-shadow(0 0 6px ${def.col}88)` }}>{godCard.name}</span>
         </div>
-        <div style={{ fontSize: 16.5, color: '#c89058', fontStyle: 'italic', fontFamily: "'IM Fell English',serif", marginBottom: 4 }}>
-          {'💀'.repeat(player.godEncounters)} {immuneEncounter ? `第${player.godEncounters}次遭遇（邪祀者免疫伤害）` : `第${player.godEncounters}次遭遇，失去${player.godEncounters}SAN`}
-          {isConvert && !forcedConvert && <span style={{ color: '#e08888', marginLeft: 8 }}>（改信将失去1SAN）</span>}
+        <div style={{ fontSize: 16.5*ui, color: '#c89058', fontStyle: 'italic', fontFamily: "'IM Fell English',serif", marginBottom: 4*ui }}>
+          {'💀'.repeat(player.godEncounters)} {immuneEncounter ? `第${player.godEncounters}次遭遇（邪祀者免疫伤害）` : `第${player.godEncounters}次遭遇，失去 ${player.godEncounters} SAN`}
+          {isConvert && !forcedConvert && <span style={{ color: '#e08888', marginLeft: 8*ui }}>（改信将失去 1 SAN）</span>}
         </div>
         {/* Power gain preview */}
         {!forcedConvert && (
           <div style={{
-            fontSize: 11, color: def.col, fontFamily: "'Cinzel',serif", letterSpacing: 1,
-            marginBottom: 8, opacity: 0.9,
+            fontSize: 12*ui, color: def.col, fontFamily: "'Cinzel',serif", letterSpacing: 1,
+            marginBottom: 8*ui, opacity: 0.94,
             background: def.bgCol, border: `1px solid ${def.col}55`,
-            borderRadius: 3, padding: '4px 12px', display: 'inline-block',
+            borderRadius: 3, padding: `${4*ui}px ${12*ui}px`, display: 'inline-block',
             alignSelf: 'center'
           }}>
             {canUpgrade
@@ -66,30 +93,30 @@ function GodChoiceModal({
               : `⛧ 信仰后你将获得邪神之力：${def.power} Lv.1`}
           </div>
         )}
-        <GodCardDisplay card={godCard} level={alreadyWorship ? (player.godLevel + 1) : 1} />
+        <GodCardDisplay card={godCard} level={alreadyWorship ? (player.godLevel + 1) : 1} scale={tm.cardScale} />
         {isBystander ? (
-          <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#c8a96e', fontSize: 15, marginTop: 8 }}>
+          <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#c8a96e', fontSize: 15*ui, marginTop: 8*ui }}>
             {thinkingText}
           </div>
         ) : (
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center', marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 12*ui, flexWrap: 'wrap', justifyContent: 'center', marginTop: 8*ui }}>
             {!forcedConvert && (
-              <button disabled={!allowWorship} onClick={allowWorship ? onWorship : undefined} style={{ padding: '9px 22px', background: def.bgCol, border: `1.5px solid ${def.col}`, color: def.col, fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: allowWorship ? 'pointer' : 'not-allowed', letterSpacing: 1, filter: `drop-shadow(0 0 4px ${def.col}66)`, opacity: allowWorship ? 1 : 0.45 }}>
+              <button disabled={!allowWorship} onClick={allowWorship ? onWorship : undefined} style={{ padding: `${9*ui}px ${22*ui}px`, background: def.bgCol, border: `1.5px solid ${def.col}`, color: def.col, fontFamily: "'Cinzel',serif", fontSize: 16.5*ui, borderRadius: 3, cursor: allowWorship ? 'pointer' : 'not-allowed', letterSpacing: 1, filter: `drop-shadow(0 0 4px ${def.col}66)`, opacity: allowWorship ? 1 : 0.45 }}>
                 {canUpgrade ? '⬆ 升级邪神之力' : isConvert ? '⛧ 改信新神' : '⛧ 信仰邪神'}
               </button>
             )}
             {!alreadyWorship && !forcedConvert && isCultist && allowKeepHand && (
-              <button ref={keepButtonRef} onClick={onKeepHand} style={{ padding: '9px 22px', background: '#180830', border: `1.5px solid #b080ee`, color: '#b080ee', fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: 'pointer', letterSpacing: 1, filter: 'drop-shadow(0 0 4px #9060cc66)' }}>
+              <button ref={keepButtonRef} onClick={onKeepHand} style={{ padding: `${9*ui}px ${22*ui}px`, background: '#180830', border: `1.5px solid #b080ee`, color: '#b080ee', fontFamily: "'Cinzel',serif", fontSize: 16.5*ui, borderRadius: 3, cursor: 'pointer', letterSpacing: 1, filter: 'drop-shadow(0 0 4px #9060cc66)' }}>
                 ☽ 收入手牌
               </button>
             )}
             {!forcedConvert && (
-              <button disabled={!allowDiscard} onClick={allowDiscard ? onDiscard : undefined} style={{ padding: '9px 22px', background: '#120a08', border: '1.5px solid #6a4828', color: '#d4a858', fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: allowDiscard ? 'pointer' : 'not-allowed', letterSpacing: 1, opacity: allowDiscard ? 1 : 0.45 }}>
+              <button disabled={!allowDiscard} onClick={allowDiscard ? onDiscard : undefined} style={{ padding: `${9*ui}px ${22*ui}px`, background: '#120a08', border: '1.5px solid #6a4828', color: '#d4a858', fontFamily: "'Cinzel',serif", fontSize: 16.5*ui, borderRadius: 3, cursor: allowDiscard ? 'pointer' : 'not-allowed', letterSpacing: 1, opacity: allowDiscard ? 1 : 0.45 }}>
                 放弃
               </button>
             )}
             {forcedConvert && (
-              <button disabled={!allowWorship} onClick={allowWorship ? onWorship : undefined} style={{ padding: '9px 22px', background: def.bgCol, border: `1.5px solid ${def.col}`, color: def.col, fontFamily: "'Cinzel',serif", fontSize: 16.5, borderRadius: 3, cursor: allowWorship ? 'pointer' : 'not-allowed', letterSpacing: 1, filter: `drop-shadow(0 0 4px ${def.col}66)`, opacity: allowWorship ? 1 : 0.45 }}>
+              <button disabled={!allowWorship} onClick={allowWorship ? onWorship : undefined} style={{ padding: `${9*ui}px ${22*ui}px`, background: def.bgCol, border: `1.5px solid ${def.col}`, color: def.col, fontFamily: "'Cinzel',serif", fontSize: 16.5*ui, borderRadius: 3, cursor: allowWorship ? 'pointer' : 'not-allowed', letterSpacing: 1, filter: `drop-shadow(0 0 4px ${def.col}66)`, opacity: allowWorship ? 1 : 0.45 }}>
                 ⛧ 接受改信
               </button>
             )}
@@ -151,45 +178,48 @@ function NyaBorrowModal({ deadPlayers, godLevel, onBorrow, onSkip }) {
 }
 
 // ── Draw Reveal Modal ─────────────────────────────────────────
-function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingText, canKeep = true, canDiscard = true, keepButtonRef }) {
+function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingText, canKeep = true, canDiscard = true, keepButtonRef, scaleRatio = 1 }) {
   if (!drawReveal?.card) return null;
   const { card } = drawReveal;
   const s = CS[card.letter] || GOD_CS;
   const isBystander = !canChoose && thinkingText;
   const hideIdentity = !!(drawReveal.blindZoneIdentity || card.blindZoneIdentity);
+  const tm = getDecisionModalMetrics(scaleRatio);
+  const ui = tm.uiScale;
   return (
-    <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 300, paddingTop: '10vh' }}>
+    <div style={{ ...tm.overlay, zIndex: 300 }}>
       <div style={{
         background: '#150e07dd',
         border: `2px solid ${s.border}`,
         boxShadow: `0 0 60px ${s.glow}44, 0 0 120px #000a`,
-        borderRadius: 4, padding: '20px 28px', maxWidth: 280, width: '90%', textAlign: 'center',
+        borderRadius: 4, padding: `${20*ui}px ${28*ui}px`, maxWidth: 300*ui, width: 'min(90vw, 100%)', textAlign: 'center',
         animation: 'animPop 0.22s ease-out',
+        ...tm.panel,
       }}>
-        <div style={{ fontFamily: "'Cinzel',serif", color: '#a07838', fontSize: 15, letterSpacing: 3, marginBottom: 16, textTransform: 'uppercase' }}>── 区域探寻 ──</div>
-        <PreviewCard card={card} hideIdentity={hideIdentity}/>
+        <div style={{ fontFamily: "'Cinzel',serif", color: '#a07838', fontSize: 15*ui, letterSpacing: 3, marginBottom: 16*ui, textTransform: 'uppercase' }}>── 区域探寻 ──</div>
+        <PreviewCard card={card} hideIdentity={hideIdentity} scale={tm.cardScale}/>
 
         {isBystander ? (
-          <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#c8a96e', fontSize: 15, marginTop: 16 }}>
+          <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#c8a96e', fontSize: 15*ui, marginTop: 16*ui }}>
             {thinkingText}
           </div>
         ) : (
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap', marginTop: 16 }}>
+          <div style={{ display: 'flex', gap: 12*ui, justifyContent: 'center', flexWrap: 'wrap', marginTop: 16*ui }}>
             <button ref={keepButtonRef} disabled={!canKeep} onClick={canKeep ? onKeep : undefined} style={{
-              padding: '10px 22px', background: '#1c1008', border: '1.5px solid #c8a96e',
-              color: '#e8c87a', fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 14,
+              padding: `${10*ui}px ${22*ui}px`, background: '#1c1008', border: '1.5px solid #c8a96e',
+              color: '#e8c87a', fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 14*ui,
               borderRadius: 2, cursor: canKeep ? 'pointer' : 'not-allowed', letterSpacing: 1,
               opacity: canKeep ? 1 : 0.45,
               boxShadow: '0 0 16px #c8a96e44', transition: 'all .15s',
             }}>
               收入手牌
-              <div style={{ fontSize: 10, opacity: 0.7, marginTop: 4, fontWeight: 400, fontFamily: "'IM Fell English',serif" }}>
+              <div style={{ fontSize: 10.5*ui, opacity: 0.78, marginTop: 4*ui, fontWeight: 400, fontFamily: "'IM Fell English',serif" }}>
                 (触发效果)
               </div>
             </button>
             <button disabled={!canDiscard} onClick={canDiscard ? onDiscard : undefined} style={{
-              padding: '10px 22px', background: '#120a08', border: '1.5px solid #883030',
-              color: '#e08888', fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 14,
+              padding: `${10*ui}px ${22*ui}px`, background: '#120a08', border: '1.5px solid #883030',
+              color: '#e08888', fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 14*ui,
               borderRadius: 2, cursor: canDiscard ? 'pointer' : 'not-allowed', letterSpacing: 1,
               opacity: canDiscard ? 1 : 0.45,
               transition: 'all .15s',

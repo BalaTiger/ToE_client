@@ -103,7 +103,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
       "type": "selfRevealHandHP",
       "val": 10,
       "slotKey": "A3",
-      "polarity": "positive",
+      "polarity": "neutral",
       "effectScope": "self",
       "expansion": "地神的潜影"
     },
