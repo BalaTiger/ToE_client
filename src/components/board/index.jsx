@@ -6,9 +6,10 @@ import { isBlackGoatYoung, isTsathogguaSlime } from '../../game/coreUtils';
 import { AnimatedCardBack, AreaTooltip, CardCodeLabel, DDCard, DDCardBack, GodTooltip } from '../cards';
 import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
 import { ThemeCornerOrnament } from '../theme/ThemeOrnaments';
+import { getFontZoomCompensate } from '../../utils/scale';
 
 function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth,labelColor='var(--toe-muted,#a07838)',valueColor='var(--toe-text,#c8a96e)',lineColor='var(--toe-line-dim,#2a1a08)'}){
-  const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
+  const fontZoom = getFontZoomCompensate(scaleRatio);
   const isMobileNarrow=!!viewportWidth&&viewportWidth<580;
   const isNarrowViewport=!!viewportWidth&&viewportWidth<900;
   const rowWidth=isMobileNarrow?'calc(100% - 34px)':isNarrowViewport?'calc(100% - 22px)':'100%';
@@ -25,7 +26,7 @@ function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth,labelColor
   const columnGap=isNarrowViewport?'clamp(5px, 1.2vw, 7px)':'clamp(4px, 1vw, 6px)';
   const labelPaddingRight=isNarrowViewport?Math.ceil(2*fontZoom):0;
   return(
-    <div style={{display:'grid',gridTemplateColumns:`${labelCol} minmax(0,1fr) ${valueCol}`,alignItems:'center',columnGap:columnGap,marginBottom:4,width:rowWidth,marginLeft:'auto',marginRight:'auto',boxSizing:'border-box',overflow:'visible'}}>
+    <div data-stat-label={label} style={{display:'grid',gridTemplateColumns:`${labelCol} minmax(0,1fr) ${valueCol}`,alignItems:'center',columnGap:columnGap,marginBottom:4,width:rowWidth,marginLeft:'auto',marginRight:'auto',boxSizing:'border-box',overflow:'visible'}}>
       <span style={{fontFamily:"'Cinzel',serif",color:labelColor,fontSize:statFont,fontWeight:700,letterSpacing:0.3,textAlign:'left',whiteSpace:'nowrap',minWidth:0,paddingRight:labelPaddingRight}}>{label}</span>
       <div style={{height:barHeight,background:trackColor||'#110804',border:`1.2px solid ${lineColor}`,borderRadius:2,overflow:'visible',position:'relative',minWidth:0,width:'100%'}}>
         <div style={{height:'100%',width:`${Math.min(10,val)*10}%`,background:color,transition:'width .35s',borderRadius:1}}/>
@@ -422,7 +423,7 @@ function PetrifyingFormulaDie({ state, fontSize }) {
 
 function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,deckRef,discardRef,scaleRatio,expansionKey='地神的潜影',zhuLitCards=[],zhuHiddenCardId=null,petrifyingFormula=null}){
   const theme=getBoardTheme(expansionKey);
-  const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
+  const fontZoom = getFontZoomCompensate(scaleRatio);
   const _ = (px) => px * fontZoom;
   const pileWrapRef=React.useRef(null);
   const [pileWrapWidth,setPileWrapWidth]=React.useState(0);
@@ -495,7 +496,7 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
 function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='地神的潜影',blackGoatPulseActive=false}){
   const ri=RINFO[player.role];
   const theme=getBoardTheme(expansionKey);
-  const fontZoom = scaleRatio && scaleRatio < 1 ? 1 / scaleRatio : 1;
+  const fontZoom = getFontZoomCompensate(scaleRatio);
   const _ = (px) => px * fontZoom;
   const borderColor=isBeingHit?'#cc2222':isSanHit?'#8840cc':isCurrentTurn?theme.glow:isSelectable?ri.col:theme.line;
   const handCards=showFaceUp?player.hand:player.hand.map((c,ci)=>isBlackGoatYoung(c)||isTsathogguaSlime(c)?c:{id:`back-${playerIndex}-${ci}`,_back:true});
@@ -557,21 +558,21 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
         <span style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:_(11),color:isCurrentTurn?theme.strong:theme.text,letterSpacing:1}}>{player.name}</span>
         {(player.roleRevealed||player.isDead)&&<span style={{fontSize:_(10),color:ri.col,fontFamily:"'Cinzel',serif",letterSpacing:1,marginLeft:2}}>{ri.icon} {player.role}</span>}
         {player.isDead&&<span style={{fontSize:_(11),color:'#882020',marginLeft:'auto'}}>☠</span>}
-        {player.isResting&&!player.isDead&&<span style={{fontSize:_(9),color:'#4ade80',marginLeft:'auto',letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 翻面中</span>}
+        {player.isResting&&!player.isDead&&<span data-resting-marker={playerIndex} style={{fontSize:_(9),color:'#4ade80',marginLeft:'auto',letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 翻面中</span>}
         {isCurrentTurn&&!player.isDead&&!player.isResting&&<span style={{fontSize:_(9),color:theme.text,marginLeft:'auto',letterSpacing:1}}>▸ 行动</span>}
       </div>
       <StatBar label="HP"  val={displayStats?.[playerIndex]?.hp ?? player.hp}  color="#8b1515" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={viewportWidth} labelColor={theme.muted} valueColor={theme.text} lineColor={theme.lineDim}/>
       <StatBar label="SAN" val={displayStats?.[playerIndex]?.san ?? player.san} color="#4a1080" trackColor="#120820" scaleRatio={scaleRatio} viewportWidth={viewportWidth} labelColor={theme.muted} valueColor={theme.text} lineColor={theme.lineDim}/>
       {/* Skull counter + god zone */}
       {((player.godEncounters||0)>0||(player.godZone||[]).length>0||(player.etherealizeStacks||0)>0||(player.poisonStacks||0)>0)&&(
-        <div style={{display:'flex',alignItems:'center',gap:4,marginTop:4,flexWrap:'wrap'}}>
+        <div data-player-god-status={playerIndex} style={{display:'flex',alignItems:'center',gap:4,marginTop:4,flexWrap:'wrap'}}>
           {(player.godEncounters||0)>0&&(
             <span style={{fontSize:9,color:'#8b6060',letterSpacing:1,fontFamily:"'Cinzel',serif"}}>
               {'💀'.repeat(Math.min(player.godEncounters,6))}{player.godEncounters>6?`×${player.godEncounters}`:''}
             </span>
           )}
           {(player.godZone||[]).length>0&&player.godName&&(
-            <span style={{
+            <span data-god-power-badge={playerIndex} style={{
               fontSize:8,color:GOD_DEFS[player.godName]?.col||'#c06020',
               background:'#100808',border:`1px solid ${GOD_DEFS[player.godName]?.col||'#c06020'}44`,
               borderRadius:2,padding:'1px 4px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,

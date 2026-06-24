@@ -22,7 +22,8 @@ import {
 } from './coreUtils';
 import { buildStatEvents } from './statEvents';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
-import { appendProliferatingZDraws, makeProliferatingZState } from './proliferatingZ';
+import { makeProliferatingZState } from './proliferatingZ';
+import { appendPublicCardGainTriggers } from './cardGainEvents';
 import { createCardEffectEvent, createEarthquakeEvent } from './visualEvents';
 import { createGeomagneticRestoreCard } from '../constants/card';
 import {
@@ -168,30 +169,15 @@ function handleInspection(playerIndex, gs) {
   };
   switch (drawnCard.effect) {
     case 'adjacentDamageHP': {
-      // 相邻角色失去1HP
-      const N = P.length;
-      for (let i = 1; i <= N; i++) {
-        const leftIdx = (playerIndex - i + N) % N;
-        if (!P[leftIdx].isDead) {
-          P[leftIdx].hp = Math.max(0, P[leftIdx].hp - drawnCard.value);
-          L.push(`${P[leftIdx].name} 被乱抓，失去 ${drawnCard.value} HP`);
-          if (P[leftIdx].hp <= 0) killPlayer(leftIdx);
-          break;
-        }
-      }
-      for (let i = 1; i <= N; i++) {
-        const rightIdx = (playerIndex + i) % N;
-        if (!P[rightIdx].isDead) {
-          P[rightIdx].hp = Math.max(0, P[rightIdx].hp - drawnCard.value);
-          L.push(`${P[rightIdx].name} 被乱抓，失去 ${drawnCard.value} HP`);
-          if (P[rightIdx].hp <= 0) killPlayer(rightIdx);
-          break;
-        }
-      }
+      getLivingAdjacentTargets(P, playerIndex).forEach(idx => {
+        P[idx].hp = Math.max(0, P[idx].hp - drawnCard.value);
+        L.push(`${P[idx].name} 被乱抓，失去 ${drawnCard.value} HP`);
+        if (P[idx].hp <= 0) killPlayer(idx);
+      });
       break;
     }
     case 'selfDamageHP': {
-      // 失去1HP
+      // 失去 1 HP
       P[playerIndex].hp = Math.max(0, P[playerIndex].hp - drawnCard.value);
       L.push(`${P[playerIndex].name} 自残，失去 ${drawnCard.value} HP`);
       if (P[playerIndex].hp <= 0) killPlayer(playerIndex);
@@ -236,7 +222,7 @@ function handleInspection(playerIndex, gs) {
       break;
     }
     case 'healSAN': {
-      // 恢复1SAN
+      // 恢复 1 SAN
       P[playerIndex].san = Math.min(10, P[playerIndex].san + drawnCard.value);
       L.push(`${P[playerIndex].name} 超人意志，恢复 ${drawnCard.value} SAN`);
       break;
@@ -357,6 +343,7 @@ export function processInspectionTargets(targets, startIndex, P, D, Disc, baseLo
       houndsOfTindalosTarget: nextMeta.houndsOfTindalosTarget,
       houndsOfTindalosElapsed: nextMeta.houndsOfTindalosElapsed,
       _inspectionSeq: nextMeta._inspectionSeq,
+      _inspectionEvents: nextMeta._inspectionEvents,
       _statEvents: nextMeta._statEvents,
       _statEventSeq: nextMeta._statEventSeq,
     });
@@ -620,7 +607,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     },
     proliferatingZ: () => {
       statePatch = { ...statePatch, proliferatingZ: makeProliferatingZState(executionTurnOwner, gs?.turn || 0), proliferatingZQueue: [] };
-      msgs.push(`【增殖的Z】本回合若有角色获得邪神牌或其衍生牌，其他角色各摸1张牌`);
+      msgs.push(`【增殖的Z】本回合若有其他角色获得邪神牌或其衍生牌，你摸1张牌`);
     },
     petrifyingFormula: () => {
       const priorState = gs?.petrifyingFormula || {};
@@ -717,6 +704,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         const remaining = revealedCards.filter(c => c.id !== chosen.card.id);
         P[ci].hand.push(chosen.card);
         msgs.push(`【解读石刻】${actor.name} 选择了 ${cardLogText(chosen.card, { alwaysShowName: true })} 收入手牌`);
+        statePatch = { ...statePatch, ...appendPublicCardGainTriggers({ ...gs, ...statePatch }, P, ci, chosen.card) };
         if (chosen.card.isGod) {
           msgs.push(`【解读石刻】${actor.name} 因选择邪神牌失去 1 SAN`);
           P[ci].san = clamp(P[ci].san - 1);
@@ -1028,7 +1016,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         const picked = godCards[godCards.length - 1];
         const [godCard] = Disc.splice(picked.discardIndex, 1);
         P[ci].hand.push(godCard);
-        statePatch = { ...statePatch, ...appendProliferatingZDraws({ ...gs, ...statePatch }, P, ci, godCard) };
+        statePatch = { ...statePatch, ...appendPublicCardGainTriggers({ ...gs, ...statePatch }, P, ci, godCard) };
         msgs.push(`${actor.name} 从弃牌堆中取回 ${cardLogText(godCard, { alwaysShowName: true })}`);
       } else {
         statePatch = {
@@ -1326,9 +1314,14 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         if (guessCorrect) {
           msgs.push(`猜测正确！${actor.name} 收入了 ${cardLogText(actualCard)}`);
           P[ci].hand.push(actualCard);
+          statePatch = { ...statePatch, ...appendPublicCardGainTriggers({ ...gs, ...statePatch }, P, ci, actualCard) };
         } else {
-          msgs.push(`猜测错误！${actor.name} 失去 3 HP`);
-          hurtHP(ci, 3);
+          if (avoidNegative || avoidNegativeFor.includes(ci)) {
+            msgs.push(`猜测错误！${actor.name} 负面效果已规避`);
+          } else {
+            msgs.push(`猜测错误！${actor.name} 失去 3 HP`);
+            hurtHP(ci, 3);
+          }
           Disc.push(actualCard);
         }
         statePatch = {
@@ -1342,6 +1335,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
             abilityData: {
               type: 'sphinxGuess',
               topCard,
+              sphinxAvoidNegative: avoidNegative || avoidNegativeFor.includes(ci),
             }
           }
         };
@@ -1533,17 +1527,18 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const d1 = 1 + (Math.random() * 6 | 0);
       const isEven = d1 % 2 === 0;
       const seq = (gs?._moldyFoodDiceSeq || 0) + 1;
-      statePatch = { ...statePatch, _moldyFoodDiceSeq: seq, _moldyFoodDiceRoll: { d1, isEven, actorIdx: ci, seq } };
+      const negativeAvoided = !isEven && (avoidNegative || avoidNegativeFor.includes(ci));
+      statePatch = { ...statePatch, _moldyFoodDiceSeq: seq, _moldyFoodDiceRoll: { d1, isEven, actorIdx: ci, seq, negativeAvoided } };
       if (isEven) {
         healHP(ci, 2);
         msgs.push(`【霉变食物】${actor.name} 掷出 ${d1} 点（双数），恢复 2 HP`);
       } else {
-        if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
+        if (!negativeAvoided) {
           msgs.push(`【霉变食物】${actor.name} 掷出 ${d1} 点（单数），失去 1 HP，下回合开始时不能摸牌`);
           hurtHP(ci, 1);
           markSkipNextDraw(P[ci], '霉变食物');
         } else {
-          msgs.push(`【霉变食物】${actor.name} 掷出 ${d1} 点（单数）`);
+          msgs.push(`【霉变食物】${actor.name} 掷出 ${d1} 点（单数），负面效果已规避`);
         }
       }
     },
@@ -1594,8 +1589,15 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const sanDmg = card.sanVal || 2;
       allLiving.forEach(i => healHP(i, healVal));
       msgs.push(`全体存活角色回复 ${healVal} HP`);
-      allLiving.forEach(i => hurtSAN(i, sanDmg));
-      msgs.push(`全体存活角色失去 ${sanDmg} SAN`);
+      const sanTargets = allLiving.filter(i => !(avoidNegative && i === ci) && !avoidNegativeFor.includes(i));
+      sanTargets.forEach(i => hurtSAN(i, sanDmg));
+      if (sanTargets.length === allLiving.length) {
+        msgs.push(`全体存活角色失去 ${sanDmg} SAN`);
+      } else if (sanTargets.length) {
+        msgs.push(`${sanTargets.map(i => P[i].name).join('、')} 失去 ${sanDmg} SAN`);
+      } else {
+        msgs.push(`所有角色的 SAN 损失均被规避`);
+      }
     },
   };
 

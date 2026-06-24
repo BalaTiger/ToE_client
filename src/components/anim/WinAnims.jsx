@@ -263,107 +263,6 @@ function TreasureMapAnim({hand,onConfirm}){
   );
 }
 
-// ── Cthulhu Resurrection Animation (邪祀者 win) ─────────────
-function CthulhuResurrectionAnim({onConfirm}){
-  // Phase: 0=init, 1=darkness, 2=tentacles emerge, 3=cthulhu appears, 4=glow, 5=button shown
-  const [phase,setPhase]=useState(0);
-  const firedRef=useRef(false);
-  useEffect(()=>{
-    if(firedRef.current)return;firedRef.current=true;
-    const ts=[];
-    let t=300;
-    ts.push(setTimeout(()=>setPhase(1),t));t+=1000; // darkness
-    ts.push(setTimeout(()=>setPhase(2),t));t+=1200; // tentacles emerge
-    ts.push(setTimeout(()=>setPhase(3),t));t+=1000; // cthulhu appears
-    ts.push(setTimeout(()=>setPhase(4),t));t+=800;  // glow
-    ts.push(setTimeout(()=>setPhase(5),t));        // button
-    return()=>{ts.forEach(clearTimeout);firedRef.current=false;};
-  },[]);
-  const darkness=phase>=1;
-  const tentacles=phase>=2;
-  const cthulhu=phase>=3;
-  const glowing=phase>=4;
-  const btnVisible=phase>=5;
-  return(
-    <div style={{position:'fixed',inset:0,zIndex:4000,display:'flex',flexDirection:'column',
-      alignItems:'center',justifyContent:'center',
-      background:darkness?'rgba(0,0,0,0.95)':'rgba(4,3,1,0.92)',
-      backdropFilter:'blur(3px)',transition:'background 0.5s ease',
-      animation:'animFadeIn 0.35s ease-out'}}>
-      <div style={{textAlign:'center',marginBottom:32,animation:'animFadeIn 0.5s 0.1s both'}}>
-        <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:22,fontWeight:700,
-          letterSpacing:4,color:'#9060cc',textShadow:'0 0 40px #9060cc88',marginBottom:6}}>
-          {phase===1?'✦ 黑暗降临 ✦':phase>=2?'✦ 邪神苏醒 ✦':'✦ 邪祀者获胜 ✦'}
-        </div>
-        <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',
-          color:'#7040aa',fontSize:13,letterSpacing:1}}>
-          {phase===1?'世界陷入黑暗...':phase>=2?'古老的存在正在苏醒...':'邪祀者的召唤成功了！'}
-        </div>
-      </div>
-      
-      {/* Cthulhu resurrection effect */}
-      <div style={{position:'relative',width:300,height:300,marginBottom:32}}>
-        {/* Tentacles */}
-        {tentacles&&(
-          <div style={{position:'absolute',inset:0}}>
-            {[...Array(8)].map((_,i)=>{
-              const angle=(i/8)*Math.PI*2;
-              const x=Math.cos(angle)*120+150;
-              const y=Math.sin(angle)*120+150;
-              return(
-                <div key={i} style={{
-                  position:'absolute',left:x,top:y,width:40,height:120,
-                  background:'linear-gradient(to top, #3a1a5a, #5a2a8a, #7a3aab)',
-                  borderRadius:'50% 50% 20% 20%',
-                  transformOrigin:'50% 100%',
-                  transform:`translate(-50%, 0) rotate(${angle}rad) scaleY(0)`,
-                  animation:`tentacleEmerge 1s ease-out ${i*0.1}s forwards`,
-                  boxShadow:'0 0 20px #9060cc88',
-                }}/>
-              );
-            })}
-          </div>
-        )}
-        
-        {/* Cthulhu head */}
-        {cthulhu&&(
-          <div style={{
-            position:'absolute',left:'50%',top:'50%',
-            transform:'translate(-50%, -50%) scale(0)',
-            animation:'animPop 0.8s ease-out forwards',
-            textAlign:'center',
-          }}>
-            <div style={{fontSize:120,filter:'drop-shadow(0 0 30px #9060ccaa)'}}>👁️</div>
-            <div style={{fontFamily:"'Cinzel',serif",fontSize:18,color:'#9060cc',
-              textShadow:'0 0 20px #9060cc88',marginTop:10}}>克苏鲁</div>
-          </div>
-        )}
-        
-        {/* Glow */}
-        {glowing&&(
-          <div style={{position:'absolute',inset:-50,borderRadius:'50%',pointerEvents:'none',
-            background:'radial-gradient(circle, rgba(144,96,204,0.2) 0%, rgba(58,26,90,0.1) 40%, rgba(0,0,0,0) 76%)',
-            boxShadow:'0 0 80px #9060cc88, 0 0 160px #9060cc44',
-            animation:'pulse 2s ease-in-out infinite',
-          }}/>
-        )}
-      </div>
-      
-      {btnVisible&&(
-        <button onClick={onConfirm}
-          style={{padding:'12px 44px',background:'#1a0d2e',border:'2px solid #9060cc',
-            color:'#c8a0e8',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:14,
-            borderRadius:2,cursor:'pointer',letterSpacing:3,textTransform:'uppercase',
-            boxShadow:'0 0 30px #9060cc55',animation:'animPop 0.35s ease-out',
-            transition:'all .2s'}}
-          onMouseEnter={e=>{e.currentTarget.style.background='#2a1a3e';e.currentTarget.style.boxShadow='0 0 50px #9060cc88';}}
-          onMouseLeave={e=>{e.currentTarget.style.background='#1a0d2e';e.currentTarget.style.boxShadow='0 0 30px #9060cc55';}}
-        >✦ 见证胜利</button>
-      )}
-    </div>
-  );
-}
-
 // ── Role Reveal Animation (slot-machine, shown at every game start) ──────────
 function RoleRevealAnim({role,onDone}){
   const [offset,setOffset]=useState(0);
@@ -419,4 +318,4 @@ function RoleRevealAnim({role,onDone}){
 }
 
 
-export { GodResurrectionAnim, TreasureMapAnim, CthulhuResurrectionAnim, RoleRevealAnim };
+export { GodResurrectionAnim, TreasureMapAnim, RoleRevealAnim };

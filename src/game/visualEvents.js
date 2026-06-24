@@ -17,6 +17,8 @@ export const VISUAL_EVENT = {
   CARD_EFFECT: 'cardEffect',
   EARTHQUAKE: 'earthquake',
   ENDLESS_CORRIDOR_REPLAY: 'endlessCorridorReplay',
+  GOD_POWER_BLOCKED: 'godPowerBlocked',
+  TSG_SLIME_POP: 'tsgSlimePop',
 };
 
 const visualEventInstanceId = Math.random().toString(36).slice(2, 10);
@@ -24,6 +26,8 @@ let actionEventSeq = 0;
 let cardEffectEventSeq = 0;
 let earthquakeEventSeq = 0;
 let endlessCorridorEventSeq = 0;
+let godPowerBlockedEventSeq = 0;
+let tsgSlimePopEventSeq = 0;
 
 function cardIdentity(card) {
   if (!card) return 'none';
@@ -123,7 +127,7 @@ export function createBewitchGiftEvent({ sourceIdx = 0, targetIdx = 0, targetNam
   }, 'action');
 }
 
-export function createSwapCardsEvent({ sourceIdx = 0, targetIdx = 0, sourceCount = 1, targetCount = 1, msgs = [] } = {}) {
+export function createSwapCardsEvent({ sourceIdx = 0, targetIdx = 0, sourceCount = 1, targetCount = 1, msgs = [], takenCard = null, givenCard = null, sourceName = null, sourceLabel = null } = {}) {
   return withVisualEventMeta({
     type: VISUAL_EVENT.SWAP_CARDS,
     id: `${VISUAL_EVENT.SWAP_CARDS}:${visualEventInstanceId}:${++actionEventSeq}`,
@@ -131,6 +135,10 @@ export function createSwapCardsEvent({ sourceIdx = 0, targetIdx = 0, sourceCount
     targetIdx,
     sourceCount,
     targetCount,
+    ...(takenCard ? { takenCard } : {}),
+    ...(givenCard ? { givenCard } : {}),
+    ...(sourceName ? { sourceName } : {}),
+    ...(sourceLabel ? { sourceLabel } : {}),
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'action');
 }
@@ -349,6 +357,29 @@ export function buildSnakeTrapAnimStep(event, state) {
   };
 }
 
+export function createGodPowerBlockedEvent({ playerIdx = 0, playerName = '该玩家', msgs = [] } = {}) {
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.GOD_POWER_BLOCKED,
+    id: `${VISUAL_EVENT.GOD_POWER_BLOCKED}:${visualEventInstanceId}:${++godPowerBlockedEventSeq}`,
+    playerIdx,
+    playerName,
+    msgs: Array.isArray(msgs) ? msgs : [],
+  }, 'action');
+}
+
+export function createTsathogguaSlimePopEvent({ playerIdx = 0, playerName = '该玩家', cards = [], msgs = [] } = {}) {
+  const slimeCards = Array.isArray(cards) ? cards.filter(Boolean) : [];
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.TSG_SLIME_POP,
+    id: `${VISUAL_EVENT.TSG_SLIME_POP}:${visualEventInstanceId}:${++tsgSlimePopEventSeq}`,
+    playerIdx,
+    playerName,
+    count: slimeCards.length || 1,
+    cards: slimeCards,
+    msgs: Array.isArray(msgs) ? msgs : [],
+  }, 'action');
+}
+
 function buildStatEventsFromPlayerSnapshots(beforePlayers = [], afterPlayers = [], msgs = [], reason = '卡牌效果') {
   if (!Array.isArray(beforePlayers) || !Array.isArray(afterPlayers)) return [];
   const logHint = Array.isArray(msgs) ? msgs[0] : undefined;
@@ -458,8 +489,13 @@ export function buildTurnStartDrawVisualEvents(state) {
 }
 
 export function buildFreshStatVisualEvents(state, previousStatSeq = 0) {
+  const statLogSet = new Set((Array.isArray(state?._statLogs) ? state._statLogs : []).filter(Boolean));
   const freshStatEvents = Array.isArray(state?._statEvents)
-    ? state._statEvents.filter(ev => ev && (ev.seq == null || ev.seq > (previousStatSeq || 0)))
+    ? state._statEvents.filter(ev => (
+      ev &&
+      (ev.seq == null || ev.seq > (previousStatSeq || 0)) &&
+      (!statLogSet.size || !ev.logHint || statLogSet.has(ev.logHint))
+    ))
     : [];
   const event = createStatEventsEvent({ statEvents: freshStatEvents, msgs: state?._statLogs || [] });
   return event ? [event] : [];
@@ -560,6 +596,22 @@ export function buildStatStepsFromVisualEvents(state, players) {
   const event = getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.STAT_EVENTS && Array.isArray(ev.statEvents) && ev.statEvents.length);
   if (!event) return [];
   return statEventsToAnimQueue(event.statEvents, players || state?.players || [], event.msgs || []);
+}
+
+export function buildGodPowerBlockedStepsFromVisualEvents(state, oldState = null) {
+  const oldIds = new Set(getVisualEventIds(getVisualEvents(oldState)));
+  return getVisualEvents(state)
+    .filter(ev => ev?.type === VISUAL_EVENT.GOD_POWER_BLOCKED && ev?.id && !oldIds.has(ev.id))
+    .map(event => {
+      const playerIdx = event.playerIdx ?? 0;
+      const playerName = event.playerName || state?.players?.[playerIdx]?.name || '该玩家';
+      return {
+        type: 'GOD_POWER_BLOCKED',
+        targetPid: playerIdx,
+        name: localDisplayName(playerIdx, playerName),
+        msgs: Array.isArray(event.msgs) ? event.msgs : [],
+      };
+    });
 }
 
 export function buildEarthquakeStepFromVisualEvents(state) {

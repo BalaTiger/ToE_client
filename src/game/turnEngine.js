@@ -2,7 +2,7 @@
   shuffle,
   clamp,
   copyPlayers,
-  isNegativeZoneCard,
+  isDodgeableZoneCard,
   cardLogText,
   isWinHand,
   makeInspectionMeta,
@@ -11,25 +11,29 @@
   isGeomagneticRestore,
   killPlayerState,
   tryVritraImmortal,
+  canRevealForHunt,
   buildEtherealizeLoss,
   buildEtherealizeRedirectDecision,
   buildTsathogguaSlimeBalanceDecision,
+  formatSanLoss,
 } from './coreUtils';
-import { aiShouldKeepZoneCard } from './ai';
+import { aiShouldKeepZoneCard, chooseAiCultistBewitchPlan, getHunterChaseTargets } from './ai';
 import { clearPlayerGodZone } from './aiTurn';
 import { splitAnimBoundLogs } from './animLogs';
 import { localDisplayName } from './rotateState';
 import { GOD_DEFS, createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../constants/card';
-import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
+import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, isRevealedCultist } from './coreUtils';
 import { applyFx, applyInspectionForSanLoss } from './effectEngine';
 import { buildZhuLight, getZhuTopGuard } from './zhuPower';
 import { buildStatEvents } from './statEvents';
 import { deriveEffectDecisionState } from './effectStatePatch';
 import { buildApophisNightLog, getApophisNightForLevel } from './apophisNight';
-import { canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
-import { appendProliferatingZDraws, clearExpiredProliferatingZ } from './proliferatingZ';
+import { buildGodPowerBlockedLog, canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
+import { clearExpiredProliferatingZ } from './proliferatingZ';
+import { appendPublicCardGainTriggers } from './cardGainEvents';
 import { drawCardDecisionText, markBlindZoneCard, shouldBlindZoneDecision } from './blindZoneDecision';
 import { clearExpiredTurnScopedEffects } from './turnScopedEffects';
+import { createGodPowerBlockedEvent, createTsathogguaSlimePopEvent } from './visualEvents';
 
 function appendStatEventsToInspectionMeta(inspectionMeta, beforePlayers, afterPlayers, logs, reason) {
   const statEventSeq = (inspectionMeta?._statEventSeq || 0) + 1;
@@ -123,11 +127,152 @@ export function shouldTriggerGodResurrection(gs) {
   return gs.players.some(p => !p.isDead && p.san <= 0);
 }
 
-/** AI 自动选择 SHU 黑暗子嗣的目标。默认优先给自己，若自己是寻宝者则随机给其他存活角色。 */
+function getShuOffspringTargets(ci, P) {
+  return P
+    .map((player, idx) => ({ player, idx }))
+    .filter(({ player, idx }) => idx !== ci && player && !player.isDead && canGodPowerAffect(player));
+}
+
+function chooseOtherShuTarget(ci, P, role) {
+  const targets = getShuOffspringTargets(ci, P);
+  if (!targets.length) return ci;
+  if (role === ROLE_HUNTER) {
+    return [...targets].sort((a, b) => {
+      const aPref = a.player.hp < a.player.san ? 0 : 1;
+      const bPref = b.player.hp < b.player.san ? 0 : 1;
+      return aPref - bPref || a.player.hp - b.player.hp || b.player.san - a.player.san || a.idx - b.idx;
+    })[0].idx;
+  }
+  if (role === ROLE_CULTIST) {
+    return [...targets].sort((a, b) => {
+      const aPref = a.player.san < a.player.hp ? 0 : 1;
+      const bPref = b.player.san < b.player.hp ? 0 : 1;
+      return aPref - bPref || a.player.san - b.player.san || b.player.hp - a.player.hp || a.idx - b.idx;
+    })[0].idx;
+  }
+  return targets[Math.floor(Math.random() * targets.length)].idx;
+}
+
+function shouldAiKeepActionForSkill(ci, P, role) {
+  const actor = P?.[ci];
+  if (!actor || actor.isDead) return false;
+  if (role === ROLE_HUNTER) {
+    return (actor.hand || []).some(canRevealForHunt) && getHunterChaseTargets(P, ci).length > 0;
+  }
+  if (role === ROLE_CULTIST) {
+    return !!chooseAiCultistBewitchPlan(P, ci);
+  }
+  return false;
+}
+
+/** AI 自动选择 SHU 黑暗子嗣的目标。会避免让黑山羊幼仔占掉更高价值的追捕/蛊惑行动。 */
 function _chooseAiShuTarget(ci, P) {
-  if (P[ci].role !== ROLE_TREASURE && canGodPowerAffect(P[ci])) return ci;
-  const others = P.map((p, i) => i).filter(i => i !== ci && !P[i].isDead && canGodPowerAffect(P[i]));
-  return others.length > 0 ? others[Math.floor(Math.random() * others.length)] : ci;
+  const actor = P?.[ci];
+  const role = actor?._nyaBorrow || actor?.role;
+  if (role === ROLE_TREASURE) return chooseOtherShuTarget(ci, P, role);
+  if (shouldAiKeepActionForSkill(ci, P, role)) return chooseOtherShuTarget(ci, P, role);
+  if (canGodPowerAffect(actor)) return ci;
+  return chooseOtherShuTarget(ci, P, role);
+}
+
+function getAiGodPowerScore(godKey, ci, players, level = 1) {
+  const actor = players?.[ci];
+  if (!actor || actor.isDead || !godKey || hasGodPowerImmunity(actor)) return -2;
+  const role = actor._nyaBorrow || actor.role;
+  const living = (players || []).filter(p => p && !p.isDead);
+  const livingOthers = living.filter(p => p !== actor);
+  const deadOthers = (players || []).filter((p, idx) => idx !== ci && p?.isDead);
+  const lowSanOpponents = livingOthers.filter(p => p.role !== ROLE_CULTIST && p.san <= 6).length;
+  const lowHpActor = actor.hp <= 4;
+  const handCount = actor.hand?.length || 0;
+  const roleDrawValue = role === ROLE_TREASURE ? 1.2 : role === ROLE_CULTIST ? 1.0 : 0.65;
+
+  switch (godKey) {
+    case 'NYA': {
+      let score = -1.2;
+      if (deadOthers.length) score += 1.3 + Math.min(1.2, deadOthers.length * 0.4);
+      if (role === ROLE_TREASURE && deadOthers.some(p => p.role === ROLE_TREASURE)) score += 0.8;
+      if (role === ROLE_CULTIST && deadOthers.some(p => p.role === ROLE_CULTIST)) score += 0.7;
+      if (role === ROLE_HUNTER && deadOthers.some(p => p.role !== ROLE_HUNTER)) score += 0.4;
+      if (!deadOthers.length && living.length >= players.length) score -= role === ROLE_HUNTER ? 0.7 : 1.4;
+      score += (level - 1) * 0.35;
+      return score;
+    }
+    case 'CTH':
+      return 0.65 + roleDrawValue * level + (actor.isResting ? 0.8 : 0) + (handCount <= 2 ? 0.35 : 0);
+    case 'SHU':
+      return role === ROLE_CULTIST
+        ? 1.6 + level * 0.85 + lowSanOpponents * 0.25
+        : role === ROLE_HUNTER
+          ? 0.25 + level * 0.2
+          : 0.15 + level * 0.25;
+    case 'ZHU':
+      return 1.0 + level * 0.45 + (role === ROLE_TREASURE ? 0.35 : 0) + (role === ROLE_CULTIST ? 0.2 : 0);
+    case 'APO':
+      return role === ROLE_HUNTER
+        ? -3.6 - level * 0.65
+        : role === ROLE_CULTIST
+          ? 1.4 + level * 0.7 + lowSanOpponents * 0.35
+          : -0.7 + level * 0.15;
+    case 'VRI':
+      return 0.65 + (role === ROLE_HUNTER ? 0.75 : 0) + (role === ROLE_TREASURE ? 0.45 : 0) + (lowHpActor ? 1.25 : 0) + level * 0.25;
+    case 'TSG':
+      return 0.75 + roleDrawValue * level + (handCount <= 2 ? 0.25 : 0);
+    default:
+      return GOD_DEFS[godKey]?.levels?.some(levelDef => !/待设计/.test(levelDef?.desc || ''))
+        ? 0.25 + level * 0.2
+        : -0.8;
+  }
+}
+
+function chooseAiGodEncounterAction(ci, godCard, players, forcedConvert = false) {
+  const actor = players?.[ci];
+  const godKey = godCard?.godKey;
+  if (!actor || !godKey) return 'discard';
+  const role = actor._nyaBorrow || actor.role;
+  const oldGodKey = actor.godName;
+  const oldLevel = actor.godLevel || 0;
+  const sanAfterConvert = actor.san - 1;
+  const hasCultist = (players || []).some(p => p?.role === ROLE_CULTIST && !p.isDead);
+  const convertSanPenalty = sanAfterConvert <= 0
+    ? 99
+    : sanAfterConvert <= 3
+      ? 2.2
+      : sanAfterConvert <= 6
+        ? (hasCultist && role !== ROLE_CULTIST ? 0.9 : 0.45)
+        : 0.15;
+
+  if (oldGodKey === godKey) return oldLevel < 3 ? 'upgrade' : 'discard';
+  if (forcedConvert) return 'worship';
+
+  const newScore = getAiGodPowerScore(godKey, ci, players, 1);
+  const keepHandScore = role === ROLE_CULTIST ? 1.35 + ((actor.godEncounters || 0) * 0.25) : -99;
+
+  if (!oldGodKey) {
+    const worshipScore = newScore - (actor.san <= 3 ? 0.9 : 0);
+    if (keepHandScore > worshipScore && keepHandScore >= 1.2) return 'hand';
+    return worshipScore >= 0.75 ? 'worship' : 'discard';
+  }
+
+  const oldScore = getAiGodPowerScore(oldGodKey, ci, players, Math.max(1, oldLevel));
+  const resetPenalty = Math.max(0, oldLevel - 1) * 0.75;
+  const convertScore = newScore - oldScore - resetPenalty - convertSanPenalty;
+  if (keepHandScore > convertScore && keepHandScore >= 1.3) return 'hand';
+  return convertScore >= 0.45 ? 'convert' : 'discard';
+}
+
+function appendGodPowerBlockedFeedback({ player, playerIdx, log, events, msgs }) {
+  if (!player || !hasGodPowerImmunity(player)) return null;
+  const msg = buildGodPowerBlockedLog(player);
+  if (Array.isArray(log)) log.push(msg);
+  if (Array.isArray(msgs)) msgs.push(msg);
+  const event = createGodPowerBlockedEvent({
+    playerIdx,
+    playerName: player.name,
+    msgs: [msg],
+  });
+  if (event && Array.isArray(events)) events.push(event);
+  return event;
 }
 
 export function applySanLossToPlayerWithInspection(targetIndex, amount, startIndex, P, D, Disc, L, inspectionMeta, reason = 'SAN损失', options = {}) {
@@ -159,20 +304,37 @@ export function applySanLossToPlayerWithInspection(targetIndex, amount, startInd
     L.slice(-1),
     reason,
   );
+  const slimeDecision = buildTsathogguaSlimeBalanceDecision(beforePlayers, P, { _turnOwner: startIndex });
+  if (slimeDecision) {
+    return {
+      P,
+      D,
+      Disc,
+      L,
+      inspectionMeta: {
+        ...nextInspectionMeta,
+        abilityData: {
+          ...slimeDecision,
+          pendingSanInspection: {
+            targetIndex,
+            startIndex,
+            reason,
+          },
+        },
+      },
+    };
+  }
   const processed = applyInspectionForSanLoss(targetIndex, P[targetIndex].san, startIndex, P, D, Disc, L, nextInspectionMeta);
-  const slimeDecision = buildTsathogguaSlimeBalanceDecision(beforePlayers, processed.P, { _turnOwner: startIndex });
   return {
     P: processed.P,
     D: processed.D,
     Disc: processed.Disc,
     L: processed.log,
-    inspectionMeta: slimeDecision
-      ? { ...processed.inspectionMeta, abilityData: slimeDecision }
-      : processed.inspectionMeta,
+    inspectionMeta: processed.inspectionMeta,
   };
 }
 
-export function abandonGodFollower(targetIndex, startIndex, P, D, Disc, L, inspectionMeta, logMsg = `被邪神抛弃，SAN-1`) {
+export function abandonGodFollower(targetIndex, startIndex, P, D, Disc, L, inspectionMeta, logMsg = `被邪神抛弃，${formatSanLoss(1)}`) {
   L = [...L, `${P[targetIndex].name} ${logMsg}`];
   const processed = applySanLossToPlayerWithInspection(targetIndex, 1, startIndex, P, D, Disc, L, inspectionMeta);
   P = processed.P; D = processed.D; Disc = processed.Disc; L = processed.L; inspectionMeta = processed.inspectionMeta;
@@ -180,22 +342,36 @@ export function abandonGodFollower(targetIndex, startIndex, P, D, Disc, L, inspe
   return { P, D, Disc, L, inspectionMeta };
 }
 
-export function convertGodFollower(targetIndex, startIndex, P, D, Disc, L, inspectionMeta, logMsg) {
-  const convertLog = logMsg || `${P[targetIndex].name} 改信新神，SAN-1`;
+export function convertGodFollower(targetIndex, startIndex, P, D, Disc, L, inspectionMeta, logMsg, nextGodCard = null) {
+  const convertLog = logMsg || `${P[targetIndex].name} 改信新神，${formatSanLoss(1)}`;
   L = [...L, convertLog];
+  if (nextGodCard?.godKey) {
+    clearPlayerGodZone(P[targetIndex], Disc);
+    P[targetIndex].godName = nextGodCard.godKey;
+    P[targetIndex].godLevel = 1;
+    P[targetIndex].godZone = [{ ...nextGodCard }];
+  }
   const processed = applySanLossToPlayerWithInspection(targetIndex, 1, startIndex, P, D, Disc, L, inspectionMeta);
   P = processed.P; D = processed.D; Disc = processed.Disc; L = processed.L; inspectionMeta = processed.inspectionMeta;
-  clearPlayerGodZone(P[targetIndex], Disc);
+  if (!nextGodCard?.godKey) {
+    clearPlayerGodZone(P[targetIndex], Disc);
+  }
   return { P, D, Disc, L, inspectionMeta };
 }
 
-export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConvert) {
+export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConvert, opts = {}) {
   const msgs = []; const godKey = godCard.godKey;
   let statePatch = {};
+  const visualEvents = [];
   let inspectionMeta = makeInspectionMeta(gs);
   P = P.map(p => ({ ...p, godZone: [...(p.godZone || [])] })); // shallow copy godZone arrays
   const applyImmediateGodPower = () => {
-    if (!canGodPowerAffect(P[ci])) return;
+    if (!canGodPowerAffect(P[ci])) {
+      if (['APO', 'ZHU', 'SHU'].includes(godKey)) {
+        appendGodPowerBlockedFeedback({ player: P[ci], playerIdx: ci, events: visualEvents, msgs });
+      }
+      return;
+    }
     if (godKey === 'APO') {
       statePatch.apophisNight = getApophisNightForLevel(P[ci].godLevel);
       msgs.push(buildApophisNightLog());
@@ -205,6 +381,19 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     }
     if (godKey === 'SHU') {
       const count = GOD_DEFS.SHU.levels[(P[ci].godLevel || 1) - 1]?.offspringCount || 0;
+      if (opts?.deferShuTarget && count > 0) {
+        statePatch = {
+          ...statePatch,
+          _deferredShuTarget: { chooserIdx: ci, count },
+          abilityData: {
+            ...(statePatch.abilityData || {}),
+            shuOffspringCount: count,
+            shuChooserIdx: ci,
+            _turnOwner: gs?.currentTurn ?? ci,
+          },
+        };
+        return;
+      }
       const shuTargetIdx = _chooseAiShuTarget(ci, P);
       if (!canGodPowerAffect(P[shuTargetIdx])) return;
       const goatCards = Array.from({ length: count }, () => createBlackGoatYoungCard());
@@ -214,26 +403,15 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     }
   };
   if (forcedConvert && P[ci].godName && P[ci].godName !== godKey) {
-    msgs.push(`${P[ci].name} 被迫改信新神，SAN-1`);
+    msgs.push(`${P[ci].name} 被迫改信新神，${formatSanLoss(1)}`);
     const inspectionBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
     const processed = applySanLossToPlayerWithInspection(ci, 1, gs?.currentTurn ?? ci, P, D, Disc, inspectionBaseLog, inspectionMeta);
     P = processed.P; D = processed.D; Disc = processed.Disc; inspectionMeta = processed.inspectionMeta;
     const extraMsgs = (processed.L || []).slice(inspectionBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
     clearPlayerGodZone(P[ci], Disc);
   }
-  let action;
   const proliferatingZGainEvents = [];
-  if (P[ci].godName === godKey && P[ci].godLevel < 3) { action = 'upgrade'; }
-  else if (P[ci].godName === godKey && P[ci].godLevel >= 3) { action = 'discard'; }
-  else if (!P[ci].godName) {
-    // If forcedConvert just cleared old god, always worship new god (rule: cannot refuse)
-    if (forcedConvert) { action = 'worship'; }
-    else if ((P[ci]._nyaBorrow || P[ci].role) === ROLE_CULTIST && Math.random() < 0.6) { action = 'hand'; }
-    else if (P[ci].san > 4) { action = 'worship'; }
-    else { action = 'discard'; }
-  } else if (P[ci].godName !== godKey) {
-    action = P[ci].san > 4 ? 'convert' : 'discard';
-  } else { action = 'discard'; }
+  const action = chooseAiGodEncounterAction(ci, godCard, P, forcedConvert);
   if (action === 'upgrade') {
     P[ci].godLevel++; P[ci].godZone.push({ ...godCard });
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
@@ -249,7 +427,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     });
   } else if (action === 'convert') {
     const convertBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
-    const converted = convertGodFollower(ci, gs?.currentTurn ?? ci, P, D, Disc, convertBaseLog, inspectionMeta, `${P[ci].name} 改信新神，SAN-1`);
+    const converted = convertGodFollower(ci, gs?.currentTurn ?? ci, P, D, Disc, convertBaseLog, inspectionMeta, `${P[ci].name} 改信新神，${formatSanLoss(1)}`, godCard);
     P = converted.P; D = converted.D; Disc = converted.Disc; inspectionMeta = converted.inspectionMeta;
     const extraMsgs = (converted.L || []).slice(convertBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
     P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }];
@@ -278,6 +456,8 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
       }
     });
   } else if (action === 'hand') {
+    P[ci].roleRevealed = true;
+    P[ci].revealHand = true;
     P[ci].hand.push({ ...godCard }); msgs.push(`${P[ci].name}（邪祀者）将邪神牌收入手牌`);
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
   } else {
@@ -285,27 +465,31 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
   }
   let zBase = { ...gs, ...statePatch };
   proliferatingZGainEvents.forEach(event => {
-    const patch = appendProliferatingZDraws(zBase, P, event.ownerIdx, event.cards);
+    const patch = appendPublicCardGainTriggers(zBase, P, event.ownerIdx, event.cards);
     if (patch.proliferatingZQueue) zBase = { ...zBase, proliferatingZQueue: patch.proliferatingZQueue };
   });
-  statePatch = { ...statePatch, ...(zBase.proliferatingZQueue ? { proliferatingZQueue: zBase.proliferatingZQueue } : {}) };
+  statePatch = {
+    ...statePatch,
+    ...(zBase.proliferatingZQueue ? { proliferatingZQueue: zBase.proliferatingZQueue } : {}),
+    ...(visualEvents.length ? { _visualEvents: visualEvents } : {}),
+  };
   return { P, D, Disc, msgs, inspectionMeta, statePatch };
 }
 
-export function aiHandleGodCard(ci, godCard, P, D, Disc, L, gs, skipEffectMsg = false) {
+export function aiHandleGodCard(ci, godCard, P, D, Disc, L, gs, skipEffectMsg = false, forcedConvert = false, opts = {}) {
   const sanCost = P[ci].godEncounters || 0;
-  // 邪祀者遭遇邪神时不扣减SAN且强制亮明身份
+  // 已揭晓的邪祀者遭遇邪神时免疫SAN损耗；未揭晓时照常结算
   if (!skipEffectMsg) {
+    const revealedCultist = isRevealedCultist(P[ci]);
     let effectMsg = '';
-    if (P[ci].role === ROLE_CULTIST) {
-      P[ci].roleRevealed = true;
+    if (revealedCultist) {
       effectMsg = `${P[ci].name}（邪祀者）遭遇邪神 ${godCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`;
     } else {
-      effectMsg = `${P[ci].name} 遭遇邪神 ${godCard.name}！（第${P[ci].godEncounters}次）失去${sanCost}SAN`;
+      effectMsg = `${P[ci].name} 遭遇邪神 ${godCard.name}！（第${P[ci].godEncounters}次）${formatSanLoss(sanCost)}`;
     }
     L.push(effectMsg);
   }
-  const gres = resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, false);
+  const gres = resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConvert, opts);
   P = gres.P; D = gres.D; Disc = gres.Disc;
   L.push(...gres.msgs);
   return { P, D, Disc, L, inspectionMeta: gres.inspectionMeta, statePatch: gres.statePatch };
@@ -370,36 +554,80 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
   if (drawnCard.isGod) {
     P[ci].godEncounters = (P[ci].godEncounters || 0) + 1;
     const cost = P[ci].godEncounters;
-    // 邪祀者遭遇邪神时不扣减SAN且强制亮明身份
-    if (P[ci].role === ROLE_CULTIST) {
-      P[ci].roleRevealed = true;
-    }
+    const revealedCultist = isRevealedCultist(P[ci]);
 
     if (isAI) {
       let L2 = [];
       let inspectionMeta = makeInspectionMeta(gs);
-      let effectMsg = P[ci].role === ROLE_CULTIST
+      let effectMsg = revealedCultist
         ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`
-        : `${whoName} 遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）失去${cost}SAN`;
+        : `${whoName} 遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）${formatSanLoss(cost)}`;
       L2.push(effectMsg);
-      // AI处理邪神牌时，仍然立即扣减SAN值
-      if (P[ci].role !== ROLE_CULTIST) {
+      // AI处理邪神牌时，仍然立即扣减SAN值；教程可在检定前暂停。
+      if (!revealedCultist) {
+        const beforePlayers = copyPlayers(P);
+        P[ci].san = clamp(P[ci].san - cost);
+        inspectionMeta = appendStatEventsToInspectionMeta(
+          inspectionMeta,
+          beforePlayers,
+          P,
+          [effectMsg],
+          '邪神遭遇',
+        );
+        if (gs?.deferAiGodChoice) {
+          return {
+            P,
+            D,
+            Disc,
+            drawnCard,
+            effectMsgs: L2,
+            kept: true,
+            pendingAiGodChoice: {
+              playerIndex: ci,
+              godCard: drawnCard,
+              pendingEncounterInspection: P[ci].san > 0 && P[ci].san <= 6,
+            },
+            statePatch: {
+              ...inspectionMeta,
+              _pendingAiGodChoice: {
+                playerIndex: ci,
+                godCard: drawnCard,
+                pendingEncounterInspection: P[ci].san > 0 && P[ci].san <= 6,
+              },
+            },
+          };
+        }
         const baseLog = [...(gs?.log || []), effectMsg];
-        const processed = applySanLossToPlayerWithInspection(ci, cost, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta, '邪神遭遇');
-        P = processed.P; D = processed.D; Disc = processed.Disc; inspectionMeta = processed.inspectionMeta; L2.push(...processed.L.slice(baseLog.length));
+        const processed = applyInspectionForSanLoss(ci, P[ci].san, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta);
+        P = processed.P; D = processed.D; Disc = processed.Disc; inspectionMeta = processed.inspectionMeta; L2.push(...processed.log.slice(baseLog.length));
+      }
+      if (gs?.deferAiGodChoice) {
+        return {
+          P,
+          D,
+          Disc,
+          drawnCard,
+          effectMsgs: L2,
+          kept: true,
+          pendingAiGodChoice: { playerIndex: ci, godCard: drawnCard },
+          statePatch: {
+            ...inspectionMeta,
+            _pendingAiGodChoice: { playerIndex: ci, godCard: drawnCard },
+          },
+        };
       }
       const gr = aiHandleGodCard(ci, drawnCard, P, D, Disc, L2, gs, true);
       P = gr.P; D = gr.D; Disc = gr.Disc;
       return { P, D, Disc, drawnCard, effectMsgs: L2, kept: true, statePatch: { ...inspectionMeta, ...(gr.inspectionMeta || {}), ...(gr.statePatch || {}) } };
     } else {
-      let effectMsg = P[ci].role === ROLE_CULTIST
+      let effectMsg = revealedCultist
         ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`
-        : `${whoName} 遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）失去${cost}SAN`;
+        : `${whoName} 遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）${formatSanLoss(cost)}`;
 
       let inspectionMeta = makeInspectionMeta(gs);
       let effectMsgs = [effectMsg];
 
-      if (P[ci].role !== ROLE_CULTIST && cost > 0) {
+      if (!revealedCultist && cost > 0) {
         const baseLog = gs?.log ? [...gs.log, effectMsg] : [effectMsg];
         const processed = applySanLossToPlayerWithInspection(ci, cost, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta, '邪神遭遇');
         P = processed.P; D = processed.D; Disc = processed.Disc;
@@ -446,9 +674,9 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
     // AI Treasure Hunter dodge logic
     const effectiveRole = P[ci]._nyaBorrow || P[ci].role;
     const isTreasureHunter = effectiveRole === ROLE_TREASURE;
-    const isNegativeEffect = isNegativeZoneCard(drawnCard);
+    const isDodgeableEffect = isDodgeableZoneCard(drawnCard);
 
-    if (isTreasureHunter && isNegativeEffect) {
+    if (isTreasureHunter && isDodgeableEffect) {
       P[ci].roleRevealed = true;
       const d1 = 1 + (Math.random() * 6 | 0);
       const dodgeSuccess = d1 >= 4;
@@ -593,8 +821,15 @@ function turnStartEvent_PoisonDamage(P, next, D, Disc, L, gs, inspectionMeta, st
 }
 
 // [ACTIVE_GOD] NYA 偷身份
-function turnStartEvent_NyaBorrow(P, next, L, gs) {
-  if (P[next].godName !== 'NYA' || P[next].godLevel < 1 || hasGodPowerImmunity(P[next])) return { shouldEnterPhase: false };
+function turnStartEvent_NyaBorrow(P, next, L, gs, visualEvents = []) {
+  if (P[next].godName !== 'NYA' || P[next].godLevel < 1) return { shouldEnterPhase: false };
+  if (hasGodPowerImmunity(P[next])) {
+    const hasBorrowTarget = next === 0
+      ? P.some((p, i) => i > 0 && p.isDead)
+      : P.some((p, i) => i !== next && p.isDead);
+    if (hasBorrowTarget) appendGodPowerBlockedFeedback({ player: P[next], playerIdx: next, log: L, events: visualEvents });
+    return { shouldEnterPhase: false };
+  }
 
   if (next === 0) {
     const deadOthers = P.filter((p, i) => i > 0 && p.isDead);
@@ -630,11 +865,15 @@ function endPreviousTurnCleanup(P, prevTurn) {
   return P;
 }
 
-function grantTsathogguaSlimeAtEndTurn(P, prevTurn, L) {
+function grantTsathogguaSlimeAtEndTurn(P, prevTurn, L, visualEvents = []) {
   const p = P?.[prevTurn];
-  if (!p || p.isDead || hasGodPowerImmunity(p) || p.godName !== 'TSG' || !p.godLevel) return null;
+  if (!p || p.isDead || p.godName !== 'TSG' || !p.godLevel) return null;
   const count = GOD_DEFS.TSG.levels[(p.godLevel || 1) - 1]?.slimeCount || 0;
   if (!count) return null;
+  if (hasGodPowerImmunity(p)) {
+    appendGodPowerBlockedFeedback({ player: p, playerIdx: prevTurn, log: L, events: visualEvents });
+    return null;
+  }
   const playersBefore = copyPlayers(P);
   const cards = [];
   for (let i = 0; i < count; i++) {
@@ -654,13 +893,24 @@ function grantTsathogguaSlimeAtEndTurn(P, prevTurn, L) {
   };
 }
 
-function consumeTsathogguaSlimeForDraw(P, next, L) {
+function consumeTsathogguaSlimeForDraw(P, next, L, visualEvents = []) {
   const p = P?.[next];
-  if (!p || p.isDead || hasGodPowerImmunity(p) || p.godName !== 'TSG' || !p.godLevel) return 0;
+  if (!p || p.isDead || p.godName !== 'TSG' || !p.godLevel) return 0;
   const slimes = (p.hand || []).filter(isTsathogguaSlime);
   if (!slimes.length) return 0;
+  if (hasGodPowerImmunity(p)) {
+    appendGodPowerBlockedFeedback({ player: p, playerIdx: next, log: L, events: visualEvents });
+    return 0;
+  }
   p.hand = p.hand.filter(card => !isTsathogguaSlime(card));
-  L.push(`【无定形体】${p.name} 的${slimes.length}张撒托古亚的赐福黏液消失，本次摸牌阶段额外摸${slimes.length}张牌`);
+  const msg = `【无定形体】${p.name} 的${slimes.length}张撒托古亚的赐福黏液消失，本次摸牌阶段额外摸${slimes.length}张牌`;
+  L.push(msg);
+  visualEvents.push(createTsathogguaSlimePopEvent({
+    playerIdx: next,
+    playerName: p.name,
+    cards: slimes,
+    msgs: [msg],
+  }));
   return slimes.length;
 }
 
@@ -668,7 +918,9 @@ export function startNextTurn(gs, opts = {}) {
   const { isDebugMode = false } = opts;
   // Reset multiplyUsed at the start of every turn
   const inheritedTsgSlimeGrantEvents = Array.isArray(gs._carryTsgSlimeGrantEvents) ? gs._carryTsgSlimeGrantEvents : [];
-  gs = { ...gs, multiplyUsed: false, _tsgSlimeGrantEvents: null, _carryTsgSlimeGrantEvents: null };
+  const inheritedGodPowerBlockedEvents = Array.isArray(gs._carryGodPowerBlockedEvents) ? gs._carryGodPowerBlockedEvents : [];
+  gs = { ...gs, multiplyUsed: false, _visualEvents: [...inheritedGodPowerBlockedEvents], _tsgSlimeGrantEvents: null, _carryTsgSlimeGrantEvents: null, _carryGodPowerBlockedEvents: null };
+  const visualEvents = gs._visualEvents;
   const N = gs.players.length;
   let P = copyPlayers(gs.players), D = [...gs.deck], Disc = [...gs.discard], L = [...gs.log];
   let _P_beforeTurn = copyPlayers(P);
@@ -681,8 +933,14 @@ export function startNextTurn(gs, opts = {}) {
   let inspectionMeta = makeInspectionMeta(gs);
   const turnDir = gs.turnDirection || 1;
   const tsgSlimeGrantEvents = [...inheritedTsgSlimeGrantEvents];
-  const tsgSlimeGrant = grantTsathogguaSlimeAtEndTurn(P, gs.currentTurn, L);
-  if (tsgSlimeGrant) tsgSlimeGrantEvents.push(tsgSlimeGrant);
+  const tsgSlimeGrant = grantTsathogguaSlimeAtEndTurn(P, gs.currentTurn, L, visualEvents);
+  if (tsgSlimeGrant) {
+    tsgSlimeGrantEvents.push(tsgSlimeGrant);
+    const proliferatingZPatch = appendPublicCardGainTriggers(gs, P, tsgSlimeGrant.ownerIdx, tsgSlimeGrant.cards);
+    if (proliferatingZPatch.proliferatingZQueue) {
+      gs = { ...gs, proliferatingZQueue: proliferatingZPatch.proliferatingZQueue };
+    }
+  }
   gs = { ...gs, _tsgSlimeGrantEvents: tsgSlimeGrantEvents.length ? tsgSlimeGrantEvents : null };
   for (let i = 1; i <= N; i++) { next = (gs.currentTurn + i * turnDir + N) % N; if (!P[next].isDead) break; }
   const nextProliferatingZ = clearExpiredProliferatingZ(gs, gs.currentTurn);
@@ -758,7 +1016,9 @@ export function startNextTurn(gs, opts = {}) {
     P = link.P; L = link.L; inspectionMeta = link.inspectionMeta; gs = { ...gs, ...inspectionMeta };
     L.push(`${P[next].name} 从休息中醒来，跳过本回合`);
     // CTH power: draw when ending/skipping turn while face-down
-    if (P[next].godName === 'CTH' && P[next].godLevel >= 1 && !hasGodPowerImmunity(P[next])) {
+    if (P[next].godName === 'CTH' && P[next].godLevel >= 1 && hasGodPowerImmunity(P[next])) {
+      appendGodPowerBlockedFeedback({ player: P[next], playerIdx: next, log: L, events: visualEvents });
+    } else if (P[next].godName === 'CTH' && P[next].godLevel >= 1) {
       const extraDraws = P[next].godLevel; // lv1→1, lv2→2, lv3→3
       const whoName = localDisplayName(next, P[next].name);
       L.push(`${whoName}（克苏鲁信徒Lv.${P[next].godLevel}）梦访拉莱耶，翻面跳过回合时额外摸${extraDraws}张牌`);
@@ -807,7 +1067,7 @@ export function startNextTurn(gs, opts = {}) {
     }
     // Skip the turn: advance past player to the next living player
     // Hand limit is NOT enforced here — excess cards are kept until the next normal turn ends
-    return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents }, opts);
+    return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents }, opts);
   }
   turnStartLogs = [`── ${P[next].name} 的回合开始 ──`];
   L.push(...turnStartLogs);
@@ -830,7 +1090,7 @@ export function startNextTurn(gs, opts = {}) {
     // Debug: 强制摸牌 - 玩家
     applyDebugForceDrawToTop(gs, next, D);
     // [ACTIVE_GOD] NYA 偷身份
-    const nya = turnStartEvent_NyaBorrow(P, 0, L, gs);
+    const nya = turnStartEvent_NyaBorrow(P, 0, L, gs, visualEvents);
     if (nya.shouldEnterPhase) {
       return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: [...L, nya.logMsg], currentTurn: 0, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'NYA_BORROW', abilityData: {}, drawReveal: null, selectedCard: null, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: copyPlayers(P) };
     }
@@ -844,7 +1104,7 @@ export function startNextTurn(gs, opts = {}) {
       return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'ACTION', drawReveal: null, selectedCard: null, abilityData: {}, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, debugForceCard: null, debugForceCardTarget: null };
     }
     const _P_beforeDraw = copyPlayers(P);
-    const tsgExtraDraws = consumeTsathogguaSlimeForDraw(P, 0, L);
+    const tsgExtraDraws = consumeTsathogguaSlimeForDraw(P, 0, L, visualEvents);
     for (let _d = 0; _d < tsgExtraDraws; _d++) {
       const rSlime = playerDrawCard(P, D, Disc, 0, gs);
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
@@ -853,10 +1113,10 @@ export function startNextTurn(gs, opts = {}) {
         L.push(msg); drawLogs.push(msg);
       }
       if (rSlime.needGodChoice) {
-        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: rSlime.drawnCard, drawerIdx: 0, godEncounterCost: rSlime.godEncounterCost, fromTsathogguaSlime: true }, drawReveal: null, selectedCard: null, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
+        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: rSlime.drawnCard, drawerIdx: 0, godEncounterCost: rSlime.godEncounterCost, fromTsathogguaSlime: true, continueTurnStartDraw: true }, drawReveal: null, selectedCard: null, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
       }
       if (rSlime.needsDecision) {
-        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: 0, drawerName: P[0].name, fromTsathogguaSlime: true }, selectedCard: null, abilityData: { fromTsathogguaSlime: true }, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
+        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: 0, drawerName: P[0].name, fromTsathogguaSlime: true }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true }, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
       }
       if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
     }
@@ -874,7 +1134,7 @@ export function startNextTurn(gs, opts = {}) {
     if (drawLogs.length) L.push(...drawLogs);
     if (statLogs.length) L.push(...statLogs);
     if (!res.drawnCard) { L.push('牌堆耗尽！'); return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }; }
-    if (res.needGodChoice) { return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: res.drawnCard, drawerIdx: 0, godEncounterCost: res.godEncounterCost }, drawReveal: null, selectedCard: null, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }; }
+    if (res.needGodChoice) { return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: res.drawnCard, drawerIdx: 0, godEncounterCost: res.godEncounterCost }, drawReveal: null, selectedCard: null, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _aiDrawnCard: null, _drawnCard: res.drawnCard ?? null, _drawSourcePile: res.sourcePile }; }
     const playerTurnAnimMeta = {
       currentTurn: 0,
       turn: newTurn,
@@ -917,7 +1177,7 @@ export function startNextTurn(gs, opts = {}) {
   } else if (gs._isMP) {
     // Multiplayer: next player is human — draw their card and enter DRAW_REVEAL
     // [ACTIVE_GOD] NYA 偷身份
-    const nyaMp = turnStartEvent_NyaBorrow(P, next, L, gs);
+    const nyaMp = turnStartEvent_NyaBorrow(P, next, L, gs, visualEvents);
     if (nyaMp.shouldEnterPhase) {
       return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: [...L, nyaMp.logMsg], currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'NYA_BORROW', abilityData: {}, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: copyPlayers(P) };
     }
@@ -931,7 +1191,7 @@ export function startNextTurn(gs, opts = {}) {
       return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'ACTION', drawReveal: null, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner };
     }
     const _P_beforeMpDraw = copyPlayers(P);
-    const tsgExtraDraws = consumeTsathogguaSlimeForDraw(P, next, L);
+    const tsgExtraDraws = consumeTsathogguaSlimeForDraw(P, next, L, visualEvents);
     for (let _d = 0; _d < tsgExtraDraws; _d++) {
       const rSlime = playerDrawCard(P, D, Disc, next, gs);
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
@@ -968,7 +1228,7 @@ export function startNextTurn(gs, opts = {}) {
     return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, _drawSourcePile: res.sourcePile };
   } else {
     // [ACTIVE_GOD] NYA 偷身份（AI 自动处理）
-    turnStartEvent_NyaBorrow(P, next, L, gs);
+    turnStartEvent_NyaBorrow(P, next, L, gs, visualEvents);
     // 检查是否需要跳过摸牌
     if (P[next].skipNextDraw) {
       const skipReason = P[next].skipNextDrawReason || '扭伤';
@@ -976,11 +1236,11 @@ export function startNextTurn(gs, opts = {}) {
       delete P[next].skipNextDrawReason;
       L.push(`${P[next].name} 因${skipReason}而无法摸牌`);
       const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: win, debugForceCard: null, debugForceCardTarget: null };
-      return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents }, opts);
+      return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents }, opts);
     }
     applyDebugForceDrawToTop(gs, next, D);
     const _P_beforeDraw = copyPlayers(P);
-    const tsgExtraDraws = consumeTsathogguaSlimeForDraw(P, next, L);
+    const tsgExtraDraws = consumeTsathogguaSlimeForDraw(P, next, L, visualEvents);
     for (let _d = 0; _d < tsgExtraDraws; _d++) {
       const rSlime = aiDrawAndApply(next, P, D, Disc, gs);
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
@@ -1017,7 +1277,7 @@ export function startNextTurn(gs, opts = {}) {
         globalOnlySwapOwner,
       };
     }
-    const res = aiDrawAndApply(next, P, D, Disc, gs);
+    const res = aiDrawAndApply(next, P, D, Disc, { ...gs, deferAiGodChoice: true });
     gs.debugForceCardKeepPending = null;
     gs.debugForceCardKeepTarget = null;
     P = res.P; D = res.D; Disc = res.Disc;
@@ -1033,10 +1293,15 @@ export function startNextTurn(gs, opts = {}) {
       if (drawLogs.length) L.push(...drawLogs);
       if (statLogs.length) L.push(...statLogs);
     }
-    const { phase: nextPhase, abilityData: nextAbilityData } = deriveEffectDecisionState(res.statePatch, {
+    const pendingAiGodChoice = res.pendingAiGodChoice || res.statePatch?._pendingAiGodChoice || null;
+    const { phase: resolvedNextPhase, abilityData: resolvedNextAbilityData } = deriveEffectDecisionState(res.statePatch, {
       baseAbilityData: gs.abilityData,
       fallbackPhase: 'AI_TURN',
     });
+    const nextPhase = pendingAiGodChoice ? 'AI_GOD_CHOICE' : resolvedNextPhase;
+    const nextAbilityData = pendingAiGodChoice
+      ? { ...(gs.abilityData || {}), ...pendingAiGodChoice }
+      : resolvedNextAbilityData;
     const aiTurnAnimMeta = {
       currentTurn: next,
       phase: nextPhase,
@@ -1070,6 +1335,6 @@ export function startNextTurn(gs, opts = {}) {
         globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner)
       };
     }
-    return { ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, currentTurn: next, phase: nextPhase, drawReveal: null, selectedCard: null, abilityData: nextAbilityData, huntAbandoned: [], _aiDrawnCard: res.drawnCard ?? null, _drawnCard: res.drawnCard ?? null, _discardedDrawnCard: !!res.discardedDrawnCard, _playersBeforeThisDraw: _P_beforeDraw, _turnKey: (gs._turnKey || 0) + 1, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}), globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) };
+    return { ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, phase: nextPhase, drawReveal: null, selectedCard: null, abilityData: nextAbilityData, huntAbandoned: [], _aiDrawnCard: res.drawnCard ?? null, _drawnCard: res.drawnCard ?? null, _discardedDrawnCard: !!res.discardedDrawnCard, _playersBeforeThisDraw: _P_beforeDraw, _turnKey: (gs._turnKey || 0) + 1, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}), phase: nextPhase, abilityData: nextAbilityData, globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) };
   }
 }

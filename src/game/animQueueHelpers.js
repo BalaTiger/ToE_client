@@ -33,6 +33,34 @@ export function cardTransferStep(options={}){
   return step;
 }
 
+function isInferredDiscardTransfer(step){
+  return step?.type==="CARD_TRANSFER"&&step.dest==="discard"&&!!step.inferredHandLoss;
+}
+
+export function dedupeInferredDiscardTransfers(queue=[]){
+  if(!Array.isArray(queue)||!queue.some(isInferredDiscardTransfer))return Array.isArray(queue)?queue:[];
+  const explicitDiscardPids=new Set();
+  const explicitPopPids=new Set();
+  let hasUnscopedExplicitDiscard=false;
+  const inferredCount=queue.filter(isInferredDiscardTransfer).length;
+  queue.forEach(step=>{
+    if(step?.type==="DISCARD"){
+      if(Number.isInteger(step.targetPid))explicitDiscardPids.add(step.targetPid);
+      else hasUnscopedExplicitDiscard=true;
+    }
+    if(step?.type==="TSG_SLIME_POP"&&Number.isInteger(step.targetPid)){
+      explicitPopPids.add(step.targetPid);
+    }
+  });
+  return queue.filter(step=>{
+    if(!isInferredDiscardTransfer(step))return true;
+    const fromPid=step.fromPid;
+    if(Number.isInteger(fromPid)&&(explicitDiscardPids.has(fromPid)||explicitPopPids.has(fromPid)))return false;
+    if(hasUnscopedExplicitDiscard&&inferredCount===1)return false;
+    return true;
+  });
+}
+
 function resolvePlayerPidByLogName(name,players=[]){
   if(!name)return -1;
   if(name==="你")return 0;
@@ -91,6 +119,10 @@ export function resolveTurnHighlightForStep(step,nextGs,playersFallback=[]){
 }
 
 export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQueue,msgs){
+  const isStaleTurnDrawStep = step => (
+    step?.type === "YOUR_TURN" ||
+    (step?.type === "DRAW_CARD" && step.inspectionSeq == null && step.triggerName !== "检定牌")
+  );
   const ordered=[{type:"SKILL_BEWITCH",msgs,targetIdx:toPid}];
   if(toPid!=null&&toPid>=0){
     ordered.push(cardTransferStep({fromPid,dest:"player",toPid,count:1}));
@@ -100,7 +132,7 @@ export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQ
   if(card){
     ordered.push({type:"DRAW_CARD",card,triggerName,targetPid:toPid,skipTravel:true});
   }
-  ordered.push(...(statQueue||[]).filter(a=>a.type!=="CARD_TRANSFER"));
+  ordered.push(...(statQueue||[]).filter(a=>a.type!=="CARD_TRANSFER"&&!isStaleTurnDrawStep(a)));
   return ordered;
 }
 
@@ -131,6 +163,7 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
       card:ev.card,
       triggerName:"检定牌",
       targetPid:ev.target??0,
+      inspectionSeq:ev.seq,
     });
     const effectQ=buildAnimQueue(
       {players:beforePlayers,log:beforeLog,_statEventSeq:(ev?.statEventSeq||0)-1},

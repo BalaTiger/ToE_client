@@ -28,6 +28,24 @@ function PanelSnapshotImage({src,w,h,top=0,filter,opacity=1}){
   );
 }
 
+function PanelSliceBackground({target,top=0,height='100%',borderRadius=0}){
+  return(
+    <div style={{
+      position:'absolute',
+      left:0,
+      top,
+      width:'100%',
+      height,
+      background:target.panelBackground||'rgba(24,15,7,0.96)',
+      border:`1.5px solid ${target.panelBorderColor||'rgba(58,37,16,0.86)'}`,
+      boxShadow:target.panelBoxShadow||'inset 0 0 16px rgba(200,169,110,0.08)',
+      borderRadius,
+      boxSizing:'border-box',
+      pointerEvents:'none',
+    }}/>
+  );
+}
+
 function KnifeEffect({targets}){
   if(!targets||!targets.length)return null;
   return(
@@ -129,6 +147,7 @@ function GuillotineAnim({targets}){
                 overflow:'hidden',
                 borderRadius:3,
               }}>
+                <PanelSliceBackground target={t} borderRadius={3}/>
                 {hasSnapshot&&(
                   <PanelSnapshotImage src={t.snapshotUrl} w={t.w} h={t.h} filter="brightness(0.92) saturate(0.95)" opacity={0.96}/>
                 )}
@@ -172,6 +191,7 @@ function GuillotineAnim({targets}){
                   animation:'slideUp 0.72s cubic-bezier(0.08,0.82,0.22,1) forwards',
                   boxShadow:hasSnapshot?'0 6px 18px rgba(0,0,0,0.28)':'none',
                 }}>
+                  <PanelSliceBackground target={t} height={t.h} borderRadius={'3px 3px 0 0'}/>
                   {hasSnapshot?(
                     <PanelSnapshotImage src={t.snapshotUrl} w={t.w} h={t.h}/>
                   ):(
@@ -191,6 +211,7 @@ function GuillotineAnim({targets}){
                   animation:'slideDown 0.76s cubic-bezier(0.08,0.82,0.24,1) forwards',
                   boxShadow:hasSnapshot?'0 6px 18px rgba(0,0,0,0.28)':'none',
                 }}>
+                  <PanelSliceBackground target={t} top={-t.h/2} height={t.h} borderRadius={'0 0 3px 3px'}/>
                   {hasSnapshot?(
                     <PanelSnapshotImage src={t.snapshotUrl} w={t.w} h={t.h} top={-t.h/2}/>
                   ):(

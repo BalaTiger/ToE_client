@@ -19,6 +19,12 @@ export const shuffle = (arr) => {
 
 export const clamp = (value, lo = 0, hi = 10) => Math.max(lo, Math.min(hi, value));
 
+export const formatStatLoss = (amount, stat) => `失去 ${amount} ${stat}`;
+
+export const formatSanLoss = (amount) => formatStatLoss(amount, 'SAN');
+
+export const formatHpLoss = (amount) => formatStatLoss(amount, 'HP');
+
 export const copyPlayers = (ps) => ps.map(p => ({
   ...p,
   hand: [...p.hand],
@@ -42,6 +48,12 @@ export const isBlackGoatYoung = (card) => !!card?.isBlackGoatYoung;
 export const isTsathogguaSlime = (card) => !!card?.isTsathogguaSlime;
 export const isGeomagneticRestore = (card) => !!card?.isGeomagneticRestore;
 export const isVanishingDerivedCard = (card) => isBlackGoatYoung(card) || isTsathogguaSlime(card) || isGeomagneticRestore(card);
+export const canRevealForHunt = (card) => !!card && !isBlackGoatYoung(card) && !isTsathogguaSlime(card);
+export const isRevealedCultist = (player) => ((player?._nyaBorrow || player?.role) === ROLE_CULTIST) && !!player?.roleRevealed;
+export const hasHuntRevealableCard = (playerOrHand) => {
+  const hand = Array.isArray(playerOrHand) ? playerOrHand : (playerOrHand?.hand || []);
+  return hand.some(canRevealForHunt);
+};
 
 export function buildTsathogguaSlimeBalanceDecision(playersBefore, playersAfter, extra = {}) {
   if (!Array.isArray(playersBefore) || !Array.isArray(playersAfter)) return null;
@@ -195,6 +207,12 @@ export const isPositiveZoneCard = (card) => {
 
 export const isNeutralZoneCard = (card) => !isPositiveZoneCard(card) && !isNegativeZoneCard(card);
 
+export const isDodgeableZoneCard = (card) => {
+  if (!card) return false;
+  if (card.dodgeable != null) return !!card.dodgeable;
+  return isNegativeZoneCard(card);
+};
+
 export const zoneCardHasGuaranteedHpLoss = (card) => {
   if (!card?.type) return false;
   return [
@@ -267,6 +285,20 @@ export const cardLogText = (card, opts = {}) => {
   const namePart = card.name || '';
   if (alwaysShowName) return `${codePart} ${namePart}`.trim() || namePart || '???';
   return codePart || namePart || '???';
+};
+
+export const getCaveDuelDisplayNumber = card => (
+  Number.isFinite(card?.number) ? card.number : 0
+);
+
+export const compareCaveDuelCards = (a, b) => {
+  const aHasNumber = Number.isFinite(a?.number);
+  const bHasNumber = Number.isFinite(b?.number);
+  if (aHasNumber && bHasNumber) return Math.sign(a.number - b.number);
+  if (!aHasNumber && !bHasNumber) return 0;
+  const numbered = aHasNumber ? a.number : b.number;
+  if (numbered === 4) return aHasNumber ? -1 : 1;
+  return aHasNumber ? 1 : -1;
 };
 
 export const estimateZoneCardKeepScore = (card, ci, players) => {

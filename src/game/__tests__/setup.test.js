@@ -373,7 +373,7 @@ describe('initGame debug force draw', () => {
   it('单机 Debug 可强制第 4 个 AI 摸指定区域牌', () => {
     const gs = initGame(
       null,
-      null,
+      '1',
       'ai4',
       'keep',
       'zone',
@@ -393,7 +393,7 @@ describe('initGame debug force draw', () => {
   it('联机 Debug 不接受 AI 强制摸牌目标', () => {
     const gs = initGame(
       ['你', '艾伦', '贝拉', '卡洛斯', '黛安娜'],
-      null,
+      '1',
       'ai4',
       'keep',
       'zone',
@@ -411,7 +411,7 @@ describe('initGame debug force draw', () => {
   it('联机 Debug 不接受玩家强制摸牌目标', () => {
     const gs = initGame(
       ['你', '艾伦', '贝拉', '卡洛斯', '黛安娜'],
-      null,
+      '1',
       'player',
       'keep',
       'zone',
@@ -430,7 +430,7 @@ describe('initGame debug force draw', () => {
   it('Debug 可强制摸阿波菲斯，即使当前牌堆未自然包含它', () => {
     const gs = initGame(
       null,
-      null,
+      '1',
       'player',
       'auto',
       'god',
@@ -448,7 +448,7 @@ describe('initGame debug force draw', () => {
   it('Debug 可强制摸蟾蜍之神', () => {
     const gs = initGame(
       null,
-      null,
+      '1',
       'player',
       'auto',
       'god',
@@ -466,7 +466,7 @@ describe('initGame debug force draw', () => {
   it('Debug 强制摸牌只允许选择当前扩展包内的卡牌', () => {
     const life = initGame(
       null,
-      null,
+      '1',
       'player',
       'keep',
       'zone',
@@ -479,7 +479,7 @@ describe('initGame debug force draw', () => {
     );
     const soul = initGame(
       null,
-      null,
+      '1',
       'player',
       'keep',
       'zone',
@@ -493,6 +493,44 @@ describe('initGame debug force draw', () => {
 
     expect(life.debugForceCard).toBeNull();
     expect(soul.debugForceCard).toBeNull();
+  });
+
+  it('未显式开启强制摸牌时，残留的选牌器神牌不会固定首抽', () => {
+    const gs = initGame(
+      null,
+      null,
+      'player',
+      'auto',
+      'god',
+      null,
+      null,
+      'TSG',
+      null,
+      state => state,
+      '地神的潜影'
+    );
+
+    expect(gs.debugForceCard).toBeNull();
+  });
+
+  it('临时群星呼唤也不会被残留神牌选项固定首抽', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.1);
+    const gs = initGame(
+      null,
+      null,
+      'player',
+      'auto',
+      'god',
+      null,
+      null,
+      'TSG',
+      null,
+      state => state,
+      EXPANSION_RANDOM_KEY
+    );
+
+    expect(gs.expansionKey).toBe('群星呼唤');
+    expect(gs.debugForceCard).toBeNull();
   });
 });
 

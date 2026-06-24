@@ -125,20 +125,24 @@ export const AREA_CARD_ANIMATION_STYLES = `
   }
   .geomagnetic-restore-card {
     position: absolute;
-    left: calc(50% - 42px);
-    top: calc(78% - 59px);
+    left: 50%;
+    top: 78%;
     width: 84px;
     height: 118px;
+    margin-left: -42px;
+    margin-top: -59px;
     opacity: 0;
     animation: geomagneticRestoreFly 1.05s cubic-bezier(0.25,0,0.28,1) both;
     filter: drop-shadow(0 0 12px rgba(94,234,212,0.72));
   }
   .geomagnetic-restore-ripple {
     position: absolute;
-    left: calc(50% - 42px);
-    top: calc(78% - 59px);
+    left: 50%;
+    top: 78%;
     width: 84px;
     height: 118px;
+    margin-left: -42px;
+    margin-top: -59px;
     border-radius: 8px;
     border: 1px solid rgba(94,234,212,0.55);
     opacity: 0;

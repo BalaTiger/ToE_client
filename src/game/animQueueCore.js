@@ -1,6 +1,7 @@
 import { makeTargetStats, statEventsToAnimQueue } from './statEvents';
 import { buildFullHandSwapStepsFromLogs, buryToDeckStep, cardTransferStep, statePatchStep } from './animQueueHelpers';
-import { buildCardEffectStepsFromVisualEvents, buildHuntRevealStepFromVisualEvent } from './visualEvents';
+import { buildCardEffectStepsFromVisualEvents, buildGodPowerBlockedStepsFromVisualEvents, buildHuntRevealStepFromVisualEvent } from './visualEvents';
+import { isTsathogguaSlime } from './coreUtils';
 
 function clonePlayersForTimeline(players = []) {
   return players.map(player => ({
@@ -24,14 +25,31 @@ function playersAfterStatEvents(basePlayers = [], statEvents = []) {
   return next;
 }
 
+function mergeStatValuesIntoPlayers(basePlayers = [], statPlayers = []) {
+  const base = clonePlayersForTimeline(basePlayers);
+  statPlayers.forEach((statPlayer, idx) => {
+    if (!base[idx] || !statPlayer) return;
+    base[idx] = {
+      ...base[idx],
+      hp: statPlayer.hp,
+      san: statPlayer.san,
+      isDead: statPlayer.isDead,
+    };
+  });
+  return base;
+}
+
 function attachVisualTimelineToSteps(steps = [], beforePlayers = [], beforeDiscard = [], afterPlayers = [], afterDiscard = []) {
   let cursorPlayers = clonePlayersForTimeline(beforePlayers);
   let cursorDiscard = Array.isArray(beforeDiscard) ? [...beforeDiscard] : [];
   return steps.map(step => {
     if (!step || step.type === 'STATE_PATCH') return step;
     const hasStatEvents = Array.isArray(step.statEvents) && step.statEvents.length;
-    const nextPlayers = hasStatEvents
+    const statNextPlayers = hasStatEvents
       ? playersAfterStatEvents(cursorPlayers, step.statEvents)
+      : cursorPlayers;
+    const nextPlayers = hasStatEvents
+      ? mergeStatValuesIntoPlayers(afterPlayers, statNextPlayers)
       : cursorPlayers;
     const nextDiscard = step.type === 'DISCARD' && step.card
       ? [...cursorDiscard, step.card]
@@ -72,6 +90,99 @@ function collectStepStatEvents(steps = []) {
       ...(Array.isArray(step.steps) ? collectStepStatEvents(step.steps) : []),
     ];
   });
+}
+
+function cardIdentity(card) {
+  return card?.id || card?.uid || [card?.key, card?.godKey, card?.name, card?.type].filter(Boolean).join(':') || null;
+}
+
+function getRemovedHandCards(oldHand = [], newHand = []) {
+  const remaining = new Map();
+  (newHand || []).forEach(card => {
+    const id = cardIdentity(card);
+    if (!id) return;
+    remaining.set(id, (remaining.get(id) || 0) + 1);
+  });
+  return (oldHand || []).filter(card => {
+    const id = cardIdentity(card);
+    if (!id) return false;
+    const count = remaining.get(id) || 0;
+    if (count > 0) {
+      remaining.set(id, count - 1);
+      return false;
+    }
+    return true;
+  });
+}
+
+export function buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs }) {
+  const q = [];
+  if (!oldGs || !Array.isArray(oldGs.players) || !Array.isArray(effectivePlayers)) return q;
+
+  const losers = effectivePlayers.filter((p, i) => oldGs.players[i] && p.hand.length < oldGs.players[i].hand.length);
+  if (losers.length === 1) {
+    const li = effectivePlayers.indexOf(losers[0]);
+    const count = oldGs.players[li].hand.length - effectivePlayers[li].hand.length;
+    let dest = 'discard';
+    let toPid = null;
+    for (let j = 0; j < effectivePlayers.length; j++) {
+      if (j === li || !oldGs.players[j]) continue;
+      if (effectivePlayers[j].hand.length > oldGs.players[j].hand.length) {
+        dest = 'player';
+        toPid = j;
+        break;
+      }
+    }
+    if (dest === 'discard') {
+      const oldGZ = oldGs.players[li].godZone?.length || 0;
+      const newGZ = effectivePlayers[li].godZone?.length || 0;
+      if (newGZ > oldGZ) dest = 'godzone';
+    }
+    if (!effectivePlayers[li]?.isDead && dest !== 'godzone') {
+      if (dest === 'discard') {
+        const removedCards = getRemovedHandCards(oldGs.players[li].hand, effectivePlayers[li].hand);
+        const removedSlimes = removedCards.filter(isTsathogguaSlime);
+        const otherRemovedCount = Math.max(0, count - removedSlimes.length);
+        if (removedSlimes.length) {
+          q.push({
+            type: 'TSG_SLIME_POP',
+            targetPid: li,
+            count: removedSlimes.length,
+            cards: removedSlimes,
+            msgs: (newMsgs || []).filter(m => typeof m === 'string' && (m.includes('撒托古亚的赐福黏液') || m.includes('黏液'))),
+          });
+        }
+        if (otherRemovedCount > 0) q.push(cardTransferStep({ fromPid: li, dest, toPid, count: otherRemovedCount, inferredHandLoss: true }));
+      } else {
+        q.push(cardTransferStep({ fromPid: li, dest, toPid, count, ...(dest === 'discard' ? { inferredHandLoss: true } : {}) }));
+      }
+    }
+  } else if (losers.length === 2) {
+    losers.forEach(loser => {
+      const li = effectivePlayers.indexOf(loser);
+      const toPid = effectivePlayers.findIndex((p, j) => j !== li && oldGs.players[j] && p.hand.length > oldGs.players[j].hand.length);
+      if (toPid < 0) return;
+      const count = oldGs.players[li].hand.length - effectivePlayers[li].hand.length;
+      q.push(cardTransferStep({ fromPid: li, dest: 'player', toPid, count }));
+    });
+  }
+
+  const shuMsg = (newMsgs || []).find(m => m && m.includes('【黑暗子嗣】'));
+  if (shuMsg) {
+    const shuMatch = shuMsg.match(/【黑暗子嗣】(.+?) 获得(\d+)张黑山羊幼仔/);
+    if (shuMatch) {
+      const targetName = shuMatch[1];
+      const count = parseInt(shuMatch[2], 10);
+      const toPid = targetName === '你' ? 0 : effectivePlayers.findIndex(p => p?.name === targetName);
+      const oldHandCount = oldGs.players?.[toPid]?.hand?.length ?? 0;
+      const newHandCount = effectivePlayers?.[toPid]?.hand?.length ?? 0;
+      if (toPid >= 0 && count > 0 && newHandCount >= oldHandCount + count) {
+        q.push(cardTransferStep({ fromPid: oldGs.currentTurn, dest: 'player', toPid, count, sourceAnchor: 'godPower', effect: 'blackGoat', durationMs: 1500, msgs: [shuMsg] }));
+      }
+    }
+  }
+
+  return q;
 }
 
 export function buildAnimQueue(oldGs, newGs) {
@@ -145,6 +256,7 @@ export function buildAnimQueue(oldGs, newGs) {
     ))
     : [];
   const cardEffectSteps = buildCardEffectStepsFromVisualEvents(newGs, oldGs);
+  const godPowerBlockedSteps = buildGodPowerBlockedStepsFromVisualEvents(newGs, oldGs);
   const handledCardEffectStatEvents = collectStepStatEvents(cardEffectSteps);
   const handledCardEffectStatSeqs = new Set(
     handledCardEffectStatEvents
@@ -196,7 +308,13 @@ export function buildAnimQueue(oldGs, newGs) {
       ));
     } else {
       randomTargetEvents.forEach(event => q.push(...buildRandomTargetQueue(event)));
-      q.push(...statEventsToAnimQueue(statEventsForQueue, effectivePlayers, newMsgs));
+      q.push(...attachVisualTimelineToSteps(
+        statEventsToAnimQueue(statEventsForQueue, effectivePlayers, newMsgs),
+        oldGs?.players || effectivePlayers,
+        oldGs?.discard || [],
+        newGs.players || effectivePlayers,
+        newGs.discard || oldGs?.discard || [],
+      ));
     }
   } else {
     randomTargetEvents.forEach(event => q.push(...buildRandomTargetQueue(event)));
@@ -222,6 +340,7 @@ export function buildAnimQueue(oldGs, newGs) {
       if (sanHitIdx.length) q.push({ type: 'SAN_DAMAGE', msgs: newMsgs, hitIndices: sanHitIdx, targetStats });
     }
   }
+  q.push(...godPowerBlockedSteps);
   q.push(...cardEffectSteps);
   if (deathIdx.length) {
     q.push({ type: 'GUILLOTINE', msgs: newMsgs, hitIndices: deathIdx, targetStats });
@@ -236,6 +355,7 @@ export function buildAnimQueue(oldGs, newGs) {
       diceMode: 'moldyFood',
       d1: moldyRoll.d1,
       d2: 0,
+      negativeAvoided: !!moldyRoll.negativeAvoided,
       rollerName: newGs.players?.[moldyRoll.actorIdx]?.name || '角色',
       msgs: [],
     });
@@ -258,49 +378,7 @@ export function buildAnimQueue(oldGs, newGs) {
     });
     return q;
   }
-  const losers = effectivePlayers.filter((p, i) => oldGs.players[i] && p.hand.length < oldGs.players[i].hand.length);
-  if (losers.length === 1) {
-    const li = effectivePlayers.indexOf(losers[0]);
-    const count = oldGs.players[li].hand.length - effectivePlayers[li].hand.length;
-    let dest = 'discard';
-    let toPid = null;
-    for (let j = 0; j < effectivePlayers.length; j++) {
-      if (j === li || !oldGs.players[j]) continue;
-      if (effectivePlayers[j].hand.length > oldGs.players[j].hand.length) {
-        dest = 'player';
-        toPid = j;
-        break;
-      }
-    }
-    if (dest === 'discard') {
-      const oldGZ = oldGs.players[li].godZone?.length || 0;
-      const newGZ = effectivePlayers[li].godZone?.length || 0;
-      if (newGZ > oldGZ) dest = 'godzone';
-    }
-    if (!effectivePlayers[li]?.isDead && dest !== 'godzone') {
-      q.push(cardTransferStep({ fromPid: li, dest, toPid, count }));
-    }
-  } else if (losers.length === 2) {
-    losers.forEach(loser => {
-      const li = effectivePlayers.indexOf(loser);
-      const toPid = effectivePlayers.findIndex((p, j) => j !== li && oldGs.players[j] && p.hand.length > oldGs.players[j].hand.length);
-      if (toPid < 0) return;
-      const count = oldGs.players[li].hand.length - effectivePlayers[li].hand.length;
-      q.push(cardTransferStep({ fromPid: li, dest: 'player', toPid, count }));
-    });
-  }
-  const shuMsg = newMsgs.find(m => m && m.includes('【黑暗子嗣】'));
-  if (shuMsg) {
-    const shuMatch = shuMsg.match(/【黑暗子嗣】(.+?) 获得(\d+)张黑山羊幼仔/);
-    if (shuMatch) {
-      const targetName = shuMatch[1];
-      const count = parseInt(shuMatch[2], 10);
-      const toPid = targetName === '你' ? 0 : effectivePlayers.findIndex(p => p?.name === targetName);
-      if (toPid >= 0 && count > 0) {
-        q.push(cardTransferStep({ fromPid: oldGs.currentTurn, dest: 'player', toPid, count, sourceAnchor: 'playerArea', effect: 'blackGoat', durationMs: 1500, msgs: [shuMsg] }));
-      }
-    }
-  }
+  q.push(...buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs }));
   return q;
 }
 

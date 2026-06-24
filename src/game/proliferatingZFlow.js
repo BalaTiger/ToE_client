@@ -31,7 +31,15 @@ export function buildProliferatingZDrawFlow(stateLike, deps) {
   const reasonNames = (entry.gainedCardNames || []).join('、') || '邪神牌或其衍生牌';
   log.push(`【增殖的Z】因${localDisplayName(entry.gainOwnerIdx, players[entry.gainOwnerIdx]?.name || '角色')}获得${reasonNames}，${triggerName}摸1张牌`);
 
-  const drawBase = { ...stateLike, players, deck, discard, log, proliferatingZQueue: queue };
+  const drawBase = {
+    ...stateLike,
+    players,
+    deck,
+    discard,
+    log,
+    proliferatingZQueue: queue,
+    abilityData: { ...(stateLike.abilityData || {}), fromProliferatingZ: true },
+  };
   const drawResult = isAiSeat(drawBase, drawerIdx)
     ? aiDrawAndApply(drawerIdx, players, deck, discard, drawBase)
     : playerDrawCard(players, deck, discard, drawerIdx, drawBase);

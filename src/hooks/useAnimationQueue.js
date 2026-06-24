@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { dedupeInferredDiscardTransfers } from '../game/animQueueHelpers';
 
 export function useAnimationQueue({
   gs,
@@ -114,6 +115,14 @@ export function useAnimationQueue({
 
   const normalizePendingState = state => (state ? normalizePendingGs(state) : state);
 
+  function logAiTurnQueueDebug(stage, payload = {}) {
+    try {
+      console.log(`[AI-TURN-DEBUG] ${stage}`, payload);
+    } catch {
+      // noop
+    }
+  }
+
   function advanceQueue() {
     setAnimExiting(false);
     if (animQueueRef.current.length > 0) {
@@ -162,6 +171,18 @@ export function useAnimationQueue({
     } else {
       const next = pendingGsRef.current;
       const normalizedNext = normalizePendingState(next);
+      if (next?.phase === 'AI_TURN' || normalizedNext?.phase === 'AI_TURN') {
+        logAiTurnQueueDebug('advanceQueue:complete', {
+          pendingTurn: next?.currentTurn,
+          pendingName: next?.players?.[next?.currentTurn]?.name,
+          pendingTurnStartLogs: next?._turnStartLogs,
+          pendingDrawnCard: next?._drawnCard?.name || next?.drawReveal?.card?.name || next?.abilityData?.godCard?.name || null,
+          pendingHasPlayersBeforeThisDraw: !!next?._playersBeforeThisDraw,
+          normalizedTurnStartLogs: normalizedNext?._turnStartLogs,
+          normalizedDrawnCard: normalizedNext?._drawnCard?.name || normalizedNext?.drawReveal?.card?.name || normalizedNext?.abilityData?.godCard?.name || null,
+          normalizedHasPlayersBeforeThisDraw: !!normalizedNext?._playersBeforeThisDraw,
+        });
+      }
       const callback = animCallbackRef.current;
       if (next?.log) syncVisibleLog(next.log);
       if (callback) {
@@ -234,10 +255,26 @@ export function useAnimationQueue({
     if (Array.isArray(queue) && queue.some(s => s?.type === 'EARTHQUAKE')) {
       try { console.log('[EQ-DEBUG] triggerAnimQueue received queue =', queue.map(s => s.type), '| hasCallback =', !!callback, '| nextGs.phase =', nextGs?.phase); } catch { /* noop */ }
     }
-    const hasDeathAnim = queue.some(a => a.type === 'DEATH' || a.type === 'GUILLOTINE');
+    const normalizedQueue = dedupeInferredDiscardTransfers(queue);
+    const hasDeathAnim = normalizedQueue.some(a => a.type === 'DEATH' || a.type === 'GUILLOTINE');
     const pendingDeathPlayers = nextGs?.players?.filter(p => p._pendingAnimDeath)?.map((_, i) => i) || [];
+    if (
+      nextGs?.phase === 'AI_TURN' &&
+      Array.isArray(normalizedQueue) &&
+      normalizedQueue.some(step => step?.type === 'YOUR_TURN' || step?.type === 'DRAW_CARD')
+    ) {
+      logAiTurnQueueDebug('triggerAnimQueue:start', {
+        turn: nextGs.currentTurn,
+        name: nextGs.players?.[nextGs.currentTurn]?.name,
+        queue: normalizedQueue.map(step => step?.type),
+        hasCallback: !!callback,
+        turnStartLogs: nextGs._turnStartLogs,
+        drawnCard: nextGs._drawnCard?.name || nextGs.drawReveal?.card?.name || nextGs.abilityData?.godCard?.name || null,
+        hasPlayersBeforeThisDraw: !!nextGs._playersBeforeThisDraw,
+      });
+    }
 
-    if (!queue.length) {
+    if (!normalizedQueue.length) {
       if (callback) {
         if (nextGs?.log) syncVisibleLog(nextGs.log);
         callback();
@@ -268,7 +305,7 @@ export function useAnimationQueue({
     } : callback;
 
     visibleLogAuthorityRef.current = Array.isArray(nextGs?.log) ? nextGs.log : (Array.isArray(visibleLogAuthorityRef.current) ? visibleLogAuthorityRef.current : []);
-    const preparedQueue = prepareAnimQueueLogs(queue, nextGs, visibleLogRef.current);
+    const preparedQueue = prepareAnimQueueLogs(normalizedQueue, nextGs, visibleLogRef.current);
     const setupStep = preparedQueue.find(step => step?.visualSetupPatch && step.visualSetupTiming === 'queueStart');
     if (setupStep) {
       applyVisualPatch(setupStep.visualSetupPatch);

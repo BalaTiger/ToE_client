@@ -44,6 +44,13 @@ describe('proliferatingZFlow', () => {
 
     const flow = buildProliferatingZDrawFlow(makeState(), deps);
 
+    expect(deps.playerDrawCard).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.any(Array),
+      expect.any(Array),
+      0,
+      expect.objectContaining({ abilityData: expect.objectContaining({ fromProliferatingZ: true }) })
+    );
     expect(flow.action).toBe('triggerQueue');
     expect(flow.queue).toMatchObject([{ type: 'DRAW_CARD', card: godCard, targetPid: 0 }]);
     expect(flow.state).toMatchObject({

@@ -6,6 +6,7 @@ import {
   buildInspectionEventFlow,
   buryToDeckStep,
   cardTransferStep,
+  dedupeInferredDiscardTransfers,
   fullHandSwapSteps,
   resolveTurnHighlightForStep,
   zhuHideCardStep,
@@ -83,10 +84,39 @@ describe('animQueueHelpers', () => {
     expect(queue[2]).toMatchObject({ fromPid: 1, toPid: 0, count: 2 });
   });
 
+  it('显式弃牌动画会覆盖同一来源的自动推断弃牌转移', () => {
+    const queue = [
+      { type: 'DISCARD', card: { id: 'a' }, targetPid: 1 },
+      { type: 'CARD_TRANSFER', fromPid: 1, dest: 'discard', count: 1, inferredHandLoss: true },
+      { type: 'HP_DAMAGE', hitIndices: [1] },
+    ];
+
+    expect(dedupeInferredDiscardTransfers(queue).map(step => step.type)).toEqual(['DISCARD', 'HP_DAMAGE']);
+  });
+
+  it('自动推断弃牌转移在没有显式动画时保留兜底能力', () => {
+    const queue = [
+      { type: 'CARD_TRANSFER', fromPid: 1, dest: 'discard', count: 1, inferredHandLoss: true },
+    ];
+
+    expect(dedupeInferredDiscardTransfers(queue)).toEqual(queue);
+  });
+
+  it('黏液爆裂动画会覆盖同一来源的自动推断弃牌转移', () => {
+    const queue = [
+      { type: 'TSG_SLIME_POP', targetPid: 2, count: 1 },
+      { type: 'CARD_TRANSFER', fromPid: 2, dest: 'discard', count: 1, inferredHandLoss: true },
+    ];
+
+    expect(dedupeInferredDiscardTransfers(queue).map(step => step.type)).toEqual(['TSG_SLIME_POP']);
+  });
+
   it('蛊惑强制赠牌动画先播放技能，再飞牌入目标手牌，最后播放结算状态', () => {
     const gift = makeZoneCard('A1', 0);
     const queue = buildBewitchForcedCardQueue(0, 2, gift, '目标角色', [
       { type: 'CARD_TRANSFER', fromPid: 2, dest: 'discard' },
+      { type: 'YOUR_TURN', name: '目标角色' },
+      { type: 'DRAW_CARD', card: { id: 'stale-draw', name: '残留摸牌' } },
       { type: 'DAMAGE', targetPid: 2 },
     ], ['邪祀者对目标角色【蛊惑】']);
 

@@ -25,6 +25,7 @@ const ROTATE_ABILITYDATA_INDEX_FIELDS = [
   'damageLinkSource',
   'roseThornSource',
   'pickSource',
+  'shuChooserIdx',
   'targetIdx',
   'redirectTargetIdx',
   'playerIndex',
@@ -272,7 +273,7 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
     if (event?.type === 'timedOutDrawDiscard') return rotateTimedOutDrawDiscardEvent(event, rotateIndex);
     if (event?.type === 'earthquake' || event?.type === 'cardEffect') return rotateCardEffectVisualEvent(event, rotateIndex, myIndex);
     if (event?.type === 'endlessCorridorReplay') return rotateEndlessCorridorReplayVisualEvent(event, rotateIndex, myIndex);
-    if (event?.type === 'turnStart' || event?.type === 'drawCard' || event?.type === 'handLimitDiscard') {
+    if (event?.type === 'turnStart' || event?.type === 'drawCard' || event?.type === 'handLimitDiscard' || event?.type === 'tsgSlimePop') {
       return {
         ...event,
         playerIdx: event.playerIdx != null ? rotateIndex(event.playerIdx) : event.playerIdx,
@@ -397,13 +398,18 @@ export function isLocalEtherealizeTargetPhase(gs) {
   return gs?.phase === 'ETHEREALIZE_SELECT_TARGET' && isLocalSeatIndex(gs?.abilityData?.targetIdx);
 }
 
+export function isLocalShuTargetPhase(gs) {
+  return gs?.phase === 'SHU_SELECT_TARGET' && isLocalActorSeat(gs, gs?.abilityData?.shuChooserIdx, gs?.currentTurn);
+}
+
 export function canLocalActOnTargetSelectionPhase(gs) {
   const phase = gs?.phase;
   return (
     (
-      ['SWAP_SELECT_TARGET', 'HUNT_SELECT_TARGET', 'BEWITCH_SELECT_TARGET', 'ZONE_SWAP_SELECT_TARGET', 'PEEK_HAND_SELECT_TARGET', 'CAVE_DUEL_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET', 'MULTIPLY_SELECT_TARGET', 'SHU_SELECT_TARGET'].includes(phase)
+      ['SWAP_SELECT_TARGET', 'HUNT_SELECT_TARGET', 'BEWITCH_SELECT_TARGET', 'ZONE_SWAP_SELECT_TARGET', 'PEEK_HAND_SELECT_TARGET', 'CAVE_DUEL_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET', 'MULTIPLY_SELECT_TARGET'].includes(phase)
       && isLocalCurrentTurn(gs)
     )
+    || isLocalShuTargetPhase(gs)
     || isLocalDamageLinkSourcePhase(gs)
     || isLocalEtherealizeTargetPhase(gs)
   );

@@ -1,12 +1,12 @@
-const DESIGN_WIDTH=1200;
+import { computeScaleRatio } from './scale';
 
 let _zoomCompensationDetected=null;
 function _detectZoomRectCompensation(){
   if(typeof document==='undefined')return false;
   const zc=document.querySelector('[data-zoom-container]');
   if(!zc)return false;
-  const s=window.innerWidth/DESIGN_WIDTH;
-  if(s>=1)return false;
+  const s=computeScaleRatio(window.innerWidth,window.innerHeight);
+  if(s===1)return false;
   const test=document.createElement('div');
   test.style.cssText='position:absolute;left:0;top:0;width:100px;height:1px;visibility:hidden;pointer-events:none;';
   zc.appendChild(test);
@@ -26,10 +26,10 @@ function _needsZoomRectCompensation(){
 export function _getZoomCompensatedRect(el){
   if(!el)return null;
   const rect=el.getBoundingClientRect();
-  if(window.innerWidth>=DESIGN_WIDTH)return rect;
+  const s=computeScaleRatio(window.innerWidth,window.innerHeight);
+  if(s===1)return rect;
   if(!el.closest?.('[data-zoom-container]'))return rect;
   if(!_needsZoomRectCompensation())return rect;
-  const s=window.innerWidth/DESIGN_WIDTH;
   return{
     left:rect.left*s,
     top:rect.top*s,
@@ -88,13 +88,38 @@ export function getPlayerAreaAnchorCenter(pid){
   return getPlayerHandAnchorCenter(pid);
 }
 
+export function getPlayerGodPowerAnchorCenter(pid){
+  const badgeEl=document.querySelector(`[data-god-power-badge="${pid}"]`);
+  if(badgeEl){
+    const r=_getZoomCompensatedRect(badgeEl);
+    if(r&&r.width>0&&r.height>0){
+      return {x:r.left+r.width/2,y:r.top+r.height/2};
+    }
+  }
+  const panelEl=document.querySelector(`[data-pid="${pid}"]`);
+  const panelRect=_getZoomCompensatedRect(panelEl);
+  if(panelRect&&panelRect.width>0&&panelRect.height>0){
+    return {x:panelRect.left+panelRect.width*0.58,y:panelRect.top+panelRect.height*0.62};
+  }
+  return getPlayerAreaAnchorCenter(pid);
+}
+
 export function getPileAnchorCenter(selector,fallback){
   const pileEl=document.querySelector(selector);
   if(!pileEl)return fallback;
   const visualPileEl=pileEl.firstElementChild instanceof HTMLElement
     ?pileEl.firstElementChild
     :pileEl;
-  const r=_getZoomCompensatedRect(visualPileEl);
-  if(!r)return fallback;
+  const visualRect=_getZoomCompensatedRect(visualPileEl);
+  const pileRect=_getZoomCompensatedRect(pileEl);
+  const r=(visualRect&&visualRect.width>0&&visualRect.height>0)
+    ?visualRect
+    :pileRect;
+  if(!r||r.width<=0||r.height<=0)return fallback;
   return {x:r.left+r.width/2,y:r.top+r.height/2};
+}
+
+// 神选弹窗（GodChoiceModal）大致位于屏幕中上方，用于“邪神牌收入手牌”飞入动画的起点
+export function getGodChoiceAnchorCenter(){
+  return {x:window.innerWidth*0.5,y:window.innerHeight*0.18};
 }

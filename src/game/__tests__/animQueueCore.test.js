@@ -1,9 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { buildAiHuntEventAnimQueue, buildAnimQueue } from '../animQueueCore';
-import { createCardEffectEvent, createEarthquakeEvent } from '../visualEvents';
+import { buildAiHuntEventAnimQueue, buildAnimQueue, buildHandDeltaInferenceQueue } from '../animQueueCore';
+import { buildFreshStatVisualEvents, createCardEffectEvent, createEarthquakeEvent, createGodPowerBlockedEvent } from '../visualEvents';
 import { makeGodCard, makeGs, makePlayer } from './factory';
 
 describe('buildAnimQueue stat animations', () => {
+  it('stat visual event 只包含本次 statLogs 对应的事件，避免重播上个 AI 的 SAN 扣减', () => {
+    const allenLog = '艾伦 遭遇邪神 森之领主！（第1次）失去1SAN';
+    const bellaLog = '贝拉 遭遇邪神 阿波菲斯！（第1次）失去1SAN';
+    const events = buildFreshStatVisualEvents({
+      _statLogs: [bellaLog],
+      _statEvents: [
+        { type: 'SAN_LOSS', target: 1, from: { san: 10 }, to: { san: 9 }, logHint: allenLog, seq: 1 },
+        { type: 'SAN_LOSS', target: 2, from: { san: 10 }, to: { san: 9 }, logHint: bellaLog, seq: 2 },
+      ],
+    }, 0);
+
+    expect(events).toHaveLength(1);
+    expect(events[0].statEvents).toMatchObject([{ target: 2, seq: 2 }]);
+  });
+
   it('阿波菲斯黑夜降临会播放日食动画', () => {
     const oldGs = makeGs({
       players: [makePlayer()],
@@ -43,6 +58,26 @@ describe('buildAnimQueue stat animations', () => {
     expect(queue[randomIdx]).toMatchObject({ sourceIdx: 0, targetIdx: 1, roll: 4, damage: 3 });
     expect(randomIdx).toBeGreaterThan(diceIdx);
     expect(hpIdx).toBeGreaterThan(randomIdx);
+  });
+
+  it('霉变食物骰子动画使用独立模式与规避标记', () => {
+    const oldGs = makeGs({
+      players: [makePlayer({ name: '你', hp: 10 })],
+      log: ['旧日志'],
+      _moldyFoodDiceSeq: 1,
+    });
+    const newGs = makeGs({
+      players: [makePlayer({ name: '你', hp: 10 })],
+      log: ['旧日志', '你 掷出 5 点，成功规避负面效果！', '【霉变食物】你 掷出 1 点（单数），负面效果已规避'],
+      _moldyFoodDiceSeq: 2,
+      _moldyFoodDiceRoll: { d1: 1, isEven: false, actorIdx: 0, seq: 2, negativeAvoided: true },
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    const dice = queue.find(step => step.type === 'DICE_ROLL' && step.diceMode === 'moldyFood');
+
+    expect(dice).toMatchObject({ d1: 1, d2: 0, diceMode: 'moldyFood', negativeAvoided: true, rollerName: '你' });
+    expect(dice).not.toHaveProperty('dodgeSuccess');
   });
 
   it('钻地魔虫会先播放全场扣血，再播放转盘和随机扣血', () => {
@@ -88,6 +123,35 @@ describe('buildAnimQueue stat animations', () => {
     expect(queue[randomIdx].visualTimeline[0].patch.players.map(p => p.hp)).toEqual([8, 8, 8]);
     expect(queue[secondHpIdx].visualSetupPatch.players.map(p => p.hp)).toEqual([8, 8, 8]);
     expect(queue[secondHpIdx].visualTimeline.at(-1).patch.players.map(p => p.hp)).toEqual([8, 6, 8]);
+  });
+
+  it('属性动画的视觉帧会同步玩家的邪神之力变化', () => {
+    const oldGod = makeGodCard('NYA');
+    const newGod = makeGodCard('VRI');
+    const playersBefore = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '贝拉', san: 7, godEncounters: 2, godName: 'NYA', godLevel: 1, godZone: [oldGod] }),
+    ];
+    const playersAfter = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '贝拉', san: 6, godEncounters: 2, godName: 'VRI', godLevel: 1, godZone: [newGod] }),
+    ];
+    const oldGs = makeGs({ players: playersBefore, log: [], _statEventSeq: 0 });
+    const newGs = makeGs({
+      players: playersAfter,
+      log: ['贝拉 被迫改信新神，SAN-1', '贝拉 信仰了 弗栗多，获得不灭之躯(Lv.1)'],
+      _statEventSeq: 1,
+      _statEvents: [
+        { type: 'SAN_LOSS', target: 1, from: { hp: 10, san: 7, isDead: false }, to: { hp: 10, san: 6, isDead: false }, seq: 1 },
+      ],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    const sanStep = queue.find(step => step.type === 'SAN_DAMAGE');
+
+    expect(sanStep.visualTimeline[0].patch.players[1]).toMatchObject({ san: 7, godName: 'NYA', godLevel: 1 });
+    expect(sanStep.visualTimeline[1].patch.players[1]).toMatchObject({ san: 6, godEncounters: 2, godName: 'VRI', godLevel: 1 });
+    expect(sanStep.visualTimeline[1].patch.players[1].godZone[0].godKey).toBe('VRI');
   });
 
   it('阿波菲斯黑夜选目标会播放掷骰，追捕偏移时重播锁定动画', () => {
@@ -173,6 +237,123 @@ describe('buildAnimQueue stat animations', () => {
     });
 
     expect(buildAnimQueue(oldGs, newGs).some(step => step.type === 'CARD_TRANSFER')).toBe(false);
+  });
+
+  it('手牌减少推断为弃牌时标记为推断动画', () => {
+    const card = { id: 'c1', name: '普通区域牌', type: 'normal' };
+    const oldGs = makeGs({
+      players: [makePlayer({ hand: [card] })],
+      log: [],
+    });
+    const effectivePlayers = [makePlayer({ hand: [] })];
+
+    const transfer = buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs: [] })[0];
+
+    expect(transfer).toMatchObject({
+      type: 'CARD_TRANSFER',
+      fromPid: 0,
+      dest: 'discard',
+      count: 1,
+      inferredHandLoss: true,
+    });
+  });
+
+  it('撒托古亚黏液手牌减少推断为泡泡破裂而不是弃牌', () => {
+    const slime = { id: 'slime-1', name: '撒托古亚的赐福黏液', isTsathogguaSlime: true };
+    const oldGs = makeGs({
+      players: [makePlayer({ hand: [slime] })],
+      log: [],
+    });
+    const effectivePlayers = [makePlayer({ hand: [] })];
+
+    const queue = buildHandDeltaInferenceQueue({
+      oldGs,
+      effectivePlayers,
+      newMsgs: ['【无定形体】你 的1张撒托古亚的赐福黏液消失'],
+    });
+
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({
+      type: 'TSG_SLIME_POP',
+      targetPid: 0,
+      count: 1,
+      cards: [slime],
+    });
+    expect(queue.some(step => step.type === 'CARD_TRANSFER')).toBe(false);
+  });
+
+  it('手牌减少且其他角色手牌增加时推断为玩家间飞牌', () => {
+    const card = { id: 'c1', name: '被交出的牌', type: 'normal' };
+    const oldGs = makeGs({
+      players: [makePlayer({ hand: [card] }), makePlayer({ hand: [] })],
+      log: [],
+    });
+    const effectivePlayers = [
+      makePlayer({ hand: [] }),
+      makePlayer({ hand: [card] }),
+    ];
+
+    const transfer = buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs: [] })[0];
+
+    expect(transfer).toMatchObject({
+      type: 'CARD_TRANSFER',
+      fromPid: 0,
+      dest: 'player',
+      toPid: 1,
+      count: 1,
+    });
+    expect(transfer).not.toHaveProperty('inferredHandLoss');
+  });
+
+  it('手牌减少但 godZone 增加时不补通用飞牌动画', () => {
+    const godCard = makeGodCard('NYA');
+    const oldGs = makeGs({
+      players: [makePlayer({ hand: [godCard], godZone: [] })],
+      log: [],
+    });
+    const effectivePlayers = [makePlayer({ hand: [], godZone: [godCard] })];
+
+    expect(buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs: [] })).toEqual([]);
+  });
+
+  it('黑暗子嗣发放黑山羊幼仔从邪神之力标记飞向手牌', () => {
+    const goat = { id: 'goat-1', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const oldGs = makeGs({
+      currentTurn: 1,
+      players: [makePlayer({ name: '你' }), makePlayer({ name: '卡洛斯', hand: [] })],
+      log: [],
+    });
+    const newGs = makeGs({
+      currentTurn: 1,
+      players: [makePlayer({ name: '你' }), makePlayer({ name: '卡洛斯', hand: [goat] })],
+      log: ['【黑暗子嗣】卡洛斯 获得1张黑山羊幼仔'],
+    });
+
+    const transfer = buildAnimQueue(oldGs, newGs).find(step => step.type === 'CARD_TRANSFER');
+
+    expect(transfer).toMatchObject({
+      fromPid: 1,
+      toPid: 1,
+      count: 1,
+      effect: 'blackGoat',
+      sourceAnchor: 'godPower',
+    });
+  });
+
+  it('黑暗子嗣日志没有对应手牌增量时不重复播放发放动画', () => {
+    const goat = { id: 'goat-1', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const oldGs = makeGs({
+      currentTurn: 0,
+      players: [makePlayer({ name: '贝拉' }), makePlayer({ name: '卡洛斯', hand: [goat] })],
+      log: [],
+    });
+    const newGs = makeGs({
+      currentTurn: 1,
+      players: [makePlayer({ name: '贝拉' }), makePlayer({ name: '卡洛斯', hand: [goat] })],
+      log: ['【黑暗子嗣】卡洛斯 获得1张黑山羊幼仔'],
+    });
+
+    expect(buildAnimQueue(oldGs, newGs).some(step => step.type === 'CARD_TRANSFER' && step.effect === 'blackGoat')).toBe(false);
   });
 
   it('存在显式 stat events 时不再根据状态差分猜测回复动画', () => {
@@ -455,6 +636,23 @@ describe('buildAnimQueue stat animations', () => {
       fromPid: 0,
       visualSetupPatch: { players: beforePlayers },
     });
+  });
+
+  it('火把免疫邪神之力视觉事件会生成角色面板护罩动画', () => {
+    const players = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' })];
+    const msg = '【引燃火把】艾伦 本回合不受邪神之力影响';
+    const oldGs = makeGs({ players, log: [] });
+    const newGs = makeGs({
+      players,
+      log: [msg],
+      _visualEvents: [createGodPowerBlockedEvent({ playerIdx: 1, playerName: '艾伦', msgs: [msg] })],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+
+    expect(queue).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'GOD_POWER_BLOCKED', targetPid: 1, msgs: [msg] }),
+    ]));
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { derotateGs, rotateGsForViewer } from '../rotateState';
+import { canLocalActOnTargetSelectionPhase, derotateGs, rotateGsForViewer } from '../rotateState';
 
 function player(name, hand = []) {
   return { name, hp: 10, san: 10, hand };
@@ -14,7 +14,7 @@ describe('rotateGsForViewer', () => {
     const gs = {
       players: [player('你'), player('艾伦'), player('贝拉')],
       currentTurn: 2,
-      abilityData: { playerIndex: 0, source: 2, _turnOwner: 2, targets: [0, 2] },
+      abilityData: { playerIndex: 0, source: 2, shuChooserIdx: 1, _turnOwner: 2, targets: [0, 2] },
       _playersBeforeThisDraw: [player('draw0'), player('draw1'), player('draw2')],
       _preTurnPlayers: [player('turn0'), player('turn1'), player('turn2')],
       _earthquakeBeforePlayers: [player('quake0'), player('quake1'), player('quake2')],
@@ -28,7 +28,7 @@ describe('rotateGsForViewer', () => {
 
     expect(names(rotated.players)).toEqual(['艾伦', '贝拉', '你']);
     expect(rotated.currentTurn).toBe(1);
-    expect(rotated.abilityData).toEqual({ playerIndex: 2, source: 1, _turnOwner: 1, targets: [2, 1] });
+    expect(rotated.abilityData).toEqual({ playerIndex: 2, source: 1, shuChooserIdx: 0, _turnOwner: 1, targets: [2, 1] });
     expect(names(rotated._playersBeforeThisDraw)).toEqual(['draw1', 'draw2', 'draw0']);
     expect(names(rotated._preTurnPlayers)).toEqual(['turn1', 'turn2', 'turn0']);
     expect(names(rotated._earthquakeBeforePlayers)).toEqual(['quake1', 'quake2', 'quake0']);
@@ -296,5 +296,21 @@ describe('rotateGsForViewer', () => {
     expect(names(restored._visualEvents[0].beforePlayers)).toEqual(['eq0', 'eq1', 'eq2']);
     expect(restored._visualEvents[0].discardEvents[0].playerIndex).toBe(2);
     expect(names(restored._visualEvents[0].discardEvents[0].afterPlayers)).toEqual(['eqA0', 'eqA1', 'eqA2']);
+  });
+
+  it('SHU_SELECT_TARGET 的行动权跟随黑暗子嗣选择者旋转', () => {
+    const gs = {
+      players: [player('房主'), player('被蛊惑者'), player('旁观者')],
+      currentTurn: 0,
+      phase: 'SHU_SELECT_TARGET',
+      abilityData: { shuChooserIdx: 1, shuOffspringCount: 1 },
+    };
+
+    const targetView = rotateGsForViewer(gs, 1);
+    const hostView = rotateGsForViewer(gs, 0);
+
+    expect(targetView.abilityData.shuChooserIdx).toBe(0);
+    expect(canLocalActOnTargetSelectionPhase(targetView)).toBe(true);
+    expect(canLocalActOnTargetSelectionPhase(hostView)).toBe(false);
   });
 });

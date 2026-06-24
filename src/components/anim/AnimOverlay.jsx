@@ -1,7 +1,7 @@
 ﻿import React from 'react';
 import { CardFlipAnim } from './CardFlipAnim';
-import { DiceRollAnim, GenericAnimOverlay, YourTurnAnim } from './GenericAnimOverlay';
-import { BuryToDeckOverlay, DiscardMoveOverlay, HuntRevealCardOverlay, ZhuHideCardOverlay } from './MoveOverlays';
+import { DiceRollAnim, GenericAnimOverlay, TorchWardOverlay, YourTurnAnim } from './GenericAnimOverlay';
+import { BuryToDeckOverlay, DiscardMoveOverlay, HuntRevealCardOverlay, TsathogguaSlimePopOverlay, ZhuHideCardOverlay } from './MoveOverlays';
 import { CaveDuelAnim, GeomagneticReversalAnim, GeomagneticRestoreShuffleAnim, VolcanoAnim } from './AreaCardOverlays';
 import { ApophisEclipseAnim } from './ApophisOverlays';
 import { SnakeTrapOverlay } from './SnakeTrapOverlay';
@@ -30,6 +30,7 @@ const ANIM_RENDERERS = {
       sourcePile={anim.sourcePile}
       guessCorrect={anim.guessCorrect}
       expansionKey={expansionKey}
+      onSettled={anim.onSettled}
     />
   ),
   DICE_ROLL: ({ anim, exiting }) => <DiceRollAnim anim={anim} exiting={exiting} />,
@@ -45,6 +46,8 @@ const ANIM_RENDERERS = {
   RANDOM_TARGET: ({ anim, exiting }) => <RandomTargetOverlay anim={anim} exiting={exiting} />,
   APOPHIS_ECLIPSE: ({ exiting }) => <ApophisEclipseAnim exiting={exiting} />,
   ENDLESS_CORRIDOR_TUNNEL: ({ exiting }) => <EndlessCorridorTunnelAnim exiting={exiting} />,
+  GOD_POWER_BLOCKED: ({ anim, exiting }) => <TorchWardOverlay anim={anim} exiting={exiting} />,
+  TSG_SLIME_POP: ({ anim, exiting }) => <TsathogguaSlimePopOverlay anim={anim} exiting={exiting} />,
 };
 
 function AnimOverlay({ anim, exiting, expansionKey = '地神的潜影' }) {

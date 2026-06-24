@@ -1,13 +1,13 @@
 import { cardLogText, copyPlayers } from './coreUtils';
-import { localDisplayName } from './rotateState';
+import { isAiSeat, localDisplayName } from './rotateState';
 import { bindAnimLogChunks } from './animLogs';
 import { buildAnimQueue, buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
 import { buildInspectionEventFlow, cardTransferStep, statePatchStep } from './animQueueHelpers';
 import {
-  buildDrawCardStepFromVisualEvents,
-  buildTurnStartStepFromVisualEvents,
   getVisualEvents,
   VISUAL_EVENT,
+  buildTurnStartStepFromVisualEvents,
+  buildDrawCardStepFromVisualEvents,
 } from './visualEvents';
 import { statEventsToAnimQueue } from './statEvents';
 
@@ -99,7 +99,7 @@ export function buildPlayerTurnDrawQueue(oldGs, newGs, seedQueue = []) {
 
 export function buildTsathogguaSlimeGrantQueue(state) {
   const events = Array.isArray(state?._tsgSlimeGrantEvents) ? state._tsgSlimeGrantEvents : [];
-  const queue = [];
+  const queue = buildGodPowerBlockedBoundaryQueue(state);
   events.forEach(ev => {
     if (!ev || ev.ownerIdx == null || !ev.count) return;
     queue.push(
@@ -126,6 +126,34 @@ export function buildTsathogguaSlimeGrantQueue(state) {
   return queue;
 }
 
+function godPowerBlockedStepFromEvent(event, state) {
+  const playerIdx = event?.playerIdx ?? 0;
+  const playerName = event?.playerName || state?.players?.[playerIdx]?.name || '该玩家';
+  return {
+    type: 'GOD_POWER_BLOCKED',
+    targetPid: playerIdx,
+    name: localDisplayName(playerIdx, playerName),
+    msgs: Array.isArray(event?.msgs) ? event.msgs : [],
+  };
+}
+
+function buildGodPowerBlockedBoundaryQueue(state) {
+  const log = Array.isArray(state?.log) ? state.log : [];
+  const turnStartLine = Array.isArray(state?._turnStartLogs) ? state._turnStartLogs[0] : null;
+  const turnStartIdx = turnStartLine ? log.lastIndexOf(turnStartLine) : -1;
+  if (turnStartIdx < 0) return [];
+  return getVisualEvents(state)
+    .filter(event => event?.type === VISUAL_EVENT.GOD_POWER_BLOCKED)
+    .filter(event => {
+      const msgs = Array.isArray(event?.msgs) ? event.msgs : [];
+      return msgs.some(msg => {
+        const idx = log.indexOf(msg);
+        return idx >= 0 && idx < turnStartIdx;
+      });
+    })
+    .map(event => godPowerBlockedStepFromEvent(event, state));
+}
+
 export function getTurnStartDrawBaselineLog(state) {
   const log = Array.isArray(state?.log) ? state.log : [];
   const animatedLogCount = [
@@ -137,6 +165,7 @@ export function getTurnStartDrawBaselineLog(state) {
 }
 
 export function getTurnStartDrawnCard(state) {
+  if (state?._drawnCard || state?._aiDrawnCard) return state._drawnCard || state._aiDrawnCard;
   return state?.phase === 'GOD_CHOICE'
     ? state.abilityData?.godCard
     : state?.drawReveal?.card;
@@ -149,6 +178,28 @@ export function getTurnStartDrawerIdx(state) {
   return state?.drawReveal?.drawerIdx ?? state?.currentTurn ?? 0;
 }
 
+export function shouldReplaySinglePlayerAiTurnStart(state) {
+  return (
+    (state?.phase === 'AI_TURN' || state?.phase === 'AI_GOD_CHOICE') &&
+    isAiSeat(state, state?.currentTurn) &&
+    Array.isArray(state?._turnStartLogs) &&
+    state._turnStartLogs.length > 0
+  );
+}
+
+export function buildSinglePlayerAiTurnStartReplayContext(currentGs, nextGs) {
+  if (!shouldReplaySinglePlayerAiTurnStart(nextGs)) return null;
+  const actorName = nextGs.players?.[nextGs.currentTurn]?.name || '???';
+  return {
+    actorName,
+    oldGs: currentGs,
+    effectOldGs: {
+      ...(currentGs || {}),
+      players: nextGs._playersBeforeThisDraw || currentGs?.players || nextGs.players,
+    },
+  };
+}
+
 function isStatAnimationStep(step) {
   if (!step) return false;
   if (Array.isArray(step.statEvents) && step.statEvents.length) return true;
@@ -159,7 +210,9 @@ function isStatAnimationStep(step) {
 }
 
 function hasDrawStatEvidence(state, visualStatQ = []) {
-  return visualStatQ.length > 0 || (Array.isArray(state?._statLogs) && state._statLogs.length > 0);
+  return visualStatQ.length > 0 ||
+    (Array.isArray(state?._statLogs) && state._statLogs.length > 0) ||
+    (Array.isArray(state?._statEvents) && state._statEvents.length > 0);
 }
 
 function filterFallbackDrawEffects(queue, state, visualStatQ = []) {
@@ -259,6 +312,17 @@ function blackGoatPulseStep(events = []) {
   return { type: 'BLACK_GOAT_PULSE', targetPid: first.target, count: loss, msgs: [] };
 }
 
+function tsgSlimePopStepFromEvent(event) {
+  if (!event) return null;
+  return {
+    type: 'TSG_SLIME_POP',
+    targetPid: event.playerIdx ?? 0,
+    count: event.count || (Array.isArray(event.cards) ? event.cards.length : 1),
+    cards: Array.isArray(event.cards) ? event.cards : [],
+    msgs: Array.isArray(event.msgs) ? event.msgs : [],
+  };
+}
+
 export function buildTurnStartPreDrawEffectQueue({ oldGs, newGs, buildQueue = buildAnimQueue } = {}) {
   const beforeDrawPlayers = newGs?._playersBeforeThisDraw || newGs?.players || oldGs?.players || [];
   const preTurnPlayers = newGs?._preTurnPlayers || oldGs?.players || beforeDrawPlayers;
@@ -267,6 +331,17 @@ export function buildTurnStartPreDrawEffectQueue({ oldGs, newGs, buildQueue = bu
     .filter(isPreDrawTurnStartStatEvent)
     .filter(ev => !ev?.logHint || preDrawMsgs.includes(ev.logHint));
   const queue = [];
+  const preDrawBlockedSteps = getVisualEvents(newGs)
+    .filter(event => event?.type === VISUAL_EVENT.GOD_POWER_BLOCKED)
+    .filter(event => (event?.msgs || []).some(msg => preDrawMsgs.includes(msg)))
+    .map(event => godPowerBlockedStepFromEvent(event, newGs));
+  queue.push(...preDrawBlockedSteps);
+  const slimePopSteps = getVisualEvents(newGs)
+    .filter(event => event?.type === VISUAL_EVENT.TSG_SLIME_POP)
+    .filter(event => (event?.msgs || []).some(msg => preDrawMsgs.includes(msg)))
+    .map(tsgSlimePopStepFromEvent)
+    .filter(Boolean);
+  queue.push(...slimePopSteps);
   const blackGoatEvents = statEvents.filter(isBlackGoatTurnStartStatEvent);
   if (blackGoatEvents.length) {
     const pulse = blackGoatPulseStep(blackGoatEvents);
@@ -302,10 +377,13 @@ export function buildTurnStartPreDrawEffectQueue({ oldGs, newGs, buildQueue = bu
   return queue;
 }
 
-function filterConsumedTurnStartSteps(queue = []) {
+function filterConsumedTurnStartSteps(queue = [], consumedMsgs = []) {
+  const consumedMsgSet = new Set(consumedMsgs.filter(Boolean));
   return (Array.isArray(queue) ? queue : []).filter(step => {
     if (Array.isArray(step?.statEvents) && step.statEvents.some(isPreDrawTurnStartStatEvent)) return false;
     if (step?.type === 'BLACK_GOAT_PULSE') return false;
+    if (step?.type === 'GOD_POWER_BLOCKED' && (step.msgs || []).some(msg => consumedMsgSet.has(msg))) return false;
+    if (step?.type === 'TSG_SLIME_POP' && (step.msgs || []).some(msg => consumedMsgSet.has(msg))) return false;
     return true;
   });
 }
@@ -357,6 +435,18 @@ export function buildTurnStartDrawReplayQueue({
     sourcePile: newGs?.drawReveal?.sourcePile || newGs?._drawSourcePile || (newGs?.geomagneticReversalActive ? 'discard' : 'deck'),
     msgs: newGs?._drawLogs,
   };
+  const discardedDrawnCard = !!newGs?._discardedDrawnCard;
+  const discardDrawnStep = discardedDrawnCard
+    ? {
+      type: 'DISCARD',
+      card: drawnCard,
+      triggerName: localDisplayName(drawerPid, drawerName),
+      targetPid: drawerPid,
+    }
+    : null;
+  const discardRestoreStep = discardedDrawnCard
+    ? statePatchStep({ players: newGs?.players, discard: newGs?.discard })
+    : null;
   const drawFullHandSwapQ = buildFullHandSwapTransferQueue(
     [...(newGs?._drawLogs || []), ...(newGs?._statLogs || [])],
     beforeDrawPlayers,
@@ -366,11 +456,20 @@ export function buildTurnStartDrawReplayQueue({
     players: beforeDrawPlayers,
     log: getTurnStartDrawBaselineLog(newGs),
   };
+  const drawStatLogSet = new Set((Array.isArray(newGs?._statLogs) ? newGs._statLogs : []).filter(Boolean));
+  const drawStatSeqs = (Array.isArray(newGs?._statEvents) ? newGs._statEvents : [])
+    .filter(event => event?.seq != null && event?.logHint && drawStatLogSet.has(event.logHint))
+    .map(event => event.seq);
+  const drawOldStatSeq = drawStatSeqs.length
+    ? Math.max(0, Math.min(...drawStatSeqs) - 1)
+    : null;
   // 摸牌效果的基线状态代表「摸牌效果发生之前」，不应携带本次摸牌产生的视觉事件
   // （如地动山摇 earthquake）。清掉后，buildAnimQueue 才会把它判定为新事件并播放首次动画。
-  const fallbackOldGs = Array.isArray(fallbackOldGsRaw?._visualEvents) && fallbackOldGsRaw._visualEvents.length
-    ? { ...fallbackOldGsRaw, _visualEvents: [] }
-    : fallbackOldGsRaw;
+  const fallbackOldGs = {
+    ...fallbackOldGsRaw,
+    ...(drawOldStatSeq != null ? { _statEventSeq: drawOldStatSeq } : {}),
+    ...(Array.isArray(fallbackOldGsRaw?._visualEvents) && fallbackOldGsRaw._visualEvents.length ? { _visualEvents: [] } : {}),
+  };
   const inspectionEvents = getFreshInspectionEvents(oldGs, newGs);
   const preDrawMsgs = getTurnStartPreDrawMsgs(newGs);
   const turnStartInspectionEvents = inspectionEvents.filter(ev => {
@@ -384,7 +483,7 @@ export function buildTurnStartDrawReplayQueue({
   const drawEffectQBase = filterConsumedTurnStartSteps(bindAnimLogChunks(
     buildQueue(fallbackOldGs, newGs),
     { statLogs: withoutLogLines(newGs?._statLogs, inspectionLogLines) },
-  ));
+  ), preDrawMsgs);
   const visualStatQ = buildFilteredStatStepsFromVisualEvents(
     newGs,
     beforeDrawPlayers,
@@ -424,13 +523,20 @@ export function buildTurnStartDrawReplayQueue({
   const drawEffectQ = drawFullHandSwapQ.length
     ? [...drawFullHandSwapQ, ...drawEffectQWithInspections.filter(step => step.type !== 'CARD_TRANSFER')]
     : drawEffectQWithInspections;
+  const hasDrawEffectVisualStep = drawEffectQ.some(step => step?.type !== 'STATE_PATCH');
+  const drawEffectStatePatch = hasDrawEffectVisualStep
+    ? statePatchStep({ players: newGs?.players, discard: newGs?.discard })
+    : null;
   const queue = [
     ...boundarySteps,
     turnStartStep,
     ...turnStartPreDrawQ,
     ...(turnStartStatePatch ? [turnStartStatePatch] : []),
     drawCardStep,
+    ...(discardDrawnStep ? [discardDrawnStep] : []),
+    ...(discardRestoreStep ? [discardRestoreStep] : []),
     ...drawEffectQ,
+    ...(drawEffectStatePatch ? [drawEffectStatePatch] : []),
   ];
   const startAnim = boundarySteps[0] || turnStartStep;
   const startQueue = [
@@ -438,7 +544,10 @@ export function buildTurnStartDrawReplayQueue({
     ...turnStartPreDrawQ,
     ...(turnStartStatePatch ? [turnStartStatePatch] : []),
     drawCardStep,
+    ...(discardDrawnStep ? [discardDrawnStep] : []),
+    ...(discardRestoreStep ? [discardRestoreStep] : []),
     ...drawEffectQ,
+    ...(drawEffectStatePatch ? [drawEffectStatePatch] : []),
   ];
   return {
     drawnCard,

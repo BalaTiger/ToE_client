@@ -370,6 +370,7 @@ function ConnectionErrorModal({ show, onClose }) {
 function DebugSettingsPanel({
   show,
   onToggleShowSettings,
+  debugForceCard, setDebugForceCard,
   debugForceCardTarget, setDebugForceCardTarget,
   debugForceCardKeep, setDebugForceCardKeep,
   debugForceCardType, setDebugForceCardType,
@@ -377,6 +378,7 @@ function DebugSettingsPanel({
   debugForceZoneCardName, setDebugForceZoneCardName,
   debugForceGodCardKey, setDebugForceGodCardKey,
   debugPlayerRole, setDebugPlayerRole,
+  debugTutorialPromptMode, setDebugTutorialPromptMode,
   debugExpansionKey, setDebugExpansionKey,
 }) {
   const [zoneLetterTab, setZoneLetterTab] = useState('A');
@@ -418,6 +420,7 @@ function DebugSettingsPanel({
   };
   const fieldStyle = { marginBottom: 10 };
   const labelStyle = { display: 'block', marginBottom: 4, fontSize: 12, color: '#a98a55' };
+  const forceCardEnabled = !!debugForceCard;
   const handleExpansionChange = (nextKey) => {
     setDebugExpansionKey(nextKey);
     const defaults = getExpansionDefaults(nextKey);
@@ -509,13 +512,35 @@ function DebugSettingsPanel({
       </div>
 
       <div style={sectionStyle}>
+        <h4 style={sectionTitleStyle}>新手引导与软引导</h4>
+        <select
+          value={debugTutorialPromptMode}
+          onChange={(e) => setDebugTutorialPromptMode(e.target.value)}
+          style={selectStyle}
+        >
+          <option value="default">下次单人对战：按设备首次逻辑</option>
+          <option value="show">下次单人对战：全部重新显示</option>
+          <option value="hide">下次单人对战：全部不显示</option>
+        </select>
+      </div>
+
+      <div style={sectionStyle}>
         <h4 style={sectionTitleStyle}>强制摸牌设置</h4>
+        <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={forceCardEnabled}
+            onChange={(e) => setDebugForceCard(e.target.checked ? '1' : null)}
+          />
+          下局强制摸牌
+        </label>
         <div style={fieldStyle}>
           <label style={labelStyle}>目标</label>
           <select
             value={debugForceCardTarget}
             onChange={(e) => setDebugForceCardTarget(e.target.value)}
-            style={selectStyle}
+            disabled={!forceCardEnabled}
+            style={{ ...selectStyle, opacity: forceCardEnabled ? 1 : 0.55 }}
           >
             <option value="player">玩家</option>
             <option value="ai1">1号位AI</option>
@@ -529,7 +554,8 @@ function DebugSettingsPanel({
           <select
             value={debugForceCardKeep}
             onChange={(e) => setDebugForceCardKeep(e.target.value)}
-            style={selectStyle}
+            disabled={!forceCardEnabled}
+            style={{ ...selectStyle, opacity: forceCardEnabled ? 1 : 0.55 }}
           >
             <option value="auto">自动判断</option>
             <option value="keep">强制收入</option>
@@ -544,6 +570,7 @@ function DebugSettingsPanel({
               key={tab}
               type="button"
               onClick={() => {
+                if (!forceCardEnabled) return;
                 setDebugForceCardType(tab);
                 if (tab === 'zone') {
                   const card = getFirstZoneCardForSlot(zoneCards, zoneLetterTab);
@@ -561,7 +588,8 @@ function DebugSettingsPanel({
                 borderRadius: 4,
                 fontSize: 12,
                 fontFamily: "'Cinzel',serif",
-                cursor: 'pointer',
+                cursor: forceCardEnabled ? 'pointer' : 'default',
+                opacity: forceCardEnabled ? 1 : 0.55,
               }}
             >
               {tab === 'zone' ? '区域牌' : '神牌'}
@@ -579,6 +607,7 @@ function DebugSettingsPanel({
                   key={L}
                   type="button"
                   onClick={() => {
+                    if (!forceCardEnabled) return;
                     setZoneLetterTab(L);
                     const card = getFirstZoneCardForSlot(zoneCards, `${L}${zoneNumTab}`);
                     if (card) handlePickCard(encodeDebugZoneCardValue(card));
@@ -591,7 +620,8 @@ function DebugSettingsPanel({
                     borderRadius: 4,
                     fontSize: 12,
                     fontFamily: "'Cinzel',serif",
-                    cursor: 'pointer',
+                    cursor: forceCardEnabled ? 'pointer' : 'default',
+                    opacity: forceCardEnabled ? 1 : 0.55,
                     fontWeight: zoneLetterTab === L ? 'bold' : 'normal',
                   }}
                 >
@@ -606,6 +636,7 @@ function DebugSettingsPanel({
                   key={N}
                   type="button"
                   onClick={() => {
+                    if (!forceCardEnabled) return;
                     setZoneNumTab(N);
                     const card = getFirstZoneCardForSlot(zoneCards, `${zoneLetterTab}${N}`);
                     if (card) handlePickCard(encodeDebugZoneCardValue(card));
@@ -618,7 +649,8 @@ function DebugSettingsPanel({
                     borderRadius: 4,
                     fontSize: 12,
                     fontFamily: "'Cinzel',serif",
-                    cursor: 'pointer',
+                    cursor: forceCardEnabled ? 'pointer' : 'default',
+                    opacity: forceCardEnabled ? 1 : 0.55,
                     fontWeight: zoneNumTab === N ? 'bold' : 'normal',
                   }}
                 >
@@ -636,7 +668,10 @@ function DebugSettingsPanel({
                     <button
                       key={`zone:${card.key}:${card.name}`}
                       type="button"
-                      onClick={() => handlePickCard(encodeDebugZoneCardValue(card))}
+                      onClick={() => {
+                        if (!forceCardEnabled) return;
+                        handlePickCard(encodeDebugZoneCardValue(card));
+                      }}
                       style={{
                         padding: '5px 8px',
                         textAlign: 'left',
@@ -646,7 +681,8 @@ function DebugSettingsPanel({
                         borderRadius: 4,
                         fontSize: 12,
                         fontFamily: "'IM Fell English','Noto Serif SC',serif",
-                        cursor: 'pointer',
+                        cursor: forceCardEnabled ? 'pointer' : 'default',
+                        opacity: forceCardEnabled ? 1 : 0.55,
                       }}
                     >
                       {card.key} · {card.name}
@@ -666,7 +702,10 @@ function DebugSettingsPanel({
                 <button
                   key={`god:${godKey}`}
                   type="button"
-                  onClick={() => handlePickCard(encodeDebugGodCardValue(godKey))}
+                  onClick={() => {
+                    if (!forceCardEnabled) return;
+                    handlePickCard(encodeDebugGodCardValue(godKey));
+                  }}
                   style={{
                     padding: '5px 8px',
                     textAlign: 'left',
@@ -676,7 +715,8 @@ function DebugSettingsPanel({
                     borderRadius: 4,
                     fontSize: 12,
                     fontFamily: "'IM Fell English','Noto Serif SC',serif",
-                    cursor: 'pointer',
+                    cursor: forceCardEnabled ? 'pointer' : 'default',
+                    opacity: forceCardEnabled ? 1 : 0.55,
                   }}
                 >
                   {godKey} · {GOD_DEFS[godKey]?.name || godKey}
@@ -710,6 +750,7 @@ function DebugControls({
   onToggleDebugMode,
   showSettings,
   onToggleShowSettings,
+  debugForceCard, setDebugForceCard,
   debugForceCardTarget, setDebugForceCardTarget,
   debugForceCardKeep, setDebugForceCardKeep,
   debugForceCardType, setDebugForceCardType,
@@ -717,6 +758,7 @@ function DebugControls({
   debugForceZoneCardName, setDebugForceZoneCardName,
   debugForceGodCardKey, setDebugForceGodCardKey,
   debugPlayerRole, setDebugPlayerRole,
+  debugTutorialPromptMode, setDebugTutorialPromptMode,
   debugExpansionKey, setDebugExpansionKey,
 }) {
   if (!isLocalTestMode) return null;
@@ -765,6 +807,7 @@ function DebugControls({
         localDebugMode={localDebugMode}
         onToggleDebugMode={onToggleDebugMode}
         onToggleShowSettings={onToggleShowSettings}
+        debugForceCard={debugForceCard} setDebugForceCard={setDebugForceCard}
         debugForceCardTarget={debugForceCardTarget} setDebugForceCardTarget={setDebugForceCardTarget}
         debugForceCardKeep={debugForceCardKeep} setDebugForceCardKeep={setDebugForceCardKeep}
         debugForceCardType={debugForceCardType} setDebugForceCardType={setDebugForceCardType}
@@ -772,6 +815,7 @@ function DebugControls({
         debugForceZoneCardName={debugForceZoneCardName} setDebugForceZoneCardName={setDebugForceZoneCardName}
         debugForceGodCardKey={debugForceGodCardKey} setDebugForceGodCardKey={setDebugForceGodCardKey}
         debugPlayerRole={debugPlayerRole} setDebugPlayerRole={setDebugPlayerRole}
+        debugTutorialPromptMode={debugTutorialPromptMode} setDebugTutorialPromptMode={setDebugTutorialPromptMode}
         debugExpansionKey={debugExpansionKey} setDebugExpansionKey={setDebugExpansionKey}
       />
     </>
