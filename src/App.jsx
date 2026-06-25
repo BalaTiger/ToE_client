@@ -25,6 +25,7 @@ import {
   createBlackGoatYoungCard,
 } from "./constants/card";
 import { getBattleBackgroundImage, getBattleTheme, getReliefDisplayConfig } from './constants/theme';
+import { buildPhaseUiState } from './game/phaseUi';
 
 // 导入拆分出的游戏工具模块（通过 game/index.js 统一导出）
 import {
@@ -239,8 +240,8 @@ import { useDamageAnimationEffects } from './hooks/useDamageAnimationEffects';
 import { useAnimationAudioEffects } from './hooks/useAnimationAudioEffects';
 import { useSkillAnimationEffects } from './hooks/useSkillAnimationEffects';
 import { useDamageLinkGhosts } from './hooks/useDamageLinkGhosts';
-import { useWindowSize } from './hooks/useWindowSize';
-import { computeScaleRatio, getFontZoomCompensate, DESIGN_WIDTH } from './utils/scale';
+import { useBattleResponsiveLayout } from './hooks/useBattleResponsiveLayout';
+import { DESIGN_WIDTH } from './utils/scale';
 import { useGameAudio } from './hooks/useGameAudio';
 import { useAiWatchdog, BAD_PHASES } from './hooks/useAiWatchdog';
 import { useRoomCountdown } from './hooks/useRoomCountdown';
@@ -258,6 +259,7 @@ import {
   canPresentSoftGuide,
   getFirstRestingPlayerIndex,
   getQueuedSoftGuideId,
+  hasPendingTurnStartPresentation,
   markAllSoftGuidesDone,
   markSoftGuideDone,
   parseSoftGuideDone,
@@ -1624,63 +1626,27 @@ export default function Game(){
   const [houndsRevealedSeq,setHoundsRevealedSeq]=useState(0);
 
   // ── Responsive layout ──────────────────────────────────────
-  const {w:vw,h:vh}=useWindowSize();
-  const { isMobile, isMobileLandscape, scaleRatio, layoutScaleRatio, mobileZoomCompensate, baseFontSizes, fontSizes, interactionFontSizes, scaledAreaSafeInsetX, globalShiftX, middleRowHeight } = useMemo(() => {
-    const isMobile = vw < 580;
-    const isMobileLandscape = vw >= 580 && vh < 580;
-    const isVerySmall = vw < 480;
-    const scaledAreaSafeInsetX = isMobile ? 24 : 12;
-    const narrowDesktopClipFix = vw <= 1220;
-    const globalShiftX = narrowDesktopClipFix ? Math.min(12, Math.round((1220 - vw) * 0.5)) : 0;
-    const scaleRatio = computeScaleRatio(vw, vh);
-    const rawMobileCompensate = scaleRatio < 1 ? 1 / scaleRatio : 1;
-    const mobileZoomCompensate = isMobile
-      ? rawMobileCompensate
-      : isMobileLandscape
-        ? Math.min(rawMobileCompensate, 1.14)
-        : 1;
-    const layoutScaleRatio = (isMobile || isMobileLandscape) && mobileZoomCompensate > 1
-      ? 1 / mobileZoomCompensate
-      : scaleRatio;
-    const rem = 16;
-    const baseFontSizes = {
-      title: isMobile ? 0.75 * rem : isMobileLandscape ? 0.76 * rem : isVerySmall ? 0.75 * rem : 0.875 * rem,
-      subtitle: isMobile ? 0.5 * rem : isMobileLandscape ? 0.52 * rem : isVerySmall ? 0.5 * rem : 0.625 * rem,
-      body: isMobile ? 0.625 * rem : isMobileLandscape ? 0.62 * rem : isVerySmall ? 0.625 * rem : 0.6875 * rem,
-      small: isMobile ? 0.5 * rem : isMobileLandscape ? 0.5 * rem : isVerySmall ? 0.5 * rem : 0.5625 * rem,
-      tiny: isMobile ? 0.4375 * rem : isMobileLandscape ? 0.45 * rem : isVerySmall ? 0.4375 * rem : 0.5 * rem,
-    };
-    const interactionBaseFontSizes = {
-      title: baseFontSizes.title,
-      subtitle: baseFontSizes.subtitle,
-      body: isMobile ? 0.84 * rem : baseFontSizes.body,
-      small: isMobile ? 0.72 * rem : baseFontSizes.small,
-      tiny: isMobile ? 0.62 * rem : baseFontSizes.tiny,
-    };
-    const fontZoomCompensate = getFontZoomCompensate(layoutScaleRatio);
-    const fontSizes = {
-      title: baseFontSizes.title * fontZoomCompensate,
-      subtitle: baseFontSizes.subtitle * fontZoomCompensate,
-      body: baseFontSizes.body * fontZoomCompensate,
-      small: baseFontSizes.small * fontZoomCompensate,
-      tiny: baseFontSizes.tiny * fontZoomCompensate,
-    };
-    const interactionFontSizes = {
-      title: interactionBaseFontSizes.title * fontZoomCompensate,
-      subtitle: interactionBaseFontSizes.subtitle * fontZoomCompensate,
-      body: interactionBaseFontSizes.body * fontZoomCompensate,
-      small: interactionBaseFontSizes.small * fontZoomCompensate,
-      tiny: interactionBaseFontSizes.tiny * fontZoomCompensate,
-    };
-    const middleRowHeight = isMobile ? 292 : isMobileLandscape ? 150 : 282;
-    return { isMobile, isMobileLandscape, scaleRatio, layoutScaleRatio, mobileZoomCompensate, baseFontSizes, fontSizes, interactionFontSizes, scaledAreaSafeInsetX, globalShiftX, middleRowHeight };
-  }, [vw, vh]);
-  const mobileCssPx=useCallback((px)=>Math.round(px*mobileZoomCompensate),[mobileZoomCompensate]);
-  const boardCssPx=useCallback((px)=>isMobileLandscape?Math.round(px*mobileZoomCompensate):px,[isMobileLandscape,mobileZoomCompensate]);
-  const mobileHandUsesCompact=isMobileLandscape;
-  const selfHandCardScale=(isMobile||isMobileLandscape) ? mobileZoomCompensate : 1;
-  const boardScaleRatio=isMobileLandscape?layoutScaleRatio:scaleRatio;
-  const compactBoardScaleRatio=isMobile&&!isMobileLandscape?1:layoutScaleRatio;
+  const {
+    vw,
+    vh,
+    isMobile,
+    isMobileLandscape,
+    scaleRatio,
+    layoutScaleRatio,
+    mobileZoomCompensate,
+    baseFontSizes,
+    fontSizes,
+    interactionFontSizes,
+    scaledAreaSafeInsetX,
+    globalShiftX,
+    middleRowHeight,
+    boardScaleRatio,
+    compactBoardScaleRatio,
+    mobileCssPx,
+    boardCssPx,
+    mobileHandUsesCompact,
+    selfHandCardScale,
+  } = useBattleResponsiveLayout();
 
   const applyVisibleLogPrefix=useCallback((count,authorityOverride)=>{
     const authority=Array.isArray(authorityOverride)?authorityOverride:(Array.isArray(visibleLogAuthorityRef.current)?visibleLogAuthorityRef.current:[]);
@@ -3554,18 +3520,23 @@ export default function Game(){
       gs,
       showTutorial,
       pendingSoftGuideId,
+      roleSelectionPending: !!pendingRoleSelection,
       roleRevealAnim,
       anim,
       animExiting,
       animQueueLength:animQueueRef.current.length,
       hasPendingGs:!!pendingGsRef.current,
+      turnStartPresentationPending:hasPendingTurnStartPresentation(gs),
     }))return;
     const toRect=r=>({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
     const measureSoftGuideSpotlights=guideId=>{
       if(guideId===SOFT_GUIDE_IDS.REST){
         const hpBarEl=selfPanelRef.current?.querySelector?.('[data-stat-label="HP"]');
+        const restButtonEl=restButtonRef.current;
         const hpRect=hpBarEl?_getZoomCompensatedRect(hpBarEl):null;
-        const restRect=restButtonRef.current?_getZoomCompensatedRect(restButtonRef.current):null;
+        const restRect=restButtonEl?_getZoomCompensatedRect(restButtonEl):null;
+        const restReady=!!restButtonEl&&!restButtonEl.disabled;
+        if(!restReady)return null;
         if(hpRect?.width&&hpRect?.height&&restRect?.width&&restRect?.height){
           return [
             { id:'self-hp', label:'HP', rect:toRect(hpRect), padding:6 },
@@ -3587,12 +3558,22 @@ export default function Game(){
     };
     const showSoftGuideWhenReady=guideId=>{
       let rafId=null;
-      let attempts=0;
       let cancelled=false;
+      const needsSpotlight=guideId===SOFT_GUIDE_IDS.REST||guideId===SOFT_GUIDE_IDS.FLIP;
       setPreparingSoftGuideId(guideId);
       const tryShowGuide=()=>{
         if(cancelled)return;
-        if(latestGsRef.current!==gs||pendingSoftGuideId||softGuideDone[guideId]){
+        if(
+          latestGsRef.current!==gs||
+          pendingSoftGuideId||
+          softGuideDone[guideId]||
+          roleRevealAnim||
+          anim||
+          animExiting||
+          animQueueRef.current.length>0||
+          pendingGsRef.current||
+          hasPendingTurnStartPresentation(latestGsRef.current)
+        ){
           setPreparingSoftGuideId(prev=>prev===guideId?null:prev);
           return;
         }
@@ -3604,8 +3585,7 @@ export default function Game(){
           markSoftGuideSeen(guideId);
           return;
         }
-        attempts+=1;
-        if(attempts<18){
+        if(needsSpotlight){
           rafId=requestAnimationFrame(tryShowGuide);
         }else{
           setSoftGuideSpotlights([]);
@@ -3631,6 +3611,7 @@ export default function Game(){
     gs,
     showTutorial,
     pendingSoftGuideId,
+    pendingRoleSelection,
     roleRevealAnim,
     anim,
     animExiting,
@@ -8518,98 +8499,75 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   }
 
   // Phase labels
-  const cardHintText='鼠标悬停查看卡牌详情（移动端请点击卡牌）';
-  const canShowTurnDecisionModal=!isSpectating&&!softGuidePauseActive&&!anim&&!animExiting&&animQueueRef.current.length===0;
-  const isStarsCallTheme=gs.expansionKey==='群星呼唤';
-  const promptWarningTextColor=isStarsCallTheme?'#ff7d8a':'#cc3030';
-  const promptActiveTextColor=isStarsCallTheme?'#9dd8f0':'#836934';
-  const promptCautionTextColor=isStarsCallTheme?'#ffd27a':'#9d5d26';
-  const promptSafeTextColor=isStarsCallTheme?'#8de6b8':'#577457';
-  const promptMutedTextColor=isStarsCallTheme?'#4f89a6':'#3a2510';
+  const isLocalDamageLinkSelect=!!gs&&isLocalDamageLinkSourcePhase(gs);
   const isLocalHuntRevealPrompt=phase==='HUNT_WAIT_REVEAL'&&!myTurn&&isLocalHuntTargetSeat(gs);
   const isDiscardPhaseResolving=phase==='DISCARD_PHASE'&&(!!anim||!!animExiting||!!pendingGsRef.current);
   const pendingAfterDiscardGs=isDiscardPhaseResolving?pendingGsRef.current:null;
-  const isPhaseWarningText=(!isDiscardPhaseResolving&&['DISCARD_PHASE','PLAYER_REVEAL_FOR_HUNT','CAVE_DUEL_SELECT_CARD'].includes(phase))||isLocalHuntRevealPrompt;
-  const phaseLabel={
-    ACTION:               isLocalCurrentTurn(gs)?'你的回合 — 可发动技能、休息，或结束回合':'等候其他旅者…',
-    SWAP_SELECT_TARGET:   '【掉包】选择目标角色',
-    SWAP_STEAL_CARD:      `【掉包】从 ${gs.players[gs.abilityData?.swapTi]?.name} 的手牌中暗抽一张`,
-    SWAP_SELECT_TARGET_CARD: `【掉包】${gs.players[gs.abilityData?.swapTi]?.name}的手牌已公开，请选择要抽取的牌`,
-    SWAP_GIVE_CARD:       isLocalSwapGivePhase(gs)
-      ?`${gs.players[gs.abilityData?.swapTi]?.revealHand ? '抽到' : '暗抽到'} ${cardLogText(gs.abilityData?.takenCard)}，选一张手牌还给对方`
-      :'等待掉包者归还手牌…',
-    HUNT_SELECT_TARGET:   '【追捕】选择猎物',
-    HUNT_CONFIRM:         isLocalHuntConfirmPhase(gs)?`${cardLogText(gs.abilityData?.revCard,{alwaysShowName:true})} 已亮出！${gs.abilityData?.revCard&&!isZoneCard(gs.abilityData.revCard)?'弃出任意手牌':'弃出匹配手牌'}造成3HP，或放弃`:(gs._isMP?'请等待追猎者做出选择…':`${cardLogText(gs.abilityData?.revCard,{alwaysShowName:true})} 已亮出`),
-    HUNT_SELECT_CARD_FROM_PUBLIC: `【追捕】从 ${gs.players[gs.abilityData?.huntTi]?.name} 的公开手牌中选择一张`,
-    PLAYER_REVEAL_FOR_HUNT:`⚠ ${gs.abilityData?.aiHunterName||'追猎者'} 正在追捕你！请选择一张手牌亮出`,
-    HUNT_WAIT_REVEAL:isLocalCurrentTurn(gs)
-      ?`等待 ${gs.players[gs.abilityData?.huntTi??1]?.name||'对方'} 亮出手牌…`
-      :isLocalHuntTargetSeat(gs)
-        ?`⚠ 追猎者正在追捕你！请选择一张手牌亮出（20秒）`
-        :`等待 ${gs.players[gs.abilityData?.huntTi??1]?.name||'对方'} 亮出手牌…`,
-    TREASURE_DODGE_DECISION: isLocalTreasureDodgePhase(gs)?(canShowTurnDecisionModal?'【寻宝者】触发负面区域牌！是否掷骰子规避？':'规避判定中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 做出选择…`:`${gs.players[gs.currentTurn]?.name} 正在思考…`),
-    BEWITCH_SELECT_CARD:  '【蛊惑】选择要赠送的手牌',
-    MULTIPLY_SELECT_TARGET: '【繁衍】选择另一名角色传播黑山羊幼仔',
-    SHU_SELECT_TARGET: '【黑暗子嗣】选择一名角色获得黑山羊幼仔',
-    IGNITE_TORCH_DISCARD: isLocalSeatIndex(gs.abilityData?.playerIndex)?'【引燃火把】选择一张手牌弃置':'请等待其他玩家选择…',
-    DECIPHER_STONE_CARVING: isLocalSeatIndex(gs.abilityData?.playerIndex)?'【解读石刻】拖动卡牌到对应区域':'请等待其他玩家解读石刻…',
-    ALBINO_CREATURE_SELECT_CARD: isLocalSeatIndex(gs.abilityData?.playerIndex)?'【白化生物】选择一张带"火"字的手牌亮出':'请等待其他玩家选择…',
-    TSG_SLIME_BALANCE: isLocalSeatIndex(gs.abilityData?.targetIdx)
-      ?'【赐福黏液】是否牺牲黏液平分HP和SAN？'
-      :(gs._isMP?'请等待其他玩家选择…':`${gs.players[gs.abilityData?.targetIdx]?.name||'目标'} 正在思考…`),
-    ETHEREALIZE_DECISION: isLocalSeatIndex(gs.abilityData?.targetIdx)?'【半物质化】是否消耗1层虚化转移伤害？':'请等待其他玩家选择…',
-    ETHEREALIZE_SELECT_TARGET: isLocalEtherealizeTargetPhase(gs)?'【半物质化】选择相邻角色承受伤害':'请等待其他玩家选择…',
-    GOD_CHOICE:          isLocalGodChoice?(canShowTurnDecisionModal?'邪神降临！选择如何回应':'面临抉择中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 回应邪神…`:'邪神降临！选择如何回应'),
-    ZHU_HIDE_AI_DRAW:    visualMe?.godName==='ZHU'?(canShowTurnDecisionModal?'【衔烛照幽】是否藏牌？':'衔烛照幽判定中…'):'请等待其他玩家选择…',
-    NYA_BORROW:          isLocalNyaBorrowPhase(gs)?(canShowTurnDecisionModal?'「千人千貌」——借用已死角色的身份？':'身份借用中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 借用身份…`:'「千人千貌」——借用已死角色的身份？'),
-    DISCARD_PHASE:(()=>{
-      if(isDiscardPhaseResolving){
-        const pendingTurn=pendingAfterDiscardGs?.currentTurn;
-        const pendingPlayer=pendingAfterDiscardGs?.players?.[pendingTurn];
-        if(pendingAfterDiscardGs?.phase==='DRAW_REVEAL')return pendingTurn===0?'你的回合即将开始…':`等候 ${pendingPlayer?.name||'当前玩家'} 摸牌…`;
-        if(pendingAfterDiscardGs?.phase==='AI_TURN')return pendingPlayer?`${pendingPlayer.name} 正在行动…`:'下一回合准备中…';
-        return pendingTurn===0?'你的回合即将开始…':`等候 ${pendingPlayer?.name||'下一名玩家'} 行动…`;
-      }
-      if(!isLocalCurrentTurn(gs))return`等待 ${currentTurnPlayer?.name||'当前玩家'} 弃牌…`;
-      const sel=gs.abilityData.discardSelected||[];
-      const need=Math.max(0,me.hand.length-effectiveHandLimit);
-      return`手牌超限 (${me.hand.length}/${effectiveHandLimit}) — 需弃 ${need} 张，已选 ${sel.length}/${need}`;
-    })(),
-    AI_TURN:gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 行动…`:`${gs.players[gs.currentTurn]?.name} 正在行动…`,
-    PLAYER_WIN_PENDING:'✦ 你已集齐全部编号！',
-    MP_PLAYER_WIN_WAIT:'等待其他玩家……',
-    DRAW_REVEAL:         isLocalDrawDecision?(canShowTurnDecisionModal?'摸牌 — 请确认':'摸牌中…'):(gs._isMP?`等候 ${gs.players[gs.currentTurn]?.name} 摸牌…`:''),
-    TREASURE_WIN:         '✦ 你已集齐全部编号！',
-    ZONE_SWAP_SELECT_TARGET: `【触底反弹】选择要交换全部手牌的目标`,
-    DAMAGE_LINK_SELECT_TARGET:'请选择绳索连接目标',
-    CAVE_DUEL_SELECT_TARGET:'请选择“穴居人战争”的目标',
-    CAVE_DUEL_SELECT_CARD: `⚠ 和${gs.players[gs.abilityData?.caveDuelSource]?.name||'对手'}来一场穴居人式的对决！无编号可赢4但会输给1~3，如果落败将失去这张牌`,
-    ROSE_THORN_SELECT_TARGET:'【玫瑰倒刺】选择承受倒刺的目标',
-    GRAVE_DIG_SELECT: isLocalSeatIndex(gs.abilityData?.playerIndex)?'【掘墓】从弃牌堆选择一张邪神牌':'等待掘墓选择…',
-    BURY_ALIVE_SELECT: (()=>{const target=gs.abilityData?.targets?.[gs.abilityData?.targetIndex||0];return isLocalSeatIndex(target)?'【活埋】选择一张手牌放到牌堆底':`等待 ${gs.players[target]?.name||'目标'} 选择活埋手牌…`;})(),
-    FIRST_COME_PICK_SELECT:`【先到先得】${gs.players[gs.abilityData?.pickOrder?.[gs.abilityData?.pickIndex||0]]?.name||'当前角色'} 请选择一张牌`,
-    SAME_ABYSS_SELECT: isLocalSameAbyssTargetPhase(gs)?'【同归深渊】你手牌最多，须做出选择':'等待同归深渊目标做出选择…',
-    SPHINX_GUESS: isLocalSphinxGuessPhase(gs)?'【斯芬克斯】猜测牌堆顶的牌是否是区域牌':'等待斯芬克斯猜测…',
-  }[phase]||'';
-  const displayPhaseLabel=isSpectating?'观战中……':phaseLabel;
+  const buryAliveTarget=gs.abilityData?.targets?.[gs.abilityData?.targetIndex||0];
+  const phaseUi=buildPhaseUiState({
+    gs,
+    phase,
+    me,
+    visualMe,
+    currentTurnPlayer,
+    effectiveHandLimit,
+    isSpectating,
+    softGuidePauseActive,
+    anim,
+    animExiting,
+    animQueueLength:animQueueRef.current.length,
+    hasPendingGs:!!pendingGsRef.current,
+    pendingAfterDiscardGs,
+    isDiscardPhaseResolving,
+    isLocalHuntRevealPrompt,
+    isScriptedTutorial,
+    isBlocked,
+    isVisualPlayerTurn,
+    localCurrentTurn:myTurn,
+    committedTargetAction:committedTargetActionRef.current,
+    committedAction:!!gs.abilityData?.committedAction,
+    local:{
+      albinoCreature:isLocalSeatIndex(gs.abilityData?.playerIndex),
+      buryAlive:isLocalSeatIndex(buryAliveTarget),
+      damageLinkSelect:isLocalDamageLinkSelect,
+      decipherStone:isLocalSeatIndex(gs.abilityData?.playerIndex),
+      drawDecision:isLocalDrawDecision,
+      etherealizeDecision:isLocalSeatIndex(gs.abilityData?.targetIdx),
+      etherealizeTarget:isLocalEtherealizeTargetPhase(gs),
+      godChoice:isLocalGodChoice,
+      graveDig:isLocalSeatIndex(gs.abilityData?.playerIndex),
+      huntConfirm:isLocalHuntConfirmPhase(gs),
+      huntTarget:isLocalHuntTargetSeat(gs),
+      igniteTorch:isLocalSeatIndex(gs.abilityData?.playerIndex),
+      nyaBorrow:isLocalNyaBorrowPhase(gs),
+      sameAbyss:isLocalSameAbyssTargetPhase(gs),
+      slimeBalance:isLocalSeatIndex(gs.abilityData?.targetIdx),
+      sphinxGuess:isLocalSphinxGuessPhase(gs),
+      swapGive:isLocalSwapGivePhase(gs),
+      treasureDodge:isLocalTreasureDodgePhase(gs),
+    },
+  });
+  const {
+    cardHintText,
+    canShowTurnDecisionModal,
+    cancelable,
+    canShowEndTurnButton,
+    displayPhaseLabel,
+    isPhaseWarningText,
+    promptColors,
+    showCancelBtn,
+  }=phaseUi;
+  const promptWarningTextColor=promptColors.warning;
+  const promptActiveTextColor=promptColors.active;
+  const promptCautionTextColor=promptColors.caution;
+  const promptSafeTextColor=promptColors.safe;
+  const promptMutedTextColor=promptColors.muted;
   const isSelfDeadPanelDimmed=!!(me?.isDead&&!me?._pendingAnimDeath);
 
-  const isLocalDamageLinkSelect=!!gs&&isLocalDamageLinkSourcePhase(gs);
   const canLocalTargetSelect=!!gs&&!isSpectating&&canLocalActOnTargetSelectionPhase(gs);
   const canLocalSwapGive=!!gs&&!isSpectating&&isLocalSwapGivePhase(gs);
   const canLocalBewitchCard=!!gs&&!isSpectating&&isLocalBewitchCardPhase(gs);
   const selectingOther=canLocalTargetSelect;
-  // 多人游戏中 HUNT_CONFIRM 非追猎者不显示操作按钮区域
-  const cancelable=['SWAP_SELECT_TARGET','SWAP_STEAL_CARD','SWAP_SELECT_TARGET_CARD','SWAP_GIVE_CARD','HUNT_SELECT_TARGET','ZONE_SWAP_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','DAMAGE_LINK_SELECT_TARGET','TORTOISE_ORACLE_SELECT','ROSE_THORN_SELECT_TARGET','MULTIPLY_SELECT_TARGET','SHU_SELECT_TARGET','SAME_ABYSS_SELECT','SPHINX_GUESS','GRAVE_DIG_SELECT',...(phase==='HUNT_CONFIRM'&&gs._isMP&&!isLocalCurrentTurn(gs)?[]:['HUNT_CONFIRM']),'BEWITCH_SELECT_CARD','BEWITCH_SELECT_TARGET'].includes(phase);
-  // In HUNT_CONFIRM, 放弃追捕 replaces ✕取消 — never show both
-  const showCancelBtn=!isScriptedTutorial&&cancelable&&!committedTargetActionRef.current&&!gs.abilityData?.committedAction&&phase!=='HUNT_CONFIRM'&&!isSpectating&&isLocalCurrentTurn(gs)&&(!phase.includes('DAMAGE_LINK')||isLocalDamageLinkSelect)&&!anim;
-  const canShowEndTurnButton=phase==='ACTION'
-    &&isVisualPlayerTurn
-    &&!isBlocked
-    &&!isScriptedTutorial
-    &&!animExiting
-    &&animQueueRef.current.length===0
-    &&!pendingGsRef.current;
 
 
   function handleAIClick(pi){
@@ -8846,6 +8804,31 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   const skillLimited=gs.skillUsed&&skillRi.skillLimited;
   const battleBackgroundStyle=getBattleBackgroundStyle(gs.expansionKey,isMobile);
   const blackGoatPulsePid=anim?.type==='BLACK_GOAT_PULSE'?(anim.targetPid??anim.targetIdx??0):null;
+  const phaseActionButtonStyle=({enabled=true,tone='amber',marginLeft}={})=>{
+    const activeColors=tone==='danger'
+      ?{bg:'#3a1008',border:'#882020',color:'#dd6060',shadow:'#88202044'}
+      :{bg:'#1a0c04',border:'#d4832a',color:'#f0a855',shadow:'#d4832a66'};
+    const disabledColors={bg:'#180e08',border:'#3a2510',color:'#3a2510',shadow:'transparent'};
+    const colors=enabled?activeColors:disabledColors;
+    return {
+      marginLeft,
+      padding:isMobile||isMobileLandscape?`${mobileCssPx(5)}px ${mobileCssPx(10)}px`:'6px 18px',
+      background:colors.bg,
+      border:`1.5px solid ${colors.border}`,
+      color:colors.color,
+      fontFamily:"'Cinzel',serif",
+      fontWeight:700,
+      fontSize:interactionFontSizes.body,
+      borderRadius:2,
+      cursor:enabled?'pointer':'not-allowed',
+      letterSpacing:isMobile?0.5:1,
+      textTransform:'uppercase',
+      opacity:enabled?1:0.42,
+      boxShadow:enabled?`0 0 12px ${colors.shadow},inset 0 0 6px ${colors.shadow}`:'none',
+      position:'relative',
+      zIndex:200,
+    };
+  };
 
   return(<>
     <div onClickCapture={handleUiSfxCapture} style={{minHeight:isMobileLandscape?'100dvh':'100vh',height:isMobileLandscape?'100dvh':undefined,width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...battleBackgroundStyle,color:'var(--toe-text,#c8a96e)',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:isMobileLandscape?4:7,padding:isMobile?'6px 8px':isMobileLandscape?'4px 6px':'8px 10px',position:'relative',left:globalShiftX||undefined,overflowX:'hidden',overflowY:isMobileLandscape?'hidden':'auto',scrollbarGutter:isMobileLandscape?undefined:'stable',
@@ -9462,7 +9445,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             isMobile={isMobile}
             middleRowHeight={middleRowHeight}
             fontSizes={fontSizes}
-            scaleRatio={compactBoardScaleRatio}
+            scaleRatio={layoutScaleRatio}
           />
         </div>
 
@@ -9586,54 +9569,23 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                   </>);
                 })()}
                 {showCancelBtn&&(
-                  <button onClick={cancelAction} style={{
-                    padding:'6px 18px',background:'#1a0c04',
-                    border:'2px solid #d4832a',color:'#f0a855',
-                    fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,
-                    borderRadius:2,cursor:'pointer',letterSpacing:2,textTransform:'uppercase',
-                    boxShadow:'0 0 14px #d4832a66,inset 0 0 6px #d4832a22',
-                    position:'relative',zIndex:200,
-                  }}>✕ 取消</button>
+                  <button onClick={cancelAction} style={phaseActionButtonStyle({enabled:true})}>✕ 取消</button>
                 )}
                 {phase==='HUNT_CONFIRM'&&!isScriptedTutorial&&(!gs._isMP||isVisualPlayerTurn)&&!anim&&(
-                  <button onClick={()=>huntConfirm(-1)} style={{
-                    padding:'6px 18px',background:'#1a0c04',
-                    border:'2px solid #d4832a',color:'#f0a855',
-                    fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,
-                    borderRadius:2,cursor:'pointer',letterSpacing:2,textTransform:'uppercase',
-                    boxShadow:'0 0 14px #d4832a66,inset 0 0 6px #d4832a22',
-                    position:'relative',zIndex:200,
-                  }}>✕ 放弃追捕</button>
+                  <button onClick={()=>huntConfirm(-1)} style={phaseActionButtonStyle({enabled:true})}>✕ 放弃追捕</button>
                 )}
               </div>
             )}
             {phase==='DISCARD_PHASE'&&!isDiscardPhaseResolving&&isLocalCurrentTurn(gs)&&!isBlocked&&(
               <button onClick={confirmDiscard}
                 disabled={!(gs.abilityData.discardSelected||[]).length}
-                style={{
-                  marginLeft:'auto',padding:'6px 18px',
-                  background:(gs.abilityData.discardSelected||[]).length?'#3a1008':'#180e08',
-                  border:`1.5px solid ${(gs.abilityData.discardSelected||[]).length?'#882020':'#3a2510'}`,
-                  color:(gs.abilityData.discardSelected||[]).length?'#dd6060':'#3a2510',
-                  fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,
-                  borderRadius:2,cursor:'pointer',letterSpacing:1,textTransform:'uppercase',
-                  opacity:(gs.abilityData.discardSelected||[]).length?1:0.4,
-                }}>
+                style={phaseActionButtonStyle({enabled:!!(gs.abilityData.discardSelected||[]).length,tone:'danger',marginLeft:'auto'})}>
                 确认弃牌{(gs.abilityData.discardSelected||[]).length>0?` (${(gs.abilityData.discardSelected||[]).length})`:''}</button>
             )}
             {phase==='BURY_ALIVE_SELECT'&&canPlayerRespondWithAnyHandCard()&&(
               <button onClick={confirmBuryAliveSelection}
                 disabled={gs.abilityData?.buryAliveSelectedIndex==null}
-                style={{
-                  marginLeft:'auto',padding:'6px 18px',
-                  background:gs.abilityData?.buryAliveSelectedIndex!=null?'#2a1a08':'#180e08',
-                  border:`1.5px solid ${gs.abilityData?.buryAliveSelectedIndex!=null?'#c8a96e':'#3a2510'}`,
-                  color:gs.abilityData?.buryAliveSelectedIndex!=null?'#f0cb7a':'#3a2510',
-                  fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,
-                  borderRadius:2,cursor:gs.abilityData?.buryAliveSelectedIndex!=null?'pointer':'default',
-                  letterSpacing:1,textTransform:'uppercase',
-                  opacity:gs.abilityData?.buryAliveSelectedIndex!=null?1:0.4,
-                }}>
+                style={phaseActionButtonStyle({enabled:gs.abilityData?.buryAliveSelectedIndex!=null,marginLeft:'auto'})}>
                 确认活埋
               </button>
             )}

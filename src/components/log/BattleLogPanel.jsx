@@ -17,6 +17,27 @@ function getLogReliefLayers(expansionKey = '地神的潜影') {
   ];
 }
 
+function getLogReliefMaskStyle(isMobile) {
+  if (isMobile) {
+    return {
+      WebkitMaskSize: '188px auto',
+      maskSize: '188px auto',
+      WebkitMaskRepeat: 'repeat',
+      maskRepeat: 'repeat',
+      WebkitMaskPosition: 'center top',
+      maskPosition: 'center top',
+    };
+  }
+  return {
+    WebkitMaskSize: '232px auto',
+    maskSize: '232px auto',
+    WebkitMaskRepeat: 'repeat-y',
+    maskRepeat: 'repeat-y',
+    WebkitMaskPosition: 'right -2px top 6px',
+    maskPosition: 'right -2px top 6px',
+  };
+}
+
 function normalizeMultiplayerLogLine(line, { isMultiplayer, logOwner, myName, players }) {
   if (!isMultiplayer || !logOwner || logOwner === myName) return line;
 
@@ -53,6 +74,7 @@ export function BattleLogPanel({
   const myName = players?.[0]?.name;
   const fontZoom = getFontZoomCompensate(scaleRatio);
   const mobileLogHeight = Math.round(132 * fontZoom);
+  const reliefMaskStyle = getLogReliefMaskStyle(isMobile);
 
   return (
     <div ref={logRef} data-log-panel style={{
@@ -81,7 +103,7 @@ export function BattleLogPanel({
           position: 'absolute',
           top: -8,
           left: -10,
-          right: -18,
+          right: isMobile ? -10 : -18,
           height: isMobile ? mobileLogHeight : middleRowHeight,
         }}>
           {getLogReliefLayers(expansionKey).map((layer, idx) => (
@@ -93,12 +115,7 @@ export function BattleLogPanel({
               opacity: layer.opacity,
               WebkitMaskImage: `url("${getLogPatternBackground(expansionKey)}")`,
               maskImage: `url("${getLogPatternBackground(expansionKey)}")`,
-              WebkitMaskSize: isMobile ? '188px auto' : '232px auto',
-              maskSize: isMobile ? '188px auto' : '232px auto',
-              WebkitMaskRepeat: 'repeat-y',
-              maskRepeat: 'repeat-y',
-              WebkitMaskPosition: 'right -2px top 6px',
-              maskPosition: 'right -2px top 6px',
+              ...reliefMaskStyle,
             }} />
           ))}
         </div>

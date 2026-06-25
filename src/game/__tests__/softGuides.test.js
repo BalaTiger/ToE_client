@@ -5,6 +5,7 @@ import {
   canPresentSoftGuide,
   getFirstRestingPlayerIndex,
   getQueuedSoftGuideId,
+  hasPendingTurnStartPresentation,
   hasNewRestingCharacter,
   markAllSoftGuidesDone,
   markSoftGuideDone,
@@ -78,9 +79,19 @@ describe('softGuides', () => {
 
     expect(canPresentSoftGuide({ gs })).toBe(true);
     expect(canPresentSoftGuide({ gs, showTutorial: true })).toBe(false);
+    expect(canPresentSoftGuide({ gs, roleSelectionPending: true })).toBe(false);
     expect(canPresentSoftGuide({ gs, anim: { type: 'DRAW_CARD' } })).toBe(false);
     expect(canPresentSoftGuide({ gs, animQueueLength: 1 })).toBe(false);
     expect(canPresentSoftGuide({ gs, hasPendingGs: true })).toBe(false);
+    expect(canPresentSoftGuide({ gs, turnStartPresentationPending: true })).toBe(false);
+  });
+
+  it('回合开场悬浮文字或摸牌表现待播时会阻止软引导抢跑', () => {
+    expect(hasPendingTurnStartPresentation({ phase: 'ACTION', _turnStartLogs: ['── 你 的回合开始 ──'] })).toBe(true);
+    expect(hasPendingTurnStartPresentation({ phase: 'ACTION', _playersBeforeThisDraw: [{ hp: 8 }] })).toBe(true);
+    expect(hasPendingTurnStartPresentation({ phase: 'ACTION', drawReveal: { card: { name: '坠落' } } })).toBe(true);
+    expect(hasPendingTurnStartPresentation({ phase: 'DRAW_REVEAL', drawReveal: { card: { name: '坠落' } } })).toBe(false);
+    expect(hasPendingTurnStartPresentation({ phase: 'ACTION', _turnStartLogs: [] })).toBe(false);
   });
 
   it('可以定位第一个存活翻面角色', () => {
