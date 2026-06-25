@@ -10,7 +10,12 @@ export const UPSCALE_AGGRESSION = 5.0;
 
 export function computeScaleRatio(vw, vh) {
   if (vw < DESIGN_WIDTH) {
-    return Math.min(vw / DESIGN_WIDTH, 1);
+    const widthFit = vw / DESIGN_WIDTH;
+    const isMobileLandscape = vw >= 580 && vh < 580;
+    if (isMobileLandscape) {
+      return Math.min(widthFit, vh / DESIGN_HEIGHT, 1);
+    }
+    return Math.min(widthFit, 1);
   }
   if (vw > UPSCALE_WIDTH && vh > UPSCALE_HEIGHT) {
     const viewportFit = Math.min(

@@ -10,7 +10,10 @@ import { DDCard, DDCardBack, GodCardDisplay, PreviewCard } from '../cards';
 import { buildPublicUrl } from '../../utils/url';
 
 function getDecisionModalMetrics(scaleRatio = 1) {
-  const uiScale = Math.min(1.38, Math.max(1, scaleRatio || 1));
+  const vw = typeof window === 'undefined' ? 1200 : window.innerWidth || 1200;
+  const vh = typeof window === 'undefined' ? 720 : window.innerHeight || 720;
+  const viewportFit = Math.min((vw - 24) / 380, (vh - 24) / 620);
+  const uiScale = Math.min(1.38, Math.max(0.58, Math.min(Math.max(1, scaleRatio || 1), viewportFit)));
   return {
     uiScale,
     overlay: {
@@ -20,15 +23,15 @@ function getDecisionModalMetrics(scaleRatio = 1) {
       alignItems: 'center',
       justifyContent: 'center',
       zIndex: 400,
-      padding: `${18 * uiScale}px`,
+      padding: `${12 * uiScale}px`,
       boxSizing: 'border-box',
-      overflow: 'auto',
+      overflow: 'hidden',
     },
     panel: {
-      maxHeight: `calc(100vh - ${36 * uiScale}px)`,
-      overflow: 'auto',
+      maxHeight: `calc(100dvh - ${24 * uiScale}px)`,
+      overflow: 'hidden',
     },
-    cardScale: Math.min(1.28, uiScale),
+    cardScale: Math.min(1.28, Math.max(0.58, uiScale)),
   };
 }
 
@@ -234,52 +237,55 @@ function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingTex
 }
 
 // ── Treasure Hunter Dodge Modal ─────────────────────────────
-function TreasureDodgeModal({ drawReveal, onRoll, onSkip, thinkingText, rollButtonRef, canSkip = true }) {
+function TreasureDodgeModal({ drawReveal, onRoll, onSkip, thinkingText, rollButtonRef, canSkip = true, scaleRatio = 1 }) {
   if (!drawReveal?.card) return null;
   const { card } = drawReveal;
   const s = CS[card.letter] || GOD_CS;
+  const tm = getDecisionModalMetrics(scaleRatio);
+  const ui = tm.uiScale;
   return (
-    <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 300, paddingTop: '10vh' }}>
+    <div style={{ ...tm.overlay, zIndex: 300 }}>
       <div style={{
         background: '#150e07dd',
         border: `2px solid ${s.border}`,
         boxShadow: `0 0 60px ${s.glow}44, 0 0 120px #000a`,
-        borderRadius: 4, padding: '20px 28px', maxWidth: 280, width: '90%', textAlign: 'center',
+        borderRadius: 4, padding: `${20*ui}px ${28*ui}px`, maxWidth: 280*ui, width: 'min(90vw, 100%)', textAlign: 'center',
         animation: 'animPop 0.22s ease-out',
+        ...tm.panel,
       }}>
-        <div style={{ fontFamily: "'Cinzel',serif", color: '#a07838', fontSize: 15, letterSpacing: 3, marginBottom: 16, textTransform: 'uppercase' }}>── 寻宝者能力 ──</div>
-        <PreviewCard card={card}/>
+        <div style={{ fontFamily: "'Cinzel',serif", color: '#a07838', fontSize: 15*ui, letterSpacing: 3, marginBottom: 16*ui, textTransform: 'uppercase' }}>── 寻宝者能力 ──</div>
+        <PreviewCard card={card} scale={tm.cardScale}/>
 
-        <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#c8a96e', fontSize: 14, marginTop: 12, lineHeight: 1.6 }}>
+        <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#c8a96e', fontSize: 14*ui, marginTop: 12*ui, lineHeight: 1.6 }}>
           这张牌带有负面效果！作为寻宝者，你可以掷骰子尝试规避。
         </div>
-        <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#a08060', fontSize: 13, marginTop: 8 }}>
+        <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#a08060', fontSize: 13*ui, marginTop: 8*ui }}>
           掷出 4、5、6 点可成功规避负面效果。
         </div>
 
         {thinkingText && (
-          <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#e8c87a', fontSize: 14, marginTop: 12, lineHeight: 1.6 }}>
+          <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#e8c87a', fontSize: 14*ui, marginTop: 12*ui, lineHeight: 1.6 }}>
             {thinkingText}
           </div>
         )}
 
         {!thinkingText && (
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap', marginTop: 20 }}>
+          <div style={{ display: 'flex', gap: 12*ui, justifyContent: 'center', flexWrap: 'wrap', marginTop: 20*ui }}>
             <button ref={rollButtonRef} onClick={onRoll} style={{
-              padding: '10px 22px', background: '#1c1008', border: '1.5px solid #c8a96e',
-              color: '#e8c87a', fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 14,
+              padding: `${10*ui}px ${22*ui}px`, background: '#1c1008', border: '1.5px solid #c8a96e',
+              color: '#e8c87a', fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 14*ui,
               borderRadius: 2, cursor: 'pointer', letterSpacing: 1,
               boxShadow: '0 0 16px #c8a96e44', transition: 'all .15s',
             }}>
               掷骰子
-              <div style={{ fontSize: 10, opacity: 0.7, marginTop: 4, fontWeight: 400, fontFamily: "'IM Fell English',serif" }}>
+              <div style={{ fontSize: 10*ui, opacity: 0.7, marginTop: 4*ui, fontWeight: 400, fontFamily: "'IM Fell English',serif" }}>
                 (尝试规避)
               </div>
             </button>
             {canSkip && (
             <button onClick={onSkip} style={{
-              padding: '10px 22px', background: '#120a08', border: '1.5px solid #883030',
-              color: '#e08888', fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 14,
+              padding: `${10*ui}px ${22*ui}px`, background: '#120a08', border: '1.5px solid #883030',
+              color: '#e08888', fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 14*ui,
               borderRadius: 2, cursor: 'pointer', letterSpacing: 1, transition: 'all .15s',
             }}>
               直接触发

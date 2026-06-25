@@ -269,7 +269,7 @@ function PreviewCard({card,minWidth=120,codeFontSize=51,frameStyle,desc,hideIden
   if(!card)return null;
   const s=card.isGod?GOD_CS:(CS[card.letter]||GOD_CS);
   const bodyText=hideIdentity?'':(desc??(card.isGod?(card.subtitle||card.power||''):(card.desc||'')));
-  const uiScale=Math.max(1,scale||1);
+  const uiScale=Math.max(0.58,scale||1);
   return(
     <div style={{
       background:s.bg,
@@ -551,7 +551,7 @@ function GodCardDisplay({card,level=1,scale=1}){
   if(!card||!card.isGod)return null;
   const def=GOD_DEFS[card.godKey];if(!def)return null;
   const lvDef=def.levels[Math.max(0,(level||1)-1)];
-  const uiScale=Math.max(1,scale||1);
+  const uiScale=Math.max(0.58,scale||1);
   return(
     <div style={{
       background:def.bgCol,border:`2px solid ${def.col}`,borderRadius:6,

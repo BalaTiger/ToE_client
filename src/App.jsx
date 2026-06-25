@@ -1625,22 +1625,39 @@ export default function Game(){
 
   // ── Responsive layout ──────────────────────────────────────
   const {w:vw,h:vh}=useWindowSize();
-  const { isMobile, scaleRatio, baseFontSizes, fontSizes, scaledAreaSafeInsetX, globalShiftX, middleRowHeight } = useMemo(() => {
+  const { isMobile, isMobileLandscape, scaleRatio, layoutScaleRatio, mobileZoomCompensate, baseFontSizes, fontSizes, interactionFontSizes, scaledAreaSafeInsetX, globalShiftX, middleRowHeight } = useMemo(() => {
     const isMobile = vw < 580;
+    const isMobileLandscape = vw >= 580 && vh < 580;
     const isVerySmall = vw < 480;
     const scaledAreaSafeInsetX = isMobile ? 24 : 12;
     const narrowDesktopClipFix = vw <= 1220;
     const globalShiftX = narrowDesktopClipFix ? Math.min(12, Math.round((1220 - vw) * 0.5)) : 0;
     const scaleRatio = computeScaleRatio(vw, vh);
+    const rawMobileCompensate = scaleRatio < 1 ? 1 / scaleRatio : 1;
+    const mobileZoomCompensate = isMobile
+      ? rawMobileCompensate
+      : isMobileLandscape
+        ? Math.min(rawMobileCompensate, 1.14)
+        : 1;
+    const layoutScaleRatio = (isMobile || isMobileLandscape) && mobileZoomCompensate > 1
+      ? 1 / mobileZoomCompensate
+      : scaleRatio;
     const rem = 16;
     const baseFontSizes = {
-      title: isMobile ? 0.75 * rem : isVerySmall ? 0.75 * rem : 0.875 * rem,
-      subtitle: isMobile ? 0.5 * rem : isVerySmall ? 0.5 * rem : 0.625 * rem,
-      body: isMobile ? 0.625 * rem : isVerySmall ? 0.625 * rem : 0.6875 * rem,
-      small: isMobile ? 0.5 * rem : isVerySmall ? 0.5 * rem : 0.5625 * rem,
-      tiny: isMobile ? 0.4375 * rem : isVerySmall ? 0.4375 * rem : 0.5 * rem,
+      title: isMobile ? 0.75 * rem : isMobileLandscape ? 0.76 * rem : isVerySmall ? 0.75 * rem : 0.875 * rem,
+      subtitle: isMobile ? 0.5 * rem : isMobileLandscape ? 0.52 * rem : isVerySmall ? 0.5 * rem : 0.625 * rem,
+      body: isMobile ? 0.625 * rem : isMobileLandscape ? 0.62 * rem : isVerySmall ? 0.625 * rem : 0.6875 * rem,
+      small: isMobile ? 0.5 * rem : isMobileLandscape ? 0.5 * rem : isVerySmall ? 0.5 * rem : 0.5625 * rem,
+      tiny: isMobile ? 0.4375 * rem : isMobileLandscape ? 0.45 * rem : isVerySmall ? 0.4375 * rem : 0.5 * rem,
     };
-    const fontZoomCompensate = getFontZoomCompensate(scaleRatio);
+    const interactionBaseFontSizes = {
+      title: baseFontSizes.title,
+      subtitle: baseFontSizes.subtitle,
+      body: isMobile ? 0.84 * rem : baseFontSizes.body,
+      small: isMobile ? 0.72 * rem : baseFontSizes.small,
+      tiny: isMobile ? 0.62 * rem : baseFontSizes.tiny,
+    };
+    const fontZoomCompensate = getFontZoomCompensate(layoutScaleRatio);
     const fontSizes = {
       title: baseFontSizes.title * fontZoomCompensate,
       subtitle: baseFontSizes.subtitle * fontZoomCompensate,
@@ -1648,9 +1665,22 @@ export default function Game(){
       small: baseFontSizes.small * fontZoomCompensate,
       tiny: baseFontSizes.tiny * fontZoomCompensate,
     };
-    const middleRowHeight = isMobile ? 248 : 282;
-    return { isMobile, scaleRatio, baseFontSizes, fontSizes, scaledAreaSafeInsetX, globalShiftX, middleRowHeight };
+    const interactionFontSizes = {
+      title: interactionBaseFontSizes.title * fontZoomCompensate,
+      subtitle: interactionBaseFontSizes.subtitle * fontZoomCompensate,
+      body: interactionBaseFontSizes.body * fontZoomCompensate,
+      small: interactionBaseFontSizes.small * fontZoomCompensate,
+      tiny: interactionBaseFontSizes.tiny * fontZoomCompensate,
+    };
+    const middleRowHeight = isMobile ? 292 : isMobileLandscape ? 150 : 282;
+    return { isMobile, isMobileLandscape, scaleRatio, layoutScaleRatio, mobileZoomCompensate, baseFontSizes, fontSizes, interactionFontSizes, scaledAreaSafeInsetX, globalShiftX, middleRowHeight };
   }, [vw, vh]);
+  const mobileCssPx=useCallback((px)=>Math.round(px*mobileZoomCompensate),[mobileZoomCompensate]);
+  const boardCssPx=useCallback((px)=>isMobileLandscape?Math.round(px*mobileZoomCompensate):px,[isMobileLandscape,mobileZoomCompensate]);
+  const mobileHandUsesCompact=isMobileLandscape;
+  const selfHandCardScale=(isMobile||isMobileLandscape) ? mobileZoomCompensate : 1;
+  const boardScaleRatio=isMobileLandscape?layoutScaleRatio:scaleRatio;
+  const compactBoardScaleRatio=isMobile&&!isMobileLandscape?1:layoutScaleRatio;
 
   const applyVisibleLogPrefix=useCallback((count,authorityOverride)=>{
     const authority=Array.isArray(authorityOverride)?authorityOverride:(Array.isArray(visibleLogAuthorityRef.current)?visibleLogAuthorityRef.current:[]);
@@ -8818,7 +8848,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   const blackGoatPulsePid=anim?.type==='BLACK_GOAT_PULSE'?(anim.targetPid??anim.targetIdx??0):null;
 
   return(<>
-    <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...battleBackgroundStyle,color:'var(--toe-text,#c8a96e)',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:7,padding:isMobile?'6px 8px':'8px 10px',position:'relative',left:globalShiftX||undefined,overflowX:'hidden',overflowY:'scroll',scrollbarGutter:'stable',
+    <div onClickCapture={handleUiSfxCapture} style={{minHeight:isMobileLandscape?'100dvh':'100vh',height:isMobileLandscape?'100dvh':undefined,width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...battleBackgroundStyle,color:'var(--toe-text,#c8a96e)',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:isMobileLandscape?4:7,padding:isMobile?'6px 8px':isMobileLandscape?'4px 6px':'8px 10px',position:'relative',left:globalShiftX||undefined,overflowX:'hidden',overflowY:isMobileLandscape?'hidden':'auto',scrollbarGutter:isMobileLandscape?undefined:'stable',
     animation:deathShake?'deathShakeAnim 2.0s ease-in-out':earthquakeShake?'earthquakeSceneShake 1.25s linear 2':screenShake?'screenShakeAnim 0.38s ease-in-out':undefined,
     }}>
       {/* Global vignette */}
@@ -8968,6 +8998,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           onSkip={handleTreasureDodgeSkip}
           rollButtonRef={dodgeRollButtonRef}
           canSkip={!isScriptedTutorial || tutorialStep !== TUTORIAL_FLOW.TREASURE_DODGE_PROMPT}
+          scaleRatio={scaleRatio}
         />
       )}
       {/* Treasure hunter AOE dodge modal */}
@@ -8979,6 +9010,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           thinkingText={gs._isMP&&!isLocalTreasureAoEDodgePhase(gs)?`其他玩家思考中…`:''}
           rollButtonRef={dodgeRollButtonRef}
           canSkip={true}
+          scaleRatio={scaleRatio}
         />
       )}
       {/* Other players see thinking text during AOE dodge */}
@@ -9188,15 +9220,16 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         />
       )}
 
-      <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',gap:7}}>
+      <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',gap:isMobileLandscape?mobileCssPx(4):7}}>
         {/* Header */}
         {(()=>{
           const headerScale=scaleRatio>1?scaleRatio:1;
-          const hp=scale=>`${Math.round(scale*headerScale)}px`;
+          const headerFontScale=isMobileLandscape?mobileZoomCompensate:headerScale;
+          const hp=scale=>`${Math.round(scale*(isMobileLandscape?mobileZoomCompensate:headerScale))}px`;
           return(
             <div style={{display:'flex',alignItems:'center',gap:hp(10),borderBottom:'1px solid var(--toe-line-dim,#2a1a08)',paddingBottom:hp(6)}}>
-              <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:baseFontSizes.title*headerScale,fontWeight:700,color:'var(--toe-strong,#c8a96e)',letterSpacing:isMobile?1:2}}>邪神的宝藏</div>
-              <div style={{fontFamily:"'Cinzel',serif",fontSize:baseFontSizes.subtitle*headerScale,color:'var(--toe-muted,#b89858)',letterSpacing:isMobile?1:2,marginTop:1}}>Treasures of Evils</div>
+              <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:baseFontSizes.title*headerFontScale,fontWeight:700,color:'var(--toe-strong,#c8a96e)',letterSpacing:isMobile?1:2}}>邪神的宝藏</div>
+              <div style={{fontFamily:"'Cinzel',serif",fontSize:baseFontSizes.subtitle*headerFontScale,color:'var(--toe-muted,#b89858)',letterSpacing:isMobile?1:2,marginTop:1}}>Treasures of Evils</div>
               {isMultiplayer?(
                 <button
                   onClick={()=>setExitMatchConfirm({
@@ -9212,7 +9245,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                     color:'#ffb199',
                     fontFamily:"'Cinzel',serif",
                     fontWeight:700,
-                    fontSize:baseFontSizes.small*headerScale,
+                    fontSize:baseFontSizes.small*headerFontScale,
                     borderRadius:3,
                     cursor:'pointer',
                     letterSpacing:isMobile?0.5:1,
@@ -9235,7 +9268,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                     color:'#ffb199',
                     fontFamily:"'Cinzel',serif",
                     fontWeight:700,
-                    fontSize:baseFontSizes.small*headerScale,
+                    fontSize:baseFontSizes.small*headerFontScale,
                     borderRadius:3,
                     cursor:showTutorial?'not-allowed':'pointer',
                     opacity:showTutorial?0.45:1,
@@ -9256,15 +9289,16 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           <div data-zoom-container style={{
             zoom:scaleRatio!==1?scaleRatio:'normal',
             width:DESIGN_WIDTH,
-            flexShrink:0
+            flexShrink:0,
+            transformOrigin:'top center'
           }}>
-            <div style={{width:'100%',boxSizing:'border-box',padding:`0 ${scaledAreaSafeInsetX}px`}}>
+            <div style={{width:'100%',boxSizing:'border-box',padding:`0 ${(isMobile||isMobileLandscape)?boardCssPx(scaledAreaSafeInsetX):scaledAreaSafeInsetX}px`}}>
 
         {/* AI panels */}
         <div ref={aiPanelAreaRef} style={{
           display:'grid',
           gridTemplateColumns:'repeat(4,1fr)',
-          gap:isMobile?6:8,
+          gap:isMobile?boardCssPx(6):isMobileLandscape?boardCssPx(4):8,
           justifyContent:'center',
           width:'100%'
         }}>
@@ -9280,28 +9314,28 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             const onCardSelectForSwap=isSwapPublicTargetCardPhase?((cardIdx)=>swapSelectTargetCard(cardIdx)):isHuntCardFromPublicPhase?((cardIdx)=>huntSelectCardFromPublic(cardIdx)):null;
               return(
                 <div key={p.id} data-pid={pi} style={{position:'relative',zIndex:isSel?101:undefined,alignSelf:'start'}}>
-                <PlayerPanel player={p} playerIndex={pi} isCurrentTurn={visualCurrentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)} isBeingGuillotined={guillotinedPids.has(pi)} displayStats={displayStats} scaleRatio={scaleRatio} viewportWidth={vw} expansionKey={gs.expansionKey} blackGoatPulseActive={blackGoatPulsePid===pi}/>
+                <PlayerPanel player={p} playerIndex={pi} isCurrentTurn={visualCurrentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)} isBeingGuillotined={guillotinedPids.has(pi)} displayStats={displayStats} scaleRatio={boardScaleRatio} viewportWidth={vw} expansionKey={gs.expansionKey} blackGoatPulseActive={blackGoatPulsePid===pi}/>
                 </div>
               );
             })}
         </div>
 
         {/* Middle: self info + deck/discard piles + log */}
-        <div style={{display:'flex',gap:isMobile?5:10,flexWrap:'wrap',alignItems:'stretch',width:'100%',justifyContent:'flex-start'}}>
+        <div style={{display:'flex',gap:isMobile?boardCssPx(6):isMobileLandscape?boardCssPx(6):10,flexWrap:'wrap',alignItems:'stretch',width:'100%',justifyContent:'flex-start'}}>
           {/* Self panel - Fixed width, no grow */}
           <div ref={selfPanelRef} data-pid={0} data-death-panel={0} onClick={phase==='SHU_SELECT_TARGET'&&!isBlocked&&canLocalTargetSelect?()=>handleAIClick(0):undefined} style={{
             background:'var(--toe-panel-active,#180f07)',
             border:`1.5px solid ${hitIndices.includes(0)?'#cc2222':sanHitIndices.includes(0)?'#8840cc':phase==='SHU_SELECT_TARGET'&&canLocalTargetSelect?'#4ade80':suppressAnim&&tutorialStep>=2&&tutorialStep<=4?'var(--toe-strong,#c8a96e)':'var(--toe-line,#3a2510)'}`,
             borderRadius:3,
-            padding:isMobile?'8px 9px':'12px 13px',
-            width:isMobile?258:214,
-            minWidth:isMobile?258:214,
-            flexBasis:isMobile?258:214,
+            padding:isMobile?`${boardCssPx(8)}px ${boardCssPx(9)}px`:isMobileLandscape?`${boardCssPx(6)}px ${boardCssPx(7)}px`:'12px 13px',
+            width:isMobile?boardCssPx(258):isMobileLandscape?boardCssPx(190):214,
+            minWidth:isMobile?boardCssPx(258):isMobileLandscape?boardCssPx(190):214,
+            flexBasis:isMobile?boardCssPx(258):isMobileLandscape?boardCssPx(190):214,
             flexGrow:0,
             flexShrink:0,
             display:'flex',
             flexDirection:'column',
-            gap:9,
+            gap:isMobile||isMobileLandscape?boardCssPx(8):9,
             minHeight:middleRowHeight,
             position:'relative',
             overflow:'visible',
@@ -9392,8 +9426,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             )}
             </div>
             <div style={{borderTop:'1px solid var(--toe-line-dim,#2a1a08)',paddingTop:8}}>
-              <StatBar label="HP"  val={displayStats[0]?.hp ?? me.hp}  color="#7a1515" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={vw} labelColor="var(--toe-muted,#a07838)" valueColor="var(--toe-text,#c8a96e)" lineColor="var(--toe-line-dim,#2a1a08)"/>
-              <StatBar label="SAN" val={displayStats[0]?.san ?? me.san} color="#3a1078" trackColor="#120820" scaleRatio={scaleRatio} viewportWidth={vw} labelColor="var(--toe-muted,#a07838)" valueColor="var(--toe-text,#c8a96e)" lineColor="var(--toe-line-dim,#2a1a08)"/>
+              <StatBar label="HP"  val={displayStats[0]?.hp ?? me.hp}  color="#7a1515" trackColor="#1a0808" scaleRatio={boardScaleRatio} viewportWidth={vw} labelColor="var(--toe-muted,#a07838)" valueColor="var(--toe-text,#c8a96e)" lineColor="var(--toe-line-dim,#2a1a08)"/>
+              <StatBar label="SAN" val={displayStats[0]?.san ?? me.san} color="#3a1078" trackColor="#120820" scaleRatio={boardScaleRatio} viewportWidth={vw} labelColor="var(--toe-muted,#a07838)" valueColor="var(--toe-text,#c8a96e)" lineColor="var(--toe-line-dim,#2a1a08)"/>
             </div>
             </div>
             {/* 表情按钮（多人游戏时显示） */}
@@ -9417,7 +9451,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             )}
           </div>
           {/* Center: deck/discard piles */}
-        <PileDisplay deckCount={gs.deck.length} discardCount={visualDiscard.length} discardTop={visualDiscard[visualDiscard.length-1]||null} discardCards={visualDiscard} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={vw<430} baseHeight={middleRowHeight} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={scaleRatio} expansionKey={gs.expansionKey} zhuLitCards={zhuLitCardsForView} zhuHiddenCardId={zhuHiddenCardId} petrifyingFormula={gs.petrifyingFormula}/>
+        <PileDisplay deckCount={gs.deck.length} discardCount={visualDiscard.length} discardTop={visualDiscard[visualDiscard.length-1]||null} discardCards={visualDiscard} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={vw<430} baseHeight={middleRowHeight} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={compactBoardScaleRatio} expansionKey={gs.expansionKey} zhuLitCards={zhuLitCardsForView} zhuHiddenCardId={zhuHiddenCardId} petrifyingFormula={gs.petrifyingFormula}/>
           {/* Log — narrow, right-aligned */}
           <BattleLogPanel
             logRef={logRef}
@@ -9428,6 +9462,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             isMobile={isMobile}
             middleRowHeight={middleRowHeight}
             fontSizes={fontSizes}
+            scaleRatio={compactBoardScaleRatio}
           />
         </div>
 
@@ -9437,7 +9472,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             myTurn={myTurn}
             phase={phase}
             isMobile={isMobile}
-            baseFontSizes={baseFontSizes}
+            baseFontSizes={interactionFontSizes}
+            scaleRatio={layoutScaleRatio}
             displayPhaseLabel={displayPhaseLabel}
             cardHintText={cardHintText}
             isPhaseWarningText={isPhaseWarningText}
@@ -9469,10 +9505,10 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         />
 
         {/* Hand area */}
-        <div ref={handAreaRef} data-hand-area style={{background:'var(--toe-panel,#120900)',border:`1.5px solid ${myTurn?'var(--toe-line,#3a2010)':'var(--toe-line-dim,#2a1a08)'}`,borderRadius:3,padding:isMobile?'8px 9px':'11px 13px',position:'relative',overflow:'hidden'}}>
+        <div ref={handAreaRef} data-hand-area style={{background:'var(--toe-panel,#120900)',border:`1.5px solid ${myTurn?'var(--toe-line,#3a2010)':'var(--toe-line-dim,#2a1a08)'}`,borderRadius:3,padding:isMobile?`${mobileCssPx(10)}px ${mobileCssPx(10)}px`:isMobileLandscape?`${mobileCssPx(5)}px ${mobileCssPx(8)}px`:'11px 13px',position:'relative',overflow:'hidden'}}>
           <ThemeEdgeRelief expansionKey={gs.expansionKey} side="right" opacity={0.26} style={{height:'100%'}}/>
-          <div style={{display:'flex',alignItems:'center',marginBottom:9,gap:8}}>
-            <span style={{fontFamily:"'Cinzel',serif",color:!isSpectating&&((phase==='DISCARD_PHASE'&&!anim&&!animExiting&&!pendingGsRef.current)||phase==='PLAYER_REVEAL_FOR_HUNT'||isLocalHuntRevealPrompt)?promptWarningTextColor:promptActiveTextColor,fontSize:10,letterSpacing:1}}>
+            <div style={{display:'flex',alignItems:'center',marginBottom:isMobile||isMobileLandscape?mobileCssPx(9):9,gap:isMobile||isMobileLandscape?mobileCssPx(8):8}}>
+            <span style={{fontFamily:"'Cinzel',serif",color:!isSpectating&&((phase==='DISCARD_PHASE'&&!anim&&!animExiting&&!pendingGsRef.current)||phase==='PLAYER_REVEAL_FOR_HUNT'||isLocalHuntRevealPrompt)?promptWarningTextColor:promptActiveTextColor,fontSize:interactionFontSizes.body,letterSpacing:isMobile?0.5:1}}>
               {isSpectating
                 ?`手牌 (${visualMe.hand.length}/${effectiveHandLimit})`
                 :(phase==='DISCARD_PHASE'&&!anim&&!animExiting&&!pendingGsRef.current)
@@ -9500,10 +9536,10 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                     {hasBgy&&showTutorialMultiplyButton&&(
                       <button onClick={()=>setGs({...gs,phase:'MULTIPLY_SELECT_TARGET',abilityData:{...gs.abilityData}})} disabled={multiplyLimited}
                         style={{
-                          padding:isMobile?'5px 10px':'6px 14px',background:multiplyLimited?'#130a04':'#0e1a0e',
+                          padding:isMobile||isMobileLandscape?`${mobileCssPx(5)}px ${mobileCssPx(10)}px`:'6px 14px',background:multiplyLimited?'#130a04':'#0e1a0e',
                           border:`1.5px solid ${multiplyLimited?'var(--toe-line-dim,#2a1a08)':'#2a5a2a'}`,
                           color:multiplyLimited?'var(--toe-line,#3a2510)':'#4ade80',
-                          fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:baseFontSizes.body,
+                          fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:interactionFontSizes.body,
                           borderRadius:2,cursor:multiplyLimited?'not-allowed':'pointer',letterSpacing:isMobile?0.5:1,
                           boxShadow:multiplyLimited?'none':'0 0 10px #4ade8044',
                           textTransform:'uppercase',opacity:multiplyLimited?0.4:1,
@@ -9514,10 +9550,10 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                     )}
                     {showTutorialSkillButton&&<button ref={skillButtonRef} onClick={useAbility} disabled={skillRestLimited}
                       style={{
-                        padding:isMobile?'5px 10px':'6px 16px',background:'#1c1208',
+                        padding:isMobile||isMobileLandscape?`${mobileCssPx(5)}px ${mobileCssPx(10)}px`:'6px 16px',background:'#1c1208',
                         border:`1.5px solid ${skillRestLimited?'var(--toe-line,#3a2510)':skillRi.col}`,
                         color:skillRestLimited?'var(--toe-line,#3a2510)':skillRi.col,
-                        fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:baseFontSizes.body,
+                        fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:interactionFontSizes.body,
                         borderRadius:2,cursor:skillRestLimited?'not-allowed':'pointer',letterSpacing:isMobile?0.5:1,
                         boxShadow:skillRestLimited?'none':`0 0 10px ${skillRi.col}44`,
                         textTransform:'uppercase',opacity:skillRestLimited?0.4:1,
@@ -9528,10 +9564,10 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                     </button>}
                     {showTutorialRestButton&&<button ref={restButtonRef} onClick={doRest} disabled={restLimited}
                       style={{
-                        padding:isMobile?'5px 10px':'6px 14px',background:restLimited?'#130a04':'#0e1a0e',
+                        padding:isMobile||isMobileLandscape?`${mobileCssPx(5)}px ${mobileCssPx(10)}px`:'6px 14px',background:restLimited?'#130a04':'#0e1a0e',
                         border:`1.5px solid ${restLimited?'var(--toe-line-dim,#2a1a08)':'#2a5a2a'}`,
                         color:restLimited?'var(--toe-line,#3a2510)':'#4ade80',
-                        fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:baseFontSizes.body,
+                        fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:interactionFontSizes.body,
                         borderRadius:2,cursor:restLimited?'not-allowed':'pointer',letterSpacing:isMobile?0.5:1,
                         boxShadow:restLimited?'none':'0 0 10px #4ade8044',
                         textTransform:'uppercase',opacity:restLimited?0.4:1,
@@ -9541,9 +9577,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
                     </button>}
                     {canShowEndTurnButton&&(
                       <button onClick={endTurn} style={{
-                        padding:isMobile?'5px 10px':'6px 16px',background:'var(--toe-panel,#180e08)',
+                        padding:isMobile||isMobileLandscape?`${mobileCssPx(5)}px ${mobileCssPx(10)}px`:'6px 16px',background:'var(--toe-panel,#180e08)',
                         border:'1.5px solid var(--toe-line,#3a2510)',color:'var(--toe-muted,#a07838)',
-                        fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:baseFontSizes.body,
+                        fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:interactionFontSizes.body,
                         borderRadius:2,cursor:'pointer',letterSpacing:isMobile?0.5:1,textTransform:'uppercase',
                       }}>结束回合</button>
                     )}
@@ -9602,7 +9638,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
               </button>
             )}
           </div>
-          <div data-self-hand-strip style={{display:'flex',gap:7,flexWrap:'wrap'}}>
+          <div data-self-hand-strip style={{display:'flex',gap:isMobile||isMobileLandscape?mobileCssPx(7):7,flexWrap:'wrap'}}>
             {visualMe.hand.map((c,i)=>{
               const clickable=isMyCardClickable(c,i);
               const isMobileArmedGod=isMobile&&mobileArmedGodCardIdx===i;
@@ -9617,7 +9653,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
               const isBlackGoatPulsing=blackGoatPulsePid===0&&isBlackGoatYoung(c);
               const visuallyDisabled=!clickable&&tutorialStep!==TUTORIAL_FLOW.CULTIST_ZONE_SELECT_CARD;
               return(<div key={c.id} data-self-hand-card data-self-hand-card-id={c.id} ref={el=>{if(el)mobileGodCardRefs.current.set(i,el);else mobileGodCardRefs.current.delete(i);}} className={isBlackGoatPulsing?'black-goat-card-pulse':''} style={{position:'relative',display:'inline-block'}}>
-                <DDCard card={c} onClick={clickable?()=>handleMyCardClick(i):undefined} disabled={visuallyDisabled} selected={isSel} highlight={isMatch||canWorshipNow||canUpgradeNow||isAlbinoFireCard} godLevel={visualMe.godName===c.godKey?visualMe.godLevel:0} compact={isMobile} holderId={0}/>
+                <DDCard card={c} onClick={clickable?()=>handleMyCardClick(i):undefined} disabled={visuallyDisabled} selected={isSel} highlight={isMatch||canWorshipNow||canUpgradeNow||isAlbinoFireCard} godLevel={visualMe.godName===c.godKey?visualMe.godLevel:0} compact={mobileHandUsesCompact} holderId={0} frameStyle={(isMobile||isMobileLandscape)?{zoom:selfHandCardScale}:undefined}/>
                 {canUpgradeNow&&<div style={{position:'absolute',top:-7,left:'50%',transform:'translateX(-50%)',fontFamily:"'Cinzel',serif",fontSize:8,color:'#c8a96e',background:'#0a0705',border:'1px solid #8a6020',borderRadius:2,padding:'1px 4px',pointerEvents:'none',whiteSpace:'nowrap',zIndex:10}}>⬆ 升级邪神之力</div>}
                 {showWorshipHint&&<div style={{position:'absolute',top:-7,left:'50%',transform:'translateX(-50%)',fontFamily:"'Cinzel',serif",fontSize:8,color:'#b080e0',background:'#0a0412',border:'1px solid #7040aa',borderRadius:2,padding:'1px 4px',pointerEvents:'none',whiteSpace:'nowrap',zIndex:10}}>⛧ 点击信仰</div>}
               </div>);

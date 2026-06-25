@@ -1,6 +1,7 @@
 import React from 'react';
 import { getReliefDisplayConfig } from '../../constants/theme';
 import { buildPublicUrl } from '../../utils/url';
+import { getFontZoomCompensate } from '../../utils/scale';
 
 function getLogPatternBackground(expansionKey = '地神的潜影') {
   const suffix = expansionKey === '群星呼唤' ? 'stars' : 'earth';
@@ -44,11 +45,14 @@ export function BattleLogPanel({
   isMobile,
   middleRowHeight,
   fontSizes,
+  scaleRatio = 1,
 }) {
   const reliefConfig = getReliefDisplayConfig(expansionKey);
   const logLines = Array.isArray(visibleLog) ? visibleLog.slice(-50) : [];
   let logOwner = null;
   const myName = players?.[0]?.name;
+  const fontZoom = getFontZoomCompensate(scaleRatio);
+  const mobileLogHeight = Math.round(132 * fontZoom);
 
   return (
     <div ref={logRef} data-log-panel style={{
@@ -60,8 +64,8 @@ export function BattleLogPanel({
       borderRadius: 3,
       padding: '8px 10px',
       overflowY: 'auto',
-      minHeight: isMobile ? 100 : middleRowHeight,
-      maxHeight: isMobile ? 100 : middleRowHeight,
+      minHeight: isMobile ? mobileLogHeight : middleRowHeight,
+      maxHeight: isMobile ? mobileLogHeight : middleRowHeight,
       position: 'relative',
       overflowX: 'hidden',
       scrollbarGutter: 'stable',
@@ -78,7 +82,7 @@ export function BattleLogPanel({
           top: -8,
           left: -10,
           right: -18,
-          height: isMobile ? 100 : middleRowHeight,
+          height: isMobile ? mobileLogHeight : middleRowHeight,
         }}>
           {getLogReliefLayers(expansionKey).map((layer, idx) => (
             <div key={idx} style={{

@@ -6,6 +6,14 @@ describe('computeScaleRatio', () => {
     expect(computeScaleRatio(900, 800)).toBeCloseTo(0.75);
   });
 
+  it('uses height as the limiting axis on phone landscape', () => {
+    expect(computeScaleRatio(844, 390)).toBeCloseTo(390 / 720);
+  });
+
+  it('keeps portrait phones width-limited so vertical space can be used for readable hands', () => {
+    expect(computeScaleRatio(390, 844)).toBeCloseTo(390 / 1200);
+  });
+
   it('keeps the base scale through 1920x1080', () => {
     expect(computeScaleRatio(1200, 800)).toBe(1);
     expect(computeScaleRatio(1920, 1080)).toBe(1);
