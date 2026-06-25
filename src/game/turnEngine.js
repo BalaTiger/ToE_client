@@ -225,7 +225,7 @@ function getAiGodPowerScore(godKey, ci, players, level = 1) {
   }
 }
 
-function chooseAiGodEncounterAction(ci, godCard, players, forcedConvert = false) {
+export function chooseAiGodEncounterAction(ci, godCard, players, forcedConvert = false) {
   const actor = players?.[ci];
   const godKey = godCard?.godKey;
   if (!actor || !godKey) return 'discard';

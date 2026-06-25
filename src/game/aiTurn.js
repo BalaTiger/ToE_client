@@ -35,6 +35,7 @@ import { applyFx, applyHpDamageWithLink } from './effectEngine';
 import {
   checkWin,
   aiHandleGodCard,
+  chooseAiGodEncounterAction,
   applySanLossToPlayerWithInspection,
   abandonGodFollower,
   convertGodFollower,
@@ -773,7 +774,10 @@ export function aiStep(gs, opts = {}) {
       const hgc=P[ct].hand[handGodIdx];
       let inspectionMeta=makeInspectionMeta(gs);
       const alreadyHasGod=P[ct].godName&&P[ct].godName!==hgc.godKey;
-      const willWorship=P[ct].role===ROLE_CULTIST?Math.random()<0.65:Math.random()<0.45;
+      const handAiEffRole=gs.globalOnlySwapOwner!=null?ROLE_TREASURE:(P[ct]._nyaBorrow||P[ct].role);
+      const reserveForCultistBewitch=handAiEffRole===ROLE_CULTIST&&!gs.multiplyUsed&&!!chooseAiCultistBewitchPlan(P,ct);
+      const handGodAction=reserveForCultistBewitch?'discard':chooseAiGodEncounterAction(ct,hgc,P,false);
+      const willWorship=handGodAction==='worship'||handGodAction==='convert'||handGodAction==='upgrade';
       if(willWorship){
         const worshipLogStart=L.length;
         P[ct].hand.splice(handGodIdx,1);
@@ -873,6 +877,12 @@ export function aiStep(gs, opts = {}) {
     if ((ai.hp <= 4 && (canWin || canEmpty)) || (ai.hp <= 2 && canWin)) {
       cultistBewitchPlan = chooseAiCultistBewitchPlan(P, ct);
       if (cultistBewitchPlan) {
+        useSkill = true;
+      }
+    }
+    if (!useSkill && (P[ct].hand || []).some(card => card?.isGod)) {
+      cultistBewitchPlan = chooseAiCultistBewitchPlan(P, ct);
+      if (cultistBewitchPlan?.card?.isGod) {
         useSkill = true;
       }
     }

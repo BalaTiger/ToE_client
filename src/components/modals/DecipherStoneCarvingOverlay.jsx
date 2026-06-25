@@ -166,7 +166,7 @@ export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorNam
       ref={containerRef}
       style={{
         position: 'fixed', inset: 0, zIndex: 900,
-        background: 'rgba(4,2,0,0.92)',
+        background: 'rgba(4,2,0,0.70)',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         userSelect: 'none',
       }}
@@ -193,13 +193,13 @@ export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorNam
               ...style,
               border: `2px dashed ${key === 'hand' ? '#c8a96e88' : '#5a4a3a88'}`,
               borderRadius: 6,
-              background: 'rgba(20,14,8,0.55)',
+              background: 'rgba(20,14,8,0.36)',
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start',
               paddingTop: 10,
               transition: 'background 0.15s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(40,28,16,0.7)'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(20,14,8,0.55)'; }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(40,28,16,0.52)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(20,14,8,0.36)'; }}
           >
             <div style={{
               fontFamily: "'Cinzel',serif", color: '#8a7a5a', fontSize: 11, letterSpacing: 2, marginBottom: 10,

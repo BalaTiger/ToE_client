@@ -101,6 +101,7 @@ export function useAnimationQueue({
       'godFromHandUsed',
       'godTriggeredThisTurn',
       'globalOnlySwapOwner',
+      'apophisNight',
       '_statEventSeq',
       '_statEvents',
       '_inspectionSeq',

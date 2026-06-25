@@ -834,6 +834,41 @@ describe('aiStep optional action limits', () => {
     expect(newLogs.some(line => line.includes('【追捕】'))).toBe(false);
   });
 
+  it('AI 寻宝者已有邪神时不会随机改信负收益阿波菲斯', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const zhu = makeGodCard('ZHU');
+    const apo = makeGodCard('APO');
+    const players = [
+      makePlayer({ name: '你', role: ROLE_CULTIST }),
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_TREASURE,
+        san: 8,
+        godName: 'ZHU',
+        godLevel: 1,
+        godZone: [zhu],
+        hand: [apo],
+      }),
+      makePlayer({ name: '卡洛斯', role: ROLE_HUNTER }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+      log: ['旧日志'],
+    });
+
+    const result = aiStep(gs);
+    const newLogs = result.log.slice(gs.log.length);
+
+    expect(newLogs.some(line => line.includes('从手牌信仰 阿波菲斯'))).toBe(false);
+    expect(result.players[1]).toMatchObject({ godName: 'ZHU', godLevel: 1, san: 8 });
+    expect(result.players[1].hand).toEqual(expect.arrayContaining([apo]));
+  });
+
   it('追猎者有直接斩杀目标时不会因低质量记忆优先繁衍', () => {
     const staleCard = { id: 'stale-zone', key: 'A1', name: '旧牌', type: 'selfHealHP', val: 1, isZone: true, letter: 'A', number: 1 };
     const players = [
