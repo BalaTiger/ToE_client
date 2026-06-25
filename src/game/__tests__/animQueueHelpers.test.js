@@ -127,8 +127,7 @@ describe('animQueueHelpers', () => {
       'DAMAGE',
     ]);
     expect(queue[1]).toMatchObject({ fromPid: 0, toPid: 2, dest: 'player' });
-    expect(queue[2]).toMatchObject({ card: gift, triggerName: '目标角色', targetPid: 2 });
-    expect(queue[2].skipTravel).toBeUndefined();
+    expect(queue[2]).toMatchObject({ card: gift, triggerName: '目标角色', targetPid: 2, skipTravel: true });
   });
 
   it('检定事件流保证前置变化、检定翻牌、检定效果按顺序入队', () => {

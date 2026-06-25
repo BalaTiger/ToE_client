@@ -4,14 +4,31 @@ import {
   buildSinglePlayerAiTurnStartReplayContext,
   buildTurnStartDrawReplayQueue,
   shouldReplaySinglePlayerAiTurnStart,
+  withClearedReplayAnimFields,
 } from '../turnAnimState';
 import { startNextTurn } from '../turnEngine';
 import { ROLE_CULTIST } from '../coreUtils';
-import { makeGodCard, makeGs, makePlayer } from './factory';
+import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
 function player(name) {
   return { name, hand: [], hp: 10, san: 10 };
 }
+
+describe('withClearedReplayAnimFields', () => {
+  it('清理已播放的黑夜目标事件但保留序号水位，避免下个回合重播骰子', () => {
+    const state = {
+      _apophisTargetSeq: 7,
+      _apophisTargetEvent: { seq: 7, actorIdx: 1, targetIdx: 0 },
+      _statEvents: [{ seq: 3, target: 0 }],
+    };
+
+    const cleaned = withClearedReplayAnimFields(state);
+
+    expect(cleaned._apophisTargetSeq).toBe(7);
+    expect(cleaned._apophisTargetEvent).toBeNull();
+    expect(cleaned._statEvents).toEqual(state._statEvents);
+  });
+});
 
 describe('buildPlayerTurnDrawQueue', () => {
   it('adds turn banner and draw flip even when the next turn belongs to another player', () => {
@@ -136,6 +153,48 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(types.slice(0, 2)).toEqual(['YOUR_TURN', 'DRAW_CARD']);
     expect(newGs.phase).toBe('AI_GOD_CHOICE');
     expect(replay.drawCardStep).toMatchObject({ card: apo, triggerName: '艾伦', targetPid: 1 });
+  });
+
+  it('AI 放弃邪神馈赠时播放弃牌动画而不是收入手牌飞牌', () => {
+    const godCard = makeGodCard('NYA');
+    const beforeDrawPlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '贝拉', san: 10 }),
+    ];
+    const oldGs = makeGs({
+      players: beforeDrawPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: ['旧日志'],
+    });
+    const newGs = makeGs({
+      players: [
+        makePlayer({ name: '你' }),
+        makePlayer({ name: '贝拉', san: 9 }),
+      ],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      discard: [godCard],
+      _drawnCard: godCard,
+      _aiDrawnCard: godCard,
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉 遭遇邪神 伏行之混沌！（第1次）失去 1 SAN'],
+      _statLogs: ['贝拉 放弃了邪神的馈赠'],
+      log: [
+        '旧日志',
+        '── 贝拉 的回合开始 ──',
+        '贝拉 遭遇邪神 伏行之混沌！（第1次）失去 1 SAN',
+        '贝拉 放弃了邪神的馈赠',
+      ],
+    });
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const discardIdx = replay.queue.findIndex(step => step.type === 'DISCARD' && step.card === godCard);
+    const drawTransferIdx = replay.queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.effect === 'draw');
+
+    expect(discardIdx).toBeGreaterThan(replay.queue.findIndex(step => step.type === 'DRAW_CARD'));
+    expect(drawTransferIdx).toBe(-1);
   });
 
   it('AI 回合开始邪神遭遇只播放本次 SAN 扣减，不重播上个 AI 的扣减', () => {
@@ -311,6 +370,124 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(types[0]).toBe('YOUR_TURN');
     expect(types[1]).toBe('DRAW_CARD');
     expect(types.findIndex(type => type === 'CARD_TRANSFER')).toBeGreaterThan(types.indexOf('DRAW_CARD'));
+  });
+
+  it('AI 回合开始收入霉变食物时保留专用掷骰动画', () => {
+    const moldyFood = makeZoneCard('A1', 0);
+    const beforeDrawPlayers = [player('你'), player('贝拉')];
+    const afterPlayers = [player('你'), { ...player('贝拉'), hp: 9, hand: [moldyFood], skipNextDraw: true, skipNextDrawReason: '霉变食物' }];
+    const oldGs = {
+      players: beforeDrawPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: ['旧日志'],
+    };
+    const newGs = {
+      players: afterPlayers,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      log: [
+        '旧日志',
+        '── 贝拉 的回合开始 ──',
+        '贝拉 摸到 [A1] 霉变食物，选择收入手牌并触发效果',
+        '【霉变食物】贝拉 掷出 1 点（单数），失去 1 HP，下回合开始时不能摸牌',
+      ],
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉 摸到 [A1] 霉变食物，选择收入手牌并触发效果'],
+      _statLogs: [],
+      _drawnCard: moldyFood,
+      _aiDrawnCard: moldyFood,
+      _moldyFoodDiceSeq: 1,
+      _moldyFoodDiceRoll: { d1: 1, isEven: false, actorIdx: 1, seq: 1 },
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const diceIdx = replay.queue.findIndex(step => step.type === 'DICE_ROLL' && step.diceMode === 'moldyFood');
+    const drawIdx = replay.queue.findIndex(step => step.type === 'DRAW_CARD');
+
+    expect(diceIdx).toBeGreaterThan(drawIdx);
+    expect(replay.queue[diceIdx]).toMatchObject({ d1: 1, rollerName: '贝拉' });
+  });
+
+  it('AI 回合开始收入区域牌时在效果后播放收入手牌飞牌', () => {
+    const card = makeZoneCard('B2', 0);
+    const beforeDrawPlayers = [player('你'), player('贝拉')];
+    const afterPlayers = [player('你'), { ...player('贝拉'), hp: 8, hand: [card] }];
+    const oldGs = {
+      players: beforeDrawPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: ['旧日志'],
+    };
+    const newGs = {
+      players: afterPlayers,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      log: ['旧日志', '── 贝拉 的回合开始 ──', '贝拉 摸到 [B2] 投掷石块，选择收入手牌并触发效果', '贝拉 失去 2 HP'],
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉 摸到 [B2] 投掷石块，选择收入手牌并触发效果'],
+      _statLogs: ['贝拉 失去 2 HP'],
+      _drawnCard: card,
+      _aiDrawnCard: card,
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({
+      oldGs,
+      newGs,
+      buildQueue: () => [{ type: 'HP_DAMAGE', hitIndices: [1] }],
+    });
+    const damageIdx = replay.queue.findIndex(step => step.type === 'HP_DAMAGE');
+    const transferIdx = replay.queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.effect === 'draw');
+
+    expect(transferIdx).toBeGreaterThan(damageIdx);
+    expect(replay.queue[transferIdx]).toMatchObject({
+      fromPid: 1,
+      dest: 'player',
+      toPid: 1,
+      sourceAnchor: 'playerArea',
+      cards: [card],
+    });
+  });
+
+  it('AI 寻宝者回合开始规避霉变食物时先播放规避骰再播放霉变食物骰', () => {
+    const moldyFood = makeZoneCard('A1', 0);
+    const beforeDrawPlayers = [player('你'), player('贝拉')];
+    const afterPlayers = [player('你'), { ...player('贝拉'), hp: 10, hand: [moldyFood] }];
+    const oldGs = {
+      players: beforeDrawPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: ['旧日志'],
+    };
+    const newGs = {
+      players: afterPlayers,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      log: [
+        '旧日志',
+        '── 贝拉 的回合开始 ──',
+        '贝拉（寻宝者）摸到 [A1] 霉变食物，掷出 5 点，成功规避负面效果！',
+        '【霉变食物】贝拉 掷出 1 点（单数），负面效果已规避',
+      ],
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉（寻宝者）摸到 [A1] 霉变食物，掷出 5 点，成功规避负面效果！'],
+      _statLogs: ['【霉变食物】贝拉 掷出 1 点（单数），负面效果已规避'],
+      _drawnCard: moldyFood,
+      _aiDrawnCard: moldyFood,
+      _moldyFoodDiceSeq: 1,
+      _moldyFoodDiceRoll: { d1: 1, isEven: false, actorIdx: 1, seq: 1, negativeAvoided: true },
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const diceSteps = replay.queue.filter(step => step.type === 'DICE_ROLL');
+
+    expect(diceSteps).toHaveLength(2);
+    expect(diceSteps[0]).toMatchObject({ d1: 5, rollerName: '贝拉', dodgeSuccess: true });
+    expect(diceSteps[1]).toMatchObject({ diceMode: 'moldyFood', d1: 1, rollerName: '贝拉', negativeAvoided: true });
+    expect(replay.queue.indexOf(diceSteps[0])).toBeLessThan(replay.queue.indexOf(diceSteps[1]));
   });
 });
 

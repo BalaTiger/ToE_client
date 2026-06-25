@@ -41,6 +41,40 @@ describe('checkWin death handling', () => {
   });
 });
 
+describe('地磁反转暗抽', () => {
+  it('从弃牌堆暗抽到邪神牌时仍触发遭遇邪神，不直接进入手牌', () => {
+    const players = [makePlayer({ role: ROLE_TREASURE, san: 10, godEncounters: 0 })];
+    const godCard = makeGodCard('NYA');
+    const zoneInDeck = makeZoneCard('A1');
+    const gs = makeGs({ players, deck: [zoneInDeck], discard: [godCard], geomagneticReversalActive: true, log: [] });
+
+    const result = playerDrawCard(players, [zoneInDeck], [godCard], 0, gs);
+
+    expect(result.drawnCard).toBe(godCard);
+    expect(result.needGodChoice).toBe(true);           // 进入遭遇邪神决策，而非直接收入
+    expect(result.P[0].godEncounters).toBe(1);
+    expect(result.P[0].san).toBe(9);                   // 非邪祀者扣减 SAN
+    expect(result.P[0].hand.some(c => c.id === godCard.id)).toBe(false);
+    expect(result.Disc.some(c => c.id === godCard.id)).toBe(false); // 已从弃牌堆取出
+    expect(result.D).toEqual([zoneInDeck]);            // 没有从牌堆顶摸牌
+  });
+
+  it('从弃牌堆随机摸到区域牌时照常翻开并交由玩家决定收弃（与普通摸牌统一）', () => {
+    const players = [makePlayer({ role: ROLE_TREASURE, hp: 10, san: 10 })];
+    const zoneCard = makeZoneCard('A2'); // 蚂蚁虽小：非强制触发，需玩家决定收/弃
+    const filler = makeZoneCard('A1');   // 牌堆保留一张，确保走地磁反转暗抽而非空堆重洗
+    const gs = makeGs({ players, deck: [filler], discard: [zoneCard], geomagneticReversalActive: true, log: [] });
+
+    const result = playerDrawCard(players, [filler], [zoneCard], 0, gs);
+
+    expect(result.needsDecision).toBe(true);                        // 翻开后交由玩家决定，而非直接进手牌
+    expect(result.drawnCard.id).toBe(zoneCard.id);                  // 抽到的是弃牌堆里的牌
+    expect(result.P[0].hand.some(c => c.id === zoneCard.id)).toBe(false); // 等待决策期间不在手牌
+    expect(result.Disc.some(c => c.id === zoneCard.id)).toBe(false);      // 已从弃牌堆取出
+    expect(result.D).toEqual([filler]);                             // 没有从牌堆顶摸牌
+  });
+});
+
 describe('turnEngine stat events', () => {
   it('SAN 损失降至 0 时不排入检定事件', () => {
     const players = [makePlayer({ name: '你', hp: 10, san: 2 })];
@@ -695,6 +729,28 @@ describe('turnEngine stat events', () => {
     expect(result._visualEvents).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: 'godPowerBlocked', playerIdx: 0 }),
     ]));
+  });
+
+  it('火把免疫回合结束撒托古亚给黏液后，连续跳过翻面角色时不会复制旧护罩事件', () => {
+    const players = [
+      makePlayer({ name: '你', godName: 'TSG', godLevel: 1, godPowerImmuneThisTurn: true, godPowerImmuneTurnOwner: 0 }),
+      makePlayer({ name: '艾伦', isResting: true }),
+      makePlayer({ name: '卡洛斯' }),
+      makePlayer({ name: '黛安娜', isResting: true }),
+    ];
+    const card = makeZoneCard('A1', 0);
+    const gs = makeGs({
+      players,
+      deck: [card],
+      currentTurn: 0,
+      log: [],
+    });
+
+    const result = startNextTurn(gs);
+
+    expect(result.currentTurn).toBe(2);
+    expect(result.log).toContain('【引燃火把】你 本回合不受邪神之力影响');
+    expect((result._visualEvents || []).filter(event => event?.type === 'godPowerBlocked')).toHaveLength(1);
   });
 
   it('撒托古亚黏液获得动画排在下一回合开始前并在动画后刷新手牌', () => {

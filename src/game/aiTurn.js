@@ -75,16 +75,9 @@ function caveDuelBlindChoiceScore(card) {
   return Number.isFinite(card?.number) ? card.number : 3.5;
 }
 
-function getBestCaveDuelCardIndex(hand = [], opposingCard = null) {
+function getBestCaveDuelCardIndex(hand = []) {
   if (!hand.length) return -1;
-  if (opposingCard) {
-    const winningIndices = hand
-      .map((card, idx) => ({ card, idx }))
-      .filter(({ card }) => compareCaveDuelCards(card, opposingCard) > 0);
-    if (winningIndices.length) {
-      return winningIndices.sort((a, b) => caveDuelBlindChoiceScore(b.card) - caveDuelBlindChoiceScore(a.card))[0].idx;
-    }
-  }
+  // 盲选：只看自己手牌编号高低，绝不参考对手亮牌（穴居人战争是同时亮牌）
   return hand.reduce((bestIdx, card, idx) => (
     caveDuelBlindChoiceScore(card) > caveDuelBlindChoiceScore(hand[bestIdx]) ? idx : bestIdx
   ), 0);
@@ -517,6 +510,12 @@ export function aiStep(gs, opts = {}) {
     };
   };
 
+  let lastApophisTargetEvent = null;
+  const consumeLastApophisTargetEvent = () => {
+    const event = lastApophisTargetEvent;
+    lastApophisTargetEvent = null;
+    return event;
+  };
   const applyNightTarget = (selectedIdx, legalTargets, label) => {
     const night = resolveApophisTarget({
       gs,
@@ -534,6 +533,7 @@ export function aiStep(gs, opts = {}) {
     Disc = night.discard;
     L = night.log;
     gs = { ...gs, ...(night.statePatch || {}) };
+    lastApophisTargetEvent = night.apophisTargetEvent || null;
     return night.targetIdx;
   };
 
@@ -953,6 +953,7 @@ export function aiStep(gs, opts = {}) {
           let foundTarget = false;
           for (const targetEntry of sortedTargets) {
             let ti = applyNightTarget(targetEntry.idx, validTargets.map(t => t.idx), '选择【追捕】目标');
+            const apophisTargetEvent = consumeLastApophisTargetEvent();
             const tgt = P[ti];
             const targetHand = P[ti].hand;
             if (!hasHuntRevealableCard(targetHand)) {
@@ -960,7 +961,20 @@ export function aiStep(gs, opts = {}) {
               continue;
             }
             if (ti === 0) {
+              const huntPromptLogStart = L.length;
               L.push(`${ai.name}（追猎者）向你发动【追捕】！请选择亮出一张手牌`);
+              aiHuntEvents.push({
+                apophisTargetEvent,
+                targetIdx:ti,
+                hunterIdx:ct,
+                beforePlayers:copyPlayers(P),
+                afterPlayers:copyPlayers(P),
+                afterResultDiscard:[...Disc],
+                beforeLog:L.slice(0,huntPromptLogStart),
+                afterLog:[...L],
+                msgs:L.slice(huntPromptLogStart),
+                skipReveal:true,
+              });
               const updatedAbandoned = [...newAbandoned, ti];
               return {...gs, players:P, deck:D, discard:Disc, log:L,
                 phase:'PLAYER_REVEAL_FOR_HUNT',
@@ -1058,6 +1072,7 @@ export function aiStep(gs, opts = {}) {
                   }
                   if (P[ti].godZone?.length) { Disc.push(...P[ti].godZone); P[ti].godZone = []; P[ti].godName = null; P[ti].godLevel = 0; }
                   aiHuntEvents.push({
+                    apophisTargetEvent,
                     targetIdx:ti,
                     hunterIdx:ct,
                     revealedCard:rc,
@@ -1082,6 +1097,7 @@ export function aiStep(gs, opts = {}) {
                   break;
                 } else {
                   aiHuntEvents.push({
+                    apophisTargetEvent,
                     targetIdx:ti,
                     hunterIdx:ct,
                     revealedCard:rc,
@@ -1102,6 +1118,7 @@ export function aiStep(gs, opts = {}) {
               } else {
                 L.push(`无匹配手牌，放弃追捕 ${tgt.name}`);
                 aiHuntEvents.push({
+                  apophisTargetEvent,
                   targetIdx:ti,
                   hunterIdx:ct,
                   revealedCard:rc,

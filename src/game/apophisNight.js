@@ -86,6 +86,7 @@ export function resolveApophisTarget({
       changed: targetIdx !== selectedIdx,
       label,
       log: eventLog,
+      apophisNight: nextNight,
     },
     statePatch: {
       apophisNight: nextNight,
@@ -103,6 +104,7 @@ export function resolveApophisTarget({
         changed: targetIdx !== selectedIdx,
         label,
         log: eventLog,
+        apophisNight: nextNight,
       },
       ...statPatch,
     },

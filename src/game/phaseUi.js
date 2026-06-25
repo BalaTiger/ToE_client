@@ -70,6 +70,7 @@ export function buildPhaseUiState({
   const isPhaseWarningText = (!isDiscardPhaseResolving && ['DISCARD_PHASE', 'PLAYER_REVEAL_FOR_HUNT', 'CAVE_DUEL_SELECT_CARD'].includes(phase)) || isLocalHuntRevealPrompt;
   const promptColors = getPhasePromptColors(gs?.expansionKey);
   const isMultiplayer = !!gs?._isMP;
+  const thinkingText = idx => `${players[idx]?.name || '目标'} 正在思考…`;
 
   const label = (() => {
     switch (phase) {
@@ -111,19 +112,19 @@ export function buildPhaseUiState({
       case 'SHU_SELECT_TARGET':
         return '【黑暗子嗣】选择一名角色获得黑山羊幼仔';
       case 'IGNITE_TORCH_DISCARD':
-        return local.igniteTorch ? '【引燃火把】选择一张手牌弃置' : '请等待其他玩家选择…';
+        return local.igniteTorch ? '【引燃火把】选择一张手牌弃置' : (isMultiplayer ? '请等待其他玩家选择…' : thinkingText(abilityData.playerIndex));
       case 'DECIPHER_STONE_CARVING':
-        return local.decipherStone ? '【解读石刻】拖动卡牌到对应区域' : '请等待其他玩家解读石刻…';
+        return local.decipherStone ? '【解读石刻】拖动卡牌到对应区域' : (isMultiplayer ? '请等待其他玩家解读石刻…' : thinkingText(abilityData.playerIndex));
       case 'ALBINO_CREATURE_SELECT_CARD':
-        return local.albinoCreature ? '【白化生物】选择一张带"火"字的手牌亮出' : '请等待其他玩家选择…';
+        return local.albinoCreature ? '【白化生物】选择一张带"火"字的手牌亮出' : (isMultiplayer ? '请等待其他玩家选择…' : thinkingText(abilityData.playerIndex));
       case 'TSG_SLIME_BALANCE':
         return local.slimeBalance
           ? '【赐福黏液】是否牺牲黏液平分HP和SAN？'
-          : (isMultiplayer ? '请等待其他玩家选择…' : `${players[abilityData.targetIdx]?.name || '目标'} 正在思考…`);
+          : (isMultiplayer ? '请等待其他玩家选择…' : thinkingText(abilityData.targetIdx));
       case 'ETHEREALIZE_DECISION':
-        return local.etherealizeDecision ? '【半物质化】是否消耗1层虚化转移伤害？' : '请等待其他玩家选择…';
+        return local.etherealizeDecision ? '【半物质化】是否消耗1层虚化转移伤害？' : (isMultiplayer ? '请等待其他玩家选择…' : thinkingText(abilityData.targetIdx));
       case 'ETHEREALIZE_SELECT_TARGET':
-        return local.etherealizeTarget ? '【半物质化】选择相邻角色承受伤害' : '请等待其他玩家选择…';
+        return local.etherealizeTarget ? '【半物质化】选择相邻角色承受伤害' : (isMultiplayer ? '请等待其他玩家选择…' : thinkingText(abilityData.targetIdx));
       case 'GOD_CHOICE':
         return local.godChoice
           ? (canShowTurnDecisionModal ? '邪神降临！选择如何回应' : '面临抉择中…')
@@ -131,7 +132,7 @@ export function buildPhaseUiState({
       case 'ZHU_HIDE_AI_DRAW':
         return visualMe?.godName === 'ZHU'
           ? (canShowTurnDecisionModal ? '【衔烛照幽】是否藏牌？' : '衔烛照幽判定中…')
-          : '请等待其他玩家选择…';
+          : (isMultiplayer ? '请等待其他玩家选择…' : thinkingText(gs?.currentTurn));
       case 'NYA_BORROW':
         return local.nyaBorrow
           ? (canShowTurnDecisionModal ? '「千人千貌」——借用已死角色的身份？' : '身份借用中…')
@@ -172,17 +173,17 @@ export function buildPhaseUiState({
       case 'ROSE_THORN_SELECT_TARGET':
         return '【玫瑰倒刺】选择承受倒刺的目标';
       case 'GRAVE_DIG_SELECT':
-        return local.graveDig ? '【掘墓】从弃牌堆选择一张邪神牌' : '等待掘墓选择…';
+        return local.graveDig ? '【掘墓】从弃牌堆选择一张邪神牌' : (isMultiplayer ? '等待掘墓选择…' : thinkingText(abilityData.playerIndex));
       case 'BURY_ALIVE_SELECT': {
         const target = abilityData.targets?.[abilityData.targetIndex || 0];
-        return local.buryAlive ? '【活埋】选择一张手牌放到牌堆底' : `等待 ${players[target]?.name || '目标'} 选择活埋手牌…`;
+        return local.buryAlive ? '【活埋】选择一张手牌放到牌堆底' : (isMultiplayer ? `等待 ${players[target]?.name || '目标'} 选择活埋手牌…` : thinkingText(target));
       }
       case 'FIRST_COME_PICK_SELECT':
         return `【先到先得】${players[abilityData.pickOrder?.[abilityData.pickIndex || 0]]?.name || '当前角色'} 请选择一张牌`;
       case 'SAME_ABYSS_SELECT':
-        return local.sameAbyss ? '【同归深渊】你手牌最多，须做出选择' : '等待同归深渊目标做出选择…';
+        return local.sameAbyss ? '【同归深渊】你手牌最多，须做出选择' : (isMultiplayer ? '等待同归深渊目标做出选择…' : thinkingText(abilityData.targetIdx));
       case 'SPHINX_GUESS':
-        return local.sphinxGuess ? '【斯芬克斯】猜测牌堆顶的牌是否是区域牌' : '等待斯芬克斯猜测…';
+        return local.sphinxGuess ? '【斯芬克斯】猜测牌堆顶的牌是否是区域牌' : (isMultiplayer ? '等待斯芬克斯猜测…' : thinkingText(gs?.currentTurn));
       default:
         return '';
     }

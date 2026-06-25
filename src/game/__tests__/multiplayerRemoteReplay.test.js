@@ -59,6 +59,15 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.pendingGs.log).toEqual(['艾伦 掷出 5 点']);
   });
 
+  it('turns moldy-food logs into a moldy-food dice animation action', () => {
+    const action = buildAction(makeState({
+      log: ['【霉变食物】艾伦 掷出 1 点（单数），失去 1 HP，下回合开始时不能摸牌'],
+    }));
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.DICE_ROLL);
+    expect(action.anim).toMatchObject({ type: 'DICE_ROLL', diceMode: 'moldyFood', d1: 1, rollerName: '艾伦' });
+  });
+
   it('replays throw-stone random target queue instead of treating its roll as treasure dodge', () => {
     const beforePlayers = [player('你'), player('艾伦'), { ...player('贝拉'), hp: 10 }];
     const afterPlayers = [player('你'), player('艾伦'), { ...player('贝拉'), hp: 7 }];
@@ -126,9 +135,46 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.maskedGs).toMatchObject({ phase: 'ACTION', drawReveal: null, abilityData: {} });
     expect(action.queue[0]).toMatchObject({ type: 'YOUR_TURN', name: '艾伦' });
     expect(action.queue[1]).toMatchObject({ type: 'DRAW_CARD', card, triggerName: '艾伦', targetPid: 1 });
+    expect(action.queue.some(step => step.type === 'CARD_TRANSFER' && step.effect === 'draw')).toBe(false);
     expect(action.queue.at(-1)).toMatchObject({ type: 'STATE_PATCH' });
     expect(action.visualLock.players[1].name).toBe('艾伦-before');
     expect(buildAnimQueue).toHaveBeenCalledOnce();
+  });
+
+  it('replays remote kept draw as effects followed by the keep-card transfer', () => {
+    const beforePlayers = [player('你-before'), player('艾伦-before'), player('贝拉-before')];
+    const afterPlayers = [player('你'), { ...player('艾伦'), hand: [card], hp: 8 }, player('贝拉')];
+    const action = buildAction(
+      makeState({
+        currentTurn: 1,
+        phase: 'ACTION',
+        players: afterPlayers,
+        _drawnCard: card,
+        _aiDrawnCard: card,
+        _playersBeforeThisDraw: beforePlayers,
+        _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+        _drawLogs: ['艾伦 摸到 测试牌，选择收入手牌并触发效果'],
+        _statLogs: ['艾伦 失去 2 HP'],
+        log: ['── 艾伦 的回合开始 ──', '艾伦 摸到 测试牌，选择收入手牌并触发效果', '艾伦 失去 2 HP'],
+      }),
+      {
+        previousGs: makeState({ currentTurn: 0, players: beforePlayers, log: [] }),
+        buildAnimQueue: vi.fn(() => [{ type: 'HP_DAMAGE', hitIndices: [1] }]),
+      },
+    );
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    const damageIdx = action.queue.findIndex(step => step.type === 'HP_DAMAGE');
+    const transferIdx = action.queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.effect === 'draw');
+
+    expect(transferIdx).toBeGreaterThan(damageIdx);
+    expect(action.queue[transferIdx]).toMatchObject({
+      fromPid: 1,
+      dest: 'player',
+      toPid: 1,
+      sourceAnchor: 'playerArea',
+      cards: [card],
+    });
   });
 
   it('builds a local draw animation after role reveal without exposing the decision phase first', () => {
@@ -1704,6 +1750,43 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.pendingGs._earthquakeBeforeDiscard).toBeNull();
     expect(action.pendingGs._earthquakeDiscardEvents).toBeNull();
     expect(action.pendingGs._statEvents).toEqual([{ type: 'HP_LOSS', target: 2, seq: 9 }]);
+  });
+
+  it('replays Apophis night dice before remote hunt target lock', () => {
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'HUNT_WAIT_REVEAL',
+      abilityData: { huntTi: 2 },
+      apophisNight: { active: true, threshold: 2, count: 1, limit: 12 },
+      _apophisTargetSeq: 2,
+      _apophisTargetEvent: {
+        seq: 2,
+        actorIdx: 1,
+        actorName: '艾伦',
+        selectedIdx: 2,
+        targetIdx: 2,
+        roll: 6,
+        changed: false,
+        label: '选择【追捕】目标',
+        log: '【黑夜】艾伦 选择【追捕】目标掷出 6，目标未偏移',
+      },
+      log: ['【黑夜】艾伦 选择【追捕】目标掷出 6，目标未偏移', '没有追捕关键字的日志'],
+      _visualEvents: [
+        { type: 'huntTarget', sourceIdx: 1, targetIdx: 2, msgs: ['事件追捕'] },
+      ],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION', _apophisTargetSeq: 1 }),
+      buildAnimQueue,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue[0]).toMatchObject({
+      type: 'DICE_ROLL',
+      diceMode: 'apophisNight',
+      d1: 6,
+      rollerName: '艾伦',
+    });
+    expect(action.queue[1]).toMatchObject({ type: 'SKILL_HUNT', targetIdx: 2 });
   });
 
   it('uses hunt reveal visualEvents for hand-to-player-area reveal animation', () => {

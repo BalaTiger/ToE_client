@@ -476,7 +476,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "地磁反转",
-      "desc": "将一张\"反转复原\"洗入弃牌堆。角色即将摸牌时，改为重洗弃牌堆并暗抽一张",
+      "desc": "将一张\"反转复原\"洗入弃牌堆。此后角色摸牌时，改为重洗弃牌堆并从中随机摸取一张",
       "type": "geomagneticReversal",
       "slotKey": "C2",
       "polarity": "neutral",

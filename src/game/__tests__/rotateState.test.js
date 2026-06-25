@@ -70,6 +70,7 @@ describe('rotateGsForViewer', () => {
           targetIdx: 1,
           sourceCardIndex: 2,
           targetCardIndex: 0,
+          apophisTargetEvent: { seq: 2, actorIdx: 3, selectedIdx: 1, targetIdx: 1 },
           beforePlayers: [player('b0'), player('b1'), player('b2'), player('b3')],
           afterDiscardPlayers: [player('d0'), player('d1'), player('d2'), player('d3')],
           afterPlayers: [player('a0'), player('a1'), player('a2'), player('a3')],
@@ -185,6 +186,7 @@ describe('rotateGsForViewer', () => {
     expect(rotated._aiHuntEvents[0].targetIdx).toBe(3);
     expect(rotated._aiHuntEvents[0].sourceCardIndex).toBe(2);
     expect(rotated._aiHuntEvents[0].targetCardIndex).toBe(0);
+    expect(rotated._aiHuntEvents[0].apophisTargetEvent).toMatchObject({ actorIdx: 1, selectedIdx: 3, targetIdx: 3 });
     expect(names(rotated._aiHuntEvents[0].beforePlayers)).toEqual(['b2', 'b3', 'b0', 'b1']);
     expect(names(rotated._aiHuntEvents[0].afterDiscardPlayers)).toEqual(['d2', 'd3', 'd0', 'd1']);
     expect(names(rotated._aiHuntEvents[0].afterPlayers)).toEqual(['a2', 'a3', 'a0', 'a1']);
@@ -252,7 +254,7 @@ describe('rotateGsForViewer', () => {
         },
       ],
       _aiHuntEvents: [
-        { hunterIdx: 1, targetIdx: 0, beforePlayers: [player('b0'), player('b1'), player('b2')] },
+        { hunterIdx: 1, targetIdx: 0, apophisTargetEvent: { seq: 1, actorIdx: 1, selectedIdx: 0, targetIdx: 0 }, beforePlayers: [player('b0'), player('b1'), player('b2')] },
       ],
       _randomTargetEvents: [
         { seq: 1, sourceIdx: 1, targetIdx: 0, label: '投掷石块' },
@@ -289,6 +291,7 @@ describe('rotateGsForViewer', () => {
     expect(restored._inspectionEvents[0].statEvents[0].target).toBe(2);
     expect(restored._aiHuntEvents[0].hunterIdx).toBe(1);
     expect(restored._aiHuntEvents[0].targetIdx).toBe(0);
+    expect(restored._aiHuntEvents[0].apophisTargetEvent).toMatchObject({ actorIdx: 1, selectedIdx: 0, targetIdx: 0 });
     expect(names(restored._aiHuntEvents[0].beforePlayers)).toEqual(['b0', 'b1', 'b2']);
     expect(restored._randomTargetEvents[0]).toMatchObject({ sourceIdx: 1, targetIdx: 0, label: '投掷石块' });
     expect(restored._animMultiplyEvent).toEqual(gs._animMultiplyEvent);

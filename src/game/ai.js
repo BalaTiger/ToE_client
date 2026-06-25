@@ -1046,14 +1046,26 @@ export function chooseAiCultistBewitchPlan(players, sourceIdx) {
 
   // 5. God cards: prefer high-skull / low-SAN targets, avoid cultists.
   if (godCards.length) {
-    const weightedTargets = targets
-      .map(target => ({
-        ...target,
-        weight: (target.player.role === ROLE_CULTIST ? -999 : 0) + ((target.player.godEncounters || 0) * 3) + (10 - target.player.san),
-      }))
-      .sort((a, b) => b.weight - a.weight || sortByLowestSanThenHp(a, b));
-    if (weightedTargets.length && weightedTargets[0].weight > -999) {
-      return { card: godCards[0], targetIdx: weightedTargets[0].idx };
+    const scoreGodTarget = (card, target) => {
+      const sanLoss = estimateGodGiftSanLoss(card, target.player);
+      if (sanLoss <= 0) return -Infinity;
+      let score = sanLoss * 10 + (10 - target.player.san) + ((target.player.godEncounters || 0) * 2);
+      if (target.player.godName === card.godKey) {
+        score -= target.player.godLevel >= 3 ? 10 : 8;
+      } else if (target.player.godName) {
+        score += 3;
+      }
+      return score;
+    };
+    for (const card of godCards) {
+      const cardTargets = targets
+        .map(target => ({
+          ...target,
+          weight: target.player.role === ROLE_CULTIST ? -999 : scoreGodTarget(card, target),
+        }))
+        .sort((a, b) => b.weight - a.weight || sortByLowestSanThenHp(a, b));
+      if (!cardTargets.length || cardTargets[0].weight <= -999) continue;
+      return { card, targetIdx: cardTargets[0].idx };
     }
   }
 

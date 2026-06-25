@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   applyHpDamageWithLink,
   applyInspectionForSanLoss,
+  processInspectionTargets,
   getAdjacentTargets,
   getLivingAdjacentTargets,
   applyFx,
@@ -215,6 +216,75 @@ describe('applyFx', () => {
     expect(res.P[1].san).toBe(4);
     expect(res.P[1].hp).toBe(10);
     expect(res.statePatch._inspectionEvents || []).toEqual([]);
+  });
+
+  it('allDamageBoth: 保留 AOE 与后续多张检定牌的完整 stat seq', () => {
+    const players = makeStandardPlayers(3);
+    players[0].name = '贝拉';
+    players[1].name = '卡洛斯';
+    players[2].name = '黛安娜';
+    players.forEach(player => {
+      player.hp = 10;
+      player.san = 7;
+    });
+    const amnesiaCard = { id: 'ins-amnesia', name: '失忆', effect: 'disableSkill', value: 1, type: 'negative' };
+    const selfHarmCard = { id: 'ins-self', name: '自残', effect: 'selfDamageHP', value: 1, type: 'negative' };
+    const willCard = { id: 'ins-will', name: '超人意志', effect: 'healSAN', value: 1, type: 'positive' };
+    const gs = makeGs({
+      players,
+      currentTurn: 0,
+      inspectionDeck: [amnesiaCard, selfHarmCard, willCard],
+      inspectionDiscard: [],
+      log: ['贝拉（邪祀者）对 黛安娜 【蛊惑】，赠予 [C4] 夜风呼啸'],
+      _statEventSeq: 0,
+      _statEvents: [],
+      _inspectionSeq: 0,
+      _inspectionEvents: [],
+    });
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+
+    const res = applyFx({ id: 'night-wind', name: '夜风呼啸', type: 'allDamageBoth', val: 1 }, 2, 2, players, [], [], gs);
+    randomSpy.mockRestore();
+
+    expect(res.statePatch._inspectionEvents.map(event => event.card.name)).toEqual(['失忆', '自残', '超人意志']);
+    expect(res.statePatch._statEventSeq).toBe(3);
+    expect(res.statePatch._statEvents.map(event => event.seq)).toEqual([1, 1, 1, 1, 1, 1, 2, 3]);
+    expect(res.statePatch._statEvents.at(-2)).toMatchObject({ type: 'HP_LOSS', target: 1, reason: '自残' });
+    expect(res.statePatch._statEvents.at(-1)).toMatchObject({ type: 'SAN_GAIN', target: 2, reason: '超人意志' });
+  });
+
+  it('allDamageSAN: 虚化决策会暂停后续 SAN 检定', () => {
+    const players = [
+      makePlayer({ name: '艾伦', hp: 10, san: 7 }),
+      makePlayer({ name: '贝拉', hp: 10, san: 8 }),
+      makePlayer({ name: '卡洛斯', hp: 10, san: 7, etherealizeStacks: 1 }),
+      makePlayer({ name: '黛安娜', hp: 10, san: 7 }),
+    ];
+    const selfHarmCard = { id: 'ins-self', name: '自残', effect: 'selfDamageHP', value: 1, type: 'negative' };
+    const truthCard = { id: 'ins-truth', name: '揭开真相', effect: 'drawCard', value: 1, type: 'positive' };
+    const gs = makeGs({
+      players,
+      currentTurn: 3,
+      inspectionDeck: [selfHarmCard, truthCard],
+      inspectionDiscard: [],
+      _statEventSeq: 0,
+      _statEvents: [],
+      _inspectionSeq: 0,
+      _inspectionEvents: [],
+    });
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+
+    const res = applyFx({ id: 'rats', name: '鼠群', type: 'allDamageSAN', val: 1 }, 3, null, players, [], [], gs);
+    randomSpy.mockRestore();
+
+    expect(res.statePatch._inspectionEvents.map(event => event.card.name)).toEqual(['自残']);
+    expect(res.statePatch.abilityData).toMatchObject({
+      type: 'etherealizeRedirect',
+      targetIdx: 2,
+      lostSan: 1,
+      pendingInspectionContinuation: { targets: [0], startIndex: 3 },
+    });
+    expect(res.P[2].san).toBe(7);
   });
 
   it('igniteTorch: 玩家有手牌时进入弃牌选择', () => {
@@ -1041,6 +1111,66 @@ describe('applyInspectionForSanLoss', () => {
     expect(res.inspectionMeta._inspectionEvents[0].statEvents).toMatchObject([
       { type: 'HP_LOSS', target: 0, from: { hp: 10 }, to: { hp: 9 }, seq: 5 },
     ]);
+  });
+
+  it('揭开真相会记录具体摸牌收入且不触发区域牌效果', () => {
+    const players = [makePlayer({ name: '你', hp: 10, san: 6 })];
+    const inspectionCard = { name: '揭开真相', effect: 'drawCard', value: 1, type: 'positive' };
+    const zoneCard = makeZoneCard('A1', 0, { id: 'truth-draw', name: '霉变食物', type: 'selfDamageSAN', val: 2 });
+    const gs = makeGs({
+      players,
+      deck: [zoneCard],
+      inspectionDeck: [inspectionCard],
+      inspectionDiscard: [],
+    });
+
+    const res = applyInspectionForSanLoss(
+      0,
+      players[0].san,
+      0,
+      players,
+      [zoneCard],
+      [],
+      [],
+      makeInspectionMeta(gs),
+    );
+
+    expect(res.P[0].hand).toMatchObject([{ id: 'truth-draw' }]);
+    expect(res.P[0].san).toBe(6);
+    expect(res.log.at(-1)).toBe('你 揭开真相，摸到 [A1] 霉变食物，选择收入手牌（不触发效果）');
+  });
+
+  it('批量 SAN 检定遇到任意待结算决策都会暂停后续检定', () => {
+    const players = [
+      makePlayer({ name: '你', hp: 10, san: 6 }),
+      makePlayer({ name: '贝拉', hp: 10, san: 6 }),
+    ];
+    const selfHarmCard = { id: 'ins-self', name: '自残', effect: 'selfDamageHP', value: 1, type: 'negative' };
+    const truthCard = { id: 'ins-truth', name: '揭开真相', effect: 'drawCard', value: 1, type: 'positive' };
+    const gs = makeGs({
+      players,
+      inspectionDeck: [selfHarmCard, truthCard],
+      inspectionDiscard: [],
+    });
+
+    const res = processInspectionTargets(
+      [0, 1],
+      0,
+      players,
+      [],
+      [],
+      [],
+      {
+        ...makeInspectionMeta(gs),
+        abilityData: { type: 'tsgSlimeBalance', targetIdx: 0 },
+      },
+    );
+
+    expect(res.inspectionMeta._inspectionEvents.map(event => event.card.name)).toEqual(['自残']);
+    expect(res.inspectionMeta.abilityData).toMatchObject({
+      type: 'tsgSlimeBalance',
+      pendingInspectionContinuation: { targets: [1], startIndex: 0 },
+    });
   });
 
   it('1v1 乱抓只结算同一个相邻角色一次', () => {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { aiChooseRevealCard, aiShouldKeepZoneCard, canCultistEmptyHandByBewitch, getHunterChaseTargets, shouldAiRest } from '../ai';
+import { aiChooseRevealCard, aiShouldKeepZoneCard, canCultistEmptyHandByBewitch, chooseAiCultistBewitchPlan, getHunterChaseTargets, shouldAiRest } from '../ai';
 import { aiStep, processAiEndTurnReplayHand } from '../aiTurn';
 import { cardLogText, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
 import { startNextTurn } from '../turnEngine';
@@ -644,6 +644,74 @@ describe('aiStep optional action limits', () => {
       _turnOwner: 1,
     });
     expect(result.players.some(player => player.hand.some(card => card.isBlackGoatYoung))).toBe(false);
+  });
+
+  it('AI 邪祀者更倾向把邪神牌蛊惑给未信仰者而不是同神升级', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const shu = makeGodCard('SHU');
+    const players = [
+      makePlayer({ name: '你', role: ROLE_TREASURE, hp: 10, san: 9, godName: null, godLevel: 0, godZone: [] }),
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_CULTIST,
+        roleRevealed: true,
+        hp: 10,
+        san: 10,
+        hand: [shu],
+      }),
+      makePlayer({
+        name: '卡洛斯',
+        role: ROLE_HUNTER,
+        hp: 10,
+        san: 10,
+        godName: 'SHU',
+        godLevel: 1,
+        godZone: [makeGodCard('SHU')],
+      }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+      log: ['旧日志'],
+    });
+
+    const result = aiStep(gs);
+    const newLogs = result.log.slice(gs.log.length);
+
+    expect(newLogs.some(line => line.includes('对 卡洛斯 【蛊惑】'))).toBe(false);
+    expect(newLogs.some(line => line.includes('对 你 【蛊惑】'))).toBe(true);
+    expect(result.players[0]).toMatchObject({ godName: 'SHU', godLevel: 1 });
+  });
+
+  it('AI 邪祀者在普通局面更倾向把邪神牌蛊惑给未信仰者而不是同神升级', () => {
+    const shu = makeGodCard('SHU');
+    const players = [
+      makePlayer({ name: '你', role: ROLE_TREASURE, hp: 10, san: 9, godName: null, godLevel: 0, godZone: [] }),
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_CULTIST,
+        roleRevealed: true,
+        hp: 10,
+        san: 10,
+        hand: [shu],
+      }),
+      makePlayer({
+        name: '卡洛斯',
+        role: ROLE_HUNTER,
+        hp: 10,
+        san: 10,
+        godName: 'SHU',
+        godLevel: 1,
+        godZone: [makeGodCard('SHU')],
+      }),
+    ];
+
+    const plan = chooseAiCultistBewitchPlan(players, 1);
+    expect(plan).toMatchObject({ card: shu, targetIdx: 0 });
   });
 
   it('AI 已在本回合使用过技能后恢复收尾时不记录未使用技能', () => {

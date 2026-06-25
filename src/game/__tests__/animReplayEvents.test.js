@@ -72,8 +72,7 @@ describe('animReplayEvents', () => {
     expect(replay.queue.map(step => step.type)).toEqual(['SKILL_BEWITCH', 'CARD_TRANSFER', 'DRAW_CARD', 'SAN_DAMAGE']);
     expect(replay.queue[0]).toMatchObject({ targetIdx: 2, msgs: ['事件蛊惑'] });
     expect(replay.queue[1]).toMatchObject({ fromPid: 0, toPid: 2, count: 1 });
-    expect(replay.queue[2]).toMatchObject({ card: gift, triggerName: '贝拉', targetPid: 2 });
-    expect(replay.queue[2].skipTravel).toBeUndefined();
+    expect(replay.queue[2]).toMatchObject({ card: gift, triggerName: '贝拉', targetPid: 2, skipTravel: true });
     expect(replay.queue[3]).toBe(visualSanDamage);
     expect(replay.queue.some(step => step.msgs?.includes('旧差分伤害'))).toBe(false);
     expect(replay.queue.some(step => step._logChunk?.includes('旧数值日志'))).toBe(false);

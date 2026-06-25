@@ -122,6 +122,7 @@ function rotateAiHuntEvents(events, rotateIndex, myIndex) {
     targetIdx: event.targetIdx != null ? rotateIndex(event.targetIdx) : event.targetIdx,
     sourceIdx: event.sourceIdx != null ? rotateIndex(event.sourceIdx) : event.sourceIdx,
     hunterIdx: event.hunterIdx != null ? rotateIndex(event.hunterIdx) : event.hunterIdx,
+    apophisTargetEvent: rotateApophisTargetEvent(event.apophisTargetEvent, rotateIndex),
     beforePlayers: rotatePlayersArray(event.beforePlayers, myIndex),
     afterDiscardPlayers: rotatePlayersArray(event.afterDiscardPlayers, myIndex),
     afterDamagePlayers: rotatePlayersArray(event.afterDamagePlayers, myIndex),

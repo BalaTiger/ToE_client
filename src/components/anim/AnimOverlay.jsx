@@ -22,6 +22,12 @@ const ANIM_RENDERERS = {
   YOUR_TURN: ({ anim }) => <YourTurnAnim name={anim.name} local={!!anim.local} />,
   DRAW_CARD: ({ anim, exiting, expansionKey }) => (
     <CardFlipAnim
+      key={[
+        anim.inspectionSeq ?? '',
+        anim.card?.id ?? anim.card?.uid ?? anim.card?.key ?? anim.card?.name ?? 'card',
+        anim.targetPid ?? 0,
+        anim.triggerName ?? '',
+      ].join(':')}
       card={anim.card}
       triggerName={anim.triggerName}
       targetPid={anim.targetPid ?? 0}

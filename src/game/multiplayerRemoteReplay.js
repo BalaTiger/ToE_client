@@ -1,4 +1,5 @@
 import { bindAnimLogChunks } from './animLogs';
+import { mergeApophisTargetQueue } from './apophisAnimQueue';
 import { buildAiHuntEventAnimQueue } from './animQueueCore';
 import { cardTransferStep, fullHandSwapSteps } from './animQueueHelpers';
 import {
@@ -59,6 +60,11 @@ function hasDrawAnimationState(state) {
       && state.drawReveal?.needsDecision === false
       && state.drawReveal?.drawerIdx != null
     )
+    || (
+      (state.phase === 'ACTION' || state.phase === 'AI_TURN')
+      && (state._drawnCard || state._aiDrawnCard)
+      && hasFreshTurnDrawReplayState(state)
+    )
   );
 }
 
@@ -112,6 +118,10 @@ function buildZhuHideWaitAction(rotated) {
 
 function buildMaskedActionState(state) {
   return { ...state, phase: 'ACTION', drawReveal: null, abilityData: {} };
+}
+
+function withApophisTargetReplay(queue = [], previousGs, rotated, buildAnimQueue) {
+  return mergeApophisTargetQueue(queue, previousGs || buildMaskedActionState(rotated), rotated, buildAnimQueue);
 }
 
 function clearRemoteReplayHints(state) {
@@ -320,6 +330,27 @@ export function buildMpRemoteReplayAction({
     }
   }
   const lastLog = rotated.log?.[rotated.log.length - 1] || '';
+  const moldyMatch = lastLog.match(/^【霉变食物】(.+?) 掷出 (\d+) 点（(双数|单数)）/);
+  const isMoldyFoodDiceRoll = moldyMatch && !rotated.gameOver && rotated.phase === 'ACTION';
+  if (isMoldyFoodDiceRoll) {
+    const rollerName = moldyMatch[1];
+    const d1 = parseInt(moldyMatch[2], 10);
+    const isSelf = rollerName === '你' || rollerName === localDisplayName(0, rotated.players?.[0]?.name);
+    return {
+      type: MP_REMOTE_REPLAY.DICE_ROLL,
+      maskedGs: buildMaskedActionState(rotated),
+      pendingGs: rotated,
+      anim: {
+        type: 'DICE_ROLL',
+        diceMode: 'moldyFood',
+        d1,
+        d2: 0,
+        heal: 0,
+        rollerName: isSelf ? '你' : rollerName,
+        negativeAvoided: /负面效果已规避/.test(lastLog),
+      },
+    };
+  }
   const diceMatch = lastLog.match(/(.+?) 掷出 (\d+) 点/);
   const isDiceRoll = diceMatch && !rotated.gameOver && rotated.phase === 'ACTION';
   if (isDiceRoll) {
@@ -342,7 +373,7 @@ export function buildMpRemoteReplayAction({
   }
   const swapEvent = getSwapCardsVisualEvent(rotated);
   if (swapEvent && isFreshActionReplayEvent(swapEvent, logDelta)) {
-    const queue = [
+    const queue = withApophisTargetReplay([
       { type: 'SKILL_SWAP', msgs: swapEvent.msgs || logDelta },
       ...fullHandSwapSteps({
         fromPid: swapEvent.sourceIdx,
@@ -357,7 +388,7 @@ export function buildMpRemoteReplayAction({
         { ...rotated, drawReveal: null },
         ['players', 'discard', 'log', 'drawReveal', 'phase', 'abilityData'],
       ),
-    ];
+    ], previousGs, rotated, buildAnimQueue);
     return withConsumedVisualEvents({
       type: MP_REMOTE_REPLAY.ANIM_QUEUE,
       maskedGs: buildMaskedActionState(rotated),
@@ -372,7 +403,12 @@ export function buildMpRemoteReplayAction({
   const huntResultEvent = getHuntResultVisualEvent(rotated);
   if (huntResultEvent && isFreshActionReplayEvent(huntResultEvent, logDelta)) {
     const queue = appendFinalStatePatch(
-      buildAiHuntEventAnimQueue(huntResultEvent, rotated.players?.[huntResultEvent.hunterIdx]?.name || '???'),
+      withApophisTargetReplay(
+        buildAiHuntEventAnimQueue(huntResultEvent, rotated.players?.[huntResultEvent.hunterIdx]?.name || '???'),
+        previousGs,
+        rotated,
+        buildAnimQueue,
+      ),
       rotated,
       ['players', 'discard', 'log', 'phase', 'abilityData'],
     );
@@ -416,7 +452,7 @@ export function buildMpRemoteReplayAction({
       ));
     }
     const queue = appendFinalStatePatch(
-      resultQueue,
+      withApophisTargetReplay(resultQueue, previousGs, rotated, buildAnimQueue),
       rotated,
       ['players', 'deck', 'discard', 'log', 'phase', 'abilityData'],
     );
@@ -443,7 +479,7 @@ export function buildMpRemoteReplayAction({
       buildAnimQueue,
       copyPlayers,
     });
-    const queue = replay.queue;
+    const queue = withApophisTargetReplay(replay.queue, previousGs, rotated, buildAnimQueue);
     const patchedQueue = appendFinalStatePatch(queue, rotated);
     return withConsumedVisualEvents({
       type: MP_REMOTE_REPLAY.ANIM_QUEUE,
@@ -455,12 +491,22 @@ export function buildMpRemoteReplayAction({
   }
   const huntEvent = getHuntTargetVisualEvent(rotated);
   if (huntEvent && !isDrawAnimationState && rotated.phase !== 'PLAYER_REVEAL_FOR_HUNT') {
+    const baseStep = { type: 'SKILL_HUNT', msgs: huntEvent.msgs || logDelta, targetIdx: huntEvent.targetIdx };
+    const queue = withApophisTargetReplay([baseStep], previousGs, rotated, buildAnimQueue);
+    if (queue.length <= 1 && queue[0] === baseStep) {
+      return withConsumedVisualEvents({
+        type: MP_REMOTE_REPLAY.START_ANIM,
+        maskedGs: buildMaskedActionState(rotated),
+        pendingGs: clearRemoteReplayHints(rotated),
+        anim: baseStep,
+        queue: [],
+      });
+    }
     return withConsumedVisualEvents({
-      type: MP_REMOTE_REPLAY.START_ANIM,
+      type: MP_REMOTE_REPLAY.ANIM_QUEUE,
       maskedGs: buildMaskedActionState(rotated),
       pendingGs: clearRemoteReplayHints(rotated),
-      anim: { type: 'SKILL_HUNT', msgs: huntEvent.msgs || logDelta, targetIdx: huntEvent.targetIdx },
-      queue: [],
+      queue,
     });
   }
   const huntRevealEvent = getHuntRevealVisualEvent(rotated);
@@ -509,7 +555,7 @@ export function buildMpRemoteReplayAction({
     const queue = giftCard && targetIdx >= 0
       ? replay.queue
       : [{ type: 'SKILL_BEWITCH', msgs: logDelta, targetIdx: targetIdx >= 0 ? targetIdx : 1 }, ...statQueue];
-    const patchedQueue = appendFinalStatePatch(queue, rotated);
+    const patchedQueue = appendFinalStatePatch(withApophisTargetReplay(queue, previousGs, rotated, buildAnimQueue), rotated);
     return withConsumedVisualEvents({
       type: MP_REMOTE_REPLAY.ANIM_QUEUE,
       maskedGs: buildMaskedActionState(rotated),
@@ -523,7 +569,7 @@ export function buildMpRemoteReplayAction({
     : [];
   if (cardEffectSteps.length) {
     const queue = appendFinalStatePatch(
-      cardEffectSteps,
+      withApophisTargetReplay(cardEffectSteps, previousGs, rotated, buildAnimQueue),
       rotated,
       ['players', 'discard', 'log', 'phase', 'abilityData'],
     );

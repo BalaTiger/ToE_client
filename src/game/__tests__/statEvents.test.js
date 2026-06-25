@@ -40,6 +40,30 @@ describe('statEvents', () => {
     expect(queue[1]).toMatchObject({ hitIndices: [1], targetStats: [{ hp: 7, san: 8, isDead: false }, { hp: 5, san: 5, isDead: false }] });
   });
 
+  it('不同 seq 的显式事件按结算顺序生成动画，后续 SAN 回复不会抢跑', () => {
+    const players = [
+      makePlayer({ name: '贝拉', hp: 10, san: 7 }),
+      makePlayer({ name: '卡洛斯', hp: 10, san: 7 }),
+      makePlayer({ name: '黛安娜', hp: 10, san: 7 }),
+    ];
+    const events = [
+      { seq: 1, type: 'HP_LOSS', target: 0, from: { hp: 10, san: 7 }, to: { hp: 9, san: 7 } },
+      { seq: 1, type: 'SAN_LOSS', target: 0, from: { hp: 9, san: 7 }, to: { hp: 9, san: 6 } },
+      { seq: 1, type: 'HP_LOSS', target: 1, from: { hp: 10, san: 7 }, to: { hp: 9, san: 7 } },
+      { seq: 1, type: 'SAN_LOSS', target: 1, from: { hp: 9, san: 7 }, to: { hp: 9, san: 6 } },
+      { seq: 2, type: 'HP_LOSS', target: 1, from: { hp: 9, san: 6 }, to: { hp: 8, san: 6 } },
+      { seq: 3, type: 'SAN_GAIN', target: 2, from: { hp: 9, san: 6 }, to: { hp: 9, san: 7 } },
+    ];
+
+    const queue = statEventsToAnimQueue(events, players, ['全体存活角色失去 1 HP 和 SAN']);
+
+    expect(queue.map(step => step.type)).toEqual(['HP_DAMAGE', 'SAN_DAMAGE', 'HP_DAMAGE', 'SAN_HEAL']);
+    expect(queue[0]).toMatchObject({ hitIndices: [0, 1] });
+    expect(queue[1]).toMatchObject({ hitIndices: [0, 1] });
+    expect(queue[2]).toMatchObject({ hitIndices: [1] });
+    expect(queue[3]).toMatchObject({ hitIndices: [2] });
+  });
+
   it('两人一绳断裂会拆成原伤害、断裂、绳索伤害三段', () => {
     const before = [
       makePlayer({ name: '你', hp: 10, damageLink: { active: true, partner: 1 } }),

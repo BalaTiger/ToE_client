@@ -34,6 +34,35 @@ describe('buildAnimQueue stat animations', () => {
     expect(buildAnimQueue(oldGs, newGs).map(step => step.type)).toContain('APOPHIS_ECLIPSE');
   });
 
+  it('死亡全屏公告只绑定倒下日志，不带入同一效果的其他日志', () => {
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '卡洛斯', hp: 6 }),
+        makePlayer({ name: '黛安娜', hp: 2, role: '邪祀者' }),
+      ],
+      log: ['旧日志'],
+    });
+    const newGs = makeGs({
+      players: [
+        makePlayer({ name: '卡洛斯', hp: 9 }),
+        makePlayer({ name: '黛安娜', hp: 0, role: '邪祀者', isDead: true }),
+      ],
+      log: [
+        '旧日志',
+        '卡洛斯 摸到 [D3] 偷吃龙蛋，选择收入手牌并触发效果',
+        '卡洛斯 回复了 3 HP，相邻角色各失去 2 HP',
+        '☠ 黛安娜（邪祀者）倒下了！',
+      ],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    const death = queue.find(step => step.type === 'DEATH');
+    const guillotine = queue.find(step => step.type === 'GUILLOTINE');
+
+    expect(death?.msgs).toEqual(['☠ 黛安娜（邪祀者）倒下了！']);
+    expect(guillotine?.msgs).toEqual(['☠ 黛安娜（邪祀者）倒下了！']);
+  });
+
   it('投掷石块会先播放骰子，再播放转盘，最后播放扣血', () => {
     const playersBefore = [makePlayer({ name: '你', hp: 10 }), makePlayer({ name: '艾伦', hp: 10 })];
     const playersAfter = [makePlayer({ name: '你', hp: 10 }), makePlayer({ name: '艾伦', hp: 7 })];
@@ -303,6 +332,63 @@ describe('buildAnimQueue stat animations', () => {
       count: 1,
     });
     expect(transfer).not.toHaveProperty('inferredHandLoss');
+  });
+
+  it('蛊惑赠牌已有显式飞牌时不再用手牌差异补第二个普通飞牌', () => {
+    const gift = { id: 'gift-1', name: '蛊惑礼物', type: 'normal' };
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '你', hand: [gift] }),
+        makePlayer({ name: '艾伦', hand: [] }),
+      ],
+      log: [],
+    });
+    const effectivePlayers = [
+      makePlayer({ name: '你', hand: [] }),
+      makePlayer({ name: '艾伦', hand: [gift] }),
+    ];
+
+    expect(buildHandDeltaInferenceQueue({
+      oldGs,
+      effectivePlayers,
+      newMsgs: ['你（邪祀者）对 艾伦 【蛊惑】，赠予 [A1] 蛊惑礼物'],
+    })).toEqual([]);
+  });
+
+  it('蛊惑森之领主触发黑山羊幼仔时只保留黑暗子嗣专属飞牌', () => {
+    const god = makeGodCard('SHU');
+    const goat = { id: 'goat-1', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const oldGs = makeGs({
+      currentTurn: 0,
+      players: [
+        makePlayer({ name: '你', hand: [god] }),
+        makePlayer({ name: '艾伦', hand: [] }),
+      ],
+      log: [],
+    });
+    const effectivePlayers = [
+      makePlayer({ name: '你', hand: [] }),
+      makePlayer({ name: '艾伦', hand: [goat] }),
+    ];
+
+    const queue = buildHandDeltaInferenceQueue({
+      oldGs,
+      effectivePlayers,
+      newMsgs: [
+        '你（邪祀者）对 艾伦 【蛊惑】，赠予 森之领主',
+        '艾伦 信仰了 森之领主，获得黑暗子嗣(Lv.1)',
+        '【黑暗子嗣】艾伦 获得1张黑山羊幼仔',
+      ],
+    });
+
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({
+      type: 'CARD_TRANSFER',
+      dest: 'player',
+      toPid: 1,
+      effect: 'blackGoat',
+      sourceAnchor: 'godPower',
+    });
   });
 
   it('手牌减少但 godZone 增加时不补通用飞牌动画', () => {
@@ -675,6 +761,66 @@ describe('buildAiHuntEventAnimQueue', () => {
 
     expect(queue.map(step => step.type)).toEqual(['SKILL_HUNT', 'HUNT_REVEAL_CARD']);
     expect(queue[1]).toMatchObject({ card: revealedCard, targetPid: 2 });
+  });
+
+  it('AI 连续追捕事件会在每次追捕特效前播放对应的黑夜骰子', () => {
+    const firstReveal = { id: 'rev-a', key: 'A1', name: '坠落' };
+    const secondReveal = { id: 'rev-b', key: 'B1', name: '圣甲虫' };
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '卡洛斯' }),
+      makePlayer({ name: '艾伦', hand: [firstReveal] }),
+      makePlayer({ name: '贝拉', hand: [secondReveal] }),
+    ];
+
+    const firstQueue = buildAiHuntEventAnimQueue({
+      hunterIdx: 1,
+      targetIdx: 2,
+      revealedCard: firstReveal,
+      beforePlayers: players,
+      msgs: ['卡洛斯（追猎者）对 艾伦 【追捕】，亮出 [A1]'],
+      apophisTargetEvent: {
+        seq: 3,
+        actorIdx: 1,
+        actorName: '卡洛斯',
+        selectedIdx: 2,
+        targetIdx: 2,
+        roll: 5,
+        changed: false,
+        label: '选择【追捕】目标',
+        log: '【黑夜】卡洛斯 选择【追捕】目标掷出 5，目标未偏移',
+      },
+    }, '卡洛斯');
+    const secondQueue = buildAiHuntEventAnimQueue({
+      hunterIdx: 1,
+      targetIdx: 3,
+      revealedCard: secondReveal,
+      beforePlayers: players,
+      msgs: ['卡洛斯（追猎者）对 贝拉 【追捕】，亮出 [B1]'],
+      apophisTargetEvent: {
+        seq: 4,
+        actorIdx: 1,
+        actorName: '卡洛斯',
+        selectedIdx: 3,
+        targetIdx: 3,
+        roll: 4,
+        changed: false,
+        label: '选择【追捕】目标',
+        log: '【黑夜】卡洛斯 选择【追捕】目标掷出 4，目标未偏移',
+      },
+    }, '卡洛斯');
+    const queue = [...firstQueue, ...secondQueue];
+
+    expect(queue.map(step => step.type).slice(0, 6)).toEqual([
+      'DICE_ROLL',
+      'SKILL_HUNT',
+      'HUNT_REVEAL_CARD',
+      'DICE_ROLL',
+      'SKILL_HUNT',
+      'HUNT_REVEAL_CARD',
+    ]);
+    expect(queue[0]).toMatchObject({ diceMode: 'apophisNight', _apophisTargetSeq: 3 });
+    expect(queue[3]).toMatchObject({ diceMode: 'apophisNight', _apophisTargetSeq: 4 });
   });
 
   it('联机追捕结算事件可跳过已播放的追捕和亮牌动画', () => {

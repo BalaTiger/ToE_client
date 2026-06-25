@@ -62,4 +62,33 @@ describe('phaseUi', () => {
     expect(ui.displayPhaseLabel).toBe('手牌超限 (5/4) — 需弃 1 张，已选 1/1');
     expect(ui.isPhaseWarningText).toBe(true);
   });
+
+  it('单人 AI 子决策阶段显示思考态而不是联机等待态', () => {
+    const ui = buildPhaseUiState({
+      gs: {
+        ...baseGs,
+        phase: 'ETHEREALIZE_DECISION',
+        abilityData: { targetIdx: 1 },
+      },
+      phase: 'ETHEREALIZE_DECISION',
+      local: { etherealizeDecision: false },
+    });
+
+    expect(ui.displayPhaseLabel).toBe('艾伦 正在思考…');
+  });
+
+  it('联机非本地子决策阶段仍显示等待其他玩家', () => {
+    const ui = buildPhaseUiState({
+      gs: {
+        ...baseGs,
+        _isMP: true,
+        phase: 'ETHEREALIZE_DECISION',
+        abilityData: { targetIdx: 1 },
+      },
+      phase: 'ETHEREALIZE_DECISION',
+      local: { etherealizeDecision: false },
+    });
+
+    expect(ui.displayPhaseLabel).toBe('请等待其他玩家选择…');
+  });
 });

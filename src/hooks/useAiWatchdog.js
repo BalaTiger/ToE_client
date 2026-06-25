@@ -1,11 +1,16 @@
 import { useEffect, useRef } from 'react';
-import { isMultiplayerGame, isAiCurrentTurn } from '../game/rotateState';
+import { isMultiplayerGame, isAiCurrentTurn, isAiSeat } from '../game/rotateState';
 
 export const BAD_PHASES = [
   'ACTION', 'DRAW_REVEAL', 'DRAW_SELECT_TARGET', 'GOD_CHOICE', 'NYA_BORROW',
   'SWAP_SELECT_TARGET', 'SWAP_STEAL_CARD', 'SWAP_GIVE_CARD', 'BEWITCH_SELECT_CARD', 'BEWITCH_SELECT_TARGET',
   'HUNT_SELECT_TARGET', 'HUNT_CONFIRM', 'DISCARD_PHASE',
   'DAMAGE_LINK_SELECT_TARGET', 'PEEK_HAND_SELECT_TARGET', 'CAVE_DUEL_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET',
+  'FIRST_COME_PICK_SELECT', 'SAME_ABYSS_SELECT', 'SPHINX_GUESS', 'GRAVE_DIG_SELECT',
+  'BURY_ALIVE_SELECT', 'IGNITE_TORCH_DISCARD', 'ALBINO_CREATURE_SELECT_CARD',
+  'DECIPHER_STONE_CARVING', 'CAVE_DUEL_SELECT_CARD', 'TSG_SLIME_BALANCE',
+  'ETHEREALIZE_DECISION', 'ETHEREALIZE_SELECT_TARGET', 'TORTOISE_ORACLE_SELECT',
+  'SHU_SELECT_TARGET', 'MULTIPLY_SELECT_TARGET', 'ZHU_HIDE_AI_DRAW',
 ];
 
 const AI_AUTO_DECISION_SOURCES = {
@@ -19,6 +24,49 @@ export function isAiAutoDecisionPhase(gs) {
   const sourceKey = AI_AUTO_DECISION_SOURCES[gs?.phase];
   if (!sourceKey) return false;
   return gs?.abilityData?.[sourceKey] === gs?.currentTurn;
+}
+
+export function getSinglePlayerAiDecisionSeat(gs) {
+  if (!gs || isMultiplayerGame(gs) || gs.gameOver) return null;
+  const ad = gs.abilityData || {};
+  switch (gs.phase) {
+    case 'TSG_SLIME_BALANCE':
+    case 'ETHEREALIZE_DECISION':
+    case 'ETHEREALIZE_SELECT_TARGET':
+      return isAiSeat(gs, ad.targetIdx) ? ad.targetIdx : null;
+    case 'BURY_ALIVE_SELECT': {
+      const idx = ad.targets?.[ad.targetIndex || 0];
+      return isAiSeat(gs, idx) ? idx : null;
+    }
+    case 'IGNITE_TORCH_DISCARD':
+    case 'ALBINO_CREATURE_SELECT_CARD':
+    case 'DECIPHER_STONE_CARVING':
+    case 'GRAVE_DIG_SELECT':
+      return isAiSeat(gs, ad.playerIndex) ? ad.playerIndex : null;
+    case 'FIRST_COME_PICK_SELECT': {
+      const idx = ad.pickOrder?.[ad.pickIndex || 0];
+      return isAiSeat(gs, idx) ? idx : null;
+    }
+    case 'SAME_ABYSS_SELECT':
+      return isAiSeat(gs, ad.targetIdx) ? ad.targetIdx : null;
+    case 'SPHINX_GUESS':
+    case 'NYA_BORROW':
+    case 'TORTOISE_ORACLE_SELECT':
+      return isAiCurrentTurn(gs) ? gs.currentTurn : null;
+    // CAVE_DUEL_SELECT_CARD is only ever entered when a human must pick a card
+    // (all-AI duels resolve inline). The AI's card is chosen inside
+    // caveDuelSelectCard, so this phase must never auto-resolve for the player.
+    case 'SHU_SELECT_TARGET': {
+      const idx = ad.shuChooserIdx ?? gs.currentTurn;
+      return isAiSeat(gs, idx) ? idx : null;
+    }
+    case 'MULTIPLY_SELECT_TARGET':
+      return isAiCurrentTurn(gs) ? gs.currentTurn : null;
+    case 'ZHU_HIDE_AI_DRAW':
+      return isAiCurrentTurn(gs) ? gs.currentTurn : null;
+    default:
+      return null;
+  }
 }
 
 /**
@@ -39,6 +87,11 @@ export function useAiWatchdog({ gs, anim, showTutorial, softGuidePauseActive = f
   // ── Stuck recovery: AI 处于需要玩家交互的 phase ──────────────
   useEffect(() => {
     if (!gs || isMultiplayerGame(gs) || gs.gameOver || anim || showTutorial || softGuidePauseActive) return;
+    const aiDecisionSeat = getSinglePlayerAiDecisionSeat(gs);
+    if (aiDecisionSeat != null) {
+      const t = setTimeout(() => recoverRef.current?.('decision', { phase: gs.phase, seat: aiDecisionSeat }), 700);
+      return () => clearTimeout(t);
+    }
     if (!isAiCurrentTurn(gs)) return;
     const aiPhase = gs.phase;
     if (!BAD_PHASES.includes(aiPhase)) return;

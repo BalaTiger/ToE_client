@@ -502,7 +502,11 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
 
   const whoName = ci === 0 ? '你' : P[ci].name;
 
-  // 地磁反转：从弃牌堆暗抽
+  let drawnCard;
+  let geomagneticDraw = false;
+
+  // 地磁反转：摸牌改为「重洗弃牌堆并从中随机摸一张」，替代摸牌堆顶。
+  // 抽出后照常翻开结算——区域牌触发效果/收弃决策，邪神牌走遭遇邪神；仅"反转复原"特殊处理。
   if (gs?.geomagneticReversalActive && Disc.length > 0) {
     const shuffledDisc = shuffle([...Disc]);
     Disc = [];
@@ -519,36 +523,32 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
       };
     }
 
-    // 暗抽：直接进入手牌，效果不触发
-    P[ci].hand.push(drawnFromDisc);
-    return {
-      P, D, Disc: shuffledDisc,
-      drawnCard: drawnFromDisc,
-      effectMsgs: [`【地磁反转】${whoName} 从弃牌堆暗抽了一张牌`],
-      needsDecision: false,
-      kept: true,
-      sourcePile: 'discard',
-      statePatch: { geomagneticReversalActive: true },
-    };
+    // 其余牌一律按普通摸牌流程处理；地磁反转保持生效，
+    // 摸牌动画的 sourcePile 由 geomagneticReversalActive 推断为弃牌堆。
+    Disc = shuffledDisc;
+    drawnCard = drawnFromDisc;
+    geomagneticDraw = true;
   }
 
-  if (gs?._zhuRequestDecision && !gs?._zhuBypassTopGuard) {
-    const zhuGuard = getZhuTopGuard({ ...gs, players: P, deck: D }, D);
-    if (zhuGuard) {
-      return {
-        P,
-        D,
-        Disc,
-        drawnCard: null,
-        effectMsgs: [],
-        needsDecision: false,
-        zhuHideDecision: true,
-        zhuGuard,
-      };
+  if (!geomagneticDraw) {
+    if (gs?._zhuRequestDecision && !gs?._zhuBypassTopGuard) {
+      const zhuGuard = getZhuTopGuard({ ...gs, players: P, deck: D }, D);
+      if (zhuGuard) {
+        return {
+          P,
+          D,
+          Disc,
+          drawnCard: null,
+          effectMsgs: [],
+          needsDecision: false,
+          zhuHideDecision: true,
+          zhuGuard,
+        };
+      }
     }
-  }
 
-  const drawnCard = D.shift();
+    drawnCard = D.shift();
+  }
 
   // God card handling
   if (drawnCard.isGod) {
@@ -921,6 +921,7 @@ export function startNextTurn(gs, opts = {}) {
   const inheritedGodPowerBlockedEvents = Array.isArray(gs._carryGodPowerBlockedEvents) ? gs._carryGodPowerBlockedEvents : [];
   gs = { ...gs, multiplyUsed: false, _visualEvents: [...inheritedGodPowerBlockedEvents], _tsgSlimeGrantEvents: null, _carryTsgSlimeGrantEvents: null, _carryGodPowerBlockedEvents: null };
   const visualEvents = gs._visualEvents;
+  const inheritedGodPowerBlockedEventCount = visualEvents.length;
   const N = gs.players.length;
   let P = copyPlayers(gs.players), D = [...gs.deck], Disc = [...gs.discard], L = [...gs.log];
   let _P_beforeTurn = copyPlayers(P);
@@ -1067,7 +1068,7 @@ export function startNextTurn(gs, opts = {}) {
     }
     // Skip the turn: advance past player to the next living player
     // Hand limit is NOT enforced here — excess cards are kept until the next normal turn ends
-    return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents }, opts);
+    return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents.slice(inheritedGodPowerBlockedEventCount) }, opts);
   }
   turnStartLogs = [`── ${P[next].name} 的回合开始 ──`];
   L.push(...turnStartLogs);
@@ -1236,7 +1237,7 @@ export function startNextTurn(gs, opts = {}) {
       delete P[next].skipNextDrawReason;
       L.push(`${P[next].name} 因${skipReason}而无法摸牌`);
       const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: win, debugForceCard: null, debugForceCardTarget: null };
-      return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents }, opts);
+      return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents.slice(inheritedGodPowerBlockedEventCount) }, opts);
     }
     applyDebugForceDrawToTop(gs, next, D);
     const _P_beforeDraw = copyPlayers(P);

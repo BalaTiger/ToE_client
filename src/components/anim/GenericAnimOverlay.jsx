@@ -162,7 +162,20 @@ export function DiceRollAnim({ anim, exiting }) {
   const { d1, d2, rollerName, dodgeSuccess } = anim;
   const [, setFrame] = React.useState(0);
   const [settled, setSettled] = React.useState(false);
+  const rollSignature = [
+    anim?.type,
+    anim?.diceMode || '',
+    anim?.d1 ?? '',
+    anim?.d2 ?? '',
+    anim?.rollerName || '',
+    anim?.dodgeSuccess ?? '',
+    anim?.negativeAvoided ?? '',
+    anim?._apophisTargetSeq ?? '',
+    anim?.moldySeq ?? '',
+  ].join('|');
   React.useEffect(() => {
+    setSettled(false);
+    setFrame(0);
     const FRAMES = 12; let i = 0;
     const iv = setInterval(() => {
       i++;
@@ -170,7 +183,7 @@ export function DiceRollAnim({ anim, exiting }) {
       if (i >= FRAMES) { clearInterval(iv); setSettled(true); }
     }, 100);
     return () => clearInterval(iv);
-  }, []);
+  }, [rollSignature]);
   React.useEffect(() => {
     if (settled && anim.onSettled) anim.onSettled();
   }, [settled, anim]);

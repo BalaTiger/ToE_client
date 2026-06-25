@@ -130,7 +130,7 @@ export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQ
   // 注意：被蛊惑者的操作是在当前回合内完成的，不应视为"回合开始"
   // 因此不再添加 YOUR_TURN 动画步骤
   if(card){
-    ordered.push({type:"DRAW_CARD",card,triggerName,targetPid:toPid});
+    ordered.push({type:"DRAW_CARD",card,triggerName,targetPid:toPid,skipTravel:true});
   }
   ordered.push(...(statQueue||[]).filter(a=>a.type!=="CARD_TRANSFER"&&!isStaleTurnDrawStep(a)));
   return ordered;

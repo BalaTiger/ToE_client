@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { dedupeInferredDiscardTransfers } from '../game/animQueueHelpers';
+import { getVisualEventIdsFromState, markConsumedVisualEvents } from '../game/visualEvents';
 
 export function useAnimationQueue({
   gs,
@@ -21,6 +22,7 @@ export function useAnimationQueue({
   visualStateLocks,
   suppressNextBroadcastRef,
   receivedGsRef,
+  consumedVisualEventIdsRef,
   normalizePendingGs = state => state,
   ANIM_STEP_GAP,
   CARD_REVEAL_DURATION,
@@ -186,6 +188,10 @@ export function useAnimationQueue({
       }
       const callback = animCallbackRef.current;
       if (next?.log) syncVisibleLog(next.log);
+      const nextVisualEventIds = getVisualEventIdsFromState(next);
+      if (nextVisualEventIds.length && consumedVisualEventIdsRef?.current) {
+        markConsumedVisualEvents(consumedVisualEventIdsRef.current, nextVisualEventIds.map(id => ({ id, type: 'consumed' })));
+      }
       if (callback) {
         const pendingBeforeCallback = pendingGsRef.current;
         const callbackBeforeCallback = animCallbackRef.current;
