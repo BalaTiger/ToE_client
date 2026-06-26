@@ -93,6 +93,7 @@ import {
   applyTutorialStepState,
   clearTutorialWinState,
   startNextTurn as _startNextTurn,
+  grantTsathogguaSlimeAtEndTurn,
   checkWin,
   playerDrawCard,
   aiDrawAndApply,
@@ -4862,10 +4863,23 @@ export default function Game(){
   }
 
   function beginEndTurnReplay(baseGs,P,D,Disc,L,preQueue=[]){
+    // 回合结束事件排序：黄液(蟾蜍之神)属神牌事件，应先于"无尽通道"(其他卡牌)结算。
+    // 故在无尽通道重播前先发放黄液并把其动画排到队首；并打标记让 startNextTurn 不再重复发放。
+    let slimePreQueue=[];
+    const slimeLog=[];
+    const playersBeforeSlime=copyPlayers(P);
+    const tsgSlimeGrant=grantTsathogguaSlimeAtEndTurn(P,0,slimeLog,[]);
+    if(tsgSlimeGrant){
+      L.push(...slimeLog);
+      const zPatch=appendPublicCardGainTriggers(baseGs,P,tsgSlimeGrant.ownerIdx,tsgSlimeGrant.cards);
+      slimePreQueue=buildTsathogguaSlimeGrantQueue({_tsgSlimeGrantEvents:[tsgSlimeGrant],zhuLight:baseGs.zhuLight||null,players:P});
+      baseGs={...baseGs,_tsgSlimeGrantedAtTurnEnd:true,...(zPatch.proliferatingZQueue?{proliferatingZQueue:zPatch.proliferatingZQueue}:{})};
+    }
     const nextState=buildEndTurnReplayStartState({baseGs,players:P,deck:D,discard:Disc,log:L,actorIndex:0,actorLabel:'你'});
     if(!nextState)return false;
-    startEndTurnReplaySyncQueue(0,P?.[0]?.name||'你',{...baseGs,players:P,discard:Disc});
-    const queue=[...preQueue,endlessCorridorTunnelStep()];
+    // 同步基线取发放黄液前的玩家快照，黄液动画自带 VISUAL_LOCK 从该基线把黏液"长出"，远端重播才一致。
+    startEndTurnReplaySyncQueue(0,P?.[0]?.name||'你',{...baseGs,players:tsgSlimeGrant?playersBeforeSlime:P,discard:Disc});
+    const queue=[...slimePreQueue,...preQueue,endlessCorridorTunnelStep()];
     appendEndTurnReplaySyncQueue(queue,nextState.log?.slice((baseGs.log||[]).length)||[]);
     // 提前广播初始无尽通道动画，让远端同步开始播放
     const sync=endTurnReplaySyncQueueRef.current;

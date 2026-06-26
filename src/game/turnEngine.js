@@ -864,7 +864,7 @@ function endPreviousTurnCleanup(P, prevTurn) {
   return P;
 }
 
-function grantTsathogguaSlimeAtEndTurn(P, prevTurn, L, visualEvents = []) {
+export function grantTsathogguaSlimeAtEndTurn(P, prevTurn, L, visualEvents = []) {
   const p = P?.[prevTurn];
   if (!p || p.isDead || p.godName !== 'TSG' || !p.godLevel) return null;
   const count = GOD_DEFS.TSG.levels[(p.godLevel || 1) - 1]?.slimeCount || 0;
@@ -918,7 +918,10 @@ export function startNextTurn(gs, opts = {}) {
   // Reset multiplyUsed at the start of every turn
   const inheritedTsgSlimeGrantEvents = Array.isArray(gs._carryTsgSlimeGrantEvents) ? gs._carryTsgSlimeGrantEvents : [];
   const inheritedGodPowerBlockedEvents = Array.isArray(gs._carryGodPowerBlockedEvents) ? gs._carryGodPowerBlockedEvents : [];
-  gs = { ...gs, multiplyUsed: false, _visualEvents: [...inheritedGodPowerBlockedEvents], _tsgSlimeGrantEvents: null, _carryTsgSlimeGrantEvents: null, _carryGodPowerBlockedEvents: null };
+  // 黄液（蟾蜍之神回合结束发放）属神牌事件，按 END_TURN_PRIORITY 应先于其他卡牌（如无尽通道）结算。
+  // 若已在无尽通道重播前发放（见 App.beginEndTurnReplay），此处跳过，避免重复发放。
+  const skipEndTurnTsgSlimeGrant = !!gs._tsgSlimeGrantedAtTurnEnd;
+  gs = { ...gs, multiplyUsed: false, _visualEvents: [...inheritedGodPowerBlockedEvents], _tsgSlimeGrantEvents: null, _carryTsgSlimeGrantEvents: null, _carryGodPowerBlockedEvents: null, _tsgSlimeGrantedAtTurnEnd: undefined };
   const visualEvents = gs._visualEvents;
   const inheritedGodPowerBlockedEventCount = visualEvents.length;
   const N = gs.players.length;
@@ -933,7 +936,7 @@ export function startNextTurn(gs, opts = {}) {
   let inspectionMeta = makeInspectionMeta(gs);
   const turnDir = gs.turnDirection || 1;
   const tsgSlimeGrantEvents = [...inheritedTsgSlimeGrantEvents];
-  const tsgSlimeGrant = grantTsathogguaSlimeAtEndTurn(P, gs.currentTurn, L, visualEvents);
+  const tsgSlimeGrant = skipEndTurnTsgSlimeGrant ? null : grantTsathogguaSlimeAtEndTurn(P, gs.currentTurn, L, visualEvents);
   if (tsgSlimeGrant) {
     tsgSlimeGrantEvents.push(tsgSlimeGrant);
     const proliferatingZPatch = appendPublicCardGainTriggers(gs, P, tsgSlimeGrant.ownerIdx, tsgSlimeGrant.cards);

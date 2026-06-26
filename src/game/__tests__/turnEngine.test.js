@@ -776,6 +776,21 @@ describe('turnEngine stat events', () => {
     expect(queue[3]).toMatchObject({ durationMs: 180 });
   });
 
+  it('黄液已在回合结束前(无尽通道之前)发放时，startNextTurn 不再重复发放', () => {
+    const players = [
+      makePlayer({ name: '你', godName: 'TSG', godLevel: 1 }),
+      makePlayer({ name: '艾伦' }),
+    ];
+    // _tsgSlimeGrantedAtTurnEnd 表示黄液已先于无尽通道结算（神牌事件优先），此处应跳过
+    const gs = makeGs({ players, currentTurn: 0, log: [], _tsgSlimeGrantedAtTurnEnd: true });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players[0].hand.filter(c => c.isTsathogguaSlime)).toHaveLength(0);
+    expect(result._tsgSlimeGrantEvents || []).toHaveLength(0);
+    expect(result._tsgSlimeGrantedAtTurnEnd).toBeUndefined(); // 标记已清除，不影响后续回合
+  });
+
   it('撒托古亚信徒摸牌阶段消耗黏液并额外摸牌', () => {
     const slime = createTsathogguaSlimeCard();
     const players = [
