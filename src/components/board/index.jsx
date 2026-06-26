@@ -7,6 +7,7 @@ import { AnimatedCardBack, AreaTooltip, CardCodeLabel, DDCard, DDCardBack, GodTo
 import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
 import { ThemeCornerOrnament } from '../theme/ThemeOrnaments';
 import { getFontZoomCompensate } from '../../utils/scale';
+import { _getZoomCompensatedRect } from '../../utils/dom';
 
 function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth,labelColor='var(--toe-muted,#a07838)',valueColor='var(--toe-text,#c8a96e)',lineColor='var(--toe-line-dim,#2a1a08)'}){
   const fontZoom = getFontZoomCompensate(scaleRatio);
@@ -507,10 +508,17 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
   const stretchedHandSlotWidth=`calc((100% - ${HAND_CARD_GAP*3}px) / 4)`;
   const handStripRef=React.useRef(null);
   const [handStripWidth,setHandStripWidth]=React.useState(0);
+  const [handStripVisualWidth,setHandStripVisualWidth]=React.useState(0);
   React.useLayoutEffect(()=>{
     const el=handStripRef.current;
     if(!el)return;
-    const update=()=>setHandStripWidth(el.clientWidth||0);
+    const update=()=>{
+      setHandStripWidth(el.clientWidth||0);
+      // 棋盘外层有 CSS zoom，clientWidth 是未缩放的布局宽度；用 zoom 补偿后的矩形得到真实可见宽度，
+      // 否则放大屏上即便卡牌可见宽度已 >90px，布局宽度仍偏小，阈值无法触发完整卡图。
+      const r=_getZoomCompensatedRect(el);
+      setHandStripVisualWidth(r?.width||el.clientWidth||0);
+    };
     update();
     if(typeof ResizeObserver==='undefined')return;
     const ro=new ResizeObserver(update);
@@ -520,6 +528,20 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
   const computedCardWidth=handStripWidth>0
     ? Math.max(0,(handStripWidth-(HAND_CARD_GAP*3))/4)
     : HAND_CARD_WIDTH;
+  // 卡牌的真实可见宽度（已考虑棋盘缩放），用于决定是否升级为带描述的完整卡图。
+  const visualCardWidth=handStripWidth>0
+    ? computedCardWidth*(handStripVisualWidth/handStripWidth)
+    : computedCardWidth;
+  // 完整卡图(82px) / 紧凑卡图(62px) 的自然宽度，与 DDCard 内部一致。
+  const FULL_NATURAL_W=82,COMPACT_NATURAL_W=62;
+  // 可见宽度足够（约等于自己手牌区完整卡图）时用带描述的完整卡图，否则退化为紧凑卡图。
+  // ponytail: 阈值取完整卡自然宽度附近；描述放得下才升级。
+  const FULL_REVEAL_CARD_MIN_VISUAL_WIDTH=80;
+  const useFullRevealCards=showFaceUp&&handStripWidth>0&&visualCardWidth>=FULL_REVEAL_CARD_MIN_VISUAL_WIDTH;
+  // 亮明手牌整体用 CSS zoom 缩放到槽位宽度（与玩家自己手牌区一致），字号/字位随之等比缩放，避免与自己手牌区差异过大。
+  const revealCardZoom=computedCardWidth>0
+    ? computedCardWidth/(useFullRevealCards?FULL_NATURAL_W:COMPACT_NATURAL_W)
+    : 1;
   const filledHandFrameStyle={width:'100%',minWidth:'100%',height:'auto',aspectRatio:`${HAND_CARD_WIDTH}/${HAND_CARD_HEIGHT}`};
   const sharedHandFrameStyle=filledHandFrameStyle;
   const handOverlap=handCards.length>4
@@ -665,7 +687,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
                     borderRadius:3,
                   }}
                 ><DDCardBack small expansionKey={expansionKey} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/></div>
-                :<DDCard card={card} small onClick={onCardSelect?()=>onCardSelect(ci):undefined} highlight={!!onCardSelect} holderId={playerIndex} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/>}
+                :<DDCard card={card} small={!showFaceUp} compact={showFaceUp&&!useFullRevealCards} onClick={onCardSelect?()=>onCardSelect(ci):undefined} highlight={!!onCardSelect} holderId={playerIndex} frameStyle={showFaceUp?{zoom:revealCardZoom}:(shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle)}/>}
             </div>
           );
         })}
