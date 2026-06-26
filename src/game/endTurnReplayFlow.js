@@ -1,5 +1,6 @@
 import { cardLogText, formatSanLoss } from './coreUtils';
 import { getEndTurnReplayHandCards } from './endTurnEvents';
+import { withClearedTurnAnimFields } from './turnAnimState';
 
 export function buildEndTurnReplayStartState({
   baseGs,
@@ -22,7 +23,9 @@ export function buildEndTurnReplayStartState({
   };
   const introLog = `【无尽通道】${actorLabel}展示所有手牌：${handCards.map(card => cardLogText(card, { alwaysShowName: true })).join(' ')}`;
 
-  return {
+  // 清除行动方"回合开始摸牌"等展示残留字段（_drawnCard/_turnStartLogs 等）：否则无尽通道起始态带着这些，
+  // 远端会据此误重播一段回合开始动画（getTurnStartDrawnCard 命中 → 抢跑）。
+  return withClearedTurnAnimFields({
     ...baseGs,
     players,
     deck,
@@ -33,7 +36,7 @@ export function buildEndTurnReplayStartState({
     drawReveal: null,
     abilityData: {},
     _endTurnReplay: replay,
-  };
+  });
 }
 
 export function endlessCorridorTunnelStep() {
