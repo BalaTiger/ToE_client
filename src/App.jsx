@@ -130,6 +130,7 @@ import {
   buildGodPowerBlockedLog,
   appendPublicCardGainTriggers,
   compareCaveDuelCards,
+  buildWorshipFromHandLog,
   buildProliferatingZDrawFlow,
   clearBlindZoneDecisionFlag,
   drawCardDecisionText,
@@ -328,7 +329,6 @@ const DEBUG_FORCE_CARD_TYPE_KEY='cthulhu_debug_force_card_type';
 const DEBUG_FORCE_ZONE_CARD_KEY='cthulhu_debug_force_zone_card_key';
 const DEBUG_FORCE_ZONE_CARD_NAME_KEY='cthulhu_debug_force_zone_card_name';
 const DEBUG_FORCE_GOD_CARD_KEY='cthulhu_debug_force_god_card_key';
-const DEBUG_PLAYER_ROLE_KEY='cthulhu_debug_player_role';
 const DEBUG_TUTORIAL_PROMPT_MODE_KEY='cthulhu_debug_tutorial_prompt_mode';
 const DEBUG_FORCE_TUTORIAL_PROMPT_KEY='cthulhu_debug_force_tutorial_prompt';
 const DEBUG_EXPANSION_KEY='cthulhu_debug_expansion';
@@ -697,7 +697,6 @@ export default function Game(){
     ()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_ZONE_CARD_NAME_KEY)||FIXED_ZONE_CARD_VARIANTS_BY_KEY.A1?.find(card=>card.expansion==='地神的潜影')?.name||''
   );
   const [debugForceGodCardKey,setDebugForceGodCardKey]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_GOD_CARD_KEY)||'NYA');
-  const [debugPlayerRole,setDebugPlayerRole]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_PLAYER_ROLE_KEY)||'auto');
   const [debugExpansionKey,setDebugExpansionKey]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_EXPANSION_KEY)||'地神的潜影');
   const [debugTutorialPromptMode,setDebugTutorialPromptMode]=useState(()=>{
     if(!isLocalTestMode)return 'default';
@@ -725,7 +724,6 @@ export default function Game(){
         debugForceZoneCardKey:null,
         debugForceZoneCardName:null,
         debugForceGodCardKey:null,
-        debugPlayerRole:'auto',
         debugTutorialPromptMode:'default',
         debugExpansionKey:EXPANSION_RANDOM_KEY,
       };
@@ -738,7 +736,6 @@ export default function Game(){
       debugForceZoneCardKey,
       debugForceZoneCardName,
       debugForceGodCardKey,
-      debugPlayerRole,
       debugTutorialPromptMode,
       debugExpansionKey,
     };
@@ -751,7 +748,6 @@ export default function Game(){
     debugForceZoneCardKey,
     debugForceZoneCardName,
     debugForceGodCardKey,
-    debugPlayerRole,
     debugTutorialPromptMode,
     debugExpansionKey,
   ]);
@@ -770,11 +766,6 @@ export default function Game(){
     safeLS.set(DEBUG_FORCE_ZONE_CARD_NAME_KEY,debugForceZoneCardName);
     safeLS.set(DEBUG_FORCE_GOD_CARD_KEY,debugForceGodCardKey);
   },[isLocalTestMode,debugForceCard,debugForceCardTarget,debugForceCardKeep,debugForceCardType,debugForceZoneCardKey,debugForceZoneCardName,debugForceGodCardKey]);
-
-  useEffect(()=>{
-    if(!isLocalTestMode)return;
-    safeLS.set(DEBUG_PLAYER_ROLE_KEY,debugPlayerRole);
-  },[isLocalTestMode,debugPlayerRole]);
 
   useEffect(()=>{
     if(!isLocalTestMode)return;
@@ -1463,7 +1454,6 @@ export default function Game(){
           null,
           null,
           'auto',
-          null,
           null,
           null,
           null,
@@ -2812,9 +2802,12 @@ export default function Game(){
         const consumedApophisTargetSeq=Math.max(0,...(rawResult._aiHuntEvents||[])
           .map(evt=>evt?.apophisTargetEvent?.seq||0)
           .filter(Boolean));
+        // 信仰后的状态（含新邪神之力）已由下方 STATE_PATCH 落定；行动结算动画的视觉基线也要带上它，
+        // 否则后续步骤会把面板快照退回信仰前，导致“邪神之力”标签闪现后又消失、看起来比日志晚。
+        const actionBaselinePlayers=rawResult._playersBeforeSkillAction||gs.players;
         const actionOldGsForApophis=consumedApophisTargetSeq
-          ? {...gs,_apophisTargetSeq:Math.max(gs._apophisTargetSeq||0,consumedApophisTargetSeq)}
-          : gs;
+          ? {...gs,players:actionBaselinePlayers,_apophisTargetSeq:Math.max(gs._apophisTargetSeq||0,consumedApophisTargetSeq)}
+          : {...gs,players:actionBaselinePlayers};
         const actionStatQBase=buildAnimQueue(actionOldGsForApophis,fakeGs(newGs.players,nextLog));
         const hasRoseThornGiftAllHand=newMsgs.some(m=>typeof m==='string'&&m.includes('【玫瑰倒刺】')&&m.includes('将全部手牌交给了'));
         const actionStatQ=fullHandSwapQ.length
@@ -4423,7 +4416,6 @@ export default function Game(){
         debugForceZoneCardKey={debugForceZoneCardKey} setDebugForceZoneCardKey={setDebugForceZoneCardKey}
         debugForceZoneCardName={debugForceZoneCardName} setDebugForceZoneCardName={setDebugForceZoneCardName}
         debugForceGodCardKey={debugForceGodCardKey} setDebugForceGodCardKey={setDebugForceGodCardKey}
-        debugPlayerRole={debugPlayerRole} setDebugPlayerRole={setDebugPlayerRole}
         debugTutorialPromptMode={debugTutorialPromptMode} setDebugTutorialPromptMode={setDebugTutorialPromptMode}
         debugExpansionKey={debugExpansionKey} setDebugExpansionKey={setDebugExpansionKey}
       />
@@ -4539,7 +4531,7 @@ export default function Game(){
             <span className="surveyMascotBook"/>
           </span>
         </button>
-        {showFullLog&&<FullLogModal log={gs.log||[]} onClose={()=>setShowFullLog(false)}/>}
+        {showFullLog&&<FullLogModal log={gs.gameOver?.reason&&!(gs.log||[]).includes(gs.gameOver.reason)?[...(gs.log||[]),gs.gameOver.reason]:(gs.log||[])} onClose={()=>setShowFullLog(false)}/>}
         {roleRevealAnim&&<RoleRevealAnim role={roleRevealAnim.role} onDone={()=>_onRoleRevealDone(roleRevealAnim.pendingGs)}/>}
         <style>{GLOBAL_STYLES}</style>
       </div>
@@ -4665,7 +4657,7 @@ export default function Game(){
       return true;
     }
     if(flow.action==='triggerQueueAndContinue'){
-      triggerAnimQueue(flow.queue,null,()=>continueProliferatingZDraws(flow.state));
+      triggerAnimQueue(flow.queue,null,()=>{if(!continueProliferatingZDraws(flow.state))setGs(flow.state);});
       return true;
     }
     if(flow.action==='triggerQueue'){
@@ -5012,8 +5004,23 @@ export default function Game(){
           ...(gs.abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:gs.abilityData.cthDrawsRemaining}:{}),
         },
       });
-      syncVisibleLog(L);
-      setGs({...newGs,phase,abilityData});
+      // 决策弹窗出现前，先播放卡牌效果动画（如"空谷传音"全体SAN扣减+检定），
+      // 否则直接 setGs 会让 SAN 扣减瞬间生效、跳过特效，看起来直接进入了检定/决策。
+      const inspectionResult=buildInspectionAwareAnimQueue(gs,newGs,{buildAnimQueue,copyPlayers});
+      if(inspectionResult.inspectionEvents.length){
+        lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionResult.inspectionEvents.map(ev=>ev.seq||0));
+      }
+      const effectQueue=inspectionResult.inspectionEvents.length
+        ?inspectionResult.queue
+        :bindAnimLogChunks(inspectionResult.queue,splitAnimBoundLogs(L.slice(gs.log.length)));
+      // 已在队列里播放的检定标记为已消费，避免检定 useEffect 再次重放
+      const decisionGs={...newGs,phase,abilityData,_inspectionSeq:Math.max(newGs._inspectionSeq||0,inspectionResult.inspectionSeq||0)};
+      if(effectQueue.length){
+        triggerAnimQueue([...effectQueue,statePatchStep({players:P,discard:Disc})],decisionGs);
+      }else{
+        syncVisibleLog(L);
+        setGs(decisionGs);
+      }
       return;
     }
     const buildDrawKeepEffectQueue=(oldGs,nextGs,logDelta)=>{
@@ -5048,10 +5055,10 @@ export default function Game(){
     if(dr.fromProliferatingZ&&!win&&newGs.phase==='ACTION'){
       const queue=buildDrawKeepEffectQueue(gs,newGs,L.slice(gs.log.length));
       if(queue.length){
-        triggerAnimQueue([...queue,statePatchStep({players:P,discard:Disc})],null,()=>continueProliferatingZDraws(newGs));
+        triggerAnimQueue([...queue,statePatchStep({players:P,discard:Disc})],null,()=>{if(!continueProliferatingZDraws(newGs))setGs(newGs);});
       }else{
         syncVisibleLog(L);
-        continueProliferatingZDraws(newGs);
+        if(!continueProliferatingZDraws(newGs))setGs(newGs);
       }
       return;
     }
@@ -5506,7 +5513,9 @@ export default function Game(){
       });
     }else if(dr.fromProliferatingZ){
       triggerAnimQueue(queue,newGs,()=>{
-        continueProliferatingZDraws(newGs);
+        // 增殖的Z队列为空时 continueProliferatingZDraws 返回 false 且不提交状态，
+        // 必须在此落定弃牌后的 newGs，否则会卡在 DRAW_REVEAL 决策弹窗里死循环。
+        if(!continueProliferatingZDraws(newGs))setGs(newGs);
       });
     }else{
       // 播放动画后更新游戏状态
@@ -5889,6 +5898,8 @@ export default function Game(){
       );
       const freshInspectionEvents=(processed.inspectionMeta._inspectionEvents||[])
         .filter(ev=>ev?.seq>oldInspectionSeq);
+      // 续播的检定已在 continuationQueue 中播放，标记为已见，避免自动检定 useEffect 再重播一次
+      if(freshInspectionEvents.length)markInspectionEventsSeen(freshInspectionEvents);
       const continuationQueue=freshInspectionEvents.length
         ? buildInspectionEventFlow(
           {players:beforeContinuationPlayers,log:beforeContinuationLog},
@@ -7428,7 +7439,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     
     if(action==='keepHand'){
       P[0].roleRevealed=true;
-      P[0].revealHand=true;
       if(!fromEndTurnReplay)P[0].hand.push({...godCard});
       L.push('你（邪祀者）将邪神牌收入手牌');
     } else if(action==='worship'||action==='upgrade'||action==='forcedConvert'){
@@ -8578,7 +8588,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       activeDebugConfig.debugForceZoneCardKey,
       activeDebugConfig.debugForceZoneCardName,
       activeDebugConfig.debugForceGodCardKey,
-      activeDebugConfig.debugPlayerRole,
       startNextTurn,
       resolvedExpansionKey,
     );
@@ -8953,11 +8962,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     let L=[...gs.log];
     let inspectionMeta=makeInspectionMeta(gs);
     if(isUpgrade){
-      L.push(`你从手牌升级邪神之力至Lv.${P[0].godLevel+1}（骷髅头不计）`);
-    } else if(P[0].godName&&P[0].godName!==godKey){
-      L.push(`你信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
+      L.push(buildWorshipFromHandLog('你',godCard,{upgrade:true,level:P[0].godLevel+1}));
     } else {
-      L.push(`你从手牌直接信仰 ${godCard.name}，获得${godCard.power}(Lv.1)（骷髅头不计）`);
+      L.push(buildWorshipFromHandLog('你',godCard));
     }
     if(isUpgrade){
       P[0].godLevel++;P[0].godZone.push({...godCard});
@@ -8984,7 +8991,10 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       ?createGodPowerBlockedEvent({playerIdx:0,playerName:P[0].name,msgs:[buildGodPowerBlockedLog(P[0])]})
       :null;
     const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,apophisNight:nextApophisNight,phase:isShuBlessingHand?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessingHand?{shuOffspringCount:shuOffspringCountHand,shuChooserIdx:0}:gs.abilityData,_visualEvents:blockedGodPowerEvent?[blockedGodPowerEvent]:[],...inspectionMeta,...(win?{gameOver:win}:{})};
-    const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
+    // 让"邪神之力"标签与"从手牌信仰"日志同时出现：把信仰后的神之力字段（及已离手的神牌）并入动画基线，
+    // 使首个动画步骤的视觉快照就带上新神之力，而不是等到整段动画结束才刷新角色面板。
+    const godBadgeBaseline=gs.players.map((p,i)=>i===0?{...p,hand:[...P[0].hand],godName:P[0].godName,godLevel:P[0].godLevel,godEncounters:P[0].godEncounters,godZone:P[0].godZone.map(c=>({...c}))}:p);
+    const queue=bindAnimLogChunks(buildAnimQueue({...gs,players:godBadgeBaseline},newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
     if(queue.length)triggerAnimQueue(queue,newGs);
     else setGs(newGs);
   }
@@ -10211,6 +10221,13 @@ const GLOBAL_STYLES=`
   @keyframes scrollLeft {
     0% { transform: translateX(100%); }
     100% { transform: translateX(-100%); }
+  }
+  /* 信仰瞬间：邪神之力标签内 ^ 形箭头向上连续滚动 */
+  @keyframes godWorshipChevron {
+    0%   { transform: translateY(125%); opacity: 0; }
+    18%  { opacity: 0.9; }
+    82%  { opacity: 0.9; }
+    100% { transform: translateY(-125%); opacity: 0; }
   }
 
   /* ── Mobile / small-screen overrides ── */

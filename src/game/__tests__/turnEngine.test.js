@@ -1123,7 +1123,7 @@ describe('turnEngine stat events', () => {
     expect(result.players[1].damageBonusTurnOwner).toBe(2);
   });
 
-  it('reveals an unrevealed cultist when they keep an encountered god card in hand', () => {
+  it('reveals an unrevealed cultist (role only, not their whole hand) when they keep an encountered god card in hand', () => {
     const oldGod = makeGodCard('CTH');
     const drawnGod = makeGodCard('ZHU');
     const players = [
@@ -1147,7 +1147,7 @@ describe('turnEngine stat events', () => {
     expect(result.P[1].hand).toContainEqual(expect.objectContaining({ id: drawnGod.id }));
     expect(result.P[1]).toMatchObject({
       roleRevealed: true,
-      revealHand: true,
+      revealHand: false,
       godName: 'CTH',
       godLevel: 3,
     });

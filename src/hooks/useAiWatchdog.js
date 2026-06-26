@@ -26,47 +26,48 @@ export function isAiAutoDecisionPhase(gs) {
   return gs?.abilityData?.[sourceKey] === gs?.currentTurn;
 }
 
-export function getSinglePlayerAiDecisionSeat(gs) {
+// 返回该决策阶段的"决策者座位"（无论 AI 还是本地玩家）；非决策阶段返回 null。
+export function getSinglePlayerDecisionSeat(gs) {
   if (!gs || isMultiplayerGame(gs) || gs.gameOver) return null;
   const ad = gs.abilityData || {};
   switch (gs.phase) {
     case 'TSG_SLIME_BALANCE':
     case 'ETHEREALIZE_DECISION':
     case 'ETHEREALIZE_SELECT_TARGET':
-      return isAiSeat(gs, ad.targetIdx) ? ad.targetIdx : null;
-    case 'BURY_ALIVE_SELECT': {
-      const idx = ad.targets?.[ad.targetIndex || 0];
-      return isAiSeat(gs, idx) ? idx : null;
-    }
+      return ad.targetIdx ?? null;
+    case 'BURY_ALIVE_SELECT':
+      return ad.targets?.[ad.targetIndex || 0] ?? null;
     case 'IGNITE_TORCH_DISCARD':
     case 'ALBINO_CREATURE_SELECT_CARD':
     case 'DECIPHER_STONE_CARVING':
     case 'GRAVE_DIG_SELECT':
-      return isAiSeat(gs, ad.playerIndex) ? ad.playerIndex : null;
-    case 'FIRST_COME_PICK_SELECT': {
-      const idx = ad.pickOrder?.[ad.pickIndex || 0];
-      return isAiSeat(gs, idx) ? idx : null;
-    }
+      return ad.playerIndex ?? null;
+    case 'FIRST_COME_PICK_SELECT':
+      return ad.pickOrder?.[ad.pickIndex || 0] ?? null;
     case 'SAME_ABYSS_SELECT':
-      return isAiSeat(gs, ad.targetIdx) ? ad.targetIdx : null;
+      return ad.targetIdx ?? null;
+    // CAVE_DUEL_SELECT_CARD is only ever entered when a human must pick a card
+    // (all-AI duels resolve inline), so it is intentionally absent here.
+    case 'SHU_SELECT_TARGET':
+      return ad.shuChooserIdx ?? gs.currentTurn ?? null;
     case 'SPHINX_GUESS':
     case 'NYA_BORROW':
     case 'TORTOISE_ORACLE_SELECT':
-      return isAiCurrentTurn(gs) ? gs.currentTurn : null;
-    // CAVE_DUEL_SELECT_CARD is only ever entered when a human must pick a card
-    // (all-AI duels resolve inline). The AI's card is chosen inside
-    // caveDuelSelectCard, so this phase must never auto-resolve for the player.
-    case 'SHU_SELECT_TARGET': {
-      const idx = ad.shuChooserIdx ?? gs.currentTurn;
-      return isAiSeat(gs, idx) ? idx : null;
-    }
     case 'MULTIPLY_SELECT_TARGET':
-      return isAiCurrentTurn(gs) ? gs.currentTurn : null;
+      return gs.currentTurn ?? null;
     case 'ZHU_HIDE_AI_DRAW':
-      return isAiCurrentTurn(gs) ? gs.currentTurn : null;
+      // 决策者是烛九阴(ZHU)的信徒——决定是否把对方将摸的牌藏到牌堆底，
+      // 不是正在摸牌的那名 AI。错判会让看门狗替本地玩家自动跳过藏牌弹窗。
+      return ad.zhuGuard?.ownerIdx ?? gs.zhuLight?.ownerIdx ?? gs.currentTurn ?? null;
     default:
       return null;
   }
+}
+
+// 仅当该阶段的决策者是 AI 时返回其座位；本地玩家的决策返回 null（看门狗不得代为推进）。
+export function getSinglePlayerAiDecisionSeat(gs) {
+  const seat = getSinglePlayerDecisionSeat(gs);
+  return seat != null && isAiSeat(gs, seat) ? seat : null;
 }
 
 /**
@@ -87,7 +88,11 @@ export function useAiWatchdog({ gs, anim, showTutorial, softGuidePauseActive = f
   // ── Stuck recovery: AI 处于需要玩家交互的 phase ──────────────
   useEffect(() => {
     if (!gs || isMultiplayerGame(gs) || gs.gameOver || anim || showTutorial || softGuidePauseActive) return;
-    const aiDecisionSeat = getSinglePlayerAiDecisionSeat(gs);
+    const decisionSeat = getSinglePlayerDecisionSeat(gs);
+    // 决策阶段属于本地玩家时，必须让玩家自己决定，看门狗绝不能强制推进——
+    // 否则会在 AI 回合触发玩家决策（如黏液平分）时吞掉弹窗并误报"状态异常"。
+    if (decisionSeat != null && !isAiSeat(gs, decisionSeat)) return;
+    const aiDecisionSeat = decisionSeat;
     if (aiDecisionSeat != null) {
       const t = setTimeout(() => recoverRef.current?.('decision', { phase: gs.phase, seat: aiDecisionSeat }), 700);
       return () => clearTimeout(t);

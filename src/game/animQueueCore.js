@@ -48,6 +48,15 @@ function mergeStatValuesIntoPlayers(basePlayers = [], statPlayers = []) {
   return base;
 }
 
+// 中途结算（HP/SAN/神域）会用最终玩家快照，但其中的"最终手牌"不能提前出现：
+// 手牌图像只应在收/送动画真正落地（队列结束）时变化。这里用 handSource 的手牌覆盖 snapshot，
+// 让中途的视觉补丁保留出手/收牌前的手牌，其余字段仍取 snapshot。
+function snapshotWithHands(snapshot = [], handSource = []) {
+  return snapshot.map((player, idx) =>
+    player ? { ...player, hand: [...(handSource[idx]?.hand ?? player.hand ?? [])] } : player
+  );
+}
+
 function attachVisualTimelineToSteps(steps = [], beforePlayers = [], beforeDiscard = [], afterPlayers = [], afterDiscard = []) {
   let cursorPlayers = clonePlayersForTimeline(beforePlayers);
   let cursorDiscard = Array.isArray(beforeDiscard) ? [...beforeDiscard] : [];
@@ -58,7 +67,7 @@ function attachVisualTimelineToSteps(steps = [], beforePlayers = [], beforeDisca
       ? playersAfterStatEvents(cursorPlayers, step.statEvents)
       : cursorPlayers;
     const nextPlayers = hasStatEvents
-      ? mergeStatValuesIntoPlayers(afterPlayers, statNextPlayers)
+      ? snapshotWithHands(mergeStatValuesIntoPlayers(afterPlayers, statNextPlayers), cursorPlayers)
       : cursorPlayers;
     const nextDiscard = step.type === 'DISCARD' && step.card
       ? [...cursorDiscard, step.card]
@@ -85,7 +94,7 @@ function attachVisualTimelineToSteps(steps = [], beforePlayers = [], beforeDisca
       ...step,
       visualTimeline: [
         ...(Array.isArray(step.visualTimeline) ? step.visualTimeline : []),
-        { atMs: 520, patch: { players: afterPlayers, discard: afterDiscard } },
+        { atMs: 520, patch: { players: snapshotWithHands(afterPlayers, cursorPlayers), discard: afterDiscard } },
       ],
     };
   });

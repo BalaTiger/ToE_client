@@ -291,6 +291,14 @@ export const getCaveDuelDisplayNumber = card => (
   Number.isFinite(card?.number) ? card.number : 0
 );
 
+// 统一“从手牌信仰邪神”的日志格式（玩家自身、AI、远端玩家一致）。
+// who: 主语（本地玩家为“你”，其他角色为其名字）。
+export const buildWorshipFromHandLog = (who, godCard, { upgrade = false, level = 1 } = {}) => (
+  upgrade
+    ? `${who} 从手牌升级邪神之力至 Lv.${level}（骷髅头不计）`
+    : `${who} 从手牌信仰 ${godCard?.name}，获得${godCard?.power}(Lv.1)（骷髅头不计）`
+);
+
 export const compareCaveDuelCards = (a, b) => {
   const aHasNumber = Number.isFinite(a?.number);
   const bHasNumber = Number.isFinite(b?.number);

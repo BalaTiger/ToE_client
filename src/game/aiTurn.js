@@ -10,6 +10,7 @@ import {
   separateBlackGoatYoung,
   isWinHand,
   cardLogText,
+  buildWorshipFromHandLog,
   removeCardsFromDiscard,
   makeInspectionMeta,
   buildEtherealizeLoss,
@@ -782,9 +783,9 @@ export function aiStep(gs, opts = {}) {
         const worshipLogStart=L.length;
         P[ct].hand.splice(handGodIdx,1);
         if(P[ct].godName===hgc.godKey&&P[ct].godLevel<3){
-          L.push(`${P[ct].name} 从手牌升级邪神之力至Lv.${P[ct].godLevel+1}（骷髅头不计）`);
+          L.push(buildWorshipFromHandLog(P[ct].name,hgc,{upgrade:true,level:P[ct].godLevel+1}));
         } else if(!P[ct].godName||alreadyHasGod){
-          L.push(`${P[ct].name} 从手牌信仰 ${hgc.name}，获得${hgc.power}(Lv.1)（骷髅头不计）`);
+          L.push(buildWorshipFromHandLog(P[ct].name,hgc));
         }
         // Forced convert if worshipping different god
         if(alreadyHasGod){const converted=convertGodFollower(ct,gs.currentTurn,P,D,Disc,L,inspectionMeta,`${P[ct].name} 改信新神，${formatSanLoss(1)}`,hgc);P=converted.P;D=converted.D;Disc=converted.Disc;L=converted.L;inspectionMeta=converted.inspectionMeta;}

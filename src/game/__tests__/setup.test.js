@@ -257,7 +257,6 @@ describe('mkDeck', () => {
       null,
       null,
       null,
-      null,
       state => state,
       EXPANSION_RANDOM_KEY,
     );
@@ -283,7 +282,6 @@ describe('mkDeck', () => {
       null,
       null,
       null,
-      'auto',
       state => state,
       {
         expansionKey: '群星呼唤',
@@ -380,7 +378,6 @@ describe('initGame debug force draw', () => {
       'D3',
       '鼠群',
       null,
-      null,
       state => state,
       '地神的潜影'
     );
@@ -400,7 +397,6 @@ describe('initGame debug force draw', () => {
       'D3',
       '玫瑰倒刺',
       null,
-      null,
       state => state,
       '地神的潜影'
     );
@@ -417,7 +413,6 @@ describe('initGame debug force draw', () => {
       'zone',
       'D3',
       '玫瑰倒刺',
-      null,
       null,
       state => state,
       '地神的潜影'
@@ -437,7 +432,6 @@ describe('initGame debug force draw', () => {
       null,
       null,
       'APO',
-      null,
       state => state,
       '地神的潜影'
     );
@@ -455,7 +449,6 @@ describe('initGame debug force draw', () => {
       null,
       null,
       'TSG',
-      null,
       state => state,
       '地神的潜影'
     );
@@ -473,7 +466,6 @@ describe('initGame debug force draw', () => {
       'B1',
       '生命天平',
       null,
-      null,
       state => state,
       '地神的潜影'
     );
@@ -485,7 +477,6 @@ describe('initGame debug force draw', () => {
       'zone',
       'C1',
       '灵魂天平',
-      null,
       null,
       state => state,
       '地神的潜影'
@@ -505,7 +496,6 @@ describe('initGame debug force draw', () => {
       null,
       null,
       'TSG',
-      null,
       state => state,
       '地神的潜影'
     );
@@ -524,7 +514,6 @@ describe('initGame debug force draw', () => {
       null,
       null,
       'TSG',
-      null,
       state => state,
       EXPANSION_RANDOM_KEY
     );

@@ -573,11 +573,31 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
           )}
           {(player.godZone||[]).length>0&&player.godName&&(
             <span data-god-power-badge={playerIndex} style={{
+              position:'relative',overflow:'hidden',
               fontSize:8,color:GOD_DEFS[player.godName]?.col||'#c06020',
               background:'#100808',border:`1px solid ${GOD_DEFS[player.godName]?.col||'#c06020'}44`,
               borderRadius:2,padding:'1px 4px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
             }}>
               {GOD_DEFS[player.godName]?.power} Lv.{player.godLevel}
+              {/* 信仰/升级瞬间：^ 形箭头向上连续滚动一次后淡出（key 变化触发重播） */}
+              <span
+                key={`${player.godName}-${player.godLevel}`}
+                aria-hidden
+                style={{
+                  position:'absolute',inset:0,overflow:'hidden',pointerEvents:'none',
+                  display:'flex',flexDirection:'column',alignItems:'stretch',justifyContent:'flex-start',
+                  animation:'godWorshipChevron 1.05s ease-out forwards',
+                }}
+              >
+                {[0,1,2,3,4].map(r=>(
+                  <span key={r} style={{
+                    display:'block',width:'100%',textAlign:'center',
+                    color:'#ffe9b0',fontWeight:900,fontSize:11,lineHeight:0.72,letterSpacing:3,
+                    textShadow:`0 0 6px ${GOD_DEFS[player.godName]?.col||'#c06020'},0 0 3px #fff`,
+                    WebkitTextStroke:`0.5px ${GOD_DEFS[player.godName]?.col||'#c06020'}`,
+                  }}>^^^^^^^^</span>
+                ))}
+              </span>
             </span>
           )}
           {(player.etherealizeStacks||0)>0&&(

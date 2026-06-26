@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getSinglePlayerAiDecisionSeat, isAiAutoDecisionPhase } from '../useAiWatchdog';
+import { getSinglePlayerAiDecisionSeat, getSinglePlayerDecisionSeat, isAiAutoDecisionPhase } from '../useAiWatchdog';
 
 describe('isAiAutoDecisionPhase', () => {
   it('识别 AI 自己触发的玫瑰倒刺目标选择阶段', () => {
@@ -89,5 +89,32 @@ describe('getSinglePlayerAiDecisionSeat', () => {
       players,
       abilityData: { caveDuelSource: 1, caveDuelTarget: 0 },
     })).toBe(null);
+  });
+
+  it('AI 回合触发的玩家决策（如黏液平分）识别为本地玩家，AI 决策座位为 null', () => {
+    // 黛安娜(AI seat 2)回合内触发你(seat 0)的黏液平分：决策者是本地玩家
+    const state = {
+      _isMP: false,
+      phase: 'TSG_SLIME_BALANCE',
+      currentTurn: 2,
+      players,
+      abilityData: { targetIdx: 0 },
+    };
+    expect(getSinglePlayerDecisionSeat(state)).toBe(0);      // 决策者=本地玩家
+    expect(getSinglePlayerAiDecisionSeat(state)).toBe(null); // 看门狗不得代为推进
+  });
+
+  it('烛九阴藏牌(ZHU_HIDE_AI_DRAW)的决策者是信徒(owner)而非正在摸牌的AI', () => {
+    // 卡洛斯(AI seat 2)摸牌，但藏牌决策属于烛九阴信徒"你"(seat 0)
+    const state = {
+      _isMP: false,
+      phase: 'ZHU_HIDE_AI_DRAW',
+      currentTurn: 2,
+      players,
+      zhuLight: { ownerIdx: 0 },
+      abilityData: { zhuGuard: { ownerIdx: 0 }, drawerIdx: 2 },
+    };
+    expect(getSinglePlayerDecisionSeat(state)).toBe(0);      // 决策者=信徒(本地玩家)
+    expect(getSinglePlayerAiDecisionSeat(state)).toBe(null); // 不能被看门狗替玩家跳过
   });
 });

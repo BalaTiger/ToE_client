@@ -265,7 +265,7 @@ const SKILL_STEPS = [
     title: '求生成功',
 	body: [
       `看，你的运气很不错，有惊无险。当你掷出4~6点时，你可以收入区域牌而不承担负面效果。`,
-      `不过这样一来，其他人也都知道你是${TREASURE}了。一般来说，当你使用技能后，会自动揭晓身份。`,
+      `不过这样一来，其他人也都知道你是${TREASURE}了。当你使用某个身份特有的能力时，会自动揭晓身份。`,
     ],
     highlight: 'noSpotlight',
     lock: true,
@@ -555,8 +555,8 @@ const SKILL_STEPS = [
     id: TUTORIAL_FLOW.CULTIST_GOD_KEEP_HAND,
     title: '收入邪神牌',
 	body: [
-      `看来你也遭遇了${GOLD('邪神牌')}。`,
-	  `一般来说，遭遇邪神只有两个选项：要么${GOD('信仰')}，要么离开。但作为${CULTIST}，你还可以将它收入手牌。注意：这个行为也会揭晓你的身份。`,
+      `你也遭遇了${GOLD('邪神牌')}，但因为你已经亮明${CULTIST}身份，所以与对手不同，你不会按骷髅数失去${SAN}。`,
+	  `一般来说，遭遇邪神只有两个选项：要么${GOD('信仰')}，要么离开。但作为${CULTIST}，你还可以将它收入手牌。`,
     ],
     highlight: 'godKeepHandButton',
     lock: false,

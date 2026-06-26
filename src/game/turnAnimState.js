@@ -143,7 +143,7 @@ function buildGodPowerBlockedBoundaryQueue(state) {
   const turnStartLine = Array.isArray(state?._turnStartLogs) ? state._turnStartLogs[0] : null;
   const turnStartIdx = turnStartLine ? log.lastIndexOf(turnStartLine) : -1;
   if (turnStartIdx < 0) return [];
-  return getVisualEvents(state)
+  const events = getVisualEvents(state)
     .filter(event => event?.type === VISUAL_EVENT.GOD_POWER_BLOCKED)
     .filter(event => {
       const msgs = Array.isArray(event?.msgs) ? event.msgs : [];
@@ -151,8 +151,11 @@ function buildGodPowerBlockedBoundaryQueue(state) {
         const idx = log.indexOf(msg);
         return idx >= 0 && idx < turnStartIdx;
       });
-    })
-    .map(event => godPowerBlockedStepFromEvent(event, state));
+    });
+  if (events.length) {
+    try { console.log('[BUG1-DIAG] boundaryQueue godPowerBlocked', { currentTurn: state?.currentTurn, turnStartLine, ids: events.map(e => e.id), playerIdx: events.map(e => e.playerIdx) }); } catch { /* noop */ }
+  }
+  return events.map(event => godPowerBlockedStepFromEvent(event, state));
 }
 
 export function getTurnStartDrawBaselineLog(state) {
@@ -620,6 +623,18 @@ export function buildTurnStartDrawReplayQueue({
     ...(drawKeepTransferStep ? [drawKeepTransferStep] : []),
     ...(drawEffectStatePatch ? [drawEffectStatePatch] : []),
   ];
+  if (newGs?.phase === 'GOD_CHOICE') {
+    try {
+      console.log('[BUG2-DIAG] turnStart god-draw queue', {
+        drawnCard: drawnCard?.name,
+        queueTypes: queue.map(s => s?.type),
+        drawEffectTypes: drawEffectQ.map(s => s?.type),
+        statEvents: (Array.isArray(newGs?._statEvents) ? newGs._statEvents : []).map(e => ({ type: e?.type, target: e?.target, seq: e?.seq })),
+        statLogs: newGs?._statLogs,
+        drawLogs: newGs?._drawLogs,
+      });
+    } catch { /* noop */ }
+  }
   return {
     drawnCard,
     drawerPid,

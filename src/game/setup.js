@@ -297,7 +297,6 @@ export function initGame(
   debugForceZoneCardKey,
   debugForceZoneCardName,
   debugForceGodCardKey,
-  debugPlayerRole,
   startNextTurn,
   expansionKey = EXPANSION_RANDOM_KEY
 ) {
@@ -344,12 +343,6 @@ export function initGame(
   }
 
   const roles = mkRoles(N, isSinglePlayer);
-  if (
-    isSinglePlayer &&
-    [ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST].includes(debugPlayerRole)
-  ) {
-    roles[0] = debugPlayerRole;
-  }
   const players = names.map((name, i) => ({
     id: i,
     name,

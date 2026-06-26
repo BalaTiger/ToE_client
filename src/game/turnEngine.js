@@ -457,7 +457,6 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     });
   } else if (action === 'hand') {
     P[ci].roleRevealed = true;
-    P[ci].revealHand = true;
     P[ci].hand.push({ ...godCard }); msgs.push(`${P[ci].name}（邪祀者）将邪神牌收入手牌`);
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
   } else {

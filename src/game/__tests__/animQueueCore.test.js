@@ -183,6 +183,39 @@ describe('buildAnimQueue stat animations', () => {
     expect(sanStep.visualTimeline[1].patch.players[1].godZone[0].godKey).toBe('VRI');
   });
 
+  it('中途 HP/SAN 结算不提前改变手牌图像（手牌只在动画落地后变化）', () => {
+    const keep = { id: 'keep', key: 'A1', name: '保留' };
+    const sent = { id: 'sent', key: 'B1', name: '送出' };
+    const playersBefore = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '贝拉', san: 7, hand: [keep, sent] }),
+    ];
+    const playersAfter = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '贝拉', san: 6, hand: [keep] }), // 送出 sent 的同时失去 1 SAN
+    ];
+    const oldGs = makeGs({ players: playersBefore, log: [], _statEventSeq: 0 });
+    const newGs = makeGs({
+      players: playersAfter,
+      log: ['贝拉 失去 1 SAN'],
+      _statEventSeq: 1,
+      _statEvents: [
+        { type: 'SAN_LOSS', target: 1, from: { hp: 10, san: 7, isDead: false }, to: { hp: 10, san: 6, isDead: false }, seq: 1 },
+      ],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    const sanStep = queue.find(step => step.type === 'SAN_DAMAGE');
+    expect(sanStep).toBeTruthy();
+    // SAN 仍按原时序结算
+    expect(sanStep.visualTimeline[0].patch.players[1].san).toBe(7);
+    expect(sanStep.visualTimeline.at(-1).patch.players[1].san).toBe(6);
+    // 但所有中途视觉补丁里手牌都保持"出手前"的两张，不提前变成最终的一张
+    sanStep.visualTimeline.forEach(frame => {
+      expect(frame.patch.players[1].hand.map(c => c.id)).toEqual(['keep', 'sent']);
+    });
+  });
+
   it('阿波菲斯黑夜选目标会播放掷骰，追捕偏移时重播锁定动画', () => {
     const players = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' }), makePlayer({ name: '贝拉' })];
     const oldGs = makeGs({ players, log: [], _apophisTargetSeq: 1 });
