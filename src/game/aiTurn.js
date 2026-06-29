@@ -482,7 +482,7 @@ export function aiStep(gs, opts = {}) {
   let preSkillLogs=[];
   let preSkillDiscard=null;
 
-  const buildReturnPack = (nextGs, P_afterAction) => ({
+  const buildReturnPack = (nextGs, P_afterAction, P_beforeEndTurnReplay = null) => ({
     ...nextGs,
     _animAiDrawnCard: gs._aiDrawnCard ?? gs._drawnCard ?? null,
     _animDiscardedDrawnCard: gs._discardedDrawnCard ?? false,
@@ -491,6 +491,7 @@ export function aiStep(gs, opts = {}) {
     _playersBeforeSkillAction: playersBeforeSkillAction,
     _preSkillLogs: preSkillLogs,
     _preSkillDiscard: preSkillDiscard,
+    ...(P_beforeEndTurnReplay ? { _playersBeforeEndTurnReplay: P_beforeEndTurnReplay } : {}),
     ...(aiHuntEvents.length ? { _aiHuntEvents: aiHuntEvents } : {}),
     ...(animMultiplyEvent ? { _animMultiplyEvent: animMultiplyEvent } : {})
   });
@@ -852,11 +853,12 @@ export function aiStep(gs, opts = {}) {
     const restStatPatch=restStatEvents.length?{_statEvents:[...(gs._statEvents||[]),...restStatEvents],_statEventSeq:restStatEventSeq}:{};
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,...restStatPatch};
     discardAiHandToLimit(P, ct, Disc, L);
+    const _P_beforeEndTurnReplay = copyPlayers(P);
     const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,{...gs,...restStatPatch});
     P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;
     const _P_afterRest=copyPlayers(P);
     const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,restUsed:true,skillUsed:false,...restStatPatch,...replayed.statePatch,_aiEndTurnReplayQueue:replayed.replayQueue,_aiEndTurnReplayMsgs:replayed.replayMsgs}, opts);
-    return buildReturnPack(nextGs, _P_afterRest);
+    return buildReturnPack(nextGs, _P_afterRest, _P_beforeEndTurnReplay);
   }
 // 追猎者/邪祀者积极发动技能(65%); 寻宝者随进度提升(35%→55%)
   let huntContinue = true;
@@ -925,11 +927,12 @@ export function aiStep(gs, opts = {}) {
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
     discardAiHandToLimit(P, ct, Disc, L);
     appendAiEndTurnLog();
+    const _P_beforeEndTurnReplay = copyPlayers(P);
     const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,gs);
     P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};
     const _P_afterAction=copyPlayers(P);
     const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:gs.skillUsed,_aiEndTurnReplayQueue:replayed.replayQueue,_aiEndTurnReplayMsgs:replayed.replayMsgs}, opts);
-    return buildReturnPack(nextGs, _P_afterAction);
+    return buildReturnPack(nextGs, _P_afterAction, _P_beforeEndTurnReplay);
   }
 
   // 如果无法使用技能，重置huntContinue为false，防止无限循环
@@ -1367,6 +1370,7 @@ export function aiStep(gs, opts = {}) {
   if(winAfterDiscard){
     return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:winAfterDiscard,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:(useSkill||gs.skillUsed),_animAiDrawnCard:gs._aiDrawnCard??gs._drawnCard??null,_animDiscardedDrawnCard:gs._discardedDrawnCard??false,_aiName:ai.name,_playersBeforeNextDraw:copyPlayers(P),_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard,_aiHuntEvents:aiHuntEvents};
   }
+  const _P_beforeEndTurnReplay = copyPlayers(P);
   const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,gs);
   P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};
   const _P_afterAction=copyPlayers(P);
@@ -1391,6 +1395,7 @@ export function aiStep(gs, opts = {}) {
     _animDiscardedDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?false:(gs._discardedDrawnCard??false),
     _aiName:ai.name,
     _playersBeforeNextDraw:_P_afterAction,
+    _playersBeforeEndTurnReplay:_P_beforeEndTurnReplay,
     _playersBeforeSkillAction:playersBeforeSkillAction,
     _preSkillLogs:preSkillLogs,
     _preSkillDiscard:preSkillDiscard,

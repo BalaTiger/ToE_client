@@ -334,6 +334,16 @@ export function applySanLossToPlayerWithInspection(targetIndex, amount, startInd
   };
 }
 
+function splitGodEncounterLogs(effectMsgs = []) {
+  const logs = (Array.isArray(effectMsgs) ? effectMsgs : []).filter(line => typeof line === 'string' && line.length);
+  const inspectionStart = logs.findIndex(line => line.includes('的SAN检定结果为'));
+  if (inspectionStart < 0) return { encounterLogs: logs, inspectionLogs: [] };
+  return {
+    encounterLogs: logs.slice(0, inspectionStart),
+    inspectionLogs: logs.slice(inspectionStart),
+  };
+}
+
 export function abandonGodFollower(targetIndex, startIndex, P, D, Disc, L, inspectionMeta, logMsg = `被邪神抛弃，${formatSanLoss(1)}`) {
   L = [...L, `${P[targetIndex].name} ${logMsg}`];
   const processed = applySanLossToPlayerWithInspection(targetIndex, 1, startIndex, P, D, Disc, L, inspectionMeta);
@@ -1240,14 +1250,67 @@ export function startNextTurn(gs, opts = {}) {
       turnDrawEvents.push({ card: res.drawnCard, drawerIdx: 0, drawerName: P[0].name, sourcePile: res.sourcePile, msgs: [msg] });
     }
     if (res.effectMsgs?.length) {
-      const split = splitAnimBoundLogs(res.effectMsgs);
-      drawLogs.push(...split.preStat);
-      statLogs.push(...split.stat);
+      if (res.needGodChoice) {
+        // 邪神牌：遭遇消息跟随翻牌动画；检定消息由 _inspectionEvents 单独驱动检定动画
+        const split = splitGodEncounterLogs(res.effectMsgs);
+        drawLogs.push(...split.encounterLogs);
+        statLogs.push(...split.inspectionLogs);
+      } else {
+        const split = splitAnimBoundLogs(res.effectMsgs);
+        drawLogs.push(...split.preStat);
+        statLogs.push(...split.stat);
+      }
     }
     if (drawLogs.length) L.push(...drawLogs);
     if (statLogs.length) L.push(...statLogs);
     if (!res.drawnCard) { L.push('牌堆耗尽！'); return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }; }
-    if (res.needGodChoice) { return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: res.drawnCard, drawerIdx: 0, godEncounterCost: res.godEncounterCost }, drawReveal: null, selectedCard: null, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _aiDrawnCard: null, _drawnCard: res.drawnCard ?? null, _drawSourcePile: res.sourcePile }; }
+    if (res.needGodChoice) {
+      const inspectionPatch = res.statePatch || {};
+      return {
+        ...gs,
+        zhuLight,
+        players: P,
+        deck: D,
+        discard: Disc,
+        log: L,
+        currentTurn: 0,
+        skillUsed: false,
+        restUsed: false,
+        huntAbandoned: [],
+        godFromHandUsed: false,
+        godTriggeredThisTurn: true,
+        phase: 'GOD_CHOICE',
+        abilityData: { godCard: res.drawnCard, drawerIdx: 0, godEncounterCost: res.godEncounterCost },
+        drawReveal: null,
+        selectedCard: null,
+        globalOnlySwapOwner,
+        _playersBeforeThisDraw: _P_beforeDraw,
+        turn: newTurn,
+        _turnKey: newTurnKey,
+        _turnStartLogs: turnStartLogs,
+        _drawLogs: drawLogs,
+        _turnDrawEvents: turnDrawEvents,
+        _statLogs: statLogs,
+        _preTurnPlayers: _P_beforeTurn,
+        _aiDrawnCard: null,
+        _drawnCard: res.drawnCard ?? null,
+        _drawSourcePile: res.sourcePile,
+        inspectionDeck: inspectionPatch.inspectionDeck,
+        inspectionDiscard: inspectionPatch.inspectionDiscard,
+        sealLooseningCount: inspectionPatch.sealLooseningCount,
+        houndsOfTindalosActive: inspectionPatch.houndsOfTindalosActive,
+        houndsOfTindalosTarget: inspectionPatch.houndsOfTindalosTarget,
+        houndsOfTindalosElapsed: inspectionPatch.houndsOfTindalosElapsed,
+        _inspectionEvents: inspectionPatch._inspectionEvents,
+        _inspectionSeq: inspectionPatch._inspectionSeq,
+        _inspectionCard: inspectionPatch._inspectionCard,
+        _inspectionTarget: inspectionPatch._inspectionTarget,
+        _inspectionBeforePlayers: inspectionPatch._inspectionBeforePlayers,
+        _inspectionPrevLogLen: inspectionPatch._inspectionPrevLogLen,
+        _statEvents: inspectionPatch._statEvents,
+        _statEventSeq: inspectionPatch._statEventSeq,
+      };
+    }
     const playerTurnAnimMeta = {
       currentTurn: 0,
       turn: newTurn,
@@ -1352,14 +1415,21 @@ export function startNextTurn(gs, opts = {}) {
       turnDrawEvents.push({ card: res.drawnCard, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile, msgs: [msg] });
     }
     if (res.effectMsgs?.length) {
-      const split = splitAnimBoundLogs(res.effectMsgs);
-      drawLogs.push(...split.preStat);
-      statLogs.push(...split.stat);
+      if (res.needGodChoice) {
+        // 邪神牌：遭遇消息跟随翻牌动画；检定消息由 _inspectionEvents 单独驱动检定动画
+        const split = splitGodEncounterLogs(res.effectMsgs);
+        drawLogs.push(...split.encounterLogs);
+        statLogs.push(...split.inspectionLogs);
+      } else {
+        const split = splitAnimBoundLogs(res.effectMsgs);
+        drawLogs.push(...split.preStat);
+        statLogs.push(...split.stat);
+      }
     }
     if (drawLogs.length) L.push(...drawLogs);
     if (statLogs.length) L.push(...statLogs);
     if (!res.drawnCard) { L.push('牌堆耗尽！'); return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }; }
-    if (res.needGodChoice) { return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: res.drawnCard, godEncounterCost: res.godEncounterCost }, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }; }
+    if (res.needGodChoice) { return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: res.drawnCard, godEncounterCost: res.godEncounterCost }, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, ...(res.statePatch || {}) }; }
     const win = checkWin(P, true); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: win };
     // 强制触发牌：效果已执行，直接进入 ACTION；不向其他玩家广播 DRAW_REVEAL 界面
     if (res.kept) {

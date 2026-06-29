@@ -197,6 +197,47 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(drawTransferIdx).toBe(-1);
   });
 
+  it('本地回合开始摸到邪神时先播放 SAN 扣减和检定翻牌再进入邪神抉择', () => {
+    const cth = makeGodCard('CTH');
+    const calm = { id: 'calm-check', name: '暂时的平静', effect: 'nothing', value: 0, type: 'neutral' };
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '你', san: 7, godEncounters: 0 }),
+        makePlayer({ name: '艾伦' }),
+      ],
+      currentTurn: 1,
+      phase: 'ACTION',
+      deck: [cth],
+      inspectionDeck: [calm],
+      inspectionDiscard: [],
+      log: ['旧日志'],
+      _inspectionSeq: 0,
+      _statEventSeq: 0,
+    });
+
+    const newGs = startNextTurn(oldGs);
+    const replay = buildTurnStartDrawReplayQueue({
+      oldGs,
+      newGs,
+      effectOldGs: { ...oldGs, players: newGs._playersBeforeThisDraw || oldGs.players },
+    });
+    const types = replay.queue.map(step => step.type);
+    const godDrawIdx = replay.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card === cth);
+    const sanDamageIdx = types.indexOf('SAN_DAMAGE');
+    const inspectionDrawIdx = replay.queue.findIndex(step => step.type === 'DRAW_CARD' && step.triggerName === '检定牌');
+
+    expect(newGs.phase).toBe('GOD_CHOICE');
+    expect(newGs.log.slice(-2)).toEqual([
+      '你 遭遇邪神 拉莱耶之主！（第1次）失去 1 SAN',
+      '你 的SAN检定结果为"暂时的平静"',
+    ]);
+    expect(godDrawIdx).toBeGreaterThan(-1);
+    expect(sanDamageIdx).toBeGreaterThan(godDrawIdx);
+    expect(inspectionDrawIdx).toBeGreaterThan(sanDamageIdx);
+    expect(newGs._drawLogs).toEqual(['你 摸到 拉莱耶之主', '你 遭遇邪神 拉莱耶之主！（第1次）失去 1 SAN']);
+    expect(newGs._statLogs).toEqual(['你 的SAN检定结果为"暂时的平静"']);
+  });
+
   it('AI 回合开始邪神遭遇只播放本次 SAN 扣减，不重播上个 AI 的扣减', () => {
     const apo = makeGodCard('APO');
     const allenSanLoss = {
