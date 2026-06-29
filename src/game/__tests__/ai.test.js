@@ -1089,7 +1089,7 @@ describe('aiStep optional action limits', () => {
     expect(result.currentTurn).not.toBe(1);
   });
 
-  it('AI 穴居人战争胜者拿走对方邪神牌时触发增殖的Z', () => {
+  it('AI 回合穴居人战争胜者拿走对方邪神牌时不会触发其他人的增殖的Z', () => {
     const sourceCard = makeZoneCard('A1', 0);
     const targetGod = makeGodCard('SHU');
     const players = [
@@ -1111,9 +1111,7 @@ describe('aiStep optional action limits', () => {
 
     expect(result.log.at(-1)).toContain('艾伦 胜出');
     expect(result.players[1].hand).toEqual(expect.arrayContaining([targetGod]));
-    expect(result.proliferatingZQueue).toMatchObject([
-      { drawerIdx: 0, gainOwnerIdx: 1 },
-    ]);
+    expect(result.proliferatingZQueue || []).toEqual([]);
   });
 
   it('AI 作为穴居人战争目标时不会根据发起者亮牌反制选牌', () => {

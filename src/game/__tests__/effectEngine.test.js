@@ -520,7 +520,7 @@ describe('applyFx', () => {
     const gs = makeGs({
       players,
       deck,
-      currentTurn: 1,
+      currentTurn: 0,
       proliferatingZ: makeProliferatingZState(0, 1),
       proliferatingZQueue: [],
     });
@@ -834,7 +834,7 @@ describe('applyFx', () => {
     const gs = makeGs({
       players,
       deck,
-      currentTurn: 1,
+      currentTurn: 0,
       proliferatingZ: makeProliferatingZState(0, 1),
       proliferatingZQueue: [],
     });

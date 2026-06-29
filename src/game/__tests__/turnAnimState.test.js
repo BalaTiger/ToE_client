@@ -325,6 +325,51 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(hpDamage).toMatchObject({ hitIndices: [1, 2, 3] });
   });
 
+  it('黏液额外摸牌会按摸牌阶段事件逐张翻牌', () => {
+    const stone = makeZoneCard('B2', 0);
+    const god = makeGodCard('ZHU');
+    const beforeDrawPlayers = [player('你'), player('艾伦')];
+    const oldGs = {
+      players: beforeDrawPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: ['旧日志'],
+    };
+    const newGs = {
+      players: [player('你'), { ...player('艾伦'), san: 6, hand: [stone] }],
+      currentTurn: 1,
+      phase: 'AI_GOD_CHOICE',
+      abilityData: { playerIndex: 1, godCard: god },
+      _drawnCard: god,
+      _aiDrawnCard: god,
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _drawLogs: [
+        '【无定形体】艾伦 额外摸到 [B2] 投掷石块',
+        '艾伦 遭遇邪神 烛九阴！（第3次）失去 3 SAN',
+      ],
+      _turnDrawEvents: [
+        { card: stone, drawerIdx: 1, drawerName: '艾伦', msgs: ['【无定形体】艾伦 额外摸到 [B2] 投掷石块'], fromTsathogguaSlime: true },
+        { card: god, drawerIdx: 1, drawerName: '艾伦', msgs: ['艾伦 遭遇邪神 烛九阴！（第3次）失去 3 SAN'], fromTsathogguaSlime: true },
+      ],
+      _statLogs: ['艾伦 的SAN检定结果为"自残"', '艾伦 自残，失去 1 HP'],
+      log: [
+        '旧日志',
+        '── 艾伦 的回合开始 ──',
+        '【无定形体】艾伦 的2张撒托古亚的赐福黏液消失，本次摸牌阶段额外摸2张牌',
+        '【无定形体】艾伦 额外摸到 [B2] 投掷石块',
+        '艾伦 遭遇邪神 烛九阴！（第3次）失去 3 SAN',
+      ],
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const turnSteps = replay.queue.filter(step => step.type === 'YOUR_TURN');
+    const drawSteps = replay.queue.filter(step => step.type === 'DRAW_CARD');
+
+    expect(turnSteps).toHaveLength(1);
+    expect(drawSteps.map(step => step.card)).toEqual([stone, god]);
+  });
+
   it('AI 回合开始触发触底反弹时先播放回合悬浮文字和翻牌，再播放整手交换', () => {
     const bounce = { id: 'bounce', name: '触底反弹', key: 'C4', type: 'swapAllHands', letter: 'C', number: 4, isZone: true };
     const beforeDrawPlayers = [

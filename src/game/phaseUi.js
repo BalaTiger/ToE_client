@@ -67,7 +67,7 @@ export function buildPhaseUiState({
   const players = gs?.players || [];
   const abilityData = gs?.abilityData || {};
   const canShowTurnDecisionModal = !isSpectating && !softGuidePauseActive && !anim && !animExiting && animQueueLength === 0;
-  const isPhaseWarningText = (!isDiscardPhaseResolving && ['DISCARD_PHASE', 'PLAYER_REVEAL_FOR_HUNT', 'CAVE_DUEL_SELECT_CARD'].includes(phase)) || isLocalHuntRevealPrompt;
+  const isPhaseWarningText = (!isDiscardPhaseResolving && ['DISCARD_PHASE', 'PLAYER_REVEAL_FOR_HUNT', 'CAVE_DUEL_SELECT_CARD', 'CAVE_DUEL_WAIT_REVEAL'].includes(phase)) || isLocalHuntRevealPrompt;
   const promptColors = getPhasePromptColors(gs?.expansionKey);
   const isMultiplayer = !!gs?._isMP;
   const thinkingText = idx => `${players[idx]?.name || '目标'} 正在思考…`;
@@ -169,7 +169,13 @@ export function buildPhaseUiState({
       case 'CAVE_DUEL_SELECT_TARGET':
         return '请选择“穴居人战争”的目标';
       case 'CAVE_DUEL_SELECT_CARD':
-        return `⚠ 和${players[abilityData.caveDuelSource]?.name || '对手'}来一场穴居人式的对决！无编号可赢4但会输给1~3，如果落败将失去这张牌`;
+        return local.caveDuel
+          ? `⚠ 和${players[abilityData.caveDuelSource]?.name || '对手'}来一场穴居人式的对决！无编号可赢4但会输给1~3，如果落败将失去这张牌`
+          : '等待穴居人战争双方亮牌…';
+      case 'CAVE_DUEL_WAIT_REVEAL':
+        return local.caveDuel
+          ? '⚠ 请选择穴居人战争要亮出的手牌（20秒）'
+          : '等待穴居人战争双方亮牌…';
       case 'ROSE_THORN_SELECT_TARGET':
         return '【玫瑰倒刺】选择承受倒刺的目标';
       case 'GRAVE_DIG_SELECT':

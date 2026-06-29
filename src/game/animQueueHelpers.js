@@ -123,6 +123,16 @@ export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQ
     step?.type === "YOUR_TURN" ||
     (step?.type === "DRAW_CARD" && step.inspectionSeq == null && step.triggerName !== "检定牌")
   );
+  const isPlainInferredTransfer = step => (
+    step?.type === "CARD_TRANSFER" &&
+    !step.effect &&
+    !step.sourceAnchor &&
+    !step.inferredHandLoss &&
+    !step.durationMs &&
+    !step.visualSetupPatch &&
+    !(Array.isArray(step.msgs) && step.msgs.length) &&
+    !(Array.isArray(step.cards) && step.cards.length)
+  );
   const ordered=[{type:"SKILL_BEWITCH",msgs,targetIdx:toPid}];
   if(toPid!=null&&toPid>=0){
     ordered.push(cardTransferStep({fromPid,dest:"player",toPid,count:1}));
@@ -132,7 +142,10 @@ export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQ
   if(card){
     ordered.push({type:"DRAW_CARD",card,triggerName,targetPid:toPid,skipTravel:true});
   }
-  ordered.push(...(statQueue||[]).filter(a=>a.type!=="CARD_TRANSFER"&&!isStaleTurnDrawStep(a)));
+  ordered.push(...(statQueue||[]).filter(a=>
+    !isPlainInferredTransfer(a) &&
+    !isStaleTurnDrawStep(a)
+  ));
   return ordered;
 }
 

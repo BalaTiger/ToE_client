@@ -130,6 +130,53 @@ describe('animQueueHelpers', () => {
     expect(queue[2]).toMatchObject({ card: gift, triggerName: '目标角色', targetPid: 2, skipTravel: true });
   });
 
+  it('蛊惑强制结算时保留带语义的连锁飞牌动画', () => {
+    const gift = { id: 'shu-1', name: '森之领主', isGod: true };
+    const queue = buildBewitchForcedCardQueue(0, 3, gift, '黛安娜', [
+      { type: 'CARD_TRANSFER', fromPid: 3, dest: 'discard' },
+      cardTransferStep({
+        fromPid: 0,
+        dest: 'player',
+        toPid: 2,
+        count: 1,
+        sourceAnchor: 'godPower',
+        effect: 'blackGoat',
+        durationMs: 1500,
+        msgs: ['【黑暗子嗣】卡洛斯 获得1张黑山羊幼仔'],
+      }),
+      cardTransferStep({
+        fromPid: 1,
+        dest: 'player',
+        toPid: 0,
+        count: 1,
+        sourceAnchor: 'chainEffect',
+        effect: 'futureChain',
+        msgs: ['未来连锁飞牌'],
+      }),
+      { type: 'SAN_DAMAGE', hitIndices: [1] },
+    ], ['你对 黛安娜 【蛊惑】，赠予 森之领主']);
+
+    expect(queue.map(step => step.type)).toEqual([
+      'SKILL_BEWITCH',
+      'CARD_TRANSFER',
+      'DRAW_CARD',
+      'CARD_TRANSFER',
+      'CARD_TRANSFER',
+      'SAN_DAMAGE',
+    ]);
+    expect(queue[3]).toMatchObject({
+      effect: 'blackGoat',
+      sourceAnchor: 'godPower',
+      toPid: 2,
+      msgs: ['【黑暗子嗣】卡洛斯 获得1张黑山羊幼仔'],
+    });
+    expect(queue[4]).toMatchObject({
+      effect: 'futureChain',
+      sourceAnchor: 'chainEffect',
+      msgs: ['未来连锁飞牌'],
+    });
+  });
+
   it('检定事件流保证前置变化、检定翻牌、检定效果按顺序入队', () => {
     const card = makeZoneCard('B2', 0);
     const basePlayers = [makePlayer({ name: '玩家', hp: 10, san: 10 })];

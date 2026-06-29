@@ -25,7 +25,7 @@ export function canRespondWithAnyHandCard({
   isBuryAliveTarget = false,
   isIgniteTorchPlayer = false,
 } = {}) {
-  if (phase === 'CAVE_DUEL_SELECT_CARD' && isLocalCaveDuelTarget) return true;
+  if ((phase === 'CAVE_DUEL_SELECT_CARD' || phase === 'CAVE_DUEL_WAIT_REVEAL') && isLocalCaveDuelTarget) return true;
   if (phase === 'BURY_ALIVE_SELECT') return !!isBuryAliveTarget;
   if (phase === 'IGNITE_TORCH_DISCARD') return !!isIgniteTorchPlayer;
   return false;

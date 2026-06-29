@@ -18,6 +18,7 @@ export const EMPTY_TURN_ANIM_FIELDS = Object.freeze({
   _playersBeforeThisDraw: null,
   _turnStartLogs: [],
   _drawLogs: [],
+  _turnDrawEvents: [],
   _statLogs: [],
   _statEvents: [],
   _preTurnPlayers: null,
@@ -173,6 +174,36 @@ export function getTurnStartDrawnCard(state) {
   return state?.phase === 'GOD_CHOICE'
     ? state.abilityData?.godCard
     : state?.drawReveal?.card;
+}
+
+function sameDrawCard(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.id != null && b.id != null) return a.id === b.id;
+  return [a.key, a.godKey, a.name, a.type].filter(Boolean).join(':') ===
+    [b.key, b.godKey, b.name, b.type].filter(Boolean).join(':');
+}
+
+function normalizeTurnDrawEvents(state, fallbackCard, drawerPid, drawerName) {
+  const sourceEvents = Array.isArray(state?._turnDrawEvents) ? state._turnDrawEvents : [];
+  const events = sourceEvents
+    .filter(event => event?.card)
+    .map(event => ({
+      ...event,
+      drawerIdx: event.drawerIdx ?? drawerPid,
+      drawerName: event.drawerName || drawerName,
+      msgs: Array.isArray(event.msgs) ? event.msgs : [],
+    }));
+  if (fallbackCard && !events.some(event => sameDrawCard(event.card, fallbackCard))) {
+    events.push({
+      card: fallbackCard,
+      drawerIdx: drawerPid,
+      drawerName,
+      sourcePile: state?.drawReveal?.sourcePile || state?._drawSourcePile || (state?.geomagneticReversalActive ? 'discard' : 'deck'),
+      msgs: state?._drawLogs || [],
+    });
+  }
+  return events;
 }
 
 export function getTurnStartDrawerIdx(state) {
@@ -464,6 +495,8 @@ export function buildTurnStartDrawReplayQueue({
   }
   const drawerPid = getTurnStartDrawerIdx(newGs);
   const drawerName = newGs?.players?.[drawerPid]?.name || '???';
+  const hasExplicitTurnDrawEvents = Array.isArray(newGs?._turnDrawEvents) && newGs._turnDrawEvents.some(event => event?.card);
+  const turnDrawEvents = normalizeTurnDrawEvents(newGs, drawnCard, drawerPid, drawerName);
   const beforeDrawPlayers = newGs?._playersBeforeThisDraw || oldGs?.players || newGs?.players || [];
   const turnStartPreDrawQ = buildTurnStartPreDrawEffectQueue({ oldGs, newGs, buildQueue });
   const hasTurnStartPreDrawQ = turnStartPreDrawQ.length > 0;
@@ -475,7 +508,8 @@ export function buildTurnStartDrawReplayQueue({
     ...(drawerPid === 0 ? {} : { name: drawerName }),
     msgs: newGs?._turnStartLogs,
   };
-  const drawCardStep = buildDrawCardStepFromVisualEvents(newGs) || {
+  const visualDrawCardStep = hasExplicitTurnDrawEvents ? null : buildDrawCardStepFromVisualEvents(newGs);
+  const drawCardStep = visualDrawCardStep || {
     type: 'DRAW_CARD',
     card: drawnCard,
     triggerName: localDisplayName(drawerPid, drawerName),
@@ -483,6 +517,28 @@ export function buildTurnStartDrawReplayQueue({
     sourcePile: newGs?.drawReveal?.sourcePile || newGs?._drawSourcePile || (newGs?.geomagneticReversalActive ? 'discard' : 'deck'),
     msgs: newGs?._drawLogs,
   };
+  const drawCardSteps = hasExplicitTurnDrawEvents
+    ? turnDrawEvents.flatMap(event => {
+      const steps = [{
+        type: 'DRAW_CARD',
+        card: event.card,
+        triggerName: localDisplayName(event.drawerIdx ?? drawerPid, event.drawerName || drawerName),
+        targetPid: event.drawerIdx ?? drawerPid,
+        sourcePile: event.sourcePile || newGs?.drawReveal?.sourcePile || newGs?._drawSourcePile || (newGs?.geomagneticReversalActive ? 'discard' : 'deck'),
+        msgs: event.msgs,
+      }];
+      if (event.slimePop) {
+        steps.push({
+          type: 'TSG_SLIME_POP',
+          targetPid: event.slimePop.targetPid ?? event.drawerIdx ?? drawerPid,
+          count: event.slimePop.count || (Array.isArray(event.slimePop.cards) ? event.slimePop.cards.length : 1),
+          cards: Array.isArray(event.slimePop.cards) ? event.slimePop.cards : [],
+          msgs: Array.isArray(event.slimePop.msgs) ? event.slimePop.msgs : [],
+        });
+      }
+      return steps;
+    })
+    : [drawCardStep];
   const drawResolutionLogs = [...(newGs?._drawLogs || []), ...(newGs?._statLogs || []), ...(newGs?.log || [])];
   const godDrawResolution = isGodDrawnCard(drawnCard) ? getGodDrawResolution(drawResolutionLogs, drawerName) : null;
   const discardedDrawnCard = !!newGs?._discardedDrawnCard || godDrawResolution === 'discard';
@@ -602,7 +658,7 @@ export function buildTurnStartDrawReplayQueue({
     turnStartStep,
     ...turnStartPreDrawQ,
     ...(turnStartStatePatch ? [turnStartStatePatch] : []),
-    drawCardStep,
+    ...drawCardSteps,
     ...(discardDrawnStep ? [discardDrawnStep] : []),
     ...(discardRestoreStep ? [discardRestoreStep] : []),
     ...(treasureDodgeDiceStep ? [treasureDodgeDiceStep] : []),
@@ -615,7 +671,7 @@ export function buildTurnStartDrawReplayQueue({
     ...(boundarySteps.length ? [...boundarySteps.slice(1), turnStartStep] : []),
     ...turnStartPreDrawQ,
     ...(turnStartStatePatch ? [turnStartStatePatch] : []),
-    drawCardStep,
+    ...drawCardSteps,
     ...(discardDrawnStep ? [discardDrawnStep] : []),
     ...(discardRestoreStep ? [discardRestoreStep] : []),
     ...(treasureDodgeDiceStep ? [treasureDodgeDiceStep] : []),

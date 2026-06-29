@@ -22,6 +22,8 @@ export function buildProliferatingZOwnerDrawEntry(gs, players, gainOwnerIdx, gai
   const state = gs?.proliferatingZ;
   if (!state?.active || !publicGain) return null;
   if (state.ownerIdx == null || state.ownerIdx === gainOwnerIdx) return null;
+  if (gs?.currentTurn != null && gs.currentTurn !== state.ownerIdx) return null;
+  if (gs?.turn != null && state.turn != null && gs.turn !== state.turn) return null;
   if (!players?.[state.ownerIdx] || players[state.ownerIdx].isDead) return null;
   const cards = Array.isArray(gainedCards) ? gainedCards : (gainedCards ? [gainedCards] : []);
   const triggerCards = cards.filter(isProliferatingZGain);

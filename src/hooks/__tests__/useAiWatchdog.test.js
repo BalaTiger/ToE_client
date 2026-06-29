@@ -72,16 +72,28 @@ describe('getSinglePlayerAiDecisionSeat', () => {
     })).toBe(null);
   });
 
-  it('穴居人战争选牌环节永远等待玩家，不自动替玩家选牌', () => {
+  it('穴居人战争选牌环节按尚未选牌的一方识别决策者', () => {
     // 玩家为源、AI 为目标
     expect(getSinglePlayerAiDecisionSeat({
       _isMP: false,
       phase: 'CAVE_DUEL_SELECT_CARD',
       currentTurn: 0,
       players,
-      abilityData: { caveDuelSource: 0, caveDuelTarget: 1 },
-    })).toBe(null);
+      abilityData: { caveDuelSource: 0, caveDuelTarget: 1, sourceCard: { id: 's1' } },
+    })).toBe(1);
     // AI 为源、玩家为目标
+    const aiSourceState = {
+      _isMP: false,
+      phase: 'CAVE_DUEL_SELECT_CARD',
+      currentTurn: 1,
+      players,
+      abilityData: { caveDuelSource: 1, caveDuelTarget: 0, sourceCard: { id: 's1' } },
+    };
+    expect(getSinglePlayerDecisionSeat(aiSourceState)).toBe(0);
+    expect(getSinglePlayerAiDecisionSeat(aiSourceState)).toBe(null);
+  });
+
+  it('穴居人战争选牌环节未登记暗选时不让看门狗代替选择', () => {
     expect(getSinglePlayerAiDecisionSeat({
       _isMP: false,
       phase: 'CAVE_DUEL_SELECT_CARD',

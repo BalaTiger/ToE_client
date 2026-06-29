@@ -693,7 +693,7 @@ describe('turnEngine stat events', () => {
     expect(result._preTurnPlayers[0].hand.filter(c => c.isTsathogguaSlime)).toHaveLength(2);
   });
 
-  it('其他角色在增殖的Z生效回合公开获得撒托古亚黏液会触发摸牌队列', () => {
+  it('回合结束后其他角色获得撒托古亚黏液不会触发增殖的Z', () => {
     const players = [
       makePlayer({ name: 'Z持有者' }),
       makePlayer({ name: '撒托古亚信徒', godName: 'TSG', godLevel: 1 }),
@@ -709,9 +709,7 @@ describe('turnEngine stat events', () => {
     const result = startNextTurn(gs);
 
     expect(result.log.some(line => line.includes('获得1张撒托古亚的赐福黏液'))).toBe(true);
-    expect(result.proliferatingZQueue).toMatchObject([
-      { drawerIdx: 0, gainOwnerIdx: 1 },
-    ]);
+    expect(result.proliferatingZQueue || []).toEqual([]);
   });
 
   it('火把状态会阻止撒托古亚回合结束获得黏液并记录护罩事件', () => {
@@ -807,7 +805,10 @@ describe('turnEngine stat events', () => {
 
     expect(result.players[1].hand.some(c => c.isTsathogguaSlime)).toBe(false);
     expect(result.players[1].hand.map(c => c.name)).toEqual(expect.arrayContaining(['额外牌', '正常牌']));
-    expect(result.log.some(line => line.includes('额外摸1张牌'))).toBe(true);
+    const extraDrawIdx = result.log.findIndex(line => line.includes('额外摸到'));
+    const slimePopIdx = result.log.findIndex(line => line.includes('撒托古亚的赐福黏液消失'));
+    expect(extraDrawIdx).toBeGreaterThan(-1);
+    expect(slimePopIdx).toBeGreaterThan(extraDrawIdx);
   });
 
   it('本地玩家黏液额外摸牌进入抉择时保留正常摸牌续接标记', () => {
@@ -835,14 +836,15 @@ describe('turnEngine stat events', () => {
     expect(result.abilityData).toMatchObject({
       fromTsathogguaSlime: true,
       continueTurnStartDraw: true,
+      pendingTsathogguaSlime: slime,
     });
-    expect(result.players[0].hand.some(c => c.isTsathogguaSlime)).toBe(false);
+    expect(result.players[0].hand.some(c => c.isTsathogguaSlime)).toBe(true);
     expect(result.deck[0]).toBe(normalCard);
     expect(result.log.some(line => line.includes('额外摸到'))).toBe(true);
     expect(result.log.some(line => line.includes('正常牌'))).toBe(false);
   });
 
-  it('撒托古亚黏液回合开始消失时播放泡泡破裂而不是弃牌动画', () => {
+  it('撒托古亚黏液在对应额外摸牌后播放泡泡破裂而不是弃牌动画', () => {
     const slime = createTsathogguaSlimeCard();
     const players = [
       makePlayer({ name: '你' }),
@@ -861,6 +863,26 @@ describe('turnEngine stat events', () => {
     expect(popStep).toMatchObject({ targetPid: 1, count: 1, cards: [slime] });
     expect(queue.some(step => step.type === 'CARD_TRANSFER' && step.dest === 'discard')).toBe(false);
     expect(queue.some(step => step.type === 'DISCARD' && step.card?.id === slime.id)).toBe(false);
+  });
+
+  it('禁用摸牌时不会触发或消耗撒托古亚黏液', () => {
+    const slime = createTsathogguaSlimeCard();
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', godName: 'TSG', godLevel: 1, hand: [slime], skipNextDraw: true, skipNextDrawReason: '霉变食物' }),
+    ];
+    const deck = [
+      { id: 'normal', key: 'A2', letter: 'A', number: 2, name: '正常牌', type: 'selfHealHP', val: 1, isZone: true, polarity: 'positive' },
+    ];
+    const gs = makeGs({ players, deck, currentTurn: 0, log: [] });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players[1].hand).toContain(slime);
+    expect(result.players[1].hand.map(c => c.name)).not.toContain('正常牌');
+    expect(result.log.some(line => line.includes('因霉变食物而无法摸牌'))).toBe(true);
+    expect(result.log.some(line => line.includes('额外摸到'))).toBe(false);
+    expect(result.log.some(line => line.includes('撒托古亚的赐福黏液消失'))).toBe(false);
   });
 
   it('火把状态会阻止撒托古亚回合开始消耗黏液', () => {

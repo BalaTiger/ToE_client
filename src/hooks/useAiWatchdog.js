@@ -46,8 +46,10 @@ export function getSinglePlayerDecisionSeat(gs) {
       return ad.pickOrder?.[ad.pickIndex || 0] ?? null;
     case 'SAME_ABYSS_SELECT':
       return ad.targetIdx ?? null;
-    // CAVE_DUEL_SELECT_CARD is only ever entered when a human must pick a card
-    // (all-AI duels resolve inline), so it is intentionally absent here.
+    case 'CAVE_DUEL_SELECT_CARD':
+      if (ad.sourceCard && !ad.targetCard) return ad.caveDuelTarget ?? null;
+      if (ad.targetCard && !ad.sourceCard) return ad.caveDuelSource ?? null;
+      return null;
     case 'SHU_SELECT_TARGET':
       return ad.shuChooserIdx ?? gs.currentTurn ?? null;
     case 'SPHINX_GUESS':
