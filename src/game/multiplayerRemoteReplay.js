@@ -189,10 +189,6 @@ export function buildMpRemoteReplayAction({
   if (!rotated) return null;
   const hadVisualEventsBeforePrune = Array.isArray(rotated._visualEvents) && rotated._visualEvents.length > 0;
   rotated = pruneConsumedVisualEvents(rotated, consumedVisualEventIds);
-  // 临时诊断（远端，window.__toeDebugMP=true）：记录远端处理的每个状态。验完即删。
-  if (typeof globalThis !== 'undefined' && globalThis.__toeDebugMP) {
-    try { console.log('[mpRemote/in] ct=' + rotated?.currentTurn + ' phase=' + rotated?.phase + ' corridorEvt=' + (getEndlessCorridorReplayVisualEvent(rotated) ? 'Y' : 'N') + ' endTurnReplay=' + !!rotated?._endTurnReplay + ' draw=' + (rotated?.drawReveal?.card?.name || rotated?._drawnCard?.name || '-') + ' fromRest=' + !!(rotated?.drawReveal?.fromRest || rotated?.abilityData?.fromRest) + ' fromReplay=' + !!(rotated?.drawReveal?.fromEndTurnReplay || rotated?.abilityData?.fromEndTurnReplay)); } catch { /* noop */ }
-  }
   const visualEventIds = getVisualEventIdsFromState(rotated);
   if (hadVisualEventsBeforePrune && visualEventIds.length === 0 && !hasFreshTurnDrawReplayState(rotated)) {
     return { type: MP_REMOTE_REPLAY.SET_STATE, gs: clearRemoteReplayHints(rotated) };
@@ -248,10 +244,6 @@ export function buildMpRemoteReplayAction({
       effectOldGs: { ...rotated, players: rotated._playersBeforeThisDraw || previousGs?.players || rotated.players, log: getTurnStartDrawBaselineLog(rotated) },
     });
     const tailQueue = replay.drawnCard && !isTurnEndCthDecisionDraw && !isEndTurnReplayDecisionDraw ? replay.queue : [];
-    // 临时诊断（远端）：tailLen>0 即此次广播被附加了下家回合队列（抢跑元凶）。验完即删。
-    if (typeof globalThis !== 'undefined' && globalThis.__toeDebugMP) {
-      try { console.log('[mpRemote/corridor] ct=' + rotated.currentTurn + ' fromRest=' + isTurnEndCthDecisionDraw + ' fromReplay=' + isEndTurnReplayDecisionDraw + ' endTurnReplay=' + !!rotated._endTurnReplay + ' drawnCard=' + (replay.drawnCard?.name || '-') + ' tailLen=' + tailQueue.length + ' corridorQLen=' + endlessCorridorQueue.length); } catch { /* noop */ }
-    }
     const finalFields = replay.drawnCard
       ? ['players', 'discard', 'log', 'phase', 'abilityData', 'currentTurn', 'drawReveal']
       : ['players', 'discard', 'log', 'phase', 'abilityData', 'currentTurn', 'drawReveal'];

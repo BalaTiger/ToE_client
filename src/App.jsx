@@ -5019,7 +5019,8 @@ export default function Game(){
     const seq=endTurnSeqRef.current;
     if(!seq)return false;
     if(seq.cursor>=seq.events.length)return finishEndTurnSeq(state);
-    return dispatchEndTurnEvent(seq.events[seq.cursor],state);
+    // 推进下一事件前清掉上一步可能遗留的"回合开始摸牌"展示字段，避免本事件的广播/远端重播误合成开场动画。
+    return dispatchEndTurnEvent(seq.events[seq.cursor],withClearedTurnAnimFields(state));
   }
   function advanceEndTurnSeq(state){
     const seq=endTurnSeqRef.current;
@@ -5068,7 +5069,8 @@ export default function Game(){
   // preStatePatch=入口点专属状态位（skillUsed/restUsed 等），随事件决策态展开继承。
   function kickoffEndTurnSeq(baseGs,{seedQueue=[],preStatePatch={}}={}){
     endTurnSeqRef.current={events:getEndTurnEvents(baseGs.players,baseGs.currentTurn||0),cursor:0};
-    const seqState={...baseGs,...preStatePatch};
+    // 序列起始态清掉行动方"回合开始摸牌"展示残留，避免远端在首段事件(CTH/黄液)广播时误合成开场动画。
+    const seqState=withClearedTurnAnimFields({...baseGs,...preStatePatch});
     if(seedQueue.length){
       // 先同步 seed 段（弃牌/骰子等，含其 visualEvents），远端按序回放，再衔接各事件的增量广播。
       if(seqState._isMP)broadcastMpStateBeforeLocalReplay(seqState);
@@ -8156,8 +8158,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(freshVisualEvents.length){
       markConsumedVisualEvents(consumedVisualEventIdsRef.current,freshVisualEvents);
     }
-    // 临时诊断（localhost）：打印每次回合末相关广播的关键字段，定位远端抢跑。验完即删。
-    if(isLocalTestMode){try{console.log('[mpBroadcast]',{currentTurn:broadcastGs.currentTurn,phase:broadcastGs.phase,fromRest:broadcastGs.drawReveal?.fromRest||broadcastGs.abilityData?.fromRest||false,fromEndTurnReplay:broadcastGs.drawReveal?.fromEndTurnReplay||broadcastGs.abilityData?.fromEndTurnReplay||false,endTurnReplay:!!broadcastGs._endTurnReplay,drawnCard:broadcastGs._drawnCard?.name||broadcastGs.drawReveal?.card?.name||null,events:(freshVisualEvents||[]).map(e=>e?.type)});}catch{/*noop*/}}
     socketRef.current.emit('mpStateSync',{roomId:roomModal.roomId,gs:derotateGs(broadcastGs,myPlayerIndexRef.current)});
     suppressNextBroadcastRef.current=true;
     return true;
