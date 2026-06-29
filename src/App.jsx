@@ -2603,6 +2603,12 @@ export default function Game(){
       return true;
     };
     switch(state.phase){
+      case 'DRAW_REVEAL':
+        if(getPendingZhuHideCardForState(state))return withCurrentState(()=>handleZhuHideDrawnCard(false));
+        return false;
+      case 'GOD_CHOICE':
+        if(getPendingZhuHideCardForState(state))return withCurrentState(()=>handleZhuHideGodCard(false));
+        return false;
       case 'TSG_SLIME_BALANCE':
         return withCurrentState(()=>resolveTsathogguaSlimeBalance(false));
       case 'ETHEREALIZE_DECISION': {
@@ -2660,6 +2666,7 @@ export default function Game(){
         return withCurrentState(()=>sameAbyssSelect(canDiscard?'discard':'hp',true));
       }
       case 'SPHINX_GUESS':
+        if(getPendingZhuHideCardForState(state))return withCurrentState(()=>handleZhuHideTopCardDuringSphinx(false));
         return withCurrentState(()=>sphinxGuess(false,true));
       case 'ZHU_HIDE_AI_DRAW':
         return withCurrentState(()=>handleZhuHideAiDrawCard(false));
@@ -8984,6 +8991,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     else if(phase==='SHU_SELECT_TARGET'){
       const count=gs.abilityData?.shuOffspringCount||0;
       if(!count) { setGs({...gs,phase:'ACTION',abilityData:{}}); return; }
+      const turnOwner=gs.abilityData?._turnOwner??gs.currentTurn;
+      const resumeAiTurn=!gs._isMP&&isAiSeat(gs,turnOwner);
+      const nextPhase=resumeAiTurn?'AI_TURN':'ACTION';
       committedTargetActionRef.current=true;
       setGs(p=>p&&p.phase==='SHU_SELECT_TARGET'?{...p,abilityData:{...(p.abilityData||{}),committedAction:'shuOffspring'}}:p);
       let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],baseLog=[...gs.log];
@@ -8999,11 +9009,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const logMsg=`【黑暗子嗣】${targetName==='你'?'你':targetName} 获得${count}张黑山羊幼仔`;
       const L=[...baseLog,logMsg];
       const proliferatingZPatch=appendPublicCardGainTriggers(gs,P,pi,goatCards);
-      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',abilityData:{},...apophisNightPatch(night),...proliferatingZPatch};
+      const newGs={...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:turnOwner,phase:nextPhase,abilityData:{},...apophisNightPatch(night),...proliferatingZPatch};
       const baseQueue=buildAnimQueue(gs,newGs);
       const queue=baseQueue.length?[...baseQueue,statePatchStep({players:P})]:[];
       if(queue.length){
-        setGs(p=>p?{...p,phase:'ACTION',abilityData:{}}:p);
+        setGs(p=>p?{...p,currentTurn:turnOwner,phase:nextPhase,abilityData:{}}:p);
         triggerAnimQueue(queue,newGs);
       }else if((newGs.proliferatingZQueue||[]).length)continueProliferatingZDraws(newGs);
       else setGs(newGs);

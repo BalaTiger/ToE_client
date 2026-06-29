@@ -26,10 +26,31 @@ export function isAiAutoDecisionPhase(gs) {
   return gs?.abilityData?.[sourceKey] === gs?.currentTurn;
 }
 
+function getZhuHideDecisionOwner(gs) {
+  if (!gs?.zhuLight) return null;
+  const ids = gs.zhuLight.cardIds || [];
+  let pending = false;
+  if (gs.phase === 'DRAW_REVEAL') {
+    const card = gs.drawReveal?.card;
+    pending = !!(card?.id && !gs.drawReveal?.zhuResolved && ids.includes(card.id));
+  } else if (gs.phase === 'GOD_CHOICE') {
+    const card = gs.abilityData?.godCard;
+    pending = !!(card?.id && !gs.abilityData?.zhuResolved && ids.includes(card.id));
+  } else if (gs.phase === 'SPHINX_GUESS') {
+    const card = gs.deck?.[0];
+    pending = !!(card?.id && ids.includes(card.id));
+  } else if (gs.phase === 'ZHU_HIDE_AI_DRAW') {
+    pending = !!(gs.abilityData?.zhuGuard?.card || gs.zhuLight.cardIds?.length);
+  }
+  return pending ? (gs.abilityData?.zhuGuard?.ownerIdx ?? gs.zhuLight.ownerIdx ?? null) : null;
+}
+
 // 返回该决策阶段的"决策者座位"（无论 AI 还是本地玩家）；非决策阶段返回 null。
 export function getSinglePlayerDecisionSeat(gs) {
   if (!gs || isMultiplayerGame(gs) || gs.gameOver) return null;
   const ad = gs.abilityData || {};
+  const zhuHideOwner = getZhuHideDecisionOwner(gs);
+  if (zhuHideOwner != null) return zhuHideOwner;
   switch (gs.phase) {
     case 'TSG_SLIME_BALANCE':
     case 'ETHEREALIZE_DECISION':

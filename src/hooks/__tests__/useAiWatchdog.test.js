@@ -129,4 +129,33 @@ describe('getSinglePlayerAiDecisionSeat', () => {
     expect(getSinglePlayerDecisionSeat(state)).toBe(0);      // 决策者=信徒(本地玩家)
     expect(getSinglePlayerAiDecisionSeat(state)).toBe(null); // 不能被看门狗替玩家跳过
   });
+
+  it('本地摸到被点亮牌时，单机 AI 烛九阴信徒负责藏牌决策', () => {
+    const litCard = { id: 'lit-c2', name: '地磁反转' };
+    const state = {
+      _isMP: false,
+      phase: 'DRAW_REVEAL',
+      currentTurn: 0,
+      players,
+      zhuLight: { ownerIdx: 2, cardIds: [litCard.id] },
+      drawReveal: { card: litCard, needsDecision: true, drawerIdx: 0 },
+      abilityData: {},
+    };
+    expect(getSinglePlayerDecisionSeat(state)).toBe(2);
+    expect(getSinglePlayerAiDecisionSeat(state)).toBe(2);
+  });
+
+  it('本地遭遇被点亮邪神牌时，也等待烛九阴信徒而不是摸牌者', () => {
+    const litGod = { id: 'lit-god', name: '烛九阴' };
+    const state = {
+      _isMP: false,
+      phase: 'GOD_CHOICE',
+      currentTurn: 0,
+      players,
+      zhuLight: { ownerIdx: 1, cardIds: [litGod.id] },
+      abilityData: { godCard: litGod, drawerIdx: 0 },
+    };
+    expect(getSinglePlayerDecisionSeat(state)).toBe(1);
+    expect(getSinglePlayerAiDecisionSeat(state)).toBe(1);
+  });
 });
