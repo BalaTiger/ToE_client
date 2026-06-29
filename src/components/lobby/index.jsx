@@ -5,7 +5,6 @@ import {
   LETTERS,
   NUMS,
 } from '../../constants/card';
-import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from '../../game';
 import { NARRATOR_AVATAR } from '../tutorial/InGameTutorialOverlay';
 import {
   decodeDebugCardValue,
@@ -377,7 +376,6 @@ function DebugSettingsPanel({
   debugForceZoneCardKey, setDebugForceZoneCardKey,
   debugForceZoneCardName, setDebugForceZoneCardName,
   debugForceGodCardKey, setDebugForceGodCardKey,
-  debugPlayerRole, setDebugPlayerRole,
   debugTutorialPromptMode, setDebugTutorialPromptMode,
   debugExpansionKey, setDebugExpansionKey,
 }) {
@@ -484,20 +482,6 @@ function DebugSettingsPanel({
       maxWidth: 360,
     }}>
       <h3 style={{ marginTop: 0, marginBottom: 16, color: '#f0cb7a' }}>Debug设置</h3>
-      <div style={sectionStyle}>
-        <h4 style={sectionTitleStyle}>下局身份</h4>
-        <select
-          value={debugPlayerRole}
-          onChange={(e) => setDebugPlayerRole(e.target.value)}
-          style={selectStyle}
-        >
-          <option value="auto">自动</option>
-          <option value={ROLE_TREASURE}>{ROLE_TREASURE}</option>
-          <option value={ROLE_HUNTER}>{ROLE_HUNTER}</option>
-          <option value={ROLE_CULTIST}>{ROLE_CULTIST}</option>
-        </select>
-      </div>
-
       <div style={sectionStyle}>
         <h4 style={sectionTitleStyle}>下局拓展包</h4>
         <select
@@ -757,7 +741,6 @@ function DebugControls({
   debugForceZoneCardKey, setDebugForceZoneCardKey,
   debugForceZoneCardName, setDebugForceZoneCardName,
   debugForceGodCardKey, setDebugForceGodCardKey,
-  debugPlayerRole, setDebugPlayerRole,
   debugTutorialPromptMode, setDebugTutorialPromptMode,
   debugExpansionKey, setDebugExpansionKey,
 }) {
@@ -814,7 +797,6 @@ function DebugControls({
         debugForceZoneCardKey={debugForceZoneCardKey} setDebugForceZoneCardKey={setDebugForceZoneCardKey}
         debugForceZoneCardName={debugForceZoneCardName} setDebugForceZoneCardName={setDebugForceZoneCardName}
         debugForceGodCardKey={debugForceGodCardKey} setDebugForceGodCardKey={setDebugForceGodCardKey}
-        debugPlayerRole={debugPlayerRole} setDebugPlayerRole={setDebugPlayerRole}
         debugTutorialPromptMode={debugTutorialPromptMode} setDebugTutorialPromptMode={setDebugTutorialPromptMode}
         debugExpansionKey={debugExpansionKey} setDebugExpansionKey={setDebugExpansionKey}
       />

@@ -134,6 +134,7 @@ function handleInspection(playerIndex, gs) {
   let newGs = { ...gs };
   const beforePlayers = copyPlayers(gs.players || []);
   const beforeLog = [...(Array.isArray(gs.log) ? gs.log : [])];
+  const beforeDiscard = [...(Array.isArray(gs.discard) ? gs.discard : [])];
   const beforeLogLen = Array.isArray(gs.log) ? gs.log.length : 0;
   // 检查检定牌堆是否为空，如果为空则洗牌
   if (newGs.inspectionDeck.length === 0) {
@@ -236,7 +237,7 @@ function handleInspection(playerIndex, gs) {
       if (newGs.deck.length > 0) {
         const newCard = newGs.deck.shift();
         P[playerIndex].hand.push(newCard);
-        L.push(`${P[playerIndex].name} 揭开真相，摸到一张牌`);
+        L.push(`${P[playerIndex].name} 揭开真相，摸到 ${cardLogText(newCard, { alwaysShowName: true })}，选择收入手牌（不触发效果）`);
       }
       break;
     }
@@ -265,6 +266,7 @@ function handleInspection(playerIndex, gs) {
     ? L.filter(line => line !== `${P[playerIndex].name} 获得暂时的平静`)
     : L;
   const afterPlayers = copyPlayers(P);
+  const afterDiscard = [...(Array.isArray(newGs.discard) ? newGs.discard : [])];
   const statEventSeq = (gs?._statEventSeq || 0) + 1;
   const statEvents = buildStatEvents(beforePlayers, afterPlayers, finalLog.slice(beforeLogLen), {
     reason: drawnCard.name || 'SAN检定',
@@ -295,8 +297,10 @@ function handleInspection(playerIndex, gs) {
       prevLogLen: beforeLogLen,
       beforePlayers,
       beforeLog,
+      beforeDiscard,
       afterPlayers,
       afterLog: [...finalLog],
+      afterDiscard,
       statEvents,
       statEventSeq: statEvents.length ? statEventSeq : null,
     }
@@ -324,13 +328,15 @@ function mergeInspectionMeta(target, inspectionResult) {
     _inspectionEvents: inspectionResult._inspectionEvents,
     _statEvents: inspectionResult._statEvents,
     _statEventSeq: inspectionResult._statEventSeq,
+    ...(inspectionResult.abilityData ? { abilityData: inspectionResult.abilityData } : {}),
   };
 }
 
 export function processInspectionTargets(targets, startIndex, P, D, Disc, baseLog, inspectionMeta) {
   let nextP = P, nextD = D, nextDisc = Disc, nextLog = [...baseLog], nextMeta = { ...inspectionMeta };
   const ordered = sortInspectionTargets(targets, startIndex, nextP.length || 1);
-  for (const idx of ordered) {
+  for (let orderIndex = 0; orderIndex < ordered.length; orderIndex += 1) {
+    const idx = ordered[orderIndex];
     const inspectionResult = handleInspection(idx, {
       players: nextP,
       deck: nextD,
@@ -352,6 +358,19 @@ export function processInspectionTargets(targets, startIndex, P, D, Disc, baseLo
     nextDisc = inspectionResult.discard;
     nextLog = inspectionResult.log || nextLog;
     nextMeta = mergeInspectionMeta(nextMeta, inspectionResult);
+    if (nextMeta.abilityData?.type && orderIndex < ordered.length - 1) {
+      nextMeta = {
+        ...nextMeta,
+        abilityData: {
+          ...nextMeta.abilityData,
+          pendingInspectionContinuation: {
+            targets: ordered.slice(orderIndex + 1),
+            startIndex,
+          },
+        },
+      };
+      break;
+    }
   }
   return { P: nextP, D: nextD, Disc: nextDisc, log: nextLog, inspectionMeta: nextMeta };
 }
@@ -442,6 +461,16 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   const finish = (result, explicitStatEvents = null) => {
     const statEventSeq = (gs?._statEventSeq || 0) + 1;
     const statEvents = explicitStatEvents || buildStatEvents(beforePlayers, result.P || P, result.msgs || msgs, { reason: card?.name || card?.type || '', seq: statEventSeq });
+    const patchedStatEvents = Array.isArray(result.statePatch?._statEvents)
+      ? result.statePatch._statEvents
+      : [];
+    const mergedStatEvents = patchedStatEvents.length
+      ? [...statEvents, ...patchedStatEvents.filter(event => !statEvents.some(own => own?.seq === event?.seq && own?.type === event?.type && own?.target === event?.target))]
+      : statEvents;
+    const mergedStatEventSeq = Math.max(
+      statEvents.length ? statEventSeq : (gs?._statEventSeq || 0),
+      result.statePatch?._statEventSeq || 0,
+    );
     const etherealizeDecision = statePatch?.abilityData?.type ? null : buildEtherealizeRedirectDecision(pendingEtherealizeLosses, { _turnOwner: gs?.currentTurn ?? ci });
     const slimeDecision = etherealizeDecision || statePatch?.abilityData?.type
       ? null
@@ -450,12 +479,12 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       ...(result.statePatch || {}),
       ...(etherealizeDecision ? { abilityData: etherealizeDecision } : {}),
       ...(slimeDecision ? { abilityData: slimeDecision } : {}),
-      ...(statEvents.length ? { _statEvents: statEvents, _statEventSeq: statEventSeq } : {}),
+      ...(mergedStatEvents.length ? { _statEvents: mergedStatEvents, _statEventSeq: mergedStatEventSeq } : {}),
     };
     return {
       ...result,
       statePatch: nextStatePatch,
-      ...(statEvents.length ? { statEvents } : {}),
+      ...(mergedStatEvents.length ? { statEvents: mergedStatEvents } : {}),
     };
   };
 
@@ -526,20 +555,19 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
 
   // 辅助函数：应用AOE伤害
   const applyAOEDamage = (targets, damageType, value, hpVal, sanVal) => {
-    let affected = false;
-    targets.forEach(i => {
-      if (!avoidNegativeFor.includes(i) && (i !== ci || !avoidNegative)) affected = true;
-    });
-    if (affected) {
+    const affectedTargets = targets.filter(i => !avoidNegativeFor.includes(i) && (i !== ci || !avoidNegative));
+    const selfAvoided = targets.includes(ci) && !affectedTargets.includes(ci) && (avoidNegative || avoidNegativeFor.includes(ci));
+    if (affectedTargets.length) {
+      const subject = selfAvoided ? '相邻角色' : `${actor.name} 与相邻角色`;
       if (hpVal && sanVal) {
-        msgs.push(`${actor.name} 与相邻角色各失去 ${hpVal + dmgBonus} HP 和 ${sanVal} SAN`);
+        msgs.push(`${subject}各失去 ${hpVal + dmgBonus} HP 和 ${sanVal} SAN`);
       } else {
         const damageDesc = damageType === 'hp' ? 'HP' : (damageType === 'san' ? 'SAN' : 'HP 和 SAN');
-        msgs.push(`${actor.name} 与相邻角色各失去 ${value + dmgBonus} ${damageDesc}`);
+        msgs.push(`${subject}各失去 ${value + dmgBonus} ${damageDesc}`);
       }
     }
     targets.forEach(i => {
-      if (!avoidNegativeFor.includes(i)) {
+      if (!avoidNegativeFor.includes(i) && (i !== ci || !avoidNegative)) {
         if (damageType === 'both' || damageType.includes('hp')) dealHP(i, hpVal || value);
         if (damageType === 'both' || damageType.includes('san')) dealSAN(i, sanVal || value);
       }
@@ -548,16 +576,14 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
 
   // 辅助函数：应用全局AOE伤害
   const applyGlobalAOEDamage = (damageType, value) => {
-    let affected = false;
-    allLiving.forEach(i => {
-      if (!avoidNegativeFor.includes(i) && (i !== ci || !avoidNegative)) affected = true;
-    });
-    if (affected) {
+    const affectedTargets = allLiving.filter(i => !avoidNegativeFor.includes(i) && (i !== ci || !avoidNegative));
+    const selfAvoided = allLiving.includes(ci) && !affectedTargets.includes(ci) && (avoidNegative || avoidNegativeFor.includes(ci));
+    if (affectedTargets.length) {
       const damageDesc = damageType === 'hp' ? 'HP' : (damageType === 'san' ? 'SAN' : 'HP 和 SAN');
-      msgs.push(`全体存活角色失去 ${value + dmgBonus} ${damageDesc}`);
+      msgs.push(`${selfAvoided ? `除${actor.name}外，` : ''}全体存活角色失去 ${value + dmgBonus} ${damageDesc}`);
     }
     allLiving.forEach(i => {
-      if (!avoidNegativeFor.includes(i)) {
+      if (!avoidNegativeFor.includes(i) && (i !== ci || !avoidNegative)) {
         if (damageType === 'both' || damageType.includes('hp')) dealHP(i, value);
         if (damageType === 'both' || damageType.includes('san')) dealSAN(i, value);
       }
@@ -1608,12 +1634,37 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   }
   const directStatEventSeq = (gs?._statEventSeq || 0) + 1;
   if (!directStatEvents) directStatEvents = buildStatEvents(beforePlayers, P, msgs, { reason: card?.name || card?.type || '', seq: directStatEventSeq });
+  const inspectionStartMeta = directStatEvents.length
+    ? {
+      ...inspectionMeta,
+      _statEvents: [
+        ...((inspectionMeta?._statEvents) || []),
+        ...directStatEvents,
+      ],
+      _statEventSeq: Math.max(
+        inspectionMeta?._statEventSeq || 0,
+        ...directStatEvents.map(event => event?.seq || 0),
+      ),
+    }
+    : inspectionMeta;
   const inspectionTargets = hasLivingSanDepleted(P)
     ? []
     : pendingInspectionTargets.filter(i => P[i]?.san > 0 && P[i].san <= 6);
   if (inspectionTargets.length) {
     const inspectionBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
-    const processed = processInspectionTargets(inspectionTargets, gs?.currentTurn ?? ci, P, D, Disc, inspectionBaseLog, inspectionMeta);
+    const pendingChainDecision = statePatch?.abilityData?.type
+      ? statePatch.abilityData
+      : buildEtherealizeRedirectDecision(pendingEtherealizeLosses, { _turnOwner: gs?.currentTurn ?? ci })
+        || buildTsathogguaSlimeBalanceDecision(beforePlayers, P, { _turnOwner: gs?.currentTurn ?? ci });
+    const processed = processInspectionTargets(
+      inspectionTargets,
+      gs?.currentTurn ?? ci,
+      P,
+      D,
+      Disc,
+      inspectionBaseLog,
+      pendingChainDecision ? { ...inspectionStartMeta, abilityData: pendingChainDecision } : inspectionStartMeta
+    );
     P = processed.P; D = processed.D; Disc = processed.Disc; inspectionMeta = processed.inspectionMeta;
     msgs = [...msgs, ...processed.log.slice(inspectionBaseLog.length)];
     statePatch = { ...statePatch, ...inspectionMeta };

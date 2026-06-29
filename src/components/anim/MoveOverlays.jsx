@@ -14,6 +14,28 @@ const BLACK_GOAT_PARTICLES = [
   { x: 8, y: 24, size: 5, delay: 0.25, dur: 0.64, glow: 0.80 },
 ];
 
+function clampNumber(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function getAdaptiveDrawTransferCardSize(count = 1) {
+  if (typeof window === 'undefined') return { width: 76, height: 100, scale: 76 / 82 };
+  const vw = window.innerWidth || 1280;
+  const vh = window.innerHeight || 720;
+  const portraitMobile = vw <= 640 && vh >= vw;
+  const landscapeMobile = vh <= 520 && vw > vh;
+  const largeBoost = clampNumber((vw - 1280) / 960, 0, 1);
+  const rawWidth = portraitMobile
+    ? clampNumber(vw * 0.145, 52, 60)
+    : landscapeMobile
+      ? clampNumber(vh * 0.16, 56, 66)
+      : 76 + largeBoost * 42;
+  const multiCardScale = count > 1 ? clampNumber(1 - (count - 1) * 0.04, 0.78, 1) : 1;
+  const width = Math.round(rawWidth * multiCardScale);
+  const height = Math.round(width * (108 / 82));
+  return { width, height, scale: width / 82 };
+}
+
 function BlackGoatTrail({ txPx, tyPx, delay = 0, duration = 1.28 }) {
   const shouldFlipGoat = txPx > 0;
 
@@ -292,9 +314,11 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
           const isGodKeepHand = effect === 'godKeepHand' && card;
           const isSlime = effect === 'tsgSlime' && card;
           const isDecipherStone = effect === 'decipherStone' && card;
-          const duration = effect === 'blackGoat' ? 1.28 : effect === 'tsgSlime' ? 0.82 : isGodKeepHand ? 0.78 : isDecipherStone ? 0.78 : 0.62;
-          const cardW = isSlime ? 42 : isGodKeepHand ? 58 : isDecipherStone ? 58 : 28;
-          const cardH = isSlime ? 56 : isGodKeepHand ? 82 : isDecipherStone ? 76 : 40;
+          const isDrawKeep = effect === 'draw' && card;
+          const drawCardSize = isDrawKeep ? getAdaptiveDrawTransferCardSize(count) : null;
+          const duration = effect === 'blackGoat' ? 1.28 : effect === 'tsgSlime' ? 0.82 : isDrawKeep ? 0.74 : isGodKeepHand ? 0.78 : isDecipherStone ? 0.78 : 0.62;
+          const cardW = isSlime ? 42 : isDrawKeep ? drawCardSize.width : isGodKeepHand ? 58 : isDecipherStone ? 58 : 28;
+          const cardH = isSlime ? 56 : isDrawKeep ? drawCardSize.height : isGodKeepHand ? 82 : isDecipherStone ? 76 : 40;
           return (
             <div key={`${key}-${idx}`} style={{ position: 'absolute', left: srcX, top: srcY }}>
               {effect === 'blackGoat' && <BlackGoatTrail txPx={txPx} tyPx={tyPx} delay={delay} duration={duration} />}
@@ -317,7 +341,17 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
                 zIndex: 481 + idx,
                 overflow: 'hidden',
               }}>
-                {!isSlime && !isDecipherStone && <CardBackLayer expansionKey={expansionKey}/>}
+                {!isSlime && !isDecipherStone && !isDrawKeep && <CardBackLayer expansionKey={expansionKey}/>}
+                {isDrawKeep && (
+                  <DDCard
+                    card={card}
+                    frameStyle={{
+                      transform: `scale(${drawCardSize.scale})`,
+                      transformOrigin: 'top left',
+                      boxShadow: 'none',
+                    }}
+                  />
+                )}
                 {isSlime && (
                   <DDCard
                     card={card}

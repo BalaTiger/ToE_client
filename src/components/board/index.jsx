@@ -7,6 +7,7 @@ import { AnimatedCardBack, AreaTooltip, CardCodeLabel, DDCard, DDCardBack, GodTo
 import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
 import { ThemeCornerOrnament } from '../theme/ThemeOrnaments';
 import { getFontZoomCompensate } from '../../utils/scale';
+import { _getZoomCompensatedRect } from '../../utils/dom';
 
 function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth,labelColor='var(--toe-muted,#a07838)',valueColor='var(--toe-text,#c8a96e)',lineColor='var(--toe-line-dim,#2a1a08)'}){
   const fontZoom = getFontZoomCompensate(scaleRatio);
@@ -421,7 +422,7 @@ function PetrifyingFormulaDie({ state, fontSize }) {
   );
 }
 
-function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,deckRef,discardRef,scaleRatio,expansionKey='地神的潜影',zhuLitCards=[],zhuHiddenCardId=null,petrifyingFormula=null}){
+function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,baseHeight=null,deckRef,discardRef,scaleRatio,expansionKey='地神的潜影',zhuLitCards=[],zhuHiddenCardId=null,petrifyingFormula=null}){
   const theme=getBoardTheme(expansionKey);
   const fontZoom = getFontZoomCompensate(scaleRatio);
   const _ = (px) => px * fontZoom;
@@ -441,8 +442,8 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
   },[]);
   const effectiveCompact=compact&&pileWrapWidth<320;
   const widthBonus=Math.max(0,pileWrapWidth-(effectiveCompact?240:320));
-  const pileScale=(effectiveCompact?1.5:2.0)+Math.min(effectiveCompact?0.3:0.6,widthBonus/(effectiveCompact?320:480));
-  const pileMinHeight=effectiveCompact ? 140 : 220;
+  const pileScale=((effectiveCompact?1.5:2.0)+Math.min(effectiveCompact?0.3:0.6,widthBonus/(effectiveCompact?320:480))) * fontZoom;
+  const pileMinHeight=baseHeight ? Math.round(baseHeight * fontZoom) : (effectiveCompact ? 140 : 220);
   return(
     <div ref={pileWrapRef} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',position:'relative',minWidth:0,minHeight:pileMinHeight}}>
       <ThemeCornerOrnament expansionKey={expansionKey} corner="tl" size={56} opacity={0.28}/>
@@ -507,10 +508,17 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
   const stretchedHandSlotWidth=`calc((100% - ${HAND_CARD_GAP*3}px) / 4)`;
   const handStripRef=React.useRef(null);
   const [handStripWidth,setHandStripWidth]=React.useState(0);
+  const [handStripVisualWidth,setHandStripVisualWidth]=React.useState(0);
   React.useLayoutEffect(()=>{
     const el=handStripRef.current;
     if(!el)return;
-    const update=()=>setHandStripWidth(el.clientWidth||0);
+    const update=()=>{
+      setHandStripWidth(el.clientWidth||0);
+      // 棋盘外层有 CSS zoom，clientWidth 是未缩放的布局宽度；用 zoom 补偿后的矩形得到真实可见宽度，
+      // 否则放大屏上即便卡牌可见宽度已 >90px，布局宽度仍偏小，阈值无法触发完整卡图。
+      const r=_getZoomCompensatedRect(el);
+      setHandStripVisualWidth(r?.width||el.clientWidth||0);
+    };
     update();
     if(typeof ResizeObserver==='undefined')return;
     const ro=new ResizeObserver(update);
@@ -520,6 +528,20 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
   const computedCardWidth=handStripWidth>0
     ? Math.max(0,(handStripWidth-(HAND_CARD_GAP*3))/4)
     : HAND_CARD_WIDTH;
+  // 卡牌的真实可见宽度（已考虑棋盘缩放），用于决定是否升级为带描述的完整卡图。
+  const visualCardWidth=handStripWidth>0
+    ? computedCardWidth*(handStripVisualWidth/handStripWidth)
+    : computedCardWidth;
+  // 完整卡图(82px) / 紧凑卡图(62px) 的自然宽度，与 DDCard 内部一致。
+  const FULL_NATURAL_W=82,COMPACT_NATURAL_W=62;
+  // 可见宽度足够（约等于自己手牌区完整卡图）时用带描述的完整卡图，否则退化为紧凑卡图。
+  // ponytail: 阈值取完整卡自然宽度附近；描述放得下才升级。
+  const FULL_REVEAL_CARD_MIN_VISUAL_WIDTH=80;
+  const useFullRevealCards=showFaceUp&&handStripWidth>0&&visualCardWidth>=FULL_REVEAL_CARD_MIN_VISUAL_WIDTH;
+  // 亮明手牌整体用 CSS zoom 缩放到槽位宽度（与玩家自己手牌区一致），字号/字位随之等比缩放，避免与自己手牌区差异过大。
+  const revealCardZoom=computedCardWidth>0
+    ? computedCardWidth/(useFullRevealCards?FULL_NATURAL_W:COMPACT_NATURAL_W)
+    : 1;
   const filledHandFrameStyle={width:'100%',minWidth:'100%',height:'auto',aspectRatio:`${HAND_CARD_WIDTH}/${HAND_CARD_HEIGHT}`};
   const sharedHandFrameStyle=filledHandFrameStyle;
   const handOverlap=handCards.length>4
@@ -573,11 +595,26 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
           )}
           {(player.godZone||[]).length>0&&player.godName&&(
             <span data-god-power-badge={playerIndex} style={{
+              position:'relative',overflow:'hidden',
+              '--god-power-col':GOD_DEFS[player.godName]?.col||'#c06020',
+              '--god-power-chevron-scale':'8.5',
               fontSize:8,color:GOD_DEFS[player.godName]?.col||'#c06020',
               background:'#100808',border:`1px solid ${GOD_DEFS[player.godName]?.col||'#c06020'}44`,
               borderRadius:2,padding:'1px 4px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
             }}>
               {GOD_DEFS[player.godName]?.power} Lv.{player.godLevel}
+              {/* 信仰/升级瞬间：CSS 绘制的单枚箭头横向拉伸并向上滚动（key 变化触发重播） */}
+              <span
+                key={`${player.godName}-${player.godLevel}`}
+                className="god-power-chevron-layer"
+                aria-hidden
+              >
+                {[0,1,2,3,4].map(r=>(
+                  <span key={r} className="god-power-chevron-row">
+                    <span className="god-power-chevron-glyph" />
+                  </span>
+                ))}
+              </span>
             </span>
           )}
           {(player.etherealizeStacks||0)>0&&(
@@ -645,7 +682,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
                     borderRadius:3,
                   }}
                 ><DDCardBack small expansionKey={expansionKey} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/></div>
-                :<DDCard card={card} small onClick={onCardSelect?()=>onCardSelect(ci):undefined} highlight={!!onCardSelect} holderId={playerIndex} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/>}
+                :<DDCard card={card} small={!showFaceUp} compact={showFaceUp&&!useFullRevealCards} onClick={onCardSelect?()=>onCardSelect(ci):undefined} highlight={!!onCardSelect} holderId={playerIndex} frameStyle={showFaceUp?{zoom:revealCardZoom}:(shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle)}/>}
             </div>
           );
         })}

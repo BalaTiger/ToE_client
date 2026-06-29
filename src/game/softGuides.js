@@ -96,15 +96,28 @@ export function shouldTriggerRestSoftGuide(gs, doneMap = {}) {
   );
 }
 
+export function hasPendingTurnStartPresentation(gs) {
+  if (!gs) return false;
+  return !!(
+    (Array.isArray(gs._turnStartLogs) && gs._turnStartLogs.length > 0) ||
+    gs._playersBeforeThisDraw ||
+    gs._drawnCard ||
+    gs._aiDrawnCard ||
+    (gs.phase === 'ACTION' && gs.drawReveal?.card)
+  );
+}
+
 export function canPresentSoftGuide({
   gs,
   showTutorial = false,
   pendingSoftGuideId = null,
+  roleSelectionPending = false,
   roleRevealAnim = null,
   anim = null,
   animExiting = null,
   animQueueLength = 0,
   hasPendingGs = false,
+  turnStartPresentationPending = false,
 } = {}) {
   return !!(
     gs &&
@@ -112,10 +125,12 @@ export function canPresentSoftGuide({
     !gs.gameOver &&
     !showTutorial &&
     !pendingSoftGuideId &&
+    !roleSelectionPending &&
     !roleRevealAnim &&
     !anim &&
     !animExiting &&
     animQueueLength <= 0 &&
-    !hasPendingGs
+    !hasPendingGs &&
+    !turnStartPresentationPending
   );
 }

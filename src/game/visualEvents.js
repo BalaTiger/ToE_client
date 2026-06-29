@@ -600,8 +600,12 @@ export function buildStatStepsFromVisualEvents(state, players) {
 
 export function buildGodPowerBlockedStepsFromVisualEvents(state, oldState = null) {
   const oldIds = new Set(getVisualEventIds(getVisualEvents(oldState)));
-  return getVisualEvents(state)
-    .filter(ev => ev?.type === VISUAL_EVENT.GOD_POWER_BLOCKED && ev?.id && !oldIds.has(ev.id))
+  const events = getVisualEvents(state)
+    .filter(ev => ev?.type === VISUAL_EVENT.GOD_POWER_BLOCKED && ev?.id && !oldIds.has(ev.id));
+  if (events.length) {
+    try { console.log('[BUG1-DIAG] visualEventsPath godPowerBlocked', { currentTurn: state?.currentTurn, ids: events.map(e => e.id), playerIdx: events.map(e => e.playerIdx) }); } catch { /* noop */ }
+  }
+  return events
     .map(event => {
       const playerIdx = event.playerIdx ?? 0;
       const playerName = event.playerName || state?.players?.[playerIdx]?.name || '该玩家';

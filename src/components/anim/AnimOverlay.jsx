@@ -1,6 +1,6 @@
 ﻿import React from 'react';
 import { CardFlipAnim } from './CardFlipAnim';
-import { DiceRollAnim, GenericAnimOverlay, TorchWardOverlay, YourTurnAnim } from './GenericAnimOverlay';
+import { DiceRollAnim, GenericAnimOverlay, TorchWardOverlay, VritraImmortalRevealOverlay, YourTurnAnim } from './GenericAnimOverlay';
 import { BuryToDeckOverlay, DiscardMoveOverlay, HuntRevealCardOverlay, TsathogguaSlimePopOverlay, ZhuHideCardOverlay } from './MoveOverlays';
 import { CaveDuelAnim, GeomagneticReversalAnim, GeomagneticRestoreShuffleAnim, VolcanoAnim } from './AreaCardOverlays';
 import { ApophisEclipseAnim } from './ApophisOverlays';
@@ -22,6 +22,12 @@ const ANIM_RENDERERS = {
   YOUR_TURN: ({ anim }) => <YourTurnAnim name={anim.name} local={!!anim.local} />,
   DRAW_CARD: ({ anim, exiting, expansionKey }) => (
     <CardFlipAnim
+      key={[
+        anim.inspectionSeq ?? '',
+        anim.card?.id ?? anim.card?.uid ?? anim.card?.key ?? anim.card?.name ?? 'card',
+        anim.targetPid ?? 0,
+        anim.triggerName ?? '',
+      ].join(':')}
       card={anim.card}
       triggerName={anim.triggerName}
       targetPid={anim.targetPid ?? 0}
@@ -48,6 +54,7 @@ const ANIM_RENDERERS = {
   ENDLESS_CORRIDOR_TUNNEL: ({ exiting }) => <EndlessCorridorTunnelAnim exiting={exiting} />,
   GOD_POWER_BLOCKED: ({ anim, exiting }) => <TorchWardOverlay anim={anim} exiting={exiting} />,
   TSG_SLIME_POP: ({ anim, exiting }) => <TsathogguaSlimePopOverlay anim={anim} exiting={exiting} />,
+  VRI_IMMORTAL_REVEAL: ({ anim, exiting }) => <VritraImmortalRevealOverlay anim={anim} exiting={exiting} />,
 };
 
 function AnimOverlay({ anim, exiting, expansionKey = '地神的潜影' }) {

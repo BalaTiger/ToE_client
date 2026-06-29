@@ -9,6 +9,7 @@ import {
   dedupeInferredDiscardTransfers,
   fullHandSwapSteps,
   resolveTurnHighlightForStep,
+  swapCardsSteps,
   zhuHideCardStep,
 } from '../animQueueHelpers';
 import { copyPlayers } from '../coreUtils';
@@ -64,6 +65,27 @@ describe('animQueueHelpers', () => {
       { type: 'VISUAL_LOCK', players, zhuLight: { owner: 0 } },
       { type: 'CARD_TRANSFER', fromPid: 0, dest: 'player', toPid: 1, count: 2 },
       { type: 'CARD_TRANSFER', fromPid: 1, dest: 'player', toPid: 0, count: 1, msgs: ['交换完成'] },
+    ]);
+  });
+
+  it('掉包单牌交换 helper 先播放目标牌飞向掉包者，再播放还牌飞回目标', () => {
+    const players = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' })];
+    const takenCard = { id: 'taken' };
+    const givenCard = { id: 'given' };
+
+    expect(swapCardsSteps({
+      sourceIdx: 1,
+      targetIdx: 0,
+      sourceCount: 1,
+      targetCount: 1,
+      takenCard,
+      givenCard,
+      msgs: ['艾伦（寻宝者）对 你 【掉包】'],
+      playersBefore: players,
+    })).toEqual([
+      { type: 'VISUAL_LOCK', players, zhuLight: null },
+      { type: 'CARD_TRANSFER', fromPid: 0, dest: 'player', toPid: 1, count: 1, cards: [takenCard] },
+      { type: 'CARD_TRANSFER', fromPid: 1, dest: 'player', toPid: 0, count: 1, cards: [givenCard], msgs: ['艾伦（寻宝者）对 你 【掉包】'] },
     ]);
   });
 
@@ -128,6 +150,73 @@ describe('animQueueHelpers', () => {
     ]);
     expect(queue[1]).toMatchObject({ fromPid: 0, toPid: 2, dest: 'player' });
     expect(queue[2]).toMatchObject({ card: gift, triggerName: '目标角色', targetPid: 2, skipTravel: true });
+  });
+
+  it('蛊惑赠牌后可先提交施法者手牌中间态，再继续目标结算', () => {
+    const gift = makeZoneCard('A1', 0);
+    const sourceAfterGift = makePlayer({ name: '贝拉', hand: [makeZoneCard('B1', 0)] });
+    const queue = buildBewitchForcedCardQueue(1, 2, gift, '目标角色', [
+      { type: 'TURN_BOUNDARY_PAUSE', msgs: ['目标结算'] },
+    ], ['贝拉（邪祀者）对目标角色【蛊惑】'], {
+      afterGiftPatch: { players: [makePlayer({ name: '你' }), sourceAfterGift, makePlayer({ name: '目标角色' })] },
+    });
+
+    expect(queue.map(step => step.type)).toEqual([
+      'SKILL_BEWITCH',
+      'CARD_TRANSFER',
+      'STATE_PATCH',
+      'DRAW_CARD',
+      'TURN_BOUNDARY_PAUSE',
+    ]);
+    expect(queue[2]).toMatchObject({ players: expect.any(Array) });
+    expect(queue[2].players[1].hand).toHaveLength(1);
+  });
+
+  it('蛊惑强制结算时保留带语义的连锁飞牌动画', () => {
+    const gift = { id: 'shu-1', name: '森之领主', isGod: true };
+    const queue = buildBewitchForcedCardQueue(0, 3, gift, '黛安娜', [
+      { type: 'CARD_TRANSFER', fromPid: 3, dest: 'discard' },
+      cardTransferStep({
+        fromPid: 0,
+        dest: 'player',
+        toPid: 2,
+        count: 1,
+        sourceAnchor: 'godPower',
+        effect: 'blackGoat',
+        durationMs: 1500,
+        msgs: ['【黑暗子嗣】卡洛斯 获得1张黑山羊幼仔'],
+      }),
+      cardTransferStep({
+        fromPid: 1,
+        dest: 'player',
+        toPid: 0,
+        count: 1,
+        sourceAnchor: 'chainEffect',
+        effect: 'futureChain',
+        msgs: ['未来连锁飞牌'],
+      }),
+      { type: 'SAN_DAMAGE', hitIndices: [1] },
+    ], ['你对 黛安娜 【蛊惑】，赠予 森之领主']);
+
+    expect(queue.map(step => step.type)).toEqual([
+      'SKILL_BEWITCH',
+      'CARD_TRANSFER',
+      'DRAW_CARD',
+      'CARD_TRANSFER',
+      'CARD_TRANSFER',
+      'SAN_DAMAGE',
+    ]);
+    expect(queue[3]).toMatchObject({
+      effect: 'blackGoat',
+      sourceAnchor: 'godPower',
+      toPid: 2,
+      msgs: ['【黑暗子嗣】卡洛斯 获得1张黑山羊幼仔'],
+    });
+    expect(queue[4]).toMatchObject({
+      effect: 'futureChain',
+      sourceAnchor: 'chainEffect',
+      msgs: ['未来连锁飞牌'],
+    });
   });
 
   it('检定事件流保证前置变化、检定翻牌、检定效果按顺序入队', () => {

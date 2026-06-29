@@ -41,6 +41,40 @@ describe('checkWin death handling', () => {
   });
 });
 
+describe('地磁反转暗抽', () => {
+  it('从弃牌堆暗抽到邪神牌时仍触发遭遇邪神，不直接进入手牌', () => {
+    const players = [makePlayer({ role: ROLE_TREASURE, san: 10, godEncounters: 0 })];
+    const godCard = makeGodCard('NYA');
+    const zoneInDeck = makeZoneCard('A1');
+    const gs = makeGs({ players, deck: [zoneInDeck], discard: [godCard], geomagneticReversalActive: true, log: [] });
+
+    const result = playerDrawCard(players, [zoneInDeck], [godCard], 0, gs);
+
+    expect(result.drawnCard).toBe(godCard);
+    expect(result.needGodChoice).toBe(true);           // 进入遭遇邪神决策，而非直接收入
+    expect(result.P[0].godEncounters).toBe(1);
+    expect(result.P[0].san).toBe(9);                   // 非邪祀者扣减 SAN
+    expect(result.P[0].hand.some(c => c.id === godCard.id)).toBe(false);
+    expect(result.Disc.some(c => c.id === godCard.id)).toBe(false); // 已从弃牌堆取出
+    expect(result.D).toEqual([zoneInDeck]);            // 没有从牌堆顶摸牌
+  });
+
+  it('从弃牌堆随机摸到区域牌时照常翻开并交由玩家决定收弃（与普通摸牌统一）', () => {
+    const players = [makePlayer({ role: ROLE_TREASURE, hp: 10, san: 10 })];
+    const zoneCard = makeZoneCard('A2'); // 蚂蚁虽小：非强制触发，需玩家决定收/弃
+    const filler = makeZoneCard('A1');   // 牌堆保留一张，确保走地磁反转暗抽而非空堆重洗
+    const gs = makeGs({ players, deck: [filler], discard: [zoneCard], geomagneticReversalActive: true, log: [] });
+
+    const result = playerDrawCard(players, [filler], [zoneCard], 0, gs);
+
+    expect(result.needsDecision).toBe(true);                        // 翻开后交由玩家决定，而非直接进手牌
+    expect(result.drawnCard.id).toBe(zoneCard.id);                  // 抽到的是弃牌堆里的牌
+    expect(result.P[0].hand.some(c => c.id === zoneCard.id)).toBe(false); // 等待决策期间不在手牌
+    expect(result.Disc.some(c => c.id === zoneCard.id)).toBe(false);      // 已从弃牌堆取出
+    expect(result.D).toEqual([filler]);                             // 没有从牌堆顶摸牌
+  });
+});
+
 describe('turnEngine stat events', () => {
   it('SAN 损失降至 0 时不排入检定事件', () => {
     const players = [makePlayer({ name: '你', hp: 10, san: 2 })];
@@ -659,7 +693,7 @@ describe('turnEngine stat events', () => {
     expect(result._preTurnPlayers[0].hand.filter(c => c.isTsathogguaSlime)).toHaveLength(2);
   });
 
-  it('其他角色在增殖的Z生效回合公开获得撒托古亚黏液会触发摸牌队列', () => {
+  it('回合结束后其他角色获得撒托古亚黏液不会触发增殖的Z', () => {
     const players = [
       makePlayer({ name: 'Z持有者' }),
       makePlayer({ name: '撒托古亚信徒', godName: 'TSG', godLevel: 1 }),
@@ -675,9 +709,7 @@ describe('turnEngine stat events', () => {
     const result = startNextTurn(gs);
 
     expect(result.log.some(line => line.includes('获得1张撒托古亚的赐福黏液'))).toBe(true);
-    expect(result.proliferatingZQueue).toMatchObject([
-      { drawerIdx: 0, gainOwnerIdx: 1 },
-    ]);
+    expect(result.proliferatingZQueue || []).toEqual([]);
   });
 
   it('火把状态会阻止撒托古亚回合结束获得黏液并记录护罩事件', () => {
@@ -695,6 +727,28 @@ describe('turnEngine stat events', () => {
     expect(result._visualEvents).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: 'godPowerBlocked', playerIdx: 0 }),
     ]));
+  });
+
+  it('火把免疫回合结束撒托古亚给黏液后，连续跳过翻面角色时不会复制旧护罩事件', () => {
+    const players = [
+      makePlayer({ name: '你', godName: 'TSG', godLevel: 1, godPowerImmuneThisTurn: true, godPowerImmuneTurnOwner: 0 }),
+      makePlayer({ name: '艾伦', isResting: true }),
+      makePlayer({ name: '卡洛斯' }),
+      makePlayer({ name: '黛安娜', isResting: true }),
+    ];
+    const card = makeZoneCard('A1', 0);
+    const gs = makeGs({
+      players,
+      deck: [card],
+      currentTurn: 0,
+      log: [],
+    });
+
+    const result = startNextTurn(gs);
+
+    expect(result.currentTurn).toBe(2);
+    expect(result.log).toContain('【引燃火把】你 本回合不受邪神之力影响');
+    expect((result._visualEvents || []).filter(event => event?.type === 'godPowerBlocked')).toHaveLength(1);
   });
 
   it('撒托古亚黏液获得动画排在下一回合开始前并在动画后刷新手牌', () => {
@@ -720,6 +774,21 @@ describe('turnEngine stat events', () => {
     expect(queue[3]).toMatchObject({ durationMs: 180 });
   });
 
+  it('黄液已在回合结束前(无尽通道之前)发放时，startNextTurn 不再重复发放', () => {
+    const players = [
+      makePlayer({ name: '你', godName: 'TSG', godLevel: 1 }),
+      makePlayer({ name: '艾伦' }),
+    ];
+    // _tsgSlimeGrantedAtTurnEnd 表示黄液已先于无尽通道结算（神牌事件优先），此处应跳过
+    const gs = makeGs({ players, currentTurn: 0, log: [], _tsgSlimeGrantedAtTurnEnd: true });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players[0].hand.filter(c => c.isTsathogguaSlime)).toHaveLength(0);
+    expect(result._tsgSlimeGrantEvents || []).toHaveLength(0);
+    expect(result._tsgSlimeGrantedAtTurnEnd).toBeUndefined(); // 标记已清除，不影响后续回合
+  });
+
   it('撒托古亚信徒摸牌阶段消耗黏液并额外摸牌', () => {
     const slime = createTsathogguaSlimeCard();
     const players = [
@@ -736,7 +805,10 @@ describe('turnEngine stat events', () => {
 
     expect(result.players[1].hand.some(c => c.isTsathogguaSlime)).toBe(false);
     expect(result.players[1].hand.map(c => c.name)).toEqual(expect.arrayContaining(['额外牌', '正常牌']));
-    expect(result.log.some(line => line.includes('额外摸1张牌'))).toBe(true);
+    const extraDrawIdx = result.log.findIndex(line => line.includes('额外摸到'));
+    const slimePopIdx = result.log.findIndex(line => line.includes('撒托古亚的赐福黏液消失'));
+    expect(extraDrawIdx).toBeGreaterThan(-1);
+    expect(slimePopIdx).toBeGreaterThan(extraDrawIdx);
   });
 
   it('本地玩家黏液额外摸牌进入抉择时保留正常摸牌续接标记', () => {
@@ -764,14 +836,15 @@ describe('turnEngine stat events', () => {
     expect(result.abilityData).toMatchObject({
       fromTsathogguaSlime: true,
       continueTurnStartDraw: true,
+      pendingTsathogguaSlime: slime,
     });
-    expect(result.players[0].hand.some(c => c.isTsathogguaSlime)).toBe(false);
+    expect(result.players[0].hand.some(c => c.isTsathogguaSlime)).toBe(true);
     expect(result.deck[0]).toBe(normalCard);
     expect(result.log.some(line => line.includes('额外摸到'))).toBe(true);
     expect(result.log.some(line => line.includes('正常牌'))).toBe(false);
   });
 
-  it('撒托古亚黏液回合开始消失时播放泡泡破裂而不是弃牌动画', () => {
+  it('撒托古亚黏液在对应额外摸牌后播放泡泡破裂而不是弃牌动画', () => {
     const slime = createTsathogguaSlimeCard();
     const players = [
       makePlayer({ name: '你' }),
@@ -790,6 +863,26 @@ describe('turnEngine stat events', () => {
     expect(popStep).toMatchObject({ targetPid: 1, count: 1, cards: [slime] });
     expect(queue.some(step => step.type === 'CARD_TRANSFER' && step.dest === 'discard')).toBe(false);
     expect(queue.some(step => step.type === 'DISCARD' && step.card?.id === slime.id)).toBe(false);
+  });
+
+  it('禁用摸牌时不会触发或消耗撒托古亚黏液', () => {
+    const slime = createTsathogguaSlimeCard();
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', godName: 'TSG', godLevel: 1, hand: [slime], skipNextDraw: true, skipNextDrawReason: '霉变食物' }),
+    ];
+    const deck = [
+      { id: 'normal', key: 'A2', letter: 'A', number: 2, name: '正常牌', type: 'selfHealHP', val: 1, isZone: true, polarity: 'positive' },
+    ];
+    const gs = makeGs({ players, deck, currentTurn: 0, log: [] });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players[1].hand).toContain(slime);
+    expect(result.players[1].hand.map(c => c.name)).not.toContain('正常牌');
+    expect(result.log.some(line => line.includes('因霉变食物而无法摸牌'))).toBe(true);
+    expect(result.log.some(line => line.includes('额外摸到'))).toBe(false);
+    expect(result.log.some(line => line.includes('撒托古亚的赐福黏液消失'))).toBe(false);
   });
 
   it('火把状态会阻止撒托古亚回合开始消耗黏液', () => {
@@ -1067,7 +1160,7 @@ describe('turnEngine stat events', () => {
     expect(result.players[1].damageBonusTurnOwner).toBe(2);
   });
 
-  it('reveals an unrevealed cultist when they keep an encountered god card in hand', () => {
+  it('reveals an unrevealed cultist (role only, not their whole hand) when they keep an encountered god card in hand', () => {
     const oldGod = makeGodCard('CTH');
     const drawnGod = makeGodCard('ZHU');
     const players = [
@@ -1091,7 +1184,7 @@ describe('turnEngine stat events', () => {
     expect(result.P[1].hand).toContainEqual(expect.objectContaining({ id: drawnGod.id }));
     expect(result.P[1]).toMatchObject({
       roleRevealed: true,
-      revealHand: true,
+      revealHand: false,
       godName: 'CTH',
       godLevel: 3,
     });

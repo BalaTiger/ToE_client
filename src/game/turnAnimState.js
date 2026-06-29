@@ -18,6 +18,7 @@ export const EMPTY_TURN_ANIM_FIELDS = Object.freeze({
   _playersBeforeThisDraw: null,
   _turnStartLogs: [],
   _drawLogs: [],
+  _turnDrawEvents: [],
   _statLogs: [],
   _statEvents: [],
   _preTurnPlayers: null,
@@ -34,6 +35,7 @@ export function withClearedTurnAnimFields(state, extra = {}) {
 export function withClearedReplayAnimFields(state, extra = {}) {
   return withClearedTurnAnimFields(state, {
     _statEvents: Array.isArray(state?._statEvents) ? state._statEvents : [],
+    _apophisTargetEvent: null,
     ...extra,
   });
 }
@@ -142,7 +144,7 @@ function buildGodPowerBlockedBoundaryQueue(state) {
   const turnStartLine = Array.isArray(state?._turnStartLogs) ? state._turnStartLogs[0] : null;
   const turnStartIdx = turnStartLine ? log.lastIndexOf(turnStartLine) : -1;
   if (turnStartIdx < 0) return [];
-  return getVisualEvents(state)
+  const events = getVisualEvents(state)
     .filter(event => event?.type === VISUAL_EVENT.GOD_POWER_BLOCKED)
     .filter(event => {
       const msgs = Array.isArray(event?.msgs) ? event.msgs : [];
@@ -150,8 +152,11 @@ function buildGodPowerBlockedBoundaryQueue(state) {
         const idx = log.indexOf(msg);
         return idx >= 0 && idx < turnStartIdx;
       });
-    })
-    .map(event => godPowerBlockedStepFromEvent(event, state));
+    });
+  if (events.length) {
+    try { console.log('[BUG1-DIAG] boundaryQueue godPowerBlocked', { currentTurn: state?.currentTurn, turnStartLine, ids: events.map(e => e.id), playerIdx: events.map(e => e.playerIdx) }); } catch { /* noop */ }
+  }
+  return events.map(event => godPowerBlockedStepFromEvent(event, state));
 }
 
 export function getTurnStartDrawBaselineLog(state) {
@@ -169,6 +174,36 @@ export function getTurnStartDrawnCard(state) {
   return state?.phase === 'GOD_CHOICE'
     ? state.abilityData?.godCard
     : state?.drawReveal?.card;
+}
+
+function sameDrawCard(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.id != null && b.id != null) return a.id === b.id;
+  return [a.key, a.godKey, a.name, a.type].filter(Boolean).join(':') ===
+    [b.key, b.godKey, b.name, b.type].filter(Boolean).join(':');
+}
+
+function normalizeTurnDrawEvents(state, fallbackCard, drawerPid, drawerName) {
+  const sourceEvents = Array.isArray(state?._turnDrawEvents) ? state._turnDrawEvents : [];
+  const events = sourceEvents
+    .filter(event => event?.card)
+    .map(event => ({
+      ...event,
+      drawerIdx: event.drawerIdx ?? drawerPid,
+      drawerName: event.drawerName || drawerName,
+      msgs: Array.isArray(event.msgs) ? event.msgs : [],
+    }));
+  if (fallbackCard && !events.some(event => sameDrawCard(event.card, fallbackCard))) {
+    events.push({
+      card: fallbackCard,
+      drawerIdx: drawerPid,
+      drawerName,
+      sourcePile: state?.drawReveal?.sourcePile || state?._drawSourcePile || (state?.geomagneticReversalActive ? 'discard' : 'deck'),
+      msgs: state?._drawLogs || [],
+    });
+  }
+  return events;
 }
 
 export function getTurnStartDrawerIdx(state) {
@@ -216,9 +251,11 @@ function hasDrawStatEvidence(state, visualStatQ = []) {
 }
 
 function filterFallbackDrawEffects(queue, state, visualStatQ = []) {
-  return hasDrawStatEvidence(state, visualStatQ)
-    ? queue
-    : queue.filter(step => !isStatAnimationStep(step));
+  if (hasDrawStatEvidence(state, visualStatQ)) return queue;
+  return queue.filter(step => {
+    if (step?.type === 'DICE_ROLL' && step.diceMode === 'moldyFood') return true;
+    return !isStatAnimationStep(step);
+  });
 }
 
 function getFreshInspectionEvents(oldGs, newGs) {
@@ -252,6 +289,48 @@ function getInspectionLogLines(inspectionEvents = []) {
 function withoutLogLines(lines = [], excluded = new Set()) {
   if (!excluded?.size) return lines;
   return (Array.isArray(lines) ? lines : []).filter(line => !excluded.has(line));
+}
+
+function buildTreasureDodgeDiceStepFromLogs(logs = [], drawerName = '???') {
+  const line = (Array.isArray(logs) ? logs : []).find(msg =>
+    typeof msg === 'string' &&
+    msg.includes('（寻宝者）') &&
+    msg.includes('掷出') &&
+    (msg.includes('成功规避负面效果') || msg.includes('未能规避，触发负面效果'))
+  );
+  if (!line) return null;
+  const match = line.match(/^(.+?)（寻宝者）.*?掷出 (\d+) 点，(.+?)！?$/);
+  if (!match) return null;
+  const d1 = Number(match[2]);
+  if (!Number.isFinite(d1)) return null;
+  return {
+    type: 'DICE_ROLL',
+    d1,
+    d2: 0,
+    heal: 0,
+    rollerName: match[1] || drawerName,
+    dodgeSuccess: match[3].includes('成功规避负面效果'),
+  };
+}
+
+function isGodDrawnCard(card) {
+  return !!card && (card.isGod || card.type === 'god' || !!card.godKey);
+}
+
+function getGodDrawResolution(logs = [], drawerName = '') {
+  const lines = Array.isArray(logs) ? logs : [];
+  const godHandLog = lines.some(msg => typeof msg === 'string' && msg.includes('将邪神牌收入手牌'));
+  const godDiscardLog = lines.some(msg => typeof msg === 'string' && msg.includes('放弃了邪神的馈赠'));
+  if (godHandLog) return 'hand';
+  if (godDiscardLog) return 'discard';
+  const playerPrefix = drawerName ? `${drawerName} ` : '';
+  const godZoneLog = lines.some(msg => typeof msg === 'string' && (
+    msg.startsWith(`${playerPrefix}信仰了 `) ||
+    msg.startsWith(`${playerPrefix}改信新神`) ||
+    msg.includes('邪神之力升至')
+  ));
+  if (godZoneLog) return 'godZone';
+  return null;
 }
 
 function buildFilteredStatStepsFromVisualEvents(state, players, shouldKeepEvent, excludedMsgs = new Set()) {
@@ -416,6 +495,8 @@ export function buildTurnStartDrawReplayQueue({
   }
   const drawerPid = getTurnStartDrawerIdx(newGs);
   const drawerName = newGs?.players?.[drawerPid]?.name || '???';
+  const hasExplicitTurnDrawEvents = Array.isArray(newGs?._turnDrawEvents) && newGs._turnDrawEvents.some(event => event?.card);
+  const turnDrawEvents = normalizeTurnDrawEvents(newGs, drawnCard, drawerPid, drawerName);
   const beforeDrawPlayers = newGs?._playersBeforeThisDraw || oldGs?.players || newGs?.players || [];
   const turnStartPreDrawQ = buildTurnStartPreDrawEffectQueue({ oldGs, newGs, buildQueue });
   const hasTurnStartPreDrawQ = turnStartPreDrawQ.length > 0;
@@ -427,7 +508,8 @@ export function buildTurnStartDrawReplayQueue({
     ...(drawerPid === 0 ? {} : { name: drawerName }),
     msgs: newGs?._turnStartLogs,
   };
-  const drawCardStep = buildDrawCardStepFromVisualEvents(newGs) || {
+  const visualDrawCardStep = hasExplicitTurnDrawEvents ? null : buildDrawCardStepFromVisualEvents(newGs);
+  const drawCardStep = visualDrawCardStep || {
     type: 'DRAW_CARD',
     card: drawnCard,
     triggerName: localDisplayName(drawerPid, drawerName),
@@ -435,7 +517,31 @@ export function buildTurnStartDrawReplayQueue({
     sourcePile: newGs?.drawReveal?.sourcePile || newGs?._drawSourcePile || (newGs?.geomagneticReversalActive ? 'discard' : 'deck'),
     msgs: newGs?._drawLogs,
   };
-  const discardedDrawnCard = !!newGs?._discardedDrawnCard;
+  const drawCardSteps = hasExplicitTurnDrawEvents
+    ? turnDrawEvents.flatMap(event => {
+      const steps = [{
+        type: 'DRAW_CARD',
+        card: event.card,
+        triggerName: localDisplayName(event.drawerIdx ?? drawerPid, event.drawerName || drawerName),
+        targetPid: event.drawerIdx ?? drawerPid,
+        sourcePile: event.sourcePile || newGs?.drawReveal?.sourcePile || newGs?._drawSourcePile || (newGs?.geomagneticReversalActive ? 'discard' : 'deck'),
+        msgs: event.msgs,
+      }];
+      if (event.slimePop) {
+        steps.push({
+          type: 'TSG_SLIME_POP',
+          targetPid: event.slimePop.targetPid ?? event.drawerIdx ?? drawerPid,
+          count: event.slimePop.count || (Array.isArray(event.slimePop.cards) ? event.slimePop.cards.length : 1),
+          cards: Array.isArray(event.slimePop.cards) ? event.slimePop.cards : [],
+          msgs: Array.isArray(event.slimePop.msgs) ? event.slimePop.msgs : [],
+        });
+      }
+      return steps;
+    })
+    : [drawCardStep];
+  const drawResolutionLogs = [...(newGs?._drawLogs || []), ...(newGs?._statLogs || []), ...(newGs?.log || [])];
+  const godDrawResolution = isGodDrawnCard(drawnCard) ? getGodDrawResolution(drawResolutionLogs, drawerName) : null;
+  const discardedDrawnCard = !!newGs?._discardedDrawnCard || godDrawResolution === 'discard';
   const discardDrawnStep = discardedDrawnCard
     ? {
       type: 'DISCARD',
@@ -447,9 +553,29 @@ export function buildTurnStartDrawReplayQueue({
   const discardRestoreStep = discardedDrawnCard
     ? statePatchStep({ players: newGs?.players, discard: newGs?.discard })
     : null;
+  const shouldPlayDrawKeepTransfer = !!drawnCard &&
+    !discardedDrawnCard &&
+    !newGs?.drawReveal?.card &&
+    newGs?.phase !== 'GOD_CHOICE' &&
+    (!isGodDrawnCard(drawnCard) || godDrawResolution === 'hand');
+  const drawKeepTransferStep = shouldPlayDrawKeepTransfer
+    ? cardTransferStep({
+      fromPid: drawerPid,
+      dest: 'player',
+      toPid: drawerPid,
+      count: 1,
+      sourceAnchor: 'playerArea',
+      effect: 'draw',
+      cards: [drawnCard],
+    })
+    : null;
   const drawFullHandSwapQ = buildFullHandSwapTransferQueue(
     [...(newGs?._drawLogs || []), ...(newGs?._statLogs || [])],
     beforeDrawPlayers,
+  );
+  const treasureDodgeDiceStep = buildTreasureDodgeDiceStepFromLogs(
+    [...(newGs?._drawLogs || []), ...(newGs?._statLogs || [])],
+    drawerName,
   );
   const fallbackOldGsRaw = effectOldGs || {
     ...(oldGs || newGs || {}),
@@ -463,11 +589,18 @@ export function buildTurnStartDrawReplayQueue({
   const drawOldStatSeq = drawStatSeqs.length
     ? Math.max(0, Math.min(...drawStatSeqs) - 1)
     : null;
+  const drawRandomTargetSeqs = (Array.isArray(newGs?._randomTargetEvents) ? newGs._randomTargetEvents : [])
+    .map(event => event?.seq)
+    .filter(seq => seq != null);
+  const drawOldRandomTargetSeq = drawRandomTargetSeqs.length
+    ? Math.max(0, Math.min(...drawRandomTargetSeqs) - 1)
+    : null;
   // 摸牌效果的基线状态代表「摸牌效果发生之前」，不应携带本次摸牌产生的视觉事件
   // （如地动山摇 earthquake）。清掉后，buildAnimQueue 才会把它判定为新事件并播放首次动画。
   const fallbackOldGs = {
     ...fallbackOldGsRaw,
     ...(drawOldStatSeq != null ? { _statEventSeq: drawOldStatSeq } : {}),
+    ...(drawOldRandomTargetSeq != null ? { _randomTargetSeq: drawOldRandomTargetSeq } : {}),
     ...(Array.isArray(fallbackOldGsRaw?._visualEvents) && fallbackOldGsRaw._visualEvents.length ? { _visualEvents: [] } : {}),
   };
   const inspectionEvents = getFreshInspectionEvents(oldGs, newGs);
@@ -487,7 +620,11 @@ export function buildTurnStartDrawReplayQueue({
   const visualStatQ = buildFilteredStatStepsFromVisualEvents(
     newGs,
     beforeDrawPlayers,
-    statEvent => !inspectionStatSeqs.has(statEvent?.seq) && !isPreDrawTurnStartStatEvent(statEvent),
+    statEvent => (
+      (statEvent?.seq == null || statEvent.seq > (fallbackOldGs?._statEventSeq || 0)) &&
+      !inspectionStatSeqs.has(statEvent?.seq) &&
+      !isPreDrawTurnStartStatEvent(statEvent)
+    ),
     inspectionLogLines
   );
   const filteredDrawEffectQBase = filterFallbackDrawEffects(drawEffectQBase, newGs, visualStatQ);
@@ -532,10 +669,12 @@ export function buildTurnStartDrawReplayQueue({
     turnStartStep,
     ...turnStartPreDrawQ,
     ...(turnStartStatePatch ? [turnStartStatePatch] : []),
-    drawCardStep,
+    ...drawCardSteps,
     ...(discardDrawnStep ? [discardDrawnStep] : []),
     ...(discardRestoreStep ? [discardRestoreStep] : []),
+    ...(treasureDodgeDiceStep ? [treasureDodgeDiceStep] : []),
     ...drawEffectQ,
+    ...(drawKeepTransferStep ? [drawKeepTransferStep] : []),
     ...(drawEffectStatePatch ? [drawEffectStatePatch] : []),
   ];
   const startAnim = boundarySteps[0] || turnStartStep;
@@ -543,12 +682,26 @@ export function buildTurnStartDrawReplayQueue({
     ...(boundarySteps.length ? [...boundarySteps.slice(1), turnStartStep] : []),
     ...turnStartPreDrawQ,
     ...(turnStartStatePatch ? [turnStartStatePatch] : []),
-    drawCardStep,
+    ...drawCardSteps,
     ...(discardDrawnStep ? [discardDrawnStep] : []),
     ...(discardRestoreStep ? [discardRestoreStep] : []),
+    ...(treasureDodgeDiceStep ? [treasureDodgeDiceStep] : []),
     ...drawEffectQ,
+    ...(drawKeepTransferStep ? [drawKeepTransferStep] : []),
     ...(drawEffectStatePatch ? [drawEffectStatePatch] : []),
   ];
+  if (newGs?.phase === 'GOD_CHOICE') {
+    try {
+      console.log('[BUG2-DIAG] turnStart god-draw queue', {
+        drawnCard: drawnCard?.name,
+        queueTypes: queue.map(s => s?.type),
+        drawEffectTypes: drawEffectQ.map(s => s?.type),
+        statEvents: (Array.isArray(newGs?._statEvents) ? newGs._statEvents : []).map(e => ({ type: e?.type, target: e?.target, seq: e?.seq })),
+        statLogs: newGs?._statLogs,
+        drawLogs: newGs?._drawLogs,
+      });
+    } catch { /* noop */ }
+  }
   return {
     drawnCard,
     drawerPid,

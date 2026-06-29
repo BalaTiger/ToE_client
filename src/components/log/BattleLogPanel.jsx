@@ -1,6 +1,7 @@
 import React from 'react';
 import { getReliefDisplayConfig } from '../../constants/theme';
 import { buildPublicUrl } from '../../utils/url';
+import { getFontZoomCompensate } from '../../utils/scale';
 
 function getLogPatternBackground(expansionKey = '地神的潜影') {
   const suffix = expansionKey === '群星呼唤' ? 'stars' : 'earth';
@@ -14,6 +15,27 @@ function getLogReliefLayers(expansionKey = '地神的潜影') {
     { color: 'var(--toe-glow,#c8a96e)', dx: -0.8, dy: -0.8, opacity: log.glowOpacity },
     { color: 'var(--toe-line,#3a2510)', dx: 0, dy: 0, opacity: log.lineOpacity },
   ];
+}
+
+function getLogReliefMaskStyle(isMobile) {
+  if (isMobile) {
+    return {
+      WebkitMaskSize: '188px auto',
+      maskSize: '188px auto',
+      WebkitMaskRepeat: 'repeat',
+      maskRepeat: 'repeat',
+      WebkitMaskPosition: 'center top',
+      maskPosition: 'center top',
+    };
+  }
+  return {
+    WebkitMaskSize: '232px auto',
+    maskSize: '232px auto',
+    WebkitMaskRepeat: 'repeat-y',
+    maskRepeat: 'repeat-y',
+    WebkitMaskPosition: 'right -2px top 6px',
+    maskPosition: 'right -2px top 6px',
+  };
 }
 
 function normalizeMultiplayerLogLine(line, { isMultiplayer, logOwner, myName, players }) {
@@ -44,11 +66,15 @@ export function BattleLogPanel({
   isMobile,
   middleRowHeight,
   fontSizes,
+  scaleRatio = 1,
 }) {
   const reliefConfig = getReliefDisplayConfig(expansionKey);
   const logLines = Array.isArray(visibleLog) ? visibleLog.slice(-50) : [];
   let logOwner = null;
   const myName = players?.[0]?.name;
+  const fontZoom = getFontZoomCompensate(scaleRatio);
+  const mobileLogHeight = Math.round(132 * fontZoom);
+  const reliefMaskStyle = getLogReliefMaskStyle(isMobile);
 
   return (
     <div ref={logRef} data-log-panel style={{
@@ -60,8 +86,8 @@ export function BattleLogPanel({
       borderRadius: 3,
       padding: '8px 10px',
       overflowY: 'auto',
-      minHeight: isMobile ? 100 : middleRowHeight,
-      maxHeight: isMobile ? 100 : middleRowHeight,
+      minHeight: isMobile ? mobileLogHeight : middleRowHeight,
+      maxHeight: isMobile ? mobileLogHeight : middleRowHeight,
       position: 'relative',
       overflowX: 'hidden',
       scrollbarGutter: 'stable',
@@ -77,8 +103,8 @@ export function BattleLogPanel({
           position: 'absolute',
           top: -8,
           left: -10,
-          right: -18,
-          height: isMobile ? 100 : middleRowHeight,
+          right: isMobile ? -10 : -18,
+          height: isMobile ? mobileLogHeight : middleRowHeight,
         }}>
           {getLogReliefLayers(expansionKey).map((layer, idx) => (
             <div key={idx} style={{
@@ -89,12 +115,7 @@ export function BattleLogPanel({
               opacity: layer.opacity,
               WebkitMaskImage: `url("${getLogPatternBackground(expansionKey)}")`,
               maskImage: `url("${getLogPatternBackground(expansionKey)}")`,
-              WebkitMaskSize: isMobile ? '188px auto' : '232px auto',
-              maskSize: isMobile ? '188px auto' : '232px auto',
-              WebkitMaskRepeat: 'repeat-y',
-              maskRepeat: 'repeat-y',
-              WebkitMaskPosition: 'right -2px top 6px',
-              maskPosition: 'right -2px top 6px',
+              ...reliefMaskStyle,
             }} />
           ))}
         </div>

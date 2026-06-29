@@ -1,6 +1,7 @@
 import React from 'react';
 import { ANIM_CFG, DICE_FACES } from './data';
 import { EarthquakeOverlay } from './EarthquakeOverlay';
+import { DDCard } from '../cards';
 
 export function TorchWardOverlay({ anim, exiting }) {
   const targetPid = anim?.targetPid ?? 0;
@@ -111,6 +112,96 @@ export function TorchWardOverlay({ anim, exiting }) {
   );
 }
 
+export function VritraImmortalRevealOverlay({ anim, exiting }) {
+  const cards = Array.isArray(anim?.cards) ? anim.cards.filter(Boolean) : [];
+  const success = !!anim?.success;
+  const titleColor = success ? '#f2c36b' : '#e0755f';
+  return (
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      zIndex: 1850,
+      pointerEvents: 'none',
+      background: 'radial-gradient(circle at center, rgba(90,24,14,0.38) 0%, rgba(12,4,2,0.94) 58%, rgba(4,1,0,0.98) 100%)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      animation: exiting ? 'animFadeOut 0.18s ease-in forwards' : 'animFadeIn 0.14s ease-out forwards',
+    }}>
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        boxShadow: `inset 0 0 150px ${success ? '#c0402055' : '#80180866'}`,
+      }} />
+      <div style={{
+        position: 'relative',
+        width: 'min(880px, 92vw)',
+        padding: '26px 28px 24px',
+        border: '1.5px solid rgba(192,64,32,0.62)',
+        borderRadius: 6,
+        background: 'linear-gradient(180deg, rgba(28,8,5,0.94), rgba(10,4,2,0.92))',
+        boxShadow: '0 0 34px rgba(192,64,32,0.35), inset 0 0 26px rgba(192,64,32,0.12)',
+        textAlign: 'center',
+      }}>
+        <div style={{
+          fontFamily: "'Cinzel',serif",
+          fontWeight: 800,
+          color: titleColor,
+          fontSize: 19,
+          letterSpacing: 5,
+          textShadow: `0 0 18px ${titleColor}88`,
+          textTransform: 'uppercase',
+          marginBottom: 7,
+        }}>弗栗多翻牌公示</div>
+        <div style={{
+          fontFamily: "'IM Fell English','Georgia',serif",
+          color: '#d9b06f',
+          fontSize: 13,
+          fontStyle: 'italic',
+          letterSpacing: 1,
+          marginBottom: 18,
+        }}>
+          {anim?.playerName || '目标'} 的「不灭之躯」翻开牌堆顶牌
+        </div>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          flexWrap: 'wrap',
+          gap: 12,
+          minHeight: 112,
+          marginBottom: 18,
+        }}>
+          {cards.length ? cards.map((card, idx) => (
+            <div key={card?.id || card?.uid || `${card?.name || 'card'}-${idx}`} style={{
+              animation: `animPop 0.34s ease-out ${idx * 0.07}s both`,
+              filter: card?.isGod ? 'drop-shadow(0 0 12px rgba(192,64,32,0.65))' : 'drop-shadow(0 0 8px rgba(200,169,110,0.24))',
+            }}>
+              <DDCard card={card} compact holderId={anim?.targetPid ?? 0} frameStyle={{ pointerEvents: 'none' }} />
+            </div>
+          )) : (
+            <div style={{ color: '#8a6040', fontFamily: "'Cinzel',serif", fontSize: 13, alignSelf: 'center' }}>牌堆没有可翻开的牌</div>
+          )}
+        </div>
+        <div style={{
+          display: 'inline-flex',
+          padding: '7px 16px',
+          borderRadius: 4,
+          border: `1px solid ${success ? '#c8a96e66' : '#d05a4066'}`,
+          background: success ? 'rgba(64,38,12,0.5)' : 'rgba(62,12,8,0.54)',
+          color: success ? '#f0d28a' : '#ff9a82',
+          fontFamily: "'Cinzel',serif",
+          fontWeight: 700,
+          fontSize: 13,
+          letterSpacing: 2,
+          boxShadow: `0 0 14px ${success ? '#c8a96e33' : '#d05a4033'}`,
+        }}>
+          {success ? '未见邪神牌，HP恢复至1' : '出现邪神牌，力量消散'}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Generic Overlay Anim ──────────────────────────────────────
 export function GenericAnimOverlay({ anim, exiting }) {
   if (!anim) return null;
@@ -162,7 +253,20 @@ export function DiceRollAnim({ anim, exiting }) {
   const { d1, d2, rollerName, dodgeSuccess } = anim;
   const [, setFrame] = React.useState(0);
   const [settled, setSettled] = React.useState(false);
+  const rollSignature = [
+    anim?.type,
+    anim?.diceMode || '',
+    anim?.d1 ?? '',
+    anim?.d2 ?? '',
+    anim?.rollerName || '',
+    anim?.dodgeSuccess ?? '',
+    anim?.negativeAvoided ?? '',
+    anim?._apophisTargetSeq ?? '',
+    anim?.moldySeq ?? '',
+  ].join('|');
   React.useEffect(() => {
+    setSettled(false);
+    setFrame(0);
     const FRAMES = 12; let i = 0;
     const iv = setInterval(() => {
       i++;
@@ -170,7 +274,7 @@ export function DiceRollAnim({ anim, exiting }) {
       if (i >= FRAMES) { clearInterval(iv); setSettled(true); }
     }, 100);
     return () => clearInterval(iv);
-  }, []);
+  }, [rollSignature]);
   React.useEffect(() => {
     if (settled && anim.onSettled) anim.onSettled();
   }, [settled, anim]);

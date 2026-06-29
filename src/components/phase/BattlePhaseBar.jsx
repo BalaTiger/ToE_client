@@ -1,4 +1,5 @@
 import React from 'react';
+import { getFontZoomCompensate } from '../../utils/scale';
 
 function TimerText({ label, seconds, color }) {
   return (
@@ -34,6 +35,7 @@ export function BattlePhaseBar({
   mpHuntSec,
   mpDecisionSec,
   colors,
+  scaleRatio = 1,
 }) {
   const {
     warning,
@@ -42,17 +44,18 @@ export function BattlePhaseBar({
     safe,
     muted,
   } = colors;
+  const fontZoom = getFontZoomCompensate(scaleRatio);
 
   return (
     <div style={{
       background: 'var(--toe-panel,#120900)',
       border: `1px solid ${myTurn && !['AI_TURN'].includes(phase) ? 'var(--toe-line,#5a3010)' : 'var(--toe-line-dim,#2a1a08)'}`,
       borderRadius: 3,
-      padding: isMobile ? '5px 10px' : '7px 14px',
-      minHeight: isMobile ? 32 : 38,
+      padding: isMobile ? `${5 * fontZoom}px ${10 * fontZoom}px` : '7px 14px',
+      minHeight: isMobile ? 38 * fontZoom : 38,
       display: 'flex',
       alignItems: 'center',
-      gap: 10,
+      gap: isMobile ? 10 * fontZoom : 10,
       flexWrap: 'wrap',
     }}>
       <div style={{

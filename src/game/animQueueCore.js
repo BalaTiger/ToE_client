@@ -25,6 +25,15 @@ function playersAfterStatEvents(basePlayers = [], statEvents = []) {
   return next;
 }
 
+function getDeathAnimMsgs(newMsgs = [], players = [], deathIndices = []) {
+  const deathLines = (Array.isArray(newMsgs) ? newMsgs : []).filter(line => typeof line === 'string' && line.includes('倒下了'));
+  if (!deathLines.length) return [];
+  const names = new Set((deathIndices || []).map(idx => players?.[idx]?.name).filter(Boolean));
+  if (!names.size) return deathLines;
+  const matched = deathLines.filter(line => [...names].some(name => line.includes(name)));
+  return matched.length ? matched : deathLines;
+}
+
 function mergeStatValuesIntoPlayers(basePlayers = [], statPlayers = []) {
   const base = clonePlayersForTimeline(basePlayers);
   statPlayers.forEach((statPlayer, idx) => {
@@ -39,6 +48,15 @@ function mergeStatValuesIntoPlayers(basePlayers = [], statPlayers = []) {
   return base;
 }
 
+// 中途结算（HP/SAN/神域）会用最终玩家快照，但其中的"最终手牌"不能提前出现：
+// 手牌图像只应在收/送动画真正落地（队列结束）时变化。这里用 handSource 的手牌覆盖 snapshot，
+// 让中途的视觉补丁保留出手/收牌前的手牌，其余字段仍取 snapshot。
+function snapshotWithHands(snapshot = [], handSource = []) {
+  return snapshot.map((player, idx) =>
+    player ? { ...player, hand: [...(handSource[idx]?.hand ?? player.hand ?? [])] } : player
+  );
+}
+
 function attachVisualTimelineToSteps(steps = [], beforePlayers = [], beforeDiscard = [], afterPlayers = [], afterDiscard = []) {
   let cursorPlayers = clonePlayersForTimeline(beforePlayers);
   let cursorDiscard = Array.isArray(beforeDiscard) ? [...beforeDiscard] : [];
@@ -49,7 +67,7 @@ function attachVisualTimelineToSteps(steps = [], beforePlayers = [], beforeDisca
       ? playersAfterStatEvents(cursorPlayers, step.statEvents)
       : cursorPlayers;
     const nextPlayers = hasStatEvents
-      ? mergeStatValuesIntoPlayers(afterPlayers, statNextPlayers)
+      ? snapshotWithHands(mergeStatValuesIntoPlayers(afterPlayers, statNextPlayers), cursorPlayers)
       : cursorPlayers;
     const nextDiscard = step.type === 'DISCARD' && step.card
       ? [...cursorDiscard, step.card]
@@ -76,7 +94,7 @@ function attachVisualTimelineToSteps(steps = [], beforePlayers = [], beforeDisca
       ...step,
       visualTimeline: [
         ...(Array.isArray(step.visualTimeline) ? step.visualTimeline : []),
-        { atMs: 520, patch: { players: afterPlayers, discard: afterDiscard } },
+        { atMs: 520, patch: { players: snapshotWithHands(afterPlayers, cursorPlayers), discard: afterDiscard } },
       ],
     };
   });
@@ -89,6 +107,34 @@ function collectStepStatEvents(steps = []) {
       ...(Array.isArray(step.statEvents) ? step.statEvents : []),
       ...(Array.isArray(step.steps) ? collectStepStatEvents(step.steps) : []),
     ];
+  });
+}
+
+function buildVritraImmortalRevealSteps(oldGs, newGs, newMsgs = []) {
+  const lines = (Array.isArray(newMsgs) ? newMsgs : [])
+    .filter(line => typeof line === 'string' && line.includes('【不灭之躯】') && line.includes('翻开'));
+  if (!lines.length) return [];
+  const oldDiscardLen = Array.isArray(oldGs?.discard) ? oldGs.discard.length : 0;
+  const appendedDiscard = Array.isArray(newGs?.discard) ? newGs.discard.slice(oldDiscardLen) : [];
+  let discardCursor = 0;
+  return lines.map(line => {
+    const countMatch = line.match(/翻开\s*(\d+)\s*张/);
+    const count = Math.max(0, Number(countMatch?.[1] || 0));
+    const cards = count > 0 ? appendedDiscard.slice(discardCursor, discardCursor + count) : [];
+    discardCursor += count;
+    const nameMatch = line.match(/^【不灭之躯】(.+?)\s/);
+    const playerName = nameMatch?.[1] || '目标';
+    const targetPid = playerName === '你'
+      ? 0
+      : (newGs?.players || []).findIndex(player => player?.name === playerName);
+    return {
+      type: 'VRI_IMMORTAL_REVEAL',
+      targetPid: targetPid >= 0 ? targetPid : null,
+      playerName,
+      cards,
+      success: line.includes('未见邪神牌') || line.includes('HP恢复至1'),
+      msgs: [line],
+    };
   });
 }
 
@@ -118,9 +164,14 @@ function getRemovedHandCards(oldHand = [], newHand = []) {
 export function buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs }) {
   const q = [];
   if (!oldGs || !Array.isArray(oldGs.players) || !Array.isArray(effectivePlayers)) return q;
+  const msgs = Array.isArray(newMsgs) ? newMsgs : [];
+  const hasBewitchGiftLog = msgs.some(m => typeof m === 'string' && m.includes('【蛊惑】') && m.includes('赠予'));
+  const hasExplicitGainAnimationLog = hasBewitchGiftLog || msgs.some(m => typeof m === 'string' && (
+    m.includes('【黑暗子嗣】') && m.includes('黑山羊幼仔')
+  ));
 
   const losers = effectivePlayers.filter((p, i) => oldGs.players[i] && p.hand.length < oldGs.players[i].hand.length);
-  if (losers.length === 1) {
+  if (!hasExplicitGainAnimationLog && losers.length === 1) {
     const li = effectivePlayers.indexOf(losers[0]);
     const count = oldGs.players[li].hand.length - effectivePlayers[li].hand.length;
     let dest = 'discard';
@@ -157,7 +208,7 @@ export function buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs 
         q.push(cardTransferStep({ fromPid: li, dest, toPid, count, ...(dest === 'discard' ? { inferredHandLoss: true } : {}) }));
       }
     }
-  } else if (losers.length === 2) {
+  } else if (!hasExplicitGainAnimationLog && losers.length === 2) {
     losers.forEach(loser => {
       const li = effectivePlayers.indexOf(loser);
       const toPid = effectivePlayers.findIndex((p, j) => j !== li && oldGs.players[j] && p.hand.length > oldGs.players[j].hand.length);
@@ -167,7 +218,7 @@ export function buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs 
     });
   }
 
-  const shuMsg = (newMsgs || []).find(m => m && m.includes('【黑暗子嗣】'));
+  const shuMsg = msgs.find(m => m && m.includes('【黑暗子嗣】'));
   if (shuMsg) {
     const shuMatch = shuMsg.match(/【黑暗子嗣】(.+?) 获得(\d+)张黑山羊幼仔/);
     if (shuMatch) {
@@ -257,6 +308,7 @@ export function buildAnimQueue(oldGs, newGs) {
     : [];
   const cardEffectSteps = buildCardEffectStepsFromVisualEvents(newGs, oldGs);
   const godPowerBlockedSteps = buildGodPowerBlockedStepsFromVisualEvents(newGs, oldGs);
+  const vritraRevealSteps = buildVritraImmortalRevealSteps(oldGs, newGs, newMsgs);
   const handledCardEffectStatEvents = collectStepStatEvents(cardEffectSteps);
   const handledCardEffectStatSeqs = new Set(
     handledCardEffectStatEvents
@@ -342,9 +394,11 @@ export function buildAnimQueue(oldGs, newGs) {
   }
   q.push(...godPowerBlockedSteps);
   q.push(...cardEffectSteps);
+  q.push(...vritraRevealSteps);
   if (deathIdx.length) {
-    q.push({ type: 'GUILLOTINE', msgs: newMsgs, hitIndices: deathIdx, targetStats });
-    q.push({ type: 'DEATH', msgs: newMsgs, hitIndices: deathIdx, targetStats });
+    const deathMsgs = getDeathAnimMsgs(newMsgs, effectivePlayers, deathIdx);
+    q.push({ type: 'GUILLOTINE', msgs: deathMsgs, hitIndices: deathIdx, targetStats });
+    q.push({ type: 'DEATH', msgs: deathMsgs, hitIndices: deathIdx, targetStats });
   }
   const moldyRoll = newGs?._moldyFoodDiceRoll;
   const moldySeq = moldyRoll?.seq ?? newGs?._moldyFoodDiceSeq;
@@ -355,6 +409,7 @@ export function buildAnimQueue(oldGs, newGs) {
       diceMode: 'moldyFood',
       d1: moldyRoll.d1,
       d2: 0,
+      moldySeq,
       negativeAvoided: !!moldyRoll.negativeAvoided,
       rollerName: newGs.players?.[moldyRoll.actorIdx]?.name || '角色',
       msgs: [],
@@ -386,12 +441,38 @@ export function buildFullHandSwapTransferQueueFromLogs(logs, players, options = 
   return buildFullHandSwapStepsFromLogs(logs, players, options);
 }
 
+function buildApophisTargetAnimPrefix(event, players = [], options = {}) {
+  if (!event?.seq) return [];
+  const includeTargetSkill = options.includeTargetSkill !== false;
+  const apophisNightForAnim = event.apophisNight || null;
+  const queue = [{
+    type: 'DICE_ROLL',
+    _apophisTargetSeq: event.seq,
+    _apophisNight: apophisNightForAnim,
+    diceMode: 'apophisNight',
+    apophisChanged: !!event.changed,
+    d1: event.roll,
+    d2: 0,
+    heal: 0,
+    rollerName: event.actorName || players?.[event.actorIdx]?.name || '???',
+    msgs: event.log ? [event.log] : [],
+    _logChunk: event.log ? [event.log] : [],
+  }];
+  if (includeTargetSkill && event.changed && /追捕/.test(event.label || '')) {
+    queue.push({ type: 'SKILL_HUNT', _apophisTargetSeq: event.seq, _apophisNight: apophisNightForAnim, targetIdx: event.targetIdx, msgs: [] });
+  } else if (event.changed && /蛊惑/.test(event.label || '')) {
+    queue.push({ type: 'SKILL_BEWITCH', _apophisTargetSeq: event.seq, _apophisNight: apophisNightForAnim, targetIdx: event.targetIdx, msgs: [] });
+  }
+  return queue;
+}
+
 export function buildAiHuntEventAnimQueue(evt, actorName) {
   const huntMsgs = Array.isArray(evt.msgs) && evt.msgs.length ? [evt.msgs[0]] : [];
   const followupMsgs = Array.isArray(evt.msgs) ? evt.msgs.slice(evt.skipIntro ? 0 : 1) : [];
-  const perHuntQueue = evt.skipIntro
+  const perHuntQueue = buildApophisTargetAnimPrefix(evt.apophisTargetEvent, evt.beforePlayers, { includeTargetSkill: false });
+  perHuntQueue.push(...(evt.skipIntro
     ? []
-    : [{ type: 'SKILL_HUNT', msgs: huntMsgs, _logChunk: huntMsgs, targetIdx: evt.targetIdx >= 0 ? evt.targetIdx : 1 }];
+    : [{ type: 'SKILL_HUNT', msgs: huntMsgs, _logChunk: huntMsgs, targetIdx: evt.targetIdx >= 0 ? evt.targetIdx : 1 }]));
   const revealStep = buildHuntRevealStepFromVisualEvent({
     targetIdx: evt.targetIdx,
     card: evt.revealedCard,

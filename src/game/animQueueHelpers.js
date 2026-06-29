@@ -84,6 +84,36 @@ export function fullHandSwapSteps({fromPid,toPid,fromCount=0,toCount=0,msgs=[],p
   ];
 }
 
+export function swapCardsTransferSteps({sourceIdx,targetIdx,sourceCount=1,targetCount=1,msgs=[],takenCard=null,givenCard=null}={}){
+  if(sourceIdx==null||sourceIdx<0||targetIdx==null||targetIdx<0)return [];
+  return [
+    cardTransferStep({
+      fromPid:targetIdx,
+      dest:"player",
+      toPid:sourceIdx,
+      count:targetCount,
+      ...(takenCard?{cards:[takenCard]}:{}),
+    }),
+    cardTransferStep({
+      fromPid:sourceIdx,
+      dest:"player",
+      toPid:targetIdx,
+      count:sourceCount,
+      ...(givenCard?{cards:[givenCard]}:{}),
+      msgs,
+    }),
+  ];
+}
+
+export function swapCardsSteps({sourceIdx,targetIdx,sourceCount=1,targetCount=1,msgs=[],playersBefore=null,zhuLight=null,takenCard=null,givenCard=null}={}){
+  const transfers=swapCardsTransferSteps({sourceIdx,targetIdx,sourceCount,targetCount,msgs,takenCard,givenCard});
+  if(!transfers.length)return [];
+  return [
+    ...(playersBefore?[{type:"VISUAL_LOCK",players:playersBefore,zhuLight:zhuLight||null}]:[]),
+    ...transfers,
+  ];
+}
+
 export function buildFullHandSwapStepsFromLogs(logs,players,options={}){
   const fullHandSwapMsg=(Array.isArray(logs)?logs:[]).find(
     line=>typeof line==="string"&&line.includes("交换了全部手牌")
@@ -118,21 +148,35 @@ export function resolveTurnHighlightForStep(step,nextGs,playersFallback=[]){
   return idx>=0?idx:null;
 }
 
-export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQueue,msgs){
+export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQueue,msgs,options={}){
   const isStaleTurnDrawStep = step => (
     step?.type === "YOUR_TURN" ||
     (step?.type === "DRAW_CARD" && step.inspectionSeq == null && step.triggerName !== "检定牌")
   );
+  const isPlainInferredTransfer = step => (
+    step?.type === "CARD_TRANSFER" &&
+    !step.effect &&
+    !step.sourceAnchor &&
+    !step.inferredHandLoss &&
+    !step.durationMs &&
+    !step.visualSetupPatch &&
+    !(Array.isArray(step.msgs) && step.msgs.length) &&
+    !(Array.isArray(step.cards) && step.cards.length)
+  );
   const ordered=[{type:"SKILL_BEWITCH",msgs,targetIdx:toPid}];
   if(toPid!=null&&toPid>=0){
     ordered.push(cardTransferStep({fromPid,dest:"player",toPid,count:1}));
+    if(options.afterGiftPatch)ordered.push(statePatchStep(options.afterGiftPatch));
   }
   // 注意：被蛊惑者的操作是在当前回合内完成的，不应视为"回合开始"
   // 因此不再添加 YOUR_TURN 动画步骤
   if(card){
     ordered.push({type:"DRAW_CARD",card,triggerName,targetPid:toPid,skipTravel:true});
   }
-  ordered.push(...(statQueue||[]).filter(a=>a.type!=="CARD_TRANSFER"&&!isStaleTurnDrawStep(a)));
+  ordered.push(...(statQueue||[]).filter(a=>
+    !isPlainInferredTransfer(a) &&
+    !isStaleTurnDrawStep(a)
+  ));
   return ordered;
 }
 
@@ -149,13 +193,16 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
   const queue=[];
   let cursorPlayers=copyPlayers(baseGs?.players||[]);
   let cursorLog=[...(Array.isArray(baseGs?.log)?baseGs.log:[])];
+  let cursorDiscard=[...(Array.isArray(baseGs?.discard)?baseGs.discard:[])];
   let cursorStatEventSeq=baseGs?._statEventSeq||0;
   (events||[]).forEach(ev=>{
     const beforePlayers=copyPlayers(ev?.beforePlayers||cursorPlayers);
     const beforeLog=[...(Array.isArray(ev?.beforeLog)?ev.beforeLog:cursorLog)];
+    const beforeDiscard=[...(Array.isArray(ev?.beforeDiscard)?ev.beforeDiscard:cursorDiscard)];
     const afterPlayers=copyPlayers(ev?.afterPlayers||beforePlayers);
     const afterLog=[...(Array.isArray(ev?.afterLog)?ev.afterLog:beforeLog)];
-    const preQ=buildAnimQueue({players:cursorPlayers,log:cursorLog},{players:beforePlayers,log:beforeLog});
+    const afterDiscard=[...(Array.isArray(ev?.afterDiscard)?ev.afterDiscard:beforeDiscard)];
+    const preQ=buildAnimQueue({players:cursorPlayers,log:cursorLog,discard:cursorDiscard},{players:beforePlayers,log:beforeLog,discard:beforeDiscard});
     if(preQ.length)queue.push(...preQ);
     queue.push({type:"VISUAL_LOCK",players:beforePlayers});
     queue.push({
@@ -166,17 +213,19 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
       inspectionSeq:ev.seq,
     });
     const effectQ=buildAnimQueue(
-      {players:beforePlayers,log:beforeLog,_statEventSeq:(ev?.statEventSeq||0)-1},
+      {players:beforePlayers,log:beforeLog,discard:beforeDiscard,_statEventSeq:(ev?.statEventSeq||0)-1},
       {
         players:afterPlayers,
         log:afterLog,
+        discard:afterDiscard,
         ...(Array.isArray(ev?.statEvents)&&ev.statEvents.length?{_statEvents:ev.statEvents,_statEventSeq:ev.statEventSeq}:{}),
       }
     );
     if(effectQ.length)queue.push(...effectQ);
-    queue.push(statePatchStep({players:afterPlayers,log:afterLog}));
+    queue.push(statePatchStep({players:afterPlayers,log:afterLog,discard:afterDiscard}));
     cursorPlayers=afterPlayers;
     cursorLog=afterLog;
+    cursorDiscard=afterDiscard;
     if(ev?.statEventSeq!=null)cursorStatEventSeq=Math.max(cursorStatEventSeq,ev.statEventSeq);
   });
   return {queue,players:cursorPlayers,log:cursorLog,statEventSeq:cursorStatEventSeq};

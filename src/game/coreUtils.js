@@ -169,17 +169,18 @@ export function tryVritraImmortal(P, i, currentTurn, D, Disc, L) {
   for (let k = 0; k < count && deckCopy.length > 0; k++) {
     revealed.push(deckCopy.shift());
   }
+  const revealText = revealed.map(card => cardLogText(card, { alwaysShowName: true })).join('、') || '无牌';
   const hasGod = revealed.some(c => c && c.isGod);
   if (hasGod) {
     Disc.push(...revealed);
-    L.push(`【不灭之躯】${P[i].name} 濒死之际激发龙血之力，但翻开的牌中出现了邪神牌，力量消散…`);
+    L.push(`【不灭之躯】${P[i].name} 濒死之际激发龙血之力，翻开 ${revealed.length} 张：${revealText}；出现邪神牌，力量消散…`);
     D.length = 0;
     D.push(...deckCopy);
     return false;
   }
   P[i].hp = 1;
   Disc.push(...revealed);
-  L.push(`【不灭之躯】${P[i].name} 在濒死之际激发龙血之力，HP恢复至1！`);
+  L.push(`【不灭之躯】${P[i].name} 在濒死之际激发龙血之力，翻开 ${revealed.length} 张：${revealText}；未见邪神牌，HP恢复至1！`);
   D.length = 0;
   D.push(...deckCopy);
   return true;
@@ -289,6 +290,14 @@ export const cardLogText = (card, opts = {}) => {
 
 export const getCaveDuelDisplayNumber = card => (
   Number.isFinite(card?.number) ? card.number : 0
+);
+
+// 统一“从手牌信仰邪神”的日志格式（玩家自身、AI、远端玩家一致）。
+// who: 主语（本地玩家为“你”，其他角色为其名字）。
+export const buildWorshipFromHandLog = (who, godCard, { upgrade = false, level = 1 } = {}) => (
+  upgrade
+    ? `${who} 从手牌升级邪神之力至 Lv.${level}（骷髅头不计）`
+    : `${who} 从手牌信仰 ${godCard?.name}，获得${godCard?.power}(Lv.1)（骷髅头不计）`
 );
 
 export const compareCaveDuelCards = (a, b) => {

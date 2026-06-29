@@ -65,11 +65,13 @@ export const ENDLESS_CORRIDOR_ANIMATION_STYLES = `
     position: absolute;
     left: 50%;
     top: 50%;
-    width: 90px;
-    height: 90px;
-    margin: -45px 0 0 -45px;
+    /* 用 vmax 而非固定 px，缩放到 24 倍后半径(约264vmax)远超任何分辨率的画面对角(≤71vmax)，
+       超大分辨率也能完整覆盖；亮白核心(0~28%)即可盖住四角，柔和渐隐边缘落在画面之外。 */
+    width: 22vmax;
+    height: 22vmax;
+    margin: -11vmax 0 0 -11vmax;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(239,255,245,1) 0%, rgba(239,255,245,.96) 42%, rgba(184,255,233,.72) 68%, rgba(184,255,233,0) 100%);
+    background: radial-gradient(circle, rgba(239,255,245,1) 0%, rgba(239,255,245,.95) 28%, rgba(190,255,236,.55) 58%, rgba(150,232,212,.18) 80%, rgba(150,232,212,0) 100%);
     opacity: 0;
     mix-blend-mode: screen;
     transform: scale(.08);

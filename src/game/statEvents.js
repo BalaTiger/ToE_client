@@ -166,6 +166,25 @@ export function makeTargetStats(players = [], statEvents = []) {
 export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) {
   const events = statEvents.map(normalizeStatEvent).filter(Boolean);
   if (!events.length) return [];
+  const seqs = [...new Set(events.map(event => event.seq).filter(seq => seq != null))];
+  if (seqs.length > 1 && !events.some(event => event.type === 'DAMAGE_LINK_BREAK' || event.phaseOrder != null)) {
+    const queue = [];
+    let cursorPlayers = clonePlayersForStatPatch(players);
+    seqs
+      .sort((a, b) => a - b)
+      .forEach((seq, idx) => {
+        const seqEvents = events.filter(event => event.seq === seq);
+        queue.push(...statEventsToAnimQueue(seqEvents, cursorPlayers, idx === 0 ? msgs : []));
+        seqEvents.forEach(event => {
+          if (event.target == null || !cursorPlayers[event.target]) return;
+          cursorPlayers[event.target] = {
+            ...cursorPlayers[event.target],
+            ...event.to,
+          };
+        });
+      });
+    return queue;
+  }
   const hasTimelineOrder = events.some(event => event.type === 'DAMAGE_LINK_BREAK' || event.phaseOrder != null);
   if (hasTimelineOrder) {
     const queue = [];

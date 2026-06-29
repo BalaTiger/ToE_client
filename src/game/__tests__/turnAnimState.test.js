@@ -4,14 +4,31 @@ import {
   buildSinglePlayerAiTurnStartReplayContext,
   buildTurnStartDrawReplayQueue,
   shouldReplaySinglePlayerAiTurnStart,
+  withClearedReplayAnimFields,
 } from '../turnAnimState';
 import { startNextTurn } from '../turnEngine';
 import { ROLE_CULTIST } from '../coreUtils';
-import { makeGodCard, makeGs, makePlayer } from './factory';
+import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
 function player(name) {
   return { name, hand: [], hp: 10, san: 10 };
 }
+
+describe('withClearedReplayAnimFields', () => {
+  it('清理已播放的黑夜目标事件但保留序号水位，避免下个回合重播骰子', () => {
+    const state = {
+      _apophisTargetSeq: 7,
+      _apophisTargetEvent: { seq: 7, actorIdx: 1, targetIdx: 0 },
+      _statEvents: [{ seq: 3, target: 0 }],
+    };
+
+    const cleaned = withClearedReplayAnimFields(state);
+
+    expect(cleaned._apophisTargetSeq).toBe(7);
+    expect(cleaned._apophisTargetEvent).toBeNull();
+    expect(cleaned._statEvents).toEqual(state._statEvents);
+  });
+});
 
 describe('buildPlayerTurnDrawQueue', () => {
   it('adds turn banner and draw flip even when the next turn belongs to another player', () => {
@@ -138,6 +155,89 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(replay.drawCardStep).toMatchObject({ card: apo, triggerName: '艾伦', targetPid: 1 });
   });
 
+  it('AI 放弃邪神馈赠时播放弃牌动画而不是收入手牌飞牌', () => {
+    const godCard = makeGodCard('NYA');
+    const beforeDrawPlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '贝拉', san: 10 }),
+    ];
+    const oldGs = makeGs({
+      players: beforeDrawPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: ['旧日志'],
+    });
+    const newGs = makeGs({
+      players: [
+        makePlayer({ name: '你' }),
+        makePlayer({ name: '贝拉', san: 9 }),
+      ],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      discard: [godCard],
+      _drawnCard: godCard,
+      _aiDrawnCard: godCard,
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉 遭遇邪神 伏行之混沌！（第1次）失去 1 SAN'],
+      _statLogs: ['贝拉 放弃了邪神的馈赠'],
+      log: [
+        '旧日志',
+        '── 贝拉 的回合开始 ──',
+        '贝拉 遭遇邪神 伏行之混沌！（第1次）失去 1 SAN',
+        '贝拉 放弃了邪神的馈赠',
+      ],
+    });
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const discardIdx = replay.queue.findIndex(step => step.type === 'DISCARD' && step.card === godCard);
+    const drawTransferIdx = replay.queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.effect === 'draw');
+
+    expect(discardIdx).toBeGreaterThan(replay.queue.findIndex(step => step.type === 'DRAW_CARD'));
+    expect(drawTransferIdx).toBe(-1);
+  });
+
+  it('本地回合开始摸到邪神时先播放 SAN 扣减和检定翻牌再进入邪神抉择', () => {
+    const cth = makeGodCard('CTH');
+    const calm = { id: 'calm-check', name: '暂时的平静', effect: 'nothing', value: 0, type: 'neutral' };
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '你', san: 7, godEncounters: 0 }),
+        makePlayer({ name: '艾伦' }),
+      ],
+      currentTurn: 1,
+      phase: 'ACTION',
+      deck: [cth],
+      inspectionDeck: [calm],
+      inspectionDiscard: [],
+      log: ['旧日志'],
+      _inspectionSeq: 0,
+      _statEventSeq: 0,
+    });
+
+    const newGs = startNextTurn(oldGs);
+    const replay = buildTurnStartDrawReplayQueue({
+      oldGs,
+      newGs,
+      effectOldGs: { ...oldGs, players: newGs._playersBeforeThisDraw || oldGs.players },
+    });
+    const types = replay.queue.map(step => step.type);
+    const godDrawIdx = replay.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card === cth);
+    const sanDamageIdx = types.indexOf('SAN_DAMAGE');
+    const inspectionDrawIdx = replay.queue.findIndex(step => step.type === 'DRAW_CARD' && step.triggerName === '检定牌');
+
+    expect(newGs.phase).toBe('GOD_CHOICE');
+    expect(newGs.log.slice(-2)).toEqual([
+      '你 遭遇邪神 拉莱耶之主！（第1次）失去 1 SAN',
+      '你 的SAN检定结果为"暂时的平静"',
+    ]);
+    expect(godDrawIdx).toBeGreaterThan(-1);
+    expect(sanDamageIdx).toBeGreaterThan(godDrawIdx);
+    expect(inspectionDrawIdx).toBeGreaterThan(sanDamageIdx);
+    expect(newGs._drawLogs).toEqual(['你 摸到 拉莱耶之主', '你 遭遇邪神 拉莱耶之主！（第1次）失去 1 SAN']);
+    expect(newGs._statLogs).toEqual(['你 的SAN检定结果为"暂时的平静"']);
+  });
+
   it('AI 回合开始邪神遭遇只播放本次 SAN 扣减，不重播上个 AI 的扣减', () => {
     const apo = makeGodCard('APO');
     const allenSanLoss = {
@@ -206,6 +306,82 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(sanSteps[0].hitIndices).toEqual([2]);
   });
 
+  it('AI 连续邪神回合的视觉属性事件不会把上个 AI 的 SAN 扣减重播到本回合', () => {
+    const zhu = makeGodCard('ZHU');
+    const tsg = makeGodCard('TSG');
+    const allenSanLoss = {
+      type: 'SAN_LOSS',
+      target: 1,
+      from: { hp: 10, san: 10, isDead: false },
+      to: { hp: 10, san: 9, isDead: false },
+      reason: '邪神遭遇',
+      logHint: '艾伦 遭遇邪神 烛九阴！（第1次）失去 1 SAN',
+      seq: 1,
+    };
+    const bellaSanLoss = {
+      type: 'SAN_LOSS',
+      target: 2,
+      from: { hp: 10, san: 10, isDead: false },
+      to: { hp: 10, san: 9, isDead: false },
+      reason: '邪神遭遇',
+      logHint: '贝拉 遭遇邪神 蟾蜍之神！（第1次）失去 1 SAN',
+      seq: 2,
+    };
+    const beforeDrawPlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', san: 9, godName: zhu.godKey, godLevel: 1, godZone: [zhu] }),
+      makePlayer({ name: '贝拉', san: 10 }),
+    ];
+    const oldGs = makeGs({
+      players: beforeDrawPlayers,
+      currentTurn: 1,
+      phase: 'ACTION',
+      log: ['旧日志', '艾伦 遭遇邪神 烛九阴！（第1次）失去 1 SAN'],
+      _statEvents: [allenSanLoss],
+      _statEventSeq: 1,
+    });
+    const newGs = makeGs({
+      players: [
+        makePlayer({ name: '你' }),
+        makePlayer({ name: '艾伦', san: 9, godName: zhu.godKey, godLevel: 1, godZone: [zhu] }),
+        makePlayer({ name: '贝拉', san: 9, godName: tsg.godKey, godLevel: 1, godZone: [tsg] }),
+      ],
+      currentTurn: 2,
+      phase: 'AI_TURN',
+      _drawnCard: tsg,
+      _aiDrawnCard: tsg,
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉 遭遇邪神 蟾蜍之神！（第1次）失去 1 SAN'],
+      _statLogs: ['贝拉 遭遇邪神 蟾蜍之神！（第1次）失去 1 SAN'],
+      _statEvents: [allenSanLoss, bellaSanLoss],
+      _statEventSeq: 2,
+      _visualEvents: [{
+        type: 'statEvents',
+        statEvents: [allenSanLoss, bellaSanLoss],
+        msgs: ['贝拉 遭遇邪神 蟾蜍之神！（第1次）失去 1 SAN'],
+      }],
+      log: [
+        '旧日志',
+        '艾伦 遭遇邪神 烛九阴！（第1次）失去 1 SAN',
+        '── 贝拉 的回合开始 ──',
+        '贝拉 遭遇邪神 蟾蜍之神！（第1次）失去 1 SAN',
+        '贝拉 信仰了 蟾蜍之神，获得无定形体(Lv.1)',
+      ],
+    });
+
+    const replay = buildTurnStartDrawReplayQueue({
+      oldGs,
+      newGs,
+      effectOldGs: { ...oldGs, players: beforeDrawPlayers },
+    });
+    const sanSteps = replay.queue.filter(step => step.type === 'SAN_DAMAGE');
+
+    expect(sanSteps).toHaveLength(1);
+    expect(sanSteps[0].hitIndices).toEqual([2]);
+    expect(sanSteps[0].statEvents).toMatchObject([{ seq: 2, target: 2 }]);
+  });
+
   it('AI 回合开始区域牌伤害只播放本次 HP 扣减，不重播上个 AI 的 HP 回复', () => {
     const legion = { id: 'legion', name: '亡者军团', key: 'A2', type: 'adjDamageHP', letter: 'A', number: 2, isZone: true };
     const healLog = '全体存活角色回复 1 HP';
@@ -266,6 +442,51 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(hpDamage).toMatchObject({ hitIndices: [1, 2, 3] });
   });
 
+  it('黏液额外摸牌会按摸牌阶段事件逐张翻牌', () => {
+    const stone = makeZoneCard('B2', 0);
+    const god = makeGodCard('ZHU');
+    const beforeDrawPlayers = [player('你'), player('艾伦')];
+    const oldGs = {
+      players: beforeDrawPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: ['旧日志'],
+    };
+    const newGs = {
+      players: [player('你'), { ...player('艾伦'), san: 6, hand: [stone] }],
+      currentTurn: 1,
+      phase: 'AI_GOD_CHOICE',
+      abilityData: { playerIndex: 1, godCard: god },
+      _drawnCard: god,
+      _aiDrawnCard: god,
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _drawLogs: [
+        '【无定形体】艾伦 额外摸到 [B2] 投掷石块',
+        '艾伦 遭遇邪神 烛九阴！（第3次）失去 3 SAN',
+      ],
+      _turnDrawEvents: [
+        { card: stone, drawerIdx: 1, drawerName: '艾伦', msgs: ['【无定形体】艾伦 额外摸到 [B2] 投掷石块'], fromTsathogguaSlime: true },
+        { card: god, drawerIdx: 1, drawerName: '艾伦', msgs: ['艾伦 遭遇邪神 烛九阴！（第3次）失去 3 SAN'], fromTsathogguaSlime: true },
+      ],
+      _statLogs: ['艾伦 的SAN检定结果为"自残"', '艾伦 自残，失去 1 HP'],
+      log: [
+        '旧日志',
+        '── 艾伦 的回合开始 ──',
+        '【无定形体】艾伦 的2张撒托古亚的赐福黏液消失，本次摸牌阶段额外摸2张牌',
+        '【无定形体】艾伦 额外摸到 [B2] 投掷石块',
+        '艾伦 遭遇邪神 烛九阴！（第3次）失去 3 SAN',
+      ],
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const turnSteps = replay.queue.filter(step => step.type === 'YOUR_TURN');
+    const drawSteps = replay.queue.filter(step => step.type === 'DRAW_CARD');
+
+    expect(turnSteps).toHaveLength(1);
+    expect(drawSteps.map(step => step.card)).toEqual([stone, god]);
+  });
+
   it('AI 回合开始触发触底反弹时先播放回合悬浮文字和翻牌，再播放整手交换', () => {
     const bounce = { id: 'bounce', name: '触底反弹', key: 'C4', type: 'swapAllHands', letter: 'C', number: 4, isZone: true };
     const beforeDrawPlayers = [
@@ -311,6 +532,197 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(types[0]).toBe('YOUR_TURN');
     expect(types[1]).toBe('DRAW_CARD');
     expect(types.findIndex(type => type === 'CARD_TRANSFER')).toBeGreaterThan(types.indexOf('DRAW_CARD'));
+  });
+
+  it('AI 回合开始收入霉变食物时保留专用掷骰动画', () => {
+    const moldyFood = makeZoneCard('A1', 0);
+    const beforeDrawPlayers = [player('你'), player('贝拉')];
+    const afterPlayers = [player('你'), { ...player('贝拉'), hp: 9, hand: [moldyFood], skipNextDraw: true, skipNextDrawReason: '霉变食物' }];
+    const oldGs = {
+      players: beforeDrawPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: ['旧日志'],
+    };
+    const newGs = {
+      players: afterPlayers,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      log: [
+        '旧日志',
+        '── 贝拉 的回合开始 ──',
+        '贝拉 摸到 [A1] 霉变食物，选择收入手牌并触发效果',
+        '【霉变食物】贝拉 掷出 1 点（单数），失去 1 HP，下回合开始时不能摸牌',
+      ],
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉 摸到 [A1] 霉变食物，选择收入手牌并触发效果'],
+      _statLogs: [],
+      _drawnCard: moldyFood,
+      _aiDrawnCard: moldyFood,
+      _moldyFoodDiceSeq: 1,
+      _moldyFoodDiceRoll: { d1: 1, isEven: false, actorIdx: 1, seq: 1 },
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const diceIdx = replay.queue.findIndex(step => step.type === 'DICE_ROLL' && step.diceMode === 'moldyFood');
+    const drawIdx = replay.queue.findIndex(step => step.type === 'DRAW_CARD');
+
+    expect(diceIdx).toBeGreaterThan(drawIdx);
+    expect(replay.queue[diceIdx]).toMatchObject({ d1: 1, rollerName: '贝拉' });
+  });
+
+  it('AI 回合开始收入区域牌时在效果后播放收入手牌飞牌', () => {
+    const card = makeZoneCard('B2', 0);
+    const beforeDrawPlayers = [player('你'), player('贝拉')];
+    const afterPlayers = [player('你'), { ...player('贝拉'), hp: 8, hand: [card] }];
+    const oldGs = {
+      players: beforeDrawPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: ['旧日志'],
+    };
+    const newGs = {
+      players: afterPlayers,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      log: ['旧日志', '── 贝拉 的回合开始 ──', '贝拉 摸到 [B2] 投掷石块，选择收入手牌并触发效果', '贝拉 失去 2 HP'],
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉 摸到 [B2] 投掷石块，选择收入手牌并触发效果'],
+      _statLogs: ['贝拉 失去 2 HP'],
+      _drawnCard: card,
+      _aiDrawnCard: card,
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({
+      oldGs,
+      newGs,
+      buildQueue: () => [{ type: 'HP_DAMAGE', hitIndices: [1] }],
+    });
+    const damageIdx = replay.queue.findIndex(step => step.type === 'HP_DAMAGE');
+    const transferIdx = replay.queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.effect === 'draw');
+
+    expect(transferIdx).toBeGreaterThan(damageIdx);
+    expect(replay.queue[transferIdx]).toMatchObject({
+      fromPid: 1,
+      dest: 'player',
+      toPid: 1,
+      sourceAnchor: 'playerArea',
+      cards: [card],
+    });
+  });
+
+  it('AI 回合开始收入投掷石块即使造成 0 伤害也播放骰子和转盘', () => {
+    const stone = makeZoneCard('B2', 0);
+    const limitDiscard = makeZoneCard('A1', 0);
+    const beforeDrawPlayers = [
+      player('你'),
+      { ...player('贝拉'), hand: [limitDiscard] },
+      player('艾伦'),
+    ];
+    const afterPlayers = [
+      player('你'),
+      { ...player('贝拉'), hand: [limitDiscard, stone] },
+      player('艾伦'),
+    ];
+    const log = [
+      '旧日志',
+      '── 贝拉 的回合开始 ──',
+      '贝拉 摸到 [B2] 投掷石块，选择收入手牌并触发效果',
+      '贝拉 掷出 1 点，随机砸向 你（距离2），造成 0 HP 伤害',
+      '贝拉 弃 [A1] 霉变食物（上限）',
+    ];
+    const oldGs = {
+      players: beforeDrawPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: ['旧日志'],
+      _randomTargetSeq: 0,
+    };
+    const newGs = {
+      players: afterPlayers,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      log,
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉 摸到 [B2] 投掷石块，选择收入手牌并触发效果'],
+      _statLogs: [],
+      _drawnCard: stone,
+      _aiDrawnCard: stone,
+      _randomTargetSeq: 1,
+      _randomTargetEvents: [{
+        seq: 1,
+        sourceIdx: 1,
+        targetIdx: 0,
+        label: '投掷石块',
+        roll: 1,
+        distance: 2,
+        damage: 0,
+        resultText: '你 被选中',
+        diceBefore: true,
+        phaseOrder: 1,
+      }],
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({
+      oldGs,
+      newGs,
+      effectOldGs: {
+        ...newGs,
+        players: beforeDrawPlayers,
+        log: ['旧日志', '── 贝拉 的回合开始 ──'],
+      },
+    });
+    const diceIdx = replay.queue.findIndex(step => step.type === 'DICE_ROLL' && step.diceMode === 'throwStone');
+    const randomIdx = replay.queue.findIndex(step => step.type === 'RANDOM_TARGET');
+    const transferIdx = replay.queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.effect === 'draw');
+
+    expect(diceIdx).toBeGreaterThan(-1);
+    expect(randomIdx).toBeGreaterThan(diceIdx);
+    expect(transferIdx).toBeGreaterThan(randomIdx);
+    expect(replay.queue[diceIdx]).toMatchObject({ d1: 1, rollerName: '贝拉' });
+    expect(replay.queue[randomIdx]).toMatchObject({ sourceIdx: 1, targetIdx: 0, roll: 1, damage: 0 });
+  });
+
+  it('AI 寻宝者回合开始规避霉变食物时先播放规避骰再播放霉变食物骰', () => {
+    const moldyFood = makeZoneCard('A1', 0);
+    const beforeDrawPlayers = [player('你'), player('贝拉')];
+    const afterPlayers = [player('你'), { ...player('贝拉'), hp: 10, hand: [moldyFood] }];
+    const oldGs = {
+      players: beforeDrawPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: ['旧日志'],
+    };
+    const newGs = {
+      players: afterPlayers,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      log: [
+        '旧日志',
+        '── 贝拉 的回合开始 ──',
+        '贝拉（寻宝者）摸到 [A1] 霉变食物，掷出 5 点，成功规避负面效果！',
+        '【霉变食物】贝拉 掷出 1 点（单数），负面效果已规避',
+      ],
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉（寻宝者）摸到 [A1] 霉变食物，掷出 5 点，成功规避负面效果！'],
+      _statLogs: ['【霉变食物】贝拉 掷出 1 点（单数），负面效果已规避'],
+      _drawnCard: moldyFood,
+      _aiDrawnCard: moldyFood,
+      _moldyFoodDiceSeq: 1,
+      _moldyFoodDiceRoll: { d1: 1, isEven: false, actorIdx: 1, seq: 1, negativeAvoided: true },
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const diceSteps = replay.queue.filter(step => step.type === 'DICE_ROLL');
+
+    expect(diceSteps).toHaveLength(2);
+    expect(diceSteps[0]).toMatchObject({ d1: 5, rollerName: '贝拉', dodgeSuccess: true });
+    expect(diceSteps[1]).toMatchObject({ diceMode: 'moldyFood', d1: 1, rollerName: '贝拉', negativeAvoided: true });
+    expect(replay.queue.indexOf(diceSteps[0])).toBeLessThan(replay.queue.indexOf(diceSteps[1]));
   });
 });
 

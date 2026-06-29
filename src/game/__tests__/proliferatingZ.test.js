@@ -36,6 +36,22 @@ describe('proliferatingZ', () => {
     expect(buildProliferatingZOwnerDrawEntry(gs, players, 1, makeGodCard('SHU'), { publicGain: false })).toBeNull();
   });
 
+  it('只在增殖的Z持有者的当前回合内触发', () => {
+    const players = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' })];
+    const gs = {
+      currentTurn: 1,
+      turn: 7,
+      proliferatingZ: makeProliferatingZState(0, 7),
+      proliferatingZQueue: [],
+    };
+    expect(buildProliferatingZOwnerDrawEntry(gs, players, 1, makeGodCard('SHU'))).toBeNull();
+    expect(buildProliferatingZOwnerDrawEntry({ ...gs, currentTurn: 0 }, players, 1, makeGodCard('SHU'))).toMatchObject({
+      drawerIdx: 0,
+      gainOwnerIdx: 1,
+    });
+    expect(buildProliferatingZOwnerDrawEntry({ ...gs, currentTurn: 0, turn: 8 }, players, 1, makeGodCard('SHU'))).toBeNull();
+  });
+
   it('Z摸牌期间由公开牌效产生的获得仍可继续触发', () => {
     const players = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' })];
     const gs = { proliferatingZ: makeProliferatingZState(0, 7), proliferatingZQueue: [], abilityData: { fromProliferatingZ: true } };

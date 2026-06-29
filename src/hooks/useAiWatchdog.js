@@ -1,11 +1,16 @@
 import { useEffect, useRef } from 'react';
-import { isMultiplayerGame, isAiCurrentTurn } from '../game/rotateState';
+import { isMultiplayerGame, isAiCurrentTurn, isAiSeat } from '../game/rotateState';
 
 export const BAD_PHASES = [
   'ACTION', 'DRAW_REVEAL', 'DRAW_SELECT_TARGET', 'GOD_CHOICE', 'NYA_BORROW',
   'SWAP_SELECT_TARGET', 'SWAP_STEAL_CARD', 'SWAP_GIVE_CARD', 'BEWITCH_SELECT_CARD', 'BEWITCH_SELECT_TARGET',
   'HUNT_SELECT_TARGET', 'HUNT_CONFIRM', 'DISCARD_PHASE',
   'DAMAGE_LINK_SELECT_TARGET', 'PEEK_HAND_SELECT_TARGET', 'CAVE_DUEL_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET',
+  'FIRST_COME_PICK_SELECT', 'SAME_ABYSS_SELECT', 'SPHINX_GUESS', 'GRAVE_DIG_SELECT',
+  'BURY_ALIVE_SELECT', 'IGNITE_TORCH_DISCARD', 'ALBINO_CREATURE_SELECT_CARD',
+  'DECIPHER_STONE_CARVING', 'CAVE_DUEL_SELECT_CARD', 'TSG_SLIME_BALANCE',
+  'ETHEREALIZE_DECISION', 'ETHEREALIZE_SELECT_TARGET', 'TORTOISE_ORACLE_SELECT',
+  'SHU_SELECT_TARGET', 'MULTIPLY_SELECT_TARGET', 'ZHU_HIDE_AI_DRAW',
 ];
 
 const AI_AUTO_DECISION_SOURCES = {
@@ -19,6 +24,73 @@ export function isAiAutoDecisionPhase(gs) {
   const sourceKey = AI_AUTO_DECISION_SOURCES[gs?.phase];
   if (!sourceKey) return false;
   return gs?.abilityData?.[sourceKey] === gs?.currentTurn;
+}
+
+function getZhuHideDecisionOwner(gs) {
+  if (!gs?.zhuLight) return null;
+  const ids = gs.zhuLight.cardIds || [];
+  let pending = false;
+  if (gs.phase === 'DRAW_REVEAL') {
+    const card = gs.drawReveal?.card;
+    pending = !!(card?.id && !gs.drawReveal?.zhuResolved && ids.includes(card.id));
+  } else if (gs.phase === 'GOD_CHOICE') {
+    const card = gs.abilityData?.godCard;
+    pending = !!(card?.id && !gs.abilityData?.zhuResolved && ids.includes(card.id));
+  } else if (gs.phase === 'SPHINX_GUESS') {
+    const card = gs.deck?.[0];
+    pending = !!(card?.id && ids.includes(card.id));
+  } else if (gs.phase === 'ZHU_HIDE_AI_DRAW') {
+    pending = !!(gs.abilityData?.zhuGuard?.card || gs.zhuLight.cardIds?.length);
+  }
+  return pending ? (gs.abilityData?.zhuGuard?.ownerIdx ?? gs.zhuLight.ownerIdx ?? null) : null;
+}
+
+// 返回该决策阶段的"决策者座位"（无论 AI 还是本地玩家）；非决策阶段返回 null。
+export function getSinglePlayerDecisionSeat(gs) {
+  if (!gs || isMultiplayerGame(gs) || gs.gameOver) return null;
+  const ad = gs.abilityData || {};
+  const zhuHideOwner = getZhuHideDecisionOwner(gs);
+  if (zhuHideOwner != null) return zhuHideOwner;
+  switch (gs.phase) {
+    case 'TSG_SLIME_BALANCE':
+    case 'ETHEREALIZE_DECISION':
+    case 'ETHEREALIZE_SELECT_TARGET':
+      return ad.targetIdx ?? null;
+    case 'BURY_ALIVE_SELECT':
+      return ad.targets?.[ad.targetIndex || 0] ?? null;
+    case 'IGNITE_TORCH_DISCARD':
+    case 'ALBINO_CREATURE_SELECT_CARD':
+    case 'DECIPHER_STONE_CARVING':
+    case 'GRAVE_DIG_SELECT':
+      return ad.playerIndex ?? null;
+    case 'FIRST_COME_PICK_SELECT':
+      return ad.pickOrder?.[ad.pickIndex || 0] ?? null;
+    case 'SAME_ABYSS_SELECT':
+      return ad.targetIdx ?? null;
+    case 'CAVE_DUEL_SELECT_CARD':
+      if (ad.sourceCard && !ad.targetCard) return ad.caveDuelTarget ?? null;
+      if (ad.targetCard && !ad.sourceCard) return ad.caveDuelSource ?? null;
+      return null;
+    case 'SHU_SELECT_TARGET':
+      return ad.shuChooserIdx ?? gs.currentTurn ?? null;
+    case 'SPHINX_GUESS':
+    case 'NYA_BORROW':
+    case 'TORTOISE_ORACLE_SELECT':
+    case 'MULTIPLY_SELECT_TARGET':
+      return gs.currentTurn ?? null;
+    case 'ZHU_HIDE_AI_DRAW':
+      // 决策者是烛九阴(ZHU)的信徒——决定是否把对方将摸的牌藏到牌堆底，
+      // 不是正在摸牌的那名 AI。错判会让看门狗替本地玩家自动跳过藏牌弹窗。
+      return ad.zhuGuard?.ownerIdx ?? gs.zhuLight?.ownerIdx ?? gs.currentTurn ?? null;
+    default:
+      return null;
+  }
+}
+
+// 仅当该阶段的决策者是 AI 时返回其座位；本地玩家的决策返回 null（看门狗不得代为推进）。
+export function getSinglePlayerAiDecisionSeat(gs) {
+  const seat = getSinglePlayerDecisionSeat(gs);
+  return seat != null && isAiSeat(gs, seat) ? seat : null;
 }
 
 /**
@@ -39,6 +111,15 @@ export function useAiWatchdog({ gs, anim, showTutorial, softGuidePauseActive = f
   // ── Stuck recovery: AI 处于需要玩家交互的 phase ──────────────
   useEffect(() => {
     if (!gs || isMultiplayerGame(gs) || gs.gameOver || anim || showTutorial || softGuidePauseActive) return;
+    const decisionSeat = getSinglePlayerDecisionSeat(gs);
+    // 决策阶段属于本地玩家时，必须让玩家自己决定，看门狗绝不能强制推进——
+    // 否则会在 AI 回合触发玩家决策（如黏液平分）时吞掉弹窗并误报"状态异常"。
+    if (decisionSeat != null && !isAiSeat(gs, decisionSeat)) return;
+    const aiDecisionSeat = decisionSeat;
+    if (aiDecisionSeat != null) {
+      const t = setTimeout(() => recoverRef.current?.('decision', { phase: gs.phase, seat: aiDecisionSeat }), 700);
+      return () => clearTimeout(t);
+    }
     if (!isAiCurrentTurn(gs)) return;
     const aiPhase = gs.phase;
     if (!BAD_PHASES.includes(aiPhase)) return;
