@@ -45,6 +45,7 @@ export function buildBattleResponsiveLayout(vw, vh) {
   const fontSizes = scaleFontSet(baseFontSizes);
   const interactionFontSizes = scaleFontSet(interactionBaseFontSizes);
   const middleRowHeight = isMobile ? 292 : isMobileLandscape ? 150 : 282;
+  const desktopBoardScaleRatio = scaleRatio < 1 ? Math.sqrt(scaleRatio) : scaleRatio;
 
   return {
     isMobile,
@@ -58,8 +59,8 @@ export function buildBattleResponsiveLayout(vw, vh) {
     scaledAreaSafeInsetX,
     globalShiftX,
     middleRowHeight,
-    boardScaleRatio: isMobileLandscape ? layoutScaleRatio : scaleRatio,
-    compactBoardScaleRatio: isMobile && !isMobileLandscape ? 1 : layoutScaleRatio,
+    boardScaleRatio: isMobileLandscape ? layoutScaleRatio : isMobile ? scaleRatio : desktopBoardScaleRatio,
+    compactBoardScaleRatio: isMobile && !isMobileLandscape ? 1 : isMobileLandscape ? layoutScaleRatio : desktopBoardScaleRatio,
     mobileHandUsesCompact: isMobileLandscape,
     selfHandCardScale: (isMobile || isMobileLandscape) ? mobileZoomCompensate : 1,
   };
