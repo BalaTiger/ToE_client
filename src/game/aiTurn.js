@@ -481,6 +481,13 @@ export function aiStep(gs, opts = {}) {
   let playersBeforeSkillAction=null;
   let preSkillLogs=[];
   let preSkillDiscard=null;
+  const getReplayVisualEvents = (nextGs) => (
+    Array.isArray(nextGs?._visualEvents) && nextGs._visualEvents.length
+      ? nextGs._visualEvents
+      : Array.isArray(gs?._visualEvents) && gs._visualEvents.length
+        ? gs._visualEvents
+        : null
+  );
 
   const buildReturnPack = (nextGs, P_afterAction, P_beforeEndTurnReplay = null) => ({
     ...nextGs,
@@ -493,7 +500,8 @@ export function aiStep(gs, opts = {}) {
     _preSkillDiscard: preSkillDiscard,
     ...(P_beforeEndTurnReplay ? { _playersBeforeEndTurnReplay: P_beforeEndTurnReplay } : {}),
     ...(aiHuntEvents.length ? { _aiHuntEvents: aiHuntEvents } : {}),
-    ...(animMultiplyEvent ? { _animMultiplyEvent: animMultiplyEvent } : {})
+    ...(animMultiplyEvent ? { _animMultiplyEvent: animMultiplyEvent } : {}),
+    ...(getReplayVisualEvents(nextGs) ? { _visualEvents: getReplayVisualEvents(nextGs) } : {})
   });
 
   const buildPendingSlimeBalanceState = (state, nextPlayers, nextDeck, nextDiscard, nextLog, extra = {}) => {
@@ -847,7 +855,7 @@ export function aiStep(gs, opts = {}) {
     const d1=(1+Math.random()*6|0),d2=(1+Math.random()*6|0),heal=Math.max(d1,d2);
     const beforeRestPlayers=copyPlayers(P);
     P[ct].hp=clamp(P[ct].hp+heal);P[ct].isResting=true;
-    L.push(`${ai.name} 选择【休息】，掷骰 ${d1}+${d2}，回复 ${heal}HP，翻面休息中`);
+    L.push(`${ai.name} 选择【休息】，掷骰 ${d1}、${d2}，取高值回复 ${heal}HP，翻面休息中`);
     const restStatEventSeq=(gs._statEventSeq||0)+1;
     const restStatEvents=buildStatEvents(beforeRestPlayers,P,L.slice(-1),{reason:'休息',seq:restStatEventSeq});
     const restStatPatch=restStatEvents.length?{_statEvents:[...(gs._statEvents||[]),...restStatEvents],_statEventSeq:restStatEventSeq}:{};
@@ -1400,6 +1408,7 @@ export function aiStep(gs, opts = {}) {
     _preSkillLogs:preSkillLogs,
     _preSkillDiscard:preSkillDiscard,
     _aiHuntEvents:aiHuntEvents,
+    ...(getReplayVisualEvents(nextGs) ? { _visualEvents: getReplayVisualEvents(nextGs) } : {}),
     _aiHandLimitDiscards:discardedCards,
     ...(discardedCards.length?{
       _aiHandLimitBeforePlayers:handLimitBeforePlayers,

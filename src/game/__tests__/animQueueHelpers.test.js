@@ -9,6 +9,7 @@ import {
   dedupeInferredDiscardTransfers,
   fullHandSwapSteps,
   resolveTurnHighlightForStep,
+  swapCardsSteps,
   zhuHideCardStep,
 } from '../animQueueHelpers';
 import { copyPlayers } from '../coreUtils';
@@ -64,6 +65,27 @@ describe('animQueueHelpers', () => {
       { type: 'VISUAL_LOCK', players, zhuLight: { owner: 0 } },
       { type: 'CARD_TRANSFER', fromPid: 0, dest: 'player', toPid: 1, count: 2 },
       { type: 'CARD_TRANSFER', fromPid: 1, dest: 'player', toPid: 0, count: 1, msgs: ['交换完成'] },
+    ]);
+  });
+
+  it('掉包单牌交换 helper 先播放目标牌飞向掉包者，再播放还牌飞回目标', () => {
+    const players = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' })];
+    const takenCard = { id: 'taken' };
+    const givenCard = { id: 'given' };
+
+    expect(swapCardsSteps({
+      sourceIdx: 1,
+      targetIdx: 0,
+      sourceCount: 1,
+      targetCount: 1,
+      takenCard,
+      givenCard,
+      msgs: ['艾伦（寻宝者）对 你 【掉包】'],
+      playersBefore: players,
+    })).toEqual([
+      { type: 'VISUAL_LOCK', players, zhuLight: null },
+      { type: 'CARD_TRANSFER', fromPid: 0, dest: 'player', toPid: 1, count: 1, cards: [takenCard] },
+      { type: 'CARD_TRANSFER', fromPid: 1, dest: 'player', toPid: 0, count: 1, cards: [givenCard], msgs: ['艾伦（寻宝者）对 你 【掉包】'] },
     ]);
   });
 

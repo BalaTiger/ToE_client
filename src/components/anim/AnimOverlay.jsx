@@ -1,6 +1,6 @@
 ﻿import React from 'react';
 import { CardFlipAnim } from './CardFlipAnim';
-import { DiceRollAnim, GenericAnimOverlay, TorchWardOverlay, YourTurnAnim } from './GenericAnimOverlay';
+import { DiceRollAnim, GenericAnimOverlay, TorchWardOverlay, VritraImmortalRevealOverlay, YourTurnAnim } from './GenericAnimOverlay';
 import { BuryToDeckOverlay, DiscardMoveOverlay, HuntRevealCardOverlay, TsathogguaSlimePopOverlay, ZhuHideCardOverlay } from './MoveOverlays';
 import { CaveDuelAnim, GeomagneticReversalAnim, GeomagneticRestoreShuffleAnim, VolcanoAnim } from './AreaCardOverlays';
 import { ApophisEclipseAnim } from './ApophisOverlays';
@@ -54,6 +54,7 @@ const ANIM_RENDERERS = {
   ENDLESS_CORRIDOR_TUNNEL: ({ exiting }) => <EndlessCorridorTunnelAnim exiting={exiting} />,
   GOD_POWER_BLOCKED: ({ anim, exiting }) => <TorchWardOverlay anim={anim} exiting={exiting} />,
   TSG_SLIME_POP: ({ anim, exiting }) => <TsathogguaSlimePopOverlay anim={anim} exiting={exiting} />,
+  VRI_IMMORTAL_REVEAL: ({ anim, exiting }) => <VritraImmortalRevealOverlay anim={anim} exiting={exiting} />,
 };
 
 function AnimOverlay({ anim, exiting, expansionKey = '地神的潜影' }) {

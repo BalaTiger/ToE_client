@@ -110,6 +110,34 @@ function collectStepStatEvents(steps = []) {
   });
 }
 
+function buildVritraImmortalRevealSteps(oldGs, newGs, newMsgs = []) {
+  const lines = (Array.isArray(newMsgs) ? newMsgs : [])
+    .filter(line => typeof line === 'string' && line.includes('【不灭之躯】') && line.includes('翻开'));
+  if (!lines.length) return [];
+  const oldDiscardLen = Array.isArray(oldGs?.discard) ? oldGs.discard.length : 0;
+  const appendedDiscard = Array.isArray(newGs?.discard) ? newGs.discard.slice(oldDiscardLen) : [];
+  let discardCursor = 0;
+  return lines.map(line => {
+    const countMatch = line.match(/翻开\s*(\d+)\s*张/);
+    const count = Math.max(0, Number(countMatch?.[1] || 0));
+    const cards = count > 0 ? appendedDiscard.slice(discardCursor, discardCursor + count) : [];
+    discardCursor += count;
+    const nameMatch = line.match(/^【不灭之躯】(.+?)\s/);
+    const playerName = nameMatch?.[1] || '目标';
+    const targetPid = playerName === '你'
+      ? 0
+      : (newGs?.players || []).findIndex(player => player?.name === playerName);
+    return {
+      type: 'VRI_IMMORTAL_REVEAL',
+      targetPid: targetPid >= 0 ? targetPid : null,
+      playerName,
+      cards,
+      success: line.includes('未见邪神牌') || line.includes('HP恢复至1'),
+      msgs: [line],
+    };
+  });
+}
+
 function cardIdentity(card) {
   return card?.id || card?.uid || [card?.key, card?.godKey, card?.name, card?.type].filter(Boolean).join(':') || null;
 }
@@ -280,6 +308,7 @@ export function buildAnimQueue(oldGs, newGs) {
     : [];
   const cardEffectSteps = buildCardEffectStepsFromVisualEvents(newGs, oldGs);
   const godPowerBlockedSteps = buildGodPowerBlockedStepsFromVisualEvents(newGs, oldGs);
+  const vritraRevealSteps = buildVritraImmortalRevealSteps(oldGs, newGs, newMsgs);
   const handledCardEffectStatEvents = collectStepStatEvents(cardEffectSteps);
   const handledCardEffectStatSeqs = new Set(
     handledCardEffectStatEvents
@@ -365,6 +394,7 @@ export function buildAnimQueue(oldGs, newGs) {
   }
   q.push(...godPowerBlockedSteps);
   q.push(...cardEffectSteps);
+  q.push(...vritraRevealSteps);
   if (deathIdx.length) {
     const deathMsgs = getDeathAnimMsgs(newMsgs, effectivePlayers, deathIdx);
     q.push({ type: 'GUILLOTINE', msgs: deathMsgs, hitIndices: deathIdx, targetStats });

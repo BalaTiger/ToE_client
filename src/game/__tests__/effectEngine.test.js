@@ -980,6 +980,20 @@ describe('applyFx', () => {
     expect(res.P[0].hp).toBe(10); // actor avoided
     expect(res.P[1].hp).toBe(9); // right neighbor still hit
     expect(res.P[4].hp).toBe(9); // left neighbor still hit
+    expect(res.msgs).toContain('相邻角色各失去 1 HP');
+    expect(res.msgs).not.toContain('P0 与相邻角色各失去 1 HP');
+  });
+
+  it('avoidNegativeFor: 规避自己时全场负面日志排除触发者', () => {
+    const players = makeStandardPlayers(3);
+    const card = { type: 'allDamageHP', name: '测试', key: 'TEST', val: 1 };
+    const gs = makeGs({ players });
+    const res = applyFx(card, 0, null, players, [], [], gs, false, [0]);
+    expect(res.P[0].hp).toBe(10);
+    expect(res.P[1].hp).toBe(9);
+    expect(res.P[2].hp).toBe(9);
+    expect(res.msgs).toContain(`除${players[0].name}外，全体存活角色失去 1 HP`);
+    expect(res.msgs).not.toContain('全体存活角色失去 1 HP');
   });
 
   it('selfDamageHPPeek: 规避时仍触发偷看', () => {

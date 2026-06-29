@@ -134,6 +134,7 @@ function handleInspection(playerIndex, gs) {
   let newGs = { ...gs };
   const beforePlayers = copyPlayers(gs.players || []);
   const beforeLog = [...(Array.isArray(gs.log) ? gs.log : [])];
+  const beforeDiscard = [...(Array.isArray(gs.discard) ? gs.discard : [])];
   const beforeLogLen = Array.isArray(gs.log) ? gs.log.length : 0;
   // 检查检定牌堆是否为空，如果为空则洗牌
   if (newGs.inspectionDeck.length === 0) {
@@ -265,6 +266,7 @@ function handleInspection(playerIndex, gs) {
     ? L.filter(line => line !== `${P[playerIndex].name} 获得暂时的平静`)
     : L;
   const afterPlayers = copyPlayers(P);
+  const afterDiscard = [...(Array.isArray(newGs.discard) ? newGs.discard : [])];
   const statEventSeq = (gs?._statEventSeq || 0) + 1;
   const statEvents = buildStatEvents(beforePlayers, afterPlayers, finalLog.slice(beforeLogLen), {
     reason: drawnCard.name || 'SAN检定',
@@ -295,8 +297,10 @@ function handleInspection(playerIndex, gs) {
       prevLogLen: beforeLogLen,
       beforePlayers,
       beforeLog,
+      beforeDiscard,
       afterPlayers,
       afterLog: [...finalLog],
+      afterDiscard,
       statEvents,
       statEventSeq: statEvents.length ? statEventSeq : null,
     }
@@ -551,20 +555,19 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
 
   // 辅助函数：应用AOE伤害
   const applyAOEDamage = (targets, damageType, value, hpVal, sanVal) => {
-    let affected = false;
-    targets.forEach(i => {
-      if (!avoidNegativeFor.includes(i) && (i !== ci || !avoidNegative)) affected = true;
-    });
-    if (affected) {
+    const affectedTargets = targets.filter(i => !avoidNegativeFor.includes(i) && (i !== ci || !avoidNegative));
+    const selfAvoided = targets.includes(ci) && !affectedTargets.includes(ci) && (avoidNegative || avoidNegativeFor.includes(ci));
+    if (affectedTargets.length) {
+      const subject = selfAvoided ? '相邻角色' : `${actor.name} 与相邻角色`;
       if (hpVal && sanVal) {
-        msgs.push(`${actor.name} 与相邻角色各失去 ${hpVal + dmgBonus} HP 和 ${sanVal} SAN`);
+        msgs.push(`${subject}各失去 ${hpVal + dmgBonus} HP 和 ${sanVal} SAN`);
       } else {
         const damageDesc = damageType === 'hp' ? 'HP' : (damageType === 'san' ? 'SAN' : 'HP 和 SAN');
-        msgs.push(`${actor.name} 与相邻角色各失去 ${value + dmgBonus} ${damageDesc}`);
+        msgs.push(`${subject}各失去 ${value + dmgBonus} ${damageDesc}`);
       }
     }
     targets.forEach(i => {
-      if (!avoidNegativeFor.includes(i)) {
+      if (!avoidNegativeFor.includes(i) && (i !== ci || !avoidNegative)) {
         if (damageType === 'both' || damageType.includes('hp')) dealHP(i, hpVal || value);
         if (damageType === 'both' || damageType.includes('san')) dealSAN(i, sanVal || value);
       }
@@ -573,16 +576,14 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
 
   // 辅助函数：应用全局AOE伤害
   const applyGlobalAOEDamage = (damageType, value) => {
-    let affected = false;
-    allLiving.forEach(i => {
-      if (!avoidNegativeFor.includes(i) && (i !== ci || !avoidNegative)) affected = true;
-    });
-    if (affected) {
+    const affectedTargets = allLiving.filter(i => !avoidNegativeFor.includes(i) && (i !== ci || !avoidNegative));
+    const selfAvoided = allLiving.includes(ci) && !affectedTargets.includes(ci) && (avoidNegative || avoidNegativeFor.includes(ci));
+    if (affectedTargets.length) {
       const damageDesc = damageType === 'hp' ? 'HP' : (damageType === 'san' ? 'SAN' : 'HP 和 SAN');
-      msgs.push(`全体存活角色失去 ${value + dmgBonus} ${damageDesc}`);
+      msgs.push(`${selfAvoided ? `除${actor.name}外，` : ''}全体存活角色失去 ${value + dmgBonus} ${damageDesc}`);
     }
     allLiving.forEach(i => {
-      if (!avoidNegativeFor.includes(i)) {
+      if (!avoidNegativeFor.includes(i) && (i !== ci || !avoidNegative)) {
         if (damageType === 'both' || damageType.includes('hp')) dealHP(i, value);
         if (damageType === 'both' || damageType.includes('san')) dealSAN(i, value);
       }

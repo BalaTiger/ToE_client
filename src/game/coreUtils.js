@@ -169,17 +169,18 @@ export function tryVritraImmortal(P, i, currentTurn, D, Disc, L) {
   for (let k = 0; k < count && deckCopy.length > 0; k++) {
     revealed.push(deckCopy.shift());
   }
+  const revealText = revealed.map(card => cardLogText(card, { alwaysShowName: true })).join('、') || '无牌';
   const hasGod = revealed.some(c => c && c.isGod);
   if (hasGod) {
     Disc.push(...revealed);
-    L.push(`【不灭之躯】${P[i].name} 濒死之际激发龙血之力，但翻开的牌中出现了邪神牌，力量消散…`);
+    L.push(`【不灭之躯】${P[i].name} 濒死之际激发龙血之力，翻开 ${revealed.length} 张：${revealText}；出现邪神牌，力量消散…`);
     D.length = 0;
     D.push(...deckCopy);
     return false;
   }
   P[i].hp = 1;
   Disc.push(...revealed);
-  L.push(`【不灭之躯】${P[i].name} 在濒死之际激发龙血之力，HP恢复至1！`);
+  L.push(`【不灭之躯】${P[i].name} 在濒死之际激发龙血之力，翻开 ${revealed.length} 张：${revealText}；未见邪神牌，HP恢复至1！`);
   D.length = 0;
   D.push(...deckCopy);
   return true;

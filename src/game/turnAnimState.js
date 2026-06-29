@@ -589,11 +589,18 @@ export function buildTurnStartDrawReplayQueue({
   const drawOldStatSeq = drawStatSeqs.length
     ? Math.max(0, Math.min(...drawStatSeqs) - 1)
     : null;
+  const drawRandomTargetSeqs = (Array.isArray(newGs?._randomTargetEvents) ? newGs._randomTargetEvents : [])
+    .map(event => event?.seq)
+    .filter(seq => seq != null);
+  const drawOldRandomTargetSeq = drawRandomTargetSeqs.length
+    ? Math.max(0, Math.min(...drawRandomTargetSeqs) - 1)
+    : null;
   // 摸牌效果的基线状态代表「摸牌效果发生之前」，不应携带本次摸牌产生的视觉事件
   // （如地动山摇 earthquake）。清掉后，buildAnimQueue 才会把它判定为新事件并播放首次动画。
   const fallbackOldGs = {
     ...fallbackOldGsRaw,
     ...(drawOldStatSeq != null ? { _statEventSeq: drawOldStatSeq } : {}),
+    ...(drawOldRandomTargetSeq != null ? { _randomTargetSeq: drawOldRandomTargetSeq } : {}),
     ...(Array.isArray(fallbackOldGsRaw?._visualEvents) && fallbackOldGsRaw._visualEvents.length ? { _visualEvents: [] } : {}),
   };
   const inspectionEvents = getFreshInspectionEvents(oldGs, newGs);
@@ -613,7 +620,11 @@ export function buildTurnStartDrawReplayQueue({
   const visualStatQ = buildFilteredStatStepsFromVisualEvents(
     newGs,
     beforeDrawPlayers,
-    statEvent => !inspectionStatSeqs.has(statEvent?.seq) && !isPreDrawTurnStartStatEvent(statEvent),
+    statEvent => (
+      (statEvent?.seq == null || statEvent.seq > (fallbackOldGs?._statEventSeq || 0)) &&
+      !inspectionStatSeqs.has(statEvent?.seq) &&
+      !isPreDrawTurnStartStatEvent(statEvent)
+    ),
     inspectionLogLines
   );
   const filteredDrawEffectQBase = filterFallbackDrawEffects(drawEffectQBase, newGs, visualStatQ);

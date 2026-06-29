@@ -1001,6 +1001,15 @@ describe('aiStep optional action limits', () => {
     expect(newLogs).toContain('艾伦（寻宝者）对 你 【掉包】');
     expect(newLogs).toContain(`你的手牌${cardLogText(stolen, { alwaysShowName: true })}被暗抽`);
     expect(newLogs).toContain(`艾伦（寻宝者）给你一张${cardLogText(returned, { alwaysShowName: true })}`);
+    expect(result._visualEvents?.[0]).toMatchObject({
+      type: 'swapCards',
+      sourceIdx: 1,
+      targetIdx: 0,
+      sourceCount: 1,
+      targetCount: 1,
+      takenCard: stolen,
+      givenCard: returned,
+    });
   });
 
   it('AI 寻宝者不会用补编号区域牌换走对自己无益的森之领主', () => {

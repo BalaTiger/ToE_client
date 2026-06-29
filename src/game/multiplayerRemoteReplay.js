@@ -1,7 +1,7 @@
 import { bindAnimLogChunks } from './animLogs';
 import { mergeApophisTargetQueue } from './apophisAnimQueue';
 import { buildAiHuntEventAnimQueue } from './animQueueCore';
-import { cardTransferStep, fullHandSwapSteps } from './animQueueHelpers';
+import { cardTransferStep, fullHandSwapSteps, swapCardsSteps } from './animQueueHelpers';
 import {
   buildBewitchGiftReplay,
   buildInspectionReplay,
@@ -378,11 +378,13 @@ export function buildMpRemoteReplayAction({
   if (swapEvent && isFreshActionReplayEvent(swapEvent, logDelta)) {
     const queue = withApophisTargetReplay([
       { type: 'SKILL_SWAP', msgs: swapEvent.msgs || logDelta },
-      ...fullHandSwapSteps({
-        fromPid: swapEvent.sourceIdx,
-        toPid: swapEvent.targetIdx,
-        fromCount: swapEvent.sourceCount || 1,
-        toCount: swapEvent.targetCount || 1,
+      ...swapCardsSteps({
+        sourceIdx: swapEvent.sourceIdx,
+        targetIdx: swapEvent.targetIdx,
+        sourceCount: swapEvent.sourceCount || 1,
+        targetCount: swapEvent.targetCount || 1,
+        takenCard: swapEvent.takenCard || null,
+        givenCard: swapEvent.givenCard || null,
         msgs: swapEvent.msgs || logDelta,
         playersBefore: previousGs?.players || null,
         zhuLight: previousGs?.zhuLight || rotated.zhuLight || null,

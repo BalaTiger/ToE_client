@@ -34,6 +34,42 @@ describe('buildAnimQueue stat animations', () => {
     expect(buildAnimQueue(oldGs, newGs).map(step => step.type)).toContain('APOPHIS_ECLIPSE');
   });
 
+  it('弗栗多不灭之躯触发时会公示翻开的牌并在死亡动画前播放', () => {
+    const revealed = [
+      { id: 'a1', name: '偷吃龙蛋', key: 'A1', letter: 'A', number: 1, type: 'selfHealHP', isZone: true },
+      { id: 'b2', name: '强心剂', key: 'B2', letter: 'B', number: 2, type: 'selfHealHP', isZone: true },
+    ];
+    const oldGs = makeGs({
+      players: [makePlayer({ name: '你' }), makePlayer({ name: '贝拉', hp: 3, godName: 'VRI', godLevel: 3 })],
+      discard: [],
+      log: ['旧日志'],
+      _statEventSeq: 0,
+    });
+    const vriLog = '【不灭之躯】贝拉 在濒死之际激发龙血之力，翻开 2 张：[A1] 偷吃龙蛋、[B2] 强心剂；未见邪神牌，HP恢复至1！';
+    const newGs = makeGs({
+      players: [makePlayer({ name: '你' }), makePlayer({ name: '贝拉', hp: 1, godName: 'VRI', godLevel: 3 })],
+      discard: revealed,
+      log: ['旧日志', '贝拉 失去 5 HP', vriLog],
+      _statEventSeq: 1,
+      _statEvents: [{ type: 'HP_LOSS', target: 1, from: { hp: 3, san: 10, isDead: false }, to: { hp: 1, san: 10, isDead: false }, seq: 1, logHint: '贝拉 失去 5 HP' }],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    const hpIdx = queue.findIndex(step => step.type === 'HP_DAMAGE');
+    const revealIdx = queue.findIndex(step => step.type === 'VRI_IMMORTAL_REVEAL');
+    const deathIdx = queue.findIndex(step => step.type === 'DEATH');
+
+    expect(revealIdx).toBeGreaterThan(hpIdx);
+    expect(deathIdx).toBe(-1);
+    expect(queue[revealIdx]).toMatchObject({
+      targetPid: 1,
+      playerName: '贝拉',
+      success: true,
+      cards: revealed,
+      msgs: [vriLog],
+    });
+  });
+
   it('死亡全屏公告只绑定倒下日志，不带入同一效果的其他日志', () => {
     const oldGs = makeGs({
       players: [

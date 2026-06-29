@@ -982,6 +982,8 @@ describe('buildMpRemoteReplayAction', () => {
 
     expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
     expect(action.queue.map(step => step.type)).toEqual(['SKILL_SWAP', 'VISUAL_LOCK', 'CARD_TRANSFER', 'CARD_TRANSFER', 'STATE_PATCH']);
+    expect(action.queue[2]).toMatchObject({ fromPid: 0, dest: 'player', toPid: 1, count: 1 });
+    expect(action.queue[3]).toMatchObject({ fromPid: 1, dest: 'player', toPid: 0, count: 1 });
     expect(action.queue.at(-1)).toMatchObject({
       type: 'STATE_PATCH',
       players,

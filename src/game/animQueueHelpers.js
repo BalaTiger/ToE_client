@@ -84,6 +84,36 @@ export function fullHandSwapSteps({fromPid,toPid,fromCount=0,toCount=0,msgs=[],p
   ];
 }
 
+export function swapCardsTransferSteps({sourceIdx,targetIdx,sourceCount=1,targetCount=1,msgs=[],takenCard=null,givenCard=null}={}){
+  if(sourceIdx==null||sourceIdx<0||targetIdx==null||targetIdx<0)return [];
+  return [
+    cardTransferStep({
+      fromPid:targetIdx,
+      dest:"player",
+      toPid:sourceIdx,
+      count:targetCount,
+      ...(takenCard?{cards:[takenCard]}:{}),
+    }),
+    cardTransferStep({
+      fromPid:sourceIdx,
+      dest:"player",
+      toPid:targetIdx,
+      count:sourceCount,
+      ...(givenCard?{cards:[givenCard]}:{}),
+      msgs,
+    }),
+  ];
+}
+
+export function swapCardsSteps({sourceIdx,targetIdx,sourceCount=1,targetCount=1,msgs=[],playersBefore=null,zhuLight=null,takenCard=null,givenCard=null}={}){
+  const transfers=swapCardsTransferSteps({sourceIdx,targetIdx,sourceCount,targetCount,msgs,takenCard,givenCard});
+  if(!transfers.length)return [];
+  return [
+    ...(playersBefore?[{type:"VISUAL_LOCK",players:playersBefore,zhuLight:zhuLight||null}]:[]),
+    ...transfers,
+  ];
+}
+
 export function buildFullHandSwapStepsFromLogs(logs,players,options={}){
   const fullHandSwapMsg=(Array.isArray(logs)?logs:[]).find(
     line=>typeof line==="string"&&line.includes("交换了全部手牌")
@@ -162,13 +192,16 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
   const queue=[];
   let cursorPlayers=copyPlayers(baseGs?.players||[]);
   let cursorLog=[...(Array.isArray(baseGs?.log)?baseGs.log:[])];
+  let cursorDiscard=[...(Array.isArray(baseGs?.discard)?baseGs.discard:[])];
   let cursorStatEventSeq=baseGs?._statEventSeq||0;
   (events||[]).forEach(ev=>{
     const beforePlayers=copyPlayers(ev?.beforePlayers||cursorPlayers);
     const beforeLog=[...(Array.isArray(ev?.beforeLog)?ev.beforeLog:cursorLog)];
+    const beforeDiscard=[...(Array.isArray(ev?.beforeDiscard)?ev.beforeDiscard:cursorDiscard)];
     const afterPlayers=copyPlayers(ev?.afterPlayers||beforePlayers);
     const afterLog=[...(Array.isArray(ev?.afterLog)?ev.afterLog:beforeLog)];
-    const preQ=buildAnimQueue({players:cursorPlayers,log:cursorLog},{players:beforePlayers,log:beforeLog});
+    const afterDiscard=[...(Array.isArray(ev?.afterDiscard)?ev.afterDiscard:beforeDiscard)];
+    const preQ=buildAnimQueue({players:cursorPlayers,log:cursorLog,discard:cursorDiscard},{players:beforePlayers,log:beforeLog,discard:beforeDiscard});
     if(preQ.length)queue.push(...preQ);
     queue.push({type:"VISUAL_LOCK",players:beforePlayers});
     queue.push({
@@ -179,17 +212,19 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
       inspectionSeq:ev.seq,
     });
     const effectQ=buildAnimQueue(
-      {players:beforePlayers,log:beforeLog,_statEventSeq:(ev?.statEventSeq||0)-1},
+      {players:beforePlayers,log:beforeLog,discard:beforeDiscard,_statEventSeq:(ev?.statEventSeq||0)-1},
       {
         players:afterPlayers,
         log:afterLog,
+        discard:afterDiscard,
         ...(Array.isArray(ev?.statEvents)&&ev.statEvents.length?{_statEvents:ev.statEvents,_statEventSeq:ev.statEventSeq}:{}),
       }
     );
     if(effectQ.length)queue.push(...effectQ);
-    queue.push(statePatchStep({players:afterPlayers,log:afterLog}));
+    queue.push(statePatchStep({players:afterPlayers,log:afterLog,discard:afterDiscard}));
     cursorPlayers=afterPlayers;
     cursorLog=afterLog;
+    cursorDiscard=afterDiscard;
     if(ev?.statEventSeq!=null)cursorStatEventSeq=Math.max(cursorStatEventSeq,ev.statEventSeq);
   });
   return {queue,players:cursorPlayers,log:cursorLog,statEventSeq:cursorStatEventSeq};
