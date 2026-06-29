@@ -148,7 +148,7 @@ export function resolveTurnHighlightForStep(step,nextGs,playersFallback=[]){
   return idx>=0?idx:null;
 }
 
-export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQueue,msgs){
+export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQueue,msgs,options={}){
   const isStaleTurnDrawStep = step => (
     step?.type === "YOUR_TURN" ||
     (step?.type === "DRAW_CARD" && step.inspectionSeq == null && step.triggerName !== "检定牌")
@@ -166,6 +166,7 @@ export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQ
   const ordered=[{type:"SKILL_BEWITCH",msgs,targetIdx:toPid}];
   if(toPid!=null&&toPid>=0){
     ordered.push(cardTransferStep({fromPid,dest:"player",toPid,count:1}));
+    if(options.afterGiftPatch)ordered.push(statePatchStep(options.afterGiftPatch));
   }
   // 注意：被蛊惑者的操作是在当前回合内完成的，不应视为"回合开始"
   // 因此不再添加 YOUR_TURN 动画步骤

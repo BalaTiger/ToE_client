@@ -152,6 +152,26 @@ describe('animQueueHelpers', () => {
     expect(queue[2]).toMatchObject({ card: gift, triggerName: '目标角色', targetPid: 2, skipTravel: true });
   });
 
+  it('蛊惑赠牌后可先提交施法者手牌中间态，再继续目标结算', () => {
+    const gift = makeZoneCard('A1', 0);
+    const sourceAfterGift = makePlayer({ name: '贝拉', hand: [makeZoneCard('B1', 0)] });
+    const queue = buildBewitchForcedCardQueue(1, 2, gift, '目标角色', [
+      { type: 'TURN_BOUNDARY_PAUSE', msgs: ['目标结算'] },
+    ], ['贝拉（邪祀者）对目标角色【蛊惑】'], {
+      afterGiftPatch: { players: [makePlayer({ name: '你' }), sourceAfterGift, makePlayer({ name: '目标角色' })] },
+    });
+
+    expect(queue.map(step => step.type)).toEqual([
+      'SKILL_BEWITCH',
+      'CARD_TRANSFER',
+      'STATE_PATCH',
+      'DRAW_CARD',
+      'TURN_BOUNDARY_PAUSE',
+    ]);
+    expect(queue[2]).toMatchObject({ players: expect.any(Array) });
+    expect(queue[2].players[1].hand).toHaveLength(1);
+  });
+
   it('蛊惑强制结算时保留带语义的连锁飞牌动画', () => {
     const gift = { id: 'shu-1', name: '森之领主', isGod: true };
     const queue = buildBewitchForcedCardQueue(0, 3, gift, '黛安娜', [

@@ -178,6 +178,56 @@ describe('aiShouldKeepZoneCard', () => {
     expect(aiShouldKeepZoneCard(card, 1, players)).toBe(false);
   });
 
+  it('弃牌堆有邪神牌时邪祀者会收入掘墓', () => {
+    const card = {
+      id: 'grave-dig',
+      key: 'A4',
+      name: '掘墓',
+      type: 'graveDigGod',
+      isZone: true,
+      letter: 'A',
+      number: 4,
+      polarity: 'positive',
+    };
+    const players = [
+      makePlayer({ name: '你', hp: 8, san: 8 }),
+      makePlayer({
+        name: '邪祀者',
+        role: ROLE_CULTIST,
+        hp: 10,
+        san: 10,
+        hand: [],
+      }),
+    ];
+
+    expect(aiShouldKeepZoneCard(card, 1, players, false, { discard: [makeGodCard('NYA')] })).toBe(true);
+  });
+
+  it('弃牌堆没有邪神牌时邪祀者不会空收掘墓', () => {
+    const card = {
+      id: 'grave-dig',
+      key: 'A4',
+      name: '掘墓',
+      type: 'graveDigGod',
+      isZone: true,
+      letter: 'A',
+      number: 4,
+      polarity: 'positive',
+    };
+    const players = [
+      makePlayer({ name: '你', hp: 8, san: 8 }),
+      makePlayer({
+        name: '邪祀者',
+        role: ROLE_CULTIST,
+        hp: 10,
+        san: 10,
+        hand: [],
+      }),
+    ];
+
+    expect(aiShouldKeepZoneCard(card, 1, players, false, { discard: [makeZoneCard('B2', 0)] })).toBe(false);
+  });
+
   it('寻宝者和追猎者会收入无实际治疗收益但能保留手牌价值的低风险牌', () => {
     const card = {
       id: 'heal-hp',
@@ -712,6 +762,36 @@ describe('aiStep optional action limits', () => {
 
     const plan = chooseAiCultistBewitchPlan(players, 1);
     expect(plan).toMatchObject({ card: shu, targetIdx: 0 });
+  });
+
+  it('AI 邪祀者有改信目标时不会因同神目标SAN损失更高而选择升级', () => {
+    const zhu = makeGodCard('ZHU');
+    const players = [
+      makePlayer({ name: '艾伦', role: ROLE_CULTIST, roleRevealed: true, hand: [zhu] }),
+      makePlayer({
+        name: '黛安娜',
+        role: ROLE_HUNTER,
+        hp: 10,
+        san: 9,
+        godName: 'ZHU',
+        godLevel: 1,
+        godEncounters: 1,
+        godZone: [makeGodCard('ZHU')],
+      }),
+      makePlayer({
+        name: '卡洛斯',
+        role: ROLE_TREASURE,
+        hp: 10,
+        san: 9,
+        godName: 'NYA',
+        godLevel: 1,
+        godEncounters: 0,
+        godZone: [makeGodCard('NYA')],
+      }),
+    ];
+
+    const plan = chooseAiCultistBewitchPlan(players, 0);
+    expect(plan).toMatchObject({ card: zhu, targetIdx: 2 });
   });
 
   it('AI 已在本回合使用过技能后恢复收尾时不记录未使用技能', () => {

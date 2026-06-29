@@ -420,7 +420,7 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
       replayQueue.push(...resolutionQueue, replayStatePatch(P, D, Disc, L));
       continue;
     }
-    const keep = card?.type === END_TURN_EVENT.END_TURN_REPLAY_HAND || !isZoneCard(card) || aiShouldKeepZoneCard(card, ct, P, false);
+    const keep = card?.type === END_TURN_EVENT.END_TURN_REPLAY_HAND || !isZoneCard(card) || aiShouldKeepZoneCard(card, ct, P, false, { discard: Disc, deck: D, gs });
     if (!keep) {
       const [discarded] = P[ct].hand.splice(handIdx, 1);
       if (isBlackGoatYoung(discarded) || isTsathogguaSlime(discarded)) L.push(`${P[ct].name} 的衍生牌被销毁`);
@@ -478,6 +478,7 @@ export function aiStep(gs, opts = {}) {
   let P=copyPlayers(ps),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
   const ai=P[ct];let alive=P.filter((p,i)=>!p.isDead&&i!==ct);
   const aiHuntEvents=[];
+  let animMultiplyEvent = null;
   let playersBeforeSkillAction=null;
   let preSkillLogs=[];
   let preSkillDiscard=null;
@@ -823,8 +824,6 @@ export function aiStep(gs, opts = {}) {
       }
     }
   }
-  let animMultiplyEvent = null;
-
   // ── AI Rest (新版策略) ───────────────────────────────────────
   // HP≤4时积极休息（已进入斩杀线）
   // 寻宝者HP≤4：除非掉包可获胜或避免进度倒退，否则休息

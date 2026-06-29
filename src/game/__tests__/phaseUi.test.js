@@ -91,4 +91,33 @@ describe('phaseUi', () => {
 
     expect(ui.displayPhaseLabel).toBe('请等待其他玩家选择…');
   });
+
+  it('单人 AI 烛九阴藏牌阶段显示思考态而不是联机等待态', () => {
+    const ui = buildPhaseUiState({
+      gs: {
+        ...baseGs,
+        currentTurn: 1,
+        phase: 'ZHU_HIDE_AI_DRAW',
+      },
+      phase: 'ZHU_HIDE_AI_DRAW',
+      visualMe: { godName: null },
+    });
+
+    expect(ui.displayPhaseLabel).toBe('艾伦 正在思考…');
+  });
+
+  it('联机远端烛九阴藏牌阶段仍显示等待其他玩家', () => {
+    const ui = buildPhaseUiState({
+      gs: {
+        ...baseGs,
+        _isMP: true,
+        currentTurn: 1,
+        phase: 'ZHU_HIDE_AI_DRAW',
+      },
+      phase: 'ZHU_HIDE_AI_DRAW',
+      visualMe: { godName: null },
+    });
+
+    expect(ui.displayPhaseLabel).toBe('请等待其他玩家选择…');
+  });
 });

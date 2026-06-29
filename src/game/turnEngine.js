@@ -674,7 +674,7 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
     const keepOverride = consumeDebugForceKeepOverride(gs, ci);
     const blindZoneIdentity = shouldBlindZoneDecision(P, ci, drawnCard);
     if (blindZoneIdentity) P[ci].blindNextZoneDecision = false;
-    const keep = keepOverride === 'keep' ? true : keepOverride === 'discard' ? false : blindZoneIdentity ? Math.random() < 0.5 : aiShouldKeepZoneCard(drawnCard, ci, P, false);
+    const keep = keepOverride === 'keep' ? true : keepOverride === 'discard' ? false : blindZoneIdentity ? Math.random() < 0.5 : aiShouldKeepZoneCard(drawnCard, ci, P, false, { discard: Disc, deck: D, gs });
     if (!keep) {
       Disc.push(drawnCard);
       return { P, D, Disc, drawnCard, effectMsgs: [`${P[ci].name} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，评估后选择弃置`], needsDecision: false, _aiDrawnCard: drawnCard, discardedDrawnCard: true };

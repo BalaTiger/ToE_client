@@ -269,6 +269,14 @@ function estimateTreasureRiskyAxisBonus(card, self) {
   return progressValue * 1.6;
 }
 
+function estimateCultistGraveDigGodScore(self, discard = []) {
+  const godCards = discard.filter(card => card?.isGod);
+  if (!godCards.length) return -0.4;
+  const bewitchAmmoBonus = Math.min(godCards.length, 3) * 0.45;
+  const faithBonus = self?.godName ? 0.35 : 0.8;
+  return 2.4 + bewitchAmmoBonus + faithBonus;
+}
+
 function estimateHunterZoneCardScore(card, self, players, ci) {
   let score = 0;
   switch (card.type) {
@@ -549,7 +557,7 @@ function estimateTreasureZoneCardScore(card, self, players, ci) {
   return score;
 }
 
-function estimateCultistZoneCardScore(card, self, players, ci) {
+function estimateCultistZoneCardScore(card, self, players, ci, context = {}) {
   const dmgBonus = self.damageBonus || 0;
   const livingPlayers = players.filter(p => !p.isDead);
   const minSan = Math.min(...livingPlayers.map(p => p.san));
@@ -723,6 +731,8 @@ function estimateCultistZoneCardScore(card, self, players, ci) {
       return finishScore(1.8);
     case 'proliferatingZ':
       return finishScore(hasProliferatingZPayoff(self) ? 3.2 : 2.4);
+    case 'graveDigGod':
+      return estimateCultistGraveDigGodScore(self, context.discard);
     case 'roseThornGiftAllHand': {
       const hunters = players.filter((p, i) => i !== ci && !p.isDead && p.role === ROLE_HUNTER);
       if (hunters.length > 0) {
@@ -1058,10 +1068,21 @@ export function chooseAiCultistBewitchPlan(players, sourceIdx) {
       return score;
     };
     for (const card of godCards) {
-      const cardTargets = targets
+      const nonCultistTargets = targets.filter(target => target.player.role !== ROLE_CULTIST);
+      const conversionTargets = nonCultistTargets.filter(target => target.player.godName !== card.godKey);
+      const sameGodLethalTargets = nonCultistTargets.filter(target =>
+        target.player.godName === card.godKey &&
+        estimateGodGiftSanLoss(card, target.player) > 0 &&
+        target.player.san - estimateGodGiftSanLoss(card, target.player) <= 0 &&
+        target.player.hp > 0
+      );
+      const candidateTargets = conversionTargets.length
+        ? [...conversionTargets, ...sameGodLethalTargets]
+        : nonCultistTargets;
+      const cardTargets = candidateTargets
         .map(target => ({
           ...target,
-          weight: target.player.role === ROLE_CULTIST ? -999 : scoreGodTarget(card, target),
+          weight: scoreGodTarget(card, target),
         }))
         .sort((a, b) => b.weight - a.weight || sortByLowestSanThenHp(a, b));
       if (!cardTargets.length || cardTargets[0].weight <= -999) continue;
@@ -1105,7 +1126,7 @@ export function chooseAiCultistBewitchPlan(players, sourceIdx) {
   return null;
 }
 
-export function aiShouldKeepZoneCard(card, ci, players, forced = false) {
+export function aiShouldKeepZoneCard(card, ci, players, forced = false, context = {}) {
   if (!card || !isZoneCard(card)) return forced;
   if (card.isGod) return true;
   
@@ -1147,7 +1168,7 @@ export function aiShouldKeepZoneCard(card, ci, players, forced = false) {
   }
 
   if (role === ROLE_CULTIST) {
-    return estimateCultistZoneCardScore(card, self, players, ci) > 0;
+    return estimateCultistZoneCardScore(card, self, players, ci, context) > 0;
   }
   
   const myHand = players[ci]?.hand || [];

@@ -3172,7 +3172,22 @@ export default function Game(){
             if(inspectionEvents.length){
               lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
             }
-            orderedActionQ=buildBewitchForcedCardQueue(gs.currentTurn,bwti,giftedCard,P_actionEnd[bwti]?.name,[...actionStatQ,...inspectionFlow.queue,...postInspectionQ],extractSkillLogs(actionMsgs,'bewitch'));
+            const bewitchSourcePatchPlayers=copyPlayers(afterInspectionPlayers);
+            if(bewitchSourcePatchPlayers[gs.currentTurn]&&P_actionBeforeHandLimit?.[gs.currentTurn]){
+              bewitchSourcePatchPlayers[gs.currentTurn]={
+                ...bewitchSourcePatchPlayers[gs.currentTurn],
+                hand:[...(P_actionBeforeHandLimit[gs.currentTurn].hand||[])],
+              };
+            }
+            orderedActionQ=buildBewitchForcedCardQueue(
+              gs.currentTurn,
+              bwti,
+              giftedCard,
+              P_actionEnd[bwti]?.name,
+              [...actionStatQ,...inspectionFlow.queue,...postInspectionQ],
+              extractSkillLogs(actionMsgs,'bewitch'),
+              {afterGiftPatch:{players:bewitchSourcePatchPlayers}}
+            );
           }else{
             const bewitchStep={type:'SKILL_BEWITCH',msgs:extractSkillLogs(actionMsgs,'bewitch'),targetIdx:bwti>=0?bwti:1};
             if(inspectionEvents.length){
@@ -9471,7 +9486,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           </div>
         </div>
       )}
-      {!suppressAnim&&pendingZhuAnyCard&&visualMe?.godName!=='ZHU'&&(
+      {!suppressAnim&&gs._isMP&&pendingZhuAnyCard&&visualMe?.godName!=='ZHU'&&(
         <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%, -50%)',background:'rgba(0,0,0,0.82)',border:'1.5px solid #6a5430',borderRadius:4,padding:'18px 22px',color:'#c8a96e',fontFamily:"'Cinzel',serif",fontSize:14,letterSpacing:1,zIndex:519,pointerEvents:'none'}}>
           请等待其他玩家选择…
         </div>
