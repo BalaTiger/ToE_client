@@ -493,6 +493,45 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
   );
 }
 
+function GodPowerBadge({player,playerIndex}){
+  const {hover,tooltipPosition,cardRef,handleMouseEnter,handleMouseLeave}=useCardHoverTooltip();
+  const def=GOD_DEFS[player.godName];
+  if(!def)return null;
+  return(
+    <>
+      <span
+        ref={cardRef}
+        data-god-power-badge={playerIndex}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        style={{
+          position:'relative',overflow:'hidden',
+          '--god-power-col':def.col||'#c06020',
+          '--god-power-chevron-scale':'8.5',
+          fontSize:8,color:def.col||'#c06020',
+          background:'#100808',border:`1px solid ${def.col||'#c06020'}44`,
+          borderRadius:2,padding:'1px 4px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
+        }}
+      >
+        {def.power} Lv.{player.godLevel}
+        {/* 信仰/升级瞬间：CSS 绘制的单枚箭头横向拉伸并向上滚动（key 变化触发重播） */}
+        <span
+          key={`${player.godName}-${player.godLevel}`}
+          className="god-power-chevron-layer"
+          aria-hidden
+        >
+          {[0,1,2,3,4].map(r=>(
+            <span key={r} className="god-power-chevron-row">
+              <span className="god-power-chevron-glyph" />
+            </span>
+          ))}
+        </span>
+      </span>
+      {hover&&<GodTooltip def={def} godLevel={player.godLevel||1} position={tooltipPosition}/>}
+    </>
+  );
+}
+
 // ── PlayerPanel ─────────────────────────────────────────────────
 function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='地神的潜影',blackGoatPulseActive=false}){
   const ri=RINFO[player.role];
@@ -594,28 +633,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
             </span>
           )}
           {(player.godZone||[]).length>0&&player.godName&&(
-            <span data-god-power-badge={playerIndex} style={{
-              position:'relative',overflow:'hidden',
-              '--god-power-col':GOD_DEFS[player.godName]?.col||'#c06020',
-              '--god-power-chevron-scale':'8.5',
-              fontSize:8,color:GOD_DEFS[player.godName]?.col||'#c06020',
-              background:'#100808',border:`1px solid ${GOD_DEFS[player.godName]?.col||'#c06020'}44`,
-              borderRadius:2,padding:'1px 4px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
-            }}>
-              {GOD_DEFS[player.godName]?.power} Lv.{player.godLevel}
-              {/* 信仰/升级瞬间：CSS 绘制的单枚箭头横向拉伸并向上滚动（key 变化触发重播） */}
-              <span
-                key={`${player.godName}-${player.godLevel}`}
-                className="god-power-chevron-layer"
-                aria-hidden
-              >
-                {[0,1,2,3,4].map(r=>(
-                  <span key={r} className="god-power-chevron-row">
-                    <span className="god-power-chevron-glyph" />
-                  </span>
-                ))}
-              </span>
-            </span>
+            <GodPowerBadge player={player} playerIndex={playerIndex}/>
           )}
           {(player.etherealizeStacks||0)>0&&(
             <span

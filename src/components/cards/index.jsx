@@ -2,6 +2,7 @@
 import { createPortal } from 'react-dom';
 import { CS, GOD_CS, GOD_DEFS, getCardDisplayKey, getGodShortKey } from '../../constants/card';
 import { AnimatedCardBack } from './AnimatedCardBack';
+import { CardFaceImage } from './CardFaceImage';
 import { useCardHoverTooltip } from './useCardHoverTooltip';
 
 function OctopusSVG({col,size=32}){
@@ -52,77 +53,45 @@ function getTooltipPlacement(position,{width=214,height=100}={}){
   return{left,top};
 }
 
-function GodTooltip({def,godLevel,position}){
-  const lvIdx=Math.max(0,(godLevel||1)-1);
-  if(!position) return null;
-  
-  const tooltipWidth=214;
-  const tooltipHeight=def.levels.length*80+40;
-  const {left,top}=getTooltipPlacement(position,{width:tooltipWidth,height:tooltipHeight});
-  
+function getCardTooltipSize(){
+  if(typeof window==='undefined')return{width:300,height:452};
+  const maxByHeight=Math.max(180,(window.innerHeight-12)*392/590);
+  const width=Math.round(Math.max(190,Math.min(300,window.innerWidth-12,maxByHeight)));
+  return{width,height:Math.round(width*590/392)};
+}
+
+function CardFaceTooltip({card,godLevel=1,position}){
+  if(!position||!card)return null;
+  const {width,height}=getCardTooltipSize();
+  const {left,top}=getTooltipPlacement(position,{width,height});
   return createPortal(
     <div style={{
       position:'fixed',left:`${left}px`,top:`${top}px`,zIndex:99999,
-      background:'#0a0412',border:`1.5px solid ${def.col}`,borderRadius:4,
-      padding:'12px 15px',width:200,pointerEvents:'none',
-      boxShadow:`0 0 20px ${def.col}55`,
-      opacity:1,
-      filter:'none',
+      width,height,pointerEvents:'none',
+      filter:'drop-shadow(0 0 22px rgba(185,145,82,0.24))',
     }}>
-      <div style={{fontFamily:"'Cinzel',serif",fontSize:10,color:def.col,letterSpacing:1,marginBottom:5}}>{def.power}</div>
-      {def.levels.map((lv,i)=>(
-        <div key={i} style={{marginBottom:6}}>
-          <div style={{fontFamily:"'Cinzel',serif",fontSize:9,color:i===lvIdx?def.col:'#3a2510',letterSpacing:0.5,marginBottom:3}}>Lv.{i+1}{i===lvIdx?' ★':''}</div>
-          <div style={{fontFamily:"'IM Fell English',serif",fontStyle:'italic',fontSize:11,color:i===lvIdx?'#b09080':'#5a4030',lineHeight:1.5}}>{lv.desc}</div>
-        </div>
-      ))}
+      <CardFaceImage card={card} godLevel={godLevel} width={width}/>
     </div>,
     document.body
   );
+}
+
+function GodTooltip({def,godLevel,position}){
+  if(!def)return null;
+  const card={isGod:true,godKey:def.godKey,name:def.name,subtitle:def.subtitle,power:def.power};
+  return <CardFaceTooltip card={card} godLevel={godLevel||1} position={position}/>;
 }
 
 function AreaTooltip({card,position}){
-  const s=CS[card.letter]||GOD_CS;
-  if(!position) return null;
-  
-  const tooltipWidth=214;
-  const tooltipHeight=100;
-  const {left,top}=getTooltipPlacement(position,{width:tooltipWidth,height:tooltipHeight});
-  
-  return createPortal(
-    <div style={{
-      position:'fixed',left:`${left}px`,top:`${top}px`,zIndex:99999,
-      background:'#0a0705',border:`1.5px solid ${s.borderBright}`,borderRadius:4,
-      padding:'12px 15px',width:200,pointerEvents:'none',
-      boxShadow:`0 0 20px ${s.glow}55`,
-      opacity:1,
-      filter:'none',
-    }}>
-      <div style={{fontFamily:"'Cinzel',serif",fontSize:10,color:s.text,letterSpacing:1,marginBottom:5}}>{card.key}</div>
-      <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontSize:11,color:'#e8cc88',fontWeight:600,marginBottom:5}}>{card.name}</div>
-      <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:11,color:'#d4b468',lineHeight:1.5}}>{card.desc}</div>
-    </div>,
-    document.body
-  );
+  return <CardFaceTooltip card={card} position={position}/>;
 }
 
 function BgyTooltip({desc,position}){
-  if(!position) return null;
-  const tooltipWidth=214;
-  const tooltipHeight=80;
-  const {left,top}=getTooltipPlacement(position,{width:tooltipWidth,height:tooltipHeight});
-  return createPortal(
-    <div style={{
-      position:'fixed',left:`${left}px`,top:`${top}px`,zIndex:99999,
-      background:'#0a0705',border:'1.5px solid #2a5a2a',borderRadius:4,
-      padding:'12px 15px',width:200,pointerEvents:'none',
-      boxShadow:'0 0 20px #4ade8055',
-      opacity:1,filter:'none',
-    }}>
-      <div style={{fontFamily:"'Cinzel',serif",fontSize:10,color:'#4ade80',letterSpacing:1,marginBottom:5}}>BGY · 黑山羊幼仔</div>
-      <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:11,color:'#7aca7a',lineHeight:1.5}}>{desc}</div>
-    </div>,
-    document.body
+  return(
+    <CardFaceTooltip
+      card={{name:'黑山羊幼仔',desc,key:'BGY',type:'blackGoatYoung',isBlackGoatYoung:true}}
+      position={position}
+    />
   );
 }
 
@@ -295,7 +264,7 @@ function PreviewCard({card,minWidth=120,codeFontSize=51,frameStyle,desc,hideIden
   );
 }
 
-function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel,frameStyle}){
+function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,frameStyle}){
   const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseLeave } = useCardHoverTooltip();
   const def=GOD_DEFS[card.godKey];if(!def)return null;
   const w=small?44:compact?62:82,h=small?58:compact?82:108;
@@ -377,7 +346,7 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLe
         )}
       </div>
       {/* Hover tooltip */}
-      {hover&&<GodTooltip def={def} godLevel={godLevel||1} position={tooltipPosition}/>}
+      {hover&&<GodTooltip def={def} godLevel={1} position={tooltipPosition}/>}
     </>
   );
 }
@@ -566,5 +535,5 @@ function GodCardDisplay({card,level=1,scale=1}){
     </div>
   );
 }
-export { CardCodeLabel, MiniCardFace, PreviewCard, GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG, AnimatedCardBack };
+export { CardCodeLabel, MiniCardFace, PreviewCard, GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG, AnimatedCardBack, CardFaceImage, CardFaceTooltip };
 
