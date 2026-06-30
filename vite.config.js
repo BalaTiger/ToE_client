@@ -86,6 +86,9 @@ export default defineConfig(({ command, mode }) => {
                   if (id.includes('react')) return 'react-vendor'
                   return 'vendor'
                 }
+                if (id.includes('/src/game/')) return 'game-logic'
+                if (id.includes('/src/components/')) return 'components'
+                if (id.includes('/src/constants/')) return 'constants'
               },
             },
       },

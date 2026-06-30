@@ -1,6 +1,8 @@
 ﻿import { GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay } from './components/cards';
 import { useCardHoverTooltip } from './components/cards/useCardHoverTooltip';
-import { GodChoiceModal, NyaBorrowModal, DrawRevealModal, TreasureDodgeModal, PeekHandModal, TortoiseOracleModal, AboutModal, FullLogModal, RoadmapModal } from './components/modals';
+import { GodChoiceModal, NyaBorrowModal, DrawRevealModal, TreasureDodgeModal, PeekHandModal, TortoiseOracleModal, FullLogModal } from './components/modals';
+const AboutModal = lazy(() => import('./components/modals').then(m => ({ default: m.AboutModal })));
+const RoadmapModal = lazy(() => import('./components/modals').then(m => ({ default: m.RoadmapModal })));
 import { DecipherStoneCarvingOverlay } from './components/modals/DecipherStoneCarvingOverlay';
 import { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel } from './components/board';
 import { RoomModal, LobbyModal, PrivacyToggleModal, TutorialOverlay, ConnectionErrorModal, DebugControls } from './components/lobby';
@@ -10,7 +12,7 @@ import InGameTutorialOverlay from './components/tutorial/InGameTutorialOverlay';
 import SoftGuideOverlay from './components/tutorial/SoftGuideOverlay';
 import { StartScreen } from './components/start/StartScreen';
 import { ThemeCornerOrnament, ThemeEdgeRelief } from './components/theme/ThemeOrnaments';
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
+import React, { lazy, Suspense, useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { buildPublicUrl } from './utils/url';
 // socket.io-client is loaded at runtime via CDN (only outside Claude Artifacts)
@@ -979,12 +981,12 @@ export default function Game(){
     return()=>{document.body.style.filter='';};
   },[gammaFilter]);
 
-  // Dynamically load socket.io-client from CDN (skipped in Artifact environment)
+  // Load socket.io-client from local static file (avoids extra DNS/TLS to CDN on mobile)
   function loadSocketIO(){
     return new Promise((resolve,reject)=>{
       if(window.io){resolve(window.io);return;}
       const s=document.createElement('script');
-      s.src='https://cdn.socket.io/4.7.5/socket.io.min.js';
+      s.src='/socket.io.min.js';
       s.onload=()=>resolve(window.io);
       s.onerror=()=>reject(new Error('socket.io-client 加载失败'));
       document.head.appendChild(s);
@@ -4518,8 +4520,8 @@ export default function Game(){
         playerUsername={playerUsername}
         playerUsernameSpecial={playerUsernameSpecial}
       />
-      {modal==='about'&&<AboutModal onClose={()=>setModal(null)}/>}
-      {modal==='roadmap'&&<RoadmapModal onClose={()=>setModal(null)}/>}
+      {modal==='about'&&<Suspense fallback={null}><AboutModal onClose={()=>setModal(null)}/></Suspense>}
+      {modal==='roadmap'&&<Suspense fallback={null}><RoadmapModal onClose={()=>setModal(null)}/></Suspense>}
       {/* -- Room Modal -- */}
         <RoomModal
           roomModal={roomModal}
