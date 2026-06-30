@@ -44,10 +44,12 @@ function CardFaceTooltip({card,godLevel=1,position}){
   const side=targetCenterX<viewW/2?'right':'left';
   const pointerX=position.pointerX||0;
   const pointerY=position.pointerY||0;
-  const baseRotateY=side==='right'?-14:14;
-  const rotateY=baseRotateY+(pointerX*4);
-  const rotateX=-pointerY*3.2;
-  const rotateZ=(side==='right'?1.2:-1.2)+(pointerX*0.8);
+  const baseRotateY=side==='right'?-31:31;
+  const rotateY=baseRotateY+(pointerX*5.5);
+  const rotateX=-pointerY*4.2;
+  const rotateZ=(side==='right'?1.1:-1.1)+(pointerX*0.6);
+  const transformOrigin=side==='right'?'left center':'right center';
+  const cardShiftX=side==='right'?-20:20;
   return createPortal(
     <>
       <style>{`
@@ -67,20 +69,19 @@ function CardFaceTooltip({card,godLevel=1,position}){
         display:'flex',
         alignItems:'center',
         justifyContent:'center',
-        perspective:1100,
-        perspectiveOrigin:side==='right'?'35% 50%':'65% 50%',
       }}>
         <div style={{
           width,height,
           animation:'toeCardHoverBreathe 3.2s ease-in-out infinite',
           transformOrigin:'center',
+          transformStyle:'preserve-3d',
           filter:'drop-shadow(0 18px 34px rgba(0,0,0,0.72)) drop-shadow(0 0 28px rgba(185,145,82,0.22))',
         }}>
           <div style={{
             width,height,
-            transform:`rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) rotateZ(${rotateZ.toFixed(2)}deg)`,
+            transform:`perspective(620px) translateX(${cardShiftX}px) translateZ(34px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) rotateZ(${rotateZ.toFixed(2)}deg)`,
             transformStyle:'preserve-3d',
-            transformOrigin:'center center',
+            transformOrigin,
             transition:'transform 90ms ease-out',
           }}>
             <CardFaceImage card={card} godLevel={godLevel} width={width} style={{boxShadow:'none'}}/>
