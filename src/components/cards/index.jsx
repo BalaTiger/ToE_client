@@ -28,50 +28,66 @@ function OctopusSVG({col,size=32}){
   );
 }
 
-function getTooltipPlacement(position,{width=214,height=100}={}){
-  if(!position)return null;
-  const viewW=window.innerWidth;
-  const viewH=window.innerHeight;
-  const centeredTop=Math.max(4,Math.min(position.top+((position.height-height)/2),viewH-height-4));
-  let left,top;
-  if(position.right+width+6<=viewW){
-    left=position.right+6;
-    top=centeredTop;
-  }else if(position.left-width-6>=0){
-    left=position.left-width-6;
-    top=centeredTop;
-  }else{
-    left=Math.max(4,Math.min(position.left,viewW-width-4));
-    if(position.bottom+height+4<=viewH){
-      top=position.top;
-    }else if(position.top-height-4>=0){
-      top=position.top-height;
-    }else{
-      top=Math.max(4,Math.min(position.top,viewH-height-4));
-    }
-  }
-  return{left,top};
-}
-
 function getCardTooltipSize(){
   if(typeof window==='undefined')return{width:300,height:452};
-  const maxByHeight=Math.max(180,(window.innerHeight-12)*392/590);
-  const width=Math.round(Math.max(190,Math.min(300,window.innerWidth-12,maxByHeight)));
+  const halfWidth=window.innerWidth/2;
+  const maxByHeight=Math.max(220,(window.innerHeight*0.82)*392/590);
+  const width=Math.round(Math.max(220,Math.min(430,halfWidth*0.74,maxByHeight)));
   return{width,height:Math.round(width*590/392)};
 }
 
 function CardFaceTooltip({card,godLevel=1,position}){
   if(!position||!card)return null;
   const {width,height}=getCardTooltipSize();
-  const {left,top}=getTooltipPlacement(position,{width,height});
+  const viewW=typeof window==='undefined'?1280:window.innerWidth;
+  const targetCenterX=position.left+(position.width/2);
+  const side=targetCenterX<viewW/2?'right':'left';
+  const pointerX=position.pointerX||0;
+  const pointerY=position.pointerY||0;
+  const baseRotateY=side==='right'?-14:14;
+  const rotateY=baseRotateY+(pointerX*4);
+  const rotateX=-pointerY*3.2;
+  const rotateZ=(side==='right'?1.2:-1.2)+(pointerX*0.8);
   return createPortal(
-    <div style={{
-      position:'fixed',left:`${left}px`,top:`${top}px`,zIndex:99999,
-      width,height,pointerEvents:'none',
-      filter:'drop-shadow(0 0 22px rgba(185,145,82,0.24))',
-    }}>
-      <CardFaceImage card={card} godLevel={godLevel} width={width}/>
-    </div>,
+    <>
+      <style>{`
+        @keyframes toeCardHoverBreathe {
+          0%, 100% { transform: translateY(0) scale(1); }
+          50% { transform: translateY(-8px) scale(1.015); }
+        }
+      `}</style>
+      <div style={{
+        position:'fixed',
+        top:0,
+        bottom:0,
+        left:side==='right'?'50vw':0,
+        width:'50vw',
+        zIndex:99999,
+        pointerEvents:'none',
+        display:'flex',
+        alignItems:'center',
+        justifyContent:'center',
+        perspective:1100,
+        perspectiveOrigin:side==='right'?'35% 50%':'65% 50%',
+      }}>
+        <div style={{
+          width,height,
+          animation:'toeCardHoverBreathe 3.2s ease-in-out infinite',
+          transformOrigin:'center',
+          filter:'drop-shadow(0 18px 34px rgba(0,0,0,0.72)) drop-shadow(0 0 28px rgba(185,145,82,0.22))',
+        }}>
+          <div style={{
+            width,height,
+            transform:`rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) rotateZ(${rotateZ.toFixed(2)}deg)`,
+            transformStyle:'preserve-3d',
+            transformOrigin:'center center',
+            transition:'transform 90ms ease-out',
+          }}>
+            <CardFaceImage card={card} godLevel={godLevel} width={width} style={{boxShadow:'none'}}/>
+          </div>
+        </div>
+      </div>
+    </>,
     document.body
   );
 }
@@ -265,7 +281,7 @@ function PreviewCard({card,minWidth=120,codeFontSize=51,frameStyle,desc,hideIden
 }
 
 function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,frameStyle}){
-  const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseLeave } = useCardHoverTooltip();
+  const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseMove, handleMouseLeave } = useCardHoverTooltip();
   const def=GOD_DEFS[card.godKey];if(!def)return null;
   const w=small?44:compact?62:82,h=small?58:compact?82:108;
   const col=def.col;
@@ -281,6 +297,7 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,frame
         ref={cardRef}
         onClick={disabled?undefined:onClick}
         onMouseEnter={handleMouseEnter}
+        onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
         style={{
           width:w,minWidth:w,height:h,flexShrink:0,
@@ -352,7 +369,7 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,frame
 }
 
 function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel,holderId,frameStyle}){
-  const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseLeave } = useCardHoverTooltip();
+  const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseMove, handleMouseLeave } = useCardHoverTooltip();
   if(!card)return null;
   if(card.isGod) return <GodDDCard card={card} onClick={onClick} disabled={disabled} selected={selected} highlight={highlight} small={small} compact={compact} godLevel={godLevel} frameStyle={frameStyle}/>;
   if(card.type==='blankZone'){
@@ -386,6 +403,7 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
           ref={cardRef}
           onClick={disabled?undefined:onClick}
           onMouseEnter={handleMouseEnter}
+          onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           style={{
             width:w,minWidth:w,height:h,flexShrink:0,
@@ -416,6 +434,7 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
           ref={cardRef}
           onClick={disabled?undefined:onClick}
           onMouseEnter={handleMouseEnter}
+          onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           style={{
             width:w,minWidth:w,height:h,flexShrink:0,
@@ -462,6 +481,7 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
         ref={cardRef}
         onClick={disabled?undefined:onClick}
         onMouseEnter={handleMouseEnter}
+        onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
         style={{
           width:w,minWidth:w,height:h,flexShrink:0,

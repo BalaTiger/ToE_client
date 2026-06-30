@@ -126,7 +126,7 @@ function MiniCardLabel({card,scale=1,glowColor='#c8a96e',ambient=true}){
 }
 
 function ZhuLitMiniCard({lit,deckIndex,scale,cardW,cardH,left,top,zIndex,hidden}){
-  const {hover,tooltipPosition,cardRef,handleMouseEnter,handleMouseLeave}=useCardHoverTooltip();
+  const {hover,tooltipPosition,cardRef,handleMouseEnter,handleMouseMove,handleMouseLeave}=useCardHoverTooltip();
   const litCard=lit?.card;
   const s=litCard?.isGod?GOD_CS:(CS[litCard?.letter]||GOD_CS);
   if(hidden){
@@ -137,6 +137,7 @@ function ZhuLitMiniCard({lit,deckIndex,scale,cardW,cardH,left,top,zIndex,hidden}
       <div
         ref={cardRef}
         onMouseEnter={handleMouseEnter}
+        onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
         style={{
           ...CARD_BACK_STYLE,
@@ -494,7 +495,7 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
 }
 
 function GodPowerBadge({player,playerIndex}){
-  const {hover,tooltipPosition,cardRef,handleMouseEnter,handleMouseLeave}=useCardHoverTooltip();
+  const {hover,tooltipPosition,cardRef,handleMouseEnter,handleMouseMove,handleMouseLeave}=useCardHoverTooltip();
   const def=GOD_DEFS[player.godName];
   if(!def)return null;
   return(
@@ -503,6 +504,7 @@ function GodPowerBadge({player,playerIndex}){
         ref={cardRef}
         data-god-power-badge={playerIndex}
         onMouseEnter={handleMouseEnter}
+        onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
         style={{
           position:'relative',overflow:'hidden',
