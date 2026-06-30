@@ -1,7 +1,8 @@
 ﻿import React from 'react';
 import { createPortal } from 'react-dom';
-import { CS, GOD_CS, GOD_DEFS, getCardDisplayKey, getGodShortKey } from '../../constants/card';
+import { CS, GOD_CS, GOD_DEFS, getCardDisplayKey, getGodDisplaySubtitle, getGodShortKey } from '../../constants/card';
 import { AnimatedCardBack } from './AnimatedCardBack';
+import { CardFaceImage } from './CardFaceImage';
 import { useCardHoverTooltip } from './useCardHoverTooltip';
 
 function OctopusSVG({col,size=32}){
@@ -27,102 +28,148 @@ function OctopusSVG({col,size=32}){
   );
 }
 
-function getTooltipPlacement(position,{width=214,height=100}={}){
-  if(!position)return null;
-  const viewW=window.innerWidth;
-  const viewH=window.innerHeight;
-  const centeredTop=Math.max(4,Math.min(position.top+((position.height-height)/2),viewH-height-4));
-  let left,top;
-  if(position.right+width+6<=viewW){
-    left=position.right+6;
-    top=centeredTop;
-  }else if(position.left-width-6>=0){
-    left=position.left-width-6;
-    top=centeredTop;
-  }else{
-    left=Math.max(4,Math.min(position.left,viewW-width-4));
-    if(position.bottom+height+4<=viewH){
-      top=position.top;
-    }else if(position.top-height-4>=0){
-      top=position.top-height;
-    }else{
-      top=Math.max(4,Math.min(position.top,viewH-height-4));
-    }
-  }
-  return{left,top};
+function getCardTooltipSize(){
+  if(typeof window==='undefined')return{width:300,height:452};
+  const halfWidth=window.innerWidth/2;
+  const maxByHeight=Math.max(220,(window.innerHeight*0.8)*392/590);
+  const width=Math.round(Math.max(220,Math.min(344,halfWidth*0.62,maxByHeight)));
+  return{width,height:Math.round(width*590/392)};
+}
+
+function CardFaceTooltip({card,godLevel=1,position}){
+  if(!position||!card)return null;
+  const {width,height}=getCardTooltipSize();
+  const viewW=typeof window==='undefined'?1280:window.innerWidth;
+  const viewH=typeof window==='undefined'?720:window.innerHeight;
+  const targetCenterX=position.left+(position.width/2);
+  const targetCenterY=position.top+(position.height/2);
+  const originCenterX=position.originCenterX??targetCenterX;
+  const originCenterY=position.originCenterY??targetCenterY;
+  const side=targetCenterX<viewW/2?'right':'left';
+  const pointerX=position.pointerX||0;
+  const pointerY=position.pointerY||0;
+  const baseRotateY=side==='right'?-34:34;
+  const rotateY=baseRotateY+(pointerX*5.5);
+  const rotateX=-pointerY*4.2;
+  const rotateZ=(side==='right'?1.1:-1.1)+(pointerX*0.6);
+  const transformOrigin=side==='right'?'left center':'right center';
+  const centerGap=Math.max(6,Math.min(20,viewW*0.012));
+  const finalLeft=side==='right'
+    ?Math.min(viewW-width-14,viewW/2+centerGap)
+    :Math.max(14,viewW/2-centerGap-width);
+  const finalTop=Math.max(12,Math.min(viewH-height-12,(viewH-height)/2));
+  const startX=originCenterX-(finalLeft+width/2);
+  const startY=originCenterY-(finalTop+height/2);
+  const extract={
+    startX,
+    startY,
+    pullX:startX*0.72,
+    pullY:startY*0.74,
+    midX:startX*0.28,
+    midY:startY*0.34,
+    overshootX:startX*-0.035,
+    overshootY:startY*-0.025,
+  };
+  return createPortal(
+    <>
+      <style>{`
+        @keyframes toeCardHoverBreathe {
+          0%, 100% { transform: translateY(0) scale(1); }
+          50% { transform: translateY(-8px) scale(1.015); }
+        }
+        @keyframes toeCardHoverExtract {
+          0% {
+            opacity: 0;
+            transform: translate3d(var(--toe-start-x), var(--toe-start-y), 0) scale3d(0.12, 0.035, 1) rotateZ(var(--toe-start-rot));
+            filter: blur(1.8px);
+            animation-timing-function: cubic-bezier(0.12, 0.78, 0.18, 1);
+          }
+          14% {
+            opacity: 0.82;
+            transform: translate3d(var(--toe-pull-x), var(--toe-pull-y), 0) scale3d(0.46, 0.18, 1) rotateZ(var(--toe-mid-rot));
+            filter: blur(1px);
+            animation-timing-function: cubic-bezier(0.18, 0.72, 0.2, 1);
+          }
+          34% {
+            opacity: 0.92;
+            transform: translate3d(var(--toe-mid-x), var(--toe-mid-y), 0) scale3d(0.84, 0.9, 1) rotateZ(var(--toe-mid-rot));
+            filter: blur(0.4px);
+            animation-timing-function: cubic-bezier(0.16, 0.84, 0.18, 1);
+          }
+          68% {
+            opacity: 1;
+            transform: translate3d(var(--toe-overshoot-x), var(--toe-overshoot-y), 0) scale3d(1.025, 1.025, 1) rotateZ(-0.55deg);
+            filter: blur(0);
+            animation-timing-function: cubic-bezier(0.22, 0.76, 0.24, 1);
+          }
+          100% {
+            opacity: 1;
+            transform: translate3d(0, 0, 0) scale3d(1, 1, 1) rotateZ(0deg);
+            filter: blur(0);
+          }
+        }
+      `}</style>
+      <div style={{
+        position:'fixed',
+        left:finalLeft,
+        top:finalTop,
+        width,
+        height,
+        zIndex:99999,
+        pointerEvents:'none',
+        '--toe-start-x':`${extract.startX.toFixed(1)}px`,
+        '--toe-start-y':`${extract.startY.toFixed(1)}px`,
+        '--toe-pull-x':`${extract.pullX.toFixed(1)}px`,
+        '--toe-pull-y':`${extract.pullY.toFixed(1)}px`,
+        '--toe-mid-x':`${extract.midX.toFixed(1)}px`,
+        '--toe-mid-y':`${extract.midY.toFixed(1)}px`,
+        '--toe-overshoot-x':`${extract.overshootX.toFixed(1)}px`,
+        '--toe-overshoot-y':`${extract.overshootY.toFixed(1)}px`,
+        '--toe-start-rot':side==='right'?'-9deg':'9deg',
+        '--toe-mid-rot':side==='right'?'-4deg':'4deg',
+        animation:'toeCardHoverExtract 620ms linear both',
+        transformOrigin:'center',
+        willChange:'transform, opacity, filter',
+      }}>
+        <div style={{
+          width,height,
+          animation:'toeCardHoverBreathe 3.2s ease-in-out infinite',
+          transformOrigin:'center',
+          transformStyle:'preserve-3d',
+          filter:'drop-shadow(0 18px 34px rgba(0,0,0,0.72)) drop-shadow(0 0 28px rgba(185,145,82,0.22))',
+        }}>
+          <div style={{
+            width,height,
+            transform:`perspective(460px) translateZ(16px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) rotateZ(${rotateZ.toFixed(2)}deg)`,
+            transformStyle:'preserve-3d',
+            transformOrigin,
+            transition:'transform 90ms ease-out',
+          }}>
+            <CardFaceImage card={card} godLevel={godLevel} width={width} style={{boxShadow:'none'}}/>
+          </div>
+        </div>
+      </div>
+    </>,
+    document.body
+  );
 }
 
 function GodTooltip({def,godLevel,position}){
-  const lvIdx=Math.max(0,(godLevel||1)-1);
-  if(!position) return null;
-  
-  const tooltipWidth=214;
-  const tooltipHeight=def.levels.length*80+40;
-  const {left,top}=getTooltipPlacement(position,{width:tooltipWidth,height:tooltipHeight});
-  
-  return createPortal(
-    <div style={{
-      position:'fixed',left:`${left}px`,top:`${top}px`,zIndex:99999,
-      background:'#0a0412',border:`1.5px solid ${def.col}`,borderRadius:4,
-      padding:'12px 15px',width:200,pointerEvents:'none',
-      boxShadow:`0 0 20px ${def.col}55`,
-      opacity:1,
-      filter:'none',
-    }}>
-      <div style={{fontFamily:"'Cinzel',serif",fontSize:10,color:def.col,letterSpacing:1,marginBottom:5}}>{def.power}</div>
-      {def.levels.map((lv,i)=>(
-        <div key={i} style={{marginBottom:6}}>
-          <div style={{fontFamily:"'Cinzel',serif",fontSize:9,color:i===lvIdx?def.col:'#3a2510',letterSpacing:0.5,marginBottom:3}}>Lv.{i+1}{i===lvIdx?' ★':''}</div>
-          <div style={{fontFamily:"'IM Fell English',serif",fontStyle:'italic',fontSize:11,color:i===lvIdx?'#b09080':'#5a4030',lineHeight:1.5}}>{lv.desc}</div>
-        </div>
-      ))}
-    </div>,
-    document.body
-  );
+  if(!def)return null;
+  const card={isGod:true,godKey:def.godKey,name:def.name,subtitle:getGodDisplaySubtitle(def),power:def.power};
+  return <CardFaceTooltip card={card} godLevel={godLevel||1} position={position}/>;
 }
 
 function AreaTooltip({card,position}){
-  const s=CS[card.letter]||GOD_CS;
-  if(!position) return null;
-  
-  const tooltipWidth=214;
-  const tooltipHeight=100;
-  const {left,top}=getTooltipPlacement(position,{width:tooltipWidth,height:tooltipHeight});
-  
-  return createPortal(
-    <div style={{
-      position:'fixed',left:`${left}px`,top:`${top}px`,zIndex:99999,
-      background:'#0a0705',border:`1.5px solid ${s.borderBright}`,borderRadius:4,
-      padding:'12px 15px',width:200,pointerEvents:'none',
-      boxShadow:`0 0 20px ${s.glow}55`,
-      opacity:1,
-      filter:'none',
-    }}>
-      <div style={{fontFamily:"'Cinzel',serif",fontSize:10,color:s.text,letterSpacing:1,marginBottom:5}}>{card.key}</div>
-      <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontSize:11,color:'#e8cc88',fontWeight:600,marginBottom:5}}>{card.name}</div>
-      <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:11,color:'#d4b468',lineHeight:1.5}}>{card.desc}</div>
-    </div>,
-    document.body
-  );
+  return <CardFaceTooltip card={card} position={position}/>;
 }
 
 function BgyTooltip({desc,position}){
-  if(!position) return null;
-  const tooltipWidth=214;
-  const tooltipHeight=80;
-  const {left,top}=getTooltipPlacement(position,{width:tooltipWidth,height:tooltipHeight});
-  return createPortal(
-    <div style={{
-      position:'fixed',left:`${left}px`,top:`${top}px`,zIndex:99999,
-      background:'#0a0705',border:'1.5px solid #2a5a2a',borderRadius:4,
-      padding:'12px 15px',width:200,pointerEvents:'none',
-      boxShadow:'0 0 20px #4ade8055',
-      opacity:1,filter:'none',
-    }}>
-      <div style={{fontFamily:"'Cinzel',serif",fontSize:10,color:'#4ade80',letterSpacing:1,marginBottom:5}}>BGY · 黑山羊幼仔</div>
-      <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:11,color:'#7aca7a',lineHeight:1.5}}>{desc}</div>
-    </div>,
-    document.body
+  return(
+    <CardFaceTooltip
+      card={{name:'黑山羊幼仔',desc,key:'BGY',type:'blackGoatYoung',isBlackGoatYoung:true}}
+      position={position}
+    />
   );
 }
 
@@ -268,7 +315,7 @@ function MiniCardFace({card,width=70,height=94,scale=1,glowColor,ambient=true,sh
 function PreviewCard({card,minWidth=120,codeFontSize=51,frameStyle,desc,hideIdentity=false,scale=1}){
   if(!card)return null;
   const s=card.isGod?GOD_CS:(CS[card.letter]||GOD_CS);
-  const bodyText=hideIdentity?'':(desc??(card.isGod?(card.subtitle||card.power||''):(card.desc||'')));
+  const bodyText=hideIdentity?'':(desc??(card.isGod?(getGodDisplaySubtitle(card)||card.power||''):(card.desc||'')));
   const uiScale=Math.max(0.58,scale||1);
   return(
     <div style={{
@@ -295,14 +342,15 @@ function PreviewCard({card,minWidth=120,codeFontSize=51,frameStyle,desc,hideIden
   );
 }
 
-function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel,frameStyle}){
-  const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseLeave } = useCardHoverTooltip();
+function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,frameStyle}){
+  const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseMove, handleMouseLeave } = useCardHoverTooltip();
   const def=GOD_DEFS[card.godKey];if(!def)return null;
   const w=small?44:compact?62:82,h=small?58:compact?82:108;
   const col=def.col;
+  const subtitle=getGodDisplaySubtitle(def);
   // fit text: long subtitle gets smaller font
   const nameLen=def.name.length;
-  const subLen=def.subtitle.length;
+  const subLen=subtitle.length;
   const nameFsz=small?(nameLen>5?5.6:6.2):nameLen>6?10:12;
   const subFsz=small?6:subLen>10?8:9;
   
@@ -312,6 +360,7 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLe
         ref={cardRef}
         onClick={disabled?undefined:onClick}
         onMouseEnter={handleMouseEnter}
+        onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
         style={{
           width:w,minWidth:w,height:h,flexShrink:0,
@@ -346,7 +395,7 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLe
           maxWidth:'100%'
         }}>{def.name}</div>
         {/* Subtitle */}
-        {!small&&<div style={{
+        {!small&&subtitle&&<div style={{
           fontFamily:"'IM Fell English',serif",
           fontStyle:'italic',
           fontSize:subFsz,
@@ -359,7 +408,7 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLe
           textAlign:'center',
           maxWidth:'100%',
           opacity:0.85
-        }}>{def.subtitle}</div>}
+        }}>{subtitle}</div>}
         {/* Divider */}
         {!small&&!compact&&<div style={{height:1,background:`linear-gradient(90deg,${col}88,transparent)`,margin:'4px 0'}}/>}
         {/* God power name small */}
@@ -377,13 +426,13 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,godLe
         )}
       </div>
       {/* Hover tooltip */}
-      {hover&&<GodTooltip def={def} godLevel={godLevel||1} position={tooltipPosition}/>}
+      {hover&&<GodTooltip def={def} godLevel={1} position={tooltipPosition}/>}
     </>
   );
 }
 
 function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel,holderId,frameStyle}){
-  const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseLeave } = useCardHoverTooltip();
+  const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseMove, handleMouseLeave } = useCardHoverTooltip();
   if(!card)return null;
   if(card.isGod) return <GodDDCard card={card} onClick={onClick} disabled={disabled} selected={selected} highlight={highlight} small={small} compact={compact} godLevel={godLevel} frameStyle={frameStyle}/>;
   if(card.type==='blankZone'){
@@ -417,6 +466,7 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
           ref={cardRef}
           onClick={disabled?undefined:onClick}
           onMouseEnter={handleMouseEnter}
+          onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           style={{
             width:w,minWidth:w,height:h,flexShrink:0,
@@ -447,6 +497,7 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
           ref={cardRef}
           onClick={disabled?undefined:onClick}
           onMouseEnter={handleMouseEnter}
+          onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           style={{
             width:w,minWidth:w,height:h,flexShrink:0,
@@ -493,6 +544,7 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
         ref={cardRef}
         onClick={disabled?undefined:onClick}
         onMouseEnter={handleMouseEnter}
+        onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
         style={{
           width:w,minWidth:w,height:h,flexShrink:0,
@@ -552,6 +604,7 @@ function GodCardDisplay({card,level=1,scale=1}){
   const def=GOD_DEFS[card.godKey];if(!def)return null;
   const lvDef=def.levels[Math.max(0,(level||1)-1)];
   const uiScale=Math.max(0.58,scale||1);
+  const subtitle=getGodDisplaySubtitle(def);
   return(
     <div style={{
       background:def.bgCol,border:`2px solid ${def.col}`,borderRadius:6,
@@ -559,12 +612,12 @@ function GodCardDisplay({card,level=1,scale=1}){
       boxShadow:`0 0 30px ${def.col}66`,
     }}>
       <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:12*uiScale,color:def.col,letterSpacing:2,marginBottom:3*uiScale}}>{def.name}</div>
-      <div style={{fontFamily:"'IM Fell English',serif",fontStyle:'italic',fontSize:11.5*uiScale,color:'#c79d9d',marginBottom:10*uiScale}}>{def.subtitle}</div>
+      {subtitle&&<div style={{fontFamily:"'IM Fell English',serif",fontStyle:'italic',fontSize:11.5*uiScale,color:'#c79d9d',marginBottom:10*uiScale}}>{subtitle}</div>}
       <div style={{width:'80%',height:1,background:`linear-gradient(90deg,transparent,${def.col},transparent)`,margin:`0 auto ${10*uiScale}px`}}/>
       <div style={{fontFamily:"'Cinzel',serif",fontSize:11.5*uiScale,color:def.col,letterSpacing:1,marginBottom:6*uiScale}}>{def.power}</div>
       <div style={{fontFamily:"'IM Fell English',serif",fontStyle:'italic',fontSize:12.5*uiScale,color:'#c6a090',lineHeight:1.6}}>{lvDef?.desc}</div>
     </div>
   );
 }
-export { CardCodeLabel, MiniCardFace, PreviewCard, GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG, AnimatedCardBack };
+export { CardCodeLabel, MiniCardFace, PreviewCard, GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG, AnimatedCardBack, CardFaceImage, CardFaceTooltip };
 

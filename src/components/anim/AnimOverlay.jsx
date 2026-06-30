@@ -10,6 +10,7 @@ import { RandomTargetOverlay } from './RandomTargetOverlay';
 
 const NO_OVERLAY_TYPES = new Set([
   'CARD_TRANSFER',
+  'DRAW_BACKGROUND_CAMERA_PRE',
   'TURN_BOUNDARY_PAUSE',
   'HP_DAMAGE',
   'HP_HEAL',

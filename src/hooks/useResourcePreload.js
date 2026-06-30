@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getAnimatedCardBackFramePaths } from "../constants/card";
+import { CARD_FACE_BACKGROUND_FILES, scheduleCardIllustrationIdleDownload } from "../components/cards/CardFaceAssets";
 import { buildPublicUrl } from "../utils/url";
 
 const BOOTSTRAP_AUDIO_FILES = [
@@ -38,6 +39,7 @@ const CRITICAL_IMAGE_FILES = [
   '/img/logo/logo_tr-no-bg.png',
   '/img/title/texture_toehp.png',
   '/img/loading.png',
+  ...CARD_FACE_BACKGROUND_FILES,
 ];
 
 const EARTH_ANIMATED_CARD_BACK_IMAGE_FILES = getAnimatedCardBackFramePaths('地神的潜影', true);
@@ -78,14 +80,16 @@ const RESOURCE_GROUPS = {
 // Profiles describe *when* groups should be loaded, not what they mean semantically.
 const PRELOAD_PROFILES = {
   bootstrap: [
-    ...RESOURCE_GROUPS.bootstrapAudio,
-    ...RESOURCE_GROUPS.bootstrapVideo,
     ...RESOURCE_GROUPS.criticalUiImage,
   ],
   earthDeferred: [
+    ...RESOURCE_GROUPS.bootstrapAudio,
+    ...RESOURCE_GROUPS.bootstrapVideo,
     ...RESOURCE_GROUPS.earthTheme,
   ],
   allDeferred: [
+    ...RESOURCE_GROUPS.bootstrapAudio,
+    ...RESOURCE_GROUPS.bootstrapVideo,
     ...RESOURCE_GROUPS.deferredAudio,
     ...RESOURCE_GROUPS.earthTheme,
     ...RESOURCE_GROUPS.otherThemes,
@@ -119,10 +123,14 @@ const RESOURCE_SIZE_FALLBACK = {
   '/img/logo/logo_tr-no-bg.png': 7888,
   '/img/title/texture_toehp.png': 278527,
   '/img/loading.png': 14538,
+  '/img/card/cardbg_zone.png': 350552,
+  '/img/card/cardbg_god.png': 340310,
 };
 
-const RESOURCE_CACHE_VERSION = '2026-06-10-audio-160k';
+const RESOURCE_CACHE_VERSION = '2026-06-30-wechat-bootstrap-images';
 const CACHE_VERSION_KEY = 'toe_resources_cached_version';
+const RESOURCE_HEAD_TIMEOUT_MS = 3000;
+const RESOURCE_LOAD_TIMEOUT_MS = 8000;
 
 const LOAD_ERROR_LABELS = {
   audio: '音频加载失败',
@@ -142,30 +150,58 @@ function getFallbackResourceSize(resource) {
 
 async function getResourceSize(resource) {
   const fallbackSize = getFallbackResourceSize(resource);
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller
+    ? setTimeout(() => controller.abort(), RESOURCE_HEAD_TIMEOUT_MS)
+    : null;
   try {
-    const response = await fetch(buildPublicUrl(resource.path), { method: 'HEAD' });
+    const response = await fetch(buildPublicUrl(resource.path), {
+      method: 'HEAD',
+      signal: controller?.signal,
+    });
     if (response.ok) {
       const headerSize = parseInt(response.headers.get('content-length') || '0', 10) || 0;
       if (headerSize > 0) return headerSize;
     }
-  } catch (error) {
+  } catch {
     // Some static hosts do not support HEAD/content-length; fallback sizes keep the UI useful.
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
   return fallbackSize;
 }
 
-function loadResource(resource) {
+function loadResource(resource, timeoutMs = RESOURCE_LOAD_TIMEOUT_MS) {
   const url = buildPublicUrl(resource.path);
+  let timeoutId = null;
+
+  const withTimeout = (start) => new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      callback(value);
+    };
+    timeoutId = setTimeout(() => {
+      finish(reject, new Error(resource.path));
+    }, timeoutMs);
+    start(
+      value => finish(resolve, value),
+      error => finish(reject, error),
+    );
+  });
 
   if (resource.type === 'audio') {
     const audio = new Audio(url);
     audio.crossOrigin = 'anonymous';
-    audio.preload = 'auto';
-    return new Promise((resolve, reject) => {
+    audio.preload = 'metadata';
+    return withTimeout((resolve, reject) => {
       const cleanup = () => {
         audio.removeEventListener('canplaythrough', handleReady);
         audio.removeEventListener('canplay', handleReady);
         audio.removeEventListener('loadeddata', handleReady);
+        audio.removeEventListener('loadedmetadata', handleReady);
         audio.removeEventListener('error', handleError);
       };
       const handleReady = () => {
@@ -179,6 +215,7 @@ function loadResource(resource) {
       audio.addEventListener('canplaythrough', handleReady, { once: true });
       audio.addEventListener('canplay', handleReady, { once: true });
       audio.addEventListener('loadeddata', handleReady, { once: true });
+      audio.addEventListener('loadedmetadata', handleReady, { once: true });
       audio.addEventListener('error', handleError, { once: true });
       audio.load();
     });
@@ -189,8 +226,9 @@ function loadResource(resource) {
     video.src = url;
     video.preload = 'metadata';
     video.crossOrigin = 'anonymous';
-    return new Promise((resolve, reject) => {
+    return withTimeout((resolve, reject) => {
       video.addEventListener('loadeddata', resolve, { once: true });
+      video.addEventListener('loadedmetadata', resolve, { once: true });
       video.addEventListener('error', reject, { once: true });
       video.load();
     });
@@ -198,7 +236,7 @@ function loadResource(resource) {
 
   const img = new Image();
   img.crossOrigin = 'anonymous';
-  return new Promise((resolve, reject) => {
+  return withTimeout((resolve, reject) => {
     img.onload = resolve;
     img.onerror = reject;
     img.src = url;
@@ -255,6 +293,7 @@ export function useResourcePreload({ loadAllThemes = false } = {}) {
           setSafeIsLoading(false);
           deferredStageRef.current = loadAllThemes ? 'all' : 'earth';
           scheduleDeferredPreload(deferredResources);
+          scheduleCardIllustrationIdleDownload();
           return;
         }
       } catch {
@@ -301,6 +340,7 @@ export function useResourcePreload({ loadAllThemes = false } = {}) {
       setSafeIsLoading(false);
       deferredStageRef.current = loadAllThemes ? 'all' : 'earth';
       scheduleDeferredPreload(deferredResources);
+      scheduleCardIllustrationIdleDownload();
     };
 
     preloadResources();

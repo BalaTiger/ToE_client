@@ -1,7 +1,7 @@
 ﻿import React from 'react';
 import { CS, GOD_CS } from '../../constants/card';
 import { CardBackLayer } from '../cards/AnimatedCardBack';
-import { CardCodeLabel } from '../cards';
+import { CardCodeLabel, CardFaceImage } from '../cards';
 import { getZoneCardPolarity } from '../../game/coreUtils';
 import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 import { SMOKE_COLS, FLOWER_CONFIGS } from './data';
@@ -104,8 +104,8 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
   const travelScale=Math.max(1,Math.min(1.35,viewportScale));
   const travelW=Math.round(70*travelScale);
   const travelH=Math.round(94*travelScale);
-  const flipW=Math.round(130*cardScale);
-  const flipH=Math.round(175*cardScale);
+  const flipW=Math.round(152*cardScale);
+  const flipH=Math.round(flipW*590/392);
   const px=value=>Math.round(value*cardScale);
 
   const getSourceCenter=()=>{
@@ -303,26 +303,36 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
               </div>
             </>}
           </div>
-          <div style={{
-            position:'absolute',inset:0,backfaceVisibility:'hidden',
-            background:s.bg,border:`2px solid ${s.borderBright}`,borderRadius:5,
-            padding:`${px(12)}px ${px(10)}px`,
-            boxShadow:(isNeutralInspection||isNeutralCard)?'0 0 18px rgba(120,136,155,0.22)':`0 0 30px ${s.glow}88, 0 0 60px ${isEvil?'#6010aa':'#c8a96e'}44`,
-          }}>
-            <div style={{position:'absolute',top:px(4),right:px(6),fontSize:px(8),color:s.border,opacity:0.7}}>✦</div>
-            {isInspection
-              ? <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:px(18),lineHeight:1,letterSpacing:2}}>检定</div>
-              : <CardCodeLabel card={card} fontSize={px(28)} letterSpacing={0}/>
-            }
-            {!hideZoneIdentity&&<div style={{fontFamily:"'Cinzel',serif",color:isInspection?s.text:'#c8a96e',fontSize:isInspection?px(16):px(11.5),fontWeight:600,marginTop:px(6),lineHeight:1.3}}>{card.name}</div>}
-            {!hideZoneIdentity&&<div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:isInspection?(inspectionTone==='positive'?'#aeeac0':inspectionTone==='neutral'?'#b8c4d8':'#e2a8e8'):'#b89858',fontSize:px(9.5),marginTop:px(8),lineHeight:1.4}}>{isInspection?getInspectionCardDesc(card):card.desc}</div>}
-            {isInspection&&(
-              <div style={{position:'absolute',left:px(10),bottom:px(10),fontSize:px(9),color:s.border,letterSpacing:2,fontFamily:"'Cinzel',serif"}}>
-                {inspectionTone==='positive'?'正面检定':inspectionTone==='neutral'?'中性检定':'负面检定'}
-              </div>
-            )}
-            <div style={{position:'absolute',bottom:px(4),left:'50%',transform:'translateX(-50%)',color:s.border,fontSize:px(7),opacity:0.5}}>— ✦ —</div>
-          </div>
+          {(!isInspection&&!hideZoneIdentity)?(
+            <div style={{
+              position:'absolute',inset:0,backfaceVisibility:'hidden',
+              borderRadius:5,
+              boxShadow:(isNeutralCard)?'0 0 18px rgba(120,136,155,0.22)':`0 0 30px ${s.glow}88, 0 0 60px ${isEvil?'#6010aa':'#c8a96e'}44`,
+            }}>
+              <CardFaceImage card={card} godLevel={1} width={flipW} style={{borderRadius:5,boxShadow:'none'}}/>
+            </div>
+          ):(
+            <div style={{
+              position:'absolute',inset:0,backfaceVisibility:'hidden',
+              background:s.bg,border:`2px solid ${s.borderBright}`,borderRadius:5,
+              padding:`${px(12)}px ${px(10)}px`,
+              boxShadow:(isNeutralInspection||isNeutralCard)?'0 0 18px rgba(120,136,155,0.22)':`0 0 30px ${s.glow}88, 0 0 60px ${isEvil?'#6010aa':'#c8a96e'}44`,
+            }}>
+              <div style={{position:'absolute',top:px(4),right:px(6),fontSize:px(8),color:s.border,opacity:0.7}}>✦</div>
+              {isInspection
+                ? <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:px(18),lineHeight:1,letterSpacing:2}}>检定</div>
+                : <CardCodeLabel card={card} fontSize={px(28)} letterSpacing={0}/>
+              }
+              {!hideZoneIdentity&&<div style={{fontFamily:"'Cinzel',serif",color:isInspection?s.text:'#c8a96e',fontSize:isInspection?px(16):px(11.5),fontWeight:600,marginTop:px(6),lineHeight:1.3}}>{card.name}</div>}
+              {!hideZoneIdentity&&<div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:isInspection?(inspectionTone==='positive'?'#aeeac0':inspectionTone==='neutral'?'#b8c4d8':'#e2a8e8'):'#b89858',fontSize:px(9.5),marginTop:px(8),lineHeight:1.4}}>{isInspection?getInspectionCardDesc(card):card.desc}</div>}
+              {isInspection&&(
+                <div style={{position:'absolute',left:px(10),bottom:px(10),fontSize:px(9),color:s.border,letterSpacing:2,fontFamily:"'Cinzel',serif"}}>
+                  {inspectionTone==='positive'?'正面检定':inspectionTone==='neutral'?'中性检定':'负面检定'}
+                </div>
+              )}
+              <div style={{position:'absolute',bottom:px(4),left:'50%',transform:'translateX(-50%)',color:s.border,fontSize:px(7),opacity:0.5}}>— ✦ —</div>
+            </div>
+          )}
         </div>
       </div>
     </div>

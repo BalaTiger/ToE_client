@@ -1,4 +1,5 @@
 ﻿import { GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay } from './components/cards';
+import { useCardHoverTooltip } from './components/cards/useCardHoverTooltip';
 import { GodChoiceModal, NyaBorrowModal, DrawRevealModal, TreasureDodgeModal, PeekHandModal, TortoiseOracleModal, AboutModal, FullLogModal, RoadmapModal } from './components/modals';
 import { DecipherStoneCarvingOverlay } from './components/modals/DecipherStoneCarvingOverlay';
 import { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel } from './components/board';
@@ -13,6 +14,32 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMe
 import { createPortal } from "react-dom";
 import { buildPublicUrl } from './utils/url';
 // socket.io-client is loaded at runtime via CDN (only outside Claude Artifacts)
+
+function LocalGodPowerTag({ def, godLevel, children }) {
+  const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseMove, handleMouseLeave } = useCardHoverTooltip();
+  if (!def) return null;
+  return (
+    <>
+      <div
+        ref={cardRef}
+        onMouseEnter={handleMouseEnter}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        style={{
+          marginTop: 4,
+          padding: '3px 6px',
+          background: def.bgCol || '#100808',
+          border: `1px solid ${def.col || '#c06020'}88`,
+          borderRadius: 3,
+          cursor: 'default',
+        }}
+      >
+        {children}
+      </div>
+      {hover && <GodTooltip def={def} godLevel={godLevel || 1} position={tooltipPosition} />}
+    </>
+  );
+}
 
 import {
   FIXED_ZONE_CARD_VARIANTS_BY_KEY,
@@ -360,12 +387,12 @@ function getBattleBackgroundStyle(expansionKey,isMobile){
     '--toe-line-dim':theme.lineDim,
     '--toe-glow':theme.glow,
     '--toe-accent':theme.accent,
+    '--toe-battle-bg-image':`linear-gradient(180deg,${theme.tintTop},${theme.tintBottom}), url('${url}')`,
+    '--toe-battle-bg-size':isStarsCall?'cover, auto 100%':'cover, cover',
+    '--toe-battle-bg-position':'center center, center center',
+    '--toe-battle-bg-repeat':isStarsCall?'no-repeat, repeat-x':'no-repeat, no-repeat',
+    '--toe-battle-bg-attachment':isMobile?'scroll, scroll':'fixed, fixed',
     backgroundColor:theme.bg,
-    backgroundImage:`linear-gradient(180deg,${theme.tintTop},${theme.tintBottom}), url('${url}')`,
-    backgroundSize:isStarsCall?'cover, auto 100%':'cover, cover',
-    backgroundPosition:'center center, center center',
-    backgroundRepeat:isStarsCall?'no-repeat, repeat-x':'no-repeat, no-repeat',
-    backgroundAttachment:isMobile?'scroll, scroll':'fixed, fixed',
   };
 }
 
@@ -9335,6 +9362,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
 
   const skillLimited=gs.skillUsed&&skillRi.skillLimited;
   const battleBackgroundStyle=getBattleBackgroundStyle(gs.expansionKey,isMobile);
+  const drawBackgroundCameraActive=anim?.type==='DRAW_BACKGROUND_CAMERA_PRE'||(anim?.type==='DRAW_CARD'&&!anim?.card?.effect&&!anim?.disableDrawBackgroundCamera);
   const blackGoatPulsePid=anim?.type==='BLACK_GOAT_PULSE'?(anim.targetPid??anim.targetIdx??0):null;
   const phaseActionButtonStyle=({enabled=true,tone='amber',marginLeft}={})=>{
     const activeColors=tone==='danger'
@@ -9363,11 +9391,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   };
 
   return(<>
-    <div onClickCapture={handleUiSfxCapture} style={{minHeight:isMobileLandscape?'100dvh':'100vh',height:isMobileLandscape?'100dvh':undefined,width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...battleBackgroundStyle,color:'var(--toe-text,#c8a96e)',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:isMobileLandscape?4:7,padding:isMobile?'6px 8px':isMobileLandscape?'4px 6px':'8px 10px',position:'relative',left:globalShiftX||undefined,overflowX:'hidden',overflowY:isMobileLandscape?'hidden':'auto',scrollbarGutter:isMobileLandscape?undefined:'stable',
+    <div className={`toe-battle-root${drawBackgroundCameraActive?' toe-draw-camera-active':''}`} onClickCapture={handleUiSfxCapture} style={{minHeight:isMobileLandscape?'100dvh':'100vh',height:isMobileLandscape?'100dvh':undefined,width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...battleBackgroundStyle,color:'var(--toe-text,#c8a96e)',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:isMobileLandscape?4:7,padding:isMobile?'6px 8px':isMobileLandscape?'4px 6px':'8px 10px',position:'relative',isolation:'isolate',left:globalShiftX||undefined,overflowX:'hidden',overflowY:isMobileLandscape?'hidden':'auto',scrollbarGutter:isMobileLandscape?undefined:'stable',
     animation:deathShake?'deathShakeAnim 2.0s ease-in-out':earthquakeShake?'earthquakeSceneShake 1.25s linear 2':screenShake?'screenShakeAnim 0.38s ease-in-out':undefined,
     }}>
       {/* Global vignette */}
-      <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at 50% 50%,transparent 40%,#00000099 100%)',pointerEvents:'none',zIndex:1}}/>
+      <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at 50% 50%,transparent 40%,#00000099 100%)',pointerEvents:'none',zIndex:3}}/>
       {pendingRoleSelection&&(
         <div style={{position:'fixed',inset:0,zIndex:9998,background:'rgba(8,5,3,0.94)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
           <div style={{width:'min(480px,92vw)',background:'#120b06',border:'2px solid #5a3010',borderRadius:4,boxShadow:'0 0 60px #000c',padding:'28px 26px',textAlign:'center'}}>
@@ -9886,11 +9914,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             {/* God zone display */}
             {(me.godEncounters||0)>0&&<div style={{marginTop:4,fontSize:fontSizes.small,color:'#8b6060',letterSpacing:1}}>{'💀'.repeat(Math.min(me.godEncounters,5))}{me.godEncounters>5?`×${me.godEncounters}`:''} 邪神遭遇</div>}
             {me.godName&&(me.godZone||[]).length>0&&(
-              <div style={{marginTop:4,padding:'3px 6px',background:GOD_DEFS[me.godName]?.bgCol||'#100808',border:`1px solid ${GOD_DEFS[me.godName]?.col||'#c06020'}88`,borderRadius:3}}>
+              <LocalGodPowerTag def={GOD_DEFS[me.godName]} godLevel={me.godLevel}>
                 <div style={{fontSize:fontSizes.small,color:GOD_DEFS[me.godName]?.col,fontFamily:"'Cinzel',serif",letterSpacing:0.5,fontWeight:700,textShadow:`0 0 6px ${GOD_DEFS[me.godName]?.col}66`}}>{GOD_DEFS[me.godName]?.name}</div>
                 <div style={{fontSize:fontSizes.small,color:'#d4b0b0',fontFamily:"'IM Fell English',serif",fontStyle:'italic'}}>{GOD_DEFS[me.godName]?.power} Lv.{me.godLevel}</div>
                 <div style={{fontSize:fontSizes.tiny,color:'#a07878',fontStyle:'italic',marginTop:1,lineHeight:1.4}}>{GOD_DEFS[me.godName]?.levels[(me.godLevel||1)-1]?.desc}</div>
-              </div>
+              </LocalGodPowerTag>
             )}
             {(visualMe.etherealizeStacks||0)>0&&(
               <div
@@ -10144,7 +10172,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             })}
             {visualMe.hand.length===0&&<div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#7a5a2a',fontSize:13,padding:'22px 10px'}}>手中空空如也</div>}
           </div>
-          {isMobile&&mobileArmedGodCard?.isGod&&mobileArmedGodTooltipRect&&<GodTooltip def={GOD_DEFS[mobileArmedGodCard.godKey]} godLevel={visualMe.godName===mobileArmedGodCard.godKey?visualMe.godLevel:1} position={mobileArmedGodTooltipRect}/>}
+          {isMobile&&mobileArmedGodCard?.isGod&&mobileArmedGodTooltipRect&&<GodTooltip def={GOD_DEFS[mobileArmedGodCard.godKey]} godLevel={1} position={mobileArmedGodTooltipRect}/>}
         </div>
             </div>
           </div>
@@ -10439,6 +10467,64 @@ const GLOBAL_STYLES=`
   [data-log-panel]::-webkit-scrollbar-track{background:var(--toe-panel,#0e0904);}
   [data-log-panel]{scrollbar-color:var(--toe-line,#3a2510) var(--toe-panel,#0e0904);}
   html,body{ overflow-x:hidden; }
+  .toe-battle-root {
+    background-color:var(--toe-bg,#0a0705);
+  }
+  .toe-battle-root::before,
+  .toe-battle-root::after {
+    content:"";
+    position:fixed;
+    inset:-5vmax;
+    pointer-events:none;
+    background-image:var(--toe-battle-bg-image);
+    background-size:var(--toe-battle-bg-size);
+    background-position:var(--toe-battle-bg-position);
+    background-repeat:var(--toe-battle-bg-repeat);
+    background-attachment:var(--toe-battle-bg-attachment);
+    transform:translate3d(0,0,0) scale(1);
+    transform-origin:50% 48%;
+    will-change:transform, opacity;
+  }
+  .toe-battle-root::before {
+    z-index:0;
+  }
+  .toe-battle-root::after {
+    z-index:1;
+    opacity:0;
+  }
+  .toe-battle-root > * {
+    position:relative;
+    z-index:2;
+  }
+  .toe-battle-root.toe-draw-camera-active::after {
+    animation:toeDrawBackgroundWalk 0.92s cubic-bezier(0.34,0,0.24,1) 3 both;
+  }
+  @keyframes toeDrawBackgroundWalk {
+    0% {
+      opacity:0;
+      transform:translate3d(0,0,0) scale(1);
+    }
+    12% {
+      opacity:1;
+      transform:translate3d(0,4px,0) scale(1.016);
+    }
+    42% {
+      opacity:1;
+      transform:translate3d(0,15px,0) scale(1.03);
+    }
+    68% {
+      opacity:1;
+      transform:translate3d(0,-10px,0) scale(1.065);
+    }
+    86% {
+      opacity:0.74;
+      transform:translate3d(0,8px,0) scale(1.085);
+    }
+    100% {
+      opacity:0;
+      transform:translate3d(0,8px,0) scale(1.09);
+    }
+  }
   @keyframes scrollLeft {
     0% { transform: translateX(100%); }
     100% { transform: translateX(-100%); }
