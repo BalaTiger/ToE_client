@@ -116,6 +116,25 @@ function getAdaptiveEffectFontSize(text, isGod, box) {
   return Math.round(fontSize * 10) / 10;
 }
 
+function estimateFlavorLineCount(text, fontSize, boxWidth) {
+  const len = [...(text || '')].length;
+  if (len <= 0) return 1;
+  const charsPerLine = Math.max(1, Math.floor(boxWidth / (fontSize * 1.02)));
+  return Math.ceil(len / charsPerLine);
+}
+
+function getAdaptiveFlavorFontSize(text, isGod, box) {
+  let fontSize = isGod ? 17.5 : 18.5;
+  const lineHeight = 1.35;
+  const minFontSize = 11.5;
+  while (fontSize > minFontSize) {
+    const lines = estimateFlavorLineCount(text, fontSize, box.width);
+    if (lines * fontSize * lineHeight <= box.height) break;
+    fontSize -= 0.5;
+  }
+  return Math.round(fontSize * 10) / 10;
+}
+
 const TEXT_COLOR = '#c7b991';
 const MUTED_TEXT_COLOR = '#aa9a72';
 const SHADOW = '0 1px 0 rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.85)';
@@ -129,21 +148,26 @@ const EFFECT_BOX = {
   god: { left: 46, top: 392, width: 300, height: 96 },
 };
 
+const FLAVOR_BOX = {
+  zone: { left: 42, top: 506, width: 308, height: 56 },
+  god: { left: 41, top: 508, width: 310, height: 54 },
+};
+
 // Fixed masks derived once from the immutable cardbg art windows.
 const ILLUSTRATION_LAYOUT = {
   zone: {
     left: 31,
     top: 137,
     width: 330,
-    height: 232,
-    clipPath: 'polygon(4% 4%, 7% 0, 93% 0, 96% 4%, 100% 4%, 100% 96%, 96% 96%, 93% 100%, 7% 100%, 4% 96%, 0 96%, 0 4%)',
+    height: 225,
+    clipPath: 'polygon(4% 4%, 7% 0, 93% 0, 96% 4%, 100% 4%, 100% 95%, 96% 95%, 93% 100%, 55% 100%, 54% 98%, 52% 96%, 50% 95%, 48% 96%, 46% 98%, 45% 100%, 7% 100%, 4% 95%, 0 95%, 0 4%)',
   },
   god: {
     left: 31,
     top: 139,
     width: 330,
-    height: 246,
-    clipPath: 'polygon(4% 4%, 7% 0, 93% 0, 96% 4%, 100% 4%, 100% 96%, 96% 96%, 93% 100%, 7% 100%, 4% 96%, 0 96%, 0 4%)',
+    height: 229,
+    clipPath: 'polygon(4% 4%, 7% 0, 93% 0, 96% 4%, 100% 4%, 100% 95%, 96% 95%, 93% 100%, 55% 100%, 54% 98%, 52% 95%, 50% 94%, 48% 95%, 46% 98%, 45% 100%, 7% 100%, 4% 95%, 0 95%, 0 4%)',
   },
 };
 
@@ -191,6 +215,41 @@ function EffectTextBlock({ text, isGod, box }) {
           fontSize: getAdaptiveEffectFontSize(text, isGod, box),
           fontWeight: 700,
           lineHeight: 1.48,
+          whiteSpace: 'pre-wrap',
+          overflowWrap: 'anywhere',
+        }}
+      >
+        {text}
+      </div>
+    </div>
+  );
+}
+
+function FlavorTextBlock({ text, isGod, box }) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: box.left,
+        top: box.top,
+        width: box.width,
+        height: box.height,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center',
+        color: MUTED_TEXT_COLOR,
+        textShadow: SHADOW,
+        pointerEvents: 'none',
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          fontFamily: FLAVOR_FONT,
+          fontSize: getAdaptiveFlavorFontSize(text, isGod, box),
+          fontStyle: 'italic',
+          lineHeight: 1.35,
           whiteSpace: 'pre-wrap',
           overflowWrap: 'anywhere',
         }}
@@ -277,21 +336,7 @@ function ZoneCardText({ card }) {
         {name}
       </ScaledText>
       <EffectTextBlock text={effect} isGod={false} box={EFFECT_BOX.zone} />
-      {flavor && (
-        <ScaledText
-          style={{
-            top: 500,
-            padding: '0 42px',
-            fontFamily: FLAVOR_FONT,
-            fontSize: 18.5,
-            fontStyle: 'italic',
-            lineHeight: 1.35,
-            color: MUTED_TEXT_COLOR,
-          }}
-        >
-          {flavor}
-        </ScaledText>
-      )}
+      {flavor && <FlavorTextBlock text={flavor} isGod={false} box={FLAVOR_BOX.zone} />}
     </>
   );
 }
@@ -331,21 +376,7 @@ function GodCardText({ card, godLevel }) {
         {subtitle}
       </ScaledText>
       <EffectTextBlock text={effect} isGod box={EFFECT_BOX.god} />
-      {flavor && (
-        <ScaledText
-          style={{
-            top: 503,
-            padding: '0 41px',
-            fontFamily: FLAVOR_FONT,
-            fontSize: 17.5,
-            fontStyle: 'italic',
-            lineHeight: 1.35,
-            color: MUTED_TEXT_COLOR,
-          }}
-        >
-          {flavor}
-        </ScaledText>
-      )}
+      {flavor && <FlavorTextBlock text={flavor} isGod box={FLAVOR_BOX.god} />}
     </>
   );
 }

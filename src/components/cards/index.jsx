@@ -31,8 +31,8 @@ function OctopusSVG({col,size=32}){
 function getCardTooltipSize(){
   if(typeof window==='undefined')return{width:300,height:452};
   const halfWidth=window.innerWidth/2;
-  const maxByHeight=Math.max(220,(window.innerHeight*0.82)*392/590);
-  const width=Math.round(Math.max(220,Math.min(400,halfWidth*0.74,maxByHeight)));
+  const maxByHeight=Math.max(220,(window.innerHeight*0.8)*392/590);
+  const width=Math.round(Math.max(220,Math.min(344,halfWidth*0.62,maxByHeight)));
   return{width,height:Math.round(width*590/392)};
 }
 
@@ -40,16 +40,36 @@ function CardFaceTooltip({card,godLevel=1,position}){
   if(!position||!card)return null;
   const {width,height}=getCardTooltipSize();
   const viewW=typeof window==='undefined'?1280:window.innerWidth;
+  const viewH=typeof window==='undefined'?720:window.innerHeight;
   const targetCenterX=position.left+(position.width/2);
+  const targetCenterY=position.top+(position.height/2);
+  const originCenterX=position.originCenterX??targetCenterX;
+  const originCenterY=position.originCenterY??targetCenterY;
   const side=targetCenterX<viewW/2?'right':'left';
   const pointerX=position.pointerX||0;
   const pointerY=position.pointerY||0;
-  const baseRotateY=side==='right'?-31:31;
+  const baseRotateY=side==='right'?-34:34;
   const rotateY=baseRotateY+(pointerX*5.5);
   const rotateX=-pointerY*4.2;
   const rotateZ=(side==='right'?1.1:-1.1)+(pointerX*0.6);
   const transformOrigin=side==='right'?'left center':'right center';
-  const cardShiftX=side==='right'?-20:20;
+  const centerGap=Math.max(6,Math.min(20,viewW*0.012));
+  const finalLeft=side==='right'
+    ?Math.min(viewW-width-14,viewW/2+centerGap)
+    :Math.max(14,viewW/2-centerGap-width);
+  const finalTop=Math.max(12,Math.min(viewH-height-12,(viewH-height)/2));
+  const startX=originCenterX-(finalLeft+width/2);
+  const startY=originCenterY-(finalTop+height/2);
+  const extract={
+    startX,
+    startY,
+    pullX:startX*0.72,
+    pullY:startY*0.74,
+    midX:startX*0.28,
+    midY:startY*0.34,
+    overshootX:startX*-0.035,
+    overshootY:startY*-0.025,
+  };
   return createPortal(
     <>
       <style>{`
@@ -57,18 +77,59 @@ function CardFaceTooltip({card,godLevel=1,position}){
           0%, 100% { transform: translateY(0) scale(1); }
           50% { transform: translateY(-8px) scale(1.015); }
         }
+        @keyframes toeCardHoverExtract {
+          0% {
+            opacity: 0;
+            transform: translate3d(var(--toe-start-x), var(--toe-start-y), 0) scale3d(0.12, 0.035, 1) rotateZ(var(--toe-start-rot));
+            filter: blur(1.8px);
+            animation-timing-function: cubic-bezier(0.12, 0.78, 0.18, 1);
+          }
+          14% {
+            opacity: 0.82;
+            transform: translate3d(var(--toe-pull-x), var(--toe-pull-y), 0) scale3d(0.46, 0.18, 1) rotateZ(var(--toe-mid-rot));
+            filter: blur(1px);
+            animation-timing-function: cubic-bezier(0.18, 0.72, 0.2, 1);
+          }
+          34% {
+            opacity: 0.92;
+            transform: translate3d(var(--toe-mid-x), var(--toe-mid-y), 0) scale3d(0.84, 0.9, 1) rotateZ(var(--toe-mid-rot));
+            filter: blur(0.4px);
+            animation-timing-function: cubic-bezier(0.16, 0.84, 0.18, 1);
+          }
+          68% {
+            opacity: 1;
+            transform: translate3d(var(--toe-overshoot-x), var(--toe-overshoot-y), 0) scale3d(1.025, 1.025, 1) rotateZ(-0.55deg);
+            filter: blur(0);
+            animation-timing-function: cubic-bezier(0.22, 0.76, 0.24, 1);
+          }
+          100% {
+            opacity: 1;
+            transform: translate3d(0, 0, 0) scale3d(1, 1, 1) rotateZ(0deg);
+            filter: blur(0);
+          }
+        }
       `}</style>
       <div style={{
         position:'fixed',
-        top:0,
-        bottom:0,
-        left:side==='right'?'50vw':0,
-        width:'50vw',
+        left:finalLeft,
+        top:finalTop,
+        width,
+        height,
         zIndex:99999,
         pointerEvents:'none',
-        display:'flex',
-        alignItems:'center',
-        justifyContent:'center',
+        '--toe-start-x':`${extract.startX.toFixed(1)}px`,
+        '--toe-start-y':`${extract.startY.toFixed(1)}px`,
+        '--toe-pull-x':`${extract.pullX.toFixed(1)}px`,
+        '--toe-pull-y':`${extract.pullY.toFixed(1)}px`,
+        '--toe-mid-x':`${extract.midX.toFixed(1)}px`,
+        '--toe-mid-y':`${extract.midY.toFixed(1)}px`,
+        '--toe-overshoot-x':`${extract.overshootX.toFixed(1)}px`,
+        '--toe-overshoot-y':`${extract.overshootY.toFixed(1)}px`,
+        '--toe-start-rot':side==='right'?'-9deg':'9deg',
+        '--toe-mid-rot':side==='right'?'-4deg':'4deg',
+        animation:'toeCardHoverExtract 620ms linear both',
+        transformOrigin:'center',
+        willChange:'transform, opacity, filter',
       }}>
         <div style={{
           width,height,
@@ -79,7 +140,7 @@ function CardFaceTooltip({card,godLevel=1,position}){
         }}>
           <div style={{
             width,height,
-            transform:`perspective(460px) translateX(${cardShiftX}px) translateZ(34px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) rotateZ(${rotateZ.toFixed(2)}deg)`,
+            transform:`perspective(460px) translateZ(16px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) rotateZ(${rotateZ.toFixed(2)}deg)`,
             transformStyle:'preserve-3d',
             transformOrigin,
             transition:'transform 90ms ease-out',
