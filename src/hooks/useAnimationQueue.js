@@ -126,6 +126,21 @@ export function useAnimationQueue({
     }
   }
 
+  function shouldUseDrawBackgroundCamera(step) {
+    return step?.type === 'DRAW_CARD' && !step?.card?.effect && !step?.disableDrawBackgroundCamera;
+  }
+
+  function addDrawBackgroundCameraPrelude(queue = []) {
+    const result = [];
+    queue.forEach(step => {
+      if (shouldUseDrawBackgroundCamera(step) && result[result.length - 1]?.type !== 'DRAW_BACKGROUND_CAMERA_PRE') {
+        result.push({ type: 'DRAW_BACKGROUND_CAMERA_PRE' });
+      }
+      result.push(step);
+    });
+    return result;
+  }
+
   function advanceQueue() {
     setAnimExiting(false);
     if (animQueueRef.current.length > 0) {
@@ -262,7 +277,7 @@ export function useAnimationQueue({
     if (Array.isArray(queue) && queue.some(s => s?.type === 'EARTHQUAKE')) {
       try { console.log('[EQ-DEBUG] triggerAnimQueue received queue =', queue.map(s => s.type), '| hasCallback =', !!callback, '| nextGs.phase =', nextGs?.phase); } catch { /* noop */ }
     }
-    const normalizedQueue = dedupeInferredDiscardTransfers(queue);
+    const normalizedQueue = addDrawBackgroundCameraPrelude(dedupeInferredDiscardTransfers(queue));
     const hasDeathAnim = normalizedQueue.some(a => a.type === 'DEATH' || a.type === 'GUILLOTINE');
     const pendingDeathPlayers = nextGs?.players?.filter(p => p._pendingAnimDeath)?.map((_, i) => i) || [];
     if (

@@ -9362,7 +9362,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
 
   const skillLimited=gs.skillUsed&&skillRi.skillLimited;
   const battleBackgroundStyle=getBattleBackgroundStyle(gs.expansionKey,isMobile);
-  const drawBackgroundCameraActive=anim?.type==='DRAW_CARD'&&!anim?.card?.effect&&!anim?.disableDrawBackgroundCamera;
+  const drawBackgroundCameraActive=anim?.type==='DRAW_BACKGROUND_CAMERA_PRE'||(anim?.type==='DRAW_CARD'&&!anim?.card?.effect&&!anim?.disableDrawBackgroundCamera);
   const blackGoatPulsePid=anim?.type==='BLACK_GOAT_PULSE'?(anim.targetPid??anim.targetIdx??0):null;
   const phaseActionButtonStyle=({enabled=true,tone='amber',marginLeft}={})=>{
     const activeColors=tone==='danger'
@@ -10470,11 +10470,11 @@ const GLOBAL_STYLES=`
   .toe-battle-root {
     background-color:var(--toe-bg,#0a0705);
   }
-  .toe-battle-root::before {
+  .toe-battle-root::before,
+  .toe-battle-root::after {
     content:"";
     position:fixed;
     inset:-5vmax;
-    z-index:0;
     pointer-events:none;
     background-image:var(--toe-battle-bg-image);
     background-size:var(--toe-battle-bg-size);
@@ -10485,33 +10485,44 @@ const GLOBAL_STYLES=`
     transform-origin:50% 48%;
     will-change:transform, opacity;
   }
+  .toe-battle-root::before {
+    z-index:0;
+  }
+  .toe-battle-root::after {
+    z-index:1;
+    opacity:0;
+  }
   .toe-battle-root > * {
     position:relative;
     z-index:2;
   }
-  .toe-battle-root.toe-draw-camera-active::before {
+  .toe-battle-root.toe-draw-camera-active::after {
     animation:toeDrawBackgroundWalk 0.92s cubic-bezier(0.34,0,0.24,1) 3 both;
   }
   @keyframes toeDrawBackgroundWalk {
     0% {
-      opacity:0.68;
+      opacity:0;
       transform:translate3d(0,0,0) scale(1);
     }
-    30% {
-      opacity:0.88;
+    12% {
+      opacity:1;
+      transform:translate3d(0,4px,0) scale(1.016);
+    }
+    42% {
+      opacity:1;
       transform:translate3d(0,15px,0) scale(1.03);
     }
-    58% {
+    68% {
       opacity:1;
       transform:translate3d(0,-10px,0) scale(1.065);
     }
-    82% {
-      opacity:0.92;
+    86% {
+      opacity:0.74;
       transform:translate3d(0,8px,0) scale(1.085);
     }
     100% {
-      opacity:1;
-      transform:translate3d(0,0,0) scale(1);
+      opacity:0;
+      transform:translate3d(0,8px,0) scale(1.09);
     }
   }
   @keyframes scrollLeft {
