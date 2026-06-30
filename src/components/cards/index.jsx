@@ -32,7 +32,7 @@ function getCardTooltipSize(){
   if(typeof window==='undefined')return{width:300,height:452};
   const halfWidth=window.innerWidth/2;
   const maxByHeight=Math.max(220,(window.innerHeight*0.82)*392/590);
-  const width=Math.round(Math.max(220,Math.min(430,halfWidth*0.74,maxByHeight)));
+  const width=Math.round(Math.max(220,Math.min(400,halfWidth*0.74,maxByHeight)));
   return{width,height:Math.round(width*590/392)};
 }
 
@@ -79,7 +79,7 @@ function CardFaceTooltip({card,godLevel=1,position}){
         }}>
           <div style={{
             width,height,
-            transform:`perspective(620px) translateX(${cardShiftX}px) translateZ(34px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) rotateZ(${rotateZ.toFixed(2)}deg)`,
+            transform:`perspective(460px) translateX(${cardShiftX}px) translateZ(34px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) rotateZ(${rotateZ.toFixed(2)}deg)`,
             transformStyle:'preserve-3d',
             transformOrigin,
             transition:'transform 90ms ease-out',
