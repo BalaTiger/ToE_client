@@ -1,4 +1,4 @@
-import { CS, GOD_CS, getCardDisplayKey } from '../../constants/card';
+import { CS, GOD_CS, getCardDisplayKey, getGodDisplaySubtitle } from '../../constants/card';
 
 function getBewitchEffectDesc(card) {
   if (!card) return '';
@@ -57,7 +57,7 @@ export function TargetSelectOverlay({ drawReveal, phase, bewitchCard }) {
                 <div style={{ fontFamily: "'Cinzel',serif", color: '#e8cc88', fontSize: card.isGod ? 10 : 14.25, marginTop: 2 }}>{card.name}</div>
               </div>
               <div style={{ textAlign: 'left' }}>
-                <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#d4b468', fontSize: 15, maxWidth: 180, lineHeight: 1.4 }}>{card.isGod ? card.subtitle : card.desc}</div>
+                <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#d4b468', fontSize: 15, maxWidth: 180, lineHeight: 1.4 }}>{card.isGod ? getGodDisplaySubtitle(card) : card.desc}</div>
               </div>
             </div>
           )}

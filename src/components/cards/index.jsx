@@ -1,6 +1,6 @@
 ﻿import React from 'react';
 import { createPortal } from 'react-dom';
-import { CS, GOD_CS, GOD_DEFS, getCardDisplayKey, getGodShortKey } from '../../constants/card';
+import { CS, GOD_CS, GOD_DEFS, getCardDisplayKey, getGodDisplaySubtitle, getGodShortKey } from '../../constants/card';
 import { AnimatedCardBack } from './AnimatedCardBack';
 import { CardFaceImage } from './CardFaceImage';
 import { useCardHoverTooltip } from './useCardHoverTooltip';
@@ -156,7 +156,7 @@ function CardFaceTooltip({card,godLevel=1,position}){
 
 function GodTooltip({def,godLevel,position}){
   if(!def)return null;
-  const card={isGod:true,godKey:def.godKey,name:def.name,subtitle:def.subtitle,power:def.power};
+  const card={isGod:true,godKey:def.godKey,name:def.name,subtitle:getGodDisplaySubtitle(def),power:def.power};
   return <CardFaceTooltip card={card} godLevel={godLevel||1} position={position}/>;
 }
 
@@ -315,7 +315,7 @@ function MiniCardFace({card,width=70,height=94,scale=1,glowColor,ambient=true,sh
 function PreviewCard({card,minWidth=120,codeFontSize=51,frameStyle,desc,hideIdentity=false,scale=1}){
   if(!card)return null;
   const s=card.isGod?GOD_CS:(CS[card.letter]||GOD_CS);
-  const bodyText=hideIdentity?'':(desc??(card.isGod?(card.subtitle||card.power||''):(card.desc||'')));
+  const bodyText=hideIdentity?'':(desc??(card.isGod?(getGodDisplaySubtitle(card)||card.power||''):(card.desc||'')));
   const uiScale=Math.max(0.58,scale||1);
   return(
     <div style={{
@@ -347,9 +347,10 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,frame
   const def=GOD_DEFS[card.godKey];if(!def)return null;
   const w=small?44:compact?62:82,h=small?58:compact?82:108;
   const col=def.col;
+  const subtitle=getGodDisplaySubtitle(def);
   // fit text: long subtitle gets smaller font
   const nameLen=def.name.length;
-  const subLen=def.subtitle.length;
+  const subLen=subtitle.length;
   const nameFsz=small?(nameLen>5?5.6:6.2):nameLen>6?10:12;
   const subFsz=small?6:subLen>10?8:9;
   
@@ -394,7 +395,7 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,frame
           maxWidth:'100%'
         }}>{def.name}</div>
         {/* Subtitle */}
-        {!small&&<div style={{
+        {!small&&subtitle&&<div style={{
           fontFamily:"'IM Fell English',serif",
           fontStyle:'italic',
           fontSize:subFsz,
@@ -407,7 +408,7 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,frame
           textAlign:'center',
           maxWidth:'100%',
           opacity:0.85
-        }}>{def.subtitle}</div>}
+        }}>{subtitle}</div>}
         {/* Divider */}
         {!small&&!compact&&<div style={{height:1,background:`linear-gradient(90deg,${col}88,transparent)`,margin:'4px 0'}}/>}
         {/* God power name small */}
@@ -603,6 +604,7 @@ function GodCardDisplay({card,level=1,scale=1}){
   const def=GOD_DEFS[card.godKey];if(!def)return null;
   const lvDef=def.levels[Math.max(0,(level||1)-1)];
   const uiScale=Math.max(0.58,scale||1);
+  const subtitle=getGodDisplaySubtitle(def);
   return(
     <div style={{
       background:def.bgCol,border:`2px solid ${def.col}`,borderRadius:6,
@@ -610,7 +612,7 @@ function GodCardDisplay({card,level=1,scale=1}){
       boxShadow:`0 0 30px ${def.col}66`,
     }}>
       <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:12*uiScale,color:def.col,letterSpacing:2,marginBottom:3*uiScale}}>{def.name}</div>
-      <div style={{fontFamily:"'IM Fell English',serif",fontStyle:'italic',fontSize:11.5*uiScale,color:'#c79d9d',marginBottom:10*uiScale}}>{def.subtitle}</div>
+      {subtitle&&<div style={{fontFamily:"'IM Fell English',serif",fontStyle:'italic',fontSize:11.5*uiScale,color:'#c79d9d',marginBottom:10*uiScale}}>{subtitle}</div>}
       <div style={{width:'80%',height:1,background:`linear-gradient(90deg,transparent,${def.col},transparent)`,margin:`0 auto ${10*uiScale}px`}}/>
       <div style={{fontFamily:"'Cinzel',serif",fontSize:11.5*uiScale,color:def.col,letterSpacing:1,marginBottom:6*uiScale}}>{def.power}</div>
       <div style={{fontFamily:"'IM Fell English',serif",fontStyle:'italic',fontSize:12.5*uiScale,color:'#c6a090',lineHeight:1.6}}>{lvDef?.desc}</div>

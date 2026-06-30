@@ -387,12 +387,12 @@ function getBattleBackgroundStyle(expansionKey,isMobile){
     '--toe-line-dim':theme.lineDim,
     '--toe-glow':theme.glow,
     '--toe-accent':theme.accent,
+    '--toe-battle-bg-image':`linear-gradient(180deg,${theme.tintTop},${theme.tintBottom}), url('${url}')`,
+    '--toe-battle-bg-size':isStarsCall?'cover, auto 100%':'cover, cover',
+    '--toe-battle-bg-position':'center center, center center',
+    '--toe-battle-bg-repeat':isStarsCall?'no-repeat, repeat-x':'no-repeat, no-repeat',
+    '--toe-battle-bg-attachment':isMobile?'scroll, scroll':'fixed, fixed',
     backgroundColor:theme.bg,
-    backgroundImage:`linear-gradient(180deg,${theme.tintTop},${theme.tintBottom}), url('${url}')`,
-    backgroundSize:isStarsCall?'cover, auto 100%':'cover, cover',
-    backgroundPosition:'center center, center center',
-    backgroundRepeat:isStarsCall?'no-repeat, repeat-x':'no-repeat, no-repeat',
-    backgroundAttachment:isMobile?'scroll, scroll':'fixed, fixed',
   };
 }
 
@@ -9362,6 +9362,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
 
   const skillLimited=gs.skillUsed&&skillRi.skillLimited;
   const battleBackgroundStyle=getBattleBackgroundStyle(gs.expansionKey,isMobile);
+  const drawBackgroundCameraActive=anim?.type==='DRAW_CARD'&&!anim?.card?.effect&&!anim?.disableDrawBackgroundCamera;
   const blackGoatPulsePid=anim?.type==='BLACK_GOAT_PULSE'?(anim.targetPid??anim.targetIdx??0):null;
   const phaseActionButtonStyle=({enabled=true,tone='amber',marginLeft}={})=>{
     const activeColors=tone==='danger'
@@ -9390,11 +9391,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   };
 
   return(<>
-    <div onClickCapture={handleUiSfxCapture} style={{minHeight:isMobileLandscape?'100dvh':'100vh',height:isMobileLandscape?'100dvh':undefined,width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...battleBackgroundStyle,color:'var(--toe-text,#c8a96e)',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:isMobileLandscape?4:7,padding:isMobile?'6px 8px':isMobileLandscape?'4px 6px':'8px 10px',position:'relative',left:globalShiftX||undefined,overflowX:'hidden',overflowY:isMobileLandscape?'hidden':'auto',scrollbarGutter:isMobileLandscape?undefined:'stable',
+    <div className={`toe-battle-root${drawBackgroundCameraActive?' toe-draw-camera-active':''}`} onClickCapture={handleUiSfxCapture} style={{minHeight:isMobileLandscape?'100dvh':'100vh',height:isMobileLandscape?'100dvh':undefined,width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...battleBackgroundStyle,color:'var(--toe-text,#c8a96e)',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:isMobileLandscape?4:7,padding:isMobile?'6px 8px':isMobileLandscape?'4px 6px':'8px 10px',position:'relative',isolation:'isolate',left:globalShiftX||undefined,overflowX:'hidden',overflowY:isMobileLandscape?'hidden':'auto',scrollbarGutter:isMobileLandscape?undefined:'stable',
     animation:deathShake?'deathShakeAnim 2.0s ease-in-out':earthquakeShake?'earthquakeSceneShake 1.25s linear 2':screenShake?'screenShakeAnim 0.38s ease-in-out':undefined,
     }}>
       {/* Global vignette */}
-      <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at 50% 50%,transparent 40%,#00000099 100%)',pointerEvents:'none',zIndex:1}}/>
+      <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at 50% 50%,transparent 40%,#00000099 100%)',pointerEvents:'none',zIndex:3}}/>
       {pendingRoleSelection&&(
         <div style={{position:'fixed',inset:0,zIndex:9998,background:'rgba(8,5,3,0.94)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
           <div style={{width:'min(480px,92vw)',background:'#120b06',border:'2px solid #5a3010',borderRadius:4,boxShadow:'0 0 60px #000c',padding:'28px 26px',textAlign:'center'}}>
@@ -10466,6 +10467,53 @@ const GLOBAL_STYLES=`
   [data-log-panel]::-webkit-scrollbar-track{background:var(--toe-panel,#0e0904);}
   [data-log-panel]{scrollbar-color:var(--toe-line,#3a2510) var(--toe-panel,#0e0904);}
   html,body{ overflow-x:hidden; }
+  .toe-battle-root {
+    background-color:var(--toe-bg,#0a0705);
+  }
+  .toe-battle-root::before {
+    content:"";
+    position:fixed;
+    inset:-5vmax;
+    z-index:0;
+    pointer-events:none;
+    background-image:var(--toe-battle-bg-image);
+    background-size:var(--toe-battle-bg-size);
+    background-position:var(--toe-battle-bg-position);
+    background-repeat:var(--toe-battle-bg-repeat);
+    background-attachment:var(--toe-battle-bg-attachment);
+    transform:translate3d(0,0,0) scale(1);
+    transform-origin:50% 48%;
+    will-change:transform, opacity;
+  }
+  .toe-battle-root > * {
+    position:relative;
+    z-index:2;
+  }
+  .toe-battle-root.toe-draw-camera-active::before {
+    animation:toeDrawBackgroundWalk 0.92s cubic-bezier(0.34,0,0.24,1) 3 both;
+  }
+  @keyframes toeDrawBackgroundWalk {
+    0% {
+      opacity:0.68;
+      transform:translate3d(0,0,0) scale(1);
+    }
+    30% {
+      opacity:0.88;
+      transform:translate3d(0,15px,0) scale(1.03);
+    }
+    58% {
+      opacity:1;
+      transform:translate3d(0,-10px,0) scale(1.065);
+    }
+    82% {
+      opacity:0.92;
+      transform:translate3d(0,8px,0) scale(1.085);
+    }
+    100% {
+      opacity:1;
+      transform:translate3d(0,0,0) scale(1);
+    }
+  }
   @keyframes scrollLeft {
     0% { transform: translateX(100%); }
     100% { transform: translateX(-100%); }

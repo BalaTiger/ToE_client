@@ -2,7 +2,8 @@
 import {
   GOD_DEFS,
   CS,
-  GOD_CS
+  GOD_CS,
+  getGodDisplaySubtitle
 } from '../../constants/card';
 import { ROLE_CULTIST, isRevealedCultist } from '../../game';
 import { DDCard, DDCardBack, GodCardDisplay, PreviewCard } from '../cards';
@@ -323,7 +324,7 @@ function PeekHandModal({ card, targetName, onClose }) {
           <PreviewCard
             card={card}
             codeFontSize={24}
-            desc={card.isGod?(card.subtitle||card.power||''):(card.desc||'')}
+            desc={card.isGod?(getGodDisplaySubtitle(card)||card.power||''):(card.desc||'')}
             frameStyle={{width:120,minHeight:164,borderRadius:8,padding:'10px 10px 12px',marginBottom:0,boxShadow:`0 0 18px ${card.isGod?GOD_CS.glow:(CS[card.letter]||GOD_CS).glow}33, inset 0 0 18px #00000044`}}
           />
         </div>

@@ -1022,6 +1022,35 @@ function getGodShortKey(godKey) {
   return GOD_DEFS[godKey]?.shortKey || godKey || 'GOD';
 }
 
+const GOD_NO_SUBTITLE_KEYS = new Set([
+  'ZHU',
+  'APO',
+  'GEE',
+  'XUA',
+  'BAQ',
+  'TRA',
+  'FAN',
+  'VRI',
+  'DIX',
+]);
+
+function getGodKeyFromLike(god) {
+  if (!god) return '';
+  if (typeof god === 'string') return god;
+  return god.godKey || '';
+}
+
+function shouldShowGodSubtitle(god) {
+  const godKey = getGodKeyFromLike(god);
+  return !!godKey && !GOD_NO_SUBTITLE_KEYS.has(godKey);
+}
+
+function getGodDisplaySubtitle(god) {
+  if (!shouldShowGodSubtitle(god)) return '';
+  if (!god || typeof god === 'string') return GOD_DEFS[god]?.subtitle || '';
+  return god.subtitle || GOD_DEFS[god.godKey]?.subtitle || '';
+}
+
 function getCardDisplayKey(card) {
   if (!card) return '?';
   if (card.isGod) return getGodShortKey(card.godKey);
@@ -1042,5 +1071,7 @@ export {
   getAnimatedCardBack,
   getAnimatedCardBackFramePaths,
   getGodShortKey,
+  shouldShowGodSubtitle,
+  getGodDisplaySubtitle,
   getCardDisplayKey,
 };

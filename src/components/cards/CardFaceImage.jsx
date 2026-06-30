@@ -1,5 +1,5 @@
 import React from 'react';
-import { GOD_DEFS, getCardDisplayKey } from '../../constants/card';
+import { GOD_DEFS, getCardDisplayKey, getGodDisplaySubtitle } from '../../constants/card';
 import { buildPublicUrl } from '../../utils/url';
 import {
   CARD_FACE_BACKGROUND_FILES,
@@ -51,7 +51,7 @@ function getDisplayName(card) {
 
 function getSubtitle(card) {
   if (!card?.isGod) return '';
-  return card.subtitle || getGodCardDef(card)?.subtitle || '';
+  return getGodDisplaySubtitle(card);
 }
 
 function getEffectText(card, godLevel) {
@@ -348,33 +348,55 @@ function GodCardText({ card, godLevel }) {
   const flavor = getCardFaceMeta(card)?.flavor || '';
   return (
     <>
-      <ScaledText
-        style={{
-          top: 73,
-          padding: '0 42px',
-          fontFamily: TITLE_FONT,
-          fontSize: getGodTitleFontSize(name),
-          fontWeight: 800,
-          lineHeight: 1,
-          letterSpacing: 7,
-        }}
-      >
-        {name}
-      </ScaledText>
-      <ScaledText
-        style={{
-          top: 108,
-          padding: '0 48px',
-          fontFamily: TITLE_FONT,
-          fontSize: 20,
-          fontWeight: 700,
-          lineHeight: 1.08,
-          letterSpacing: 3,
-          color: '#b9ac86',
-        }}
-      >
-        {subtitle}
-      </ScaledText>
+      {subtitle ? (
+        <>
+          <ScaledText
+            style={{
+              top: 73,
+              padding: '0 42px',
+              fontFamily: TITLE_FONT,
+              fontSize: getGodTitleFontSize(name),
+              fontWeight: 800,
+              lineHeight: 1,
+              letterSpacing: 7,
+            }}
+          >
+            {name}
+          </ScaledText>
+          <ScaledText
+            style={{
+              top: 108,
+              padding: '0 48px',
+              fontFamily: TITLE_FONT,
+              fontSize: 20,
+              fontWeight: 700,
+              lineHeight: 1.08,
+              letterSpacing: 3,
+              color: '#b9ac86',
+            }}
+          >
+            {subtitle}
+          </ScaledText>
+        </>
+      ) : (
+        <ScaledText
+          style={{
+            top: 70,
+            height: 64,
+            padding: '0 42px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontFamily: TITLE_FONT,
+            fontSize: getGodTitleFontSize(name) + 2,
+            fontWeight: 800,
+            lineHeight: 1.12,
+            letterSpacing: 7,
+          }}
+        >
+          {name}
+        </ScaledText>
+      )}
       <EffectTextBlock text={effect} isGod box={EFFECT_BOX.god} />
       {flavor && <FlavorTextBlock text={flavor} isGod box={FLAVOR_BOX.god} />}
     </>
