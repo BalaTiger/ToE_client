@@ -58,7 +58,9 @@ function getEffectText(card, godLevel) {
   if (!card) return '';
   if (card.isGod) {
     const def = getGodCardDef(card);
-    return def?.levels?.[clampLevel(godLevel) - 1]?.desc || card.desc || card.power || '';
+    const desc = def?.levels?.[clampLevel(godLevel) - 1]?.desc || card.desc || '';
+    if (/待设计/.test(desc)) return '';
+    return desc;
   }
   if (card.type === 'blankZone') return card.desc || '任意字母与数字';
   return card.desc || '';

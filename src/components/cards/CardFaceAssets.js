@@ -17,12 +17,31 @@ const CARD_FACE_META_BY_ID = {
       flavor: '“看什么看，没见过发光的人吗？”',
     },
   },
-  god: {
-    NYA: {
-      illustration: '/img/card/illustration/nya.png',
-      flavor: '“我的美少女外观？已经在做了，我骗过你吗？”',
-    },
-  },
+  god: Object.fromEntries(
+    [
+      'APO',
+      'CTH',
+      'DIX',
+      'GOR',
+      'HAS',
+      'KTH',
+      'NYA',
+      'ORO',
+      'SHU',
+      'TRA',
+      'TSG',
+      'VAN',
+      'VRI',
+      'XUA',
+      'ZHU',
+    ].map(godKey => [
+      godKey,
+      {
+        illustration: `/img/card/illustration/${godKey.toLowerCase()}.png`,
+        flavor: godKey === 'NYA' ? '“我的美少女外观？已经在做了，我骗过你吗？”' : '',
+      },
+    ])
+  ),
 };
 
 export const CARD_FACE_ILLUSTRATION_FILES = [
