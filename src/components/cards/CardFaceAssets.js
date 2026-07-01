@@ -13,7 +13,7 @@ const CARD_FACE_META_BY_ID = {
   zone: {
     swallowFluorescentMosses: {
       match: card => card?.type === 'selfRevealHandHP' || card?.name === '吃下荧光苔藓',
-      illustration: '/img/card/illustration/swallow_fluorescent_mosses.png',
+      illustration: '/img/card/illustration/swallow_fluorescent_mosses.webp',
       flavor: '“看什么看，没见过发光的人吗？”',
     },
   },
@@ -37,7 +37,7 @@ const CARD_FACE_META_BY_ID = {
     ].map(godKey => [
       godKey,
       {
-        illustration: `/img/card/illustration/${godKey.toLowerCase()}.png`,
+        illustration: `/img/card/illustration/${godKey.toLowerCase()}.webp`,
         flavor: godKey === 'NYA' ? '“我的美少女外观？已经在做了，我骗过你吗？”' : '',
       },
     ])

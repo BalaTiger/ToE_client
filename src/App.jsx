@@ -223,6 +223,7 @@ import { _getZoomCompensatedRect, getPlayerHandAnchorCenter } from './utils/dom'
 import { ANIM_DURATION, ANIM_SPEED_SCALE, CARD_REVEAL_DURATION, ANIM_STEP_GAP } from './components/anim/constants';
 import { SMOKE_COLS, FLOWER_CONFIGS, DICE_FACES, ANIM_CFG } from './components/anim/data';
 import { CardFlipAnim } from './components/anim/CardFlipAnim';
+import { GodHighlightBurst } from './components/anim/GodHighlightBurst';
 import { KnifeEffect, GuillotineAnim } from './components/anim/DamageEffects';
 import { CardTransferOverlay, DiscardMoveOverlay, HuntRevealedCardBadge } from './components/anim/MoveOverlays';
 import { GenericAnimOverlay, DiceRollAnim, YourTurnAnim } from './components/anim/GenericAnimOverlay';
@@ -1690,6 +1691,40 @@ export default function Game(){
   
   // --- 新增：用于 UI 延迟显示的 HP/SAN 状态 ---
   const [displayStats, setDisplayStats] = useState(() => gs?.players ? gs.players.map(p => ({ hp: p.hp, san: p.san })) : []);
+  const [godHighlightPanelBursts,setGodHighlightPanelBursts]=useState({});
+  const previousGodStatusRef=useRef(null);
+  const triggerGodHighlightPanelBurst=useCallback((playerIndex,godKey)=>{
+    if(playerIndex==null||!godKey)return;
+    const key=`${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setGodHighlightPanelBursts(prev=>({...prev,[playerIndex]:{key,godKey}}));
+    setTimeout(()=>{
+      setGodHighlightPanelBursts(prev=>{
+        if(prev[playerIndex]?.key!==key)return prev;
+        const next={...prev};
+        delete next[playerIndex];
+        return next;
+      });
+    },1250);
+  },[]);
+  useEffect(()=>{
+    const statuses=(gs?.players||[]).map(p=>({godName:p?.godName||null,godLevel:p?.godLevel||0}));
+    if(!statuses.length){
+      previousGodStatusRef.current=null;
+      return;
+    }
+    if(!previousGodStatusRef.current){
+      previousGodStatusRef.current=statuses;
+      return;
+    }
+    const prevStatuses=previousGodStatusRef.current;
+    statuses.forEach((status,idx)=>{
+      const prev=prevStatuses[idx]||{};
+      if(status.godName&&(status.godName!==prev.godName||(status.godLevel||0)>(prev.godLevel||0))){
+        triggerGodHighlightPanelBurst(idx,status.godName);
+      }
+    });
+    previousGodStatusRef.current=statuses;
+  },[gs?.players,triggerGodHighlightPanelBurst]);
   const[earthquakeVisualPlayers,setEarthquakeVisualPlayers]=useState(null);
   const timerRef=useRef(null);
 
@@ -9243,6 +9278,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     // 让"邪神之力"标签与"从手牌信仰"日志同时出现：把信仰后的神之力字段（及已离手的神牌）并入动画基线，
     // 使首个动画步骤的视觉快照就带上新神之力，而不是等到整段动画结束才刷新角色面板。
     const godBadgeBaseline=gs.players.map((p,i)=>i===0?{...p,hand:[...P[0].hand],godName:P[0].godName,godLevel:P[0].godLevel,godEncounters:P[0].godEncounters,godZone:P[0].godZone.map(c=>({...c}))}:p);
+    triggerGodHighlightPanelBurst(0,godKey);
+    previousGodStatusRef.current=godBadgeBaseline.map(p=>({godName:p?.godName||null,godLevel:p?.godLevel||0}));
     const oldGsForReplay={...gs,players:godBadgeBaseline};
     const replay=buildInspectionAwareAnimQueue(oldGsForReplay,newGs,{buildAnimQueue,copyPlayers});
     if(replay.inspectionEvents.length){
@@ -9866,7 +9903,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             const onCardSelectForSwap=isSwapPublicTargetCardPhase?((cardIdx)=>swapSelectTargetCard(cardIdx)):isHuntCardFromPublicPhase?((cardIdx)=>huntSelectCardFromPublic(cardIdx)):null;
               return(
                 <div key={p.id} data-pid={pi} style={{position:'relative',zIndex:isSel?101:undefined,alignSelf:'start'}}>
-                <PlayerPanel player={p} playerIndex={pi} isCurrentTurn={visualCurrentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)} isBeingGuillotined={guillotinedPids.has(pi)} displayStats={displayStats} scaleRatio={boardScaleRatio} viewportWidth={vw} expansionKey={gs.expansionKey} blackGoatPulseActive={blackGoatPulsePid===pi}/>
+                <PlayerPanel player={p} playerIndex={pi} isCurrentTurn={visualCurrentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)} isBeingGuillotined={guillotinedPids.has(pi)} displayStats={displayStats} scaleRatio={boardScaleRatio} viewportWidth={vw} expansionKey={gs.expansionKey} blackGoatPulseActive={blackGoatPulsePid===pi} godHighlightBurst={godHighlightPanelBursts[pi]}/>
                 </div>
               );
             })}
@@ -9907,6 +9944,18 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
 
             {/* SAN mist: rendered by full-screen SanMistOverlay */}
             {(hpHealIndices.includes(0)||sanHealIndices.includes(0))&&<HealCrossEffect color={sanHealIndices.includes(0)?'#a78bfa':'#4ade80'}/>}
+            {godHighlightPanelBursts[0]?.godKey&&(
+              <GodHighlightBurst
+                key={godHighlightPanelBursts[0].key}
+                godKey={godHighlightPanelBursts[0].godKey}
+                fit="contain"
+                panel
+                delayMs={0}
+                durationMs={920}
+                intensity={1.08}
+                style={{inset:-3}}
+              />
+            )}
             <div style={{
               opacity:isSelfDeadPanelDimmed?0.32:1,
               filter:isSelfDeadPanelDimmed?'grayscale(0.85) brightness(0.6)':'none',

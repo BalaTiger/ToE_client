@@ -262,19 +262,21 @@ function FlavorTextBlock({ text, isGod, box }) {
   );
 }
 
-function CardIllustration({ card, kind }) {
+function CardIllustration({ card, kind, scale }) {
   const meta = getCardFaceMeta(card);
   const ready = useIllustrationReady(meta?.illustration);
   const layout = ILLUSTRATION_LAYOUT[kind];
   if (!meta?.illustration || !ready) return null;
+  // Positioned in real display px (design coords × scale), NOT inside the scaled 392 layer,
+  // so the 1448px source stays sharp at any card size. clipPath is %-based → scale-independent.
   return (
     <div
       style={{
         position: 'absolute',
-        left: layout.left,
-        top: layout.top,
-        width: layout.width,
-        height: layout.height,
+        left: layout.left * scale,
+        top: layout.top * scale,
+        width: layout.width * scale,
+        height: layout.height * scale,
         clipPath: layout.clipPath,
         overflow: 'hidden',
         zIndex: 1,
@@ -441,6 +443,7 @@ function CardFaceImage({
           height: CARD_FACE_HEIGHT,
           transform: `scale(${scale})`,
           transformOrigin: 'top left',
+          zIndex: 0,
         }}
       >
         <img
@@ -453,21 +456,31 @@ function CardFaceImage({
             width: CARD_FACE_WIDTH,
             height: CARD_FACE_HEIGHT,
             display: 'block',
-            zIndex: 0,
             pointerEvents: 'none',
           }}
         />
-        <CardIllustration card={card} kind={kind} />
+      </div>
+      <CardIllustration card={card} kind={kind} scale={scale} />
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: CARD_FACE_WIDTH,
+          height: CARD_FACE_HEIGHT,
+          transform: `scale(${scale})`,
+          transformOrigin: 'top left',
+          zIndex: 2,
+        }}
+      >
         <div
           style={{
             position: 'absolute',
             inset: 0,
             background: 'radial-gradient(circle at 50% 32%, rgba(236,214,142,0.05), transparent 54%)',
-            zIndex: 2,
             pointerEvents: 'none',
           }}
         />
-        <div style={{ position: 'absolute', inset: 0, zIndex: 3, pointerEvents: 'none' }}>
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
           {kind === 'god'
             ? <GodCardText card={card} godLevel={godLevel} />
             : <ZoneCardText card={card} />}
