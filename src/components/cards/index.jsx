@@ -30,9 +30,12 @@ function OctopusSVG({col,size=32}){
 
 function getCardTooltipSize(){
   if(typeof window==='undefined')return{width:300,height:452};
-  const halfWidth=window.innerWidth/2;
-  const maxByHeight=Math.max(220,(window.innerHeight*0.8)*392/590);
-  const width=Math.round(Math.max(220,Math.min(344,halfWidth*0.62,maxByHeight)));
+  const gap=Math.max(6,Math.min(20,window.innerWidth*0.012));
+  // As large as fits: bounded by ~94% viewport height, and by one half of the width
+  // (the card sits beside screen centre). Aspect ratio 392:590 preserved.
+  const maxByHeight=(window.innerHeight*0.94)*392/590;
+  const maxByHalf=window.innerWidth/2-gap-16;
+  const width=Math.round(Math.max(220,Math.min(maxByHeight,maxByHalf)));
   return{width,height:Math.round(width*590/392)};
 }
 
@@ -48,15 +51,18 @@ function CardFaceTooltip({card,godLevel=1,position}){
   const side=targetCenterX<viewW/2?'right':'left';
   const pointerX=position.pointerX||0;
   const pointerY=position.pointerY||0;
-  const baseRotateY=side==='right'?-34:34;
-  const rotateY=baseRotateY+(pointerX*5.5);
-  const rotateX=-pointerY*4.2;
-  const rotateZ=(side==='right'?1.1:-1.1)+(pointerX*0.6);
+  // ponytail: gentle tilt that respects perspective. Was rotateY 34° under perspective(460px)
+  // (viewer closer than the card is tall) → fish-eye "矮胖" squash.
+  const baseRotateY=side==='right'?-24:24;
+  const rotateY=baseRotateY+(pointerX*4);
+  const rotateX=-pointerY*3;
+  const rotateZ=(side==='right'?1:-1)+(pointerX*0.5);
   const transformOrigin=side==='right'?'left center':'right center';
   const centerGap=Math.max(6,Math.min(20,viewW*0.012));
+  // Anchor the inner edge near the screen centre line; the card extends outward toward the edge.
   const finalLeft=side==='right'
-    ?Math.min(viewW-width-14,viewW/2+centerGap)
-    :Math.max(14,viewW/2-centerGap-width);
+    ?viewW/2+centerGap
+    :viewW/2-centerGap-width;
   const finalTop=Math.max(12,Math.min(viewH-height-12,(viewH-height)/2));
   const startX=originCenterX-(finalLeft+width/2);
   const startY=originCenterY-(finalTop+height/2);
@@ -73,10 +79,6 @@ function CardFaceTooltip({card,godLevel=1,position}){
   return createPortal(
     <>
       <style>{`
-        @keyframes toeCardHoverBreathe {
-          0%, 100% { transform: translateY(0) scale(1); }
-          50% { transform: translateY(-8px) scale(1.015); }
-        }
         @keyframes toeCardHoverExtract {
           0% {
             opacity: 0;
@@ -133,14 +135,15 @@ function CardFaceTooltip({card,godLevel=1,position}){
       }}>
         <div style={{
           width,height,
-          animation:'toeCardHoverBreathe 3.2s ease-in-out infinite',
+          // ponytail: no infinite animation — a permanently-animating layer is rasterized at
+          // 1× CSS res and upscaled to device px, blurring the 1448px art on hi-DPI screens.
           transformOrigin:'center',
           transformStyle:'preserve-3d',
           filter:'drop-shadow(0 18px 34px rgba(0,0,0,0.72)) drop-shadow(0 0 28px rgba(185,145,82,0.22))',
         }}>
           <div style={{
             width,height,
-            transform:`perspective(460px) translateZ(16px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) rotateZ(${rotateZ.toFixed(2)}deg)`,
+            transform:`perspective(1500px) translateZ(8px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) rotateZ(${rotateZ.toFixed(2)}deg)`,
             transformStyle:'preserve-3d',
             transformOrigin,
             transition:'transform 90ms ease-out',

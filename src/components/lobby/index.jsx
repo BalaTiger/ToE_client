@@ -5,6 +5,7 @@ import {
   LETTERS,
   NUMS,
 } from '../../constants/card';
+import { LoadingPentagramSpinner } from '../LoadingPentagramSpinner';
 import { NARRATOR_AVATAR } from '../tutorial/InGameTutorialOverlay';
 import {
   decodeDebugCardValue,
@@ -506,6 +507,23 @@ function DebugSettingsPanel({
           <option value="show">下次单人对战：全部重新显示</option>
           <option value="hide">下次单人对战：全部不显示</option>
         </select>
+      </div>
+
+      <div style={sectionStyle}>
+        <h4 style={sectionTitleStyle}>预加载旋转星</h4>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          minHeight: 30,
+          color: '#a07838',
+          fontFamily: "'IM Fell English','Georgia',serif",
+          fontSize: 12,
+          fontStyle: 'italic',
+        }}>
+          <LoadingPentagramSpinner />
+          <span>与预加载界面同款渲染</span>
+        </div>
       </div>
 
       <div style={sectionStyle}>

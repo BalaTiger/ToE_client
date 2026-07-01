@@ -1,19 +1,22 @@
 import { buildPublicUrl } from '../../utils/url';
 
+// Canonical card-face box used by card backs, flip animation, and hit-testing.
+// High-resolution face-frame art may use a different pixel size, but it is
+// fitted into this logical box so front/back faces stay the same size.
 export const CARD_FACE_WIDTH = 392;
 export const CARD_FACE_HEIGHT = 590;
 export const CARD_FACE_RATIO = CARD_FACE_HEIGHT / CARD_FACE_WIDTH;
 
 export const CARD_FACE_BACKGROUND_FILES = [
-  '/img/card/cardbg_zone.png',
-  '/img/card/cardbg_god.png',
+  '/img/card/cardbg_zone.webp',
+  '/img/card/cardbg_god.webp',
 ];
 
 const CARD_FACE_META_BY_ID = {
   zone: {
     swallowFluorescentMosses: {
       match: card => card?.type === 'selfRevealHandHP' || card?.name === '吃下荧光苔藓',
-      illustration: '/img/card/illustration/swallow_fluorescent_mosses.png',
+      illustration: '/img/card/illustration/swallow_fluorescent_mosses.webp',
       flavor: '“看什么看，没见过发光的人吗？”',
     },
   },
@@ -37,7 +40,7 @@ const CARD_FACE_META_BY_ID = {
     ].map(godKey => [
       godKey,
       {
-        illustration: `/img/card/illustration/${godKey.toLowerCase()}.png`,
+        illustration: `/img/card/illustration/${godKey.toLowerCase()}.webp`,
         flavor: godKey === 'NYA' ? '“我的美少女外观？已经在做了，我骗过你吗？”' : '',
       },
     ])

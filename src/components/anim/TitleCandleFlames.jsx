@@ -72,7 +72,7 @@ export function TitleCandleFlames() {
     position: 'absolute',
     width: '48px',  // 火焰的实际显示宽度
     height: '48px', // 火焰的实际显示高度（128*128每帧，缩小到48*48）
-    backgroundImage: `url('${buildPublicUrl('/img/title_candle.png')}')`,
+    backgroundImage: `url('${buildPublicUrl('/img/title_candle.webp')}')`,
 
     // 4x4的图，背景尺寸必须是容器的 400%
     backgroundSize: '400% 400%',

@@ -6,6 +6,7 @@ import { isBlackGoatYoung, isTsathogguaSlime } from '../../game/coreUtils';
 import { AnimatedCardBack, AreaTooltip, CardCodeLabel, DDCard, DDCardBack, GodTooltip } from '../cards';
 import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
 import { ThemeCornerOrnament } from '../theme/ThemeOrnaments';
+import { GodHighlightBurst } from '../anim/GodHighlightBurst';
 import { getFontZoomCompensate } from '../../utils/scale';
 import { _getZoomCompensatedRect } from '../../utils/dom';
 
@@ -535,7 +536,7 @@ function GodPowerBadge({player,playerIndex}){
 }
 
 // ── PlayerPanel ─────────────────────────────────────────────────
-function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='地神的潜影',blackGoatPulseActive=false}){
+function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='地神的潜影',blackGoatPulseActive=false,godHighlightBurst=null}){
   const ri=RINFO[player.role];
   const theme=getBoardTheme(expansionKey);
   const fontZoom = getFontZoomCompensate(scaleRatio);
@@ -603,7 +604,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
       filter: player.isDead && !player._pendingAnimDeath ? 'grayscale(0.85) brightness(0.6)' : 'none',
       transition:'all .2s',
       position:'relative',
-      overflow:'hidden',
+      overflow:'visible',
     }}>
       <ThemeCornerOrnament
         expansionKey={expansionKey}
@@ -612,6 +613,18 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
         opacity={0.36}
         style={{top:-8,right:-8}}
       />
+      {godHighlightBurst?.godKey&&(
+        <GodHighlightBurst
+          key={godHighlightBurst.key}
+          godKey={godHighlightBurst.godKey}
+          fit="contain"
+          panel
+          delayMs={0}
+          durationMs={920}
+          intensity={1.08}
+          style={{inset:-3}}
+        />
+      )}
       {(isHpHeal||isSanHeal)&&<HealCrossEffect color={isSanHeal?'#a78bfa':'#4ade80'}/>}
       {/* Name plate */}
       <div style={{

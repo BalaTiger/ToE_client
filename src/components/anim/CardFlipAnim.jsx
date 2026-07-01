@@ -6,6 +6,7 @@ import { getZoneCardPolarity } from '../../game/coreUtils';
 import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 import { SMOKE_COLS, FLOWER_CONFIGS } from './data';
 import { getInspectionCardDesc, petalPath } from './utils';
+import { GodHighlightBurst } from './GodHighlightBurst';
 
 function FlowerSVG({petals,hue,variant,size}){
   const r=size*0.44;
@@ -66,6 +67,7 @@ function FlowerBloom(){
 function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guessCorrect,expansionKey='地神的潜影',sourcePile='deck',onSettled}){
   const [traveled,setTraveled]=React.useState(skipTravel);
   const settledRef=React.useRef(false);
+  const settleDelay=card?.isGod?2650:1250;
   React.useEffect(()=>{
     if(skipTravel){setTraveled(true);return undefined;}
     const t=setTimeout(()=>setTraveled(true),650);
@@ -76,9 +78,9 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
     const t=setTimeout(()=>{
       settledRef.current=true;
       onSettled();
-    },1250);
+    },settleDelay);
     return()=>clearTimeout(t);
-  },[traveled,onSettled]);
+  },[traveled,onSettled,settleDelay]);
 
   const isInspection=!!card?.effect;
   if(!card) return null;
@@ -310,6 +312,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
               boxShadow:(isNeutralCard)?'0 0 18px rgba(120,136,155,0.22)':`0 0 30px ${s.glow}88, 0 0 60px ${isEvil?'#6010aa':'#c8a96e'}44`,
             }}>
               <CardFaceImage card={card} godLevel={1} width={flipW} style={{borderRadius:5,boxShadow:'none'}}/>
+              {card?.isGod&&<GodHighlightBurst godKey={card.godKey} delayMs={1260} durationMs={1320} intensity={1.05}/>}
             </div>
           ):(
             <div style={{

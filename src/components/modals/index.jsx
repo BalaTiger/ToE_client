@@ -450,7 +450,7 @@ function AboutModal({ onClose }) {
           <div style={{ color: '#c8a96e', fontSize: 12, letterSpacing: 1, fontStyle: 'italic' }}>QQ催更群：787317460</div>
           <div style={{ color: '#c8a96e', fontSize: 12, letterSpacing: 1, fontStyle: 'italic' }}>微信催更群二维码</div>
           <img
-            src={buildPublicUrl('img/QRCode.jpg')}
+            src={buildPublicUrl('img/QRCode.webp')}
             alt="微信催更群二维码"
             style={{
               display: 'block',

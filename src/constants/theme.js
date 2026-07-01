@@ -24,10 +24,10 @@ export const BOARD_THEME_BY_EXPANSION = {
 };
 
 export const BATTLE_BACKGROUND_BY_EXPANSION = {
-  '地神的潜影': '/img/bg/battle/earth_shadow.png',
-  '先贤的馈赠': '/img/bg/battle/sage_gift.png',
-  '群星呼唤': '/img/bg/battle/stars_call.png',
-  '析骨为柴': '/img/bg/battle/bone_fuel.png',
+  '地神的潜影': '/img/bg/battle/earth_shadow.webp',
+  '先贤的馈赠': '/img/bg/battle/sage_gift.webp',
+  '群星呼唤': '/img/bg/battle/stars_call.webp',
+  '析骨为柴': '/img/bg/battle/bone_fuel.webp',
 };
 
 export const BATTLE_THEME_BY_EXPANSION = {
@@ -48,10 +48,10 @@ export const BATTLE_THEME_BY_EXPANSION = {
 };
 
 export const CARD_BACK_IMAGE_BY_EXPANSION = {
-  '地神的潜影': '/img/card/cardback_earth_shadow.png',
-  '先贤的馈赠': '/img/card/cardback_sage_gift.png',
-  '群星呼唤': '/img/card/cardback_stars_call.png',
-  '析骨为柴': '/img/card/cardback_bone_fuel.png',
+  '地神的潜影': '/img/card/cardback_earth_shadow.webp',
+  '先贤的馈赠': '/img/card/cardback_sage_gift.webp',
+  '群星呼唤': '/img/card/cardback_stars_call.webp',
+  '析骨为柴': '/img/card/cardback_bone_fuel.webp',
 };
 
 export const ANIMATED_CARD_BACK_BY_EXPANSION = {

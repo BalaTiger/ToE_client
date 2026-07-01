@@ -1,0 +1,942 @@
+{
+  "version": "d0db226e075e1217",
+  "generatedAt": "2026-07-01T09:30:58.311Z",
+  "resources": [
+    {
+      "path": "/bg.webp",
+      "type": "image",
+      "size": 179356,
+      "revision": "c7acacf064b4a7de"
+    },
+    {
+      "path": "/favicon.png",
+      "type": "image",
+      "size": 12768,
+      "revision": "02e13cade196d6b7"
+    },
+    {
+      "path": "/fonts/Cinzel-Bold.ttf",
+      "type": "font",
+      "size": 46124,
+      "revision": "2c6b1ff0d368efb7"
+    },
+    {
+      "path": "/fonts/Cinzel-Regular.ttf",
+      "type": "font",
+      "size": 45884,
+      "revision": "a0242f6698ae0d32"
+    },
+    {
+      "path": "/fonts/IMFellEnglish-Italic.ttf",
+      "type": "font",
+      "size": 197028,
+      "revision": "ae0d17a0342d6ce0"
+    },
+    {
+      "path": "/fonts/IMFellEnglish-Regular.ttf",
+      "type": "font",
+      "size": 189680,
+      "revision": "725a44824e534dfb"
+    },
+    {
+      "path": "/fonts/PlayfairDisplay-Italic.ttf",
+      "type": "font",
+      "size": 110816,
+      "revision": "6021680663c58b34"
+    },
+    {
+      "path": "/fonts/PlayfairDisplay-Regular.ttf",
+      "type": "font",
+      "size": 123240,
+      "revision": "1609a54fa3ad1abc"
+    },
+    {
+      "path": "/fonts/PlayfairDisplay-SemiBold.ttf",
+      "type": "font",
+      "size": 123672,
+      "revision": "8ab6a1db2d7caeb4"
+    },
+    {
+      "path": "/fonts/fonts.css",
+      "type": "style",
+      "size": 1462,
+      "revision": "f430ec735e051872"
+    },
+    {
+      "path": "/img/QRCode.webp",
+      "type": "image",
+      "size": 80440,
+      "revision": "77c583ff308ec3e5"
+    },
+    {
+      "path": "/img/bg/battle/bg_battle_handzone.webp",
+      "type": "image",
+      "size": 10148,
+      "revision": "b9d7bb36b59893d0"
+    },
+    {
+      "path": "/img/bg/battle/bone_fuel.webp",
+      "type": "image",
+      "size": 45876,
+      "revision": "41476ba24fe58a62"
+    },
+    {
+      "path": "/img/bg/battle/earth_shadow.webp",
+      "type": "image",
+      "size": 41778,
+      "revision": "3cb55f52855274aa"
+    },
+    {
+      "path": "/img/bg/battle/sage_gift.webp",
+      "type": "image",
+      "size": 45246,
+      "revision": "35130f1b9b91fa20"
+    },
+    {
+      "path": "/img/bg/battle/stars_call.webp",
+      "type": "image",
+      "size": 42614,
+      "revision": "ffa8a2b1a45b8561"
+    },
+    {
+      "path": "/img/bg/bg_main.webp",
+      "type": "image",
+      "size": 199160,
+      "revision": "2ad4ca0c0c249116"
+    },
+    {
+      "path": "/img/btn/btn_author.webp",
+      "type": "image",
+      "size": 6544,
+      "revision": "435faa9cb9bac569"
+    },
+    {
+      "path": "/img/btn/btn_bright_green.webp",
+      "type": "image",
+      "size": 7300,
+      "revision": "7afbf7cea4d87f62"
+    },
+    {
+      "path": "/img/btn/btn_bright_purple.webp",
+      "type": "image",
+      "size": 7254,
+      "revision": "a9eba0e2f16c0052"
+    },
+    {
+      "path": "/img/btn/btn_bright_red.webp",
+      "type": "image",
+      "size": 7092,
+      "revision": "8db314f052207d98"
+    },
+    {
+      "path": "/img/btn/btn_dark_green.webp",
+      "type": "image",
+      "size": 6736,
+      "revision": "068f09d003f9a4a1"
+    },
+    {
+      "path": "/img/btn/btn_dark_purple.webp",
+      "type": "image",
+      "size": 6646,
+      "revision": "3bcc2bc0669e38b5"
+    },
+    {
+      "path": "/img/btn/btn_dark_red.webp",
+      "type": "image",
+      "size": 6016,
+      "revision": "70f56e898942037e"
+    },
+    {
+      "path": "/img/btn/btn_roadmap.webp",
+      "type": "image",
+      "size": 7898,
+      "revision": "1271e3afd5281068"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_00.webp",
+      "type": "image",
+      "size": 26828,
+      "revision": "d3fdd1509baa64c2"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_01.webp",
+      "type": "image",
+      "size": 26874,
+      "revision": "d2fe5084ff80eea9"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_02.webp",
+      "type": "image",
+      "size": 27114,
+      "revision": "664ae54ce358b22b"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_03.webp",
+      "type": "image",
+      "size": 27408,
+      "revision": "8e32308905bf75c8"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_04.webp",
+      "type": "image",
+      "size": 27608,
+      "revision": "37c88ad4243ae086"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_05.webp",
+      "type": "image",
+      "size": 27670,
+      "revision": "bf94087766638c15"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_06.webp",
+      "type": "image",
+      "size": 27604,
+      "revision": "daba62272f26b877"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_07.webp",
+      "type": "image",
+      "size": 27556,
+      "revision": "2dd9e302c36bd45b"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_08.webp",
+      "type": "image",
+      "size": 27556,
+      "revision": "44f64959408859a8"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_09.webp",
+      "type": "image",
+      "size": 27196,
+      "revision": "509b8a3080ca4ccb"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_10.webp",
+      "type": "image",
+      "size": 26730,
+      "revision": "5317879207d8fc91"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_11.webp",
+      "type": "image",
+      "size": 26528,
+      "revision": "3d642d517653a611"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_12.webp",
+      "type": "image",
+      "size": 26494,
+      "revision": "759e757dde534263"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_13.webp",
+      "type": "image",
+      "size": 26422,
+      "revision": "bf85ba2f3f8949a6"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_14.webp",
+      "type": "image",
+      "size": 26010,
+      "revision": "964d354f4dfc9f1e"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_15.webp",
+      "type": "image",
+      "size": 25770,
+      "revision": "b3b7ba71f3bc36fe"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_16.webp",
+      "type": "image",
+      "size": 25794,
+      "revision": "b540b4fc570b3302"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_17.webp",
+      "type": "image",
+      "size": 25790,
+      "revision": "1f45ae8342518f93"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_18.webp",
+      "type": "image",
+      "size": 25866,
+      "revision": "19cf375c17f671e2"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_19.webp",
+      "type": "image",
+      "size": 26030,
+      "revision": "fd6babb0c8e18ae7"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_20.webp",
+      "type": "image",
+      "size": 26300,
+      "revision": "a7104912ab44087b"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_21.webp",
+      "type": "image",
+      "size": 26530,
+      "revision": "37f0dac448e5a0ed"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_22.webp",
+      "type": "image",
+      "size": 26776,
+      "revision": "2618df7b7778f903"
+    },
+    {
+      "path": "/img/card/animated/earth_shadow/frame_23.webp",
+      "type": "image",
+      "size": 26828,
+      "revision": "d3fdd1509baa64c2"
+    },
+    {
+      "path": "/img/card/animated/manifest.json",
+      "type": "asset",
+      "size": 2843,
+      "revision": "a0e679357d8a9d9f"
+    },
+    {
+      "path": "/img/card/animated/source_refs/earth_shadow_detail.webp",
+      "type": "image",
+      "size": 32004,
+      "revision": "6748bad6b9392b83"
+    },
+    {
+      "path": "/img/card/animated/source_refs/stars_call_detail.webp",
+      "type": "image",
+      "size": 63248,
+      "revision": "67eef8a0e61995a2"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_00.webp",
+      "type": "image",
+      "size": 75282,
+      "revision": "30d988cfe2efd3b8"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_01.webp",
+      "type": "image",
+      "size": 76662,
+      "revision": "f9c5f5dde9f7131b"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_02.webp",
+      "type": "image",
+      "size": 77634,
+      "revision": "9d86717c0cd5e0ad"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_03.webp",
+      "type": "image",
+      "size": 78326,
+      "revision": "f46051c1e084659a"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_04.webp",
+      "type": "image",
+      "size": 78976,
+      "revision": "14f9832855af682b"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_05.webp",
+      "type": "image",
+      "size": 79434,
+      "revision": "3b83f788ac4b9e75"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_06.webp",
+      "type": "image",
+      "size": 78744,
+      "revision": "d6a548aed947805e"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_07.webp",
+      "type": "image",
+      "size": 79804,
+      "revision": "e53cd58bd2d8e846"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_08.webp",
+      "type": "image",
+      "size": 78720,
+      "revision": "f5b906168db41a32"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_09.webp",
+      "type": "image",
+      "size": 76906,
+      "revision": "6ddbdabffced6ef5"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_10.webp",
+      "type": "image",
+      "size": 76600,
+      "revision": "07bc614c72881f05"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_11.webp",
+      "type": "image",
+      "size": 74924,
+      "revision": "d49ee5f88778fa4d"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_12.webp",
+      "type": "image",
+      "size": 73838,
+      "revision": "3bb3b1c3cedc0499"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_13.webp",
+      "type": "image",
+      "size": 73068,
+      "revision": "020453fe93c4dc0b"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_14.webp",
+      "type": "image",
+      "size": 72800,
+      "revision": "7bb7b15d5f725f55"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_15.webp",
+      "type": "image",
+      "size": 70438,
+      "revision": "cd3242b8395b2669"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_16.webp",
+      "type": "image",
+      "size": 70322,
+      "revision": "d3d5c90c750cb9c3"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_17.webp",
+      "type": "image",
+      "size": 70244,
+      "revision": "39556a90294a0053"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_18.webp",
+      "type": "image",
+      "size": 70732,
+      "revision": "41560066be6757dd"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_19.webp",
+      "type": "image",
+      "size": 71100,
+      "revision": "4552ac05468a696c"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_20.webp",
+      "type": "image",
+      "size": 72022,
+      "revision": "f8b318b5ab9a0e00"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_21.webp",
+      "type": "image",
+      "size": 73258,
+      "revision": "b1b6426442a02173"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_22.webp",
+      "type": "image",
+      "size": 73942,
+      "revision": "dc1db9cf37756aca"
+    },
+    {
+      "path": "/img/card/animated/stars_call/frame_23.webp",
+      "type": "image",
+      "size": 75282,
+      "revision": "30d988cfe2efd3b8"
+    },
+    {
+      "path": "/img/card/cardback_bone_fuel.webp",
+      "type": "image",
+      "size": 36278,
+      "revision": "2ecf61cec1398bb0"
+    },
+    {
+      "path": "/img/card/cardback_earth_shadow.webp",
+      "type": "image",
+      "size": 25228,
+      "revision": "10f1ed5f2b2a779c"
+    },
+    {
+      "path": "/img/card/cardback_sage_gift.webp",
+      "type": "image",
+      "size": 37066,
+      "revision": "10dcf685a51ace7a"
+    },
+    {
+      "path": "/img/card/cardback_stars_call.webp",
+      "type": "image",
+      "size": 73844,
+      "revision": "669a8fe9d3bcb468"
+    },
+    {
+      "path": "/img/card/cardbg_god.webp",
+      "type": "image",
+      "size": 133576,
+      "revision": "fc74c41ed687182d"
+    },
+    {
+      "path": "/img/card/cardbg_zone.webp",
+      "type": "image",
+      "size": 145436,
+      "revision": "fe4aeb634d22e6f5"
+    },
+    {
+      "path": "/img/card/highlight/apo.webp",
+      "type": "image",
+      "size": 244180,
+      "revision": "95b5fc1a7c2fbc2e"
+    },
+    {
+      "path": "/img/card/highlight/cth.webp",
+      "type": "image",
+      "size": 220196,
+      "revision": "d317c1a75b5a55e3"
+    },
+    {
+      "path": "/img/card/highlight/dix.webp",
+      "type": "image",
+      "size": 304422,
+      "revision": "7728a1682fc8dc2f"
+    },
+    {
+      "path": "/img/card/highlight/gor.webp",
+      "type": "image",
+      "size": 222086,
+      "revision": "20ea993009c0e666"
+    },
+    {
+      "path": "/img/card/highlight/has.webp",
+      "type": "image",
+      "size": 181640,
+      "revision": "496e38bffdb409f2"
+    },
+    {
+      "path": "/img/card/highlight/kth.webp",
+      "type": "image",
+      "size": 214128,
+      "revision": "6f1c72fbf5206af2"
+    },
+    {
+      "path": "/img/card/highlight/nya.webp",
+      "type": "image",
+      "size": 224898,
+      "revision": "24bd5fd627b90915"
+    },
+    {
+      "path": "/img/card/highlight/oro.webp",
+      "type": "image",
+      "size": 295082,
+      "revision": "6a9e2030f053f891"
+    },
+    {
+      "path": "/img/card/highlight/shu.webp",
+      "type": "image",
+      "size": 259806,
+      "revision": "84160a3fa7fe1509"
+    },
+    {
+      "path": "/img/card/highlight/tra.webp",
+      "type": "image",
+      "size": 188264,
+      "revision": "d281e1333d4062a1"
+    },
+    {
+      "path": "/img/card/highlight/tsg.webp",
+      "type": "image",
+      "size": 235908,
+      "revision": "9de2b01d85fd8797"
+    },
+    {
+      "path": "/img/card/highlight/van.webp",
+      "type": "image",
+      "size": 199416,
+      "revision": "c9ee9ed07437efeb"
+    },
+    {
+      "path": "/img/card/highlight/vri.webp",
+      "type": "image",
+      "size": 303962,
+      "revision": "3749aa67c5d7cff2"
+    },
+    {
+      "path": "/img/card/highlight/xua.webp",
+      "type": "image",
+      "size": 254974,
+      "revision": "d947abf6b8f690f0"
+    },
+    {
+      "path": "/img/card/highlight/zhu.webp",
+      "type": "image",
+      "size": 279738,
+      "revision": "298fbbdf147f2874"
+    },
+    {
+      "path": "/img/card/illustration/apo.webp",
+      "type": "image",
+      "size": 330296,
+      "revision": "e577942868e1dec0"
+    },
+    {
+      "path": "/img/card/illustration/cth.webp",
+      "type": "image",
+      "size": 243196,
+      "revision": "ee76d8ba0b330ef4"
+    },
+    {
+      "path": "/img/card/illustration/dix.webp",
+      "type": "image",
+      "size": 341496,
+      "revision": "6106ede4202cb006"
+    },
+    {
+      "path": "/img/card/illustration/gor.webp",
+      "type": "image",
+      "size": 402764,
+      "revision": "3a0dbccad2855911"
+    },
+    {
+      "path": "/img/card/illustration/has.webp",
+      "type": "image",
+      "size": 266530,
+      "revision": "8d95cb74f4db46fa"
+    },
+    {
+      "path": "/img/card/illustration/kth.webp",
+      "type": "image",
+      "size": 422310,
+      "revision": "fa71789e0d81f77e"
+    },
+    {
+      "path": "/img/card/illustration/nya.webp",
+      "type": "image",
+      "size": 474606,
+      "revision": "0f53efb1125d3fab"
+    },
+    {
+      "path": "/img/card/illustration/oro.webp",
+      "type": "image",
+      "size": 570896,
+      "revision": "c2fdbf9894f5c79f"
+    },
+    {
+      "path": "/img/card/illustration/shu.webp",
+      "type": "image",
+      "size": 336046,
+      "revision": "1544098c1a5e7580"
+    },
+    {
+      "path": "/img/card/illustration/swallow_fluorescent_mosses.webp",
+      "type": "image",
+      "size": 92908,
+      "revision": "34e68dbf4c4f514a"
+    },
+    {
+      "path": "/img/card/illustration/teonanácatl.webp",
+      "type": "image",
+      "size": 161542,
+      "revision": "435d49ba99bf1abb"
+    },
+    {
+      "path": "/img/card/illustration/though_ants_are_small.webp",
+      "type": "image",
+      "size": 205452,
+      "revision": "405d61852d33369c"
+    },
+    {
+      "path": "/img/card/illustration/tra.webp",
+      "type": "image",
+      "size": 334992,
+      "revision": "c59fdf68a3296228"
+    },
+    {
+      "path": "/img/card/illustration/tsg.webp",
+      "type": "image",
+      "size": 245800,
+      "revision": "c5cd1acf8c4cf4e0"
+    },
+    {
+      "path": "/img/card/illustration/van.webp",
+      "type": "image",
+      "size": 211626,
+      "revision": "9684e1787d48491b"
+    },
+    {
+      "path": "/img/card/illustration/vri.webp",
+      "type": "image",
+      "size": 458256,
+      "revision": "99331ca9aeb72b85"
+    },
+    {
+      "path": "/img/card/illustration/xua.webp",
+      "type": "image",
+      "size": 270746,
+      "revision": "f85f49c241abd722"
+    },
+    {
+      "path": "/img/card/illustration/zhu.webp",
+      "type": "image",
+      "size": 582540,
+      "revision": "aee03376083c0902"
+    },
+    {
+      "path": "/img/deco/deco_cth-no-bg.webp",
+      "type": "image",
+      "size": 7784,
+      "revision": "f2ff983604050854"
+    },
+    {
+      "path": "/img/effects/evil_goat_sigil.svg",
+      "type": "image",
+      "size": 1962,
+      "revision": "d1f3ad50c492f6dc"
+    },
+    {
+      "path": "/img/effects/evil_goat_spirit_run_00.webp",
+      "type": "image",
+      "size": 17066,
+      "revision": "e673718e7cae17d9"
+    },
+    {
+      "path": "/img/effects/evil_goat_spirit_run_01.webp",
+      "type": "image",
+      "size": 10152,
+      "revision": "33cf749253f90596"
+    },
+    {
+      "path": "/img/effects/evil_goat_spirit_run_02.webp",
+      "type": "image",
+      "size": 19372,
+      "revision": "4566ac495fe2957d"
+    },
+    {
+      "path": "/img/effects/evil_goat_spirit_run_03.webp",
+      "type": "image",
+      "size": 14678,
+      "revision": "0c9b161004345606"
+    },
+    {
+      "path": "/img/effects/evil_goat_spirit_run_04.webp",
+      "type": "image",
+      "size": 16022,
+      "revision": "af16f9a9399ec381"
+    },
+    {
+      "path": "/img/effects/evil_goat_spirit_run_05.webp",
+      "type": "image",
+      "size": 19574,
+      "revision": "ab4d39c90185d358"
+    },
+    {
+      "path": "/img/effects/evil_goat_spirit_run_06.webp",
+      "type": "image",
+      "size": 15312,
+      "revision": "3600ea1de4455dbc"
+    },
+    {
+      "path": "/img/effects/evil_goat_spirit_run_spritesheet.webp",
+      "type": "image",
+      "size": 108290,
+      "revision": "4d6330e995a7701a"
+    },
+    {
+      "path": "/img/line/line_split-no-bg.webp",
+      "type": "image",
+      "size": 3830,
+      "revision": "740146895b79a3b5"
+    },
+    {
+      "path": "/img/line/line_titleguard-no-bg.webp",
+      "type": "image",
+      "size": 944,
+      "revision": "6e188f0a8367dba9"
+    },
+    {
+      "path": "/img/loading.webp",
+      "type": "image",
+      "size": 10968,
+      "revision": "b74f95f5db6e62ec"
+    },
+    {
+      "path": "/img/logo/logo_cu-no-bg.webp",
+      "type": "image",
+      "size": 1682,
+      "revision": "3125edcf5e9d98fa"
+    },
+    {
+      "path": "/img/logo/logo_hu-no-bg.webp",
+      "type": "image",
+      "size": 2108,
+      "revision": "27912e65c654fb2f"
+    },
+    {
+      "path": "/img/logo/logo_tr-no-bg.webp",
+      "type": "image",
+      "size": 2910,
+      "revision": "7a35985b8f6c811e"
+    },
+    {
+      "path": "/img/title/texture_toehp.webp",
+      "type": "image",
+      "size": 19544,
+      "revision": "48b93d6978379bb9"
+    },
+    {
+      "path": "/img/title_candle.webp",
+      "type": "image",
+      "size": 25756,
+      "revision": "09c1677baa93e75f"
+    },
+    {
+      "path": "/img/ui/theme_relief/hand_edge_earth.webp",
+      "type": "image",
+      "size": 59330,
+      "revision": "13fe0e5661418343"
+    },
+    {
+      "path": "/img/ui/theme_relief/hand_edge_stars.webp",
+      "type": "image",
+      "size": 130680,
+      "revision": "111aa85f668dee12"
+    },
+    {
+      "path": "/img/ui/theme_relief/log_relief_earth.webp",
+      "type": "image",
+      "size": 265330,
+      "revision": "7297aa25f8be7b8a"
+    },
+    {
+      "path": "/img/ui/theme_relief/log_relief_stars.webp",
+      "type": "image",
+      "size": 225588,
+      "revision": "dd6201d81479f799"
+    },
+    {
+      "path": "/img/ui/theme_relief/panel_corner_earth.webp",
+      "type": "image",
+      "size": 66410,
+      "revision": "4b83c65b3063cb9e"
+    },
+    {
+      "path": "/img/ui/theme_relief/panel_corner_stars.webp",
+      "type": "image",
+      "size": 134728,
+      "revision": "b16365373528bb87"
+    },
+    {
+      "path": "/socket.io.min.js",
+      "type": "script",
+      "size": 49993,
+      "revision": "73eba16bc895fdfa"
+    },
+    {
+      "path": "/sounds/BGM/battle_earth_shadow.mp3",
+      "type": "audio",
+      "size": 1226925,
+      "revision": "05c4b7b03700d448"
+    },
+    {
+      "path": "/sounds/BGM/battle_stars_call.mp3",
+      "type": "audio",
+      "size": 5393805,
+      "revision": "1d76ca847405bab3"
+    },
+    {
+      "path": "/sounds/BGM/mainTheme.mp3",
+      "type": "audio",
+      "size": 2517204,
+      "revision": "3d5936bb47e5c743"
+    },
+    {
+      "path": "/sounds/SE/apophisEclipseDrums.mp3",
+      "type": "audio",
+      "size": 40773,
+      "revision": "c216e878a961e5b7"
+    },
+    {
+      "path": "/sounds/SE/close.mp3",
+      "type": "audio",
+      "size": 5851,
+      "revision": "571487c33b626132"
+    },
+    {
+      "path": "/sounds/SE/hpDamageVariants/hpDamage1.mp3",
+      "type": "audio",
+      "size": 4428,
+      "revision": "b8a6173612298a62"
+    },
+    {
+      "path": "/sounds/SE/hpDamageVariants/hpDamage2.mp3",
+      "type": "audio",
+      "size": 3331,
+      "revision": "5bc65ff1ebd28ea1"
+    },
+    {
+      "path": "/sounds/SE/hpDamageVariants/hpDamage3.mp3",
+      "type": "audio",
+      "size": 3175,
+      "revision": "85c6beb55ea68d94"
+    },
+    {
+      "path": "/sounds/SE/hpDamageVariants/hpDamage4.mp3",
+      "type": "audio",
+      "size": 4478,
+      "revision": "9cadc71382077920"
+    },
+    {
+      "path": "/sounds/SE/hpDamageVariants/hpDamage5.mp3",
+      "type": "audio",
+      "size": 3332,
+      "revision": "73e96474c1eaa2f1"
+    },
+    {
+      "path": "/sounds/SE/hpDamageVariants/hpDamage6.mp3",
+      "type": "audio",
+      "size": 7141,
+      "revision": "a4d240815060c868"
+    },
+    {
+      "path": "/sounds/SE/open.mp3",
+      "type": "audio",
+      "size": 14592,
+      "revision": "c759891a15caca85"
+    },
+    {
+      "path": "/sounds/SE/sanDamageVariants/sanDamage1.mp3",
+      "type": "audio",
+      "size": 160320,
+      "revision": "59a9fb08d561616e"
+    },
+    {
+      "path": "/sounds/SE/sanDamageVariants/sanDamage2.mp3",
+      "type": "audio",
+      "size": 257280,
+      "revision": "2a005112e88d3221"
+    },
+    {
+      "path": "/videos/ancient_god_tentacles.mp4",
+      "type": "video",
+      "size": 1245936,
+      "revision": "f924a79e0c8f0ad1"
+    },
+    {
+      "path": "/vite.svg",
+      "type": "image",
+      "size": 1497,
+      "revision": "4a748afd443918bb"
+    }
+  ]
+}
