@@ -22,7 +22,7 @@ const GOD_HIGHLIGHT_KEYS = new Set([
 export function getGodHighlightPath(godKey) {
   const normalized = String(godKey || '').trim().toUpperCase();
   if (!GOD_HIGHLIGHT_KEYS.has(normalized)) return null;
-  return `/img/card/highlight_clean/${normalized.toLowerCase()}.png`;
+  return `/img/card/highlight/${normalized.toLowerCase()}.webp`;
 }
 
 function GodHighlightBurst({
