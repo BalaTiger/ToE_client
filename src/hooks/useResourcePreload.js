@@ -1,141 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getAnimatedCardBackFramePaths } from "../constants/card";
-import { CARD_FACE_BACKGROUND_FILES, scheduleCardIllustrationIdleDownload } from "../components/cards/CardFaceAssets";
+import { scheduleCardIllustrationIdleDownload } from "../components/cards/CardFaceAssets";
 import { buildPublicUrl } from "../utils/url";
 
-const BOOTSTRAP_AUDIO_FILES = [
-  '/sounds/BGM/mainTheme.mp3',
-  '/sounds/BGM/battle_earth_shadow.mp3',
-  '/sounds/SE/hpDamageVariants/hpDamage1.mp3',
-  '/sounds/SE/hpDamageVariants/hpDamage2.mp3',
-  '/sounds/SE/hpDamageVariants/hpDamage3.mp3',
-  '/sounds/SE/hpDamageVariants/hpDamage4.mp3',
-  '/sounds/SE/hpDamageVariants/hpDamage5.mp3',
-  '/sounds/SE/hpDamageVariants/hpDamage6.mp3',
-  '/sounds/SE/apophisEclipseDrums.mp3',
-];
-
-const DEFERRED_AUDIO_FILES = [
-  '/sounds/BGM/battle_stars_call.mp3',
-];
-
-const VIDEO_FILES = [
-  '/videos/ancient_god_tentacles.mp4',
-];
-
-const CRITICAL_IMAGE_FILES = [
-  '/img/btn/btn_author.webp',
-  '/img/btn/btn_bright_green.webp',
-  '/img/btn/btn_bright_purple.webp',
-  '/img/btn/btn_dark_green.webp',
-  '/img/btn/btn_dark_red.webp',
-  '/img/btn/btn_dark_purple.webp',
-  '/img/btn/btn_roadmap.webp',
-  '/img/deco/deco_cth-no-bg.webp',
-  '/img/line/line_split-no-bg.webp',
-  '/img/line/line_titleguard-no-bg.webp',
-  '/img/logo/logo_cu-no-bg.webp',
-  '/img/logo/logo_hu-no-bg.webp',
-  '/img/logo/logo_tr-no-bg.webp',
-  '/img/title/texture_toehp.webp',
-  '/img/loading.webp',
-  ...CARD_FACE_BACKGROUND_FILES,
-];
-
-const EARTH_ANIMATED_CARD_BACK_IMAGE_FILES = getAnimatedCardBackFramePaths('地神的潜影', true);
-const STARS_ANIMATED_CARD_BACK_IMAGE_FILES = getAnimatedCardBackFramePaths('群星呼唤', true);
-
-// Resource groups are intentionally domain-based:
-// - bootstrap: first paint and first interaction
-// - earthTheme: first-match default theme
-// - otherThemes: assets only needed after the first match or multiplayer entry
-const RESOURCE_GROUPS = {
-  bootstrapAudio: BOOTSTRAP_AUDIO_FILES.map(path => ({ path, type: 'audio' })),
-  deferredAudio: DEFERRED_AUDIO_FILES.map(path => ({ path, type: 'audio' })),
-  bootstrapVideo: VIDEO_FILES.map(path => ({ path, type: 'video' })),
-  criticalUiImage: CRITICAL_IMAGE_FILES.map(path => ({ path, type: 'image' })),
-  earthTheme: [
-    '/img/bg/bg_main.webp',
-    '/img/bg/battle/earth_shadow.webp',
-    '/img/card/cardback_earth_shadow.webp',
-    '/img/ui/theme_relief/panel_corner_earth.webp',
-    '/img/ui/theme_relief/log_relief_earth.webp',
-    '/img/ui/theme_relief/hand_edge_earth.webp',
-    ...EARTH_ANIMATED_CARD_BACK_IMAGE_FILES,
-  ].map(path => ({ path, type: 'image' })),
-  otherThemes: [
-    '/img/bg/battle/sage_gift.webp',
-    '/img/bg/battle/stars_call.webp',
-    '/img/bg/battle/bone_fuel.webp',
-    '/img/card/cardback_sage_gift.webp',
-    '/img/card/cardback_stars_call.webp',
-    '/img/card/cardback_bone_fuel.webp',
-    '/img/ui/theme_relief/panel_corner_stars.webp',
-    '/img/ui/theme_relief/log_relief_stars.webp',
-    '/img/ui/theme_relief/hand_edge_stars.webp',
-    ...STARS_ANIMATED_CARD_BACK_IMAGE_FILES,
-  ].map(path => ({ path, type: 'image' })),
-};
-
-// Profiles describe *when* groups should be loaded, not what they mean semantically.
-const PRELOAD_PROFILES = {
-  bootstrap: [
-    ...RESOURCE_GROUPS.criticalUiImage,
-  ],
-  earthDeferred: [
-    ...RESOURCE_GROUPS.bootstrapAudio,
-    ...RESOURCE_GROUPS.bootstrapVideo,
-    ...RESOURCE_GROUPS.earthTheme,
-  ],
-  allDeferred: [
-    ...RESOURCE_GROUPS.bootstrapAudio,
-    ...RESOURCE_GROUPS.bootstrapVideo,
-    ...RESOURCE_GROUPS.deferredAudio,
-    ...RESOURCE_GROUPS.earthTheme,
-    ...RESOURCE_GROUPS.otherThemes,
-  ],
-};
-
-const RESOURCE_SIZE_FALLBACK = {
-  '/sounds/BGM/mainTheme.mp3': 2517204,
-  '/sounds/BGM/battle_earth_shadow.mp3': 1226925,
-  '/sounds/BGM/battle_stars_call.mp3': 5393805,
-  '/sounds/SE/hpDamageVariants/hpDamage1.mp3': 4428,
-  '/sounds/SE/hpDamageVariants/hpDamage2.mp3': 3331,
-  '/sounds/SE/hpDamageVariants/hpDamage3.mp3': 3175,
-  '/sounds/SE/hpDamageVariants/hpDamage4.mp3': 4478,
-  '/sounds/SE/hpDamageVariants/hpDamage5.mp3': 3332,
-  '/sounds/SE/hpDamageVariants/hpDamage6.mp3': 7141,
-  '/sounds/SE/apophisEclipseDrums.mp3': 40773,
-  '/videos/ancient_god_tentacles.mp4': 1245936,
-  '/img/btn/btn_author.webp': 6544,
-  '/img/btn/btn_bright_green.webp': 7300,
-  '/img/btn/btn_bright_purple.webp': 7254,
-  '/img/btn/btn_dark_green.webp': 6736,
-  '/img/btn/btn_dark_red.webp': 6016,
-  '/img/btn/btn_dark_purple.webp': 6646,
-  '/img/btn/btn_roadmap.webp': 7898,
-  '/img/deco/deco_cth-no-bg.webp': 7784,
-  '/img/line/line_split-no-bg.webp': 3830,
-  '/img/line/line_titleguard-no-bg.webp': 944,
-  '/img/logo/logo_cu-no-bg.webp': 1682,
-  '/img/logo/logo_hu-no-bg.webp': 2108,
-  '/img/logo/logo_tr-no-bg.webp': 2910,
-  '/img/title/texture_toehp.webp': 19544,
-  '/img/loading.webp': 10968,
-  '/img/card/cardbg_zone.webp': 145436,
-  '/img/card/cardbg_god.webp': 133576,
-};
-
-const RESOURCE_CACHE_VERSION = '2026-07-01-webp-assets';
+const RESOURCE_MANIFEST_PATH = '/resource-manifest.json';
 const CACHE_VERSION_KEY = 'toe_resources_cached_version';
-const RESOURCE_HEAD_TIMEOUT_MS = 3000;
 const RESOURCE_LOAD_TIMEOUT_MS = 8000;
+const BOOTSTRAP_IMAGE_CONCURRENCY = 5;
 
 const LOAD_ERROR_LABELS = {
   audio: '音频加载失败',
   video: '视频加载失败',
   image: '图片加载失败',
+  font: '字体加载失败',
+  script: '脚本加载失败',
+  style: '样式加载失败',
+};
+
+const FALLBACK_MANIFEST = {
+  version: 'fallback-webp-assets',
+  resources: [
+    { path: '/bg.webp', type: 'image', size: 179356 },
+    { path: '/img/bg/bg_main.webp', type: 'image', size: 199160 },
+    { path: '/img/loading.webp', type: 'image', size: 10968 },
+    { path: '/img/card/cardbg_zone.webp', type: 'image', size: 145436 },
+    { path: '/img/card/cardbg_god.webp', type: 'image', size: 133576 },
+  ],
 };
 
 export function formatFileSize(bytes) {
@@ -144,31 +33,34 @@ export function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function getFallbackResourceSize(resource) {
-  return RESOURCE_SIZE_FALLBACK[resource.path] || 0;
+function getConnectionProfile() {
+  if (typeof navigator === 'undefined') {
+    return { saveData: false, effectiveType: 'unknown', deferMedia: false, mediaConcurrency: 2 };
+  }
+  const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  const saveData = !!connection?.saveData;
+  const effectiveType = connection?.effectiveType || 'unknown';
+  const slow = saveData || effectiveType === 'slow-2g' || effectiveType === '2g';
+  const moderate = effectiveType === '3g';
+  return {
+    saveData,
+    effectiveType,
+    deferMedia: slow,
+    mediaConcurrency: slow ? 1 : moderate ? 1 : 2,
+  };
 }
 
-async function getResourceSize(resource) {
-  const fallbackSize = getFallbackResourceSize(resource);
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timeoutId = controller
-    ? setTimeout(() => controller.abort(), RESOURCE_HEAD_TIMEOUT_MS)
-    : null;
+async function loadManifest() {
   try {
-    const response = await fetch(buildPublicUrl(resource.path), {
-      method: 'HEAD',
-      signal: controller?.signal,
-    });
-    if (response.ok) {
-      const headerSize = parseInt(response.headers.get('content-length') || '0', 10) || 0;
-      if (headerSize > 0) return headerSize;
-    }
-  } catch {
-    // Some static hosts do not support HEAD/content-length; fallback sizes keep the UI useful.
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+    const response = await fetch(buildPublicUrl(RESOURCE_MANIFEST_PATH), { cache: 'no-cache' });
+    if (!response.ok) throw new Error(`manifest ${response.status}`);
+    const manifest = await response.json();
+    if (!Array.isArray(manifest.resources)) throw new Error('manifest resources missing');
+    return manifest;
+  } catch (error) {
+    console.warn('Resource manifest unavailable, using fallback.', error);
+    return FALLBACK_MANIFEST;
   }
-  return fallbackSize;
 }
 
 function loadResource(resource, timeoutMs = RESOURCE_LOAD_TIMEOUT_MS) {
@@ -234,6 +126,12 @@ function loadResource(resource, timeoutMs = RESOURCE_LOAD_TIMEOUT_MS) {
     });
   }
 
+  if (resource.type === 'font' && typeof document !== 'undefined' && document.fonts) {
+    return withTimeout((resolve) => {
+      fetch(url).finally(resolve);
+    });
+  }
+
   const img = new Image();
   img.crossOrigin = 'anonymous';
   return withTimeout((resolve, reject) => {
@@ -243,15 +141,30 @@ function loadResource(resource, timeoutMs = RESOURCE_LOAD_TIMEOUT_MS) {
   });
 }
 
-function scheduleDeferredPreload(resources) {
-  const run = async () => {
-    for (const resource of resources) {
+async function loadConcurrent(resources, concurrency, onSettled) {
+  let cursor = 0;
+  async function worker() {
+    while (cursor < resources.length) {
+      const resource = resources[cursor++];
       try {
         await loadResource(resource);
       } catch (error) {
-        console.warn(`Deferred resource failed: ${resource.path}`, error);
+        console.warn(`Resource failed: ${resource.path}`, error);
+        onSettled?.(resource, error);
+        continue;
       }
+      onSettled?.(resource, null);
     }
+  }
+  await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
+}
+
+function scheduleDeferredPreload(resources, concurrency) {
+  const run = async () => {
+    await loadConcurrent(resources, concurrency, resource => {
+      // Deferred failures are non-blocking; log at low volume.
+      if (!resource) return;
+    });
   };
 
   if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
@@ -261,6 +174,20 @@ function scheduleDeferredPreload(resources) {
   }
 }
 
+function selectBootstrapResources(manifest) {
+  return manifest.resources
+    .filter(resource => resource.type === 'image')
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function selectDeferredResources(manifest, loadAllThemes) {
+  const media = manifest.resources.filter(resource => resource.type === 'audio' || resource.type === 'video');
+  if (loadAllThemes) return media;
+  return media.filter(resource => {
+    return !resource.path.includes('battle_stars_call') && resource.type !== 'video';
+  });
+}
+
 export function useResourcePreload({ loadAllThemes = false } = {}) {
   const [isLoading, setIsLoading] = useState(true);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -268,11 +195,9 @@ export function useResourcePreload({ loadAllThemes = false } = {}) {
   const [currentFile, setCurrentFile] = useState('');
   const [totalSize, setTotalSize] = useState(0);
   const [loadedSize, setLoadedSize] = useState(0);
+  const manifestRef = useRef(null);
   const deferredStageRef = useRef('none');
-  const deferredResources = useMemo(
-    () => (loadAllThemes ? PRELOAD_PROFILES.allDeferred : PRELOAD_PROFILES.earthDeferred),
-    [loadAllThemes]
-  );
+  const networkProfile = useMemo(() => getConnectionProfile(), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -287,12 +212,19 @@ export function useResourcePreload({ loadAllThemes = false } = {}) {
     const setSafeLoadedSize = setIfMounted(setLoadedSize);
 
     const preloadResources = async () => {
+      const manifest = await loadManifest();
+      manifestRef.current = manifest;
+      const bootstrapResources = selectBootstrapResources(manifest);
+      const deferredResources = selectDeferredResources(manifest, loadAllThemes);
+
       try {
         const cachedVersion = localStorage.getItem(CACHE_VERSION_KEY);
-        if (cachedVersion === RESOURCE_CACHE_VERSION) {
+        if (cachedVersion === manifest.version) {
           setSafeIsLoading(false);
-          deferredStageRef.current = loadAllThemes ? 'all' : 'earth';
-          scheduleDeferredPreload(deferredResources);
+          deferredStageRef.current = loadAllThemes ? 'all' : 'base';
+          if (!networkProfile.deferMedia) {
+            scheduleDeferredPreload(deferredResources, networkProfile.mediaConcurrency);
+          }
           scheduleCardIllustrationIdleDownload();
           return;
         }
@@ -300,46 +232,35 @@ export function useResourcePreload({ loadAllThemes = false } = {}) {
         // localStorage error, proceed with preloading.
       }
 
-      let loadedCount = 0;
       let loadedBytes = 0;
-      const totalFiles = PRELOAD_PROFILES.bootstrap.length;
-      const resources = await Promise.all(
-        PRELOAD_PROFILES.bootstrap.map(async resource => ({
-          ...resource,
-          size: await getResourceSize(resource),
-        }))
-      );
-      const totalBytes = resources.reduce((sum, resource) => sum + resource.size, 0);
+      const totalBytes = bootstrapResources.reduce((sum, resource) => sum + (resource.size || 0), 0);
       setSafeTotalSize(totalBytes);
 
-      for (const resource of resources) {
+      await loadConcurrent(bootstrapResources, BOOTSTRAP_IMAGE_CONCURRENCY, (resource, error) => {
         if (cancelled) return;
-        try {
-          setSafeCurrentFile(resource.path.split('/').pop());
-          await loadResource(resource);
-        } catch (error) {
-          console.error(`Failed to load ${resource.type}: ${resource.path}`, error);
+        if (error) {
           const errorLabel = LOAD_ERROR_LABELS[resource.type] || '资源加载失败';
-          setSafeLoadingError(prev => prev || (error?.message ? `${errorLabel}: ${error.message}` : errorLabel));
+          setSafeLoadingError(prev => prev || `${errorLabel}: ${resource.path}`);
         }
-
-        loadedBytes += resource.size;
-        loadedCount++;
+        setSafeCurrentFile(resource.path.split('/').pop());
+        loadedBytes += resource.size || 0;
         setSafeLoadedSize(loadedBytes);
         setSafeLoadingProgress(totalBytes > 0
           ? Math.min(100, (loadedBytes / totalBytes) * 100)
-          : (loadedCount / totalFiles) * 100);
-      }
+          : 100);
+      });
 
       try {
-        localStorage.setItem(CACHE_VERSION_KEY, RESOURCE_CACHE_VERSION);
+        localStorage.setItem(CACHE_VERSION_KEY, manifest.version);
       } catch {
         // localStorage error, ignore.
       }
 
       setSafeIsLoading(false);
-      deferredStageRef.current = loadAllThemes ? 'all' : 'earth';
-      scheduleDeferredPreload(deferredResources);
+      deferredStageRef.current = loadAllThemes ? 'all' : 'base';
+      if (!networkProfile.deferMedia) {
+        scheduleDeferredPreload(deferredResources, networkProfile.mediaConcurrency);
+      }
       scheduleCardIllustrationIdleDownload();
     };
 
@@ -347,16 +268,17 @@ export function useResourcePreload({ loadAllThemes = false } = {}) {
     return () => {
       cancelled = true;
     };
-  }, [deferredResources, loadAllThemes]);
+  }, [loadAllThemes, networkProfile.deferMedia, networkProfile.mediaConcurrency]);
 
   useEffect(() => {
-    if (isLoading) return;
-    const nextStage = loadAllThemes ? 'all' : 'earth';
+    if (isLoading || !manifestRef.current) return;
+    const nextStage = loadAllThemes ? 'all' : 'base';
     if (deferredStageRef.current === nextStage) return;
     if (deferredStageRef.current === 'all') return;
     deferredStageRef.current = nextStage;
-    scheduleDeferredPreload(deferredResources);
-  }, [deferredResources, isLoading, loadAllThemes]);
+    if (networkProfile.deferMedia) return;
+    scheduleDeferredPreload(selectDeferredResources(manifestRef.current, loadAllThemes), networkProfile.mediaConcurrency);
+  }, [isLoading, loadAllThemes, networkProfile.deferMedia, networkProfile.mediaConcurrency]);
 
   return {
     isLoading,

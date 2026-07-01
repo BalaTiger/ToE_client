@@ -4,8 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "prebuild": "node scripts/generate-resource-manifest.mjs",
     "dev": "vite",
     "build": "vite build",
+    "prebuild:h5": "node scripts/generate-resource-manifest.mjs",
     "build:h5": "vite build --mode h5 --outDir dist-h5",
     "lint": "eslint .",
     "test": "vitest",

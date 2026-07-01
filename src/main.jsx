@@ -11,3 +11,18 @@ createRoot(document.getElementById('root')).render(
     <App />
   </StrictMode>,
 )
+
+if (
+  typeof window !== 'undefined' &&
+  typeof navigator !== 'undefined' &&
+  'serviceWorker' in navigator &&
+  typeof __TOE_H5_BUILD__ !== 'undefined' &&
+  !__TOE_H5_BUILD__ &&
+  window.location.protocol !== 'file:'
+) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register(buildPublicUrl('/sw.js')).catch(error => {
+      console.warn('Service worker registration failed.', error);
+    });
+  });
+}
