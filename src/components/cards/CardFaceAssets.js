@@ -8,8 +8,8 @@ export const CARD_FACE_HEIGHT = 590;
 export const CARD_FACE_RATIO = CARD_FACE_HEIGHT / CARD_FACE_WIDTH;
 
 export const CARD_FACE_BACKGROUND_FILES = [
-  '/img/card/cardbg_zone.png',
-  '/img/card/cardbg_god.png',
+  '/img/card/cardbg_zone.webp',
+  '/img/card/cardbg_god.webp',
 ];
 
 const CARD_FACE_META_BY_ID = {

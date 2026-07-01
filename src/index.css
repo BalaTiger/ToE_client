@@ -31,7 +31,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background-color: #242424;
-  background-image: var(--toe-html-bg-preview, url('/bg_preview.jpg'));
+  background-image: var(--toe-html-bg, url('/bg.webp'));
   background-size: cover;
   background-position: center;
   background-attachment: fixed;
@@ -43,25 +43,7 @@ body {
 }
 
 body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
-  transition: opacity 900ms ease;
-}
-
-body.toe-html-bg-ready {
-  background-image: var(--toe-html-bg-full, url('/bg.png'));
-}
-body.toe-html-bg-ready::before {
-  background-image: var(--toe-html-bg-full, url('/bg.png'));
-  opacity: 1;
+  content: none;
 }
 
 h1 {

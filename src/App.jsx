@@ -6,6 +6,7 @@ import { DecipherStoneCarvingOverlay } from './components/modals/DecipherStoneCa
 import { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel } from './components/board';
 import { RoomModal, LobbyModal, PrivacyToggleModal, TutorialOverlay, ConnectionErrorModal, DebugControls } from './components/lobby';
 import { BattleLogPanel } from './components/log/BattleLogPanel';
+import { LoadingPentagramSpinner } from './components/LoadingPentagramSpinner';
 import { BattlePhaseBar } from './components/phase/BattlePhaseBar';
 import InGameTutorialOverlay from './components/tutorial/InGameTutorialOverlay';
 import SoftGuideOverlay from './components/tutorial/SoftGuideOverlay';
@@ -664,16 +665,6 @@ export default function Game(){
   const { isLoading, loadingProgress, loadingError, currentFile, totalSize, loadedSize } = useResourcePreload({
     loadAllThemes: firstBattleStarted || onlineResourcesUnlocked,
   });
-  useEffect(() => {
-    if (isLoading) {
-      document.body.classList.remove('toe-html-bg-ready');
-      return undefined;
-    }
-    document.body.classList.add('toe-html-bg-ready');
-    return () => {
-      document.body.classList.remove('toe-html-bg-ready');
-    };
-  }, [isLoading]);
   
   // ── Tutorial ──────────────────────────────────────────────────
   const isH5Package=isH5PackagedRuntime();
@@ -4482,17 +4473,7 @@ export default function Game(){
           
           <div style={{marginBottom:32}}>
             <div style={{display:'flex',alignItems:'center',marginBottom:20}}>
-              <img 
-                src={buildPublicUrl('/img/loading.png')} 
-                style={{
-                  height: '16px', 
-                  marginRight: '10px',
-                  animation: 'spinLoader 1s linear infinite',
-                  filter: 'invert(60%) sepia(30%) saturate(300%) hue-rotate(30deg)',
-                  transformOrigin: 'center'
-                }} 
-                alt="Loading"
-              />
+              <LoadingPentagramSpinner style={{marginRight:10}} />
               <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontSize:12,fontStyle:'italic',color:'#a07838',lineHeight:1.5}}>
                 第一次前往遗迹的路会很长，请稍等<Ellipsis/>
               </div>

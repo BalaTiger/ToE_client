@@ -64,7 +64,7 @@ function BlackGoatTrail({ txPx, tyPx, delay = 0, duration = 1.28 }) {
         <div style={{
           width: 72,
           height: 72,
-          backgroundImage: `url('${buildPublicUrl('/img/effects/evil_goat_spirit_run_spritesheet.png')}')`,
+          backgroundImage: `url('${buildPublicUrl('/img/effects/evil_goat_spirit_run_spritesheet.webp')}')`,
           backgroundSize: '700% 100%',
           backgroundRepeat: 'no-repeat',
           filter: 'drop-shadow(0 0 10px rgba(74,222,128,0.95)) drop-shadow(0 0 18px rgba(21,128,61,0.75))',
