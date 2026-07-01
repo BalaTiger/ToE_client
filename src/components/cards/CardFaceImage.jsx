@@ -455,6 +455,8 @@ function CardFaceImage({
             inset: 0,
             width: CARD_FACE_WIDTH,
             height: CARD_FACE_HEIGHT,
+            objectFit: 'cover',
+            objectPosition: 'center',
             display: 'block',
             pointerEvents: 'none',
           }}
