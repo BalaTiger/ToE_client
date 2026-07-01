@@ -1,8 +1,7 @@
 ﻿import { GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay } from './components/cards';
+import React, { lazy, Suspense, useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { useCardHoverTooltip } from './components/cards/useCardHoverTooltip';
 import { GodChoiceModal, NyaBorrowModal, DrawRevealModal, TreasureDodgeModal, PeekHandModal, TortoiseOracleModal, FullLogModal } from './components/modals';
-const AboutModal = lazy(() => import('./components/modals').then(m => ({ default: m.AboutModal })));
-const RoadmapModal = lazy(() => import('./components/modals').then(m => ({ default: m.RoadmapModal })));
 import { DecipherStoneCarvingOverlay } from './components/modals/DecipherStoneCarvingOverlay';
 import { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel } from './components/board';
 import { RoomModal, LobbyModal, PrivacyToggleModal, TutorialOverlay, ConnectionErrorModal, DebugControls } from './components/lobby';
@@ -12,36 +11,9 @@ import InGameTutorialOverlay from './components/tutorial/InGameTutorialOverlay';
 import SoftGuideOverlay from './components/tutorial/SoftGuideOverlay';
 import { StartScreen } from './components/start/StartScreen';
 import { ThemeCornerOrnament, ThemeEdgeRelief } from './components/theme/ThemeOrnaments';
-import React, { lazy, Suspense, useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { buildPublicUrl } from './utils/url';
 // socket.io-client is loaded at runtime via CDN (only outside Claude Artifacts)
-
-function LocalGodPowerTag({ def, godLevel, children }) {
-  const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseMove, handleMouseLeave } = useCardHoverTooltip();
-  if (!def) return null;
-  return (
-    <>
-      <div
-        ref={cardRef}
-        onMouseEnter={handleMouseEnter}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
-        style={{
-          marginTop: 4,
-          padding: '3px 6px',
-          background: def.bgCol || '#100808',
-          border: `1px solid ${def.col || '#c06020'}88`,
-          borderRadius: 3,
-          cursor: 'default',
-        }}
-      >
-        {children}
-      </div>
-      {hover && <GodTooltip def={def} godLevel={godLevel || 1} position={tooltipPosition} />}
-    </>
-  );
-}
 
 import {
   FIXED_ZONE_CARD_VARIANTS_BY_KEY,
@@ -307,6 +279,35 @@ import {
   shouldTriggerRestSoftGuide,
 } from './game/softGuides';
 
+const AboutModal = lazy(() => import('./components/modals').then(m => ({ default: m.AboutModal })));
+const RoadmapModal = lazy(() => import('./components/modals').then(m => ({ default: m.RoadmapModal })));
+
+function LocalGodPowerTag({ def, godLevel, children }) {
+  const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseMove, handleMouseLeave } = useCardHoverTooltip();
+  if (!def) return null;
+  return (
+    <>
+      <div
+        ref={cardRef}
+        onMouseEnter={handleMouseEnter}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        style={{
+          marginTop: 4,
+          padding: '3px 6px',
+          background: def.bgCol || '#100808',
+          border: `1px solid ${def.col || '#c06020'}88`,
+          borderRadius: 3,
+          cursor: 'default',
+        }}
+      >
+        {children}
+      </div>
+      {hover && <GodTooltip def={def} godLevel={godLevel || 1} position={tooltipPosition} />}
+    </>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════
 //  UTILITIES
 // ══════════════════════════════════════════════════════════════
@@ -335,6 +336,9 @@ const getRuntimeServerUrl=()=>{
   if(typeof __TOE_RUNTIME_TARGET__!=='undefined'&&__TOE_RUNTIME_TARGET__==='h5'){
     return typeof __TOE_H5_SERVER_URL__!=='undefined'?__TOE_H5_SERVER_URL__:'https://toegame.online';
   }
+  if(typeof __TOE_RUNTIME_TARGET__!=='undefined'&&__TOE_RUNTIME_TARGET__==='web'){
+    if(typeof __TOE_WEB_SERVER_URL__!=='undefined'&&__TOE_WEB_SERVER_URL__)return __TOE_WEB_SERVER_URL__;
+  }
   const origin=window.location?.origin;
   if(!origin||origin==='null')return 'http://127.0.0.1:3002';
   return origin;
@@ -347,6 +351,9 @@ const getRuntimeSocketPath=()=>{
   }
   if(typeof __TOE_RUNTIME_TARGET__!=='undefined'&&__TOE_RUNTIME_TARGET__==='h5'){
     return typeof __TOE_H5_SOCKET_PATH__!=='undefined'?__TOE_H5_SOCKET_PATH__:'/socket.io';
+  }
+  if(typeof __TOE_RUNTIME_TARGET__!=='undefined'&&__TOE_RUNTIME_TARGET__==='web'){
+    return typeof __TOE_WEB_SOCKET_PATH__!=='undefined'?__TOE_WEB_SOCKET_PATH__:'/socket.io';
   }
   if(window.location?.origin==='null')return '/socket.io';
   return '/socket.io';

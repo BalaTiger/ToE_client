@@ -17,6 +17,8 @@ export default defineConfig(({ command, mode }) => {
   const runtimeTarget = command === 'serve' ? 'dev' : isH5 ? 'h5' : 'web';
   const h5ServerUrl = process.env.VITE_H5_SERVER_URL || 'https://toegame.online';
   const h5SocketPath = process.env.VITE_H5_SOCKET_PATH || '/socket.io';
+  const webServerUrl = process.env.VITE_WEB_SERVER_URL || '';
+  const webSocketPath = process.env.VITE_WEB_SOCKET_PATH || '/socket.io';
   const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:3002';
   const devSocketPath = process.env.VITE_DEV_SOCKET_PATH || '/socket.io';
   return {
@@ -28,6 +30,8 @@ export default defineConfig(({ command, mode }) => {
       __TOE_RUNTIME_TARGET__: JSON.stringify(runtimeTarget),
       __TOE_H5_SERVER_URL__: JSON.stringify(h5ServerUrl),
       __TOE_H5_SOCKET_PATH__: JSON.stringify(h5SocketPath),
+      __TOE_WEB_SERVER_URL__: JSON.stringify(webServerUrl),
+      __TOE_WEB_SOCKET_PATH__: JSON.stringify(webSocketPath),
       __TOE_DEV_SERVER_URL__: JSON.stringify(devServerUrl),
       __TOE_DEV_SOCKET_PATH__: JSON.stringify(devSocketPath),
     },

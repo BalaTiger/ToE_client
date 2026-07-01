@@ -796,8 +796,8 @@ const GOD_DEFS={
       {nightThreshold:6,desc:'立即让场地进入黑夜：所有角色选中目标时掷骰子，若小于等于6则改为错误目标并失去1SAN。选中目标累计12次后黑夜结束'},
     ],
   },
-  GEE:{
-    godKey:'GEE',name:'戈耳工',subtitle:'石化之视',power:'美杜莎之瞳',
+  GOR:{
+    godKey:'GOR',name:'戈耳工',subtitle:'石化之视',power:'美杜莎之瞳',
     col:'#608020',bgCol:'#0a1008',
     levels:[
       {desc:'效果待设计'},
@@ -814,8 +814,8 @@ const GOD_DEFS={
       {desc:'效果待设计'},
     ],
   },
-  BAQ:{
-    godKey:'BAQ',name:'八岐大蛇',subtitle:'祸津日神',power:'八山八海',
+  ORO:{
+    godKey:'ORO',name:'八岐大蛇',subtitle:'祸津日神',power:'八山八海',
     col:'#a06020',bgCol:'#181008',
     levels:[
       {desc:'效果待设计'},
@@ -850,8 +850,8 @@ const GOD_DEFS={
       {desc:'效果待设计'},
     ],
   },
-  FAN:{
-    godKey:'FAN',name:'堕落的范·海辛',subtitle:'吸血鬼猎手',power:'血之诅咒',
+  VAN:{
+    godKey:'VAN',name:'堕落的范·海辛',subtitle:'吸血鬼猎手',power:'血之诅咒',
     col:'#801020',bgCol:'#180808',
     levels:[
       {desc:'效果待设计'},
@@ -901,7 +901,7 @@ const EXPANSIONS = {
   '先贤的馈赠': {
     name: '先贤的馈赠',
     description: '古老文明遗留的神秘礼物',
-    godCardKeys: ['GEE', 'XUA', 'BAQ'],
+    godCardKeys: ['GOR', 'XUA', 'ORO'],
     godCopies: 4,
   },
   '群星呼唤': {
@@ -913,7 +913,7 @@ const EXPANSIONS = {
   '析骨为柴': {
     name: '析骨为柴',
     description: '以骨为柴，以血为火',
-    godCardKeys: ['TRA', 'FAN', 'DIX'],
+    godCardKeys: ['TRA', 'VAN', 'DIX'],
     godCopies: 4,
   },
 };
@@ -1025,11 +1025,11 @@ function getGodShortKey(godKey) {
 const GOD_NO_SUBTITLE_KEYS = new Set([
   'ZHU',
   'APO',
-  'GEE',
+  'GOR',
   'XUA',
-  'BAQ',
+  'ORO',
   'TRA',
-  'FAN',
+  'VAN',
   'VRI',
   'DIX',
 ]);
