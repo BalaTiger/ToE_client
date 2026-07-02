@@ -1,0 +1,84 @@
+kind	id	name	expansion	slot	polarity	flavorText
+zone	坠落	坠落	地神的潜影	A1	negative	
+zone	解读石刻	解读石刻	地神的潜影	A1	neutral	
+zone	霉变食物	霉变食物	地神的潜影	A1	neutral	
+zone	腐臭	腐臭	析骨为柴	A1	negative	
+zone	神圣菇肉	神圣菇肉	析骨为柴	A1	neutral	
+zone	蚂蚁虽小	蚂蚁虽小	地神的潜影	A2	positive	
+zone	遭遇塌方	遭遇塌方	地神的潜影	A2	negative	
+zone	亡者军团	亡者军团	地神的潜影	A2	negative	
+zone	吃下荧光苔藓	吃下荧光苔藓	地神的潜影	A3	neutral	“看什么看，没见过发光的人吗？”
+zone	目击尸体	目击尸体	析骨为柴	A3	negative	
+zone	磷火	磷火	析骨为柴	A3	negative	
+zone	无尽通道	无尽通道	地神的潜影	A3	neutral	
+zone	可生食木乃伊	可生食木乃伊	地神的潜影	A3	neutral	
+zone	绮丽诗篇	绮丽诗篇	先贤的馈赠	A4	neutral	
+zone	邪恶壁画	邪恶壁画	先贤的馈赠	A4	negative	
+zone	空谷传音	空谷传音	地神的潜影	A4	negative	
+zone	掘墓	掘墓	地神的潜影	A4	positive	
+zone	活埋	活埋	地神的潜影	A4	negative	
+zone	圣甲虫	圣甲虫	地神的潜影	B1	positive	
+zone	忏悔独白	忏悔独白	先贤的馈赠	B1	negative	
+zone	生命天平	生命天平	先贤的馈赠	B1	neutral	
+zone	幽闭恐惧	幽闭恐惧	地神的潜影	B1	negative	
+zone	增殖的Z	增殖的Z	地神的潜影	B1	positive	
+zone	新鲜空气	新鲜空气	地神的潜影	B2	positive	
+zone	黑泥沼	黑泥沼	群星呼唤	B2	negative	
+zone	地动山摇	地动山摇	地神的潜影	B2	negative	
+zone	投掷石块	投掷石块	地神的潜影	B2	neutral	
+zone	逆流	逆流	群星呼唤	B2	neutral	
+zone	猎获穴兽	猎获穴兽	地神的潜影	B3	positive	
+zone	封入石棺	封入石棺	地神的潜影	B3	negative	
+zone	窒息矿坑	窒息矿坑	地神的潜影	B3	negative	
+zone	地刺陷阱	地刺陷阱	地神的潜影	B4	negative	
+zone	落井下石	落井下石	地神的潜影	B4	negative	
+zone	两人一绳	两人一绳	地神的潜影	B4	neutral	
+zone	关键拼图	关键拼图	先贤的馈赠	C1	positive	
+zone	宝箱怪	宝箱怪	先贤的馈赠	C1	negative	
+zone	灵魂天平	灵魂天平	先贤的馈赠	C1	neutral	
+zone	活火山	活火山	地神的潜影	C1	negative	
+zone	烤盲鱼	烤盲鱼	地神的潜影	C1	positive	
+zone	石化配方	石化配方	地神的潜影	C1	neutral	
+zone	地下泉	地下泉	地神的潜影	C2	positive	
+zone	目击食人族	目击食人族	析骨为柴	C2	negative	
+zone	惊扰蝙蝠	惊扰蝙蝠	地神的潜影	C2	negative	
+zone	地磁反转	地磁反转	地神的潜影	C2	neutral	
+zone	龙之心	龙之心	地神的潜影	C3	positive	
+zone	引燃火把	引燃火把	地神的潜影	C3	neutral	
+zone	地底天空	地底天空	地神的潜影	C3	neutral	
+zone	触底反弹	触底反弹	地神的潜影	C4	neutral	
+zone	半物质化	半物质化	地神的潜影	C4	neutral	
+zone	夜风呼啸	夜风呼啸	地神的潜影	C4	negative	
+zone	秤心仪式	秤心仪式	地神的潜影	D1	neutral	
+zone	活死人哨兵	活死人哨兵	地神的潜影	D1	neutral	
+zone	钻地魔虫	钻地魔虫	地神的潜影	D1	negative	
+zone	穴居人战争	穴居人战争	地神的潜影	D2	neutral	
+zone	荆棘山路	荆棘山路	地神的潜影	D2	negative	
+zone	群蛇陷阱	群蛇陷阱	地神的潜影	D2	negative	
+zone	火中取栗	火中取栗	析骨为柴	D2	neutral	
+zone	灵龟卜祝	灵龟卜祝	析骨为柴	D3	positive	
+zone	先到先得	先到先得	先贤的馈赠	D3	positive	
+zone	玫瑰倒刺	玫瑰倒刺	先贤的馈赠	D3	neutral	
+zone	鼠群	鼠群	地神的潜影	D3	negative	
+zone	偷吃龙蛋	偷吃龙蛋	地神的潜影	D3	positive	
+zone	白化生物	白化生物	地神的潜影	D3	negative	
+zone	狂化	狂化	析骨为柴	D4	neutral	
+zone	扭伤	扭伤	地神的潜影	D4	negative	
+zone	同归深渊	同归深渊	地神的潜影	D4	negative	
+zone	鲜红夜宴	鲜红夜宴	析骨为柴	D4	neutral	
+zone	斯芬克斯	斯芬克斯	地神的潜影	D4	positive	
+god	APO	阿波菲斯		APO		
+god	CTH	拉莱耶之主		CTH		
+god	DIX	尸林魔君帝辛		DIX		
+god	GOR	戈耳工		GOR		
+god	HAS	无可名状者		HAS		
+god	KTH	爆燃者		KTH		
+god	NYA	伏行之混沌		NYA		“我的美少女外观？已经在做了，我骗过你吗？”
+god	ORO	八岐大蛇		ORO		
+god	SHU	森之领主		SHU		
+god	TRA	荣冠亡者特拉维科利		TRA		
+god	TSG	蟾蜍之神		TSG		
+god	VAN	堕落的范·海辛		VAN		
+god	VRI	弗栗多		VRI		
+god	XUA	轩辕坟三妖		XUA		
+god	ZHU	烛九阴		ZHU		

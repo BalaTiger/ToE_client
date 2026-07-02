@@ -242,7 +242,6 @@ import { APOPHIS_ANIMATION_STYLES } from './components/anim/apophisStyles';
 import { SNAKE_TRAP_ANIMATION_STYLES } from './components/anim/snakeTrapStyles';
 import { ENDLESS_CORRIDOR_ANIMATION_STYLES } from './components/anim/endlessCorridorStyles';
 import { GodResurrectionAnim, TreasureMapAnim, RoleRevealAnim } from './components/anim/WinAnims';
-import { TitleCandleFlames } from './components/anim/TitleCandleFlames';
 import { AnimOverlay } from './components/anim/AnimOverlay';
 import { ApophisNightBadge } from './components/anim/ApophisOverlays';
 import { formatFileSize, useResourcePreload } from './hooks/useResourcePreload';
@@ -10950,34 +10949,6 @@ const GLOBAL_STYLES=`
     100%{opacity:0}
   }
 
-  @keyframes titleFlameSway {
-    0%   {transform:translate(-50%,-50%) scale(var(--flame-scale,1)) rotate(-4deg)}
-    25%  {transform:translate(calc(-50% + var(--flame-drift) * 0.3),calc(-50% - 2px)) scale(calc(var(--flame-scale,1) * 1.02)) rotate(3deg)}
-    55%  {transform:translate(calc(-50% + var(--flame-drift)),calc(-50% - 4px)) scale(calc(var(--flame-scale,1) * 0.97)) rotate(-2deg)}
-    80%  {transform:translate(calc(-50% + var(--flame-drift) * 0.15),calc(-50% - 1px)) scale(calc(var(--flame-scale,1) * 1.03)) rotate(4deg)}
-    100% {transform:translate(-50%,-50%) scale(var(--flame-scale,1)) rotate(-4deg)}
-  }
-  @keyframes titleFlameFlicker {
-    0%,100% {opacity:0.1; filter:brightness(0.2) saturate(0.4)}
-    18%     {opacity:1;    filter:brightness(2.8) saturate(2.2)}
-    39%     {opacity:0.05; filter:brightness(0.1) saturate(0.3)}
-    61%     {opacity:1;    filter:brightness(2.5) saturate(2.0)}
-    82%     {opacity:0.1;  filter:brightness(0.2) saturate(0.4)}
-  }
-  @keyframes titleFlameGlow {
-    0%,100% {opacity:0.1; transform:translate(-50%,-58%) scale(0.6)}
-    45%     {opacity:1;   transform:translate(-50%,-62%) scale(1.8)}
-    70%     {opacity:0.2; transform:translate(-50%,-56%) scale(0.7)}
-  }
-  @keyframes titleFlameCore {
-    0%,100% {opacity:0.2; transform:translate(-50%,-50%) scale(0.5)}
-    35%     {opacity:1;   transform:translate(-50%,-54%) scale(1.8)}
-    72%     {opacity:0.2; transform:translate(-50%,-48%) scale(0.6)}
-  }
-  @keyframes flameSpriteSheet {
-    0% {backgroundPosition:0 0;}
-    100% {backgroundPosition:-192px -336px;}
-  }
   @keyframes tentacleEmerge {
     0%   {transform:translate(-50%, 0) scaleY(0); opacity:0}
     100% {transform:translate(-50%, 0) scaleY(1); opacity:1}

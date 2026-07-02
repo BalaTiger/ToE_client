@@ -12,6 +12,9 @@ const excludedNames = new Set([
   'resource-manifest.json',
   'sw.js',
 ]);
+const excludedPathParts = [
+  '/img/card/animated/source_refs/',
+];
 
 const typeByExt = new Map([
   ['.webp', 'image'],
@@ -26,6 +29,15 @@ const typeByExt = new Map([
   ['.js', 'script'],
 ]);
 
+function toPublicPath(file) {
+  return `/${path.relative(publicDir, file).replaceAll(path.sep, '/')}`;
+}
+
+function isExcludedPath(file) {
+  const publicPath = toPublicPath(file);
+  return excludedPathParts.some(part => publicPath.includes(part));
+}
+
 async function walk(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
   const files = [];
@@ -34,15 +46,11 @@ async function walk(dir) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       files.push(...await walk(fullPath));
-    } else if (entry.isFile()) {
+    } else if (entry.isFile() && !isExcludedPath(fullPath)) {
       files.push(fullPath);
     }
   }
   return files;
-}
-
-function toPublicPath(file) {
-  return `/${path.relative(publicDir, file).replaceAll(path.sep, '/')}`;
 }
 
 function getType(file) {

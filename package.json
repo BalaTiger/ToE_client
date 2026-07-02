@@ -9,6 +9,7 @@
     "build": "vite build",
     "prebuild:h5": "node scripts/generate-resource-manifest.mjs",
     "build:h5": "vite build --mode h5 --outDir dist-h5",
+    "flavor:template": "node scripts/generate-card-flavor-template.mjs",
     "lint": "eslint .",
     "test": "vitest",
     "test:run": "vitest run",

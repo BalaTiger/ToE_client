@@ -121,17 +121,19 @@ function getAdaptiveEffectFontSize(text, isGod, box) {
 function estimateFlavorLineCount(text, fontSize, boxWidth) {
   const len = [...(text || '')].length;
   if (len <= 0) return 1;
-  const charsPerLine = Math.max(1, Math.floor(boxWidth / (fontSize * 1.02)));
+  const charsPerLine = Math.max(1, Math.floor(boxWidth / (fontSize * 1.3)));
   return Math.ceil(len / charsPerLine);
 }
 
 function getAdaptiveFlavorFontSize(text, isGod, box) {
   let fontSize = isGod ? 17.5 : 18.5;
-  const lineHeight = 1.35;
-  const minFontSize = 11.5;
+  const lineHeight = 1.26;
+  const minFontSize = 10.5;
+  const innerWidth = box.width * 0.94;
+  const safeHeight = box.height - 7;
   while (fontSize > minFontSize) {
-    const lines = estimateFlavorLineCount(text, fontSize, box.width);
-    if (lines * fontSize * lineHeight <= box.height) break;
+    const lines = estimateFlavorLineCount(text, fontSize, innerWidth);
+    if (lines * fontSize * lineHeight <= safeHeight) break;
     fontSize -= 0.5;
   }
   return Math.round(fontSize * 10) / 10;
@@ -143,6 +145,7 @@ const SHADOW = '0 1px 0 rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.85)';
 const TITLE_FONT = "'Noto Serif SC','Source Han Serif SC','Songti SC','STZhongsong','SimSun',serif";
 const BODY_FONT = "'Noto Serif SC','Source Han Serif SC','Songti SC','SimSun',serif";
 const FLAVOR_FONT = "'KaiTi','STKaiti','FangSong','STFangsong','Noto Serif SC',serif";
+const FLAVOR_ITALIC_SKEW = 'skewX(-8deg)';
 const CODE_FONT = "'Cinzel Decorative','Cinzel','Times New Roman',serif";
 
 const EFFECT_BOX = {
@@ -247,11 +250,14 @@ function FlavorTextBlock({ text, isGod, box }) {
     >
       <div
         style={{
-          width: '100%',
+          width: '94%',
+          margin: '0 auto',
           fontFamily: FLAVOR_FONT,
           fontSize: getAdaptiveFlavorFontSize(text, isGod, box),
-          fontStyle: 'italic',
-          lineHeight: 1.35,
+          fontStyle: 'oblique 10deg',
+          transform: FLAVOR_ITALIC_SKEW,
+          transformOrigin: 'center center',
+          lineHeight: 1.26,
           whiteSpace: 'pre-wrap',
           overflowWrap: 'anywhere',
         }}

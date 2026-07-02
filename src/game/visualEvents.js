@@ -618,12 +618,6 @@ export function buildGodPowerBlockedStepsFromVisualEvents(state, oldState = null
     });
 }
 
-export function buildEarthquakeStepFromVisualEvents(state) {
-  const event = getEarthquakeVisualEvent(state);
-  if (!event) return null;
-  return buildCardEffectAnimStep(event, state);
-}
-
 export function buildCardEffectAnimStep(event, state) {
   if (!event) return null;
   if (event.effectKey === 'earthquake' || event.type === VISUAL_EVENT.EARTHQUAKE) {
@@ -745,22 +739,6 @@ export function buildCardEffectStepsFromVisualEvents(state, oldState = null, pre
       return step?.type === 'COMPOSITE' ? step.steps : [step];
     })
     .filter(Boolean);
-}
-
-export function buildEarthquakeStepFromVisualEvent(event, state) {
-  if (!event) return null;
-  return buildEarthquakeAnimStep({
-    beforePlayers: event.beforePlayers,
-    beforeDiscard: event.beforeDiscard,
-    discardEvents: event.discardEvents,
-    finalPlayers: state?.players,
-    msgs: event.msgs,
-  });
-}
-
-export function getEarthquakeVisualEvent(state) {
-  const events = getCardEffectVisualEvents(state, 'earthquake');
-  return events.length ? events[events.length - 1] : undefined;
 }
 
 export function getEndlessCorridorReplayVisualEvent(state) {
