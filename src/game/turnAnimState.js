@@ -1,4 +1,4 @@
-import { cardLogText, copyPlayers } from './coreUtils';
+import { copyPlayers } from './coreUtils';
 import { isAiSeat, localDisplayName } from './rotateState';
 import { bindAnimLogChunks } from './animLogs';
 import { buildAnimQueue, buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
@@ -38,55 +38,6 @@ export function withClearedReplayAnimFields(state, extra = {}) {
     _apophisTargetEvent: null,
     ...extra,
   });
-}
-
-export function buildLocalCthDecisionState(baseState, {
-  players,
-  deck,
-  discard,
-  log,
-  drawnCard,
-  remainingDraws,
-  needGodChoice = false,
-  preStatLogs = [],
-  statLogs = [],
-  extraState = {},
-}) {
-  const drawLogs = [`你 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}`, ...(needGodChoice ? [] : preStatLogs)];
-  if (needGodChoice) {
-    return {
-      ...baseState,
-      players,
-      deck,
-      discard,
-      log,
-      currentTurn: 0,
-      phase: 'GOD_CHOICE',
-      abilityData: { godCard: drawnCard, fromRest: true, cthDrawsRemaining: remainingDraws, drawerIdx: 0 },
-      drawReveal: null,
-      selectedCard: null,
-      _turnStartLogs: [],
-      _drawLogs: drawLogs,
-      _statLogs: [],
-      ...extraState,
-    };
-  }
-  return {
-    ...baseState,
-    players,
-    deck,
-    discard,
-    log,
-    currentTurn: 0,
-    phase: 'DRAW_REVEAL',
-    drawReveal: { card: drawnCard, msgs: [], needsDecision: true, forcedKeep: false, drawerIdx: 0, drawerName: players[0].name, fromRest: true },
-    selectedCard: null,
-    abilityData: { fromRest: true, cthDrawsRemaining: remainingDraws },
-    _turnStartLogs: [],
-    _drawLogs: drawLogs,
-    _statLogs: statLogs,
-    ...extraState,
-  };
 }
 
 export function buildPlayerTurnDrawQueue(oldGs, newGs, seedQueue = []) {

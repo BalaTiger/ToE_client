@@ -6,6 +6,7 @@ const RESOURCE_MANIFEST_PATH = '/resource-manifest.json';
 const CACHE_VERSION_KEY = 'toe_resources_cached_version';
 const RESOURCE_LOAD_TIMEOUT_MS = 8000;
 const BOOTSTRAP_IMAGE_CONCURRENCY = 5;
+const DEFERRED_IMAGE_CONCURRENCY = 2;
 
 const LOAD_ERROR_LABELS = {
   audio: '音频加载失败',
@@ -174,18 +175,34 @@ function scheduleDeferredPreload(resources, concurrency) {
   }
 }
 
+function isAnimatedCardBackResource(resource) {
+  return resource.path.startsWith('/img/card/animated/') && resource.path.includes('/frame_');
+}
+
+function isBootstrapImageResource(resource) {
+  if (resource.type !== 'image') return false;
+  if (isAnimatedCardBackResource(resource)) return false;
+  return true;
+}
+
+function getDeferredConcurrency(networkProfile) {
+  return Math.max(DEFERRED_IMAGE_CONCURRENCY, networkProfile.mediaConcurrency);
+}
+
 function selectBootstrapResources(manifest) {
   return manifest.resources
-    .filter(resource => resource.type === 'image')
+    .filter(isBootstrapImageResource)
     .sort((a, b) => a.path.localeCompare(b.path));
 }
 
 function selectDeferredResources(manifest, loadAllThemes) {
+  const deferredImages = manifest.resources.filter(isAnimatedCardBackResource);
   const media = manifest.resources.filter(resource => resource.type === 'audio' || resource.type === 'video');
-  if (loadAllThemes) return media;
-  return media.filter(resource => {
+  if (loadAllThemes) return [...deferredImages, ...media];
+  const baseMedia = media.filter(resource => {
     return !resource.path.includes('battle_stars_call') && resource.type !== 'video';
   });
+  return [...deferredImages, ...baseMedia];
 }
 
 export function useResourcePreload({ loadAllThemes = false } = {}) {
@@ -223,7 +240,7 @@ export function useResourcePreload({ loadAllThemes = false } = {}) {
           setSafeIsLoading(false);
           deferredStageRef.current = loadAllThemes ? 'all' : 'base';
           if (!networkProfile.deferMedia) {
-            scheduleDeferredPreload(deferredResources, networkProfile.mediaConcurrency);
+            scheduleDeferredPreload(deferredResources, getDeferredConcurrency(networkProfile));
           }
           scheduleCardIllustrationIdleDownload();
           return;
@@ -259,7 +276,7 @@ export function useResourcePreload({ loadAllThemes = false } = {}) {
       setSafeIsLoading(false);
       deferredStageRef.current = loadAllThemes ? 'all' : 'base';
       if (!networkProfile.deferMedia) {
-        scheduleDeferredPreload(deferredResources, networkProfile.mediaConcurrency);
+        scheduleDeferredPreload(deferredResources, getDeferredConcurrency(networkProfile));
       }
       scheduleCardIllustrationIdleDownload();
     };
@@ -277,7 +294,7 @@ export function useResourcePreload({ loadAllThemes = false } = {}) {
     if (deferredStageRef.current === 'all') return;
     deferredStageRef.current = nextStage;
     if (networkProfile.deferMedia) return;
-    scheduleDeferredPreload(selectDeferredResources(manifestRef.current, loadAllThemes), networkProfile.mediaConcurrency);
+    scheduleDeferredPreload(selectDeferredResources(manifestRef.current, loadAllThemes), getDeferredConcurrency(networkProfile));
   }, [isLoading, loadAllThemes, networkProfile.deferMedia, networkProfile.mediaConcurrency]);
 
   return {

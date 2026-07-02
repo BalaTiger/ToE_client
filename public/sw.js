@@ -17,6 +17,17 @@ async function putIfOk(cache, request) {
   }
 }
 
+function isAnimatedCardBackResource(resource) {
+  return resource.path.startsWith('/img/card/animated/') && resource.path.includes('/frame_');
+}
+
+function isCoreResource(resource) {
+  if (resource.type === 'font' || resource.type === 'style') return true;
+  if (resource.type !== 'image') return false;
+  if (isAnimatedCardBackResource(resource)) return false;
+  return true;
+}
+
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const manifest = await fetchManifest();
@@ -28,7 +39,7 @@ self.addEventListener('install', event => {
       '/socket.io.min.js',
       '/fonts/fonts.css',
       ...manifest.resources
-        .filter(resource => resource.type === 'image' || resource.type === 'font' || resource.type === 'style')
+        .filter(isCoreResource)
         .map(resource => resource.path),
     ];
     await Promise.allSettled([...new Set(corePaths)].map(path => putIfOk(cache, path)));

@@ -1,6 +1,6 @@
 {
-  "version": "d0db226e075e1217",
-  "generatedAt": "2026-07-01T09:30:58.311Z",
+  "version": "5a4d702881b552a6",
+  "generatedAt": "2026-07-02T05:09:07.427Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -303,18 +303,6 @@
       "revision": "a0e679357d8a9d9f"
     },
     {
-      "path": "/img/card/animated/source_refs/earth_shadow_detail.webp",
-      "type": "image",
-      "size": 32004,
-      "revision": "6748bad6b9392b83"
-    },
-    {
-      "path": "/img/card/animated/source_refs/stars_call_detail.webp",
-      "type": "image",
-      "size": 63248,
-      "revision": "67eef8a0e61995a2"
-    },
-    {
       "path": "/img/card/animated/stars_call/frame_00.webp",
       "type": "image",
       "size": 75282,
@@ -585,10 +573,88 @@
       "revision": "298fbbdf147f2874"
     },
     {
+      "path": "/img/card/illustration/active_volcano.webp",
+      "type": "image",
+      "size": 64352,
+      "revision": "83aa008fec822078"
+    },
+    {
+      "path": "/img/card/illustration/albino_creature.webp",
+      "type": "image",
+      "size": 123676,
+      "revision": "72446e4ec0960c4d"
+    },
+    {
       "path": "/img/card/illustration/apo.webp",
       "type": "image",
       "size": 330296,
       "revision": "e577942868e1dec0"
+    },
+    {
+      "path": "/img/card/illustration/berserk.webp",
+      "type": "image",
+      "size": 109254,
+      "revision": "256add68454b1343"
+    },
+    {
+      "path": "/img/card/illustration/black_mire.webp",
+      "type": "image",
+      "size": 89302,
+      "revision": "ccf430294eb7eb6f"
+    },
+    {
+      "path": "/img/card/illustration/bottom_bounce.webp",
+      "type": "image",
+      "size": 92872,
+      "revision": "f1aed1a33b2390b8"
+    },
+    {
+      "path": "/img/card/illustration/buried_alive.webp",
+      "type": "image",
+      "size": 99890,
+      "revision": "69be91be2ad99fd5"
+    },
+    {
+      "path": "/img/card/illustration/burrowing_worm.webp",
+      "type": "image",
+      "size": 99072,
+      "revision": "cedd0d6115daea09"
+    },
+    {
+      "path": "/img/card/illustration/cave_dweller_war.webp",
+      "type": "image",
+      "size": 122680,
+      "revision": "a0f2484653550471"
+    },
+    {
+      "path": "/img/card/illustration/chestnut_from_fire.webp",
+      "type": "image",
+      "size": 82336,
+      "revision": "c7ea3f7ff0510783"
+    },
+    {
+      "path": "/img/card/illustration/claustrophobia.webp",
+      "type": "image",
+      "size": 144298,
+      "revision": "9301882b95ee7bb4"
+    },
+    {
+      "path": "/img/card/illustration/collapse.webp",
+      "type": "image",
+      "size": 90352,
+      "revision": "382e6e5e797e774c"
+    },
+    {
+      "path": "/img/card/illustration/confessional_monologue.webp",
+      "type": "image",
+      "size": 84110,
+      "revision": "c759f49d5a376b43"
+    },
+    {
+      "path": "/img/card/illustration/crimson_night_banquet.webp",
+      "type": "image",
+      "size": 94356,
+      "revision": "f104947a12865720"
     },
     {
       "path": "/img/card/illustration/cth.webp",
@@ -597,10 +663,70 @@
       "revision": "ee76d8ba0b330ef4"
     },
     {
+      "path": "/img/card/illustration/decipher_stone_carving.webp",
+      "type": "image",
+      "size": 71370,
+      "revision": "e6094198e816563a"
+    },
+    {
       "path": "/img/card/illustration/dix.webp",
       "type": "image",
       "size": 341496,
       "revision": "6106ede4202cb006"
+    },
+    {
+      "path": "/img/card/illustration/dragon_heart.webp",
+      "type": "image",
+      "size": 108936,
+      "revision": "8acc9570d9c3d0c7"
+    },
+    {
+      "path": "/img/card/illustration/earthquake.webp",
+      "type": "image",
+      "size": 106512,
+      "revision": "232a24fba28bb073"
+    },
+    {
+      "path": "/img/card/illustration/echoing_valley.webp",
+      "type": "image",
+      "size": 94766,
+      "revision": "99d3544912febeee"
+    },
+    {
+      "path": "/img/card/illustration/endless_corridor.webp",
+      "type": "image",
+      "size": 96954,
+      "revision": "1b1aabb0fcec5deb"
+    },
+    {
+      "path": "/img/card/illustration/evil_mural.webp",
+      "type": "image",
+      "size": 66158,
+      "revision": "166c48a85621dffa"
+    },
+    {
+      "path": "/img/card/illustration/fall.webp",
+      "type": "image",
+      "size": 51460,
+      "revision": "824d5e848062af01"
+    },
+    {
+      "path": "/img/card/illustration/first_come_first_served.webp",
+      "type": "image",
+      "size": 82204,
+      "revision": "36ed09c9174ae1ed"
+    },
+    {
+      "path": "/img/card/illustration/fresh_air.webp",
+      "type": "image",
+      "size": 134746,
+      "revision": "f94f07ee1a2b94ad"
+    },
+    {
+      "path": "/img/card/illustration/geomagnetic_reversal.webp",
+      "type": "image",
+      "size": 83960,
+      "revision": "f7fa20559843a6a7"
     },
     {
       "path": "/img/card/illustration/gor.webp",
@@ -609,16 +735,88 @@
       "revision": "3a0dbccad2855911"
     },
     {
+      "path": "/img/card/illustration/gorgeous_poem.webp",
+      "type": "image",
+      "size": 107078,
+      "revision": "46c2210a904f6130"
+    },
+    {
+      "path": "/img/card/illustration/grave_digging.webp",
+      "type": "image",
+      "size": 125770,
+      "revision": "40f7546861a6938f"
+    },
+    {
+      "path": "/img/card/illustration/grilled_blind_fish.webp",
+      "type": "image",
+      "size": 117320,
+      "revision": "8b8eb33b0fca162d"
+    },
+    {
       "path": "/img/card/illustration/has.webp",
       "type": "image",
       "size": 266530,
       "revision": "8d95cb74f4db46fa"
     },
     {
+      "path": "/img/card/illustration/hunted_cave_beast.webp",
+      "type": "image",
+      "size": 130554,
+      "revision": "eed65e9dda1aa46d"
+    },
+    {
+      "path": "/img/card/illustration/ignite_torch.webp",
+      "type": "image",
+      "size": 65330,
+      "revision": "5e8e25e519cb8640"
+    },
+    {
+      "path": "/img/card/illustration/key_puzzle.webp",
+      "type": "image",
+      "size": 117376,
+      "revision": "d09f5353d4294a8a"
+    },
+    {
+      "path": "/img/card/illustration/kicking_down_the_well.webp",
+      "type": "image",
+      "size": 84444,
+      "revision": "e4ecf91652387c86"
+    },
+    {
       "path": "/img/card/illustration/kth.webp",
       "type": "image",
       "size": 422310,
       "revision": "fa71789e0d81f77e"
+    },
+    {
+      "path": "/img/card/illustration/legion_of_the_dead.webp",
+      "type": "image",
+      "size": 145940,
+      "revision": "8d7048091da5a8cc"
+    },
+    {
+      "path": "/img/card/illustration/life_balance.webp",
+      "type": "image",
+      "size": 90392,
+      "revision": "d2e8ebbd498dd093"
+    },
+    {
+      "path": "/img/card/illustration/mimic_chest.webp",
+      "type": "image",
+      "size": 102806,
+      "revision": "0f6a7b9d5997957e"
+    },
+    {
+      "path": "/img/card/illustration/moldy_food.webp",
+      "type": "image",
+      "size": 88252,
+      "revision": "a83f2e817150c12a"
+    },
+    {
+      "path": "/img/card/illustration/night_wind.webp",
+      "type": "image",
+      "size": 69864,
+      "revision": "31a6ff33ca40f6a4"
     },
     {
       "path": "/img/card/illustration/nya.webp",
@@ -633,10 +831,124 @@
       "revision": "c2fdbf9894f5c79f"
     },
     {
+      "path": "/img/card/illustration/petrifying_formula.webp",
+      "type": "image",
+      "size": 77700,
+      "revision": "cfcbaf14f3cf69ff"
+    },
+    {
+      "path": "/img/card/illustration/proliferating_z.webp",
+      "type": "image",
+      "size": 89862,
+      "revision": "09c516d6b41f15cc"
+    },
+    {
+      "path": "/img/card/illustration/rat_swarm.webp",
+      "type": "image",
+      "size": 95652,
+      "revision": "8226037fce8ee91a"
+    },
+    {
+      "path": "/img/card/illustration/raw_mummy.webp",
+      "type": "image",
+      "size": 116686,
+      "revision": "9cc3f0dadf169fc8"
+    },
+    {
+      "path": "/img/card/illustration/reverse_current.webp",
+      "type": "image",
+      "size": 105594,
+      "revision": "01cfcd64bb3bd89a"
+    },
+    {
+      "path": "/img/card/illustration/rose_thorns.webp",
+      "type": "image",
+      "size": 127168,
+      "revision": "9a07929543ac76db"
+    },
+    {
+      "path": "/img/card/illustration/same_abyss.webp",
+      "type": "image",
+      "size": 96284,
+      "revision": "8806e972013d8de8"
+    },
+    {
+      "path": "/img/card/illustration/scarab.webp",
+      "type": "image",
+      "size": 109386,
+      "revision": "c09ae326a07071e2"
+    },
+    {
+      "path": "/img/card/illustration/sealed_sarcophagus.webp",
+      "type": "image",
+      "size": 94432,
+      "revision": "cff67d4a42869064"
+    },
+    {
+      "path": "/img/card/illustration/semimaterialization.webp",
+      "type": "image",
+      "size": 125446,
+      "revision": "45d957ee5ab0fda1"
+    },
+    {
       "path": "/img/card/illustration/shu.webp",
       "type": "image",
       "size": 336046,
       "revision": "1544098c1a5e7580"
+    },
+    {
+      "path": "/img/card/illustration/snake_trap.webp",
+      "type": "image",
+      "size": 99100,
+      "revision": "790d8c17b2850ad8"
+    },
+    {
+      "path": "/img/card/illustration/soul_balance.webp",
+      "type": "image",
+      "size": 81052,
+      "revision": "e4efa1a5d1723ed1"
+    },
+    {
+      "path": "/img/card/illustration/sphinx.webp",
+      "type": "image",
+      "size": 95392,
+      "revision": "1aba3ad7b872ac63"
+    },
+    {
+      "path": "/img/card/illustration/spike_trap.webp",
+      "type": "image",
+      "size": 115456,
+      "revision": "dd812019abe8da55"
+    },
+    {
+      "path": "/img/card/illustration/sprain.webp",
+      "type": "image",
+      "size": 103058,
+      "revision": "3df504be326b0358"
+    },
+    {
+      "path": "/img/card/illustration/startled_bats.webp",
+      "type": "image",
+      "size": 96774,
+      "revision": "0165b78dc42a6220"
+    },
+    {
+      "path": "/img/card/illustration/stealing_dragon_egg.webp",
+      "type": "image",
+      "size": 81892,
+      "revision": "721c5103b6eda10f"
+    },
+    {
+      "path": "/img/card/illustration/stench.webp",
+      "type": "image",
+      "size": 94356,
+      "revision": "8f18e73058f91d3b"
+    },
+    {
+      "path": "/img/card/illustration/suffocating_mine.webp",
+      "type": "image",
+      "size": 89918,
+      "revision": "eb0d5b9ad567f218"
     },
     {
       "path": "/img/card/illustration/swallow_fluorescent_mosses.webp",
@@ -651,10 +963,22 @@
       "revision": "435d49ba99bf1abb"
     },
     {
+      "path": "/img/card/illustration/thorny_mountain_road.webp",
+      "type": "image",
+      "size": 100800,
+      "revision": "379250b830644cc2"
+    },
+    {
       "path": "/img/card/illustration/though_ants_are_small.webp",
       "type": "image",
       "size": 205452,
       "revision": "405d61852d33369c"
+    },
+    {
+      "path": "/img/card/illustration/throw_stone.webp",
+      "type": "image",
+      "size": 53374,
+      "revision": "9a6bb57ad62ff492"
     },
     {
       "path": "/img/card/illustration/tra.webp",
@@ -669,6 +993,36 @@
       "revision": "c5cd1acf8c4cf4e0"
     },
     {
+      "path": "/img/card/illustration/turtle_divination.webp",
+      "type": "image",
+      "size": 112092,
+      "revision": "028f5f13bfb89167"
+    },
+    {
+      "path": "/img/card/illustration/two_on_one_rope.webp",
+      "type": "image",
+      "size": 119278,
+      "revision": "0039bfc4786d6f90"
+    },
+    {
+      "path": "/img/card/illustration/undead_sentinel.webp",
+      "type": "image",
+      "size": 113502,
+      "revision": "10b2c1a4e4dd0d03"
+    },
+    {
+      "path": "/img/card/illustration/underground_sky.webp",
+      "type": "image",
+      "size": 124038,
+      "revision": "b02acfc5a5950147"
+    },
+    {
+      "path": "/img/card/illustration/underground_spring.webp",
+      "type": "image",
+      "size": 113652,
+      "revision": "e298829581e52ab4"
+    },
+    {
       "path": "/img/card/illustration/van.webp",
       "type": "image",
       "size": 211626,
@@ -679,6 +1033,30 @@
       "type": "image",
       "size": 458256,
       "revision": "99331ca9aeb72b85"
+    },
+    {
+      "path": "/img/card/illustration/weighing_of_heart.webp",
+      "type": "image",
+      "size": 113286,
+      "revision": "ac4469a3868da67e"
+    },
+    {
+      "path": "/img/card/illustration/will_o_wisp.webp",
+      "type": "image",
+      "size": 85442,
+      "revision": "54cfd6d62fa32641"
+    },
+    {
+      "path": "/img/card/illustration/witness_cannibals.webp",
+      "type": "image",
+      "size": 59132,
+      "revision": "486bf8705a495e26"
+    },
+    {
+      "path": "/img/card/illustration/witness_corpse.webp",
+      "type": "image",
+      "size": 65346,
+      "revision": "9714a4bfa2802be0"
     },
     {
       "path": "/img/card/illustration/xua.webp",
@@ -793,12 +1171,6 @@
       "type": "image",
       "size": 19544,
       "revision": "48b93d6978379bb9"
-    },
-    {
-      "path": "/img/title_candle.webp",
-      "type": "image",
-      "size": 25756,
-      "revision": "09c1677baa93e75f"
     },
     {
       "path": "/img/ui/theme_relief/hand_edge_earth.webp",
@@ -931,12 +1303,6 @@
       "type": "video",
       "size": 1245936,
       "revision": "f924a79e0c8f0ad1"
-    },
-    {
-      "path": "/vite.svg",
-      "type": "image",
-      "size": 1497,
-      "revision": "4a748afd443918bb"
     }
   ]
 }

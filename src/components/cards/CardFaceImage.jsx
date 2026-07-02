@@ -143,6 +143,7 @@ const SHADOW = '0 1px 0 rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.85)';
 const TITLE_FONT = "'Noto Serif SC','Source Han Serif SC','Songti SC','STZhongsong','SimSun',serif";
 const BODY_FONT = "'Noto Serif SC','Source Han Serif SC','Songti SC','SimSun',serif";
 const FLAVOR_FONT = "'KaiTi','STKaiti','FangSong','STFangsong','Noto Serif SC',serif";
+const FLAVOR_ITALIC_SKEW = 'skewX(-8deg)';
 const CODE_FONT = "'Cinzel Decorative','Cinzel','Times New Roman',serif";
 
 const EFFECT_BOX = {
@@ -247,10 +248,13 @@ function FlavorTextBlock({ text, isGod, box }) {
     >
       <div
         style={{
-          width: '100%',
+          width: '94%',
+          margin: '0 auto',
           fontFamily: FLAVOR_FONT,
           fontSize: getAdaptiveFlavorFontSize(text, isGod, box),
-          fontStyle: 'italic',
+          fontStyle: 'oblique 10deg',
+          transform: FLAVOR_ITALIC_SKEW,
+          transformOrigin: 'center center',
           lineHeight: 1.35,
           whiteSpace: 'pre-wrap',
           overflowWrap: 'anywhere',
