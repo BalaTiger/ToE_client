@@ -179,9 +179,14 @@ function isAnimatedCardBackResource(resource) {
   return resource.path.startsWith('/img/card/animated/') && resource.path.includes('/frame_');
 }
 
+function isCardIllustrationResource(resource) {
+  return resource.path.startsWith('/img/card/illustration/');
+}
+
 function isBootstrapImageResource(resource) {
   if (resource.type !== 'image') return false;
   if (isAnimatedCardBackResource(resource)) return false;
+  if (isCardIllustrationResource(resource)) return false;
   return true;
 }
 
@@ -241,8 +246,8 @@ export function useResourcePreload({ loadAllThemes = false } = {}) {
           deferredStageRef.current = loadAllThemes ? 'all' : 'base';
           if (!networkProfile.deferMedia) {
             scheduleDeferredPreload(deferredResources, getDeferredConcurrency(networkProfile));
+            scheduleCardIllustrationIdleDownload();
           }
-          scheduleCardIllustrationIdleDownload();
           return;
         }
       } catch {
@@ -277,8 +282,8 @@ export function useResourcePreload({ loadAllThemes = false } = {}) {
       deferredStageRef.current = loadAllThemes ? 'all' : 'base';
       if (!networkProfile.deferMedia) {
         scheduleDeferredPreload(deferredResources, getDeferredConcurrency(networkProfile));
+        scheduleCardIllustrationIdleDownload();
       }
-      scheduleCardIllustrationIdleDownload();
     };
 
     preloadResources();
