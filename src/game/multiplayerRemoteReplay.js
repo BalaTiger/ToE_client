@@ -1,7 +1,7 @@
 import { bindAnimLogChunks } from './animLogs';
 import { mergeApophisTargetQueue } from './apophisAnimQueue';
 import { buildAiHuntEventAnimQueue } from './animQueueCore';
-import { cardTransferStep, fullHandSwapSteps, swapCardsSteps } from './animQueueHelpers';
+import { cardTransferStep, filterSphinxResultQueue, fullHandSwapSteps, swapCardsSteps } from './animQueueHelpers';
 import {
   buildBewitchGiftReplay,
   buildInspectionReplay,
@@ -451,10 +451,10 @@ export function buildMpRemoteReplayAction({
         msgs: gainMsg ? [gainMsg] : [],
       }));
     } else {
-      resultQueue.push(...bindAnimLogChunks(
+      resultQueue.push(...filterSphinxResultQueue(bindAnimLogChunks(
         buildAnimQueue(previousGs || buildMaskedActionState(rotated), rotated),
         { statLogs: sphinxResultEvent.msgs || logDelta },
-      ));
+      )));
     }
     const queue = appendFinalStatePatch(
       withApophisTargetReplay(resultQueue, previousGs, rotated, buildAnimQueue),

@@ -1276,31 +1276,39 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         msgs.push(`${actor.name} 失去 ${card.hpVal || 2} HP`);
         hurtHP(ci, card.hpVal || 2);
       }
+      const actorHand = actor.hand || [];
+      const cardAlreadyInHand = card?.id ? actorHand.some(c => c?.id === card.id) : false;
+      const incomingCardCount = cardAlreadyInHand ? 0 : 1;
+      const getSameAbyssHandCount = i => (P[i]?.hand?.length || 0) + (i === ci ? incomingCardCount : 0);
       const livingPlayers = P.map((p, i) => i).filter(i => !P[i].isDead);
       if (livingPlayers.length === 0) return;
       let maxHand = -1;
       let maxHandPlayers = [];
       livingPlayers.forEach(i => {
-        if (P[i].hand.length > maxHand) {
-          maxHand = P[i].hand.length;
+        const handCount = getSameAbyssHandCount(i);
+        if (handCount > maxHand) {
+          maxHand = handCount;
           maxHandPlayers = [i];
-        } else if (P[i].hand.length === maxHand) {
+        } else if (handCount === maxHand) {
           maxHandPlayers.push(i);
         }
       });
       const targetIdx = maxHandPlayers[0];
-      const actorHandCount = P[ci].hand.length;
-      const discardCount = Math.max(0, P[targetIdx].hand.length - actorHandCount);
-      msgs.push(`【同归深渊】${P[targetIdx].name} 手牌最多（${P[targetIdx].hand.length} 张），须做出选择`);
+      const actorHandCount = getSameAbyssHandCount(ci);
+      const targetHandCount = getSameAbyssHandCount(targetIdx);
+      const discardCount = Math.max(0, targetHandCount - actorHandCount);
+      msgs.push(`【同归深渊】${P[targetIdx].name} 手牌最多（${targetHandCount} 张），须做出选择`);
       if (targetIdx === 0) {
         return {
           P, D, Disc, msgs,
           statePatch: {
             abilityData: {
               type: 'sameAbyssChoice',
+              actorIdx: ci,
               targetIdx,
               actorHandCount,
               discardCount,
+              targetHandCount,
             }
           }
         };

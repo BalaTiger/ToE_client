@@ -224,7 +224,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
       background:isEvil?'rgba(8,2,14,0.93)':'rgba(4,4,2,0.91)',
       display:'flex',alignItems:'center',justifyContent:'center',
       animation:exiting?'animFadeOut 0.18s ease-in forwards':'animFadeIn 0.12s ease-out forwards',
-      overflow:'hidden',
+      overflow:'visible',
     }}>
       <div style={{
         position:'absolute',width:320,height:320,borderRadius:'50%',
@@ -280,7 +280,14 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
 
       <div
         data-inspection-flip-card={isInspection ? 'true' : undefined}
-        style={{animation:'cardRise 1.2s cubic-bezier(0.15,0,0.35,1) forwards',perspective:700}}
+        style={{
+          position:'relative',
+          width:flipW,
+          height:flipH,
+          animation:'cardRise 1.2s cubic-bezier(0.15,0,0.35,1) forwards',
+          perspective:700,
+          overflow:'visible',
+        }}
       >
         <div style={{
           width:flipW,height:flipH,position:'relative',
@@ -312,7 +319,6 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
               boxShadow:(isNeutralCard)?'0 0 18px rgba(120,136,155,0.22)':`0 0 30px ${s.glow}88, 0 0 60px ${isEvil?'#6010aa':'#c8a96e'}44`,
             }}>
               <CardFaceImage card={card} godLevel={1} width={flipW} style={{borderRadius:5,boxShadow:'none'}}/>
-              {card?.isGod&&<GodHighlightBurst godKey={card.godKey} delayMs={1260} durationMs={1320} intensity={1.05}/>}
             </div>
           ):(
             <div style={{
@@ -337,6 +343,15 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
             </div>
           )}
         </div>
+        {card?.isGod&&(
+          <GodHighlightBurst
+            godKey={card.godKey}
+            delayMs={1260}
+            durationMs={1320}
+            intensity={0.92}
+            style={{inset:0,zIndex:4}}
+          />
+        )}
       </div>
     </div>
   );

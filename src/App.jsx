@@ -217,6 +217,7 @@ import {
   zhuHideCardStep,
   buryToDeckStep,
   cardTransferStep,
+  filterSphinxResultQueue,
   fullHandSwapSteps,
   swapCardsSteps,
 } from "./game/animQueueHelpers";
@@ -742,7 +743,7 @@ export default function Game(){
   const swapBlindDrawRef=useRef(null);
   useEffect(()=>{swapBlindDrawRef.current=swapBlindDraw;},[swapBlindDraw]);
   const isBattleScreen=!!gs;
-  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playApophisEclipseSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
+  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
   const activeDebugConfig=useMemo(()=>{
     if(!localDebugMode){
       return{
@@ -1945,7 +1946,7 @@ export default function Game(){
   },[gs?._inspectionEvents]);
   const houndsTimerVisible=!!gs?.houndsOfTindalosActive&&(!latestHoundsInspectionSeq||houndsRevealedSeq>=latestHoundsInspectionSeq);
 
-  useAnimationAudioEffects({ anim, playApophisEclipseSound });
+  useAnimationAudioEffects({ anim, playApophisEclipseSound, playThrowStoneThrowSound, playThrowStoneRollingSound });
 
   useEffect(()=>{
     if(!gs?.houndsOfTindalosActive){
@@ -7677,14 +7678,16 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const target=P[targetIdx];
     if(!target)return;
     const beforeLossPlayers=copyPlayers(P);
-    if(choice==='discard'&&discardCount>0){
-      for(let d=0;d<discardCount;d++){
-        if(target.hand.length>actorHandCount){
-          const c=target.hand.shift();
-          if(isBlackGoatYoung(c)||isTsathogguaSlime(c)){
-            L.push(`${target.name} 的衍生牌被销毁`);
-          }else if(c.type!=='blankZone'){
-            Disc.push(c);
+    if(choice==='discard'){
+      if(discardCount>0){
+        for(let d=0;d<discardCount;d++){
+          if(target.hand.length>actorHandCount){
+            const c=target.hand.shift();
+            if(isBlackGoatYoung(c)||isTsathogguaSlime(c)){
+              L.push(`${target.name} 的衍生牌被销毁`);
+            }else if(c.type!=='blankZone'){
+              Disc.push(c);
+            }
           }
         }
       }
@@ -7786,7 +7789,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       queue.push(cardTransferStep({fromPid:-1,dest:'player',toPid:gs.currentTurn,count:1,msgs:gainMsg?[gainMsg]:[]}));
     }else{
       const resultQueue=bindAnimLogChunks(buildAnimQueue(gs,newGsWithEvent),splitAnimBoundLogs(logDelta));
-      queue.push(...resultQueue);
+      queue.push(...filterSphinxResultQueue(resultQueue));
     }
     if(queue.length){
       setGs(p=>p?{...p,phase:nextPhase,abilityData:{}}:p);
@@ -9729,13 +9732,13 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           <div style={{background:'#150e07ee',border:'2px solid #d7b46a',boxShadow:'0 0 60px #d7b46a33, 0 0 120px #000a',borderRadius:4,padding:'20px 24px',maxWidth:560,width:'92%',textAlign:'center',pointerEvents:'auto'}}>
             <div style={{fontFamily:"'Cinzel',serif",color:'#e6c577',fontSize:16,letterSpacing:2,marginBottom:10}}>── 同归深渊 ──</div>
             <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#b09090',fontSize:14,marginBottom:18,lineHeight:1.5}}>
-              你手牌最多（{gs.players[gs.abilityData?.targetIdx]?.hand?.length||0} 张）。将手牌弃至与 {gs.players[gs.currentTurn]?.name||'对方'} 数量相等（{gs.abilityData?.actorHandCount||0} 张），或者失去 4 HP。
+              你手牌最多（{gs.abilityData?.targetHandCount??gs.players[gs.abilityData?.targetIdx]?.hand?.length??0} 张）。将手牌弃至与 {gs.players[gs.abilityData?.actorIdx??gs.currentTurn]?.name||'对方'} 数量相等（{gs.abilityData?.actorHandCount||0} 张），或者失去 4 HP。
             </div>
             <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
               {isLocalSameAbyssTargetPhase(gs)?(
                 <>
                   <button onClick={()=>sameAbyssSelect('discard')} style={{padding:'8px 16px',background:'#1a1008',border:'1.5px solid #8a6a3a',color:'#c8a96e',fontFamily:"'Cinzel',serif",fontSize:13,cursor:'pointer',borderRadius:3}}>
-                    弃置手牌至 {gs.abilityData?.actorHandCount||0} 张
+                    {(gs.abilityData?.discardCount||0)>0?'弃置手牌至':'不弃牌，保持'} {gs.abilityData?.actorHandCount||0} 张
                   </button>
                   <button onClick={()=>sameAbyssSelect('hp')} style={{padding:'8px 16px',background:'#1a1008',border:'1.5px solid #8a3a3a',color:'#c87878',fontFamily:"'Cinzel',serif",fontSize:13,cursor:'pointer',borderRadius:3}}>
                     失去 4 HP
@@ -9854,7 +9857,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         })()}
 
         {/* Scaled player areas wrapper */}
-        <div style={{overflow:'hidden',width:'100%',display:'flex',justifyContent:'center'}}>
+        <div style={{overflow:'visible',width:'100%',display:'flex',justifyContent:'center'}}>
           <div data-zoom-container style={{
             zoom:scaleRatio!==1?scaleRatio:'normal',
             width:DESIGN_WIDTH,
@@ -10086,7 +10089,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         />
 
         {/* Hand area */}
-        <div ref={handAreaRef} data-hand-area style={{background:'var(--toe-panel,#120900)',border:`1.5px solid ${myTurn?'var(--toe-line,#3a2010)':'var(--toe-line-dim,#2a1a08)'}`,borderRadius:3,padding:isMobile?`${mobileCssPx(10)}px ${mobileCssPx(10)}px`:isMobileLandscape?`${mobileCssPx(5)}px ${mobileCssPx(8)}px`:'11px 13px',position:'relative',overflow:'hidden'}}>
+        <div ref={handAreaRef} data-hand-area style={{background:'var(--toe-panel,#120900)',border:`1.5px solid ${myTurn?'var(--toe-line,#3a2010)':'var(--toe-line-dim,#2a1a08)'}`,borderRadius:3,padding:isMobile?`${mobileCssPx(10)}px ${mobileCssPx(10)}px`:isMobileLandscape?`${mobileCssPx(5)}px ${mobileCssPx(8)}px`:'11px 13px',position:'relative',overflow:'visible'}}>
           <ThemeEdgeRelief expansionKey={gs.expansionKey} side="right" opacity={0.26} style={{height:'100%'}}/>
             <div style={{display:'flex',alignItems:'center',marginBottom:isMobile||isMobileLandscape?mobileCssPx(9):9,gap:isMobile||isMobileLandscape?mobileCssPx(8):8}}>
             <span style={{fontFamily:"'Cinzel',serif",color:!isSpectating&&((phase==='DISCARD_PHASE'&&!anim&&!animExiting&&!pendingGsRef.current)||phase==='PLAYER_REVEAL_FOR_HUNT'||isLocalHuntRevealPrompt)?promptWarningTextColor:promptActiveTextColor,fontSize:interactionFontSizes.body,letterSpacing:isMobile?0.5:1}}>

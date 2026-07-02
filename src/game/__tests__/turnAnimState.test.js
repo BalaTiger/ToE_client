@@ -677,13 +677,16 @@ describe('buildTurnStartDrawReplayQueue', () => {
     });
     const diceIdx = replay.queue.findIndex(step => step.type === 'DICE_ROLL' && step.diceMode === 'throwStone');
     const randomIdx = replay.queue.findIndex(step => step.type === 'RANDOM_TARGET');
+    const throwIdx = replay.queue.findIndex(step => step.type === 'THROW_STONE');
     const transferIdx = replay.queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.effect === 'draw');
 
     expect(diceIdx).toBeGreaterThan(-1);
     expect(randomIdx).toBeGreaterThan(diceIdx);
-    expect(transferIdx).toBeGreaterThan(randomIdx);
+    expect(throwIdx).toBeGreaterThan(randomIdx);
+    expect(transferIdx).toBeGreaterThan(throwIdx);
     expect(replay.queue[diceIdx]).toMatchObject({ d1: 1, rollerName: '贝拉' });
     expect(replay.queue[randomIdx]).toMatchObject({ sourceIdx: 1, targetIdx: 0, roll: 1, damage: 0 });
+    expect(replay.queue[throwIdx]).toMatchObject({ sourceIdx: 1, targetIdx: 0, damage: 0 });
   });
 
   it('AI 寻宝者回合开始规避霉变食物时先播放规避骰再播放霉变食物骰', () => {

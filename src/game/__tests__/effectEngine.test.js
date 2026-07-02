@@ -364,6 +364,45 @@ describe('applyFx', () => {
     randomSpy.mockRestore();
   });
 
+  it('sameAbyssChoice: 触发者自己最多手牌时计入刚收入的同归深渊', () => {
+    const players = [
+      makePlayer({
+        name: '你',
+        hp: 10,
+        hand: [
+          { id: 'h1', name: '手牌1' },
+          { id: 'h2', name: '手牌2' },
+          { id: 'h3', name: '手牌3' },
+          { id: 'h4', name: '手牌4' },
+        ],
+      }),
+      makePlayer({
+        name: '贝拉',
+        hp: 10,
+        hand: [
+          { id: 'b1', name: '手牌1' },
+          { id: 'b2', name: '手牌2' },
+          { id: 'b3', name: '手牌3' },
+        ],
+      }),
+    ];
+    const card = { id: 'same-abyss', type: 'sameAbyssChoice', name: '同归深渊', hpVal: 2 };
+    const gs = makeGs({ players, currentTurn: 0 });
+
+    const res = applyFx(card, 0, null, players, [], [], gs);
+
+    expect(res.P[0].hp).toBe(8);
+    expect(res.statePatch.abilityData).toMatchObject({
+      type: 'sameAbyssChoice',
+      actorIdx: 0,
+      targetIdx: 0,
+      actorHandCount: 5,
+      targetHandCount: 5,
+      discardCount: 0,
+    });
+    expect(res.msgs).toContain('【同归深渊】你 手牌最多（5 张），须做出选择');
+  });
+
   it('allDamageHPRandomExtra: 全场伤害和随机额外伤害分为两个动画阶段', () => {
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.4);
     const players = [

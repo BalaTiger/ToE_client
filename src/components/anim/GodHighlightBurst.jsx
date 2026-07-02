@@ -45,9 +45,9 @@ function GodHighlightBurst({
         { scale: 2.62, opacity: 0.09, blur: 2.55, delay: 380 },
       ]
     : [
-        { scale: 1.24, opacity: 0.27, blur: 0.4, delay: 0 },
-        { scale: 1.98, opacity: 0.17, blur: 1.25, delay: 190 },
-        { scale: 3.08, opacity: 0.1, blur: 2.8, delay: 430 },
+        { scale: 1.08, opacity: 0.26, blur: 0.4, delay: 0 },
+        { scale: 1.56, opacity: 0.15, blur: 1.15, delay: 190 },
+        { scale: 2.14, opacity: 0.08, blur: 2.35, delay: 430 },
       ];
 
   return (
@@ -81,12 +81,16 @@ function GodHighlightBurst({
         @supports (mix-blend-mode: plus-lighter) {
           .toe-god-highlight-blend { mix-blend-mode: plus-lighter; }
         }
+        .toe-god-highlight-soft-edge {
+          -webkit-mask-image: radial-gradient(ellipse at center, #000 0%, #000 58%, rgba(0,0,0,0.72) 70%, transparent 88%);
+          mask-image: radial-gradient(ellipse at center, #000 0%, #000 58%, rgba(0,0,0,0.72) 70%, transparent 88%);
+        }
       `}</style>
       <span
-        className="toe-god-highlight-blend"
+        className="toe-god-highlight-blend toe-god-highlight-soft-edge"
         style={{
           position: 'absolute',
-          inset: panel ? '-38%' : '-48%',
+          inset: panel ? '-54%' : '-42%',
           borderRadius: '50%',
           background: 'radial-gradient(circle, rgba(255,255,255,0.16) 0%, rgba(247,213,139,0.11) 28%, rgba(160,66,255,0.07) 52%, transparent 76%)',
           opacity: 0,
@@ -98,15 +102,15 @@ function GodHighlightBurst({
       {layers.map((layer, index) => (
         <img
           key={index}
-          className="toe-god-highlight-blend"
+          className="toe-god-highlight-blend toe-god-highlight-soft-edge"
           src={src}
           alt=""
           draggable={false}
           style={{
             position: 'absolute',
-            inset: panel ? '-22%' : '-20%',
-            width: panel ? '144%' : '140%',
-            height: panel ? '144%' : '140%',
+            inset: panel ? '-42%' : '-28%',
+            width: panel ? '184%' : '156%',
+            height: panel ? '184%' : '156%',
             objectFit: fit,
             objectPosition: 'center',
             opacity: 0,

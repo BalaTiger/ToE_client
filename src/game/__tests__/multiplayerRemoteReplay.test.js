@@ -110,11 +110,12 @@ describe('buildMpRemoteReplayAction', () => {
     });
 
     expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
-    expect(action.queue.map(step => step.type)).toEqual(['DICE_ROLL', 'RANDOM_TARGET', 'HP_DAMAGE', 'STATE_PATCH']);
+    expect(action.queue.map(step => step.type)).toEqual(['DICE_ROLL', 'RANDOM_TARGET', 'THROW_STONE', 'HP_DAMAGE', 'STATE_PATCH']);
     expect(action.queue[0]).toMatchObject({ diceMode: 'throwStone', d1: 4, rollerName: '艾伦' });
     expect(action.queue[0]).not.toHaveProperty('dodgeSuccess');
     expect(action.queue[1]).toMatchObject({ sourceIdx: 1, targetIdx: 2, label: '投掷石块', roll: 4, damage: 3 });
-    expect(action.queue[2]).toMatchObject({ hitIndices: [2] });
+    expect(action.queue[2]).toMatchObject({ type: 'THROW_STONE', sourceIdx: 1, targetIdx: 2, damage: 3 });
+    expect(action.queue[3]).toMatchObject({ hitIndices: [2] });
     expect(action.queue.at(-1)).toMatchObject({ players: afterPlayers, log });
   });
 
@@ -1984,7 +1985,11 @@ describe('buildMpRemoteReplayAction', () => {
       guessCorrect: false,
       msgs: ['艾伦 猜测错误', '艾伦 失去 2 HP'],
     });
-    const wrongGuessAnimQueue = vi.fn(() => [{ type: 'HP_DAMAGE', hitIndices: [1] }]);
+    const wrongGuessAnimQueue = vi.fn(() => [
+      { type: 'DRAW_CARD', card: sphinxCard, targetPid: 1 },
+      { type: 'CARD_TRANSFER', dest: 'discard', fromPid: -1, count: 1 },
+      { type: 'HP_DAMAGE', hitIndices: [1] },
+    ]);
     const action = buildAction(makeState({
       currentTurn: 1,
       phase: 'ACTION',
@@ -2006,6 +2011,8 @@ describe('buildMpRemoteReplayAction', () => {
       guessCorrect: false,
     });
     expect(action.queue.some(step => step.type === 'HP_DAMAGE')).toBe(true);
+    expect(action.queue.slice(1).some(step => step.type === 'DRAW_CARD')).toBe(false);
+    expect(action.queue.some(step => step.type === 'CARD_TRANSFER')).toBe(false);
     expect(action.pendingGs._visualEvents).toEqual([]);
   });
 

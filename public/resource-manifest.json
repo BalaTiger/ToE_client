@@ -1,6 +1,6 @@
 {
-  "version": "512f39973db33cf7",
-  "generatedAt": "2026-07-02T10:19:10.284Z",
+  "version": "6c7728e18ead2265",
+  "generatedAt": "2026-07-02T12:36:11.753Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1287,6 +1287,12 @@
       "revision": "c759891a15caca85"
     },
     {
+      "path": "/sounds/SE/rolling-down.mp3",
+      "type": "audio",
+      "size": 67584,
+      "revision": "de66f2ebcb18ee0a"
+    },
+    {
       "path": "/sounds/SE/sanDamageVariants/sanDamage1.mp3",
       "type": "audio",
       "size": 160320,
@@ -1297,6 +1303,12 @@
       "type": "audio",
       "size": 257280,
       "revision": "2a005112e88d3221"
+    },
+    {
+      "path": "/sounds/SE/throw.mp3",
+      "type": "audio",
+      "size": 11702,
+      "revision": "acac9d9e5137fdb0"
     },
     {
       "path": "/videos/ancient_god_tentacles.mp4",

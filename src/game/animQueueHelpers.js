@@ -33,6 +33,11 @@ export function cardTransferStep(options={}){
   return step;
 }
 
+export function filterSphinxResultQueue(queue=[]){
+  if(!Array.isArray(queue))return [];
+  return queue.filter(step=>step?.type!=="DRAW_CARD"&&step?.type!=="CARD_TRANSFER");
+}
+
 function isInferredDiscardTransfer(step){
   return step?.type==="CARD_TRANSFER"&&step.dest==="discard"&&!!step.inferredHandLoss;
 }

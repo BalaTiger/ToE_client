@@ -272,6 +272,7 @@ export function buildAnimQueue(oldGs, newGs) {
   const randomTargetEvents = (newGs?._randomTargetEvents || []).filter(ev => ev?.seq > (oldGs?._randomTargetSeq || 0));
   const buildRandomTargetQueue = event => {
     const queue = [];
+    const isThrowStone = event?.label === '投掷石块';
     if (event.diceBefore && event.roll != null) {
       queue.push({
         type: 'DICE_ROLL',
@@ -288,6 +289,16 @@ export function buildAnimQueue(oldGs, newGs) {
       players: newGs.players,
       msgs: event.resultText ? [event.resultText] : [],
     });
+    if (isThrowStone) {
+      queue.push({
+        type: 'THROW_STONE',
+        sourceIdx: event.sourceIdx,
+        targetIdx: event.targetIdx,
+        damage: event.damage || 0,
+        players: newGs.players,
+        msgs: [],
+      });
+    }
     return queue;
   };
   if (newGs.gameOver && newGs.currentTurn !== oldGs.currentTurn) {

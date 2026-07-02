@@ -166,10 +166,11 @@ describe('animReplayEvents', () => {
       copyPlayers,
     });
 
-    expect(replay.queue.map(step => step.type)).toEqual(['DICE_ROLL', 'RANDOM_TARGET', 'HP_DAMAGE', 'STATE_PATCH']);
+    expect(replay.queue.map(step => step.type)).toEqual(['DICE_ROLL', 'RANDOM_TARGET', 'THROW_STONE', 'HP_DAMAGE', 'STATE_PATCH']);
     expect(replay.queue[0]).toMatchObject({ diceMode: 'throwStone', d1: 4 });
     expect(replay.queue[1]).toMatchObject({ sourceIdx: 0, targetIdx: 1, label: '投掷石块' });
-    expect(replay.queue[2]).toMatchObject({ hitIndices: [1] });
+    expect(replay.queue[2]).toMatchObject({ type: 'THROW_STONE', sourceIdx: 0, targetIdx: 1, damage: 3 });
+    expect(replay.queue[3]).toMatchObject({ hitIndices: [1] });
     expect(replay.queue.at(-1)).toMatchObject({
       players: afterPlayers,
       discard: newGs.discard,

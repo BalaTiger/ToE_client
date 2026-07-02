@@ -7,6 +7,7 @@ import { ApophisEclipseAnim } from './ApophisOverlays';
 import { SnakeTrapOverlay } from './SnakeTrapOverlay';
 import { EndlessCorridorTunnelAnim } from './EndlessCorridorOverlay';
 import { RandomTargetOverlay } from './RandomTargetOverlay';
+import { ThrowStoneOverlay } from './ThrowStoneOverlay';
 
 const NO_OVERLAY_TYPES = new Set([
   'CARD_TRANSFER',
@@ -51,6 +52,7 @@ const ANIM_RENDERERS = {
   VOLCANO: ({ anim, exiting }) => <VolcanoAnim anim={anim} exiting={exiting} />,
   SNAKE_TRAP: ({ anim, exiting }) => <SnakeTrapOverlay anim={anim} exiting={exiting} />,
   RANDOM_TARGET: ({ anim, exiting }) => <RandomTargetOverlay anim={anim} exiting={exiting} />,
+  THROW_STONE: ({ anim, exiting }) => <ThrowStoneOverlay anim={anim} exiting={exiting} />,
   APOPHIS_ECLIPSE: ({ exiting }) => <ApophisEclipseAnim exiting={exiting} />,
   ENDLESS_CORRIDOR_TUNNEL: ({ exiting }) => <EndlessCorridorTunnelAnim exiting={exiting} />,
   GOD_POWER_BLOCKED: ({ anim, exiting }) => <TorchWardOverlay anim={anim} exiting={exiting} />,

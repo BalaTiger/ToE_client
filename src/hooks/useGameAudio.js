@@ -10,7 +10,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
   const [audioReady, setAudioReady] = useState(false);
   const readyRef = useRef(false);
   const bgmRefs = useRef({ main: null, battleEarth: null, battleStars: null });
-  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], apophisEclipse: null });
+  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null });
   const currentTrackRef = useRef(null);
   const fadeTokenRef = useRef(0);
   const targetVolumesRef = useRef(Object.fromEntries(Object.entries(BGM_AUDIO_BY_KEY).map(([key, config]) => [key, config.volume])));
@@ -22,6 +22,8 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     const open = new Audio(buildPublicUrl('sounds/SE/open.mp3'));
     const close = new Audio(buildPublicUrl('sounds/SE/close.mp3'));
     const apophisEclipse = new Audio(buildPublicUrl('sounds/SE/apophisEclipseDrums.mp3'));
+    const throwStoneThrow = new Audio(buildPublicUrl('sounds/SE/throw.mp3'));
+    const throwStoneRolling = new Audio(buildPublicUrl('sounds/SE/rolling-down.mp3'));
     const hpDamageVariants = Array.from({ length: 6 }, (_, i) =>
       new Audio(buildPublicUrl(`sounds/SE/hpDamageVariants/hpDamage${i + 1}.mp3`))
     );
@@ -36,14 +38,18 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     });
     apophisEclipse.preload = 'auto';
     apophisEclipse.volume = 0.68;
+    throwStoneThrow.preload = 'auto';
+    throwStoneThrow.volume = 0.95;
+    throwStoneRolling.preload = 'auto';
+    throwStoneRolling.volume = 0.22;
     hpDamageVariants.forEach(audio => {
       audio.preload = 'auto';
       audio.volume = 0.7;
     });
     bgmRefs.current = { main, battleEarth, battleStars };
-    sfxRefs.current = { open, close, hpDamage: hpDamageVariants, apophisEclipse };
+    sfxRefs.current = { open, close, hpDamage: hpDamageVariants, apophisEclipse, throwStoneThrow, throwStoneRolling };
     return () => {
-      [main, battleEarth, battleStars, open, close, apophisEclipse, ...hpDamageVariants].forEach(audio => {
+      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, ...hpDamageVariants].forEach(audio => {
         try {
           audio.pause();
           audio.currentTime = 0;
@@ -189,6 +195,18 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
   const playOpenSound = useCallback(() => playSfx('open'), [playSfx]);
   const playCloseSound = useCallback(() => playSfx('close'), [playSfx]);
   const playApophisEclipseSound = useCallback(() => playSfx('apophisEclipse'), [playSfx]);
+  const playThrowStoneThrowSound = useCallback(() => playSfx('throwStoneThrow'), [playSfx]);
+  const playThrowStoneRollingSound = useCallback(({ hit = false } = {}) => {
+    noteUserGesture();
+    const audio = sfxRefs.current.throwStoneRolling;
+    if (!audio) return;
+    try {
+      audio.pause();
+      audio.volume = hit ? 0.22 : 0.42;
+      audio.currentTime = hit ? 0 : 0.6;
+      audio.play().catch(() => { });
+    } catch { /* ignore */ }
+  }, [noteUserGesture]);
 
   return {
     noteUserGesture,
@@ -197,5 +215,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     playTickSound,
     playHpDamageSound,
     playApophisEclipseSound,
+    playThrowStoneThrowSound,
+    playThrowStoneRollingSound,
   };
 }
