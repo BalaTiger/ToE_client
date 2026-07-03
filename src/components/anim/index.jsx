@@ -6,3 +6,4 @@ export { GodResurrectionAnim, TreasureMapAnim, RoleRevealAnim } from './WinAnims
 export { PaperCupSVG, SwapCupOverlay, HuntScopeOverlay, BewitchEyeOverlay, SanMistOverlay } from './SkillOverlays';
 export { CaveDuelAnim } from './AreaCardOverlays';
 export { AnimOverlay } from './AnimOverlay';
+export { GlobalAnimLayer } from './GlobalAnimLayer';

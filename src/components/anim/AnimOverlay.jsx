@@ -55,17 +55,19 @@ const ANIM_RENDERERS = {
   RANDOM_TARGET: ({ anim, exiting }) => <RandomTargetOverlay anim={anim} exiting={exiting} />,
   THROW_STONE: ({ anim, exiting }) => <ThrowStoneOverlay anim={anim} exiting={exiting} />,
   APOPHIS_ECLIPSE: ({ exiting }) => <ApophisEclipseAnim exiting={exiting} />,
-  ENDLESS_CORRIDOR_TUNNEL: ({ exiting }) => <EndlessCorridorTunnelAnim exiting={exiting} />,
+  ENDLESS_CORRIDOR_TUNNEL: ({ exiting, playEndlessCorridorTunnelSound }) => (
+    <EndlessCorridorTunnelAnim exiting={exiting} onTunnelRush={playEndlessCorridorTunnelSound} />
+  ),
   CTH_RLYEH_DREAM: ({ anim, exiting }) => <CthRlyehDreamOverlay anim={anim} exiting={exiting} />,
   GOD_POWER_BLOCKED: ({ anim, exiting }) => <TorchWardOverlay anim={anim} exiting={exiting} />,
   TSG_SLIME_POP: ({ anim, exiting }) => <TsathogguaSlimePopOverlay anim={anim} exiting={exiting} />,
   VRI_IMMORTAL_REVEAL: ({ anim, exiting }) => <VritraImmortalRevealOverlay anim={anim} exiting={exiting} />,
 };
 
-function AnimOverlay({ anim, exiting, expansionKey = '地神的潜影' }) {
+function AnimOverlay({ anim, exiting, expansionKey = '地神的潜影', playEndlessCorridorTunnelSound }) {
   if (!anim || NO_OVERLAY_TYPES.has(anim.type)) return null;
   const render = ANIM_RENDERERS[anim.type];
-  if (render) return render({ anim, exiting, expansionKey });
+  if (render) return render({ anim, exiting, expansionKey, playEndlessCorridorTunnelSound });
   return <GenericAnimOverlay anim={anim} exiting={exiting} />;
 }
 

@@ -244,7 +244,7 @@ import { APOPHIS_ANIMATION_STYLES } from './components/anim/apophisStyles';
 import { SNAKE_TRAP_ANIMATION_STYLES } from './components/anim/snakeTrapStyles';
 import { ENDLESS_CORRIDOR_ANIMATION_STYLES } from './components/anim/endlessCorridorStyles';
 import { GodResurrectionAnim, TreasureMapAnim, RoleRevealAnim } from './components/anim/WinAnims';
-import { AnimOverlay } from './components/anim/AnimOverlay';
+import { GlobalAnimLayer } from './components/anim/GlobalAnimLayer';
 import { ApophisNightBadge } from './components/anim/ApophisOverlays';
 import { formatFileSize, useResourcePreload } from './hooks/useResourcePreload';
 import { getMultiplayerIdentityStorage, useMultiplayerLobby } from './hooks/useMultiplayerLobby';
@@ -777,7 +777,7 @@ export default function Game(){
   const swapBlindDrawRef=useRef(null);
   useEffect(()=>{swapBlindDrawRef.current=swapBlindDraw;},[swapBlindDraw]);
   const isBattleScreen=!!gs;
-  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
+  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
   const activeDebugConfig=useMemo(()=>{
     if(!localDebugMode){
       return{
@@ -4564,8 +4564,6 @@ export default function Game(){
       <StartScreen
         vw={vw}
         handleUiSfxCapture={handleUiSfxCapture}
-        anim={anim}
-        animExiting={animExiting}
         startNewGame={startNewGame}
         handleMultiplayer={handleMultiplayer}
         multiLoading={multiLoading}
@@ -4590,6 +4588,11 @@ export default function Game(){
         renameCdActive={renameCdActive}
         playerUsername={playerUsername}
         playerUsernameSpecial={playerUsernameSpecial}
+      />
+      <GlobalAnimLayer
+        anim={anim}
+        animExiting={animExiting}
+        playEndlessCorridorTunnelSound={playEndlessCorridorTunnelSound}
       />
       {modal==='about'&&<Suspense fallback={null}><AboutModal onClose={()=>setModal(null)}/></Suspense>}
       {modal==='roadmap'&&<Suspense fallback={null}><RoadmapModal onClose={()=>setModal(null)}/></Suspense>}
@@ -10654,7 +10657,13 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     )}
 
     {/* All overlays with position:fixed + getBoundingClientRect() coordinates must render OUTSIDE the zoom container so viewport coords match */}
-    {!suppressAnim&&<AnimOverlay anim={anim} exiting={animExiting} expansionKey={gs.expansionKey}/>}
+    <GlobalAnimLayer
+      anim={anim}
+      animExiting={animExiting}
+      expansionKey={gs.expansionKey}
+      disabled={suppressAnim}
+      playEndlessCorridorTunnelSound={playEndlessCorridorTunnelSound}
+    />
     {!suppressAnim&&huntRevealBadge&&<HuntRevealedCardBadge card={huntRevealBadge.card} targetPid={huntRevealBadge.targetPid}/>}
     {!suppressAnim&&<SwapCupOverlay active={!!swapAnim} casterName={swapAnim?.casterName||''} targetName={swapAnim?.targetName||''}/>}
     {flyingEmojis.map(fe=>(

@@ -198,7 +198,16 @@ function EndlessCorridorCanvas({ exiting }) {
   return <canvas className="endlessCorridorCanvas" ref={canvasRef} aria-hidden="true" />;
 }
 
-export function EndlessCorridorTunnelAnim({ exiting }) {
+const TUNNEL_RUSH_SOUND_DELAY_MS = 1650;
+
+export function EndlessCorridorTunnelAnim({ exiting, onTunnelRush }) {
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      onTunnelRush?.();
+    }, TUNNEL_RUSH_SOUND_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [onTunnelRush]);
+
   return (
     <div className={`endlessCorridorOverlay${exiting ? ' ending' : ''}`}>
       <div className="endlessCorridorStage">

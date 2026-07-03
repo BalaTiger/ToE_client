@@ -25,4 +25,11 @@ export function useAnimationAudioEffects({
     }, ANIMATION_AUDIO_DELAY.THROW_STONE_ROLLING);
     return () => clearTimeout(timer);
   }, [anim, playThrowStoneThrowSound, playThrowStoneRollingSound]);
+
+  useEffect(() => {
+    // ENDLESS_CORRIDOR_TUNNEL sound is triggered by the tunnel overlay mount,
+    // so this hook stays intentionally inert to keep dev HMR hook order stable.
+    if (anim?.type !== 'ENDLESS_CORRIDOR_TUNNEL') return undefined;
+    return undefined;
+  }, [anim]);
 }

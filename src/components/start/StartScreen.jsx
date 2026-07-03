@@ -1,12 +1,9 @@
 import React from "react";
-import { AnimOverlay } from "../anim/AnimOverlay";
 import { buildPublicUrl } from "../../utils/url";
 
 export function StartScreen({
   vw,
   handleUiSfxCapture,
-  anim,
-  animExiting,
   startNewGame,
   handleMultiplayer,
   multiLoading,
@@ -87,7 +84,6 @@ export function StartScreen({
       />
       <div style={{ position: 'fixed', inset: 0, background: 'radial-gradient(ellipse at center,rgba(0,0,0,0.06) 28%,rgba(0,0,0,0.52) 100%)', pointerEvents: 'none' }} />
       <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(180deg,rgba(0,0,0,0.42) 0%,rgba(0,0,0,0.12) 24%,rgba(0,0,0,0.34) 100%)', pointerEvents: 'none' }} />
-      <AnimOverlay anim={anim} exiting={animExiting} />
       <div style={{ position: 'relative', zIndex: 1, width: '100%', display: 'flex', justifyContent: 'center' }}>
         <div style={{ width: frameWidth, maxWidth: '100%', padding: `${Math.round(lerp(8, 18, startWideProgress))}px ${Math.round(lerp(4, 10, startWideProgress))}px ${Math.round(lerp(14, 18, startWideProgress))}px` }}>
           <div style={{ position: 'relative', margin: '0 auto', paddingTop: Math.round(lerp(28, 54, startWideProgress)) }}>

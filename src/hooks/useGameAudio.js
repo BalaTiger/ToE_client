@@ -6,11 +6,15 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { BGM_AUDIO_BY_KEY, getBattleBgmKey } from '../constants/theme';
 import { buildPublicUrl } from '../utils/url';
 
+const ENDLESS_CORRIDOR_TUNNEL_VOLUME = 0.58;
+const ENDLESS_CORRIDOR_TUNNEL_STOP_MS = 2900;
+
 export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
   const [audioReady, setAudioReady] = useState(false);
   const readyRef = useRef(false);
   const bgmRefs = useRef({ main: null, battleEarth: null, battleStars: null });
-  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null });
+  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null });
+  const sfxStopTimersRef = useRef({});
   const currentTrackRef = useRef(null);
   const fadeTokenRef = useRef(0);
   const targetVolumesRef = useRef(Object.fromEntries(Object.entries(BGM_AUDIO_BY_KEY).map(([key, config]) => [key, config.volume])));
@@ -24,6 +28,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     const apophisEclipse = new Audio(buildPublicUrl('sounds/SE/apophisEclipseDrums.mp3'));
     const throwStoneThrow = new Audio(buildPublicUrl('sounds/SE/throw.mp3'));
     const throwStoneRolling = new Audio(buildPublicUrl('sounds/SE/rolling-down.mp3'));
+    const endlessCorridorTunnel = new Audio(buildPublicUrl('sounds/SE/tunnel-wind.mp3'));
     const hpDamageVariants = Array.from({ length: 6 }, (_, i) =>
       new Audio(buildPublicUrl(`sounds/SE/hpDamageVariants/hpDamage${i + 1}.mp3`))
     );
@@ -56,6 +61,8 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     throwStoneThrow.volume = 0.95;
     throwStoneRolling.preload = 'auto';
     throwStoneRolling.volume = 0.22;
+    endlessCorridorTunnel.preload = 'auto';
+    endlessCorridorTunnel.volume = ENDLESS_CORRIDOR_TUNNEL_VOLUME;
     hpDamageVariants.forEach(audio => {
       audio.preload = 'auto';
       audio.volume = 0.7;
@@ -73,9 +80,11 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       audio.volume = 0.52;
     });
     bgmRefs.current = { main, battleEarth, battleStars };
-    sfxRefs.current = { open, close, hpDamage: hpDamageVariants, sanDamage: sanDamageVariants, hpRecover: hpRecoverVariants, sanRecover: sanRecoverVariants, apophisEclipse, throwStoneThrow, throwStoneRolling };
+    sfxRefs.current = { open, close, hpDamage: hpDamageVariants, sanDamage: sanDamageVariants, hpRecover: hpRecoverVariants, sanRecover: sanRecoverVariants, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel };
     return () => {
-      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
+      Object.values(sfxStopTimersRef.current).forEach(timer => clearTimeout(timer));
+      sfxStopTimersRef.current = {};
+      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
         try {
           audio.pause();
           audio.currentTime = 0;
@@ -250,6 +259,26 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       audio.play().catch(() => { });
     } catch { /* ignore */ }
   }, [noteUserGesture]);
+  const playEndlessCorridorTunnelSound = useCallback(() => {
+    noteUserGesture();
+    const audio = sfxRefs.current.endlessCorridorTunnel;
+    if (!audio) return;
+    clearTimeout(sfxStopTimersRef.current.endlessCorridorTunnel);
+    try {
+      audio.pause();
+      audio.volume = ENDLESS_CORRIDOR_TUNNEL_VOLUME;
+      audio.currentTime = 0;
+      audio.play().catch(error => {
+        console.warn('[audio] endless corridor tunnel sound blocked', error);
+      });
+      sfxStopTimersRef.current.endlessCorridorTunnel = setTimeout(() => {
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+        } catch { /* ignore */ }
+      }, ENDLESS_CORRIDOR_TUNNEL_STOP_MS);
+    } catch { /* ignore */ }
+  }, [noteUserGesture]);
 
   return {
     noteUserGesture,
@@ -263,5 +292,6 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     playApophisEclipseSound,
     playThrowStoneThrowSound,
     playThrowStoneRollingSound,
+    playEndlessCorridorTunnelSound,
   };
 }

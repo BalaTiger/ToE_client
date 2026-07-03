@@ -1,6 +1,6 @@
 {
-  "version": "353046fe3bc7f415",
-  "generatedAt": "2026-07-03T08:34:03.054Z",
+  "version": "14910860374d71da",
+  "generatedAt": "2026-07-03T09:55:29.817Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1375,6 +1375,18 @@
       "type": "audio",
       "size": 11702,
       "revision": "acac9d9e5137fdb0"
+    },
+    {
+      "path": "/sounds/SE/tunnel-wind.mp3",
+      "type": "audio",
+      "size": 70261,
+      "revision": "3f5fdee878863cbd"
+    },
+    {
+      "path": "/sounds/SE/tunnel.mp3",
+      "type": "audio",
+      "size": 217338,
+      "revision": "6322c033b3081405"
     },
     {
       "path": "/videos/ancient_god_tentacles.mp4",
