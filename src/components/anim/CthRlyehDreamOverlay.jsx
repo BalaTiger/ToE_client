@@ -27,18 +27,29 @@ const DREAM_EDGE_MASK = `
 `;
 
 const BUBBLES = [
-  { x: -34, y: 22, dx: -22, size: 8, delay: 0.02, dur: 2.6 },
-  { x: -18, y: 8, dx: -12, size: 5, delay: 0.24, dur: 2.1 },
-  { x: 8, y: 24, dx: 9, size: 7, delay: 0.12, dur: 2.4 },
-  { x: 26, y: 4, dx: 20, size: 10, delay: 0.34, dur: 2.8 },
-  { x: 40, y: 30, dx: 30, size: 6, delay: 0.48, dur: 2.2 },
-  { x: -42, y: -6, dx: -28, size: 4, delay: 0.58, dur: 2.5 },
-  { x: -6, y: -18, dx: -5, size: 9, delay: 0.42, dur: 2.7 },
-  { x: 19, y: -14, dx: 14, size: 5, delay: 0.72, dur: 2.3 },
-  { x: 2, y: 38, dx: 4, size: 12, delay: 0.84, dur: 2.9 },
-  { x: 34, y: -22, dx: 26, size: 7, delay: 0.98, dur: 2.4 },
-  { x: -25, y: 34, dx: -18, size: 6, delay: 1.1, dur: 2.6 },
-  { x: 14, y: 12, dx: 11, size: 4, delay: 1.22, dur: 2.05 },
+  { x: -0.72, y: -0.7, dx: -7.8, dy: -5.4, size: 4, end: 3.2, blur: 2.5, delay: 0.02, dur: 1.28, sway: -0.7 },
+  { x: -0.69, y: -0.73, dx: -8.6, dy: -5.8, size: 6, end: 5.1, blur: 2.1, delay: 0.16, dur: 1.42, sway: 0.5 },
+  { x: -0.66, y: -0.69, dx: -7.2, dy: -5.0, size: 3, end: 4.0, blur: 2.8, delay: 0.29, dur: 1.18, sway: -0.3 },
+  { x: -0.62, y: -0.72, dx: -9.4, dy: -6.1, size: 8, end: 6.6, blur: 1.9, delay: 0.42, dur: 1.5, sway: 0.8, front: true },
+  { x: 0.04, y: -1.04, dx: 0.6, dy: -8.4, size: 5, end: 2.7, blur: 2.4, delay: 0.04, dur: 1.58 },
+  { x: 0.14, y: -1.0, dx: 1.9, dy: -7.5, size: 11, end: 4.9, blur: 1.7, delay: 0.24, dur: 1.7, front: true },
+  { x: 0.31, y: -0.95, dx: 4.6, dy: -7.1, size: 4, end: 5.8, blur: 2.6, delay: 0.58, dur: 1.24 },
+  { x: 0.9, y: -0.35, dx: 10.8, dy: -3.0, size: 6, end: 3.8, blur: 2.0, delay: 0.08, dur: 1.44, sway: 0.9 },
+  { x: 0.94, y: -0.27, dx: 12.6, dy: -2.2, size: 9, end: 7.1, blur: 1.8, delay: 0.2, dur: 1.34, sway: -0.4, front: true },
+  { x: 0.98, y: -0.2, dx: 11.4, dy: -1.7, size: 5, end: 4.5, blur: 2.2, delay: 0.34, dur: 1.2, sway: 0.2 },
+  { x: 0.88, y: 0.34, dx: 10.6, dy: 3.2, size: 7, end: 4.0, blur: 2.1, delay: 0.46, dur: 1.62, sway: -0.9 },
+  { x: 0.56, y: 0.78, dx: 7.6, dy: 7.0, size: 13, end: 3.4, blur: 1.5, delay: 0.12, dur: 1.82 },
+  { x: 0.5, y: 0.83, dx: 6.7, dy: 8.5, size: 5, end: 7.8, blur: 2.6, delay: 0.36, dur: 1.36, front: true },
+  { x: 0.42, y: 0.89, dx: 5.2, dy: 9.2, size: 10, end: 5.3, blur: 1.8, delay: 0.5, dur: 1.48 },
+  { x: -0.12, y: 1.03, dx: -1.5, dy: 9.8, size: 4, end: 6.4, blur: 2.9, delay: 0.1, dur: 1.22 },
+  { x: -0.18, y: 1.0, dx: -2.8, dy: 10.6, size: 15, end: 4.6, blur: 1.4, delay: 0.28, dur: 1.74, front: true },
+  { x: -0.25, y: 0.96, dx: -3.8, dy: 8.8, size: 6, end: 8.9, blur: 2.8, delay: 0.52, dur: 1.3, front: true },
+  { x: -0.86, y: 0.36, dx: -10.2, dy: 3.5, size: 5, end: 3.6, blur: 2.3, delay: 0.18, dur: 1.68 },
+  { x: -0.9, y: 0.26, dx: -11.8, dy: 2.4, size: 12, end: 6.9, blur: 1.7, delay: 0.4, dur: 1.38, sway: 0.6, front: true },
+  { x: -0.96, y: 0.18, dx: -12.5, dy: 1.6, size: 4, end: 5.0, blur: 2.7, delay: 0.55, dur: 1.15, sway: -0.8 },
+  { x: -0.98, y: -0.08, dx: -10.4, dy: -0.8, size: 7, end: 2.6, blur: 2.2, delay: 0.7, dur: 1.78 },
+  { x: -0.34, y: -0.95, dx: -4.1, dy: -7.4, size: 18, end: 7.4, blur: 2.3, delay: 0.32, dur: 1.2, front: true },
+  { x: 0.73, y: 0.58, dx: 12.4, dy: 8.6, size: 20, end: 3.1, blur: 2.0, delay: 0.62, dur: 1.46, front: true },
 ];
 
 const EDGE_CLOUDS = [
@@ -335,9 +346,120 @@ function formatSvgPoints(points) {
   return points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
 }
 
+function clamp01(value) {
+  if (value <= 0) return 0;
+  if (value >= 1) return 1;
+  return value;
+}
+
+function interpolateKeyframes(frames, progress) {
+  if (progress <= frames[0].t) return frames[0].value;
+  for (let i = 1; i < frames.length; i += 1) {
+    const prev = frames[i - 1];
+    const next = frames[i];
+    if (progress <= next.t) {
+      const local = (progress - prev.t) / (next.t - prev.t);
+      const eased = 1 - Math.pow(1 - local, 3);
+      return prev.value + (next.value - prev.value) * eased;
+    }
+  }
+  return frames[frames.length - 1].value;
+}
+
+function getBubbleFrame(bubble, index, progress, width, height) {
+  const sway = bubble.sway ?? ((index % 3) - 1);
+  const twist = (index % 2 === 0 ? -1 : 1) * (18 + (index % 5) * 9);
+  const startX = width / 2 + bubble.x * Math.min(width * 0.225, 292);
+  const startY = height / 2 + bubble.y * Math.min(height * 0.185, 188);
+  const x = startX + interpolateKeyframes([
+    { t: 0, value: 0 },
+    { t: 0.24, value: (bubble.dx * 0.2 + sway * 0.28) * width * 0.01 },
+    { t: 0.45, value: (bubble.dx * 0.48 - sway * 0.42) * width * 0.01 },
+    { t: 0.66, value: (bubble.dx * 0.77 + sway * 0.34) * width * 0.01 },
+    { t: 0.84, value: (bubble.dx * 1.02 - sway * 0.2) * width * 0.01 },
+    { t: 1, value: bubble.dx * 1.18 * width * 0.01 },
+  ], progress);
+  const y = startY + interpolateKeyframes([
+    { t: 0, value: 0 },
+    { t: 0.24, value: (bubble.dy * 0.17 - sway * 0.1) * height * 0.01 },
+    { t: 0.45, value: (bubble.dy * 0.43 + sway * 0.16) * height * 0.01 },
+    { t: 0.66, value: (bubble.dy * 0.7 - sway * 0.12) * height * 0.01 },
+    { t: 0.84, value: (bubble.dy * 0.92 + sway * 0.08) * height * 0.01 },
+    { t: 1, value: bubble.dy * 1.06 * height * 0.01 },
+  ], progress);
+  const scale = interpolateKeyframes([
+    { t: 0, value: 0.055 },
+    { t: 0.24, value: bubble.end * 0.13 },
+    { t: 0.45, value: bubble.end * 0.3 },
+    { t: 0.66, value: bubble.end * 0.58 },
+    { t: 0.84, value: bubble.end * 0.92 },
+    { t: 1, value: bubble.end * 1.18 },
+  ], progress);
+  const opacity = interpolateKeyframes([
+    { t: 0, value: 0 },
+    { t: 0.09, value: 0.1 + (bubble.front ? 0.04 : 0) },
+    { t: 0.24, value: 0.19 + (bubble.front ? 0.07 : 0) },
+    { t: 0.45, value: 0.27 + (bubble.front ? 0.1 : 0) },
+    { t: 0.66, value: 0.24 + (bubble.front ? 0.08 : 0) },
+    { t: 0.84, value: 0.13 + (bubble.front ? 0.06 : 0) },
+    { t: 1, value: 0 },
+  ], progress);
+  const wobble = Math.sin((progress * Math.PI * 2.4) + index) * 0.075;
+  return {
+    x,
+    y,
+    radius: Math.max(0.4, bubble.size * scale * 0.5),
+    opacity,
+    twist: (twist * Math.PI / 180) * (0.15 + progress * 0.42),
+    stretchX: 1 + wobble,
+    stretchY: 1 - wobble * 0.65,
+  };
+}
+
+function drawCanvasBubble(ctx, frame, bubble) {
+  if (frame.opacity <= 0.002 || frame.radius <= 0.5) return;
+  const radius = frame.radius;
+  ctx.save();
+  ctx.globalAlpha = frame.opacity;
+  ctx.translate(frame.x, frame.y);
+  ctx.rotate(frame.twist);
+  ctx.scale(frame.stretchX, frame.stretchY);
+
+  const shell = ctx.createRadialGradient(-radius * 0.28, -radius * 0.32, radius * 0.08, 0, 0, radius);
+  shell.addColorStop(0, 'rgba(255,255,255,0.34)');
+  shell.addColorStop(0.18, 'rgba(191,249,255,0.08)');
+  shell.addColorStop(0.56, 'rgba(72,215,236,0.025)');
+  shell.addColorStop(0.72, 'rgba(225,255,255,0.15)');
+  shell.addColorStop(1, 'rgba(120,234,246,0.02)');
+  ctx.fillStyle = shell;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.lineWidth = bubble.front ? 1.15 : 0.8;
+  ctx.strokeStyle = bubble.front ? 'rgba(226,255,255,0.34)' : 'rgba(215,253,255,0.25)';
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.lineWidth = Math.max(0.7, radius * 0.075);
+  ctx.strokeStyle = 'rgba(235,255,255,0.42)';
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.78, Math.PI * 1.1, Math.PI * 1.48);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.58)';
+  ctx.beginPath();
+  ctx.ellipse(-radius * 0.34, -radius * 0.34, radius * 0.15, radius * 0.1, -0.55, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
 export function CthRlyehDreamOverlay({ anim, exiting }) {
   const targetPid = anim?.targetPid ?? 0;
   const [beam, setBeam] = React.useState(null);
+  const bubbleCanvasRef = React.useRef(null);
   const filterId = React.useId().replace(/:/g, '');
 
   React.useLayoutEffect(() => {
@@ -376,6 +498,52 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
       window.removeEventListener('scroll', measure, true);
     };
   }, [targetPid]);
+
+  React.useEffect(() => {
+    const canvas = bubbleCanvasRef.current;
+    const ctx = canvas?.getContext('2d', { alpha: true });
+    if (!canvas || !ctx) return undefined;
+
+    let frameId = 0;
+    let width = 0;
+    let height = 0;
+    let dpr = 1;
+    const startedAt = performance.now();
+    const maxDuration = Math.max(...BUBBLES.map(bubble => bubble.delay + bubble.dur)) * 1000 + 120;
+
+    const resize = () => {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      dpr = Math.min(window.devicePixelRatio || 1, 1.35);
+      canvas.width = Math.ceil(width * dpr);
+      canvas.height = Math.ceil(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    const draw = (now) => {
+      const elapsed = now - startedAt;
+      ctx.clearRect(0, 0, width, height);
+      ctx.globalCompositeOperation = 'lighter';
+      BUBBLES.forEach((bubble, index) => {
+        const progress = clamp01((elapsed / 1000 - bubble.delay) / bubble.dur);
+        if (progress <= 0 || progress >= 1) return;
+        drawCanvasBubble(ctx, getBubbleFrame(bubble, index, progress, width, height), bubble);
+      });
+      ctx.globalCompositeOperation = 'source-over';
+      if (elapsed < maxDuration) frameId = requestAnimationFrame(draw);
+    };
+
+    resize();
+    window.addEventListener('resize', resize);
+    frameId = requestAnimationFrame(draw);
+
+    return () => {
+      window.removeEventListener('resize', resize);
+      cancelAnimationFrame(frameId);
+    };
+  }, []);
 
   return (
     <div
@@ -571,18 +739,14 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           mask-repeat: no-repeat;
           animation: cthDreamCaustics 1.65s linear infinite;
         }
-        .cth-rlyeh-dream__bubble {
+        .cth-rlyeh-dream__bubble-canvas {
           position: absolute;
-          left: calc(50% + var(--x) * 1%);
-          top: calc(50% + var(--y) * 1%);
-          width: calc(var(--s) * 1px);
-          height: calc(var(--s) * 1px);
-          border-radius: 50%;
-          border: 1px solid rgba(198,252,255,0.48);
-          background: radial-gradient(circle at 35% 28%, rgba(255,255,255,0.74), rgba(142,235,244,0.2) 32%, rgba(34,154,190,0.04) 70%);
-          box-shadow: 0 0 10px rgba(104,220,237,0.34);
-          opacity: 0;
-          animation: cthDreamBubble calc(var(--dur) * 1s) ease-out calc(var(--delay) * 1s) both;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          z-index: 8;
+          mix-blend-mode: screen;
+          opacity: .92;
         }
         @keyframes cthDreamStage {
           0% { opacity: 0; }
@@ -651,11 +815,6 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           from { transform: translate3d(-2%, 1%, 0) rotate(0deg); opacity: .2; }
           50% { opacity: .5; }
           to { transform: translate3d(2%, -2%, 0) rotate(3deg); opacity: .22; }
-        }
-        @keyframes cthDreamBubble {
-          0% { opacity: 0; transform: translate3d(0, 0, 0) scale(.34); }
-          14% { opacity: .74; }
-          100% { opacity: 0; transform: translate3d(calc(var(--dx) * 1vw), -68vh, 0) scale(1.35); }
         }
       `}</style>
       {beam && (
@@ -804,20 +963,7 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
         <div className="cth-rlyeh-dream__image" />
         <div className="cth-rlyeh-dream__caustics" />
       </div>
-      {BUBBLES.map((bubble, index) => (
-        <span
-          key={index}
-          className="cth-rlyeh-dream__bubble"
-          style={{
-            '--x': bubble.x,
-            '--y': bubble.y,
-            '--dx': bubble.dx,
-            '--s': bubble.size,
-            '--delay': bubble.delay,
-            '--dur': bubble.dur,
-          }}
-        />
-      ))}
+      <canvas ref={bubbleCanvasRef} className="cth-rlyeh-dream__bubble-canvas" />
     </div>
   );
 }
