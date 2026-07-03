@@ -196,7 +196,7 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = '地神的潜
         borderRadius: 4,
         backgroundColor: s ? 'transparent' : '#100c08',
         background: s ? 'transparent' : undefined,
-        border: s ? 'none' : '1.5px solid #4a3010',
+        border: 'none',
         boxShadow: '0 6px 24px rgba(0,0,0,0.65)',
         display: 'flex',
         alignItems: 'center',
@@ -286,7 +286,7 @@ export function BuryToDeckOverlay({ anim, exiting, expansionKey = '地神的潜�
           inset: 0,
           borderRadius: 4,
           backgroundColor: '#100c08',
-          border: '1.5px solid #4a3010',
+          border: 'none',
           boxShadow: '0 6px 18px rgba(0,0,0,0.65), inset 0 0 10px rgba(0,0,0,0.5)',
           overflow: 'hidden',
         }}>
@@ -327,7 +327,7 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
                 left: 0, top: 0,
                 width: cardW, height: cardH, marginLeft: -cardW / 2, marginTop: -cardH / 2,
                 backgroundColor: (isDrawKeep || isDecipherStone) ? 'transparent' : '#100c08',
-                border: (isDrawKeep || isDecipherStone) ? 'none' : effect === 'blackGoat' ? '1.5px solid #4ade80' : effect === 'tsgSlime' ? '1.5px solid #80d8a8' : isGodKeepHand ? `1.5px solid ${GOD_CS.borderBright}` : '1.5px solid #6a4020',
+                border: (isDrawKeep || isDecipherStone || (!isSlime && !isGodKeepHand)) ? 'none' : effect === 'blackGoat' ? '1.5px solid #4ade80' : effect === 'tsgSlime' ? '1.5px solid #80d8a8' : `1.5px solid ${GOD_CS.borderBright}`,
                 borderRadius: 3,
                 boxShadow: effect === 'blackGoat'
                   ? '0 0 16px rgba(74,222,128,0.5), 0 2px 8px rgba(0,0,0,0.6)'

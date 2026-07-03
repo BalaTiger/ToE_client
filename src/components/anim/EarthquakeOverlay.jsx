@@ -57,7 +57,7 @@ function EarthquakeDiscardCard({ event }) {
       marginTop: -47,
       borderRadius: 4,
       background: s ? 'transparent' : '#100c08',
-      border: s ? 'none' : '1.5px solid #4a3010',
+      border: 'none',
       boxShadow: '0 8px 28px rgba(0,0,0,0.68), 0 0 18px rgba(212,180,104,0.22)',
       display: 'flex',
       alignItems: 'center',

@@ -95,7 +95,7 @@ const CARD_W=36,CARD_H=50;
 const CARD_BACK_STYLE={
   width:CARD_W,height:CARD_H,borderRadius:3,
   background:'#100c08',
-  border:'1.5px solid #3a2510',
+  border:'none',
   boxShadow:'inset 0 0 8px #0a0600',
   position:'absolute',
 };
@@ -190,7 +190,7 @@ function DiscardPile({count,topCard,scale=1,expansionKey='地神的潜影'}){
               border:'none',
               boxShadow:'0 1px 5px rgba(0,0,0,0.5), inset 0 0 8px rgba(0,0,0,0.35)',
             }:{
-              border:`1.5px solid ${frameColors.border}`,
+              border:'none',
               boxShadow:frameColors.shadow,
             }),
             zIndex:i,
@@ -284,7 +284,7 @@ function DeckPile({count,scale=1,expansionKey='地神的潜影',zhuLitCards=[],z
           width:cardW,height:cardH,
           left:Math.round(i*1.4*scale),top:Math.round((vis-1-i)*1.4*scale),
           zIndex:i,
-          border:`1.5px solid ${frameColors.border}`,
+          border:'none',
           boxShadow:frameColors.shadow,
         };
         return(
@@ -334,20 +334,26 @@ function DiscardOverlay({cards,onClose}){
       display:'flex',alignItems:'center',justifyContent:'center',
       padding:'40px 20px',
     }}>
-      <div onClick={e=>e.stopPropagation()} style={{
+      <div style={{
         maxWidth:900,width:'100%',maxHeight:'85vh',
         display:'flex',flexDirection:'column',alignItems:'center',gap:16,
       }}>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:18,color:'#c8a96e',letterSpacing:2,textShadow:'0 0 12px #000'}}>弃牌堆 ({cards.length}张)</div>
+        <div onClick={e=>e.stopPropagation()} style={{fontFamily:"'Cinzel',serif",fontSize:18,color:'#c8a96e',letterSpacing:2,textShadow:'0 0 12px #000'}}>弃牌堆 ({cards.length}张)</div>
         <div style={{
           display:'flex',flexWrap:'wrap',justifyContent:'center',gap:10,
           overflowY:'auto',padding:'10px 6px',width:'100%',
         }}>
           {[...cards].reverse().map((c,i)=>(
-            <DDCard key={c.id||`disc-${i}`} card={c}/>
+            <div key={c.id||`disc-${i}`} onClick={e=>e.stopPropagation()}>
+              <CardFaceImage
+                card={c}
+                width={118}
+                style={{borderRadius:4,boxShadow:'0 8px 18px rgba(0,0,0,0.55)'}}
+              />
+            </div>
           ))}
         </div>
-        <div style={{fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontSize:12,color:'#7a5a2a',marginTop:4}}>点击任意位置关闭</div>
+        <div style={{fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontSize:12,color:'#7a5a2a',marginTop:4}}>点击空白区域关闭</div>
       </div>
     </div>
   );
