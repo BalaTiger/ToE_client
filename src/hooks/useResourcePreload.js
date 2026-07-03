@@ -183,10 +183,15 @@ function isCardIllustrationResource(resource) {
   return resource.path.startsWith('/img/card/illustration/');
 }
 
+function isEffectImageResource(resource) {
+  return resource.type === 'image' && resource.path.startsWith('/img/effects/');
+}
+
 function isBootstrapImageResource(resource) {
   if (resource.type !== 'image') return false;
   if (isAnimatedCardBackResource(resource)) return false;
   if (isCardIllustrationResource(resource)) return false;
+  if (isEffectImageResource(resource)) return false;
   return true;
 }
 
@@ -202,12 +207,13 @@ function selectBootstrapResources(manifest) {
 
 function selectDeferredResources(manifest, loadAllThemes) {
   const deferredImages = manifest.resources.filter(isAnimatedCardBackResource);
+  const effectImages = manifest.resources.filter(isEffectImageResource);
   const media = manifest.resources.filter(resource => resource.type === 'audio' || resource.type === 'video');
-  if (loadAllThemes) return [...deferredImages, ...media];
+  if (loadAllThemes) return [...effectImages, ...deferredImages, ...media];
   const baseMedia = media.filter(resource => {
     return !resource.path.includes('battle_stars_call') && resource.type !== 'video';
   });
-  return [...deferredImages, ...baseMedia];
+  return [...effectImages, ...deferredImages, ...baseMedia];
 }
 
 export function useResourcePreload({ loadAllThemes = false } = {}) {

@@ -1,6 +1,6 @@
 {
-  "version": "2ed8040124fe326a",
-  "generatedAt": "2026-07-03T07:50:00.716Z",
+  "version": "353046fe3bc7f415",
+  "generatedAt": "2026-07-03T08:34:03.054Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1077,10 +1077,10 @@
       "revision": "f2ff983604050854"
     },
     {
-      "path": "/img/effects/R’lyeh_dream.png",
+      "path": "/img/effects/Rlyeh_dream_512.webp",
       "type": "image",
-      "size": 2810531,
-      "revision": "3c8903609d9d1f0d"
+      "size": 56864,
+      "revision": "f1898e427934a44b"
     },
     {
       "path": "/img/effects/evil_goat_sigil.svg",
@@ -1137,10 +1137,10 @@
       "revision": "4d6330e995a7701a"
     },
     {
-      "path": "/img/effects/noise/effect_noise_flow_256.png",
+      "path": "/img/effects/noise/effect_noise_flow_256.webp",
       "type": "image",
-      "size": 202123,
-      "revision": "ee9f2c575ebae644"
+      "size": 33510,
+      "revision": "0e7ba6682491e540"
     },
     {
       "path": "/img/line/line_split-no-bg.webp",

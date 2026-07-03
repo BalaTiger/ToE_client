@@ -99,6 +99,7 @@ export function buildEndTurnReplayZoneDraw({
   card,
   actorName = '你',
 }) {
+  const forcedKeep = !!card?.forced;
   return {
     state: {
       ...stateLike,
@@ -107,8 +108,8 @@ export function buildEndTurnReplayZoneDraw({
       drawReveal: {
         card,
         msgs: [],
-        needsDecision: true,
-        forcedKeep: false,
+        needsDecision: !forcedKeep,
+        forcedKeep,
         drawerIdx: actorIndex,
         drawerName: actorName,
         fromEndTurnReplay: true,

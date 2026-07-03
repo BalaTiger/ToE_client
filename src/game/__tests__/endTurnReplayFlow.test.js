@@ -163,6 +163,26 @@ describe('endTurnReplayFlow', () => {
     }));
   });
 
+  it('marks forced replayed zone cards as forced keep without a draw decision', () => {
+    const card = makeZoneCard('A1', 0, { id: 'forced-zone', forced: true });
+    const player = makePlayer({ hand: [card] });
+
+    const result = buildEndTurnReplayZoneDraw({
+      stateLike: makeGs(),
+      players: [player],
+      replay: { actorIndex: 0, cards: ['forced-zone'], index: 0 },
+      actorIndex: 0,
+      index: 0,
+      card,
+    });
+
+    expect(result.state.drawReveal).toEqual(expect.objectContaining({
+      needsDecision: false,
+      forcedKeep: true,
+      fromEndTurnReplay: true,
+    }));
+  });
+
   it('builds a cleaned state when replay ends or the next card is gone', () => {
     const player = makePlayer();
     const state = makeGs({

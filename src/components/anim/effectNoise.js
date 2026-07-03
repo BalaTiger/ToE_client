@@ -1,6 +1,6 @@
 import { buildPublicUrl } from '../../utils/url';
 
-export const DEFAULT_EFFECT_NOISE_TEXTURE = '/img/effects/noise/effect_noise_flow_256.png';
+export const DEFAULT_EFFECT_NOISE_TEXTURE = '/img/effects/noise/effect_noise_flow_256.webp';
 
 const imageCache = new Map();
 const noiseTextureCache = new Map();

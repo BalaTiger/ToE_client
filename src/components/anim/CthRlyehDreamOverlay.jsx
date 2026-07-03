@@ -8,7 +8,7 @@ import {
   loadEffectNoiseTexture,
 } from './effectNoise';
 
-const DREAM_IMAGE_PATH = 'img/effects/R’lyeh_dream.png';
+const DREAM_IMAGE_PATH = 'img/effects/Rlyeh_dream_512.webp';
 const DREAM_WIDTH_RATIO = 0.48;
 const DREAM_HEIGHT_RATIO = 0.43;
 const DREAM_MAX_WIDTH = 620;

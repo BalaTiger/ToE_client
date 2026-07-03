@@ -5325,6 +5325,41 @@ export default function Game(){
         return true;
       }
       const zoneDraw=buildEndTurnReplayZoneDraw({stateLike,players:P,replay,actorIndex,index,card,actorName:P[actorIndex]?.name||'你'});
+      if(card.forced){
+        let D=[...(stateLike.deck||[])],Disc=[...(stateLike.discard||[])];
+        const resolutionCard=revealBlindDrawCard(card);
+        clearBlindZoneDecisionFlag(P,actorIndex,zoneDraw.state.drawReveal);
+        const res=applyFx(resolutionCard,actorIndex,null,P,D,Disc,zoneDraw.state,false,[],false);
+        P=res.P;D=res.D;Disc=res.Disc;
+        const who=localDisplayName(actorIndex,P[actorIndex]?.name||'你');
+        const L=[...(stateLike.log||[]),`${who} 收入了 ${cardLogText(resolutionCard,{alwaysShowName:true})}`,...(res.msgs||[])];
+        const replayPatch=advanceEndTurnReplayPatch(zoneDraw.state);
+        const decisionState=deriveEffectDecisionState(res.statePatch,{
+          baseAbilityData:zoneDraw.state.abilityData,
+          fallbackPhase:'ACTION',
+          extraAbilityData:{fromEndTurnReplay:true},
+        });
+        const nextAbilityData=decisionState.hasDecision?decisionState.abilityData:zoneDraw.state.abilityData;
+        const newGs={...zoneDraw.state,players:P,deck:D,discard:Disc,log:L,phase:decisionState.hasDecision?decisionState.phase:'ACTION',
+          drawReveal:null,abilityData:nextAbilityData,selectedCard:null,...(res.statePatch||{}),...replayPatch};
+        if(decisionState.hasDecision){
+          newGs.phase=decisionState.phase;
+          newGs.abilityData=decisionState.abilityData;
+        }
+        const win=checkWin(P,stateLike._isMP);
+        if(win){
+          const winGs={...newGs,gameOver:win,phase:'ACTION',drawReveal:null};
+          appendEndTurnReplaySyncQueue([zoneDraw.drawStep,statePatchStep({players:P,deck:D,discard:Disc,log:L,phase:winGs.phase,drawReveal:null,abilityData:winGs.abilityData})],L.slice((stateLike.log||[]).length));
+          triggerAnimQueue([zoneDraw.drawStep,statePatchStep({players:P,deck:D,discard:Disc,log:L,phase:winGs.phase,drawReveal:null,abilityData:winGs.abilityData})],winGs);
+          return true;
+        }
+        const effectQueue=bindAnimLogChunks(buildAnimQueue(zoneDraw.state,newGs),splitAnimBoundLogs(L.slice((stateLike.log||[]).length)));
+        const queue=[zoneDraw.drawStep,...effectQueue,statePatchStep({players:P,deck:D,discard:Disc,log:L,phase:newGs.phase,drawReveal:newGs.drawReveal,abilityData:newGs.abilityData})];
+        appendEndTurnReplaySyncQueue(queue,L.slice((stateLike.log||[]).length));
+        const pendingGs=broadcastEndTurnReplayDecisionState(newGs,queue,L.slice((stateLike.log||[]).length));
+        triggerAnimQueue(queue,pendingGs,()=>{if(pendingGs.phase==='ACTION'&&!pendingGs.gameOver)continueEndTurnReplay(pendingGs);});
+        return true;
+      }
       appendEndTurnReplaySyncQueue([zoneDraw.drawStep],zoneDraw.drawStep.msgs);
       const pendingGs=broadcastEndTurnReplayDecisionState(zoneDraw.state,[zoneDraw.drawStep],zoneDraw.drawStep.msgs);
       triggerAnimQueue([zoneDraw.drawStep],pendingGs);
@@ -10695,27 +10730,27 @@ const GLOBAL_STYLES=`
     }
     12% {
       opacity:1;
-      transform:translate3d(0,4px,0) scale(1.016);
+      transform:translate3d(0,6px,0) scale(1.028);
     }
     42% {
       opacity:1;
-      transform:translate3d(0,15px,0) scale(1.03);
+      transform:translate3d(0,20px,0) scale(1.06);
     }
     58% {
       opacity:0.88;
-      transform:translate3d(0,-6px,0) scale(1.055);
+      transform:translate3d(0,-10px,0) scale(1.1);
     }
     68% {
       opacity:0.62;
-      transform:translate3d(0,-10px,0) scale(1.065);
+      transform:translate3d(0,-16px,0) scale(1.12);
     }
     86% {
       opacity:0.26;
-      transform:translate3d(0,8px,0) scale(1.085);
+      transform:translate3d(0,12px,0) scale(1.15);
     }
     100% {
       opacity:0;
-      transform:translate3d(0,8px,0) scale(1.09);
+      transform:translate3d(0,12px,0) scale(1.16);
     }
   }
   @keyframes scrollLeft {
