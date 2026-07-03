@@ -23,6 +23,20 @@ const DREAM_CORE_MASK = `
   radial-gradient(ellipse 24% 18% at 65% 75%, #000 0%, #000 39%, rgba(0,0,0,.46) 59%, rgba(0,0,0,.055) 76%, transparent 87%),
   radial-gradient(ellipse 20% 19% at 39% 78%, #000 0%, #000 39%, rgba(0,0,0,.44) 58%, rgba(0,0,0,.05) 75%, transparent 86%)
 `;
+const DREAM_CAUSTIC_BANDS = [
+  { y: 0.18, amp: 0.032, tilt: -0.028, freqA: 2.1, freqB: 5.9, phase: 0.2, speed: 0.82, width: 0.012, alpha: 0.25 },
+  { y: 0.3, amp: 0.042, tilt: 0.04, freqA: 2.7, freqB: 6.2, phase: 1.5, speed: -0.64, width: 0.016, alpha: 0.34 },
+  { y: 0.43, amp: 0.038, tilt: -0.052, freqA: 3.4, freqB: 7.6, phase: 2.7, speed: 0.7, width: 0.014, alpha: 0.31 },
+  { y: 0.56, amp: 0.048, tilt: 0.024, freqA: 2.45, freqB: 8.4, phase: 4.1, speed: -0.76, width: 0.018, alpha: 0.4 },
+  { y: 0.69, amp: 0.036, tilt: -0.038, freqA: 3.0, freqB: 6.8, phase: 5.4, speed: 0.58, width: 0.014, alpha: 0.3 },
+];
+const DREAM_CAUSTIC_ARCS = [
+  { x: 0.2, y: 0.32, w: 0.22, h: 0.11, rot: -0.18, phase: 0.4, alpha: 0.16 },
+  { x: 0.42, y: 0.23, w: 0.27, h: 0.14, rot: 0.2, phase: 1.7, alpha: 0.15 },
+  { x: 0.66, y: 0.38, w: 0.3, h: 0.13, rot: -0.26, phase: 2.6, alpha: 0.18 },
+  { x: 0.76, y: 0.59, w: 0.24, h: 0.15, rot: 0.24, phase: 3.8, alpha: 0.15 },
+  { x: 0.45, y: 0.72, w: 0.34, h: 0.12, rot: -0.12, phase: 4.5, alpha: 0.2 },
+];
 const BUBBLES = [
   { x: -0.72, y: -0.7, dx: -7.8, dy: -5.4, size: 4, end: 3.2, blur: 2.5, delay: 0.02, dur: 1.28, sway: -0.7 },
   { x: -0.69, y: -0.73, dx: -8.6, dy: -5.8, size: 6, end: 5.1, blur: 2.1, delay: 0.16, dur: 1.42, sway: 0.5 },
@@ -574,7 +588,87 @@ function drawDreamEdgeCanvas(ctx, width, height, time) {
   ctx.globalCompositeOperation = 'source-over';
 }
 
-function drawDreamBackgroundCanvas(ctx, width, height, time, image, sampler) {
+function drawCausticCurve(ctx, points) {
+  if (!points.length) return;
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length - 1; i += 1) {
+    const midX = (points[i].x + points[i + 1].x) / 2;
+    const midY = (points[i].y + points[i + 1].y) / 2;
+    ctx.quadraticCurveTo(points[i].x, points[i].y, midX, midY);
+  }
+  const last = points[points.length - 1];
+  ctx.lineTo(last.x, last.y);
+}
+
+function drawDreamCausticsTexture(ctx, width, height, time) {
+  ctx.clearRect(0, 0, width, height);
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  const shimmer = 0.72 + Math.sin(time * 4.6) * 0.14 + Math.sin(time * 7.1) * 0.05;
+  const driftX = Math.sin(time * 0.47) * width * 0.014;
+  const driftY = Math.cos(time * 0.38) * height * 0.01;
+
+  DREAM_CAUSTIC_BANDS.forEach((band, index) => {
+    const points = [];
+    const steps = 28;
+    const phase = band.phase + time * band.speed;
+    for (let i = 0; i <= steps; i += 1) {
+      const t = i / steps;
+      const local = t * Math.PI * 2;
+      const cross = t - 0.5;
+      const x = width * (-0.08 + t * 1.16) + driftX * (1 + index * 0.05);
+      const wave = Math.sin(local * band.freqA + phase) * band.amp
+        + Math.sin(local * band.freqB - phase * 0.72) * band.amp * 0.42
+        + Math.sin(local * 10.4 + phase * 1.35) * band.amp * 0.13;
+      const y = height * (band.y + wave + cross * band.tilt) + driftY;
+      points.push({ x, y });
+    }
+
+    const bandWidth = Math.max(3, height * band.width);
+    drawCausticCurve(ctx, points);
+    ctx.strokeStyle = `rgba(48,177,205,${0.16 * band.alpha * shimmer})`;
+    ctx.lineWidth = bandWidth * 2.8;
+    ctx.stroke();
+
+    drawCausticCurve(ctx, points);
+    ctx.strokeStyle = `rgba(202,255,248,${0.34 * band.alpha * shimmer})`;
+    ctx.lineWidth = Math.max(0.75, bandWidth * 0.4);
+    ctx.stroke();
+  });
+
+  DREAM_CAUSTIC_ARCS.forEach((arc, index) => {
+    const pulse = 0.72 + 0.28 * Math.sin(time * (1.55 + index * 0.17) + arc.phase);
+    const cx = width * (arc.x + Math.sin(time * 0.32 + arc.phase) * 0.014);
+    const cy = height * (arc.y + Math.cos(time * 0.28 + arc.phase) * 0.011);
+    const rx = width * arc.w * (0.72 + pulse * 0.18);
+    const ry = height * arc.h * (0.7 + pulse * 0.2);
+    const start = Math.PI * (0.12 + 0.08 * Math.sin(time + arc.phase));
+    const end = Math.PI * (0.82 + 0.1 * Math.cos(time * 0.8 + arc.phase));
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(arc.rot + Math.sin(time * 0.36 + arc.phase) * 0.1);
+    ctx.scale(1, 0.74 + Math.sin(time * 0.45 + arc.phase) * 0.07);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx, ry, 0, start, end);
+    ctx.strokeStyle = `rgba(76,215,230,${arc.alpha * 0.28 * pulse})`;
+    ctx.lineWidth = Math.max(2.4, height * 0.008);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx * 0.98, ry * 0.94, 0, start + 0.04, end - 0.03);
+    ctx.strokeStyle = `rgba(232,255,252,${arc.alpha * 0.38 * pulse})`;
+    ctx.lineWidth = Math.max(0.65, height * 0.0024);
+    ctx.stroke();
+    ctx.restore();
+  });
+
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function drawDreamBackgroundCanvas(ctx, width, height, time, image, sampler, causticSampler, causticCanvas) {
   ctx.clearRect(0, 0, width, height);
 
   drawNoiseDisplacedCoverImage(ctx, image, sampler, width, height, time, {
@@ -585,6 +679,29 @@ function drawDreamBackgroundCanvas(ctx, width, height, time, image, sampler) {
     displacedAlpha: 0.96,
     overlap: 2,
   });
+
+  if (causticCanvas) {
+    const textureWidth = Math.max(1, Math.round(width * 0.62));
+    const textureHeight = Math.max(1, Math.round(height * 0.62));
+    if (causticCanvas.width !== textureWidth || causticCanvas.height !== textureHeight) {
+      causticCanvas.width = textureWidth;
+      causticCanvas.height = textureHeight;
+    }
+    const causticCtx = causticCanvas.getContext('2d', { alpha: true });
+    drawDreamCausticsTexture(causticCtx, textureWidth, textureHeight, time);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    drawNoiseDisplacedCoverImage(ctx, causticCanvas, causticSampler, width, height, time * 1.12, {
+      cols: 16,
+      rows: 12,
+      strength: Math.min(width, height) * 0.018,
+      baseAlpha: 0,
+      displacedAlpha: 0.74,
+      overlap: 1.5,
+    });
+    ctx.restore();
+  }
 
   const pulse = 0.5 + 0.5 * Math.sin(time * 2.2);
   ctx.save();
@@ -613,10 +730,15 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
   const dreamImageCanvasRef = React.useRef(null);
   const dreamEdgeCanvasRef = React.useRef(null);
   const dreamNoiseOriginRef = React.useRef(null);
+  const dreamCausticNoiseOriginRef = React.useRef(null);
+  const dreamCausticTextureRef = React.useRef(null);
   const filterId = React.useId().replace(/:/g, '');
 
   if (!dreamNoiseOriginRef.current) {
     dreamNoiseOriginRef.current = createEffectNoiseOrigin();
+  }
+  if (!dreamCausticNoiseOriginRef.current) {
+    dreamCausticNoiseOriginRef.current = createEffectNoiseOrigin();
   }
 
   React.useLayoutEffect(() => {
@@ -759,6 +881,7 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
     let disposed = false;
     let image = null;
     let sampler = null;
+    let causticSampler = null;
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
@@ -774,7 +897,16 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
       const elapsed = now - startedAt;
       if (now - lastDraw >= 33 || lastDraw === 0) {
         lastDraw = now;
-        drawDreamBackgroundCanvas(ctx, width, height, elapsed / 1000, image, sampler);
+        drawDreamBackgroundCanvas(
+          ctx,
+          width,
+          height,
+          elapsed / 1000,
+          image,
+          sampler,
+          causticSampler,
+          dreamCausticTextureRef.current,
+        );
       }
       if (elapsed < maxDuration) frameId = requestAnimationFrame(draw);
     };
@@ -791,6 +923,12 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
         scale: 1.12,
         velocity: { x: 0.052, y: -0.034 },
       });
+      causticSampler = createEffectNoiseSampler(noiseTexture, {
+        origin: dreamCausticNoiseOriginRef.current,
+        scale: 1.5,
+        velocity: { x: -0.068, y: 0.046 },
+      });
+      dreamCausticTextureRef.current = dreamCausticTextureRef.current || document.createElement('canvas');
       resize();
       frameId = requestAnimationFrame(draw);
     }).catch(() => {

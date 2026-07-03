@@ -33,8 +33,6 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     const sanDamageConfigs = [
       { path: 'sounds/SE/sanDamageVariants/sanDamage1.mp3', impactOffsetMs: 800 },
       { path: 'sounds/SE/sanDamageVariants/sanDamage2.mp3', impactOffsetMs: 90 },
-      { path: 'sounds/SE/sanDamageVariants/sanDamage3.mp3', impactOffsetMs: 1580 },
-      { path: 'sounds/SE/sanDamageVariants/sanDamage4.mp3', impactOffsetMs: 820 },
     ];
     const sanDamageVariants = sanDamageConfigs.map(config => ({
       ...config,

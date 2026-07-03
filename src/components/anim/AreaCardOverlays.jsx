@@ -1,6 +1,11 @@
 import React, { useEffect } from 'react';
 import { DDCard } from '../../components/cards';
 import { _getZoomCompensatedRect, getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
+import {
+  createEffectNoiseOrigin,
+  createEffectNoiseSampler,
+  loadEffectNoiseTexture,
+} from './effectNoise';
 
 function getVolcanoSceneScale(){
   const baselineArea=1366*768;
@@ -109,6 +114,18 @@ function GeomagneticRestoreShuffleAnim({anim,exiting}){
 function VolcanoAnim({anim,exiting}){
   const canvasRef=React.useRef(null);
   const [impacts,setImpacts]=React.useState(null);
+  const [noiseTexture,setNoiseTexture]=React.useState(null);
+  useEffect(()=>{
+    let disposed=false;
+    loadEffectNoiseTexture()
+      .then(texture=>{
+        if(!disposed)setNoiseTexture(texture);
+      })
+      .catch(()=>{
+        if(!disposed)setNoiseTexture(false);
+      });
+    return()=>{disposed=true;};
+  },[]);
   useEffect(()=>{
     let disposed=false;
     const measure=()=>{
@@ -149,7 +166,7 @@ function VolcanoAnim({anim,exiting}){
   },[]);
   useEffect(()=>{
     const canvas=canvasRef.current;
-    if(!canvas||!impacts?.length)return undefined;
+    if(!canvas||!impacts?.length||noiseTexture==null)return undefined;
     const ctx=canvas.getContext('2d');
     let raf=0;
     const isMobileLike=()=>(
@@ -217,6 +234,13 @@ function VolcanoAnim({anim,exiting}){
         r:0.02+rand(seed*307+i)*0.065,
         a:0.08+rand(seed*313+i)*0.18,
       }));
+      const noiseSampler=noiseTexture
+        ?createEffectNoiseSampler(noiseTexture,{
+          origin:createEffectNoiseOrigin(`volcano-lava-${seed}`),
+          scale:1.85,
+          velocity:{x:0,y:0},
+        })
+        :null;
       return {
         ...impact,
         x,
@@ -233,6 +257,7 @@ function VolcanoAnim({anim,exiting}){
         smoke,
         lava,
         noise,
+        noiseSampler,
       };
     });
     const drawGlow=(x,y,r,color,alpha=1)=>{
@@ -249,27 +274,11 @@ function VolcanoAnim({anim,exiting}){
       const t=clamp01((x-edge0)/(edge1-edge0));
       return t*t*(3-2*t);
     };
-    const valueNoise=(x,y,seed)=>{
-      const xi=Math.floor(x), yi=Math.floor(y);
-      const xf=x-xi, yf=y-yi;
-      const h=(ix,iy)=>rand(seed+ix*37.17+iy*91.73);
-      const u=xf*xf*(3-2*xf);
-      const v=yf*yf*(3-2*yf);
-      const a=h(xi,yi), b=h(xi+1,yi), c=h(xi,yi+1), d=h(xi+1,yi+1);
-      return (a+(b-a)*u)+((c+(d-c)*u)-(a+(b-a)*u))*v;
-    };
-    const fractalNoise=(x,y,seed)=>{
-      let amp=0.56;
-      let freq=1;
-      let sum=0;
-      let norm=0;
-      for(let i=0;i<4;i++){
-        sum+=valueNoise(x*freq,y*freq,seed+i*103.9)*amp;
-        norm+=amp;
-        amp*=0.5;
-        freq*=2.05;
-      }
-      return sum/norm;
+    const sampleLavaNoise=(sampler,u,v,seed=0)=>{
+      if(!sampler)return rand(seed)*0.72+rand(seed+19.7)*0.28;
+      const n0=sampler.sampleVector(u,v,0).value*0.5+0.5;
+      const n1=sampler.sampleVector(u*2.15+0.17,v*2.05-0.11,0).value*0.5+0.5;
+      return n0*0.68+n1*0.32;
     };
     const buildNoiseLavaPatch=(impact)=>{
       const maxR=impact.baseR*1.22;
@@ -288,8 +297,18 @@ function VolcanoAnim({anim,exiting}){
           const nx=(px-cx)/(w*0.48);
           const ny=(py-cy)/(h*0.5);
           const angle=Math.atan2(ny,nx);
-          const borderNoise=fractalNoise(Math.cos(angle)*1.8+impact.seed*0.2,Math.sin(angle)*1.8,impact.seed*29);
-          const localNoise=fractalNoise(px/34,py/28-impact.seed*0.31,impact.seed*47);
+          const borderNoise=sampleLavaNoise(
+            impact.noiseSampler,
+            Math.cos(angle)*0.38+0.5,
+            Math.sin(angle)*0.38+0.5,
+            impact.seed*29+angle,
+          );
+          const localNoise=sampleLavaNoise(
+            impact.noiseSampler,
+            px/w*1.24,
+            py/h*1.18-impact.seed*0.07,
+            impact.seed*47+px*0.13+py*0.07,
+          );
           const radiusWarp=1+(borderNoise-0.5)*0.34;
           const dist=Math.sqrt(nx*nx+ny*ny)/radiusWarp;
           const edge=1-smoothstep(0.72+localNoise*0.1,1.08,dist);
@@ -548,7 +567,7 @@ function VolcanoAnim({anim,exiting}){
       cancelAnimationFrame(raf);
       window.removeEventListener('resize',resize);
     };
-  },[impacts,exiting]);
+  },[impacts,exiting,noiseTexture]);
   return(
     <div className={`volcano-overlay${exiting?' volcano-exiting':''}`}>
       <div className="volcano-vignette"/>

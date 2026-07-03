@@ -1,6 +1,6 @@
 {
-  "version": "abdf455ac20d89e6",
-  "generatedAt": "2026-07-03T07:30:02.582Z",
+  "version": "2ed8040124fe326a",
+  "generatedAt": "2026-07-03T07:50:00.716Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1344,19 +1344,7 @@
       "path": "/sounds/SE/sanDamageVariants/sanDamage2.mp3",
       "type": "audio",
       "size": 32205,
-      "revision": "b29ebb41a70d5154"
-    },
-    {
-      "path": "/sounds/SE/sanDamageVariants/sanDamage3.mp3",
-      "type": "audio",
-      "size": 58365,
-      "revision": "b063bab14b7267f1"
-    },
-    {
-      "path": "/sounds/SE/sanDamageVariants/sanDamage4.mp3",
-      "type": "audio",
-      "size": 54045,
-      "revision": "405218c0aa6e8c4c"
+      "revision": "fdf088288960ccb1"
     },
     {
       "path": "/sounds/SE/sanRecoverVariants/sanRecover1.mp3",
