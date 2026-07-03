@@ -232,7 +232,6 @@ import {
   isLocalTestHost,
   safeLS,
 } from './utils/runtime';
-import { loadSocketIO } from './utils/socketIoClient';
 import { ANIM_DURATION, ANIM_SPEED_SCALE, CARD_REVEAL_DURATION, ANIM_STEP_GAP } from './components/anim/constants';
 import { SMOKE_COLS, FLOWER_CONFIGS, DICE_FACES, ANIM_CFG } from './components/anim/data';
 import { CardFlipAnim } from './components/anim/CardFlipAnim';
@@ -257,7 +256,7 @@ import { GodResurrectionAnim, TreasureMapAnim, RoleRevealAnim } from './componen
 import { GlobalAnimLayer } from './components/anim/GlobalAnimLayer';
 import { ApophisNightBadge } from './components/anim/ApophisOverlays';
 import { formatFileSize, useResourcePreload } from './hooks/useResourcePreload';
-import { getMultiplayerIdentityStorage, useMultiplayerLobby } from './hooks/useMultiplayerLobby';
+import { useMultiplayerLobby } from './hooks/useMultiplayerLobby';
 import { useAnimationQueue } from './hooks/useAnimationQueue';
 import { useEarthquakeAnimationEffects } from './hooks/useEarthquakeAnimationEffects';
 import { useCardTransferAnimationEffects } from './hooks/useCardTransferAnimationEffects';
@@ -274,6 +273,9 @@ import { useAiWatchdog, BAD_PHASES } from './hooks/useAiWatchdog';
 import { useRoomCountdown } from './hooks/useRoomCountdown';
 import { useMpCthDecisionTimer, useMpDecisionTimer, useMpDiscardTimer, useMpHuntRevealTimer, useMpTurnTimer } from './hooks/useMultiplayerTimers';
 import { useVisualDiscardSync } from './hooks/useVisualDiscardSync';
+import { useMultiplayerConnection } from './multiplayer/useMultiplayerConnection';
+import { useMultiplayerStateBroadcast } from './multiplayer/useMultiplayerStateBroadcast';
+import { useMultiplayerEmojiSender, useWaitingRoomReconnect } from './multiplayer/useMultiplayerUiSession';
 import { Ellipsis } from './components/ui/Ellipsis';
 import { FlyingEmoji } from './components/ui/FlyingEmoji';
 import { EMOJI_LIST } from './components/ui/emojiData';
@@ -770,7 +772,6 @@ export default function Game(){
   const SOCKET_PATH = getRuntimeSocketPath();
   const [serverAnnouncement,setServerAnnouncement]=useServerAnnouncement(SERVER_URL);
   const socketRef=useRef(null);
-  const connTimeoutRef=useRef(null);
   const mpAiTakeoverSeqRef=useRef(0);
   const pendingMpAiTakeoverRef=useRef(null);
   const {
@@ -822,6 +823,8 @@ export default function Game(){
   const endlessCorridorReplayIdRef=useRef(null); // 联机同步时复用同一个 endlessCorridorReplay id，避免远端重复播放
   const endTurnSeqRef=useRef(null); // Phase C：当前回合结束事件序列 {events,cursor}。回合结束严格串行，故全局唯一；存于 ref 而非 state，跨决策重建不丢、不入联机广播。
   const gameEndSentRef=useRef(false);      // 防止 gameEnd 重复发送
+  const latestGsRef=useRef(null); // always mirrors latest gs for closures reading stale state
+  latestGsRef.current=gs; // 同步更新：渲染期间直接镜像，确保 confirmDiscard 等闭包读到最新值
   const [isDisconnected,setIsDisconnected]=useState(false);
   const [exitMatchConfirm,setExitMatchConfirm]=useState(null);
   function resetDisconnectedToStart(){
@@ -860,7 +863,6 @@ export default function Game(){
   const [flyingEmojis,setFlyingEmojis]=useState([]);  // [{id,emoji,startX,startY,endX,endY,arcHeight,durationMs}]
   const [showEmojiPicker,setShowEmojiPicker]=useState(false);
   const [emojiButtonPos,setEmojiButtonPos]=useState({top:70,right:20});
-  const emojiClickDebounceRef=useRef(null); // 防抖：防止短时间内重复点击
   const discardPileRef=useRef(null);        // 弃牌堆位置
 
   // ── Gamma / brightness ────────────────────────────────────────
@@ -1271,268 +1273,8 @@ export default function Game(){
     processIncomingMpStateSync(rawNextGs,{allowBuffer:false});
   }
 
-  // ── 连接后端（联机选项界面专用）─────────────────────────────
-  async function connectSocket(onConnected){
-    if(isArtifact){
-      addToast('联机功能在预览环境中不可用，请部署到服务器后使用');
-      return;
-    }
-    if(multiLoading)return;
-    setMultiLoading(true);
-    if(socketRef.current){socketRef.current.disconnect();socketRef.current=null;}
-    if(connTimeoutRef.current){clearTimeout(connTimeoutRef.current);connTimeoutRef.current=null;}
-
-    connTimeoutRef.current=setTimeout(()=>{
-      if(socketRef.current){socketRef.current.disconnect();socketRef.current=null;}
-      setMultiLoading(false);
-      setConnErrModal(true);
-    },5000);
-
-    let ioFn;
-    try{ ioFn=await loadSocketIO(); }
-    catch{
-      clearTimeout(connTimeoutRef.current);
-      setMultiLoading(false);
-      addToast('网络加载失败，请检查连接后重试');
-      return;
-    }
-    const socket=ioFn(SERVER_URL,{path:SOCKET_PATH,transports:['polling','websocket'],reconnection:false});
-    socketRef.current=socket;
-
-    function cleanup(){clearTimeout(connTimeoutRef.current);connTimeoutRef.current=null;}
-
-    socket.on('connect_error',(err)=>{
-      cleanup();
-      setMultiLoading(false);
-      console.error('[multiplayer connect_error]', SERVER_URL, SOCKET_PATH, err?.message||err);
-      setConnErrModal(true);
-      socket.disconnect();
-    });
-    socket.on('uuidAssigned',({uuid})=>{
-      setPlayerUUID(uuid);
-      playerUUIDRef.current=uuid;
-      try { getMultiplayerIdentityStorage()?.setItem('cthulhu_player_uuid', uuid); } catch { /* ignore */ }
-    });
-    // userInfo：打开联机选项界面时后端下发，含异常断线/房间恢复标志
-    socket.on('userInfo',({username,isSpecialName,wasForceReset,waitingRoomExpired})=>{
-      setPlayerUsername(username);
-      setPlayerUsernameSpecial(!!isSpecialName);
-      setRenameInput(username);
-      cleanup();
-      setMultiLoading(false);
-      if(waitingRoomExpired){
-        setRoomModal(null);
-        setOnlineOptionsModal(true);
-        addToast('由于你长时间离开页面，您已离线，请重新创建房间。');
-      }
-      if(wasForceReset){
-        addToast('您上次在游戏房间强制下线，已退出房间');
-      }
-    });
-    socket.on('renameSuccess',({username,isSpecialName})=>{
-      setPlayerUsername(username);
-      setPlayerUsernameSpecial(!!isSpecialName);
-      setRenameInput(username);
-    });
-    socket.on('randomUsernameResult',({username})=>{
-      setRenameInput(username);
-    });
-    socket.on('renameError',({msg})=>{
-      addToast(msg);
-    });
-    // roomCreated：创建房间成功
-    socket.on('roomCreated',({roomId,owner,isPrivate,players,count,max,countdown})=>{
-      setMultiLoading(false);
-      setOnlineOptionsModal(false);
-      copyRoomIdToClipboard(roomId,{created:true});
-      setRoomModal({roomId,owner,isPrivate,players,count:count||1,max:max||12,countdown:countdown||null});
-    });
-    // roomUpdated：加入/变动/倒计时更新
-    socket.on('roomUpdated',({roomId,owner,isPrivate,players,count,max,countdown})=>{
-      setMultiLoading(false);
-      setOnlineOptionsModal(false);
-      setRoomModal(prev=>prev
-        ?{...prev,roomId,owner,isPrivate,players,count:count??prev.count,max:max??prev.max,countdown:countdown!==undefined?countdown:prev.countdown}
-        :{roomId,owner,isPrivate,players,count:count||players.length,max:max||12,countdown:countdown||null});
-    });
-    // joinError：加入房间失败
-    socket.on('joinError',({msg})=>{
-      setMultiLoading(false);
-      addToast(msg);
-    });
-    // kickedFromRoom：被踢出
-    socket.on('kickedFromRoom',({reason})=>{
-      setRoomModal(null);
-      addToast(reason||'你已被踢出房间');
-      if(socketRef.current){socketRef.current.disconnect();socketRef.current=null;}
-    });
-    socket.on('roomClosed',({reason})=>{
-      setRoomModal(null);
-      setOnlineOptionsModal(true);
-      addToast(reason||'房间已失效，请重新创建房间。');
-    });
-    // lobbyRooms：游戏大厅房间列表
-    socket.on('lobbyRooms',({rooms})=>{
-      setLobbyLoading(false);
-      setLobbyRooms(rooms||[]);
-    });
-    // gameStart：多人游戏开始，只有本地视角中的房主 seat 初始化并广播 raw gs
-    socket.on('gameStart',({roomId,players,expansionPlan})=>{
-      setFirstBattleStarted(true);
-      safeLS.set(FIRST_BATTLE_DONE_KEY,'1');
-      setOnlineResourcesUnlocked(true);
-      const myIdx=players.findIndex(p=>p.uuid===playerUUIDRef.current);
-      const safeIdx=myIdx<0?0:myIdx;
-      myPlayerIndexRef.current=safeIdx;
-      setMyPlayerIndex(safeIdx);
-      const resetPlayers=players.map(p=>({...p,ready:false}));
-      setRoomModal(prev=>prev?{...prev,players:resetPlayers,countdown:null}:{roomId,players:resetPlayers,count:players.length,max:12,countdown:null,owner:null,isPrivate:true});
-      setIsMultiplayer(true); isMultiplayerRef.current=true;
-      setIsDisconnected(false);
-      addToast('多人游戏开始！');
-      mpRoleRevealedRef.current=false; // 每局重置角色揭示标志
-      mpOpeningRoleRevealPendingRef.current=false;
-      consumedVisualEventIdsRef.current=new Set();
-      mpAiTakeoverSeqRef.current=0;
-      pendingMpAiTakeoverRef.current=null;
-      gameEndSentRef.current=false;       // 每局重置 gameEnd 发送标志
-      if(isLocalSeatIndex(safeIdx)){
-        // 房主：初始化游戏并广播给所有人
-        const names=players.map(p=>p.username);
-        const mpExpansionKey=expansionPlan||EXPANSION_RANDOM_KEY;
-        const rawGs=initGame(
-          names,
-          null,
-          null,
-          'auto',
-          null,
-          null,
-          null,
-          null,
-          startNextTurn,
-          mpExpansionKey,
-        );
-        animQueueRef.current=[];
-        pendingGsRef.current=null;
-        setAnimExiting(false);
-        clearDamageAnimations();
-        setAnim(null);
-        const rotatedGs=rotateGsForViewer(rawGs,0);
-        // 开局广播先于 useEffect([gs])（soket 同步发送，useEffect 在 render 后触发）
-        // 必须先标记 received=true，防止 useEffect 把遮蔽态 gs 再次广播覆盖真实状态
-        receivedGsRef.current=true;
-        // 房主已通过 gameStart 路径触发身份揭示，标记为已揭示，
-        // 防止后续收到非房主广播时重复触发 role reveal（mpRoleRevealedRef 在 gameStart 时被 reset 为 false）
-        mpRoleRevealedRef.current=true;
-        // 与单机一致：先用遮蔽态渲染棋盘背景，动画结束后才解锁真实 phase
-        setGs({...rotatedGs,phase:'ACTION',drawReveal:null,abilityData:{}});
-        setAnim(null);
-        mpOpeningRoleRevealPendingRef.current=true;
-        setRoleRevealAnim({role:rotatedGs.players[0].role,pendingGs:rotatedGs});
-        // 广播原始 gs（未旋转）给所有人
-        socket.emit('mpStateSync',{roomId,gs:rawGs});
-      }
-      // 非房主等待接收 mpStateSync
-    });
-    // mpStateSync：收到房主广播的 raw gs 后，必须先 rotate 到本地视角，
-    // 后续所有“本地玩家 / 当前行动者 / 当前响应者”判断都应基于 rotated + helper。
-    socket.on('mpStateSync',({gs:rawGs})=>{
-      processIncomingMpStateSync(rawGs);
-    });
-    socket.on('mpAiTakeover',(payload)=>{
-      if(!payload)return;
-      if(payload.seq&&payload.seq<=mpAiTakeoverSeqRef.current)return;
-      if(payload.seq)mpAiTakeoverSeqRef.current=payload.seq;
-      handleMpAiTakeover(payload);
-    });
-    // emojiReceived：收到其他玩家发的表情
-    socket.on('emojiReceived',({fromUuid,emojis})=>{
-      // 错开发射时间，每条间隔 80ms
-      emojis.forEach((emoji,i)=>{
-        setTimeout(()=>{
-          // 发射起点：自己发的从屏幕左下角玩家区域，别人发的从屏幕顶部随机位置
-          const isSelf=fromUuid===playerUUIDRef.current;
-          let sx,sy;
-          if(isSelf){
-            // 从玩家手牌区域或左下角发射
-            const handRect=_getZoomCompensatedRect(document.querySelector('[data-hand-area]'));
-            if(handRect){
-              sx=handRect.left+handRect.width/2;
-              sy=handRect.top+handRect.height*0.3;
-            }else{
-              // 默认从左下角
-              sx=window.innerWidth*0.15;
-              sy=window.innerHeight*0.85;
-            }
-          }else{
-            sx=window.innerWidth*0.1+Math.random()*window.innerWidth*0.5;
-            sy=60+Math.random()*40;
-          }
-          // 终点：弃牌堆中心
-          const dp=_getZoomCompensatedRect(discardPileRef.current);
-          const ex=dp?dp.left+dp.width/2:window.innerWidth/2;
-          const ey=dp?dp.top+dp.height/2:window.innerHeight*0.45;
-          // 随机化
-          const rand=(v,pct)=>v*(1+(Math.random()*2-1)*pct);
-          const arc=rand(window.innerHeight*0.10,0.20);
-          const dur=rand(900,0.20);
-          const jx=ex+rand(18,0.20);
-          const jy=ey+rand(12,0.20);
-          const uid=`${Date.now()}-${Math.random()}`;
-          setFlyingEmojis(prev=>[...prev,{id:uid,emoji,startX:sx,startY:sy,endX:jx,endY:jy,arcHeight:arc,durationMs:dur}]);
-        },i*80);
-      });
-    });
-    // heartbeatPing：回复心跳
-    socket.on('heartbeatPing',()=>{
-      if(socketRef.current) socketRef.current.emit('heartbeatPong');
-    });
-    // 监听服务器广播信息
-    socket.on('serverAnnouncement',({ announcement })=>{
-      setServerAnnouncement(announcement||null);
-    });
-    // aiTakeover：被 AI 接管（断线超时），显示断线遮罩
-    socket.on('aiTakeover',()=>{
-      setIsDisconnected(true);
-      setIsMultiplayer(false); isMultiplayerRef.current=false;
-      setMyPlayerIndex(0); myPlayerIndexRef.current=0;
-      mpRoleRevealedRef.current=false;
-      consumedVisualEventIdsRef.current=new Set();
-      pendingMpAiTakeoverRef.current=null;
-    });
-    // 多人游戏中 socket 断线（网络中断等）
-    socket.on('disconnect',()=>{
-      if(isMultiplayerRef.current){ setIsDisconnected(true); }
-    });
-    socket.on('serverError',(msg)=>{
-      cleanup();
-      setMultiLoading(false);
-      addToast(`错误：${msg}`);
-    });
-    socket.on('connect',()=>{ onConnected(socket); });
-  }
-
-  // 点击"联机对战"→ 连接后端，打开联机选项界面
-  function handleMultiplayer(){
-    setOnlineResourcesUnlocked(true);
-    connectSocket(socket=>{
-      socket.emit('openOnlineOptions',{uuid:playerUUID});
-      setOnlineOptionsModal(true);
-    });
-  }
-
   // 表情：点击 emoji → 加入批次队列 → 300ms 内 flush 打包发送
-  function handleEmojiClick(emoji){
-    if(emojiClickDebounceRef.current)return;
-    emojiClickDebounceRef.current=Date.now();
-    if(!socketRef.current||!roomModalRef.current?.roomId){
-      setTimeout(()=>{emojiClickDebounceRef.current=null;},300);
-      return;
-    }
-    // 立即发送，不使用队列，避免重复
-    socketRef.current.emit('emojiSend',{uuid:playerUUIDRef.current,roomId:roomModalRef.current.roomId,emojis:[emoji]});
-    setTimeout(()=>{emojiClickDebounceRef.current=null;},300);
-  }
+  const handleEmojiClick=useMultiplayerEmojiSender({ socketRef, roomModalRef, playerUUIDRef });
   const handleFlyingEmojiDone=useCallback(id=>{
     setFlyingEmojis(prev=>prev.filter(x=>x.id!==id));
   },[]);
@@ -1617,22 +1359,6 @@ export default function Game(){
   const visibleLogCountRef=useRef(Array.isArray(gs?.log)?gs.log.length:0);
   const visibleLogAuthorityRef=useRef(Array.isArray(gs?.log)?gs.log:[]);
 
-  useEffect(()=>{
-    if(typeof document==='undefined')return;
-    const handleWaitingRoomReconnect=()=>{
-      if(document.visibilityState!=='visible')return;
-      if(gs||isMultiplayerRef.current)return;
-      if(!roomModalRef.current?.roomId)return;
-      if(multiLoading)return;
-      if(socketRef.current?.connected)return;
-      setOnlineResourcesUnlocked(true);
-      connectSocket(socket=>{
-        socket.emit('openOnlineOptions',{uuid:playerUUIDRef.current||playerUUID});
-      });
-    };
-    document.addEventListener('visibilitychange',handleWaitingRoomReconnect);
-    return()=>document.removeEventListener('visibilitychange',handleWaitingRoomReconnect);
-  },[gs,multiLoading,playerUUID,roomModalRef]);
   const lastInspectionSeqRef=useRef(0);
   function markInspectionEventsSeen(events=[]){
     const seqs=(Array.isArray(events)?events:[]).map(ev=>ev?.seq||0).filter(Boolean);
@@ -1883,6 +1609,76 @@ export default function Game(){
     clearDamageAnimations,
   } = useDamageAnimationEffects({ anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound });
   const guillotinedPids=useMemo(()=>new Set((guillotineTargets||[]).map(t=>t?.pi).filter(v=>v!=null)),[guillotineTargets]);
+  const { connectSocket } = useMultiplayerConnection({
+    isArtifact,
+    multiLoading,
+    socketRef,
+    serverUrl: SERVER_URL,
+    socketPath: SOCKET_PATH,
+    setMultiLoading,
+    setConnErrModal,
+    addToast,
+    handlerDeps: {
+      playerUUIDRef,
+      setPlayerUUID,
+      setPlayerUsername,
+      setPlayerUsernameSpecial,
+      setRenameInput,
+      setOnlineOptionsModal,
+      setRoomModal,
+      setLobbyLoading,
+      setLobbyRooms,
+      copyRoomIdToClipboard,
+      setFirstBattleStarted,
+      setOnlineResourcesUnlocked,
+      setMyPlayerIndex,
+      myPlayerIndexRef,
+      setIsMultiplayer,
+      isMultiplayerRef,
+      setIsDisconnected,
+      mpRoleRevealedRef,
+      mpOpeningRoleRevealPendingRef,
+      consumedVisualEventIdsRef,
+      mpAiTakeoverSeqRef,
+      pendingMpAiTakeoverRef,
+      gameEndSentRef,
+      animQueueRef,
+      pendingGsRef,
+      setAnimExiting,
+      clearDamageAnimations,
+      setAnim,
+      setGs,
+      receivedGsRef,
+      setRoleRevealAnim,
+      startNextTurn,
+      processIncomingMpStateSync,
+      handleMpAiTakeover,
+      setFlyingEmojis,
+      discardPileRef,
+      setServerAnnouncement,
+    },
+  });
+
+  // 点击"联机对战"→ 连接后端，打开联机选项界面
+  function handleMultiplayer(){
+    setOnlineResourcesUnlocked(true);
+    connectSocket(socket=>{
+      socket.emit('openOnlineOptions',{uuid:playerUUID});
+      setOnlineOptionsModal(true);
+    });
+  }
+
+  useWaitingRoomReconnect({
+    gs,
+    isMultiplayerRef,
+    roomModalRef,
+    multiLoading,
+    socketRef,
+    setOnlineResourcesUnlocked,
+    connectSocket,
+    playerUUIDRef,
+    playerUUID,
+  });
 
   const clearBattleAnimationState=useCallback(()=>{
     animQueueRef.current=[];
@@ -3332,78 +3128,24 @@ export default function Game(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[gs?.currentTurn,gs?.phase,gs?._turnKey,anim,gs?.gameOver,softGuidePauseActive]);
 
-  // 多人游戏结束时通知后端重置房间状态（用 ref 防止因 isMultiplayer 变化导致的重复发送）
-  useEffect(()=>{
-    if(!isMultiplayer||!gs?.gameOver)return;
-    if(gameEndSentRef.current)return;
-    gameEndSentRef.current=true;
-    if(socketRef.current?.connected){
-      // 确定获胜者身份
-      let winnerRole = null;
-      if (gs.gameOver.winner === ROLE_TREASURE || gs.gameOver.winner === ROLE_HUNTER || gs.gameOver.winner === ROLE_CULTIST) {
-        winnerRole = gs.gameOver.winner;
-      }
-      socketRef.current.emit('gameEnd',{uuid:playerUUID,roomId:roomModal?.roomId,winnerRole});
-      // 广播最终 gs 让其他玩家也看到结算界面
-      const rawFinalGs=derotateGs(gs,myPlayerIndexRef.current);
-      socketRef.current.emit('mpStateSync',{roomId:roomModal?.roomId,gs:rawFinalGs});
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[gs?.gameOver,isMultiplayer,playerUUID,roomModal?.roomId]);
-
-  // ── 多人游戏：本地 gs 变化后广播给房间其他人 ──────────────────
-  // receivedGsRef 防止接收远端 state 后回发（避免乒乓死循环）
-  // TREASURE_WIN / PLAYER_WIN_PENDING 的完整界面只给本地胜利者看；
-  // MP 下额外广播一个等待态，避免其他客户端继续推进回合。
-  useEffect(()=>{
-    if(!gs||!isMultiplayer||!socketRef.current)return;
-    if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
-    if(gs.gameOver)return; // gameEnd event 单独处理
-    if(gs.phase==='PLAYER_WIN_PENDING'||gs.phase==='TREASURE_WIN'){
-      if(receivedGsRef.current){receivedGsRef.current=false;return;}
-      if(latestGsRef.current!==gs)return;
-      const room=roomModal;
-      if(!room?.roomId)return;
-      const waitGs={
-        ...gs,
-        phase:'MP_PLAYER_WIN_WAIT',
-        drawReveal:null,
-        abilityData:{
-          ...(gs.abilityData||{}),
-          winnerIdx:0,
-          waitingForTreasureReveal:true,
-        },
-      };
-      socketRef.current.emit('mpStateSync',{roomId:room.roomId,gs:derotateGs(waitGs,myPlayerIndexRef.current)});
-      return;
-    }
-    if(gs.phase==='MP_PLAYER_WIN_WAIT')return; // wait-only phase
-    if(gs.phase==='SWAP_STEAL_CARD'||gs.phase==='SWAP_GIVE_CARD')return; // 掉包暗抽中间态含私密牌信息，最终结算再同步
-    if(gs._mpEndTurn||gs._mpAutoDiscard||gs._mpAutoCthDecision)return; // local timeout transition markers
-    const isEndTurnReplayDecisionState=!!(
-      gs._endTurnReplay&&(
-        (gs.phase==='DRAW_REVEAL'&&gs.drawReveal?.fromEndTurnReplay)||
-        (gs.phase==='GOD_CHOICE'&&gs.abilityData?.fromEndTurnReplay)
-      )
-    );
-    if(gs._endTurnReplay&&!isEndTurnReplayDecisionState)return; // 无尽通道跨多段动画；需要玩家抉择的中间态仍需同步
-    if(receivedGsRef.current){receivedGsRef.current=false;return;}
-    if(latestGsRef.current!==gs)return; // 避免较早 render 的同步 effect 在玩家已推进状态后广播旧 visualEvents
-    const room=roomModal;
-    if(!room?.roomId)return;
-    const hasVisualEvents=Array.isArray(gs._visualEvents)&&gs._visualEvents.length>0;
-    const broadcastGs=hasVisualEvents?pruneConsumedVisualEvents(gs,consumedVisualEventIdsRef.current):gs;
-    const freshVisualEvents=Array.isArray(broadcastGs._visualEvents)?broadcastGs._visualEvents:[];
-    const rawGs=derotateGs(broadcastGs,myPlayerIndexRef.current);
-    socketRef.current.emit('mpStateSync',{roomId:room.roomId,gs:rawGs});
-    if(hasVisualEvents){
-      if(freshVisualEvents.length){
-        markConsumedVisualEvents(consumedVisualEventIdsRef.current,freshVisualEvents);
-      }
-      receivedGsRef.current=true;
-      setGs(prev=>prev?{...prev,_visualEvents:[]}:prev);
-    }
-  },[gs,anim,showTutorial,isMultiplayer,roomModal]);
+  useMultiplayerStateBroadcast({
+    gs,
+    setGs,
+    isMultiplayer,
+    playerUUID,
+    roomModal,
+    socketRef,
+    myPlayerIndexRef,
+    gameEndSentRef,
+    receivedGsRef,
+    latestGsRef,
+    consumedVisualEventIdsRef,
+    anim,
+    animExiting,
+    showTutorial,
+    animQueueRef,
+    pendingGsRef,
+  });
 
   // Auto-freeze game the instant player 寻宝者 has a winning hand
   useEffect(()=>{
@@ -3705,8 +3447,6 @@ export default function Game(){
   // refs 供计时器 useEffect 调用（避免陈旧闭包，必须在 if(!gs) return 之前）
   const endTurnRef=useRef(null);
   const autoDiscardRef=useRef(null);
-  const latestGsRef=useRef(null); // always mirrors latest gs for closures reading stale state
-  latestGsRef.current=gs; // 同步更新：渲染期间直接镜像，确保 confirmDiscard 等闭包读到最新值
 
   // localhost 调试钩子：一键把当前单机对局盖成"回合结束事件竞争"场景，便于复现验证 Phase C 调度器。
   // 控制台用法：

@@ -1,295 +1,184 @@
-# 邪神的宝藏 - 前端结构说明
+# Frontend Structure And Refactor Status
 
-本文档用于说明 `src/` 目录当前的职责划分。后续每次拆分 `App.jsx` 时，都应同步更新这里，避免代码边界和文档描述脱节。
+This is the current source of truth for `src/` module boundaries. Historical split plans have been folded into this file so future refactors do not have to reconcile multiple stale documents.
 
-## 当前目标
+## Current Goal
 
-当前前端的拆分方向是：
+Keep `App.jsx` as the top-level game shell while continuing to move independent logic into smaller modules:
 
-- `App.jsx` 只保留：
-  - React 组件与页面结构
-  - 全局状态机与回合推进
-  - 动画播放与实时日志桥接
-  - 联机同步入口与本地交互桥接
-- 其余独立性较强的逻辑逐步拆到：
-  - 静态卡牌数据
-  - 规则纯函数
-  - AI 决策
-  - 开局生成
-  - 多人视角旋转
-  - 日志编排辅助
+- pure data -> `constants/`
+- pure rules and state transforms -> `game/`
+- reusable React hooks -> `hooks/`
+- multiplayer socket/session glue -> `multiplayer/`
+- render-only UI -> `components/`
+- generic runtime helpers -> `utils/`
 
-## 目录结构
+## Directory Map
 
 ```text
 src/
-├─ App.jsx              # 游戏主入口，维护全局状态、动画队列、UI渲染
-├─ App.css              # 游戏界面样式
-├─ index.css            # 全局基础样式
-├─ main.jsx             # React挂载入口
-├─ README_structure.md  # 本文档
-├─ assets/              # 静态资源目录
+├─ App.jsx                  # top-level game component and screen composition
+├─ App.css                  # legacy app-level styles
+├─ index.css                # global base styles
+├─ main.jsx                 # React mount entry
+├─ README_structure.md      # this document
+├─ assets/                  # bundled static assets
 ├─ components/
-│  ├─ cards/            # 阶段2.1：卡牌渲染组件
-│  │  └─ index.jsx      # DDCard, GodDDCard, DDCardBack, GodCardDisplay, Tooltip, OctopusSVG
-│  └─ start/
-│     └─ StartScreen.jsx # 首页主界面视觉组件（开始页主体）
-├─ hooks/
-│  ├─ useResourcePreload.js  # 启动资源预加载与缓存版本控制
-│  ├─ useMultiplayerLobby.js # 联机大厅/房间/改名/Toast 状态与交互
-│  └─ useAnimationQueue.js   # 动画队列推进、pendingGs 落地、出队时序控制
-├─ constants/
-│  └─ card.js           # 卡牌静态数据、身份常量、颜色配置
-├─ game/                # 游戏逻辑纯函数（无React依赖）
-│  ├─ index.js          # 桶文件，统一导出game下所有模块
-│  ├─ ai.js            # AI决策策略、评分器、目标选择
-│  ├─ animLogs.js      # 动画日志编排辅助函数
-│  ├─ animQueueCore.js # 动画队列核心纯函数（状态差分 -> 动画步骤）
-│  ├─ animQueueHelpers.js  # 动画队列外围辅助函数
-│  ├─ coreUtils.js     # 洗牌、拷贝、区域牌判断等规则工具
-│  ├─ rotateState.js   # 联机视角旋转、seat语义判断
-│  ├─ setup.js         # 开局生成：mkDeck, mkRoles
-│  └─ turnAnimState.js # 回合开场动画状态/本地抽牌队列辅助
-├─ styles/              # 样式目录
-└─ utils/               # 工具函数目录
+│  ├─ anim/                 # animation overlays and animation CSS snippets
+│  ├─ board/                # player panels, piles, stat bars, board widgets
+│  ├─ cards/                # card faces, card backs, hover tooltip helpers
+│  ├─ lobby/                # lobby, room, privacy, tutorial intro, debug controls
+│  ├─ log/                  # battle log panel
+│  ├─ modals/               # game decision modals and informational modals
+│  ├─ phase/                # battle phase bar
+│  ├─ start/                # start screen
+│  ├─ theme/                # theme ornament components
+│  ├─ tutorial/             # in-game tutorial and soft guide overlays
+│  └─ ui/                   # small reusable UI pieces
+├─ constants/               # card data, theme data, flavor text
+├─ game/                    # pure game logic and tested state helpers
+├─ hooks/                   # React hooks for app subsystems
+├─ multiplayer/             # socket connection, handlers, state broadcast, UI session hooks
+└─ utils/                   # runtime config, DOM, scale, socket loader
 ```
 
-## 模块职责
+## Major Modules
 
 ### `App.jsx`
 
-当前仍然是前端主文件，但职责已经收缩到以下几类：
+Still owns:
 
-- React UI 与弹窗渲染
-- 游戏状态 `gs` 的维护与推进
-- 动画队列与视觉特效
-- 实时日志与完整日志的同步桥接
-- 单机与联机的主流程调度
+- top-level `gs` state and screen branches
+- battle action handlers and turn-flow orchestration
+- tutorial controller glue
+- animation queue orchestration that depends on React refs/state
+- large battle-screen JSX composition
+- some global styles
 
-不应该继续往这里堆纯数据、纯规则工具或纯 AI 策略。
+Do not add pure data, pure rules, or standalone AI strategy here.
 
-### `constants/card.js`
+### `game/`
 
-负责卡牌静态数据与常量定义，例如：
+Pure logic modules with no React dependency. Important files include:
 
-- 区域牌主数据
-- 邪神牌定义
-- 身份常量
-- 文案、颜色、基础配置
+- `coreUtils.js` - shared rules, card predicates, player copying, card log text
+- `setup.js` - deck, roles, and initial game construction helpers
+- `turnEngine.js` - turn start, draw, god encounter, and turn flow helpers
+- `ai.js` / `aiTurn.js` - AI choices and AI turn resolution
+- `effectEngine.js` - zone/check card and public effect resolution
+- `rotateState.js` - multiplayer seat rotation and local-seat semantics
+- `multiplayerRemoteReplay.js` / `multiplayerTimeouts.js` - multiplayer replay and timeout helpers
+- `animQueueCore.js` / `animQueueHelpers.js` / `animLogs.js` - animation queue and animation-log helpers
+- `visualEvents.js` / `statEvents.js` - event metadata used by animation and sync
+- `tutorialScenario.js` / `softGuides.js` - tutorial and soft-guide state helpers
 
-当前区域牌主数据已经以“按编号分组的变体列表”为主，不再依赖旧的 `face/tag` 作为运行时主结构。
+When a rule helper can be expressed as input -> output without DOM or React state, prefer putting it here and testing it under `game/__tests__/`.
 
-### `game/coreUtils.js`
+### `hooks/`
 
-负责纯函数型规则工具，不依赖 React 状态，也不应依赖 DOM。
+React state/effect modules that are reusable but still React-aware. Current examples:
 
-当前包括：
+- `useAnimationQueue.js`
+- `useBattleResponsiveLayout.js`
+- `useGameAudio.js`
+- `useDebugSettings.js`
+- `useMultiplayerLobby.js`
+- `useMultiplayerTimers.js`
+- `useResourcePreload.js`
+- animation effect hooks such as damage, card transfer, skill, earthquake, audio, visual discard sync
 
-- 洗牌、裁剪、玩家拷贝等基础工具
-- 区域牌正负中性 / 作用域判断
-- 手牌胜利条件判断
-- 日志中的卡牌文本格式化
-- 相邻存活角色索引等规则辅助
+### `multiplayer/`
 
-适合放这里的函数特征是：
+Socket/session code that has been extracted from `App.jsx`:
 
-- 输入明确
-- 输出明确
-- 无副作用
-- 与 UI 无直接关系
+- `useMultiplayerConnection.js` - runtime Socket.io loading and connection setup
+- `registerMultiplayerSocketHandlers.js` - socket event registration
+- `useMultiplayerStateBroadcast.js` - local state broadcast and game-end sync
+- `useMultiplayerUiSession.js` - waiting-room foreground reconnect and emoji sending
 
-### `game/ai.js`
+Keep this area in small slices. Remote replay and AI takeover are still partly in `App.jsx` because they depend heavily on animation refs and game action helpers.
 
-负责 AI 的纯策略与选择逻辑。
+### `components/`
 
-当前包括：
+Render-focused components. They should receive data and callbacks via props and avoid owning core game rules.
 
-- 是否收入区域牌
-- 亮牌选择
-- 猎人夺牌选择
-- `先到先得` 选牌
-- `玫瑰倒刺` 目标选择
-- 区域牌评分器
+Important extracted layers:
 
-这里应只放“AI 怎么判断”的逻辑，不放动画、日志、状态落地。
+- `cards/` - `DDCard`, `GodDDCard`, `DDCardBack`, `GodCardDisplay`, tooltip helpers, animated card backs
+- `modals/` - decision and information modals
+- `board/` - player panels, piles, stat widgets
+- `anim/` - animation overlays and global animation layer
+- `lobby/` - room/lobby/debug/tutorial intro controls
+- `start/` - start screen
 
-### `game/setup.js`
+## Completed Refactor Areas
 
-负责开局生成相关的纯逻辑。
+- card and god static data -> `constants/card.js`
+- theme data -> `constants/theme.js`
+- pure rules and state helpers -> `game/`
+- AI strategy and AI turn flow -> `game/ai.js`, `game/aiTurn.js`
+- state rotation and local-seat helpers -> `game/rotateState.js`
+- animation queue helpers -> `game/animQueueCore.js`, `game/animQueueHelpers.js`, `game/animLogs.js`
+- turn start animation state -> `game/turnAnimState.js`
+- remote replay and visual-event helpers -> `game/multiplayerRemoteReplay.js`, `game/visualEvents.js`
+- most rendering components -> `components/`
+- resource preload -> `hooks/useResourcePreload.js`
+- lobby/room state -> `hooks/useMultiplayerLobby.js`
+- timers -> `hooks/useMultiplayerTimers.js`
+- animation queue runtime -> `hooks/useAnimationQueue.js`
+- socket connection and several multiplayer side effects -> `src/multiplayer/`
 
-当前包括：
+## Remaining High-Value Refactor Targets
 
-- `mkDeck()`：生成初始牌堆
-- `mkRoles()`：生成初始身份顺序
+### 1. Battle Actions / Turn Flow
 
-后续如果继续收缩 `App.jsx`，与"构建初始对局状态"强相关、但又不依赖 UI 的逻辑，也可以继续往这里移动。
+Largest remaining block in `App.jsx`. This includes draw decisions, target selection, skills, god choices, discard, rest, end-turn event sequencing, and replay/broadcast bridges around local actions.
 
-### `game/index.js`
+Risk: high. It shares refs, tutorial gates, animation queues, multiplayer sync, and pending state. Extract in small slices with tests.
 
-游戏逻辑模块的统一导出入口（桶文件）。
+Suggested first slices:
 
-当前导出：
+- hand-limit discard helpers
+- default target/card choice helpers
+- end-turn event scheduling wrappers
+- small pure helpers currently nested inside action handlers
 
-- `coreUtils` 的所有导出
-- `ai` 的所有导出
-- `setup` 的所有导出
+### 2. Multiplayer Remote Replay / AI Takeover
 
-App.jsx 通过 `import { xxx } from './game'` 统一导入，便于扩展和维护。
+Still partly in `App.jsx` because it touches animation queues and action resolution helpers.
 
-负责联机视角旋转与“本地 seat 语义”相关 helper。
+Risk: medium-high. Preserve ref read timing (`latestGsRef`, pending queues, role reveal gates).
 
-当前包括：
+### 3. Tutorial Controller
 
-- `rotateGsForViewer(...)`
-- `derotateGs(...)`
-- 本地 seat / AI seat 判断
-- 本地行动者 / 本地响应者 / 本地目标判断
-- 本地显示名 helper
+Tutorial state and step transitions are still strongly coupled to game actions and animations.
 
-这部分的目标是把：
+Risk: medium. Prefer extracting pure scenario/step decisions first; leave UI measurement and animation bridge in App until stable.
 
-- `0/非0` 的硬编码
-- 本地玩家/联机玩家的视角映射
+### 4. Battle Screen JSX
 
-从 `App.jsx` 中逐步抽离出来。
+Large but lower rule-risk. It can be split into `BattleScreen` and smaller composition components once props are organized.
 
-### `game/animLogs.js`
+Risk: medium. Main risk is prop volume and accidentally changing z-index / layout behavior.
 
-负责动画日志编排的纯辅助函数。
+### 5. Global Styles
 
-当前包括：
+`GLOBAL_STYLES` can move to a stylesheet or style module.
 
-- 日志类型判断
-- 日志切片与分桶
-- 显式日志片段绑定
-- 回合切换日志切分
-- `prepareAnimQueueLogs(...)`
+Risk: low-medium. Verify animation names and global CSS variables after moving.
 
-这里主要承接“日志如何跟动画步骤对齐”的纯逻辑。真正依赖 React ref、组件状态的那层仍保留在 `App.jsx`。
+## Testing Priorities
 
-### `game/animQueueHelpers.js`
+When changing extracted logic, prefer focused tests first:
 
-负责动画队列外围的纯辅助函数。
+- turn order and draw/god encounter flow
+- animation queue ordering around bewitch, inspection, card transfer, and deaths
+- Zhu hidden-card interception and resumed draws
+- CTH rest draws and remaining-draw continuation
+- multiplayer state broadcast, socket handler registration, and timeout decisions
 
-当前包括：
+Then run `npm.cmd run build` for integration confidence.
 
-- 回合高亮的队列步骤解析
-- 蛊惑后被赠牌角色的后续队列构造
-- SAN 检定牌翻牌队列构造
-- 检定前后状态之间的动画流拼装
+## Maintenance Rule
 
-这部分和动画系统关系很近，但本身不依赖 React state、ref 或 DOM，因此适合从 `App.jsx` 中独立出来。
-
-## 当前已完成的拆分
-
-截至目前，已经从 `App.jsx` 拆出的主要内容有：
-
-- 区域牌/邪神牌静态数据 -> `constants/card.js`
-- 规则纯函数 -> `game/coreUtils.js`
-- AI 策略与评分器 -> `game/ai.js`
-- 开局生成 -> `game/setup.js`
-- 动画队列核心纯函数 -> `game/animQueueCore.js`
-- 回合开场动画状态辅助 -> `game/turnAnimState.js`
-- 联机视角旋转与 seat helper -> `game/rotateState.js`
-- 动画日志辅助 -> `game/animLogs.js`
-- 动画队列外围辅助 -> `game/animQueueHelpers.js`
-- 卡牌渲染组件 -> `components/cards/` (阶段 2.1)
-- 首页主界面视觉组件 -> `components/start/StartScreen.jsx`
-- 资源预加载 -> `hooks/useResourcePreload.js`
-- 联机大厅与房间交互 -> `hooks/useMultiplayerLobby.js`
-- 动画队列推进与时序控制 -> `hooks/useAnimationQueue.js`
-- 桌面布局组件（已开始） -> `components/board/`：`HoundsTimerBadge`、`StatBar`、`DiscardPile`
-
-### `components/cards/index.jsx`
-
-负责基础卡牌 UI 渲染，是全应用最高频复用的组件层。
-
-当前包括：
-
-- `DDCard`：区域牌卡片组件（支持普通牌、空白牌、玫瑰倒刺标记）
-- `GodDDCard`：邪神牌卡片组件
-- `DDCardBack`：牌背面组件
-- `GodCardDisplay`：邪神牌展示组件
-- `GodTooltip`：邪神牌悬浮提示
-- `AreaTooltip`：区域牌悬浮提示
-- `OctopusSVG`：八爪鱼装饰 SVG
-- `useCardHoverTooltip`：卡牌悬浮提示 Hook
-
-特点：
-- 完全独立，无 React 状态依赖
-- 通过 props 接收数据和回调
-- 可直接复用或替换样式
-
-## 当前仍留在 `App.jsx`、后续可继续拆分的重点
-
-### 阶段 2.2：交互模态框与面板 (Modals & Modifiers)
-
-待拆分组件：
-- `GodChoiceModal`、`NyaBorrowModal`、`DrawRevealModal`
-- `TreasureDodgeModal`、`PeekHandModal`、`TortoiseOracleModal`
-- `AboutModal`、`FullLogModal`、`RoadmapModal`
-
-目标路径：`components/modals/`
-
-### 阶段 2.3：玩家面板及桌面布局 (Board Layer)
-
-待拆分组件：
-- `PlayerPanel`、`PileDisplay`、`DiscardPile`、`DeckPile`
-- `InspectionPile`、`HoundsTimerBadge`、`StatBar`
-
-目标路径：`components/board/`
-
-### 阶段 2.4：复杂动画节点 (Animations & Overlays)
-
-待拆分组件：
-- `FlowerBloom`、`CardFlipAnim`、`KnifeEffect`、`DiscardMoveOverlay`
-- `CardTransferOverlay`、`GenericAnimOverlay`、`DiceRollAnim`、`YourTurnAnim`
-- `GuillotineAnim`、`SanMistOverlay`、`HealCrossEffect`、`CaveDuelAnim`
-- `BewitchEyeOverlay`、`HuntScopeOverlay`、`SwapCupOverlay` 等
-
-目标路径：`components/anim/`
-
-### 效果结算主链（长期）
-
-- `applyFx(...)`
-- 邪神结算相关主链
-
-长期更适合拆成独立的 effect engine。
-
-### 实时日志与动画的最终桥接层
-
-虽然纯 helper 已经拆到 `animLogs.js`，但：
-
-- `visibleLogRef`
-- `revealAnimLogs(...)`
-- `advanceQueue(...)`
-
-仍在 `App.jsx`，这是合理的中间状态。
-
-## 后续拆分原则
-
-后续继续拆分时，建议遵循这些规则：
-
-1. 纯数据放 `constants/`
-2. 纯规则函数放 `game/coreUtils.js`
-3. 纯 AI 决策放 `game/ai.js`
-4. 开局构建放 `game/setup.js`
-5. 联机 seat / 视角映射放 `game/rotateState.js`
-6. 动画日志纯辅助放 `game/animLogs.js`
-7. UI 组件按层级拆分到 `components/cards/`、`components/modals/`、`components/board/`、`components/anim/`
-8. 只有真正依赖 React 状态、组件上下文或 DOM 的逻辑，才继续留在 `App.jsx`
-
-## 维护要求
-
-每次发生以下情况时，都要同步更新本文档：
-
-- 新增一个拆分模块
-- 某类职责从 `App.jsx` 移出
-- 某个模块边界发生调整
-- 原有模块职责出现扩展或收缩
-
-这样可以确保：
-
-- 后续拆分有连续性
-- 回看历史时能快速理解模块边界
-- 不会出现“代码已经拆了，但文档还是旧结构”的情况
+Update this file whenever a responsibility moves out of `App.jsx`, a module boundary changes, or a refactor plan changes. Avoid creating new long-lived plan documents unless they are clearly temporary and linked from here.

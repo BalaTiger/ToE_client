@@ -1,98 +1,80 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Agent guidance for `ToE_client_main`.
 
 ## Project Overview
 
-《邪神的宝藏》(Treasures of Evils) — A Cthulhu-themed card game frontend built with React 19 + Vite 8 (beta).
-Website: https://www.toegame.online/
+《邪神的宝藏》(Treasures of Evils) frontend.
 
-This project uses ES modules (`"type": "module"` in package.json).
+- React 19 + Vite 8 beta
+- ES modules (`"type": "module"`)
+- Runtime game is mostly client-side; multiplayer state is relayed by `ToE_server`
 
-## Development Commands
+## Commands
 
-- `npm run dev` — Start the Vite dev server (no special env vars needed)
-- `npm run build` — Production build (outputs to `dist/`)
-- `npm run preview` — Preview the production build locally
-- `npm run lint` — Run ESLint
+- `npm run dev` - Start Vite dev server
+- `npm run build` - Generate resource manifest and build production assets
+- `npm run build:h5` - Build H5 package into `dist-h5/`
+- `npm run preview` - Preview production build locally
+- `npm run lint` - Run ESLint
+- `npm run test:run` - Run Vitest once
+- `npm run test` - Run Vitest watch mode
 
-There are no formal tests in this project. Do not attempt to run `npm test`.
+Prefer focused test runs while working, for example:
 
-### Simulation Scripts (`sim_scripts/`)
+```powershell
+npm.cmd run test:run -- src/multiplayer/useMultiplayerStateBroadcast.test.js
+```
 
-Standalone Node.js scripts that replicate game logic outside the React app for balance testing and AI behavior validation:
-- `simulate_claude.js` — Full game simulation with latest card definitions and AI logic
-- `simulate_trae.js` — Alternative simulation variant
-- `analyze_san_cards.js` — SAN card balance analysis
+## Current Architecture
 
-Run directly with Node: `node sim_scripts/simulate_claude.js`
+Use `src/README_structure.md` as the current source of truth for module boundaries and refactor status.
 
-## Architecture
+Important directories:
 
-### Monolithic Game Engine
+- `src/App.jsx` - main game component, still large; owns the top-level React state and screen composition
+- `src/game/` - pure game rules, AI, state rotation, animation queue helpers, remote replay helpers, and tested state transforms
+- `src/components/` - extracted UI components by layer: cards, board, modals, animation overlays, lobby, log, phase, start, tutorial, ui
+- `src/hooks/` - React hooks for animation queues, audio, responsive layout, timers, debug settings, lobby state, resource preload
+- `src/multiplayer/` - socket connection, socket handlers, state broadcast, and multiplayer UI-session hooks
+- `src/utils/` - runtime config, DOM helpers, scale helpers, Socket.io runtime loader
+- `src/constants/` - card data, theme data, card flavor text
 
-`src/App.jsx` (~13,000 lines) is the entire game. It contains:
-- Game state machine (turn flow, phase transitions, win conditions)
-- Animation system (sequential queues, overlays, hit effects)
-- All UI rendering (board, modals, player panels, card piles)
-- Socket.io multiplayer integration
-- AI turn orchestration
+## App.jsx Constraints
 
-**Critical constraint**: The `Game` component in `App.jsx` has multiple early returns (`if(!gs)`, `if(gs.gameOver)`). React Hooks must **never** be added after these conditional returns. All hooks must run before any conditional logic. This has caused production bugs.
+`Game` in `src/App.jsx` has multiple early returns for loading, start screen, and game-over screens. React hooks must be declared before these conditional returns. Do not add a hook below an early return.
 
-### Extracted Game Logic (`src/game/`)
+The biggest remaining App responsibilities are:
 
-Pure JavaScript modules with no React dependency:
+- battle actions / turn-flow controller
+- tutorial controller
+- remote multiplayer replay and AI takeover coordination
+- large battle-screen JSX and modal composition
+- global styles
 
-- `coreUtils.js` — Shuffle, card type predicates, win conditions, rule helpers
-- `ai.js` — AI decision strategies (card scoring, target selection, role-specific logic)
-- `setup.js` — Deck generation (`mkDeck`), role assignment (`mkRoles`)
-- `rotateState.js` — Multiplayer perspective rotation: `rotateGsForViewer(rawGs, myIdx)` rotates seat indices so every client sees itself as player 0
-- `animQueueHelpers.js` — Animation queue construction helpers
-- `animLogs.js` — Animation log parsing and chunking
-- `index.js` — Barrel exports
+When extracting logic, prefer small vertical slices with tests. Avoid moving the whole action controller in one step.
 
-### Card Data (`src/constants/card.js`)
+## Multiplayer Notes
 
-Single source of truth for all game data:
-- 48 zone cards (A1–D4, 3 copies each) with types like `selfHealHP`, `adjDamageHP`, `selfDamageDiscardHP`
-- 8 god cards (NYA + CTH, 4 copies each)
-- 3 roles: `寻宝者` (Treasure), `追猎者` (Hunter), `邪祀者` (Cultist)
-- `RINFO`, `GOD_DEFS`, `FIXED_ZONE_CARD_VARIANTS_BY_KEY`
+- `socket.io-client` is loaded at runtime by `src/utils/socketIoClient.js`.
+- Server URL/path come from runtime config helpers in `src/utils/runtime.js`.
+- Seat rotation is handled by `src/game/rotateState.js`; every client views itself as seat 0.
+- Connection and socket event registration live in `src/multiplayer/`.
+- State broadcast and UI-session socket side effects have focused tests under `src/multiplayer/`.
 
-### Components (`src/components/cards/`)
+## Testing Notes
 
-Extracted card rendering components:
-- `DDCard` — Zone card display
-- `GodDDCard`, `GodCardDisplay` — God card display
-- `GodTooltip`, `AreaTooltip`, `useCardHoverTooltip` — Hover tooltips
+Vitest tests exist and should be used for focused verification. Useful areas include:
 
-## Multiplayer Architecture
+- `src/game/__tests__/`
+- `src/hooks/__tests__/`
+- `src/multiplayer/*.test.js`
+- component-adjacent tests such as `src/components/lobby/debugSettingsModel.test.js`
 
-- Socket.io server connection is managed inside `App.jsx`
-- `socket.io-client` is **loaded at runtime from CDN** (`https://cdn.socket.io/4.7.5/socket.io.min.js`), not imported as a module. Check `loadSocketIO()` in `App.jsx`
-- Server URL/path are configured via `window.__TOE_SERVER_URL__` / `window.__TOE_SOCKET_PATH__` or Vite env vars (`VITE_SERVER_URL`, `VITE_SOCKET_PATH`)
-- `rotateState.js` handles the core problem of multiplayer card games: every client sees itself as seat 0, so `currentTurn`, `drawerIdx`, `swapTi`, and other index fields must be rotated per-viewer
-- `isLocalSeatIndex(idx)`, `isLocalCurrentTurn(gs)`, `isAiSeat(gs, idx)` are the canonical helpers for seat/turn checks
+For refactors touching animation order, add or update nearby pure-function tests before relying on a full build.
 
-## Game State (`gs`)
+## Encoding And Workflow
 
-The game state object shape (simplified):
-- `players[]` — `{id, name, role, hand[], hp, san, godName, godLevel, isDead, ...}`
-- `deck[]`, `discard[]`
-- `currentTurn` — seat index of whose turn it is
-- `phase` — `'ACTION' | 'DRAW_REVEAL' | 'DRAW_SELECT_TARGET' | 'GOD_CHOICE' | 'AI_TURN' | 'DISCARD_PHASE' | 'SWAP_SELECT_TARGET' | 'HUNT_SELECT_TARGET' | 'BEWITCH_SELECT_CARD' | 'PLAYER_WIN_PENDING' | ...`
-- `drawReveal` — `{card, drawerIdx, needsDecision, forcedKeep}`
-- `abilityData` — phase-specific context (swap target, hunt target, etc.)
-- `gameOver` — `{winner, reason, winnerIdx}` or `null`
+Read `CODEX_WORKFLOW.md` before broad text edits. In PowerShell, prefer explicit UTF-8 output and `Get-Content -Encoding UTF8`.
 
-## Deployment
-
-GitHub Actions workflow at `.github/workflows/deploy.yml` deploys the `release` branch to Tencent Cloud OpenCloudOS 9 via SSH on every push to `release`. The server runs `npm ci && npm run build` and copies `dist/*` to `/usr/share/nginx/html/`.
-
-## Important Patterns
-
-- **Animation system**: Animations are queued (`animQueueRef`) and advanced sequentially. `pendingGsRef` holds the final state to apply after all animations finish. `turnHighlightLockRef` and `visualPlayersLockRef` freeze visual state during animations.
-- **Stuck/recovery watchdogs**: Multiple `useEffect` watchdogs detect AI turns stuck in bad phases and force-advance after timeouts (3.5s–20s).
-- **Local test mode**: `isLocalTestHost()` enables debug settings (force cards, force roles). Toggle via a button in the top-left when running on localhost.
-- **Artifact mode**: `isArtifact` detects Claude Artifacts iframe / sandboxed origin and disables features that require a real server (multiplayer, localStorage persistence).
+Do not change files outside the requested scope, and do not revert unrelated user work.
