@@ -7,6 +7,24 @@ const DREAM_WIDTH_RATIO = 0.48;
 const DREAM_HEIGHT_RATIO = 0.43;
 const DREAM_MAX_WIDTH = 620;
 const DREAM_MAX_HEIGHT = 430;
+const DREAM_CORE_MASK = `
+  radial-gradient(ellipse 39% 34% at 51% 50%, #000 0%, #000 58%, rgba(0,0,0,.72) 73%, rgba(0,0,0,.18) 89%, transparent 100%),
+  radial-gradient(ellipse 20% 24% at 23% 48%, #000 0%, #000 46%, rgba(0,0,0,.62) 70%, rgba(0,0,0,.16) 88%, transparent 100%),
+  radial-gradient(ellipse 24% 19% at 36% 30%, #000 0%, #000 42%, rgba(0,0,0,.56) 68%, rgba(0,0,0,.14) 88%, transparent 100%),
+  radial-gradient(ellipse 21% 25% at 58% 23%, #000 0%, #000 44%, rgba(0,0,0,.58) 69%, rgba(0,0,0,.14) 88%, transparent 100%),
+  radial-gradient(ellipse 25% 21% at 77% 46%, #000 0%, #000 45%, rgba(0,0,0,.6) 70%, rgba(0,0,0,.16) 89%, transparent 100%),
+  radial-gradient(ellipse 24% 18% at 65% 75%, #000 0%, #000 42%, rgba(0,0,0,.56) 68%, rgba(0,0,0,.13) 88%, transparent 100%),
+  radial-gradient(ellipse 20% 19% at 39% 78%, #000 0%, #000 42%, rgba(0,0,0,.54) 67%, rgba(0,0,0,.12) 87%, transparent 100%)
+`;
+const DREAM_EDGE_MASK = `
+  radial-gradient(ellipse 43% 38% at 51% 50%, transparent 0%, transparent 44%, rgba(0,0,0,.34) 59%, #000 72%, rgba(0,0,0,.54) 84%, transparent 100%),
+  radial-gradient(ellipse 24% 29% at 22% 48%, transparent 0%, transparent 38%, rgba(0,0,0,.38) 55%, #000 70%, rgba(0,0,0,.42) 84%, transparent 100%),
+  radial-gradient(ellipse 29% 23% at 36% 29%, transparent 0%, transparent 36%, rgba(0,0,0,.36) 54%, #000 70%, rgba(0,0,0,.38) 84%, transparent 100%),
+  radial-gradient(ellipse 25% 30% at 58% 22%, transparent 0%, transparent 37%, rgba(0,0,0,.36) 55%, #000 71%, rgba(0,0,0,.4) 85%, transparent 100%),
+  radial-gradient(ellipse 30% 25% at 78% 46%, transparent 0%, transparent 38%, rgba(0,0,0,.38) 56%, #000 72%, rgba(0,0,0,.42) 86%, transparent 100%),
+  radial-gradient(ellipse 29% 23% at 65% 76%, transparent 0%, transparent 36%, rgba(0,0,0,.36) 54%, #000 70%, rgba(0,0,0,.4) 84%, transparent 100%),
+  radial-gradient(ellipse 24% 24% at 39% 79%, transparent 0%, transparent 37%, rgba(0,0,0,.34) 54%, #000 70%, rgba(0,0,0,.38) 84%, transparent 100%)
+`;
 
 const BUBBLES = [
   { x: -34, y: 22, dx: -22, size: 8, delay: 0.02, dur: 2.6 },
@@ -366,25 +384,6 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
       aria-hidden
     >
       <svg width="0" height="0" style={{ position: 'absolute' }}>
-        <clipPath id={`${filterId}-blob-a`} clipPathUnits="objectBoundingBox">
-          <path d="M0.045,0.55 C0.025,0.43 0.075,0.34 0.155,0.305 C0.145,0.175 0.3,0.12 0.405,0.15 C0.48,0.045 0.68,0.065 0.72,0.18 C0.84,0.14 0.95,0.27 0.925,0.405 C0.985,0.5 0.925,0.63 0.845,0.635 C0.855,0.785 0.7,0.87 0.585,0.825 C0.49,0.96 0.31,0.925 0.29,0.785 C0.15,0.795 0.08,0.68 0.045,0.55 Z">
-            <animate attributeName="d" dur="3.4s" repeatCount="indefinite"
-              values="
-                M0.045,0.55 C0.025,0.43 0.075,0.34 0.155,0.305 C0.145,0.175 0.3,0.12 0.405,0.15 C0.48,0.045 0.68,0.065 0.72,0.18 C0.84,0.14 0.95,0.27 0.925,0.405 C0.985,0.5 0.925,0.63 0.845,0.635 C0.855,0.785 0.7,0.87 0.585,0.825 C0.49,0.96 0.31,0.925 0.29,0.785 C0.15,0.795 0.08,0.68 0.045,0.55 Z;
-                M0.065,0.495 C0.035,0.38 0.115,0.29 0.2,0.31 C0.17,0.17 0.35,0.075 0.455,0.13 C0.555,0.035 0.715,0.1 0.725,0.245 C0.865,0.19 0.965,0.355 0.895,0.47 C0.975,0.57 0.875,0.705 0.765,0.68 C0.76,0.825 0.575,0.915 0.49,0.815 C0.38,0.93 0.22,0.84 0.235,0.71 C0.105,0.695 0.09,0.59 0.065,0.495 Z;
-                M0.035,0.565 C0.065,0.45 0.045,0.335 0.17,0.27 C0.18,0.135 0.325,0.145 0.38,0.205 C0.465,0.055 0.645,0.045 0.76,0.155 C0.81,0.25 0.945,0.255 0.91,0.405 C0.99,0.505 0.94,0.66 0.82,0.655 C0.83,0.79 0.665,0.845 0.565,0.79 C0.49,0.965 0.285,0.91 0.305,0.765 C0.16,0.83 0.07,0.705 0.035,0.565 Z;
-                M0.045,0.55 C0.025,0.43 0.075,0.34 0.155,0.305 C0.145,0.175 0.3,0.12 0.405,0.15 C0.48,0.045 0.68,0.065 0.72,0.18 C0.84,0.14 0.95,0.27 0.925,0.405 C0.985,0.5 0.925,0.63 0.845,0.635 C0.855,0.785 0.7,0.87 0.585,0.825 C0.49,0.96 0.31,0.925 0.29,0.785 C0.15,0.795 0.08,0.68 0.045,0.55 Z" />
-          </path>
-        </clipPath>
-        <clipPath id={`${filterId}-blob-b`} clipPathUnits="objectBoundingBox">
-          <path d="M0.025,0.54 C0.045,0.37 0.085,0.25 0.22,0.255 C0.225,0.085 0.425,0.085 0.485,0.155 C0.59,0.04 0.795,0.125 0.81,0.265 C0.955,0.255 0.98,0.45 0.91,0.54 C0.965,0.68 0.79,0.825 0.66,0.755 C0.56,0.94 0.36,0.91 0.325,0.765 C0.165,0.82 0.065,0.68 0.025,0.54 Z">
-            <animate attributeName="d" dur="3.9s" repeatCount="indefinite"
-              values="
-                M0.025,0.54 C0.045,0.37 0.085,0.25 0.22,0.255 C0.225,0.085 0.425,0.085 0.485,0.155 C0.59,0.04 0.795,0.125 0.81,0.265 C0.955,0.255 0.98,0.45 0.91,0.54 C0.965,0.68 0.79,0.825 0.66,0.755 C0.56,0.94 0.36,0.91 0.325,0.765 C0.165,0.82 0.065,0.68 0.025,0.54 Z;
-                M0.055,0.48 C0.02,0.34 0.155,0.22 0.25,0.29 C0.26,0.12 0.455,0.045 0.535,0.165 C0.635,0.075 0.82,0.18 0.79,0.335 C0.945,0.36 0.94,0.56 0.84,0.625 C0.905,0.78 0.71,0.885 0.61,0.765 C0.485,0.91 0.285,0.85 0.305,0.705 C0.145,0.745 0.09,0.6 0.055,0.48 Z;
-                M0.025,0.54 C0.045,0.37 0.085,0.25 0.22,0.255 C0.225,0.085 0.425,0.085 0.485,0.155 C0.59,0.04 0.795,0.125 0.81,0.265 C0.955,0.255 0.98,0.45 0.91,0.54 C0.965,0.68 0.79,0.825 0.66,0.755 C0.56,0.94 0.36,0.91 0.325,0.765 C0.165,0.82 0.065,0.68 0.025,0.54 Z" />
-          </path>
-        </clipPath>
         <filter id={`${filterId}-distort`} x="-14%" y="-14%" width="128%" height="128%">
           <feTurbulence type="fractalNoise" baseFrequency="0.01 0.03" numOctaves="3" seed="27" result="noise">
             <animate attributeName="baseFrequency" dur="2.8s" values="0.009 0.026;0.017 0.038;0.011 0.03" repeatCount="indefinite" />
@@ -486,9 +485,8 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
         }
         .cth-rlyeh-dream__image {
           position: absolute;
-          inset: -3%;
+          inset: -8%;
           z-index: 1;
-          clip-path: url(#${filterId}-blob-a);
           background-image:
             radial-gradient(circle at 48% 44%, rgba(118,241,242,0.09), transparent 34%),
             linear-gradient(180deg, rgba(0,12,20,0.02), rgba(0,4,12,0.16)),
@@ -496,16 +494,19 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           background-size: cover;
           background-position: center;
           transform: scale(1.03);
-          filter: url(#${filterId}-distort) contrast(1.08) brightness(.96) saturate(1.12);
-          -webkit-mask-image: radial-gradient(ellipse at 50% 50%, #000 0%, #000 56%, rgba(0,0,0,.82) 68%, rgba(0,0,0,.32) 82%, transparent 94%);
-          mask-image: radial-gradient(ellipse at 50% 50%, #000 0%, #000 56%, rgba(0,0,0,.82) 68%, rgba(0,0,0,.32) 82%, transparent 94%);
+          filter: url(#${filterId}-distort) contrast(1.08) brightness(.96) saturate(1.12) blur(.18px);
+          -webkit-mask-image: ${DREAM_CORE_MASK};
+          mask-image: ${DREAM_CORE_MASK};
+          -webkit-mask-size: 100% 100%;
+          mask-size: 100% 100%;
+          -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
           animation: cthDreamDrift 2.5s ease-in-out both;
         }
         .cth-rlyeh-dream__edge {
           position: absolute;
-          inset: -16%;
+          inset: -24%;
           z-index: 3;
-          clip-path: url(#${filterId}-blob-b);
           background:
             radial-gradient(ellipse at 16% 44%, rgba(124,231,232,0.34), transparent 25%),
             radial-gradient(ellipse at 82% 38%, rgba(99,200,220,0.3), transparent 24%),
@@ -514,9 +515,28 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           filter: url(#${filterId}-edge) blur(18px);
           mix-blend-mode: screen;
           opacity: .78;
-          -webkit-mask-image: radial-gradient(ellipse at 50% 50%, transparent 0%, transparent 52%, rgba(0,0,0,.7) 67%, #000 78%, transparent 93%);
-          mask-image: radial-gradient(ellipse at 50% 50%, transparent 0%, transparent 52%, rgba(0,0,0,.7) 67%, #000 78%, transparent 93%);
+          -webkit-mask-image: ${DREAM_EDGE_MASK};
+          mask-image: ${DREAM_EDGE_MASK};
+          -webkit-mask-size: 100% 100%;
+          mask-size: 100% 100%;
+          -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
           animation: cthDreamEdgeSwim 3.2s ease-in-out infinite;
+        }
+        .cth-rlyeh-dream__rim-fog {
+          position: absolute;
+          z-index: 4;
+          left: 50%;
+          top: 50%;
+          width: calc(var(--w) * 1%);
+          height: calc(var(--h) * 1%);
+          transform: translate(calc(-50% + var(--x) * 1%), calc(-50% + var(--y) * 1%)) rotate(calc(var(--rot) * 1deg));
+          border-radius: 50%;
+          background: radial-gradient(ellipse at 50% 50%, rgba(161,252,255,0.28), rgba(83,205,224,0.14) 42%, transparent 72%);
+          filter: url(#${filterId}-edge) blur(12px);
+          mix-blend-mode: screen;
+          opacity: .64;
+          animation: cthDreamRimFog calc(var(--dur) * 1s) ease-in-out calc(var(--delay) * 1s) infinite alternate;
         }
         .cth-rlyeh-dream__edge-cloud {
           position: absolute;
@@ -536,16 +556,19 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
         }
         .cth-rlyeh-dream__caustics {
           position: absolute;
-          inset: -3%;
+          inset: -8%;
           z-index: 5;
-          clip-path: url(#${filterId}-blob-a);
           background:
             repeating-radial-gradient(ellipse at 46% 56%, rgba(122,236,240,0.12) 0 1px, transparent 2px 14px),
             linear-gradient(112deg, transparent 0%, rgba(98,219,230,0.11) 42%, transparent 60%);
           mix-blend-mode: screen;
-          filter: blur(1px);
-          -webkit-mask-image: radial-gradient(ellipse at 50% 50%, #000 0%, #000 55%, rgba(0,0,0,.45) 78%, transparent 92%);
-          mask-image: radial-gradient(ellipse at 50% 50%, #000 0%, #000 55%, rgba(0,0,0,.45) 78%, transparent 92%);
+          filter: url(#${filterId}-distort) blur(1px);
+          -webkit-mask-image: ${DREAM_CORE_MASK};
+          mask-image: ${DREAM_CORE_MASK};
+          -webkit-mask-size: 100% 100%;
+          mask-size: 100% 100%;
+          -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
           animation: cthDreamCaustics 1.65s linear infinite;
         }
         .cth-rlyeh-dream__bubble {
@@ -612,6 +635,16 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
             opacity: .78;
             transform: translate(-50%, -50%) rotate(calc((var(--rot) + 18) * 1deg)) scale(1.18, 1.05);
             border-radius: 58% 42% 54% 46% / 43% 57% 39% 61%;
+          }
+        }
+        @keyframes cthDreamRimFog {
+          0% {
+            opacity: .32;
+            transform: translate(calc(-50% + var(--x) * 1%), calc(-50% + var(--y) * 1%)) rotate(calc(var(--rot) * 1deg)) scale(.82, .92);
+          }
+          100% {
+            opacity: .76;
+            transform: translate(calc(-50% + var(--x) * 1%), calc(-50% + var(--y) * 1%)) rotate(calc((var(--rot) + 14) * 1deg)) scale(1.18, 1.05);
           }
         }
         @keyframes cthDreamCaustics {
@@ -738,6 +771,21 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
         style={beam ? { width: beam.dream.width, height: beam.dream.height } : undefined}
       >
         <div className="cth-rlyeh-dream__edge" />
+        {EDGE_CLOUDS.map((cloud, index) => (
+          <span
+            key={`rim-${index}`}
+            className="cth-rlyeh-dream__rim-fog"
+            style={{
+              '--x': cloud.x - 50,
+              '--y': cloud.y - 50,
+              '--w': cloud.w * 1.55,
+              '--h': cloud.h * 1.55,
+              '--delay': cloud.delay,
+              '--dur': cloud.dur,
+              '--rot': cloud.rot,
+            }}
+          />
+        ))}
         {EDGE_CLOUDS.map((cloud, index) => (
           <span
             key={index}
