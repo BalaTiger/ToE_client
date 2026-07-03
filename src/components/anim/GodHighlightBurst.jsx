@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { buildPublicUrl } from '../../utils/url';
 
 const GOD_HIGHLIGHT_KEYS = new Set([
@@ -35,9 +35,28 @@ function GodHighlightBurst({
   style,
 }) {
   const path = getGodHighlightPath(godKey);
+  const [imageSize, setImageSize] = useState(null);
+
+  useEffect(() => {
+    if (!path || typeof Image === 'undefined') return undefined;
+    let cancelled = false;
+    const image = new Image();
+    image.onload = () => {
+      if (cancelled || !image.naturalWidth || !image.naturalHeight) return;
+      setImageSize({ width: image.naturalWidth, height: image.naturalHeight });
+    };
+    image.src = buildPublicUrl(path);
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+
   if (!path) return null;
 
   const src = buildPublicUrl(path);
+  const aspectRatio = imageSize?.width && imageSize?.height
+    ? `${imageSize.width} / ${imageSize.height}`
+    : '4 / 3';
   const layers = panel
     ? [
         { scale: 1.14, opacity: 0.22, blur: 0.45, delay: 0 },
@@ -100,29 +119,42 @@ function GodHighlightBurst({
         }}
       />
       {layers.map((layer, index) => (
-        <img
+        <span
           key={index}
-          className="toe-god-highlight-blend toe-god-highlight-soft-edge"
-          src={src}
-          alt=""
-          draggable={false}
           style={{
             position: 'absolute',
-            inset: panel ? '-42%' : '-28%',
-            width: panel ? '184%' : '156%',
+            top: '50%',
+            left: '50%',
             height: panel ? '184%' : '156%',
-            objectFit: fit,
-            objectPosition: 'center',
-            opacity: 0,
+            aspectRatio,
+            transform: 'translate3d(-50%,-50%,0)',
             transformOrigin: 'center',
-            filter: `brightness(${1.2 + index * 0.08}) saturate(${1.18 + index * 0.12}) drop-shadow(0 0 ${panel ? 14 : 22}px rgba(255,226,160,0.28))`,
-            animation: `toeGodHighlightBurstLayer ${durationMs}ms cubic-bezier(0.13,0.85,0.25,1) ${delayMs + layer.delay}ms both`,
-            '--toe-god-highlight-scale': layer.scale,
-            '--toe-god-highlight-opacity': layer.opacity,
-            '--toe-god-highlight-blur': `${layer.blur}px`,
-            '--toe-god-highlight-intensity': intensity,
+            overflow: 'visible',
           }}
-        />
+        >
+          <img
+            className="toe-god-highlight-blend toe-god-highlight-soft-edge"
+            src={src}
+            alt=""
+            draggable={false}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: fit,
+              objectPosition: 'center',
+              opacity: 0,
+              transformOrigin: 'center',
+              filter: `brightness(${1.2 + index * 0.08}) saturate(${1.18 + index * 0.12}) drop-shadow(0 0 ${panel ? 14 : 22}px rgba(255,226,160,0.28))`,
+              animation: `toeGodHighlightBurstLayer ${durationMs}ms cubic-bezier(0.13,0.85,0.25,1) ${delayMs + layer.delay}ms both`,
+              '--toe-god-highlight-scale': layer.scale,
+              '--toe-god-highlight-opacity': layer.opacity,
+              '--toe-god-highlight-blur': `${layer.blur}px`,
+              '--toe-god-highlight-intensity': intensity,
+            }}
+          />
+        </span>
       ))}
     </div>
   );

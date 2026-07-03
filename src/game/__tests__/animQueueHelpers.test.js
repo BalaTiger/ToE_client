@@ -149,7 +149,13 @@ describe('animQueueHelpers', () => {
       'DAMAGE',
     ]);
     expect(queue[1]).toMatchObject({ fromPid: 0, toPid: 2, dest: 'player' });
-    expect(queue[2]).toMatchObject({ card: gift, triggerName: '目标角色', targetPid: 2, skipTravel: true });
+    expect(queue[2]).toMatchObject({
+      card: gift,
+      triggerName: '目标角色',
+      targetPid: 2,
+      skipTravel: true,
+      disableDrawBackgroundCamera: true,
+    });
   });
 
   it('蛊惑赠牌后可先提交施法者手牌中间态，再继续目标结算', () => {

@@ -8,6 +8,7 @@ import { SnakeTrapOverlay } from './SnakeTrapOverlay';
 import { EndlessCorridorTunnelAnim } from './EndlessCorridorOverlay';
 import { RandomTargetOverlay } from './RandomTargetOverlay';
 import { ThrowStoneOverlay } from './ThrowStoneOverlay';
+import { CthRlyehDreamOverlay } from './CthRlyehDreamOverlay';
 
 const NO_OVERLAY_TYPES = new Set([
   'CARD_TRANSFER',
@@ -55,6 +56,7 @@ const ANIM_RENDERERS = {
   THROW_STONE: ({ anim, exiting }) => <ThrowStoneOverlay anim={anim} exiting={exiting} />,
   APOPHIS_ECLIPSE: ({ exiting }) => <ApophisEclipseAnim exiting={exiting} />,
   ENDLESS_CORRIDOR_TUNNEL: ({ exiting }) => <EndlessCorridorTunnelAnim exiting={exiting} />,
+  CTH_RLYEH_DREAM: ({ anim, exiting }) => <CthRlyehDreamOverlay anim={anim} exiting={exiting} />,
   GOD_POWER_BLOCKED: ({ anim, exiting }) => <TorchWardOverlay anim={anim} exiting={exiting} />,
   TSG_SLIME_POP: ({ anim, exiting }) => <TsathogguaSlimePopOverlay anim={anim} exiting={exiting} />,
   VRI_IMMORTAL_REVEAL: ({ anim, exiting }) => <VritraImmortalRevealOverlay anim={anim} exiting={exiting} />,

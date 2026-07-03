@@ -647,9 +647,18 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
               {'💀'.repeat(Math.min(player.godEncounters,6))}{player.godEncounters>6?`×${player.godEncounters}`:''}
             </span>
           )}
-          {(player.godZone||[]).length>0&&player.godName&&(
-            <GodPowerBadge player={player} playerIndex={playerIndex}/>
-          )}
+          <span
+            data-god-power-anchor={playerIndex}
+            style={{
+              display:'inline-flex',
+              alignItems:'center',
+              minWidth:player.godName?undefined:74,
+              minHeight:player.godName?undefined:14,
+              visibility:player.godName?'visible':'hidden',
+            }}
+          >
+            {player.godName&&<GodPowerBadge player={player} playerIndex={playerIndex}/>}
+          </span>
           {(player.etherealizeStacks||0)>0&&(
             <span
               title="虚化：回合外即将失去 HP/SAN 时，可消耗 1 层令相邻角色失去"

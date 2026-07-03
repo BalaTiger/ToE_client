@@ -1,6 +1,6 @@
 {
-  "version": "6c7728e18ead2265",
-  "generatedAt": "2026-07-02T12:36:11.753Z",
+  "version": "11ddf627e6e9e6e4",
+  "generatedAt": "2026-07-03T05:23:02.432Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1077,6 +1077,12 @@
       "revision": "f2ff983604050854"
     },
     {
+      "path": "/img/effects/R’lyeh_dream.png",
+      "type": "image",
+      "size": 2810531,
+      "revision": "3c8903609d9d1f0d"
+    },
+    {
       "path": "/img/effects/evil_goat_sigil.svg",
       "type": "image",
       "size": 1962,
@@ -1253,32 +1259,62 @@
     {
       "path": "/sounds/SE/hpDamageVariants/hpDamage2.mp3",
       "type": "audio",
-      "size": 3331,
-      "revision": "5bc65ff1ebd28ea1"
+      "size": 3702,
+      "revision": "d147ae388296f424"
     },
     {
       "path": "/sounds/SE/hpDamageVariants/hpDamage3.mp3",
       "type": "audio",
-      "size": 3175,
-      "revision": "85c6beb55ea68d94"
+      "size": 3179,
+      "revision": "c06e4ae8737e75e6"
     },
     {
       "path": "/sounds/SE/hpDamageVariants/hpDamage4.mp3",
       "type": "audio",
-      "size": 4478,
-      "revision": "9cadc71382077920"
+      "size": 4747,
+      "revision": "46be1ee921cbd4cd"
     },
     {
       "path": "/sounds/SE/hpDamageVariants/hpDamage5.mp3",
       "type": "audio",
-      "size": 3332,
-      "revision": "73e96474c1eaa2f1"
+      "size": 3179,
+      "revision": "e01ed49b4da539b3"
     },
     {
       "path": "/sounds/SE/hpDamageVariants/hpDamage6.mp3",
       "type": "audio",
-      "size": 7141,
-      "revision": "a4d240815060c868"
+      "size": 6314,
+      "revision": "02a4d50f4a044a23"
+    },
+    {
+      "path": "/sounds/SE/hpRecoverVariants/hpRecover1.mp3",
+      "type": "audio",
+      "size": 6720,
+      "revision": "12e8fa1b6184a532"
+    },
+    {
+      "path": "/sounds/SE/hpRecoverVariants/hpRecover2.mp3",
+      "type": "audio",
+      "size": 8160,
+      "revision": "b729ad54ca5aa324"
+    },
+    {
+      "path": "/sounds/SE/hpRecoverVariants/hpRecover3.mp3",
+      "type": "audio",
+      "size": 6687,
+      "revision": "45275a19e279c3c8"
+    },
+    {
+      "path": "/sounds/SE/hpRecoverVariants/hpRecover4.mp3",
+      "type": "audio",
+      "size": 7523,
+      "revision": "0a812b473dc14207"
+    },
+    {
+      "path": "/sounds/SE/hpRecoverVariants/hpRecover5.mp3",
+      "type": "audio",
+      "size": 10867,
+      "revision": "794feaced2b0d801"
     },
     {
       "path": "/sounds/SE/open.mp3",
@@ -1295,14 +1331,50 @@
     {
       "path": "/sounds/SE/sanDamageVariants/sanDamage1.mp3",
       "type": "audio",
-      "size": 160320,
-      "revision": "59a9fb08d561616e"
+      "size": 104685,
+      "revision": "e2cb64289a5a86e0"
     },
     {
       "path": "/sounds/SE/sanDamageVariants/sanDamage2.mp3",
       "type": "audio",
+      "size": 32205,
+      "revision": "b29ebb41a70d5154"
+    },
+    {
+      "path": "/sounds/SE/sanDamageVariants/sanDamage3.mp3",
+      "type": "audio",
+      "size": 58365,
+      "revision": "b063bab14b7267f1"
+    },
+    {
+      "path": "/sounds/SE/sanDamageVariants/sanDamage4.mp3",
+      "type": "audio",
+      "size": 54045,
+      "revision": "405218c0aa6e8c4c"
+    },
+    {
+      "path": "/sounds/SE/sanRecoverVariants/sanRecover1.mp3",
+      "type": "audio",
       "size": 257280,
-      "revision": "2a005112e88d3221"
+      "revision": "b8ae9220ef1730a1"
+    },
+    {
+      "path": "/sounds/SE/sanRecoverVariants/sanRecover2.mp3",
+      "type": "audio",
+      "size": 257280,
+      "revision": "2285c7be860fc2f5"
+    },
+    {
+      "path": "/sounds/SE/sanRecoverVariants/sanRecover3.mp3",
+      "type": "audio",
+      "size": 257280,
+      "revision": "211bc69db77a47e9"
+    },
+    {
+      "path": "/sounds/SE/sanRecoverVariants/sanRecover4.mp3",
+      "type": "audio",
+      "size": 257280,
+      "revision": "e33b1230a1a37962"
     },
     {
       "path": "/sounds/SE/throw.mp3",

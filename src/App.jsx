@@ -206,6 +206,7 @@ import {
   appendAnimLogChunkToQueueEnd,
   extractSkillLogs,
   isStatLog,
+  isTurnStartLog,
   prepareAnimQueueLogs,
 } from "./game/animLogs";
 import {
@@ -284,13 +285,15 @@ import {
 const AboutModal = lazy(() => import('./components/modals').then(m => ({ default: m.AboutModal })));
 const RoadmapModal = lazy(() => import('./components/modals').then(m => ({ default: m.RoadmapModal })));
 
-function LocalGodPowerTag({ def, godLevel, children }) {
+function LocalGodPowerTag({ def, godLevel, playerIndex = 0, children }) {
   const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseMove, handleMouseLeave } = useCardHoverTooltip();
   if (!def) return null;
   return (
     <>
       <div
         ref={cardRef}
+        data-god-power-badge={playerIndex}
+        data-god-power-anchor={playerIndex}
         onMouseEnter={handleMouseEnter}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
@@ -527,6 +530,37 @@ function getTurnStartDrawBaselineLog(state){
   return animatedLogCount>0?log.slice(0,Math.max(0,log.length-animatedLogCount)):log;
 }
 
+function appendLogTailWithOverlap(base=[],tail=[]){
+  const left=Array.isArray(base)?base.filter(line=>line!=null):[];
+  const right=Array.isArray(tail)?tail.filter(line=>line!=null):[];
+  if(!right.length)return left;
+  const max=Math.min(left.length,right.length);
+  let overlap=0;
+  for(let n=max;n>0;n--){
+    let same=true;
+    for(let i=0;i<n;i++){
+      if(left[left.length-n+i]!==right[i]){same=false;break;}
+    }
+    if(same){overlap=n;break;}
+  }
+  return [...left,...right.slice(overlap)];
+}
+
+function buildCompleteGameOverLog(state,visibleLog=[]){
+  if(!state?.gameOver)return Array.isArray(state?.log)?state.log:[];
+  let log=Array.isArray(state.log)?[...state.log]:[];
+  const visible=Array.isArray(visibleLog)?visibleLog:[];
+  if(visible.length>log.length)log=appendLogTailWithOverlap(log,visible);
+  log=appendLogTailWithOverlap(log,[
+    ...(state._turnStartLogs||[]),
+    ...(state._drawLogs||[]),
+    ...(state._statLogs||[]),
+  ]);
+  const reason=state.gameOver?.reason;
+  if(reason&&!log.includes(reason))log=[...log,reason];
+  return log;
+}
+
 function buildVisibleLogForLocalViewer(log,state){
   const base=Array.isArray(log)?log:[];
   const swapEvents=(Array.isArray(state?._visualEvents)?state._visualEvents:[])
@@ -743,7 +777,7 @@ export default function Game(){
   const swapBlindDrawRef=useRef(null);
   useEffect(()=>{swapBlindDrawRef.current=swapBlindDraw;},[swapBlindDraw]);
   const isBattleScreen=!!gs;
-  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
+  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
   const activeDebugConfig=useMemo(()=>{
     if(!localDebugMode){
       return{
@@ -1877,7 +1911,12 @@ export default function Game(){
       if(turnHighlight)turnHighlightLockRef.current=null;
     },
   }),[]);
-  const normalizeLocalPendingGs=useCallback(state=>withClearedReplayAnimFields(state,{_statEvents:[]}),[]);
+  const normalizeLocalPendingGs=useCallback(state=>{
+    const stateWithCompleteTerminalLog=state?.gameOver
+      ?{...state,log:buildCompleteGameOverLog(state,visibleLogRef.current)}
+      :state;
+    return withClearedReplayAnimFields(stateWithCompleteTerminalLog,{_statEvents:[]});
+  },[]);
   const {
     anim,
     setAnim,
@@ -1987,7 +2026,7 @@ export default function Game(){
     screenShake,
     deathShake,
     clearDamageAnimations,
-  } = useDamageAnimationEffects({ anim, playHpDamageSound });
+  } = useDamageAnimationEffects({ anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound });
   const guillotinedPids=useMemo(()=>new Set((guillotineTargets||[]).map(t=>t?.pi).filter(v=>v!=null)),[guillotineTargets]);
 
   const clearBattleAnimationState=useCallback(()=>{
@@ -2981,6 +3020,11 @@ export default function Game(){
         const actionMsgs=currentTurnLogs;
         const actionJ=actionMsgs.join(' ');
         const actionLog=[...oldLog,...actionMsgs];
+        const isCurrentTurnInspectionEvent=event=>{
+          const beforeLog=Array.isArray(event?.beforeLog)?event.beforeLog:[];
+          const beforeDelta=beforeLog.slice(oldLog.length);
+          return !beforeDelta.some(isTurnStartLog);
+        };
         const queue=[];
         const aiTurnStartReplay=hasTurnStartDraw
           ? buildActorTurnStartReplay(gs,{
@@ -2993,10 +3037,13 @@ export default function Game(){
         const usedAiTurnStartReplay=!!(aiTurnStartReplay?.queue?.length);
         // Animate CTH rest-draw forced cards from turn transition
         if(rawResult._cthRestDraws?.length>0){
-          const cthQueue=rawResult._cthRestDraws.map(card=>({
-            type:'DRAW_CARD',card,triggerName:'你',targetPid:0,
-            msgs:rawResult._cthRestDrawLogs?.filter(l=>l.includes(card.name)||l.includes(card.key))||[]
-          }));
+          const cthQueue=[
+            makeCthRlyehDreamStep(gs.currentTurn,rawResult._cthRestDrawLogs||[]),
+            ...rawResult._cthRestDraws.map(card=>({
+              type:'DRAW_CARD',card,triggerName:'你',targetPid:0,
+              msgs:rawResult._cthRestDrawLogs?.filter(l=>l.includes(card.name)||l.includes(card.key))||[]
+            }))
+          ];
           queue.push(...cthQueue);
         }
         if(usedAiTurnStartReplay){
@@ -3064,7 +3111,7 @@ export default function Game(){
           if(m){const rd1=+m[1],rd2=+m[2],rh=+m[3];queue.push({type:'DICE_ROLL',d1:rd1,d2:rd2,heal:rh,rollerName:rawResult._aiName||gs.players[gs.currentTurn]?.name});}}
         // 4. Skill anim (if used)
         // 提前清除 _pendingAnimDeath：STATE_PATCH 后面板立即置灰，不再等到整个队列播完
-        const pendingActionInspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current);
+        const pendingActionInspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current&&isCurrentTurnInspectionEvent(ev));
         const firstActionInspection=pendingActionInspectionEvents[0]||null;
         const P_actionEnd=(rawResult._playersBeforeNextDraw||newGs.players).map(p=>p._pendingAnimDeath?{...p,_pendingAnimDeath:false}:p);
         const P_actionPreInspection=(firstActionInspection?.beforePlayers||P_actionEnd).map(p=>p._pendingAnimDeath?{...p,_pendingAnimDeath:false}:p);
@@ -3323,26 +3370,27 @@ export default function Game(){
           queue.push(...handLimitDiscardQueue);
           queue.push(...handLimitStatQueue);
           queue.push(...aiEndTurnReplayQueue);
-          const playerTurnStartMsgs=newGs._turnStartLogs||[];
-          const playerDrawMsgs=newGs._drawLogs||[];
-          const playerStatQ=(newGs._playersBeforeThisDraw&&newGs.drawReveal?.card)
-            ? bindAnimLogChunks(
-                buildAnimQueue({...gs,players:newGs._playersBeforeThisDraw||gs.players,_statEventSeq:consumedActionStatSeq},newGs),
-                {statLogs:newGs._statLogs}
-              )
-            : [];
-          if(newGs.drawReveal?.card){
-            nextTurnIntroQueue=[
-              {type:'YOUR_TURN',msgs:playerTurnStartMsgs},
-              {type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:'你',targetPid:0,msgs:playerDrawMsgs},
-              ...playerStatQ
-            ];
-          }else{
-            // God card drawn: no drawReveal, card is in abilityData.godCard
-            const godCard=newGs.abilityData?.godCard;
-            nextTurnIntroQueue=[{type:'YOUR_TURN',msgs:playerTurnStartMsgs}];
-            if(godCard) nextTurnIntroQueue.push({type:'DRAW_CARD',card:godCard,triggerName:'你',targetPid:0,msgs:playerDrawMsgs});
-          }
+          const nextTurnReplayOldGs={
+            ...gs,
+            players:rawResult._playersBeforeNextDraw||P_actionEnd,
+            log:actionLog,
+            _statEventSeq:consumedActionStatSeq,
+            _inspectionSeq:lastInspectionSeqRef.current,
+          };
+          const nextTurnReplay=buildActorTurnStartReplay(newGs,{
+            oldGs:nextTurnReplayOldGs,
+            effectOldGs:{
+              ...newGs,
+              players:newGs._playersBeforeThisDraw||rawResult._playersBeforeNextDraw||P_actionEnd,
+              log:getTurnStartDrawBaselineLog(newGs),
+              _statEventSeq:consumedActionStatSeq,
+              _inspectionSeq:lastInspectionSeqRef.current,
+            },
+            actorName:'你',
+            forceActorName:true,
+          });
+          nextTurnIntroQueue=nextTurnReplay?.queue||[];
+          if(nextTurnReplay?.visualLock)visualStateLocks.lock(nextTurnReplay.visualLock);
         }else{
           // AI next: action stat changes go before queue ends; draw effects for next AI
           // are appended here before replay hints are normalized away.
@@ -3368,7 +3416,7 @@ export default function Game(){
           }
         }
         // Append inspection events triggered by the AI action
-        const actionInspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current);
+        const actionInspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current&&isCurrentTurnInspectionEvent(ev));
         if(actionInspectionEvents.length){
           lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...actionInspectionEvents.map(ev=>ev.seq));
           const inspectionFlow=buildInspectionEventFlow(
@@ -4611,6 +4659,7 @@ export default function Game(){
   // ── Game Over ──────────────────────────────────────────────
   if(gs.gameOver){
     const{winner,reason,winnerIdx}=gs.gameOver;
+    const gameOverFullLog=buildCompleteGameOverLog(gs,visibleLogRef.current);
     const myRole=gs.players[0].role;
     const iWon=winner==='LOSE'||winner==='LOSE_ALL'?false
       :winner===ROLE_TREASURE?isLocalWinnerSeat(gs.gameOver)
@@ -4717,7 +4766,7 @@ export default function Game(){
             <span className="surveyMascotBook"/>
           </span>
         </button>
-        {showFullLog&&<FullLogModal log={gs.gameOver?.reason&&!(gs.log||[]).includes(gs.gameOver.reason)?[...(gs.log||[]),gs.gameOver.reason]:(gs.log||[])} onClose={()=>setShowFullLog(false)}/>}
+        {showFullLog&&<FullLogModal log={gameOverFullLog} onClose={()=>setShowFullLog(false)}/>}
         {roleRevealAnim&&<RoleRevealAnim role={roleRevealAnim.role} onDone={()=>_onRoleRevealDone(roleRevealAnim.pendingGs)}/>}
         <style>{GLOBAL_STYLES}</style>
       </div>
@@ -4822,6 +4871,10 @@ export default function Game(){
   // ── Action handlers ────────────────────────────────────────
   // CTH 「梦访拉莱耶」: after a draw decision (keep/discard/god) triggered while resting,
   // process any remaining draws (cthDrawsRemaining) then advance the turn.
+  function makeCthRlyehDreamStep(targetPid=0,msgs=[]){
+    return {type:'CTH_RLYEH_DREAM',targetPid,msgs:Array.isArray(msgs)?msgs.filter(Boolean):[]};
+  }
+
   function continueProliferatingZDraws(stateLike){
     const flow=buildProliferatingZDrawFlow(stateLike,{
       copyPlayers,
@@ -4953,6 +5006,35 @@ export default function Game(){
       setGs({...baseMeta,phase:isAiDrawer?'AI_TURN':'ACTION',drawReveal:null,selectedCard:null,abilityData:{}});
       return;
     }
+    const shouldContinueAfterResolvedSlimeDraw=(phase)=>!!continuingSlime&&(phase==='AI_TURN'||phase==='ACTION');
+    const buildResolvedDrawQueue=(newGs,{discarded=false}={})=>{
+      const inferred=bindAnimLogChunks(
+        buildAnimQueue({...baseGsAfterDecision,players:_P_beforeDraw,log:baseGsAfterDecision.log},newGs),
+        {statLogs}
+      );
+      const hasDraw=inferred.some(step=>step?.type==='DRAW_CARD'&&step.card===res.drawnCard);
+      const hasDiscard=inferred.some(step=>step?.type==='DISCARD'&&step.card===res.drawnCard);
+      const hasKeepTransfer=inferred.some(step=>step?.type==='CARD_TRANSFER'&&step.effect==='draw'&&step.cards?.some(card=>card===res.drawnCard||card?.id===res.drawnCard?.id));
+      const queue=[
+        ...(hasDraw?[]:[{type:'DRAW_CARD',card:res.drawnCard,triggerName:drawerName,targetPid:drawerIdx,msgs:drawLogs}]),
+        ...inferred,
+      ];
+      if(discarded&&!hasDiscard){
+        queue.push({type:'DISCARD',card:res.drawnCard,triggerName:drawerName,targetPid:drawerIdx});
+      }else if(!discarded&&!hasKeepTransfer){
+        queue.push(cardTransferStep({
+          fromPid:drawerIdx,
+          dest:'player',
+          toPid:drawerIdx,
+          count:1,
+          sourceAnchor:'playerArea',
+          effect:'draw',
+          cards:[res.drawnCard],
+        }));
+      }
+      queue.push(statePatchStep({players:P,deck:D,discard:Disc,log:L,phase:newGs.phase,drawReveal:newGs.drawReveal,abilityData:newGs.abilityData}));
+      return queue;
+    };
     if(res.needGodChoice||res.pendingAiGodChoice||res.statePatch?._pendingAiGodChoice){
       const pendingAiGodChoice=res.pendingAiGodChoice||res.statePatch?._pendingAiGodChoice||null;
       const phase=pendingAiGodChoice?'AI_GOD_CHOICE':'GOD_CHOICE';
@@ -4974,6 +5056,14 @@ export default function Game(){
       setGs({...baseMeta,gameOver:win,phase:'ACTION',drawReveal:null,selectedCard:null,abilityData:{},...(res.statePatch||{})});
       return;
     }
+    if(res.discardedDrawnCard){
+      const finalPhase=isAiDrawer?'AI_TURN':'ACTION';
+      const continuationAbility=continuingSlime?{fromTsathogguaSlime:true,continueTurnStartDraw:true,pendingTsathogguaSlime:continuingSlime,pendingTsathogguaSlimes:remainingSlimes}:{};
+      const newGs={...baseMeta,...(res.statePatch||{}),phase:finalPhase,drawReveal:null,selectedCard:null,abilityData:continuationAbility};
+      const queue=buildResolvedDrawQueue(newGs,{discarded:true});
+      triggerAnimQueue(queue,newGs,shouldContinueAfterResolvedSlimeDraw(finalPhase)?()=>_tsgContinueTurnStartDraw(newGs):undefined);
+      return;
+    }
     if(res.kept){
       const fallbackPhase=isAiDrawer?'AI_TURN':'ACTION';
       const decisionState=deriveEffectDecisionState(res.statePatch,{baseAbilityData:{},fallbackPhase});
@@ -4981,9 +5071,9 @@ export default function Game(){
       const pendingAiGodChoice=res.pendingAiGodChoice||res.statePatch?._pendingAiGodChoice||null;
       const finalPhase=pendingAiGodChoice?'AI_GOD_CHOICE':(decisionState.phase==='ACTION'?fallbackPhase:decisionState.phase);
       const finalAbilityData=pendingAiGodChoice?{...pendingAiGodChoice}:decisionState.abilityData;
-      const newGs={...baseMeta,...(res.statePatch||{}),phase:finalPhase,drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:false,forcedKeep:false,drawerIdx,drawerName:P[drawerIdx].name,sourcePile:res.sourcePile},selectedCard:null,abilityData:{...finalAbilityData,...continuationAbility}};
-      const queue=bindAnimLogChunks(buildAnimQueue({...baseGsAfterDecision,players:_P_beforeDraw,log:baseGsAfterDecision.log},newGs),{statLogs});
-      triggerAnimQueue(queue.length?queue:[{type:'DRAW_CARD',card:res.drawnCard,triggerName:drawerName,targetPid:drawerIdx,msgs:drawLogs}],newGs);
+      const newGs={...baseMeta,...(res.statePatch||{}),phase:finalPhase,drawReveal:null,selectedCard:null,abilityData:{...finalAbilityData,...continuationAbility}};
+      const queue=buildResolvedDrawQueue(newGs,{discarded:false});
+      triggerAnimQueue(queue,newGs,shouldContinueAfterResolvedSlimeDraw(finalPhase)?()=>_tsgContinueTurnStartDraw(newGs):undefined);
       return;
     }
     const newGs={...baseMeta,phase:'DRAW_REVEAL',drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:!!res.needsDecision,forcedKeep:!!res.forcedKeep,drawerIdx,drawerName:P[drawerIdx].name,sourcePile:res.sourcePile,fromTsathogguaSlime:!!continuingSlime},selectedCard:null,abilityData:continuingSlime?{fromTsathogguaSlime:true,continueTurnStartDraw:true,pendingTsathogguaSlime:continuingSlime,pendingTsathogguaSlimes:remainingSlimes}:{}};
@@ -5001,6 +5091,7 @@ export default function Game(){
     }
     // Animate any prior rest-draws (forced cards from startNextTurn) first
     if(baseGsAfterDecision._cthRestDraws?.length>0){
+      const dreamStep=makeCthRlyehDreamStep(0,baseGsAfterDecision._cthRestDrawLogs||[]);
       const cthQueue=baseGsAfterDecision._cthRestDraws.map(card=>({
         type:'DRAW_CARD',card,triggerName:'你',targetPid:0,
         msgs:baseGsAfterDecision._cthRestDrawLogs?.filter(l=>l.includes(card.name)||l.includes(card.key))||[]
@@ -5024,7 +5115,7 @@ export default function Game(){
         if(!cthEvent||!broadcastCthRestDrawReplay(baseGsAfterDecision,cthEvent))broadcastMpStateBeforeLocalReplay(baseGsAfterDecision);
       }
       triggerAnimQueue(
-        [...cthQueue,...statQ,statePatchStep({players:cleanedGs.players,discard:cleanedGs.discard})],
+        [dreamStep,...cthQueue,...statQ,statePatchStep({players:cleanedGs.players,discard:cleanedGs.discard})],
         null,
         ()=>{_cthContinueRestDraws(cleanedGs);}
       );
@@ -5067,7 +5158,7 @@ export default function Game(){
           newGs,
           drawStep,
         });
-        triggerAnimQueue(queue,newGs);
+        triggerAnimQueue([makeCthRlyehDreamStep(0,newGs._drawLogs),...queue],newGs);
         return;
       }
       if(r2.needsDecision){
@@ -5075,7 +5166,7 @@ export default function Game(){
           drawReveal:{card:r2.drawnCard,msgs:[],needsDecision:true,forcedKeep:false,drawerIdx:0,drawerName:P[0].name,fromRest:true},
           selectedCard:null,abilityData:{fromRest:true,cthDrawsRemaining:remaining-_d-1}};
         if(newGs._isMP)broadcastCthPause(newGs);
-        triggerAnimQueue([{type:'DRAW_CARD',card:r2.drawnCard,triggerName:'你',targetPid:0,msgs:drawMsg?[drawMsg]:[]}],newGs);
+        triggerAnimQueue([makeCthRlyehDreamStep(0,drawMsg?[drawMsg]:[]),{type:'DRAW_CARD',card:r2.drawnCard,triggerName:'你',targetPid:0,msgs:drawMsg?[drawMsg]:[]}],newGs);
         return;
       }
       // forced card: already applied, continue
@@ -5087,7 +5178,12 @@ export default function Game(){
         const statQ=bindAnimLogChunks(buildAnimQueue(baseGsAfterDecision,forcedGs),{statLogs:split.stat});
         if(forcedGs._isMP)broadcastMpStateBeforeLocalReplay(forcedGs);
         triggerAnimQueue(
-          [{type:'DRAW_CARD',card:r2.drawnCard,triggerName:'你',targetPid:0,msgs:split.preStat.length?split.preStat:(drawMsg?[`${drawMsg}（强制触发）`]:[])},...statQ,statePatchStep({players:P,discard:Disc})],
+          [
+            makeCthRlyehDreamStep(0,drawMsg?[drawMsg]:[]),
+            {type:'DRAW_CARD',card:r2.drawnCard,triggerName:'你',targetPid:0,msgs:split.preStat.length?split.preStat:(drawMsg?[`${drawMsg}（强制触发）`]:[])},
+            ...statQ,
+            statePatchStep({players:P,discard:Disc})
+          ],
           null,
           ()=>{
             setGs(forcedGs);
@@ -5770,8 +5866,13 @@ export default function Game(){
       return;
     }
     if(dr.fromTsathogguaSlime&&!result.win&&!result.hasDecision){
+      const queue=bindAnimLogChunks(buildAnimQueue(gs,result.newGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
+      const drawerIdx=dr.drawerIdx??0;
+      queue.push(cardTransferStep({fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,sourceAnchor:'playerArea',effect:'draw',cards:[result.resolutionCard]}));
+      queue.push(statePatchStep({players:result.P,deck:result.D,discard:result.Disc,log:result.L,phase:result.newGs.phase,drawReveal:result.newGs.drawReveal,abilityData:result.newGs.abilityData}));
+      queue.push({type:'TURN_BOUNDARY_PAUSE',durationMs:300});
       setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-      setAnim({...diceAnim,onSettled:()=>_tsgContinueTurnStartDraw(result.newGs)});
+      setAnim({...diceAnim,onSettled:()=>triggerAnimQueue(queue,result.newGs,()=>_tsgContinueTurnStartDraw(result.newGs))});
       return;
     }
     const queue=bindAnimLogChunks(buildAnimQueue(gs,result.newGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
@@ -5830,8 +5931,15 @@ export default function Game(){
       newGs.abilityData=decisionState.abilityData;
     }
     if(dr.fromRest&&!win&&!decisionState.hasDecision){_cthContinueRestDraws(newGs);return;}
-    if(dr.fromTsathogguaSlime&&!win&&!decisionState.hasDecision){_tsgContinueTurnStartDraw(newGs);return;}
     const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
+    if(dr.fromTsathogguaSlime&&!win&&!decisionState.hasDecision){
+      queue.push(cardTransferStep({fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,sourceAnchor:'playerArea',effect:'draw',cards:[resolutionCard]}));
+      queue.push(statePatchStep({players:P,deck:D,discard:Disc,log:L,phase:newGs.phase,drawReveal:newGs.drawReveal,abilityData:newGs.abilityData}));
+      queue.push({type:'TURN_BOUNDARY_PAUSE',durationMs:300});
+      setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
+      triggerAnimQueue(queue,newGs,()=>_tsgContinueTurnStartDraw(newGs));
+      return;
+    }
     if(queue.length){
       broadcastVisualReplayIfNeeded(newGs);
       if(dr.fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:Disc})],L.slice(gs.log.length));
@@ -5867,8 +5975,13 @@ export default function Game(){
       return;
     }
     if(dr.fromTsathogguaSlime&&!result.win&&!result.hasDecision){
+      const queue=bindAnimLogChunks(buildAnimQueue(gs,result.newGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
+      const drawerIdx=gs.abilityData?.drawerIdx??dr.drawerIdx??0;
+      queue.push(cardTransferStep({fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,sourceAnchor:'playerArea',effect:'draw',cards:[result.resolutionCard]}));
+      queue.push(statePatchStep({players:result.P,deck:result.D,discard:result.Disc,log:result.L,phase:result.newGs.phase,drawReveal:result.newGs.drawReveal,abilityData:result.newGs.abilityData}));
+      queue.push({type:'TURN_BOUNDARY_PAUSE',durationMs:300});
       setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-      setAnim({type:'DICE_ROLL',d1:result.d1,d2:0,heal:0,rollerName:'你',dodgeSuccess:result.dodgeSuccess,onSettled:()=>_tsgContinueTurnStartDraw(result.newGs)});
+      setAnim({type:'DICE_ROLL',d1:result.d1,d2:0,heal:0,rollerName:'你',dodgeSuccess:result.dodgeSuccess,onSettled:()=>triggerAnimQueue(queue,result.newGs,()=>_tsgContinueTurnStartDraw(result.newGs))});
       return;
     }
     const queue=bindAnimLogChunks(buildAnimQueue(gs,result.newGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
@@ -5907,8 +6020,15 @@ export default function Game(){
     const replayPatch=dr.fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
     const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:{fromRest:gs.abilityData?.fromRest,fromTsathogguaSlime:gs.abilityData?.fromTsathogguaSlime,continueTurnStartDraw:gs.abilityData?.continueTurnStartDraw,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining},...replayPatch};
     if(dr.fromRest&&!win){_cthContinueRestDraws(newGs);return;}
-    if(dr.fromTsathogguaSlime&&!win){_tsgContinueTurnStartDraw(newGs);return;}
     const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
+    if(dr.fromTsathogguaSlime&&!win){
+      queue.push(cardTransferStep({fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,sourceAnchor:'playerArea',effect:'draw',cards:[resolutionCard]}));
+      queue.push(statePatchStep({players:P,deck:D,discard:Disc,log:L,phase:newGs.phase,drawReveal:newGs.drawReveal,abilityData:newGs.abilityData}));
+      queue.push({type:'TURN_BOUNDARY_PAUSE',durationMs:300});
+      setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
+      triggerAnimQueue(queue,newGs,()=>_tsgContinueTurnStartDraw(newGs));
+      return;
+    }
     if(queue.length){
       broadcastVisualReplayIfNeeded(newGs);
       if(dr.fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:Disc})],L.slice(gs.log.length));
@@ -8477,7 +8597,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     return createEndlessCorridorReplayEvent({
       actorIdx:0,
       actorName:actorName||'你',
-      queue:[...(Array.isArray(preSteps)?preSteps:[]),...drawSteps,...(Array.isArray(statSteps)?statSteps:[])],
+      queue:[
+        ...(Array.isArray(preSteps)?preSteps:[]),
+        makeCthRlyehDreamStep(0,logs),
+        ...drawSteps,
+        ...(Array.isArray(statSteps)?statSteps:[])
+      ],
       msgs:logs,
       beforePlayers:copyPlayers(beforePlayers||[]),
       beforeDiscard:[...(beforeDiscard||[])],
@@ -8522,6 +8647,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     // Animate CTH rest-draw forced cards that accumulated during startNextTurn
     if(newGs?._cthRestDraws?.length>0){
       const preTurnQ=buildTsathogguaSlimeGrantQueue(newGs);
+      const dreamStep=makeCthRlyehDreamStep(0,newGs._cthRestDrawLogs||[]);
       const cthQueue=newGs._cthRestDraws.map(card=>({
         type:'DRAW_CARD',card,triggerName:'你',targetPid:0,
         msgs:newGs._cthRestDrawLogs?.filter(l=>l.includes(card.name)||l.includes(card.key))||[]
@@ -8545,7 +8671,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         });
         if(!cthEvent||!broadcastCthRestDrawReplay(newGs,cthEvent))broadcastMpStateBeforeLocalReplay(newGs);
       }
-      triggerAnimQueue([...preTurnQ,...cthQueue,...statQ],cleanedGs);
+      triggerAnimQueue([...preTurnQ,dreamStep,...cthQueue,...statQ],cleanedGs);
       return;
     }
     const drawStatQ=newGs?bindAnimLogChunks(
@@ -8870,17 +8996,39 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }
     // Normal start: show game board immediately as background, then ask for role before reveal
     syncVisibleLog(newGs.log||[]);
-    setGs({...newGs,phase:'ACTION',drawReveal:null});
+    setGs(maskOpeningTurnStartDrawForDisplay(newGs));
     setAnim(null);
     setPendingRoleSelection(newGs);
   }
+  function withSelectedLocalRoleInTurnStartSnapshots(state,selectedRole){
+    if(!state||selectedRole==='random')return state;
+    const applyRole=players=>Array.isArray(players)
+      ?players.map((p,i)=>i===0?{...p,role:selectedRole}:p)
+      :players;
+    return{
+      ...state,
+      players:applyRole(state.players),
+      _playersBeforeThisDraw:applyRole(state._playersBeforeThisDraw),
+      _preTurnPlayers:applyRole(state._preTurnPlayers),
+      _playersBeforeCthDraws:applyRole(state._playersBeforeCthDraws),
+    };
+  }
+  function maskOpeningTurnStartDrawForDisplay(state){
+    if(!state)return state;
+    const replayPlayers=state._playersBeforeThisDraw||state._preTurnPlayers||state.players;
+    return{
+      ...state,
+      players:copyPlayers(replayPlayers||[]),
+      phase:'ACTION',
+      drawReveal:null,
+      abilityData:{},
+    };
+  }
   function confirmRoleSelection(selectedRole){
     if(!pendingRoleSelection)return;
-    const finalGs=selectedRole==='random'
-      ? pendingRoleSelection
-      : {...pendingRoleSelection,players:pendingRoleSelection.players.map((p,i)=>i===0?{...p,role:selectedRole}:p)};
+    const finalGs=withSelectedLocalRoleInTurnStartSnapshots(pendingRoleSelection,selectedRole);
     setPendingRoleSelection(null);
-    setGs(prev=>prev?{...prev,players:finalGs.players,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
+    setGs(prev=>prev?{...prev,...maskOpeningTurnStartDrawForDisplay(finalGs)}:prev);
     setRoleRevealAnim({role:finalGs.players[0].role,pendingGs:finalGs});
   }
   function returnToMainMenu(){
@@ -10553,12 +10701,16 @@ const GLOBAL_STYLES=`
       opacity:1;
       transform:translate3d(0,15px,0) scale(1.03);
     }
+    58% {
+      opacity:0.88;
+      transform:translate3d(0,-6px,0) scale(1.055);
+    }
     68% {
-      opacity:1;
+      opacity:0.62;
       transform:translate3d(0,-10px,0) scale(1.065);
     }
     86% {
-      opacity:0.74;
+      opacity:0.26;
       transform:translate3d(0,8px,0) scale(1.085);
     }
     100% {

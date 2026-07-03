@@ -4,6 +4,12 @@ import {
   LETTERS,
   NUMS,
 } from '../../constants/card';
+import {
+  DEFAULT_EXPANSION_KEY,
+  EXPANSION_RANDOM_KEY,
+  STARS_CALL_KEY,
+  TEMPORARY_STARS_CALL_KEY,
+} from '../../game/setup';
 
 export const DEBUG_ZONE_CARD_KEYS = LETTERS.flatMap(letter => NUMS.map(number => `${letter}${number}`));
 
@@ -23,24 +29,68 @@ export function getPlayableExpansionKeys() {
     .map(([key]) => key);
 }
 
-export function getDebugExpansionSelection(debugExpansionKey) {
+export function getDebugExpansionOptions() {
   const playableExpansionKeys = getPlayableExpansionKeys();
-  const selectedExpansionKey = playableExpansionKeys.includes(debugExpansionKey)
+  const options = [
+    {
+      key: EXPANSION_RANDOM_KEY,
+      label: '随机主题',
+      deckExpansionKey: DEFAULT_EXPANSION_KEY,
+      temporaryStarsCall: false,
+    },
+    ...playableExpansionKeys.map(key => ({
+      key,
+      label: EXPANSIONS[key]?.name || key,
+      deckExpansionKey: key,
+      temporaryStarsCall: false,
+    })),
+  ];
+  if (EXPANSIONS[STARS_CALL_KEY] && playableExpansionKeys.includes(DEFAULT_EXPANSION_KEY)) {
+    options.push({
+      key: TEMPORARY_STARS_CALL_KEY,
+      label: `${EXPANSIONS[STARS_CALL_KEY]?.name || STARS_CALL_KEY}（临时）`,
+      deckExpansionKey: DEFAULT_EXPANSION_KEY,
+      temporaryStarsCall: true,
+    });
+  }
+  return options;
+}
+
+export function getDebugExpansionSelection(debugExpansionKey) {
+  const expansionOptions = getDebugExpansionOptions();
+  const playableExpansionKeys = expansionOptions.map(option => option.key);
+  const selectedOption = expansionOptions.find(option => option.key === debugExpansionKey)
+    || expansionOptions.find(option => option.key === DEFAULT_EXPANSION_KEY)
+    || expansionOptions[0];
+  const selectedExpansionKey = selectedOption?.key || DEFAULT_EXPANSION_KEY;
+  const selectedDeckExpansionKey = selectedOption?.deckExpansionKey || (
+    playableExpansionKeys.includes(debugExpansionKey)
     ? debugExpansionKey
-    : (playableExpansionKeys[0] || '地神的潜影');
-  return { playableExpansionKeys, selectedExpansionKey };
+    : DEFAULT_EXPANSION_KEY
+  );
+  return { expansionOptions, playableExpansionKeys, selectedExpansionKey, selectedDeckExpansionKey, selectedOption };
+}
+
+export function getDebugGodKeysForSelection(selectedExpansionKey, selectedDeckExpansionKey) {
+  const deckGodKeys = EXPANSIONS[selectedDeckExpansionKey]?.godCardKeys || [];
+  if (selectedExpansionKey === TEMPORARY_STARS_CALL_KEY) {
+    return [...new Set([...deckGodKeys, 'CTH'])];
+  }
+  return deckGodKeys;
 }
 
 export function getDebugCardSelection({
   selectedExpansionKey,
+  selectedDeckExpansionKey,
   debugForceZoneCardKey,
   debugForceZoneCardName,
   debugForceGodCardKey,
 }) {
-  const zoneCards = getExpansionZoneCards(selectedExpansionKey);
+  const deckExpansionKey = selectedDeckExpansionKey || selectedExpansionKey;
+  const zoneCards = getExpansionZoneCards(deckExpansionKey);
   const selectedZoneCard = zoneCards.find(card => card.key === debugForceZoneCardKey && card.name === debugForceZoneCardName)
     || zoneCards[0];
-  const godKeys = EXPANSIONS[selectedExpansionKey]?.godCardKeys || [];
+  const godKeys = getDebugGodKeysForSelection(selectedExpansionKey, deckExpansionKey);
   const selectedGodKey = godKeys.includes(debugForceGodCardKey) ? debugForceGodCardKey : godKeys[0];
   return {
     zoneCards,
@@ -75,9 +125,10 @@ export function getFirstZoneCardForSlot(zoneCards, keyPrefix) {
 }
 
 export function getExpansionDefaults(expansionKey) {
-  const zoneCards = getExpansionZoneCards(expansionKey);
+  const { selectedExpansionKey, selectedDeckExpansionKey } = getDebugExpansionSelection(expansionKey);
+  const zoneCards = getExpansionZoneCards(selectedDeckExpansionKey);
   return {
     zoneCard: zoneCards[0] || null,
-    godKey: EXPANSIONS[expansionKey]?.godCardKeys?.[0] || null,
+    godKey: getDebugGodKeysForSelection(selectedExpansionKey, selectedDeckExpansionKey)?.[0] || null,
   };
 }

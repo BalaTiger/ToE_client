@@ -53,7 +53,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "神圣菇肉",
-      "desc": "你回复5HP，失去2SAN",
+      "desc": "你恢复5HP，失去2SAN",
       "type": "selfHealHPSelfDamageSAN",
       "hpVal": 5,
       "sanVal": 2,
@@ -67,7 +67,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "A2": [
     {
       "name": "蚂蚁虽小",
-      "desc": "你回复1HP",
+      "desc": "你恢复1HP",
       "type": "selfHealHP",
       "val": 1,
       "slotKey": "A2",
@@ -142,7 +142,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "可生食木乃伊",
-      "desc": "你回复2HP，失去1SAN",
+      "desc": "你恢复2HP，失去1SAN",
       "type": "selfHealHPSelfDamageSAN",
       "hpVal": 2,
       "sanVal": 1,
@@ -208,7 +208,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "B1": [
     {
       "name": "圣甲虫",
-      "desc": "你回复1SAN",
+      "desc": "你恢复1SAN",
       "type": "selfHealSAN",
       "val": 1,
       "slotKey": "B1",
@@ -228,7 +228,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "生命天平",
-      "desc": "你回复3HP。此牌从你的手牌进入弃牌堆时，你失去3HP",
+      "desc": "你恢复3HP。此牌从你的手牌进入弃牌堆时，你失去3HP",
       "type": "lifeBalance",
       "val": 3,
       "slotKey": "B1",
@@ -260,7 +260,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "B2": [
     {
       "name": "新鲜空气",
-      "desc": "所有角色回复1HP",
+      "desc": "所有角色恢复1HP",
       "type": "allHealHP",
       "val": 1,
       "slotKey": "B2",
@@ -313,7 +313,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "B3": [
     {
       "name": "猎获穴兽",
-      "desc": "你回复3HP，相邻角色各回复2HP",
+      "desc": "你恢复3HP，相邻角色各恢复2HP",
       "type": "selfHealAdjHealHP",
       "val": 3,
       "adjVal": 2,
@@ -370,7 +370,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "两人一绳",
-      "desc": "你和另一名角色间拉起救生索，任意一方受伤时绳索断裂，双方各失去3HP。如果到你的下个回合绳索未断裂，各回复4HP",
+      "desc": "你和另一名角色间拉起救生索，任意一方受伤时绳索断裂，双方各失去3HP。如果到你的下个回合绳索未断裂，各恢复4HP",
       "type": "damageLink",
       "val": 1,
       "polarity": "neutral",
@@ -403,7 +403,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "灵魂天平",
-      "desc": "你回复3SAN。此牌从你的手牌进入弃牌堆时，你失去3SAN",
+      "desc": "你恢复3SAN。此牌从你的手牌进入弃牌堆时，你失去3SAN",
       "type": "soulBalance",
       "val": 3,
       "slotKey": "C1",
@@ -423,7 +423,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "烤盲鱼",
-      "desc": "你回复3HP，且摸到下张区域牌时，须在只能看见编号的条件下决定是否收入",
+      "desc": "你恢复3HP，且摸到下张区域牌时，须在只能看见编号的条件下决定是否收入",
       "type": "blindFish",
       "val": 3,
       "slotKey": "C1",
@@ -445,7 +445,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "C2": [
     {
       "name": "地下泉",
-      "desc": "所有角色回复2HP",
+      "desc": "所有角色恢复2HP",
       "type": "allHealHP",
       "val": 2,
       "slotKey": "C2",
@@ -487,7 +487,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "C3": [
     {
       "name": "龙之心",
-      "desc": "你回复4HP与1SAN",
+      "desc": "你恢复4HP与1SAN",
       "type": "selfHealHPSAN",
       "hpVal": 4,
       "sanVal": 1,
@@ -549,7 +549,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "D1": [
     {
       "name": "秤心仪式",
-      "desc": "你失去3HP，回复2SAN（若你本局未信仰过邪神，只执行后半句效果）",
+      "desc": "你失去3HP，恢复2SAN（若你本局未信仰过邪神，只执行后半句效果）",
       "type": "sacHealSelfSANCultist",
       "val": 2,
       "slotKey": "D1",
@@ -664,7 +664,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "偷吃龙蛋",
-      "desc": "你回复3HP，相邻角色各失去2HP",
+      "desc": "你恢复3HP，相邻角色各失去2HP",
       "type": "selfHealAdjDamageHP",
       "val": 3,
       "adjVal": 2,
@@ -718,7 +718,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "鲜红夜宴",
-      "desc": "所有角色回复2HP，失去1SAN",
+      "desc": "所有角色恢复2HP，失去1SAN",
       "type": "allHealHPDamageSAN",
       "hpVal": 2,
       "sanVal": 1,
@@ -863,9 +863,9 @@ const GOD_DEFS={
     godKey:'VRI',name:'弗栗多',subtitle:'巨龙之化身',power:'不灭之躯',
     col:'#c04020',bgCol:'#1a0808',
     levels:[
-      {immortalCount:6,desc:'当你在回合外受到致命伤害，展示牌堆顶部的6张牌，若没有邪神牌和圣物牌，将HP回复至1，然后弃置这些牌'},
-      {immortalCount:4,desc:'当你在回合外受到致命伤害，展示牌堆顶部的4张牌，若没有邪神牌和圣物牌，将HP回复至1，然后弃置这些牌'},
-      {immortalCount:2,desc:'当你在回合外受到致命伤害，展示牌堆顶部的2张牌，若没有邪神牌和圣物牌，将HP回复至1，然后弃置这些牌'},
+      {immortalCount:6,desc:'当你在回合外受到致命伤害，展示牌堆顶部的6张牌，若没有邪神牌和圣物牌，将HP恢复至1，然后弃置这些牌'},
+      {immortalCount:4,desc:'当你在回合外受到致命伤害，展示牌堆顶部的4张牌，若没有邪神牌和圣物牌，将HP恢复至1，然后弃置这些牌'},
+      {immortalCount:2,desc:'当你在回合外受到致命伤害，展示牌堆顶部的2张牌，若没有邪神牌和圣物牌，将HP恢复至1，然后弃置这些牌'},
     ],
   },
   TSG:{

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  EXPANSIONS,
   GOD_DEFS,
   LETTERS,
   NUMS,
@@ -382,7 +381,7 @@ function DebugSettingsPanel({
 }) {
   const [zoneLetterTab, setZoneLetterTab] = useState('A');
   const [zoneNumTab, setZoneNumTab] = useState('1');
-  const { playableExpansionKeys, selectedExpansionKey } = getDebugExpansionSelection(debugExpansionKey);
+  const { expansionOptions, selectedExpansionKey, selectedDeckExpansionKey } = getDebugExpansionSelection(debugExpansionKey);
   const {
     zoneCards,
     selectedZoneKey,
@@ -391,6 +390,7 @@ function DebugSettingsPanel({
     selectedGodKey,
   } = getDebugCardSelection({
     selectedExpansionKey,
+    selectedDeckExpansionKey,
     debugForceZoneCardKey,
     debugForceZoneCardName,
     debugForceGodCardKey,
@@ -490,8 +490,8 @@ function DebugSettingsPanel({
           onChange={(e) => handleExpansionChange(e.target.value)}
           style={selectStyle}
         >
-          {playableExpansionKeys.map(key => (
-            <option key={key} value={key}>{EXPANSIONS[key]?.name || key}</option>
+          {expansionOptions.map(option => (
+            <option key={option.key} value={option.key}>{option.label}</option>
           ))}
         </select>
       </div>

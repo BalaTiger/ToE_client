@@ -11,6 +11,7 @@ import { shuffle, ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
 export const EXPANSION_RANDOM_KEY = 'random_battle_expansion';
 export const DEFAULT_EXPANSION_KEY = '地神的潜影';
 export const STARS_CALL_KEY = '群星呼唤';
+export const TEMPORARY_STARS_CALL_KEY = 'temporary_stars_call';
 const STARS_CALL_TEMP_REPLACEMENT_CHANCE = 0.5;
 
 function createGodCards(godKey, count, startId = 0) {
@@ -53,6 +54,13 @@ export function resolveBattleExpansionPlan(expansionKey = EXPANSION_RANDOM_KEY) 
       expansionKey: DEFAULT_EXPANSION_KEY,
       deckExpansionKey: DEFAULT_EXPANSION_KEY,
       temporaryStarsCall: false,
+    };
+  }
+  if (expansionKey === TEMPORARY_STARS_CALL_KEY) {
+    return {
+      expansionKey: STARS_CALL_KEY,
+      deckExpansionKey: DEFAULT_EXPANSION_KEY,
+      temporaryStarsCall: true,
     };
   }
   const resolvedExpansionKey = EXPANSIONS[expansionKey] ? expansionKey : DEFAULT_EXPANSION_KEY;

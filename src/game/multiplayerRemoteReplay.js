@@ -271,6 +271,8 @@ export function buildMpRemoteReplayAction({
   const isCthRestDraw = rotated.drawReveal?.fromRest || rotated.abilityData?.fromRest;
   if (hasCthRestDraws || isCthRestDraw) {
     const queue = [];
+    const cthDreamTargetPid = rotated.drawReveal?.drawerIdx ?? rotated.abilityData?.drawerIdx ?? 0;
+    const cthDreamMsgs = rotated._cthRestDrawLogs || rotated._drawLogs || [];
     if (hasCthRestDraws) {
       queue.push(...rotated._cthRestDraws.map(card => ({
         type: 'DRAW_CARD',
@@ -295,6 +297,13 @@ export function buildMpRemoteReplayAction({
           msgs: Array.isArray(msgs) ? msgs.filter(Boolean) : [],
         });
       }
+    }
+    if (queue.some(step => step?.type === 'DRAW_CARD')) {
+      queue.unshift({
+        type: 'CTH_RLYEH_DREAM',
+        targetPid: cthDreamTargetPid,
+        msgs: Array.isArray(cthDreamMsgs) ? cthDreamMsgs.filter(Boolean) : [],
+      });
     }
     const pendingGs = {
       ...rotated,

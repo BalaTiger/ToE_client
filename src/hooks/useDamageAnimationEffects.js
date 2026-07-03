@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { _getZoomCompensatedRect } from '../utils/dom';
 
-export function useDamageAnimationEffects({ anim, playHpDamageSound }) {
+export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound }) {
   const [hitIndices, setHitIndices] = useState([]);
   const [knifeTargets, setKnifeTargets] = useState([]);
   const [sanHitIndices, setSanHitIndices] = useState([]);
@@ -85,6 +85,7 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound }) {
     }
 
     if (anim.type === 'SAN_DAMAGE' && anim.hitIndices?.length) {
+      const cancelSanDamageSound = playSanDamageSound?.({ impactDelayMs: 460 });
       schedule(() => {
         const srcEl = document.querySelector('[data-pid="0"]');
         const srcR = srcEl
@@ -113,10 +114,14 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound }) {
         addTimer(() => setSanHitIndices([]), 850);
         addTimer(() => setSanTargets([]), 900);
       });
-      return cleanupRaf;
+      return () => {
+        cleanupRaf();
+        cancelSanDamageSound?.();
+      };
     }
 
     if (anim.type === 'HP_HEAL' && anim.hitIndices?.length) {
+      playHpRecoverSound?.();
       schedule(() => {
         setHpHealIndices(anim.hitIndices);
         addTimer(() => setHpHealIndices([]), 1300);
@@ -125,8 +130,21 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound }) {
     }
 
     if (anim.type === 'SAN_HEAL' && anim.hitIndices?.length) {
+      playSanRecoverSound?.();
       schedule(() => {
         setSanHealIndices(anim.hitIndices);
+        addTimer(() => setSanHealIndices([]), 1300);
+      });
+      return cleanupRaf;
+    }
+
+    if (anim.type === 'HP_SAN_HEAL' && anim.hitIndices?.length) {
+      playHpRecoverSound?.();
+      playSanRecoverSound?.();
+      schedule(() => {
+        setHpHealIndices(anim.hitIndices);
+        setSanHealIndices(anim.hitIndices);
+        addTimer(() => setHpHealIndices([]), 1300);
         addTimer(() => setSanHealIndices([]), 1300);
       });
       return cleanupRaf;
@@ -218,7 +236,7 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound }) {
     }
 
     return cleanupRaf;
-  }, [anim, playHpDamageSound, addTimer, clearDamageAnimations]);
+  }, [anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound, addTimer, clearDamageAnimations]);
 
   return {
     hitIndices,

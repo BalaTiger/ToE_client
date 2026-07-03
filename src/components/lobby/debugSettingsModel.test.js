@@ -4,17 +4,22 @@ import {
   encodeDebugGodCardValue,
   encodeDebugZoneCardValue,
   getDebugCardSelection,
+  getDebugExpansionOptions,
   getDebugExpansionSelection,
   getExpansionDefaults,
   getFirstZoneCardForSlot,
 } from './debugSettingsModel';
+import { EXPANSION_RANDOM_KEY, TEMPORARY_STARS_CALL_KEY } from '../../game/setup';
 
 describe('debugSettingsModel', () => {
-  it('只允许完整正式拓展包进入 Debug 拓展包选项', () => {
-    const { playableExpansionKeys, selectedExpansionKey } = getDebugExpansionSelection('群星呼唤');
+  it('Debug 拓展包选项包含随机、正式地神与临时群星主题', () => {
+    const options = getDebugExpansionOptions();
+    const { playableExpansionKeys, selectedExpansionKey, selectedDeckExpansionKey } = getDebugExpansionSelection(TEMPORARY_STARS_CALL_KEY);
 
-    expect(playableExpansionKeys).toEqual(['地神的潜影']);
-    expect(selectedExpansionKey).toBe('地神的潜影');
+    expect(options.map(option => option.key)).toEqual([EXPANSION_RANDOM_KEY, '地神的潜影', TEMPORARY_STARS_CALL_KEY]);
+    expect(playableExpansionKeys).toContain(TEMPORARY_STARS_CALL_KEY);
+    expect(selectedExpansionKey).toBe(TEMPORARY_STARS_CALL_KEY);
+    expect(selectedDeckExpansionKey).toBe('地神的潜影');
   });
 
   it('为当前拓展包归一化默认区域牌与神牌', () => {
@@ -31,6 +36,23 @@ describe('debugSettingsModel', () => {
     expect(selection.selectedZoneKey).toBe(defaults.zoneCard.key);
     expect(selection.selectedZoneName).toBe(defaults.zoneCard.name);
     expect(selection.selectedGodKey).toBe(defaults.godKey);
+  });
+
+  it('临时群星主题用地神区域牌卡池，并允许选择拉莱耶之主', () => {
+    const selection = getDebugCardSelection({
+      selectedExpansionKey: TEMPORARY_STARS_CALL_KEY,
+      selectedDeckExpansionKey: '地神的潜影',
+      debugForceZoneCardKey: 'BAD',
+      debugForceZoneCardName: '不存在',
+      debugForceGodCardKey: 'CTH',
+    });
+
+    expect(selection.zoneCards.length).toBeGreaterThan(0);
+    expect(selection.zoneCards.every(card => card.expansion === '地神的潜影')).toBe(true);
+    expect(selection.godKeys).toContain('CTH');
+    expect(selection.godKeys).not.toContain('HAS');
+    expect(selection.godKeys).not.toContain('KTH');
+    expect(selection.selectedGodKey).toBe('CTH');
   });
 
   it('支持 Debug 选牌值编解码与编号位默认选择', () => {
