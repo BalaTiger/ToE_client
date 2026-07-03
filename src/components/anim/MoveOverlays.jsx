@@ -194,9 +194,9 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = '地神的潜
         width: 70,
         height: 94,
         borderRadius: 4,
-        backgroundColor: s ? undefined : '#100c08',
-        background: s ? s.bg : undefined,
-        border: s ? `1.5px solid ${s.borderBright}` : '1.5px solid #4a3010',
+        backgroundColor: s ? 'transparent' : '#100c08',
+        background: s ? 'transparent' : undefined,
+        border: s ? 'none' : '1.5px solid #4a3010',
         boxShadow: '0 6px 24px rgba(0,0,0,0.65)',
         display: 'flex',
         alignItems: 'center',
@@ -326,8 +326,8 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
                 position: 'absolute',
                 left: 0, top: 0,
                 width: cardW, height: cardH, marginLeft: -cardW / 2, marginTop: -cardH / 2,
-                backgroundColor: '#100c08',
-                border: effect === 'blackGoat' ? '1.5px solid #4ade80' : effect === 'tsgSlime' ? '1.5px solid #80d8a8' : isGodKeepHand ? `1.5px solid ${GOD_CS.borderBright}` : '1.5px solid #6a4020',
+                backgroundColor: (isDrawKeep || isDecipherStone) ? 'transparent' : '#100c08',
+                border: (isDrawKeep || isDecipherStone) ? 'none' : effect === 'blackGoat' ? '1.5px solid #4ade80' : effect === 'tsgSlime' ? '1.5px solid #80d8a8' : isGodKeepHand ? `1.5px solid ${GOD_CS.borderBright}` : '1.5px solid #6a4020',
                 borderRadius: 3,
                 boxShadow: effect === 'blackGoat'
                   ? '0 0 16px rgba(74,222,128,0.5), 0 2px 8px rgba(0,0,0,0.6)'
@@ -343,12 +343,14 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
               }}>
                 {!isSlime && !isDecipherStone && !isDrawKeep && <CardBackLayer expansionKey={expansionKey}/>}
                 {isDrawKeep && (
-                  <DDCard
+                  <MiniCardFace
                     card={card}
+                    width={cardW}
+                    height={cardH}
                     frameStyle={{
-                      transform: `scale(${drawCardSize.scale})`,
-                      transformOrigin: 'top left',
                       boxShadow: 'none',
+                      border: 'none',
+                      background: 'transparent',
                     }}
                   />
                 )}
@@ -589,4 +591,3 @@ export function HuntRevealedCardBadge({ card, targetPid }) {
     </div>
   );
 }
-

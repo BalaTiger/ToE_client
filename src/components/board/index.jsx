@@ -1,9 +1,10 @@
 ﻿import React from 'react';
-import { CS, GOD_CS, GOD_DEFS } from '../../constants/card';
+import { GOD_DEFS } from '../../constants/card';
 import { getBoardTheme } from '../../constants/theme';
 import { RINFO } from '../../game';
 import { isBlackGoatYoung, isTsathogguaSlime } from '../../game/coreUtils';
-import { AnimatedCardBack, AreaTooltip, CardCodeLabel, DDCard, DDCardBack, GodTooltip } from '../cards';
+import { AnimatedCardBack, AreaTooltip, CardFaceImage, DDCard, DDCardBack, GodTooltip } from '../cards';
+import { CARD_FACE_RATIO } from '../cards/CardFaceAssets';
 import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
 import { ThemeCornerOrnament } from '../theme/ThemeOrnaments';
 import { GodHighlightBurst } from '../anim/GodHighlightBurst';
@@ -111,17 +112,19 @@ function getCardBackFrameColors(expansionKey){
   };
 }
 
-function MiniCardLabel({card,scale=1,glowColor='#c8a96e',ambient=true}){
+function PileCardFaceImage({card,cardW,cardH,boxShadow='none'}){
   if(!card)return null;
-  const name=card.name||'';
+  const faceW=Math.min(cardW,Math.round(cardH/CARD_FACE_RATIO));
   return(
-    <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:`${Math.max(2,Math.round(3*scale))}px ${Math.max(2,Math.round(2*scale))}px`,textAlign:'center',lineHeight:1.05,background:ambient?'radial-gradient(circle at 45% 35%,rgba(255,230,120,0.14),rgba(0,0,0,0) 72%)':'transparent'}}>
-      <CardCodeLabel card={card} scale={scale} textShadow={`0 0 8px ${glowColor}`}/>
-      {name&&(
-        <div style={{marginTop:Math.max(1,Math.round(2*scale)),fontFamily:"'IM Fell English','Georgia',serif",fontWeight:600,color:'#e8cc88',fontSize:Math.max(5,Math.round((name.length>6?4.2:4.8)*scale)),lineHeight:1.02,wordBreak:'break-word',overflowWrap:'anywhere',maxWidth:'100%'}}>
-          {name}
-        </div>
-      )}
+    <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+      <CardFaceImage
+        card={card}
+        width={faceW}
+        style={{
+          borderRadius:3,
+          boxShadow,
+        }}
+      />
     </div>
   );
 }
@@ -129,7 +132,6 @@ function MiniCardLabel({card,scale=1,glowColor='#c8a96e',ambient=true}){
 function ZhuLitMiniCard({lit,deckIndex,scale,cardW,cardH,left,top,zIndex,hidden}){
   const {hover,tooltipPosition,cardRef,handleMouseEnter,handleMouseMove,handleMouseLeave}=useCardHoverTooltip();
   const litCard=lit?.card;
-  const s=litCard?.isGod?GOD_CS:(CS[litCard?.letter]||GOD_CS);
   if(hidden){
     return <div style={{...CARD_BACK_STYLE,width:cardW,height:cardH,left,top,zIndex,opacity:0,pointerEvents:'none'}}/>;
   }
@@ -144,15 +146,15 @@ function ZhuLitMiniCard({lit,deckIndex,scale,cardW,cardH,left,top,zIndex,hidden}
           ...CARD_BACK_STYLE,
           width:cardW,height:cardH,
           left,top,zIndex,
-          background:s.bg,
-          border:`1.5px solid ${s.borderBright}`,
+          background:'transparent',
+          border:'none',
           boxShadow:`0 0 ${Math.round(12*scale)}px ${GOD_DEFS.ZHU.col}88, inset 0 0 10px rgba(255,220,120,0.18)`,
           '--zhu-rot':`${-5+deckIndex*1.5}deg`,
           animation:`zhuLitCardPop 0.42s cubic-bezier(0.22,1,0.36,1) both`,
           pointerEvents:'auto',
         }}
       >
-        <MiniCardLabel card={litCard} scale={scale} glowColor={GOD_DEFS.ZHU.col}/>
+        <PileCardFaceImage card={litCard} cardW={cardW} cardH={cardH} boxShadow="none"/>
       </div>
       {hover&&litCard?.isGod&&<GodTooltip def={GOD_DEFS[litCard.godKey]} godLevel={1} position={tooltipPosition}/>}
       {hover&&litCard&&!litCard.isGod&&<AreaTooltip card={litCard} position={tooltipPosition}/>}
@@ -172,7 +174,6 @@ function DiscardPile({count,topCard,scale=1,expansionKey='地神的潜影'}){
       <div style={{width:cardW,height:cardH,borderRadius:3,border:'1px dashed #2a1a08',background:'transparent'}}/>
     </div>
   );
-  const s=topCard&&CS[topCard.letter]?CS[topCard.letter]:GOD_CS;
   return(
     <div style={{width:outerW,height:outerH,position:'relative',flexShrink:0}}>
       {Array(vis).fill(0).map((_,i)=>{
@@ -185,8 +186,8 @@ function DiscardPile({count,topCard,scale=1,expansionKey='地神的潜影'}){
             left:Math.round((15+off.x)*scale),top:Math.round((10+off.y)*scale),
             transform:`rotate(${rot}deg)`,
             ...(isTop&&topCard?{
-              background:s.bg,
-              border:`1.5px solid ${s.border}`,
+              background:'transparent',
+              border:'none',
               boxShadow:'0 1px 5px rgba(0,0,0,0.5), inset 0 0 8px rgba(0,0,0,0.35)',
             }:{
               border:`1.5px solid ${frameColors.border}`,
@@ -197,7 +198,7 @@ function DiscardPile({count,topCard,scale=1,expansionKey='地神的潜影'}){
         if(isTop&&topCard){
           return(
             <div key={i} style={style}>
-              <MiniCardLabel card={topCard} scale={scale} glowColor="rgba(0,0,0,0.65)" ambient={false}/>
+              <PileCardFaceImage card={topCard} cardW={cardW} cardH={cardH} boxShadow="none"/>
             </div>
           );
         }

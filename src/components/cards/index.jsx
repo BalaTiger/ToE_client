@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { CS, GOD_CS, GOD_DEFS, getCardDisplayKey, getGodDisplaySubtitle, getGodShortKey } from '../../constants/card';
 import { AnimatedCardBack } from './AnimatedCardBack';
 import { CardFaceImage } from './CardFaceImage';
+import { CARD_FACE_RATIO } from './CardFaceAssets';
 import { useCardHoverTooltip } from './useCardHoverTooltip';
 
 function OctopusSVG({col,size=32}){
@@ -264,53 +265,33 @@ function SlimeEdgeBubbles({w,h}){
   );
 }
 
-function MiniCardFace({card,width=70,height=94,scale=1,glowColor,ambient=true,showName=true,frameStyle,labelStyle,nameStyle}){
-  const s=card?(card.isGod?GOD_CS:(CS[card.letter]||GOD_CS)):GOD_CS;
-  const name=card?.name||'';
+function MiniCardFace({card,width=70,height=94,frameStyle}){
+  if(!card)return null;
+  const faceWidth=Math.min(width,Math.round(height/CARD_FACE_RATIO));
+  const faceHeight=Math.round(faceWidth*CARD_FACE_RATIO);
+  const legacyBoxShadow=frameStyle?.boxShadow;
+  const legacyBorderRadius=frameStyle?.borderRadius;
   return(
     <div style={{
       width,
       height,
-      borderRadius:4,
-      background:s.bg,
-      border:`1.5px solid ${s.borderBright}`,
-      boxShadow:`0 0 22px ${(s.glow||s.borderBright)}66, 0 8px 26px rgba(0,0,0,0.72)`,
       display:'flex',
-      flexDirection:'column',
       alignItems:'center',
       justifyContent:'center',
-      padding:'7px 6px',
-      textAlign:'center',
+      padding:0,
       overflow:'hidden',
       position:'relative',
       ...frameStyle,
     }}>
-      {ambient&&<div style={{position:'absolute',inset:0,background:'radial-gradient(circle at 45% 35%,rgba(255,230,120,0.14),rgba(0,0,0,0) 72%)',pointerEvents:'none'}}/>}
-      <CardCodeLabel
+      <CardFaceImage
         card={card}
-        scale={scale}
-        fontSize={labelStyle?.fontSize??(card?.isGod?17:20)}
-        letterSpacing={labelStyle?.letterSpacing??(card?.isGod?1.2:0)}
-        textShadow={labelStyle?.textShadow??`0 0 8px ${glowColor||s.borderBright}`}
-        style={{position:'relative',...(labelStyle||{})}}
+        width={faceWidth}
+        style={{
+          height:faceHeight,
+          borderRadius:legacyBorderRadius??4,
+          boxShadow:legacyBoxShadow??'0 0 22px rgba(200,169,110,0.28), 0 8px 26px rgba(0,0,0,0.72)',
+        }}
       />
-      {showName&&name&&(
-        <div style={{
-          position:'relative',
-          marginTop:7,
-          fontFamily:"'Cinzel',serif",
-          fontWeight:600,
-          color:'#e7cf8a',
-          fontSize:8.5,
-          lineHeight:1.15,
-          wordBreak:'break-word',
-          overflowWrap:'anywhere',
-          maxWidth:'100%',
-          ...nameStyle,
-        }}>
-          {name}
-        </div>
-      )}
     </div>
   );
 }
@@ -623,4 +604,3 @@ function GodCardDisplay({card,level=1,scale=1}){
   );
 }
 export { CardCodeLabel, MiniCardFace, PreviewCard, GodTooltip, AreaTooltip, GodDDCard, DDCard, DDCardBack, GodCardDisplay, OctopusSVG, AnimatedCardBack, CardFaceImage, CardFaceTooltip };
-
