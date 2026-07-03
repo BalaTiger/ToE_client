@@ -365,26 +365,26 @@ function getBubbleFrame(bubble, index, progress, width, height) {
   const x = startX + interpolateKeyframes([
     { t: 0, value: 0 },
     { t: 0.24, value: (bubble.dx * 0.2 + sway * 0.28) * width * 0.01 },
-    { t: 0.45, value: (bubble.dx * 0.48 - sway * 0.42) * width * 0.01 },
-    { t: 0.66, value: (bubble.dx * 0.77 + sway * 0.34) * width * 0.01 },
-    { t: 0.84, value: (bubble.dx * 1.02 - sway * 0.2) * width * 0.01 },
-    { t: 1, value: bubble.dx * 1.18 * width * 0.01 },
+    { t: 0.45, value: (bubble.dx * 0.56 - sway * 0.42) * width * 0.01 },
+    { t: 0.66, value: (bubble.dx * 0.95 + sway * 0.34) * width * 0.01 },
+    { t: 0.84, value: (bubble.dx * 1.26 - sway * 0.2) * width * 0.01 },
+    { t: 1, value: bubble.dx * 1.48 * width * 0.01 },
   ], progress);
   const y = startY + interpolateKeyframes([
     { t: 0, value: 0 },
     { t: 0.24, value: (bubble.dy * 0.17 - sway * 0.1) * height * 0.01 },
-    { t: 0.45, value: (bubble.dy * 0.43 + sway * 0.16) * height * 0.01 },
-    { t: 0.66, value: (bubble.dy * 0.7 - sway * 0.12) * height * 0.01 },
-    { t: 0.84, value: (bubble.dy * 0.92 + sway * 0.08) * height * 0.01 },
-    { t: 1, value: bubble.dy * 1.06 * height * 0.01 },
+    { t: 0.45, value: (bubble.dy * 0.51 + sway * 0.16) * height * 0.01 },
+    { t: 0.66, value: (bubble.dy * 0.86 - sway * 0.12) * height * 0.01 },
+    { t: 0.84, value: (bubble.dy * 1.14 + sway * 0.08) * height * 0.01 },
+    { t: 1, value: bubble.dy * 1.34 * height * 0.01 },
   ], progress);
   const scale = interpolateKeyframes([
     { t: 0, value: 0.055 },
     { t: 0.24, value: bubble.end * 0.13 },
     { t: 0.45, value: bubble.end * 0.3 },
-    { t: 0.66, value: bubble.end * 0.58 },
-    { t: 0.84, value: bubble.end * 0.92 },
-    { t: 1, value: bubble.end * 1.18 },
+    { t: 0.66, value: bubble.end * 0.68 },
+    { t: 0.84, value: bubble.end * 1.08 },
+    { t: 1, value: bubble.end * 1.45 },
   ], progress);
   const opacity = interpolateKeyframes([
     { t: 0, value: 0 },
@@ -527,9 +527,9 @@ function drawDreamEdgeCanvas(ctx, width, height, time) {
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   [
-    { width: 34, alpha: 0.055 },
-    { width: 20, alpha: 0.092 },
-    { width: 9, alpha: 0.16 },
+    { width: 18, alpha: 0.016 },
+    { width: 9, alpha: 0.026 },
+    { width: 3.5, alpha: 0.04 },
   ].forEach((stroke, index) => {
     makeDreamEdgePath(ctx, cx, cy, rx * (1 + index * 0.018), ry * (1 + index * 0.014), time + index * 0.4, 1);
     ctx.strokeStyle = `rgba(140,248,250,${stroke.alpha})`;
@@ -537,9 +537,32 @@ function drawDreamEdgeCanvas(ctx, width, height, time) {
     ctx.stroke();
   });
 
-  makeDreamEdgePath(ctx, cx, cy, rx * 0.98, ry * 0.97, time * 0.72, 0.74);
-  ctx.strokeStyle = 'rgba(216,255,255,0.13)';
-  ctx.lineWidth = 2.2;
+  makeDreamEdgePath(ctx, cx, cy, rx * 0.895, ry * 0.878, time * 0.66, 0.48);
+  ctx.strokeStyle = `rgba(58,220,236,${0.105 + pulse * 0.03})`;
+  ctx.lineWidth = 16;
+  ctx.stroke();
+
+  makeDreamEdgePath(ctx, cx, cy, rx * 0.891, ry * 0.874, time * 0.68, 0.45);
+  ctx.strokeStyle = `rgba(126,248,255,${0.2 + pulse * 0.05})`;
+  ctx.lineWidth = 7;
+  ctx.stroke();
+
+  makeDreamEdgePath(ctx, cx, cy, rx * 0.888, ry * 0.87, time * 0.7, 0.42);
+  ctx.save();
+  ctx.shadowColor = 'rgba(126,248,255,0.72)';
+  ctx.shadowBlur = 12;
+  ctx.strokeStyle = `rgba(238,255,255,${0.9 + pulse * 0.08})`;
+  ctx.lineWidth = 2.7;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(255,255,255,0.72)';
+  ctx.lineWidth = 1.15;
+  ctx.stroke();
+  ctx.restore();
+
+  makeDreamEdgePath(ctx, cx, cy, rx * 0.858, ry * 0.84, time * 0.76, 0.36);
+  ctx.strokeStyle = 'rgba(122,242,248,0.18)';
+  ctx.lineWidth = 1.4;
   ctx.stroke();
 
   ctx.globalCompositeOperation = 'source-over';
@@ -822,10 +845,10 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
         }
         @keyframes cthDreamStage {
           0% { opacity: 0; }
-          16%, 78% { opacity: 1; }
-          100% { opacity: 0; }
+          16%, 100% { opacity: 1; }
         }
         @keyframes cthDreamExit {
+          from { opacity: 1; filter: blur(0); }
           to { opacity: 0; filter: blur(8px); }
         }
         @keyframes cthDreamBeam {
