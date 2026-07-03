@@ -17,6 +17,22 @@ const DREAM_CORE_MASK = `
   radial-gradient(ellipse 24% 18% at 65% 75%, #000 0%, #000 39%, rgba(0,0,0,.46) 59%, rgba(0,0,0,.055) 76%, transparent 87%),
   radial-gradient(ellipse 20% 19% at 39% 78%, #000 0%, #000 39%, rgba(0,0,0,.44) 58%, rgba(0,0,0,.05) 75%, transparent 86%)
 `;
+const DREAM_CAUSTIC_BANDS = [
+  { y: 0.17, amp: 0.035, tilt: -0.03, freqA: 2.2, freqB: 5.7, phase: 0.2, speed: 0.82, width: 0.014, alpha: 0.34 },
+  { y: 0.27, amp: 0.046, tilt: 0.045, freqA: 2.8, freqB: 6.4, phase: 1.5, speed: -0.64, width: 0.018, alpha: 0.42 },
+  { y: 0.39, amp: 0.04, tilt: -0.055, freqA: 3.4, freqB: 7.8, phase: 2.7, speed: 0.7, width: 0.016, alpha: 0.38 },
+  { y: 0.51, amp: 0.052, tilt: 0.024, freqA: 2.5, freqB: 8.6, phase: 4.1, speed: -0.76, width: 0.021, alpha: 0.48 },
+  { y: 0.64, amp: 0.041, tilt: -0.04, freqA: 3.0, freqB: 6.9, phase: 5.4, speed: 0.58, width: 0.017, alpha: 0.36 },
+  { y: 0.77, amp: 0.034, tilt: 0.055, freqA: 2.1, freqB: 5.2, phase: 6.5, speed: -0.54, width: 0.014, alpha: 0.28 },
+];
+const DREAM_CAUSTIC_ARCS = [
+  { x: 0.18, y: 0.31, w: 0.23, h: 0.12, rot: -0.18, phase: 0.4, alpha: 0.22 },
+  { x: 0.38, y: 0.2, w: 0.27, h: 0.15, rot: 0.2, phase: 1.7, alpha: 0.2 },
+  { x: 0.64, y: 0.34, w: 0.3, h: 0.14, rot: -0.26, phase: 2.6, alpha: 0.24 },
+  { x: 0.76, y: 0.55, w: 0.24, h: 0.16, rot: 0.24, phase: 3.8, alpha: 0.2 },
+  { x: 0.45, y: 0.68, w: 0.34, h: 0.13, rot: -0.12, phase: 4.5, alpha: 0.26 },
+  { x: 0.22, y: 0.72, w: 0.26, h: 0.14, rot: 0.28, phase: 5.9, alpha: 0.18 },
+];
 const BUBBLES = [
   { x: -0.72, y: -0.7, dx: -7.8, dy: -5.4, size: 4, end: 3.2, blur: 2.5, delay: 0.02, dur: 1.28, sway: -0.7 },
   { x: -0.69, y: -0.73, dx: -8.6, dy: -5.8, size: 6, end: 5.1, blur: 2.1, delay: 0.16, dur: 1.42, sway: 0.5 },
@@ -568,11 +584,104 @@ function drawDreamEdgeCanvas(ctx, width, height, time) {
   ctx.globalCompositeOperation = 'source-over';
 }
 
+function drawCausticCurve(ctx, points) {
+  if (!points.length) return;
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length - 1; i += 1) {
+    const midX = (points[i].x + points[i + 1].x) / 2;
+    const midY = (points[i].y + points[i + 1].y) / 2;
+    ctx.quadraticCurveTo(points[i].x, points[i].y, midX, midY);
+  }
+  const last = points[points.length - 1];
+  ctx.lineTo(last.x, last.y);
+}
+
+function drawDreamCausticsCanvas(ctx, width, height, time) {
+  ctx.clearRect(0, 0, width, height);
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  const shimmer = 0.78 + Math.sin(time * 5.1) * 0.16 + Math.sin(time * 8.3) * 0.06;
+  const driftX = Math.sin(time * 0.52) * width * 0.018;
+  const driftY = Math.cos(time * 0.44) * height * 0.012;
+
+  DREAM_CAUSTIC_BANDS.forEach((band, index) => {
+    const points = [];
+    const steps = 30;
+    const phase = band.phase + time * band.speed;
+    for (let i = 0; i <= steps; i += 1) {
+      const t = i / steps;
+      const local = t * Math.PI * 2;
+      const cross = t - 0.5;
+      const x = width * (-0.1 + t * 1.2) + driftX * (1 + index * 0.06);
+      const wave = Math.sin(local * band.freqA + phase) * band.amp
+        + Math.sin(local * band.freqB - phase * 0.72) * band.amp * 0.46
+        + Math.sin(local * 11.0 + phase * 1.4) * band.amp * 0.16;
+      const y = height * (band.y + wave + cross * band.tilt) + driftY;
+      points.push({ x, y });
+    }
+
+    const bandWidth = Math.max(4, height * band.width);
+    drawCausticCurve(ctx, points);
+    ctx.strokeStyle = `rgba(28,152,188,${0.09 * band.alpha * shimmer})`;
+    ctx.lineWidth = bandWidth * 4.1;
+    ctx.stroke();
+
+    drawCausticCurve(ctx, points);
+    ctx.strokeStyle = `rgba(82,224,238,${0.2 * band.alpha * shimmer})`;
+    ctx.lineWidth = bandWidth * 1.7;
+    ctx.stroke();
+
+    drawCausticCurve(ctx, points);
+    ctx.strokeStyle = `rgba(222,255,250,${0.34 * band.alpha * shimmer})`;
+    ctx.lineWidth = Math.max(0.8, bandWidth * 0.34);
+    ctx.stroke();
+  });
+
+  DREAM_CAUSTIC_ARCS.forEach((arc, index) => {
+    const pulse = 0.72 + 0.28 * Math.sin(time * (1.7 + index * 0.19) + arc.phase);
+    const cx = width * (arc.x + Math.sin(time * 0.36 + arc.phase) * 0.018);
+    const cy = height * (arc.y + Math.cos(time * 0.31 + arc.phase) * 0.014);
+    const rx = width * arc.w * (0.72 + pulse * 0.18);
+    const ry = height * arc.h * (0.7 + pulse * 0.22);
+    const start = Math.PI * (0.12 + 0.09 * Math.sin(time + arc.phase));
+    const end = Math.PI * (0.84 + 0.12 * Math.cos(time * 0.8 + arc.phase));
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(arc.rot + Math.sin(time * 0.4 + arc.phase) * 0.12);
+    ctx.scale(1, 0.74 + Math.sin(time * 0.5 + arc.phase) * 0.08);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx, ry, 0, start, end);
+    ctx.strokeStyle = `rgba(68,211,231,${arc.alpha * 0.34 * pulse})`;
+    ctx.lineWidth = Math.max(3, height * 0.01);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx * 0.98, ry * 0.94, 0, start + 0.04, end - 0.03);
+    ctx.strokeStyle = `rgba(231,255,252,${arc.alpha * 0.46 * pulse})`;
+    ctx.lineWidth = Math.max(0.8, height * 0.0028);
+    ctx.stroke();
+    ctx.restore();
+  });
+
+  const wash = ctx.createRadialGradient(width * 0.5, height * 0.48, 0, width * 0.5, height * 0.5, Math.max(width, height) * 0.58);
+  wash.addColorStop(0, `rgba(118,246,244,${0.05 + shimmer * 0.025})`);
+  wash.addColorStop(0.55, 'rgba(42,183,216,0.018)');
+  wash.addColorStop(1, 'rgba(30,140,176,0)');
+  ctx.fillStyle = wash;
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.globalCompositeOperation = 'source-over';
+}
+
 export function CthRlyehDreamOverlay({ anim, exiting }) {
   const targetPid = anim?.targetPid ?? 0;
   const [beam, setBeam] = React.useState(null);
   const bubbleCanvasRef = React.useRef(null);
   const dreamEdgeCanvasRef = React.useRef(null);
+  const dreamCausticsCanvasRef = React.useRef(null);
   const filterId = React.useId().replace(/:/g, '');
 
   React.useLayoutEffect(() => {
@@ -700,6 +809,48 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
     };
   }, [beam?.dream?.width, beam?.dream?.height]);
 
+  React.useEffect(() => {
+    const canvas = dreamCausticsCanvasRef.current;
+    const ctx = canvas?.getContext('2d', { alpha: true });
+    if (!canvas || !ctx) return undefined;
+
+    let frameId = 0;
+    let width = 0;
+    let height = 0;
+    let dpr = 1;
+    let lastDraw = 0;
+    const startedAt = performance.now();
+    const maxDuration = 2550;
+
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect();
+      width = Math.max(1, rect.width);
+      height = Math.max(1, rect.height);
+      dpr = Math.min(window.devicePixelRatio || 1, 1.05);
+      canvas.width = Math.ceil(width * dpr);
+      canvas.height = Math.ceil(height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    const draw = (now) => {
+      const elapsed = now - startedAt;
+      if (now - lastDraw >= 33 || lastDraw === 0) {
+        lastDraw = now;
+        drawDreamCausticsCanvas(ctx, width, height, elapsed / 1000);
+      }
+      if (elapsed < maxDuration) frameId = requestAnimationFrame(draw);
+    };
+
+    resize();
+    window.addEventListener('resize', resize);
+    frameId = requestAnimationFrame(draw);
+
+    return () => {
+      window.removeEventListener('resize', resize);
+      cancelAnimationFrame(frameId);
+    };
+  }, [beam?.dream?.width, beam?.dream?.height]);
+
   return (
     <div
       className="cth-rlyeh-dream"
@@ -792,7 +943,6 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           position: absolute;
           inset: -8%;
           z-index: 1;
-          overflow: hidden;
           background-image:
             radial-gradient(circle at 48% 44%, rgba(118,241,242,0.09), transparent 34%),
             linear-gradient(180deg, rgba(0,12,20,0.02), rgba(0,4,12,0.16)),
@@ -809,34 +959,6 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           mask-repeat: no-repeat;
           animation: cthDreamDrift 2.5s ease-in-out both;
         }
-        .cth-rlyeh-dream__image::before,
-        .cth-rlyeh-dream__image::after {
-          content: "";
-          position: absolute;
-          inset: -14%;
-          pointer-events: none;
-        }
-        .cth-rlyeh-dream__image::before {
-          background:
-            repeating-linear-gradient(104deg, transparent 0 9px, rgba(151,247,255,0.13) 10px 12px, rgba(0,13,24,0.16) 13px 18px, transparent 19px 34px),
-            repeating-linear-gradient(22deg, transparent 0 13px, rgba(79,207,225,0.09) 14px 16px, transparent 17px 38px),
-            radial-gradient(ellipse at 33% 38%, rgba(144,249,255,0.14), transparent 38%),
-            radial-gradient(ellipse at 66% 62%, rgba(42,178,214,0.13), transparent 42%);
-          background-size: 180% 150%, 160% 130%, 100% 100%, 100% 100%;
-          mix-blend-mode: overlay;
-          opacity: .54;
-          filter: blur(.55px);
-          animation: cthDreamRefract 1.18s ease-in-out infinite alternate;
-        }
-        .cth-rlyeh-dream__image::after {
-          background:
-            radial-gradient(ellipse at 50% 52%, transparent 0 34%, rgba(155,255,255,0.09) 42%, transparent 53%),
-            repeating-radial-gradient(ellipse at 48% 54%, transparent 0 12px, rgba(118,236,244,0.11) 13px 15px, transparent 16px 32px);
-          mix-blend-mode: screen;
-          opacity: .34;
-          transform-origin: 52% 50%;
-          animation: cthDreamPulseWash 1.46s ease-in-out infinite alternate;
-        }
         .cth-rlyeh-dream__edge-canvas {
           position: absolute;
           inset: -60%;
@@ -846,23 +968,20 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           mix-blend-mode: screen;
           opacity: .92;
         }
-        .cth-rlyeh-dream__caustics {
+        .cth-rlyeh-dream__caustics-canvas {
           position: absolute;
           inset: -8%;
-          z-index: 5;
-          background:
-            repeating-radial-gradient(ellipse at 46% 56%, rgba(122,236,240,0.17) 0 1px, transparent 2px 12px),
-            repeating-linear-gradient(122deg, transparent 0 18px, rgba(132,245,255,0.11) 19px 21px, transparent 22px 45px),
-            linear-gradient(112deg, transparent 0%, rgba(98,219,230,0.16) 40%, transparent 63%);
+          width: 116%;
+          height: 116%;
+          z-index: 2;
           mix-blend-mode: screen;
-          filter: blur(1px);
+          opacity: .78;
           -webkit-mask-image: ${DREAM_CORE_MASK};
           mask-image: ${DREAM_CORE_MASK};
           -webkit-mask-size: 100% 100%;
           mask-size: 100% 100%;
           -webkit-mask-repeat: no-repeat;
           mask-repeat: no-repeat;
-          animation: cthDreamCaustics 1.42s linear infinite;
         }
         .cth-rlyeh-dream__bubble-canvas {
           position: absolute;
@@ -909,21 +1028,6 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           32% { transform: scale(1.035) translate3d(.8%, -.9%, 0) rotate(.18deg); }
           68% { transform: scale(1.065) translate3d(2.1%, .5%, 0) rotate(-.12deg); }
           100% { transform: scale(1.09) translate3d(2.6%, -1.7%, 0) rotate(.32deg); }
-        }
-        @keyframes cthDreamRefract {
-          from { transform: translate3d(-2.2%, 1.4%, 0) scale(1.015) rotate(-1.1deg); opacity: .42; }
-          48% { opacity: .68; }
-          to { transform: translate3d(2.6%, -1.8%, 0) scale(1.045) rotate(1.35deg); opacity: .58; }
-        }
-        @keyframes cthDreamPulseWash {
-          from { transform: scale(.96) rotate(-.8deg); opacity: .2; }
-          44% { opacity: .42; }
-          to { transform: scale(1.08) rotate(.9deg); opacity: .38; }
-        }
-        @keyframes cthDreamCaustics {
-          from { transform: translate3d(-3.2%, 1.7%, 0) rotate(-1deg) scale(1.02); opacity: .26; }
-          48% { opacity: .66; }
-          to { transform: translate3d(3.4%, -2.7%, 0) rotate(4.4deg) scale(1.06); opacity: .3; }
         }
       `}</style>
       {beam && (
@@ -1040,7 +1144,7 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
       >
         <canvas ref={dreamEdgeCanvasRef} className="cth-rlyeh-dream__edge-canvas" />
         <div className="cth-rlyeh-dream__image" />
-        <div className="cth-rlyeh-dream__caustics" />
+        <canvas ref={dreamCausticsCanvasRef} className="cth-rlyeh-dream__caustics-canvas" />
       </div>
       <canvas ref={bubbleCanvasRef} className="cth-rlyeh-dream__bubble-canvas" />
     </div>
