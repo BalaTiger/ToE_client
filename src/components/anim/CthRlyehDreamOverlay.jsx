@@ -792,11 +792,12 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           position: absolute;
           inset: -8%;
           z-index: 1;
+          overflow: hidden;
           background-image:
             radial-gradient(circle at 48% 44%, rgba(118,241,242,0.09), transparent 34%),
             linear-gradient(180deg, rgba(0,12,20,0.02), rgba(0,4,12,0.16)),
             url("${DREAM_IMAGE}");
-          background-size: cover;
+          background-size: 112% 112%, 100% 100%, cover;
           background-position: center;
           transform: scale(1.03);
           filter: contrast(1.08) brightness(.96) saturate(1.12) blur(.18px);
@@ -807,6 +808,34 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           -webkit-mask-repeat: no-repeat;
           mask-repeat: no-repeat;
           animation: cthDreamDrift 2.5s ease-in-out both;
+        }
+        .cth-rlyeh-dream__image::before,
+        .cth-rlyeh-dream__image::after {
+          content: "";
+          position: absolute;
+          inset: -14%;
+          pointer-events: none;
+        }
+        .cth-rlyeh-dream__image::before {
+          background:
+            repeating-linear-gradient(104deg, transparent 0 9px, rgba(151,247,255,0.13) 10px 12px, rgba(0,13,24,0.16) 13px 18px, transparent 19px 34px),
+            repeating-linear-gradient(22deg, transparent 0 13px, rgba(79,207,225,0.09) 14px 16px, transparent 17px 38px),
+            radial-gradient(ellipse at 33% 38%, rgba(144,249,255,0.14), transparent 38%),
+            radial-gradient(ellipse at 66% 62%, rgba(42,178,214,0.13), transparent 42%);
+          background-size: 180% 150%, 160% 130%, 100% 100%, 100% 100%;
+          mix-blend-mode: overlay;
+          opacity: .54;
+          filter: blur(.55px);
+          animation: cthDreamRefract 1.18s ease-in-out infinite alternate;
+        }
+        .cth-rlyeh-dream__image::after {
+          background:
+            radial-gradient(ellipse at 50% 52%, transparent 0 34%, rgba(155,255,255,0.09) 42%, transparent 53%),
+            repeating-radial-gradient(ellipse at 48% 54%, transparent 0 12px, rgba(118,236,244,0.11) 13px 15px, transparent 16px 32px);
+          mix-blend-mode: screen;
+          opacity: .34;
+          transform-origin: 52% 50%;
+          animation: cthDreamPulseWash 1.46s ease-in-out infinite alternate;
         }
         .cth-rlyeh-dream__edge-canvas {
           position: absolute;
@@ -822,8 +851,9 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           inset: -8%;
           z-index: 5;
           background:
-            repeating-radial-gradient(ellipse at 46% 56%, rgba(122,236,240,0.12) 0 1px, transparent 2px 14px),
-            linear-gradient(112deg, transparent 0%, rgba(98,219,230,0.11) 42%, transparent 60%);
+            repeating-radial-gradient(ellipse at 46% 56%, rgba(122,236,240,0.17) 0 1px, transparent 2px 12px),
+            repeating-linear-gradient(122deg, transparent 0 18px, rgba(132,245,255,0.11) 19px 21px, transparent 22px 45px),
+            linear-gradient(112deg, transparent 0%, rgba(98,219,230,0.16) 40%, transparent 63%);
           mix-blend-mode: screen;
           filter: blur(1px);
           -webkit-mask-image: ${DREAM_CORE_MASK};
@@ -832,7 +862,7 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           mask-size: 100% 100%;
           -webkit-mask-repeat: no-repeat;
           mask-repeat: no-repeat;
-          animation: cthDreamCaustics 1.65s linear infinite;
+          animation: cthDreamCaustics 1.42s linear infinite;
         }
         .cth-rlyeh-dream__bubble-canvas {
           position: absolute;
@@ -875,14 +905,25 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           100% { opacity: 0; transform: scale(1.18); }
         }
         @keyframes cthDreamDrift {
-          0% { transform: scale(1.065) translate3d(-1.2%, 1%, 0); }
-          55% { transform: scale(1.025) translate3d(1%, -0.6%, 0); }
-          100% { transform: scale(1.07) translate3d(1.7%, -1.3%, 0); }
+          0% { transform: scale(1.075) translate3d(-1.8%, 1.2%, 0) rotate(-.35deg); }
+          32% { transform: scale(1.035) translate3d(.8%, -.9%, 0) rotate(.18deg); }
+          68% { transform: scale(1.065) translate3d(2.1%, .5%, 0) rotate(-.12deg); }
+          100% { transform: scale(1.09) translate3d(2.6%, -1.7%, 0) rotate(.32deg); }
+        }
+        @keyframes cthDreamRefract {
+          from { transform: translate3d(-2.2%, 1.4%, 0) scale(1.015) rotate(-1.1deg); opacity: .42; }
+          48% { opacity: .68; }
+          to { transform: translate3d(2.6%, -1.8%, 0) scale(1.045) rotate(1.35deg); opacity: .58; }
+        }
+        @keyframes cthDreamPulseWash {
+          from { transform: scale(.96) rotate(-.8deg); opacity: .2; }
+          44% { opacity: .42; }
+          to { transform: scale(1.08) rotate(.9deg); opacity: .38; }
         }
         @keyframes cthDreamCaustics {
-          from { transform: translate3d(-2%, 1%, 0) rotate(0deg); opacity: .2; }
-          50% { opacity: .5; }
-          to { transform: translate3d(2%, -2%, 0) rotate(3deg); opacity: .22; }
+          from { transform: translate3d(-3.2%, 1.7%, 0) rotate(-1deg) scale(1.02); opacity: .26; }
+          48% { opacity: .66; }
+          to { transform: translate3d(3.4%, -2.7%, 0) rotate(4.4deg) scale(1.06); opacity: .3; }
         }
       `}</style>
       {beam && (
