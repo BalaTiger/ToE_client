@@ -7,6 +7,7 @@ const DREAM_WIDTH_RATIO = 0.48;
 const DREAM_HEIGHT_RATIO = 0.43;
 const DREAM_MAX_WIDTH = 620;
 const DREAM_MAX_HEIGHT = 430;
+const DREAM_EDGE_CANVAS_SCALE = 2.2;
 const DREAM_CORE_MASK = `
   radial-gradient(ellipse 39% 34% at 51% 50%, #000 0%, #000 58%, rgba(0,0,0,.72) 73%, rgba(0,0,0,.18) 89%, transparent 100%),
   radial-gradient(ellipse 20% 24% at 23% 48%, #000 0%, #000 46%, rgba(0,0,0,.62) 70%, rgba(0,0,0,.16) 88%, transparent 100%),
@@ -16,16 +17,6 @@ const DREAM_CORE_MASK = `
   radial-gradient(ellipse 24% 18% at 65% 75%, #000 0%, #000 42%, rgba(0,0,0,.56) 68%, rgba(0,0,0,.13) 88%, transparent 100%),
   radial-gradient(ellipse 20% 19% at 39% 78%, #000 0%, #000 42%, rgba(0,0,0,.54) 67%, rgba(0,0,0,.12) 87%, transparent 100%)
 `;
-const DREAM_EDGE_MASK = `
-  radial-gradient(ellipse 43% 38% at 51% 50%, transparent 0%, transparent 44%, rgba(0,0,0,.34) 59%, #000 72%, rgba(0,0,0,.54) 84%, transparent 100%),
-  radial-gradient(ellipse 24% 29% at 22% 48%, transparent 0%, transparent 38%, rgba(0,0,0,.38) 55%, #000 70%, rgba(0,0,0,.42) 84%, transparent 100%),
-  radial-gradient(ellipse 29% 23% at 36% 29%, transparent 0%, transparent 36%, rgba(0,0,0,.36) 54%, #000 70%, rgba(0,0,0,.38) 84%, transparent 100%),
-  radial-gradient(ellipse 25% 30% at 58% 22%, transparent 0%, transparent 37%, rgba(0,0,0,.36) 55%, #000 71%, rgba(0,0,0,.4) 85%, transparent 100%),
-  radial-gradient(ellipse 30% 25% at 78% 46%, transparent 0%, transparent 38%, rgba(0,0,0,.38) 56%, #000 72%, rgba(0,0,0,.42) 86%, transparent 100%),
-  radial-gradient(ellipse 29% 23% at 65% 76%, transparent 0%, transparent 36%, rgba(0,0,0,.36) 54%, #000 70%, rgba(0,0,0,.4) 84%, transparent 100%),
-  radial-gradient(ellipse 24% 24% at 39% 79%, transparent 0%, transparent 37%, rgba(0,0,0,.34) 54%, #000 70%, rgba(0,0,0,.38) 84%, transparent 100%)
-`;
-
 const BUBBLES = [
   { x: -0.72, y: -0.7, dx: -7.8, dy: -5.4, size: 4, end: 3.2, blur: 2.5, delay: 0.02, dur: 1.28, sway: -0.7 },
   { x: -0.69, y: -0.73, dx: -8.6, dy: -5.8, size: 6, end: 5.1, blur: 2.1, delay: 0.16, dur: 1.42, sway: 0.5 },
@@ -456,10 +447,109 @@ function drawCanvasBubble(ctx, frame, bubble) {
   ctx.restore();
 }
 
+function drawSoftEllipse(ctx, x, y, rx, ry, rotation, innerColor, outerColor) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rotation);
+  ctx.scale(rx, ry);
+  const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+  gradient.addColorStop(0, innerColor);
+  gradient.addColorStop(0.48, outerColor);
+  gradient.addColorStop(1, 'rgba(80,220,230,0)');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(0, 0, 1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function makeDreamEdgePath(ctx, cx, cy, rx, ry, time, wobbleScale = 1) {
+  const points = 92;
+  ctx.beginPath();
+  for (let i = 0; i <= points; i += 1) {
+    const angle = (i / points) * Math.PI * 2;
+    const warp = 1
+      + Math.sin(angle * 3.1 + time * 1.1) * 0.052 * wobbleScale
+      + Math.sin(angle * 6.7 - time * 0.85) * 0.036 * wobbleScale
+      + Math.sin(angle * 11.3 + time * 0.48) * 0.022 * wobbleScale;
+    const x = cx + Math.cos(angle) * rx * warp;
+    const y = cy + Math.sin(angle) * ry * warp;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+function drawDreamEdgeCanvas(ctx, width, height, time) {
+  const innerWidth = width / DREAM_EDGE_CANVAS_SCALE;
+  const innerHeight = height / DREAM_EDGE_CANVAS_SCALE;
+  const edgePad = (DREAM_EDGE_CANVAS_SCALE - 1) / 2;
+  const cx = width / 2;
+  const cy = height / 2;
+  const rx = innerWidth * 0.49;
+  const ry = innerHeight * 0.44;
+  const pulse = 0.5 + 0.5 * Math.sin(time * 1.9);
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.globalCompositeOperation = 'lighter';
+
+  drawSoftEllipse(
+    ctx,
+    cx,
+    cy,
+    rx * (1.22 + pulse * 0.05),
+    ry * (1.2 + pulse * 0.04),
+    Math.sin(time * 0.55) * 0.08,
+    'rgba(128,244,246,0.11)',
+    'rgba(65,188,218,0.055)',
+  );
+
+  EDGE_CLOUDS.forEach((cloud, index) => {
+    const drift = time * (0.42 + index * 0.035) + cloud.delay;
+    const x = (edgePad + cloud.x / 100) * innerWidth + Math.sin(drift * 1.7) * innerWidth * 0.018;
+    const y = (edgePad + cloud.y / 100) * innerHeight + Math.cos(drift * 1.45) * innerHeight * 0.015;
+    const cloudRx = innerWidth * cloud.w * 0.009 * (1.12 + 0.12 * Math.sin(drift));
+    const cloudRy = innerHeight * cloud.h * 0.01 * (1.06 + 0.1 * Math.cos(drift * 1.2));
+    drawSoftEllipse(
+      ctx,
+      x,
+      y,
+      cloudRx * 1.9,
+      cloudRy * 1.9,
+      (cloud.rot + Math.sin(drift) * 12) * Math.PI / 180,
+      index % 2
+        ? 'rgba(158,255,250,0.22)'
+        : 'rgba(92,218,232,0.2)',
+      'rgba(75,196,222,0.08)',
+    );
+  });
+
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  [
+    { width: 34, alpha: 0.055 },
+    { width: 20, alpha: 0.092 },
+    { width: 9, alpha: 0.16 },
+  ].forEach((stroke, index) => {
+    makeDreamEdgePath(ctx, cx, cy, rx * (1 + index * 0.018), ry * (1 + index * 0.014), time + index * 0.4, 1);
+    ctx.strokeStyle = `rgba(140,248,250,${stroke.alpha})`;
+    ctx.lineWidth = stroke.width;
+    ctx.stroke();
+  });
+
+  makeDreamEdgePath(ctx, cx, cy, rx * 0.98, ry * 0.97, time * 0.72, 0.74);
+  ctx.strokeStyle = 'rgba(216,255,255,0.13)';
+  ctx.lineWidth = 2.2;
+  ctx.stroke();
+
+  ctx.globalCompositeOperation = 'source-over';
+}
+
 export function CthRlyehDreamOverlay({ anim, exiting }) {
   const targetPid = anim?.targetPid ?? 0;
   const [beam, setBeam] = React.useState(null);
   const bubbleCanvasRef = React.useRef(null);
+  const dreamEdgeCanvasRef = React.useRef(null);
   const filterId = React.useId().replace(/:/g, '');
 
   React.useLayoutEffect(() => {
@@ -545,30 +635,54 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
     };
   }, []);
 
+  React.useEffect(() => {
+    const canvas = dreamEdgeCanvasRef.current;
+    const ctx = canvas?.getContext('2d', { alpha: true });
+    if (!canvas || !ctx) return undefined;
+
+    let frameId = 0;
+    let width = 0;
+    let height = 0;
+    let dpr = 1;
+    let lastDraw = 0;
+    const startedAt = performance.now();
+    const maxDuration = 2550;
+
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect();
+      width = Math.max(1, rect.width);
+      height = Math.max(1, rect.height);
+      dpr = Math.min(window.devicePixelRatio || 1, 1.05);
+      canvas.width = Math.ceil(width * dpr);
+      canvas.height = Math.ceil(height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    const draw = (now) => {
+      const elapsed = now - startedAt;
+      if (now - lastDraw >= 33 || lastDraw === 0) {
+        lastDraw = now;
+        drawDreamEdgeCanvas(ctx, width, height, elapsed / 1000);
+      }
+      if (elapsed < maxDuration) frameId = requestAnimationFrame(draw);
+    };
+
+    resize();
+    window.addEventListener('resize', resize);
+    frameId = requestAnimationFrame(draw);
+
+    return () => {
+      window.removeEventListener('resize', resize);
+      cancelAnimationFrame(frameId);
+    };
+  }, [beam?.dream?.width, beam?.dream?.height]);
+
   return (
     <div
       className="cth-rlyeh-dream"
       style={{ animation: exiting ? 'cthDreamExit .22s ease-in forwards' : undefined }}
       aria-hidden
     >
-      <svg width="0" height="0" style={{ position: 'absolute' }}>
-        <filter id={`${filterId}-distort`} x="-14%" y="-14%" width="128%" height="128%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.01 0.03" numOctaves="3" seed="27" result="noise">
-            <animate attributeName="baseFrequency" dur="2.8s" values="0.009 0.026;0.017 0.038;0.011 0.03" repeatCount="indefinite" />
-          </feTurbulence>
-          <feDisplacementMap in="SourceGraphic" in2="noise" scale="10" xChannelSelector="R" yChannelSelector="G">
-            <animate attributeName="scale" dur="2.6s" values="5;12;8;10" repeatCount="indefinite" />
-          </feDisplacementMap>
-        </filter>
-        <filter id={`${filterId}-edge`} x="-24%" y="-24%" width="148%" height="148%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.018 0.055" numOctaves="4" seed="71" result="edgeNoise">
-            <animate attributeName="baseFrequency" dur="3.2s" values="0.014 0.045;0.026 0.064;0.018 0.055" repeatCount="indefinite" />
-          </feTurbulence>
-          <feDisplacementMap in="SourceGraphic" in2="edgeNoise" scale="28" xChannelSelector="R" yChannelSelector="B">
-            <animate attributeName="scale" dur="3s" values="16;34;22;28" repeatCount="indefinite" />
-          </feDisplacementMap>
-        </filter>
-      </svg>
       <style>{`
         .cth-rlyeh-dream {
           position: fixed;
@@ -662,7 +776,7 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           background-size: cover;
           background-position: center;
           transform: scale(1.03);
-          filter: url(#${filterId}-distort) contrast(1.08) brightness(.96) saturate(1.12) blur(.18px);
+          filter: contrast(1.08) brightness(.96) saturate(1.12) blur(.18px);
           -webkit-mask-image: ${DREAM_CORE_MASK};
           mask-image: ${DREAM_CORE_MASK};
           -webkit-mask-size: 100% 100%;
@@ -671,56 +785,14 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           mask-repeat: no-repeat;
           animation: cthDreamDrift 2.5s ease-in-out both;
         }
-        .cth-rlyeh-dream__edge {
+        .cth-rlyeh-dream__edge-canvas {
           position: absolute;
-          inset: -24%;
+          inset: -60%;
+          width: 220%;
+          height: 220%;
           z-index: 3;
-          background:
-            radial-gradient(ellipse at 16% 44%, rgba(124,231,232,0.34), transparent 25%),
-            radial-gradient(ellipse at 82% 38%, rgba(99,200,220,0.3), transparent 24%),
-            radial-gradient(ellipse at 56% 86%, rgba(48,165,196,0.24), transparent 28%),
-            radial-gradient(ellipse at 36% 13%, rgba(169,255,247,0.22), transparent 26%);
-          filter: url(#${filterId}-edge) blur(18px);
           mix-blend-mode: screen;
-          opacity: .78;
-          -webkit-mask-image: ${DREAM_EDGE_MASK};
-          mask-image: ${DREAM_EDGE_MASK};
-          -webkit-mask-size: 100% 100%;
-          mask-size: 100% 100%;
-          -webkit-mask-repeat: no-repeat;
-          mask-repeat: no-repeat;
-          animation: cthDreamEdgeSwim 3.2s ease-in-out infinite;
-        }
-        .cth-rlyeh-dream__rim-fog {
-          position: absolute;
-          z-index: 4;
-          left: 50%;
-          top: 50%;
-          width: calc(var(--w) * 1%);
-          height: calc(var(--h) * 1%);
-          transform: translate(calc(-50% + var(--x) * 1%), calc(-50% + var(--y) * 1%)) rotate(calc(var(--rot) * 1deg));
-          border-radius: 50%;
-          background: radial-gradient(ellipse at 50% 50%, rgba(161,252,255,0.28), rgba(83,205,224,0.14) 42%, transparent 72%);
-          filter: url(#${filterId}-edge) blur(12px);
-          mix-blend-mode: screen;
-          opacity: .64;
-          animation: cthDreamRimFog calc(var(--dur) * 1s) ease-in-out calc(var(--delay) * 1s) infinite alternate;
-        }
-        .cth-rlyeh-dream__edge-cloud {
-          position: absolute;
-          z-index: 4;
-          left: calc(var(--x) * 1%);
-          top: calc(var(--y) * 1%);
-          width: calc(var(--w) * 1%);
-          height: calc(var(--h) * 1%);
-          transform: translate(-50%, -50%) rotate(calc(var(--rot) * 1deg));
-          border-radius: 48% 52% 44% 56% / 54% 42% 58% 46%;
-          background:
-            radial-gradient(ellipse at 46% 48%, rgba(159,252,250,0.28), rgba(76,196,218,0.16) 42%, transparent 72%);
-          filter: url(#${filterId}-edge) blur(13px);
-          mix-blend-mode: screen;
-          opacity: .7;
-          animation: cthDreamEdgeCloud calc(var(--dur) * 1s) ease-in-out calc(var(--delay) * 1s) infinite alternate;
+          opacity: .92;
         }
         .cth-rlyeh-dream__caustics {
           position: absolute;
@@ -730,7 +802,7 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
             repeating-radial-gradient(ellipse at 46% 56%, rgba(122,236,240,0.12) 0 1px, transparent 2px 14px),
             linear-gradient(112deg, transparent 0%, rgba(98,219,230,0.11) 42%, transparent 60%);
           mix-blend-mode: screen;
-          filter: url(#${filterId}-distort) blur(1px);
+          filter: blur(1px);
           -webkit-mask-image: ${DREAM_CORE_MASK};
           mask-image: ${DREAM_CORE_MASK};
           -webkit-mask-size: 100% 100%;
@@ -783,33 +855,6 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           0% { transform: scale(1.065) translate3d(-1.2%, 1%, 0); }
           55% { transform: scale(1.025) translate3d(1%, -0.6%, 0); }
           100% { transform: scale(1.07) translate3d(1.7%, -1.3%, 0); }
-        }
-        @keyframes cthDreamEdgeSwim {
-          0% { opacity: .5; transform: scale(.98) rotate(-2deg) translate3d(-1.2%, .8%, 0); }
-          48% { opacity: .85; transform: scale(1.04) rotate(2.4deg) translate3d(1.4%, -1%, 0); }
-          100% { opacity: .58; transform: scale(1.01) rotate(-1deg) translate3d(.8%, 1.1%, 0); }
-        }
-        @keyframes cthDreamEdgeCloud {
-          0% {
-            opacity: .38;
-            transform: translate(-50%, -50%) rotate(calc(var(--rot) * 1deg)) scale(.82, .9);
-            border-radius: 48% 52% 44% 56% / 54% 42% 58% 46%;
-          }
-          100% {
-            opacity: .78;
-            transform: translate(-50%, -50%) rotate(calc((var(--rot) + 18) * 1deg)) scale(1.18, 1.05);
-            border-radius: 58% 42% 54% 46% / 43% 57% 39% 61%;
-          }
-        }
-        @keyframes cthDreamRimFog {
-          0% {
-            opacity: .32;
-            transform: translate(calc(-50% + var(--x) * 1%), calc(-50% + var(--y) * 1%)) rotate(calc(var(--rot) * 1deg)) scale(.82, .92);
-          }
-          100% {
-            opacity: .76;
-            transform: translate(calc(-50% + var(--x) * 1%), calc(-50% + var(--y) * 1%)) rotate(calc((var(--rot) + 14) * 1deg)) scale(1.18, 1.05);
-          }
         }
         @keyframes cthDreamCaustics {
           from { transform: translate3d(-2%, 1%, 0) rotate(0deg); opacity: .2; }
@@ -929,37 +974,7 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
         className="cth-rlyeh-dream__window"
         style={beam ? { width: beam.dream.width, height: beam.dream.height } : undefined}
       >
-        <div className="cth-rlyeh-dream__edge" />
-        {EDGE_CLOUDS.map((cloud, index) => (
-          <span
-            key={`rim-${index}`}
-            className="cth-rlyeh-dream__rim-fog"
-            style={{
-              '--x': cloud.x - 50,
-              '--y': cloud.y - 50,
-              '--w': cloud.w * 1.55,
-              '--h': cloud.h * 1.55,
-              '--delay': cloud.delay,
-              '--dur': cloud.dur,
-              '--rot': cloud.rot,
-            }}
-          />
-        ))}
-        {EDGE_CLOUDS.map((cloud, index) => (
-          <span
-            key={index}
-            className="cth-rlyeh-dream__edge-cloud"
-            style={{
-              '--x': cloud.x,
-              '--y': cloud.y,
-              '--w': cloud.w,
-              '--h': cloud.h,
-              '--delay': cloud.delay,
-              '--dur': cloud.dur,
-              '--rot': cloud.rot,
-            }}
-          />
-        ))}
+        <canvas ref={dreamEdgeCanvasRef} className="cth-rlyeh-dream__edge-canvas" />
         <div className="cth-rlyeh-dream__image" />
         <div className="cth-rlyeh-dream__caustics" />
       </div>
