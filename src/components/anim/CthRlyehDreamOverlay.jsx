@@ -9,13 +9,13 @@ const DREAM_MAX_WIDTH = 620;
 const DREAM_MAX_HEIGHT = 430;
 const DREAM_EDGE_CANVAS_SCALE = 2.2;
 const DREAM_CORE_MASK = `
-  radial-gradient(ellipse 39% 34% at 51% 50%, #000 0%, #000 58%, rgba(0,0,0,.72) 73%, rgba(0,0,0,.18) 89%, transparent 100%),
-  radial-gradient(ellipse 20% 24% at 23% 48%, #000 0%, #000 46%, rgba(0,0,0,.62) 70%, rgba(0,0,0,.16) 88%, transparent 100%),
-  radial-gradient(ellipse 24% 19% at 36% 30%, #000 0%, #000 42%, rgba(0,0,0,.56) 68%, rgba(0,0,0,.14) 88%, transparent 100%),
-  radial-gradient(ellipse 21% 25% at 58% 23%, #000 0%, #000 44%, rgba(0,0,0,.58) 69%, rgba(0,0,0,.14) 88%, transparent 100%),
-  radial-gradient(ellipse 25% 21% at 77% 46%, #000 0%, #000 45%, rgba(0,0,0,.6) 70%, rgba(0,0,0,.16) 89%, transparent 100%),
-  radial-gradient(ellipse 24% 18% at 65% 75%, #000 0%, #000 42%, rgba(0,0,0,.56) 68%, rgba(0,0,0,.13) 88%, transparent 100%),
-  radial-gradient(ellipse 20% 19% at 39% 78%, #000 0%, #000 42%, rgba(0,0,0,.54) 67%, rgba(0,0,0,.12) 87%, transparent 100%)
+  radial-gradient(ellipse 39% 34% at 51% 50%, #000 0%, #000 56%, rgba(0,0,0,.64) 67%, rgba(0,0,0,.08) 80%, transparent 91%),
+  radial-gradient(ellipse 20% 24% at 23% 48%, #000 0%, #000 43%, rgba(0,0,0,.52) 61%, rgba(0,0,0,.07) 77%, transparent 88%),
+  radial-gradient(ellipse 24% 19% at 36% 30%, #000 0%, #000 39%, rgba(0,0,0,.46) 59%, rgba(0,0,0,.06) 77%, transparent 88%),
+  radial-gradient(ellipse 21% 25% at 58% 23%, #000 0%, #000 41%, rgba(0,0,0,.48) 60%, rgba(0,0,0,.06) 78%, transparent 89%),
+  radial-gradient(ellipse 25% 21% at 77% 46%, #000 0%, #000 42%, rgba(0,0,0,.5) 61%, rgba(0,0,0,.07) 79%, transparent 90%),
+  radial-gradient(ellipse 24% 18% at 65% 75%, #000 0%, #000 39%, rgba(0,0,0,.46) 59%, rgba(0,0,0,.055) 76%, transparent 87%),
+  radial-gradient(ellipse 20% 19% at 39% 78%, #000 0%, #000 39%, rgba(0,0,0,.44) 58%, rgba(0,0,0,.05) 75%, transparent 86%)
 `;
 const BUBBLES = [
   { x: -0.72, y: -0.7, dx: -7.8, dy: -5.4, size: 4, end: 3.2, blur: 2.5, delay: 0.02, dur: 1.28, sway: -0.7 },
@@ -531,23 +531,23 @@ function drawDreamEdgeCanvas(ctx, width, height, time) {
     { width: 9, alpha: 0.026 },
     { width: 3.5, alpha: 0.04 },
   ].forEach((stroke, index) => {
-    makeDreamEdgePath(ctx, cx, cy, rx * (1 + index * 0.018), ry * (1 + index * 0.014), time + index * 0.4, 1);
+    makeDreamEdgePath(ctx, cx, cy, rx * (1.012 + index * 0.014), ry * (1.005 + index * 0.012), time + index * 0.4, 1);
     ctx.strokeStyle = `rgba(140,248,250,${stroke.alpha})`;
     ctx.lineWidth = stroke.width;
     ctx.stroke();
   });
 
-  makeDreamEdgePath(ctx, cx, cy, rx * 0.895, ry * 0.878, time * 0.66, 0.48);
+  makeDreamEdgePath(ctx, cx, cy, rx * 0.972, ry * 0.948, time * 0.66, 0.5);
   ctx.strokeStyle = `rgba(58,220,236,${0.105 + pulse * 0.03})`;
   ctx.lineWidth = 16;
   ctx.stroke();
 
-  makeDreamEdgePath(ctx, cx, cy, rx * 0.891, ry * 0.874, time * 0.68, 0.45);
+  makeDreamEdgePath(ctx, cx, cy, rx * 0.965, ry * 0.941, time * 0.68, 0.47);
   ctx.strokeStyle = `rgba(126,248,255,${0.2 + pulse * 0.05})`;
   ctx.lineWidth = 7;
   ctx.stroke();
 
-  makeDreamEdgePath(ctx, cx, cy, rx * 0.888, ry * 0.87, time * 0.7, 0.42);
+  makeDreamEdgePath(ctx, cx, cy, rx * 0.958, ry * 0.934, time * 0.7, 0.44);
   ctx.save();
   ctx.shadowColor = 'rgba(126,248,255,0.72)';
   ctx.shadowBlur = 12;
@@ -560,7 +560,7 @@ function drawDreamEdgeCanvas(ctx, width, height, time) {
   ctx.stroke();
   ctx.restore();
 
-  makeDreamEdgePath(ctx, cx, cy, rx * 0.858, ry * 0.84, time * 0.76, 0.36);
+  makeDreamEdgePath(ctx, cx, cy, rx * 0.925, ry * 0.902, time * 0.76, 0.36);
   ctx.strokeStyle = 'rgba(122,242,248,0.18)';
   ctx.lineWidth = 1.4;
   ctx.stroke();
