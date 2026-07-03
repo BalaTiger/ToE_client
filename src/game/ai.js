@@ -13,7 +13,6 @@ import {
   zoneCardProvidesGuaranteedCardGain,
   zoneCardUsesTargetInteraction,
   isBlackGoatYoung,
-  isTsathogguaSlime,
   canRevealForHunt,
   hasHuntRevealableCard,
   ROLE_TREASURE,
@@ -1206,7 +1205,7 @@ export function aiShouldKeepZoneCard(card, ci, players, forced = false, context 
   return estimateZoneCardKeepScore(card, ci, players) > 0;
 }
 
-export function canTreasureHunterWinBySwap(players, ti) {
+function canTreasureHunterWinBySwap(players, ti) {
   const self = players[ti];
   if (!self || self.isDead) return null;
   const role = self._nyaBorrow || self.role;
@@ -1253,7 +1252,7 @@ export function canTreasureHunterWinBySwap(players, ti) {
   return null;
 }
 
-export function shouldTreasureHunterSwapToAvoidRegression(players, ti) {
+function shouldTreasureHunterSwapToAvoidRegression(players, ti) {
   const self = players[ti];
   if (!self || self.isDead) return null;
   const role = self._nyaBorrow || self.role;

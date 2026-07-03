@@ -8,12 +8,8 @@ const TUNNEL = {
   depthGap: 96,
 };
 
-function clamp01(x) {
-  return Math.max(0, Math.min(1, x));
-}
-
 function smoothstep(edge0, edge1, x) {
-  const t = clamp01((x - edge0) / (edge1 - edge0));
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
 }
 
@@ -123,7 +119,7 @@ function EndlessCorridorCanvas({ exiting }) {
     const started = performance.now();
     const render = now => {
       const time = (now - started) / 2300;
-      const p = clamp01(time);
+      const p = Math.max(0, Math.min(1, time));
       const w = window.innerWidth;
       const h = window.innerHeight;
       const cx = w / 2;
@@ -199,8 +195,33 @@ function EndlessCorridorCanvas({ exiting }) {
 }
 
 const TUNNEL_RUSH_SOUND_DELAY_MS = 1650;
+let softFlashTextureUrl = null;
+
+function getSoftFlashTextureUrl() {
+  if (softFlashTextureUrl) return softFlashTextureUrl;
+  if (typeof document === 'undefined') return '';
+  const size = 96;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  const center = size / 2;
+  const gradient = ctx.createRadialGradient(center, center, 0, center, center, center);
+  gradient.addColorStop(0, 'rgba(255,255,255,1)');
+  gradient.addColorStop(0.3, 'rgba(255,255,255,.98)');
+  gradient.addColorStop(0.52, 'rgba(250,255,252,.68)');
+  gradient.addColorStop(0.74, 'rgba(232,255,246,.24)');
+  gradient.addColorStop(1, 'rgba(190,255,236,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+  softFlashTextureUrl = canvas.toDataURL('image/png');
+  return softFlashTextureUrl;
+}
 
 export function EndlessCorridorTunnelAnim({ exiting, onTunnelRush }) {
+  const softFlashSrc = React.useMemo(() => getSoftFlashTextureUrl(), []);
+
   React.useEffect(() => {
     const timer = setTimeout(() => {
       onTunnelRush?.();
@@ -219,7 +240,12 @@ export function EndlessCorridorTunnelAnim({ exiting, onTunnelRush }) {
           <span />
         </div>
         <div className="endlessCorridorCore" />
-        <div className="endlessCorridorFlash" />
+        <div className="endlessCorridorExposure" />
+        {softFlashSrc ? (
+          <img className="endlessCorridorFlash" src={softFlashSrc} alt="" aria-hidden="true" />
+        ) : (
+          <div className="endlessCorridorFlash" />
+        )}
       </div>
     </div>
   );

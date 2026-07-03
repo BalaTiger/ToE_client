@@ -32,7 +32,7 @@ import {
   grantTurnScopedGodPowerImmunity,
 } from './turnScopedEffects';
 
-export function cardContainsFireText(card) {
+function cardContainsFireText(card) {
   if (!card) return false;
   const text = [
     card.name || '',

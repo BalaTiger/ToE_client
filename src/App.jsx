@@ -5316,9 +5316,20 @@ export default function Game(){
           const processed=applySanLossToPlayerWithInspection(actorIndex,encounter.cost,stateLike.currentTurn??0,P,D,Disc,L,inspectionMeta,'邪神遭遇');
           P=processed.P;D=processed.D;Disc=processed.Disc;L=processed.L;inspectionMeta=processed.inspectionMeta;
         }
-        const newGs={...stateLike,players:P,deck:D,discard:Disc,log:L,phase:'GOD_CHOICE',
-          abilityData:encounter.abilityData,
-          drawReveal:null,selectedCard:null,...encounter.replayPatch,...inspectionMeta};
+        const secondaryDecisionType=inspectionMeta?.abilityData?.type;
+        const secondaryDecision=(secondaryDecisionType==='tsgSlimeBalance'||secondaryDecisionType==='etherealizeRedirect')?inspectionMeta.abilityData:null;
+        const godChoiceAbilityData=encounter.abilityData;
+        const nextPhase=secondaryDecision?(secondaryDecisionType==='tsgSlimeBalance'?'TSG_SLIME_BALANCE':'ETHEREALIZE_DECISION'):'GOD_CHOICE';
+        const nextAbilityData=secondaryDecision
+          ?{...secondaryDecision,pendingGodChoice:godChoiceAbilityData,_turnOwner:stateLike.currentTurn??0}
+          :godChoiceAbilityData;
+        const {abilityData:_,...inspectionMetaWithoutAbilityData}=inspectionMeta||{};
+        const newGs={...stateLike,players:P,deck:D,discard:Disc,log:L,
+          ...inspectionMetaWithoutAbilityData,
+          phase:nextPhase,
+          abilityData:nextAbilityData,
+          drawReveal:null,selectedCard:null,
+          ...encounter.replayPatch};
         const split=splitAnimBoundLogs(L.slice((stateLike.log||[]).length));
         const statQ=bindAnimLogChunks(buildAnimQueue(stateLike,newGs),{statLogs:split.stat});
         const queue=[{type:'DRAW_CARD',card,triggerName:'无尽通道',targetPid:actorIndex,skipTravel:true,msgs:split.preStat.length?split.preStat:[encounter.effectMsg]},...statQ];
@@ -6219,6 +6230,7 @@ export default function Game(){
     return {
       ...(abilityData?._turnOwner!=null?{_turnOwner:abilityData._turnOwner}:{}),
       ...(abilityData?.fromRest?{fromRest:true}:{}),
+      ...(abilityData?.fromEndTurnReplay?{fromEndTurnReplay:true}:{}),
       ...(abilityData?.fromTsathogguaSlime?{fromTsathogguaSlime:true}:{}),
       ...(abilityData?.continueTurnStartDraw?{continueTurnStartDraw:true}:{}),
       ...(abilityData?.pendingTsathogguaSlime?{pendingTsathogguaSlime:abilityData.pendingTsathogguaSlime}:{}),
@@ -6226,6 +6238,7 @@ export default function Game(){
       ...(abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:abilityData.cthDrawsRemaining}:{}),
       ...(abilityData?.pendingSanInspection?{pendingSanInspection:abilityData.pendingSanInspection}:{}),
       ...(abilityData?.pendingInspectionContinuation?{pendingInspectionContinuation:abilityData.pendingInspectionContinuation}:{}),
+      ...(abilityData?.pendingGodChoice?{pendingGodChoice:abilityData.pendingGodChoice}:{}),
     };
   }
 
@@ -6242,10 +6255,15 @@ export default function Game(){
     extraPatch={},
   }){
     const nextPhase=phase||(
-      canResumeAi&&isAiSeat(gs,turnOwner)&&!players?.[turnOwner]?.isDead&&!abilityData?.fromRest
-        ?'AI_TURN'
-        :'ACTION'
+      abilityData?.pendingGodChoice?.godCard
+        ?'GOD_CHOICE'
+        :canResumeAi&&isAiSeat(gs,turnOwner)&&!players?.[turnOwner]?.isDead&&!abilityData?.fromRest
+          ?'AI_TURN'
+          :'ACTION'
     );
+    const nextAbilityData=abilityData?.pendingGodChoice?.godCard
+      ?{...(abilityData.pendingGodChoice),...buildTargetContinuationAbilityData(abilityData.pendingGodChoice)}
+      :buildTargetContinuationAbilityData(abilityData);
     const nextGs={
       ...gs,
       players,
@@ -6254,7 +6272,7 @@ export default function Game(){
       log,
       currentTurn:turnOwner,
       phase:nextPhase,
-      abilityData:buildTargetContinuationAbilityData(abilityData),
+      abilityData:nextAbilityData,
       ...extraPatch,
     };
     return clearTurnAnim?withClearedTurnAnimFields(nextGs):nextGs;
@@ -6543,6 +6561,11 @@ export default function Game(){
     if(continueTurnStartDraw||nextGs?.abilityData?.continueTurnStartDraw){
       if(queue.length)triggerAnimQueue(queue,null,()=>_tsgContinueTurnStartDraw(nextGs));
       else _tsgContinueTurnStartDraw(nextGs);
+      return;
+    }
+    if((nextGs?.phase==='ACTION'||nextGs?.phase==='AI_TURN')&&nextGs?.abilityData?.fromEndTurnReplay){
+      if(queue.length)triggerAnimQueue(queue,null,()=>continueEndTurnReplay(nextGs));
+      else continueEndTurnReplay(nextGs);
       return;
     }
     if((nextGs?.phase==='ACTION'||nextGs?.phase==='AI_TURN')&&(nextGs.proliferatingZQueue||[]).length){
@@ -8127,10 +8150,19 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const isShuBlessing=godPowerImmediate&&gk==='SHU';
     const shuOffspringCount=isShuBlessing?(GOD_DEFS.SHU.levels[P[0].godLevel-1]?.offspringCount||0):0;
     const replayPatch=fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
+    const secondaryDecisionType=inspectionMeta?.abilityData?.type;
+    const secondaryDecision=(secondaryDecisionType==='tsgSlimeBalance'||secondaryDecisionType==='etherealizeRedirect')?inspectionMeta.abilityData:null;
+    const basePhase=isShuBlessing?'SHU_SELECT_TARGET':'ACTION';
+    const nextPhase=secondaryDecision?(secondaryDecisionType==='tsgSlimeBalance'?'TSG_SLIME_BALANCE':'ETHEREALIZE_DECISION'):basePhase;
+    const baseAbilityData=isShuBlessing?{...gs.abilityData,shuOffspringCount,shuChooserIdx:0}:gs.abilityData;
+    const nextAbilityData=secondaryDecision
+      ?{...secondaryDecision,...(fromEndTurnReplay?{fromEndTurnReplay:true}:{}),_turnOwner:gs.currentTurn??0}
+      :baseAbilityData;
+    const {abilityData:_,...inspectionMetaWithoutAbilityData}=inspectionMeta||{};
     // 保留abilityData中的cthDrawsRemaining信息
-    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,apophisNight:nextApophisNight,phase:isShuBlessing?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessing?{...gs.abilityData,shuOffspringCount,shuChooserIdx:0}:gs.abilityData,
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,apophisNight:nextApophisNight,phase:nextPhase,abilityData:nextAbilityData,
       _visualEvents:blockedGodPowerEvent?[blockedGodPowerEvent]:[],
-      godTriggeredThisTurn:consumesSlot,...inspectionMeta,...replayPatch,...proliferatingZPatch};
+      godTriggeredThisTurn:consumesSlot,...inspectionMetaWithoutAbilityData,...replayPatch,...proliferatingZPatch};
     const finishGodChoice=(state)=>{
       const win=checkWin(state.players,state._isMP);
       if(win){
@@ -8146,6 +8178,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         continueEndTurnReplay(state);
       }else if(state.phase==='ACTION'&&(state.proliferatingZQueue||[]).length){
         continueProliferatingZDraws(state);
+      }else if(state.phase==='TSG_SLIME_BALANCE'||state.phase==='ETHEREALIZE_DECISION'||state.phase==='ETHEREALIZE_SELECT_TARGET'){
+        setGs(state);
       }else{
         resumeEndTurnSeqOrSetGs(state);
       }
@@ -8190,6 +8224,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         continueEndTurnReplay(finalGs);
       }else if(finalGs.phase==='ACTION'&&(finalGs.proliferatingZQueue||[]).length){
         continueProliferatingZDraws(finalGs);
+      }else if(finalGs.phase==='TSG_SLIME_BALANCE'||finalGs.phase==='ETHEREALIZE_DECISION'||finalGs.phase==='ETHEREALIZE_SELECT_TARGET'){
+        setGs(finalGs);
       }else{
         resumeEndTurnSeqOrSetGs(finalGs);
       }
@@ -10739,27 +10775,27 @@ const GLOBAL_STYLES=`
     }
     12% {
       opacity:1;
-      transform:translate3d(0,6px,0) scale(1.028);
+      transform:translate3d(0,2px,0) scale(1.028);
     }
     42% {
       opacity:1;
-      transform:translate3d(0,20px,0) scale(1.06);
+      transform:translate3d(0,8px,0) scale(1.06);
     }
     58% {
       opacity:0.88;
-      transform:translate3d(0,-10px,0) scale(1.1);
+      transform:translate3d(0,-4px,0) scale(1.1);
     }
     68% {
       opacity:0.62;
-      transform:translate3d(0,-16px,0) scale(1.12);
+      transform:translate3d(0,-6px,0) scale(1.12);
     }
     86% {
       opacity:0.26;
-      transform:translate3d(0,12px,0) scale(1.15);
+      transform:translate3d(0,5px,0) scale(1.15);
     }
     100% {
       opacity:0;
-      transform:translate3d(0,12px,0) scale(1.16);
+      transform:translate3d(0,5px,0) scale(1.16);
     }
   }
   @keyframes scrollLeft {

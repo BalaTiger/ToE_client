@@ -61,6 +61,7 @@ export const ENDLESS_CORRIDOR_ANIMATION_STYLES = `
     mix-blend-mode: screen;
     animation: endlessCorridorCoreBloom 2.3s cubic-bezier(.16,.84,.22,1) both;
   }
+  .endlessCorridorExposure,
   .endlessCorridorFlash {
     position: absolute;
     left: 50%;
@@ -71,12 +72,29 @@ export const ENDLESS_CORRIDOR_ANIMATION_STYLES = `
     height: 22vmax;
     margin: -11vmax 0 0 -11vmax;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(239,255,245,1) 0%, rgba(239,255,245,.95) 28%, rgba(190,255,236,.55) 58%, rgba(150,232,212,.18) 80%, rgba(150,232,212,0) 100%);
     opacity: 0;
-    mix-blend-mode: screen;
     transform: scale(.08);
+  }
+  .endlessCorridorExposure {
+    background: radial-gradient(circle, rgba(248,255,250,.46) 0%, rgba(236,255,246,.24) 42%, rgba(210,255,240,.08) 68%, rgba(190,255,236,0) 100%);
+    backdrop-filter: brightness(1) contrast(1) saturate(1);
+    -webkit-backdrop-filter: brightness(1) contrast(1) saturate(1);
+    mix-blend-mode: color-dodge;
+    animation: endlessCorridorExposureFill 2.3s linear both;
+  }
+  .endlessCorridorFlash {
+    width: 36vmax;
+    height: 36vmax;
+    margin: -18vmax 0 0 -18vmax;
+    display: block;
+    object-fit: fill;
+    background: radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,255,255,.96) 34%, rgba(246,255,250,.58) 64%, rgba(190,255,236,0) 100%);
+    mix-blend-mode: screen;
+    image-rendering: auto;
+    filter: blur(1.4px);
     animation: endlessCorridorFlashFill 2.3s linear both;
   }
+  .endlessCorridorOverlay.ending .endlessCorridorExposure,
   .endlessCorridorOverlay.ending .endlessCorridorFlash {
     animation: endlessCorridorFlashExit .22s ease forwards;
   }
@@ -107,17 +125,47 @@ export const ENDLESS_CORRIDOR_ANIMATION_STYLES = `
     94% { opacity: .72; transform: scale(2); }
     100% { opacity: .54; transform: scale(4.8); }
   }
+  @keyframes endlessCorridorExposureFill {
+    0%, 86% {
+      opacity: 0;
+      transform: scale(.08);
+    }
+    90% {
+      opacity: .42;
+      transform: scale(.9);
+      backdrop-filter: brightness(1.45) contrast(.9) saturate(.82);
+      -webkit-backdrop-filter: brightness(1.45) contrast(.9) saturate(.82);
+    }
+    94% {
+      opacity: .82;
+      transform: scale(5.8);
+      backdrop-filter: brightness(2.8) contrast(.72) saturate(.48);
+      -webkit-backdrop-filter: brightness(2.8) contrast(.72) saturate(.48);
+    }
+    98% {
+      opacity: 1;
+      transform: scale(17);
+      backdrop-filter: brightness(5) contrast(.48) saturate(.22);
+      -webkit-backdrop-filter: brightness(5) contrast(.48) saturate(.22);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(30);
+      backdrop-filter: brightness(8) contrast(.32) saturate(.08);
+      -webkit-backdrop-filter: brightness(8) contrast(.32) saturate(.08);
+    }
+  }
   @keyframes endlessCorridorFlashFill {
     0%, 88% { opacity: 0; transform: scale(.08); }
-    90% { opacity: .06; transform: scale(.75); }
-    92% { opacity: .18; transform: scale(2.75); }
-    94% { opacity: .34; transform: scale(6.05); }
-    96% { opacity: .56; transform: scale(10.72); }
-    98% { opacity: .78; transform: scale(16.7); }
-    100% { opacity: .9; transform: scale(24); }
+    90% { opacity: .04; transform: scale(.45); }
+    92% { opacity: .12; transform: scale(1.6); }
+    94% { opacity: .26; transform: scale(3.8); }
+    96% { opacity: .5; transform: scale(7.4); }
+    98% { opacity: .8; transform: scale(12.6); }
+    100% { opacity: 1; transform: scale(18); }
   }
   @keyframes endlessCorridorFlashExit {
-    from { opacity: .9; transform: scale(24); }
-    to { opacity: 0; transform: scale(26); }
+    from { opacity: 1; transform: scale(18); }
+    to { opacity: 0; transform: scale(19); }
   }
 `;

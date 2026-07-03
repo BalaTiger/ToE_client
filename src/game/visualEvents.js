@@ -83,7 +83,7 @@ export function createTimedOutDrawDiscardEvent({ card, drawerIdx = 0, drawerName
   }, 'turn');
 }
 
-export function createTurnStartEvent({ playerIdx = 0, playerName = '该玩家', msgs = [] } = {}) {
+function createTurnStartEvent({ playerIdx = 0, playerName = '该玩家', msgs = [] } = {}) {
   return withVisualEventMeta({
     type: VISUAL_EVENT.TURN_START,
     playerIdx,
@@ -92,7 +92,7 @@ export function createTurnStartEvent({ playerIdx = 0, playerName = '该玩家', 
   }, 'turn');
 }
 
-export function createDrawCardEvent({ playerIdx = 0, playerName = '该玩家', card, msgs = [], sourcePile = null } = {}) {
+function createDrawCardEvent({ playerIdx = 0, playerName = '该玩家', card, msgs = [], sourcePile = null } = {}) {
   if (!card) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.DRAW_CARD,
@@ -104,7 +104,7 @@ export function createDrawCardEvent({ playerIdx = 0, playerName = '该玩家', c
   }, 'turn');
 }
 
-export function createStatEventsEvent({ statEvents = [], msgs = [] } = {}) {
+function createStatEventsEvent({ statEvents = [], msgs = [] } = {}) {
   const events = Array.isArray(statEvents) ? statEvents.filter(Boolean) : [];
   if (!events.length) return null;
   return withVisualEventMeta({
