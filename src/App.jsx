@@ -223,6 +223,16 @@ import {
   swapCardsSteps,
 } from "./game/animQueueHelpers";
 import { _getZoomCompensatedRect, getPlayerHandAnchorCenter } from './utils/dom';
+import {
+  FIRST_BATTLE_DONE_KEY,
+  getRuntimeServerUrl,
+  getRuntimeSocketPath,
+  isH5PackagedRuntime,
+  isLocalDebugEnabled,
+  isLocalTestHost,
+  safeLS,
+} from './utils/runtime';
+import { loadSocketIO } from './utils/socketIoClient';
 import { ANIM_DURATION, ANIM_SPEED_SCALE, CARD_REVEAL_DURATION, ANIM_STEP_GAP } from './components/anim/constants';
 import { SMOKE_COLS, FLOWER_CONFIGS, DICE_FACES, ANIM_CFG } from './components/anim/data';
 import { CardFlipAnim } from './components/anim/CardFlipAnim';
@@ -256,6 +266,8 @@ import { useAnimationAudioEffects } from './hooks/useAnimationAudioEffects';
 import { useSkillAnimationEffects } from './hooks/useSkillAnimationEffects';
 import { useDamageLinkGhosts } from './hooks/useDamageLinkGhosts';
 import { useBattleResponsiveLayout } from './hooks/useBattleResponsiveLayout';
+import { useDebugSettings } from './hooks/useDebugSettings';
+import { useServerAnnouncement } from './hooks/useServerAnnouncement';
 import { DESIGN_WIDTH } from './utils/scale';
 import { useGameAudio } from './hooks/useGameAudio';
 import { useAiWatchdog, BAD_PHASES } from './hooks/useAiWatchdog';
@@ -316,76 +328,7 @@ function LocalGodPowerTag({ def, godLevel, playerIndex = 0, children }) {
 // ══════════════════════════════════════════════════════════════
 //  UTILITIES
 // ══════════════════════════════════════════════════════════════
-const safeLS={
-  get:(k)=>{try{return localStorage.getItem(k);}catch{/* ignore */ return null;}},
-  set:(k,v)=>{try{localStorage.setItem(k,v);}catch{/* ignore */}},
-};
-const isH5PackagedRuntime=()=>{
-  if(typeof window==='undefined')return false;
-  try{
-    if(window.__TOE_H5_PACKAGE__===true||window.__TOE_H5_PACKAGE__==='1')return true;
-    if(typeof __TOE_H5_BUILD__!=='undefined'&&__TOE_H5_BUILD__)return true;
-    if(window.location?.protocol==='file:')return true;
-    if(window.matchMedia?.('(display-mode: standalone)')?.matches)return true;
-    if(window.navigator?.standalone===true)return true;
-  }catch{/* ignore */}
-  return false;
-};
-const getRuntimeServerUrl=()=>{
-  if(typeof window==='undefined')return '';
-  const configured=window.__TOE_SERVER_URL__;
-  if(configured)return configured;
-  if(typeof __TOE_RUNTIME_TARGET__!=='undefined'&&__TOE_RUNTIME_TARGET__==='dev'){
-    return typeof __TOE_DEV_SERVER_URL__!=='undefined'?__TOE_DEV_SERVER_URL__:'http://127.0.0.1:3002';
-  }
-  if(typeof __TOE_RUNTIME_TARGET__!=='undefined'&&__TOE_RUNTIME_TARGET__==='h5'){
-    return typeof __TOE_H5_SERVER_URL__!=='undefined'?__TOE_H5_SERVER_URL__:'https://toegame.online';
-  }
-  if(typeof __TOE_RUNTIME_TARGET__!=='undefined'&&__TOE_RUNTIME_TARGET__==='web'){
-    if(typeof __TOE_WEB_SERVER_URL__!=='undefined'&&__TOE_WEB_SERVER_URL__)return __TOE_WEB_SERVER_URL__;
-  }
-  const origin=window.location?.origin;
-  if(!origin||origin==='null')return 'http://127.0.0.1:3002';
-  return origin;
-};
-const getRuntimeSocketPath=()=>{
-  if(typeof window==='undefined')return '/socket.io';
-  if(window.__TOE_SOCKET_PATH__)return window.__TOE_SOCKET_PATH__;
-  if(typeof __TOE_RUNTIME_TARGET__!=='undefined'&&__TOE_RUNTIME_TARGET__==='dev'){
-    return typeof __TOE_DEV_SOCKET_PATH__!=='undefined'?__TOE_DEV_SOCKET_PATH__:'/socket.io';
-  }
-  if(typeof __TOE_RUNTIME_TARGET__!=='undefined'&&__TOE_RUNTIME_TARGET__==='h5'){
-    return typeof __TOE_H5_SOCKET_PATH__!=='undefined'?__TOE_H5_SOCKET_PATH__:'/socket.io';
-  }
-  if(typeof __TOE_RUNTIME_TARGET__!=='undefined'&&__TOE_RUNTIME_TARGET__==='web'){
-    return typeof __TOE_WEB_SOCKET_PATH__!=='undefined'?__TOE_WEB_SOCKET_PATH__:'/socket.io';
-  }
-  if(window.location?.origin==='null')return '/socket.io';
-  return '/socket.io';
-};
-const LOCAL_DEBUG_KEY='cthulhu_local_debug_mode';
-const FIRST_BATTLE_DONE_KEY='cthulhu_first_battle_done_v1';
-const DEBUG_FORCE_CARD_KEY='cthulhu_debug_force_card';
-const DEBUG_FORCE_CARD_TARGET_KEY='cthulhu_debug_force_card_target';
-const DEBUG_FORCE_CARD_KEEP_KEY='cthulhu_debug_force_card_keep';
-const DEBUG_FORCE_CARD_TYPE_KEY='cthulhu_debug_force_card_type';
-const DEBUG_FORCE_ZONE_CARD_KEY='cthulhu_debug_force_zone_card_key';
-const DEBUG_FORCE_ZONE_CARD_NAME_KEY='cthulhu_debug_force_zone_card_name';
-const DEBUG_FORCE_GOD_CARD_KEY='cthulhu_debug_force_god_card_key';
-const DEBUG_TUTORIAL_PROMPT_MODE_KEY='cthulhu_debug_tutorial_prompt_mode';
-const DEBUG_FORCE_TUTORIAL_PROMPT_KEY='cthulhu_debug_force_tutorial_prompt';
-const DEBUG_EXPANSION_KEY='cthulhu_debug_expansion';
 const ZONE_CARD_KEYS = LETTERS.flatMap(L => NUMS.map(N => `${L}${N}`));
-const isLocalTestHost=()=>{
-  if(typeof window==='undefined')return false;
-  const host=(window.location.hostname||'').toLowerCase();
-  return host==='localhost'||host==='127.0.0.1'||host==='::1'||host==='[::1]'||host.includes('trae');
-};
-const isLocalDebugEnabled=()=>{
-  if(!isLocalTestHost())return false;
-  try{return window.localStorage.getItem(LOCAL_DEBUG_KEY)==='1';}
-  catch{return false;}
-};
 function getBattleBackgroundStyle(expansionKey,isMobile){
   const url=buildPublicUrl(getBattleBackgroundImage(expansionKey));
   const theme=getBattleTheme(expansionKey);
@@ -692,7 +635,6 @@ export default function Game(){
   const[visualDiscard,setVisualDiscard]=useState([]);
   const[modal,setModal]=useState(null); // 'about' | 'roadmap' | null
   const[privatePeek,setPrivatePeek]=useState(null); // {card,targetName}
-  const [serverAnnouncement, setServerAnnouncement] = useState(null);
   const [firstBattleStarted,setFirstBattleStarted]=useState(()=>safeLS.get(FIRST_BATTLE_DONE_KEY)==='1');
   const [onlineResourcesUnlocked,setOnlineResourcesUnlocked]=useState(false);
   // ── Audio / Video / Main UI Resource Preloading ──────────────
@@ -751,22 +693,32 @@ export default function Game(){
     _discardedDrawnCard:false,
     _drawSourcePile:null,
   }):state;
-  const [localDebugMode,setLocalDebugMode]=useState(()=>isLocalTestMode&&safeLS.get(LOCAL_DEBUG_KEY)==='1');
-  const [debugForceCard,setDebugForceCard]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_KEY)||null);
-  const [debugForceCardTarget,setDebugForceCardTarget]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_TARGET_KEY)||'player');
-  const [debugForceCardKeep,setDebugForceCardKeep]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_KEEP_KEY)||'auto');
-  const [debugForceCardType,setDebugForceCardType]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_CARD_TYPE_KEY)||'zone');
-  const [debugForceZoneCardKey,setDebugForceZoneCardKey]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_ZONE_CARD_KEY)||'A1');
-  const [debugForceZoneCardName,setDebugForceZoneCardName]=useState(
-    ()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_ZONE_CARD_NAME_KEY)||FIXED_ZONE_CARD_VARIANTS_BY_KEY.A1?.find(card=>card.expansion==='地神的潜影')?.name||''
-  );
-  const [debugForceGodCardKey,setDebugForceGodCardKey]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_FORCE_GOD_CARD_KEY)||'NYA');
-  const [debugExpansionKey,setDebugExpansionKey]=useState(()=>isLocalTestMode&&safeLS.get(DEBUG_EXPANSION_KEY)||'地神的潜影');
-  const [debugTutorialPromptMode,setDebugTutorialPromptMode]=useState(()=>{
-    if(!isLocalTestMode)return 'default';
-    const mode=safeLS.get(DEBUG_TUTORIAL_PROMPT_MODE_KEY);
-    if(mode==='show'||mode==='hide')return mode;
-    return safeLS.get(DEBUG_FORCE_TUTORIAL_PROMPT_KEY)==='1'?'show':'default';
+  const {
+    activeDebugConfig,
+    localDebugMode,
+    setLocalDebugMode,
+    debugForceCard,
+    setDebugForceCard,
+    debugForceCardTarget,
+    setDebugForceCardTarget,
+    debugForceCardKeep,
+    setDebugForceCardKeep,
+    debugForceCardType,
+    setDebugForceCardType,
+    debugForceZoneCardKey,
+    setDebugForceZoneCardKey,
+    debugForceZoneCardName,
+    setDebugForceZoneCardName,
+    debugForceGodCardKey,
+    setDebugForceGodCardKey,
+    debugTutorialPromptMode,
+    setDebugTutorialPromptMode,
+    debugExpansionKey,
+    setDebugExpansionKey,
+  } = useDebugSettings({
+    isLocalTestMode,
+    expansionRandomKey: EXPANSION_RANDOM_KEY,
+    defaultZoneCardName: FIXED_ZONE_CARD_VARIANTS_BY_KEY.A1?.find(card=>card.expansion==='地神的潜影')?.name||'',
   });
   const [showDebugSettings,setShowDebugSettings]=useState(false);
   const [pendingRoleSelection,setPendingRoleSelection]=useState(null);
@@ -778,71 +730,6 @@ export default function Game(){
   useEffect(()=>{swapBlindDrawRef.current=swapBlindDraw;},[swapBlindDraw]);
   const isBattleScreen=!!gs;
   const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
-  const activeDebugConfig=useMemo(()=>{
-    if(!localDebugMode){
-      return{
-        debugForceCard:null,
-        debugForceCardTarget:null,
-        debugForceCardKeep:'auto',
-        debugForceCardType:null,
-        debugForceZoneCardKey:null,
-        debugForceZoneCardName:null,
-        debugForceGodCardKey:null,
-        debugTutorialPromptMode:'default',
-        debugExpansionKey:EXPANSION_RANDOM_KEY,
-      };
-    }
-    return{
-      debugForceCard,
-      debugForceCardTarget,
-      debugForceCardKeep,
-      debugForceCardType,
-      debugForceZoneCardKey,
-      debugForceZoneCardName,
-      debugForceGodCardKey,
-      debugTutorialPromptMode,
-      debugExpansionKey,
-    };
-  },[
-    localDebugMode,
-    debugForceCard,
-    debugForceCardTarget,
-    debugForceCardKeep,
-    debugForceCardType,
-    debugForceZoneCardKey,
-    debugForceZoneCardName,
-    debugForceGodCardKey,
-    debugTutorialPromptMode,
-    debugExpansionKey,
-  ]);
-  useEffect(()=>{
-    if(!isLocalTestMode)return;
-    safeLS.set(LOCAL_DEBUG_KEY,localDebugMode?'1':'0');
-  },[isLocalTestMode,localDebugMode]);
-
-  useEffect(()=>{
-    if(!isLocalTestMode)return;
-    safeLS.set(DEBUG_FORCE_CARD_KEY,debugForceCard||'');
-    safeLS.set(DEBUG_FORCE_CARD_TARGET_KEY,debugForceCardTarget);
-    safeLS.set(DEBUG_FORCE_CARD_KEEP_KEY,debugForceCardKeep);
-    safeLS.set(DEBUG_FORCE_CARD_TYPE_KEY,debugForceCardType);
-    safeLS.set(DEBUG_FORCE_ZONE_CARD_KEY,debugForceZoneCardKey);
-    safeLS.set(DEBUG_FORCE_ZONE_CARD_NAME_KEY,debugForceZoneCardName);
-    safeLS.set(DEBUG_FORCE_GOD_CARD_KEY,debugForceGodCardKey);
-  },[isLocalTestMode,debugForceCard,debugForceCardTarget,debugForceCardKeep,debugForceCardType,debugForceZoneCardKey,debugForceZoneCardName,debugForceGodCardKey]);
-
-  useEffect(()=>{
-    if(!isLocalTestMode)return;
-    safeLS.set(DEBUG_EXPANSION_KEY,debugExpansionKey);
-  },[isLocalTestMode,debugExpansionKey]);
-
-  useEffect(()=>{
-    if(!isLocalTestMode)return;
-    const mode=(debugTutorialPromptMode==='show'||debugTutorialPromptMode==='hide')?debugTutorialPromptMode:'default';
-    safeLS.set(DEBUG_TUTORIAL_PROMPT_MODE_KEY,mode);
-    safeLS.set(DEBUG_FORCE_TUTORIAL_PROMPT_KEY,mode==='show'?'1':'0');
-  },[isLocalTestMode,debugTutorialPromptMode]);
-
   const persistSoftGuideDone=useCallback((nextDone)=>{
     setSoftGuideDone(nextDone);
     if(canPersistTutorial)safeLS.set(SOFT_GUIDE_STORAGE_KEY,serializeSoftGuideDone(nextDone));
@@ -881,27 +768,7 @@ export default function Game(){
   // Prefer explicit runtime/env configuration; default to same-origin reverse proxy.
   const SERVER_URL = getRuntimeServerUrl();
   const SOCKET_PATH = getRuntimeSocketPath();
-  useEffect(()=>{
-    if(typeof window==='undefined') return undefined;
-    const announcementUrl = `${SERVER_URL.replace(/\/$/,'')}/api/announcement`;
-    let cancelled = false;
-    async function syncAnnouncement(){
-      try{
-        const res = await fetch(announcementUrl,{cache:'no-store'});
-        if(!res.ok) return;
-        const data = await res.json();
-        if(!cancelled) setServerAnnouncement(data?.announcement||null);
-      }catch{
-        // 静默失败：轮询只做联机公告兜底，不影响单机游玩
-      }
-    }
-    syncAnnouncement();
-    const intervalId = setInterval(syncAnnouncement,15000);
-    return ()=>{
-      cancelled = true;
-      clearInterval(intervalId);
-    };
-  },[SERVER_URL]);
+  const [serverAnnouncement,setServerAnnouncement]=useServerAnnouncement(SERVER_URL);
   const socketRef=useRef(null);
   const connTimeoutRef=useRef(null);
   const mpAiTakeoverSeqRef=useRef(0);
@@ -1013,18 +880,6 @@ export default function Game(){
     document.body.style.filter=gammaFilter||'';
     return()=>{document.body.style.filter='';};
   },[gammaFilter]);
-
-  // Load socket.io-client from local static file (avoids extra DNS/TLS to CDN on mobile)
-  function loadSocketIO(){
-    return new Promise((resolve,reject)=>{
-      if(window.io){resolve(window.io);return;}
-      const s=document.createElement('script');
-      s.src='/socket.io.min.js';
-      s.onload=()=>resolve(window.io);
-      s.onerror=()=>reject(new Error('socket.io-client 加载失败'));
-      document.head.appendChild(s);
-    });
-  }
 
   function copyRoomIdToClipboard(roomId,{created=false}={}){
     const successMsg=created
