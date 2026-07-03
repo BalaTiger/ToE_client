@@ -127,20 +127,22 @@ Important extracted layers:
 - timers -> `hooks/useMultiplayerTimers.js`
 - animation queue runtime -> `hooks/useAnimationQueue.js`
 - socket connection and several multiplayer side effects -> `src/multiplayer/`
+- end-turn transition decision (`endTurn()` dispatch) -> `src/game/endTurnFlow.js`
 
 ## Remaining High-Value Refactor Targets
 
 ### 1. Battle Actions / Turn Flow
 
-Largest remaining block in `App.jsx`. This includes draw decisions, target selection, skills, god choices, discard, rest, end-turn event sequencing, and replay/broadcast bridges around local actions.
+Largest remaining block in `App.jsx`. The `endTurn()` dispatch decision has moved to `src/game/endTurnFlow.js`; remaining parts include draw decisions, target selection, skills, god choices, discard, rest, end-turn event sequencing, and replay/broadcast bridges around local actions.
 
 Risk: high. It shares refs, tutorial gates, animation queues, multiplayer sync, and pending state. Extract in small slices with tests.
 
-Suggested first slices:
+Suggested next slices:
 
+- post-discard end-turn transition wrapper (shared by `confirmDiscard` and `autoDiscardFromRight`)
+- `doRest()` end-turn transition wrapper
 - hand-limit discard helpers
 - default target/card choice helpers
-- end-turn event scheduling wrappers
 - small pure helpers currently nested inside action handlers
 
 ### 2. Multiplayer Remote Replay / AI Takeover

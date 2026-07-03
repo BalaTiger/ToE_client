@@ -112,6 +112,8 @@ import {
   buildStatEvents,
   getEndTurnEvents,
   END_TURN_EVENT,
+  resolveEndTurn,
+  END_TURN_DECISION,
   hasEndTurnReplayHandEvent,
   buildEndTurnReplayStartState,
   buildEndTurnReplayGodEncounter,
@@ -8514,25 +8516,27 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
 
   function endTurn(){
     if(isBlocked)return;
-    if(me.hand.length>effectiveHandLimit){
-      // 需要弃牌时，不立即触发CTH效果，等待弃牌后再触发
-      setGs({...gs,phase:'DISCARD_PHASE',abilityData:{discardSelected:[],fromEndTurn:true}});
-      return;
+    const result=resolveEndTurn(gs,{
+      effectiveHandLimit,
+      actorIndex:0,
+      advanceTurn:startNextTurn,
+    });
+    switch(result.decision){
+      case END_TURN_DECISION.DISCARD:
+        setGs(result.gs);
+        return;
+      case END_TURN_DECISION.SCHEDULE_EVENTS:
+        kickoffEndTurnSeq(result.baseGs);
+        return;
+      case END_TURN_DECISION.PLAY_PLAYER_TURN_ANIM:
+        triggerAnimQueue(result.queue,result.newGs);
+        return;
+      case END_TURN_DECISION.APPLY_NEXT_TURN:
+        applyNextTurnGs(result.newGs);
+        return;
+      default:
+        return;
     }
-    // 不需要弃牌时，直接结算回合结束事件
-    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
-    // Phase C：回合结束事件（CTH 摸牌 / 黄液 / 无尽通道）交调度器按 registry 顺序结算（各事件自带 MP 广播）。
-    // 无任何事件时保持原有"直接进入下家回合"路径不变。
-    const endTurnEvents=getEndTurnEvents(P,0);
-    if(endTurnEvents.length){
-      kickoffEndTurnSeq({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,abilityData:{}});
-      return;
-    }
-    const newGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0});
-    if(newGs.currentTurn===0&&newGs.drawReveal?.card){
-      const statQ=bindAnimLogChunks(buildAnimQueue(gs,newGs),{statLogs:newGs._statLogs});
-      triggerAnimQueue([{type:'YOUR_TURN',msgs:newGs._turnStartLogs},{type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:'你',targetPid:0,msgs:newGs._drawLogs},...statQ],newGs);
-    }else applyNextTurnGs(newGs);
   }
   endTurnRef.current=endTurn;
 
