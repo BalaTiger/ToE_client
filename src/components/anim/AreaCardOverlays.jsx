@@ -2,6 +2,12 @@ import React, { useEffect } from 'react';
 import { DDCard } from '../../components/cards';
 import { _getZoomCompensatedRect, getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 
+function getVolcanoSceneScale(){
+  const baselineArea=1366*768;
+  const area=Math.max(360*640,window.innerWidth*window.innerHeight);
+  return Math.max(0.86,Math.min(1.58,Math.sqrt(area/baselineArea)));
+}
+
 function GeomagneticReversalAnim({anim,exiting}){
   const msgs=(anim?.msgs||[]).slice(-3);
   return(
@@ -104,33 +110,42 @@ function VolcanoAnim({anim,exiting}){
   const canvasRef=React.useRef(null);
   const [impacts,setImpacts]=React.useState(null);
   useEffect(()=>{
+    let disposed=false;
     const measure=()=>{
+      if(disposed)return;
+      const sceneScale=getVolcanoSceneScale();
       const deck=getPileAnchorCenter('[data-deck-pile]',{x:window.innerWidth*0.94-35,y:window.innerHeight*0.08});
       const discard=getPileAnchorCenter('[data-discard-pile]',{x:window.innerWidth*0.72,y:window.innerHeight*0.46});
       const hand=getPlayerHandAnchorCenter(0);
       const center={x:window.innerWidth*0.50,y:window.innerHeight*0.45};
       const source={x:window.innerWidth*0.62,y:window.innerHeight*0.5};
       const raw=[
-        {x:deck.x-38,y:deck.y+54,delay:0.10,scale:0.92,rot:-28},
-        {x:center.x-165,y:center.y-48,delay:0.22,scale:0.74,rot:-22},
-        {x:discard.x+30,y:discard.y+18,delay:0.34,scale:0.84,rot:30},
-        {x:center.x+145,y:center.y-88,delay:0.46,scale:0.68,rot:24},
-        {x:hand.x-132,y:Math.min(window.innerHeight-112,hand.y-42),delay:0.58,scale:0.78,rot:-18},
-        {x:center.x+15,y:center.y+78,delay:0.70,scale:0.64,rot:8},
-        {x:hand.x+112,y:Math.min(window.innerHeight-96,hand.y-26),delay:0.82,scale:0.82,rot:34},
+        {x:deck.x-38*sceneScale,y:deck.y+54*sceneScale,delay:0.10,scale:0.92,rot:-28},
+        {x:center.x-165*sceneScale,y:center.y-48*sceneScale,delay:0.22,scale:0.74,rot:-22},
+        {x:discard.x+30*sceneScale,y:discard.y+18*sceneScale,delay:0.34,scale:0.84,rot:30},
+        {x:center.x+145*sceneScale,y:center.y-88*sceneScale,delay:0.46,scale:0.68,rot:24},
+        {x:hand.x-132*sceneScale,y:Math.min(window.innerHeight-112*sceneScale,hand.y-42*sceneScale),delay:0.58,scale:0.78,rot:-18},
+        {x:center.x+15*sceneScale,y:center.y+78*sceneScale,delay:0.70,scale:0.64,rot:8},
+        {x:hand.x+112*sceneScale,y:Math.min(window.innerHeight-96*sceneScale,hand.y-26*sceneScale),delay:0.82,scale:0.82,rot:34},
       ];
       setImpacts(raw.map((p,idx)=>({
         ...p,
-        x:Math.max(54,Math.min(window.innerWidth-54,p.x)),
-        y:Math.max(76,Math.min(window.innerHeight-54,p.y)),
-        sourceX:source.x+(idx-3)*10,
-        sourceY:source.y+((idx%3)-1)*7,
+        x:Math.max(54*sceneScale,Math.min(window.innerWidth-54*sceneScale,p.x)),
+        y:Math.max(76*sceneScale,Math.min(window.innerHeight-54*sceneScale,p.y)),
+        sourceX:source.x+(idx-3)*10*sceneScale,
+        sourceY:source.y+((idx%3)-1)*7*sceneScale,
+        scale:p.scale*sceneScale,
         nearBoost:idx===1||idx===3||idx===5?1:0,
         nearPhase:0.1+(idx%3)*0.035,
         seed:idx,
       })));
     };
     requestAnimationFrame(()=>requestAnimationFrame(measure));
+    window.addEventListener('resize',measure);
+    return()=>{
+      disposed=true;
+      window.removeEventListener('resize',measure);
+    };
   },[]);
   useEffect(()=>{
     const canvas=canvasRef.current;
@@ -141,7 +156,9 @@ function VolcanoAnim({anim,exiting}){
       (typeof window.matchMedia==='function'&&window.matchMedia('(pointer: coarse)').matches)
       || Math.min(window.innerWidth,window.innerHeight)<760
     );
-    const dpr=Math.min(window.devicePixelRatio||1,isMobileLike()?1.35:2);
+    const mobileLike=isMobileLike();
+    const quality=mobileLike?0.62:0.78;
+    const dpr=Math.min(window.devicePixelRatio||1,mobileLike?1.12:1.45);
     const resize=()=>{
       const w=window.innerWidth;
       const h=window.innerHeight;
@@ -167,7 +184,7 @@ function VolcanoAnim({anim,exiting}){
       const fall=0.68+rand(seed+4)*0.16;
       const delay=impact.delay||0;
       const baseR=(54+seed*4+18*rand(seed+20))*scale;
-      const debris=Array.from({length:18},(_,i)=>{
+      const debris=Array.from({length:Math.max(9,Math.round(18*quality))},(_,i)=>{
         const a=-Math.PI*0.95+rand(seed*31+i)*Math.PI*1.9;
         const speed=(42+rand(seed*67+i)*96)*scale;
         return {
@@ -178,7 +195,7 @@ function VolcanoAnim({anim,exiting}){
           color:rand(seed*127+i)>.42?'#ff9a22':'#ffd26d',
         };
       });
-      const smoke=Array.from({length:16},(_,i)=>({
+      const smoke=Array.from({length:Math.max(7,Math.round(16*quality))},(_,i)=>({
         ox:(rand(seed*151+i)-0.5)*48*scale,
         oy:(rand(seed*163+i)-0.5)*28*scale,
         vx:(rand(seed*181+i)-0.5)*44*scale,
@@ -186,14 +203,15 @@ function VolcanoAnim({anim,exiting}){
         r:14+rand(seed*211+i)*34,
         life:0.7+rand(seed*229+i)*0.82,
       }));
-      const lava=Array.from({length:28},(_,i)=>{
-        const a=(i/28)*Math.PI*2;
+      const lavaCount=Math.max(18,Math.round(28*quality));
+      const lava=Array.from({length:lavaCount},(_,i)=>{
+        const a=(i/lavaCount)*Math.PI*2;
         return {
           a,
           r:0.68+rand(seed*241+i)*0.58,
         };
       });
-      const noise=Array.from({length:64},(_,i)=>({
+      const noise=Array.from({length:Math.max(28,Math.round(64*quality))},(_,i)=>({
         x:(rand(seed*263+i)-0.5)*1.95,
         y:(rand(seed*281+i)-0.5)*1.72,
         r:0.02+rand(seed*307+i)*0.065,
@@ -255,8 +273,8 @@ function VolcanoAnim({anim,exiting}){
     };
     const buildNoiseLavaPatch=(impact)=>{
       const maxR=impact.baseR*1.22;
-      const w=Math.ceil(Math.min(270,Math.max(96,maxR*2.55)));
-      const h=Math.ceil(Math.min(250,Math.max(88,maxR*2.35)));
+      const w=Math.ceil(Math.min(mobileLike?190:225,Math.max(86,maxR*2.28)));
+      const h=Math.ceil(Math.min(mobileLike?176:210,Math.max(78,maxR*2.1)));
       const off=document.createElement('canvas');
       off.width=w;
       off.height=h;
@@ -424,7 +442,6 @@ function VolcanoAnim({anim,exiting}){
       ctx.translate(x,y);
       ctx.rotate(angle);
       ctx.scale(depthScale,depthScale);
-      if(cameraPass>0.04)ctx.filter=`blur(${((1.35+0.95*impact.nearBoost)*cameraPass).toFixed(2)}px)`;
       const tailLen=(180+80*impact.scale)*speedScale*(0.8+0.2*cameraPass)*(1-0.22*crossPass);
       const tailGrad=ctx.createLinearGradient(-tailLen,0,10,0);
       tailGrad.addColorStop(0,'rgba(60,25,18,0)');
@@ -461,7 +478,6 @@ function VolcanoAnim({anim,exiting}){
       }
       ctx.closePath();
       ctx.fill();
-      ctx.filter='none';
       ctx.restore();
     };
     const drawImpact=(impact,time)=>{
