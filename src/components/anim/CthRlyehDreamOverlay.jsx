@@ -1,8 +1,14 @@
 import React from 'react';
-import { buildPublicUrl } from '../../utils/url';
 import { _getZoomCompensatedRect } from '../../utils/dom';
+import {
+  createEffectNoiseOrigin,
+  createEffectNoiseSampler,
+  drawNoiseDisplacedCoverImage,
+  loadEffectImage,
+  loadEffectNoiseTexture,
+} from './effectNoise';
 
-const DREAM_IMAGE = buildPublicUrl('img/effects/R’lyeh_dream.png');
+const DREAM_IMAGE_PATH = 'img/effects/R’lyeh_dream.png';
 const DREAM_WIDTH_RATIO = 0.48;
 const DREAM_HEIGHT_RATIO = 0.43;
 const DREAM_MAX_WIDTH = 620;
@@ -17,22 +23,6 @@ const DREAM_CORE_MASK = `
   radial-gradient(ellipse 24% 18% at 65% 75%, #000 0%, #000 39%, rgba(0,0,0,.46) 59%, rgba(0,0,0,.055) 76%, transparent 87%),
   radial-gradient(ellipse 20% 19% at 39% 78%, #000 0%, #000 39%, rgba(0,0,0,.44) 58%, rgba(0,0,0,.05) 75%, transparent 86%)
 `;
-const DREAM_CAUSTIC_BANDS = [
-  { y: 0.17, amp: 0.035, tilt: -0.03, freqA: 2.2, freqB: 5.7, phase: 0.2, speed: 0.82, width: 0.014, alpha: 0.34 },
-  { y: 0.27, amp: 0.046, tilt: 0.045, freqA: 2.8, freqB: 6.4, phase: 1.5, speed: -0.64, width: 0.018, alpha: 0.42 },
-  { y: 0.39, amp: 0.04, tilt: -0.055, freqA: 3.4, freqB: 7.8, phase: 2.7, speed: 0.7, width: 0.016, alpha: 0.38 },
-  { y: 0.51, amp: 0.052, tilt: 0.024, freqA: 2.5, freqB: 8.6, phase: 4.1, speed: -0.76, width: 0.021, alpha: 0.48 },
-  { y: 0.64, amp: 0.041, tilt: -0.04, freqA: 3.0, freqB: 6.9, phase: 5.4, speed: 0.58, width: 0.017, alpha: 0.36 },
-  { y: 0.77, amp: 0.034, tilt: 0.055, freqA: 2.1, freqB: 5.2, phase: 6.5, speed: -0.54, width: 0.014, alpha: 0.28 },
-];
-const DREAM_CAUSTIC_ARCS = [
-  { x: 0.18, y: 0.31, w: 0.23, h: 0.12, rot: -0.18, phase: 0.4, alpha: 0.22 },
-  { x: 0.38, y: 0.2, w: 0.27, h: 0.15, rot: 0.2, phase: 1.7, alpha: 0.2 },
-  { x: 0.64, y: 0.34, w: 0.3, h: 0.14, rot: -0.26, phase: 2.6, alpha: 0.24 },
-  { x: 0.76, y: 0.55, w: 0.24, h: 0.16, rot: 0.24, phase: 3.8, alpha: 0.2 },
-  { x: 0.45, y: 0.68, w: 0.34, h: 0.13, rot: -0.12, phase: 4.5, alpha: 0.26 },
-  { x: 0.22, y: 0.72, w: 0.26, h: 0.14, rot: 0.28, phase: 5.9, alpha: 0.18 },
-];
 const BUBBLES = [
   { x: -0.72, y: -0.7, dx: -7.8, dy: -5.4, size: 4, end: 3.2, blur: 2.5, delay: 0.02, dur: 1.28, sway: -0.7 },
   { x: -0.69, y: -0.73, dx: -8.6, dy: -5.8, size: 6, end: 5.1, blur: 2.1, delay: 0.16, dur: 1.42, sway: 0.5 },
@@ -584,105 +574,50 @@ function drawDreamEdgeCanvas(ctx, width, height, time) {
   ctx.globalCompositeOperation = 'source-over';
 }
 
-function drawCausticCurve(ctx, points) {
-  if (!points.length) return;
-  ctx.beginPath();
-  ctx.moveTo(points[0].x, points[0].y);
-  for (let i = 1; i < points.length - 1; i += 1) {
-    const midX = (points[i].x + points[i + 1].x) / 2;
-    const midY = (points[i].y + points[i + 1].y) / 2;
-    ctx.quadraticCurveTo(points[i].x, points[i].y, midX, midY);
-  }
-  const last = points[points.length - 1];
-  ctx.lineTo(last.x, last.y);
-}
-
-function drawDreamCausticsCanvas(ctx, width, height, time) {
+function drawDreamBackgroundCanvas(ctx, width, height, time, image, sampler) {
   ctx.clearRect(0, 0, width, height);
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
 
-  const shimmer = 0.78 + Math.sin(time * 5.1) * 0.16 + Math.sin(time * 8.3) * 0.06;
-  const driftX = Math.sin(time * 0.52) * width * 0.018;
-  const driftY = Math.cos(time * 0.44) * height * 0.012;
-
-  DREAM_CAUSTIC_BANDS.forEach((band, index) => {
-    const points = [];
-    const steps = 30;
-    const phase = band.phase + time * band.speed;
-    for (let i = 0; i <= steps; i += 1) {
-      const t = i / steps;
-      const local = t * Math.PI * 2;
-      const cross = t - 0.5;
-      const x = width * (-0.1 + t * 1.2) + driftX * (1 + index * 0.06);
-      const wave = Math.sin(local * band.freqA + phase) * band.amp
-        + Math.sin(local * band.freqB - phase * 0.72) * band.amp * 0.46
-        + Math.sin(local * 11.0 + phase * 1.4) * band.amp * 0.16;
-      const y = height * (band.y + wave + cross * band.tilt) + driftY;
-      points.push({ x, y });
-    }
-
-    const bandWidth = Math.max(4, height * band.width);
-    drawCausticCurve(ctx, points);
-    ctx.strokeStyle = `rgba(28,152,188,${0.09 * band.alpha * shimmer})`;
-    ctx.lineWidth = bandWidth * 4.1;
-    ctx.stroke();
-
-    drawCausticCurve(ctx, points);
-    ctx.strokeStyle = `rgba(82,224,238,${0.2 * band.alpha * shimmer})`;
-    ctx.lineWidth = bandWidth * 1.7;
-    ctx.stroke();
-
-    drawCausticCurve(ctx, points);
-    ctx.strokeStyle = `rgba(222,255,250,${0.34 * band.alpha * shimmer})`;
-    ctx.lineWidth = Math.max(0.8, bandWidth * 0.34);
-    ctx.stroke();
+  drawNoiseDisplacedCoverImage(ctx, image, sampler, width, height, time, {
+    cols: 20,
+    rows: 15,
+    strength: Math.min(width, height) * 0.027,
+    baseAlpha: 0.42,
+    displacedAlpha: 0.96,
+    overlap: 2,
   });
 
-  DREAM_CAUSTIC_ARCS.forEach((arc, index) => {
-    const pulse = 0.72 + 0.28 * Math.sin(time * (1.7 + index * 0.19) + arc.phase);
-    const cx = width * (arc.x + Math.sin(time * 0.36 + arc.phase) * 0.018);
-    const cy = height * (arc.y + Math.cos(time * 0.31 + arc.phase) * 0.014);
-    const rx = width * arc.w * (0.72 + pulse * 0.18);
-    const ry = height * arc.h * (0.7 + pulse * 0.22);
-    const start = Math.PI * (0.12 + 0.09 * Math.sin(time + arc.phase));
-    const end = Math.PI * (0.84 + 0.12 * Math.cos(time * 0.8 + arc.phase));
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(arc.rot + Math.sin(time * 0.4 + arc.phase) * 0.12);
-    ctx.scale(1, 0.74 + Math.sin(time * 0.5 + arc.phase) * 0.08);
-    ctx.beginPath();
-    ctx.ellipse(0, 0, rx, ry, 0, start, end);
-    ctx.strokeStyle = `rgba(68,211,231,${arc.alpha * 0.34 * pulse})`;
-    ctx.lineWidth = Math.max(3, height * 0.01);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.ellipse(0, 0, rx * 0.98, ry * 0.94, 0, start + 0.04, end - 0.03);
-    ctx.strokeStyle = `rgba(231,255,252,${arc.alpha * 0.46 * pulse})`;
-    ctx.lineWidth = Math.max(0.8, height * 0.0028);
-    ctx.stroke();
-    ctx.restore();
-  });
-
-  const wash = ctx.createRadialGradient(width * 0.5, height * 0.48, 0, width * 0.5, height * 0.5, Math.max(width, height) * 0.58);
-  wash.addColorStop(0, `rgba(118,246,244,${0.05 + shimmer * 0.025})`);
-  wash.addColorStop(0.55, 'rgba(42,183,216,0.018)');
-  wash.addColorStop(1, 'rgba(30,140,176,0)');
+  const pulse = 0.5 + 0.5 * Math.sin(time * 2.2);
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  let wash = ctx.createRadialGradient(width * 0.48, height * 0.44, 0, width * 0.5, height * 0.5, Math.max(width, height) * 0.62);
+  wash.addColorStop(0, `rgba(118,246,244,${0.1 + pulse * 0.035})`);
+  wash.addColorStop(0.38, 'rgba(62,198,218,0.052)');
+  wash.addColorStop(1, 'rgba(24,120,160,0)');
   ctx.fillStyle = wash;
   ctx.fillRect(0, 0, width, height);
 
   ctx.globalCompositeOperation = 'source-over';
+  const shade = ctx.createLinearGradient(0, 0, 0, height);
+  shade.addColorStop(0, 'rgba(0,12,20,0.02)');
+  shade.addColorStop(0.62, 'rgba(0,8,16,0.08)');
+  shade.addColorStop(1, 'rgba(0,3,11,0.18)');
+  ctx.fillStyle = shade;
+  ctx.fillRect(0, 0, width, height);
+  ctx.restore();
 }
 
 export function CthRlyehDreamOverlay({ anim, exiting }) {
   const targetPid = anim?.targetPid ?? 0;
   const [beam, setBeam] = React.useState(null);
   const bubbleCanvasRef = React.useRef(null);
+  const dreamImageCanvasRef = React.useRef(null);
   const dreamEdgeCanvasRef = React.useRef(null);
-  const dreamCausticsCanvasRef = React.useRef(null);
+  const dreamNoiseOriginRef = React.useRef(null);
   const filterId = React.useId().replace(/:/g, '');
+
+  if (!dreamNoiseOriginRef.current) {
+    dreamNoiseOriginRef.current = createEffectNoiseOrigin();
+  }
 
   React.useLayoutEffect(() => {
     const measure = () => {
@@ -810,7 +745,7 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
   }, [beam?.dream?.width, beam?.dream?.height]);
 
   React.useEffect(() => {
-    const canvas = dreamCausticsCanvasRef.current;
+    const canvas = dreamImageCanvasRef.current;
     const ctx = canvas?.getContext('2d', { alpha: true });
     if (!canvas || !ctx) return undefined;
 
@@ -821,6 +756,9 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
     let lastDraw = 0;
     const startedAt = performance.now();
     const maxDuration = 2550;
+    let disposed = false;
+    let image = null;
+    let sampler = null;
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
@@ -836,16 +774,31 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
       const elapsed = now - startedAt;
       if (now - lastDraw >= 33 || lastDraw === 0) {
         lastDraw = now;
-        drawDreamCausticsCanvas(ctx, width, height, elapsed / 1000);
+        drawDreamBackgroundCanvas(ctx, width, height, elapsed / 1000, image, sampler);
       }
       if (elapsed < maxDuration) frameId = requestAnimationFrame(draw);
     };
 
-    resize();
     window.addEventListener('resize', resize);
-    frameId = requestAnimationFrame(draw);
+    Promise.all([
+      loadEffectImage(DREAM_IMAGE_PATH),
+      loadEffectNoiseTexture(),
+    ]).then(([loadedImage, noiseTexture]) => {
+      if (disposed) return;
+      image = loadedImage;
+      sampler = createEffectNoiseSampler(noiseTexture, {
+        origin: dreamNoiseOriginRef.current,
+        scale: 1.12,
+        velocity: { x: 0.052, y: -0.034 },
+      });
+      resize();
+      frameId = requestAnimationFrame(draw);
+    }).catch(() => {
+      if (!disposed) resize();
+    });
 
     return () => {
+      disposed = true;
       window.removeEventListener('resize', resize);
       cancelAnimationFrame(frameId);
     };
@@ -939,16 +892,12 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           mix-blend-mode: screen;
           animation: cthDreamBeamBloom 2.1s ease-in-out both;
         }
-        .cth-rlyeh-dream__image {
+        .cth-rlyeh-dream__image-canvas {
           position: absolute;
           inset: -8%;
+          width: 116%;
+          height: 116%;
           z-index: 1;
-          background-image:
-            radial-gradient(circle at 48% 44%, rgba(118,241,242,0.09), transparent 34%),
-            linear-gradient(180deg, rgba(0,12,20,0.02), rgba(0,4,12,0.16)),
-            url("${DREAM_IMAGE}");
-          background-size: 112% 112%, 100% 100%, cover;
-          background-position: center;
           transform: scale(1.03);
           filter: contrast(1.08) brightness(.96) saturate(1.12) blur(.18px);
           -webkit-mask-image: ${DREAM_CORE_MASK};
@@ -967,21 +916,6 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           z-index: 3;
           mix-blend-mode: screen;
           opacity: .92;
-        }
-        .cth-rlyeh-dream__caustics-canvas {
-          position: absolute;
-          inset: -8%;
-          width: 116%;
-          height: 116%;
-          z-index: 2;
-          mix-blend-mode: screen;
-          opacity: .78;
-          -webkit-mask-image: ${DREAM_CORE_MASK};
-          mask-image: ${DREAM_CORE_MASK};
-          -webkit-mask-size: 100% 100%;
-          mask-size: 100% 100%;
-          -webkit-mask-repeat: no-repeat;
-          mask-repeat: no-repeat;
         }
         .cth-rlyeh-dream__bubble-canvas {
           position: absolute;
@@ -1143,8 +1077,7 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
         style={beam ? { width: beam.dream.width, height: beam.dream.height } : undefined}
       >
         <canvas ref={dreamEdgeCanvasRef} className="cth-rlyeh-dream__edge-canvas" />
-        <div className="cth-rlyeh-dream__image" />
-        <canvas ref={dreamCausticsCanvasRef} className="cth-rlyeh-dream__caustics-canvas" />
+        <canvas ref={dreamImageCanvasRef} className="cth-rlyeh-dream__image-canvas" />
       </div>
       <canvas ref={bubbleCanvasRef} className="cth-rlyeh-dream__bubble-canvas" />
     </div>
