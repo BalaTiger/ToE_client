@@ -506,7 +506,8 @@ export function aiHandleGodCard(ci, godCard, P, D, Disc, L, gs, skipEffectMsg = 
 
 export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
   let P = copyPlayers(ps), D = [...deck], Disc = [...disc];
-  if (!D.length && Disc.length) { D = shuffle(Disc); Disc = []; }
+  let reshuffleLog = '';
+  if (!D.length && Disc.length) { reshuffleLog = '牌堆耗尽，重洗弃牌堆'; D = shuffle(Disc); Disc = []; }
   if (!D.length) return { P, D, Disc, drawnCard: null, effectMsgs: [], needsDecision: false };
 
   const whoName = ci === 0 ? '你' : P[ci].name;
@@ -589,6 +590,7 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
             D,
             Disc,
             drawnCard,
+            reshuffleLog,
             effectMsgs: L2,
             kept: true,
             pendingAiGodChoice: {
@@ -616,6 +618,7 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
           D,
           Disc,
           drawnCard,
+          reshuffleLog,
           effectMsgs: L2,
           kept: true,
           pendingAiGodChoice: { playerIndex: ci, godCard: drawnCard },
@@ -627,7 +630,7 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
       }
       const gr = aiHandleGodCard(ci, drawnCard, P, D, Disc, L2, gs, true);
       P = gr.P; D = gr.D; Disc = gr.Disc;
-      return { P, D, Disc, drawnCard, effectMsgs: L2, kept: true, statePatch: { ...inspectionMeta, ...(gr.inspectionMeta || {}), ...(gr.statePatch || {}) } };
+      return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: L2, kept: true, statePatch: { ...inspectionMeta, ...(gr.inspectionMeta || {}), ...(gr.statePatch || {}) } };
     } else {
       let effectMsg = revealedCultist
         ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`
@@ -646,6 +649,7 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
 
       return {
         P, D, Disc, drawnCard,
+        reshuffleLog,
         effectMsgs,
         needGodChoice: true, needsDecision: false,
         godEncounterCost: 0,
@@ -658,7 +662,7 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
   if (drawnCard.forced) {
     const res = applyFx(drawnCard, ci, null, P, D, Disc, gs, false, [], isAI);
     P = res.P; D = res.D; Disc = res.Disc; P[ci].hand.push(drawnCard);
-    return { P, D, Disc, drawnCard, effectMsgs: [`${whoName} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}（强制触发）`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false };
+    return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [`${whoName} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}（强制触发）`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false };
   }
 
   // 穴居人战争隐藏规则1：如果摸到"穴居人战争"之前没有牌，强制展示"穴居人战争"
@@ -666,7 +670,7 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
     // 强制展示穴居人战争
     P[ci].hand.push(drawnCard);
     const logMsg = `${whoName} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，之前没有牌，强制展示！`;
-    return { P, D, Disc, drawnCard, effectMsgs: [logMsg], kept: true, needsDecision: false };
+    return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [logMsg], kept: true, needsDecision: false };
   }
 
   // AI auto-decision
@@ -677,7 +681,7 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
     const keep = keepOverride === 'keep' ? true : keepOverride === 'discard' ? false : blindZoneIdentity ? Math.random() < 0.5 : aiShouldKeepZoneCard(drawnCard, ci, P, false, { discard: Disc, deck: D, gs });
     if (!keep) {
       Disc.push(drawnCard);
-      return { P, D, Disc, drawnCard, effectMsgs: [`${P[ci].name} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，评估后选择弃置`], needsDecision: false, _aiDrawnCard: drawnCard, discardedDrawnCard: true };
+      return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [`${P[ci].name} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，评估后选择弃置`], needsDecision: false, _aiDrawnCard: drawnCard, discardedDrawnCard: true };
     }
 
     // AI Treasure Hunter dodge logic
@@ -692,14 +696,14 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
       if (dodgeSuccess) {
         const res = applyFx(drawnCard, ci, null, P, D, Disc, gs, true, [], isAI);
         P = res.P; D = res.D; Disc = res.Disc; P[ci].hand.push(drawnCard);
-        return { P, D, Disc, drawnCard, effectMsgs: [`${P[ci].name}（寻宝者）摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，掷出 ${d1} 点，成功规避负面效果！`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false, _aiDrawnCard: drawnCard };
+        return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [`${P[ci].name}（寻宝者）摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，掷出 ${d1} 点，成功规避负面效果！`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false, _aiDrawnCard: drawnCard };
       }
     }
 
     // Apply effect for AI
     const res = applyFx(drawnCard, ci, null, P, D, Disc, gs, false, [], isAI);
     P = res.P; D = res.D; Disc = res.Disc; P[ci].hand.push(drawnCard);
-    return { P, D, Disc, drawnCard, effectMsgs: [`${P[ci].name} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，选择收入手牌并触发效果`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false, _aiDrawnCard: drawnCard };
+    return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [`${P[ci].name} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，选择收入手牌并触发效果`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false, _aiDrawnCard: drawnCard };
   }
 
   const playerKeepOverride = consumeDebugForceKeepOverride(gs, ci);
@@ -708,16 +712,16 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
     if (blindZoneIdentity) P[ci].blindNextZoneDecision = false;
     const res = applyFx(drawnCard, ci, null, P, D, Disc, gs, false, [], isAI);
     P = res.P; D = res.D; Disc = res.Disc; P[ci].hand.push(drawnCard);
-    return { P, D, Disc, drawnCard, effectMsgs: [`${whoName} 收入了 ${cardLogText(drawnCard, { alwaysShowName: true })}`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false };
+    return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [`${whoName} 收入了 ${cardLogText(drawnCard, { alwaysShowName: true })}`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false };
   }
   if (playerKeepOverride === 'discard') {
     if (blindZoneIdentity) P[ci].blindNextZoneDecision = false;
     Disc.push(drawnCard);
-    return { P, D, Disc, drawnCard, effectMsgs: [`${whoName} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，选择弃置`], kept: true, needsDecision: false, discardedDrawnCard: true };
+    return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [`${whoName} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，选择弃置`], kept: true, needsDecision: false, discardedDrawnCard: true };
   }
 
   // Player needs decision
-  return { P, D, Disc, drawnCard: markBlindZoneCard(drawnCard, blindZoneIdentity), effectMsgs: [], needTarget: false, needsDecision: true, forcedKeep: false, blindZoneIdentity };
+  return { P, D, Disc, drawnCard: markBlindZoneCard(drawnCard, blindZoneIdentity), reshuffleLog, effectMsgs: [], needTarget: false, needsDecision: true, forcedKeep: false, blindZoneIdentity };
 }
 
 export function aiDrawAndApply(ci, ps, deck, disc, gs = {}) {
@@ -1127,13 +1131,14 @@ export function startNextTurn(gs, opts = {}) {
       for (let _d = 0; _d < extraDraws; _d++) {
         const r2 = playerDrawCard(P, D, Disc, next, gs); P = r2.P; D = r2.D; Disc = r2.Disc;
         if (r2.drawnCard) {
+          if (r2.reshuffleLog) L.push(r2.reshuffleLog);
           L.push(`  摸到 ${cardLogText(r2.drawnCard, { alwaysShowName: true })}`);
           if (next === 0) cthRestDraws.push(r2.drawnCard);
         }
         if (r2.needGodChoice) {
           // AI角色不会触发神牌选择UI，直接处理
           if (next === 0) {
-            const drawLogs = [`${whoName} 摸到 ${drawCardDecisionText(r2.drawnCard)}`];
+            const drawLogs = [r2.reshuffleLog, `${whoName} 摸到 ${drawCardDecisionText(r2.drawnCard)}`].filter(Boolean);
             return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: r2.drawnCard, fromRest: true, cthDrawsRemaining: extraDraws - _d - 1, drawerIdx: 0 }, drawReveal: null, selectedCard: null, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: [], _cthRestDraws: cthRestDraws, _cthRestDrawLogs: cthRestDrawLogs, _playersBeforeCthDraws: _P_beforeCthDraws };
           }
         }
@@ -1141,10 +1146,11 @@ export function startNextTurn(gs, opts = {}) {
           // AI角色自动处理决策
           if (next === 0) {
             const split = splitAnimBoundLogs(r2.effectMsgs || []);
-            const drawLogs = [`${whoName} 摸到 ${drawCardDecisionText(r2.drawnCard)}`, ...split.preStat];
-            return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: r2.drawnCard, msgs: [], needsDecision: true, forcedKeep: false, drawerIdx: 0, drawerName: P[0].name, fromRest: true }, selectedCard: null, abilityData: { fromRest: true, cthDrawsRemaining: extraDraws - _d - 1 }, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: split.stat, _cthRestDraws: cthRestDraws, _cthRestDrawLogs: cthRestDrawLogs, _playersBeforeCthDraws: _P_beforeCthDraws };
+            const drawLogs = [r2.reshuffleLog, `${whoName} 摸到 ${drawCardDecisionText(r2.drawnCard)}`, ...split.preStat].filter(Boolean);
+            return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: r2.drawnCard, msgs: [], needsDecision: true, forcedKeep: false, drawerIdx: 0, drawerName: P[0].name, fromRest: true, reshuffleLog: r2.reshuffleLog }, selectedCard: null, abilityData: { fromRest: true, cthDrawsRemaining: extraDraws - _d - 1 }, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: split.stat, _cthRestDraws: cthRestDraws, _cthRestDrawLogs: cthRestDrawLogs, _playersBeforeCthDraws: _P_beforeCthDraws };
           } else {
             // AI角色自动选择收入手牌
+            if (r2.reshuffleLog) L.push(r2.reshuffleLog);
             const aiRes = applyFx(r2.drawnCard, next, null, P, D, Disc, gs);
             P = aiRes.P; D = aiRes.D; Disc = aiRes.Disc; P[next].hand.push(r2.drawnCard);
             if (aiRes.msgs.length) L.push(...aiRes.msgs);
@@ -1152,6 +1158,7 @@ export function startNextTurn(gs, opts = {}) {
         }
         // forced card: already applied, continue
         if (r2.kept) {
+          if (r2.reshuffleLog) L.push(r2.reshuffleLog);
           if (r2.effectMsgs.length) {
             L.push(...r2.effectMsgs);
             if (next === 0) cthRestDrawLogs.push(...r2.effectMsgs);
@@ -1222,6 +1229,7 @@ export function startNextTurn(gs, opts = {}) {
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
       let drawEvent = null;
       if (rSlime.drawnCard) {
+        if (rSlime.reshuffleLog) { L.push(rSlime.reshuffleLog); drawLogs.push(rSlime.reshuffleLog); }
         const msg = `【无定形体】你额外摸到 ${drawCardDecisionText(rSlime.drawnCard)}`;
         L.push(msg); drawLogs.push(msg);
         drawEvent = { card: rSlime.drawnCard, drawerIdx: 0, drawerName: P[0].name, sourcePile: rSlime.sourcePile, msgs: [msg], fromTsathogguaSlime: true };
@@ -1232,7 +1240,7 @@ export function startNextTurn(gs, opts = {}) {
         return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: rSlime.drawnCard, drawerIdx: 0, godEncounterCost: rSlime.godEncounterCost, fromTsathogguaSlime: true, continueTurnStartDraw: true, ...pendingSlimeData }, drawReveal: null, selectedCard: null, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
       }
       if (rSlime.needsDecision) {
-        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: 0, drawerName: P[0].name, fromTsathogguaSlime: true }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, ...pendingSlimeData }, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
+        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: 0, drawerName: P[0].name, fromTsathogguaSlime: true, reshuffleLog: rSlime.reshuffleLog }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, ...pendingSlimeData }, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
       }
       if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
       const slimePop = consumeTsathogguaSlimeAfterDraw(P, 0, tsgSlime, L, visualEvents);
@@ -1244,6 +1252,7 @@ export function startNextTurn(gs, opts = {}) {
     const res = playerDrawCard(P, D, Disc, 0, gs);
     P = res.P; D = res.D; Disc = res.Disc;
     // 多人游戏中记录玩家0摸牌信息到日志，让其他玩家可见（单机不需要，DRAW_REVEAL 时可见）
+    if (res.reshuffleLog) drawLogs.push(res.reshuffleLog);
     if (res.drawnCard && !res.kept) {
       const msg = `${gs._isMP ? P[0].name : '你'} 摸到 ${drawCardDecisionText(res.drawnCard)}`;
       drawLogs.push(msg);
@@ -1329,6 +1338,7 @@ export function startNextTurn(gs, opts = {}) {
         drawerIdx: 0,
         drawerName: P[0].name,
         sourcePile: res.sourcePile,
+        reshuffleLog: res.reshuffleLog,
       } : null,
       selectedCard: null,
       abilityData: {},
@@ -1387,6 +1397,7 @@ export function startNextTurn(gs, opts = {}) {
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
       let drawEvent = null;
       if (rSlime.drawnCard) {
+        if (rSlime.reshuffleLog) { L.push(rSlime.reshuffleLog); drawLogs.push(rSlime.reshuffleLog); }
         const msg = `【无定形体】${P[next].name} 额外摸到 ${drawCardDecisionText(rSlime.drawnCard)}`;
         L.push(msg); drawLogs.push(msg);
         drawEvent = { card: rSlime.drawnCard, drawerIdx: next, drawerName: P[next].name, sourcePile: rSlime.sourcePile, msgs: [msg], fromTsathogguaSlime: true };
@@ -1397,7 +1408,7 @@ export function startNextTurn(gs, opts = {}) {
         return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: rSlime.drawnCard, godEncounterCost: rSlime.godEncounterCost, fromTsathogguaSlime: true, continueTurnStartDraw: true, ...pendingSlimeData }, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw };
       }
       if (rSlime.needsDecision) {
-        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: next, drawerName: P[next].name, fromTsathogguaSlime: true }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, ...pendingSlimeData }, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw };
+        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: next, drawerName: P[next].name, fromTsathogguaSlime: true, reshuffleLog: rSlime.reshuffleLog }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, ...pendingSlimeData }, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw };
       }
       if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
       const slimePop = consumeTsathogguaSlimeAfterDraw(P, next, tsgSlime, L, visualEvents);
@@ -1409,6 +1420,7 @@ export function startNextTurn(gs, opts = {}) {
     const res = playerDrawCard(P, D, Disc, next, gs);
     P = res.P; D = res.D; Disc = res.Disc;
     // 记录摸牌信息到日志（与单机AI摸牌保持一致：[key] 名称）
+    if (res.reshuffleLog) drawLogs.push(res.reshuffleLog);
     if (res.drawnCard && !res.kept) {
       const msg = `${P[next].name} 摸到 ${drawCardDecisionText(res.drawnCard)}`;
       drawLogs.push(msg);
@@ -1454,6 +1466,7 @@ export function startNextTurn(gs, opts = {}) {
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
       let drawEvent = null;
       if (rSlime.drawnCard) {
+        if (rSlime.reshuffleLog) { L.push(rSlime.reshuffleLog); drawLogs.push(rSlime.reshuffleLog); }
         const msg = `【无定形体】${P[next].name} 额外摸到 ${drawCardDecisionText(rSlime.drawnCard)}`;
         L.push(msg);
         drawLogs.push(msg);
@@ -1505,6 +1518,7 @@ export function startNextTurn(gs, opts = {}) {
       turnStartLogs.push(debugDrawLog);
       L.push(debugDrawLog);
     }
+    if (res.reshuffleLog) drawLogs.push(res.reshuffleLog);
     if (res.effectMsgs?.length) {
       const split = splitAnimBoundLogs(res.effectMsgs);
       drawLogs.push(...split.preStat);

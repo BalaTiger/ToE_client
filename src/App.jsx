@@ -4531,6 +4531,7 @@ export default function Game(){
     P=res.P;D=res.D;Disc=res.Disc;
     const drawLogs=[];
     const statLogs=[];
+    if(res.reshuffleLog)drawLogs.push(res.reshuffleLog);
     if(res.drawnCard&&!res.kept)drawLogs.push(continuingSlime?`【无定形体】${drawerName}${drawerName==='你'?'':' '}额外摸到 ${drawCardDecisionText(res.drawnCard)}`:`${drawerName} 摸到 ${drawCardDecisionText(res.drawnCard)}`);
     if(res.effectMsgs?.length){
       if(res.needGodChoice||res.pendingAiGodChoice||res.statePatch?._pendingAiGodChoice){
@@ -4695,6 +4696,7 @@ export default function Game(){
       const cthBeforeDrawDiscard=[...Disc];
       const r2=playerDrawCard(P,D,Disc,0,baseGsAfterDecision);P=r2.P;D=r2.D;Disc=r2.Disc;
       const drawMsg=r2.drawnCard?`你 摸到 ${drawCardDecisionText(r2.drawnCard)}`:'';
+      if(r2.reshuffleLog)L.push(r2.reshuffleLog);
       if(r2.drawnCard)L.push(`  摸到 ${drawCardDecisionText(r2.drawnCard)}`);
       // Phase C：CTH 暂停时用 buildCthRestDrawReplayEvent 广播（rich replay），远端按 actor 旋转后回放该次摸牌，
       // 而非仅同步状态（修复原 endTurn 内联循环暂停时不回放、远端快照突变的问题）。
@@ -5064,7 +5066,7 @@ export default function Game(){
       const drawerIdx=dr.drawerIdx??0;
       const P=copyPlayers(gs.players);
       clearBlindZoneDecisionFlag(P,drawerIdx,dr);
-      setGs({...gs,players:P,phase:'ZONE_SWAP_SELECT_TARGET',drawReveal:null,abilityData:{zoneSwapCard:resolutionCard,fromRest:dr.fromRest,fromEndTurnReplay:dr.fromEndTurnReplay,fromTsathogguaSlime:dr.fromTsathogguaSlime,continueTurnStartDraw:gs.abilityData?.continueTurnStartDraw,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining},log:[...gs.log,`你摸到 ${cardLogText(resolutionCard,{alwaysShowName:true})}，请选择交换手牌的目标`],...replayPatch});
+      setGs({...gs,players:P,phase:'ZONE_SWAP_SELECT_TARGET',drawReveal:null,abilityData:{zoneSwapCard:resolutionCard,fromRest:dr.fromRest,fromEndTurnReplay:dr.fromEndTurnReplay,fromTsathogguaSlime:dr.fromTsathogguaSlime,continueTurnStartDraw:gs.abilityData?.continueTurnStartDraw,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining},log:[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),`你摸到 ${cardLogText(resolutionCard,{alwaysShowName:true})}，请选择交换手牌的目标`],...replayPatch});
       return;
     }
     // 检查是否为AOE负面效果，且当前玩家是寻宝者
@@ -5081,7 +5083,7 @@ export default function Game(){
     if(isAOENegativeEffect&&isTreasureHunter&&drawerIdx!==0){
       // 触发AOE负面效果时，寻宝者可以选择掷骰子规避
       setGs({...gs,phase:'TREASURE_AOE_DODGE_DECISION',drawReveal:dr,abilityData:{fromRest:gs.abilityData?.fromRest,fromTsathogguaSlime:gs.abilityData?.fromTsathogguaSlime,continueTurnStartDraw:gs.abilityData?.continueTurnStartDraw,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining,drawerIdx:drawerIdx},
-        log:[...gs.log,`${localDisplayName(drawerIdx,P[drawerIdx].name)} 触发了 ${cardLogText(resolutionCard,{alwaysShowName:true})} 的负面效果！作为寻宝者，你可以选择掷骰子尝试规避。`]});
+        log:[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),`${localDisplayName(drawerIdx,P[drawerIdx].name)} 触发了 ${cardLogText(resolutionCard,{alwaysShowName:true})} 的负面效果！作为寻宝者，你可以选择掷骰子尝试规避。`]});
       return;
     }
     
@@ -5089,14 +5091,14 @@ export default function Game(){
     if(isTreasureHunter&&isLocalSeatIndex(drawerIdx)&&isDodgeableEffect){
       // Preserve cthDrawsRemaining so CTH rest-draws aren't lost after dodge decision
       setGs({...gs,phase:'TREASURE_DODGE_DECISION',drawReveal:dr,abilityData:{fromRest:gs.abilityData?.fromRest,fromTsathogguaSlime:gs.abilityData?.fromTsathogguaSlime,continueTurnStartDraw:gs.abilityData?.continueTurnStartDraw,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining},
-        log:[...gs.log,`你摸到 ${cardLogText(resolutionCard,{alwaysShowName:true})}，这是带有负面效果的区域牌！是否掷骰子尝试规避？`]});
+        log:[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),`你摸到 ${cardLogText(resolutionCard,{alwaysShowName:true})}，这是带有负面效果的区域牌！是否掷骰子尝试规避？`]});
       return;
     }
     const res=applyFx(resolutionCard,drawerIdx,null,P,D,Disc,gs,false,[],false);
     P=res.P;D=res.D;Disc=res.Disc;
     if(!dr.fromEndTurnReplay)P[drawerIdx].hand.push(resolutionCard);
     const who=localDisplayName(drawerIdx,P[drawerIdx].name);
-    const L=[...gs.log,`${who} 收入了 ${cardLogText(resolutionCard,{alwaysShowName:true})}`,...res.msgs];
+    const L=[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),`${who} 收入了 ${cardLogText(resolutionCard,{alwaysShowName:true})}`,...res.msgs];
     // 1. 检查卡牌效果是否让任何人HP归零或SAN归零（通过checkWin）
     const win=checkWin(P,gs._isMP);if(win){syncVisibleLog(L);setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,drawReveal:null,...(res.statePatch||{})});return;}
     // 2. 最后，如果游戏仍未结束，且该寻宝者仍然存活，检查该寻宝者是否达成胜利条件
@@ -5517,7 +5519,7 @@ export default function Game(){
     P=res.P;D=res.D;Disc=res.Disc;
     if(!dr.fromEndTurnReplay)P[drawerIdx].hand.push(resolutionCard);
     const who=localDisplayName(drawerIdx,P[drawerIdx].name);
-    const L=[...gs.log,`${who} 收入了 ${cardLogText(resolutionCard,{alwaysShowName:true})}`,...res.msgs];
+    const L=[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),`${who} 收入了 ${cardLogText(resolutionCard,{alwaysShowName:true})}`,...res.msgs];
     // 1. 检查卡牌效果是否让任何人HP归零或SAN归零（通过checkWin）
     const win=checkWin(P,gs._isMP);if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,drawReveal:null});return;}
     // 2. 最后，如果游戏仍未结束，且该寻宝者仍然存活，检查该寻宝者是否达成胜利条件
@@ -5619,7 +5621,7 @@ export default function Game(){
     const res=applyFx(resolutionCard,drawerIdx,null,P,D,Disc,gs);
     P=res.P;D=res.D;Disc=res.Disc;
     if(!dr.fromEndTurnReplay)P[drawerIdx].hand.push(resolutionCard);
-    const L=[...gs.log,`你选择不规避负面效果`,...res.msgs];
+    const L=[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),`你选择不规避负面效果`,...res.msgs];
     // 1. 检查卡牌效果是否让任何人HP归零或SAN归零（通过checkWin）
     const win=checkWin(P,gs._isMP);if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,drawReveal:null});return;}
     // 2. 最后，如果游戏仍未结束，且该寻宝者仍然存活，检查该寻宝者是否达成胜利条件
@@ -5664,7 +5666,7 @@ export default function Game(){
       if(idx>=0)P[drawerIdx].hand.splice(idx,1);
     }
     const replayPatch=dr.fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
-    const newGs={...gs,players:P,discard:nextDiscard,log:[...gs.log,discardLog],phase:'ACTION',drawReveal:null,abilityData:gs.abilityData,...replayPatch};
+    const newGs={...gs,players:P,discard:nextDiscard,log:[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),discardLog],phase:'ACTION',drawReveal:null,abilityData:gs.abilityData,...replayPatch};
     if(dr.fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:nextDiscard})],[discardLog]);
     // CTH fromRest: after discarding, process remaining draws then advance turn
     if(dr.fromRest){

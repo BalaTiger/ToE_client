@@ -75,6 +75,77 @@ describe('地磁反转暗抽', () => {
   });
 });
 
+describe('地底天空交换牌堆和弃牌堆', () => {
+  it('交换后弃置的牌进入新的弃牌堆，下一抽从新牌堆顶部取牌', () => {
+    const players = makeStandardPlayers(3);
+    const c3 = makeZoneCard('C3', 2); // 地底天空
+    const c4 = makeZoneCard('C4', 0); // 触底反弹
+    const c1 = makeZoneCard('C1', 0); // 烤盲鱼
+    const c5 = makeZoneCard('A1', 0);
+
+    // 原牌堆：[c3, c1]，原弃牌堆：[c4, c5]
+    const deck = [c3, c1];
+    const discard = [c4, c5];
+
+    // 玩家抽到 c3 并收入 -> 触发地底天空交换
+    const gsKeep = makeGs({ players, deck, discard, log: [], debugForceCardKeepPending: 'keep', debugForceCardKeepTarget: 0 });
+    const r1 = playerDrawCard(players, deck, discard, 0, gsKeep);
+
+    expect(r1.P[0].hand.some(c => c.id === c3.id)).toBe(true);
+    expect(r1.D.map(c => c.id)).toEqual([c4.id, c5.id]); // 新牌堆 = 原弃牌堆
+    expect(r1.Disc.map(c => c.id)).toEqual([c1.id]);     // 新弃牌堆 = 原牌堆（地底天空已收入手牌）
+
+    // 下一抽从新牌堆顶摸到 c4 并选择弃置
+    const gsDiscard = makeGs({ players: r1.P, deck: r1.D, discard: r1.Disc, log: [], debugForceCardKeepPending: 'discard', debugForceCardKeepTarget: 0 });
+    const r2 = playerDrawCard(r1.P, r1.D, r1.Disc, 0, gsDiscard);
+
+    expect(r2.discardedDrawnCard).toBe(true);
+    expect(r2.D.map(c => c.id)).toEqual([c5.id]);        // 新牌堆去掉已抽的 c4
+    expect(r2.Disc.map(c => c.id)).toEqual([c1.id, c4.id]); // c4 进入新弃牌堆底部
+
+    // 再下一抽只能摸到新牌堆顶的 c5，不会立即重新摸到 c4
+    const gsNext = makeGs({ players: r2.P, deck: r2.D, discard: r2.Disc, log: [], debugForceCardKeepPending: 'keep', debugForceCardKeepTarget: 0 });
+    const r3 = playerDrawCard(r2.P, r2.D, r2.Disc, 0, gsNext);
+
+    expect(r3.drawnCard.id).toBe(c5.id);
+  });
+});
+
+describe('牌堆耗尽时从弃牌堆重洗', () => {
+  it('交换后仅剩一张牌时，弃置后下家仍会重洗并摸到同一张牌（单张循环）', () => {
+    const players = makeStandardPlayers(3);
+    const c4 = makeZoneCard('C4', 0); // 触底反弹
+
+    // 地底天空后，牌堆只剩这张 c4
+    const gs = makeGs({ players, deck: [c4], discard: [], log: [] });
+
+    // 玩家 0 摸到 c4 并弃置
+    const r1 = playerDrawCard(players, [c4], [], 0, { ...gs, debugForceCardKeepPending: 'discard', debugForceCardKeepTarget: 0 });
+    expect(r1.drawnCard.id).toBe(c4.id);
+    expect(r1.D).toEqual([]);
+    expect(r1.Disc).toEqual([c4]);
+
+    // 玩家 1 摸牌：牌堆为空，必须重洗弃牌堆，此时只有 c4 可摸
+    const gs2 = makeGs({ players: r1.P, deck: r1.D, discard: r1.Disc, log: [] });
+    const r2 = playerDrawCard(r1.P, r1.D, r1.Disc, 1, gs2);
+
+    expect(r2.drawnCard.id).toBe(c4.id);
+    expect(r2.reshuffleLog).toBe('牌堆耗尽，重洗弃牌堆');
+    expect(r2.Disc).toEqual([]);
+  });
+
+  it('牌堆非空时不会触发重洗日志', () => {
+    const players = makeStandardPlayers(3);
+    const c4 = makeZoneCard('C4', 0);
+
+    const gs = makeGs({ players, deck: [c4], discard: [], log: [] });
+    const r = playerDrawCard(players, [c4], [], 0, { ...gs, debugForceCardKeepPending: 'discard', debugForceCardKeepTarget: 0 });
+
+    expect(r.drawnCard.id).toBe(c4.id);
+    expect(r.reshuffleLog).toBe('');
+  });
+});
+
 describe('turnEngine stat events', () => {
   it('SAN 损失降至 0 时不排入检定事件', () => {
     const players = [makePlayer({ name: '你', hp: 10, san: 2 })];
