@@ -2833,6 +2833,7 @@ export default function Game(){
             .find(event=>event?.type==='swapCards'&&event.sourceIdx!=null&&event.targetIdx!=null);
           const swapMsgs=extractSkillLogs(actionMsgs,'swap');
           const swapIntroStep={type:'SKILL_SWAP',msgs:swapMsgs};
+          const swapPlayersBefore=_playersBeforeSkillAction||afterInspectionPlayers;
           const swapTransferSteps=swapEvent
             ? swapCardsSteps({
               sourceIdx:swapEvent.sourceIdx,
@@ -2842,7 +2843,7 @@ export default function Game(){
               takenCard:swapEvent.takenCard||null,
               givenCard:swapEvent.givenCard||null,
               msgs:swapEvent.msgs||swapMsgs,
-              playersBefore:afterInspectionPlayers,
+              playersBefore:swapPlayersBefore,
               zhuLight:gs.zhuLight||null,
             })
             : [];

@@ -714,7 +714,13 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
           const marginLeft=shouldFillFlatHand?0:(ci===0?0:(handOverlap>0?-handOverlap:HAND_CARD_GAP));
           const width=shouldFillFlatHand?undefined:(handStripWidth>0?computedCardWidth:stretchedHandSlotWidth);
           return(
-            <div key={card.id||`hand-${playerIndex}-${ci}`} className={blackGoatPulseActive&&isBlackGoatYoung(card)?'black-goat-card-pulse':''} style={{
+            <div
+              key={card.id||`hand-${playerIndex}-${ci}`}
+              data-player-hand-card
+              data-player-hand-card-id={card.id}
+              data-player-hand-card-pid={playerIndex}
+              className={blackGoatPulseActive&&isBlackGoatYoung(card)?'black-goat-card-pulse':''}
+              style={{
               marginLeft,
               flex:'0 0 auto',
               width,

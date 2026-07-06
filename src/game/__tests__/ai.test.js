@@ -1092,6 +1092,63 @@ describe('aiStep optional action limits', () => {
     });
   });
 
+  it('AI 从手牌信仰邪神后再掉包时，技能前快照保留新的邪神之力', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const vri = makeGodCard('VRI');
+    const oldVri = makeGodCard('VRI');
+    const stolen = makeZoneCard('A1', 0);
+    const returned = makeZoneCard('B2', 0);
+    const duplicate = makeZoneCard('B2', 0, { id: 'duplicate-b2-after-faith' });
+    const players = [
+      makePlayer({ name: '你', hp: 10, san: 10, hand: [stolen] }),
+      makePlayer({
+        name: '黛安娜',
+        role: ROLE_TREASURE,
+        roleRevealed: true,
+        hp: 10,
+        san: 10,
+        hand: [vri, returned, duplicate],
+      }),
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_CULTIST,
+        hp: 10,
+        san: 10,
+        godName: 'VRI',
+        godLevel: 1,
+        godZone: [oldVri],
+      }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+      globalOnlySwapOwner: null,
+      log: ['旧日志'],
+    });
+
+    const result = aiStep(gs);
+    const newLogs = result.log.slice(gs.log.length);
+
+    expect(newLogs.findIndex(line => line.includes('从手牌信仰 弗栗多'))).toBeLessThan(
+      newLogs.findIndex(line => line.includes('【掉包】'))
+    );
+    expect(result._playersBeforeSkillAction?.[1]).toMatchObject({
+      name: '黛安娜',
+      godName: 'VRI',
+      godLevel: 1,
+    });
+    expect(result._playersBeforeSkillAction?.[1].godZone).toEqual(expect.arrayContaining([expect.objectContaining({ godKey: 'VRI' })]));
+    expect(result._visualEvents?.[0]).toMatchObject({
+      type: 'swapCards',
+      sourceIdx: 1,
+      targetIdx: 0,
+    });
+  });
+
   it('AI 寻宝者不会用补编号区域牌换走对自己无益的森之领主', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0);
     const forestLord = makeGodCard('SHU');

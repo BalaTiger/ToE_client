@@ -18,7 +18,7 @@ function clampNumber(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function getAdaptiveDrawTransferCardSize(count = 1) {
+function getAdaptiveDrawTransferCardSize() {
   if (typeof window === 'undefined') return { width: 76, height: 100, scale: 76 / 82 };
   const vw = window.innerWidth || 1280;
   const vh = window.innerHeight || 720;
@@ -30,10 +30,13 @@ function getAdaptiveDrawTransferCardSize(count = 1) {
     : landscapeMobile
       ? clampNumber(vh * 0.16, 56, 66)
       : 76 + largeBoost * 42;
-  const multiCardScale = count > 1 ? clampNumber(1 - (count - 1) * 0.04, 0.78, 1) : 1;
-  const width = Math.round(rawWidth * multiCardScale);
+  const width = Math.round(rawWidth);
   const height = Math.round(width * (108 / 82));
   return { width, height, scale: width / 82 };
+}
+
+function getStandardFlyingCardSize() {
+  return getAdaptiveDrawTransferCardSize();
 }
 
 function BlackGoatTrail({ txPx, tyPx, delay = 0, duration = 1.28 }) {
@@ -104,6 +107,7 @@ export function ZhuHideCardOverlay({ anim, exiting }) {
 
   React.useEffect(() => {
     if (!anim?.card) return;
+    const size = getStandardFlyingCardSize();
     const deck = getPileAnchorCenter(
       '[data-deck-pile]',
       { x: window.innerWidth * 0.94 - 35, y: window.innerHeight * 0.08 }
@@ -111,6 +115,8 @@ export function ZhuHideCardOverlay({ anim, exiting }) {
     setStyle({
       left: deck.x,
       top: deck.y,
+      width: size.width,
+      height: size.height,
       '--pull-x': '-96px',
       '--pull-y': '18px',
       '--bottom-x': '8px',
@@ -136,10 +142,10 @@ export function ZhuHideCardOverlay({ anim, exiting }) {
             position: 'absolute',
             left: style.left,
             top: style.top,
-            width: 70,
-            height: 94,
-            marginLeft: -35,
-            marginTop: -47,
+            width: style.width,
+            height: style.height,
+            marginLeft: -style.width / 2,
+            marginTop: -style.height / 2,
             '--pull-x': style['--pull-x'],
             '--pull-y': style['--pull-y'],
             '--bottom-x': style['--bottom-x'],
@@ -168,6 +174,7 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = '地神的潜
 
   React.useEffect(() => {
     if (!anim) return;
+    const size = getStandardFlyingCardSize();
     const card = anim.card || null;
     const s = card ? (card.isGod ? GOD_CS : (CS[card.letter] || null)) : null;
     const targetPid = anim.targetPid || 0;
@@ -191,8 +198,8 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = '地神的潜
         left: startX,
         top: startY,
         transform: 'translate(-50%, -50%) scale(1)',
-        width: 70,
-        height: 94,
+        width: size.width,
+        height: size.height,
         borderRadius: 4,
         backgroundColor: s ? 'transparent' : '#100c08',
         background: s ? 'transparent' : undefined,
@@ -227,7 +234,7 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = '地神的潜
         }}>
           {!s && <CardBackLayer expansionKey={expansionKey}/>}
           {card && s && (
-            <MiniCardFace card={card} width={70} height={94} ambient={false} frameStyle={{boxShadow:'none',border:'none',background:'transparent'}}/>
+            <MiniCardFace card={card} width={cardStyle.width} height={cardStyle.height} ambient={false} frameStyle={{boxShadow:'none',border:'none',background:'transparent'}}/>
           )}
         </div>
       )}
@@ -240,6 +247,7 @@ export function BuryToDeckOverlay({ anim, exiting, expansionKey = '地神的潜�
 
   React.useEffect(() => {
     if (!anim) return;
+    const size = getStandardFlyingCardSize();
     const start = getPlayerHandAnchorCenter(anim.fromPid ?? 0);
     const deck = getPileAnchorCenter(
       '[data-deck-pile]',
@@ -250,6 +258,8 @@ export function BuryToDeckOverlay({ anim, exiting, expansionKey = '地神的潜�
     setStyle({
       left: start.x,
       top: start.y,
+      width: size.width,
+      height: size.height,
       deckLeft: deck.x,
       deckTop: deck.y,
       '--tx': `${tx}px`,
@@ -272,10 +282,10 @@ export function BuryToDeckOverlay({ anim, exiting, expansionKey = '地神的潜�
         position: 'absolute',
         left: style.left,
         top: style.top,
-        width: 58,
-        height: 82,
-        marginLeft: -29,
-        marginTop: -41,
+        width: style.width,
+        height: style.height,
+        marginLeft: -style.width / 2,
+        marginTop: -style.height / 2,
         '--tx': style['--tx'],
         '--ty': style['--ty'],
         zIndex: 6,
@@ -315,10 +325,10 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
           const isSlime = effect === 'tsgSlime' && card;
           const isDecipherStone = effect === 'decipherStone' && card;
           const isDrawKeep = effect === 'draw' && card;
-          const drawCardSize = isDrawKeep ? getAdaptiveDrawTransferCardSize(count) : null;
+          const transferCardSize = getStandardFlyingCardSize();
           const duration = effect === 'blackGoat' ? 1.28 : effect === 'tsgSlime' ? 0.82 : isDrawKeep ? 0.74 : isGodKeepHand ? 0.78 : isDecipherStone ? 0.78 : 0.62;
-          const cardW = isSlime ? 42 : isDrawKeep ? drawCardSize.width : isGodKeepHand ? 58 : isDecipherStone ? 58 : 28;
-          const cardH = isSlime ? 56 : isDrawKeep ? drawCardSize.height : isGodKeepHand ? 82 : isDecipherStone ? 76 : 40;
+          const cardW = transferCardSize.width;
+          const cardH = transferCardSize.height;
           return (
             <div key={`${key}-${idx}`} style={{ position: 'absolute', left: srcX, top: srcY }}>
               {effect === 'blackGoat' && <BlackGoatTrail txPx={txPx} tyPx={tyPx} delay={delay} duration={duration} />}
@@ -341,12 +351,13 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
                 zIndex: 481 + idx,
                 overflow: 'hidden',
               }}>
-                {!isSlime && !isDecipherStone && !isDrawKeep && <CardBackLayer expansionKey={expansionKey}/>}
-                {isDrawKeep && (
+                {!card && <CardBackLayer expansionKey={expansionKey}/>}
+                {card && !isSlime && (
                   <MiniCardFace
                     card={card}
                     width={cardW}
                     height={cardH}
+                    ambient={false}
                     frameStyle={{
                       boxShadow: 'none',
                       border: 'none',
@@ -357,17 +368,8 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
                 {isSlime && (
                   <DDCard
                     card={card}
-                    small
+                    compact
                     frameStyle={{ boxShadow: 'none', border: 'none', width: cardW, minWidth: cardW, height: cardH }}
-                  />
-                )}
-                {isDecipherStone && (
-                  <MiniCardFace
-                    card={card}
-                    width={cardW}
-                    height={cardH}
-                    ambient={false}
-                    frameStyle={{ boxShadow: 'none', border: 'none', background: 'transparent' }}
                   />
                 )}
               </div>
@@ -380,25 +382,60 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
 }
 
 export function TsathogguaSlimePopOverlay({ anim, exiting }) {
-  const [pos, setPos] = React.useState(null);
+  const [targets, setTargets] = React.useState(null);
 
   React.useEffect(() => {
     if (!anim) return;
-    const anchor = getPlayerHandAnchorCenter(anim.targetPid ?? 0);
-    setPos(anchor);
+    const cards = Array.isArray(anim.cards) && anim.cards.length
+      ? anim.cards
+      : Array.from({ length: Math.max(1, anim.count || 1) }, () => null);
+    const fallback = getPlayerHandAnchorCenter(anim.targetPid ?? 0);
+    const escapeValue = value => (
+      typeof CSS !== 'undefined' && CSS.escape
+        ? CSS.escape(String(value))
+        : String(value).replace(/["\\]/g, '\\$&')
+    );
+    const elements = [];
+    const measured = cards.map((card, idx) => {
+      const cardId = card?.id;
+      const selector = cardId != null
+        ? `[data-self-hand-card-id="${escapeValue(cardId)}"],[data-player-hand-card-id="${escapeValue(cardId)}"]`
+        : null;
+      const el = selector ? document.querySelector(selector) : null;
+      if (el) {
+        elements.push(el);
+        el.setAttribute('data-tsg-slime-popping', 'true');
+        el.style.setProperty('--tsg-slime-pop-delay', `${idx * 0.08}s`);
+        const rect = el.getBoundingClientRect();
+        return {
+          card,
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+          width: rect.width,
+          height: rect.height,
+          anchored: true,
+        };
+      }
+      const offsets = [
+        { x: 0, y: 0 },
+        { x: -26, y: 10 },
+        { x: 28, y: 8 },
+        { x: -10, y: -18 },
+        { x: 18, y: -16 },
+      ];
+      const off = offsets[idx % offsets.length];
+      return { card, x: fallback.x + off.x, y: fallback.y + off.y, width: 70, height: 92, anchored: false };
+    });
+    setTargets(measured);
+    return () => {
+      elements.forEach(el => {
+        el.removeAttribute('data-tsg-slime-popping');
+        el.style.removeProperty('--tsg-slime-pop-delay');
+      });
+    };
   }, [anim]);
 
-  if (!anim || !pos) return null;
-  const cards = Array.isArray(anim.cards) && anim.cards.length
-    ? anim.cards
-    : Array.from({ length: Math.max(1, anim.count || 1) }, () => null);
-  const offsets = [
-    { x: 0, y: 0 },
-    { x: -26, y: 10 },
-    { x: 28, y: 8 },
-    { x: -10, y: -18 },
-    { x: 18, y: -16 },
-  ];
+  if (!anim || !targets) return null;
 
   return (
     <div style={{
@@ -423,6 +460,11 @@ export function TsathogguaSlimePopOverlay({ anim, exiting }) {
           76% { transform: scale(0.72); opacity: 0.28; filter: blur(1.2px); }
           100% { transform: scale(0.22); opacity: 0; filter: blur(3px); }
         }
+        [data-tsg-slime-popping="true"] {
+          transform-origin: center center;
+          animation: tsgSlimeCardMelt 0.94s ease-in var(--tsg-slime-pop-delay, 0s) both;
+          filter: drop-shadow(0 0 14px rgba(128,216,168,0.58));
+        }
         @keyframes tsgSlimeRingPop {
           0% { transform: translate(-50%,-50%) scale(0.3); opacity: 0; }
           34% { opacity: 0; }
@@ -436,23 +478,26 @@ export function TsathogguaSlimePopOverlay({ anim, exiting }) {
           100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.12); opacity: 0; }
         }
       `}</style>
-      {cards.map((card, idx) => {
-        const off = offsets[idx % offsets.length];
-        const left = pos.x + off.x;
-        const top = pos.y + off.y;
+      {targets.map((target, idx) => {
+        const left = target.x;
+        const top = target.y;
         const delay = idx * 0.08;
+        const bubbleSize = Math.max(66, Math.min(108, Math.max(target.width, target.height) * 1.12));
+        const ringSize = Math.max(58, Math.min(98, Math.max(target.width, target.height) * 1.02));
         const droplets = [
           [-42, -26], [-18, -48], [18, -44], [44, -18],
           [38, 24], [10, 44], [-24, 38], [-46, 8],
         ];
         return (
-          <div key={card?.id || `slime-pop-${idx}`} style={{ position: 'absolute', left, top }}>
+          <div key={target.card?.id || `slime-pop-${idx}`} style={{ position: 'absolute', left, top }}>
             <div style={{
               position: 'absolute',
               left: 0,
               top: 0,
-              width: 82,
-              height: 82,
+              width: bubbleSize,
+              height: bubbleSize,
+              marginLeft: -bubbleSize / 2,
+              marginTop: -bubbleSize / 2,
               borderRadius: '50%',
               background: 'radial-gradient(circle at 36% 28%,rgba(232,255,246,0.86) 0%,rgba(137,232,190,0.48) 26%,rgba(50,143,111,0.20) 56%,rgba(6,38,31,0) 74%)',
               border: '1px solid rgba(167,243,208,0.58)',
@@ -463,30 +508,15 @@ export function TsathogguaSlimePopOverlay({ anim, exiting }) {
               position: 'absolute',
               left: 0,
               top: 0,
-              width: 74,
-              height: 74,
+              width: ringSize,
+              height: ringSize,
+              marginLeft: -ringSize / 2,
+              marginTop: -ringSize / 2,
               borderRadius: '50%',
               border: '2px solid rgba(190,255,226,0.72)',
               boxShadow: '0 0 16px rgba(128,216,168,0.46)',
               animation: `tsgSlimeRingPop 0.94s ease-out ${delay}s both`,
             }} />
-            <div style={{
-              position: 'absolute',
-              left: 0,
-              top: 0,
-              width: 42,
-              height: 56,
-              marginLeft: -21,
-              marginTop: -28,
-              animation: `tsgSlimeCardMelt 0.94s ease-in ${delay}s both`,
-              filter: 'drop-shadow(0 0 14px rgba(128,216,168,0.58))',
-            }}>
-              {card ? (
-                <DDCard card={card} small frameStyle={{ width: 42, minWidth: 42, height: 56, boxShadow: 'none' }} />
-              ) : (
-                <div style={{ width: 42, height: 56, borderRadius: 4, background: 'linear-gradient(160deg,#0b1f18,#07130f)', border: '1.5px solid #80d8a8' }} />
-              )}
-            </div>
             {droplets.map(([dx, dy], dotIdx) => (
               <div key={dotIdx} style={{
                 position: 'absolute',
@@ -514,6 +544,7 @@ function useHuntRevealCardPosition(targetPid) {
 
   React.useEffect(() => {
     function measure() {
+      const size = getStandardFlyingCardSize();
       const start = getPlayerHandAnchorCenter(targetPid ?? 0);
       const end = getPlayerAreaAnchorCenter(targetPid ?? 0);
       setPos({
@@ -521,6 +552,8 @@ function useHuntRevealCardPosition(targetPid) {
         startY: start.y,
         endX: end.x,
         endY: end.y,
+        width: size.width,
+        height: size.height,
         '--tx': `${end.x - start.x}px`,
         '--ty': `${end.y - start.y}px`,
       });
@@ -549,16 +582,16 @@ export function HuntRevealCardOverlay({ anim, exiting }) {
         position: 'absolute',
         left: pos.startX,
         top: pos.startY,
-        width: 70,
-        height: 94,
-        marginLeft: -35,
-        marginTop: -47,
+        width: pos.width,
+        height: pos.height,
+        marginLeft: -pos.width / 2,
+        marginTop: -pos.height / 2,
         '--tx': pos['--tx'],
         '--ty': pos['--ty'],
         animation: 'huntRevealCardFly 0.82s cubic-bezier(0.22,0.82,0.22,1) both',
         filter: 'drop-shadow(0 10px 18px rgba(0,0,0,0.72))',
       }}>
-        <MiniCardFace card={anim.card} width={70} height={94} ambient={false} frameStyle={{ boxShadow: 'none' }} />
+        <MiniCardFace card={anim.card} width={pos.width} height={pos.height} ambient={false} frameStyle={{ boxShadow: 'none' }} />
       </div>
     </div>
   );
