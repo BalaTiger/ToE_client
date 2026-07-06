@@ -84,7 +84,7 @@ describe('resolveEndTurn', () => {
     expect(result.newGs._visualEvents).toEqual([{ type: 'turnStart', id: 'wrapped-event' }]);
   });
 
-  it('plays local player turn draw animation when turn wraps back to self', () => {
+  it('applies next turn directly when turn wraps back to self', () => {
     const card = makeZoneCard('A1');
     const player = makePlayer({ name: '你' });
     const resting = makePlayer({ name: '艾伦', isResting: true });
@@ -98,11 +98,9 @@ describe('resolveEndTurn', () => {
 
     const result = resolveEndTurn(gs, { effectiveHandLimit: 4 });
 
-    expect(result.decision).toBe(END_TURN_DECISION.PLAY_PLAYER_TURN_ANIM);
+    expect(result.decision).toBe(END_TURN_DECISION.APPLY_NEXT_TURN);
     expect(result.newGs.currentTurn).toBe(0);
     expect(result.newGs.drawReveal?.card).toBeDefined();
-    const types = result.queue.map(s => s.type);
-    expect(types).toContain('YOUR_TURN');
-    expect(types).toContain('DRAW_CARD');
+    expect(result.queue).toBeUndefined();
   });
 });

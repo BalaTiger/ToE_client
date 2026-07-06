@@ -1,14 +1,10 @@
 import { copyPlayers } from './coreUtils';
-import { localDisplayName } from './rotateState';
-import { buildAnimQueue } from './animQueueCore';
-import { bindAnimLogChunks } from './animLogs';
 import { getEndTurnEvents } from './endTurnEvents';
 import { startNextTurn as defaultAdvanceTurn } from './turnEngine';
 
 export const END_TURN_DECISION = {
   DISCARD: 'DISCARD',
   SCHEDULE_EVENTS: 'SCHEDULE_EVENTS',
-  PLAY_PLAYER_TURN_ANIM: 'PLAY_PLAYER_TURN_ANIM',
   APPLY_NEXT_TURN: 'APPLY_NEXT_TURN',
 };
 
@@ -18,8 +14,7 @@ export const END_TURN_DECISION = {
  * Given a game state at the moment a player presses 【结束回合】,
  * decides whether to:
  *  - enter hand-limit discard phase,
- *  - schedule end-of-turn events (CTH rest draw / TSG slime / endless corridor),
- *  - play the local player's next-turn draw animation, or
+ *  - schedule end-of-turn events (CTH rest draw / TSG slime / endless corridor), or
  *  - apply the next turn directly.
  *
  * All React refs, animation triggers, and multiplayer broadcasts stay outside.
@@ -77,24 +72,6 @@ export function resolveEndTurn(gs, {
     log: L,
     currentTurn: actorIndex,
   });
-
-  // 若回合回到自己且需要抽牌，提前构造抽牌动画队列。
-  if (newGs.currentTurn === actorIndex && newGs.drawReveal?.card) {
-    const statQ = bindAnimLogChunks(buildAnimQueue(gs, newGs), { statLogs: newGs._statLogs });
-    const actorName = localDisplayName(actorIndex, actor.name);
-    const queue = [
-      { type: 'YOUR_TURN', msgs: newGs._turnStartLogs },
-      {
-        type: 'DRAW_CARD',
-        card: newGs.drawReveal.card,
-        triggerName: actorName,
-        targetPid: actorIndex,
-        msgs: newGs._drawLogs,
-      },
-      ...statQ,
-    ];
-    return { decision: END_TURN_DECISION.PLAY_PLAYER_TURN_ANIM, newGs, queue };
-  }
 
   return { decision: END_TURN_DECISION.APPLY_NEXT_TURN, newGs };
 }

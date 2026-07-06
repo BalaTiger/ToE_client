@@ -114,6 +114,12 @@ import {
   END_TURN_EVENT,
   resolveEndTurn,
   END_TURN_DECISION,
+  resolvePostDiscardEndTurn,
+  applyHandDiscardSideEffectsWithAnim,
+  discardCardsFromHand,
+  discardCardsFromHandFromRight,
+  splitKeptDestroyedDiscarded,
+  resolveRestTurnEnd,
   hasEndTurnReplayHandEvent,
   buildEndTurnReplayStartState,
   buildEndTurnReplayGodEncounter,
@@ -1107,21 +1113,12 @@ export default function Game(){
     const player=baseGs?.players?.[seatIdx];
     if(!player)return baseGs;
     const limit=getHandLimitForPlayer(player);
-    let P=copyPlayers(baseGs.players);
-    const discarded=[];
-    while((P[seatIdx]?.hand?.length||0)>limit){
-      const card=P[seatIdx].hand.pop();
-      if(card)discarded.push(card);
-    }
+    const count=Math.max(0,(player.hand?.length||0)-limit);
+    let {players:P,discarded}=discardCardsFromHandFromRight(baseGs.players,seatIdx,count);
+    const {kept:keptDisc,destroyed:destroyedDisc}=splitKeptDestroyedDiscarded(discarded);
     let D=[...(baseGs.deck||[])];
     let Disc=[...(baseGs.discard||[])];
     let L=[...(baseGs.log||[])];
-    const keptDisc=[];
-    const destroyedDisc=[];
-    for(const card of discarded){
-      if(isBlackGoatYoung(card)||isTsathogguaSlime(card))destroyedDisc.push(card);
-      else keptDisc.push(card);
-    }
     const actorName=localDisplayName(seatIdx,P[seatIdx]?.name||'该玩家');
     let balanceStatePatch={};
     if(keptDisc.length){
@@ -6066,27 +6063,6 @@ export default function Game(){
     else setGs(nextState);
   }
 
-  function applyHandDiscardSideEffects({players,deck,discard,log,ownerIdx,cards,reason='弃牌'}){
-    return applyBalanceDiscardSideEffects({players,deck,discard,log,ownerIdx,cards,reason});
-  }
-
-  function applyHandDiscardSideEffectsWithAnim({baseGs,players,deck,discard,log,ownerIdx,cards,reason='弃牌'}){
-    const beforePlayers=copyPlayers(players);
-    const beforeLogLength=log.length;
-    const result=applyHandDiscardSideEffects({players,deck,discard,log,ownerIdx,cards,reason});
-    const sideLogs=result.log.slice(beforeLogLength);
-    if(!sideLogs.length){
-      return {...result,statePatch:{},queue:[]};
-    }
-    const statEventSeq=(baseGs?._statEventSeq||0)+1;
-    const statEvents=buildStatEvents(beforePlayers,result.players,sideLogs,{reason:'天平',seq:statEventSeq});
-    const statePatch=statEvents.length?{_statEvents:[...(baseGs?._statEvents||[]),...statEvents],_statEventSeq:statEventSeq}:{};
-    const afterGs={...baseGs,players:result.players,deck:result.deck,discard:result.discard,log:result.log,...statePatch};
-    const queue=statEvents.length
-      ?bindAnimLogChunks(buildAnimQueue({...baseGs,players:beforePlayers,deck,discard,log},afterGs),{statLogs:sideLogs}).filter(step=>step.type!=='CARD_TRANSFER')
-      :[];
-    return {...result,statePatch,queue};
-  }
 
   function finishTargetContinuation({queue=[],nextGs,continueRest=false,continueTurnStartDraw=false,syncLog=false}){
     queue=mergeApophisTargetQueue(queue,gs,nextGs);
@@ -7898,109 +7874,56 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const selected=(latestGs||gs).abilityData?.discardSelected||[];
     if(!selected.length)return;
     const baseGs=latestGs||gs;
+    const {players:P,discarded}=discardCardsFromHand(baseGs.players,0,selected);
+
+    const result=resolvePostDiscardEndTurn(baseGs,{
+      playersAfterDiscard:P,
+      discarded,
+      logPrefix:'弃置',
+      advanceTurn:startNextTurn,
+    });
+
+    // 停止多人弃牌倒计时
     const shouldStopEndTurnDiscardTimer=!!(baseGs._isMP&&baseGs.abilityData?.fromEndTurn);
-    let P=copyPlayers(baseGs.players);
-    const sorted=[...selected].sort((a,b)=>b-a);const discarded=[];
-    sorted.forEach(i=>{const c=P[0].hand.splice(i,1)[0];discarded.push(c);});
-    // 黑山羊幼仔弃置时销毁
-    const { kept: keptDisc, destroyed: destroyedDisc } = (()=>{
-      const k=[],d=[];
-      for(const c of discarded) if(isBlackGoatYoung(c)||isTsathogguaSlime(c)) d.push(c); else k.push(c);
-      return { kept:k, destroyed:d };
-    })();
-    let D=[...baseGs.deck],Disc=[...baseGs.discard,...keptDisc];
-    let L=[...baseGs.log];
-    let balanceQueue=[];
-    let balanceStatePatch={};
-    if(keptDisc.length) L.push(`弃置：${keptDisc.map(c=>cardLogText(c,{alwaysShowName:true})).join(' ')}`);
-    if(keptDisc.length){
-      const balance=applyHandDiscardSideEffectsWithAnim({baseGs,players:P,deck:D,discard:Disc,log:L,ownerIdx:0,cards:keptDisc,reason:'手牌上限弃牌'});
-      P=balance.players;D=balance.deck;Disc=balance.discard;L=balance.log;
-      balanceQueue=balance.queue;
-      balanceStatePatch=balance.statePatch;
-    }
-    if(destroyedDisc.length) L.push(`衍生牌 ×${destroyedDisc.length} 被销毁`);
-    const handLimitAfterDiscard=getHandLimitForPlayer(P[0]);
-    const endTurnDiscardResolved=shouldStopEndTurnDiscardTimer&&P[0].hand.length<=handLimitAfterDiscard;
+    const handLimitAfterDiscard=getHandLimitForPlayer(result.postDiscardGs.players[0]);
+    const endTurnDiscardResolved=shouldStopEndTurnDiscardTimer&&result.postDiscardGs.players[0].hand.length<=handLimitAfterDiscard;
     if(endTurnDiscardResolved){
       setGs(prev=>prev?{...prev,_mpEndTurnDiscardResolved:true}:prev);
     }
-    // Phase C：回合结束事件（CTH 摸牌 / 黄液 / 无尽通道）统一交调度器按 registry 顺序结算。
-    // 无任何事件时（常规手牌上限弃牌结束回合）保持原有"弃牌→下家回合"单次广播路径不变。
-    const endTurnEvents=getEndTurnEvents(P,0);
-    if(endTurnEvents.length){
-      const discardAnimMsgs=L.slice(-discarded.length-1);
-      const handLimitDiscardEvent=baseGs._isMP?createHandLimitDiscardEvent({
-        playerIdx:0,playerName:P[0]?.name||'你',cards:keptDisc.length?keptDisc:discarded,msgs:discardAnimMsgs,
-      }):null;
-      kickoffEndTurnSeq(
-        {...baseGs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,abilityData:{},_mpEndTurnDiscardResolved:undefined,...balanceStatePatch,
-          ...(handLimitDiscardEvent?{_visualEvents:[handLimitDiscardEvent]}:{})},
-        {seedQueue:[{type:'DISCARD',msgs:discardAnimMsgs},...balanceQueue,statePatchStep({players:P,discard:Disc})]}
-      );
+
+    if(result.decision==='SCHEDULE_EVENTS'){
+      kickoffEndTurnSeq(result.kickoffGs,{seedQueue:result.seedQueue});
       return;
     }
-    const postDiscardGs={...baseGs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,abilityData:{},_mpEndTurnDiscardResolved:undefined,...balanceStatePatch};
-    let newGs=startNextTurn(postDiscardGs);
-    const discardAnimMsgs=L.slice(-discarded.length-1);
-    const handLimitDiscardEvent=baseGs._isMP?createHandLimitDiscardEvent({
-      playerIdx:0,
-      playerName:P[0]?.name||'你',
-      cards:keptDisc.length?keptDisc:discarded,
-      msgs:discardAnimMsgs,
-    }):null;
-    if(handLimitDiscardEvent){
-      newGs={...newGs,_visualEvents:[handLimitDiscardEvent,...(newGs._visualEvents||[])]};
-    }
-    const queue=buildPlayerTurnDrawQueue(postDiscardGs,newGs,[{type:'DISCARD',msgs:discardAnimMsgs},...balanceQueue,statePatchStep({players:P,discard:Disc})]);
-    if(newGs._isMP&&newGs.currentTurn!==0)broadcastMpStateBeforeLocalReplay(newGs);
-    triggerAnimQueue(queue,newGs);
+    if(result.newGs._isMP&&result.newGs.currentTurn!==0)broadcastMpStateBeforeLocalReplay(result.newGs);
+    triggerAnimQueue(result.queue,result.newGs);
   }
 
   function doRest(){
     if(phase!=='ACTION'||isBlocked||gs.restUsed||gs.skillUsed||gs.players?.[0]?.disableRest)return;
     const d1=1+(Math.random()*6|0), d2=1+(Math.random()*6|0);
     const heal=Math.max(d1,d2);
-    let P=copyPlayers(gs.players);
-    const beforeRestPlayers=copyPlayers(P);
-    P[0].hp=clamp(P[0].hp+heal);
-    // Toggle resting state: if already resting, wake up; otherwise, go to rest
-    const wasResting=P[0].isResting;
-    P[0].isResting=!P[0].isResting;
-    const restLog=`你选择【休息】，掷骰 ${d1}、${d2}，取高值回复 ${heal}HP，${wasResting?'翻回正常状态':'翻面休息中'}`;
-    let L=[...gs.log,restLog];
-    const restStatEventSeq=(gs._statEventSeq||0)+1;
-    const restStatEvents=buildStatEvents(beforeRestPlayers,P,[restLog],{reason:'休息',seq:restStatEventSeq});
-    const restStatPatch=restStatEvents.length?{_statEvents:[...(gs._statEvents||[]),...restStatEvents],_statEventSeq:restStatEventSeq}:{};
-    const win=checkWin(P,gs._isMP);
-    if(win){setGs({...gs,players:P,log:L,gameOver:win,...restStatPatch});return;}
-    
-    const oldGs={...gs,players:copyPlayers(gs.players)};
-    const newGs={...gs,players:P,log:L,restUsed:true,skillUsed:true,...restStatPatch};
-    
-    // 如果手牌超限，先进入弃牌阶段，弃牌后再触发拉莱耶之主摸牌
-    if(P[0].hand.length>effectiveHandLimit){
-      const pendingGs={...newGs,phase:'DISCARD_PHASE',abilityData:{discardSelected:[]}};
-      const statQueue=buildAnimQueue(oldGs,{...newGs,players:P});
-      const queue=[{type:'DICE_ROLL',d1,d2,heal,rollerName:'你'},...statQueue];
-      triggerAnimQueue(queue,pendingGs);
-      return;
+
+    const result=resolveRestTurnEnd(gs,{
+      d1,d2,heal,effectiveHandLimit,actorIndex:0,advanceTurn:startNextTurn,
+    });
+
+    switch(result.decision){
+      case 'WIN':
+        setGs(result.gs);
+        return;
+      case 'DISCARD_PHASE':
+        triggerAnimQueue(result.queue,result.pendingGs);
+        return;
+      case 'SCHEDULE_EVENTS':
+        kickoffEndTurnSeq(result.afterRest,{seedQueue:result.seedQueue});
+        return;
+      case 'APPLY_NEXT_TURN':
+        triggerAnimQueue(result.queue,null,()=>applyNextTurnGs(result.nextGs));
+        return;
+      default:
+        return;
     }
-    
-    let D=[...gs.deck],Disc=[...gs.discard];
-    const finalGs={...gs,players:P,deck:D,discard:Disc,log:L,restUsed:true,skillUsed:true,...restStatPatch};
-    // Phase C：CTH 摸牌 / 黄液 / 无尽通道交调度器按 registry 顺序结算；骰子+休息状态动画作为 seedQueue 先播。
-    const statQueue=buildAnimQueue(oldGs,{...finalGs,players:P});
-    const diceQueue=[{type:'DICE_ROLL',d1,d2,heal,rollerName:'你'},...statQueue];
-    const afterRest={...finalGs,currentTurn:0};
-    const endTurnEvents=getEndTurnEvents(P,0);
-    if(endTurnEvents.length){
-      kickoffEndTurnSeq(afterRest,{seedQueue:diceQueue});
-      return;
-    }
-    // 无回合结束事件（普通休息）：骰子动画后直接进入下家回合。
-    const nextGs=startNextTurn(afterRest);
-    triggerAnimQueue(diceQueue,null,()=>applyNextTurnGs(nextGs));
   }
 
   function markTurnDrawInspectionEventsSeen(events=[]){
@@ -8528,9 +8451,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       case END_TURN_DECISION.SCHEDULE_EVENTS:
         kickoffEndTurnSeq(result.baseGs);
         return;
-      case END_TURN_DECISION.PLAY_PLAYER_TURN_ANIM:
-        triggerAnimQueue(result.queue,result.newGs);
-        return;
       case END_TURN_DECISION.APPLY_NEXT_TURN:
         applyNextTurnGs(result.newGs);
         return;
@@ -8543,74 +8463,23 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   function autoDiscardFromRight(){
     // 多人弃牌超时：从右侧弃牌直到不超限，然后进入下一回合
     const limit=effectiveHandLimit;
-    let P=copyPlayers(gs.players);
-    const discarded=[];
-    while(P[0].hand.length>limit){const c_=P[0].hand.pop();discarded.push(c_);}
-    // 黑山羊幼仔弃置时销毁
-    const keptDisc=[];const destroyedDisc=[];
-    for(const c of discarded) if(isBlackGoatYoung(c)||isTsathogguaSlime(c)) destroyedDisc.push(c); else keptDisc.push(c);
-    let D=[...gs.deck],Disc=[...gs.discard,...keptDisc],L=[...gs.log];
-    const cthDraws=[];
-    let balanceQueue=[];
-    let balanceStatePatch={};
-    if(keptDisc.length) L.push(`(超时) 弃置：${keptDisc.map(c_=>cardLogText(c_,{alwaysShowName:true})).join(' ')}`);
-    if(keptDisc.length){
-      const balance=applyHandDiscardSideEffectsWithAnim({baseGs:gs,players:P,deck:D,discard:Disc,log:L,ownerIdx:0,cards:keptDisc,reason:'手牌上限弃牌'});
-      P=balance.players;D=balance.deck;Disc=balance.discard;L=balance.log;
-      balanceQueue=balance.queue;
-      balanceStatePatch=balance.statePatch;
-    }
-    if(destroyedDisc.length) L.push(`衍生牌 ×${destroyedDisc.length} 被销毁`);
-    // Phase C：回合结束事件（CTH 摸牌 / 黄液 / 无尽通道）交调度器按 registry 顺序结算。
-    // 无任何事件时（常规超时弃牌）保持原有"弃牌→下家回合"单次广播路径不变。
-    const endTurnEvents=getEndTurnEvents(P,0);
-    if(endTurnEvents.length){
-      const discardAnimMsgs=discarded.length?L.slice(-discarded.length-1):[];
-      const handLimitDiscardEvent=gs._isMP&&discarded.length?createHandLimitDiscardEvent({
-        playerIdx:0,playerName:P[0]?.name||'你',cards:keptDisc.length?keptDisc:discarded,msgs:discardAnimMsgs,
-      }):null;
-      const seedQueue=discarded.length?[{type:'DISCARD',msgs:discardAnimMsgs},...balanceQueue,statePatchStep({players:P,discard:Disc})]:[];
-      kickoffEndTurnSeq(
-        {...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,abilityData:{},_mpEndTurnDiscardResolved:true,...balanceStatePatch,
-          ...(handLimitDiscardEvent?{_visualEvents:[handLimitDiscardEvent]}:{})},
-        {seedQueue}
-      );
+    const count=Math.max(0,(gs.players?.[0]?.hand?.length||0)-limit);
+    const {players:P,discarded}=discardCardsFromHandFromRight(gs.players,0,count);
+
+    const result=resolvePostDiscardEndTurn(gs,{
+      playersAfterDiscard:P,
+      discarded,
+      logPrefix:'(超时) 弃置',
+      advanceTurn:startNextTurn,
+      mpEndTurnDiscardResolved:true,
+    });
+
+    if(result.decision==='SCHEDULE_EVENTS'){
+      kickoffEndTurnSeq(result.kickoffGs,{seedQueue:result.seedQueue});
       return;
     }
-    const postDiscardGs={...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:0,abilityData:{},_mpEndTurnDiscardResolved:true,...balanceStatePatch};
-    let newGs=startNextTurn(postDiscardGs);
-    const discardAnimMsgs=L.slice(-discarded.length-1);
-    const handLimitDiscardEvent=gs._isMP&&discarded.length?createHandLimitDiscardEvent({
-      playerIdx:0,
-      playerName:P[0]?.name||'你',
-      cards:keptDisc.length?keptDisc:discarded,
-      msgs:discardAnimMsgs,
-    }):null;
-    if(handLimitDiscardEvent){
-      newGs={...newGs,_visualEvents:[handLimitDiscardEvent,...(newGs._visualEvents||[])]};
-    }
-    if(discarded.length||cthDraws.length>0){
-      const queue=[];
-      if(discarded.length){
-        queue.push({type:'DISCARD',msgs:discardAnimMsgs});
-        queue.push(...balanceQueue);
-        queue.push(statePatchStep({players:P,discard:Disc}));
-      }
-      if(cthDraws.length>0){
-        cthDraws.forEach(card=>{
-          queue.push({type:'DRAW_CARD',card:card,triggerName:'你',targetPid:0});
-        });
-      }
-      // 添加状态变化动画
-      const statQ=buildAnimQueue(postDiscardGs,newGs);
-      queue.push(...statQ);
-      if(newGs._isMP&&newGs.currentTurn!==0)broadcastMpStateBeforeLocalReplay(newGs);
-      triggerAnimQueue(buildPlayerTurnDrawQueue(postDiscardGs,newGs,queue),newGs);
-    }else if(newGs.currentTurn===0&&newGs.drawReveal?.card){
-      triggerAnimQueue(buildPlayerTurnDrawQueue(postDiscardGs,newGs),newGs);
-    }else{
-      applyNextTurnGs(newGs);
-    }
+    if(result.newGs._isMP&&result.newGs.currentTurn!==0)broadcastMpStateBeforeLocalReplay(result.newGs);
+    triggerAnimQueue(result.queue,result.newGs);
   }
   autoDiscardRef.current=autoDiscardFromRight;
 
