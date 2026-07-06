@@ -131,12 +131,13 @@ Important extracted layers:
 - post-discard end-turn transition wrapper (`confirmDiscard` / `autoDiscardFromRight`) -> `src/game/postDiscardEndTurn.js`
 - hand-limit discard helpers (`splitKeptDestroyedDiscarded`, `discardCardsFromHand*`, `applyHandDiscardSideEffectsWithAnim`) -> `src/game/handLimitDiscard.js`
 - rest action end-turn transition wrapper (`doRest`) -> `src/game/restTurnFlow.js`
+- battle screen JSX shell -> `src/components/battle/BattleScreen.jsx`
 
 ## Remaining High-Value Refactor Targets
 
 ### 1. Battle Actions / Turn Flow
 
-Largest remaining block in `App.jsx`. The `endTurn()` dispatch decision has moved to `src/game/endTurnFlow.js`; the post-discard transition wrapper has moved to `src/game/postDiscardEndTurn.js`; hand-limit discard helpers have moved to `src/game/handLimitDiscard.js`; the rest action wrapper has moved to `src/game/restTurnFlow.js`. Remaining parts include draw decisions, target selection, skills, god choices, and replay/broadcast bridges around local actions.
+Largest remaining block in `App.jsx`. The `endTurn()` dispatch decision has moved to `src/game/endTurnFlow.js`; the post-discard transition wrapper has moved to `src/game/postDiscardEndTurn.js`; hand-limit discard helpers have moved to `src/game/handLimitDiscard.js`; the rest action wrapper has moved to `src/game/restTurnFlow.js`. The battle screen JSX has moved to `src/components/battle/BattleScreen.jsx`. Remaining parts include draw decisions, target selection, skills, god choices, and replay/broadcast bridges around local actions.
 
 Risk: high. It shares refs, tutorial gates, animation queues, multiplayer sync, and pending state. Extract in small slices with tests.
 
@@ -157,9 +158,9 @@ Tutorial state and step transitions are still strongly coupled to game actions a
 
 Risk: medium. Prefer extracting pure scenario/step decisions first; leave UI measurement and animation bridge in App until stable.
 
-### 4. Battle Screen JSX
+### 4. Battle Screen Sub-Components
 
-Large but lower rule-risk. It can be split into `BattleScreen` and smaller composition components once props are organized.
+`src/components/battle/BattleScreen.jsx` currently owns all of the moved JSX. The next step is to split it into smaller composable pieces (`BattleHeader`, `SelfPlayerPanel`, `HandArea`, `DecisionModals`, `SwapBlindDrawOverlay`, etc.) once the shell is stable.
 
 Risk: medium. Main risk is prop volume and accidentally changing z-index / layout behavior.
 
