@@ -1,6 +1,6 @@
 {
-  "version": "1c2ea7c9330dcb98",
-  "generatedAt": "2026-07-07T07:51:35.841Z",
+  "version": "7bb135dce03828ec",
+  "generatedAt": "2026-07-07T09:59:07.848Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1137,6 +1137,12 @@
       "revision": "4d6330e995a7701a"
     },
     {
+      "path": "/img/effects/ignite_torch_flame_sweep_spritesheet.webp",
+      "type": "image",
+      "size": 2519340,
+      "revision": "93de59bc5ab3af07"
+    },
+    {
       "path": "/img/effects/noise/effect_noise_flow_256.webp",
       "type": "image",
       "size": 33510,
@@ -1273,6 +1279,12 @@
       "type": "audio",
       "size": 153600,
       "revision": "ffa7010526bbf938"
+    },
+    {
+      "path": "/sounds/SE/fire.mp3",
+      "type": "audio",
+      "size": 289227,
+      "revision": "5412f8c9af43a28a"
     },
     {
       "path": "/sounds/SE/hpDamageVariants/hpDamage1.mp3",

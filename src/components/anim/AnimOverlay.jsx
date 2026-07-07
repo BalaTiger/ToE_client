@@ -9,6 +9,7 @@ import { EndlessCorridorTunnelAnim } from './EndlessCorridorOverlay';
 import { RandomTargetOverlay } from './RandomTargetOverlay';
 import { ThrowStoneOverlay } from './ThrowStoneOverlay';
 import { CthRlyehDreamOverlay } from './CthRlyehDreamOverlay';
+import { NightWindAnim } from './NightWindOverlay';
 
 const NO_OVERLAY_TYPES = new Set([
   'CARD_TRANSFER',
@@ -52,6 +53,7 @@ const ANIM_RENDERERS = {
   GEOMAGNETIC_RESTORE_SHUFFLE: ({ anim, exiting }) => <GeomagneticRestoreShuffleAnim anim={anim} exiting={exiting} />,
   UNDERGROUND_SPRING: ({ exiting }) => <UndergroundSpringAnim exiting={exiting} />,
   STARTLED_BATS: ({ exiting }) => <StartledBatsAnim exiting={exiting} />,
+  NIGHT_WIND: ({ exiting }) => <NightWindAnim exiting={exiting} />,
   VOLCANO: ({ anim, exiting }) => <VolcanoAnim anim={anim} exiting={exiting} />,
   SNAKE_TRAP: ({ anim, exiting }) => <SnakeTrapOverlay anim={anim} exiting={exiting} />,
   RANDOM_TARGET: ({ anim, exiting }) => <RandomTargetOverlay anim={anim} exiting={exiting} />,

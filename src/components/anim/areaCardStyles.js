@@ -1,4 +1,24 @@
 export const AREA_CARD_ANIMATION_STYLES = `
+  .night-wind-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    pointer-events: none;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 48% 52%, rgba(112,86,51,0.08), rgba(4,6,11,0.58) 72%),
+      linear-gradient(180deg, rgba(2,4,9,0.28), rgba(83,57,27,0.18));
+    animation: animFadeIn 0.12s ease-out both;
+  }
+  .night-wind-overlay.night-wind-exiting {
+    animation: animFadeOut 0.18s ease-in forwards;
+  }
+  .night-wind-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
   .volcano-overlay {
     position: fixed;
     inset: 0;

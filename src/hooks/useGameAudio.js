@@ -17,6 +17,14 @@ const GEOMAGNETIC_REVERSAL_FADE_MS = 260;
 const STARTLED_BATS_VOLUME = 0.52;
 const STARTLED_BATS_STOP_MS = 1050;
 const STARTLED_BATS_FADE_MS = 180;
+const IGNITE_TORCH_FIRE_VOLUME = 0.28;
+const IGNITE_TORCH_FIRE_STOP_MS = 760;
+const IGNITE_TORCH_FIRE_FADE_MS = 140;
+const IGNITE_TORCH_FIRE_PLAYBACK_RATE = 1.35;
+const IGNITE_TORCH_FIRE_VARIANTS = [
+  { start: 0.45 },
+  { start: 4.68 },
+];
 const ROPE_VOLUME = 0.48;
 const DROPLET_VOLUME = 0.38;
 const DROPLET_IMPACT_MS = 280;
@@ -50,7 +58,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
   const [audioReady, setAudioReady] = useState(false);
   const readyRef = useRef(false);
   const bgmRefs = useRef({ main: null, battleEarth: null, battleStars: null });
-  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, rope: null, droplet: null, volcano: null });
+  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, igniteTorchFire: null, rope: null, droplet: null, volcano: null });
   const sfxStopTimersRef = useRef({});
   const sfxFadeFramesRef = useRef({});
   const sfxSequenceCleanupsRef = useRef({});
@@ -71,6 +79,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     const earthquake = new Audio(buildPublicUrl('sounds/SE/earthquake.mp3'));
     const geomagneticReversal = new Audio(buildPublicUrl('sounds/SE/magnet.mp3'));
     const startledBats = new Audio(buildPublicUrl('sounds/SE/bat-colony.mp3'));
+    const igniteTorchFire = new Audio(buildPublicUrl('sounds/SE/fire.mp3'));
     const rope = new Audio(buildPublicUrl('sounds/SE/rope.mp3'));
     const droplet = new Audio(buildPublicUrl('sounds/SE/droplet.mp3'));
     const volcanoBg = new Audio(buildPublicUrl('sounds/SE/volcano/volcano_bg.mp3'));
@@ -121,6 +130,8 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     geomagneticReversal.volume = GEOMAGNETIC_REVERSAL_VOLUME;
     startledBats.preload = 'auto';
     startledBats.volume = STARTLED_BATS_VOLUME;
+    igniteTorchFire.preload = 'auto';
+    igniteTorchFire.volume = IGNITE_TORCH_FIRE_VOLUME;
     rope.preload = 'auto';
     rope.volume = ROPE_VOLUME;
     droplet.preload = 'auto';
@@ -165,6 +176,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       earthquake,
       geomagneticReversal,
       startledBats,
+      igniteTorchFire,
       rope,
       droplet,
       volcano: {
@@ -182,10 +194,11 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       sfxStopTimersRef.current = {};
       Object.values(sfxFadeFramesRef.current).forEach(frame => cancelAnimationFrame(frame));
       sfxFadeFramesRef.current = {};
-      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, rope, droplet, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
+      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, igniteTorchFire, rope, droplet, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
         try {
           audio.pause();
           audio.currentTime = 0;
+          audio.playbackRate = 1;
         } catch { /* ignore */ }
       });
     };
@@ -433,6 +446,41 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       } catch { /* ignore */ }
     };
   }, [fadeOutAudio, noteUserGesture]);
+  const playIgniteTorchFireSound = useCallback(({ durationMs = IGNITE_TORCH_FIRE_STOP_MS } = {}) => {
+    noteUserGesture();
+    const audio = sfxRefs.current.igniteTorchFire;
+    if (!audio) return undefined;
+    const variant = IGNITE_TORCH_FIRE_VARIANTS[Math.floor(Math.random() * IGNITE_TORCH_FIRE_VARIANTS.length)] || IGNITE_TORCH_FIRE_VARIANTS[0];
+    const fadeKey = 'igniteTorchFire';
+    clearTimeout(sfxStopTimersRef.current.igniteTorchFire);
+    if (sfxFadeFramesRef.current[fadeKey]) {
+      cancelAnimationFrame(sfxFadeFramesRef.current[fadeKey]);
+      sfxFadeFramesRef.current[fadeKey] = null;
+    }
+    try {
+      audio.pause();
+      audio.volume = IGNITE_TORCH_FIRE_VOLUME;
+      audio.playbackRate = IGNITE_TORCH_FIRE_PLAYBACK_RATE;
+      audio.currentTime = variant.start;
+      audio.play().catch(() => { });
+      sfxStopTimersRef.current.igniteTorchFire = setTimeout(() => {
+        fadeOutAudio(audio, fadeKey, IGNITE_TORCH_FIRE_FADE_MS, IGNITE_TORCH_FIRE_VOLUME);
+      }, Math.max(0, durationMs - IGNITE_TORCH_FIRE_FADE_MS));
+    } catch { /* ignore */ }
+    return () => {
+      clearTimeout(sfxStopTimersRef.current.igniteTorchFire);
+      if (sfxFadeFramesRef.current[fadeKey]) {
+        cancelAnimationFrame(sfxFadeFramesRef.current[fadeKey]);
+        sfxFadeFramesRef.current[fadeKey] = null;
+      }
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.playbackRate = 1;
+        audio.volume = IGNITE_TORCH_FIRE_VOLUME;
+      } catch { /* ignore */ }
+    };
+  }, [fadeOutAudio, noteUserGesture]);
   const playGeomagneticReversalSound = useCallback(() => {
     noteUserGesture();
     const audio = sfxRefs.current.geomagneticReversal;
@@ -670,6 +718,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     playEarthquakeSound,
     playGeomagneticReversalSound,
     playStartledBatsSound,
+    playIgniteTorchFireSound,
     playRopeSound,
     playUndergroundSpringDropletSound,
     playVolcanoSound,

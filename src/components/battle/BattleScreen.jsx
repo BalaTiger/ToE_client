@@ -230,6 +230,7 @@ export function BattleScreen(props) {
     huntConfirm,
     confirmDiscard,
     confirmBuryAliveSelection,
+    confirmIgniteTorchDiscard,
     handleZhuHideDrawnCard,
     handleZhuHideGodCard,
     handleZhuHideTopCardDuringSphinx,
@@ -628,6 +629,7 @@ export function BattleScreen(props) {
           huntConfirm={huntConfirm}
           confirmDiscard={confirmDiscard}
           confirmBuryAliveSelection={confirmBuryAliveSelection}
+          confirmIgniteTorchDiscard={confirmIgniteTorchDiscard}
           setGs={setGs}
           getButtonStyle={getButtonStyle}
           anim={anim}

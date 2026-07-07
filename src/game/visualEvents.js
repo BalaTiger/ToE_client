@@ -786,6 +786,44 @@ export function buildCardEffectAnimStep(event, state) {
       ],
     };
   }
+  if (event.effectKey === 'nightWind') {
+    const nightWindStatEvents = Array.isArray(event.statEvents) && event.statEvents.length
+      ? event.statEvents
+      : buildStatEventsFromPlayerSnapshots(
+        event.beforePlayers,
+        event.afterPlayers || state?.players || [],
+        event.msgs || [],
+        event.card?.name || '夜风呼啸'
+      );
+    const sync = buildSyncedCardEffectTimeline({
+      beforePlayers: event.beforePlayers,
+      beforeDiscard: event.beforeDiscard,
+      afterPlayers: event.afterPlayers || state?.players,
+      afterDiscard: event.afterDiscard || state?.discard,
+      state,
+      finalAtMs: 1250,
+    });
+    const statSteps = statEventsToAnimQueue(
+      nightWindStatEvents,
+      event.beforePlayers || state?.players || [],
+      event.msgs || []
+    );
+    return {
+      type: 'COMPOSITE',
+      steps: [
+        {
+          type: 'NIGHT_WIND',
+          card: event.card,
+          actorIdx: event.actorIdx,
+          beforePlayers: event.beforePlayers || [],
+          beforeDiscard: event.beforeDiscard || [],
+          msgs: Array.isArray(event.msgs) ? event.msgs : [],
+          ...sync,
+        },
+        ...statSteps,
+      ],
+    };
+  }
   if (event.effectKey === 'snakeTrap') {
     return buildSnakeTrapAnimStep(event, state);
   }

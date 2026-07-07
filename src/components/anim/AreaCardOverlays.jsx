@@ -602,38 +602,43 @@ function UndergroundSpringAnim({exiting}){
       animation:exiting?'springSceneFadeOut 0.18s ease-in forwards':'animFadeIn 0.12s ease-out both',
     }}>
       <style>{`
-        @keyframes springDropFall {
-          0% { transform: translate(-50%, -108px) scale(0.72, 1.42); opacity: 0; border-radius: 48% 48% 57% 57%; filter: blur(0.2px); }
-          10% { opacity: 1; }
-          38% { transform: translate(-50%, calc(18vh)) scale(1.02, 1.02); border-radius: 50%; filter: blur(0); }
-          76% { transform: translate(-50%, calc(50vh - 30px)) scale(1.14, 0.82); border-radius: 50%; opacity: 1; filter: blur(0.25px); }
-          92%, 100% { transform: translate(-50%, calc(50vh - 5px)) scale(1.72, 0.32); border-radius: 50%; opacity: 0; filter: blur(0.8px); }
+        @keyframes springDropTravel {
+          0% { transform: translate3d(-50%, -112px, 0); opacity: 0; filter: blur(0.2px); }
+          10% { opacity: 1; filter: blur(0); }
+          88% { opacity: 1; filter: blur(0); }
+          100% { transform: translate3d(-50%, calc(50vh - 5px), 0); opacity: 0; filter: blur(0.8px); }
+        }
+        @keyframes springDropShape {
+          0% { transform: scale(0.72, 1.42); border-radius: 48% 48% 57% 57%; }
+          70% { transform: scale(1.02, 1.02); border-radius: 50%; }
+          88% { transform: scale(1.14, 0.82); border-radius: 50%; }
+          100% { transform: scale(1.72, 0.32); border-radius: 50%; }
         }
         @keyframes springDropHighlight {
           0% { opacity: 0.76; transform: translate(-50%, -50%) scale(0.56, 0.78); }
-          42% { opacity: 0.62; transform: translate(-50%, -50%) scale(0.82); }
-          78% { opacity: 0.42; transform: translate(-50%, -50%) scale(1.05, 0.68); }
+          70% { opacity: 0.58; transform: translate(-50%, -50%) scale(0.9); }
+          88% { opacity: 0.42; transform: translate(-50%, -50%) scale(1.05, 0.68); }
           100% { opacity: 0; transform: translate(-50%, -50%) scale(1.16, 0.38); }
         }
         @keyframes springDropAfterimage {
-          0% { transform: translate(-50%, -122px) scale(0.72, 1.65); opacity: 0; }
+          0% { transform: translate3d(-50%, -126px, 0) scale(0.72, 1.65); opacity: 0; }
           12% { opacity: 0.24; }
-          72% { transform: translate(-50%, calc(50vh - 66px)) scale(0.96, 3.8); opacity: 0.18; }
-          100% { transform: translate(-50%, calc(50vh - 26px)) scale(1.05, 1.6); opacity: 0; }
+          88% { transform: translate3d(-50%, calc(50vh - 62px), 0) scale(0.96, 3.8); opacity: 0.16; }
+          100% { transform: translate3d(-50%, calc(50vh - 24px), 0) scale(1.05, 1.6); opacity: 0; }
         }
         @keyframes springSplash {
-          0%, 26% { opacity: 0; transform: translate(-50%, -50%) scale(0.16); }
-          34% { opacity: 1; }
+          0%, 42% { opacity: 0; transform: translate(-50%, -50%) scale(0.16); }
+          50% { opacity: 1; }
           100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
         }
         @keyframes springRipple {
-          0%, 24% { opacity: 0; transform: translate(-50%, -50%) scale(0.14); }
-          35% { opacity: 0.82; }
+          0%, 36% { opacity: 0; transform: translate(-50%, -50%) scale(0.14); }
+          44% { opacity: 0.82; }
           100% { opacity: 0; transform: translate(-50%, -50%) scale(var(--spring-ripple-scale, 1)); }
         }
         @keyframes springMist {
-          0%, 24% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
-          42% { opacity: 0.54; }
+          0%, 34% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+          44% { opacity: 0.54; }
           100% { opacity: 0; transform: translate(-50%, -58%) scale(1.4); }
         }
         @keyframes springSceneFadeOut {
@@ -649,20 +654,26 @@ function UndergroundSpringAnim({exiting}){
         position:'absolute',left:'50%',top:0,width:12,height:12,borderRadius:'50%',
         background:'linear-gradient(180deg, rgba(198,245,255,0), rgba(92,213,250,0.24) 32%, rgba(28,130,190,0))',
         filter:'blur(5px)',
-        animation:'springDropAfterimage 0.28s linear both',
+        animation:'springDropAfterimage 0.28s cubic-bezier(.28,0,.88,.34) both',
       }}/>
       <div style={{
-        position:'absolute',left:'50%',top:0,width:15,height:15,borderRadius:'48% 48% 57% 57%',
-        background:'radial-gradient(circle at 37% 30%, #f2fdff 0 11%, #91ecff 29%, #1b9bd1 73%, #0b4564 100%)',
-        boxShadow:'0 0 10px rgba(125,226,255,0.72), 0 0 28px rgba(45,170,220,0.32)',
-        animation:'springDropFall 0.28s cubic-bezier(.08,.74,.15,1) both',
+        position:'absolute',left:'50%',top:0,width:15,height:15,
+        animation:'springDropTravel 0.28s cubic-bezier(.28,0,.88,.34) both',
       }}>
         <div style={{
-          position:'absolute',left:'35%',top:'29%',width:4.5,height:3.5,borderRadius:'50%',
-          background:'rgba(246,253,255,0.88)',
-          filter:'blur(0.4px)',
-          animation:'springDropHighlight 0.28s linear both',
-        }}/>
+          position:'absolute',left:0,top:0,width:15,height:15,borderRadius:'48% 48% 57% 57%',
+          background:'radial-gradient(circle at 37% 30%, #f2fdff 0 11%, #91ecff 29%, #1b9bd1 73%, #0b4564 100%)',
+          boxShadow:'0 0 10px rgba(125,226,255,0.72), 0 0 28px rgba(45,170,220,0.32)',
+          transformOrigin:'50% 88%',
+          animation:'springDropShape 0.28s linear both',
+        }}>
+          <div style={{
+            position:'absolute',left:'35%',top:'29%',width:4.5,height:3.5,borderRadius:'50%',
+            background:'rgba(246,253,255,0.88)',
+            filter:'blur(0.4px)',
+            animation:'springDropHighlight 0.28s linear both',
+          }}/>
+        </div>
       </div>
       {[0,1,2].map(i=>(
         <div key={i} style={{

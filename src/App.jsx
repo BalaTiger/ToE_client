@@ -706,7 +706,7 @@ export default function Game(){
   const swapBlindDrawRef=useRef(null);
   useEffect(()=>{swapBlindDrawRef.current=swapBlindDraw;},[swapBlindDraw]);
   const isBattleScreen=!!gs;
-  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
+  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
   const persistSoftGuideDone=useCallback((nextDone)=>{
     setSoftGuideDone(nextDone);
     if(canPersistTutorial)safeLS.set(SOFT_GUIDE_STORAGE_KEY,serializeSoftGuideDone(nextDone));
@@ -1251,6 +1251,7 @@ export default function Game(){
   const [roleTextRect,setRoleTextRect]=useState(null);
   const handAreaRef=useRef(null);
   const mobileGodCardRefs=useRef(new Map());
+  const igniteTorchFlamingCardIdsRef=useRef(new Set());
   const [handAreaRect,setHandAreaRect]=useState(null);
   const [tutorialHandCardRect,setTutorialHandCardRect]=useState(null);
   const [handCardsRect,setHandCardsRect]=useState(null);
@@ -6359,6 +6360,69 @@ export default function Game(){
     return removed || null;
   }
 
+  function escapeDomSelectorValue(value){
+    const raw=String(value ?? '');
+    if(typeof CSS!=='undefined'&&CSS.escape)return CSS.escape(raw);
+    return raw.replace(/["\\]/g,'\\$&');
+  }
+
+  function playIgniteTorchCardFlameEffect(card){
+    if(!card?.id||typeof document==='undefined')return Promise.resolve(false);
+    const selector=`[data-self-hand-card-id="${escapeDomSelectorValue(card.id)}"]`;
+    const el=document.querySelector(selector);
+    if(!el)return Promise.resolve(false);
+    const durationMs=760;
+    const wrapperRect=el.getBoundingClientRect();
+    el.querySelectorAll('.ignite-torch-flame-layer,.ignite-torch-ember-layer').forEach(node=>node.remove());
+    const visualCardEl=Array.from(el.children).find(node=>
+      node instanceof HTMLElement &&
+      !node.classList.contains('ignite-torch-flame-layer') &&
+      !node.classList.contains('ignite-torch-ember-layer')
+    )||el;
+    const rect=visualCardEl.getBoundingClientRect();
+    const flameLayer=document.createElement('div');
+    flameLayer.className='ignite-torch-flame-layer';
+    flameLayer.setAttribute('aria-hidden','true');
+    const cardHeight=Math.max(1,rect.height);
+    const cardWidth=Math.max(1,rect.width);
+    const flameHeight=Math.round(cardWidth*0.6);
+    const emberRise=Math.max(1,Math.round(cardHeight*0.86));
+    const flameLeft=rect.left-wrapperRect.left;
+    const flameTop=rect.bottom-wrapperRect.top-flameHeight;
+    const emberPad=34;
+    const emberHeight=cardHeight+82;
+    flameLayer.style.setProperty('--ignite-card-h',`${cardHeight}px`);
+    flameLayer.style.setProperty('--ignite-flame-h',`${flameHeight}px`);
+    flameLayer.style.setProperty('--ignite-flame-left',`${flameLeft}px`);
+    flameLayer.style.setProperty('--ignite-flame-top',`${flameTop}px`);
+    flameLayer.style.setProperty('--ignite-flame-w',`${cardWidth}px`);
+    flameLayer.style.setProperty('--ignite-card-rise',`${cardHeight*-1}px`);
+    const emberLayer=document.createElement('div');
+    emberLayer.className='ignite-torch-ember-layer';
+    emberLayer.setAttribute('aria-hidden','true');
+    emberLayer.style.setProperty('--ignite-card-h',`${cardHeight}px`);
+    emberLayer.style.setProperty('--ignite-ember-left',`${flameLeft-emberPad}px`);
+    emberLayer.style.setProperty('--ignite-ember-top',`${rect.bottom-wrapperRect.top-emberHeight}px`);
+    emberLayer.style.setProperty('--ignite-ember-w',`${Math.max(1,cardWidth+emberPad*2)}px`);
+    emberLayer.style.setProperty('--ignite-ember-h',`${emberHeight}px`);
+    emberLayer.style.setProperty('--ignite-ember-mid-rise',`${Math.round(emberRise*-0.42)}px`);
+    emberLayer.style.setProperty('--ignite-ember-rise',`${emberRise*-1}px`);
+    el.appendChild(flameLayer);
+    el.appendChild(emberLayer);
+    el.setAttribute('data-ignite-torch-flame','true');
+    const stopFireSound=playIgniteTorchFireSound?.({durationMs});
+    return new Promise(resolve=>{
+      const cleanup=()=>{
+        stopFireSound?.();
+        flameLayer.remove();
+        emberLayer.remove();
+        el.removeAttribute('data-ignite-torch-flame');
+        resolve(true);
+      };
+      window.setTimeout(cleanup,durationMs);
+    });
+  }
+
   function resolveCaveDuelState(P, caveDuelSource, ti, sourceCardIndex, targetCardIndex, sourceCard, targetCard, gs){
     const duelCompare=compareCaveDuelCards(sourceCard,targetCard);
     let L;
@@ -6620,12 +6684,20 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     });
   }
 
-  function igniteTorchDiscardCard(cardIndex, allowAi=false){
+  async function igniteTorchDiscardCard(cardIndex, allowAi=false){
     const abilityData=gs.abilityData||{};
     const actorIdx=abilityData.playerIndex;
     if((!isLocalSeatIndex(actorIdx)&&!allowAi)||cardIndex<0)return;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
     if(!P[actorIdx]?.hand?.[cardIndex])return;
+    const cardToDiscard=P[actorIdx].hand[cardIndex];
+    if(cardToDiscard?.id&&igniteTorchFlamingCardIdsRef.current.has(cardToDiscard.id))return;
+    if(cardToDiscard?.id)igniteTorchFlamingCardIdsRef.current.add(cardToDiscard.id);
+    try{
+      if(isLocalSeatIndex(actorIdx))await playIgniteTorchCardFlameEffect(cardToDiscard);
+    }finally{
+      if(cardToDiscard?.id)igniteTorchFlamingCardIdsRef.current.delete(cardToDiscard.id);
+    }
     const [discardedCard]=P[actorIdx].hand.splice(cardIndex,1);
     let L=[...gs.log];
     if(isBlackGoatYoung(discardedCard)||isTsathogguaSlime(discardedCard)){
@@ -6653,6 +6725,26 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       nextGs,
       continueRest:!!(abilityData.fromRest&&isLocalSeatIndex(actorIdx)),
     });
+  }
+
+  function toggleIgniteTorchSelect(idx){
+    const abilityData=gs.abilityData||{};
+    const actorIdx=abilityData.playerIndex;
+    if(!isLocalSeatIndex(actorIdx)||idx<0)return;
+    const nextIdx=abilityData.igniteTorchSelectedIndex===idx?null:idx;
+    setGs({...gs,abilityData:{...abilityData,igniteTorchSelectedIndex:nextIdx}});
+  }
+
+  function confirmIgniteTorchDiscard(){
+    const latestGs=latestGsRef.current||gs;
+    const idx=latestGs.abilityData?.igniteTorchSelectedIndex;
+    if(idx==null||idx<0)return;
+    if(latestGs!==gs){
+      setGs(latestGs);
+      setTimeout(()=>igniteTorchDiscardCard(idx),0);
+      return;
+    }
+    igniteTorchDiscardCard(idx);
   }
 
   function buryAliveSelectCard(cardIndex, allowAi=false){
@@ -8993,7 +9085,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       toggleBuryAliveSelect(idx);
     }
     else if(phase==='IGNITE_TORCH_DISCARD'&&canPlayerRespondWithAnyHandCard()){
-      igniteTorchDiscardCard(idx);
+      toggleIgniteTorchSelect(idx);
     }
     else if(phase==='ALBINO_CREATURE_SELECT_CARD'&&canPlayerRespondWithFireHandCard()){
       albinoCreatureSelectCard(idx);
@@ -9108,7 +9200,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     // callbacks
     handleUiSfxCapture,returnToMainMenu,setExitMatchConfirm,leaveMultiplayerMatchToStart,
     handleAIClick,handleMyCardClick,useAbility,doRest,endTurn,cancelAction,huntConfirm,
-    confirmDiscard,confirmBuryAliveSelection,handleZhuHideDrawnCard,handleZhuHideGodCard,
+    confirmDiscard,confirmBuryAliveSelection,confirmIgniteTorchDiscard,handleZhuHideDrawnCard,handleZhuHideGodCard,
     handleZhuHideTopCardDuringSphinx,handleZhuHideAiDrawCard,handleDrawKeepFromModal,
     handleDrawDiscardFromModal,handleTreasureDodgeRoll,handleTreasureDodgeSkip,
     handleTreasureAOEDodgeRoll,handleTreasureAOEDodgeSkip,resolveTsathogguaSlimeBalance,
@@ -9386,6 +9478,68 @@ const GLOBAL_STYLES=`
     background:#9dffb2;
     box-shadow:-18px -2px 0 #4ade80,16px -7px 0 #b7ffbf,-8px 14px 0 #6ee78f,21px 11px 0 #4ade80,0 -20px 0 #d6ffd8;
     animation:blackGoatCardSparks .76s ease-out both;
+  }
+  [data-self-hand-card-id][data-ignite-torch-flame="true"]{
+    filter:drop-shadow(0 0 12px rgba(255,128,24,.82)) drop-shadow(0 0 24px rgba(255,70,12,.46));
+  }
+  .ignite-torch-flame-layer{
+    position:absolute;
+    left:var(--ignite-flame-left, 0px);
+    top:var(--ignite-flame-top, 0px);
+    width:var(--ignite-flame-w, 100%);
+    height:var(--ignite-flame-h, 74px);
+    border-radius:6px;
+    pointer-events:none;
+    z-index:22;
+    background-image:url('${buildPublicUrl('/img/effects/ignite_torch_flame_sweep_spritesheet.webp')}');
+    background-size:3200% 100%;
+    background-repeat:no-repeat;
+    background-position:0 0;
+    mix-blend-mode:screen;
+    transform-origin:50% 100%;
+    filter:saturate(1.08) contrast(1.08) drop-shadow(0 0 8px rgba(255,162,40,.7));
+    animation:
+      igniteTorchFlameFrames .76s steps(31,end) both,
+      igniteTorchFlameRise .76s linear both,
+      igniteTorchFlameVisibility .76s ease-out both;
+  }
+  .ignite-torch-ember-layer{
+    position:absolute;
+    left:var(--ignite-ember-left, -34px);
+    top:var(--ignite-ember-top, 0px);
+    width:var(--ignite-ember-w, calc(100% + 68px));
+    height:var(--ignite-ember-h, calc(var(--ignite-card-h, 160px) + 82px));
+    border-radius:6px;
+    pointer-events:none;
+    z-index:23;
+    background:
+      radial-gradient(circle at 18% 74%,rgba(255,238,136,.88) 0 1.5px,transparent 3.5px),
+      radial-gradient(circle at 34% 56%,rgba(255,172,54,.76) 0 2px,transparent 4.5px),
+      radial-gradient(circle at 55% 38%,rgba(255,226,118,.7) 0 1.5px,transparent 4px),
+      radial-gradient(circle at 77% 58%,rgba(255,86,20,.66) 0 2px,transparent 5px),
+      radial-gradient(circle at 88% 30%,rgba(255,202,80,.58) 0 1.5px,transparent 4px);
+    mix-blend-mode:screen;
+    animation:igniteTorchEmbers .76s ease-out both;
+  }
+  @keyframes igniteTorchFlameFrames {
+    0%{background-position:0% 0;}
+    100%{background-position:100% 0;}
+  }
+  @keyframes igniteTorchFlameRise {
+    0%,18%{transform:translate3d(0,0,0);}
+    100%{transform:translate3d(0,var(--ignite-card-rise, -160px),0);}
+  }
+  @keyframes igniteTorchFlameVisibility {
+    0%{opacity:0;}
+    8%,84%{opacity:.98;}
+    100%{opacity:0;}
+  }
+  @keyframes igniteTorchEmbers {
+    0%{opacity:0;transform:translate3d(-18%,24px,0) scale(.72);}
+    18%{opacity:0;transform:translate3d(-18%,24px,0) scale(.72);}
+    32%{opacity:.92;}
+    62%{opacity:.72;transform:translate3d(4%,var(--ignite-ember-mid-rise, -50px),0) scale(1.04);}
+    100%{opacity:0;transform:translate3d(18%,var(--ignite-ember-rise, -120px),0) scale(1.2);}
   }
   @keyframes surveyMascotEnter {
     0% { opacity:0; transform:translateX(135%) translateY(16px) rotate(-5deg); }

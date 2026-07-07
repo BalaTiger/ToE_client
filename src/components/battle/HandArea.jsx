@@ -58,6 +58,7 @@ export function HandArea({
   huntConfirm,
   confirmDiscard,
   confirmBuryAliveSelection,
+  confirmIgniteTorchDiscard,
   setGs,
   getButtonStyle,
   anim,
@@ -262,6 +263,15 @@ export function HandArea({
             确认活埋
           </button>
         )}
+        {phase === 'IGNITE_TORCH_DISCARD' && canPlayerRespondWithAnyHandCard() && (
+          <button
+            onClick={confirmIgniteTorchDiscard}
+            disabled={gs.abilityData?.igniteTorchSelectedIndex == null}
+            style={getButtonStyle({ enabled: gs.abilityData?.igniteTorchSelectedIndex != null, tone: 'danger', marginLeft: 'auto' })}
+          >
+            确认引燃
+          </button>
+        )}
       </div>
       <div data-self-hand-strip style={{ display: 'flex', gap: isMobile || isMobileLandscape ? mobileCssPx(7) : 7, flexWrap: 'wrap' }}>
         {visualMe.hand.map((c, i) => {
@@ -269,10 +279,13 @@ export function HandArea({
           const isMobileArmedGod = isMobile && mobileArmedGodCardIdx === i;
           const isBuryAliveSelected =
             phase === 'BURY_ALIVE_SELECT' && canPlayerRespondWithAnyHandCard() && gs.abilityData?.buryAliveSelectedIndex === i;
+          const isIgniteTorchSelected =
+            phase === 'IGNITE_TORCH_DISCARD' && canPlayerRespondWithAnyHandCard() && gs.abilityData?.igniteTorchSelectedIndex === i;
           const isSel =
             (phase === 'DISCARD_PHASE' && !isBlocked && isLocalCurrentTurn(gs) && (gs.abilityData.discardSelected || []).includes(i)) ||
             isMobileArmedGod ||
-            isBuryAliveSelected;
+            isBuryAliveSelected ||
+            isIgniteTorchSelected;
           const isMatch = phase === 'HUNT_CONFIRM' && gs.abilityData?.revCard && cardsHuntMatch(c, gs.abilityData.revCard);
           const isAlbinoFireCard =
             phase === 'ALBINO_CREATURE_SELECT_CARD' &&

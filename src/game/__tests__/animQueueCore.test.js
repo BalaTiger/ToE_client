@@ -789,6 +789,55 @@ describe('buildAnimQueue stat animations', () => {
     expect(hpDamageIdx).toBeGreaterThan(batsIdx);
   });
 
+  it('夜风呼啸 visualEvent 会先播放沙尘动画再扣 HP/SAN', () => {
+    const beforePlayers = [
+      makePlayer({ name: '你', hp: 10, san: 10 }),
+      makePlayer({ name: '艾伦', hp: 9, san: 8 }),
+    ];
+    const afterPlayers = [
+      makePlayer({ name: '你', hp: 9, san: 9 }),
+      makePlayer({ name: '艾伦', hp: 8, san: 7 }),
+    ];
+    const oldGs = makeGs({
+      players: beforePlayers,
+      discard: [],
+      log: ['旧日志'],
+    });
+    const event = createCardEffectEvent({
+      effectKey: 'nightWind',
+      card: { id: 'night-wind', name: '夜风呼啸', key: 'C4', type: 'allDamageBoth' },
+      actorIdx: 0,
+      beforePlayers,
+      beforeDiscard: [],
+      afterPlayers,
+      afterDiscard: [],
+      msgs: ['全体存活角色失去 1 HP 和 SAN'],
+    });
+    const newGs = makeGs({
+      players: afterPlayers,
+      discard: [],
+      log: ['旧日志', '全体存活角色失去 1 HP 和 SAN'],
+      _visualEvents: [event],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    const windIdx = queue.findIndex(item => item.type === 'NIGHT_WIND');
+    const hpDamageIdx = queue.findIndex(item => item.type === 'HP_DAMAGE');
+    const sanDamageIdx = queue.findIndex(item => item.type === 'SAN_DAMAGE');
+    const step = queue[windIdx];
+
+    expect(step).toMatchObject({
+      type: 'NIGHT_WIND',
+      actorIdx: 0,
+      beforePlayers,
+      visualSetupTiming: 'queueStart',
+      visualSetupPatch: { players: beforePlayers, discard: [] },
+    });
+    expect(step.visualTimeline[1]).toEqual({ atMs: 1250, patch: { players: afterPlayers, discard: [] } });
+    expect(hpDamageIdx).toBeGreaterThan(windIdx);
+    expect(sanDamageIdx).toBeGreaterThan(windIdx);
+  });
+
   it('开局遮蔽态已带最新日志时仍能从地震 visualEvent 产生动画', () => {
     const drawLog = '你 摸到 [B2] 地动山摇（强制触发）';
     const beforePlayers = [makePlayer({ hand: [{ id: 'before' }] })];
