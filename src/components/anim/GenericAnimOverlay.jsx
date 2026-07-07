@@ -1,7 +1,7 @@
 import React from 'react';
 import { ANIM_CFG, DICE_FACES } from './data';
 import { EarthquakeOverlay } from './EarthquakeOverlay';
-import { DDCard } from '../cards';
+import { CardFaceImage } from '../cards';
 
 export function TorchWardOverlay({ anim, exiting }) {
   const targetPid = anim?.targetPid ?? 0;
@@ -176,7 +176,14 @@ export function VritraImmortalRevealOverlay({ anim, exiting }) {
               animation: `animPop 0.34s ease-out ${idx * 0.07}s both`,
               filter: card?.isGod ? 'drop-shadow(0 0 12px rgba(192,64,32,0.65))' : 'drop-shadow(0 0 8px rgba(200,169,110,0.24))',
             }}>
-              <DDCard card={card} compact holderId={anim?.targetPid ?? 0} frameStyle={{ pointerEvents: 'none' }} />
+              <CardFaceImage
+                card={card}
+                width={92}
+                style={{
+                  pointerEvents: 'none',
+                  boxShadow: '0 10px 24px rgba(0,0,0,0.62), 0 0 18px rgba(200,169,110,0.16)',
+                }}
+              />
             </div>
           )) : (
             <div style={{ color: '#8a6040', fontFamily: "'Cinzel',serif", fontSize: 13, alignSelf: 'center' }}>牌堆没有可翻开的牌</div>

@@ -6,6 +6,7 @@ import {
   createEffectNoiseSampler,
   loadEffectNoiseTexture,
 } from './effectNoise';
+import { VOLCANO_METEOR_DELAYS, getVolcanoMeteorFall } from './volcanoTiming';
 
 function getVolcanoSceneScale(){
   const baselineArea=1366*768;
@@ -137,13 +138,13 @@ function VolcanoAnim({anim,exiting}){
       const center={x:window.innerWidth*0.50,y:window.innerHeight*0.45};
       const source={x:window.innerWidth*0.62,y:window.innerHeight*0.5};
       const raw=[
-        {x:deck.x-38*sceneScale,y:deck.y+54*sceneScale,delay:0.10,scale:0.92,rot:-28},
-        {x:center.x-165*sceneScale,y:center.y-48*sceneScale,delay:0.22,scale:0.74,rot:-22},
-        {x:discard.x+30*sceneScale,y:discard.y+18*sceneScale,delay:0.34,scale:0.84,rot:30},
-        {x:center.x+145*sceneScale,y:center.y-88*sceneScale,delay:0.46,scale:0.68,rot:24},
-        {x:hand.x-132*sceneScale,y:Math.min(window.innerHeight-112*sceneScale,hand.y-42*sceneScale),delay:0.58,scale:0.78,rot:-18},
-        {x:center.x+15*sceneScale,y:center.y+78*sceneScale,delay:0.70,scale:0.64,rot:8},
-        {x:hand.x+112*sceneScale,y:Math.min(window.innerHeight-96*sceneScale,hand.y-26*sceneScale),delay:0.82,scale:0.82,rot:34},
+        {x:deck.x-38*sceneScale,y:deck.y+54*sceneScale,delay:VOLCANO_METEOR_DELAYS[0],scale:0.92,rot:-28},
+        {x:center.x-165*sceneScale,y:center.y-48*sceneScale,delay:VOLCANO_METEOR_DELAYS[1],scale:0.74,rot:-22},
+        {x:discard.x+30*sceneScale,y:discard.y+18*sceneScale,delay:VOLCANO_METEOR_DELAYS[2],scale:0.84,rot:30},
+        {x:center.x+145*sceneScale,y:center.y-88*sceneScale,delay:VOLCANO_METEOR_DELAYS[3],scale:0.68,rot:24},
+        {x:hand.x-132*sceneScale,y:Math.min(window.innerHeight-112*sceneScale,hand.y-42*sceneScale),delay:VOLCANO_METEOR_DELAYS[4],scale:0.78,rot:-18},
+        {x:center.x+15*sceneScale,y:center.y+78*sceneScale,delay:VOLCANO_METEOR_DELAYS[5],scale:0.64,rot:8},
+        {x:hand.x+112*sceneScale,y:Math.min(window.innerHeight-96*sceneScale,hand.y-26*sceneScale),delay:VOLCANO_METEOR_DELAYS[6],scale:0.82,rot:34},
       ];
       setImpacts(raw.map((p,idx)=>({
         ...p,
@@ -198,7 +199,7 @@ function VolcanoAnim({anim,exiting}){
       const sourceY=typeof impact.sourceY==='number'?impact.sourceY:-window.innerHeight*0.34;
       const seed=impact.seed??idx;
       const scale=impact.scale||1;
-      const fall=0.68+rand(seed+4)*0.16;
+      const fall=getVolcanoMeteorFall(seed);
       const delay=impact.delay||0;
       const baseR=(54+seed*4+18*rand(seed+20))*scale;
       const debris=Array.from({length:Math.max(9,Math.round(18*quality))},(_,i)=>{

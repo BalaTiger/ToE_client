@@ -1,6 +1,6 @@
 {
-  "version": "14910860374d71da",
-  "generatedAt": "2026-07-03T11:09:03.032Z",
+  "version": "ebb3f7e3413c42a2",
+  "generatedAt": "2026-07-07T05:46:16.385Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1257,6 +1257,12 @@
       "revision": "571487c33b626132"
     },
     {
+      "path": "/sounds/SE/earthquake.mp3",
+      "type": "audio",
+      "size": 153600,
+      "revision": "ffa7010526bbf938"
+    },
+    {
       "path": "/sounds/SE/hpDamageVariants/hpDamage1.mp3",
       "type": "audio",
       "size": 4428,
@@ -1335,6 +1341,12 @@
       "revision": "de66f2ebcb18ee0a"
     },
     {
+      "path": "/sounds/SE/rope.mp3",
+      "type": "audio",
+      "size": 35328,
+      "revision": "6b09e2db897cb5f4"
+    },
+    {
       "path": "/sounds/SE/sanDamageVariants/sanDamage1.mp3",
       "type": "audio",
       "size": 104685,
@@ -1387,6 +1399,30 @@
       "type": "audio",
       "size": 217338,
       "revision": "6322c033b3081405"
+    },
+    {
+      "path": "/sounds/SE/volcano/volcano_bg.mp3",
+      "type": "audio",
+      "size": 482324,
+      "revision": "aa47f28e158a1a47"
+    },
+    {
+      "path": "/sounds/SE/volcano/volcano_cooldown.mp3",
+      "type": "audio",
+      "size": 225698,
+      "revision": "507fa5f363e44b3e"
+    },
+    {
+      "path": "/sounds/SE/volcano/volcano_meteor1.mp3",
+      "type": "audio",
+      "size": 324096,
+      "revision": "094433e3faf12981"
+    },
+    {
+      "path": "/sounds/SE/volcano/volcano_meteor2.mp3",
+      "type": "audio",
+      "size": 322664,
+      "revision": "434b8ad238ce8600"
     },
     {
       "path": "/videos/ancient_god_tentacles.mp4",

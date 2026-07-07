@@ -706,7 +706,7 @@ export default function Game(){
   const swapBlindDrawRef=useRef(null);
   useEffect(()=>{swapBlindDrawRef.current=swapBlindDraw;},[swapBlindDraw]);
   const isBattleScreen=!!gs;
-  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
+  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playRopeSound,playVolcanoSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
   const persistSoftGuideDone=useCallback((nextDone)=>{
     setSoftGuideDone(nextDone);
     if(canPersistTutorial)safeLS.set(SOFT_GUIDE_STORAGE_KEY,serializeSoftGuideDone(nextDone));
@@ -1532,7 +1532,7 @@ export default function Game(){
   },[gs?._inspectionEvents]);
   const houndsTimerVisible=!!gs?.houndsOfTindalosActive&&(!latestHoundsInspectionSeq||houndsRevealedSeq>=latestHoundsInspectionSeq);
 
-  useAnimationAudioEffects({ anim, playApophisEclipseSound, playThrowStoneThrowSound, playThrowStoneRollingSound });
+  useAnimationAudioEffects({ anim, playApophisEclipseSound, playThrowStoneThrowSound, playThrowStoneRollingSound, playEarthquakeSound, playRopeSound, playVolcanoSound });
 
   useEffect(()=>{
     if(!gs?.houndsOfTindalosActive){
@@ -6137,6 +6137,8 @@ export default function Game(){
         const total=clamp((abilityData.afterHp??target.hp)+(abilityData.afterSan??target.san),0,20);
         target.hp=clamp(Math.ceil(total/2));
         target.san=clamp(Math.floor(total/2));
+        // ponytail: 黏液平分直接刷新 displayStats，否则进入 AI 回合后兜底 effect 会跳过 AI_TURN 导致血条延迟到下次受击才更新
+        setDisplayStats(P.map(p=>({hp:p.hp,san:p.san})));
         L.push(`【撒托古亚的赐福黏液】${localDisplayName(targetIdx,target.name)} 牺牲黏液，将HP/SAN平分为 ${target.hp}/${target.san}`);
       }else{
         L.push(`【撒托古亚的赐福黏液】${localDisplayName(targetIdx,target.name)} 已没有可牺牲的黏液`);
@@ -7250,6 +7252,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           huntAbandoned:gs.huntAbandoned||[],
           skillUsed:true,
         };
+        syncVisibleLog(L,newGs);
         const queue=buildAnimQueue(gs,newGs);
         if(queue.length)triggerAnimQueue(queue,newGs);else setGs(newGs);
         return;
@@ -7316,6 +7319,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }
     if(hadHuntDamage)newGs=withTsathogguaSlimeBalanceDecision(newGs,beforeLossPlayers,{_turnOwner:newGs.currentTurn});
 
+    syncVisibleLog(L,newGs);
     const queue=[];
     if(discardedCard){
       queue.push({type:'DISCARD',card:discardedCard,triggerName:aiHunterName||'???',targetPid:huntingAI});

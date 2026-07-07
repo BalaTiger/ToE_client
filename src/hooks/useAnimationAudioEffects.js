@@ -1,15 +1,21 @@
 import { useEffect } from 'react';
+import { getVolcanoImpactTimes } from '../components/anim/volcanoTiming';
 
 const ANIMATION_AUDIO_DELAY = {
   APOPHIS_ECLIPSE: 180,
   THROW_STONE_ROLLING: 1040,
 };
+const EARTHQUAKE_SHAKE_DURATION_MS = 2500;
+const VOLCANO_ANIMATION_DURATION_MS = 2500;
 
 export function useAnimationAudioEffects({
   anim,
   playApophisEclipseSound,
   playThrowStoneThrowSound,
   playThrowStoneRollingSound,
+  playEarthquakeSound,
+  playRopeSound,
+  playVolcanoSound,
 }) {
   useEffect(() => {
     if (anim?.type !== 'APOPHIS_ECLIPSE') return undefined;
@@ -25,6 +31,25 @@ export function useAnimationAudioEffects({
     }, ANIMATION_AUDIO_DELAY.THROW_STONE_ROLLING);
     return () => clearTimeout(timer);
   }, [anim, playThrowStoneThrowSound, playThrowStoneRollingSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'EARTHQUAKE') return undefined;
+    return playEarthquakeSound?.({ durationMs: EARTHQUAKE_SHAKE_DURATION_MS });
+  }, [anim, playEarthquakeSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'CARD_TRANSFER' || anim?.effect !== 'damageLink') return undefined;
+    playRopeSound?.();
+    return undefined;
+  }, [anim, playRopeSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'VOLCANO') return undefined;
+    return playVolcanoSound?.({
+      durationMs: VOLCANO_ANIMATION_DURATION_MS,
+      impactTimes: getVolcanoImpactTimes(),
+    });
+  }, [anim, playVolcanoSound]);
 
   useEffect(() => {
     // ENDLESS_CORRIDOR_TUNNEL sound is triggered by the tunnel overlay mount,

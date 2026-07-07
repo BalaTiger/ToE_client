@@ -225,6 +225,17 @@ function getInspectionStatSeqs(inspectionEvents = []) {
   );
 }
 
+function getFirstInspectionStatSeq(inspectionEvents = []) {
+  const firstEvent = (inspectionEvents || []).find(Boolean);
+  if (!firstEvent) return null;
+  const seqs = [
+    firstEvent?.statEventSeq,
+    ...(Array.isArray(firstEvent?.statEvents) ? firstEvent.statEvents.map(statEvent => statEvent?.seq) : []),
+  ].filter(seq => seq != null);
+  if (!seqs.length) return null;
+  return Math.min(...seqs);
+}
+
 function getInspectionLogLines(inspectionEvents = []) {
   const lines = [];
   inspectionEvents.forEach(ev => {
@@ -537,8 +548,12 @@ export function buildTurnStartDrawReplayQueue({
   const drawStatSeqs = (Array.isArray(newGs?._statEvents) ? newGs._statEvents : [])
     .filter(event => event?.seq != null && event?.logHint && drawStatLogSet.has(event.logHint))
     .map(event => event.seq);
-  const drawOldStatSeq = drawStatSeqs.length
-    ? Math.max(0, Math.min(...drawStatSeqs) - 1)
+  const visualDrawStatSeqs = getFreshStatEventsFromState(oldGs, newGs)
+    .filter(event => event?.seq != null && !isPreDrawTurnStartStatEvent(event))
+    .map(event => event.seq);
+  const effectiveDrawStatSeqs = drawStatSeqs.length ? drawStatSeqs : visualDrawStatSeqs;
+  const drawOldStatSeq = effectiveDrawStatSeqs.length
+    ? Math.max(0, Math.min(...effectiveDrawStatSeqs) - 1)
     : null;
   const drawRandomTargetSeqs = (Array.isArray(newGs?._randomTargetEvents) ? newGs._randomTargetEvents : [])
     .map(event => event?.seq)
@@ -564,6 +579,7 @@ export function buildTurnStartDrawReplayQueue({
   const drawInspectionEvents = inspectionEvents.filter(ev => !turnStartInspectionSeqs.has(ev?.seq));
   const inspectionStatSeqs = getInspectionStatSeqs(inspectionEvents);
   const inspectionLogLines = getInspectionLogLines(inspectionEvents);
+  const firstDrawInspectionStatSeq = getFirstInspectionStatSeq(drawInspectionEvents);
   const drawEffectQBase = filterConsumedTurnStartSteps(bindAnimLogChunks(
     buildQueue(fallbackOldGs, newGs),
     { statLogs: withoutLogLines(newGs?._statLogs, inspectionLogLines) },
@@ -574,12 +590,13 @@ export function buildTurnStartDrawReplayQueue({
     statEvent => (
       (statEvent?.seq == null || statEvent.seq > (fallbackOldGs?._statEventSeq || 0)) &&
       !inspectionStatSeqs.has(statEvent?.seq) &&
+      (firstDrawInspectionStatSeq == null || statEvent?.seq == null || statEvent.seq < firstDrawInspectionStatSeq) &&
       !isPreDrawTurnStartStatEvent(statEvent)
     ),
     inspectionLogLines
   );
   const filteredDrawEffectQBase = filterFallbackDrawEffects(drawEffectQBase, newGs, visualStatQ);
-  const drawEffectQWithVisualStats = visualStatQ.length
+  const drawEffectQWithVisualStats = visualStatQ.length || drawInspectionEvents.length
     ? [...visualStatQ, ...filteredDrawEffectQBase.filter(step => !isStatAnimationStep(step))]
     : filteredDrawEffectQBase;
   const inspectionQ = [];
@@ -641,18 +658,6 @@ export function buildTurnStartDrawReplayQueue({
     ...(drawKeepTransferStep ? [drawKeepTransferStep] : []),
     ...(drawEffectStatePatch ? [drawEffectStatePatch] : []),
   ];
-  if (newGs?.phase === 'GOD_CHOICE') {
-    try {
-      console.log('[BUG2-DIAG] turnStart god-draw queue', {
-        drawnCard: drawnCard?.name,
-        queueTypes: queue.map(s => s?.type),
-        drawEffectTypes: drawEffectQ.map(s => s?.type),
-        statEvents: (Array.isArray(newGs?._statEvents) ? newGs._statEvents : []).map(e => ({ type: e?.type, target: e?.target, seq: e?.seq })),
-        statLogs: newGs?._statLogs,
-        drawLogs: newGs?._drawLogs,
-      });
-    } catch { /* noop */ }
-  }
   return {
     drawnCard,
     drawerPid,

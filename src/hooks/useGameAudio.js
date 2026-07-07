@@ -8,13 +8,35 @@ import { buildPublicUrl } from '../utils/url';
 
 const ENDLESS_CORRIDOR_TUNNEL_VOLUME = 0.58;
 const ENDLESS_CORRIDOR_TUNNEL_STOP_MS = 2900;
+const EARTHQUAKE_VOLUME = 0.66;
+const EARTHQUAKE_STOP_MS = 2500;
+const EARTHQUAKE_FADE_MS = 220;
+const ROPE_VOLUME = 0.48;
+const VOLCANO_BG_VOLUME = 0.22;
+const VOLCANO_BG_FADE_MS = 320;
+const VOLCANO_METEOR_VOLUME = 0.34;
+const VOLCANO_METEOR_LEAD_MS = 520;
+const VOLCANO_METEOR_TAIL_MS = 760;
+const VOLCANO_METEOR_FADE_MS = 260;
+const VOLCANO_METEOR_IMPACT_OFFSET_MS = {
+  meteor1: 7200,
+  meteor2: 6680,
+};
+const VOLCANO_COOLDOWN_VOLUME = 0.16;
+const VOLCANO_COOLDOWN_DELAY_MS = 90;
+const VOLCANO_COOLDOWN_START_AT = 0.18;
+const VOLCANO_COOLDOWN_FADE_DELAY_MS = 180;
+const VOLCANO_COOLDOWN_FADE_MS = 780;
+const VOLCANO_AUDIO_POOL_SIZE = 7;
 
 export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
   const [audioReady, setAudioReady] = useState(false);
   const readyRef = useRef(false);
   const bgmRefs = useRef({ main: null, battleEarth: null, battleStars: null });
-  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null });
+  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, rope: null, volcano: null });
   const sfxStopTimersRef = useRef({});
+  const sfxFadeFramesRef = useRef({});
+  const sfxSequenceCleanupsRef = useRef({});
   const currentTrackRef = useRef(null);
   const fadeTokenRef = useRef(0);
   const targetVolumesRef = useRef(Object.fromEntries(Object.entries(BGM_AUDIO_BY_KEY).map(([key, config]) => [key, config.volume])));
@@ -29,6 +51,16 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     const throwStoneThrow = new Audio(buildPublicUrl('sounds/SE/throw.mp3'));
     const throwStoneRolling = new Audio(buildPublicUrl('sounds/SE/rolling-down.mp3'));
     const endlessCorridorTunnel = new Audio(buildPublicUrl('sounds/SE/tunnel-wind.mp3'));
+    const earthquake = new Audio(buildPublicUrl('sounds/SE/earthquake.mp3'));
+    const rope = new Audio(buildPublicUrl('sounds/SE/rope.mp3'));
+    const volcanoBg = new Audio(buildPublicUrl('sounds/SE/volcano/volcano_bg.mp3'));
+    const volcanoMeteorPlayers = Array.from({ length: VOLCANO_AUDIO_POOL_SIZE }, () => ({
+      meteor1: new Audio(buildPublicUrl('sounds/SE/volcano/volcano_meteor1.mp3')),
+      meteor2: new Audio(buildPublicUrl('sounds/SE/volcano/volcano_meteor2.mp3')),
+    }));
+    const volcanoCooldownPlayers = Array.from({ length: VOLCANO_AUDIO_POOL_SIZE }, () =>
+      new Audio(buildPublicUrl('sounds/SE/volcano/volcano_cooldown.mp3'))
+    );
     const hpDamageVariants = Array.from({ length: 6 }, (_, i) =>
       new Audio(buildPublicUrl(`sounds/SE/hpDamageVariants/hpDamage${i + 1}.mp3`))
     );
@@ -63,6 +95,19 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     throwStoneRolling.volume = 0.22;
     endlessCorridorTunnel.preload = 'auto';
     endlessCorridorTunnel.volume = ENDLESS_CORRIDOR_TUNNEL_VOLUME;
+    earthquake.preload = 'auto';
+    earthquake.volume = EARTHQUAKE_VOLUME;
+    rope.preload = 'auto';
+    rope.volume = ROPE_VOLUME;
+    const volcanoAudios = [
+      volcanoBg,
+      ...volcanoMeteorPlayers.flatMap(player => [player.meteor1, player.meteor2]),
+      ...volcanoCooldownPlayers,
+    ];
+    volcanoAudios.forEach(audio => {
+      audio.preload = 'auto';
+      audio.volume = 0;
+    });
     hpDamageVariants.forEach(audio => {
       audio.preload = 'auto';
       audio.volume = 0.7;
@@ -80,11 +125,35 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       audio.volume = 0.52;
     });
     bgmRefs.current = { main, battleEarth, battleStars };
-    sfxRefs.current = { open, close, hpDamage: hpDamageVariants, sanDamage: sanDamageVariants, hpRecover: hpRecoverVariants, sanRecover: sanRecoverVariants, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel };
+    sfxRefs.current = {
+      open,
+      close,
+      hpDamage: hpDamageVariants,
+      sanDamage: sanDamageVariants,
+      hpRecover: hpRecoverVariants,
+      sanRecover: sanRecoverVariants,
+      apophisEclipse,
+      throwStoneThrow,
+      throwStoneRolling,
+      endlessCorridorTunnel,
+      earthquake,
+      rope,
+      volcano: {
+        bg: volcanoBg,
+        meteorPlayers: volcanoMeteorPlayers,
+        cooldownPlayers: volcanoCooldownPlayers,
+      },
+    };
     return () => {
+      Object.values(sfxSequenceCleanupsRef.current).forEach(cleanup => {
+        try { cleanup?.(); } catch { /* ignore */ }
+      });
+      sfxSequenceCleanupsRef.current = {};
       Object.values(sfxStopTimersRef.current).forEach(timer => clearTimeout(timer));
       sfxStopTimersRef.current = {};
-      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
+      Object.values(sfxFadeFramesRef.current).forEach(frame => cancelAnimationFrame(frame));
+      sfxFadeFramesRef.current = {};
+      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, rope, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
         try {
           audio.pause();
           audio.currentTime = 0;
@@ -279,6 +348,180 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       }, ENDLESS_CORRIDOR_TUNNEL_STOP_MS);
     } catch { /* ignore */ }
   }, [noteUserGesture]);
+  const fadeOutAudio = useCallback((audio, key, fadeMs, resetVolume = 0) => {
+    if (!audio) return;
+    if (sfxFadeFramesRef.current[key]) {
+      cancelAnimationFrame(sfxFadeFramesRef.current[key]);
+      sfxFadeFramesRef.current[key] = null;
+    }
+    const startVolume = audio.volume || resetVolume;
+    const start = performance.now();
+    const step = now => {
+      const progress = Math.min((now - start) / Math.max(1, fadeMs), 1);
+      try { audio.volume = startVolume * (1 - progress); } catch { /* ignore */ }
+      if (progress < 1) {
+        sfxFadeFramesRef.current[key] = requestAnimationFrame(step);
+        return;
+      }
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = resetVolume;
+      } catch { /* ignore */ }
+      sfxFadeFramesRef.current[key] = null;
+    };
+    sfxFadeFramesRef.current[key] = requestAnimationFrame(step);
+  }, []);
+  const stopEarthquakeSound = useCallback(({ fade = true } = {}) => {
+    const audio = sfxRefs.current.earthquake;
+    if (!audio) return;
+    clearTimeout(sfxStopTimersRef.current.earthquake);
+    if (sfxFadeFramesRef.current.earthquake) {
+      cancelAnimationFrame(sfxFadeFramesRef.current.earthquake);
+      sfxFadeFramesRef.current.earthquake = null;
+    }
+    if (!fade) {
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = EARTHQUAKE_VOLUME;
+      } catch { /* ignore */ }
+      return;
+    }
+    const startVolume = audio.volume || EARTHQUAKE_VOLUME;
+    const start = performance.now();
+    const step = now => {
+      const progress = Math.min((now - start) / EARTHQUAKE_FADE_MS, 1);
+      try { audio.volume = startVolume * (1 - progress); } catch { /* ignore */ }
+      if (progress < 1) {
+        sfxFadeFramesRef.current.earthquake = requestAnimationFrame(step);
+        return;
+      }
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = EARTHQUAKE_VOLUME;
+      } catch { /* ignore */ }
+      sfxFadeFramesRef.current.earthquake = null;
+    };
+    sfxFadeFramesRef.current.earthquake = requestAnimationFrame(step);
+  }, []);
+  const playEarthquakeSound = useCallback(({ durationMs = EARTHQUAKE_STOP_MS } = {}) => {
+    noteUserGesture();
+    const audio = sfxRefs.current.earthquake;
+    if (!audio) return undefined;
+    clearTimeout(sfxStopTimersRef.current.earthquake);
+    if (sfxFadeFramesRef.current.earthquake) {
+      cancelAnimationFrame(sfxFadeFramesRef.current.earthquake);
+      sfxFadeFramesRef.current.earthquake = null;
+    }
+    try {
+      audio.pause();
+      audio.volume = EARTHQUAKE_VOLUME;
+      audio.currentTime = 0;
+      audio.play().catch(() => { });
+      sfxStopTimersRef.current.earthquake = setTimeout(() => {
+        stopEarthquakeSound({ fade: true });
+      }, Math.max(0, durationMs - EARTHQUAKE_FADE_MS));
+    } catch { /* ignore */ }
+    return () => stopEarthquakeSound({ fade: false });
+  }, [noteUserGesture, stopEarthquakeSound]);
+  const playRopeSound = useCallback(() => {
+    noteUserGesture();
+    const audio = sfxRefs.current.rope;
+    if (!audio) return;
+    try {
+      audio.pause();
+      audio.volume = ROPE_VOLUME;
+      audio.currentTime = 0;
+      audio.play().catch(() => { });
+    } catch { /* ignore */ }
+  }, [noteUserGesture]);
+  const playVolcanoSound = useCallback(({ impactTimes = [], durationMs = 2500 } = {}) => {
+    noteUserGesture();
+    const volcano = sfxRefs.current.volcano;
+    if (!volcano) return undefined;
+    sfxSequenceCleanupsRef.current.volcano?.();
+    const timers = [];
+    const fadeKeys = new Set();
+    const sequenceKey = Date.now();
+    const addTimer = (timer) => timers.push(timer);
+    const addFadeKey = (key) => fadeKeys.add(key);
+    const stopAudio = (audio, resetVolume = 0) => {
+      if (!audio) return;
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = resetVolume;
+      } catch { /* ignore */ }
+    };
+    const stopAll = () => {
+      timers.forEach(timer => clearTimeout(timer));
+      fadeKeys.forEach(key => {
+        if (sfxFadeFramesRef.current[key]) {
+          cancelAnimationFrame(sfxFadeFramesRef.current[key]);
+          sfxFadeFramesRef.current[key] = null;
+        }
+      });
+      stopAudio(volcano.bg, VOLCANO_BG_VOLUME);
+      (volcano.meteorPlayers || []).forEach(player => {
+        stopAudio(player.meteor1, VOLCANO_METEOR_VOLUME);
+        stopAudio(player.meteor2, VOLCANO_METEOR_VOLUME);
+      });
+      (volcano.cooldownPlayers || []).forEach(audio => stopAudio(audio, VOLCANO_COOLDOWN_VOLUME));
+      if (sfxSequenceCleanupsRef.current.volcano === stopAll) delete sfxSequenceCleanupsRef.current.volcano;
+    };
+    sfxSequenceCleanupsRef.current.volcano = stopAll;
+    try {
+      volcano.bg.pause();
+      volcano.bg.currentTime = 0;
+      volcano.bg.volume = VOLCANO_BG_VOLUME;
+      volcano.bg.play().catch(() => { });
+      const bgFadeKey = `volcano-bg-${sequenceKey}`;
+      addFadeKey(bgFadeKey);
+      addTimer(setTimeout(() => {
+        fadeOutAudio(volcano.bg, bgFadeKey, VOLCANO_BG_FADE_MS, VOLCANO_BG_VOLUME);
+      }, Math.max(0, durationMs - VOLCANO_BG_FADE_MS)));
+    } catch { /* ignore */ }
+    const impacts = impactTimes.length ? impactTimes : [];
+    impacts.forEach((impact, idx) => {
+      const impactMs = Math.max(0, (impact?.impactAt || 0) * 1000);
+      const meteorPlayer = volcano.meteorPlayers?.[idx % (volcano.meteorPlayers?.length || 1)];
+      const cooldownAudio = volcano.cooldownPlayers?.[idx % (volcano.cooldownPlayers?.length || 1)];
+      addTimer(setTimeout(() => {
+        const variant = Math.random() < 0.5 ? 'meteor1' : 'meteor2';
+        const audio = meteorPlayer?.[variant];
+        if (!audio) return;
+        const fadeKey = `volcano-meteor-${sequenceKey}-${idx}`;
+        addFadeKey(fadeKey);
+        try {
+          audio.pause();
+          audio.volume = VOLCANO_METEOR_VOLUME;
+          audio.currentTime = Math.max(0, (VOLCANO_METEOR_IMPACT_OFFSET_MS[variant] - VOLCANO_METEOR_LEAD_MS) / 1000);
+          audio.play().catch(() => { });
+          addTimer(setTimeout(() => {
+            fadeOutAudio(audio, fadeKey, VOLCANO_METEOR_FADE_MS, VOLCANO_METEOR_VOLUME);
+          }, VOLCANO_METEOR_LEAD_MS + VOLCANO_METEOR_TAIL_MS));
+        } catch { /* ignore */ }
+      }, Math.max(0, impactMs - VOLCANO_METEOR_LEAD_MS)));
+      addTimer(setTimeout(() => {
+        if (!cooldownAudio) return;
+        const fadeKey = `volcano-cooldown-${sequenceKey}-${idx}`;
+        addFadeKey(fadeKey);
+        try {
+          cooldownAudio.pause();
+          cooldownAudio.volume = VOLCANO_COOLDOWN_VOLUME;
+          cooldownAudio.currentTime = VOLCANO_COOLDOWN_START_AT;
+          cooldownAudio.play().catch(() => { });
+          addTimer(setTimeout(() => {
+            fadeOutAudio(cooldownAudio, fadeKey, VOLCANO_COOLDOWN_FADE_MS, VOLCANO_COOLDOWN_VOLUME);
+          }, VOLCANO_COOLDOWN_FADE_DELAY_MS));
+        } catch { /* ignore */ }
+      }, impactMs + VOLCANO_COOLDOWN_DELAY_MS));
+    });
+    addTimer(setTimeout(stopAll, durationMs + 360));
+    return stopAll;
+  }, [fadeOutAudio, noteUserGesture]);
 
   return {
     noteUserGesture,
@@ -293,5 +536,8 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     playThrowStoneThrowSound,
     playThrowStoneRollingSound,
     playEndlessCorridorTunnelSound,
+    playEarthquakeSound,
+    playRopeSound,
+    playVolcanoSound,
   };
 }
