@@ -16,6 +16,7 @@ export function useAnimationAudioEffects({
   playEarthquakeSound,
   playGeomagneticReversalSound,
   playStartledBatsSound,
+  playNightWindSound,
   playRopeSound,
   playUndergroundSpringDropletSound,
   playVolcanoSound,
@@ -49,6 +50,11 @@ export function useAnimationAudioEffects({
     if (anim?.type !== 'STARTLED_BATS') return undefined;
     return playStartledBatsSound?.();
   }, [anim, playStartledBatsSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'NIGHT_WIND') return undefined;
+    return playNightWindSound?.();
+  }, [anim, playNightWindSound]);
 
   useEffect(() => {
     if (anim?.type !== 'CARD_TRANSFER' || anim?.effect !== 'damageLink') return undefined;

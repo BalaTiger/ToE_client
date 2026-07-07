@@ -17,6 +17,8 @@ const GEOMAGNETIC_REVERSAL_FADE_MS = 260;
 const STARTLED_BATS_VOLUME = 0.52;
 const STARTLED_BATS_STOP_MS = 1050;
 const STARTLED_BATS_FADE_MS = 180;
+const NIGHT_WIND_VOLUME = 0.46;
+const NIGHT_WIND_STOP_MS = 1650;
 const IGNITE_TORCH_FIRE_VOLUME = 0.28;
 const IGNITE_TORCH_FIRE_STOP_MS = 760;
 const IGNITE_TORCH_FIRE_FADE_MS = 140;
@@ -58,7 +60,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
   const [audioReady, setAudioReady] = useState(false);
   const readyRef = useRef(false);
   const bgmRefs = useRef({ main: null, battleEarth: null, battleStars: null });
-  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, igniteTorchFire: null, rope: null, droplet: null, volcano: null });
+  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, nightWind: [], igniteTorchFire: null, rope: null, droplet: null, volcano: null });
   const sfxStopTimersRef = useRef({});
   const sfxFadeFramesRef = useRef({});
   const sfxSequenceCleanupsRef = useRef({});
@@ -79,6 +81,10 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     const earthquake = new Audio(buildPublicUrl('sounds/SE/earthquake.mp3'));
     const geomagneticReversal = new Audio(buildPublicUrl('sounds/SE/magnet.mp3'));
     const startledBats = new Audio(buildPublicUrl('sounds/SE/bat-colony.mp3'));
+    const nightWindVariants = [
+      new Audio(buildPublicUrl('sounds/SE/nightWind/nightWind1.mp3')),
+      new Audio(buildPublicUrl('sounds/SE/nightWind/nightWind2.mp3')),
+    ];
     const igniteTorchFire = new Audio(buildPublicUrl('sounds/SE/fire.mp3'));
     const rope = new Audio(buildPublicUrl('sounds/SE/rope.mp3'));
     const droplet = new Audio(buildPublicUrl('sounds/SE/droplet.mp3'));
@@ -130,6 +136,10 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     geomagneticReversal.volume = GEOMAGNETIC_REVERSAL_VOLUME;
     startledBats.preload = 'auto';
     startledBats.volume = STARTLED_BATS_VOLUME;
+    nightWindVariants.forEach(audio => {
+      audio.preload = 'auto';
+      audio.volume = NIGHT_WIND_VOLUME;
+    });
     igniteTorchFire.preload = 'auto';
     igniteTorchFire.volume = IGNITE_TORCH_FIRE_VOLUME;
     rope.preload = 'auto';
@@ -176,6 +186,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       earthquake,
       geomagneticReversal,
       startledBats,
+      nightWind: nightWindVariants,
       igniteTorchFire,
       rope,
       droplet,
@@ -194,7 +205,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       sfxStopTimersRef.current = {};
       Object.values(sfxFadeFramesRef.current).forEach(frame => cancelAnimationFrame(frame));
       sfxFadeFramesRef.current = {};
-      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, igniteTorchFire, rope, droplet, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
+      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, ...nightWindVariants, igniteTorchFire, rope, droplet, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
         try {
           audio.pause();
           audio.currentTime = 0;
@@ -446,6 +457,42 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       } catch { /* ignore */ }
     };
   }, [fadeOutAudio, noteUserGesture]);
+  const playNightWindSound = useCallback(() => {
+    noteUserGesture();
+    const variants = sfxRefs.current.nightWind || [];
+    if (!variants.length) return undefined;
+    clearTimeout(sfxStopTimersRef.current.nightWind);
+    variants.forEach(audio => {
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = NIGHT_WIND_VOLUME;
+      } catch { /* ignore */ }
+    });
+    const audio = variants[Math.floor(Math.random() * variants.length)] || variants[0];
+    try {
+      audio.currentTime = 0;
+      audio.volume = NIGHT_WIND_VOLUME;
+      audio.play().catch(() => { });
+      sfxStopTimersRef.current.nightWind = setTimeout(() => {
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.volume = NIGHT_WIND_VOLUME;
+        } catch { /* ignore */ }
+      }, NIGHT_WIND_STOP_MS + 80);
+    } catch { /* ignore */ }
+    return () => {
+      clearTimeout(sfxStopTimersRef.current.nightWind);
+      variants.forEach(item => {
+        try {
+          item.pause();
+          item.currentTime = 0;
+          item.volume = NIGHT_WIND_VOLUME;
+        } catch { /* ignore */ }
+      });
+    };
+  }, [noteUserGesture]);
   const playIgniteTorchFireSound = useCallback(({ durationMs = IGNITE_TORCH_FIRE_STOP_MS } = {}) => {
     noteUserGesture();
     const audio = sfxRefs.current.igniteTorchFire;
@@ -718,6 +765,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     playEarthquakeSound,
     playGeomagneticReversalSound,
     playStartledBatsSound,
+    playNightWindSound,
     playIgniteTorchFireSound,
     playRopeSound,
     playUndergroundSpringDropletSound,

@@ -1,6 +1,6 @@
 {
-  "version": "7bb135dce03828ec",
-  "generatedAt": "2026-07-07T09:59:07.848Z",
+  "version": "114d79375978a453",
+  "generatedAt": "2026-07-07T10:12:14.466Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1357,6 +1357,18 @@
       "type": "audio",
       "size": 186359,
       "revision": "df37d19a5a04da1e"
+    },
+    {
+      "path": "/sounds/SE/nightWind/nightWind1.mp3",
+      "type": "audio",
+      "size": 27629,
+      "revision": "9cec1b9a9fa2c4c2"
+    },
+    {
+      "path": "/sounds/SE/nightWind/nightWind2.mp3",
+      "type": "audio",
+      "size": 27629,
+      "revision": "46d827468dc63c6f"
     },
     {
       "path": "/sounds/SE/open.mp3",
