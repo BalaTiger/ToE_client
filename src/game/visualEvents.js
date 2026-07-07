@@ -710,6 +710,82 @@ export function buildCardEffectAnimStep(event, state) {
       ],
     };
   }
+  if (event.effectKey === 'undergroundSpring') {
+    const springStatEvents = Array.isArray(event.statEvents) && event.statEvents.length
+      ? event.statEvents
+      : buildStatEventsFromPlayerSnapshots(
+        event.beforePlayers,
+        event.afterPlayers || state?.players || [],
+        event.msgs || [],
+        event.card?.name || '地下泉'
+      );
+    const sync = buildSyncedCardEffectTimeline({
+      beforePlayers: event.beforePlayers,
+      beforeDiscard: event.beforeDiscard,
+      afterPlayers: event.afterPlayers || state?.players,
+      afterDiscard: event.afterDiscard || state?.discard,
+      state,
+      finalAtMs: 300,
+    });
+    const statSteps = statEventsToAnimQueue(
+      springStatEvents,
+      event.beforePlayers || state?.players || [],
+      event.msgs || []
+    );
+    return {
+      type: 'COMPOSITE',
+      steps: [
+        {
+          type: 'UNDERGROUND_SPRING',
+          card: event.card,
+          actorIdx: event.actorIdx,
+          beforePlayers: event.beforePlayers || [],
+          beforeDiscard: event.beforeDiscard || [],
+          msgs: Array.isArray(event.msgs) ? event.msgs : [],
+          ...sync,
+        },
+        ...statSteps,
+      ],
+    };
+  }
+  if (event.effectKey === 'startledBats') {
+    const batsStatEvents = Array.isArray(event.statEvents) && event.statEvents.length
+      ? event.statEvents
+      : buildStatEventsFromPlayerSnapshots(
+        event.beforePlayers,
+        event.afterPlayers || state?.players || [],
+        event.msgs || [],
+        event.card?.name || '惊扰蝙蝠'
+      );
+    const sync = buildSyncedCardEffectTimeline({
+      beforePlayers: event.beforePlayers,
+      beforeDiscard: event.beforeDiscard,
+      afterPlayers: event.afterPlayers || state?.players,
+      afterDiscard: event.afterDiscard || state?.discard,
+      state,
+      finalAtMs: 1320,
+    });
+    const statSteps = statEventsToAnimQueue(
+      batsStatEvents,
+      event.beforePlayers || state?.players || [],
+      event.msgs || []
+    );
+    return {
+      type: 'COMPOSITE',
+      steps: [
+        {
+          type: 'STARTLED_BATS',
+          card: event.card,
+          actorIdx: event.actorIdx,
+          beforePlayers: event.beforePlayers || [],
+          beforeDiscard: event.beforeDiscard || [],
+          msgs: Array.isArray(event.msgs) ? event.msgs : [],
+          ...sync,
+        },
+        ...statSteps,
+      ],
+    };
+  }
   if (event.effectKey === 'snakeTrap') {
     return buildSnakeTrapAnimStep(event, state);
   }

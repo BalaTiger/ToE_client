@@ -58,6 +58,7 @@ const ZONE_ILLUSTRATION_FILE_BY_NAME = {
   '目击食人族': 'witness_cannibals',
   '惊扰蝙蝠': 'startled_bats',
   '地磁反转': 'geomagnetic_reversal',
+  '反转复原': 'geomagnetic_reversal',
   '龙之心': 'dragon_heart',
   '引燃火把': 'ignite_torch',
   '地底天空': 'underground_sky',

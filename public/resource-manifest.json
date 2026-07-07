@@ -1,6 +1,6 @@
 {
-  "version": "ebb3f7e3413c42a2",
-  "generatedAt": "2026-07-07T05:46:16.385Z",
+  "version": "1c2ea7c9330dcb98",
+  "generatedAt": "2026-07-07T07:51:35.841Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1251,10 +1251,22 @@
       "revision": "c216e878a961e5b7"
     },
     {
+      "path": "/sounds/SE/bat-colony.mp3",
+      "type": "audio",
+      "size": 224688,
+      "revision": "ff9bd29f7abfc420"
+    },
+    {
       "path": "/sounds/SE/close.mp3",
       "type": "audio",
       "size": 5851,
       "revision": "571487c33b626132"
+    },
+    {
+      "path": "/sounds/SE/droplet.mp3",
+      "type": "audio",
+      "size": 226560,
+      "revision": "7afa8e19e351898c"
     },
     {
       "path": "/sounds/SE/earthquake.mp3",
@@ -1329,6 +1341,12 @@
       "revision": "794feaced2b0d801"
     },
     {
+      "path": "/sounds/SE/magnet.mp3",
+      "type": "audio",
+      "size": 186359,
+      "revision": "df37d19a5a04da1e"
+    },
+    {
       "path": "/sounds/SE/open.mp3",
       "type": "audio",
       "size": 14592,
@@ -1393,12 +1411,6 @@
       "type": "audio",
       "size": 70261,
       "revision": "3f5fdee878863cbd"
-    },
-    {
-      "path": "/sounds/SE/tunnel.mp3",
-      "type": "audio",
-      "size": 217338,
-      "revision": "6322c033b3081405"
     },
     {
       "path": "/sounds/SE/volcano/volcano_bg.mp3",

@@ -2,7 +2,7 @@
 import { CardFlipAnim } from './CardFlipAnim';
 import { DiceRollAnim, GenericAnimOverlay, TorchWardOverlay, VritraImmortalRevealOverlay, YourTurnAnim } from './GenericAnimOverlay';
 import { BuryToDeckOverlay, DiscardMoveOverlay, HuntRevealCardOverlay, TsathogguaSlimePopOverlay, ZhuHideCardOverlay } from './MoveOverlays';
-import { CaveDuelAnim, GeomagneticReversalAnim, GeomagneticRestoreShuffleAnim, VolcanoAnim } from './AreaCardOverlays';
+import { CaveDuelAnim, GeomagneticReversalAnim, GeomagneticRestoreShuffleAnim, StartledBatsAnim, UndergroundSpringAnim, VolcanoAnim } from './AreaCardOverlays';
 import { ApophisEclipseAnim } from './ApophisOverlays';
 import { SnakeTrapOverlay } from './SnakeTrapOverlay';
 import { EndlessCorridorTunnelAnim } from './EndlessCorridorOverlay';
@@ -50,6 +50,8 @@ const ANIM_RENDERERS = {
   CAVE_DUEL: ({ anim, exiting }) => <CaveDuelAnim anim={anim} exiting={exiting} />,
   GEOMAGNETIC_REVERSAL: ({ anim, exiting }) => <GeomagneticReversalAnim anim={anim} exiting={exiting} />,
   GEOMAGNETIC_RESTORE_SHUFFLE: ({ anim, exiting }) => <GeomagneticRestoreShuffleAnim anim={anim} exiting={exiting} />,
+  UNDERGROUND_SPRING: ({ exiting }) => <UndergroundSpringAnim exiting={exiting} />,
+  STARTLED_BATS: ({ exiting }) => <StartledBatsAnim exiting={exiting} />,
   VOLCANO: ({ anim, exiting }) => <VolcanoAnim anim={anim} exiting={exiting} />,
   SNAKE_TRAP: ({ anim, exiting }) => <SnakeTrapOverlay anim={anim} exiting={exiting} />,
   RANDOM_TARGET: ({ anim, exiting }) => <RandomTargetOverlay anim={anim} exiting={exiting} />,

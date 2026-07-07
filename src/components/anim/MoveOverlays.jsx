@@ -35,7 +35,7 @@ function getAdaptiveDrawTransferCardSize() {
   return { width, height, scale: width / 82 };
 }
 
-function getStandardFlyingCardSize() {
+export function getStandardFlyingCardSize() {
   return getAdaptiveDrawTransferCardSize();
 }
 

@@ -62,12 +62,14 @@ function getEffectText(card, godLevel) {
     if (/待设计/.test(desc)) return '';
     return desc;
   }
+  if (card.type === 'geomagneticRestore') return card.desc || '这张牌消失并消除当前"地磁反转"效果';
   if (card.type === 'blankZone') return card.desc || '任意字母与数字';
   return card.desc || '';
 }
 
 function getCodeText(card) {
   if (!card) return '';
+  if (card.type === 'geomagneticRestore') return '';
   return getCardDisplayKey(card);
 }
 

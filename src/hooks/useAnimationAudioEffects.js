@@ -14,7 +14,10 @@ export function useAnimationAudioEffects({
   playThrowStoneThrowSound,
   playThrowStoneRollingSound,
   playEarthquakeSound,
+  playGeomagneticReversalSound,
+  playStartledBatsSound,
   playRopeSound,
+  playUndergroundSpringDropletSound,
   playVolcanoSound,
 }) {
   useEffect(() => {
@@ -38,10 +41,25 @@ export function useAnimationAudioEffects({
   }, [anim, playEarthquakeSound]);
 
   useEffect(() => {
+    if (anim?.type !== 'GEOMAGNETIC_REVERSAL') return undefined;
+    return playGeomagneticReversalSound?.();
+  }, [anim, playGeomagneticReversalSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'STARTLED_BATS') return undefined;
+    return playStartledBatsSound?.();
+  }, [anim, playStartledBatsSound]);
+
+  useEffect(() => {
     if (anim?.type !== 'CARD_TRANSFER' || anim?.effect !== 'damageLink') return undefined;
     playRopeSound?.();
     return undefined;
   }, [anim, playRopeSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'UNDERGROUND_SPRING') return undefined;
+    return playUndergroundSpringDropletSound?.();
+  }, [anim, playUndergroundSpringDropletSound]);
 
   useEffect(() => {
     if (anim?.type !== 'VOLCANO') return undefined;

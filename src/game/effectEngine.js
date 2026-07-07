@@ -762,8 +762,28 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       }
     },
     allHealHP: () => {
+      const beforePlayers = card?.name === '地下泉' ? copyPlayers(P) : null;
       allLiving.forEach(i => healHP(i, card.val));
       msgs.push(`全体存活角色回复 ${card.val} HP`);
+      if (card?.name === '地下泉') {
+        const event = createCardEffectEvent({
+          effectKey: 'undergroundSpring',
+          card,
+          actorIdx: ci,
+          beforePlayers,
+          beforeDiscard: [...Disc],
+          afterPlayers: copyPlayers(P),
+          afterDiscard: [...Disc],
+          statEvents: buildStatEvents(beforePlayers, P, msgs.slice(-1), { reason: card?.name || card?.type || '', seq: (gs?._statEventSeq || 0) + 1 }),
+          msgs: msgs.slice(-1),
+        });
+        if (event) {
+          statePatch = {
+            ...statePatch,
+            _visualEvents: [...(statePatch._visualEvents || []), event],
+          };
+        }
+      }
     },
     selfHealBoth: () => { healHP(ci, 1); healSAN(ci, 1); msgs.push(`${actor.name} 回复了 1 HP 和 1 SAN`); },
     selfHealHPSAN: () => {
@@ -940,7 +960,29 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         toggleRest(ci);
       }
     },
-    adjDamageHP: () => { applyAOEDamage(adjacent, 'hp', card.val); },
+    adjDamageHP: () => {
+      const beforePlayers = card?.name === '惊扰蝙蝠' ? copyPlayers(P) : null;
+      applyAOEDamage(adjacent, 'hp', card.val);
+      if (card?.name === '惊扰蝙蝠') {
+        const event = createCardEffectEvent({
+          effectKey: 'startledBats',
+          card,
+          actorIdx: ci,
+          beforePlayers,
+          beforeDiscard: [...Disc],
+          afterPlayers: copyPlayers(P),
+          afterDiscard: [...Disc],
+          statEvents: buildStatEvents(beforePlayers, P, msgs.slice(-1), { reason: card?.name || card?.type || '', seq: (gs?._statEventSeq || 0) + 1 }),
+          msgs: msgs.slice(-1),
+        });
+        if (event) {
+          statePatch = {
+            ...statePatch,
+            _visualEvents: [...(statePatch._visualEvents || []), event],
+          };
+        }
+      }
+    },
     adjDamageSAN: () => { applyAOEDamage(adjacent, 'san', card.val); },
     adjDamageBoth: () => { applyAOEDamage(adjacent, 'both', card.val, card.hpVal, card.sanVal); },
     allDamageHP: () => {

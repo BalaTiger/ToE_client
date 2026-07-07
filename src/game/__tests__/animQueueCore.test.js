@@ -701,6 +701,94 @@ describe('buildAnimQueue stat animations', () => {
     expect(hpDamageIdx).toBeGreaterThan(volcanoIdx);
   });
 
+  it('地下泉 visualEvent 会先播放水滴涟漪动画再回复 HP', () => {
+    const beforePlayers = [makePlayer({ name: '你', hp: 6 })];
+    const afterPlayers = [makePlayer({ name: '你', hp: 8 })];
+    const oldGs = makeGs({
+      players: beforePlayers,
+      discard: [],
+      log: ['旧日志'],
+    });
+    const event = createCardEffectEvent({
+      effectKey: 'undergroundSpring',
+      card: { id: 'spring', name: '地下泉', key: 'C2', type: 'allHealHP' },
+      actorIdx: 0,
+      beforePlayers,
+      beforeDiscard: [],
+      afterPlayers,
+      afterDiscard: [],
+      msgs: ['全体存活角色回复 2 HP'],
+    });
+    const newGs = makeGs({
+      players: afterPlayers,
+      discard: [],
+      log: ['旧日志', '全体存活角色回复 2 HP'],
+      _visualEvents: [event],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    const springIdx = queue.findIndex(item => item.type === 'UNDERGROUND_SPRING');
+    const hpHealIdx = queue.findIndex(item => item.type === 'HP_HEAL');
+    const step = queue[springIdx];
+
+    expect(step).toMatchObject({
+      type: 'UNDERGROUND_SPRING',
+      actorIdx: 0,
+      beforePlayers,
+      visualSetupTiming: 'queueStart',
+      visualSetupPatch: { players: beforePlayers, discard: [] },
+    });
+    expect(step.visualTimeline[1]).toEqual({ atMs: 300, patch: { players: afterPlayers, discard: [] } });
+    expect(hpHealIdx).toBeGreaterThan(springIdx);
+  });
+
+  it('惊扰蝙蝠 visualEvent 会先播放蝙蝠动画再扣 HP', () => {
+    const beforePlayers = [
+      makePlayer({ name: '你', hp: 10 }),
+      makePlayer({ name: '艾伦', hp: 10 }),
+    ];
+    const afterPlayers = [
+      makePlayer({ name: '你', hp: 8 }),
+      makePlayer({ name: '艾伦', hp: 8 }),
+    ];
+    const oldGs = makeGs({
+      players: beforePlayers,
+      discard: [],
+      log: ['旧日志'],
+    });
+    const event = createCardEffectEvent({
+      effectKey: 'startledBats',
+      card: { id: 'bats', name: '惊扰蝙蝠', key: 'C2', type: 'adjDamageHP' },
+      actorIdx: 0,
+      beforePlayers,
+      beforeDiscard: [],
+      afterPlayers,
+      afterDiscard: [],
+      msgs: ['你 与相邻角色各失去 2 HP'],
+    });
+    const newGs = makeGs({
+      players: afterPlayers,
+      discard: [],
+      log: ['旧日志', '你 与相邻角色各失去 2 HP'],
+      _visualEvents: [event],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    const batsIdx = queue.findIndex(item => item.type === 'STARTLED_BATS');
+    const hpDamageIdx = queue.findIndex(item => item.type === 'HP_DAMAGE');
+    const step = queue[batsIdx];
+
+    expect(step).toMatchObject({
+      type: 'STARTLED_BATS',
+      actorIdx: 0,
+      beforePlayers,
+      visualSetupTiming: 'queueStart',
+      visualSetupPatch: { players: beforePlayers, discard: [] },
+    });
+    expect(step.visualTimeline[1]).toEqual({ atMs: 1320, patch: { players: afterPlayers, discard: [] } });
+    expect(hpDamageIdx).toBeGreaterThan(batsIdx);
+  });
+
   it('开局遮蔽态已带最新日志时仍能从地震 visualEvent 产生动画', () => {
     const drawLog = '你 摸到 [B2] 地动山摇（强制触发）';
     const beforePlayers = [makePlayer({ hand: [{ id: 'before' }] })];

@@ -514,6 +514,45 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
       </>
     );
   }
+  if(card.type==='geomagneticRestore'){
+    const w=small?44:compact?62:82,h=small?58:compact?82:108;
+    return(
+      <>
+        <div
+          ref={cardRef}
+          onClick={disabled?undefined:onClick}
+          onMouseEnter={handleMouseEnter}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
+          style={{
+            width:w,
+            minWidth:w,
+            height:h,
+            flexShrink:0,
+            cursor:(onClick&&!disabled)?'pointer':'default',
+            opacity:disabled?0.35:1,
+            transform:selected?'translateY(-5px)':undefined,
+            transition:'all .14s',
+            position:'relative',
+            overflow:'visible',
+            ...frameStyle,
+          }}
+        >
+          <MiniCardFace
+            card={card}
+            width={w}
+            height={h}
+            frameStyle={{
+              boxShadow:selected?'0 0 14px #c8a96e88':highlight?'0 0 14px rgba(94,234,212,0.66)':'0 2px 8px rgba(0,0,0,0.6)',
+              border:'none',
+              background:'transparent',
+            }}
+          />
+        </div>
+        {hover&&<AreaTooltip card={card} position={tooltipPosition}/>}
+      </>
+    );
+  }
   const s=CS[card.letter]||GOD_CS;
   const w=small?44:compact?62:82,h=small?58:compact?82:108;
   const isRoseThornMarked=card?.roseThornHolderId!=null&&holderId===card.roseThornHolderId;
