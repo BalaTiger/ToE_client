@@ -856,12 +856,31 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       }
     },
     etherealize: () => {
+      const beforeEtherealizePlayers = copyPlayers(P);
+      const beforeEtherealizeDiscard = [...Disc];
       const hand = actor.hand || [];
       const cardAlreadyInHand = card?.id ? hand.some(c => c?.id === card.id) : false;
       const stackCount = hand.length + (cardAlreadyInHand ? 0 : 1);
       if (stackCount > 0) {
         actor.etherealizeStacks = (actor.etherealizeStacks || 0) + stackCount;
         msgs.push(`【半物质化】${actor.name} 进入半物质化状态，获得 ${stackCount} 层虚化`);
+        const event = createCardEffectEvent({
+          effectKey: 'etherealizeGain',
+          card,
+          actorIdx: ci,
+          beforePlayers: beforeEtherealizePlayers,
+          beforeDiscard: beforeEtherealizeDiscard,
+          afterPlayers: copyPlayers(P),
+          afterDiscard: [...Disc],
+          msgs: [msgs[msgs.length - 1]],
+          payload: { stackCount },
+        });
+        if (event) {
+          statePatch = {
+            ...statePatch,
+            _visualEvents: [...(statePatch._visualEvents || []), event],
+          };
+        }
       } else {
         msgs.push(`【半物质化】${actor.name} 手牌为空，无法获得虚化`);
       }

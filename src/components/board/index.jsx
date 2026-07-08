@@ -668,16 +668,32 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
           </span>
           {(player.etherealizeStacks||0)>0&&(
             <span
+              data-etherealize-badge={playerIndex}
               title="虚化：回合外即将失去 HP/SAN 时，可消耗 1 层令相邻角色失去"
               style={{
                 fontSize:10,color:'#b9d8f0',
                 background:'#0c1118',border:'1px solid #87a9c866',
                 borderRadius:3,padding:'2px 6px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
                 lineHeight:1.2,
+                position:'relative',
+                overflow:'hidden',
                 boxShadow:'0 0 8px #87a9c822',
+                '--god-power-col':'#87a9c8',
+                '--god-power-chevron-scale':'5.4',
               }}
             >
               虚化 {player.etherealizeStacks}
+              <span
+                key={`etherealize-${playerIndex}-${player.etherealizeStacks}`}
+                className="god-power-chevron-layer etherealize-chevron-layer"
+                aria-hidden
+              >
+                {[0,1,2,3].map(r=>(
+                  <span key={r} className="god-power-chevron-row">
+                    <span className="god-power-chevron-glyph" />
+                  </span>
+                ))}
+              </span>
             </span>
           )}
           {(player.poisonStacks||0)>0&&(

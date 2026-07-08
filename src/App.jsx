@@ -9391,6 +9391,16 @@ const GLOBAL_STYLES=`
     transform-origin:0 50%;
     transform:rotate(30deg);
   }
+  .etherealize-chevron-layer {
+    animation-duration:0.92s;
+    mix-blend-mode:screen;
+  }
+  .etherealize-chevron-layer .god-power-chevron-glyph {
+    color:#d9f3ff;
+    filter:
+      drop-shadow(0 0 6px #87a9c8)
+      drop-shadow(0 0 2px #fff);
+  }
 
   /* ── Mobile / small-screen overrides ── */
   @media (max-width:580px){

@@ -206,11 +206,14 @@ export function SelfPlayerPanel({
           )}
           {(visualMe.etherealizeStacks || 0) > 0 && (
             <div
+              data-etherealize-badge={0}
               title="虚化：回合外即将失去 HP/SAN 时，可消耗 1 层令相邻角色失去"
               style={{
                 marginTop: 4,
                 display: 'inline-flex',
                 alignSelf: 'flex-start',
+                position: 'relative',
+                overflow: 'hidden',
                 fontSize: fontSizes.small,
                 color: '#b9d8f0',
                 background: '#0c1118',
@@ -220,9 +223,22 @@ export function SelfPlayerPanel({
                 fontFamily: "'Cinzel',serif",
                 letterSpacing: 0.5,
                 boxShadow: '0 0 8px #87a9c822',
+                '--god-power-col': '#87a9c8',
+                '--god-power-chevron-scale': 5.2,
               }}
             >
               虚化 {visualMe.etherealizeStacks}
+              <span
+                key={`etherealize-${visualMe.etherealizeStacks}`}
+                className="god-power-chevron-layer etherealize-chevron-layer"
+                aria-hidden
+              >
+                {[0, 1, 2, 3].map(r => (
+                  <span key={r} className="god-power-chevron-row">
+                    <span className="god-power-chevron-glyph" />
+                  </span>
+                ))}
+              </span>
             </div>
           )}
           {(visualMe.poisonStacks || 0) > 0 && (

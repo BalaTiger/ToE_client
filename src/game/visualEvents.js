@@ -824,6 +824,28 @@ export function buildCardEffectAnimStep(event, state) {
       ],
     };
   }
+  if (event.effectKey === 'etherealizeGain') {
+    const payload = event.payload || {};
+    const sync = buildSyncedCardEffectTimeline({
+      beforePlayers: event.beforePlayers,
+      beforeDiscard: event.beforeDiscard,
+      afterPlayers: event.afterPlayers || state?.players,
+      afterDiscard: event.afterDiscard || state?.discard,
+      state,
+      finalAtMs: 3600,
+    });
+    return {
+      type: 'ETHEREALIZE_GAIN',
+      card: event.card,
+      actorIdx: event.actorIdx,
+      stackCount: Math.max(0, payload.stackCount || 0),
+      beforePlayers: event.beforePlayers || [],
+      beforeDiscard: event.beforeDiscard || [],
+      msgs: Array.isArray(event.msgs) ? event.msgs : [],
+      durationMs: 3800,
+      ...sync,
+    };
+  }
   if (event.effectKey === 'snakeTrap') {
     return buildSnakeTrapAnimStep(event, state);
   }

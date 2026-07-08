@@ -10,6 +10,7 @@ import { RandomTargetOverlay } from './RandomTargetOverlay';
 import { ThrowStoneOverlay } from './ThrowStoneOverlay';
 import { CthRlyehDreamOverlay } from './CthRlyehDreamOverlay';
 import { NightWindAnim } from './NightWindOverlay';
+import { EtherealizeGainAnim } from './EtherealizeOverlay';
 
 const NO_OVERLAY_TYPES = new Set([
   'CARD_TRANSFER',
@@ -54,6 +55,7 @@ const ANIM_RENDERERS = {
   UNDERGROUND_SPRING: ({ exiting }) => <UndergroundSpringAnim exiting={exiting} />,
   STARTLED_BATS: ({ exiting }) => <StartledBatsAnim exiting={exiting} />,
   NIGHT_WIND: ({ exiting }) => <NightWindAnim exiting={exiting} />,
+  ETHEREALIZE_GAIN: ({ anim, exiting }) => <EtherealizeGainAnim anim={anim} exiting={exiting} />,
   VOLCANO: ({ anim, exiting }) => <VolcanoAnim anim={anim} exiting={exiting} />,
   SNAKE_TRAP: ({ anim, exiting }) => <SnakeTrapOverlay anim={anim} exiting={exiting} />,
   RANDOM_TARGET: ({ anim, exiting }) => <RandomTargetOverlay anim={anim} exiting={exiting} />,

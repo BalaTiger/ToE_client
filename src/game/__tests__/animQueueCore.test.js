@@ -838,6 +838,52 @@ describe('buildAnimQueue stat animations', () => {
     expect(sanDamageIdx).toBeGreaterThan(windIdx);
   });
 
+  it('半物质化 visualEvent 会先播放面板切片动画再显示虚化层数', () => {
+    const beforePlayers = [
+      makePlayer({ name: '你', etherealizeStacks: 0 }),
+      makePlayer({ name: '艾伦' }),
+    ];
+    const afterPlayers = [
+      makePlayer({ name: '你', etherealizeStacks: 4 }),
+      makePlayer({ name: '艾伦' }),
+    ];
+    const oldGs = makeGs({
+      players: beforePlayers,
+      discard: [],
+      log: ['旧日志'],
+    });
+    const event = createCardEffectEvent({
+      effectKey: 'etherealizeGain',
+      card: { id: 'etherealize', name: '半物质化', key: 'C4', type: 'etherealize' },
+      actorIdx: 0,
+      beforePlayers,
+      beforeDiscard: [],
+      afterPlayers,
+      afterDiscard: [],
+      msgs: ['【半物质化】你 进入半物质化状态，获得 4 层虚化'],
+      payload: { stackCount: 4 },
+    });
+    const newGs = makeGs({
+      players: afterPlayers,
+      discard: [],
+      log: ['旧日志', '【半物质化】你 进入半物质化状态，获得 4 层虚化'],
+      _visualEvents: [event],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    const step = queue.find(item => item.type === 'ETHEREALIZE_GAIN');
+
+    expect(step).toMatchObject({
+      type: 'ETHEREALIZE_GAIN',
+      actorIdx: 0,
+      stackCount: 4,
+      durationMs: 3800,
+      visualSetupTiming: 'queueStart',
+      visualSetupPatch: { players: beforePlayers, discard: [] },
+    });
+    expect(step.visualTimeline[1]).toEqual({ atMs: 3600, patch: { players: afterPlayers, discard: [] } });
+  });
+
   it('开局遮蔽态已带最新日志时仍能从地震 visualEvent 产生动画', () => {
     const drawLog = '你 摸到 [B2] 地动山摇（强制触发）';
     const beforePlayers = [makePlayer({ hand: [{ id: 'before' }] })];
