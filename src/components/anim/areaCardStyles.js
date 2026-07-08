@@ -13,6 +13,13 @@ export const AREA_CARD_ANIMATION_STYLES = `
   .etherealize-overlay.etherealize-exiting {
     animation: animFadeOut 0.18s ease-in forwards;
   }
+  .etherealize-overlay.etherealize-released {
+    background: transparent;
+  }
+  .etherealize-overlay.etherealize-released .etherealize-stage,
+  .etherealize-overlay.etherealize-released .etherealize-backlight {
+    opacity: 0;
+  }
   .etherealize-stage {
     position: absolute;
     z-index: 2;
@@ -111,6 +118,7 @@ export const AREA_CARD_ANIMATION_STYLES = `
     animation: etherealizeCubeScatter .92s cubic-bezier(.16,.78,.28,1) var(--cube-delay, .9s) both;
   }
   .etherealize-charge-particle,
+  .etherealize-snap-particle,
   .etherealize-burst-particle {
     position: absolute;
     z-index: 3;
@@ -124,6 +132,15 @@ export const AREA_CARD_ANIMATION_STYLES = `
   }
   .etherealize-charge-particle {
     animation: etherealizeChargeParticle .88s cubic-bezier(.34,0,.18,1) var(--charge-delay, .42s) both;
+  }
+  .etherealize-snap-particle {
+    z-index: 5;
+    box-shadow:
+      0 0 12px rgba(230,252,255,1),
+      0 0 24px rgba(104,190,255,0.72),
+      inset -1px -1px 2px rgba(28,62,96,0.72),
+      inset 1px 1px 2px rgba(255,255,255,0.86);
+    animation: etherealizeSnapParticle .36s cubic-bezier(.05,.82,.18,1) var(--snap-delay, 1.69s) both;
   }
   .etherealize-burst-particle {
     animation: etherealizeBurstParticle .72s cubic-bezier(.12,.74,.28,1) var(--burst-delay, .62s) both;
@@ -162,9 +179,9 @@ export const AREA_CARD_ANIMATION_STYLES = `
     20% {
       opacity: 1;
       transform:
-        translate3d(var(--ethereal-hover-x-82), calc(var(--ethereal-hover-y-82) - 34px), 80px)
+        translate3d(var(--ethereal-hover-x), var(--ethereal-hover-y), 92px)
         scale(var(--ethereal-scale-in, 1))
-        rotateX(13deg) rotateY(-24deg) rotateZ(-2deg);
+        rotateX(14deg) rotateY(-27deg) rotateZ(-2.2deg);
       filter: brightness(1.08) saturate(1.08);
     }
     32%, 76% {
@@ -347,6 +364,34 @@ export const AREA_CARD_ANIMATION_STYLES = `
         scale(.62);
     }
   }
+  @keyframes etherealizeSnapParticle {
+    0% {
+      opacity: 0;
+      transform: translate3d(0,0,0) rotateX(0deg) rotateY(0deg) scale(.38);
+      filter: brightness(1.7);
+    }
+    5% {
+      opacity: 1;
+    }
+    58% {
+      opacity: .92;
+      transform:
+        translate3d(var(--snap-dx), var(--snap-dy), var(--snap-dz))
+        rotateX(var(--snap-rx))
+        rotateY(var(--snap-ry))
+        scale(1.05);
+      filter: brightness(1.35);
+    }
+    100% {
+      opacity: 0;
+      transform:
+        translate3d(var(--snap-dx), var(--snap-dy), var(--snap-dz))
+        rotateX(var(--snap-rx))
+        rotateY(var(--snap-ry))
+        scale(.35);
+      filter: brightness(.9) blur(.35px);
+    }
+  }
   @keyframes etherealizeBurstSmoke {
     0% {
       opacity: 0;
@@ -421,20 +466,20 @@ export const AREA_CARD_ANIMATION_STYLES = `
     }
     34% {
       opacity: .42;
-      transform: translate(-50%, -50%) translate3d(var(--ethereal-hover-x-96), var(--ethereal-hover-y-96), 0) scale(.96);
+      transform: translate(-50%, -50%) translate3d(0,0,0) scale(.96);
     }
     78% {
       opacity: .72;
-      transform: translate(-50%, -50%) translate3d(var(--ethereal-hover-x), var(--ethereal-hover-y), 0) scale(1.76);
+      transform: translate(-50%, -50%) translate3d(0,0,0) scale(1.76);
     }
     88%, 94% {
       opacity: 1;
-      transform: translate(-50%, -50%) translate3d(var(--ethereal-hover-x), var(--ethereal-hover-y), 0) scale(3.1);
+      transform: translate(-50%, -50%) translate3d(0,0,0) scale(3.1);
       filter: blur(8px) saturate(1.5) brightness(1.8);
     }
     97% {
       opacity: 0;
-      transform: translate(-50%, -50%) translate3d(var(--ethereal-hover-x), var(--ethereal-hover-y), 0) scale(2.25);
+      transform: translate(-50%, -50%) translate3d(0,0,0) scale(2.25);
       filter: blur(12px) saturate(1.35) brightness(1.35);
     }
     100% {

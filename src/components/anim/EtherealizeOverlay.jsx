@@ -4,6 +4,7 @@ import { _getZoomCompensatedRect } from '../../utils/dom';
 const SLICE_COUNT = 6;
 const PARTICLES_PER_SLICE = 30;
 const CHARGE_PARTICLE_COUNT = 34;
+const SNAP_PARTICLE_COUNT = 46;
 const BURST_PARTICLE_COUNT = 54;
 const BURST_SMOKE_COUNT = 16;
 const THEME_VAR_NAMES = [
@@ -133,15 +134,50 @@ function makeBurstAxis(sliceOffsets) {
   return normalizeVector(last);
 }
 
-function makeBurstParticles(rect, stackCount, sliceOffsets) {
-  const rand = makeRand(0xb1257a + (stackCount || 0) * 59);
-  const axis = makeBurstAxis(sliceOffsets);
+function makeNormalTangents(axis) {
   const tangentA = normalizeVector({ x: -axis.y, y: axis.x, z: 0.08 });
   const tangentB = normalizeVector({
     x: axis.y * tangentA.z - axis.z * tangentA.y,
     y: axis.z * tangentA.x - axis.x * tangentA.z,
     z: axis.x * tangentA.y - axis.y * tangentA.x,
   });
+  return { tangentA, tangentB };
+}
+
+function makeSnapParticles(rect, stackCount, sliceOffsets) {
+  const rand = makeRand(0x5a9f01 + (stackCount || 0) * 53);
+  const axis = makeBurstAxis(sliceOffsets);
+  const { tangentA, tangentB } = makeNormalTangents(axis);
+  return Array.from({ length: SNAP_PARTICLE_COUNT }, (_, i) => {
+    const side = i % 2 === 0 ? 1 : -1;
+    const dist = 180 + Math.pow(rand(), 0.8) * 460;
+    const spread = Math.pow(rand(), 3.4) * (10 + rand() * 38);
+    const twist = rand() * Math.PI * 2;
+    const tangentX = Math.cos(twist) * tangentA.x + Math.sin(twist) * tangentB.x;
+    const tangentY = Math.cos(twist) * tangentA.y + Math.sin(twist) * tangentB.y;
+    const tangentZ = Math.cos(twist) * tangentA.z + Math.sin(twist) * tangentB.z;
+    const centerJitter = 0.035;
+    const size = Math.max(2, Math.min(8, rect.width * (0.01 + rand() * 0.019)));
+    return {
+      id: `snap-${i}`,
+      x: rect.width * (0.5 + (rand() - 0.5) * centerJitter),
+      y: rect.height * (0.5 + (rand() - 0.5) * centerJitter),
+      dx: axis.x * dist * side + tangentX * spread,
+      dy: axis.y * dist * side + tangentY * spread,
+      dz: axis.z * dist * side + tangentZ * spread,
+      size,
+      rotX: Math.round(rand() * 360 - 180),
+      rotY: Math.round(rand() * 360 - 180),
+      delay: 1.69 + rand() * 0.025,
+      color: rand() > 0.32 ? 'rgba(238,253,255,1)' : 'rgba(136,207,255,0.96)',
+    };
+  });
+}
+
+function makeBurstParticles(rect, stackCount, sliceOffsets) {
+  const rand = makeRand(0xb1257a + (stackCount || 0) * 59);
+  const axis = makeBurstAxis(sliceOffsets);
+  const { tangentA, tangentB } = makeNormalTangents(axis);
   return Array.from({ length: BURST_PARTICLE_COUNT }, (_, i) => {
     const side = i % 2 === 0 ? 1 : -1;
     const dist = 120 + Math.pow(rand(), 0.72) * 330;
@@ -175,12 +211,7 @@ function makeBurstParticles(rect, stackCount, sliceOffsets) {
 function makeBurstSmoke(rect, stackCount, sliceOffsets) {
   const rand = makeRand(0x5a10ce + (stackCount || 0) * 67);
   const axis = makeBurstAxis(sliceOffsets);
-  const tangentA = normalizeVector({ x: -axis.y, y: axis.x, z: 0.08 });
-  const tangentB = normalizeVector({
-    x: axis.y * tangentA.z - axis.z * tangentA.y,
-    y: axis.z * tangentA.x - axis.x * tangentA.z,
-    z: axis.x * tangentA.y - axis.y * tangentA.x,
-  });
+  const { tangentA, tangentB } = makeNormalTangents(axis);
   return Array.from({ length: BURST_SMOKE_COUNT }, (_, i) => {
     const side = i % 2 === 0 ? 1 : -1;
     const dist = 76 + rand() * 210;
@@ -243,10 +274,21 @@ function EtherealizeGainAnim({ anim, exiting }) {
   const actorIdx = anim?.actorIdx ?? 0;
   const stackCount = Math.max(1, anim?.stackCount || 1);
   const [snapshot, setSnapshot] = React.useState(null);
+  const [released, setReleased] = React.useState(false);
+  const restorePanelRef = React.useRef(null);
+  const releaseAtMs = React.useMemo(() => {
+    const timeline = Array.isArray(anim?.visualTimeline) ? anim.visualTimeline : [];
+    const finalPatchAt = timeline.reduce((max, item) => Math.max(max, item?.atMs || 0), 0);
+    return finalPatchAt > 0 ? finalPatchAt : 3600;
+  }, [anim?.visualTimeline]);
+
+  const restorePanel = React.useCallback(() => {
+    restorePanelRef.current?.();
+    restorePanelRef.current = null;
+  }, []);
 
   React.useLayoutEffect(() => {
     let rafId = 0;
-    let restore = null;
     const measure = () => {
       const el = getPanelElement(actorIdx);
       const rect = _getZoomCompensatedRect(el);
@@ -267,6 +309,7 @@ function EtherealizeGainAnim({ anim, exiting }) {
         hoverY,
         sliceOffsets,
         chargeParticles: makeChargeParticles(rect, stackCount),
+        snapParticles: makeSnapParticles(rect, stackCount, sliceOffsets),
         burstParticles: makeBurstParticles(rect, stackCount, sliceOffsets),
         burstSmoke: makeBurstSmoke(rect, stackCount, sliceOffsets),
         particles: makeParticles(rect, stackCount),
@@ -275,7 +318,7 @@ function EtherealizeGainAnim({ anim, exiting }) {
       setSnapshot(measured);
       const prevVisibility = el.style.visibility;
       el.style.visibility = 'hidden';
-      restore = () => {
+      restorePanelRef.current = () => {
         el.style.visibility = prevVisibility;
       };
     };
@@ -284,9 +327,28 @@ function EtherealizeGainAnim({ anim, exiting }) {
     });
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
-      restore?.();
+      restorePanel();
     };
-  }, [actorIdx, stackCount]);
+  }, [actorIdx, restorePanel, stackCount]);
+
+  React.useEffect(() => {
+    setReleased(false);
+  }, [actorIdx, stackCount, releaseAtMs]);
+
+  React.useEffect(() => {
+    if (!snapshot) return undefined;
+    const timer = setTimeout(() => {
+      restorePanel();
+      setReleased(true);
+    }, Math.max(0, releaseAtMs));
+    return () => clearTimeout(timer);
+  }, [releaseAtMs, restorePanel, snapshot]);
+
+  React.useEffect(() => {
+    if (!exiting) return;
+    restorePanel();
+    setReleased(true);
+  }, [exiting, restorePanel]);
 
   if (!snapshot) return null;
   const { rect } = snapshot;
@@ -294,21 +356,17 @@ function EtherealizeGainAnim({ anim, exiting }) {
 
   return (
     <div
-      className={`etherealize-overlay${exiting ? ' etherealize-exiting' : ''}`}
+      className={`etherealize-overlay${exiting ? ' etherealize-exiting' : ''}${released ? ' etherealize-released' : ''}`}
       style={snapshot.themeVars}
       aria-hidden
     >
       <div
         className="etherealize-backlight"
         style={{
-          left: rect.left + rect.width / 2,
-          top: rect.top + rect.height / 2,
+          left: rect.left + rect.width / 2 + snapshot.hoverX,
+          top: rect.top + rect.height / 2 + snapshot.hoverY,
           width: Math.max(rect.width, rect.height) * 1.15,
           height: Math.max(rect.width, rect.height) * 1.15,
-          '--ethereal-hover-x': `${snapshot.hoverX}px`,
-          '--ethereal-hover-y': `${snapshot.hoverY}px`,
-          '--ethereal-hover-x-96': `${snapshot.hoverX * 0.96}px`,
-          '--ethereal-hover-y-96': `${snapshot.hoverY * 0.96}px`,
         }}
       />
       <div
@@ -320,8 +378,6 @@ function EtherealizeGainAnim({ anim, exiting }) {
           height: rect.height,
           '--ethereal-hover-x': `${snapshot.hoverX}px`,
           '--ethereal-hover-y': `${snapshot.hoverY}px`,
-          '--ethereal-hover-x-82': `${snapshot.hoverX * 0.82}px`,
-          '--ethereal-hover-y-82': `${snapshot.hoverY * 0.82}px`,
           '--ethereal-scale': snapshot.targetScale,
           '--ethereal-scale-in': snapshot.targetScale * 0.98,
           '--ethereal-scale-burst': snapshot.targetScale * 1.03,
@@ -389,6 +445,25 @@ function EtherealizeGainAnim({ anim, exiting }) {
                 '--burst-rx': `${particle.rotX}deg`,
                 '--burst-ry': `${particle.rotY}deg`,
                 '--burst-delay': `${particle.delay}s`,
+              }}
+            />
+          ))}
+          {snapshot.snapParticles.map(particle => (
+            <div
+              key={particle.id}
+              className="etherealize-snap-particle"
+              style={{
+                left: particle.x,
+                top: particle.y,
+                width: particle.size,
+                height: particle.size,
+                background: particle.color,
+                '--snap-dx': `${particle.dx}px`,
+                '--snap-dy': `${particle.dy}px`,
+                '--snap-dz': `${particle.dz}px`,
+                '--snap-rx': `${particle.rotX}deg`,
+                '--snap-ry': `${particle.rotY}deg`,
+                '--snap-delay': `${particle.delay}s`,
               }}
             />
           ))}

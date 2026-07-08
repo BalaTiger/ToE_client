@@ -1,6 +1,6 @@
 {
-  "version": "114d79375978a453",
-  "generatedAt": "2026-07-08T06:45:42.951Z",
+  "version": "73998052d33da999",
+  "generatedAt": "2026-07-08T10:33:45.487Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1423,6 +1423,24 @@
       "type": "audio",
       "size": 257280,
       "revision": "e33b1230a1a37962"
+    },
+    {
+      "path": "/sounds/SE/semiMaterial/semiMaterial_bg.mp3",
+      "type": "audio",
+      "size": 90624,
+      "revision": "d527b2abe7dcdcce"
+    },
+    {
+      "path": "/sounds/SE/semiMaterial/semiMaterial_charge.mp3",
+      "type": "audio",
+      "size": 93600,
+      "revision": "718a5190e592d32d"
+    },
+    {
+      "path": "/sounds/SE/semiMaterial/semiMaterial_glass.mp3",
+      "type": "audio",
+      "size": 67680,
+      "revision": "af86995228d2a15f"
     },
     {
       "path": "/sounds/SE/throw.mp3",

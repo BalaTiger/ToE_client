@@ -20,6 +20,7 @@ export function useAnimationAudioEffects({
   playRopeSound,
   playUndergroundSpringDropletSound,
   playVolcanoSound,
+  playSemiMaterialSound,
 }) {
   useEffect(() => {
     if (anim?.type !== 'APOPHIS_ECLIPSE') return undefined;
@@ -74,6 +75,11 @@ export function useAnimationAudioEffects({
       impactTimes: getVolcanoImpactTimes(),
     });
   }, [anim, playVolcanoSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'ETHEREALIZE_GAIN') return undefined;
+    return playSemiMaterialSound?.();
+  }, [anim, playSemiMaterialSound]);
 
   useEffect(() => {
     // ENDLESS_CORRIDOR_TUNNEL sound is triggered by the tunnel overlay mount,
