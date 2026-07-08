@@ -1,6 +1,6 @@
 {
-  "version": "73998052d33da999",
-  "generatedAt": "2026-07-08T10:33:45.487Z",
+  "version": "6aec23589b4eda7c",
+  "generatedAt": "2026-07-08T13:16:22.823Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1083,6 +1083,36 @@
       "revision": "f1898e427934a44b"
     },
     {
+      "path": "/img/effects/burrowing_worm/burrow-hole-base-1.png",
+      "type": "image",
+      "size": 53257,
+      "revision": "6635d42a603d7a2e"
+    },
+    {
+      "path": "/img/effects/burrowing_worm/burrow-hole-base-2.png",
+      "type": "image",
+      "size": 52152,
+      "revision": "bf682703f73ef0c6"
+    },
+    {
+      "path": "/img/effects/burrowing_worm/burrow-hole-lip-1.png",
+      "type": "image",
+      "size": 29580,
+      "revision": "3e4b3776b339caa0"
+    },
+    {
+      "path": "/img/effects/burrowing_worm/burrow-hole-lip-2.png",
+      "type": "image",
+      "size": 26753,
+      "revision": "4a36446f868480ad"
+    },
+    {
+      "path": "/img/effects/burrowing_worm/worm-segment.png",
+      "type": "image",
+      "size": 21882,
+      "revision": "ce66633a1b9f1573"
+    },
+    {
       "path": "/img/effects/evil_goat_sigil.svg",
       "type": "image",
       "size": 1962,
@@ -1477,6 +1507,18 @@
       "type": "audio",
       "size": 322664,
       "revision": "434b8ad238ce8600"
+    },
+    {
+      "path": "/sounds/SE/worm/worm_attack.mp3",
+      "type": "audio",
+      "size": 96768,
+      "revision": "b7099e5497e94ed9"
+    },
+    {
+      "path": "/sounds/SE/worm/worm_drill.mp3",
+      "type": "audio",
+      "size": 324096,
+      "revision": "49c9d46ec2fa2546"
     },
     {
       "path": "/videos/ancient_god_tentacles.mp4",

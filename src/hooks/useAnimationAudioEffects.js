@@ -21,6 +21,7 @@ export function useAnimationAudioEffects({
   playUndergroundSpringDropletSound,
   playVolcanoSound,
   playSemiMaterialSound,
+  playBurrowingWormSound,
 }) {
   useEffect(() => {
     if (anim?.type !== 'APOPHIS_ECLIPSE') return undefined;
@@ -80,6 +81,11 @@ export function useAnimationAudioEffects({
     if (anim?.type !== 'ETHEREALIZE_GAIN') return undefined;
     return playSemiMaterialSound?.();
   }, [anim, playSemiMaterialSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'BURROWING_WORM') return undefined;
+    return playBurrowingWormSound?.();
+  }, [anim, playBurrowingWormSound]);
 
   useEffect(() => {
     // ENDLESS_CORRIDOR_TUNNEL sound is triggered by the tunnel overlay mount,

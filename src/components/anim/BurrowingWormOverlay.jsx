@@ -2,6 +2,19 @@ import React from 'react';
 
 const WORM_DURATION_S = 2.75;
 const WORM_DPR_LIMIT = 1.1;
+const BURROWING_WORM_ASSET_PATHS = {
+  bases: [
+    '/img/effects/burrowing_worm/burrow-hole-base-1.png',
+    '/img/effects/burrowing_worm/burrow-hole-base-2.png',
+  ],
+  lips: [
+    '/img/effects/burrowing_worm/burrow-hole-lip-1.png',
+    '/img/effects/burrowing_worm/burrow-hole-lip-2.png',
+  ],
+  segment: '/img/effects/burrowing_worm/worm-segment.png',
+};
+
+let burrowingWormAssetPromise = null;
 
 function clamp01(value) {
   return Math.max(0, Math.min(1, value));
@@ -15,6 +28,84 @@ function smoothstep(edge0, edge1, value) {
 function easeOutCubic(value) {
   const t = clamp01(value);
   return 1 - Math.pow(1 - t, 3);
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function quakeStepOffset(time) {
+  const cycle = 1.25;
+  const phase = ((time % cycle) / cycle) * 100;
+  const keys = [
+    [0, 0],
+    [6.67, -5],
+    [13.33, 5],
+    [20, 0],
+    [26.67, 4],
+    [33.33, -4],
+    [40, 0],
+    [46.67, -5],
+    [53.33, 5],
+    [60, 0],
+    [66.67, 4],
+    [73.33, -4],
+    [80, 0],
+    [86.67, -3],
+    [93.33, 3],
+    [100, 0],
+  ];
+  for (let i = 1; i < keys.length; i += 1) {
+    const [prevT, prevX] = keys[i - 1];
+    const [nextT, nextX] = keys[i];
+    if (phase <= nextT) {
+      const local = (phase - prevT) / Math.max(0.0001, nextT - prevT);
+      return lerp(prevX, nextX, smoothstep(0, 1, local));
+    }
+  }
+  return 0;
+}
+
+function getBurrowingWormShake(time, burrows, blackPhase) {
+  if (blackPhase >= 0.99) return { x: 0, y: 0 };
+  const firstPhaseFade = (1 - blackPhase) * (1 - smoothstep(1.46, 1.68, time));
+  const sustained = quakeStepOffset(time) * 1.35 * firstPhaseFade;
+  const tremor = Math.sin(time * 42) * 1.8 * firstPhaseFade + Math.sin(time * 81) * 0.9 * firstPhaseFade;
+  const impulse = burrows.reduce((sum, burrow) => {
+    const local = time - burrow.start;
+    if (local < -0.04 || local > 0.34) return sum;
+    const rise = smoothstep(-0.04, 0.05, local);
+    const fall = 1 - smoothstep(0.08, 0.34, local);
+    return sum + rise * fall * 10.5;
+  }, 0) * (1 - blackPhase);
+  return {
+    x: sustained + Math.sin(time * 118) * (impulse + Math.abs(tremor)),
+    y: Math.cos(time * 97) * (impulse * 0.42 + Math.abs(tremor) * 0.56),
+  };
+}
+
+function loadEffectImage(src) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+function loadBurrowingWormAssets() {
+  if (!burrowingWormAssetPromise) {
+    burrowingWormAssetPromise = Promise.all([
+      ...BURROWING_WORM_ASSET_PATHS.bases.map(loadEffectImage),
+      ...BURROWING_WORM_ASSET_PATHS.lips.map(loadEffectImage),
+      loadEffectImage(BURROWING_WORM_ASSET_PATHS.segment),
+    ]).then(([base1, base2, lip1, lip2, segment]) => ({
+      bases: [base1, base2],
+      lips: [lip1, lip2],
+      segment,
+    }));
+  }
+  return burrowingWormAssetPromise;
 }
 
 function makeRand(seed) {
@@ -103,7 +194,7 @@ function drawGround(ctx, width, height, time, alpha) {
   ctx.restore();
 }
 
-function drawHole(ctx, hole, radius, tilt, open, seed) {
+function drawFallbackHole(ctx, hole, radius, tilt, open, seed) {
   if (open <= 0) return;
   const rand = makeRand(seed);
   ctx.save();
@@ -136,7 +227,38 @@ function drawHole(ctx, hole, radius, tilt, open, seed) {
   ctx.restore();
 }
 
-function drawWormBody(ctx, burrow, local, width, height) {
+function getHoleAssetIndex(seed) {
+  return Math.abs(seed) % 2;
+}
+
+function drawHoleImage(ctx, image, hole, radius, tilt, open, layer) {
+  if (!image || open <= 0) return false;
+  const openScale = 0.66 + open * 0.34;
+  const w = radius * 3.08;
+  const h = w * (image.naturalHeight || image.height) / Math.max(1, image.naturalWidth || image.width);
+  ctx.save();
+  ctx.translate(hole.x, hole.y);
+  ctx.rotate(tilt);
+  ctx.scale(openScale, openScale);
+  ctx.globalAlpha = open * (layer === 'lip' ? 0.98 : 0.94);
+  ctx.drawImage(image, -w / 2, -h / 2, w, h);
+  ctx.restore();
+  return true;
+}
+
+function drawHoleBase(ctx, assets, hole, radius, tilt, open, seed) {
+  const image = assets?.bases?.[getHoleAssetIndex(seed)];
+  if (!drawHoleImage(ctx, image, hole, radius, tilt, open, 'base')) {
+    drawFallbackHole(ctx, hole, radius, tilt, open, seed);
+  }
+}
+
+function drawHoleLip(ctx, assets, hole, radius, tilt, open, seed) {
+  const image = assets?.lips?.[getHoleAssetIndex(seed)];
+  drawHoleImage(ctx, image, hole, radius, tilt, open, 'lip');
+}
+
+function drawWormBody(ctx, burrow, local, width, height, assets) {
   const p = clamp01(local / 0.5);
   const appear = smoothstep(0.03, 0.15, p) * (1 - smoothstep(0.88, 1, p));
   const travel = easeOutCubic(clamp01((p - 0.1) / 0.78));
@@ -171,6 +293,29 @@ function drawWormBody(ctx, burrow, local, width, height) {
   ctx.strokeStyle = 'rgba(118,84,56,0.42)';
   ctx.lineWidth = bodyWidth * 0.38;
   ctx.stroke();
+
+  if (assets?.segment) {
+    const segment = assets.segment;
+    const stampCount = Math.max(12, Math.ceil((visibleEnd - visibleStart) * 28));
+    for (let i = 0; i < stampCount; i += 1) {
+      const u = i / Math.max(1, stampCount - 1);
+      const t = visibleStart + (visibleEnd - visibleStart) * u;
+      if (t < 0 || t > 1) continue;
+      const pt = quadPoint(burrow.a, burrow.c, burrow.b, t);
+      const tan = quadTangent(burrow.a, burrow.c, burrow.b, t);
+      const len = Math.hypot(tan.x, tan.y) || 1;
+      const wobble = Math.sin((t * 9.5 - p * 5.7 + burrow.seed) * Math.PI) * bodyWidth * 0.07;
+      const widthScale = 0.9 + Math.sin(u * Math.PI) * 0.16 + t * 0.08;
+      const stampW = bodyWidth * 2.85 * widthScale;
+      const stampH = bodyWidth * 1.42 * widthScale;
+      ctx.save();
+      ctx.translate(pt.x + (-tan.y / len) * wobble, pt.y + (tan.x / len) * wobble);
+      ctx.rotate(Math.atan2(tan.y, tan.x));
+      ctx.globalAlpha = appear * (0.68 + Math.sin(u * Math.PI) * 0.26);
+      ctx.drawImage(segment, -stampW / 2, -stampH / 2, stampW, stampH);
+      ctx.restore();
+    }
+  }
 
   const ringCount = 26;
   for (let i = 0; i < ringCount; i += 1) {
@@ -211,28 +356,49 @@ function drawWormBody(ctx, burrow, local, width, height) {
   ctx.restore();
 }
 
-function drawBurstDust(ctx, burrow, local, radius) {
-  const rand = makeRand(burrow.seed * 131);
-  const age = clamp01(local / 0.36);
-  const alpha = (1 - age) * smoothstep(0, 0.08, local);
+function drawHoleBurstDust(ctx, hole, tilt, ageSeconds, radius, seed, direction) {
+  if (ageSeconds < 0 || ageSeconds > 0.44) return;
+  const rand = makeRand(seed);
+  const age = clamp01(ageSeconds / 0.4);
+  const alpha = (1 - age) * smoothstep(0, 0.055, ageSeconds);
   if (alpha <= 0) return;
-  [burrow.a, burrow.b].forEach((hole, hIdx) => {
-    ctx.save();
-    ctx.translate(hole.x, hole.y);
-    ctx.rotate(hIdx ? burrow.tiltB : burrow.tiltA);
-    ctx.globalAlpha = alpha * 0.62;
-    for (let i = 0; i < 24; i += 1) {
-      const a = rand() * Math.PI * 2;
-      const speed = radius * (0.38 + rand() * 0.9);
-      const x = Math.cos(a) * speed * age * 1.35;
-      const y = Math.sin(a) * speed * age * 0.52 - radius * 0.1 * age;
-      ctx.fillStyle = rand() > 0.42 ? 'rgba(172,126,72,0.65)' : 'rgba(82,58,38,0.62)';
-      ctx.beginPath();
-      ctx.ellipse(x, y, radius * (0.035 + rand() * 0.055), radius * (0.018 + rand() * 0.028), a, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
-  });
+  ctx.save();
+  ctx.translate(hole.x, hole.y);
+  ctx.rotate(tilt);
+  ctx.globalAlpha = alpha;
+
+  for (let i = 0; i < 18; i += 1) {
+    const a = rand() * Math.PI * 2;
+    const outward = radius * (0.34 + rand() * 0.92);
+    const x = Math.cos(a) * outward * age * 1.45;
+    const y = Math.sin(a) * outward * age * 0.58 - radius * (0.1 + rand() * 0.22) * age * direction;
+    const size = radius * (0.024 + rand() * 0.065) * (1 - age * 0.25);
+    ctx.fillStyle = rand() > 0.38 ? 'rgba(176,128,73,0.72)' : 'rgba(78,54,35,0.7)';
+    ctx.beginPath();
+    ctx.ellipse(x, y, size, size * (0.48 + rand() * 0.35), a, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.globalAlpha = alpha * 0.36;
+  for (let i = 0; i < 7; i += 1) {
+    const a = rand() * Math.PI * 2;
+    const dist = radius * (0.18 + rand() * 0.68) * age;
+    const x = Math.cos(a) * dist * 1.55;
+    const y = Math.sin(a) * dist * 0.5 - radius * 0.18 * age * direction;
+    const puff = ctx.createRadialGradient(x, y, 0, x, y, radius * (0.18 + rand() * 0.18));
+    puff.addColorStop(0, 'rgba(196,149,89,0.45)');
+    puff.addColorStop(1, 'rgba(196,149,89,0)');
+    ctx.fillStyle = puff;
+    ctx.beginPath();
+    ctx.arc(x, y, radius * (0.18 + rand() * 0.18), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawBurstDust(ctx, burrow, local, radius) {
+  drawHoleBurstDust(ctx, burrow.a, burrow.tiltA, local - 0.01, radius, burrow.seed * 131, 1);
+  drawHoleBurstDust(ctx, burrow.b, burrow.tiltB, local - 0.22, radius * 0.94, burrow.seed * 151, -1);
 }
 
 function cubicPoint(a, b, c, d, t) {
@@ -495,6 +661,12 @@ function BurrowingWormAnim({ exiting }) {
     let height = 1;
     let dpr = 1;
     let burrows = [];
+    let assets = null;
+    let disposed = false;
+
+    loadBurrowingWormAssets().then(loadedAssets => {
+      if (!disposed) assets = loadedAssets;
+    });
 
     const resize = () => {
       width = window.innerWidth || 1280;
@@ -516,27 +688,29 @@ function BurrowingWormAnim({ exiting }) {
       const sceneFade = smoothstep(0, 0.12, time) * (1 - smoothstep(WORM_DURATION_S - 0.22, WORM_DURATION_S, time));
       ctx.clearRect(0, 0, width, height);
       const blackPhase = smoothstep(1.5, 1.7, time);
-      const shake =
-        (1 - blackPhase) * (
-          (time < 1.56 ? 1.5 + 3.8 * Math.max(0, Math.sin(time * 34)) : 0)
-          + burrows.reduce((sum, burrow) => {
-            const local = time - burrow.start;
-            if (local < 0 || local > 0.18) return sum;
-            return sum + (1 - local / 0.18) * 8;
-          }, 0)
-        );
+      const shake = getBurrowingWormShake(time, burrows, blackPhase);
       ctx.save();
-      ctx.translate(Math.sin(time * 118) * shake, Math.cos(time * 97) * shake * 0.62);
+      ctx.translate(shake.x, shake.y);
       drawGround(ctx, width, height, time, sceneFade * (1 - blackPhase * 0.75));
       const radius = Math.max(34, Math.min(width, height) * 0.065);
       burrows.forEach(burrow => {
         const local = time - burrow.start;
         const openA = smoothstep(-0.02, 0.08, local) * (1 - smoothstep(0.42, 0.58, local));
         const openB = smoothstep(0.16, 0.28, local) * (1 - smoothstep(0.46, 0.62, local));
+        drawHoleBase(ctx, assets, burrow.a, radius, burrow.tiltA, openA, burrow.seed);
+        drawHoleBase(ctx, assets, burrow.b, radius * 0.94, burrow.tiltB, openB, burrow.seed + 9);
+      });
+      burrows.forEach(burrow => {
+        const local = time - burrow.start;
+        drawWormBody(ctx, burrow, local, width, height, assets);
+      });
+      burrows.forEach(burrow => {
+        const local = time - burrow.start;
+        const openA = smoothstep(-0.02, 0.08, local) * (1 - smoothstep(0.42, 0.58, local));
+        const openB = smoothstep(0.16, 0.28, local) * (1 - smoothstep(0.46, 0.62, local));
         drawBurstDust(ctx, burrow, local, radius);
-        drawWormBody(ctx, burrow, local, width, height);
-        drawHole(ctx, burrow.a, radius, burrow.tiltA, openA, burrow.seed);
-        drawHole(ctx, burrow.b, radius * 0.94, burrow.tiltB, openB, burrow.seed + 9);
+        drawHoleLip(ctx, assets, burrow.a, radius, burrow.tiltA, openA, burrow.seed);
+        drawHoleLip(ctx, assets, burrow.b, radius * 0.94, burrow.tiltB, openB, burrow.seed + 9);
       });
       ctx.restore();
 
@@ -562,6 +736,7 @@ function BurrowingWormAnim({ exiting }) {
     window.addEventListener('resize', resize);
     raf = requestAnimationFrame(render);
     return () => {
+      disposed = true;
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
     };

@@ -67,12 +67,56 @@ const SEMI_MATERIAL_CHARGE_FADE_MS = 260;
 const SEMI_MATERIAL_GLASS_VOLUME = 0.42;
 const SEMI_MATERIAL_GLASS_DELAY_MS = 1690;
 const SEMI_MATERIAL_BG_DELAY_MS = SEMI_MATERIAL_GLASS_DELAY_MS + 80;
+const BURROWING_WORM_EARTH_VOLUME = 0.34;
+const BURROWING_WORM_DRILL_VOLUME = 0.78;
+const BURROWING_WORM_BURROW_LEAD_MS = 120;
+const BURROWING_WORM_BURROW_DURATION_MS = 760;
+const BURROWING_WORM_BURROWS = [
+  { delayMs: 120, drillStartAt: 2.02, earthStartAt: 2.1 },
+  { delayMs: 580, drillStartAt: 2.48, earthStartAt: 1.95 },
+  { delayMs: 1040, drillStartAt: 3.12, earthStartAt: 2.02 },
+];
+const BURROWING_WORM_ATTACK_VOLUME = 0.42;
+const BURROWING_WORM_ATTACK_DELAY_MS = 1445;
+const BURROWING_WORM_ATTACK_PLAYBACK_RATE = 1.19;
+const BURROWING_WORM_ATTACK_STOP_MS = 1280;
+const BURROWING_WORM_ATTACK_FADE_MS = 180;
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function smoothstep01(value) {
+  const t = clamp01(value);
+  return t * t * (3 - 2 * t);
+}
+
+function distanceAttenuation(distance, rolloff = 1.55, minGain = 0.38) {
+  const d = Math.max(0, distance);
+  return Math.max(minGain, 1 / (1 + rolloff * d * d));
+}
+
+function burrowDistanceState(progress) {
+  const surfaceAt = 0.38;
+  const closeness = progress < surfaceAt
+    ? smoothstep01(progress / surfaceAt)
+    : 1 - smoothstep01((progress - surfaceAt) / (1 - surfaceAt));
+  const distance = 0.1 + (1 - closeness) * 1.05;
+  return { distance, closeness };
+}
+
+function setAudioPlaybackRate(audio, playbackRate) {
+  audio.playbackRate = playbackRate;
+  try { audio.preservesPitch = false; } catch { /* ignore */ }
+  try { audio.mozPreservesPitch = false; } catch { /* ignore */ }
+  try { audio.webkitPreservesPitch = false; } catch { /* ignore */ }
+}
 
 export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
   const [audioReady, setAudioReady] = useState(false);
   const readyRef = useRef(false);
   const bgmRefs = useRef({ main: null, battleEarth: null, battleStars: null });
-  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, nightWind: [], igniteTorchFire: null, rope: null, droplet: null, volcano: null, semiMaterial: null });
+  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, nightWind: [], igniteTorchFire: null, rope: null, droplet: null, volcano: null, semiMaterial: null, burrowingWorm: null });
   const sfxStopTimersRef = useRef({});
   const sfxFadeFramesRef = useRef({});
   const sfxSequenceCleanupsRef = useRef({});
@@ -103,6 +147,13 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     const semiMaterialBg = new Audio(buildPublicUrl('sounds/SE/semiMaterial/semiMaterial_bg.mp3'));
     const semiMaterialCharge = new Audio(buildPublicUrl('sounds/SE/semiMaterial/semiMaterial_charge.mp3'));
     const semiMaterialGlass = new Audio(buildPublicUrl('sounds/SE/semiMaterial/semiMaterial_glass.mp3'));
+    const burrowingWormEarthPlayers = BURROWING_WORM_BURROWS.map(() =>
+      new Audio(buildPublicUrl('sounds/SE/earthquake.mp3'))
+    );
+    const burrowingWormDrillPlayers = BURROWING_WORM_BURROWS.map(() =>
+      new Audio(buildPublicUrl('sounds/SE/worm/worm_drill.mp3'))
+    );
+    const burrowingWormAttack = new Audio(buildPublicUrl('sounds/SE/worm/worm_attack.mp3'));
     const volcanoBg = new Audio(buildPublicUrl('sounds/SE/volcano/volcano_bg.mp3'));
     const volcanoMeteorPlayers = Array.from({ length: VOLCANO_AUDIO_POOL_SIZE }, () => ({
       meteor1: new Audio(buildPublicUrl('sounds/SE/volcano/volcano_meteor1.mp3')),
@@ -167,6 +218,16 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     semiMaterialCharge.volume = SEMI_MATERIAL_CHARGE_VOLUME;
     semiMaterialGlass.preload = 'auto';
     semiMaterialGlass.volume = SEMI_MATERIAL_GLASS_VOLUME;
+    burrowingWormEarthPlayers.forEach(audio => {
+      audio.preload = 'auto';
+      audio.volume = BURROWING_WORM_EARTH_VOLUME;
+    });
+    burrowingWormDrillPlayers.forEach(audio => {
+      audio.preload = 'auto';
+      audio.volume = BURROWING_WORM_DRILL_VOLUME;
+    });
+    burrowingWormAttack.preload = 'auto';
+    burrowingWormAttack.volume = BURROWING_WORM_ATTACK_VOLUME;
     const volcanoAudios = [
       volcanoBg,
       ...volcanoMeteorPlayers.flatMap(player => [player.meteor1, player.meteor2]),
@@ -216,6 +277,11 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
         charge: semiMaterialCharge,
         glass: semiMaterialGlass,
       },
+      burrowingWorm: {
+        earthPlayers: burrowingWormEarthPlayers,
+        drillPlayers: burrowingWormDrillPlayers,
+        attack: burrowingWormAttack,
+      },
       volcano: {
         bg: volcanoBg,
         meteorPlayers: volcanoMeteorPlayers,
@@ -231,7 +297,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       sfxStopTimersRef.current = {};
       Object.values(sfxFadeFramesRef.current).forEach(frame => cancelAnimationFrame(frame));
       sfxFadeFramesRef.current = {};
-      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, ...nightWindVariants, igniteTorchFire, rope, droplet, semiMaterialBg, semiMaterialCharge, semiMaterialGlass, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
+      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, ...nightWindVariants, igniteTorchFire, rope, droplet, semiMaterialBg, semiMaterialCharge, semiMaterialGlass, ...burrowingWormEarthPlayers, ...burrowingWormDrillPlayers, burrowingWormAttack, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
         try {
           audio.pause();
           audio.currentTime = 0;
@@ -845,6 +911,124 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     addTimer(setTimeout(stopAll, SEMI_MATERIAL_BG_DELAY_MS + SEMI_MATERIAL_BG_STOP_MS + 360));
     return stopAll;
   }, [fadeOutAudio, noteUserGesture]);
+  const playBurrowingWormSound = useCallback(() => {
+    noteUserGesture();
+    const burrowingWorm = sfxRefs.current.burrowingWorm;
+    if (!burrowingWorm) return undefined;
+    sfxSequenceCleanupsRef.current.burrowingWorm?.();
+    const timers = [];
+    const fadeKeys = new Set();
+    const sequenceKey = Date.now();
+    const addTimer = timer => timers.push(timer);
+    const addFadeKey = key => fadeKeys.add(key);
+    const stopAudio = (audio, resetVolume, resetRate = 1) => {
+      if (!audio) return;
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.playbackRate = resetRate;
+        audio.volume = resetVolume;
+      } catch { /* ignore */ }
+    };
+    const stopAll = () => {
+      timers.forEach(timer => clearTimeout(timer));
+      fadeKeys.forEach(key => {
+        if (sfxFadeFramesRef.current[key]) {
+          cancelAnimationFrame(sfxFadeFramesRef.current[key]);
+          sfxFadeFramesRef.current[key] = null;
+        }
+      });
+      (burrowingWorm.earthPlayers || []).forEach(audio => stopAudio(audio, BURROWING_WORM_EARTH_VOLUME));
+      (burrowingWorm.drillPlayers || []).forEach(audio => stopAudio(audio, BURROWING_WORM_DRILL_VOLUME));
+      stopAudio(burrowingWorm.attack, BURROWING_WORM_ATTACK_VOLUME);
+      if (sfxSequenceCleanupsRef.current.burrowingWorm === stopAll) delete sfxSequenceCleanupsRef.current.burrowingWorm;
+    };
+    sfxSequenceCleanupsRef.current.burrowingWorm = stopAll;
+    BURROWING_WORM_BURROWS.forEach((burrow, index) => {
+      addTimer(setTimeout(() => {
+        const drill = burrowingWorm.drillPlayers?.[index % (burrowingWorm.drillPlayers?.length || 1)];
+        const earth = burrowingWorm.earthPlayers?.[index % (burrowingWorm.earthPlayers?.length || 1)];
+        const started = performance.now();
+        const animateDistanceLayer = ({ audio, key, sourceStartAt, baseVolume, resetVolume, rolloff, minGain, rateFar, rateNear, volumeFloor, volumePeak }) => {
+          if (!audio) return;
+          try {
+            addFadeKey(key);
+            audio.pause();
+            audio.currentTime = sourceStartAt;
+            audio.volume = 0;
+            setAudioPlaybackRate(audio, rateFar);
+            audio.play().catch(() => { });
+          } catch { /* ignore */ }
+          const step = now => {
+            const progress = clamp01((now - started) / BURROWING_WORM_BURROW_DURATION_MS);
+            const { distance, closeness } = burrowDistanceState(progress);
+            const fadeIn = smoothstep01(progress / 0.1);
+            const fadeOut = 1 - smoothstep01((progress - 0.82) / 0.18);
+            const gain = distanceAttenuation(distance, rolloff, minGain);
+            const distanceVolume = volumeFloor + closeness * (volumePeak - volumeFloor);
+            try {
+              audio.volume = baseVolume * gain * distanceVolume * fadeIn * fadeOut;
+              setAudioPlaybackRate(audio, rateFar + closeness * (rateNear - rateFar));
+            } catch { /* ignore */ }
+            if (progress < 1) {
+              sfxFadeFramesRef.current[key] = requestAnimationFrame(step);
+              return;
+            }
+            try {
+              audio.pause();
+              audio.currentTime = 0;
+              audio.volume = resetVolume;
+              setAudioPlaybackRate(audio, 1);
+            } catch { /* ignore */ }
+            sfxFadeFramesRef.current[key] = null;
+          };
+          sfxFadeFramesRef.current[key] = requestAnimationFrame(step);
+        };
+        animateDistanceLayer({
+          audio: earth,
+          key: `burrowing-worm-earth-${sequenceKey}-${index}`,
+          sourceStartAt: burrow.earthStartAt,
+          baseVolume: BURROWING_WORM_EARTH_VOLUME,
+          resetVolume: BURROWING_WORM_EARTH_VOLUME,
+          rolloff: 4.8,
+          minGain: 0.24,
+          rateFar: 0.66,
+          rateNear: 1,
+          volumeFloor: 0.7,
+          volumePeak: 1.35,
+        });
+        animateDistanceLayer({
+          audio: drill,
+          key: `burrowing-worm-drill-${sequenceKey}-${index}`,
+          sourceStartAt: burrow.drillStartAt,
+          baseVolume: BURROWING_WORM_DRILL_VOLUME,
+          resetVolume: BURROWING_WORM_DRILL_VOLUME,
+          rolloff: 2.6,
+          minGain: 0.34,
+          rateFar: 0.74,
+          rateNear: 1.12,
+          volumeFloor: 0.54,
+          volumePeak: 1.02,
+        });
+      }, Math.max(0, burrow.delayMs - BURROWING_WORM_BURROW_LEAD_MS)));
+    });
+    addTimer(setTimeout(() => {
+      try {
+        const attackFadeKey = `burrowing-worm-attack-${sequenceKey}`;
+        addFadeKey(attackFadeKey);
+        burrowingWorm.attack.pause();
+        burrowingWorm.attack.currentTime = 0;
+        burrowingWorm.attack.playbackRate = BURROWING_WORM_ATTACK_PLAYBACK_RATE;
+        burrowingWorm.attack.volume = BURROWING_WORM_ATTACK_VOLUME;
+        burrowingWorm.attack.play().catch(() => { });
+        addTimer(setTimeout(() => {
+          fadeOutAudio(burrowingWorm.attack, attackFadeKey, BURROWING_WORM_ATTACK_FADE_MS, BURROWING_WORM_ATTACK_VOLUME);
+        }, Math.max(0, BURROWING_WORM_ATTACK_STOP_MS - BURROWING_WORM_ATTACK_FADE_MS)));
+      } catch { /* ignore */ }
+    }, BURROWING_WORM_ATTACK_DELAY_MS));
+    addTimer(setTimeout(stopAll, BURROWING_WORM_ATTACK_DELAY_MS + BURROWING_WORM_ATTACK_STOP_MS + 360));
+    return stopAll;
+  }, [fadeOutAudio, noteUserGesture]);
 
   return {
     noteUserGesture,
@@ -868,5 +1052,6 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     playUndergroundSpringDropletSound,
     playVolcanoSound,
     playSemiMaterialSound,
+    playBurrowingWormSound,
   };
 }

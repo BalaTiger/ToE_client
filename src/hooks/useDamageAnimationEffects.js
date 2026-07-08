@@ -9,10 +9,7 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
   const [guillotineTargets, setGuillotineTargets] = useState([]);
   const [hpHealIndices, setHpHealIndices] = useState([]);
   const [sanHealIndices, setSanHealIndices] = useState([]);
-  const [screenShake, setScreenShake] = useState(false);
-  const [deathShake, setDeathShake] = useState(false);
   const timersRef = useRef(new Set());
-  const shakeTimerRef = useRef(null);
 
   const addTimer = useCallback((fn, delay) => {
     const timer = setTimeout(() => {
@@ -26,8 +23,6 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
   const clearDamageAnimations = useCallback(() => {
     timersRef.current.forEach(timer => clearTimeout(timer));
     timersRef.current.clear();
-    clearTimeout(shakeTimerRef.current);
-    shakeTimerRef.current = null;
     setHitIndices([]);
     setKnifeTargets([]);
     setSanHitIndices([]);
@@ -35,8 +30,6 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
     setGuillotineTargets([]);
     setHpHealIndices([]);
     setSanHealIndices([]);
-    setScreenShake(false);
-    setDeathShake(false);
   }, []);
 
   useEffect(() => clearDamageAnimations, [clearDamageAnimations]);
@@ -77,9 +70,6 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
         });
         setHitIndices(anim.hitIndices);
         setKnifeTargets(pts);
-        setScreenShake(true);
-        clearTimeout(shakeTimerRef.current);
-        shakeTimerRef.current = addTimer(() => setScreenShake(false), 400);
       });
       return cleanupRaf;
     }
@@ -108,9 +98,6 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
         });
         setSanHitIndices(anim.hitIndices);
         setSanTargets(pts);
-        setScreenShake(true);
-        clearTimeout(shakeTimerRef.current);
-        shakeTimerRef.current = addTimer(() => setScreenShake(false), 280);
         addTimer(() => setSanHitIndices([]), 850);
         addTimer(() => setSanTargets([]), 900);
       });
@@ -214,23 +201,14 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
         }));
         if (!cancelled) setGuillotineTargets(pts.filter(Boolean));
       });
-      const timers = timersRef.current;
-      const shakeTimer = addTimer(() => {
-        setDeathShake(true);
-        clearTimeout(shakeTimerRef.current);
-        shakeTimerRef.current = addTimer(() => setDeathShake(false), 220);
-      }, 120);
       return () => {
         cleanupRaf();
-        clearTimeout(shakeTimer);
-        timers.delete(shakeTimer);
       };
     }
 
     if (anim.type === 'DEATH') {
       schedule(() => {
         setGuillotineTargets([]);
-        setDeathShake(false);
       });
       return cleanupRaf;
     }
@@ -246,8 +224,6 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
     guillotineTargets,
     hpHealIndices,
     sanHealIndices,
-    screenShake,
-    deathShake,
     clearDamageAnimations,
   };
 }
