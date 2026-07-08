@@ -507,6 +507,25 @@ export const AREA_CARD_ANIMATION_STYLES = `
     width: 100%;
     height: 100%;
   }
+  .burrowing-worm-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1220;
+    pointer-events: none;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 50% 54%, rgba(88,56,28,0.12), rgba(4,3,2,0.28) 58%, rgba(0,0,0,0.34));
+    animation: animFadeIn 0.1s ease-out both;
+  }
+  .burrowing-worm-overlay.burrowing-worm-exiting {
+    animation: animFadeOut 0.18s ease-in forwards;
+  }
+  .burrowing-worm-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
   .volcano-overlay {
     position: fixed;
     inset: 0;

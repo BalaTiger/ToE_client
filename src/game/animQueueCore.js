@@ -329,6 +329,7 @@ export function buildAnimQueue(oldGs, newGs) {
   const statEventsForQueue = handledCardEffectStatSeqs.size
     ? explicitStatEvents.filter(event => !handledCardEffectStatSeqs.has(event?.seq))
     : explicitStatEvents;
+  q.push(...cardEffectSteps);
   const petrifyDeathTargets = new Set(explicitStatEvents
     .filter(event => event?.type === 'PETRIFY_DEATH' && event?.target != null)
     .map(event => Number(event.target)));
@@ -404,7 +405,6 @@ export function buildAnimQueue(oldGs, newGs) {
     }
   }
   q.push(...godPowerBlockedSteps);
-  q.push(...cardEffectSteps);
   q.push(...vritraRevealSteps);
   if (deathIdx.length) {
     const deathMsgs = getDeathAnimMsgs(newMsgs, effectivePlayers, deathIdx);

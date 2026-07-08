@@ -414,6 +414,11 @@ describe('applyFx', () => {
     const res = applyFx({ type: 'allDamageHPRandomExtra', name: '钻地魔虫', val: 2 }, 0, null, players, [], [], gs);
 
     expect(res.statePatch._randomTargetEvents[0]).toMatchObject({ targetIdx: 1, phaseOrder: 1 });
+    expect(res.statePatch._visualEvents[0]).toMatchObject({
+      type: VISUAL_EVENT.CARD_EFFECT,
+      effectKey: 'burrowingWorm',
+      actorIdx: 0,
+    });
     expect(res.statEvents.filter(ev => ev.phaseOrder === 0).map(ev => ev.target)).toEqual([0, 1, 2]);
     expect(res.statEvents.filter(ev => ev.phaseOrder === 2)).toMatchObject([{ target: 1 }]);
     expect(res.P[1].hp).toBe(6);

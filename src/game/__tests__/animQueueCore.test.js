@@ -145,7 +145,7 @@ describe('buildAnimQueue stat animations', () => {
     expect(dice).not.toHaveProperty('dodgeSuccess');
   });
 
-  it('钻地魔虫会先播放全场扣血，再播放转盘和随机扣血', () => {
+  it('钻地魔虫会先播放触发动画，再播放全场扣血、转盘和随机扣血', () => {
     const playersBefore = [
       makePlayer({ name: '你', hp: 10 }),
       makePlayer({ name: '艾伦', hp: 10 }),
@@ -160,6 +160,18 @@ describe('buildAnimQueue stat animations', () => {
     const newGs = makeGs({
       players: playersAfter,
       log: ['全体存活角色失去 2 HP', '艾伦 额外失去 2 HP'],
+      _visualEvents: [
+        createCardEffectEvent({
+          effectKey: 'burrowingWorm',
+          card: { id: 'worm', name: '钻地魔虫', key: 'D1', type: 'allDamageHPRandomExtra' },
+          actorIdx: 0,
+          beforePlayers: playersBefore,
+          beforeDiscard: [],
+          afterPlayers: playersAfter,
+          afterDiscard: [],
+          msgs: ['全体存活角色失去 2 HP'],
+        }),
+      ],
       _randomTargetSeq: 1,
       _randomTargetEvents: [{ seq: 1, sourceIdx: 0, targetIdx: 1, label: '钻地魔虫', phaseOrder: 1 }],
       _statEventSeq: 1,
@@ -172,13 +184,17 @@ describe('buildAnimQueue stat animations', () => {
     });
 
     const queue = buildAnimQueue(oldGs, newGs);
+    const wormIdx = queue.findIndex(step => step.type === 'BURROWING_WORM');
     const firstHpIdx = queue.findIndex(step => step.type === 'HP_DAMAGE');
     const randomIdx = queue.findIndex(step => step.type === 'RANDOM_TARGET');
     const secondHpIdx = queue.findIndex((step, idx) => step.type === 'HP_DAMAGE' && idx > randomIdx);
 
+    expect(wormIdx).toBeGreaterThanOrEqual(0);
     expect(firstHpIdx).toBeGreaterThanOrEqual(0);
+    expect(firstHpIdx).toBeGreaterThan(wormIdx);
     expect(randomIdx).toBeGreaterThan(firstHpIdx);
     expect(secondHpIdx).toBeGreaterThan(randomIdx);
+    expect(queue[wormIdx]).toMatchObject({ actorIdx: 0, durationMs: 2750 });
     expect(queue[firstHpIdx].hitIndices).toEqual([0, 1, 2]);
     expect(queue[secondHpIdx].hitIndices).toEqual([1]);
     expect(queue[firstHpIdx].visualSetupTiming).toBe('queueStart');

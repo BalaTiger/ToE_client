@@ -824,6 +824,26 @@ export function buildCardEffectAnimStep(event, state) {
       ],
     };
   }
+  if (event.effectKey === 'burrowingWorm') {
+    const sync = buildSyncedCardEffectTimeline({
+      beforePlayers: event.beforePlayers,
+      beforeDiscard: event.beforeDiscard,
+      afterPlayers: event.beforePlayers,
+      afterDiscard: event.beforeDiscard,
+      state,
+      finalAtMs: 0,
+    });
+    return {
+      type: 'BURROWING_WORM',
+      card: event.card,
+      actorIdx: event.actorIdx,
+      beforePlayers: event.beforePlayers || [],
+      beforeDiscard: event.beforeDiscard || [],
+      msgs: Array.isArray(event.msgs) ? event.msgs : [],
+      durationMs: 2750,
+      ...sync,
+    };
+  }
   if (event.effectKey === 'etherealizeGain') {
     const payload = event.payload || {};
     const sync = buildSyncedCardEffectTimeline({

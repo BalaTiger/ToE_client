@@ -1261,6 +1261,8 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const deferredGlobalLogs = [];
       const affectedTargets = P.map((p, i) => i).filter(i => !P[i].isDead && !avoidNegativeFor.includes(i) && !(avoidSelf && i === ci));
       const beforeGlobalPlayers = copyPlayers(P);
+      const beforeGlobalDiscard = [...Disc];
+      const burrowingWormTriggerMsgs = [];
       affectedTargets.forEach(i => {
         const localMsgs = [];
         hurtHPDirect(i, (card.val || 0) + dmgBonus, localMsgs);
@@ -1268,11 +1270,11 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       });
       const afterGlobalPlayers = copyPlayers(P);
       if (affectedTargets.length) {
-        if (avoidSelf && affectedTargets.length === allLiving.length - 1) {
-          msgs.push(`除${actor.name}外，全体存活角色失去 ${card.val} HP`);
-        } else {
-          msgs.push(`全体存活角色失去 ${card.val} HP`);
-        }
+        const globalDamageMsg = avoidSelf && affectedTargets.length === allLiving.length - 1
+          ? `除${actor.name}外，全体存活角色失去 ${card.val} HP`
+          : `全体存活角色失去 ${card.val} HP`;
+        msgs.push(globalDamageMsg);
+        if (card?.name === '钻地魔虫') burrowingWormTriggerMsgs.push(globalDamageMsg);
       }
       if (deferredGlobalLogs.length) msgs.push(...deferredGlobalLogs);
       const alivePlayers = P.map((p, i) => i).filter(i => !P[i].isDead && !avoidNegativeFor.includes(i) && !(avoidSelf && i === ci));
@@ -1313,6 +1315,24 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
             phaseOrder: 2,
           }] : []),
         ];
+      }
+      if (card?.name === '钻地魔虫') {
+        const event = createCardEffectEvent({
+          effectKey: 'burrowingWorm',
+          card,
+          actorIdx: ci,
+          beforePlayers: beforeGlobalPlayers,
+          beforeDiscard: beforeGlobalDiscard,
+          afterPlayers: copyPlayers(P),
+          afterDiscard: [...Disc],
+          msgs: burrowingWormTriggerMsgs,
+        });
+        if (event) {
+          statePatch = {
+            ...statePatch,
+            _visualEvents: [...(statePatch._visualEvents || []), event],
+          };
+        }
       }
     },
     throwStone: () => {
