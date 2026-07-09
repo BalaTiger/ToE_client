@@ -1,6 +1,6 @@
 {
-  "version": "e646ac0a0bbba74b",
-  "generatedAt": "2026-07-09T10:19:24.980Z",
+  "version": "506c1cc6128289cb",
+  "generatedAt": "2026-07-09T10:47:34.966Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1465,6 +1465,12 @@
       "type": "audio",
       "size": 14592,
       "revision": "c759891a15caca85"
+    },
+    {
+      "path": "/sounds/SE/roll-dice.mp3",
+      "type": "audio",
+      "size": 115356,
+      "revision": "9f2ec3c1053158f4"
     },
     {
       "path": "/sounds/SE/rolling-down.mp3",

@@ -101,6 +101,9 @@ const ONE_CARD_SHIFT_VARIANTS = [
   { path: 'sounds/SE/card/one_card_shift2.mp3', volume: 0.32 },
 ];
 const MULTI_CARD_SHIFT_VOLUME = 0.42;
+const DICE_ROLL_VOLUME = 0.46;
+const DICE_ROLL_STOP_MS = 1200;
+const DICE_ROLL_FADE_MS = 120;
 
 function clamp01(value) {
   return Math.max(0, Math.min(1, value));
@@ -136,7 +139,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
   const [audioReady, setAudioReady] = useState(false);
   const readyRef = useRef(false);
   const bgmRefs = useRef({ main: null, battleEarth: null, battleStars: null });
-  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, nightWind: [], igniteTorchFire: null, rope: null, droplet: null, volcano: null, semiMaterial: null, burrowingWorm: null, snakeTrap: null, cthRlyehDream: null, godPowerBlocked: null, tsgSlimePop: [], oneCardShift: [], multiCardShift: null });
+  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, nightWind: [], igniteTorchFire: null, rope: null, droplet: null, volcano: null, semiMaterial: null, burrowingWorm: null, snakeTrap: null, cthRlyehDream: null, godPowerBlocked: null, tsgSlimePop: [], oneCardShift: [], multiCardShift: null, diceRoll: null });
   const sfxStopTimersRef = useRef({});
   const sfxFadeFramesRef = useRef({});
   const sfxSequenceCleanupsRef = useRef({});
@@ -189,6 +192,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       audio: new Audio(buildPublicUrl(config.path)),
     }));
     const multiCardShift = new Audio(buildPublicUrl('sounds/SE/card/multi_card_shift.mp3'));
+    const diceRoll = new Audio(buildPublicUrl('sounds/SE/roll-dice.mp3'));
     const volcanoBg = new Audio(buildPublicUrl('sounds/SE/volcano/volcano_bg.mp3'));
     const volcanoMeteorPlayers = Array.from({ length: VOLCANO_AUDIO_POOL_SIZE }, () => ({
       meteor1: new Audio(buildPublicUrl('sounds/SE/volcano/volcano_meteor1.mp3')),
@@ -283,6 +287,8 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     });
     multiCardShift.preload = 'auto';
     multiCardShift.volume = MULTI_CARD_SHIFT_VOLUME;
+    diceRoll.preload = 'auto';
+    diceRoll.volume = DICE_ROLL_VOLUME;
     const volcanoAudios = [
       volcanoBg,
       ...volcanoMeteorPlayers.flatMap(player => [player.meteor1, player.meteor2]),
@@ -346,6 +352,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       tsgSlimePop: tsgSlimePopVariants,
       oneCardShift: oneCardShiftVariants,
       multiCardShift,
+      diceRoll,
       volcano: {
         bg: volcanoBg,
         meteorPlayers: volcanoMeteorPlayers,
@@ -361,7 +368,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       sfxStopTimersRef.current = {};
       Object.values(sfxFadeFramesRef.current).forEach(frame => cancelAnimationFrame(frame));
       sfxFadeFramesRef.current = {};
-      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, ...nightWindVariants, igniteTorchFire, rope, droplet, semiMaterialBg, semiMaterialCharge, semiMaterialGlass, ...burrowingWormEarthPlayers, ...burrowingWormDrillPlayers, burrowingWormAttack, snakeTrapHiss, ...snakeTrapAttackPlayers.flat(), cthRlyehDream, godPowerBlocked, ...tsgSlimePopVariants, ...oneCardShiftVariants.map(({ audio }) => audio), multiCardShift, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
+      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, ...nightWindVariants, igniteTorchFire, rope, droplet, semiMaterialBg, semiMaterialCharge, semiMaterialGlass, ...burrowingWormEarthPlayers, ...burrowingWormDrillPlayers, burrowingWormAttack, snakeTrapHiss, ...snakeTrapAttackPlayers.flat(), cthRlyehDream, godPowerBlocked, ...tsgSlimePopVariants, ...oneCardShiftVariants.map(({ audio }) => audio), multiCardShift, diceRoll, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
         try {
           audio.pause();
           audio.currentTime = 0;
@@ -1283,6 +1290,40 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     } catch { /* ignore */ }
     return undefined;
   }, [noteUserGesture]);
+  const playDiceRollSound = useCallback(() => {
+    noteUserGesture();
+    const audio = sfxRefs.current.diceRoll;
+    if (!audio) return undefined;
+    const fadeKey = 'diceRoll';
+    clearTimeout(sfxStopTimersRef.current.diceRoll);
+    if (sfxFadeFramesRef.current[fadeKey]) {
+      cancelAnimationFrame(sfxFadeFramesRef.current[fadeKey]);
+      sfxFadeFramesRef.current[fadeKey] = null;
+    }
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = DICE_ROLL_VOLUME;
+      audio.playbackRate = 1;
+      audio.play().catch(() => { });
+      sfxStopTimersRef.current.diceRoll = setTimeout(() => {
+        fadeOutAudio(audio, fadeKey, DICE_ROLL_FADE_MS, DICE_ROLL_VOLUME);
+      }, Math.max(0, DICE_ROLL_STOP_MS - DICE_ROLL_FADE_MS));
+    } catch { /* ignore */ }
+    return () => {
+      clearTimeout(sfxStopTimersRef.current.diceRoll);
+      if (sfxFadeFramesRef.current[fadeKey]) {
+        cancelAnimationFrame(sfxFadeFramesRef.current[fadeKey]);
+        sfxFadeFramesRef.current[fadeKey] = null;
+      }
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.playbackRate = 1;
+        audio.volume = DICE_ROLL_VOLUME;
+      } catch { /* ignore */ }
+    };
+  }, [fadeOutAudio, noteUserGesture]);
 
   return {
     noteUserGesture,
@@ -1313,5 +1354,6 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     playTsgSlimePopSound,
     playOneCardShiftSound,
     playMultiCardShiftSound,
+    playDiceRollSound,
   };
 }

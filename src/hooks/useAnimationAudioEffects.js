@@ -51,6 +51,7 @@ export function useAnimationAudioEffects({
   playTsgSlimePopSound,
   playOneCardShiftSound,
   playMultiCardShiftSound,
+  playDiceRollSound,
 }) {
   const detachedAudioCleanupsRef = useRef({});
 
@@ -173,6 +174,11 @@ export function useAnimationAudioEffects({
     if (anim?.type !== 'TSG_SLIME_POP') return undefined;
     return playTsgSlimePopSound?.();
   }, [anim, playTsgSlimePopSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'DICE_ROLL') return undefined;
+    return playDiceRollSound?.();
+  }, [anim, playDiceRollSound]);
 
   useEffect(() => {
     // ENDLESS_CORRIDOR_TUNNEL sound is triggered by the tunnel overlay mount,
