@@ -8,6 +8,7 @@ import { CARD_FACE_RATIO } from '../cards/CardFaceAssets';
 import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
 import { ThemeCornerOrnament } from '../theme/ThemeOrnaments';
 import { GodHighlightBurst } from '../anim/GodHighlightBurst';
+import { PlayerStatusTags } from '../playerStatus/PlayerStatusTags';
 import { getFontZoomCompensate } from '../../utils/scale';
 import { _getZoomCompensatedRect } from '../../utils/dom';
 
@@ -646,72 +647,18 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
       </div>
       <StatBar label="HP"  val={displayStats?.[playerIndex]?.hp ?? player.hp}  color="#8b1515" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={viewportWidth} labelColor={theme.muted} valueColor={theme.text} lineColor={theme.lineDim}/>
       <StatBar label="SAN" val={displayStats?.[playerIndex]?.san ?? player.san} color="#4a1080" trackColor="#120820" scaleRatio={scaleRatio} viewportWidth={viewportWidth} labelColor={theme.muted} valueColor={theme.text} lineColor={theme.lineDim}/>
-      {/* Skull counter + god zone */}
-      {((player.godEncounters||0)>0||(player.godZone||[]).length>0||(player.etherealizeStacks||0)>0||(player.poisonStacks||0)>0)&&(
-        <div data-player-god-status={playerIndex} style={{display:'flex',alignItems:'center',gap:4,marginTop:4,flexWrap:'wrap'}}>
-          {(player.godEncounters||0)>0&&(
-            <span style={{fontSize:9,color:'#8b6060',letterSpacing:1,fontFamily:"'Cinzel',serif"}}>
-              {'💀'.repeat(Math.min(player.godEncounters,6))}{player.godEncounters>6?`×${player.godEncounters}`:''}
-            </span>
-          )}
+      <PlayerStatusTags
+        player={player}
+        playerIndex={playerIndex}
+        renderGodPower={() => (
           <span
             data-god-power-anchor={playerIndex}
-            style={{
-              display:'inline-flex',
-              alignItems:'center',
-              minWidth:player.godName?undefined:74,
-              minHeight:player.godName?undefined:14,
-              visibility:player.godName?'visible':'hidden',
-            }}
+            style={{display:'inline-flex',alignItems:'center'}}
           >
-            {player.godName&&<GodPowerBadge player={player} playerIndex={playerIndex}/>}
+            <GodPowerBadge player={player} playerIndex={playerIndex}/>
           </span>
-          {(player.etherealizeStacks||0)>0&&(
-            <span
-              data-etherealize-badge={playerIndex}
-              title="虚化：回合外即将失去 HP/SAN 时，可消耗 1 层令相邻角色失去"
-              style={{
-                fontSize:10,color:'#b9d8f0',
-                background:'#0c1118',border:'1px solid #87a9c866',
-                borderRadius:3,padding:'2px 6px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
-                lineHeight:1.2,
-                position:'relative',
-                overflow:'hidden',
-                boxShadow:'0 0 8px #87a9c822',
-                '--god-power-col':'#87a9c8',
-                '--god-power-chevron-scale':'5.4',
-              }}
-            >
-              虚化 {player.etherealizeStacks}
-              <span
-                key={`etherealize-${playerIndex}-${player.etherealizeStacks}`}
-                className="god-power-chevron-layer etherealize-chevron-layer"
-                aria-hidden
-              >
-                {[0,1,2,3].map(r=>(
-                  <span key={r} className="god-power-chevron-row">
-                    <span className="god-power-chevron-glyph" />
-                  </span>
-                ))}
-              </span>
-            </span>
-          )}
-          {(player.poisonStacks||0)>0&&(
-            <span
-              title="中毒：回合开始时失去等同层数的 HP，并消耗 1 层"
-              style={{
-                fontSize:10,color:'#b7f5a8',
-                background:'#0d160a',border:'1px solid #74c36566',
-                borderRadius:3,padding:'2px 6px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
-                lineHeight:1.2,
-                boxShadow:'0 0 8px #74c36522',
-              }}
-            >
-              中毒 {player.poisonStacks}
-            </span>
-          )}
-        </div>
-      )}
+        )}
+      />
       <div style={{display:'flex',flexWrap:'wrap',gap:3,marginTop:5,minWidth:0}}>
         {(player.zoneCards||[]).map((c,ci)=><DDCard key={c.id||`zone-${playerIndex}-${ci}`} card={c} small holderId={playerIndex}/>)}
       </div>

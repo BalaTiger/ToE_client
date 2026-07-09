@@ -1,6 +1,6 @@
 {
-  "version": "6aec23589b4eda7c",
-  "generatedAt": "2026-07-08T13:16:22.823Z",
+  "version": "5da4acf87d7fdf6f",
+  "generatedAt": "2026-07-08T13:58:12.544Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1471,6 +1471,24 @@
       "type": "audio",
       "size": 67680,
       "revision": "af86995228d2a15f"
+    },
+    {
+      "path": "/sounds/SE/snake/snake_attack_1.mp3",
+      "type": "audio",
+      "size": 27321,
+      "revision": "ae3d35abe508b578"
+    },
+    {
+      "path": "/sounds/SE/snake/snake_attack_2.mp3",
+      "type": "audio",
+      "size": 27321,
+      "revision": "634f6f49b1dd71b7"
+    },
+    {
+      "path": "/sounds/SE/snake/snake_hiss.mp3",
+      "type": "audio",
+      "size": 129024,
+      "revision": "eafe77b4f9574f74"
     },
     {
       "path": "/sounds/SE/throw.mp3",

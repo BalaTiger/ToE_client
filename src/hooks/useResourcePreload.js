@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { scheduleCardIllustrationIdleDownload } from "../components/cards/CardFaceAssets";
+import { isLocalTestHost } from "../utils/runtime";
 import { buildPublicUrl } from "../utils/url";
 
 const RESOURCE_MANIFEST_PATH = '/resource-manifest.json';
@@ -217,7 +218,8 @@ function selectDeferredResources(manifest, loadAllThemes) {
 }
 
 export function useResourcePreload({ loadAllThemes = false } = {}) {
-  const [isLoading, setIsLoading] = useState(true);
+  const isLocalPreview = useMemo(() => isLocalTestHost(), []);
+  const [isLoading, setIsLoading] = useState(() => !isLocalTestHost());
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingError, setLoadingError] = useState(null);
   const [currentFile, setCurrentFile] = useState('');
@@ -247,11 +249,14 @@ export function useResourcePreload({ loadAllThemes = false } = {}) {
 
       try {
         const cachedVersion = localStorage.getItem(CACHE_VERSION_KEY);
-        if (cachedVersion === manifest.version) {
+        if (isLocalPreview || cachedVersion === manifest.version) {
           setSafeIsLoading(false);
           deferredStageRef.current = loadAllThemes ? 'all' : 'base';
           if (!networkProfile.deferMedia) {
-            scheduleDeferredPreload(deferredResources, getDeferredConcurrency(networkProfile));
+            scheduleDeferredPreload(
+              isLocalPreview ? [...bootstrapResources, ...deferredResources] : deferredResources,
+              getDeferredConcurrency(networkProfile),
+            );
             scheduleCardIllustrationIdleDownload();
           }
           return;
@@ -296,7 +301,7 @@ export function useResourcePreload({ loadAllThemes = false } = {}) {
     return () => {
       cancelled = true;
     };
-  }, [loadAllThemes, networkProfile.deferMedia, networkProfile.mediaConcurrency]);
+  }, [isLocalPreview, loadAllThemes, networkProfile.deferMedia, networkProfile.mediaConcurrency]);
 
   useEffect(() => {
     if (isLoading || !manifestRef.current) return;

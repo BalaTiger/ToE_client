@@ -5,6 +5,7 @@ import { HealCrossEffect, StatBar } from '../board';
 import { GodHighlightBurst } from '../anim/GodHighlightBurst';
 import { ThemeCornerOrnament } from '../theme/ThemeOrnaments';
 import { LocalGodPowerTag } from './LocalGodPowerTag';
+import { PlayerStatusTags } from '../playerStatus/PlayerStatusTags';
 
 export function SelfPlayerPanel({
   selfPanelRef,
@@ -176,92 +177,35 @@ export function SelfPlayerPanel({
               ♥ 翻面中 — 下回合跳过
             </div>
           )}
-          {(me.godEncounters || 0) > 0 && (
-            <div style={{ marginTop: 4, fontSize: fontSizes.small, color: '#8b6060', letterSpacing: 1 }}>
-              {'💀'.repeat(Math.min(me.godEncounters, 5))}
-              {me.godEncounters > 5 ? `×${me.godEncounters}` : ''} 邪神遭遇
-            </div>
-          )}
-          {me.godName && (me.godZone || []).length > 0 && (
-            <LocalGodPowerTag def={GOD_DEFS[me.godName]} godLevel={me.godLevel}>
-              <div
-                style={{
-                  fontSize: fontSizes.small,
-                  color: GOD_DEFS[me.godName]?.col,
-                  fontFamily: "'Cinzel',serif",
-                  letterSpacing: 0.5,
-                  fontWeight: 700,
-                  textShadow: `0 0 6px ${GOD_DEFS[me.godName]?.col}66`,
-                }}
-              >
-                {GOD_DEFS[me.godName]?.name}
-              </div>
-              <div style={{ fontSize: fontSizes.small, color: '#d4b0b0', fontFamily: "'IM Fell English',serif", fontStyle: 'italic' }}>
-                {GOD_DEFS[me.godName]?.power} Lv.{me.godLevel}
-              </div>
-              <div style={{ fontSize: fontSizes.tiny, color: '#a07878', fontStyle: 'italic', marginTop: 1, lineHeight: 1.4 }}>
-                {GOD_DEFS[me.godName]?.levels[(me.godLevel || 1) - 1]?.desc}
-              </div>
-            </LocalGodPowerTag>
-          )}
-          {(visualMe.etherealizeStacks || 0) > 0 && (
-            <div
-              data-etherealize-badge={0}
-              title="虚化：回合外即将失去 HP/SAN 时，可消耗 1 层令相邻角色失去"
-              style={{
-                marginTop: 4,
-                display: 'inline-flex',
-                alignSelf: 'flex-start',
-                position: 'relative',
-                overflow: 'hidden',
-                fontSize: fontSizes.small,
-                color: '#b9d8f0',
-                background: '#0c1118',
-                border: '1px solid #87a9c866',
-                borderRadius: 3,
-                padding: '2px 6px',
-                fontFamily: "'Cinzel',serif",
-                letterSpacing: 0.5,
-                boxShadow: '0 0 8px #87a9c822',
-                '--god-power-col': '#87a9c8',
-                '--god-power-chevron-scale': 5.2,
-              }}
-            >
-              虚化 {visualMe.etherealizeStacks}
-              <span
-                key={`etherealize-${visualMe.etherealizeStacks}`}
-                className="god-power-chevron-layer etherealize-chevron-layer"
-                aria-hidden
-              >
-                {[0, 1, 2, 3].map(r => (
-                  <span key={r} className="god-power-chevron-row">
-                    <span className="god-power-chevron-glyph" />
-                  </span>
-                ))}
-              </span>
-            </div>
-          )}
-          {(visualMe.poisonStacks || 0) > 0 && (
-            <div
-              title="中毒：回合开始时失去等同层数的 HP，并消耗 1 层"
-              style={{
-                marginTop: 4,
-                display: 'inline-flex',
-                alignSelf: 'flex-start',
-                fontSize: fontSizes.small,
-                color: '#b7f5a8',
-                background: '#0d160a',
-                border: '1px solid #74c36566',
-                borderRadius: 3,
-                padding: '2px 6px',
-                fontFamily: "'Cinzel',serif",
-                letterSpacing: 0.5,
-                boxShadow: '0 0 8px #74c36522',
-              }}
-            >
-              中毒 {visualMe.poisonStacks}
-            </div>
-          )}
+          <PlayerStatusTags
+            player={me}
+            visualPlayer={visualMe}
+            playerIndex={0}
+            variant="stack"
+            fontSizes={fontSizes}
+            renderGodPower={() => (
+              <LocalGodPowerTag def={GOD_DEFS[me.godName]} godLevel={me.godLevel}>
+                <div
+                  style={{
+                    fontSize: fontSizes.small,
+                    color: GOD_DEFS[me.godName]?.col,
+                    fontFamily: "'Cinzel',serif",
+                    letterSpacing: 0.5,
+                    fontWeight: 700,
+                    textShadow: `0 0 6px ${GOD_DEFS[me.godName]?.col}66`,
+                  }}
+                >
+                  {GOD_DEFS[me.godName]?.name}
+                </div>
+                <div style={{ fontSize: fontSizes.small, color: '#d4b0b0', fontFamily: "'IM Fell English',serif", fontStyle: 'italic' }}>
+                  {GOD_DEFS[me.godName]?.power} Lv.{me.godLevel}
+                </div>
+                <div style={{ fontSize: fontSizes.tiny, color: '#a07878', fontStyle: 'italic', marginTop: 1, lineHeight: 1.4 }}>
+                  {GOD_DEFS[me.godName]?.levels[(me.godLevel || 1) - 1]?.desc}
+                </div>
+              </LocalGodPowerTag>
+            )}
+          />
           {!!me.zoneCards?.length && (
             <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               {me.zoneCards.map((c, ci) => (

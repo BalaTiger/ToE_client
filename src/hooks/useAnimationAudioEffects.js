@@ -8,6 +8,14 @@ const ANIMATION_AUDIO_DELAY = {
 const EARTHQUAKE_SHAKE_DURATION_MS = 2500;
 const VOLCANO_ANIMATION_DURATION_MS = 2500;
 
+function getSnakeTrapAttackCount(anim) {
+  if (Array.isArray(anim?.assignmentHits) && anim.assignmentHits.length) return anim.assignmentHits.length;
+  if (Array.isArray(anim?.assignmentList) && anim.assignmentList.length) {
+    return anim.assignmentList.reduce((sum, item) => sum + Math.max(1, item?.count || 1), 0);
+  }
+  return Math.max(1, anim?.totalLayers || 1);
+}
+
 export function useAnimationAudioEffects({
   anim,
   playApophisEclipseSound,
@@ -22,6 +30,7 @@ export function useAnimationAudioEffects({
   playVolcanoSound,
   playSemiMaterialSound,
   playBurrowingWormSound,
+  playSnakeTrapSound,
 }) {
   useEffect(() => {
     if (anim?.type !== 'APOPHIS_ECLIPSE') return undefined;
@@ -86,6 +95,11 @@ export function useAnimationAudioEffects({
     if (anim?.type !== 'BURROWING_WORM') return undefined;
     return playBurrowingWormSound?.();
   }, [anim, playBurrowingWormSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'SNAKE_TRAP') return undefined;
+    return playSnakeTrapSound?.({ attackCount: getSnakeTrapAttackCount(anim) });
+  }, [anim, playSnakeTrapSound]);
 
   useEffect(() => {
     // ENDLESS_CORRIDOR_TUNNEL sound is triggered by the tunnel overlay mount,

@@ -81,6 +81,13 @@ const BURROWING_WORM_ATTACK_DELAY_MS = 1445;
 const BURROWING_WORM_ATTACK_PLAYBACK_RATE = 1.19;
 const BURROWING_WORM_ATTACK_STOP_MS = 1280;
 const BURROWING_WORM_ATTACK_FADE_MS = 180;
+const SNAKE_TRAP_HISS_VOLUME = 0.18;
+const SNAKE_TRAP_HISS_STOP_MS = 1550;
+const SNAKE_TRAP_HISS_FADE_MS = 220;
+const SNAKE_TRAP_ATTACK_VOLUME = 0.48;
+const SNAKE_TRAP_ATTACK_START_DELAY_MS = 1750;
+const SNAKE_TRAP_ATTACK_INTERVAL_MS = 320;
+const SNAKE_TRAP_ATTACK_POOL_SIZE = 4;
 
 function clamp01(value) {
   return Math.max(0, Math.min(1, value));
@@ -116,7 +123,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
   const [audioReady, setAudioReady] = useState(false);
   const readyRef = useRef(false);
   const bgmRefs = useRef({ main: null, battleEarth: null, battleStars: null });
-  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, nightWind: [], igniteTorchFire: null, rope: null, droplet: null, volcano: null, semiMaterial: null, burrowingWorm: null });
+  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, nightWind: [], igniteTorchFire: null, rope: null, droplet: null, volcano: null, semiMaterial: null, burrowingWorm: null, snakeTrap: null });
   const sfxStopTimersRef = useRef({});
   const sfxFadeFramesRef = useRef({});
   const sfxSequenceCleanupsRef = useRef({});
@@ -154,6 +161,11 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       new Audio(buildPublicUrl('sounds/SE/worm/worm_drill.mp3'))
     );
     const burrowingWormAttack = new Audio(buildPublicUrl('sounds/SE/worm/worm_attack.mp3'));
+    const snakeTrapHiss = new Audio(buildPublicUrl('sounds/SE/snake/snake_hiss.mp3'));
+    const snakeTrapAttackPlayers = Array.from({ length: SNAKE_TRAP_ATTACK_POOL_SIZE }, () => [
+      new Audio(buildPublicUrl('sounds/SE/snake/snake_attack_1.mp3')),
+      new Audio(buildPublicUrl('sounds/SE/snake/snake_attack_2.mp3')),
+    ]);
     const volcanoBg = new Audio(buildPublicUrl('sounds/SE/volcano/volcano_bg.mp3'));
     const volcanoMeteorPlayers = Array.from({ length: VOLCANO_AUDIO_POOL_SIZE }, () => ({
       meteor1: new Audio(buildPublicUrl('sounds/SE/volcano/volcano_meteor1.mp3')),
@@ -228,6 +240,12 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     });
     burrowingWormAttack.preload = 'auto';
     burrowingWormAttack.volume = BURROWING_WORM_ATTACK_VOLUME;
+    snakeTrapHiss.preload = 'auto';
+    snakeTrapHiss.volume = SNAKE_TRAP_HISS_VOLUME;
+    snakeTrapAttackPlayers.flat().forEach(audio => {
+      audio.preload = 'auto';
+      audio.volume = SNAKE_TRAP_ATTACK_VOLUME;
+    });
     const volcanoAudios = [
       volcanoBg,
       ...volcanoMeteorPlayers.flatMap(player => [player.meteor1, player.meteor2]),
@@ -282,6 +300,10 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
         drillPlayers: burrowingWormDrillPlayers,
         attack: burrowingWormAttack,
       },
+      snakeTrap: {
+        hiss: snakeTrapHiss,
+        attackPlayers: snakeTrapAttackPlayers,
+      },
       volcano: {
         bg: volcanoBg,
         meteorPlayers: volcanoMeteorPlayers,
@@ -297,7 +319,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       sfxStopTimersRef.current = {};
       Object.values(sfxFadeFramesRef.current).forEach(frame => cancelAnimationFrame(frame));
       sfxFadeFramesRef.current = {};
-      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, ...nightWindVariants, igniteTorchFire, rope, droplet, semiMaterialBg, semiMaterialCharge, semiMaterialGlass, ...burrowingWormEarthPlayers, ...burrowingWormDrillPlayers, burrowingWormAttack, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
+      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, ...nightWindVariants, igniteTorchFire, rope, droplet, semiMaterialBg, semiMaterialCharge, semiMaterialGlass, ...burrowingWormEarthPlayers, ...burrowingWormDrillPlayers, burrowingWormAttack, snakeTrapHiss, ...snakeTrapAttackPlayers.flat(), ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
         try {
           audio.pause();
           audio.currentTime = 0;
@@ -1029,6 +1051,66 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     addTimer(setTimeout(stopAll, BURROWING_WORM_ATTACK_DELAY_MS + BURROWING_WORM_ATTACK_STOP_MS + 360));
     return stopAll;
   }, [fadeOutAudio, noteUserGesture]);
+  const playSnakeTrapSound = useCallback(({ attackCount = 1 } = {}) => {
+    noteUserGesture();
+    const snakeTrap = sfxRefs.current.snakeTrap;
+    if (!snakeTrap) return undefined;
+    sfxSequenceCleanupsRef.current.snakeTrap?.();
+    const timers = [];
+    const fadeKeys = new Set();
+    const sequenceKey = Date.now();
+    const addTimer = timer => timers.push(timer);
+    const addFadeKey = key => fadeKeys.add(key);
+    const stopAudio = (audio, resetVolume) => {
+      if (!audio) return;
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.playbackRate = 1;
+        audio.volume = resetVolume;
+      } catch { /* ignore */ }
+    };
+    const stopAll = () => {
+      timers.forEach(timer => clearTimeout(timer));
+      fadeKeys.forEach(key => {
+        if (sfxFadeFramesRef.current[key]) {
+          cancelAnimationFrame(sfxFadeFramesRef.current[key]);
+          sfxFadeFramesRef.current[key] = null;
+        }
+      });
+      stopAudio(snakeTrap.hiss, SNAKE_TRAP_HISS_VOLUME);
+      (snakeTrap.attackPlayers || []).flat().forEach(audio => stopAudio(audio, SNAKE_TRAP_ATTACK_VOLUME));
+      if (sfxSequenceCleanupsRef.current.snakeTrap === stopAll) delete sfxSequenceCleanupsRef.current.snakeTrap;
+    };
+    sfxSequenceCleanupsRef.current.snakeTrap = stopAll;
+    try {
+      const hissFadeKey = `snake-trap-hiss-${sequenceKey}`;
+      addFadeKey(hissFadeKey);
+      snakeTrap.hiss.pause();
+      snakeTrap.hiss.currentTime = 0;
+      snakeTrap.hiss.volume = SNAKE_TRAP_HISS_VOLUME;
+      snakeTrap.hiss.play().catch(() => { });
+      addTimer(setTimeout(() => {
+        fadeOutAudio(snakeTrap.hiss, hissFadeKey, SNAKE_TRAP_HISS_FADE_MS, SNAKE_TRAP_HISS_VOLUME);
+      }, Math.max(0, SNAKE_TRAP_HISS_STOP_MS - SNAKE_TRAP_HISS_FADE_MS)));
+    } catch { /* ignore */ }
+    const count = Math.max(0, Math.min(12, Math.floor(attackCount || 0)));
+    for (let i = 0; i < count; i += 1) {
+      addTimer(setTimeout(() => {
+        const pair = snakeTrap.attackPlayers?.[i % (snakeTrap.attackPlayers?.length || 1)] || [];
+        const audio = pair[Math.floor(Math.random() * pair.length)] || pair[0];
+        if (!audio) return;
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.volume = SNAKE_TRAP_ATTACK_VOLUME;
+          audio.play().catch(() => { });
+        } catch { /* ignore */ }
+      }, SNAKE_TRAP_ATTACK_START_DELAY_MS + i * SNAKE_TRAP_ATTACK_INTERVAL_MS));
+    }
+    addTimer(setTimeout(stopAll, SNAKE_TRAP_ATTACK_START_DELAY_MS + Math.max(1, count) * SNAKE_TRAP_ATTACK_INTERVAL_MS + 1500));
+    return stopAll;
+  }, [fadeOutAudio, noteUserGesture]);
 
   return {
     noteUserGesture,
@@ -1053,5 +1135,6 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     playVolcanoSound,
     playSemiMaterialSound,
     playBurrowingWormSound,
+    playSnakeTrapSound,
   };
 }
