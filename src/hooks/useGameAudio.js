@@ -88,6 +88,10 @@ const SNAKE_TRAP_ATTACK_VOLUME = 0.48;
 const SNAKE_TRAP_ATTACK_START_DELAY_MS = 1750;
 const SNAKE_TRAP_ATTACK_INTERVAL_MS = 320;
 const SNAKE_TRAP_ATTACK_POOL_SIZE = 4;
+const CTH_RLYEH_DREAM_VOLUME = 0.42;
+const CTH_RLYEH_DREAM_STOP_MS = 2950;
+const GOD_POWER_BLOCKED_VOLUME = 0.56;
+const GOD_POWER_BLOCKED_STOP_MS = 1790;
 
 function clamp01(value) {
   return Math.max(0, Math.min(1, value));
@@ -123,7 +127,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
   const [audioReady, setAudioReady] = useState(false);
   const readyRef = useRef(false);
   const bgmRefs = useRef({ main: null, battleEarth: null, battleStars: null });
-  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, nightWind: [], igniteTorchFire: null, rope: null, droplet: null, volcano: null, semiMaterial: null, burrowingWorm: null, snakeTrap: null });
+  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, nightWind: [], igniteTorchFire: null, rope: null, droplet: null, volcano: null, semiMaterial: null, burrowingWorm: null, snakeTrap: null, cthRlyehDream: null, godPowerBlocked: null });
   const sfxStopTimersRef = useRef({});
   const sfxFadeFramesRef = useRef({});
   const sfxSequenceCleanupsRef = useRef({});
@@ -166,6 +170,8 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       new Audio(buildPublicUrl('sounds/SE/snake/snake_attack_1.mp3')),
       new Audio(buildPublicUrl('sounds/SE/snake/snake_attack_2.mp3')),
     ]);
+    const cthRlyehDream = new Audio(buildPublicUrl('sounds/SE/dive.mp3'));
+    const godPowerBlocked = new Audio(buildPublicUrl('sounds/SE/god-power-blocked.mp3'));
     const volcanoBg = new Audio(buildPublicUrl('sounds/SE/volcano/volcano_bg.mp3'));
     const volcanoMeteorPlayers = Array.from({ length: VOLCANO_AUDIO_POOL_SIZE }, () => ({
       meteor1: new Audio(buildPublicUrl('sounds/SE/volcano/volcano_meteor1.mp3')),
@@ -246,6 +252,10 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       audio.preload = 'auto';
       audio.volume = SNAKE_TRAP_ATTACK_VOLUME;
     });
+    cthRlyehDream.preload = 'auto';
+    cthRlyehDream.volume = CTH_RLYEH_DREAM_VOLUME;
+    godPowerBlocked.preload = 'auto';
+    godPowerBlocked.volume = GOD_POWER_BLOCKED_VOLUME;
     const volcanoAudios = [
       volcanoBg,
       ...volcanoMeteorPlayers.flatMap(player => [player.meteor1, player.meteor2]),
@@ -304,6 +314,8 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
         hiss: snakeTrapHiss,
         attackPlayers: snakeTrapAttackPlayers,
       },
+      cthRlyehDream,
+      godPowerBlocked,
       volcano: {
         bg: volcanoBg,
         meteorPlayers: volcanoMeteorPlayers,
@@ -319,7 +331,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       sfxStopTimersRef.current = {};
       Object.values(sfxFadeFramesRef.current).forEach(frame => cancelAnimationFrame(frame));
       sfxFadeFramesRef.current = {};
-      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, ...nightWindVariants, igniteTorchFire, rope, droplet, semiMaterialBg, semiMaterialCharge, semiMaterialGlass, ...burrowingWormEarthPlayers, ...burrowingWormDrillPlayers, burrowingWormAttack, snakeTrapHiss, ...snakeTrapAttackPlayers.flat(), ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
+      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, ...nightWindVariants, igniteTorchFire, rope, droplet, semiMaterialBg, semiMaterialCharge, semiMaterialGlass, ...burrowingWormEarthPlayers, ...burrowingWormDrillPlayers, burrowingWormAttack, snakeTrapHiss, ...snakeTrapAttackPlayers.flat(), cthRlyehDream, godPowerBlocked, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
         try {
           audio.pause();
           audio.currentTime = 0;
@@ -1111,6 +1123,62 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     addTimer(setTimeout(stopAll, SNAKE_TRAP_ATTACK_START_DELAY_MS + Math.max(1, count) * SNAKE_TRAP_ATTACK_INTERVAL_MS + 1500));
     return stopAll;
   }, [fadeOutAudio, noteUserGesture]);
+  const playCthRlyehDreamSound = useCallback(() => {
+    noteUserGesture();
+    const audio = sfxRefs.current.cthRlyehDream;
+    if (!audio) return undefined;
+    clearTimeout(sfxStopTimersRef.current.cthRlyehDream);
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = CTH_RLYEH_DREAM_VOLUME;
+      audio.playbackRate = 1;
+      audio.play().catch(() => { });
+      sfxStopTimersRef.current.cthRlyehDream = setTimeout(() => {
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.volume = CTH_RLYEH_DREAM_VOLUME;
+        } catch { /* ignore */ }
+      }, CTH_RLYEH_DREAM_STOP_MS + 80);
+    } catch { /* ignore */ }
+    return () => {
+      clearTimeout(sfxStopTimersRef.current.cthRlyehDream);
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = CTH_RLYEH_DREAM_VOLUME;
+      } catch { /* ignore */ }
+    };
+  }, [noteUserGesture]);
+  const playGodPowerBlockedSound = useCallback(() => {
+    noteUserGesture();
+    const audio = sfxRefs.current.godPowerBlocked;
+    if (!audio) return undefined;
+    clearTimeout(sfxStopTimersRef.current.godPowerBlocked);
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = GOD_POWER_BLOCKED_VOLUME;
+      audio.playbackRate = 1;
+      audio.play().catch(() => { });
+      sfxStopTimersRef.current.godPowerBlocked = setTimeout(() => {
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.volume = GOD_POWER_BLOCKED_VOLUME;
+        } catch { /* ignore */ }
+      }, GOD_POWER_BLOCKED_STOP_MS + 80);
+    } catch { /* ignore */ }
+    return () => {
+      clearTimeout(sfxStopTimersRef.current.godPowerBlocked);
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = GOD_POWER_BLOCKED_VOLUME;
+      } catch { /* ignore */ }
+    };
+  }, [noteUserGesture]);
 
   return {
     noteUserGesture,
@@ -1136,5 +1204,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     playSemiMaterialSound,
     playBurrowingWormSound,
     playSnakeTrapSound,
+    playCthRlyehDreamSound,
+    playGodPowerBlockedSound,
   };
 }

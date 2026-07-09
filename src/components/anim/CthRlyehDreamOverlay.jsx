@@ -13,6 +13,11 @@ const DREAM_WIDTH_RATIO = 0.48;
 const DREAM_HEIGHT_RATIO = 0.43;
 const DREAM_MAX_WIDTH = 620;
 const DREAM_MAX_HEIGHT = 430;
+const BUBBLE_SPRITESHEET_PATH = 'img/effects/rlyeh_bubbles/rlyeh_bubble_spritesheet.webp';
+const BUBBLE_SPRITE_SIZE = 128;
+const BUBBLE_SPRITE_FRAMES = 8;
+const BUBBLE_SPRITE_VARIANTS = 4;
+const BUBBLE_RISE_LIFT_SCALE = 0.0158;
 const DREAM_EDGE_CANVAS_SCALE = 2.2;
 const DREAM_CORE_MASK = `
   radial-gradient(ellipse 39% 34% at 51% 50%, #000 0%, #000 56%, rgba(0,0,0,.64) 67%, rgba(0,0,0,.08) 80%, transparent 91%),
@@ -38,29 +43,40 @@ const DREAM_CAUSTIC_ARCS = [
   { x: 0.45, y: 0.72, w: 0.34, h: 0.12, rot: -0.12, phase: 4.5, alpha: 0.2 },
 ];
 const BUBBLES = [
-  { x: -0.72, y: -0.7, dx: -7.8, dy: -5.4, size: 4, end: 3.2, blur: 2.5, delay: 0.02, dur: 1.28, sway: -0.7 },
-  { x: -0.69, y: -0.73, dx: -8.6, dy: -5.8, size: 6, end: 5.1, blur: 2.1, delay: 0.16, dur: 1.42, sway: 0.5 },
-  { x: -0.66, y: -0.69, dx: -7.2, dy: -5.0, size: 3, end: 4.0, blur: 2.8, delay: 0.29, dur: 1.18, sway: -0.3 },
-  { x: -0.62, y: -0.72, dx: -9.4, dy: -6.1, size: 8, end: 6.6, blur: 1.9, delay: 0.42, dur: 1.5, sway: 0.8, front: true },
-  { x: 0.04, y: -1.04, dx: 0.6, dy: -8.4, size: 5, end: 2.7, blur: 2.4, delay: 0.04, dur: 1.58 },
-  { x: 0.14, y: -1.0, dx: 1.9, dy: -7.5, size: 11, end: 4.9, blur: 1.7, delay: 0.24, dur: 1.7, front: true },
-  { x: 0.31, y: -0.95, dx: 4.6, dy: -7.1, size: 4, end: 5.8, blur: 2.6, delay: 0.58, dur: 1.24 },
-  { x: 0.9, y: -0.35, dx: 10.8, dy: -3.0, size: 6, end: 3.8, blur: 2.0, delay: 0.08, dur: 1.44, sway: 0.9 },
-  { x: 0.94, y: -0.27, dx: 12.6, dy: -2.2, size: 9, end: 7.1, blur: 1.8, delay: 0.2, dur: 1.34, sway: -0.4, front: true },
-  { x: 0.98, y: -0.2, dx: 11.4, dy: -1.7, size: 5, end: 4.5, blur: 2.2, delay: 0.34, dur: 1.2, sway: 0.2 },
-  { x: 0.88, y: 0.34, dx: 10.6, dy: 3.2, size: 7, end: 4.0, blur: 2.1, delay: 0.46, dur: 1.62, sway: -0.9 },
-  { x: 0.56, y: 0.78, dx: 7.6, dy: 7.0, size: 13, end: 3.4, blur: 1.5, delay: 0.12, dur: 1.82 },
-  { x: 0.5, y: 0.83, dx: 6.7, dy: 8.5, size: 5, end: 7.8, blur: 2.6, delay: 0.36, dur: 1.36, front: true },
-  { x: 0.42, y: 0.89, dx: 5.2, dy: 9.2, size: 10, end: 5.3, blur: 1.8, delay: 0.5, dur: 1.48 },
-  { x: -0.12, y: 1.03, dx: -1.5, dy: 9.8, size: 4, end: 6.4, blur: 2.9, delay: 0.1, dur: 1.22 },
-  { x: -0.18, y: 1.0, dx: -2.8, dy: 10.6, size: 15, end: 4.6, blur: 1.4, delay: 0.28, dur: 1.74, front: true },
-  { x: -0.25, y: 0.96, dx: -3.8, dy: 8.8, size: 6, end: 8.9, blur: 2.8, delay: 0.52, dur: 1.3, front: true },
-  { x: -0.86, y: 0.36, dx: -10.2, dy: 3.5, size: 5, end: 3.6, blur: 2.3, delay: 0.18, dur: 1.68 },
-  { x: -0.9, y: 0.26, dx: -11.8, dy: 2.4, size: 12, end: 6.9, blur: 1.7, delay: 0.4, dur: 1.38, sway: 0.6, front: true },
-  { x: -0.96, y: 0.18, dx: -12.5, dy: 1.6, size: 4, end: 5.0, blur: 2.7, delay: 0.55, dur: 1.15, sway: -0.8 },
-  { x: -0.98, y: -0.08, dx: -10.4, dy: -0.8, size: 7, end: 2.6, blur: 2.2, delay: 0.7, dur: 1.78 },
-  { x: -0.34, y: -0.95, dx: -4.1, dy: -7.4, size: 18, end: 7.4, blur: 2.3, delay: 0.32, dur: 1.2, front: true },
-  { x: 0.73, y: 0.58, dx: 12.4, dy: 8.6, size: 20, end: 3.1, blur: 2.0, delay: 0.62, dur: 1.46, front: true },
+  { x: -0.58, y: 1.06, dx: -1.2, dy: -20.4, size: 5.2, end: 1.3, delay: 0.02, dur: 1.42, sway: -0.6 },
+  { x: -0.52, y: 1.02, dx: 0.7, dy: -23.0, size: 8.4, end: 1.44, delay: 0.12, dur: 1.52, sway: 0.5, front: true },
+  { x: -0.64, y: 1.0, dx: -2.4, dy: -17.6, size: 3.2, end: 1.06, delay: 0.24, dur: 1.18, sway: -0.2 },
+  { x: -0.47, y: 1.08, dx: 1.4, dy: -21.0, size: 12.6, end: 1.36, delay: 0.38, dur: 1.46, sway: 0.8, front: true },
+  { x: -0.7, y: 0.98, dx: -3.0, dy: -15.2, size: 4.0, end: 0.98, delay: 0.55, dur: 1.1, sway: -0.9 },
+  { x: -0.54, y: 1.1, dx: 0.1, dy: -18.4, size: 16.2, end: 1.22, delay: 0.7, dur: 1.3, front: true },
+  { x: -0.06, y: 1.1, dx: -0.6, dy: -25.0, size: 4.4, end: 1.14, delay: 0.04, dur: 1.56, sway: -0.3 },
+  { x: 0.02, y: 1.04, dx: 1.5, dy: -27.4, size: 10.6, end: 1.34, delay: 0.16, dur: 1.68, sway: 0.6, front: true },
+  { x: -0.02, y: 1.0, dx: -1.4, dy: -21.4, size: 3.6, end: 1.08, delay: 0.34, dur: 1.22, sway: -0.7 },
+  { x: 0.1, y: 1.08, dx: 2.1, dy: -19.8, size: 14.2, end: 1.38, delay: 0.48, dur: 1.48, front: true },
+  { x: -0.12, y: 1.02, dx: -1.9, dy: -16.4, size: 5.8, end: 0.96, delay: 0.62, dur: 1.12, sway: 0.2 },
+  { x: 0.04, y: 1.12, dx: 0.8, dy: -18.0, size: 8.8, end: 1.12, delay: 0.82, dur: 1.2, front: true },
+  { x: 0.52, y: 1.04, dx: 1.1, dy: -19.4, size: 4.8, end: 1.12, delay: 0.08, dur: 1.3, sway: 0.8 },
+  { x: 0.62, y: 1.0, dx: 2.8, dy: -22.6, size: 9.4, end: 1.32, delay: 0.2, dur: 1.52, sway: -0.4, front: true },
+  { x: 0.46, y: 0.98, dx: -0.4, dy: -15.8, size: 3.0, end: 0.94, delay: 0.36, dur: 1.16, sway: 0.3 },
+  { x: 0.68, y: 1.08, dx: 3.2, dy: -16.8, size: 13.4, end: 1.18, delay: 0.5, dur: 1.38, front: true },
+  { x: 0.42, y: 1.02, dx: -1.5, dy: -13.8, size: 5.4, end: 0.9, delay: 0.72, dur: 1.08, sway: -0.8 },
+  { x: 0.58, y: 1.12, dx: 1.9, dy: -14.6, size: 7.6, end: 1.04, delay: 0.88, dur: 1.18, front: true },
+  { x: -0.82, y: 0.94, dx: -2.0, dy: -10.8, size: 6.8, end: 0.84, delay: 0.28, dur: 1.36, sway: 0.4 },
+  { x: 0.84, y: 0.94, dx: 2.6, dy: -9.8, size: 6.0, end: 0.82, delay: 0.46, dur: 1.24, sway: -0.5 },
+  { x: -0.28, y: 0.96, dx: -0.9, dy: -8.0, size: 4.2, end: 0.78, delay: 0.68, dur: 1.02 },
+  { x: 0.32, y: 0.96, dx: 1.2, dy: -8.4, size: 4.8, end: 0.84, delay: 0.78, dur: 1.08 },
+];
+const ABYSS_SILT = [
+  { x: -0.86, y: 0.58, dx: 8.4, dy: -5.2, size: 2.4, delay: 0.02, dur: 2.0, alpha: 0.22 },
+  { x: -0.72, y: -0.18, dx: 6.2, dy: -3.4, size: 1.6, delay: 0.18, dur: 1.8, alpha: 0.18 },
+  { x: -0.42, y: 0.74, dx: 4.8, dy: -8.0, size: 1.9, delay: 0.34, dur: 1.74, alpha: 0.2 },
+  { x: -0.12, y: 0.2, dx: -2.2, dy: -6.6, size: 1.3, delay: 0.06, dur: 2.2, alpha: 0.16 },
+  { x: 0.16, y: 0.86, dx: -4.5, dy: -7.8, size: 2.8, delay: 0.22, dur: 1.92, alpha: 0.22 },
+  { x: 0.44, y: -0.08, dx: -5.8, dy: -3.0, size: 1.8, delay: 0.4, dur: 1.72, alpha: 0.18 },
+  { x: 0.68, y: 0.62, dx: -7.6, dy: -5.4, size: 2.2, delay: 0.12, dur: 2.08, alpha: 0.2 },
+  { x: 0.88, y: 0.12, dx: -8.8, dy: -2.2, size: 1.5, delay: 0.54, dur: 1.64, alpha: 0.16 },
+  { x: -0.2, y: -0.74, dx: 2.1, dy: 2.5, size: 2.0, delay: 0.7, dur: 1.54, alpha: 0.17 },
+  { x: 0.24, y: -0.82, dx: -1.8, dy: 2.7, size: 1.4, delay: 0.82, dur: 1.5, alpha: 0.15 },
 ];
 
 const EDGE_CLOUDS = [
@@ -380,51 +396,71 @@ function interpolateKeyframes(frames, progress) {
 function getBubbleFrame(bubble, index, progress, width, height) {
   const sway = bubble.sway ?? ((index % 3) - 1);
   const twist = (index % 2 === 0 ? -1 : 1) * (18 + (index % 5) * 9);
-  const startX = width / 2 + bubble.x * Math.min(width * 0.225, 292);
-  const startY = height / 2 + bubble.y * Math.min(height * 0.185, 188);
-  const x = startX + interpolateKeyframes([
-    { t: 0, value: 0 },
-    { t: 0.24, value: (bubble.dx * 0.2 + sway * 0.28) * width * 0.01 },
-    { t: 0.45, value: (bubble.dx * 0.56 - sway * 0.42) * width * 0.01 },
-    { t: 0.66, value: (bubble.dx * 0.95 + sway * 0.34) * width * 0.01 },
-    { t: 0.84, value: (bubble.dx * 1.26 - sway * 0.2) * width * 0.01 },
-    { t: 1, value: bubble.dx * 1.48 * width * 0.01 },
-  ], progress);
-  const y = startY + interpolateKeyframes([
-    { t: 0, value: 0 },
-    { t: 0.24, value: (bubble.dy * 0.17 - sway * 0.1) * height * 0.01 },
-    { t: 0.45, value: (bubble.dy * 0.51 + sway * 0.16) * height * 0.01 },
-    { t: 0.66, value: (bubble.dy * 0.86 - sway * 0.12) * height * 0.01 },
-    { t: 0.84, value: (bubble.dy * 1.14 + sway * 0.08) * height * 0.01 },
-    { t: 1, value: bubble.dy * 1.34 * height * 0.01 },
-  ], progress);
-  const scale = interpolateKeyframes([
-    { t: 0, value: 0.055 },
-    { t: 0.24, value: bubble.end * 0.13 },
-    { t: 0.45, value: bubble.end * 0.3 },
-    { t: 0.66, value: bubble.end * 0.68 },
-    { t: 0.84, value: bubble.end * 1.08 },
-    { t: 1, value: bubble.end * 1.45 },
-  ], progress);
+  const dreamWidth = Math.min(width * DREAM_WIDTH_RATIO, DREAM_MAX_WIDTH);
+  const dreamHeight = Math.min(height * DREAM_HEIGHT_RATIO, DREAM_MAX_HEIGHT);
+  const dreamRx = dreamWidth * 0.46;
+  const dreamRy = dreamHeight * 0.42;
+  const startX = width / 2 + bubble.x * dreamRx;
+  const startY = height / 2 + bubble.y * dreamRy;
+  const zLift = (0.12 * progress + 0.88 * progress * progress);
+  const xyDrift = 0.2 * progress + 0.8 * progress * progress;
+  const wobbleX = (
+    Math.sin(progress * Math.PI * 5.4 + index * 1.31) * (0.42 + Math.abs(sway) * 0.18)
+    + Math.sin(progress * Math.PI * 10.6 + index * 0.77) * 0.2
+  ) * Math.min(width, height) * 0.006;
+  const wobbleY = Math.sin(progress * Math.PI * 7.2 + index * 0.61) * Math.min(width, height) * 0.0028;
+  const x = startX + bubble.dx * width * 0.011 * xyDrift + sway * width * 0.006 * Math.sin(progress * Math.PI) + wobbleX;
+  const y = startY - Math.abs(bubble.dy) * height * BUBBLE_RISE_LIFT_SCALE * zLift + wobbleY;
+  const zScale = 0.28 + (bubble.end || 1) * (0.18 * progress + 0.82 * progress * progress);
+  const scale = 0.4 + zScale;
   const opacity = interpolateKeyframes([
     { t: 0, value: 0 },
-    { t: 0.09, value: 0.1 + (bubble.front ? 0.04 : 0) },
-    { t: 0.24, value: 0.19 + (bubble.front ? 0.07 : 0) },
-    { t: 0.45, value: 0.27 + (bubble.front ? 0.1 : 0) },
-    { t: 0.66, value: 0.24 + (bubble.front ? 0.08 : 0) },
-    { t: 0.84, value: 0.13 + (bubble.front ? 0.06 : 0) },
+    { t: 0.08, value: 0.16 + (bubble.front ? 0.05 : 0) },
+    { t: 0.22, value: 0.34 + (bubble.front ? 0.13 : 0) },
+    { t: 0.54, value: 0.42 + (bubble.front ? 0.16 : 0) },
+    { t: 0.78, value: 0.29 + (bubble.front ? 0.11 : 0) },
+    { t: 0.92, value: 0.08 + (bubble.front ? 0.04 : 0) },
     { t: 1, value: 0 },
   ], progress);
-  const wobble = Math.sin((progress * Math.PI * 2.4) + index) * 0.075;
+  const wobble = Math.sin((progress * Math.PI * 3.4) + index) * 0.13;
   return {
     x,
     y,
-    radius: Math.max(0.4, bubble.size * scale * 0.5),
+    radius: Math.max(1.3, bubble.size * scale * 0.72),
     opacity,
-    twist: (twist * Math.PI / 180) * (0.15 + progress * 0.42),
-    stretchX: 1 + wobble,
-    stretchY: 1 - wobble * 0.65,
+    twist: (twist * Math.PI / 180) * (0.26 + progress * 0.58),
+    stretchX: 0.72 + wobble,
+    stretchY: 1.18 - wobble * 0.42,
+    spriteFrame: Math.floor((progress * BUBBLE_SPRITE_FRAMES * (1.05 + (index % 4) * 0.08) + index * 1.7) % BUBBLE_SPRITE_FRAMES),
+    spriteVariant: (bubble.variant ?? index) % BUBBLE_SPRITE_VARIANTS,
+    progress,
   };
+}
+
+function drawSpriteBubble(ctx, spritesheet, frame) {
+  if (!spritesheet || frame.opacity <= 0.002 || frame.radius <= 0.5) return false;
+  const sourceX = frame.spriteFrame * BUBBLE_SPRITE_SIZE;
+  const sourceY = frame.spriteVariant * BUBBLE_SPRITE_SIZE;
+  const drawSize = frame.radius * 3.65;
+  ctx.save();
+  ctx.globalAlpha = frame.opacity;
+  ctx.translate(frame.x, frame.y);
+  ctx.rotate(frame.twist);
+  ctx.scale(frame.stretchX, frame.stretchY);
+  ctx.filter = `blur(${Math.max(0, 0.22 - frame.progress * 0.1).toFixed(2)}px) saturate(1.05)`;
+  ctx.drawImage(
+    spritesheet,
+    sourceX,
+    sourceY,
+    BUBBLE_SPRITE_SIZE,
+    BUBBLE_SPRITE_SIZE,
+    -drawSize / 2,
+    -drawSize / 2,
+    drawSize,
+    drawSize,
+  );
+  ctx.restore();
+  return true;
 }
 
 function drawCanvasBubble(ctx, frame, bubble) {
@@ -436,34 +472,63 @@ function drawCanvasBubble(ctx, frame, bubble) {
   ctx.rotate(frame.twist);
   ctx.scale(frame.stretchX, frame.stretchY);
 
-  const shell = ctx.createRadialGradient(-radius * 0.28, -radius * 0.32, radius * 0.08, 0, 0, radius);
-  shell.addColorStop(0, 'rgba(255,255,255,0.34)');
-  shell.addColorStop(0.18, 'rgba(191,249,255,0.08)');
-  shell.addColorStop(0.56, 'rgba(72,215,236,0.025)');
-  shell.addColorStop(0.72, 'rgba(225,255,255,0.15)');
-  shell.addColorStop(1, 'rgba(120,234,246,0.02)');
-  ctx.fillStyle = shell;
+  const core = ctx.createRadialGradient(0, -radius * 0.18, 0, 0, 0, radius * 1.12);
+  core.addColorStop(0, 'rgba(230,248,232,0.16)');
+  core.addColorStop(0.42, 'rgba(142,190,178,0.07)');
+  core.addColorStop(0.78, 'rgba(58,100,104,0.035)');
+  core.addColorStop(1, 'rgba(6,16,22,0)');
+  ctx.fillStyle = core;
   ctx.beginPath();
-  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, radius * 0.84, radius * 1.08, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.lineWidth = bubble.front ? 1.15 : 0.8;
-  ctx.strokeStyle = bubble.front ? 'rgba(226,255,255,0.34)' : 'rgba(215,253,255,0.25)';
+  const arcStart = Math.PI * (1.08 + (bubble.sway || 0) * 0.08);
+  const arcEnd = arcStart + Math.PI * (0.34 + (bubble.front ? 0.12 : 0.04));
+  ctx.lineCap = 'round';
+  ctx.lineWidth = Math.max(0.75, radius * (bubble.front ? 0.16 : 0.12));
+  ctx.strokeStyle = bubble.front ? 'rgba(232,250,232,0.72)' : 'rgba(205,234,222,0.54)';
   ctx.beginPath();
-  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, radius * 0.88, radius * 1.04, 0, arcStart, arcEnd);
   ctx.stroke();
 
-  ctx.lineWidth = Math.max(0.7, radius * 0.075);
-  ctx.strokeStyle = 'rgba(235,255,255,0.42)';
+  ctx.lineWidth = Math.max(0.55, radius * 0.08);
+  ctx.strokeStyle = 'rgba(244,255,236,0.46)';
   ctx.beginPath();
-  ctx.arc(0, 0, radius * 0.78, Math.PI * 1.1, Math.PI * 1.48);
+  ctx.ellipse(0, 0, radius * 0.58, radius * 0.76, 0, Math.PI * 1.35, Math.PI * 1.56);
   ctx.stroke();
 
-  ctx.fillStyle = 'rgba(255,255,255,0.58)';
+  if (bubble.front && radius > 2.8) {
+    ctx.fillStyle = 'rgba(242,255,232,0.54)';
+    ctx.beginPath();
+    ctx.ellipse(-radius * 0.24, -radius * 0.42, radius * 0.08, radius * 0.045, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function getSiltFrame(particle, index, progress, width, height) {
+  const startX = width / 2 + particle.x * Math.min(width * 0.42, 520);
+  const startY = height / 2 + particle.y * Math.min(height * 0.32, 300);
+  const pulse = Math.sin(progress * Math.PI * 5 + index * 0.91);
+  const x = startX + (particle.dx * progress + pulse * 0.28) * width * 0.01;
+  const y = startY + (particle.dy * progress - Math.sin(progress * Math.PI * 3 + index) * 0.24) * height * 0.01;
+  const opacity = particle.alpha * Math.sin(progress * Math.PI);
+  return { x, y, radius: particle.size * (0.55 + progress * 0.65), opacity };
+}
+
+function drawAbyssSilt(ctx, frame) {
+  if (frame.opacity <= 0.002) return;
+  ctx.save();
+  ctx.globalAlpha = frame.opacity;
+  const gradient = ctx.createRadialGradient(frame.x, frame.y, 0, frame.x, frame.y, frame.radius * 2.8);
+  gradient.addColorStop(0, 'rgba(2,7,10,0.82)');
+  gradient.addColorStop(0.42, 'rgba(16,28,28,0.38)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = gradient;
   ctx.beginPath();
-  ctx.ellipse(-radius * 0.34, -radius * 0.34, radius * 0.15, radius * 0.1, -0.55, 0, Math.PI * 2);
+  ctx.ellipse(frame.x, frame.y, frame.radius * 1.9, frame.radius * 0.74, 0.35, 0, Math.PI * 2);
   ctx.fill();
-
   ctx.restore();
 }
 
@@ -607,7 +672,7 @@ function drawDreamCausticsTexture(ctx, width, height, time) {
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  const shimmer = 0.72 + Math.sin(time * 4.6) * 0.14 + Math.sin(time * 7.1) * 0.05;
+  const shimmer = 0.5 + Math.sin(time * 4.6) * 0.1 + Math.sin(time * 7.1) * 0.04;
   const driftX = Math.sin(time * 0.47) * width * 0.014;
   const driftY = Math.cos(time * 0.38) * height * 0.01;
 
@@ -629,12 +694,12 @@ function drawDreamCausticsTexture(ctx, width, height, time) {
 
     const bandWidth = Math.max(3, height * band.width);
     drawCausticCurve(ctx, points);
-    ctx.strokeStyle = `rgba(48,177,205,${0.16 * band.alpha * shimmer})`;
+    ctx.strokeStyle = `rgba(34,118,130,${0.12 * band.alpha * shimmer})`;
     ctx.lineWidth = bandWidth * 2.8;
     ctx.stroke();
 
     drawCausticCurve(ctx, points);
-    ctx.strokeStyle = `rgba(202,255,248,${0.34 * band.alpha * shimmer})`;
+    ctx.strokeStyle = `rgba(154,210,190,${0.2 * band.alpha * shimmer})`;
     ctx.lineWidth = Math.max(0.75, bandWidth * 0.4);
     ctx.stroke();
   });
@@ -654,12 +719,12 @@ function drawDreamCausticsTexture(ctx, width, height, time) {
     ctx.scale(1, 0.74 + Math.sin(time * 0.45 + arc.phase) * 0.07);
     ctx.beginPath();
     ctx.ellipse(0, 0, rx, ry, 0, start, end);
-    ctx.strokeStyle = `rgba(76,215,230,${arc.alpha * 0.28 * pulse})`;
+    ctx.strokeStyle = `rgba(38,128,132,${arc.alpha * 0.18 * pulse})`;
     ctx.lineWidth = Math.max(2.4, height * 0.008);
     ctx.stroke();
     ctx.beginPath();
     ctx.ellipse(0, 0, rx * 0.98, ry * 0.94, 0, start + 0.04, end - 0.03);
-    ctx.strokeStyle = `rgba(232,255,252,${arc.alpha * 0.38 * pulse})`;
+    ctx.strokeStyle = `rgba(166,220,198,${arc.alpha * 0.22 * pulse})`;
     ctx.lineWidth = Math.max(0.65, height * 0.0024);
     ctx.stroke();
     ctx.restore();
@@ -671,16 +736,18 @@ function drawDreamCausticsTexture(ctx, width, height, time) {
 function drawDreamBackgroundCanvas(ctx, width, height, time, image, sampler, causticSampler, causticCanvas) {
   ctx.clearRect(0, 0, width, height);
 
-  drawNoiseDisplacedCoverImage(ctx, image, sampler, width, height, time, {
-    cols: 20,
-    rows: 15,
-    strength: Math.min(width, height) * 0.027,
-    baseAlpha: 0.42,
-    displacedAlpha: 0.96,
-    overlap: 2,
-  });
+  if (image && sampler) {
+    drawNoiseDisplacedCoverImage(ctx, image, sampler, width, height, time, {
+      cols: 20,
+      rows: 15,
+      strength: Math.min(width, height) * 0.027,
+      baseAlpha: 0.36,
+      displacedAlpha: 0.86,
+      overlap: 2,
+    });
+  }
 
-  if (causticCanvas) {
+  if (causticCanvas && causticSampler) {
     const textureWidth = Math.max(1, Math.round(width * 0.62));
     const textureHeight = Math.max(1, Math.round(height * 0.62));
     if (causticCanvas.width !== textureWidth || causticCanvas.height !== textureHeight) {
@@ -697,7 +764,7 @@ function drawDreamBackgroundCanvas(ctx, width, height, time, image, sampler, cau
       rows: 12,
       strength: Math.min(width, height) * 0.018,
       baseAlpha: 0,
-      displacedAlpha: 0.74,
+      displacedAlpha: 0.42,
       overlap: 1.5,
     });
     ctx.restore();
@@ -707,18 +774,24 @@ function drawDreamBackgroundCanvas(ctx, width, height, time, image, sampler, cau
   ctx.save();
   ctx.globalCompositeOperation = 'screen';
   let wash = ctx.createRadialGradient(width * 0.48, height * 0.44, 0, width * 0.5, height * 0.5, Math.max(width, height) * 0.62);
-  wash.addColorStop(0, `rgba(118,246,244,${0.1 + pulse * 0.035})`);
-  wash.addColorStop(0.38, 'rgba(62,198,218,0.052)');
+  wash.addColorStop(0, `rgba(118,210,184,${0.12 + pulse * 0.036})`);
+  wash.addColorStop(0.36, 'rgba(70,142,136,0.07)');
   wash.addColorStop(1, 'rgba(24,120,160,0)');
   ctx.fillStyle = wash;
   ctx.fillRect(0, 0, width, height);
 
   ctx.globalCompositeOperation = 'source-over';
   const shade = ctx.createLinearGradient(0, 0, 0, height);
-  shade.addColorStop(0, 'rgba(0,12,20,0.02)');
-  shade.addColorStop(0.62, 'rgba(0,8,16,0.08)');
-  shade.addColorStop(1, 'rgba(0,3,11,0.18)');
+  shade.addColorStop(0, 'rgba(0,6,12,0.04)');
+  shade.addColorStop(0.48, 'rgba(0,7,11,0.1)');
+  shade.addColorStop(1, 'rgba(0,2,7,0.34)');
   ctx.fillStyle = shade;
+  ctx.fillRect(0, 0, width, height);
+  const crush = ctx.createRadialGradient(width * 0.5, height * 0.48, Math.min(width, height) * 0.18, width * 0.5, height * 0.5, Math.max(width, height) * 0.64);
+  crush.addColorStop(0, 'rgba(0,0,0,0)');
+  crush.addColorStop(0.68, `rgba(0,0,0,${0.04 + pulse * 0.026})`);
+  crush.addColorStop(1, 'rgba(0,0,0,0.36)');
+  ctx.fillStyle = crush;
   ctx.fillRect(0, 0, width, height);
   ctx.restore();
 }
@@ -787,8 +860,13 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
     let width = 0;
     let height = 0;
     let dpr = 1;
+    let disposed = false;
+    let bubbleSpritesheet = null;
     const startedAt = performance.now();
-    const maxDuration = Math.max(...BUBBLES.map(bubble => bubble.delay + bubble.dur)) * 1000 + 120;
+    const maxDuration = Math.max(
+      ...BUBBLES.map(bubble => bubble.delay + bubble.dur),
+      ...ABYSS_SILT.map(particle => particle.delay + particle.dur),
+    ) * 1000 + 120;
 
     const resize = () => {
       width = window.innerWidth;
@@ -804,11 +882,20 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
     const draw = (now) => {
       const elapsed = now - startedAt;
       ctx.clearRect(0, 0, width, height);
-      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalCompositeOperation = 'source-over';
+      ABYSS_SILT.forEach((particle, index) => {
+        const progress = clamp01((elapsed / 1000 - particle.delay) / particle.dur);
+        if (progress <= 0 || progress >= 1) return;
+        drawAbyssSilt(ctx, getSiltFrame(particle, index, progress, width, height));
+      });
+      ctx.globalCompositeOperation = 'screen';
       BUBBLES.forEach((bubble, index) => {
         const progress = clamp01((elapsed / 1000 - bubble.delay) / bubble.dur);
         if (progress <= 0 || progress >= 1) return;
-        drawCanvasBubble(ctx, getBubbleFrame(bubble, index, progress, width, height), bubble);
+        const frame = getBubbleFrame(bubble, index, progress, width, height);
+        if (!drawSpriteBubble(ctx, bubbleSpritesheet, frame)) {
+          drawCanvasBubble(ctx, frame, bubble);
+        }
       });
       ctx.globalCompositeOperation = 'source-over';
       if (elapsed < maxDuration) frameId = requestAnimationFrame(draw);
@@ -816,9 +903,15 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
 
     resize();
     window.addEventListener('resize', resize);
+    loadEffectImage(BUBBLE_SPRITESHEET_PATH).then((image) => {
+      if (!disposed) bubbleSpritesheet = image;
+    }).catch(() => {
+      bubbleSpritesheet = null;
+    });
     frameId = requestAnimationFrame(draw);
 
     return () => {
+      disposed = true;
       window.removeEventListener('resize', resize);
       cancelAnimationFrame(frameId);
     };
@@ -911,7 +1004,9 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
       if (elapsed < maxDuration) frameId = requestAnimationFrame(draw);
     };
 
+    resize();
     window.addEventListener('resize', resize);
+    frameId = requestAnimationFrame(draw);
     Promise.all([
       loadEffectImage(DREAM_IMAGE_PATH),
       loadEffectNoiseTexture(),
@@ -929,8 +1024,6 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
         velocity: { x: -0.068, y: 0.046 },
       });
       dreamCausticTextureRef.current = dreamCausticTextureRef.current || document.createElement('canvas');
-      resize();
-      frameId = requestAnimationFrame(draw);
     }).catch(() => {
       if (!disposed) resize();
     });
@@ -956,8 +1049,19 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           pointer-events: none;
           overflow: hidden;
           background:
-            radial-gradient(circle at 50% 50%, rgba(7,45,62,0.24), rgba(2,8,16,0.68) 58%, rgba(0,0,0,0.2));
+            radial-gradient(circle at 50% 46%, rgba(12,58,54,0.42), rgba(3,15,20,0.58) 54%, rgba(0,0,0,0.32) 100%),
+            linear-gradient(180deg, rgba(0,0,0,0.16), rgba(2,14,16,0.18) 38%, rgba(0,0,0,0.34));
           animation: cthDreamStage 2.35s cubic-bezier(.16,.84,.2,1) both;
+        }
+        .cth-rlyeh-dream::after {
+          content: "";
+          position: fixed;
+          inset: -8%;
+          pointer-events: none;
+          background: radial-gradient(ellipse at 50% 48%, transparent 0%, transparent 50%, rgba(0,0,0,0.18) 72%, rgba(0,0,0,0.86) 100%);
+          mix-blend-mode: multiply;
+          opacity: .96;
+          animation: cthDreamPressure 2.35s cubic-bezier(.2,.78,.16,1) both;
         }
         .cth-rlyeh-dream__beam-svg {
           position: absolute;
@@ -969,12 +1073,12 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
         }
         .cth-rlyeh-dream__beam-soft {
           opacity: 0;
-          filter: blur(11px) saturate(1.35);
+          filter: blur(13px) saturate(1.04) brightness(1.12);
           animation: cthDreamBeam 1.48s ease-out .06s both;
         }
         .cth-rlyeh-dream__beam-body {
           opacity: 0;
-          filter: blur(2px) saturate(1.18);
+          filter: blur(2px) saturate(1.02) brightness(1.18);
           animation: cthDreamBeam 1.34s ease-out .08s both;
         }
         .cth-rlyeh-dream__source-panel-glow {
@@ -1018,15 +1122,18 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           transform: translate(-50%, -50%);
           opacity: 0;
           overflow: visible;
-          filter: drop-shadow(0 0 42px rgba(116,226,238,0.48));
-          animation: cthDreamWindow 2.1s cubic-bezier(.16,.86,.18,1) .18s both;
+          filter: drop-shadow(0 0 34px rgba(94,184,164,0.54));
+          transform-origin: 50% 50%;
+          backface-visibility: hidden;
+          will-change: transform, opacity;
+          animation: cthDreamWindow 2.1s linear .18s both;
         }
         .cth-rlyeh-dream__window::before {
           content: "";
           position: absolute;
           inset: -28%;
-          background: radial-gradient(ellipse at 50% 50%, rgba(160,250,255,0.24), rgba(82,203,226,0.12) 32%, transparent 66%);
-          filter: blur(18px);
+          background: radial-gradient(ellipse at 50% 50%, rgba(126,224,184,0.34), rgba(44,112,112,0.18) 32%, transparent 66%);
+          filter: blur(22px);
           mix-blend-mode: screen;
           animation: cthDreamBeamBloom 2.1s ease-in-out both;
         }
@@ -1037,7 +1144,10 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           height: 116%;
           z-index: 1;
           transform: scale(1.03);
-          filter: contrast(1.08) brightness(.96) saturate(1.12) blur(.18px);
+          filter: contrast(1.2) brightness(.9) saturate(.86) blur(.22px);
+          transform-origin: 50% 50%;
+          backface-visibility: hidden;
+          will-change: transform;
           -webkit-mask-image: ${DREAM_CORE_MASK};
           mask-image: ${DREAM_CORE_MASK};
           -webkit-mask-size: 100% 100%;
@@ -1053,7 +1163,7 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           height: 220%;
           z-index: 3;
           mix-blend-mode: screen;
-          opacity: .92;
+          opacity: .7;
         }
         .cth-rlyeh-dream__bubble-canvas {
           position: absolute;
@@ -1061,20 +1171,21 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           width: 100%;
           height: 100%;
           z-index: 8;
-          mix-blend-mode: screen;
-          opacity: .92;
+          mix-blend-mode: normal;
+          opacity: .96;
         }
         @keyframes cthDreamStage {
           0% { opacity: 0; }
-          16%, 100% { opacity: 1; }
+          16%, 84% { opacity: 1; }
+          100% { opacity: .12; }
         }
         @keyframes cthDreamExit {
-          from { opacity: 1; filter: blur(0); }
+          from { opacity: .12; filter: blur(0); }
           to { opacity: 0; filter: blur(8px); }
         }
         @keyframes cthDreamBeam {
           0% { opacity: 0; }
-          28% { opacity: .95; }
+          28% { opacity: .92; }
           78% { opacity: .52; }
           100% { opacity: 0; }
         }
@@ -1084,22 +1195,44 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
           100% { opacity: 0; }
         }
         @keyframes cthDreamWindow {
-          0% { opacity: 0; transform: translate(-50%, -50%) scale(.72) rotate(-1.6deg); filter: drop-shadow(0 0 36px rgba(52,184,212,0.22)) brightness(.68); }
-          20% { opacity: .96; }
-          54% { opacity: 1; transform: translate(-50%, -50%) scale(1.02) rotate(.4deg); }
-          100% { opacity: 0; transform: translate(-50%, -50%) scale(1.16) rotate(1.2deg); filter: drop-shadow(0 0 64px rgba(52,184,212,0.28)) brightness(.78); }
+          0% { opacity: 0; transform: translate(-50%, -50%) scale(.74) rotate(-1.8deg); }
+          5% { opacity: .08; transform: translate(-50%, -50%) scale(.70) rotate(-1.65deg); }
+          12% { opacity: .28; transform: translate(-50%, -50%) scale(.79) rotate(-1.18deg); }
+          19% { opacity: .54; transform: translate(-50%, -50%) scale(.88) rotate(-.68deg); }
+          26% { opacity: .78; transform: translate(-50%, -50%) scale(.97) rotate(-.18deg); }
+          30% { opacity: .9; transform: translate(-50%, -50%) scale(1.02) rotate(.12deg); }
+          34% { opacity: .98; transform: translate(-50%, -50%) scale(1.026) rotate(.08deg); }
+          70% { opacity: 1; transform: translate(-50%, -50%) scale(1.026) rotate(-.04deg); }
+          76% { opacity: .96; transform: translate(-50%, -50%) scale(1.044) rotate(.12deg); }
+          80% { opacity: .88; transform: translate(-50%, -50%) scale(1.054) rotate(.22deg); }
+          85% { opacity: .66; transform: translate(-50%, -50%) scale(.97) rotate(-.12deg); }
+          90% { opacity: .4; transform: translate(-50%, -50%) scale(.88) rotate(-.1deg); }
+          95% { opacity: .18; transform: translate(-50%, -50%) scale(.8) rotate(.16deg); }
+          100% { opacity: 0; transform: translate(-50%, -50%) scale(.72) rotate(.48deg); }
         }
         @keyframes cthDreamBeamBloom {
           0% { opacity: 0; transform: scale(.74); }
-          24% { opacity: .9; transform: scale(1.02); }
-          76% { opacity: .62; }
-          100% { opacity: 0; transform: scale(1.18); }
+          24% { opacity: .72; transform: scale(1.02); }
+          62% { opacity: .36; }
+          82% { opacity: .08; transform: scale(1.12); }
+          100% { opacity: 0; transform: scale(1.14); }
         }
         @keyframes cthDreamDrift {
-          0% { transform: scale(1.075) translate3d(-1.8%, 1.2%, 0) rotate(-.35deg); }
-          32% { transform: scale(1.035) translate3d(.8%, -.9%, 0) rotate(.18deg); }
-          68% { transform: scale(1.065) translate3d(2.1%, .5%, 0) rotate(-.12deg); }
-          100% { transform: scale(1.09) translate3d(2.6%, -1.7%, 0) rotate(.32deg); }
+          0% { transform: scale(1.052) translate3d(-1.8%, 1.2%, 0) rotate(-.38deg); }
+          20% { transform: scale(1.052) translate3d(-1.2%, .7%, 0) rotate(-.22deg); }
+          42% { transform: scale(1.052) translate3d(.8%, -.9%, 0) rotate(.22deg); }
+          62% { transform: scale(1.052) translate3d(2.0%, .4%, 0) rotate(-.16deg); }
+          80% { transform: scale(1.052) translate3d(-.8%, -1.2%, 0) rotate(.28deg); }
+          92% { transform: scale(1.052) translate3d(.9%, .6%, 0) rotate(-.08deg); }
+          100% { transform: scale(1.052) translate3d(1.6%, 1.8%, 0) rotate(.1deg); }
+        }
+        @keyframes cthDreamPressure {
+          0% { opacity: .15; transform: scale(1.12); filter: blur(8px); }
+          18% { opacity: .48; transform: scale(1.04); }
+          46% { opacity: .6; transform: scale(1); filter: blur(0); }
+          68% { opacity: .62; transform: scale(.995); }
+          84% { opacity: .24; transform: scale(.99); }
+          100% { opacity: 0; transform: scale(.985); filter: blur(2px); }
         }
       `}</style>
       {beam && (
@@ -1136,9 +1269,9 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
               x2={beam.targetMid.x}
               y2={beam.targetMid.y}
             >
-              <stop offset="0%" stopColor="rgba(184,252,255,0.82)" />
-              <stop offset="42%" stopColor="rgba(85,203,230,0.34)" />
-              <stop offset="100%" stopColor="rgba(124,228,238,0.08)" />
+              <stop offset="0%" stopColor="rgba(124,178,168,0.42)" />
+              <stop offset="42%" stopColor="rgba(44,104,112,0.22)" />
+              <stop offset="100%" stopColor="rgba(18,54,62,0.04)" />
             </linearGradient>
           </defs>
           <polygon

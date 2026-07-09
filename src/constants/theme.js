@@ -78,6 +78,12 @@ export const BATTLE_BGM_BY_EXPANSION = {
   '群星呼唤': 'battleStars',
 };
 
+export const BATTLE_PREDECODE_IMAGES_BY_EXPANSION = {
+  '群星呼唤': [
+    'img/effects/Rlyeh_dream_512.webp',
+  ],
+};
+
 export const BGM_AUDIO_BY_KEY = {
   main: { path: 'sounds/BGM/mainTheme.mp3', volume: 0.32 },
   battleEarth: { path: 'sounds/BGM/battle_earth_shadow.mp3', volume: 0.24 },
@@ -133,4 +139,8 @@ export function getAnimatedCardBack(expansionKey = DEFAULT_EXPANSION_THEME) {
 
 export function getBattleBgmKey(expansionKey = DEFAULT_EXPANSION_THEME) {
   return BATTLE_BGM_BY_EXPANSION[expansionKey] || BATTLE_BGM_BY_EXPANSION[DEFAULT_EXPANSION_THEME];
+}
+
+export function getBattlePredecodeImages(expansionKey = DEFAULT_EXPANSION_THEME) {
+  return BATTLE_PREDECODE_IMAGES_BY_EXPANSION[expansionKey] || [];
 }

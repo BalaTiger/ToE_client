@@ -1,6 +1,6 @@
 {
-  "version": "5da4acf87d7fdf6f",
-  "generatedAt": "2026-07-08T13:58:12.544Z",
+  "version": "709aa0e80a73b978",
+  "generatedAt": "2026-07-09T05:11:35.329Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1179,6 +1179,12 @@
       "revision": "0e7ba6682491e540"
     },
     {
+      "path": "/img/effects/rlyeh_bubbles/rlyeh_bubble_spritesheet.webp",
+      "type": "image",
+      "size": 305828,
+      "revision": "06543c9f3f4b17e8"
+    },
+    {
       "path": "/img/line/line_split-no-bg.webp",
       "type": "image",
       "size": 3830,
@@ -1299,6 +1305,12 @@
       "revision": "571487c33b626132"
     },
     {
+      "path": "/sounds/SE/dive.mp3",
+      "type": "audio",
+      "size": 60045,
+      "revision": "d9708fe9cd0268b9"
+    },
+    {
       "path": "/sounds/SE/droplet.mp3",
       "type": "audio",
       "size": 226560,
@@ -1315,6 +1327,12 @@
       "type": "audio",
       "size": 289227,
       "revision": "5412f8c9af43a28a"
+    },
+    {
+      "path": "/sounds/SE/god-power-blocked.mp3",
+      "type": "audio",
+      "size": 37005,
+      "revision": "69ada3951b530e97"
     },
     {
       "path": "/sounds/SE/hpDamageVariants/hpDamage1.mp3",

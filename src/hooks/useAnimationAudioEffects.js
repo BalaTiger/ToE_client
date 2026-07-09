@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { getVolcanoImpactTimes } from '../components/anim/volcanoTiming';
 
 const ANIMATION_AUDIO_DELAY = {
@@ -31,7 +31,28 @@ export function useAnimationAudioEffects({
   playSemiMaterialSound,
   playBurrowingWormSound,
   playSnakeTrapSound,
+  playCthRlyehDreamSound,
+  playGodPowerBlockedSound,
 }) {
+  const detachedAudioCleanupsRef = useRef({});
+
+  const playDetachedAnimationSound = useCallback((key, play) => {
+    detachedAudioCleanupsRef.current[key]?.();
+    const cleanup = play?.();
+    if (typeof cleanup === 'function') {
+      detachedAudioCleanupsRef.current[key] = cleanup;
+    } else {
+      delete detachedAudioCleanupsRef.current[key];
+    }
+  }, []);
+
+  useEffect(() => () => {
+    Object.values(detachedAudioCleanupsRef.current).forEach(cleanup => {
+      try { cleanup?.(); } catch { /* ignore */ }
+    });
+    detachedAudioCleanupsRef.current = {};
+  }, []);
+
   useEffect(() => {
     if (anim?.type !== 'APOPHIS_ECLIPSE') return undefined;
     const timer = setTimeout(() => playApophisEclipseSound(), ANIMATION_AUDIO_DELAY.APOPHIS_ECLIPSE);
@@ -100,6 +121,18 @@ export function useAnimationAudioEffects({
     if (anim?.type !== 'SNAKE_TRAP') return undefined;
     return playSnakeTrapSound?.({ attackCount: getSnakeTrapAttackCount(anim) });
   }, [anim, playSnakeTrapSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'CTH_RLYEH_DREAM') return undefined;
+    playDetachedAnimationSound('cthRlyehDream', playCthRlyehDreamSound);
+    return undefined;
+  }, [anim, playCthRlyehDreamSound, playDetachedAnimationSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'GOD_POWER_BLOCKED') return undefined;
+    playDetachedAnimationSound('godPowerBlocked', playGodPowerBlockedSound);
+    return undefined;
+  }, [anim, playGodPowerBlockedSound, playDetachedAnimationSound]);
 
   useEffect(() => {
     // ENDLESS_CORRIDOR_TUNNEL sound is triggered by the tunnel overlay mount,

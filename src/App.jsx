@@ -24,7 +24,7 @@ import {
   GOD_DEFS,
   createBlackGoatYoungCard,
 } from "./constants/card";
-import { getBattleBackgroundImage, getBattleTheme } from './constants/theme';
+import { getBattleBackgroundImage, getBattlePredecodeImages, getBattleTheme } from './constants/theme';
 import { buildPhaseUiState } from './game/phaseUi';
 import {
   canClickHandCard as canClickHandCardByAvailability,
@@ -257,6 +257,7 @@ import { SNAKE_TRAP_ANIMATION_STYLES } from './components/anim/snakeTrapStyles';
 import { ENDLESS_CORRIDOR_ANIMATION_STYLES } from './components/anim/endlessCorridorStyles';
 import { GodResurrectionAnim, TreasureMapAnim, RoleRevealAnim } from './components/anim/WinAnims';
 import { GlobalAnimLayer } from './components/anim/GlobalAnimLayer';
+import { loadEffectImage } from './components/anim/effectNoise';
 import { ApophisNightBadge } from './components/anim/ApophisOverlays';
 import { formatFileSize, useResourcePreload } from './hooks/useResourcePreload';
 import { useMultiplayerLobby } from './hooks/useMultiplayerLobby';
@@ -706,7 +707,32 @@ export default function Game(){
   const swapBlindDrawRef=useRef(null);
   useEffect(()=>{swapBlindDrawRef.current=swapBlindDraw;},[swapBlindDraw]);
   const isBattleScreen=!!gs;
-  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
+  useEffect(()=>{
+    if(!isBattleScreen)return undefined;
+    const images=getBattlePredecodeImages(gs?.expansionKey);
+    if(!images.length)return undefined;
+    let cancelled=false;
+    const run=()=>{
+      images.forEach(path=>{
+        loadEffectImage(path).catch(error=>{
+          if(!cancelled)console.warn(`Battle predecode failed: ${path}`,error);
+        });
+      });
+    };
+    if(typeof window!=='undefined'&&typeof window.requestIdleCallback==='function'){
+      const idleId=window.requestIdleCallback(run,{timeout:1200});
+      return ()=>{
+        cancelled=true;
+        window.cancelIdleCallback?.(idleId);
+      };
+    }
+    const timer=setTimeout(run,0);
+    return ()=>{
+      cancelled=true;
+      clearTimeout(timer);
+    };
+  },[isBattleScreen,gs?.expansionKey]);
+  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound,playCthRlyehDreamSound,playGodPowerBlockedSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
   const persistSoftGuideDone=useCallback((nextDone)=>{
     setSoftGuideDone(nextDone);
     if(canPersistTutorial)safeLS.set(SOFT_GUIDE_STORAGE_KEY,serializeSoftGuideDone(nextDone));
@@ -1252,6 +1278,7 @@ export default function Game(){
   const handAreaRef=useRef(null);
   const mobileGodCardRefs=useRef(new Map());
   const igniteTorchFlamingCardIdsRef=useRef(new Set());
+  const debugGodPowerBlockedHandlerRef=useRef(null);
   const [handAreaRect,setHandAreaRect]=useState(null);
   const [tutorialHandCardRect,setTutorialHandCardRect]=useState(null);
   const [handCardsRect,setHandCardsRect]=useState(null);
@@ -1502,6 +1529,27 @@ export default function Game(){
   });
 
   useEffect(()=>{
+    if(!import.meta.env.DEV||typeof window==='undefined')return undefined;
+    const playGodPowerBlocked=(options={})=>{
+      const handler=debugGodPowerBlockedHandlerRef.current;
+      if(!handler){
+        console.warn('[toeDebug] playGodPowerBlocked: debug handler unavailable');
+        return Promise.resolve({ok:false,reason:'unavailable'});
+      }
+      return handler(options);
+    };
+    const debugRoot={...(window.__toeDebug||{})};
+    delete debugRoot.playIgniteTorchDiscard;
+    debugRoot.playGodPowerBlocked=playGodPowerBlocked;
+    window.__toeDebug=debugRoot;
+    return ()=>{
+      if(window.__toeDebug?.playGodPowerBlocked===playGodPowerBlocked){
+        delete window.__toeDebug.playGodPowerBlocked;
+      }
+    };
+  },[]);
+
+  useEffect(()=>{
     if(!mpOpeningRoleRevealPendingRef.current)return;
     if(roleRevealAnim||anim||animQueueRef.current.length>0||pendingGsRef.current)return;
     mpOpeningRoleRevealPendingRef.current=false;
@@ -1533,7 +1581,7 @@ export default function Game(){
   },[gs?._inspectionEvents]);
   const houndsTimerVisible=!!gs?.houndsOfTindalosActive&&(!latestHoundsInspectionSeq||houndsRevealedSeq>=latestHoundsInspectionSeq);
 
-  useAnimationAudioEffects({ anim, playApophisEclipseSound, playThrowStoneThrowSound, playThrowStoneRollingSound, playEarthquakeSound, playGeomagneticReversalSound, playStartledBatsSound, playNightWindSound, playRopeSound, playUndergroundSpringDropletSound, playVolcanoSound, playSemiMaterialSound, playBurrowingWormSound, playSnakeTrapSound });
+  useAnimationAudioEffects({ anim, playApophisEclipseSound, playThrowStoneThrowSound, playThrowStoneRollingSound, playEarthquakeSound, playGeomagneticReversalSound, playStartledBatsSound, playNightWindSound, playRopeSound, playUndergroundSpringDropletSound, playVolcanoSound, playSemiMaterialSound, playBurrowingWormSound, playSnakeTrapSound, playCthRlyehDreamSound, playGodPowerBlockedSound });
 
   useEffect(()=>{
     if(!gs?.houndsOfTindalosActive){
@@ -5806,12 +5854,13 @@ export default function Game(){
   }
 
   function buildTargetContinuationGs({
+    baseState=gs,
     players,
-    deck=gs.deck,
-    discard=gs.discard,
+    deck=baseState.deck,
+    discard=baseState.discard,
     log,
-    turnOwner=gs.currentTurn,
-    abilityData=gs.abilityData,
+    turnOwner=baseState.currentTurn,
+    abilityData=baseState.abilityData,
     phase=null,
     clearTurnAnim=true,
     canResumeAi=true,
@@ -5820,7 +5869,7 @@ export default function Game(){
     const nextPhase=phase||(
       abilityData?.pendingGodChoice?.godCard
         ?'GOD_CHOICE'
-        :canResumeAi&&isAiSeat(gs,turnOwner)&&!players?.[turnOwner]?.isDead&&!abilityData?.fromRest
+        :canResumeAi&&isAiSeat(baseState,turnOwner)&&!players?.[turnOwner]?.isDead&&!abilityData?.fromRest
           ?'AI_TURN'
           :'ACTION'
     );
@@ -5828,7 +5877,7 @@ export default function Game(){
       ?{...(abilityData.pendingGodChoice),...buildTargetContinuationAbilityData(abilityData.pendingGodChoice)}
       :buildTargetContinuationAbilityData(abilityData);
     const nextGs={
-      ...gs,
+      ...baseState,
       players,
       deck,
       discard,
@@ -6127,7 +6176,7 @@ export default function Game(){
     let D=[...(gs.deck||[])];
     let Disc=[...(gs.discard||[])];
     const target=P[targetIdx];
-    let L=[...gs.log];
+    let L=[...activeGs.log];
     let consumedSlimeCard=null;
     if(useSlime){
       const slimeIdx=(target.hand||[]).findIndex(isTsathogguaSlime);
@@ -6682,11 +6731,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     });
   }
 
-  async function igniteTorchDiscardCard(cardIndex, allowAi=false){
-    const abilityData=gs.abilityData||{};
+  async function igniteTorchDiscardCard(cardIndex, allowAi=false, baseState=null){
+    const activeGs=baseState||gs;
+    const abilityData=activeGs.abilityData||{};
     const actorIdx=abilityData.playerIndex;
     if((!isLocalSeatIndex(actorIdx)&&!allowAi)||cardIndex<0)return;
-    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
+    let P=copyPlayers(activeGs.players),D=[...activeGs.deck],Disc=[...activeGs.discard];
     if(!P[actorIdx]?.hand?.[cardIndex])return;
     const cardToDiscard=P[actorIdx].hand[cardIndex];
     if(cardToDiscard?.id&&igniteTorchFlamingCardIdsRef.current.has(cardToDiscard.id))return;
@@ -6708,9 +6758,10 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const balance=applyBalanceDiscardSideEffects({players:P,deck:D,discard:Disc,log:L,ownerIdx:actorIdx,cards:[discardedCard],reason:'引燃火把弃牌'});
       P=balance.players;D=balance.deck;Disc=balance.discard;L=balance.log;
     }
-    grantTurnScopedGodPowerImmunity(P[actorIdx], getCurrentExecutionTurnOwner(gs, actorIdx));
+    grantTurnScopedGodPowerImmunity(P[actorIdx], getCurrentExecutionTurnOwner(activeGs, actorIdx));
     L.push(`【引燃火把】${localDisplayName(actorIdx,P[actorIdx]?.name)} 本回合不受邪神之力影响`);
     const nextGs=buildTargetContinuationGs({
+      baseState:activeGs,
       players:P,
       deck:D,
       discard:Disc,
@@ -6744,6 +6795,40 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }
     igniteTorchDiscardCard(idx);
   }
+
+  debugGodPowerBlockedHandlerRef.current=import.meta.env.DEV
+    ?async(options={})=>{
+      const base=latestGsRef.current;
+      if(!base?.players?.length){
+        console.warn('[toeDebug] playGodPowerBlocked: no active game state');
+        return {ok:false,reason:'no-game'};
+      }
+      if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current){
+        console.warn('[toeDebug] playGodPowerBlocked: animation queue is busy');
+        return {ok:false,reason:'busy'};
+      }
+      const playerIndex=Number.isInteger(options.playerIndex)?options.playerIndex:0;
+      const player=base.players?.[playerIndex];
+      if(!player){
+        console.warn('[toeDebug] playGodPowerBlocked: player not found',playerIndex);
+        return {ok:false,reason:'missing-player'};
+      }
+      const msg=buildGodPowerBlockedLog(player);
+      const queue=[{
+        type:'GOD_POWER_BLOCKED',
+        targetPid:playerIndex,
+        name:localDisplayName(playerIndex,player.name),
+        msgs:options.showLog===true?[msg]:[],
+      }];
+      console.info('[toeDebug] playGodPowerBlocked', {
+        playerIndex,
+        playerName:player.name,
+        showLog:options.showLog===true,
+      });
+      triggerAnimQueue(queue,base,()=>{});
+      return {ok:true,playerIndex,playerName:player.name};
+    }
+    :null;
 
   function buryAliveSelectCard(cardIndex, allowAi=false){
     const abilityData=gs.abilityData||{};

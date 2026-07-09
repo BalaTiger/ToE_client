@@ -57,7 +57,13 @@ export function loadEffectImage(src) {
     imageCache.set(url, new Promise((resolve, reject) => {
       const image = new Image();
       image.decoding = 'async';
-      image.onload = () => resolve(image);
+      image.onload = () => {
+        if (typeof image.decode !== 'function') {
+          resolve(image);
+          return;
+        }
+        image.decode().then(() => resolve(image)).catch(() => resolve(image));
+      };
       image.onerror = () => reject(new Error(`Failed to load effect image: ${url}`));
       image.src = url;
     }));

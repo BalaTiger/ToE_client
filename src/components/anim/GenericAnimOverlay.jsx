@@ -66,7 +66,8 @@ export function TorchWardOverlay({ anim, exiting }) {
         top: rect.top,
         width: rect.width,
         height: rect.height,
-        animation: exiting ? 'animFadeOut 0.16s ease-in forwards' : 'torchWardIgnite 1.08s ease-out forwards',
+        opacity: exiting ? 0 : undefined,
+        animation: exiting ? 'none' : 'torchWardIgnite 1.08s ease-out forwards',
       }}>
         <div style={{
           position: 'absolute',
