@@ -733,7 +733,7 @@ export default function Game(){
       clearTimeout(timer);
     };
   },[isBattleScreen,gs?.expansionKey]);
-  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound,playCthRlyehDreamSound,playGodPowerBlockedSound,playTsgSlimePopSound,playOneCardShiftSound,playMultiCardShiftSound,playDiceRollSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
+  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound,playCthRlyehDreamSound,playGodPowerBlockedSound,playTsgSlimePopSound,playOneCardShiftSound,playMultiCardShiftSound,playDiceRollSound,playTurnStartSound,playSkillHuntSound,playNegativeCardFlipSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
   const persistSoftGuideDone=useCallback((nextDone)=>{
     setSoftGuideDone(nextDone);
     if(canPersistTutorial)safeLS.set(SOFT_GUIDE_STORAGE_KEY,serializeSoftGuideDone(nextDone));
@@ -1595,7 +1595,7 @@ export default function Game(){
   },[gs?._inspectionEvents]);
   const houndsTimerVisible=!!gs?.houndsOfTindalosActive&&(!latestHoundsInspectionSeq||houndsRevealedSeq>=latestHoundsInspectionSeq);
 
-  useAnimationAudioEffects({ anim, playApophisEclipseSound, playThrowStoneThrowSound, playThrowStoneRollingSound, playEarthquakeSound, playGeomagneticReversalSound, playStartledBatsSound, playNightWindSound, playRopeSound, playUndergroundSpringDropletSound, playVolcanoSound, playSemiMaterialSound, playBurrowingWormSound, playSnakeTrapSound, playCthRlyehDreamSound, playGodPowerBlockedSound, playTsgSlimePopSound, playOneCardShiftSound, playMultiCardShiftSound, playDiceRollSound });
+  useAnimationAudioEffects({ anim, playApophisEclipseSound, playThrowStoneThrowSound, playThrowStoneRollingSound, playEarthquakeSound, playGeomagneticReversalSound, playStartledBatsSound, playNightWindSound, playRopeSound, playUndergroundSpringDropletSound, playVolcanoSound, playSemiMaterialSound, playBurrowingWormSound, playSnakeTrapSound, playCthRlyehDreamSound, playGodPowerBlockedSound, playTsgSlimePopSound, playOneCardShiftSound, playMultiCardShiftSound, playDiceRollSound, playTurnStartSound, playSkillHuntSound, playNegativeCardFlipSound });
 
   useEffect(()=>{
     if(!gs?.houndsOfTindalosActive){
@@ -4488,11 +4488,28 @@ export default function Game(){
     ?pendingGsRef.current
     :gs;
   const huntRevealTargetPid=huntRevealStateForView?.abilityData?.huntTi;
+  const huntRevealCard=huntRevealStateForView?.abilityData?.revCard;
+  const sameHuntRevealCard=(stepCard,revealedCard)=>{
+    if(!stepCard||!revealedCard)return false;
+    const stepStableId=stepCard.id??stepCard.uid;
+    const revealedStableId=revealedCard.id??revealedCard.uid;
+    if(stepStableId!=null||revealedStableId!=null)return stepStableId===revealedStableId;
+    return (stepCard.key??stepCard.name??stepCard.letter)===(revealedCard.key??revealedCard.name??revealedCard.letter);
+  };
+  const isSameHuntRevealStep=step=>(
+    step?.type==='HUNT_REVEAL_CARD'
+    &&step?.targetPid===huntRevealTargetPid
+    &&sameHuntRevealCard(step.card,huntRevealCard)
+  );
+  const huntRevealCardAnimating=(isSameHuntRevealStep(anim)&&!animExiting)
+    ||animQueueRef.current.some(isSameHuntRevealStep);
+  const huntRevealBadgeShadowSuppressed=isSameHuntRevealStep(anim);
   const huntRevealBadge=(
     huntRevealStateForView?.phase==='HUNT_CONFIRM'
-    &&huntRevealStateForView?.abilityData?.revCard
+    &&huntRevealCard
     &&!isLocalSeatIndex(huntRevealTargetPid)
-  )?{card:huntRevealStateForView.abilityData.revCard,targetPid:huntRevealTargetPid}:null;
+    &&!huntRevealCardAnimating
+  )?{card:huntRevealCard,targetPid:huntRevealTargetPid}:null;
 
   // ── Action handlers ────────────────────────────────────────
   // CTH 「梦访拉莱耶」: after a draw decision (keep/discard/god) triggered while resting,
@@ -9398,7 +9415,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       disabled={suppressAnim}
       playEndlessCorridorTunnelSound={playEndlessCorridorTunnelSound}
     />
-    {!suppressAnim&&huntRevealBadge&&<HuntRevealedCardBadge card={huntRevealBadge.card} targetPid={huntRevealBadge.targetPid}/>}
+    {!suppressAnim&&huntRevealBadge&&<HuntRevealedCardBadge card={huntRevealBadge.card} targetPid={huntRevealBadge.targetPid} suppressShadow={huntRevealBadgeShadowSuppressed}/>}
     {!suppressAnim&&<SwapCupOverlay active={!!swapAnim} casterName={swapAnim?.casterName||''} targetName={swapAnim?.targetName||''}/>}
     {flyingEmojis.map(fe=>(
       <FlyingEmoji key={fe.id} {...fe} onDone={handleFlyingEmojiDone}/>

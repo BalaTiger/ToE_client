@@ -39,7 +39,7 @@ export const MOVE_ANIMATION_STYLES = `
     0%   { transform: translate(0,0) scale(0.82) rotateY(18deg) rotate(-4deg); opacity:0; }
     16%  { opacity:1; }
     58%  { transform: translate(calc(var(--tx)*0.72), calc(var(--ty)*0.72 - 16px)) scale(1.06) rotateY(0deg) rotate(3deg); opacity:1; }
-    100% { transform: translate(var(--tx), var(--ty)) scale(1) rotateY(0deg) rotate(0deg); opacity:1; }
+    100% { transform: translate(calc(var(--tx)*0.72), calc(var(--ty)*0.72 - 16px)) scale(1.06) rotateY(0deg) rotate(3deg); opacity:1; }
   }
   @keyframes moveOverlayBgFade {
     0% { opacity: 0; }

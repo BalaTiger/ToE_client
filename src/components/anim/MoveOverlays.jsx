@@ -1,6 +1,7 @@
 ﻿import React from 'react';
-import { CS, GOD_CS } from '../../constants/card';
-import { DDCard, MiniCardFace } from '../cards';
+import { CS, GOD_CS, GOD_DEFS } from '../../constants/card';
+import { AreaTooltip, DDCard, GodTooltip, MiniCardFace } from '../cards';
+import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
 import { CardBackLayer } from '../cards/AnimatedCardBack';
 import { getPileAnchorCenter, getPlayerAreaAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 import { buildPublicUrl } from '../../utils/url';
@@ -13,6 +14,8 @@ const BLACK_GOAT_PARTICLES = [
   { x: -24, y: 4, size: 4, delay: 0.20, dur: 0.50, glow: 0.75 },
   { x: 8, y: 24, size: 5, delay: 0.25, dur: 0.64, glow: 0.80 },
 ];
+const HUNT_REVEAL_HOLD_TRANSFORM = 'scale(1.06) rotateY(0deg) rotate(3deg)';
+const HUNT_REVEAL_HOLD_FILTER = 'drop-shadow(0 10px 18px rgba(0,0,0,0.72))';
 
 function clampNumber(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -37,6 +40,13 @@ function getAdaptiveDrawTransferCardSize() {
 
 export function getStandardFlyingCardSize() {
   return getAdaptiveDrawTransferCardSize();
+}
+
+function getHuntRevealCardSize() {
+  const standard = getStandardFlyingCardSize();
+  const width = Math.round(clampNumber(standard.width * 1.28, 68, 128));
+  const height = Math.round(width * (108 / 82));
+  return { width, height, scale: width / 82 };
 }
 
 function BlackGoatTrail({ txPx, tyPx, delay = 0, duration = 1.28 }) {
@@ -588,14 +598,18 @@ function useHuntRevealCardPosition(targetPid) {
 
   React.useEffect(() => {
     function measure() {
-      const size = getStandardFlyingCardSize();
+      const size = getHuntRevealCardSize();
       const start = getPlayerHandAnchorCenter(targetPid ?? 0);
       const end = getPlayerAreaAnchorCenter(targetPid ?? 0);
+      const holdX = start.x + (end.x - start.x) * 0.72;
+      const holdY = start.y + (end.y - start.y) * 0.72 - 16;
       setPos({
         startX: start.x,
         startY: start.y,
         endX: end.x,
         endY: end.y,
+        holdX,
+        holdY,
         width: size.width,
         height: size.height,
         '--tx': `${end.x - start.x}px`,
@@ -620,7 +634,7 @@ export function HuntRevealCardOverlay({ anim, exiting }) {
       zIndex: 650,
       pointerEvents: 'none',
       overflow: 'hidden',
-      animation: exiting ? 'animFadeOut 0.18s ease-in forwards' : 'none',
+      animation: 'none',
     }}>
       <div style={{
         position: 'absolute',
@@ -632,8 +646,10 @@ export function HuntRevealCardOverlay({ anim, exiting }) {
         marginTop: -pos.height / 2,
         '--tx': pos['--tx'],
         '--ty': pos['--ty'],
+        opacity: 0,
+        transform: 'translate(0,0) scale(0.82) rotateY(18deg) rotate(-4deg)',
         animation: 'huntRevealCardFly 0.82s cubic-bezier(0.22,0.82,0.22,1) both',
-        filter: 'drop-shadow(0 10px 18px rgba(0,0,0,0.72))',
+        filter: HUNT_REVEAL_HOLD_FILTER,
       }}>
         <MiniCardFace card={anim.card} width={pos.width} height={pos.height} ambient={false} frameStyle={{ boxShadow: 'none' }} />
       </div>
@@ -641,30 +657,38 @@ export function HuntRevealCardOverlay({ anim, exiting }) {
   );
 }
 
-export function HuntRevealedCardBadge({ card, targetPid }) {
+export function HuntRevealedCardBadge({ card, targetPid, suppressShadow = false }) {
   const pos = useHuntRevealCardPosition(targetPid);
+  const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseMove, handleMouseLeave } = useCardHoverTooltip();
   if (!card || !pos) return null;
+  const godDef = card.isGod ? GOD_DEFS[card.godKey] : null;
   return (
-    <div style={{
-      position: 'fixed',
-      left: pos.endX,
-      top: pos.endY,
-      width: 70,
-      height: 94,
-      marginLeft: -35,
-      marginTop: -47,
-      zIndex: 455,
-      pointerEvents: 'none',
-      filter: 'drop-shadow(0 8px 16px rgba(0,0,0,0.7))',
-    }}>
-      <div style={{
-        position: 'absolute',
-        inset: -5,
-        borderRadius: 8,
-        border: '1px solid rgba(220,40,40,0.55)',
-        boxShadow: '0 0 16px rgba(220,40,40,0.35)',
-      }} />
-      <MiniCardFace card={card} width={70} height={94} ambient={false} frameStyle={{ boxShadow: 'none' }} />
-    </div>
+    <>
+      <div
+        ref={cardRef}
+        onMouseEnter={handleMouseEnter}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        style={{
+          position: 'fixed',
+          left: pos.holdX,
+          top: pos.holdY,
+          width: pos.width,
+          height: pos.height,
+          marginLeft: -pos.width / 2,
+          marginTop: -pos.height / 2,
+          zIndex: 455,
+          pointerEvents: 'auto',
+          cursor: 'default',
+          transform: HUNT_REVEAL_HOLD_TRANSFORM,
+          transformOrigin: '50% 50%',
+          filter: suppressShadow ? 'none' : HUNT_REVEAL_HOLD_FILTER,
+        }}
+      >
+        <MiniCardFace card={card} width={pos.width} height={pos.height} ambient={false} frameStyle={{ boxShadow: 'none' }} />
+      </div>
+      {hover && godDef && <GodTooltip def={godDef} godLevel={card.godLevel || 1} position={tooltipPosition} />}
+      {hover && !godDef && <AreaTooltip card={card} position={tooltipPosition} />}
+    </>
   );
 }

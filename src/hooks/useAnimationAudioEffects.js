@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { getVolcanoImpactTimes } from '../components/anim/volcanoTiming';
+import { getZoneCardPolarity } from '../game/coreUtils';
 
 const ANIMATION_AUDIO_DELAY = {
   APOPHIS_ECLIPSE: 180,
   THROW_STONE_ROLLING: 1040,
 };
+const CARD_FLIP_TRAVEL_MS = 650;
+const CARD_FLIP_NEGATIVE_BURST_DELAY_MS = 1150;
 const EARTHQUAKE_SHAKE_DURATION_MS = 2500;
 const VOLCANO_ANIMATION_DURATION_MS = 2500;
 const SINGLE_CARD_MOVE_TYPES = new Set([
-  'DRAW_CARD',
   'DISCARD',
   'BURY_TO_DECK',
   'ZHU_HIDE_CARD',
@@ -29,6 +31,17 @@ function getCardTransferMoveCount(anim) {
     return anim.transfers.reduce((sum, transfer) => sum + Math.max(1, transfer?.count || 1), 0);
   }
   return Math.max(1, anim?.count || 1);
+}
+
+function isNegativeDrawCardFlip(anim) {
+  if (anim?.type !== 'DRAW_CARD' || !anim.card) return false;
+  if (anim.card.isGod) return true;
+  if (anim.triggerName === '检定牌') return anim.card.type === 'negative';
+  return getZoneCardPolarity(anim.card) === 'negative';
+}
+
+function getNegativeDrawCardFlipSoundDelay(anim) {
+  return (anim?.skipTravel ? 0 : CARD_FLIP_TRAVEL_MS) + CARD_FLIP_NEGATIVE_BURST_DELAY_MS;
 }
 
 export function useAnimationAudioEffects({
@@ -52,6 +65,9 @@ export function useAnimationAudioEffects({
   playOneCardShiftSound,
   playMultiCardShiftSound,
   playDiceRollSound,
+  playTurnStartSound,
+  playSkillHuntSound,
+  playNegativeCardFlipSound,
 }) {
   const detachedAudioCleanupsRef = useRef({});
 
@@ -131,6 +147,14 @@ export function useAnimationAudioEffects({
   }, [anim, playOneCardShiftSound, playMultiCardShiftSound]);
 
   useEffect(() => {
+    if (!isNegativeDrawCardFlip(anim)) return undefined;
+    const timer = setTimeout(() => {
+      playDetachedAnimationSound('negativeCardFlip', playNegativeCardFlipSound);
+    }, getNegativeDrawCardFlipSoundDelay(anim));
+    return () => clearTimeout(timer);
+  }, [anim, playNegativeCardFlipSound, playDetachedAnimationSound]);
+
+  useEffect(() => {
     if (anim?.type !== 'UNDERGROUND_SPRING') return undefined;
     return playUndergroundSpringDropletSound?.();
   }, [anim, playUndergroundSpringDropletSound]);
@@ -179,6 +203,17 @@ export function useAnimationAudioEffects({
     if (anim?.type !== 'DICE_ROLL') return undefined;
     return playDiceRollSound?.();
   }, [anim, playDiceRollSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'YOUR_TURN') return undefined;
+    playDetachedAnimationSound('turnStart', playTurnStartSound);
+    return undefined;
+  }, [anim, playTurnStartSound, playDetachedAnimationSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'SKILL_HUNT') return undefined;
+    return playSkillHuntSound?.();
+  }, [anim, playSkillHuntSound]);
 
   useEffect(() => {
     // ENDLESS_CORRIDOR_TUNNEL sound is triggered by the tunnel overlay mount,

@@ -1,6 +1,6 @@
 {
-  "version": "506c1cc6128289cb",
-  "generatedAt": "2026-07-09T10:47:34.966Z",
+  "version": "2840d9c0be2f081c",
+  "generatedAt": "2026-07-09T12:49:28.796Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1449,6 +1449,12 @@
       "revision": "df37d19a5a04da1e"
     },
     {
+      "path": "/sounds/SE/negative-card-flip.mp3",
+      "type": "audio",
+      "size": 32959,
+      "revision": "718501770177b415"
+    },
+    {
       "path": "/sounds/SE/nightWind/nightWind1.mp3",
       "type": "audio",
       "size": 27629,
@@ -1539,6 +1545,12 @@
       "revision": "af86995228d2a15f"
     },
     {
+      "path": "/sounds/SE/skill-hunt.mp3",
+      "type": "audio",
+      "size": 25122,
+      "revision": "e0c4e52982731161"
+    },
+    {
       "path": "/sounds/SE/snake/snake_attack_1.mp3",
       "type": "audio",
       "size": 27321,
@@ -1567,6 +1579,18 @@
       "type": "audio",
       "size": 70261,
       "revision": "3f5fdee878863cbd"
+    },
+    {
+      "path": "/sounds/SE/turn-start.mp3",
+      "type": "audio",
+      "size": 73005,
+      "revision": "3f6eb07a47634ff0"
+    },
+    {
+      "path": "/sounds/SE/universfield-eerie-suspense-atmosphere-345816.mp3",
+      "type": "audio",
+      "size": 2916864,
+      "revision": "5e01222b9439a16f"
     },
     {
       "path": "/sounds/SE/volcano/volcano_bg.mp3",
