@@ -361,6 +361,7 @@ function tsgSlimePopStepFromEvent(event) {
     count: event.count || (Array.isArray(event.cards) ? event.cards.length : 1),
     cards: Array.isArray(event.cards) ? event.cards : [],
     msgs: Array.isArray(event.msgs) ? event.msgs : [],
+    ...(Array.isArray(event.playersBefore) ? { visualSetupPatch: { players: event.playersBefore } } : {}),
   };
 }
 
@@ -496,6 +497,7 @@ export function buildTurnStartDrawReplayQueue({
           count: event.slimePop.count || (Array.isArray(event.slimePop.cards) ? event.slimePop.cards.length : 1),
           cards: Array.isArray(event.slimePop.cards) ? event.slimePop.cards : [],
           msgs: Array.isArray(event.slimePop.msgs) ? event.slimePop.msgs : [],
+          ...(Array.isArray(event.slimePop.playersBefore) ? { visualSetupPatch: { players: event.slimePop.playersBefore } } : {}),
         });
       }
       return steps;

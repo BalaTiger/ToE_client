@@ -1,6 +1,6 @@
 {
-  "version": "709aa0e80a73b978",
-  "generatedAt": "2026-07-09T05:11:35.329Z",
+  "version": "e646ac0a0bbba74b",
+  "generatedAt": "2026-07-09T10:19:24.980Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1297,6 +1297,48 @@
       "type": "audio",
       "size": 224688,
       "revision": "ff9bd29f7abfc420"
+    },
+    {
+      "path": "/sounds/SE/bubble/bubble1.mp3",
+      "type": "audio",
+      "size": 33792,
+      "revision": "bdf777a2822cef17"
+    },
+    {
+      "path": "/sounds/SE/bubble/bubble2.mp3",
+      "type": "audio",
+      "size": 34560,
+      "revision": "479af4fbad950df0"
+    },
+    {
+      "path": "/sounds/SE/bubble/bubble3.mp3",
+      "type": "audio",
+      "size": 33024,
+      "revision": "d91c48b2d2ae6c2e"
+    },
+    {
+      "path": "/sounds/SE/bubble/bubble4.mp3",
+      "type": "audio",
+      "size": 44544,
+      "revision": "bbac34d40706f38f"
+    },
+    {
+      "path": "/sounds/SE/card/multi_card_shift.mp3",
+      "type": "audio",
+      "size": 12333,
+      "revision": "ae2d60b5ccbf594b"
+    },
+    {
+      "path": "/sounds/SE/card/one_card_shift1.mp3",
+      "type": "audio",
+      "size": 16128,
+      "revision": "2c94037a2b99882a"
+    },
+    {
+      "path": "/sounds/SE/card/one_card_shift2.mp3",
+      "type": "audio",
+      "size": 19968,
+      "revision": "8f7ee00b651b1e2a"
     },
     {
       "path": "/sounds/SE/close.mp3",

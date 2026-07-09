@@ -367,7 +367,7 @@ export function createGodPowerBlockedEvent({ playerIdx = 0, playerName = '该玩
   }, 'action');
 }
 
-export function createTsathogguaSlimePopEvent({ playerIdx = 0, playerName = '该玩家', cards = [], msgs = [] } = {}) {
+export function createTsathogguaSlimePopEvent({ playerIdx = 0, playerName = '该玩家', cards = [], msgs = [], playersBefore = null, playersAfter = null } = {}) {
   const slimeCards = Array.isArray(cards) ? cards.filter(Boolean) : [];
   return withVisualEventMeta({
     type: VISUAL_EVENT.TSG_SLIME_POP,
@@ -377,6 +377,8 @@ export function createTsathogguaSlimePopEvent({ playerIdx = 0, playerName = '该
     count: slimeCards.length || 1,
     cards: slimeCards,
     msgs: Array.isArray(msgs) ? msgs : [],
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfter) ? { playersAfter } : {}),
   }, 'action');
 }
 

@@ -23,6 +23,7 @@ import {
   GOD_CS,
   GOD_DEFS,
   createBlackGoatYoungCard,
+  createTsathogguaSlimeCard,
 } from "./constants/card";
 import { getBattleBackgroundImage, getBattlePredecodeImages, getBattleTheme } from './constants/theme';
 import { buildPhaseUiState } from './game/phaseUi';
@@ -732,7 +733,7 @@ export default function Game(){
       clearTimeout(timer);
     };
   },[isBattleScreen,gs?.expansionKey]);
-  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound,playCthRlyehDreamSound,playGodPowerBlockedSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
+  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound,playCthRlyehDreamSound,playGodPowerBlockedSound,playTsgSlimePopSound,playOneCardShiftSound,playMultiCardShiftSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
   const persistSoftGuideDone=useCallback((nextDone)=>{
     setSoftGuideDone(nextDone);
     if(canPersistTutorial)safeLS.set(SOFT_GUIDE_STORAGE_KEY,serializeSoftGuideDone(nextDone));
@@ -1279,6 +1280,7 @@ export default function Game(){
   const mobileGodCardRefs=useRef(new Map());
   const igniteTorchFlamingCardIdsRef=useRef(new Set());
   const debugGodPowerBlockedHandlerRef=useRef(null);
+  const debugTsgSlimePopHandlerRef=useRef(null);
   const [handAreaRect,setHandAreaRect]=useState(null);
   const [tutorialHandCardRect,setTutorialHandCardRect]=useState(null);
   const [handCardsRect,setHandCardsRect]=useState(null);
@@ -1538,13 +1540,25 @@ export default function Game(){
       }
       return handler(options);
     };
+    const playTsgSlimePop=(options={})=>{
+      const handler=debugTsgSlimePopHandlerRef.current;
+      if(!handler){
+        console.warn('[toeDebug] playTsgSlimePop: debug handler unavailable');
+        return Promise.resolve({ok:false,reason:'unavailable'});
+      }
+      return handler(options);
+    };
     const debugRoot={...(window.__toeDebug||{})};
     delete debugRoot.playIgniteTorchDiscard;
     debugRoot.playGodPowerBlocked=playGodPowerBlocked;
+    debugRoot.playTsgSlimePop=playTsgSlimePop;
     window.__toeDebug=debugRoot;
     return ()=>{
       if(window.__toeDebug?.playGodPowerBlocked===playGodPowerBlocked){
         delete window.__toeDebug.playGodPowerBlocked;
+      }
+      if(window.__toeDebug?.playTsgSlimePop===playTsgSlimePop){
+        delete window.__toeDebug.playTsgSlimePop;
       }
     };
   },[]);
@@ -1581,7 +1595,7 @@ export default function Game(){
   },[gs?._inspectionEvents]);
   const houndsTimerVisible=!!gs?.houndsOfTindalosActive&&(!latestHoundsInspectionSeq||houndsRevealedSeq>=latestHoundsInspectionSeq);
 
-  useAnimationAudioEffects({ anim, playApophisEclipseSound, playThrowStoneThrowSound, playThrowStoneRollingSound, playEarthquakeSound, playGeomagneticReversalSound, playStartledBatsSound, playNightWindSound, playRopeSound, playUndergroundSpringDropletSound, playVolcanoSound, playSemiMaterialSound, playBurrowingWormSound, playSnakeTrapSound, playCthRlyehDreamSound, playGodPowerBlockedSound });
+  useAnimationAudioEffects({ anim, playApophisEclipseSound, playThrowStoneThrowSound, playThrowStoneRollingSound, playEarthquakeSound, playGeomagneticReversalSound, playStartledBatsSound, playNightWindSound, playRopeSound, playUndergroundSpringDropletSound, playVolcanoSound, playSemiMaterialSound, playBurrowingWormSound, playSnakeTrapSound, playCthRlyehDreamSound, playGodPowerBlockedSound, playTsgSlimePopSound, playOneCardShiftSound, playMultiCardShiftSound });
 
   useEffect(()=>{
     if(!gs?.houndsOfTindalosActive){
@@ -4549,6 +4563,7 @@ export default function Game(){
         slimeIdx=holderIdx>=0?(P[holderIdx].hand||[]).findIndex(c=>c&&(pendingSlime.id!=null?c.id===pendingSlime.id:c===pendingSlime||isTsathogguaSlime(c))):-1;
       }
       if(holderIdx>=0&&slimeIdx>=0){
+        const playersBeforeSlimePop=copyPlayers(P);
         const [removed]=P[holderIdx].hand.splice(slimeIdx,1);
         const msg=`【无定形体】${P[holderIdx].name} 的1张撒托古亚的赐福黏液消失`;
         L.push(msg);
@@ -4559,7 +4574,7 @@ export default function Game(){
         const cleanedAbilityData=Object.fromEntries(Object.entries(nextAbilityData).filter(([,v])=>v!==undefined));
         const poppedGs={...baseGsAfterDecision,players:P,log:L,abilityData:cleanedAbilityData};
         triggerAnimQueue([
-          {type:'TSG_SLIME_POP',targetPid:holderIdx,count:1,cards:[removed||pendingSlime].filter(Boolean),msgs:[msg]},
+          {type:'TSG_SLIME_POP',targetPid:holderIdx,count:1,cards:[removed||pendingSlime].filter(Boolean),msgs:[msg],visualSetupPatch:{players:playersBeforeSlimePop}},
           statePatchStep({players:P,log:L,abilityData:cleanedAbilityData}),
           {type:'TURN_BOUNDARY_PAUSE',durationMs:160},
         ],null,()=>_tsgContinueTurnStartDraw(poppedGs));
@@ -6176,11 +6191,13 @@ export default function Game(){
     let D=[...(gs.deck||[])];
     let Disc=[...(gs.discard||[])];
     const target=P[targetIdx];
-    let L=[...activeGs.log];
+    let L=[...gs.log];
     let consumedSlimeCard=null;
+    let playersBeforeSlimePop=null;
     if(useSlime){
       const slimeIdx=(target.hand||[]).findIndex(isTsathogguaSlime);
       if(slimeIdx>=0){
+        playersBeforeSlimePop=copyPlayers(P);
         consumedSlimeCard=target.hand.splice(slimeIdx,1)[0]||null;
         const total=clamp((abilityData.afterHp??target.hp)+(abilityData.afterSan??target.san),0,20);
         target.hp=clamp(Math.ceil(total/2));
@@ -6251,6 +6268,7 @@ export default function Game(){
         count:1,
         cards:[consumedSlimeCard],
         msgs:L.slice(-1),
+        ...(playersBeforeSlimePop?{visualSetupPatch:{players:playersBeforeSlimePop}}:{}),
       }]:[]),
       statePatchStep({players:preInspectionGs.players})
     ]:[];
@@ -6827,6 +6845,66 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       });
       triggerAnimQueue(queue,base,()=>{});
       return {ok:true,playerIndex,playerName:player.name};
+    }
+    :null;
+
+  debugTsgSlimePopHandlerRef.current=import.meta.env.DEV
+    ?async(options={})=>{
+      const base=latestGsRef.current;
+      if(!base?.players?.length){
+        console.warn('[toeDebug] playTsgSlimePop: no active game state');
+        return {ok:false,reason:'no-game'};
+      }
+      if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current){
+        console.warn('[toeDebug] playTsgSlimePop: animation queue is busy');
+        return {ok:false,reason:'busy'};
+      }
+      const playerIndex=Number.isInteger(options.playerIndex)?options.playerIndex:0;
+      const player=base.players?.[playerIndex];
+      if(!player){
+        console.warn('[toeDebug] playTsgSlimePop: player not found',playerIndex);
+        return {ok:false,reason:'missing-player'};
+      }
+      const count=Math.max(1,Math.min(5,Number.isInteger(options.count)?options.count:1));
+      const handSlimes=(player.hand||[]).filter(isTsathogguaSlime).slice(0,count);
+      const tempCount=Math.max(0,count-handSlimes.length);
+      const stamp=Date.now();
+      const tempSlimes=Array.from({length:tempCount},(_,idx)=>({
+          ...createTsathogguaSlimeCard(),
+          id:`debug-tsg-slime-pop-${stamp}-${idx}`,
+        }));
+      const cards=[...handSlimes,...tempSlimes];
+      const lockedPlayers=tempSlimes.length
+        ?copyPlayers(base.players).map((p,idx)=>idx===playerIndex
+          ?{...p,hand:[...(p.hand||[]),...tempSlimes]}
+          :p)
+        :null;
+      const msg=`【无定形体】${localDisplayName(playerIndex,player.name)} 的${count}张撒托古亚的赐福黏液消失`;
+      const popStep={
+        type:'TSG_SLIME_POP',
+        targetPid:playerIndex,
+        count,
+        cards,
+        msgs:options.showLog===true?[msg]:[],
+        ...(lockedPlayers?{visualSetupPatch:{players:lockedPlayers}}:{}),
+      };
+      const queue=[
+        ...(lockedPlayers?[
+          {type:'VISUAL_LOCK',players:lockedPlayers,zhuLight:base.zhuLight||null},
+          {type:'TURN_BOUNDARY_PAUSE',durationMs:60},
+        ]:[]),
+        popStep,
+      ];
+      console.info('[toeDebug] playTsgSlimePop', {
+        playerIndex,
+        playerName:player.name,
+        count,
+        anchored:true,
+        temporaryCards:tempSlimes.length,
+        showLog:options.showLog===true,
+      });
+      triggerAnimQueue(queue,base,()=>{});
+      return {ok:true,playerIndex,playerName:player.name,count,anchored:true,temporaryCards:tempSlimes.length};
     }
     :null;
 
@@ -7908,9 +7986,16 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     };
     if(isDiscardAction){
       const discardLog=L[L.length-1];
-      const queue=[{type:'DISCARD',card:godCard,triggerName:'你',targetPid:0,msgs:[discardLog]}];
-      if(fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:Disc})],L.slice(gs.log.length));
-      triggerAnimQueue(queue,newGs,()=>finishGodChoice(newGs));
+      const drawerIdx=gs.abilityData?.drawerIdx??gs.currentTurn??0;
+      const drawerName=localDisplayName(drawerIdx,gs.players?.[drawerIdx]?.name);
+      const discardGs={...newGs,_discardedDrawnCard:true};
+      const queue=[
+        {type:'DRAW_CARD',card:godCard,triggerName:drawerName,targetPid:drawerIdx,msgs:gs._drawLogs||[]},
+        {type:'DISCARD',card:godCard,triggerName:'你',targetPid:0,msgs:[discardLog]},
+        statePatchStep({players:P,discard:Disc}),
+      ];
+      if(fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue],L.slice(gs.log.length));
+      triggerAnimQueue(queue,discardGs,()=>finishGodChoice(clearTurnDrawReplayHints(discardGs)));
       return;
     }
     const inspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>(gs._inspectionSeq||0));

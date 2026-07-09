@@ -938,6 +938,7 @@ function consumeTsathogguaSlimeAfterDraw(P, ownerIdx, slime, L, visualEvents = [
   }
   if (holderIdx < 0 || cardIdx < 0) return null;
   const holder = P[holderIdx];
+  const playersBefore = copyPlayers(P);
   const [removed] = holder.hand.splice(cardIdx, 1);
   const msg = `【无定形体】${holder.name} 的1张撒托古亚的赐福黏液消失`;
   L.push(msg);
@@ -946,12 +947,16 @@ function consumeTsathogguaSlimeAfterDraw(P, ownerIdx, slime, L, visualEvents = [
     playerName: holder.name,
     cards: [removed || slime].filter(Boolean),
     msgs: [msg],
+    playersBefore,
+    playersAfter: copyPlayers(P),
   });
   if (event) visualEvents.push(event);
   return {
     targetPid: holderIdx,
     cards: [removed || slime].filter(Boolean),
     msgs: [msg],
+    playersBefore,
+    playersAfter: copyPlayers(P),
   };
 }
 

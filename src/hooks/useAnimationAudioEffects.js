@@ -7,6 +7,14 @@ const ANIMATION_AUDIO_DELAY = {
 };
 const EARTHQUAKE_SHAKE_DURATION_MS = 2500;
 const VOLCANO_ANIMATION_DURATION_MS = 2500;
+const SINGLE_CARD_MOVE_TYPES = new Set([
+  'DRAW_CARD',
+  'DISCARD',
+  'BURY_TO_DECK',
+  'ZHU_HIDE_CARD',
+  'HUNT_REVEAL_CARD',
+  'GEOMAGNETIC_RESTORE_SHUFFLE',
+]);
 
 function getSnakeTrapAttackCount(anim) {
   if (Array.isArray(anim?.assignmentHits) && anim.assignmentHits.length) return anim.assignmentHits.length;
@@ -14,6 +22,13 @@ function getSnakeTrapAttackCount(anim) {
     return anim.assignmentList.reduce((sum, item) => sum + Math.max(1, item?.count || 1), 0);
   }
   return Math.max(1, anim?.totalLayers || 1);
+}
+
+function getCardTransferMoveCount(anim) {
+  if (Array.isArray(anim?.transfers) && anim.transfers.length) {
+    return anim.transfers.reduce((sum, transfer) => sum + Math.max(1, transfer?.count || 1), 0);
+  }
+  return Math.max(1, anim?.count || 1);
 }
 
 export function useAnimationAudioEffects({
@@ -33,6 +48,9 @@ export function useAnimationAudioEffects({
   playSnakeTrapSound,
   playCthRlyehDreamSound,
   playGodPowerBlockedSound,
+  playTsgSlimePopSound,
+  playOneCardShiftSound,
+  playMultiCardShiftSound,
 }) {
   const detachedAudioCleanupsRef = useRef({});
 
@@ -95,6 +113,23 @@ export function useAnimationAudioEffects({
   }, [anim, playRopeSound]);
 
   useEffect(() => {
+    if (!anim) return undefined;
+    if (SINGLE_CARD_MOVE_TYPES.has(anim.type)) {
+      playOneCardShiftSound?.();
+      return undefined;
+    }
+    if (anim.type === 'CARD_TRANSFER' && anim.effect !== 'damageLink') {
+      const count = getCardTransferMoveCount(anim);
+      if (count > 1 || (Array.isArray(anim.transfers) && anim.transfers.length > 1)) {
+        playMultiCardShiftSound?.();
+      } else {
+        playOneCardShiftSound?.();
+      }
+    }
+    return undefined;
+  }, [anim, playOneCardShiftSound, playMultiCardShiftSound]);
+
+  useEffect(() => {
     if (anim?.type !== 'UNDERGROUND_SPRING') return undefined;
     return playUndergroundSpringDropletSound?.();
   }, [anim, playUndergroundSpringDropletSound]);
@@ -133,6 +168,11 @@ export function useAnimationAudioEffects({
     playDetachedAnimationSound('godPowerBlocked', playGodPowerBlockedSound);
     return undefined;
   }, [anim, playGodPowerBlockedSound, playDetachedAnimationSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'TSG_SLIME_POP') return undefined;
+    return playTsgSlimePopSound?.();
+  }, [anim, playTsgSlimePopSound]);
 
   useEffect(() => {
     // ENDLESS_CORRIDOR_TUNNEL sound is triggered by the tunnel overlay mount,

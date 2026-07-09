@@ -384,54 +384,71 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
 export function TsathogguaSlimePopOverlay({ anim, exiting }) {
   const [targets, setTargets] = React.useState(null);
 
-  React.useEffect(() => {
-    if (!anim) return;
+  React.useLayoutEffect(() => {
+    if (!anim) return undefined;
+    let cancelled = false;
+    let rafId = null;
+    const activeElements = [];
     const cards = Array.isArray(anim.cards) && anim.cards.length
       ? anim.cards
       : Array.from({ length: Math.max(1, anim.count || 1) }, () => null);
-    const fallback = getPlayerHandAnchorCenter(anim.targetPid ?? 0);
     const escapeValue = value => (
       typeof CSS !== 'undefined' && CSS.escape
         ? CSS.escape(String(value))
         : String(value).replace(/["\\]/g, '\\$&')
     );
-    const elements = [];
-    const measured = cards.map((card, idx) => {
-      const cardId = card?.id;
-      const selector = cardId != null
-        ? `[data-self-hand-card-id="${escapeValue(cardId)}"],[data-player-hand-card-id="${escapeValue(cardId)}"]`
-        : null;
-      const el = selector ? document.querySelector(selector) : null;
-      if (el) {
-        elements.push(el);
-        el.setAttribute('data-tsg-slime-popping', 'true');
-        el.style.setProperty('--tsg-slime-pop-delay', `${idx * 0.08}s`);
-        const rect = el.getBoundingClientRect();
-        return {
-          card,
-          x: rect.left + rect.width / 2,
-          y: rect.top + rect.height / 2,
-          width: rect.width,
-          height: rect.height,
-          anchored: true,
-        };
-      }
-      const offsets = [
-        { x: 0, y: 0 },
-        { x: -26, y: 10 },
-        { x: 28, y: 8 },
-        { x: -10, y: -18 },
-        { x: 18, y: -16 },
-      ];
-      const off = offsets[idx % offsets.length];
-      return { card, x: fallback.x + off.x, y: fallback.y + off.y, width: 70, height: 92, anchored: false };
-    });
-    setTargets(measured);
-    return () => {
-      elements.forEach(el => {
+    const clearElementMarks = () => {
+      activeElements.splice(0).forEach(el => {
         el.removeAttribute('data-tsg-slime-popping');
         el.style.removeProperty('--tsg-slime-pop-delay');
       });
+    };
+    const measure = (attempt = 0) => {
+      clearElementMarks();
+      const fallback = getPlayerHandAnchorCenter(anim.targetPid ?? 0);
+      let missingIdentifiedCard = false;
+      const measured = cards.map((card, idx) => {
+        const cardId = card?.id;
+        const selector = cardId != null
+          ? `[data-self-hand-card-id="${escapeValue(cardId)}"],[data-player-hand-card-id="${escapeValue(cardId)}"]`
+          : null;
+        const el = selector ? document.querySelector(selector) : null;
+        if (el) {
+          activeElements.push(el);
+          el.setAttribute('data-tsg-slime-popping', 'true');
+          el.style.setProperty('--tsg-slime-pop-delay', `${idx * 0.08}s`);
+          const rect = el.getBoundingClientRect();
+          return {
+            card,
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2,
+            width: rect.width,
+            height: rect.height,
+            anchored: true,
+          };
+        }
+        if (cardId != null) missingIdentifiedCard = true;
+        const offsets = [
+          { x: 0, y: 0 },
+          { x: -26, y: 10 },
+          { x: 28, y: 8 },
+          { x: -10, y: -18 },
+          { x: 18, y: -16 },
+        ];
+        const off = offsets[idx % offsets.length];
+        return { card, x: fallback.x + off.x, y: fallback.y + off.y, width: 70, height: 92, anchored: false };
+      });
+      if (missingIdentifiedCard && attempt < 6 && typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        rafId = window.requestAnimationFrame(() => measure(attempt + 1));
+        return;
+      }
+      if (!cancelled) setTargets(measured);
+    };
+    measure();
+    return () => {
+      cancelled = true;
+      if (rafId != null) window.cancelAnimationFrame?.(rafId);
+      clearElementMarks();
     };
   }, [anim]);
 
@@ -465,6 +482,21 @@ export function TsathogguaSlimePopOverlay({ anim, exiting }) {
           animation: tsgSlimeCardMelt 0.94s ease-in var(--tsg-slime-pop-delay, 0s) both;
           filter: drop-shadow(0 0 14px rgba(128,216,168,0.58));
         }
+        .tsg-slime-pop-synthetic-card {
+          position: absolute;
+          left: 0;
+          top: 0;
+          transform: translate(-50%,-50%);
+          transform-origin: center center;
+          animation: tsgSlimeSyntheticCardMelt 0.94s ease-in var(--tsg-slime-pop-delay, 0s) both;
+          filter: drop-shadow(0 0 14px rgba(128,216,168,0.58));
+        }
+        @keyframes tsgSlimeSyntheticCardMelt {
+          0% { transform: translate(-50%,-50%) scale(1); opacity: 1; }
+          46% { transform: translate(-50%,-50%) scale(0.98); opacity: 0.94; }
+          76% { transform: translate(-50%,-50%) scale(0.72); opacity: 0.28; filter: blur(1.2px); }
+          100% { transform: translate(-50%,-50%) scale(0.22); opacity: 0; filter: blur(3px); }
+        }
         @keyframes tsgSlimeRingPop {
           0% { transform: translate(-50%,-50%) scale(0.3); opacity: 0; }
           34% { opacity: 0; }
@@ -490,14 +522,28 @@ export function TsathogguaSlimePopOverlay({ anim, exiting }) {
         ];
         return (
           <div key={target.card?.id || `slime-pop-${idx}`} style={{ position: 'absolute', left, top }}>
+            {!target.anchored && target.card && (
+              <div
+                className="tsg-slime-pop-synthetic-card"
+                style={{
+                  width: target.width,
+                  height: target.height,
+                  '--tsg-slime-pop-delay': `${delay}s`,
+                }}
+              >
+                <DDCard
+                  card={target.card}
+                  compact
+                  frameStyle={{ boxShadow: 'none', border: 'none', width: target.width, minWidth: target.width, height: target.height }}
+                />
+              </div>
+            )}
             <div style={{
               position: 'absolute',
               left: 0,
               top: 0,
               width: bubbleSize,
               height: bubbleSize,
-              marginLeft: -bubbleSize / 2,
-              marginTop: -bubbleSize / 2,
               borderRadius: '50%',
               background: 'radial-gradient(circle at 36% 28%,rgba(232,255,246,0.86) 0%,rgba(137,232,190,0.48) 26%,rgba(50,143,111,0.20) 56%,rgba(6,38,31,0) 74%)',
               border: '1px solid rgba(167,243,208,0.58)',
@@ -510,8 +556,6 @@ export function TsathogguaSlimePopOverlay({ anim, exiting }) {
               top: 0,
               width: ringSize,
               height: ringSize,
-              marginLeft: -ringSize / 2,
-              marginTop: -ringSize / 2,
               borderRadius: '50%',
               border: '2px solid rgba(190,255,226,0.72)',
               boxShadow: '0 0 16px rgba(128,216,168,0.46)',
