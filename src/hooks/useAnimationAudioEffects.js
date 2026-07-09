@@ -67,6 +67,10 @@ export function useAnimationAudioEffects({
   playDiceRollSound,
   playTurnStartSound,
   playSkillHuntSound,
+  playSkillSwapSound,
+  playSkillBewitchSound,
+  playCaveDuelSound,
+  playWheelSpinSound,
   playNegativeCardFlipSound,
 }) {
   const detachedAudioCleanupsRef = useRef({});
@@ -183,6 +187,18 @@ export function useAnimationAudioEffects({
   }, [anim, playSnakeTrapSound]);
 
   useEffect(() => {
+    if (anim?.type !== 'CAVE_DUEL') return undefined;
+    const localInvolved = anim.sourceIdx === 0 || anim.targetIdx === 0;
+    const localLost = localInvolved && anim.winnerIdx != null && anim.winnerIdx !== 0;
+    return playCaveDuelSound?.({ localLost });
+  }, [anim, playCaveDuelSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'RANDOM_TARGET') return undefined;
+    return playWheelSpinSound?.();
+  }, [anim, playWheelSpinSound]);
+
+  useEffect(() => {
     if (anim?.type !== 'CTH_RLYEH_DREAM') return undefined;
     playDetachedAnimationSound('cthRlyehDream', playCthRlyehDreamSound);
     return undefined;
@@ -209,6 +225,17 @@ export function useAnimationAudioEffects({
     playDetachedAnimationSound('turnStart', playTurnStartSound);
     return undefined;
   }, [anim, playTurnStartSound, playDetachedAnimationSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'SKILL_SWAP') return undefined;
+    return playSkillSwapSound?.();
+  }, [anim, playSkillSwapSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'SKILL_BEWITCH') return undefined;
+    playDetachedAnimationSound('skillBewitch', playSkillBewitchSound);
+    return undefined;
+  }, [anim, playSkillBewitchSound, playDetachedAnimationSound]);
 
   useEffect(() => {
     if (anim?.type !== 'SKILL_HUNT') return undefined;

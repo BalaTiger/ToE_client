@@ -36,7 +36,7 @@ export function RandomTargetOverlay({ anim, exiting }) {
 
   if (!geometry) return null;
   const { center, targetAngle, sourceAngle } = geometry;
-  const spinTurns = 3;
+  const spinTurns = 4;
   const finalRotation = 360 * spinTurns + targetAngle;
   const sourceName = anim.players?.[anim.sourceIdx]?.name || '角色';
   const targetName = anim.players?.[anim.targetIdx]?.name || '目标';
@@ -55,10 +55,27 @@ export function RandomTargetOverlay({ anim, exiting }) {
     }}>
       <style>{`
         @keyframes randomTargetNeedleSpin {
-          0% { transform: rotate(${sourceAngle}deg); }
-          58% { transform: rotate(${finalRotation - 22}deg); }
-          70% { transform: rotate(${finalRotation + 8}deg); }
-          82%, 100% { transform: rotate(${finalRotation}deg); }
+          0% {
+            transform: rotate(${sourceAngle}deg);
+            animation-timing-function: linear;
+          }
+          60% {
+            transform: rotate(${finalRotation - 210}deg);
+            animation-timing-function: cubic-bezier(.18,.62,.18,1);
+          }
+          80% {
+            transform: rotate(${finalRotation - 48}deg);
+            animation-timing-function: cubic-bezier(.14,.76,.14,1);
+          }
+          92% {
+            transform: rotate(${finalRotation + 8}deg);
+            animation-timing-function: ease-out;
+          }
+          97% {
+            transform: rotate(${finalRotation - 3}deg);
+            animation-timing-function: ease-out;
+          }
+          100% { transform: rotate(${finalRotation}deg); }
         }
         @keyframes randomTargetPulse {
           0%, 100% { transform: translate(-50%, -50%) scale(1); }
@@ -103,7 +120,7 @@ export function RandomTargetOverlay({ anim, exiting }) {
           width: 78,
           height: 12,
           transformOrigin: '0 50%',
-          animation: 'randomTargetNeedleSpin 2.05s cubic-bezier(.15,.78,.18,1) forwards',
+          animation: 'randomTargetNeedleSpin 2.24s linear forwards',
         }}>
           <div style={{
             position: 'absolute',

@@ -109,9 +109,26 @@ const TURN_START_STOP_MS = 3700;
 const TURN_START_FADE_MS = 260;
 const SKILL_HUNT_VOLUME = 0.55;
 const SKILL_HUNT_STOP_MS = 1250;
+const SKILL_SWAP_VOLUME = 0.62;
+const SKILL_SWAP_STOP_MS = 1300;
+const SKILL_BEWITCH_VOLUME = 0.64;
+const SKILL_BEWITCH_STOP_MS = 2200;
 const NEGATIVE_CARD_FLIP_VOLUME = 0.5;
-const NEGATIVE_CARD_FLIP_STOP_MS = 1650;
-const NEGATIVE_CARD_FLIP_FADE_MS = 280;
+const NEGATIVE_CARD_FLIP_STOP_MS = 2250;
+const NEGATIVE_CARD_FLIP_FADE_MS = 620;
+const CAVE_DUEL_BG_VOLUME = 0.14;
+const CAVE_DUEL_BG_FADE_IN_MS = 220;
+const CAVE_DUEL_BG_STOP_MS = 2600;
+const CAVE_DUEL_BG_FADE_MS = 520;
+const CAVE_DUEL_RESULT_DELAY_MS = 1380;
+const CAVE_DUEL_WIN_VOLUME = 0.28;
+const CAVE_DUEL_WIN_STOP_MS = 1900;
+const CAVE_DUEL_RESULT_FADE_MS = 320;
+const CAVE_DUEL_LOSE_VOLUME = 0.74;
+const CAVE_DUEL_LOSE_STOP_MS = 2200;
+const WHEEL_SPIN_VOLUME = 0.46;
+const WHEEL_SPIN_STOP_MS = 2240;
+const WHEEL_SPIN_FADE_MS = 160;
 
 function clamp01(value) {
   return Math.max(0, Math.min(1, value));
@@ -147,7 +164,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
   const [audioReady, setAudioReady] = useState(false);
   const readyRef = useRef(false);
   const bgmRefs = useRef({ main: null, battleEarth: null, battleStars: null });
-  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, nightWind: [], igniteTorchFire: null, rope: null, droplet: null, volcano: null, semiMaterial: null, burrowingWorm: null, snakeTrap: null, cthRlyehDream: null, godPowerBlocked: null, tsgSlimePop: [], oneCardShift: [], multiCardShift: null, diceRoll: null, turnStart: null, skillHunt: null, negativeCardFlip: null });
+  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, nightWind: [], igniteTorchFire: null, rope: null, droplet: null, volcano: null, semiMaterial: null, burrowingWorm: null, snakeTrap: null, cthRlyehDream: null, godPowerBlocked: null, tsgSlimePop: [], oneCardShift: [], multiCardShift: null, diceRoll: null, turnStart: null, skillHunt: null, skillSwap: null, skillBewitch: null, negativeCardFlip: null, caveDuel: null, wheelSpin: null });
   const sfxStopTimersRef = useRef({});
   const sfxFadeFramesRef = useRef({});
   const sfxSequenceCleanupsRef = useRef({});
@@ -203,7 +220,13 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     const diceRoll = new Audio(buildPublicUrl('sounds/SE/roll-dice.mp3'));
     const turnStart = new Audio(buildPublicUrl('sounds/SE/turn-start.mp3'));
     const skillHunt = new Audio(buildPublicUrl('sounds/SE/skill-hunt.mp3'));
+    const skillSwap = new Audio(buildPublicUrl('sounds/SE/skill-swap.mp3'));
+    const skillBewitch = new Audio(buildPublicUrl('sounds/SE/skill-bewitch.mp3'));
     const negativeCardFlip = new Audio(buildPublicUrl('sounds/SE/negative-card-flip.mp3'));
+    const caveDuelBg = new Audio(buildPublicUrl('sounds/SE/caveDuel/caveDuel_bg.mp3'));
+    const caveDuelWin = new Audio(buildPublicUrl('sounds/SE/caveDuel/caveDuel_win.mp3'));
+    const caveDuelLose = new Audio(buildPublicUrl('sounds/SE/caveDuel/caveDuel_lose.mp3'));
+    const wheelSpin = new Audio(buildPublicUrl('sounds/SE/wheel-spin.mp3'));
     const volcanoBg = new Audio(buildPublicUrl('sounds/SE/volcano/volcano_bg.mp3'));
     const volcanoMeteorPlayers = Array.from({ length: VOLCANO_AUDIO_POOL_SIZE }, () => ({
       meteor1: new Audio(buildPublicUrl('sounds/SE/volcano/volcano_meteor1.mp3')),
@@ -304,8 +327,20 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     turnStart.volume = TURN_START_VOLUME;
     skillHunt.preload = 'auto';
     skillHunt.volume = SKILL_HUNT_VOLUME;
+    skillSwap.preload = 'auto';
+    skillSwap.volume = SKILL_SWAP_VOLUME;
+    skillBewitch.preload = 'auto';
+    skillBewitch.volume = SKILL_BEWITCH_VOLUME;
     negativeCardFlip.preload = 'auto';
     negativeCardFlip.volume = NEGATIVE_CARD_FLIP_VOLUME;
+    caveDuelBg.preload = 'auto';
+    caveDuelBg.volume = CAVE_DUEL_BG_VOLUME;
+    caveDuelWin.preload = 'auto';
+    caveDuelWin.volume = CAVE_DUEL_WIN_VOLUME;
+    caveDuelLose.preload = 'auto';
+    caveDuelLose.volume = CAVE_DUEL_LOSE_VOLUME;
+    wheelSpin.preload = 'auto';
+    wheelSpin.volume = WHEEL_SPIN_VOLUME;
     const volcanoAudios = [
       volcanoBg,
       ...volcanoMeteorPlayers.flatMap(player => [player.meteor1, player.meteor2]),
@@ -372,7 +407,15 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       diceRoll,
       turnStart,
       skillHunt,
+      skillSwap,
+      skillBewitch,
       negativeCardFlip,
+      caveDuel: {
+        bg: caveDuelBg,
+        win: caveDuelWin,
+        lose: caveDuelLose,
+      },
+      wheelSpin,
       volcano: {
         bg: volcanoBg,
         meteorPlayers: volcanoMeteorPlayers,
@@ -388,7 +431,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       sfxStopTimersRef.current = {};
       Object.values(sfxFadeFramesRef.current).forEach(frame => cancelAnimationFrame(frame));
       sfxFadeFramesRef.current = {};
-      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, ...nightWindVariants, igniteTorchFire, rope, droplet, semiMaterialBg, semiMaterialCharge, semiMaterialGlass, ...burrowingWormEarthPlayers, ...burrowingWormDrillPlayers, burrowingWormAttack, snakeTrapHiss, ...snakeTrapAttackPlayers.flat(), cthRlyehDream, godPowerBlocked, ...tsgSlimePopVariants, ...oneCardShiftVariants.map(({ audio }) => audio), multiCardShift, diceRoll, turnStart, skillHunt, negativeCardFlip, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
+      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, ...nightWindVariants, igniteTorchFire, rope, droplet, semiMaterialBg, semiMaterialCharge, semiMaterialGlass, ...burrowingWormEarthPlayers, ...burrowingWormDrillPlayers, burrowingWormAttack, snakeTrapHiss, ...snakeTrapAttackPlayers.flat(), cthRlyehDream, godPowerBlocked, ...tsgSlimePopVariants, ...oneCardShiftVariants.map(({ audio }) => audio), multiCardShift, diceRoll, turnStart, skillHunt, skillSwap, skillBewitch, negativeCardFlip, caveDuelBg, caveDuelWin, caveDuelLose, wheelSpin, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
         try {
           audio.pause();
           audio.currentTime = 0;
@@ -1407,6 +1450,178 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       } catch { /* ignore */ }
     };
   }, [noteUserGesture]);
+  const playSkillSwapSound = useCallback(() => {
+    noteUserGesture();
+    const audio = sfxRefs.current.skillSwap;
+    if (!audio) return undefined;
+    clearTimeout(sfxStopTimersRef.current.skillSwap);
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = SKILL_SWAP_VOLUME;
+      audio.playbackRate = 1;
+      audio.play().catch(() => { });
+      sfxStopTimersRef.current.skillSwap = setTimeout(() => {
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.volume = SKILL_SWAP_VOLUME;
+        } catch { /* ignore */ }
+      }, SKILL_SWAP_STOP_MS);
+    } catch { /* ignore */ }
+    return () => {
+      clearTimeout(sfxStopTimersRef.current.skillSwap);
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.playbackRate = 1;
+        audio.volume = SKILL_SWAP_VOLUME;
+      } catch { /* ignore */ }
+    };
+  }, [noteUserGesture]);
+  const playSkillBewitchSound = useCallback(() => {
+    noteUserGesture();
+    const audio = sfxRefs.current.skillBewitch;
+    if (!audio) return undefined;
+    clearTimeout(sfxStopTimersRef.current.skillBewitch);
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = SKILL_BEWITCH_VOLUME;
+      audio.playbackRate = 1;
+      audio.play().catch(() => { });
+      sfxStopTimersRef.current.skillBewitch = setTimeout(() => {
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.volume = SKILL_BEWITCH_VOLUME;
+        } catch { /* ignore */ }
+      }, SKILL_BEWITCH_STOP_MS);
+    } catch { /* ignore */ }
+    return () => {
+      clearTimeout(sfxStopTimersRef.current.skillBewitch);
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.playbackRate = 1;
+        audio.volume = SKILL_BEWITCH_VOLUME;
+      } catch { /* ignore */ }
+    };
+  }, [noteUserGesture]);
+  const playCaveDuelSound = useCallback(({ localLost = false } = {}) => {
+    noteUserGesture();
+    const caveDuel = sfxRefs.current.caveDuel;
+    if (!caveDuel?.bg || !caveDuel?.win || !caveDuel?.lose) return undefined;
+    sfxSequenceCleanupsRef.current.caveDuel?.();
+    const timers = [];
+    const fadeKeys = new Set();
+    const sequenceKey = Date.now();
+    const addTimer = timer => timers.push(timer);
+    const addFadeKey = key => fadeKeys.add(key);
+    const resetAudio = (audio, volume) => {
+      if (!audio) return;
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.playbackRate = 1;
+        audio.volume = volume;
+      } catch { /* ignore */ }
+    };
+    const fadeInAudio = (audio, key, durationMs, targetVolume) => {
+      addFadeKey(key);
+      if (sfxFadeFramesRef.current[key]) {
+        cancelAnimationFrame(sfxFadeFramesRef.current[key]);
+        sfxFadeFramesRef.current[key] = null;
+      }
+      const start = performance.now();
+      const step = now => {
+        const progress = clamp01((now - start) / durationMs);
+        try { audio.volume = targetVolume * smoothstep01(progress); } catch { /* ignore */ }
+        if (progress < 1) {
+          sfxFadeFramesRef.current[key] = requestAnimationFrame(step);
+          return;
+        }
+        try { audio.volume = targetVolume; } catch { /* ignore */ }
+        sfxFadeFramesRef.current[key] = null;
+      };
+      sfxFadeFramesRef.current[key] = requestAnimationFrame(step);
+    };
+    const bgFadeKey = `cave-duel-bg-${sequenceKey}`;
+    const resultFadeKey = `cave-duel-result-${sequenceKey}`;
+    const resultAudio = localLost ? caveDuel.lose : caveDuel.win;
+    const resultVolume = localLost ? CAVE_DUEL_LOSE_VOLUME : CAVE_DUEL_WIN_VOLUME;
+    const resultStopMs = localLost ? CAVE_DUEL_LOSE_STOP_MS : CAVE_DUEL_WIN_STOP_MS;
+    const stopAll = () => {
+      timers.forEach(timer => clearTimeout(timer));
+      fadeKeys.forEach(key => {
+        if (sfxFadeFramesRef.current[key]) {
+          cancelAnimationFrame(sfxFadeFramesRef.current[key]);
+          sfxFadeFramesRef.current[key] = null;
+        }
+      });
+      resetAudio(caveDuel.bg, CAVE_DUEL_BG_VOLUME);
+      resetAudio(caveDuel.win, CAVE_DUEL_WIN_VOLUME);
+      resetAudio(caveDuel.lose, CAVE_DUEL_LOSE_VOLUME);
+      if (sfxSequenceCleanupsRef.current.caveDuel === stopAll) delete sfxSequenceCleanupsRef.current.caveDuel;
+    };
+    sfxSequenceCleanupsRef.current.caveDuel = stopAll;
+    try {
+      resetAudio(caveDuel.bg, 0);
+      caveDuel.bg.volume = 0;
+      caveDuel.bg.play().catch(() => { });
+      fadeInAudio(caveDuel.bg, bgFadeKey, CAVE_DUEL_BG_FADE_IN_MS, CAVE_DUEL_BG_VOLUME);
+      addTimer(setTimeout(() => {
+        fadeOutAudio(caveDuel.bg, bgFadeKey, CAVE_DUEL_BG_FADE_MS, CAVE_DUEL_BG_VOLUME);
+      }, Math.max(0, CAVE_DUEL_BG_STOP_MS - CAVE_DUEL_BG_FADE_MS)));
+    } catch { /* ignore */ }
+    addTimer(setTimeout(() => {
+      try {
+        resetAudio(resultAudio, resultVolume);
+        resultAudio.volume = resultVolume;
+        resultAudio.play().catch(() => { });
+        addFadeKey(resultFadeKey);
+        addTimer(setTimeout(() => {
+          fadeOutAudio(resultAudio, resultFadeKey, CAVE_DUEL_RESULT_FADE_MS, resultVolume);
+        }, Math.max(0, resultStopMs - CAVE_DUEL_RESULT_FADE_MS)));
+      } catch { /* ignore */ }
+    }, CAVE_DUEL_RESULT_DELAY_MS));
+    addTimer(setTimeout(stopAll, CAVE_DUEL_RESULT_DELAY_MS + resultStopMs + 360));
+    return stopAll;
+  }, [fadeOutAudio, noteUserGesture]);
+  const playWheelSpinSound = useCallback(() => {
+    noteUserGesture();
+    const audio = sfxRefs.current.wheelSpin;
+    if (!audio) return undefined;
+    const fadeKey = 'wheel-spin';
+    clearTimeout(sfxStopTimersRef.current.wheelSpin);
+    if (sfxFadeFramesRef.current[fadeKey]) {
+      cancelAnimationFrame(sfxFadeFramesRef.current[fadeKey]);
+      sfxFadeFramesRef.current[fadeKey] = null;
+    }
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = WHEEL_SPIN_VOLUME;
+      audio.playbackRate = 1;
+      audio.play().catch(() => { });
+      sfxStopTimersRef.current.wheelSpin = setTimeout(() => {
+        fadeOutAudio(audio, fadeKey, WHEEL_SPIN_FADE_MS, WHEEL_SPIN_VOLUME);
+      }, Math.max(0, WHEEL_SPIN_STOP_MS - WHEEL_SPIN_FADE_MS));
+    } catch { /* ignore */ }
+    return () => {
+      clearTimeout(sfxStopTimersRef.current.wheelSpin);
+      if (sfxFadeFramesRef.current[fadeKey]) {
+        cancelAnimationFrame(sfxFadeFramesRef.current[fadeKey]);
+        sfxFadeFramesRef.current[fadeKey] = null;
+      }
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.playbackRate = 1;
+        audio.volume = WHEEL_SPIN_VOLUME;
+      } catch { /* ignore */ }
+    };
+  }, [fadeOutAudio, noteUserGesture]);
   const playNegativeCardFlipSound = useCallback(() => {
     noteUserGesture();
     const audio = sfxRefs.current.negativeCardFlip;
@@ -1474,6 +1689,10 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     playDiceRollSound,
     playTurnStartSound,
     playSkillHuntSound,
+    playSkillSwapSound,
+    playSkillBewitchSound,
+    playCaveDuelSound,
+    playWheelSpinSound,
     playNegativeCardFlipSound,
   };
 }

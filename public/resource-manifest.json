@@ -1,6 +1,6 @@
 {
-  "version": "2840d9c0be2f081c",
-  "generatedAt": "2026-07-09T12:49:28.796Z",
+  "version": "6e64b6d3e3d2c4a9",
+  "generatedAt": "2026-07-09T14:10:46.433Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1341,6 +1341,24 @@
       "revision": "8f7ee00b651b1e2a"
     },
     {
+      "path": "/sounds/SE/caveDuel/caveDuel_bg.mp3",
+      "type": "audio",
+      "size": 101982,
+      "revision": "7332b13d7fadf4a9"
+    },
+    {
+      "path": "/sounds/SE/caveDuel/caveDuel_lose.mp3",
+      "type": "audio",
+      "size": 83712,
+      "revision": "f503a4adc831cf04"
+    },
+    {
+      "path": "/sounds/SE/caveDuel/caveDuel_win.mp3",
+      "type": "audio",
+      "size": 733920,
+      "revision": "56a4c38a44cd4e1a"
+    },
+    {
       "path": "/sounds/SE/close.mp3",
       "type": "audio",
       "size": 5851,
@@ -1451,8 +1469,8 @@
     {
       "path": "/sounds/SE/negative-card-flip.mp3",
       "type": "audio",
-      "size": 32959,
-      "revision": "718501770177b415"
+      "size": 44453,
+      "revision": "2eb2e92a1eef639e"
     },
     {
       "path": "/sounds/SE/nightWind/nightWind1.mp3",
@@ -1545,10 +1563,22 @@
       "revision": "af86995228d2a15f"
     },
     {
+      "path": "/sounds/SE/skill-bewitch.mp3",
+      "type": "audio",
+      "size": 54189,
+      "revision": "d4131ccc9ed8bd83"
+    },
+    {
       "path": "/sounds/SE/skill-hunt.mp3",
       "type": "audio",
       "size": 25122,
       "revision": "e0c4e52982731161"
+    },
+    {
+      "path": "/sounds/SE/skill-swap.mp3",
+      "type": "audio",
+      "size": 41472,
+      "revision": "af8a9ec4d8b71870"
     },
     {
       "path": "/sounds/SE/snake/snake_attack_1.mp3",
@@ -1587,12 +1617,6 @@
       "revision": "3f6eb07a47634ff0"
     },
     {
-      "path": "/sounds/SE/universfield-eerie-suspense-atmosphere-345816.mp3",
-      "type": "audio",
-      "size": 2916864,
-      "revision": "5e01222b9439a16f"
-    },
-    {
       "path": "/sounds/SE/volcano/volcano_bg.mp3",
       "type": "audio",
       "size": 482324,
@@ -1615,6 +1639,12 @@
       "type": "audio",
       "size": 322664,
       "revision": "434b8ad238ce8600"
+    },
+    {
+      "path": "/sounds/SE/wheel-spin.mp3",
+      "type": "audio",
+      "size": 48480,
+      "revision": "604debe27ca32451"
     },
     {
       "path": "/sounds/SE/worm/worm_attack.mp3",
