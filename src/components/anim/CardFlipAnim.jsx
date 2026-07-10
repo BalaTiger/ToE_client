@@ -107,7 +107,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
   const travelScale=Math.max(1,Math.min(1.35,viewportScale));
   const travelW=Math.round(70*travelScale);
   const travelH=Math.round(94*travelScale);
-  const flipW=Math.round(152*cardScale);
+  const flipW=Math.round(208*cardScale);
   const flipH=Math.round(flipW*590/392);
   const px=value=>Math.round(value*cardScale);
 
