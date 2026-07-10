@@ -8,6 +8,7 @@ const ANIMATION_AUDIO_DELAY = {
 };
 const CARD_FLIP_TRAVEL_MS = 650;
 const CARD_FLIP_NEGATIVE_BURST_DELAY_MS = 1150;
+const CARD_FLIP_GOD_HIGHLIGHT_DELAY_MS = 1260;
 const EARTHQUAKE_SHAKE_DURATION_MS = 2500;
 const VOLCANO_ANIMATION_DURATION_MS = 2500;
 const SINGLE_CARD_MOVE_TYPES = new Set([
@@ -35,13 +36,17 @@ function getCardTransferMoveCount(anim) {
 
 function isNegativeDrawCardFlip(anim) {
   if (anim?.type !== 'DRAW_CARD' || !anim.card) return false;
-  if (anim.card.isGod) return true;
+  if (anim.card.isGod) return false;
   if (anim.triggerName === '检定牌') return false;
   return getZoneCardPolarity(anim.card) === 'negative';
 }
 
 function getNegativeDrawCardFlipSoundDelay(anim) {
   return (anim?.skipTravel ? 0 : CARD_FLIP_TRAVEL_MS) + CARD_FLIP_NEGATIVE_BURST_DELAY_MS;
+}
+
+function getGodHighlightSoundDelay(anim) {
+  return (anim?.skipTravel ? 0 : CARD_FLIP_TRAVEL_MS) + CARD_FLIP_GOD_HIGHLIGHT_DELAY_MS;
 }
 
 export function useAnimationAudioEffects({
@@ -69,6 +74,7 @@ export function useAnimationAudioEffects({
   playSkillHuntSound,
   playSkillSwapSound,
   playSkillBewitchSound,
+  playGodHighlightSound,
   playCaveDuelSound,
   playWheelSpinSound,
   playBlackGoatRunSound,
@@ -166,6 +172,14 @@ export function useAnimationAudioEffects({
     if (anim?.type !== 'BLACK_GOAT_PULSE') return undefined;
     return playBlackGoatPulseSound?.();
   }, [anim, playBlackGoatPulseSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'DRAW_CARD' || !anim.card?.isGod) return undefined;
+    const timer = setTimeout(() => {
+      playDetachedAnimationSound('godHighlight', playGodHighlightSound);
+    }, getGodHighlightSoundDelay(anim));
+    return () => clearTimeout(timer);
+  }, [anim, playGodHighlightSound, playDetachedAnimationSound]);
 
   useEffect(() => {
     if (!isNegativeDrawCardFlip(anim)) return undefined;

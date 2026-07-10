@@ -250,6 +250,7 @@ import { DAMAGE_LINK_ANIMATION_STYLES } from './components/anim/damageLinkStyles
 import { EARTHQUAKE_ANIMATION_STYLES } from './components/anim/earthquakeStyles';
 import { MOVE_ANIMATION_STYLES } from './components/anim/moveStyles';
 import { GOD_POWER_ANIMATION_STYLES } from './components/anim/godPowerStyles';
+import { GOD_HIGHLIGHT_ANIMATION_STYLES } from './components/anim/godHighlightStyles';
 import { SKILL_ANIMATION_STYLES } from './components/anim/skillStyles';
 import { AREA_CARD_ANIMATION_STYLES } from './components/anim/areaCardStyles';
 import { DAMAGE_ANIMATION_STYLES } from './components/anim/damageStyles';
@@ -743,7 +744,7 @@ export default function Game(){
       clearTimeout(timer);
     };
   },[isBattleScreen,gs?.expansionKey]);
-  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound,playCthRlyehDreamSound,playGodPowerBlockedSound,playTsgSlimePopSound,playOneCardShiftSound,playMultiCardShiftSound,playDiceRollSound,playTurnStartSound,playSkillHuntSound,playSkillSwapSound,playSkillBewitchSound,playCaveDuelSound,playWheelSpinSound,playBlackGoatRunSound,playBlackGoatPulseSound,playPetrifyDeathSound,playNegativeCardFlipSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
+  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound,playCthRlyehDreamSound,playGodPowerBlockedSound,playTsgSlimePopSound,playOneCardShiftSound,playMultiCardShiftSound,playDiceRollSound,playTurnStartSound,playSkillHuntSound,playSkillSwapSound,playSkillBewitchSound,playGodHighlightSound,playCaveDuelSound,playWheelSpinSound,playBlackGoatRunSound,playBlackGoatPulseSound,playGuillotineDeathSound,playPetrifyDeathSound,playNegativeCardFlipSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
   const persistSoftGuideDone=useCallback((nextDone)=>{
     setSoftGuideDone(nextDone);
     if(canPersistTutorial)safeLS.set(SOFT_GUIDE_STORAGE_KEY,serializeSoftGuideDone(nextDone));
@@ -1291,6 +1292,7 @@ export default function Game(){
   const igniteTorchFlamingCardIdsRef=useRef(new Set());
   const debugGodPowerBlockedHandlerRef=useRef(null);
   const debugTsgSlimePopHandlerRef=useRef(null);
+  const debugGuillotineHandlerRef=useRef(null);
   const debugPetrifyDeathHandlerRef=useRef(null);
   const [handAreaRect,setHandAreaRect]=useState(null);
   const [tutorialHandCardRect,setTutorialHandCardRect]=useState(null);
@@ -1324,6 +1326,7 @@ export default function Game(){
   const previousGodStatusRef=useRef(null);
   const triggerGodHighlightPanelBurst=useCallback((playerIndex,godKey)=>{
     if(playerIndex==null||!godKey)return;
+    playGodHighlightSound?.();
     const key=`${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setGodHighlightPanelBursts(prev=>({...prev,[playerIndex]:{key,godKey}}));
     setTimeout(()=>{
@@ -1334,7 +1337,7 @@ export default function Game(){
         return next;
       });
     },1250);
-  },[]);
+  },[playGodHighlightSound]);
   useEffect(()=>{
     const statuses=(gs?.players||[]).map(p=>({godName:p?.godName||null,godLevel:p?.godLevel||0}));
     if(!statuses.length){
@@ -1559,6 +1562,14 @@ export default function Game(){
       }
       return handler(options);
     };
+    const playGuillotine=(options={})=>{
+      const handler=debugGuillotineHandlerRef.current;
+      if(!handler){
+        console.warn('[toeDebug] playGuillotine: debug handler unavailable');
+        return Promise.resolve({ok:false,reason:'unavailable'});
+      }
+      return handler(options);
+    };
     const playPetrifyDeath=(options={})=>{
       const handler=debugPetrifyDeathHandlerRef.current;
       if(!handler){
@@ -1571,6 +1582,7 @@ export default function Game(){
     delete debugRoot.playIgniteTorchDiscard;
     debugRoot.playGodPowerBlocked=playGodPowerBlocked;
     debugRoot.playTsgSlimePop=playTsgSlimePop;
+    debugRoot.playGuillotine=playGuillotine;
     debugRoot.playPetrifyDeath=playPetrifyDeath;
     window.__toeDebug=debugRoot;
     return ()=>{
@@ -1579,6 +1591,9 @@ export default function Game(){
       }
       if(window.__toeDebug?.playTsgSlimePop===playTsgSlimePop){
         delete window.__toeDebug.playTsgSlimePop;
+      }
+      if(window.__toeDebug?.playGuillotine===playGuillotine){
+        delete window.__toeDebug.playGuillotine;
       }
       if(window.__toeDebug?.playPetrifyDeath===playPetrifyDeath){
         delete window.__toeDebug.playPetrifyDeath;
@@ -1618,7 +1633,7 @@ export default function Game(){
   },[gs?._inspectionEvents]);
   const houndsTimerVisible=!!gs?.houndsOfTindalosActive&&(!latestHoundsInspectionSeq||houndsRevealedSeq>=latestHoundsInspectionSeq);
 
-  useAnimationAudioEffects({ anim, playApophisEclipseSound, playThrowStoneThrowSound, playThrowStoneRollingSound, playEarthquakeSound, playGeomagneticReversalSound, playStartledBatsSound, playNightWindSound, playRopeSound, playUndergroundSpringDropletSound, playVolcanoSound, playSemiMaterialSound, playBurrowingWormSound, playSnakeTrapSound, playCthRlyehDreamSound, playGodPowerBlockedSound, playTsgSlimePopSound, playOneCardShiftSound, playMultiCardShiftSound, playDiceRollSound, playTurnStartSound, playSkillHuntSound, playSkillSwapSound, playSkillBewitchSound, playCaveDuelSound, playWheelSpinSound, playBlackGoatRunSound, playBlackGoatPulseSound, playNegativeCardFlipSound });
+  useAnimationAudioEffects({ anim, playApophisEclipseSound, playThrowStoneThrowSound, playThrowStoneRollingSound, playEarthquakeSound, playGeomagneticReversalSound, playStartledBatsSound, playNightWindSound, playRopeSound, playUndergroundSpringDropletSound, playVolcanoSound, playSemiMaterialSound, playBurrowingWormSound, playSnakeTrapSound, playCthRlyehDreamSound, playGodPowerBlockedSound, playTsgSlimePopSound, playOneCardShiftSound, playMultiCardShiftSound, playDiceRollSound, playTurnStartSound, playSkillHuntSound, playSkillSwapSound, playSkillBewitchSound, playGodHighlightSound, playCaveDuelSound, playWheelSpinSound, playBlackGoatRunSound, playBlackGoatPulseSound, playNegativeCardFlipSound });
 
   useEffect(()=>{
     if(!gs?.houndsOfTindalosActive){
@@ -1658,7 +1673,7 @@ export default function Game(){
     hpHealIndices,
     sanHealIndices,
     clearDamageAnimations,
-  } = useDamageAnimationEffects({ anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound, playPetrifyDeathSound });
+  } = useDamageAnimationEffects({ anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound, playGuillotineDeathSound, playPetrifyDeathSound });
   const guillotinedPids=useMemo(()=>new Set((guillotineTargets||[]).map(t=>t?.pi).filter(v=>v!=null)),[guillotineTargets]);
   const { connectSocket } = useMultiplayerConnection({
     isArtifact,
@@ -6968,6 +6983,48 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }
     :null;
 
+  debugGuillotineHandlerRef.current=import.meta.env.DEV
+    ?async(options={})=>{
+      const base=latestGsRef.current;
+      if(!base?.players?.length){
+        console.warn('[toeDebug] playGuillotine: no active game state');
+        return {ok:false,reason:'no-game'};
+      }
+      if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current){
+        console.warn('[toeDebug] playGuillotine: animation queue is busy');
+        return {ok:false,reason:'busy'};
+      }
+      const playerIndex=Number.isInteger(options.playerIndex)?options.playerIndex:0;
+      const player=base.players?.[playerIndex];
+      if(!player){
+        console.warn('[toeDebug] playGuillotine: player not found',playerIndex);
+        return {ok:false,reason:'missing-player'};
+      }
+      const msg=`☠ ${localDisplayName(playerIndex,player.name)} 倒下了！`;
+      const queue=[
+        {
+          type:'GUILLOTINE',
+          targetPid:playerIndex,
+          hitIndices:[playerIndex],
+          msgs:options.showLog===true?[msg]:[],
+        },
+        {
+          type:'DEATH',
+          targetPid:playerIndex,
+          hitIndices:[playerIndex],
+          msgs:[],
+        },
+      ];
+      console.info('[toeDebug] playGuillotine', {
+        playerIndex,
+        playerName:player.name,
+        showLog:options.showLog===true,
+      });
+      triggerAnimQueue(queue,base,()=>{});
+      return {ok:true,playerIndex,playerName:player.name};
+    }
+    :null;
+
   debugPetrifyDeathHandlerRef.current=import.meta.env.DEV
     ?async(options={})=>{
       const base=latestGsRef.current;
@@ -9929,6 +9986,7 @@ const GLOBAL_STYLES=`
   ${EARTHQUAKE_ANIMATION_STYLES}
   ${MOVE_ANIMATION_STYLES}
   ${GOD_POWER_ANIMATION_STYLES}
+  ${GOD_HIGHLIGHT_ANIMATION_STYLES}
   ${SKILL_ANIMATION_STYLES}
   ${AREA_CARD_ANIMATION_STYLES}
   ${DAMAGE_ANIMATION_STYLES}

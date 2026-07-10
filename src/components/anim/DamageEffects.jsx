@@ -459,6 +459,7 @@ function GuillotineAnim({targets}){
                       position:'absolute',left:0,top:'50%',width:'100%',height:2,
                       background:'linear-gradient(90deg, transparent 0%, rgba(255,230,230,0.95) 50%, transparent 100%)',
                       boxShadow:'0 0 12px rgba(255,80,80,0.8)',
+                      animation:'sliceLineFade 0.64s ease-out forwards',
                     }}/>
                     <div style={{
                       position:'absolute',left:-10,top:-10,

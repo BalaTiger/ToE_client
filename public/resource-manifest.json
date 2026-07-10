@@ -1,6 +1,6 @@
 {
-  "version": "72e16b9f69d034fb",
-  "generatedAt": "2026-07-10T08:48:37.832Z",
+  "version": "020ef846501ce22c",
+  "generatedAt": "2026-07-10T10:19:02.924Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1425,6 +1425,48 @@
       "revision": "571487c33b626132"
     },
     {
+      "path": "/sounds/SE/death/death1.mp3",
+      "type": "audio",
+      "size": 96768,
+      "revision": "a2961111b39954cd"
+    },
+    {
+      "path": "/sounds/SE/death/death2.mp3",
+      "type": "audio",
+      "size": 96768,
+      "revision": "e5bec1c21ae5a5d5"
+    },
+    {
+      "path": "/sounds/SE/death/petrify.mp3",
+      "type": "audio",
+      "size": 632640,
+      "revision": "ab8e3787ae937597"
+    },
+    {
+      "path": "/sounds/SE/death/petrify_1.mp3",
+      "type": "audio",
+      "size": 53857,
+      "revision": "e72993e118758f32"
+    },
+    {
+      "path": "/sounds/SE/death/petrify_2.mp3",
+      "type": "audio",
+      "size": 59081,
+      "revision": "423da615c7527c7f"
+    },
+    {
+      "path": "/sounds/SE/death/petrify_3.mp3",
+      "type": "audio",
+      "size": 55947,
+      "revision": "470f4074802c4753"
+    },
+    {
+      "path": "/sounds/SE/death/petrify_4.mp3",
+      "type": "audio",
+      "size": 50722,
+      "revision": "2fa4878d1d67ef97"
+    },
+    {
       "path": "/sounds/SE/dive.mp3",
       "type": "audio",
       "size": 60045,
@@ -1441,6 +1483,18 @@
       "type": "audio",
       "size": 153600,
       "revision": "ffa7010526bbf938"
+    },
+    {
+      "path": "/sounds/SE/encounter/god_highlight.mp3",
+      "type": "audio",
+      "size": 127725,
+      "revision": "a58ffc471c4646ea"
+    },
+    {
+      "path": "/sounds/SE/encounter/negative-card-flip.mp3",
+      "type": "audio",
+      "size": 44453,
+      "revision": "2eb2e92a1eef639e"
     },
     {
       "path": "/sounds/SE/fire.mp3",
@@ -1527,12 +1581,6 @@
       "revision": "df37d19a5a04da1e"
     },
     {
-      "path": "/sounds/SE/negative-card-flip.mp3",
-      "type": "audio",
-      "size": 44453,
-      "revision": "2eb2e92a1eef639e"
-    },
-    {
       "path": "/sounds/SE/nightWind/nightWind1.mp3",
       "type": "audio",
       "size": 27629,
@@ -1549,36 +1597,6 @@
       "type": "audio",
       "size": 14592,
       "revision": "c759891a15caca85"
-    },
-    {
-      "path": "/sounds/SE/petrify.mp3",
-      "type": "audio",
-      "size": 632640,
-      "revision": "ab8e3787ae937597"
-    },
-    {
-      "path": "/sounds/SE/petrify_1.mp3",
-      "type": "audio",
-      "size": 53857,
-      "revision": "e72993e118758f32"
-    },
-    {
-      "path": "/sounds/SE/petrify_2.mp3",
-      "type": "audio",
-      "size": 59081,
-      "revision": "423da615c7527c7f"
-    },
-    {
-      "path": "/sounds/SE/petrify_3.mp3",
-      "type": "audio",
-      "size": 55947,
-      "revision": "470f4074802c4753"
-    },
-    {
-      "path": "/sounds/SE/petrify_4.mp3",
-      "type": "audio",
-      "size": 50722,
-      "revision": "2fa4878d1d67ef97"
     },
     {
       "path": "/sounds/SE/roll-dice.mp3",

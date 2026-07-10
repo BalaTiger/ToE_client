@@ -64,7 +64,7 @@ async function captureDeathPanelSnapshot(idx) {
   };
 }
 
-export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound, playPetrifyDeathSound }) {
+export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound, playGuillotineDeathSound, playPetrifyDeathSound }) {
   const [hitIndices, setHitIndices] = useState([]);
   const [knifeTargets, setKnifeTargets] = useState([]);
   const [sanHitIndices, setSanHitIndices] = useState([]);
@@ -203,6 +203,7 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
     }
 
     if (anim.type === 'GUILLOTINE' && anim.hitIndices?.length) {
+      playGuillotineDeathSound?.();
       schedule(async () => {
         const pts = await Promise.all(anim.hitIndices.map(idx => captureDeathPanelSnapshot(idx)));
         if (!cancelled) setGuillotineTargets(pts.filter(Boolean));
@@ -231,7 +232,7 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
     }
 
     return cleanupRaf;
-  }, [anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound, playPetrifyDeathSound, addTimer, clearDamageAnimations]);
+  }, [anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound, playGuillotineDeathSound, playPetrifyDeathSound, addTimer, clearDamageAnimations]);
 
   return {
     hitIndices,

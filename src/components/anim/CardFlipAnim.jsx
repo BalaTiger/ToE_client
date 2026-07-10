@@ -158,7 +158,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
     </div>
   );
 
-  const spirits=!showAtmosphereEffects
+  const spirits=!showAtmosphereEffects||card.isGod
     ?[]
     :isEvil
     ?SMOKE_COLS.flatMap((col,i)=>[
