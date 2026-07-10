@@ -19,6 +19,28 @@ const GOD_HIGHLIGHT_KEYS = new Set([
   'ZHU',
 ]);
 
+// Highlights are GPU-heavy because they use expanding, blended image layers.
+// A single global channel prevents two independently mounted UI areas (the
+// card reveal and a player panel) from compositing them at the same time.
+let activeHighlightId = null;
+const highlightChannelListeners = new Set();
+
+function activateHighlight(id) {
+  activeHighlightId = id;
+  highlightChannelListeners.forEach(listener => listener(id));
+}
+
+function releaseHighlight(id) {
+  if (activeHighlightId !== id) return;
+  activeHighlightId = null;
+  highlightChannelListeners.forEach(listener => listener(null));
+}
+
+function subscribeHighlightChannel(listener) {
+  highlightChannelListeners.add(listener);
+  return () => highlightChannelListeners.delete(listener);
+}
+
 export function getGodHighlightPath(godKey) {
   const normalized = String(godKey || '').trim().toUpperCase();
   if (!GOD_HIGHLIGHT_KEYS.has(normalized)) return null;
@@ -35,15 +57,40 @@ function GodHighlightBurst({
   style,
 }) {
   const path = getGodHighlightPath(godKey);
+  const instanceId = React.useRef(`god-highlight-${Math.random().toString(36).slice(2)}`);
+  const [isPlaying, setIsPlaying] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!path) return undefined;
+    const id = instanceId.current;
+    const unsubscribe = subscribeHighlightChannel(activeId => {
+      if (activeId !== id) setIsPlaying(false);
+    });
+    const startTimer = setTimeout(() => {
+      activateHighlight(id);
+      setIsPlaying(true);
+    }, Math.max(0, delayMs));
+    const stopTimer = setTimeout(() => {
+      releaseHighlight(id);
+      setIsPlaying(false);
+    }, Math.max(0, delayMs) + durationMs);
+    return () => {
+      clearTimeout(startTimer);
+      clearTimeout(stopTimer);
+      unsubscribe();
+      releaseHighlight(id);
+    };
+  }, [delayMs, durationMs, path]);
+
   if (!path) return null;
+  if (!isPlaying) return null;
 
   const src = buildPublicUrl(path);
   const aspectRatio = '4 / 3';
   const layers = panel
     ? [
         { scale: 1.14, opacity: 0.22, blur: 0.45, delay: 0 },
-        { scale: 1.78, opacity: 0.15, blur: 1.25, delay: 170 },
-        { scale: 2.62, opacity: 0.09, blur: 2.55, delay: 380 },
+        { scale: 1.92, opacity: 0.14, blur: 1.55, delay: 180 },
       ]
     : [
         { scale: 1.08, opacity: 0.26, blur: 0.4, delay: 0 },
@@ -75,7 +122,7 @@ function GodHighlightBurst({
           opacity: 0,
           transformOrigin: 'center',
           willChange: 'transform, opacity',
-          animation: `toeGodHighlightBurstCore ${durationMs}ms cubic-bezier(0.16,0.92,0.28,1) ${delayMs}ms both`,
+          animation: `toeGodHighlightBurstCore ${durationMs}ms cubic-bezier(0.16,0.92,0.28,1) both`,
           '--toe-god-highlight-intensity': intensity,
         }}
       />
@@ -94,7 +141,7 @@ function GodHighlightBurst({
           }}
         >
           <img
-            className="toe-god-highlight-blend toe-god-highlight-soft-edge"
+            className="toe-god-highlight-blend"
             src={src}
             alt=""
             draggable={false}
@@ -108,9 +155,14 @@ function GodHighlightBurst({
               objectPosition: 'center',
               opacity: 0,
               transformOrigin: 'center',
-              filter: `brightness(${1.28 + index * 0.1}) saturate(${1.24 + index * 0.1}) blur(${layer.blur}px) drop-shadow(0 0 ${panel ? 14 : 22}px rgba(255,226,160,0.28))`,
+              // The art is already alpha-cut; masking and drop-shadowing each
+              // expanding layer forced separate, large offscreen paint passes.
+              // Keep the color treatment and the outer-layer blur, while the
+              // shared radial core supplies the soft glow.
+              filter: `brightness(${1.28 + index * 0.1}) saturate(${1.24 + index * 0.1})${layer.blur > 0.5 ? ` blur(${layer.blur}px)` : ''}`,
               willChange: 'transform, opacity',
-              animation: `toeGodHighlightBurstLayer ${durationMs}ms cubic-bezier(0.13,0.85,0.25,1) ${delayMs + layer.delay}ms both`,
+              backfaceVisibility: 'hidden',
+              animation: `toeGodHighlightBurstLayer ${durationMs}ms cubic-bezier(0.13,0.85,0.25,1) ${layer.delay}ms both`,
               '--toe-god-highlight-scale': layer.scale,
               '--toe-god-highlight-opacity': layer.opacity,
               '--toe-god-highlight-intensity': intensity,
