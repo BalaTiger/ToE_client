@@ -1,12 +1,76 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { _getZoomCompensatedRect } from '../utils/dom';
 
-export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound }) {
+const PETRIFY_PANEL_CLEAR_MS = 3800;
+
+async function captureDeathPanelSnapshot(idx) {
+  const el = document.querySelector(`[data-death-panel="${idx}"]`);
+  if (!el) return null;
+  const r = _getZoomCompensatedRect(el);
+  const panelStyle = window.getComputedStyle(el);
+  const panelBackground = panelStyle.background;
+  const panelBorderColor = panelStyle.borderTopColor;
+  const panelBoxShadow = panelStyle.boxShadow;
+  let snapshotUrl = null;
+  try {
+    const { default: html2canvas } = await import('html2canvas');
+    const inZoomContainer = !!el.closest?.('[data-zoom-container]');
+    const canvas = await html2canvas(el, {
+      backgroundColor: null,
+      useCORS: true,
+      logging: false,
+      scale: Math.min(2, Math.max(1, window.devicePixelRatio || 1)),
+      width: el.offsetWidth || undefined,
+      height: el.offsetHeight || undefined,
+      windowWidth: inZoomContainer ? 1200 : window.innerWidth,
+      windowHeight: window.innerHeight,
+      ignoreElements: node => node?.hasAttribute?.('data-theme-ornament'),
+      onclone: (doc, cloneEl) => {
+        const zoomContainer = doc.querySelector('[data-zoom-container]');
+        if (zoomContainer?.style) {
+          zoomContainer.style.zoom = 'normal';
+          zoomContainer.style.transform = 'none';
+        }
+        const root = cloneEl || doc.querySelector(`[data-death-panel="${idx}"]`);
+        if (!root?.style) return;
+        root.style.zoom = 'normal';
+        root.style.transform = 'none';
+        root.style.background = 'transparent';
+        root.style.backgroundColor = 'transparent';
+        root.style.borderColor = 'transparent';
+        root.style.boxShadow = 'none';
+      },
+    });
+    snapshotUrl = canvas.toDataURL('image/png');
+  } catch (err) {
+    console.warn('[death-snapshot] capture failed for pid', idx, err);
+  }
+  const snapX = r.left;
+  const snapY = r.top;
+  const snapW = r.width;
+  const snapH = r.height;
+  return {
+    pi: idx,
+    x: snapX,
+    y: snapY,
+    w: snapW,
+    h: snapH,
+    cx: snapX + snapW / 2,
+    cy: snapY + snapH / 2,
+    snapshotUrl,
+    panelBackground,
+    panelBorderColor,
+    panelBoxShadow,
+  };
+}
+
+export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound, playPetrifyDeathSound }) {
   const [hitIndices, setHitIndices] = useState([]);
   const [knifeTargets, setKnifeTargets] = useState([]);
   const [sanHitIndices, setSanHitIndices] = useState([]);
   const [sanTargets, setSanTargets] = useState([]);
   const [guillotineTargets, setGuillotineTargets] = useState([]);
+  const [petrifyTargets, setPetrifyTargets] = useState([]);
   const [hpHealIndices, setHpHealIndices] = useState([]);
   const [sanHealIndices, setSanHealIndices] = useState([]);
   const timersRef = useRef(new Set());
@@ -28,6 +92,7 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
     setSanHitIndices([]);
     setSanTargets([]);
     setGuillotineTargets([]);
+    setPetrifyTargets([]);
     setHpHealIndices([]);
     setSanHealIndices([]);
   }, []);
@@ -139,66 +204,7 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
 
     if (anim.type === 'GUILLOTINE' && anim.hitIndices?.length) {
       schedule(async () => {
-        const pts = await Promise.all(anim.hitIndices.map(async idx => {
-          const el = document.querySelector(`[data-death-panel="${idx}"]`);
-          if (!el) return null;
-          const r = _getZoomCompensatedRect(el);
-          const panelStyle = window.getComputedStyle(el);
-          const panelBackground = panelStyle.background;
-          const panelBorderColor = panelStyle.borderTopColor;
-          const panelBoxShadow = panelStyle.boxShadow;
-          let snapshotUrl = null;
-          try {
-            const { default: html2canvas } = await import('html2canvas');
-            const inZoomContainer = !!el.closest?.('[data-zoom-container]');
-            const canvas = await html2canvas(el, {
-              backgroundColor: null,
-              useCORS: true,
-              logging: false,
-              scale: Math.min(2, Math.max(1, window.devicePixelRatio || 1)),
-              width: el.offsetWidth || undefined,
-              height: el.offsetHeight || undefined,
-              windowWidth: inZoomContainer ? 1200 : window.innerWidth,
-              windowHeight: window.innerHeight,
-              ignoreElements: node => node?.hasAttribute?.('data-theme-ornament'),
-              onclone: (doc, cloneEl) => {
-                const zoomContainer = doc.querySelector('[data-zoom-container]');
-                if (zoomContainer?.style) {
-                  zoomContainer.style.zoom = 'normal';
-                  zoomContainer.style.transform = 'none';
-                }
-                const root = cloneEl || doc.querySelector(`[data-death-panel="${idx}"]`);
-                if (!root?.style) return;
-                root.style.zoom = 'normal';
-                root.style.transform = 'none';
-                root.style.background = 'transparent';
-                root.style.backgroundColor = 'transparent';
-                root.style.borderColor = 'transparent';
-                root.style.boxShadow = 'none';
-              },
-            });
-            snapshotUrl = canvas.toDataURL('image/png');
-          } catch (err) {
-            console.warn('[death-snapshot] capture failed for pid', idx, err);
-          }
-          const snapX = r.left;
-          const snapY = r.top;
-          const snapW = r.width;
-          const snapH = r.height;
-          return {
-            pi: idx,
-            x: snapX,
-            y: snapY,
-            w: snapW,
-            h: snapH,
-            cx: snapX + snapW / 2,
-            cy: snapY + snapH / 2,
-            snapshotUrl,
-            panelBackground,
-            panelBorderColor,
-            panelBoxShadow,
-          };
-        }));
+        const pts = await Promise.all(anim.hitIndices.map(idx => captureDeathPanelSnapshot(idx)));
         if (!cancelled) setGuillotineTargets(pts.filter(Boolean));
       });
       return () => {
@@ -206,15 +212,26 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
       };
     }
 
+    if (anim.type === 'PETRIFY_DEATH' && anim.hitIndices?.length) {
+      playPetrifyDeathSound?.();
+      schedule(async () => {
+        const pts = await Promise.all(anim.hitIndices.map(idx => captureDeathPanelSnapshot(idx)));
+        if (!cancelled) setPetrifyTargets(pts.filter(Boolean));
+        addTimer(() => setPetrifyTargets([]), PETRIFY_PANEL_CLEAR_MS);
+      });
+      return cleanupRaf;
+    }
+
     if (anim.type === 'DEATH') {
       schedule(() => {
         setGuillotineTargets([]);
+        setPetrifyTargets([]);
       });
       return cleanupRaf;
     }
 
     return cleanupRaf;
-  }, [anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound, addTimer, clearDamageAnimations]);
+  }, [anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound, playPetrifyDeathSound, addTimer, clearDamageAnimations]);
 
   return {
     hitIndices,
@@ -222,6 +239,7 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
     sanHitIndices,
     sanTargets,
     guillotineTargets,
+    petrifyTargets,
     hpHealIndices,
     sanHealIndices,
     clearDamageAnimations,

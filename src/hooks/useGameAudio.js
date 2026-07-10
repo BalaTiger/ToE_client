@@ -135,6 +135,10 @@ const BLACK_GOAT_RUN_FADE_MS = 150;
 const BLACK_GOAT_PULSE_VOLUME = 0.78;
 const BLACK_GOAT_PULSE_VARIANT_COUNT = 5;
 const BLACK_GOAT_PULSE_STOP_MS = 820;
+const PETRIFY_DEATH_VOLUME = 0.58;
+const PETRIFY_DEATH_VARIANT_COUNT = 4;
+const PETRIFY_DEATH_STOP_MS = 2350;
+const PETRIFY_DEATH_FADE_MS = 220;
 
 function clamp01(value) {
   return Math.max(0, Math.min(1, value));
@@ -197,7 +201,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
   const [audioReady, setAudioReady] = useState(false);
   const readyRef = useRef(false);
   const bgmRefs = useRef({ main: null, battleEarth: null, battleStars: null });
-  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, nightWind: [], igniteTorchFire: null, rope: null, droplet: null, volcano: null, semiMaterial: null, burrowingWorm: null, snakeTrap: null, cthRlyehDream: null, godPowerBlocked: null, tsgSlimePop: [], oneCardShift: [], multiCardShift: null, diceRoll: null, turnStart: null, skillHunt: null, skillSwap: null, skillBewitch: null, negativeCardFlip: null, caveDuel: null, wheelSpin: null, blackGoatRun: null, blackGoatPulse: [] });
+  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, nightWind: [], igniteTorchFire: null, rope: null, droplet: null, volcano: null, semiMaterial: null, burrowingWorm: null, snakeTrap: null, cthRlyehDream: null, godPowerBlocked: null, tsgSlimePop: [], oneCardShift: [], multiCardShift: null, diceRoll: null, turnStart: null, skillHunt: null, skillSwap: null, skillBewitch: null, negativeCardFlip: null, caveDuel: null, wheelSpin: null, blackGoatRun: null, blackGoatPulse: [], petrifyDeath: [] });
   const sfxStopTimersRef = useRef({});
   const sfxFadeFramesRef = useRef({});
   const sfxSequenceCleanupsRef = useRef({});
@@ -263,6 +267,9 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     const blackGoatRun = new Audio(buildPublicUrl('sounds/SE/blackGoat/blackGoat_run_transfer.mp3'));
     const blackGoatPulseVariants = Array.from({ length: BLACK_GOAT_PULSE_VARIANT_COUNT }, (_, i) =>
       new Audio(buildPublicUrl(`sounds/SE/blackGoat/blackGoat_pulse_${i + 1}.mp3`))
+    );
+    const petrifyDeathVariants = Array.from({ length: PETRIFY_DEATH_VARIANT_COUNT }, (_, i) =>
+      new Audio(buildPublicUrl(`sounds/SE/petrify_${i + 1}.mp3`))
     );
     const volcanoBg = new Audio(buildPublicUrl('sounds/SE/volcano/volcano_bg.mp3'));
     const volcanoMeteorPlayers = Array.from({ length: VOLCANO_AUDIO_POOL_SIZE }, () => ({
@@ -384,6 +391,10 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       audio.preload = 'auto';
       audio.volume = BLACK_GOAT_PULSE_VOLUME;
     });
+    petrifyDeathVariants.forEach(audio => {
+      audio.preload = 'auto';
+      audio.volume = PETRIFY_DEATH_VOLUME;
+    });
     const volcanoAudios = [
       volcanoBg,
       ...volcanoMeteorPlayers.flatMap(player => [player.meteor1, player.meteor2]),
@@ -461,6 +472,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       wheelSpin,
       blackGoatRun,
       blackGoatPulse: blackGoatPulseVariants,
+      petrifyDeath: petrifyDeathVariants,
       volcano: {
         bg: volcanoBg,
         meteorPlayers: volcanoMeteorPlayers,
@@ -476,7 +488,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       sfxStopTimersRef.current = {};
       Object.values(sfxFadeFramesRef.current).forEach(frame => cancelAnimationFrame(frame));
       sfxFadeFramesRef.current = {};
-      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, ...nightWindVariants, igniteTorchFire, rope, droplet, semiMaterialBg, semiMaterialCharge, semiMaterialGlass, ...burrowingWormEarthPlayers, ...burrowingWormDrillPlayers, burrowingWormAttack, snakeTrapHiss, ...snakeTrapAttackPlayers.flat(), cthRlyehDream, godPowerBlocked, ...tsgSlimePopVariants, ...oneCardShiftVariants.map(({ audio }) => audio), multiCardShift, diceRoll, turnStart, skillHunt, skillSwap, skillBewitch, negativeCardFlip, caveDuelBg, caveDuelWin, caveDuelLose, wheelSpin, blackGoatRun, ...blackGoatPulseVariants, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
+      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, ...nightWindVariants, igniteTorchFire, rope, droplet, semiMaterialBg, semiMaterialCharge, semiMaterialGlass, ...burrowingWormEarthPlayers, ...burrowingWormDrillPlayers, burrowingWormAttack, snakeTrapHiss, ...snakeTrapAttackPlayers.flat(), cthRlyehDream, godPowerBlocked, ...tsgSlimePopVariants, ...oneCardShiftVariants.map(({ audio }) => audio), multiCardShift, diceRoll, turnStart, skillHunt, skillSwap, skillBewitch, negativeCardFlip, caveDuelBg, caveDuelWin, caveDuelLose, wheelSpin, blackGoatRun, ...blackGoatPulseVariants, ...petrifyDeathVariants, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
         try {
           audio.pause();
           audio.currentTime = 0;
@@ -1773,6 +1785,42 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       } catch { /* ignore */ }
     };
   }, [noteUserGesture]);
+  const playPetrifyDeathSound = useCallback(() => {
+    noteUserGesture();
+    const variants = sfxRefs.current.petrifyDeath || [];
+    if (!variants.length) return undefined;
+    const audio = variants[Math.floor(Math.random() * variants.length)];
+    if (!audio) return undefined;
+    const fadeKey = 'petrifyDeath';
+    clearTimeout(sfxStopTimersRef.current.petrifyDeath);
+    if (sfxFadeFramesRef.current[fadeKey]) {
+      cancelAnimationFrame(sfxFadeFramesRef.current[fadeKey]);
+      sfxFadeFramesRef.current[fadeKey] = null;
+    }
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = PETRIFY_DEATH_VOLUME;
+      setAudioPlaybackRate(audio, 1);
+      audio.play().catch(() => { });
+      sfxStopTimersRef.current.petrifyDeath = setTimeout(() => {
+        fadeOutAudio(audio, fadeKey, PETRIFY_DEATH_FADE_MS, PETRIFY_DEATH_VOLUME);
+      }, Math.max(0, PETRIFY_DEATH_STOP_MS - PETRIFY_DEATH_FADE_MS));
+    } catch { /* ignore */ }
+    return () => {
+      clearTimeout(sfxStopTimersRef.current.petrifyDeath);
+      if (sfxFadeFramesRef.current[fadeKey]) {
+        cancelAnimationFrame(sfxFadeFramesRef.current[fadeKey]);
+        sfxFadeFramesRef.current[fadeKey] = null;
+      }
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = PETRIFY_DEATH_VOLUME;
+        setAudioPlaybackRate(audio, 1);
+      } catch { /* ignore */ }
+    };
+  }, [fadeOutAudio, noteUserGesture]);
   const playNegativeCardFlipSound = useCallback(() => {
     noteUserGesture();
     const audio = sfxRefs.current.negativeCardFlip;
@@ -1846,6 +1894,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     playWheelSpinSound,
     playBlackGoatRunSound,
     playBlackGoatPulseSound,
+    playPetrifyDeathSound,
     playNegativeCardFlipSound,
   };
 }

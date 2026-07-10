@@ -240,7 +240,7 @@ import { ANIM_DURATION, ANIM_SPEED_SCALE, CARD_REVEAL_DURATION, ANIM_STEP_GAP } 
 import { SMOKE_COLS, FLOWER_CONFIGS, DICE_FACES, ANIM_CFG } from './components/anim/data';
 import { CardFlipAnim } from './components/anim/CardFlipAnim';
 import { GodHighlightBurst } from './components/anim/GodHighlightBurst';
-import { KnifeEffect, GuillotineAnim } from './components/anim/DamageEffects';
+import { KnifeEffect, GuillotineAnim, PetrifyAnim } from './components/anim/DamageEffects';
 import { CardTransferOverlay, DiscardMoveOverlay, HuntRevealedCardBadge } from './components/anim/MoveOverlays';
 import { GenericAnimOverlay, DiceRollAnim, YourTurnAnim } from './components/anim/GenericAnimOverlay';
 import { PaperCupSVG, SwapCupOverlay, HuntScopeOverlay, BewitchEyeOverlay, SanMistOverlay } from './components/anim/SkillOverlays';
@@ -743,7 +743,7 @@ export default function Game(){
       clearTimeout(timer);
     };
   },[isBattleScreen,gs?.expansionKey]);
-  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound,playCthRlyehDreamSound,playGodPowerBlockedSound,playTsgSlimePopSound,playOneCardShiftSound,playMultiCardShiftSound,playDiceRollSound,playTurnStartSound,playSkillHuntSound,playSkillSwapSound,playSkillBewitchSound,playCaveDuelSound,playWheelSpinSound,playBlackGoatRunSound,playBlackGoatPulseSound,playNegativeCardFlipSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
+  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound,playCthRlyehDreamSound,playGodPowerBlockedSound,playTsgSlimePopSound,playOneCardShiftSound,playMultiCardShiftSound,playDiceRollSound,playTurnStartSound,playSkillHuntSound,playSkillSwapSound,playSkillBewitchSound,playCaveDuelSound,playWheelSpinSound,playBlackGoatRunSound,playBlackGoatPulseSound,playPetrifyDeathSound,playNegativeCardFlipSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
   const persistSoftGuideDone=useCallback((nextDone)=>{
     setSoftGuideDone(nextDone);
     if(canPersistTutorial)safeLS.set(SOFT_GUIDE_STORAGE_KEY,serializeSoftGuideDone(nextDone));
@@ -1291,6 +1291,7 @@ export default function Game(){
   const igniteTorchFlamingCardIdsRef=useRef(new Set());
   const debugGodPowerBlockedHandlerRef=useRef(null);
   const debugTsgSlimePopHandlerRef=useRef(null);
+  const debugPetrifyDeathHandlerRef=useRef(null);
   const [handAreaRect,setHandAreaRect]=useState(null);
   const [tutorialHandCardRect,setTutorialHandCardRect]=useState(null);
   const [handCardsRect,setHandCardsRect]=useState(null);
@@ -1558,10 +1559,19 @@ export default function Game(){
       }
       return handler(options);
     };
+    const playPetrifyDeath=(options={})=>{
+      const handler=debugPetrifyDeathHandlerRef.current;
+      if(!handler){
+        console.warn('[toeDebug] playPetrifyDeath: debug handler unavailable');
+        return Promise.resolve({ok:false,reason:'unavailable'});
+      }
+      return handler(options);
+    };
     const debugRoot={...(window.__toeDebug||{})};
     delete debugRoot.playIgniteTorchDiscard;
     debugRoot.playGodPowerBlocked=playGodPowerBlocked;
     debugRoot.playTsgSlimePop=playTsgSlimePop;
+    debugRoot.playPetrifyDeath=playPetrifyDeath;
     window.__toeDebug=debugRoot;
     return ()=>{
       if(window.__toeDebug?.playGodPowerBlocked===playGodPowerBlocked){
@@ -1569,6 +1579,9 @@ export default function Game(){
       }
       if(window.__toeDebug?.playTsgSlimePop===playTsgSlimePop){
         delete window.__toeDebug.playTsgSlimePop;
+      }
+      if(window.__toeDebug?.playPetrifyDeath===playPetrifyDeath){
+        delete window.__toeDebug.playPetrifyDeath;
       }
     };
   },[]);
@@ -1641,10 +1654,11 @@ export default function Game(){
     sanHitIndices,
     sanTargets,
     guillotineTargets,
+    petrifyTargets,
     hpHealIndices,
     sanHealIndices,
     clearDamageAnimations,
-  } = useDamageAnimationEffects({ anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound });
+  } = useDamageAnimationEffects({ anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound, playPetrifyDeathSound });
   const guillotinedPids=useMemo(()=>new Set((guillotineTargets||[]).map(t=>t?.pi).filter(v=>v!=null)),[guillotineTargets]);
   const { connectSocket } = useMultiplayerConnection({
     isArtifact,
@@ -6954,6 +6968,48 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }
     :null;
 
+  debugPetrifyDeathHandlerRef.current=import.meta.env.DEV
+    ?async(options={})=>{
+      const base=latestGsRef.current;
+      if(!base?.players?.length){
+        console.warn('[toeDebug] playPetrifyDeath: no active game state');
+        return {ok:false,reason:'no-game'};
+      }
+      if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current){
+        console.warn('[toeDebug] playPetrifyDeath: animation queue is busy');
+        return {ok:false,reason:'busy'};
+      }
+      const playerIndex=Number.isInteger(options.playerIndex)?options.playerIndex:0;
+      const player=base.players?.[playerIndex];
+      if(!player){
+        console.warn('[toeDebug] playPetrifyDeath: player not found',playerIndex);
+        return {ok:false,reason:'missing-player'};
+      }
+      const msg=`${localDisplayName(playerIndex,player.name)} 被石化`;
+      const queue=[
+        {
+          type:'PETRIFY_DEATH',
+          targetPid:playerIndex,
+          hitIndices:[playerIndex],
+          msgs:[],
+        },
+        {
+          type:'DEATH',
+          targetPid:playerIndex,
+          hitIndices:[playerIndex],
+          msgs:options.showLog===true?[msg]:[],
+        },
+      ];
+      console.info('[toeDebug] playPetrifyDeath', {
+        playerIndex,
+        playerName:player.name,
+        showLog:options.showLog===true,
+      });
+      triggerAnimQueue(queue,base,()=>{});
+      return {ok:true,playerIndex,playerName:player.name};
+    }
+    :null;
+
   function buryAliveSelectCard(cardIndex, allowAi=false){
     const abilityData=gs.abilityData||{};
     const targets=abilityData.targets||[];
@@ -9457,6 +9513,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     ))}
     {!suppressAnim&&<HuntScopeOverlay active={!!huntAnim} cx={huntAnim?.cx??0} cy={huntAnim?.cy??0}/>}
     {!suppressAnim&&<BewitchEyeOverlay active={!!bewitchAnim} cx={bewitchAnim?.cx??0} cy={bewitchAnim?.cy??0}/>}
+    {!suppressAnim&&petrifyTargets.length>0&&<PetrifyAnim targets={petrifyTargets}/>}
     {!suppressAnim&&guillotineTargets.length>0&&<GuillotineAnim targets={guillotineTargets}/>}
     {!suppressAnim&&<KnifeEffect targets={knifeTargets}/>}
     {!suppressAnim&&<SanMistOverlay targets={sanTargets}/>}

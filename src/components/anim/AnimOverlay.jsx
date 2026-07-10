@@ -22,6 +22,7 @@ const NO_OVERLAY_TYPES = new Set([
   'SAN_HEAL',
   'SAN_DAMAGE',
   'BLACK_GOAT_PULSE',
+  'PETRIFY_DEATH',
 ]);
 
 const ANIM_RENDERERS = {

@@ -64,6 +64,22 @@ describe('statEvents', () => {
     expect(queue[3]).toMatchObject({ hitIndices: [2] });
   });
 
+  it('石化死亡先播放面板石化动画，再复用通用死亡公告', () => {
+    const players = [
+      makePlayer({ name: '你', hp: 10, san: 8 }),
+      makePlayer({ name: '艾伦', hp: 0, san: 5, isDead: true }),
+    ];
+    const events = [
+      { type: 'PETRIFY_DEATH', target: 1, from: { hp: 2, san: 5, isDead: false }, to: { hp: 0, san: 5, isDead: true } },
+    ];
+
+    const queue = statEventsToAnimQueue(events, players, ['艾伦 被石化']);
+
+    expect(queue.map(step => step.type)).toEqual(['PETRIFY_DEATH', 'DEATH']);
+    expect(queue[0]).toMatchObject({ hitIndices: [1], msgs: [] });
+    expect(queue[1]).toMatchObject({ hitIndices: [1], msgs: ['艾伦 被石化'] });
+  });
+
   it('两人一绳断裂会拆成原伤害、断裂、绳索伤害三段', () => {
     const before = [
       makePlayer({ name: '你', hp: 10, damageLink: { active: true, partner: 1 } }),

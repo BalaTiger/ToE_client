@@ -231,9 +231,17 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
   const queue = [];
   const petrifyEvents = events.filter(event => event.type === 'PETRIFY_DEATH');
   petrifyEvents.forEach(event => {
+    const deathMsgs = msgs.length ? msgs : ['死亡降临'];
     queue.push({
       type: 'PETRIFY_DEATH',
-      msgs,
+      msgs: [],
+      hitIndices: [event.target],
+      targetStats,
+      statEvents: events,
+    });
+    queue.push({
+      type: 'DEATH',
+      msgs: deathMsgs,
       hitIndices: [event.target],
       targetStats,
       statEvents: events,

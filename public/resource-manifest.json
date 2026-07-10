@@ -1,6 +1,6 @@
 {
-  "version": "d2679d0bb7e031a7",
-  "generatedAt": "2026-07-10T00:52:25.982Z",
+  "version": "72e16b9f69d034fb",
+  "generatedAt": "2026-07-10T08:48:37.832Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1173,6 +1173,12 @@
       "revision": "93de59bc5ab3af07"
     },
     {
+      "path": "/img/effects/limestone_texture.png",
+      "type": "image",
+      "size": 3624008,
+      "revision": "f8fd420af3f6753e"
+    },
+    {
       "path": "/img/effects/noise/effect_noise_flow_256.webp",
       "type": "image",
       "size": 33510,
@@ -1543,6 +1549,36 @@
       "type": "audio",
       "size": 14592,
       "revision": "c759891a15caca85"
+    },
+    {
+      "path": "/sounds/SE/petrify.mp3",
+      "type": "audio",
+      "size": 632640,
+      "revision": "ab8e3787ae937597"
+    },
+    {
+      "path": "/sounds/SE/petrify_1.mp3",
+      "type": "audio",
+      "size": 53857,
+      "revision": "e72993e118758f32"
+    },
+    {
+      "path": "/sounds/SE/petrify_2.mp3",
+      "type": "audio",
+      "size": 59081,
+      "revision": "423da615c7527c7f"
+    },
+    {
+      "path": "/sounds/SE/petrify_3.mp3",
+      "type": "audio",
+      "size": 55947,
+      "revision": "470f4074802c4753"
+    },
+    {
+      "path": "/sounds/SE/petrify_4.mp3",
+      "type": "audio",
+      "size": 50722,
+      "revision": "2fa4878d1d67ef97"
     },
     {
       "path": "/sounds/SE/roll-dice.mp3",

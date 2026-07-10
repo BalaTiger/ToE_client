@@ -112,7 +112,6 @@ export function SelfPlayerPanel({
           style={{ inset: -3 }}
         />
       )}
-
       <div
         style={{
           opacity: isSelfDeadPanelDimmed ? 0.32 : 1,

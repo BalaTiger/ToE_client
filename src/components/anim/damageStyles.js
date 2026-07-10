@@ -125,6 +125,29 @@ export const DAMAGE_ANIMATION_STYLES = `
     45%  {opacity:0.88;transform:scale(0.98) rotate(0.9deg)}
     100% {opacity:0;transform:scale(0.86) rotate(-1.4deg)}
   }
+  @keyframes petrifySnapshotSettle {
+    0%   {filter:brightness(0.92) contrast(1.08);transform:scale(1)}
+    42%  {filter:brightness(1.02) contrast(1.18);transform:scale(1.012)}
+    100% {filter:brightness(0.78) contrast(1.24) saturate(0.86);transform:scale(1)}
+  }
+  @keyframes petrifyDustBloom {
+    0%,38% {opacity:0;transform:scale(0.9)}
+    64%    {opacity:0.30;transform:scale(1.04)}
+    100%   {opacity:0.18;transform:scale(1.18)}
+  }
+  .petrify-snapshot-panel {
+    animation:petrifySnapshotSettle 2.35s ease-out forwards;
+  }
+  .petrify-snapshot-dust {
+    position:absolute;
+    inset:-10%;
+    pointer-events:none;
+    background:
+      repeating-radial-gradient(circle at 30% 24%, rgba(190,198,178,0.18) 0 1px, transparent 1px 9px),
+      repeating-radial-gradient(circle at 76% 68%, rgba(22,31,29,0.34) 0 1px, transparent 1px 11px);
+    mix-blend-mode:multiply;
+    animation:petrifyDustBloom 2.35s ease-out forwards;
+  }
   @keyframes guillotineVig {
     0%   {background:rgba(0,0,0,0)}
     20%  {background:rgba(0,0,0,0.45)}
