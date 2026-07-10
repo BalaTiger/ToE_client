@@ -74,7 +74,7 @@ describe('buildTurnStartDrawReplayQueue', () => {
       currentTurn: 0,
       phase: 'ACTION',
       log: [],
-      _statEventSeq: 0,
+      _statEventSeq: 1,
     };
     const goatLog = '【黑山羊幼仔】艾伦 失去 1 HP 和 1 SAN';
     const newGs = {

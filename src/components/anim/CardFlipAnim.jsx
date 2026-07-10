@@ -101,6 +101,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
   const isNeutralCard=!isInspection&&cardPolarity==='neutral';
   const isNeutralInspection=isInspection&&inspectionTone==='neutral';
   const isPositiveInspection=isInspection&&inspectionTone==='positive';
+  const showAtmosphereEffects=!isInspection;
   const viewportScale=Math.min(window.innerWidth/1280,window.innerHeight/720);
   const cardScale=Math.max(1.08,Math.min(1.85,viewportScale));
   const travelScale=Math.max(1,Math.min(1.35,viewportScale));
@@ -157,7 +158,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
     </div>
   );
 
-  const spirits=isNeutralInspection
+  const spirits=!showAtmosphereEffects
     ?[]
     :isEvil
     ?SMOKE_COLS.flatMap((col,i)=>[
@@ -221,23 +222,25 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
   return(
     <div style={{
       position:'fixed',inset:0,zIndex:999,
-      background:isEvil?'rgba(8,2,14,0.93)':'rgba(4,4,2,0.91)',
+      background:(!isInspection&&isEvil)?'rgba(8,2,14,0.93)':'rgba(4,4,2,0.91)',
       display:'flex',alignItems:'center',justifyContent:'center',
       animation:exiting?'animFadeOut 0.18s ease-in forwards':'animFadeIn 0.12s ease-out forwards',
       overflow:'visible',
     }}>
-      <div style={{
-        position:'absolute',width:320,height:320,borderRadius:'50%',
-        background:(isNeutralInspection||isNeutralCard)
-          ?'radial-gradient(circle,rgba(140,155,180,0.12) 0%,rgba(70,80,98,0.08) 40%,transparent 70%)'
-          :isEvil
-          ?'radial-gradient(circle,#7010aa44 0%,#3a0060 40%,transparent 70%)'
-          :'radial-gradient(circle,#e8c87a33 0%,#c8a96e22 40%,transparent 70%)',
-        animation:'burstPulse 1.0s ease-out 1.15s both',
-        pointerEvents:'none',
-      }}/>
+      {showAtmosphereEffects&&(
+        <div style={{
+          position:'absolute',width:320,height:320,borderRadius:'50%',
+          background:isNeutralCard
+            ?'radial-gradient(circle,rgba(140,155,180,0.12) 0%,rgba(70,80,98,0.08) 40%,transparent 70%)'
+            :isEvil
+            ?'radial-gradient(circle,#7010aa44 0%,#3a0060 40%,transparent 70%)'
+            :'radial-gradient(circle,#e8c87a33 0%,#c8a96e22 40%,transparent 70%)',
+          animation:'burstPulse 1.0s ease-out 1.15s both',
+          pointerEvents:'none',
+        }}/>
+      )}
 
-      {(isPositiveInspection||(!isInspection&&cardPolarity==='positive'))&&<FlowerBloom/>}
+      {showAtmosphereEffects&&cardPolarity==='positive'&&<FlowerBloom/>}
 
       {triggerName==='斯芬克斯'&&guessCorrect!==undefined&&(
         <div style={{
@@ -325,7 +328,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
               position:'absolute',inset:0,backfaceVisibility:'hidden',
               background:s.bg,border:`2px solid ${s.borderBright}`,borderRadius:5,
               padding:`${px(12)}px ${px(10)}px`,
-              boxShadow:(isNeutralInspection||isNeutralCard)?'0 0 18px rgba(120,136,155,0.22)':`0 0 30px ${s.glow}88, 0 0 60px ${isEvil?'#6010aa':'#c8a96e'}44`,
+              boxShadow:(isInspection||isNeutralCard)?'0 0 18px rgba(120,136,155,0.22)':`0 0 30px ${s.glow}88, 0 0 60px ${isEvil?'#6010aa':'#c8a96e'}44`,
             }}>
               <div style={{position:'absolute',top:px(4),right:px(6),fontSize:px(8),color:s.border,opacity:0.7}}>✦</div>
               {isInspection

@@ -2152,6 +2152,52 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.queue[5]).toMatchObject({ type: 'DRAW_CARD', card: nextCard, targetPid: 2 });
   });
 
+  it('replays remote black-goat pulse and damage before the remote turn-start draw', () => {
+    const goat = { id: 'goat-1', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const nextCard = { id: 'next-card', name: '下一张牌', key: 'B2', type: 'zone' };
+    const preTurnPlayers = [
+      player('你'),
+      { ...player('艾伦'), hand: [goat], hp: 10, san: 10 },
+      player('贝拉'),
+    ];
+    const beforeDrawPlayers = [
+      player('你'),
+      { ...player('艾伦'), hand: [goat], hp: 9, san: 9 },
+      player('贝拉'),
+    ];
+    const goatLog = '【黑山羊幼仔】艾伦 失去 1 HP 和 1 SAN';
+    const rotated = makeState({
+      currentTurn: 1,
+      phase: 'DRAW_REVEAL',
+      players: beforeDrawPlayers,
+      drawReveal: { card: nextCard, drawerIdx: 1, needsDecision: true },
+      _preTurnPlayers: preTurnPlayers,
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _drawLogs: ['艾伦 摸到 [B2] 下一张牌'],
+      _statEventSeq: 7,
+      _statEvents: [
+        { type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10, isDead: false }, to: { hp: 9, san: 10, isDead: false }, reason: '黑山羊幼仔', logHint: goatLog, seq: 7 },
+        { type: 'SAN_LOSS', target: 1, from: { hp: 10, san: 10, isDead: false }, to: { hp: 9, san: 9, isDead: false }, reason: '黑山羊幼仔', logHint: goatLog, seq: 7 },
+      ],
+      log: ['── 艾伦 的回合开始 ──', goatLog, '艾伦 摸到 [B2] 下一张牌'],
+    });
+    const action = buildAction(rotated, {
+      previousGs: makeState({
+        currentTurn: 0,
+        players: preTurnPlayers,
+        _statEventSeq: 7,
+        log: [],
+      }),
+    });
+    const types = action.queue.map(step => step.type);
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(types.slice(0, 5)).toEqual(['YOUR_TURN', 'BLACK_GOAT_PULSE', 'HP_DAMAGE', 'SAN_DAMAGE', 'STATE_PATCH']);
+    expect(types.indexOf('DRAW_CARD')).toBeGreaterThan(types.indexOf('STATE_PATCH'));
+    expect(action.queue.find(step => step.type === 'DRAW_CARD')).toMatchObject({ card: nextCard, targetPid: 1 });
+  });
+
   it('does not play hunt reveal animation for the hunted local player', () => {
     const revealedCard = { id: 'rev1', name: '亮出的牌', key: 'C3', type: 'zone' };
     const action = buildAction(makeState({

@@ -423,6 +423,16 @@ function maxStatEventSeqForLogs(state, logs=[]){
   );
 }
 
+function statEventSeqBeforeTurnStartStats(state, fallbackSeq=0){
+  const statLogs=new Set(getTurnStartStatLogs(state));
+  if(!statLogs.size)return fallbackSeq;
+  const seqs=(Array.isArray(state?._statEvents)?state._statEvents:[])
+    .filter(event=>event?.logHint&&statLogs.has(event.logHint)&&Number.isFinite(event.seq))
+    .map(event=>event.seq);
+  if(!seqs.length)return fallbackSeq;
+  return Math.min(fallbackSeq, Math.max(0, Math.min(...seqs)-1));
+}
+
 function parseBewitchGiftLabel(logLine=''){
   const bracketLabel=logLine.match(/赠予 \[([^\]]+)\]/)?.[1];
   if(bracketLabel)return bracketLabel.trim();
@@ -733,7 +743,7 @@ export default function Game(){
       clearTimeout(timer);
     };
   },[isBattleScreen,gs?.expansionKey]);
-  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound,playCthRlyehDreamSound,playGodPowerBlockedSound,playTsgSlimePopSound,playOneCardShiftSound,playMultiCardShiftSound,playDiceRollSound,playTurnStartSound,playSkillHuntSound,playSkillSwapSound,playSkillBewitchSound,playCaveDuelSound,playWheelSpinSound,playNegativeCardFlipSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
+  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound,playCthRlyehDreamSound,playGodPowerBlockedSound,playTsgSlimePopSound,playOneCardShiftSound,playMultiCardShiftSound,playDiceRollSound,playTurnStartSound,playSkillHuntSound,playSkillSwapSound,playSkillBewitchSound,playCaveDuelSound,playWheelSpinSound,playBlackGoatRunSound,playBlackGoatPulseSound,playNegativeCardFlipSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
   const persistSoftGuideDone=useCallback((nextDone)=>{
     setSoftGuideDone(nextDone);
     if(canPersistTutorial)safeLS.set(SOFT_GUIDE_STORAGE_KEY,serializeSoftGuideDone(nextDone));
@@ -1595,7 +1605,7 @@ export default function Game(){
   },[gs?._inspectionEvents]);
   const houndsTimerVisible=!!gs?.houndsOfTindalosActive&&(!latestHoundsInspectionSeq||houndsRevealedSeq>=latestHoundsInspectionSeq);
 
-  useAnimationAudioEffects({ anim, playApophisEclipseSound, playThrowStoneThrowSound, playThrowStoneRollingSound, playEarthquakeSound, playGeomagneticReversalSound, playStartledBatsSound, playNightWindSound, playRopeSound, playUndergroundSpringDropletSound, playVolcanoSound, playSemiMaterialSound, playBurrowingWormSound, playSnakeTrapSound, playCthRlyehDreamSound, playGodPowerBlockedSound, playTsgSlimePopSound, playOneCardShiftSound, playMultiCardShiftSound, playDiceRollSound, playTurnStartSound, playSkillHuntSound, playSkillSwapSound, playSkillBewitchSound, playCaveDuelSound, playWheelSpinSound, playNegativeCardFlipSound });
+  useAnimationAudioEffects({ anim, playApophisEclipseSound, playThrowStoneThrowSound, playThrowStoneRollingSound, playEarthquakeSound, playGeomagneticReversalSound, playStartledBatsSound, playNightWindSound, playRopeSound, playUndergroundSpringDropletSound, playVolcanoSound, playSemiMaterialSound, playBurrowingWormSound, playSnakeTrapSound, playCthRlyehDreamSound, playGodPowerBlockedSound, playTsgSlimePopSound, playOneCardShiftSound, playMultiCardShiftSound, playDiceRollSound, playTurnStartSound, playSkillHuntSound, playSkillSwapSound, playSkillBewitchSound, playCaveDuelSound, playWheelSpinSound, playBlackGoatRunSound, playBlackGoatPulseSound, playNegativeCardFlipSound });
 
   useEffect(()=>{
     if(!gs?.houndsOfTindalosActive){
@@ -6307,6 +6317,25 @@ export default function Game(){
   function buildPendingTurnStartDrawQueue(state){
     const drawnCard=state?._aiDrawnCard||state?._drawnCard||state?.drawReveal?.card||null;
     if(!state?._playersBeforeThisDraw||!drawnCard)return [];
+    const replay=buildActorTurnStartReplay(state,{
+      oldGs:{
+        ...state,
+        players:state._playersBeforeThisDraw,
+        log:getTurnStartDrawBaselineLog(state),
+        _inspectionSeq:lastInspectionSeqRef.current,
+        _visualEvents:[],
+      },
+      effectOldGs:{
+        ...state,
+        players:state._playersBeforeThisDraw,
+        log:getTurnStartDrawBaselineLog(state),
+        _inspectionSeq:lastInspectionSeqRef.current,
+        _visualEvents:[],
+      },
+      actorName:state.players?.[state.currentTurn]?.name||'???',
+      forceActorName:true,
+    });
+    if(replay?.queue?.length)return replay.queue;
     const introQ=buildTurnStartIntroQueue(state,state.players?.[state.currentTurn]?.name||'???');
     const drawBaselineLog=getTurnStartDrawBaselineLog(state);
     const drawStatQ=bindAnimLogChunks(
@@ -8311,8 +8340,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   }
 
   function buildActorTurnStartReplay(state,{oldGs=gs,effectOldGs=null,actorName=null,forceActorName=false,timedOutDrawDiscardStep=null}={}){
+    const replayOldGs=oldGs
+      ?{...oldGs,_statEventSeq:statEventSeqBeforeTurnStartStats(state,oldGs._statEventSeq||0)}
+      :oldGs;
+    const replayEffectOldGs=effectOldGs
+      ?{...effectOldGs,_statEventSeq:statEventSeqBeforeTurnStartStats(state,effectOldGs._statEventSeq||0)}
+      :effectOldGs;
     const replay=withTurnStartActorLabel(
-      buildAppTurnStartDrawReplay(state,{oldGs,effectOldGs,timedOutDrawDiscardStep}),
+      buildAppTurnStartDrawReplay(state,{oldGs:replayOldGs,effectOldGs:replayEffectOldGs,timedOutDrawDiscardStep}),
       state,
       {actorName,forceActorName}
     );

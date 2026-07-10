@@ -1,6 +1,6 @@
 {
-  "version": "6e64b6d3e3d2c4a9",
-  "generatedAt": "2026-07-09T14:10:46.433Z",
+  "version": "d2679d0bb7e031a7",
+  "generatedAt": "2026-07-10T00:52:25.982Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1297,6 +1297,60 @@
       "type": "audio",
       "size": 224688,
       "revision": "ff9bd29f7abfc420"
+    },
+    {
+      "path": "/sounds/SE/blackGoat/blackGoat_pulse_1.mp3",
+      "type": "audio",
+      "size": 14673,
+      "revision": "019c1c3664f60808"
+    },
+    {
+      "path": "/sounds/SE/blackGoat/blackGoat_pulse_2.mp3",
+      "type": "audio",
+      "size": 15196,
+      "revision": "7e863d8d6907a053"
+    },
+    {
+      "path": "/sounds/SE/blackGoat/blackGoat_pulse_3.mp3",
+      "type": "audio",
+      "size": 15718,
+      "revision": "d6cc895322b0f896"
+    },
+    {
+      "path": "/sounds/SE/blackGoat/blackGoat_pulse_4.mp3",
+      "type": "audio",
+      "size": 16763,
+      "revision": "cadc162aecb2426c"
+    },
+    {
+      "path": "/sounds/SE/blackGoat/blackGoat_pulse_5.mp3",
+      "type": "audio",
+      "size": 16763,
+      "revision": "c6f8dc2144c48fda"
+    },
+    {
+      "path": "/sounds/SE/blackGoat/blackGoat_run.mp3",
+      "type": "audio",
+      "size": 521280,
+      "revision": "8b9f23dcb0c34be9"
+    },
+    {
+      "path": "/sounds/SE/blackGoat/blackGoat_run_transfer.mp3",
+      "type": "audio",
+      "size": 28779,
+      "revision": "9a392e0125c541b0"
+    },
+    {
+      "path": "/sounds/SE/blackGoat/brvhrtz-creature-01-brvhrtz-232041.mp3",
+      "type": "audio",
+      "size": 293407,
+      "revision": "a1bbc5393010e721"
+    },
+    {
+      "path": "/sounds/SE/blackGoat/mightuser-1-goat-sound-effect-259473.mp3",
+      "type": "audio",
+      "size": 321024,
+      "revision": "2862a51660704437"
     },
     {
       "path": "/sounds/SE/bubble/bubble1.mp3",

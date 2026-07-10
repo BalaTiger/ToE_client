@@ -36,7 +36,7 @@ function getCardTransferMoveCount(anim) {
 function isNegativeDrawCardFlip(anim) {
   if (anim?.type !== 'DRAW_CARD' || !anim.card) return false;
   if (anim.card.isGod) return true;
-  if (anim.triggerName === '检定牌') return anim.card.type === 'negative';
+  if (anim.triggerName === '检定牌') return false;
   return getZoneCardPolarity(anim.card) === 'negative';
 }
 
@@ -71,6 +71,8 @@ export function useAnimationAudioEffects({
   playSkillBewitchSound,
   playCaveDuelSound,
   playWheelSpinSound,
+  playBlackGoatRunSound,
+  playBlackGoatPulseSound,
   playNegativeCardFlipSound,
 }) {
   const detachedAudioCleanupsRef = useRef({});
@@ -139,7 +141,7 @@ export function useAnimationAudioEffects({
       playOneCardShiftSound?.();
       return undefined;
     }
-    if (anim.type === 'CARD_TRANSFER' && anim.effect !== 'damageLink') {
+    if (anim.type === 'CARD_TRANSFER' && anim.effect !== 'damageLink' && anim.effect !== 'blackGoat') {
       const count = getCardTransferMoveCount(anim);
       if (count > 1 || (Array.isArray(anim.transfers) && anim.transfers.length > 1)) {
         playMultiCardShiftSound?.();
@@ -149,6 +151,21 @@ export function useAnimationAudioEffects({
     }
     return undefined;
   }, [anim, playOneCardShiftSound, playMultiCardShiftSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'CARD_TRANSFER' || anim?.effect !== 'blackGoat') return undefined;
+    return playBlackGoatRunSound?.({
+      fromPid: anim.fromPid,
+      toPid: anim.toPid,
+      durationMs: anim.durationMs,
+      seatCount: anim.players?.length,
+    });
+  }, [anim, playBlackGoatRunSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'BLACK_GOAT_PULSE') return undefined;
+    return playBlackGoatPulseSound?.();
+  }, [anim, playBlackGoatPulseSound]);
 
   useEffect(() => {
     if (!isNegativeDrawCardFlip(anim)) return undefined;

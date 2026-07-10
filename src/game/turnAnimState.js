@@ -369,9 +369,17 @@ export function buildTurnStartPreDrawEffectQueue({ oldGs, newGs, buildQueue = bu
   const beforeDrawPlayers = newGs?._playersBeforeThisDraw || newGs?.players || oldGs?.players || [];
   const preTurnPlayers = newGs?._preTurnPlayers || oldGs?.players || beforeDrawPlayers;
   const preDrawMsgs = getTurnStartPreDrawMsgs(newGs);
-  const statEvents = getFreshStatEventsFromState(oldGs, newGs)
+  const preDrawMsgSet = new Set(preDrawMsgs);
+  const statEventKey = ev => [ev?.seq ?? '', ev?.type ?? '', ev?.target ?? '', ev?.logHint ?? ''].join(':');
+  const statEventsByKey = new Map();
+  [
+    ...getFreshStatEventsFromState(oldGs, newGs),
+    ...(Array.isArray(newGs?._statEvents) ? newGs._statEvents : []),
+  ]
     .filter(isPreDrawTurnStartStatEvent)
-    .filter(ev => !ev?.logHint || preDrawMsgs.includes(ev.logHint));
+    .filter(ev => !ev?.logHint || preDrawMsgSet.has(ev.logHint))
+    .forEach(ev => statEventsByKey.set(statEventKey(ev), ev));
+  const statEvents = [...statEventsByKey.values()];
   const queue = [];
   const preDrawBlockedSteps = getVisualEvents(newGs)
     .filter(event => event?.type === VISUAL_EVENT.GOD_POWER_BLOCKED)
@@ -598,7 +606,7 @@ export function buildTurnStartDrawReplayQueue({
     inspectionLogLines
   );
   const filteredDrawEffectQBase = filterFallbackDrawEffects(drawEffectQBase, newGs, visualStatQ);
-  const drawEffectQWithVisualStats = visualStatQ.length || drawInspectionEvents.length
+  const drawEffectQWithVisualStats = visualStatQ.length
     ? [...visualStatQ, ...filteredDrawEffectQBase.filter(step => !isStatAnimationStep(step))]
     : filteredDrawEffectQBase;
   const inspectionQ = [];

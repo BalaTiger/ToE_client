@@ -129,6 +129,12 @@ const CAVE_DUEL_LOSE_STOP_MS = 2200;
 const WHEEL_SPIN_VOLUME = 0.46;
 const WHEEL_SPIN_STOP_MS = 2240;
 const WHEEL_SPIN_FADE_MS = 160;
+const BLACK_GOAT_RUN_VOLUME = 0.82;
+const BLACK_GOAT_RUN_DEFAULT_DURATION_MS = 1280;
+const BLACK_GOAT_RUN_FADE_MS = 150;
+const BLACK_GOAT_PULSE_VOLUME = 0.78;
+const BLACK_GOAT_PULSE_VARIANT_COUNT = 5;
+const BLACK_GOAT_PULSE_STOP_MS = 820;
 
 function clamp01(value) {
   return Math.max(0, Math.min(1, value));
@@ -142,6 +148,33 @@ function smoothstep01(value) {
 function distanceAttenuation(distance, rolloff = 1.55, minGain = 0.38) {
   const d = Math.max(0, distance);
   return Math.max(minGain, 1 / (1 + rolloff * d * d));
+}
+
+function distanceAudioProfile({ distance, closeness, rolloff = 1.55, minGain = 0.38, rateFar = 1, rateNear = 1, volumeFloor = 1, volumePeak = 1 }) {
+  const near = clamp01(closeness ?? (1 - distance));
+  const gain = distanceAttenuation(distance, rolloff, minGain);
+  return {
+    playbackRate: rateFar + near * (rateNear - rateFar),
+    volumeScale: gain * (volumeFloor + near * (volumePeak - volumeFloor)),
+  };
+}
+
+function circularSeatDistance(a, b, seatCount = 4) {
+  const total = Math.max(1, seatCount || 4);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return total / 2;
+  const direct = Math.abs(a - b) % total;
+  return Math.min(direct, total - direct);
+}
+
+function seatPathDistanceState({ fromPid, toPid, progress, listenerPid = 0, seatCount = 4 }) {
+  const total = Math.max(1, seatCount || 4);
+  const maxDistance = Math.max(1, total / 2);
+  const fromDistance = circularSeatDistance(listenerPid, fromPid, total);
+  const toDistance = circularSeatDistance(listenerPid, toPid, total);
+  const eased = smoothstep01(progress);
+  const distance = fromDistance + (toDistance - fromDistance) * eased;
+  const closeness = 1 - clamp01(distance / maxDistance);
+  return { distance, closeness };
 }
 
 function burrowDistanceState(progress) {
@@ -164,7 +197,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
   const [audioReady, setAudioReady] = useState(false);
   const readyRef = useRef(false);
   const bgmRefs = useRef({ main: null, battleEarth: null, battleStars: null });
-  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, nightWind: [], igniteTorchFire: null, rope: null, droplet: null, volcano: null, semiMaterial: null, burrowingWorm: null, snakeTrap: null, cthRlyehDream: null, godPowerBlocked: null, tsgSlimePop: [], oneCardShift: [], multiCardShift: null, diceRoll: null, turnStart: null, skillHunt: null, skillSwap: null, skillBewitch: null, negativeCardFlip: null, caveDuel: null, wheelSpin: null });
+  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, nightWind: [], igniteTorchFire: null, rope: null, droplet: null, volcano: null, semiMaterial: null, burrowingWorm: null, snakeTrap: null, cthRlyehDream: null, godPowerBlocked: null, tsgSlimePop: [], oneCardShift: [], multiCardShift: null, diceRoll: null, turnStart: null, skillHunt: null, skillSwap: null, skillBewitch: null, negativeCardFlip: null, caveDuel: null, wheelSpin: null, blackGoatRun: null, blackGoatPulse: [] });
   const sfxStopTimersRef = useRef({});
   const sfxFadeFramesRef = useRef({});
   const sfxSequenceCleanupsRef = useRef({});
@@ -227,6 +260,10 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     const caveDuelWin = new Audio(buildPublicUrl('sounds/SE/caveDuel/caveDuel_win.mp3'));
     const caveDuelLose = new Audio(buildPublicUrl('sounds/SE/caveDuel/caveDuel_lose.mp3'));
     const wheelSpin = new Audio(buildPublicUrl('sounds/SE/wheel-spin.mp3'));
+    const blackGoatRun = new Audio(buildPublicUrl('sounds/SE/blackGoat/blackGoat_run_transfer.mp3'));
+    const blackGoatPulseVariants = Array.from({ length: BLACK_GOAT_PULSE_VARIANT_COUNT }, (_, i) =>
+      new Audio(buildPublicUrl(`sounds/SE/blackGoat/blackGoat_pulse_${i + 1}.mp3`))
+    );
     const volcanoBg = new Audio(buildPublicUrl('sounds/SE/volcano/volcano_bg.mp3'));
     const volcanoMeteorPlayers = Array.from({ length: VOLCANO_AUDIO_POOL_SIZE }, () => ({
       meteor1: new Audio(buildPublicUrl('sounds/SE/volcano/volcano_meteor1.mp3')),
@@ -341,6 +378,12 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     caveDuelLose.volume = CAVE_DUEL_LOSE_VOLUME;
     wheelSpin.preload = 'auto';
     wheelSpin.volume = WHEEL_SPIN_VOLUME;
+    blackGoatRun.preload = 'auto';
+    blackGoatRun.volume = BLACK_GOAT_RUN_VOLUME;
+    blackGoatPulseVariants.forEach(audio => {
+      audio.preload = 'auto';
+      audio.volume = BLACK_GOAT_PULSE_VOLUME;
+    });
     const volcanoAudios = [
       volcanoBg,
       ...volcanoMeteorPlayers.flatMap(player => [player.meteor1, player.meteor2]),
@@ -416,6 +459,8 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
         lose: caveDuelLose,
       },
       wheelSpin,
+      blackGoatRun,
+      blackGoatPulse: blackGoatPulseVariants,
       volcano: {
         bg: volcanoBg,
         meteorPlayers: volcanoMeteorPlayers,
@@ -431,7 +476,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       sfxStopTimersRef.current = {};
       Object.values(sfxFadeFramesRef.current).forEach(frame => cancelAnimationFrame(frame));
       sfxFadeFramesRef.current = {};
-      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, ...nightWindVariants, igniteTorchFire, rope, droplet, semiMaterialBg, semiMaterialCharge, semiMaterialGlass, ...burrowingWormEarthPlayers, ...burrowingWormDrillPlayers, burrowingWormAttack, snakeTrapHiss, ...snakeTrapAttackPlayers.flat(), cthRlyehDream, godPowerBlocked, ...tsgSlimePopVariants, ...oneCardShiftVariants.map(({ audio }) => audio), multiCardShift, diceRoll, turnStart, skillHunt, skillSwap, skillBewitch, negativeCardFlip, caveDuelBg, caveDuelWin, caveDuelLose, wheelSpin, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
+      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, ...nightWindVariants, igniteTorchFire, rope, droplet, semiMaterialBg, semiMaterialCharge, semiMaterialGlass, ...burrowingWormEarthPlayers, ...burrowingWormDrillPlayers, burrowingWormAttack, snakeTrapHiss, ...snakeTrapAttackPlayers.flat(), cthRlyehDream, godPowerBlocked, ...tsgSlimePopVariants, ...oneCardShiftVariants.map(({ audio }) => audio), multiCardShift, diceRoll, turnStart, skillHunt, skillSwap, skillBewitch, negativeCardFlip, caveDuelBg, caveDuelWin, caveDuelLose, wheelSpin, blackGoatRun, ...blackGoatPulseVariants, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
         try {
           audio.pause();
           audio.currentTime = 0;
@@ -1098,11 +1143,19 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
             const { distance, closeness } = burrowDistanceState(progress);
             const fadeIn = smoothstep01(progress / 0.1);
             const fadeOut = 1 - smoothstep01((progress - 0.82) / 0.18);
-            const gain = distanceAttenuation(distance, rolloff, minGain);
-            const distanceVolume = volumeFloor + closeness * (volumePeak - volumeFloor);
+            const profile = distanceAudioProfile({
+              distance,
+              closeness,
+              rolloff,
+              minGain,
+              rateFar,
+              rateNear,
+              volumeFloor,
+              volumePeak,
+            });
             try {
-              audio.volume = baseVolume * gain * distanceVolume * fadeIn * fadeOut;
-              setAudioPlaybackRate(audio, rateFar + closeness * (rateNear - rateFar));
+              audio.volume = baseVolume * profile.volumeScale * fadeIn * fadeOut;
+              setAudioPlaybackRate(audio, profile.playbackRate);
             } catch { /* ignore */ }
             if (progress < 1) {
               sfxFadeFramesRef.current[key] = requestAnimationFrame(step);
@@ -1622,6 +1675,104 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       } catch { /* ignore */ }
     };
   }, [fadeOutAudio, noteUserGesture]);
+  const playBlackGoatRunSound = useCallback(({ fromPid = 0, toPid = 0, durationMs = BLACK_GOAT_RUN_DEFAULT_DURATION_MS, seatCount = 4 } = {}) => {
+    noteUserGesture();
+    const audio = sfxRefs.current.blackGoatRun;
+    if (!audio) return undefined;
+    sfxSequenceCleanupsRef.current.blackGoatRun?.();
+    const key = `black-goat-run-${Date.now()}`;
+    const totalSeats = Math.max(
+      4,
+      Number.isFinite(seatCount) ? seatCount : 4,
+      Number.isFinite(fromPid) ? fromPid + 1 : 0,
+      Number.isFinite(toPid) ? toPid + 1 : 0
+    );
+    const duration = Number.isFinite(durationMs)
+      ? Math.max(480, Math.min(durationMs, BLACK_GOAT_RUN_DEFAULT_DURATION_MS))
+      : BLACK_GOAT_RUN_DEFAULT_DURATION_MS;
+    const fadeOutStart = clamp01((duration - BLACK_GOAT_RUN_FADE_MS) / duration);
+    const stopAll = () => {
+      if (sfxFadeFramesRef.current[key]) {
+        cancelAnimationFrame(sfxFadeFramesRef.current[key]);
+        sfxFadeFramesRef.current[key] = null;
+      }
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = BLACK_GOAT_RUN_VOLUME;
+        setAudioPlaybackRate(audio, 1);
+      } catch { /* ignore */ }
+      if (sfxSequenceCleanupsRef.current.blackGoatRun === stopAll) delete sfxSequenceCleanupsRef.current.blackGoatRun;
+    };
+    sfxSequenceCleanupsRef.current.blackGoatRun = stopAll;
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = 0;
+      setAudioPlaybackRate(audio, 0.96);
+      audio.play().catch(() => { });
+    } catch { /* ignore */ }
+    const started = performance.now();
+    const step = now => {
+      const progress = clamp01((now - started) / duration);
+      const { distance, closeness } = seatPathDistanceState({ fromPid, toPid, progress, seatCount: totalSeats });
+      const fadeIn = smoothstep01(progress / 0.12);
+      const fadeOut = 1 - smoothstep01((progress - fadeOutStart) / Math.max(0.01, 1 - fadeOutStart));
+      const profile = distanceAudioProfile({
+        distance,
+        closeness,
+        rolloff: 0.42,
+        minGain: 0.42,
+        rateFar: 0.88,
+        rateNear: 1.08,
+        volumeFloor: 0.56,
+        volumePeak: 1.08,
+      });
+      try {
+        audio.volume = BLACK_GOAT_RUN_VOLUME * profile.volumeScale * fadeIn * fadeOut;
+        setAudioPlaybackRate(audio, profile.playbackRate);
+      } catch { /* ignore */ }
+      if (progress < 1) {
+        sfxFadeFramesRef.current[key] = requestAnimationFrame(step);
+        return;
+      }
+      stopAll();
+    };
+    sfxFadeFramesRef.current[key] = requestAnimationFrame(step);
+    return stopAll;
+  }, [noteUserGesture]);
+  const playBlackGoatPulseSound = useCallback(() => {
+    noteUserGesture();
+    const variants = sfxRefs.current.blackGoatPulse || [];
+    if (!variants.length) return undefined;
+    const audio = variants[Math.floor(Math.random() * variants.length)];
+    if (!audio) return undefined;
+    clearTimeout(sfxStopTimersRef.current.blackGoatPulse);
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = BLACK_GOAT_PULSE_VOLUME;
+      setAudioPlaybackRate(audio, 1);
+      audio.play().catch(() => { });
+      sfxStopTimersRef.current.blackGoatPulse = setTimeout(() => {
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.volume = BLACK_GOAT_PULSE_VOLUME;
+          setAudioPlaybackRate(audio, 1);
+        } catch { /* ignore */ }
+      }, BLACK_GOAT_PULSE_STOP_MS);
+    } catch { /* ignore */ }
+    return () => {
+      clearTimeout(sfxStopTimersRef.current.blackGoatPulse);
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = BLACK_GOAT_PULSE_VOLUME;
+        setAudioPlaybackRate(audio, 1);
+      } catch { /* ignore */ }
+    };
+  }, [noteUserGesture]);
   const playNegativeCardFlipSound = useCallback(() => {
     noteUserGesture();
     const audio = sfxRefs.current.negativeCardFlip;
@@ -1693,6 +1844,8 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     playSkillBewitchSound,
     playCaveDuelSound,
     playWheelSpinSound,
+    playBlackGoatRunSound,
+    playBlackGoatPulseSound,
     playNegativeCardFlipSound,
   };
 }
