@@ -1,6 +1,6 @@
 {
-  "version": "020ef846501ce22c",
-  "generatedAt": "2026-07-10T10:27:53.737Z",
+  "version": "7747335f4b5bebf8",
+  "generatedAt": "2026-07-10T13:37:10.713Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -65,8 +65,8 @@
     {
       "path": "/img/QRCode.webp",
       "type": "image",
-      "size": 80440,
-      "revision": "77c583ff308ec3e5"
+      "size": 97578,
+      "revision": "f8a58eea9923b9c3"
     },
     {
       "path": "/img/bg/battle/bg_battle_handzone.webp",
@@ -1293,478 +1293,472 @@
       "revision": "3d5936bb47e5c743"
     },
     {
-      "path": "/sounds/SE/apophisEclipseDrums.mp3",
-      "type": "audio",
-      "size": 40773,
-      "revision": "c216e878a961e5b7"
-    },
-    {
-      "path": "/sounds/SE/bat-colony.mp3",
-      "type": "audio",
-      "size": 224688,
-      "revision": "ff9bd29f7abfc420"
-    },
-    {
-      "path": "/sounds/SE/blackGoat/blackGoat_pulse_1.mp3",
-      "type": "audio",
-      "size": 14673,
-      "revision": "019c1c3664f60808"
-    },
-    {
-      "path": "/sounds/SE/blackGoat/blackGoat_pulse_2.mp3",
-      "type": "audio",
-      "size": 15196,
-      "revision": "7e863d8d6907a053"
-    },
-    {
-      "path": "/sounds/SE/blackGoat/blackGoat_pulse_3.mp3",
-      "type": "audio",
-      "size": 15718,
-      "revision": "d6cc895322b0f896"
-    },
-    {
-      "path": "/sounds/SE/blackGoat/blackGoat_pulse_4.mp3",
-      "type": "audio",
-      "size": 16763,
-      "revision": "cadc162aecb2426c"
-    },
-    {
-      "path": "/sounds/SE/blackGoat/blackGoat_pulse_5.mp3",
-      "type": "audio",
-      "size": 16763,
-      "revision": "c6f8dc2144c48fda"
-    },
-    {
-      "path": "/sounds/SE/blackGoat/blackGoat_run.mp3",
-      "type": "audio",
-      "size": 521280,
-      "revision": "8b9f23dcb0c34be9"
-    },
-    {
-      "path": "/sounds/SE/blackGoat/blackGoat_run_transfer.mp3",
-      "type": "audio",
-      "size": 28779,
-      "revision": "9a392e0125c541b0"
-    },
-    {
-      "path": "/sounds/SE/blackGoat/brvhrtz-creature-01-brvhrtz-232041.mp3",
-      "type": "audio",
-      "size": 293407,
-      "revision": "a1bbc5393010e721"
-    },
-    {
-      "path": "/sounds/SE/blackGoat/mightuser-1-goat-sound-effect-259473.mp3",
-      "type": "audio",
-      "size": 321024,
-      "revision": "2862a51660704437"
-    },
-    {
-      "path": "/sounds/SE/bubble/bubble1.mp3",
-      "type": "audio",
-      "size": 33792,
-      "revision": "bdf777a2822cef17"
-    },
-    {
-      "path": "/sounds/SE/bubble/bubble2.mp3",
-      "type": "audio",
-      "size": 34560,
-      "revision": "479af4fbad950df0"
-    },
-    {
-      "path": "/sounds/SE/bubble/bubble3.mp3",
-      "type": "audio",
-      "size": 33024,
-      "revision": "d91c48b2d2ae6c2e"
-    },
-    {
-      "path": "/sounds/SE/bubble/bubble4.mp3",
-      "type": "audio",
-      "size": 44544,
-      "revision": "bbac34d40706f38f"
-    },
-    {
-      "path": "/sounds/SE/card/multi_card_shift.mp3",
+      "path": "/sounds/SE/common/card/multi_card_shift.mp3",
       "type": "audio",
       "size": 12333,
       "revision": "ae2d60b5ccbf594b"
     },
     {
-      "path": "/sounds/SE/card/one_card_shift1.mp3",
+      "path": "/sounds/SE/common/card/one_card_shift1.mp3",
       "type": "audio",
       "size": 16128,
       "revision": "2c94037a2b99882a"
     },
     {
-      "path": "/sounds/SE/card/one_card_shift2.mp3",
+      "path": "/sounds/SE/common/card/one_card_shift2.mp3",
       "type": "audio",
       "size": 19968,
       "revision": "8f7ee00b651b1e2a"
     },
     {
-      "path": "/sounds/SE/caveDuel/caveDuel_bg.mp3",
-      "type": "audio",
-      "size": 101982,
-      "revision": "7332b13d7fadf4a9"
-    },
-    {
-      "path": "/sounds/SE/caveDuel/caveDuel_lose.mp3",
-      "type": "audio",
-      "size": 83712,
-      "revision": "f503a4adc831cf04"
-    },
-    {
-      "path": "/sounds/SE/caveDuel/caveDuel_win.mp3",
-      "type": "audio",
-      "size": 733920,
-      "revision": "56a4c38a44cd4e1a"
-    },
-    {
-      "path": "/sounds/SE/close.mp3",
-      "type": "audio",
-      "size": 5851,
-      "revision": "571487c33b626132"
-    },
-    {
-      "path": "/sounds/SE/death/death1.mp3",
-      "type": "audio",
-      "size": 96768,
-      "revision": "a2961111b39954cd"
-    },
-    {
-      "path": "/sounds/SE/death/death2.mp3",
-      "type": "audio",
-      "size": 96768,
-      "revision": "e5bec1c21ae5a5d5"
-    },
-    {
-      "path": "/sounds/SE/death/petrify.mp3",
-      "type": "audio",
-      "size": 632640,
-      "revision": "ab8e3787ae937597"
-    },
-    {
-      "path": "/sounds/SE/death/petrify_1.mp3",
-      "type": "audio",
-      "size": 53857,
-      "revision": "e72993e118758f32"
-    },
-    {
-      "path": "/sounds/SE/death/petrify_2.mp3",
-      "type": "audio",
-      "size": 59081,
-      "revision": "423da615c7527c7f"
-    },
-    {
-      "path": "/sounds/SE/death/petrify_3.mp3",
-      "type": "audio",
-      "size": 55947,
-      "revision": "470f4074802c4753"
-    },
-    {
-      "path": "/sounds/SE/death/petrify_4.mp3",
-      "type": "audio",
-      "size": 50722,
-      "revision": "2fa4878d1d67ef97"
-    },
-    {
-      "path": "/sounds/SE/dive.mp3",
-      "type": "audio",
-      "size": 60045,
-      "revision": "d9708fe9cd0268b9"
-    },
-    {
-      "path": "/sounds/SE/droplet.mp3",
-      "type": "audio",
-      "size": 226560,
-      "revision": "7afa8e19e351898c"
-    },
-    {
-      "path": "/sounds/SE/earthquake.mp3",
-      "type": "audio",
-      "size": 153600,
-      "revision": "ffa7010526bbf938"
-    },
-    {
-      "path": "/sounds/SE/encounter/god_highlight.mp3",
-      "type": "audio",
-      "size": 127725,
-      "revision": "a58ffc471c4646ea"
-    },
-    {
-      "path": "/sounds/SE/encounter/negative-card-flip.mp3",
-      "type": "audio",
-      "size": 44453,
-      "revision": "2eb2e92a1eef639e"
-    },
-    {
-      "path": "/sounds/SE/fire.mp3",
-      "type": "audio",
-      "size": 289227,
-      "revision": "5412f8c9af43a28a"
-    },
-    {
-      "path": "/sounds/SE/god-power-blocked.mp3",
-      "type": "audio",
-      "size": 37005,
-      "revision": "69ada3951b530e97"
-    },
-    {
-      "path": "/sounds/SE/hpDamageVariants/hpDamage1.mp3",
+      "path": "/sounds/SE/common/combat/hpDamageVariants/hpDamage1.mp3",
       "type": "audio",
       "size": 4428,
       "revision": "b8a6173612298a62"
     },
     {
-      "path": "/sounds/SE/hpDamageVariants/hpDamage2.mp3",
+      "path": "/sounds/SE/common/combat/hpDamageVariants/hpDamage2.mp3",
       "type": "audio",
       "size": 3702,
       "revision": "d147ae388296f424"
     },
     {
-      "path": "/sounds/SE/hpDamageVariants/hpDamage3.mp3",
+      "path": "/sounds/SE/common/combat/hpDamageVariants/hpDamage3.mp3",
       "type": "audio",
       "size": 3179,
       "revision": "c06e4ae8737e75e6"
     },
     {
-      "path": "/sounds/SE/hpDamageVariants/hpDamage4.mp3",
+      "path": "/sounds/SE/common/combat/hpDamageVariants/hpDamage4.mp3",
       "type": "audio",
       "size": 4747,
       "revision": "46be1ee921cbd4cd"
     },
     {
-      "path": "/sounds/SE/hpDamageVariants/hpDamage5.mp3",
+      "path": "/sounds/SE/common/combat/hpDamageVariants/hpDamage5.mp3",
       "type": "audio",
       "size": 3179,
       "revision": "e01ed49b4da539b3"
     },
     {
-      "path": "/sounds/SE/hpDamageVariants/hpDamage6.mp3",
+      "path": "/sounds/SE/common/combat/hpDamageVariants/hpDamage6.mp3",
       "type": "audio",
       "size": 6314,
       "revision": "02a4d50f4a044a23"
     },
     {
-      "path": "/sounds/SE/hpRecoverVariants/hpRecover1.mp3",
+      "path": "/sounds/SE/common/combat/hpRecoverVariants/hpRecover1.mp3",
       "type": "audio",
       "size": 6720,
       "revision": "12e8fa1b6184a532"
     },
     {
-      "path": "/sounds/SE/hpRecoverVariants/hpRecover2.mp3",
+      "path": "/sounds/SE/common/combat/hpRecoverVariants/hpRecover2.mp3",
       "type": "audio",
       "size": 8160,
       "revision": "b729ad54ca5aa324"
     },
     {
-      "path": "/sounds/SE/hpRecoverVariants/hpRecover3.mp3",
+      "path": "/sounds/SE/common/combat/hpRecoverVariants/hpRecover3.mp3",
       "type": "audio",
       "size": 6687,
       "revision": "45275a19e279c3c8"
     },
     {
-      "path": "/sounds/SE/hpRecoverVariants/hpRecover4.mp3",
+      "path": "/sounds/SE/common/combat/hpRecoverVariants/hpRecover4.mp3",
       "type": "audio",
       "size": 7523,
       "revision": "0a812b473dc14207"
     },
     {
-      "path": "/sounds/SE/hpRecoverVariants/hpRecover5.mp3",
+      "path": "/sounds/SE/common/combat/hpRecoverVariants/hpRecover5.mp3",
       "type": "audio",
       "size": 10867,
       "revision": "794feaced2b0d801"
     },
     {
-      "path": "/sounds/SE/magnet.mp3",
-      "type": "audio",
-      "size": 186359,
-      "revision": "df37d19a5a04da1e"
-    },
-    {
-      "path": "/sounds/SE/nightWind/nightWind1.mp3",
-      "type": "audio",
-      "size": 27629,
-      "revision": "9cec1b9a9fa2c4c2"
-    },
-    {
-      "path": "/sounds/SE/nightWind/nightWind2.mp3",
-      "type": "audio",
-      "size": 27629,
-      "revision": "46d827468dc63c6f"
-    },
-    {
-      "path": "/sounds/SE/open.mp3",
-      "type": "audio",
-      "size": 14592,
-      "revision": "c759891a15caca85"
-    },
-    {
-      "path": "/sounds/SE/roll-dice.mp3",
-      "type": "audio",
-      "size": 115356,
-      "revision": "9f2ec3c1053158f4"
-    },
-    {
-      "path": "/sounds/SE/rolling-down.mp3",
-      "type": "audio",
-      "size": 67584,
-      "revision": "de66f2ebcb18ee0a"
-    },
-    {
-      "path": "/sounds/SE/rope.mp3",
-      "type": "audio",
-      "size": 35328,
-      "revision": "6b09e2db897cb5f4"
-    },
-    {
-      "path": "/sounds/SE/sanDamageVariants/sanDamage1.mp3",
+      "path": "/sounds/SE/common/combat/sanDamageVariants/sanDamage1.mp3",
       "type": "audio",
       "size": 104685,
       "revision": "e2cb64289a5a86e0"
     },
     {
-      "path": "/sounds/SE/sanDamageVariants/sanDamage2.mp3",
+      "path": "/sounds/SE/common/combat/sanDamageVariants/sanDamage2.mp3",
       "type": "audio",
       "size": 32205,
       "revision": "fdf088288960ccb1"
     },
     {
-      "path": "/sounds/SE/sanRecoverVariants/sanRecover1.mp3",
+      "path": "/sounds/SE/common/combat/sanRecoverVariants/sanRecover1.mp3",
       "type": "audio",
       "size": 257280,
       "revision": "b8ae9220ef1730a1"
     },
     {
-      "path": "/sounds/SE/sanRecoverVariants/sanRecover2.mp3",
+      "path": "/sounds/SE/common/combat/sanRecoverVariants/sanRecover2.mp3",
       "type": "audio",
       "size": 257280,
       "revision": "2285c7be860fc2f5"
     },
     {
-      "path": "/sounds/SE/sanRecoverVariants/sanRecover3.mp3",
+      "path": "/sounds/SE/common/combat/sanRecoverVariants/sanRecover3.mp3",
       "type": "audio",
       "size": 257280,
       "revision": "211bc69db77a47e9"
     },
     {
-      "path": "/sounds/SE/sanRecoverVariants/sanRecover4.mp3",
+      "path": "/sounds/SE/common/combat/sanRecoverVariants/sanRecover4.mp3",
       "type": "audio",
       "size": 257280,
       "revision": "e33b1230a1a37962"
     },
     {
-      "path": "/sounds/SE/semiMaterial/semiMaterial_bg.mp3",
+      "path": "/sounds/SE/common/death/death1.mp3",
       "type": "audio",
-      "size": 90624,
-      "revision": "d527b2abe7dcdcce"
+      "size": 96768,
+      "revision": "a2961111b39954cd"
     },
     {
-      "path": "/sounds/SE/semiMaterial/semiMaterial_charge.mp3",
+      "path": "/sounds/SE/common/death/death2.mp3",
       "type": "audio",
-      "size": 93600,
-      "revision": "718a5190e592d32d"
+      "size": 96768,
+      "revision": "e5bec1c21ae5a5d5"
     },
     {
-      "path": "/sounds/SE/semiMaterial/semiMaterial_glass.mp3",
+      "path": "/sounds/SE/common/dice/roll-dice.mp3",
       "type": "audio",
-      "size": 67680,
-      "revision": "af86995228d2a15f"
+      "size": 115356,
+      "revision": "9f2ec3c1053158f4"
     },
     {
-      "path": "/sounds/SE/skill-bewitch.mp3",
-      "type": "audio",
-      "size": 54189,
-      "revision": "d4131ccc9ed8bd83"
-    },
-    {
-      "path": "/sounds/SE/skill-hunt.mp3",
-      "type": "audio",
-      "size": 25122,
-      "revision": "e0c4e52982731161"
-    },
-    {
-      "path": "/sounds/SE/skill-swap.mp3",
-      "type": "audio",
-      "size": 41472,
-      "revision": "af8a9ec4d8b71870"
-    },
-    {
-      "path": "/sounds/SE/snake/snake_attack_1.mp3",
-      "type": "audio",
-      "size": 27321,
-      "revision": "ae3d35abe508b578"
-    },
-    {
-      "path": "/sounds/SE/snake/snake_attack_2.mp3",
-      "type": "audio",
-      "size": 27321,
-      "revision": "634f6f49b1dd71b7"
-    },
-    {
-      "path": "/sounds/SE/snake/snake_hiss.mp3",
-      "type": "audio",
-      "size": 129024,
-      "revision": "eafe77b4f9574f74"
-    },
-    {
-      "path": "/sounds/SE/throw.mp3",
-      "type": "audio",
-      "size": 11702,
-      "revision": "acac9d9e5137fdb0"
-    },
-    {
-      "path": "/sounds/SE/tunnel-wind.mp3",
-      "type": "audio",
-      "size": 70261,
-      "revision": "3f5fdee878863cbd"
-    },
-    {
-      "path": "/sounds/SE/turn-start.mp3",
-      "type": "audio",
-      "size": 73005,
-      "revision": "3f6eb07a47634ff0"
-    },
-    {
-      "path": "/sounds/SE/volcano/volcano_bg.mp3",
-      "type": "audio",
-      "size": 482324,
-      "revision": "aa47f28e158a1a47"
-    },
-    {
-      "path": "/sounds/SE/volcano/volcano_cooldown.mp3",
-      "type": "audio",
-      "size": 225698,
-      "revision": "507fa5f363e44b3e"
-    },
-    {
-      "path": "/sounds/SE/volcano/volcano_meteor1.mp3",
-      "type": "audio",
-      "size": 324096,
-      "revision": "094433e3faf12981"
-    },
-    {
-      "path": "/sounds/SE/volcano/volcano_meteor2.mp3",
-      "type": "audio",
-      "size": 322664,
-      "revision": "434b8ad238ce8600"
-    },
-    {
-      "path": "/sounds/SE/wheel-spin.mp3",
+      "path": "/sounds/SE/common/dice/wheel-spin.mp3",
       "type": "audio",
       "size": 48480,
       "revision": "604debe27ca32451"
     },
     {
-      "path": "/sounds/SE/worm/worm_attack.mp3",
+      "path": "/sounds/SE/common/encounter/god_highlight.mp3",
+      "type": "audio",
+      "size": 127725,
+      "revision": "a58ffc471c4646ea"
+    },
+    {
+      "path": "/sounds/SE/common/encounter/negative-card-flip.mp3",
+      "type": "audio",
+      "size": 44453,
+      "revision": "2eb2e92a1eef639e"
+    },
+    {
+      "path": "/sounds/SE/common/encounter/neutral-card-flip.mp3",
+      "type": "audio",
+      "size": 90624,
+      "revision": "d527b2abe7dcdcce"
+    },
+    {
+      "path": "/sounds/SE/common/encounter/positive-card-flip.mp3",
+      "type": "audio",
+      "size": 81920,
+      "revision": "ff2785d2c309ce7f"
+    },
+    {
+      "path": "/sounds/SE/common/skills/skill-bewitch.mp3",
+      "type": "audio",
+      "size": 54189,
+      "revision": "d4131ccc9ed8bd83"
+    },
+    {
+      "path": "/sounds/SE/common/skills/skill-hunt.mp3",
+      "type": "audio",
+      "size": 25122,
+      "revision": "e0c4e52982731161"
+    },
+    {
+      "path": "/sounds/SE/common/skills/skill-swap.mp3",
+      "type": "audio",
+      "size": 41472,
+      "revision": "af8a9ec4d8b71870"
+    },
+    {
+      "path": "/sounds/SE/common/turn/turn-start.mp3",
+      "type": "audio",
+      "size": 73005,
+      "revision": "3f6eb07a47634ff0"
+    },
+    {
+      "path": "/sounds/SE/common/ui/close.mp3",
+      "type": "audio",
+      "size": 5851,
+      "revision": "571487c33b626132"
+    },
+    {
+      "path": "/sounds/SE/common/ui/open.mp3",
+      "type": "audio",
+      "size": 14592,
+      "revision": "c759891a15caca85"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/bats/bat-colony.mp3",
+      "type": "audio",
+      "size": 224688,
+      "revision": "ff9bd29f7abfc420"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/caveDuel/caveDuel_bg.mp3",
+      "type": "audio",
+      "size": 101982,
+      "revision": "7332b13d7fadf4a9"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/caveDuel/caveDuel_lose.mp3",
+      "type": "audio",
+      "size": 83712,
+      "revision": "f503a4adc831cf04"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/caveDuel/caveDuel_win.mp3",
+      "type": "audio",
+      "size": 733920,
+      "revision": "56a4c38a44cd4e1a"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/earthquake/earthquake.mp3",
+      "type": "audio",
+      "size": 153600,
+      "revision": "ffa7010526bbf938"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/endlessCorridor/tunnel-wind.mp3",
+      "type": "audio",
+      "size": 70261,
+      "revision": "3f5fdee878863cbd"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/geomagnetic/magnet.mp3",
+      "type": "audio",
+      "size": 186359,
+      "revision": "df37d19a5a04da1e"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/godPowerBlocked/god-power-blocked.mp3",
+      "type": "audio",
+      "size": 37005,
+      "revision": "69ada3951b530e97"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/gods/apophis/apophisEclipseDrums.mp3",
+      "type": "audio",
+      "size": 40773,
+      "revision": "c216e878a961e5b7"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/gods/blackGoat/blackGoat_pulse_1.mp3",
+      "type": "audio",
+      "size": 14673,
+      "revision": "019c1c3664f60808"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/gods/blackGoat/blackGoat_pulse_2.mp3",
+      "type": "audio",
+      "size": 15196,
+      "revision": "7e863d8d6907a053"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/gods/blackGoat/blackGoat_pulse_3.mp3",
+      "type": "audio",
+      "size": 15718,
+      "revision": "d6cc895322b0f896"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/gods/blackGoat/blackGoat_pulse_4.mp3",
+      "type": "audio",
+      "size": 16763,
+      "revision": "cadc162aecb2426c"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/gods/blackGoat/blackGoat_pulse_5.mp3",
+      "type": "audio",
+      "size": 16763,
+      "revision": "c6f8dc2144c48fda"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/gods/blackGoat/blackGoat_run_transfer.mp3",
+      "type": "audio",
+      "size": 28779,
+      "revision": "9a392e0125c541b0"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/gods/tsathoggua/bubble1.mp3",
+      "type": "audio",
+      "size": 33792,
+      "revision": "bdf777a2822cef17"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/gods/tsathoggua/bubble2.mp3",
+      "type": "audio",
+      "size": 34560,
+      "revision": "479af4fbad950df0"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/gods/tsathoggua/bubble3.mp3",
+      "type": "audio",
+      "size": 33024,
+      "revision": "d91c48b2d2ae6c2e"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/gods/tsathoggua/bubble4.mp3",
+      "type": "audio",
+      "size": 44544,
+      "revision": "bbac34d40706f38f"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/gods/vritra/heartbeat.mp3",
+      "type": "audio",
+      "size": 264986,
+      "revision": "4260c38043671cdd"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/nightWind/nightWind1.mp3",
+      "type": "audio",
+      "size": 27629,
+      "revision": "9cec1b9a9fa2c4c2"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/nightWind/nightWind2.mp3",
+      "type": "audio",
+      "size": 27629,
+      "revision": "46d827468dc63c6f"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/petrifyingFormula/petrify_1.mp3",
+      "type": "audio",
+      "size": 53857,
+      "revision": "e72993e118758f32"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/petrifyingFormula/petrify_2.mp3",
+      "type": "audio",
+      "size": 59081,
+      "revision": "423da615c7527c7f"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/petrifyingFormula/petrify_3.mp3",
+      "type": "audio",
+      "size": 55947,
+      "revision": "470f4074802c4753"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/petrifyingFormula/petrify_4.mp3",
+      "type": "audio",
+      "size": 50722,
+      "revision": "2fa4878d1d67ef97"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/rope/rope.mp3",
+      "type": "audio",
+      "size": 35328,
+      "revision": "6b09e2db897cb5f4"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/semiMaterial/semiMaterial_bg.mp3",
+      "type": "audio",
+      "size": 90624,
+      "revision": "d527b2abe7dcdcce"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/semiMaterial/semiMaterial_charge.mp3",
+      "type": "audio",
+      "size": 93600,
+      "revision": "718a5190e592d32d"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/semiMaterial/semiMaterial_glass.mp3",
+      "type": "audio",
+      "size": 67680,
+      "revision": "af86995228d2a15f"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/snake/snake_attack_1.mp3",
+      "type": "audio",
+      "size": 27321,
+      "revision": "ae3d35abe508b578"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/snake/snake_attack_2.mp3",
+      "type": "audio",
+      "size": 27321,
+      "revision": "634f6f49b1dd71b7"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/snake/snake_hiss.mp3",
+      "type": "audio",
+      "size": 129024,
+      "revision": "eafe77b4f9574f74"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/spring/droplet.mp3",
+      "type": "audio",
+      "size": 226560,
+      "revision": "7afa8e19e351898c"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/throwStone/rolling-down.mp3",
+      "type": "audio",
+      "size": 67584,
+      "revision": "de66f2ebcb18ee0a"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/throwStone/throw.mp3",
+      "type": "audio",
+      "size": 11702,
+      "revision": "acac9d9e5137fdb0"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/torch/fire.mp3",
+      "type": "audio",
+      "size": 289227,
+      "revision": "5412f8c9af43a28a"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/volcano/volcano_bg.mp3",
+      "type": "audio",
+      "size": 482324,
+      "revision": "aa47f28e158a1a47"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/volcano/volcano_cooldown.mp3",
+      "type": "audio",
+      "size": 225698,
+      "revision": "507fa5f363e44b3e"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/volcano/volcano_meteor1.mp3",
+      "type": "audio",
+      "size": 324096,
+      "revision": "094433e3faf12981"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/volcano/volcano_meteor2.mp3",
+      "type": "audio",
+      "size": 322664,
+      "revision": "434b8ad238ce8600"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/worm/worm_attack.mp3",
       "type": "audio",
       "size": 96768,
       "revision": "b7099e5497e94ed9"
     },
     {
-      "path": "/sounds/SE/worm/worm_drill.mp3",
+      "path": "/sounds/SE/earthShadow/worm/worm_drill.mp3",
       "type": "audio",
       "size": 324096,
       "revision": "49c9d46ec2fa2546"
+    },
+    {
+      "path": "/sounds/SE/starsCall/cth/dive.mp3",
+      "type": "audio",
+      "size": 60045,
+      "revision": "d9708fe9cd0268b9"
     },
     {
       "path": "/videos/ancient_god_tentacles.mp4",

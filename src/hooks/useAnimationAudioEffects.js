@@ -7,6 +7,7 @@ const ANIMATION_AUDIO_DELAY = {
   THROW_STONE_ROLLING: 1040,
 };
 const CARD_FLIP_TRAVEL_MS = 650;
+const CARD_FLIP_POSITIVE_CHIME_DELAY_MS = 640;
 const CARD_FLIP_NEGATIVE_BURST_DELAY_MS = 1150;
 const CARD_FLIP_GOD_HIGHLIGHT_DELAY_MS = 1260;
 const EARTHQUAKE_SHAKE_DURATION_MS = 2500;
@@ -39,6 +40,22 @@ function isNegativeDrawCardFlip(anim) {
   if (anim.card.isGod) return false;
   if (anim.triggerName === '检定牌') return false;
   return getZoneCardPolarity(anim.card) === 'negative';
+}
+
+function isPositiveDrawCardFlip(anim) {
+  if (anim?.type !== 'DRAW_CARD' || !anim.card) return false;
+  if (anim.card.isGod || anim.triggerName === '检定牌') return false;
+  return getZoneCardPolarity(anim.card) === 'positive';
+}
+
+function isNeutralDrawCardFlip(anim) {
+  if (anim?.type !== 'DRAW_CARD' || !anim.card) return false;
+  if (anim.card.isGod || anim.triggerName === '检定牌') return false;
+  return getZoneCardPolarity(anim.card) === 'neutral';
+}
+
+function getPositiveDrawCardFlipSoundDelay(anim) {
+  return (anim?.skipTravel ? 0 : CARD_FLIP_TRAVEL_MS) + CARD_FLIP_POSITIVE_CHIME_DELAY_MS;
 }
 
 function getNegativeDrawCardFlipSoundDelay(anim) {
@@ -75,6 +92,9 @@ export function useAnimationAudioEffects({
   playSkillSwapSound,
   playSkillBewitchSound,
   playGodHighlightSound,
+  playVritraImmortalRevealSound,
+  playPositiveCardFlipSound,
+  playNeutralCardFlipSound,
   playCaveDuelSound,
   playWheelSpinSound,
   playBlackGoatRunSound,
@@ -182,6 +202,22 @@ export function useAnimationAudioEffects({
   }, [anim, playGodHighlightSound, playDetachedAnimationSound]);
 
   useEffect(() => {
+    if (!isPositiveDrawCardFlip(anim)) return undefined;
+    const timer = setTimeout(() => {
+      playDetachedAnimationSound('positiveCardFlip', playPositiveCardFlipSound);
+    }, getPositiveDrawCardFlipSoundDelay(anim));
+    return () => clearTimeout(timer);
+  }, [anim, playPositiveCardFlipSound, playDetachedAnimationSound]);
+
+  useEffect(() => {
+    if (!isNeutralDrawCardFlip(anim)) return undefined;
+    const timer = setTimeout(() => {
+      playDetachedAnimationSound('neutralCardFlip', playNeutralCardFlipSound);
+    }, getPositiveDrawCardFlipSoundDelay(anim));
+    return () => clearTimeout(timer);
+  }, [anim, playNeutralCardFlipSound, playDetachedAnimationSound]);
+
+  useEffect(() => {
     if (!isNegativeDrawCardFlip(anim)) return undefined;
     const timer = setTimeout(() => {
       playDetachedAnimationSound('negativeCardFlip', playNegativeCardFlipSound);
@@ -240,6 +276,11 @@ export function useAnimationAudioEffects({
     playDetachedAnimationSound('godPowerBlocked', playGodPowerBlockedSound);
     return undefined;
   }, [anim, playGodPowerBlockedSound, playDetachedAnimationSound]);
+
+  useEffect(() => {
+    if (anim?.type !== 'VRI_IMMORTAL_REVEAL') return undefined;
+    return playVritraImmortalRevealSound?.();
+  }, [anim, playVritraImmortalRevealSound]);
 
   useEffect(() => {
     if (anim?.type !== 'TSG_SLIME_POP') return undefined;

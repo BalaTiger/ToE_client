@@ -630,6 +630,7 @@ export default function Game(){
   // ── Audio / Video / Main UI Resource Preloading ──────────────
   const { isLoading, loadingProgress, loadingError, currentFile, totalSize, loadedSize } = useResourcePreload({
     loadAllThemes: firstBattleStarted || onlineResourcesUnlocked,
+    activeExpansionKey: gs?.expansionKey || '地神的潜影',
   });
   
   // ── Tutorial ──────────────────────────────────────────────────
@@ -744,7 +745,7 @@ export default function Game(){
       clearTimeout(timer);
     };
   },[isBattleScreen,gs?.expansionKey]);
-  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound,playCthRlyehDreamSound,playGodPowerBlockedSound,playTsgSlimePopSound,playOneCardShiftSound,playMultiCardShiftSound,playDiceRollSound,playTurnStartSound,playSkillHuntSound,playSkillSwapSound,playSkillBewitchSound,playGodHighlightSound,playCaveDuelSound,playWheelSpinSound,playBlackGoatRunSound,playBlackGoatPulseSound,playGuillotineDeathSound,playPetrifyDeathSound,playNegativeCardFlipSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
+  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound,playCthRlyehDreamSound,playGodPowerBlockedSound,playTsgSlimePopSound,playOneCardShiftSound,playMultiCardShiftSound,playDiceRollSound,playTurnStartSound,playSkillHuntSound,playSkillSwapSound,playSkillBewitchSound,playGodHighlightSound,playVritraImmortalRevealSound,playPositiveCardFlipSound,playNeutralCardFlipSound,playCaveDuelSound,playWheelSpinSound,playBlackGoatRunSound,playBlackGoatPulseSound,playGuillotineDeathSound,playPetrifyDeathSound,playNegativeCardFlipSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
   const persistSoftGuideDone=useCallback((nextDone)=>{
     setSoftGuideDone(nextDone);
     if(canPersistTutorial)safeLS.set(SOFT_GUIDE_STORAGE_KEY,serializeSoftGuideDone(nextDone));
@@ -1292,6 +1293,7 @@ export default function Game(){
   const igniteTorchFlamingCardIdsRef=useRef(new Set());
   const debugGodPowerBlockedHandlerRef=useRef(null);
   const debugTsgSlimePopHandlerRef=useRef(null);
+  const debugVritraImmortalRevealHandlerRef=useRef(null);
   const debugGuillotineHandlerRef=useRef(null);
   const debugPetrifyDeathHandlerRef=useRef(null);
   const [handAreaRect,setHandAreaRect]=useState(null);
@@ -1562,6 +1564,14 @@ export default function Game(){
       }
       return handler(options);
     };
+    const playVritraImmortalReveal=(options={})=>{
+      const handler=debugVritraImmortalRevealHandlerRef.current;
+      if(!handler){
+        console.warn('[toeDebug] playVritraImmortalReveal: debug handler unavailable');
+        return Promise.resolve({ok:false,reason:'unavailable'});
+      }
+      return handler(options);
+    };
     const playGuillotine=(options={})=>{
       const handler=debugGuillotineHandlerRef.current;
       if(!handler){
@@ -1582,6 +1592,7 @@ export default function Game(){
     delete debugRoot.playIgniteTorchDiscard;
     debugRoot.playGodPowerBlocked=playGodPowerBlocked;
     debugRoot.playTsgSlimePop=playTsgSlimePop;
+    debugRoot.playVritraImmortalReveal=playVritraImmortalReveal;
     debugRoot.playGuillotine=playGuillotine;
     debugRoot.playPetrifyDeath=playPetrifyDeath;
     window.__toeDebug=debugRoot;
@@ -1591,6 +1602,9 @@ export default function Game(){
       }
       if(window.__toeDebug?.playTsgSlimePop===playTsgSlimePop){
         delete window.__toeDebug.playTsgSlimePop;
+      }
+      if(window.__toeDebug?.playVritraImmortalReveal===playVritraImmortalReveal){
+        delete window.__toeDebug.playVritraImmortalReveal;
       }
       if(window.__toeDebug?.playGuillotine===playGuillotine){
         delete window.__toeDebug.playGuillotine;
@@ -1633,7 +1647,7 @@ export default function Game(){
   },[gs?._inspectionEvents]);
   const houndsTimerVisible=!!gs?.houndsOfTindalosActive&&(!latestHoundsInspectionSeq||houndsRevealedSeq>=latestHoundsInspectionSeq);
 
-  useAnimationAudioEffects({ anim, playApophisEclipseSound, playThrowStoneThrowSound, playThrowStoneRollingSound, playEarthquakeSound, playGeomagneticReversalSound, playStartledBatsSound, playNightWindSound, playRopeSound, playUndergroundSpringDropletSound, playVolcanoSound, playSemiMaterialSound, playBurrowingWormSound, playSnakeTrapSound, playCthRlyehDreamSound, playGodPowerBlockedSound, playTsgSlimePopSound, playOneCardShiftSound, playMultiCardShiftSound, playDiceRollSound, playTurnStartSound, playSkillHuntSound, playSkillSwapSound, playSkillBewitchSound, playGodHighlightSound, playCaveDuelSound, playWheelSpinSound, playBlackGoatRunSound, playBlackGoatPulseSound, playNegativeCardFlipSound });
+  useAnimationAudioEffects({ anim, playApophisEclipseSound, playThrowStoneThrowSound, playThrowStoneRollingSound, playEarthquakeSound, playGeomagneticReversalSound, playStartledBatsSound, playNightWindSound, playRopeSound, playUndergroundSpringDropletSound, playVolcanoSound, playSemiMaterialSound, playBurrowingWormSound, playSnakeTrapSound, playCthRlyehDreamSound, playGodPowerBlockedSound, playTsgSlimePopSound, playOneCardShiftSound, playMultiCardShiftSound, playDiceRollSound, playTurnStartSound, playSkillHuntSound, playSkillSwapSound, playSkillBewitchSound, playGodHighlightSound, playVritraImmortalRevealSound, playPositiveCardFlipSound, playNeutralCardFlipSound, playCaveDuelSound, playWheelSpinSound, playBlackGoatRunSound, playBlackGoatPulseSound, playNegativeCardFlipSound });
 
   useEffect(()=>{
     if(!gs?.houndsOfTindalosActive){
@@ -6980,6 +6994,50 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       });
       triggerAnimQueue(queue,base,()=>{});
       return {ok:true,playerIndex,playerName:player.name,count,anchored:true,temporaryCards:tempSlimes.length};
+    }
+    :null;
+
+  debugVritraImmortalRevealHandlerRef.current=import.meta.env.DEV
+    ?async(options={})=>{
+      const base=latestGsRef.current;
+      if(!base?.players?.length){
+        console.warn('[toeDebug] playVritraImmortalReveal: no active game state');
+        return {ok:false,reason:'no-game'};
+      }
+      if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current){
+        console.warn('[toeDebug] playVritraImmortalReveal: animation queue is busy');
+        return {ok:false,reason:'busy'};
+      }
+      const playerIndex=Number.isInteger(options.playerIndex)?options.playerIndex:0;
+      const player=base.players?.[playerIndex];
+      if(!player){
+        console.warn('[toeDebug] playVritraImmortalReveal: player not found',playerIndex);
+        return {ok:false,reason:'missing-player'};
+      }
+      const count=Math.max(1,Math.min(6,Number.isInteger(options.count)?options.count:4));
+      const cards=(Array.isArray(options.cards)?options.cards:base.deck||[])
+        .filter(Boolean)
+        .slice(0,count);
+      const success=options.success!==false;
+      const playerName=localDisplayName(playerIndex,player.name);
+      const msg=`【不灭之躯】${playerName} 翻开 ${cards.length} 张牌；${success?'未见邪神牌，HP恢复至1！':'出现邪神牌，力量消散…'}`;
+      const queue=[{
+        type:'VRI_IMMORTAL_REVEAL',
+        targetPid:playerIndex,
+        playerName,
+        cards,
+        success,
+        msgs:options.showLog===true?[msg]:[],
+      }];
+      console.info('[toeDebug] playVritraImmortalReveal',{
+        playerIndex,
+        playerName,
+        count:cards.length,
+        success,
+        showLog:options.showLog===true,
+      });
+      triggerAnimQueue(queue,base,()=>{});
+      return {ok:true,playerIndex,playerName,count:cards.length,success};
     }
     :null;
 

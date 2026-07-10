@@ -97,8 +97,8 @@ const TSG_SLIME_POP_DELAY_MS = 140;
 const TSG_SLIME_POP_STOP_MS = 1500;
 const TSG_SLIME_POP_VARIANT_COUNT = 4;
 const ONE_CARD_SHIFT_VARIANTS = [
-  { path: 'sounds/SE/card/one_card_shift1.mp3', volume: 0.72 },
-  { path: 'sounds/SE/card/one_card_shift2.mp3', volume: 0.32 },
+  { path: 'sounds/SE/common/card/one_card_shift1.mp3', volume: 0.72 },
+  { path: 'sounds/SE/common/card/one_card_shift2.mp3', volume: 0.32 },
 ];
 const MULTI_CARD_SHIFT_VOLUME = 0.42;
 const DICE_ROLL_VOLUME = 0.46;
@@ -115,6 +115,15 @@ const SKILL_BEWITCH_VOLUME = 0.64;
 const SKILL_BEWITCH_STOP_MS = 2200;
 const GOD_HIGHLIGHT_VOLUME = 0.64;
 const GOD_HIGHLIGHT_STOP_MS = 6400;
+// The heartbeat source is mastered about 7–8 dB hotter than the other
+// cinematic SFX, so keep it deliberately below the highlight/turn stingers.
+const VRI_IMMORTAL_REVEAL_VOLUME = 0.28;
+const VRI_IMMORTAL_REVEAL_STOP_MS = 2300;
+const VRI_IMMORTAL_REVEAL_FADE_MS = 420;
+const POSITIVE_CARD_FLIP_VOLUME = 0.58;
+const POSITIVE_CARD_FLIP_STOP_MS = 2700;
+const NEUTRAL_CARD_FLIP_VOLUME = 0.5;
+const NEUTRAL_CARD_FLIP_STOP_MS = 3000;
 const NEGATIVE_CARD_FLIP_VOLUME = 0.5;
 const NEGATIVE_CARD_FLIP_FALLBACK_DURATION_MS = 2160;
 const NEGATIVE_CARD_FLIP_FADE_MS = 620;
@@ -142,8 +151,8 @@ const BLACK_GOAT_PULSE_VARIANT_COUNT = 5;
 const BLACK_GOAT_PULSE_STOP_MS = 820;
 // death2 averages about 1.9 dB quieter, so its gain is raised to match death1.
 const GUILLOTINE_DEATH_VARIANTS = [
-  { path: 'sounds/SE/death/death1.mp3', volume: 0.38 },
-  { path: 'sounds/SE/death/death2.mp3', volume: 0.47 },
+  { path: 'sounds/SE/common/death/death1.mp3', volume: 0.38 },
+  { path: 'sounds/SE/common/death/death2.mp3', volume: 0.47 },
 ];
 const GUILLOTINE_DEATH_STOP_MS = 2500;
 const GUILLOTINE_DEATH_FADE_MS = 220;
@@ -213,7 +222,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
   const [audioReady, setAudioReady] = useState(false);
   const readyRef = useRef(false);
   const bgmRefs = useRef({ main: null, battleEarth: null, battleStars: null });
-  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, nightWind: [], igniteTorchFire: null, rope: null, droplet: null, volcano: null, semiMaterial: null, burrowingWorm: null, snakeTrap: null, cthRlyehDream: null, godPowerBlocked: null, tsgSlimePop: [], oneCardShift: [], multiCardShift: null, diceRoll: null, turnStart: null, skillHunt: null, skillSwap: null, skillBewitch: null, godHighlight: null, negativeCardFlip: null, caveDuel: null, wheelSpin: null, blackGoatRun: null, blackGoatPulse: [], guillotineDeath: [], petrifyDeath: [] });
+  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, nightWind: [], igniteTorchFire: null, rope: null, droplet: null, volcano: null, semiMaterial: null, burrowingWorm: null, snakeTrap: null, cthRlyehDream: null, godPowerBlocked: null, tsgSlimePop: [], oneCardShift: [], multiCardShift: null, diceRoll: null, turnStart: null, skillHunt: null, skillSwap: null, skillBewitch: null, godHighlight: null, vritraImmortalReveal: null, positiveCardFlip: null, neutralCardFlip: null, negativeCardFlip: null, caveDuel: null, wheelSpin: null, blackGoatRun: null, blackGoatPulse: [], guillotineDeath: [], petrifyDeath: [] });
   const sfxStopTimersRef = useRef({});
   const sfxFadeFramesRef = useRef({});
   const sfxSequenceCleanupsRef = useRef({});
@@ -225,93 +234,96 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     const main = new Audio(buildPublicUrl(BGM_AUDIO_BY_KEY.main.path));
     const battleEarth = new Audio(buildPublicUrl(BGM_AUDIO_BY_KEY.battleEarth.path));
     const battleStars = new Audio(buildPublicUrl(BGM_AUDIO_BY_KEY.battleStars.path));
-    const open = new Audio(buildPublicUrl('sounds/SE/open.mp3'));
-    const close = new Audio(buildPublicUrl('sounds/SE/close.mp3'));
-    const apophisEclipse = new Audio(buildPublicUrl('sounds/SE/apophisEclipseDrums.mp3'));
-    const throwStoneThrow = new Audio(buildPublicUrl('sounds/SE/throw.mp3'));
-    const throwStoneRolling = new Audio(buildPublicUrl('sounds/SE/rolling-down.mp3'));
-    const endlessCorridorTunnel = new Audio(buildPublicUrl('sounds/SE/tunnel-wind.mp3'));
-    const earthquake = new Audio(buildPublicUrl('sounds/SE/earthquake.mp3'));
-    const geomagneticReversal = new Audio(buildPublicUrl('sounds/SE/magnet.mp3'));
-    const startledBats = new Audio(buildPublicUrl('sounds/SE/bat-colony.mp3'));
+    const open = new Audio(buildPublicUrl('sounds/SE/common/ui/open.mp3'));
+    const close = new Audio(buildPublicUrl('sounds/SE/common/ui/close.mp3'));
+    const apophisEclipse = new Audio(buildPublicUrl('sounds/SE/earthShadow/gods/apophis/apophisEclipseDrums.mp3'));
+    const throwStoneThrow = new Audio(buildPublicUrl('sounds/SE/earthShadow/throwStone/throw.mp3'));
+    const throwStoneRolling = new Audio(buildPublicUrl('sounds/SE/earthShadow/throwStone/rolling-down.mp3'));
+    const endlessCorridorTunnel = new Audio(buildPublicUrl('sounds/SE/earthShadow/endlessCorridor/tunnel-wind.mp3'));
+    const earthquake = new Audio(buildPublicUrl('sounds/SE/earthShadow/earthquake/earthquake.mp3'));
+    const geomagneticReversal = new Audio(buildPublicUrl('sounds/SE/earthShadow/geomagnetic/magnet.mp3'));
+    const startledBats = new Audio(buildPublicUrl('sounds/SE/earthShadow/bats/bat-colony.mp3'));
     const nightWindVariants = [
-      new Audio(buildPublicUrl('sounds/SE/nightWind/nightWind1.mp3')),
-      new Audio(buildPublicUrl('sounds/SE/nightWind/nightWind2.mp3')),
+      new Audio(buildPublicUrl('sounds/SE/earthShadow/nightWind/nightWind1.mp3')),
+      new Audio(buildPublicUrl('sounds/SE/earthShadow/nightWind/nightWind2.mp3')),
     ];
-    const igniteTorchFire = new Audio(buildPublicUrl('sounds/SE/fire.mp3'));
-    const rope = new Audio(buildPublicUrl('sounds/SE/rope.mp3'));
-    const droplet = new Audio(buildPublicUrl('sounds/SE/droplet.mp3'));
-    const semiMaterialBg = new Audio(buildPublicUrl('sounds/SE/semiMaterial/semiMaterial_bg.mp3'));
-    const semiMaterialCharge = new Audio(buildPublicUrl('sounds/SE/semiMaterial/semiMaterial_charge.mp3'));
-    const semiMaterialGlass = new Audio(buildPublicUrl('sounds/SE/semiMaterial/semiMaterial_glass.mp3'));
+    const igniteTorchFire = new Audio(buildPublicUrl('sounds/SE/earthShadow/torch/fire.mp3'));
+    const rope = new Audio(buildPublicUrl('sounds/SE/earthShadow/rope/rope.mp3'));
+    const droplet = new Audio(buildPublicUrl('sounds/SE/earthShadow/spring/droplet.mp3'));
+    const semiMaterialBg = new Audio(buildPublicUrl('sounds/SE/earthShadow/semiMaterial/semiMaterial_bg.mp3'));
+    const semiMaterialCharge = new Audio(buildPublicUrl('sounds/SE/earthShadow/semiMaterial/semiMaterial_charge.mp3'));
+    const semiMaterialGlass = new Audio(buildPublicUrl('sounds/SE/earthShadow/semiMaterial/semiMaterial_glass.mp3'));
     const burrowingWormEarthPlayers = BURROWING_WORM_BURROWS.map(() =>
-      new Audio(buildPublicUrl('sounds/SE/earthquake.mp3'))
+      new Audio(buildPublicUrl('sounds/SE/earthShadow/earthquake/earthquake.mp3'))
     );
     const burrowingWormDrillPlayers = BURROWING_WORM_BURROWS.map(() =>
-      new Audio(buildPublicUrl('sounds/SE/worm/worm_drill.mp3'))
+      new Audio(buildPublicUrl('sounds/SE/earthShadow/worm/worm_drill.mp3'))
     );
-    const burrowingWormAttack = new Audio(buildPublicUrl('sounds/SE/worm/worm_attack.mp3'));
-    const snakeTrapHiss = new Audio(buildPublicUrl('sounds/SE/snake/snake_hiss.mp3'));
+    const burrowingWormAttack = new Audio(buildPublicUrl('sounds/SE/earthShadow/worm/worm_attack.mp3'));
+    const snakeTrapHiss = new Audio(buildPublicUrl('sounds/SE/earthShadow/snake/snake_hiss.mp3'));
     const snakeTrapAttackPlayers = Array.from({ length: SNAKE_TRAP_ATTACK_POOL_SIZE }, () => [
-      new Audio(buildPublicUrl('sounds/SE/snake/snake_attack_1.mp3')),
-      new Audio(buildPublicUrl('sounds/SE/snake/snake_attack_2.mp3')),
+      new Audio(buildPublicUrl('sounds/SE/earthShadow/snake/snake_attack_1.mp3')),
+      new Audio(buildPublicUrl('sounds/SE/earthShadow/snake/snake_attack_2.mp3')),
     ]);
-    const cthRlyehDream = new Audio(buildPublicUrl('sounds/SE/dive.mp3'));
-    const godPowerBlocked = new Audio(buildPublicUrl('sounds/SE/god-power-blocked.mp3'));
+    const cthRlyehDream = new Audio(buildPublicUrl('sounds/SE/starsCall/cth/dive.mp3'));
+    const godPowerBlocked = new Audio(buildPublicUrl('sounds/SE/earthShadow/godPowerBlocked/god-power-blocked.mp3'));
     const tsgSlimePopVariants = Array.from({ length: TSG_SLIME_POP_VARIANT_COUNT }, (_, i) =>
-      new Audio(buildPublicUrl(`sounds/SE/bubble/bubble${i + 1}.mp3`))
+      new Audio(buildPublicUrl(`sounds/SE/earthShadow/gods/tsathoggua/bubble${i + 1}.mp3`))
     );
     const oneCardShiftVariants = ONE_CARD_SHIFT_VARIANTS.map(config => ({
       ...config,
       audio: new Audio(buildPublicUrl(config.path)),
     }));
-    const multiCardShift = new Audio(buildPublicUrl('sounds/SE/card/multi_card_shift.mp3'));
-    const diceRoll = new Audio(buildPublicUrl('sounds/SE/roll-dice.mp3'));
-    const turnStart = new Audio(buildPublicUrl('sounds/SE/turn-start.mp3'));
-    const skillHunt = new Audio(buildPublicUrl('sounds/SE/skill-hunt.mp3'));
-    const skillSwap = new Audio(buildPublicUrl('sounds/SE/skill-swap.mp3'));
-    const skillBewitch = new Audio(buildPublicUrl('sounds/SE/skill-bewitch.mp3'));
-    const godHighlight = new Audio(buildPublicUrl('sounds/SE/encounter/god_highlight.mp3'));
-    const negativeCardFlip = new Audio(buildPublicUrl('sounds/SE/encounter/negative-card-flip.mp3'));
-    const caveDuelBg = new Audio(buildPublicUrl('sounds/SE/caveDuel/caveDuel_bg.mp3'));
-    const caveDuelWin = new Audio(buildPublicUrl('sounds/SE/caveDuel/caveDuel_win.mp3'));
-    const caveDuelLose = new Audio(buildPublicUrl('sounds/SE/caveDuel/caveDuel_lose.mp3'));
-    const wheelSpin = new Audio(buildPublicUrl('sounds/SE/wheel-spin.mp3'));
-    const blackGoatRun = new Audio(buildPublicUrl('sounds/SE/blackGoat/blackGoat_run_transfer.mp3'));
+    const multiCardShift = new Audio(buildPublicUrl('sounds/SE/common/card/multi_card_shift.mp3'));
+    const diceRoll = new Audio(buildPublicUrl('sounds/SE/common/dice/roll-dice.mp3'));
+    const turnStart = new Audio(buildPublicUrl('sounds/SE/common/turn/turn-start.mp3'));
+    const skillHunt = new Audio(buildPublicUrl('sounds/SE/common/skills/skill-hunt.mp3'));
+    const skillSwap = new Audio(buildPublicUrl('sounds/SE/common/skills/skill-swap.mp3'));
+    const skillBewitch = new Audio(buildPublicUrl('sounds/SE/common/skills/skill-bewitch.mp3'));
+    const godHighlight = new Audio(buildPublicUrl('sounds/SE/common/encounter/god_highlight.mp3'));
+    const vritraImmortalReveal = new Audio(buildPublicUrl('sounds/SE/earthShadow/gods/vritra/heartbeat.mp3'));
+    const positiveCardFlip = new Audio(buildPublicUrl('sounds/SE/common/encounter/positive-card-flip.mp3'));
+    const neutralCardFlip = new Audio(buildPublicUrl('sounds/SE/common/encounter/neutral-card-flip.mp3'));
+    const negativeCardFlip = new Audio(buildPublicUrl('sounds/SE/common/encounter/negative-card-flip.mp3'));
+    const caveDuelBg = new Audio(buildPublicUrl('sounds/SE/earthShadow/caveDuel/caveDuel_bg.mp3'));
+    const caveDuelWin = new Audio(buildPublicUrl('sounds/SE/earthShadow/caveDuel/caveDuel_win.mp3'));
+    const caveDuelLose = new Audio(buildPublicUrl('sounds/SE/earthShadow/caveDuel/caveDuel_lose.mp3'));
+    const wheelSpin = new Audio(buildPublicUrl('sounds/SE/common/dice/wheel-spin.mp3'));
+    const blackGoatRun = new Audio(buildPublicUrl('sounds/SE/earthShadow/gods/blackGoat/blackGoat_run_transfer.mp3'));
     const blackGoatPulseVariants = Array.from({ length: BLACK_GOAT_PULSE_VARIANT_COUNT }, (_, i) =>
-      new Audio(buildPublicUrl(`sounds/SE/blackGoat/blackGoat_pulse_${i + 1}.mp3`))
+      new Audio(buildPublicUrl(`sounds/SE/earthShadow/gods/blackGoat/blackGoat_pulse_${i + 1}.mp3`))
     );
     const guillotineDeathVariants = GUILLOTINE_DEATH_VARIANTS.map(config => ({
       ...config,
       audio: new Audio(buildPublicUrl(config.path)),
     }));
     const petrifyDeathVariants = Array.from({ length: PETRIFY_DEATH_VARIANT_COUNT }, (_, i) =>
-      new Audio(buildPublicUrl(`sounds/SE/death/petrify_${i + 1}.mp3`))
+      new Audio(buildPublicUrl(`sounds/SE/earthShadow/petrifyingFormula/petrify_${i + 1}.mp3`))
     );
-    const volcanoBg = new Audio(buildPublicUrl('sounds/SE/volcano/volcano_bg.mp3'));
+    const volcanoBg = new Audio(buildPublicUrl('sounds/SE/earthShadow/volcano/volcano_bg.mp3'));
     const volcanoMeteorPlayers = Array.from({ length: VOLCANO_AUDIO_POOL_SIZE }, () => ({
-      meteor1: new Audio(buildPublicUrl('sounds/SE/volcano/volcano_meteor1.mp3')),
-      meteor2: new Audio(buildPublicUrl('sounds/SE/volcano/volcano_meteor2.mp3')),
+      meteor1: new Audio(buildPublicUrl('sounds/SE/earthShadow/volcano/volcano_meteor1.mp3')),
+      meteor2: new Audio(buildPublicUrl('sounds/SE/earthShadow/volcano/volcano_meteor2.mp3')),
     }));
     const volcanoCooldownPlayers = Array.from({ length: VOLCANO_AUDIO_POOL_SIZE }, () =>
-      new Audio(buildPublicUrl('sounds/SE/volcano/volcano_cooldown.mp3'))
+      new Audio(buildPublicUrl('sounds/SE/earthShadow/volcano/volcano_cooldown.mp3'))
     );
     const hpDamageVariants = Array.from({ length: 6 }, (_, i) =>
-      new Audio(buildPublicUrl(`sounds/SE/hpDamageVariants/hpDamage${i + 1}.mp3`))
+      new Audio(buildPublicUrl(`sounds/SE/common/combat/hpDamageVariants/hpDamage${i + 1}.mp3`))
     );
     const hpRecoverVariants = Array.from({ length: 5 }, (_, i) =>
-      new Audio(buildPublicUrl(`sounds/SE/hpRecoverVariants/hpRecover${i + 1}.mp3`))
+      new Audio(buildPublicUrl(`sounds/SE/common/combat/hpRecoverVariants/hpRecover${i + 1}.mp3`))
     );
     const sanDamageConfigs = [
-      { path: 'sounds/SE/sanDamageVariants/sanDamage1.mp3', impactOffsetMs: 800 },
-      { path: 'sounds/SE/sanDamageVariants/sanDamage2.mp3', impactOffsetMs: 90 },
+      { path: 'sounds/SE/common/combat/sanDamageVariants/sanDamage1.mp3', impactOffsetMs: 800 },
+      { path: 'sounds/SE/common/combat/sanDamageVariants/sanDamage2.mp3', impactOffsetMs: 90 },
     ];
     const sanDamageVariants = sanDamageConfigs.map(config => ({
       ...config,
       audio: new Audio(buildPublicUrl(config.path)),
     }));
     const sanRecoverVariants = Array.from({ length: 4 }, (_, i) =>
-      new Audio(buildPublicUrl(`sounds/SE/sanRecoverVariants/sanRecover${i + 1}.mp3`))
+      new Audio(buildPublicUrl(`sounds/SE/common/combat/sanRecoverVariants/sanRecover${i + 1}.mp3`))
     );
     [main, battleEarth, battleStars].forEach(audio => {
       audio.loop = true;
@@ -394,6 +406,12 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     skillBewitch.volume = SKILL_BEWITCH_VOLUME;
     godHighlight.preload = 'auto';
     godHighlight.volume = GOD_HIGHLIGHT_VOLUME;
+    vritraImmortalReveal.preload = 'auto';
+    vritraImmortalReveal.volume = VRI_IMMORTAL_REVEAL_VOLUME;
+    positiveCardFlip.preload = 'auto';
+    positiveCardFlip.volume = POSITIVE_CARD_FLIP_VOLUME;
+    neutralCardFlip.preload = 'auto';
+    neutralCardFlip.volume = NEUTRAL_CARD_FLIP_VOLUME;
     negativeCardFlip.preload = 'auto';
     negativeCardFlip.volume = NEGATIVE_CARD_FLIP_VOLUME;
     caveDuelBg.preload = 'auto';
@@ -487,6 +505,9 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       skillSwap,
       skillBewitch,
       godHighlight,
+      vritraImmortalReveal,
+      positiveCardFlip,
+      neutralCardFlip,
       negativeCardFlip,
       caveDuel: {
         bg: caveDuelBg,
@@ -513,7 +534,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       sfxStopTimersRef.current = {};
       Object.values(sfxFadeFramesRef.current).forEach(frame => cancelAnimationFrame(frame));
       sfxFadeFramesRef.current = {};
-      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, ...nightWindVariants, igniteTorchFire, rope, droplet, semiMaterialBg, semiMaterialCharge, semiMaterialGlass, ...burrowingWormEarthPlayers, ...burrowingWormDrillPlayers, burrowingWormAttack, snakeTrapHiss, ...snakeTrapAttackPlayers.flat(), cthRlyehDream, godPowerBlocked, ...tsgSlimePopVariants, ...oneCardShiftVariants.map(({ audio }) => audio), multiCardShift, diceRoll, turnStart, skillHunt, skillSwap, skillBewitch, godHighlight, negativeCardFlip, caveDuelBg, caveDuelWin, caveDuelLose, wheelSpin, blackGoatRun, ...blackGoatPulseVariants, ...guillotineDeathVariants.map(({ audio }) => audio), ...petrifyDeathVariants, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
+      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, ...nightWindVariants, igniteTorchFire, rope, droplet, semiMaterialBg, semiMaterialCharge, semiMaterialGlass, ...burrowingWormEarthPlayers, ...burrowingWormDrillPlayers, burrowingWormAttack, snakeTrapHiss, ...snakeTrapAttackPlayers.flat(), cthRlyehDream, godPowerBlocked, ...tsgSlimePopVariants, ...oneCardShiftVariants.map(({ audio }) => audio), multiCardShift, diceRoll, turnStart, skillHunt, skillSwap, skillBewitch, godHighlight, vritraImmortalReveal, positiveCardFlip, neutralCardFlip, negativeCardFlip, caveDuelBg, caveDuelWin, caveDuelLose, wheelSpin, blackGoatRun, ...blackGoatPulseVariants, ...guillotineDeathVariants.map(({ audio }) => audio), ...petrifyDeathVariants, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
         try {
           audio.pause();
           audio.currentTime = 0;
@@ -1934,6 +1955,98 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       } catch { /* ignore */ }
     };
   }, [noteUserGesture]);
+  const playVritraImmortalRevealSound = useCallback(() => {
+    noteUserGesture();
+    const audio = sfxRefs.current.vritraImmortalReveal;
+    if (!audio) return undefined;
+    const fadeKey = 'vritraImmortalReveal';
+    clearTimeout(sfxStopTimersRef.current.vritraImmortalReveal);
+    if (sfxFadeFramesRef.current[fadeKey]) {
+      cancelAnimationFrame(sfxFadeFramesRef.current[fadeKey]);
+      sfxFadeFramesRef.current[fadeKey] = null;
+    }
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = VRI_IMMORTAL_REVEAL_VOLUME;
+      audio.playbackRate = 1;
+      audio.play().catch(() => { });
+      sfxStopTimersRef.current.vritraImmortalReveal = setTimeout(() => {
+        fadeOutAudio(audio, fadeKey, VRI_IMMORTAL_REVEAL_FADE_MS, VRI_IMMORTAL_REVEAL_VOLUME, true);
+      }, Math.max(0, VRI_IMMORTAL_REVEAL_STOP_MS - VRI_IMMORTAL_REVEAL_FADE_MS));
+    } catch { /* ignore */ }
+    return () => {
+      clearTimeout(sfxStopTimersRef.current.vritraImmortalReveal);
+      if (sfxFadeFramesRef.current[fadeKey]) {
+        cancelAnimationFrame(sfxFadeFramesRef.current[fadeKey]);
+        sfxFadeFramesRef.current[fadeKey] = null;
+      }
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = VRI_IMMORTAL_REVEAL_VOLUME;
+        audio.playbackRate = 1;
+      } catch { /* ignore */ }
+    };
+  }, [fadeOutAudio, noteUserGesture]);
+  const playPositiveCardFlipSound = useCallback(() => {
+    noteUserGesture();
+    const audio = sfxRefs.current.positiveCardFlip;
+    if (!audio) return undefined;
+    clearTimeout(sfxStopTimersRef.current.positiveCardFlip);
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = POSITIVE_CARD_FLIP_VOLUME;
+      audio.playbackRate = 1;
+      audio.play().catch(() => { });
+      sfxStopTimersRef.current.positiveCardFlip = setTimeout(() => {
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.volume = POSITIVE_CARD_FLIP_VOLUME;
+        } catch { /* ignore */ }
+      }, POSITIVE_CARD_FLIP_STOP_MS);
+    } catch { /* ignore */ }
+    return () => {
+      clearTimeout(sfxStopTimersRef.current.positiveCardFlip);
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = POSITIVE_CARD_FLIP_VOLUME;
+        audio.playbackRate = 1;
+      } catch { /* ignore */ }
+    };
+  }, [noteUserGesture]);
+  const playNeutralCardFlipSound = useCallback(() => {
+    noteUserGesture();
+    const audio = sfxRefs.current.neutralCardFlip;
+    if (!audio) return undefined;
+    clearTimeout(sfxStopTimersRef.current.neutralCardFlip);
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = NEUTRAL_CARD_FLIP_VOLUME;
+      audio.playbackRate = 1;
+      audio.play().catch(() => { });
+      sfxStopTimersRef.current.neutralCardFlip = setTimeout(() => {
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.volume = NEUTRAL_CARD_FLIP_VOLUME;
+        } catch { /* ignore */ }
+      }, NEUTRAL_CARD_FLIP_STOP_MS);
+    } catch { /* ignore */ }
+    return () => {
+      clearTimeout(sfxStopTimersRef.current.neutralCardFlip);
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = NEUTRAL_CARD_FLIP_VOLUME;
+        audio.playbackRate = 1;
+      } catch { /* ignore */ }
+    };
+  }, [noteUserGesture]);
   const playNegativeCardFlipSound = useCallback(() => {
     noteUserGesture();
     const audio = sfxRefs.current.negativeCardFlip;
@@ -2015,6 +2128,9 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     playGuillotineDeathSound,
     playPetrifyDeathSound,
     playGodHighlightSound,
+    playVritraImmortalRevealSound,
+    playPositiveCardFlipSound,
+    playNeutralCardFlipSound,
     playNegativeCardFlipSound,
   };
 }

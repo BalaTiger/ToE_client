@@ -516,11 +516,11 @@ function RoadmapModal({ onClose }) {
         <div style={{ fontFamily: "'Cinzel',serif", fontSize: 11, color: '#b07828', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16, textAlign: 'center' }}>— 版本更新计划 —</div>
         {/* Current version */}
         <div style={{ marginBottom: 12 }}>
-          <div style={{ fontFamily: "'Cinzel',serif", fontSize: 11, color: '#c8a96e', letterSpacing: 1, marginBottom: 4 }}>当前版本：0.1.4</div>
+          <div style={{ fontFamily: "'Cinzel',serif", fontSize: 11, color: '#c8a96e', letterSpacing: 1, marginBottom: 4 }}>当前版本：0.1.5</div>
           {[
+            '新增卡面和音效！',
             '感谢九艺夏日游艺节现场的试玩反馈！新手教程全面翻新，已加入技能讲解',
             '追猎者追捕技能调整为：放弃追捕后，本回合禁用。现在追猎者必须更谨慎挑选攻击目标，AI追猎者也不会再一直说书了',
-            '“穴居人战争”、“增殖的Z”等卡牌效果调整',
             '联机ID池新增神秘金色ID',
           ].map((t, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 7 }}>
