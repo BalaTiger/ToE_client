@@ -32,7 +32,10 @@ function useIllustrationReady(path) {
 }
 
 function getCardFaceKind(card) {
-  return card?.isGod ? 'god' : 'zone';
+  if (card?.isGod) return 'god';
+  if (card?.isBlackGoatYoung || card?.isTsathogguaSlime) return 'token';
+  if (card?.effect && !card?.isZone) return 'inspection';
+  return 'zone';
 }
 
 function clampLevel(level) {
@@ -64,6 +67,7 @@ function getEffectText(card, godLevel) {
   }
   if (card.type === 'geomagneticRestore') return card.desc || '这张牌消失并消除当前"地磁反转"效果';
   if (card.type === 'blankZone') return card.desc || '任意字母与数字';
+  if (card.effect && !card.isZone) return card.desc || INSPECTION_EFFECT_TEXT[card.effect] || '';
   return card.desc || '';
 }
 
@@ -150,9 +154,26 @@ const FLAVOR_FONT = "'KaiTi','STKaiti','FangSong','STFangsong','Noto Serif SC',s
 const FLAVOR_ITALIC_SKEW = 'skewX(-8deg)';
 const CODE_FONT = "'Cinzel Decorative','Cinzel','Times New Roman',serif";
 
+const INSPECTION_EFFECT_TEXT = {
+  adjacentDamageHP: '相邻角色失去 1 HP',
+  selfDamageHP: '失去 1 HP',
+  disableRest: '下一回合禁用“休息”',
+  nothing: '什么也不做',
+  flip: '翻面',
+  discardRandom: '随机弃一张牌',
+  disableSkill: '下一回合禁用技能',
+  handLimitDecrease: '下一回合手牌上限 -1',
+  healSAN: '恢复 1 SAN',
+  drawCard: '从牌堆摸一张牌',
+  sealLoosening: '连续翻出两次时邪神复活',
+  houndsOfTindalos: '首个超时超过 15 秒的回合失去 4 HP',
+};
+
 const EFFECT_BOX = {
   zone: { left: 45, top: 382, width: 302, height: 104 },
   god: { left: 46, top: 392, width: 300, height: 96 },
+  inspection: { left: 45, top: 445, width: 302, height: 72 },
+  token: { left: 42, top: 392, width: 308, height: 142 },
 };
 
 const FLAVOR_BOX = {
@@ -419,6 +440,50 @@ function GodCardText({ card, godLevel }) {
   );
 }
 
+function InspectionCardText({ card }) {
+  const name = getDisplayName(card);
+  return (
+    <>
+      <ScaledText
+        style={{
+          top: 78,
+          padding: '0 42px',
+          fontFamily: TITLE_FONT,
+          fontSize: getZoneTitleFontSize(name) + 2,
+          fontWeight: 800,
+          lineHeight: 1.08,
+          letterSpacing: 7,
+        }}
+      >
+        {name}
+      </ScaledText>
+      <EffectTextBlock text={getEffectText(card, 1)} isGod={false} box={EFFECT_BOX.inspection} />
+    </>
+  );
+}
+
+function TokenCardText({ card }) {
+  const name = getDisplayName(card);
+  return (
+    <>
+      <ScaledText
+        style={{
+          top: 74,
+          padding: '0 38px',
+          fontFamily: TITLE_FONT,
+          fontSize: getZoneTitleFontSize(name),
+          fontWeight: 800,
+          lineHeight: 1.06,
+          letterSpacing: name.length > 7 ? 3 : 6,
+        }}
+      >
+        {name}
+      </ScaledText>
+      <EffectTextBlock text={getEffectText(card, 1)} isGod={false} box={EFFECT_BOX.token} />
+    </>
+  );
+}
+
 function CardFaceImage({
   card,
   godLevel = 1,
@@ -428,7 +493,12 @@ function CardFaceImage({
 }) {
   if (!card) return null;
   const kind = getCardFaceKind(card);
-  const backgroundPath = kind === 'god' ? CARD_FACE_BACKGROUND_FILES[1] : CARD_FACE_BACKGROUND_FILES[0];
+  const backgroundPath = {
+    zone: CARD_FACE_BACKGROUND_FILES[0],
+    god: CARD_FACE_BACKGROUND_FILES[1],
+    inspection: CARD_FACE_BACKGROUND_FILES[2],
+    token: CARD_FACE_BACKGROUND_FILES[3],
+  }[kind];
   const height = Math.round(width * CARD_FACE_RATIO);
   const scale = width / CARD_FACE_WIDTH;
   return (
@@ -497,7 +567,11 @@ function CardFaceImage({
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
           {kind === 'god'
             ? <GodCardText card={card} godLevel={godLevel} />
-            : <ZoneCardText card={card} />}
+            : kind === 'inspection'
+              ? <InspectionCardText card={card} />
+              : kind === 'token'
+                ? <TokenCardText card={card} />
+                : <ZoneCardText card={card} />}
         </div>
       </div>
     </div>

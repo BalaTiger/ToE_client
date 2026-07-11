@@ -88,12 +88,20 @@ function useDecodedImages(paths, enabled = true) {
   return ready;
 }
 
-function useCardBackStyle(expansionKey, enabled = true) {
-  const anim = getAnimatedCardBack(expansionKey);
-  const fallbackImage = buildPublicUrl(getCardBackImage(expansionKey));
+function getSpecialCardBackImage(card) {
+  if (card?.isBlackGoatYoung || card?.isTsathogguaSlime) return '/img/card/cardback_token.png';
+  if (card?.effect && !card?.isGod && !card?.isZone) return '/img/card/cardback_sancheck.png';
+  return null;
+}
+
+function useCardBackStyle(expansionKey, enabled = true, card) {
+  const specialBackImage = getSpecialCardBackImage(card);
+  const anim = specialBackImage ? null : getAnimatedCardBack(expansionKey);
+  const fallbackImage = buildPublicUrl(specialBackImage || getCardBackImage(expansionKey));
   const framePaths = React.useMemo(() => {
+    if (specialBackImage) return [];
     return getAnimatedCardBackFramePaths(expansionKey, true).map(path => buildPublicUrl(path));
-  }, [expansionKey]);
+  }, [expansionKey, specialBackImage]);
   const framesReady = useDecodedImages(framePaths, enabled && framePaths.length > 0);
   const frame = useSpriteFrame(enabled && framesReady, anim?.frameCount || 0, anim?.fps || 12);
 
@@ -135,11 +143,12 @@ function CardBackFrameImage({ cardBackStyle }) {
 function AnimatedCardBack({
   expansionKey = '地神的潜影',
   animated = true,
+  card,
   style,
   className,
   children,
 }) {
-  const cardBackStyle = useCardBackStyle(expansionKey, animated);
+  const cardBackStyle = useCardBackStyle(expansionKey, animated, card);
   const isFrame = cardBackStyle.mode === 'frame';
   const {
     mode: _mode,
@@ -175,9 +184,10 @@ function AnimatedCardBack({
 function CardBackLayer({
   expansionKey = '地神的潜影',
   animated = true,
+  card,
   style,
 }) {
-  const cardBackStyle = useCardBackStyle(expansionKey, animated);
+  const cardBackStyle = useCardBackStyle(expansionKey, animated, card);
   const isFrame = cardBackStyle.mode === 'frame';
   const {
     mode: _mode,

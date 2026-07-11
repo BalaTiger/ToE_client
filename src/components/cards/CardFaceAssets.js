@@ -11,6 +11,8 @@ export const CARD_FACE_RATIO = CARD_FACE_HEIGHT / CARD_FACE_WIDTH;
 export const CARD_FACE_BACKGROUND_FILES = [
   '/img/card/cardbg_zone.webp',
   '/img/card/cardbg_god.webp',
+  '/img/card/cardbg_sancheck.png',
+  '/img/card/cardbg_token.png',
 ];
 
 const ZONE_ILLUSTRATION_FILE_BY_NAME = {

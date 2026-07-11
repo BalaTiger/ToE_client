@@ -1,6 +1,6 @@
 {
-  "version": "7747335f4b5bebf8",
-  "generatedAt": "2026-07-10T13:50:45.310Z",
+  "version": "f4744cdb9ff3aa35",
+  "generatedAt": "2026-07-11T13:10:46.304Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -59,8 +59,8 @@
     {
       "path": "/fonts/fonts.css",
       "type": "style",
-      "size": 1462,
-      "revision": "f430ec735e051872"
+      "size": 1524,
+      "revision": "dfd4d496028a83ab"
     },
     {
       "path": "/img/QRCode.webp",
@@ -151,6 +151,12 @@
       "type": "image",
       "size": 7898,
       "revision": "1271e3afd5281068"
+    },
+    {
+      "path": "/img/card/5afc1b34-a45d-496d-a9fb-e4774617bc7c.png",
+      "type": "image",
+      "size": 2391478,
+      "revision": "d8c90b1e465e7348"
     },
     {
       "path": "/img/card/animated/earth_shadow/frame_00.webp",
@@ -299,8 +305,8 @@
     {
       "path": "/img/card/animated/manifest.json",
       "type": "asset",
-      "size": 2843,
-      "revision": "a0e679357d8a9d9f"
+      "size": 2916,
+      "revision": "0af8f75277b7b00e"
     },
     {
       "path": "/img/card/animated/stars_call/frame_00.webp",
@@ -465,10 +471,22 @@
       "revision": "10dcf685a51ace7a"
     },
     {
+      "path": "/img/card/cardback_sancheck.png",
+      "type": "image",
+      "size": 2703317,
+      "revision": "da6651f0c75f461a"
+    },
+    {
       "path": "/img/card/cardback_stars_call.webp",
       "type": "image",
       "size": 73844,
       "revision": "669a8fe9d3bcb468"
+    },
+    {
+      "path": "/img/card/cardback_token.png",
+      "type": "image",
+      "size": 2670832,
+      "revision": "c2feff89706538a2"
     },
     {
       "path": "/img/card/cardbg_god.webp",
@@ -477,10 +495,28 @@
       "revision": "fc74c41ed687182d"
     },
     {
+      "path": "/img/card/cardbg_sancheck.png",
+      "type": "image",
+      "size": 2175936,
+      "revision": "864ca8d6a385b392"
+    },
+    {
+      "path": "/img/card/cardbg_token.png",
+      "type": "image",
+      "size": 2002641,
+      "revision": "30e48bd431171073"
+    },
+    {
       "path": "/img/card/cardbg_zone.webp",
       "type": "image",
       "size": 145436,
       "revision": "fe4aeb634d22e6f5"
+    },
+    {
+      "path": "/img/card/cba5d3a3-b11d-4853-b01d-51451c7b3d92.png",
+      "type": "image",
+      "size": 2284650,
+      "revision": "37c7103ea0a88139"
     },
     {
       "path": "/img/card/highlight/apo.webp",
@@ -1115,8 +1151,8 @@
     {
       "path": "/img/effects/evil_goat_sigil.svg",
       "type": "image",
-      "size": 1962,
-      "revision": "d1f3ad50c492f6dc"
+      "size": 1992,
+      "revision": "cfbe97b746babef7"
     },
     {
       "path": "/img/effects/evil_goat_spirit_run_00.webp",
@@ -1271,8 +1307,8 @@
     {
       "path": "/socket.io.min.js",
       "type": "script",
-      "size": 49993,
-      "revision": "73eba16bc895fdfa"
+      "size": 50000,
+      "revision": "6a129d28411bef78"
     },
     {
       "path": "/sounds/BGM/battle_earth_shadow.mp3",

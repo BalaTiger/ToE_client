@@ -139,21 +139,13 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
       <div style={{
         position:'absolute',
         width:travelW,height:travelH,borderRadius:4,
-        backgroundColor:isInspection?'#151c28':'#100c08',
-        backgroundImage:isInspection?'linear-gradient(135deg,#151c28,#090d15)':undefined,
-        border:isInspection?'1.5px solid #4a3010':'none',
+        backgroundColor:'#100c08',
         boxShadow:'0 4px 18px rgba(0,0,0,0.7)',
         overflow:'hidden',
         ...destStyle,
         animation:'cardTravelToPlayer 0.65s cubic-bezier(0.3,0,0.2,1) forwards',
       }}>
-        {!isInspection&&<CardBackLayer expansionKey={expansionKey}/>}
-        {isInspection&&<>
-          <div style={{position:'absolute',inset:0,borderRadius:4,
-            background:'repeating-linear-gradient(45deg,#8ca4d220 0px,#8ca4d220 1px,transparent 1px,transparent 4px)'}}/>
-          <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',
-            fontFamily:"'Cinzel',serif",fontSize:14,color:'#d7e6ff',opacity:0.85}}>◈</div>
-        </>}
+        <CardBackLayer expansionKey={expansionKey} card={card}/>
       </div>
     </div>
   );
@@ -299,23 +291,15 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
         }}>
           <div style={{
             position:'absolute',inset:0,backfaceVisibility:'hidden',transform:'rotateY(180deg)',
-            backgroundColor:isInspection?'#151c28':'#100c08',
-            backgroundImage:isInspection?'linear-gradient(135deg,#151c28,#090d15)':undefined,
-            border:isInspection?'2px solid #6a4a20':'none',borderRadius:5,
+            backgroundColor:'#100c08',
+            borderRadius:5,
             display:'flex',alignItems:'center',justifyContent:'center',
             boxShadow:'0 0 20px #0a0600',
             overflow:'hidden',
           }}>
-            {!isInspection&&<CardBackLayer expansionKey={expansionKey}/>}
-            {isInspection&&<>
-              <div style={{position:'absolute',inset:px(6),border:'1px solid #6a7fa8',borderRadius:3,opacity:0.7}}/>
-              <div style={{position:'absolute',inset:px(12),border:'1px solid #8ca4d266',borderRadius:2}}/>
-              <div style={{textAlign:'center'}}>
-                <div style={{fontSize:px(36),color:'#d7e6ff',lineHeight:1,filter:'drop-shadow(0 0 6px #9dc1ff)'}}>◈</div>
-              </div>
-            </>}
+            <CardBackLayer expansionKey={expansionKey} card={card}/>
           </div>
-          {(!isInspection&&!hideZoneIdentity)?(
+          {!hideZoneIdentity?(
             <div style={{
               position:'absolute',inset:0,backfaceVisibility:'hidden',
               borderRadius:5,

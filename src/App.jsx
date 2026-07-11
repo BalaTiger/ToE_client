@@ -1291,6 +1291,7 @@ export default function Game(){
   const handAreaRef=useRef(null);
   const mobileGodCardRefs=useRef(new Map());
   const igniteTorchFlamingCardIdsRef=useRef(new Set());
+  const debugInspectionFlipHandlerRef=useRef(null);
   const debugGodPowerBlockedHandlerRef=useRef(null);
   const debugTsgSlimePopHandlerRef=useRef(null);
   const debugVritraImmortalRevealHandlerRef=useRef(null);
@@ -1548,6 +1549,14 @@ export default function Game(){
 
   useEffect(()=>{
     if(!import.meta.env.DEV||typeof window==='undefined')return undefined;
+    const playInspectionFlip=(options={})=>{
+      const handler=debugInspectionFlipHandlerRef.current;
+      if(!handler){
+        console.warn('[toeDebug] playInspectionFlip: debug handler unavailable');
+        return Promise.resolve({ok:false,reason:'unavailable'});
+      }
+      return handler(options);
+    };
     const playGodPowerBlocked=(options={})=>{
       const handler=debugGodPowerBlockedHandlerRef.current;
       if(!handler){
@@ -1590,6 +1599,7 @@ export default function Game(){
     };
     const debugRoot={...(window.__toeDebug||{})};
     delete debugRoot.playIgniteTorchDiscard;
+    debugRoot.playInspectionFlip=playInspectionFlip;
     debugRoot.playGodPowerBlocked=playGodPowerBlocked;
     debugRoot.playTsgSlimePop=playTsgSlimePop;
     debugRoot.playVritraImmortalReveal=playVritraImmortalReveal;
@@ -1597,6 +1607,9 @@ export default function Game(){
     debugRoot.playPetrifyDeath=playPetrifyDeath;
     window.__toeDebug=debugRoot;
     return ()=>{
+      if(window.__toeDebug?.playInspectionFlip===playInspectionFlip){
+        delete window.__toeDebug.playInspectionFlip;
+      }
       if(window.__toeDebug?.playGodPowerBlocked===playGodPowerBlocked){
         delete window.__toeDebug.playGodPowerBlocked;
       }
@@ -6902,6 +6915,51 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }
     igniteTorchDiscardCard(idx);
   }
+
+  debugInspectionFlipHandlerRef.current=import.meta.env.DEV
+    ?async(options={})=>{
+      const base=latestGsRef.current;
+      if(!base?.players?.length){
+        console.warn('[toeDebug] playInspectionFlip: no active game state');
+        return {ok:false,reason:'no-game'};
+      }
+      if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current){
+        console.warn('[toeDebug] playInspectionFlip: animation queue is busy');
+        return {ok:false,reason:'busy'};
+      }
+      const targetPid=Number.isInteger(options.targetPid)?options.targetPid:0;
+      if(!base.players[targetPid]){
+        console.warn('[toeDebug] playInspectionFlip: player not found',targetPid);
+        return {ok:false,reason:'missing-player'};
+      }
+      const requestedCard=options.card&&typeof options.card==='object'?options.card:null;
+      const requestedIndex=Number.isInteger(options.cardIndex)?options.cardIndex:0;
+      const deckCard=requestedCard||INSPECTION_DECK[requestedIndex]||INSPECTION_DECK[0];
+      if(!deckCard){
+        return {ok:false,reason:'missing-card'};
+      }
+      const card={
+        ...deckCard,
+        id:deckCard.id||`debug-inspection-${Date.now()}`,
+      };
+      const targetName=localDisplayName(targetPid,base.players[targetPid].name);
+      console.info('[toeDebug] playInspectionFlip',{
+        cardName:card.name,
+        effect:card.effect,
+        targetPid,
+        targetName,
+      });
+      triggerAnimQueue([{
+        type:'DRAW_CARD',
+        card,
+        triggerName:'检定牌',
+        targetPid,
+        sourcePile:'inspection',
+        skipTravel:!!options.skipTravel,
+      }],base,()=>{});
+      return {ok:true,cardName:card.name,effect:card.effect,targetPid,targetName};
+    }
+    :null;
 
   debugGodPowerBlockedHandlerRef.current=import.meta.env.DEV
     ?async(options={})=>{
