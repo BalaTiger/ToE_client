@@ -178,6 +178,42 @@ function findCardByLabel(players, label) {
   return null;
 }
 
+function isSameCard(first, second) {
+  if (!first || !second) return false;
+  if (first === second) return true;
+  if (first.id != null && second.id != null) return first.id === second.id;
+  return first.godKey === second.godKey
+    && first.name === second.name
+    && first.type === second.type;
+}
+
+function getPendingGodChoiceCard(state) {
+  return state?.phase === 'GOD_CHOICE' ? state.abilityData?.godCard || null : null;
+}
+
+function buildResolvedGodChoiceDiscardStep(rotated, previousGs, logDelta = []) {
+  const previousCard = getPendingGodChoiceCard(previousGs);
+  if (!previousCard || !(rotated?.discard || []).some(card => isSameCard(card, previousCard))) return null;
+
+  const drawerIdx = previousGs.abilityData?.drawerIdx ?? previousGs.currentTurn ?? 0;
+  const drawerName = previousGs.players?.[drawerIdx]?.name || rotated?.players?.[drawerIdx]?.name || '???';
+  const discardMsg = logDelta.find(line => /放弃了邪神的馈赠|\(超时\).*放弃了邪神的馈赠/.test(line || ''));
+  return {
+    type: 'DISCARD',
+    card: previousCard,
+    triggerName: localDisplayName(drawerIdx, drawerName),
+    targetPid: drawerIdx,
+    msgs: discardMsg ? [discardMsg] : [],
+    // The incoming state already contains the discarded card. Restore the
+    // pre-decision view until the card has visibly reached the discard pile.
+    visualSetupTiming: 'queueStart',
+    visualSetupPatch: {
+      players: previousGs.players,
+      discard: previousGs.discard || [],
+    },
+  };
+}
+
 export function buildMpRemoteReplayAction({
   rotated,
   previousGs,
@@ -214,6 +250,55 @@ export function buildMpRemoteReplayAction({
   ];
   const isDrawAnimationState = hasDrawAnimationState(rotated);
   const previousPendingZhuHide = isPendingZhuHideState(previousGs);
+  const resolvedGodChoiceDiscardStep = buildResolvedGodChoiceDiscardStep(rotated, previousGs, logDelta);
+  if (resolvedGodChoiceDiscardStep) {
+    const queue = appendFinalStatePatch(
+      [resolvedGodChoiceDiscardStep],
+      rotated,
+      ['players', 'discard', 'log', 'phase', 'abilityData'],
+    );
+    return withConsumedVisualEvents({
+      type: MP_REMOTE_REPLAY.ANIM_QUEUE,
+      maskedGs: buildMaskedActionState(rotated),
+      pendingGs: clearRemoteReplayHints(rotated),
+      queue,
+      visualLock: {
+        players: previousGs?.players || null,
+        zhuLight: previousGs?.zhuLight || rotated.zhuLight || null,
+      },
+    });
+  }
+  const resolvedGodChoiceCard = getPendingGodChoiceCard(previousGs);
+  if (resolvedGodChoiceCard && rotated.phase !== 'GOD_CHOICE') {
+    // The previous sync already displayed the drawn god card before the
+    // decision modal opened. A later decision sync must replay only its new
+    // effects, never the original card draw and background camera.
+    const decisionQueue = bindAnimLogChunks(
+      buildAnimQueue(previousGs, rotated).filter(step => !(step?.type === 'DRAW_CARD' && isSameCard(step.card, resolvedGodChoiceCard))),
+      { statLogs: logDelta },
+    );
+    if (decisionQueue.length) {
+      const queue = appendFinalStatePatch(
+        decisionQueue,
+        rotated,
+        ['players', 'discard', 'log', 'phase', 'abilityData'],
+      );
+      return withConsumedVisualEvents({
+        type: MP_REMOTE_REPLAY.ANIM_QUEUE,
+        maskedGs: buildMaskedActionState(rotated),
+        pendingGs: clearRemoteReplayHints(rotated),
+        queue,
+        visualLock: {
+          players: previousGs?.players || null,
+          zhuLight: previousGs?.zhuLight || rotated.zhuLight || null,
+        },
+      });
+    }
+    return withConsumedVisualEvents({
+      type: MP_REMOTE_REPLAY.SET_STATE,
+      gs: clearRemoteReplayHints(rotated),
+    });
+  }
   const endlessCorridorReplayEvent = getEndlessCorridorReplayVisualEvent(rotated);
   if (endlessCorridorReplayEvent) {
     const endlessCorridorQueue = [...(endlessCorridorReplayEvent.queue || [])];

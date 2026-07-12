@@ -59,6 +59,77 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.pendingGs.log).toEqual(['艾伦 掷出 5 点']);
   });
 
+  it('replays only the discard when another player abandons a pending god choice', () => {
+    const godCard = { id: 'god-discard', name: '奈亚拉托提普', godKey: 'NYA', isGod: true, type: 'god' };
+    const beforePlayers = [player('你'), player('艾伦'), player('贝拉')];
+    const previousGs = makeState({
+      players: beforePlayers,
+      currentTurn: 1,
+      phase: 'GOD_CHOICE',
+      abilityData: { godCard, drawerIdx: 1 },
+      log: ['艾伦 摸到 奈亚拉托提普'],
+    });
+    const buildQueue = vi.fn(() => [{ type: 'DRAW_CARD', card: godCard }]);
+    const action = buildMpRemoteReplayAction({
+      rotated: makeState({
+        players: beforePlayers,
+        currentTurn: 1,
+        phase: 'ACTION',
+        abilityData: {},
+        discard: [godCard],
+        log: ['艾伦 摸到 奈亚拉托提普', '艾伦 放弃了邪神的馈赠'],
+        // The server can retain these turn-start hints until the next turn.
+        _drawnCard: godCard,
+        _turnStartLogs: ['—— 艾伦 的回合开始 ——'],
+        _drawLogs: ['艾伦 摸到 奈亚拉托提普'],
+      }),
+      previousGs,
+      roleRevealed: true,
+      buildAnimQueue: buildQueue,
+      buildFullHandSwapTransferQueueFromLogs: vi.fn(() => []),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue[0]).toMatchObject({ type: 'DISCARD', card: godCard, targetPid: 1 });
+    expect(action.queue.some(step => step.type === 'DRAW_CARD')).toBe(false);
+    expect(buildQueue).not.toHaveBeenCalled();
+  });
+
+  it('does not replay the god draw after another player resolves a god choice', () => {
+    const godCard = { id: 'god-worship', name: '阿波菲斯', godKey: 'APO', isGod: true, type: 'god' };
+    const beforePlayers = [player('你'), player('艾伦'), player('贝拉')];
+    const buildQueue = vi.fn(() => [
+      { type: 'DRAW_CARD', card: godCard },
+      { type: 'APOPHIS_ECLIPSE', msgs: ['黑夜降临'] },
+    ]);
+    const action = buildMpRemoteReplayAction({
+      rotated: makeState({
+        players: beforePlayers,
+        currentTurn: 1,
+        phase: 'ACTION',
+        abilityData: {},
+        log: ['艾伦 摸到 阿波菲斯', '艾伦 信仰了 阿波菲斯'],
+        _drawnCard: godCard,
+        _turnStartLogs: ['—— 艾伦 的回合开始 ——'],
+        _drawLogs: ['艾伦 摸到 阿波菲斯'],
+      }),
+      previousGs: makeState({
+        players: beforePlayers,
+        currentTurn: 1,
+        phase: 'GOD_CHOICE',
+        abilityData: { godCard, drawerIdx: 1 },
+        log: ['艾伦 摸到 阿波菲斯'],
+      }),
+      roleRevealed: true,
+      buildAnimQueue: buildQueue,
+      buildFullHandSwapTransferQueueFromLogs: vi.fn(() => []),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.some(step => step.type === 'DRAW_CARD')).toBe(false);
+    expect(action.queue).toContainEqual(expect.objectContaining({ type: 'APOPHIS_ECLIPSE' }));
+  });
+
   it('turns moldy-food logs into a moldy-food dice animation action', () => {
     const action = buildAction(makeState({
       log: ['【霉变食物】艾伦 掷出 1 点（单数），失去 1 HP，下回合开始时不能摸牌'],

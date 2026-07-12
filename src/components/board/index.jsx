@@ -100,6 +100,10 @@ const CARD_BACK_STYLE={
   boxShadow:'inset 0 0 8px #0a0600',
   position:'absolute',
 };
+// Inspection cards use their own physical deck and back artwork. Keeping this
+// lightweight marker here lets AnimatedCardBack select that artwork without
+// coupling the pile to an actual inspection card instance.
+const INSPECTION_CARD_BACK={effect:'inspectionCardBack'};
 const DISCARD_ROTATIONS=[-14,-6,10,3,-18,7,-3,12,-9,5,-15,8];
 const DISCARD_OFFSETS=[
   {x:0,y:0},{x:4,y:-3},{x:-3,y:2},{x:6,y:1},{x:-5,y:-4},{x:2,y:5},
@@ -310,16 +314,12 @@ function InspectionPile({count,scale=1}){
           width:cardW,height:cardH,
           left:Math.round(i*1.2*scale),top:Math.round((Math.max(vis,1)-1-i)*1.2*scale),
           zIndex:i,
-          background:'linear-gradient(135deg,#151c28,#090d15)',
-          border:'1.5px solid #6a7fa8',
-          boxShadow:'0 0 16px #6a7fa833,inset 0 0 8px #00000088',
+          background:'transparent',
+          border:'none',
+          boxShadow:'0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
         };
         return(
-          <div key={i} style={style}>
-            <div style={{position:'absolute',inset:0,borderRadius:3,
-              background:'repeating-linear-gradient(45deg,#8ca4d220 0px,#8ca4d220 1px,transparent 1px,transparent 4px)'}}/>
-            {i===Math.max(vis,1)-1&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,color:'#d7e6ff',textShadow:'0 0 10px #9dc1ff'}}>◈</div>}
-          </div>
+          <AnimatedCardBack key={i} card={INSPECTION_CARD_BACK} animated={false} style={style}/>
         );
       })}
     </div>

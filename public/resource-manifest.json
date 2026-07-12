@@ -1,6 +1,6 @@
 {
-  "version": "f4744cdb9ff3aa35",
-  "generatedAt": "2026-07-11T13:10:46.304Z",
+  "version": "0f905d35572dd49b",
+  "generatedAt": "2026-07-12T14:46:52.953Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -473,8 +473,8 @@
     {
       "path": "/img/card/cardback_sancheck.png",
       "type": "image",
-      "size": 2703317,
-      "revision": "da6651f0c75f461a"
+      "size": 676507,
+      "revision": "acbd9624f280f295"
     },
     {
       "path": "/img/card/cardback_stars_call.webp",
@@ -485,8 +485,8 @@
     {
       "path": "/img/card/cardback_token.png",
       "type": "image",
-      "size": 2670832,
-      "revision": "c2feff89706538a2"
+      "size": 646649,
+      "revision": "43de18913948369f"
     },
     {
       "path": "/img/card/cardbg_god.webp",
@@ -829,6 +829,12 @@
       "type": "image",
       "size": 203078,
       "revision": "1fdcce9a267e214c"
+    },
+    {
+      "path": "/img/card/illustration/lethargy.png",
+      "type": "image",
+      "size": 2202112,
+      "revision": "a5509a63ac866910"
     },
     {
       "path": "/img/card/illustration/life_balance.webp",

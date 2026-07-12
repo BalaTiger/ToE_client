@@ -8229,7 +8229,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const secondaryDecision=(secondaryDecisionType==='tsgSlimeBalance'||secondaryDecisionType==='etherealizeRedirect')?inspectionMeta.abilityData:null;
     const basePhase=isShuBlessing?'SHU_SELECT_TARGET':'ACTION';
     const nextPhase=secondaryDecision?(secondaryDecisionType==='tsgSlimeBalance'?'TSG_SLIME_BALANCE':'ETHEREALIZE_DECISION'):basePhase;
-    const baseAbilityData=isShuBlessing?{...gs.abilityData,shuOffspringCount,shuChooserIdx:0}:gs.abilityData;
+    // The pending god card belongs only to GOD_CHOICE. Keep continuation
+    // metadata (e.g. Cthulhu/Slime/end-turn flows), but do not leak the
+    // resolved card into ACTION and let remote clients mistake it for a draw.
+    const resolvedGodChoiceContext={...(gs.abilityData||{})};
+    delete resolvedGodChoiceContext.godCard;
+    delete resolvedGodChoiceContext.drawerIdx;
+    delete resolvedGodChoiceContext.godEncounterCost;
+    const baseAbilityData=isShuBlessing?{...resolvedGodChoiceContext,shuOffspringCount,shuChooserIdx:0}:resolvedGodChoiceContext;
     const nextAbilityData=secondaryDecision
       ?{...secondaryDecision,...(fromEndTurnReplay?{fromEndTurnReplay:true}:{}),_turnOwner:gs.currentTurn??0}
       :baseAbilityData;
@@ -8262,11 +8269,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(isDiscardAction){
       const discardLog=L[L.length-1];
       const drawerIdx=gs.abilityData?.drawerIdx??gs.currentTurn??0;
-      const drawerName=localDisplayName(drawerIdx,gs.players?.[drawerIdx]?.name);
       const discardGs={...newGs,_discardedDrawnCard:true};
       const queue=[
-        {type:'DRAW_CARD',card:godCard,triggerName:drawerName,targetPid:drawerIdx,msgs:gs._drawLogs||[]},
-        {type:'DISCARD',card:godCard,triggerName:'你',targetPid:0,msgs:[discardLog]},
+        // The god draw and reveal have already completed before GOD_CHOICE opens.
+        // Replaying DRAW_CARD here also replays its background camera prelude.
+        {type:'DISCARD',card:godCard,triggerName:'你',targetPid:drawerIdx,msgs:[discardLog]},
         statePatchStep({players:P,discard:Disc}),
       ];
       if(fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue],L.slice(gs.log.length));

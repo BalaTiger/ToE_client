@@ -121,11 +121,17 @@ const CARD_FACE_META_BY_ID = {
       },
     ])
   ),
+  inspection: {
+    '昏睡': {
+      illustration: '/img/card/illustration/lethargy.png',
+    },
+  },
 };
 
 export const CARD_FACE_ILLUSTRATION_FILES = [
   ...Object.values(CARD_FACE_META_BY_ID.zone).map(meta => meta.illustration),
   ...Object.values(CARD_FACE_META_BY_ID.god).map(meta => meta.illustration),
+  ...Object.values(CARD_FACE_META_BY_ID.inspection).map(meta => meta.illustration),
 ].filter(Boolean);
 
 const decodedIllustrations = new Set();
@@ -145,6 +151,11 @@ export function getCardFaceMeta(card) {
   const flavor = getCardFlavorText(card);
   if (card?.isGod) {
     const meta = CARD_FACE_META_BY_ID.god[card?.godKey] || null;
+    if (!meta && !flavor) return null;
+    return { ...(meta || {}), flavor };
+  }
+  if (card?.effect && !card?.isZone) {
+    const meta = CARD_FACE_META_BY_ID.inspection[card?.name] || null;
     if (!meta && !flavor) return null;
     return { ...(meta || {}), flavor };
   }

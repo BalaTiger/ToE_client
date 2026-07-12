@@ -201,6 +201,16 @@ const ILLUSTRATION_LAYOUT = {
     height: 229,
     clipPath: ILLUSTRATION_CLIP_PATH,
   },
+  // The inspection frame's central window is taller and its lower edge has
+  // only shallow rounded corners (no zone-card centre crest).
+  inspection: {
+    left: 31,
+    top: 137,
+    width: 330,
+    height: 284,
+    clipPath: 'polygon(4.8% 0,95.2% 0,97.1% 0.5%,98.6% 2%,99.6% 4.8%,100% 8%,100% 92%,99.6% 95.2%,98.6% 98%,97.1% 99.5%,95.2% 100%,4.8% 100%,2.9% 99.5%,1.4% 98%,0.4% 95.2%,0 92%,0 8%,0.4% 4.8%,1.4% 2%,2.9% 0.5%)',
+    objectPosition: 'center 52%',
+  },
 };
 
 function ScaledText({ children, style }) {
@@ -299,7 +309,7 @@ function CardIllustration({ card, kind, scale }) {
   const meta = getCardFaceMeta(card);
   const ready = useIllustrationReady(meta?.illustration);
   const layout = ILLUSTRATION_LAYOUT[kind];
-  if (!meta?.illustration || !ready) return null;
+  if (!meta?.illustration || !ready || !layout) return null;
   // Positioned in real display px (design coords × scale), NOT inside the scaled 392 layer,
   // so the 1448px source stays sharp at any card size. clipPath is %-based → scale-independent.
   return (
@@ -323,7 +333,7 @@ function CardIllustration({ card, kind, scale }) {
           width: '100%',
           height: '100%',
           objectFit: 'cover',
-          objectPosition: 'center',
+          objectPosition: layout.objectPosition || 'center',
           display: 'block',
           userSelect: 'none',
           pointerEvents: 'none',
@@ -501,6 +511,9 @@ function CardFaceImage({
   }[kind];
   const height = Math.round(width * CARD_FACE_RATIO);
   const scale = width / CARD_FACE_WIDTH;
+  // The token frame already defines its silhouette with transparent pixels.
+  // Do not fill or clip those pixels with the generic rectangular card shell.
+  const hasTransparentFrame = kind === 'token';
   return (
     <div
       className={className}
@@ -508,10 +521,10 @@ function CardFaceImage({
         width,
         height,
         position: 'relative',
-        overflow: 'hidden',
-        borderRadius: 12 * scale,
-        background: '#07100d',
-        boxShadow: '0 18px 38px rgba(0,0,0,0.76), 0 0 32px rgba(190,150,86,0.20)',
+        overflow: hasTransparentFrame ? 'visible' : 'hidden',
+        borderRadius: hasTransparentFrame ? 0 : 12 * scale,
+        background: hasTransparentFrame ? 'transparent' : '#07100d',
+        boxShadow: hasTransparentFrame ? 'none' : '0 18px 38px rgba(0,0,0,0.76), 0 0 32px rgba(190,150,86,0.20)',
         transformOrigin: 'top left',
         userSelect: 'none',
         ...style,
