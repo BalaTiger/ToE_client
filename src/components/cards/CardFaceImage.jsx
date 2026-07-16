@@ -211,6 +211,17 @@ const ILLUSTRATION_LAYOUT = {
     clipPath: 'polygon(4.8% 0,95.2% 0,97.1% 0.5%,98.6% 2%,99.6% 4.8%,100% 8%,100% 92%,99.6% 95.2%,98.6% 98%,97.1% 99.5%,95.2% 100%,4.8% 100%,2.9% 99.5%,1.4% 98%,0.4% 95.2%,0 92%,0 8%,0.4% 4.8%,1.4% 2%,2.9% 0.5%)',
     objectPosition: 'center 52%',
   },
+  // The token frame has a taller window with softly rounded corners and no
+  // centre crest. Keep a small inset so artwork never paints over its thin
+  // copper-green inner line at compact hand-card sizes.
+  token: {
+    left: 31,
+    top: 128,
+    width: 330,
+    height: 268,
+    clipPath: 'polygon(5% 0,95% 0,97.2% 0.6%,98.7% 2.2%,99.6% 4.8%,100% 8%,100% 92%,99.6% 95.2%,98.7% 97.8%,97.2% 99.4%,95% 100%,5% 100%,2.8% 99.4%,1.3% 97.8%,0.4% 95.2%,0 92%,0 8%,0.4% 4.8%,1.3% 2.2%,2.8% 0.6%)',
+    objectPosition: 'center 50%',
+  },
 };
 
 function ScaledText({ children, style }) {

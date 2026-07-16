@@ -360,6 +360,7 @@ export function convertGodFollower(targetIndex, startIndex, P, D, Disc, L, inspe
     P[targetIndex].godName = nextGodCard.godKey;
     P[targetIndex].godLevel = 1;
     P[targetIndex].godZone = [{ ...nextGodCard }];
+    P[targetIndex].hasBelievedGod = true;
   }
   const processed = applySanLossToPlayerWithInspection(targetIndex, 1, startIndex, P, D, Disc, L, inspectionMeta);
   P = processed.P; D = processed.D; Disc = processed.Disc; L = processed.L; inspectionMeta = processed.inspectionMeta;
@@ -424,6 +425,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
   const action = chooseAiGodEncounterAction(ci, godCard, P, forcedConvert);
   if (action === 'upgrade') {
     P[ci].godLevel++; P[ci].godZone.push({ ...godCard });
+    P[ci].hasBelievedGod = true;
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
     msgs.push(`${P[ci].name} 邪神之力升至Lv.${P[ci].godLevel}（${godCard.power}）`);
     applyImmediateGodPower();
@@ -440,7 +442,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     const converted = convertGodFollower(ci, gs?.currentTurn ?? ci, P, D, Disc, convertBaseLog, inspectionMeta, `${P[ci].name} 改信新神，${formatSanLoss(1)}`, godCard);
     P = converted.P; D = converted.D; Disc = converted.Disc; inspectionMeta = converted.inspectionMeta;
     const extraMsgs = (converted.L || []).slice(convertBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
-    P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }];
+    P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }]; P[ci].hasBelievedGod = true;
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
     msgs.push(`${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
     applyImmediateGodPower();
@@ -453,7 +455,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
       }
     });
   } else if (action === 'worship') {
-    P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }];
+    P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }]; P[ci].hasBelievedGod = true;
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
     msgs.push(`${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
     applyImmediateGodPower();
@@ -754,14 +756,28 @@ function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta) {
   const bgyCount = P[next].hand.filter(isBlackGoatYoung).length;
   if (bgyCount > 0) {
     const beforePlayers = copyPlayers(P);
+    const logStart = L.length;
     P[next].hp = clamp(P[next].hp - bgyCount);
     P[next].san = clamp(P[next].san - bgyCount);
     L.push(`【黑山羊幼仔】${P[next].name} 失去 ${bgyCount} HP 和 ${bgyCount} SAN`);
+    let linkPartnerIdx = null;
+    if (P[next].damageLink?.active) {
+      const partnerIdx = P[next].damageLink.partner;
+      if (partnerIdx != null && P[partnerIdx] && !P[partnerIdx].isDead) {
+        linkPartnerIdx = partnerIdx;
+        P[next].damageLink.active = false;
+        if (P[partnerIdx].damageLink) P[partnerIdx].damageLink.active = false;
+        const linkDamage = 3;
+        P[next].hp = clamp(P[next].hp - linkDamage);
+        P[partnerIdx].hp = clamp(P[partnerIdx].hp - linkDamage);
+        L.push(`【两人一绳】绳索断裂！${P[next].name} 和 ${P[partnerIdx].name} 各失去 ${linkDamage} HP`);
+      }
+    }
     inspectionMeta = appendStatEventsToInspectionMeta(
       inspectionMeta,
       beforePlayers,
       P,
-      L.slice(-1),
+      L.slice(logStart),
       '黑山羊幼仔',
     );
     const slimeDecision = buildTsathogguaSlimeBalanceDecision(beforePlayers, P, { _turnOwner: next });
@@ -778,6 +794,11 @@ function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta) {
     }
     if (P[next].hp <= 0) {
       killPlayerState(P, next, Disc, L);
+    }
+    if (linkPartnerIdx != null && P[linkPartnerIdx]?.hp <= 0) {
+      if (!tryVritraImmortal(P, linkPartnerIdx, next, D, Disc, L)) {
+        killPlayerState(P, linkPartnerIdx, Disc, L);
+      }
     }
   }
 
@@ -1023,10 +1044,11 @@ export function startNextTurn(gs, opts = {}) {
   // Reset multiplyUsed at the start of every turn
   const inheritedTsgSlimeGrantEvents = Array.isArray(gs._carryTsgSlimeGrantEvents) ? gs._carryTsgSlimeGrantEvents : [];
   const inheritedGodPowerBlockedEvents = Array.isArray(gs._carryGodPowerBlockedEvents) ? gs._carryGodPowerBlockedEvents : [];
+  const inheritedSkippedTurnReplays = Array.isArray(gs._carrySkippedTurnReplays) ? gs._carrySkippedTurnReplays : [];
   // 黄液（蟾蜍之神回合结束发放）属神牌事件，按 END_TURN_PRIORITY 应先于其他卡牌（如无尽通道）结算。
   // 若已在无尽通道重播前发放（见 App.beginEndTurnReplay），此处跳过，避免重复发放。
   const skipEndTurnTsgSlimeGrant = !!gs._tsgSlimeGrantedAtTurnEnd;
-  gs = { ...gs, multiplyUsed: false, _visualEvents: [...inheritedGodPowerBlockedEvents], _tsgSlimeGrantEvents: null, _carryTsgSlimeGrantEvents: null, _carryGodPowerBlockedEvents: null, _tsgSlimeGrantedAtTurnEnd: undefined };
+  gs = { ...gs, multiplyUsed: false, _visualEvents: [...inheritedGodPowerBlockedEvents], _tsgSlimeGrantEvents: null, _skippedTurnReplays: inheritedSkippedTurnReplays, _carryTsgSlimeGrantEvents: null, _carryGodPowerBlockedEvents: null, _carrySkippedTurnReplays: null, _tsgSlimeGrantedAtTurnEnd: undefined };
   const visualEvents = gs._visualEvents;
   const inheritedGodPowerBlockedEventCount = visualEvents.length;
   const N = gs.players.length;
@@ -1104,6 +1126,10 @@ export function startNextTurn(gs, opts = {}) {
   }
   // If this player was resting: wake up (flip card face-up), skip their turn entirely
   if (P[next].isResting) {
+    const skippedTurnBeforePlayers = copyPlayers(_P_beforeTurn);
+    const skippedTurnBeforeLog = [...L];
+    const skippedTurnBeforeStatSeq = inspectionMeta?._statEventSeq || 0;
+    const skippedTurnBeforeInspectionSeq = inspectionMeta?._inspectionSeq || 0;
     P[next].isResting = false;
     turnStartLogs = [`── ${P[next].name} 的回合开始 ──`];
     zhuLight = turnStartEvent_ZhuLight(P, D, next, gs);
@@ -1178,7 +1204,20 @@ export function startNextTurn(gs, opts = {}) {
     }
     // Skip the turn: advance past player to the next living player
     // Hand limit is NOT enforced here — excess cards are kept until the next normal turn ends
-    return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents.slice(inheritedGodPowerBlockedEventCount) }, opts);
+    const skippedTurnReplay = {
+      playerIdx: next,
+      playerName: P[next].name,
+      beforePlayers: skippedTurnBeforePlayers,
+      afterPlayers: copyPlayers(P),
+      beforeLog: skippedTurnBeforeLog,
+      afterLog: [...L],
+      turnStartLogs: [...turnStartLogs],
+      beforeStatSeq: skippedTurnBeforeStatSeq,
+      afterStatSeq: inspectionMeta?._statEventSeq || skippedTurnBeforeStatSeq,
+      beforeInspectionSeq: skippedTurnBeforeInspectionSeq,
+      afterInspectionSeq: inspectionMeta?._inspectionSeq || skippedTurnBeforeInspectionSeq,
+    };
+    return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents.slice(inheritedGodPowerBlockedEventCount), _carrySkippedTurnReplays: [...inheritedSkippedTurnReplays, skippedTurnReplay] }, opts);
   }
   turnStartLogs = [`── ${P[next].name} 的回合开始 ──`];
   L.push(...turnStartLogs);

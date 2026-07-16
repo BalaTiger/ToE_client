@@ -673,6 +673,7 @@ function playerBase(id, name, role) {
     godZone: [],
     godName: null,
     godLevel: 0,
+    hasBelievedGod: false,
     peekMemories: {},
     disableRest: false,
     disableSkill: false,

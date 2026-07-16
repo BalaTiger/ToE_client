@@ -1,5 +1,5 @@
 import { GOD_DEFS } from '../../constants/card';
-import { isBlackGoatYoung } from '../../game';
+import { isBlackGoatYoung, isTsathogguaSlime } from '../../game';
 import { TUTORIAL_FLOW } from '../../game/tutorialScenario';
 import { DDCard, GodTooltip } from '../cards';
 import { ThemeEdgeRelief } from '../theme/ThemeOrnaments';
@@ -318,6 +318,7 @@ export function HandArea({
                 godLevel={visualMe.godName === c.godKey ? visualMe.godLevel : 0}
                 compact={mobileHandUsesCompact}
                 holderId={0}
+                hideCssFrame={isBlackGoatYoung(c) || isTsathogguaSlime(c)}
                 frameStyle={isMobile || isMobileLandscape ? { zoom: selfHandCardScale } : undefined}
               />
               {canUpgradeNow && (

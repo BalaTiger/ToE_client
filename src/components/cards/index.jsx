@@ -84,31 +84,26 @@ function CardFaceTooltip({card,godLevel=1,position}){
           0% {
             opacity: 0;
             transform: translate3d(var(--toe-start-x), var(--toe-start-y), 0) scale3d(0.12, 0.035, 1) rotateZ(var(--toe-start-rot));
-            filter: blur(1.8px);
             animation-timing-function: cubic-bezier(0.12, 0.78, 0.18, 1);
           }
           14% {
             opacity: 0.82;
             transform: translate3d(var(--toe-pull-x), var(--toe-pull-y), 0) scale3d(0.46, 0.18, 1) rotateZ(var(--toe-mid-rot));
-            filter: blur(1px);
             animation-timing-function: cubic-bezier(0.18, 0.72, 0.2, 1);
           }
           34% {
             opacity: 0.92;
             transform: translate3d(var(--toe-mid-x), var(--toe-mid-y), 0) scale3d(0.84, 0.9, 1) rotateZ(var(--toe-mid-rot));
-            filter: blur(0.4px);
             animation-timing-function: cubic-bezier(0.16, 0.84, 0.18, 1);
           }
           68% {
             opacity: 1;
             transform: translate3d(var(--toe-overshoot-x), var(--toe-overshoot-y), 0) scale3d(1.025, 1.025, 1) rotateZ(-0.55deg);
-            filter: blur(0);
             animation-timing-function: cubic-bezier(0.22, 0.76, 0.24, 1);
           }
           100% {
             opacity: 1;
             transform: translate3d(0, 0, 0) scale3d(1, 1, 1) rotateZ(0deg);
-            filter: blur(0);
           }
         }
       `}</style>
@@ -132,7 +127,7 @@ function CardFaceTooltip({card,godLevel=1,position}){
         '--toe-mid-rot':side==='right'?'-4deg':'4deg',
         animation:'toeCardHoverExtract 620ms linear both',
         transformOrigin:'center',
-        willChange:'transform, opacity, filter',
+        willChange:'transform, opacity',
       }}>
         <div style={{
           width,height,
@@ -140,7 +135,6 @@ function CardFaceTooltip({card,godLevel=1,position}){
           // 1× CSS res and upscaled to device px, blurring the 1448px art on hi-DPI screens.
           transformOrigin:'center',
           transformStyle:'preserve-3d',
-          filter:'drop-shadow(0 18px 34px rgba(0,0,0,0.72)) drop-shadow(0 0 28px rgba(185,145,82,0.22))',
         }}>
           <div style={{
             width,height,
@@ -149,7 +143,12 @@ function CardFaceTooltip({card,godLevel=1,position}){
             transformOrigin,
             transition:'transform 90ms ease-out',
           }}>
-            <CardFaceImage card={card} godLevel={godLevel} width={width} style={{boxShadow:'none'}}/>
+            <CardFaceImage
+              card={card}
+              godLevel={godLevel}
+              width={width}
+              style={{boxShadow:'0 18px 34px rgba(0,0,0,0.72), 0 0 28px rgba(185,145,82,0.22)'}}
+            />
           </div>
         </div>
       </div>
@@ -337,7 +336,7 @@ function GodDDCard({card,onClick,disabled,selected,highlight,small,compact,frame
   );
 }
 
-function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel,holderId,frameStyle}){
+function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel,holderId,frameStyle,hideCssFrame=false,tokenFaceWidth}){
   const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseMove, handleMouseLeave } = useCardHoverTooltip();
   if(!card)return null;
   if(card.isGod) return <GodDDCard card={card} onClick={onClick} disabled={disabled} selected={selected} highlight={highlight} small={small} compact={compact} godLevel={godLevel} frameStyle={frameStyle}/>;
@@ -366,7 +365,7 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
   }
   if(card.isBlackGoatYoung||card.isTsathogguaSlime){
     const w=small?44:compact?62:82,h=small?58:compact?82:108;
-    const faceWidth=Math.min(w,Math.round(h/CARD_FACE_RATIO));
+    const faceWidth=tokenFaceWidth??Math.min(w,Math.round(h/CARD_FACE_RATIO));
     const border=selected?'#c8a96e':highlight?'#d8f3ba':'#466d49';
     const glow=selected?'0 0 14px #c8a96e88,inset 0 0 12px #c8a96e22':highlight?'0 0 12px rgba(136,226,154,0.62)':'0 2px 8px rgba(0,0,0,0.65)';
     return(
@@ -379,12 +378,13 @@ function DDCard({card,onClick,disabled,selected,highlight,small,compact,godLevel
           onMouseLeave={handleMouseLeave}
           style={{
             width:w,minWidth:w,height:h,flexShrink:0,
-            border:`1.5px solid ${border}`,
-            boxShadow:glow,
-            borderRadius:3,cursor:(onClick&&!disabled)?'pointer':'default',opacity:disabled?0.35:1,
+            border:hideCssFrame?'none':`1.5px solid ${border}`,
+            boxShadow:hideCssFrame?'none':glow,
+            background:'transparent',
+            borderRadius:hideCssFrame?0:3,cursor:(onClick&&!disabled)?'pointer':'default',opacity:disabled?0.35:1,
             transform:selected?'translateY(-5px)':undefined,transition:'all .14s',
             display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-            userSelect:'none',position:'relative',overflow:'hidden',
+            userSelect:'none',position:'relative',overflow:hideCssFrame?'visible':'hidden',
             ...frameStyle,
           }}
         >

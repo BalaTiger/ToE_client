@@ -221,7 +221,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
     }}>
       {showAtmosphereEffects&&(
         <div style={{
-          position:'absolute',width:320,height:320,borderRadius:'50%',
+          position:'absolute',width:px(320),height:px(320),borderRadius:'50%',
           background:isNeutralCard
             ?'radial-gradient(circle,rgba(140,155,180,0.12) 0%,rgba(70,80,98,0.08) 40%,transparent 70%)'
             :isEvil
@@ -232,7 +232,11 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
         }}/>
       )}
 
-      {showAtmosphereEffects&&cardPolarity==='positive'&&<FlowerBloom/>}
+      {showAtmosphereEffects&&cardPolarity==='positive'&&(
+        <div style={{position:'absolute',inset:0,pointerEvents:'none',transform:`scale(${cardScale})`,transformOrigin:'center'}}>
+          <FlowerBloom/>
+        </div>
+      )}
 
       {triggerName==='斯芬克斯'&&guessCorrect!==undefined&&(
         <div style={{

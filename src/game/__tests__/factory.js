@@ -32,6 +32,7 @@ export function makePlayer(overrides = {}) {
     peekMemories: {},
     godName: null,
     godLevel: 0,
+    hasBelievedGod: false,
     isDead: false,
     roleRevealed: false,
     revealHand: false,

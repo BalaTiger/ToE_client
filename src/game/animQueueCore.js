@@ -308,7 +308,12 @@ export function buildAnimQueue(oldGs, newGs) {
       q.push({ type: 'DRAW_CARD', card: dCard, triggerName: newGs.players[newGs.currentTurn]?.name || '???', targetPid: newGs.currentTurn, msgs: newGs._drawLogs || [] });
     }
   }
-  const oldStatSeq = oldGs?._statEventSeq || 0;
+  // 分阶段/跨回合状态偶尔会先带上已处理事件，再稍后同步标量水位。
+  // 旧状态中已经存在的事件不得再次进入动画队列，否则会重播此前角色的伤害或回复。
+  const oldStatSeq = Math.max(
+    oldGs?._statEventSeq || 0,
+    ...(oldGs?._statEvents || []).map(event => event?.seq || 0),
+  );
   const newStatSeq = newGs?._statEventSeq || 0;
   const inspectionStatSeqs = new Set(newInspectionEvents.map(ev => ev?.statEventSeq).filter(seq => seq != null));
   const explicitStatEvents = Array.isArray(newGs?._statEvents)

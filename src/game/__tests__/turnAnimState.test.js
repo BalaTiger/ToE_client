@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildPlayerTurnDrawQueue,
   buildSinglePlayerAiTurnStartReplayContext,
+  buildSkippedTurnReplayQueue,
   buildTurnStartDrawReplayQueue,
   shouldReplaySinglePlayerAiTurnStart,
   withClearedReplayAnimFields,
@@ -58,6 +59,42 @@ describe('buildPlayerTurnDrawQueue', () => {
 });
 
 describe('buildTurnStartDrawReplayQueue', () => {
+  it('休息角色跳过回合时先完整播放其回合边界，再进入下一名 AI 的回合', () => {
+    const goat = id => ({ id, name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true });
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '你' }),
+        makePlayer({ name: '艾伦', isResting: true, hp: 8, san: 8, hand: [goat('a1'), goat('a2')] }),
+        makePlayer({ name: '贝拉', hp: 8, san: 8, hand: [goat('b1'), goat('b2')] }),
+      ],
+      currentTurn: 0,
+      deck: [makeZoneCard('D3')],
+      inspectionDeck: [{ id: 'seal', name: '封印松动', effect: 'sealLoose', value: 0, type: 'negative' }],
+      inspectionDiscard: [],
+      log: [],
+      _statEventSeq: 0,
+      _statEvents: [],
+      _inspectionSeq: 0,
+      _inspectionEvents: [],
+    });
+
+    const newGs = startNextTurn(oldGs);
+    const skippedQueue = buildSkippedTurnReplayQueue(newGs);
+    const bellaReplay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const combined = [...skippedQueue, ...bellaReplay.queue];
+    const allenTurnIdx = combined.findIndex(step => step.type === 'YOUR_TURN' && step.name === '艾伦');
+    const allenGoatIdx = combined.findIndex(step => step.type === 'BLACK_GOAT_PULSE' && step.targetPid === 1);
+    const bellaTurnIdx = combined.findIndex(step => step.type === 'YOUR_TURN' && step.name === '贝拉');
+    const bellaGoatIdx = combined.findIndex(step => step.type === 'BLACK_GOAT_PULSE' && step.targetPid === 2);
+
+    expect(newGs._skippedTurnReplays).toHaveLength(1);
+    expect(allenTurnIdx).toBeGreaterThanOrEqual(0);
+    expect(allenGoatIdx).toBeGreaterThan(allenTurnIdx);
+    expect(bellaTurnIdx).toBeGreaterThan(allenGoatIdx);
+    expect(bellaGoatIdx).toBeGreaterThan(bellaTurnIdx);
+    expect(combined.some(step => (step.msgs || []).some(msg => msg.includes('艾伦 从休息中醒来')))).toBe(true);
+  });
+
   it('plays black goat turn-start damage before the draw flip', () => {
     const goat = { id: 'goat-1', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
     const card = { id: 'next-card', name: '下一张牌', key: 'B2', type: 'zone' };

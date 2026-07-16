@@ -578,6 +578,16 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
   const computedCardWidth=handStripWidth>0
     ? Math.max(0,(handStripWidth-(HAND_CARD_GAP*3))/4)
     : HAND_CARD_WIDTH;
+  // Hidden opponent hands still reveal derivative cards. Their outer slot is
+  // responsive, so size the transparent token face from that slot instead of
+  // leaving it at DDCard's fixed 44x58 "small" dimensions.
+  const hiddenDerivedFaceWidth=Math.max(
+    1,
+    Math.min(
+      computedCardWidth,
+      Math.round((computedCardWidth*HAND_CARD_HEIGHT/HAND_CARD_WIDTH)/CARD_FACE_RATIO)
+    )
+  );
   // 卡牌的真实可见宽度（已考虑棋盘缩放），用于决定是否升级为带描述的完整卡图。
   const visualCardWidth=handStripWidth>0
     ? computedCardWidth*(handStripVisualWidth/handStripWidth)
@@ -700,7 +710,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
                     borderRadius:3,
                   }}
                 ><DDCardBack small expansionKey={expansionKey} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/></div>
-                :<DDCard card={card} small={!showFaceUp} compact={showFaceUp&&!useFullRevealCards} onClick={onCardSelect?()=>onCardSelect(ci):undefined} highlight={!!onCardSelect} holderId={playerIndex} frameStyle={showFaceUp?{zoom:revealCardZoom}:(shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle)}/>}
+                :<DDCard card={card} small={!showFaceUp} compact={showFaceUp&&!useFullRevealCards} onClick={onCardSelect?()=>onCardSelect(ci):undefined} highlight={!!onCardSelect} holderId={playerIndex} hideCssFrame={isBlackGoatYoung(card)||isTsathogguaSlime(card)} tokenFaceWidth={!showFaceUp&&(isBlackGoatYoung(card)||isTsathogguaSlime(card))?hiddenDerivedFaceWidth:undefined} frameStyle={showFaceUp?{zoom:revealCardZoom}:(shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle)}/>}
             </div>
           );
         })}

@@ -4,6 +4,49 @@ import { buildFreshStatVisualEvents, createCardEffectEvent, createEarthquakeEven
 import { makeGodCard, makeGs, makePlayer } from './factory';
 
 describe('buildAnimQueue stat animations', () => {
+  it('旧状态已携带的统计事件不会因标量水位滞后而跨回合重播', () => {
+    const allenRestLog = '艾伦 选择【休息】，掷骰 5、1，取高值回复 5HP，翻面休息中';
+    const playerGoatLog = '【黑山羊幼仔】你 失去 2 HP 和 2 SAN';
+    const playersBeforeTurn = [
+      makePlayer({ name: '你', hp: 8, san: 8 }),
+      makePlayer({ name: '艾伦', hp: 8, san: 5 }),
+    ];
+    const playersAfterTurnStart = [
+      makePlayer({ name: '你', hp: 6, san: 6 }),
+      makePlayer({ name: '艾伦', hp: 8, san: 5 }),
+    ];
+    const oldGs = makeGs({
+      players: playersBeforeTurn,
+      log: [allenRestLog],
+      _statEventSeq: 0,
+      _statEvents: [{
+        seq: 7,
+        type: 'HP_GAIN',
+        target: 1,
+        from: { hp: 3, san: 5 },
+        to: { hp: 8, san: 5 },
+        logHint: allenRestLog,
+      }],
+    });
+    const newGs = makeGs({
+      players: playersAfterTurnStart,
+      log: [allenRestLog, playerGoatLog],
+      _statEventSeq: 8,
+      _statEvents: [
+        ...oldGs._statEvents,
+        { seq: 8, type: 'HP_LOSS', target: 0, from: { hp: 8, san: 8 }, to: { hp: 6, san: 8 }, logHint: playerGoatLog },
+        { seq: 8, type: 'SAN_LOSS', target: 0, from: { hp: 6, san: 8 }, to: { hp: 6, san: 6 }, logHint: playerGoatLog },
+      ],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+
+    expect(queue.filter(step => step.type === 'HP_HEAL')).toHaveLength(0);
+    expect(queue.filter(step => step.type === 'HP_DAMAGE')).toHaveLength(1);
+    expect(queue.filter(step => step.type === 'SAN_DAMAGE')).toHaveLength(1);
+    expect(queue.find(step => step.type === 'SAN_DAMAGE')).toMatchObject({ hitIndices: [0] });
+  });
+
   it('stat visual event 只包含本次 statLogs 对应的事件，避免重播上个 AI 的 SAN 扣减', () => {
     const allenLog = '艾伦 遭遇邪神 森之领主！（第1次）失去1SAN';
     const bellaLog = '贝拉 遭遇邪神 阿波菲斯！（第1次）失去1SAN';

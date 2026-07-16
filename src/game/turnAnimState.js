@@ -427,6 +427,49 @@ export function buildTurnStartPreDrawEffectQueue({ oldGs, newGs, buildQueue = bu
   return queue;
 }
 
+export function buildSkippedTurnReplayQueue(state, { buildQueue = buildAnimQueue } = {}) {
+  const replays = Array.isArray(state?._skippedTurnReplays) ? state._skippedTurnReplays : [];
+  return replays.flatMap(replay => {
+    const oldGs = {
+      ...state,
+      players: replay.beforePlayers || state?.players || [],
+      log: replay.beforeLog || [],
+      _statEventSeq: replay.beforeStatSeq || 0,
+      _inspectionSeq: replay.beforeInspectionSeq || 0,
+    };
+    const newGs = {
+      ...state,
+      currentTurn: replay.playerIdx,
+      players: replay.afterPlayers || state?.players || [],
+      log: replay.afterLog || replay.beforeLog || [],
+      _preTurnPlayers: replay.beforePlayers || state?._preTurnPlayers,
+      _playersBeforeThisDraw: replay.afterPlayers || state?._playersBeforeThisDraw,
+      _turnStartLogs: replay.turnStartLogs || [],
+      _drawLogs: [],
+      _statLogs: [],
+      _statEventSeq: replay.afterStatSeq || replay.beforeStatSeq || 0,
+      _inspectionSeq: replay.afterInspectionSeq || replay.beforeInspectionSeq || 0,
+    };
+    const effectQueue = buildTurnStartPreDrawEffectQueue({ oldGs, newGs, buildQueue });
+    const consumedLogs = new Set([
+      ...(replay.turnStartLogs || []),
+      ...effectQueue.flatMap(step => Array.isArray(step?.msgs) ? step.msgs : []),
+    ]);
+    const deltaLogs = (replay.afterLog || []).slice((replay.beforeLog || []).length);
+    const remainingLogs = withoutLogLines(deltaLogs, consumedLogs);
+    return [
+      {
+        type: 'YOUR_TURN',
+        name: localDisplayName(replay.playerIdx, replay.playerName || state?.players?.[replay.playerIdx]?.name || '???'),
+        msgs: replay.turnStartLogs || [],
+      },
+      ...effectQueue,
+      statePatchStep({ players: replay.afterPlayers, log: replay.afterLog, msgs: remainingLogs }),
+      { type: 'TURN_BOUNDARY_PAUSE' },
+    ];
+  });
+}
+
 function filterConsumedTurnStartSteps(queue = [], consumedMsgs = []) {
   const consumedMsgSet = new Set(consumedMsgs.filter(Boolean));
   return (Array.isArray(queue) ? queue : []).filter(step => {

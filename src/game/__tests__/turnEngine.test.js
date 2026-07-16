@@ -668,6 +668,27 @@ describe('turnEngine stat events', () => {
     ]);
   });
 
+  it('黑山羊幼仔的 HP 伤害会立即扯断两人一绳且不再于到期时回复', () => {
+    const linkForDiana = { active: true, partner: 0, expiryOwner: 0 };
+    const linkForPlayer = { active: true, partner: 1, expiryOwner: 0 };
+    const players = [
+      makePlayer({ name: '你', hp: 10, damageLink: linkForPlayer }),
+      makePlayer({ name: '黛安娜', hp: 10, san: 10, hand: [createBlackGoatYoungCard(), createBlackGoatYoungCard()], damageLink: linkForDiana }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0, log: [] });
+
+    const dianaTurn = startNextTurn(gs);
+
+    expect(dianaTurn.players[1]).toMatchObject({ hp: 5, san: 8, damageLink: { active: false } });
+    expect(dianaTurn.players[0]).toMatchObject({ hp: 7, damageLink: { active: false } });
+    expect(dianaTurn.log).toContain('【两人一绳】绳索断裂！黛安娜 和 你 各失去 3 HP');
+
+    const playerTurn = startNextTurn({ ...dianaTurn, phase: 'ACTION' });
+    expect(playerTurn.log.some(line => line.includes('绳索未断裂'))).toBe(false);
+    expect(playerTurn.players[0].hp).toBe(7);
+    expect(playerTurn.players[1].hp).toBe(5);
+  });
+
   it('黑山羊幼仔使邪祀者 HP/SAN 同时归零时，SAN 归零胜负优先于死亡胜负', () => {
     const players = [
       makePlayer({ name: '追猎者', role: ROLE_HUNTER }),
@@ -1092,7 +1113,7 @@ describe('turnEngine stat events', () => {
 
     const result = resolveGodEncounterForAI(1, makeGodCard('SHU'), players, [], [], gs, true);
 
-    expect(result.P[1]).toMatchObject({ godName: 'SHU', godLevel: 1 });
+    expect(result.P[1]).toMatchObject({ godName: 'SHU', godLevel: 1, hasBelievedGod: true });
     expect(result.P.some(player => player.hand.some(card => card.isBlackGoatYoung))).toBe(true);
     expect(result.msgs.some(line => line.includes('黑暗子嗣'))).toBe(true);
   });

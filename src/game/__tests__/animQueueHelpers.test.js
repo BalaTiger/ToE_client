@@ -8,6 +8,7 @@ import {
   cardTransferStep,
   dedupeInferredDiscardTransfers,
   fullHandSwapSteps,
+  mergePlayerStatsIntoSnapshot,
   resolveTurnHighlightForStep,
   swapCardsSteps,
   zhuHideCardStep,
@@ -17,6 +18,26 @@ import { buildAnimQueue } from '../animQueueCore';
 import { makePlayer, makeZoneCard } from './factory';
 
 describe('animQueueHelpers', () => {
+  it('蛊惑中间快照保留牌区外观但使用结算后的 HP/SAN', () => {
+    const oldGod = { id: 'old-god', godKey: 'VRI' };
+    const newGod = { id: 'new-god', godKey: 'ZHU' };
+    const visualSnapshot = [
+      makePlayer({ name: '贝拉', hand: [{ id: 'gift' }], san: 9 }),
+      makePlayer({ name: '艾伦', hand: [{ id: 'keep' }], san: 9, godName: 'VRI', godZone: [oldGod] }),
+    ];
+    const resolvedPlayers = [
+      makePlayer({ name: '贝拉', hand: [], san: 8 }),
+      makePlayer({ name: '艾伦', hand: [{ id: 'keep' }], san: 6, godName: 'ZHU', godZone: [newGod] }),
+    ];
+
+    const merged = mergePlayerStatsIntoSnapshot(visualSnapshot, resolvedPlayers);
+
+    expect(merged.map(player => player.san)).toEqual([8, 6]);
+    expect(merged[1].godName).toBe('VRI');
+    expect(merged[1].godZone).toEqual([oldGod]);
+    expect(visualSnapshot.map(player => player.san)).toEqual([9, 9]);
+  });
+
   it('从中文回合开始日志解析当前角色高亮', () => {
     const step = { type: 'YOUR_TURN', msgs: ['── 测试角色B 的回合开始 ──'] };
     const players = [makePlayer({ name: '测试角色A' }), makePlayer({ name: '测试角色B' })];
@@ -382,6 +403,52 @@ describe('animQueueHelpers', () => {
     expect(drawIdxs[0]).toBeGreaterThan(sanIdx);
     expect(result.queue[drawIdxs[0]]).toMatchObject({ card: calmCard, triggerName: '检定牌', targetPid: 0 });
     expect(result.queue[drawIdxs[1]]).toMatchObject({ card: amnesiaCard, triggerName: '检定牌', targetPid: 1 });
+  });
+
+  it('分阶段结算第二次 SAN 检定时不重播旧状态已有的第一次检定', () => {
+    const insomnia = { name: '失眠' };
+    const amnesia = { name: '失忆' };
+    const players = [makePlayer({ name: '艾伦', san: 5 })];
+    const firstEvent = {
+      seq: 1,
+      card: insomnia,
+      target: 0,
+      beforePlayers: players,
+      beforeLog: [],
+      afterPlayers: players,
+      afterLog: ['艾伦 的SAN检定结果为"失眠"'],
+    };
+    const secondEvent = {
+      seq: 2,
+      card: amnesia,
+      target: 0,
+      beforePlayers: players,
+      beforeLog: firstEvent.afterLog,
+      afterPlayers: players,
+      afterLog: [...firstEvent.afterLog, '艾伦 的SAN检定结果为"失忆"'],
+    };
+
+    const result = buildInspectionAwareAnimQueue(
+      {
+        players,
+        log: firstEvent.afterLog,
+        _inspectionSeq: 0,
+        _inspectionEvents: [firstEvent],
+      },
+      {
+        players,
+        log: secondEvent.afterLog,
+        _inspectionSeq: 2,
+        _inspectionEvents: [firstEvent, secondEvent],
+      },
+      { buildAnimQueue, copyPlayers },
+    );
+
+    const inspectionCards = result.queue
+      .filter(step => step.type === 'DRAW_CARD' && step.triggerName === '检定牌')
+      .map(step => step.card.name);
+    expect(inspectionCards).toEqual(['失忆']);
+    expect(result.inspectionSeq).toBe(2);
   });
 
   it('检定后的尾队列不会重放检定前已经存在的 HP statEvent', () => {

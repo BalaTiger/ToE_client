@@ -6,6 +6,7 @@ export function useAnimationQueue({
   gs,
   copyPlayers,
   setGs,
+  setDisplayStats,
   setVisualPlayersOverride,
   setVisualDiscard,
   syncVisibleLog,
@@ -126,6 +127,11 @@ export function useAnimationQueue({
     }
   }
 
+  function syncDisplayStatsFromState(state) {
+    if (!setDisplayStats || !Array.isArray(state?.players)) return;
+    setDisplayStats(state.players.map(player => ({ hp: player.hp, san: player.san })));
+  }
+
   function shouldUseDrawBackgroundCamera(step) {
     return step?.type === 'DRAW_CARD' && !step?.card?.effect && !step?.disableDrawBackgroundCamera;
   }
@@ -220,6 +226,7 @@ export function useAnimationQueue({
         }
       } else if (normalizedNext) {
         setVisualDiscard(getVisualDiscardForState(normalizedNext));
+        syncDisplayStatsFromState(normalizedNext);
         if (suppressNextBroadcastRef.current) {
           suppressNextBroadcastRef.current = false;
           receivedGsRef.current = true;
@@ -303,6 +310,7 @@ export function useAnimationQueue({
       } else {
         const normalizedNextGs = normalizePendingState(nextGs);
         if (nextGs?.log) syncVisibleLog(nextGs.log);
+        syncDisplayStatsFromState(normalizedNextGs);
         if (hasDeathAnim && pendingDeathPlayers.length) {
           setGs({ ...normalizedNextGs });
         } else {
@@ -322,6 +330,7 @@ export function useAnimationQueue({
         callback();
       } else {
         if (finalGs.log) syncVisibleLog(finalGs.log);
+        syncDisplayStatsFromState(finalGs);
         setGs(finalGs);
       }
     } : callback;

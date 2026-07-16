@@ -8,6 +8,20 @@ export function statePatchStep(patch={}){
   return step;
 }
 
+export function mergePlayerStatsIntoSnapshot(snapshotPlayers=[],statPlayers=[]){
+  return (snapshotPlayers||[]).map((player,idx)=>{
+    const stats=statPlayers?.[idx];
+    if(!player||!stats)return player;
+    return {
+      ...player,
+      hp:stats.hp,
+      san:stats.san,
+      isDead:!!stats.isDead,
+      _pendingAnimDeath:!!stats._pendingAnimDeath,
+    };
+  });
+}
+
 export function zhuHideCardStep(card){
   return {
     type:"ZHU_HIDE_CARD",
@@ -238,12 +252,18 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
 
 export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPlayers}){
   const baseOldGs=oldGs||{};
-  const inspectionEvents=(newGs?._inspectionEvents||[]).filter(ev=>ev?.seq>(baseOldGs._inspectionSeq||0));
+  // 旧状态已经携带的检定事件一定已经进入过上一段动画。部分分阶段结算
+  // （例如 AI 邪神选择）可能让标量水位稍晚同步，不能因此重播旧检定牌。
+  const baseInspectionSeq=Math.max(
+    baseOldGs._inspectionSeq||0,
+    ...(baseOldGs._inspectionEvents||[]).map(ev=>ev?.seq||0),
+  );
+  const inspectionEvents=(newGs?._inspectionEvents||[]).filter(ev=>ev?.seq>baseInspectionSeq);
   if(!inspectionEvents.length){
     return {
       queue:buildAnimQueue(baseOldGs,newGs),
       inspectionEvents:[],
-      inspectionSeq:baseOldGs._inspectionSeq||0,
+      inspectionSeq:baseInspectionSeq,
     };
   }
   const firstEvent=inspectionEvents[0];
@@ -252,7 +272,7 @@ export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPl
     players:firstEvent?.beforePlayers||newGs.players,
     log:firstEvent?.beforeLog||newGs.log,
     _inspectionEvents:baseOldGs._inspectionEvents||[],
-    _inspectionSeq:baseOldGs._inspectionSeq||0,
+    _inspectionSeq:baseInspectionSeq,
     _statEvents:baseOldGs._statEvents||[],
     _statEventSeq:baseOldGs._statEventSeq||0,
   };
@@ -262,7 +282,7 @@ export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPl
     inspectionEvents,
     {buildAnimQueue,copyPlayers}
   );
-  const maxInspectionSeq=Math.max(baseOldGs._inspectionSeq||0,...inspectionEvents.map(ev=>ev?.seq||0));
+  const maxInspectionSeq=Math.max(baseInspectionSeq,...inspectionEvents.map(ev=>ev?.seq||0));
   const tailStatEventSeq=Math.max(inspectionFlow.statEventSeq,newGs?._statEventSeq||0);
   const tailQueue=buildAnimQueue(
     {

@@ -1110,6 +1110,28 @@ describe('applyFx', () => {
   });
 });
 
+describe('秤心仪式的信仰历史', () => {
+  it('玩家曾信仰邪神但已被抛弃时仍失去3HP', () => {
+    const card = makeZoneCard('D1', 0);
+    const players = [makePlayer({ hp: 10, san: 6, godName: null, godLevel: 0, godZone: [], hasBelievedGod: true })];
+
+    const result = applyFx(card, 0, null, players, [], [], makeGs({ players }));
+
+    expect(result.P[0]).toMatchObject({ hp: 7, san: 8, hasBelievedGod: true });
+    expect(result.msgs).toContain(`${players[0].name} 失去 3 HP`);
+  });
+
+  it('玩家本局从未信仰邪神时只恢复SAN', () => {
+    const card = makeZoneCard('D1', 0);
+    const players = [makePlayer({ hp: 10, san: 6, hasBelievedGod: false })];
+
+    const result = applyFx(card, 0, null, players, [], [], makeGs({ players }));
+
+    expect(result.P[0]).toMatchObject({ hp: 10, san: 8, hasBelievedGod: false });
+    expect(result.msgs.some(line => line.includes('失去 3 HP'))).toBe(false);
+  });
+});
+
 describe('applyInspectionForSanLoss', () => {
   beforeEach(() => resetIds());
 

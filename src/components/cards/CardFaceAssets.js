@@ -122,9 +122,22 @@ const CARD_FACE_META_BY_ID = {
     ])
   ),
   inspection: {
-    '昏睡': {
-      illustration: '/img/card/illustration/lethargy.png',
-    },
+    '乱抓': { illustration: '/img/card/illustration/scratch.webp' },
+    '自残': { illustration: '/img/card/illustration/self_harm.webp' },
+    '失眠': { illustration: '/img/card/illustration/insomnia.webp' },
+    '暂时的平静': { illustration: '/img/card/illustration/uneasy calm.webp' },
+    '昏睡': { illustration: '/img/card/illustration/lethargy.webp' },
+    '迫害妄想': { illustration: '/img/card/illustration/paranoia.webp' },
+    '失忆': { illustration: '/img/card/illustration/amnesia.webp' },
+    '乏力': { illustration: '/img/card/illustration/weak.webp' },
+    '超人意志': { illustration: '/img/card/illustration/volition.webp' },
+    '揭开真相': { illustration: '/img/card/illustration/truth_revealed.webp' },
+    '封印松动': { illustration: '/img/card/illustration/seal_loose.webp' },
+    '廷达罗斯猎犬': { illustration: '/img/card/illustration/hounds_of_tindalos.webp' },
+  },
+  token: {
+    blackGoatYoung: { illustration: '/img/card/illustration/black_goat_young.webp' },
+    tsathogguaSlime: { illustration: '/img/card/illustration/tsathoggua_blessed_slime.webp' },
   },
 };
 
@@ -132,6 +145,7 @@ export const CARD_FACE_ILLUSTRATION_FILES = [
   ...Object.values(CARD_FACE_META_BY_ID.zone).map(meta => meta.illustration),
   ...Object.values(CARD_FACE_META_BY_ID.god).map(meta => meta.illustration),
   ...Object.values(CARD_FACE_META_BY_ID.inspection).map(meta => meta.illustration),
+  ...Object.values(CARD_FACE_META_BY_ID.token).map(meta => meta.illustration),
 ].filter(Boolean);
 
 const decodedIllustrations = new Set();
@@ -149,6 +163,8 @@ function runWhenIdle(task) {
 
 export function getCardFaceMeta(card) {
   const flavor = getCardFlavorText(card);
+  if (card?.isBlackGoatYoung) return { ...CARD_FACE_META_BY_ID.token.blackGoatYoung, flavor };
+  if (card?.isTsathogguaSlime) return { ...CARD_FACE_META_BY_ID.token.tsathogguaSlime, flavor };
   if (card?.isGod) {
     const meta = CARD_FACE_META_BY_ID.god[card?.godKey] || null;
     if (!meta && !flavor) return null;

@@ -804,6 +804,7 @@ export function aiStep(gs, opts = {}) {
         } else if(!P[ct].godName||alreadyHasGod){
           P[ct].godName=hgc.godKey;P[ct].godLevel=1;P[ct].godZone=[{...hgc}];
         }
+        P[ct].hasBelievedGod=true;
         let handWorshipBlockedEvent = null;
         if(['APO','ZHU','SHU'].includes(hgc.godKey)&&hasGodPowerImmunity(P[ct])){
           const blockedLog=buildGodPowerBlockedLog(P[ct]);

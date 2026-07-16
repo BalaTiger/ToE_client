@@ -366,6 +366,7 @@ export function initGame(
     godZone: [],
     godName: null,
     godLevel: 0,
+    hasBelievedGod: false,
     peekMemories: {},
     disableRest: false,
     disableSkill: false,

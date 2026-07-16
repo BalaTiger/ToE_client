@@ -5,12 +5,12 @@ export function useCardHoverTooltip() {
   const [tooltipPosition, setTooltipPosition] = React.useState(null);
   const cardRef = React.useRef(null);
   const hoverOriginRef = React.useRef(null);
+  const hoverRectRef = React.useRef(null);
+  const pointerRef = React.useRef(null);
+  const frameRef = React.useRef(0);
 
-  const getPositionFromEvent = (event, originCenter = hoverOriginRef.current) => {
-    if (!cardRef.current) return null;
-    const rect = cardRef.current.getBoundingClientRect();
-    const clientX = event?.clientX ?? rect.left + rect.width / 2;
-    const clientY = event?.clientY ?? rect.top + rect.height / 2;
+  const getPosition = (rect, clientX, clientY, originCenter = hoverOriginRef.current) => {
+    if (!rect) return null;
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
     return {
@@ -28,8 +28,11 @@ export function useCardHoverTooltip() {
   };
 
   const handleMouseEnter = event => {
+    if (!cardRef.current) return;
+    const rect = cardRef.current.getBoundingClientRect();
+    hoverRectRef.current = rect;
     setHover(true);
-    const position = getPositionFromEvent(event);
+    const position = getPosition(rect, event?.clientX, event?.clientY);
     if (position) {
       hoverOriginRef.current = {
         x: position.left + position.width / 2,
@@ -45,15 +48,33 @@ export function useCardHoverTooltip() {
 
   const handleMouseMove = event => {
     if (!hover) return;
-    const position = getPositionFromEvent(event);
-    if (position) setTooltipPosition(position);
+    pointerRef.current = { clientX: event.clientX, clientY: event.clientY };
+    if (frameRef.current) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = 0;
+      const pointer = pointerRef.current;
+      const position = getPosition(
+        hoverRectRef.current,
+        pointer?.clientX,
+        pointer?.clientY,
+      );
+      if (position) setTooltipPosition(position);
+    });
   };
 
   const handleMouseLeave = () => {
+    if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    frameRef.current = 0;
     setHover(false);
     setTooltipPosition(null);
     hoverOriginRef.current = null;
+    hoverRectRef.current = null;
+    pointerRef.current = null;
   };
+
+  React.useEffect(() => () => {
+    if (frameRef.current) cancelAnimationFrame(frameRef.current);
+  }, []);
 
   return { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseMove, handleMouseLeave };
 }

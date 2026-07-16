@@ -72,6 +72,7 @@ import {
   withClearedReplayAnimFields,
   buildTurnStartDrawReplayQueue,
   buildTurnStartPreDrawEffectQueue,
+  buildSkippedTurnReplayQueue,
   buildTsathogguaSlimeGrantQueue,
   cardsHuntMatch,
   moveEligibleBlankZones,
@@ -219,6 +220,7 @@ import {
   buildInspectionEventFlow,
   buildInspectionAwareAnimQueue,
   statePatchStep,
+  mergePlayerStatsIntoSnapshot,
   zhuHideCardStep,
   buryToDeckStep,
   cardTransferStep,
@@ -1523,6 +1525,7 @@ export default function Game(){
     gs,
     copyPlayers,
     setGs,
+    setDisplayStats,
     setVisualPlayersOverride:setEarthquakeVisualPlayers,
     setVisualDiscard,
     syncVisibleLog,
@@ -3026,7 +3029,12 @@ export default function Game(){
             if(inspectionEvents.length){
               lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
             }
-            const bewitchSourcePatchPlayers=copyPlayers(afterInspectionPlayers);
+            // 飞牌落地只保留技能前的牌区外观；HP/SAN 必须取本次结算后的
+            // 时间线基准，否则整组旧快照会把目标的 SAN 临时写回技能前数值。
+            const bewitchSourcePatchPlayers=mergePlayerStatsIntoSnapshot(
+              copyPlayers(afterInspectionPlayers),
+              P_actionPreInspection,
+            );
             if(bewitchSourcePatchPlayers[gs.currentTurn]&&P_actionBeforeHandLimit?.[gs.currentTurn]){
               bewitchSourcePatchPlayers[gs.currentTurn]={
                 ...bewitchSourcePatchPlayers[gs.currentTurn],
@@ -3557,7 +3565,7 @@ export default function Game(){
       const base=latestGsRef.current;
       if(!base||base.gameOver){console.warn('[forceEndTurn] 需在进行中的单机对局里调用');return;}
       const P=copyPlayers(base.players),me=P[0];
-      me.godName=god;me.godLevel=level;if(god==='CTH')me.isResting=true; // CTH 需翻面休息才在回合结束摸牌
+      me.godName=god;me.godLevel=level;me.hasBelievedGod=true;if(god==='CTH')me.isResting=true; // CTH 需翻面休息才在回合结束摸牌
       const corridorDef=(FIXED_ZONE_CARD_VARIANTS_BY_KEY.A3||[]).find(c=>c.type==='endTurnReplayHand');
       const hand=[mkZone('A1')]; // 无尽通道左侧需有牌才会重播
       if(corridor&&corridorDef)hand.push({...corridorDef,id:nid++,key:'A3',letter:'A',number:3,isZone:true});
@@ -8193,6 +8201,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         P[0].godName=gk;P[0].godLevel=1;P[0].godZone=[{...godCard}];
         L.push(`你信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
       }
+      P[0].hasBelievedGod=true;
       if(['APO','ZHU','SHU'].includes(gk)&&hasGodPowerImmunity(P[0])){
         L.push(buildGodPowerBlockedLog(P[0]));
       }
@@ -8576,6 +8585,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   }
 
   function buildActorTurnStartReplay(state,{oldGs=gs,effectOldGs=null,actorName=null,forceActorName=false,timedOutDrawDiscardStep=null}={}){
+    const skippedTurnQueue=buildSkippedTurnReplayQueue(state,{buildQueue:buildAnimQueue});
     const replayOldGs=oldGs
       ?{...oldGs,_statEventSeq:statEventSeqBeforeTurnStartStats(state,oldGs._statEventSeq||0)}
       :oldGs;
@@ -8587,12 +8597,15 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       state,
       {actorName,forceActorName}
     );
-    if(replay?.queue?.length)return replay;
+    if(replay?.queue?.length)return skippedTurnQueue.length
+      ?{...replay,queue:[...skippedTurnQueue,...replay.queue],startAnim:skippedTurnQueue[0],startQueue:[...skippedTurnQueue.slice(1),...replay.queue]}
+      :replay;
     const fallbackName=actorName||state?.players?.[state?.currentTurn]?.name||'???';
     const introQueue=buildTurnStartIntroQueue(state,fallbackName);
-    const queue=introQueue.length||!(state?._turnStartLogs||[]).length
+    const queueBase=introQueue.length||!(state?._turnStartLogs||[]).length
       ?introQueue
       :[{type:'YOUR_TURN',name:fallbackName,msgs:state._turnStartLogs}];
+    const queue=[...skippedTurnQueue,...queueBase];
     return{
       ...(replay||{}),
       drawnCard:getTurnStartDrawnCard(state)||null,
@@ -9455,6 +9468,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     } else {
       P[0].godName=godKey;P[0].godLevel=1;P[0].godZone=[{...godCard}];
     }
+    P[0].hasBelievedGod=true;
     if(['APO','ZHU','SHU'].includes(godKey)&&hasGodPowerImmunity(P[0])){
       L.push(buildGodPowerBlockedLog(P[0]));
     }
