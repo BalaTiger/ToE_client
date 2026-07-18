@@ -44,6 +44,8 @@ import {
   isDodgeableZoneCard,
   getZoneCardEffectScope,
   isWinHand,
+  localTreasureWinLog,
+  localTreasureWinReason,
   cardLogText,
   removeCardsFromDiscard,
   makeInspectionMeta,
@@ -170,6 +172,10 @@ import {
   pruneConsumedVisualEvents,
   chooseAiEtherealizeRedirectTarget,
   shouldAiUseEtherealize,
+  appendConfirmedChainLoss,
+  buildEtherealizeRedirectChainLoss,
+  collectEtherealizeChainSettleLosses,
+  getNextEtherealizeChainDecision,
 } from "./game";
 import {
   rotateGsForViewer,
@@ -1381,6 +1387,18 @@ export default function Game(){
   }
   const [houndsSecLeft,setHoundsSecLeft]=useState(null);
   const [houndsRevealedSeq,setHoundsRevealedSeq]=useState(0);
+  const houndsWasActiveRef=useRef(false);
+  // 非本地寻宝者获胜（AI/远端）时，本地先播放藏宝图动画再进结算；
+  // treasureMapAcked 标记该动画已播完；mpTreasureWaitShownRef 标记联机等待阶段已播过，避免重复。
+  const [treasureMapAcked,setTreasureMapAcked]=useState(false);
+  const mpTreasureWaitShownRef=useRef(false);
+  useEffect(()=>{
+    if(!gs?.gameOver)setTreasureMapAcked(false);
+  },[gs?.gameOver]);
+  useEffect(()=>{
+    if(!gs){mpTreasureWaitShownRef.current=false;return;}
+    if(gs.phase==='MP_PLAYER_WIN_WAIT')mpTreasureWaitShownRef.current=true;
+  },[gs,gs?.phase]);
 
   // ── Responsive layout ──────────────────────────────────────
   const {
@@ -1666,14 +1684,19 @@ export default function Game(){
   useAnimationAudioEffects({ anim, playApophisEclipseSound, playThrowStoneThrowSound, playThrowStoneRollingSound, playEarthquakeSound, playGeomagneticReversalSound, playStartledBatsSound, playNightWindSound, playRopeSound, playUndergroundSpringDropletSound, playVolcanoSound, playSemiMaterialSound, playBurrowingWormSound, playSnakeTrapSound, playCthRlyehDreamSound, playGodPowerBlockedSound, playTsgSlimePopSound, playOneCardShiftSound, playMultiCardShiftSound, playDiceRollSound, playTurnStartSound, playSkillHuntSound, playSkillSwapSound, playSkillBewitchSound, playGodHighlightSound, playVritraImmortalRevealSound, playPositiveCardFlipSound, playNeutralCardFlipSound, playCaveDuelSound, playWheelSpinSound, playBlackGoatRunSound, playBlackGoatPulseSound, playNegativeCardFlipSound });
 
   useEffect(()=>{
-    if(!gs?.houndsOfTindalosActive){
-      if(houndsRevealedSeq!==0)setHoundsRevealedSeq(0);
-      return;
+    const active=!!gs?.houndsOfTindalosActive;
+    // 只在「激活→失效」跳变时清零（猎犬咬人后返回检定牌堆）。
+    // 不能在未激活期间无脑清零：蛊惑赠神等内联队列里，猎犬揭示动画播放时
+    // 携带 houndsOfTindalosActive 的新状态尚未落入 gs，清零会把刚记录的揭示抹掉，
+    // 导致图标永不显示、超时撕咬永不触发。
+    if(!active&&houndsWasActiveRef.current&&houndsRevealedSeq!==0)setHoundsRevealedSeq(0);
+    houndsWasActiveRef.current=active;
+    if(anim?.type==='DRAW_CARD'&&anim.card?.effect==='houndsOfTindalos'){
+      // 动画步骤自带 inspectionSeq（buildInspectionEventFlow），不依赖尚未应用的新状态。
+      const seq=anim.inspectionSeq||latestHoundsInspectionSeq;
+      if(seq)setHoundsRevealedSeq(prev=>Math.max(prev,seq));
     }
-    if(anim?.type==='DRAW_CARD'&&anim.card?.effect==='houndsOfTindalos'&&latestHoundsInspectionSeq){
-      setHoundsRevealedSeq(seq=>Math.max(seq,latestHoundsInspectionSeq));
-    }
-  },[gs?.houndsOfTindalosActive,anim?.type,anim?.card,latestHoundsInspectionSeq,houndsRevealedSeq]);
+  },[gs?.houndsOfTindalosActive,anim?.type,anim?.card,anim?.inspectionSeq,latestHoundsInspectionSeq,houndsRevealedSeq]);
   const {earthquakeShake,screenShake,deathShake}=useGlobalShakeEffects({
     anim,
     localDebugMode,
@@ -2317,6 +2340,17 @@ export default function Game(){
     P=result.P;D=result.D;Disc=result.Disc;L.push(...(result.msgs||[]));
     const hasSlimeDecision=result.inspectionMeta?.abilityData?.type==='tsgSlimeBalance';
     const abandonedGodGift=(result.msgs||[]).some(msg=>typeof msg==='string'&&msg.includes('放弃了邪神的馈赠'));
+    // AI 放弃邪神馈赠时，diff 队列无法感知邪神牌从“待决策”进入弃牌堆（旧状态里它不在任何区域），
+    // 需要像玩家 GOD_CHOICE 放弃分支一样显式补一个弃牌动画，否则卡牌只会随状态快照消失。
+    const abandonGiftDiscardStep=abandonedGodGift
+      ?{
+        type:'DISCARD',
+        card:godCard,
+        triggerName:P[actorIdx]?.name||'???',
+        targetPid:actorIdx,
+        msgs:(result.msgs||[]).filter(msg=>typeof msg==='string'&&msg.includes('放弃了邪神的馈赠')),
+      }
+      :null;
     const win=checkWin(P,gs._isMP);
     const newGs={
       ...gs,
@@ -2413,8 +2447,10 @@ export default function Game(){
         return;
       }
     }
-    if(replay.queue.length){
-      triggerAnimQueue(replay.queue,newGs,nextTutorialStep?finish:undefined);
+    if(replay.queue.length||abandonGiftDiscardStep){
+      // 弃牌动画放在 diff/检定队列之后：放弃馈赠是结算的最后一步。
+      const queue=[...replay.queue,...(abandonGiftDiscardStep?[abandonGiftDiscardStep]:[])];
+      triggerAnimQueue(queue,newGs,nextTutorialStep?finish:undefined);
     }else{
       setGs(newGs);
       finish();
@@ -3022,8 +3058,10 @@ export default function Game(){
               {buildAnimQueue,copyPlayers}
             )
             :{queue:[],players:P_actionPreInspection,log:actionLogPreInspection};
+          // 摸牌阶段的视觉效果事件（如半物质化 etherealizeGain）已在回合开始重放中播过；
+          // fakeGs 继承 gs._visualEvents 而 oldGs 没有，会被当作新事件在检定后重播，故此处清空。
           const postInspectionQ=inspectionEvents.length
-            ?buildAnimQueue({players:inspectionFlow.players,log:inspectionFlow.log,_statEventSeq:inspectionFlow.statEventSeq},fakeGs(P_actionEnd,actionLog))
+            ?buildAnimQueue({players:inspectionFlow.players,log:inspectionFlow.log,_statEventSeq:inspectionFlow.statEventSeq},{...fakeGs(P_actionEnd,actionLog),_visualEvents:[]})
             :[];
           if(giftedCard&&bwti>=0){
             if(inspectionEvents.length){
@@ -3494,12 +3532,19 @@ export default function Game(){
     let P = copyPlayers(gs.players), D = [...gs.deck], Disc = [...gs.discard], L = [...gs.log];
     const beforeLossPlayers = copyPlayers(P);
     let pendingEtherealizeLosses=[];
-    losses.forEach(({ idx, lostCount }) => {
+    const directHits=[];
+    losses.forEach(({ idx, lostCount }, hitOrder) => {
       L.push(`【玫瑰倒刺】${P[idx].name} 失去标记手牌，受到 ${2 * lostCount} HP 伤害`);
       const loss=buildEtherealizeLoss({players:P,targetIdx:idx,currentTurn:gs.currentTurn,lostHp:2*lostCount,source:'玫瑰倒刺'});
-      if(loss)pendingEtherealizeLosses.push(loss);
-      else applyHpDamageWithLink(P, idx, 2 * lostCount, Disc, L, gs.currentTurn, D);
+      if(loss)pendingEtherealizeLosses.push({...loss,order:hitOrder});
+      else directHits.push({targetIdx:idx,lostHp:2*lostCount,lostSan:0,source:'玫瑰倒刺',order:hitOrder});
     });
+    // 伤害前置事件（虚化）检查完成前，任何伤害都不实际结算：
+    // 存在虚化候选时，其余直接伤害一并延迟，待决策链结束后归并结算
+    const deferredDirectLosses=pendingEtherealizeLosses.length?directHits:[];
+    if(!deferredDirectLosses.length){
+      directHits.forEach(hit=>applyHpDamageWithLink(P,hit.targetIdx,hit.lostHp,Disc,L,gs.currentTurn,D));
+    }
     const win = checkWin(P, gs._isMP);
     let newGs = withTsathogguaSlimeBalanceDecision({
       ...gs,
@@ -3511,6 +3556,7 @@ export default function Game(){
     }, beforeLossPlayers, { _turnOwner: gs.currentTurn });
     if(!win&&pendingEtherealizeLosses.length){
       const decision=buildEtherealizeRedirectDecision(pendingEtherealizeLosses,{_turnOwner:gs.currentTurn});
+      if(deferredDirectLosses.length)decision.deferredDirectLosses=deferredDirectLosses;
       newGs={...newGs,phase:'ETHEREALIZE_DECISION',abilityData:{...newGs.abilityData,...decision}};
     }
     roseThornPrevRef.current = P.map((player, idx) => ({
@@ -4369,6 +4415,19 @@ export default function Game(){
     // 邪祀者获胜：先全屏播放邪神复活特效，onConfirm 后再显示结算
     if(winner===ROLE_CULTIST&&!showGodResurrection){
       return <GodResurrectionAnim onDone={handleGodResurrectionDone}/>;
+    }
+    // 非本地寻宝者集齐宝藏（AI 或远端玩家）：本地也播放藏宝图动画，停留片刻后自动进入结算。
+    // 联机等待阶段（MP_PLAYER_WIN_WAIT）已播过藏宝图的，不再重复播放。
+    if(winner===ROLE_TREASURE&&!isLocalWinnerSeat(gs.gameOver)&&!treasureMapAcked&&!(gs._isMP&&mpTreasureWaitShownRef.current)){
+      const winnerPlayer=gs.players?.[winnerIdx];
+      return (
+        <TreasureMapAnim
+          hand={winnerPlayer?.hand||[]}
+          subtitle={`${winnerPlayer?.name||''} 集齐了全部编号！`}
+          autoConfirmMs={3000}
+          onConfirm={()=>setTreasureMapAcked(true)}
+        />
+      );
     }
     return(
       <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:24,position:'relative'}}>
@@ -5257,8 +5316,8 @@ export default function Game(){
     // 2. 最后，如果游戏仍未结束，且该寻宝者仍然存活，检查该寻宝者是否达成胜利条件
     if(isLocalSeatIndex(drawerIdx)&&!P[0].isDead&&(P[0]._nyaBorrow||P[0].role)==='寻宝者'&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
-      syncVisibleLog([...L,'你集齐了全部编号！']);
-      setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,'你集齐了全部编号！'],phase:'PLAYER_WIN_PENDING',drawReveal:null,abilityData:{winReason:'你集齐了全部编号并获胜！'},...(res.statePatch||{})});
+      syncVisibleLog([...L,localTreasureWinLog(gs)]);
+      setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',drawReveal:null,abilityData:{winReason:localTreasureWinReason(gs)},...(res.statePatch||{})});
       return;
     }
     // 保留abilityData中的fromRest和cthDrawsRemaining信息
@@ -5564,10 +5623,10 @@ export default function Game(){
         players: P,
         deck: D,
         discard: Disc,
-        log: [...L, '你集齐了全部编号！'],
+        log: [...L, localTreasureWinLog(gs)],
         phase: 'PLAYER_WIN_PENDING',
         drawReveal: null,
-        abilityData: { winReason: '你集齐了全部编号并获胜！' }
+        abilityData: { winReason: localTreasureWinReason(gs) }
       };
       return { P, D, Disc, L: pendingWinGs.log, pendingWinGs, d1, dodgeSuccess, who };
     }
@@ -5678,7 +5737,7 @@ export default function Game(){
     // 2. 最后，如果游戏仍未结束，且该寻宝者仍然存活，检查该寻宝者是否达成胜利条件
     if(isLocalSeatIndex(drawerIdx)&&!P[0].isDead&&P[0].role==='寻宝者'&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
-      setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,'你集齐了全部编号！'],phase:'PLAYER_WIN_PENDING',drawReveal:null,abilityData:{winReason:'你集齐了全部编号并获胜！'}});
+      setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',drawReveal:null,abilityData:{winReason:localTreasureWinReason(gs)}});
       return;
     }
     const replayPatch=dr.fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
@@ -5780,7 +5839,7 @@ export default function Game(){
     // 2. 最后，如果游戏仍未结束，且该寻宝者仍然存活，检查该寻宝者是否达成胜利条件
     if(isLocalSeatIndex(drawerIdx)&&!P[0].isDead&&P[0].role==='寻宝者'&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
-      setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,'你集齐了全部编号！'],phase:'PLAYER_WIN_PENDING',drawReveal:null,abilityData:{winReason:'你集齐了全部编号并获胜！'}});
+      setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',drawReveal:null,abilityData:{winReason:localTreasureWinReason(gs)}});
       return;
     }
     const replayPatch=dr.fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
@@ -5917,7 +5976,7 @@ export default function Game(){
     if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{}});return;}
     if(P[0].role==='寻宝者'&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
-      setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,'你集齐了全部编号！'],phase:'PLAYER_WIN_PENDING',abilityData:{winReason:'你集齐了全部编号并获胜！'}});
+      setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',abilityData:{winReason:localTreasureWinReason(gs)}});
       return;
     }
     const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',abilityData:{
@@ -6019,22 +6078,9 @@ export default function Game(){
     };
   }
 
-  function getNextEtherealizeDecisionFromAbilityData(abilityData, consumedIndex=null){
-    const losses=(abilityData?.pendingLosses||[]).filter(Boolean);
-    const start=consumedIndex==null?(abilityData?.pendingIndex??0):consumedIndex+1;
-    for(let i=start;i<losses.length;i++){
-      const loss=losses[i];
-      const target=gs.players?.[loss.targetIdx];
-      if(target&&!target.isDead&&(target.etherealizeStacks||0)>0){
-        return {...abilityData,...loss,type:'etherealizeRedirect',pendingIndex:i,pendingLosses:losses};
-      }
-    }
-    return null;
-  }
-
-  function applyLossDirectly({players,deck,discard,log,targetIdx,lostHp=0,lostSan=0,source='虚化',currentTurn=gs.currentTurn}){
+  function applyLossDirectly({players,deck,discard,log,targetIdx,lostHp=0,lostSan=0,source='虚化',currentTurn=gs.currentTurn,baseInspectionMeta=null}){
     let P=players,D=deck,Disc=discard,L=log;
-    let inspectionMeta=makeInspectionMeta({...gs,players:P,deck:D,discard:Disc,log:L});
+    let inspectionMeta=baseInspectionMeta||makeInspectionMeta({...gs,players:P,deck:D,discard:Disc,log:L});
     if(lostHp>0){
       applyHpDamageWithLink(P,targetIdx,lostHp,Disc,L,currentTurn,D);
       L.push(`${localDisplayName(targetIdx,P[targetIdx]?.name)} 失去 ${lostHp} HP`);
@@ -6047,16 +6093,9 @@ export default function Game(){
     return {P,D,Disc,L,inspectionMeta};
   }
 
-  function applyHpDamageOrEtherealize({players,deck,discard,log,targetIdx,amount,source='HP伤害',currentTurn=gs.currentTurn}){
-    const loss=buildEtherealizeLoss({players,targetIdx,currentTurn,lostHp:amount,source});
-    if(loss)return {players,deck,discard,log,pendingLosses:[loss],redirected:true};
-    applyHpDamageWithLink(players,targetIdx,amount,discard,log,currentTurn,deck);
-    return {players,deck,discard,log,pendingLosses:[],redirected:false};
-  }
-
   function finishEtherealizeDecision({players,deck,discard,log,abilityData,queue=[]}){
     const turnOwner=abilityData._turnOwner??gs.currentTurn;
-    const nextDecision=getNextEtherealizeDecisionFromAbilityData(abilityData,abilityData.pendingIndex??0);
+    const nextDecision=getNextEtherealizeChainDecision(abilityData,players,abilityData.pendingIndex??0);
     const extraPatch={
       ...(abilityData._statEvents?{_statEvents:abilityData._statEvents}:{}),
       ...(abilityData._statEventSeq!=null?{_statEventSeq:abilityData._statEventSeq}:{}),
@@ -6097,6 +6136,76 @@ export default function Game(){
     });
   }
 
+  // 决策链推进：还有未决定的虚化候选则进入下一轮决策；否则归并结算全部损失
+  function continueOrSettleEtherealizeChain({players,deck,discard,log,abilityData,consumedIndex,preQueue=[]}){
+    const turnOwner=abilityData._turnOwner??gs.currentTurn;
+    const nextDecision=getNextEtherealizeChainDecision(abilityData,players,consumedIndex);
+    if(nextDecision){
+      const nextGs=buildTargetContinuationGs({
+        players,
+        deck,
+        discard,
+        log,
+        turnOwner,
+        abilityData:nextDecision,
+        phase:'ETHEREALIZE_DECISION',
+        canResumeAi:false,
+        extraPatch:{_visualEvents:[]},
+      });
+      // buildTargetContinuationGs 会把 abilityData 裁剪为续播字段，这里恢复完整的决策数据
+      const fullNextGs={...nextGs,phase:'ETHEREALIZE_DECISION',abilityData:nextDecision};
+      const queue=preQueue.length
+        ?[...preQueue,statePatchStep({players,deck,discard,log})]
+        :[];
+      if(queue.length)triggerAnimQueue(queue,fullNextGs);
+      else setGs(fullNextGs);
+      return;
+    }
+    settleEtherealizeChain({players,deck,discard,log,abilityData,preQueue});
+  }
+
+  // 链结束：将已确认的损失与效果期间延迟的直接伤害按原始顺序一次性归并结算，
+  // 伤害扣减特效在此时统一播放
+  function settleEtherealizeChain({players,deck,discard,log,abilityData,preQueue=[]}){
+    const turnOwner=abilityData._turnOwner??gs.currentTurn;
+    let P=players,D=deck,Disc=discard,L=log;
+    const beforeSettlePlayers=copyPlayers(P);
+    const beforeSettleLogLen=L.length;
+    let inspectionMeta=makeInspectionMeta({...gs,players:P,deck:D,discard:Disc,log:L});
+    const losses=collectEtherealizeChainSettleLosses(abilityData);
+    losses.forEach(loss=>{
+      const result=applyLossDirectly({
+        players:P,
+        deck:D,
+        discard:Disc,
+        log:L,
+        targetIdx:loss.targetIdx,
+        lostHp:loss.lostHp||0,
+        lostSan:loss.lostSan||0,
+        source:loss.source||'伤害结算',
+        currentTurn:turnOwner,
+        baseInspectionMeta:inspectionMeta,
+      });
+      P=result.P;D=result.D;Disc=result.Disc;L=result.L;inspectionMeta=result.inspectionMeta;
+    });
+    const statEventSeq=(gs._statEventSeq||0)+1;
+    const statEvents=buildStatEvents(beforeSettlePlayers,P,L.slice(beforeSettleLogLen),{reason:'伤害结算',seq:statEventSeq});
+    const statPatch=statEvents.length?{_statEvents:[...(gs._statEvents||[]),...statEvents],_statEventSeq:statEventSeq}:{};
+    const {_statEvents:_dropMetaStatEvents,_statEventSeq:_dropMetaStatSeq,abilityData:_dropMetaAbilityData,...inspectionMetaFields}=inspectionMeta||{};
+    const finalAbilityData={...abilityData,...inspectionMetaFields,...statPatch};
+    const settleQueue=losses.length
+      ?buildAnimQueue(gs,{...gs,players:P,deck:D,discard:Disc,log:L,...statPatch})
+      :[];
+    finishEtherealizeDecision({
+      players:P,
+      deck:D,
+      discard:Disc,
+      log:L,
+      abilityData:finalAbilityData,
+      queue:[...preQueue,...settleQueue],
+    });
+  }
+
   function resolveEtherealizeRedirect(useEtherealize){
     const abilityData=gs.abilityData||{};
     const targetIdx=abilityData.targetIdx;
@@ -6105,30 +6214,22 @@ export default function Game(){
       setGs({...gs,phase:'ETHEREALIZE_SELECT_TARGET',abilityData:{...abilityData,type:'etherealizeSelectTarget'}});
       return;
     }
-    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
-    const beforePlayers=copyPlayers(P);
-    const result=applyLossDirectly({
-      players:P,
-      deck:D,
-      discard:Disc,
-      log:L,
+    // 不消耗虚化：确认由原目标承受，但不立即结算——待整条伤害前置事件链结束后归并结算
+    const confirmed={
       targetIdx,
       lostHp:abilityData.lostHp||0,
       lostSan:abilityData.lostSan||0,
-      source:'虚化未发动',
-      currentTurn:abilityData._turnOwner??gs.currentTurn,
-    });
-    P=result.P;D=result.D;Disc=result.Disc;L=result.L;
-    const statEventSeq=(gs._statEventSeq||0)+1;
-    const statEvents=buildStatEvents(beforePlayers,P,L.slice(gs.log.length),{reason:'虚化未发动',seq:statEventSeq});
-    const statPatch=statEvents.length?{_statEvents:[...(gs._statEvents||[]),...statEvents],_statEventSeq:statEventSeq}:result.inspectionMeta;
-    finishEtherealizeDecision({
-      players:P,
-      deck:D,
-      discard:Disc,
-      log:L,
-      abilityData:{...abilityData,...statPatch},
-      queue:buildAnimQueue(gs,{...gs,players:P,deck:D,discard:Disc,log:L}),
+      source:abilityData.source||'伤害',
+      order:abilityData.order,
+    };
+    const nextAbilityData=appendConfirmedChainLoss(abilityData,confirmed);
+    continueOrSettleEtherealizeChain({
+      players:copyPlayers(gs.players),
+      deck:[...gs.deck],
+      discard:[...gs.discard],
+      log:[...gs.log],
+      abilityData:nextAbilityData,
+      consumedIndex:abilityData.pendingIndex??0,
     });
   }
 
@@ -6137,34 +6238,40 @@ export default function Game(){
     const sourceIdx=abilityData.targetIdx;
     const validTargets=abilityData.adjacentTargets||[];
     if(sourceIdx==null||!validTargets.includes(redirectTargetIdx))return;
-    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
+    const P=copyPlayers(gs.players);
     const source=P[sourceIdx];
     if(!source||source.isDead)return;
     source.etherealizeStacks=Math.max(0,(source.etherealizeStacks||0)-1);
-    L.push(`${localDisplayName(sourceIdx,source.name)} 消耗1层虚化，将即将失去的${abilityData.lostHp?`${abilityData.lostHp}HP`:''}${abilityData.lostHp&&abilityData.lostSan?'和':''}${abilityData.lostSan?`${abilityData.lostSan}SAN`:''}转移给 ${localDisplayName(redirectTargetIdx,P[redirectTargetIdx]?.name)}`);
-    const beforePlayers=copyPlayers(P);
-    const result=applyLossDirectly({
+    const L=[...gs.log,`${localDisplayName(sourceIdx,source.name)} 消耗1层虚化，将即将失去的${abilityData.lostHp?`${abilityData.lostHp}HP`:''}${abilityData.lostHp&&abilityData.lostSan?'和':''}${abilityData.lostSan?`${abilityData.lostSan}SAN`:''}转移给 ${localDisplayName(redirectTargetIdx,P[redirectTargetIdx]?.name)}`];
+    // 消耗虚化的前置事件动画（标签 -1）立即播放，伤害结算等链结束后再统一播放
+    const consumeStep={type:'ETHEREALIZE_CONSUME',targetIdx:sourceIdx,msgs:L.slice(-1)};
+    // 递归检查：被转移目标自身也有虚化时，由其继续决策是否再次转移
+    const recursionLoss=buildEtherealizeRedirectChainLoss({
       players:P,
-      deck:D,
-      discard:Disc,
-      log:L,
-      targetIdx:redirectTargetIdx,
+      sourceIdx,
+      redirectTargetIdx,
       lostHp:abilityData.lostHp||0,
       lostSan:abilityData.lostSan||0,
-      source:'半物质化',
-      currentTurn:abilityData._turnOwner??gs.currentTurn,
+      currentTurn:gs.currentTurn,
+      order:abilityData.order,
     });
-    P=result.P;D=result.D;Disc=result.Disc;L=result.L;
-    const statEventSeq=(gs._statEventSeq||0)+1;
-    const statEvents=buildStatEvents(beforePlayers,P,L.slice(gs.log.length),{reason:'半物质化',seq:statEventSeq});
-    const statPatch=statEvents.length?{_statEvents:[...(gs._statEvents||[]),...statEvents],_statEventSeq:statEventSeq}:result.inspectionMeta;
-    finishEtherealizeDecision({
+    const nextAbilityData=recursionLoss
+      ?{...abilityData,pendingLosses:[...(abilityData.pendingLosses||[]),recursionLoss]}
+      :appendConfirmedChainLoss(abilityData,{
+        targetIdx:redirectTargetIdx,
+        lostHp:abilityData.lostHp||0,
+        lostSan:abilityData.lostSan||0,
+        source:'半物质化',
+        order:abilityData.order,
+      });
+    continueOrSettleEtherealizeChain({
       players:P,
-      deck:D,
-      discard:Disc,
+      deck:[...gs.deck],
+      discard:[...gs.discard],
       log:L,
-      abilityData:{...abilityData,...statPatch},
-      queue:buildAnimQueue(gs,{...gs,players:P,deck:D,discard:Disc,log:L}),
+      abilityData:nextAbilityData,
+      consumedIndex:abilityData.pendingIndex??0,
+      preQueue:[consumeStep],
     });
   }
 
@@ -6767,21 +6874,24 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }
     if(ti===0&&!P[0].isDead&&(P[0]._nyaBorrow||P[0].role)===ROLE_TREASURE&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
-      setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,'你集齐了全部编号！'],phase:'PLAYER_WIN_PENDING',abilityData:{winReason:'你集齐了全部编号并获胜！'}});
+      setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',abilityData:{winReason:localTreasureWinReason(gs)}});
       return;
     }
     if(ti!==0&&!P[ti].isDead&&P[ti].role===ROLE_TREASURE&&isWinHand(P[ti].hand)){
       P[ti].roleRevealed=true;
-      setGs({
-        ...gs,
-        players:P,
-        deck:D,
-        discard:Disc,
-        log:[...L,`${P[ti].name} 集齐全部编号并获胜！`],
-        gameOver:{winner:ROLE_TREASURE,reason:`${P[ti].name} 集齐了全部编号并获胜！`,winnerIdx:ti},
-        phase:'ACTION',
-        abilityData:{},
-      });
+      const reason=`${P[ti].name} 集齐了全部编号并获胜！`;
+      const winGs={...gs,players:P,deck:D,discard:Disc,log:[...L,reason],
+        gameOver:{winner:ROLE_TREASURE,reason,winnerIdx:ti},
+        phase:'ACTION',abilityData:{}};
+      // 与非本地寻宝者获胜的同步队列模式一致：本地同样播放转牌动画队列再进结算，
+      // 避免本地直接跳到 gameOver 而远端重播转牌动画导致两端动画队列不同步。
+      const winStatQ=buildAnimQueue(gs,winGs).filter(a=>a.type!=='CARD_TRANSFER');
+      broadcastMpStateBeforeLocalReplay(winGs);
+      triggerAnimQueue([
+        ...buildPendingTurnStartDrawQueue(gs),
+        cardTransferStep({fromPid:roseThornSource,dest:'player',toPid:ti,count:giftedCount,msgs:[L[L.length-1]]}),
+        ...winStatQ
+      ],winGs);
       return;
     }
     const nextGs={...buildTargetContinuationGs({players:P,deck:D,discard:Disc,log:L}),...apophisNightPatch(night)};
@@ -6815,7 +6925,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }
     if(!P[0].isDead&&(P[0]._nyaBorrow||P[0].role)===ROLE_TREASURE&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
-      setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,'你集齐了全部编号！'],phase:'PLAYER_WIN_PENDING',abilityData:{winReason:'你集齐了全部编号并获胜！'},...proliferatingZPatch});
+      setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',abilityData:{winReason:localTreasureWinReason(gs)},...proliferatingZPatch});
       return;
     }
     if(nextPickIndex>=pickOrder.length||revealedCards.length===0){
@@ -9712,7 +9822,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     {!suppressAnim&&<KnifeEffect targets={knifeTargets}/>}
     {!suppressAnim&&<SanMistOverlay targets={sanTargets}/>}
     {!suppressAnim&&<CardTransferOverlay transfers={cardTransfers} expansionKey={gs.expansionKey}/>}
-    {phase==='TREASURE_WIN'&&!showTutorial&&<TreasureMapAnim hand={me.hand} onConfirm={revealWin}/>}
+    {phase==='TREASURE_WIN'&&!showTutorial&&<TreasureMapAnim hand={me.hand} confirmCountdownSec={gs._isMP?3:null} onConfirm={revealWin}/>}
     {phase==='GOD_RESURRECTION'&&(!showTutorial||isTutorialGodResurrection)&&(
       <GodResurrectionAnim onDone={isTutorialGodResurrection
         ?completeTutorialGodResurrection
@@ -9871,6 +9981,28 @@ const GLOBAL_STYLES=`
     filter:
       drop-shadow(0 0 6px #87a9c8)
       drop-shadow(0 0 2px #fff);
+  }
+  .etherealize-consume-float {
+    position:fixed;
+    transform:translate(-50%,-100%);
+    z-index:470;
+    pointer-events:none;
+    font-family:'Cinzel',serif;
+    font-size:22px;
+    font-weight:700;
+    letter-spacing:1px;
+    color:#d9f3ff;
+    text-shadow:
+      0 0 10px #87a9c8,
+      0 0 3px #fff,
+      0 2px 6px #000;
+    animation:etherealizeConsumeFloat 0.9s ease-out forwards;
+  }
+  @keyframes etherealizeConsumeFloat {
+    0%   { transform:translate(-50%,-100%) scale(0.6); opacity:0; }
+    18%  { transform:translate(-50%,-130%) scale(1.15); opacity:1; }
+    55%  { transform:translate(-50%,-170%) scale(1); opacity:1; }
+    100% { transform:translate(-50%,-240%) scale(0.92); opacity:0; }
   }
 
   /* ── Mobile / small-screen overrides ── */

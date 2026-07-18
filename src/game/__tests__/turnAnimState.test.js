@@ -59,6 +59,38 @@ describe('buildPlayerTurnDrawQueue', () => {
 });
 
 describe('buildTurnStartDrawReplayQueue', () => {
+  it('uses the latest AI turn visual events instead of replaying the previous AI draw', () => {
+    const spring = { id: 'spring', name: '地下泉', key: 'C2', type: 'allHealHP', isZone: true };
+    const bounce = { id: 'bounce', name: '触底反弹', key: 'C4', type: 'swapAllHands', isZone: true };
+    const oldHeal = { type: 'HP_GAIN', target: 0, from: { hp: 6, san: 10 }, to: { hp: 8, san: 10 }, logHint: '全体存活角色回复 2 HP', seq: 1 };
+    const players = [makePlayer({ name: '你' }), makePlayer({ name: '贝拉' }), makePlayer({ name: '卡洛斯' })];
+    const oldGs = makeGs({ players, currentTurn: 1, phase: 'AI_TURN', _statEventSeq: 1 });
+    const newGs = makeGs({
+      players,
+      currentTurn: 2,
+      phase: 'AI_TURN',
+      _drawnCard: bounce,
+      _aiDrawnCard: bounce,
+      _playersBeforeThisDraw: players,
+      _turnStartLogs: ['── 卡洛斯 的回合开始 ──'],
+      _drawLogs: ['卡洛斯 摸到 [C4] 触底反弹，选择收入手牌并触发效果'],
+      _statEvents: [oldHeal],
+      _statEventSeq: 1,
+      _visualEvents: [
+        { type: 'turnStart', playerIdx: 1, playerName: '贝拉', msgs: ['── 贝拉 的回合开始 ──'] },
+        { type: 'drawCard', playerIdx: 1, playerName: '贝拉', card: spring, msgs: ['贝拉 摸到 [C2] 地下泉'] },
+        { type: 'statEvents', statEvents: [oldHeal], msgs: ['全体存活角色回复 2 HP'] },
+        { type: 'turnStart', playerIdx: 2, playerName: '卡洛斯', msgs: ['── 卡洛斯 的回合开始 ──'] },
+        { type: 'drawCard', playerIdx: 2, playerName: '卡洛斯', card: bounce, msgs: ['卡洛斯 摸到 [C4] 触底反弹，选择收入手牌并触发效果'] },
+      ],
+    });
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+
+    expect(replay.queue.find(step => step.type === 'DRAW_CARD')?.card).toBe(bounce);
+    expect(replay.queue.some(step => step.type === 'HP_HEAL')).toBe(false);
+    expect(replay.queue.find(step => step.type === 'YOUR_TURN')).toMatchObject({ name: '卡洛斯' });
+  });
   it('休息角色跳过回合时先完整播放其回合边界，再进入下一名 AI 的回合', () => {
     const goat = id => ({ id, name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true });
     const oldGs = makeGs({

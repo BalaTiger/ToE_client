@@ -391,45 +391,80 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   let inspectionMeta = makeInspectionMeta(gs);
   const pendingInspectionTargets = [];
   let pendingEtherealizeLosses = [];
+  let deferredDirectLosses = [];
+  let pendingDamages = [];
+  let damageOrderSeq = 0;
   let directStatEvents = null;
   const executionTurnOwner = getCurrentExecutionTurnOwner(gs, ci);
   const dmgBonus = P[ci]?.damageBonus || 0;
   const healHP = (i, v) => { if (i == null || !P[i] || P[i].isDead) return; P[i].hp = clamp(P[i].hp + v); };
   const healSAN = (i, v) => { if (i == null || !P[i] || P[i].isDead) return; P[i].san = clamp(P[i].san + v); };
+  // 伤害不再立即结算，而是先进入待结算队列：
+  // - 'eager' 模式立即逐条结算（虚化候选仍转入决策），供效果中途依赖结算后状态的场景使用；
+  // - 'batch' 模式在效果结束时统一处理：一旦存在虚化候选（伤害前置事件），
+  //   其余直接伤害也一并延迟（deferredDirectLosses），待决策链结束后归并结算。
+  const settlePendingDamages = (mode = 'batch') => {
+    if (!pendingDamages.length) return;
+    const batch = pendingDamages;
+    pendingDamages = [];
+    const deferredEligible = mode === 'batch'
+      ? batch.map(d => buildEtherealizeLoss({
+        players: P,
+        targetIdx: d.targetIdx,
+        currentTurn: gs?.currentTurn,
+        lostHp: d.kind === 'hp' ? d.amount : 0,
+        lostSan: d.kind === 'san' ? d.amount : 0,
+        source: d.source,
+      }))
+      : null;
+    const deferDirect = mode === 'batch' && (
+      pendingEtherealizeLosses.length > 0 || deferredEligible.some(Boolean)
+    );
+    batch.forEach((d, batchIdx) => {
+      if (!P[d.targetIdx] || P[d.targetIdx].isDead) return;
+      const etherealizeLoss = mode === 'eager'
+        ? buildEtherealizeLoss({
+          players: P,
+          targetIdx: d.targetIdx,
+          currentTurn: gs?.currentTurn,
+          lostHp: d.kind === 'hp' ? d.amount : 0,
+          lostSan: d.kind === 'san' ? d.amount : 0,
+          source: d.source,
+        })
+        : deferredEligible[batchIdx];
+      if (etherealizeLoss) {
+        pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, { ...etherealizeLoss, order: d.order });
+        return;
+      }
+      if (deferDirect) {
+        deferredDirectLosses = appendEtherealizeLoss(deferredDirectLosses, {
+          targetIdx: d.targetIdx,
+          lostHp: d.kind === 'hp' ? d.amount : 0,
+          lostSan: d.kind === 'san' ? d.amount : 0,
+          source: d.source,
+          order: d.order,
+        });
+        return;
+      }
+      if (d.kind === 'hp') {
+        applyHpDamageWithLink(P, d.targetIdx, d.amount, Disc, d.msgsTarget, gs?.currentTurn, D);
+      } else {
+        P[d.targetIdx].san = clamp(P[d.targetIdx].san - d.amount);
+        const newSan = P[d.targetIdx].san;
+        if (newSan > 0 && newSan <= 6) {
+          pendingInspectionTargets.push(d.targetIdx);
+        }
+      }
+    });
+  };
   const hurtHPDirect = (i, v, targetMsgs = msgs, source = card?.name || card?.type || 'HP') => {
     if (i == null || !P[i] || P[i].isDead || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return;
-    const etherealizeLoss = buildEtherealizeLoss({
-      players: P,
-      targetIdx: i,
-      currentTurn: gs?.currentTurn,
-      lostHp: v,
-      source,
-    });
-    if (etherealizeLoss) {
-      pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, etherealizeLoss);
-      return;
-    }
-    applyHpDamageWithLink(P, i, v, Disc, targetMsgs, gs?.currentTurn, D);
+    pendingDamages.push({ kind: 'hp', targetIdx: i, amount: v, source, msgsTarget: targetMsgs, order: damageOrderSeq++ });
   };
   const hurtHP = (i, v) => hurtHPDirect(i, v, msgs);
   const hurtSAN = (i, v) => {
     if (i == null || !P[i] || P[i].isDead || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return;
-    const etherealizeLoss = buildEtherealizeLoss({
-      players: P,
-      targetIdx: i,
-      currentTurn: gs?.currentTurn,
-      lostSan: v,
-      source: card?.name || card?.type || 'SAN',
-    });
-    if (etherealizeLoss) {
-      pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, etherealizeLoss);
-      return;
-    }
-    P[i].san = clamp(P[i].san - v);
-    const newSan = P[i].san;
-    if (newSan > 0 && newSan <= 6) {
-      pendingInspectionTargets.push(i);
-    }
+    pendingDamages.push({ kind: 'san', targetIdx: i, amount: v, source: card?.name || card?.type || 'SAN', msgsTarget: msgs, order: damageOrderSeq++ });
   };
   const dealHP = (i, v) => hurtHP(i, v + dmgBonus);
   const dealSAN = (i, v) => hurtSAN(i, v + dmgBonus);
@@ -458,7 +493,15 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   const others = P.map((_, i) => i).filter(i => i !== ci && !P[i].isDead);
   const allLiving = P.map((_, i) => i).filter(i => !P[i].isDead);
   const actor = P[ci];
+  const buildChainEtherealizeDecision = () => {
+    const decision = buildEtherealizeRedirectDecision(pendingEtherealizeLosses, { _turnOwner: gs?.currentTurn ?? ci });
+    if (decision && deferredDirectLosses.length) {
+      return { ...decision, deferredDirectLosses };
+    }
+    return decision;
+  };
   const finish = (result, explicitStatEvents = null) => {
+    settlePendingDamages('batch');
     const statEventSeq = (gs?._statEventSeq || 0) + 1;
     const statEvents = explicitStatEvents || buildStatEvents(beforePlayers, result.P || P, result.msgs || msgs, { reason: card?.name || card?.type || '', seq: statEventSeq });
     const patchedStatEvents = Array.isArray(result.statePatch?._statEvents)
@@ -471,7 +514,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       statEvents.length ? statEventSeq : (gs?._statEventSeq || 0),
       result.statePatch?._statEventSeq || 0,
     );
-    const etherealizeDecision = statePatch?.abilityData?.type ? null : buildEtherealizeRedirectDecision(pendingEtherealizeLosses, { _turnOwner: gs?.currentTurn ?? ci });
+    const etherealizeDecision = statePatch?.abilityData?.type ? null : buildChainEtherealizeDecision();
     const slimeDecision = etherealizeDecision || statePatch?.abilityData?.type
       ? null
       : buildTsathogguaSlimeBalanceDecision(beforePlayers, result.P || P, { _turnOwner: gs?.currentTurn ?? ci });
@@ -983,6 +1026,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const beforePlayers = card?.name === '惊扰蝙蝠' ? copyPlayers(P) : null;
       applyAOEDamage(adjacent, 'hp', card.val);
       if (card?.name === '惊扰蝙蝠') {
+        settlePendingDamages('eager');
         const event = createCardEffectEvent({
           effectKey: 'startledBats',
           card,
@@ -1008,6 +1052,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const beforePlayers = card?.name === '活火山' ? copyPlayers(P) : null;
       applyGlobalAOEDamage('hp', card.val);
       if (card?.name === '活火山') {
+        settlePendingDamages('eager');
         const event = createCardEffectEvent({
           effectKey: 'volcano',
           card,
@@ -1032,6 +1077,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const beforePlayers = card?.name === '夜风呼啸' ? copyPlayers(P) : null;
       applyGlobalAOEDamage('both', card.val);
       if (card?.name === '夜风呼啸') {
+        settlePendingDamages('eager');
         const event = createCardEffectEvent({
           effectKey: 'nightWind',
           card,
@@ -1184,6 +1230,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
         msgs.push(`${actor.name} 失去 3 HP`);
         hurtHP(ci, 3);
+        settlePendingDamages('eager');
       }
       healSAN(ci, card.val);
       msgs.push(`${actor.name} 回复 ${card.val} SAN`);
@@ -1192,6 +1239,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       if (!avoidNegative && !avoidNegativeFor.includes(ci) && actor.hasBelievedGod) {
         msgs.push(`${actor.name} 失去 3 HP`);
         hurtHP(ci, 3);
+        settlePendingDamages('eager');
       }
       healSAN(ci, card.val);
       msgs.push(`${actor.name} 回复 ${card.val} SAN`);
@@ -1236,6 +1284,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           msgs.push(`${actor.name} 失去 ${card.val} HP`);
         }
         hurtHP(ci, card.val);
+        settlePendingDamages('eager');
         if (P[ci] && !P[ci].isDead) {
           markSkipNextDraw(P[ci], card.name || '扭伤');
           msgs.push(`${actor.name} 下回合开始时不能摸牌`);
@@ -1266,6 +1315,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       affectedTargets.forEach(i => {
         const localMsgs = [];
         hurtHPDirect(i, (card.val || 0) + dmgBonus, localMsgs);
+        settlePendingDamages('eager');
         deferredGlobalLogs.push(...localMsgs);
       });
       const afterGlobalPlayers = copyPlayers(P);
@@ -1283,6 +1333,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         const beforeExtraPlayer = { ...P[randomTarget] };
         const localMsgs = [];
         hurtHPDirect(randomTarget, (card.val || 0) + dmgBonus, localMsgs);
+        settlePendingDamages('eager');
         statePatch = appendRandomTargetEvent(statePatch, gs, {
           sourceIdx: ci,
           targetIdx: randomTarget,
@@ -1361,6 +1412,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       if (damage > 0) {
         const localMsgs = [];
         hurtHPDirect(randomTarget, damage, localMsgs);
+        settlePendingDamages('eager');
         if (localMsgs.length) msgs.push(...localMsgs);
       }
       const seq = (gs?._statEventSeq || 0) + 1;
@@ -1378,6 +1430,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
         msgs.push(`${actor.name} 失去 ${card.hpVal || 2} HP`);
         hurtHP(ci, card.hpVal || 2);
+        settlePendingDamages('eager');
       }
       const actorHand = actor.hand || [];
       const cardAlreadyInHand = card?.id ? actorHand.some(c => c?.id === card.id) : false;
@@ -1673,6 +1726,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         if (!negativeAvoided) {
           msgs.push(`【霉变食物】${actor.name} 掷出 ${d1} 点（单数），失去 1 HP，下回合开始时不能摸牌`);
           hurtHP(ci, 1);
+          settlePendingDamages('eager');
           markSkipNextDraw(P[ci], '霉变食物');
         } else {
           msgs.push(`【霉变食物】${actor.name} 掷出 ${d1} 点（单数），负面效果已规避`);
@@ -1692,6 +1746,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
             const beforeTarget = { ...P[randomTarget] };
             hurtHP(randomTarget, 2);
             hurtSAN(randomTarget, 2);
+            settlePendingDamages('eager');
             msgs.push(`${P[randomTarget].name} 失去 2 HP 和 2 SAN`);
             const seq = (gs?._statEventSeq || 0) + 1;
             directStatEvents = [{
@@ -1743,6 +1798,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     const earlyReturn = handler();
     if (earlyReturn) return finish(earlyReturn);
   }
+  settlePendingDamages('batch');
   const directStatEventSeq = (gs?._statEventSeq || 0) + 1;
   if (!directStatEvents) directStatEvents = buildStatEvents(beforePlayers, P, msgs, { reason: card?.name || card?.type || '', seq: directStatEventSeq });
   const inspectionStartMeta = directStatEvents.length
@@ -1765,7 +1821,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     const inspectionBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
     const pendingChainDecision = statePatch?.abilityData?.type
       ? statePatch.abilityData
-      : buildEtherealizeRedirectDecision(pendingEtherealizeLosses, { _turnOwner: gs?.currentTurn ?? ci })
+      : buildChainEtherealizeDecision()
         || buildTsathogguaSlimeBalanceDecision(beforePlayers, P, { _turnOwner: gs?.currentTurn ?? ci });
     const processed = processInspectionTargets(
       inspectionTargets,

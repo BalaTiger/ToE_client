@@ -710,6 +710,31 @@ describe('turnEngine stat events', () => {
     expect(result._inspectionEvents || []).toEqual([]);
   });
 
+  it('AI 回合开始摸牌触发撒托古亚黏液时，_turnOwner 应为新回合玩家而非上家', () => {
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', role: ROLE_CULTIST }),
+      makePlayer({ name: '卡洛斯', hand: [createTsathogguaSlimeCard()] }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 0,
+      log: [],
+      deck: [makeZoneCard('D3', 3)], // 鼠群：所有角色失去 1 SAN
+    });
+
+    const result = startNextTurn(gs);
+
+    expect(result.phase).toBe('TSG_SLIME_BALANCE');
+    expect(result.currentTurn).toBe(1);
+    expect(result.abilityData).toMatchObject({
+      type: 'tsgSlimeBalance',
+      targetIdx: 2,
+      _turnOwner: 1,
+    });
+    expect(result.players[2].san).toBe(9);
+  });
+
   it('回合开始黑山羊幼仔造成损失时，撒托古亚黏液可打断到平分选择', () => {
     const players = [
       makePlayer({ name: '你' }),

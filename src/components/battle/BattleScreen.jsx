@@ -694,8 +694,21 @@ export function BattleScreen(props) {
         handleSwapBlindDrawSelect={handleSwapBlindDrawSelect}
       />
 
+      {phase==='MP_PLAYER_WIN_WAIT'&&(()=>{
+        // 远端玩家集齐宝藏：本地同步播放藏宝图动画，但按钮替换为等待提示，
+        // 待远端点击「宣布胜利」（或其 3 秒倒计时自动点击）后由 gameOver 同步切入结算。
+        const winIdx=gs?.abilityData?.winnerIdx??null;
+        const winnerPlayer=winIdx!=null?gs?.players?.[winIdx]:null;
+        return (
+          <TreasureMapAnim
+            hand={winnerPlayer?.hand||[]}
+            subtitle={`${winnerPlayer?.name||'其他玩家'} 集齐了全部编号！`}
+            waitingLabel={`正在等待 ${winnerPlayer?.name||'获胜者'} ……`}
+          />
+        );
+      })()}
       {phase==='PLAYER_WIN_PENDING'&&(
-        <TreasureMapAnim hand={me.hand} onConfirm={showTutorial?handleTutorialTreasureMapConfirm:()=>{
+        <TreasureMapAnim hand={me.hand} confirmCountdownSec={gs?._isMP?3:null} onConfirm={showTutorial?handleTutorialTreasureMapConfirm:()=>{
           animQueueRef.current=[];
           pendingGsRef.current=null;
           setAnim(null);

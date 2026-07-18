@@ -568,7 +568,10 @@ export function buildHandLimitDiscardStepsFromVisualEvents(state) {
 }
 
 export function buildTurnStartStepFromVisualEvents(state) {
-  const event = getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.TURN_START);
+  const event = getVisualEvents(state).findLast(ev =>
+    ev?.type === VISUAL_EVENT.TURN_START &&
+    (ev.playerIdx == null || ev.playerIdx === (state?.currentTurn ?? 0))
+  );
   if (!event) return null;
   const playerIdx = event.playerIdx ?? state?.currentTurn ?? 0;
   const playerName = event.playerName || state?.players?.[playerIdx]?.name || '???';
@@ -580,7 +583,11 @@ export function buildTurnStartStepFromVisualEvents(state) {
 }
 
 export function buildDrawCardStepFromVisualEvents(state) {
-  const event = getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.DRAW_CARD && ev.card);
+  const event = getVisualEvents(state).findLast(ev =>
+    ev?.type === VISUAL_EVENT.DRAW_CARD &&
+    ev.card &&
+    (ev.playerIdx == null || ev.playerIdx === (state?.currentTurn ?? 0))
+  );
   if (!event) return null;
   const playerIdx = event.playerIdx ?? state?.currentTurn ?? 0;
   const playerName = event.playerName || state?.players?.[playerIdx]?.name || '???';
@@ -595,7 +602,7 @@ export function buildDrawCardStepFromVisualEvents(state) {
 }
 
 export function buildStatStepsFromVisualEvents(state, players) {
-  const event = getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.STAT_EVENTS && Array.isArray(ev.statEvents) && ev.statEvents.length);
+  const event = getVisualEvents(state).findLast(ev => ev?.type === VISUAL_EVENT.STAT_EVENTS && Array.isArray(ev.statEvents) && ev.statEvents.length);
   if (!event) return [];
   return statEventsToAnimQueue(event.statEvents, players || state?.players || [], event.msgs || []);
 }

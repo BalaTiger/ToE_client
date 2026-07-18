@@ -296,7 +296,7 @@ function getGodDrawResolution(logs = [], drawerName = '') {
 }
 
 function buildFilteredStatStepsFromVisualEvents(state, players, shouldKeepEvent, excludedMsgs = new Set()) {
-  const event = getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.STAT_EVENTS && Array.isArray(ev.statEvents) && ev.statEvents.length);
+  const event = getVisualEvents(state).findLast(ev => ev?.type === VISUAL_EVENT.STAT_EVENTS && Array.isArray(ev.statEvents) && ev.statEvents.length);
   if (!event) return [];
   const statEvents = event.statEvents.filter(statEvent => shouldKeepEvent(statEvent));
   if (!statEvents.length) return [];
@@ -317,8 +317,8 @@ function isPreDrawTurnStartStatEvent(event) {
 
 function getFreshStatEventsFromState(oldGs, newGs) {
   const oldSeq = oldGs?._statEventSeq || 0;
-  const visualEvent = getVisualEvents(newGs).find(ev => ev?.type === VISUAL_EVENT.STAT_EVENTS && Array.isArray(ev.statEvents) && ev.statEvents.length);
-  if (visualEvent) return visualEvent.statEvents.filter(Boolean);
+  const visualEvent = getVisualEvents(newGs).findLast(ev => ev?.type === VISUAL_EVENT.STAT_EVENTS && Array.isArray(ev.statEvents) && ev.statEvents.length);
+  if (visualEvent) return visualEvent.statEvents.filter(ev => ev && (ev.seq == null || ev.seq > oldSeq));
   return Array.isArray(newGs?._statEvents)
     ? newGs._statEvents.filter(ev => ev && (ev.seq == null || ev.seq > oldSeq))
     : [];

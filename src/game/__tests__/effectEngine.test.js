@@ -253,7 +253,46 @@ describe('applyFx', () => {
     expect(res.statePatch._statEvents.at(-1)).toMatchObject({ type: 'SAN_GAIN', target: 2, reason: '超人意志' });
   });
 
-  it('allDamageSAN: 虚化决策会暂停后续 SAN 检定', () => {
+  it('adjDamageHP: 相邻有虚化角色时，无虚化角色的伤害也延迟归并（亡者军团场景）', () => {
+    const players = [
+      makePlayer({ name: '你', hp: 10, san: 7 }),
+      makePlayer({ name: '艾伦', hp: 10, san: 8, etherealizeStacks: 1 }),
+      makePlayer({ name: '贝拉', hp: 10, san: 8 }),
+      makePlayer({ name: '黛安娜', hp: 10, san: 7 }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0, log: [] });
+
+    // 你（idx 0）的相邻角色是艾伦（1）和黛安娜（3）；规避后自身不受伤害
+    const res = applyFx({ id: 'undead-legion', name: '亡者军团', type: 'adjDamageHP', val: 4 }, 0, null, players, [], [], gs, true, [], false);
+
+    // 艾伦有虚化 → 进入决策；黛安娜的直接伤害同样延迟，不在 res.P 中结算
+    expect(res.P.map(p => p.hp)).toEqual([10, 10, 10, 10]);
+    expect(res.statePatch.abilityData).toMatchObject({
+      type: 'etherealizeRedirect',
+      targetIdx: 1,
+      lostHp: 4,
+    });
+    expect(res.statePatch.abilityData.deferredDirectLosses).toEqual([
+      expect.objectContaining({ targetIdx: 3, lostHp: 4, lostSan: 0 }),
+    ]);
+  });
+
+  it('adjDamageHP: 相邻均无虚化时伤害立即结算，行为不变', () => {
+    const players = [
+      makePlayer({ name: '你', hp: 10, san: 7 }),
+      makePlayer({ name: '艾伦', hp: 10, san: 8 }),
+      makePlayer({ name: '贝拉', hp: 10, san: 8 }),
+      makePlayer({ name: '黛安娜', hp: 10, san: 7 }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0, log: [] });
+
+    const res = applyFx({ id: 'undead-legion', name: '亡者军团', type: 'adjDamageHP', val: 4 }, 0, null, players, [], [], gs, true, [], false);
+
+    expect(res.P.map(p => p.hp)).toEqual([10, 6, 10, 6]);
+    expect(res.statePatch?.abilityData?.type).toBeFalsy();
+  });
+
+  it('allDamageSAN: 存在虚化候选时全部伤害延迟到决策链结束后归并结算', () => {
     const players = [
       makePlayer({ name: '艾伦', hp: 10, san: 7 }),
       makePlayer({ name: '贝拉', hp: 10, san: 8 }),
@@ -277,14 +316,20 @@ describe('applyFx', () => {
     const res = applyFx({ id: 'rats', name: '鼠群', type: 'allDamageSAN', val: 1 }, 3, null, players, [], [], gs);
     randomSpy.mockRestore();
 
-    expect(res.statePatch._inspectionEvents.map(event => event.card.name)).toEqual(['自残']);
+    // 伤害前置事件（虚化）检查完成前，任何伤害都不实际结算
+    expect(res.P.map(p => p.san)).toEqual([7, 8, 7, 7]);
+    expect(res.statePatch._inspectionEvents || []).toEqual([]);
     expect(res.statePatch.abilityData).toMatchObject({
       type: 'etherealizeRedirect',
       targetIdx: 2,
       lostSan: 1,
-      pendingInspectionContinuation: { targets: [0], startIndex: 3 },
     });
-    expect(res.P[2].san).toBe(7);
+    // 非虚化目标的直接伤害被归并延迟，待决策链结束后统一结算
+    expect(res.statePatch.abilityData.deferredDirectLosses).toEqual([
+      expect.objectContaining({ targetIdx: 0, lostHp: 0, lostSan: 1 }),
+      expect.objectContaining({ targetIdx: 1, lostHp: 0, lostSan: 1 }),
+      expect.objectContaining({ targetIdx: 3, lostHp: 0, lostSan: 1 }),
+    ]);
   });
 
   it('igniteTorch: 玩家有手牌时进入弃牌选择', () => {

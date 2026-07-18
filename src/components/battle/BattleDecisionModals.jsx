@@ -1,6 +1,7 @@
 import React from 'react';
 import { GOD_DEFS } from '../../constants/card';
 import { cardLogText } from '../../game';
+import { isAiSeat } from '../../game/rotateState';
 import { TUTORIAL_FLOW } from '../../game/tutorialScenario';
 import { DDCard } from '../cards';
 import {
@@ -225,14 +226,16 @@ export function BattleDecisionModals({
         </div>
       )}
 
-      {/* Etherealize decision */}
-      {!suppressAnim && canShowTurnDecisionModal && phase === 'ETHEREALIZE_DECISION' && gs.abilityData && (
+      {/* Etherealize decision —— AI 的决策弹窗不对玩家展示 */}
+      {!suppressAnim && canShowTurnDecisionModal && phase === 'ETHEREALIZE_DECISION' && gs.abilityData && (isLocalSeatIndex(gs.abilityData?.targetIdx) || (gs._isMP && !isAiSeat(gs, gs.abilityData?.targetIdx))) && (
         <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 430, pointerEvents: 'none' }}>
           <div style={{ background: '#0c1118f2', border: '2px solid #87a9c8', boxShadow: '0 0 60px #87a9c833, 0 0 120px #000c', borderRadius: 4, padding: '22px 26px', maxWidth: 540, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
             <div style={{ fontFamily: "'Cinzel',serif", color: '#b9d8f0', fontSize: 16, letterSpacing: 2, marginBottom: 12 }}>── 半物质化 ──</div>
             <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#d8c078', fontSize: 14, lineHeight: 1.6, marginBottom: 18 }}>
               {isLocalSeatIndex(gs.abilityData?.targetIdx)
-                ? `是否消耗1层虚化，转移即将失去的 ${gs.abilityData?.lostHp || 0} HP / ${gs.abilityData?.lostSan || 0} SAN？`
+                ? (gs.abilityData?.viaEtherealizeFrom != null
+                  ? `${gs.players[gs.abilityData.viaEtherealizeFrom]?.name || '有角色'} 通过虚化将即将失去的 ${gs.abilityData?.lostHp || 0} HP / ${gs.abilityData?.lostSan || 0} SAN 转移给了你！是否消耗1层虚化，将其继续转移？`
+                  : `是否消耗1层虚化，转移即将失去的 ${gs.abilityData?.lostHp || 0} HP / ${gs.abilityData?.lostSan || 0} SAN？`)
                 : `等待 ${gs.players[gs.abilityData?.targetIdx]?.name || '目标'} 选择是否消耗虚化…`}
             </div>
             {isLocalSeatIndex(gs.abilityData?.targetIdx) ? (

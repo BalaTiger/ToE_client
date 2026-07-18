@@ -10,7 +10,7 @@ import { RandomTargetOverlay } from './RandomTargetOverlay';
 import { ThrowStoneOverlay } from './ThrowStoneOverlay';
 import { CthRlyehDreamOverlay } from './CthRlyehDreamOverlay';
 import { NightWindAnim } from './NightWindOverlay';
-import { EtherealizeGainAnim } from './EtherealizeOverlay';
+import { EtherealizeGainAnim, EtherealizeConsumeAnim } from './EtherealizeOverlay';
 import { BurrowingWormAnim } from './BurrowingWormOverlay';
 
 const NO_OVERLAY_TYPES = new Set([
@@ -59,6 +59,7 @@ const ANIM_RENDERERS = {
   NIGHT_WIND: ({ exiting }) => <NightWindAnim exiting={exiting} />,
   BURROWING_WORM: ({ exiting }) => <BurrowingWormAnim exiting={exiting} />,
   ETHEREALIZE_GAIN: ({ anim, exiting }) => <EtherealizeGainAnim anim={anim} exiting={exiting} />,
+  ETHEREALIZE_CONSUME: ({ anim }) => <EtherealizeConsumeAnim anim={anim} />,
   VOLCANO: ({ anim, exiting }) => <VolcanoAnim anim={anim} exiting={exiting} />,
   SNAKE_TRAP: ({ anim, exiting }) => <SnakeTrapOverlay anim={anim} exiting={exiting} />,
   RANDOM_TARGET: ({ anim, exiting }) => <RandomTargetOverlay anim={anim} exiting={exiting} />,

@@ -269,6 +269,16 @@ export const isWinHand = (hand) => {
   return Math.max(missingLetters, missingNumbers) <= blankCount;
 };
 
+// 本地玩家（seat 0）集齐宝藏时的日志/胜利文案。联机下日志会广播给其他客户端，
+// 必须用真实昵称而非「你」，避免远端玩家误解获胜者。
+export const localTreasureWinLog = (gs) => (
+  gs?._isMP ? `${gs?.players?.[0]?.name || '你'} 集齐了全部编号！` : '你集齐了全部编号！'
+);
+
+export const localTreasureWinReason = (gs) => (
+  gs?._isMP ? `${gs?.players?.[0]?.name || '你'} 集齐了全部编号并获胜！` : '你集齐了全部编号并获胜！'
+);
+
 export const getLivingPlayerOrder = (players, startIdx) => {
   const aliveOrder = [];
   for (let step = 0; step < players.length; step++) {

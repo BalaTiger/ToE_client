@@ -155,7 +155,7 @@ export function buildPhaseUiState({
       case 'PLAYER_WIN_PENDING':
         return '✦ 你已集齐全部编号！';
       case 'MP_PLAYER_WIN_WAIT':
-        return '等待其他玩家……';
+        return `正在等待 ${players?.[abilityData?.winnerIdx ?? -1]?.name || '其他玩家'} ……`;
       case 'DRAW_REVEAL':
         return local.drawDecision
           ? (canShowTurnDecisionModal ? '摸牌 — 请确认' : '摸牌中…')

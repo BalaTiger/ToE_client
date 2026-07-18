@@ -111,7 +111,12 @@ function GodResurrectionAnim({onDone}){
 }
 
 // ── Treasure Map Win Animation (寻宝者 win, single unified impl) ─────────────
-function TreasureMapAnim({hand,onConfirm}){
+// confirmMode:
+//   - 默认：显示「宣布胜利」按钮，玩家点击后 onConfirm
+//   - confirmCountdownSec：按钮带倒计时，归零自动点击（联机获胜者侧，避免房间卡死）
+//   - waitingLabel：不显示按钮，替换为等待提示（远端玩家集齐宝藏时本地所见）
+//   - autoConfirmMs：不显示按钮，地图揭示后停留一段时间自动 onConfirm（AI 集齐宝藏）
+function TreasureMapAnim({hand,onConfirm,confirmCountdownSec=null,waitingLabel=null,autoConfirmMs=null,subtitle=null}){
   // Compute the minimal ordered set of cards that covers all 4 letters AND 4 numbers
   const LETTERS_ALL=['A','B','C','D'],NUMS_ALL=[1,2,3,4];
   function pickWinCards(h){
@@ -137,6 +142,8 @@ function TreasureMapAnim({hand,onConfirm}){
   // Phase: 0=init, 1..N = card N flies in, N+1=all in (glow builds), N+2=flash, N+3=map revealed, N+4=button shown
   const [phase,setPhase]=useState(0);
   const firedRef=useRef(false);
+  const [countdown,setCountdown]=useState(confirmCountdownSec);
+  const confirmFiredRef=useRef(false);
   useEffect(()=>{
     if(firedRef.current)return;firedRef.current=true;
     const ts=[];
@@ -148,6 +155,40 @@ function TreasureMapAnim({hand,onConfirm}){
     ts.push(setTimeout(()=>setPhase(N+4),t));        // button
     return()=>{ts.forEach(clearTimeout);firedRef.current=false;};
   },[N]);
+  const allIn=phase>N;
+  const glowing=phase===N+1;
+  const flashing=phase===N+2;
+  const mapRevealed=phase>=N+3;
+  const btnVisible=phase>=N+4;
+  // AI 集齐宝藏：地图揭示后停留 autoConfirmMs 再自动进入结算
+  useEffect(()=>{
+    if(!btnVisible||autoConfirmMs==null||!onConfirm||confirmFiredRef.current)return;
+    const t=setTimeout(()=>{
+      if(confirmFiredRef.current)return;
+      confirmFiredRef.current=true;
+      onConfirm();
+    },autoConfirmMs);
+    return()=>clearTimeout(t);
+  },[btnVisible,autoConfirmMs,onConfirm]);
+  // 联机获胜者侧：宣布胜利按钮倒计时，归零自动点击
+  useEffect(()=>{
+    if(!btnVisible||confirmCountdownSec==null||!onConfirm)return;
+    const iv=setInterval(()=>{
+      setCountdown(prev=>{
+        if(prev==null)return prev;
+        if(prev<=1){
+          clearInterval(iv);
+          if(!confirmFiredRef.current){
+            confirmFiredRef.current=true;
+            onConfirm();
+          }
+          return 0;
+        }
+        return prev-1;
+      });
+    },1000);
+    return()=>clearInterval(iv);
+  },[btnVisible,confirmCountdownSec,onConfirm]);
   // Layout: cards in a grid, max 4 per row
   const COLS=Math.min(N,4),ROWS=Math.ceil(N/COLS);
   const CW=72,CH=96,GAP=8;
@@ -157,11 +198,6 @@ function TreasureMapAnim({hand,onConfirm}){
     {x:-220,y:-170},{x:220,y:-170},{x:-220,y:170},{x:220,y:170},
     {x:0,y:-190},{x:0,y:190},{x:-200,y:0},{x:200,y:0},
   ];
-  const allIn=phase>N;
-  const glowing=phase===N+1;
-  const flashing=phase===N+2;
-  const mapRevealed=phase>=N+3;
-  const btnVisible=phase>=N+4;
   return(
     <div style={{position:'fixed',inset:0,zIndex:4000,display:'flex',flexDirection:'column',
       alignItems:'center',justifyContent:'center',
@@ -177,6 +213,12 @@ function TreasureMapAnim({hand,onConfirm}){
           color:'#b89858',fontSize:13,letterSpacing:1}}>
           遗迹的秘密，尽在掌中
         </div>
+        {subtitle&&(
+          <div style={{fontFamily:"'Cinzel',serif",color:'#e8c87a',fontSize:14,letterSpacing:2,
+            marginTop:10,textShadow:'0 0 20px #c8a96e66',animation:'animFadeIn 0.6s 0.3s both'}}>
+            {subtitle}
+          </div>
+        )}
       </div>
       {/* Card grid / Map area */}
       <div style={{position:'relative',width:gridW,height:gridH,marginBottom:32}}>
@@ -248,7 +290,15 @@ function TreasureMapAnim({hand,onConfirm}){
           </div>
         )}
       </div>
-      {btnVisible&&(
+      {btnVisible&&waitingLabel&&(
+        <div style={{padding:'12px 44px',background:'#140d06',border:'2px solid #6a5230',
+          color:'#b89858',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:14,
+          borderRadius:2,letterSpacing:3,
+          boxShadow:'0 0 24px #c8a96e33',animation:'animPop 0.35s ease-out'}}>
+          {waitingLabel}
+        </div>
+      )}
+      {btnVisible&&!waitingLabel&&autoConfirmMs==null&&(
         <button onClick={onConfirm}
           style={{padding:'12px 44px',background:'#1c1008',border:'2px solid #c8a96e',
             color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:14,
@@ -257,7 +307,7 @@ function TreasureMapAnim({hand,onConfirm}){
             transition:'all .2s'}}
           onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';e.currentTarget.style.boxShadow='0 0 50px #c8a96e88';}}
           onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';e.currentTarget.style.boxShadow='0 0 30px #c8a96e55';}}
-        >✦ 宣布胜利</button>
+        >✦ 宣布胜利{confirmCountdownSec!=null&&countdown!=null?`（${countdown}）`:''}</button>
       )}
     </div>
   );

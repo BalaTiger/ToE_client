@@ -74,6 +74,27 @@ describe('useMultiplayerStateBroadcast helpers', () => {
     expect(broadcast.clearLocalVisualEvents).toBe(false);
   });
 
+  it('rotates the wait-state winnerIdx so remote viewers see the correct winner seat', async () => {
+    const { rotateGsForViewer } = await import('../game/rotateState');
+    const broadcast = buildPlayerWinWaitBroadcast({
+      gs: {
+        phase: 'TREASURE_WIN',
+        drawReveal: null,
+        abilityData: {},
+        players: [{ name: '甲' }, { name: '乙' }, { name: '丙' }],
+      },
+      room: { roomId: 'room-1' },
+      myPlayerIndex: 2,
+    });
+
+    // 获胜者（自己视角 seat 0）在原始座位表中位于 seat 2
+    expect(broadcast.rawGs.abilityData.winnerIdx).toBe(2);
+    // 远端（原始 seat 1）旋转后，获胜者应显示在远端视角的 seat 1，且就是获胜者本人（甲）
+    const rotated = rotateGsForViewer(broadcast.rawGs, 1);
+    expect(rotated.abilityData.winnerIdx).toBe(1);
+    expect(rotated.players[rotated.abilityData.winnerIdx].name).toBe('甲');
+  });
+
   it('prunes consumed visual events from normal state broadcasts', () => {
     const broadcast = buildNormalStateBroadcast({
       gs: {

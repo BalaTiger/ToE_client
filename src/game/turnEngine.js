@@ -1083,6 +1083,9 @@ export function startNextTurn(gs, opts = {}) {
   // 清理上回合玩家的临时状态
   P = endPreviousTurnCleanup(P, gs.currentTurn);
   _P_beforeTurn = copyPlayers(P);
+  // 此后所有回合内操作（摸牌、效果结算）都应以 next 为当前回合拥有者，
+  // 否则 applyFx 等函数会拿 gs.currentTurn（旧回合）去决定 _turnOwner/检定触发者。
+  gs = { ...gs, currentTurn: next };
   // 清理过期的两人一绳链条
   P.forEach((p, i) => {
     const shouldExpire = p.damageLink && (

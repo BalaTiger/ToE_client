@@ -37,6 +37,10 @@ function getPanelElement(actorIdx) {
   return root.firstElementChild || root;
 }
 
+function getEtherealizeBadgeElement(actorIdx) {
+  return document.querySelector(`[data-etherealize-badge="${actorIdx}"]`);
+}
+
 function readThemeVars(el) {
   const root = el?.closest?.('.toe-battle-root') || document.querySelector('.toe-battle-root') || el;
   if (!root || typeof window === 'undefined') return {};
@@ -514,4 +518,39 @@ function EtherealizeGainAnim({ anim, exiting }) {
   );
 }
 
-export { EtherealizeGainAnim };
+// 消耗 1 层虚化时，在虚化标签上方跳出 "-1" 浮动字样（标签层数变化由 statePatch 驱动，
+// 层数变化本身会触发标签内置的 chevron 重播动画）
+function EtherealizeConsumeAnim({ anim }) {
+  const targetIdx = anim?.targetIdx ?? 0;
+  const [anchor, setAnchor] = React.useState(null);
+
+  React.useLayoutEffect(() => {
+    let rafId = 0;
+    const measure = () => {
+      const el = getEtherealizeBadgeElement(targetIdx) || getPanelElement(targetIdx);
+      if (!el) return;
+      const rect = _getZoomCompensatedRect(el);
+      if (!rect) return;
+      setAnchor({ cx: rect.left + rect.width / 2, top: rect.top });
+    };
+    rafId = requestAnimationFrame(() => {
+      rafId = requestAnimationFrame(measure);
+    });
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [targetIdx]);
+
+  if (!anchor) return null;
+  return (
+    <div
+      className="etherealize-consume-float"
+      style={{ left: anchor.cx, top: anchor.top }}
+      aria-hidden
+    >
+      -1
+    </div>
+  );
+}
+
+export { EtherealizeGainAnim, EtherealizeConsumeAnim };
