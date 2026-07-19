@@ -291,7 +291,9 @@ export function BattleScreen(props) {
     localDebugMode,
     setLocalDebugMode,
     serverAnnouncement,
-    emojiButtonPos
+    emojiButtonPos,
+    isSoloPaused,
+    setIsSoloPaused,
   } = props;
 
   const getButtonStyle = (opts) =>
@@ -301,7 +303,9 @@ export function BattleScreen(props) {
     <>
     <div className={`toe-battle-root${drawBackgroundCameraActive?' toe-draw-camera-active':''}`} onClickCapture={handleUiSfxCapture} style={{minHeight:isMobileLandscape?'100dvh':'100vh',height:isMobileLandscape?'100dvh':undefined,width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...battleBackgroundStyle,color:'var(--toe-text,#c8a96e)',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:isMobileLandscape?4:7,padding:isMobile?'6px 8px':isMobileLandscape?'4px 6px':'8px 10px',position:'relative',isolation:'isolate',left:globalShiftX||undefined,overflowX:'hidden',overflowY:isMobileLandscape?'hidden':'auto',scrollbarGutter:isMobileLandscape?undefined:'stable',
     animation:deathShake?'deathShakeAnim 2.0s ease-in-out':earthquakeShake?'earthquakeSceneShake 1.25s linear 2':screenShake?'screenShakeAnim 0.38s ease-in-out':undefined,
+    animationPlayState:isSoloPaused?'paused':undefined,
     }}>
+      {isSoloPaused&&<style>{`.toe-battle-root *, .toe-battle-root *::before, .toe-battle-root *::after { animation-play-state: paused !important; }`}</style>}
       {/* Global vignette */}
       <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at 50% 50%,transparent 40%,#00000099 100%)',pointerEvents:'none',zIndex:3}}/>
       {pendingRoleSelection&&(
@@ -364,6 +368,19 @@ export function BattleScreen(props) {
             <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
               <button onClick={leaveMultiplayerMatchToStart} style={{padding:'8px 20px',background:'#2a0c08',border:'1.5px solid #8a3028',color:'#e08070',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:12,borderRadius:2,cursor:'pointer',letterSpacing:1}}>确认退出</button>
               <button onClick={()=>setExitMatchConfirm(null)} style={{padding:'8px 20px',background:'#1a1008',border:'1.5px solid #5a4020',color:'#c8a96e',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:12,borderRadius:2,cursor:'pointer',letterSpacing:1}}>取消</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isSoloPaused&&(
+        <div role="dialog" aria-modal="true" aria-labelledby="solo-pause-title"
+          style={{position:'fixed',inset:0,zIndex:10030,background:'rgba(0,0,0,0.86)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+          <div style={{width:'min(420px,92vw)',background:'#120b06',border:'2px solid #9a762f',borderRadius:5,boxShadow:'0 0 60px #000, 0 0 24px #9a762f33',padding:'28px 24px',textAlign:'center'}}>
+            <div id="solo-pause-title" style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:22,color:'#e8c87a',letterSpacing:3,marginBottom:8}}>游戏已暂停</div>
+            <div style={{fontSize:13,color:'#9c7b43',marginBottom:24}}>对局进程已冻结</div>
+            <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
+              <button type="button" autoFocus onClick={()=>setIsSoloPaused(false)} style={{padding:'9px 24px',background:'#2a200c',border:'1.5px solid #c89b3c',color:'#f0d080',fontWeight:700,fontSize:13,borderRadius:3,cursor:'pointer'}}>继续游戏</button>
+              <button type="button" onClick={returnToMainMenu} style={{padding:'9px 24px',background:'#2a0c08',border:'1.5px solid #8a3028',color:'#e08070',fontWeight:700,fontSize:13,borderRadius:3,cursor:'pointer'}}>返回主界面</button>
             </div>
           </div>
         </div>
@@ -446,6 +463,7 @@ export function BattleScreen(props) {
           mobileZoomCompensate={mobileZoomCompensate}
           setExitMatchConfirm={setExitMatchConfirm}
           returnToMainMenu={returnToMainMenu}
+          pauseGame={()=>setIsSoloPaused(true)}
         />
 
         {/* Scaled player areas wrapper */}

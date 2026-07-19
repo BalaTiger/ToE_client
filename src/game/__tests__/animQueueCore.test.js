@@ -4,6 +4,24 @@ import { buildFreshStatVisualEvents, createCardEffectEvent, createEarthquakeEven
 import { makeGodCard, makeGs, makePlayer } from './factory';
 
 describe('buildAnimQueue stat animations', () => {
+  it('从手牌信仰后立即生成可排序的邪神高亮步骤', () => {
+    const godCard = { id: 'vri-faith', name: '弗栗多', godKey: 'VRI', isGod: true, type: 'god' };
+    const oldGs = makeGs({
+      players: [makePlayer({ name: '艾伦', hand: [godCard], godName: null, godLevel: 0, godZone: [] })],
+      log: [],
+    });
+    const msg = '艾伦 从手牌信仰 弗栗多，获得不灭之躯(Lv.1)（骷髅头不计）';
+    const newGs = {
+      ...oldGs,
+      players: [{ ...oldGs.players[0], hand: [], godName: 'VRI', godLevel: 1, godZone: [godCard] }],
+      log: [msg],
+    };
+
+    expect(buildAnimQueue(oldGs, newGs)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'GOD_HIGHLIGHT', targetPid: 0, godKey: 'VRI', msgs: [msg] }),
+    ]));
+  });
+
   it('旧状态已携带的统计事件不会因标量水位滞后而跨回合重播', () => {
     const allenRestLog = '艾伦 选择【休息】，掷骰 5、1，取高值回复 5HP，翻面休息中';
     const playerGoatLog = '【黑山羊幼仔】你 失去 2 HP 和 2 SAN';

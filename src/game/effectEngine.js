@@ -136,6 +136,8 @@ function handleInspection(playerIndex, gs) {
   const beforeLog = [...(Array.isArray(gs.log) ? gs.log : [])];
   const beforeDiscard = [...(Array.isArray(gs.discard) ? gs.discard : [])];
   const beforeLogLen = Array.isArray(gs.log) ? gs.log.length : 0;
+  let gainedCard = null;
+  let gainedCardLog = null;
   // 检查检定牌堆是否为空，如果为空则洗牌
   if (newGs.inspectionDeck.length === 0) {
     newGs.inspectionDeck = shuffle([...newGs.inspectionDiscard]);
@@ -237,7 +239,11 @@ function handleInspection(playerIndex, gs) {
       if (newGs.deck.length > 0) {
         const newCard = newGs.deck.shift();
         P[playerIndex].hand.push(newCard);
-        L.push(`${P[playerIndex].name} 揭开真相，摸到 ${cardLogText(newCard, { alwaysShowName: true })}，选择收入手牌（不触发效果）`);
+        // “直接摸牌”是暗抽：事件与公开日志都不能携带牌面信息。
+        // 动画只需要一张牌背占位符；真正的牌仅存在于摸牌者的手牌中。
+        gainedCard = { id: `hidden-inspection-draw-${newGs._inspectionSeq || 0}-${playerIndex}`, hiddenDraw: true };
+        gainedCardLog = `${P[playerIndex].name} 揭开真相，直接摸1张牌收入手牌（不触发效果）`;
+        L.push(gainedCardLog);
       }
       break;
     }
@@ -303,6 +309,7 @@ function handleInspection(playerIndex, gs) {
       afterDiscard,
       statEvents,
       statEventSeq: statEvents.length ? statEventSeq : null,
+      ...(gainedCard ? { gainedCard, gainedCardLog } : {}),
     }
   ];
   // 更新游戏状态

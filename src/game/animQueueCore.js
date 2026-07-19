@@ -265,6 +265,21 @@ export function buildAnimQueue(oldGs, newGs) {
   const effectiveLog = newInspectionEvents[0]?.beforeLog || newGs.log;
   const oldLog = Array.isArray(oldGs?.log) ? oldGs.log : [];
   const newMsgs = (Array.isArray(effectiveLog) ? effectiveLog : []).slice(oldLog.length);
+  // Make faith/upgrade highlights explicit timeline steps. Waiting for the
+  // eventual state commit lets a following skill overlay paint first.
+  (effectivePlayers || []).forEach((player, targetPid) => {
+    const previous = oldGs?.players?.[targetPid];
+    if (!previous || !player?.godName) return;
+    const gainedFaith = player.godName !== previous.godName
+      || (player.godLevel || 0) > (previous.godLevel || 0);
+    if (!gainedFaith) return;
+    const playerName = player.name || '';
+    const worshipMsg = newMsgs.find(line => typeof line === 'string' && (
+      (playerName && line.includes(playerName) && (line.includes('信仰') || line.includes('改信'))) ||
+      (targetPid === 0 && (line.includes('你 从手牌信仰') || line.includes('你从手牌直接信仰')))
+    ));
+    if (worshipMsg) q.push({ type: 'GOD_HIGHLIGHT', targetPid, godKey: player.godName, msgs: [worshipMsg] });
+  });
   if (newGs?.apophisNight?.active) {
     const nightMsg = newMsgs.find(line => typeof line === 'string' && line.includes('【噬日灭世】黑夜降临'));
     if (nightMsg) q.push({ type: 'APOPHIS_ECLIPSE', msgs: [nightMsg] });

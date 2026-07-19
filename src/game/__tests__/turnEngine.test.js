@@ -1277,6 +1277,31 @@ describe('turnEngine stat events', () => {
     expect(result.players[1].damageBonusTurnOwner).toBe(2);
   });
 
+  it('AI 遭遇邪神后 SAN 归零会立即结束游戏且不再结算馈赠', () => {
+    const godCard = makeGodCard('TSG');
+    const players = [
+      makePlayer({ name: '你', role: ROLE_CULTIST, san: 10 }),
+      makePlayer({ name: '贝拉', role: ROLE_TREASURE, san: 4, godEncounters: 3 }),
+      makePlayer({ name: '卡洛斯', role: ROLE_CULTIST, san: 10 }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 0,
+      deck: [godCard],
+      discard: [],
+      log: [],
+      phase: 'ACTION',
+    });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players[1].san).toBe(0);
+    expect(result.gameOver?.reason).toContain('贝拉 的理智归零，邪神苏醒');
+    expect(result.phase).not.toBe('AI_GOD_CHOICE');
+    expect(result.log.some(line => line.includes('放弃了邪神的馈赠'))).toBe(false);
+    expect(result.abilityData?.godCard).toBeUndefined();
+  });
+
   it('reveals an unrevealed cultist (role only, not their whole hand) when they keep an encountered god card in hand', () => {
     const oldGod = makeGodCard('CTH');
     const drawnGod = makeGodCard('ZHU');

@@ -295,6 +295,13 @@ function getGodDrawResolution(logs = [], drawerName = '') {
   return null;
 }
 
+function getCurrentTurnResolutionLogs(state) {
+  const log = Array.isArray(state?.log) ? state.log : [];
+  const turnStartLines = Array.isArray(state?._turnStartLogs) ? state._turnStartLogs : [];
+  const turnStartIdx = turnStartLines.length ? log.lastIndexOf(turnStartLines[0]) : -1;
+  return turnStartIdx >= 0 ? log.slice(turnStartIdx) : log;
+}
+
 function buildFilteredStatStepsFromVisualEvents(state, players, shouldKeepEvent, excludedMsgs = new Set()) {
   const event = getVisualEvents(state).findLast(ev => ev?.type === VISUAL_EVENT.STAT_EVENTS && Array.isArray(ev.statEvents) && ev.statEvents.length);
   if (!event) return [];
@@ -554,7 +561,14 @@ export function buildTurnStartDrawReplayQueue({
       return steps;
     })
     : [drawCardStep];
-  const drawResolutionLogs = [...(newGs?._drawLogs || []), ...(newGs?._statLogs || []), ...(newGs?.log || [])];
+  // A previous player's god choice can remain in the accumulated game log. Only
+  // inspect this turn's section, otherwise an earlier "放弃邪神的馈赠" makes a
+  // newly drawn and worshipped god play a bogus discard animation.
+  const drawResolutionLogs = [
+    ...(newGs?._drawLogs || []),
+    ...(newGs?._statLogs || []),
+    ...getCurrentTurnResolutionLogs(newGs),
+  ];
   const godDrawResolution = isGodDrawnCard(drawnCard) ? getGodDrawResolution(drawResolutionLogs, drawerName) : null;
   const discardedDrawnCard = !!newGs?._discardedDrawnCard || godDrawResolution === 'discard';
   const discardDrawnStep = discardedDrawnCard
@@ -597,6 +611,17 @@ export function buildTurnStartDrawReplayQueue({
     players: beforeDrawPlayers,
     log: getTurnStartDrawBaselineLog(newGs),
   };
+  const staleCardEffectEvents = (Array.isArray(newGs?._visualEvents) ? newGs._visualEvents : [])
+    .filter(event => (
+      (event?.type === 'cardEffect' || event?.type === 'earthquake') &&
+      event?.card &&
+      !sameDrawCard(event?.card, drawnCard)
+    ));
+  const baselineVisualEvents = [
+    ...staleCardEffectEvents,
+  ].filter((event, index, events) => (
+    !event?.id || events.findIndex(candidate => candidate?.id === event.id) === index
+  ));
   const drawStatLogSet = new Set((Array.isArray(newGs?._statLogs) ? newGs._statLogs : []).filter(Boolean));
   const drawStatSeqs = (Array.isArray(newGs?._statEvents) ? newGs._statEvents : [])
     .filter(event => event?.seq != null && event?.logHint && drawStatLogSet.has(event.logHint))
@@ -620,7 +645,11 @@ export function buildTurnStartDrawReplayQueue({
     ...fallbackOldGsRaw,
     ...(drawOldStatSeq != null ? { _statEventSeq: drawOldStatSeq } : {}),
     ...(drawOldRandomTargetSeq != null ? { _randomTargetSeq: drawOldRandomTargetSeq } : {}),
-    ...(Array.isArray(fallbackOldGsRaw?._visualEvents) && fallbackOldGsRaw._visualEvents.length ? { _visualEvents: [] } : {}),
+    // Keep card-effect events that belong to older cards in the baseline. Remote
+    // snapshots may still carry them after their replay hints were consumed; if
+    // they are cleared here, the next draw mistakes them for fresh effects and
+    // replays the previous card's bespoke animation before the decision modal.
+    _visualEvents: baselineVisualEvents,
   };
   const inspectionEvents = getFreshInspectionEvents(oldGs, newGs);
   const preDrawMsgs = getTurnStartPreDrawMsgs(newGs);

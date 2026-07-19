@@ -32,6 +32,44 @@ describe('withClearedReplayAnimFields', () => {
 });
 
 describe('buildPlayerTurnDrawQueue', () => {
+  it('does not replay discard for an AI god worshipped after a previous player abandoned a god', () => {
+    const zhu = makeGodCard('ZHU');
+    const beforePlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', role: ROLE_CULTIST, san: 10 }),
+    ];
+    const oldGs = makeGs({
+      players: beforePlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: ['你放弃了邪神的馈赠'],
+    });
+    const newGs = makeGs({
+      players: [
+        beforePlayers[0],
+        makePlayer({ name: '艾伦', role: ROLE_CULTIST, san: 9, godName: zhu.godKey, godLevel: 1, godZone: [zhu] }),
+      ],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _drawnCard: zhu,
+      _aiDrawnCard: zhu,
+      _playersBeforeThisDraw: beforePlayers,
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _drawLogs: ['[调试] 艾伦（邪祀者）起手摸到 烛九阴'],
+      log: [
+        '你放弃了邪神的馈赠',
+        '── 艾伦 的回合开始 ──',
+        '[调试] 艾伦（邪祀者）起手摸到 烛九阴',
+        '艾伦 遭遇邪神 烛九阴！（第1次）失去 1 SAN',
+        '艾伦 信仰了 烛九阴，获得衔烛照幽(Lv.1)',
+      ],
+    });
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+
+    expect(replay.queue.some(step => step.type === 'DISCARD' && step.card === zhu)).toBe(false);
+  });
+
   it('adds turn banner and draw flip even when the next turn belongs to another player', () => {
     const card = { id: 'next-card', name: '下一张牌', key: 'B2', type: 'zone' };
     const oldGs = {

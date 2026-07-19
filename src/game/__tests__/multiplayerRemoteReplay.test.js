@@ -334,6 +334,43 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.queue.some(step => step.type === 'SAN_DAMAGE')).toBe(false);
   });
 
+  it('does not replay a previous card bespoke effect before the next draw decision', () => {
+    const previousCard = { id: 'night-wind', key: 'C4', name: '夜风呼啸', type: 'zone' };
+    const nextCard = { id: 'burrower', key: 'D1', name: '钻地魔虫', type: 'zone' };
+    const staleEffect = createCardEffectEvent({
+      effectKey: 'snakeTrap',
+      card: previousCard,
+      actorIdx: 1,
+      beforePlayers: [player('你'), player('黛安娜'), player('贝拉')],
+      msgs: ['全体存活角色失去 1 HP 和 SAN'],
+    });
+    const staleStep = { type: 'SNAKE_TRAP', card: previousCard };
+    const buildAnimQueue = vi.fn((oldState, newState) => (
+      oldState._visualEvents?.some(event => event.id === staleEffect.id) &&
+      newState._visualEvents?.some(event => event.id === staleEffect.id)
+        ? []
+        : [staleStep]
+    ));
+
+    const action = buildAction(makeState({
+      currentTurn: 0,
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card: nextCard, drawerIdx: 0, needsDecision: true },
+      _turnStartLogs: ['── 你 的回合开始 ──'],
+      _drawLogs: ['你 摸到 [D1] 钻地魔虫'],
+      _visualEvents: [staleEffect],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION' }),
+      buildAnimQueue,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.START_ANIM);
+    expect(action.queue.some(step => step.type === 'SNAKE_TRAP')).toBe(false);
+    expect(buildAnimQueue.mock.calls.some(([oldState]) => (
+      oldState._visualEvents?.some(event => event.id === staleEffect.id)
+    ))).toBe(true);
+  });
+
   it('replays a timed-out draw discard before the next local turn draw', () => {
     const previousGs = makeState({
       currentTurn: 1,

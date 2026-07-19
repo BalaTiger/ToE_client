@@ -40,6 +40,7 @@ const ANIM_RENDERERS = {
       targetPid={anim.targetPid ?? 0}
       exiting={exiting}
       skipTravel={!!anim.skipTravel}
+      travelOnly={!!anim.travelOnly}
       sourcePile={anim.sourcePile}
       guessCorrect={anim.guessCorrect}
       expansionKey={expansionKey}

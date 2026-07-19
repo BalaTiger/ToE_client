@@ -664,7 +664,16 @@ export default function Game(){
   const [softGuideDone,setSoftGuideDone]=useState(readSoftGuideDone);
   const [pendingSoftGuideId,setPendingSoftGuideId]=useState(null);
   const [preparingSoftGuideId,setPreparingSoftGuideId]=useState(null);
-  const softGuidePauseActive=!!(pendingSoftGuideId||preparingSoftGuideId);
+  const [isSoloPaused,setIsSoloPaused]=useState(false);
+  const softGuidePauseActive=!!(pendingSoftGuideId||preparingSoftGuideId||isSoloPaused);
+  useEffect(()=>{
+    if(!isSoloPaused)return undefined;
+    const resumeOnEscape=e=>{
+      if(e.key==='Escape')setIsSoloPaused(false);
+    };
+    window.addEventListener('keydown',resumeOnEscape);
+    return()=>window.removeEventListener('keydown',resumeOnEscape);
+  },[isSoloPaused]);
   const [showGodResurrection,setShowGodResurrection]=useState(false);
   const [showFullLog,setShowFullLog]=useState(false);
   const [tutorialStep,setTutorialStep]=useState(1);
@@ -1349,25 +1358,6 @@ export default function Game(){
       });
     },1250);
   },[playGodHighlightSound]);
-  useEffect(()=>{
-    const statuses=(gs?.players||[]).map(p=>({godName:p?.godName||null,godLevel:p?.godLevel||0}));
-    if(!statuses.length){
-      previousGodStatusRef.current=null;
-      return;
-    }
-    if(!previousGodStatusRef.current){
-      previousGodStatusRef.current=statuses;
-      return;
-    }
-    const prevStatuses=previousGodStatusRef.current;
-    statuses.forEach((status,idx)=>{
-      const prev=prevStatuses[idx]||{};
-      if(status.godName&&(status.godName!==prev.godName||(status.godLevel||0)>(prev.godLevel||0))){
-        triggerGodHighlightPanelBurst(idx,status.godName);
-      }
-    });
-    previousGodStatusRef.current=statuses;
-  },[gs?.players,triggerGodHighlightPanelBurst]);
   const[earthquakeVisualPlayers,setEarthquakeVisualPlayers]=useState(null);
   const timerRef=useRef(null);
 
@@ -1566,7 +1556,29 @@ export default function Game(){
     CARD_REVEAL_DURATION,
     ANIM_DURATION,
     ANIM_SPEED_SCALE,
+    paused:isSoloPaused,
   });
+
+  useEffect(()=>{
+    if(anim?.type!=='GOD_HIGHLIGHT')return;
+    triggerGodHighlightPanelBurst(anim.targetPid,anim.godKey);
+  },[anim,triggerGodHighlightPanelBurst]);
+
+  useEffect(()=>{
+    const statuses=(gs?.players||[]).map(p=>({godName:p?.godName||null,godLevel:p?.godLevel||0}));
+    if(!statuses.length){previousGodStatusRef.current=null;return;}
+    if(!previousGodStatusRef.current){previousGodStatusRef.current=statuses;return;}
+    const prevStatuses=previousGodStatusRef.current;
+    statuses.forEach((status,idx)=>{
+      const prev=prevStatuses[idx]||{};
+      if(status.godName&&(status.godName!==prev.godName||(status.godLevel||0)>(prev.godLevel||0))){
+        const hasQueuedHighlight=(anim?.type==='GOD_HIGHLIGHT'&&anim.targetPid===idx)
+          ||animQueueRef.current.some(step=>step?.type==='GOD_HIGHLIGHT'&&step.targetPid===idx);
+        if(!hasQueuedHighlight)triggerGodHighlightPanelBurst(idx,status.godName);
+      }
+    });
+    previousGodStatusRef.current=statuses;
+  },[gs?.players,anim,animQueueRef,triggerGodHighlightPanelBurst]);
 
   useEffect(()=>{
     if(!import.meta.env.DEV||typeof window==='undefined')return undefined;
@@ -2318,7 +2330,7 @@ export default function Game(){
     const pending=gs?.abilityData;
     const actorIdx=pending?.playerIndex;
     const godCard=pending?.godCard;
-    if(!gs||gs.phase!=='AI_GOD_CHOICE'||actorIdx==null||!godCard)return;
+    if(!gs||gs.gameOver||gs.phase!=='AI_GOD_CHOICE'||actorIdx==null||!godCard)return;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
     let resolveBaseGs=gs;
     if(pending?.pendingEncounterInspection){
@@ -2475,7 +2487,7 @@ export default function Game(){
         return;
       }
     }
-    if(!gs||gs.phase!=='AI_GOD_CHOICE')return;
+    if(!gs||gs.gameOver||gs.phase!=='AI_GOD_CHOICE')return;
     if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
     if(showTutorial){
       if(tutorialStep!==TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE)return;
@@ -9220,6 +9232,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   }
   function returnToMainMenu(){
     if(isMultiplayer)return;
+    setIsSoloPaused(false);
     roseThornPrevRef.current=null;
     consumedVisualEventIdsRef.current=new Set();
     animQueueRef.current=[];
@@ -9598,7 +9611,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     // 让"邪神之力"标签与"从手牌信仰"日志同时出现：把信仰后的神之力字段（及已离手的神牌）并入动画基线，
     // 使首个动画步骤的视觉快照就带上新神之力，而不是等到整段动画结束才刷新角色面板。
     const godBadgeBaseline=gs.players.map((p,i)=>i===0?{...p,hand:[...P[0].hand],godName:P[0].godName,godLevel:P[0].godLevel,godEncounters:P[0].godEncounters,godZone:P[0].godZone.map(c=>({...c}))}:p);
-    triggerGodHighlightPanelBurst(0,godKey);
+    // Apophis needs to enter eclipse before the panel highlight is shown. Triggering
+    // the burst here would start its sound underneath the eclipse, then the committed
+    // god status would restart the same highlight sound on the player panel.
+    const deferHighlightUntilAfterEclipse=godPowerImmediateHand&&godKey==='APO';
+    if(!deferHighlightUntilAfterEclipse)triggerGodHighlightPanelBurst(0,godKey);
     previousGodStatusRef.current=godBadgeBaseline.map(p=>({godName:p?.godName||null,godLevel:p?.godLevel||0}));
     const oldGsForReplay={...gs,players:godBadgeBaseline};
     const replay=buildInspectionAwareAnimQueue(oldGsForReplay,newGs,{buildAnimQueue,copyPlayers});
@@ -9606,6 +9623,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...replay.inspectionEvents.map(ev=>ev.seq||0));
     }
     const queue=bindAnimLogChunks(replay.queue,splitAnimBoundLogs(L.slice(gs.log.length)));
+    if(deferHighlightUntilAfterEclipse){
+      const eclipseIndex=queue.findIndex(step=>step?.type==='APOPHIS_ECLIPSE');
+      const worshipMsg=L.slice(gs.log.length).find(line=>typeof line==='string'&&(line.includes('从手牌信仰')||line.includes('从手牌直接信仰')||line.includes('改信')));
+      const highlightStep={type:'GOD_HIGHLIGHT',targetPid:0,godKey,msgs:worshipMsg?[worshipMsg]:[]};
+      queue.splice(eclipseIndex>=0?eclipseIndex+1:queue.length,0,highlightStep);
+    }
     if(queue.length)triggerAnimQueue(queue,newGs);
     else setGs(newGs);
   }
@@ -9773,6 +9796,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     godKeepHandButtonRef,dodgeRollButtonRef,swapBlindHandRef,animQueueRef,pendingGsRef,
     // ui shell state
     pendingRoleSelection,isDisconnected,exitMatchConfirm,privatePeek,showEmojiPicker,zhuHiddenCardId,
+    isSoloPaused,setIsSoloPaused,
     panelRect,roleTextRect,handAreaRect,tutorialHandCardRect,handCardsRect,aiPanelAreaRect,
     opponentSanBarRect,opponentHpBarRect,singleOpponentRect,opponentGodStatusRect,
     drawRevealKeepButtonRect,godKeepHandButtonRect,deckAreaRect,dodgeRollButtonRect,

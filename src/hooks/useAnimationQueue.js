@@ -29,6 +29,7 @@ export function useAnimationQueue({
   CARD_REVEAL_DURATION,
   ANIM_DURATION,
   ANIM_SPEED_SCALE,
+  paused = false,
 }) {
   const [anim, setAnim] = useState(null);
   const [animExiting, setAnimExiting] = useState(false);
@@ -252,7 +253,7 @@ export function useAnimationQueue({
   }
 
   useEffect(() => {
-    if (!anim) return;
+    if (!anim || paused) return;
     if (anim.type === 'EARTHQUAKE') {
       try { console.log('[EQ-DEBUG] anim EARTHQUAKE became active: discardEvents =', anim.discardEvents?.length, ', visualTimeline =', anim.visualTimeline?.length, ', durationMs =', anim.durationMs); } catch { /* noop */ }
     }
@@ -278,7 +279,7 @@ export function useAnimationQueue({
       clearVisualTimelineTimers();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anim]);
+  }, [anim, paused]);
 
   function triggerAnimQueue(queue, nextGs, callback) {
     if (Array.isArray(queue) && queue.some(s => s?.type === 'EARTHQUAKE')) {

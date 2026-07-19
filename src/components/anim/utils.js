@@ -1,3 +1,11 @@
+const POSITIVE_INSPECTION_EFFECTS = new Set(['healSAN', 'drawCard']);
+
+export function getInspectionCardPolarity(card){
+  if(POSITIVE_INSPECTION_EFFECTS.has(card?.effect)) return 'positive';
+  if(card?.effect==='nothing') return 'neutral';
+  return 'negative';
+}
+
 export function getInspectionCardDesc(card){
   switch(card?.effect){
     case 'adjacentDamageHP': return '相邻角色失去 1 HP';

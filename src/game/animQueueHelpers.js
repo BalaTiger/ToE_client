@@ -231,6 +231,18 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
       targetPid:ev.target??0,
       inspectionSeq:ev.seq,
     });
+    if(ev?.gainedCard){
+      queue.push({
+        type:"DRAW_CARD",
+        card:ev.gainedCard,
+        triggerName:beforePlayers[ev.target??0]?.name||"揭开真相",
+        targetPid:ev.target??0,
+        inspectionGainSeq:ev.seq,
+        travelOnly:true,
+        durationMs:700,
+        msgs:ev.gainedCardLog?[ev.gainedCardLog]:[],
+      });
+    }
     const effectQ=buildAnimQueue(
       {players:beforePlayers,log:beforeLog,discard:beforeDiscard,_statEventSeq:(ev?.statEventSeq||0)-1},
       {

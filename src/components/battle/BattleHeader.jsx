@@ -11,6 +11,7 @@ export function BattleHeader({
   mobileZoomCompensate,
   setExitMatchConfirm,
   returnToMainMenu,
+  pauseGame,
 }) {
   const headerScale = scaleRatio > 1 ? scaleRatio : 1;
   const headerFontScale = isMobileLandscape ? mobileZoomCompensate : headerScale;
@@ -46,12 +47,34 @@ export function BattleHeader({
           退出对局
         </button>
       ) : (
-        <button
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: hp(8) }}>
+          <button
+            type="button"
+            onClick={pauseGame}
+            disabled={showTutorial}
+            title={showTutorial ? '教学中不可暂停' : '暂停游戏'}
+            style={{
+              padding: isMobile ? `${hp(4)} ${hp(10)}` : `${hp(5)} ${hp(12)}`,
+              background: '#17120a',
+              border: '1.5px solid #9a762f',
+              color: '#e8c87a',
+              fontFamily: "'Cinzel',serif",
+              fontWeight: 700,
+              fontSize: baseFontSizes.small * headerFontScale,
+              borderRadius: 3,
+              cursor: showTutorial ? 'not-allowed' : 'pointer',
+              opacity: showTutorial ? 0.45 : 1,
+              letterSpacing: isMobile ? 0.5 : 1,
+              boxShadow: '0 0 12px rgba(154,118,47,0.25)',
+            }}
+          >
+            暂停游戏
+          </button>
+          <button
           onClick={showTutorial ? undefined : returnToMainMenu}
           disabled={showTutorial}
           title={showTutorial ? '教学中不可返回主界面' : undefined}
           style={{
-            marginLeft: 'auto',
             padding: isMobile ? `${hp(4)} ${hp(10)}` : `${hp(5)} ${hp(12)}`,
             background: '#2a0c08',
             border: '1.5px solid #c2412f',
@@ -68,7 +91,8 @@ export function BattleHeader({
           }}
         >
           返回主界面
-        </button>
+          </button>
+        </div>
       )}
     </div>
   );

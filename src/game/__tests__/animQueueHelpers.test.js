@@ -495,4 +495,41 @@ describe('animQueueHelpers', () => {
     expect(flow.queue.map(step => step.type)).toEqual(['VISUAL_LOCK', 'DRAW_CARD', 'STATE_PATCH']);
     expect(tailQueue.some(step => step.type === 'HP_DAMAGE')).toBe(false);
   });
+  it('揭开真相的额外摸牌会在检定牌后仅播放暗抽飞牌动画', () => {
+    const inspectionCard = { id: 'truth', name: '揭开真相', effect: 'drawCard' };
+    const actualCard = { id: 'vri', name: '弗栗多', godKey: 'VRI', isGod: true, type: 'god' };
+    const gainedCard = { id: 'hidden-draw', hiddenDraw: true };
+    const beforePlayers = [makePlayer({ name: '贝拉', hand: [] })];
+    const afterPlayers = [makePlayer({ name: '贝拉', hand: [actualCard] })];
+    const gainedCardLog = '贝拉 揭开真相，直接摸1张牌收入手牌（不触发效果）';
+
+    const flow = buildInspectionEventFlow(
+      { players: beforePlayers, log: [] },
+      [{
+        seq: 3,
+        card: inspectionCard,
+        target: 0,
+        beforePlayers,
+        beforeLog: ['贝拉 的SAN检定结果为"揭开真相"'],
+        afterPlayers,
+        afterLog: ['贝拉 的SAN检定结果为"揭开真相"', gainedCardLog],
+        gainedCard,
+        gainedCardLog,
+      }],
+      { buildAnimQueue, copyPlayers },
+    );
+
+    const draws = flow.queue.filter(step => step.type === 'DRAW_CARD');
+    expect(draws).toHaveLength(2);
+    expect(draws[0]).toMatchObject({ card: inspectionCard, triggerName: '检定牌', inspectionSeq: 3 });
+    expect(draws[1]).toMatchObject({
+      card: gainedCard,
+      triggerName: '贝拉',
+      targetPid: 0,
+      inspectionGainSeq: 3,
+      travelOnly: true,
+      durationMs: 700,
+      msgs: [gainedCardLog],
+    });
+  });
 });

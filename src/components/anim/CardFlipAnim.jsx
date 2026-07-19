@@ -5,7 +5,7 @@ import { CardCodeLabel, CardFaceImage } from '../cards';
 import { getZoneCardPolarity } from '../../game/coreUtils';
 import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 import { SMOKE_COLS, FLOWER_CONFIGS } from './data';
-import { getInspectionCardDesc, petalPath } from './utils';
+import { getInspectionCardDesc, getInspectionCardPolarity, petalPath } from './utils';
 import { GodHighlightBurst } from './GodHighlightBurst';
 
 function FlowerSVG({petals,hue,variant,size}){
@@ -64,7 +64,7 @@ function FlowerBloom(){
   );
 }
 
-function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guessCorrect,expansionKey='地神的潜影',sourcePile='deck',onSettled}){
+function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,travelOnly=false,guessCorrect,expansionKey='地神的潜影',sourcePile='deck',onSettled}){
   const [traveled,setTraveled]=React.useState(skipTravel);
   const settledRef=React.useRef(false);
   const settleDelay=card?.isGod?2650:1250;
@@ -86,7 +86,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
   if(!card) return null;
   const hideZoneIdentity=!!card.blindZoneIdentity&&!isInspection;
   const displayTriggerName=isInspection&&(targetPid??0)===0?'你':triggerName;
-  const inspectionTone=isInspection?(card.type||'neutral'):null;
+  const inspectionTone=isInspection?getInspectionCardPolarity(card):null;
   const s=isInspection
     ?({
       bg:inspectionTone==='positive'?'linear-gradient(135deg,#11331d,#08160d)':inspectionTone==='neutral'?'linear-gradient(135deg,#1a1d24,#0b0e13)':'linear-gradient(135deg,#241126,#0f0713)',
@@ -98,10 +98,10 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
     :(CS[card.letter]||GOD_CS);
   const cardPolarity=isInspection?inspectionTone:(card.isGod?'negative':getZoneCardPolarity(card));
   const isEvil=cardPolarity==='negative';
-  const isNeutralCard=!isInspection&&cardPolarity==='neutral';
+  const isNeutralCard=cardPolarity==='neutral';
   const isNeutralInspection=isInspection&&inspectionTone==='neutral';
   const isPositiveInspection=isInspection&&inspectionTone==='positive';
-  const showAtmosphereEffects=!isInspection;
+  const showAtmosphereEffects=true;
   const viewportScale=Math.min(window.innerWidth/1280,window.innerHeight/720);
   const cardScale=Math.max(1.08,Math.min(1.85,viewportScale));
   const travelScale=Math.max(1,Math.min(1.35,viewportScale));
@@ -149,6 +149,9 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
       </div>
     </div>
   );
+
+  // 暗抽直接落入手牌，不展示中央翻牌阶段。
+  if(travelOnly)return null;
 
   const spirits=!showAtmosphereEffects||card.isGod
     ?[]
@@ -214,7 +217,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
   return(
     <div style={{
       position:'fixed',inset:0,zIndex:999,
-      background:(!isInspection&&isEvil)?'rgba(8,2,14,0.93)':'rgba(4,4,2,0.91)',
+      background:isEvil?'rgba(8,2,14,0.93)':'rgba(4,4,2,0.91)',
       display:'flex',alignItems:'center',justifyContent:'center',
       animation:exiting?'animFadeOut 0.18s ease-in forwards':'animFadeIn 0.12s ease-out forwards',
       overflow:'visible',

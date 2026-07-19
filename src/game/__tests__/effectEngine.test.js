@@ -1262,7 +1262,12 @@ describe('applyInspectionForSanLoss', () => {
 
     expect(res.P[0].hand).toMatchObject([{ id: 'truth-draw' }]);
     expect(res.P[0].san).toBe(6);
-    expect(res.log.at(-1)).toBe('你 揭开真相，摸到 [A1] 霉变食物，选择收入手牌（不触发效果）');
+    expect(res.log.at(-1)).toBe('你 揭开真相，直接摸1张牌收入手牌（不触发效果）');
+    expect(res.inspectionMeta._inspectionEvents.at(-1)).toMatchObject({
+      gainedCard: { hiddenDraw: true },
+      gainedCardLog: '你 揭开真相，直接摸1张牌收入手牌（不触发效果）',
+    });
+    expect(res.inspectionMeta._inspectionEvents.at(-1).gainedCard).not.toHaveProperty('name');
   });
 
   it('批量 SAN 检定遇到任意待结算决策都会暂停后续检定', () => {

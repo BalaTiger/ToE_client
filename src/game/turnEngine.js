@@ -586,6 +586,18 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
           [effectMsg],
           '邪神遭遇',
         );
+        if (checkWin(P, gs?._isMP)) {
+          return {
+            P,
+            D,
+            Disc,
+            drawnCard,
+            reshuffleLog,
+            effectMsgs: L2,
+            kept: true,
+            statePatch: { ...inspectionMeta },
+          };
+        }
         if (gs?.deferAiGodChoice) {
           return {
             P,
@@ -613,6 +625,20 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
         const baseLog = [...(gs?.log || []), effectMsg];
         const processed = applyInspectionForSanLoss(ci, P[ci].san, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta);
         P = processed.P; D = processed.D; Disc = processed.Disc; inspectionMeta = processed.inspectionMeta; L2.push(...processed.log.slice(baseLog.length));
+      }
+      // 遭遇本身已经触发终局时，邪神馈赠不再继续结算。否则会留下
+      // AI_GOD_CHOICE，结算界面仍会替 AI 选择并播放弃牌动画/音效。
+      if (checkWin(P, gs?._isMP)) {
+        return {
+          P,
+          D,
+          Disc,
+          drawnCard,
+          reshuffleLog,
+          effectMsgs: L2,
+          kept: true,
+          statePatch: { ...inspectionMeta },
+        };
       }
       if (gs?.deferAiGodChoice) {
         return {

@@ -346,8 +346,8 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
                 position: 'absolute',
                 left: 0, top: 0,
                 width: cardW, height: cardH, marginLeft: -cardW / 2, marginTop: -cardH / 2,
-                backgroundColor: (isDrawKeep || isDecipherStone) ? 'transparent' : '#100c08',
-                border: (isDrawKeep || isDecipherStone || (!isSlime && !isGodKeepHand)) ? 'none' : effect === 'blackGoat' ? '1.5px solid #4ade80' : effect === 'tsgSlime' ? '1.5px solid #80d8a8' : `1.5px solid ${GOD_CS.borderBright}`,
+                backgroundColor: (isDrawKeep || isDecipherStone || isSlime) ? 'transparent' : '#100c08',
+                border: (isDrawKeep || isDecipherStone || isSlime || !isGodKeepHand) ? 'none' : `1.5px solid ${GOD_CS.borderBright}`,
                 borderRadius: 3,
                 boxShadow: effect === 'blackGoat'
                   ? '0 0 16px rgba(74,222,128,0.5), 0 2px 8px rgba(0,0,0,0.6)'
@@ -362,7 +362,7 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
                 overflow: 'hidden',
               }}>
                 {!card && <CardBackLayer expansionKey={expansionKey}/>}
-                {card && !isSlime && (
+                {card && (
                   <MiniCardFace
                     card={card}
                     width={cardW}
@@ -373,13 +373,6 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
                       border: 'none',
                       background: 'transparent',
                     }}
-                  />
-                )}
-                {isSlime && (
-                  <DDCard
-                    card={card}
-                    compact
-                    frameStyle={{ boxShadow: 'none', border: 'none', width: cardW, minWidth: cardW, height: cardH }}
                   />
                 )}
               </div>
