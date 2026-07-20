@@ -11,6 +11,34 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('AI visual event handoff', () => {
+  it('does not restore a consumed earthquake after the next-turn state clears visual events', () => {
+    const earthquake = {
+      id: 'earthquake:previous-turn',
+      type: 'cardEffect',
+      effectKey: 'earthquake',
+      card: { id: 'quake', name: '地动山摇', key: 'B2', type: 'allDiscard' },
+    };
+    const gs = makeGs({
+      players: [
+        makePlayer({ name: '你', role: ROLE_HUNTER }),
+        makePlayer({ name: '贝拉', role: ROLE_HUNTER, hand: [] }),
+      ],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: true,
+      deck: [makeZoneCard('A2', 0)],
+      _visualEvents: [earthquake],
+    });
+
+    const result = aiStep(gs);
+
+    expect(result._visualEvents || []).not.toContainEqual(
+      expect.objectContaining({ id: earthquake.id }),
+    );
+  });
+});
+
 describe('aiShouldKeepZoneCard', () => {
   it('AI 会收入能获得多层防护的半物质化', () => {
     const card = {

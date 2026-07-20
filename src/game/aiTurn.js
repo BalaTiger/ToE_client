@@ -475,6 +475,12 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
 
 export function aiStep(gs, opts = {}) {
   const{players:ps,currentTurn:ct,abilityData}=gs;
+  const incomingVisualEventIds = new Set(
+    (Array.isArray(gs?._visualEvents) ? gs._visualEvents : [])
+      .map(event => event?.id)
+      .filter(Boolean),
+  );
+  const incomingVisualEventRefs = new Set(Array.isArray(gs?._visualEvents) ? gs._visualEvents : []);
   let P=copyPlayers(ps),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
   const ai=P[ct];let alive=P.filter((p,i)=>!p.isDead&&i!==ct);
   const aiHuntEvents=[];
@@ -482,13 +488,23 @@ export function aiStep(gs, opts = {}) {
   let playersBeforeSkillAction=null;
   let preSkillLogs=[];
   let preSkillDiscard=null;
-  const getReplayVisualEvents = (nextGs) => (
-    Array.isArray(nextGs?._visualEvents) && nextGs._visualEvents.length
-      ? nextGs._visualEvents
-      : Array.isArray(gs?._visualEvents) && gs._visualEvents.length
-        ? gs._visualEvents
-        : null
-  );
+  const getReplayVisualEvents = (nextGs) => {
+    // startNextTurn deliberately writes an empty array after consuming the
+    // previous turn's effects.  Treat that as a tombstone, not as a missing
+    // value, otherwise effects such as earthquake leak into every later AI
+    // turn and their animations are replayed again.
+    if (Object.prototype.hasOwnProperty.call(nextGs || {}, '_visualEvents')) {
+      if (Array.isArray(nextGs._visualEvents) && nextGs._visualEvents.length) return nextGs._visualEvents;
+      const freshCurrentTurnEvents = (Array.isArray(gs?._visualEvents) ? gs._visualEvents : [])
+        .filter(event => event?.id
+          ? !incomingVisualEventIds.has(event.id)
+          : !incomingVisualEventRefs.has(event));
+      return freshCurrentTurnEvents.length ? freshCurrentTurnEvents : null;
+    }
+    return Array.isArray(gs?._visualEvents) && gs._visualEvents.length
+      ? gs._visualEvents
+      : null;
+  };
 
   const buildReturnPack = (nextGs, P_afterAction, P_beforeEndTurnReplay = null) => ({
     ...nextGs,
