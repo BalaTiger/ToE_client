@@ -23,6 +23,10 @@ const NO_OVERLAY_TYPES = new Set([
   'SAN_DAMAGE',
   'BLACK_GOAT_PULSE',
   'PETRIFY_DEATH',
+  // GOD_HIGHLIGHT is rendered against the target player's panel by App.
+  // Letting it fall through to GenericAnimOverlay also paints a second,
+  // screen-centered burst for the same timeline step.
+  'GOD_HIGHLIGHT',
 ]);
 
 const ANIM_RENDERERS = {

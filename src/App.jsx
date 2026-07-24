@@ -762,7 +762,21 @@ export default function Game(){
       clearTimeout(timer);
     };
   },[isBattleScreen,gs?.expansionKey]);
-  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound,playCthRlyehDreamSound,playGodPowerBlockedSound,playTsgSlimePopSound,playOneCardShiftSound,playMultiCardShiftSound,playDiceRollSound,playTurnStartSound,playSkillHuntSound,playSkillSwapSound,playSkillBewitchSound,playGodHighlightSound,playVritraImmortalRevealSound,playPositiveCardFlipSound,playNeutralCardFlipSound,playCaveDuelSound,playWheelSpinSound,playBlackGoatRunSound,playBlackGoatPulseSound,playGuillotineDeathSound,playPetrifyDeathSound,playNegativeCardFlipSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影');
+  const [musicVolume,setMusicVolume]=useState(()=>{
+    try{const raw=localStorage.getItem('cthulhu_music_volume');const value=raw==null?NaN:Number(raw);return Number.isFinite(value)?Math.max(0,Math.min(1,value)):1;}catch{return 1;}
+  });
+  const [sfxVolume,setSfxVolume]=useState(()=>{
+    try{const raw=localStorage.getItem('cthulhu_sfx_volume');const value=raw==null?NaN:Number(raw);return Number.isFinite(value)?Math.max(0,Math.min(1,value)):1;}catch{return 1;}
+  });
+  const handleMusicVolume=useCallback(value=>{
+    const next=Math.max(0,Math.min(1,value));setMusicVolume(next);
+    try{localStorage.setItem('cthulhu_music_volume',String(next));}catch{/* ignore */}
+  },[]);
+  const handleSfxVolume=useCallback(value=>{
+    const next=Math.max(0,Math.min(1,value));setSfxVolume(next);
+    try{localStorage.setItem('cthulhu_sfx_volume',String(next));}catch{/* ignore */}
+  },[]);
+  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound,playCthRlyehDreamSound,playGodPowerBlockedSound,playTsgSlimePopSound,playOneCardShiftSound,playMultiCardShiftSound,playDiceRollSound,playTurnStartSound,playSkillHuntSound,playSkillSwapSound,playSkillBewitchSound,playGodHighlightSound,playVritraImmortalRevealSound,playPositiveCardFlipSound,playNeutralCardFlipSound,playCaveDuelSound,playWheelSpinSound,playBlackGoatRunSound,playBlackGoatPulseSound,playGuillotineDeathSound,playPetrifyDeathSound,playNegativeCardFlipSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影',{musicVolume,sfxVolume});
   const persistSoftGuideDone=useCallback((nextDone)=>{
     setSoftGuideDone(nextDone);
     if(canPersistTutorial)safeLS.set(SOFT_GUIDE_STORAGE_KEY,serializeSoftGuideDone(nextDone));
@@ -1344,6 +1358,7 @@ export default function Game(){
   const [displayStats, setDisplayStats] = useState(() => gs?.players ? gs.players.map(p => ({ hp: p.hp, san: p.san })) : []);
   const [godHighlightPanelBursts,setGodHighlightPanelBursts]=useState({});
   const previousGodStatusRef=useRef(null);
+  const pendingGodHighlightStatusRef=useRef(new Set());
   const triggerGodHighlightPanelBurst=useCallback((playerIndex,godKey)=>{
     if(playerIndex==null||!godKey)return;
     playGodHighlightSound?.();
@@ -1562,6 +1577,22 @@ export default function Game(){
   useEffect(()=>{
     if(anim?.type!=='GOD_HIGHLIGHT')return;
     triggerGodHighlightPanelBurst(anim.targetPid,anim.godKey);
+    // The visible player state may be committed by a following STATE_PATCH.
+    // Record the status represented by this explicit timeline step now, so
+    // the fallback status watcher does not replay the same panel highlight
+    // after the step has already left the queue.
+    const targetPid=anim.targetPid;
+    const committedPlayer=pendingGsRef.current?.players?.[targetPid];
+    const highlightedGodName=committedPlayer?.godName||anim.godKey||null;
+    const highlightedGodLevel=committedPlayer?.godLevel??0;
+    if(targetPid!=null&&highlightedGodName){
+      pendingGodHighlightStatusRef.current.add(`${targetPid}:${highlightedGodName}:${highlightedGodLevel}`);
+    }
+    // Do not advance previousGodStatusRef optimistically here. Interactive
+    // phases (for example, waiting for a hunted player to reveal a card) can
+    // render another snapshot before the queued state patch is committed.
+    // The status watcher below must compare that real commit with the last
+    // rendered snapshot so it can consume this marker without replaying it.
   },[anim,triggerGodHighlightPanelBurst]);
 
   useEffect(()=>{
@@ -1572,13 +1603,20 @@ export default function Game(){
     statuses.forEach((status,idx)=>{
       const prev=prevStatuses[idx]||{};
       if(status.godName&&(status.godName!==prev.godName||(status.godLevel||0)>(prev.godLevel||0))){
+        const statusKey=`${idx}:${status.godName}:${status.godLevel||0}`;
+        const explicitHighlightPending=pendingGodHighlightStatusRef.current.delete(statusKey);
         const hasQueuedHighlight=(anim?.type==='GOD_HIGHLIGHT'&&anim.targetPid===idx)
           ||animQueueRef.current.some(step=>step?.type==='GOD_HIGHLIGHT'&&step.targetPid===idx);
-        if(!hasQueuedHighlight)triggerGodHighlightPanelBurst(idx,status.godName);
+        if(!explicitHighlightPending&&!hasQueuedHighlight)triggerGodHighlightPanelBurst(idx,status.godName);
       }
     });
     previousGodStatusRef.current=statuses;
   },[gs?.players,anim,animQueueRef,triggerGodHighlightPanelBurst]);
+
+  useEffect(()=>{
+    if(anim||animExiting||animQueueRef.current.length||pendingGsRef.current)return;
+    pendingGodHighlightStatusRef.current.clear();
+  },[anim,animExiting,gs?.players,animQueueRef,pendingGsRef]);
 
   useEffect(()=>{
     if(!import.meta.env.DEV||typeof window==='undefined')return undefined;
@@ -2799,7 +2837,7 @@ export default function Game(){
       }
       try{
         // Strip ALL animation-only temp fields before storing as real game state
-        const{_aiDrawnCard,_aiName,_playersBeforeNextDraw,_playersBeforeEndTurnReplay,_aiHuntEvents,_playersBeforeSkillAction,_preSkillLogs,_preSkillDiscard,_cthRestDraws,_cthRestDrawLogs,_playersBeforeCthDraws,_aiHandLimitDiscards,_aiHandLimitBeforePlayers,_aiHandLimitBeforeDiscard,_aiHandLimitBeforeLog,_animAiDrawnCard,_animDiscardedDrawnCard,_animMultiplyEvent,_animSphinxReveal,_aiTurnIntroShown:_aits2,...stripped}=rawResult;
+        const{_aiDrawnCard,_aiName,_playersBeforeNextDraw,_playersBeforeEndTurnReplay,_discardBeforeEndTurnReplay,_aiHuntEvents,_playersBeforeSkillAction,_preSkillLogs,_preSkillDiscard,_cthRestDraws,_cthRestDrawLogs,_playersBeforeCthDraws,_aiHandLimitDiscards,_aiHandLimitBeforePlayers,_aiHandLimitBeforeDiscard,_aiHandLimitBeforeLog,_animAiDrawnCard,_animDiscardedDrawnCard,_animMultiplyEvent,_animSphinxReveal,_aiTurnIntroShown:_aits2,...stripped}=rawResult;
         newGs=stripped; // reassign: stripped has _playersBeforeThisDraw from startNextTurn
         const oldLog=Array.isArray(gs.log)?gs.log:[];
         const nextLog=Array.isArray(newGs.log)?newGs.log:oldLog;
@@ -2941,13 +2979,22 @@ export default function Game(){
           : hasRoseThornGiftAllHand
             ? actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')
           : actionStatQBase;
-        const handLimitDiscardQueue=(_aiHandLimitDiscards||[]).map((card,idx,arr)=>({
+        const handLimitDiscardCards=_aiHandLimitDiscards||[];
+        const handLimitDiscardQueue=handLimitDiscardCards.length?[{
           type:'DISCARD',
-          card,
+          card:handLimitDiscardCards[0],
+          cards:handLimitDiscardCards,
+          count:handLimitDiscardCards.length,
           triggerName:gs.players[gs.currentTurn]?.name||'???',
           targetPid:gs.currentTurn,
-          msgs:idx===arr.length-1?actionMsgs.filter(m=>m.includes('（上限）')):[],
-        }));
+          msgs:actionMsgs.filter(m=>m.includes('（上限）')),
+        }]:[];
+        const handLimitDiscardCommitQueue=handLimitDiscardCards.length&&_playersBeforeEndTurnReplay
+          ?[statePatchStep({
+              players:_playersBeforeEndTurnReplay,
+              discard:_discardBeforeEndTurnReplay||newGs.discard,
+            })]
+          :[];
         const handLimitStatQueue=_aiHandLimitBeforePlayers
           ? buildAnimQueue(
               {players:_aiHandLimitBeforePlayers,discard:_aiHandLimitBeforeDiscard||gs.discard,log:_aiHandLimitBeforeLog||gs.log,_statEventSeq:gs._statEventSeq||0},
@@ -3073,7 +3120,17 @@ export default function Game(){
           // 摸牌阶段的视觉效果事件（如半物质化 etherealizeGain）已在回合开始重放中播过；
           // fakeGs 继承 gs._visualEvents 而 oldGs 没有，会被当作新事件在检定后重播，故此处清空。
           const postInspectionQ=inspectionEvents.length
-            ?buildAnimQueue({players:inspectionFlow.players,log:inspectionFlow.log,_statEventSeq:inspectionFlow.statEventSeq},{...fakeGs(P_actionEnd,actionLog),_visualEvents:[]})
+            ?buildAnimQueue(
+                {players:inspectionFlow.players,log:inspectionFlow.log,_statEventSeq:inspectionFlow.statEventSeq},
+                {
+                  ...fakeGs(P_actionEnd,actionLog),
+                  // 改信等结算可能发生在检定之后；这些 stat events 只存在于
+                  // aiStep 的最终状态，不能继续沿用本回合开始前的旧水位。
+                  _statEvents:newGs._statEvents||[],
+                  _statEventSeq:newGs._statEventSeq||0,
+                  _visualEvents:[],
+                }
+              )
             :[];
           if(giftedCard&&bwti>=0){
             if(inspectionEvents.length){
@@ -3171,6 +3228,7 @@ export default function Game(){
         if(isLocalCurrentTurn(newGs)){
           queue.push(...finalActionQ);
           queue.push(...handLimitDiscardQueue);
+          queue.push(...handLimitDiscardCommitQueue);
           queue.push(...handLimitStatQueue);
           queue.push(...aiEndTurnReplayQueue);
           const nextTurnReplayOldGs={
@@ -3199,6 +3257,7 @@ export default function Game(){
           // are appended here before replay hints are normalized away.
           queue.push(...finalActionQ);
           queue.push(...handLimitDiscardQueue);
+          queue.push(...handLimitDiscardCommitQueue);
           queue.push(...handLimitStatQueue);
           queue.push(...aiEndTurnReplayQueue);
           nextTurnIntroQueue=[
@@ -3793,12 +3852,18 @@ export default function Game(){
         const timer = setTimeout(() => {
           setDisplayStats(prev => {
             if (Array.isArray(anim.statEvents) && anim.statEvents.length) {
-              return applyStatEventsToDisplayStats(prev, anim.statEvents);
+              return applyStatEventsToDisplayStats(prev, anim.statEvents, anim.type);
             }
             const next = [...prev];
             targets.forEach(pid => {
               if (next[pid] && ts[pid]) {
-                next[pid] = { hp: ts[pid].hp, san: ts[pid].san };
+                if(anim.type==='HP_DAMAGE'||anim.type==='HP_HEAL'){
+                  next[pid] = {...next[pid],hp:ts[pid].hp};
+                }else if(anim.type==='SAN_DAMAGE'||anim.type==='SAN_HEAL'){
+                  next[pid] = {...next[pid],san:ts[pid].san};
+                }else{
+                  next[pid] = { hp: ts[pid].hp, san: ts[pid].san };
+                }
               }
             });
             return next;
@@ -4394,7 +4459,7 @@ export default function Game(){
         />
         <style>{GLOBAL_STYLES}</style>
       {/* GammaSlider outside filtered lobby container */}
-      <GammaSlider gamma={gamma} onChange={handleGamma}/>
+      <GammaSlider gamma={gamma} onChange={handleGamma} musicVolume={musicVolume} onMusicVolumeChange={handleMusicVolume} sfxVolume={sfxVolume} onSfxVolumeChange={handleSfxVolume}/>
       <DebugControls
         isLocalTestMode={isLocalTestMode}
         localDebugMode={localDebugMode}
@@ -4538,6 +4603,7 @@ export default function Game(){
           </span>
         </button>
         {showFullLog&&<FullLogModal log={gameOverFullLog} onClose={()=>setShowFullLog(false)}/>}
+        <GammaSlider gamma={gamma} onChange={handleGamma} musicVolume={musicVolume} onMusicVolumeChange={handleMusicVolume} sfxVolume={sfxVolume} onSfxVolumeChange={handleSfxVolume}/>
         {roleRevealAnim&&<RoleRevealAnim role={roleRevealAnim.role} onDone={()=>_onRoleRevealDone(roleRevealAnim.pendingGs)}/>}
         <style>{GLOBAL_STYLES}</style>
       </div>
@@ -9815,13 +9881,13 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     godResolvePlayer,nyaBorrow,nyaSkip,
     setGs,setAnim,setPreparingSoftGuideId,setPendingSoftGuideId,setSoftGuideSpotlights,
     setTutorialStep,advanceTutorialStep,handleTutorialResultNext,completeTutorial,_onRoleRevealDone,
-    handleGamma,handleTutorialTreasureMapConfirm,
+    handleGamma,handleMusicVolume,handleSfxVolume,handleTutorialTreasureMapConfirm,
     // misc derived flags / data used in the moved JSX
     roleRevealAnim,swapBlindDraw,swapBlindCardLayout,
     zhuLitCardsForView,canPlayerRespondWithAnyHandCard,canPlayerRespondWithFireHandCard,
     cardsHuntMatch,isMyCardClickable,
     skillLimited,skillRi,effectiveSkillName,isSelfDeadPanelDimmed,huntAbandoned,
-    gamma,isLocalTestMode,localDebugMode,setLocalDebugMode,serverAnnouncement,emojiButtonPos,
+    gamma,musicVolume,sfxVolume,isLocalTestMode,localDebugMode,setLocalDebugMode,serverAnnouncement,emojiButtonPos,
   };
 
   return(<>

@@ -19,6 +19,7 @@ const STARTLED_BATS_STOP_MS = 1050;
 const STARTLED_BATS_FADE_MS = 180;
 const NIGHT_WIND_VOLUME = 0.46;
 const NIGHT_WIND_STOP_MS = 1650;
+const NIGHT_WIND_FADE_MS = 1750;
 const IGNITE_TORCH_FIRE_VOLUME = 0.28;
 const IGNITE_TORCH_FIRE_STOP_MS = 760;
 const IGNITE_TORCH_FIRE_FADE_MS = 140;
@@ -218,7 +219,51 @@ function setAudioPlaybackRate(audio, playbackRate) {
   try { audio.webkitPreservesPitch = false; } catch { /* ignore */ }
 }
 
-export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
+function collectAudioElements(value, result = [], seen = new Set()) {
+  if (!value || seen.has(value)) return result;
+  if (typeof value === 'object') seen.add(value);
+  if (typeof value?.play === 'function' && typeof value?.pause === 'function' && typeof value?.volume === 'number') {
+    result.push(value);
+  } else if (Array.isArray(value)) {
+    value.forEach(item => collectAudioElements(item, result, seen));
+  } else if (typeof value === 'object') {
+    Object.values(value).forEach(item => collectAudioElements(item, result, seen));
+  }
+  return result;
+}
+
+function bindAudioVolumeScale(audio, scaleRef) {
+  let owner = audio;
+  let descriptor = null;
+  while (owner && !descriptor) {
+    descriptor = Object.getOwnPropertyDescriptor(owner, 'volume');
+    owner = Object.getPrototypeOf(owner);
+  }
+  if (!descriptor?.get || !descriptor?.set) return () => {};
+  let baseVolume = descriptor.get.call(audio);
+  try {
+    Object.defineProperty(audio, 'volume', {
+      configurable: true,
+      get: () => baseVolume,
+      set: value => {
+        baseVolume = clamp01(Number(value) || 0);
+        descriptor.set.call(audio, baseVolume * scaleRef.current);
+      },
+    });
+    audio.volume = baseVolume;
+  } catch {
+    return () => {};
+  }
+  return () => {
+    try {
+      const effectiveVolume = baseVolume * scaleRef.current;
+      delete audio.volume;
+      descriptor.set.call(audio, effectiveVolume);
+    } catch { /* ignore */ }
+  };
+}
+
+export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影', { musicVolume = 1, sfxVolume = 1 } = {}) {
   const [audioReady, setAudioReady] = useState(false);
   const readyRef = useRef(false);
   const bgmRefs = useRef({ main: null, battleEarth: null, battleStars: null });
@@ -229,6 +274,10 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
   const currentTrackRef = useRef(null);
   const fadeTokenRef = useRef(0);
   const targetVolumesRef = useRef(Object.fromEntries(Object.entries(BGM_AUDIO_BY_KEY).map(([key, config]) => [key, config.volume])));
+  const musicVolumeRef = useRef(musicVolume);
+  const sfxVolumeRef = useRef(sfxVolume);
+  musicVolumeRef.current = musicVolume;
+  sfxVolumeRef.current = sfxVolume;
 
   useEffect(() => {
     const main = new Audio(buildPublicUrl(BGM_AUDIO_BY_KEY.main.path));
@@ -525,6 +574,10 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
         cooldownPlayers: volcanoCooldownPlayers,
       },
     };
+    const volumeScaleCleanups = [
+      ...collectAudioElements(bgmRefs.current).map(audio => bindAudioVolumeScale(audio, musicVolumeRef)),
+      ...collectAudioElements(sfxRefs.current).map(audio => bindAudioVolumeScale(audio, sfxVolumeRef)),
+    ];
     return () => {
       Object.values(sfxSequenceCleanupsRef.current).forEach(cleanup => {
         try { cleanup?.(); } catch { /* ignore */ }
@@ -541,8 +594,17 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
           audio.playbackRate = 1;
         } catch { /* ignore */ }
       });
+      volumeScaleCleanups.forEach(cleanup => cleanup());
     };
   }, []);
+
+  useEffect(() => {
+    collectAudioElements(bgmRefs.current).forEach(audio => { audio.volume = audio.volume; });
+  }, [musicVolume, audioReady]);
+
+  useEffect(() => {
+    collectAudioElements(sfxRefs.current).forEach(audio => { audio.volume = audio.volume; });
+  }, [sfxVolume, audioReady]);
 
   const syncTrack = useCallback((instant = false) => {
     if (!audioReady) return;
@@ -803,7 +865,12 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
     const variants = sfxRefs.current.nightWind || [];
     if (!variants.length) return undefined;
     clearTimeout(sfxStopTimersRef.current.nightWind);
-    variants.forEach(audio => {
+    variants.forEach((audio, index) => {
+      const fadeKey = `nightWind-${index}`;
+      if (sfxFadeFramesRef.current[fadeKey]) {
+        cancelAnimationFrame(sfxFadeFramesRef.current[fadeKey]);
+        sfxFadeFramesRef.current[fadeKey] = null;
+      }
       try {
         audio.pause();
         audio.currentTime = 0;
@@ -811,21 +878,24 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
       } catch { /* ignore */ }
     });
     const audio = variants[Math.floor(Math.random() * variants.length)] || variants[0];
+    const activeIndex = Math.max(0, variants.indexOf(audio));
+    const activeFadeKey = `nightWind-${activeIndex}`;
     try {
       audio.currentTime = 0;
       audio.volume = NIGHT_WIND_VOLUME;
       audio.play().catch(() => { });
       sfxStopTimersRef.current.nightWind = setTimeout(() => {
-        try {
-          audio.pause();
-          audio.currentTime = 0;
-          audio.volume = NIGHT_WIND_VOLUME;
-        } catch { /* ignore */ }
-      }, NIGHT_WIND_STOP_MS + 80);
+        fadeOutAudio(audio, activeFadeKey, NIGHT_WIND_FADE_MS, NIGHT_WIND_VOLUME, true);
+      }, NIGHT_WIND_STOP_MS);
     } catch { /* ignore */ }
     return () => {
       clearTimeout(sfxStopTimersRef.current.nightWind);
-      variants.forEach(item => {
+      variants.forEach((item, index) => {
+        const fadeKey = `nightWind-${index}`;
+        if (sfxFadeFramesRef.current[fadeKey]) {
+          cancelAnimationFrame(sfxFadeFramesRef.current[fadeKey]);
+          sfxFadeFramesRef.current[fadeKey] = null;
+        }
         try {
           item.pause();
           item.currentTime = 0;
@@ -833,7 +903,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影') {
         } catch { /* ignore */ }
       });
     };
-  }, [noteUserGesture]);
+  }, [fadeOutAudio, noteUserGesture]);
   const playIgniteTorchFireSound = useCallback(({ durationMs = IGNITE_TORCH_FIRE_STOP_MS } = {}) => {
     noteUserGesture();
     const audio = sfxRefs.current.igniteTorchFire;

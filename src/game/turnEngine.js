@@ -1256,7 +1256,11 @@ export function startNextTurn(gs, opts = {}) {
   P = bgy.P; D = bgy.D; Disc = bgy.Disc; L = bgy.L; inspectionMeta = bgy.inspectionMeta; gs = { ...gs, ...inspectionMeta };
   if (bgy.winAfterBgy) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: bgy.winAfterBgy, multiplyUsed: false };
   if (inspectionMeta?.abilityData?.type === 'tsgSlimeBalance') {
-    return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, phase: 'TSG_SLIME_BALANCE', abilityData: { ...inspectionMeta.abilityData, _turnOwner: next }, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
+    // 黑山羊伤害发生在本回合的摸牌阶段之前。黏液平衡会暂时
+    // 中断 startNextTurn，因此必须显式保存后续的黏液额外摸牌与
+    // 固定摸牌；否则决策结束后会直接恢复 AI_TURN 并开始行动。
+    const pendingTsathogguaSlimes = getTsathogguaSlimesForDraw(P, next, L, visualEvents);
+    return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, phase: 'TSG_SLIME_BALANCE', abilityData: { ...inspectionMeta.abilityData, _turnOwner: next, continueTurnStartDraw: true, pendingTsathogguaSlimes }, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
   }
   // [PASSIVE_OTHER] 中毒回合开始伤害
   const poison = turnStartEvent_PoisonDamage(P, next, D, Disc, L, gs, inspectionMeta, statLogs);

@@ -1395,6 +1395,7 @@ export function aiStep(gs, opts = {}) {
     return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:winAfterDiscard,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:(useSkill||gs.skillUsed),_animAiDrawnCard:gs._aiDrawnCard??gs._drawnCard??null,_animDiscardedDrawnCard:gs._discardedDrawnCard??false,_aiName:ai.name,_playersBeforeNextDraw:copyPlayers(P),_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard,_aiHuntEvents:aiHuntEvents};
   }
   const _P_beforeEndTurnReplay = copyPlayers(P);
+  const _Disc_beforeEndTurnReplay = [...Disc];
   const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,gs);
   P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};
   const _P_afterAction=copyPlayers(P);
@@ -1420,6 +1421,7 @@ export function aiStep(gs, opts = {}) {
     _aiName:ai.name,
     _playersBeforeNextDraw:_P_afterAction,
     _playersBeforeEndTurnReplay:_P_beforeEndTurnReplay,
+    _discardBeforeEndTurnReplay:_Disc_beforeEndTurnReplay,
     _playersBeforeSkillAction:playersBeforeSkillAction,
     _preSkillLogs:preSkillLogs,
     _preSkillDiscard:preSkillDiscard,

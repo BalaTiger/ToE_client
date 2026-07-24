@@ -561,6 +561,8 @@ export function buildHandLimitDiscardStepsFromVisualEvents(state) {
   return [{
     type: 'DISCARD',
     card: Array.isArray(event.cards) ? event.cards[0] : null,
+    cards: Array.isArray(event.cards) ? event.cards : [],
+    count: Array.isArray(event.cards) ? event.cards.length : 1,
     triggerName: displayName,
     targetPid: playerIdx,
     msgs: Array.isArray(event.msgs) ? event.msgs : [],

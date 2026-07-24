@@ -304,6 +304,53 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(drawTransferIdx).toBe(-1);
   });
 
+  it('已揭示邪祀者将摸到的邪神牌收入手牌时播放收入飞牌动画', () => {
+    const godCard = makeGodCard('TSG');
+    const beforeDrawPlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', role: ROLE_CULTIST, roleRevealed: true, hand: [] }),
+    ];
+    const oldGs = makeGs({
+      players: beforeDrawPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: ['旧日志'],
+    });
+    const newGs = makeGs({
+      players: [
+        beforeDrawPlayers[0],
+        { ...beforeDrawPlayers[1], hand: [godCard], godEncounters: 2 },
+      ],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _drawnCard: godCard,
+      _aiDrawnCard: godCard,
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _drawLogs: ['艾伦（邪祀者）遭遇邪神 蟾蜍之神！（第2次）免疫SAN损耗'],
+      _statLogs: [],
+      log: [
+        '旧日志',
+        '── 艾伦 的回合开始 ──',
+        '艾伦（邪祀者）遭遇邪神 蟾蜍之神！（第2次）免疫SAN损耗',
+        '艾伦（邪祀者）将邪神牌收入手牌',
+      ],
+    });
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const drawIdx = replay.queue.findIndex(step => step.type === 'DRAW_CARD');
+    const transferIdx = replay.queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.effect === 'draw');
+
+    expect(transferIdx).toBeGreaterThan(drawIdx);
+    expect(replay.queue[transferIdx]).toMatchObject({
+      fromPid: 1,
+      dest: 'player',
+      toPid: 1,
+      sourceAnchor: 'playerArea',
+      cards: [godCard],
+    });
+  });
+
   it('本地回合开始摸到邪神时先播放 SAN 扣减和检定翻牌再进入邪神抉择', () => {
     const cth = makeGodCard('CTH');
     const calm = { id: 'calm-check', name: '暂时的平静', effect: 'nothing', value: 0, type: 'neutral' };

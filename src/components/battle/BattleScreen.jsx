@@ -272,6 +272,8 @@ export function BattleScreen(props) {
     completeTutorial,
     _onRoleRevealDone,
     handleGamma,
+    handleMusicVolume,
+    handleSfxVolume,
     handleTutorialTreasureMapConfirm,
     roleRevealAnim,
     swapBlindDraw,
@@ -287,6 +289,8 @@ export function BattleScreen(props) {
     isSelfDeadPanelDimmed,
     huntAbandoned,
     gamma,
+    musicVolume,
+    sfxVolume,
     isLocalTestMode,
     localDebugMode,
     setLocalDebugMode,
@@ -739,7 +743,7 @@ export function BattleScreen(props) {
     </div>
     {/* GammaSlider, emoji picker, and combat overlays all outside the filtered container
          so that position:fixed uses the true viewport (filter on ancestor breaks fixed positioning) */}
-    <GammaSlider gamma={gamma} onChange={handleGamma}/>
+    <GammaSlider gamma={gamma} onChange={handleGamma} musicVolume={musicVolume} onMusicVolumeChange={handleMusicVolume} sfxVolume={sfxVolume} onSfxVolumeChange={handleSfxVolume}/>
     {isLocalTestMode&&(
       <button
         type="button"

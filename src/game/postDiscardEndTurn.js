@@ -95,7 +95,7 @@ export function resolvePostDiscardEndTurn(baseGs, {
   const endTurnEvents = getEndTurnEvents(P, actorIndex);
   if (endTurnEvents.length) {
     const seedQueue = discarded.length
-      ? [{ type: 'DISCARD', msgs: discardAnimMsgs }, ...balanceQueue, statePatchStep({ players: P, discard: Disc })]
+      ? [{ type: 'DISCARD', cards: discarded, count: discarded.length, targetPid: actorIndex, msgs: discardAnimMsgs }, ...balanceQueue, statePatchStep({ players: P, discard: Disc })]
       : [];
     const kickoffGs = {
       ...postDiscardGs,
@@ -119,7 +119,7 @@ export function resolvePostDiscardEndTurn(baseGs, {
   }
 
   const seedQueue = discarded.length
-    ? [{ type: 'DISCARD', msgs: discardAnimMsgs }, ...balanceQueue, statePatchStep({ players: P, discard: Disc })]
+    ? [{ type: 'DISCARD', cards: discarded, count: discarded.length, targetPid: actorIndex, msgs: discardAnimMsgs }, ...balanceQueue, statePatchStep({ players: P, discard: Disc })]
     : [];
   const queue = buildPlayerTurnDrawQueue(postDiscardGs, newGs, seedQueue);
 

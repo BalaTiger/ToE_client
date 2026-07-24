@@ -2200,7 +2200,7 @@ describe('buildMpRemoteReplayAction', () => {
     });
 
     expect(action.type).toBe(MP_REMOTE_REPLAY.START_ANIM);
-    expect(action.anim).toMatchObject({ type: 'DISCARD', targetPid: 1, card: discarded });
+    expect(action.anim).toMatchObject({ type: 'DISCARD', targetPid: 1, card: discarded, cards: [discarded], count: 1 });
     expect(action.queue[0]).toMatchObject({ type: 'YOUR_TURN' });
     expect(action.queue[1]).toMatchObject({ type: 'DRAW_CARD', card: nextCard, targetPid: 0 });
     expect(action.pendingGs._visualEvents).toEqual([]);

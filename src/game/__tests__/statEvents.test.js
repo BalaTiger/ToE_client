@@ -113,4 +113,39 @@ describe('statEvents', () => {
       { hp: 5, san: 1 },
     ]);
   });
+
+  it('HP/SAN 同时变动时按各自动画分阶段更新数值条', () => {
+    const displayStats = [{ hp: 10, san: 8 }];
+    const events = [{
+      type: 'HP_SAN_LOSS',
+      target: 0,
+      from: { hp: 10, san: 8 },
+      to: { hp: 7, san: 6 },
+    }];
+    const players = [makePlayer({ hp: 7, san: 6 })];
+
+    expect(statEventsToAnimQueue(events, players).map(step => step.type)).toEqual([
+      'HP_DAMAGE',
+      'SAN_DAMAGE',
+    ]);
+    const afterHpImpact = applyStatEventsToDisplayStats(displayStats, events, 'HP_DAMAGE');
+    expect(afterHpImpact).toEqual([{ hp: 7, san: 8 }]);
+    expect(applyStatEventsToDisplayStats(afterHpImpact, events, 'SAN_DAMAGE')).toEqual([
+      { hp: 7, san: 6 },
+    ]);
+  });
+
+  it('HP/SAN 同时回复时拆成各自的回复特效', () => {
+    const events = [{
+      type: 'HP_SAN_GAIN',
+      target: 0,
+      from: { hp: 5, san: 4 },
+      to: { hp: 7, san: 6 },
+    }];
+
+    expect(statEventsToAnimQueue(events, [makePlayer({ hp: 7, san: 6 })]).map(step => step.type)).toEqual([
+      'HP_HEAL',
+      'SAN_HEAL',
+    ]);
+  });
 });

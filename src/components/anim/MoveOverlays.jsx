@@ -185,7 +185,7 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = '地神的潜
   React.useEffect(() => {
     if (!anim) return;
     const size = getStandardFlyingCardSize();
-    const card = anim.card || null;
+    const card = anim.card || anim.cards?.[0] || null;
     const s = card ? (card.isGod ? GOD_CS : (CS[card.letter] || null)) : null;
     const targetPid = anim.targetPid || 0;
     const discardPos = getPileAnchorCenter(
@@ -226,8 +226,11 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = '地神的潜
   }, [anim]);
 
   if (!anim) return null;
-  const card = anim.card || null;
-  const s = card ? (card.isGod ? GOD_CS : (CS[card.letter] || null)) : null;
+  const cards = Array.isArray(anim.cards) && anim.cards.length
+    ? anim.cards
+    : anim.card
+      ? [anim.card]
+      : Array.from({ length: Math.max(1, anim.count || 1) }, () => null);
 
   return (
     <div style={{
@@ -236,18 +239,25 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = '地神的潜
     }}>
       {/* Subtle bg dim */}
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(4,2,0,0.35)', animation: 'discardBgFade 1.0s ease both' }} />
-      {/* Flying card */}
-      {Object.keys(cardStyle).length > 0 && (
-        <div style={{
-          ...cardStyle,
-          overflow: 'hidden',
-        }}>
-          {!s && <CardBackLayer expansionKey={expansionKey}/>}
-          {card && s && (
-            <MiniCardFace card={card} width={cardStyle.width} height={cardStyle.height} ambient={false} frameStyle={{boxShadow:'none',border:'none',background:'transparent'}}/>
-          )}
-        </div>
-      )}
+      {/* Flying cards: fan them just enough for the discarded count to remain visible. */}
+      {Object.keys(cardStyle).length > 0 && cards.map((card, index) => {
+        const s = card ? (card.isGod ? GOD_CS : (CS[card.letter] || null)) : null;
+        const centeredIndex = index - (cards.length - 1) / 2;
+        return (
+          <div key={card?.id ?? card?.uid ?? `${card?.key || 'card'}-${index}`} style={{
+            ...cardStyle,
+            left: cardStyle.left + centeredIndex * Math.min(14, 42 / Math.max(1, cards.length - 1)),
+            top: cardStyle.top + Math.abs(centeredIndex) * 2,
+            overflow: 'hidden',
+            zIndex: index + 1,
+          }}>
+            {!s && <CardBackLayer expansionKey={expansionKey}/>}
+            {card && s && (
+              <MiniCardFace card={card} width={cardStyle.width} height={cardStyle.height} ambient={false} frameStyle={{boxShadow:'none',border:'none',background:'transparent'}}/>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

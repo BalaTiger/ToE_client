@@ -13,7 +13,6 @@ const CARD_FLIP_GOD_HIGHLIGHT_DELAY_MS = 1260;
 const EARTHQUAKE_SHAKE_DURATION_MS = 2500;
 const VOLCANO_ANIMATION_DURATION_MS = 2500;
 const SINGLE_CARD_MOVE_TYPES = new Set([
-  'DISCARD',
   'BURY_TO_DECK',
   'ZHU_HIDE_CARD',
   'HUNT_REVEAL_CARD',
@@ -32,6 +31,11 @@ function getCardTransferMoveCount(anim) {
   if (Array.isArray(anim?.transfers) && anim.transfers.length) {
     return anim.transfers.reduce((sum, transfer) => sum + Math.max(1, transfer?.count || 1), 0);
   }
+  return Math.max(1, anim?.count || 1);
+}
+
+function getDiscardMoveCount(anim) {
+  if (Array.isArray(anim?.cards) && anim.cards.length) return anim.cards.length;
   return Math.max(1, anim?.count || 1);
 }
 
@@ -152,8 +156,11 @@ export function useAnimationAudioEffects({
 
   useEffect(() => {
     if (anim?.type !== 'NIGHT_WIND') return undefined;
-    return playNightWindSound?.();
-  }, [anim, playNightWindSound]);
+    // The wind tail intentionally outlives the 1.65s sandstorm overlay. Keep
+    // it detached so unmounting NIGHT_WIND cannot cancel its smooth fade.
+    playDetachedAnimationSound('nightWind', playNightWindSound);
+    return undefined;
+  }, [anim, playNightWindSound, playDetachedAnimationSound]);
 
   useEffect(() => {
     if (anim?.type !== 'CARD_TRANSFER' || anim?.effect !== 'damageLink') return undefined;
@@ -163,6 +170,11 @@ export function useAnimationAudioEffects({
 
   useEffect(() => {
     if (!anim) return undefined;
+    if (anim.type === 'DISCARD') {
+      if (getDiscardMoveCount(anim) > 1) playMultiCardShiftSound?.();
+      else playOneCardShiftSound?.();
+      return undefined;
+    }
     if (SINGLE_CARD_MOVE_TYPES.has(anim.type)) {
       playOneCardShiftSound?.();
       return undefined;
@@ -257,8 +269,12 @@ export function useAnimationAudioEffects({
     if (anim?.type !== 'CAVE_DUEL') return undefined;
     const localInvolved = anim.sourceIdx === 0 || anim.targetIdx === 0;
     const localLost = localInvolved && anim.winnerIdx != null && anim.winnerIdx !== 0;
-    return playCaveDuelSound?.({ localLost });
-  }, [anim, playCaveDuelSound]);
+    // The background and result tracks intentionally outlive the 2.6s visual
+    // overlay. Keep the whole sequence detached so its own fade timers can
+    // finish instead of being cancelled when CAVE_DUEL leaves the queue.
+    playDetachedAnimationSound('caveDuel', () => playCaveDuelSound?.({ localLost }));
+    return undefined;
+  }, [anim, playCaveDuelSound, playDetachedAnimationSound]);
 
   useEffect(() => {
     if (anim?.type !== 'RANDOM_TARGET') return undefined;

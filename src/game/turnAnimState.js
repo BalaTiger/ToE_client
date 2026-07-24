@@ -569,7 +569,11 @@ export function buildTurnStartDrawReplayQueue({
     ...(newGs?._statLogs || []),
     ...getCurrentTurnResolutionLogs(newGs),
   ];
-  const godDrawResolution = isGodDrawnCard(drawnCard) ? getGodDrawResolution(drawResolutionLogs, drawerName) : null;
+  const drawnGodKeptInHand = isGodDrawnCard(drawnCard) &&
+    (newGs?.players?.[drawerPid]?.hand || []).some(card => sameDrawCard(card, drawnCard));
+  const godDrawResolution = isGodDrawnCard(drawnCard)
+    ? (drawnGodKeptInHand ? 'hand' : getGodDrawResolution(drawResolutionLogs, drawerName))
+    : null;
   const discardedDrawnCard = !!newGs?._discardedDrawnCard || godDrawResolution === 'discard';
   const discardDrawnStep = discardedDrawnCard
     ? {

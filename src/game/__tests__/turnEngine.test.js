@@ -750,6 +750,30 @@ describe('turnEngine stat events', () => {
       targetIdx: 1,
       afterHp: 7,
       afterSan: 7,
+      continueTurnStartDraw: true,
+    });
+  });
+
+  it('黑山羊触发黏液平衡后保留黏液额外摸牌和固定摸牌续程', () => {
+    const slime = createTsathogguaSlimeCard();
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({
+        name: '卡洛斯',
+        godName: 'TSG',
+        godLevel: 1,
+        hand: [createBlackGoatYoungCard(), slime],
+      }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0, log: [] });
+
+    const result = startNextTurn(gs);
+
+    expect(result.phase).toBe('TSG_SLIME_BALANCE');
+    expect(result.abilityData).toMatchObject({
+      _turnOwner: 1,
+      continueTurnStartDraw: true,
+      pendingTsathogguaSlimes: [slime],
     });
   });
 

@@ -57,6 +57,11 @@ describe('resolvePostDiscardEndTurn', () => {
     );
     const types = result.queue.map(s => s.type);
     expect(types).toContain('DISCARD');
+    expect(result.queue.find(s => s.type === 'DISCARD')).toMatchObject({
+      cards: discarded,
+      count: 2,
+      targetPid: 0,
+    });
   });
 
   it('schedules end-turn events when CTH resting is present', () => {
