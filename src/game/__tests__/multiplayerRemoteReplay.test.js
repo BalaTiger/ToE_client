@@ -1107,6 +1107,59 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.pendingGs._visualEvents).toEqual([]);
   });
 
+  it('hides swap card faces when the local viewer is not involved', () => {
+    const players = [player('你'), player('艾伦'), player('贝拉')];
+    const takenCard = { id: 'taken', name: '旧牌', key: 'B2', type: 'zone' };
+    const givenCard = { id: 'given', name: '新牌', key: 'C3', type: 'zone' };
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players,
+      log: ['艾伦（寻宝者）对 贝拉 【掉包】'],
+      _visualEvents: [
+        {
+          type: 'swapCards', sourceIdx: 1, targetIdx: 2, sourceCount: 1, targetCount: 1,
+          takenCard, givenCard, msgs: ['艾伦（寻宝者）对 贝拉 【掉包】'],
+        },
+      ],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION' }),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    const transfers = action.queue.filter(step => step.type === 'CARD_TRANSFER');
+    expect(transfers).toHaveLength(2);
+    expect(transfers[0]).toMatchObject({ fromPid: 2, dest: 'player', toPid: 1, count: 1 });
+    expect(transfers[1]).toMatchObject({ fromPid: 1, dest: 'player', toPid: 2, count: 1 });
+    transfers.forEach(step => expect(step.cards).toBeUndefined());
+  });
+
+  it('keeps swap card faces when the local viewer is involved', () => {
+    const players = [player('你'), player('艾伦'), player('贝拉')];
+    const takenCard = { id: 'taken', name: '旧牌', key: 'B2', type: 'zone' };
+    const givenCard = { id: 'given', name: '新牌', key: 'C3', type: 'zone' };
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players,
+      log: ['艾伦（寻宝者）对 你 【掉包】'],
+      _visualEvents: [
+        {
+          type: 'swapCards', sourceIdx: 1, targetIdx: 0, sourceCount: 1, targetCount: 1,
+          takenCard, givenCard, msgs: ['艾伦（寻宝者）对 你 【掉包】'],
+        },
+      ],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION' }),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    const transfers = action.queue.filter(step => step.type === 'CARD_TRANSFER');
+    expect(transfers).toHaveLength(2);
+    expect(transfers[0].cards).toEqual([takenCard]);
+    expect(transfers[1].cards).toEqual([givenCard]);
+  });
+
   it('does not let stale swap visualEvents override the next draw replay', () => {
     const nextCard = { id: 'next1', name: '下一回合摸牌', key: 'B2', type: 'zone' };
     const staleSwapEvent = createSwapCardsEvent({

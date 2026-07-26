@@ -3059,14 +3059,17 @@ export default function Game(){
           const swapMsgs=extractSkillLogs(actionMsgs,'swap');
           const swapIntroStep={type:'SKILL_SWAP',msgs:swapMsgs};
           const swapPlayersBefore=_playersBeforeSkillAction||afterInspectionPlayers;
+          // 本地玩家未参与的掉包（AI↔AI 或其他两名角色互换）不向本地观众暴露牌面，
+          // 飞行动画一律以背面展示
+          const hideSwapCards=swapEvent&&swapEvent.sourceIdx!==0&&swapEvent.targetIdx!==0;
           const swapTransferSteps=swapEvent
             ? swapCardsSteps({
               sourceIdx:swapEvent.sourceIdx,
               targetIdx:swapEvent.targetIdx,
               sourceCount:swapEvent.sourceCount||1,
               targetCount:swapEvent.targetCount||1,
-              takenCard:swapEvent.takenCard||null,
-              givenCard:swapEvent.givenCard||null,
+              takenCard:hideSwapCards?null:(swapEvent.takenCard||null),
+              givenCard:hideSwapCards?null:(swapEvent.givenCard||null),
               msgs:swapEvent.msgs||swapMsgs,
               playersBefore:swapPlayersBefore,
               zhuLight:gs.zhuLight||null,

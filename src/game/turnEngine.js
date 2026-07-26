@@ -376,7 +376,12 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
   const visualEvents = [];
   let inspectionMeta = makeInspectionMeta(gs);
   P = P.map(p => ({ ...p, godZone: [...(p.godZone || [])] })); // shallow copy godZone arrays
+  const hadWinnerAtSettlementStart = !!checkWin(P, gs?._isMP);
+  const settlementHasNewWinner = () => !hadWinnerAtSettlementStart && !!checkWin(P, gs?._isMP);
   const applyImmediateGodPower = () => {
+    // A conversion cost or an abandonment penalty can end the game before the
+    // newly gained/upgraded power resolves. Victory terminates that chain.
+    if (settlementHasNewWinner()) return;
     if (!canGodPowerAffect(P[ci])) {
       if (['APO', 'ZHU', 'SHU'].includes(godKey)) {
         appendGodPowerBlockedFeedback({ player: P[ci], playerIdx: ci, events: visualEvents, msgs });
@@ -475,10 +480,12 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     Disc.push({ ...godCard }); msgs.push(`${P[ci].name} 放弃了邪神的馈赠`);
   }
   let zBase = { ...gs, ...statePatch };
-  proliferatingZGainEvents.forEach(event => {
-    const patch = appendPublicCardGainTriggers(zBase, P, event.ownerIdx, event.cards);
-    if (patch.proliferatingZQueue) zBase = { ...zBase, proliferatingZQueue: patch.proliferatingZQueue };
-  });
+  if (!settlementHasNewWinner()) {
+    proliferatingZGainEvents.forEach(event => {
+      const patch = appendPublicCardGainTriggers(zBase, P, event.ownerIdx, event.cards);
+      if (patch.proliferatingZQueue) zBase = { ...zBase, proliferatingZQueue: patch.proliferatingZQueue };
+    });
+  }
   statePatch = {
     ...statePatch,
     ...(zBase.proliferatingZQueue ? { proliferatingZQueue: zBase.proliferatingZQueue } : {}),

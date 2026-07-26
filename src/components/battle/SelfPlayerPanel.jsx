@@ -90,11 +90,18 @@ export function SelfPlayerPanel({
       <ThemeCornerOrnament
         expansionKey={expansionKey}
         corner="tr"
-        size={172}
-        opacity={0.34}
-        inset={5}
+        size={206}
+        opacity={0.3}
+        inset={-6}
         useCssVars
-        style={{ top: 0, right: 0 }}
+        layerOpacity={{
+          // A screen-blended relief must not retain the dark offset layer.
+          // Its shifted edge was also the pale arc visible at the lower left.
+          shadow: 0,
+          glow: 0.16,
+          line: 0.72,
+        }}
+        style={{ top: -6, right: -6, mixBlendMode: 'screen' }}
       />
 
       {(hpHealIndices.includes(0) || sanHealIndices.includes(0)) && (

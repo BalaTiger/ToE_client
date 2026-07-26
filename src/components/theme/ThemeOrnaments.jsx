@@ -25,6 +25,8 @@ export function ThemeCornerOrnament({
   inset = 4,
   style = {},
   useCssVars = false,
+  colors: colorOverrides = null,
+  layerOpacity: layerOpacityOverrides = null,
 }) {
   const theme = getBoardTheme(expansionKey);
   const reliefCfg = getReliefDisplayConfig(expansionKey).corner;
@@ -40,11 +42,13 @@ export function ThemeCornerOrnament({
         shadow: '#030201',
         glow: useCssVars ? 'var(--toe-glow,#c8a96e)' : theme.glow,
         line: useCssVars ? 'var(--toe-line,#3a2510)' : theme.line,
+        ...(colorOverrides || {}),
       }}
       layerOpacity={{
         shadow: reliefCfg.shadowOpacity,
         glow: reliefCfg.glowOpacity,
         line: reliefCfg.lineOpacity,
+        ...(layerOpacityOverrides || {}),
       }}
     />
   );

@@ -637,11 +637,19 @@ export function buildTurnStartDrawReplayQueue({
   const drawOldStatSeq = effectiveDrawStatSeqs.length
     ? Math.max(0, Math.min(...effectiveDrawStatSeqs) - 1)
     : null;
+  // 只回退到「本次摸牌新产生」的随机目标事件之前。_randomTargetEvents 会随 gs 跨回合
+  // 残留（如上一回合行动阶段打出的投掷石块），若按全部事件回退水位，会把旧事件重新
+  // 判定为新事件，在翻牌动画后重播骰子/转盘/石块飞行。旧水位取标量与旧事件列表的较大
+  // 值，与 buildAnimQueue 对 _statEvents 的防御口径一致。
+  const oldRandomTargetSeq = Math.max(
+    oldGs?._randomTargetSeq || 0,
+    ...(Array.isArray(oldGs?._randomTargetEvents) ? oldGs._randomTargetEvents : []).map(event => event?.seq || 0),
+  );
   const drawRandomTargetSeqs = (Array.isArray(newGs?._randomTargetEvents) ? newGs._randomTargetEvents : [])
     .map(event => event?.seq)
-    .filter(seq => seq != null);
+    .filter(seq => seq != null && seq > oldRandomTargetSeq);
   const drawOldRandomTargetSeq = drawRandomTargetSeqs.length
-    ? Math.max(0, Math.min(...drawRandomTargetSeqs) - 1)
+    ? Math.max(oldRandomTargetSeq, Math.min(...drawRandomTargetSeqs) - 1)
     : null;
   // 摸牌效果的基线状态代表「摸牌效果发生之前」，不应携带本次摸牌产生的视觉事件
   // （如地动山摇 earthquake）。清掉后，buildAnimQueue 才会把它判定为新事件并播放首次动画。
@@ -670,10 +678,20 @@ export function buildTurnStartDrawReplayQueue({
     buildQueue(fallbackOldGs, newGs),
     { statLogs: withoutLogLines(newGs?._statLogs, inspectionLogLines) },
   ), preDrawMsgs);
+  // visualStatQ 只兜底 fallback 队列「漏掉」的属性事件。若事件已被 fallback 中卡牌专属
+  // 复合步骤（如惊扰蝙蝠 STARTLED_BATS + 其尾随的 HP_DAMAGE）按序覆盖，再前置一份会让
+  // HP 扣减特效抢在专属动画之前播放，且专属动画自己的属性步骤还会被下方过滤器剥掉。
+  const fallbackHandledStatSeqs = new Set(
+    (Array.isArray(drawEffectQBase) ? drawEffectQBase : [])
+      .flatMap(step => (Array.isArray(step?.statEvents) ? step.statEvents : []))
+      .map(event => event?.seq)
+      .filter(seq => seq != null)
+  );
   const visualStatQ = buildFilteredStatStepsFromVisualEvents(
     newGs,
     beforeDrawPlayers,
     statEvent => (
+      !fallbackHandledStatSeqs.has(statEvent?.seq) &&
       (statEvent?.seq == null || statEvent.seq > (fallbackOldGs?._statEventSeq || 0)) &&
       !inspectionStatSeqs.has(statEvent?.seq) &&
       (firstDrawInspectionStatSeq == null || statEvent?.seq == null || statEvent.seq < firstDrawInspectionStatSeq) &&

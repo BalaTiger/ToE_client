@@ -15,7 +15,7 @@ import {
 } from '../animQueueHelpers';
 import { copyPlayers } from '../coreUtils';
 import { buildAnimQueue } from '../animQueueCore';
-import { makePlayer, makeZoneCard } from './factory';
+import { makeGodCard, makePlayer, makeZoneCard } from './factory';
 
 describe('animQueueHelpers', () => {
   it('蛊惑中间快照保留牌区外观但使用结算后的 HP/SAN', () => {
@@ -531,5 +531,50 @@ describe('animQueueHelpers', () => {
       durationMs: 700,
       msgs: [gainedCardLog],
     });
+  });
+
+  it('蛊惑分段回放不会重复播放同一个属性事件', () => {
+    const repeatedEvent = {
+      seq: 7,
+      type: 'SAN_LOSS',
+      target: 2,
+      from: { hp: 10, san: 1 },
+      to: { hp: 10, san: 0 },
+      logHint: '黛安娜 被迫改信新神，失去 1 SAN',
+    };
+    const makeSanStep = () => ({
+      type: 'SAN_DAMAGE',
+      hitIndices: [2],
+      statEvents: [repeatedEvent],
+    });
+
+    const queue = buildBewitchForcedCardQueue(
+      1,
+      2,
+      makeGodCard('SHU'),
+      '黛安娜',
+      [makeSanStep(), { type: 'STATE_PATCH', players: [] }, makeSanStep()],
+      ['艾伦 对 黛安娜 【蛊惑】，赠予 森之领主'],
+    );
+
+    expect(queue.filter(step => step.type === 'SAN_DAMAGE')).toHaveLength(1);
+    expect(queue.some(step => step.type === 'STATE_PATCH')).toBe(true);
+  });
+
+  it('蛊惑属性事件去重不会吞掉同一事件的另一种动画', () => {
+    const combinedEvent = {
+      seq: 8,
+      type: 'HP_SAN_LOSS',
+      target: 2,
+      from: { hp: 3, san: 2 },
+      to: { hp: 2, san: 1 },
+    };
+    const queue = buildBewitchForcedCardQueue(1, 2, null, '黛安娜', [
+      { type: 'HP_DAMAGE', hitIndices: [2], statEvents: [combinedEvent] },
+      { type: 'SAN_DAMAGE', hitIndices: [2], statEvents: [combinedEvent] },
+    ], []);
+
+    expect(queue.filter(step => step.type === 'HP_DAMAGE')).toHaveLength(1);
+    expect(queue.filter(step => step.type === 'SAN_DAMAGE')).toHaveLength(1);
   });
 });

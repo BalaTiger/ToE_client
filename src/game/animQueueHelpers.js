@@ -182,6 +182,25 @@ export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQ
     !(Array.isArray(step.msgs) && step.msgs.length) &&
     !(Array.isArray(step.cards) && step.cards.length)
   );
+  const seenStatEvents=new Set();
+  const dedupeStatStep=step=>{
+    if(!Array.isArray(step?.statEvents)||!step.statEvents.length)return true;
+    const eventKeys=step.statEvents.map(event=>JSON.stringify([
+      step.type,
+      event?.seq,
+      event?.phaseOrder,
+      event?.type,
+      event?.target,
+      event?.from?.hp,
+      event?.from?.san,
+      event?.to?.hp,
+      event?.to?.san,
+      event?.logHint,
+    ]));
+    if(eventKeys.every(key=>seenStatEvents.has(key)))return false;
+    eventKeys.forEach(key=>seenStatEvents.add(key));
+    return true;
+  };
   const ordered=[{type:"SKILL_BEWITCH",msgs,targetIdx:toPid}];
   if(toPid!=null&&toPid>=0){
     ordered.push(cardTransferStep({fromPid,dest:"player",toPid,count:1}));
@@ -194,7 +213,8 @@ export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQ
   }
   ordered.push(...(statQueue||[]).filter(a=>
     !isPlainInferredTransfer(a) &&
-    !isStaleTurnDrawStep(a)
+    !isStaleTurnDrawStep(a) &&
+    dedupeStatStep(a)
   ));
   return ordered;
 }

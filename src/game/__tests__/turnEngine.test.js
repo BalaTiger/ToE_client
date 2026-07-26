@@ -1167,6 +1167,30 @@ describe('turnEngine stat events', () => {
     expect(result.msgs.some(line => line.includes('黑暗子嗣'))).toBe(true);
   });
 
+  it('强制改信的SAN代价触发胜利后不再结算新神即时能力', () => {
+    const players = [
+      makePlayer({ name: '艾伦', role: ROLE_CULTIST }),
+      makePlayer({
+        name: '黛安娜',
+        role: ROLE_TREASURE,
+        san: 1,
+        godName: 'NYA',
+        godLevel: 1,
+        godZone: [makeGodCard('NYA')],
+      }),
+      makePlayer({ name: '旁观者', role: ROLE_TREASURE }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0 });
+
+    const result = resolveGodEncounterForAI(1, makeGodCard('SHU'), players, [], [], gs, true);
+
+    expect(result.P[1]).toMatchObject({ san: 0, godName: 'SHU', godLevel: 1 });
+    expect(checkWin(result.P, false)?.winner).toBe(ROLE_CULTIST);
+    expect(result.P.every(player => player.hand.every(card => !card.isBlackGoatYoung))).toBe(true);
+    expect(result.msgs.some(line => line.includes('【黑暗子嗣】'))).toBe(false);
+    expect(result.statePatch.proliferatingZQueue).toBeUndefined();
+  });
+
   it('追猎者信仰森之领主时若更适合追捕，会把黑山羊幼仔给 HP 低于 SAN 的其他角色', () => {
     const chaseCard = makeZoneCard('A1', 0, { id: 'hunter-card' });
     const players = [

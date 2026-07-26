@@ -9,6 +9,8 @@ import {
 } from '../turnAnimState';
 import { startNextTurn } from '../turnEngine';
 import { ROLE_CULTIST } from '../coreUtils';
+import { applyFx } from '../effectEngine';
+import { buildFreshStatVisualEvents } from '../visualEvents';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
 function player(name) {
@@ -841,6 +843,117 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(replay.queue[diceIdx]).toMatchObject({ d1: 1, rollerName: '贝拉' });
     expect(replay.queue[randomIdx]).toMatchObject({ sourceIdx: 1, targetIdx: 0, roll: 1, damage: 0 });
     expect(replay.queue[throwIdx]).toMatchObject({ sourceIdx: 1, targetIdx: 0, damage: 0 });
+  });
+
+  it('摸到邪神翻牌后不重播上一回合残留的投掷石块动画', () => {
+    const nya = makeGodCard('NYA');
+    const beforeDrawPlayers = [player('你'), player('贝拉'), player('艾伦')];
+    const staleStoneEvent = {
+      seq: 1,
+      sourceIdx: 2,
+      targetIdx: 1,
+      label: '投掷石块',
+      roll: 1,
+      distance: 1,
+      damage: 0,
+      resultText: '贝拉 被选中',
+      diceBefore: true,
+      phaseOrder: 1,
+    };
+    // 上一回合（艾伦行动阶段）打出投掷石块后，_randomTargetSeq/_randomTargetEvents
+    // 随 gs 残留到下一回合；两者水位都必须视为已消费
+    const oldGs = {
+      players: beforeDrawPlayers,
+      currentTurn: 2,
+      phase: 'ACTION',
+      log: ['艾伦 掷出 1 点，随机砸向 贝拉（距离1），造成 0 HP 伤害'],
+      _randomTargetSeq: 1,
+      _randomTargetEvents: [staleStoneEvent],
+    };
+    const newGs = {
+      players: [
+        beforeDrawPlayers[0],
+        { ...player('贝拉'), san: 9, godName: nya.godKey, godLevel: 1, godZone: [nya] },
+        beforeDrawPlayers[2],
+      ],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _drawnCard: nya,
+      _aiDrawnCard: nya,
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['[调试] 贝拉（邪祀者）起手摸到 伏行之混沌'],
+      _statLogs: [],
+      log: [
+        '艾伦 掷出 1 点，随机砸向 贝拉（距离1），造成 0 HP 伤害',
+        '── 贝拉 的回合开始 ──',
+        '[调试] 贝拉（邪祀者）起手摸到 伏行之混沌',
+        '贝拉 遭遇邪神 伏行之混沌！（第1次）失去 1 SAN',
+      ],
+      _randomTargetSeq: 1,
+      _randomTargetEvents: [staleStoneEvent],
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+
+    expect(replay.queue.some(step => step.type === 'DRAW_CARD')).toBe(true);
+    expect(replay.queue.some(step => step.type === 'DICE_ROLL' && step.diceMode === 'throwStone')).toBe(false);
+    expect(replay.queue.some(step => step.type === 'RANDOM_TARGET')).toBe(false);
+    expect(replay.queue.some(step => step.type === 'THROW_STONE')).toBe(false);
+  });
+
+  it('AI 摸到惊扰蝙蝠时先播放蝙蝠专属动画再扣 HP', () => {
+    const bats = { id: 'bats', name: '惊扰蝙蝠', key: 'C2', type: 'adjDamageHP', val: 2 };
+    const beforeDrawPlayers = [player('你'), player('贝拉'), player('艾伦')];
+    const oldGs = {
+      players: beforeDrawPlayers.map(p => ({ ...p, hand: [] })),
+      deck: [],
+      discard: [],
+      log: ['旧日志'],
+      currentTurn: 0,
+      phase: 'ACTION',
+      _statEventSeq: 0,
+    };
+    // 通过真实 applyFx 产生 statePatch（cardEffect 视觉事件 + _statEvents 水位），
+    // 再按 App startNextTurn 包装方式叠加 statEvents 视觉事件，避免手工拼状态漏字段
+    const res = applyFx(bats, 1, null, oldGs.players.map(p => ({ ...p })), [], [], oldGs);
+    const base = {
+      ...oldGs,
+      players: res.P,
+      ...(res.statePatch || {}),
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉 摸到 [C2] 惊扰蝙蝠，选择收入手牌并触发效果'],
+      _statLogs: res.msgs || [],
+      _drawnCard: bats,
+      _aiDrawnCard: bats,
+      log: [
+        '旧日志',
+        '── 贝拉 的回合开始 ──',
+        '贝拉 摸到 [C2] 惊扰蝙蝠，选择收入手牌并触发效果',
+        ...(res.msgs || []),
+      ],
+    };
+    const newGs = {
+      ...base,
+      _visualEvents: [
+        ...buildFreshStatVisualEvents(base, 0),
+        ...(base._visualEvents || []),
+      ].filter(Boolean),
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const batsIdx = replay.queue.findIndex(step => step.type === 'STARTLED_BATS');
+    const hpDamageIndices = replay.queue
+      .map((step, idx) => ({ step, idx }))
+      .filter(({ step }) => step.type === 'HP_DAMAGE')
+      .map(({ idx }) => idx);
+
+    expect(batsIdx).toBeGreaterThan(-1);
+    expect(hpDamageIndices).toHaveLength(1);
+    expect(hpDamageIndices[0]).toBeGreaterThan(batsIdx);
   });
 
   it('AI 寻宝者回合开始规避霉变食物时先播放规避骰再播放霉变食物骰', () => {

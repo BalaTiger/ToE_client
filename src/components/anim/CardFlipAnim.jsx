@@ -110,6 +110,18 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
   const flipW=Math.round(208*cardScale);
   const flipH=Math.round(flipW*590/392);
   const px=value=>Math.round(value*cardScale);
+  // Keep every atmosphere effect anchored to the card rather than the viewport.
+  // The unscaled frame is enlarged around the card, then scales with cardScale.
+  const atmosphereFrameStyle={
+    position:'absolute',
+    left:'50%',
+    top:'50%',
+    width:320,
+    height:208*590/392,
+    pointerEvents:'none',
+    transform:`translate(-50%,-50%) scale(${cardScale})`,
+    transformOrigin:'center',
+  };
 
   const getSourceCenter=()=>{
     if(!isInspection&&sourcePile==='discard'){
@@ -236,7 +248,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
       )}
 
       {showAtmosphereEffects&&cardPolarity==='positive'&&(
-        <div style={{position:'absolute',inset:0,pointerEvents:'none',transform:`scale(${cardScale})`,transformOrigin:'center'}}>
+        <div style={atmosphereFrameStyle}>
           <FlowerBloom/>
         </div>
       )}
@@ -267,7 +279,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
         </div>
       )}
 
-      <div style={{position:'absolute',inset:0,pointerEvents:'none',transform:`scale(${cardScale})`,transformOrigin:'center'}}>{spirits}</div>
+      <div data-card-flip-atmosphere={cardPolarity} style={atmosphereFrameStyle}>{spirits}</div>
 
       {displayTriggerName&&(
         <div style={{

@@ -470,6 +470,9 @@ export function buildMpRemoteReplayAction({
   }
   const swapEvent = getSwapCardsVisualEvent(rotated);
   if (swapEvent && isFreshActionReplayEvent(swapEvent, logDelta)) {
+    // 本地玩家（旋转后座位 0）未参与的掉包不向本地观众暴露牌面，
+    // 飞行动画一律以背面展示
+    const hideSwapCards = swapEvent.sourceIdx !== 0 && swapEvent.targetIdx !== 0;
     const queue = withApophisTargetReplay([
       { type: 'SKILL_SWAP', msgs: swapEvent.msgs || logDelta },
       ...swapCardsSteps({
@@ -477,8 +480,8 @@ export function buildMpRemoteReplayAction({
         targetIdx: swapEvent.targetIdx,
         sourceCount: swapEvent.sourceCount || 1,
         targetCount: swapEvent.targetCount || 1,
-        takenCard: swapEvent.takenCard || null,
-        givenCard: swapEvent.givenCard || null,
+        takenCard: hideSwapCards ? null : (swapEvent.takenCard || null),
+        givenCard: hideSwapCards ? null : (swapEvent.givenCard || null),
         msgs: swapEvent.msgs || logDelta,
         playersBefore: previousGs?.players || null,
         zhuLight: previousGs?.zhuLight || rotated.zhuLight || null,
