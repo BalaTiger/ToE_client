@@ -1333,6 +1333,9 @@ export function startNextTurn(gs, opts = {}) {
         if (drawEvent) drawEvent.slimePop = slimePop;
       }
     }
+    // 循环内的黏液额外摸牌消息已逐条写入 L，最终统一 flush 时只补固定摸牌新增的部分，
+    // 否则额外摸牌/黏液消失消息会在日志里重复出现两次。
+    const drawLogsSyncedCount = drawLogs.length;
     const res = playerDrawCard(P, D, Disc, 0, gs);
     P = res.P; D = res.D; Disc = res.Disc;
     // 多人游戏中记录玩家0摸牌信息到日志，让其他玩家可见（单机不需要，DRAW_REVEAL 时可见）
@@ -1354,7 +1357,7 @@ export function startNextTurn(gs, opts = {}) {
         statLogs.push(...split.stat);
       }
     }
-    if (drawLogs.length) L.push(...drawLogs);
+    if (drawLogs.length > drawLogsSyncedCount) L.push(...drawLogs.slice(drawLogsSyncedCount));
     if (statLogs.length) L.push(...statLogs);
     if (!res.drawnCard) { L.push('牌堆耗尽！'); return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }; }
     if (res.needGodChoice) {
@@ -1501,6 +1504,9 @@ export function startNextTurn(gs, opts = {}) {
         if (drawEvent) drawEvent.slimePop = slimePop;
       }
     }
+    // 循环内的黏液额外摸牌消息已逐条写入 L，最终统一 flush 时只补固定摸牌新增的部分，
+    // 否则额外摸牌/黏液消失消息会在日志里重复出现两次。
+    const drawLogsSyncedCount = drawLogs.length;
     const res = playerDrawCard(P, D, Disc, next, gs);
     P = res.P; D = res.D; Disc = res.Disc;
     // 记录摸牌信息到日志（与单机AI摸牌保持一致：[key] 名称）
@@ -1522,7 +1528,7 @@ export function startNextTurn(gs, opts = {}) {
         statLogs.push(...split.stat);
       }
     }
-    if (drawLogs.length) L.push(...drawLogs);
+    if (drawLogs.length > drawLogsSyncedCount) L.push(...drawLogs.slice(drawLogsSyncedCount));
     if (statLogs.length) L.push(...statLogs);
     if (!res.drawnCard) { L.push('牌堆耗尽！'); return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }; }
     if (res.needGodChoice) { return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: res.drawnCard, godEncounterCost: res.godEncounterCost }, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, ...(res.statePatch || {}) }; }
@@ -1564,6 +1570,9 @@ export function startNextTurn(gs, opts = {}) {
         if (drawEvent) drawEvent.slimePop = slimePop;
       }
     }
+    // 循环内的黏液额外摸牌消息已逐条写入 L，最终统一 flush 时只补固定摸牌新增的部分，
+    // 否则额外摸牌/黏液消失消息会在日志里重复出现两次。
+    const drawLogsSyncedCount = drawLogs.length;
     const zhuGuard = getZhuTopGuard({ ...gs, players: P, deck: D, currentTurn: next, zhuLight }, D);
     if (zhuGuard) {
       return {
@@ -1607,9 +1616,9 @@ export function startNextTurn(gs, opts = {}) {
       const split = splitAnimBoundLogs(res.effectMsgs);
       drawLogs.push(...split.preStat);
       statLogs.push(...split.stat);
-      if (drawLogs.length) L.push(...drawLogs);
-      if (statLogs.length) L.push(...statLogs);
     }
+    if (drawLogs.length > drawLogsSyncedCount) L.push(...drawLogs.slice(drawLogsSyncedCount));
+    if (statLogs.length) L.push(...statLogs);
     if (res.drawnCard) {
       const eventMsgs = (res.effectMsgs || []).filter(msg => (drawLogs || []).includes(msg));
       turnDrawEvents.push({ card: res.drawnCard, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile, msgs: eventMsgs.length ? eventMsgs : drawLogs.slice(-1) });

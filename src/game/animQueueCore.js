@@ -498,7 +498,18 @@ export function buildAiHuntEventAnimQueue(evt, actorName) {
   const perHuntQueue = buildApophisTargetAnimPrefix(evt.apophisTargetEvent, evt.beforePlayers, { includeTargetSkill: false });
   perHuntQueue.push(...(evt.skipIntro
     ? []
-    : [{ type: 'SKILL_HUNT', msgs: huntMsgs, _logChunk: huntMsgs, targetIdx: evt.targetIdx >= 0 ? evt.targetIdx : 1 }]));
+    : [{
+      type: 'SKILL_HUNT',
+      msgs: huntMsgs,
+      _logChunk: huntMsgs,
+      targetIdx: evt.targetIdx >= 0 ? evt.targetIdx : 1,
+      // A turn-start draw (especially Tsathoggua slime replacement draws)
+      // can leave an older hand snapshot locked while the combined AI queue
+      // advances. Re-anchor every reticle to this hunt attempt's real state.
+      ...(Array.isArray(evt.beforePlayers)
+        ? { visualSetupPatch: { players: evt.beforePlayers } }
+        : {}),
+    }]));
   const revealStep = buildHuntRevealStepFromVisualEvent({
     targetIdx: evt.targetIdx,
     card: evt.revealedCard,

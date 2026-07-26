@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { dedupeInferredDiscardTransfers } from '../game/animQueueHelpers';
 import { getVisualEventIdsFromState, markConsumedVisualEvents } from '../game/visualEvents';
+import { attachApophisNightTimeline } from '../game/apophisAnimQueue';
 
 export function useAnimationQueue({
   gs,
@@ -285,7 +286,11 @@ export function useAnimationQueue({
     if (Array.isArray(queue) && queue.some(s => s?.type === 'EARTHQUAKE')) {
       try { console.log('[EQ-DEBUG] triggerAnimQueue received queue =', queue.map(s => s.type), '| hasCallback =', !!callback, '| nextGs.phase =', nextGs?.phase); } catch { /* noop */ }
     }
-    const normalizedQueue = addDrawBackgroundCameraPrelude(dedupeInferredDiscardTransfers(queue));
+    const normalizedQueue = attachApophisNightTimeline(
+      addDrawBackgroundCameraPrelude(dedupeInferredDiscardTransfers(queue)),
+      gs?.apophisNight,
+      nextGs?.apophisNight,
+    );
     const hasDeathAnim = normalizedQueue.some(a => a.type === 'DEATH' || a.type === 'GUILLOTINE');
     const pendingDeathPlayers = nextGs?.players?.filter(p => p._pendingAnimDeath)?.map((_, i) => i) || [];
     if (

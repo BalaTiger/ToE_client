@@ -663,7 +663,11 @@ export function BattleScreen(props) {
       {/* ── Overlays ── */}
       {createPortal(
         <>
-          {!showTutorial&&anim?.type!=='APOPHIS_ECLIPSE'&&<ApophisNightBadge night={anim?._apophisNight||gs?.apophisNight}/>}
+          {!showTutorial&&anim?.type!=='APOPHIS_ECLIPSE'&&<ApophisNightBadge
+            night={anim&&Object.prototype.hasOwnProperty.call(anim,'_apophisNight')
+              ?anim._apophisNight
+              :gs?.apophisNight}
+          />}
           {!showTutorial&&<HoundsTimerBadge active={houndsTimerVisible} secondsLeft={houndsSecLeft}/>}
           {!showTutorial&&pendingSoftGuideId&&<SoftGuideOverlay
             guide={SOFT_GUIDE_DEFS[pendingSoftGuideId]}

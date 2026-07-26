@@ -163,6 +163,14 @@ export function makeTargetStats(players = [], statEvents = []) {
   return targetStats;
 }
 
+function eventMatchesAnimationType(event, animationType) {
+  if (animationType === 'HP_DAMAGE') return event.type === 'HP_LOSS' || event.type === 'HP_SAN_LOSS';
+  if (animationType === 'HP_HEAL') return event.type === 'HP_GAIN' || event.type === 'HP_SAN_GAIN';
+  if (animationType === 'SAN_DAMAGE') return event.type === 'SAN_LOSS' || event.type === 'HP_SAN_LOSS';
+  if (animationType === 'SAN_HEAL') return event.type === 'SAN_GAIN' || event.type === 'HP_SAN_GAIN';
+  return true;
+}
+
 export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) {
   const events = statEvents.map(normalizeStatEvent).filter(Boolean);
   if (!events.length) return [];
@@ -210,7 +218,6 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
     return queue;
   }
 
-  const targetStats = makeTargetStats(players, events);
   const byType = {
     HP_DAMAGE: new Set(),
     HP_HEAL: new Set(),
@@ -230,6 +237,7 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
   const queue = [];
   const petrifyEvents = events.filter(event => event.type === 'PETRIFY_DEATH');
   petrifyEvents.forEach(event => {
+    const targetStats = makeTargetStats(players, events);
     const deathMsgs = msgs.length ? msgs : ['死亡降临'];
     queue.push({
       type: 'PETRIFY_DEATH',
@@ -247,19 +255,39 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
     });
   });
   const push = (type, hitIndices) => {
-    if (hitIndices.length) queue.push({ type, msgs, hitIndices, targetStats, statEvents: events });
+    if (!hitIndices.length) return;
+    const matchingEvents = events.filter(event => eventMatchesAnimationType(event, type));
+    queue.push({
+      type,
+      msgs,
+      hitIndices,
+      targetStats: makeTargetStats(players, matchingEvents),
+      statEvents: matchingEvents,
+    });
   };
 
-  push('HP_DAMAGE', [...byType.HP_DAMAGE]);
-  push('HP_HEAL', hpHeal);
-  push('SAN_HEAL', sanHeal);
-  push('SAN_DAMAGE', [...byType.SAN_DAMAGE]);
+  const animationGroups = [
+    ['HP_DAMAGE', [...byType.HP_DAMAGE]],
+    ['HP_HEAL', hpHeal],
+    ['SAN_HEAL', sanHeal],
+    ['SAN_DAMAGE', [...byType.SAN_DAMAGE]],
+  ];
+  animationGroups
+    .map(([type, hitIndices], stableOrder) => ({
+      type,
+      hitIndices,
+      stableOrder,
+      firstEventIndex: events.findIndex(event => eventMatchesAnimationType(event, type)),
+    }))
+    .filter(group => group.hitIndices.length)
+    .sort((a, b) => a.firstEventIndex - b.firstEventIndex || a.stableOrder - b.stableOrder)
+    .forEach(group => push(group.type, group.hitIndices));
   return queue;
 }
 
 export function applyStatEventsToDisplayStats(displayStats = [], statEvents = [], animationType = null) {
   const next = [...displayStats];
-  statEvents.map(normalizeStatEvent).filter(Boolean).forEach(event => {
+  statEvents.map(normalizeStatEvent).filter(Boolean).filter(event => eventMatchesAnimationType(event, animationType)).forEach(event => {
     const targetPatch = animationType === 'HP_DAMAGE' || animationType === 'HP_HEAL'
       ? { hp: event.to.hp }
       : animationType === 'SAN_DAMAGE' || animationType === 'SAN_HEAL'

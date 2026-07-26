@@ -1,5 +1,30 @@
 import { buildAnimQueue } from './animQueueCore';
 
+export function attachApophisNightTimeline(queue = [], initialNight = null, finalNight = null) {
+  const steps = Array.isArray(queue) ? queue : [];
+  const hasNightTransition = steps.some(step => (
+    Object.prototype.hasOwnProperty.call(step || {}, '_apophisNight') ||
+    (step?.type === 'STATE_PATCH' && Object.prototype.hasOwnProperty.call(step, 'apophisNight')) ||
+    step?.type === 'APOPHIS_ECLIPSE'
+  ));
+  let visibleNight = hasNightTransition ? initialNight : finalNight;
+  if (visibleNight === undefined) visibleNight = initialNight ?? null;
+
+  return steps.map(step => {
+    if (!step) return step;
+    if (Object.prototype.hasOwnProperty.call(step, '_apophisNight')) {
+      visibleNight = step._apophisNight;
+    } else if (step.type === 'STATE_PATCH' && Object.prototype.hasOwnProperty.call(step, 'apophisNight')) {
+      visibleNight = step.apophisNight;
+    }
+    const timedStep = { ...step, _apophisNight: visibleNight };
+    // The badge is hidden during the eclipse reveal itself. Any following
+    // steps should already use the newly established night state.
+    if (step.type === 'APOPHIS_ECLIPSE') visibleNight = finalNight ?? null;
+    return timedStep;
+  });
+}
+
 export function buildApophisTargetQueueForState(oldState, nextState, buildQueue = buildAnimQueue) {
   const seq = nextState?._apophisTargetEvent?.seq;
   if (!seq || seq <= (oldState?._apophisTargetSeq || 0)) return [];

@@ -148,4 +148,40 @@ describe('statEvents', () => {
       'SAN_HEAL',
     ]);
   });
+
+  it('同一效果先扣减再恢复HP时按各自特效分段更新HP条', () => {
+    const displayStats = [{ hp: 10, san: 8 }];
+    const events = [
+      { type: 'HP_LOSS', target: 0, from: { hp: 10, san: 8 }, to: { hp: 6, san: 8 } },
+      { type: 'HP_GAIN', target: 0, from: { hp: 6, san: 8 }, to: { hp: 9, san: 8 } },
+    ];
+    const queue = statEventsToAnimQueue(events, [makePlayer({ hp: 9, san: 8 })]);
+
+    expect(queue.map(step => step.type)).toEqual(['HP_DAMAGE', 'HP_HEAL']);
+    expect(queue[0].statEvents).toEqual([events[0]]);
+    expect(queue[1].statEvents).toEqual([events[1]]);
+    const afterDamage = applyStatEventsToDisplayStats(displayStats, queue[0].statEvents, queue[0].type);
+    expect(afterDamage).toEqual([{ hp: 6, san: 8 }]);
+    expect(applyStatEventsToDisplayStats(afterDamage, queue[1].statEvents, queue[1].type)).toEqual([
+      { hp: 9, san: 8 },
+    ]);
+  });
+
+  it('同一效果先恢复再扣减SAN时保留事件顺序并分段更新SAN条', () => {
+    const displayStats = [{ hp: 7, san: 4 }];
+    const events = [
+      { type: 'SAN_GAIN', target: 0, from: { hp: 7, san: 4 }, to: { hp: 7, san: 8 } },
+      { type: 'SAN_LOSS', target: 0, from: { hp: 7, san: 8 }, to: { hp: 7, san: 5 } },
+    ];
+    const queue = statEventsToAnimQueue(events, [makePlayer({ hp: 7, san: 5 })]);
+
+    expect(queue.map(step => step.type)).toEqual(['SAN_HEAL', 'SAN_DAMAGE']);
+    expect(queue[0].statEvents).toEqual([events[0]]);
+    expect(queue[1].statEvents).toEqual([events[1]]);
+    const afterHeal = applyStatEventsToDisplayStats(displayStats, queue[0].statEvents, queue[0].type);
+    expect(afterHeal).toEqual([{ hp: 7, san: 8 }]);
+    expect(applyStatEventsToDisplayStats(afterHeal, queue[1].statEvents, queue[1].type)).toEqual([
+      { hp: 7, san: 5 },
+    ]);
+  });
 });
