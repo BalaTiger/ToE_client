@@ -4,16 +4,42 @@ import { createHuntRevealEvent } from '../game/visualEvents';
 
 function startSecondCountdown({ seconds, warningAt, setSeconds, intervalRef, playTickSound }) {
   setSeconds(seconds);
+  const deadline = Date.now() + seconds * 1000;
   const intervalId = setInterval(() => {
-    setSeconds(s => {
-      const next = s === null || s <= 1 ? 0 : s - 1;
-      if (next === 0) clearInterval(intervalId);
-      if (next > 0 && next <= warningAt) playTickSound();
-      return next;
-    });
-  }, 1000);
+    const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    setSeconds(remaining);
+    if (remaining > 0 && remaining <= warningAt) playTickSound();
+    if (remaining === 0) clearInterval(intervalId);
+  }, 250);
   intervalRef.current = intervalId;
   return intervalId;
+}
+
+function useMpSecondTimer({ active, seconds, warningAt, playTickSound, onTimeout, deps }) {
+  const [sec, setSec] = useState(null);
+  const intervalRef = useRef(null);
+  const timeoutRef = useRef(null);
+
+  useEffect(() => {
+    if (!active) {
+      clearTimeout(timeoutRef.current);
+      clearInterval(intervalRef.current);
+      setSec(null);
+      return;
+    }
+    const intervalId = startSecondCountdown({ seconds, warningAt, setSeconds: setSec, intervalRef, playTickSound });
+    timeoutRef.current = setTimeout(() => onTimeout(), seconds * 1000);
+    return () => {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+      clearInterval(intervalId);
+      intervalRef.current = null;
+      setSec(null);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
+  return sec;
 }
 
 export function getMpTurnTimerOwnerKey(gs) {
@@ -56,32 +82,14 @@ export function useMpCthDecisionTimer({
   playTickSound,
   setGs,
 }) {
-  const [mpCthSec, setMpCthSec] = useState(null);
-  const mpCthIntervalRef = useRef(null);
-  const mpCthDecisionTimerRef = useRef(null);
-
-  useEffect(() => {
-    if (!isMpCthDecisionPhase || !gs || gs.gameOver) return;
-    setMpCthSec(15);
-    mpCthIntervalRef.current = setInterval(() => {
-      setMpCthSec(s => {
-        const next = s === null || s <= 1 ? 0 : s - 1;
-        if (next === 0) clearInterval(mpCthIntervalRef.current);
-        if (next > 0 && next <= 5) playTickSound();
-        return next;
-      });
-    }, 1000);
-    mpCthDecisionTimerRef.current = setTimeout(() => setGs(p => p ? { ...p, _mpAutoCthDecision: true } : p), 15000);
-    return () => {
-      clearTimeout(mpCthDecisionTimerRef.current);
-      mpCthDecisionTimerRef.current = null;
-      clearInterval(mpCthIntervalRef.current);
-      setMpCthSec(null);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMpCthDecisionPhase, gs?.phase, gs?.drawReveal?.card?.id, gs?.abilityData?.godCard?.id, gs?.gameOver, playTickSound]);
-
-  return mpCthSec;
+  return useMpSecondTimer({
+    active: !!isMpCthDecisionPhase && !!gs && !gs.gameOver,
+    seconds: 15,
+    warningAt: 5,
+    playTickSound,
+    onTimeout: () => setGs(p => p ? { ...p, _mpAutoCthDecision: true } : p),
+    deps: [isMpCthDecisionPhase, gs?.phase, gs?.drawReveal?.card?.id, gs?.abilityData?.godCard?.id, gs?.gameOver, playTickSound],
+  });
 }
 
 export function useMpDiscardTimer({
@@ -91,30 +99,14 @@ export function useMpDiscardTimer({
   playTickSound,
   setGs,
 }) {
-  const [mpDiscardSec, setMpDiscardSec] = useState(null);
-  const mpDiscardIntervalRef = useRef(null);
-
-  useEffect(() => {
-    if (!shouldRunMpDiscardTimer({ isMultiplayer, gs, isLocalCurrentTurn })) return;
-    setMpDiscardSec(15);
-    mpDiscardIntervalRef.current = setInterval(() => {
-      setMpDiscardSec(s => {
-        const next = s === null || s <= 1 ? 0 : s - 1;
-        if (next === 0) clearInterval(mpDiscardIntervalRef.current);
-        if (next > 0 && next <= 10) playTickSound();
-        return next;
-      });
-    }, 1000);
-    const timeoutId = setTimeout(() => setGs(p => p ? { ...p, _mpAutoDiscard: true } : p), 15000);
-    return () => {
-      clearTimeout(timeoutId);
-      clearInterval(mpDiscardIntervalRef.current);
-      setMpDiscardSec(null);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMultiplayer, gs?.phase, gs?.currentTurn, gs?._turnKey, gs?._mpEndTurnDiscardResolved, gs?.gameOver, playTickSound]);
-
-  return mpDiscardSec;
+  return useMpSecondTimer({
+    active: shouldRunMpDiscardTimer({ isMultiplayer, gs, isLocalCurrentTurn }),
+    seconds: 15,
+    warningAt: 10,
+    playTickSound,
+    onTimeout: () => setGs(p => p ? { ...p, _mpAutoDiscard: true } : p),
+    deps: [isMultiplayer, gs?.phase, gs?.currentTurn, gs?._turnKey, gs?._mpEndTurnDiscardResolved, gs?.gameOver, playTickSound],
+  });
 }
 
 export function useMpTurnTimer({

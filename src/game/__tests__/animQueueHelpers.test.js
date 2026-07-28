@@ -9,6 +9,7 @@ import {
   dedupeInferredDiscardTransfers,
   fullHandSwapSteps,
   mergePlayerStatsIntoSnapshot,
+  prepareWorshipHighlight,
   resolveTurnHighlightForStep,
   swapCardsSteps,
   zhuHideCardStep,
@@ -19,6 +20,29 @@ import { createCardEffectEvent } from '../visualEvents';
 import { makeGodCard, makePlayer, makeZoneCard } from './factory';
 
 describe('animQueueHelpers', () => {
+  it('本地信仰阿波菲斯时先提交邪神标签且只播放一次高亮，再进入日食', () => {
+    const players = [makePlayer({ name: '你', godName: 'APO', godLevel: 1 })];
+    const firstHighlight = { type: 'GOD_HIGHLIGHT', targetPid: 0, godKey: 'APO', msgs: ['你 从手牌信仰 阿波菲斯'] };
+    const queue = prepareWorshipHighlight([
+      firstHighlight,
+      { type: 'APOPHIS_ECLIPSE', msgs: ['【噬日灭世】黑夜降临'] },
+      { type: 'GOD_HIGHLIGHT', targetPid: 0, godKey: 'APO', msgs: [] },
+      { type: 'SAN_DAMAGE', hitIndices: [0], visualSetupPatch: { players: [makePlayer({ name: '你', san: 10 })] } },
+    ], { targetPid: 0, godKey: 'APO', players });
+
+    expect(queue.map(step => step.type)).toEqual(['GOD_HIGHLIGHT', 'APOPHIS_ECLIPSE', 'SAN_DAMAGE']);
+    expect(queue[0]).toMatchObject({
+      targetPid: 0,
+      godKey: 'APO',
+      visualSetupPatch: { players },
+    });
+    expect(queue[2].visualSetupPatch.players[0]).toMatchObject({
+      godName: 'APO',
+      godLevel: 1,
+      san: 10,
+    });
+  });
+
   it('蛊惑中间快照保留牌区外观但使用结算后的 HP/SAN', () => {
     const oldGod = { id: 'old-god', godKey: 'VRI' };
     const newGod = { id: 'new-god', godKey: 'ZHU' };
@@ -554,6 +578,93 @@ describe('animQueueHelpers', () => {
     expect(flow.queue.map(step => step.type)).toEqual(['VISUAL_LOCK', 'DRAW_CARD', 'STATE_PATCH']);
     expect(tailQueue.some(step => step.type === 'HP_DAMAGE')).toBe(false);
   });
+
+  it('连续检定会消费第二次检定前的改信 SAN 事件，highlight 后不再重播', () => {
+    const encounterSanEvent = {
+      seq: 1,
+      type: 'SAN_LOSS',
+      target: 0,
+      from: { hp: 10, san: 8, isDead: false },
+      to: { hp: 10, san: 6, isDead: false },
+      reason: '邪神遭遇',
+    };
+    const convertSanEvent = {
+      seq: 2,
+      type: 'SAN_LOSS',
+      target: 0,
+      from: { hp: 10, san: 6, isDead: false },
+      to: { hp: 10, san: 5, isDead: false },
+      reason: '改信新神',
+    };
+    const beforeFirst = [makePlayer({ name: '你', hp: 10, san: 6, hand: [{ id: 'discard-me' }] })];
+    const afterFirst = [makePlayer({ name: '你', hp: 10, san: 6, hand: [] })];
+    const beforeSecond = [makePlayer({ name: '你', hp: 10, san: 5, hand: [], godName: 'VRI', godLevel: 1 })];
+    const afterSecond = [makePlayer({
+      name: '你',
+      hp: 10,
+      san: 5,
+      hand: [],
+      godName: 'VRI',
+      godLevel: 1,
+      handLimitDecreaseNextTurn: 1,
+    })];
+    const firstLog = [
+      '你 遭遇邪神 弗栗多！（第2次）失去 2 SAN',
+      '你 的SAN检定结果为"迫害妄想"',
+      '你 迫害妄想，弃置了一张牌',
+    ];
+    const secondBeforeLog = [...firstLog, '你 被迫改信新神，失去 1 SAN'];
+    const secondAfterLog = [
+      ...secondBeforeLog,
+      '你 的SAN检定结果为"乏力"',
+      '你 乏力，下一回合手牌上限-1',
+    ];
+    const flow = buildInspectionEventFlow(
+      { players: beforeFirst, log: [], _statEventSeq: 1 },
+      [
+        {
+          seq: 1,
+          card: { name: '迫害妄想', effect: 'discardRandom' },
+          target: 0,
+          beforePlayers: beforeFirst,
+          beforeLog: firstLog.slice(0, 1),
+          beforeStatEventSeq: 1,
+          afterPlayers: afterFirst,
+          afterLog: firstLog,
+          statEvents: [],
+          statEventSeq: null,
+        },
+        {
+          seq: 2,
+          card: { name: '乏力', effect: 'handLimitDecrease' },
+          target: 0,
+          beforePlayers: beforeSecond,
+          beforeLog: secondBeforeLog,
+          beforeStatEventSeq: 2,
+          afterPlayers: afterSecond,
+          afterLog: secondAfterLog,
+          statEvents: [],
+          statEventSeq: null,
+        },
+      ],
+      { buildAnimQueue, copyPlayers },
+    );
+    const tailQueue = buildAnimQueue(
+      { players: flow.players, log: flow.log, _statEventSeq: flow.statEventSeq },
+      {
+        players: afterSecond,
+        log: [...secondAfterLog, '你 信仰了 弗栗多，获得不灭之躯(Lv.1)'],
+        _statEvents: [encounterSanEvent, convertSanEvent],
+        _statEventSeq: 2,
+      },
+    );
+
+    expect(flow.statEventSeq).toBe(2);
+    expect(flow.queue.filter(step => step.type === 'SAN_DAMAGE')).toHaveLength(1);
+    expect(tailQueue.some(step => step.type === 'GOD_HIGHLIGHT')).toBe(true);
+    expect(tailQueue.some(step => step.type === 'SAN_DAMAGE')).toBe(false);
+  });
+
   it('揭开真相的额外摸牌保留暗抽飞牌，但去除背景运镜与翻牌', () => {
     const inspectionCard = { id: 'truth', name: '揭开真相', effect: 'drawCard' };
     const actualCard = { id: 'vri', name: '弗栗多', godKey: 'VRI', isGod: true, type: 'god' };

@@ -1157,13 +1157,18 @@ describe('buildAiHuntEventAnimQueue', () => {
     const worshipMsg = '黛安娜 从手牌信仰 弗栗多，获得不灭之躯(Lv.1)（骷髅头不计）';
     const firstNightMsg = '【黑夜】黛安娜 选择【追捕】目标掷出 1，目标由 你 错乱为 贝拉，失去 1 SAN';
     const firstHuntMsg = '黛安娜（追猎者）对 贝拉 【追捕】，亮出 [D4]';
-    const actionMsgs = [worshipMsg, firstNightMsg, firstHuntMsg];
+    const damageMsg = '弃 [D4] 钻地魔虫 → 贝拉 受 3HP 伤害！';
+    const actionMsgs = [worshipMsg, firstNightMsg, firstHuntMsg, damageMsg];
     const godHighlight = { type: 'GOD_HIGHLIGHT', targetPid: 1, godKey: 'VRI', msgs: [worshipMsg] };
-    const duplicatedHuntDamage = { type: 'HP_DAMAGE', hitIndices: [2], msgs: [firstHuntMsg] };
+    // In production the inferred damage step receives the complete action log.
+    // The worship line must not make this hunt result look like a pre-hunt step.
+    const duplicatedHuntDamage = { type: 'HP_DAMAGE', hitIndices: [2], msgs: actionMsgs };
+    const huntDamage = { type: 'HP_DAMAGE', hitIndices: [2], msgs: [damageMsg] };
 
     expect(getAiPreHuntActionSteps(
       [godHighlight, duplicatedHuntDamage],
       actionMsgs,
+      [huntDamage],
     )).toEqual([godHighlight]);
   });
 

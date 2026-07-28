@@ -68,8 +68,15 @@ describe('buildPlayerTurnDrawQueue', () => {
     });
 
     const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const highlight = replay.queue.find(step => step.type === 'GOD_HIGHLIGHT' && step.targetPid === 1);
 
     expect(replay.queue.some(step => step.type === 'DISCARD' && step.card === zhu)).toBe(false);
+    expect(highlight?.visualSetupPatch?.players?.[1]).toMatchObject({
+      godName: 'ZHU',
+      godLevel: 1,
+      godZone: [zhu],
+    });
+    expect(highlight?.visualSetupPatch?.players?.[1]?.hand).toEqual(beforePlayers[1].hand);
   });
 
   it('adds turn banner and draw flip even when the next turn belongs to another player', () => {

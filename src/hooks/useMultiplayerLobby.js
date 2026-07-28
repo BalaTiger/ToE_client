@@ -1,15 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isLocalTestHost } from '../utils/runtime';
 
 function useSyncedRef(value) {
   const ref = useRef(value);
   useEffect(() => { ref.current = value; }, [value]);
   return ref;
-}
-
-function isLocalTestHost() {
-  if (typeof window === 'undefined') return false;
-  const host = (window.location.hostname || '').toLowerCase();
-  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
 }
 
 export function getMultiplayerIdentityStorage() {

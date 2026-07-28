@@ -265,14 +265,12 @@ export function buildAnimQueue(oldGs, newGs) {
   const effectiveLog = newInspectionEvents[0]?.beforeLog || newGs.log;
   const oldLog = Array.isArray(oldGs?.log) ? oldGs.log : [];
   const newMsgs = (Array.isArray(effectiveLog) ? effectiveLog : []).slice(oldLog.length);
-  // Make faith/upgrade highlights explicit timeline steps. Waiting for the
-  // eventual state commit lets a following skill overlay paint first.
+  // Make faith/upgrade highlights explicit timeline steps. Derive them from
+  // worship logs rather than player-state diffs: by the time this queue is
+  // built the skill-action baseline may already reflect the new god, so a
+  // state-only check would silently drop the highlight before a hunt.
   (effectivePlayers || []).forEach((player, targetPid) => {
-    const previous = oldGs?.players?.[targetPid];
-    if (!previous || !player?.godName) return;
-    const gainedFaith = player.godName !== previous.godName
-      || (player.godLevel || 0) > (previous.godLevel || 0);
-    if (!gainedFaith) return;
+    if (!player?.godName) return;
     const playerName = player.name || '';
     const worshipMsg = newMsgs.find(line => typeof line === 'string' && (
       (playerName && line.includes(playerName) && (line.includes('信仰') || line.includes('改信'))) ||
@@ -475,14 +473,34 @@ export function buildFullHandSwapTransferQueueFromLogs(logs, players, options = 
   return buildFullHandSwapStepsFromLogs(logs, players, options);
 }
 
-export function getAiPreHuntActionSteps(actionSteps = [], actionMsgs = []) {
+export function getAiPreHuntActionSteps(actionSteps = [], actionMsgs = [], huntSteps = []) {
   const messages = Array.isArray(actionMsgs) ? actionMsgs : [];
   const firstHuntLogIdx = messages.findIndex(line => (
     typeof line === 'string' && (line.includes('【追捕】') || line.includes('追捕'))
   ));
   if (firstHuntLogIdx < 0) return [];
 
+  // buildAnimQueue compares the pre-action snapshot with the final snapshot, so
+  // its inferred stat steps can cover the whole action and carry every new log.
+  // Their first log may be a pre-hunt worship line even when the stat change was
+  // actually produced by the hunt.  Do not replay a result already owned by the
+  // explicit hunt timeline, otherwise damage jumps ahead of reticle/reveal.
+  const huntStatHits = new Map();
+  (Array.isArray(huntSteps) ? huntSteps : []).forEach(step => {
+    if (!step?.type || !Array.isArray(step.hitIndices)) return;
+    if (!huntStatHits.has(step.type)) huntStatHits.set(step.type, new Set());
+    step.hitIndices.forEach(idx => huntStatHits.get(step.type).add(idx));
+  });
+
   return (Array.isArray(actionSteps) ? actionSteps : []).filter(step => {
+    const duplicateHits = huntStatHits.get(step?.type);
+    if (
+      duplicateHits?.size &&
+      Array.isArray(step?.hitIndices) &&
+      step.hitIndices.some(idx => duplicateHits.has(idx))
+    ) {
+      return false;
+    }
     const stepLines = [
       ...(Array.isArray(step?._logChunk) ? step._logChunk : []),
       ...(Array.isArray(step?.msgs) ? step.msgs : []),

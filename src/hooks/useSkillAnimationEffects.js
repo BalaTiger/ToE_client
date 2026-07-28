@@ -1,28 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { _getZoomCompensatedRect } from '../utils/dom';
+import { useTimerSet } from './useTimerSet';
 
 export function useSkillAnimationEffects({ anim }) {
   const [swapAnim, setSwapAnim] = useState(false);
   const [huntAnim, setHuntAnim] = useState(null);
   const [bewitchAnim, setBewitchAnim] = useState(null);
-  const timersRef = useRef(new Set());
-
-  const addTimer = useCallback((fn, delay) => {
-    const timer = setTimeout(() => {
-      timersRef.current.delete(timer);
-      fn();
-    }, delay);
-    timersRef.current.add(timer);
-    return timer;
-  }, []);
+  const { addTimer, clearTimers } = useTimerSet();
 
   const clearSkillAnimations = useCallback(() => {
-    timersRef.current.forEach(timer => clearTimeout(timer));
-    timersRef.current.clear();
+    clearTimers();
     setSwapAnim(false);
     setHuntAnim(null);
     setBewitchAnim(null);
-  }, []);
+  }, [clearTimers]);
 
   useEffect(() => clearSkillAnimations, [clearSkillAnimations]);
 

@@ -1288,6 +1288,8 @@ describe('aiStep optional action limits', () => {
       takenCard: stolen,
       givenCard: returned,
     });
+    expect(result._visualEvents?.[0].beforePlayers[0].hand).toEqual([stolen]);
+    expect(result._visualEvents?.[0].afterPlayers[0].hand).toEqual([returned]);
   });
 
   it('AI 从手牌信仰邪神后再掉包时，技能前快照保留新的邪神之力', () => {

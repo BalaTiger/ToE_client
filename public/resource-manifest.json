@@ -1,6 +1,6 @@
 {
-  "version": "c1a29b6c85b74af1",
-  "generatedAt": "2026-07-28T07:06:01.966Z",
+  "version": "f1a00f3903c4819d",
+  "generatedAt": "2026-07-28T12:59:03.822Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1707,25 +1707,49 @@
       "revision": "9a392e0125c541b0"
     },
     {
-      "path": "/sounds/SE/earthShadow/gods/tsathoggua/bubble1.mp3",
+      "path": "/sounds/SE/earthShadow/gods/tsathoggua/slime_create_1.mp3",
+      "type": "audio",
+      "size": 29421,
+      "revision": "43284dec34908ae6"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/gods/tsathoggua/slime_create_2.mp3",
+      "type": "audio",
+      "size": 44397,
+      "revision": "3e685f961ed3a23f"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/gods/tsathoggua/slime_create_3.mp3",
+      "type": "audio",
+      "size": 51885,
+      "revision": "20399d1aab0e8902"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/gods/tsathoggua/slime_create_4.mp3",
+      "type": "audio",
+      "size": 46125,
+      "revision": "1bfb212513472cc1"
+    },
+    {
+      "path": "/sounds/SE/earthShadow/gods/tsathoggua/slime_pop_1.mp3",
       "type": "audio",
       "size": 33792,
       "revision": "bdf777a2822cef17"
     },
     {
-      "path": "/sounds/SE/earthShadow/gods/tsathoggua/bubble2.mp3",
+      "path": "/sounds/SE/earthShadow/gods/tsathoggua/slime_pop_2.mp3",
       "type": "audio",
       "size": 34560,
       "revision": "479af4fbad950df0"
     },
     {
-      "path": "/sounds/SE/earthShadow/gods/tsathoggua/bubble3.mp3",
+      "path": "/sounds/SE/earthShadow/gods/tsathoggua/slime_pop_3.mp3",
       "type": "audio",
       "size": 33024,
       "revision": "d91c48b2d2ae6c2e"
     },
     {
-      "path": "/sounds/SE/earthShadow/gods/tsathoggua/bubble4.mp3",
+      "path": "/sounds/SE/earthShadow/gods/tsathoggua/slime_pop_4.mp3",
       "type": "audio",
       "size": 44544,
       "revision": "bbac34d40706f38f"

@@ -8,6 +8,76 @@ export function statePatchStep(patch={}){
   return step;
 }
 
+export function prepareWorshipHighlight(queue=[],options={}){
+  const {
+    targetPid=0,
+    godKey=null,
+    players=null,
+    msgs=[],
+  }=options;
+  const prepared=[];
+  let keptHighlight=false;
+  let highlightIdx=-1;
+  (Array.isArray(queue)?queue:[]).forEach(step=>{
+    if(step?.type!=="GOD_HIGHLIGHT"||step.targetPid!==targetPid){
+      prepared.push(step);
+      return;
+    }
+    if(keptHighlight)return;
+    keptHighlight=true;
+    highlightIdx=prepared.length;
+    prepared.push({
+      ...step,
+      godKey:step.godKey||godKey,
+      ...(Array.isArray(players)
+        ?{visualSetupPatch:{...(step.visualSetupPatch||{}),players}}
+        :{}),
+    });
+  });
+  if(!keptHighlight){
+    const highlightStep={
+      type:"GOD_HIGHLIGHT",
+      targetPid,
+      godKey,
+      msgs,
+      ...(Array.isArray(players)?{visualSetupPatch:{players}}:{}),
+    };
+    const eclipseIdx=prepared.findIndex(step=>step?.type==="APOPHIS_ECLIPSE");
+    highlightIdx=eclipseIdx>=0?eclipseIdx:prepared.length;
+    prepared.splice(highlightIdx,0,highlightStep);
+  }
+  if(!Array.isArray(players)||!players[targetPid])return prepared;
+  const badgePlayer=players[targetPid];
+  const mergeBadgeIntoPlayers=patchPlayers=>{
+    if(!Array.isArray(patchPlayers)||!patchPlayers[targetPid])return patchPlayers;
+    return patchPlayers.map((player,idx)=>idx===targetPid?{
+      ...player,
+      godName:badgePlayer.godName,
+      godLevel:badgePlayer.godLevel,
+      godEncounters:badgePlayer.godEncounters,
+      godZone:[...(badgePlayer.godZone||[])],
+      hasBelievedGod:badgePlayer.hasBelievedGod,
+    }:player);
+  };
+  // Stat/card steps following the highlight may still carry visual snapshots
+  // built from the pre-worship baseline. Keep their own HP/SAN/hand timeline,
+  // but do not let those snapshots hide the badge that just appeared.
+  return prepared.map((step,idx)=>{
+    if(idx<=highlightIdx||!step)return step;
+    const visualSetupPatch=step.visualSetupPatch?.players
+      ?{...step.visualSetupPatch,players:mergeBadgeIntoPlayers(step.visualSetupPatch.players)}
+      :step.visualSetupPatch;
+    const visualTimeline=Array.isArray(step.visualTimeline)
+      ?step.visualTimeline.map(point=>point?.patch?.players?{
+        ...point,
+        patch:{...point.patch,players:mergeBadgeIntoPlayers(point.patch.players)},
+      }:point)
+      :step.visualTimeline;
+    if(visualSetupPatch===step.visualSetupPatch&&visualTimeline===step.visualTimeline)return step;
+    return {...step,visualSetupPatch,visualTimeline};
+  });
+}
+
 export function mergePlayerStatsIntoSnapshot(snapshotPlayers=[],statPlayers=[]){
   return (snapshotPlayers||[]).map((player,idx)=>{
     const stats=statPlayers?.[idx];
@@ -241,7 +311,11 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
     const afterPlayers=copyPlayers(ev?.afterPlayers||beforePlayers);
     const afterLog=[...(Array.isArray(ev?.afterLog)?ev.afterLog:beforeLog)];
     const afterDiscard=[...(Array.isArray(ev?.afterDiscard)?ev.afterDiscard:beforeDiscard)];
-    const preQ=buildAnimQueue({players:cursorPlayers,log:cursorLog,discard:cursorDiscard},{players:beforePlayers,log:beforeLog,discard:beforeDiscard});
+    const beforeStatEventSeq=Math.max(cursorStatEventSeq,ev?.beforeStatEventSeq||0);
+    const preQ=buildAnimQueue(
+      {players:cursorPlayers,log:cursorLog,discard:cursorDiscard,_statEventSeq:cursorStatEventSeq},
+      {players:beforePlayers,log:beforeLog,discard:beforeDiscard,_statEventSeq:beforeStatEventSeq}
+    );
     if(preQ.length)queue.push(...preQ);
     queue.push({type:"VISUAL_LOCK",players:beforePlayers});
     queue.push({
@@ -266,7 +340,7 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
       });
     }
     const effectQ=buildAnimQueue(
-      {players:beforePlayers,log:beforeLog,discard:beforeDiscard,_statEventSeq:(ev?.statEventSeq||0)-1},
+      {players:beforePlayers,log:beforeLog,discard:beforeDiscard,_statEventSeq:beforeStatEventSeq},
       {
         players:afterPlayers,
         log:afterLog,
@@ -279,6 +353,7 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
     cursorPlayers=afterPlayers;
     cursorLog=afterLog;
     cursorDiscard=afterDiscard;
+    cursorStatEventSeq=Math.max(cursorStatEventSeq,beforeStatEventSeq);
     if(ev?.statEventSeq!=null)cursorStatEventSeq=Math.max(cursorStatEventSeq,ev.statEventSeq);
   });
   return {queue,players:cursorPlayers,log:cursorLog,statEventSeq:cursorStatEventSeq};

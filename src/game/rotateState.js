@@ -292,6 +292,12 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
         ...event,
         sourceIdx: event.sourceIdx != null ? rotateIndex(event.sourceIdx) : event.sourceIdx,
         targetIdx: event.targetIdx != null ? rotateIndex(event.targetIdx) : event.targetIdx,
+        ...(event?.type === 'swapCards' && Array.isArray(event.beforePlayers)
+          ? { beforePlayers: rotatePlayersArray(event.beforePlayers, myIndex) }
+          : {}),
+        ...(event?.type === 'swapCards' && Array.isArray(event.afterPlayers)
+          ? { afterPlayers: rotatePlayersArray(event.afterPlayers, myIndex) }
+          : {}),
       };
     }
     if (event?.type === 'statEvents') {

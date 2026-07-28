@@ -473,6 +473,14 @@ export function buildMpRemoteReplayAction({
     // 本地玩家（旋转后座位 0）未参与的掉包不向本地观众暴露牌面，
     // 飞行动画一律以背面展示
     const hideSwapCards = swapEvent.sourceIdx !== 0 && swapEvent.targetIdx !== 0;
+    const swapBeforePlayers = swapEvent.beforePlayers || previousGs?.players || null;
+    const swapBeforeDiscard = swapEvent.beforeDiscard || previousGs?.discard || null;
+    const swapLandingPatch = Array.isArray(swapEvent.afterPlayers)
+      ? [finalStatePatch({
+          players: swapEvent.afterPlayers,
+          discard: swapEvent.afterDiscard || swapBeforeDiscard || rotated.discard,
+        }, ['players', 'discard'])]
+      : [];
     const queue = withApophisTargetReplay([
       { type: 'SKILL_SWAP', msgs: swapEvent.msgs || logDelta },
       ...swapCardsSteps({
@@ -483,9 +491,11 @@ export function buildMpRemoteReplayAction({
         takenCard: hideSwapCards ? null : (swapEvent.takenCard || null),
         givenCard: hideSwapCards ? null : (swapEvent.givenCard || null),
         msgs: swapEvent.msgs || logDelta,
-        playersBefore: previousGs?.players || null,
+        playersBefore: swapBeforePlayers,
         zhuLight: previousGs?.zhuLight || rotated.zhuLight || null,
       }),
+      ...swapLandingPatch,
+      ...handLimitDiscardSteps,
       finalStatePatch(
         { ...rotated, drawReveal: null },
         ['players', 'discard', 'log', 'drawReveal', 'phase', 'abilityData'],
@@ -497,7 +507,7 @@ export function buildMpRemoteReplayAction({
       pendingGs: clearRemoteReplayHints({ ...rotated, drawReveal: null }),
       queue,
       visualLock: {
-        players: previousGs?.players || null,
+        players: swapBeforePlayers,
         zhuLight: previousGs?.zhuLight || rotated.zhuLight || null,
       },
     });
@@ -526,7 +536,10 @@ export function buildMpRemoteReplayAction({
     });
   }
   const sphinxResultEvent = getSphinxResultVisualEvent(rotated);
-  if (sphinxResultEvent && isFreshActionReplayEvent(sphinxResultEvent, logDelta)) {
+  // A sphinx result is an explicit public reveal event. It may share one
+  // state-sync packet with a later turn/draw boundary, so log freshness must
+  // not suppress it. Event ids are pruned above and provide replay dedupe.
+  if (sphinxResultEvent) {
     const resultQueue = [
       {
         type: 'DRAW_CARD',

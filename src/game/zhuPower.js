@@ -41,6 +41,13 @@ export function getZhuLitDeckCards(zhuLight, deck = []) {
     .filter(item => item.card?.id && idSet.has(item.card.id));
 }
 
+export function getZhuDrawHiddenCardId(anim, zhuLight) {
+  if (anim?.type !== 'DRAW_CARD' || !anim.card?.id || anim.card.effect) return null;
+  const sourcePile = anim.sourcePile || 'deck';
+  if (sourcePile !== 'deck') return null;
+  return zhuLight?.cardIds?.includes(anim.card.id) ? anim.card.id : null;
+}
+
 export function removeZhuLightCard(zhuLight, cardOrId) {
   const cardId = typeof cardOrId === 'object' ? cardOrId?.id : cardOrId;
   if (!zhuLight || !cardId) return zhuLight;

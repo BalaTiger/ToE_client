@@ -304,6 +304,7 @@ function handleInspection(playerIndex, gs) {
       beforePlayers,
       beforeLog,
       beforeDiscard,
+      beforeStatEventSeq: gs?._statEventSeq || 0,
       afterPlayers,
       afterLog: [...finalLog],
       afterDiscard,

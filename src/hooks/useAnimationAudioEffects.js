@@ -39,23 +39,10 @@ function getDiscardMoveCount(anim) {
   return Math.max(1, anim?.count || 1);
 }
 
-function isNegativeDrawCardFlip(anim) {
-  if (anim?.type !== 'DRAW_CARD' || !anim.card) return false;
-  if (anim.card.isGod) return false;
-  if (anim.triggerName === '检定牌') return false;
-  return getZoneCardPolarity(anim.card) === 'negative';
-}
-
-function isPositiveDrawCardFlip(anim) {
-  if (anim?.type !== 'DRAW_CARD' || !anim.card) return false;
-  if (anim.card.isGod || anim.triggerName === '检定牌') return false;
-  return getZoneCardPolarity(anim.card) === 'positive';
-}
-
-function isNeutralDrawCardFlip(anim) {
-  if (anim?.type !== 'DRAW_CARD' || !anim.card) return false;
-  if (anim.card.isGod || anim.triggerName === '检定牌') return false;
-  return getZoneCardPolarity(anim.card) === 'neutral';
+function getDrawCardFlipPolarity(anim) {
+  if (anim?.type !== 'DRAW_CARD' || !anim.card) return null;
+  if (anim.card.isGod || anim.triggerName === '检定牌') return null;
+  return getZoneCardPolarity(anim.card);
 }
 
 function getPositiveDrawCardFlipSoundDelay(anim) {
@@ -88,6 +75,7 @@ export function useAnimationAudioEffects({
   playCthRlyehDreamSound,
   playGodPowerBlockedSound,
   playTsgSlimePopSound,
+  playTsgSlimeCreateSound,
   playOneCardShiftSound,
   playMultiCardShiftSound,
   playDiceRollSound,
@@ -179,6 +167,10 @@ export function useAnimationAudioEffects({
       playOneCardShiftSound?.();
       return undefined;
     }
+    if (anim.type === 'CARD_TRANSFER' && anim.effect === 'tsgSlime') {
+      playTsgSlimeCreateSound?.();
+      return undefined;
+    }
     if (anim.type === 'CARD_TRANSFER' && anim.effect !== 'damageLink' && anim.effect !== 'blackGoat') {
       const count = getCardTransferMoveCount(anim);
       if (count > 1 || (Array.isArray(anim.transfers) && anim.transfers.length > 1)) {
@@ -188,7 +180,7 @@ export function useAnimationAudioEffects({
       }
     }
     return undefined;
-  }, [anim, playOneCardShiftSound, playMultiCardShiftSound]);
+  }, [anim, playTsgSlimeCreateSound, playOneCardShiftSound, playMultiCardShiftSound]);
 
   useEffect(() => {
     if (anim?.type !== 'CARD_TRANSFER' || anim?.effect !== 'blackGoat') return undefined;
@@ -214,7 +206,7 @@ export function useAnimationAudioEffects({
   }, [anim, playGodHighlightSound, playDetachedAnimationSound]);
 
   useEffect(() => {
-    if (!isPositiveDrawCardFlip(anim)) return undefined;
+    if (getDrawCardFlipPolarity(anim) !== 'positive') return undefined;
     const timer = setTimeout(() => {
       playDetachedAnimationSound('positiveCardFlip', playPositiveCardFlipSound);
     }, getPositiveDrawCardFlipSoundDelay(anim));
@@ -222,7 +214,7 @@ export function useAnimationAudioEffects({
   }, [anim, playPositiveCardFlipSound, playDetachedAnimationSound]);
 
   useEffect(() => {
-    if (!isNeutralDrawCardFlip(anim)) return undefined;
+    if (getDrawCardFlipPolarity(anim) !== 'neutral') return undefined;
     const timer = setTimeout(() => {
       playDetachedAnimationSound('neutralCardFlip', playNeutralCardFlipSound);
     }, getPositiveDrawCardFlipSoundDelay(anim));
@@ -230,7 +222,7 @@ export function useAnimationAudioEffects({
   }, [anim, playNeutralCardFlipSound, playDetachedAnimationSound]);
 
   useEffect(() => {
-    if (!isNegativeDrawCardFlip(anim)) return undefined;
+    if (getDrawCardFlipPolarity(anim) !== 'negative') return undefined;
     const timer = setTimeout(() => {
       playDetachedAnimationSound('negativeCardFlip', playNegativeCardFlipSound);
     }, getNegativeDrawCardFlipSoundDelay(anim));

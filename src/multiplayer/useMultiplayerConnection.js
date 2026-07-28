@@ -71,6 +71,9 @@ export function useMultiplayerConnection({
       socketPath,
       cleanupConnection,
       onConnected,
+      setMultiLoading,
+      setConnErrModal,
+      addToast,
     });
   }
 

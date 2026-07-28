@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { _getZoomCompensatedRect } from '../utils/dom';
+import { useTimerSet } from './useTimerSet';
 
 const PETRIFY_PANEL_CLEAR_MS = 3800;
 
@@ -73,20 +74,10 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
   const [petrifyTargets, setPetrifyTargets] = useState([]);
   const [hpHealIndices, setHpHealIndices] = useState([]);
   const [sanHealIndices, setSanHealIndices] = useState([]);
-  const timersRef = useRef(new Set());
-
-  const addTimer = useCallback((fn, delay) => {
-    const timer = setTimeout(() => {
-      timersRef.current.delete(timer);
-      fn();
-    }, delay);
-    timersRef.current.add(timer);
-    return timer;
-  }, []);
+  const { addTimer, clearTimers } = useTimerSet();
 
   const clearDamageAnimations = useCallback(() => {
-    timersRef.current.forEach(timer => clearTimeout(timer));
-    timersRef.current.clear();
+    clearTimers();
     setHitIndices([]);
     setKnifeTargets([]);
     setSanHitIndices([]);
@@ -95,7 +86,7 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
     setPetrifyTargets([]);
     setHpHealIndices([]);
     setSanHealIndices([]);
-  }, []);
+  }, [clearTimers]);
 
   useEffect(() => clearDamageAnimations, [clearDamageAnimations]);
 

@@ -594,6 +594,8 @@ describe('turnEngine stat events', () => {
     expect(afterDecision.P[1].godEncounters).toBe(2);
     expect(afterDecision.inspectionMeta._inspectionEvents).toHaveLength(2);
     expect(afterDecision.inspectionMeta._inspectionEvents.at(-1).seq).toBe(2);
+    expect(afterDecision.inspectionMeta._inspectionEvents[0].beforeStatEventSeq).toBe(1);
+    expect(afterDecision.inspectionMeta._inspectionEvents[1].beforeStatEventSeq).toBe(2);
     expect(afterDecision.inspectionMeta._inspectionEvents.at(-1).beforePlayers[1]).toMatchObject({
       san: 4,
       godEncounters: 2,

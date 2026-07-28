@@ -97,6 +97,8 @@ const TSG_SLIME_POP_VOLUME = 0.34;
 const TSG_SLIME_POP_DELAY_MS = 140;
 const TSG_SLIME_POP_STOP_MS = 1500;
 const TSG_SLIME_POP_VARIANT_COUNT = 4;
+const TSG_SLIME_CREATE_VOLUME = 0.4;
+const TSG_SLIME_CREATE_VARIANT_COUNT = 4;
 const ONE_CARD_SHIFT_VARIANTS = [
   { path: 'sounds/SE/common/card/one_card_shift1.mp3', volume: 0.72 },
   { path: 'sounds/SE/common/card/one_card_shift2.mp3', volume: 0.32 },
@@ -267,7 +269,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影', {
   const [audioReady, setAudioReady] = useState(false);
   const readyRef = useRef(false);
   const bgmRefs = useRef({ main: null, battleEarth: null, battleStars: null });
-  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, nightWind: [], igniteTorchFire: null, rope: null, droplet: null, volcano: null, semiMaterial: null, burrowingWorm: null, snakeTrap: null, cthRlyehDream: null, godPowerBlocked: null, tsgSlimePop: [], oneCardShift: [], multiCardShift: null, diceRoll: null, turnStart: null, skillHunt: null, skillSwap: null, skillBewitch: null, godHighlight: null, vritraImmortalReveal: null, positiveCardFlip: null, neutralCardFlip: null, negativeCardFlip: null, caveDuel: null, wheelSpin: null, blackGoatRun: null, blackGoatPulse: [], guillotineDeath: [], petrifyDeath: [] });
+  const sfxRefs = useRef({ open: null, close: null, hpDamage: [], sanDamage: [], hpRecover: [], sanRecover: [], apophisEclipse: null, throwStoneThrow: null, throwStoneRolling: null, endlessCorridorTunnel: null, earthquake: null, geomagneticReversal: null, startledBats: null, nightWind: [], igniteTorchFire: null, rope: null, droplet: null, volcano: null, semiMaterial: null, burrowingWorm: null, snakeTrap: null, cthRlyehDream: null, godPowerBlocked: null, tsgSlimePop: [], tsgSlimeCreate: [], oneCardShift: [], multiCardShift: null, diceRoll: null, turnStart: null, skillHunt: null, skillSwap: null, skillBewitch: null, godHighlight: null, vritraImmortalReveal: null, positiveCardFlip: null, neutralCardFlip: null, negativeCardFlip: null, caveDuel: null, wheelSpin: null, blackGoatRun: null, blackGoatPulse: [], guillotineDeath: [], petrifyDeath: [] });
   const sfxStopTimersRef = useRef({});
   const sfxFadeFramesRef = useRef({});
   const sfxSequenceCleanupsRef = useRef({});
@@ -317,7 +319,10 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影', {
     const cthRlyehDream = new Audio(buildPublicUrl('sounds/SE/starsCall/cth/dive.mp3'));
     const godPowerBlocked = new Audio(buildPublicUrl('sounds/SE/earthShadow/godPowerBlocked/god-power-blocked.mp3'));
     const tsgSlimePopVariants = Array.from({ length: TSG_SLIME_POP_VARIANT_COUNT }, (_, i) =>
-      new Audio(buildPublicUrl(`sounds/SE/earthShadow/gods/tsathoggua/bubble${i + 1}.mp3`))
+      new Audio(buildPublicUrl(`sounds/SE/earthShadow/gods/tsathoggua/slime_pop_${i + 1}.mp3`))
+    );
+    const tsgSlimeCreateVariants = Array.from({ length: TSG_SLIME_CREATE_VARIANT_COUNT }, (_, i) =>
+      new Audio(buildPublicUrl(`sounds/SE/earthShadow/gods/tsathoggua/slime_create_${i + 1}.mp3`))
     );
     const oneCardShiftVariants = ONE_CARD_SHIFT_VARIANTS.map(config => ({
       ...config,
@@ -437,6 +442,10 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影', {
       audio.preload = 'auto';
       audio.volume = TSG_SLIME_POP_VOLUME;
     });
+    tsgSlimeCreateVariants.forEach(audio => {
+      audio.preload = 'auto';
+      audio.volume = TSG_SLIME_CREATE_VOLUME;
+    });
     oneCardShiftVariants.forEach(({ audio, volume }) => {
       audio.preload = 'auto';
       audio.volume = volume;
@@ -546,6 +555,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影', {
       cthRlyehDream,
       godPowerBlocked,
       tsgSlimePop: tsgSlimePopVariants,
+      tsgSlimeCreate: tsgSlimeCreateVariants,
       oneCardShift: oneCardShiftVariants,
       multiCardShift,
       diceRoll,
@@ -587,7 +597,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影', {
       sfxStopTimersRef.current = {};
       Object.values(sfxFadeFramesRef.current).forEach(frame => cancelAnimationFrame(frame));
       sfxFadeFramesRef.current = {};
-      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, ...nightWindVariants, igniteTorchFire, rope, droplet, semiMaterialBg, semiMaterialCharge, semiMaterialGlass, ...burrowingWormEarthPlayers, ...burrowingWormDrillPlayers, burrowingWormAttack, snakeTrapHiss, ...snakeTrapAttackPlayers.flat(), cthRlyehDream, godPowerBlocked, ...tsgSlimePopVariants, ...oneCardShiftVariants.map(({ audio }) => audio), multiCardShift, diceRoll, turnStart, skillHunt, skillSwap, skillBewitch, godHighlight, vritraImmortalReveal, positiveCardFlip, neutralCardFlip, negativeCardFlip, caveDuelBg, caveDuelWin, caveDuelLose, wheelSpin, blackGoatRun, ...blackGoatPulseVariants, ...guillotineDeathVariants.map(({ audio }) => audio), ...petrifyDeathVariants, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
+      [main, battleEarth, battleStars, open, close, apophisEclipse, throwStoneThrow, throwStoneRolling, endlessCorridorTunnel, earthquake, geomagneticReversal, startledBats, ...nightWindVariants, igniteTorchFire, rope, droplet, semiMaterialBg, semiMaterialCharge, semiMaterialGlass, ...burrowingWormEarthPlayers, ...burrowingWormDrillPlayers, burrowingWormAttack, snakeTrapHiss, ...snakeTrapAttackPlayers.flat(), cthRlyehDream, godPowerBlocked, ...tsgSlimePopVariants, ...tsgSlimeCreateVariants, ...oneCardShiftVariants.map(({ audio }) => audio), multiCardShift, diceRoll, turnStart, skillHunt, skillSwap, skillBewitch, godHighlight, vritraImmortalReveal, positiveCardFlip, neutralCardFlip, negativeCardFlip, caveDuelBg, caveDuelWin, caveDuelLose, wheelSpin, blackGoatRun, ...blackGoatPulseVariants, ...guillotineDeathVariants.map(({ audio }) => audio), ...petrifyDeathVariants, ...volcanoAudios, ...hpDamageVariants, ...sanDamageVariants.map(({ audio }) => audio), ...hpRecoverVariants, ...sanRecoverVariants].forEach(audio => {
         try {
           audio.pause();
           audio.currentTime = 0;
@@ -1517,6 +1527,22 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影', {
       } catch { /* ignore */ }
     };
   }, [noteUserGesture]);
+  const playTsgSlimeCreateSound = useCallback(() => {
+    noteUserGesture();
+    const variants = sfxRefs.current.tsgSlimeCreate || [];
+    if (!variants.length) return undefined;
+    const audio = variants[Math.floor(Math.random() * variants.length)] || variants[0];
+    try {
+      variants.forEach(item => {
+        item.pause();
+        item.currentTime = 0;
+        item.volume = TSG_SLIME_CREATE_VOLUME;
+        item.playbackRate = 1;
+      });
+      audio.play().catch(() => { });
+    } catch { /* ignore */ }
+    return undefined;
+  }, [noteUserGesture]);
   const playOneCardShiftSound = useCallback(() => {
     noteUserGesture();
     const variants = sfxRefs.current.oneCardShift || [];
@@ -2184,6 +2210,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影', {
     playCthRlyehDreamSound,
     playGodPowerBlockedSound,
     playTsgSlimePopSound,
+    playTsgSlimeCreateSound,
     playOneCardShiftSound,
     playMultiCardShiftSound,
     playDiceRollSound,

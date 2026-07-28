@@ -1249,6 +1249,8 @@ export function aiStep(gs, opts = {}) {
         const ti=applyNightTarget(P.indexOf(tgt),legalTargets,'选择【掉包】目标');
         tgt=P[ti];
         if(P[ti]?.hand.length&&P[ct].hand.length){
+          const swapBeforePlayers=copyPlayers(P);
+          const swapBeforeDiscard=[...Disc];
           const ri=0|Math.random()*P[ti].hand.length;const taken=P[ti].hand.splice(ri,1)[0];
           P[ct].hand.push(taken);
           const gi=chooseTreasureSwapGiveIndex(P[ct].hand);
@@ -1271,6 +1273,10 @@ export function aiStep(gs, opts = {}) {
             givenCard:given,
             sourceName:ai.name,
             sourceLabel:swapActorLabel,
+            beforePlayers:swapBeforePlayers,
+            afterPlayers:copyPlayers(P),
+            beforeDiscard:swapBeforeDiscard,
+            afterDiscard:[...Disc],
             msgs:[swapPublicLog],
           });
           if(aiSwapEvent)gs={...gs,_visualEvents:[aiSwapEvent,...(gs._visualEvents||[])]};

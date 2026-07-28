@@ -2,7 +2,7 @@ import { copyPlayers, removeCardsFromDiscard } from './coreUtils';
 import { isAiSeat, localDisplayName } from './rotateState';
 import { bindAnimLogChunks } from './animLogs';
 import { buildAnimQueue, buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
-import { buildInspectionEventFlow, cardTransferStep, statePatchStep } from './animQueueHelpers';
+import { buildInspectionEventFlow, cardTransferStep, prepareWorshipHighlight, statePatchStep } from './animQueueHelpers';
 import {
   getVisualEvents,
   VISUAL_EVENT,
@@ -753,9 +753,33 @@ export function buildTurnStartDrawReplayQueue({
   const drawEffectQWithInspections = inspectionQ.length
     ? [...drawEffectQWithVisualStats, ...inspectionQ]
     : drawEffectQWithVisualStats;
-  const drawEffectQ = drawFullHandSwapQ.length
+  const unprimedDrawEffectQ = drawFullHandSwapQ.length
     ? [...drawFullHandSwapQ, ...drawEffectQWithInspections.filter(step => step.type !== 'CARD_TRANSFER')]
     : drawEffectQWithInspections;
+  // A god worshipped directly from the turn-start draw is replayed from the
+  // pre-draw player snapshot. Prime the highlight with only the resolved god
+  // badge fields, while retaining the old hand so later AI actions (swap, hunt,
+  // etc.) cannot leak into this earlier visual moment.
+  const resolvedDrawer = newGs?.players?.[drawerPid];
+  const worshipBadgePlayers = godDrawResolution === 'godZone' && resolvedDrawer
+    ? beforeDrawPlayers.map((player, idx) => idx === drawerPid
+      ? {
+        ...player,
+        godName: resolvedDrawer.godName,
+        godLevel: resolvedDrawer.godLevel,
+        godEncounters: resolvedDrawer.godEncounters,
+        godZone: [...(resolvedDrawer.godZone || [])],
+        hasBelievedGod: resolvedDrawer.hasBelievedGod,
+      }
+      : player)
+    : null;
+  const drawEffectQ = worshipBadgePlayers
+    ? prepareWorshipHighlight(unprimedDrawEffectQ, {
+      targetPid: drawerPid,
+      godKey: resolvedDrawer.godName || drawnCard?.godKey,
+      players: worshipBadgePlayers,
+    })
+    : unprimedDrawEffectQ;
   const hasDrawEffectVisualStep = drawEffectQ.some(step => step?.type !== 'STATE_PATCH');
   const drawEffectStatePatch = hasDrawEffectVisualStep
     ? statePatchStep({ players: newGs?.players, discard: newGs?.discard })

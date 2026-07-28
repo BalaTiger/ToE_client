@@ -108,6 +108,7 @@ import {
   abandonGodFollower,
   convertGodFollower,
   buildZhuLight,
+  getZhuDrawHiddenCardId,
   getZhuLitDeckCards,
   getZhuTopGuard,
   removeZhuLightCard,
@@ -230,6 +231,7 @@ import {
   buildInspectionEventFlow,
   buildInspectionAwareAnimQueue,
   statePatchStep,
+  prepareWorshipHighlight,
   mergePlayerStatsIntoSnapshot,
   zhuHideCardStep,
   buryToDeckStep,
@@ -258,17 +260,7 @@ import { GenericAnimOverlay, DiceRollAnim, YourTurnAnim } from './components/ani
 import { PaperCupSVG, SwapCupOverlay, HuntScopeOverlay, BewitchEyeOverlay, SanMistOverlay } from './components/anim/SkillOverlays';
 import { CaveDuelAnim } from './components/anim/AreaCardOverlays';
 import { DamageLinkOverlay } from './components/anim/DamageLinkOverlay';
-import { DAMAGE_LINK_ANIMATION_STYLES } from './components/anim/damageLinkStyles';
-import { EARTHQUAKE_ANIMATION_STYLES } from './components/anim/earthquakeStyles';
-import { MOVE_ANIMATION_STYLES } from './components/anim/moveStyles';
-import { GOD_POWER_ANIMATION_STYLES } from './components/anim/godPowerStyles';
-import { GOD_HIGHLIGHT_ANIMATION_STYLES } from './components/anim/godHighlightStyles';
-import { SKILL_ANIMATION_STYLES } from './components/anim/skillStyles';
-import { AREA_CARD_ANIMATION_STYLES } from './components/anim/areaCardStyles';
-import { DAMAGE_ANIMATION_STYLES } from './components/anim/damageStyles';
-import { APOPHIS_ANIMATION_STYLES } from './components/anim/apophisStyles';
-import { SNAKE_TRAP_ANIMATION_STYLES } from './components/anim/snakeTrapStyles';
-import { ENDLESS_CORRIDOR_ANIMATION_STYLES } from './components/anim/endlessCorridorStyles';
+import { GLOBAL_STYLES } from './components/GlobalStyles';
 import { GodResurrectionAnim, TreasureMapAnim, RoleRevealAnim } from './components/anim/WinAnims';
 import { GlobalAnimLayer } from './components/anim/GlobalAnimLayer';
 import { loadEffectImage } from './components/anim/effectNoise';
@@ -783,7 +775,7 @@ export default function Game(){
     const next=Math.max(0,Math.min(1,value));setSfxVolume(next);
     try{localStorage.setItem('cthulhu_sfx_volume',String(next));}catch{/* ignore */}
   },[]);
-  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound,playCthRlyehDreamSound,playGodPowerBlockedSound,playTsgSlimePopSound,playOneCardShiftSound,playMultiCardShiftSound,playDiceRollSound,playTurnStartSound,playSkillHuntSound,playSkillSwapSound,playSkillBewitchSound,playGodHighlightSound,playVritraImmortalRevealSound,playPositiveCardFlipSound,playNeutralCardFlipSound,playCaveDuelSound,playWheelSpinSound,playBlackGoatRunSound,playBlackGoatPulseSound,playGuillotineDeathSound,playPetrifyDeathSound,playNegativeCardFlipSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影',{musicVolume,sfxVolume});
+  const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound,playCthRlyehDreamSound,playGodPowerBlockedSound,playTsgSlimePopSound,playTsgSlimeCreateSound,playOneCardShiftSound,playMultiCardShiftSound,playDiceRollSound,playTurnStartSound,playSkillHuntSound,playSkillSwapSound,playSkillBewitchSound,playGodHighlightSound,playVritraImmortalRevealSound,playPositiveCardFlipSound,playNeutralCardFlipSound,playCaveDuelSound,playWheelSpinSound,playBlackGoatRunSound,playBlackGoatPulseSound,playGuillotineDeathSound,playPetrifyDeathSound,playNegativeCardFlipSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影',{musicVolume,sfxVolume});
   const persistSoftGuideDone=useCallback((nextDone)=>{
     setSoftGuideDone(nextDone);
     if(canPersistTutorial)safeLS.set(SOFT_GUIDE_STORAGE_KEY,serializeSoftGuideDone(nextDone));
@@ -1738,7 +1730,7 @@ export default function Game(){
   },[gs?._inspectionEvents]);
   const houndsTimerVisible=!!gs?.houndsOfTindalosActive&&(!latestHoundsInspectionSeq||houndsRevealedSeq>=latestHoundsInspectionSeq);
 
-  useAnimationAudioEffects({ anim, playApophisEclipseSound, playThrowStoneThrowSound, playThrowStoneRollingSound, playEarthquakeSound, playGeomagneticReversalSound, playStartledBatsSound, playNightWindSound, playRopeSound, playUndergroundSpringDropletSound, playVolcanoSound, playSemiMaterialSound, playBurrowingWormSound, playSnakeTrapSound, playCthRlyehDreamSound, playGodPowerBlockedSound, playTsgSlimePopSound, playOneCardShiftSound, playMultiCardShiftSound, playDiceRollSound, playTurnStartSound, playSkillHuntSound, playSkillSwapSound, playSkillBewitchSound, playGodHighlightSound, playVritraImmortalRevealSound, playPositiveCardFlipSound, playNeutralCardFlipSound, playCaveDuelSound, playWheelSpinSound, playBlackGoatRunSound, playBlackGoatPulseSound, playNegativeCardFlipSound });
+  useAnimationAudioEffects({ anim, playApophisEclipseSound, playThrowStoneThrowSound, playThrowStoneRollingSound, playEarthquakeSound, playGeomagneticReversalSound, playStartledBatsSound, playNightWindSound, playRopeSound, playUndergroundSpringDropletSound, playVolcanoSound, playSemiMaterialSound, playBurrowingWormSound, playSnakeTrapSound, playCthRlyehDreamSound, playGodPowerBlockedSound, playTsgSlimePopSound, playTsgSlimeCreateSound, playOneCardShiftSound, playMultiCardShiftSound, playDiceRollSound, playTurnStartSound, playSkillHuntSound, playSkillSwapSound, playSkillBewitchSound, playGodHighlightSound, playVritraImmortalRevealSound, playPositiveCardFlipSound, playNeutralCardFlipSound, playCaveDuelSound, playWheelSpinSound, playBlackGoatRunSound, playBlackGoatPulseSound, playNegativeCardFlipSound });
 
   useEffect(()=>{
     const active=!!gs?.houndsOfTindalosActive;
@@ -2782,7 +2774,7 @@ export default function Game(){
             // those explicit pre-hunt timeline steps (especially GOD_HIGHLIGHT)
             // so the fallback state watcher cannot replay their sound later,
             // while the next black-night target die is rolling.
-            queue.push(...getAiPreHuntActionSteps(actionStatQ,newMsgs),...huntEventQueue);
+            queue.push(...getAiPreHuntActionSteps(actionStatQ,newMsgs,huntEventQueue),...huntEventQueue);
           }
         } else if(actionStatQ.length){
           queue.push(...actionStatQ);
@@ -3031,7 +3023,7 @@ export default function Game(){
             .find(event=>event?.type==='swapCards'&&event.sourceIdx!=null&&event.targetIdx!=null);
           const swapMsgs=extractSkillLogs(actionMsgs,'swap');
           const swapIntroStep={type:'SKILL_SWAP',msgs:swapMsgs};
-          const swapPlayersBefore=_playersBeforeSkillAction||afterInspectionPlayers;
+          const swapPlayersBefore=swapEvent?.beforePlayers||_playersBeforeSkillAction||afterInspectionPlayers;
           // 本地玩家未参与的掉包（AI↔AI 或其他两名角色互换）不向本地观众暴露牌面，
           // 飞行动画一律以背面展示
           const hideSwapCards=swapEvent&&swapEvent.sourceIdx!==0&&swapEvent.targetIdx!==0;
@@ -3049,10 +3041,16 @@ export default function Game(){
             })
             : [];
           if(swapTransferSteps.length){
+            const swapLandingPlayers=swapEvent?.afterPlayers||P_actionBeforeHandLimit;
+            const swapLandingDiscard=swapEvent?.afterDiscard||_aiHandLimitBeforeDiscard||_discardBeforeEndTurnReplay||newGs.discard;
+            const swapCommitStep=statePatchStep({
+              players:swapLandingPlayers,
+              discard:swapLandingDiscard,
+            });
             const swapLogIdx=actionMsgs.findIndex(line=>/^.+对 .+ 【掉包】/.test(line||''));
             const preSwapQ=actionStatQ.filter(step=>firstStepLogIndex(step)<swapLogIdx);
             const postSwapQ=actionStatQ.filter(step=>firstStepLogIndex(step)>=swapLogIdx);
-            orderedActionQ=[...preSwapQ,swapIntroStep,...swapTransferSteps,...postSwapQ.filter(step=>step?.type!=='CARD_TRANSFER')];
+            orderedActionQ=[...preSwapQ,swapIntroStep,...swapTransferSteps,swapCommitStep,...postSwapQ.filter(step=>step?.type!=='CARD_TRANSFER')];
           }else{
             orderedActionQ=mergeActionQueueByLogOrder(actionStatQ,swapIntroStep);
           }
@@ -3064,7 +3062,7 @@ export default function Game(){
             orderedActionQ=mergeActionQueueByLogOrder(dedupedActionStatQ,huntEventQueue);
           } else {
             orderedActionQ=[
-              ...getAiPreHuntActionSteps(actionStatQ,actionMsgs),
+              ...getAiPreHuntActionSteps(actionStatQ,actionMsgs,huntEventQueue),
               ...huntEventQueue,
             ];
           }
@@ -4632,8 +4630,11 @@ export default function Game(){
   const zhuLightForView=((anim||animExiting||animQueueRef.current.length>0)&&visualZhuLightLockRef.current)
     ?visualZhuLightLockRef.current
     :gs.zhuLight;
+  const zhuDrawHiddenCardId=getZhuDrawHiddenCardId(anim,zhuLightForView);
   const zhuHiddenCardId=anim?.type==='ZHU_HIDE_CARD'
     ?anim.card?.id
+    :zhuDrawHiddenCardId
+      ?zhuDrawHiddenCardId
     :((anim||animExiting||animQueueRef.current.length>0)&&zhuHiddenCardIdLockRef.current)
       ?zhuHiddenCardIdLockRef.current
       :null;
@@ -7602,6 +7603,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       givenCard: given,
       sourceName:P[0].name,
       sourceLabel:`${P[0].name}${gs.globalOnlySwapOwner===null?'（寻宝者）':''}`,
+      afterPlayers:copyPlayers(P),
+      afterDiscard:[...(gs.discard||[])],
       msgs:L.slice(gs.log.length),
     });
     // 只有真正的寻宝者才能通过集齐全部编号获胜
@@ -8179,33 +8182,32 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const sphinxAvoidNegative=!!gs.abilityData?.sphinxAvoidNegative;
       L.push(sphinxAvoidNegative?'猜测错误！负面效果已规避':'猜测错误！你失去 3 HP');
       const localMsgs=[];
+      Disc.push(actualCard);
       const loss=sphinxAvoidNegative?null:buildEtherealizeLoss({players:P,targetIdx:gs.currentTurn,currentTurn:gs.currentTurn,lostHp:3,source:'斯芬克斯'});
       if(loss){
+        const logDelta=L.slice(gs.log.length);
+        const sphinxEvent=createSphinxResultEvent({
+          actorIdx:gs.currentTurn,
+          card:actualCard,
+          guessCorrect:false,
+          msgs:logDelta,
+        });
         const newGs={
           ...gs,
           players:P,deck:D,discard:Disc,log:L,
           phase:'ETHEREALIZE_DECISION',
           abilityData:{...buildEtherealizeRedirectDecision([loss],{_turnOwner:gs.abilityData?._turnOwner??gs.currentTurn})},
+          ...(sphinxEvent?{_visualEvents:[sphinxEvent]}:{}),
         };
-        const queue=[{type:'DRAW_CARD',card:actualCard,triggerName:'斯芬克斯',targetPid:gs.currentTurn,skipTravel:true,guessCorrect:false,msgs:[L[L.length-2]||L[L.length-1]]}];
+        const queue=[{type:'DRAW_CARD',card:actualCard,triggerName:'斯芬克斯',targetPid:gs.currentTurn,skipTravel:true,guessCorrect:false,msgs:[logDelta[0]]}];
+        broadcastMpStateBeforeLocalReplay(newGs);
         triggerAnimQueue(queue,newGs);
         return;
       }else if(!sphinxAvoidNegative){
         applyHpDamageWithLink(P,gs.currentTurn,3,Disc,localMsgs,gs.currentTurn,D);
         if(localMsgs.length)L.push(...localMsgs);
       }
-      Disc.push(actualCard);
     }
-    const win=checkWin(P,gs._isMP);
-    if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{},...proliferatingZPatch});return;}
-    const nextTurn=gs.abilityData?._turnOwner??gs.currentTurn;
-    const resumesAiTurn=isAiSeat(gs,nextTurn)&&!P[nextTurn]?.isDead;
-    const nextPhase=resumesAiTurn?'AI_TURN':'ACTION';
-    const newGs=withTsathogguaSlimeBalanceDecision(
-      {...gs,players:P,deck:D,discard:Disc,log:L,phase:nextPhase,currentTurn:nextTurn,abilityData:{},...proliferatingZPatch},
-      beforeLossPlayers,
-      {_turnOwner:nextTurn}
-    );
     const logDelta=L.slice(gs.log.length);
     const revealStep={type:'DRAW_CARD',card:actualCard,triggerName:'斯芬克斯',targetPid:gs.currentTurn,skipTravel:true,guessCorrect,msgs:[logDelta[0]]};
     const sphinxEvent=createSphinxResultEvent({
@@ -8214,15 +8216,38 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       guessCorrect,
       msgs:logDelta,
     });
-    const newGsWithEvent=sphinxEvent?{...newGs,_visualEvents:[sphinxEvent]}:newGs;
-    let queue=[revealStep];
-    if(guessCorrect){
-      const gainMsg=logDelta.find(m=>m.includes('猜测正确'));
-      queue.push(cardTransferStep({fromPid:-1,dest:'player',toPid:gs.currentTurn,count:1,msgs:gainMsg?[gainMsg]:[]}));
-    }else{
-      const resultQueue=bindAnimLogChunks(buildAnimQueue(gs,newGsWithEvent),splitAnimBoundLogs(logDelta));
-      queue.push(...filterSphinxResultQueue(resultQueue));
+    const buildSphinxQueue=state=>{
+      const queue=[revealStep];
+      if(guessCorrect){
+        const gainMsg=logDelta.find(m=>m.includes('猜测正确'));
+        queue.push(cardTransferStep({fromPid:-1,dest:'player',toPid:gs.currentTurn,count:1,msgs:gainMsg?[gainMsg]:[]}));
+      }else{
+        const resultQueue=bindAnimLogChunks(buildAnimQueue(gs,state),splitAnimBoundLogs(logDelta));
+        queue.push(...filterSphinxResultQueue(resultQueue));
+      }
+      return queue;
+    };
+    const win=checkWin(P,gs._isMP);
+    if(win){
+      const winGs={
+        ...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{},...proliferatingZPatch,
+        ...(sphinxEvent?{_visualEvents:[sphinxEvent]}:{}),
+      };
+      const queue=buildSphinxQueue(winGs);
+      broadcastMpStateBeforeLocalReplay(winGs);
+      triggerAnimQueue(queue,winGs);
+      return;
     }
+    const nextTurn=gs.abilityData?._turnOwner??gs.currentTurn;
+    const resumesAiTurn=isAiSeat(gs,nextTurn)&&!P[nextTurn]?.isDead;
+    const nextPhase=resumesAiTurn?'AI_TURN':'ACTION';
+    const newGs=withTsathogguaSlimeBalanceDecision(
+      {...gs,players:P,deck:D,discard:Disc,log:L,phase:nextPhase,currentTurn:nextTurn,abilityData:{},...proliferatingZPatch},
+      beforeLossPlayers,
+      {_turnOwner:nextTurn}
+    );
+    const newGsWithEvent=sphinxEvent?{...newGs,_visualEvents:[sphinxEvent]}:newGs;
+    const queue=buildSphinxQueue(newGsWithEvent);
     if(queue.length){
       setGs(p=>p?{...p,phase:nextPhase,abilityData:{}}:p);
       broadcastMpStateBeforeLocalReplay(newGsWithEvent);
@@ -8921,8 +8946,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   // 多人游戏：当下一回合是他人时，为当前玩家播放翻牌动画（否则他们的本地 gs 更新无动画）
   function broadcastMpStateBeforeLocalReplay(nextGs){
     if(!nextGs?._isMP||!isMultiplayer||!socketRef.current||!roomModal?.roomId)return false;
-    if(nextGs.gameOver||nextGs.phase==='TREASURE_WIN'||nextGs.phase==='PLAYER_WIN_PENDING')return false;
     const hasVisualEvents=Array.isArray(nextGs._visualEvents)&&nextGs._visualEvents.length>0;
+    if((nextGs.gameOver&&!hasVisualEvents)||nextGs.phase==='TREASURE_WIN'||nextGs.phase==='PLAYER_WIN_PENDING')return false;
     const broadcastGs=hasVisualEvents?pruneConsumedVisualEvents(nextGs,consumedVisualEventIdsRef.current):nextGs;
     const freshVisualEvents=Array.isArray(broadcastGs._visualEvents)?broadcastGs._visualEvents:[];
     if(freshVisualEvents.length){
@@ -9645,24 +9670,17 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     // 让"邪神之力"标签与"从手牌信仰"日志同时出现：把信仰后的神之力字段（及已离手的神牌）并入动画基线，
     // 使首个动画步骤的视觉快照就带上新神之力，而不是等到整段动画结束才刷新角色面板。
     const godBadgeBaseline=gs.players.map((p,i)=>i===0?{...p,hand:[...P[0].hand],godName:P[0].godName,godLevel:P[0].godLevel,godEncounters:P[0].godEncounters,godZone:P[0].godZone.map(c=>({...c}))}:p);
-    // Apophis needs to enter eclipse before the panel highlight is shown. Triggering
-    // the burst here would start its sound underneath the eclipse, then the committed
-    // god status would restart the same highlight sound on the player panel.
-    const deferHighlightUntilAfterEclipse=godPowerImmediateHand&&godKey==='APO';
-    if(!deferHighlightUntilAfterEclipse)triggerGodHighlightPanelBurst(0,godKey);
     previousGodStatusRef.current=godBadgeBaseline.map(p=>({godName:p?.godName||null,godLevel:p?.godLevel||0}));
     const oldGsForReplay={...gs,players:godBadgeBaseline};
     const replay=buildInspectionAwareAnimQueue(oldGsForReplay,newGs,{buildAnimQueue,copyPlayers});
     if(replay.inspectionEvents.length){
       lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...replay.inspectionEvents.map(ev=>ev.seq||0));
     }
-    const queue=bindAnimLogChunks(replay.queue,splitAnimBoundLogs(L.slice(gs.log.length)));
-    if(deferHighlightUntilAfterEclipse){
-      const eclipseIndex=queue.findIndex(step=>step?.type==='APOPHIS_ECLIPSE');
-      const worshipMsg=L.slice(gs.log.length).find(line=>typeof line==='string'&&(line.includes('从手牌信仰')||line.includes('从手牌直接信仰')||line.includes('改信')));
-      const highlightStep={type:'GOD_HIGHLIGHT',targetPid:0,godKey,msgs:worshipMsg?[worshipMsg]:[]};
-      queue.splice(eclipseIndex>=0?eclipseIndex+1:queue.length,0,highlightStep);
-    }
+    const worshipMsg=L.slice(gs.log.length).find(line=>typeof line==='string'&&(line.includes('从手牌信仰')||line.includes('从手牌直接信仰')||line.includes('改信')));
+    const queue=prepareWorshipHighlight(
+      bindAnimLogChunks(replay.queue,splitAnimBoundLogs(L.slice(gs.log.length))),
+      {targetPid:0,godKey,players:godBadgeBaseline,msgs:worshipMsg?[worshipMsg]:[]},
+    );
     if(queue.length)triggerAnimQueue(queue,newGs);
     else setGs(newGs);
   }
@@ -9896,617 +9914,3 @@ const smallBtnStyle={
   fontFamily:"'Cinzel',serif",fontSize:10,borderRadius:2,cursor:'pointer',letterSpacing:1,
 };
 
-const GLOBAL_STYLES=`
-  @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Cinzel:wght@400;600;700&family=IM+Fell+English:ital@0;1&display=swap');
-  * { box-sizing:border-box; scrollbar-width:thin; scrollbar-color:var(--toe-line,#3a2510) var(--toe-bg,#0a0705); }
-  ::-webkit-scrollbar{width:5px;height:5px;}
-  ::-webkit-scrollbar-track{background:var(--toe-bg,#0a0705);}
-  ::-webkit-scrollbar-thumb{background:var(--toe-line,#3a2510);border-radius:2px;}
-  [data-log-panel]::-webkit-scrollbar-track{background:var(--toe-panel,#0e0904);}
-  [data-log-panel]{scrollbar-color:var(--toe-line,#3a2510) var(--toe-panel,#0e0904);}
-  html,body{ overflow-x:hidden; }
-  .toe-battle-root {
-    background-color:var(--toe-bg,#0a0705);
-  }
-  .toe-battle-root::before,
-  .toe-battle-root::after {
-    content:"";
-    position:fixed;
-    inset:-5vmax;
-    pointer-events:none;
-    background-image:var(--toe-battle-bg-image);
-    background-size:var(--toe-battle-bg-size);
-    background-position:var(--toe-battle-bg-position);
-    background-repeat:var(--toe-battle-bg-repeat);
-    background-attachment:var(--toe-battle-bg-attachment);
-    transform:translate3d(0,0,0) scale(1);
-    transform-origin:50% 48%;
-    will-change:transform, opacity;
-  }
-  .toe-battle-root::before {
-    z-index:0;
-  }
-  .toe-battle-root::after {
-    z-index:1;
-    opacity:0;
-  }
-  .toe-battle-root > * {
-    position:relative;
-    z-index:2;
-  }
-  .toe-battle-root.toe-draw-camera-active::after {
-    animation:toeDrawBackgroundWalk 0.92s cubic-bezier(0.34,0,0.24,1) 3 both;
-  }
-  @keyframes toeDrawBackgroundWalk {
-    0% {
-      opacity:0;
-      transform:translate3d(0,0,0) scale(1);
-    }
-    12% {
-      opacity:1;
-      transform:translate3d(0,2px,0) scale(1.028);
-    }
-    42% {
-      opacity:1;
-      transform:translate3d(0,8px,0) scale(1.06);
-    }
-    58% {
-      opacity:0.88;
-      transform:translate3d(0,-4px,0) scale(1.1);
-    }
-    68% {
-      opacity:0.62;
-      transform:translate3d(0,-6px,0) scale(1.12);
-    }
-    86% {
-      opacity:0.26;
-      transform:translate3d(0,5px,0) scale(1.15);
-    }
-    100% {
-      opacity:0;
-      transform:translate3d(0,5px,0) scale(1.16);
-    }
-  }
-  @keyframes scrollLeft {
-    0% { transform: translateX(100%); }
-    100% { transform: translateX(-100%); }
-  }
-  /* 信仰瞬间：邪神之力标签内 ^ 形箭头向上连续滚动 */
-  @keyframes godWorshipChevron {
-    0%   { transform: translateY(125%); opacity: 0; }
-    18%  { opacity: 0.9; }
-    82%  { opacity: 0.9; }
-    100% { transform: translateY(-125%); opacity: 0; }
-  }
-  .god-power-chevron-layer {
-    position:absolute;
-    inset:0;
-    overflow:hidden;
-    pointer-events:none;
-    display:flex;
-    flex-direction:column;
-    align-items:stretch;
-    justify-content:flex-start;
-    animation:godWorshipChevron 1.05s ease-out forwards;
-  }
-  .god-power-chevron-row {
-    position:relative;
-    display:block;
-    width:100%;
-    height:7px;
-    flex:0 0 7px;
-  }
-  .god-power-chevron-glyph {
-    position:absolute;
-    left:50%;
-    top:50%;
-    width:14px;
-    height:8px;
-    color:#ffe9b0;
-    transform:translate(-50%,-50%) scaleX(var(--god-power-chevron-scale, 8));
-    transform-origin:center;
-    filter:
-      drop-shadow(0 0 5px var(--god-power-col,#c06020))
-      drop-shadow(0 0 2px #fff);
-  }
-  .god-power-chevron-glyph::before,
-  .god-power-chevron-glyph::after {
-    content:"";
-    position:absolute;
-    top:3px;
-    width:8px;
-    height:2px;
-    background:currentColor;
-    border-radius:999px;
-    box-shadow:0 0 4px var(--god-power-col,#c06020);
-  }
-  .god-power-chevron-glyph::before {
-    right:50%;
-    transform-origin:100% 50%;
-    transform:rotate(-30deg);
-  }
-  .god-power-chevron-glyph::after {
-    left:50%;
-    transform-origin:0 50%;
-    transform:rotate(30deg);
-  }
-  .etherealize-chevron-layer {
-    animation-duration:0.92s;
-    mix-blend-mode:screen;
-  }
-  .etherealize-chevron-layer .god-power-chevron-glyph {
-    color:#d9f3ff;
-    filter:
-      drop-shadow(0 0 6px #87a9c8)
-      drop-shadow(0 0 2px #fff);
-  }
-  .etherealize-consume-float {
-    position:fixed;
-    transform:translate(-50%,-100%);
-    z-index:470;
-    pointer-events:none;
-    font-family:'Cinzel',serif;
-    font-size:22px;
-    font-weight:700;
-    letter-spacing:1px;
-    color:#d9f3ff;
-    text-shadow:
-      0 0 10px #87a9c8,
-      0 0 3px #fff,
-      0 2px 6px #000;
-    animation:etherealizeConsumeFloat 0.9s ease-out forwards;
-  }
-  @keyframes etherealizeConsumeFloat {
-    0%   { transform:translate(-50%,-100%) scale(0.6); opacity:0; }
-    18%  { transform:translate(-50%,-130%) scale(1.15); opacity:1; }
-    55%  { transform:translate(-50%,-170%) scale(1); opacity:1; }
-    100% { transform:translate(-50%,-240%) scale(0.92); opacity:0; }
-  }
-
-  /* ── Mobile / small-screen overrides ── */
-  @media (max-width:580px){
-    /* Tighten global padding */
-    body { font-size:13px; }
-    /* Modals stay within viewport */
-    [data-modal]{max-width:calc(100vw - 24px)!important;padding:20px 16px!important;}
-    /* Phase bar text wrap */
-    [data-phasebar]{font-size:10px!important;}
-    /* Hand area tighter padding */
-    [data-handarea]{padding:8px 9px!important;}
-    /* Phase/status tooltip fit */
-    [data-tooltip]{max-width:calc(100vw - 32px)!important;}
-  }
-
-  /* ── Prevent fixed overlays from cutting off on very small screens ── */
-  @media (max-width:400px){
-    body{font-size:12px;}
-  }
-
-  @keyframes animFadeIn  { from{opacity:0} to{opacity:1} }
-  @keyframes animFadeOut { from{opacity:1} to{opacity:0} }
-  @keyframes animPop     { 0%{transform:scale(0.5);opacity:0} 60%{transform:scale(1.1)} 100%{transform:scale(1);opacity:1} }
-  @keyframes spinLoader  { to{transform:rotate(360deg)} }
-  @keyframes toastIn     { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
-  @keyframes animShake   { 0%,100%{transform:translateX(0)} 15%{transform:translateX(-12px)} 35%{transform:translateX(14px)} 55%{transform:translateX(-9px)} 75%{transform:translateX(9px)} }
-  @keyframes swapBlindShuffleIn {
-    0%   { transform: translate(var(--start-x,0), var(--start-y,0)) rotateZ(var(--start-rz,0deg)) rotateY(var(--start-ry,0deg)) scale(0.7); opacity: 0; }
-    40%  { opacity: 1; }
-    70%  { transform: translate(var(--pile-x,0), var(--pile-y,0)) rotateZ(0deg) rotateY(var(--pile-ry,0deg)) scale(1); }
-    100% { transform: translate(var(--final-x,0), var(--final-y,0)) rotateZ(0deg) rotateY(var(--final-ry,0deg)) scale(1); opacity: 1; }
-  }
-  @keyframes swapBlindFlyCard {
-    0%   { transform: translate(0,0) scale(1); opacity: 1; }
-    100% { transform: translate(var(--fly-tx,0), var(--fly-ty,0)) scale(0.55); opacity: 0; }
-  }
-  @keyframes swapBlindGlowPulse {
-    0%,100% { box-shadow: 0 0 12px rgba(200,169,110,0.25); }
-    50%     { box-shadow: 0 0 28px rgba(200,169,110,0.55); }
-  }
-  @keyframes animVig     { 0%,100%{opacity:0} 50%{opacity:1} }
-  @keyframes animGlow    { 0%,100%{box-shadow:0 0 8px #c8a96e33} 50%{box-shadow:0 0 22px #c8a96e88} }
-  @keyframes blackGoatCardHop {
-    0%{transform:translateY(0) scale(1);filter:brightness(1) drop-shadow(0 0 0 rgba(74,222,128,0));}
-    18%{transform:translateY(-7px) scale(1.02);filter:brightness(1.22) drop-shadow(0 0 8px rgba(74,222,128,.38));}
-    46%{transform:translateY(-20px) scale(1.045);filter:brightness(1.72) drop-shadow(0 0 18px rgba(74,222,128,.72));}
-    72%{transform:translateY(3px) scale(.995);filter:brightness(1.08) drop-shadow(0 0 5px rgba(74,222,128,.24));}
-    86%{transform:translateY(-2px) scale(1.005);filter:brightness(1.04) drop-shadow(0 0 4px rgba(74,222,128,.18));}
-    100%{transform:translateY(0) scale(1);filter:brightness(1) drop-shadow(0 0 0 rgba(74,222,128,0));}
-  }
-  @keyframes blackGoatCardAura {
-    0%{opacity:0;transform:scale(.74);}
-    38%{opacity:.95;transform:scale(1.05);}
-    100%{opacity:0;transform:scale(1.32);}
-  }
-  @keyframes blackGoatCardSparks {
-    0%{opacity:0;transform:translateY(4px) scale(.6);}
-    44%{opacity:1;transform:translateY(-13px) scale(1);}
-    100%{opacity:0;transform:translateY(-28px) scale(.72);}
-  }
-  .black-goat-card-pulse{
-    position:relative;
-    animation:blackGoatCardHop .76s cubic-bezier(.22,.82,.28,1.18) both;
-    z-index:80!important;
-  }
-  .black-goat-card-pulse::before{
-    content:'';
-    position:absolute;
-    inset:-9px;
-    border-radius:8px;
-    pointer-events:none;
-    background:radial-gradient(circle,rgba(74,222,128,.24),rgba(74,222,128,.08) 42%,transparent 68%);
-    box-shadow:0 0 18px rgba(74,222,128,.45),inset 0 0 12px rgba(190,255,205,.2);
-    animation:blackGoatCardAura .76s ease-out both;
-  }
-  .black-goat-card-pulse::after{
-    content:'';
-    position:absolute;
-    left:50%;
-    top:42%;
-    width:4px;
-    height:4px;
-    border-radius:50%;
-    pointer-events:none;
-    background:#9dffb2;
-    box-shadow:-18px -2px 0 #4ade80,16px -7px 0 #b7ffbf,-8px 14px 0 #6ee78f,21px 11px 0 #4ade80,0 -20px 0 #d6ffd8;
-    animation:blackGoatCardSparks .76s ease-out both;
-  }
-  [data-self-hand-card-id][data-ignite-torch-flame="true"]{
-    filter:drop-shadow(0 0 12px rgba(255,128,24,.82)) drop-shadow(0 0 24px rgba(255,70,12,.46));
-  }
-  .ignite-torch-flame-layer{
-    position:absolute;
-    left:var(--ignite-flame-left, 0px);
-    top:var(--ignite-flame-top, 0px);
-    width:var(--ignite-flame-w, 100%);
-    height:var(--ignite-flame-h, 74px);
-    border-radius:6px;
-    pointer-events:none;
-    z-index:22;
-    background-image:url('${buildPublicUrl('/img/effects/ignite_torch_flame_sweep_spritesheet.webp')}');
-    background-size:3200% 100%;
-    background-repeat:no-repeat;
-    background-position:0 0;
-    mix-blend-mode:screen;
-    transform-origin:50% 100%;
-    filter:saturate(1.08) contrast(1.08) drop-shadow(0 0 8px rgba(255,162,40,.7));
-    animation:
-      igniteTorchFlameFrames .76s steps(31,end) both,
-      igniteTorchFlameRise .76s linear both,
-      igniteTorchFlameVisibility .76s ease-out both;
-  }
-  .ignite-torch-ember-layer{
-    position:absolute;
-    left:var(--ignite-ember-left, -34px);
-    top:var(--ignite-ember-top, 0px);
-    width:var(--ignite-ember-w, calc(100% + 68px));
-    height:var(--ignite-ember-h, calc(var(--ignite-card-h, 160px) + 82px));
-    border-radius:6px;
-    pointer-events:none;
-    z-index:23;
-    background:
-      radial-gradient(circle at 18% 74%,rgba(255,238,136,.88) 0 1.5px,transparent 3.5px),
-      radial-gradient(circle at 34% 56%,rgba(255,172,54,.76) 0 2px,transparent 4.5px),
-      radial-gradient(circle at 55% 38%,rgba(255,226,118,.7) 0 1.5px,transparent 4px),
-      radial-gradient(circle at 77% 58%,rgba(255,86,20,.66) 0 2px,transparent 5px),
-      radial-gradient(circle at 88% 30%,rgba(255,202,80,.58) 0 1.5px,transparent 4px);
-    mix-blend-mode:screen;
-    animation:igniteTorchEmbers .76s ease-out both;
-  }
-  @keyframes igniteTorchFlameFrames {
-    0%{background-position:0% 0;}
-    100%{background-position:100% 0;}
-  }
-  @keyframes igniteTorchFlameRise {
-    0%,18%{transform:translate3d(0,0,0);}
-    100%{transform:translate3d(0,var(--ignite-card-rise, -160px),0);}
-  }
-  @keyframes igniteTorchFlameVisibility {
-    0%{opacity:0;}
-    8%,84%{opacity:.98;}
-    100%{opacity:0;}
-  }
-  @keyframes igniteTorchEmbers {
-    0%{opacity:0;transform:translate3d(-18%,24px,0) scale(.72);}
-    18%{opacity:0;transform:translate3d(-18%,24px,0) scale(.72);}
-    32%{opacity:.92;}
-    62%{opacity:.72;transform:translate3d(4%,var(--ignite-ember-mid-rise, -50px),0) scale(1.04);}
-    100%{opacity:0;transform:translate3d(18%,var(--ignite-ember-rise, -120px),0) scale(1.2);}
-  }
-  @keyframes surveyMascotEnter {
-    0% { opacity:0; transform:translateX(135%) translateY(16px) rotate(-5deg); }
-    72% { opacity:1; transform:translateX(-8px) translateY(0) rotate(2deg); }
-    100% { opacity:1; transform:translateX(0) translateY(0) rotate(0deg); }
-  }
-  @keyframes surveyMascotFloat {
-    0%,100% { transform:translateY(0); }
-    50% { transform:translateY(-5px); }
-  }
-  .surveyMascot {
-    position:fixed;
-    right:16px;
-    bottom:16px;
-    z-index:4;
-    display:flex;
-    align-items:flex-end;
-    gap:10px;
-    border:0;
-    background:transparent;
-    padding:0;
-    cursor:pointer;
-    color:#e8c87a;
-    font-family:'IM Fell English','Georgia',serif;
-    opacity:0;
-    transform:translateX(135%) translateY(16px);
-    animation:surveyMascotEnter .55s cubic-bezier(.2,.9,.2,1.1) 1s forwards;
-  }
-  .surveyMascot:hover .surveyMascotBody { filter:drop-shadow(0 0 16px #d8b86899) brightness(1.08); }
-  .surveyMascotBubble {
-    max-width:170px;
-    margin-bottom:18px;
-    padding:9px 11px;
-    border:1.5px solid #7a5720;
-    border-radius:8px;
-    background:linear-gradient(180deg,#211407,#120a04);
-    color:#e8c87a;
-    font-size:13px;
-    line-height:1.35;
-    letter-spacing:.5px;
-    box-shadow:0 6px 18px #00000088,0 0 16px #c8a96e22 inset;
-    text-align:left;
-  }
-  .surveyMascotBody {
-    position:relative;
-    width:76px;
-    height:96px;
-    border-radius:36px 36px 20px 20px;
-    background:linear-gradient(160deg,#4b2748 0%,#25102f 52%,#0f0718 100%);
-    border:2px solid #8a6228;
-    box-shadow:0 10px 24px #000000aa,0 0 18px #9060cc55 inset;
-    animation:surveyMascotFloat 2.4s ease-in-out 1.65s infinite;
-  }
-  .surveyMascotFace {
-    position:absolute;
-    left:16px;
-    top:18px;
-    width:44px;
-    height:38px;
-    border-radius:50% 50% 45% 45%;
-    background:#d8b868;
-    box-shadow:0 0 12px #f0d89055;
-  }
-  .surveyMascotEye {
-    position:absolute;
-    top:13px;
-    width:5px;
-    height:7px;
-    border-radius:50%;
-    background:#160b10;
-  }
-  .surveyMascotEyeLeft { left:12px; }
-  .surveyMascotEyeRight { right:12px; }
-  .surveyMascotSmile {
-    position:absolute;
-    left:15px;
-    top:23px;
-    width:14px;
-    height:7px;
-    border-bottom:2px solid #160b10;
-    border-radius:0 0 12px 12px;
-  }
-  .surveyMascotBook {
-    position:absolute;
-    left:15px;
-    bottom:15px;
-    width:46px;
-    height:25px;
-    border-radius:4px;
-    background:linear-gradient(90deg,#6a1f1f 0 48%,#3a1218 49% 51%,#7a2720 52% 100%);
-    border:1px solid #c8a96e;
-    box-shadow:0 0 10px #c8a96e44;
-  }
-  @media (max-width:580px){
-    .surveyMascot { right:10px; bottom:10px; transform:scale(.88) translateX(135%); transform-origin:right bottom; }
-    .surveyMascotBubble { max-width:138px; font-size:12px; }
-    .surveyMascotBody { width:66px; height:86px; }
-  }
-  ${DAMAGE_LINK_ANIMATION_STYLES}
-  ${EARTHQUAKE_ANIMATION_STYLES}
-  ${MOVE_ANIMATION_STYLES}
-  ${GOD_POWER_ANIMATION_STYLES}
-  ${GOD_HIGHLIGHT_ANIMATION_STYLES}
-  ${SKILL_ANIMATION_STYLES}
-  ${AREA_CARD_ANIMATION_STYLES}
-  ${DAMAGE_ANIMATION_STYLES}
-  ${APOPHIS_ANIMATION_STYLES}
-  ${SNAKE_TRAP_ANIMATION_STYLES}
-  ${ENDLESS_CORRIDOR_ANIMATION_STYLES}
-  /* Card flip animation */
-  @keyframes cardRise {
-    0%   { transform:translateY(90px); opacity:0; }
-    15%  { opacity:1; }
-    75%  { transform:translateY(-4px); }
-    100% { transform:translateY(0); opacity:1; }
-  }
-  @keyframes cardFlip {
-    0%   { transform:rotateY(0deg); }
-    25%  { transform:rotateY(480deg); }
-    55%  { transform:rotateY(840deg); }
-    80%  { transform:rotateY(1020deg); }
-    100% { transform:rotateY(1080deg); }
-  }
-  @keyframes burstPulse {
-    0%   { transform:scale(0.2); opacity:0; }
-    30%  { opacity:1; }
-    70%  { transform:scale(1.6); opacity:0.8; }
-    100% { transform:scale(2.2); opacity:0; }
-  }
-
-  /* animPopInner — scale only (no translate), safe for flex-centered children */
-  @keyframes animPopInner { 0%{transform:scale(0.5);opacity:0} 60%{transform:scale(1.08)} 100%{transform:scale(1);opacity:1} }
-
-  /* Benign sparkle particles */
-  @keyframes particleRise { 0%{opacity:0;transform:translateY(0) scale(0.4)} 30%{opacity:0.9;} 100%{opacity:0;transform:translateY(-140px) scale(1.4)} }
-
-  /* ── SMOKE SOULS: S-curve sway + widen as they rise ──
-     translateX oscillates: 0→+12→-14→+8→0  (S-shape)
-     scaleX grows (smoke disperses), translateY climbs, opacity fades */
-  @keyframes smokeRise0 {
-    0%  {opacity:0; transform:translateY(0)    translateX(0px)  scaleX(0.20) scaleY(0.3)}
-    8%  {opacity:0.88;}
-    22% {          transform:translateY(-190px) translateX(12px) scaleX(0.45) scaleY(0.72)}
-    45% {          transform:translateY(-390px) translateX(-14px)scaleX(0.78) scaleY(0.90)}
-    68% {opacity:0.55; transform:translateY(-570px) translateX(9px) scaleX(1.05) scaleY(1.0)}
-    100%{opacity:0; transform:translateY(-800px) translateX(0px)  scaleX(1.60) scaleY(1.0)}
-  }
-  @keyframes smokeRise1 {
-    0%  {opacity:0; transform:translateY(0)    translateX(0px)  scaleX(0.22) scaleY(0.28)}
-    9%  {opacity:0.85;}
-    24% {          transform:translateY(-210px) translateX(-13px)scaleX(0.50) scaleY(0.75)}
-    48% {          transform:translateY(-420px) translateX(15px) scaleX(0.82) scaleY(0.92)}
-    70% {opacity:0.52; transform:translateY(-605px) translateX(-8px)scaleX(1.10) scaleY(1.0)}
-    100%{opacity:0; transform:translateY(-840px) translateX(0px)  scaleX(1.65) scaleY(1.0)}
-  }
-  @keyframes smokeRise2 {
-    0%  {opacity:0; transform:translateY(0)    translateX(0px)  scaleX(0.18) scaleY(0.32)}
-    7%  {opacity:0.90;}
-    20% {          transform:translateY(-175px) translateX(14px) scaleX(0.42) scaleY(0.68)}
-    44% {          transform:translateY(-370px) translateX(-12px)scaleX(0.74) scaleY(0.88)}
-    66% {opacity:0.58; transform:translateY(-545px) translateX(7px) scaleX(0.98) scaleY(1.0)}
-    100%{opacity:0; transform:translateY(-770px) translateX(0px)  scaleX(1.52) scaleY(1.0)}
-  }
-  @keyframes smokeRise3 {
-    0%  {opacity:0; transform:translateY(0)    translateX(0px)  scaleX(0.25) scaleY(0.30)}
-    10% {opacity:0.86;}
-    26% {          transform:translateY(-215px) translateX(-15px)scaleX(0.54) scaleY(0.78)}
-    50% {          transform:translateY(-445px) translateX(13px) scaleX(0.88) scaleY(0.93)}
-    72% {opacity:0.50; transform:translateY(-635px) translateX(-9px)scaleX(1.12) scaleY(1.0)}
-    100%{opacity:0; transform:translateY(-875px) translateX(0px)  scaleX(1.68) scaleY(1.0)}
-  }
-  @keyframes smokeRise4 {
-    0%  {opacity:0; transform:translateY(0)    translateX(0px)  scaleX(0.21) scaleY(0.29)}
-    8%  {opacity:0.87;}
-    23% {          transform:translateY(-198px) translateX(11px) scaleX(0.48) scaleY(0.74)}
-    46% {          transform:translateY(-400px) translateX(-13px)scaleX(0.80) scaleY(0.91)}
-    69% {opacity:0.54; transform:translateY(-585px) translateX(8px) scaleX(1.06) scaleY(1.0)}
-    100%{opacity:0; transform:translateY(-825px) translateX(0px)  scaleX(1.58) scaleY(1.0)}
-  }
-
-  /* Ghost faces: ride up with the smoke, appear at mid-point, vanish near top */
-  /* Each tracks the same translateX S-wave as its smoke column */
-  @keyframes ghostFace0 {
-    0%  {opacity:0; transform:translateY(0)    translateX(0px)}
-    10% {opacity:0;}
-    32% {opacity:0; transform:translateY(-350px) translateX(-14px)}
-    50% {opacity:0.70; transform:translateY(-540px) translateX(9px)}
-    72% {opacity:0.55; transform:translateY(-680px) translateX(-5px)}
-    100%{opacity:0; transform:translateY(-800px) translateX(0px)}
-  }
-  @keyframes ghostFace1 {
-    0%  {opacity:0; transform:translateY(0)    translateX(0px)}
-    12% {opacity:0;}
-    35% {opacity:0; transform:translateY(-375px) translateX(15px)}
-    52% {opacity:0.68; transform:translateY(-560px) translateX(-8px)}
-    74% {opacity:0.52; transform:translateY(-700px) translateX(5px)}
-    100%{opacity:0; transform:translateY(-840px) translateX(0px)}
-  }
-  @keyframes ghostFace2 {
-    0%  {opacity:0; transform:translateY(0)    translateX(0px)}
-    9%  {opacity:0;}
-    30% {opacity:0; transform:translateY(-320px) translateX(-12px)}
-    48% {opacity:0.72; transform:translateY(-510px) translateX(7px)}
-    70% {opacity:0.56; transform:translateY(-660px) translateX(-4px)}
-    100%{opacity:0; transform:translateY(-770px) translateX(0px)}
-  }
-  @keyframes ghostFace3 {
-    0%  {opacity:0; transform:translateY(0)    translateX(0px)}
-    13% {opacity:0;}
-    36% {opacity:0; transform:translateY(-390px) translateX(13px)}
-    54% {opacity:0.66; transform:translateY(-575px) translateX(-9px)}
-    76% {opacity:0.50; transform:translateY(-725px) translateX(6px)}
-    100%{opacity:0; transform:translateY(-875px) translateX(0px)}
-  }
-  @keyframes ghostFace4 {
-    0%  {opacity:0; transform:translateY(0)    translateX(0px)}
-    11% {opacity:0;}
-    33% {opacity:0; transform:translateY(-355px) translateX(-11px)}
-    51% {opacity:0.69; transform:translateY(-550px) translateX(8px)}
-    73% {opacity:0.53; transform:translateY(-690px) translateX(-5px)}
-    100%{opacity:0; transform:translateY(-825px) translateX(0px)}
-  }
-
-  /* ── FLOWER BLOOM — staggered scale+opacity per flower ── */
-  @keyframes flowerBloom {
-    0%   {opacity:0;   transform:scale(0) rotate(0deg)}
-    40%  {opacity:1;   transform:scale(1.12) rotate(6deg)}
-    65%  {opacity:0.98;transform:scale(0.96) rotate(-2deg)}
-    80%  {opacity:0.97;transform:scale(1.04) rotate(1deg)}
-    100% {opacity:0.90;transform:scale(1.0)  rotate(0deg)}
-  }
-  @keyframes flowerFade {
-    0%  {opacity:0.90}
-    60% {opacity:0.85}
-    100%{opacity:0}
-  }
-
-  @keyframes tentacleEmerge {
-    0%   {transform:translate(-50%, 0) scaleY(0); opacity:0}
-    100% {transform:translate(-50%, 0) scaleY(1); opacity:1}
-  }
-  @keyframes pulse {
-    0%,100% {opacity:0.6; transform:scale(1)}
-    50%     {opacity:1;   transform:scale(1.1)}
-  }
-
-  /* Turn indicator */
-  @keyframes turnIndicatorFade {
-    from{opacity:0;transform:translateX(-50%) translateY(-8px)}
-    to  {opacity:1;transform:translateX(-50%) translateY(0)}
-  }
-  @keyframes yourTurnFade {
-    0%  {opacity:0; transform:scale(0.88)}
-    18% {opacity:1; transform:scale(1.04)}
-    38% {opacity:1; transform:scale(1.0)}
-    75% {opacity:1; transform:scale(1.0)}
-    100%{opacity:0; transform:scale(1.05)}
-  }
-  @keyframes treasureAssemble {
-    0%   {opacity:0; transform:translate(var(--ox),var(--oy)) scale(0.55) rotate(-8deg)}
-    60%  {opacity:1; transform:translate(0,0) scale(1.06) rotate(1deg)}
-    100% {opacity:1; transform:translate(0,0) scale(1) rotate(0deg)}
-  }
-  @keyframes treasureScatter {
-    0%,100% {opacity:0; transform:translate(var(--ox),var(--oy)) scale(0.5)}
-  }
-  @keyframes turnIndicatorPulse {
-    0%,100%{opacity:0.55;filter:brightness(0.85)}
-    50%    {opacity:1;   filter:brightness(1.35)}
-  }
-
-  /* God Resurrection — blood drip text effect */
-  .blood-drip-text {
-    position: relative;
-  }
-  .blood-drop {
-    position: absolute;
-    bottom: -8px;
-    width: 6px;
-    height: 12px;
-    background: linear-gradient(180deg, #8a1a1a 0%, #c01030 50%, #600000 100%);
-    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
-    opacity: 0;
-    animation: bloodDripFall 2s ease-in infinite;
-    box-shadow: 0 0 8px #c0103088;
-  }
-  @keyframes bloodDripFall {
-    0%   { opacity: 0; transform: translateY(0) scale(0.5); }
-    10%  { opacity: 1; transform: translateY(5px) scale(1); }
-    60%  { opacity: 0.8; transform: translateY(35px) scale(0.9); }
-    90%  { opacity: 0.3; transform: translateY(55px) scale(0.6); }
-    100% { opacity: 0; transform: translateY(70px) scale(0.3); }
-  }
-  @keyframes zhuLitCardPop {
-    0% { opacity: 0.25; transform: translateX(18px) rotate(0deg) scale(0.98); filter: brightness(0.8); }
-    64% { opacity: 1; transform: translateX(-5px) rotate(calc(var(--zhu-rot) - 3deg)) scale(1.02); filter: brightness(1.35); }
-    100% { opacity: 1; transform: translateX(0) rotate(var(--zhu-rot)) scale(1); filter: brightness(1); }
-  }
-`;

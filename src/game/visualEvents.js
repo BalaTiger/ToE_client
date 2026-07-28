@@ -127,7 +127,21 @@ export function createBewitchGiftEvent({ sourceIdx = 0, targetIdx = 0, targetNam
   }, 'action');
 }
 
-export function createSwapCardsEvent({ sourceIdx = 0, targetIdx = 0, sourceCount = 1, targetCount = 1, msgs = [], takenCard = null, givenCard = null, sourceName = null, sourceLabel = null } = {}) {
+export function createSwapCardsEvent({
+  sourceIdx = 0,
+  targetIdx = 0,
+  sourceCount = 1,
+  targetCount = 1,
+  msgs = [],
+  takenCard = null,
+  givenCard = null,
+  sourceName = null,
+  sourceLabel = null,
+  beforePlayers = null,
+  afterPlayers = null,
+  beforeDiscard = null,
+  afterDiscard = null,
+} = {}) {
   return withVisualEventMeta({
     type: VISUAL_EVENT.SWAP_CARDS,
     id: `${VISUAL_EVENT.SWAP_CARDS}:${visualEventInstanceId}:${++actionEventSeq}`,
@@ -139,6 +153,10 @@ export function createSwapCardsEvent({ sourceIdx = 0, targetIdx = 0, sourceCount
     ...(givenCard ? { givenCard } : {}),
     ...(sourceName ? { sourceName } : {}),
     ...(sourceLabel ? { sourceLabel } : {}),
+    ...(Array.isArray(beforePlayers) ? { beforePlayers } : {}),
+    ...(Array.isArray(afterPlayers) ? { afterPlayers } : {}),
+    ...(Array.isArray(beforeDiscard) ? { beforeDiscard } : {}),
+    ...(Array.isArray(afterDiscard) ? { afterDiscard } : {}),
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'action');
 }

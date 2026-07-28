@@ -10,6 +10,27 @@ function names(players) {
 }
 
 describe('rotateGsForViewer', () => {
+  it('rotates swap before/after player snapshots with the viewer seat', () => {
+    const gs = {
+      players: [player('p0'), player('p1'), player('p2')],
+      currentTurn: 1,
+      abilityData: {},
+      _visualEvents: [{
+        type: 'swapCards',
+        sourceIdx: 1,
+        targetIdx: 0,
+        beforePlayers: [player('before0'), player('before1'), player('before2')],
+        afterPlayers: [player('after0'), player('after1'), player('after2')],
+      }],
+    };
+
+    const rotated = rotateGsForViewer(gs, 2);
+
+    expect(rotated._visualEvents[0]).toMatchObject({ sourceIdx: 2, targetIdx: 1 });
+    expect(names(rotated._visualEvents[0].beforePlayers)).toEqual(['before2', 'before0', 'before1']);
+    expect(names(rotated._visualEvents[0].afterPlayers)).toEqual(['after2', 'after0', 'after1']);
+  });
+
   it('rotates top-level animation player snapshots for the viewer', () => {
     const gs = {
       players: [player('你'), player('艾伦'), player('贝拉')],

@@ -1107,6 +1107,92 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.pendingGs._visualEvents).toEqual([]);
   });
 
+  it('commits the swapped hand before a following hand-limit discard animation', () => {
+    const undergroundSpring = { id: 'spring', name: '地下泉', key: 'C2', type: 'zone' };
+    const forestLord = { id: 'forest', name: '森之领主', isGod: true, godKey: 'SHU' };
+    const volcano = { id: 'volcano', name: '活火山', key: 'C1', type: 'zone' };
+    const beforePlayers = [
+      { ...player('你'), hand: [undergroundSpring] },
+      { ...player('黛安娜'), hand: [forestLord, volcano] },
+      player('贝拉'),
+    ];
+    const afterSwapPlayers = [
+      { ...player('你'), hand: [forestLord] },
+      { ...player('黛安娜'), hand: [undergroundSpring, volcano] },
+      player('贝拉'),
+    ];
+    const finalPlayers = [
+      { ...player('你'), hand: [forestLord] },
+      { ...player('黛安娜'), hand: [undergroundSpring] },
+      player('贝拉'),
+    ];
+    const swapEvent = createSwapCardsEvent({
+      sourceIdx: 1,
+      targetIdx: 0,
+      takenCard: undergroundSpring,
+      givenCard: forestLord,
+      beforePlayers,
+      afterPlayers: afterSwapPlayers,
+      beforeDiscard: [],
+      afterDiscard: [],
+      msgs: ['黛安娜（寻宝者）对 你 【掉包】'],
+    });
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players: finalPlayers,
+      discard: [volcano],
+      log: [
+        '黛安娜（寻宝者）对 你 【掉包】',
+        '黛安娜 弃 [C1] 活火山（上限）',
+      ],
+      _visualEvents: [
+        swapEvent,
+        {
+          type: 'handLimitDiscard',
+          playerIdx: 1,
+          playerName: '黛安娜',
+          cards: [volcano],
+          msgs: ['黛安娜 弃 [C1] 活火山（上限）'],
+        },
+      ],
+    }), {
+      previousGs: makeState({
+        currentTurn: 1,
+        phase: 'ACTION',
+        players: beforePlayers,
+        discard: [],
+        log: [],
+      }),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.map(step => step.type)).toEqual([
+      'SKILL_SWAP',
+      'VISUAL_LOCK',
+      'CARD_TRANSFER',
+      'CARD_TRANSFER',
+      'STATE_PATCH',
+      'DISCARD',
+      'STATE_PATCH',
+    ]);
+    expect(action.queue[4]).toMatchObject({
+      type: 'STATE_PATCH',
+      players: afterSwapPlayers,
+      discard: [],
+    });
+    expect(action.queue[5]).toMatchObject({
+      type: 'DISCARD',
+      cards: [volcano],
+      targetPid: 1,
+    });
+    expect(action.queue[6]).toMatchObject({
+      type: 'STATE_PATCH',
+      players: finalPlayers,
+      discard: [volcano],
+    });
+  });
+
   it('hides swap card faces when the local viewer is not involved', () => {
     const players = [player('你'), player('艾伦'), player('贝拉')];
     const takenCard = { id: 'taken', name: '旧牌', key: 'B2', type: 'zone' };
@@ -2217,6 +2303,41 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.queue[1]).toMatchObject({
       type: 'CARD_TRANSFER',
       toPid: 2,
+    });
+  });
+
+  it('does not suppress an explicit sphinx reveal when a later draw boundary shares the sync packet', () => {
+    const sphinxCard = { id: 'sphinx1', name: '斯芬克斯', key: 'SPH', type: 'zone' };
+    const nextCard = { id: 'next1', name: '下一张牌', key: 'A1', type: 'zone' };
+    const event = createSphinxResultEvent({
+      actorIdx: 1,
+      card: sphinxCard,
+      guessCorrect: false,
+      msgs: ['艾伦 猜测错误'],
+    });
+    const action = buildAction(makeState({
+      currentTurn: 2,
+      phase: 'ACTION',
+      players: [player('你'), player('艾伦'), player('贝拉')],
+      log: ['艾伦 猜测错误', '── 贝拉 的回合开始 ──', `贝拉 摸到 [A1] ${nextCard.name}`],
+      _visualEvents: [event],
+    }), {
+      previousGs: makeState({
+        currentTurn: 1,
+        phase: 'SPHINX_GUESS',
+        players: [player('你'), player('艾伦'), player('贝拉')],
+        log: [],
+      }),
+      buildAnimQueue: vi.fn(() => []),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue[0]).toMatchObject({
+      type: 'DRAW_CARD',
+      card: sphinxCard,
+      triggerName: '斯芬克斯',
+      targetPid: 1,
+      guessCorrect: false,
     });
   });
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildZhuLight,
+  getZhuDrawHiddenCardId,
   getZhuLightOffsets,
   getZhuLitDeckCards,
   getZhuTopGuard,
@@ -107,5 +108,22 @@ describe('zhuPower', () => {
       cardIds: ['card-0', 'card-2'],
       lightNonce: 7,
     });
+  });
+
+  it('hides a lit deck card as soon as its draw travel animation starts', () => {
+    const zhuLight = { ownerIdx: 0, level: 3, cardIds: ['card-0'], lightNonce: 7 };
+    const card = { id: 'card-0', name: '亮出的牌' };
+
+    expect(getZhuDrawHiddenCardId({ type: 'DRAW_CARD', card }, zhuLight)).toBe('card-0');
+    expect(getZhuDrawHiddenCardId({ type: 'DRAW_CARD', card, sourcePile: 'deck' }, zhuLight)).toBe('card-0');
+  });
+
+  it('does not hide Zhu deck cards for non-deck or inspection reveals', () => {
+    const zhuLight = { ownerIdx: 0, level: 3, cardIds: ['card-0'], lightNonce: 7 };
+    const card = { id: 'card-0', name: '亮出的牌' };
+
+    expect(getZhuDrawHiddenCardId({ type: 'DRAW_CARD', card, sourcePile: 'discard' }, zhuLight)).toBeNull();
+    expect(getZhuDrawHiddenCardId({ type: 'DRAW_CARD', card: { ...card, effect: 'selfHarm' } }, zhuLight)).toBeNull();
+    expect(getZhuDrawHiddenCardId({ type: 'CARD_TRANSFER', card }, zhuLight)).toBeNull();
   });
 });
