@@ -476,7 +476,8 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   const dealHP = (i, v) => hurtHP(i, v + dmgBonus);
   const dealSAN = (i, v) => hurtSAN(i, v + dmgBonus);
   const randDiscard = (i, count = 1) => {
-    if (i == null || !P[i] || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return;
+    const discardEvents = [];
+    if (i == null || !P[i] || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return discardEvents;
     for (let n = 0; n < count; n++) {
       if (P[i].hand.length) {
         const x = 0 | Math.random() * P[i].hand.length;
@@ -489,10 +490,37 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           msgs.push(`${P[i].name} 失去了 ${cardLogText(c, { alwaysShowName: true })}`);
           const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: i, cards: [c], reason: '失去手牌' });
           msgs.splice(0, msgs.length, ...balance.log);
+          discardEvents.push({
+            playerIndex: i,
+            card: c,
+            afterPlayers: copyPlayers(P),
+            afterDiscard: [...Disc],
+          });
         } else {
           msgs.push(`${P[i].name} 的空白区域牌消失了`);
         }
       }
+    }
+    return discardEvents;
+  };
+  const appendForcedRandomDiscardEvent = (beforeForcedPlayers, beforeForcedDiscard, discardEvents) => {
+    if (!discardEvents.length) return;
+    const event = createCardEffectEvent({
+      effectKey: 'forcedRandomDiscard',
+      card,
+      actorIdx: ci,
+      beforePlayers: beforeForcedPlayers,
+      beforeDiscard: beforeForcedDiscard,
+      afterPlayers: copyPlayers(P),
+      afterDiscard: [...Disc],
+      discardEvents,
+      msgs: msgs.slice(),
+    });
+    if (event) {
+      statePatch = {
+        ...statePatch,
+        _visualEvents: [...(statePatch._visualEvents || []), event],
+      };
     }
   };
   const toggleRest = i => { if (i == null || !P[i] || P[i].isDead || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return; P[i].isResting = !P[i].isResting; msgs.push(`${P[i].name}${P[i].isResting ? '进入' : '离开'}休息状态`); };
@@ -1003,16 +1031,22 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     },
     selfDamageDiscardHP: () => {
       if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
+        const beforeForcedPlayers = copyPlayers(P);
+        const beforeForcedDiscard = [...Disc];
         msgs.push(`${actor.name} 失去 ${card.val} HP`);
         hurtHP(ci, card.val);
-        randDiscard(ci, 1);
+        const discardEvents = randDiscard(ci, 1);
+        appendForcedRandomDiscardEvent(beforeForcedPlayers, beforeForcedDiscard, discardEvents);
       }
     },
     selfDamageDiscardSAN: () => {
       if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
+        const beforeForcedPlayers = copyPlayers(P);
+        const beforeForcedDiscard = [...Disc];
         hurtSAN(ci, card.val);
         msgs.push(`${actor.name} 失去 ${card.val} SAN`);
-        randDiscard(ci, 1);
+        const discardEvents = randDiscard(ci, 1);
+        appendForcedRandomDiscardEvent(beforeForcedPlayers, beforeForcedDiscard, discardEvents);
       }
     },
     selfDamageRestHP: () => {

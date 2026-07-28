@@ -1,4 +1,4 @@
-import { copyPlayers } from './coreUtils';
+import { copyPlayers, removeCardsFromDiscard } from './coreUtils';
 import { isAiSeat, localDisplayName } from './rotateState';
 import { bindAnimLogChunks } from './animLogs';
 import { buildAnimQueue, buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
@@ -362,13 +362,23 @@ function blackGoatPulseStep(events = []) {
 
 function tsgSlimePopStepFromEvent(event) {
   if (!event) return null;
+  const playersBefore = Array.isArray(event.playersBefore) ? event.playersBefore : null;
+  const playersAfter = Array.isArray(event.playersAfter) ? event.playersAfter : null;
   return {
     type: 'TSG_SLIME_POP',
-    targetPid: event.playerIdx ?? 0,
+    targetPid: event.playerIdx ?? event.targetPid ?? 0,
     count: event.count || (Array.isArray(event.cards) ? event.cards.length : 1),
     cards: Array.isArray(event.cards) ? event.cards : [],
     msgs: Array.isArray(event.msgs) ? event.msgs : [],
-    ...(Array.isArray(event.playersBefore) ? { visualSetupPatch: { players: event.playersBefore } } : {}),
+    ...(playersBefore ? { visualSetupPatch: { players: playersBefore } } : {}),
+    ...(playersBefore && playersAfter ? {
+      visualTimeline: [
+        { atMs: 0, patch: { players: playersBefore } },
+        // The bubble is visibly gone by this point; commit the consumed hand
+        // snapshot before the next draw/god/inspection animation starts.
+        { atMs: 620, patch: { players: playersAfter } },
+      ],
+    } : {}),
   };
 }
 
@@ -522,7 +532,17 @@ export function buildTurnStartDrawReplayQueue({
   const turnStartPreDrawQ = buildTurnStartPreDrawEffectQueue({ oldGs, newGs, buildQueue });
   const hasTurnStartPreDrawQ = turnStartPreDrawQ.length > 0;
   const turnStartStatePatch = hasTurnStartPreDrawQ
-    ? statePatchStep({ players: beforeDrawPlayers, discard: newGs?.discard })
+    ? statePatchStep({
+        players: beforeDrawPlayers,
+        // Keep the AI's current-turn draw decision hidden until the dedicated
+        // draw/discard animations play. If the drawn card was discarded, strip
+        // it from the visible discard pile during pre-draw animations.
+        discard: (() => {
+          if (!newGs?._playersBeforeThisDraw || !newGs?._discardedDrawnCard) return newGs?.discard;
+          const drawnCard = getTurnStartDrawnCard(newGs);
+          return drawnCard ? removeCardsFromDiscard(newGs.discard, [drawnCard]) : newGs?.discard;
+        })(),
+      })
     : null;
   const turnStartStep = buildTurnStartStepFromVisualEvents(newGs) || {
     type: 'YOUR_TURN',
@@ -549,14 +569,10 @@ export function buildTurnStartDrawReplayQueue({
         msgs: event.msgs,
       }];
       if (event.slimePop) {
-        steps.push({
-          type: 'TSG_SLIME_POP',
+        steps.push(tsgSlimePopStepFromEvent({
+          ...event.slimePop,
           targetPid: event.slimePop.targetPid ?? event.drawerIdx ?? drawerPid,
-          count: event.slimePop.count || (Array.isArray(event.slimePop.cards) ? event.slimePop.cards.length : 1),
-          cards: Array.isArray(event.slimePop.cards) ? event.slimePop.cards : [],
-          msgs: Array.isArray(event.slimePop.msgs) ? event.slimePop.msgs : [],
-          ...(Array.isArray(event.slimePop.playersBefore) ? { visualSetupPatch: { players: event.slimePop.playersBefore } } : {}),
-        });
+        }));
       }
       return steps;
     })
@@ -717,10 +733,18 @@ export function buildTurnStartDrawReplayQueue({
     const maxInspectionSeq = Math.max(oldGs?._inspectionSeq || 0, ...drawInspectionEvents.map(ev => ev?.seq || 0));
     const tailQueue = buildQueue(
       {
+        ...fallbackOldGs,
         players: inspectionFlow.players,
         log: inspectionFlow.log,
         _statEventSeq: inspectionFlow.statEventSeq,
         _inspectionSeq: maxInspectionSeq,
+        // This tail continues the same draw resolution. Preserve the consumed
+        // roll watermark so a moldy-food result retained in newGs is not
+        // treated as a fresh event after an inspection boundary.
+        _moldyFoodDiceSeq: Math.max(
+          fallbackOldGs?._moldyFoodDiceSeq || fallbackOldGs?._moldyFoodDiceRoll?.seq || 0,
+          newGs?._moldyFoodDiceSeq || newGs?._moldyFoodDiceRoll?.seq || 0,
+        ),
       },
       newGs
     );

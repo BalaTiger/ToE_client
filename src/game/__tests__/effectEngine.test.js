@@ -635,6 +635,34 @@ describe('applyFx', () => {
     ]);
   });
 
+  it('坠落强制弃牌会生成显式视觉事件，避免收入牌抵消手牌数量变化', () => {
+    const fallCard = { ...makeZoneCard('A1', 0), id: 'fall-card' };
+    const discardedCard = { ...makeZoneCard('B2', 0), id: 'forced-discard' };
+    const players = makeStandardPlayers(3);
+    players[1].hand = [fallCard, discardedCard];
+    const gs = makeGs({ players, currentTurn: 1 });
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+
+    const res = applyFx(fallCard, 1, null, players, [], [], gs);
+    randomSpy.mockRestore();
+
+    expect(res.P[1].hand).toEqual([fallCard]);
+    expect(res.Disc).toEqual([discardedCard]);
+    expect(res.statePatch._visualEvents).toEqual([
+      expect.objectContaining({
+        type: VISUAL_EVENT.CARD_EFFECT,
+        effectKey: 'forcedRandomDiscard',
+        actorIdx: 1,
+        discardEvents: [
+          expect.objectContaining({
+            playerIndex: 1,
+            card: discardedCard,
+          }),
+        ],
+      }),
+    ]);
+  });
+
   it('失去 HP 且手中有撒托古亚黏液时进入平分选择', () => {
     const players = makeStandardPlayers(3);
     players[0].hand = [createTsathogguaSlimeCard()];

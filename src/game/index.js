@@ -32,3 +32,5 @@ export * from './animReplayEvents';
 export * from './animStatePatch';
 export * from './etherealize';
 export * from './tutorialScenario';
+export * from './aiDecisionState';
+export * from './headlessSimulator';

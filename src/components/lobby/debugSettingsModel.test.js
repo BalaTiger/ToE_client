@@ -8,6 +8,7 @@ import {
   getDebugExpansionSelection,
   getExpansionDefaults,
   getFirstZoneCardForSlot,
+  getDebugRoleComposition,
 } from './debugSettingsModel';
 import { EXPANSION_RANDOM_KEY, TEMPORARY_STARS_CALL_KEY } from '../../game/setup';
 
@@ -74,5 +75,17 @@ describe('debugSettingsModel', () => {
       key: 'NYA',
       name: '',
     });
+  });
+
+  it('支持固定五人身份配比并对非法值回退随机', () => {
+    expect(getDebugRoleComposition('3-1-1').counts).toBeNull();
+    expect(getDebugRoleComposition('2-2-1').counts).toEqual({
+      寻宝者: 2,
+      追猎者: 2,
+      邪祀者: 1,
+    });
+    expect(getDebugRoleComposition('2-1-2').counts).toBeNull();
+    expect(getDebugRoleComposition('1-2-2').counts).toBeNull();
+    expect(getDebugRoleComposition('bad').counts).toBeNull();
   });
 });

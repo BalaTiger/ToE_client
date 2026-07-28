@@ -7,6 +7,20 @@ import {
 import { makePlayer } from './factory';
 
 describe('statEvents', () => {
+  it('旧的 SAN 伤害步骤不会把已降到 6 的显示值回滚到 7', () => {
+    const displayStats = [{ hp: 10, san: 6 }];
+    const staleDamage = [{
+      type: 'SAN_LOSS',
+      target: 0,
+      from: { hp: 10, san: 9 },
+      to: { hp: 10, san: 7 },
+    }];
+
+    expect(applyStatEventsToDisplayStats(displayStats, staleDamage, 'SAN_DAMAGE')).toEqual([
+      { hp: 10, san: 6 },
+    ]);
+  });
+
   it('从玩家前后状态生成 HP/SAN 事件', () => {
     const before = [
       makePlayer({ hp: 10, san: 8 }),

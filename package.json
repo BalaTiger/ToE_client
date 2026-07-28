@@ -13,6 +13,7 @@
     "lint": "eslint .",
     "test": "vitest",
     "test:run": "vitest run",
+    "sim:headless": "node scripts/simulate-headless.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

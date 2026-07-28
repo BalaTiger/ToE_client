@@ -640,6 +640,51 @@ export function buildCardEffectAnimStep(event, state) {
       msgs: event.msgs,
     });
   }
+  if (event.effectKey === 'forcedRandomDiscard') {
+    const initialPlayers = Array.isArray(event.beforePlayers) ? event.beforePlayers : [];
+    const initialDiscard = Array.isArray(event.beforeDiscard) ? event.beforeDiscard : [];
+    let cursorPlayers = initialPlayers;
+    let cursorDiscard = initialDiscard;
+    const discardEvents = Array.isArray(event.discardEvents) ? event.discardEvents : [];
+    const steps = discardEvents.map((discardEvent, index) => {
+      const playerIndex = discardEvent?.playerIndex ?? event.actorIdx ?? 0;
+      const playerName = state?.players?.[playerIndex]?.name || initialPlayers?.[playerIndex]?.name || '该玩家';
+      const nextPlayers = Array.isArray(discardEvent?.afterPlayers)
+        ? discardEvent.afterPlayers
+        : (event.afterPlayers || state?.players || cursorPlayers);
+      const nextDiscard = Array.isArray(discardEvent?.afterDiscard)
+        ? discardEvent.afterDiscard
+        : (event.afterDiscard || state?.discard || cursorDiscard);
+      const step = {
+        type: 'DISCARD',
+        card: discardEvent?.card || null,
+        cards: discardEvent?.card ? [discardEvent.card] : [],
+        count: 1,
+        triggerName: localDisplayName(playerIndex, playerName),
+        targetPid: playerIndex,
+        msgs: index === 0 && Array.isArray(event.msgs) ? event.msgs : [],
+        // Unlike queueStart setup, stepStart keeps the preceding draw/income
+        // presentation intact and restores the hand only when the forced
+        // discard itself begins.
+        visualSetupTiming: 'stepStart',
+        visualSetupPatch: {
+          players: cursorPlayers,
+          discard: cursorDiscard,
+        },
+        visualTimeline: [
+          { atMs: 0, patch: { players: cursorPlayers, discard: cursorDiscard } },
+          { atMs: 900, patch: { players: nextPlayers, discard: nextDiscard } },
+        ],
+      };
+      cursorPlayers = nextPlayers;
+      cursorDiscard = nextDiscard;
+      return step;
+    });
+    return {
+      type: 'COMPOSITE',
+      steps,
+    };
+  }
   if (event.effectKey === 'geomagneticReversal') {
     const payload = event.payload || {};
     const baseSync = buildSyncedCardEffectTimeline({

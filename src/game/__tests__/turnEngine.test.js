@@ -42,6 +42,31 @@ describe('checkWin death handling', () => {
 });
 
 describe('地磁反转暗抽', () => {
+  it('普通牌堆为空时仍从弃牌堆抽取反转复原，不把它重洗回普通牌堆', () => {
+    const players = [makePlayer({ role: ROLE_TREASURE })];
+    const restoreCard = {
+      id: 'gmr-test',
+      name: '反转复原',
+      type: 'geomagneticRestore',
+      isGeomagneticRestore: true,
+    };
+    const gs = makeGs({
+      players,
+      deck: [],
+      discard: [restoreCard],
+      geomagneticReversalActive: true,
+      log: [],
+    });
+
+    const result = playerDrawCard(players, [], [restoreCard], 0, gs);
+
+    expect(result.drawnCard).toBeNull();
+    expect(result.D).toEqual([]);
+    expect(result.Disc).toEqual([]);
+    expect(result.statePatch).toEqual({ geomagneticReversalActive: false });
+    expect(result.effectMsgs[0]).toContain('反转复原');
+  });
+
   it('从弃牌堆暗抽到邪神牌时仍触发遭遇邪神，不直接进入手牌', () => {
     const players = [makePlayer({ role: ROLE_TREASURE, san: 10, godEncounters: 0 })];
     const godCard = makeGodCard('NYA');
@@ -735,6 +760,26 @@ describe('turnEngine stat events', () => {
     expect(result.players[2].san).toBe(9);
   });
 
+  it('AI 回合开始的普通摸牌分支会递增正式回合数', () => {
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦' }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 0,
+      turn: 8,
+      log: [],
+      deck: [makeZoneCard('A2')],
+    });
+
+    const result = startNextTurn(gs, { allAi: true });
+
+    expect(result.currentTurn).toBe(1);
+    expect(result.turn).toBe(9);
+    expect(result.phase).toBe('AI_TURN');
+  });
+
   it('回合开始黑山羊幼仔造成损失时，撒托古亚黏液可打断到平分选择', () => {
     const players = [
       makePlayer({ name: '你' }),
@@ -1002,8 +1047,46 @@ describe('turnEngine stat events', () => {
     const popStep = queue.find(step => step.type === 'TSG_SLIME_POP');
 
     expect(popStep).toMatchObject({ targetPid: 1, count: 1, cards: [slime] });
+    expect(popStep.visualSetupPatch.players[1].hand).toContain(slime);
+    expect(popStep.visualTimeline.at(-1).patch.players[1].hand).not.toContain(slime);
     expect(queue.some(step => step.type === 'CARD_TRANSFER' && step.dest === 'discard')).toBe(false);
     expect(queue.some(step => step.type === 'DISCARD' && step.card?.id === slime.id)).toBe(false);
+  });
+
+  it('AI 摸到夜风呼啸时日志与数值动画都在检定之前', () => {
+    const nightWind = makeZoneCard('C4', 2);
+    const insomnia = { id: 'insomnia', name: '失眠', effect: 'disableRest', value: 1, type: 'negative' };
+    const players = [
+      makePlayer({ name: '你', san: 7 }),
+      makePlayer({ name: '贝拉', san: 7, role: ROLE_CULTIST }),
+      makePlayer({ name: '艾伦', san: 7 }),
+    ];
+    const gs = makeGs({
+      players,
+      deck: [nightWind],
+      currentTurn: 0,
+      inspectionDeck: [insomnia, insomnia, insomnia],
+      inspectionDiscard: [],
+      debugForceCardKeepPending: 'keep',
+      debugForceCardKeepTarget: 1,
+      log: [],
+    });
+
+    const result = startNextTurn(gs);
+    const damageLogIdx = result.log.findIndex(line => line === '全体存活角色失去 1 HP 和 SAN');
+    const inspectionLogIdx = result.log.findIndex(line => line.includes('的SAN检定结果为'));
+    const queue = buildTurnStartDrawReplayQueue({ oldGs: gs, newGs: result }).queue;
+    const drawIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === nightWind.id);
+    const windIdx = queue.findIndex(step => step.type === 'NIGHT_WIND');
+    const sanDamageIdx = queue.findIndex(step => step.type === 'SAN_DAMAGE');
+    const inspectionDrawIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.inspectionSeq != null);
+
+    expect(damageLogIdx).toBeGreaterThan(-1);
+    expect(inspectionLogIdx).toBeGreaterThan(damageLogIdx);
+    expect(drawIdx).toBeGreaterThan(-1);
+    expect(windIdx).toBeGreaterThan(drawIdx);
+    expect(sanDamageIdx).toBeGreaterThan(windIdx);
+    expect(inspectionDrawIdx).toBeGreaterThan(sanDamageIdx);
   });
 
   it('禁用摸牌时不会触发或消耗撒托古亚黏液', () => {

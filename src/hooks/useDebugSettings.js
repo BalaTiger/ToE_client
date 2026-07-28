@@ -11,6 +11,7 @@ const DEBUG_FORCE_GOD_CARD_KEY = 'cthulhu_debug_force_god_card_key';
 const DEBUG_TUTORIAL_PROMPT_MODE_KEY = 'cthulhu_debug_tutorial_prompt_mode';
 const DEBUG_FORCE_TUTORIAL_PROMPT_KEY = 'cthulhu_debug_force_tutorial_prompt';
 const DEBUG_EXPANSION_KEY = 'cthulhu_debug_expansion';
+const DEBUG_ROLE_COMPOSITION_KEY = 'cthulhu_debug_role_composition';
 
 function normalizeTutorialPromptMode(mode) {
   return mode === 'show' || mode === 'hide' ? mode : 'default';
@@ -32,6 +33,9 @@ export function useDebugSettings({
   );
   const [debugForceGodCardKey, setDebugForceGodCardKey] = useState(() => isLocalTestMode && safeLS.get(DEBUG_FORCE_GOD_CARD_KEY) || 'NYA');
   const [debugExpansionKey, setDebugExpansionKey] = useState(() => isLocalTestMode && safeLS.get(DEBUG_EXPANSION_KEY) || '地神的潜影');
+  const [debugRoleCompositionKey, setDebugRoleCompositionKey] = useState(
+    () => isLocalTestMode && safeLS.get(DEBUG_ROLE_COMPOSITION_KEY) || 'random'
+  );
   const [debugTutorialPromptMode, setDebugTutorialPromptMode] = useState(() => {
     if (!isLocalTestMode) return 'default';
     const mode = normalizeTutorialPromptMode(safeLS.get(DEBUG_TUTORIAL_PROMPT_MODE_KEY));
@@ -51,6 +55,7 @@ export function useDebugSettings({
         debugForceGodCardKey: null,
         debugTutorialPromptMode: 'default',
         debugExpansionKey: expansionRandomKey,
+        debugRoleCompositionKey: 'random',
       };
     }
     return {
@@ -63,6 +68,7 @@ export function useDebugSettings({
       debugForceGodCardKey,
       debugTutorialPromptMode,
       debugExpansionKey,
+      debugRoleCompositionKey,
     };
   }, [
     localDebugMode,
@@ -75,6 +81,7 @@ export function useDebugSettings({
     debugForceGodCardKey,
     debugTutorialPromptMode,
     debugExpansionKey,
+    debugRoleCompositionKey,
     expansionRandomKey,
   ]);
 
@@ -106,7 +113,8 @@ export function useDebugSettings({
   useEffect(() => {
     if (!isLocalTestMode) return;
     safeLS.set(DEBUG_EXPANSION_KEY, debugExpansionKey);
-  }, [isLocalTestMode, debugExpansionKey]);
+    safeLS.set(DEBUG_ROLE_COMPOSITION_KEY, debugRoleCompositionKey);
+  }, [isLocalTestMode, debugExpansionKey, debugRoleCompositionKey]);
 
   useEffect(() => {
     if (!isLocalTestMode) return;
@@ -137,5 +145,7 @@ export function useDebugSettings({
     setDebugTutorialPromptMode,
     debugExpansionKey,
     setDebugExpansionKey,
+    debugRoleCompositionKey,
+    setDebugRoleCompositionKey,
   };
 }

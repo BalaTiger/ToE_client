@@ -811,8 +811,86 @@ export function chooseFirstComePickForAI(cards, ci, players) {
 export function getHunterChaseTargets(players, hunterIdx, huntAbandoned = []) {
   return players
     .map((player, idx) => ({ player, idx }))
-    .filter(({ player, idx }) => !player.isDead && idx !== hunterIdx && player.role !== ROLE_HUNTER && !huntAbandoned.includes(idx))
+    .filter(({ player, idx }) => (
+      !player.isDead
+      && idx !== hunterIdx
+      && !(player.roleRevealed && player.role === ROLE_HUNTER)
+      && !huntAbandoned.includes(idx)
+    ))
     .filter(({ player }) => hasHuntRevealableCard(player));
+}
+
+export function getHunterLowQualityConfidence(gs, players, hunterIdx) {
+  const hunter = players?.[hunterIdx];
+  const memory = hunter?.huntQualityMemory;
+  if (!memory || !Array.isArray(memory.handIds) || memory.handIds.length === 0) return 0;
+  const currentIds = new Set((hunter.hand || []).map(card => card?.id).filter(id => id != null));
+  const retained = memory.handIds.filter(id => currentIds.has(id)).length;
+  const retention = retained / memory.handIds.length;
+  if (retention < 0.5) return 0;
+
+  const livingCount = Math.max(1, players.filter(player => player && !player.isDead).length);
+  const turnGap = Math.max(0, (gs?.turn || 0) - (memory.turn || 0));
+  const elapsedRounds = Math.floor(turnGap / livingCount);
+  if (elapsedRounds >= 3) return 0;
+
+  const timeFactor = elapsedRounds <= 0 ? 1 : elapsedRounds === 1 ? 0.75 : 0.45;
+  const handSizeDrift = Math.abs((hunter.hand || []).length - (memory.handSize || memory.handIds.length));
+  const driftPenalty = handSizeDrift <= 1 ? 1 : handSizeDrift === 2 ? 0.75 : 0.45;
+  return retention * timeFactor * driftPenalty;
+}
+
+export function evaluateHunterChaseHandQuality(gs, players, hunterIdx) {
+  const hunter = players?.[hunterIdx];
+  const hand = hunter?.hand || [];
+  const zoneCards = hand.filter(card => isZoneCard(card) && canRevealForHunt(card));
+  const zoneRatio = zoneCards.length / Math.max(1, hand.length);
+  const baseScore = zoneCards.length >= 4
+    ? 1
+    : zoneCards.length === 3
+      ? 0.86
+      : zoneCards.length === 2
+        ? 0.7
+        : zoneCards.length === 1
+          ? 0.34
+          : 0;
+  const ratioBonus = Math.max(-0.12, Math.min(0.12, (zoneRatio - 0.5) * 0.3));
+  const lowQualityConfidence = getHunterLowQualityConfidence(gs, players, hunterIdx);
+  const rememberedFailures = hunter?.huntQualityMemory?.failedChainCount
+    ?? hunter?.huntQualityMemory?.failedTargetCount
+    ?? 0;
+  const failurePenalty = lowQualityConfidence * Math.min(0.65, rememberedFailures * 0.25);
+  const score = Math.max(0, Math.min(1, baseScore + ratioBonus - failurePenalty));
+  return {
+    suitable: zoneCards.length >= 2 && score >= 0.55,
+    score,
+    zoneCardCount: zoneCards.length,
+    zoneRatio,
+    lowQualityConfidence,
+    rememberedFailures,
+  };
+}
+
+export function orderHunterChaseTargets(players, hunterIdx, targets, random = Math.random) {
+  const hunterLimit = Math.floor((players?.length || 0) / 2);
+  const revealedHunterCount = (players || []).filter(player => (
+    player && player.roleRevealed && player.role === ROLE_HUNTER
+  )).length;
+  const allUnrevealedAreSafe = hunterLimit > 0 && revealedHunterCount >= hunterLimit;
+  const safeTargets = (targets || []).filter(({ player }) => (
+    (player.roleRevealed && player.role !== ROLE_HUNTER)
+    || (!player.roleRevealed && allUnrevealedAreSafe)
+  ));
+  const shouldConcentrate = safeTargets.length > 0;
+  const pool = (shouldConcentrate ? safeTargets : (targets || []))
+    .map(target => ({ target, tieBreaker: random() }));
+  pool.sort((a, b) => {
+    const hpOrder = shouldConcentrate
+      ? (a.target.player.hp - b.target.player.hp)
+      : (b.target.player.hp - a.target.player.hp);
+    return hpOrder || (a.tieBreaker - b.tieBreaker);
+  });
+  return pool.map(({ target }) => target);
 }
 
 export function shouldHunterKeepChasing(players, hunterIdx, huntAbandoned = []) {
@@ -879,15 +957,23 @@ export function decideAiSkillUsage(gs, players, ct, aiEffRole, hunterTargets = [
   const canUseSkill = !self.disableSkill && !gs?.restUsed && (aiEffRole === ROLE_HUNTER ? true : !gs?.skillUsed);
   const hunterHuntCards = (self.hand || []).filter(canRevealForHunt);
   const hunterHandLimit = self._nyaHandLimit ?? 4;
-  const hunterOverLimit = hunterHuntCards.length > hunterHandLimit;
+  const hunterOverLimit = (self.hand || []).length > hunterHandLimit;
   const someoneWounded = players.some((p, i) => i !== ct && !p.isDead && p.hp < 10);
+  const hunterHandQuality = aiEffRole === ROLE_HUNTER
+    ? evaluateHunterChaseHandQuality(gs, players, ct)
+    : null;
+  const hunterCanChase = (
+    canUseSkill
+    && aiEffRole === ROLE_HUNTER
+    && hunterHuntCards.length > 0
+    && hunterTargets.length > 0
+    && !!hunterHandQuality?.suitable
+  );
+  const forceHunterChase = hunterCanChase && (hunterOverLimit || someoneWounded);
 
   const shouldHunterUseSkill =
-    canUseSkill &&
-    aiEffRole === ROLE_HUNTER &&
-    hunterHuntCards.length > 0 &&
-    hunterTargets.length > 0 &&
-    (hunterOverLimit || someoneWounded);
+    forceHunterChase
+    || (hunterCanChase && Math.random() < 0.85);
 
   const aliveOthers = players.some((p, i) => i !== ct && !p.isDead);
   const canBewitch = aiEffRole === ROLE_CULTIST && (self.hand || []).length > 0 && aliveOthers;
@@ -909,6 +995,8 @@ export function decideAiSkillUsage(gs, players, ct, aiEffRole, hunterTargets = [
     hunterHandLimit,
     hunterOverLimit,
     someoneWounded,
+    hunterHandQuality,
+    forceHunterChase,
   };
 }
 

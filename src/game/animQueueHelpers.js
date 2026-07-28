@@ -258,7 +258,9 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
         triggerName:beforePlayers[ev.target??0]?.name||"揭开真相",
         targetPid:ev.target??0,
         inspectionGainSeq:ev.seq,
+        // 暗抽收入手牌：保留飞牌落入手牌，但去掉背景运镜与中央翻牌。
         travelOnly:true,
+        disableDrawBackgroundCamera:true,
         durationMs:700,
         msgs:ev.gainedCardLog?[ev.gainedCardLog]:[],
       });
@@ -322,6 +324,14 @@ export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPl
       log:inspectionFlow.log,
       _statEventSeq:tailStatEventSeq,
       _inspectionSeq:maxInspectionSeq,
+      // The tail starts after every inspection in this batch. Visual events
+      // already present on the resolved state (for example 夜风呼啸 before a
+      // slime-balance pause) belong to the pre-inspection segment and must be
+      // part of this baseline, otherwise buildAnimQueue treats them as fresh
+      // and replays the card effect between two inspection reveals.
+      _visualEvents:Array.isArray(newGs?._visualEvents)
+        ?newGs._visualEvents
+        :(Array.isArray(baseOldGs?._visualEvents)?baseOldGs._visualEvents:[]),
     },
     newGs
   );

@@ -6,10 +6,12 @@ import {
 } from '../coreUtils';
 import {
   applyTemporaryStarsCallDeckReplacement,
+  applySelectedLocalRole,
   EXPANSION_RANDOM_KEY,
   initGame,
   mkDeck,
   mkRoles,
+  normalizeRoleCounts,
   resolveBattleExpansionPlan,
 } from '../setup';
 import { EXPANSIONS, getCardDisplayKey } from '../../constants/card';
@@ -323,8 +325,15 @@ describe('mkRoles', () => {
 
   it('2 人单人模式可强制玩家角色', () => {
     const roles = mkRoles(2, true, ROLE_TREASURE);
+    expect(roles[0]).toBe(ROLE_TREASURE);
     expect(roles).toContain(ROLE_TREASURE);
     expect(roles).toHaveLength(2);
+  });
+
+  it('2 人局不生成邪祀者，即使请求强制不存在的身份也保持正式配比', () => {
+    const roles = mkRoles(2, true, ROLE_CULTIST);
+    expect(roles).toEqual(expect.arrayContaining([ROLE_TREASURE, ROLE_HUNTER]));
+    expect(roles).not.toContain(ROLE_CULTIST);
   });
 
   it('3 人包含基础三角色', () => {
@@ -339,15 +348,40 @@ describe('mkRoles', () => {
     expect(roles).toHaveLength(5);
   });
 
-  it('角色数量不超过半数限制', () => {
-    const roles = mkRoles(5);
-    const counts = roles.reduce((acc, r) => {
-      acc[r] = (acc[r] || 0) + 1;
-      return acc;
-    }, {});
-    // 5 人时，非寻宝者角色最多 2 个
-    expect(counts[ROLE_HUNTER] || 0).toBeLessThanOrEqual(2);
-    expect(counts[ROLE_CULTIST] || 0).toBeLessThanOrEqual(2);
+  it('2至12人均遵循三职均分、余位补寻猎', () => {
+    for (const randomValue of [0, 0.2, 0.49, 0.75, 0.99]) {
+      vi.spyOn(Math, 'random').mockReturnValue(randomValue);
+      for (let n = 2; n <= 12; n++) {
+        const roles = mkRoles(n);
+        const treasureCount = roles.filter(role => role === ROLE_TREASURE).length;
+        const hunterCount = roles.filter(role => role === ROLE_HUNTER).length;
+        const cultistCount = roles.filter(role => role === ROLE_CULTIST).length;
+        const baseCount = Math.floor(n / 3);
+        expect(cultistCount).toBe(baseCount);
+        expect(treasureCount).toBeGreaterThanOrEqual(baseCount);
+        expect(hunterCount).toBeGreaterThanOrEqual(baseCount);
+        expect(Math.abs(treasureCount - hunterCount)).toBeLessThanOrEqual(1);
+        expect(cultistCount).toBeLessThanOrEqual(treasureCount);
+        expect(cultistCount).toBeLessThanOrEqual(hunterCount);
+      }
+    }
+  });
+
+  it('固定身份配比只接受符合均分规则的组合', () => {
+    expect(normalizeRoleCounts({
+      [ROLE_TREASURE]: 2,
+      [ROLE_HUNTER]: 2,
+      [ROLE_CULTIST]: 1,
+    }, 5)).toEqual({
+      [ROLE_TREASURE]: 2,
+      [ROLE_HUNTER]: 2,
+      [ROLE_CULTIST]: 1,
+    });
+    expect(normalizeRoleCounts({
+      [ROLE_TREASURE]: 3,
+      [ROLE_HUNTER]: 1,
+      [ROLE_CULTIST]: 1,
+    }, 5)).toBeNull();
   });
 
   it('总是包含至少 1 个寻宝者', () => {
@@ -357,11 +391,80 @@ describe('mkRoles', () => {
     }
   });
 
-  it('单人模式第 4 个角色按权重分配', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.1);
-    const roles = mkRoles(4, true);
-    expect(roles).toHaveLength(4);
-    expect(roles[0]).toBeTruthy();
+  it('4人局的唯一余位在寻宝者和追猎者间随机', () => {
+    Math.random.mockReturnValueOnce(0.49).mockReturnValue(0);
+    const treasureBonus = mkRoles(4);
+    expect(treasureBonus.filter(role => role === ROLE_TREASURE)).toHaveLength(2);
+    expect(treasureBonus.filter(role => role === ROLE_HUNTER)).toHaveLength(1);
+
+    Math.random.mockReturnValueOnce(0.5).mockReturnValue(0);
+    const hunterBonus = mkRoles(4);
+    expect(hunterBonus.filter(role => role === ROLE_TREASURE)).toHaveLength(1);
+    expect(hunterBonus.filter(role => role === ROLE_HUNTER)).toHaveLength(2);
+  });
+
+  it('5人局固定生成2寻宝、2追猎、1邪祀', () => {
+    const roles = mkRoles(5);
+    expect(roles.filter(role => role === ROLE_TREASURE)).toHaveLength(2);
+    expect(roles.filter(role => role === ROLE_HUNTER)).toHaveLength(2);
+    expect(roles.filter(role => role === ROLE_CULTIST)).toHaveLength(1);
+  });
+
+  it('身份池生成后会再次洗牌，不把职业固定到座位', () => {
+    Math.random.mockReturnValue(0);
+    const roles = mkRoles(5);
+    expect(roles).toEqual([
+      ROLE_TREASURE,
+      ROLE_HUNTER,
+      ROLE_HUNTER,
+      ROLE_CULTIST,
+      ROLE_TREASURE,
+    ]);
+  });
+
+  it('Debug 固定角色数量时精确生成并随机打乱座次', () => {
+    const roles = mkRoles(5, true, null, {
+      [ROLE_TREASURE]: 2,
+      [ROLE_HUNTER]: 2,
+      [ROLE_CULTIST]: 1,
+    });
+    expect(roles.filter(role => role === ROLE_TREASURE)).toHaveLength(2);
+    expect(roles.filter(role => role === ROLE_HUNTER)).toHaveLength(2);
+    expect(roles.filter(role => role === ROLE_CULTIST)).toHaveLength(1);
+  });
+
+  it('非法固定角色数量回退正式随机规则', () => {
+    const roles = mkRoles(5, true, null, {
+      [ROLE_TREASURE]: 3,
+      [ROLE_HUNTER]: 3,
+      [ROLE_CULTIST]: 0,
+    });
+    expect(roles).toHaveLength(5);
+    expect(roles).toContain(ROLE_TREASURE);
+  });
+
+  it('固定配比下选择本地身份会与 AI 对调并保持总数', () => {
+    const players = [
+      { role: ROLE_TREASURE },
+      { role: ROLE_TREASURE },
+      { role: ROLE_HUNTER },
+      { role: ROLE_HUNTER },
+      { role: ROLE_CULTIST },
+    ];
+    const state = {
+      players,
+      _playersBeforeThisDraw: players.map(player => ({ ...player })),
+      debugFixedRoleCounts: {
+        [ROLE_TREASURE]: 2,
+        [ROLE_HUNTER]: 2,
+        [ROLE_CULTIST]: 1,
+      },
+    };
+    const result = applySelectedLocalRole(state, ROLE_HUNTER);
+    expect(result.players[0].role).toBe(ROLE_HUNTER);
+    expect(result.players.filter(player => player.role === ROLE_TREASURE)).toHaveLength(2);
+    expect(result.players.filter(player => player.role === ROLE_HUNTER)).toHaveLength(2);
+    expect(result._playersBeforeThisDraw.map(player => player.role)).toEqual(result.players.map(player => player.role));
   });
 });
 

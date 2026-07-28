@@ -48,6 +48,21 @@ export function canClickDiscardCard({
   return selectedDiscardIndices.includes(cardIndex) || selectedDiscardIndices.length < max;
 }
 
+export function getRestActionBlockReason({
+  phase,
+  isBlocked = false,
+  gs,
+  player,
+} = {}) {
+  if (phase !== 'ACTION') return 'phase';
+  if (isBlocked) return 'blocked';
+  if (gs?.restUsed) return 'alreadyRested';
+  if (gs?.skillUsed) return 'skillUsed';
+  if (gs?.multiplyUsed) return 'multiplyUsed';
+  if (player?.disableRest) return 'disableRest';
+  return null;
+}
+
 export function canClickHandCard({
   phase,
   card,

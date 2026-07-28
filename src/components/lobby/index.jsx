@@ -8,13 +8,13 @@ import { LoadingPentagramSpinner } from '../LoadingPentagramSpinner';
 import { NARRATOR_AVATAR } from '../tutorial/InGameTutorialOverlay';
 import {
   decodeDebugCardValue,
+  DEBUG_ROLE_COMPOSITION_OPTIONS,
   encodeDebugGodCardValue,
   encodeDebugZoneCardValue,
   getDebugCardSelection,
   getDebugExpansionSelection,
   getExpansionDefaults,
   getFirstZoneCardForSlot,
-  getExpansionZoneCards,
 } from './debugSettingsModel';
 
 const smallBtnStyle = {
@@ -378,6 +378,7 @@ function DebugSettingsPanel({
   debugForceGodCardKey, setDebugForceGodCardKey,
   debugTutorialPromptMode, setDebugTutorialPromptMode,
   debugExpansionKey, setDebugExpansionKey,
+  debugRoleCompositionKey, setDebugRoleCompositionKey,
 }) {
   const [zoneLetterTab, setZoneLetterTab] = useState('A');
   const [zoneNumTab, setZoneNumTab] = useState('1');
@@ -494,6 +495,22 @@ function DebugSettingsPanel({
             <option key={option.key} value={option.key}>{option.label}</option>
           ))}
         </select>
+      </div>
+
+      <div style={sectionStyle}>
+        <h4 style={sectionTitleStyle}>下局身份配比（5人单机）</h4>
+        <select
+          value={debugRoleCompositionKey}
+          onChange={(e) => setDebugRoleCompositionKey(e.target.value)}
+          style={selectStyle}
+        >
+          {DEBUG_ROLE_COMPOSITION_OPTIONS.map(option => (
+            <option key={option.key} value={option.key}>{option.label}</option>
+          ))}
+        </select>
+        <div style={{ marginTop: 6, color: '#80663e', fontSize: 11, lineHeight: 1.45 }}>
+          固定配比会随机打乱座次；开局选择身份时与一名 AI 对调身份，配比保持不变。
+        </div>
       </div>
 
       <div style={sectionStyle}>
@@ -761,6 +778,7 @@ function DebugControls({
   debugForceGodCardKey, setDebugForceGodCardKey,
   debugTutorialPromptMode, setDebugTutorialPromptMode,
   debugExpansionKey, setDebugExpansionKey,
+  debugRoleCompositionKey, setDebugRoleCompositionKey,
 }) {
   if (!isLocalTestMode) return null;
   return (
@@ -817,6 +835,7 @@ function DebugControls({
         debugForceGodCardKey={debugForceGodCardKey} setDebugForceGodCardKey={setDebugForceGodCardKey}
         debugTutorialPromptMode={debugTutorialPromptMode} setDebugTutorialPromptMode={setDebugTutorialPromptMode}
         debugExpansionKey={debugExpansionKey} setDebugExpansionKey={setDebugExpansionKey}
+        debugRoleCompositionKey={debugRoleCompositionKey} setDebugRoleCompositionKey={setDebugRoleCompositionKey}
       />
     </>
   );

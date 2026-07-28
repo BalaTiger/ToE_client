@@ -26,6 +26,8 @@ import {
   decideAiSkillUsage,
   shouldAiRest,
   getHunterChaseTargets,
+  getHunterLowQualityConfidence,
+  orderHunterChaseTargets,
   canCultistWinByBewitch,
   canCultistEmptyHandByBewitch,
   aiShouldKeepZoneCard,
@@ -195,7 +197,7 @@ function getBlackGoatMultiplyEvent(players, sourceIdx) {
       const aBgy = a.p.hand.filter(isBlackGoatYoung).length;
       const bBgy = b.p.hand.filter(isBlackGoatYoung).length;
       if (aBgy !== bBgy) return aBgy - bBgy;
-      return a.p.hp - b.p.hp;
+      return a.p.hp - b.p.hp || b.p.san - a.p.san;
     });
   if (!targetCandidates.length) return null;
   return { fromIdx: sourceIdx, toIdx: targetCandidates[0].i };
@@ -238,26 +240,6 @@ function bestCultistBewitchSanLoss(hand = []) {
   }, 0);
 }
 
-function getHunterLowQualityConfidence(gs, players, hunterIdx) {
-  const hunter = players?.[hunterIdx];
-  const memory = hunter?.huntQualityMemory;
-  if (!memory || !Array.isArray(memory.handIds) || memory.handIds.length === 0) return 0;
-  const currentIds = new Set((hunter.hand || []).map(card => card?.id).filter(id => id != null));
-  const retained = memory.handIds.filter(id => currentIds.has(id)).length;
-  const retention = retained / memory.handIds.length;
-  if (retention < 0.5) return 0;
-
-  const livingCount = Math.max(1, players.filter(p => p && !p.isDead).length);
-  const turnGap = Math.max(0, (gs?.turn || 0) - (memory.turn || 0));
-  const elapsedRounds = Math.floor(turnGap / livingCount);
-  if (elapsedRounds >= 3) return 0;
-
-  const timeFactor = elapsedRounds <= 0 ? 1 : elapsedRounds === 1 ? 0.75 : 0.45;
-  const handSizeDrift = Math.max(0, (hunter.hand || []).length - (memory.handSize || memory.handIds.length));
-  const driftPenalty = handSizeDrift <= 1 ? 1 : handSizeDrift === 2 ? 0.75 : 0.45;
-  return retention * timeFactor * driftPenalty;
-}
-
 function hasImmediateHunterKill(players, hunterIdx, huntAbandoned = []) {
   const hunter = players?.[hunterIdx];
   if (!hunter || hunter.isDead || !(hunter.hand || []).some(isZoneCard)) return false;
@@ -277,38 +259,24 @@ function markHunterLowQualityHand(players, hunterIdx, gs, attemptedTargets) {
     hunter.huntQualityMemory = null;
     return;
   }
+  const previousMemory = hunter.huntQualityMemory;
+  const previousIds = new Set(previousMemory?.handIds || []);
+  const retainedFromPrevious = handIds.filter(id => previousIds.has(id)).length;
+  const sameStructure = previousIds.size > 0 && retainedFromPrevious / previousIds.size >= 0.5;
   hunter.huntQualityMemory = {
     turn: gs?.turn || 0,
     handIds,
     handSize: hunter.hand.length,
     failedTargetCount: attemptedTargets,
+    failedChainCount: sameStructure
+      ? (previousMemory.failedChainCount ?? previousMemory.failedTargetCount ?? 1) + 1
+      : 1,
   };
 }
 
 function clearHunterLowQualityHand(players, hunterIdx) {
   const hunter = players?.[hunterIdx];
   if (hunter) hunter.huntQualityMemory = null;
-}
-
-function getHunterTargetWeight({ player }) {
-  const missingHp = clamp(10 - (player?.hp ?? 10), 0, 10);
-  return 1 + missingHp * 0.15 + (player?.roleRevealed ? 0.35 : 0);
-}
-
-function weightedHunterTargetOrder(targets) {
-  const pool = targets.map(target => ({ target, weight: getHunterTargetWeight(target) }));
-  const order = [];
-  while (pool.length) {
-    const total = pool.reduce((sum, item) => sum + item.weight, 0);
-    let roll = Math.random() * total;
-    let pick = pool.length - 1;
-    for (let i = 0; i < pool.length; i++) {
-      roll -= pool[i].weight;
-      if (roll < 0) { pick = i; break; }
-    }
-    order.push(pool.splice(pick, 1)[0].target);
-  }
-  return order;
 }
 
 function shouldAiMultiply({ gs, players, sourceIdx, aiEffRole, ai, aiSkillDecision, cultistBewitchPlan, huntAbandoned }) {
@@ -585,7 +553,7 @@ export function aiStep(gs, opts = {}) {
         _L.splice(0, _L.length, ...processed.L);
       }
       const godResolveGs = { ..._gs, ...inspectionMeta };
-      const shouldDeferShuTarget = _sc.godKey === 'SHU' && _ti === 0;
+      const shouldDeferShuTarget = _sc.godKey === 'SHU' && _ti === 0 && !opts.allAi;
       const gr = aiHandleGodCard(_ti, _sc, _P, _D, _Disc, _L, godResolveGs, true, true, { deferShuTarget: shouldDeferShuTarget });
       _P = gr.P; _D = gr.D; _Disc = gr.Disc;
       const mergedInspectionMeta = {
@@ -596,7 +564,18 @@ export function aiStep(gs, opts = {}) {
       _gs = { ..._gs, ...mergedInspectionMeta, ...(gr.statePatch || {}) };
     } else {
       _P[_ti].hand.push(_sc);
-      fxResult = applyFx(_sc, _ti, _sc.type === 'swapAllHands' ? null : _ti, _P, _D, _Disc, _gs);
+      fxResult = applyFx(
+        _sc,
+        _ti,
+        _sc.type === 'swapAllHands' ? null : _ti,
+        _P,
+        _D,
+        _Disc,
+        _gs,
+        false,
+        [],
+        !!opts.allAi,
+      );
       _P = fxResult.P; _D = fxResult.D; _Disc = fxResult.Disc;
       _L.push(...fxResult.msgs);
       _gs = { ..._gs, ...fxResult.statePatch };
@@ -742,7 +721,7 @@ export function aiStep(gs, opts = {}) {
 
       // 目标角色选择牌
       let targetCardIndex, targetCard;
-      if(targetIdx===0){
+      if(targetIdx===0&&!opts.allAi){
         // 玩家作为目标角色，需要选择牌
         return withClearedTurnAnimFields({
           ...gs,
@@ -863,8 +842,17 @@ export function aiStep(gs, opts = {}) {
     treasureSwapPlan=chooseAiTreasureSwapPlan(P,ct,treasureSwapTargets,swapTargetOverride.targetIdx);
     if(!treasureSwapPlan)swapTargetOverride=null;
   }
+  let newAbandoned = gs.huntAbandoned || [];
+  const getHunterTargets = () => getHunterChaseTargets(P,ct,newAbandoned);
+  const preRestHunterDecision = aiEffRole === ROLE_HUNTER
+    ? decideAiSkillUsage(gs,P,ct,aiEffRole,getHunterTargets())
+    : null;
+  const hunterHasImmediateKill = aiEffRole === ROLE_HUNTER
+    && hasImmediateHunterKill(P,ct,newAbandoned);
+  const hunterMustChase = !!preRestHunterDecision?.forceHunterChase || hunterHasImmediateKill;
   const shouldRest=(()=>{
     if(noRestReason?.shouldNotRest&&(aiEffRole!==ROLE_TREASURE||!!swapTargetOverride))return false;
+    if(aiEffRole===ROLE_HUNTER&&hunterMustChase)return false;
     return shouldAiRest(gs, P[ct], aiEffRole);
   })();
   if(shouldRest){
@@ -884,12 +872,11 @@ export function aiStep(gs, opts = {}) {
     const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,restUsed:true,skillUsed:false,...restStatPatch,...replayed.statePatch,_aiEndTurnReplayQueue:replayed.replayQueue,_aiEndTurnReplayMsgs:replayed.replayMsgs}, opts);
     return buildReturnPack(nextGs, _P_afterRest, _P_beforeEndTurnReplay);
   }
-// 追猎者/邪祀者积极发动技能(65%); 寻宝者随进度提升(35%→55%)
+  // 追猎者按手牌结构与近期追捕失败记录评估；邪祀者积极蛊惑，寻宝者随进度提高掉包意愿。
   let huntContinue = true;
-  let newAbandoned = gs.huntAbandoned || [];
-  const getHunterTargets = () => getHunterChaseTargets(P,ct,newAbandoned);
-  const aiSkillDecision=decideAiSkillUsage(gs,P,ct,aiEffRole,getHunterTargets());
+  const aiSkillDecision=preRestHunterDecision||decideAiSkillUsage(gs,P,ct,aiEffRole,getHunterTargets());
   let useSkill=aiSkillDecision.useSkill;
+  if(hunterHasImmediateKill)useSkill=true;
   if(gs.multiplyUsed) useSkill=false;
   let cultistBewitchPlan = null;
   if (aiEffRole === ROLE_CULTIST && useSkill) {
@@ -975,7 +962,7 @@ export function aiStep(gs, opts = {}) {
         while (huntContinue && hasHuntRevealableCard(P[ct])) {
         const validTargets = getHunterTargets();
         if (validTargets.length > 0) {
-          const sortedTargets = weightedHunterTargetOrder(validTargets);
+          const sortedTargets = orderHunterChaseTargets(P,ct,validTargets);
 
           // 遍历所有目标，直到找到可以追捕的目标或用完所有目标
           let foundTarget = false;
@@ -988,7 +975,7 @@ export function aiStep(gs, opts = {}) {
               newAbandoned = [...new Set([...newAbandoned, ti])];
               continue;
             }
-            if (ti === 0) {
+            if (ti === 0 && !opts.allAi) {
               const huntPromptLogStart = L.length;
               L.push(`${ai.name}（追猎者）向你发动【追捕】！请选择亮出一张手牌`);
               aiHuntEvents.push({

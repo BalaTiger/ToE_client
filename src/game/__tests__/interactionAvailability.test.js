@@ -6,9 +6,28 @@ import {
   canRespondWithFireHandCard,
   canRespondWithZoneCard,
   canUseTutorialHandCard,
+  getRestActionBlockReason,
 } from '../interactionAvailability';
 
 describe('interactionAvailability', () => {
+  it('失眠时休息按钮与执行入口使用相同的禁用原因', () => {
+    expect(getRestActionBlockReason({
+      phase: 'ACTION',
+      isBlocked: false,
+      gs: { restUsed: false, skillUsed: false, multiplyUsed: false },
+      player: { disableRest: true },
+    })).toBe('disableRest');
+  });
+
+  it('邪神升级后未使用技能且未失眠时仍可休息', () => {
+    expect(getRestActionBlockReason({
+      phase: 'ACTION',
+      isBlocked: false,
+      gs: { restUsed: false, skillUsed: false, multiplyUsed: false, godFromHandUsed: true },
+      player: { disableRest: false, godName: 'APO', godLevel: 2 },
+    })).toBeNull();
+  });
+
   it('追捕响应只允许可亮出的手牌', () => {
     expect(canRespondWithZoneCard({
       phase: 'PLAYER_REVEAL_FOR_HUNT',

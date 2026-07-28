@@ -10,6 +10,18 @@ import {
   STARS_CALL_KEY,
   TEMPORARY_STARS_CALL_KEY,
 } from '../../game/setup';
+import { ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../../game/coreUtils';
+
+export const DEBUG_ROLE_COMPOSITION_RANDOM = 'random';
+export const DEBUG_ROLE_COMPOSITION_OPTIONS = [
+  { key: DEBUG_ROLE_COMPOSITION_RANDOM, label: '按正式规则随机', counts: null },
+  { key: '2-2-1', label: '寻宝者 : 追猎者 : 邪祀者 = 2 : 2 : 1', counts: { [ROLE_TREASURE]: 2, [ROLE_HUNTER]: 2, [ROLE_CULTIST]: 1 } },
+];
+
+export function getDebugRoleComposition(key) {
+  return DEBUG_ROLE_COMPOSITION_OPTIONS.find(option => option.key === key)
+    || DEBUG_ROLE_COMPOSITION_OPTIONS[0];
+}
 
 export const DEBUG_ZONE_CARD_KEYS = LETTERS.flatMap(letter => NUMS.map(number => `${letter}${number}`));
 

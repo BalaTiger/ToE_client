@@ -429,7 +429,15 @@ export function buildAnimQueue(oldGs, newGs) {
   const moldyRoll = newGs?._moldyFoodDiceRoll;
   const moldySeq = moldyRoll?.seq ?? newGs?._moldyFoodDiceSeq;
   const oldMoldySeq = oldGs?._moldyFoodDiceSeq || oldGs?._moldyFoodDiceRoll?.seq || 0;
-  if (moldyRoll && moldyRoll.d1 != null && (moldySeq == null || moldySeq > oldMoldySeq)) {
+  const hasFreshMoldyFoodLog = newMsgs.some(line => (
+    typeof line === 'string' && line.startsWith('【霉变食物】') && line.includes('掷出')
+  ));
+  if (
+    moldyRoll &&
+    moldyRoll.d1 != null &&
+    hasFreshMoldyFoodLog &&
+    (moldySeq == null || moldySeq > oldMoldySeq)
+  ) {
     q.unshift({
       type: 'DICE_ROLL',
       diceMode: 'moldyFood',
@@ -465,6 +473,27 @@ export function buildAnimQueue(oldGs, newGs) {
 
 export function buildFullHandSwapTransferQueueFromLogs(logs, players, options = {}) {
   return buildFullHandSwapStepsFromLogs(logs, players, options);
+}
+
+export function getAiPreHuntActionSteps(actionSteps = [], actionMsgs = []) {
+  const messages = Array.isArray(actionMsgs) ? actionMsgs : [];
+  const firstHuntLogIdx = messages.findIndex(line => (
+    typeof line === 'string' && (line.includes('【追捕】') || line.includes('追捕'))
+  ));
+  if (firstHuntLogIdx < 0) return [];
+
+  return (Array.isArray(actionSteps) ? actionSteps : []).filter(step => {
+    const stepLines = [
+      ...(Array.isArray(step?._logChunk) ? step._logChunk : []),
+      ...(Array.isArray(step?.msgs) ? step.msgs : []),
+    ].filter(line => typeof line === 'string' && line.length);
+    if (!stepLines.length) return false;
+    const stepLogIdx = stepLines
+      .map(line => messages.findIndex(message => message === line))
+      .filter(idx => idx >= 0)
+      .sort((a, b) => a - b)[0];
+    return stepLogIdx != null && stepLogIdx < firstHuntLogIdx;
+  });
 }
 
 function buildApophisTargetAnimPrefix(event, players = [], options = {}) {

@@ -99,8 +99,6 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
   const cardPolarity=isInspection?inspectionTone:(card.isGod?'negative':getZoneCardPolarity(card));
   const isEvil=cardPolarity==='negative';
   const isNeutralCard=cardPolarity==='neutral';
-  const isNeutralInspection=isInspection&&inspectionTone==='neutral';
-  const isPositiveInspection=isInspection&&inspectionTone==='positive';
   const showAtmosphereEffects=true;
   const viewportScale=Math.min(window.innerWidth/1280,window.innerHeight/720);
   const cardScale=Math.max(1.08,Math.min(1.85,viewportScale));
@@ -121,6 +119,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
     pointerEvents:'none',
     transform:`translate(-50%,-50%) scale(${cardScale})`,
     transformOrigin:'center',
+    zIndex:2,
   };
 
   const getSourceCenter=()=>{

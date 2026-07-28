@@ -1,5 +1,6 @@
 import { GOD_DEFS } from '../../constants/card';
 import { isBlackGoatYoung, isTsathogguaSlime } from '../../game';
+import { getRestActionBlockReason } from '../../game/interactionAvailability';
 import { TUTORIAL_FLOW } from '../../game/tutorialScenario';
 import { DDCard, GodTooltip } from '../cards';
 import { ThemeEdgeRelief } from '../theme/ThemeOrnaments';
@@ -121,7 +122,8 @@ export function HandArea({
                 const skillRole = gs.globalOnlySwapOwner != null ? '寻宝者' : me.role;
                 const isHunter = skillRole === '追猎者';
                 const skillDisabled = !!me.disableSkill;
-                const restLimited = gs.restUsed || gs.multiplyUsed || (isHunter ? gs.skillUsed : gs.skillUsed);
+                const restBlockReason = getRestActionBlockReason({ phase, isBlocked, gs, player: me });
+                const restLimited = !!restBlockReason;
                 const skillRestLimited =
                   skillDisabled || (isHunter ? gs.restUsed || gs.multiplyUsed : skillLimited || gs.restUsed || gs.skillUsed || gs.multiplyUsed);
                 const hasBgy = me.hand.some(isBlackGoatYoung);
@@ -207,7 +209,11 @@ export function HandArea({
                         }}
                       >
                         ♥ 休息
-                        {restLimited && <span style={{ fontSize: 9, marginLeft: 4, color: 'var(--toe-muted,#7a5a2a)' }}>(已用)</span>}
+                        {restLimited && (
+                          <span style={{ fontSize: 9, marginLeft: 4, color: 'var(--toe-muted,#7a5a2a)' }}>
+                            {restBlockReason === 'disableRest' ? '(失眠)' : '(已用)'}
+                          </span>
+                        )}
                       </button>
                     )}
                     {canShowEndTurnButton && (

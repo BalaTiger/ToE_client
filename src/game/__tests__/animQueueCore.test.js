@@ -1,9 +1,72 @@
 import { describe, expect, it } from 'vitest';
-import { buildAiHuntEventAnimQueue, buildAnimQueue, buildHandDeltaInferenceQueue } from '../animQueueCore';
+import {
+  buildAiHuntEventAnimQueue,
+  buildAnimQueue,
+  buildHandDeltaInferenceQueue,
+  getAiPreHuntActionSteps,
+} from '../animQueueCore';
+import { dedupeInferredDiscardTransfers } from '../animQueueHelpers';
 import { buildFreshStatVisualEvents, createCardEffectEvent, createEarthquakeEvent, createGodPowerBlockedEvent } from '../visualEvents';
 import { makeGodCard, makeGs, makePlayer } from './factory';
 
 describe('buildAnimQueue stat animations', () => {
+  it('显式回放其他角色因坠落被强制弃置的卡牌', () => {
+    const fallCard = { id: 'fall-card', key: 'A1', name: '坠落', type: 'selfDamageDiscardHP' };
+    const discardedCard = { id: 'forced-discard', key: 'B2', name: '地动山摇', type: 'allDiscard' };
+    const beforePlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', hand: [fallCard, discardedCard] }),
+    ];
+    const afterPlayers = [
+      beforePlayers[0],
+      { ...beforePlayers[1], hp: 7, hand: [fallCard] },
+    ];
+    const oldGs = makeGs({ players: beforePlayers, discard: [], log: [] });
+    const event = createCardEffectEvent({
+      effectKey: 'forcedRandomDiscard',
+      card: fallCard,
+      actorIdx: 1,
+      beforePlayers,
+      beforeDiscard: [],
+      afterPlayers,
+      afterDiscard: [discardedCard],
+      discardEvents: [{
+        playerIndex: 1,
+        card: discardedCard,
+        afterPlayers,
+        afterDiscard: [discardedCard],
+      }],
+      msgs: ['艾伦 失去了 [B2] 地动山摇'],
+    });
+    const newGs = {
+      ...oldGs,
+      players: afterPlayers,
+      discard: [discardedCard],
+      log: ['艾伦 失去了 [B2] 地动山摇'],
+      _visualEvents: [event],
+    };
+
+    const queue = dedupeInferredDiscardTransfers(buildAnimQueue(oldGs, newGs));
+
+    expect(queue).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'DISCARD',
+        card: discardedCard,
+        cards: [discardedCard],
+        targetPid: 1,
+        triggerName: '艾伦',
+        visualSetupTiming: 'stepStart',
+      }),
+    ]));
+    expect(queue).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'CARD_TRANSFER',
+        fromPid: 1,
+        dest: 'discard',
+      }),
+    ]));
+  });
+
   it('从手牌信仰后立即生成可排序的邪神高亮步骤', () => {
     const godCard = { id: 'vri-faith', name: '弗栗多', godKey: 'VRI', isGod: true, type: 'god' };
     const oldGs = makeGs({
@@ -204,6 +267,24 @@ describe('buildAnimQueue stat animations', () => {
 
     expect(dice).toMatchObject({ d1: 1, d2: 0, diceMode: 'moldyFood', negativeAvoided: true, rollerName: '你' });
     expect(dice).not.toHaveProperty('dodgeSuccess');
+  });
+
+  it('跨回合残留的霉变食物结果没有新日志时不会重播骰子', () => {
+    const oldGs = makeGs({
+      players: [makePlayer({ name: '你' }), makePlayer({ name: '贝拉' }), makePlayer({ name: '卡洛斯' })],
+      log: ['黛安娜 的SAN检定结果为"乏力"'],
+    });
+    const newGs = makeGs({
+      players: oldGs.players,
+      currentTurn: 2,
+      log: [...oldGs.log, '── 卡洛斯 的回合开始 ──', '卡洛斯 摸到 [C3] 龙之心，选择收入手牌并触发效果'],
+      _moldyFoodDiceSeq: 4,
+      _moldyFoodDiceRoll: { d1: 1, isEven: false, actorIdx: 2, seq: 4 },
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+
+    expect(queue.some(step => step.type === 'DICE_ROLL' && step.diceMode === 'moldyFood')).toBe(false);
   });
 
   it('钻地魔虫会先播放触发动画，再播放全场扣血、转盘和随机扣血', () => {
@@ -1072,6 +1153,20 @@ describe('buildAnimQueue stat animations', () => {
 });
 
 describe('buildAiHuntEventAnimQueue', () => {
+  it('AI 从手牌信仰后连续追捕时保留追捕前的邪神高亮步骤', () => {
+    const worshipMsg = '黛安娜 从手牌信仰 弗栗多，获得不灭之躯(Lv.1)（骷髅头不计）';
+    const firstNightMsg = '【黑夜】黛安娜 选择【追捕】目标掷出 1，目标由 你 错乱为 贝拉，失去 1 SAN';
+    const firstHuntMsg = '黛安娜（追猎者）对 贝拉 【追捕】，亮出 [D4]';
+    const actionMsgs = [worshipMsg, firstNightMsg, firstHuntMsg];
+    const godHighlight = { type: 'GOD_HIGHLIGHT', targetPid: 1, godKey: 'VRI', msgs: [worshipMsg] };
+    const duplicatedHuntDamage = { type: 'HP_DAMAGE', hitIndices: [2], msgs: [firstHuntMsg] };
+
+    expect(getAiPreHuntActionSteps(
+      [godHighlight, duplicatedHuntDamage],
+      actionMsgs,
+    )).toEqual([godHighlight]);
+  });
+
   it('AI追捕亮牌使用角色区域亮牌动画而非摸牌翻牌', () => {
     const revealedCard = { id: 'rev-a', key: 'A1', name: '坠落' };
     const beforePlayers = [

@@ -33,6 +33,7 @@ import {
   canRespondWithFireHandCard as canRespondWithFireHandCardByAvailability,
   canRespondWithZoneCard as canRespondWithZoneCardByAvailability,
   canUseTutorialHandCard,
+  getRestActionBlockReason,
 } from './game/interactionAvailability';
 
 // 导入拆分出的游戏工具模块（通过 game/index.js 统一导出）
@@ -62,6 +63,7 @@ import {
   chooseAiRoseThornTarget,
   shouldHunterKeepChasing,
   initGame,
+  applySelectedLocalRole,
   EXPANSION_RANDOM_KEY,
   RINFO,
   ROLE_TREASURE,
@@ -70,6 +72,7 @@ import {
   buildAnimQueue,
   buildFullHandSwapTransferQueueFromLogs,
   buildAiHuntEventAnimQueue,
+  getAiPreHuntActionSteps,
   withClearedTurnAnimFields,
   withClearedReplayAnimFields,
   buildTurnStartDrawReplayQueue,
@@ -100,6 +103,7 @@ import {
   playerDrawCard,
   aiDrawAndApply,
   resolveGodEncounterForAI,
+  resolveAiGodChoiceTransition,
   shouldTriggerGodResurrection,
   abandonGodFollower,
   convertGodFollower,
@@ -280,6 +284,7 @@ import { useSkillAnimationEffects } from './hooks/useSkillAnimationEffects';
 import { useDamageLinkGhosts } from './hooks/useDamageLinkGhosts';
 import { useBattleResponsiveLayout } from './hooks/useBattleResponsiveLayout';
 import { useDebugSettings } from './hooks/useDebugSettings';
+import { getDebugRoleComposition } from './components/lobby/debugSettingsModel';
 import { useServerAnnouncement } from './hooks/useServerAnnouncement';
 import { DESIGN_WIDTH } from './utils/scale';
 import { useGameAudio } from './hooks/useGameAudio';
@@ -723,6 +728,8 @@ export default function Game(){
     setDebugTutorialPromptMode,
     debugExpansionKey,
     setDebugExpansionKey,
+    debugRoleCompositionKey,
+    setDebugRoleCompositionKey,
   } = useDebugSettings({
     isLocalTestMode,
     expansionRandomKey: EXPANSION_RANDOM_KEY,
@@ -2365,31 +2372,10 @@ export default function Game(){
   },[showTutorial,tutorialStep,tutorialGodPlayerDrawArmed,gs?.phase,gs?._turnKey,anim,animExiting]);
 
   const resolvePendingAiGodChoice=useCallback((nextTutorialStep=null)=>{
-    const pending=gs?.abilityData;
-    const actorIdx=pending?.playerIndex;
-    const godCard=pending?.godCard;
-    if(!gs||gs.gameOver||gs.phase!=='AI_GOD_CHOICE'||actorIdx==null||!godCard)return;
-    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
-    let resolveBaseGs=gs;
-    if(pending?.pendingEncounterInspection){
-      let encounterInspectionMeta=makeInspectionMeta(gs);
-      const inspected=applyInspectionForSanLoss(actorIdx,P[actorIdx]?.san,gs.currentTurn??actorIdx,P,D,Disc,L,encounterInspectionMeta);
-      P=inspected.P;D=inspected.D;Disc=inspected.Disc;L=inspected.log;encounterInspectionMeta=inspected.inspectionMeta;
-      resolveBaseGs={
-        ...gs,
-        players:P,
-        deck:D,
-        discard:Disc,
-        log:L,
-        ...encounterInspectionMeta,
-        abilityData:{...(gs.abilityData||{}),pendingEncounterInspection:false},
-        _pendingAiGodChoice:{...(gs._pendingAiGodChoice||{}),pendingEncounterInspection:false},
-      };
-    }
-    const result=resolveGodEncounterForAI(actorIdx,godCard,P,D,Disc,resolveBaseGs,false);
-    P=result.P;D=result.D;Disc=result.Disc;L.push(...(result.msgs||[]));
-    const hasSlimeDecision=result.inspectionMeta?.abilityData?.type==='tsgSlimeBalance';
-    const abandonedGodGift=(result.msgs||[]).some(msg=>typeof msg==='string'&&msg.includes('放弃了邪神的馈赠'));
+    const transition=resolveAiGodChoiceTransition(gs);
+    if(!transition)return;
+    const {actorIdx,godCard,abandonedGodGift,resultMsgs,state:newGs}=transition;
+    const P=newGs.players;
     // AI 放弃邪神馈赠时，diff 队列无法感知邪神牌从“待决策”进入弃牌堆（旧状态里它不在任何区域），
     // 需要像玩家 GOD_CHOICE 放弃分支一样显式补一个弃牌动画，否则卡牌只会随状态快照消失。
     const abandonGiftDiscardStep=abandonedGodGift
@@ -2398,26 +2384,9 @@ export default function Game(){
         card:godCard,
         triggerName:P[actorIdx]?.name||'???',
         targetPid:actorIdx,
-        msgs:(result.msgs||[]).filter(msg=>typeof msg==='string'&&msg.includes('放弃了邪神的馈赠')),
+        msgs:resultMsgs.filter(msg=>typeof msg==='string'&&msg.includes('放弃了邪神的馈赠')),
       }
       :null;
-    const win=checkWin(P,gs._isMP);
-    const newGs={
-      ...gs,
-      players:P,
-      deck:D,
-      discard:Disc,
-      log:L,
-      drawReveal:null,
-      selectedCard:null,
-      ...(result.inspectionMeta||{}),
-      ...(result.statePatch||{}),
-      phase:hasSlimeDecision?'TSG_SLIME_BALANCE':'AI_TURN',
-      abilityData:hasSlimeDecision?{...result.inspectionMeta.abilityData,_turnOwner:actorIdx}:{},
-      _pendingAiGodChoice:undefined,
-      ...(abandonedGodGift?{_discardedDrawnCard:true}:{}),
-      ...(win?{gameOver:win}:{}),
-    };
     const replay=buildInspectionAwareAnimQueue(gs,newGs,{buildAnimQueue,copyPlayers});
     if(replay.inspectionEvents.length){
       lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...replay.inspectionEvents.map(ev=>ev.seq||0));
@@ -2809,7 +2778,11 @@ export default function Game(){
             const dedupedActionStatQ=actionStatQ.filter(s=>!(['GUILLOTINE','DEATH','HP_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','SAN_DAMAGE'].includes(s.type)&&(s.hitIndices||[]).some(i=>huntStatHitSet.has(i))));
             queue.push(...dedupedActionStatQ, ...huntEventQueue);
           } else {
-            queue.push(...huntEventQueue);
+            // AI may worship from hand before starting a chain of hunts. Keep
+            // those explicit pre-hunt timeline steps (especially GOD_HIGHLIGHT)
+            // so the fallback state watcher cannot replay their sound later,
+            // while the next black-night target die is rolling.
+            queue.push(...getAiPreHuntActionSteps(actionStatQ,newMsgs),...huntEventQueue);
           }
         } else if(actionStatQ.length){
           queue.push(...actionStatQ);
@@ -3090,7 +3063,10 @@ export default function Game(){
             const dedupedActionStatQ=actionStatQ.filter(s=>!(['GUILLOTINE','DEATH','HP_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','SAN_DAMAGE'].includes(s.type)&&(s.hitIndices||[]).some(i=>huntStatHitSet.has(i))));
             orderedActionQ=mergeActionQueueByLogOrder(dedupedActionStatQ,huntEventQueue);
           } else {
-            orderedActionQ=huntEventQueue;
+            orderedActionQ=[
+              ...getAiPreHuntActionSteps(actionStatQ,actionMsgs),
+              ...huntEventQueue,
+            ];
           }
         }
         else if(actionJ.includes('【追捕】')||(actionJ.includes('追捕')&&!actionJ.includes('停止了追捕')&&!actionJ.includes('放弃追捕'))){
@@ -4478,6 +4454,7 @@ export default function Game(){
         debugForceGodCardKey={debugForceGodCardKey} setDebugForceGodCardKey={setDebugForceGodCardKey}
         debugTutorialPromptMode={debugTutorialPromptMode} setDebugTutorialPromptMode={setDebugTutorialPromptMode}
         debugExpansionKey={debugExpansionKey} setDebugExpansionKey={setDebugExpansionKey}
+        debugRoleCompositionKey={debugRoleCompositionKey} setDebugRoleCompositionKey={setDebugRoleCompositionKey}
       />
     </>);
   }
@@ -8616,7 +8593,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   }
 
   function doRest(){
-    if(phase!=='ACTION'||isBlocked||gs.restUsed||gs.skillUsed||gs.players?.[0]?.disableRest)return;
+    if(getRestActionBlockReason({phase,isBlocked,gs,player:gs.players?.[0]}))return;
     const d1=1+(Math.random()*6|0), d2=1+(Math.random()*6|0);
     const heal=Math.max(d1,d2);
 
@@ -9247,6 +9224,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       activeDebugConfig.debugForceGodCardKey,
       startNextTurn,
       resolvedExpansionKey,
+      { roleCounts: getDebugRoleComposition(activeDebugConfig.debugRoleCompositionKey).counts },
     );
     roseThornPrevRef.current=null;
     consumedVisualEventIdsRef.current=new Set();
@@ -9268,19 +9246,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     setAnim(null);
     setPendingRoleSelection(newGs);
   }
-  function withSelectedLocalRoleInTurnStartSnapshots(state,selectedRole){
-    if(!state||selectedRole==='random')return state;
-    const applyRole=players=>Array.isArray(players)
-      ?players.map((p,i)=>i===0?{...p,role:selectedRole}:p)
-      :players;
-    return{
-      ...state,
-      players:applyRole(state.players),
-      _playersBeforeThisDraw:applyRole(state._playersBeforeThisDraw),
-      _preTurnPlayers:applyRole(state._preTurnPlayers),
-      _playersBeforeCthDraws:applyRole(state._playersBeforeCthDraws),
-    };
-  }
   function maskOpeningTurnStartDrawForDisplay(state){
     if(!state)return state;
     const replayPlayers=state._playersBeforeThisDraw||state._preTurnPlayers||state.players;
@@ -9294,7 +9259,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   }
   function confirmRoleSelection(selectedRole){
     if(!pendingRoleSelection)return;
-    const finalGs=withSelectedLocalRoleInTurnStartSnapshots(pendingRoleSelection,selectedRole);
+    const finalGs=applySelectedLocalRole(pendingRoleSelection,selectedRole);
     setPendingRoleSelection(null);
     setGs(prev=>prev?{...prev,...maskOpeningTurnStartDrawForDisplay(finalGs)}:prev);
     setRoleRevealAnim({role:finalGs.players[0].role,pendingGs:finalGs});

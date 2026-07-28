@@ -15,6 +15,7 @@ import {
 } from '../animQueueHelpers';
 import { copyPlayers } from '../coreUtils';
 import { buildAnimQueue } from '../animQueueCore';
+import { createCardEffectEvent } from '../visualEvents';
 import { makeGodCard, makePlayer, makeZoneCard } from './factory';
 
 describe('animQueueHelpers', () => {
@@ -405,6 +406,64 @@ describe('animQueueHelpers', () => {
     expect(result.queue[drawIdxs[1]]).toMatchObject({ card: amnesiaCard, triggerName: '检定牌', targetPid: 1 });
   });
 
+  it('决策后续播剩余 SAN 检定时不会重播检定前的夜风呼啸', () => {
+    const nightWind = { id: 'night-wind', name: '夜风呼啸', key: 'C4', type: 'allDamageBoth' };
+    const inspectionCard = { id: 'amnesia', name: '失忆', effect: 'disableSkill' };
+    const beforePlayers = [
+      makePlayer({ name: '你', hp: 9, san: 6 }),
+      makePlayer({ name: '艾伦', hp: 9, san: 6 }),
+    ];
+    const afterPlayers = copyPlayers(beforePlayers);
+    afterPlayers[1].disableSkillNextTurn = true;
+    const nightWindEvent = createCardEffectEvent({
+      effectKey: 'nightWind',
+      card: nightWind,
+      actorIdx: 0,
+      beforePlayers,
+      afterPlayers: beforePlayers,
+      msgs: ['全体存活角色失去 1 HP 和 SAN'],
+    });
+    const inspectionEvent = {
+      seq: 2,
+      card: inspectionCard,
+      target: 1,
+      beforePlayers,
+      beforeLog: ['全体存活角色失去 1 HP 和 SAN'],
+      afterPlayers,
+      afterLog: [
+        '全体存活角色失去 1 HP 和 SAN',
+        '艾伦 的SAN检定结果为"失忆"',
+        '艾伦 失忆，下一回合禁用技能',
+      ],
+      statEvents: [],
+      statEventSeq: null,
+    };
+    const baseState = {
+      players: beforePlayers,
+      log: inspectionEvent.beforeLog,
+      _inspectionSeq: 1,
+      _visualEvents: [nightWindEvent],
+    };
+    const resolvedState = {
+      ...baseState,
+      players: afterPlayers,
+      log: inspectionEvent.afterLog,
+      _inspectionSeq: 2,
+      _inspectionEvents: [inspectionEvent],
+    };
+
+    const result = buildInspectionAwareAnimQueue(
+      baseState,
+      resolvedState,
+      { buildAnimQueue, copyPlayers },
+    );
+
+    expect(result.queue.filter(step => step.type === 'NIGHT_WIND')).toHaveLength(0);
+    expect(result.queue.filter(step => step.type === 'DRAW_CARD')).toEqual([
+      expect.objectContaining({ card: inspectionCard, targetPid: 1 }),
+    ]);
+  });
+
   it('分阶段结算第二次 SAN 检定时不重播旧状态已有的第一次检定', () => {
     const insomnia = { name: '失眠' };
     const amnesia = { name: '失忆' };
@@ -495,7 +554,7 @@ describe('animQueueHelpers', () => {
     expect(flow.queue.map(step => step.type)).toEqual(['VISUAL_LOCK', 'DRAW_CARD', 'STATE_PATCH']);
     expect(tailQueue.some(step => step.type === 'HP_DAMAGE')).toBe(false);
   });
-  it('揭开真相的额外摸牌会在检定牌后仅播放暗抽飞牌动画', () => {
+  it('揭开真相的额外摸牌保留暗抽飞牌，但去除背景运镜与翻牌', () => {
     const inspectionCard = { id: 'truth', name: '揭开真相', effect: 'drawCard' };
     const actualCard = { id: 'vri', name: '弗栗多', godKey: 'VRI', isGod: true, type: 'god' };
     const gainedCard = { id: 'hidden-draw', hiddenDraw: true };
@@ -528,6 +587,7 @@ describe('animQueueHelpers', () => {
       targetPid: 0,
       inspectionGainSeq: 3,
       travelOnly: true,
+      disableDrawBackgroundCamera: true,
       durationMs: 700,
       msgs: [gainedCardLog],
     });

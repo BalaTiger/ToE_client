@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { aiChooseRevealCard, aiShouldKeepZoneCard, canCultistEmptyHandByBewitch, chooseAiCultistBewitchPlan, getHunterChaseTargets, shouldAiRest } from '../ai';
+import {
+  aiChooseRevealCard,
+  aiShouldKeepZoneCard,
+  canCultistEmptyHandByBewitch,
+  chooseAiCultistBewitchPlan,
+  decideAiSkillUsage,
+  evaluateHunterChaseHandQuality,
+  getHunterChaseTargets,
+  orderHunterChaseTargets,
+  shouldAiRest,
+} from '../ai';
 import { aiStep, processAiEndTurnReplayHand } from '../aiTurn';
 import { cardLogText, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
 import { startNextTurn } from '../turnEngine';
@@ -431,6 +441,99 @@ describe('hunter chase target validity', () => {
 
     expect(getHunterChaseTargets(players, 0).map(t => t.idx)).toEqual([3]);
   });
+
+  it('未揭晓的追猎者仍可能被当作目标，揭晓后会被排除', () => {
+    const players = [
+      makePlayer({ name: '追猎者', role: ROLE_HUNTER, roleRevealed: true, hand: [makeZoneCard('A1', 0)] }),
+      makePlayer({ name: '隐藏队友', role: ROLE_HUNTER, roleRevealed: false, hand: [makeZoneCard('B1', 0)] }),
+      makePlayer({ name: '已亮队友', role: ROLE_HUNTER, roleRevealed: true, hand: [makeZoneCard('C1', 0)] }),
+      makePlayer({ name: '隐藏目标', role: ROLE_TREASURE, roleRevealed: false, hand: [makeZoneCard('D1', 0)] }),
+    ];
+
+    expect(getHunterChaseTargets(players, 0).map(target => target.idx)).toEqual([1, 3]);
+  });
+});
+
+describe('hunter chase hand quality and target focus', () => {
+  it('区域牌充足时适合追捕，近期同结构失败过多时降为低质量', () => {
+    const zoneA = makeZoneCard('A1', 0, { id: 'zone-a' });
+    const zoneB = makeZoneCard('B1', 0, { id: 'zone-b' });
+    const players = [
+      makePlayer({
+        name: '追猎者',
+        role: ROLE_HUNTER,
+        hand: [zoneA, zoneB, createBlackGoatYoungCard()],
+      }),
+      makePlayer({ name: '目标', hand: [makeZoneCard('C1', 0)] }),
+    ];
+    const gs = makeGs({ players, turn: 5 });
+
+    expect(evaluateHunterChaseHandQuality(gs, players, 0).suitable).toBe(true);
+
+    players[0].huntQualityMemory = {
+      turn: 5,
+      handIds: ['zone-a', 'zone-b'],
+      handSize: 3,
+      failedChainCount: 2,
+    };
+    expect(evaluateHunterChaseHandQuality(gs, players, 0).suitable).toBe(false);
+
+    players[0].hand = [
+      makeZoneCard('C1', 0, { id: 'zone-c' }),
+      makeZoneCard('D1', 0, { id: 'zone-d' }),
+    ];
+    expect(evaluateHunterChaseHandQuality(gs, players, 0).suitable).toBe(true);
+  });
+
+  it('手牌质量适合且有人受伤时必定追捕', () => {
+    const players = [
+      makePlayer({
+        name: '追猎者',
+        role: ROLE_HUNTER,
+        hand: [makeZoneCard('A1', 0), makeZoneCard('B1', 0)],
+      }),
+      makePlayer({ name: '受伤目标', hp: 8, hand: [makeZoneCard('C1', 0)] }),
+    ];
+    const decision = decideAiSkillUsage(
+      makeGs({ players, currentTurn: 0 }),
+      players,
+      0,
+      ROLE_HUNTER,
+      getHunterChaseTargets(players, 0),
+    );
+
+    expect(decision.hunterHandQuality.suitable).toBe(true);
+    expect(decision.forceHunterChase).toBe(true);
+    expect(decision.shouldHunterUseSkill).toBe(true);
+  });
+
+  it('身份安全时集中攻击最低HP目标，身份不明时向高HP目标分摊', () => {
+    const hunter = makePlayer({ name: '追猎者', role: ROLE_HUNTER, roleRevealed: true });
+    const revealedLow = makePlayer({ name: '亮明低HP', role: ROLE_TREASURE, roleRevealed: true, hp: 3 });
+    const revealedHigh = makePlayer({ name: '亮明高HP', role: ROLE_CULTIST, roleRevealed: true, hp: 8 });
+    const hiddenMid = makePlayer({ name: '隐藏身份', role: ROLE_TREASURE, roleRevealed: false, hp: 6 });
+    const players = [hunter, revealedHigh, hiddenMid, revealedLow, makePlayer({ name: '隐藏队友', role: ROLE_HUNTER, roleRevealed: false, hp: 10 })];
+    const targets = players.slice(1).map((player, offset) => ({ player, idx: offset + 1 }));
+
+    expect(orderHunterChaseTargets(players, 0, targets, () => 0.5).map(target => target.idx)).toEqual([3, 1]);
+
+    players[1].roleRevealed = false;
+    players[3].roleRevealed = false;
+    expect(orderHunterChaseTargets(players, 0, targets, () => 0.5)[0].player.hp).toBe(10);
+  });
+
+  it('追猎者人数上限均已揭晓后，把剩余隐藏目标视为安全并集中火力', () => {
+    const players = [
+      makePlayer({ name: '追猎者A', role: ROLE_HUNTER, roleRevealed: true }),
+      makePlayer({ name: '追猎者B', role: ROLE_HUNTER, roleRevealed: true }),
+      makePlayer({ name: '隐藏低HP', role: ROLE_TREASURE, roleRevealed: false, hp: 2 }),
+      makePlayer({ name: '隐藏高HP', role: ROLE_CULTIST, roleRevealed: false, hp: 9 }),
+      makePlayer({ name: '隐藏中HP', role: ROLE_TREASURE, roleRevealed: false, hp: 6 }),
+    ];
+    const targets = [2, 3, 4].map(idx => ({ player: players[idx], idx }));
+
+    expect(orderHunterChaseTargets(players, 0, targets, () => 0.5).map(target => target.idx)).toEqual([2, 4, 3]);
+  });
 });
 
 describe('aiStep optional action limits', () => {
@@ -458,6 +561,73 @@ describe('aiStep optional action limits', () => {
     });
 
     expect(shouldAiRest(gs, hunter, ROLE_HUNTER)).toBe(true);
+  });
+
+  it('低HP追猎者在优质手牌且有人受伤时跳过休息并必定追捕', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const players = [
+      makePlayer({
+        name: '你',
+        role: ROLE_TREASURE,
+        hp: 7,
+        hand: [makeZoneCard('A1', 0)],
+      }),
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_HUNTER,
+        hp: 3,
+        hand: [makeZoneCard('A2', 0), makeZoneCard('B1', 0)],
+      }),
+      makePlayer({
+        name: '卡洛斯',
+        role: ROLE_CULTIST,
+        hp: 10,
+        hand: [makeZoneCard('C1', 0)],
+      }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+      log: ['旧日志'],
+    });
+
+    const result = aiStep(gs);
+    const newLogs = result.log.slice(gs.log.length);
+
+    expect(newLogs.some(line => line.includes('选择【休息】'))).toBe(false);
+    expect(newLogs.some(line => line.includes('【追捕】'))).toBe(true);
+  });
+
+  it('追捕条件不足且不需休息时，把黑山羊幼仔繁衍给低HP高SAN目标', () => {
+    const players = [
+      makePlayer({
+        name: '追猎者',
+        role: ROLE_HUNTER,
+        roleRevealed: true,
+        hp: 8,
+        hand: [createBlackGoatYoungCard(), makeZoneCard('A1', 0)],
+      }),
+      makePlayer({ name: '低HP低SAN', hp: 4, san: 4, hand: [makeZoneCard('B1', 0)] }),
+      makePlayer({ name: '低HP高SAN', hp: 4, san: 9, hand: [makeZoneCard('C1', 0)] }),
+      makePlayer({ name: '高HP', hp: 7, san: 10, hand: [makeZoneCard('D1', 0)] }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 0,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+      log: ['旧日志'],
+    });
+
+    const result = aiStep(gs, { allAi: true });
+
+    expect(result.log.some(line => line.includes('【繁衍】追猎者 将黑山羊幼仔传播给了 低HP高SAN'))).toBe(true);
   });
 
   it('3HP 邪祀者有三张手牌时不会因蛊惑清手牌例外跳过休息', () => {
@@ -1210,14 +1380,15 @@ describe('aiStep optional action limits', () => {
     expect(result.players[0].hand).toEqual([forestLord]);
   });
 
-  it('追猎者首追在同等公开条件下按等权随机选择目标', () => {
+  it('存在已揭晓非追猎者时集中攻击低HP目标且不固定玩家位', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.26);
     const hunterCard = { id: 'hunter-a1', key: 'A1', name: '霉变食物', type: 'selfHealHP', val: 1, isZone: true, letter: 'A', number: 1 };
+    const hunterCard2 = { id: 'hunter-c1', key: 'C1', name: '新鲜空气', type: 'selfHealHP', val: 1, isZone: true, letter: 'C', number: 1 };
     const targetCard = name => ({ id: `target-${name}`, key: 'B2', name, type: 'selfHealHP', val: 1, isZone: true, letter: 'B', number: 2 });
     const players = [
-      makePlayer({ name: '你', hp: 8, hand: [targetCard('玩家手牌')] }),
-      makePlayer({ name: '卡洛斯', role: ROLE_HUNTER, roleRevealed: true, hp: 9, hand: [hunterCard] }),
-      makePlayer({ name: '艾伦', hp: 8, hand: [targetCard('艾伦手牌')] }),
+      makePlayer({ name: '你', role: ROLE_TREASURE, roleRevealed: true, hp: 8, hand: [targetCard('玩家手牌')] }),
+      makePlayer({ name: '卡洛斯', role: ROLE_HUNTER, roleRevealed: true, hp: 9, hand: [hunterCard, hunterCard2] }),
+      makePlayer({ name: '艾伦', role: ROLE_CULTIST, roleRevealed: true, hp: 5, hand: [targetCard('艾伦手牌')] }),
       makePlayer({ name: '贝拉', hp: 8, hand: [targetCard('贝拉手牌')] }),
       makePlayer({ name: '达贡', hp: 8, hand: [targetCard('达贡手牌')] }),
     ];
@@ -1239,12 +1410,13 @@ describe('aiStep optional action limits', () => {
   it('追猎者放弃追捕后本回合不再追捕其他目标', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0);
     const hunterCard = { id: 'hunter-a1', key: 'A1', name: '霉变食物', type: 'selfHealHP', val: 1, isZone: true, letter: 'A', number: 1 };
+    const hunterCard2 = { id: 'hunter-a3', key: 'A3', name: '无尽通道', type: 'selfHealHP', val: 1, isZone: true, letter: 'A', number: 3 };
     const failedTargetCard = { id: 'target-b2', key: 'B2', name: '迷途石阶', type: 'selfHealHP', val: 1, isZone: true, letter: 'B', number: 2 };
     const nextTargetCard = { id: 'target-c3', key: 'C3', name: '地动山摇', type: 'selfHealHP', val: 1, isZone: true, letter: 'C', number: 3 };
     const players = [
       makePlayer({ name: '你', hp: 10, hand: [] }),
-      makePlayer({ name: '卡洛斯', role: ROLE_HUNTER, roleRevealed: true, hp: 9, hand: [hunterCard] }),
-      makePlayer({ name: '艾伦', role: ROLE_CULTIST, hp: 3, hand: [failedTargetCard] }),
+      makePlayer({ name: '卡洛斯', role: ROLE_HUNTER, roleRevealed: true, hp: 9, hand: [hunterCard, hunterCard2] }),
+      makePlayer({ name: '艾伦', role: ROLE_CULTIST, roleRevealed: true, hp: 3, hand: [failedTargetCard] }),
       makePlayer({ name: '贝拉', hp: 9, hand: [nextTargetCard] }),
     ];
     const gs = makeGs({

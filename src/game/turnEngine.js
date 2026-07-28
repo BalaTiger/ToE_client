@@ -516,8 +516,17 @@ export function aiHandleGodCard(ci, godCard, P, D, Disc, L, gs, skipEffectMsg = 
 export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
   let P = copyPlayers(ps), D = [...deck], Disc = [...disc];
   let reshuffleLog = '';
-  if (!D.length && Disc.length) { reshuffleLog = '牌堆耗尽，重洗弃牌堆'; D = shuffle(Disc); Disc = []; }
-  if (!D.length) return { P, D, Disc, drawnCard: null, effectMsgs: [], needsDecision: false };
+  // 地磁反转生效时，弃牌堆就是当前摸牌来源。即使普通牌堆已空，也不能
+  // 先把弃牌堆重洗回牌堆，否则“反转复原”会被困在普通牌堆，而刚弃掉的
+  // 单张区域牌会被无限重复抽取。
+  if (!D.length && Disc.length && !gs?.geomagneticReversalActive) {
+    reshuffleLog = '牌堆耗尽，重洗弃牌堆';
+    D = shuffle(Disc);
+    Disc = [];
+  }
+  if (!D.length && !(gs?.geomagneticReversalActive && Disc.length)) {
+    return { P, D, Disc, drawnCard: null, effectMsgs: [], needsDecision: false };
+  }
 
   const whoName = ci === 0 ? '你' : P[ci].name;
 
@@ -1073,7 +1082,10 @@ function buildSkippedDrawActionState({
 }
 
 export function startNextTurn(gs, opts = {}) {
-  const { isDebugMode = false } = opts;
+  const { isDebugMode = false, allAi = false, isAiControlled = null } = opts;
+  const shouldUseAiController = (playerIndex) => (
+    allAi || (typeof isAiControlled === 'function' && !!isAiControlled(playerIndex, gs))
+  );
   // Reset multiplyUsed at the start of every turn
   const inheritedTsgSlimeGrantEvents = Array.isArray(gs._carryTsgSlimeGrantEvents) ? gs._carryTsgSlimeGrantEvents : [];
   const inheritedGodPowerBlockedEvents = Array.isArray(gs._carryGodPowerBlockedEvents) ? gs._carryGodPowerBlockedEvents : [];
@@ -1276,7 +1288,7 @@ export function startNextTurn(gs, opts = {}) {
   // [PASSIVE_OTHER] 两人一绳治愈
   const link = turnStartEvent_LinkHeal(P, pendingLinkHeals, L, inspectionMeta, statLogs);
   P = link.P; L = link.L; inspectionMeta = link.inspectionMeta; gs = { ...gs, ...inspectionMeta };
-  if (next === 0) {
+  if (next === 0 && !shouldUseAiController(next)) {
     // Debug: 强制摸牌 - 玩家
     applyDebugForceDrawToTop(gs, next, D);
     // [ACTIVE_GOD] NYA 偷身份
@@ -1448,7 +1460,7 @@ export function startNextTurn(gs, opts = {}) {
       return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: decisionState.phase, drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: 0, drawerName: P[0].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: decisionState.abilityData, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _drawSourcePile: res.sourcePile, ...(res.statePatch || {}) };
     }
     return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: 0, drawerName: P[0].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _drawSourcePile: res.sourcePile };
-  } else if (gs._isMP) {
+  } else if (gs._isMP && !shouldUseAiController(next)) {
     // Multiplayer: next player is human — draw their card and enter DRAW_REVEAL
     // [ACTIVE_GOD] NYA 偷身份
     const nyaMp = turnStartEvent_NyaBorrow(P, next, L, gs, visualEvents);
@@ -1593,6 +1605,7 @@ export function startNextTurn(gs, opts = {}) {
         godFromHandUsed: false,
         godTriggeredThisTurn: false,
         _playersBeforeThisDraw: _P_beforeDraw,
+        turn: newTurn,
         _turnKey: (gs._turnKey || 0) + 1,
         _turnStartLogs: turnStartLogs,
         _drawLogs: drawLogs,
@@ -1617,8 +1630,12 @@ export function startNextTurn(gs, opts = {}) {
       drawLogs.push(...split.preStat);
       statLogs.push(...split.stat);
     }
-    if (drawLogs.length > drawLogsSyncedCount) L.push(...drawLogs.slice(drawLogsSyncedCount));
-    if (statLogs.length) L.push(...statLogs);
+    // drawLogs/statLogs are animation routing buckets, not the authoritative
+    // adventure-log order. Appending the buckets separately moves inspection
+    // text ahead of AOE lines (e.g. 夜风呼啸), because the AOE line is
+    // classified as a stat log while the inspection result is not.
+    if (res.reshuffleLog) L.push(res.reshuffleLog);
+    if (res.effectMsgs?.length) L.push(...res.effectMsgs);
     if (res.drawnCard) {
       const eventMsgs = (res.effectMsgs || []).filter(msg => (drawLogs || []).includes(msg));
       turnDrawEvents.push({ card: res.drawnCard, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile, msgs: eventMsgs.length ? eventMsgs : drawLogs.slice(-1) });
@@ -1634,6 +1651,7 @@ export function startNextTurn(gs, opts = {}) {
       : resolvedNextAbilityData;
     const aiTurnAnimMeta = {
       currentTurn: next,
+      turn: newTurn,
       phase: nextPhase,
       drawReveal: null,
       selectedCard: null,
@@ -1666,6 +1684,6 @@ export function startNextTurn(gs, opts = {}) {
         globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner)
       };
     }
-    return { ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, phase: nextPhase, drawReveal: null, selectedCard: null, abilityData: nextAbilityData, huntAbandoned: [], _aiDrawnCard: res.drawnCard ?? null, _drawnCard: res.drawnCard ?? null, _discardedDrawnCard: !!res.discardedDrawnCard, _playersBeforeThisDraw: _P_beforeDraw, _turnKey: (gs._turnKey || 0) + 1, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}), phase: nextPhase, abilityData: nextAbilityData, globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) };
+    return { ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, drawReveal: null, selectedCard: null, huntAbandoned: [], _aiDrawnCard: res.drawnCard ?? null, _drawnCard: res.drawnCard ?? null, _discardedDrawnCard: !!res.discardedDrawnCard, _playersBeforeThisDraw: _P_beforeDraw, _turnKey: (gs._turnKey || 0) + 1, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}), phase: nextPhase, abilityData: nextAbilityData, globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) };
   }
 }

@@ -288,13 +288,20 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
 export function applyStatEventsToDisplayStats(displayStats = [], statEvents = [], animationType = null) {
   const next = [...displayStats];
   statEvents.map(normalizeStatEvent).filter(Boolean).filter(event => eventMatchesAnimationType(event, animationType)).forEach(event => {
-    const targetPatch = animationType === 'HP_DAMAGE' || animationType === 'HP_HEAL'
-      ? { hp: event.to.hp }
-      : animationType === 'SAN_DAMAGE' || animationType === 'SAN_HEAL'
-        ? { san: event.to.san }
-        : event.to;
+    const current = next[event.target] || {};
+    // Segmented AI actions may encounter an older snapshot after a newer one.
+    // A damage/heal animation must never move its displayed bar backwards.
+    const targetPatch = animationType === 'HP_DAMAGE'
+      ? { hp: Math.min(current.hp ?? event.to.hp, event.to.hp) }
+      : animationType === 'HP_HEAL'
+        ? { hp: Math.max(current.hp ?? event.to.hp, event.to.hp) }
+        : animationType === 'SAN_DAMAGE'
+          ? { san: Math.min(current.san ?? event.to.san, event.to.san) }
+          : animationType === 'SAN_HEAL'
+            ? { san: Math.max(current.san ?? event.to.san, event.to.san) }
+            : event.to;
     next[event.target] = {
-      ...(next[event.target] || {}),
+      ...current,
       ...targetPatch,
     };
   });
