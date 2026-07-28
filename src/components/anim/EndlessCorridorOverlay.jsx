@@ -1,4 +1,5 @@
 import React from 'react';
+import { FullscreenLightLayer } from './FullscreenLightLayer';
 
 const RING_COUNT = 11;
 const MID_RING = Math.floor(RING_COUNT / 2);
@@ -230,23 +231,27 @@ export function EndlessCorridorTunnelAnim({ exiting, onTunnelRush }) {
   }, [onTunnelRush]);
 
   return (
-    <div className={`endlessCorridorOverlay${exiting ? ' ending' : ''}`}>
-      <div className="endlessCorridorStage">
-        <EndlessCorridorCanvas exiting={exiting} />
-        <div className="endlessCorridorEntranceRays">
-          <span />
-          <span />
-          <span />
-          <span />
-        </div>
-        <div className="endlessCorridorCore" />
+    <>
+      <FullscreenLightLayer className={`endlessCorridorTopLight${exiting ? ' ending' : ''}`}>
         <div className="endlessCorridorExposure" />
         {softFlashSrc ? (
           <img className="endlessCorridorFlash" src={softFlashSrc} alt="" aria-hidden="true" />
         ) : (
           <div className="endlessCorridorFlash" />
         )}
+      </FullscreenLightLayer>
+      <div className={`endlessCorridorOverlay${exiting ? ' ending' : ''}`}>
+        <div className="endlessCorridorStage">
+          <EndlessCorridorCanvas exiting={exiting} />
+          <div className="endlessCorridorEntranceRays">
+            <span />
+            <span />
+            <span />
+            <span />
+          </div>
+          <div className="endlessCorridorCore" />
+        </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { CS, GOD_CS } from '../../constants/card';
 import { RINFO } from '../../game';
 import { buildPublicUrl } from '../../utils/url';
+import { FullscreenLightLayer } from './FullscreenLightLayer';
 
 function GodResurrectionAnim({onDone}){
   const [textPhase, setTextPhase] = useState(0); // 0: black, 1: transitioning, 2: red with blood
@@ -199,11 +200,15 @@ function TreasureMapAnim({hand,onConfirm,confirmCountdownSec=null,waitingLabel=n
     {x:0,y:-190},{x:0,y:190},{x:-200,y:0},{x:200,y:0},
   ];
   return(
-    <div style={{position:'fixed',inset:0,zIndex:4000,display:'flex',flexDirection:'column',
-      alignItems:'center',justifyContent:'center',
-      background:flashing?'rgba(255,240,200,0.92)':'rgba(4,3,1,0.92)',
-      backdropFilter:'blur(2px)',transition:'background 0.35s ease',
-      animation:'animFadeIn 0.35s ease-out'}}>
+    <>
+      {flashing&&(
+        <FullscreenLightLayer style={{background:'rgba(255,240,200,0.92)'}} />
+      )}
+      <div style={{position:'fixed',inset:0,zIndex:4000,display:'flex',flexDirection:'column',
+        alignItems:'center',justifyContent:'center',
+        background:flashing?'rgba(255,240,200,0.92)':'rgba(4,3,1,0.92)',
+        backdropFilter:'blur(2px)',transition:'background 0.35s ease',
+        animation:'animFadeIn 0.35s ease-out'}}>
       <div style={{textAlign:'center',marginBottom:22,animation:'animFadeIn 0.5s 0.1s both'}}>
         <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:22,fontWeight:700,
           letterSpacing:4,color:'#c8a96e',textShadow:'0 0 40px #c8a96e88',marginBottom:6}}>
@@ -309,7 +314,8 @@ function TreasureMapAnim({hand,onConfirm,confirmCountdownSec=null,waitingLabel=n
           onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';e.currentTarget.style.boxShadow='0 0 30px #c8a96e55';}}
         >✦ 宣布胜利{confirmCountdownSec!=null&&countdown!=null?`（${countdown}）`:''}</button>
       )}
-    </div>
+      </div>
+    </>
   );
 }
 

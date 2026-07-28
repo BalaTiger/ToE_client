@@ -2,6 +2,7 @@ import React from 'react';
 import { CS, GOD_CS } from '../../constants/card';
 import { MiniCardFace } from '../cards';
 import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
+import { FullscreenLightLayer } from './FullscreenLightLayer';
 
 const EARTHQUAKE_PEBBLES = [
   { top: '22%', left: '16%', size: 16, dx: 128, midDx: 58, lift: 28, drop: 58, rot: 210, delay: 0.08 },
@@ -82,43 +83,47 @@ function EarthquakeDiscardCard({ event }) {
 export function EarthquakeOverlay({ anim, exiting }) {
   const discardEvents = Array.isArray(anim?.discardEvents) ? anim.discardEvents : [];
   return (
-    <div style={{
-      position: 'fixed',
-      inset: 0,
-      zIndex: 999,
-      pointerEvents: 'none',
-      overflow: 'hidden',
-      animation: `earthquakeSceneShake 1.25s linear 2${exiting ? ', animFadeOut 0.18s ease-in forwards' : ''}`,
-    }}>
-      <div style={{ position: 'absolute', inset: 0, animation: 'earthquakeBlackout 2.5s linear both' }} />
-      <div style={{ position: 'absolute', inset: 0, animation: 'earthquakeWhiteFlash 2.5s linear both' }} />
+    <>
+      <FullscreenLightLayer>
+        <div style={{ position: 'absolute', inset: 0, animation: 'earthquakeWhiteFlash 2.5s linear both' }} />
+      </FullscreenLightLayer>
       <div style={{
-        position: 'absolute',
+        position: 'fixed',
         inset: 0,
-        boxShadow: 'inset 0 0 110px rgba(0,0,0,0.58), inset 0 0 180px rgba(150,120,72,0.16)',
-        opacity: 0.8,
-      }} />
-      {EARTHQUAKE_PEBBLES.map((p, i) => (
-        <div key={i} style={{
+        zIndex: 999,
+        pointerEvents: 'none',
+        overflow: 'hidden',
+        animation: `earthquakeSceneShake 1.25s linear 2${exiting ? ', animFadeOut 0.18s ease-in forwards' : ''}`,
+      }}>
+        <div style={{ position: 'absolute', inset: 0, animation: 'earthquakeBlackout 2.5s linear both' }} />
+        <div style={{
           position: 'absolute',
-          top: p.top,
-          left: p.left,
-          width: p.size,
-          height: Math.max(3, Math.round(p.size * 0.72)),
-          borderRadius: Math.max(1, Math.round(p.size * 0.25)),
-          background: 'linear-gradient(135deg,#a68455,#4b3826)',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.55)',
-          '--pebble-dx': `${p.dx}px`,
-          '--pebble-mid-dx': `${p.midDx}px`,
-          '--pebble-lift': `${p.lift}px`,
-          '--pebble-drop': `${p.drop}px`,
-          '--pebble-rot': `${p.rot}deg`,
-          animation: `earthquakePebble 0.58s cubic-bezier(0.12,0.58,0.38,1) ${p.delay}s both`,
+          inset: 0,
+          boxShadow: 'inset 0 0 110px rgba(0,0,0,0.58), inset 0 0 180px rgba(150,120,72,0.16)',
+          opacity: 0.8,
         }} />
-      ))}
-      {discardEvents.map((event, i) => (
-        <EarthquakeDiscardCard key={`${event.playerIndex}-${event.card?.id || i}`} event={event} />
-      ))}
-    </div>
+        {EARTHQUAKE_PEBBLES.map((p, i) => (
+          <div key={i} style={{
+            position: 'absolute',
+            top: p.top,
+            left: p.left,
+            width: p.size,
+            height: Math.max(3, Math.round(p.size * 0.72)),
+            borderRadius: Math.max(1, Math.round(p.size * 0.25)),
+            background: 'linear-gradient(135deg,#a68455,#4b3826)',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.55)',
+            '--pebble-dx': `${p.dx}px`,
+            '--pebble-mid-dx': `${p.midDx}px`,
+            '--pebble-lift': `${p.lift}px`,
+            '--pebble-drop': `${p.drop}px`,
+            '--pebble-rot': `${p.rot}deg`,
+            animation: `earthquakePebble 0.58s cubic-bezier(0.12,0.58,0.38,1) ${p.delay}s both`,
+          }} />
+        ))}
+        {discardEvents.map((event, i) => (
+          <EarthquakeDiscardCard key={`${event.playerIndex}-${event.card?.id || i}`} event={event} />
+        ))}
+      </div>
+    </>
   );
 }

@@ -150,16 +150,21 @@ export function normalizeRoleCounts(roleCounts, N = 5) {
 }
 
 export function applySelectedLocalRole(state, selectedRole) {
-  if (!state || selectedRole === 'random' || !ROLE_KEYS.includes(selectedRole)) return state;
-  const previousRole = state.players?.[0]?.role;
-  const swapIdx = state.debugFixedRoleCounts && previousRole !== selectedRole
-    ? state.players.findIndex((player, index) => index > 0 && player?.role === selectedRole)
-    : -1;
+  if (!state || !Array.isArray(state.players) || state.players.length === 0) return state;
+  const rolePool = state.players.map(player => player?.role);
+  const playerRole = selectedRole === 'random' ? rolePool[0] : selectedRole;
+  if (!ROLE_KEYS.includes(playerRole) || rolePool.some(role => !ROLE_KEYS.includes(role))) return state;
+
+  const remainingRoles = [...rolePool];
+  const selectedPoolIndex = remainingRoles.indexOf(playerRole);
+  if (selectedPoolIndex < 0) return state;
+  remainingRoles.splice(selectedPoolIndex, 1);
+  const assignedRoles = [playerRole, ...shuffle(remainingRoles)];
+
   const applyRole = players => Array.isArray(players)
     ? players.map((player, index) => {
-      if (index === 0) return { ...player, role: selectedRole };
-      if (index === swapIdx) return { ...player, role: previousRole };
-      return player;
+      const role = assignedRoles[index];
+      return ROLE_KEYS.includes(role) ? { ...player, role } : player;
     })
     : players;
   return {

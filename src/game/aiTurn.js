@@ -930,7 +930,12 @@ export function aiStep(gs, opts = {}) {
     useSkill = false;
   }
   const appendAiEndTurnLog = () => {
-    const usedSkillThisTurn = !!(useSkill || gs.skillUsed || gs.multiplyUsed);
+    const usedSkillThisTurn = !!(
+      useSkill
+      || gs.skillUsed
+      || gs.multiplyUsed
+      || gs.skillActivatedTurn === gs.turn
+    );
     L.push(usedSkillThisTurn ? `${ai.name} 结束回合` : `${ai.name} 未使用技能，结束回合`);
   };
 
@@ -994,7 +999,7 @@ export function aiStep(gs, opts = {}) {
               return {...gs, players:P, deck:D, discard:Disc, log:L,
                 phase:'PLAYER_REVEAL_FOR_HUNT',
                 abilityData:{huntingAI:ct, aiHunterName:ai.name},
-                skillUsed:true, huntAbandoned: updatedAbandoned, _aiName:ai.name, _drawnCard:gs._drawnCard, _aiDrawnCard:gs._aiDrawnCard??gs._drawnCard??null, _discardedDrawnCard:gs._discardedDrawnCard??false, _playersBeforeSkillAction:playersBeforeSkillAction, _preSkillLogs:preSkillLogs, _preSkillDiscard:preSkillDiscard, _aiHuntEvents:aiHuntEvents};
+                skillUsed:true, skillActivatedTurn:gs.turn, huntAbandoned: updatedAbandoned, _aiName:ai.name, _drawnCard:gs._drawnCard, _aiDrawnCard:gs._aiDrawnCard??gs._drawnCard??null, _discardedDrawnCard:gs._discardedDrawnCard??false, _playersBeforeSkillAction:playersBeforeSkillAction, _preSkillLogs:preSkillLogs, _preSkillDiscard:preSkillDiscard, _aiHuntEvents:aiHuntEvents};
             } else {
               const beforeHuntPlayers=copyPlayers(P);
               const huntLogStart=L.length;

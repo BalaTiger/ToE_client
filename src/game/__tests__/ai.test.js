@@ -1022,6 +1022,59 @@ describe('aiStep optional action limits', () => {
     expect(newLogs.some(line => line.includes('艾伦 未使用技能，结束回合'))).toBe(false);
   });
 
+  it('AI 追猎者连续追捕恢复后即使不再追捕也记录本轮已使用技能', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const matchingCard = makeZoneCard('C1', 0);
+    const remainingCard = makeZoneCard('A1', 0);
+    const players = [
+      makePlayer({
+        name: '你',
+        role: ROLE_TREASURE,
+        hp: 10,
+        hand: [makeZoneCard('C4', 0)],
+      }),
+      makePlayer({
+        name: '卡洛斯',
+        role: ROLE_HUNTER,
+        roleRevealed: true,
+        hp: 10,
+        hand: [matchingCard, remainingCard],
+      }),
+    ];
+    const huntPrompt = aiStep(makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      turn: 7,
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+      log: ['旧日志'],
+    }));
+    expect(huntPrompt).toMatchObject({
+      phase: 'PLAYER_REVEAL_FOR_HUNT',
+      skillUsed: true,
+      skillActivatedTurn: 7,
+    });
+
+    const resumedGs = {
+      ...huntPrompt,
+      players: huntPrompt.players.map((player, index) => index === 0
+        ? { ...player, hp: 7 }
+        : { ...player, hand: [remainingCard] }),
+      phase: 'AI_TURN',
+      abilityData: {},
+      skillUsed: false,
+      huntAbandoned: [],
+      log: [...huntPrompt.log, '你亮出 [C4] 触底反弹', '卡洛斯 弃 [C1] 活火山，你受 3HP 伤害！'],
+    };
+    const result = aiStep(resumedGs);
+    const newLogs = result.log.slice(resumedGs.log.length);
+
+    expect(newLogs).toContain('卡洛斯 结束回合');
+    expect(newLogs.some(line => line.includes('卡洛斯 未使用技能，结束回合'))).toBe(false);
+  });
+
   it('邪祀者只有低 SAN 伤害手牌时优先繁衍且不继续蛊惑', () => {
     const sanCard = {
       id: 'san-card',

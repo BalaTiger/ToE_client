@@ -443,7 +443,11 @@ describe('mkRoles', () => {
     expect(roles).toContain(ROLE_TREASURE);
   });
 
-  it('固定配比下选择本地身份会与 AI 对调并保持总数', () => {
+  it.each([
+    ['寻宝者', ROLE_TREASURE],
+    ['追猎者', ROLE_HUNTER],
+    ['邪祀者', ROLE_CULTIST],
+  ])('选择%s后由 AI 随机抽取身份池中的剩余身份', (_label, selectedRole) => {
     const players = [
       { role: ROLE_TREASURE },
       { role: ROLE_TREASURE },
@@ -454,17 +458,32 @@ describe('mkRoles', () => {
     const state = {
       players,
       _playersBeforeThisDraw: players.map(player => ({ ...player })),
-      debugFixedRoleCounts: {
-        [ROLE_TREASURE]: 2,
-        [ROLE_HUNTER]: 2,
-        [ROLE_CULTIST]: 1,
-      },
+      _preTurnPlayers: players.map(player => ({ ...player })),
+      _playersBeforeCthDraws: players.map(player => ({ ...player })),
     };
-    const result = applySelectedLocalRole(state, ROLE_HUNTER);
-    expect(result.players[0].role).toBe(ROLE_HUNTER);
+    const result = applySelectedLocalRole(state, selectedRole);
+    expect(result.players[0].role).toBe(selectedRole);
     expect(result.players.filter(player => player.role === ROLE_TREASURE)).toHaveLength(2);
     expect(result.players.filter(player => player.role === ROLE_HUNTER)).toHaveLength(2);
-    expect(result._playersBeforeThisDraw.map(player => player.role)).toEqual(result.players.map(player => player.role));
+    expect(result.players.filter(player => player.role === ROLE_CULTIST)).toHaveLength(1);
+    const expectedAiSelectedCount = players.filter(player => player.role === selectedRole).length - 1;
+    expect(result.players.slice(1).filter(player => player.role === selectedRole)).toHaveLength(expectedAiSelectedCount);
+    for (const snapshotKey of ['_playersBeforeThisDraw', '_preTurnPlayers', '_playersBeforeCthDraws']) {
+      expect(result[snapshotKey].map(player => player.role)).toEqual(result.players.map(player => player.role));
+    }
+  });
+
+  it('选择随机身份时保留玩家抽中的身份，并让 AI 抽取剩余身份', () => {
+    const players = [
+      { role: ROLE_CULTIST },
+      { role: ROLE_TREASURE },
+      { role: ROLE_HUNTER },
+      { role: ROLE_TREASURE },
+      { role: ROLE_HUNTER },
+    ];
+    const result = applySelectedLocalRole({ players }, 'random');
+    expect(result.players[0].role).toBe(ROLE_CULTIST);
+    expect(result.players.map(player => player.role).sort()).toEqual(players.map(player => player.role).sort());
   });
 });
 

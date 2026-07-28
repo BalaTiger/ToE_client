@@ -95,7 +95,9 @@ export const ENDLESS_CORRIDOR_ANIMATION_STYLES = `
     animation: endlessCorridorFlashFill 2.3s linear both;
   }
   .endlessCorridorOverlay.ending .endlessCorridorExposure,
-  .endlessCorridorOverlay.ending .endlessCorridorFlash {
+  .endlessCorridorOverlay.ending .endlessCorridorFlash,
+  .endlessCorridorTopLight.ending .endlessCorridorExposure,
+  .endlessCorridorTopLight.ending .endlessCorridorFlash {
     animation: endlessCorridorFlashExit .22s ease forwards;
   }
   .endlessCorridorOverlay.ending .endlessCorridorCanvas,
