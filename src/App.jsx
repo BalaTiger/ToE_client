@@ -160,6 +160,7 @@ import {
   buildSinglePlayerAiTurnStartReplayContext,
   createTimedOutDrawDiscardEvent,
   createGodPowerBlockedEvent,
+  createCardEffectEvent,
   buildTurnStartDrawVisualEvents,
   buildFreshStatVisualEvents,
   getCurrentExecutionTurnOwner,
@@ -7035,6 +7036,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if((!isLocalSeatIndex(actorIdx)&&!allowAi)||cardIndex<0)return;
     let P=copyPlayers(activeGs.players),D=[...activeGs.deck],Disc=[...activeGs.discard];
     if(!P[actorIdx]?.hand?.[cardIndex])return;
+    const beforeDiscardPlayers=copyPlayers(P);
+    const beforeDiscardPile=[...Disc];
     const cardToDiscard=P[actorIdx].hand[cardIndex];
     if(cardToDiscard?.id&&igniteTorchFlamingCardIdsRef.current.has(cardToDiscard.id))return;
     if(cardToDiscard?.id)igniteTorchFlamingCardIdsRef.current.add(cardToDiscard.id);
@@ -7057,6 +7060,26 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }
     grantTurnScopedGodPowerImmunity(P[actorIdx], getCurrentExecutionTurnOwner(activeGs, actorIdx));
     L.push(`【引燃火把】${localDisplayName(actorIdx,P[actorIdx]?.name)} 本回合不受邪神之力影响`);
+    const discardEvent=(
+      !isBlackGoatYoung(discardedCard)&&
+      !isTsathogguaSlime(discardedCard)&&
+      discardedCard.type!=='blankZone'
+    )?createCardEffectEvent({
+      effectKey:'forcedRandomDiscard',
+      card:{name:'引燃火把',type:'igniteTorch'},
+      actorIdx,
+      beforePlayers:beforeDiscardPlayers,
+      beforeDiscard:beforeDiscardPile,
+      afterPlayers:copyPlayers(P),
+      afterDiscard:[...Disc],
+      discardEvents:[{
+        playerIndex:actorIdx,
+        card:discardedCard,
+        afterPlayers:copyPlayers(P),
+        afterDiscard:[...Disc],
+      }],
+      msgs:L.slice(-2),
+    }):null;
     const nextGs=buildTargetContinuationGs({
       baseState:activeGs,
       players:P,
@@ -7065,7 +7088,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       log:L,
       abilityData,
       canResumeAi:false,
+      extraPatch:discardEvent&&activeGs._isMP?{
+        _visualEvents:[discardEvent,...(activeGs._visualEvents||[])],
+      }:{},
     });
+    broadcastVisualReplayIfNeeded(nextGs);
     finishTargetContinuation({
       queue:[{type:'DISCARD',card:discardedCard,targetPid:actorIdx,msgs:L.slice(-2)},statePatchStep({players:P,discard:Disc,log:L})],
       nextGs,

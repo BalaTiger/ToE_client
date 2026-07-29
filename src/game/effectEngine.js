@@ -898,7 +898,10 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         msgs.push(`${actor.name} 准备弃一张牌并引燃火把`);
         return;
       }
-      randDiscard(ci, 1);
+      const beforeForcedPlayers = copyPlayers(P);
+      const beforeForcedDiscard = [...Disc];
+      const discardEvents = randDiscard(ci, 1);
+      appendForcedRandomDiscardEvent(beforeForcedPlayers, beforeForcedDiscard, discardEvents);
       grantTurnScopedGodPowerImmunity(P[ci], executionTurnOwner);
       msgs.push(`【引燃火把】${actor.name} 本回合不受邪神之力影响`);
     },

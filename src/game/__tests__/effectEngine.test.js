@@ -793,6 +793,33 @@ describe('applyFx', () => {
     expect(res.P[1]).toMatchObject({ godPowerImmuneThisTurn: true, godPowerImmuneTurnOwner: 0 });
   });
 
+  it('igniteTorch: AI 自动弃牌会生成显式视觉事件', () => {
+    const torchCard = { id: 'torch-card', key: 'C3', name: '引燃火把', type: 'igniteTorch' };
+    const discardedCard = { ...makeZoneCard('B2', 0), id: 'torch-discard' };
+    const players = makeStandardPlayers(3);
+    players[1].hand = [torchCard, discardedCard];
+    const gs = makeGs({ players, currentTurn: 1 });
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+
+    const res = applyFx(torchCard, 1, null, players, [], [], gs, false, [], true);
+    randomSpy.mockRestore();
+
+    expect(res.P[1].hand).toEqual([torchCard]);
+    expect(res.statePatch._visualEvents).toEqual([
+      expect.objectContaining({
+        type: VISUAL_EVENT.CARD_EFFECT,
+        effectKey: 'forcedRandomDiscard',
+        actorIdx: 1,
+        discardEvents: [
+          expect.objectContaining({
+            playerIndex: 1,
+            card: discardedCard,
+          }),
+        ],
+      }),
+    ]);
+  });
+
   it('allDiscard: 全体随机弃1张牌', () => {
     const players = makeStandardPlayers(3);
     players[0].hand = [makeZoneCard('A1', 0)];

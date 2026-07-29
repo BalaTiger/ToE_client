@@ -67,6 +67,59 @@ describe('buildAnimQueue stat animations', () => {
     ]));
   });
 
+  it('显式回放其他角色收入引燃火把后弃置的卡牌', () => {
+    const torchCard = { id: 'torch-card', key: 'C3', name: '引燃火把', type: 'igniteTorch' };
+    const discardedCard = { id: 'torch-discard', key: 'NYA', name: '伏行之混沌', type: 'god' };
+    const oldPlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '黛安娜', hand: [discardedCard] }),
+    ];
+    const beforeEffectPlayers = [
+      oldPlayers[0],
+      { ...oldPlayers[1], hand: [discardedCard, torchCard] },
+    ];
+    const afterPlayers = [
+      oldPlayers[0],
+      { ...oldPlayers[1], hand: [torchCard] },
+    ];
+    const oldGs = makeGs({ players: oldPlayers, discard: [], log: [] });
+    const event = createCardEffectEvent({
+      effectKey: 'forcedRandomDiscard',
+      card: torchCard,
+      actorIdx: 1,
+      beforePlayers: beforeEffectPlayers,
+      beforeDiscard: [],
+      afterPlayers,
+      afterDiscard: [discardedCard],
+      discardEvents: [{
+        playerIndex: 1,
+        card: discardedCard,
+        afterPlayers,
+        afterDiscard: [discardedCard],
+      }],
+      msgs: ['黛安娜 失去了 伏行之混沌'],
+    });
+    const newGs = {
+      ...oldGs,
+      players: afterPlayers,
+      discard: [discardedCard],
+      log: ['黛安娜 失去了 伏行之混沌'],
+      _visualEvents: [event],
+    };
+
+    const queue = dedupeInferredDiscardTransfers(buildAnimQueue(oldGs, newGs));
+
+    expect(queue).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'DISCARD',
+        card: discardedCard,
+        targetPid: 1,
+        triggerName: '黛安娜',
+        visualSetupTiming: 'stepStart',
+      }),
+    ]));
+  });
+
   it('从手牌信仰后立即生成可排序的邪神高亮步骤', () => {
     const godCard = { id: 'vri-faith', name: '弗栗多', godKey: 'VRI', isGod: true, type: 'god' };
     const oldGs = makeGs({

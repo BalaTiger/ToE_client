@@ -233,7 +233,6 @@ export function EndlessCorridorTunnelAnim({ exiting, onTunnelRush }) {
   return (
     <>
       <FullscreenLightLayer className={`endlessCorridorTopLight${exiting ? ' ending' : ''}`}>
-        <div className="endlessCorridorExposure" />
         {softFlashSrc ? (
           <img className="endlessCorridorFlash" src={softFlashSrc} alt="" aria-hidden="true" />
         ) : (
@@ -250,6 +249,7 @@ export function EndlessCorridorTunnelAnim({ exiting, onTunnelRush }) {
             <span />
           </div>
           <div className="endlessCorridorCore" />
+          <div className="endlessCorridorExposure" />
         </div>
       </div>
     </>
