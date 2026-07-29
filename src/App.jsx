@@ -227,6 +227,14 @@ import {
   prepareAnimQueueLogs,
 } from "./game/animLogs";
 import {
+  buildAiTurnRecoveryState,
+  buildRoseThornSnapshot,
+  clearPendingAnimDeathPlayers,
+  collectExplicitAiTurnLogs,
+  finalizeAiPresentationState,
+  stripAiPresentationFields,
+} from './game/aiTurnPresentation';
+import {
   resolveTurnHighlightForStep,
   buildBewitchForcedCardQueue,
   buildInspectionEventFlow,
@@ -2751,31 +2759,31 @@ export default function Game(){
         } else if(actionStatQ.length){
           queue.push(...actionStatQ);
         }
-        const explicitCurrentLogs=[
-          ...(gs._turnStartLogs||[]),
-          ...(gs._drawLogs||[]),
-          ...(gs._statLogs||[]),
-          ...queue.flatMap(step=>Array.isArray(step.msgs)?step.msgs:[]),
-        ];
+        const explicitCurrentLogs=collectExplicitAiTurnLogs(gs,queue);
         const residualLogs=subtractLogOccurrences(currentTurnLogs,explicitCurrentLogs);
         const finalQueue=appendAnimLogChunkToQueueEnd(queue,residualLogs);
         // 更新玫瑰倒刺快照，防止 useEffect 在动画结束后对已在 aiStep 中结算的弃牌重复触发
-        roseThornPrevRef.current = newGs.players.map((player, idx) => ({
-          idx,
-          marked: [
-            ...((player?.hand||[]).filter(card=>card?.roseThornHolderId===idx).map(card=>card.id)),
-            ...((player?.godZone||[]).filter(card=>card?.roseThornHolderId===idx).map(card=>card.id)),
-          ].filter(id=>id!=null),
-        }));
+        roseThornPrevRef.current=buildRoseThornSnapshot(newGs.players);
         // 确保 pendingGs 中也清除 _pendingAnimDeath，防止 STATE_PATCH 后置灰效果被覆盖
-        newGs={...newGs,players:newGs.players.map(p=>p._pendingAnimDeath?{...p,_pendingAnimDeath:false}:p)};
+        newGs=finalizeAiPresentationState(newGs);
         triggerAnimQueue(finalQueue, newGs);
         return;
       }
       try{
-        // Strip ALL animation-only temp fields before storing as real game state
-        const{_aiDrawnCard,_aiName,_playersBeforeNextDraw,_playersBeforeEndTurnReplay,_discardBeforeEndTurnReplay,_aiHuntEvents,_playersBeforeSkillAction,_preSkillLogs,_preSkillDiscard,_cthRestDraws,_cthRestDrawLogs,_playersBeforeCthDraws,_aiHandLimitDiscards,_aiHandLimitBeforePlayers,_aiHandLimitBeforeDiscard,_aiHandLimitBeforeLog,_animAiDrawnCard,_animDiscardedDrawnCard,_animMultiplyEvent,_animSphinxReveal,_aiTurnIntroShown:_aits2,...stripped}=rawResult;
-        newGs=stripped; // reassign: stripped has _playersBeforeThisDraw from startNextTurn
+        // Strip ALL animation-only temp fields before storing as real game state.
+        const {
+          _playersBeforeNextDraw,
+          _playersBeforeEndTurnReplay,
+          _discardBeforeEndTurnReplay,
+          _playersBeforeSkillAction,
+          _preSkillLogs,
+          _preSkillDiscard,
+          _aiHandLimitDiscards,
+          _aiHandLimitBeforePlayers,
+          _aiHandLimitBeforeDiscard,
+          _aiHandLimitBeforeLog,
+        }=rawResult;
+        newGs=stripAiPresentationFields(rawResult);
         const oldLog=Array.isArray(gs.log)?gs.log:[];
         const nextLog=Array.isArray(newGs.log)?newGs.log:oldLog;
         // Helper: build a gs-like object with substituted players for buildAnimQueue
@@ -2881,12 +2889,12 @@ export default function Game(){
         // 提前清除 _pendingAnimDeath：STATE_PATCH 后面板立即置灰，不再等到整个队列播完
         const pendingActionInspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current&&isCurrentTurnInspectionEvent(ev));
         const firstActionInspection=pendingActionInspectionEvents[0]||null;
-        const P_actionEnd=(rawResult._playersBeforeNextDraw||newGs.players).map(p=>p._pendingAnimDeath?{...p,_pendingAnimDeath:false}:p);
-        const P_actionPreInspection=(firstActionInspection?.beforePlayers||P_actionEnd).map(p=>p._pendingAnimDeath?{...p,_pendingAnimDeath:false}:p);
-        const P_actionBeforeHandLimit=(firstActionInspection
+        const P_actionEnd=clearPendingAnimDeathPlayers(rawResult._playersBeforeNextDraw||newGs.players);
+        const P_actionPreInspection=clearPendingAnimDeathPlayers(firstActionInspection?.beforePlayers||P_actionEnd);
+        const P_actionBeforeHandLimit=clearPendingAnimDeathPlayers(firstActionInspection
           ? P_actionPreInspection
           : (_aiHandLimitBeforePlayers||_playersBeforeEndTurnReplay||P_actionPreInspection)
-        ).map(p=>p._pendingAnimDeath?{...p,_pendingAnimDeath:false}:p);
+        );
         const actionLogPreInspection=firstActionInspection?.beforeLog||actionLog;
         const huntEventQueue=(rawResult._aiHuntEvents||[]).flatMap(evt=>buildAiHuntEventAnimQueue(evt,gs.players[gs.currentTurn]?.name||'???'));
         const consumedApophisTargetSeq=Math.max(0,...(rawResult._aiHuntEvents||[])
@@ -3235,12 +3243,7 @@ export default function Game(){
           );
           queue.push(...inspectionFlow.queue);
         }
-        const explicitCurrentLogs=[
-          ...(gs._turnStartLogs||[]),
-          ...(gs._drawLogs||[]),
-          ...(gs._statLogs||[]),
-          ...queue.flatMap(step=>Array.isArray(step.msgs)?step.msgs:[]),
-        ];
+        const explicitCurrentLogs=collectExplicitAiTurnLogs(gs,queue);
         const residualLogs=subtractLogOccurrences(currentTurnLogs,explicitCurrentLogs);
         const currentTurnQueue=appendAnimLogChunkToQueueEnd(queue,residualLogs);
         const currentTurnStatePatch=
@@ -3252,15 +3255,9 @@ export default function Game(){
           ...currentTurnStatePatch,
         ];
         // 更新玫瑰倒刺快照，防止 useEffect 在动画结束后对已在 aiStep 中结算的弃牌重复触发
-        roseThornPrevRef.current = newGs.players.map((player, idx) => ({
-          idx,
-          marked: [
-            ...((player?.hand||[]).filter(card=>card?.roseThornHolderId===idx).map(card=>card.id)),
-            ...((player?.godZone||[]).filter(card=>card?.roseThornHolderId===idx).map(card=>card.id)),
-          ].filter(id=>id!=null),
-        }));
+        roseThornPrevRef.current=buildRoseThornSnapshot(newGs.players);
         // 确保 pendingGs 中也清除 _pendingAnimDeath，防止 STATE_PATCH 后置灰效果被覆盖
-        newGs={...newGs,players:newGs.players.map(p=>p._pendingAnimDeath?{...p,_pendingAnimDeath:false}:p)};
+        newGs=finalizeAiPresentationState(newGs);
         if(damageLinkEstablishedMsg){
           visualStateLocks.lock({players:P_actionPreInspection,zhuLight:gs.zhuLight||null});
         }
@@ -3276,9 +3273,12 @@ export default function Game(){
         }
       }catch(e){
         console.error('[AI turn queue error]',e);
-        const errMsg=e?.message?`（${e.message}）`:'';
-        const safeLog=[...(Array.isArray(gs.log)?gs.log:[]),`${gs.players[gs.currentTurn]?.name||'该AI'} 的动画结算异常${errMsg}，系统强制结束其回合`];
-        const safeGs=startNextTurn({...gs,log:safeLog,currentTurn:gs.currentTurn,skillUsed:false,restUsed:false,huntAbandoned:[]});
+        const safeGs=buildAiTurnRecoveryState({
+          snapshot:gs,
+          error:e,
+          stage:'presentation',
+          startNextTurn,
+        });
         setGs(safeGs);return;
       }
   }

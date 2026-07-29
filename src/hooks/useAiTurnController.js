@@ -1,4 +1,8 @@
 import { useEffect, useRef } from 'react';
+import {
+  buildAiTurnRecoveryState,
+  stripAiExecutionFields,
+} from '../game/aiTurnPresentation';
 
 export const AI_TURN_DELAY_MS = 2100;
 export const AI_TURN_WATCHDOG_MS = 20_000;
@@ -46,36 +50,14 @@ export function executeAiTurnStep({
 }) {
   try {
     const rawResult = runAiStep(snapshot, { isDebugMode });
-    const {
-      _aiDrawnCard: _aiDrawnCard,
-      _aiName: _aiName,
-      _playersBeforeNextDraw: _playersBeforeNextDraw,
-      _aiHuntEvents: _aiHuntEvents,
-      _playersBeforeSkillAction: _playersBeforeSkillAction,
-      _preSkillLogs: _preSkillLogs,
-      _preSkillDiscard: _preSkillDiscard,
-      _animAiDrawnCard: _animAiDrawnCard,
-      _animDiscardedDrawnCard: _animDiscardedDrawnCard,
-      _animMultiplyEvent: _animMultiplyEvent,
-      _animSphinxReveal: _animSphinxReveal,
-      _aiTurnIntroShown: _aiTurnIntroShown,
-      ...newGs
-    } = rawResult;
+    const newGs = stripAiExecutionFields(rawResult);
     return { ok: true, rawResult, newGs };
   } catch (error) {
-    const errorSuffix = error?.message ? `（${error.message}）` : '';
-    const actorName = snapshot.players?.[snapshot.currentTurn]?.name || '该AI';
-    const safeLog = [
-      ...(Array.isArray(snapshot.log) ? snapshot.log : []),
-      `${actorName} 的回合处理异常${errorSuffix}，系统强制结束其回合`,
-    ];
-    const recoveryGs = startNextTurn({
-      ...snapshot,
-      log: safeLog,
-      currentTurn: snapshot.currentTurn,
-      skillUsed: false,
-      restUsed: false,
-      huntAbandoned: [],
+    const recoveryGs = buildAiTurnRecoveryState({
+      snapshot,
+      error,
+      stage: 'execution',
+      startNextTurn,
     });
     return { ok: false, error, recoveryGs };
   }
