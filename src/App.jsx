@@ -277,11 +277,13 @@ import { useSkillAnimationEffects } from './hooks/useSkillAnimationEffects';
 import { useDamageLinkGhosts } from './hooks/useDamageLinkGhosts';
 import { useBattleResponsiveLayout } from './hooks/useBattleResponsiveLayout';
 import { useDebugSettings } from './hooks/useDebugSettings';
+import { useGamePreferences } from './hooks/useGamePreferences';
 import { getDebugRoleComposition } from './components/lobby/debugSettingsModel';
 import { useServerAnnouncement } from './hooks/useServerAnnouncement';
 import { DESIGN_WIDTH } from './utils/scale';
 import { useGameAudio } from './hooks/useGameAudio';
 import { useAiWatchdog, BAD_PHASES } from './hooks/useAiWatchdog';
+import { executeAiTurnStep, useAiTurnController } from './hooks/useAiTurnController';
 import { useRoomCountdown } from './hooks/useRoomCountdown';
 import { useMpCthDecisionTimer, useMpDecisionTimer, useMpDiscardTimer, useMpHuntRevealTimer, useMpTurnTimer } from './hooks/useMultiplayerTimers';
 import { useVisualDiscardSync } from './hooks/useVisualDiscardSync';
@@ -762,20 +764,14 @@ export default function Game(){
       clearTimeout(timer);
     };
   },[isBattleScreen,gs?.expansionKey]);
-  const [musicVolume,setMusicVolume]=useState(()=>{
-    try{const raw=localStorage.getItem('cthulhu_music_volume');const value=raw==null?NaN:Number(raw);return Number.isFinite(value)?Math.max(0,Math.min(1,value)):1;}catch{return 1;}
-  });
-  const [sfxVolume,setSfxVolume]=useState(()=>{
-    try{const raw=localStorage.getItem('cthulhu_sfx_volume');const value=raw==null?NaN:Number(raw);return Number.isFinite(value)?Math.max(0,Math.min(1,value)):1;}catch{return 1;}
-  });
-  const handleMusicVolume=useCallback(value=>{
-    const next=Math.max(0,Math.min(1,value));setMusicVolume(next);
-    try{localStorage.setItem('cthulhu_music_volume',String(next));}catch{/* ignore */}
-  },[]);
-  const handleSfxVolume=useCallback(value=>{
-    const next=Math.max(0,Math.min(1,value));setSfxVolume(next);
-    try{localStorage.setItem('cthulhu_sfx_volume',String(next));}catch{/* ignore */}
-  },[]);
+  const {
+    gamma,
+    musicVolume,
+    sfxVolume,
+    handleGamma,
+    handleMusicVolume,
+    handleSfxVolume,
+  }=useGamePreferences();
   const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound,playCthRlyehDreamSound,playGodPowerBlockedSound,playTsgSlimePopSound,playTsgSlimeCreateSound,playOneCardShiftSound,playMultiCardShiftSound,playDiceRollSound,playTurnStartSound,playSkillHuntSound,playSkillSwapSound,playSkillBewitchSound,playGodHighlightSound,playVritraImmortalRevealSound,playPositiveCardFlipSound,playNeutralCardFlipSound,playCaveDuelSound,playWheelSpinSound,playBlackGoatRunSound,playBlackGoatPulseSound,playGuillotineDeathSound,playPetrifyDeathSound,playNegativeCardFlipSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影',{musicVolume,sfxVolume});
   const persistSoftGuideDone=useCallback((nextDone)=>{
     setSoftGuideDone(nextDone);
@@ -910,24 +906,6 @@ export default function Game(){
   const [showEmojiPicker,setShowEmojiPicker]=useState(false);
   const [emojiButtonPos,setEmojiButtonPos]=useState({top:70,right:20});
   const discardPileRef=useRef(null);        // 弃牌堆位置
-
-  // ── Gamma / brightness ────────────────────────────────────────
-  const [gamma,setGamma]=useState(()=>{
-    try{const v=parseFloat(localStorage.getItem('cthulhu_gamma'));return isNaN(v)?1:Math.max(0.5,Math.min(2,v));}catch{return 1;}
-  });
-  function handleGamma(v){
-    setGamma(v);
-    try{localStorage.setItem('cthulhu_gamma',String(v));}catch{/* ignore */}
-  }
-  // Apply gamma filter to document.body instead of a React container div.
-  // Applying CSS filter to a div creates a new containing block for position:fixed children,
-  // causing overlays to be positioned relative to the div instead of the viewport.
-  // Applying to document.body avoids this: body-sized containing block == viewport.
-  const gammaFilter=gamma===1?undefined:`brightness(${gamma.toFixed(2)}) contrast(${(1+(gamma-1)*0.3).toFixed(2)})`;
-  useEffect(()=>{
-    document.body.style.filter=gammaFilter||'';
-    return()=>{document.body.style.filter='';};
-  },[gammaFilter]);
 
   function copyRoomIdToClipboard(roomId,{created=false}={}){
     const successMsg=created
@@ -1375,7 +1353,6 @@ export default function Game(){
     },1250);
   },[playGodHighlightSound]);
   const[earthquakeVisualPlayers,setEarthquakeVisualPlayers]=useState(null);
-  const timerRef=useRef(null);
 
   React.useLayoutEffect(()=>{
     if(isTutorialDrawKeepHighlightStep)setDrawRevealKeepButtonRect(null);
@@ -2659,31 +2636,20 @@ export default function Game(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[gs?.phase,gs?.abilityData?.targetIdx,gs?.abilityData?._turnOwner,anim,animExiting,showTutorial,softGuidePauseActive]);
 
-  // AI turn
-  useEffect(()=>{
-    if(!gs||gs.phase!=='AI_TURN'||gs.gameOver||gs.phase==='PLAYER_WIN_PENDING'||anim||showTutorial||softGuidePauseActive||isMultiplayerGame(gs))return;
-    // Safety watchdog: if AI turn hangs for any reason, force-advance after 3.5s
-    // (normal AI turn takes ~700ms + anim duration; 3.5s is generous but not user-visible)
-    const watchdog=setTimeout(()=>{
-      console.warn('[AI watchdog] AI turn exceeded 3.5s, force-advancing');
-      const safeLog=[...gs.log,`${gs.players[gs.currentTurn]?.name||'该AI'} 的回合处理超时，系统强制结束其回合`];
-      const safeGs=startNextTurn({...gs,log:safeLog,currentTurn:gs.currentTurn,skillUsed:true,restUsed:false,huntAbandoned:[]});
-      setGs(safeGs);
-    },20000);
-    timerRef.current=setTimeout(()=>{
+  function executeAiTurn(gs){
       let rawResult,newGs;
-      try{
-        rawResult=aiStep(gs, { isDebugMode: isLocalDebugEnabled() });
-        const{_aiDrawnCard:_a,_aiName:_n,_playersBeforeNextDraw:_pbn,_aiHuntEvents:_he,_playersBeforeSkillAction:_pbsa,_preSkillLogs:_psl,_preSkillDiscard:_psd,_animAiDrawnCard:_aad,_animDiscardedDrawnCard:_add,_animMultiplyEvent:_ame,_animSphinxReveal:_asr,_aiTurnIntroShown:_aits1,...stripped}=rawResult;
-        newGs=stripped;
-      }catch(e){
-        console.error('[aiStep error]',e);
-        // Safety fallback: forcibly advance to next turn so game never freezes
-        const errMsg=e?.message?`（${e.message}）`:'';
-        const safeLog=[...gs.log,`${gs.players[gs.currentTurn]?.name||'该AI'} 的回合处理异常${errMsg}，系统强制结束其回合`];
-        const safeGs=startNextTurn({...gs,log:safeLog,currentTurn:gs.currentTurn,skillUsed:false,restUsed:false,huntAbandoned:[]});
-        setGs(safeGs);return;
+      const stepResult=executeAiTurnStep({
+        snapshot:gs,
+        runAiStep:aiStep,
+        isDebugMode:isLocalDebugEnabled(),
+        startNextTurn,
+      });
+      if(!stepResult.ok){
+        console.error('[aiStep error]',stepResult.error);
+        setGs(stepResult.recoveryGs);
+        return;
       }
+      ({rawResult,newGs}=stepResult);
       // If AI is hunting player 0, pause here for player input (after draw card anim)
       if(newGs.phase==='PLAYER_REVEAL_FOR_HUNT'){
         const oldLog=Array.isArray(gs.log)?gs.log:[];
@@ -3315,10 +3281,24 @@ export default function Game(){
         const safeGs=startNextTurn({...gs,log:safeLog,currentTurn:gs.currentTurn,skillUsed:false,restUsed:false,huntAbandoned:[]});
         setGs(safeGs);return;
       }
-    },2100);
-    return()=>{clearTimeout(timerRef.current);clearTimeout(watchdog);};
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[gs?.currentTurn,gs?.phase,gs?._turnKey,anim,gs?.gameOver,softGuidePauseActive]);
+  }
+
+  function handleAiTurnTimeout(snapshot){
+    console.warn('[AI watchdog] AI turn exceeded 20s, force-advancing');
+    const safeLog=[...snapshot.log,`${snapshot.players[snapshot.currentTurn]?.name||'该AI'} 的回合处理超时，系统强制结束其回合`];
+    const safeGs=startNextTurn({...snapshot,log:safeLog,currentTurn:snapshot.currentTurn,skillUsed:true,restUsed:false,huntAbandoned:[]});
+    setGs(safeGs);
+  }
+
+  useAiTurnController({
+    gs,
+    hasActiveAnimation:!!anim,
+    showTutorial,
+    softGuidePauseActive,
+    isMultiplayer:isMultiplayerGame(gs),
+    onExecute:executeAiTurn,
+    onTimeout:handleAiTurnTimeout,
+  });
 
   useMultiplayerStateBroadcast({
     gs,
