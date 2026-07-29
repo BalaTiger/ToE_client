@@ -227,6 +227,7 @@ import {
   prepareAnimQueueLogs,
 } from "./game/animLogs";
 import {
+  buildAiHuntWaitPresentation,
   buildAiTurnRecoveryState,
   buildRoseThornSnapshot,
   clearPendingAnimDeathPlayers,
@@ -2660,113 +2661,21 @@ export default function Game(){
       ({rawResult,newGs}=stepResult);
       // If AI is hunting player 0, pause here for player input (after draw card anim)
       if(newGs.phase==='PLAYER_REVEAL_FOR_HUNT'){
-        const oldLog=Array.isArray(gs.log)?gs.log:[];
-        const nextLog=Array.isArray(newGs.log)?newGs.log:oldLog;
-        const {currentTurnLogs}=splitTransitionLogs(oldLog,nextLog);
-        const hasTurnStartDraw=!!gs._playersBeforeThisDraw&&!gs._aiTurnIntroShown;
-        const aiTurnDrawnCard=hasTurnStartDraw?(rawResult._animAiDrawnCard??rawResult._aiDrawnCard??gs._aiDrawnCard??gs._drawnCard??null):null;
-        const aiTurnDiscarded=hasTurnStartDraw?isDrawnCardActuallyDiscarded(rawResult,aiTurnDrawnCard):false;
-        const fakeGs = (ps,log=gs.log) => ({...gs, players: ps, log, _statEvents: gs._statEvents || [], _statEventSeq: gs._statEventSeq || 0});
-        const queue=[];
-        const aiTurnStartReplay=hasTurnStartDraw
-          ? buildActorTurnStartReplay(gs,{
-              oldGs:{...gs,players:gs._playersBeforeThisDraw,log:getTurnStartDrawBaselineLog(gs)},
-              effectOldGs:{...gs,players:gs._playersBeforeThisDraw,log:getTurnStartDrawBaselineLog(gs)},
-              actorName:gs.players[gs.currentTurn]?.name||'???',
-              forceActorName:true,
-            })
-          : null;
-        const usedAiTurnStartReplay=!!(aiTurnStartReplay?.queue?.length);
-        if(usedAiTurnStartReplay){
-          if(aiTurnStartReplay.visualLock)visualStateLocks.lock(aiTurnStartReplay.visualLock);
-          maskDiscardedTurnDrawUntilDiscardAnim(gs);
-          queue.push(...aiTurnStartReplay.queue);
-        }else if(!gs._aiTurnIntroShown){
-          queue.push(...buildTurnStartIntroQueue(gs,gs.players[gs.currentTurn]?.name||'???'));
-        }
-        if(!usedAiTurnStartReplay&&aiTurnDrawnCard) queue.push({type:'DRAW_CARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn,msgs:gs._drawLogs});
-        if(!usedAiTurnStartReplay&&gs._playersBeforeThisDraw&&aiTurnDrawnCard){
-          const drawBaselineLog=getTurnStartDrawBaselineLog(gs);
-          const drawFullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(
-            [...(gs._drawLogs||[]),...(gs._statLogs||[])],
-            gs._playersBeforeThisDraw
-          );
-          const drawEffectQBase=bindAnimLogChunks(buildAnimQueue(fakeGs(gs._playersBeforeThisDraw,drawBaselineLog),gs),{statLogs:gs._statLogs});
-          const drawEffectQ=drawFullHandSwapQ.length
-            ? [...drawFullHandSwapQ,...drawEffectQBase.filter(step=>step.type!=='CARD_TRANSFER')]
-            : drawEffectQBase;
-          queue.push(...drawEffectQ);
-          if(drawEffectQ.length){
-            visualStateLocks.lock({players:gs._playersBeforeThisDraw,zhuLight:gs.zhuLight||null});
-            queue.push(statePatchStep({
-              players:gs.players,
-              discard:aiTurnDiscarded?removeCardsFromDiscard(gs.discard,[aiTurnDrawnCard]):gs.discard
-            }));
-          }
-        }
-        // Add discard anim if AI chose to discard the drawn card
-        if(!usedAiTurnStartReplay&&aiTurnDiscarded&&aiTurnDrawnCard){
-          queue.push({type:'DISCARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn});
-          queue.push(statePatchStep({players:gs.players,discard:gs.discard}));
-        }
-        const newMsgs=nextLog.slice(oldLog.length);
-        const fullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(newMsgs,gs.players,{
-          playersBefore:rawResult._playersBeforeSkillAction||gs.players,
-          zhuLight:gs.zhuLight||null,
+        const presentation=buildAiHuntWaitPresentation({
+          previousState:gs,
+          rawResult,
+          nextState:newGs,
+          isDrawnCardActuallyDiscarded,
+          buildActorTurnStartReplay,
+          buildTurnStartIntroQueue,
         });
-        const huntEventQueue=(rawResult._aiHuntEvents||[]).flatMap(evt=>buildAiHuntEventAnimQueue(evt,gs.players[gs.currentTurn]?.name||'???'));
-        const consumedApophisTargetSeq=Math.max(0,...(rawResult._aiHuntEvents||[])
-          .map(evt=>evt?.apophisTargetEvent?.seq||0)
-          .filter(Boolean));
-        // 信仰后的状态（含新邪神之力）已由下方 STATE_PATCH 落定；行动结算动画的视觉基线也要带上它，
-        // 否则后续步骤会把面板快照退回信仰前，导致“邪神之力”标签闪现后又消失、看起来比日志晚。
-        const actionBaselinePlayers=rawResult._playersBeforeSkillAction||gs.players;
-        const actionOldGsForApophis=consumedApophisTargetSeq
-          ? {...gs,players:actionBaselinePlayers,_apophisTargetSeq:Math.max(gs._apophisTargetSeq||0,consumedApophisTargetSeq)}
-          : {...gs,players:actionBaselinePlayers};
-        const actionStatQBase=buildAnimQueue(actionOldGsForApophis,fakeGs(newGs.players,nextLog));
-        const hasRoseThornGiftAllHand=newMsgs.some(m=>typeof m==='string'&&m.includes('【玫瑰倒刺】')&&m.includes('将全部手牌交给了'));
-        const actionStatQ=fullHandSwapQ.length
-          ? [...fullHandSwapQ,...actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')]
-          : hasRoseThornGiftAllHand
-            ? actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')
-          : actionStatQBase;
-
-        if(rawResult._playersBeforeSkillAction){
-          queue.push(statePatchStep({
-            players:rawResult._playersBeforeSkillAction,
-            discard:rawResult._preSkillDiscard||newGs.discard,
-            msgs:rawResult._preSkillLogs||[],
-          }));
-          queue.push({type:'VISUAL_LOCK',players:rawResult._playersBeforeSkillAction,zhuLight:gs.zhuLight||null});
-          queue.push({type:'TURN_BOUNDARY_PAUSE'});
+        presentation.externalVisualLocks.forEach(lock=>visualStateLocks.lock(lock));
+        if(presentation.shouldMaskDiscardedTurnDraw){
+          maskDiscardedTurnDrawUntilDiscardAnim(gs);
         }
-
-        const hasFullHandSwap=newMsgs.some(m=>m.includes('交换了全部手牌'));
-
-        if(huntEventQueue.length){
-          if(hasFullHandSwap){
-            const huntStatHitSet=new Set(huntEventQueue.flatMap(s=>['GUILLOTINE','DEATH','HP_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','SAN_DAMAGE'].includes(s.type)?(s.hitIndices||[]):[]));
-            const dedupedActionStatQ=actionStatQ.filter(s=>!(['GUILLOTINE','DEATH','HP_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','SAN_DAMAGE'].includes(s.type)&&(s.hitIndices||[]).some(i=>huntStatHitSet.has(i))));
-            queue.push(...dedupedActionStatQ, ...huntEventQueue);
-          } else {
-            // AI may worship from hand before starting a chain of hunts. Keep
-            // those explicit pre-hunt timeline steps (especially GOD_HIGHLIGHT)
-            // so the fallback state watcher cannot replay their sound later,
-            // while the next black-night target die is rolling.
-            queue.push(...getAiPreHuntActionSteps(actionStatQ,newMsgs,huntEventQueue),...huntEventQueue);
-          }
-        } else if(actionStatQ.length){
-          queue.push(...actionStatQ);
-        }
-        const explicitCurrentLogs=collectExplicitAiTurnLogs(gs,queue);
-        const residualLogs=subtractLogOccurrences(currentTurnLogs,explicitCurrentLogs);
-        const finalQueue=appendAnimLogChunkToQueueEnd(queue,residualLogs);
         // 更新玫瑰倒刺快照，防止 useEffect 在动画结束后对已在 aiStep 中结算的弃牌重复触发
-        roseThornPrevRef.current=buildRoseThornSnapshot(newGs.players);
-        // 确保 pendingGs 中也清除 _pendingAnimDeath，防止 STATE_PATCH 后置灰效果被覆盖
-        newGs=finalizeAiPresentationState(newGs);
-        triggerAnimQueue(finalQueue, newGs);
+        roseThornPrevRef.current=presentation.roseThornSnapshot;
+        triggerAnimQueue(presentation.queue,presentation.nextState);
         return;
       }
       try{
