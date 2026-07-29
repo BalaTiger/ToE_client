@@ -202,7 +202,9 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
       const breakEvent = orderedEvents.find(event => event.type === 'DAMAGE_LINK_BREAK');
       const statOnly = orderedEvents
         .filter(event => event.type !== 'DAMAGE_LINK_BREAK')
-        .map(({ phaseOrder, ...event }) => event);
+        .map(event => Object.fromEntries(
+          Object.entries(event).filter(([key]) => key !== 'phaseOrder'),
+        ));
       if (statOnly.length) {
         const breakLine = events.find(event => event.type === 'DAMAGE_LINK_BREAK')?._logChunk?.[0];
         const preBreakMsgs = Array.isArray(msgs) && breakLine

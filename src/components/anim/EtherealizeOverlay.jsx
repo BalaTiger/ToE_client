@@ -284,7 +284,7 @@ function EtherealizeGainAnim({ anim, exiting }) {
     const timeline = Array.isArray(anim?.visualTimeline) ? anim.visualTimeline : [];
     const finalPatchAt = timeline.reduce((max, item) => Math.max(max, item?.atMs || 0), 0);
     return finalPatchAt > 0 ? finalPatchAt : 3600;
-  }, [anim?.visualTimeline]);
+  }, [anim]);
 
   const restorePanel = React.useCallback(() => {
     restorePanelRef.current?.();

@@ -1,13 +1,13 @@
 import React from 'react';
 
-export const PLAYER_STATUS_TAG_ORDER = [
+const PLAYER_STATUS_TAG_ORDER = [
   'godPower',
   'godEncounters',
   'etherealize',
   'poison',
 ];
 
-export function hasPlayerStatusTags(player, visualPlayer = player) {
+function hasPlayerStatusTags(player, visualPlayer = player) {
   return !!(
     player?.godName ||
     (player?.godEncounters || 0) > 0 ||

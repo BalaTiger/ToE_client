@@ -1,7 +1,7 @@
 import { bindAnimLogChunks } from './animLogs';
 import { mergeApophisTargetQueue } from './apophisAnimQueue';
 import { buildAiHuntEventAnimQueue } from './animQueueCore';
-import { cardTransferStep, filterSphinxResultQueue, fullHandSwapSteps, swapCardsSteps } from './animQueueHelpers';
+import { cardTransferStep, filterSphinxResultQueue, swapCardsSteps } from './animQueueHelpers';
 import {
   buildBewitchGiftReplay,
   buildInspectionReplay,

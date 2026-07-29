@@ -12,15 +12,26 @@ export function getMultiplayerIdentityStorage() {
   return isLocalTestHost() ? window.sessionStorage : window.localStorage;
 }
 
+export function getStoredMultiplayerIdentity() {
+  try {
+    const storage = getMultiplayerIdentityStorage();
+    return {
+      uuid: storage?.getItem('cthulhu_player_uuid') || null,
+      identityToken: storage?.getItem('cthulhu_identity_token') || null,
+    };
+  } catch {
+    return { uuid: null, identityToken: null };
+  }
+}
+
 const RESERVED_ROLE_NAMES = new Set(['寻宝者', '追猎者', '邪祀者']);
 const RESERVED_ROLE_NAME_MESSAGE = '与游戏身份重复，请换一个名字';
 
 export function useMultiplayerLobby({ socketRef }) {
-  const [playerUUID, setPlayerUUID] = useState(() => {
-    try { return getMultiplayerIdentityStorage()?.getItem('cthulhu_player_uuid') || null; }
-    catch { return null; }
-  });
+  const [playerUUID, setPlayerUUID] = useState(() => getStoredMultiplayerIdentity().uuid);
   const playerUUIDRef = useSyncedRef(playerUUID);
+  const [identityToken, setIdentityToken] = useState(() => getStoredMultiplayerIdentity().identityToken);
+  const identityTokenRef = useSyncedRef(identityToken);
   const [multiLoading, setMultiLoading] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [roomModal, setRoomModal] = useState(null);
@@ -59,7 +70,7 @@ export function useMultiplayerLobby({ socketRef }) {
 
   function handleCreateRoom() {
     if (!socketRef.current) return;
-    socketRef.current.emit('createRoom', { uuid: playerUUID });
+    socketRef.current.emit('createRoom');
     setMultiLoading(true);
   }
 
@@ -70,7 +81,7 @@ export function useMultiplayerLobby({ socketRef }) {
       addToast('请输入房间号');
       return;
     }
-    socketRef.current.emit('joinRoom', { uuid: playerUUID, roomId: rid });
+    socketRef.current.emit('joinRoom', { roomId: rid });
     setMultiLoading(true);
   }
 
@@ -107,7 +118,7 @@ export function useMultiplayerLobby({ socketRef }) {
 
   function handleJoinLobbyRoom(roomId) {
     if (!socketRef.current) return;
-    socketRef.current.emit('joinRoom', { uuid: playerUUID, roomId });
+    socketRef.current.emit('joinRoom', { roomId });
     setMultiLoading(true);
     setLobbyModal(false);
   }
@@ -198,6 +209,9 @@ export function useMultiplayerLobby({ socketRef }) {
     playerUUID,
     setPlayerUUID,
     playerUUIDRef,
+    identityToken,
+    setIdentityToken,
+    identityTokenRef,
     multiLoading,
     setMultiLoading,
     toasts,

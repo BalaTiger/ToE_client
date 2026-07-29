@@ -167,5 +167,21 @@ export function useMultiplayerStateBroadcast({
       receivedGsRef.current = true;
       setGs(prev => prev ? { ...prev, _visualEvents: [] } : prev);
     }
-  }, [gs, anim, animExiting, showTutorial, isMultiplayer, roomModal]);
+  }, [
+    gs,
+    setGs,
+    anim,
+    animExiting,
+    showTutorial,
+    isMultiplayer,
+    roomModal,
+    socketRef,
+    myPlayerIndexRef,
+    gameEndSentRef,
+    receivedGsRef,
+    latestGsRef,
+    consumedVisualEventIdsRef,
+    animQueueRef,
+    pendingGsRef,
+  ]);
 }

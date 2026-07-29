@@ -234,6 +234,10 @@ function collectAudioElements(value, result = [], seen = new Set()) {
   return result;
 }
 
+function refreshAudioVolumeScale(audio) {
+  Reflect.set(audio, 'volume', audio.volume);
+}
+
 function bindAudioVolumeScale(audio, scaleRef) {
   let owner = audio;
   let descriptor = null;
@@ -609,11 +613,11 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影', {
   }, []);
 
   useEffect(() => {
-    collectAudioElements(bgmRefs.current).forEach(audio => { audio.volume = audio.volume; });
+    collectAudioElements(bgmRefs.current).forEach(refreshAudioVolumeScale);
   }, [musicVolume, audioReady]);
 
   useEffect(() => {
-    collectAudioElements(sfxRefs.current).forEach(audio => { audio.volume = audio.volume; });
+    collectAudioElements(sfxRefs.current).forEach(refreshAudioVolumeScale);
   }, [sfxVolume, audioReady]);
 
   const syncTrack = useCallback((instant = false) => {

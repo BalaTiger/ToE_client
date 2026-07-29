@@ -10,7 +10,7 @@ export function markBlindZoneCard(card, blindZoneIdentity) {
 
 export function revealBlindDrawCard(card) {
   if (!card?.blindZoneIdentity) return card;
-  const { blindZoneIdentity, ...rest } = card;
+  const { blindZoneIdentity: _blindZoneIdentity, ...rest } = card;
   return rest;
 }
 

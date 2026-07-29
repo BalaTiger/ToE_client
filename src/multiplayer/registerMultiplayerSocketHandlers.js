@@ -13,6 +13,8 @@ export function registerMultiplayerSocketHandlers({
   onConnected,
   playerUUIDRef,
   setPlayerUUID,
+  identityTokenRef,
+  setIdentityToken,
   setPlayerUsername,
   setPlayerUsernameSpecial,
   setRenameInput,
@@ -60,10 +62,16 @@ export function registerMultiplayerSocketHandlers({
     socket.disconnect();
   });
 
-  socket.on('uuidAssigned', ({ uuid }) => {
+  socket.on('uuidAssigned', ({ uuid, identityToken }) => {
     setPlayerUUID(uuid);
     playerUUIDRef.current = uuid;
-    try { getMultiplayerIdentityStorage()?.setItem('cthulhu_player_uuid', uuid); } catch { /* ignore */ }
+    setIdentityToken(identityToken);
+    identityTokenRef.current = identityToken;
+    try {
+      const storage = getMultiplayerIdentityStorage();
+      storage?.setItem('cthulhu_player_uuid', uuid);
+      storage?.setItem('cthulhu_identity_token', identityToken);
+    } catch { /* ignore */ }
   });
 
   socket.on('userInfo', ({ username, isSpecialName, wasForceReset, waitingRoomExpired }) => {

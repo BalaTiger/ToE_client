@@ -338,7 +338,7 @@ export function useResourcePreload({ loadAllThemes = false, activeExpansionKey =
     return () => {
       cancelled = true;
     };
-  }, [activeExpansionKey, isLocalPreview, loadAllThemes, networkProfile.deferMedia, networkProfile.mediaConcurrency]);
+  }, [activeExpansionKey, isLocalPreview, loadAllThemes, networkProfile]);
 
   useEffect(() => {
     if (isLoading || !manifestRef.current) return;
@@ -348,7 +348,7 @@ export function useResourcePreload({ loadAllThemes = false, activeExpansionKey =
     deferredStageRef.current = nextStage;
     if (networkProfile.deferMedia) return;
     scheduleDeferredPreload(selectDeferredResources(manifestRef.current, loadAllThemes, activeExpansionKey), getDeferredConcurrency(networkProfile));
-  }, [activeExpansionKey, isLoading, loadAllThemes, networkProfile.deferMedia, networkProfile.mediaConcurrency]);
+  }, [activeExpansionKey, isLoading, loadAllThemes, networkProfile]);
 
   return {
     isLoading,

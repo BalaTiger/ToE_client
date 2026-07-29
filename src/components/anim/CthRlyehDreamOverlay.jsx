@@ -807,10 +807,10 @@ export function CthRlyehDreamOverlay({ anim, exiting }) {
   const dreamCausticTextureRef = React.useRef(null);
   const filterId = React.useId().replace(/:/g, '');
 
-  if (!dreamNoiseOriginRef.current) {
+  if (dreamNoiseOriginRef.current == null) {
     dreamNoiseOriginRef.current = createEffectNoiseOrigin();
   }
-  if (!dreamCausticNoiseOriginRef.current) {
+  if (dreamCausticNoiseOriginRef.current == null) {
     dreamCausticNoiseOriginRef.current = createEffectNoiseOrigin();
   }
 

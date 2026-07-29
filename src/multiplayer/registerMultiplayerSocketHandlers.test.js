@@ -44,6 +44,8 @@ function makeDeps(overrides = {}) {
       onConnected: vi.fn(),
       playerUUIDRef: { current: 'u2' },
       setPlayerUUID: vi.fn(),
+      identityTokenRef: { current: null },
+      setIdentityToken: vi.fn(),
       setPlayerUsername: vi.fn(),
       setPlayerUsernameSpecial: vi.fn(),
       setRenameInput: vi.fn(),

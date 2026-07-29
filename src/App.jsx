@@ -821,6 +821,7 @@ export default function Game(){
   const pendingMpAiTakeoverRef=useRef(null);
   const {
     playerUUID, setPlayerUUID, playerUUIDRef,
+    identityToken, setIdentityToken, identityTokenRef,
     multiLoading, setMultiLoading,
     toasts, addToast,
     roomModal, setRoomModal, roomModalRef,
@@ -1593,7 +1594,7 @@ export default function Game(){
     // render another snapshot before the queued state patch is committed.
     // The status watcher below must compare that real commit with the last
     // rendered snapshot so it can consume this marker without replaying it.
-  },[anim,triggerGodHighlightPanelBurst]);
+  },[anim,pendingGsRef,triggerGodHighlightPanelBurst]);
 
   useEffect(()=>{
     const statuses=(gs?.players||[]).map(p=>({godName:p?.godName||null,godLevel:p?.godLevel||0}));
@@ -1703,7 +1704,7 @@ export default function Game(){
     if(!mpOpeningRoleRevealPendingRef.current)return;
     if(roleRevealAnim||anim||animQueueRef.current.length>0||pendingGsRef.current)return;
     mpOpeningRoleRevealPendingRef.current=false;
-  },[roleRevealAnim,anim]);
+  },[roleRevealAnim,anim,animQueueRef,pendingGsRef]);
 
   useEffect(()=>{
     if(roleRevealAnim||anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
@@ -1790,6 +1791,8 @@ export default function Game(){
     handlerDeps: {
       playerUUIDRef,
       setPlayerUUID,
+      identityTokenRef,
+      setIdentityToken,
       setPlayerUsername,
       setPlayerUsernameSpecial,
       setRenameInput,
@@ -1832,7 +1835,7 @@ export default function Game(){
   function handleMultiplayer(){
     setOnlineResourcesUnlocked(true);
     connectSocket(socket=>{
-      socket.emit('openOnlineOptions',{uuid:playerUUID});
+      socket.emit('openOnlineOptions',{uuid:playerUUID,identityToken});
       setOnlineOptionsModal(true);
     });
   }
@@ -1847,6 +1850,8 @@ export default function Game(){
     connectSocket,
     playerUUIDRef,
     playerUUID,
+    identityTokenRef,
+    identityToken,
   });
 
   const clearBattleAnimationState=useCallback(()=>{
@@ -1859,7 +1864,7 @@ export default function Game(){
     clearDamageAnimations();
     setEarthquakeVisualPlayers(null);
     visualStateLocks.clear({turnHighlight:true,players:true,zhuLight:true,hiddenZhuCardId:true});
-  },[clearSkillAnimations,clearCardTransferAnimations,clearDamageAnimations,visualStateLocks]);
+  },[animQueueRef,pendingGsRef,setAnim,setAnimExiting,clearSkillAnimations,clearCardTransferAnimations,clearDamageAnimations,visualStateLocks]);
 
   const applyTutorialStateSnapshot=useCallback((nextGs)=>{
     if(!nextGs)return;
@@ -1911,7 +1916,7 @@ export default function Game(){
       setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE);
     });
     return true;
-  },[applyTutorialStateSnapshot,gs,showTutorial,triggerAnimQueue]);
+  },[applyTutorialStateSnapshot,gs,triggerAnimQueue]);
 
   const advanceTutorialStep=useCallback((nextStep)=>{
     if(!nextStep)return;
@@ -2006,7 +2011,7 @@ export default function Game(){
     if(!gs?.gameOver&&gs?.phase!=='GOD_RESURRECTION')return;
     if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
     clearBattleAnimationState();
-  },[gs?.gameOver,gs?.phase,anim,animExiting,clearBattleAnimationState]);
+  },[gs?.gameOver,gs?.phase,anim,animExiting,animQueueRef,pendingGsRef,clearBattleAnimationState]);
 
   useEffect(()=>{
     if(typeof document==='undefined')return;
@@ -2039,7 +2044,7 @@ export default function Game(){
     const curLog=visibleLogRef.current;
     const same=curLog.length===nextLog.length&&curLog.every((line,i)=>line===nextLog[i]);
     if(!same)syncVisibleLog(nextLog,gs);
-  },[gs?.log,anim,syncVisibleLog,gs?._playersBeforeThisDraw]);
+  },[gs,anim,animQueueRef,syncVisibleLog]);
 
   useEffect(()=>{
     if(!gs||anim||animQueueRef.current.length>0||gs.gameOver||gs.phase==='PLAYER_WIN_PENDING'||gs.phase==='TREASURE_WIN'||gs.phase==='MP_PLAYER_WIN_WAIT')return;
@@ -2121,7 +2126,7 @@ export default function Game(){
       });
     },1000);
     return()=>clearInterval(iv);
-  },[gs?.houndsOfTindalosActive,houndsTimerVisible,gs?.houndsOfTindalosElapsed,gs?.phase,gs?.currentTurn,gs?.gameOver,showTutorial,anim]);
+  },[gs?.houndsOfTindalosActive,houndsTimerVisible,gs?.houndsOfTindalosElapsed,gs?.phase,gs?.currentTurn,gs?.gameOver,showTutorial,anim,animQueueRef]);
 
   useEffect(()=>{
     if(!gs||showTutorial||softGuidePauseActive||anim||animQueueRef.current.length>0||gs.gameOver||gs.phase==='AI_TURN')return;
@@ -2495,7 +2500,7 @@ export default function Game(){
       return;
     }
     resolvePendingAiGodChoice();
-  },[showTutorial,tutorialStep,gs?.phase,gs?._turnKey,anim,animExiting,resolvePendingAiGodChoice]);
+  },[showTutorial,tutorialStep,gs,anim,animExiting,animQueueRef,pendingGsRef,applyTutorialStateSnapshot,triggerAnimQueue,resolvePendingAiGodChoice]);
 
   // 骰子动画结束后再显示“求生成功”教学弹窗，动画期间隐藏教学遮罩
   useEffect(()=>{
@@ -2807,8 +2812,6 @@ export default function Game(){
         newGs=stripped; // reassign: stripped has _playersBeforeThisDraw from startNextTurn
         const oldLog=Array.isArray(gs.log)?gs.log:[];
         const nextLog=Array.isArray(newGs.log)?newGs.log:oldLog;
-        const newMsgs=nextLog.slice(oldLog.length);
-        const j=newMsgs.join(' ');
         // Helper: build a gs-like object with substituted players for buildAnimQueue
         // fakeGs: use gs.log as the baseline so buildAnimQueue correctly detects new messages
         const fakeGs = (ps,log=gs.log) => ({...gs, players: ps, log, _statEvents: gs._statEvents || [], _statEventSeq: gs._statEventSeq || 0});
@@ -3791,6 +3794,8 @@ export default function Game(){
     animExiting,
     softGuideDone,
     markSoftGuideSeen,
+    animQueueRef,
+    pendingGsRef,
   ]);
 
   useEffect(()=>{
@@ -3813,7 +3818,7 @@ export default function Game(){
       if (gs.phase === 'AI_TURN') return;
       setDisplayStats(gs.players.map(p => ({ hp: p.hp, san: p.san })));
     }
-  }, [gs?.players, anim, gs?.phase]);
+  }, [gs?.players, anim, gs?.phase, animQueueRef]);
 
   // 2. 动画期间的精准延迟对齐：当播放某个角色的受击/治疗动画时，延迟 350ms 更新显示数值
   useEffect(() => {
@@ -4115,7 +4120,7 @@ export default function Game(){
     if(!mpTurnExpiredRef.current||gs._mpEndTurn)return;
     if(isBlocked||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
     setGs(p=>p?{...p,_mpEndTurn:true}:p);
-  },[isMultiplayer,gs?.phase,gs?.currentTurn,gs?._turnKey,gs?._mpEndTurn,gs?.gameOver,mpTurnSec,isBlocked,animExiting,isMpTurnTransitionPending]);
+  },[isMultiplayer,gs,mpTurnSec,isBlocked,animExiting,isMpTurnTransitionPending,animQueueRef,pendingGsRef]);
 
   useVisualDiscardSync({ gs, anim, animQueueRef, pendingGsRef, getVisualDiscardForState, setVisualDiscard });
 
@@ -4288,6 +4293,9 @@ export default function Game(){
       setSwapBlindDraw(prev=>prev&&prev.targetPi===targetPi?{...prev,phase:'selecting'}:prev);
     },1200);
     return()=>clearTimeout(timer);
+  // The hand snapshot is intentionally captured only when entering/changing this decision.
+  // Re-running for unrelated gs updates would restart the 1.2s shuffle indefinitely.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   },[gs?.phase,gs?.abilityData?.swapTi]);
   // Clean up overlay when leaving SWAP_STEAL_CARD
   useEffect(()=>{
@@ -6383,7 +6391,7 @@ export default function Game(){
           {buildAnimQueue,copyPlayers}
         ).queue
         : [];
-      const {pendingInspectionContinuation, ...restAbilityData}=nextGs.abilityData||{};
+      const {pendingInspectionContinuation: _pendingInspectionContinuation, ...restAbilityData}=nextGs.abilityData||{};
       const nextAbilityData=processed.inspectionMeta.abilityData?.type
         ? processed.inspectionMeta.abilityData
         : restAbilityData;

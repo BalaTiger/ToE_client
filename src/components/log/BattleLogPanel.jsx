@@ -70,8 +70,18 @@ export function BattleLogPanel({
 }) {
   const reliefConfig = getReliefDisplayConfig(expansionKey);
   const logLines = Array.isArray(visibleLog) ? visibleLog.slice(-50) : [];
-  let logOwner = null;
   const myName = players?.[0]?.name;
+  const { lines: displayLogLines } = logLines.reduce((acc, line) => {
+    const turnMatch = line.match(/^── (.+?) 的回合开始 ──$/);
+    const logOwner = turnMatch?.[1] || acc.logOwner;
+    const display = normalizeMultiplayerLogLine(line, {
+      isMultiplayer,
+      logOwner,
+      myName,
+      players: players || [],
+    });
+    return { logOwner, lines: [...acc.lines, { line, display }] };
+  }, { logOwner: null, lines: [] });
   const fontZoom = getFontZoomCompensate(scaleRatio);
   const mobileLogHeight = Math.round(132 * fontZoom);
   const reliefMaskStyle = getLogReliefMaskStyle(isMobile);
@@ -129,15 +139,7 @@ export function BattleLogPanel({
         textTransform: 'uppercase',
         position: 'relative',
       }}>— 冒险日志 —</div>
-      {logLines.map((line, i) => {
-        const turnMatch = line.match(/^── (.+?) 的回合开始 ──$/);
-        if (turnMatch) logOwner = turnMatch[1];
-        const display = normalizeMultiplayerLogLine(line, {
-          isMultiplayer,
-          logOwner,
-          myName,
-          players: players || [],
-        });
+      {displayLogLines.map(({ line, display }, i) => {
         return (
           <div key={i} style={{
             fontFamily: "'IM Fell English','Georgia',serif",

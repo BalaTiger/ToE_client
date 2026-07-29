@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getMultiplayerIdentityStorage } from './useMultiplayerLobby';
+import {
+  getMultiplayerIdentityStorage,
+  getStoredMultiplayerIdentity,
+} from './useMultiplayerLobby';
 
 function stubWindowForHost(hostname) {
   const sessionStorage = { kind: 'session' };
@@ -33,5 +36,24 @@ describe('getMultiplayerIdentityStorage', () => {
     const { localStorage } = stubWindowForHost('preview.trae.ai');
 
     expect(getMultiplayerIdentityStorage()).toBe(localStorage);
+  });
+});
+
+describe('getStoredMultiplayerIdentity', () => {
+  it('loads the uuid and signed identity token together', () => {
+    const values = new Map([
+      ['cthulhu_player_uuid', 'u1'],
+      ['cthulhu_identity_token', 'token-1'],
+    ]);
+    vi.stubGlobal('window', {
+      location: { hostname: 'www.toegame.online' },
+      sessionStorage: {},
+      localStorage: { getItem: key => values.get(key) ?? null },
+    });
+
+    expect(getStoredMultiplayerIdentity()).toEqual({
+      uuid: 'u1',
+      identityToken: 'token-1',
+    });
   });
 });

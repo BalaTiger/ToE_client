@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { DDCard, DDCardBack } from '../cards';
 
 const CARD_W = 82;
@@ -58,29 +58,11 @@ export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorNam
   const containerRef = useRef(null);
   const dragCardRef = useRef(null);
 
-  const zoneLabels = {
-    top: '牌堆顶',
-    hand: '收入手牌',
-    bottom: '牌堆底',
-  };
-
   const zonePositions = [
     { key: 'bottom', label: '牌堆底', style: { left: '4%', top: '24%', width: '34%', height: 158 } },
     { key: 'top', label: '牌堆顶', style: { right: '4%', top: '24%', width: '34%', height: 158 } },
     { key: 'hand', label: '收入手牌', style: { left: '50%', bottom: '5%', transform: 'translateX(-50%)', width: '62%', height: 166 } },
   ];
-
-  useEffect(() => {
-    setZones({ top: [...revealedCards].reverse(), hand: [], bottom: [] });
-  }, [revealedCards]);
-
-  function findCardLocation(cardId) {
-    for (const key of ['top', 'hand', 'bottom']) {
-      const idx = zones[key].findIndex(c => c.id === cardId);
-      if (idx >= 0) return { zone: key, idx };
-    }
-    return null;
-  }
 
   function handleDragStart(card, sourceZone, idx, e) {
     if (readOnly) return;
@@ -90,6 +72,34 @@ export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorNam
     setDragging({ card, sourceZone, idx, offsetX: 0, offsetY: 0 });
     setDragPos({ x: clientX, y: clientY });
   }
+
+  const moveCard = useCallback((cardId, fromZone, toZone, insertIndex = null) => {
+    setZones(prev => {
+      const card = prev[fromZone]?.find(c => c.id === cardId);
+      if (!card) return prev;
+      const fromCards = prev[fromZone].filter(c => c.id !== cardId);
+      if (toZone === 'hand' && prev.hand.filter(c => c.id !== cardId).length >= 1) return prev;
+      const targetBase = fromZone === toZone ? fromCards : prev[toZone];
+      const safeIndex = Math.max(0, Math.min(insertIndex ?? targetBase.length, targetBase.length));
+      const targetCards = [...targetBase];
+      targetCards.splice(safeIndex, 0, card);
+      return {
+        ...prev,
+        [fromZone]: fromZone === toZone ? targetCards : fromCards,
+        ...(fromZone === toZone ? {} : { [toZone]: targetCards }),
+      };
+    });
+  }, []);
+
+  const getInsertIndex = useCallback((zoneEl, zoneKey, clientX) => {
+    const cardEls = [...zoneEl.querySelectorAll('[data-card-id]')].filter(el => el.dataset.cardId !== dragging?.card?.id);
+    if (!cardEls.length) return zones[zoneKey]?.length || 0;
+    for (let i = 0; i < cardEls.length; i++) {
+      const rect = cardEls[i].getBoundingClientRect();
+      if (clientX < rect.left + rect.width / 2) return i;
+    }
+    return cardEls.length;
+  }, [dragging?.card?.id, zones]);
 
   useEffect(() => {
     if (!dragging) return;
@@ -120,35 +130,7 @@ export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorNam
       window.removeEventListener('touchmove', move);
       window.removeEventListener('touchend', up);
     };
-  }, [dragging]);
-
-  function getInsertIndex(zoneEl, zoneKey, clientX) {
-    const cardEls = [...zoneEl.querySelectorAll('[data-card-id]')].filter(el => el.dataset.cardId !== dragging?.card?.id);
-    if (!cardEls.length) return zones[zoneKey]?.length || 0;
-    for (let i = 0; i < cardEls.length; i++) {
-      const rect = cardEls[i].getBoundingClientRect();
-      if (clientX < rect.left + rect.width / 2) return i;
-    }
-    return cardEls.length;
-  }
-
-  function moveCard(cardId, fromZone, toZone, insertIndex = null) {
-    setZones(prev => {
-      const card = prev[fromZone]?.find(c => c.id === cardId);
-      if (!card) return prev;
-      const fromCards = prev[fromZone].filter(c => c.id !== cardId);
-      if (toZone === 'hand' && prev.hand.filter(c => c.id !== cardId).length >= 1) return prev;
-      const targetBase = fromZone === toZone ? fromCards : prev[toZone];
-      const safeIndex = Math.max(0, Math.min(insertIndex ?? targetBase.length, targetBase.length));
-      const targetCards = [...targetBase];
-      targetCards.splice(safeIndex, 0, card);
-      return {
-        ...prev,
-        [fromZone]: fromZone === toZone ? targetCards : fromCards,
-        ...(fromZone === toZone ? {} : { [toZone]: targetCards }),
-      };
-    });
-  }
+  }, [dragging, getInsertIndex, moveCard]);
 
   function handleConfirm() {
     if (zones.hand.length !== 1) return;

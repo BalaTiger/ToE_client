@@ -5,6 +5,7 @@ import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
 import { CardBackLayer } from '../cards/AnimatedCardBack';
 import { getPileAnchorCenter, getPlayerAreaAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 import { buildPublicUrl } from '../../utils/url';
+import { getStandardFlyingCardSize } from './cardSizing';
 
 const BLACK_GOAT_PARTICLES = [
   { x: -18, y: -18, size: 7, delay: 0.00, dur: 0.58, glow: 1.00 },
@@ -19,27 +20,6 @@ const HUNT_REVEAL_HOLD_FILTER = 'drop-shadow(0 10px 18px rgba(0,0,0,0.72))';
 
 function clampNumber(value, min, max) {
   return Math.max(min, Math.min(max, value));
-}
-
-function getAdaptiveDrawTransferCardSize() {
-  if (typeof window === 'undefined') return { width: 76, height: 100, scale: 76 / 82 };
-  const vw = window.innerWidth || 1280;
-  const vh = window.innerHeight || 720;
-  const portraitMobile = vw <= 640 && vh >= vw;
-  const landscapeMobile = vh <= 520 && vw > vh;
-  const largeBoost = clampNumber((vw - 1280) / 960, 0, 1);
-  const rawWidth = portraitMobile
-    ? clampNumber(vw * 0.145, 52, 60)
-    : landscapeMobile
-      ? clampNumber(vh * 0.16, 56, 66)
-      : 76 + largeBoost * 42;
-  const width = Math.round(rawWidth);
-  const height = Math.round(width * (108 / 82));
-  return { width, height, scale: width / 82 };
-}
-
-export function getStandardFlyingCardSize() {
-  return getAdaptiveDrawTransferCardSize();
 }
 
 function getHuntRevealCardSize() {
@@ -627,7 +607,7 @@ function useHuntRevealCardPosition(targetPid) {
   return pos;
 }
 
-export function HuntRevealCardOverlay({ anim, exiting }) {
+export function HuntRevealCardOverlay({ anim }) {
   const pos = useHuntRevealCardPosition(anim?.targetPid ?? 0);
   if (!anim?.card || !pos) return null;
   return (

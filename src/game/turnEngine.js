@@ -1584,7 +1584,6 @@ export function startNextTurn(gs, opts = {}) {
     }
     // 循环内的黏液额外摸牌消息已逐条写入 L，最终统一 flush 时只补固定摸牌新增的部分，
     // 否则额外摸牌/黏液消失消息会在日志里重复出现两次。
-    const drawLogsSyncedCount = drawLogs.length;
     const zhuGuard = getZhuTopGuard({ ...gs, players: P, deck: D, currentTurn: next, zhuLight }, D);
     if (zhuGuard) {
       return {

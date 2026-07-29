@@ -18,38 +18,6 @@ function useSpriteFrame(enabled, frameCount, fps) {
   return frame;
 }
 
-function useDecodedImage(path, enabled = true) {
-  const [ready, setReady] = React.useState(false);
-  React.useEffect(() => {
-    setReady(false);
-    if (!enabled || !path) return undefined;
-    if (decodedFrameCache.get(path)) {
-      setReady(true);
-      return undefined;
-    }
-    let cancelled = false;
-    const img = new Image();
-    img.onload = async () => {
-      try {
-        if (img.decode) await img.decode();
-      } catch {
-        // Loaded images are still usable if decode rejects.
-      }
-      decodedFrameCache.set(path, true);
-      if (!cancelled) setReady(true);
-    };
-    img.onerror = () => {
-      if (!cancelled) setReady(false);
-    };
-    img.src = path;
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, path]);
-
-  return ready;
-}
-
 function useDecodedImages(paths, enabled = true) {
   const [ready, setReady] = React.useState(false);
   React.useEffect(() => {
@@ -84,7 +52,7 @@ function useDecodedImages(paths, enabled = true) {
     return () => {
       cancelled = true;
     };
-  }, [enabled, paths?.join('|')]);
+  }, [enabled, paths]);
   return ready;
 }
 
@@ -156,12 +124,12 @@ function AnimatedCardBack({
     ...plainCardBackStyle
   } = cardBackStyle;
   const {
-    background,
-    backgroundImage,
-    backgroundSize,
-    backgroundPosition,
-    backgroundRepeat,
-    animation,
+    background: _background,
+    backgroundImage: _backgroundImage,
+    backgroundSize: _backgroundSize,
+    backgroundPosition: _backgroundPosition,
+    backgroundRepeat: _backgroundRepeat,
+    animation: _animation,
     ...safeStyle
   } = style || {};
   return (
@@ -211,4 +179,4 @@ function CardBackLayer({
   );
 }
 
-export { AnimatedCardBack, CardBackLayer, useCardBackStyle };
+export { AnimatedCardBack, CardBackLayer };

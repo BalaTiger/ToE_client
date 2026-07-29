@@ -69,8 +69,11 @@ describe('useMultiplayerUiSession helpers', () => {
   it('emits openOnlineOptions with the resolved uuid', () => {
     const socket = { emit: vi.fn() };
 
-    expect(emitOpenOnlineOptions(socket, 'u1')).toBe(true);
-    expect(socket.emit).toHaveBeenCalledWith('openOnlineOptions', { uuid: 'u1' });
+    expect(emitOpenOnlineOptions(socket, 'u1', 'token-1')).toBe(true);
+    expect(socket.emit).toHaveBeenCalledWith('openOnlineOptions', {
+      uuid: 'u1',
+      identityToken: 'token-1',
+    });
     expect(emitOpenOnlineOptions(null, 'u1')).toBe(false);
   });
 

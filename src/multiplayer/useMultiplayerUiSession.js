@@ -16,9 +16,9 @@ export function shouldReconnectWaitingRoom({
   return true;
 }
 
-export function emitOpenOnlineOptions(socket, uuid) {
+export function emitOpenOnlineOptions(socket, uuid, identityToken) {
   if (!socket) return false;
-  socket.emit('openOnlineOptions', { uuid });
+  socket.emit('openOnlineOptions', { uuid, identityToken });
   return true;
 }
 
@@ -42,6 +42,8 @@ export function useWaitingRoomReconnect({
   connectSocket,
   playerUUIDRef,
   playerUUID,
+  identityTokenRef,
+  identityToken,
 }) {
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -58,7 +60,11 @@ export function useWaitingRoomReconnect({
       }
       setOnlineResourcesUnlocked(true);
       connectSocket(socket => {
-        emitOpenOnlineOptions(socket, playerUUIDRef.current || playerUUID);
+        emitOpenOnlineOptions(
+          socket,
+          playerUUIDRef.current || playerUUID,
+          identityTokenRef.current || identityToken,
+        );
       });
     };
     document.addEventListener('visibilitychange', handleWaitingRoomReconnect);
@@ -67,7 +73,9 @@ export function useWaitingRoomReconnect({
     gs,
     multiLoading,
     playerUUID,
+    identityToken,
     connectSocket,
+    identityTokenRef,
     isMultiplayerRef,
     playerUUIDRef,
     roomModalRef,

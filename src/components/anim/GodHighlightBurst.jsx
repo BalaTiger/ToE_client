@@ -41,7 +41,7 @@ function subscribeHighlightChannel(listener) {
   return () => highlightChannelListeners.delete(listener);
 }
 
-export function getGodHighlightPath(godKey) {
+function getGodHighlightPath(godKey) {
   const normalized = String(godKey || '').trim().toUpperCase();
   if (!GOD_HIGHLIGHT_KEYS.has(normalized)) return null;
   return `/img/card/highlight/${normalized.toLowerCase()}.webp`;
@@ -57,12 +57,12 @@ function GodHighlightBurst({
   style,
 }) {
   const path = getGodHighlightPath(godKey);
-  const instanceId = React.useRef(`god-highlight-${Math.random().toString(36).slice(2)}`);
+  const instanceId = React.useId();
   const [isPlaying, setIsPlaying] = React.useState(false);
 
   React.useEffect(() => {
     if (!path) return undefined;
-    const id = instanceId.current;
+    const id = instanceId;
     const unsubscribe = subscribeHighlightChannel(activeId => {
       if (activeId !== id) setIsPlaying(false);
     });
@@ -80,7 +80,7 @@ function GodHighlightBurst({
       unsubscribe();
       releaseHighlight(id);
     };
-  }, [delayMs, durationMs, path]);
+  }, [delayMs, durationMs, instanceId, path]);
 
   if (!path) return null;
   if (!isPlaying) return null;

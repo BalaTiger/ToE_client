@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { DDCard, MiniCardFace } from '../../components/cards';
 import { _getZoomCompensatedRect, getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
-import { getStandardFlyingCardSize } from './MoveOverlays';
+import { getStandardFlyingCardSize } from './cardSizing';
 import {
   createEffectNoiseOrigin,
   createEffectNoiseSampler,
@@ -129,7 +129,7 @@ function GeomagneticRestoreShuffleAnim({anim,exiting}){
   );
 }
 
-function VolcanoAnim({anim,exiting}){
+function VolcanoAnim({exiting}){
   const canvasRef=React.useRef(null);
   const [impacts,setImpacts]=React.useState(null);
   const [noiseTexture,setNoiseTexture]=React.useState(null);
@@ -359,7 +359,7 @@ function VolcanoAnim({anim,exiting}){
     specs.forEach(impact=>{
       impact.lavaPatch=buildNoiseLavaPatch(impact);
     });
-    const drawNoiseLavaPatch=(impact,r,fade)=>{
+    const drawNoiseLavaPatch=(impact,r)=>{
       const patch=impact.lavaPatch;
       if(!patch)return;
       const scale=r/patch.maxR;
@@ -527,7 +527,7 @@ function VolcanoAnim({anim,exiting}){
       }
       drawLavaPool(impact,age);
       const lowAge=Math.floor(age*18)/18;
-      impact.debris.forEach((d,i)=>{
+      impact.debris.forEach(d=>{
         if(lowAge>d.life)return;
         const p=lowAge/d.life;
         const x=impact.x+Math.cos(d.a)*d.speed*p;
@@ -538,7 +538,7 @@ function VolcanoAnim({anim,exiting}){
         ctx.arc(x,y,d.size*(1-p*0.5),0,Math.PI*2);
         ctx.fill();
       });
-      impact.smoke.forEach((s,i)=>{
+      impact.smoke.forEach(s=>{
         if(lowAge>s.life)return;
         const p=lowAge/s.life;
         const x=impact.x+s.ox+s.vx*p;

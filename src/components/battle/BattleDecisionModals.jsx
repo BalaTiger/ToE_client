@@ -392,6 +392,7 @@ export function BattleDecisionModals({
       {/* Decipher stone carving */}
       {!suppressAnim && phase === 'DECIPHER_STONE_CARVING' && gs.abilityData && (
         <DecipherStoneCarvingOverlay
+          key={(gs.abilityData?.revealedCards || []).map(card => card?.id).join('|')}
           revealedCards={gs.abilityData?.revealedCards || []}
           actorName={isLocalSeatIndex(gs.abilityData?.playerIndex) ? '你' : (gs.players?.[gs.abilityData?.playerIndex]?.name || '该玩家')}
           readOnly={!isLocalSeatIndex(gs.abilityData?.playerIndex)}
