@@ -6,6 +6,7 @@ import {
   getGodDisplaySubtitle
 } from '../../constants/card';
 import { ROLE_CULTIST, isRevealedCultist } from '../../game';
+import { formatGodEncounterProgress, getLatestGodEncounterProgress } from '../../game/balancePatches';
 import { DDCard, DDCardBack, GodCardDisplay, PreviewCard } from '../cards';
 
 import { buildPublicUrl } from '../../utils/url';
@@ -60,6 +61,7 @@ function GodChoiceModal({
   const canUpgrade = alreadyWorship && (player.godLevel || 0) < 3;
   const isBystander = !canChoose && thinkingText;
   const immuneEncounter = isRevealedCultist(player);
+  const encounterProgress = getLatestGodEncounterProgress(player);
   const tm = getDecisionModalMetrics(scaleRatio);
   const ui = tm.uiScale;
   return (
@@ -80,7 +82,8 @@ function GodChoiceModal({
           <span style={{ color: def.col, filter: `drop-shadow(0 0 6px ${def.col}88)` }}>{godCard.name}</span>
         </div>
         <div style={{ fontSize: 16.5*ui, color: '#c89058', fontStyle: 'italic', fontFamily: "'IM Fell English',serif", marginBottom: 4*ui }}>
-          {'💀'.repeat(player.godEncounters)} {immuneEncounter ? `第${player.godEncounters}次遭遇（邪祀者免疫伤害）` : `第${player.godEncounters}次遭遇，失去 ${player.godEncounters} SAN`}
+          {'💀'.repeat(player.godEncounters)} {formatGodEncounterProgress(encounterProgress)}
+          {immuneEncounter ? '（邪祀者免疫伤害）' : `，失去 ${encounterProgress.sanLoss} SAN`}
           {isConvert && !forcedConvert && <span style={{ color: '#e08888', marginLeft: 8*ui }}>（改信将失去 1 SAN）</span>}
         </div>
         {/* Power gain preview */}

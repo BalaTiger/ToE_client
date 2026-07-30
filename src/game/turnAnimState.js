@@ -447,6 +447,9 @@ export function buildTurnStartPreDrawEffectQueue({ oldGs, newGs, buildQueue = bu
 export function buildSkippedTurnReplayQueue(state, { buildQueue = buildAnimQueue } = {}) {
   const replays = Array.isArray(state?._skippedTurnReplays) ? state._skippedTurnReplays : [];
   return replays.flatMap(replay => {
+    const cthReplay = replay.cthReplay;
+    const preCthPlayers = cthReplay?.beforePlayers || replay.afterPlayers || state?.players || [];
+    const preCthLog = cthReplay?.beforeLog || replay.afterLog || replay.beforeLog || [];
     const oldGs = {
       ...state,
       players: replay.beforePlayers || state?.players || [],
@@ -457,14 +460,14 @@ export function buildSkippedTurnReplayQueue(state, { buildQueue = buildAnimQueue
     const newGs = {
       ...state,
       currentTurn: replay.playerIdx,
-      players: replay.afterPlayers || state?.players || [],
-      log: replay.afterLog || replay.beforeLog || [],
+      players: preCthPlayers,
+      log: preCthLog,
       _preTurnPlayers: replay.beforePlayers || state?._preTurnPlayers,
       _playersBeforeThisDraw: replay.afterPlayers || state?._playersBeforeThisDraw,
       _turnStartLogs: replay.turnStartLogs || [],
       _drawLogs: [],
       _statLogs: [],
-      _statEventSeq: replay.afterStatSeq || replay.beforeStatSeq || 0,
+      _statEventSeq: cthReplay?.beforeStatSeq ?? replay.afterStatSeq ?? replay.beforeStatSeq ?? 0,
       _inspectionSeq: replay.afterInspectionSeq || replay.beforeInspectionSeq || 0,
     };
     const effectQueue = buildTurnStartPreDrawEffectQueue({ oldGs, newGs, buildQueue });
@@ -472,18 +475,63 @@ export function buildSkippedTurnReplayQueue(state, { buildQueue = buildAnimQueue
       ...(replay.turnStartLogs || []),
       ...effectQueue.flatMap(step => Array.isArray(step?.msgs) ? step.msgs : []),
     ]);
-    const deltaLogs = (replay.afterLog || []).slice((replay.beforeLog || []).length);
+    const deltaLogs = preCthLog.slice((replay.beforeLog || []).length);
     const remainingLogs = withoutLogLines(deltaLogs, consumedLogs);
-    return [
+    const queue = [
       {
         type: 'YOUR_TURN',
         name: localDisplayName(replay.playerIdx, replay.playerName || state?.players?.[replay.playerIdx]?.name || '???'),
         msgs: replay.turnStartLogs || [],
       },
       ...effectQueue,
-      statePatchStep({ players: replay.afterPlayers, log: replay.afterLog, msgs: remainingLogs }),
-      { type: 'TURN_BOUNDARY_PAUSE' },
+      statePatchStep({ players: preCthPlayers, log: preCthLog, msgs: remainingLogs }),
     ];
+    if (cthReplay?.draws?.length) {
+      const dreamLog = (cthReplay.drawLogs || []).find(msg => typeof msg === 'string' && msg.includes('梦访拉莱耶'));
+      queue.push({
+        type: 'CTH_RLYEH_DREAM',
+        targetPid: replay.playerIdx,
+        msgs: dreamLog ? [dreamLog] : [],
+      });
+      cthReplay.draws.forEach(card => {
+        const drawMsg = (cthReplay.drawLogs || []).find(msg =>
+          typeof msg === 'string' && (msg.includes(card.name) || (card.key && msg.includes(card.key)))
+        );
+        queue.push({
+          type: 'DRAW_CARD',
+          card,
+          triggerName: replay.playerName || state?.players?.[replay.playerIdx]?.name || '???',
+          targetPid: replay.playerIdx,
+          msgs: drawMsg ? [drawMsg] : [],
+        });
+      });
+      const cthEffectOldGs = {
+        ...state,
+        currentTurn: replay.playerIdx,
+        players: cthReplay.beforePlayers,
+        discard: cthReplay.beforeDiscard,
+        log: cthReplay.beforeLog,
+        _statEventSeq: cthReplay.beforeStatSeq || 0,
+      };
+      const cthEffectNewGs = {
+        ...state,
+        currentTurn: replay.playerIdx,
+        players: cthReplay.afterPlayers,
+        discard: cthReplay.afterDiscard,
+        log: cthReplay.afterLog,
+        _statEventSeq: cthReplay.afterStatSeq || cthReplay.beforeStatSeq || 0,
+      };
+      queue.push(...bindAnimLogChunks(buildQueue(cthEffectOldGs, cthEffectNewGs), {
+        statLogs: cthReplay.drawLogs || [],
+      }));
+      queue.push(statePatchStep({
+        players: cthReplay.afterPlayers,
+        discard: cthReplay.afterDiscard,
+        log: cthReplay.afterLog,
+      }));
+    }
+    queue.push({ type: 'TURN_BOUNDARY_PAUSE' });
+    return queue;
   });
 }
 
@@ -768,6 +816,10 @@ export function buildTurnStartDrawReplayQueue({
         godName: resolvedDrawer.godName,
         godLevel: resolvedDrawer.godLevel,
         godEncounters: resolvedDrawer.godEncounters,
+        godEncounterCount: resolvedDrawer.godEncounterCount,
+        lastGodEncounterSanLoss: resolvedDrawer.lastGodEncounterSanLoss,
+        lastGodEncounterCreatedSkull: resolvedDrawer.lastGodEncounterCreatedSkull,
+        lastGodEncounterPatchEnabled: resolvedDrawer.lastGodEncounterPatchEnabled,
         godZone: [...(resolvedDrawer.godZone || [])],
         hasBelievedGod: resolvedDrawer.hasBelievedGod,
       }

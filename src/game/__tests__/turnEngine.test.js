@@ -996,7 +996,7 @@ describe('turnEngine stat events', () => {
     const extraDrawIdx = result.log.findIndex(line => line.includes('额外摸到'));
     const slimePopIdx = result.log.findIndex(line => line.includes('撒托古亚的赐福黏液消失'));
     expect(extraDrawIdx).toBeGreaterThan(-1);
-    expect(slimePopIdx).toBeGreaterThan(extraDrawIdx);
+    expect(slimePopIdx).toBeLessThan(extraDrawIdx);
   });
 
   it('本地玩家黏液额外摸牌进入抉择时保留正常摸牌续接标记', () => {
@@ -1024,12 +1024,53 @@ describe('turnEngine stat events', () => {
     expect(result.abilityData).toMatchObject({
       fromTsathogguaSlime: true,
       continueTurnStartDraw: true,
-      pendingTsathogguaSlime: slime,
     });
-    expect(result.players[0].hand.some(c => c.isTsathogguaSlime)).toBe(true);
+    expect(result.abilityData.pendingTsathogguaSlime).toBeUndefined();
+    expect(result.players[0].hand.some(c => c.isTsathogguaSlime)).toBe(false);
     expect(result.deck[0]).toBe(normalCard);
     expect(result.log.some(line => line.includes('额外摸到'))).toBe(true);
     expect(result.log.some(line => line.includes('正常牌'))).toBe(false);
+  });
+
+  it('黏液额外摸到伤害牌时，牌效结算前黏液已消耗，不能再用于平分 HP/SAN', () => {
+    const slime = createTsathogguaSlimeCard();
+    const damageCard = {
+      id: 'slime-extra-damage',
+      key: 'TEST',
+      name: '额外伤害牌',
+      type: 'selfDamageHP',
+      val: 3,
+      isZone: true,
+      polarity: 'negative',
+    };
+    const normalCard = {
+      id: 'normal-draw',
+      key: 'A1',
+      name: '正常牌',
+      type: 'selfHealHP',
+      val: 0,
+      isZone: true,
+      polarity: 'positive',
+    };
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', role: ROLE_CULTIST, godName: 'TSG', godLevel: 1, hp: 10, san: 6, hand: [slime] }),
+    ];
+    const gs = makeGs({
+      players,
+      deck: [damageCard, normalCard],
+      currentTurn: 0,
+      log: [],
+      debugForceCardKeepPending: 'keep',
+      debugForceCardKeepTarget: 1,
+    });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players[1].hand.some(c => c.isTsathogguaSlime)).toBe(false);
+    expect(result.players[1].hp).toBe(7);
+    expect(result.abilityData?.type).not.toBe('tsgSlimeBalance');
+    expect(result.phase).not.toBe('TSG_SLIME_BALANCE');
   });
 
   it('撒托古亚黏液在对应额外摸牌后播放泡泡破裂而不是弃牌动画', () => {
@@ -1047,8 +1088,11 @@ describe('turnEngine stat events', () => {
 
     const queue = buildTurnStartDrawReplayQueue({ oldGs: gs, newGs: result }).queue;
     const popStep = queue.find(step => step.type === 'TSG_SLIME_POP');
+    const popIdx = queue.indexOf(popStep);
+    const extraDrawIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === 'extra');
 
     expect(popStep).toMatchObject({ targetPid: 1, count: 1, cards: [slime] });
+    expect(popIdx).toBeLessThan(extraDrawIdx);
     expect(popStep.visualSetupPatch.players[1].hand).toContain(slime);
     expect(popStep.visualTimeline.at(-1).patch.players[1].hand).not.toContain(slime);
     expect(queue.some(step => step.type === 'CARD_TRANSFER' && step.dest === 'discard')).toBe(false);

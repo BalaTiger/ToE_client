@@ -1,6 +1,7 @@
 import { cardLogText, formatSanLoss } from './coreUtils';
 import { getEndTurnReplayHandCards } from './endTurnEvents';
 import { withClearedTurnAnimFields } from './turnAnimState';
+import { advanceGodEncounter, formatGodEncounterProgress } from './balancePatches';
 
 export function buildEndTurnReplayStartState({
   baseGs,
@@ -67,13 +68,12 @@ export function buildEndTurnReplayGodEncounter({
   actorLabel = '你',
 }) {
   const P = players;
-  P[actorIndex].godEncounters = (P[actorIndex].godEncounters || 0) + 1;
-  const encounterCount = P[actorIndex].godEncounters;
-  const cost = encounterCount;
+  const encounterProgress = advanceGodEncounter(P[actorIndex], stateLike);
+  const cost = encounterProgress.sanLoss;
   const cultistImmune = !!(isCultist && P[actorIndex].roleRevealed);
   const effectMsg = cultistImmune
-    ? `${actorLabel}（邪祀者）遭遇邪神 ${card.name}！（第${encounterCount}次）免疫SAN损耗`
-    : `${actorLabel} 遭遇邪神 ${card.name}！（第${encounterCount}次）${formatSanLoss(cost)}`;
+    ? `${actorLabel}（邪祀者）遭遇邪神 ${card.name}！（${formatGodEncounterProgress(encounterProgress)}）免疫SAN损耗`
+    : `${actorLabel} 遭遇邪神 ${card.name}！（${formatGodEncounterProgress(encounterProgress)}）${formatSanLoss(cost)}`;
 
   return {
     players: P,

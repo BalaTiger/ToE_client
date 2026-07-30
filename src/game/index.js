@@ -34,3 +34,4 @@ export * from './etherealize';
 export * from './tutorialScenario';
 export * from './aiDecisionState';
 export * from './headlessSimulator';
+export * from './caveDuel';

@@ -34,6 +34,7 @@ import { appendPublicCardGainTriggers } from './cardGainEvents';
 import { drawCardDecisionText, markBlindZoneCard, shouldBlindZoneDecision } from './blindZoneDecision';
 import { clearExpiredTurnScopedEffects } from './turnScopedEffects';
 import { createGodPowerBlockedEvent, createTsathogguaSlimePopEvent } from './visualEvents';
+import { advanceGodEncounter, formatGodEncounterProgress, getLatestGodEncounterProgress } from './balancePatches';
 
 function appendStatEventsToInspectionMeta(inspectionMeta, beforePlayers, afterPlayers, logs, reason) {
   const statEventSeq = (inspectionMeta?._statEventSeq || 0) + 1;
@@ -495,15 +496,16 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
 }
 
 export function aiHandleGodCard(ci, godCard, P, D, Disc, L, gs, skipEffectMsg = false, forcedConvert = false, opts = {}) {
-  const sanCost = P[ci].godEncounters || 0;
+  const progress = getLatestGodEncounterProgress(P[ci], gs);
+  const sanCost = progress.sanLoss;
   // 已揭晓的邪祀者遭遇邪神时免疫SAN损耗；未揭晓时照常结算
   if (!skipEffectMsg) {
     const revealedCultist = isRevealedCultist(P[ci]);
     let effectMsg = '';
     if (revealedCultist) {
-      effectMsg = `${P[ci].name}（邪祀者）遭遇邪神 ${godCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`;
+      effectMsg = `${P[ci].name}（邪祀者）遭遇邪神 ${godCard.name}！（${formatGodEncounterProgress(progress)}）免疫SAN损耗`;
     } else {
-      effectMsg = `${P[ci].name} 遭遇邪神 ${godCard.name}！（第${P[ci].godEncounters}次）${formatSanLoss(sanCost)}`;
+      effectMsg = `${P[ci].name} 遭遇邪神 ${godCard.name}！（${formatGodEncounterProgress(progress)}）${formatSanLoss(sanCost)}`;
     }
     L.push(effectMsg);
   }
@@ -580,19 +582,19 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
 
   // God card handling
   if (drawnCard.isGod) {
-    P[ci].godEncounters = (P[ci].godEncounters || 0) + 1;
-    const cost = P[ci].godEncounters;
+    const encounterProgress = advanceGodEncounter(P[ci], gs);
+    const cost = encounterProgress.sanLoss;
     const revealedCultist = isRevealedCultist(P[ci]);
 
     if (isAI) {
       let L2 = [];
       let inspectionMeta = makeInspectionMeta(gs);
       let effectMsg = revealedCultist
-        ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`
-        : `${whoName} 遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）${formatSanLoss(cost)}`;
+        ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（${formatGodEncounterProgress(encounterProgress)}）免疫SAN损耗`
+        : `${whoName} 遭遇邪神 ${drawnCard.name}！（${formatGodEncounterProgress(encounterProgress)}）${formatSanLoss(cost)}`;
       L2.push(effectMsg);
       // AI处理邪神牌时，仍然立即扣减SAN值；教程可在检定前暂停。
-      if (!revealedCultist) {
+      if (!revealedCultist && cost > 0) {
         const beforePlayers = copyPlayers(P);
         P[ci].san = clamp(P[ci].san - cost);
         inspectionMeta = appendStatEventsToInspectionMeta(
@@ -677,8 +679,8 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
       return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: L2, kept: true, statePatch: { ...inspectionMeta, ...(gr.inspectionMeta || {}), ...(gr.statePatch || {}) } };
     } else {
       let effectMsg = revealedCultist
-        ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`
-        : `${whoName} 遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）${formatSanLoss(cost)}`;
+        ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（${formatGodEncounterProgress(encounterProgress)}）免疫SAN损耗`
+        : `${whoName} 遭遇邪神 ${drawnCard.name}！（${formatGodEncounterProgress(encounterProgress)}）${formatSanLoss(cost)}`;
 
       let inspectionMeta = makeInspectionMeta(gs);
       let effectMsgs = [effectMsg];
@@ -992,7 +994,7 @@ function findCardIndexByIdentity(cards = [], target) {
   ));
 }
 
-function consumeTsathogguaSlimeAfterDraw(P, ownerIdx, slime, L, visualEvents = []) {
+function consumeTsathogguaSlimeBeforeDraw(P, ownerIdx, slime, L, visualEvents = []) {
   let holderIdx = ownerIdx;
   let cardIdx = findCardIndexByIdentity(P?.[holderIdx]?.hand || [], slime);
   if (cardIdx < 0) {
@@ -1178,6 +1180,7 @@ export function startNextTurn(gs, opts = {}) {
     const skippedTurnBeforeLog = [...L];
     const skippedTurnBeforeStatSeq = inspectionMeta?._statEventSeq || 0;
     const skippedTurnBeforeInspectionSeq = inspectionMeta?._inspectionSeq || 0;
+    let skippedTurnCthReplay = null;
     P[next].isResting = false;
     turnStartLogs = [`── ${P[next].name} 的回合开始 ──`];
     zhuLight = turnStartEvent_ZhuLight(P, D, next, gs);
@@ -1203,6 +1206,10 @@ export function startNextTurn(gs, opts = {}) {
     } else if (P[next].godName === 'CTH' && P[next].godLevel >= 1) {
       const extraDraws = P[next].godLevel; // lv1→1, lv2→2, lv3→3
       const whoName = localDisplayName(next, P[next].name);
+      const cthBeforePlayers = copyPlayers(P);
+      const cthBeforeDiscard = [...Disc];
+      const cthBeforeLog = [...L];
+      const cthBeforeStatSeq = inspectionMeta?._statEventSeq || 0;
       L.push(`${whoName}（克苏鲁信徒Lv.${P[next].godLevel}）梦访拉莱耶，翻面跳过回合时额外摸${extraDraws}张牌`);
       let cthRestDraws = [];
       let cthRestDrawLogs = [];
@@ -1212,7 +1219,7 @@ export function startNextTurn(gs, opts = {}) {
         if (r2.drawnCard) {
           if (r2.reshuffleLog) L.push(r2.reshuffleLog);
           L.push(`  摸到 ${cardLogText(r2.drawnCard, { alwaysShowName: true })}`);
-          if (next === 0) cthRestDraws.push(r2.drawnCard);
+          cthRestDraws.push(r2.drawnCard);
         }
         if (r2.needGodChoice) {
           // AI角色不会触发神牌选择UI，直接处理
@@ -1240,10 +1247,24 @@ export function startNextTurn(gs, opts = {}) {
           if (r2.reshuffleLog) L.push(r2.reshuffleLog);
           if (r2.effectMsgs.length) {
             L.push(...r2.effectMsgs);
-            if (next === 0) cthRestDrawLogs.push(...r2.effectMsgs);
+            cthRestDrawLogs.push(...r2.effectMsgs);
           }
           continue;
         }
+      }
+      if (next !== 0 && cthRestDraws.length > 0) {
+        skippedTurnCthReplay = {
+          draws: cthRestDraws,
+          drawLogs: [...L].slice(cthBeforeLog.length),
+          beforePlayers: cthBeforePlayers,
+          afterPlayers: copyPlayers(P),
+          beforeDiscard: cthBeforeDiscard,
+          afterDiscard: [...Disc],
+          beforeLog: cthBeforeLog,
+          afterLog: [...L],
+          beforeStatSeq: cthBeforeStatSeq,
+          afterStatSeq: inspectionMeta?._statEventSeq || cthBeforeStatSeq,
+        };
       }
       if (next === 0 && cthRestDraws.length > 0) {
         const nextGs = startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner }, opts);
@@ -1264,6 +1285,7 @@ export function startNextTurn(gs, opts = {}) {
       afterStatSeq: inspectionMeta?._statEventSeq || skippedTurnBeforeStatSeq,
       beforeInspectionSeq: skippedTurnBeforeInspectionSeq,
       afterInspectionSeq: inspectionMeta?._inspectionSeq || skippedTurnBeforeInspectionSeq,
+      cthReplay: skippedTurnCthReplay,
     };
     return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents.slice(inheritedGodPowerBlockedEventCount), _carrySkippedTurnReplays: [...inheritedSkippedTurnReplays, skippedTurnReplay] }, opts);
   }
@@ -1321,6 +1343,7 @@ export function startNextTurn(gs, opts = {}) {
     const tsgSlimes = getTsathogguaSlimesForDraw(P, 0, L, visualEvents);
     for (let _d = 0; _d < tsgSlimes.length; _d++) {
       const tsgSlime = tsgSlimes[_d];
+      const slimePop = consumeTsathogguaSlimeBeforeDraw(P, 0, tsgSlime, L, visualEvents);
       const rSlime = playerDrawCard(P, D, Disc, 0, gs);
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
       let drawEvent = null;
@@ -1331,7 +1354,7 @@ export function startNextTurn(gs, opts = {}) {
         drawEvent = { card: rSlime.drawnCard, drawerIdx: 0, drawerName: P[0].name, sourcePile: rSlime.sourcePile, msgs: [msg], fromTsathogguaSlime: true };
         turnDrawEvents.push(drawEvent);
       }
-      const pendingSlimeData = { pendingTsathogguaSlime: tsgSlime, pendingTsathogguaSlimes: tsgSlimes.slice(_d + 1) };
+      const pendingSlimeData = { pendingTsathogguaSlimes: tsgSlimes.slice(_d + 1) };
       if (rSlime.needGodChoice) {
         return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: rSlime.drawnCard, drawerIdx: 0, godEncounterCost: rSlime.godEncounterCost, fromTsathogguaSlime: true, continueTurnStartDraw: true, ...pendingSlimeData }, drawReveal: null, selectedCard: null, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
       }
@@ -1339,10 +1362,8 @@ export function startNextTurn(gs, opts = {}) {
         return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: 0, drawerName: P[0].name, fromTsathogguaSlime: true, reshuffleLog: rSlime.reshuffleLog }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, ...pendingSlimeData }, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
       }
       if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
-      const slimePop = consumeTsathogguaSlimeAfterDraw(P, 0, tsgSlime, L, visualEvents);
       if (slimePop) {
         drawLogs.push(...slimePop.msgs);
-        if (drawEvent) drawEvent.slimePop = slimePop;
       }
     }
     // 循环内的黏液额外摸牌消息已逐条写入 L，最终统一 flush 时只补固定摸牌新增的部分，
@@ -1492,6 +1513,7 @@ export function startNextTurn(gs, opts = {}) {
     const tsgSlimes = getTsathogguaSlimesForDraw(P, next, L, visualEvents);
     for (let _d = 0; _d < tsgSlimes.length; _d++) {
       const tsgSlime = tsgSlimes[_d];
+      const slimePop = consumeTsathogguaSlimeBeforeDraw(P, next, tsgSlime, L, visualEvents);
       const rSlime = playerDrawCard(P, D, Disc, next, gs);
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
       let drawEvent = null;
@@ -1502,7 +1524,7 @@ export function startNextTurn(gs, opts = {}) {
         drawEvent = { card: rSlime.drawnCard, drawerIdx: next, drawerName: P[next].name, sourcePile: rSlime.sourcePile, msgs: [msg], fromTsathogguaSlime: true };
         turnDrawEvents.push(drawEvent);
       }
-      const pendingSlimeData = { pendingTsathogguaSlime: tsgSlime, pendingTsathogguaSlimes: tsgSlimes.slice(_d + 1) };
+      const pendingSlimeData = { pendingTsathogguaSlimes: tsgSlimes.slice(_d + 1) };
       if (rSlime.needGodChoice) {
         return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: rSlime.drawnCard, godEncounterCost: rSlime.godEncounterCost, fromTsathogguaSlime: true, continueTurnStartDraw: true, ...pendingSlimeData }, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw };
       }
@@ -1510,10 +1532,8 @@ export function startNextTurn(gs, opts = {}) {
         return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: next, drawerName: P[next].name, fromTsathogguaSlime: true, reshuffleLog: rSlime.reshuffleLog }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, ...pendingSlimeData }, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw };
       }
       if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
-      const slimePop = consumeTsathogguaSlimeAfterDraw(P, next, tsgSlime, L, visualEvents);
       if (slimePop) {
         drawLogs.push(...slimePop.msgs);
-        if (drawEvent) drawEvent.slimePop = slimePop;
       }
     }
     // 循环内的黏液额外摸牌消息已逐条写入 L，最终统一 flush 时只补固定摸牌新增的部分，
@@ -1564,6 +1584,7 @@ export function startNextTurn(gs, opts = {}) {
     const tsgSlimes = getTsathogguaSlimesForDraw(P, next, L, visualEvents);
     for (let _d = 0; _d < tsgSlimes.length; _d++) {
       const tsgSlime = tsgSlimes[_d];
+      const slimePop = consumeTsathogguaSlimeBeforeDraw(P, next, tsgSlime, L, visualEvents);
       const rSlime = aiDrawAndApply(next, P, D, Disc, gs);
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
       let drawEvent = null;
@@ -1576,10 +1597,8 @@ export function startNextTurn(gs, opts = {}) {
         turnDrawEvents.push(drawEvent);
       }
       if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
-      const slimePop = consumeTsathogguaSlimeAfterDraw(P, next, tsgSlime, L, visualEvents);
       if (slimePop) {
         drawLogs.push(...slimePop.msgs);
-        if (drawEvent) drawEvent.slimePop = slimePop;
       }
     }
     // 循环内的黏液额外摸牌消息已逐条写入 L，最终统一 flush 时只补固定摸牌新增的部分，

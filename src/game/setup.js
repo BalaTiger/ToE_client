@@ -7,6 +7,7 @@ import {
   INSPECTION_DECK,
 } from '../constants/card';
 import { shuffle, ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
+import { resolveBalancePatches } from './balancePatches';
 
 export const EXPANSION_RANDOM_KEY = 'random_battle_expansion';
 export const DEFAULT_EXPANSION_KEY = '地神的潜影';
@@ -351,6 +352,7 @@ export function initGame(
     isDead: false,
     isResting: false,
     godEncounters: 0,
+    godEncounterCount: 0,
     godZone: [],
     godName: null,
     godLevel: 0,
@@ -369,7 +371,7 @@ export function initGame(
 
   const inspectionDeck = shuffle([...INSPECTION_DECK]);
   const base = {
-    players, deck, discard: [], inspectionDeck, inspectionDiscard: [], currentTurn: -1, phase: 'DRAW_REVEAL', drawReveal: null, selectedCard: null, abilityData: {}, log: [`游戏开始。每人获得${zhCount(INITIAL_HAND_SIZE)}张初始手牌。`], gameOver: null, skillUsed: false, restUsed: false, multiplyUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner: null, geomagneticReversalActive: false, apophisNight: null, expansionKey: expansionPlan.expansionKey, deckExpansionKey: expansionPlan.deckExpansionKey, temporaryStarsCallReplacement, debugFixedRoleCounts, _turnKey: 0, _isMP: !!playerNames, turn: 0, turnDirection: 1, sealLooseningCount: 0, houndsOfTindalosActive: false, houndsOfTindalosTarget: null, houndsOfTindalosElapsed: 0, debugForceCard: targetCard, debugForceCardTarget
+    players, deck, discard: [], inspectionDeck, inspectionDiscard: [], currentTurn: -1, phase: 'DRAW_REVEAL', drawReveal: null, selectedCard: null, abilityData: {}, log: [`游戏开始。每人获得${zhCount(INITIAL_HAND_SIZE)}张初始手牌。`], gameOver: null, skillUsed: false, restUsed: false, multiplyUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner: null, geomagneticReversalActive: false, apophisNight: null, expansionKey: expansionPlan.expansionKey, deckExpansionKey: expansionPlan.deckExpansionKey, temporaryStarsCallReplacement, debugFixedRoleCounts, balancePatches: resolveBalancePatches(options.balancePatches), _turnKey: 0, _isMP: !!playerNames, turn: 0, turnDirection: 1, sealLooseningCount: 0, houndsOfTindalosActive: false, houndsOfTindalosTarget: null, houndsOfTindalosElapsed: 0, debugForceCard: targetCard, debugForceCardTarget
   };
   base.debugForceCardKeep = playerNames ? 'auto' : debugForceCardKeep;
   return startNextTurn(base, options.turnOptions || {});

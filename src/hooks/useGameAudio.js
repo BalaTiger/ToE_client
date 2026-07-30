@@ -139,10 +139,11 @@ const CAVE_DUEL_BG_STOP_MS = 2600;
 const CAVE_DUEL_BG_FADE_MS = 520;
 const CAVE_DUEL_RESULT_DELAY_MS = 1380;
 const CAVE_DUEL_WIN_VOLUME = 0.28;
-const CAVE_DUEL_WIN_STOP_MS = 1900;
-const CAVE_DUEL_RESULT_FADE_MS = 320;
+const CAVE_DUEL_WIN_STOP_MS = 2580;
+const CAVE_DUEL_WIN_FADE_MS = 1000;
 const CAVE_DUEL_LOSE_VOLUME = 0.74;
 const CAVE_DUEL_LOSE_STOP_MS = 2200;
+const CAVE_DUEL_LOSE_FADE_MS = 320;
 const WHEEL_SPIN_VOLUME = 0.46;
 const WHEEL_SPIN_STOP_MS = 2240;
 const WHEEL_SPIN_FADE_MS = 160;
@@ -1780,6 +1781,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影', {
     const resultAudio = localLost ? caveDuel.lose : caveDuel.win;
     const resultVolume = localLost ? CAVE_DUEL_LOSE_VOLUME : CAVE_DUEL_WIN_VOLUME;
     const resultStopMs = localLost ? CAVE_DUEL_LOSE_STOP_MS : CAVE_DUEL_WIN_STOP_MS;
+    const resultFadeMs = localLost ? CAVE_DUEL_LOSE_FADE_MS : CAVE_DUEL_WIN_FADE_MS;
     const stopAll = () => {
       timers.forEach(timer => clearTimeout(timer));
       fadeKeys.forEach(key => {
@@ -1810,8 +1812,8 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影', {
         resultAudio.play().catch(() => { });
         addFadeKey(resultFadeKey);
         addTimer(setTimeout(() => {
-          fadeOutAudio(resultAudio, resultFadeKey, CAVE_DUEL_RESULT_FADE_MS, resultVolume);
-        }, Math.max(0, resultStopMs - CAVE_DUEL_RESULT_FADE_MS)));
+          fadeOutAudio(resultAudio, resultFadeKey, resultFadeMs, resultVolume);
+        }, Math.max(0, resultStopMs - resultFadeMs)));
       } catch { /* ignore */ }
     }, CAVE_DUEL_RESULT_DELAY_MS));
     addTimer(setTimeout(stopAll, CAVE_DUEL_RESULT_DELAY_MS + resultStopMs + 360));

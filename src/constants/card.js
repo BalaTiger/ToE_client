@@ -960,8 +960,8 @@ function getAnimatedCardBackFramePaths(expansionKey = '地神的潜影', publicP
 }
 
 export const INSPECTION_DECK = [
-  ...Array(4).fill({ name: '乱抓', effect: 'adjacentDamageHP', value: 1, type: 'negative' }),
-  ...Array(4).fill({ name: '自残', effect: 'selfDamageHP', value: 1, type: 'negative' }),
+  ...Array(6).fill({ name: '乱抓', effect: 'adjacentDamageHP', value: 2, type: 'negative' }),
+  ...Array(6).fill({ name: '自残', effect: 'selfDamageHP', value: 2, type: 'negative' }),
   ...Array(4).fill({ name: '失眠', effect: 'disableRest', value: 1, type: 'negative' }),
   ...Array(2).fill({ name: '暂时的平静', effect: 'nothing', value: 0, type: 'neutral' }),
   ...Array(2).fill({ name: '昏睡', effect: 'flip', value: 1, type: 'negative' }),

@@ -55,6 +55,10 @@ export function prepareWorshipHighlight(queue=[],options={}){
       godName:badgePlayer.godName,
       godLevel:badgePlayer.godLevel,
       godEncounters:badgePlayer.godEncounters,
+      godEncounterCount:badgePlayer.godEncounterCount,
+      lastGodEncounterSanLoss:badgePlayer.lastGodEncounterSanLoss,
+      lastGodEncounterCreatedSkull:badgePlayer.lastGodEncounterCreatedSkull,
+      lastGodEncounterPatchEnabled:badgePlayer.lastGodEncounterPatchEnabled,
       godZone:[...(badgePlayer.godZone||[])],
       hasBelievedGod:badgePlayer.hasBelievedGod,
     }:player);

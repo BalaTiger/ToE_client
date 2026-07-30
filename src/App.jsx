@@ -146,7 +146,8 @@ import {
   hasGodPowerImmunity,
   buildGodPowerBlockedLog,
   appendPublicCardGainTriggers,
-  compareCaveDuelCards,
+  resolveCaveDuelOutcome,
+  resolveHandCardSelection,
   buildWorshipFromHandLog,
   buildProliferatingZDrawFlow,
   clearBlindZoneDecisionFlag,
@@ -296,6 +297,7 @@ import { executeAiTurnStep, useAiTurnController } from './hooks/useAiTurnControl
 import { useRoomCountdown } from './hooks/useRoomCountdown';
 import { useMpCthDecisionTimer, useMpDecisionTimer, useMpDiscardTimer, useMpHuntRevealTimer, useMpTurnTimer } from './hooks/useMultiplayerTimers';
 import { useVisualDiscardSync } from './hooks/useVisualDiscardSync';
+import { advanceGodEncounter, formatGodEncounterProgress } from './game/balancePatches';
 import { useMultiplayerConnection } from './multiplayer/useMultiplayerConnection';
 import { useMultiplayerStateBroadcast } from './multiplayer/useMultiplayerStateBroadcast';
 import { useMultiplayerEmojiSender, useWaitingRoomReconnect } from './multiplayer/useMultiplayerUiSession';
@@ -2394,6 +2396,10 @@ export default function Game(){
             godLevel:finalPlayer.godLevel,
             godZone:[...(finalPlayer.godZone||[])],
             godEncounters:finalPlayer.godEncounters,
+            godEncounterCount:finalPlayer.godEncounterCount,
+            lastGodEncounterSanLoss:finalPlayer.lastGodEncounterSanLoss,
+            lastGodEncounterCreatedSkull:finalPlayer.lastGodEncounterCreatedSkull,
+            lastGodEncounterPatchEnabled:finalPlayer.lastGodEncounterPatchEnabled,
           };
         });
         const pausePlayers=mergePostConvertIdentity(firstInspectionEvent.beforePlayers||newGs.players);
@@ -6582,23 +6588,6 @@ export default function Game(){
     }
   }
   
-  function resolveHandCardSelection(player, cardIndex, selectedCard = null) {
-    const hand = player?.hand || [];
-    if (selectedCard?.id != null) {
-      const byId = hand.findIndex(card => card?.id === selectedCard.id);
-      if (byId >= 0) return { index: byId, card: hand[byId] };
-    }
-    const card = hand[cardIndex];
-    return { index: cardIndex, card };
-  }
-
-  function removeSelectedHandCard(player, cardIndex, selectedCard = null) {
-    const { index } = resolveHandCardSelection(player, cardIndex, selectedCard);
-    if (index < 0 || index >= (player?.hand || []).length) return null;
-    const [removed] = player.hand.splice(index, 1);
-    return removed || null;
-  }
-
   function escapeDomSelectorValue(value){
     const raw=String(value ?? '');
     if(typeof CSS!=='undefined'&&CSS.escape)return CSS.escape(raw);
@@ -6663,23 +6652,23 @@ export default function Game(){
   }
 
   function resolveCaveDuelState(P, caveDuelSource, ti, sourceCardIndex, targetCardIndex, sourceCard, targetCard, gs){
-    const duelCompare=compareCaveDuelCards(sourceCard,targetCard);
-    let L;
+    const outcome=resolveCaveDuelOutcome({
+      players:P,
+      sourceIdx:caveDuelSource,
+      targetIdx:ti,
+      sourceCardIndex,
+      targetCardIndex,
+      sourceCard,
+      targetCard,
+    });
+    P=outcome.players;
+    const duelCompare=outcome.duelCompare;
+    const L=[...gs.log,outcome.logLine];
     let proliferatingZPatch={};
     if(duelCompare>0){
-      removeSelectedHandCard(P[caveDuelSource],sourceCardIndex,sourceCard);
-      removeSelectedHandCard(P[ti],targetCardIndex,targetCard);
-      P[caveDuelSource].hand.push(sourceCard,targetCard);
-      proliferatingZPatch=appendPublicCardGainTriggers(gs,P,caveDuelSource,targetCard);
-      L=[...gs.log,`【穴居人战争】${P[caveDuelSource].name} 亮出 ${cardLogText(sourceCard,{alwaysShowName:true})}，${P[ti].name} 亮出 ${cardLogText(targetCard,{alwaysShowName:true})}，${P[caveDuelSource].name} 胜出，收下两张牌`];
+      proliferatingZPatch=appendPublicCardGainTriggers(gs,P,caveDuelSource,outcome.gainedCard);
     }else if(duelCompare<0){
-      removeSelectedHandCard(P[caveDuelSource],sourceCardIndex,sourceCard);
-      removeSelectedHandCard(P[ti],targetCardIndex,targetCard);
-      P[ti].hand.push(sourceCard,targetCard);
-      proliferatingZPatch=appendPublicCardGainTriggers(gs,P,ti,sourceCard);
-      L=[...gs.log,`【穴居人战争】${P[caveDuelSource].name} 亮出 ${cardLogText(sourceCard,{alwaysShowName:true})}，${P[ti].name} 亮出 ${cardLogText(targetCard,{alwaysShowName:true})}，${P[ti].name} 胜出，收下两张牌`];
-    }else{
-      L=[...gs.log,`【穴居人战争】${P[caveDuelSource].name} 亮出 ${cardLogText(sourceCard,{alwaysShowName:true})}，${P[ti].name} 亮出 ${cardLogText(targetCard,{alwaysShowName:true})}，平局，各自收回自己的牌`];
+      proliferatingZPatch=appendPublicCardGainTriggers(gs,P,ti,outcome.gainedCard);
     }
     const nextGs={
       ...buildTargetContinuationGs({players:P,deck:gs.deck,discard:gs.discard,log:L,abilityData:gs.abilityData,extraPatch:proliferatingZPatch}),
@@ -8209,17 +8198,19 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const L=[...baseLog,`你对 ${P[ti].name} 【蛊惑】，赠予 ${cardLogText(bewitchCard,{alwaysShowName:true})}`];
     // God card gifted via bewitch: forced convert if different god, then AI resolves for target
     if(bewitchCard.isGod){
-      P[ti].godEncounters=(P[ti].godEncounters||0)+1;
-      const cost=P[ti].godEncounters;
+      const encounterProgress=advanceGodEncounter(P[ti],gs);
+      const cost=encounterProgress.sanLoss;
       // 仅已揭晓的邪祀者免疫遭遇邪神的SAN损耗
       let effectMsg = '';
       if (isRevealedCultist(P[ti])) {
-        effectMsg = `${P[ti].name}（邪祀者）遭遇邪神 ${bewitchCard.name}（第${P[ti].godEncounters}次），免疫SAN损耗`;
+        effectMsg = `${P[ti].name}（邪祀者）遭遇邪神 ${bewitchCard.name}（${formatGodEncounterProgress(encounterProgress)}），免疫SAN损耗`;
       } else {
-        effectMsg = `${P[ti].name} 遭遇邪神 ${bewitchCard.name}（第${P[ti].godEncounters}次），失去${cost}SAN`;
+        effectMsg = `${P[ti].name} 遭遇邪神 ${bewitchCard.name}（${formatGodEncounterProgress(encounterProgress)}），失去${cost}SAN`;
         L.push(effectMsg);
-        const processed=applySanLossToPlayerWithInspection(ti,cost,gs.currentTurn,P,D,Disc,L,inspectionMeta,'邪神遭遇');
-        P=processed.P;D=processed.D;Disc=processed.Disc;inspectionMeta=processed.inspectionMeta;L.splice(0,L.length,...processed.L);
+        if(cost>0){
+          const processed=applySanLossToPlayerWithInspection(ti,cost,gs.currentTurn,P,D,Disc,L,inspectionMeta,'邪神遭遇');
+          P=processed.P;D=processed.D;Disc=processed.Disc;inspectionMeta=processed.inspectionMeta;L.splice(0,L.length,...processed.L);
+        }
       }
       if(isRevealedCultist(P[ti]))L.push(effectMsg);
       const forcedConvert=true;
@@ -9593,7 +9584,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,apophisNight:nextApophisNight,phase:isShuBlessingHand?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessingHand?{shuOffspringCount:shuOffspringCountHand,shuChooserIdx:0}:gs.abilityData,_visualEvents:blockedGodPowerEvent?[blockedGodPowerEvent]:[],...inspectionMeta,...(win?{gameOver:win}:{})};
     // 让"邪神之力"标签与"从手牌信仰"日志同时出现：把信仰后的神之力字段（及已离手的神牌）并入动画基线，
     // 使首个动画步骤的视觉快照就带上新神之力，而不是等到整段动画结束才刷新角色面板。
-    const godBadgeBaseline=gs.players.map((p,i)=>i===0?{...p,hand:[...P[0].hand],godName:P[0].godName,godLevel:P[0].godLevel,godEncounters:P[0].godEncounters,godZone:P[0].godZone.map(c=>({...c}))}:p);
+    const godBadgeBaseline=gs.players.map((p,i)=>i===0?{...p,hand:[...P[0].hand],godName:P[0].godName,godLevel:P[0].godLevel,godEncounters:P[0].godEncounters,godEncounterCount:P[0].godEncounterCount,godZone:P[0].godZone.map(c=>({...c}))}:p);
     previousGodStatusRef.current=godBadgeBaseline.map(p=>({godName:p?.godName||null,godLevel:p?.godLevel||0}));
     const oldGsForReplay={...gs,players:godBadgeBaseline};
     const replay=buildInspectionAwareAnimQueue(oldGsForReplay,newGs,{buildAnimQueue,copyPlayers});

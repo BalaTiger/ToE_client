@@ -174,6 +174,43 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(combined.some(step => (step.msgs || []).some(msg => msg.includes('艾伦 从休息中醒来')))).toBe(true);
   });
 
+  it('AI 梦访拉莱耶的梦境、摸牌和效果位于休息回合边界内', () => {
+    const dreamCard = {
+      id: 'dream-heal',
+      name: '猎获穴兽',
+      key: 'B3',
+      type: 'selfHealAdjHealHP',
+      val: 3,
+      adjVal: 2,
+      isZone: true,
+    };
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '你', hp: 6 }),
+        makePlayer({ name: '艾伦', isResting: true, godName: 'CTH', godLevel: 1, hp: 5 }),
+        makePlayer({ name: '贝拉', hp: 6 }),
+      ],
+      currentTurn: 0,
+      deck: [dreamCard, makeZoneCard('D3')],
+      log: [],
+      _statEventSeq: 0,
+      _statEvents: [],
+    });
+
+    const newGs = startNextTurn(oldGs);
+    const queue = buildSkippedTurnReplayQueue(newGs);
+    const allenTurnIdx = queue.findIndex(step => step.type === 'YOUR_TURN' && step.name === '艾伦');
+    const dreamIdx = queue.findIndex(step => step.type === 'CTH_RLYEH_DREAM');
+    const drawIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.card === dreamCard);
+    const effectIdx = queue.findIndex((step, idx) => idx > drawIdx && ['HP_HEAL', 'HP_SAN_HEAL'].includes(step.type));
+
+    expect(newGs._skippedTurnReplays?.[0]?.cthReplay?.draws).toEqual([dreamCard]);
+    expect(allenTurnIdx).toBeGreaterThanOrEqual(0);
+    expect(dreamIdx).toBeGreaterThan(allenTurnIdx);
+    expect(drawIdx).toBeGreaterThan(dreamIdx);
+    expect(effectIdx).toBeGreaterThan(drawIdx);
+  });
+
   it('plays black goat turn-start damage before the draw flip', () => {
     const goat = { id: 'goat-1', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
     const card = { id: 'next-card', name: '下一张牌', key: 'B2', type: 'zone' };

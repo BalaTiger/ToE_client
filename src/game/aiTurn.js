@@ -35,6 +35,7 @@ import {
   isCultistEndingTurnUnreasonable,
 } from './ai';
 import { applyFx, applyHpDamageWithLink } from './effectEngine';
+import { advanceGodEncounter, formatGodEncounterProgress } from './balancePatches';
 import {
   checkWin,
   aiHandleGodCard,
@@ -366,15 +367,15 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
       const beforeLog = [...L];
       const beforePatch = statePatch;
       P[ct].hand.splice(handIdx, 1);
-      P[ct].godEncounters = (P[ct].godEncounters || 0) + 1;
-      const godCost = P[ct].godEncounters;
+      const encounterProgress = advanceGodEncounter(P[ct], gs);
+      const godCost = encounterProgress.sanLoss;
       const revealedCultist = isRevealedCultist(P[ct]);
       const effectMsg = revealedCultist
-        ? `${P[ct].name}（邪祀者）遭遇邪神 ${card.name}！（第${P[ct].godEncounters}次）免疫SAN损耗`
-        : `${P[ct].name} 遭遇邪神 ${card.name}！（第${P[ct].godEncounters}次）${formatSanLoss(godCost)}`;
+        ? `${P[ct].name}（邪祀者）遭遇邪神 ${card.name}！（${formatGodEncounterProgress(encounterProgress)}）免疫SAN损耗`
+        : `${P[ct].name} 遭遇邪神 ${card.name}！（${formatGodEncounterProgress(encounterProgress)}）${formatSanLoss(godCost)}`;
       L.push(effectMsg);
       let inspectionMeta = makeInspectionMeta({ ...gs, ...statePatch });
-      if (!revealedCultist) {
+      if (!revealedCultist && godCost > 0) {
         const processed = applySanLossToPlayerWithInspection(ct, godCost, gs.currentTurn ?? ct, P, D, Disc, L, inspectionMeta, '邪神遭遇');
         P = processed.P; D = processed.D; Disc = processed.Disc; L = processed.L; inspectionMeta = processed.inspectionMeta;
       }
@@ -539,14 +540,14 @@ export function aiStep(gs, opts = {}) {
     _L.push(`${_P[_ct].name}（邪祀者）对 ${_P[_ti].name} 【蛊惑】，赠予 ${cardLogText(_sc, { alwaysShowName: true })}`);
     let fxResult = null;
     if (_sc.isGod) {
-      _P[_ti].godEncounters = (_P[_ti].godEncounters || 0) + 1;
-      const godCost = _P[_ti].godEncounters;
+      const encounterProgress = advanceGodEncounter(_P[_ti], _gs);
+      const godCost = encounterProgress.sanLoss;
       const revealedCultist = isRevealedCultist(_P[_ti]);
       const effectMsg = revealedCultist
-        ? `${_P[_ti].name}（邪祀者）遭遇邪神 ${_sc.name}！（第${_P[_ti].godEncounters}次）免疫SAN损耗`
-        : `${_P[_ti].name} 遭遇邪神 ${_sc.name}！（第${_P[_ti].godEncounters}次）${formatSanLoss(godCost)}`;
+        ? `${_P[_ti].name}（邪祀者）遭遇邪神 ${_sc.name}！（${formatGodEncounterProgress(encounterProgress)}）免疫SAN损耗`
+        : `${_P[_ti].name} 遭遇邪神 ${_sc.name}！（${formatGodEncounterProgress(encounterProgress)}）${formatSanLoss(godCost)}`;
       _L.push(effectMsg);
-      if (!revealedCultist) {
+      if (!revealedCultist && godCost > 0) {
         const processed = applySanLossToPlayerWithInspection(_ti, godCost, _gs.currentTurn, _P, _D, _Disc, _L, inspectionMeta, '邪神遭遇');
         _P = processed.P; _D = processed.D; _Disc = processed.Disc;
         inspectionMeta = processed.inspectionMeta;
