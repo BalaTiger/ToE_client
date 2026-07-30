@@ -114,6 +114,7 @@ import {
   removeZhuLightCard,
   moveTopDeckCardToBottom,
   resolveMpTimeoutToAction,
+  resolveMpAiTakeoverState,
   applyStatEventsToDisplayStats,
   buildStatEvents,
   getEndTurnEvents,
@@ -121,10 +122,8 @@ import {
   resolveEndTurn,
   END_TURN_DECISION,
   resolvePostDiscardEndTurn,
-  applyHandDiscardSideEffectsWithAnim,
   discardCardsFromHand,
   discardCardsFromHandFromRight,
-  splitKeptDestroyedDiscarded,
   resolveRestTurnEnd,
   hasEndTurnReplayHandEvent,
   buildEndTurnReplayStartState,
@@ -146,6 +145,7 @@ import {
   hasGodPowerImmunity,
   buildGodPowerBlockedLog,
   appendPublicCardGainTriggers,
+  getBestCaveDuelCardIndex,
   resolveCaveDuelOutcome,
   resolveHandCardSelection,
   buildWorshipFromHandLog,
@@ -1089,195 +1089,6 @@ export default function Game(){
     return (rawSeatIndex-myIdx+N)%N;
   }
 
-  function isMpAiTakeoverRelevant(stateLike,takeoverIdx){
-    if(!stateLike||takeoverIdx<0||stateLike.gameOver)return false;
-    const phase=stateLike.phase;
-    if(phase==='DRAW_REVEAL'){
-      return !!stateLike.drawReveal?.needsDecision&&(stateLike.drawReveal.drawerIdx??stateLike.currentTurn)===takeoverIdx;
-    }
-    if(phase==='GOD_CHOICE'){
-      return !!stateLike.abilityData?.godCard&&(stateLike.abilityData.drawerIdx??stateLike.currentTurn)===takeoverIdx;
-    }
-    if(phase==='HUNT_WAIT_REVEAL'){
-      return stateLike.currentTurn===takeoverIdx||stateLike.abilityData?.huntTi===takeoverIdx;
-    }
-    if(phase==='ETHEREALIZE_DECISION'||phase==='ETHEREALIZE_SELECT_TARGET'){
-      return stateLike.abilityData?.targetIdx===takeoverIdx;
-    }
-    if(phase==='DISCARD_PHASE'||phase==='ACTION')return stateLike.currentTurn===takeoverIdx;
-    if(phase==='CAVE_DUEL_SELECT_CARD'){
-      const ad=stateLike.abilityData||{};
-      return ad.caveDuelSource===takeoverIdx||ad.caveDuelTarget===takeoverIdx;
-    }
-    const currentTurnPhases=new Set([
-      'DRAW_SELECT_TARGET','SWAP_SELECT_TARGET','SWAP_STEAL_CARD','SWAP_GIVE_CARD','HUNT_SELECT_TARGET','HUNT_CONFIRM',
-      'BEWITCH_SELECT_TARGET','BEWITCH_SELECT_CARD','ZONE_SWAP_SELECT_TARGET','PEEK_HAND_SELECT_TARGET',
-      'CAVE_DUEL_SELECT_TARGET','CAVE_DUEL_SELECT_CARD','ROSE_THORN_SELECT_TARGET','MULTIPLY_SELECT_TARGET',
-      'SHU_SELECT_TARGET','FIRST_COME_PICK_SELECT','SAME_ABYSS_SELECT','SPHINX_GUESS','GRAVE_DIG_SELECT',
-    'BURY_ALIVE_SELECT','TORTOISE_ORACLE_SELECT','NYA_BORROW'
-      ,'DECIPHER_STONE_CARVING'
-    ]);
-    return currentTurnPhases.has(phase)&&stateLike.currentTurn===takeoverIdx;
-  }
-
-  function withTimeoutDrawDiscardVisual(stateLike,timeoutSource){
-    const dr=timeoutSource?.drawReveal;
-    if(timeoutSource?.phase!=='DRAW_REVEAL'||!dr?.card||!dr.needsDecision||dr.forcedKeep)return stateLike;
-    const event=createTimedOutDrawDiscardEvent({
-      card:dr.card,
-      drawerIdx:dr.drawerIdx??timeoutSource.currentTurn??0,
-      drawerName:timeoutSource.players?.[dr.drawerIdx??timeoutSource.currentTurn??0]?.name||dr.drawerName||'该玩家',
-    });
-    if(!event)return stateLike;
-    return {
-      ...stateLike,
-      _mpTimedOutDrawDiscard:event,
-      _visualEvents:[event],
-    };
-  }
-
-  function autoDiscardSeatAndAdvance(baseGs,seatIdx){
-    const player=baseGs?.players?.[seatIdx];
-    if(!player)return baseGs;
-    const limit=getHandLimitForPlayer(player);
-    const count=Math.max(0,(player.hand?.length||0)-limit);
-    let {players:P,discarded}=discardCardsFromHandFromRight(baseGs.players,seatIdx,count);
-    const {kept:keptDisc,destroyed:destroyedDisc}=splitKeptDestroyedDiscarded(discarded);
-    let D=[...(baseGs.deck||[])];
-    let Disc=[...(baseGs.discard||[])];
-    let L=[...(baseGs.log||[])];
-    const actorName=localDisplayName(seatIdx,P[seatIdx]?.name||'该玩家');
-    let balanceStatePatch={};
-    if(keptDisc.length){
-      Disc=[...Disc,...keptDisc];
-      L.push(`(AI接管) ${actorName} 弃置：${keptDisc.map(card=>cardLogText(card,{alwaysShowName:true})).join(' ')}`);
-      const balance=applyHandDiscardSideEffectsWithAnim({baseGs,players:P,deck:D,discard:Disc,log:L,ownerIdx:seatIdx,cards:keptDisc,reason:'手牌上限弃牌'});
-      P=balance.players;D=balance.deck;Disc=balance.discard;L=balance.log;
-      balanceStatePatch=balance.statePatch||{};
-    }
-    if(destroyedDisc.length)L.push(`(AI接管) ${actorName} 的衍生牌 ×${destroyedDisc.length} 被销毁`);
-    const postDiscardGs={...baseGs,players:P,deck:D,discard:Disc,log:L,currentTurn:seatIdx,phase:'ACTION',drawReveal:null,selectedCard:null,abilityData:{},...balanceStatePatch};
-    const win=checkWin(P,true);
-    if(win)return {...postDiscardGs,gameOver:win};
-    return startNextTurn(postDiscardGs);
-  }
-
-  function finishMpAiTakeoverTurn(baseGs,timeoutSource,takeoverIdx){
-    if(!baseGs)return null;
-    const actorIdx=baseGs.currentTurn??takeoverIdx;
-    const win=checkWin(baseGs.players,true);
-    if(win)return withTimeoutDrawDiscardVisual({...baseGs,gameOver:win},timeoutSource);
-    const actor=baseGs.players?.[actorIdx];
-    if(actor&&(actor.hand?.length||0)>getHandLimitForPlayer(actor)){
-      return withTimeoutDrawDiscardVisual(autoDiscardSeatAndAdvance(baseGs,actorIdx),timeoutSource);
-    }
-    return withTimeoutDrawDiscardVisual(startNextTurn({...baseGs,currentTurn:actorIdx,phase:'ACTION',drawReveal:null,selectedCard:null}),timeoutSource);
-  }
-
-  function autoResolveDecipherStoneCarving(baseGs,actorIdx){
-    const ad=baseGs?.abilityData||{};
-    const revealed=Array.isArray(ad.revealedCards)?ad.revealedCards:[];
-    if(!revealed.length)return {...baseGs,phase:'ACTION',abilityData:{},drawReveal:null,selectedCard:null};
-    let P=copyPlayers(baseGs.players);
-    let D=[...(baseGs.deck||[])];
-    let Disc=[...(baseGs.discard||[])];
-    let L=[...(baseGs.log||[])];
-    const actorName=localDisplayName(actorIdx,P[actorIdx]?.name||'该玩家');
-    const handCard=revealed[0];
-    const remaining=revealed.slice(1);
-    P[actorIdx].hand.push(handCard);
-    L.push(`(AI接管) 【解读石刻】${actorName} 选择将 ${cardLogText(handCard,{alwaysShowName:true})} 收入手牌`);
-    let inspectionMeta=makeInspectionMeta(baseGs);
-    if(handCard.isGod){
-      L.push(`【解读石刻】${actorName} 因选择邪神牌失去 1 SAN`);
-      const processed=applySanLossToPlayerWithInspection(actorIdx,1,baseGs.currentTurn??actorIdx,P,D,Disc,L,inspectionMeta,'解读石刻');
-      P=processed.P;D=processed.D;Disc=processed.Disc;L=processed.L;inspectionMeta=processed.inspectionMeta;
-    }
-    if(remaining.length){
-      D.unshift(...remaining);
-      L.push(`【解读石刻】${remaining.length} 张牌放回牌堆顶`);
-    }
-    const cardGainPatch=appendPublicCardGainTriggers({...baseGs,...inspectionMeta},P,actorIdx,handCard);
-    const nextGs={...baseGs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',abilityData:{},drawReveal:null,selectedCard:null,...inspectionMeta,...cardGainPatch};
-    const win=checkWin(P,true);
-    return win?{...nextGs,gameOver:win}:nextGs;
-  }
-
-  function resolveMpAiTakeoverState(sourceGs,takeoverIdx){
-    if(!isMpAiTakeoverRelevant(sourceGs,takeoverIdx))return null;
-    if(sourceGs.players?.[takeoverIdx]?.isDead){
-      if(sourceGs.currentTurn!==takeoverIdx)return null;
-      return startNextTurn({...sourceGs,currentTurn:takeoverIdx,phase:'ACTION',drawReveal:null,selectedCard:null,abilityData:{}});
-    }
-    const phase=sourceGs.phase;
-    if(phase==='HUNT_WAIT_REVEAL'){
-      if(sourceGs.abilityData?.huntTi===takeoverIdx){
-        const hand=sourceGs.players?.[takeoverIdx]?.hand||[];
-        const actorName=localDisplayName(takeoverIdx,sourceGs.players?.[takeoverIdx]?.name||'该玩家');
-        const rc=hand.find(canRevealForHunt);
-        if(!rc){
-          const hunterIdx=sourceGs.currentTurn??0;
-          const skipped={...sourceGs,log:[...(sourceGs.log||[]),`(AI接管) ${actorName} 没有可亮出的暗牌，追捕失败`],phase:'ACTION',abilityData:{},currentTurn:hunterIdx};
-          return finishMpAiTakeoverTurn(skipped,sourceGs,hunterIdx);
-        }
-        const msg=`(AI接管) ${actorName} 亮出 ${cardLogText(rc,{alwaysShowName:true})}`;
-        const event=createHuntRevealEvent({
-          sourceIdx:sourceGs.currentTurn??0,
-          targetIdx:takeoverIdx,
-          card:rc,
-          msgs:[msg],
-        });
-        return {
-          ...sourceGs,
-          log:[...(sourceGs.log||[]),msg],
-          phase:'HUNT_CONFIRM',
-          abilityData:{...sourceGs.abilityData,revCard:rc},
-          ...(event?{_visualEvents:[event]}:{_visualEvents:[]}),
-        };
-      }
-      const actorName=localDisplayName(takeoverIdx,sourceGs.players?.[takeoverIdx]?.name||'该玩家');
-      const skipped={...sourceGs,log:[...(sourceGs.log||[]),`(AI接管) ${actorName} 放弃追捕`],phase:'ACTION',abilityData:{}};
-      return finishMpAiTakeoverTurn(skipped,sourceGs,takeoverIdx);
-    }
-    if(phase==='DISCARD_PHASE')return autoDiscardSeatAndAdvance(sourceGs,takeoverIdx);
-    if(phase==='CAVE_DUEL_SELECT_CARD'){
-      const ad={...sourceGs.abilityData};
-      const P=copyPlayers(sourceGs.players);
-      const sourcePlayer=P[ad.caveDuelSource];
-      const targetPlayer=P[ad.caveDuelTarget];
-      const actorName=localDisplayName(takeoverIdx,sourceGs.players?.[takeoverIdx]?.name||'该玩家');
-      if(takeoverIdx===ad.caveDuelSource&&!ad.sourceCard){
-        ad.sourceCardIndex=getBestCaveDuelCardIndex(sourcePlayer.hand);
-        ad.sourceCard=sourcePlayer.hand[ad.sourceCardIndex];
-      }
-      if(takeoverIdx===ad.caveDuelTarget&&!ad.targetCard){
-        ad.targetCardIndex=getBestCaveDuelCardIndex(targetPlayer.hand);
-        ad.targetCard=targetPlayer.hand[ad.targetCardIndex];
-      }
-      if(!ad.sourceCard||!ad.targetCard){
-        // 仅 AI 方选好，另一方真人尚未选：广播带 AI 选择的状态，继续等待
-        return {
-          ...sourceGs,
-          players:P,
-          abilityData:ad,
-          log:[...(sourceGs.log||[]),`(AI接管) ${actorName} 已选好穴居人战争出牌`],
-        };
-      }
-      // 双方均选好，直接结算（无动画，由接收端远程回放）
-      const {nextGs}=resolveCaveDuelState(P,ad.caveDuelSource,ad.caveDuelTarget,ad.sourceCardIndex,ad.targetCardIndex,ad.sourceCard,ad.targetCard,{...sourceGs,abilityData:ad});
-      return nextGs;
-    }
-    if(phase==='DECIPHER_STONE_CARVING')return finishMpAiTakeoverTurn(autoResolveDecipherStoneCarving(sourceGs,takeoverIdx),sourceGs,takeoverIdx);
-    if(phase==='DRAW_REVEAL'||phase==='GOD_CHOICE'||phase==='NYA_BORROW'){
-      const base=resolveMpTimeoutToAction({...sourceGs,_mpEndTurn:undefined,_mpAutoDiscard:undefined,_mpAutoCthDecision:undefined});
-      return finishMpAiTakeoverTurn(base,sourceGs,takeoverIdx);
-    }
-    if(phase==='ACTION')return finishMpAiTakeoverTurn(sourceGs,sourceGs,takeoverIdx);
-    const actorName=localDisplayName(takeoverIdx,sourceGs.players?.[takeoverIdx]?.name||'该玩家');
-    const skipped={...sourceGs,log:[...(sourceGs.log||[]),`(AI接管) ${actorName} 跳过当前操作`],phase:'ACTION',abilityData:{}};
-    return finishMpAiTakeoverTurn(skipped,sourceGs,takeoverIdx);
-  }
-
   function handleMpAiTakeover(payload){
     if(!payload||payload.authorityUuid!==playerUUIDRef.current)return;
     if(!isMultiplayerRef.current)return;
@@ -1289,7 +1100,10 @@ export default function Game(){
     }
     const sourceGs=payload.gs?rotateGsForViewer(payload.gs,myPlayerIndexRef.current):latestGsRef.current;
     const takeoverIdx=rotateRawSeatIndex(payload.playerIndex,sourceGs);
-    const nextGs=resolveMpAiTakeoverState(sourceGs,takeoverIdx);
+    const nextGs=resolveMpAiTakeoverState(sourceGs,takeoverIdx,{
+      getHandLimitForPlayer,
+      resolveCaveDuelState,
+    });
     if(!nextGs)return;
     const roomId=payload.roomId||roomModalRef.current?.roomId;
     const rawNextGs=derotateGs(nextGs,myPlayerIndexRef.current);
@@ -2704,7 +2518,8 @@ export default function Game(){
         // Helper: build a gs-like object with substituted players for buildAnimQueue
         // fakeGs: use gs.log as the baseline so buildAnimQueue correctly detects new messages
         const fakeGs = (ps,log=gs.log) => ({...gs, players: ps, log, _statEvents: gs._statEvents || [], _statEventSeq: gs._statEventSeq || 0});
-        const hasTurnStartDraw=!!gs._playersBeforeThisDraw&&!gs._aiTurnIntroShown;
+        const hasTurnStartDraw=!!gs._playersBeforeThisDraw;
+        const shouldReplayTurnStart=hasTurnStartDraw&&!gs._aiTurnIntroShown;
         const aiTurnDrawnCard=hasTurnStartDraw?(rawResult._animAiDrawnCard??rawResult._aiDrawnCard??gs._aiDrawnCard??gs._drawnCard??null):null;
         const aiTurnDiscarded=hasTurnStartDraw?isDrawnCardActuallyDiscarded(rawResult,aiTurnDrawnCard):false;
         const {currentTurnLogs}=splitTransitionLogs(oldLog,nextLog);
@@ -2717,7 +2532,7 @@ export default function Game(){
           return !beforeDelta.some(isTurnStartLog);
         };
         const queue=[];
-        const aiTurnStartReplay=hasTurnStartDraw
+        const aiTurnStartReplay=shouldReplayTurnStart
           ? buildActorTurnStartReplay(gs,{
               oldGs:{...gs,players:gs._playersBeforeThisDraw,log:getTurnStartDrawBaselineLog(gs)},
               effectOldGs:{...gs,players:gs._playersBeforeThisDraw,log:getTurnStartDrawBaselineLog(gs)},
@@ -2745,9 +2560,9 @@ export default function Game(){
           queue.push(...buildTurnStartIntroQueue(gs,gs.players[gs.currentTurn]?.name||'???'));
         }
         // 2. Draw card anim for THIS AI (card drawn at turn start, stored in gs._drawnCard)
-        if(!usedAiTurnStartReplay&&aiTurnDrawnCard) queue.push({type:'DRAW_CARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn,msgs:gs._drawLogs});
+        if(!usedAiTurnStartReplay&&!gs._aiTurnIntroShown&&aiTurnDrawnCard) queue.push({type:'DRAW_CARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn,msgs:gs._drawLogs});
         // 2b. Stat changes caused by THIS AI's drawn card (draw effects: gs._playersBeforeThisDraw → gs.players)
-        if(!usedAiTurnStartReplay&&gs._playersBeforeThisDraw&&aiTurnDrawnCard){
+        if(!usedAiTurnStartReplay&&!gs._aiTurnIntroShown&&gs._playersBeforeThisDraw&&aiTurnDrawnCard){
           const drawBaselineLog=getTurnStartDrawBaselineLog(gs);
           const drawFullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(
             [...(gs._drawLogs||[]),...(gs._statLogs||[])],
@@ -2767,7 +2582,7 @@ export default function Game(){
           }
         }
         // 2c. Discard anim if AI chose to discard the drawn card
-        if(!usedAiTurnStartReplay&&aiTurnDiscarded&&aiTurnDrawnCard){
+        if(!usedAiTurnStartReplay&&!gs._aiTurnDiscardShown&&aiTurnDiscarded&&aiTurnDrawnCard){
           queue.push({type:'DISCARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn});
           queue.push(statePatchStep({players:gs.players,discard:gs.discard}));
         }
@@ -3945,18 +3760,6 @@ export default function Game(){
     }
     const targetIdx=getDefaultTargetForMpDecision(gs);
     if(targetIdx!=null)handleAIClick(targetIdx);
-  }
-
-  function getBestCaveDuelCardIndex(hand=[]){
-    if(!hand.length)return -1;
-    // 盲选：只看自己手牌编号高低，绝不参考对手亮牌（穴居人战争是同时亮牌）
-    return hand.reduce((bestIdx,card,idx)=>(
-      caveDuelBlindChoiceScore(card)>caveDuelBlindChoiceScore(hand[bestIdx])?idx:bestIdx
-    ),0);
-  }
-
-  function caveDuelBlindChoiceScore(card){
-    return Number.isFinite(card?.number)?card.number:3.5;
   }
 
   const { cdSecondsLeft, cdType } = useRoomCountdown(roomModal, playTickSound);
@@ -8785,11 +8588,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   }
 
   function markQueuedAiTurnStartReplayShown(nextGs,queue=[]){
-    return Array.isArray(queue) &&
-      queue.some(step=>step?.type==='YOUR_TURN'||step?.type==='DRAW_CARD') &&
-      shouldReplaySinglePlayerAiTurnStart(nextGs)
-      ? {...nextGs,_aiTurnIntroShown:true}
-      : nextGs;
+    if(!Array.isArray(queue)||!shouldReplaySinglePlayerAiTurnStart(nextGs))return nextGs;
+    const introShown=queue.some(step=>step?.type==='YOUR_TURN'||step?.type==='DRAW_CARD');
+    if(!introShown)return nextGs;
+    return{
+      ...nextGs,
+      _aiTurnIntroShown:true,
+      ...(queue.some(step=>step?.type==='DISCARD')?{_aiTurnDiscardShown:true}:{}),
+    };
   }
 
   function buildSinglePlayerAiTurnStartReplay(nextGs){
@@ -8920,7 +8726,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(aiTurnStartReplay){
       if(aiTurnStartReplay.visualLock)visualStateLocks.lock(aiTurnStartReplay.visualLock);
       maskDiscardedTurnDrawUntilDiscardAnim(newGs);
-      const introShownGs={...newGs,_aiTurnIntroShown:true};
+      const introShownGs={
+        ...newGs,
+        _aiTurnIntroShown:true,
+        ...(aiTurnStartReplay.queue.some(step=>step?.type==='DISCARD')?{_aiTurnDiscardShown:true}:{}),
+      };
       setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
       triggerAnimQueue([...preTurnQ,...aiTurnStartReplay.queue],introShownGs);
       return;

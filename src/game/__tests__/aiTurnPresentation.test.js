@@ -101,6 +101,74 @@ describe('AI turn presentation helpers', () => {
     expect(result.shouldMaskDiscardedTurnDraw).toBe(true);
   });
 
+  it('repairs a missing drawn-card discard after the AI turn intro was already shown', () => {
+    const drawnCard = { id: 'a4', key: 'A4', name: '空谷传音' };
+    const players = [
+      { name: '艾伦', hand: [], godZone: [] },
+      { name: '卡洛斯', hand: [], godZone: [] },
+    ];
+    const previousState = {
+      phase: 'AI_TURN',
+      currentTurn: 1,
+      players,
+      _playersBeforeThisDraw: players,
+      _aiTurnIntroShown: true,
+      _aiDrawnCard: drawnCard,
+      _discardedDrawnCard: true,
+      discard: [drawnCard],
+      log: ['卡洛斯 摸到 [A4] 空谷传音，评估后选择弃置'],
+    };
+
+    const result = buildAiHuntWaitPresentation({
+      previousState,
+      rawResult: { _animDiscardedDrawnCard: true },
+      nextState: {
+        ...previousState,
+        phase: 'PLAYER_REVEAL_FOR_HUNT',
+      },
+      isDrawnCardActuallyDiscarded: () => true,
+      buildActorTurnStartReplay: vi.fn(),
+      buildTurnStartIntroQueue: vi.fn(),
+    });
+
+    expect(result.queue).toContainEqual(expect.objectContaining({
+      type: 'DISCARD',
+      card: drawnCard,
+      targetPid: 1,
+    }));
+    expect(result.queue.some(step => step.type === 'DRAW_CARD')).toBe(false);
+  });
+
+  it('does not replay a drawn-card discard that was already included in the intro queue', () => {
+    const drawnCard = { id: 'a4', key: 'A4', name: '空谷传音' };
+    const players = [
+      { name: '艾伦', hand: [], godZone: [] },
+      { name: '卡洛斯', hand: [], godZone: [] },
+    ];
+    const previousState = {
+      currentTurn: 1,
+      players,
+      _playersBeforeThisDraw: players,
+      _aiTurnIntroShown: true,
+      _aiTurnDiscardShown: true,
+      _aiDrawnCard: drawnCard,
+      _discardedDrawnCard: true,
+      discard: [drawnCard],
+      log: [],
+    };
+
+    const result = buildAiHuntWaitPresentation({
+      previousState,
+      rawResult: { _animDiscardedDrawnCard: true },
+      nextState: { ...previousState, phase: 'PLAYER_REVEAL_FOR_HUNT' },
+      isDrawnCardActuallyDiscarded: () => true,
+      buildActorTurnStartReplay: vi.fn(),
+      buildTurnStartIntroQueue: vi.fn(),
+    });
+
+    expect(result.queue.some(step => step.type === 'DISCARD')).toBe(false);
+  });
+
   it('keeps animation metadata available until the final presentation cleanup', () => {
     const raw = {
       phase: 'ACTION',

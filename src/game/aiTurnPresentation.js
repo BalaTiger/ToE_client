@@ -11,6 +11,7 @@ const EXECUTION_ONLY_FIELDS = [
   '_animMultiplyEvent',
   '_animSphinxReveal',
   '_aiTurnIntroShown',
+  '_aiTurnDiscardShown',
 ];
 
 const PRESENTATION_ONLY_FIELDS = [
@@ -93,8 +94,8 @@ export function buildAiHuntWaitPresentation({
   const nextLog = Array.isArray(nextState.log) ? nextState.log : oldLog;
   const { currentTurnLogs } = splitTransitionLogs(oldLog, nextLog);
   const actorName = previousState.players?.[previousState.currentTurn]?.name || '???';
-  const hasTurnStartDraw = !!previousState._playersBeforeThisDraw
-    && !previousState._aiTurnIntroShown;
+  const hasTurnStartDraw = !!previousState._playersBeforeThisDraw;
+  const shouldReplayTurnStart = hasTurnStartDraw && !previousState._aiTurnIntroShown;
   const drawnCard = hasTurnStartDraw
     ? (
         rawResult._animAiDrawnCard
@@ -117,7 +118,7 @@ export function buildAiHuntWaitPresentation({
   const queue = [];
   const externalVisualLocks = [];
   const drawBaselineLog = getTurnStartDrawBaselineLog(previousState);
-  const turnStartReplay = hasTurnStartDraw
+  const turnStartReplay = shouldReplayTurnStart
     ? buildActorTurnStartReplay(previousState, {
         oldGs: {
           ...previousState,
@@ -144,7 +145,7 @@ export function buildAiHuntWaitPresentation({
     queue.push(...buildTurnStartIntroQueue(previousState, actorName));
   }
 
-  if (!usedTurnStartReplay && drawnCard) {
+  if (!usedTurnStartReplay && !previousState._aiTurnIntroShown && drawnCard) {
     queue.push({
       type: 'DRAW_CARD',
       card: drawnCard,
@@ -154,7 +155,7 @@ export function buildAiHuntWaitPresentation({
     });
   }
 
-  if (!usedTurnStartReplay && previousState._playersBeforeThisDraw && drawnCard) {
+  if (!usedTurnStartReplay && !previousState._aiTurnIntroShown && previousState._playersBeforeThisDraw && drawnCard) {
     const drawFullHandSwapQueue = buildFullHandSwapTransferQueueFromLogs(
       [
         ...(previousState._drawLogs || []),
@@ -190,7 +191,12 @@ export function buildAiHuntWaitPresentation({
     }
   }
 
-  if (!usedTurnStartReplay && discardedDrawnCard && drawnCard) {
+  if (
+    !usedTurnStartReplay
+    && !previousState._aiTurnDiscardShown
+    && discardedDrawnCard
+    && drawnCard
+  ) {
     queue.push({
       type: 'DISCARD',
       card: drawnCard,

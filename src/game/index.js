@@ -35,3 +35,4 @@ export * from './tutorialScenario';
 export * from './aiDecisionState';
 export * from './headlessSimulator';
 export * from './caveDuel';
+export * from './multiplayerAiTakeover';

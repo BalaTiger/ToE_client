@@ -15,7 +15,6 @@ import {
   makeInspectionMeta,
   buildEtherealizeLoss,
   buildEtherealizeRedirectDecision,
-  compareCaveDuelCards,
   formatSanLoss,
 } from './coreUtils';
 import {
@@ -58,6 +57,10 @@ import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { buildGodPowerBlockedLog, canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
 import { createGodPowerBlockedEvent, createSwapCardsEvent } from './visualEvents';
+import {
+  getBestCaveDuelCardIndex,
+  resolveCaveDuelOutcome,
+} from './caveDuel';
 
 /**
  * 检查两张卡是否满足追捕匹配规则。
@@ -73,18 +76,6 @@ export function cardsHuntMatch(a, b) {
   if (!isZoneCard(a)) return false;     // 追捕者弃非区域牌去匹配区域牌 → 失败
   if (isBlankZoneCard(a) || isBlankZoneCard(b)) return true;
   return a.letter === b.letter || a.number === b.number;
-}
-
-function caveDuelBlindChoiceScore(card) {
-  return Number.isFinite(card?.number) ? card.number : 3.5;
-}
-
-function getBestCaveDuelCardIndex(hand = []) {
-  if (!hand.length) return -1;
-  // 盲选：只看自己手牌编号高低，绝不参考对手亮牌（穴居人战争是同时亮牌）
-  return hand.reduce((bestIdx, card, idx) => (
-    caveDuelBlindChoiceScore(card) > caveDuelBlindChoiceScore(hand[bestIdx]) ? idx : bestIdx
-  ), 0);
 }
 
 function countTreasureAxes(hand = []) {
@@ -739,24 +730,24 @@ export function aiStep(gs, opts = {}) {
         targetCardIndex=getBestCaveDuelCardIndex(targetPlayer.hand);
         targetCard=targetPlayer.hand[targetCardIndex];
 
-        const duelCompare=compareCaveDuelCards(sourceCard,targetCard);
-        if(duelCompare>0){
-          // 源角色获胜，收下两张牌
-          sourcePlayer.hand.splice(sourceCardIndex,1);
-          targetPlayer.hand.splice(targetCardIndex,1);
-          sourcePlayer.hand.push(sourceCard,targetCard);
-          proliferatingZPatch=appendPublicCardGainTriggers(gs,P,ct,targetCard);
-          L.push(`【穴居人战争】${sourcePlayer.name} 亮出 ${cardLogText(sourceCard,{alwaysShowName:true})}，${targetPlayer.name} 亮出 ${cardLogText(targetCard,{alwaysShowName:true})}，${sourcePlayer.name} 胜出，收下两张牌`);
-        }else if(duelCompare<0){
-          // 目标角色获胜，收下两张牌
-          sourcePlayer.hand.splice(sourceCardIndex,1);
-          targetPlayer.hand.splice(targetCardIndex,1);
-          targetPlayer.hand.push(sourceCard,targetCard);
-          proliferatingZPatch=appendPublicCardGainTriggers(gs,P,targetIdx,sourceCard);
-          L.push(`【穴居人战争】${sourcePlayer.name} 亮出 ${cardLogText(sourceCard,{alwaysShowName:true})}，${targetPlayer.name} 亮出 ${cardLogText(targetCard,{alwaysShowName:true})}，${targetPlayer.name} 胜出，收下两张牌`);
-        }else{
-          // 平局，各自收回自己的牌
-          L.push(`【穴居人战争】${sourcePlayer.name} 亮出 ${cardLogText(sourceCard,{alwaysShowName:true})}，${targetPlayer.name} 亮出 ${cardLogText(targetCard,{alwaysShowName:true})}，平局，各自收回自己的牌`);
+        const outcome=resolveCaveDuelOutcome({
+          players:P,
+          sourceIdx:ct,
+          targetIdx,
+          sourceCardIndex,
+          targetCardIndex,
+          sourceCard,
+          targetCard,
+        });
+        P=outcome.players;
+        L.push(outcome.logLine);
+        if(outcome.winnerIdx!=null&&outcome.gainedCard){
+          proliferatingZPatch=appendPublicCardGainTriggers(
+            gs,
+            P,
+            outcome.winnerIdx,
+            outcome.gainedCard
+          );
         }
       }
     }

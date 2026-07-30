@@ -17,6 +17,20 @@ export function resolveHandCardSelection(
   return { index: cardIndex, card: hand[cardIndex] };
 }
 
+export function caveDuelBlindChoiceScore(card) {
+  return Number.isFinite(card?.number) ? card.number : 3.5;
+}
+
+export function getBestCaveDuelCardIndex(hand = []) {
+  if (!hand.length) return -1;
+  return hand.reduce((bestIdx, card, index) => (
+    caveDuelBlindChoiceScore(card)
+      > caveDuelBlindChoiceScore(hand[bestIdx])
+      ? index
+      : bestIdx
+  ), 0);
+}
+
 function removeSelectedHandCard(player, cardIndex, selectedCard) {
   const { index } = resolveHandCardSelection(
     player,

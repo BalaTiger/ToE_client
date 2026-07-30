@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  caveDuelBlindChoiceScore,
+  getBestCaveDuelCardIndex,
   resolveCaveDuelOutcome,
   resolveHandCardSelection,
 } from '../caveDuel';
@@ -22,6 +24,18 @@ function players(sourceHand, targetHand) {
 }
 
 describe('cave duel rules', () => {
+  it('shares the blind-choice heuristic without inspecting the opposing card', () => {
+    const hand = [
+      card('two', 2),
+      { id: 'god', name: '邪神牌', isGod: true },
+      card('four', 4),
+    ];
+
+    expect(caveDuelBlindChoiceScore(hand[1])).toBe(3.5);
+    expect(getBestCaveDuelCardIndex(hand)).toBe(2);
+    expect(getBestCaveDuelCardIndex([])).toBe(-1);
+  });
+
   it('uses card identity when a stored index is stale', () => {
     const expected = card('expected', 4);
     const player = { hand: [card('shifted', 1), expected] };
