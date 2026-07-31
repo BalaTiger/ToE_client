@@ -1,3 +1,5 @@
+import { getInspectionCardDescription } from '../../constants/card';
+
 const POSITIVE_INSPECTION_EFFECTS = new Set(['healSAN', 'drawCard']);
 
 export function getInspectionCardPolarity(card){
@@ -7,21 +9,7 @@ export function getInspectionCardPolarity(card){
 }
 
 export function getInspectionCardDesc(card){
-  switch(card?.effect){
-    case 'adjacentDamageHP': return '相邻角色失去 1 HP';
-    case 'selfDamageHP': return '失去 1 HP';
-    case 'disableRest': return '下一回合禁用“休息”';
-    case 'nothing': return '什么也不做';
-    case 'flip': return '翻面';
-    case 'discardRandom': return '随机弃一张牌';
-    case 'disableSkill': return '下一回合禁用技能';
-    case 'handLimitDecrease': return '下一回合手牌上限 -1';
-    case 'healSAN': return '恢复 1 SAN';
-    case 'drawCard': return '从牌堆摸一张牌';
-    case 'sealLoosening': return '连续翻出两次时邪神复活';
-    case 'houndsOfTindalos': return '首个超时超过 15 秒的回合失去 4 HP';
-    default: return '';
-  }
+  return getInspectionCardDescription(card);
 }
 
 // Feather path helper — BLADE shape.

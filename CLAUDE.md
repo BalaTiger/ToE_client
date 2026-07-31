@@ -19,6 +19,7 @@ Agent guidance for `ToE_client_main`.
 - `npm run lint` - Run ESLint
 - `npm run test:run` - Run Vitest once
 - `npm run test` - Run Vitest watch mode
+- `npm run sim:headless` - Run the headless game/AI simulator
 
 Prefer focused test runs while working, for example:
 
@@ -34,9 +35,10 @@ Important directories:
 
 - `src/App.jsx` - main game component, still large; owns the top-level React state and screen composition
 - `src/game/` - pure game rules, AI, state rotation, animation queue helpers, remote replay helpers, and tested state transforms
+- `src/audio/` - standalone sound-sequence controllers with timing/lifecycle tests
 - `src/components/` - extracted UI components by layer: cards, board, modals, animation overlays, lobby, log, phase, start, tutorial, ui
 - `src/hooks/` - React hooks for animation queues, audio, responsive layout, timers, debug settings, lobby state, resource preload
-- `src/multiplayer/` - socket connection, socket handlers, state broadcast, and multiplayer UI-session hooks
+- `src/multiplayer/` - socket connection, handlers, state broadcast, remote replay execution, and multiplayer UI-session hooks
 - `src/utils/` - runtime config, DOM helpers, scale helpers, Socket.io runtime loader
 - `src/constants/` - card data, theme data, card flavor text
 
@@ -48,8 +50,8 @@ The biggest remaining App responsibilities are:
 
 - battle actions / turn-flow controller
 - tutorial controller
-- remote multiplayer replay and AI takeover coordination
-- large battle-screen JSX and modal composition
+- multiplayer authority/broadcast bridges around local actions
+- battle-screen prop composition and a few decision overlays
 - global styles
 
 When extracting logic, prefer small vertical slices with tests. Avoid moving the whole action controller in one step.
@@ -60,7 +62,10 @@ When extracting logic, prefer small vertical slices with tests. Avoid moving the
 - Server URL/path come from runtime config helpers in `src/utils/runtime.js`.
 - Seat rotation is handled by `src/game/rotateState.js`; every client views itself as seat 0.
 - Connection and socket event registration live in `src/multiplayer/`.
+- Remote replay execution lives in `src/multiplayer/multiplayerRemoteReplayExecutor.js`.
+- Disconnect takeover decisions live in `src/game/multiplayerAiTakeover.js`; `App` retains authority checks and socket emission.
 - State broadcast and UI-session socket side effects have focused tests under `src/multiplayer/`.
+- Multiplayer uses signed anonymous identity tokens, not a registration/account flow.
 
 ## Testing Notes
 

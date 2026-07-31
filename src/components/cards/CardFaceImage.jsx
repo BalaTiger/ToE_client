@@ -1,5 +1,5 @@
 import React from 'react';
-import { GOD_DEFS, getCardDisplayKey, getGodDisplaySubtitle } from '../../constants/card';
+import { GOD_DEFS, getCardDisplayKey, getGodDisplaySubtitle, getInspectionCardDescription } from '../../constants/card';
 import { buildPublicUrl } from '../../utils/url';
 import {
   CARD_FACE_BACKGROUND_FILES,
@@ -67,7 +67,9 @@ function getEffectText(card, godLevel) {
   }
   if (card.type === 'geomagneticRestore') return card.desc || '这张牌消失并消除当前"地磁反转"效果';
   if (card.type === 'blankZone') return card.desc || '任意字母与数字';
-  if (card.effect && !card.isZone) return card.desc || INSPECTION_EFFECT_TEXT[card.effect] || '';
+  if (card.effect && !card.isZone) {
+    return getInspectionCardDescription(card);
+  }
   return card.desc || '';
 }
 
@@ -153,21 +155,6 @@ const BODY_FONT = "'Noto Serif SC','Source Han Serif SC','Songti SC','SimSun',se
 const FLAVOR_FONT = "'KaiTi','STKaiti','FangSong','STFangsong','Noto Serif SC',serif";
 const FLAVOR_ITALIC_SKEW = 'skewX(-8deg)';
 const CODE_FONT = "'Cinzel Decorative','Cinzel','Times New Roman',serif";
-
-const INSPECTION_EFFECT_TEXT = {
-  adjacentDamageHP: '相邻角色失去 1 HP',
-  selfDamageHP: '失去 1 HP',
-  disableRest: '下一回合禁用“休息”',
-  nothing: '什么也不做',
-  flip: '翻面',
-  discardRandom: '随机弃一张牌',
-  disableSkill: '下一回合禁用技能',
-  handLimitDecrease: '下一回合手牌上限 -1',
-  healSAN: '恢复 1 SAN',
-  drawCard: '从牌堆摸一张牌',
-  sealLoosening: '连续翻出两次时邪神复活',
-  houndsOfTindalos: '首个超时超过 15 秒的回合失去 4 HP',
-};
 
 const EFFECT_BOX = {
   zone: { left: 45, top: 382, width: 302, height: 104 },

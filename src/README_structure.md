@@ -8,6 +8,7 @@ Keep `App.jsx` as the top-level game shell while continuing to move independent 
 
 - pure data -> `constants/`
 - pure rules and state transforms -> `game/`
+- standalone sound-sequence lifecycles -> `audio/`
 - reusable React hooks -> `hooks/`
 - multiplayer socket/session glue -> `multiplayer/`
 - render-only UI -> `components/`
@@ -23,6 +24,7 @@ src/
 ├─ main.jsx                 # React mount entry
 ├─ README_structure.md      # this document
 ├─ assets/                  # bundled static assets
+├─ audio/                   # standalone sound-sequence timing and cleanup controllers
 ├─ components/
 │  ├─ anim/                 # animation overlays and animation CSS snippets
 │  ├─ board/                # player panels, piles, stat bars, board widgets
@@ -52,7 +54,8 @@ Still owns:
 - battle action handlers and turn-flow orchestration
 - tutorial controller glue
 - animation queue orchestration that depends on React refs/state
-- large battle-screen JSX composition
+- multiplayer authority and broadcast bridges around local actions
+- battle-screen prop composition and remaining decision overlays
 - some global styles
 
 Do not add pure data, pure rules, or standalone AI strategy here.
@@ -65,9 +68,13 @@ Pure logic modules with no React dependency. Important files include:
 - `setup.js` - deck, roles, and initial game construction helpers
 - `turnEngine.js` - turn start, draw, god encounter, and turn flow helpers
 - `ai.js` / `aiTurn.js` - AI choices and AI turn resolution
+- `aiTurnPresentation.js` / `aiDecisionState.js` - AI presentation queues, recovery, and decision-state helpers
 - `effectEngine.js` - zone/check card and public effect resolution
+- `balancePatches.js` / `balanceCards.js` - explicit balance-rule switches and card side effects
+- `caveDuel.js` - shared cave-duel choice and resolution rules used by player, AI, and takeover paths
 - `rotateState.js` - multiplayer seat rotation and local-seat semantics
-- `multiplayerRemoteReplay.js` / `multiplayerTimeouts.js` - multiplayer replay and timeout helpers
+- `multiplayerRemoteReplay.js` / `multiplayerTimeouts.js` - replay construction and timeout transforms
+- `multiplayerAiTakeover.js` - deterministic disconnect-takeover decisions
 - `animQueueCore.js` / `animQueueHelpers.js` / `animLogs.js` - animation queue and animation-log helpers
 - `visualEvents.js` / `statEvents.js` - event metadata used by animation and sync
 - `tutorialScenario.js` / `softGuides.js` - tutorial and soft-guide state helpers
@@ -81,6 +88,8 @@ React state/effect modules that are reusable but still React-aware. Current exam
 - `useAnimationQueue.js`
 - `useBattleResponsiveLayout.js`
 - `useGameAudio.js`
+- `useGamePreferences.js`
+- `useAiTurnController.js` / `useAiWatchdog.js`
 - `useDebugSettings.js`
 - `useMultiplayerLobby.js`
 - `useMultiplayerTimers.js`
@@ -95,8 +104,17 @@ Socket/session code that has been extracted from `App.jsx`:
 - `registerMultiplayerSocketHandlers.js` - socket event registration
 - `useMultiplayerStateBroadcast.js` - local state broadcast and game-end sync
 - `useMultiplayerUiSession.js` - waiting-room foreground reconnect and emoji sending
+- `multiplayerRemoteReplayExecutor.js` - validates, buffers, and applies relayed state snapshots to animation/runtime refs
 
-Keep this area in small slices. Remote replay and AI takeover are still partly in `App.jsx` because they depend heavily on animation refs and game action helpers.
+`App.jsx` retains the authority check, seat rotation, socket emission, and thin wrappers that provide current React refs/actions to these modules.
+
+### `audio/`
+
+Non-React controllers for sound sequences whose lifetime can outlive a visual animation:
+
+- `caveDuelSoundSequence.js` - background/result tracks, independent win/lose fades, timers, animation frames, and cleanup
+
+Keep playback policy and timing tests here when a sequence has multiple tracks or detached cleanup. `useGameAudio.js` should own browser audio objects and registration, not duplicate the full timeline.
 
 ### `components/`
 
@@ -127,11 +145,18 @@ Important extracted layers:
 - timers -> `hooks/useMultiplayerTimers.js`
 - animation queue runtime -> `hooks/useAnimationQueue.js`
 - socket connection and several multiplayer side effects -> `src/multiplayer/`
+- multiplayer remote replay execution -> `src/multiplayer/multiplayerRemoteReplayExecutor.js`
+- multiplayer disconnect takeover decisions -> `src/game/multiplayerAiTakeover.js`
+- AI turn execution watchdog/controller -> `src/hooks/useAiTurnController.js`, `src/hooks/useAiWatchdog.js`
+- AI presentation and recovery transforms -> `src/game/aiTurnPresentation.js`
+- user preferences persistence -> `src/hooks/useGamePreferences.js`
+- cave-duel rules and blind-choice policy -> `src/game/caveDuel.js`
+- detached cave-duel audio timeline -> `src/audio/caveDuelSoundSequence.js`
 - end-turn transition decision (`endTurn()` dispatch) -> `src/game/endTurnFlow.js`
 - post-discard end-turn transition wrapper (`confirmDiscard` / `autoDiscardFromRight`) -> `src/game/postDiscardEndTurn.js`
 - hand-limit discard helpers (`splitKeptDestroyedDiscarded`, `discardCardsFromHand*`, `applyHandDiscardSideEffectsWithAnim`) -> `src/game/handLimitDiscard.js`
 - rest action end-turn transition wrapper (`doRest`) -> `src/game/restTurnFlow.js`
-- battle screen JSX shell -> `src/components/battle/BattleScreen.jsx`
+- battle screen JSX shell and primary sections -> `src/components/battle/BattleScreen.jsx`, `BattleHeader.jsx`, `SelfPlayerPanel.jsx`, `HandArea.jsx`, `BattleDecisionModals.jsx`, `SwapBlindDrawOverlay.jsx`
 
 ## Remaining High-Value Refactor Targets
 
@@ -143,26 +168,27 @@ Risk: high. It shares refs, tutorial gates, animation queues, multiplayer sync, 
 
 Suggested next slices:
 
-- default target/card choice helpers
-- small pure helpers currently nested inside action handlers
+- target-action continuation and replay/broadcast bridges
+- draw/god-choice decision handlers
+- small pure helpers still nested inside action handlers
 
-### 2. Multiplayer Remote Replay / AI Takeover
-
-Still partly in `App.jsx` because it touches animation queues and action resolution helpers.
-
-Risk: medium-high. Preserve ref read timing (`latestGsRef`, pending queues, role reveal gates).
-
-### 3. Tutorial Controller
+### 2. Tutorial Controller
 
 Tutorial state and step transitions are still strongly coupled to game actions and animations.
 
 Risk: medium. Prefer extracting pure scenario/step decisions first; leave UI measurement and animation bridge in App until stable.
 
-### 4. Battle Screen Sub-Components
+### 3. Additional Audio Sequences
 
-`src/components/battle/BattleScreen.jsx` currently owns all of the moved JSX. The next step is to split it into smaller composable pieces (`BattleHeader`, `SelfPlayerPanel`, `HandArea`, `DecisionModals`, `SwapBlindDrawOverlay`, etc.) once the shell is stable.
+`useGameAudio.js` still contains several multi-track timelines such as volcano, semi-materialization, burrowing worm, snake trap, and black goat movement. Use the cave-duel controller as the extraction pattern, but wait for a second concrete sequence before introducing a generic framework.
 
-Risk: medium. Main risk is prop volume and accidentally changing z-index / layout behavior.
+Risk: medium. Preserve detached lifetimes and cleanup semantics.
+
+### 4. Battle Screen Composition
+
+The main sections have moved out of `BattleScreen.jsx`. Remaining work should focus on reducing prop volume and separating decision-overlay groups without changing z-index or pointer-event behavior.
+
+Risk: medium.
 
 ### 5. Global Styles
 
@@ -179,6 +205,8 @@ When changing extracted logic, prefer focused tests first:
 - Zhu hidden-card interception and resumed draws
 - CTH rest draws and remaining-draw continuation
 - multiplayer state broadcast, socket handler registration, and timeout decisions
+- multiplayer replay execution, buffering, and disconnect takeover phase matrices
+- detached audio timing and cleanup behavior
 
 Then run `npm.cmd run build` for integration confidence.
 

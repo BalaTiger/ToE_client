@@ -183,6 +183,8 @@ import {
   buildEtherealizeRedirectChainLoss,
   collectEtherealizeChainSettleLosses,
   getNextEtherealizeChainDecision,
+  buildTargetContinuationAbilityData,
+  buildTargetContinuationState,
 } from "./game";
 import {
   rotateGsForViewer,
@@ -212,10 +214,6 @@ import {
   isLocalTreasureAoEDodgePhase,
   isLocalWinnerSeat,
 } from "./game/rotateState";
-import {
-  buildMpRemoteReplayAction,
-  MP_REMOTE_REPLAY,
-} from "./game/multiplayerRemoteReplay";
 import {
   splitAnimBoundLogs,
   bindAnimLogChunks,
@@ -301,6 +299,12 @@ import { advanceGodEncounter, formatGodEncounterProgress } from './game/balanceP
 import { useMultiplayerConnection } from './multiplayer/useMultiplayerConnection';
 import { useMultiplayerStateBroadcast } from './multiplayer/useMultiplayerStateBroadcast';
 import { useMultiplayerEmojiSender, useWaitingRoomReconnect } from './multiplayer/useMultiplayerUiSession';
+import {
+  getPendingZhuHideCardForState,
+  isLocalZhuHideDecisionPhase,
+  isMultiplayerReplayBusy,
+  processIncomingMultiplayerStateSync,
+} from './multiplayer/multiplayerRemoteReplayExecutor';
 import { Ellipsis } from './components/ui/Ellipsis';
 import { FlyingEmoji } from './components/ui/FlyingEmoji';
 import { EMOJI_LIST } from './components/ui/emojiData';
@@ -937,149 +941,46 @@ export default function Game(){
   }
 
   function isMpReplayBusy(){
-    return !!roleRevealAnim||!!anim||!!animExiting||animQueueRef.current.length>0||!!pendingGsRef.current;
-  }
-
-  function isMpReplayAnimationAction(action){
-    return action?.type===MP_REMOTE_REPLAY.ROLE_REVEAL
-      ||action?.type===MP_REMOTE_REPLAY.DICE_ROLL
-      ||action?.type===MP_REMOTE_REPLAY.START_ANIM
-      ||action?.type===MP_REMOTE_REPLAY.ANIM_QUEUE;
-  }
-
-  function enqueuePendingMpRaw(rawGs,replayAction){
-    if(isMpReplayAnimationAction(replayAction)){
-      pendingMpRawQueueRef.current=[...pendingMpRawQueueRef.current,rawGs];
-    }else{
-      pendingMpLatestStateRawRef.current=rawGs;
-    }
-  }
-
-  function maskApophisBadgeForReplayStart(replayAction){
-    const maskedGs=replayAction?.maskedGs;
-    if(!maskedGs)return maskedGs;
-    const hasEclipse=replayAction?.anim?.type==='APOPHIS_ECLIPSE'
-      ||(Array.isArray(replayAction?.queue)&&replayAction.queue.some(step=>step?.type==='APOPHIS_ECLIPSE'));
-    if(!hasEclipse)return maskedGs;
-    return {...maskedGs,apophisNight:latestGsRef.current?.apophisNight||null};
-  }
-
-  function getPendingZhuHideCardForState(state){
-    if(!state||state.gameOver)return null;
-    const ids=state.zhuLight?.cardIds||[];
-    if(state.phase==='DRAW_REVEAL'){
-      const card=state.drawReveal?.card;
-      return card?.id&&!state.drawReveal?.zhuResolved&&ids.includes(card.id)?card:null;
-    }
-    if(state.phase==='GOD_CHOICE'){
-      const card=state.abilityData?.godCard;
-      return card?.id&&!state.abilityData?.zhuResolved&&ids.includes(card.id)?card:null;
-    }
-    if(state.phase==='SPHINX_GUESS'){
-      const card=state.deck?.[0];
-      return card?.id&&ids.includes(card.id)?card:null;
-    }
-    if(state.phase==='ZHU_HIDE_AI_DRAW'){
-      return state.abilityData?.zhuGuard?.card||getZhuTopGuard(state,state.deck)?.card||null;
-    }
-    return null;
-  }
-
-  function isLocalZhuHideDecisionPhase(state){
-    if(!getPendingZhuHideCardForState(state))return false;
-    return state?.zhuLight?.ownerIdx===0||state?.players?.[0]?.godName==='ZHU';
-  }
-
-  function getMpReplayStateSignature(state){
-    const ad=state?.abilityData||{};
-    const dr=state?.drawReveal||{};
-    return [
-      dr.card?.id||'',
-      dr.zhuResolved?'zhuDrawDone':'',
-      ad.godCard?.id||'',
-      ad.zhuResolved?'zhuGodDone':'',
-      ad.zhuIntroShown?'zhuIntro':'',
-      (state?.zhuLight?.cardIds||[]).join(','),
-    ].join('|');
-  }
-
-  function applyMpReplayAction(replayAction,rotated){
-    if(replayAction?.consumedVisualEventIds?.length){
-      markConsumedVisualEvents(consumedVisualEventIdsRef.current,replayAction.consumedVisualEventIds.map(id=>({id,type:'consumed'})));
-    }
-    if(replayAction?.type===MP_REMOTE_REPLAY.ROLE_REVEAL){
-      mpRoleRevealedRef.current=true;
-      mpOpeningRoleRevealPendingRef.current=true;
-      syncVisibleLog(rotated.log||[],rotated);
-      setGs(replayAction.maskedGs);
-      setAnim(null);
-      setRoleRevealAnim({role:replayAction.role,pendingGs:replayAction.pendingGs});
-    }else if(replayAction?.type===MP_REMOTE_REPLAY.DICE_ROLL){
-      setGs(maskApophisBadgeForReplayStart(replayAction));
-      receivedGsRef.current=true;
-      suppressNextBroadcastRef.current=true;
-      pendingGsRef.current=replayAction.pendingGs;
-      animQueueRef.current=[];
-      setAnim(replayAction.anim);
-    }else if(replayAction?.type===MP_REMOTE_REPLAY.ANIM_QUEUE){
-      markInspectionEventsSeen(replayAction.inspectionEvents);
-      if(replayAction.visualLock)visualStateLocks.lock(replayAction.visualLock);
-      setGs(maskApophisBadgeForReplayStart(replayAction));
-      receivedGsRef.current=true;
-      suppressNextBroadcastRef.current=true;
-      triggerAnimQueue(replayAction.queue,replayAction.pendingGs);
-    }else if(replayAction?.type===MP_REMOTE_REPLAY.START_ANIM){
-      markInspectionEventsSeen(replayAction.inspectionEvents);
-      if(replayAction.visualLock)visualStateLocks.lock(replayAction.visualLock);
-      setGs(maskApophisBadgeForReplayStart(replayAction));
-      receivedGsRef.current=true;
-      suppressNextBroadcastRef.current=true;
-      pendingGsRef.current=replayAction.pendingGs;
-      animQueueRef.current=replayAction.queue||[];
-      setAnim(replayAction.anim);
-    }else if(replayAction?.type===MP_REMOTE_REPLAY.SET_STATE){
-      setGs(replayAction.gs);
-    }
+    return isMultiplayerReplayBusy({
+      roleRevealAnim,
+      anim,
+      animExiting,
+      animQueueRef,
+      pendingGsRef,
+    });
   }
 
   function processIncomingMpStateSync(rawGs,{allowBuffer=true}={}){
-    if(!rawGs)return;
-    const myIdx=myPlayerIndexRef.current;
-    const rotated=rotateGsForViewer(rawGs,myIdx);
-    const previousGs=latestGsRef.current||gs;
-    const localIsTerminal=!!previousGs?.gameOver||previousGs?.phase==='GOD_RESURRECTION';
-    const incomingIsTerminal=!!rotated?.gameOver||rotated?.phase==='GOD_RESURRECTION';
-    if(localIsTerminal&&!incomingIsTerminal){
-      return;
-    }
-    if(previousGs?.gameOver&&rotated?.gameOver){
-      return;
-    }
-    if(previousGs&&rotated._turnKey===previousGs._turnKey&&rotated.currentTurn===previousGs.currentTurn&&rotated.phase===previousGs.phase&&(rotated.log?.length||0)<=(previousGs.log?.length||0)&&getMpReplayStateSignature(rotated)===getMpReplayStateSignature(previousGs)){
-      return;
-    }
-    if(mpOpeningRoleRevealPendingRef.current&&!rotated.gameOver){
-      return;
-    }
-    const replayAction=buildMpRemoteReplayAction({
-      rotated,
-      previousGs,
-      roleRevealed:mpRoleRevealedRef.current,
-      buildAnimQueue,
-      buildFullHandSwapTransferQueueFromLogs,
-      consumedVisualEventIds: consumedVisualEventIdsRef.current,
+    return processIncomingMultiplayerStateSync({
+      rawState:rawGs,
+      allowBuffer,
+      currentState:gs,
+      roleRevealAnim,
+      anim,
+      animExiting,
+      context:{
+        myPlayerIndexRef,
+        latestGsRef,
+        mpOpeningRoleRevealPendingRef,
+        mpRoleRevealedRef,
+        consumedVisualEventIdsRef,
+        pendingMpRawQueueRef,
+        pendingMpLatestStateRawRef,
+        receivedGsRef,
+        animQueueRef,
+        pendingGsRef,
+        suppressNextBroadcastRef,
+        syncVisibleLog,
+        setGs,
+        setAnim,
+        setRoleRevealAnim,
+        setAnimExiting,
+        clearDamageAnimations,
+        markInspectionEventsSeen,
+        visualStateLocks,
+        triggerAnimQueue,
+      },
     });
-    if(allowBuffer&&isMpReplayBusy()){
-      enqueuePendingMpRaw(rawGs,replayAction);
-      return;
-    }
-    receivedGsRef.current=true;
-    animQueueRef.current=[];
-    pendingGsRef.current=null;
-    setAnimExiting(false);
-    clearDamageAnimations();
-    setAnim(null);
-    applyMpReplayAction(replayAction,rotated);
   }
 
   function rotateRawSeatIndex(rawSeatIndex,stateLike){
@@ -5768,57 +5669,8 @@ export default function Game(){
     triggerAnimQueue(queue,newGs);
   }
 
-  function buildTargetContinuationAbilityData(abilityData=gs.abilityData){
-    return {
-      ...(abilityData?._turnOwner!=null?{_turnOwner:abilityData._turnOwner}:{}),
-      ...(abilityData?.fromRest?{fromRest:true}:{}),
-      ...(abilityData?.fromEndTurnReplay?{fromEndTurnReplay:true}:{}),
-      ...(abilityData?.fromTsathogguaSlime?{fromTsathogguaSlime:true}:{}),
-      ...(abilityData?.continueTurnStartDraw?{continueTurnStartDraw:true}:{}),
-      ...(abilityData?.pendingTsathogguaSlime?{pendingTsathogguaSlime:abilityData.pendingTsathogguaSlime}:{}),
-      ...(abilityData?.pendingTsathogguaSlimes?{pendingTsathogguaSlimes:abilityData.pendingTsathogguaSlimes}:{}),
-      ...(abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:abilityData.cthDrawsRemaining}:{}),
-      ...(abilityData?.pendingSanInspection?{pendingSanInspection:abilityData.pendingSanInspection}:{}),
-      ...(abilityData?.pendingInspectionContinuation?{pendingInspectionContinuation:abilityData.pendingInspectionContinuation}:{}),
-      ...(abilityData?.pendingGodChoice?{pendingGodChoice:abilityData.pendingGodChoice}:{}),
-    };
-  }
-
-  function buildTargetContinuationGs({
-    baseState=gs,
-    players,
-    deck=baseState.deck,
-    discard=baseState.discard,
-    log,
-    turnOwner=baseState.currentTurn,
-    abilityData=baseState.abilityData,
-    phase=null,
-    clearTurnAnim=true,
-    canResumeAi=true,
-    extraPatch={},
-  }){
-    const nextPhase=phase||(
-      abilityData?.pendingGodChoice?.godCard
-        ?'GOD_CHOICE'
-        :canResumeAi&&isAiSeat(baseState,turnOwner)&&!players?.[turnOwner]?.isDead&&!abilityData?.fromRest
-          ?'AI_TURN'
-          :'ACTION'
-    );
-    const nextAbilityData=abilityData?.pendingGodChoice?.godCard
-      ?{...(abilityData.pendingGodChoice),...buildTargetContinuationAbilityData(abilityData.pendingGodChoice)}
-      :buildTargetContinuationAbilityData(abilityData);
-    const nextGs={
-      ...baseState,
-      players,
-      deck,
-      discard,
-      log,
-      currentTurn:turnOwner,
-      phase:nextPhase,
-      abilityData:nextAbilityData,
-      ...extraPatch,
-    };
-    return clearTurnAnim?withClearedTurnAnimFields(nextGs):nextGs;
+  function buildTargetContinuationGs(options){
+    return buildTargetContinuationState({baseState:gs,...options});
   }
 
   function broadcastVisualReplayIfNeeded(state){

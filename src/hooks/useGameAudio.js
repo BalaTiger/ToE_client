@@ -5,6 +5,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { BGM_AUDIO_BY_KEY, getBattleBgmKey } from '../constants/theme';
 import { buildPublicUrl } from '../utils/url';
+import {
+  CAVE_DUEL_SOUND_TIMING,
+  startCaveDuelSoundSequence,
+} from '../audio/caveDuelSoundSequence';
 
 const ENDLESS_CORRIDOR_TUNNEL_VOLUME = 0.58;
 const ENDLESS_CORRIDOR_TUNNEL_STOP_MS = 2900;
@@ -133,17 +137,6 @@ const NEGATIVE_CARD_FLIP_FADE_MS = 620;
 // Finish the programmatic fade just before the encoded track ends, so the
 // browser never cuts a still-audible sample at its natural end.
 const TRACK_END_FADE_GUARD_MS = 40;
-const CAVE_DUEL_BG_VOLUME = 0.14;
-const CAVE_DUEL_BG_FADE_IN_MS = 220;
-const CAVE_DUEL_BG_STOP_MS = 2600;
-const CAVE_DUEL_BG_FADE_MS = 520;
-const CAVE_DUEL_RESULT_DELAY_MS = 1380;
-const CAVE_DUEL_WIN_VOLUME = 0.28;
-const CAVE_DUEL_WIN_STOP_MS = 2580;
-const CAVE_DUEL_WIN_FADE_MS = 1000;
-const CAVE_DUEL_LOSE_VOLUME = 0.74;
-const CAVE_DUEL_LOSE_STOP_MS = 2200;
-const CAVE_DUEL_LOSE_FADE_MS = 320;
 const WHEEL_SPIN_VOLUME = 0.46;
 const WHEEL_SPIN_STOP_MS = 2240;
 const WHEEL_SPIN_FADE_MS = 160;
@@ -478,11 +471,11 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影', {
     negativeCardFlip.preload = 'auto';
     negativeCardFlip.volume = NEGATIVE_CARD_FLIP_VOLUME;
     caveDuelBg.preload = 'auto';
-    caveDuelBg.volume = CAVE_DUEL_BG_VOLUME;
+    caveDuelBg.volume = CAVE_DUEL_SOUND_TIMING.bgVolume;
     caveDuelWin.preload = 'auto';
-    caveDuelWin.volume = CAVE_DUEL_WIN_VOLUME;
+    caveDuelWin.volume = CAVE_DUEL_SOUND_TIMING.winVolume;
     caveDuelLose.preload = 'auto';
-    caveDuelLose.volume = CAVE_DUEL_LOSE_VOLUME;
+    caveDuelLose.volume = CAVE_DUEL_SOUND_TIMING.loseVolume;
     wheelSpin.preload = 'auto';
     wheelSpin.volume = WHEEL_SPIN_VOLUME;
     blackGoatRun.preload = 'auto';
@@ -1743,81 +1736,20 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影', {
     const caveDuel = sfxRefs.current.caveDuel;
     if (!caveDuel?.bg || !caveDuel?.win || !caveDuel?.lose) return undefined;
     sfxSequenceCleanupsRef.current.caveDuel?.();
-    const timers = [];
-    const fadeKeys = new Set();
-    const sequenceKey = Date.now();
-    const addTimer = timer => timers.push(timer);
-    const addFadeKey = key => fadeKeys.add(key);
-    const resetAudio = (audio, volume) => {
-      if (!audio) return;
-      try {
-        audio.pause();
-        audio.currentTime = 0;
-        audio.playbackRate = 1;
-        audio.volume = volume;
-      } catch { /* ignore */ }
-    };
-    const fadeInAudio = (audio, key, durationMs, targetVolume) => {
-      addFadeKey(key);
-      if (sfxFadeFramesRef.current[key]) {
-        cancelAnimationFrame(sfxFadeFramesRef.current[key]);
-        sfxFadeFramesRef.current[key] = null;
-      }
-      const start = performance.now();
-      const step = now => {
-        const progress = clamp01((now - start) / durationMs);
-        try { audio.volume = targetVolume * smoothstep01(progress); } catch { /* ignore */ }
-        if (progress < 1) {
-          sfxFadeFramesRef.current[key] = requestAnimationFrame(step);
-          return;
+    let cleanup;
+    cleanup = startCaveDuelSoundSequence({
+      caveDuel,
+      localLost,
+      fadeFrames: sfxFadeFramesRef.current,
+      fadeOutAudio,
+      onCleanup: () => {
+        if (sfxSequenceCleanupsRef.current.caveDuel === cleanup) {
+          delete sfxSequenceCleanupsRef.current.caveDuel;
         }
-        try { audio.volume = targetVolume; } catch { /* ignore */ }
-        sfxFadeFramesRef.current[key] = null;
-      };
-      sfxFadeFramesRef.current[key] = requestAnimationFrame(step);
-    };
-    const bgFadeKey = `cave-duel-bg-${sequenceKey}`;
-    const resultFadeKey = `cave-duel-result-${sequenceKey}`;
-    const resultAudio = localLost ? caveDuel.lose : caveDuel.win;
-    const resultVolume = localLost ? CAVE_DUEL_LOSE_VOLUME : CAVE_DUEL_WIN_VOLUME;
-    const resultStopMs = localLost ? CAVE_DUEL_LOSE_STOP_MS : CAVE_DUEL_WIN_STOP_MS;
-    const resultFadeMs = localLost ? CAVE_DUEL_LOSE_FADE_MS : CAVE_DUEL_WIN_FADE_MS;
-    const stopAll = () => {
-      timers.forEach(timer => clearTimeout(timer));
-      fadeKeys.forEach(key => {
-        if (sfxFadeFramesRef.current[key]) {
-          cancelAnimationFrame(sfxFadeFramesRef.current[key]);
-          sfxFadeFramesRef.current[key] = null;
-        }
-      });
-      resetAudio(caveDuel.bg, CAVE_DUEL_BG_VOLUME);
-      resetAudio(caveDuel.win, CAVE_DUEL_WIN_VOLUME);
-      resetAudio(caveDuel.lose, CAVE_DUEL_LOSE_VOLUME);
-      if (sfxSequenceCleanupsRef.current.caveDuel === stopAll) delete sfxSequenceCleanupsRef.current.caveDuel;
-    };
-    sfxSequenceCleanupsRef.current.caveDuel = stopAll;
-    try {
-      resetAudio(caveDuel.bg, 0);
-      caveDuel.bg.volume = 0;
-      caveDuel.bg.play().catch(() => { });
-      fadeInAudio(caveDuel.bg, bgFadeKey, CAVE_DUEL_BG_FADE_IN_MS, CAVE_DUEL_BG_VOLUME);
-      addTimer(setTimeout(() => {
-        fadeOutAudio(caveDuel.bg, bgFadeKey, CAVE_DUEL_BG_FADE_MS, CAVE_DUEL_BG_VOLUME);
-      }, Math.max(0, CAVE_DUEL_BG_STOP_MS - CAVE_DUEL_BG_FADE_MS)));
-    } catch { /* ignore */ }
-    addTimer(setTimeout(() => {
-      try {
-        resetAudio(resultAudio, resultVolume);
-        resultAudio.volume = resultVolume;
-        resultAudio.play().catch(() => { });
-        addFadeKey(resultFadeKey);
-        addTimer(setTimeout(() => {
-          fadeOutAudio(resultAudio, resultFadeKey, resultFadeMs, resultVolume);
-        }, Math.max(0, resultStopMs - resultFadeMs)));
-      } catch { /* ignore */ }
-    }, CAVE_DUEL_RESULT_DELAY_MS));
-    addTimer(setTimeout(stopAll, CAVE_DUEL_RESULT_DELAY_MS + resultStopMs + 360));
-    return stopAll;
+      },
+    });
+    if (cleanup) sfxSequenceCleanupsRef.current.caveDuel = cleanup;
+    return cleanup;
   }, [fadeOutAudio, noteUserGesture]);
   const playWheelSpinSound = useCallback(() => {
     noteUserGesture();

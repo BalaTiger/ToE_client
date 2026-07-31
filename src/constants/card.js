@@ -962,17 +962,41 @@ function getAnimatedCardBackFramePaths(expansionKey = '地神的潜影', publicP
 export const INSPECTION_DECK = [
   ...Array(6).fill({ name: '乱抓', effect: 'adjacentDamageHP', value: 2, type: 'negative' }),
   ...Array(6).fill({ name: '自残', effect: 'selfDamageHP', value: 2, type: 'negative' }),
-  ...Array(4).fill({ name: '失眠', effect: 'disableRest', value: 1, type: 'negative' }),
+  ...Array(4).fill({ name: '失眠', effect: 'disableRest', value: 1, durationTurns: 1, type: 'negative' }),
   ...Array(2).fill({ name: '暂时的平静', effect: 'nothing', value: 0, type: 'neutral' }),
   ...Array(2).fill({ name: '昏睡', effect: 'flip', value: 1, type: 'negative' }),
   ...Array(2).fill({ name: '迫害妄想', effect: 'discardRandom', value: 1, type: 'negative' }),
-  ...Array(2).fill({ name: '失忆', effect: 'disableSkill', value: 1, type: 'negative' }),
-  ...Array(2).fill({ name: '乏力', effect: 'handLimitDecrease', value: 1, type: 'negative' }),
+  ...Array(2).fill({ name: '失忆', effect: 'disableSkill', value: 1, durationTurns: 1, type: 'negative' }),
+  ...Array(2).fill({ name: '乏力', effect: 'handLimitDecrease', value: 1, durationTurns: 1, type: 'negative' }),
   { name: '超人意志', effect: 'healSAN', value: 1, type: 'positive' },
   { name: '揭开真相', effect: 'drawCard', value: 1, type: 'positive' },
-  { name: '封印松动', effect: 'sealLoosening', value: 1, type: 'negative' },
-  { name: '廷达罗斯猎犬', effect: 'houndsOfTindalos', value: 1, type: 'negative' }
+  { name: '封印松动', effect: 'sealLoosening', value: 1, triggerCount: 2, type: 'negative' },
+  { name: '廷达罗斯猎犬', effect: 'houndsOfTindalos', value: 1, timeoutSeconds: 15, damage: 4, type: 'negative' }
 ];
+
+export function getInspectionCardDescription(card) {
+  if (!card) return '';
+  if (card.desc) return card.desc;
+  const value = card.value ?? 1;
+  const durationTurns = card.durationTurns ?? 1;
+  const turnPrefix = durationTurns === 1 ? '下一回合' : `未来 ${durationTurns} 回合`;
+  switch (card.effect) {
+    case 'adjacentDamageHP': return `相邻角色失去 ${value} HP`;
+    case 'selfDamageHP': return `失去 ${value} HP`;
+    case 'disableRest': return `${turnPrefix}禁用“休息”`;
+    case 'nothing': return '什么也不做';
+    case 'flip': return '翻面';
+    case 'discardRandom': return `随机弃 ${value} 张牌`;
+    case 'disableSkill': return `${turnPrefix}禁用技能`;
+    case 'handLimitDecrease': return `${turnPrefix}手牌上限 -${value}`;
+    case 'healSAN': return `恢复 ${value} SAN`;
+    case 'drawCard': return `从牌堆摸 ${value} 张牌`;
+    case 'sealLoosening': return `连续翻出 ${card.triggerCount ?? 2} 次时邪神复活`;
+    case 'houndsOfTindalos':
+      return `首个超时超过 ${card.timeoutSeconds ?? 15} 秒的回合失去 ${card.damage ?? 4} HP`;
+    default: return '';
+  }
+}
 
 let _bgyId = 0;
 export function createBlackGoatYoungCard() {

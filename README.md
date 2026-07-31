@@ -14,6 +14,19 @@ React + Vite frontend for 《邪神的宝藏》(Treasures of Evils).
 - `npm run lint` - Run ESLint
 - `npm run test:run` - Run Vitest once
 - `npm run test` - Run Vitest watch mode
+- `npm run sim:headless` - Run the headless rule/AI simulator
+- `npm run flavor:template` - Regenerate the card-flavor TSV template
+
+## Architecture At A Glance
+
+- `src/App.jsx` - top-level game shell and remaining action/tutorial orchestration
+- `src/game/` - rules, AI, turn flow, animation-state builders, multiplayer decisions
+- `src/audio/` - standalone multi-track sound-sequence controllers
+- `src/hooks/` - React-aware runtime subsystems
+- `src/multiplayer/` - connection, socket handlers, state broadcast, remote replay execution
+- `src/components/` - render-focused battle, lobby, modal, card, and animation layers
+
+Multiplayer uses signed anonymous identities; account registration is not required. The server relays client-owned game snapshots rather than running authoritative card rules.
 
 ## Documentation Map
 

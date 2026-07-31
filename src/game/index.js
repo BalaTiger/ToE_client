@@ -36,3 +36,4 @@ export * from './aiDecisionState';
 export * from './headlessSimulator';
 export * from './caveDuel';
 export * from './multiplayerAiTakeover';
+export * from './targetContinuation';

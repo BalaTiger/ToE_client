@@ -28,6 +28,7 @@ import {
   startNextTurn,
 } from './turnEngine';
 import { getZhuTopGuard, removeZhuLightCard } from './zhuPower';
+import { buildTargetContinuationAbilityData } from './targetContinuation';
 
 export const HEADLESS_TURN_OPTIONS = Object.freeze({ allAi: true });
 
@@ -75,19 +76,6 @@ export function createHeadlessGame({
   // All five seats are AI-controlled peers. Multiplayer-style win evaluation
   // avoids treating seat 0's death as the single-player-only "LOSE" result.
   return { ...state, _isMP: true, _headless: true };
-}
-
-function getContinuationAbilityData(abilityData = {}) {
-  return {
-    ...(abilityData._turnOwner != null ? { _turnOwner: abilityData._turnOwner } : {}),
-    ...(abilityData.fromRest ? { fromRest: true } : {}),
-    ...(abilityData.fromEndTurnReplay ? { fromEndTurnReplay: true } : {}),
-    ...(abilityData.fromTsathogguaSlime ? { fromTsathogguaSlime: true } : {}),
-    ...(abilityData.continueTurnStartDraw ? { continueTurnStartDraw: true } : {}),
-    ...(abilityData.pendingTsathogguaSlime ? { pendingTsathogguaSlime: abilityData.pendingTsathogguaSlime } : {}),
-    ...(abilityData.pendingTsathogguaSlimes ? { pendingTsathogguaSlimes: abilityData.pendingTsathogguaSlimes } : {}),
-    ...(abilityData.cthDrawsRemaining != null ? { cthDrawsRemaining: abilityData.cthDrawsRemaining } : {}),
-  };
 }
 
 export function resolveHeadlessSlimeBalance(gs, useSlime = false) {
@@ -148,7 +136,7 @@ export function resolveHeadlessSlimeBalance(gs, useSlime = false) {
     log: L,
     currentTurn: turnOwner,
     phase: 'AI_TURN',
-    abilityData: getContinuationAbilityData({ ...abilityData, pendingSanInspection: null }),
+    abilityData: buildTargetContinuationAbilityData({ ...abilityData, pendingSanInspection: null }),
     ...(win ? { gameOver: win } : {}),
   };
 }
@@ -375,8 +363,8 @@ export function resolveHeadlessEtherealize(gs) {
     currentTurn: turnOwner,
     phase: slimeDecision ? 'TSG_SLIME_BALANCE' : 'AI_TURN',
     abilityData: slimeDecision
-      ? { ...getContinuationAbilityData(abilityData), ...slimeDecision }
-      : getContinuationAbilityData(abilityData),
+      ? { ...buildTargetContinuationAbilityData(abilityData), ...slimeDecision }
+      : buildTargetContinuationAbilityData(abilityData),
     ...(win ? { gameOver: win } : {}),
   };
 }
@@ -477,7 +465,7 @@ export function advanceHeadlessGame(gs) {
         ...gs,
         currentTurn: gs.abilityData?._turnOwner ?? gs.currentTurn,
         phase: 'AI_TURN',
-        abilityData: getContinuationAbilityData(gs.abilityData),
+        abilityData: buildTargetContinuationAbilityData(gs.abilityData),
       },
       status: 'advanced',
     };
