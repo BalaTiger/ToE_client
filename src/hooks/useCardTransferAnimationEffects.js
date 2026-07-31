@@ -28,7 +28,9 @@ export function useCardTransferAnimationEffects({ anim }) {
       }
       const transferFromPid = transfer?.fromPid;
       const transferSourceAnchor = transfer?.sourceAnchor;
-      return transferSourceAnchor === 'godPower'
+      return transferSourceAnchor === 'reveal'
+        ? { x: window.innerWidth * 0.5, y: window.innerHeight * 0.5 }
+        : transferSourceAnchor === 'godPower'
         ? getPlayerGodPowerAnchorCenter(transferFromPid)
         : transferSourceAnchor === 'playerArea'
           ? getPlayerAreaAnchorCenter(transferFromPid)

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildTargetContinuationAbilityData,
   buildTargetContinuationState,
+  getTargetContinuationRoute,
+  TARGET_CONTINUATION_ROUTE,
 } from '../targetContinuation';
 
 function createState(overrides = {}) {
@@ -108,5 +110,48 @@ describe('buildTargetContinuationState', () => {
     expect(next.phase).toBe('CUSTOM_PHASE');
     expect(next._drawnCard).toEqual({ id: 'drawn' });
     expect(next.marker).toBe(true);
+  });
+});
+
+describe('getTargetContinuationRoute', () => {
+  it('keeps the continuation priority stable', () => {
+    const state = createState({
+      phase: 'ACTION',
+      abilityData: {
+        continueTurnStartDraw: true,
+        fromEndTurnReplay: true,
+      },
+      proliferatingZQueue: [{ id: 'pending' }],
+    });
+
+    expect(getTargetContinuationRoute(state, { continueRest: true }))
+      .toBe(TARGET_CONTINUATION_ROUTE.REST_DRAW);
+    expect(getTargetContinuationRoute(state))
+      .toBe(TARGET_CONTINUATION_ROUTE.TURN_START_DRAW);
+    expect(getTargetContinuationRoute({
+      ...state,
+      abilityData: { fromEndTurnReplay: true },
+    })).toBe(TARGET_CONTINUATION_ROUTE.END_TURN_REPLAY);
+    expect(getTargetContinuationRoute({
+      ...state,
+      abilityData: {},
+    })).toBe(TARGET_CONTINUATION_ROUTE.PROLIFERATING_Z);
+  });
+
+  it('only resumes replay queues from an actionable phase', () => {
+    expect(getTargetContinuationRoute(createState({
+      phase: 'GOD_CHOICE',
+      abilityData: { fromEndTurnReplay: true },
+      proliferatingZQueue: [{ id: 'pending' }],
+    }))).toBe(TARGET_CONTINUATION_ROUTE.APPLY_STATE);
+  });
+
+  it.each([
+    'TSG_SLIME_BALANCE',
+    'ETHEREALIZE_DECISION',
+    'ETHEREALIZE_SELECT_TARGET',
+  ])('keeps %s open as a decision route', phase => {
+    expect(getTargetContinuationRoute(createState({ phase })))
+      .toBe(TARGET_CONTINUATION_ROUTE.DECISION);
   });
 });

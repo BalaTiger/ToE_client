@@ -849,6 +849,15 @@ describe('aiStep optional action limits', () => {
       '贝拉（邪祀者）对 你 【蛊惑】，赠予 [B3] 窒息矿坑',
       '你集齐了全部编号！',
     ]));
+    expect(result._visualEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'bewitchGift',
+        sourceIdx: 1,
+        targetIdx: 0,
+        card: gift,
+        msgs: ['贝拉（邪祀者）对 你 【蛊惑】，赠予 [B3] 窒息矿坑'],
+      }),
+    ]));
   });
 
   it('AI 邪祀者蛊惑邪神牌时目标会被强制信仰而不是按遭遇策略放弃', () => {

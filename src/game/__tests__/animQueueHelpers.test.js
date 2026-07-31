@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildBewitchForcedCardQueue,
+  buildSphinxResultQueue,
   buildFullHandSwapStepsFromLogs,
   buildInspectionAwareAnimQueue,
   buildInspectionEventFlow,
@@ -20,6 +21,55 @@ import { createCardEffectEvent } from '../visualEvents';
 import { makeGodCard, makePlayer, makeZoneCard } from './factory';
 
 describe('animQueueHelpers', () => {
+  it('斯芬克斯猜对后把同一张明牌从揭示区收入手牌', () => {
+    const card = makeZoneCard('B1', 0);
+    const queue = buildSphinxResultQueue({
+      card,
+      actorIdx: 2,
+      guessCorrect: true,
+      msgs: ['贝拉猜测牌堆顶的牌是区域牌', '猜测正确！贝拉收入了 [B1]'],
+    });
+
+    expect(queue.map(step => step.type)).toEqual(['DRAW_CARD', 'CARD_TRANSFER']);
+    expect(queue[0]).toMatchObject({
+      card,
+      triggerName: '斯芬克斯',
+      targetPid: 2,
+      skipTravel: true,
+      guessCorrect: true,
+    });
+    expect(queue[1]).toMatchObject({
+      dest: 'player',
+      toPid: 2,
+      sourceAnchor: 'reveal',
+      effect: 'sphinxResult',
+      cards: [card],
+    });
+  });
+
+  it('斯芬克斯猜错后先把同一张明牌移入弃牌堆，再播放伤害', () => {
+    const card = makeZoneCard('C2', 0);
+    const queue = buildSphinxResultQueue({
+      card,
+      actorIdx: 1,
+      guessCorrect: false,
+      msgs: ['艾伦猜测牌堆顶的牌不是区域牌', '猜测错误！艾伦失去 3 HP'],
+      resultQueue: [
+        { type: 'DRAW_CARD', card },
+        { type: 'CARD_TRANSFER', dest: 'discard' },
+        { type: 'HP_DAMAGE', hitIndices: [1] },
+      ],
+    });
+
+    expect(queue.map(step => step.type)).toEqual(['DRAW_CARD', 'CARD_TRANSFER', 'HP_DAMAGE']);
+    expect(queue[1]).toMatchObject({
+      dest: 'discard',
+      sourceAnchor: 'reveal',
+      effect: 'sphinxResult',
+      cards: [card],
+    });
+  });
+
   it('本地信仰阿波菲斯时先提交邪神标签且只播放一次高亮，再进入日食', () => {
     const players = [makePlayer({ name: '你', godName: 'APO', godLevel: 1 })];
     const firstHighlight = { type: 'GOD_HIGHLIGHT', targetPid: 0, godKey: 'APO', msgs: ['你 从手牌信仰 阿波菲斯'] };

@@ -56,7 +56,7 @@ import { buildApophisNightLog, getApophisNightForLevel, resolveApophisTarget } f
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { buildGodPowerBlockedLog, canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
-import { createGodPowerBlockedEvent, createSwapCardsEvent } from './visualEvents';
+import { createBewitchGiftEvent, createGodPowerBlockedEvent, createSwapCardsEvent } from './visualEvents';
 import {
   getBestCaveDuelCardIndex,
   resolveCaveDuelOutcome,
@@ -528,7 +528,15 @@ export function aiStep(gs, opts = {}) {
   const applyBewitchGift = (_gs, _P, _D, _Disc, _L, _ct, _ti, _sc) => {
     let inspectionMeta = makeInspectionMeta(_gs);
     _P[_ct].hand = _P[_ct].hand.filter(c => c.id !== _sc.id);
-    _L.push(`${_P[_ct].name}（邪祀者）对 ${_P[_ti].name} 【蛊惑】，赠予 ${cardLogText(_sc, { alwaysShowName: true })}`);
+    const bewitchMsg = `${_P[_ct].name}（邪祀者）对 ${_P[_ti].name} 【蛊惑】，赠予 ${cardLogText(_sc, { alwaysShowName: true })}`;
+    _L.push(bewitchMsg);
+    const bewitchEvent = createBewitchGiftEvent({
+      sourceIdx: _ct,
+      targetIdx: _ti,
+      targetName: _P[_ti].name,
+      card: _sc,
+      msgs: [bewitchMsg],
+    });
     let fxResult = null;
     if (_sc.isGod) {
       const encounterProgress = advanceGodEncounter(_P[_ti], _gs);
@@ -571,6 +579,9 @@ export function aiStep(gs, opts = {}) {
       _P = fxResult.P; _D = fxResult.D; _Disc = fxResult.Disc;
       _L.push(...fxResult.msgs);
       _gs = { ..._gs, ...fxResult.statePatch };
+    }
+    if (bewitchEvent) {
+      _gs = { ..._gs, _visualEvents: [bewitchEvent, ...(_gs._visualEvents || [])] };
     }
     return { gs: _gs, P: _P, D: _D, Disc: _Disc, L: _L, fxResult };
   };

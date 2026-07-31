@@ -185,6 +185,8 @@ import {
   getNextEtherealizeChainDecision,
   buildTargetContinuationAbilityData,
   buildTargetContinuationState,
+  getTargetContinuationRoute,
+  TARGET_CONTINUATION_ROUTE,
 } from "./game";
 import {
   rotateGsForViewer,
@@ -245,7 +247,7 @@ import {
   zhuHideCardStep,
   buryToDeckStep,
   cardTransferStep,
-  filterSphinxResultQueue,
+  buildSphinxResultQueue,
   fullHandSwapSteps,
   swapCardsSteps,
 } from "./game/animQueueHelpers";
@@ -2687,14 +2689,22 @@ export default function Game(){
           const bwMsg=actionMsgs.find(m=>m.includes('蛊惑'));
           const bwMatch=bwMsg?.match(/对 (.+?) 【蛊惑】/);
           const bwName=bwMatch?.[1];
-          const bwti=bwName?newGs.players.findIndex(p=>p.name===bwName):-1;
+          const bewitchEvent=(newGs._visualEvents||[]).find(event=>
+            event?.type==='bewitchGift'
+            && event.sourceIdx===gs.currentTurn
+            && (event.msgs||[]).some(msg=>actionMsgs.includes(msg))
+          );
+          const bwti=bewitchEvent?.targetIdx??(bwName?newGs.players.findIndex(p=>p.name===bwName):-1);
           const giftedLabel=parseBewitchGiftLabel(bwMsg);
-          const giftedCard=(bwti>=0&&giftedLabel)
+          const giftedCard=bewitchEvent?.card||((bwti>=0&&giftedLabel)
             ? (
               findCardInPlayerZonesByLabel([P_actionPreInspection[bwti],P_actionEnd[bwti],gs.players?.[gs.currentTurn]],giftedLabel)
               || findCardInPlayerZonesByLabel(newGs.players,giftedLabel)
             )
-            : null;
+            : null);
+          const bewitchMsgs=bewitchEvent?.msgs?.length
+            ?bewitchEvent.msgs
+            :extractSkillLogs(actionMsgs,'bewitch');
           const inspectionEvents=pendingActionInspectionEvents;
           const inspectionFlow=inspectionEvents.length
             ?buildInspectionEventFlow(
@@ -2738,13 +2748,13 @@ export default function Game(){
               gs.currentTurn,
               bwti,
               giftedCard,
-              P_actionEnd[bwti]?.name,
+              bewitchEvent?.targetName||P_actionEnd[bwti]?.name,
               [...actionStatQ,...inspectionFlow.queue,...postInspectionQ],
-              extractSkillLogs(actionMsgs,'bewitch'),
+              bewitchMsgs,
               {afterGiftPatch:{players:bewitchSourcePatchPlayers}}
             );
           }else{
-            const bewitchStep={type:'SKILL_BEWITCH',msgs:extractSkillLogs(actionMsgs,'bewitch'),targetIdx:bwti>=0?bwti:1};
+            const bewitchStep={type:'SKILL_BEWITCH',msgs:bewitchMsgs,targetIdx:bwti>=0?bwti:1};
             if(inspectionEvents.length){
               lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
               orderedActionQ=mergeActionQueueByLogOrder(actionStatQ,bewitchStep,inspectionFlow.queue,postInspectionQ);
@@ -5975,22 +5985,23 @@ export default function Game(){
       ];
     }
     if(syncLog&&nextGs?.log)syncVisibleLog(nextGs.log,nextGs);
-    if(continueRest){
+    const continuationRoute=getTargetContinuationRoute(nextGs,{continueRest,continueTurnStartDraw});
+    if(continuationRoute===TARGET_CONTINUATION_ROUTE.REST_DRAW){
       if(queue.length)triggerAnimQueue(queue,null,()=>_cthContinueRestDraws(nextGs));
       else _cthContinueRestDraws(nextGs);
       return;
     }
-    if(continueTurnStartDraw||nextGs?.abilityData?.continueTurnStartDraw){
+    if(continuationRoute===TARGET_CONTINUATION_ROUTE.TURN_START_DRAW){
       if(queue.length)triggerAnimQueue(queue,null,()=>_tsgContinueTurnStartDraw(nextGs));
       else _tsgContinueTurnStartDraw(nextGs);
       return;
     }
-    if((nextGs?.phase==='ACTION'||nextGs?.phase==='AI_TURN')&&nextGs?.abilityData?.fromEndTurnReplay){
+    if(continuationRoute===TARGET_CONTINUATION_ROUTE.END_TURN_REPLAY){
       if(queue.length)triggerAnimQueue(queue,null,()=>continueEndTurnReplay(nextGs));
       else continueEndTurnReplay(nextGs);
       return;
     }
-    if((nextGs?.phase==='ACTION'||nextGs?.phase==='AI_TURN')&&(nextGs.proliferatingZQueue||[]).length){
+    if(continuationRoute===TARGET_CONTINUATION_ROUTE.PROLIFERATING_Z){
       if(queue.length)triggerAnimQueue(queue,null,()=>continueProliferatingZDraws(nextGs));
       else continueProliferatingZDraws(nextGs);
       return;
@@ -7767,7 +7778,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           abilityData:{...buildEtherealizeRedirectDecision([loss],{_turnOwner:gs.abilityData?._turnOwner??gs.currentTurn})},
           ...(sphinxEvent?{_visualEvents:[sphinxEvent]}:{}),
         };
-        const queue=[{type:'DRAW_CARD',card:actualCard,triggerName:'斯芬克斯',targetPid:gs.currentTurn,skipTravel:true,guessCorrect:false,msgs:[logDelta[0]]}];
+        const queue=buildSphinxResultQueue({card:actualCard,actorIdx:gs.currentTurn,guessCorrect:false,msgs:logDelta});
         broadcastMpStateBeforeLocalReplay(newGs);
         triggerAnimQueue(queue,newGs);
         return;
@@ -7777,7 +7788,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       }
     }
     const logDelta=L.slice(gs.log.length);
-    const revealStep={type:'DRAW_CARD',card:actualCard,triggerName:'斯芬克斯',targetPid:gs.currentTurn,skipTravel:true,guessCorrect,msgs:[logDelta[0]]};
     const sphinxEvent=createSphinxResultEvent({
       actorIdx:gs.currentTurn,
       card:actualCard,
@@ -7785,15 +7795,16 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       msgs:logDelta,
     });
     const buildSphinxQueue=state=>{
-      const queue=[revealStep];
-      if(guessCorrect){
-        const gainMsg=logDelta.find(m=>m.includes('猜测正确'));
-        queue.push(cardTransferStep({fromPid:-1,dest:'player',toPid:gs.currentTurn,count:1,msgs:gainMsg?[gainMsg]:[]}));
-      }else{
-        const resultQueue=bindAnimLogChunks(buildAnimQueue(gs,state),splitAnimBoundLogs(logDelta));
-        queue.push(...filterSphinxResultQueue(resultQueue));
-      }
-      return queue;
+      const resultQueue=guessCorrect
+        ?[]
+        :bindAnimLogChunks(buildAnimQueue(gs,state),splitAnimBoundLogs(logDelta));
+      return buildSphinxResultQueue({
+        card:actualCard,
+        actorIdx:gs.currentTurn,
+        guessCorrect,
+        msgs:logDelta,
+        resultQueue,
+      });
     };
     const win=checkWin(P,gs._isMP);
     if(win){
@@ -8024,18 +8035,17 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       }else if(tutorialNext){
         setGs(state);
         setTutorialStep(tutorialNext);
-      }else if(gs.abilityData?.fromRest){
-        _cthContinueRestDraws(state);
-      }else if(gs.abilityData?.continueTurnStartDraw){
-        _tsgContinueTurnStartDraw(state);
-      }else if(fromEndTurnReplay&&state.phase==='ACTION'){
-        continueEndTurnReplay(state);
-      }else if(state.phase==='ACTION'&&(state.proliferatingZQueue||[]).length){
-        continueProliferatingZDraws(state);
-      }else if(state.phase==='TSG_SLIME_BALANCE'||state.phase==='ETHEREALIZE_DECISION'||state.phase==='ETHEREALIZE_SELECT_TARGET'){
-        setGs(state);
       }else{
-        resumeEndTurnSeqOrSetGs(state);
+        const continuationRoute=getTargetContinuationRoute(state,{
+          continueRest:!!gs.abilityData?.fromRest,
+          continueTurnStartDraw:!!gs.abilityData?.continueTurnStartDraw,
+        });
+        if(continuationRoute===TARGET_CONTINUATION_ROUTE.REST_DRAW)_cthContinueRestDraws(state);
+        else if(continuationRoute===TARGET_CONTINUATION_ROUTE.TURN_START_DRAW)_tsgContinueTurnStartDraw(state);
+        else if(continuationRoute===TARGET_CONTINUATION_ROUTE.END_TURN_REPLAY)continueEndTurnReplay(state);
+        else if(continuationRoute===TARGET_CONTINUATION_ROUTE.PROLIFERATING_Z)continueProliferatingZDraws(state);
+        else if(continuationRoute===TARGET_CONTINUATION_ROUTE.DECISION)setGs(state);
+        else resumeEndTurnSeqOrSetGs(state);
       }
     };
     if(isDiscardAction){
@@ -8072,24 +8082,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }else{
       const win=checkWin(P,gs._isMP);
       const finalGs={...newGs,...(win?{gameOver:win}:{})};
-      if(win){
-        setGs(finalGs);
-      }else if(tutorialNext){
-        setGs(finalGs);
-        setTutorialStep(tutorialNext);
-      }else if(gs.abilityData?.fromRest){
-        _cthContinueRestDraws(finalGs);
-      }else if(gs.abilityData?.continueTurnStartDraw){
-        _tsgContinueTurnStartDraw(finalGs);
-      }else if(fromEndTurnReplay&&finalGs.phase==='ACTION'){
-        continueEndTurnReplay(finalGs);
-      }else if(finalGs.phase==='ACTION'&&(finalGs.proliferatingZQueue||[]).length){
-        continueProliferatingZDraws(finalGs);
-      }else if(finalGs.phase==='TSG_SLIME_BALANCE'||finalGs.phase==='ETHEREALIZE_DECISION'||finalGs.phase==='ETHEREALIZE_SELECT_TARGET'){
-        setGs(finalGs);
-      }else{
-        resumeEndTurnSeqOrSetGs(finalGs);
-      }
+      finishGodChoice(finalGs);
     }
   }
 
@@ -8261,29 +8254,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   }
 
   function buildSphinxRevealAnimSteps(sphinxReveal,logs=[]){
-    if(!sphinxReveal?.card)return [];
-    const safeLogs=Array.isArray(logs)?logs:[];
-    const guessMsg=safeLogs.find(m=>typeof m==='string'&&m.includes('猜测牌堆顶的牌'));
-    const resultMsg=safeLogs.find(m=>typeof m==='string'&&(m.includes('猜测正确')||m.includes('猜测错误')));
-    const steps=[{
-      type:'DRAW_CARD',
-      card:sphinxReveal.card,
-      triggerName:'斯芬克斯',
-      targetPid:sphinxReveal.actorIdx,
-      skipTravel:true,
-      guessCorrect:sphinxReveal.guessCorrect,
-      msgs:guessMsg?[guessMsg]:[],
-    }];
-    if(sphinxReveal.guessCorrect){
-      steps.push(cardTransferStep({
-        fromPid:-1,
-        dest:'player',
-        toPid:sphinxReveal.actorIdx,
-        count:1,
-        msgs:resultMsg?[resultMsg]:[],
-      }));
-    }
-    return steps;
+    return buildSphinxResultQueue({
+      card:sphinxReveal?.card,
+      actorIdx:sphinxReveal?.actorIdx,
+      guessCorrect:!!sphinxReveal?.guessCorrect,
+      msgs:logs,
+    });
   }
 
   function injectTurnStartStepsAfterDrawCard(queue=[],steps=[]){

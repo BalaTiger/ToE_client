@@ -126,6 +126,41 @@ export function filterSphinxResultQueue(queue=[]){
   return queue.filter(step=>step?.type!=="DRAW_CARD"&&step?.type!=="CARD_TRANSFER");
 }
 
+export function buildSphinxResultQueue({
+  card,
+  actorIdx,
+  guessCorrect,
+  msgs = [],
+  resultQueue = [],
+} = {}) {
+  if (!card) return filterSphinxResultQueue(resultQueue);
+  const safeMsgs = Array.isArray(msgs) ? msgs : [];
+  const guessMsg = safeMsgs.find(msg => typeof msg === 'string' && msg.includes('猜测牌堆顶的牌'));
+  const resultMsg = safeMsgs.find(msg => typeof msg === 'string' && (msg.includes('猜测正确') || msg.includes('猜测错误')));
+  return [
+    {
+      type: 'DRAW_CARD',
+      card,
+      triggerName: '斯芬克斯',
+      targetPid: actorIdx,
+      skipTravel: true,
+      guessCorrect: !!guessCorrect,
+      msgs: guessMsg ? [guessMsg] : safeMsgs.slice(0, 1),
+    },
+    cardTransferStep({
+      fromPid: -1,
+      dest: guessCorrect ? 'player' : 'discard',
+      ...(guessCorrect ? { toPid: actorIdx } : {}),
+      count: 1,
+      sourceAnchor: 'reveal',
+      effect: 'sphinxResult',
+      cards: [card],
+      msgs: resultMsg ? [resultMsg] : [],
+    }),
+    ...filterSphinxResultQueue(resultQueue),
+  ];
+}
+
 function isInferredDiscardTransfer(step){
   return step?.type==="CARD_TRANSFER"&&step.dest==="discard"&&!!step.inferredHandLoss;
 }

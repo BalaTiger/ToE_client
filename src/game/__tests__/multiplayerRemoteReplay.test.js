@@ -2259,7 +2259,12 @@ describe('buildMpRemoteReplayAction', () => {
     });
     expect(action.queue.some(step => step.type === 'HP_DAMAGE')).toBe(true);
     expect(action.queue.slice(1).some(step => step.type === 'DRAW_CARD')).toBe(false);
-    expect(action.queue.some(step => step.type === 'CARD_TRANSFER')).toBe(false);
+    expect(action.queue.find(step => step.type === 'CARD_TRANSFER')).toMatchObject({
+      dest: 'discard',
+      sourceAnchor: 'reveal',
+      effect: 'sphinxResult',
+      cards: [sphinxCard],
+    });
     expect(action.pendingGs._visualEvents).toEqual([]);
   });
 

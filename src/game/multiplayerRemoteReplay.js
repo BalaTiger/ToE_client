@@ -1,7 +1,7 @@
 import { bindAnimLogChunks } from './animLogs';
 import { mergeApophisTargetQueue } from './apophisAnimQueue';
 import { buildAiHuntEventAnimQueue } from './animQueueCore';
-import { cardTransferStep, filterSphinxResultQueue, swapCardsSteps } from './animQueueHelpers';
+import { buildSphinxResultQueue, swapCardsSteps } from './animQueueHelpers';
 import {
   buildBewitchGiftReplay,
   buildInspectionReplay,
@@ -540,32 +540,19 @@ export function buildMpRemoteReplayAction({
   // state-sync packet with a later turn/draw boundary, so log freshness must
   // not suppress it. Event ids are pruned above and provide replay dedupe.
   if (sphinxResultEvent) {
-    const resultQueue = [
-      {
-        type: 'DRAW_CARD',
-        card: sphinxResultEvent.card,
-        triggerName: '斯芬克斯',
-        targetPid: sphinxResultEvent.actorIdx,
-        skipTravel: true,
-        guessCorrect: !!sphinxResultEvent.guessCorrect,
-        msgs: (sphinxResultEvent.msgs || logDelta).slice(0, 1),
-      },
-    ];
-    if (sphinxResultEvent.guessCorrect) {
-      const gainMsg = (sphinxResultEvent.msgs || logDelta).find(m => (m || '').includes('猜测正确'));
-      resultQueue.push(cardTransferStep({
-        fromPid: -1,
-        dest: 'player',
-        toPid: sphinxResultEvent.actorIdx,
-        count: 1,
-        msgs: gainMsg ? [gainMsg] : [],
-      }));
-    } else {
-      resultQueue.push(...filterSphinxResultQueue(bindAnimLogChunks(
+    const statQueue = sphinxResultEvent.guessCorrect
+      ? []
+      : bindAnimLogChunks(
         buildAnimQueue(previousGs || buildMaskedActionState(rotated), rotated),
         { statLogs: sphinxResultEvent.msgs || logDelta },
-      )));
-    }
+      );
+    const resultQueue = buildSphinxResultQueue({
+      card: sphinxResultEvent.card,
+      actorIdx: sphinxResultEvent.actorIdx,
+      guessCorrect: !!sphinxResultEvent.guessCorrect,
+      msgs: sphinxResultEvent.msgs || logDelta,
+      resultQueue: statQueue,
+    });
     const queue = appendFinalStatePatch(
       withApophisTargetReplay(resultQueue, previousGs, rotated, buildAnimQueue),
       rotated,

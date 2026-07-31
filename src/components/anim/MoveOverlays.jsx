@@ -325,8 +325,9 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
           const isSlime = effect === 'tsgSlime' && card;
           const isDecipherStone = effect === 'decipherStone' && card;
           const isDrawKeep = effect === 'draw' && card;
+          const isSphinxResult = effect === 'sphinxResult' && card;
           const transferCardSize = getStandardFlyingCardSize();
-          const duration = effect === 'blackGoat' ? 1.28 : effect === 'tsgSlime' ? 0.82 : isDrawKeep ? 0.74 : isGodKeepHand ? 0.78 : isDecipherStone ? 0.78 : 0.62;
+          const duration = effect === 'blackGoat' ? 1.28 : effect === 'tsgSlime' ? 0.82 : isDrawKeep ? 0.74 : isSphinxResult ? 0.78 : isGodKeepHand ? 0.78 : isDecipherStone ? 0.78 : 0.62;
           const cardW = transferCardSize.width;
           const cardH = transferCardSize.height;
           return (
@@ -336,8 +337,8 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
                 position: 'absolute',
                 left: 0, top: 0,
                 width: cardW, height: cardH, marginLeft: -cardW / 2, marginTop: -cardH / 2,
-                backgroundColor: (isDrawKeep || isDecipherStone || isSlime) ? 'transparent' : '#100c08',
-                border: (isDrawKeep || isDecipherStone || isSlime || !isGodKeepHand) ? 'none' : `1.5px solid ${GOD_CS.borderBright}`,
+                backgroundColor: (isDrawKeep || isSphinxResult || isDecipherStone || isSlime) ? 'transparent' : '#100c08',
+                border: (isDrawKeep || isSphinxResult || isDecipherStone || isSlime || !isGodKeepHand) ? 'none' : `1.5px solid ${GOD_CS.borderBright}`,
                 borderRadius: 3,
                 boxShadow: effect === 'blackGoat'
                   ? '0 0 16px rgba(74,222,128,0.5), 0 2px 8px rgba(0,0,0,0.6)'
