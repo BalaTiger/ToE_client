@@ -79,7 +79,7 @@ function zoneCardGiftHpHealValue(card) {
     case 'selfHealBoth21':
       return 2;
     case 'selfRevealHandHP':
-      return 10;
+      return card.val || 8;
     case 'selfHealAdjDamageHP':
     case 'selfHealAdjHealHP':
       return card.val || 0;
@@ -286,7 +286,7 @@ function estimateHunterZoneCardScore(card, self, players, ci) {
     case 'selfHealHPSAN': score = (10 - self.hp) * 1.5 + (10 - self.san) * 0.8; break;
     case 'selfHealBoth21': score = (10 - self.hp) * 1.5 + (10 - self.san) * 0.8; break;
     case 'sacHealSelfSAN': score = (10 - self.san) * 1.8 - 1.2; break;
-    case 'selfRevealHandHP': score = (10 - self.hp) * 2.2 - estimateRevealHandExposurePenalty(self); break;
+    case 'selfRevealHandHP': score = Math.max(0, (card.val || 8) - self.hp) * 2.2 - estimateRevealHandExposurePenalty(self); break;
     case 'selfRevealHandSAN': score = (10 - self.san) * 2.2 - estimateRevealHandExposurePenalty(self); break;
     case 'adjHealHP':
       score = getLivingAdjacentTargets(players, ci).reduce((sum, idx) => sum + (10 - players[idx].hp) * 0.6, 0);
@@ -459,7 +459,7 @@ function estimateTreasureZoneCardScore(card, self, players, ci) {
     case 'selfHealHPSAN': score = (10 - self.hp) * 1.5 + (10 - self.san) * 1.0; break;
     case 'selfHealBoth21': score = (10 - self.hp) * 1.5 + (10 - self.san) * 1.0; break;
     case 'sacHealSelfSAN': score = (10 - self.san) * 1.8 - 1.2; break;
-    case 'selfRevealHandHP': score = (10 - self.hp) * 2.2 - estimateRevealHandExposurePenalty(self); break;
+    case 'selfRevealHandHP': score = Math.max(0, (card.val || 8) - self.hp) * 2.2 - estimateRevealHandExposurePenalty(self); break;
     case 'selfRevealHandSAN': score = (10 - self.san) * 2.3 - estimateRevealHandExposurePenalty(self); break;
     case 'adjHealHP':
       score = getLivingAdjacentTargets(players, ci).reduce((sum, idx) => sum + (10 - players[idx].hp) * 0.3, 0);
@@ -624,7 +624,7 @@ function estimateCultistZoneCardScore(card, self, players, ci, context = {}) {
       case 'selfHealHPSelfDamageSAN':
         return { targets: [ci], hpDelta: card.hpVal, sanDelta: -card.sanVal, hpLoss: 0, sanLoss: card.sanVal };
       case 'selfRevealHandHP':
-        return { targets: [ci], hpDelta: 10, sanDelta: 0, hpLoss: 0, sanLoss: 0, special: 'revealHandExposure' };
+        return { targets: [ci], hpDelta: card.val || 8, sanDelta: 0, hpLoss: 0, sanLoss: 0, special: 'revealHandExposure' };
       case 'selfRevealHandSAN':
         return { targets: [ci], hpDelta: 0, sanDelta: 10, hpLoss: 0, sanLoss: 0, special: 'revealHandExposure' };
       case 'adjHealHP':

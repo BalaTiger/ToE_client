@@ -882,6 +882,7 @@ export default function Game(){
   const endlessCorridorReplayIdRef=useRef(null); // 联机同步时复用同一个 endlessCorridorReplay id，避免远端重复播放
   const endTurnSeqRef=useRef(null); // Phase C：当前回合结束事件序列 {events,cursor}。回合结束严格串行，故全局唯一；存于 ref 而非 state，跨决策重建不丢、不入联机广播。
   const gameEndSentRef=useRef(false);      // 防止 gameEnd 重复发送
+  const gameOverPresentationFrozenRef=useRef(false); // 终局展示完成后拒绝旧对局同步包回灌
   const latestGsRef=useRef(null); // always mirrors latest gs for closures reading stale state
   latestGsRef.current=gs; // 同步更新：渲染期间直接镜像，确保 confirmDiscard 等闭包读到最新值
   const [isDisconnected,setIsDisconnected]=useState(false);
@@ -953,6 +954,7 @@ export default function Game(){
   }
 
   function processIncomingMpStateSync(rawGs,{allowBuffer=true}={}){
+    if(gameOverPresentationFrozenRef.current||!isMultiplayerRef.current)return 'ignored';
     return processIncomingMultiplayerStateSync({
       rawState:rawGs,
       allowBuffer,
@@ -1412,6 +1414,11 @@ export default function Game(){
   },[roleRevealAnim,anim,animQueueRef,pendingGsRef]);
 
   useEffect(()=>{
+    if(gameOverPresentationFrozenRef.current||!isMultiplayerRef.current){
+      pendingMpRawQueueRef.current=[];
+      pendingMpLatestStateRawRef.current=null;
+      return;
+    }
     if(roleRevealAnim||anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
     const pendingRaw=pendingMpRawQueueRef.current.shift()||pendingMpLatestStateRawRef.current;
     if(!pendingRaw)return;
@@ -1519,6 +1526,7 @@ export default function Game(){
       mpAiTakeoverSeqRef,
       pendingMpAiTakeoverRef,
       gameEndSentRef,
+      gameOverPresentationFrozenRef,
       animQueueRef,
       pendingGsRef,
       setAnimExiting,
@@ -1562,6 +1570,7 @@ export default function Game(){
   const clearBattleAnimationState=useCallback(()=>{
     animQueueRef.current=[];
     pendingGsRef.current=null;
+    animCallbackRef.current=null;
     setAnimExiting(false);
     setAnim(null);
     clearSkillAnimations();
@@ -1569,7 +1578,16 @@ export default function Game(){
     clearDamageAnimations();
     setEarthquakeVisualPlayers(null);
     visualStateLocks.clear({turnHighlight:true,players:true,zhuLight:true,hiddenZhuCardId:true});
-  },[animQueueRef,pendingGsRef,setAnim,setAnimExiting,clearSkillAnimations,clearCardTransferAnimations,clearDamageAnimations,visualStateLocks]);
+  },[animQueueRef,pendingGsRef,animCallbackRef,setAnim,setAnimExiting,clearSkillAnimations,clearCardTransferAnimations,clearDamageAnimations,visualStateLocks]);
+
+  const clearMultiplayerReplayState=useCallback(()=>{
+    clearBattleAnimationState();
+    pendingMpRawQueueRef.current=[];
+    pendingMpLatestStateRawRef.current=null;
+    pendingMpAiTakeoverRef.current=null;
+    mpOpeningRoleRevealPendingRef.current=false;
+    setRoleRevealAnim(null);
+  },[clearBattleAnimationState]);
 
   const applyTutorialStateSnapshot=useCallback((nextGs)=>{
     if(!nextGs)return;
@@ -1715,8 +1733,13 @@ export default function Game(){
   useEffect(()=>{
     if(!gs?.gameOver&&gs?.phase!=='GOD_RESURRECTION')return;
     if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
+    if(gs?.gameOver&&isMultiplayerRef.current){
+      gameOverPresentationFrozenRef.current=true;
+      clearMultiplayerReplayState();
+      return;
+    }
     clearBattleAnimationState();
-  },[gs?.gameOver,gs?.phase,anim,animExiting,animQueueRef,pendingGsRef,clearBattleAnimationState]);
+  },[gs?.gameOver,gs?.phase,anim,animExiting,animQueueRef,pendingGsRef,clearBattleAnimationState,clearMultiplayerReplayState]);
 
   useEffect(()=>{
     if(typeof document==='undefined')return;
@@ -4140,6 +4163,8 @@ export default function Game(){
                 }
                 socketRef.current.emit('gameEnd',{uuid:playerUUID,roomId:roomModal?.roomId,winnerRole});
               }
+              gameOverPresentationFrozenRef.current=true;
+              clearMultiplayerReplayState();
               setIsMultiplayer(false);isMultiplayerRef.current=false;
               setMyPlayerIndex(0);myPlayerIndexRef.current=0;
               mpRoleRevealedRef.current=false;gameEndSentRef.current=false;

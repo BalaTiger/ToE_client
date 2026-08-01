@@ -881,7 +881,16 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     },
     selfHealAdjHealHP: () => { healHP(ci, card.val); adjacent.filter(i => i !== ci).forEach(i => healHP(i, card.adjVal || 1)); msgs.push(`${actor.name} 回复了 ${card.val} HP，相邻角色各回复 ${card.adjVal || 1} HP`); },
     adjHealHP: () => { adjacent.forEach(i => healHP(i, card.val)); msgs.push(`${actor.name} 与相邻角色各回复 ${card.val} HP`); },
-    selfRevealHandHP: () => { actor.hp = 10; actor.revealHand = true; actor.pickInsteadOfRandom = true; msgs.push(`${actor.name} HP 回满，手牌公开且盲抽改为挑选`); },
+    selfRevealHandHP: () => {
+      const healTarget = card.val || 8;
+      if (actor.hp < healTarget) {
+        actor.hp = healTarget;
+        msgs.push(`${actor.name} HP 恢复至 ${healTarget}，手牌公开且盲抽改为挑选`);
+      } else {
+        msgs.push(`${actor.name} 手牌公开且盲抽改为挑选（HP 不低于 ${healTarget}，未恢复）`);
+      }
+      actor.revealHand = true; actor.pickInsteadOfRandom = true;
+    },
     selfRevealHandSAN: () => { actor.san = Math.min(10, actor.san + card.val); actor.revealHand = true; actor.pickInsteadOfRandom = true; msgs.push(`${actor.name} 回复 ${card.val} SAN，手牌公开且盲抽改为挑选`); },
     globalOnlySwap: () => { statePatch = { globalOnlySwapOwner: ci }; msgs.push(`直到 ${actor.name} 的下回合开始前，所有角色技能都视为"掉包"`); },
     endTurnReplayHand: () => {},

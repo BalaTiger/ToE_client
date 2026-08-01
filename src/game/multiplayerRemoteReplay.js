@@ -1,7 +1,7 @@
 import { bindAnimLogChunks } from './animLogs';
 import { mergeApophisTargetQueue } from './apophisAnimQueue';
 import { buildAiHuntEventAnimQueue } from './animQueueCore';
-import { buildSphinxResultQueue, swapCardsSteps } from './animQueueHelpers';
+import { buildSphinxResultQueue, cardTransferStep, swapCardsSteps } from './animQueueHelpers';
 import {
   buildBewitchGiftReplay,
   buildInspectionReplay,
@@ -134,6 +134,54 @@ function getLogDelta(previousGs, rotated) {
   let start = 0;
   while (start < prevLog.length && start < nextLog.length && prevLog[start] === nextLog[start]) start += 1;
   return nextLog.slice(start);
+}
+
+function buildTreasureDodgeResolutionReplay({ previousGs, rotated, logDelta, buildAnimQueue }) {
+  if (!['TREASURE_DODGE_DECISION', 'TREASURE_AOE_DODGE_DECISION'].includes(previousGs?.phase)) return null;
+  const resultLog = logDelta.find(line => (
+    typeof line === 'string'
+    && / 掷出 \d+ 点，(?:成功规避负面效果|未能规避，触发负面效果)/.test(line)
+  ));
+  const match = resultLog?.match(/^(.+?) 掷出 (\d+) 点，(.+?)！?$/);
+  if (!match) return null;
+
+  const drawerIdx = previousGs.drawReveal?.drawerIdx
+    ?? previousGs.abilityData?.drawerIdx
+    ?? previousGs.currentTurn
+    ?? 0;
+  const card = previousGs.drawReveal?.card || null;
+  const d1 = Number(match[2]);
+  const effectQueue = buildAnimQueue(previousGs, rotated)
+    .filter(step => step?.type !== 'DRAW_CARD' && step?.type !== 'DICE_ROLL');
+  const keptInHand = !!card && (rotated.players?.[drawerIdx]?.hand || []).some(candidate => (
+    candidate === card
+    || (candidate?.id != null && card?.id != null && candidate.id === card.id)
+    || (candidate?.key === card?.key && candidate?.name === card?.name)
+  ));
+  const transferStep = keptInHand
+    ? cardTransferStep({
+      fromPid: drawerIdx,
+      dest: 'player',
+      toPid: drawerIdx,
+      count: 1,
+      sourceAnchor: 'playerArea',
+      effect: 'draw',
+      cards: [card],
+    })
+    : null;
+  return appendFinalStatePatch(
+    [{
+      type: 'DICE_ROLL',
+      d1,
+      d2: 0,
+      heal: 0,
+      rollerName: localDisplayName(drawerIdx, rotated.players?.[drawerIdx]?.name || match[1]),
+      dodgeSuccess: match[3].includes('成功规避负面效果'),
+      msgs: [resultLog],
+    }, ...effectQueue, ...(transferStep ? [transferStep] : [])],
+    rotated,
+    ['players', 'deck', 'discard', 'log', 'phase', 'drawReveal', 'abilityData'],
+  );
 }
 
 function buildTimedOutDrawDiscardStep(rotated, previousGs, logDelta = []) {
@@ -412,6 +460,21 @@ export function buildMpRemoteReplayAction({
   }
   if (isPendingZhuHideState(rotated)) {
     return withConsumedVisualEvents(buildZhuHideWaitAction(rotated));
+  }
+  const treasureDodgeQueue = buildTreasureDodgeResolutionReplay({
+    previousGs,
+    rotated,
+    logDelta,
+    buildAnimQueue,
+  });
+  if (treasureDodgeQueue?.length) {
+    return withConsumedVisualEvents({
+      type: MP_REMOTE_REPLAY.ANIM_QUEUE,
+      maskedGs: buildMaskedActionState(rotated),
+      pendingGs: clearRemoteReplayHints(rotated),
+      queue: treasureDodgeQueue,
+      visualLock: { players: previousGs?.players || rotated.players },
+    });
   }
   if (!isDrawAnimationState && hasFreshRandomTargetEvents(rotated, previousGs)) {
     const oldGs = previousGs || buildMaskedActionState(rotated);

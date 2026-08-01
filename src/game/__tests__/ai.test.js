@@ -317,7 +317,7 @@ describe('aiShouldKeepZoneCard', () => {
     expect(aiShouldKeepZoneCard(card, 2, players)).toBe(false);
   });
 
-  it('低 HP AI 仍会收入荧光苔藓来回满 HP', () => {
+  it('低 HP AI 仍会收入荧光苔藓来恢复 HP 至 8', () => {
     const card = makeZoneCard('A3', 0);
     const players = [
       makePlayer({ name: '你', hp: 8, san: 8 }),

@@ -70,6 +70,7 @@ function makeDeps(overrides = {}) {
       mpAiTakeoverSeqRef: { current: 0 },
       pendingMpAiTakeoverRef: { current: { stale: true } },
       gameEndSentRef: { current: true },
+      gameOverPresentationFrozenRef: { current: true },
       animQueueRef: { current: ['old'] },
       pendingGsRef: { current: { old: true } },
       setAnimExiting: vi.fn(),
@@ -218,6 +219,7 @@ describe('registerMultiplayerSocketHandlers', () => {
     expect([...deps.consumedVisualEventIdsRef.current]).toEqual([]);
     expect(deps.pendingMpAiTakeoverRef.current).toBe(null);
     expect(deps.gameEndSentRef.current).toBe(false);
+    expect(deps.gameOverPresentationFrozenRef.current).toBe(false);
     expect(socket.emit).not.toHaveBeenCalledWith('mpStateSync', expect.anything());
   });
 });

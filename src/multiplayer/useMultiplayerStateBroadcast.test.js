@@ -141,5 +141,6 @@ describe('useMultiplayerStateBroadcast helpers', () => {
       roomId: 'room-1',
       gs,
     });
+    expect(socket.emit.mock.calls.map(([event]) => event)).toEqual(['mpStateSync', 'gameEnd']);
   });
 });

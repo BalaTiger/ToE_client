@@ -70,14 +70,17 @@ export function buildNormalStateBroadcast({ gs, room, myPlayerIndex, consumedVis
 
 export function emitMultiplayerGameEnd({ socket, gs, playerUUID, roomId, myPlayerIndex }) {
   if (!socket?.connected || !gs?.gameOver) return false;
+  // Socket.IO preserves packet order. Publish the terminal snapshot while the
+  // room is still in-game, then close the match. Reversing these two packets
+  // lets a stale terminal snapshot repopulate an already-reset waiting room.
+  socket.emit('mpStateSync', {
+    roomId,
+    gs: derotateGs(gs, myPlayerIndex),
+  });
   socket.emit('gameEnd', {
     uuid: playerUUID,
     roomId,
     winnerRole: getMultiplayerWinnerRole(gs.gameOver),
-  });
-  socket.emit('mpStateSync', {
-    roomId,
-    gs: derotateGs(gs, myPlayerIndex),
   });
   return true;
 }

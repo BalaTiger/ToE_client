@@ -679,14 +679,13 @@ export function buildTurnStartDrawReplayQueue({
     players: beforeDrawPlayers,
     log: getTurnStartDrawBaselineLog(newGs),
   };
-  const staleCardEffectEvents = (Array.isArray(newGs?._visualEvents) ? newGs._visualEvents : [])
+  const staleVisualEvents = (Array.isArray(newGs?._visualEvents) ? newGs._visualEvents : [])
     .filter(event => (
-      (event?.type === 'cardEffect' || event?.type === 'earthquake') &&
       event?.card &&
       !sameDrawCard(event?.card, drawnCard)
     ));
   const baselineVisualEvents = [
-    ...staleCardEffectEvents,
+    ...staleVisualEvents,
   ].filter((event, index, events) => (
     !event?.id || events.findIndex(candidate => candidate?.id === event.id) === index
   ));
@@ -801,9 +800,12 @@ export function buildTurnStartDrawReplayQueue({
   const drawEffectQWithInspections = inspectionQ.length
     ? [...drawEffectQWithVisualStats, ...inspectionQ]
     : drawEffectQWithVisualStats;
-  const unprimedDrawEffectQ = drawFullHandSwapQ.length
-    ? [...drawFullHandSwapQ, ...drawEffectQWithInspections.filter(step => step.type !== 'CARD_TRANSFER')]
+  const drawEffectQWithoutEarlyKeepTransfer = drawKeepTransferStep
+    ? drawEffectQWithInspections.filter(step => !(step?.type === 'CARD_TRANSFER' && step?.effect === 'draw'))
     : drawEffectQWithInspections;
+  const unprimedDrawEffectQ = drawFullHandSwapQ.length
+    ? [...drawFullHandSwapQ, ...drawEffectQWithoutEarlyKeepTransfer.filter(step => step.type !== 'CARD_TRANSFER')]
+    : drawEffectQWithoutEarlyKeepTransfer;
   // A god worshipped directly from the turn-start draw is replayed from the
   // pre-draw player snapshot. Prime the highlight with only the resolved god
   // badge fields, while retaining the old hand so later AI actions (swap, hunt,

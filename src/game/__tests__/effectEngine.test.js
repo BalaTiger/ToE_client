@@ -889,13 +889,24 @@ describe('applyFx', () => {
     expect(res.statePatch.globalOnlySwapOwner).toBe(0);
   });
 
-  it('selfRevealHandHP: 回满HP并公开手牌', () => {
+  it('selfRevealHandHP: HP不足8时恢复至8并公开手牌', () => {
     const players = makeStandardPlayers(3);
     players[0].hp = 3;
     const card = makeZoneCard('A3', 0); // selfRevealHandHP
     const gs = makeGs({ players });
     const res = applyFx(card, 0, null, players, [], [], gs);
-    expect(res.P[0].hp).toBe(10);
+    expect(res.P[0].hp).toBe(8);
+    expect(res.P[0].revealHand).toBe(true);
+    expect(res.P[0].pickInsteadOfRandom).toBe(true);
+  });
+
+  it('selfRevealHandHP: HP不低于8时不降血但仍公开手牌', () => {
+    const players = makeStandardPlayers(3);
+    players[0].hp = 9;
+    const card = makeZoneCard('A3', 0); // selfRevealHandHP
+    const gs = makeGs({ players });
+    const res = applyFx(card, 0, null, players, [], [], gs);
+    expect(res.P[0].hp).toBe(9);
     expect(res.P[0].revealHand).toBe(true);
     expect(res.P[0].pickInsteadOfRandom).toBe(true);
   });

@@ -39,6 +39,7 @@ export function registerMultiplayerSocketHandlers({
   mpAiTakeoverSeqRef,
   pendingMpAiTakeoverRef,
   gameEndSentRef,
+  gameOverPresentationFrozenRef,
   animQueueRef,
   pendingGsRef,
   setAnimExiting,
@@ -164,6 +165,7 @@ export function registerMultiplayerSocketHandlers({
     mpAiTakeoverSeqRef.current = 0;
     pendingMpAiTakeoverRef.current = null;
     gameEndSentRef.current = false;
+    if (gameOverPresentationFrozenRef) gameOverPresentationFrozenRef.current = false;
     if (isLocalSeatIndex(safeIdx)) {
       const names = players.map(p => p.username);
       const mpExpansionKey = expansionPlan || EXPANSION_RANDOM_KEY;

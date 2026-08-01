@@ -2,11 +2,12 @@
 //  DATA
 // ══════════════════════════════════════════════════════════════
 // ── DECK BALANCE ──────────────────────────────────────────────────────────────
-// Copy counts: 3× every card → 48 total. Perfect letter+number symmetry.
+// Deck: 16 slots × 1 variant of the active expansion = 48 zone cards
+//   + god cards (godCopies each, default 4×6 = 24) → 72 total, shuffled.
 
-// Math: E[HP per HP-affecting card drawn] = −68/32 ≈ −2  (target: −2)
-//   Heal contribution: 2×(+2+1+5+3) = +22
-//   Damage contribution: 6×(−2−1−8−4) = −90   [C2 hits 4 others = −8; D2 hits 1 = −4]
+// Math (默认扩展「地神的潜影」，仅无条件即时 HP 效果；不含荧光苔藓/条件牌/延迟牌):
+//   无条件自伤合计 −29；无条件自疗合计 +14；霉变食物期望 +0.5
+//   E[自己 HP / 次摸牌] ≈ (14 + 0.5 − 29) / 72 ≈ −0.20（条件伤害会进一步拉低）
 // ──────────────────────────────────────────────────────────────────────────────
 const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "A1": [
@@ -99,9 +100,9 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "A3": [
     {
       "name": "吃下荧光苔藓",
-      "desc": "HP回满，手牌全局公开，盲抽变挑选",
+      "desc": "本局游戏中你的手牌公开。仅当你HP不足8时，恢复HP至8点",
       "type": "selfRevealHandHP",
-      "val": 10,
+      "val": 8,
       "slotKey": "A3",
       "polarity": "neutral",
       "effectScope": "self",
@@ -142,9 +143,9 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "可生食木乃伊",
-      "desc": "你恢复2HP，失去1SAN",
+      "desc": "你恢复1HP，失去1SAN",
       "type": "selfHealHPSelfDamageSAN",
-      "hpVal": 2,
+      "hpVal": 1,
       "sanVal": 1,
       "slotKey": "A3",
       "polarity": "neutral",
@@ -313,10 +314,10 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "B3": [
     {
       "name": "猎获穴兽",
-      "desc": "你恢复3HP，相邻角色各恢复2HP",
+      "desc": "你恢复2HP，相邻角色各恢复1HP",
       "type": "selfHealAdjHealHP",
-      "val": 3,
-      "adjVal": 2,
+      "val": 2,
+      "adjVal": 1,
       "slotKey": "B3",
       "polarity": "positive",
       "effectScope": "self",
@@ -423,9 +424,9 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "烤盲鱼",
-      "desc": "你恢复3HP，且摸到下张区域牌时，须在只能看见编号的条件下决定是否收入",
+      "desc": "你恢复2HP，且摸到下张区域牌时，须在只能看见编号的条件下决定是否收入",
       "type": "blindFish",
-      "val": 3,
+      "val": 2,
       "slotKey": "C1",
       "polarity": "positive",
       "effectScope": "self",
@@ -445,9 +446,9 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "C2": [
     {
       "name": "地下泉",
-      "desc": "所有角色恢复2HP",
+      "desc": "所有角色恢复1HP",
       "type": "allHealHP",
-      "val": 2,
+      "val": 1,
       "slotKey": "C2",
       "polarity": "positive",
       "effectScope": "all",
@@ -487,9 +488,9 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "C3": [
     {
       "name": "龙之心",
-      "desc": "你恢复4HP与1SAN",
+      "desc": "你恢复3HP与1SAN",
       "type": "selfHealHPSAN",
-      "hpVal": 4,
+      "hpVal": 3,
       "sanVal": 1,
       "slotKey": "C3",
       "polarity": "positive",

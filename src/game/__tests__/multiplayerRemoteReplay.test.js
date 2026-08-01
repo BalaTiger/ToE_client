@@ -59,6 +59,73 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.pendingGs.log).toEqual(['艾伦 掷出 5 点']);
   });
 
+  it('replays a remote treasure dodge decision as one complete synchronized queue', () => {
+    const dodgeCard = { id: 'dodge-card', key: 'A1', name: '负面区域牌', type: 'zone' };
+    const beforePlayers = [player('你'), { ...player('艾伦'), role: '寻宝者', hp: 10 }];
+    const afterPlayers = [player('你'), { ...player('艾伦'), role: '寻宝者', hp: 8, hand: [dodgeCard] }];
+    const previousGs = makeState({
+      players: beforePlayers,
+      currentTurn: 1,
+      phase: 'TREASURE_DODGE_DECISION',
+      drawReveal: { card: dodgeCard, drawerIdx: 1, needsDecision: true },
+      log: ['艾伦摸到负面区域牌，等待规避判定'],
+    });
+    const rotated = makeState({
+      players: afterPlayers,
+      currentTurn: 1,
+      phase: 'ACTION',
+      drawReveal: null,
+      log: [
+        ...previousGs.log,
+        '艾伦 掷出 2 点，未能规避，触发负面效果！',
+        '艾伦 失去 2 HP',
+      ],
+    });
+    const buildQueue = vi.fn(() => [{ type: 'HP_DAMAGE', hitIndices: [1] }]);
+
+    const action = buildMpRemoteReplayAction({
+      rotated,
+      previousGs,
+      roleRevealed: true,
+      buildAnimQueue: buildQueue,
+      buildFullHandSwapTransferQueueFromLogs: vi.fn(() => []),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.map(step => step.type)).toEqual([
+      'DICE_ROLL',
+      'HP_DAMAGE',
+      'CARD_TRANSFER',
+      'STATE_PATCH',
+    ]);
+    expect(action.queue[0]).toMatchObject({ d1: 2, rollerName: '艾伦', dodgeSuccess: false });
+    expect(action.queue[2]).toMatchObject({ fromPid: 1, toPid: 1, cards: [dodgeCard] });
+    expect(buildQueue).toHaveBeenCalledWith(previousGs, rotated);
+  });
+
+  it('finds a remote treasure dodge result even when effect logs follow it', () => {
+    const previousGs = makeState({
+      phase: 'TREASURE_AOE_DODGE_DECISION',
+      drawReveal: { card, drawerIdx: 1 },
+      abilityData: { drawerIdx: 1 },
+      log: [],
+    });
+    const action = buildMpRemoteReplayAction({
+      rotated: makeState({
+        phase: 'ACTION',
+        log: ['艾伦 掷出 6 点，成功规避负面效果！', '贝拉 失去 1 SAN'],
+      }),
+      previousGs,
+      roleRevealed: true,
+      buildAnimQueue: vi.fn(() => [{ type: 'SAN_DAMAGE', hitIndices: [2] }]),
+      buildFullHandSwapTransferQueueFromLogs: vi.fn(() => []),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue[0]).toMatchObject({ type: 'DICE_ROLL', d1: 6, dodgeSuccess: true });
+    expect(action.queue.some(step => step.type === 'SAN_DAMAGE')).toBe(true);
+  });
+
   it('replays only the discard when another player abandons a pending god choice', () => {
     const godCard = { id: 'god-discard', name: '奈亚拉托提普', godKey: 'NYA', isGod: true, type: 'god' };
     const beforePlayers = [player('你'), player('艾伦'), player('贝拉')];
@@ -345,11 +412,14 @@ describe('buildMpRemoteReplayAction', () => {
       msgs: ['全体存活角色失去 1 HP 和 SAN'],
     });
     const staleStep = { type: 'SNAKE_TRAP', card: previousCard };
+    const staleDrawEvent = { id: 'previous-draw', type: 'drawCard', playerIdx: 1, card: previousCard };
+    const staleDrawStep = { type: 'DRAW_CARD', card: previousCard };
     const buildAnimQueue = vi.fn((oldState, newState) => (
       oldState._visualEvents?.some(event => event.id === staleEffect.id) &&
+      oldState._visualEvents?.some(event => event.id === staleDrawEvent.id) &&
       newState._visualEvents?.some(event => event.id === staleEffect.id)
         ? []
-        : [staleStep]
+        : [staleDrawStep, staleStep]
     ));
 
     const action = buildAction(makeState({
@@ -358,13 +428,14 @@ describe('buildMpRemoteReplayAction', () => {
       drawReveal: { card: nextCard, drawerIdx: 0, needsDecision: true },
       _turnStartLogs: ['── 你 的回合开始 ──'],
       _drawLogs: ['你 摸到 [D1] 钻地魔虫'],
-      _visualEvents: [staleEffect],
+      _visualEvents: [staleDrawEvent, staleEffect],
     }), {
       previousGs: makeState({ currentTurn: 1, phase: 'ACTION' }),
       buildAnimQueue,
     });
 
     expect(action.type).toBe(MP_REMOTE_REPLAY.START_ANIM);
+    expect(action.queue.some(step => step.type === 'DRAW_CARD' && step.card === previousCard)).toBe(false);
     expect(action.queue.some(step => step.type === 'SNAKE_TRAP')).toBe(false);
     expect(buildAnimQueue.mock.calls.some(([oldState]) => (
       oldState._visualEvents?.some(event => event.id === staleEffect.id)

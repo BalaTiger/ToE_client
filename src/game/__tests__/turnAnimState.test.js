@@ -106,6 +106,39 @@ describe('buildPlayerTurnDrawQueue', () => {
 });
 
 describe('buildTurnStartDrawReplayQueue', () => {
+  it('keeps a bespoke draw effect before the kept-card transfer on every client', () => {
+    const snakeTrap = { id: 'snake-trap', key: 'D2', name: '群蛇陷阱', type: 'zone' };
+    const beforePlayers = [player('林恩'), player('诺亚')];
+    const afterPlayers = [player('林恩'), { ...player('诺亚'), hand: [snakeTrap] }];
+    const replay = buildTurnStartDrawReplayQueue({
+      oldGs: { players: beforePlayers, log: [] },
+      newGs: {
+        players: afterPlayers,
+        currentTurn: 1,
+        phase: 'ACTION',
+        drawReveal: null,
+        _drawnCard: snakeTrap,
+        _playersBeforeThisDraw: beforePlayers,
+        _turnStartLogs: ['── 诺亚 的回合开始 ──'],
+        _drawLogs: ['诺亚 摸到 [D2] 群蛇陷阱'],
+        _statLogs: ['【群蛇陷阱】分配了 2 层中毒：诺亚+1、林恩+1'],
+        log: ['── 诺亚 的回合开始 ──', '诺亚 摸到 [D2] 群蛇陷阱', '你 收入了 [D2] 群蛇陷阱', '【群蛇陷阱】分配了 2 层中毒：诺亚+1、林恩+1'],
+      },
+      buildQueue: () => [
+        { type: 'CARD_TRANSFER', effect: 'draw', fromPid: 1, toPid: 1, cards: [snakeTrap] },
+        { type: 'SNAKE_TRAP', card: snakeTrap },
+      ],
+    });
+
+    const effectIdx = replay.queue.findIndex(step => step.type === 'SNAKE_TRAP');
+    const transferIndices = replay.queue
+      .map((step, index) => (step.type === 'CARD_TRANSFER' && step.effect === 'draw' ? index : -1))
+      .filter(index => index >= 0);
+    expect(effectIdx).toBeGreaterThan(replay.queue.findIndex(step => step.type === 'DRAW_CARD'));
+    expect(transferIndices).toHaveLength(1);
+    expect(transferIndices[0]).toBeGreaterThan(effectIdx);
+  });
+
   it('uses the latest AI turn visual events instead of replaying the previous AI draw', () => {
     const spring = { id: 'spring', name: '地下泉', key: 'C2', type: 'allHealHP', isZone: true };
     const bounce = { id: 'bounce', name: '触底反弹', key: 'C4', type: 'swapAllHands', isZone: true };
