@@ -62,7 +62,7 @@ export function buildTsathogguaSlimeBalanceDecision(playersBefore, playersAfter,
   for (let i = 0; i < playersAfter.length; i++) {
     const before = playersBefore[i];
     const after = playersAfter[i];
-    if (!before || !after || after.isDead) continue;
+    if (!before || !after || after.isDead || after.hp <= 0) continue;
     const lostHp = Math.max(0, (before.hp || 0) - (after.hp || 0));
     const lostSan = Math.max(0, (before.san || 0) - (after.san || 0));
     if (!(lostHp || lostSan)) continue;

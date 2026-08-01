@@ -10,6 +10,25 @@ function names(players) {
 }
 
 describe('rotateGsForViewer', () => {
+  it('rotates shared bury-alive choices with their player seats', () => {
+    const gs = {
+      players: [player('p0'), player('p1'), player('p2')],
+      abilityData: {
+        source: 0,
+        targets: [0, 2, 1],
+        buryAliveChoices: [{ cardId: 'c0' }, null, { cardId: 'c2' }],
+      },
+    };
+
+    const rotated = rotateGsForViewer(gs, 1);
+
+    expect(rotated.abilityData).toMatchObject({
+      source: 2,
+      targets: [2, 1, 0],
+      buryAliveChoices: [null, { cardId: 'c2' }, { cardId: 'c0' }],
+    });
+  });
+
   it('rotates swap before/after player snapshots with the viewer seat', () => {
     const gs = {
       players: [player('p0'), player('p1'), player('p2')],
@@ -367,6 +386,40 @@ describe('rotateGsForViewer', () => {
     expect(rotated.players[0].damageLink).toMatchObject({ partner: 2, active: true, expiryTurn: 7 });
     expect(rotated.players[0].damageLink.expiryOwner).toBeUndefined();
     expect(rotated.players[2].damageLink).toMatchObject({ partner: 0, active: true, expiryTurn: 7 });
+  });
+
+  it('rotates _turnDrawEvents seat indices so draw flights land on the drawer', () => {
+    // 发送端（座位 0 视角）为下家（座位 1）生成的回合开始摸牌事件
+    const gs = {
+      players: [player('你'), player('艾伦')],
+      currentTurn: 1,
+      abilityData: {},
+      _turnDrawEvents: [{
+        card: { id: 'c1', name: '荆棘山路' },
+        drawerIdx: 1,
+        drawerName: '艾伦',
+        msgs: ['艾伦 摸到 荆棘山路'],
+        slimePop: {
+          type: 'tsgSlimePop',
+          playerIdx: 1,
+          targetPid: 1,
+          playersBefore: [player('你'), player('艾伦')],
+        },
+      }],
+    };
+
+    // 摸牌者（艾伦，myIndex=1）收到并旋转：自己变为 0 号位
+    const rotated = rotateGsForViewer(gs, 1);
+
+    expect(rotated._turnDrawEvents[0].drawerIdx).toBe(0);
+    expect(rotated._turnDrawEvents[0].slimePop.playerIdx).toBe(0);
+    expect(rotated._turnDrawEvents[0].slimePop.targetPid).toBe(0);
+    expect(rotated._turnDrawEvents[0].slimePop.playersBefore.map(p => p.name)).toEqual(['艾伦', '你']);
+
+    // 反旋转回规范坐标后索引还原
+    const restored = derotateGs(rotated, 1);
+    expect(restored._turnDrawEvents[0].drawerIdx).toBe(1);
+    expect(restored._turnDrawEvents[0].slimePop.playerIdx).toBe(1);
   });
 
   it('SHU_SELECT_TARGET 的行动权跟随黑暗子嗣选择者旋转', () => {

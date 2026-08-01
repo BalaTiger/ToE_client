@@ -803,7 +803,6 @@ function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta) {
     const damage = submitDamageEvents({
       players: P, deck: D, discard: Disc, log: reactionLogs, currentTurn: next,
       events: [{ targetIdx: next, lostHp: bgyCount, lostSan: bgyCount, source: '黑山羊幼仔' }],
-      deferDeath: true,
     });
     L.push(`【黑山羊幼仔】${P[next].name} 失去 ${bgyCount} HP 和 ${bgyCount} SAN`);
     L.push(...reactionLogs);

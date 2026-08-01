@@ -83,10 +83,13 @@ function rotatePlayerSnapshotFields(obj, fields, myIndex) {
   return changed ? next : obj;
 }
 
-function rotateAbilityDataForViewer(abilityData, rotateIndex) {
+function rotateAbilityDataForViewer(abilityData, rotateIndex, myIndex) {
   if (!abilityData) return abilityData;
   const rotatedIndices = rotateIndexedFields(abilityData, ROTATE_ABILITYDATA_INDEX_FIELDS, rotateIndex);
-  return rotateIndexedArrayFields(rotatedIndices, ROTATE_ABILITYDATA_INDEX_ARRAY_FIELDS, rotateIndex);
+  const rotatedArrays = rotateIndexedArrayFields(rotatedIndices, ROTATE_ABILITYDATA_INDEX_ARRAY_FIELDS, rotateIndex);
+  return Array.isArray(rotatedArrays.buryAliveChoices)
+    ? { ...rotatedArrays, buryAliveChoices: rotatePlayersArray(rotatedArrays.buryAliveChoices, myIndex) }
+    : rotatedArrays;
 }
 
 function rotateTopLevelGsFieldsForViewer(gs, rotateIndex) {
@@ -182,6 +185,26 @@ function rotateTsathogguaSlimeGrantEvents(events, rotateIndex, myIndex) {
     ownerIdx: event.ownerIdx != null ? rotateIndex(event.ownerIdx) : event.ownerIdx,
     playersBefore: rotatePlayersArray(event.playersBefore, myIndex),
     playersAfter: rotatePlayersArray(event.playersAfter, myIndex),
+  }));
+}
+
+// _turnDrawEvents 由执行摸牌的客户端按自身视角生成（drawerIdx 常为自己的 0 号位），
+// 必须随广播状态一起旋转，否则接收端 DRAW_CARD 的 targetPid 指向错误座位，
+// 飞牌终点会从摸牌者手牌区错落到对手面板
+function rotateTurnDrawEvents(events, rotateIndex, myIndex) {
+  if (!Array.isArray(events)) return events;
+  return events.map(event => ({
+    ...event,
+    drawerIdx: event.drawerIdx != null ? rotateIndex(event.drawerIdx) : event.drawerIdx,
+    slimePop: event.slimePop
+      ? {
+        ...event.slimePop,
+        playerIdx: event.slimePop.playerIdx != null ? rotateIndex(event.slimePop.playerIdx) : event.slimePop.playerIdx,
+        targetPid: event.slimePop.targetPid != null ? rotateIndex(event.slimePop.targetPid) : event.slimePop.targetPid,
+        playersBefore: rotatePlayersArray(event.slimePop.playersBefore, myIndex),
+        playersAfter: rotatePlayersArray(event.slimePop.playersAfter, myIndex),
+      }
+      : event.slimePop,
   }));
 }
 
@@ -319,7 +342,7 @@ export function rotateGsForViewer(gs, myIndex) {
   const gameOver = rotateGameOverForViewer(gs.gameOver, rotateIndex);
   const drawReveal = rotateDrawRevealForViewer(gs.drawReveal, rotateIndex);
   const zhuLight = rotateZhuLightForViewer(gs.zhuLight, rotateIndex);
-  const abilityData = rotateAbilityDataForViewer(gs.abilityData || {}, rotateIndex);
+  const abilityData = rotateAbilityDataForViewer(gs.abilityData || {}, rotateIndex, myIndex);
   const rotatedSnapshots = rotatePlayerSnapshotFields(rotatedTopLevel, ROTATE_GS_PLAYER_SNAPSHOT_FIELDS, myIndex);
   return {
     ...rotatedSnapshots,
@@ -339,6 +362,7 @@ export function rotateGsForViewer(gs, myIndex) {
     ...(gs._randomTargetEvents ? { _randomTargetEvents: rotateRandomTargetEvents(gs._randomTargetEvents, rotateIndex) } : {}),
     ...(gs._mpTimedOutDrawDiscard ? { _mpTimedOutDrawDiscard: rotateTimedOutDrawDiscardEvent(gs._mpTimedOutDrawDiscard, rotateIndex) } : {}),
     ...(gs._tsgSlimeGrantEvents ? { _tsgSlimeGrantEvents: rotateTsathogguaSlimeGrantEvents(gs._tsgSlimeGrantEvents, rotateIndex, myIndex) } : {}),
+    ...(gs._turnDrawEvents ? { _turnDrawEvents: rotateTurnDrawEvents(gs._turnDrawEvents, rotateIndex, myIndex) } : {}),
     ...(gs._visualEvents ? { _visualEvents: rotateVisualEvents(gs._visualEvents, rotateIndex, myIndex) } : {}),
   };
 }

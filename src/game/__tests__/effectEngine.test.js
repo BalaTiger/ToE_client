@@ -1458,6 +1458,22 @@ describe('applyInspectionForSanLoss', () => {
     ]);
   });
 
+  it('buryAlive: 联机模式为所有目标初始化并行暗选槽', () => {
+    const players = makeStandardPlayers(3);
+    players.forEach((player, idx) => { player.hand = [makeZoneCard(`A${idx + 1}`, 0)]; });
+    const card = { type: 'buryAlive', name: '活埋', key: 'A4' };
+    const gs = makeGs({ players, _isMP: true });
+
+    const res = applyFx(card, 0, null, players, [], [], gs);
+
+    expect(res.statePatch.abilityData).toMatchObject({
+      type: 'buryAliveSelect',
+      source: 0,
+      targets: [0, 2, 1],
+      buryAliveChoices: [null, null, null],
+    });
+  });
+
   it('检定乱抓会在回合外目标扣血前进入虚化决策', () => {
     const players = [
       makePlayer({ name: '当前玩家', hp: 10, san: 6 }),
@@ -1481,6 +1497,73 @@ describe('applyInspectionForSanLoss', () => {
 });
 
 describe('submitDamageEvents', () => {
+  it('致死伤害不再触发受伤者的黏液响应', () => {
+    const slime = createTsathogguaSlimeCard();
+    const P = [makePlayer({ hp: 10 }), makePlayer({ hp: 2, san: 8, hand: [slime] })];
+
+    const result = submitDamageEvents({
+      players: P,
+      currentTurn: 0,
+      events: [{ targetIdx: 1, lostHp: 2, source: '致死伤害' }],
+    });
+
+    expect(result.abilityData).toBeNull();
+    expect(P[1]).toMatchObject({ hp: 0, isDead: true });
+  });
+
+  it('组合伤害先结算 HP，致死时不再落实后续 SAN 损失', () => {
+    const slime = createTsathogguaSlimeCard();
+    const P = [makePlayer({ hp: 10 }), makePlayer({ hp: 1, san: 1, hand: [slime] })];
+
+    const result = submitDamageEvents({
+      players: P,
+      currentTurn: 0,
+      events: [{ targetIdx: 1, lostHp: 1, lostSan: 1, source: '组合致死伤害' }],
+    });
+
+    expect(result.abilityData).toBeNull();
+    expect(P[1]).toMatchObject({ hp: 0, san: 1, isDead: true });
+  });
+
+  it('原伤害致死时断绳只伤害仍存活的另一端', () => {
+    const P = [
+      makePlayer({ hp: 10 }),
+      makePlayer({ hp: 2, damageLink: { active: true, partner: 2 } }),
+      makePlayer({ hp: 10, damageLink: { active: true, partner: 1 } }),
+    ];
+
+    const result = submitDamageEvents({
+      players: P,
+      currentTurn: 0,
+      events: [{ targetIdx: 1, lostHp: 2, source: '致死伤害' }],
+    });
+
+    expect(result.abilityData).toBeNull();
+    expect(P[1]).toMatchObject({ hp: 0, isDead: true, damageLink: { active: false } });
+    expect(P[2]).toMatchObject({ hp: 7, isDead: false, damageLink: { active: false } });
+  });
+
+  it('无待处理响应的致死伤害会立即落实死亡与死亡动画标记', () => {
+    const targetCard = makeZoneCard('A1', 0);
+    const P = [makePlayer({ hp: 10 }), makePlayer({ hp: 3, hand: [targetCard] })];
+    const discard = [];
+    const log = [];
+
+    const result = submitDamageEvents({
+      players: P,
+      discard,
+      log,
+      currentTurn: 0,
+      events: [{ targetIdx: 1, lostHp: 3, source: '追捕' }],
+    });
+
+    expect(result.abilityData).toBeNull();
+    expect(P[1]).toMatchObject({ hp: 0, isDead: true, _pendingAnimDeath: true, roleRevealed: true });
+    expect(P[1].hand).toEqual([]);
+    expect(discard).toContain(targetCard);
+    expect(log.some(line => line.includes('倒下了'))).toBe(true);
+  });
+
   it('统一入口在任一目标可虚化时延迟整批伤害', () => {
     const P = [
       makePlayer({ hp: 10 }),

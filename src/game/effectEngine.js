@@ -49,12 +49,26 @@ export function markSkipNextDraw(player, reason = '效果') {
   return true;
 }
 
-export function applyHpDamageWithLink(P, i, amount, Disc, L, currentTurn, D, options = {}) {
+function settleLethalHpDamage(P, i, Disc, L, currentTurn, D) {
+  if (i == null || !P[i] || P[i].isDead || P[i].hp > 0) return false;
+  if (currentTurn != null && D != null && tryVritraImmortal(P, i, currentTurn, D, Disc, L)) return false;
+  killPlayerState(P, i, Disc, L);
+  return true;
+}
+
+export function applyHpDamageWithLink(P, i, amount, Disc, L, currentTurn, D) {
   if (i == null || !P[i] || P[i].isDead || !(amount > 0)) return;
   P[i].hp = clamp(P[i].hp - amount);
   if (P[i].damageLink?.active) {
     const partnerIdx = P[i].damageLink.partner;
     if (partnerIdx != null && P[partnerIdx] && !P[partnerIdx].isDead) {
+      if (P[i].hp <= 0) {
+        const died = settleLethalHpDamage(P, i, Disc, L, currentTurn, D);
+        if (died) {
+          P[i]._pendingDamageLinkBreak = { sourceIdx: i, partnerIdx, sourceDead: true };
+          return;
+        }
+      }
       // Damage reactions are ordered: the directly injured player may answer
       // with slime before the rope breaks. Store a serializable continuation;
       // the slime resolver will execute the break and feed its damage back
@@ -76,23 +90,11 @@ export function applyHpDamageWithLink(P, i, amount, Disc, L, currentTurn, D, opt
       P[i].hp = clamp(P[i].hp - linkDamage);
       P[partnerIdx].hp = clamp(P[partnerIdx].hp - linkDamage);
       L.push(`【两人一绳】绳索断裂！${P[i].name} 和 ${P[partnerIdx].name} 各失去 ${linkDamage} HP`);
-      if (!options.deferDeath && P[i].hp <= 0 && !(P[i].hand || []).some(isTsathogguaSlime)) {
-        if (currentTurn == null || D == null || !tryVritraImmortal(P, i, currentTurn, D, Disc, L)) {
-          killPlayerState(P, i, Disc, L);
-        }
-      }
-      if (!options.deferDeath && P[partnerIdx].hp <= 0 && !(P[partnerIdx].hand || []).some(isTsathogguaSlime)) {
-        if (currentTurn == null || D == null || !tryVritraImmortal(P, partnerIdx, currentTurn, D, Disc, L)) {
-          killPlayerState(P, partnerIdx, Disc, L);
-        }
-      }
+      settleLethalHpDamage(P, i, Disc, L, currentTurn, D);
+      settleLethalHpDamage(P, partnerIdx, Disc, L, currentTurn, D);
     }
   }
-  if (!options.deferDeath && P[i].hp <= 0 && !(P[i].hand || []).some(isTsathogguaSlime)) {
-    if (currentTurn == null || D == null || !tryVritraImmortal(P, i, currentTurn, D, Disc, L)) {
-      killPlayerState(P, i, Disc, L);
-    }
-  }
+  settleLethalHpDamage(P, i, Disc, L, currentTurn, D);
 }
 
 export function resolvePendingDamageLinkBreak(P, targetIdx, Disc, L, currentTurn, D, continuation = {}) {
@@ -101,6 +103,7 @@ export function resolvePendingDamageLinkBreak(P, targetIdx, Disc, L, currentTurn
   delete P[targetIdx]._pendingDamageLinkBreak;
   const sourceIdx = pending.sourceIdx ?? targetIdx;
   const partnerIdx = pending.partnerIdx;
+  const sourceDead = !!pending.sourceDead || !!P[sourceIdx]?.isDead;
   const beforePlayers = copyPlayers(P);
   if (!P[sourceIdx]?.damageLink?.active || partnerIdx == null || !P[partnerIdx] || P[partnerIdx].isDead) {
     return { applied: false, beforePlayers, affected: [] };
@@ -108,7 +111,7 @@ export function resolvePendingDamageLinkBreak(P, targetIdx, Disc, L, currentTurn
   P[sourceIdx].damageLink.active = false;
   if (P[partnerIdx].damageLink) P[partnerIdx].damageLink.active = false;
   const linkDamage = 3;
-  const orderedLosses = [sourceIdx, partnerIdx].map((idx, order) => ({
+  const orderedLosses = (sourceDead ? [partnerIdx] : [sourceIdx, partnerIdx]).map((idx, order) => ({
     targetIdx: idx,
     lostHp: linkDamage,
     lostSan: 0,
@@ -130,12 +133,14 @@ export function resolvePendingDamageLinkBreak(P, targetIdx, Disc, L, currentTurn
   if (pendingLosses.length) {
     const eligibleTargets = new Set(pendingLosses.map(loss => loss.targetIdx));
     const deferredDirectLosses = orderedLosses.filter(loss => !eligibleTargets.has(loss.targetIdx));
-    L.push(`【两人一绳】绳索断裂！${P[sourceIdx].name} 和 ${P[partnerIdx].name} 即将各失去 ${linkDamage} HP`);
+    L.push(sourceDead
+      ? `【两人一绳】绳索断裂！${P[partnerIdx].name} 即将失去 ${linkDamage} HP`
+      : `【两人一绳】绳索断裂！${P[sourceIdx].name} 和 ${P[partnerIdx].name} 即将各失去 ${linkDamage} HP`);
     return {
       applied: false,
       deferred: true,
       beforePlayers,
-      affected: [sourceIdx, partnerIdx],
+      affected: orderedLosses.map(loss => loss.targetIdx),
       etherealizeDecision: buildEtherealizeRedirectDecision(pendingLosses, {
         ...continuation,
         _turnOwner: currentTurn,
@@ -143,10 +148,14 @@ export function resolvePendingDamageLinkBreak(P, targetIdx, Disc, L, currentTurn
       }),
     };
   }
-  P[sourceIdx].hp = clamp(P[sourceIdx].hp - linkDamage);
-  P[partnerIdx].hp = clamp(P[partnerIdx].hp - linkDamage);
-  L.push(`【两人一绳】绳索断裂！${P[sourceIdx].name} 和 ${P[partnerIdx].name} 各失去 ${linkDamage} HP`);
-  return { applied: true, beforePlayers, affected: [sourceIdx, partnerIdx] };
+  orderedLosses.forEach(loss => {
+    P[loss.targetIdx].hp = clamp(P[loss.targetIdx].hp - linkDamage);
+    settleLethalHpDamage(P, loss.targetIdx, Disc, L, currentTurn, D);
+  });
+  L.push(sourceDead
+    ? `【两人一绳】绳索断裂！${P[partnerIdx].name} 失去 ${linkDamage} HP`
+    : `【两人一绳】绳索断裂！${P[sourceIdx].name} 和 ${P[partnerIdx].name} 各失去 ${linkDamage} HP`);
+  return { applied: true, beforePlayers, affected: orderedLosses.map(loss => loss.targetIdx) };
 }
 
 // Pure state-layer entry for damage. Callers provide only damage facts and
@@ -160,7 +169,6 @@ export function submitDamageEvents({
   events = [],
   continuation = {},
   skipEtherealize = false,
-  deferDeath = true,
 } = {}) {
   const P = players;
   const D = deck;
@@ -202,8 +210,10 @@ export function submitDamageEvents({
   }
 
   normalized.forEach(event => {
+    // Combined damage has a fixed visible and rules order: HP first, then SAN.
+    // If HP settlement kills the target, the later SAN loss no longer applies.
     if ((event.lostHp || 0) > 0) {
-      applyHpDamageWithLink(P, event.targetIdx, event.lostHp, Disc, L, currentTurn, D, { deferDeath });
+      applyHpDamageWithLink(P, event.targetIdx, event.lostHp, Disc, L, currentTurn, D);
     }
     if ((event.lostSan || 0) > 0 && P[event.targetIdx] && !P[event.targetIdx].isDead) {
       P[event.targetIdx].san = clamp(P[event.targetIdx].san - event.lostSan);
@@ -1486,6 +1496,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
             source: ci,
             targets,
             targetIndex: 0,
+            ...(gs?._isMP ? { buryAliveChoices: Array(P.length).fill(null) } : {}),
           }
         };
         msgs.push(`${actor.name} 与相邻角色准备各将一张手牌放到牌堆底`);

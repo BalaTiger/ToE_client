@@ -181,6 +181,13 @@ export function buildPhaseUiState({
       case 'GRAVE_DIG_SELECT':
         return local.graveDig ? '【掘墓】从弃牌堆选择一张邪神牌' : (isMultiplayer ? '等待掘墓选择…' : thinkingText(abilityData.playerIndex));
       case 'BURY_ALIVE_SELECT': {
+        const choices = abilityData.buryAliveChoices;
+        if (isMultiplayer && Array.isArray(choices)) {
+          const pending = (abilityData.targets || []).filter(idx => !choices[idx]);
+          return local.buryAlive
+            ? '【活埋】选择一张手牌放到牌堆底'
+            : `已完成选择，等待其他玩家…（剩余 ${pending.length} 人）`;
+        }
         const target = abilityData.targets?.[abilityData.targetIndex || 0];
         return local.buryAlive ? '【活埋】选择一张手牌放到牌堆底' : (isMultiplayer ? `等待 ${players[target]?.name || '目标'} 选择活埋手牌…` : thinkingText(target));
       }

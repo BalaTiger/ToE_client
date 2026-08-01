@@ -196,6 +196,7 @@ describe('buildMpRemoteReplayAction', () => {
     const beforePlayers = [player('你'), player('艾伦'), player('贝拉')];
     const buildQueue = vi.fn(() => [
       { type: 'DRAW_CARD', card: godCard },
+      { type: 'GOD_HIGHLIGHT', targetPid: 1, godKey: 'APO' },
       { type: 'APOPHIS_ECLIPSE', msgs: ['黑夜降临'] },
     ]);
     const action = buildMpRemoteReplayAction({
@@ -223,7 +224,48 @@ describe('buildMpRemoteReplayAction', () => {
 
     expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
     expect(action.queue.some(step => step.type === 'DRAW_CARD')).toBe(false);
-    expect(action.queue).toContainEqual(expect.objectContaining({ type: 'APOPHIS_ECLIPSE' }));
+    expect(action.queue.filter(step => ['GOD_HIGHLIGHT', 'APOPHIS_ECLIPSE'].includes(step.type)).map(step => step.type))
+      .toEqual(['GOD_HIGHLIGHT', 'APOPHIS_ECLIPSE']);
+  });
+
+  it('replays apophis night eclipse for a remote worship-from-hand sync', () => {
+    // 从手牌信仰阿波菲斯：普通 ACTION→ACTION 同步，无视觉事件，走通用兜底队列。
+    // 远端必须凭 buildAnimQueue 自行重建日食步骤，才能与本地动画同步开始。
+    const godCard = { id: 'apo-hand', name: '阿波菲斯', godKey: 'APO', isGod: true, type: 'god' };
+    const beforePlayers = [player('你'), { ...player('艾伦'), hand: [godCard] }, player('贝拉')];
+    const worshippers = [player('你'), {
+      ...player('艾伦'),
+      godName: 'APO',
+      godLevel: 1,
+      godZone: [godCard],
+      hasBelievedGod: true,
+    }, player('贝拉')];
+    const action = buildMpRemoteReplayAction({
+      rotated: makeState({
+        players: worshippers,
+        currentTurn: 1,
+        phase: 'ACTION',
+        apophisNight: { active: true, level: 1 },
+        log: ['艾伦 从手牌信仰了 阿波菲斯，获得日食(Lv.1)', '【噬日灭世】黑夜降临'],
+      }),
+      previousGs: makeState({
+        players: beforePlayers,
+        currentTurn: 1,
+        phase: 'ACTION',
+        apophisNight: null,
+        log: [],
+      }),
+      roleRevealed: true,
+      buildAnimQueue,
+      buildFullHandSwapTransferQueueFromLogs: vi.fn(() => []),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    const faithTimeline = action.queue
+      .filter(step => ['GOD_HIGHLIGHT', 'APOPHIS_ECLIPSE'].includes(step.type))
+      .map(step => step.type);
+    expect(faithTimeline).toEqual(['GOD_HIGHLIGHT', 'APOPHIS_ECLIPSE']);
+    expect(action.queue.some(step => step.type === 'DRAW_CARD')).toBe(false);
   });
 
   it('turns moldy-food logs into a moldy-food dice animation action', () => {
@@ -2020,6 +2062,68 @@ describe('buildMpRemoteReplayAction', () => {
     });
     expect(action.pendingGs._visualEvents).toEqual([]);
     expect(action.consumedVisualEventIds).toContain(replayEvent.id);
+  });
+
+  it('accepts a later endless-corridor dodge delta after the opening replay was consumed', () => {
+    const opening = createEndlessCorridorReplayEvent({
+      id: 'corridor-opening',
+      actorIdx: 1,
+      queue: [{ type: 'ENDLESS_CORRIDOR_TUNNEL' }],
+    });
+    const dodge = createEndlessCorridorReplayEvent({
+      id: 'corridor-dodge-delta',
+      actorIdx: 1,
+      queue: [{ type: 'DICE_ROLL', d1: 6, d2: 0, dodgeSuccess: true, rollerName: '艾伦' }],
+    });
+
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      _endTurnReplay: { actorIndex: 1, cards: ['negative'], index: 1 },
+      _visualEvents: [dodge],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'TREASURE_DODGE_DECISION' }),
+      consumedVisualEventIds: new Set([opening.id]),
+      buildAnimQueue,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue[0]).toMatchObject({ type: 'DICE_ROLL', d1: 6, dodgeSuccess: true });
+    expect(action.consumedVisualEventIds).toContain(dodge.id);
+  });
+
+  it('replays the next player god draw before encounter SAN loss after corridor deltas finish', () => {
+    const godCard = { id: 'next-god', name: '阿波菲斯', godKey: 'APO', isGod: true, type: 'god' };
+    const beforePlayers = [player('你'), player('艾伦'), player('贝拉')];
+    const afterPlayers = [{ ...player('你'), san: 9 }, player('艾伦'), player('贝拉')];
+    const action = buildAction(makeState({
+      players: afterPlayers,
+      currentTurn: 0,
+      phase: 'GOD_CHOICE',
+      abilityData: { godCard, drawerIdx: 0, godEncounterCost: 1 },
+      _turnStartLogs: ['── 你 的回合开始 ──'],
+      _drawLogs: ['你 遭遇邪神 阿波菲斯！（第1次）失去1SAN'],
+      _playersBeforeThisDraw: beforePlayers,
+      _statEventSeq: 1,
+      _statEvents: [{
+        seq: 1,
+        type: 'SAN_LOSS',
+        target: 0,
+        from: { hp: 10, san: 10, isDead: false },
+        to: { hp: 10, san: 9, isDead: false },
+        reason: '邪神遭遇',
+      }],
+      log: ['── 你 的回合开始 ──', '你 遭遇邪神 阿波菲斯！（第1次）失去1SAN'],
+    }), {
+      previousGs: makeState({ players: beforePlayers, currentTurn: 1, phase: 'ACTION', log: [] }),
+      consumedVisualEventIds: new Set(['corridor-opening', 'corridor-dodge-delta']),
+      buildAnimQueue,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.START_ANIM);
+    const types = [action.anim, ...(action.queue || [])].map(step => step.type);
+    expect(types.indexOf('DRAW_CARD')).toBeGreaterThanOrEqual(0);
+    expect(types.indexOf('SAN_DAMAGE')).toBeGreaterThan(types.indexOf('DRAW_CARD'));
   });
 
   it('replays an endless corridor decision draw without inserting a next-turn banner', () => {

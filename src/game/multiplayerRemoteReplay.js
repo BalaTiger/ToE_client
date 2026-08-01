@@ -1,7 +1,7 @@
 import { bindAnimLogChunks } from './animLogs';
 import { mergeApophisTargetQueue } from './apophisAnimQueue';
 import { buildAiHuntEventAnimQueue } from './animQueueCore';
-import { buildSphinxResultQueue, cardTransferStep, swapCardsSteps } from './animQueueHelpers';
+import { buildSphinxResultQueue, cardTransferStep, prepareWorshipHighlight, swapCardsSteps } from './animQueueHelpers';
 import {
   buildBewitchGiftReplay,
   buildInspectionReplay,
@@ -239,6 +239,25 @@ function isSameCard(first, second) {
 
 function getPendingGodChoiceCard(state) {
   return state?.phase === 'GOD_CHOICE' ? state.abilityData?.godCard || null : null;
+}
+
+function prepareRemoteWorshipFromHandQueue(queue, rotated, logDelta) {
+  const worshipMsg = (logDelta || []).find(line => (
+    typeof line === 'string'
+    && line.includes('从手牌')
+    && (line.includes('信仰') || line.includes('改信'))
+  ));
+  if (!worshipMsg) return queue;
+  const targetPid = (rotated?.players || []).findIndex(player => (
+    player?.godName && player?.name && worshipMsg.includes(player.name)
+  ));
+  if (targetPid < 0) return queue;
+  return prepareWorshipHighlight(queue, {
+    targetPid,
+    godKey: rotated.players[targetPid].godName,
+    players: rotated.players,
+    msgs: [worshipMsg],
+  });
 }
 
 function buildResolvedGodChoiceDiscardStep(rotated, previousGs, logDelta = []) {
@@ -917,9 +936,10 @@ export function buildMpRemoteReplayAction({
 
   if (!isDrawAnimationState) {
     const replay = buildInspectionReplay(previousGs || buildMaskedActionState(rotated), rotated, { buildAnimQueue, copyPlayers });
-    const replayQueue = replay.inspectionEvents.length
+    const rawReplayQueue = replay.inspectionEvents.length
       ? replay.queue
       : bindAnimLogChunks(replay.queue, { statLogs: logDelta });
+    const replayQueue = prepareRemoteWorshipFromHandQueue(rawReplayQueue, rotated, logDelta);
     if (replayQueue.length) {
       const queue = appendFinalStatePatch(
         replayQueue,

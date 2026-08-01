@@ -8,6 +8,16 @@ import { applyInspectionForSanLoss } from '../effectEngine';
 import { makeProliferatingZState } from '../proliferatingZ';
 
 describe('checkWin death handling', () => {
+  it('dead cultist cannot win from their own zero SAN but can win from another living zero-SAN target', () => {
+    const deadCultist = makePlayer({ name: 'cultist', role: ROLE_CULTIST, hp: 0, san: 0, isDead: true });
+    const hunter = makePlayer({ name: 'hunter', role: ROLE_HUNTER, hp: 10, san: 5 });
+
+    expect(checkWin([deadCultist, hunter], true)?.winner).toBe(ROLE_HUNTER);
+
+    const livingTarget = makePlayer({ name: 'target', role: ROLE_TREASURE, hp: 10, san: 0 });
+    expect(checkWin([deadCultist, hunter, livingTarget], true)?.winner).toBe(ROLE_CULTIST);
+  });
+
   it('单人模式下本地玩家死亡会立即失败', () => {
     const players = makeStandardPlayers(3);
     players[0].isDead = true;
@@ -716,7 +726,7 @@ describe('turnEngine stat events', () => {
     expect(playerTurn.players[1].hp).toBe(5);
   });
 
-  it('黑山羊幼仔使邪祀者 HP/SAN 同时归零时，SAN 归零胜负优先于死亡胜负', () => {
+  it('黑山羊幼仔伤害先结算 HP，致死时不再扣减 SAN', () => {
     const players = [
       makePlayer({ name: '追猎者', role: ROLE_HUNTER }),
       makePlayer({ name: '邪祀者', role: ROLE_CULTIST, hp: 1, san: 1, hand: [createBlackGoatYoungCard()] }),
@@ -732,8 +742,8 @@ describe('turnEngine stat events', () => {
 
     const result = startNextTurn(gs);
 
-    expect(result.players[1]).toMatchObject({ hp: 0, san: 0, isDead: false });
-    expect(result.gameOver?.winner).toBe(ROLE_CULTIST);
+    expect(result.players[1]).toMatchObject({ hp: 0, san: 1, isDead: true });
+    expect(result.gameOver?.winner).toBe(ROLE_HUNTER);
     expect(result._inspectionEvents || []).toEqual([]);
   });
 
