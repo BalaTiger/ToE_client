@@ -718,10 +718,18 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影', {
     } catch { /* ignore */ }
   }, [noteUserGesture]);
 
+  const tickAudioContextRef = useRef(null);
   const playTickSound = useCallback(() => {
     noteUserGesture();
     try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
+      const existing = tickAudioContextRef.current;
+      const ctx = existing && existing.state !== 'closed'
+        ? existing
+        : new AudioContextClass();
+      tickAudioContextRef.current = ctx;
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);

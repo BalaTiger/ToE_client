@@ -165,6 +165,27 @@ export function buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs 
   const q = [];
   if (!oldGs || !Array.isArray(oldGs.players) || !Array.isArray(effectivePlayers)) return q;
   const msgs = Array.isArray(newMsgs) ? newMsgs : [];
+  const multiplyMsg = msgs.find(m => typeof m === 'string' && m.includes('【繁衍】') && m.includes('黑山羊幼仔'));
+  const multiplyMatch = multiplyMsg?.match(/^【繁衍】(.+?) 将黑山羊幼仔传播给了 (.+)$/);
+  if (multiplyMatch) {
+    const fromName = multiplyMatch[1];
+    const targetName = multiplyMatch[2];
+    const fromPid = fromName === '你' ? 0 : effectivePlayers.findIndex(p => p?.name === fromName);
+    const toPid = targetName === '你' ? 0 : effectivePlayers.findIndex(p => p?.name === targetName);
+    const oldHandCount = oldGs.players?.[toPid]?.hand?.length ?? 0;
+    const newHandCount = effectivePlayers?.[toPid]?.hand?.length ?? 0;
+    if (fromPid >= 0 && toPid >= 0 && newHandCount > oldHandCount) {
+      q.push(cardTransferStep({
+        fromPid,
+        dest: 'player',
+        toPid,
+        count: newHandCount - oldHandCount,
+        effect: 'blackGoat',
+        durationMs: 1500,
+        msgs: [multiplyMsg],
+      }));
+    }
+  }
   const hasBewitchGiftLog = msgs.some(m => typeof m === 'string' && m.includes('【蛊惑】') && m.includes('赠予'));
   const hasExplicitGainAnimationLog = hasBewitchGiftLog || msgs.some(m => typeof m === 'string' && (
     m.includes('【黑暗子嗣】') && m.includes('黑山羊幼仔')
@@ -277,6 +298,30 @@ export function buildAnimQueue(oldGs, newGs) {
       (targetPid === 0 && (line.includes('你 从手牌信仰') || line.includes('你从手牌直接信仰')))
     ));
     if (worshipMsg) q.push({ type: 'GOD_HIGHLIGHT', targetPid, godKey: player.godName, msgs: [worshipMsg] });
+  });
+  // 同一邪神只能有一名信徒。新信徒的高亮之后，显式播放旧信徒的
+  // godZone 整体进入弃牌堆，确保本地和远端都能观察到信仰被抢夺。
+  (oldGs?.players || []).forEach((oldPlayer, targetPid) => {
+    const nextPlayer = effectivePlayers?.[targetPid];
+    const oldGodCards = Array.isArray(oldPlayer?.godZone) ? oldPlayer.godZone : [];
+    const nextGodCards = Array.isArray(nextPlayer?.godZone) ? nextPlayer.godZone : [];
+    if (!oldPlayer?.godName || nextPlayer?.godName || !oldGodCards.length || nextGodCards.length) return;
+    const abandonMsgs = newMsgs.filter(line => (
+      typeof line === 'string'
+      && oldPlayer.name
+      && line.includes(oldPlayer.name)
+      && (line.includes('被邪神抛弃') || line.includes('失去信仰'))
+    ));
+    q.push(cardTransferStep({
+      fromPid: targetPid,
+      dest: 'discard',
+      count: oldGodCards.length,
+      cards: oldGodCards,
+      sourceAnchor: 'godPower',
+      effect: 'godAbandon',
+      durationMs: 1500,
+      msgs: abandonMsgs,
+    }));
   });
   if (newGs?.apophisNight?.active) {
     const nightMsg = newMsgs.find(line => typeof line === 'string' && line.includes('【噬日灭世】黑夜降临'));

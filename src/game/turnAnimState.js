@@ -483,7 +483,7 @@ export function buildSkippedTurnReplayQueue(state, { buildQueue = buildAnimQueue
         name: localDisplayName(replay.playerIdx, replay.playerName || state?.players?.[replay.playerIdx]?.name || '???'),
         msgs: replay.turnStartLogs || [],
       },
-      ...effectQueue,
+      ...(!replay.restingSkip ? effectQueue : []),
       statePatchStep({ players: preCthPlayers, log: preCthLog, msgs: remainingLogs }),
     ];
     if (cthReplay?.draws?.length) {

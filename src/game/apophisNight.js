@@ -1,6 +1,7 @@
 import { GOD_DEFS } from '../constants/card';
 import { buildStatEvents } from './statEvents';
-import { clamp, copyPlayers, formatSanLoss } from './coreUtils';
+import { copyPlayers, formatSanLoss } from './coreUtils';
+import { submitDamageEvents } from './effectEngine';
 import { hasGodPowerImmunity } from './godPowerImmunity';
 
 export function getApophisNightForLevel(level = 1) {
@@ -49,7 +50,10 @@ export function resolveApophisTarget({
   if (roll <= night.threshold && alternatives.length) {
     targetIdx = alternatives[Math.floor(Math.random() * alternatives.length)];
     const beforePlayers = copyPlayers(P);
-    P[actorIdx].san = clamp((P[actorIdx].san || 0) - 1);
+    const damage = submitDamageEvents({
+      players: P, deck: D, discard: Disc, log: L, currentTurn: gs?.currentTurn ?? actorIdx,
+      events: [{ targetIdx: actorIdx, lostSan: 1, source: '黑夜' }],
+    });
     eventLog = `【黑夜】${P[actorIdx].name} ${label}掷出 ${roll}，目标由 ${P[selectedIdx].name} 错乱为 ${P[targetIdx].name}，${formatSanLoss(1)}`;
     L = [...L, eventLog];
     const statEventSeq = (gs?._statEventSeq || 0) + 1;
@@ -58,6 +62,7 @@ export function resolveApophisTarget({
     if (statEvents.length) {
       statPatch = { _statEvents: [...(gs?._statEvents || []), ...statEvents], _statEventSeq: statEventSeq };
     }
+    if (damage.phase) statPatch = { ...statPatch, abilityData: damage.abilityData, phase: damage.phase };
   } else {
     eventLog = `【黑夜】${P[actorIdx].name} ${label}掷出 ${roll}，目标未偏移`;
     L = [...L, eventLog];

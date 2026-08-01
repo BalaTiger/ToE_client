@@ -1,8 +1,32 @@
 import { describe, it, expect } from 'vitest';
 import { applyBalanceDiscardSideEffects } from '../balanceCards';
+import { submitDamageEvents } from '../effectEngine';
 import { makeStandardPlayers } from './factory';
 
 describe('balanceCards', () => {
+  it('回合外弃置天平时先进入虚化决策且不提前扣除属性', () => {
+    const players = makeStandardPlayers(3);
+    players[1].hp = 8;
+    players[1].etherealizeStacks = 1;
+    const result = applyBalanceDiscardSideEffects({
+      players,
+      deck: [],
+      discard: [],
+      log: [],
+      ownerIdx: 1,
+      cards: [{ type: 'lifeBalance', name: '生命天平' }],
+      currentTurn: 0,
+      submitDamage: submitDamageEvents,
+    });
+
+    expect(players[1].hp).toBe(8);
+    expect(result.etherealizeDecision).toMatchObject({
+      type: 'etherealizeRedirect',
+      targetIdx: 1,
+      lostHp: 3,
+    });
+  });
+
   it('天平牌从当前持有者手牌进入弃牌堆时惩罚当前持有者', () => {
     const players = makeStandardPlayers(3);
     players[1].hp = 8;

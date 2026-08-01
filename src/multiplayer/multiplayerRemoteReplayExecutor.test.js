@@ -110,11 +110,32 @@ describe('multiplayer remote replay executor', () => {
     }));
     expect(ctx.visualStateLocks.lock).toHaveBeenCalledWith(lock);
     expect(ctx.markInspectionEventsSeen).toHaveBeenCalledWith([{ seq: 2 }]);
-    expect(ctx.pendingGsRef.current).toBe(pendingGs);
-    expect(ctx.animQueueRef.current).toEqual([{ type: 'PAUSE' }]);
-    expect(ctx.setAnim).toHaveBeenCalledWith(animation);
+    expect(ctx.triggerAnimQueue).toHaveBeenCalledWith([
+      animation,
+      { type: 'PAUSE' },
+    ], pendingGs);
+    expect(ctx.setAnim).not.toHaveBeenCalled();
     expect(ctx.receivedGsRef.current).toBe(true);
     expect(ctx.suppressNextBroadcastRef.current).toBe(true);
+  });
+
+  it('routes a local turn draw through the same normalized queue entry as remote viewers', () => {
+    const ctx = context();
+    const pendingGs = state({ currentTurn: 0, phase: 'DRAW_REVEAL' });
+    const turn = { type: 'YOUR_TURN' };
+    const draw = { type: 'DRAW_CARD', card: { id: 'draw-1', name: '测试牌' } };
+
+    applyMultiplayerReplayAction({
+      type: MP_REMOTE_REPLAY.START_ANIM,
+      maskedGs: state({ currentTurn: 0 }),
+      pendingGs,
+      anim: turn,
+      queue: [draw],
+    }, pendingGs, ctx);
+
+    expect(ctx.triggerAnimQueue).toHaveBeenCalledWith([turn, draw], pendingGs);
+    expect(ctx.pendingGsRef.current).toBeNull();
+    expect(ctx.animQueueRef.current).toEqual([]);
   });
 
   it('ignores stale duplicate state packets', () => {

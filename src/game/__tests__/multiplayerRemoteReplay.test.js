@@ -59,6 +59,35 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.pendingGs.log).toEqual(['艾伦 掷出 5 点']);
   });
 
+  it('replays a remote damage link establishment as a card transfer animation', () => {
+    const establishMsg = '【两人一绳】艾伦 与 贝拉 间架起链条，一方受到HP伤害时另一方受等量伤害';
+    const previousGs = makeState({ players: [player('你'), player('艾伦'), player('贝拉')], currentTurn: 1 });
+    const rotated = makeState({
+      players: [
+        player('你'),
+        { ...player('艾伦'), damageLink: { partner: 2, active: true, expiryOwner: 1 } },
+        { ...player('贝拉'), damageLink: { partner: 1, active: true, expiryOwner: 1 } },
+      ],
+      currentTurn: 1,
+      log: [establishMsg],
+    });
+
+    const action = buildMpRemoteReplayAction({
+      rotated,
+      previousGs,
+      roleRevealed: true,
+      buildAnimQueue: vi.fn(() => []),
+      buildFullHandSwapTransferQueueFromLogs: vi.fn(() => []),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    const transferStep = action.queue.find(step => step?.type === 'CARD_TRANSFER');
+    expect(transferStep).toMatchObject({ effect: 'damageLink', fromPid: 1, toPid: 2, msgs: [establishMsg] });
+    // 飞行期间锁定建立前的 players，常驻链条在动画完成后才出现
+    expect(action.visualLock).toMatchObject({ players: previousGs.players });
+    expect(action.pendingGs.players[1].damageLink).toMatchObject({ partner: 2, active: true });
+  });
+
   it('replays a remote treasure dodge decision as one complete synchronized queue', () => {
     const dodgeCard = { id: 'dodge-card', key: 'A1', name: '负面区域牌', type: 'zone' };
     const beforePlayers = [player('你'), { ...player('艾伦'), role: '寻宝者', hp: 10 }];
@@ -1178,6 +1207,113 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.pendingGs._visualEvents).toEqual([]);
   });
 
+  it('replays a kept zone-card transfer before its healing effects', () => {
+    const dragonHeart = { id: 'dragon-heart', key: 'C3', name: '龙之心', type: 'zone' };
+    const beforePlayers = [player('你'), { ...player('艾伦'), hp: 4, san: 6 }];
+    const afterPlayers = [player('你'), { ...player('艾伦'), hp: 7, san: 7, hand: [dragonHeart] }];
+    const previousGs = makeState({
+      currentTurn: 1,
+      phase: 'DRAW_REVEAL',
+      players: beforePlayers,
+      drawReveal: { card: dragonHeart, drawerIdx: 1, drawerName: '艾伦', needsDecision: true },
+    });
+    const rotated = makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players: afterPlayers,
+      log: ['艾伦 收入了 [C3] 龙之心', '艾伦 恢复 3 HP', '艾伦 恢复 1 SAN'],
+    });
+    const action = buildAction(rotated, {
+      previousGs,
+      buildAnimQueue: vi.fn(() => [
+        { type: 'HP_HEAL', targetPid: 1 },
+        { type: 'SAN_HEAL', targetPid: 1 },
+      ]),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.map(step => step.type)).toEqual([
+      'CARD_TRANSFER',
+      'HP_HEAL',
+      'SAN_HEAL',
+      'STATE_PATCH',
+    ]);
+    expect(action.queue[0]).toMatchObject({
+      fromPid: 1,
+      toPid: 1,
+      effect: 'draw',
+      cards: [dragonHeart],
+    });
+  });
+
+  it('replays a normal zone-card discard decision before committing state', () => {
+    const rejected = { id: 'rejected-zone', key: 'D2', name: '群蛇陷阱', type: 'zone' };
+    const previousGs = makeState({
+      currentTurn: 1,
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card: rejected, drawerIdx: 1, drawerName: '艾伦', needsDecision: true },
+    });
+    const rotated = makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      discard: [rejected],
+      log: ['艾伦 弃置了 [D2] 群蛇陷阱'],
+    });
+    const action = buildAction(rotated, { previousGs });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.map(step => step.type)).toEqual(['DISCARD', 'STATE_PATCH']);
+    expect(action.queue[0]).toMatchObject({ card: rejected, targetPid: 1 });
+  });
+
+  it('finishes the complete remote swap queue before entering treasure-win wait', () => {
+    const players = [player('你'), player('远端寻宝者')];
+    const swapMsg = '拿走 [B2] 旧牌，还给 你 [D4] 最后一张编号';
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'MP_PLAYER_WIN_WAIT',
+      players,
+      drawReveal: null,
+      abilityData: {
+        winReason: '远端寻宝者通过掉包集齐了全部编号！',
+        winnerIdx: 1,
+        waitingForTreasureReveal: true,
+      },
+      log: [swapMsg, '远端寻宝者集齐了全部编号！'],
+      _visualEvents: [{
+        id: 'swap-win-1',
+        type: 'swapCards',
+        sourceIdx: 1,
+        targetIdx: 0,
+        sourceCount: 1,
+        targetCount: 1,
+        msgs: [swapMsg],
+      }],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION' }),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.map(step => step.type)).toEqual([
+      'SKILL_SWAP',
+      'VISUAL_LOCK',
+      'CARD_TRANSFER',
+      'CARD_TRANSFER',
+      'STATE_PATCH',
+    ]);
+    expect(action.queue.at(-1)).toMatchObject({
+      type: 'STATE_PATCH',
+      phase: 'MP_PLAYER_WIN_WAIT',
+    });
+    expect(action.pendingGs).toMatchObject({
+      phase: 'MP_PLAYER_WIN_WAIT',
+      abilityData: {
+        winnerIdx: 1,
+        waitingForTreasureReveal: true,
+      },
+    });
+  });
+
   it('commits the swapped hand before a following hand-limit discard animation', () => {
     const undergroundSpring = { id: 'spring', name: '地下泉', key: 'C2', type: 'zone' };
     const forestLord = { id: 'forest', name: '森之领主', isGod: true, godKey: 'SHU' };
@@ -1653,8 +1789,10 @@ describe('buildMpRemoteReplayAction', () => {
       }),
     });
 
-    expect(action.type).toBe(MP_REMOTE_REPLAY.SET_STATE);
-    expect(action.gs._visualEvents).toEqual([]);
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.some(step => step.type === 'CARD_TRANSFER' && step.cards?.[0] === kept)).toBe(true);
+    expect(action.queue.some(step => step.type === 'SKILL_BEWITCH')).toBe(false);
+    expect(action.pendingGs._visualEvents).toEqual([]);
     expect(action.consumedVisualEventIds?.length).toBeGreaterThan(0);
   });
 
@@ -2554,6 +2692,42 @@ describe('buildMpRemoteReplayAction', () => {
     expect(types.slice(0, 5)).toEqual(['YOUR_TURN', 'BLACK_GOAT_PULSE', 'HP_DAMAGE', 'SAN_DAMAGE', 'STATE_PATCH']);
     expect(types.indexOf('DRAW_CARD')).toBeGreaterThan(types.indexOf('STATE_PATCH'));
     expect(action.queue.find(step => step.type === 'DRAW_CARD')).toMatchObject({ card: nextCard, targetPid: 1 });
+  });
+
+  it('replays black-goat turn-start damage and then waits before a lit ZHU top card is drawn', () => {
+    const goat = { id: 'goat-zhu', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const litCard = { id: 'lit-top', name: '被点亮的顶牌', key: 'C3', type: 'zone' };
+    const preTurnPlayers = [player('你'), { ...player('烛九阴信徒'), hand: [goat], hp: 10, san: 10 }];
+    const beforeDrawPlayers = [player('你'), { ...player('烛九阴信徒'), hand: [goat], hp: 9, san: 9 }];
+    const goatLog = '【黑山羊幼仔】烛九阴信徒 失去 1 HP 和 1 SAN';
+    const previousGs = makeState({ currentTurn: 0, players: preTurnPlayers, log: [] });
+    const rotated = makeState({
+      currentTurn: 1,
+      phase: 'DRAW_REVEAL',
+      players: beforeDrawPlayers,
+      drawReveal: { card: litCard, drawerIdx: 1, needsDecision: true, zhuResolved: false },
+      zhuLight: { ownerIdx: 1, cardIds: [litCard.id] },
+      _preTurnPlayers: preTurnPlayers,
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 烛九阴信徒 的回合开始 ──'],
+      _drawLogs: ['烛九阴信徒 即将摸到 [C3] 被点亮的顶牌'],
+      _statEventSeq: 9,
+      _statEvents: [
+        { type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10, isDead: false }, to: { hp: 9, san: 10, isDead: false }, reason: '黑山羊幼仔', logHint: goatLog, seq: 9 },
+        { type: 'SAN_LOSS', target: 1, from: { hp: 10, san: 10, isDead: false }, to: { hp: 9, san: 9, isDead: false }, reason: '黑山羊幼仔', logHint: goatLog, seq: 9 },
+      ],
+      log: ['── 烛九阴信徒 的回合开始 ──', goatLog],
+    });
+
+    const action = buildAction(rotated, { previousGs });
+    expect(action.type).toBe(MP_REMOTE_REPLAY.START_ANIM);
+    expect(action.anim).toMatchObject({ type: 'YOUR_TURN', name: '烛九阴信徒' });
+    expect(action.queue.map(step => step.type)).toEqual(['BLACK_GOAT_PULSE', 'HP_DAMAGE', 'SAN_DAMAGE']);
+    expect(action.queue.some(step => step.type === 'DRAW_CARD')).toBe(false);
+    expect(action.pendingGs).toMatchObject({
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card: litCard, zhuResolved: false },
+    });
   });
 
   it('does not play hunt reveal animation for the hunted local player', () => {

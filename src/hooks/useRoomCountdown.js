@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { startSecondCountdown } from './useMultiplayerTimers';
 
 export function useRoomCountdown(roomModal, playTickSound) {
   const [cdSecondsLeft, setCdSecondsLeft] = useState(null);
@@ -17,15 +18,13 @@ export function useRoomCountdown(roomModal, playTickSound) {
       return;
     }
     setCdType(cd.type);
-    setCdSecondsLeft(cd.seconds);
-    cdIntervalRef.current = setInterval(() => {
-      setCdSecondsLeft(s => {
-        const next = s === null || s <= 1 ? 0 : s - 1;
-        if (next === 0) clearInterval(cdIntervalRef.current);
-        if (next > 0 && next <= 10) playTickSound();
-        return next;
-      });
-    }, 1000);
+    startSecondCountdown({
+      seconds: cd.seconds,
+      warningAt: 10,
+      setSeconds: setCdSecondsLeft,
+      intervalRef: cdIntervalRef,
+      playTickSound,
+    });
     return () => {
       if (cdIntervalRef.current) clearInterval(cdIntervalRef.current);
     };

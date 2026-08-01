@@ -138,6 +138,63 @@ describe('buildAnimQueue stat animations', () => {
     ]));
   });
 
+  it('抢夺同一邪神信仰时显式播放旧信徒神牌进入弃牌堆', () => {
+    const oldGod = makeGodCard('VRI');
+    const newGod = makeGodCard('VRI');
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '新信徒', hand: [newGod], godName: null, godZone: [] }),
+        makePlayer({ name: '旧信徒', godName: 'VRI', godLevel: 1, godZone: [oldGod] }),
+      ],
+      log: [],
+    });
+    const newGs = makeGs({
+      players: [
+        makePlayer({ name: '新信徒', hand: [], godName: 'VRI', godLevel: 1, godZone: [newGod] }),
+        makePlayer({ name: '旧信徒', san: 9, godName: null, godLevel: 0, godZone: [] }),
+      ],
+      discard: [oldGod],
+      log: ['新信徒 从手牌信仰 弗栗多', '旧信徒 被邪神抛弃，失去1SAN'],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    expect(queue).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'CARD_TRANSFER',
+        fromPid: 1,
+        dest: 'discard',
+        count: 1,
+        cards: [oldGod],
+        sourceAnchor: 'godPower',
+        effect: 'godAbandon',
+      }),
+    ]));
+  });
+
+  it('远端繁衍生成带黑山羊奔跑音效标记的专属转牌步骤', () => {
+    const goat = { id: 'goat-young', name: '黑山羊幼仔', type: 'blackGoatYoung' };
+    const oldGs = makeGs({
+      players: [makePlayer({ name: '艾伦' }), makePlayer({ name: '贝拉' })],
+      log: [],
+    });
+    const newGs = makeGs({
+      players: [oldGs.players[0], { ...oldGs.players[1], hand: [goat] }],
+      log: ['【繁衍】艾伦 将黑山羊幼仔传播给了 贝拉'],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    expect(queue).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'CARD_TRANSFER',
+        fromPid: 0,
+        toPid: 1,
+        count: 1,
+        effect: 'blackGoat',
+        durationMs: 1500,
+      }),
+    ]));
+  });
+
   it('旧状态已携带的统计事件不会因标量水位滞后而跨回合重播', () => {
     const allenRestLog = '艾伦 选择【休息】，掷骰 5、1，取高值回复 5HP，翻面休息中';
     const playerGoatLog = '【黑山羊幼仔】你 失去 2 HP 和 2 SAN';

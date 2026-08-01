@@ -57,6 +57,8 @@ export const hasHuntRevealableCard = (playerOrHand) => {
 
 export function buildTsathogguaSlimeBalanceDecision(playersBefore, playersAfter, extra = {}) {
   if (!Array.isArray(playersBefore) || !Array.isArray(playersAfter)) return null;
+  const { pendingSlimeBalanceDecisions: carriedDecisions = [], ...decisionExtra } = extra;
+  const decisions = [];
   for (let i = 0; i < playersAfter.length; i++) {
     const before = playersBefore[i];
     const after = playersAfter[i];
@@ -65,7 +67,7 @@ export function buildTsathogguaSlimeBalanceDecision(playersBefore, playersAfter,
     const lostSan = Math.max(0, (before.san || 0) - (after.san || 0));
     if (!(lostHp || lostSan)) continue;
     if ((after.hand || []).some(isTsathogguaSlime)) {
-      return {
+      decisions.push({
         type: 'tsgSlimeBalance',
         targetIdx: i,
         beforeHp: before.hp,
@@ -74,11 +76,15 @@ export function buildTsathogguaSlimeBalanceDecision(playersBefore, playersAfter,
         afterSan: after.san,
         lostHp,
         lostSan,
-        ...extra,
-      };
+        ...(after._pendingDamageLinkBreak ? { pendingDamageLinkBreak: { ...after._pendingDamageLinkBreak } } : {}),
+        ...decisionExtra,
+      });
     }
   }
-  return null;
+  if (!decisions.length) return null;
+  const [first, ...rest] = decisions;
+  const queued = [...rest, ...carriedDecisions];
+  return queued.length ? { ...first, pendingSlimeBalanceDecisions: queued } : first;
 }
 
 export function getLivingAdjacentIndices(players, ci) {

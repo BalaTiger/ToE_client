@@ -841,7 +841,7 @@ describe('turnEngine stat events', () => {
     ]);
   });
 
-  it('同为其他被动时，中毒先于两人一绳未断裂回复结算', () => {
+  it('中毒伤害会先令两人一绳断裂，因此不再触发到期治疗', () => {
     const players = [
       makePlayer({ name: '你', hp: 4, damageLink: { active: true, partner: 1, expiryOwner: 1 } }),
       makePlayer({ name: '艾伦', hp: 5, poisonStacks: 2, damageLink: { active: true, partner: 0, expiryOwner: 1 } }),
@@ -850,17 +850,16 @@ describe('turnEngine stat events', () => {
 
     const result = startNextTurn(gs);
 
-    expect(result.players[1].hp).toBe(7);
+    expect(result.players[0].hp).toBe(1);
+    expect(result.players[1].hp).toBe(0);
     expect(result.players[1].poisonStacks).toBe(1);
     const poisonLogIndex = result.log.findIndex(line => line.includes('【中毒】'));
     const linkLogIndex = result.log.findIndex(line => line.includes('【两人一绳】'));
     expect(poisonLogIndex).toBeGreaterThan(-1);
     expect(linkLogIndex).toBeGreaterThan(poisonLogIndex);
-    expect(result._statEvents).toMatchObject([
-      { type: 'HP_LOSS', target: 1, from: { hp: 5 }, to: { hp: 3 }, reason: '中毒', seq: 1 },
-      { type: 'HP_GAIN', target: 0, from: { hp: 4 }, to: { hp: 8 }, reason: '两人一绳', seq: 2 },
-      { type: 'HP_GAIN', target: 1, from: { hp: 3 }, to: { hp: 7 }, reason: '两人一绳', seq: 2 },
-    ]);
+    expect(result.log.some(line => line.includes('绳索未断裂'))).toBe(false);
+    expect(result.players[0].damageLink?.active).toBe(false);
+    expect(result.players[1].damageLink?.active).toBe(false);
   });
 
   it('撒托古亚信徒在回合结束后获得赐福黏液', () => {
@@ -1508,5 +1507,92 @@ describe('turnEngine stat events', () => {
       godLevel: 3,
     });
     expect(result.msgs.some(msg => msg.includes('邪祀者') && msg.includes('收入手牌'))).toBe(true);
+  });
+
+  it('中毒先暂停等待黏液，尚未结算两人一绳断裂或到期治疗', () => {
+    const slime1 = createTsathogguaSlimeCard();
+    const slime2 = createTsathogguaSlimeCard();
+    const players = [
+      makePlayer({ name: '你', hp: 4, damageLink: { active: true, partner: 1, expiryOwner: 1 } }),
+      makePlayer({ name: '艾伦', hp: 5, san: 7, poisonStacks: 2, hand: [slime1, slime2], damageLink: { active: true, partner: 0, expiryOwner: 1 } }),
+    ];
+
+    const result = startNextTurn(makeGs({ players, currentTurn: 0, log: [] }));
+
+    expect(result.phase).toBe('TSG_SLIME_BALANCE');
+    expect(result.players[1].hp).toBe(3);
+    expect(result.players[0].hp).toBe(4);
+    expect(result.players[1].damageLink.active).toBe(true);
+    expect(result.abilityData).toMatchObject({
+      targetIdx: 1,
+      lostHp: 2,
+      pendingDamageLinkBreak: { sourceIdx: 1, partnerIdx: 0 },
+      continueTurnStartDraw: true,
+    });
+    expect(result.log.some(line => line.includes('绳索断裂'))).toBe(false);
+    expect(result.log.some(line => line.includes('绳索未断裂'))).toBe(false);
+  });
+
+  it('AI 跳过摸牌后仍停留在自己的行动阶段', () => {
+    const goat = { id: 'goat', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', hp: 8, san: 8, hand: [goat], skipNextDraw: true, skipNextDrawReason: '扭伤' }),
+    ];
+    const top = makeZoneCard('A2');
+
+    const result = startNextTurn(makeGs({ players, currentTurn: 0, deck: [top], log: [] }));
+
+    expect(result.currentTurn).toBe(1);
+    expect(result.phase).toBe('AI_TURN');
+    expect(result.players[1]).toMatchObject({ hp: 7, san: 7 });
+    expect(result.players[1].skipNextDraw).toBeUndefined();
+    expect(result.deck[0]).toBe(top);
+  });
+
+  it('翻面休息角色不会产生回合开始、黑山羊、中毒或绳索到期结算', () => {
+    const goat = { id: 'goat', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const players = [
+      makePlayer({ name: '你', damageLink: { active: true, partner: 1, expiryOwner: 1 } }),
+      makePlayer({
+        name: '艾伦', isResting: true, hp: 8, san: 8, poisonStacks: 2, hand: [goat],
+        damageLink: { active: true, partner: 0, expiryOwner: 1 },
+      }),
+      makePlayer({ name: '贝拉' }),
+    ];
+
+    const result = startNextTurn(makeGs({ players, currentTurn: 0, deck: [makeZoneCard('A2')], log: [] }));
+
+    expect(result.players[1]).toMatchObject({ hp: 8, san: 8, poisonStacks: 2, isResting: false });
+    expect(result.players[1].damageLink).toBeTruthy();
+    expect(result.log.some(line => line.includes('艾伦 的回合开始'))).toBe(false);
+    expect(result.log.some(line => line.includes('【黑山羊幼仔】艾伦'))).toBe(false);
+    expect(result.log.some(line => line.includes('【中毒】艾伦'))).toBe(false);
+  });
+
+  it('同一摸牌阶段内地磁反转立即改变后续固定摸牌来源', () => {
+    const slime = createTsathogguaSlimeCard();
+    const reversal = { id: 'reversal', key: 'C2', name: '地磁反转', type: 'geomagneticReversal', isZone: true };
+    const untouched = makeZoneCard('A2');
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', godName: 'TSG', godLevel: 1, hand: [slime] }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 0,
+      deck: [reversal, untouched],
+      discard: [],
+      log: [],
+      debugForceCardKeepPending: 'keep',
+      debugForceCardKeepTarget: 1,
+    });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players[1].hand.some(card => card.id === reversal.id)).toBe(true);
+    expect(result.players[1].hand.some(card => card.isTsathogguaSlime)).toBe(false);
+    expect(result.deck[0]).toBe(untouched);
+    expect(result.geomagneticReversalActive).toBe(false);
   });
 });

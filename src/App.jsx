@@ -52,7 +52,10 @@ import {
   makeInspectionMeta,
   clearPendingAnimDeathFlags,
   killPlayerState,
+  tryVritraImmortal,
   applyHpDamageWithLink,
+  submitDamageEvents,
+  resolvePendingDamageLinkBreak,
   applyFx,
   applySanLossToPlayerWithInspection,
   applyInspectionForSanLoss,
@@ -86,8 +89,6 @@ import {
   isRevealedCultist,
   canRevealForHunt,
   hasHuntRevealableCard,
-  buildEtherealizeLoss,
-  buildEtherealizeRedirectDecision,
   buildTsathogguaSlimeBalanceDecision,
   aiStep,
   TUTORIAL_FLOW,
@@ -98,6 +99,7 @@ import {
   applyTutorialStepState,
   clearTutorialWinState,
   startNextTurn as _startNextTurn,
+  continueTurnStartAfterDamageReaction,
   grantTsathogguaSlimeAtEndTurn,
   checkWin,
   playerDrawCard,
@@ -299,7 +301,7 @@ import { useMpCthDecisionTimer, useMpDecisionTimer, useMpDiscardTimer, useMpHunt
 import { useVisualDiscardSync } from './hooks/useVisualDiscardSync';
 import { advanceGodEncounter, formatGodEncounterProgress } from './game/balancePatches';
 import { useMultiplayerConnection } from './multiplayer/useMultiplayerConnection';
-import { useMultiplayerStateBroadcast } from './multiplayer/useMultiplayerStateBroadcast';
+import { buildPlayerWinWaitState, useMultiplayerStateBroadcast } from './multiplayer/useMultiplayerStateBroadcast';
 import { useMultiplayerEmojiSender, useWaitingRoomReconnect } from './multiplayer/useMultiplayerUiSession';
 import {
   getPendingZhuHideCardForState,
@@ -1101,15 +1103,19 @@ export default function Game(){
   const [houndsSecLeft,setHoundsSecLeft]=useState(null);
   const [houndsRevealedSeq,setHoundsRevealedSeq]=useState(0);
   const houndsWasActiveRef=useRef(false);
-  // 非本地寻宝者获胜（AI/远端）时，本地先播放藏宝图动画再进结算；
-  // treasureMapAcked 标记该动画已播完；mpTreasureWaitShownRef 标记联机等待阶段已播过，避免重复。
-  const [treasureMapAcked,setTreasureMapAcked]=useState(false);
+  // 结算前依次播放所有寻宝者胜者的藏宝图；本地/远端等待阶段已经播过的胜者不重复播放。
+  const [treasureMapAckCount,setTreasureMapAckCount]=useState(0);
+  const localTreasureMapShownRef=useRef(false);
   const mpTreasureWaitShownRef=useRef(false);
   useEffect(()=>{
-    if(!gs?.gameOver)setTreasureMapAcked(false);
+    if(!gs?.gameOver)setTreasureMapAckCount(0);
   },[gs?.gameOver]);
   useEffect(()=>{
-    if(!gs){mpTreasureWaitShownRef.current=false;return;}
+    if(!gs){
+      localTreasureMapShownRef.current=false;
+      mpTreasureWaitShownRef.current=false;
+      return;
+    }
     if(gs.phase==='MP_PLAYER_WIN_WAIT')mpTreasureWaitShownRef.current=true;
   },[gs,gs?.phase]);
 
@@ -1251,6 +1257,7 @@ export default function Game(){
     setAnimExiting,
     animQueueRef,
     pendingGsRef,
+    animCallbackRef,
     triggerAnimQueue,
   } = useAnimationQueue({
     gs,
@@ -1807,26 +1814,14 @@ export default function Game(){
         const P=copyPlayers(prev.players),Disc=[...prev.discard],L=[...prev.log];
         const beforePlayers=copyPlayers(P);
         const ti=prev.currentTurn;
+        let damageDecision=null;
         if(P[ti]&&!P[ti].isDead){
-          const loss=buildEtherealizeLoss({players:P,targetIdx:ti,currentTurn:prev.currentTurn,lostHp:4,source:'廷达罗斯猎犬'});
-          if(loss){
-            L.push(`廷达罗斯猎犬扑向 ${P[ti].name}`);
-            const decision=buildEtherealizeRedirectDecision([loss],{_turnOwner:prev.currentTurn});
-            return {
-              ...prev,
-              players:P,
-              discard:Disc,
-              log:L,
-              phase:'ETHEREALIZE_DECISION',
-              abilityData:{...decision},
-              houndsOfTindalosActive:false,
-              houndsOfTindalosTarget:ti,
-              houndsOfTindalosElapsed:0,
-            };
-          }
-          P[ti].hp=clamp(P[ti].hp-4);
+          damageDecision=submitDamageEvents({
+            players:P,deck:[...(prev.deck||[])],discard:Disc,log:L,currentTurn:prev.currentTurn,
+            events:[{targetIdx:ti,lostHp:4,source:'廷达罗斯猎犬'}],
+          });
           L.push(`廷达罗斯猎犬撕咬 ${P[ti].name}，其失去 4 HP`);
-          if(P[ti].hp<=0){
+          if(P[ti].hp<=0&&!damageDecision.abilityData&&!P[ti]._pendingDamageLinkBreak){
             P[ti]._pendingAnimDeath = true;
             P[ti].isDead=true;P[ti].roleRevealed=true;
             L.push(`☠ ${P[ti].name}（${P[ti].role}）倒下了！`);
@@ -1838,7 +1833,7 @@ export default function Game(){
         const statEventSeq=(prev._statEventSeq||0)+1;
         const statEvents=buildStatEvents(beforePlayers,P,L.slice(-2),{reason:'廷达罗斯猎犬',seq:statEventSeq});
         const houndsCard=INSPECTION_DECK.find(c=>c.effect==='houndsOfTindalos');
-        const nextGs={
+        let nextGs={
           ...prev,
           players:P,
           discard:Disc,
@@ -1849,7 +1844,9 @@ export default function Game(){
           inspectionDeck:houndsCard?shuffle([...(prev.inspectionDeck||[]),houndsCard]):prev.inspectionDeck,
           ...(statEvents.length?{_statEvents:[...(prev._statEvents||[]),...statEvents],_statEventSeq:statEventSeq}:{}),
         };
-        const win=checkWin(P,prev._isMP);
+        if(damageDecision?.phase)nextGs={...nextGs,phase:damageDecision.phase,abilityData:damageDecision.abilityData};
+        const hasDamageDecision=nextGs.phase==='TSG_SLIME_BALANCE'||nextGs.phase==='ETHEREALIZE_DECISION';
+        const win=hasDamageDecision?null:checkWin(P,prev._isMP);
         return win?{...nextGs,gameOver:win}:nextGs;
       });
     },1000);
@@ -2986,13 +2983,14 @@ export default function Game(){
   // Auto-freeze game the instant player 寻宝者 has a winning hand
   useEffect(()=>{
     if(!gs||gs.gameOver||showTutorial)return;
+    if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
     if(gs.phase==='TREASURE_WIN'||gs.phase==='PLAYER_WIN_PENDING'||gs.phase==='MP_PLAYER_WIN_WAIT')return;
     if(gs.phase==='SWAP_STEAL_CARD'||gs.phase==='SWAP_GIVE_CARD')return;
     const p0=gs.players[0];
     if(p0&&!p0.isDead&&(p0._nyaBorrow||p0.role)===ROLE_TREASURE&&isWinHand(p0.hand)){
       setGs(g=>g?{...g,phase:'TREASURE_WIN'}:g);
     }
-  },[gs,anim,showTutorial]);
+  },[gs,anim,animExiting,showTutorial]);
 
   // Handle AI automatic target selection for damage link (两人一绳)
   useEffect(()=>{
@@ -3226,35 +3224,21 @@ export default function Game(){
       return;
     }
     let P = copyPlayers(gs.players), D = [...gs.deck], Disc = [...gs.discard], L = [...gs.log];
-    const beforeLossPlayers = copyPlayers(P);
-    let pendingEtherealizeLosses=[];
-    const directHits=[];
-    losses.forEach(({ idx, lostCount }, hitOrder) => {
+    const damageEvents=losses.map(({ idx, lostCount }, hitOrder) => {
       L.push(`【玫瑰倒刺】${P[idx].name} 失去标记手牌，受到 ${2 * lostCount} HP 伤害`);
-      const loss=buildEtherealizeLoss({players:P,targetIdx:idx,currentTurn:gs.currentTurn,lostHp:2*lostCount,source:'玫瑰倒刺'});
-      if(loss)pendingEtherealizeLosses.push({...loss,order:hitOrder});
-      else directHits.push({targetIdx:idx,lostHp:2*lostCount,lostSan:0,source:'玫瑰倒刺',order:hitOrder});
+      return {targetIdx:idx,lostHp:2*lostCount,source:'玫瑰倒刺',order:hitOrder};
     });
-    // 伤害前置事件（虚化）检查完成前，任何伤害都不实际结算：
-    // 存在虚化候选时，其余直接伤害一并延迟，待决策链结束后归并结算
-    const deferredDirectLosses=pendingEtherealizeLosses.length?directHits:[];
-    if(!deferredDirectLosses.length){
-      directHits.forEach(hit=>applyHpDamageWithLink(P,hit.targetIdx,hit.lostHp,Disc,L,gs.currentTurn,D));
-    }
-    const win = checkWin(P, gs._isMP);
-    let newGs = withTsathogguaSlimeBalanceDecision({
+    const damage=submitDamageEvents({players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,events:damageEvents});
+    const win = damage.abilityData ? null : checkWin(P, gs._isMP);
+    const newGs = {
       ...gs,
       players: P,
       deck: D,
       discard: Disc,
       log: L,
+      ...(damage.phase?{phase:damage.phase,abilityData:damage.abilityData}:{}),
       ...(win ? { gameOver: win } : {})
-    }, beforeLossPlayers, { _turnOwner: gs.currentTurn });
-    if(!win&&pendingEtherealizeLosses.length){
-      const decision=buildEtherealizeRedirectDecision(pendingEtherealizeLosses,{_turnOwner:gs.currentTurn});
-      if(deferredDirectLosses.length)decision.deferredDirectLosses=deferredDirectLosses;
-      newGs={...newGs,phase:'ETHEREALIZE_DECISION',abilityData:{...newGs.abilityData,...decision}};
-    }
+    };
     roseThornPrevRef.current = P.map((player, idx) => ({
       idx,
       marked: getRoseThornMarkedIds(player, idx),
@@ -4112,16 +4096,25 @@ export default function Game(){
     if(winner===ROLE_CULTIST&&!showGodResurrection){
       return <GodResurrectionAnim onDone={handleGodResurrectionDone}/>;
     }
-    // 非本地寻宝者集齐宝藏（AI 或远端玩家）：本地也播放藏宝图动画，停留片刻后自动进入结算。
-    // 联机等待阶段（MP_PLAYER_WIN_WAIT）已播过藏宝图的，不再重复播放。
-    if(winner===ROLE_TREASURE&&!isLocalWinnerSeat(gs.gameOver)&&!treasureMapAcked&&!(gs._isMP&&mpTreasureWaitShownRef.current)){
-      const winnerPlayer=gs.players?.[winnerIdx];
+    // 每个视角都按房间座位次序播放所有寻宝者胜者的藏宝图；
+    // PLAYER_WIN_PENDING / MP_PLAYER_WIN_WAIT 已展示过的那一位从序列中剔除。
+    const treasureWinnerIndices=winner===ROLE_TREASURE
+      ?[winnerIdx,gs.gameOver.winnerIdx2].filter((idx,pos,all)=>Number.isInteger(idx)&&all.indexOf(idx)===pos)
+      :[];
+    const unseenTreasureWinners=treasureWinnerIndices.filter(idx=>{
+      if(idx===0&&localTreasureMapShownRef.current)return false;
+      if(idx===winnerIdx&&gs._isMP&&mpTreasureWaitShownRef.current)return false;
+      return true;
+    });
+    const treasureMapWinnerIdx=unseenTreasureWinners[treasureMapAckCount];
+    if(winner===ROLE_TREASURE&&Number.isInteger(treasureMapWinnerIdx)){
+      const winnerPlayer=gs.players?.[treasureMapWinnerIdx];
       return (
         <TreasureMapAnim
           hand={winnerPlayer?.hand||[]}
           subtitle={`${winnerPlayer?.name||''} 集齐了全部编号！`}
           autoConfirmMs={3000}
-          onConfirm={()=>setTreasureMapAcked(true)}
+          onConfirm={()=>setTreasureMapAckCount(count=>count+1)}
         />
       );
     }
@@ -4608,6 +4601,20 @@ export default function Game(){
     for(let _d=0;_d<remaining;_d++){
       const cthBeforeDrawPlayers=copyPlayers(P);
       const cthBeforeDrawDiscard=[...Disc];
+      if(!baseGsAfterDecision.geomagneticReversalActive){
+        const zhuGuard=getZhuTopGuard({...baseGsAfterDecision,players:P,deck:D,currentTurn:0},D);
+        if(zhuGuard){
+          const pendingZhuGs={
+            ...baseGsAfterDecision,
+            players:P,deck:D,discard:Disc,log:L,zhuLight:zhuGuard.zhuLight,
+            phase:'ZHU_HIDE_AI_DRAW',drawReveal:null,selectedCard:null,
+            abilityData:{zhuGuard,drawerIdx:0,fromRest:true,cthDrawsRemaining:remaining-_d},
+          };
+          if(pendingZhuGs._isMP)broadcastMpStateBeforeLocalReplay(pendingZhuGs);
+          setGs(pendingZhuGs);
+          return;
+        }
+      }
       const r2=playerDrawCard(P,D,Disc,0,baseGsAfterDecision);P=r2.P;D=r2.D;Disc=r2.Disc;
       const drawMsg=r2.drawnCard?`你 摸到 ${drawCardDecisionText(r2.drawnCard)}`:'';
       if(r2.reshuffleLog)L.push(r2.reshuffleLog);
@@ -4654,7 +4661,7 @@ export default function Game(){
       if(r2.kept){
         if(r2.effectMsgs.length)L.push(...r2.effectMsgs);
         const split=splitAnimBoundLogs(r2.effectMsgs||[]);
-        const forcedGs={...baseGsAfterDecision,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,selectedCard:null,
+        const forcedGs={...baseGsAfterDecision,...(r2.statePatch||{}),players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,selectedCard:null,
           abilityData:{...(fromRest?{fromRest:true}:{}),cthDrawsRemaining:remaining-_d-1}};
         const statQ=bindAnimLogChunks(buildAnimQueue(baseGsAfterDecision,forcedGs),{statLogs:split.stat});
         if(forcedGs._isMP)broadcastMpStateBeforeLocalReplay(forcedGs);
@@ -5018,8 +5025,17 @@ export default function Game(){
     // 2. 最后，如果游戏仍未结束，且该寻宝者仍然存活，检查该寻宝者是否达成胜利条件
     if(isLocalSeatIndex(drawerIdx)&&!P[0].isDead&&(P[0]._nyaBorrow||P[0].role)==='寻宝者'&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
-      syncVisibleLog([...L,localTreasureWinLog(gs)]);
-      setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',drawReveal:null,abilityData:{winReason:localTreasureWinReason(gs)},...(res.statePatch||{})});
+      const pendingWinGs={...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',drawReveal:null,abilityData:{winReason:localTreasureWinReason(gs)},...(res.statePatch||{})};
+      const inspectionResult=buildInspectionAwareAnimQueue(gs,pendingWinGs,{buildAnimQueue,copyPlayers});
+      const effectQueue=inspectionResult.inspectionEvents.length
+        ?inspectionResult.queue
+        :bindAnimLogChunks(inspectionResult.queue,splitAnimBoundLogs(L.slice(gs.log.length)));
+      const transfer=!dr.fromEndTurnReplay?cardTransferStep({
+        fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,
+        sourceAnchor:'playerArea',effect:'draw',cards:[resolutionCard],
+      }):null;
+      if(pendingWinGs._isMP&&!dr.fromEndTurnReplay)broadcastMpStateBeforeLocalReplay(pendingWinGs);
+      triggerAnimQueue([transfer,...effectQueue].filter(Boolean),pendingWinGs);
       return;
     }
     // 保留abilityData中的fromRest和cthDrawsRemaining信息
@@ -5047,6 +5063,7 @@ export default function Game(){
       // 已在队列里播放的检定标记为已消费，避免检定 useEffect 再次重放
       const decisionGs={...newGs,phase,abilityData,_inspectionSeq:Math.max(newGs._inspectionSeq||0,inspectionResult.inspectionSeq||0)};
       if(effectQueue.length){
+        if(decisionGs._isMP&&!dr.fromEndTurnReplay)broadcastMpStateBeforeLocalReplay(decisionGs);
         triggerAnimQueue([...effectQueue,statePatchStep({players:P,discard:Disc})],decisionGs);
       }else{
         syncVisibleLog(L);
@@ -5079,6 +5096,7 @@ export default function Game(){
       drawReveal:newGs.drawReveal,abilityData:newGs.abilityData,
       ...(res.statePatch||{}),
     });
+    if(newGs._isMP&&!dr.fromEndTurnReplay)broadcastMpStateBeforeLocalReplay(newGs);
     // CTH fromRest: 先播放当前这张牌的结算动画，再继续剩余摸牌/进入下一回合
     if(dr.fromRest&&!win){
       // TURN_BOUNDARY_PAUSE 给手牌布局/CSS 过渡留出时间，避免被后续无尽通道队列截断
@@ -5111,7 +5129,6 @@ export default function Game(){
       return;
     }
     if(incomeQueue.length){
-      broadcastVisualReplayIfNeeded(newGs);
       if(dr.fromEndTurnReplay)appendEndTurnReplaySyncQueue([...incomeQueue,incomeStatePatch],L.slice(gs.log.length));
       setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
       triggerAnimQueue([...incomeQueue,incomeStatePatch],newGs);
@@ -5229,7 +5246,10 @@ export default function Game(){
     let D=hide?moveTopDeckCardToBottom(gs.deck):[...gs.deck];
     let Disc=[...gs.discard];
     const beforeDrawPlayers=copyPlayers(P);
-    const res=aiDrawAndApply(drawerIdx,P,D,Disc,{...gs,zhuLight:nextZhuLight,_zhuBypassTopGuard:true});
+    const isAiDrawer=isAiSeat(gs,drawerIdx)&&!gs._isMP;
+    const res=isAiDrawer
+      ?aiDrawAndApply(drawerIdx,P,D,Disc,{...gs,zhuLight:nextZhuLight,_zhuBypassTopGuard:true})
+      :playerDrawCard(P,D,Disc,drawerIdx,{...gs,zhuLight:nextZhuLight,_zhuBypassTopGuard:true});
     P=res.P;D=res.D;Disc=res.Disc;
     const split=splitAnimBoundLogs(res.effectMsgs||[]);
     const L=[
@@ -5238,8 +5258,21 @@ export default function Game(){
       ...(split.preStat||[]),
       ...(split.stat||[]),
     ];
-    const win=checkWin(P,gs._isMP);
-    const {phase:nextPhase,abilityData:nextAbilityData}=deriveEffectDecisionState(res.statePatch,{fallbackPhase:'AI_TURN'});
+    const fallbackAfterZhuDraw=isAiDrawer?'AI_TURN':'ACTION';
+    const {phase:derivedPhase,abilityData:nextAbilityData}=deriveEffectDecisionState(res.statePatch,{fallbackPhase:fallbackAfterZhuDraw});
+    const nextPhase=res.needGodChoice?'GOD_CHOICE':(res.needsDecision?'DRAW_REVEAL':derivedPhase);
+    const zhuContinuation={
+      ...(gs.abilityData?.fromTsathogguaSlime?{
+        fromTsathogguaSlime:true,
+        continueTurnStartDraw:true,
+        pendingTsathogguaSlime:gs.abilityData?.pendingTsathogguaSlime,
+        pendingTsathogguaSlimes:gs.abilityData?.pendingTsathogguaSlimes||[],
+      }:{}),
+      ...(gs.abilityData?.fromRest?{
+        fromRest:true,
+        cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining||0,
+      }:{}),
+    };
     const newGs={
       ...gs,
       ...(res.statePatch||{}),
@@ -5249,8 +5282,16 @@ export default function Game(){
       log:L,
       zhuLight:nextZhuLight,
       phase:nextPhase,
-      abilityData:nextAbilityData,
-      drawReveal:null,
+      abilityData:{
+        ...nextAbilityData,
+        ...(res.needGodChoice?{godCard:res.drawnCard,drawerIdx,godEncounterCost:res.godEncounterCost}:{}),
+        ...zhuContinuation,
+      },
+      drawReveal:res.needsDecision?{
+        card:res.drawnCard,msgs:res.effectMsgs||[],needsDecision:true,forcedKeep:!!res.forcedKeep,
+        drawerIdx,drawerName:P[drawerIdx]?.name,sourcePile:res.sourcePile,
+        ...(gs.abilityData?.fromRest?{fromRest:true}:{}),
+      }:null,
       selectedCard:null,
       _aiDrawnCard:null,
       _drawnCard:null,
@@ -5271,7 +5312,12 @@ export default function Game(){
     if(statQ.length){
       visualStateLocks.lock({players:beforeDrawPlayers,zhuLight:gs.zhuLight||null});
     }
-    triggerAnimQueue([...drawQueue,...statQ,statePatchStep({players:P,discard:Disc})],newGs);
+    const continueAfterZhuDraw=!win&&(nextPhase==='AI_TURN'||nextPhase==='ACTION')&&gs.abilityData?.continueTurnStartDraw
+      ?()=>_tsgContinueTurnStartDraw(newGs)
+      :(!win&&(nextPhase==='AI_TURN'||nextPhase==='ACTION')&&gs.abilityData?.fromRest
+        ?()=>_cthContinueRestDraws(newGs)
+        :undefined);
+    triggerAnimQueue([...drawQueue,...statQ,statePatchStep({players:P,discard:Disc})],newGs,continueAfterZhuDraw);
   }
 
   // Generic Treasure Hunter dodge handler
@@ -5439,7 +5485,13 @@ export default function Game(){
     // 2. 最后，如果游戏仍未结束，且该寻宝者仍然存活，检查该寻宝者是否达成胜利条件
     if(isLocalSeatIndex(drawerIdx)&&!P[0].isDead&&P[0].role==='寻宝者'&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
-      setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',drawReveal:null,abilityData:{winReason:localTreasureWinReason(gs)}});
+      const pendingWinGs={...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',drawReveal:null,abilityData:{winReason:localTreasureWinReason(gs)},...(res.statePatch||{})};
+      const effectQueue=bindAnimLogChunks(buildAnimQueue(gs,pendingWinGs),splitAnimBoundLogs(L.slice(gs.log.length)));
+      const transfer=!dr.fromEndTurnReplay?cardTransferStep({
+        fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,
+        sourceAnchor:'playerArea',effect:'draw',cards:[resolutionCard],
+      }):null;
+      triggerAnimQueue([transfer,...effectQueue].filter(Boolean),pendingWinGs);
       return;
     }
     const replayPatch=dr.fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
@@ -5541,7 +5593,13 @@ export default function Game(){
     // 2. 最后，如果游戏仍未结束，且该寻宝者仍然存活，检查该寻宝者是否达成胜利条件
     if(isLocalSeatIndex(drawerIdx)&&!P[0].isDead&&P[0].role==='寻宝者'&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
-      setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',drawReveal:null,abilityData:{winReason:localTreasureWinReason(gs)}});
+      const pendingWinGs={...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',drawReveal:null,abilityData:{winReason:localTreasureWinReason(gs)},...(res.statePatch||{})};
+      const effectQueue=bindAnimLogChunks(buildAnimQueue(gs,pendingWinGs),splitAnimBoundLogs(L.slice(gs.log.length)));
+      const transfer=!dr.fromEndTurnReplay?cardTransferStep({
+        fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,
+        sourceAnchor:'playerArea',effect:'draw',cards:[resolutionCard],
+      }):null;
+      triggerAnimQueue([transfer,...effectQueue].filter(Boolean),pendingWinGs);
       return;
     }
     const replayPatch=dr.fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
@@ -5582,6 +5640,7 @@ export default function Game(){
     const replayPatch=dr.fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
     const newGs={...gs,players:P,discard:nextDiscard,log:[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),discardLog],phase:'ACTION',drawReveal:null,abilityData:gs.abilityData,...replayPatch};
     if(dr.fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:nextDiscard})],[discardLog]);
+    else if(newGs._isMP)broadcastMpStateBeforeLocalReplay(newGs);
     // CTH fromRest: after discarding, process remaining draws then advance turn
     if(dr.fromRest){
       // 播放动画后继续处理剩余抽牌
@@ -5678,7 +5737,17 @@ export default function Game(){
     if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{}});return;}
     if(P[0].role==='寻宝者'&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
-      setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',abilityData:{winReason:localTreasureWinReason(gs)}});
+      const pendingWinGs={...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',abilityData:{winReason:localTreasureWinReason(gs)},...apophisNightPatch(night)};
+      const swapMsgs=extractSkillLogs(L.slice(gs.log.length),'swap');
+      const queue=[
+        {type:'SKILL_SWAP',msgs:swapMsgs},
+        ...fullHandSwapSteps({
+          fromPid:0,toPid:ti,fromCount:myHandCountBefore,toCount:targetHandCountBefore,
+          msgs:[L[L.length-1]],playersBefore:gs.players,zhuLight:gs.zhuLight||null,
+        }),
+        ...buildAnimQueue(gs,pendingWinGs).filter(a=>a.type!=='CARD_TRANSFER'&&a.type!=='SKILL_SWAP'),
+      ];
+      triggerAnimQueue(queue,pendingWinGs);
       return;
     }
     const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',abilityData:{
@@ -5709,26 +5778,8 @@ export default function Game(){
   }
 
   function broadcastVisualReplayIfNeeded(state){
-    if(!state?._isMP)return;
-    if(!Array.isArray(state._visualEvents)||!state._visualEvents.length)return;
+    if(!state?._isMP||state._endTurnReplay)return;
     broadcastMpStateBeforeLocalReplay(state);
-  }
-
-  function withTsathogguaSlimeBalanceDecision(nextGs,beforePlayers,extraAbilityData={}){
-    if(nextGs?.gameOver)return nextGs;
-    const decision=buildTsathogguaSlimeBalanceDecision(beforePlayers,nextGs?.players||[],{
-      _turnOwner:nextGs?.currentTurn??gs.currentTurn,
-      ...extraAbilityData,
-    });
-    if(!decision)return nextGs;
-    return {
-      ...nextGs,
-      phase:'TSG_SLIME_BALANCE',
-      abilityData:{
-        ...buildTargetContinuationAbilityData(nextGs?.abilityData||gs.abilityData),
-        ...decision,
-      },
-    };
   }
 
   function applyLossDirectly({players,deck,discard,log,targetIdx,lostHp=0,lostSan=0,source='虚化',currentTurn=gs.currentTurn,baseInspectionMeta=null}){
@@ -5746,9 +5797,8 @@ export default function Game(){
     return {P,D,Disc,L,inspectionMeta};
   }
 
-  function finishEtherealizeDecision({players,deck,discard,log,abilityData,queue=[]}){
+  function finishEtherealizeDecision({players,deck,discard,log,abilityData,queue=[],beforeDamagePlayers=null}){
     const turnOwner=abilityData._turnOwner??gs.currentTurn;
-    const nextDecision=getNextEtherealizeChainDecision(abilityData,players,abilityData.pendingIndex??0);
     const extraPatch={
       ...(abilityData._statEvents?{_statEvents:abilityData._statEvents}:{}),
       ...(abilityData._statEventSeq!=null?{_statEventSeq:abilityData._statEventSeq}:{}),
@@ -5768,15 +5818,18 @@ export default function Game(){
       discard,
       log,
       turnOwner,
-      abilityData:nextDecision||abilityData,
-      phase:nextDecision?'ETHEREALIZE_DECISION':null,
-      canResumeAi:!nextDecision,
+      abilityData,
+      canResumeAi:true,
       extraPatch,
     });
-    if(nextDecision){
-      nextGs={...nextGs,phase:'ETHEREALIZE_DECISION',abilityData:nextDecision};
-    }
-    const win=checkWin(players,gs._isMP);
+    const slimeDecision=beforeDamagePlayers
+      ?buildTsathogguaSlimeBalanceDecision(beforeDamagePlayers,players,{
+        ...buildTargetContinuationAbilityData(abilityData),
+        _turnOwner:turnOwner,
+      })
+      :null;
+    if(slimeDecision)nextGs={...nextGs,phase:'TSG_SLIME_BALANCE',abilityData:slimeDecision};
+    const win=slimeDecision?null:checkWin(players,gs._isMP);
     if(win)nextGs={...nextGs,phase:'ACTION',abilityData:{},gameOver:win};
     const queueWithStats=queue.length?queue:buildAnimQueue(gs,{...gs,players,deck,discard,log,...extraPatch});
     const queueWithPatch=queueWithStats.length
@@ -5785,7 +5838,7 @@ export default function Game(){
     finishTargetContinuation({
       queue:queueWithPatch,
       nextGs,
-      continueRest:!win&&!nextDecision&&!!abilityData.fromRest,
+      continueRest:!win&&!!abilityData.fromRest,
     });
   }
 
@@ -5841,6 +5894,24 @@ export default function Game(){
       });
       P=result.P;D=result.D;Disc=result.Disc;L=result.L;inspectionMeta=result.inspectionMeta;
     });
+    const pendingLinkTarget=P.findIndex(player=>player?._pendingDamageLinkBreak&&!(player.hand||[]).some(isTsathogguaSlime));
+    if(pendingLinkTarget>=0){
+      const linkReaction=resolvePendingDamageLinkBreak(
+        P,pendingLinkTarget,Disc,L,turnOwner,D,buildTargetContinuationAbilityData(abilityData)
+      );
+      if(linkReaction.etherealizeDecision){
+        const nextGs=buildTargetContinuationGs({
+          players:P,deck:D,discard:Disc,log:L,turnOwner,
+          abilityData:linkReaction.etherealizeDecision,
+          phase:'ETHEREALIZE_DECISION',canResumeAi:false,
+          extraPatch:{_visualEvents:[]},
+        });
+        const fullNextGs={...nextGs,phase:'ETHEREALIZE_DECISION',abilityData:linkReaction.etherealizeDecision};
+        const settleQueue=buildAnimQueue(gs,{...gs,players:P,deck:D,discard:Disc,log:L});
+        finishTargetContinuation({queue:[...preQueue,...settleQueue],nextGs:fullNextGs});
+        return;
+      }
+    }
     const statEventSeq=(gs._statEventSeq||0)+1;
     const statEvents=buildStatEvents(beforeSettlePlayers,P,L.slice(beforeSettleLogLen),{reason:'伤害结算',seq:statEventSeq});
     const statPatch=statEvents.length?{_statEvents:[...(gs._statEvents||[]),...statEvents],_statEventSeq:statEventSeq}:{};
@@ -5856,6 +5927,7 @@ export default function Game(){
       log:L,
       abilityData:finalAbilityData,
       queue:[...preQueue,...settleQueue],
+      beforeDamagePlayers:beforeSettlePlayers,
     });
   }
 
@@ -6063,6 +6135,79 @@ export default function Game(){
     }else{
       L.push(`【撒托古亚的赐福黏液】${localDisplayName(targetIdx,target.name)} 没有牺牲黏液`);
     }
+    const linkReaction=resolvePendingDamageLinkBreak(
+      P,targetIdx,Disc,L,abilityData._turnOwner??gs.currentTurn,D,
+      buildTargetContinuationAbilityData(abilityData)
+    );
+    if(linkReaction.etherealizeDecision){
+      const redirectedGs={
+        ...gs,players:P,deck:D,discard:Disc,log:L,
+        phase:'ETHEREALIZE_DECISION',
+        abilityData:linkReaction.etherealizeDecision,
+      };
+      const redirectQueue=[
+        ...(useSlime&&consumedSlimeCard?[{
+          type:'TSG_SLIME_POP',targetPid:targetIdx,count:1,cards:[consumedSlimeCard],msgs:L.slice(-2,-1),
+          ...(playersBeforeSlimePop?{visualSetupPatch:{players:playersBeforeSlimePop}}:{}),
+        }]:[]),
+        statePatchStep({players:P,deck:D,discard:Disc,log:L}),
+      ];
+      if(redirectedGs._isMP)broadcastMpStateBeforeLocalReplay(redirectedGs);
+      triggerAnimQueue(redirectQueue,redirectedGs);
+      return;
+    }
+    if(linkReaction.applied){
+      const chainedSlimeDecision=buildTsathogguaSlimeBalanceDecision(linkReaction.beforePlayers,P,{
+        ...buildTargetContinuationAbilityData(abilityData),
+        _turnOwner:abilityData._turnOwner??gs.currentTurn,
+        pendingSanInspection:abilityData.pendingSanInspection,
+      });
+      if(chainedSlimeDecision){
+        const chainedGs={
+          ...gs,
+          players:P,deck:D,discard:Disc,log:L,
+          phase:'TSG_SLIME_BALANCE',
+          abilityData:chainedSlimeDecision,
+        };
+        const chainedQueue=[
+          ...(useSlime&&consumedSlimeCard?[{
+            type:'TSG_SLIME_POP',targetPid:targetIdx,count:1,cards:[consumedSlimeCard],msgs:L.slice(-2,-1),
+            ...(playersBeforeSlimePop?{visualSetupPatch:{players:playersBeforeSlimePop}}:{}),
+          }]:[]),
+          ...buildAnimQueue(gs,chainedGs),
+          statePatchStep({players:P,deck:D,discard:Disc,log:L}),
+        ];
+        if(chainedGs._isMP)broadcastMpStateBeforeLocalReplay(chainedGs);
+        triggerAnimQueue(chainedQueue,chainedGs);
+        return;
+      }
+    }
+    const queuedSlimeDecisions=abilityData.pendingSlimeBalanceDecisions||[];
+    if(queuedSlimeDecisions.length){
+      const [nextSlimeDecision,...remainingSlimeDecisions]=queuedSlimeDecisions;
+      const queuedContinuation=buildTargetContinuationAbilityData(abilityData);
+      delete queuedContinuation.pendingSlimeBalanceDecisions;
+      const queuedGs={
+        ...gs,
+        players:P,deck:D,discard:Disc,log:L,
+        phase:'TSG_SLIME_BALANCE',
+        abilityData:{
+          ...queuedContinuation,
+          ...nextSlimeDecision,
+          ...(remainingSlimeDecisions.length?{pendingSlimeBalanceDecisions:remainingSlimeDecisions}:{}),
+        },
+      };
+      const queuedAnim=[
+        ...(useSlime&&consumedSlimeCard?[{
+          type:'TSG_SLIME_POP',targetPid:targetIdx,count:1,cards:[consumedSlimeCard],msgs:L.slice(-1),
+          ...(playersBeforeSlimePop?{visualSetupPatch:{players:playersBeforeSlimePop}}:{}),
+        }]:[]),
+        statePatchStep({players:P,deck:D,discard:Disc,log:L}),
+      ];
+      if(queuedGs._isMP)broadcastMpStateBeforeLocalReplay(queuedGs);
+      triggerAnimQueue(queuedAnim,queuedGs);
+      return;
+    }
     const preInspectionGs={...gs,players:copyPlayers(P),deck:D,discard:Disc,log:[...L]};
     let extraPatch={};
     const pendingSanInspection=abilityData.pendingSanInspection;
@@ -6100,11 +6245,13 @@ export default function Game(){
       inspected=(processed.inspectionMeta._inspectionSeq||0)>(gs._inspectionSeq||0);
       sanWin=checkWin(P,gs._isMP);
     }
-    if(!sanWin&&P[targetIdx]?.hp<=0){
-      killPlayerState(P,targetIdx,Disc,L);
-    }
+    if(!sanWin)P.forEach((player,idx)=>{
+      if(player&&!player.isDead&&player.hp<=0){
+        if(!tryVritraImmortal(P,idx,abilityData._turnOwner??gs.currentTurn,D,Disc,L))killPlayerState(P,idx,Disc,L);
+      }
+    });
     const win=sanWin||checkWin(P,gs._isMP);
-    const nextGs=buildTargetContinuationGs({
+    let nextGs=buildTargetContinuationGs({
       players:P,
       deck:D,
       discard:Disc,
@@ -6124,7 +6271,23 @@ export default function Game(){
       }]:[]),
       statePatchStep({players:preInspectionGs.players})
     ]:[];
-    const finalNextGs={...nextGs,abilityData:buildTargetContinuationAbilityData({...abilityData,pendingSanInspection:null}),...(win?{gameOver:win}:{})};
+    let finalNextGs={...nextGs,abilityData:buildTargetContinuationAbilityData({...abilityData,pendingSanInspection:null}),...(win?{gameOver:win}:{})};
+    if(!win&&(abilityData._pendingTurnStartPoison||abilityData._pendingTurnStartLinkHeals)){
+      finalNextGs=continueTurnStartAfterDamageReaction(finalNextGs);
+      if(finalNextGs.phase==='TSG_SLIME_BALANCE'){
+        const reactionQueue=[
+          ...(useSlime&&consumedSlimeCard?[{
+            type:'TSG_SLIME_POP',targetPid:targetIdx,count:1,cards:[consumedSlimeCard],msgs:L.slice(-1),
+            ...(playersBeforeSlimePop?{visualSetupPatch:{players:playersBeforeSlimePop}}:{}),
+          }]:[]),
+          ...buildAnimQueue(gs,finalNextGs),
+          statePatchStep({players:finalNextGs.players,deck:finalNextGs.deck,discard:finalNextGs.discard,log:finalNextGs.log}),
+        ];
+        if(finalNextGs._isMP)broadcastMpStateBeforeLocalReplay(finalNextGs);
+        triggerAnimQueue(reactionQueue,finalNextGs);
+        return;
+      }
+    }
     const inspectionReplay=inspected
       ?buildInspectionAwareAnimQueue(preInspectionGs,finalNextGs,{buildAnimQueue,copyPlayers})
       :{queue:[],inspectionEvents:[]};
@@ -6511,7 +6674,13 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }
     if(ti===0&&!P[0].isDead&&(P[0]._nyaBorrow||P[0].role)===ROLE_TREASURE&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
-      setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',abilityData:{winReason:localTreasureWinReason(gs)}});
+      const pendingWinGs={...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',abilityData:{winReason:localTreasureWinReason(gs)}};
+      const winStatQ=buildAnimQueue(gs,pendingWinGs).filter(a=>a.type!=='CARD_TRANSFER');
+      triggerAnimQueue([
+        ...buildPendingTurnStartDrawQueue(gs),
+        cardTransferStep({fromPid:roseThornSource,dest:'player',toPid:ti,count:giftedCount,msgs:[L[L.length-1]]}),
+        ...winStatQ,
+      ],pendingWinGs);
       return;
     }
     if(ti!==0&&!P[ti].isDead&&P[ti].role===ROLE_TREASURE&&isWinHand(P[ti].hand)){
@@ -6562,7 +6731,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }
     if(!P[0].isDead&&(P[0]._nyaBorrow||P[0].role)===ROLE_TREASURE&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
-      setGs({...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',abilityData:{winReason:localTreasureWinReason(gs)},...proliferatingZPatch});
+      const pendingWinGs={...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',abilityData:{winReason:localTreasureWinReason(gs)},...proliferatingZPatch};
+      const queue=[
+        cardTransferStep({fromPid:0,dest:'player',toPid:0,count:1,sourceAnchor:'reveal',effect:'draw',cards:[chosenCard],msgs:[L[L.length-1]]}),
+        ...buildAnimQueue(gs,pendingWinGs).filter(a=>a.type!=='CARD_TRANSFER'),
+      ];
+      triggerAnimQueue(queue,pendingWinGs);
       return;
     }
     if(nextPickIndex>=pickOrder.length||revealedCards.length===0){
@@ -6591,7 +6765,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const actorName=localDisplayName(actorIdx,P[actorIdx]?.name);
     const L=[...gs.log,`【掘墓】${actorName} 从弃牌堆中取回 ${cardLogText(godCard,{alwaysShowName:true})}`];
     const proliferatingZPatch=appendPublicCardGainTriggers(gs,P,actorIdx,godCard);
-    const nextGs=buildTargetContinuationGs({
+    let nextGs=buildTargetContinuationGs({
       players:P,
       deck:D,
       discard:Disc,
@@ -6625,6 +6799,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }
     const [discardedCard]=P[actorIdx].hand.splice(cardIndex,1);
     let L=[...gs.log];
+    let damageDecision=null;
     if(isBlackGoatYoung(discardedCard)||isTsathogguaSlime(discardedCard)){
       L.push(`${P[actorIdx].name} 的衍生牌被销毁`);
     }else if(discardedCard.type==='blankZone'){
@@ -6632,8 +6807,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }else{
       Disc.push(discardedCard);
       L.push(`${P[actorIdx].name} 弃置 ${cardLogText(discardedCard,{alwaysShowName:true})}`);
-      const balance=applyBalanceDiscardSideEffects({players:P,deck:D,discard:Disc,log:L,ownerIdx:actorIdx,cards:[discardedCard],reason:'引燃火把弃牌'});
+      const balance=applyBalanceDiscardSideEffects({players:P,deck:D,discard:Disc,log:L,ownerIdx:actorIdx,cards:[discardedCard],reason:'引燃火把弃牌',applyHpDamage:applyHpDamageWithLink,submitDamage:submitDamageEvents,currentTurn:gs.currentTurn});
       P=balance.players;D=balance.deck;Disc=balance.discard;L=balance.log;
+      damageDecision=balance.damageDecision||null;
     }
     grantTurnScopedGodPowerImmunity(P[actorIdx], getCurrentExecutionTurnOwner(activeGs, actorIdx));
     L.push(`【引燃火把】${localDisplayName(actorIdx,P[actorIdx]?.name)} 本回合不受邪神之力影响`);
@@ -6657,7 +6833,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       }],
       msgs:L.slice(-2),
     }):null;
-    const nextGs=buildTargetContinuationGs({
+    let nextGs=buildTargetContinuationGs({
       baseState:activeGs,
       players:P,
       deck:D,
@@ -6669,6 +6845,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         _visualEvents:[discardEvent,...(activeGs._visualEvents||[])],
       }:{},
     });
+    if(damageDecision?.phase)nextGs={...nextGs,phase:damageDecision.phase,abilityData:damageDecision.abilityData};
     broadcastVisualReplayIfNeeded(nextGs);
     finishTargetContinuation({
       queue:[{type:'DISCARD',card:discardedCard,targetPid:actorIdx,msgs:L.slice(-2)},statePatchStep({players:P,discard:Disc,log:L})],
@@ -7019,11 +7196,29 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const candidates=P.map((p,i)=>i).filter(i=>!P[i].isDead);
     let randomTarget=-1;
     let statEvents=[];
+    let damageDecision=null;
     if(candidates.length>0){
       randomTarget=candidates[Math.floor(Math.random()*candidates.length)];
       const beforeTarget={...P[randomTarget]};
-      applyHpDamageWithLink(P,randomTarget,2,Disc,L,gs.currentTurn,D);
-      P[randomTarget].san=Math.max(0,P[randomTarget].san-2);
+      damageDecision=submitDamageEvents({
+        players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
+        events:[{targetIdx:randomTarget,lostHp:2,lostSan:2,source:'白化生物'}],
+        continuation:buildTargetContinuationAbilityData(abilityData),
+      });
+      if(damageDecision.phase==='ETHEREALIZE_DECISION'){
+        L.push(`【白化生物】${P[randomTarget].name} 即将失去 2 HP 和 2 SAN`);
+        const revealEvent=createHuntRevealEvent({sourceIdx:actorIdx,targetIdx:actorIdx,card:chosenCard,msgs:[L[gs.log.length]]});
+        const revealStep=buildHuntRevealStepFromVisualEvent({...revealEvent,targetIdx:actorIdx,targetName:P[actorIdx]?.name},{players:P},{allowTargetZero:true});
+        const nextGs={
+          ...gs,players:P,deck:D,discard:Disc,log:L,
+          phase:damageDecision.phase,abilityData:damageDecision.abilityData,
+          drawReveal:null,selectedCard:null,
+          _visualEvents:[revealEvent].filter(Boolean),
+        };
+        broadcastVisualReplayIfNeeded(nextGs);
+        triggerAnimQueue([revealStep,statePatchStep({players:P,deck:D,discard:Disc,log:L})].filter(Boolean),nextGs);
+        return;
+      }
       L.push(`${P[randomTarget].name} 失去 2 HP 和 2 SAN`);
       const statEventSeq=(gs?._statEventSeq||0)+1;
       statEvents=[{
@@ -7035,17 +7230,17 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         seq:statEventSeq,
         phaseOrder:0,
       }];
-      if(P[randomTarget].hp<=0){
+      if(P[randomTarget].hp<=0&&!damageDecision.abilityData){
         killPlayerState(P,randomTarget,Disc,L);
       }
     }
-    const win=checkWin(P,gs._isMP);
     const revealEvent=createHuntRevealEvent({sourceIdx:actorIdx,targetIdx:actorIdx,card:chosenCard,msgs:[L[L.length-2]]});
     const revealStep=buildHuntRevealStepFromVisualEvent({...revealEvent,targetIdx:actorIdx,targetName:P[actorIdx]?.name},{players:P},{allowTargetZero:true});
     const queue=[];
     if(revealStep)queue.push(revealStep);
     queue.push(...buildAnimQueue(gs,{...gs,players:P,deck:D,discard:Disc,log:L}));
-    const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',abilityData:{},drawReveal:null,selectedCard:null,
+    const win=damageDecision?.abilityData?null:checkWin(P,gs._isMP);
+    const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:damageDecision?.phase||'ACTION',abilityData:damageDecision?.abilityData||{},drawReveal:null,selectedCard:null,
       _visualEvents:[revealEvent].filter(Boolean),
       ...(win?{gameOver:win}:{}),
       ...(statEvents.length?{_statEvents:statEvents,_statEventSeq:statEvents[0].seq}:{}),
@@ -7211,6 +7406,16 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       afterDiscard:[...(gs.discard||[])],
       msgs:L.slice(gs.log.length),
     });
+    const resolvedSwapMsgs=swapVisualEvent?.msgs||L.slice(gs.log.length);
+    const buildResolvedLocalSwapQueue=nextGs=>[
+      {type:'SKILL_SWAP',msgs:resolvedSwapMsgs},
+      ...swapCardsSteps({
+        sourceIdx:0,targetIdx:swapTi,sourceCount:1,targetCount:1,
+        takenCard,givenCard:given,msgs:resolvedSwapMsgs,
+        playersBefore:gs.players,zhuLight:gs.zhuLight||null,
+      }),
+      ...buildAnimQueue(gs,nextGs).filter(step=>step?.type!=='CARD_TRANSFER'&&step?.type!=='SKILL_SWAP'),
+    ];
     // 只有真正的寻宝者才能通过集齐全部编号获胜
     if(P[0].role==='寻宝者'&&isWinHand(P[0].hand)){
       const _wname=gs._isMP?gs.players[0].name:'你';
@@ -7224,14 +7429,22 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         const reason=gs._isMP
           ?`${_wname} 与 ${tname} 互换后双方均集齐编号，两位寻宝者共同获胜！`
           :`你与 ${tname} 互换后双方均集齐编号，两位寻宝者共同获胜！`;
+        // winnerIdx / winnerIdx2 的字段顺序就是藏宝图播放顺序。联机状态在旋转座位索引时
+        // 保留字段顺序，因此先按房间原始座位号排序，所有客户端都会得到同一展示次序。
+        const originalSeatOf=localIdx=>gs._isMP
+          ?(localIdx+(myPlayerIndexRef.current||0))%P.length
+          :localIdx;
+        const orderedLocalWinnerSeats=[0,swapTi].sort((a,b)=>originalSeatOf(a)-originalSeatOf(b));
         const newGs={...gs,players:P,drawReveal:null,log:[...L,reason],abilityData:{},_visualEvents:swapVisualEvent?[swapVisualEvent]:[],
-          gameOver:{winner:'寻宝者',reason,winnerIdx:0,winnerIdx2:swapTi}};
+          gameOver:{winner:'寻宝者',reason,winnerIdx:orderedLocalWinnerSeats[0],winnerIdx2:orderedLocalWinnerSeats[1]}};
         broadcastMpStateBeforeLocalReplay(newGs);
-        triggerAnimQueue([{type:'SKILL_SWAP',msgs:[reason]}],newGs);
+        triggerAnimQueue(buildResolvedLocalSwapQueue(newGs),newGs);
         return;
       }
-      finishTutorialActionWithState({...gs,players:P,drawReveal:null,log:[...L,`${_wname}集齐了全部编号！`],abilityData:{winReason:`${_wname}通过掉包集齐了全部编号！`},_visualEvents:swapVisualEvent?[swapVisualEvent]:[],
-        phase:'PLAYER_WIN_PENDING'},showTutorial?TUTORIAL_FLOW.TREASURE_MAP_ANIM:tutorialNext);
+      const pendingWinGs={...gs,players:P,drawReveal:null,log:[...L,`${_wname}集齐了全部编号！`],abilityData:{winReason:`${_wname}通过掉包集齐了全部编号！`},_visualEvents:swapVisualEvent?[swapVisualEvent]:[],
+        phase:'PLAYER_WIN_PENDING'};
+      broadcastMpStateBeforeLocalReplay(pendingWinGs);
+      finishTutorialActionWithState(pendingWinGs,showTutorial?TUTORIAL_FLOW.TREASURE_MAP_ANIM:tutorialNext,buildResolvedLocalSwapQueue(pendingWinGs));
       return;
     }
     // 检查目标（非自身）是否为寻宝者且掉包后获胜
@@ -7242,12 +7455,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       L.push(reason);
       const newGs={...gs,players:P,drawReveal:null,log:L,abilityData:{},_visualEvents:swapVisualEvent?[swapVisualEvent]:[],
         gameOver:{winner:'寻宝者',reason,winnerIdx:swapTi},phase:'ACTION',skillUsed:true};
-      const statQ2=buildAnimQueue(gs,newGs).filter(a=>a.type!=='CARD_TRANSFER');
       broadcastMpStateBeforeLocalReplay(newGs);
-      triggerAnimQueue([{type:'SKILL_SWAP',msgs:[reason]},
-        {type:'VISUAL_LOCK',players:gs.players,zhuLight:gs.zhuLight||null},
-        cardTransferStep({fromPid:0,dest:'player',toPid:swapTi,count:1,msgs:[L[L.length-2]]}),
-        ...statQ2],newGs);
+      triggerAnimQueue(buildResolvedLocalSwapQueue(newGs),newGs);
       return;
     }
     const win=checkWin(P,gs._isMP);
@@ -7319,14 +7528,16 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const targetHandBefore=[...(P[huntTi]?.hand||[])];
       const targetRevealBefore=!!P[huntTi]?.revealHand;
       const beforeHuntPlayers=copyPlayers(P);
-      const beforeLossPlayers=copyPlayers(P);
       const dc=P[0].hand.splice(myCardIdx,1)[0];Disc.push(dc);
       const afterDiscardPlayers=copyPlayers(P);
       const afterDiscardDiscard=[...Disc];
       const huntDamage=3+(P[0].damageBonus||0);
       L.push(`弃 ${cardLogText(dc,{alwaysShowName:true})} → ${P[huntTi].name} 受 ${huntDamage}HP 伤害`);
-      const huntEtherealizeLoss=buildEtherealizeLoss({players:P,targetIdx:huntTi,currentTurn:gs.currentTurn,lostHp:huntDamage,source:'追捕'});
-      if(huntEtherealizeLoss){
+      const huntDamageResult=submitDamageEvents({
+        players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
+        events:[{targetIdx:huntTi,lostHp:huntDamage,source:'追捕'}],
+      });
+      if(huntDamageResult.phase==='ETHEREALIZE_DECISION'){
         P[0].roleRevealed=true;
         const newGs={
           ...gs,
@@ -7334,19 +7545,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           deck:D,
           discard:Disc,
           log:L,
-          abilityData:{
-            ...buildEtherealizeRedirectDecision([huntEtherealizeLoss],{_turnOwner:gs.currentTurn}),
-            huntTi:undefined,
-            revCard:undefined,
-          },
-          phase:'ETHEREALIZE_DECISION',
+          abilityData:huntDamageResult.abilityData,
+          phase:huntDamageResult.phase,
           skillUsed:true,
         };
         const queue=buildAnimQueue(gs,newGs);
         if(queue.length)triggerAnimQueue(queue,newGs);else setGs(newGs);
         return;
       }
-      applyHpDamageWithLink(P,huntTi,huntDamage,Disc,L,gs.currentTurn,D);
       // 追捕成功时揭晓追猎者身份
       if(!P[0].roleRevealed){
         P[0].roleRevealed=true;
@@ -7357,7 +7563,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       let afterDamageLog=null;
       let lootTransferCount=0;
       let lootDiscardCards=[];
-      if(P[huntTi].hp<=0){
+      if(P[huntTi].hp<=0&&!(P[huntTi].hand||[]).some(isTsathogguaSlime)){
         const lootableHand=targetHandBefore;
         if(lootableHand.length){
           const maxToTake=3;
@@ -7433,14 +7639,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         }
         if(P[huntTi].godZone?.length){Disc.push(...P[huntTi].godZone);P[huntTi].godZone=[];P[huntTi].godName=null;P[huntTi].godLevel=0;}
       }
-      const win=checkWin(P,gs._isMP);
+      const win=huntDamageResult.abilityData?null:checkWin(P,gs._isMP);
       // 追猎者在追捕后设置skillUsed为true，这样就不能再休息了
       // 但追猎者仍然可以在同一回合内多次使用追捕技能
-      const newGs=withTsathogguaSlimeBalanceDecision(
-        {...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...(win?{gameOver:win}:{})},
-        beforeLossPlayers,
-        {_turnOwner:gs.currentTurn}
-      );
+      const newGs={
+        ...gs,players:P,deck:D,discard:Disc,log:L,
+        abilityData:huntDamageResult.abilityData||{},phase:huntDamageResult.phase||'ACTION',
+        skillUsed:true,...(win?{gameOver:win}:{}),
+      };
       const huntResultEvent=createHuntResultEvent({
         hunterIdx:0,
         targetIdx:huntTi,
@@ -7539,7 +7745,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     let discardedCard=null;
     const myHandBefore=[...(P[0]?.hand||[])];
     const myRevealBefore=!!P[0]?.revealHand;
-    const beforeLossPlayers=copyPlayers(P);
+    let damage=null;
     L.push(`你亮出 ${cardLogText(card,{alwaysShowName:true})}`);
     const aiHand=P[huntingAI].hand;
     const mi=aiHand.findIndex(c=>cardsHuntMatch(c,card));
@@ -7548,18 +7754,19 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       discardedCard=aiHand.splice(mi,1)[0];Disc.push(discardedCard);
       const huntDamage=3+(P[huntingAI].damageBonus||0);
       L.push(`${aiHunterName} 弃 ${cardLogText(discardedCard,{alwaysShowName:true})}，你受 ${huntDamage}HP 伤害！`);
-      const huntEtherealizeLoss=buildEtherealizeLoss({players:P,targetIdx:0,currentTurn:gs.currentTurn,lostHp:huntDamage,source:'追捕'});
-      if(huntEtherealizeLoss){
+      damage=submitDamageEvents({
+        players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
+        events:[{targetIdx:0,lostHp:huntDamage,source:'追捕'}],
+      });
+      if(damage.phase==='ETHEREALIZE_DECISION'){
         const newGs={
           ...gs,
           players:P,
           deck:D,
           discard:Disc,
           log:L,
-          phase:'ETHEREALIZE_DECISION',
-          abilityData:{
-            ...buildEtherealizeRedirectDecision([huntEtherealizeLoss],{_turnOwner:gs.currentTurn}),
-          },
+          phase:damage.phase,
+          abilityData:damage.abilityData,
           huntAbandoned:gs.huntAbandoned||[],
           skillUsed:true,
         };
@@ -7568,8 +7775,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         if(queue.length)triggerAnimQueue(queue,newGs);else setGs(newGs);
         return;
       }
-      applyHpDamageWithLink(P,0,huntDamage,Disc,L,gs.currentTurn,D);
-      if(P[0].hp<=0){
+      if(P[0].hp<=0&&!(P[0].hand||[]).some(isTsathogguaSlime)){
         if(myHandBefore.length){
           Disc=removeCardsFromDiscard(Disc,myHandBefore);
           P[0].hand=[...myHandBefore];
@@ -7603,7 +7809,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }else{
       L.push(`${aiHunterName} 无匹配手牌，追捕失败`);
     }
-    const win=checkWin(P,gs._isMP);
+    const win=damage?.abilityData?null:checkWin(P,gs._isMP);
     const newAbandoned = hadHuntDamage
       ? (gs.huntAbandoned || []).filter(i => i !== 0)
       : [...new Set([...(gs.huntAbandoned || []), 0])];
@@ -7628,7 +7834,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       beforeNextTurnGs={...baseGs, players:P, discard:Disc, log:L, currentTurn: huntingAI, skillUsed: true};
       newGs = startNextTurn(beforeNextTurnGs);
     }
-    if(hadHuntDamage)newGs=withTsathogguaSlimeBalanceDecision(newGs,beforeLossPlayers,{_turnOwner:newGs.currentTurn});
+    if(damage?.phase)newGs={...newGs,phase:damage.phase,abilityData:damage.abilityData};
 
     syncVisibleLog(L,newGs);
     const queue=[];
@@ -7716,7 +7922,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const L=[...gs.log];
     const target=P[targetIdx];
     if(!target)return;
-    const beforeLossPlayers=copyPlayers(P);
+    let damage=null;
     if(choice==='discard'){
       if(discardCount>0){
         for(let d=0;d<discardCount;d++){
@@ -7733,33 +7939,32 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       L.push(`【同归深渊】${target.name} 选择弃置手牌至 ${actorHandCount} 张`);
     }else{
       L.push(`【同归深渊】${target.name} 选择承受伤害，失去 4 HP`);
-      const localMsgs=[];
-      const loss=buildEtherealizeLoss({players:P,targetIdx,currentTurn:gs.currentTurn,lostHp:4,source:'同归深渊'});
-      if(loss){
+      damage=submitDamageEvents({
+        players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
+        events:[{targetIdx,lostHp:4,source:'同归深渊'}],
+        continuation:{_turnOwner:gs.abilityData?._turnOwner??gs.currentTurn},
+      });
+      if(damage.phase==='ETHEREALIZE_DECISION'){
         const newGs={
           ...gs,
           players:P,deck:D,discard:Disc,log:L,
-          phase:'ETHEREALIZE_DECISION',
-          abilityData:{...buildEtherealizeRedirectDecision([loss],{_turnOwner:gs.abilityData?._turnOwner??gs.currentTurn})},
+          phase:damage.phase,
+          abilityData:damage.abilityData,
         };
         const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
         if(queue.length)triggerAnimQueue(queue,newGs);else setGs(newGs);
         return;
-      }else{
-        applyHpDamageWithLink(P,targetIdx,4,Disc,localMsgs,gs.currentTurn,D);
-        if(localMsgs.length)L.push(...localMsgs);
       }
     }
-    const win=checkWin(P,gs._isMP);
+    const win=damage?.abilityData?null:checkWin(P,gs._isMP);
     if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{}});return;}
     const nextTurn=gs.abilityData?._turnOwner??gs.currentTurn;
     const resumesAiTurn=isAiSeat(gs,nextTurn)&&!P[nextTurn]?.isDead;
     const nextPhase=resumesAiTurn?'AI_TURN':'ACTION';
-    const newGs=withTsathogguaSlimeBalanceDecision(
-      {...gs,players:P,deck:D,discard:Disc,log:L,phase:nextPhase,currentTurn:nextTurn,abilityData:{}},
-      beforeLossPlayers,
-      {_turnOwner:nextTurn}
-    );
+    const newGs={
+      ...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:nextTurn,
+      phase:damage?.phase||nextPhase,abilityData:damage?.abilityData||{},
+    };
     const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
     if(queue.length){
       setGs(p=>p?{...p,phase:nextPhase,abilityData:{}}:p);
@@ -7771,13 +7976,13 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(gs.phase!=='SPHINX_GUESS'||(!isLocalSphinxGuessPhase(gs)&&!allowAi))return;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
     const L=[...gs.log];
-    const beforeLossPlayers=copyPlayers(P);
     const topCard=D[0];
     const isZone=isZoneCard(topCard);
     const actualCard=D.shift();
     L.push(`你猜测牌堆顶的牌${guessYes?'是':'不是'}区域牌`);
     const guessCorrect=(guessYes&&isZone)||(!guessYes&&!isZone);
     let proliferatingZPatch={};
+    let damageDecision=null;
     if(guessCorrect){
       L.push(`猜测正确！你收入了 ${cardLogText(actualCard)}`);
       P[gs.currentTurn].hand.push(actualCard);
@@ -7787,28 +7992,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       L.push(sphinxAvoidNegative?'猜测错误！负面效果已规避':'猜测错误！你失去 3 HP');
       const localMsgs=[];
       Disc.push(actualCard);
-      const loss=sphinxAvoidNegative?null:buildEtherealizeLoss({players:P,targetIdx:gs.currentTurn,currentTurn:gs.currentTurn,lostHp:3,source:'斯芬克斯'});
-      if(loss){
-        const logDelta=L.slice(gs.log.length);
-        const sphinxEvent=createSphinxResultEvent({
-          actorIdx:gs.currentTurn,
-          card:actualCard,
-          guessCorrect:false,
-          msgs:logDelta,
+      if(!sphinxAvoidNegative){
+        damageDecision=submitDamageEvents({
+          players:P,deck:D,discard:Disc,log:localMsgs,currentTurn:gs.currentTurn,
+          events:[{targetIdx:gs.currentTurn,lostHp:3,source:'斯芬克斯'}],
+          continuation:{_turnOwner:gs.abilityData?._turnOwner??gs.currentTurn},
         });
-        const newGs={
-          ...gs,
-          players:P,deck:D,discard:Disc,log:L,
-          phase:'ETHEREALIZE_DECISION',
-          abilityData:{...buildEtherealizeRedirectDecision([loss],{_turnOwner:gs.abilityData?._turnOwner??gs.currentTurn})},
-          ...(sphinxEvent?{_visualEvents:[sphinxEvent]}:{}),
-        };
-        const queue=buildSphinxResultQueue({card:actualCard,actorIdx:gs.currentTurn,guessCorrect:false,msgs:logDelta});
-        broadcastMpStateBeforeLocalReplay(newGs);
-        triggerAnimQueue(queue,newGs);
-        return;
-      }else if(!sphinxAvoidNegative){
-        applyHpDamageWithLink(P,gs.currentTurn,3,Disc,localMsgs,gs.currentTurn,D);
         if(localMsgs.length)L.push(...localMsgs);
       }
     }
@@ -7845,11 +8034,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const nextTurn=gs.abilityData?._turnOwner??gs.currentTurn;
     const resumesAiTurn=isAiSeat(gs,nextTurn)&&!P[nextTurn]?.isDead;
     const nextPhase=resumesAiTurn?'AI_TURN':'ACTION';
-    const newGs=withTsathogguaSlimeBalanceDecision(
-      {...gs,players:P,deck:D,discard:Disc,log:L,phase:nextPhase,currentTurn:nextTurn,abilityData:{},...proliferatingZPatch},
-      beforeLossPlayers,
-      {_turnOwner:nextTurn}
-    );
+    const newGs={
+      ...gs,players:P,deck:D,discard:Disc,log:L,
+      phase:damageDecision?.phase||nextPhase,currentTurn:nextTurn,
+      abilityData:damageDecision?.abilityData||{},...proliferatingZPatch,
+    };
     const newGsWithEvent=sphinxEvent?{...newGs,_visualEvents:[sphinxEvent]}:newGs;
     const queue=buildSphinxQueue(newGsWithEvent);
     if(queue.length){
@@ -8083,7 +8272,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         {type:'DISCARD',card:godCard,triggerName:'你',targetPid:drawerIdx,msgs:[discardLog]},
         statePatchStep({players:P,discard:Disc}),
       ];
-      if(fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue],L.slice(gs.log.length));
+      if(fromEndTurnReplay){
+        appendEndTurnReplaySyncQueue([...queue],L.slice(gs.log.length));
+      }else{
+        // 先广播再播本地弃牌动画：远端收到时仍停留在 GOD_CHOICE，
+        // 走 buildResolvedGodChoiceDiscardStep 与本地同步播放弃牌动画；
+        // 否则自动广播会等本地动画结束后才发出，远端被动滞后整个动画时长
+        broadcastMpStateBeforeLocalReplay(clearTurnDrawReplayHints(discardGs));
+      }
       triggerAnimQueue(queue,discardGs,()=>finishGodChoice(clearTurnDrawReplayHints(discardGs)));
       return;
     }
@@ -8102,7 +8298,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
     }
     if(queue.length){
-      if(fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:Disc})],L.slice(gs.log.length));
+      if(fromEndTurnReplay){
+        appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:Disc})],L.slice(gs.log.length));
+      }else{
+        // 信仰/升级/收手同样先广播：远端按 resolvedGodChoice 决策分支与本地同步播放效果动画
+        broadcastMpStateBeforeLocalReplay(newGs);
+      }
       triggerAnimQueue(queue,newGs,()=>finishGodChoice(newGs));
     }else{
       const win=checkWin(P,gs._isMP);
@@ -8520,9 +8721,13 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   // 多人游戏：当下一回合是他人时，为当前玩家播放翻牌动画（否则他们的本地 gs 更新无动画）
   function broadcastMpStateBeforeLocalReplay(nextGs){
     if(!nextGs?._isMP||!isMultiplayer||!socketRef.current||!roomModal?.roomId)return false;
-    const hasVisualEvents=Array.isArray(nextGs._visualEvents)&&nextGs._visualEvents.length>0;
-    if((nextGs.gameOver&&!hasVisualEvents)||nextGs.phase==='TREASURE_WIN'||nextGs.phase==='PLAYER_WIN_PENDING')return false;
-    const broadcastGs=hasVisualEvents?pruneConsumedVisualEvents(nextGs,consumedVisualEventIdsRef.current):nextGs;
+    // PLAYER_WIN_PENDING is local-winner UI. Remote viewers must receive the
+    // same replay events on MP_PLAYER_WIN_WAIT, otherwise they render their own
+    // confirmable treasure map instead of waiting for the actual winner.
+    const replayState=nextGs.phase==='PLAYER_WIN_PENDING'?buildPlayerWinWaitState(nextGs):nextGs;
+    const hasVisualEvents=Array.isArray(replayState._visualEvents)&&replayState._visualEvents.length>0;
+    if((replayState.gameOver&&!hasVisualEvents)||replayState.phase==='TREASURE_WIN')return false;
+    const broadcastGs=hasVisualEvents?pruneConsumedVisualEvents(replayState,consumedVisualEventIdsRef.current):replayState;
     const freshVisualEvents=Array.isArray(broadcastGs._visualEvents)?broadcastGs._visualEvents:[];
     if(freshVisualEvents.length){
       markConsumedVisualEvents(consumedVisualEventIdsRef.current,freshVisualEvents);
@@ -8601,11 +8806,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(pendingZhuHideCard&&newGs.phase!=='ZHU_HIDE_AI_DRAW'){
       const drawerPid=getTurnStartDrawerIdx(newGs);
       const drawerName=newGs.players?.[drawerPid]?.name||'???';
-      const queue=[...preTurnQ];
-      if((newGs._turnStartLogs||[]).length){
-        queue.push({type:'YOUR_TURN',...(drawerPid===0?{}:{name:drawerName}),msgs:newGs._turnStartLogs});
-      }
-      if(newGs._isMP&&(newGs.currentTurn!==0||(Array.isArray(newGs._visualEvents)&&newGs._visualEvents.length>0)))broadcastMpStateBeforeLocalReplay(newGs);
+      const queue=[...preTurnQ,...buildTurnStartIntroQueue(newGs,drawerName)];
+      if(newGs._isMP)broadcastMpStateBeforeLocalReplay(newGs);
       if(queue.length){
         pendingGsRef.current=newGs;
         if(newGs._playersBeforeThisDraw){
@@ -8899,7 +9101,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         if(pendingGs._playersBeforeThisDraw){
           visualStateLocks.lock({players:pendingGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||pendingGs.zhuLight||null});
         }
-        triggerAnimQueue([{type:'YOUR_TURN',...(drawerPid===0?{}:{name:drawerName}),msgs:pendingGs._turnStartLogs}],pendingGs);
+        triggerAnimQueue(buildTurnStartIntroQueue(pendingGs,drawerName),pendingGs);
       }else{
         setGs(pendingGs);
       }
@@ -9004,6 +9206,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   }
 
   function revealWin(){
+    if(gs?.phase==='TREASURE_WIN')localTreasureMapShownRef.current=true;
     clearBattleAnimationState();
     setGs(prev=>{
       if(!prev)return prev;
@@ -9170,6 +9373,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         cardTransferStep({fromPid:0,dest:'player',toPid:pi,count:1,effect:'blackGoat',durationMs:1500,msgs:[logMsg]}),
         statePatchStep({players:P}),
       ];
+      if(newGs._isMP)broadcastMpStateBeforeLocalReplay(newGs);
       setGs(p=>p?{...p,phase:'ACTION',abilityData:{},multiplyUsed:true}:p);
       triggerAnimQueue(queue,newGs,()=>continueProliferatingZDraws(newGs));
     }
@@ -9198,6 +9402,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const baseQueue=buildAnimQueue(gs,newGs);
       const queue=baseQueue.length?[...baseQueue,statePatchStep({players:P})]:[];
       if(queue.length){
+        if(newGs._isMP)broadcastMpStateBeforeLocalReplay(newGs);
         setGs(p=>p?{...p,currentTurn:turnOwner,phase:nextPhase,abilityData:{}}:p);
         triggerAnimQueue(queue,newGs);
       }else if((newGs.proliferatingZQueue||[]).length)continueProliferatingZDraws(newGs);
@@ -9446,6 +9651,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     setGs,setAnim,setPreparingSoftGuideId,setPendingSoftGuideId,setSoftGuideSpotlights,
     setTutorialStep,advanceTutorialStep,handleTutorialResultNext,completeTutorial,_onRoleRevealDone,
     handleGamma,handleMusicVolume,handleSfxVolume,handleTutorialTreasureMapConfirm,
+    markLocalTreasureMapShown:()=>{localTreasureMapShownRef.current=true;},
     // misc derived flags / data used in the moved JSX
     roleRevealAnim,swapBlindDraw,swapBlindCardLayout,
     zhuLitCardsForView,canPlayerRespondWithAnyHandCard,canPlayerRespondWithFireHandCard,

@@ -171,7 +171,7 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(replay.queue.some(step => step.type === 'HP_HEAL')).toBe(false);
     expect(replay.queue.find(step => step.type === 'YOUR_TURN')).toMatchObject({ name: '卡洛斯' });
   });
-  it('休息角色跳过回合时先完整播放其回合边界，再进入下一名 AI 的回合', () => {
+  it('休息角色保留回合视觉边界，但不执行任何回合开始效果', () => {
     const goat = id => ({ id, name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true });
     const oldGs = makeGs({
       players: [
@@ -201,8 +201,8 @@ describe('buildTurnStartDrawReplayQueue', () => {
 
     expect(newGs._skippedTurnReplays).toHaveLength(1);
     expect(allenTurnIdx).toBeGreaterThanOrEqual(0);
-    expect(allenGoatIdx).toBeGreaterThan(allenTurnIdx);
-    expect(bellaTurnIdx).toBeGreaterThan(allenGoatIdx);
+    expect(allenGoatIdx).toBe(-1);
+    expect(bellaTurnIdx).toBeGreaterThan(allenTurnIdx);
     expect(bellaGoatIdx).toBeGreaterThan(bellaTurnIdx);
     expect(combined.some(step => (step.msgs || []).some(msg => msg.includes('艾伦 从休息中醒来')))).toBe(true);
   });
@@ -233,13 +233,15 @@ describe('buildTurnStartDrawReplayQueue', () => {
     const newGs = startNextTurn(oldGs);
     const queue = buildSkippedTurnReplayQueue(newGs);
     const allenTurnIdx = queue.findIndex(step => step.type === 'YOUR_TURN' && step.name === '艾伦');
+    const wakeIdx = queue.findIndex(step => step.type === 'STATE_PATCH' && step.players?.[1]?.isResting === false);
     const dreamIdx = queue.findIndex(step => step.type === 'CTH_RLYEH_DREAM');
     const drawIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.card === dreamCard);
     const effectIdx = queue.findIndex((step, idx) => idx > drawIdx && ['HP_HEAL', 'HP_SAN_HEAL'].includes(step.type));
 
     expect(newGs._skippedTurnReplays?.[0]?.cthReplay?.draws).toEqual([dreamCard]);
     expect(allenTurnIdx).toBeGreaterThanOrEqual(0);
-    expect(dreamIdx).toBeGreaterThan(allenTurnIdx);
+    expect(wakeIdx).toBeGreaterThan(allenTurnIdx);
+    expect(dreamIdx).toBeGreaterThan(wakeIdx);
     expect(drawIdx).toBeGreaterThan(dreamIdx);
     expect(effectIdx).toBeGreaterThan(drawIdx);
   });

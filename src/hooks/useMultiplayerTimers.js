@@ -2,14 +2,20 @@ import { useEffect, useRef, useState } from 'react';
 import { cardLogText } from '../game/coreUtils';
 import { createHuntRevealEvent } from '../game/visualEvents';
 
-function startSecondCountdown({ seconds, warningAt, setSeconds, intervalRef, playTickSound }) {
+export function startSecondCountdown({ seconds, warningAt, setSeconds, intervalRef, playTickSound, onComplete }) {
   setSeconds(seconds);
   const deadline = Date.now() + seconds * 1000;
+  let lastRemaining = seconds;
   const intervalId = setInterval(() => {
     const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    if (remaining === lastRemaining) return;
+    lastRemaining = remaining;
     setSeconds(remaining);
-    if (remaining > 0 && remaining <= warningAt) playTickSound();
-    if (remaining === 0) clearInterval(intervalId);
+    if (remaining > 0 && remaining <= warningAt) playTickSound?.();
+    if (remaining === 0) {
+      clearInterval(intervalId);
+      onComplete?.();
+    }
   }, 250);
   intervalRef.current = intervalId;
   return intervalId;

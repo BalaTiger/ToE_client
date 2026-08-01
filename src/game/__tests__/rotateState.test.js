@@ -322,6 +322,53 @@ describe('rotateGsForViewer', () => {
     expect(names(restored._visualEvents[0].discardEvents[0].afterPlayers)).toEqual(['eqA0', 'eqA1', 'eqA2']);
   });
 
+  it('rotates player damageLink seat indices so the mutual pair check survives', () => {
+    const gs = {
+      players: [
+        { ...player('你'), damageLink: { partner: 2, active: true, expiryOwner: 0 } },
+        player('艾伦'),
+        { ...player('贝拉'), damageLink: { partner: 0, active: true, expiryOwner: 0 } },
+      ],
+      currentTurn: 0,
+      abilityData: {},
+    };
+
+    const rotated = rotateGsForViewer(gs, 1);
+
+    // 旋转后座位序为 [艾伦, 贝拉, 你]：规范座位 0→2、2→1
+    expect(rotated.players[2].damageLink).toMatchObject({ partner: 1, active: true, expiryOwner: 2 });
+    expect(rotated.players[1].damageLink).toMatchObject({ partner: 2, active: true, expiryOwner: 2 });
+    // 互指校验（DamageLinkOverlay / useDamageLinkGhosts 的配对条件）在旋转视角下仍成立
+    const pair = rotated.players.flatMap((p, i) => {
+      const j = p?.damageLink?.partner;
+      if (!p?.damageLink?.active || j == null || j <= i || rotated.players[j]?.damageLink?.partner !== i) return [];
+      return [{ a: i, b: j }];
+    });
+    expect(pair).toEqual([{ a: 1, b: 2 }]);
+
+    const restored = derotateGs(rotated, 1);
+    expect(restored.players[0].damageLink).toMatchObject({ partner: 2, expiryOwner: 0 });
+    expect(restored.players[2].damageLink).toMatchObject({ partner: 0, expiryOwner: 0 });
+  });
+
+  it('keeps legacy damageLink without expiryOwner intact under rotation', () => {
+    const gs = {
+      players: [
+        { ...player('你'), damageLink: { partner: 1, active: true, expiryTurn: 7 } },
+        { ...player('艾伦'), damageLink: { partner: 0, active: true, expiryTurn: 7 } },
+        player('贝拉'),
+      ],
+      currentTurn: 0,
+      abilityData: {},
+    };
+
+    const rotated = rotateGsForViewer(gs, 1);
+
+    expect(rotated.players[0].damageLink).toMatchObject({ partner: 2, active: true, expiryTurn: 7 });
+    expect(rotated.players[0].damageLink.expiryOwner).toBeUndefined();
+    expect(rotated.players[2].damageLink).toMatchObject({ partner: 0, active: true, expiryTurn: 7 });
+  });
+
   it('SHU_SELECT_TARGET 的行动权跟随黑暗子嗣选择者旋转', () => {
     const gs = {
       players: [player('房主'), player('被蛊惑者'), player('旁观者')],

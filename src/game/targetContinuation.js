@@ -52,6 +52,9 @@ export function buildTargetContinuationAbilityData(abilityData = {}) {
     ...(abilityData?.pendingSanInspection ? { pendingSanInspection: abilityData.pendingSanInspection } : {}),
     ...(abilityData?.pendingInspectionContinuation ? { pendingInspectionContinuation: abilityData.pendingInspectionContinuation } : {}),
     ...(abilityData?.pendingGodChoice ? { pendingGodChoice: abilityData.pendingGodChoice } : {}),
+    ...(abilityData?._pendingTurnStartPoison ? { _pendingTurnStartPoison: true } : {}),
+    ...(abilityData?._pendingTurnStartLinkHeals ? { _pendingTurnStartLinkHeals: abilityData._pendingTurnStartLinkHeals } : {}),
+    ...(abilityData?.pendingSlimeBalanceDecisions?.length ? { pendingSlimeBalanceDecisions: abilityData.pendingSlimeBalanceDecisions } : {}),
   };
 }
 

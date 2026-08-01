@@ -49,35 +49,193 @@ export function markSkipNextDraw(player, reason = '效果') {
   return true;
 }
 
-export function applyHpDamageWithLink(P, i, amount, Disc, L, currentTurn, D) {
+export function applyHpDamageWithLink(P, i, amount, Disc, L, currentTurn, D, options = {}) {
   if (i == null || !P[i] || P[i].isDead || !(amount > 0)) return;
   P[i].hp = clamp(P[i].hp - amount);
   if (P[i].damageLink?.active) {
     const partnerIdx = P[i].damageLink.partner;
     if (partnerIdx != null && P[partnerIdx] && !P[partnerIdx].isDead) {
+      // Damage reactions are ordered: the directly injured player may answer
+      // with slime before the rope breaks. Store a serializable continuation;
+      // the slime resolver will execute the break and feed its damage back
+      // through the same reaction pipeline.
+      const linkBreakHasEtherealize = [i, partnerIdx].some(idx => buildEtherealizeLoss({
+        players: P,
+        targetIdx: idx,
+        currentTurn,
+        lostHp: 3,
+        source: '两人一绳',
+      }));
+      if ((P[i].hand || []).some(isTsathogguaSlime) || linkBreakHasEtherealize) {
+        P[i]._pendingDamageLinkBreak = { sourceIdx: i, partnerIdx };
+        return;
+      }
       P[i].damageLink.active = false;
       if (P[partnerIdx].damageLink) P[partnerIdx].damageLink.active = false;
       const linkDamage = 3;
       P[i].hp = clamp(P[i].hp - linkDamage);
       P[partnerIdx].hp = clamp(P[partnerIdx].hp - linkDamage);
       L.push(`【两人一绳】绳索断裂！${P[i].name} 和 ${P[partnerIdx].name} 各失去 ${linkDamage} HP`);
-      if (P[i].hp <= 0) {
+      if (!options.deferDeath && P[i].hp <= 0 && !(P[i].hand || []).some(isTsathogguaSlime)) {
         if (currentTurn == null || D == null || !tryVritraImmortal(P, i, currentTurn, D, Disc, L)) {
           killPlayerState(P, i, Disc, L);
         }
       }
-      if (P[partnerIdx].hp <= 0) {
+      if (!options.deferDeath && P[partnerIdx].hp <= 0 && !(P[partnerIdx].hand || []).some(isTsathogguaSlime)) {
         if (currentTurn == null || D == null || !tryVritraImmortal(P, partnerIdx, currentTurn, D, Disc, L)) {
           killPlayerState(P, partnerIdx, Disc, L);
         }
       }
     }
   }
-  if (P[i].hp <= 0) {
+  if (!options.deferDeath && P[i].hp <= 0 && !(P[i].hand || []).some(isTsathogguaSlime)) {
     if (currentTurn == null || D == null || !tryVritraImmortal(P, i, currentTurn, D, Disc, L)) {
       killPlayerState(P, i, Disc, L);
     }
   }
+}
+
+export function resolvePendingDamageLinkBreak(P, targetIdx, Disc, L, currentTurn, D, continuation = {}) {
+  const pending = P?.[targetIdx]?._pendingDamageLinkBreak;
+  if (!pending) return { applied: false, beforePlayers: copyPlayers(P || []), affected: [] };
+  delete P[targetIdx]._pendingDamageLinkBreak;
+  const sourceIdx = pending.sourceIdx ?? targetIdx;
+  const partnerIdx = pending.partnerIdx;
+  const beforePlayers = copyPlayers(P);
+  if (!P[sourceIdx]?.damageLink?.active || partnerIdx == null || !P[partnerIdx] || P[partnerIdx].isDead) {
+    return { applied: false, beforePlayers, affected: [] };
+  }
+  P[sourceIdx].damageLink.active = false;
+  if (P[partnerIdx].damageLink) P[partnerIdx].damageLink.active = false;
+  const linkDamage = 3;
+  const orderedLosses = [sourceIdx, partnerIdx].map((idx, order) => ({
+    targetIdx: idx,
+    lostHp: linkDamage,
+    lostSan: 0,
+    source: '两人一绳',
+    order,
+  }));
+  const pendingLosses = orderedLosses
+    .map(loss => {
+      const eligible = buildEtherealizeLoss({
+        players: P,
+        targetIdx: loss.targetIdx,
+        currentTurn,
+        lostHp: linkDamage,
+        source: loss.source,
+      });
+      return eligible ? { ...eligible, order: loss.order } : null;
+    })
+    .filter(Boolean);
+  if (pendingLosses.length) {
+    const eligibleTargets = new Set(pendingLosses.map(loss => loss.targetIdx));
+    const deferredDirectLosses = orderedLosses.filter(loss => !eligibleTargets.has(loss.targetIdx));
+    L.push(`【两人一绳】绳索断裂！${P[sourceIdx].name} 和 ${P[partnerIdx].name} 即将各失去 ${linkDamage} HP`);
+    return {
+      applied: false,
+      deferred: true,
+      beforePlayers,
+      affected: [sourceIdx, partnerIdx],
+      etherealizeDecision: buildEtherealizeRedirectDecision(pendingLosses, {
+        ...continuation,
+        _turnOwner: currentTurn,
+        ...(deferredDirectLosses.length ? { deferredDirectLosses } : {}),
+      }),
+    };
+  }
+  P[sourceIdx].hp = clamp(P[sourceIdx].hp - linkDamage);
+  P[partnerIdx].hp = clamp(P[partnerIdx].hp - linkDamage);
+  L.push(`【两人一绳】绳索断裂！${P[sourceIdx].name} 和 ${P[partnerIdx].name} 各失去 ${linkDamage} HP`);
+  return { applied: true, beforePlayers, affected: [sourceIdx, partnerIdx] };
+}
+
+// Pure state-layer entry for damage. Callers provide only damage facts and
+// continuation metadata; card/phase code remains responsible for presentation.
+export function submitDamageEvents({
+  players,
+  deck = [],
+  discard = [],
+  log = [],
+  currentTurn = null,
+  events = [],
+  continuation = {},
+  skipEtherealize = false,
+  deferDeath = true,
+} = {}) {
+  const P = players;
+  const D = deck;
+  const Disc = discard;
+  const L = log;
+  const normalized = (events || [])
+    .map((event, order) => ({
+      ...event,
+      order: event?.order ?? order,
+      lostHp: Math.max(0, event?.lostHp || 0),
+      lostSan: Math.max(0, event?.lostSan || 0),
+    }))
+    .filter(event => event.targetIdx != null && P?.[event.targetIdx] && !P[event.targetIdx].isDead && (event.lostHp || event.lostSan));
+  const beforePlayers = copyPlayers(P || []);
+  if (!normalized.length) return { players: P, deck: D, discard: Disc, log: L, beforePlayers, phase: null, abilityData: null };
+
+  if (!skipEtherealize) {
+    const pendingLosses = normalized.map(event => {
+      const loss = buildEtherealizeLoss({
+        players: P,
+        targetIdx: event.targetIdx,
+        currentTurn,
+        lostHp: event.lostHp,
+        lostSan: event.lostSan,
+        source: event.source || '伤害',
+      });
+      return loss ? { ...loss, order: event.order } : null;
+    }).filter(Boolean);
+    if (pendingLosses.length) {
+      const pendingOrders = new Set(pendingLosses.map(loss => loss.order));
+      const deferredDirectLosses = normalized.filter(event => !pendingOrders.has(event.order));
+      const abilityData = buildEtherealizeRedirectDecision(pendingLosses, {
+        ...continuation,
+        _turnOwner: currentTurn,
+        ...(deferredDirectLosses.length ? { deferredDirectLosses } : {}),
+      });
+      return { players: P, deck: D, discard: Disc, log: L, beforePlayers, phase: 'ETHEREALIZE_DECISION', abilityData };
+    }
+  }
+
+  normalized.forEach(event => {
+    if ((event.lostHp || 0) > 0) {
+      applyHpDamageWithLink(P, event.targetIdx, event.lostHp, Disc, L, currentTurn, D, { deferDeath });
+    }
+    if ((event.lostSan || 0) > 0 && P[event.targetIdx] && !P[event.targetIdx].isDead) {
+      P[event.targetIdx].san = clamp(P[event.targetIdx].san - event.lostSan);
+    }
+  });
+
+  const pendingLinkTarget = P.findIndex(player => (
+    player?._pendingDamageLinkBreak && !(player.hand || []).some(isTsathogguaSlime)
+  ));
+  if (pendingLinkTarget >= 0) {
+    const reaction = resolvePendingDamageLinkBreak(P, pendingLinkTarget, Disc, L, currentTurn, D, continuation);
+    if (reaction.etherealizeDecision) {
+      return {
+        players: P, deck: D, discard: Disc, log: L, beforePlayers,
+        phase: 'ETHEREALIZE_DECISION', abilityData: reaction.etherealizeDecision,
+      };
+    }
+  }
+
+  const abilityData = buildTsathogguaSlimeBalanceDecision(beforePlayers, P, {
+    ...continuation,
+    _turnOwner: currentTurn,
+  });
+  return {
+    players: P,
+    deck: D,
+    discard: Disc,
+    log: L,
+    beforePlayers,
+    phase: abilityData ? 'TSG_SLIME_BALANCE' : null,
+    abilityData,
+  };
 }
 
 export function getAdjacentTargets(players, ci) {
@@ -138,6 +296,7 @@ function handleInspection(playerIndex, gs) {
   const beforeLogLen = Array.isArray(gs.log) ? gs.log.length : 0;
   let gainedCard = null;
   let gainedCardLog = null;
+  let inspectionDamageDecision = null;
   // 检查检定牌堆是否为空，如果为空则洗牌
   if (newGs.inspectionDeck.length === 0) {
     newGs.inspectionDeck = shuffle([...newGs.inspectionDiscard]);
@@ -172,17 +331,42 @@ function handleInspection(playerIndex, gs) {
   };
   switch (drawnCard.effect) {
     case 'adjacentDamageHP': {
-      getLivingAdjacentTargets(P, playerIndex).forEach(idx => {
-        P[idx].hp = Math.max(0, P[idx].hp - drawnCard.value);
+      const targets = getLivingAdjacentTargets(P, playerIndex);
+      inspectionDamageDecision = submitDamageEvents({
+        players: P,
+        deck: newGs.deck,
+        discard: newGs.discard,
+        log: L,
+        currentTurn: newGs.currentTurn,
+        events: targets.map((idx, order) => ({
+          targetIdx: idx, lostHp: drawnCard.value, source: drawnCard.name || '乱抓', order,
+        })),
+      });
+      if (inspectionDamageDecision.phase === 'ETHEREALIZE_DECISION') {
+        targets.forEach(idx => L.push(`${P[idx].name} 即将因乱抓失去 ${drawnCard.value} HP`));
+        break;
+      }
+      targets.forEach(idx => {
         L.push(`${P[idx].name} 被乱抓，失去 ${drawnCard.value} HP`);
-        if (P[idx].hp <= 0) killPlayer(idx);
+        if (P[idx].hp <= 0 && !inspectionDamageDecision.abilityData) killPlayer(idx);
       });
       break;
     }
     case 'selfDamageHP': {
-      P[playerIndex].hp = Math.max(0, P[playerIndex].hp - drawnCard.value);
+      inspectionDamageDecision = submitDamageEvents({
+        players: P,
+        deck: newGs.deck,
+        discard: newGs.discard,
+        log: L,
+        currentTurn: newGs.currentTurn,
+        events: [{ targetIdx: playerIndex, lostHp: drawnCard.value, source: drawnCard.name || '自残' }],
+      });
+      if (inspectionDamageDecision.phase === 'ETHEREALIZE_DECISION') {
+        L.push(`${P[playerIndex].name} 即将因自残失去 ${drawnCard.value} HP`);
+        break;
+      }
       L.push(`${P[playerIndex].name} 自残，失去 ${drawnCard.value} HP`);
-      if (P[playerIndex].hp <= 0) killPlayer(playerIndex);
+      if (P[playerIndex].hp <= 0 && !inspectionDamageDecision.abilityData) killPlayer(playerIndex);
       break;
     }
     case 'disableRest': {
@@ -315,6 +499,10 @@ function handleInspection(playerIndex, gs) {
   // 更新游戏状态
   newGs.players = P;
   newGs.log = finalLog;
+  if (inspectionDamageDecision?.phase) {
+    newGs.phase = inspectionDamageDecision.phase;
+    newGs.abilityData = { ...(newGs.abilityData || {}), ...inspectionDamageDecision.abilityData };
+  }
   return newGs;
 }
 
@@ -335,6 +523,7 @@ function mergeInspectionMeta(target, inspectionResult) {
     _inspectionEvents: inspectionResult._inspectionEvents,
     _statEvents: inspectionResult._statEvents,
     _statEventSeq: inspectionResult._statEventSeq,
+    ...(['TSG_SLIME_BALANCE', 'ETHEREALIZE_DECISION'].includes(inspectionResult.phase) ? { phase: inspectionResult.phase } : {}),
     ...(inspectionResult.abilityData ? { abilityData: inspectionResult.abilityData } : {}),
   };
 }
@@ -359,6 +548,7 @@ export function processInspectionTargets(targets, startIndex, P, D, Disc, baseLo
       _inspectionEvents: nextMeta._inspectionEvents,
       _statEvents: nextMeta._statEvents,
       _statEventSeq: nextMeta._statEventSeq,
+      currentTurn: startIndex,
     });
     nextP = inspectionResult.players;
     nextD = inspectionResult.deck;
@@ -488,8 +678,11 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         } else if (c.type !== 'blankZone') {
           Disc.push(c);
           msgs.push(`${P[i].name} 失去了 ${cardLogText(c, { alwaysShowName: true })}`);
-          const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: i, cards: [c], reason: '失去手牌' });
+          const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: i, cards: [c], reason: '失去手牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitDamageEvents, currentTurn: gs?.currentTurn });
           msgs.splice(0, msgs.length, ...balance.log);
+          (balance.etherealizeDecision?.pendingLosses || []).forEach(loss => {
+            pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, { ...loss, order: damageOrderSeq++ });
+          });
           discardEvents.push({
             playerIndex: i,
             card: c,
@@ -537,6 +730,21 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   };
   const finish = (result, explicitStatEvents = null) => {
     settlePendingDamages('batch');
+    let linkEtherealizeDecision = null;
+    const pendingLinkTarget = (result.P || P).findIndex(player => (
+      player?._pendingDamageLinkBreak && !(player.hand || []).some(isTsathogguaSlime)
+    ));
+    if (pendingLinkTarget >= 0) {
+      const reaction = resolvePendingDamageLinkBreak(
+        result.P || P,
+        pendingLinkTarget,
+        result.Disc || Disc,
+        result.msgs || msgs,
+        gs?.currentTurn ?? ci,
+        result.D || D,
+      );
+      linkEtherealizeDecision = reaction.etherealizeDecision || null;
+    }
     const statEventSeq = (gs?._statEventSeq || 0) + 1;
     const statEvents = explicitStatEvents || buildStatEvents(beforePlayers, result.P || P, result.msgs || msgs, { reason: card?.name || card?.type || '', seq: statEventSeq });
     const patchedStatEvents = Array.isArray(result.statePatch?._statEvents)
@@ -549,7 +757,9 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       statEvents.length ? statEventSeq : (gs?._statEventSeq || 0),
       result.statePatch?._statEventSeq || 0,
     );
-    const etherealizeDecision = statePatch?.abilityData?.type ? null : buildChainEtherealizeDecision();
+    const etherealizeDecision = statePatch?.abilityData?.type
+      ? null
+      : (linkEtherealizeDecision || buildChainEtherealizeDecision());
     const slimeDecision = etherealizeDecision || statePatch?.abilityData?.type
       ? null
       : buildTsathogguaSlimeBalanceDecision(beforePlayers, result.P || P, { _turnOwner: gs?.currentTurn ?? ci });
@@ -746,15 +956,22 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       msgs.push(`【石化配方】场上 HP 最低的 ${beforePetrifyTarget.name} 立即死亡并石化`);
 
       const beforeAccomplicePlayers = copyPlayers(P);
+      const livingAccomplices = [...accomplices].filter(idx => P[idx] && !P[idx].isDead);
       const sanEvents = [];
-      [...accomplices].forEach(idx => {
-        if (P[idx] && !P[idx].isDead) {
-          P[idx].san = clamp(P[idx].san - 1);
-          msgs.push(`【石化配方】共犯 ${P[idx].name} 失去 1 SAN`);
+      const accompliceDamage = submitDamageEvents({
+        players: P, deck: D, discard: Disc, log: msgs, currentTurn: gs?.currentTurn,
+        events: livingAccomplices.map((idx, order) => ({
+          targetIdx: idx, lostSan: 1, source: card?.name || '石化配方', order,
+        })),
+      });
+      livingAccomplices.forEach(idx => {
+        msgs.push(`【石化配方】共犯 ${P[idx].name} ${accompliceDamage.phase === 'ETHEREALIZE_DECISION' ? '即将失去' : '失去'} 1 SAN`);
+        if (!accompliceDamage.abilityData) {
           sanEvents.push(idx);
           if (P[idx].san > 0 && P[idx].san <= 6) pendingInspectionTargets.push(idx);
         }
       });
+      if (accompliceDamage.phase) statePatch = { ...statePatch, phase: accompliceDamage.phase, abilityData: accompliceDamage.abilityData };
       statePatch = {
         ...statePatch,
         petrifyingFormula: { active: false, progress: null, accomplices: [] },
@@ -1179,8 +1396,11 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           } else if (c.type !== 'blankZone') {
             Disc.push(c);
             msgs.push(`${P[i].name} 失去了 ${cardLogText(c, { alwaysShowName: true })}`);
-            const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: i, cards: [c], reason: '失去手牌' });
+            const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: i, cards: [c], reason: '失去手牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitDamageEvents, currentTurn: gs?.currentTurn });
             msgs.splice(0, msgs.length, ...balance.log);
+            (balance.etherealizeDecision?.pendingLosses || []).forEach(loss => {
+              pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, { ...loss, order: damageOrderSeq++ });
+            });
             earthquakeDiscardEvents.push({
               playerIndex: i,
               card: c,
@@ -1531,8 +1751,11 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
               msgs.push(`${target.name} 的衍生牌被销毁`);
             } else if (c.type !== 'blankZone') {
               Disc.push(c);
-              const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: targetIdx, cards: [c], reason: '同归深渊弃牌' });
+              const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: targetIdx, cards: [c], reason: '同归深渊弃牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitDamageEvents, currentTurn: gs?.currentTurn });
               msgs.splice(0, msgs.length, ...balance.log);
+              (balance.etherealizeDecision?.pendingLosses || []).forEach(loss => {
+                pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, { ...loss, order: damageOrderSeq++ });
+              });
             }
           }
         }

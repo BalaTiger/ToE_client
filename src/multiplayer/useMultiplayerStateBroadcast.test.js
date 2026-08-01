@@ -52,11 +52,20 @@ describe('useMultiplayerStateBroadcast helpers', () => {
   });
 
   it('builds a wait-state broadcast for local treasure win screens', () => {
+    const swapEvent = {
+      id: 'swap-win-1',
+      type: 'swapCards',
+      sourceIdx: 0,
+      targetIdx: 1,
+      sourceCount: 1,
+      targetCount: 1,
+    };
     const broadcast = buildPlayerWinWaitBroadcast({
       gs: {
         phase: 'TREASURE_WIN',
         drawReveal: { card: { id: 'hidden' } },
         abilityData: { winReason: 'done' },
+        _visualEvents: [swapEvent],
         players: [{ name: '我' }],
       },
       room: { roomId: 'room-1' },
@@ -71,6 +80,7 @@ describe('useMultiplayerStateBroadcast helpers', () => {
       winnerIdx: 0,
       waitingForTreasureReveal: true,
     });
+    expect(broadcast.rawGs._visualEvents).toEqual([swapEvent]);
     expect(broadcast.clearLocalVisualEvents).toBe(false);
   });
 

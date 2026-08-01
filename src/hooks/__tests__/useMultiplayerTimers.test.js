@@ -1,5 +1,27 @@
-import { describe, expect, it } from 'vitest';
-import { getMpTurnTimerMode, shouldRunMpDiscardTimer } from '../useMultiplayerTimers';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { getMpTurnTimerMode, shouldRunMpDiscardTimer, startSecondCountdown } from '../useMultiplayerTimers';
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe('startSecondCountdown', () => {
+  it('校准频率为 250ms 时每个整数秒只播放一次提示音', () => {
+    vi.useFakeTimers();
+    const setSeconds = vi.fn();
+    const playTickSound = vi.fn();
+    const intervalRef = { current: null };
+
+    startSecondCountdown({ seconds: 3, warningAt: 10, setSeconds, intervalRef, playTickSound });
+    vi.advanceTimersByTime(1000);
+    expect(playTickSound).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1000);
+    expect(playTickSound).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(1000);
+    expect(playTickSound).toHaveBeenCalledTimes(2);
+    expect(setSeconds).toHaveBeenLastCalledWith(0);
+  });
+});
 
 const isLocalCurrentTurn = gs => gs.currentTurn === 0;
 

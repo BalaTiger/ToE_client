@@ -94,6 +94,8 @@ export function useAnimationAudioEffects({
   playNegativeCardFlipSound,
 }) {
   const detachedAudioCleanupsRef = useRef({});
+  const playBlackGoatRunSoundRef = useRef(playBlackGoatRunSound);
+  playBlackGoatRunSoundRef.current = playBlackGoatRunSound;
 
   const playDetachedAnimationSound = useCallback((key, play) => {
     detachedAudioCleanupsRef.current[key]?.();
@@ -184,13 +186,13 @@ export function useAnimationAudioEffects({
 
   useEffect(() => {
     if (anim?.type !== 'CARD_TRANSFER' || anim?.effect !== 'blackGoat') return undefined;
-    return playBlackGoatRunSound?.({
+    return playBlackGoatRunSoundRef.current?.({
       fromPid: anim.fromPid,
       toPid: anim.toPid,
       durationMs: anim.durationMs,
       seatCount: anim.players?.length,
     });
-  }, [anim, playBlackGoatRunSound]);
+  }, [anim]);
 
   useEffect(() => {
     if (anim?.type !== 'BLACK_GOAT_PULSE') return undefined;

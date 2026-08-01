@@ -13,8 +13,6 @@ import {
   buildWorshipFromHandLog,
   removeCardsFromDiscard,
   makeInspectionMeta,
-  buildEtherealizeLoss,
-  buildEtherealizeRedirectDecision,
   formatSanLoss,
 } from './coreUtils';
 import {
@@ -33,7 +31,7 @@ import {
   aiShouldNotRest,
   isCultistEndingTurnUnreasonable,
 } from './ai';
-import { applyFx, applyHpDamageWithLink } from './effectEngine';
+import { applyFx, applyHpDamageWithLink, submitDamageEvents } from './effectEngine';
 import { advanceGodEncounter, formatGodEncounterProgress } from './balancePatches';
 import {
   checkWin,
@@ -312,7 +310,7 @@ export function discardAiHandToLimit(P, ct, Disc, L) {
     } else {
       Disc.push(c);
       L.push(`${P[ct].name} 弃 ${cardLogText(c, { alwaysShowName: true })}（上限）`);
-      const balance = applyBalanceDiscardSideEffects({ players: P, deck: [], discard: Disc, log: L, ownerIdx: ct, cards: [c], reason: '手牌上限弃牌' });
+      const balance = applyBalanceDiscardSideEffects({ players: P, deck: [], discard: Disc, log: L, ownerIdx: ct, cards: [c], reason: '手牌上限弃牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitDamageEvents, currentTurn: ct });
       L.splice(0, L.length, ...balance.log);
     }
   }
@@ -401,7 +399,7 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
         const beforeBalanceDiscard = [...Disc];
         const beforeBalanceLog = [...L];
         const beforeBalancePatch = statePatch;
-        const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: L, ownerIdx: ct, cards: [discarded], reason: '无尽通道弃牌' });
+        const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: L, ownerIdx: ct, cards: [discarded], reason: '无尽通道弃牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitDamageEvents, currentTurn: gs.currentTurn });
         P = balance.players; D = balance.deck; Disc = balance.discard; L = balance.log;
         const balanceQueue = buildAiEndTurnReplayResolutionQueue({
           beforeGs: { ...gs, ...beforeBalancePatch, players: beforeBalancePlayers, deck: beforeBalanceDeck, discard: beforeBalanceDiscard, log: beforeBalanceLog },
@@ -1028,8 +1026,11 @@ export function aiStep(gs, opts = {}) {
                 const afterDiscardDiscard=[...Disc];
                 const huntDamage=3+(P[ct].damageBonus||0);
                 L.push(`弃 ${cardLogText(dc,{alwaysShowName:true})} → ${tgt.name} 受 ${huntDamage}HP 伤害！`);
-                const etherealizeLoss=buildEtherealizeLoss({players:P,targetIdx:ti,currentTurn:gs.currentTurn,lostHp:huntDamage,source:'追捕'});
-                if(etherealizeLoss){
+                const huntDamageResult=submitDamageEvents({
+                  players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
+                  events:[{targetIdx:ti,lostHp:huntDamage,source:'追捕'}],
+                });
+                if(huntDamageResult.phase==='ETHEREALIZE_DECISION'){
                   return buildReturnPack({
                     ...gs,
                     players:P,
@@ -1037,14 +1038,13 @@ export function aiStep(gs, opts = {}) {
                     discard:Disc,
                     log:L,
                     currentTurn:ct,
-                    phase:'ETHEREALIZE_DECISION',
-                    abilityData:buildEtherealizeRedirectDecision([etherealizeLoss],{_turnOwner:ct}),
+                    phase:huntDamageResult.phase,
+                    abilityData:huntDamageResult.abilityData,
                     skillUsed:true,
                     huntAbandoned:newAbandoned,
                   },copyPlayers(P));
                 }
-                applyHpDamageWithLink(P,ti,huntDamage,Disc,L,gs.currentTurn,D);
-                if (P[ti].hp <= 0) {
+                if (P[ti].hp <= 0 && !(P[ti].hand || []).some(isTsathogguaSlime)) {
                   let afterDamagePlayers=null;
                   let afterDamageDiscard=null;
                   let afterDamageLog=null;
@@ -1294,7 +1294,8 @@ export function aiStep(gs, opts = {}) {
             if(P[ti].role===ROLE_TREASURE&&isWinHand(P[ti].hand)){
               P[ti].roleRevealed=true;
               const reason2=`${ai.name} 与 ${P[ti].name} 互换后双方均集齐编号，两位寻宝者共同获胜！`;
-              return{...gs,players:P,deck:D,discard:Disc,log:[...L,reason2],gameOver:{winner:ROLE_TREASURE,reason:reason2,winnerIdx:ct,winnerIdx2:ti}};
+              const orderedWinnerSeats=[ct,ti].sort((a,b)=>a-b);
+              return{...gs,players:P,deck:D,discard:Disc,log:[...L,reason2],gameOver:{winner:ROLE_TREASURE,reason:reason2,winnerIdx:orderedWinnerSeats[0],winnerIdx2:orderedWinnerSeats[1]}};
             }
             return{...gs,players:P,deck:D,discard:Disc,log:[...L,`${ai.name} 掉包后获胜！`],gameOver:{winner:ROLE_TREASURE,reason:`${ai.name} 通过掉包集齐全部编号并获胜！`,winnerIdx:ct}};
           }
@@ -1362,7 +1363,7 @@ export function aiStep(gs, opts = {}) {
   const handLimitBeforeLog=[...L];
   while(P[ct].hand.length>aiHandLimit){
     const c=P[ct].hand.shift();Disc.push(c);discardedCards.push(c);L.push(`${ai.name} 弃 ${cardLogText(c,{alwaysShowName:true})}（上限）`);
-    const balance=applyBalanceDiscardSideEffects({players:P,deck:D,discard:Disc,log:L,ownerIdx:ct,cards:[c],reason:'手牌上限弃牌'});
+    const balance=applyBalanceDiscardSideEffects({players:P,deck:D,discard:Disc,log:L,ownerIdx:ct,cards:[c],reason:'手牌上限弃牌',applyHpDamage:applyHpDamageWithLink,submitDamage:submitDamageEvents,currentTurn:gs.currentTurn});
     P=balance.players;D=balance.deck;Disc=balance.discard;L=balance.log;
   }
   // 结算玫瑰倒刺：弃掉的标记牌立即造成伤害，日志紧跟在弃牌日志之后
@@ -1373,21 +1374,18 @@ export function aiStep(gs, opts = {}) {
         thornLosses[c.roseThornHolderId]=(thornLosses[c.roseThornHolderId]||0)+1;
       }
     });
-    Object.entries(thornLosses).forEach(([holderIdxStr,count])=>{
+    const thornDamageEvents=Object.entries(thornLosses).map(([holderIdxStr,count],order)=>{
       const holderIdx=+holderIdxStr;
       L.push(`【玫瑰倒刺】${P[holderIdx].name} 失去标记手牌，受到 ${2*count} HP 伤害`);
-      const etherealizeLoss=buildEtherealizeLoss({players:P,targetIdx:holderIdx,currentTurn:gs.currentTurn,lostHp:2*count,source:'玫瑰倒刺'});
-      if(etherealizeLoss){
-        const decision=buildEtherealizeRedirectDecision([etherealizeLoss],{_turnOwner:ct});
-        P[holderIdx]._pendingRoseThornEtherealize=true;
-        gs={...gs,phase:'ETHEREALIZE_DECISION',abilityData:decision};
-      }else{
-        applyHpDamageWithLink(P,holderIdx,2*count,Disc,L,gs.currentTurn,D);
-      }
+      return {targetIdx:holderIdx,lostHp:2*count,source:'玫瑰倒刺',order};
     });
-    const pendingDecision=gs.phase==='ETHEREALIZE_DECISION'&&gs.abilityData?.type==='etherealizeRedirect';
+    const thornDamage=submitDamageEvents({
+      players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
+      events:thornDamageEvents,continuation:{_turnOwner:ct},
+    });
+    if(thornDamage.phase)gs={...gs,phase:thornDamage.phase,abilityData:thornDamage.abilityData};
+    const pendingDecision=!!thornDamage.abilityData;
     if(pendingDecision){
-      P.forEach(p=>{if(p)delete p._pendingRoseThornEtherealize;});
       return buildReturnPack({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,skillUsed:(useSkill||gs.skillUsed)},copyPlayers(P));
     }
   }

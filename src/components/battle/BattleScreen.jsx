@@ -275,6 +275,7 @@ export function BattleScreen(props) {
     handleMusicVolume,
     handleSfxVolume,
     handleTutorialTreasureMapConfirm,
+    markLocalTreasureMapShown,
     roleRevealAnim,
     swapBlindDraw,
     swapBlindCardLayout,
@@ -735,6 +736,7 @@ export function BattleScreen(props) {
       })()}
       {phase==='PLAYER_WIN_PENDING'&&(
         <TreasureMapAnim hand={me.hand} confirmCountdownSec={gs?._isMP?3:null} onConfirm={showTutorial?handleTutorialTreasureMapConfirm:()=>{
+          markLocalTreasureMapShown?.();
           animQueueRef.current=[];
           pendingGsRef.current=null;
           setAnim(null);

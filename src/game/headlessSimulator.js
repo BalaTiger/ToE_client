@@ -16,9 +16,10 @@ import {
   isBlackGoatYoung,
   isTsathogguaSlime,
   killPlayerState,
+  tryVritraImmortal,
   makeInspectionMeta,
 } from './coreUtils';
-import { applyHpDamageWithLink, applyInspectionForSanLoss } from './effectEngine';
+import { applyHpDamageWithLink, applyInspectionForSanLoss, resolvePendingDamageLinkBreak, submitDamageEvents } from './effectEngine';
 import { deriveEffectDecisionState } from './effectStatePatch';
 import { initGame } from './setup';
 import {
@@ -101,6 +102,59 @@ export function resolveHeadlessSlimeBalance(gs, useSlime = false) {
     L.push(`【撒托古亚的赐福黏液】${target.name} 没有牺牲黏液`);
   }
 
+  const linkReaction = resolvePendingDamageLinkBreak(
+    P, targetIdx, Disc, L, abilityData._turnOwner ?? gs.currentTurn, D,
+    buildTargetContinuationAbilityData(abilityData),
+  );
+  if (linkReaction.etherealizeDecision) {
+    return {
+      ...gs,
+      players: P,
+      deck: D,
+      discard: Disc,
+      log: L,
+      phase: 'ETHEREALIZE_DECISION',
+      abilityData: linkReaction.etherealizeDecision,
+    };
+  }
+  if (linkReaction.applied) {
+    const chainedSlimeDecision = buildTsathogguaSlimeBalanceDecision(linkReaction.beforePlayers, P, {
+      ...buildTargetContinuationAbilityData(abilityData),
+      _turnOwner: abilityData._turnOwner ?? gs.currentTurn,
+      pendingSanInspection: abilityData.pendingSanInspection,
+    });
+    if (chainedSlimeDecision) {
+      return {
+        ...gs,
+        players: P,
+        deck: D,
+        discard: Disc,
+        log: L,
+        phase: 'TSG_SLIME_BALANCE',
+        abilityData: chainedSlimeDecision,
+      };
+    }
+  }
+  const queuedSlimeDecisions = abilityData.pendingSlimeBalanceDecisions || [];
+  if (queuedSlimeDecisions.length) {
+    const [nextSlimeDecision, ...remainingSlimeDecisions] = queuedSlimeDecisions;
+    const queuedContinuation = buildTargetContinuationAbilityData(abilityData);
+    delete queuedContinuation.pendingSlimeBalanceDecisions;
+    return {
+      ...gs,
+      players: P,
+      deck: D,
+      discard: Disc,
+      log: L,
+      phase: 'TSG_SLIME_BALANCE',
+      abilityData: {
+        ...queuedContinuation,
+        ...nextSlimeDecision,
+        ...(remainingSlimeDecisions.length ? { pendingSlimeBalanceDecisions: remainingSlimeDecisions } : {}),
+      },
+    };
+  }
+
   let inspectionPatch = {};
   let win = checkWin(P, gs._isMP);
   const pendingSanInspection = abilityData.pendingSanInspection;
@@ -123,7 +177,11 @@ export function resolveHeadlessSlimeBalance(gs, useSlime = false) {
     inspectionPatch = processed.inspectionMeta || {};
     win = checkWin(P, gs._isMP);
   }
-  if (!win && P[targetIdx]?.hp <= 0) killPlayerState(P, targetIdx, Disc, L);
+  if (!win) P.forEach((player, idx) => {
+    if (player && !player.isDead && player.hp <= 0) {
+      if (!tryVritraImmortal(P, idx, abilityData._turnOwner ?? gs.currentTurn, D, Disc, L)) killPlayerState(P, idx, Disc, L);
+    }
+  });
   win ||= checkWin(P, gs._isMP);
 
   const turnOwner = abilityData._turnOwner ?? gs.currentTurn;
@@ -348,11 +406,37 @@ export function resolveHeadlessEtherealize(gs) {
   };
   collectEtherealizeChainSettleLosses(abilityData)
     .forEach(loss => { state = applyHeadlessLoss(gs, loss, state); });
-  const win = checkWin(state.P, gs._isMP);
   const turnOwner = abilityData._turnOwner ?? gs.currentTurn;
-  const slimeDecision = win
-    ? null
-    : buildTsathogguaSlimeBalanceDecision(beforeSettlePlayers, state.P, { _turnOwner: turnOwner });
+  const pendingLinkTarget = state.P.findIndex(player => (
+    player?._pendingDamageLinkBreak && !(player.hand || []).some(isTsathogguaSlime)
+  ));
+  if (pendingLinkTarget >= 0) {
+    const linkReaction = resolvePendingDamageLinkBreak(
+      state.P,
+      pendingLinkTarget,
+      state.Disc,
+      state.L,
+      turnOwner,
+      state.D,
+      buildTargetContinuationAbilityData(abilityData),
+    );
+    if (linkReaction.etherealizeDecision) {
+      return {
+        ...gs,
+        players: state.P,
+        deck: state.D,
+        discard: state.Disc,
+        log: state.L,
+        phase: 'ETHEREALIZE_DECISION',
+        abilityData: linkReaction.etherealizeDecision,
+      };
+    }
+  }
+  const slimeDecision = buildTsathogguaSlimeBalanceDecision(beforeSettlePlayers, state.P, {
+    ...buildTargetContinuationAbilityData(abilityData),
+    _turnOwner: turnOwner,
+  });
+  const win = slimeDecision ? null : checkWin(state.P, gs._isMP);
   return {
     ...gs,
     ...(state.inspectionMeta || {}),
@@ -389,27 +473,22 @@ export function resolveHeadlessSameAbyss(gs) {
     L.push(`【同归深渊】${target.name} 选择弃置手牌至 ${actorHandCount} 张`);
   } else {
     L.push(`【同归深渊】${target.name} 选择承受伤害，失去 4 HP`);
-    const loss = buildEtherealizeLoss({
-      players: P,
-      targetIdx,
-      currentTurn: gs.currentTurn,
-      lostHp: 4,
-      source: '同归深渊',
+    const damage = submitDamageEvents({
+      players: P, deck: D, discard: Disc, log: L, currentTurn: gs.currentTurn,
+      events: [{ targetIdx, lostHp: 4, source: '同归深渊' }],
+      continuation: { _turnOwner: gs.abilityData?._turnOwner ?? gs.currentTurn },
     });
-    if (loss) {
+    if (damage.phase) {
       return {
         ...gs,
         players: P,
         deck: D,
         discard: Disc,
         log: L,
-        phase: 'ETHEREALIZE_DECISION',
-        abilityData: buildEtherealizeRedirectDecision([loss], {
-          _turnOwner: gs.abilityData?._turnOwner ?? gs.currentTurn,
-        }),
+        phase: damage.phase,
+        abilityData: damage.abilityData,
       };
     }
-    applyHpDamageWithLink(P, targetIdx, 4, Disc, L, gs.currentTurn, D);
   }
 
   const win = checkWin(P, gs._isMP);

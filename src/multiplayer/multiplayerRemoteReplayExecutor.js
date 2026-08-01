@@ -173,9 +173,14 @@ export function applyMultiplayerReplayAction(
     ));
     context.receivedGsRef.current = true;
     context.suppressNextBroadcastRef.current = true;
-    context.pendingGsRef.current = replayAction.pendingGs;
-    context.animQueueRef.current = replayAction.queue || [];
-    context.setAnim(replayAction.anim);
+    // START_ANIM used to bypass triggerAnimQueue, so the local drawer missed
+    // queue normalization such as DRAW_BACKGROUND_CAMERA_PRE while remote
+    // viewers received it through ANIM_QUEUE. Route both replay shapes through
+    // the same entry point to keep every client on an identical timeline.
+    context.triggerAnimQueue(
+      [replayAction.anim, ...(replayAction.queue || [])].filter(Boolean),
+      replayAction.pendingGs
+    );
     return;
   }
   if (replayAction?.type === MP_REMOTE_REPLAY.SET_STATE) {

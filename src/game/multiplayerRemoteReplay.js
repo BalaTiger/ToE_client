@@ -15,6 +15,7 @@ import { appendFinalStatePatch, finalStatePatch } from './animStatePatch';
 import { cardLogText, copyPlayers } from './coreUtils';
 import { isLocalCurrentTurn, isLocalSeatIndex, localDisplayName } from './rotateState';
 import {
+  buildTurnStartPreDrawEffectQueue,
   buildTsathogguaSlimeGrantQueue,
   buildTurnStartDrawReplayQueue,
   getTurnStartDrawBaselineLog,
@@ -97,12 +98,13 @@ function isPendingZhuHideState(state) {
   return state?.phase === 'ZHU_HIDE_AI_DRAW';
 }
 
-function buildZhuHideWaitAction(rotated) {
+function buildZhuHideWaitAction(rotated, previousGs) {
   const drawerPid = getTurnStartDrawerIdx(rotated);
   const drawerName = rotated?.players?.[drawerPid]?.name || '???';
   if (!Array.isArray(rotated?._turnStartLogs) || !rotated._turnStartLogs.length) {
     return { type: MP_REMOTE_REPLAY.SET_STATE, gs: clearRemoteReplayHints(rotated) };
   }
+  const preDrawQueue = buildTurnStartPreDrawEffectQueue({ oldGs: previousGs, newGs: rotated });
   return {
     type: MP_REMOTE_REPLAY.START_ANIM,
     maskedGs: buildMaskedActionState(rotated),
@@ -112,7 +114,7 @@ function buildZhuHideWaitAction(rotated) {
       ...(drawerPid === 0 ? {} : { name: drawerName }),
       msgs: rotated._turnStartLogs,
     },
-    queue: [],
+    queue: preDrawQueue,
   };
 }
 
@@ -262,6 +264,40 @@ function buildResolvedGodChoiceDiscardStep(rotated, previousGs, logDelta = []) {
   };
 }
 
+function buildResolvedDrawChoiceQueue(rotated, previousGs, logDelta, buildAnimQueue) {
+  const previousDraw = previousGs?.drawReveal;
+  const card = previousDraw?.card;
+  if (previousGs?.phase !== 'DRAW_REVEAL' || !card || !previousDraw.needsDecision || previousDraw.forcedKeep || rotated?.drawReveal?.card) return null;
+  const drawerIdx = previousDraw.drawerIdx ?? previousGs.currentTurn ?? 0;
+  const drawerName = previousDraw.drawerName || previousGs.players?.[drawerIdx]?.name || rotated.players?.[drawerIdx]?.name || '???';
+  const inHand = (rotated.players?.[drawerIdx]?.hand || []).some(candidate => isSameCard(candidate, card));
+  const inDiscard = (rotated.discard || []).some(candidate => isSameCard(candidate, card));
+  if (!inHand && !inDiscard) return null;
+  const effectQueue = bindAnimLogChunks(
+    buildAnimQueue(previousGs, rotated).filter(step => !['DRAW_CARD', 'CARD_TRANSFER', 'DISCARD'].includes(step?.type)),
+    { statLogs: logDelta },
+  );
+  const resolutionStep = inHand
+    ? cardTransferStep({
+        fromPid: drawerIdx,
+        dest: 'player',
+        toPid: drawerIdx,
+        count: 1,
+        sourceAnchor: 'playerArea',
+        effect: 'draw',
+        cards: [card],
+        msgs: logDelta.filter(line => typeof line === 'string' && line.includes('收入了')),
+      })
+    : {
+        type: 'DISCARD',
+        card,
+        triggerName: localDisplayName(drawerIdx, drawerName),
+        targetPid: drawerIdx,
+        msgs: logDelta.filter(line => typeof line === 'string' && line.includes('弃置了')),
+      };
+  return [resolutionStep, ...effectQueue];
+}
+
 export function buildMpRemoteReplayAction({
   rotated,
   previousGs,
@@ -298,6 +334,24 @@ export function buildMpRemoteReplayAction({
   ];
   const isDrawAnimationState = hasDrawAnimationState(rotated);
   const previousPendingZhuHide = isPendingZhuHideState(previousGs);
+  const resolvedDrawChoiceQueue = buildResolvedDrawChoiceQueue(rotated, previousGs, logDelta, buildAnimQueue);
+  if (resolvedDrawChoiceQueue?.length) {
+    const queue = appendFinalStatePatch(
+      resolvedDrawChoiceQueue,
+      rotated,
+      ['players', 'deck', 'discard', 'log', 'phase', 'drawReveal', 'abilityData'],
+    );
+    return withConsumedVisualEvents({
+      type: MP_REMOTE_REPLAY.ANIM_QUEUE,
+      maskedGs: buildMaskedActionState(rotated),
+      pendingGs: clearRemoteReplayHints(rotated),
+      queue,
+      visualLock: {
+        players: previousGs?.players || null,
+        zhuLight: previousGs?.zhuLight || rotated.zhuLight || null,
+      },
+    });
+  }
   const resolvedGodChoiceDiscardStep = buildResolvedGodChoiceDiscardStep(rotated, previousGs, logDelta);
   if (resolvedGodChoiceDiscardStep) {
     const queue = appendFinalStatePatch(
@@ -459,7 +513,7 @@ export function buildMpRemoteReplayAction({
     }
   }
   if (isPendingZhuHideState(rotated)) {
-    return withConsumedVisualEvents(buildZhuHideWaitAction(rotated));
+    return withConsumedVisualEvents(buildZhuHideWaitAction(rotated, previousGs));
   }
   const treasureDodgeQueue = buildTreasureDodgeResolutionReplay({
     previousGs,
@@ -831,6 +885,34 @@ export function buildMpRemoteReplayAction({
       type: MP_REMOTE_REPLAY.SET_STATE,
       gs: clearRemoteReplayHints({ ...rotated, phase: 'ACTION', abilityData: {} }),
     };
+  }
+
+  // 两人一绳建立链条：本地触发方在选目标时已显式注入 CARD_TRANSFER 飞行动画（App.jsx damageLinkSelectTarget），
+  // 远端没有对应 _visualEvents，需按日志增量重建，否则只有触发方看得到链条发动特效
+  const damageLinkEstablishMsg = logDelta.find(m => (
+    typeof m === 'string' && m.includes('【两人一绳】') && m.includes('间架起链条')
+  ));
+  if (damageLinkEstablishMsg && !isDrawAnimationState) {
+    const damageLinkPair = (rotated.players || []).flatMap((player, idx) => {
+      const partnerIdx = player?.damageLink?.partner;
+      if (!player?.damageLink?.active || partnerIdx == null || partnerIdx <= idx) return [];
+      const partner = rotated.players[partnerIdx];
+      if (!partner?.damageLink?.active || partner.damageLink.partner !== idx) return [];
+      return [{ fromPid: idx, toPid: partnerIdx }];
+    })[0] || {};
+    const queue = appendFinalStatePatch(
+      [cardTransferStep({ ...damageLinkPair, effect: 'damageLink', durationMs: 1900, msgs: [damageLinkEstablishMsg] })],
+      rotated,
+      ['players', 'discard', 'log', 'phase', 'abilityData'],
+    );
+    return withConsumedVisualEvents({
+      type: MP_REMOTE_REPLAY.ANIM_QUEUE,
+      maskedGs: buildMaskedActionState(rotated),
+      pendingGs: clearRemoteReplayHints(rotated),
+      queue,
+      // 飞行期间锁定建立前的 players，避免常驻链条抢在发动动画之前出现
+      visualLock: { players: previousGs?.players || null },
+    });
   }
 
   if (!isDrawAnimationState) {

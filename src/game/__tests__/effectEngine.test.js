@@ -1,13 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   applyHpDamageWithLink,
+  resolvePendingDamageLinkBreak,
+  submitDamageEvents,
   applyInspectionForSanLoss,
   processInspectionTargets,
   getAdjacentTargets,
   getLivingAdjacentTargets,
   applyFx,
 } from '../effectEngine';
-import { makeInspectionMeta } from '../coreUtils';
+import { buildTsathogguaSlimeBalanceDecision, copyPlayers, makeInspectionMeta } from '../coreUtils';
 import { resetIds, makePlayer, makeStandardPlayers, makeZoneCard, makeGodCard, makeGs } from './factory';
 import { createTsathogguaSlimeCard } from '../../constants/card';
 import { VISUAL_EVENT } from '../visualEvents';
@@ -62,6 +64,62 @@ describe('applyHpDamageWithLink', () => {
     expect(p0.damageLink.active).toBe(false);
     expect(p1.damageLink.active).toBe(false);
     expect(L.some(s => s.includes('两人一绳'))).toBe(true);
+  });
+
+  it('原始伤害先等待黏液，之后断绳伤害会再次产生黏液决策', () => {
+    const slime1 = createTsathogguaSlimeCard();
+    const slime2 = createTsathogguaSlimeCard();
+    const p0 = makePlayer({ hp: 10, san: 6, hand: [slime1, slime2], damageLink: { active: true, partner: 1 } });
+    const partnerSlime = createTsathogguaSlimeCard();
+    const p1 = makePlayer({ hp: 10, san: 8, hand: [partnerSlime], damageLink: { active: true, partner: 0 } });
+    const P = [p0, p1];
+    const beforeOriginal = copyPlayers(P);
+    const Disc = [];
+    const L = [];
+
+    applyHpDamageWithLink(P, 0, 2, Disc, L, 0, []);
+    const firstDecision = buildTsathogguaSlimeBalanceDecision(beforeOriginal, P, { _turnOwner: 0 });
+
+    expect(P[0].hp).toBe(8);
+    expect(P[1].hp).toBe(10);
+    expect(P[0].damageLink.active).toBe(true);
+    expect(firstDecision).toMatchObject({ targetIdx: 0, lostHp: 2, pendingDamageLinkBreak: { partnerIdx: 1 } });
+
+    P[0].hand.splice(P[0].hand.indexOf(slime1), 1);
+    const linkReaction = resolvePendingDamageLinkBreak(P, 0, Disc, L, 0, []);
+    const secondDecision = buildTsathogguaSlimeBalanceDecision(linkReaction.beforePlayers, P, { _turnOwner: 0 });
+
+    expect(P[0].hp).toBe(5);
+    expect(P[1].hp).toBe(7);
+    expect(P[0].damageLink.active).toBe(false);
+    expect(secondDecision).toMatchObject({ targetIdx: 0, lostHp: 3 });
+    expect(secondDecision.pendingSlimeBalanceDecisions).toEqual([
+      expect.objectContaining({ targetIdx: 1, lostHp: 3 }),
+    ]);
+  });
+
+  it('断绳伤害会先让回合外角色决定虚化，尚不实际扣血', () => {
+    const slime = createTsathogguaSlimeCard();
+    const p0 = makePlayer({ hp: 10, san: 6, hand: [slime], damageLink: { active: true, partner: 1 } });
+    const p1 = makePlayer({ hp: 10, etherealizeStacks: 1, damageLink: { active: true, partner: 0 } });
+    const p2 = makePlayer({ hp: 10 });
+    const P = [p0, p1, p2];
+
+    applyHpDamageWithLink(P, 0, 2, [], [], 0, []);
+    const reaction = resolvePendingDamageLinkBreak(P, 0, [], [], 0, [], { continueTurnStartDraw: true });
+
+    expect(reaction.applied).toBe(false);
+    expect(reaction.etherealizeDecision).toMatchObject({
+      type: 'etherealizeRedirect',
+      targetIdx: 1,
+      lostHp: 3,
+      continueTurnStartDraw: true,
+      deferredDirectLosses: [expect.objectContaining({ targetIdx: 0, lostHp: 3 })],
+    });
+    expect(P[0].hp).toBe(8);
+    expect(P[1].hp).toBe(10);
+    expect(P[0].damageLink.active).toBe(false);
+    expect(P[1].damageLink.active).toBe(false);
   });
 
   it('damageLink 未激活时不触发', () => {
@@ -1398,5 +1456,69 @@ describe('applyInspectionForSanLoss', () => {
     expect(res.inspectionMeta._inspectionEvents[0].statEvents).toMatchObject([
       { type: 'HP_LOSS', target: 1, from: { hp: 10 }, to: { hp: 9 } },
     ]);
+  });
+
+  it('检定乱抓会在回合外目标扣血前进入虚化决策', () => {
+    const players = [
+      makePlayer({ name: '当前玩家', hp: 10, san: 6 }),
+      makePlayer({ name: '相邻玩家', hp: 10, san: 10, etherealizeStacks: 1 }),
+      makePlayer({ name: '另一相邻玩家', hp: 10, san: 10 }),
+    ];
+    const inspectionCard = { name: '乱抓', effect: 'adjacentDamageHP', value: 1, type: 'negative' };
+    const gs = makeGs({ players, currentTurn: 0, inspectionDeck: [inspectionCard], inspectionDiscard: [] });
+
+    const res = applyInspectionForSanLoss(0, 6, 0, players, [], [], [], makeInspectionMeta(gs));
+
+    expect(res.P[1].hp).toBe(10);
+    expect(res.P[2].hp).toBe(10);
+    expect(res.inspectionMeta.abilityData).toMatchObject({
+      type: 'etherealizeRedirect',
+      targetIdx: 1,
+      lostHp: 1,
+      deferredDirectLosses: [expect.objectContaining({ targetIdx: 2, lostHp: 1 })],
+    });
+  });
+});
+
+describe('submitDamageEvents', () => {
+  it('统一入口在任一目标可虚化时延迟整批伤害', () => {
+    const P = [
+      makePlayer({ hp: 10 }),
+      makePlayer({ hp: 10, etherealizeStacks: 1 }),
+      makePlayer({ hp: 10 }),
+    ];
+    const result = submitDamageEvents({
+      players: P,
+      currentTurn: 0,
+      events: [
+        { targetIdx: 1, lostHp: 2, source: '批量伤害', order: 0 },
+        { targetIdx: 2, lostHp: 1, source: '批量伤害', order: 1 },
+      ],
+    });
+
+    expect(P.map(player => player.hp)).toEqual([10, 10, 10]);
+    expect(result).toMatchObject({
+      phase: 'ETHEREALIZE_DECISION',
+      abilityData: {
+        targetIdx: 1,
+        deferredDirectLosses: [expect.objectContaining({ targetIdx: 2, lostHp: 1 })],
+      },
+    });
+  });
+
+  it('统一入口落实伤害后生成黏液决策', () => {
+    const slime = createTsathogguaSlimeCard();
+    const P = [makePlayer({ hp: 10 }), makePlayer({ hp: 8, san: 8, hand: [slime] })];
+    const result = submitDamageEvents({
+      players: P,
+      currentTurn: 0,
+      events: [{ targetIdx: 1, lostHp: 2, lostSan: 1, source: '组合伤害' }],
+    });
+
+    expect(P[1]).toMatchObject({ hp: 6, san: 7 });
+    expect(result).toMatchObject({
+      phase: 'TSG_SLIME_BALANCE',
+      abilityData: { targetIdx: 1, lostHp: 2, lostSan: 1 },
+    });
   });
 });
