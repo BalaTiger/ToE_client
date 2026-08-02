@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getMpTurnTimerMode, shouldRunMpDiscardTimer, startSecondCountdown } from '../useMultiplayerTimers';
+import { getMpTurnTimerMode, hasPendingSharedBuryAliveChoice, shouldRunMpDiscardTimer, startSecondCountdown } from '../useMultiplayerTimers';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -88,5 +88,21 @@ describe('shouldRunMpDiscardTimer', () => {
       gs: makeGs({ phase: 'DISCARD_PHASE', _mpEndTurnDiscardResolved: true }),
       isLocalCurrentTurn,
     })).toBe(false);
+  });
+});
+
+describe('hasPendingSharedBuryAliveChoice', () => {
+  it('keeps the shared bury-alive timer active while a target has not chosen', () => {
+    expect(hasPendingSharedBuryAliveChoice(makeGs({
+      phase: 'BURY_ALIVE_SELECT',
+      abilityData: { targets: [0, 1], buryAliveChoices: [{ cardId: 'a' }, null] },
+    }))).toBe(true);
+  });
+
+  it('stops the shared bury-alive timer as soon as every target has chosen', () => {
+    expect(hasPendingSharedBuryAliveChoice(makeGs({
+      phase: 'BURY_ALIVE_SELECT',
+      abilityData: { targets: [0, 1], buryAliveChoices: [{ cardId: 'a' }, { cardId: 'b' }] },
+    }))).toBe(false);
   });
 });

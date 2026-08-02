@@ -1271,6 +1271,11 @@ export function startNextTurn(gs, opts = {}) {
     const skippedTurnBeforeStatSeq = inspectionMeta?._statEventSeq || 0;
     const skippedTurnBeforeInspectionSeq = inspectionMeta?._inspectionSeq || 0;
     let skippedTurnCthReplay = null;
+    // A resting player still owns a distinct turn, even though that turn has no
+    // start phase (and therefore no turn-start effects or draw phase). Keep the
+    // visual/log boundary before recording the wake-up skip.
+    turnStartLogs = [`── ${P[next].name} 的回合开始 ──`];
+    L.push(...turnStartLogs);
     P[next].isResting = false;
     L.push(`${P[next].name} 从休息中醒来，跳过本回合`);
     // CTH power: draw when ending/skipping turn while face-down
@@ -1441,9 +1446,10 @@ export function startNextTurn(gs, opts = {}) {
       let drawEvent = null;
       if (rSlime.drawnCard) {
         if (rSlime.reshuffleLog) { L.push(rSlime.reshuffleLog); drawLogs.push(rSlime.reshuffleLog); }
+        if (slimePop) drawLogs.push(...slimePop.msgs);
         const msg = `【无定形体】你额外摸到 ${drawCardDecisionText(rSlime.drawnCard)}`;
         L.push(msg); drawLogs.push(msg);
-        drawEvent = { card: rSlime.drawnCard, drawerIdx: 0, drawerName: P[0].name, sourcePile: rSlime.sourcePile, msgs: [msg], fromTsathogguaSlime: true };
+        drawEvent = { card: rSlime.drawnCard, drawerIdx: 0, drawerName: P[0].name, sourcePile: rSlime.sourcePile, msgs: [msg], fromTsathogguaSlime: true, slimePop };
         turnDrawEvents.push(drawEvent);
       }
       const pendingSlimeData = { pendingTsathogguaSlimes: tsgSlimes.slice(_d + 1) };
@@ -1454,9 +1460,6 @@ export function startNextTurn(gs, opts = {}) {
         return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: 0, drawerName: P[0].name, fromTsathogguaSlime: true, reshuffleLog: rSlime.reshuffleLog }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, ...pendingSlimeData }, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
       }
       if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
-      if (slimePop) {
-        drawLogs.push(...slimePop.msgs);
-      }
     }
     // 循环内的黏液额外摸牌消息已逐条写入 L，最终统一 flush 时只补固定摸牌新增的部分，
     // 否则额外摸牌/黏液消失消息会在日志里重复出现两次。
@@ -1629,9 +1632,10 @@ export function startNextTurn(gs, opts = {}) {
       let drawEvent = null;
       if (rSlime.drawnCard) {
         if (rSlime.reshuffleLog) { L.push(rSlime.reshuffleLog); drawLogs.push(rSlime.reshuffleLog); }
+        if (slimePop) drawLogs.push(...slimePop.msgs);
         const msg = `【无定形体】${P[next].name} 额外摸到 ${drawCardDecisionText(rSlime.drawnCard)}`;
         L.push(msg); drawLogs.push(msg);
-        drawEvent = { card: rSlime.drawnCard, drawerIdx: next, drawerName: P[next].name, sourcePile: rSlime.sourcePile, msgs: [msg], fromTsathogguaSlime: true };
+        drawEvent = { card: rSlime.drawnCard, drawerIdx: next, drawerName: P[next].name, sourcePile: rSlime.sourcePile, msgs: [msg], fromTsathogguaSlime: true, slimePop };
         turnDrawEvents.push(drawEvent);
       }
       const pendingSlimeData = { pendingTsathogguaSlimes: tsgSlimes.slice(_d + 1) };
@@ -1642,9 +1646,6 @@ export function startNextTurn(gs, opts = {}) {
         return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: next, drawerName: P[next].name, fromTsathogguaSlime: true, reshuffleLog: rSlime.reshuffleLog }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, ...pendingSlimeData }, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw };
       }
       if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
-      if (slimePop) {
-        drawLogs.push(...slimePop.msgs);
-      }
     }
     // 循环内的黏液额外摸牌消息已逐条写入 L，最终统一 flush 时只补固定摸牌新增的部分，
     // 否则额外摸牌/黏液消失消息会在日志里重复出现两次。
@@ -1766,16 +1767,14 @@ export function startNextTurn(gs, opts = {}) {
       let drawEvent = null;
       if (rSlime.drawnCard) {
         if (rSlime.reshuffleLog) { L.push(rSlime.reshuffleLog); drawLogs.push(rSlime.reshuffleLog); }
+        if (slimePop) drawLogs.push(...slimePop.msgs);
         const msg = `【无定形体】${P[next].name} 额外摸到 ${drawCardDecisionText(rSlime.drawnCard)}`;
         L.push(msg);
         drawLogs.push(msg);
-        drawEvent = { card: rSlime.drawnCard, drawerIdx: next, drawerName: P[next].name, sourcePile: rSlime.sourcePile, msgs: [msg], fromTsathogguaSlime: true };
+        drawEvent = { card: rSlime.drawnCard, drawerIdx: next, drawerName: P[next].name, sourcePile: rSlime.sourcePile, msgs: [msg], fromTsathogguaSlime: true, slimePop };
         turnDrawEvents.push(drawEvent);
       }
       if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
-      if (slimePop) {
-        drawLogs.push(...slimePop.msgs);
-      }
     }
     // 循环内的黏液额外摸牌消息已逐条写入 L，最终统一 flush 时只补固定摸牌新增的部分，
     // 否则额外摸牌/黏液消失消息会在日志里重复出现两次。

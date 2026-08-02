@@ -6,11 +6,27 @@ import {
   clearPendingAnimDeathPlayers,
   collectExplicitAiTurnLogs,
   finalizeAiPresentationState,
+  shouldBuildQueuedAiTurnStartReplay,
   stripAiExecutionFields,
   stripAiPresentationFields,
 } from '../aiTurnPresentation';
 
 describe('AI turn presentation helpers', () => {
+  it('keeps a terminal incoming AI turn eligible for queued presentation', () => {
+    const nextState = {
+      currentTurn: 1,
+      gameOver: { winner: 'treasure' },
+      _turnStartLogs: ['turn starts', 'damage link breaks', 'player dies'],
+    };
+
+    expect(shouldBuildQueuedAiTurnStartReplay({
+      nextState,
+      fromTurn: 0,
+      isAiSeat: (_state, idx) => idx === 1,
+      getTurnStartDrawnCard: () => null,
+    })).toBe(true);
+  });
+
   it('builds the hunt-wait timeline and returns presentation state without side effects', () => {
     const introStep = { type: 'YOUR_TURN', triggerName: 'Bot' };
     const previousState = {

@@ -3,7 +3,7 @@ import { buildAnimQueue } from '../animQueueCore';
 import { copyPlayers } from '../coreUtils';
 import { buildMpRemoteReplayAction, MP_REMOTE_REPLAY } from '../multiplayerRemoteReplay';
 import { rotateGsForViewer } from '../rotateState';
-import { createCardEffectEvent, createEarthquakeEvent, createEndlessCorridorReplayEvent, createHuntResultEvent, createSphinxResultEvent, createSwapCardsEvent } from '../visualEvents';
+import { createAnimTransactionEvent, createCardEffectEvent, createEarthquakeEvent, createEndlessCorridorReplayEvent, createHuntResultEvent, createSphinxResultEvent, createSwapCardsEvent } from '../visualEvents';
 
 const card = { id: 'c1', name: '测试牌', type: 'zone' };
 
@@ -2064,6 +2064,61 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.consumedVisualEventIds).toContain(replayEvent.id);
   });
 
+  it('replays a Rlyeh-dream animation transaction with the same queue and decision barrier', () => {
+    const dreamEvent = createAnimTransactionEvent({
+      id: 'cth-dream-segment',
+      actorIdx: 1,
+      actorName: '艾伦',
+      context: 'cthRlyehDream',
+      barrier: 'decision',
+      beforePlayers: [player('你-before'), player('艾伦-before'), player('贝拉-before')],
+      queue: [
+        { type: 'CTH_RLYEH_DREAM', targetPid: 1 },
+        { type: 'DICE_ROLL', diceMode: 'moldyFood', d1: 1, targetPid: 1 },
+        { type: 'HP_DAMAGE', targetPid: 1, amount: 1 },
+      ],
+    });
+    const action = buildAction(makeState({
+      phase: 'TSG_SLIME_BALANCE',
+      abilityData: { targetIdx: 1, fromRest: true },
+      _visualEvents: [dreamEvent],
+    }), {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION' }),
+      buildAnimQueue,
+    });
+
+    expect(dreamEvent).toMatchObject({ type: 'animTransaction', context: 'cthRlyehDream', barrier: 'decision' });
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.slice(0, 3).map(step => step.type)).toEqual(['CTH_RLYEH_DREAM', 'DICE_ROLL', 'HP_DAMAGE']);
+    expect(action.pendingGs.phase).toBe('TSG_SLIME_BALANCE');
+    expect(action.consumedVisualEventIds).toContain('cth-dream-segment');
+  });
+
+  it('treats animTransaction as an exact queue without inferred turn-draw tail steps', () => {
+    const drawnCard = { id: 'transaction-draw', name: '事务摸牌', type: 'zone' };
+    const transaction = createAnimTransactionEvent({
+      id: 'exact-turn-draw',
+      context: 'turnStartDraw',
+      queue: [{ type: 'YOUR_TURN', name: '艾伦' }],
+    });
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card: drawnCard, drawerIdx: 1, needsDecision: true },
+      _drawnCard: drawnCard,
+      _drawLogs: ['艾伦 摸到 事务摸牌'],
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _visualEvents: [transaction],
+    }), {
+      previousGs: makeState({ currentTurn: 0, phase: 'ACTION' }),
+      buildAnimQueue,
+    });
+
+    expect(action.queue.filter(step => step.type === 'YOUR_TURN')).toHaveLength(1);
+    expect(action.queue.some(step => step.type === 'DRAW_CARD')).toBe(false);
+    expect(action.queue.at(-1)).toMatchObject({ type: 'STATE_PATCH', phase: 'DRAW_REVEAL' });
+  });
+
   it('accepts a later endless-corridor dodge delta after the opening replay was consumed', () => {
     const opening = createEndlessCorridorReplayEvent({
       id: 'corridor-opening',
@@ -2234,6 +2289,56 @@ describe('buildMpRemoteReplayAction', () => {
       phase: 'DRAW_REVEAL',
       drawReveal: expect.objectContaining({ card: cthCard, drawerIdx: 2, fromRest: true }),
     });
+  });
+
+  it('梦访拉莱耶遇到烛九阴点亮牌时先同步梦境，决策后再同步翻牌', () => {
+    const litCard = { id: 'lit-cth-card', name: '点亮的牌', key: 'B2', type: 'zone' };
+    const waitingState = makeState({
+      _isMP: true,
+      currentTurn: 1,
+      phase: 'ZHU_HIDE_AI_DRAW',
+      players: [player('烛九阴玩家'), player('克苏鲁玩家')],
+      deck: [litCard],
+      zhuLight: { ownerIdx: 0, cardIds: [litCard.id] },
+      abilityData: {
+        zhuGuard: { card: litCard },
+        drawerIdx: 1,
+        fromRest: true,
+        cthDrawsRemaining: 1,
+        cthDreamPending: true,
+      },
+      _drawLogs: ['克苏鲁玩家（克苏鲁信徒Lv.1）梦访拉莱耶，翻面结束回合时额外摸1张牌'],
+    });
+
+    const waitingAction = buildAction(waitingState, {
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION' }),
+      buildAnimQueue,
+    });
+
+    expect(waitingAction.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(waitingAction.queue.filter(step => step.type === 'CTH_RLYEH_DREAM')).toHaveLength(1);
+    expect(waitingAction.queue.some(step => step.type === 'DRAW_CARD')).toBe(false);
+    expect(waitingAction.pendingGs).toMatchObject({
+      phase: 'ZHU_HIDE_AI_DRAW',
+      abilityData: { fromRest: true, cthDreamShown: true },
+    });
+
+    const resolvedState = makeState({
+      ...waitingAction.pendingGs,
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card: litCard, drawerIdx: 1, drawerName: '克苏鲁玩家', needsDecision: true, fromRest: true },
+      zhuLight: { ownerIdx: 0, cardIds: [] },
+      abilityData: { fromRest: true, cthDrawsRemaining: 0, cthDreamShown: true },
+      _drawLogs: ['克苏鲁玩家 摸到 [B2] 点亮的牌'],
+    });
+    const resolvedAction = buildAction(resolvedState, {
+      previousGs: waitingAction.pendingGs,
+      buildAnimQueue,
+    });
+
+    expect(resolvedAction.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(resolvedAction.queue.filter(step => step.type === 'CTH_RLYEH_DREAM')).toHaveLength(0);
+    expect(resolvedAction.queue.filter(step => step.type === 'DRAW_CARD' && step.card === litCard)).toHaveLength(1);
   });
 
   it('keeps turn-end boundary events before replaying 拉莱耶之主 turn-end draws remotely', () => {
@@ -2858,5 +2963,81 @@ describe('buildMpRemoteReplayAction', () => {
 
     expect(action.type).toBe(MP_REMOTE_REPLAY.SET_STATE);
     expect(action.gs).toMatchObject({ phase: 'ACTION', abilityData: {} });
+  });
+  it('replays the remote turn banner before a slime-drawn Bottom Bounce target choice', () => {
+    const bounce = { id: 'bounce-slime', name: '触底反弹', key: 'C4', type: 'swapAllHands' };
+    const slime = { id: 'slime', name: '撒托古亚的赐福黏液', isTsathogguaSlime: true };
+    const beforePlayers = [player('你'), { ...player('艾伦'), hand: [slime] }];
+    const afterPlayers = [player('你'), { ...player('艾伦'), hand: [] }];
+    const turnLog = '── 艾伦 的回合开始 ──';
+    const drawLog = '【无定形体】艾伦 额外摸到 [C4] 触底反弹';
+    const action = buildAction(makeState({
+      players: afterPlayers,
+      currentTurn: 1,
+      phase: 'ZONE_SWAP_SELECT_TARGET',
+      abilityData: { fromTsathogguaSlime: true, zoneSwapCard: bounce },
+      _drawnCard: bounce,
+      _playersBeforeThisDraw: beforePlayers,
+      _turnStartLogs: [turnLog],
+      _drawLogs: [drawLog],
+      _turnDrawEvents: [{
+        card: bounce,
+        drawerIdx: 1,
+        drawerName: '艾伦',
+        fromTsathogguaSlime: true,
+        msgs: [drawLog],
+      }],
+      log: [turnLog, drawLog],
+    }), {
+      previousGs: makeState({ currentTurn: 0, players: beforePlayers, log: [] }),
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue[0]).toMatchObject({ type: 'YOUR_TURN', name: '艾伦' });
+    expect(action.queue.findIndex(step => step.type === 'DRAW_CARD'))
+      .toBeGreaterThan(action.queue.findIndex(step => step.type === 'YOUR_TURN'));
+  });
+
+  it('replays a resting opponent turn before the ZHU owner turn and then waits for the hide decision', () => {
+    const litCard = { id: 'lit-after-rest', name: '被点亮的顶牌', key: 'C3', type: 'zone' };
+    const previousGs = makeState({
+      currentTurn: 1,
+      players: [player('你'), { ...player('烛九阴信徒'), godName: 'ZHU' }],
+      log: [],
+    });
+    const rotated = makeState({
+      currentTurn: 1,
+      phase: 'DRAW_REVEAL',
+      players: [player('你'), { ...player('烛九阴信徒'), godName: 'ZHU' }],
+      drawReveal: { card: litCard, drawerIdx: 1, needsDecision: true, zhuResolved: false },
+      zhuLight: { ownerIdx: 1, cardIds: [litCard.id] },
+      _skippedTurnReplays: [{
+        playerIdx: 0,
+        playerName: '你',
+        restingSkip: true,
+        turnStartLogs: ['── 你 的回合开始 ──'],
+        beforePlayers: previousGs.players,
+        afterPlayers: previousGs.players,
+        beforeLog: [],
+        afterLog: ['你跳过回合'],
+      }],
+      _turnStartLogs: ['── 烛九阴信徒 的回合开始 ──'],
+      _drawLogs: ['烛九阴信徒即将摸到被点亮的顶牌'],
+      log: ['你跳过回合', '── 烛九阴信徒 的回合开始 ──'],
+    });
+
+    const action = buildAction(rotated, { previousGs });
+    const timeline = [action.anim, ...(action.queue || [])].filter(Boolean);
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(timeline.filter(step => step.type === 'YOUR_TURN')).toEqual([
+      expect.objectContaining({ name: '你' }),
+      expect.objectContaining({ name: '烛九阴信徒' }),
+    ]);
+    expect(timeline.some(step => ['DRAW_CARD', 'STATE_PATCH', 'CTH_RLYEH_DREAM'].includes(step.type))).toBe(false);
+    expect(action.pendingGs).toMatchObject({
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card: litCard, zhuResolved: false },
+    });
   });
 });

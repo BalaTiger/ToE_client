@@ -7,7 +7,7 @@ import {
   MP_REMOTE_REPLAY,
 } from '../game/multiplayerRemoteReplay';
 import { rotateGsForViewer } from '../game/rotateState';
-import { markConsumedVisualEvents } from '../game/visualEvents';
+import { getVisualEventIdsFromState, markConsumedVisualEvents } from '../game/visualEvents';
 import { getZhuTopGuard } from '../game/zhuPower';
 
 const ANIMATED_REPLAY_TYPES = new Set([
@@ -201,6 +201,13 @@ export function processIncomingMultiplayerStateSync({
   const myIndex = context.myPlayerIndexRef.current;
   const rotatedState = rotateGsForViewer(rawState, myIndex);
   const previousState = context.latestGsRef.current || currentState;
+  // A replay delta can intentionally keep the public game state unchanged and
+  // carry only a newly-created visual event (endless corridor and CTH rest
+  // draws both use this shape).  Do not let the stale-state fast path discard
+  // such packets, otherwise the following turn-state packet overtakes the
+  // missing presentation on remote clients.
+  const hasFreshVisualEvents = getVisualEventIdsFromState(rotatedState)
+    .some(id => !context.consumedVisualEventIdsRef.current.has(id));
   const localIsTerminal = !!previousState?.gameOver
     || previousState?.phase === 'GOD_RESURRECTION';
   const incomingIsTerminal = !!rotatedState?.gameOver
@@ -208,7 +215,8 @@ export function processIncomingMultiplayerStateSync({
   if (localIsTerminal && !incomingIsTerminal) return 'ignored';
   if (previousState?.gameOver && rotatedState?.gameOver) return 'ignored';
   if (
-    previousState
+    !hasFreshVisualEvents
+    && previousState
     && rotatedState._turnKey === previousState._turnKey
     && rotatedState.currentTurn === previousState.currentTurn
     && rotatedState.phase === previousState.phase

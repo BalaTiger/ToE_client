@@ -1733,7 +1733,9 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           maxHandPlayers.push(i);
         }
       });
-      const targetIdx = maxHandPlayers[0];
+      // When the triggering player ties for the largest hand, every other
+      // tied player takes priority regardless of seat order.
+      const targetIdx = maxHandPlayers.find(i => i !== ci) ?? maxHandPlayers[0];
       const actorHandCount = getSameAbyssHandCount(ci);
       const targetHandCount = getSameAbyssHandCount(targetIdx);
       const discardCount = Math.max(0, targetHandCount - actorHandCount);

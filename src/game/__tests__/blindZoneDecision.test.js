@@ -4,6 +4,7 @@ import {
   drawCardDecisionText,
   markBlindZoneCard,
   revealBlindDrawCard,
+  shouldHideBlindZoneIdentity,
   shouldBlindZoneDecision,
 } from '../blindZoneDecision';
 import { makePlayer, makeZoneCard } from './factory';
@@ -26,5 +27,14 @@ describe('blindZoneDecision', () => {
 
     clearBlindZoneDecisionFlag(players, 0, { card: blindCard });
     expect(players[0].blindNextZoneDecision).toBe(false);
+  });
+
+  it('只对触发者本地视角遮蔽盲摸牌的完整卡面', () => {
+    const blindCard = markBlindZoneCard(makeZoneCard('C1', 0), true);
+
+    expect(shouldHideBlindZoneIdentity(blindCard, true)).toBe(true);
+    expect(shouldHideBlindZoneIdentity(blindCard, false)).toBe(false);
+    expect(shouldHideBlindZoneIdentity({ card: blindCard }, true)).toBe(true);
+    expect(shouldHideBlindZoneIdentity({ card: blindCard }, false)).toBe(false);
   });
 });

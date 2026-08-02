@@ -122,6 +122,7 @@ export function getTurnStartDrawBaselineLog(state) {
 
 export function getTurnStartDrawnCard(state) {
   if (state?._drawnCard || state?._aiDrawnCard) return state._drawnCard || state._aiDrawnCard;
+  if (state?.phase === 'ZONE_SWAP_SELECT_TARGET') return state.abilityData?.zoneSwapCard || null;
   return state?.phase === 'GOD_CHOICE'
     ? state.abilityData?.godCard
     : state?.drawReveal?.card;
@@ -444,9 +445,18 @@ export function buildTurnStartPreDrawEffectQueue({ oldGs, newGs, buildQueue = bu
   return queue;
 }
 
-export function buildSkippedTurnReplayQueue(state, { buildQueue = buildAnimQueue } = {}) {
+export function buildSkippedTurnReplayQueue(state, { buildQueue = buildAnimQueue, bannersOnly = false } = {}) {
   const replays = Array.isArray(state?._skippedTurnReplays) ? state._skippedTurnReplays : [];
   return replays.flatMap(replay => {
+    const turnBanner = {
+      type: 'YOUR_TURN',
+      name: localDisplayName(replay.playerIdx, replay.playerName || state?.players?.[replay.playerIdx]?.name || '???'),
+      msgs: replay.turnStartLogs || [],
+    };
+    // A decision gate only needs the skipped player's visible turn boundary.
+    // Replaying state patches or draw/effect steps can restore an already
+    // skipped phase while the decision UI is waiting to open.
+    if (bannersOnly) return [turnBanner];
     const cthReplay = replay.cthReplay;
     const preCthPlayers = cthReplay?.beforePlayers || replay.afterPlayers || state?.players || [];
     const preCthLog = cthReplay?.beforeLog || replay.afterLog || replay.beforeLog || [];
@@ -478,11 +488,7 @@ export function buildSkippedTurnReplayQueue(state, { buildQueue = buildAnimQueue
     const deltaLogs = preCthLog.slice((replay.beforeLog || []).length);
     const remainingLogs = withoutLogLines(deltaLogs, consumedLogs);
     const queue = [
-      {
-        type: 'YOUR_TURN',
-        name: localDisplayName(replay.playerIdx, replay.playerName || state?.players?.[replay.playerIdx]?.name || '???'),
-        msgs: replay.turnStartLogs || [],
-      },
+      turnBanner,
       ...(!replay.restingSkip ? effectQueue : []),
       statePatchStep({ players: preCthPlayers, log: preCthLog, msgs: remainingLogs }),
     ];
@@ -608,20 +614,22 @@ export function buildTurnStartDrawReplayQueue({
   };
   const drawCardSteps = hasExplicitTurnDrawEvents
     ? turnDrawEvents.flatMap(event => {
-      const steps = [{
+      const drawStep = {
         type: 'DRAW_CARD',
         card: event.card,
         triggerName: localDisplayName(event.drawerIdx ?? drawerPid, event.drawerName || drawerName),
         targetPid: event.drawerIdx ?? drawerPid,
         sourcePile: event.sourcePile || newGs?.drawReveal?.sourcePile || newGs?._drawSourcePile || (newGs?.geomagneticReversalActive ? 'discard' : 'deck'),
         msgs: event.msgs,
-      }];
+      };
+      const steps = [];
       if (event.slimePop) {
         steps.push(tsgSlimePopStepFromEvent({
           ...event.slimePop,
           targetPid: event.slimePop.targetPid ?? event.drawerIdx ?? drawerPid,
         }));
       }
+      steps.push(drawStep);
       return steps;
     })
     : [drawCardStep];
@@ -827,13 +835,33 @@ export function buildTurnStartDrawReplayQueue({
       }
       : player)
     : null;
-  const drawEffectQ = worshipBadgePlayers
+  const drawEffectQRaw = worshipBadgePlayers
     ? prepareWorshipHighlight(unprimedDrawEffectQ, {
       targetPid: drawerPid,
       godKey: resolvedDrawer.godName || drawnCard?.godKey,
       players: worshipBadgePlayers,
     })
     : unprimedDrawEffectQ;
+  const hasEventBoundSlimePop = turnDrawEvents.some(event => event?.slimePop);
+  const drawEffectQ = hasEventBoundSlimePop
+    ? drawEffectQRaw.filter(step => step?.type !== 'TSG_SLIME_POP')
+    : drawEffectQRaw;
+  // Multiple reveal draws can occur in one draw phase (for example a slime
+  // extra draw followed by the fixed draw). A forced card's bespoke effect
+  // belongs immediately after that card's reveal, not after every later reveal.
+  const immediateEarthquakeQ = [];
+  const deferredDrawEffectQ = [];
+  drawEffectQ.forEach(step => {
+    if (step?.type === 'EARTHQUAKE') immediateEarthquakeQ.push(step);
+    else deferredDrawEffectQ.push(step);
+  });
+  const orderedDrawCardSteps = immediateEarthquakeQ.length
+    ? drawCardSteps.flatMap(step => {
+        if (step?.type !== 'DRAW_CARD' || step?.card?.type !== 'allDiscard' || !immediateEarthquakeQ.length) return [step];
+        return [step, immediateEarthquakeQ.shift()];
+      })
+    : drawCardSteps;
+  deferredDrawEffectQ.push(...immediateEarthquakeQ);
   const hasDrawEffectVisualStep = drawEffectQ.some(step => step?.type !== 'STATE_PATCH');
   const drawEffectStatePatch = hasDrawEffectVisualStep
     ? statePatchStep({ players: newGs?.players, discard: newGs?.discard })
@@ -843,11 +871,11 @@ export function buildTurnStartDrawReplayQueue({
     turnStartStep,
     ...turnStartPreDrawQ,
     ...(turnStartStatePatch ? [turnStartStatePatch] : []),
-    ...drawCardSteps,
+    ...orderedDrawCardSteps,
     ...(discardDrawnStep ? [discardDrawnStep] : []),
     ...(discardRestoreStep ? [discardRestoreStep] : []),
     ...(treasureDodgeDiceStep ? [treasureDodgeDiceStep] : []),
-    ...drawEffectQ,
+    ...deferredDrawEffectQ,
     ...(drawKeepTransferStep ? [drawKeepTransferStep] : []),
     ...(drawEffectStatePatch ? [drawEffectStatePatch] : []),
   ];
@@ -856,11 +884,11 @@ export function buildTurnStartDrawReplayQueue({
     ...(boundarySteps.length ? [...boundarySteps.slice(1), turnStartStep] : []),
     ...turnStartPreDrawQ,
     ...(turnStartStatePatch ? [turnStartStatePatch] : []),
-    ...drawCardSteps,
+    ...orderedDrawCardSteps,
     ...(discardDrawnStep ? [discardDrawnStep] : []),
     ...(discardRestoreStep ? [discardRestoreStep] : []),
     ...(treasureDodgeDiceStep ? [treasureDodgeDiceStep] : []),
-    ...drawEffectQ,
+    ...deferredDrawEffectQ,
     ...(drawKeepTransferStep ? [drawKeepTransferStep] : []),
     ...(drawEffectStatePatch ? [drawEffectStatePatch] : []),
   ];

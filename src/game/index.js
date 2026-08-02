@@ -26,6 +26,7 @@ export * from './cardGainEvents';
 export * from './blindZoneDecision';
 export * from './endTurnReplayFlow';
 export * from './cthRestDrawFlow';
+export * from './visualEventTransactionCompiler';
 export * from './visualEvents';
 export * from './turnScopedEffects';
 export * from './animReplayEvents';

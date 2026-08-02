@@ -59,6 +59,19 @@ export function finalizeAiPresentationState(state) {
   };
 }
 
+export function shouldBuildQueuedAiTurnStartReplay({
+  nextState,
+  fromTurn = null,
+  isAiSeat,
+  getTurnStartDrawnCard,
+}) {
+  if (!nextState) return false;
+  if (!isAiSeat(nextState, nextState.currentTurn)) return false;
+  if (fromTurn != null && nextState.currentTurn === fromTurn) return false;
+  return !!(nextState._turnStartLogs || []).length
+    || !!getTurnStartDrawnCard(nextState);
+}
+
 export function buildRoseThornSnapshot(players) {
   return (players || []).map((player, idx) => ({
     idx,

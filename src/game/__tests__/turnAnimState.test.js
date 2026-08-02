@@ -1118,6 +1118,29 @@ describe('buildSinglePlayerAiTurnStartReplayContext', () => {
     expect(context.effectOldGs.zhuLight).toEqual(currentGs.zhuLight);
   });
 
+  it('reduces skipped turns to banners only before a decision gate', () => {
+    const state = makeGs({
+      players: [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' })],
+      _skippedTurnReplays: [{
+        playerIdx: 1,
+        playerName: '艾伦',
+        restingSkip: true,
+        turnStartLogs: ['turn start'],
+        beforePlayers: [],
+        afterPlayers: [],
+        beforeLog: [],
+        afterLog: ['turn skipped'],
+        cthReplay: { draws: [{ id: 'must-not-replay', name: 'card' }] },
+      }],
+    });
+
+    expect(buildSkippedTurnReplayQueue(state, { bannersOnly: true })).toEqual([{
+      type: 'YOUR_TURN',
+      name: '艾伦',
+      msgs: ['turn start'],
+    }]);
+  });
+
   it('returns null for states that should not replay AI turn start', () => {
     const currentGs = { players: [player('你'), player('艾伦')], currentTurn: 0, phase: 'ACTION' };
 

@@ -5,7 +5,7 @@ import {
   GOD_CS,
   getGodDisplaySubtitle
 } from '../../constants/card';
-import { ROLE_CULTIST, isRevealedCultist } from '../../game';
+import { ROLE_CULTIST, isRevealedCultist, shouldHideBlindZoneIdentity } from '../../game';
 import { formatGodEncounterProgress, getLatestGodEncounterProgress } from '../../game/balancePatches';
 import { DDCard, DDCardBack, GodCardDisplay, PreviewCard } from '../cards';
 
@@ -190,7 +190,7 @@ function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingTex
   const { card } = drawReveal;
   const s = CS[card.letter] || GOD_CS;
   const isBystander = !canChoose && thinkingText;
-  const hideIdentity = !!(drawReveal.blindZoneIdentity || card.blindZoneIdentity);
+  const hideIdentity = shouldHideBlindZoneIdentity(drawReveal, canChoose);
   const tm = getDecisionModalMetrics(scaleRatio);
   const ui = tm.uiScale;
   return (

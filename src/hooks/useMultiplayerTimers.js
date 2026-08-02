@@ -82,6 +82,13 @@ export function shouldRunMpDiscardTimer({
   );
 }
 
+export function hasPendingSharedBuryAliveChoice(gs) {
+  if (gs?.phase !== 'BURY_ALIVE_SELECT') return false;
+  const choices = gs.abilityData?.buryAliveChoices;
+  if (!Array.isArray(choices)) return false;
+  return (gs.abilityData?.targets || []).some(targetIdx => !choices[targetIdx]);
+}
+
 export function useMpCthDecisionTimer({
   isMpCthDecisionPhase,
   gs,

@@ -113,11 +113,12 @@ describe('phaseUi', () => {
         _isMP: true,
         currentTurn: 1,
         phase: 'ZHU_HIDE_AI_DRAW',
+        zhuLight: { ownerIdx: 1, cardIds: ['lit'] },
       },
       phase: 'ZHU_HIDE_AI_DRAW',
       visualMe: { godName: null },
     });
 
-    expect(ui.displayPhaseLabel).toBe('请等待其他玩家选择…');
+    expect(ui.displayPhaseLabel).toBe('请等待艾伦玩家选择…');
   });
 });

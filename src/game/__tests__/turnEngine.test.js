@@ -1108,6 +1108,29 @@ describe('turnEngine stat events', () => {
     expect(queue.some(step => step.type === 'DISCARD' && step.card?.id === slime.id)).toBe(false);
   });
 
+  it('黏液额外摸到地动山摇时先破裂黏液，并在下一张牌翻开前播放地震', () => {
+    const slime = createTsathogguaSlimeCard();
+    const earthquake = makeZoneCard('B2', 2);
+    const god = makeGodCard('ZHU');
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', godName: 'TSG', godLevel: 1, hand: [slime, makeZoneCard('C1', 0)] }),
+    ];
+    const gs = makeGs({ players, deck: [earthquake, god], currentTurn: 0, log: [] });
+
+    const result = startNextTurn(gs);
+    const queue = buildTurnStartDrawReplayQueue({ oldGs: gs, newGs: result }).queue;
+    const popIdx = queue.findIndex(step => step.type === 'TSG_SLIME_POP');
+    const earthquakeDrawIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.card === earthquake);
+    const earthquakeFxIdx = queue.findIndex(step => step.type === 'EARTHQUAKE');
+    const godDrawIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.card === god);
+
+    expect(queue.filter(step => step.type === 'TSG_SLIME_POP')).toHaveLength(1);
+    expect(popIdx).toBeLessThan(earthquakeDrawIdx);
+    expect(earthquakeDrawIdx).toBeLessThan(earthquakeFxIdx);
+    expect(earthquakeFxIdx).toBeLessThan(godDrawIdx);
+  });
+
   it('AI 摸到夜风呼啸时日志与数值动画都在检定之前', () => {
     const nightWind = makeZoneCard('C4', 2);
     const insomnia = { id: 'insomnia', name: '失眠', effect: 'disableRest', value: 1, type: 'negative' };
@@ -1560,7 +1583,7 @@ describe('turnEngine stat events', () => {
     expect(result.deck[0]).toBe(top);
   });
 
-  it('翻面休息角色不会产生回合开始、黑山羊、中毒或绳索到期结算', () => {
+  it('翻面休息角色保留独立回合边界，但不结算黑山羊、中毒或绳索到期', () => {
     const goat = { id: 'goat', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
     const players = [
       makePlayer({ name: '你', damageLink: { active: true, partner: 1, expiryOwner: 1 } }),
@@ -1575,7 +1598,12 @@ describe('turnEngine stat events', () => {
 
     expect(result.players[1]).toMatchObject({ hp: 8, san: 8, poisonStacks: 2, isResting: false });
     expect(result.players[1].damageLink).toBeTruthy();
-    expect(result.log.some(line => line.includes('艾伦 的回合开始'))).toBe(false);
+    expect(result.log.slice(0, 3)).toEqual([
+      '── 艾伦 的回合开始 ──',
+      '艾伦 从休息中醒来，跳过本回合',
+      '── 贝拉 的回合开始 ──',
+    ]);
+    expect(result._skippedTurnReplays?.[0]?.turnStartLogs).toEqual(['── 艾伦 的回合开始 ──']);
     expect(result.log.some(line => line.includes('【黑山羊幼仔】艾伦'))).toBe(false);
     expect(result.log.some(line => line.includes('【中毒】艾伦'))).toBe(false);
   });

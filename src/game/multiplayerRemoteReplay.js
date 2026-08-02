@@ -1,7 +1,6 @@
 import { bindAnimLogChunks } from './animLogs';
 import { mergeApophisTargetQueue } from './apophisAnimQueue';
-import { buildAiHuntEventAnimQueue } from './animQueueCore';
-import { buildSphinxResultQueue, cardTransferStep, prepareWorshipHighlight, swapCardsSteps } from './animQueueHelpers';
+import { cardTransferStep, prepareWorshipHighlight } from './animQueueHelpers';
 import {
   buildBewitchGiftReplay,
   buildInspectionReplay,
@@ -16,6 +15,7 @@ import { cardLogText, copyPlayers } from './coreUtils';
 import { isLocalCurrentTurn, isLocalSeatIndex, localDisplayName } from './rotateState';
 import {
   buildTurnStartPreDrawEffectQueue,
+  buildSkippedTurnReplayQueue,
   buildTsathogguaSlimeGrantQueue,
   buildTurnStartDrawReplayQueue,
   getTurnStartDrawBaselineLog,
@@ -23,22 +23,20 @@ import {
   withClearedReplayAnimFields,
 } from './turnAnimState';
 import {
-  buildStatStepsFromVisualEvents,
-  buildTimedOutDrawDiscardStepFromVisualEvents,
-  buildHandLimitDiscardStepsFromVisualEvents,
   clearVisualEvents,
   getVisualEventIdsFromState,
-  buildCardEffectStepsFromVisualEvents,
+  getCardEffectVisualEvents,
   getBewitchGiftVisualEvent,
   getSwapCardsVisualEvent,
   getHuntRevealVisualEvent,
-  buildHuntRevealStepFromVisualEvent,
   getHuntTargetVisualEvent,
   getHuntResultVisualEvent,
   getSphinxResultVisualEvent,
-  getEndlessCorridorReplayVisualEvent,
+  getAnimTransactionVisualEvent,
+  VISUAL_EVENT,
   pruneConsumedVisualEvents,
 } from './visualEvents';
+import { compileFreshVisualEventsToAnimSteps, compileVisualEventToAnimSteps, compileVisualEventToAnimTransaction } from './visualEventTransactionCompiler';
 
 export const MP_REMOTE_REPLAY = {
   ROLE_REVEAL: 'ROLE_REVEAL',
@@ -55,6 +53,15 @@ function hasDrawAnimationState(state) {
     state.phase === 'DRAW_REVEAL'
     || state.phase === 'DRAW_SELECT_TARGET'
     || state.phase === 'GOD_CHOICE'
+    // A kept "Bottom Bounce" drawn by Tsathoggua slime immediately leaves
+    // DRAW_REVEAL and waits for its full-hand-swap target.  It is still part
+    // of the turn-start draw presentation, so remote viewers must replay the
+    // turn banner and this extra draw before the later fixed draw arrives.
+    || (
+      state.phase === 'ZONE_SWAP_SELECT_TARGET'
+      && state.abilityData?.fromTsathogguaSlime
+      && (state._drawnCard || state._aiDrawnCard || state.abilityData?.zoneSwapCard)
+    )
     || (
       state.phase === 'ACTION'
       && state.drawReveal?.card != null
@@ -101,19 +108,37 @@ function isPendingZhuHideState(state) {
 function buildZhuHideWaitAction(rotated, previousGs) {
   const drawerPid = getTurnStartDrawerIdx(rotated);
   const drawerName = rotated?.players?.[drawerPid]?.name || '???';
+  const skippedTurnQueue = buildSkippedTurnReplayQueue(rotated, { bannersOnly: true });
   if (!Array.isArray(rotated?._turnStartLogs) || !rotated._turnStartLogs.length) {
+    if (skippedTurnQueue.length) {
+      return {
+        type: MP_REMOTE_REPLAY.ANIM_QUEUE,
+        maskedGs: buildMaskedActionState(rotated),
+        pendingGs: clearRemoteReplayHints(rotated),
+        queue: skippedTurnQueue,
+      };
+    }
     return { type: MP_REMOTE_REPLAY.SET_STATE, gs: clearRemoteReplayHints(rotated) };
   }
   const preDrawQueue = buildTurnStartPreDrawEffectQueue({ oldGs: previousGs, newGs: rotated });
+  const turnStartAnim = {
+    type: 'YOUR_TURN',
+    ...(drawerPid === 0 ? {} : { name: drawerName }),
+    msgs: rotated._turnStartLogs,
+  };
+  if (skippedTurnQueue.length) {
+    return {
+      type: MP_REMOTE_REPLAY.ANIM_QUEUE,
+      maskedGs: buildMaskedActionState(rotated),
+      pendingGs: clearRemoteReplayHints(rotated),
+      queue: [...skippedTurnQueue, turnStartAnim, ...preDrawQueue],
+    };
+  }
   return {
     type: MP_REMOTE_REPLAY.START_ANIM,
     maskedGs: buildMaskedActionState(rotated),
     pendingGs: clearRemoteReplayHints(rotated),
-    anim: {
-      type: 'YOUR_TURN',
-      ...(drawerPid === 0 ? {} : { name: drawerName }),
-      msgs: rotated._turnStartLogs,
-    },
+    anim: turnStartAnim,
     queue: preDrawQueue,
   };
 }
@@ -187,7 +212,7 @@ function buildTreasureDodgeResolutionReplay({ previousGs, rotated, logDelta, bui
 }
 
 function buildTimedOutDrawDiscardStep(rotated, previousGs, logDelta = []) {
-  const visualEventStep = buildTimedOutDrawDiscardStepFromVisualEvents(rotated);
+  const visualEventStep = compileFreshVisualEventsToAnimSteps(rotated, null, [VISUAL_EVENT.TIMED_OUT_DRAW_DISCARD])[0];
   if (visualEventStep) return visualEventStep;
   const explicit = rotated?._mpTimedOutDrawDiscard;
   if (explicit?.card) {
@@ -346,7 +371,7 @@ export function buildMpRemoteReplayAction({
 
   const logDelta = getLogDelta(previousGs, rotated);
   const timedOutDrawDiscardStep = buildTimedOutDrawDiscardStep(rotated, previousGs, logDelta);
-  const handLimitDiscardSteps = buildHandLimitDiscardStepsFromVisualEvents(rotated);
+  const handLimitDiscardSteps = compileFreshVisualEventsToAnimSteps(rotated, null, [VISUAL_EVENT.HAND_LIMIT_DISCARD]);
   const preTurnSteps = [
     ...handLimitDiscardSteps,
     ...buildTsathogguaSlimeGrantQueue(rotated),
@@ -420,9 +445,11 @@ export function buildMpRemoteReplayAction({
       gs: clearRemoteReplayHints(rotated),
     });
   }
-  const endlessCorridorReplayEvent = getEndlessCorridorReplayVisualEvent(rotated);
-  if (endlessCorridorReplayEvent) {
-    const endlessCorridorQueue = [...(endlessCorridorReplayEvent.queue || [])];
+  const animTransactionEvent = getAnimTransactionVisualEvent(rotated);
+  if (animTransactionEvent) {
+    const endlessCorridorReplayEvent = animTransactionEvent;
+    const isExactTransaction = animTransactionEvent.type === 'animTransaction';
+    const endlessCorridorQueue = [...(animTransactionEvent.queue || [])];
     if (endlessCorridorQueue.length && (Array.isArray(endlessCorridorReplayEvent.beforePlayers) || Array.isArray(endlessCorridorReplayEvent.beforeDiscard))) {
       endlessCorridorQueue[0] = {
         ...endlessCorridorQueue[0],
@@ -449,7 +476,7 @@ export function buildMpRemoteReplayAction({
       buildFullHandSwapTransferQueue: buildFullHandSwapTransferQueueFromLogs,
       effectOldGs: { ...rotated, players: rotated._playersBeforeThisDraw || previousGs?.players || rotated.players, log: getTurnStartDrawBaselineLog(rotated) },
     });
-    const tailQueue = replay.drawnCard && !isTurnEndCthDecisionDraw && !isEndTurnReplayDecisionDraw ? replay.queue : [];
+    const tailQueue = !isExactTransaction && replay.drawnCard && !isTurnEndCthDecisionDraw && !isEndTurnReplayDecisionDraw ? replay.queue : [];
     const finalFields = replay.drawnCard
       ? ['players', 'discard', 'log', 'phase', 'abilityData', 'currentTurn', 'drawReveal']
       : ['players', 'discard', 'log', 'phase', 'abilityData', 'currentTurn', 'drawReveal'];
@@ -504,7 +531,10 @@ export function buildMpRemoteReplayAction({
         });
       }
     }
-    if (queue.some(step => step?.type === 'DRAW_CARD')) {
+    const shouldPlayDream = !rotated._cthDreamShown
+      && ((isCthRestDraw && !rotated.abilityData?.cthDreamShown)
+        || (hasCthRestDraws && queue.some(step => step?.type === 'DRAW_CARD')));
+    if (shouldPlayDream) {
       queue.unshift({
         type: 'CTH_RLYEH_DREAM',
         targetPid: cthDreamTargetPid,
@@ -513,6 +543,14 @@ export function buildMpRemoteReplayAction({
     }
     const pendingGs = {
       ...rotated,
+      ...(shouldPlayDream ? { _cthDreamShown: true } : {}),
+      ...(shouldPlayDream ? {
+        abilityData: {
+          ...(rotated.abilityData || {}),
+          cthDreamPending: undefined,
+          cthDreamShown: true,
+        },
+      } : {}),
       _cthRestDraws: null,
       _cthRestDrawLogs: null,
       _playersBeforeCthDraws: null,
@@ -618,18 +656,7 @@ export function buildMpRemoteReplayAction({
         }, ['players', 'discard'])]
       : [];
     const queue = withApophisTargetReplay([
-      { type: 'SKILL_SWAP', msgs: swapEvent.msgs || logDelta },
-      ...swapCardsSteps({
-        sourceIdx: swapEvent.sourceIdx,
-        targetIdx: swapEvent.targetIdx,
-        sourceCount: swapEvent.sourceCount || 1,
-        targetCount: swapEvent.targetCount || 1,
-        takenCard: hideSwapCards ? null : (swapEvent.takenCard || null),
-        givenCard: hideSwapCards ? null : (swapEvent.givenCard || null),
-        msgs: swapEvent.msgs || logDelta,
-        playersBefore: swapBeforePlayers,
-        zhuLight: previousGs?.zhuLight || rotated.zhuLight || null,
-      }),
+      ...compileVisualEventToAnimSteps(swapEvent, rotated, previousGs, { hidePrivateCards: hideSwapCards }),
       ...swapLandingPatch,
       ...handLimitDiscardSteps,
       finalStatePatch(
@@ -652,7 +679,7 @@ export function buildMpRemoteReplayAction({
   if (huntResultEvent && isFreshActionReplayEvent(huntResultEvent, logDelta)) {
     const queue = appendFinalStatePatch(
       withApophisTargetReplay(
-        buildAiHuntEventAnimQueue(huntResultEvent, rotated.players?.[huntResultEvent.hunterIdx]?.name || '???'),
+        compileVisualEventToAnimSteps(huntResultEvent, rotated, previousGs),
         previousGs,
         rotated,
         buildAnimQueue,
@@ -676,19 +703,7 @@ export function buildMpRemoteReplayAction({
   // state-sync packet with a later turn/draw boundary, so log freshness must
   // not suppress it. Event ids are pruned above and provide replay dedupe.
   if (sphinxResultEvent) {
-    const statQueue = sphinxResultEvent.guessCorrect
-      ? []
-      : bindAnimLogChunks(
-        buildAnimQueue(previousGs || buildMaskedActionState(rotated), rotated),
-        { statLogs: sphinxResultEvent.msgs || logDelta },
-      );
-    const resultQueue = buildSphinxResultQueue({
-      card: sphinxResultEvent.card,
-      actorIdx: sphinxResultEvent.actorIdx,
-      guessCorrect: !!sphinxResultEvent.guessCorrect,
-      msgs: sphinxResultEvent.msgs || logDelta,
-      resultQueue: statQueue,
-    });
+    const resultQueue = compileVisualEventToAnimSteps(sphinxResultEvent, rotated, previousGs || buildMaskedActionState(rotated), { buildAnimQueue });
     const queue = appendFinalStatePatch(
       withApophisTargetReplay(resultQueue, previousGs, rotated, buildAnimQueue),
       rotated,
@@ -708,28 +723,24 @@ export function buildMpRemoteReplayAction({
   const bewitchEvent = getBewitchGiftVisualEvent(rotated);
   if (bewitchEvent && !isDrawAnimationState && isFreshBewitchReplayEvent(bewitchEvent, logDelta)) {
     const oldGs = previousGs || buildMaskedActionState(rotated);
-    const replay = buildBewitchGiftReplay({
-      oldGs,
-      newGs: rotated,
-      bewitchEvent,
+    const compiledBewitch = compileVisualEventToAnimTransaction(bewitchEvent, rotated, oldGs, {
       logDelta,
-      visualStatQueue: buildStatStepsFromVisualEvents(rotated, previousGs?.players || rotated.players),
+      visualStatQueue: compileFreshVisualEventsToAnimSteps(rotated, null, [VISUAL_EVENT.STAT_EVENTS], { players: previousGs?.players || rotated.players }),
       buildAnimQueue,
-      copyPlayers,
     });
-    const queue = withApophisTargetReplay(replay.queue, previousGs, rotated, buildAnimQueue);
+    const queue = withApophisTargetReplay(compiledBewitch?.queue || [], previousGs, rotated, buildAnimQueue);
     const patchedQueue = appendFinalStatePatch(queue, rotated);
     return withConsumedVisualEvents({
       type: MP_REMOTE_REPLAY.ANIM_QUEUE,
       maskedGs: buildMaskedActionState(rotated),
       pendingGs: clearRemoteReplayHints(rotated),
       queue: patchedQueue,
-      inspectionEvents: replay.inspectionEvents,
+      inspectionEvents: compiledBewitch?.inspectionEvents || [],
     });
   }
   const huntEvent = getHuntTargetVisualEvent(rotated);
   if (huntEvent && !isDrawAnimationState && rotated.phase !== 'PLAYER_REVEAL_FOR_HUNT') {
-    const baseStep = { type: 'SKILL_HUNT', msgs: huntEvent.msgs || logDelta, targetIdx: huntEvent.targetIdx };
+    const baseStep = compileVisualEventToAnimSteps(huntEvent, rotated, previousGs)[0];
     const queue = withApophisTargetReplay([baseStep], previousGs, rotated, buildAnimQueue);
     if (queue.length <= 1 && queue[0] === baseStep) {
       return withConsumedVisualEvents({
@@ -749,7 +760,7 @@ export function buildMpRemoteReplayAction({
   }
   const huntRevealEvent = getHuntRevealVisualEvent(rotated);
   if (huntRevealEvent && !isDrawAnimationState) {
-    const revealStep = buildHuntRevealStepFromVisualEvent(huntRevealEvent, rotated);
+    const revealStep = compileVisualEventToAnimSteps(huntRevealEvent, rotated, previousGs)[0];
     if (!revealStep) {
       return withConsumedVisualEvents({
         type: MP_REMOTE_REPLAY.SET_STATE,
@@ -802,8 +813,11 @@ export function buildMpRemoteReplayAction({
       inspectionEvents: replay.inspectionEvents,
     });
   }
+  const previousCardEffectIds = new Set(getCardEffectVisualEvents(previousGs).map(event => event?.id).filter(Boolean));
   const cardEffectSteps = !isDrawAnimationState
-    ? buildCardEffectStepsFromVisualEvents(rotated, previousGs, event => isFreshActionReplayEvent(event, logDelta))
+    ? getCardEffectVisualEvents(rotated)
+      .filter(event => event?.id && !previousCardEffectIds.has(event.id) && isFreshActionReplayEvent(event, logDelta))
+      .flatMap(event => compileVisualEventToAnimSteps(event, rotated, previousGs))
     : [];
   if (cardEffectSteps.length) {
     const queue = appendFinalStatePatch(

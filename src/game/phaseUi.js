@@ -132,7 +132,9 @@ export function buildPhaseUiState({
       case 'ZHU_HIDE_AI_DRAW':
         return visualMe?.godName === 'ZHU'
           ? (canShowTurnDecisionModal ? '【衔烛照幽】是否藏牌？' : '衔烛照幽判定中…')
-          : (isMultiplayer ? '请等待其他玩家选择…' : thinkingText(gs?.currentTurn));
+          : (isMultiplayer
+            ? `请等待${players?.[gs?.zhuLight?.ownerIdx]?.name || '其他'}玩家选择…`
+            : thinkingText(gs?.currentTurn));
       case 'NYA_BORROW':
         return local.nyaBorrow
           ? (canShowTurnDecisionModal ? '「千人千貌」——借用已死角色的身份？' : '身份借用中…')

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MP_REMOTE_REPLAY } from '../game/multiplayerRemoteReplay';
+import { createEndlessCorridorReplayEvent } from '../game/visualEvents';
 import {
   applyMultiplayerReplayAction,
   getPendingZhuHideCardForState,
@@ -64,6 +65,119 @@ function context(overrides = {}) {
 }
 
 describe('multiplayer remote replay executor', () => {
+  it('keeps the local hand snapshot across a remote swap followed by a buffered slime draw', () => {
+    const annaKept = { id: 'anna-kept', name: 'Anna kept card' };
+    const alanGiven = { id: 'alan-given', name: 'Alan given card' };
+    const alanTaken = { id: 'alan-taken', name: 'Alan taken card' };
+    const slime = { id: 'slime', name: 'Tsathoggua slime', isTsathogguaSlime: true };
+    const extraDraw = { id: 'extra-draw', name: 'Extra draw', key: 'D3', type: 'zone' };
+    const normalDraw = { id: 'normal-draw', name: 'Normal draw', godKey: 'NYA', isGod: true };
+
+    // Server/canonical order is Anna(0), Alan(1). The receiving client is Alan,
+    // so every replay snapshot must rotate Alan to local seat 0.
+    const beforeSwap = [
+      player('Anna', { hand: [annaKept, alanGiven] }),
+      player('Alan', { hand: [alanTaken, slime] }),
+    ];
+    const afterSwap = [
+      player('Anna', { hand: [annaKept, alanTaken] }),
+      player('Alan', { hand: [alanGiven, slime] }),
+    ];
+    const swapLog = 'Anna swapped one card with Alan';
+    const swapPacket = state({
+      players: afterSwap,
+      currentTurn: 0,
+      _turnKey: 1,
+      log: [swapLog],
+      _visualEvents: [{
+        id: 'swap-1',
+        type: 'swapCards',
+        sourceIdx: 0,
+        targetIdx: 1,
+        sourceCount: 1,
+        targetCount: 1,
+        takenCard: alanTaken,
+        givenCard: alanGiven,
+        beforePlayers: beforeSwap,
+        afterPlayers: afterSwap,
+        msgs: [swapLog],
+      }],
+    });
+    const drawPacket = state({
+      players: [
+        afterSwap[0],
+        player('Alan', { hand: [alanGiven, extraDraw], san: 8 }),
+      ],
+      deck: [],
+      currentTurn: 1,
+      phase: 'GOD_CHOICE',
+      abilityData: { godCard: normalDraw, drawerIdx: 1 },
+      _turnKey: 2,
+      _preTurnPlayers: afterSwap,
+      _playersBeforeThisDraw: afterSwap,
+      _turnStartLogs: ['Alan turn starts'],
+      _drawLogs: ['slime disappears', 'Alan extra draws D3', 'Alan encounters NYA'],
+      _turnDrawEvents: [
+        { card: extraDraw, drawerIdx: 1, drawerName: 'Alan', fromTsathogguaSlime: true, msgs: ['Alan extra draws D3'] },
+        { card: normalDraw, drawerIdx: 1, drawerName: 'Alan', msgs: ['Alan encounters NYA'] },
+      ],
+      log: [swapLog, 'Alan turn starts', 'slime disappears', 'Alan extra draws D3', 'Alan encounters NYA'],
+    });
+    const ctx = context({
+      myPlayerIndexRef: ref(1),
+      latestGsRef: ref(state({ players: beforeSwap, currentTurn: 0, _turnKey: 1 })),
+    });
+
+    const first = processIncomingMultiplayerStateSync({
+      rawState: swapPacket,
+      currentState: ctx.latestGsRef.current,
+      roleRevealAnim: null,
+      anim: null,
+      animExiting: false,
+      context: ctx,
+    });
+    expect(first).toBe('applied');
+    const swapActionQueue = ctx.triggerAnimQueue.mock.calls[0][0];
+    const swapLanding = swapActionQueue.findLast(step => step.type === 'STATE_PATCH');
+    expect(swapLanding.players[0].name).toBe('Alan');
+    expect(swapLanding.players[0].hand).toEqual([alanGiven, slime]);
+
+    // Match the live socket path: latest state advances immediately, while the
+    // public replay is still busy and the next animated packet is buffered.
+    ctx.latestGsRef.current = ctx.setGs.mock.calls[0][0];
+    ctx.animQueueRef.current = [{ type: 'CARD_TRANSFER' }];
+    const second = processIncomingMultiplayerStateSync({
+      rawState: drawPacket,
+      currentState: ctx.latestGsRef.current,
+      roleRevealAnim: null,
+      anim: { type: 'SKILL_SWAP' },
+      animExiting: false,
+      context: ctx,
+    });
+    expect(second).toBe('buffered');
+    expect(ctx.pendingMpRawQueueRef.current).toEqual([drawPacket]);
+
+    ctx.animQueueRef.current = [];
+    ctx.pendingGsRef.current = null;
+    const third = processIncomingMultiplayerStateSync({
+      rawState: ctx.pendingMpRawQueueRef.current.shift(),
+      allowBuffer: false,
+      currentState: ctx.latestGsRef.current,
+      roleRevealAnim: null,
+      anim: null,
+      animExiting: false,
+      context: ctx,
+    });
+    expect(third).toBe('applied');
+    const drawLock = ctx.visualStateLocks.lock.mock.calls.at(-1)[0].players;
+    expect(drawLock[0].name).toBe('Alan');
+    expect(drawLock[0].hand).toEqual([alanGiven, slime]);
+    expect(drawLock[1].name).toBe('Anna');
+    expect(drawLock[1].hand).toEqual([annaKept, alanTaken]);
+    const drawQueue = ctx.triggerAnimQueue.mock.calls.at(-1)[0];
+    expect(drawQueue.filter(step => step.type === 'DRAW_CARD').map(step => step.card)).toEqual([extraDraw, normalDraw]);
+  });
+
   it('detects replay work and local ZHU hide decisions', () => {
     expect(isMultiplayerReplayBusy({
       roleRevealAnim: null,
@@ -157,6 +271,38 @@ describe('multiplayer remote replay executor', () => {
     expect(result).toBe('ignored');
     expect(ctx.setGs).not.toHaveBeenCalled();
     expect(ctx.setAnimExiting).not.toHaveBeenCalled();
+  });
+
+  it('applies a fresh endless-corridor visual delta even when the public state is unchanged', () => {
+    const current = state({
+      _turnKey: 'turn-1',
+      log: ['end-turn state already synchronized'],
+      _visualEvents: [],
+    });
+    const replayEvent = createEndlessCorridorReplayEvent({
+      id: 'corridor-opening-delta',
+      actorIdx: 1,
+      actorName: 'remote player',
+      queue: [{ type: 'ENDLESS_CORRIDOR_TUNNEL' }],
+    });
+    const incoming = { ...current, _visualEvents: [replayEvent] };
+    const ctx = context({ latestGsRef: ref(current) });
+
+    const result = processIncomingMultiplayerStateSync({
+      rawState: incoming,
+      currentState: current,
+      roleRevealAnim: null,
+      anim: null,
+      animExiting: false,
+      context: ctx,
+    });
+
+    expect(result).toBe('applied');
+    expect(ctx.triggerAnimQueue).toHaveBeenCalledWith(
+      [expect.objectContaining({ type: 'ENDLESS_CORRIDOR_TUNNEL' }), expect.objectContaining({ type: 'STATE_PATCH' })],
+      expect.objectContaining({ _visualEvents: [] }),
+    );
+    expect(ctx.consumedVisualEventIdsRef.current).toContain(replayEvent.id);
   });
 
   it('buffers animated packets while another replay is active', () => {

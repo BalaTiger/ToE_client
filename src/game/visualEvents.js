@@ -16,6 +16,7 @@ export const VISUAL_EVENT = {
   HAND_LIMIT_DISCARD: 'handLimitDiscard',
   CARD_EFFECT: 'cardEffect',
   EARTHQUAKE: 'earthquake',
+  ANIM_TRANSACTION: 'animTransaction',
   ENDLESS_CORRIDOR_REPLAY: 'endlessCorridorReplay',
   GOD_POWER_BLOCKED: 'godPowerBlocked',
   TSG_SLIME_POP: 'tsgSlimePop',
@@ -222,7 +223,7 @@ export function createHandLimitDiscardEvent({ playerIdx = 0, playerName = '该�
   }, 'turn');
 }
 
-export function createEndlessCorridorReplayEvent({
+export function createAnimTransactionEvent({
   actorIdx = 0,
   actorName = '该玩家',
   queue = [],
@@ -230,21 +231,33 @@ export function createEndlessCorridorReplayEvent({
   beforePlayers = null,
   beforeDiscard = null,
   zhuLight = null,
+  context = 'generic',
+  barrier = 'continuation',
   id = null,
 } = {}) {
   const replayQueue = Array.isArray(queue) ? queue.filter(Boolean) : [];
   if (!replayQueue.length) return null;
   return withVisualEventMeta({
-    type: VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY,
-    id: id || `${VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY}:${visualEventInstanceId}:${++endlessCorridorEventSeq}`,
+    type: VISUAL_EVENT.ANIM_TRANSACTION,
+    id: id || `${VISUAL_EVENT.ANIM_TRANSACTION}:${visualEventInstanceId}:${++endlessCorridorEventSeq}`,
     actorIdx,
     actorName,
+    context,
+    barrier,
     queue: replayQueue,
     msgs: Array.isArray(msgs) ? msgs : [],
     beforePlayers: Array.isArray(beforePlayers) ? beforePlayers : null,
     beforeDiscard: Array.isArray(beforeDiscard) ? beforeDiscard : null,
     zhuLight: zhuLight || null,
   }, 'turn');
+}
+
+// Compatibility wrapper for states/tests produced before animation transactions
+// were generalized. New callers that are not endless-corridor flows should use
+// createAnimTransactionEvent and provide their own context.
+export function createEndlessCorridorReplayEvent(options = {}) {
+  const event = createAnimTransactionEvent({ ...options, context: 'endlessCorridor' });
+  return event ? { ...event, type: VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY } : null;
 }
 
 export function buildHuntRevealStepFromVisualEvent(event, state, opts = {}) {
@@ -971,9 +984,15 @@ export function buildCardEffectStepsFromVisualEvents(state, oldState = null, pre
     .filter(Boolean);
 }
 
-export function getEndlessCorridorReplayVisualEvent(state) {
-  return getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY && Array.isArray(ev.queue) && ev.queue.length);
+export function getAnimTransactionVisualEvent(state) {
+  return getVisualEvents(state).find(ev => (
+    (ev?.type === VISUAL_EVENT.ANIM_TRANSACTION || ev?.type === VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY)
+    && Array.isArray(ev.queue)
+    && ev.queue.length
+  ));
 }
+
+export const getEndlessCorridorReplayVisualEvent = getAnimTransactionVisualEvent;
 
 export function getBewitchGiftVisualEvent(state) {
   return getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.BEWITCH_GIFT && ev.card);

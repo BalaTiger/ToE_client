@@ -506,6 +506,34 @@ describe('applyFx', () => {
     expect(res.msgs).toContain('【同归深渊】你 手牌最多（5 张），须做出选择');
   });
 
+  it('sameAbyssChoice: 触发者与他人并列手牌最多时触发者目标优先级最低', () => {
+    const players = [
+      makePlayer({
+        name: '你',
+        hp: 10,
+        hand: [{ id: 'a1' }, { id: 'a2' }, { id: 'a3' }],
+      }),
+      makePlayer({
+        name: '贝拉',
+        hp: 10,
+        hand: [{ id: 'b1' }],
+      }),
+      makePlayer({ name: '卡洛斯', hp: 10, hand: [{ id: 'c1' }, { id: 'c2' }] }),
+    ];
+    const card = { id: 'same-abyss', type: 'sameAbyssChoice', name: '同归深渊', hpVal: 2 };
+    const gs = makeGs({ players, currentTurn: 2 });
+
+    const res = applyFx(card, 2, null, players, [], [], gs);
+
+    expect(res.statePatch.abilityData).toMatchObject({
+      actorIdx: 2,
+      targetIdx: 0,
+      actorHandCount: 3,
+      targetHandCount: 3,
+    });
+    expect(res.msgs).toContain('【同归深渊】你 手牌最多（3 张），须做出选择');
+  });
+
   it('allDamageHPRandomExtra: 全场伤害和随机额外伤害分为两个动画阶段', () => {
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.4);
     const players = [

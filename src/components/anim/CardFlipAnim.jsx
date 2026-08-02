@@ -3,6 +3,7 @@ import { CS, GOD_CS } from '../../constants/card';
 import { CardBackLayer } from '../cards/AnimatedCardBack';
 import { CardCodeLabel, CardFaceImage } from '../cards';
 import { getZoneCardPolarity } from '../../game/coreUtils';
+import { shouldHideBlindZoneIdentity } from '../../game/blindZoneDecision';
 import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 import { SMOKE_COLS, FLOWER_CONFIGS } from './data';
 import { getInspectionCardDesc, getInspectionCardPolarity, petalPath } from './utils';
@@ -84,7 +85,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
 
   const isInspection=!!card?.effect;
   if(!card) return null;
-  const hideZoneIdentity=!!card.blindZoneIdentity&&!isInspection;
+  const hideZoneIdentity=shouldHideBlindZoneIdentity(card,targetPid===0)&&!isInspection;
   const displayTriggerName=isInspection&&(targetPid??0)===0?'你':triggerName;
   const inspectionTone=isInspection?getInspectionCardPolarity(card):null;
   const s=isInspection
