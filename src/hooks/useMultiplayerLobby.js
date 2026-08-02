@@ -36,6 +36,7 @@ export function useMultiplayerLobby({ socketRef }) {
   const [toasts, setToasts] = useState([]);
   const [roomModal, setRoomModal] = useState(null);
   const roomModalRef = useSyncedRef(roomModal);
+  const leavingRoomRef = useRef(false);
   const [connErrModal, setConnErrModal] = useState(false);
   const [onlineOptionsModal, setOnlineOptionsModal] = useState(false);
   const [playerUsername, setPlayerUsername] = useState('');
@@ -70,6 +71,7 @@ export function useMultiplayerLobby({ socketRef }) {
 
   function handleCreateRoom() {
     if (!socketRef.current) return;
+    leavingRoomRef.current = false;
     socketRef.current.emit('createRoom');
     setMultiLoading(true);
   }
@@ -81,6 +83,7 @@ export function useMultiplayerLobby({ socketRef }) {
       addToast('请输入房间号');
       return;
     }
+    leavingRoomRef.current = false;
     socketRef.current.emit('joinRoom', { roomId: rid });
     setMultiLoading(true);
   }
@@ -118,6 +121,7 @@ export function useMultiplayerLobby({ socketRef }) {
 
   function handleJoinLobbyRoom(roomId) {
     if (!socketRef.current) return;
+    leavingRoomRef.current = false;
     socketRef.current.emit('joinRoom', { roomId });
     setMultiLoading(true);
     setLobbyModal(false);
@@ -175,7 +179,9 @@ export function useMultiplayerLobby({ socketRef }) {
   }
 
   function closeRoomModal() {
+    leavingRoomRef.current = true;
     setRoomModal(null);
+    roomModalRef.current = null;
     const socket = socketRef.current;
     const roomId = roomModalRef.current?.roomId;
     if (!socket) return;
@@ -219,6 +225,7 @@ export function useMultiplayerLobby({ socketRef }) {
     roomModal,
     setRoomModal,
     roomModalRef,
+    leavingRoomRef,
     connErrModal,
     setConnErrModal,
     onlineOptionsModal,

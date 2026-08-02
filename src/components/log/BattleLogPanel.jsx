@@ -2,6 +2,7 @@ import React from 'react';
 import { getReliefDisplayConfig } from '../../constants/theme';
 import { buildPublicUrl } from '../../utils/url';
 import { getFontZoomCompensate } from '../../utils/scale';
+import { normalizeLogForViewer } from '../../game/logPerspective';
 
 function getLogPatternBackground(expansionKey = '地神的潜影') {
   const suffix = expansionKey === '群星呼唤' ? 'stars' : 'earth';
@@ -38,25 +39,6 @@ function getLogReliefMaskStyle(isMobile) {
   };
 }
 
-function normalizeMultiplayerLogLine(line, { isMultiplayer, logOwner, myName, players }) {
-  if (!isMultiplayer || !logOwner || logOwner === myName) return line;
-
-  const owner = players.find(p => p.name === logOwner);
-  const roleTag = owner ? `${owner.name}（身份：${owner.role}）` : logOwner;
-  return line
-    .replace(/^你（([^）]+)）/, (_, role) => `${logOwner}（${role}）`)
-    .replace(/^你的邪神之力/, `${logOwner}的邪神之力`)
-    .replace(/^你遭遇/, `${logOwner}遭遇`)
-    .replace(/^你信仰/, `${logOwner}信仰`)
-    .replace(/^你放弃/, `${logOwner}放弃`)
-    .replace(/^你摸到/, `${logOwner}摸到`)
-    .replace(/^你选择/, `${logOwner}选择`)
-    .replace(/^你借用/, `${logOwner}借用`)
-    .replace(/^你（克苏鲁/, `${logOwner}（克苏鲁`)
-    .replace(/^你$/, roleTag)
-    .replace(/^你/, logOwner);
-}
-
 export function BattleLogPanel({
   logRef,
   visibleLog,
@@ -69,19 +51,14 @@ export function BattleLogPanel({
   scaleRatio = 1,
 }) {
   const reliefConfig = getReliefDisplayConfig(expansionKey);
-  const logLines = Array.isArray(visibleLog) ? visibleLog.slice(-50) : [];
+  const allLogLines = Array.isArray(visibleLog) ? visibleLog : [];
   const myName = players?.[0]?.name;
-  const { lines: displayLogLines } = logLines.reduce((acc, line) => {
-    const turnMatch = line.match(/^── (.+?) 的回合开始 ──$/);
-    const logOwner = turnMatch?.[1] || acc.logOwner;
-    const display = normalizeMultiplayerLogLine(line, {
-      isMultiplayer,
-      logOwner,
-      myName,
-      players: players || [],
-    });
-    return { logOwner, lines: [...acc.lines, { line, display }] };
-  }, { logOwner: null, lines: [] });
+  // Normalize before truncating so the current turn owner is still known when
+  // a long turn pushes its heading outside the last 50 visible entries.
+  const allNormalizedLines = normalizeLogForViewer(allLogLines, { isMultiplayer, myName });
+  const logLines = allLogLines.slice(-50);
+  const normalizedLines = allNormalizedLines.slice(-50);
+  const displayLogLines = logLines.map((line, index) => ({ line, display: normalizedLines[index] }));
   const fontZoom = getFontZoomCompensate(scaleRatio);
   const mobileLogHeight = Math.round(132 * fontZoom);
   const reliefMaskStyle = getLogReliefMaskStyle(isMobile);

@@ -100,6 +100,11 @@ export function getLivingAdjacentIndices(players, ci) {
   ));
 }
 
+export function getAdjacentTargets(players, ci) {
+  if (!Array.isArray(players) || ci == null || !players[ci]) return [];
+  return [ci, ...getLivingAdjacentIndices(players, ci)];
+}
+
 export function buildEtherealizeLoss({ players, targetIdx, currentTurn, lostHp = 0, lostSan = 0, source = 'damage' } = {}) {
   if (!Array.isArray(players) || targetIdx == null || !players[targetIdx] || players[targetIdx].isDead) return null;
   if (!(lostHp > 0) && !(lostSan > 0)) return null;

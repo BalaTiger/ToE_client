@@ -851,6 +851,8 @@ function CaveDuelAnim({anim,exiting}){
   const {sourceIdx,targetIdx,sourceCard,targetCard,winnerIdx}=anim||{};
   const [pts,setPts]=React.useState(null);
   useEffect(()=>{
+    let firstRaf=null;
+    let secondRaf=null;
     const measure=()=>{
       const srcEl=document.querySelector(`[data-pid="${sourceIdx}"]`);
       const tgtEl=document.querySelector(`[data-pid="${targetIdx}"]`);
@@ -868,7 +870,13 @@ function CaveDuelAnim({anim,exiting}){
       const winY=winnerR?winnerR.top+winnerR.height*0.72:(winnerIdx===sourceIdx?srcY:(winnerIdx===targetIdx?tgtY:centerY+120));
       setPts({centerX,centerY,srcX,srcY,tgtX,tgtY,winX,winY});
     };
-    requestAnimationFrame(()=>requestAnimationFrame(measure));
+    firstRaf=requestAnimationFrame(()=>{
+      secondRaf=requestAnimationFrame(measure);
+    });
+    return ()=>{
+      if(firstRaf!=null)cancelAnimationFrame(firstRaf);
+      if(secondRaf!=null)cancelAnimationFrame(secondRaf);
+    };
   },[sourceIdx,targetIdx,winnerIdx]);
   if(!anim||!pts)return null;
   const makeStyle=(fromX,fromY,midX,midY,toX,toY,delay=0)=>({

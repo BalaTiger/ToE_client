@@ -259,7 +259,7 @@ export function GenericAnimOverlay({ anim, exiting }) {
 // ── Dice Roll Animation ───────────────────────────────────────
 export function DiceRollAnim({ anim, exiting }) {
   const { d1, d2, rollerName, dodgeSuccess } = anim;
-  const [, setFrame] = React.useState(0);
+  const [frame, setFrame] = React.useState(0);
   const [settled, setSettled] = React.useState(false);
   const rollSignature = [
     anim?.type,
@@ -286,8 +286,9 @@ export function DiceRollAnim({ anim, exiting }) {
   React.useEffect(() => {
     if (settled && anim.onSettled) anim.onSettled();
   }, [settled, anim]);
-  const face1 = settled ? DICE_FACES[d1 - 1] : DICE_FACES[Math.floor(Math.random() * 6)];
-  const face2 = settled ? DICE_FACES[d2 - 1] : DICE_FACES[Math.floor(Math.random() * 6)];
+  const signatureSeed = Array.from(rollSignature).reduce((sum, char) => (sum + char.charCodeAt(0)) % 6, 0);
+  const face1 = settled ? DICE_FACES[d1 - 1] : DICE_FACES[(signatureSeed + frame * 5) % 6];
+  const face2 = settled ? DICE_FACES[d2 - 1] : DICE_FACES[(signatureSeed + frame * 3 + 2) % 6];
   const winner = Math.max(d1, d2);
   const isDodgeRoll = d2 === 0;
   const isApophisRoll = anim.diceMode === 'apophisNight';

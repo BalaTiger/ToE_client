@@ -3,8 +3,7 @@ import {
   isPositiveZoneCard,
   isNegativeZoneCard,
   estimateZoneCardKeepScore,
-  getPrevLivingIndex,
-  getNextLivingIndex,
+  getAdjacentTargets,
   getZoneCardPolarity,
   zoneCardHasGuaranteedHpLoss,
   zoneCardHasGuaranteedSanLoss,
@@ -19,12 +18,6 @@ import {
   ROLE_HUNTER,
   ROLE_CULTIST,
 } from './coreUtils';
-
-function getAdjacentTargets(players, ci) {
-  const prev = getPrevLivingIndex(players, ci);
-  const next = getNextLivingIndex(players, ci);
-  return [ci, ...[prev, next].filter((idx, pos, arr) => idx != null && arr.indexOf(idx) === pos)];
-}
 
 function getLivingAdjacentTargets(players, ci) {
   return getAdjacentTargets(players, ci).filter(
@@ -925,7 +918,6 @@ export function shouldAiRest(gs, ai, aiEffRole) {
     return false;
   }
 
-  if (ai.hp <= 3) return true;
   if (ai.hp <= 5) return Math.random() < Math.min(0.88, 0.72 + cthBias);
   return Math.random() < Math.min(0.74, 0.52 + cthBias);
 }

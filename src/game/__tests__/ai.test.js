@@ -10,7 +10,7 @@ import {
   orderHunterChaseTargets,
   shouldAiRest,
 } from '../ai';
-import { aiStep, processAiEndTurnReplayHand } from '../aiTurn';
+import { aiStep, discardAiHandToLimit, processAiEndTurnReplayHand } from '../aiTurn';
 import { cardLogText, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
 import { startNextTurn } from '../turnEngine';
 import { createBlackGoatYoungCard } from '../../constants/card';
@@ -19,6 +19,23 @@ import { makeProliferatingZState } from '../proliferatingZ';
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe('AI hand-limit discard', () => {
+  it('destroys derived cards instead of putting them into discard', () => {
+    const normal = { id: 'normal', name: '普通牌' };
+    const goat = createBlackGoatYoungCard();
+    const slime = { id: 'slime', name: '黏液', isTsathogguaSlime: true };
+    const players = [makePlayer({ name: 'AI', hand: [goat, slime, normal], _nyaHandLimit: 0 })];
+    const discard = [];
+    const discardedCards = [];
+
+    discardAiHandToLimit(players, 0, discard, [], [], discardedCards);
+
+    expect(players[0].hand).toEqual([]);
+    expect(discard).toEqual([normal]);
+    expect(discardedCards).toEqual([normal]);
+  });
 });
 
 describe('AI visual event handoff', () => {

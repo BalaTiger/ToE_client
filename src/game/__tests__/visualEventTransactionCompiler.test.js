@@ -5,6 +5,8 @@ import {
   createHandLimitDiscardEvent,
   createTimedOutDrawDiscardEvent,
   createTsathogguaSlimePopEvent,
+  getVisualEvents,
+  pruneConsumedVisualEvents,
 } from '../visualEvents';
 import {
   compileRuleVisualEventsToAnimTransaction,
@@ -14,6 +16,17 @@ import {
 const player = (name, patch = {}) => ({ name, hp: 10, san: 10, hand: [], ...patch });
 
 describe('visualEventTransactionCompiler', () => {
+  it('gives repeated events unique ids while keeping legacy packet ids stable', () => {
+    const card = { id: 'repeat', name: '重复牌', type: 'zone' };
+    const first = createTimedOutDrawDiscardEvent({ card, drawerIdx: 1, drawerName: '艾伦' });
+    const second = createTimedOutDrawDiscardEvent({ card, drawerIdx: 1, drawerName: '艾伦' });
+    expect(second.id).not.toBe(first.id);
+    expect(pruneConsumedVisualEvents({ _visualEvents: [second] }, new Set([first.id]))._visualEvents).toEqual([second]);
+
+    const legacyState = { _visualEvents: [{ type: 'timedOutDrawDiscard', card, drawerIdx: 1 }] };
+    expect(getVisualEvents(legacyState)[0].id).toBe(getVisualEvents(legacyState)[0].id);
+  });
+
   it('compiles rule-owned discard and god-power events in event order', () => {
     const card = { id: 'discard-me', name: '弃牌', type: 'zone' };
     const discard = createHandLimitDiscardEvent({ playerIdx: 1, playerName: '艾伦', cards: [card], msgs: ['艾伦弃牌'] });

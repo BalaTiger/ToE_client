@@ -1,8 +1,8 @@
 import {
   clamp,
   killPlayerState,
-  getPrevLivingIndex,
-  getNextLivingIndex,
+  getAdjacentTargets,
+  getLivingAdjacentIndices,
   copyPlayers,
   shuffle,
   getLivingPlayerOrder,
@@ -248,16 +248,10 @@ export function submitDamageEvents({
   };
 }
 
-export function getAdjacentTargets(players, ci) {
-  const prev = getPrevLivingIndex(players, ci);
-  const next = getNextLivingIndex(players, ci);
-  return [ci, ...[prev, next].filter((idx, pos, arr) => idx != null && arr.indexOf(idx) === pos)];
-}
+export { getAdjacentTargets };
 
 export function getLivingAdjacentTargets(players, ci) {
-  return getAdjacentTargets(players, ci).filter(
-    (idx, pos, arr) => idx !== ci && idx != null && players[idx] && !players[idx].isDead && arr.indexOf(idx) === pos
-  );
+  return getLivingAdjacentIndices(players, ci);
 }
 
 function getLivingCircularDistance(players, fromIdx, toIdx) {
@@ -299,7 +293,15 @@ function appendPetrifyEvent(statePatch, gs, event) {
 // ══════════════════════════════════════════════════════════════
 
 function handleInspection(playerIndex, gs) {
-  let newGs = { ...gs };
+  let newGs = {
+    ...gs,
+    players: copyPlayers(gs.players || []),
+    deck: [...(Array.isArray(gs.deck) ? gs.deck : [])],
+    discard: [...(Array.isArray(gs.discard) ? gs.discard : [])],
+    log: [...(Array.isArray(gs.log) ? gs.log : [])],
+    inspectionDeck: [...(Array.isArray(gs.inspectionDeck) ? gs.inspectionDeck : [])],
+    inspectionDiscard: [...(Array.isArray(gs.inspectionDiscard) ? gs.inspectionDiscard : [])],
+  };
   const beforePlayers = copyPlayers(gs.players || []);
   const beforeLog = [...(Array.isArray(gs.log) ? gs.log : [])];
   const beforeDiscard = [...(Array.isArray(gs.discard) ? gs.discard : [])];
@@ -311,6 +313,9 @@ function handleInspection(playerIndex, gs) {
   if (newGs.inspectionDeck.length === 0) {
     newGs.inspectionDeck = shuffle([...newGs.inspectionDiscard]);
     newGs.inspectionDiscard = [];
+  }
+  if (newGs.inspectionDeck.length === 0) {
+    return newGs;
   }
   // 翻开检定牌
   const drawnCard = newGs.inspectionDeck.shift();
@@ -1740,7 +1745,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const targetHandCount = getSameAbyssHandCount(targetIdx);
       const discardCount = Math.max(0, targetHandCount - actorHandCount);
       msgs.push(`【同归深渊】${P[targetIdx].name} 手牌最多（${targetHandCount} 张），须做出选择`);
-      if (targetIdx === 0) {
+      if (targetIdx === 0 && !isAI) {
         return {
           P, D, Disc, msgs,
           statePatch: {

@@ -53,6 +53,7 @@ function makeDeps(overrides = {}) {
       setConnErrModal: vi.fn(),
       setOnlineOptionsModal: vi.fn(),
       setRoomModal,
+      leavingRoomRef: { current: false },
       setLobbyLoading: vi.fn(),
       setLobbyRooms: vi.fn(),
       addToast: vi.fn(),
@@ -152,6 +153,24 @@ describe('registerMultiplayerSocketHandlers', () => {
     expect(deps.setMultiLoading).toHaveBeenCalledWith(false);
     expect(deps.setOnlineOptionsModal).toHaveBeenCalledWith(false);
     expect(state.roomModal).toMatchObject({ roomId: 'abc', owner: 'u1', isPrivate: false, count: 2, max: 6, countdown: 3 });
+  });
+
+  it('ignores room updates received while the local player is leaving', () => {
+    const { socket, deps, state } = makeDeps({ leavingRoomRef: { current: true } });
+    registerMultiplayerSocketHandlers(deps);
+
+    socket.trigger('roomUpdated', {
+      roomId: 'abc',
+      owner: 'u2',
+      isPrivate: false,
+      players: [{ uuid: 'u2' }],
+      count: 1,
+      max: 12,
+    });
+
+    expect(state.roomModal).toBe(null);
+    expect(deps.setRoomModal).not.toHaveBeenCalled();
+    expect(deps.setOnlineOptionsModal).not.toHaveBeenCalled();
   });
 
   it('forwards remote state sync and dedupes mpAiTakeover by sequence', () => {

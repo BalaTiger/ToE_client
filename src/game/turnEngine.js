@@ -20,7 +20,7 @@ import { splitAnimBoundLogs } from './animLogs';
 import { localDisplayName } from './rotateState';
 import { GOD_DEFS, createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../constants/card';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, isRevealedCultist } from './coreUtils';
-import { applyFx, applyHpDamageWithLink, applyInspectionForSanLoss, submitDamageEvents } from './effectEngine';
+import { applyFx, applyInspectionForSanLoss, submitDamageEvents } from './effectEngine';
 import { buildZhuLight, getZhuTopGuard } from './zhuPower';
 import { buildStatEvents } from './statEvents';
 import { deriveEffectDecisionState } from './effectStatePatch';
@@ -688,6 +688,20 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
         P = processed.P; D = processed.D; Disc = processed.Disc;
         inspectionMeta = processed.inspectionMeta;
         effectMsgs.push(...processed.L.slice(baseLog.length));
+      }
+
+      // SAN loss from the encounter resolves before the god-gift decision.
+      // If it already ended the game, never expose the card as an available
+      // worship/keep/discard choice (the AI branch has the same short-circuit).
+      if (!P[ci].isDead && P[ci].san <= 0) {
+        return {
+          P, D, Disc, drawnCard,
+          reshuffleLog,
+          effectMsgs,
+          kept: true,
+          needsDecision: false,
+          statePatch: { ...inspectionMeta },
+        };
       }
 
       return {

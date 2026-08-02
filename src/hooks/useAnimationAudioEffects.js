@@ -95,7 +95,10 @@ export function useAnimationAudioEffects({
 }) {
   const detachedAudioCleanupsRef = useRef({});
   const playBlackGoatRunSoundRef = useRef(playBlackGoatRunSound);
-  playBlackGoatRunSoundRef.current = playBlackGoatRunSound;
+
+  useEffect(() => {
+    playBlackGoatRunSoundRef.current = playBlackGoatRunSound;
+  }, [playBlackGoatRunSound]);
 
   const playDetachedAnimationSound = useCallback((key, play) => {
     detachedAudioCleanupsRef.current[key]?.();

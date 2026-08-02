@@ -1524,6 +1524,46 @@ describe('applyInspectionForSanLoss', () => {
   });
 });
 
+describe('inspection and AI decision regressions', () => {
+  it('does not crash when both inspection piles are empty', () => {
+    const players = [makePlayer({ name: '检定者', san: 5 })];
+    const meta = makeInspectionMeta({ inspectionDeck: [], inspectionDiscard: [] });
+
+    const result = processInspectionTargets([0], 0, players, [], [], [], meta);
+
+    expect(result.P[0]).toMatchObject({ name: '检定者', hp: 10, san: 5, hand: [] });
+    expect(result.inspectionMeta.inspectionDeck).toEqual([]);
+  });
+
+  it('does not mutate caller-owned players or discard during inspection', () => {
+    const card = { id: 'discard-random', name: '迫害妄想', effect: 'discardRandom' };
+    const handCard = { id: 'hand-card', name: '手牌' };
+    const players = [makePlayer({ name: '检定者', hand: [handCard] })];
+    const discard = [];
+    const meta = makeInspectionMeta({ inspectionDeck: [card], inspectionDiscard: [] });
+
+    const result = processInspectionTargets([0], 0, players, [], discard, [], meta);
+
+    expect(players[0].hand).toEqual([handCard]);
+    expect(discard).toEqual([]);
+    expect(result.P[0].hand).toEqual([]);
+    expect(result.Disc).toEqual([handCard]);
+  });
+
+  it('auto-resolves same abyss for AI-controlled seat zero', () => {
+    const players = [
+      makePlayer({ name: 'AI-0', hp: 5, hand: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }] }),
+      makePlayer({ name: '触发者', hand: [{ id: 'x' }] }),
+    ];
+    const card = { id: 'same-abyss', type: 'sameAbyssChoice', name: '同归深渊', hpVal: 2 };
+
+    const result = applyFx(card, 1, null, players, [], [], makeGs({ players }), false, [], true);
+
+    expect(result.statePatch.abilityData).toBeUndefined();
+    expect(result.P[0].hand).toHaveLength(2);
+  });
+});
+
 describe('submitDamageEvents', () => {
   it('致死伤害不再触发受伤者的黏液响应', () => {
     const slime = createTsathogguaSlimeCard();

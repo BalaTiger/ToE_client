@@ -1542,6 +1542,31 @@ describe('turnEngine stat events', () => {
     expect(result.msgs.some(msg => msg.includes('邪祀者') && msg.includes('收入手牌'))).toBe(true);
   });
 
+  it('联机真人遭遇邪神后 SAN 归零会立即结束游戏且不进入馈赠决策', () => {
+    const godCard = makeGodCard('TSG');
+    const players = [
+      makePlayer({ name: '安娜', role: ROLE_TREASURE, san: 8 }),
+      makePlayer({ name: '艾伦', role: ROLE_HUNTER, san: 4, godEncounters: 3 }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 0,
+      deck: [godCard],
+      discard: [],
+      log: [],
+      phase: 'ACTION',
+      _isMP: true,
+    });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players[1].san).toBe(0);
+    expect(result.gameOver).toMatchObject({ winner: 'LOSE_ALL' });
+    expect(result.phase).not.toBe('GOD_CHOICE');
+    expect(result.abilityData?.godCard).toBeUndefined();
+    expect(result.log.some(line => line.includes('信仰了 蟾蜍之神'))).toBe(false);
+  });
+
   it('中毒先暂停等待黏液，尚未结算两人一绳断裂或到期治疗', () => {
     const slime1 = createTsathogguaSlimeCard();
     const slime2 = createTsathogguaSlimeCard();

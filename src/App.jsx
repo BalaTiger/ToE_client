@@ -4,6 +4,16 @@ import { DecipherStoneCarvingOverlay } from './components/modals/DecipherStoneCa
 import { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel } from './components/board';
 import { RoomModal, LobbyModal, PrivacyToggleModal, TutorialOverlay, ConnectionErrorModal, DebugControls } from './components/lobby';
 import { BattleLogPanel } from './components/log/BattleLogPanel';
+import { useTutorialHighlightMeasurements } from './hooks/useTutorialHighlightMeasurements';
+import { normalizeLogForViewer } from './game/logPerspective';
+import { shouldPlayGodResurrection } from './game/gameOverPresentation';
+import {
+  classifyTreasureDodgeRoll,
+  classifyTreasureDodgeSkip,
+  createTreasureDodgeDiceAnim,
+  getTreasureDodgeDrawerIdx,
+  treasureDodgeModeConfig,
+} from './game/treasureDodgeFlow';
 import { LoadingPentagramSpinner } from './components/LoadingPentagramSpinner';
 import { BattlePhaseBar } from './components/phase/BattlePhaseBar';
 import InGameTutorialOverlay from './components/tutorial/InGameTutorialOverlay';
@@ -838,7 +848,7 @@ export default function Game(){
     identityToken, setIdentityToken, identityTokenRef,
     multiLoading, setMultiLoading,
     toasts, addToast,
-    roomModal, setRoomModal, roomModalRef,
+    roomModal, setRoomModal, roomModalRef, leavingRoomRef,
     connErrModal, setConnErrModal,
     onlineOptionsModal, setOnlineOptionsModal,
     playerUsername, setPlayerUsername,
@@ -883,8 +893,10 @@ export default function Game(){
   const endTurnSeqRef=useRef(null); // Phase C：当前回合结束事件序列 {events,cursor}。回合结束严格串行，故全局唯一；存于 ref 而非 state，跨决策重建不丢、不入联机广播。
   const gameEndSentRef=useRef(false);      // 防止 gameEnd 重复发送
   const gameOverPresentationFrozenRef=useRef(false); // 终局展示完成后拒绝旧对局同步包回灌
-  const latestGsRef=useRef(null); // always mirrors latest gs for closures reading stale state
-  latestGsRef.current=gs; // 同步更新：渲染期间直接镜像，确保 confirmDiscard 等闭包读到最新值
+  const latestGsRef=useRef(null); // always mirrors latest committed gs for callbacks reading stale closures
+  useLayoutEffect(()=>{
+    latestGsRef.current=gs;
+  },[gs]);
   const [isDisconnected,setIsDisconnected]=useState(false);
   const [exitMatchConfirm,setExitMatchConfirm]=useState(null);
   function resetDisconnectedToStart(){
@@ -1064,6 +1076,18 @@ export default function Game(){
   const [softGuideSpotlights,setSoftGuideSpotlights]=useState([]);
   const swapBlindHandRef=useRef(null);
   const [swapBlindHandRect,setSwapBlindHandRect]=useState(null);
+  const tutorialHighlightTargets=useMemo(()=>({
+    selfPanel:selfPanelRef,roleText:roleTextRef,handArea:handAreaRef,aiPanelArea:aiPanelAreaRef,
+    drawRevealKeepButton:drawRevealKeepButtonRef,godKeepHandButton:godKeepHandButtonRef,
+    dodgeRollButton:dodgeRollButtonRef,skillButton:skillButtonRef,swapBlindHand:swapBlindHandRef,deckArea:deckAreaRef,
+  }),[]);
+  const tutorialHighlightSetters=useMemo(()=>({
+    panel:setPanelRect,roleText:setRoleTextRect,handArea:setHandAreaRect,tutorialHandCard:setTutorialHandCardRect,
+    handCards:setHandCardsRect,aiPanelArea:setAiPanelAreaRect,opponentSanBar:setOpponentSanBarRect,
+    opponentHpBar:setOpponentHpBarRect,singleOpponent:setSingleOpponentRect,opponentGodStatus:setOpponentGodStatusRect,
+    drawRevealKeepButton:setDrawRevealKeepButtonRect,godKeepHandButton:setGodKeepHandButtonRect,
+    dodgeRollButton:setDodgeRollButtonRect,skillButton:setSkillButtonRect,swapBlindHand:setSwapBlindHandRect,deckArea:setDeckAreaRect,
+  }),[]);
   const [roleRevealAnim,setRoleRevealAnim]=useState(null); // {role,pendingGs}|null
   
   // --- 新增：用于 UI 延迟显示的 HP/SAN 状态 ---
@@ -1540,6 +1564,7 @@ export default function Game(){
       setRenameInput,
       setOnlineOptionsModal,
       setRoomModal,
+      leavingRoomRef,
       setLobbyLoading,
       setLobbyRooms,
       copyRoomIdToClipboard,
@@ -1899,129 +1924,10 @@ export default function Game(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[gs?.proliferatingZQueue?.length,gs?.phase,gs?.gameOver,anim,showTutorial,softGuidePauseActive]);
 
-  // Measure player self-panel rect for tutorial steps 2-4 pointer
-  useEffect(()=>{
-    const rafIds=[];
-    const update=()=>{
-      const scriptHighlight=typeof tutorialStep==='string'?tutorialStepDef?.highlight:null;
-      if(showTutorial&&((tutorialStep>=2&&tutorialStep<=4)||scriptHighlight==='selfPanel')&&selfPanelRef.current){
-        const r=_getZoomCompensatedRect(selfPanelRef.current);
-        if(r)setPanelRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
-      }
-      if(showTutorial&&(tutorialStep===5||scriptHighlight==='roleText')&&roleTextRef.current){
-        const r=_getZoomCompensatedRect(roleTextRef.current);
-        if(r)setRoleTextRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
-      }
-      if(showTutorial&&(tutorialStep===7||tutorialStep===15||scriptHighlight==='handArea'||scriptHighlight==='handCard'||scriptHighlight==='skillButton')&&handAreaRef.current){
-        const r=_getZoomCompensatedRect(handAreaRef.current);
-        if(r)setHandAreaRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
-      }
-      if(showTutorial&&scriptHighlight==='handCards'&&handAreaRef.current){
-        const cardEls=handAreaRef.current.querySelectorAll('[data-self-hand-card]');
-        if(cardEls.length){
-          let top=Infinity,left=Infinity,right=-Infinity,bottom=-Infinity;
-          cardEls.forEach(el=>{
-            const r=_getZoomCompensatedRect(el);
-            if(r){
-              top=Math.min(top,r.top);
-              left=Math.min(left,r.left);
-              right=Math.max(right,r.right);
-              bottom=Math.max(bottom,r.bottom);
-            }
-          });
-          if(top!==Infinity){
-            setHandCardsRect({top,left,right,bottom,width:right-left,height:bottom-top});
-          }
-        }
-      }
-      if(showTutorial&&scriptHighlight==='handCard'&&handAreaRef.current){
-        const targetCardId=tutorialStepDef?.allowedAction?.cardId;
-        const cardEls=handAreaRef.current.querySelectorAll('[data-self-hand-card-id]');
-        const targetEl=[...cardEls].find(el=>el.dataset.selfHandCardId===targetCardId);
-        const r=targetEl?_getZoomCompensatedRect(targetEl):null;
-        setTutorialHandCardRect(r?{top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height}:null);
-      }
-      if(showTutorial&&(tutorialStep===9||tutorialStep===11||scriptHighlight==='opponentPanel'||scriptHighlight==='swapBlind')&&aiPanelAreaRef.current){
-        const r=_getZoomCompensatedRect(aiPanelAreaRef.current);
-        if(r)setAiPanelAreaRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
-      }
-      if(showTutorial&&(scriptHighlight==='opponentSanBar'||scriptHighlight==='opponentSanAndGodStatus')&&aiPanelAreaRef.current){
-        const sanBarEl=aiPanelAreaRef.current.querySelector('[data-stat-label="SAN"]');
-        if(sanBarEl){
-          const r=_getZoomCompensatedRect(sanBarEl);
-          if(r)setOpponentSanBarRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
-        }
-      }
-      if(showTutorial&&scriptHighlight==='opponentHpBar'&&aiPanelAreaRef.current){
-        const hpBarEl=aiPanelAreaRef.current.querySelector('[data-stat-label="HP"]');
-        if(hpBarEl){
-          const r=_getZoomCompensatedRect(hpBarEl);
-          if(r)setOpponentHpBarRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
-        }
-      }
-      if(showTutorial&&scriptHighlight==='singleOpponent'&&aiPanelAreaRef.current){
-        const opponentEl=aiPanelAreaRef.current.querySelector('[data-pid="1"]');
-        if(opponentEl){
-          const r=_getZoomCompensatedRect(opponentEl);
-          if(r)setSingleOpponentRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
-        }
-      }
-      if(showTutorial&&(scriptHighlight==='opponentGodStatus'||scriptHighlight==='opponentSanAndGodStatus')&&aiPanelAreaRef.current){
-        const statusEl=aiPanelAreaRef.current.querySelector('[data-player-god-status="1"]');
-        if(statusEl){
-          const r=_getZoomCompensatedRect(statusEl);
-          if(r)setOpponentGodStatusRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
-        }
-      }
-      if(showTutorial&&scriptHighlight==='drawRevealKeepButton'&&drawRevealKeepButtonRef.current){
-        const r=_getZoomCompensatedRect(drawRevealKeepButtonRef.current);
-        if(r)setDrawRevealKeepButtonRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
-      }
-      if(showTutorial&&scriptHighlight==='godKeepHandButton'&&godKeepHandButtonRef.current){
-        const r=_getZoomCompensatedRect(godKeepHandButtonRef.current);
-        if(r)setGodKeepHandButtonRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
-      }
-      if(showTutorial&&scriptHighlight==='dodgeRollButton'&&dodgeRollButtonRef.current){
-        const r=_getZoomCompensatedRect(dodgeRollButtonRef.current);
-        if(r)setDodgeRollButtonRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
-      }
-      if(showTutorial&&scriptHighlight==='skillButton'&&skillButtonRef.current){
-        const r=_getZoomCompensatedRect(skillButtonRef.current);
-        if(r)setSkillButtonRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
-      }
-      if(showTutorial&&scriptHighlight==='swapBlindHand'&&swapBlindHandRef.current){
-        const r=_getZoomCompensatedRect(swapBlindHandRef.current);
-        if(r)setSwapBlindHandRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
-      }
-      if(showTutorial&&(tutorialStep===12||tutorialStep===13||scriptHighlight==='deckArea')&&deckAreaRef.current){
-        const r=_getZoomCompensatedRect(deckAreaRef.current);
-        if(r)setDeckAreaRect({top:r.top,left:r.left,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
-      }
-    };
-    update();
-    const timeoutIds=[];
-    if(showTutorial&&typeof tutorialStep==='string'&&(tutorialStepDef?.highlight==='drawRevealKeepButton'||tutorialStepDef?.highlight==='godKeepHandButton'||tutorialStepDef?.highlight==='dodgeRollButton')){
-      // 两个模态弹窗都有 0.22s 缩放动画，等动画结束后再测量按钮真实位置
-      timeoutIds.push(setTimeout(update,220));
-      timeoutIds.push(setTimeout(update,320));
-    }
-    if(showTutorial&&typeof tutorialStep==='string'&&tutorialStepDef?.highlight==='skillButton'){
-      timeoutIds.push(setTimeout(update,50));
-    }
-    if(showTutorial&&typeof tutorialStep==='string'&&tutorialStepDef?.highlight==='swapBlindHand'&&swapBlindHandRef.current){
-      timeoutIds.push(setTimeout(update,1200));
-    }
-    if(showTutorial){
-      window.addEventListener('scroll',update,true);
-      window.addEventListener('resize',update);
-      return()=>{
-        rafIds.forEach(id=>cancelAnimationFrame(id));
-        timeoutIds.forEach(id=>clearTimeout(id));
-        window.removeEventListener('scroll',update,true);
-        window.removeEventListener('resize',update);
-      };
-    }
-  },[showTutorial,tutorialStep,tutorialStepDef,gs]);
+  useTutorialHighlightMeasurements({
+    enabled:showTutorial,step:tutorialStep,stepDef:tutorialStepDef,gameState:gs,
+    targets:tutorialHighlightTargets,setRects:tutorialHighlightSetters,
+  });
 
   // ── Tutorial: 寻宝者教学关自动摸牌 ───────────
   useEffect(()=>{
@@ -3013,7 +2919,7 @@ export default function Game(){
     if(p0&&!p0.isDead&&(p0._nyaBorrow||p0.role)===ROLE_TREASURE&&isWinHand(p0.hand)){
       setGs(g=>g?{...g,phase:'TREASURE_WIN'}:g);
     }
-  },[gs,anim,animExiting,showTutorial]);
+  },[gs,anim,animExiting,showTutorial,animQueueRef,pendingGsRef]);
 
   // Handle AI automatic target selection for damage link (两人一绳)
   useEffect(()=>{
@@ -3058,7 +2964,7 @@ export default function Game(){
 
   // Handle AI automatic target selection for rose thorn (玫瑰倒刺)
   useEffect(()=>{
-    if(!gs||gs.phase!=='ROSE_THORN_SELECT_TARGET'||gs.gameOver||gs.phase==='PLAYER_WIN_PENDING'||anim||animQueueRef.current.length>0||showTutorial||softGuidePauseActive||isMultiplayerGame(gs))return;
+    if(!gs||gs.phase!=='ROSE_THORN_SELECT_TARGET'||gs.gameOver||gs.phase==='PLAYER_WIN_PENDING'||anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current||showTutorial||softGuidePauseActive||isMultiplayerGame(gs))return;
     const {roseThornTargets,roseThornSource}=gs.abilityData;
     if(!Array.isArray(roseThornTargets)||roseThornSource==null||!isAiSeat(gs,roseThornSource))return;
     if(gs.abilityData?.roseThornAutoChoosing)return;
@@ -3099,7 +3005,7 @@ export default function Game(){
     },AI_AUTO_STEP_DELAY);
     return()=>clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[gs,anim,showTutorial,softGuidePauseActive]);
+  },[gs,anim,animExiting,showTutorial,softGuidePauseActive]);
 
   // Handle AI automatic target selection for peek hand (血之窥探)
   useEffect(()=>{
@@ -3216,7 +3122,7 @@ export default function Game(){
     },AI_PICK_STEP_DELAY);
     return()=>clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[gs,anim,showTutorial,softGuidePauseActive]);
+  },[gs,anim,animExiting,showTutorial,softGuidePauseActive]);
 
   useEffect(()=>{
     if(!gs||gs.phase!=='BURY_ALIVE_SELECT'||!isMultiplayerGame(gs)||gs.gameOver||anim||animExiting||showTutorial||softGuidePauseActive)return;
@@ -4161,7 +4067,10 @@ export default function Game(){
   // ── Game Over ──────────────────────────────────────────────
   if(gs.gameOver){
     const{winner,reason,winnerIdx}=gs.gameOver;
-    const gameOverFullLog=buildCompleteGameOverLog(gs,visibleLogRef.current);
+    const gameOverFullLog=normalizeLogForViewer(
+      buildCompleteGameOverLog(gs,visibleLogRef.current),
+      {isMultiplayer:!!gs._isMP,myName:gs.players?.[0]?.name},
+    );
     const myRole=gs.players[0].role;
     const iWon=winner==='LOSE'||winner==='LOSE_ALL'?false
       :winner===ROLE_TREASURE?isLocalWinnerSeat(gs.gameOver)
@@ -4169,7 +4078,7 @@ export default function Game(){
     const isLose=winner==='LOSE'||winner==='LOSE_ALL';
 
     // 邪祀者获胜：先全屏播放邪神复活特效，onConfirm 后再显示结算
-    if(winner===ROLE_CULTIST&&!showGodResurrection){
+    if(shouldPlayGodResurrection(gs.gameOver)&&!showGodResurrection){
       return <GodResurrectionAnim onDone={handleGodResurrectionDone}/>;
     }
     // 每个视角都按房间座位次序播放所有寻宝者胜者的藏宝图；
@@ -5586,23 +5495,25 @@ export default function Game(){
     return { P, D, Disc, L, newGs, d1, dodgeSuccess, who, hasDecision:decisionState.hasDecision, resolutionCard };
   }
 
-  function handleTreasureDodgeRoll(){
+  function handleTreasureDodgeRollMode(aoe=false){
     const dr=gs.drawReveal;if(!dr?.card)return;
-    const result=handleTreasureDodge(gs,dr,false);
-    const isTutorialDodgeStep=showTutorial&&(tutorialStep===TUTORIAL_FLOW.TREASURE_DODGE_PROMPT||tutorialStep===TUTORIAL_FLOW.TREASURE_DODGE_ROLL);
-    const diceAnim={type:'DICE_ROLL',d1:result.d1,d2:0,heal:0,rollerName:result.who,dodgeSuccess:result.dodgeSuccess,...(isTutorialDodgeStep?{durationMs:2147483647,onSettled:()=>{setTutorialStep(TUTORIAL_FLOW.TREASURE_DODGE_RESULT);setTutorialDiceResultPending(false);}}:{})};
-    if(result.win){
+    const result=handleTreasureDodge(gs,dr,aoe);
+    const config=treasureDodgeModeConfig(aoe);
+    const flowKind=classifyTreasureDodgeRoll(dr,result,aoe);
+    const isTutorialDodgeStep=!aoe&&showTutorial&&(tutorialStep===TUTORIAL_FLOW.TREASURE_DODGE_PROMPT||tutorialStep===TUTORIAL_FLOW.TREASURE_DODGE_ROLL);
+    const diceAnim=createTreasureDodgeDiceAnim({result,aoe,tutorialHold:isTutorialDodgeStep,onTutorialSettled:()=>{setTutorialStep(TUTORIAL_FLOW.TREASURE_DODGE_RESULT);setTutorialDiceResultPending(false);}});
+    if(flowKind==='win'){
       setGs({...gs,players:result.P,deck:result.D,discard:result.Disc,log:result.L,gameOver:result.win,drawReveal:null});
       return;
     }
-    if(result.pendingWinGs){
+    if(flowKind==='pendingWin'){
       pendingGsRef.current=result.pendingWinGs;
       animQueueRef.current=[];
       setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
       setAnim(diceAnim);
       return;
     }
-    if(dr.fromRest&&!result.win&&!result.hasDecision){
+    if(flowKind==='rest'){
       // 播放骰子动画后再处理剩余摸牌
       const queue=bindAnimLogChunks(buildAnimQueue(gs,result.newGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
       pendingGsRef.current=result.newGs;
@@ -5615,9 +5526,9 @@ export default function Game(){
       setAnim(diceAnim);
       return;
     }
-    if(dr.fromTsathogguaSlime&&!result.win&&!result.hasDecision){
+    if(flowKind==='slime'){
       const queue=bindAnimLogChunks(buildAnimQueue(gs,result.newGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
-      const drawerIdx=dr.drawerIdx??0;
+      const drawerIdx=getTreasureDodgeDrawerIdx(gs,dr,aoe);
       queue.push(cardTransferStep({fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,sourceAnchor:'playerArea',effect:'draw',cards:[result.resolutionCard]}));
       queue.push(statePatchStep({players:result.P,deck:result.D,discard:result.Disc,log:result.L,phase:result.newGs.phase,drawReveal:result.newGs.drawReveal,abilityData:result.newGs.abilityData}));
       queue.push({type:'TURN_BOUNDARY_PAUSE',durationMs:300});
@@ -5626,18 +5537,18 @@ export default function Game(){
       return;
     }
     const queue=bindAnimLogChunks(buildAnimQueue(gs,result.newGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
-    const drawerIdx=dr.drawerIdx??0;
-    queue.push(cardTransferStep({fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,sourceAnchor:'playerArea',effect:'draw',cards:[result.resolutionCard]}));
+    const drawerIdx=getTreasureDodgeDrawerIdx(gs,dr,aoe);
+    if(config.includeStandardTransfer)queue.push(cardTransferStep({fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,sourceAnchor:'playerArea',effect:'draw',cards:[result.resolutionCard]}));
     // 无论是否有其他动画，都播放骰子动画
     if(dr.fromEndTurnReplay){
       appendEndTurnReplaySyncQueue(
-        [{type:'DICE_ROLL',d1:result.d1,d2:0,heal:0,rollerName:result.who,dodgeSuccess:result.dodgeSuccess},...queue,statePatchStep({players:result.P,discard:result.Disc})],
+        [{...diceAnim,onSettled:undefined},...queue,statePatchStep({players:result.P,discard:result.Disc})],
         result.L.slice(gs.log.length)
       );
       broadcastEndTurnReplaySyncDelta(result.newGs);
     }else if(result.newGs._isMP){
       broadcastAnimTransaction(result.newGs,[{...diceAnim,onSettled:undefined},...queue],{
-        context:'treasureDodge',barrier:result.newGs.phase==='TSG_SLIME_BALANCE'?'decision':'continuation',
+        context:config.rollContext,barrier:result.newGs.phase==='TSG_SLIME_BALANCE'?'decision':'continuation',
         msgs:result.L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard,
       });
     }
@@ -5650,18 +5561,24 @@ export default function Game(){
     }
   }
 
-  function handleTreasureDodgeSkip(){
-    if(showTutorial&&tutorialStepDef&&!isTutorialActionAllowed({type:'dodgeRoll'}))return;
+  function handleTreasureDodgeRoll(){
+    handleTreasureDodgeRollMode(false);
+  }
+
+  function handleTreasureDodgeSkipMode(aoe=false){
+    if(!aoe&&showTutorial&&tutorialStepDef&&!isTutorialActionAllowed({type:'dodgeRoll'}))return;
     const dr=gs.drawReveal;if(!dr?.card)return;
+    const config=treasureDodgeModeConfig(aoe);
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
-    const drawerIdx=dr.drawerIdx??0;
+    const drawerIdx=getTreasureDodgeDrawerIdx(gs,dr,aoe);
     const resolutionCard=revealBlindDrawCard(dr.card);
     clearBlindZoneDecisionFlag(P,drawerIdx,dr);
     const res=applyFx(resolutionCard,drawerIdx,null,P,D,Disc,gs,false,[],false);
     P=res.P;D=res.D;Disc=res.Disc;
     if(!dr.fromEndTurnReplay)P[drawerIdx].hand.push(resolutionCard);
     const who=localDisplayName(drawerIdx,P[drawerIdx].name);
-    const L=[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),`${who} 收入了 ${cardLogText(resolutionCard,{alwaysShowName:true})}`,...res.msgs];
+    const skipLog=aoe?'你选择不规避负面效果':`${who} 收入了 ${cardLogText(resolutionCard,{alwaysShowName:true})}`;
+    const L=[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),skipLog,...res.msgs];
     // 1. 检查卡牌效果是否让任何人HP归零或SAN归零（通过checkWin）
     const win=checkWin(P,gs._isMP);if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,drawReveal:null});return;}
     // 2. 最后，如果游戏仍未结束，且该寻宝者仍然存活，检查该寻宝者是否达成胜利条件
@@ -5677,7 +5594,8 @@ export default function Game(){
       return;
     }
     const replayPatch=dr.fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
-    const decisionState=deriveEffectDecisionState(res.statePatch,{
+    const fallbackAbilityData={fromRest:gs.abilityData?.fromRest,fromTsathogguaSlime:gs.abilityData?.fromTsathogguaSlime,continueTurnStartDraw:gs.abilityData?.continueTurnStartDraw,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining};
+    const decisionState=config.deriveSkipDecision?deriveEffectDecisionState(res.statePatch,{
       baseAbilityData:gs.abilityData,
       fallbackPhase:'ACTION',
       extraAbilityData:{
@@ -5685,15 +5603,16 @@ export default function Game(){
         ...(dr.fromTsathogguaSlime?{fromTsathogguaSlime:true,continueTurnStartDraw:true,pendingTsathogguaSlime:gs.abilityData?.pendingTsathogguaSlime,pendingTsathogguaSlimes:gs.abilityData?.pendingTsathogguaSlimes}:{}),
         ...(gs.abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:gs.abilityData.cthDrawsRemaining}:{}),
       },
-    });
-    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:decisionState.hasDecision?decisionState.phase:'ACTION',drawReveal:null,abilityData:decisionState.hasDecision?decisionState.abilityData:{fromRest:gs.abilityData?.fromRest,fromTsathogguaSlime:gs.abilityData?.fromTsathogguaSlime,continueTurnStartDraw:gs.abilityData?.continueTurnStartDraw,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining},...(res.statePatch||{}),...replayPatch};
+    }):{hasDecision:false,phase:'ACTION',abilityData:fallbackAbilityData};
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:decisionState.hasDecision?decisionState.phase:'ACTION',drawReveal:null,abilityData:decisionState.hasDecision?decisionState.abilityData:fallbackAbilityData,...(config.deriveSkipDecision?(res.statePatch||{}):{}),...replayPatch};
     if(decisionState.hasDecision){
       newGs.phase=decisionState.phase;
       newGs.abilityData=decisionState.abilityData;
     }
-    if(dr.fromRest&&!win&&!decisionState.hasDecision){_cthContinueRestDraws(newGs);return;}
+    const flowKind=classifyTreasureDodgeSkip(dr,decisionState.hasDecision,aoe);
+    if(flowKind==='rest'&&!win){_cthContinueRestDraws(newGs);return;}
     const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
-    if(dr.fromTsathogguaSlime&&!win&&!decisionState.hasDecision){
+    if(flowKind==='slime'&&!win){
       queue.push(cardTransferStep({fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,sourceAnchor:'playerArea',effect:'draw',cards:[resolutionCard]}));
       queue.push(statePatchStep({players:P,deck:D,discard:Disc,log:L,phase:newGs.phase,drawReveal:newGs.drawReveal,abilityData:newGs.abilityData}));
       queue.push({type:'TURN_BOUNDARY_PAUSE',durationMs:300});
@@ -5704,10 +5623,10 @@ export default function Game(){
     if(queue.length){
       if(dr.fromEndTurnReplay){
         appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:Disc})],L.slice(gs.log.length));
-        broadcastEndTurnReplaySyncDelta(newGs);
+        if(config.broadcastEndTurnReplayDelta)broadcastEndTurnReplaySyncDelta(newGs);
       }else if(newGs._isMP){
         broadcastAnimTransaction(newGs,queue,{
-          context:'treasureDodgeSkip',barrier:newGs.phase==='TSG_SLIME_BALANCE'?'decision':'continuation',
+          context:config.skipContext,barrier:newGs.phase==='TSG_SLIME_BALANCE'?'decision':'continuation',
           msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard,
         });
       }
@@ -5716,107 +5635,16 @@ export default function Game(){
     }else setGs(newGs);
   }
 
+  function handleTreasureDodgeSkip(){
+    handleTreasureDodgeSkipMode(false);
+  }
+
   function handleTreasureAOEDodgeRoll(){
-    const dr=gs.drawReveal;if(!dr?.card)return;
-    const result=handleTreasureDodge(gs,dr,true);
-    if(result.win){
-      setGs({...gs,players:result.P,deck:result.D,discard:result.Disc,log:result.L,gameOver:result.win,drawReveal:null});
-      return;
-    }
-    if(result.pendingWinGs){
-      pendingGsRef.current=result.pendingWinGs;
-      animQueueRef.current=[];
-      setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-      setAnim({type:'DICE_ROLL',d1:result.d1,d2:0,heal:0,rollerName:'你',dodgeSuccess:result.dodgeSuccess});
-      return;
-    }
-    if(dr.fromRest&&!result.win){
-      const queue=bindAnimLogChunks(buildAnimQueue(gs,result.newGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
-      pendingGsRef.current=result.newGs;
-      animQueueRef.current=[
-        ...queue,
-        ...(queue.length?[statePatchStep({players:result.P,discard:result.Disc})]:[]),
-        {type:'CTH_CONTINUE',data:{cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining}},
-      ];
-      setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-      setAnim({type:'DICE_ROLL',d1:result.d1,d2:0,heal:0,rollerName:'你',dodgeSuccess:result.dodgeSuccess});
-      return;
-    }
-    if(dr.fromTsathogguaSlime&&!result.win&&!result.hasDecision){
-      const queue=bindAnimLogChunks(buildAnimQueue(gs,result.newGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
-      const drawerIdx=gs.abilityData?.drawerIdx??dr.drawerIdx??0;
-      queue.push(cardTransferStep({fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,sourceAnchor:'playerArea',effect:'draw',cards:[result.resolutionCard]}));
-      queue.push(statePatchStep({players:result.P,deck:result.D,discard:result.Disc,log:result.L,phase:result.newGs.phase,drawReveal:result.newGs.drawReveal,abilityData:result.newGs.abilityData}));
-      queue.push({type:'TURN_BOUNDARY_PAUSE',durationMs:300});
-      setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-      setAnim({type:'DICE_ROLL',d1:result.d1,d2:0,heal:0,rollerName:'你',dodgeSuccess:result.dodgeSuccess,onSettled:()=>triggerAnimQueue(queue,result.newGs,()=>_tsgContinueTurnStartDraw(result.newGs))});
-      return;
-    }
-    const queue=bindAnimLogChunks(buildAnimQueue(gs,result.newGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
-    // 无论是否有其他动画，都播放骰子动画
-    if(dr.fromEndTurnReplay){
-      appendEndTurnReplaySyncQueue(
-        [{type:'DICE_ROLL',d1:result.d1,d2:0,heal:0,rollerName:'你',dodgeSuccess:result.dodgeSuccess},...queue,statePatchStep({players:result.P,discard:result.Disc})],
-        result.L.slice(gs.log.length)
-      );
-      broadcastEndTurnReplaySyncDelta(result.newGs);
-    }else if(result.newGs._isMP){
-      broadcastAnimTransaction(result.newGs,[{type:'DICE_ROLL',d1:result.d1,d2:0,heal:0,rollerName:'你',dodgeSuccess:result.dodgeSuccess},...queue],{
-        context:'treasureAoeDodge',barrier:result.newGs.phase==='TSG_SLIME_BALANCE'?'decision':'continuation',
-        msgs:result.L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard,
-      });
-    }
-    pendingGsRef.current=result.newGs;
-    animQueueRef.current=queue;
-    setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-    setAnim({type:'DICE_ROLL',d1:result.d1,d2:0,heal:0,rollerName:'你',dodgeSuccess:result.dodgeSuccess});
+    handleTreasureDodgeRollMode(true);
   }
 
   function handleTreasureAOEDodgeSkip(){
-    const dr=gs.drawReveal;if(!dr?.card)return;
-    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
-    const drawerIdx=gs.abilityData?.drawerIdx??0;
-    const resolutionCard=revealBlindDrawCard(dr.card);
-    clearBlindZoneDecisionFlag(P,drawerIdx,dr);
-    const res=applyFx(resolutionCard,drawerIdx,null,P,D,Disc,gs);
-    P=res.P;D=res.D;Disc=res.Disc;
-    if(!dr.fromEndTurnReplay)P[drawerIdx].hand.push(resolutionCard);
-    const L=[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),`你选择不规避负面效果`,...res.msgs];
-    // 1. 检查卡牌效果是否让任何人HP归零或SAN归零（通过checkWin）
-    const win=checkWin(P,gs._isMP);if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,drawReveal:null});return;}
-    // 2. 最后，如果游戏仍未结束，且该寻宝者仍然存活，检查该寻宝者是否达成胜利条件
-    if(isLocalSeatIndex(drawerIdx)&&!P[0].isDead&&P[0].role==='寻宝者'&&isWinHand(P[0].hand)){
-      P[0].roleRevealed=true;
-      const pendingWinGs={...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',drawReveal:null,abilityData:{winReason:localTreasureWinReason(gs)},...(res.statePatch||{})};
-      const effectQueue=bindAnimLogChunks(buildAnimQueue(gs,pendingWinGs),splitAnimBoundLogs(L.slice(gs.log.length)));
-      const transfer=!dr.fromEndTurnReplay?cardTransferStep({
-        fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,
-        sourceAnchor:'playerArea',effect:'draw',cards:[resolutionCard],
-      }):null;
-      triggerAnimQueue([transfer,...effectQueue].filter(Boolean),pendingWinGs);
-      return;
-    }
-    const replayPatch=dr.fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
-    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,abilityData:{fromRest:gs.abilityData?.fromRest,fromTsathogguaSlime:gs.abilityData?.fromTsathogguaSlime,continueTurnStartDraw:gs.abilityData?.continueTurnStartDraw,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining},...replayPatch};
-    if(dr.fromRest&&!win){_cthContinueRestDraws(newGs);return;}
-    const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
-    if(dr.fromTsathogguaSlime&&!win){
-      queue.push(cardTransferStep({fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,sourceAnchor:'playerArea',effect:'draw',cards:[resolutionCard]}));
-      queue.push(statePatchStep({players:P,deck:D,discard:Disc,log:L,phase:newGs.phase,drawReveal:newGs.drawReveal,abilityData:newGs.abilityData}));
-      queue.push({type:'TURN_BOUNDARY_PAUSE',durationMs:300});
-      setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-      triggerAnimQueue(queue,newGs,()=>_tsgContinueTurnStartDraw(newGs));
-      return;
-    }
-    if(queue.length){
-      if(dr.fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:Disc})],L.slice(gs.log.length));
-      else if(newGs._isMP)broadcastAnimTransaction(newGs,queue,{
-        context:'treasureAoeDodgeSkip',barrier:newGs.phase==='TSG_SLIME_BALANCE'?'decision':'continuation',
-        msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard,
-      });
-      setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-      triggerAnimQueue(queue,newGs);
-    }else setGs(newGs);
+    handleTreasureDodgeSkipMode(true);
   }
 
   function handleDrawDiscard(){

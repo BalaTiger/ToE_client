@@ -2,6 +2,7 @@ import { makeTargetStats, statEventsToAnimQueue } from './statEvents';
 import { buildFullHandSwapStepsFromLogs, buryToDeckStep, cardTransferStep, statePatchStep } from './animQueueHelpers';
 import { buildCardEffectStepsFromVisualEvents, buildGodPowerBlockedStepsFromVisualEvents, buildHuntRevealStepFromVisualEvent } from './visualEvents';
 import { isTsathogguaSlime } from './coreUtils';
+import { cardIdentity } from './cardIdentity';
 
 function clonePlayersForTimeline(players = []) {
   return players.map(player => ({
@@ -136,10 +137,6 @@ function buildVritraImmortalRevealSteps(oldGs, newGs, newMsgs = []) {
       msgs: [line],
     };
   });
-}
-
-function cardIdentity(card) {
-  return card?.id || card?.uid || [card?.key, card?.godKey, card?.name, card?.type].filter(Boolean).join(':') || null;
 }
 
 function getRemovedHandCards(oldHand = [], newHand = []) {

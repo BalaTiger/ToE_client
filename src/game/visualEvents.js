@@ -1,6 +1,7 @@
 import { cardLogText } from './coreUtils';
 import { localDisplayName } from './rotateState';
 import { statEventsToAnimQueue } from './statEvents';
+import { cardIdentity } from './cardIdentity';
 
 export const VISUAL_EVENT = {
   TIMED_OUT_DRAW_DISCARD: 'timedOutDrawDiscard',
@@ -24,16 +25,12 @@ export const VISUAL_EVENT = {
 
 const visualEventInstanceId = Math.random().toString(36).slice(2, 10);
 let actionEventSeq = 0;
+let visualEventSeq = 0;
 let cardEffectEventSeq = 0;
 let earthquakeEventSeq = 0;
-let endlessCorridorEventSeq = 0;
+let animTransactionEventSeq = 0;
 let godPowerBlockedEventSeq = 0;
 let tsgSlimePopEventSeq = 0;
-
-function cardIdentity(card) {
-  if (!card) return 'none';
-  return card.id || card.uid || [card.key, card.godKey, card.name, card.type].filter(Boolean).join(':') || 'card';
-}
 
 function msgsIdentity(msgs) {
   return Array.isArray(msgs) ? msgs.join('|') : '';
@@ -46,15 +43,15 @@ function makeVisualEventId(event) {
   if (event.drawerIdx != null) parts.push(`d${event.drawerIdx}`);
   if (event.sourceIdx != null) parts.push(`s${event.sourceIdx}`);
   if (event.targetIdx != null) parts.push(`t${event.targetIdx}`);
-  if (event.card) parts.push(`c${cardIdentity(event.card)}`);
+  if (event.card) parts.push(`c${cardIdentity(event.card) || 'none'}`);
   if (Array.isArray(event.cards) && event.cards.length) {
-    parts.push(`cards${event.cards.map(cardIdentity).join(',')}`);
+    parts.push(`cards${event.cards.map(card => cardIdentity(card) || 'none').join(',')}`);
   }
   if (Array.isArray(event.statEvents) && event.statEvents.length) {
     parts.push(`seq${event.statEvents.map(ev => ev?.seq ?? `${ev?.type || 'stat'}:${ev?.target ?? ''}`).join(',')}`);
   }
   if (Array.isArray(event.discardEvents) && event.discardEvents.length) {
-    parts.push(`quake${event.discardEvents.map(ev => `${ev?.playerIndex ?? ''}:${cardIdentity(ev?.card)}`).join(',')}`);
+    parts.push(`quake${event.discardEvents.map(ev => `${ev?.playerIndex ?? ''}:${cardIdentity(ev?.card) || 'none'}`).join(',')}`);
   }
   if (event.effectKey) parts.push(`effect${event.effectKey}`);
   const msgKey = msgsIdentity(event.msgs);
@@ -62,7 +59,7 @@ function makeVisualEventId(event) {
   return parts.join('|');
 }
 
-function withVisualEventMeta(event, scope = 'action') {
+function withVisualEventMeta(event, scope = 'action', generateUniqueId = true) {
   if (!event) return null;
   const scoped = {
     ...event,
@@ -70,7 +67,9 @@ function withVisualEventMeta(event, scope = 'action') {
   };
   return {
     ...scoped,
-    id: event.id || makeVisualEventId(scoped),
+    id: event.id || (generateUniqueId
+      ? `${event.type}:${visualEventInstanceId}:${++visualEventSeq}`
+      : makeVisualEventId(scoped)),
   };
 }
 
@@ -239,7 +238,7 @@ export function createAnimTransactionEvent({
   if (!replayQueue.length) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.ANIM_TRANSACTION,
-    id: id || `${VISUAL_EVENT.ANIM_TRANSACTION}:${visualEventInstanceId}:${++endlessCorridorEventSeq}`,
+    id: id || `${VISUAL_EVENT.ANIM_TRANSACTION}:${visualEventInstanceId}:${++animTransactionEventSeq}`,
     actorIdx,
     actorName,
     context,
@@ -536,7 +535,7 @@ export function buildFreshStatVisualEvents(state, previousStatSeq = 0) {
 
 export function getVisualEvents(state) {
   return Array.isArray(state?._visualEvents)
-    ? state._visualEvents.map(event => withVisualEventMeta(event)).filter(Boolean)
+    ? state._visualEvents.map(event => withVisualEventMeta(event, 'action', false)).filter(Boolean)
     : [];
 }
 
@@ -546,7 +545,7 @@ export function clearVisualEvents(state) {
 
 export function getVisualEventIds(events) {
   return (Array.isArray(events) ? events : [])
-    .map(event => withVisualEventMeta(event)?.id)
+    .map(event => withVisualEventMeta(event, 'action', false)?.id)
     .filter(Boolean);
 }
 

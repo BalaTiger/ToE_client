@@ -301,7 +301,7 @@ export function clearPlayerGodZone(targetPlayer, discard) {
 /**
  * AI 弃牌至手牌上限。
  */
-export function discardAiHandToLimit(P, ct, Disc, L) {
+export function discardAiHandToLimit(P, ct, Disc, L, D = [], discardedCards = []) {
   const aiHandLimit = P[ct]._nyaHandLimit ?? 4;
   while (P[ct].hand.length > aiHandLimit) {
     const c = P[ct].hand.shift();
@@ -309,8 +309,12 @@ export function discardAiHandToLimit(P, ct, Disc, L) {
       L.push(`${P[ct].name} 的衍生牌被销毁`);
     } else {
       Disc.push(c);
+      discardedCards.push(c);
       L.push(`${P[ct].name} 弃 ${cardLogText(c, { alwaysShowName: true })}（上限）`);
-      const balance = applyBalanceDiscardSideEffects({ players: P, deck: [], discard: Disc, log: L, ownerIdx: ct, cards: [c], reason: '手牌上限弃牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitDamageEvents, currentTurn: ct });
+      const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: L, ownerIdx: ct, cards: [c], reason: '手牌上限弃牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitDamageEvents, currentTurn: ct });
+      P.splice(0, P.length, ...balance.players);
+      D.splice(0, D.length, ...balance.deck);
+      Disc.splice(0, Disc.length, ...balance.discard);
       L.splice(0, L.length, ...balance.log);
     }
   }
@@ -440,7 +444,9 @@ export function aiStep(gs, opts = {}) {
   );
   const incomingVisualEventRefs = new Set(Array.isArray(gs?._visualEvents) ? gs._visualEvents : []);
   let P=copyPlayers(ps),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
-  const ai=P[ct];let alive=P.filter((p,i)=>!p.isDead&&i!==ct);
+  const getAi=()=>P[ct];
+  const getAlive=()=>P.filter((p,i)=>!p.isDead&&i!==ct);
+  let ai=getAi();let alive=getAlive();
   const aiHuntEvents=[];
   let animMultiplyEvent = null;
   let playersBeforeSkillAction=null;
@@ -514,6 +520,7 @@ export function aiStep(gs, opts = {}) {
       label,
     });
     P = night.players;
+    ai=getAi();alive=getAlive();
     D = night.deck;
     Disc = night.discard;
     L = night.log;
@@ -748,7 +755,7 @@ export function aiStep(gs, opts = {}) {
           sourceCard,
           targetCard,
         });
-        P=outcome.players;
+        P=outcome.players;ai=getAi();alive=getAlive();
         L.push(outcome.logLine);
         if(outcome.winnerIdx!=null&&outcome.gainedCard){
           proliferatingZPatch=appendPublicCardGainTriggers(
@@ -794,7 +801,7 @@ export function aiStep(gs, opts = {}) {
           L.push(buildWorshipFromHandLog(P[ct].name,hgc));
         }
         // Forced convert if worshipping different god
-        if(alreadyHasGod){const converted=convertGodFollower(ct,gs.currentTurn,P,D,Disc,L,inspectionMeta,`${P[ct].name} 改信新神，${formatSanLoss(1)}`,hgc);P=converted.P;D=converted.D;Disc=converted.Disc;L=converted.L;inspectionMeta=converted.inspectionMeta;}
+        if(alreadyHasGod){const converted=convertGodFollower(ct,gs.currentTurn,P,D,Disc,L,inspectionMeta,`${P[ct].name} 改信新神，${formatSanLoss(1)}`,hgc);P=converted.P;D=converted.D;Disc=converted.Disc;L=converted.L;inspectionMeta=converted.inspectionMeta;ai=getAi();alive=getAlive();}
         if(P[ct].godName===hgc.godKey&&P[ct].godLevel<3){
           P[ct].godLevel++;P[ct].godZone.push({...hgc});
         } else if(!P[ct].godName||alreadyHasGod){
@@ -812,7 +819,7 @@ export function aiStep(gs, opts = {}) {
           L.push(buildApophisNightLog());
         }
 
-        P.forEach((p,i)=>{if(i!==ct&&p.godName===hgc.godKey){const abandoned=abandonGodFollower(i,gs.currentTurn,P,D,Disc,L,inspectionMeta);P=abandoned.P;D=abandoned.D;Disc=abandoned.Disc;L=abandoned.L;inspectionMeta=abandoned.inspectionMeta;}});
+        P.forEach((p,i)=>{if(i!==ct&&p.godName===hgc.godKey){const abandoned=abandonGodFollower(i,gs.currentTurn,P,D,Disc,L,inspectionMeta);P=abandoned.P;D=abandoned.D;Disc=abandoned.Disc;L=abandoned.L;inspectionMeta=abandoned.inspectionMeta;ai=getAi();alive=getAlive();}});
         playersBeforeSkillAction=copyPlayers(P);
         preSkillLogs=L.slice(worshipLogStart);
         preSkillDiscard=[...Disc];
@@ -868,7 +875,7 @@ export function aiStep(gs, opts = {}) {
     discardAiHandToLimit(P, ct, Disc, L);
     const _P_beforeEndTurnReplay = copyPlayers(P);
     const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,{...gs,...restStatPatch});
-    P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;
+    P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;ai=getAi();alive=getAlive();
     const _P_afterRest=copyPlayers(P);
     const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,restUsed:true,skillUsed:false,...restStatPatch,...replayed.statePatch,_aiEndTurnReplayQueue:replayed.replayQueue,_aiEndTurnReplayMsgs:replayed.replayMsgs}, opts);
     return buildReturnPack(nextGs, _P_afterRest, _P_beforeEndTurnReplay);
@@ -946,7 +953,7 @@ export function aiStep(gs, opts = {}) {
     appendAiEndTurnLog();
     const _P_beforeEndTurnReplay = copyPlayers(P);
     const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,gs);
-    P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};
+    P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};ai=getAi();alive=getAlive();
     const _P_afterAction=copyPlayers(P);
     const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:gs.skillUsed,_aiEndTurnReplayQueue:replayed.replayQueue,_aiEndTurnReplayMsgs:replayed.replayMsgs}, opts);
     return buildReturnPack(nextGs, _P_afterAction, _P_beforeEndTurnReplay);
@@ -1019,7 +1026,7 @@ export function aiStep(gs, opts = {}) {
                 clearHunterLowQualityHand(P, ct);
                 const blankZoneUpdate=moveEligibleBlankZones(P,L);
                 if(blankZoneUpdate){
-                  P=blankZoneUpdate.players;
+                  P=blankZoneUpdate.players;ai=getAi();alive=getAlive();
                   L=blankZoneUpdate.log;
                 }
                 const afterDiscardPlayers=copyPlayers(P);
@@ -1185,12 +1192,13 @@ export function aiStep(gs, opts = {}) {
       if(!plan){
         huntContinue = false;
       }else if(P[ct].hand.length){
+        alive=getAlive();
         const legalTargets=alive.map(p=>P.indexOf(p)).filter(i=>i>=0);
         const ti=applyNightTarget(plan.targetIdx,legalTargets,'选择【蛊惑】目标');
         tgt=P[ti];
         const sc=plan.card;
         const bwRes=applyBewitchGift(gs,P,D,Disc,L,ct,ti,sc);
-        gs=bwRes.gs;P=bwRes.P;D=bwRes.D;Disc=bwRes.Disc;L=bwRes.L;
+        gs=bwRes.gs;P=bwRes.P;D=bwRes.D;Disc=bwRes.Disc;L=bwRes.L;ai=getAi();alive=getAlive();
         const treasureWin=buildBewitchTreasureWinState(gs,P,D,Disc,L,ti);
         if(treasureWin)return buildReturnPack(treasureWin,copyPlayers(P));
         const pendingSlime=buildPendingSlimeBalanceState(gs,P,D,Disc,L,{
@@ -1245,6 +1253,7 @@ export function aiStep(gs, opts = {}) {
       }
       }
     } else {
+      alive=getAlive();
       const withH=alive.filter(p=>p.hand.length>0);
       const pool=withH.length?withH:alive;
       if(pool.length){
@@ -1312,11 +1321,12 @@ export function aiStep(gs, opts = {}) {
       cultistBewitchPlan=chooseAiCultistBewitchPlan(P,ct);
       if(cultistBewitchPlan){
         const plan=cultistBewitchPlan;
+        alive=getAlive();
         const legalTargets=alive.map(p=>P.indexOf(p)).filter(i=>i>=0);
         const ti=applyNightTarget(plan.targetIdx,legalTargets,'选择【蛊惑】目标');
         const sc=plan.card;
         const bwRes=applyBewitchGift(gs,P,D,Disc,L,ct,ti,sc);
-        gs=bwRes.gs;P=bwRes.P;D=bwRes.D;Disc=bwRes.Disc;L=bwRes.L;
+        gs=bwRes.gs;P=bwRes.P;D=bwRes.D;Disc=bwRes.Disc;L=bwRes.L;ai=getAi();alive=getAlive();
         const treasureWin=buildBewitchTreasureWinState(gs,P,D,Disc,L,ti);
         if(treasureWin)return buildReturnPack(treasureWin,copyPlayers(P));
         const pendingSlime=buildPendingSlimeBalanceState(gs,P,D,Disc,L,{
@@ -1356,16 +1366,11 @@ export function aiStep(gs, opts = {}) {
     return{...nextGs,_animAiDrawnCard:gs._aiDrawnCard??gs._drawnCard??null,_animDiscardedDrawnCard:gs._discardedDrawnCard??false,_aiName:ai.name,_playersBeforeNextDraw:_P_afterAction,_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard,_aiHuntEvents:aiHuntEvents};
   }
   const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
-  const aiHandLimit=P[ct]._nyaHandLimit??4;
   const discardedCards=[];
   const handLimitBeforePlayers=copyPlayers(P);
   const handLimitBeforeDiscard=[...Disc];
   const handLimitBeforeLog=[...L];
-  while(P[ct].hand.length>aiHandLimit){
-    const c=P[ct].hand.shift();Disc.push(c);discardedCards.push(c);L.push(`${ai.name} 弃 ${cardLogText(c,{alwaysShowName:true})}（上限）`);
-    const balance=applyBalanceDiscardSideEffects({players:P,deck:D,discard:Disc,log:L,ownerIdx:ct,cards:[c],reason:'手牌上限弃牌',applyHpDamage:applyHpDamageWithLink,submitDamage:submitDamageEvents,currentTurn:gs.currentTurn});
-    P=balance.players;D=balance.deck;Disc=balance.discard;L=balance.log;
-  }
+  discardAiHandToLimit(P,ct,Disc,L,D,discardedCards);
   // 结算玫瑰倒刺：弃掉的标记牌立即造成伤害，日志紧跟在弃牌日志之后
   if(discardedCards.length){
     const thornLosses={};
@@ -1396,7 +1401,7 @@ export function aiStep(gs, opts = {}) {
   const _P_beforeEndTurnReplay = copyPlayers(P);
   const _Disc_beforeEndTurnReplay = [...Disc];
   const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,gs);
-  P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};
+  P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};ai=getAi();alive=getAlive();
   const _P_afterAction=copyPlayers(P);
   let nextGs;
 

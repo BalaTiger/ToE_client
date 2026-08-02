@@ -9,8 +9,6 @@ import {
   shouldAiUseEtherealize,
 } from './etherealize';
 import {
-  buildEtherealizeLoss,
-  buildEtherealizeRedirectDecision,
   buildTsathogguaSlimeBalanceDecision,
   copyPlayers,
   isBlackGoatYoung,

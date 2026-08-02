@@ -22,6 +22,7 @@ export function registerMultiplayerSocketHandlers({
   setConnErrModal,
   setOnlineOptionsModal,
   setRoomModal,
+  leavingRoomRef,
   setLobbyLoading,
   setLobbyRooms,
   addToast,
@@ -106,6 +107,7 @@ export function registerMultiplayerSocketHandlers({
   });
 
   socket.on('roomCreated', ({ roomId, owner, isPrivate, players, count, max, countdown }) => {
+    leavingRoomRef.current = false;
     setMultiLoading(false);
     setOnlineOptionsModal(false);
     copyRoomIdToClipboard(roomId, { created: true });
@@ -113,6 +115,7 @@ export function registerMultiplayerSocketHandlers({
   });
 
   socket.on('roomUpdated', ({ roomId, owner, isPrivate, players, count, max, countdown }) => {
+    if (leavingRoomRef.current) return;
     setMultiLoading(false);
     setOnlineOptionsModal(false);
     setRoomModal(prev => prev
