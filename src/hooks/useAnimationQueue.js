@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { dedupeInferredDiscardTransfers } from '../game/animQueueHelpers';
 import { getVisualEventIdsFromState, markConsumedVisualEvents } from '../game/visualEvents';
-import { attachApophisNightTimeline } from '../game/apophisAnimQueue';
+import { attachApophisNightTimeline, mergeApophisTargetQueue } from '../game/apophisAnimQueue';
 
 export function useAnimationQueue({
   gs,
@@ -286,8 +286,14 @@ export function useAnimationQueue({
     if (Array.isArray(queue) && queue.some(s => s?.type === 'EARTHQUAKE')) {
       try { console.log('[EQ-DEBUG] triggerAnimQueue received queue =', queue.map(s => s.type), '| hasCallback =', !!callback, '| nextGs.phase =', nextGs?.phase); } catch { /* noop */ }
     }
+    // Bespoke target-action queues do not all originate from buildAnimQueue.
+    // Normalize at the common playback boundary so the black-night roll is
+    // always shown before the selected action's own visual effects.
+    const apophisOrderedQueue = nextGs
+      ? mergeApophisTargetQueue(queue, gs, nextGs)
+      : queue;
     const normalizedQueue = attachApophisNightTimeline(
-      addDrawBackgroundCameraPrelude(dedupeInferredDiscardTransfers(queue)),
+      addDrawBackgroundCameraPrelude(dedupeInferredDiscardTransfers(apophisOrderedQueue)),
       gs?.apophisNight,
       nextGs?.apophisNight,
     );

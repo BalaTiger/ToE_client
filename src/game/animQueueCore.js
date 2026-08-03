@@ -221,7 +221,15 @@ export function buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs 
             msgs: (newMsgs || []).filter(m => typeof m === 'string' && (m.includes('撒托古亚的赐福黏液') || m.includes('黏液'))),
           });
         }
-        if (otherRemovedCount > 0) q.push(cardTransferStep({ fromPid: li, dest, toPid, count: otherRemovedCount, inferredHandLoss: true }));
+        const otherRemovedCards = removedCards.filter(card => !isTsathogguaSlime(card));
+        if (otherRemovedCount > 0) q.push(cardTransferStep({
+          fromPid: li,
+          dest,
+          toPid,
+          count: otherRemovedCount,
+          cards: otherRemovedCards.slice(0, otherRemovedCount),
+          inferredHandLoss: true,
+        }));
       } else {
         q.push(cardTransferStep({ fromPid: li, dest, toPid, count, ...(dest === 'discard' ? { inferredHandLoss: true } : {}) }));
       }
@@ -283,6 +291,26 @@ export function buildAnimQueue(oldGs, newGs) {
   const effectiveLog = newInspectionEvents[0]?.beforeLog || newGs.log;
   const oldLog = Array.isArray(oldGs?.log) ? oldGs.log : [];
   const newMsgs = (Array.isArray(effectiveLog) ? effectiveLog : []).slice(oldLog.length);
+  // 改信直接用新神区替换旧神区，先明确展示旧神牌进入公开弃牌堆。
+  (oldGs?.players || []).forEach((oldPlayer, targetPid) => {
+    const nextPlayer = newGs?.players?.[targetPid];
+    const oldGodCards = Array.isArray(oldPlayer?.godZone) ? oldPlayer.godZone : [];
+    if (!oldPlayer?.godName || !nextPlayer?.godName || oldPlayer.godName === nextPlayer.godName || !oldGodCards.length) return;
+    const finalMsgs = (Array.isArray(newGs?.log) ? newGs.log : []).slice(oldLog.length);
+    const convertMsgs = finalMsgs.filter(line => typeof line === 'string' && (
+      line.includes('改信新神') || line.includes('旧神牌入弃牌堆')
+    ) && (!oldPlayer.name || line.includes(oldPlayer.name) || targetPid === 0));
+    q.push(cardTransferStep({
+      fromPid: targetPid,
+      dest: 'discard',
+      count: oldGodCards.length,
+      cards: oldGodCards,
+      sourceAnchor: 'godPower',
+      effect: 'godConvertDiscard',
+      durationMs: 1500,
+      msgs: convertMsgs,
+    }));
+  });
   // Make faith/upgrade highlights explicit timeline steps. Derive them from
   // worship logs rather than player-state diffs: by the time this queue is
   // built the skill-action baseline may already reflect the new god, so a
@@ -299,11 +327,15 @@ export function buildAnimQueue(oldGs, newGs) {
   // 同一邪神只能有一名信徒。新信徒的高亮之后，显式播放旧信徒的
   // godZone 整体进入弃牌堆，确保本地和远端都能观察到信仰被抢夺。
   (oldGs?.players || []).forEach((oldPlayer, targetPid) => {
-    const nextPlayer = effectivePlayers?.[targetPid];
+    // Faith loss is a final settlement result. Inspection playback may use a
+    // pre-inspection player snapshot as effectivePlayers, which used to hide
+    // this transition on some paths. Always compare against the final state.
+    const nextPlayer = newGs?.players?.[targetPid];
     const oldGodCards = Array.isArray(oldPlayer?.godZone) ? oldPlayer.godZone : [];
     const nextGodCards = Array.isArray(nextPlayer?.godZone) ? nextPlayer.godZone : [];
     if (!oldPlayer?.godName || nextPlayer?.godName || !oldGodCards.length || nextGodCards.length) return;
-    const abandonMsgs = newMsgs.filter(line => (
+    const finalMsgs = (Array.isArray(newGs?.log) ? newGs.log : []).slice(oldLog.length);
+    const abandonMsgs = finalMsgs.filter(line => (
       typeof line === 'string'
       && oldPlayer.name
       && line.includes(oldPlayer.name)

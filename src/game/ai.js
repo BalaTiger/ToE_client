@@ -370,7 +370,9 @@ function estimateHunterZoneCardScore(card, self, players, ci) {
         }
       }
       const totalDamageToOthers = targets.filter(idx => idx !== ci).length * (hpLoss || sanLoss);
-      score = totalDamageToOthers * 0.3 + revealedEnemyPressure;
+      // 追猎者的胜利条件要求压低整桌血线；即使本次 AOE 不能立刻击杀，
+      // 它也同时制造后续追捕斩杀线，并且这张区域牌本身还能作为追捕弹药。
+      score = 3 + totalDamageToOthers * 1.25 + revealedEnemyPressure;
       if (self.hp <= hpLoss + 1) score -= 5;
       break;
     }
@@ -414,6 +416,15 @@ function estimateHunterZoneCardScore(card, self, players, ci) {
   }
   if (self.hp <= 2 && zoneCardHasGuaranteedHpLoss(card)) score -= 4;
   if (self.san <= 2 && zoneCardHasGuaranteedSanLoss(card)) score -= 4;
+  const isSingleTargetSelfDamage = [
+    'selfDamageHP', 'selfDamageSAN', 'selfDamageHPSAN',
+    'selfDamageHPPeek', 'selfDamageDiscardHP', 'selfDamageDiscardSAN',
+  ].includes(card.type);
+  if (isSingleTargetSelfDamage) {
+    const hpLoss = zoneCardHasGuaranteedHpLoss(card) ? (card.hpVal || card.val || 1) : 0;
+    const sanLoss = zoneCardHasGuaranteedSanLoss(card) ? (card.sanVal || card.val || 1) : 0;
+    if (self.hp - hpLoss >= 6 && self.san - sanLoss >= 6) score += 1.25;
+  }
   score += estimateRoleHandValueBias(card, self, ROLE_HUNTER);
 
   const abandonedHunts = self?._abandonedHunts || 0;
@@ -1265,7 +1276,9 @@ export function aiShouldKeepZoneCard(card, ci, players, forced = false, context 
     const othersWithSameLetter = otherPlayers.filter(p => p.hand.some(c => c.letter === card.letter)).length;
     const othersWithSameNumber = otherPlayers.filter(p => p.hand.some(c => c.number === card.number)).length;
     
-    if (othersWithSameLetter > 0 && othersWithSameNumber > 0) return false;
+    // 追猎者需要按伤害/弹药价值评估负面牌，不能因桌面已有同轴牌就在
+    // 身份评分前直接否决（活火山等高价值 AOE 会因此被误弃）。
+    if (role !== ROLE_HUNTER && othersWithSameLetter > 0 && othersWithSameNumber > 0) return false;
     if (card.type === 'blankZone') return true;
     if (forced) return false;
   }

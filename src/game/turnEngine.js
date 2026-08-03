@@ -683,11 +683,51 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
       let effectMsgs = [effectMsg];
 
       if (!revealedCultist && cost > 0) {
+        const pendingGodChoice = {
+          godCard: drawnCard,
+          drawerIdx: ci,
+          godEncounterCost: 0,
+        };
+        const damage = submitDamageEvents({
+          players: P, deck: D, discard: Disc, log: effectMsgs,
+          currentTurn: gs?.currentTurn ?? ci,
+          events: [{ targetIdx: ci, lostSan: cost, source: '邪神遭遇' }],
+          continuation: { pendingGodChoice },
+        });
+        inspectionMeta = appendStatEventsToInspectionMeta(
+          inspectionMeta,
+          damage.beforePlayers,
+          P,
+          [effectMsg],
+          '邪神遭遇',
+        );
+        if (damage.abilityData) {
+          return {
+            P, D, Disc, drawnCard,
+            reshuffleLog,
+            effectMsgs,
+            kept: true,
+            needsDecision: false,
+            statePatch: {
+              ...inspectionMeta,
+              abilityData: {
+                ...damage.abilityData,
+                ...(damage.phase === 'TSG_SLIME_BALANCE' ? {
+                  pendingSanInspection: {
+                    targetIndex: ci,
+                    startIndex: gs?.currentTurn ?? ci,
+                    reason: '邪神遭遇',
+                  },
+                } : {}),
+              },
+            },
+          };
+        }
         const baseLog = gs?.log ? [...gs.log, effectMsg] : [effectMsg];
-        const processed = applySanLossToPlayerWithInspection(ci, cost, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta, '邪神遭遇');
+        const processed = applyInspectionForSanLoss(ci, P[ci].san, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta);
         P = processed.P; D = processed.D; Disc = processed.Disc;
         inspectionMeta = processed.inspectionMeta;
-        effectMsgs.push(...processed.L.slice(baseLog.length));
+        effectMsgs.push(...processed.log.slice(baseLog.length));
       }
 
       // SAN loss from the encounter resolves before the god-gift decision.

@@ -49,6 +49,34 @@ describe('checkWin death handling', () => {
       { type: 'SAN_LOSS', target: 0, from: { san: 10 }, to: { san: 9 }, reason: '邪神遭遇', seq: 1 },
     ]);
   });
+
+  it('邪神遭遇扣 SAN 后先等待黏液结算，再进入邪神牌决策', () => {
+    const godCard = makeGodCard('VRI');
+    const slime = createTsathogguaSlimeCard();
+    const players = [makePlayer({
+      role: ROLE_TREASURE,
+      hp: 10,
+      san: 3,
+      godEncounters: 1,
+      godName: 'NYA',
+      godLevel: 1,
+      godZone: [makeGodCard('NYA')],
+      hand: [slime],
+    })];
+    const gs = makeGs({ players, deck: [godCard], log: [], currentTurn: 0 });
+
+    const result = playerDrawCard(players, [godCard], [], 0, gs);
+
+    expect(result.P[0].san).toBe(1);
+    expect(result.needGodChoice).not.toBe(true);
+    expect(result.statePatch.abilityData).toMatchObject({
+      type: 'tsgSlimeBalance',
+      targetIdx: 0,
+      pendingGodChoice: { godCard, drawerIdx: 0, godEncounterCost: 0 },
+      pendingSanInspection: { targetIndex: 0, startIndex: 0, reason: '邪神遭遇' },
+    });
+    expect(result.P[0].godName).toBe('NYA');
+  });
 });
 
 describe('地磁反转暗抽', () => {

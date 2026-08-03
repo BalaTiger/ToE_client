@@ -141,6 +141,11 @@ describe('animQueueHelpers', () => {
       count: 1,
     });
     expect(cardTransferStep()).toEqual({ type: 'CARD_TRANSFER' });
+    expect(cardTransferStep({ dest: 'discard' })).toEqual({
+      type: 'CARD_TRANSFER',
+      dest: 'discard',
+      faceUp: true,
+    });
   });
 
   it('整手交换 helper 可统一生成视觉锁和双向飞牌', () => {
@@ -351,6 +356,7 @@ describe('animQueueHelpers', () => {
     );
 
     expect(flow.queue.map(step => step.type)).toEqual([
+      'VISUAL_LOCK',
       'LOG_STEP',
       'SAN_CHANGE',
       'VISUAL_LOCK',
@@ -359,7 +365,8 @@ describe('animQueueHelpers', () => {
       'DAMAGE',
       'STATE_PATCH',
     ]);
-    expect(flow.queue[3]).toMatchObject({ triggerName: '检定牌', card, targetPid: 0 });
+    expect(flow.queue[0].players[0]).toMatchObject({ id: basePlayers[0].id, hand: basePlayers[0].hand });
+    expect(flow.queue[4]).toMatchObject({ triggerName: '检定牌', card, targetPid: 0 });
   });
 
   it('检定效果动画优先使用显式 statEvents', () => {

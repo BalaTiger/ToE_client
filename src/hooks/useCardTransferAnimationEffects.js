@@ -82,10 +82,11 @@ export function useCardTransferAnimationEffects({ anim }) {
         key,
         effect: transfer?.effect,
         cards: transfer?.cards,
+        faceUp: transfer?.faceUp,
       };
     };
 
-    const { fromPid, dest, toPid, count, sourceAnchor, effect, cards } = anim;
+    const { fromPid, dest, toPid, count, sourceAnchor, effect, cards, faceUp } = anim;
     let cancelled = false;
     let raf1 = 0;
     let raf2 = 0;
@@ -124,6 +125,7 @@ export function useCardTransferAnimationEffects({ anim }) {
           sourceAnchor,
           effect,
           cards,
+          faceUp,
           ...transfer,
         }, idx))
         : [buildTransfer({ fromPid, dest, toPid, count, sourceAnchor, effect, cards })];

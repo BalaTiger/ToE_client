@@ -313,7 +313,7 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
   if (!transfers || !transfers.length) return null;
   return (
     <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 480, overflow: 'hidden' }}>
-      {transfers.flatMap(({ srcX, srcY, destX, destY, count, key, effect, cards }) =>
+      {transfers.flatMap(({ srcX, srcY, destX, destY, count, key, effect, cards, faceUp }) =>
         Array.from({ length: count }).map((_, idx) => {
           const card = Array.isArray(cards) ? cards[idx] : null;
           const ox = (idx - (count - 1) / 2) * 14;
@@ -352,7 +352,12 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
                 zIndex: 481 + idx,
                 overflow: 'hidden',
               }}>
-                {!card && <CardBackLayer expansionKey={expansionKey}/>}
+                {!card && !faceUp && <CardBackLayer expansionKey={expansionKey}/>}
+                {!card && faceUp && <div style={{
+                  position:'absolute', inset:0, borderRadius:3,
+                  background:'linear-gradient(145deg,#d8c59a,#8d7041)',
+                  border:'1px solid rgba(245,222,170,0.75)',
+                }}/>} 
                 {card && (
                   <MiniCardFace
                     card={card}

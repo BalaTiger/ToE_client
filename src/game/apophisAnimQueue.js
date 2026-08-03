@@ -26,9 +26,14 @@ export function attachApophisNightTimeline(queue = [], initialNight = null, fina
 }
 
 export function buildApophisTargetQueueForState(oldState, nextState, buildQueue = buildAnimQueue) {
-  const seq = nextState?._apophisTargetEvent?.seq;
+  const targetEvent = nextState?._apophisTargetEvent;
+  const seq = targetEvent?.seq;
   if (!seq || seq <= (oldState?._apophisTargetSeq || 0)) return [];
-  return buildQueue(oldState, nextState).filter(step => step?._apophisTargetSeq === seq);
+  const statSeq = targetEvent?.statSeq;
+  return buildQueue(oldState, nextState).filter(step => (
+    step?._apophisTargetSeq === seq ||
+    (statSeq != null && Array.isArray(step?.statEvents) && step.statEvents.some(event => event?.seq === statSeq))
+  ));
 }
 
 export function mergeApophisTargetQueue(queue = [], oldState, nextState, buildQueue = buildAnimQueue) {
@@ -36,25 +41,22 @@ export function mergeApophisTargetQueue(queue = [], oldState, nextState, buildQu
   if (!apophisQueue.length) return queue || [];
   const seq = nextState?._apophisTargetEvent?.seq;
   const statSeq = nextState?._apophisTargetEvent?.statSeq;
-  const baseQueue = (queue || []).filter(step => step?._apophisTargetSeq !== seq);
+  const canonicalDice = apophisQueue.find(step => step?.type === 'DICE_ROLL' && step?.diceMode === 'apophisNight');
+  const canonicalLog = canonicalDice?._logChunk?.[0] || canonicalDice?.msgs?.[0] || null;
+  const baseQueue = (queue || []).filter(step => {
+    if (step?._apophisTargetSeq === seq) return false;
+    if (statSeq != null && Array.isArray(step?.statEvents) && step.statEvents.some(event => event?.seq === statSeq)) return false;
+    // AI 回合可能先把同一黑夜事件放进追捕事件队列，随后又从权威状态
+    // 补入一次。旧路径有时丢失 seq，因此再按唯一的黑夜日志去重。
+    if (step?.type === 'DICE_ROLL' && step?.diceMode === 'apophisNight' && canonicalLog) {
+      const stepLog = step?._logChunk?.[0] || step?.msgs?.[0] || null;
+      return stepLog !== canonicalLog;
+    }
+    return true;
+  });
 
   const queuedTypes = new Set(baseQueue.map(step => step?.type));
   const dedupedApophisQueue = apophisQueue.filter(step => !(step?.type?.startsWith('SKILL_') && queuedTypes.has(step.type)));
-
-  // 把与本次黑夜目标偏移绑定的 SAN/HP 扣减也提到前面，避免和后续蛊惑/追捕效果混在一起
-  if (statSeq != null) {
-    const statSteps = [];
-    const remainingBase = [];
-    for (const step of baseQueue) {
-      const stepStatEvents = step?.statEvents;
-      if (Array.isArray(stepStatEvents) && stepStatEvents.some(ev => ev?.seq === statSeq)) {
-        statSteps.push(step);
-      } else {
-        remainingBase.push(step);
-      }
-    }
-    return [...dedupedApophisQueue, ...statSteps, ...remainingBase];
-  }
 
   return [...dedupedApophisQueue, ...baseQueue];
 }

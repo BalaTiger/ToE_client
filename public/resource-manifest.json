@@ -1,6 +1,6 @@
 {
-  "version": "048986ea08665652",
-  "generatedAt": "2026-08-02T14:21:43.232Z",
+  "version": "f1a00f3903c4819d",
+  "generatedAt": "2026-08-03T06:06:06.130Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -59,8 +59,8 @@
     {
       "path": "/fonts/fonts.css",
       "type": "style",
-      "size": 1524,
-      "revision": "dfd4d496028a83ab"
+      "size": 1462,
+      "revision": "f430ec735e051872"
     },
     {
       "path": "/img/QRCode.webp",
@@ -305,8 +305,8 @@
     {
       "path": "/img/card/animated/manifest.json",
       "type": "asset",
-      "size": 2916,
-      "revision": "0af8f75277b7b00e"
+      "size": 2843,
+      "revision": "a0e679357d8a9d9f"
     },
     {
       "path": "/img/card/animated/stars_call/frame_00.webp",
@@ -1235,8 +1235,8 @@
     {
       "path": "/img/effects/evil_goat_sigil.svg",
       "type": "image",
-      "size": 1992,
-      "revision": "cfbe97b746babef7"
+      "size": 1962,
+      "revision": "d1f3ad50c492f6dc"
     },
     {
       "path": "/img/effects/evil_goat_spirit_run_00.webp",
@@ -1391,8 +1391,8 @@
     {
       "path": "/socket.io.min.js",
       "type": "script",
-      "size": 50000,
-      "revision": "6a129d28411bef78"
+      "size": 49993,
+      "revision": "73eba16bc895fdfa"
     },
     {
       "path": "/sounds/BGM/battle_earth_shadow.mp3",

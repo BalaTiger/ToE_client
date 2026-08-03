@@ -325,8 +325,11 @@ function isPreDrawTurnStartStatEvent(event) {
 
 function getFreshStatEventsFromState(oldGs, newGs) {
   const oldSeq = oldGs?._statEventSeq || 0;
-  const visualEvent = getVisualEvents(newGs).findLast(ev => ev?.type === VISUAL_EVENT.STAT_EVENTS && Array.isArray(ev.statEvents) && ev.statEvents.length);
-  if (visualEvent) return visualEvent.statEvents.filter(ev => ev && (ev.seq == null || ev.seq > oldSeq));
+  const visualStatEvents = getVisualEvents(newGs)
+    .filter(ev => ev?.type === VISUAL_EVENT.STAT_EVENTS && Array.isArray(ev.statEvents) && ev.statEvents.length)
+    .flatMap(ev => ev.statEvents)
+    .filter(ev => ev && (ev.seq == null || ev.seq > oldSeq));
+  if (visualStatEvents.length) return visualStatEvents;
   return Array.isArray(newGs?._statEvents)
     ? newGs._statEvents.filter(ev => ev && (ev.seq == null || ev.seq > oldSeq))
     : [];

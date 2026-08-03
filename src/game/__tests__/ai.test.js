@@ -184,6 +184,35 @@ describe('aiShouldKeepZoneCard', () => {
     expect(aiShouldKeepZoneCard(card, 1, players)).toBe(true);
   });
 
+  it('满血追猎者会收入用于压血和补充追捕弹药的活火山', () => {
+    const card = {
+      id: 'volcano-pressure', key: 'C1', name: '活火山', type: 'allDamageHP', val: 4,
+      isZone: true, letter: 'C', number: 1, polarity: 'negative',
+    };
+    const players = [
+      makePlayer({ name: '艾伦', role: ROLE_TREASURE, hp: 10, hand: [{ letter: 'C' }] }),
+      makePlayer({ name: '卡洛斯', role: ROLE_HUNTER, hp: 10, san: 10, hand: [] }),
+      makePlayer({ name: '贝拉', role: ROLE_CULTIST, hp: 10, hand: [{ number: 1 }] }),
+      makePlayer({ name: '黛安娜', role: ROLE_TREASURE, hp: 10 }),
+    ];
+
+    expect(aiShouldKeepZoneCard(card, 1, players)).toBe(true);
+  });
+
+  it('状态健康且缺少追捕弹药时，追猎者会接受轻度单体自伤牌', () => {
+    const card = {
+      id: 'healthy-self-damage', key: 'A2', name: '轻度自伤', type: 'selfDamageHP', val: 2,
+      isZone: true, letter: 'A', number: 2, polarity: 'negative',
+    };
+    const players = [
+      makePlayer({ name: '艾伦', role: ROLE_TREASURE }),
+      makePlayer({ name: '卡洛斯', role: ROLE_HUNTER, hp: 10, san: 10, hand: [{ id: 'ammo' }] }),
+      makePlayer({ name: '贝拉', role: ROLE_CULTIST }),
+    ];
+
+    expect(aiShouldKeepZoneCard(card, 1, players)).toBe(true);
+  });
+
   it('不同身份按新规则评估增殖的Z', () => {
     const card = {
       id: 'z-card',
@@ -444,6 +473,40 @@ describe('AI end-turn endless corridor replay', () => {
     expect(types.indexOf('SAN_HEAL')).toBeGreaterThan(4);
     expect(types.lastIndexOf('STATE_PATCH')).toBeGreaterThan(types.indexOf('SAN_HEAL'));
     expect(result.replayQueue[0].msgs).toEqual([expect.stringContaining('【无尽通道】艾伦 展示所有手牌')]);
+  });
+
+  it('为连续弃牌保留逐步状态快照，不让后续结算污染前一帧', () => {
+    const discardA = {
+      id: 'discard-a', key: 'C2', name: '惊扰蝙蝠', type: 'selfDamageHP', val: 1,
+      isZone: true, letter: 'C', number: 2, polarity: 'negative',
+    };
+    const discardB = {
+      id: 'discard-b', key: 'D3', name: '鼠群', type: 'selfDamageHP', val: 1,
+      isZone: true, letter: 'D', number: 3, polarity: 'negative',
+    };
+    const corridor = {
+      id: 'corridor', key: 'A3', name: '无尽通道', type: 'endTurnReplayHand',
+      isZone: true, letter: 'A', number: 3,
+    };
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '卡洛斯', role: ROLE_TREASURE, hand: [discardA, discardB, corridor] }),
+    ];
+    const gs = makeGs({ players, currentTurn: 1, phase: 'AI_TURN', log: [] });
+
+    const result = processAiEndTurnReplayHand(
+      gs.players.map(player => ({ ...player, hand: [...(player.hand || [])] })),
+      [], [], [], 1, gs
+    );
+    const discardPatches = result.replayQueue.filter((step, index, queue) => (
+      step.type === 'STATE_PATCH' && queue[index - 1]?.type === 'DISCARD'
+    ));
+
+    expect(discardPatches).toHaveLength(2);
+    expect(discardPatches[0].discard.map(card => card.id)).toEqual(['discard-a']);
+    expect(discardPatches[0].players[1].hand.map(card => card.id)).toEqual(['discard-b', 'corridor']);
+    expect(discardPatches[1].discard.map(card => card.id)).toEqual(['discard-a', 'discard-b']);
+    expect(discardPatches[1].players[1].hand.map(card => card.id)).toEqual(['corridor']);
   });
 });
 

@@ -461,6 +461,14 @@ export const GLOBAL_STYLES = `
 
   /* Benign sparkle particles */
   @keyframes particleRise { 0%{opacity:0;transform:translateY(0) scale(0.4)} 30%{opacity:0.9;} 100%{opacity:0;transform:translateY(-140px) scale(1.4)} }
+  @keyframes blindFishScotomaDrift {
+    0% { transform:translate3d(-2%, -1%, 0) scale(1.02) rotate(-1deg); opacity:0.58; }
+    100% { transform:translate3d(3%, 2%, 0) scale(1.09) rotate(1.5deg); opacity:0.88; }
+  }
+  @keyframes blindFishScotomaPulse {
+    0% { transform:scale(1.02, 0.98); opacity:0.78; }
+    100% { transform:scale(0.96, 1.05) translate3d(1%, -1%, 0); opacity:0.96; }
+  }
 
   /* ── SMOKE SOULS: S-curve sway + widen as they rise ──
      translateX oscillates: 0→+12→-14→+8→0  (S-shape)

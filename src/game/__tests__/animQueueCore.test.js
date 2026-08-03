@@ -167,8 +167,55 @@ describe('buildAnimQueue stat animations', () => {
         cards: [oldGod],
         sourceAnchor: 'godPower',
         effect: 'godAbandon',
+        faceUp: true,
       }),
     ]));
+  });
+
+  it('邪神抛弃不会被检定前的中间快照吞掉', () => {
+    const oldGod = makeGodCard('VRI');
+    const oldFollower = makePlayer({ name: '旧信徒', godName: 'VRI', godLevel: 1, godZone: [oldGod] });
+    const abandoned = makePlayer({ name: '旧信徒', san: 9, godName: null, godLevel: 0, godZone: [] });
+    const oldGs = makeGs({ players: [oldFollower], log: [] });
+    const newGs = makeGs({
+      players: [abandoned],
+      discard: [oldGod],
+      log: ['旧信徒 被邪神抛弃，失去1SAN'],
+      _inspectionEvents: [{ seq: 1, beforePlayers: [oldFollower], beforeLog: [] }],
+    });
+
+    expect(buildAnimQueue(oldGs, newGs)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'CARD_TRANSFER',
+        dest: 'discard',
+        cards: [oldGod],
+        effect: 'godAbandon',
+        faceUp: true,
+      }),
+    ]));
+  });
+
+  it('改信时先把旧神牌正面送入弃牌堆，再高亮新神', () => {
+    const oldGod = makeGodCard('VRI');
+    const newGod = makeGodCard('APO');
+    const oldGs = makeGs({
+      players: [makePlayer({ name: '你', godName: 'VRI', godLevel: 1, godZone: [oldGod] })],
+      log: [],
+    });
+    const newGs = makeGs({
+      players: [makePlayer({ name: '你', san: 9, godName: 'APO', godLevel: 1, godZone: [newGod] })],
+      discard: [oldGod],
+      log: ['你 改信新神，失去1SAN，旧神牌入弃牌堆', '你 信仰了 阿波菲斯，获得噬日灭世(Lv.1)'],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    const discardIdx = queue.findIndex(step => step?.effect === 'godConvertDiscard');
+    const highlightIdx = queue.findIndex(step => step?.type === 'GOD_HIGHLIGHT');
+    expect(queue[discardIdx]).toMatchObject({
+      type: 'CARD_TRANSFER', fromPid: 0, dest: 'discard', cards: [oldGod], faceUp: true,
+    });
+    expect(discardIdx).toBeGreaterThanOrEqual(0);
+    expect(highlightIdx).toBeGreaterThan(discardIdx);
   });
 
   it('远端繁衍生成带黑山羊奔跑音效标记的专属转牌步骤', () => {
@@ -1470,6 +1517,12 @@ describe('buildAiHuntEventAnimQueue', () => {
     const lootIdx = types.findIndex((type, idx) => type === 'CARD_TRANSFER' && idx > deathIdx);
     const leftoverDiscardIdx = types.findIndex((type, idx) => type === 'DISCARD' && idx > lootIdx && queue[idx].card?.id === leftover.id);
     const finalPatchIdx = types.length - 1;
+
+    const hunterDiscardSteps = queue.filter(step =>
+      step.type === 'DISCARD' && step.card?.id === hunterDiscard.id
+    );
+    expect(hunterDiscardSteps).toHaveLength(1);
+    expect(hunterDiscardSteps[0]).toMatchObject({ targetPid: 1 });
 
     expect(deathIdx).toBeGreaterThan(-1);
     expect(lootIdx).toBeGreaterThan(deathIdx);

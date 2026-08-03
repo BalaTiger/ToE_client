@@ -1044,6 +1044,7 @@ export default function Game(){
   const mobileGodCardRefs=useRef(new Map());
   const igniteTorchFlamingCardIdsRef=useRef(new Set());
   const debugInspectionFlipHandlerRef=useRef(null);
+  const debugBlindFishFlipHandlerRef=useRef(null);
   const debugMpSwapSlimeReplayHandlerRef=useRef(null);
   const debugMpPacketHandlerRef=useRef(null);
   const debugMpRenderTraceRef=useRef(null);
@@ -1368,6 +1369,14 @@ export default function Game(){
       }
       return handler(options);
     };
+    const playBlindFishFlip=(options={})=>{
+      const handler=debugBlindFishFlipHandlerRef.current;
+      if(!handler){
+        console.warn('[toeDebug] playBlindFishFlip: debug handler unavailable');
+        return Promise.resolve({ok:false,reason:'unavailable'});
+      }
+      return handler(options);
+    };
     const playGodPowerBlocked=(options={})=>{
       const handler=debugGodPowerBlockedHandlerRef.current;
       if(!handler){
@@ -1429,6 +1438,7 @@ export default function Game(){
     const debugRoot={...(window.__toeDebug||{})};
     delete debugRoot.playIgniteTorchDiscard;
     debugRoot.playInspectionFlip=playInspectionFlip;
+    debugRoot.playBlindFishFlip=playBlindFishFlip;
     debugRoot.playGodPowerBlocked=playGodPowerBlocked;
     debugRoot.playTsgSlimePop=playTsgSlimePop;
     debugRoot.playVritraImmortalReveal=playVritraImmortalReveal;
@@ -1439,6 +1449,9 @@ export default function Game(){
     return ()=>{
       if(window.__toeDebug?.playInspectionFlip===playInspectionFlip){
         delete window.__toeDebug.playInspectionFlip;
+      }
+      if(window.__toeDebug?.playBlindFishFlip===playBlindFishFlip){
+        delete window.__toeDebug.playBlindFishFlip;
       }
       if(window.__toeDebug?.playGodPowerBlocked===playGodPowerBlocked){
         delete window.__toeDebug.playGodPowerBlocked;
@@ -2752,12 +2765,15 @@ export default function Game(){
         const actionQForMultiply=multiplyEvent
           ? (orderedActionQ||actionStatQ).filter(step=>step.type!=='CARD_TRANSFER')
           : (orderedActionQ||actionStatQ);
-        const finalActionQ=[...animInjections,...actionQForMultiply,...postActionInjections].flatMap(step=>{
+        const assembledActionQ=[...animInjections,...actionQForMultiply,...postActionInjections].flatMap(step=>{
           if(step?.type==='APOPHIS_ECLIPSE'&&Object.prototype.hasOwnProperty.call(newGs,'apophisNight')){
             return [step,statePatchStep({apophisNight:newGs.apophisNight})];
           }
           return [step];
         });
+        // AI 蛊惑此前会把 actionStatQ 中的黑夜骰放在眼睛、飞牌和翻牌之后。
+        // 所有 AI 选目标行动在最终队列成形后统一应用同一条前置规则。
+        const finalActionQ=mergeApophisTargetQueue(assembledActionQ,gs,newGs);
         // 5. Stat changes from THIS AI's action only (not next draw — those belong to next AI's queue)
         //    Compare gs (after this AI's draw) → _playersBeforeNextDraw (after action, before next draw)
         // 6. Advance to next player's turn
@@ -4065,7 +4081,13 @@ export default function Game(){
   }
 
   // ── Game Over ──────────────────────────────────────────────
-  if(gs.gameOver){
+  // A terminal state may arrive while the encounter replay is still running.
+  // Preserve only the prefix through the terminal SAN hit: once SAN_DAMAGE has
+  // finished, resurrection intentionally cuts off any stale follow-up steps
+  // (inspection/gift decisions/etc.) instead of waiting for the whole queue.
+  const terminalSanReplayPending=anim?.type==='SAN_DAMAGE'
+    ||animQueueRef.current.some(step=>step?.type==='SAN_DAMAGE');
+  if(gs.gameOver&&!terminalSanReplayPending){
     const{winner,reason,winnerIdx}=gs.gameOver;
     const gameOverFullLog=normalizeLogForViewer(
       buildCompleteGameOverLog(gs,visibleLogRef.current),
@@ -4773,7 +4795,10 @@ export default function Game(){
   }
 
   function triggerSyncedAnimTransaction(steps,state,options={},callback){
-    const queue=Array.isArray(steps)?steps.filter(Boolean):[];
+    // Order before publishing too, so remote replay receives the same
+    // dice-first timeline as the choosing client.
+    const rawQueue=Array.isArray(steps)?steps.filter(Boolean):[];
+    const queue=state?mergeApophisTargetQueue(rawQueue,gs,state):rawQueue;
     if(state?._isMP&&queue.length)broadcastAnimTransaction(state,queue,options);
     triggerAnimQueue(queue,state,callback);
   }
@@ -5739,7 +5764,7 @@ export default function Game(){
     if(tutorialNext&&tutorialNext!==TUTORIAL_FLOW.TREASURE_STEAL_CARD)setTutorialStep(tutorialNext);
   }
   function zoneSwapSelectTarget(ti){
-    // 强征献礼：与目标交换全部手牌
+    // 触底反弹：与目标交换全部手牌
     const card=gs.abilityData?.zoneSwapCard;
     if(!card)return;
     const fromRest=gs.abilityData?.fromRest;
@@ -5759,7 +5784,10 @@ export default function Game(){
     if(!fromEndTurnReplay)P[0].hand.push(card); // 区域牌留在手中（效果已执行）
     const L=[...baseLog,...res.msgs];
     const win=checkWin(P,gs._isMP);
-    if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{}});return;}
+    if(win){
+      setGsWithApophisTargetAnim({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{},...apophisNightPatch(night)});
+      return;
+    }
     if(P[0].role==='寻宝者'&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
       const pendingWinGs={...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',abilityData:{winReason:localTreasureWinReason(gs)},...apophisNightPatch(night)};
@@ -6672,7 +6700,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     // queue first so remote viewers do not have to wait for the post-animation
     // state update before starting the rope effect.
     if(nextGs._isMP&&damageLinkQueue.length){
-      broadcastAnimTransaction(nextGs,damageLinkQueue,{
+      const syncedQueue=mergeApophisTargetQueue(damageLinkQueue,gs,nextGs);
+      broadcastAnimTransaction(nextGs,syncedQueue,{
         context:'damageLink',
         barrier:'continuation',
         msgs:L.slice(-1),
@@ -6711,12 +6740,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const L=[...baseLog,`【玫瑰倒刺】${sourcePlayer.name} 将全部手牌交给了 ${targetPlayer.name}`];
     const win=checkWin(P,gs._isMP);
     if(win){
-      setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{}});
+      setGsWithApophisTargetAnim({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{},...apophisNightPatch(night)});
       return;
     }
     if(ti===0&&!P[0].isDead&&(P[0]._nyaBorrow||P[0].role)===ROLE_TREASURE&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
-      const pendingWinGs={...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',abilityData:{winReason:localTreasureWinReason(gs)}};
+      const pendingWinGs={...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',abilityData:{winReason:localTreasureWinReason(gs)},...apophisNightPatch(night)};
       const winStatQ=buildAnimQueue(gs,pendingWinGs).filter(a=>a.type!=='CARD_TRANSFER');
       triggerAnimQueue([
         ...buildPendingTurnStartDrawQueue(gs),
@@ -6730,7 +6759,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const reason=`${P[ti].name} 集齐了全部编号并获胜！`;
       const winGs={...gs,players:P,deck:D,discard:Disc,log:[...L,reason],
         gameOver:{winner:ROLE_TREASURE,reason,winnerIdx:ti},
-        phase:'ACTION',abilityData:{}};
+        phase:'ACTION',abilityData:{},...apophisNightPatch(night)};
       // 与非本地寻宝者获胜的同步队列模式一致：本地同样播放转牌动画队列再进结算，
       // 避免本地直接跳到 gameOver 而远端重播转牌动画导致两端动画队列不同步。
       const winStatQ=buildAnimQueue(gs,winGs).filter(a=>a.type!=='CARD_TRANSFER');
@@ -7060,6 +7089,57 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         skipTravel:!!options.skipTravel,
       }],base,()=>{});
       return {ok:true,cardName:card.name,effect:card.effect,targetPid,targetName};
+    }
+    :null;
+
+  debugBlindFishFlipHandlerRef.current=import.meta.env.DEV
+    ?async(options={})=>{
+      const base=latestGsRef.current;
+      if(!base?.players?.length){
+        console.warn('[toeDebug] playBlindFishFlip: no active game state');
+        return {ok:false,reason:'no-game'};
+      }
+      if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current){
+        console.warn('[toeDebug] playBlindFishFlip: animation queue is busy');
+        return {ok:false,reason:'busy'};
+      }
+      const variants=Object.entries(FIXED_ZONE_CARD_VARIANTS_BY_KEY).flatMap(([key,cards])=>
+        cards.map(card=>({key,...card}))
+      );
+      const requestedName=typeof options.cardName==='string'?options.cardName.trim():'';
+      const requestedKey=typeof options.cardKey==='string'?options.cardKey.trim().toUpperCase():'';
+      const requestedCard=options.card&&typeof options.card==='object'?options.card:null;
+      const definition=requestedCard
+        ||variants.find(card=>requestedName&&card.name===requestedName)
+        ||variants.find(card=>requestedKey&&card.key===requestedKey&&card.expansion==='地神的潜影')
+        ||variants.find(card=>card.name==='活火山');
+      if(!definition){
+        return {ok:false,reason:'missing-card'};
+      }
+      const key=definition.key||definition.slotKey||'A1';
+      const card={
+        ...definition,
+        id:definition.id||`debug-blind-fish-${Date.now()}`,
+        key,
+        letter:definition.letter||key[0],
+        number:definition.number||Number(key.slice(1)),
+        isZone:true,
+        blindZoneIdentity:true,
+      };
+      console.info('[toeDebug] playBlindFishFlip',{
+        cardName:card.name,
+        cardKey:card.key,
+        originalPolarity:card.polarity,
+      });
+      triggerAnimQueue([{
+        type:'DRAW_CARD',
+        card,
+        triggerName:'你',
+        targetPid:0,
+        skipTravel:options.skipTravel!==false,
+        disableDrawBackgroundCamera:true,
+      }],base,()=>{});
+      return {ok:true,cardName:card.name,cardKey:card.key,originalPolarity:card.polarity};
     }
     :null;
 
@@ -7857,8 +7937,18 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const queue=huntResultEvent
         ? buildAiHuntEventAnimQueue(huntResultEvent,P[0]?.name||'???')
         : buildAnimQueue(gs,newGsWithEvent);
-      if(queue.length)broadcastAnimTransaction(newGsWithEvent,queue,{context:'huntResult',barrier:newGs.phase==='ACTION'?'continuation':'decision',msgs:L.slice(huntLogStart),beforePlayers:gs.players,beforeDiscard:gs.discard});
-      if(queue.length||tutorialNext) finishTutorialActionWithState(newGsWithEvent,tutorialNext,queue); else setGs(newGsWithEvent);
+      if(queue.length&&tutorialNext){
+        broadcastAnimTransaction(newGsWithEvent,queue,{context:'huntResult',barrier:newGs.phase==='ACTION'?'continuation':'decision',msgs:L.slice(huntLogStart),beforePlayers:gs.players,beforeDiscard:gs.discard});
+        finishTutorialActionWithState(newGsWithEvent,tutorialNext,queue);
+      }else if(queue.length){
+        // Keep the authoritative MP publish and the local replay in one
+        // transaction.  Splitting these two operations lets a game-over sync
+        // race the local replay and infer the hunter's discard a second time
+        // from a differently rotated player snapshot.
+        triggerSyncedAnimTransaction(queue,newGsWithEvent,{context:'huntResult',barrier:newGs.phase==='ACTION'?'continuation':'decision',msgs:L.slice(huntLogStart),beforePlayers:gs.players,beforeDiscard:gs.discard});
+      }else if(tutorialNext){
+        finishTutorialActionWithState(newGsWithEvent,tutorialNext,queue);
+      }else setGs(newGsWithEvent);
     }else{
       const newAbandoned=[...(gs.huntAbandoned||[]),huntTi];
       L.push(`放弃追捕 ${P[huntTi].name}`);
@@ -9599,6 +9689,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const godCard=me.hand[idx];if(!godCard||!godCard.isGod)return;
     setMobileArmedGodCardIdx(null);
     const godKey=godCard.godKey;
+    const oldGodCardsForConvert=(me.godName&&me.godName!==godKey)?[...(me.godZone||[])]:[];
     const isUpgrade=me.godName===godKey&&(me.godLevel||0)<3;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
     P[0].hand.splice(idx,1);
@@ -9649,6 +9740,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       bindAnimLogChunks(replay.queue,splitAnimBoundLogs(L.slice(gs.log.length))),
       {targetPid:0,godKey,players:godBadgeBaseline,msgs:worshipMsg?[worshipMsg]:[]},
     );
+    if(oldGodCardsForConvert.length&&!queue.some(step=>step?.effect==='godConvertDiscard')){
+      const convertMsgs=L.slice(gs.log.length).filter(line=>typeof line==='string'&&(line.includes('改信新神')||line.includes('旧神牌入弃牌堆')));
+      const highlightIdx=queue.findIndex(step=>step?.type==='GOD_HIGHLIGHT'&&step.targetPid===0);
+      queue.splice(highlightIdx>=0?highlightIdx:0,0,cardTransferStep({
+        fromPid:0,dest:'discard',count:oldGodCardsForConvert.length,cards:oldGodCardsForConvert,
+        sourceAnchor:'godPower',effect:'godConvertDiscard',durationMs:1500,msgs:convertMsgs,
+      }));
+    }
     if(queue.length){
       // 先广播再播本地动画：远端凭 buildAnimQueue 自行重建日食(APOPHIS_ECLIPSE)等步骤，
       // 否则自动广播会等本地动画播完才发出，远端日食进度滞后整个动画时长

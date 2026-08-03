@@ -291,6 +291,52 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(replay.queue.find(step => step.type === 'BLACK_GOAT_PULSE')).toMatchObject({ targetPid: 1, count: 1 });
   });
 
+  it('keeps black-goat HP/SAN damage before a following underground-spring heal event', () => {
+    const goat = { id: 'goat-spring', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const spring = { id: 'spring-after-goat', name: '地下泉', key: 'C2', type: 'allHealHP', isZone: true };
+    const preTurnPlayers = [player('你'), { ...player('黛安娜'), hand: [goat], hp: 10, san: 10 }];
+    const beforeDrawPlayers = [player('你'), { ...player('黛安娜'), hand: [goat], hp: 9, san: 9 }];
+    const finalPlayers = [player('你'), { ...player('黛安娜'), hand: [goat, spring], hp: 10, san: 9 }];
+    const goatLog = '【黑山羊幼仔】黛安娜 失去 1 HP 和 1 SAN';
+    const healLog = '全体存活角色回复 1 HP';
+    const goatEvents = [
+      { type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 9, san: 10 }, reason: '黑山羊幼仔', logHint: goatLog, seq: 1 },
+      { type: 'SAN_LOSS', target: 1, from: { hp: 9, san: 10 }, to: { hp: 9, san: 9 }, reason: '黑山羊幼仔', logHint: goatLog, seq: 1 },
+    ];
+    const healEvents = [
+      { type: 'HP_GAIN', target: 1, from: { hp: 9, san: 9 }, to: { hp: 10, san: 9 }, reason: '地下泉', logHint: healLog, seq: 2 },
+    ];
+    const oldGs = { players: preTurnPlayers, currentTurn: 0, phase: 'ACTION', log: [], _statEventSeq: 0 };
+    const newGs = {
+      players: finalPlayers,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _preTurnPlayers: preTurnPlayers,
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _drawnCard: spring,
+      _aiDrawnCard: spring,
+      _turnStartLogs: ['── 黛安娜 的回合开始 ──'],
+      _drawLogs: ['黛安娜 摸到 [C2] 地下泉，选择收入手牌并触发效果'],
+      _statLogs: [healLog],
+      _statEvents: healEvents,
+      _statEventSeq: 2,
+      _visualEvents: [
+        { id: 'goat-stats', type: 'statEvents', statEvents: goatEvents, msgs: [goatLog] },
+        { id: 'spring-stats', type: 'statEvents', statEvents: healEvents, msgs: [healLog] },
+      ],
+      log: ['── 黛安娜 的回合开始 ──', goatLog, '黛安娜 摸到 [C2] 地下泉，选择收入手牌并触发效果', healLog],
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const types = replay.queue.map(step => step.type);
+
+    expect(types.indexOf('BLACK_GOAT_PULSE')).toBeLessThan(types.indexOf('HP_DAMAGE'));
+    expect(types.indexOf('HP_DAMAGE')).toBeLessThan(types.indexOf('SAN_DAMAGE'));
+    expect(types.indexOf('SAN_DAMAGE')).toBeLessThan(types.indexOf('DRAW_CARD'));
+    expect(types.indexOf('DRAW_CARD')).toBeLessThan(types.indexOf('HP_HEAL'));
+    expect(replay.queue.find(step => step.type === 'SAN_DAMAGE')?.statEvents).toEqual(goatEvents.slice(1));
+  });
+
   it('地磁反转摸牌动画从弃牌堆起飞', () => {
     const card = { id: 'disc-card', name: '弃牌堆牌', key: 'C1', type: 'zone' };
     const oldGs = {

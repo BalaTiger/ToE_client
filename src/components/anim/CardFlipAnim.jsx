@@ -1,12 +1,12 @@
 ﻿import React from 'react';
 import { CS, GOD_CS } from '../../constants/card';
 import { CardBackLayer } from '../cards/AnimatedCardBack';
-import { CardCodeLabel, CardFaceImage } from '../cards';
+import { CardFaceImage } from '../cards';
 import { getZoneCardPolarity } from '../../game/coreUtils';
 import { shouldHideBlindZoneIdentity } from '../../game/blindZoneDecision';
 import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 import { SMOKE_COLS, FLOWER_CONFIGS } from './data';
-import { getInspectionCardDesc, getInspectionCardPolarity, petalPath } from './utils';
+import { getInspectionCardPolarity, petalPath } from './utils';
 import { GodHighlightBurst } from './GodHighlightBurst';
 
 function FlowerSVG({petals,hue,variant,size}){
@@ -65,6 +65,41 @@ function FlowerBloom(){
   );
 }
 
+function BlindFishScotoma({top}){
+  return(
+    <div
+      aria-hidden="true"
+      style={{
+        position:'absolute',left:0,right:0,top,bottom:0,
+        overflow:'hidden',borderRadius:'0 0 5px 5px',
+        background:'rgba(2,3,4,0.995)',
+        boxShadow:'inset 0 12px 30px rgba(0,0,0,0.9)',
+        WebkitMaskImage:'linear-gradient(180deg,transparent 0%,rgba(0,0,0,0.35) 2.5%,#000 7%)',
+        maskImage:'linear-gradient(180deg,transparent 0%,rgba(0,0,0,0.35) 2.5%,#000 7%)',
+        zIndex:3,
+      }}
+    >
+      <div style={{
+        position:'absolute',inset:'-15% -18%',
+        background:'radial-gradient(ellipse at 18% 14%,rgba(26,29,31,0.52) 0 4%,transparent 13%), radial-gradient(ellipse at 78% 24%,rgba(21,24,26,0.42) 0 5%,transparent 16%), radial-gradient(ellipse at 43% 67%,rgba(25,28,30,0.38) 0 7%,transparent 22%)',
+        filter:'blur(8px)',
+        animation:'blindFishScotomaDrift 4.6s ease-in-out infinite alternate',
+      }}/>
+      <div style={{
+        position:'absolute',inset:'-8%',
+        background:'radial-gradient(ellipse at 52% 45%,rgba(0,0,0,0.15) 0 14%,rgba(0,0,0,0.88) 38%,#000 70%), radial-gradient(ellipse at 24% 72%,rgba(32,34,35,0.22),transparent 28%)',
+        filter:'blur(7px)',
+        animation:'blindFishScotomaPulse 3.8s ease-in-out infinite alternate',
+      }}/>
+      <div style={{
+        position:'absolute',inset:0,
+        background:'radial-gradient(ellipse at 50% 0%,rgba(12,14,15,0.65) 0%,rgba(0,0,0,0.98) 28%,#000 58%)',
+        mixBlendMode:'multiply',
+      }}/>
+    </div>
+  );
+}
+
 function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,travelOnly=false,guessCorrect,expansionKey='地神的潜影',sourcePile='deck',onSettled}){
   const [traveled,setTraveled]=React.useState(skipTravel);
   const settledRef=React.useRef(false);
@@ -97,7 +132,8 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
       glow:inspectionTone==='positive'?'#49d17d':inspectionTone==='neutral'?'#91a1c2':'#b24ad1',
     })
     :(CS[card.letter]||GOD_CS);
-  const cardPolarity=isInspection?inspectionTone:(card.isGod?'negative':getZoneCardPolarity(card));
+  // Blind Fish must not leak the concealed card's effect through reveal VFX.
+  const cardPolarity=hideZoneIdentity?'neutral':isInspection?inspectionTone:(card.isGod?'negative':getZoneCardPolarity(card));
   const isEvil=cardPolarity==='negative';
   const isNeutralCard=cardPolarity==='neutral';
   const showAtmosphereEffects=true;
@@ -165,7 +201,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
   // 暗抽直接落入手牌，不展示中央翻牌阶段。
   if(travelOnly)return null;
 
-  const spirits=!showAtmosphereEffects||card.isGod
+  const spirits=!showAtmosphereEffects||card.isGod||isNeutralCard
     ?[]
     :isEvil
     ?SMOKE_COLS.flatMap((col,i)=>[
@@ -329,23 +365,11 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
           ):(
             <div style={{
               position:'absolute',inset:0,backfaceVisibility:'hidden',
-              background:s.bg,border:`2px solid ${s.borderBright}`,borderRadius:5,
-              padding:`${px(12)}px ${px(10)}px`,
-              boxShadow:(isInspection||isNeutralCard)?'0 0 18px rgba(120,136,155,0.22)':`0 0 30px ${s.glow}88, 0 0 60px ${isEvil?'#6010aa':'#c8a96e'}44`,
+              borderRadius:5,overflow:'hidden',
+              boxShadow:'0 0 18px rgba(120,136,155,0.22)',
             }}>
-              <div style={{position:'absolute',top:px(4),right:px(6),fontSize:px(8),color:s.border,opacity:0.7}}>✦</div>
-              {isInspection
-                ? <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:px(18),lineHeight:1,letterSpacing:2}}>检定</div>
-                : <CardCodeLabel card={card} fontSize={px(28)} letterSpacing={0}/>
-              }
-              {!hideZoneIdentity&&<div style={{fontFamily:"'Cinzel',serif",color:isInspection?s.text:'#c8a96e',fontSize:isInspection?px(16):px(11.5),fontWeight:600,marginTop:px(6),lineHeight:1.3}}>{card.name}</div>}
-              {!hideZoneIdentity&&<div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:isInspection?(inspectionTone==='positive'?'#aeeac0':inspectionTone==='neutral'?'#b8c4d8':'#e2a8e8'):'#b89858',fontSize:px(9.5),marginTop:px(8),lineHeight:1.4}}>{isInspection?getInspectionCardDesc(card):card.desc}</div>}
-              {isInspection&&(
-                <div style={{position:'absolute',left:px(10),bottom:px(10),fontSize:px(9),color:s.border,letterSpacing:2,fontFamily:"'Cinzel',serif"}}>
-                  {inspectionTone==='positive'?'正面检定':inspectionTone==='neutral'?'中性检定':'负面检定'}
-                </div>
-              )}
-              <div style={{position:'absolute',bottom:px(4),left:'50%',transform:'translateX(-50%)',color:s.border,fontSize:px(7),opacity:0.5}}>— ✦ —</div>
+              <CardFaceImage card={card} godLevel={1} width={flipW} style={{borderRadius:5,boxShadow:'none'}}/>
+              <BlindFishScotoma top={Math.round(flipH*54/590)}/>
             </div>
           )}
         </div>

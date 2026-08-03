@@ -118,6 +118,9 @@ export function cardTransferStep(options={}){
   Object.entries(options).forEach(([key,value])=>{
     if(value!==undefined)step[key]=value;
   });
+  // The discard pile is public information. Any transfer headed there must
+  // render face-up when its card identity is available.
+  if(step.dest==="discard"&&step.faceUp===undefined)step.faceUp=true;
   return step;
 }
 
@@ -355,6 +358,11 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
       {players:cursorPlayers,log:cursorLog,discard:cursorDiscard,_statEventSeq:cursorStatEventSeq},
       {players:beforePlayers,log:beforeLog,discard:beforeDiscard,_statEventSeq:beforeStatEventSeq}
     );
+    // Lock the state visible at the start of the inspection segment before any
+    // preceding stat animations run. The committed game state may already be
+    // the post-inspection snapshot (for example after 迫害妄想 discarded a
+    // card), so waiting until the reveal boundary would expose that hand early.
+    if(preQ.length)queue.push({type:"VISUAL_LOCK",players:cursorPlayers});
     if(preQ.length)queue.push(...preQ);
     queue.push({type:"VISUAL_LOCK",players:beforePlayers});
     queue.push({

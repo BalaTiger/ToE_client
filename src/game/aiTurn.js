@@ -325,7 +325,16 @@ function buildAiEndTurnReplayResolutionQueue({ beforeGs, afterGs }) {
 }
 
 function replayStatePatch(P, D, Disc, L) {
-  return statePatchStep({ players: P, deck: D, discard: Disc, log: L });
+  // Each replay step must own an immutable snapshot. The corridor resolver
+  // keeps mutating these collections while it processes the remaining hand;
+  // retaining their references makes every earlier STATE_PATCH jump to the
+  // final hand/discard state and visually collapses consecutive discards.
+  return statePatchStep({
+    players: copyPlayers(P),
+    deck: [...D],
+    discard: [...Disc],
+    log: [...L],
+  });
 }
 
 export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
