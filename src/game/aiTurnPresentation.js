@@ -152,6 +152,7 @@ export function buildAiHuntWaitPresentation({
   if (usedTurnStartReplay) {
     if (turnStartReplay.visualLock) {
       externalVisualLocks.push(turnStartReplay.visualLock);
+      queue.push({ type: 'VISUAL_LOCK', ...turnStartReplay.visualLock });
     }
     queue.push(...turnStartReplay.queue);
   } else if (!previousState._aiTurnIntroShown) {

@@ -225,6 +225,11 @@ export const isDodgeableZoneCard = (card) => {
   return isNegativeZoneCard(card);
 };
 
+export const cardContainsFireText = (card) => {
+  if (!card) return false;
+  return [card.name || '', card.subtitle || '', card.desc || ''].join('').toLowerCase().includes('火');
+};
+
 export const zoneCardHasGuaranteedHpLoss = (card) => {
   if (!card?.type) return false;
   return [

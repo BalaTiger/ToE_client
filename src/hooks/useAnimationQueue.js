@@ -56,6 +56,12 @@ export function useAnimationQueue({
       const players = patch.players ? copyPlayers(patch.players) : null;
       visualStateLocks.lock({ players });
       if (setVisualPlayersOverride) setVisualPlayersOverride(players);
+      // Keep the numeric HP/SAN labels on the same visual timeline as the
+      // bars and hit effects. The committed game state can remain deferred
+      // until the queue's STATE_PATCH boundary.
+      if (players && setDisplayStats) {
+        setDisplayStats(players.map(player => ({ hp: player.hp, san: player.san })));
+      }
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'discard')) {
       setVisualDiscard([...(patch.discard || [])]);
@@ -357,11 +363,14 @@ export function useAnimationQueue({
     const playableQueue = [...preparedQueue];
     while (playableQueue[0]?.type === 'VISUAL_LOCK') {
       const visualLock = playableQueue.shift();
-      visualStateLocks.lock({
-        players: visualLock.players,
-        zhuLight: visualLock.zhuLight,
-        hiddenZhuCardId: visualLock.hiddenZhuCardId,
-        turnHighlight: visualLock.turnHighlight,
+      // A leading lock is the numeric-stat baseline as well as the card/board
+      // snapshot. Without applying it to displayStats, turn-start damage could
+      // already show its final HP/SAN value before the hit animation began.
+      applyVisualPatch({
+        ...(Object.prototype.hasOwnProperty.call(visualLock, 'players') ? { players: visualLock.players } : {}),
+        ...(Object.prototype.hasOwnProperty.call(visualLock, 'zhuLight') ? { zhuLight: visualLock.zhuLight } : {}),
+        ...(Object.prototype.hasOwnProperty.call(visualLock, 'hiddenZhuCardId') ? { hiddenZhuCardId: visualLock.hiddenZhuCardId } : {}),
+        ...(Object.prototype.hasOwnProperty.call(visualLock, 'turnHighlight') ? { turnHighlight: visualLock.turnHighlight } : {}),
       });
     }
     if (!playableQueue.length) {

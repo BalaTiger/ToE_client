@@ -3,6 +3,7 @@
   clamp,
   copyPlayers,
   isDodgeableZoneCard,
+  cardContainsFireText,
   cardLogText,
   isWinHand,
   makeInspectionMeta,
@@ -426,13 +427,16 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
       }
     });
   } else if (action === 'convert') {
+    // The new faith is chosen before paying the conversion penalty. Keep the
+    // public settlement log in that same order so inspection/discard replay can
+    // place the conversion SAN check after the worship highlight.
+    msgs.push(`${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
     const convertBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
     const converted = convertGodFollower(ci, gs?.currentTurn ?? ci, P, D, Disc, convertBaseLog, inspectionMeta, `${P[ci].name} 改信新神，${formatSanLoss(1)}`, godCard);
     P = converted.P; D = converted.D; Disc = converted.Disc; inspectionMeta = converted.inspectionMeta;
     const extraMsgs = (converted.L || []).slice(convertBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
     P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }]; P[ci].hasBelievedGod = true;
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
-    msgs.push(`${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
     applyImmediateGodPower();
     P.forEach((p, i) => {
       if (i !== ci && p.godName === godKey) {
@@ -497,7 +501,7 @@ export function aiHandleGodCard(ci, godCard, P, D, Disc, L, gs, skipEffectMsg = 
   return { P, D, Disc, L, inspectionMeta: gres.inspectionMeta, statePatch: gres.statePatch };
 }
 
-export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
+function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
   let P = copyPlayers(ps), D = [...deck], Disc = [...disc];
   let reshuffleLog = '';
   // 地磁反转生效时，弃牌堆就是当前摸牌来源。即使普通牌堆已空，也不能
@@ -525,12 +529,15 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
     const drawnFromDisc = shuffledDisc.shift();
 
     if (isGeomagneticRestore(drawnFromDisc)) {
-      // 反转复原：消除地磁反转效果，不进入手牌
+      // 反转复原：消除地磁反转效果，不进入手牌。仍保留 drawnCard，供上层
+      // 区分“抽到后销毁”与“无牌可抽”，并播放从弃牌堆翻开的摸牌动画。
       return {
         P, D, Disc: shuffledDisc,
-        drawnCard: null,
+        drawnCard: drawnFromDisc,
         effectMsgs: [`【反转复原】${whoName} 抽到了反转复原，地磁反转效果被消除！`],
+        kept: true,
         needsDecision: false,
+        sourcePile: 'discard',
         statePatch: { geomagneticReversalActive: false },
       };
     }
@@ -786,21 +793,36 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
     const isTreasureHunter = effectiveRole === ROLE_TREASURE;
     const isDodgeableEffect = isDodgeableZoneCard(drawnCard);
 
-    if (isTreasureHunter && isDodgeableEffect) {
+    const moldyFoodRoll = drawnCard.type === 'moldyFood' ? 1 + (Math.random() * 6 | 0) : null;
+    const conditionalNegativeApplies = drawnCard.type === 'moldyFood'
+      ? moldyFoodRoll % 2 === 1
+      : drawnCard.type === 'albinoCreature'
+        ? !(P[ci].hand || []).some(cardContainsFireText)
+        : drawnCard.type === 'sphinxGuess'
+          ? false
+        : true;
+    const effectGs = moldyFoodRoll == null ? gs : { ...gs, _pendingMoldyFoodRoll: moldyFoodRoll };
+
+    let failedDodgeLog = null;
+    if (isTreasureHunter && isDodgeableEffect && conditionalNegativeApplies) {
       P[ci].roleRevealed = true;
       const d1 = 1 + (Math.random() * 6 | 0);
       const dodgeSuccess = d1 >= 4;
       if (dodgeSuccess) {
-        const res = applyFx(drawnCard, ci, null, P, D, Disc, gs, true, [], isAI);
+        const res = applyFx(drawnCard, ci, null, P, D, Disc, effectGs, true, [], isAI);
         P = res.P; D = res.D; Disc = res.Disc; P[ci].hand.push(drawnCard);
-        return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [`${P[ci].name}（寻宝者）摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，掷出 ${d1} 点，成功规避负面效果！`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false, _aiDrawnCard: drawnCard };
+        const dodgeLog = `${P[ci].name}（寻宝者）摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，掷出 ${d1} 点，成功规避负面效果！`;
+        const effectMsgs = drawnCard.type === 'albinoCreature' ? [...res.msgs, dodgeLog] : [dodgeLog, ...res.msgs];
+        return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs, statePatch: res.statePatch, kept: true, needsDecision: false, _aiDrawnCard: drawnCard };
       }
+      failedDodgeLog = `${P[ci].name}（寻宝者）摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，掷出 ${d1} 点，未能规避，触发负面效果！`;
     }
 
     // Apply effect for AI
-    const res = applyFx(drawnCard, ci, null, P, D, Disc, gs, false, [], isAI);
+    const res = applyFx(drawnCard, ci, null, P, D, Disc, effectGs, false, [], isAI);
     P = res.P; D = res.D; Disc = res.Disc; P[ci].hand.push(drawnCard);
-    return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [`${P[ci].name} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，选择收入手牌并触发效果`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false, _aiDrawnCard: drawnCard };
+    const keepLog = `${P[ci].name} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，选择收入手牌并触发效果`;
+    return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: failedDodgeLog ? [failedDodgeLog, ...res.msgs] : [keepLog, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false, _aiDrawnCard: drawnCard };
   }
 
   const playerKeepOverride = consumeDebugForceKeepOverride(gs, ci);
@@ -819,6 +841,35 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
 
   // Player needs decision
   return { P, D, Disc, drawnCard: markBlindZoneCard(drawnCard, blindZoneIdentity), reshuffleLog, effectMsgs: [], needTarget: false, needsDecision: true, forcedKeep: false, blindZoneIdentity };
+}
+
+export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
+  // The animation source belongs to this draw, not to the resulting global
+  // reversal state. In particular, drawing "反转复原" turns the effect off but
+  // still came from discard; the following normal draw must explicitly switch
+  // back to deck instead of inheriting the previous `_drawSourcePile` hint.
+  // The restore card is also the authoritative lifetime token for this effect.
+  // If an older/remote state lost the `false` patch after that token was drawn,
+  // never let the stale boolean keep drawing real cards from discard forever.
+  const hasRestoreInDiscard = disc.some(isGeomagneticRestore);
+  const reversalActive = !!gs?.geomagneticReversalActive && hasRestoreInDiscard;
+  const drawGs = reversalActive === !!gs?.geomagneticReversalActive
+    ? gs
+    : { ...gs, geomagneticReversalActive: reversalActive };
+  const sourcePile = reversalActive && disc.length > 0
+    ? 'discard'
+    : 'deck';
+  const result = handleCardDrawCore(ci, ps, deck, disc, isAI, drawGs);
+  const staleReversalPatch = gs?.geomagneticReversalActive && !reversalActive
+    ? { geomagneticReversalActive: false }
+    : null;
+  return {
+    ...result,
+    ...(result.drawnCard ? { sourcePile: result.sourcePile || sourcePile } : {}),
+    ...(staleReversalPatch ? {
+      statePatch: { ...(result.statePatch || {}), ...staleReversalPatch },
+    } : {}),
+  };
 }
 
 export function aiDrawAndApply(ci, ps, deck, disc, gs = {}) {
@@ -1233,7 +1284,21 @@ export function startNextTurn(gs, opts = {}) {
   // 黄液（蟾蜍之神回合结束发放）属神牌事件，按 END_TURN_PRIORITY 应先于其他卡牌（如无尽通道）结算。
   // 若已在无尽通道重播前发放（见 App.beginEndTurnReplay），此处跳过，避免重复发放。
   const skipEndTurnTsgSlimeGrant = !!gs._tsgSlimeGrantedAtTurnEnd;
-  gs = { ...gs, multiplyUsed: false, _visualEvents: [...inheritedGodPowerBlockedEvents], _tsgSlimeGrantEvents: null, _skippedTurnReplays: inheritedSkippedTurnReplays, _carryTsgSlimeGrantEvents: null, _carryGodPowerBlockedEvents: null, _carrySkippedTurnReplays: null, _tsgSlimeGrantedAtTurnEnd: undefined };
+  gs = {
+    ...gs,
+    multiplyUsed: false,
+    // Target events are one-shot animation payloads. Keep the monotonically
+    // increasing _apophisTargetSeq watermark across turns, but never let the
+    // previous turn's final roll enter the next turn's draw replay.
+    _apophisTargetEvent: null,
+    _visualEvents: [...inheritedGodPowerBlockedEvents],
+    _tsgSlimeGrantEvents: null,
+    _skippedTurnReplays: inheritedSkippedTurnReplays,
+    _carryTsgSlimeGrantEvents: null,
+    _carryGodPowerBlockedEvents: null,
+    _carrySkippedTurnReplays: null,
+    _tsgSlimeGrantedAtTurnEnd: undefined,
+  };
   const visualEvents = gs._visualEvents;
   const inheritedGodPowerBlockedEventCount = visualEvents.length;
   const N = gs.players.length;
@@ -1304,20 +1369,7 @@ export function startNextTurn(gs, opts = {}) {
     p.disableSkill = false;
     p.handLimitDecrease = 0;
   });
-  // 结转"下一回合生效"的检定牌负面状态
-  if (P[next]) {
-    P[next].disableRest = !!P[next].disableRestNextTurn;
-    P[next].disableSkill = !!P[next].disableSkillNextTurn;
-    P[next].handLimitDecrease = P[next].handLimitDecreaseNextTurn || 0;
-    P[next].disableRestNextTurn = false;
-    P[next].disableSkillNextTurn = false;
-    P[next].handLimitDecreaseNextTurn = 0;
-  }
   let globalOnlySwapOwner = gs.globalOnlySwapOwner;
-  if (globalOnlySwapOwner === next) {
-    globalOnlySwapOwner = null;
-    L.push('"全员技能变为掉包"的效果结束了');
-  }
   // If this player was resting: wake up (flip card face-up), skip their turn entirely
   if (P[next].isResting) {
     const skippedTurnBeforePlayers = copyPlayers(_P_beforeTurn);
@@ -1422,6 +1474,20 @@ export function startNextTurn(gs, opts = {}) {
       cthReplay: skippedTurnCthReplay,
     };
     return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents.slice(inheritedGodPowerBlockedEventCount), _carrySkippedTurnReplays: [...inheritedSkippedTurnReplays, skippedTurnReplay] }, opts);
+  }
+  // 翻面跳过回合没有回合开始/摸牌/行动/结束阶段，因此所有“下一回合”
+  // 状态都只在角色真正进入正常回合时结转或到期。
+  if (P[next]) {
+    P[next].disableRest = !!P[next].disableRestNextTurn;
+    P[next].disableSkill = !!P[next].disableSkillNextTurn;
+    P[next].handLimitDecrease = P[next].handLimitDecreaseNextTurn || 0;
+    P[next].disableRestNextTurn = false;
+    P[next].disableSkillNextTurn = false;
+    P[next].handLimitDecreaseNextTurn = 0;
+  }
+  if (globalOnlySwapOwner === next) {
+    globalOnlySwapOwner = null;
+    L.push('"全员技能变为掉包"的效果结束了');
   }
   turnStartLogs = [`── ${P[next].name} 的回合开始 ──`];
   L.push(...turnStartLogs);

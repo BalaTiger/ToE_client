@@ -49,6 +49,22 @@ function mergeStatValuesIntoPlayers(basePlayers = [], statPlayers = []) {
   return base;
 }
 
+function playersAfterGodHighlight(basePlayers = [], afterPlayers = [], step = {}) {
+  const targetPid = step?.targetPid;
+  const highlightedPlayer = afterPlayers?.[targetPid];
+  if (targetPid == null || !highlightedPlayer || !basePlayers?.[targetPid]) return basePlayers;
+  const next = clonePlayersForTimeline(basePlayers);
+  next[targetPid] = {
+    ...next[targetPid],
+    godName: highlightedPlayer.godName,
+    godLevel: highlightedPlayer.godLevel,
+    godEncounters: highlightedPlayer.godEncounters,
+    godEncounterCount: highlightedPlayer.godEncounterCount,
+    godZone: [...(highlightedPlayer.godZone || [])],
+  };
+  return next;
+}
+
 // 中途结算（HP/SAN/神域）会用最终玩家快照，但其中的"最终手牌"不能提前出现：
 // 手牌图像只应在收/送动画真正落地（队列结束）时变化。这里用 handSource 的手牌覆盖 snapshot，
 // 让中途的视觉补丁保留出手/收牌前的手牌，其余字段仍取 snapshot。
@@ -322,7 +338,19 @@ export function buildAnimQueue(oldGs, newGs) {
       (playerName && line.includes(playerName) && (line.includes('信仰') || line.includes('改信'))) ||
       (targetPid === 0 && (line.includes('你 从手牌信仰') || line.includes('你从手牌直接信仰')))
     ));
-    if (worshipMsg) q.push({ type: 'GOD_HIGHLIGHT', targetPid, godKey: player.godName, msgs: [worshipMsg] });
+    if (worshipMsg) {
+      const beforeHighlightPlayers = clonePlayersForTimeline(oldGs?.players || effectivePlayers);
+      const afterHighlightPlayers = playersAfterGodHighlight(beforeHighlightPlayers, effectivePlayers, { targetPid });
+      q.push({
+        type: 'GOD_HIGHLIGHT',
+        targetPid,
+        godKey: player.godName,
+        msgs: [worshipMsg],
+        visualSetupPatch: { players: beforeHighlightPlayers },
+        // Mounting the panel burst and refreshing the god badge share this frame.
+        visualTimeline: [{ atMs: 0, patch: { players: afterHighlightPlayers } }],
+      });
+    }
   });
   // 同一邪神只能有一名信徒。新信徒的高亮之后，显式播放旧信徒的
   // godZone 整体进入弃牌堆，确保本地和远端都能观察到信仰被抢夺。
@@ -433,6 +461,9 @@ export function buildAnimQueue(oldGs, newGs) {
   const targetStats = hasFreshExplicitStatEvents
     ? makeTargetStats(effectivePlayers, statEventsForQueue)
     : effectivePlayers.map(p => ({ hp: p.hp, san: p.san, isDead: p.isDead }));
+  const statTimelineBeforePlayers = q
+    .filter(step => step?.type === 'GOD_HIGHLIGHT')
+    .reduce((players, step) => playersAfterGodHighlight(players, effectivePlayers, step), oldGs?.players || effectivePlayers);
   if (hasFreshExplicitStatEvents) {
     const hasOrderedRandomTarget = randomTargetEvents.some(event => event?.phaseOrder != null);
     const hasOrderedStat = statEventsForQueue.some(event => event?.phaseOrder != null);
@@ -457,7 +488,7 @@ export function buildAnimQueue(oldGs, newGs) {
       });
       q.push(...attachVisualTimelineToSteps(
         orderedSteps,
-        oldGs?.players || effectivePlayers,
+        statTimelineBeforePlayers,
         oldGs?.discard || [],
         newGs.players || effectivePlayers,
         newGs.discard || oldGs?.discard || [],
@@ -466,7 +497,7 @@ export function buildAnimQueue(oldGs, newGs) {
       randomTargetEvents.forEach(event => q.push(...buildRandomTargetQueue(event)));
       q.push(...attachVisualTimelineToSteps(
         statEventsToAnimQueue(statEventsForQueue, effectivePlayers, newMsgs),
-        oldGs?.players || effectivePlayers,
+        statTimelineBeforePlayers,
         oldGs?.discard || [],
         newGs.players || effectivePlayers,
         newGs.discard || oldGs?.discard || [],
@@ -659,7 +690,21 @@ export function buildAiHuntEventAnimQueue(evt, actorName) {
       { players: damagePlayers, discard: evt.afterDamageDiscard || evt.afterResultDiscard, log: damageLog }
     );
     const resultWithChunks = resultQueue
-      .filter(step => !(evt.discardedCard && step.type === 'CARD_TRANSFER' && step.fromPid === evt.hunterIdx && step.dest === 'discard'))
+      .filter(step => {
+        if (evt.discardedCard && step.type === 'CARD_TRANSFER' && step.fromPid === evt.hunterIdx && step.dest === 'discard') return false;
+        // A lethal hunt owns the target's whole hand settlement explicitly:
+        // loot transfers play first and lootDiscardCards play afterwards.  A
+        // generic hand-delta inference here would otherwise animate the dead
+        // target discarding before the hunter's blind-draw cards have flown.
+        if (
+          evt.afterPlayers[evt.targetIdx]?.isDead &&
+          step.type === 'CARD_TRANSFER' &&
+          step.fromPid === evt.targetIdx &&
+          step.dest === 'discard' &&
+          step.inferredHandLoss
+        ) return false;
+        return true;
+      })
       .map(step => ({ ...step }));
     if (followupMsgs.length && !evt.afterPlayers[evt.targetIdx]?.isDead) {
       const firstVisibleIdx = resultWithChunks.findIndex(step => step.type !== 'STATE_PATCH');

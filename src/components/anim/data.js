@@ -31,6 +31,7 @@ export const ANIM_CFG={
   // SAN_DAMAGE: per-panel only, no fullscreen cfg
   HP_HEAL:      {overlay:'rgba(3,12,3,0.90)', accent:'#4ade80', icon:'✚',  title:'创伤愈合',  shake:false},
   SAN_HEAL:     {overlay:'rgba(8,3,18,0.90)', accent:'#a78bfa', icon:'☯',  title:'心神平复',  shake:false},
+  DECK_RESHUFFLE:{overlay:'rgba(4,9,15,0.88)', accent:'#c8a96e', icon:'↻',  title:'重洗弃牌堆', shake:false},
   // SKILL_SWAP/HUNT/BEWITCH use dedicated overlay components, not GenericAnimOverlay
   // DISCARD uses DiscardMoveOverlay, not GenericAnimOverlay
   DEATH:        {overlay:'rgba(12,2,2,0.96)', accent:'#ff2020', icon:'☠',  title:'死亡降临',  shake:false},

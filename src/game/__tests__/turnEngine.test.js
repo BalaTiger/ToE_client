@@ -79,6 +79,35 @@ describe('checkWin death handling', () => {
   });
 });
 
+describe('AI 寻宝者按实际负面分支规避', () => {
+  it('霉变食物掷出双数时直接治疗，不掷规避骰', () => {
+    const card = { id: 'moldy', key: 'A1', name: '霉变食物', type: 'moldyFood', isZone: true, dodgeable: true };
+    const players = [makePlayer({ name: '卡洛斯', role: ROLE_TREASURE, hp: 8 })];
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.2); // d1 = 2
+    const result = aiDrawAndApply(0, players, [card], [], makeGs({ players, deck: [card], debugForceCardKeepPending: 'keep', debugForceCardKeepTarget: 0 }));
+
+    expect(result.P[0].hp).toBe(10);
+    expect(result.P[0].roleRevealed).toBeFalsy();
+    expect(result.effectMsgs.some(line => line.includes('成功规避负面效果'))).toBe(false);
+    expect(randomSpy).toHaveBeenCalledTimes(1);
+    randomSpy.mockRestore();
+  });
+
+  it('白化生物确认无火牌后才记录成功规避', () => {
+    const card = { id: 'albino', key: 'D3', letter: 'D', number: 3, name: '白化生物', type: 'albinoCreature', isZone: true, dodgeable: true };
+    const players = [makePlayer({ name: '卡洛斯', role: ROLE_TREASURE, hp: 10, san: 10, hand: [] })];
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.6); // dodge d1 = 4
+    const result = aiDrawAndApply(0, players, [card], [], makeGs({ players, deck: [card], debugForceCardKeepPending: 'keep', debugForceCardKeepTarget: 0 }));
+
+    expect(result.P[0]).toMatchObject({ hp: 10, san: 10 });
+    expect(result.effectMsgs.slice(0, 2)).toEqual([
+      '【白化生物】卡洛斯 没有带"火"字的手牌，失去 2 HP 和 2 SAN',
+      '卡洛斯（寻宝者）摸到 [D3] 白化生物，掷出 4 点，成功规避负面效果！',
+    ]);
+    randomSpy.mockRestore();
+  });
+});
+
 describe('地磁反转暗抽', () => {
   it('普通牌堆为空时仍从弃牌堆抽取反转复原，不把它重洗回普通牌堆', () => {
     const players = [makePlayer({ role: ROLE_TREASURE })];
@@ -98,20 +127,80 @@ describe('地磁反转暗抽', () => {
 
     const result = playerDrawCard(players, [], [restoreCard], 0, gs);
 
-    expect(result.drawnCard).toBeNull();
+    expect(result.drawnCard).toBe(restoreCard);
     expect(result.D).toEqual([]);
     expect(result.Disc).toEqual([]);
+    expect(result.kept).toBe(true);
+    expect(result.sourcePile).toBe('discard');
     expect(result.statePatch).toEqual({ geomagneticReversalActive: false });
     expect(result.effectMsgs[0]).toContain('反转复原');
+  });
+
+  it('回合开始抽到反转复原时不报牌堆耗尽，并从弃牌堆播放翻牌', () => {
+    const restoreCard = {
+      id: 'gmr-turn-start',
+      name: '反转复原',
+      type: 'geomagneticRestore',
+      isGeomagneticRestore: true,
+    };
+    const players = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' })];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      deck: [],
+      discard: [restoreCard],
+      geomagneticReversalActive: true,
+      log: [],
+    });
+
+    const result = startNextTurn(gs);
+    const queue = buildTurnStartDrawReplayQueue({ oldGs: gs, newGs: result }).queue;
+    const drawStep = queue.find(step => step.type === 'DRAW_CARD');
+
+    expect(result.log).toContain('【反转复原】你 抽到了反转复原，地磁反转效果被消除！');
+    expect(result.log).not.toContain('牌堆耗尽！');
+    expect(result.geomagneticReversalActive).toBe(false);
+    expect(result.drawReveal?.card).toBe(restoreCard);
+    expect(drawStep).toMatchObject({ card: restoreCard, targetPid: 0, sourcePile: 'discard' });
+  });
+
+  it('反转复原解除效果后的下一次摸牌显式改回牌堆来源', () => {
+    const deckCard = makeZoneCard('A2', 0, { id: 'deck-after-restore' });
+    const staleDiscardCard = makeZoneCard('B2', 0, { id: 'visible-discard-card' });
+    const players = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' })];
+    const gs = makeGs({
+      players,
+      currentTurn: 0,
+      deck: [deckCard],
+      discard: [staleDiscardCard],
+      // Simulate a state-sync path retaining the old flag even though the
+      // unique restore token was already drawn and vanished.
+      geomagneticReversalActive: true,
+      _drawSourcePile: 'discard',
+      _drawnCard: { id: 'old-restore', name: '反转复原', isGeomagneticRestore: true },
+      log: [],
+    });
+
+    const result = startNextTurn(gs);
+    const drawStep = buildTurnStartDrawReplayQueue({ oldGs: gs, newGs: result }).queue
+      .find(step => step.type === 'DRAW_CARD');
+
+    expect(result._turnDrawEvents).toHaveLength(1);
+    expect(result._turnDrawEvents[0]).toMatchObject({ card: deckCard, sourcePile: 'deck' });
+    expect(result.geomagneticReversalActive).toBe(false);
+    expect(result.discard).toEqual([staleDiscardCard]);
+    expect(drawStep).toMatchObject({ card: deckCard, targetPid: 1, sourcePile: 'deck' });
   });
 
   it('从弃牌堆暗抽到邪神牌时仍触发遭遇邪神，不直接进入手牌', () => {
     const players = [makePlayer({ role: ROLE_TREASURE, san: 10, godEncounters: 0 })];
     const godCard = makeGodCard('NYA');
+    const restoreCard = { id: 'gmr-god-test', name: '反转复原', isGeomagneticRestore: true };
     const zoneInDeck = makeZoneCard('A1');
-    const gs = makeGs({ players, deck: [zoneInDeck], discard: [godCard], geomagneticReversalActive: true, log: [] });
+    const gs = makeGs({ players, deck: [zoneInDeck], discard: [godCard, restoreCard], geomagneticReversalActive: true, log: [] });
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.999);
 
-    const result = playerDrawCard(players, [zoneInDeck], [godCard], 0, gs);
+    const result = playerDrawCard(players, [zoneInDeck], [godCard, restoreCard], 0, gs);
 
     expect(result.drawnCard).toBe(godCard);
     expect(result.needGodChoice).toBe(true);           // 进入遭遇邪神决策，而非直接收入
@@ -120,21 +209,25 @@ describe('地磁反转暗抽', () => {
     expect(result.P[0].hand.some(c => c.id === godCard.id)).toBe(false);
     expect(result.Disc.some(c => c.id === godCard.id)).toBe(false); // 已从弃牌堆取出
     expect(result.D).toEqual([zoneInDeck]);            // 没有从牌堆顶摸牌
+    randomSpy.mockRestore();
   });
 
   it('从弃牌堆随机摸到区域牌时照常翻开并交由玩家决定收弃（与普通摸牌统一）', () => {
     const players = [makePlayer({ role: ROLE_TREASURE, hp: 10, san: 10 })];
     const zoneCard = makeZoneCard('A2'); // 蚂蚁虽小：非强制触发，需玩家决定收/弃
+    const restoreCard = { id: 'gmr-zone-test', name: '反转复原', isGeomagneticRestore: true };
     const filler = makeZoneCard('A1');   // 牌堆保留一张，确保走地磁反转暗抽而非空堆重洗
-    const gs = makeGs({ players, deck: [filler], discard: [zoneCard], geomagneticReversalActive: true, log: [] });
+    const gs = makeGs({ players, deck: [filler], discard: [zoneCard, restoreCard], geomagneticReversalActive: true, log: [] });
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.999);
 
-    const result = playerDrawCard(players, [filler], [zoneCard], 0, gs);
+    const result = playerDrawCard(players, [filler], [zoneCard, restoreCard], 0, gs);
 
     expect(result.needsDecision).toBe(true);                        // 翻开后交由玩家决定，而非直接进手牌
     expect(result.drawnCard.id).toBe(zoneCard.id);                  // 抽到的是弃牌堆里的牌
     expect(result.P[0].hand.some(c => c.id === zoneCard.id)).toBe(false); // 等待决策期间不在手牌
     expect(result.Disc.some(c => c.id === zoneCard.id)).toBe(false);      // 已从弃牌堆取出
     expect(result.D).toEqual([filler]);                             // 没有从牌堆顶摸牌
+    randomSpy.mockRestore();
   });
 });
 
@@ -1193,6 +1286,13 @@ describe('turnEngine stat events', () => {
     expect(windIdx).toBeGreaterThan(drawIdx);
     expect(sanDamageIdx).toBeGreaterThan(windIdx);
     expect(inspectionDrawIdx).toBeGreaterThan(sanDamageIdx);
+    expect(queue.filter(step => step.type === 'NIGHT_WIND')).toHaveLength(1);
+    expect(queue.filter(step => step.type === 'HP_DAMAGE')).toHaveLength(1);
+    expect(queue.filter(step => step.type === 'SAN_DAMAGE')).toHaveLength(1);
+    expect(queue[queue.findIndex(step => step.type === 'HP_DAMAGE')].targetStats)
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ hp: 9, san: 6 }),
+      ]));
   });
 
   it('禁用摸牌时不会触发或消耗撒托古亚黏液', () => {
@@ -1485,6 +1585,35 @@ describe('turnEngine stat events', () => {
     expect(result.msgs.some(line => line.includes('放弃了邪神的馈赠'))).toBe(false);
   });
 
+  it('主动改信时先记录新信仰，再结算改信 SAN 与检定', () => {
+    const paranoia = { id: 'paranoia', name: '迫害妄想', effect: 'discardRandom', value: 1 };
+    const players = [makePlayer({
+      name: '黛安娜',
+      role: ROLE_CULTIST,
+      san: 5,
+      hand: [{ id: 'discard-me', name: '弃牌' }],
+      godName: 'UNIMPLEMENTED_OLD_GOD',
+      godLevel: 1,
+      godZone: [{ id: 'old-god', godKey: 'UNIMPLEMENTED_OLD_GOD', isGod: true }],
+    })];
+    const gs = makeGs({
+      players,
+      currentTurn: 0,
+      log: ['黛安娜 遭遇邪神 阿波菲斯！（第2次）失去 2 SAN'],
+      inspectionDeck: [paranoia],
+      inspectionDiscard: [],
+    });
+
+    const result = resolveGodEncounterForAI(0, makeGodCard('APO'), players, [], [], gs, false);
+
+    expect(result.msgs.slice(0, 4)).toEqual([
+      '黛安娜 信仰了 阿波菲斯，获得噬日灭世(Lv.1)',
+      '黛安娜 改信新神，失去 1 SAN',
+      '黛安娜 的SAN检定结果为"迫害妄想"',
+      '黛安娜 迫害妄想，弃置了一张牌',
+    ]);
+  });
+
   it('蛊惑同种邪神牌时会像自己摸到一样升级邪神之力', () => {
     const vri = makeGodCard('VRI');
     const giftedVri = makeGodCard('VRI');
@@ -1659,6 +1788,59 @@ describe('turnEngine stat events', () => {
     expect(result._skippedTurnReplays?.[0]?.turnStartLogs).toEqual(['── 艾伦 的回合开始 ──']);
     expect(result.log.some(line => line.includes('【黑山羊幼仔】艾伦'))).toBe(false);
     expect(result.log.some(line => line.includes('【中毒】艾伦'))).toBe(false);
+  });
+
+  it('翻面跳过回合不消耗任何下一回合状态', () => {
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({
+        name: '艾伦',
+        isResting: true,
+        skipNextDraw: true,
+        skipNextDrawReason: '活死人哨兵',
+        disableRestNextTurn: true,
+        disableSkillNextTurn: true,
+        handLimitDecreaseNextTurn: 1,
+      }),
+      makePlayer({ name: '贝拉' }),
+    ];
+
+    const afterRestSkip = startNextTurn(makeGs({
+      players,
+      currentTurn: 0,
+      globalOnlySwapOwner: 1,
+      deck: [makeZoneCard('A2')],
+      log: [],
+    }));
+
+    expect(afterRestSkip.currentTurn).toBe(2);
+    expect(afterRestSkip.players[1]).toMatchObject({
+      isResting: false,
+      skipNextDraw: true,
+      skipNextDrawReason: '活死人哨兵',
+      disableRestNextTurn: true,
+      disableSkillNextTurn: true,
+      handLimitDecreaseNextTurn: 1,
+    });
+    expect(afterRestSkip.players[1].disableRest).toBe(false);
+    expect(afterRestSkip.players[1].disableSkill).toBe(false);
+    expect(afterRestSkip.players[1].handLimitDecrease).toBe(0);
+    expect(afterRestSkip.globalOnlySwapOwner).toBe(1);
+    expect(afterRestSkip.log.some(line => line.includes('全员技能变为掉包') && line.includes('结束'))).toBe(false);
+
+    const normalTurn = startNextTurn({ ...afterRestSkip, currentTurn: 0 });
+    expect(normalTurn.currentTurn).toBe(1);
+    expect(normalTurn.players[1]).toMatchObject({
+      disableRest: true,
+      disableSkill: true,
+      handLimitDecrease: 1,
+      disableRestNextTurn: false,
+      disableSkillNextTurn: false,
+      handLimitDecreaseNextTurn: 0,
+    });
+    expect(normalTurn.players[1].skipNextDraw).toBeUndefined();
+    expect(normalTurn.globalOnlySwapOwner).toBeNull();
+    expect(normalTurn.log.some(line => line.includes('全员技能变为掉包') && line.includes('结束'))).toBe(true);
   });
 
   it('同一摸牌阶段内地磁反转立即改变后续固定摸牌来源', () => {

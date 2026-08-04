@@ -14,6 +14,7 @@ import { statEventsToAnimQueue } from './statEvents';
 export const EMPTY_TURN_ANIM_FIELDS = Object.freeze({
   _aiDrawnCard: null,
   _drawnCard: null,
+  _drawSourcePile: null,
   _discardedDrawnCard: false,
   _playersBeforeThisDraw: null,
   _turnStartLogs: [],
@@ -87,15 +88,16 @@ function godPowerBlockedStepFromEvent(event, state) {
     targetPid: playerIdx,
     name: localDisplayName(playerIdx, playerName),
     msgs: Array.isArray(event?.msgs) ? event.msgs : [],
+    ...(event?.id ? { visualEventId: event.id } : {}),
   };
 }
 
-function buildGodPowerBlockedBoundaryQueue(state) {
+function getGodPowerBlockedBoundaryEvents(state) {
   const log = Array.isArray(state?.log) ? state.log : [];
   const turnStartLine = Array.isArray(state?._turnStartLogs) ? state._turnStartLogs[0] : null;
   const turnStartIdx = turnStartLine ? log.lastIndexOf(turnStartLine) : -1;
   if (turnStartIdx < 0) return [];
-  const events = getVisualEvents(state)
+  return getVisualEvents(state)
     .filter(event => event?.type === VISUAL_EVENT.GOD_POWER_BLOCKED)
     .filter(event => {
       const msgs = Array.isArray(event?.msgs) ? event.msgs : [];
@@ -104,10 +106,11 @@ function buildGodPowerBlockedBoundaryQueue(state) {
         return idx >= 0 && idx < turnStartIdx;
       });
     });
-  if (events.length) {
-    try { console.log('[BUG1-DIAG] boundaryQueue godPowerBlocked', { currentTurn: state?.currentTurn, turnStartLine, ids: events.map(e => e.id), playerIdx: events.map(e => e.playerIdx) }); } catch { /* noop */ }
-  }
-  return events.map(event => godPowerBlockedStepFromEvent(event, state));
+}
+
+function buildGodPowerBlockedBoundaryQueue(state) {
+  return getGodPowerBlockedBoundaryEvents(state)
+    .map(event => godPowerBlockedStepFromEvent(event, state));
 }
 
 export function getTurnStartDrawBaselineLog(state) {
@@ -156,6 +159,17 @@ function normalizeTurnDrawEvents(state, fallbackCard, drawerPid, drawerName) {
     });
   }
   return events;
+}
+
+const DECK_RESHUFFLE_LOG = '牌堆耗尽，重洗弃牌堆';
+
+function deckReshuffleStep(msgs = []) {
+  const reshuffleMsgs = (Array.isArray(msgs) ? msgs : []).filter(msg => msg === DECK_RESHUFFLE_LOG);
+  return reshuffleMsgs.length ? { type: 'DECK_RESHUFFLE', msgs: reshuffleMsgs } : null;
+}
+
+function withoutDeckReshuffleLog(msgs = []) {
+  return (Array.isArray(msgs) ? msgs : []).filter(msg => msg !== DECK_RESHUFFLE_LOG);
 }
 
 export function getTurnStartDrawerIdx(state) {
@@ -613,29 +627,36 @@ export function buildTurnStartDrawReplayQueue({
     triggerName: localDisplayName(drawerPid, drawerName),
     targetPid: drawerPid,
     sourcePile: newGs?.drawReveal?.sourcePile || newGs?._drawSourcePile || (newGs?.geomagneticReversalActive ? 'discard' : 'deck'),
-    msgs: newGs?._drawLogs,
+    msgs: withoutDeckReshuffleLog(newGs?._drawLogs),
   };
+  const hasEventBoundReshuffle = turnDrawEvents.some(event => deckReshuffleStep(event.msgs));
   const drawCardSteps = hasExplicitTurnDrawEvents
-    ? turnDrawEvents.flatMap(event => {
+    ? turnDrawEvents.flatMap((event, eventIdx) => {
+      const reshuffleStep = deckReshuffleStep(event.msgs);
       const drawStep = {
         type: 'DRAW_CARD',
         card: event.card,
         triggerName: localDisplayName(event.drawerIdx ?? drawerPid, event.drawerName || drawerName),
         targetPid: event.drawerIdx ?? drawerPid,
         sourcePile: event.sourcePile || newGs?.drawReveal?.sourcePile || newGs?._drawSourcePile || (newGs?.geomagneticReversalActive ? 'discard' : 'deck'),
-        msgs: event.msgs,
+        msgs: withoutDeckReshuffleLog(event.msgs),
       };
       const steps = [];
+      if (eventIdx === 0 && !hasEventBoundReshuffle) {
+        const fallbackReshuffleStep = deckReshuffleStep(newGs?._drawLogs);
+        if (fallbackReshuffleStep) steps.push(fallbackReshuffleStep);
+      }
       if (event.slimePop) {
         steps.push(tsgSlimePopStepFromEvent({
           ...event.slimePop,
           targetPid: event.slimePop.targetPid ?? event.drawerIdx ?? drawerPid,
         }));
       }
+      if (reshuffleStep) steps.push(reshuffleStep);
       steps.push(drawStep);
       return steps;
     })
-    : [drawCardStep];
+    : [deckReshuffleStep(newGs?._drawLogs), drawCardStep].filter(Boolean);
   // A previous player's god choice can remain in the accumulated game log. Only
   // inspect this turn's section, otherwise an earlier "放弃邪神的馈赠" makes a
   // newly drawn and worshipped god play a bogus discard animation.
@@ -690,10 +711,17 @@ export function buildTurnStartDrawReplayQueue({
     players: beforeDrawPlayers,
     log: getTurnStartDrawBaselineLog(newGs),
   };
+  // End-turn god-power blocks are presented by the boundary queue before the
+  // next player's turn banner. Carry their ids into the draw-effect baseline so
+  // the generic replay builder cannot mistake the same cardless event for a
+  // fresh draw effect and play the shield again after YOUR_TURN.
+  const boundaryGodPowerBlockedIds = new Set(
+    getGodPowerBlockedBoundaryEvents(newGs).map(event => event?.id).filter(Boolean)
+  );
   const staleVisualEvents = (Array.isArray(newGs?._visualEvents) ? newGs._visualEvents : [])
     .filter(event => (
-      event?.card &&
-      !sameDrawCard(event?.card, drawnCard)
+      boundaryGodPowerBlockedIds.has(event?.id) ||
+      (event?.card && !sameDrawCard(event?.card, drawnCard))
     ));
   const baselineVisualEvents = [
     ...staleVisualEvents,
@@ -725,12 +753,29 @@ export function buildTurnStartDrawReplayQueue({
   const drawOldRandomTargetSeq = drawRandomTargetSeqs.length
     ? Math.max(oldRandomTargetSeq, Math.min(...drawRandomTargetSeqs) - 1)
     : null;
+  const currentMoldySeq = newGs?._moldyFoodDiceRoll?.seq ?? newGs?._moldyFoodDiceSeq;
+  const hasCurrentDrawMoldyLog = [
+    ...(newGs?._drawLogs || []),
+    ...(newGs?._statLogs || []),
+  ].some(line => typeof line === 'string' && line.startsWith('【霉变食物】') && line.includes('掷出'));
+  // AI draw replay is often built from the already-resolved turn state. In that
+  // path effectOldGs carries the current roll watermark too, so buildAnimQueue
+  // mistakes this draw's moldy-food roll for an event it has already presented.
+  // Rewind only when the current draw metadata owns a moldy-food result; stale
+  // rolls from earlier turns have no matching _drawLogs/_statLogs entry here.
+  const drawOldMoldySeq = hasCurrentDrawMoldyLog && currentMoldySeq != null
+    ? Math.max(0, currentMoldySeq - 1)
+    : null;
   // 摸牌效果的基线状态代表「摸牌效果发生之前」，不应携带本次摸牌产生的视觉事件
   // （如地动山摇 earthquake）。清掉后，buildAnimQueue 才会把它判定为新事件并播放首次动画。
   const fallbackOldGs = {
     ...fallbackOldGsRaw,
     ...(drawOldStatSeq != null ? { _statEventSeq: drawOldStatSeq } : {}),
     ...(drawOldRandomTargetSeq != null ? { _randomTargetSeq: drawOldRandomTargetSeq } : {}),
+    ...(drawOldMoldySeq != null ? {
+      _moldyFoodDiceSeq: drawOldMoldySeq,
+      _moldyFoodDiceRoll: null,
+    } : {}),
     // Keep card-effect events that belong to older cards in the baseline. Remote
     // snapshots may still carry them after their replay hints were consumed; if
     // they are cleared here, the next draw mistakes them for fresh effects and
@@ -780,12 +825,57 @@ export function buildTurnStartDrawReplayQueue({
   const inspectionQ = [];
   if (drawInspectionEvents.length) {
     const firstInspection = drawInspectionEvents[0];
+    // Attribute changes caused by the drawn card can happen immediately before
+    // its first SAN inspection (night wind is the canonical case). Mark those
+    // stat events as part of the pre-inspection interval so the first damage
+    // animation owns the real target values and the post-inspection tail does
+    // not replay the same HP/SAN loss a second time.
+    const firstInspectionBeforeLogs = new Set(
+      (firstInspection?.beforeLog || []).filter(line => typeof line === 'string')
+    );
+    const replayStatEvents = [
+      ...(Array.isArray(newGs?._statEvents) ? newGs._statEvents : []),
+      ...getFreshStatEventsFromState(oldGs, newGs),
+      ...getVisualEvents(newGs).flatMap(event => (
+        Array.isArray(event?.statEvents) ? event.statEvents : []
+      )),
+    ].filter((event, index, events) => (
+      event?.seq == null || events.findIndex(candidate => (
+        candidate?.seq === event.seq &&
+        candidate?.type === event.type &&
+        candidate?.target === event.target
+      )) === index
+    ));
+    const preInspectionStatEvents = replayStatEvents
+      .filter(event => {
+        if (event?.seq == null || event.seq <= (fallbackOldGs?._statEventSeq || 0)) return false;
+        if (event?.logHint && firstInspectionBeforeLogs.has(event.logHint)) return true;
+        const targetBeforeInspection = firstInspection?.beforePlayers?.[event?.target];
+        if (!targetBeforeInspection || !event?.to) return false;
+        const hpMatches = event.to.hp == null || event.to.hp === targetBeforeInspection.hp;
+        const sanMatches = event.to.san == null || event.to.san === targetBeforeInspection.san;
+        return hpMatches && sanMatches;
+      });
+    const preInspectionStatSeq = preInspectionStatEvents.length
+      ? Math.max(...preInspectionStatEvents.map(event => event.seq || 0))
+      : (firstInspection?.beforeStatEventSeq || 0);
+    const replayInspectionEvents = drawInspectionEvents.map((event, index) => (
+      index === 0 && preInspectionStatSeq > (event?.beforeStatEventSeq || 0)
+        ? { ...event, beforeStatEventSeq: preInspectionStatSeq }
+        : event
+    ));
     const inspectionFlow = buildInspectionEventFlow(
       {
-        players: copyPlayers(firstInspection?.beforePlayers || beforeDrawPlayers),
-        log: [...(firstInspection?.beforeLog || getTurnStartDrawBaselineLog(newGs))],
+        // Start at the actual pre-effect baseline. The flow itself advances to
+        // firstInspection.before*, which preserves encounter/card effects that
+        // caused the first SAN check instead of silently treating them as done.
+        players: copyPlayers(fallbackOldGs?.players || beforeDrawPlayers),
+        log: [...(fallbackOldGs?.log || getTurnStartDrawBaselineLog(newGs))],
+        discard: [...(fallbackOldGs?.discard || oldGs?.discard || [])],
+        _statEventSeq: fallbackOldGs?._statEventSeq || 0,
+        _statEvents: replayStatEvents,
       },
-      drawInspectionEvents,
+      replayInspectionEvents,
       { buildAnimQueue: buildQueue, copyPlayers }
     );
     const maxInspectionSeq = Math.max(oldGs?._inspectionSeq || 0, ...drawInspectionEvents.map(ev => ev?.seq || 0));
@@ -796,6 +886,13 @@ export function buildTurnStartDrawReplayQueue({
         log: inspectionFlow.log,
         _statEventSeq: inspectionFlow.statEventSeq,
         _inspectionSeq: maxInspectionSeq,
+        // Card-effect visuals that occurred before the first inspection were
+        // already emitted in the pre-inspection segment. Carry their ids into
+        // the tail baseline; otherwise the tail treats night wind as a fresh
+        // visual event and emits its HP/SAN damage steps again.
+        _visualEvents: Array.isArray(newGs?._visualEvents)
+          ? newGs._visualEvents
+          : (Array.isArray(fallbackOldGs?._visualEvents) ? fallbackOldGs._visualEvents : []),
         // This tail continues the same draw resolution. Preserve the consumed
         // roll watermark so a moldy-food result retained in newGs is not
         // treated as a fresh event after an inspection boundary.
@@ -808,8 +905,28 @@ export function buildTurnStartDrawReplayQueue({
     );
     inspectionQ.push(...inspectionFlow.queue, ...tailQueue);
   }
+  // Inspection flow already rebuilds the complete interval from the state
+  // before the first inspection through the resolved tail. Prepending the
+  // generic draw-effect queue replays the same SAN/discard diffs against the
+  // final snapshot, making inspection reveals and consecutive discards appear
+  // before the encounter/worship steps (and sometimes twice).
+  const firstInspectionBeforeLogs = new Set(
+    (drawInspectionEvents[0]?.beforeLog || []).filter(line => typeof line === 'string')
+  );
+  const preInspectionExplicitQ = inspectionQ.length
+    ? drawEffectQWithVisualStats.filter(step => (
+      step?.type !== 'STATE_PATCH' &&
+      step?.type !== 'DRAW_CARD' &&
+      !isStatAnimationStep(step) &&
+      (step?.msgs || []).some(msg => firstInspectionBeforeLogs.has(msg))
+    ))
+    : [];
+  const preInspectionExplicitTypes = new Set(preInspectionExplicitQ.map(step => step?.type));
   const drawEffectQWithInspections = inspectionQ.length
-    ? [...drawEffectQWithVisualStats, ...inspectionQ]
+    ? [
+        ...preInspectionExplicitQ,
+        ...inspectionQ.filter(step => !preInspectionExplicitTypes.has(step?.type)),
+      ]
     : drawEffectQWithVisualStats;
   const drawEffectQWithoutEarlyKeepTransfer = drawKeepTransferStep
     ? drawEffectQWithInspections.filter(step => !(step?.type === 'CARD_TRANSFER' && step?.effect === 'draw'))

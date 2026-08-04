@@ -669,6 +669,14 @@ describe('applyFx', () => {
     randomSpy.mockRestore();
   });
 
+  it('albinoCreature: 没有火牌时可在伤害落地前规避', () => {
+    const players = makeStandardPlayers(3);
+    const res = applyFx({ type: 'albinoCreature', name: '白化生物' }, 0, null, players, [], [], makeGs({ players }), true, []);
+
+    expect(res.P[0]).toMatchObject({ hp: 10, san: 10 });
+    expect(res.msgs).toContain('【白化生物】测试角色1 没有带"火"字的手牌，失去 2 HP 和 2 SAN');
+  });
+
   it('decipherStoneCarving: 玩家收入后进入解读阶段', () => {
     const players = makeStandardPlayers(3);
     const deck = [makeZoneCard('A1', 0), makeZoneCard('B2', 0), makeGodCard('NYA')];
@@ -1032,7 +1040,7 @@ describe('applyFx', () => {
     expect(res.statePatch.abilityData.revealedCards).toHaveLength(3);
   });
 
-  it('sphinxGuess: 玩家规避成功时把负面规避状态带入猜测阶段', () => {
+  it('sphinxGuess: 玩家收入时不再提前携带规避结果', () => {
     const players = makeStandardPlayers(3);
     const deck = [makeZoneCard('A1', 0)];
     const card = { type: 'sphinxGuess', name: '斯芬克斯', key: 'D4' };
@@ -1042,13 +1050,14 @@ describe('applyFx', () => {
 
     expect(res.statePatch.abilityData).toMatchObject({
       type: 'sphinxGuess',
-      sphinxAvoidNegative: true,
       topCard: deck[0],
     });
+    expect(res.statePatch.abilityData.sphinxAvoidNegative).toBeUndefined();
   });
 
-  it('sphinxGuess: AI 规避成功后猜错不失去 HP', () => {
+  it('sphinxGuess: AI 寻宝者猜错后才掷骰规避且不失去 HP', () => {
     const players = makeStandardPlayers(3);
+    players[0].role = '寻宝者';
     const deck = [makeZoneCard('A1', 0)];
     const card = { type: 'sphinxGuess', name: '斯芬克斯', key: 'D4' };
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.8); // guessYes = false, top card is zone => wrong
@@ -1058,8 +1067,23 @@ describe('applyFx', () => {
 
     expect(res.P[0].hp).toBe(10);
     expect(res.Disc).toHaveLength(1);
-    expect(res.msgs).toContain('猜测错误！测试角色1 负面效果已规避');
+    expect(res.msgs).toContain('猜测错误！测试角色1 即将失去 3 HP');
+    expect(res.msgs).toContain('测试角色1（寻宝者）掷出 5 点，成功规避负面效果！');
     expect(res.statePatch._animSphinxReveal).toMatchObject({ guessCorrect: false, actorIdx: 0 });
+    randomSpy.mockRestore();
+  });
+
+  it('sphinxGuess: AI 寻宝者猜对时不掷规避骰', () => {
+    const players = makeStandardPlayers(3);
+    players[0].role = '寻宝者';
+    const deck = [makeZoneCard('A1', 0)];
+    const card = { type: 'sphinxGuess', name: '斯芬克斯', key: 'D4' };
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.1); // guessYes = true, top card is zone => correct
+
+    const res = applyFx(card, 0, null, players, deck, [], makeGs({ players }), false, [], true);
+
+    expect(res.msgs.some(line => line.includes('规避负面效果'))).toBe(false);
+    expect(randomSpy).toHaveBeenCalledTimes(1);
     randomSpy.mockRestore();
   });
 

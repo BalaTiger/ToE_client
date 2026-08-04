@@ -19,6 +19,7 @@ import {
   buildEtherealizeLoss,
   buildEtherealizeRedirectDecision,
   buildTsathogguaSlimeBalanceDecision,
+  cardContainsFireText,
 } from './coreUtils';
 import { buildStatEvents } from './statEvents';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
@@ -31,16 +32,6 @@ import {
   getCurrentExecutionTurnOwner,
   grantTurnScopedGodPowerImmunity,
 } from './turnScopedEffects';
-
-function cardContainsFireText(card) {
-  if (!card) return false;
-  const text = [
-    card.name || '',
-    card.subtitle || '',
-    card.desc || '',
-  ].join('').toLowerCase();
-  return text.includes('火');
-}
 
 export function markSkipNextDraw(player, reason = '效果') {
   if (!player || player.isDead) return false;
@@ -765,9 +756,19 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     const patchedStatEvents = Array.isArray(result.statePatch?._statEvents)
       ? result.statePatch._statEvents
       : [];
-    const mergedStatEvents = patchedStatEvents.length
-      ? [...statEvents, ...patchedStatEvents.filter(event => !statEvents.some(own => own?.seq === event?.seq && own?.type === event?.type && own?.target === event?.target))]
-      : statEvents;
+    // A draw effect runs after turn-start effects have already appended their
+    // stat events to gs. Preserve that history: replacing it here made an AI
+    // drawing 地下泉 erase the preceding 黑山羊幼仔 HP/SAN animation metadata.
+    const priorStatEvents = Array.isArray(gs?._statEvents) ? gs._statEvents : [];
+    const statEventKey = event => JSON.stringify(event);
+    const seenStatEvents = new Set();
+    const mergedStatEvents = [...priorStatEvents, ...statEvents, ...patchedStatEvents]
+      .filter(event => {
+        const key = statEventKey(event);
+        if (seenStatEvents.has(key)) return false;
+        seenStatEvents.add(key);
+        return true;
+      });
     const mergedStatEventSeq = Math.max(
       statEvents.length ? statEventSeq : (gs?._statEventSeq || 0),
       result.statePatch?._statEventSeq || 0,
@@ -1800,9 +1801,15 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           P[ci].hand.push(actualCard);
           statePatch = { ...statePatch, ...appendPublicCardGainTriggers({ ...gs, ...statePatch }, P, ci, actualCard) };
         } else {
-          if (avoidNegative || avoidNegativeFor.includes(ci)) {
-            msgs.push(`猜测错误！${actor.name} 负面效果已规避`);
-          } else {
+          const isTreasureHunter = (actor._nyaBorrow || actor.role) === '寻宝者';
+          const dodgeRoll = isTreasureHunter ? 1 + (Math.random() * 6 | 0) : null;
+          const sphinxAvoided = dodgeRoll != null && dodgeRoll >= 4;
+          msgs.push(`猜测错误！${actor.name} 即将失去 3 HP`);
+          if (dodgeRoll != null) {
+            P[ci].roleRevealed = true;
+            msgs.push(`${actor.name}（寻宝者）掷出 ${dodgeRoll} 点，${sphinxAvoided ? '成功规避负面效果！' : '未能规避，触发负面效果！'}`);
+          }
+          if (!sphinxAvoided) {
             msgs.push(`猜测错误！${actor.name} 失去 3 HP`);
             hurtHP(ci, 3);
           }
@@ -1819,7 +1826,6 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
             abilityData: {
               type: 'sphinxGuess',
               topCard,
-              sphinxAvoidNegative: avoidNegative || avoidNegativeFor.includes(ci),
             }
           }
         };
@@ -2008,7 +2014,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       msgs.push(`${actor.name} 打出【逆流】，回合轮换方向变为${newDir === 1 ? '顺时针' : '逆时针'}`);
     },
     moldyFood: () => {
-      const d1 = 1 + (Math.random() * 6 | 0);
+      const d1 = Number.isInteger(gs?._pendingMoldyFoodRoll) ? gs._pendingMoldyFoodRoll : 1 + (Math.random() * 6 | 0);
       const isEven = d1 % 2 === 0;
       const seq = (gs?._moldyFoodDiceSeq || 0) + 1;
       const negativeAvoided = !isEven && (avoidNegative || avoidNegativeFor.includes(ci));
@@ -2066,8 +2072,10 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         }
       } else {
         msgs.push(`【白化生物】${actor.name} 没有带"火"字的手牌，失去 2 HP 和 2 SAN`);
-        hurtHP(ci, 2);
-        hurtSAN(ci, 2);
+        if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
+          hurtHP(ci, 2);
+          hurtSAN(ci, 2);
+        }
       }
     },
     allHealHPDamageSAN: () => {

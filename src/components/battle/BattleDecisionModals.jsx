@@ -144,7 +144,7 @@ export function BattleDecisionModals({
       )}
 
       {/* Draw reveal modal */}
-      {!pendingZhuDrawAnyCard && !suppressAnim && canShowTurnDecisionModal && phase === 'DRAW_REVEAL' && gs.drawReveal && gs.drawReveal.needsDecision && (
+      {!pendingZhuDrawAnyCard && !suppressAnim && canShowTurnDecisionModal && phase === 'DRAW_REVEAL' && gs.drawReveal && gs.drawReveal.needsDecision && !gs.drawReveal.forcedKeep && (
         <DrawRevealModal
           drawReveal={gs.drawReveal}
           onKeep={handleDrawKeepFromModal}

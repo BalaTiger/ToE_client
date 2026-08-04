@@ -201,7 +201,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
   // 暗抽直接落入手牌，不展示中央翻牌阶段。
   if(travelOnly)return null;
 
-  const spirits=!showAtmosphereEffects||card.isGod||isNeutralCard
+  const spirits=!showAtmosphereEffects||card.isGod
     ?[]
     :isEvil
     ?SMOKE_COLS.flatMap((col,i)=>[

@@ -44,7 +44,7 @@ import {
 } from './turnEngine';
 import { withClearedTurnAnimFields } from './turnAnimState';
 import { buildAnimQueue } from './animQueueCore';
-import { statePatchStep } from './animQueueHelpers';
+import { cardTransferStep, statePatchStep } from './animQueueHelpers';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, isRevealedCultist } from './coreUtils';
 import { createBlackGoatYoungCard } from '../constants/card';
 import { buildStatEvents } from './statEvents';
@@ -432,6 +432,20 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
     P = res.P; D = res.D; Disc = res.Disc;
     if (res.msgs?.length) L.push(...res.msgs);
     statePatch = { ...statePatch, ...(res.statePatch || {}) };
+    // The replayed card already exists in the logical hand, but it is visually
+    // treated as a fresh draw.  Commit that visible "gain" before resolving its
+    // stats so a prior action heal (notably Rest) cannot run straight into a
+    // Dragon Heart heal with no corridor/card boundary between them.
+    replayQueue.push(cardTransferStep({
+      fromPid: ct,
+      dest: 'player',
+      toPid: ct,
+      count: 1,
+      sourceAnchor: 'playerArea',
+      effect: 'draw',
+      cards: [card],
+      msgs: [drawMsg],
+    }));
     const resolutionQueue = buildAiEndTurnReplayResolutionQueue({
       beforeGs: { ...gs, ...beforePatch, players: beforePlayers, deck: beforeDeck, discard: beforeDiscard, log: beforeLog },
       afterGs: { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L },

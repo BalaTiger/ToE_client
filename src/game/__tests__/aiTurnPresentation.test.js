@@ -111,7 +111,8 @@ describe('AI turn presentation helpers', () => {
       buildTurnStartIntroQueue: vi.fn(() => [{ type: 'YOUR_TURN' }]),
     });
 
-    expect(result.queue[0]).toBe(replayStep);
+    expect(result.queue[0]).toMatchObject({ type: 'VISUAL_LOCK', players });
+    expect(result.queue[1]).toBe(replayStep);
     expect(result.queue.some(step => step.type === 'DRAW_CARD')).toBe(false);
     expect(result.externalVisualLocks).toEqual([replayLock]);
     expect(result.shouldMaskDiscardedTurnDraw).toBe(true);

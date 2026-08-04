@@ -67,6 +67,17 @@ export function getMpTurnTimerMode({
   return gs.phase === 'ACTION' ? 'running' : 'stopped';
 }
 
+export function shouldAdvanceHoundsTimer(options) {
+  if (options?.isAiCurrentTurn) {
+    return options.gs?.phase === 'AI_TURN'
+      && !options.isMpCthDecisionPhase
+      && !options.isMpDecisionPhase
+      && !options.isTurnTimerSuspended;
+  }
+  if (!options?.gs?._isMP) return true;
+  return getMpTurnTimerMode({ ...options, isMultiplayer: true }) === 'running';
+}
+
 export function shouldRunMpDiscardTimer({
   isMultiplayer,
   gs,

@@ -527,9 +527,16 @@ describe('buildAnimQueue stat animations', () => {
     });
 
     const queue = buildAnimQueue(oldGs, newGs);
+    const highlightStep = queue.find(step => step.type === 'GOD_HIGHLIGHT');
     const sanStep = queue.find(step => step.type === 'SAN_DAMAGE');
 
-    expect(sanStep.visualTimeline[0].patch.players[1]).toMatchObject({ san: 7, godName: 'NYA', godLevel: 1 });
+    expect(highlightStep.visualSetupPatch.players[1]).toMatchObject({ san: 7, godName: 'NYA', godLevel: 1 });
+    expect(highlightStep.visualTimeline[0]).toMatchObject({
+      atMs: 0,
+      patch: { players: [expect.anything(), expect.objectContaining({ san: 7, godName: 'VRI', godLevel: 1 })] },
+    });
+    expect(sanStep.visualSetupPatch.players[1]).toMatchObject({ san: 7, godName: 'VRI', godLevel: 1 });
+    expect(sanStep.visualTimeline[0].patch.players[1]).toMatchObject({ san: 7, godName: 'VRI', godLevel: 1 });
     expect(sanStep.visualTimeline[1].patch.players[1]).toMatchObject({ san: 6, godEncounters: 2, godName: 'VRI', godLevel: 1 });
     expect(sanStep.visualTimeline[1].patch.players[1].godZone[0].godKey).toBe('VRI');
   });
@@ -1521,8 +1528,12 @@ describe('buildAiHuntEventAnimQueue', () => {
     const hunterDiscardSteps = queue.filter(step =>
       step.type === 'DISCARD' && step.card?.id === hunterDiscard.id
     );
+    const prematureTargetDiscardSteps = queue.slice(0, lootIdx).filter(step =>
+      step.fromPid === 2 && step.dest === 'discard'
+    );
     expect(hunterDiscardSteps).toHaveLength(1);
     expect(hunterDiscardSteps[0]).toMatchObject({ targetPid: 1 });
+    expect(prematureTargetDiscardSteps).toHaveLength(0);
 
     expect(deathIdx).toBeGreaterThan(-1);
     expect(lootIdx).toBeGreaterThan(deathIdx);

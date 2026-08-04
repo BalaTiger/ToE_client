@@ -53,6 +53,7 @@ import {
   copyPlayers,
   isZoneCard,
   isDodgeableZoneCard,
+  cardContainsFireText,
   getZoneCardEffectScope,
   isWinHand,
   localTreasureWinLog,
@@ -306,7 +307,7 @@ import { useGameAudio } from './hooks/useGameAudio';
 import { useAiWatchdog, BAD_PHASES } from './hooks/useAiWatchdog';
 import { executeAiTurnStep, useAiTurnController } from './hooks/useAiTurnController';
 import { useRoomCountdown } from './hooks/useRoomCountdown';
-import { hasPendingSharedBuryAliveChoice, useMpCthDecisionTimer, useMpDecisionTimer, useMpDiscardTimer, useMpHuntRevealTimer, useMpTurnTimer } from './hooks/useMultiplayerTimers';
+import { hasPendingSharedBuryAliveChoice, shouldAdvanceHoundsTimer, useMpCthDecisionTimer, useMpDecisionTimer, useMpDiscardTimer, useMpHuntRevealTimer, useMpTurnTimer } from './hooks/useMultiplayerTimers';
 import { useVisualDiscardSync } from './hooks/useVisualDiscardSync';
 import { advanceGodEncounter, formatGodEncounterProgress } from './game/balancePatches';
 import { useMultiplayerConnection } from './multiplayer/useMultiplayerConnection';
@@ -1870,6 +1871,18 @@ export default function Game(){
       setGs(prev=>{
         if(!prev||!prev.houndsOfTindalosActive||prev.gameOver)return prev;
         if(ignoredPhases.has(prev.phase)||anim||animQueueRef.current.length>0)return prev;
+        const cthDecisionPhase=!!(
+          (isLocalDrawDecisionPhase(prev)&&prev.drawReveal?.fromRest)||
+          (isLocalGodChoicePhase(prev)&&prev.abilityData?.fromRest)
+        );
+        if(!shouldAdvanceHoundsTimer({
+          gs:prev,
+          isAiCurrentTurn:isAiCurrentTurn(prev),
+          isLocalCurrentTurn,
+          isMpCthDecisionPhase:cthDecisionPhase,
+          isMpDecisionPhase:isMpBlockingDecisionPhase(prev),
+          isTurnTimerSuspended:!!(roleRevealAnim||animExiting||animQueueRef.current.length>0||pendingGsRef.current),
+        }))return prev;
         const nextElapsed=(prev.houndsOfTindalosElapsed||0)+1;
         if(nextElapsed<15)return {...prev,houndsOfTindalosElapsed:nextElapsed};
         const P=copyPlayers(prev.players),Disc=[...prev.discard],L=[...prev.log];
@@ -2418,7 +2431,22 @@ export default function Game(){
           queue.push(...cthQueue);
         }
         if(usedAiTurnStartReplay){
-          if(aiTurnStartReplay.visualLock)visualStateLocks.lock(aiTurnStartReplay.visualLock);
+          // buildActorTurnStartReplay already embeds every fresh inspection
+          // event in its queue. Advance the shared watermark here so the
+          // generic inspection append below (and the post-action fallback)
+          // cannot enqueue the same reveal flow a second time. Replaying that
+          // flow also reapplied its pre-effect VISUAL_LOCK, briefly restoring
+          // cards discarded by an inspection such as 迫害妄想.
+          if(aiTurnStartReplay.inspectionEvents?.length){
+            lastInspectionSeqRef.current=Math.max(
+              lastInspectionSeqRef.current,
+              ...aiTurnStartReplay.inspectionEvents.map(ev=>ev?.seq||0),
+            );
+          }
+          if(aiTurnStartReplay.visualLock){
+            visualStateLocks.lock(aiTurnStartReplay.visualLock);
+            queue.push({type:'VISUAL_LOCK',...aiTurnStartReplay.visualLock});
+          }
           maskDiscardedTurnDrawUntilDiscardAnim(gs);
           queue.push(...aiTurnStartReplay.queue);
         }else if(!gs._aiTurnIntroShown){
@@ -5077,6 +5105,15 @@ export default function Game(){
     const drawerIdx=dr.drawerIdx??0;
     clearBlindZoneDecisionFlag(P,drawerIdx,dr);
     const isAOENegativeEffect=isDodgeableEffect&&(effectScope==='all'||effectScope==='adjacent');
+    const moldyFoodRoll=resolutionCard.type==='moldyFood'?(1+(Math.random()*6|0)):null;
+    const conditionalNegativeApplies=resolutionCard.type==='moldyFood'
+      ?moldyFoodRoll%2===1
+      :resolutionCard.type==='albinoCreature'
+        ?!(P[drawerIdx].hand||[]).some(cardContainsFireText)
+        :resolutionCard.type==='sphinxGuess'
+          ?false
+        :true;
+    const effectGs=moldyFoodRoll==null?gs:{...gs,_pendingMoldyFoodRoll:moldyFoodRoll};
     
     // 首先检查是否是其他角色触发的AOE负面效果
     if(isAOENegativeEffect&&isTreasureHunter&&drawerIdx!==0){
@@ -5087,19 +5124,31 @@ export default function Game(){
     }
     
     // 然后检查是否是寻宝者自己触发的负面区域牌
-    if(isTreasureHunter&&isLocalSeatIndex(drawerIdx)&&isDodgeableEffect){
+    if(isTreasureHunter&&isLocalSeatIndex(drawerIdx)&&isDodgeableEffect&&conditionalNegativeApplies){
       // Preserve cthDrawsRemaining so CTH rest-draws aren't lost after dodge decision
-      setGs({...gs,phase:'TREASURE_DODGE_DECISION',drawReveal:dr,abilityData:{fromRest:gs.abilityData?.fromRest,fromTsathogguaSlime:gs.abilityData?.fromTsathogguaSlime,continueTurnStartDraw:gs.abilityData?.continueTurnStartDraw,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining},
+      setGs({...effectGs,phase:'TREASURE_DODGE_DECISION',drawReveal:dr,abilityData:{fromRest:gs.abilityData?.fromRest,fromTsathogguaSlime:gs.abilityData?.fromTsathogguaSlime,continueTurnStartDraw:gs.abilityData?.continueTurnStartDraw,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining},
         log:[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),`你摸到 ${cardLogText(resolutionCard,{alwaysShowName:true})}，这是带有负面效果的区域牌！是否掷骰子尝试规避？`]});
       return;
     }
-    const res=applyFx(resolutionCard,drawerIdx,null,P,D,Disc,gs,false,[],false);
+    const res=applyFx(resolutionCard,drawerIdx,null,P,D,Disc,effectGs,false,[],false);
     P=res.P;D=res.D;Disc=res.Disc;
     if(!dr.fromEndTurnReplay)P[drawerIdx].hand.push(resolutionCard);
     const who=localDisplayName(drawerIdx,P[drawerIdx].name);
     const L=[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),`${who} 收入了 ${cardLogText(resolutionCard,{alwaysShowName:true})}`,...res.msgs];
     // 1. 检查卡牌效果是否让任何人HP归零或SAN归零（通过checkWin）
-    const win=checkWin(P,gs._isMP);if(win){syncVisibleLog(L);setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,drawReveal:null,...(res.statePatch||{})});return;}
+    const win=checkWin(P,gs._isMP);if(win){
+      const winGs={...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,drawReveal:null,...(res.statePatch||{})};
+      const winEffectQueue=bindAnimLogChunks(buildAnimQueue(gs,winGs),splitAnimBoundLogs(L.slice(gs.log.length)));
+      const winTransfer=cardTransferStep({
+        fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,
+        sourceAnchor:'playerArea',effect:'draw',cards:[resolutionCard],
+      });
+      const winQueue=[...winEffectQueue,winTransfer,statePatchStep({players:P,deck:D,discard:Disc,log:L,drawReveal:null})];
+      if(dr.fromEndTurnReplay)broadcastEndTurnDecisionAnimTransaction(winGs,winQueue,L.slice(gs.log.length));
+      else if(winGs._isMP)broadcastAnimTransaction(winGs,winQueue,{context:'drawWin',barrier:'decision',msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard});
+      triggerAnimQueue(winQueue,winGs);
+      return;
+    }
     // 2. 最后，如果游戏仍未结束，且该寻宝者仍然存活，检查该寻宝者是否达成胜利条件
     if(isLocalSeatIndex(drawerIdx)&&!P[0].isDead&&(P[0]._nyaBorrow||P[0].role)==='寻宝者'&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
@@ -5108,12 +5157,13 @@ export default function Game(){
       const effectQueue=inspectionResult.inspectionEvents.length
         ?inspectionResult.queue
         :bindAnimLogChunks(inspectionResult.queue,splitAnimBoundLogs(L.slice(gs.log.length)));
-      const transfer=!dr.fromEndTurnReplay?cardTransferStep({
+      const transfer=cardTransferStep({
         fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,
         sourceAnchor:'playerArea',effect:'draw',cards:[resolutionCard],
-      }):null;
-      const queue=[transfer,...effectQueue].filter(Boolean);
-      if(pendingWinGs._isMP&&!dr.fromEndTurnReplay)broadcastAnimTransaction(pendingWinGs,queue,{context:'drawWin',barrier:'decision',msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard});
+      });
+      const queue=[...effectQueue,transfer].filter(Boolean);
+      if(dr.fromEndTurnReplay)broadcastEndTurnDecisionAnimTransaction(pendingWinGs,queue,L.slice(gs.log.length));
+      else if(pendingWinGs._isMP)broadcastAnimTransaction(pendingWinGs,queue,{context:'drawWin',barrier:'decision',msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard});
       triggerAnimQueue(queue,pendingWinGs);
       return;
     }
@@ -5141,8 +5191,17 @@ export default function Game(){
         :bindAnimLogChunks(inspectionResult.queue,splitAnimBoundLogs(L.slice(gs.log.length)));
       // 已在队列里播放的检定标记为已消费，避免检定 useEffect 再次重放
       const decisionGs={...newGs,phase,abilityData,_inspectionSeq:Math.max(newGs._inspectionSeq||0,inspectionResult.inspectionSeq||0)};
-      const decisionQueue=[...effectQueue,statePatchStep({players:P,discard:Disc})];
-      if(effectQueue.length){
+      const decisionIncomeTransfer=cardTransferStep({
+        fromPid:drawerIdx,
+        dest:'player',
+        toPid:drawerIdx,
+        count:1,
+        sourceAnchor:'playerArea',
+        effect:'draw',
+        cards:[resolutionCard],
+      });
+      const decisionQueue=[...effectQueue,decisionIncomeTransfer,statePatchStep({players:P,discard:Disc})];
+      if(decisionQueue.length){
         if(dr.fromEndTurnReplay){
           broadcastEndTurnDecisionAnimTransaction(decisionGs,decisionQueue,L.slice(gs.log.length));
         }else if(decisionGs._isMP)broadcastAnimTransaction(decisionGs,decisionQueue,{
@@ -5164,8 +5223,9 @@ export default function Game(){
       }
       return bindAnimLogChunks(result.queue,splitAnimBoundLogs(logDelta));
     };
-    // 收入手牌飞牌动画：只有真正从抽牌区加入手牌时才播放（无尽通道重播时牌已在手中，不播）
-    const drawKeepTransfer=!dr.fromEndTurnReplay?cardTransferStep({
+    // 决策确认后始终播放收入手牌动画。无尽通道的牌虽然逻辑上一直在手中，
+    // 视觉上仍需与回合开始摸牌队列一致：效果结算后飞入手牌，再落最终状态。
+    const drawKeepTransfer=cardTransferStep({
       fromPid:drawerIdx,
       dest:'player',
       toPid:drawerIdx,
@@ -5173,9 +5233,9 @@ export default function Game(){
       sourceAnchor:'playerArea',
       effect:'draw',
       cards:[resolutionCard],
-    }):null;
+    });
     const effectQueue=buildDrawKeepEffectQueue(gs,newGs,L.slice(gs.log.length));
-    const incomeQueue=drawKeepTransfer?[drawKeepTransfer,...effectQueue]:effectQueue;
+    const incomeQueue=[...effectQueue,drawKeepTransfer];
     const incomeStatePatch=statePatchStep({
       players:P,deck:D,discard:Disc,log:L,phase:newGs.phase,
       drawReveal:newGs.drawReveal,abilityData:newGs.abilityData,
@@ -5447,7 +5507,8 @@ export default function Game(){
       P[0].roleRevealed = true;
     }
     
-    let L = [...gs.log, `${who} 掷出 ${d1} 点，${dodgeSuccess ? '成功规避负面效果！' : '未能规避，触发负面效果！'}`];
+    const dodgeLog = `${who} 掷出 ${d1} 点，${dodgeSuccess ? '成功规避负面效果！' : '未能规避，触发负面效果！'}`;
+    let L = [...gs.log];
     let res;
     
     if (isAOE) {
@@ -5461,11 +5522,14 @@ export default function Game(){
     
     P = res.P; D = res.D; Disc = res.Disc;
     if(!dr.fromEndTurnReplay)P[drawerIdx].hand.push(resolutionCard);
+    const effectPrecedesDodge = resolutionCard.type === 'albinoCreature';
+    if (effectPrecedesDodge) L.push(...res.msgs, dodgeLog);
+    else L.push(dodgeLog);
     
     if (dodgeSuccess && !isAOE) {
-      L.push(`${who} 收入了 ${cardLogText(resolutionCard,{alwaysShowName:true})}（负面效果已规避）`, ...res.msgs);
+      L.push(`${who} 收入了 ${cardLogText(resolutionCard,{alwaysShowName:true})}（负面效果已规避）`, ...(effectPrecedesDodge?[]:res.msgs));
     } else {
-      L.push(`${who} 收入了 ${cardLogText(resolutionCard,{alwaysShowName:true})}`, ...res.msgs);
+      L.push(`${who} 收入了 ${cardLogText(resolutionCard,{alwaysShowName:true})}`, ...(effectPrecedesDodge?[]:res.msgs));
     }
     
     // 1. 检查卡牌效果是否让任何人HP归零或SAN归零（通过checkWin）
@@ -5521,6 +5585,10 @@ export default function Game(){
   }
 
   function handleTreasureDodgeRollMode(aoe=false){
+    if(!aoe&&gs.abilityData?.sphinxPending){
+      settleSphinxDodge(true);
+      return;
+    }
     const dr=gs.drawReveal;if(!dr?.card)return;
     const result=handleTreasureDodge(gs,dr,aoe);
     const config=treasureDodgeModeConfig(aoe);
@@ -5591,6 +5659,10 @@ export default function Game(){
   }
 
   function handleTreasureDodgeSkipMode(aoe=false){
+    if(!aoe&&gs.abilityData?.sphinxPending){
+      settleSphinxDodge(false);
+      return;
+    }
     if(!aoe&&showTutorial&&tutorialStepDef&&!isTutorialActionAllowed({type:'dodgeRoll'}))return;
     const dr=gs.drawReveal;if(!dr?.card)return;
     const config=treasureDodgeModeConfig(aoe);
@@ -5670,6 +5742,46 @@ export default function Game(){
 
   function handleTreasureAOEDodgeSkip(){
     handleTreasureDodgeSkipMode(true);
+  }
+
+  function settleSphinxDodge(roll){
+    const pending=gs.abilityData?.sphinxPending;
+    if(!pending)return;
+    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
+    const d1=roll?(1+(Math.random()*6|0)):null;
+    const dodgeSuccess=roll&&d1>=4;
+    if(roll){
+      P[0].roleRevealed=true;
+      L.push(`你 掷出 ${d1} 点，${dodgeSuccess?'成功规避负面效果！':'未能规避，触发负面效果！'}`);
+    }else{
+      L.push('你选择不规避负面效果');
+    }
+    let damageDecision=null;
+    if(!dodgeSuccess){
+      L.push('猜测错误！你失去 3 HP');
+      damageDecision=submitDamageEvents({
+        players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
+        events:[{targetIdx:0,lostHp:3,source:'斯芬克斯'}],
+        continuation:{_turnOwner:pending.turnOwner??gs.currentTurn},
+      });
+    }
+    const win=damageDecision?.abilityData?null:checkWin(P,gs._isMP);
+    const turnOwner=pending.turnOwner??gs.currentTurn;
+    const resumesAiTurn=isAiSeat(gs,turnOwner)&&!P[turnOwner]?.isDead;
+    const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,drawReveal:null,currentTurn:turnOwner,
+      phase:damageDecision?.phase||(resumesAiTurn?'AI_TURN':'ACTION'),abilityData:damageDecision?.abilityData||{},
+      ...(win?{gameOver:win}:{}),
+    };
+    const queue=bindAnimLogChunks(buildAnimQueue(gs,nextGs),splitAnimBoundLogs(L.slice(gs.log.length)));
+    if(roll){
+      const diceAnim=createTreasureDodgeDiceAnim({result:{d1,dodgeSuccess,who:'你'},aoe:false});
+      pendingGsRef.current=nextGs;
+      animQueueRef.current=queue;
+      setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
+      setAnim(diceAnim);
+    }else if(queue.length){
+      triggerAnimQueue(queue,nextGs);
+    }else setGs(nextGs);
   }
 
   function handleDrawDiscard(){
@@ -5817,7 +5929,12 @@ export default function Game(){
       zhuLight:gs.zhuLight||null,
     });
     const statQ=buildAnimQueue(gs,newGs).filter(a=>a.type!=='CARD_TRANSFER');
-    const queue=[...swapSteps,...statQ];
+    // Rest/turn-start continuations intentionally pass null to triggerAnimQueue so
+    // their callback can resume the draw pipeline. Order the target transaction
+    // here while newGs is still available; otherwise the swap plays immediately
+    // and the black-night roll is only discovered after the continuation state
+    // is published.
+    const queue=mergeApophisTargetQueue([...swapSteps,...statQ],gs,newGs);
     if(fromRest){triggerAnimQueue(queue,null,()=>_cthContinueRestDraws(newGs));return;}
     if(continueTurnStartDraw){triggerAnimQueue(queue,null,()=>_tsgContinueTurnStartDraw(newGs));return;}
     triggerAnimQueue(queue,newGs);
@@ -8261,16 +8378,18 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const guessCorrect=(guessYes&&isZone)||(!guessYes&&!isZone);
     let proliferatingZPatch={};
     let damageDecision=null;
+    let needsSphinxDodge=false;
     if(guessCorrect){
       L.push(`猜测正确！你收入了 ${cardLogText(actualCard)}`);
       P[gs.currentTurn].hand.push(actualCard);
       proliferatingZPatch=appendPublicCardGainTriggers(gs,P,gs.currentTurn,actualCard);
     }else{
-      const sphinxAvoidNegative=!!gs.abilityData?.sphinxAvoidNegative;
-      L.push(sphinxAvoidNegative?'猜测错误！负面效果已规避':'猜测错误！你失去 3 HP');
+      const sphinxActor=P[gs.currentTurn];
+      needsSphinxDodge=isLocalSeatIndex(gs.currentTurn)&&(sphinxActor?._nyaBorrow||sphinxActor?.role)==='寻宝者';
+      L.push(needsSphinxDodge?'猜测错误！你即将失去 3 HP':'猜测错误！你失去 3 HP');
       const localMsgs=[];
       Disc.push(actualCard);
-      if(!sphinxAvoidNegative){
+      if(!needsSphinxDodge){
         damageDecision=submitDamageEvents({
           players:P,deck:D,discard:Disc,log:localMsgs,currentTurn:gs.currentTurn,
           events:[{targetIdx:gs.currentTurn,lostHp:3,source:'斯芬克斯'}],
@@ -8306,14 +8425,16 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const nextPhase=resumesAiTurn?'AI_TURN':'ACTION';
     const newGs={
       ...gs,players:P,deck:D,discard:Disc,log:L,
-      phase:damageDecision?.phase||nextPhase,currentTurn:nextTurn,
-      abilityData:damageDecision?.abilityData||{},...proliferatingZPatch,
+      phase:needsSphinxDodge?'TREASURE_DODGE_DECISION':(damageDecision?.phase||nextPhase),currentTurn:nextTurn,
+      abilityData:needsSphinxDodge?{sphinxPending:{turnOwner:nextTurn}}:(damageDecision?.abilityData||{}),
+      drawReveal:needsSphinxDodge?{card:(P[nextTurn]?.hand||[]).find(card=>card.type==='sphinxGuess'||card.name==='斯芬克斯'),drawerIdx:nextTurn}:gs.drawReveal,
+      ...proliferatingZPatch,
     };
     const newGsWithEvent=newGs;
     const queue=buildSphinxQueue(newGsWithEvent);
     if(queue.length){
       setGs(p=>p?{...p,phase:nextPhase,abilityData:{}}:p);
-      triggerSyncedAnimTransaction(queue,newGsWithEvent,{context:'sphinxResult',barrier:damageDecision?'decision':'continuation',msgs:logDelta,beforePlayers:gs.players,beforeDiscard:gs.discard});
+      triggerSyncedAnimTransaction(queue,newGsWithEvent,{context:'sphinxResult',barrier:(damageDecision||needsSphinxDodge)?'decision':'continuation',msgs:logDelta,beforePlayers:gs.players,beforeDiscard:gs.discard});
     }else setGs(newGsWithEvent);
   }
 
@@ -8566,6 +8687,16 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }else{
       queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
     }
+    const keepHandTransfer=action==='keepHand'?cardTransferStep({
+      fromPid:0,
+      dest:'player',
+      toPid:0,
+      count:1,
+      sourceAnchor:'playerArea',
+      effect:'draw',
+      cards:[godCard],
+    }):null;
+    if(keepHandTransfer)queue=[...queue,keepHandTransfer];
     if(queue.length){
       if(fromEndTurnReplay){
         broadcastEndTurnDecisionAnimTransaction(newGs,[...queue,statePatchStep({players:P,discard:Disc})],L.slice(gs.log.length));
@@ -9215,8 +9346,15 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       );
       return;
     }
-    if(preTurnQ.length){
-      triggerAnimQueue(preTurnQ,newGs);
+    // A skipped/resting turn is its own visible turn boundary. Most draw/AI
+    // replay branches include it through buildActorTurnStartReplay, but a next
+    // player that lands directly in ACTION (for example after skipping their
+    // draw) has no such replay. Keep a final independent fallback so the
+    // skipped player's YOUR_TURN floating banner is never silently dropped.
+    const skippedTurnQ=buildSkippedTurnReplayQueue(newGs,{buildQueue:buildAnimQueue});
+    const boundaryQ=[...preTurnQ,...skippedTurnQ];
+    if(boundaryQ.length){
+      triggerAnimQueue(boundaryQ,newGs);
       return;
     }
     setGs(newGs);

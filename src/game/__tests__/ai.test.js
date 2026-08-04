@@ -470,7 +470,10 @@ describe('AI end-turn endless corridor replay', () => {
 
     expect(types.slice(0, 4)).toEqual(['ENDLESS_CORRIDOR_TUNNEL', 'DRAW_CARD', 'DISCARD', 'STATE_PATCH']);
     expect(types[4]).toBe('DRAW_CARD');
-    expect(types.indexOf('SAN_HEAL')).toBeGreaterThan(4);
+    const incomeIdx = types.indexOf('CARD_TRANSFER', 4);
+    const healIdx = types.indexOf('SAN_HEAL');
+    expect(incomeIdx).toBeGreaterThan(4);
+    expect(healIdx).toBeGreaterThan(incomeIdx);
     expect(types.lastIndexOf('STATE_PATCH')).toBeGreaterThan(types.indexOf('SAN_HEAL'));
     expect(result.replayQueue[0].msgs).toEqual([expect.stringContaining('【无尽通道】艾伦 展示所有手牌')]);
   });

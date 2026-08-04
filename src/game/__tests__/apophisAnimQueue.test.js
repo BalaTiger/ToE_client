@@ -109,6 +109,57 @@ describe('apophisAnimQueue', () => {
     ]);
   });
 
+  it('回合开始续摸触发触底反弹时黑夜骰子先于整手交换', () => {
+    const swapQueue = [
+      { type: 'VISUAL_LOCK' },
+      { type: 'CARD_TRANSFER', fromPid: 0, toPid: 2 },
+      { type: 'CARD_TRANSFER', fromPid: 2, toPid: 0 },
+    ];
+    const buildQueue = () => [
+      { type: 'DICE_ROLL', diceMode: 'apophisNight', _apophisTargetSeq: 2 },
+      { type: 'SAN_DAMAGE', statEvents: [{ seq: 7 }] },
+    ];
+    const stateWithShift = { _apophisTargetEvent: { seq: 2, statSeq: 7 } };
+
+    expect(mergeApophisTargetQueue(swapQueue, oldState, stateWithShift, buildQueue).map(step => step.type)).toEqual([
+      'DICE_ROLL',
+      'SAN_DAMAGE',
+      'VISUAL_LOCK',
+      'CARD_TRANSFER',
+      'CARD_TRANSFER',
+    ]);
+  });
+
+  it('蛊惑目标偏移时仅前置黑夜骰子，保持赠牌、翻牌和数值结算顺序', () => {
+    const nightSan = {
+      type: 'SAN_DAMAGE',
+      hitIndices: [0],
+      statEvents: [{ type: 'SAN_LOSS', target: 0, seq: 7 }],
+    };
+    const baseQueue = [
+      { type: 'SKILL_BEWITCH', targetIdx: 2 },
+      { type: 'CARD_TRANSFER', fromPid: 0, toPid: 2 },
+      { type: 'DRAW_CARD', targetPid: 2 },
+      nightSan,
+      { type: 'HP_DAMAGE', hitIndices: [2] },
+    ];
+    const stateWithShift = { _apophisTargetEvent: { seq: 2, statSeq: 7 } };
+    const buildQueueWithShift = () => [
+      { type: 'DICE_ROLL', diceMode: 'apophisNight', _apophisTargetSeq: 2 },
+      { type: 'SKILL_BEWITCH', _apophisTargetSeq: 2, targetIdx: 2 },
+      nightSan,
+    ];
+
+    expect(mergeApophisTargetQueue(baseQueue, oldState, stateWithShift, buildQueueWithShift).map(step => step.type)).toEqual([
+      'DICE_ROLL',
+      'SKILL_BEWITCH',
+      'CARD_TRANSFER',
+      'DRAW_CARD',
+      'SAN_DAMAGE',
+      'HP_DAMAGE',
+    ]);
+  });
+
   it('已包含同次 SAN 动画的队列重复归一化时不会重播', () => {
     const stateWithSanLoss = {
       _apophisTargetEvent: { seq: 2, statSeq: 7 },
@@ -147,6 +198,77 @@ describe('apophisAnimQueue', () => {
     const merged = mergeApophisTargetQueue(baseQueue, oldState, nextState, buildQueue);
     expect(merged.filter(step => step.type === 'DICE_ROLL')).toHaveLength(1);
     expect(merged.filter(step => step.type === 'SKILL_HUNT')).toHaveLength(1);
+  });
+
+  it('二次合并连续追捕队列时保留最新黑夜骰子的原始位置', () => {
+    const latestEvent = {
+      seq: 4,
+      actorIdx: 1,
+      actorName: '艾伦',
+      selectedIdx: 0,
+      targetIdx: 0,
+      roll: 6,
+      changed: false,
+      label: '选择【追捕】目标',
+      log: '【黑夜】艾伦 选择【追捕】目标掷出 6，目标未偏移',
+    };
+    const oldState = { _apophisTargetSeq: 3 };
+    const nextState = { _apophisTargetSeq: 4, _apophisTargetEvent: latestEvent };
+    const queue = [
+      { type: 'DICE_ROLL', diceMode: 'apophisNight', d1: 2, _apophisTargetSeq: 3 },
+      { type: 'SKILL_HUNT', targetIdx: 2 },
+      { type: 'HUNT_REVEAL_CARD' },
+      { type: 'HP_DAMAGE', hitIndices: [2] },
+      { type: 'DICE_ROLL', diceMode: 'apophisNight', d1: 6, _apophisTargetSeq: 4 },
+      { type: 'SKILL_HUNT', targetIdx: 0 },
+    ];
+    const buildQueue = () => [{
+      type: 'DICE_ROLL',
+      diceMode: 'apophisNight',
+      d1: 6,
+      _apophisTargetSeq: 4,
+      msgs: [latestEvent.log],
+    }];
+
+    const merged = mergeApophisTargetQueue(queue, oldState, nextState, buildQueue);
+    expect(merged.map(step => step.type)).toEqual(queue.map(step => step.type));
+    expect(merged.filter(step => step.type === 'DICE_ROLL').map(step => step.d1)).toEqual([2, 6]);
+    expect(merged.findIndex(step => step.d1 === 6)).toBeGreaterThan(merged.findIndex(step => step.type === 'HP_DAMAGE'));
+  });
+
+  it('AI 放弃追捕后的最终合并复用已存在的黑夜骰子事务', () => {
+    const latestEvent = {
+      seq: 7,
+      actorIdx: 1,
+      actorName: '卡洛斯',
+      selectedIdx: 2,
+      targetIdx: 2,
+      roll: 3,
+      changed: false,
+      label: '选择【追捕】目标',
+      log: '【黑夜】卡洛斯 选择【追捕】目标掷出 3，目标未偏移',
+    };
+    const dice = {
+      type: 'DICE_ROLL',
+      diceMode: 'apophisNight',
+      d1: 3,
+      _apophisTargetSeq: 7,
+      msgs: [latestEvent.log],
+    };
+    const queue = [
+      { type: 'DICE_ROLL', diceMode: 'apophisNight', d1: 1, _apophisTargetSeq: 6 },
+      dice,
+      { type: 'SKILL_HUNT', targetIdx: 2 },
+      { type: 'HUNT_REVEAL_CARD' },
+      { type: 'ANIM_LOG', msgs: ['无匹配手牌，放弃追捕 艾伦', '卡洛斯 尝试了所有目标，仍无法追捕'] },
+    ];
+    const nextState = { _apophisTargetSeq: 7, _apophisTargetEvent: latestEvent };
+    const buildQueue = () => [{ ...dice }];
+
+    const merged = mergeApophisTargetQueue(queue, { _apophisTargetSeq: 6 }, nextState, buildQueue);
+
+    expect(merged).toBe(queue);
+    expect(merged.filter(step => step.type === 'DICE_ROLL' && step._apophisTargetSeq === 7)).toHaveLength(1);
   });
 });
 

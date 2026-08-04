@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getMpTurnTimerMode, hasPendingSharedBuryAliveChoice, shouldRunMpDiscardTimer, startSecondCountdown } from '../useMultiplayerTimers';
+import { getMpTurnTimerMode, hasPendingSharedBuryAliveChoice, shouldAdvanceHoundsTimer, shouldRunMpDiscardTimer, startSecondCountdown } from '../useMultiplayerTimers';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -70,6 +70,41 @@ describe('getMpTurnTimerMode', () => {
   it('摸牌抉择落到 ACTION 前不启动 45 秒行动计时', () => {
     expect(getMode({ phase: 'DRAW_REVEAL' })).toBe('stopped');
     expect(getMode({ phase: 'GOD_CHOICE' })).toBe('stopped');
+  });
+});
+
+describe('shouldAdvanceHoundsTimer', () => {
+  it('联机时仅在当前角色的行动计时实际运行时推进', () => {
+    const base = {
+      gs: makeGs(),
+      isLocalCurrentTurn,
+      isMpCthDecisionPhase: false,
+      isMpDecisionPhase: false,
+      isTurnTimerSuspended: false,
+    };
+    expect(shouldAdvanceHoundsTimer(base)).toBe(true);
+    expect(shouldAdvanceHoundsTimer({ ...base, isMpDecisionPhase: true })).toBe(false);
+    expect(shouldAdvanceHoundsTimer({ ...base, isTurnTimerSuspended: true })).toBe(false);
+    expect(shouldAdvanceHoundsTimer({ ...base, gs: makeGs({ phase: 'DRAW_REVEAL' }) })).toBe(false);
+    expect(shouldAdvanceHoundsTimer({ ...base, gs: makeGs({ currentTurn: 1 }) })).toBe(false);
+  });
+
+  it('单机仍沿用原有猎犬计时规则', () => {
+    expect(shouldAdvanceHoundsTimer({ gs: makeGs({ _isMP: false, phase: 'ACTION' }) })).toBe(true);
+  });
+
+  it('AI 仅在其 AI_TURN 实际执行期间推进', () => {
+    const base = {
+      gs: makeGs({ currentTurn: 1, phase: 'AI_TURN' }),
+      isAiCurrentTurn: true,
+      isMpCthDecisionPhase: false,
+      isMpDecisionPhase: false,
+      isTurnTimerSuspended: false,
+    };
+    expect(shouldAdvanceHoundsTimer(base)).toBe(true);
+    expect(shouldAdvanceHoundsTimer({ ...base, isTurnTimerSuspended: true })).toBe(false);
+    expect(shouldAdvanceHoundsTimer({ ...base, isMpDecisionPhase: true })).toBe(false);
+    expect(shouldAdvanceHoundsTimer({ ...base, gs: { ...base.gs, phase: 'CAVE_DUEL_SELECT_CARD' } })).toBe(false);
   });
 });
 

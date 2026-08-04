@@ -150,6 +150,7 @@ describe('statEvents', () => {
   });
 
   it('HP/SAN 同时回复时拆成各自的回复特效', () => {
+    const displayStats = [{ hp: 5, san: 4 }];
     const events = [{
       type: 'HP_SAN_GAIN',
       target: 0,
@@ -157,9 +158,15 @@ describe('statEvents', () => {
       to: { hp: 7, san: 6 },
     }];
 
-    expect(statEventsToAnimQueue(events, [makePlayer({ hp: 7, san: 6 })]).map(step => step.type)).toEqual([
+    const queue = statEventsToAnimQueue(events, [makePlayer({ hp: 7, san: 6 })]);
+    expect(queue.map(step => step.type)).toEqual([
       'HP_HEAL',
       'SAN_HEAL',
+    ]);
+    const afterHpHeal = applyStatEventsToDisplayStats(displayStats, queue[0].statEvents, queue[0].type);
+    expect(afterHpHeal).toEqual([{ hp: 7, san: 4 }]);
+    expect(applyStatEventsToDisplayStats(afterHpHeal, queue[1].statEvents, queue[1].type)).toEqual([
+      { hp: 7, san: 6 },
     ]);
   });
 

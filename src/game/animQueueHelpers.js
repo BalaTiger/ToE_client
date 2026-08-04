@@ -346,6 +346,7 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
   let cursorLog=[...(Array.isArray(baseGs?.log)?baseGs.log:[])];
   let cursorDiscard=[...(Array.isArray(baseGs?.discard)?baseGs.discard:[])];
   let cursorStatEventSeq=baseGs?._statEventSeq||0;
+  const availableStatEvents=Array.isArray(baseGs?._statEvents)?baseGs._statEvents:[];
   (events||[]).forEach(ev=>{
     const beforePlayers=copyPlayers(ev?.beforePlayers||cursorPlayers);
     const beforeLog=[...(Array.isArray(ev?.beforeLog)?ev.beforeLog:cursorLog)];
@@ -355,8 +356,8 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
     const afterDiscard=[...(Array.isArray(ev?.afterDiscard)?ev.afterDiscard:beforeDiscard)];
     const beforeStatEventSeq=Math.max(cursorStatEventSeq,ev?.beforeStatEventSeq||0);
     const preQ=buildAnimQueue(
-      {players:cursorPlayers,log:cursorLog,discard:cursorDiscard,_statEventSeq:cursorStatEventSeq},
-      {players:beforePlayers,log:beforeLog,discard:beforeDiscard,_statEventSeq:beforeStatEventSeq}
+      {players:cursorPlayers,log:cursorLog,discard:cursorDiscard,_statEvents:availableStatEvents,_statEventSeq:cursorStatEventSeq},
+      {players:beforePlayers,log:beforeLog,discard:beforeDiscard,_statEvents:availableStatEvents,_statEventSeq:beforeStatEventSeq}
     );
     // Lock the state visible at the start of the inspection segment before any
     // preceding stat animations run. The committed game state may already be
@@ -365,12 +366,21 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
     if(preQ.length)queue.push({type:"VISUAL_LOCK",players:cursorPlayers});
     if(preQ.length)queue.push(...preQ);
     queue.push({type:"VISUAL_LOCK",players:beforePlayers});
+    const inspectionLogDelta=afterLog.slice(beforeLog.length);
+    const revealLog=inspectionLogDelta.find(line=>typeof line==="string"&&line.includes("的SAN检定结果为"));
+    const effectLogs=revealLog
+      ?inspectionLogDelta.filter((line,index)=>line!==revealLog||index!==inspectionLogDelta.indexOf(revealLog))
+      :inspectionLogDelta;
     queue.push({
       type:"DRAW_CARD",
       card:ev.card,
       triggerName:"检定牌",
       targetPid:ev.target??0,
       inspectionSeq:ev.seq,
+      // A reveal step must own exactly its result line. Otherwise the generic
+      // draw-log fallback can consume later inspections before their cards are
+      // actually revealed.
+      _logChunk:revealLog?[revealLog]:[],
     });
     if(ev?.gainedCard){
       queue.push({
@@ -396,7 +406,14 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
       }
     );
     if(effectQ.length)queue.push(...effectQ);
-    queue.push(statePatchStep({players:afterPlayers,log:afterLog,discard:afterDiscard}));
+    const effectHasVisibleStep=effectQ.some(step=>step?.type!=="STATE_PATCH");
+    queue.push({
+      ...statePatchStep({players:afterPlayers,log:afterLog,discard:afterDiscard}),
+      // Non-stat inspection effects (for example 昏睡) may have no animation
+      // step, but their log still belongs after this reveal, never to an
+      // earlier inspection card.
+      ...(!effectHasVisibleStep&&effectLogs.length?{_logChunk:effectLogs}:{}),
+    });
     cursorPlayers=afterPlayers;
     cursorLog=afterLog;
     cursorDiscard=afterDiscard;
