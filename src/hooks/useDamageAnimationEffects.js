@@ -131,7 +131,7 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
     }
 
     if (anim.type === 'SAN_DAMAGE' && anim.hitIndices?.length) {
-      const cancelSanDamageSound = playSanDamageSound?.({ impactDelayMs: 460 });
+      const cancelSanDamageSound = playSanDamageSound?.({ impactDelayMs: anim.impactAtMs ?? 460 });
       schedule(() => {
         const srcEl = document.querySelector('[data-pid="0"]');
         const srcR = srcEl

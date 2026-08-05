@@ -1,0 +1,144 @@
+import { expandCombinedStatAnimationSteps } from './statEvents';
+
+const GENERIC_STAT_STEP_TYPES = new Set([
+  'HP_DAMAGE',
+  'HP_HEAL',
+  'SAN_DAMAGE',
+  'SAN_HEAL',
+]);
+
+const COMBINED_STAT_STEP_TYPES = new Set([
+  'HP_SAN_DAMAGE',
+  'HP_SAN_HEAL',
+]);
+
+const PRESENTATION_ONLY_DEATH_TYPES = new Set([
+  'GUILLOTINE',
+  'PETRIFY_DEATH',
+]);
+
+const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key);
+
+function issue(code, stepIndex, details = {}) {
+  return { code, stepIndex, ...details };
+}
+
+function hasExplicitStatEvents(step) {
+  return Array.isArray(step?.statEvents) && step.statEvents.length > 0;
+}
+
+function hasStatTarget(step) {
+  return hasOwn(step, 'targetStats') && Array.isArray(step.targetStats);
+}
+
+function isFiniteStatPair(value) {
+  return value && Number.isFinite(value.hp) && Number.isFinite(value.san);
+}
+
+function isValidSlimePresentation(step) {
+  const presentation = step?.statPresentation;
+  return !!presentation &&
+    Number.isInteger(presentation.target) && presentation.target >= 0 &&
+    isFiniteStatPair(presentation.from) &&
+    isFiniteStatPair(presentation.to) &&
+    (step.targetPid == null || Number(step.targetPid) === presentation.target);
+}
+
+export function normalizeAnimationQueueSteps(queue = []) {
+  return expandCombinedStatAnimationSteps(queue)
+    .map(step => {
+      if (!step || typeof step !== 'object') return step;
+      const normalized = { ...step };
+      if (hasExplicitStatEvents(normalized) && hasOwn(normalized, 'targetStats')) {
+        delete normalized.targetStats;
+      } else if (GENERIC_STAT_STEP_TYPES.has(normalized.type) && hasStatTarget(normalized)) {
+        normalized.legacyStatTarget = true;
+      }
+      return normalized;
+    });
+}
+
+export function validateAnimationQueueSteps(queue = [], { allowCombined = false } = {}) {
+  const steps = Array.isArray(queue) ? queue : [];
+  const issues = [];
+  const stepIds = new Map();
+  const eventIds = new Map();
+
+  steps.forEach((step, stepIndex) => {
+    if (!step || typeof step !== 'object') {
+      issues.push(issue('INVALID_STEP', stepIndex));
+      return;
+    }
+
+    if (Number.isFinite(step.durationMs) && Number.isFinite(step.impactAtMs) && step.impactAtMs > step.durationMs) {
+      issues.push(issue('IMPACT_AFTER_DURATION', stepIndex, {
+        durationMs: step.durationMs,
+        impactAtMs: step.impactAtMs,
+      }));
+    }
+
+    if (!allowCombined && COMBINED_STAT_STEP_TYPES.has(step.type)) {
+      issues.push(issue('UNNORMALIZED_COMBINED_STAT_STEP', stepIndex, { type: step.type }));
+    }
+
+    const explicitStatEvents = hasExplicitStatEvents(step);
+    const targetStats = hasStatTarget(step);
+    if (explicitStatEvents && hasOwn(step, 'targetStats')) {
+      issues.push(issue('STAT_EVENTS_TARGET_STATS_CONFLICT', stepIndex, { type: step.type }));
+    }
+    if (explicitStatEvents && !GENERIC_STAT_STEP_TYPES.has(step.type)) {
+      issues.push(issue('UNAUTHORIZED_STAT_EVENTS', stepIndex, { type: step.type }));
+    }
+    if (targetStats && !GENERIC_STAT_STEP_TYPES.has(step.type) && !COMBINED_STAT_STEP_TYPES.has(step.type)) {
+      issues.push(issue('UNAUTHORIZED_TARGET_STATS', stepIndex, { type: step.type }));
+    }
+    if (hasOwn(step, 'statPresentation') && step.type !== 'TSG_SLIME_POP') {
+      issues.push(issue('UNAUTHORIZED_STAT_PRESENTATION', stepIndex, { type: step.type }));
+    }
+    if (PRESENTATION_ONLY_DEATH_TYPES.has(step.type) && (
+      explicitStatEvents || targetStats || hasOwn(step, 'statPresentation')
+    )) {
+      issues.push(issue('DEATH_PRESENTATION_WRITES_STATS', stepIndex, { type: step.type }));
+    }
+    if (step.type === 'TSG_SLIME_POP' && hasOwn(step, 'statPresentation') && !isValidSlimePresentation(step)) {
+      issues.push(issue('INVALID_SLIME_STAT_PRESENTATION', stepIndex));
+    }
+
+    if (step.id != null) {
+      if (stepIds.has(step.id)) {
+        issues.push(issue('DUPLICATE_STEP_ID', stepIndex, { id: step.id, firstStepIndex: stepIds.get(step.id) }));
+      } else {
+        stepIds.set(step.id, stepIndex);
+      }
+    }
+    (Array.isArray(step.statEvents) ? step.statEvents : []).forEach((event, eventIndex) => {
+      if (event?.id == null) return;
+      if (eventIds.has(event.id)) {
+        issues.push(issue('DUPLICATE_STAT_EVENT_ID', stepIndex, {
+          id: event.id,
+          eventIndex,
+          firstOccurrence: eventIds.get(event.id),
+        }));
+      } else {
+        eventIds.set(event.id, { stepIndex, eventIndex });
+      }
+    });
+  });
+
+  return issues;
+}
+
+export function prepareAnimationQueueSteps(queue = []) {
+  const sourceIssues = validateAnimationQueueSteps(queue, { allowCombined: true });
+  const steps = normalizeAnimationQueueSteps(queue);
+  const normalizedIssues = validateAnimationQueueSteps(steps);
+  const issueKey = value => JSON.stringify(value);
+  const seen = new Set();
+  const issues = [...sourceIssues, ...normalizedIssues].filter(value => {
+    const key = issueKey(value);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return { steps, issues };
+}

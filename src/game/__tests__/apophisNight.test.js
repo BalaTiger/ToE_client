@@ -57,6 +57,13 @@ describe('apophisNight', () => {
     });
 
     expect(res.apophisTargetEvent).toMatchObject({ roll: 4, changed: true, targetIdx: 2 });
+    expect(res.statePatch._visualEvents.at(-1)).toMatchObject({
+      type: 'apophisTarget',
+      legacySeq: res.apophisTargetEvent.seq,
+      actorIdx: 0,
+      selectedIdx: 1,
+      targetIdx: 2,
+    });
   });
 
   it('累计达到上限后黑夜结束', () => {

@@ -76,6 +76,9 @@ Pure logic modules with no React dependency. Important files include:
 - `multiplayerRemoteReplay.js` / `multiplayerTimeouts.js` - replay construction and timeout transforms
 - `multiplayerAiTakeover.js` - deterministic disconnect-takeover decisions
 - `animQueueCore.js` / `animQueueHelpers.js` / `animLogs.js` - animation queue and animation-log helpers
+- `animationTiming.js` - shared duration/impact resolution and pause-resumable playback cue compilation
+- `animationStepSchema.js` - animation-step normalization and playback-boundary validation
+- `animationQueueMachine.js` - explicit idle/playing/exiting/paused/committing queue lifecycle
 - `visualEvents.js` - visual-event metadata used by animation and sync
 - `statEvents.js` - HP/SAN event compilation, combined-effect normalization, presentation baselines, impact updates, and continuity validation
 - `tutorialScenario.js` / `softGuides.js` - tutorial and soft-guide state helpers
@@ -213,6 +216,12 @@ When changing extracted logic, prefer focused tests first:
 
 Then run `npm.cmd run build` for integration confidence.
 
+## Visual Event Transaction Boundary
+
+Rule resolution owns canonical `_visualEvents`; React entry points must not recreate turn-start, draw, target, inspection, or stat events from a post-resolution snapshot. `startNextTurn` now emits its turn-start/draw/stat events directly, and `visualEventTransactionCompiler.js` assigns a stable transaction ID, preserves event order as one atomic queue block, and validates required sequences such as throw-stone dice -> target -> projectile -> damage.
+
+`useAnimationQueue` is the confirmation boundary. A visual event ID enters the client-local consumed set only after its queue reaches commit; multiplayer receive/broadcast paths must not mark an event consumed merely because it was sent, received, or queued. Legacy `_xxxEvents` promotion and `buildAnimQueue(oldGs, newGs)` remain temporary compatibility inputs while the remaining rule producers are migrated, but canonical transaction steps take precedence whenever both forms are present.
+
 ## HP/SAN Presentation Boundary
 
 Authoritative HP/SAN remain in `gs.players`, but battle stat bars render from
@@ -221,6 +230,9 @@ Authoritative HP/SAN remain in `gs.players`, but battle stat bars render from
 - `statEvents.js` primes each affected resource from the first event's `from` value;
 - only `HP_DAMAGE`, `SAN_DAMAGE`, `HP_HEAL`, and `SAN_HEAL` may advance that resource to `to`;
 - combined HP/SAN effects are split into the corresponding generic steps at the playback boundary;
+- explicit stat steps carry `statEvents` as their sole target-value representation; legacy-only `targetStats` steps are marked `legacyStatTarget` during normalization and cannot coexist with `statEvents`;
+- animation steps are normalized and schema-validated before playback, including timing, stat-write authority, special slime transactions, and unique IDs;
+- the queue lifecycle follows `idle -> playing -> exiting -> committing -> idle`; pause preserves and restores the prior phase, and cue delivery is phase-guarded;
 - generic `visualSetupPatch`, `visualTimeline`, `VISUAL_LOCK`, and `STATE_PATCH` player snapshots must not write `displayStats`;
 - `GUILLOTINE` and `PETRIFY_DEATH` are presentation-only and do not change stat bars;
 - `TSG_SLIME_POP` with `statPresentation` is the sole special path: it commits slime-balance HP/SAN on the slime animation impact without damage/heal effects;

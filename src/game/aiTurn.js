@@ -54,7 +54,7 @@ import { buildApophisNightLog, getApophisNightForLevel, resolveApophisTarget } f
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { buildGodPowerBlockedLog, canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
-import { createBewitchGiftEvent, createGodPowerBlockedEvent, createSwapCardsEvent } from './visualEvents';
+import { createBewitchGiftEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent, createHuntResultEvent, createMultiplyVisualEvent, createSwapCardsEvent } from './visualEvents';
 import {
   getBestCaveDuelCardIndex,
   resolveCaveDuelOutcome,
@@ -476,21 +476,33 @@ export function aiStep(gs, opts = {}) {
   let preSkillLogs=[];
   let preSkillDiscard=null;
   const getReplayVisualEvents = (nextGs) => {
-    // startNextTurn deliberately writes an empty array after consuming the
-    // previous turn's effects.  Treat that as a tombstone, not as a missing
-    // value, otherwise effects such as earthquake leak into every later AI
-    // turn and their animations are replayed again.
+    const freshCurrentTurnEvents = (Array.isArray(gs?._visualEvents) ? gs._visualEvents : [])
+      .filter(event => event?.id
+        ? !incomingVisualEventIds.has(event.id)
+        : !incomingVisualEventRefs.has(event));
+    // startNextTurn now produces the next turn's own visual events in the rule
+    // layer. Preserve action events first, then append that next-turn
+    // transaction; never let incoming events from an older replay leak in.
     if (Object.prototype.hasOwnProperty.call(nextGs || {}, '_visualEvents')) {
-      if (Array.isArray(nextGs._visualEvents) && nextGs._visualEvents.length) return nextGs._visualEvents;
-      const freshCurrentTurnEvents = (Array.isArray(gs?._visualEvents) ? gs._visualEvents : [])
-        .filter(event => event?.id
-          ? !incomingVisualEventIds.has(event.id)
-          : !incomingVisualEventRefs.has(event));
-      return freshCurrentTurnEvents.length ? freshCurrentTurnEvents : null;
+      const nextTurnEvents = Array.isArray(nextGs._visualEvents) ? nextGs._visualEvents : [];
+      const combined = [...freshCurrentTurnEvents, ...nextTurnEvents]
+        .filter((event, index, events) => !event?.id || events.findIndex(candidate => candidate?.id === event.id) === index);
+      return combined.length ? combined : null;
     }
-    return Array.isArray(gs?._visualEvents) && gs._visualEvents.length
-      ? gs._visualEvents
+    return freshCurrentTurnEvents.length ? freshCurrentTurnEvents : null;
+  };
+  let unifiedReplayCacheState = null;
+  let unifiedReplayCache = null;
+  const getUnifiedReplayVisualEvents = nextGs => {
+    if (unifiedReplayCacheState === nextGs && unifiedReplayCache) return unifiedReplayCache;
+    const baseEvents = getReplayVisualEvents(nextGs) || [];
+    const huntEvents = aiHuntEvents.map(createHuntResultEvent).filter(Boolean);
+    const multiplyVisualEvent = animMultiplyEvent
+      ? createMultiplyVisualEvent(animMultiplyEvent)
       : null;
+    unifiedReplayCacheState = nextGs;
+    unifiedReplayCache = [...baseEvents, ...huntEvents, ...(multiplyVisualEvent ? [multiplyVisualEvent] : [])];
+    return unifiedReplayCache;
   };
 
   const buildReturnPack = (nextGs, P_afterAction, P_beforeEndTurnReplay = null) => ({
@@ -505,7 +517,7 @@ export function aiStep(gs, opts = {}) {
     ...(P_beforeEndTurnReplay ? { _playersBeforeEndTurnReplay: P_beforeEndTurnReplay } : {}),
     ...(aiHuntEvents.length ? { _aiHuntEvents: aiHuntEvents } : {}),
     ...(animMultiplyEvent ? { _animMultiplyEvent: animMultiplyEvent } : {}),
-    ...(getReplayVisualEvents(nextGs) ? { _visualEvents: getReplayVisualEvents(nextGs) } : {})
+    ...(getUnifiedReplayVisualEvents(nextGs).length ? { _visualEvents: getUnifiedReplayVisualEvents(nextGs) } : {})
   });
 
   const buildPendingSlimeBalanceState = (state, nextPlayers, nextDeck, nextDiscard, nextLog, extra = {}) => {
@@ -816,6 +828,7 @@ export function aiStep(gs, opts = {}) {
       const handGodAction=reserveForCultistBewitch?'discard':chooseAiGodEncounterAction(ct,hgc,P,false);
       const willWorship=handGodAction==='worship'||handGodAction==='convert'||handGodAction==='upgrade';
       if(willWorship){
+        const handWorshipPlayersBefore=copyPlayers(P);
         const worshipLogStart=L.length;
         P[ct].hand.splice(handGodIdx,1);
         if(P[ct].godName===hgc.godKey&&P[ct].godLevel<3){
@@ -843,10 +856,23 @@ export function aiStep(gs, opts = {}) {
         }
 
         P.forEach((p,i)=>{if(i!==ct&&p.godName===hgc.godKey){const abandoned=abandonGodFollower(i,gs.currentTurn,P,D,Disc,L,inspectionMeta);P=abandoned.P;D=abandoned.D;Disc=abandoned.Disc;L=abandoned.L;inspectionMeta=abandoned.inspectionMeta;ai=getAi();alive=getAlive();}});
+        const handWorshipEvent=createGodStatusChangedEvent({
+          playerIdx:ct,
+          playerName:P[ct].name,
+          godKey:P[ct].godName,
+          godLevel:P[ct].godLevel,
+          msgs:L.slice(worshipLogStart,worshipLogStart+1),
+          playersBefore:handWorshipPlayersBefore,
+          playersAfter:copyPlayers(P),
+        });
         playersBeforeSkillAction=copyPlayers(P);
         preSkillLogs=L.slice(worshipLogStart);
         preSkillDiscard=[...Disc];
-        gs={...gs,...inspectionMeta,...(handWorshipBlockedEvent?{_visualEvents:[handWorshipBlockedEvent,...(gs._visualEvents||[])]}:{})};
+        gs={...gs,...inspectionMeta,_visualEvents:[
+          ...(gs._visualEvents||[]),
+          ...(handWorshipEvent?[handWorshipEvent]:[]),
+          ...(handWorshipBlockedEvent?[handWorshipBlockedEvent]:[]),
+        ]};
         const ww=checkWin(P,gs._isMP);if(ww)return{...gs,players:P,deck:D,discard:Disc,log:L,...inspectionMeta,gameOver:ww};
       }
     }
@@ -953,10 +979,19 @@ export function aiStep(gs, opts = {}) {
     ? getBlackGoatMultiplyEvent(P, ct)
     : null;
   if (multiplyEvent && shouldAiMultiply({ gs, players: P, sourceIdx: ct, aiEffRole, ai: P[ct], aiSkillDecision, cultistBewitchPlan, huntAbandoned: newAbandoned })) {
+    const multiplyPlayersBefore = copyPlayers(P);
     const goatCard = createBlackGoatYoungCard();
     P[multiplyEvent.toIdx].hand.push(goatCard);
     L.push(`【繁衍】${P[ct].name} 将黑山羊幼仔传播给了 ${P[multiplyEvent.toIdx].name}`);
-    animMultiplyEvent = multiplyEvent;
+    animMultiplyEvent = {
+      ...multiplyEvent,
+      count: 1,
+      cards: [goatCard],
+      msgs: [L[L.length - 1]],
+      playersBefore: multiplyPlayersBefore,
+      playersAfter: copyPlayers(P),
+      discardAfter: [...Disc],
+    };
     gs = { ...gs, multiplyUsed: true, skillUsed: true, ...appendPublicCardGainTriggers(gs, P, multiplyEvent.toIdx, goatCard) };
     useSkill = false;
   }
@@ -1123,7 +1158,12 @@ export function aiStep(gs, opts = {}) {
                     afterDamageDiscard=[...Disc];
                     afterDamageLog=[...L];
                   }
-                  if (P[ti].godZone?.length) { Disc.push(...P[ti].godZone); P[ti].godZone = []; P[ti].godName = null; P[ti].godLevel = 0; }
+                  if (P[ti].godZone?.length) {
+                    const defeatedGodCards=[...P[ti].godZone];
+                    Disc.push(...defeatedGodCards);
+                    lootDiscardCards.push(...defeatedGodCards);
+                    P[ti].godZone = []; P[ti].godName = null; P[ti].godLevel = 0;
+                  }
                   aiHuntEvents.push({
                     apophisTargetEvent,
                     targetIdx:ti,
@@ -1453,7 +1493,7 @@ export function aiStep(gs, opts = {}) {
     _preSkillLogs:preSkillLogs,
     _preSkillDiscard:preSkillDiscard,
     _aiHuntEvents:aiHuntEvents,
-    ...(getReplayVisualEvents(nextGs) ? { _visualEvents: getReplayVisualEvents(nextGs) } : {}),
+    ...(getUnifiedReplayVisualEvents(nextGs).length ? { _visualEvents: getUnifiedReplayVisualEvents(nextGs) } : {}),
     _aiHandLimitDiscards:discardedCards,
     ...(discardedCards.length?{
       _aiHandLimitBeforePlayers:handLimitBeforePlayers,

@@ -6,10 +6,26 @@ import {
   getAiPreHuntActionSteps,
 } from '../animQueueCore';
 import { dedupeInferredDiscardTransfers } from '../animQueueHelpers';
-import { buildFreshStatVisualEvents, createCardEffectEvent, createEarthquakeEvent, createGodPowerBlockedEvent } from '../visualEvents';
+import { buildFreshStatVisualEvents, createCardEffectEvent, createEarthquakeEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent } from '../visualEvents';
 import { makeGodCard, makeGs, makePlayer } from './factory';
 
 describe('buildAnimQueue stat animations', () => {
+  it('uses distinct explicit events for consecutive worship and upgrade highlights', () => {
+    const initial = [makePlayer({ name: '你' }), makePlayer({ name: '贝拉' })];
+    const worshipped = [initial[0], { ...initial[1], godName: 'TSG', godLevel: 1 }];
+    const upgraded = [initial[0], { ...worshipped[1], godLevel: 2 }];
+    const worship = createGodStatusChangedEvent({ playerIdx: 1, godKey: 'TSG', godLevel: 1, playersBefore: initial, playersAfter: worshipped, msgs: ['贝拉 信仰了 蟾蜍之神'] });
+    const upgrade = createGodStatusChangedEvent({ playerIdx: 1, godKey: 'TSG', godLevel: 2, playersBefore: worshipped, playersAfter: upgraded, msgs: ['贝拉 从手牌升级邪神之力至 Lv.2'] });
+    const oldGs = makeGs({ players: initial, log: [] });
+    const newGs = makeGs({ players: upgraded, log: [...worship.msgs, ...upgrade.msgs], _visualEvents: [worship, upgrade] });
+
+    const highlights = buildAnimQueue(oldGs, newGs).filter(step => step.type === 'GOD_HIGHLIGHT');
+
+    expect(highlights).toHaveLength(2);
+    expect(highlights.map(step => step.visualEventId)).toEqual([worship.id, upgrade.id]);
+    expect(highlights.map(step => step.godLevel)).toEqual([1, 2]);
+  });
+
   it('显式回放其他角色因坠落被强制弃置的卡牌', () => {
     const fallCard = { id: 'fall-card', key: 'A1', name: '坠落', type: 'selfDamageDiscardHP' };
     const discardedCard = { id: 'forced-discard', key: 'B2', name: '地动山摇', type: 'allDiscard' };
@@ -1461,6 +1477,7 @@ describe('buildAiHuntEventAnimQueue', () => {
     const stolenA = { id: 'stolen-a', key: 'A1', name: '坠落' };
     const stolenB = { id: 'stolen-b', key: 'B1', name: '圣甲虫' };
     const leftover = { id: 'leftover', key: 'C1', name: '亡者军团' };
+    const defeatedGod = { id: 'defeated-god', key: 'GOD', name: '邪神牌', isGod: true };
     const beforePlayers = [
       makePlayer({ name: '你' }),
       makePlayer({ name: '卡洛斯', hp: 9, hand: [hunterDiscard] }),
@@ -1498,7 +1515,7 @@ describe('buildAiHuntEventAnimQueue', () => {
         '☠ 艾伦（邪祀者）倒下了！',
       ],
       afterPlayers,
-      afterResultDiscard: [hunterDiscard, leftover],
+      afterResultDiscard: [hunterDiscard, leftover, defeatedGod],
       beforeLog: ['旧日志'],
       afterLog: [
         '旧日志',
@@ -1516,7 +1533,7 @@ describe('buildAiHuntEventAnimQueue', () => {
         '卡洛斯 从 艾伦 的手牌中暗抽了一张！',
       ],
       lootTransferCount: 2,
-      lootDiscardCards: [leftover],
+      lootDiscardCards: [leftover, defeatedGod],
     }, '卡洛斯');
 
     const types = queue.map(step => step.type);
@@ -1538,6 +1555,12 @@ describe('buildAiHuntEventAnimQueue', () => {
     expect(deathIdx).toBeGreaterThan(-1);
     expect(lootIdx).toBeGreaterThan(deathIdx);
     expect(leftoverDiscardIdx).toBeGreaterThan(lootIdx);
+    expect(queue[leftoverDiscardIdx]).toMatchObject({
+      targetPid: 2,
+      count: 2,
+      cards: [leftover, defeatedGod],
+    });
+    expect(queue.filter(step => step.type === 'DISCARD' && step.targetPid === 2)).toHaveLength(1);
     expect(types[finalPatchIdx]).toBe('STATE_PATCH');
   });
 });

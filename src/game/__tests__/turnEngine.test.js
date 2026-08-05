@@ -808,6 +808,14 @@ describe('turnEngine stat events', () => {
 
     expect(result.P[1]).toMatchObject({ godName: 'NYA', godLevel: 1 });
     expect(result.msgs.some(msg => msg.includes('信仰了'))).toBe(true);
+    expect(result.statePatch._visualEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'godStatusChanged',
+        playerIdx: 1,
+        godKey: 'NYA',
+        godLevel: 1,
+      }),
+    ]));
   });
 
   it('回合开始的黑山羊幼仔伤害产出显式 stat events', () => {
@@ -1384,7 +1392,10 @@ describe('turnEngine stat events', () => {
 
     const result = startNextTurn(gs);
 
-    expect(result._visualEvents || []).toEqual([]);
+    expect(result._visualEvents || []).not.toContainEqual(staleStatEvent);
+    expect(result._visualEvents || []).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'turnStart', playerIdx: result.currentTurn }),
+    ]));
   });
 
   it('蛊惑强制改信烛九阴后立即点亮牌堆', () => {

@@ -464,6 +464,14 @@ describe('applyFx', () => {
       phaseOrder: 1,
     });
     expect(res.statEvents[0]).toMatchObject({ target: 1, phaseOrder: 2 });
+    expect(res.statePatch._visualEvents.at(-1)).toMatchObject({
+      type: 'throwStone',
+      sourceIdx: 0,
+      targetIdx: 1,
+      roll: 6,
+      damage: 5,
+      statEvents: [expect.objectContaining({ target: 1, phaseOrder: 2 })],
+    });
     randomSpy.mockRestore();
   });
 

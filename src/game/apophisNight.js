@@ -3,6 +3,7 @@ import { buildStatEvents } from './statEvents';
 import { copyPlayers, formatSanLoss } from './coreUtils';
 import { submitDamageEvents } from './effectEngine';
 import { hasGodPowerImmunity } from './godPowerImmunity';
+import { createApophisTargetVisualEvent } from './visualEvents';
 
 export function getApophisNightForLevel(level = 1) {
   const idx = Math.max(0, Math.min(2, (level || 1) - 1));
@@ -73,6 +74,26 @@ export function resolveApophisTarget({
     L = [...L, '【黑夜】选中目标累计12次，黑夜结束'];
   }
 
+  const apophisTargetEvent = {
+    seq: eventSeq,
+    actorIdx,
+    actorName: P[actorIdx]?.name || '',
+    selectedIdx,
+    selectedName: P[selectedIdx]?.name || '',
+    targetIdx,
+    targetName: P[targetIdx]?.name || '',
+    roll,
+    threshold: night.threshold,
+    changed: targetIdx !== selectedIdx,
+    label,
+    log: eventLog,
+    apophisNight: nextNight,
+    statSeq,
+  };
+  const apophisVisualEvent = createApophisTargetVisualEvent(apophisTargetEvent, {
+    playersAfter: P,
+    statEvents: statPatch._statEvents?.filter(event => event?.seq === statSeq) || [],
+  });
   return {
     players: P,
     deck: D,
@@ -80,41 +101,15 @@ export function resolveApophisTarget({
     log: L,
     targetIdx,
     apophisNight: nextNight,
-    apophisTargetEvent: {
-      seq: eventSeq,
-      actorIdx,
-      actorName: P[actorIdx]?.name || '',
-      selectedIdx,
-      selectedName: P[selectedIdx]?.name || '',
-      targetIdx,
-      targetName: P[targetIdx]?.name || '',
-      roll,
-      threshold: night.threshold,
-      changed: targetIdx !== selectedIdx,
-      label,
-      log: eventLog,
-      apophisNight: nextNight,
-      statSeq,
-    },
+    apophisTargetEvent,
     statePatch: {
       apophisNight: nextNight,
       _apophisTargetSeq: eventSeq,
-      _apophisTargetEvent: {
-        seq: eventSeq,
-        actorIdx,
-        actorName: P[actorIdx]?.name || '',
-        selectedIdx,
-        selectedName: P[selectedIdx]?.name || '',
-        targetIdx,
-        targetName: P[targetIdx]?.name || '',
-        roll,
-        threshold: night.threshold,
-        changed: targetIdx !== selectedIdx,
-        label,
-        log: eventLog,
-        apophisNight: nextNight,
-        statSeq,
-      },
+      _apophisTargetEvent: apophisTargetEvent,
+      _visualEvents: [
+        ...(gs?._visualEvents || []),
+        ...(apophisVisualEvent ? [apophisVisualEvent] : []),
+      ],
       ...statPatch,
     },
   };

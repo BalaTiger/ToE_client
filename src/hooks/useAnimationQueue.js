@@ -1,13 +1,35 @@
 import { useEffect, useRef, useState } from 'react';
 import { dedupeInferredDiscardTransfers } from '../game/animQueueHelpers';
-import { getVisualEventIdsFromState, markConsumedVisualEvents } from '../game/visualEvents';
+import { ensureVisualEventState, markConsumedVisualEvents } from '../game/visualEvents';
 import { attachApophisNightTimeline, mergeApophisTargetQueue } from '../game/apophisAnimQueue';
+import { buildAnimQueue } from '../game/animQueueCore';
 import {
   applyStatAnimationImpact,
-  expandCombinedStatAnimationSteps,
   primeDisplayStatsForStatQueue,
   validateStatAnimationContinuity,
 } from '../game/statEvents';
+import {
+  prepareAnimationQueueSteps,
+  validateAnimationQueueSteps,
+} from '../game/animationStepSchema';
+import {
+  ANIMATION_QUEUE_EVENT,
+  ANIMATION_QUEUE_PHASE,
+  canFireAnimationCue,
+  createAnimationQueueState,
+  transitionAnimationQueue,
+} from '../game/animationQueueMachine';
+import {
+  advanceAnimationElapsed,
+  buildAnimationPlaybackCues,
+  getPendingAnimationCues,
+  resolveAnimationStepTiming,
+} from '../game/animationTiming';
+import {
+  compileRuleVisualEventsToAnimTransaction,
+  getAnimationQueueVisualEventIds,
+  mergeAnimationTransactionQueue,
+} from '../game/visualEventTransactionCompiler';
 
 export function useAnimationQueue({
   gs,
@@ -43,7 +65,20 @@ export function useAnimationQueue({
   const animQueueRef = useRef([]);
   const pendingGsRef = useRef(null);
   const animCallbackRef = useRef(null);
-  const visualTimelineTimersRef = useRef([]);
+  const playbackRef = useRef({ id: null, elapsedMs: 0, runningSinceMs: null, firedCueIds: new Set() });
+  const playbackIdRef = useRef(0);
+  const queueLifecycleRef = useRef(createAnimationQueueState());
+  const pendingVisualEventIdsRef = useRef([]);
+
+  function sendQueueLifecycleEvent(type) {
+    queueLifecycleRef.current = transitionAnimationQueue(queueLifecycleRef.current, type);
+    return queueLifecycleRef.current;
+  }
+
+  function reportSchemaIssues(stage, issues = []) {
+    if (!issues.length || !import.meta.env?.DEV) return;
+    console.error(`[animation-schema] ${stage}`, issues);
+  }
 
   function revealAnimLogs(animStep) {
     if (!animStep) return;
@@ -52,9 +87,31 @@ export function useAnimationQueue({
     }
   }
 
-  function clearVisualTimelineTimers() {
-    visualTimelineTimersRef.current.forEach(clearTimeout);
-    visualTimelineTimersRef.current = [];
+  function commitDeathPresentation(animStep) {
+    if (animStep?.type !== 'DEATH' || !Array.isArray(animStep.hitIndices) || !animStep.hitIndices.length) return;
+    const deathIndices = new Set(animStep.hitIndices);
+    const clearDeaths = players => (players || []).map((player, index) => (
+      deathIndices.has(index) && player?._pendingAnimDeath
+        ? { ...player, _pendingAnimDeath: false }
+        : player
+    ));
+
+    // DEATH begins after the guillotine/petrify effect. Dim the panel when
+    // its death broadcast appears, without waiting for a chained action.
+    setGs(prev => prev?.players ? { ...prev, players: clearDeaths(prev.players) } : prev);
+    if (setVisualPlayersOverride) {
+      setVisualPlayersOverride(prev => prev ? clearDeaths(prev) : prev);
+    }
+    visualStateLocks.updatePlayers?.(clearDeaths);
+    if (pendingGsRef.current?.players) {
+      pendingGsRef.current = {
+        ...pendingGsRef.current,
+        players: clearDeaths(pendingGsRef.current.players),
+      };
+    }
+    animQueueRef.current = animQueueRef.current.map(step => (
+      step?.players ? { ...step, players: clearDeaths(step.players) } : step
+    ));
   }
 
   function applyVisualPatch(patch = {}) {
@@ -77,20 +134,6 @@ export function useAnimationQueue({
     if (Object.prototype.hasOwnProperty.call(patch, 'turnHighlight')) {
       visualStateLocks.lock({ turnHighlight: patch.turnHighlight });
     }
-  }
-
-  function scheduleVisualTimeline(animStep) {
-    clearVisualTimelineTimers();
-    const timeline = Array.isArray(animStep?.visualTimeline) ? animStep.visualTimeline : [];
-    timeline.forEach(item => {
-      const at = Math.max(0, item?.atMs || 0);
-      const patch = item?.patch || {};
-      if (at <= 0) {
-        applyVisualPatch(patch);
-        return;
-      }
-      visualTimelineTimersRef.current.push(setTimeout(() => applyVisualPatch(patch), at));
-    });
   }
 
   function applyStatePatch(prev, patchStep) {
@@ -181,9 +224,12 @@ export function useAnimationQueue({
         });
         advanceQueue();
       } else if (next.type === 'CTH_CONTINUE') {
+        sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.COMMIT_STARTED);
         setAnim(null);
         const currentGs = pendingGsRef.current || gs;
         pendingGsRef.current = null;
+        animCallbackRef.current = null;
+        sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.QUEUE_COMPLETED);
         const cthDrawsRemaining = next.data?.cthDrawsRemaining || 0;
         if (cthDrawsRemaining > 0) {
           cthContinueRestDraws(currentGs);
@@ -199,10 +245,13 @@ export function useAnimationQueue({
         const displayStep = next.type === 'YOUR_TURN' && nextTurnHighlight === 0
           ? { ...next, local: true }
           : next;
+        sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.STEP_ADVANCED);
         setAnim(displayStep);
         revealAnimLogs(displayStep);
+        commitDeathPresentation(displayStep);
       }
     } else {
+      sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.COMMIT_STARTED);
       const next = pendingGsRef.current;
       const normalizedNext = normalizePendingState(next);
       if (next?.phase === 'AI_TURN' || normalizedNext?.phase === 'AI_TURN') {
@@ -219,10 +268,11 @@ export function useAnimationQueue({
       }
       const callback = animCallbackRef.current;
       if (next?.log) syncVisibleLog(next.log);
-      const nextVisualEventIds = getVisualEventIdsFromState(next);
+      const nextVisualEventIds = pendingVisualEventIdsRef.current;
       if (nextVisualEventIds.length && consumedVisualEventIdsRef?.current) {
         markConsumedVisualEvents(consumedVisualEventIdsRef.current, nextVisualEventIds.map(id => ({ id, type: 'consumed' })));
       }
+      pendingVisualEventIdsRef.current = [];
       if (callback) {
         const pendingBeforeCallback = pendingGsRef.current;
         const callbackBeforeCallback = animCallbackRef.current;
@@ -254,61 +304,89 @@ export function useAnimationQueue({
       }
       pendingGsRef.current = null;
       animCallbackRef.current = null;
-      clearVisualTimelineTimers();
       visualStateLocks.clear({turnHighlight:true,players:true,zhuLight:true,hiddenZhuCardId:true});
       if (setVisualPlayersOverride) setVisualPlayersOverride(null);
       setAnim(null);
+      sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.QUEUE_COMPLETED);
     }
   }
 
   useEffect(() => {
-    if (!anim || paused) return;
+    if (!anim) return;
     if (anim.type === 'EARTHQUAKE') {
       try { console.log('[EQ-DEBUG] anim EARTHQUAKE became active: discardEvents =', anim.discardEvents?.length, ', visualTimeline =', anim.visualTimeline?.length, ', durationMs =', anim.durationMs); } catch { /* noop */ }
     }
-    scheduleVisualTimeline(anim);
-    const isCard = anim.type === 'DRAW_CARD';
-    const dur = Number.isFinite(anim.durationMs)
-      ? anim.durationMs
-      : isCard
-        ? CARD_REVEAL_DURATION
-        : Math.round((ANIM_DURATION[anim.type] || ANIM_DURATION.default) * ANIM_SPEED_SCALE);
-    let gapTimer = null;
-    let statImpactTimer = null;
-    if (setDisplayStats) {
-      statImpactTimer = setTimeout(() => {
-        setDisplayStats(prev => applyStatAnimationImpact(prev, anim));
-      }, 350);
+    const playbackId = anim._playbackId || anim;
+    if (playbackRef.current.id !== playbackId) {
+      playbackRef.current = { id: playbackId, elapsedMs: 0, runningSinceMs: null, firedCueIds: new Set() };
     }
-    const t1 = setTimeout(() => {
-      if (isCard) {
-        gapTimer = setTimeout(advanceQueue, ANIM_STEP_GAP);
-      } else {
+    const playback = playbackRef.current;
+    if (paused) {
+      sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.PAUSED);
+      return;
+    }
+    sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.RESUMED);
+    playback.runningSinceMs = Date.now();
+    const timers = [];
+    const fireCue = cue => {
+      const active = playbackRef.current;
+      if (
+        active.id !== playbackId ||
+        active.firedCueIds.has(cue.id) ||
+        !canFireAnimationCue(queueLifecycleRef.current, cue.kind)
+      ) return;
+      active.firedCueIds.add(cue.id);
+      if (cue.kind === 'visual') applyVisualPatch(cue.patch);
+      else if (cue.kind === 'impact' && setDisplayStats) {
+        setDisplayStats(prev => applyStatAnimationImpact(prev, anim));
+      } else if (cue.kind === 'exit') {
+        sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.STEP_EXITED);
         setAnimExiting(true);
-        gapTimer = setTimeout(advanceQueue, ANIM_STEP_GAP);
+      } else if (cue.kind === 'advance') {
+        advanceQueue();
       }
-    }, dur);
+    };
+    const cues = getPendingAnimationCues(
+      buildAnimationPlaybackCues(anim, ANIM_STEP_GAP),
+      playback.elapsedMs,
+      playback.firedCueIds,
+    );
+    cues.forEach(cue => {
+      timers.push(setTimeout(() => fireCue(cue), cue.delayMs));
+    });
     return () => {
-      clearTimeout(t1);
-      if (statImpactTimer) clearTimeout(statImpactTimer);
-      if (gapTimer) clearTimeout(gapTimer);
-      clearVisualTimelineTimers();
+      timers.forEach(clearTimeout);
+      const active = playbackRef.current;
+      if (active.id === playbackId && Number.isFinite(active.runningSinceMs)) {
+        active.elapsedMs = advanceAnimationElapsed(active.elapsedMs, active.runningSinceMs, Date.now());
+        active.runningSinceMs = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anim, paused]);
 
-  function triggerAnimQueue(queue, nextGs, callback) {
+  function triggerAnimQueue(queue, nextGs, callback, transactionMeta = null) {
     if (Array.isArray(queue) && queue.some(s => s?.type === 'EARTHQUAKE')) {
       try { console.log('[EQ-DEBUG] triggerAnimQueue received queue =', queue.map(s => s.type), '| hasCallback =', !!callback, '| nextGs.phase =', nextGs?.phase); } catch { /* noop */ }
     }
     // Bespoke target-action queues do not all originate from buildAnimQueue.
     // Normalize at the common playback boundary so the black-night roll is
     // always shown before the selected action's own visual effects.
+    const transactionState = nextGs ? ensureVisualEventState(nextGs) : null;
+    const ruleTransaction = transactionState
+      ? compileRuleVisualEventsToAnimTransaction(transactionState, null, {
+        consumedEventIds: consumedVisualEventIdsRef?.current,
+        buildAnimQueue,
+      })
+      : null;
+    const transactionQueue = mergeAnimationTransactionQueue(queue, ruleTransaction);
     const apophisOrderedQueue = nextGs
-      ? mergeApophisTargetQueue(queue, gs, nextGs)
-      : queue;
+      ? mergeApophisTargetQueue(transactionQueue, gs, nextGs)
+      : transactionQueue;
+    const schemaPreparation = prepareAnimationQueueSteps(dedupeInferredDiscardTransfers(apophisOrderedQueue));
+    reportSchemaIssues('input normalization failed', schemaPreparation.issues);
     const normalizedQueue = attachApophisNightTimeline(
-      addDrawBackgroundCameraPrelude(expandCombinedStatAnimationSteps(dedupeInferredDiscardTransfers(apophisOrderedQueue))),
+      addDrawBackgroundCameraPrelude(schemaPreparation.steps),
       gs?.apophisNight,
       nextGs?.apophisNight,
     );
@@ -363,7 +441,19 @@ export function useAnimationQueue({
     } : callback;
 
     visibleLogAuthorityRef.current = Array.isArray(nextGs?.log) ? nextGs.log : (Array.isArray(visibleLogAuthorityRef.current) ? visibleLogAuthorityRef.current : []);
-    const preparedQueue = prepareAnimQueueLogs(normalizedQueue, nextGs, visibleLogRef.current);
+    const timedQueue = normalizedQueue.map(step => resolveAnimationStepTiming(step, {
+      durationByType: ANIM_DURATION,
+      speedScale: ANIM_SPEED_SCALE,
+      cardRevealDuration: CARD_REVEAL_DURATION,
+    }));
+    reportSchemaIssues('timed queue validation failed', validateAnimationQueueSteps(timedQueue));
+    const preparedQueue = prepareAnimQueueLogs(timedQueue, nextGs, visibleLogRef.current)
+      .map(step => ({ ...step, _playbackId: ++playbackIdRef.current }));
+    pendingVisualEventIdsRef.current = [...new Set([
+      ...getAnimationQueueVisualEventIds(preparedQueue),
+      ...(Array.isArray(ruleTransaction?.eventIds) ? ruleTransaction.eventIds : []),
+      ...(Array.isArray(transactionMeta?.eventIds) ? transactionMeta.eventIds : []),
+    ].filter(Boolean))];
     const continuityIssues = validateStatAnimationContinuity(preparedQueue);
     if (continuityIssues.length && import.meta.env?.DEV) {
       console.warn('[stat-presentation] discontinuous stat animation queue', continuityIssues);
@@ -387,6 +477,10 @@ export function useAnimationQueue({
       });
     }
     if (!playableQueue.length) {
+      if (queueLifecycleRef.current.phase !== ANIMATION_QUEUE_PHASE.IDLE) {
+        sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.INTERRUPTED);
+      }
+      sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.QUEUE_STARTED);
       pendingGsRef.current = nextGs;
       animQueueRef.current = [];
       animCallbackRef.current = wrappedCallback;
@@ -396,6 +490,10 @@ export function useAnimationQueue({
     const firstTurnHighlight = resolveTurnHighlightForStep(playableQueue[0], nextGs, gs?.players || []);
     if (firstTurnHighlight != null) visualStateLocks.lock({turnHighlight:firstTurnHighlight});
     if (playableQueue[0].visualSetupPatch) applyVisualPatch(playableQueue[0].visualSetupPatch);
+    if (queueLifecycleRef.current.phase !== ANIMATION_QUEUE_PHASE.IDLE) {
+      sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.INTERRUPTED);
+    }
+    sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.QUEUE_STARTED);
     pendingGsRef.current = nextGs;
     animQueueRef.current = [...playableQueue.slice(1)];
     animCallbackRef.current = wrappedCallback;
@@ -404,6 +502,7 @@ export function useAnimationQueue({
       : playableQueue[0];
     setAnim(firstStep);
     revealAnimLogs(firstStep);
+    commitDeathPresentation(firstStep);
   }
 
   return {
@@ -414,6 +513,8 @@ export function useAnimationQueue({
     animQueueRef,
     pendingGsRef,
     animCallbackRef,
+    pendingVisualEventIdsRef,
+    queueLifecycleRef,
     triggerAnimQueue,
     advanceQueue,
   };

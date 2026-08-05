@@ -301,8 +301,10 @@ describe('multiplayer remote replay executor', () => {
     expect(ctx.triggerAnimQueue).toHaveBeenCalledWith(
       [expect.objectContaining({ type: 'ENDLESS_CORRIDOR_TUNNEL' }), expect.objectContaining({ type: 'STATE_PATCH' })],
       expect.objectContaining({ _visualEvents: [] }),
+      undefined,
+      { eventIds: [replayEvent.id] },
     );
-    expect(ctx.consumedVisualEventIdsRef.current).toContain(replayEvent.id);
+    expect(ctx.consumedVisualEventIdsRef.current).not.toContain(replayEvent.id);
   });
 
   it('buffers animated packets while another replay is active', () => {

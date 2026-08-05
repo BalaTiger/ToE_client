@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../game/coreUtils';
 import { derotateGs } from '../game/rotateState';
-import { markConsumedVisualEvents, pruneConsumedVisualEvents } from '../game/visualEvents';
+import { pruneConsumedVisualEvents } from '../game/visualEvents';
 
 const WINNER_ROLES = new Set([ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST]);
 
@@ -164,9 +164,6 @@ export function useMultiplayerStateBroadcast({
     if (!emitMultiplayerStateBroadcast({ socket: socketRef.current, broadcast })) return;
 
     if (broadcast.clearLocalVisualEvents) {
-      if (broadcast.freshVisualEvents.length) {
-        markConsumedVisualEvents(consumedVisualEventIdsRef.current, broadcast.freshVisualEvents);
-      }
       receivedGsRef.current = true;
       setGs(prev => prev ? { ...prev, _visualEvents: [] } : prev);
     }

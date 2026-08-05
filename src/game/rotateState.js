@@ -304,10 +304,16 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
     if (event?.type === 'timedOutDrawDiscard') return rotateTimedOutDrawDiscardEvent(event, rotateIndex);
     if (event?.type === 'earthquake' || event?.type === 'cardEffect') return rotateCardEffectVisualEvent(event, rotateIndex, myIndex);
     if (event?.type === 'endlessCorridorReplay' || event?.type === 'animTransaction') return rotateEndlessCorridorReplayVisualEvent(event, rotateIndex, myIndex);
-    if (event?.type === 'turnStart' || event?.type === 'drawCard' || event?.type === 'handLimitDiscard' || event?.type === 'tsgSlimePop') {
+    if (event?.type === 'turnStart' || event?.type === 'drawCard' || event?.type === 'handLimitDiscard' || event?.type === 'tsgSlimePop' || event?.type === 'godStatusChanged') {
       return {
         ...event,
         playerIdx: event.playerIdx != null ? rotateIndex(event.playerIdx) : event.playerIdx,
+        ...(event?.type === 'godStatusChanged' && Array.isArray(event.playersBefore)
+          ? { playersBefore: rotatePlayersArray(event.playersBefore, myIndex) }
+          : {}),
+        ...(event?.type === 'godStatusChanged' && Array.isArray(event.playersAfter)
+          ? { playersAfter: rotatePlayersArray(event.playersAfter, myIndex) }
+          : {}),
       };
     }
     if (event?.type === 'huntResult') {
@@ -332,6 +338,36 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
     if (event?.type === 'statEvents') {
       return {
         ...event,
+        statEvents: rotateStatEvents(event.statEvents, rotateIndex, myIndex),
+      };
+    }
+    if (event?.type === 'throwStone') {
+      return {
+        ...event,
+        sourceIdx: event.sourceIdx != null ? rotateIndex(event.sourceIdx) : event.sourceIdx,
+        targetIdx: event.targetIdx != null ? rotateIndex(event.targetIdx) : event.targetIdx,
+        playersBefore: rotatePlayersArray(event.playersBefore, myIndex),
+        playersAfter: rotatePlayersArray(event.playersAfter, myIndex),
+        statEvents: rotateStatEvents(event.statEvents, rotateIndex, myIndex),
+      };
+    }
+    if (event?.type === 'apophisTarget') {
+      return {
+        ...event,
+        actorIdx: event.actorIdx != null ? rotateIndex(event.actorIdx) : event.actorIdx,
+        selectedIdx: event.selectedIdx != null ? rotateIndex(event.selectedIdx) : event.selectedIdx,
+        targetIdx: event.targetIdx != null ? rotateIndex(event.targetIdx) : event.targetIdx,
+        playersBefore: rotatePlayersArray(event.playersBefore, myIndex),
+        playersAfter: rotatePlayersArray(event.playersAfter, myIndex),
+        statEvents: rotateStatEvents(event.statEvents, rotateIndex, myIndex),
+      };
+    }
+    if (event?.type === 'inspection') {
+      return {
+        ...event,
+        target: event.target != null ? rotateIndex(event.target) : event.target,
+        beforePlayers: rotatePlayersArray(event.beforePlayers, myIndex),
+        afterPlayers: rotatePlayersArray(event.afterPlayers, myIndex),
         statEvents: rotateStatEvents(event.statEvents, rotateIndex, myIndex),
       };
     }

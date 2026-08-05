@@ -7,7 +7,7 @@ import {
   MP_REMOTE_REPLAY,
 } from '../game/multiplayerRemoteReplay';
 import { rotateGsForViewer } from '../game/rotateState';
-import { getVisualEventIdsFromState, markConsumedVisualEvents } from '../game/visualEvents';
+import { getVisualEventIdsFromState } from '../game/visualEvents';
 import { getZhuTopGuard } from '../game/zhuPower';
 
 const ANIMATED_REPLAY_TYPES = new Set([
@@ -107,20 +107,20 @@ function maskApophisBadgeForReplayStart(replayAction, latestState) {
   };
 }
 
+function triggerReplayAnimationQueue(context, replayAction, queue) {
+  const eventIds = replayAction?.consumedVisualEventIds || [];
+  if (eventIds.length) {
+    context.triggerAnimQueue(queue, replayAction.pendingGs, undefined, { eventIds });
+  } else {
+    context.triggerAnimQueue(queue, replayAction.pendingGs);
+  }
+}
+
 export function applyMultiplayerReplayAction(
   replayAction,
   rotatedState,
   context
 ) {
-  if (replayAction?.consumedVisualEventIds?.length) {
-    markConsumedVisualEvents(
-      context.consumedVisualEventIdsRef.current,
-      replayAction.consumedVisualEventIds.map(id => ({
-        id,
-        type: 'consumed',
-      }))
-    );
-  }
   if (replayAction?.type === MP_REMOTE_REPLAY.ROLE_REVEAL) {
     context.mpRoleRevealedRef.current = true;
     context.mpOpeningRoleRevealPendingRef.current = true;
@@ -134,15 +134,14 @@ export function applyMultiplayerReplayAction(
     return;
   }
   if (replayAction?.type === MP_REMOTE_REPLAY.DICE_ROLL) {
-    context.setGs(maskApophisBadgeForReplayStart(
+    const maskedGs = maskApophisBadgeForReplayStart(
       replayAction,
       context.latestGsRef.current
-    ));
+    );
+    context.setGs(maskedGs);
     context.receivedGsRef.current = true;
     context.suppressNextBroadcastRef.current = true;
-    context.pendingGsRef.current = replayAction.pendingGs;
-    context.animQueueRef.current = [];
-    context.setAnim(replayAction.anim);
+    triggerReplayAnimationQueue(context, replayAction, [replayAction.anim].filter(Boolean));
     return;
   }
   if (replayAction?.type === MP_REMOTE_REPLAY.ANIM_QUEUE) {
@@ -156,10 +155,7 @@ export function applyMultiplayerReplayAction(
     ));
     context.receivedGsRef.current = true;
     context.suppressNextBroadcastRef.current = true;
-    context.triggerAnimQueue(
-      replayAction.queue,
-      replayAction.pendingGs
-    );
+    triggerReplayAnimationQueue(context, replayAction, replayAction.queue);
     return;
   }
   if (replayAction?.type === MP_REMOTE_REPLAY.START_ANIM) {
@@ -177,9 +173,10 @@ export function applyMultiplayerReplayAction(
     // queue normalization such as DRAW_BACKGROUND_CAMERA_PRE while remote
     // viewers received it through ANIM_QUEUE. Route both replay shapes through
     // the same entry point to keep every client on an identical timeline.
-    context.triggerAnimQueue(
+    triggerReplayAnimationQueue(
+      context,
+      replayAction,
       [replayAction.anim, ...(replayAction.queue || [])].filter(Boolean),
-      replayAction.pendingGs
     );
     return;
   }

@@ -31,7 +31,14 @@ import { clearExpiredProliferatingZ } from './proliferatingZ';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
 import { drawCardDecisionText, markBlindZoneCard, shouldBlindZoneDecision } from './blindZoneDecision';
 import { clearExpiredTurnScopedEffects } from './turnScopedEffects';
-import { createGodPowerBlockedEvent, createTsathogguaSlimePopEvent } from './visualEvents';
+import {
+  buildFreshStatVisualEvents,
+  buildTurnStartDrawVisualEvents,
+  createGodPowerBlockedEvent,
+  createGodStatusChangedEvent,
+  createTsathogguaSlimeGrantEvent,
+  createTsathogguaSlimePopEvent,
+} from './visualEvents';
 import { advanceGodEncounter, formatGodEncounterProgress, getLatestGodEncounterProgress } from './balancePatches';
 
 function appendStatEventsToInspectionMeta(inspectionMeta, beforePlayers, afterPlayers, logs, reason) {
@@ -358,6 +365,11 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
   const msgs = []; const godKey = godCard.godKey;
   let statePatch = {};
   const visualEvents = [];
+  const godStatusPlayersBefore = copyPlayers(P);
+  const godStatusBefore = {
+    godName: P[ci]?.godName || null,
+    godLevel: P[ci]?.godLevel || 0,
+  };
   let inspectionMeta = makeInspectionMeta(gs);
   P = P.map(p => ({ ...p, godZone: [...(p.godZone || [])] })); // shallow copy godZone arrays
   const hadWinnerAtSettlementStart = !!checkWin(P, gs?._isMP);
@@ -467,6 +479,28 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     Disc.push({ ...godCard }); msgs.push(`${P[ci].name} 放弃了邪神的馈赠`);
   }
   let zBase = { ...gs, ...statePatch };
+  const godStatusAfter = {
+    godName: P[ci]?.godName || null,
+    godLevel: P[ci]?.godLevel || 0,
+  };
+  if (godStatusAfter.godName && (
+    godStatusAfter.godName !== godStatusBefore.godName ||
+    godStatusAfter.godLevel !== godStatusBefore.godLevel
+  )) {
+    const worshipMsgs = msgs.filter(line => typeof line === 'string' && (
+      line.includes('信仰') || line.includes('改信') || line.includes('邪神之力升至')
+    ));
+    const godStatusEvent = createGodStatusChangedEvent({
+      playerIdx: ci,
+      playerName: P[ci]?.name,
+      godKey: godStatusAfter.godName,
+      godLevel: godStatusAfter.godLevel,
+      msgs: worshipMsgs.slice(0, 1),
+      playersBefore: godStatusPlayersBefore,
+      playersAfter: copyPlayers(P),
+    });
+    if (godStatusEvent) visualEvents.unshift(godStatusEvent);
+  }
   if (!settlementHasNewWinner()) {
     proliferatingZGainEvents.forEach(event => {
       const patch = appendPublicCardGainTriggers(zBase, P, event.ownerIdx, event.cards);
@@ -1272,7 +1306,7 @@ export function continueTurnStartAfterDamageReaction(state) {
   };
 }
 
-export function startNextTurn(gs, opts = {}) {
+function resolveNextTurnState(gs, opts = {}) {
   const { isDebugMode = false, allAi = false, isAiControlled = null } = opts;
   const shouldUseAiController = (playerIndex) => (
     allAi || (typeof isAiControlled === 'function' && !!isAiControlled(playerIndex, gs))
@@ -1320,6 +1354,8 @@ export function startNextTurn(gs, opts = {}) {
   const tsgSlimeGrant = skipEndTurnTsgSlimeGrant ? null : grantTsathogguaSlimeAtEndTurn(P, gs.currentTurn, L, visualEvents);
   if (tsgSlimeGrant) {
     tsgSlimeGrantEvents.push(tsgSlimeGrant);
+    const grantVisualEvent = createTsathogguaSlimeGrantEvent(tsgSlimeGrant);
+    if (grantVisualEvent) visualEvents.push(grantVisualEvent);
     const proliferatingZPatch = appendPublicCardGainTriggers(gs, P, tsgSlimeGrant.ownerIdx, tsgSlimeGrant.cards);
     if (proliferatingZPatch.proliferatingZQueue) {
       gs = { ...gs, proliferatingZQueue: proliferatingZPatch.proliferatingZQueue };
@@ -1452,7 +1488,7 @@ export function startNextTurn(gs, opts = {}) {
         };
       }
       if (next === 0 && cthRestDraws.length > 0) {
-        const nextGs = startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner }, opts);
+        const nextGs = resolveNextTurnState({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner }, opts);
         return { ...nextGs, zhuLight: nextGs.zhuLight ?? zhuLight, _cthRestDraws: cthRestDraws, _cthRestDrawLogs: cthRestDrawLogs, _playersBeforeCthDraws: _P_beforeCthDraws };
       }
     }
@@ -1473,7 +1509,7 @@ export function startNextTurn(gs, opts = {}) {
       afterInspectionSeq: inspectionMeta?._inspectionSeq || skippedTurnBeforeInspectionSeq,
       cthReplay: skippedTurnCthReplay,
     };
-    return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents.slice(inheritedGodPowerBlockedEventCount), _carrySkippedTurnReplays: [...inheritedSkippedTurnReplays, skippedTurnReplay] }, opts);
+    return resolveNextTurnState({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents.slice(inheritedGodPowerBlockedEventCount), _carrySkippedTurnReplays: [...inheritedSkippedTurnReplays, skippedTurnReplay] }, opts);
   }
   // 翻面跳过回合没有回合开始/摸牌/行动/结束阶段，因此所有“下一回合”
   // 状态都只在角色真正进入正常回合时结转或到期。
@@ -1999,4 +2035,32 @@ export function startNextTurn(gs, opts = {}) {
     }
     return { ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, drawReveal: null, selectedCard: null, huntAbandoned: [], _aiDrawnCard: res.drawnCard ?? null, _drawnCard: res.drawnCard ?? null, _discardedDrawnCard: !!res.discardedDrawnCard, _playersBeforeThisDraw: _P_beforeDraw, _turnKey: (gs._turnKey || 0) + 1, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}), phase: nextPhase, abilityData: nextAbilityData, globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) };
   }
+}
+
+function maxKnownStatEventSeq(state) {
+  const explicit = Number.isFinite(state?._statEventSeq) ? state._statEventSeq : 0;
+  const fromStats = (Array.isArray(state?._statEvents) ? state._statEvents : [])
+    .reduce((max, event) => Number.isFinite(event?.seq) ? Math.max(max, event.seq) : max, 0);
+  const fromVisualEvents = (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
+    .flatMap(event => Array.isArray(event?.statEvents) ? event.statEvents : [])
+    .reduce((max, event) => Number.isFinite(event?.seq) ? Math.max(max, event.seq) : max, 0);
+  return Math.max(explicit, fromStats, fromVisualEvents);
+}
+
+// Rule and presentation metadata are produced at the same boundary. Every
+// caller (local player, AI, multiplayer takeover, and setup) receives the same
+// one-shot visual events instead of reconstructing them later in React.
+export function startNextTurn(gs, opts = {}) {
+  const previousStatSeq = maxKnownStatEventSeq(gs);
+  const cleanInput = Array.isArray(gs?._visualEvents) && gs._visualEvents.length
+    ? { ...gs, _visualEvents: [] }
+    : gs;
+  const nextState = resolveNextTurnState(cleanInput, opts);
+  const engineEvents = Array.isArray(nextState?._visualEvents) ? nextState._visualEvents : [];
+  const visualEvents = [
+    ...buildTurnStartDrawVisualEvents(nextState),
+    ...buildFreshStatVisualEvents(nextState, previousStatSeq),
+    ...engineEvents,
+  ];
+  return visualEvents.length ? { ...nextState, _visualEvents: visualEvents } : nextState;
 }

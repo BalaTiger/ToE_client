@@ -1,4 +1,5 @@
 import { isTurnStartLog } from "./animLogs";
+import { getVisualEvents, VISUAL_EVENT } from "./visualEvents";
 
 export function statePatchStep(patch={}){
   const step={type:"STATE_PATCH"};
@@ -18,18 +19,22 @@ export function prepareWorshipHighlight(queue=[],options={}){
   const prepared=[];
   let keptHighlight=false;
   let highlightIdx=-1;
+  const keptVisualEventIds=new Set();
   (Array.isArray(queue)?queue:[]).forEach(step=>{
     if(step?.type!=="GOD_HIGHLIGHT"||step.targetPid!==targetPid){
       prepared.push(step);
       return;
     }
-    if(keptHighlight)return;
+    const visualEventId=step.visualEventId||null;
+    if(visualEventId&&keptVisualEventIds.has(visualEventId))return;
+    if(!visualEventId&&keptHighlight)return;
+    if(visualEventId)keptVisualEventIds.add(visualEventId);
     keptHighlight=true;
-    highlightIdx=prepared.length;
+    if(highlightIdx<0)highlightIdx=prepared.length;
     prepared.push({
       ...step,
       godKey:step.godKey||godKey,
-      ...(Array.isArray(players)
+      ...(Array.isArray(players)&&(!visualEventId||!step.visualSetupPatch?.players)
         ?{visualSetupPatch:{...(step.visualSetupPatch||{}),players}}
         :{}),
     });
@@ -68,6 +73,7 @@ export function prepareWorshipHighlight(queue=[],options={}){
   // but do not let those snapshots hide the badge that just appeared.
   return prepared.map((step,idx)=>{
     if(idx<=highlightIdx||!step)return step;
+    if(step.type==="GOD_HIGHLIGHT")return step;
     const visualSetupPatch=step.visualSetupPatch?.players
       ?{...step.visualSetupPatch,players:mergeBadgeIntoPlayers(step.visualSetupPatch.players)}
       :step.visualSetupPatch;
@@ -389,6 +395,7 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
       :inspectionLogDelta;
     queue.push({
       type:"DRAW_CARD",
+      ...(ev?.id?{visualEventId:ev.id}:{}),
       card:ev.card,
       triggerName:"检定牌",
       targetPid:ev.target??0,
@@ -421,10 +428,11 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
         ...(Array.isArray(ev?.statEvents)&&ev.statEvents.length?{_statEvents:ev.statEvents,_statEventSeq:ev.statEventSeq}:{}),
       }
     );
-    if(effectQ.length)queue.push(...effectQ);
+    if(effectQ.length)queue.push(...effectQ.map(step=>ev?.id?{...step,visualEventId:ev.id}:step));
     const effectHasVisibleStep=effectQ.some(step=>step?.type!=="STATE_PATCH");
     queue.push({
       ...statePatchStep({players:afterPlayers,log:afterLog,discard:afterDiscard}),
+      ...(ev?.id?{visualEventId:ev.id}:{}),
       // Non-stat inspection effects (for example 昏睡) may have no animation
       // step, but their log still belongs after this reveal, never to an
       // earlier inspection card.
@@ -447,7 +455,12 @@ export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPl
     baseOldGs._inspectionSeq||0,
     ...(baseOldGs._inspectionEvents||[]).map(ev=>ev?.seq||0),
   );
-  const inspectionEvents=(newGs?._inspectionEvents||[]).filter(ev=>ev?.seq>baseInspectionSeq);
+  const oldVisualEventIds=new Set(getVisualEvents(baseOldGs).map(event=>event.id));
+  const visualInspectionEvents=getVisualEvents(newGs)
+    .filter(event=>event?.type===VISUAL_EVENT.INSPECTION&&event?.id&&!oldVisualEventIds.has(event.id));
+  const inspectionEvents=visualInspectionEvents.length
+    ?visualInspectionEvents
+    :(newGs?._inspectionEvents||[]).filter(ev=>ev?.seq>baseInspectionSeq);
   if(!inspectionEvents.length){
     return {
       queue:buildAnimQueue(baseOldGs,newGs),

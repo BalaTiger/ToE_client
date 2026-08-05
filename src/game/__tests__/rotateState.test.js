@@ -10,6 +10,27 @@ function names(players) {
 }
 
 describe('rotateGsForViewer', () => {
+  it('rotates god status event owner and snapshots together', () => {
+    const gs = {
+      players: [player('p0'), player('p1'), player('p2')],
+      currentTurn: 0,
+      _visualEvents: [{
+        id: 'god:1',
+        type: 'godStatusChanged',
+        playerIdx: 0,
+        godKey: 'TSG',
+        playersBefore: [player('b0'), player('b1'), player('b2')],
+        playersAfter: [player('a0'), player('a1'), player('a2')],
+      }],
+    };
+
+    const event = rotateGsForViewer(gs, 2)._visualEvents[0];
+
+    expect(event.playerIdx).toBe(1);
+    expect(names(event.playersBefore)).toEqual(['b2', 'b0', 'b1']);
+    expect(names(event.playersAfter)).toEqual(['a2', 'a0', 'a1']);
+  });
+
   it('rotates shared bury-alive choices with their player seats', () => {
     const gs = {
       players: [player('p0'), player('p1'), player('p2')],

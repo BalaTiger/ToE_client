@@ -21,6 +21,13 @@ export const VISUAL_EVENT = {
   ENDLESS_CORRIDOR_REPLAY: 'endlessCorridorReplay',
   GOD_POWER_BLOCKED: 'godPowerBlocked',
   TSG_SLIME_POP: 'tsgSlimePop',
+  GOD_STATUS_CHANGED: 'godStatusChanged',
+  THROW_STONE: 'throwStone',
+  APOPHIS_TARGET: 'apophisTarget',
+  INSPECTION: 'inspection',
+  TSG_SLIME_GRANT: 'tsgSlimeGrant',
+  MULTIPLY: 'multiply',
+  RANDOM_TARGET: 'randomTarget',
 };
 
 const visualEventInstanceId = Math.random().toString(36).slice(2, 10);
@@ -31,6 +38,7 @@ let earthquakeEventSeq = 0;
 let animTransactionEventSeq = 0;
 let godPowerBlockedEventSeq = 0;
 let tsgSlimePopEventSeq = 0;
+let godStatusChangedEventSeq = 0;
 
 function msgsIdentity(msgs) {
   return Array.isArray(msgs) ? msgs.join('|') : '';
@@ -412,6 +420,231 @@ export function createTsathogguaSlimePopEvent({ playerIdx = 0, playerName = '该
   }, 'action');
 }
 
+export function createGodStatusChangedEvent({ playerIdx = 0, playerName = '该玩家', godKey = null, godLevel = 0, msgs = [], playersBefore = null, playersAfter = null } = {}) {
+  if (!godKey || !Array.isArray(playersAfter)) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.GOD_STATUS_CHANGED,
+    id: `${VISUAL_EVENT.GOD_STATUS_CHANGED}:${visualEventInstanceId}:${++godStatusChangedEventSeq}`,
+    playerIdx,
+    playerName,
+    godKey,
+    godLevel,
+    msgs: Array.isArray(msgs) ? msgs : [],
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    playersAfter,
+  }, 'action');
+}
+
+export function createThrowStoneEvent({ sourceIdx = 0, targetIdx = 0, roll = 1, distance = 0, damage = 0, resultText = '', msgs = [], playersBefore = null, playersAfter = null, statEvents = [], legacySeq = null } = {}) {
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.THROW_STONE,
+    sourceIdx,
+    targetIdx,
+    roll,
+    distance,
+    damage,
+    resultText,
+    msgs: Array.isArray(msgs) ? msgs : [],
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfter) ? { playersAfter } : {}),
+    statEvents: Array.isArray(statEvents) ? statEvents : [],
+    ...(legacySeq != null ? { legacySeq } : {}),
+  }, 'action');
+}
+
+export function buildThrowStoneSteps(event, state = null) {
+  if (!event || event.sourceIdx == null || event.targetIdx == null || event.roll == null) return [];
+  const players = event.playersAfter || state?.players || [];
+  return [
+    {
+      type: 'DICE_ROLL',
+      visualEventId: event.id,
+      diceMode: 'throwStone',
+      d1: event.roll,
+      d2: 0,
+      rollerName: players?.[event.sourceIdx]?.name || '角色',
+      msgs: [],
+    },
+    {
+      type: 'RANDOM_TARGET',
+      visualEventId: event.id,
+      sourceIdx: event.sourceIdx,
+      targetIdx: event.targetIdx,
+      roll: event.roll,
+      distance: event.distance,
+      damage: event.damage || 0,
+      label: '投掷石块',
+      players,
+      msgs: event.resultText ? [event.resultText] : [],
+    },
+    {
+      type: 'THROW_STONE',
+      visualEventId: event.id,
+      sourceIdx: event.sourceIdx,
+      targetIdx: event.targetIdx,
+      damage: event.damage || 0,
+      players,
+      msgs: Array.isArray(event.msgs) ? event.msgs : [],
+    },
+    ...statEventsToAnimQueue(event.statEvents || [], event.playersBefore || players, []),
+  ];
+}
+
+export function createApophisTargetVisualEvent(event = {}, { playersBefore = null, playersAfter = null, statEvents = [] } = {}) {
+  if (!event?.seq || event.actorIdx == null || event.targetIdx == null) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.APOPHIS_TARGET,
+    ...event,
+    legacySeq: event.seq,
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfter) ? { playersAfter } : {}),
+    statEvents: Array.isArray(statEvents) ? statEvents : [],
+  }, 'action');
+}
+
+export function buildApophisTargetSteps(event, state = null) {
+  if (!event?.legacySeq || event.roll == null) return [];
+  const players = event.playersAfter || state?.players || [];
+  const night = event.apophisNight || null;
+  const steps = [{
+    type: 'DICE_ROLL',
+    visualEventId: event.id,
+    _apophisTargetSeq: event.legacySeq,
+    _apophisNight: night,
+    diceMode: 'apophisNight',
+    apophisChanged: !!event.changed,
+    d1: event.roll,
+    d2: 0,
+    heal: 0,
+    rollerName: event.actorName || players?.[event.actorIdx]?.name || '???',
+    msgs: event.log ? [event.log] : [],
+    _logChunk: event.log ? [event.log] : [],
+  }];
+  if (event.changed && /追捕/.test(event.label || '')) {
+    steps.push({ type: 'SKILL_HUNT', visualEventId: event.id, _apophisTargetSeq: event.legacySeq, _apophisNight: night, targetIdx: event.targetIdx, msgs: [] });
+  } else if (event.changed && /蛊惑/.test(event.label || '')) {
+    steps.push({ type: 'SKILL_BEWITCH', visualEventId: event.id, _apophisTargetSeq: event.legacySeq, _apophisNight: night, targetIdx: event.targetIdx, msgs: [] });
+  }
+  steps.push(...statEventsToAnimQueue(event.statEvents || [], event.playersBefore || players, []));
+  return steps;
+}
+
+export function createInspectionVisualEvent(inspectionEvent = {}) {
+  if (!inspectionEvent?.card || inspectionEvent.target == null) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.INSPECTION,
+    ...inspectionEvent,
+    legacySeq: inspectionEvent.seq,
+  }, 'inspection');
+}
+
+export function createTsathogguaSlimeGrantEvent(event = {}) {
+  if (event.ownerIdx == null || !event.count) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.TSG_SLIME_GRANT,
+    playerIdx: event.ownerIdx,
+    ...event,
+  }, 'turn');
+}
+
+export function buildTsathogguaSlimeGrantSteps(event, state = null) {
+  if (!event || event.ownerIdx == null || !event.count) return [];
+  return [
+    { type: 'VISUAL_LOCK', visualEventId: event.id, players: event.playersBefore, zhuLight: state?.zhuLight || null },
+    {
+      type: 'CARD_TRANSFER',
+      visualEventId: event.id,
+      fromPid: event.ownerIdx,
+      dest: 'player',
+      toPid: event.ownerIdx,
+      count: event.count,
+      sourceAnchor: 'playerArea',
+      effect: 'tsgSlime',
+      durationMs: 950,
+      cards: event.cards || [],
+      msgs: event.msgs || [],
+    },
+    { type: 'STATE_PATCH', visualEventId: event.id, players: event.playersAfter },
+    { type: 'TURN_BOUNDARY_PAUSE', visualEventId: event.id, durationMs: 180 },
+  ];
+}
+
+export function createMultiplyVisualEvent({ fromIdx = 0, toIdx = 0, count = 1, cards = [], msgs = [], playersBefore = null, playersAfter = null, discardAfter = null } = {}) {
+  if (fromIdx == null || toIdx == null) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.MULTIPLY,
+    sourceIdx: fromIdx,
+    targetIdx: toIdx,
+    fromIdx,
+    toIdx,
+    count,
+    cards: Array.isArray(cards) ? cards : [],
+    msgs: Array.isArray(msgs) ? msgs : [],
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfter) ? { playersAfter } : {}),
+    ...(Array.isArray(discardAfter) ? { discardAfter } : {}),
+  }, 'action');
+}
+
+export function createRandomTargetVisualEvent(event = {}, { players = null } = {}) {
+  if (event.sourceIdx == null || event.targetIdx == null) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.RANDOM_TARGET,
+    ...event,
+    ...(Array.isArray(players) ? { playersAfter: players } : {}),
+    legacySeq: event.seq,
+  }, 'action');
+}
+
+export function buildRandomTargetSteps(event, state = null) {
+  if (!event || event.sourceIdx == null || event.targetIdx == null) return [];
+  return [{
+    type: 'RANDOM_TARGET',
+    visualEventId: event.id,
+    ...event,
+    players: event.playersAfter || state?.players || [],
+    msgs: event.resultText ? [event.resultText] : (event.msgs || []),
+  }];
+}
+
+export function buildMultiplySteps(event) {
+  if (!event || event.fromIdx == null || event.toIdx == null) return [];
+  return [
+    {
+      type: 'CARD_TRANSFER',
+      visualEventId: event.id,
+      fromPid: event.fromIdx,
+      dest: 'player',
+      toPid: event.toIdx,
+      count: event.count || 1,
+      cards: event.cards || [],
+      effect: 'blackGoat',
+      durationMs: 1500,
+      msgs: event.msgs || [],
+    },
+    ...(Array.isArray(event.playersAfter) ? [{
+      type: 'STATE_PATCH',
+      visualEventId: event.id,
+      players: event.playersAfter,
+      ...(Array.isArray(event.discardAfter) ? { discard: event.discardAfter } : {}),
+    }] : []),
+  ];
+}
+
+export function buildGodStatusChangedStep(event) {
+  if (!event?.godKey || event.playerIdx == null) return null;
+  return {
+    type: 'GOD_HIGHLIGHT',
+    visualEventId: event.id,
+    targetPid: event.playerIdx,
+    godKey: event.godKey,
+    godLevel: event.godLevel || 0,
+    msgs: Array.isArray(event.msgs) ? event.msgs : [],
+    ...(Array.isArray(event.playersAfter) ? { visualSetupPatch: { players: event.playersAfter } } : {}),
+    ...(Array.isArray(event.playersAfter) ? { visualTimeline: [{ atMs: 0, patch: { players: event.playersAfter } }] } : {}),
+  };
+}
+
 function buildStatEventsFromPlayerSnapshots(beforePlayers = [], afterPlayers = [], msgs = [], reason = '卡牌效果') {
   if (!Array.isArray(beforePlayers) || !Array.isArray(afterPlayers)) return [];
   const logHint = Array.isArray(msgs) ? msgs[0] : undefined;
@@ -537,6 +770,138 @@ export function getVisualEvents(state) {
   return Array.isArray(state?._visualEvents)
     ? state._visualEvents.map(event => withVisualEventMeta(event, 'action', false)).filter(Boolean)
     : [];
+}
+
+function legacyVisualEventId(type, parts = []) {
+  return `legacy:${type}:${parts.map(part => String(part ?? '')).join(':')}`;
+}
+
+function legacyCardKey(card) {
+  return cardIdentity(card) || card?.id || card?.key || card?.name || 'none';
+}
+
+export function promoteLegacyVisualEvents(state) {
+  if (!state) return [];
+  const explicit = getVisualEvents(state);
+  const promoted = [];
+  const hasEvent = predicate => explicit.some(predicate) || promoted.some(predicate);
+
+  const coveredStatSeqs = new Set(explicit.flatMap(event => (
+    Array.isArray(event?.statEvents) ? event.statEvents.map(stat => stat?.seq).filter(seq => seq != null) : []
+  )));
+  const currentStatSeq = state._statEventSeq;
+  const currentStatLogs = new Set((state._statLogs || []).filter(Boolean));
+  const legacyStats = (Array.isArray(state._statEvents) ? state._statEvents : [])
+    .filter(event => event &&
+      (event.seq == null || !coveredStatSeqs.has(event.seq)) &&
+      (
+        currentStatSeq == null ||
+        event.seq == null ||
+        event.seq === currentStatSeq ||
+        (event.logHint && currentStatLogs.has(event.logHint))
+      ));
+  const statGroups = new Map();
+  legacyStats.forEach(event => {
+    const key = event.seq ?? `${event.type}:${event.target ?? ''}`;
+    if (!statGroups.has(key)) statGroups.set(key, []);
+    statGroups.get(key).push(event);
+  });
+  statGroups.forEach((statEvents, key) => promoted.push({
+    type: VISUAL_EVENT.STAT_EVENTS,
+    id: legacyVisualEventId(VISUAL_EVENT.STAT_EVENTS, [key]),
+    scope: 'stat',
+    statEvents,
+    msgs: state._statLogs || [],
+  }));
+
+  (state._inspectionEvents || []).forEach(event => {
+    if (hasEvent(candidate => candidate.type === VISUAL_EVENT.INSPECTION && candidate.legacySeq === event?.seq)) return;
+    promoted.push({
+      ...event,
+      type: VISUAL_EVENT.INSPECTION,
+      id: legacyVisualEventId(VISUAL_EVENT.INSPECTION, [event?.seq, event?.target, legacyCardKey(event?.card)]),
+      scope: 'inspection',
+      legacySeq: event?.seq,
+    });
+  });
+
+  const apophis = state._apophisTargetEvent;
+  if (apophis?.seq && !hasEvent(event => event.type === VISUAL_EVENT.APOPHIS_TARGET && event.legacySeq === apophis.seq)) {
+    promoted.push({
+      ...apophis,
+      type: VISUAL_EVENT.APOPHIS_TARGET,
+      id: legacyVisualEventId(VISUAL_EVENT.APOPHIS_TARGET, [apophis.seq]),
+      scope: 'action',
+      legacySeq: apophis.seq,
+    });
+  }
+
+  (state._randomTargetEvents || []).forEach(event => {
+    const type = event?.label === '投掷石块' ? VISUAL_EVENT.THROW_STONE : VISUAL_EVENT.RANDOM_TARGET;
+    if (hasEvent(candidate => candidate.type === type && candidate.legacySeq === event?.seq)) return;
+    promoted.push({
+      ...event,
+      type,
+      id: legacyVisualEventId(type, [event?.seq, event?.sourceIdx, event?.targetIdx]),
+      scope: 'action',
+      legacySeq: event?.seq,
+    });
+  });
+
+  (state._aiHuntEvents || []).forEach((event, index) => {
+    if (hasEvent(candidate => candidate.type === VISUAL_EVENT.HUNT_RESULT && candidate.hunterIdx === event?.hunterIdx && candidate.targetIdx === event?.targetIdx)) return;
+    promoted.push({
+      ...event,
+      type: VISUAL_EVENT.HUNT_RESULT,
+      id: legacyVisualEventId(VISUAL_EVENT.HUNT_RESULT, [state._turnKey, index, event?.hunterIdx, event?.targetIdx]),
+      scope: 'action',
+      sourceIdx: event?.sourceIdx ?? event?.hunterIdx,
+    });
+  });
+
+  const sphinx = state._animSphinxReveal;
+  if (sphinx?.card && !hasEvent(event => event.type === VISUAL_EVENT.SPHINX_RESULT && event.actorIdx === sphinx.actorIdx && legacyCardKey(event.card) === legacyCardKey(sphinx.card))) {
+    promoted.push({
+      ...sphinx,
+      type: VISUAL_EVENT.SPHINX_RESULT,
+      id: legacyVisualEventId(VISUAL_EVENT.SPHINX_RESULT, [state._turnKey, sphinx.actorIdx, legacyCardKey(sphinx.card)]),
+      scope: 'action',
+      msgs: state._statLogs || [],
+    });
+  }
+
+  (state._tsgSlimeGrantEvents || []).forEach((event, index) => {
+    if (hasEvent(candidate => candidate.type === VISUAL_EVENT.TSG_SLIME_GRANT && candidate.playerIdx === event?.ownerIdx && candidate.count === event?.count)) return;
+    promoted.push({
+      ...event,
+      type: VISUAL_EVENT.TSG_SLIME_GRANT,
+      id: legacyVisualEventId(VISUAL_EVENT.TSG_SLIME_GRANT, [state._turnKey, index, event?.ownerIdx, event?.count]),
+      scope: 'turn',
+      playerIdx: event?.ownerIdx,
+    });
+  });
+
+  (state._turnDrawEvents || []).forEach((event, index) => {
+    if (!event?.card || hasEvent(candidate => candidate.type === VISUAL_EVENT.DRAW_CARD && candidate.playerIdx === event.drawerIdx && legacyCardKey(candidate.card) === legacyCardKey(event.card))) return;
+    promoted.push({
+      type: VISUAL_EVENT.DRAW_CARD,
+      id: legacyVisualEventId(VISUAL_EVENT.DRAW_CARD, [state._turnKey, index, event.drawerIdx, legacyCardKey(event.card)]),
+      scope: 'turn',
+      playerIdx: event.drawerIdx,
+      playerName: event.drawerName,
+      card: event.card,
+      msgs: event.msgs || [],
+      sourcePile: event.sourcePile || null,
+    });
+  });
+
+  return [...explicit, ...promoted];
+}
+
+export function ensureVisualEventState(state) {
+  if (!state) return state;
+  const events = promoteLegacyVisualEvents(state);
+  return { ...state, _visualEvents: events };
 }
 
 export function clearVisualEvents(state) {

@@ -747,12 +747,25 @@ export function buildTurnStartDrawReplayQueue({
     oldGs?._randomTargetSeq || 0,
     ...(Array.isArray(oldGs?._randomTargetEvents) ? oldGs._randomTargetEvents : []).map(event => event?.seq || 0),
   );
-  const drawRandomTargetSeqs = (Array.isArray(newGs?._randomTargetEvents) ? newGs._randomTargetEvents : [])
+  const randomTargetEvents = Array.isArray(newGs?._randomTargetEvents) ? newGs._randomTargetEvents : [];
+  const drawRandomTargetSeqs = randomTargetEvents
     .map(event => event?.seq)
     .filter(seq => seq != null && seq > oldRandomTargetSeq);
-  const drawOldRandomTargetSeq = drawRandomTargetSeqs.length
-    ? Math.max(oldRandomTargetSeq, Math.min(...drawRandomTargetSeqs) - 1)
-    : null;
+  // Some queued AI-turn entry points build oldGs from the already-resolved
+  // next state. Its random-target watermark therefore includes this draw's
+  // throw-stone event, even though the event has not been presented yet.
+  // Bind the rewind to the currently drawn throwStone card and actor so stale
+  // events retained from earlier turns still remain consumed.
+  const currentThrowStoneSeq = drawnCard?.type === 'throwStone'
+    ? Math.max(0, ...randomTargetEvents
+      .filter(event => event?.sourceIdx === drawerPid && event?.label === drawnCard?.name)
+      .map(event => event?.seq || 0))
+    : 0;
+  const drawOldRandomTargetSeq = currentThrowStoneSeq > 0
+    ? Math.max(0, currentThrowStoneSeq - 1)
+    : (drawRandomTargetSeqs.length
+      ? Math.max(oldRandomTargetSeq, Math.min(...drawRandomTargetSeqs) - 1)
+      : null);
   const currentMoldySeq = newGs?._moldyFoodDiceRoll?.seq ?? newGs?._moldyFoodDiceSeq;
   const hasCurrentDrawMoldyLog = [
     ...(newGs?._drawLogs || []),

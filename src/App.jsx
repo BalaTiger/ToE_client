@@ -173,9 +173,8 @@ import {
   buildSinglePlayerAiTurnStartReplayContext,
   createTimedOutDrawDiscardEvent,
   createGodPowerBlockedEvent,
+  createGodStatusChangedEvent,
   createCardEffectEvent,
-  buildTurnStartDrawVisualEvents,
-  buildFreshStatVisualEvents,
   getCurrentExecutionTurnOwner,
   grantTurnScopedGodPowerImmunity,
   createEndlessCorridorReplayEvent,
@@ -185,7 +184,6 @@ import {
   createHuntResultEvent,
   buildHuntRevealStepFromVisualEvents,
   buildHuntRevealStepFromVisualEvent,
-  markConsumedVisualEvents,
   pruneConsumedVisualEvents,
   chooseAiEtherealizeRedirectTarget,
   shouldAiUseEtherealize,
@@ -403,21 +401,7 @@ function shouldDelayHuntLootSelection(players,targetIdx,maxToTake,isMP){
 // ══════════════════════════════════════════════════════════════
 // Wrapper that injects debug mode flag into the pure turn engine function
 function startNextTurn(gs) {
-  const cleanInputGs = Array.isArray(gs?._visualEvents) && gs._visualEvents.length
-    ? { ...gs, _visualEvents: [] }
-    : gs;
-  const nextGs = _startNextTurn(cleanInputGs, { isDebugMode: isLocalDebugEnabled() });
-  // 输入的 _visualEvents 已在 cleanInputGs 清空，故 nextGs._visualEvents 只含本回合引擎新产生的
-  // 效果型视觉事件（如强制摸到「地动山摇」的 earthquake），必须保留，再叠加回合开始/摸牌/属性事件。
-  const engineVisualEvents = Array.isArray(nextGs._visualEvents) ? nextGs._visualEvents : [];
-  const visualEvents = [
-    ...buildTurnStartDrawVisualEvents(nextGs),
-    ...buildFreshStatVisualEvents(nextGs, maxKnownStatEventSeq(gs)),
-    ...engineVisualEvents,
-  ];
-  return visualEvents.length
-    ? { ...nextGs, _visualEvents: visualEvents }
-    : nextGs;
+  return _startNextTurn(gs, { isDebugMode: isLocalDebugEnabled() });
 }
 
 function maxStatEventSeqFromSteps(steps=[]){
@@ -1094,8 +1078,7 @@ export default function Game(){
   // --- 新增：用于 UI 延迟显示的 HP/SAN 状态 ---
   const [displayStats, setDisplayStats] = useState(() => gs?.players ? gs.players.map(p => ({ hp: p.hp, san: p.san })) : []);
   const [godHighlightPanelBursts,setGodHighlightPanelBursts]=useState({});
-  const previousGodStatusRef=useRef(null);
-  const pendingGodHighlightStatusRef=useRef(new Set());
+  const lastGodHighlightPlaybackRef=useRef(null);
   const triggerGodHighlightPanelBurst=useCallback((playerIndex,godKey)=>{
     if(playerIndex==null||!godKey)return;
     playGodHighlightSound?.();
@@ -1263,6 +1246,11 @@ export default function Game(){
       if(hiddenZhuCardId!==undefined)zhuHiddenCardIdLockRef.current=hiddenZhuCardId||null;
       if(turnHighlight!==undefined)turnHighlightLockRef.current=turnHighlight;
     },
+    updatePlayers(updater){
+      if(visualPlayersLockRef.current&&typeof updater==='function'){
+        visualPlayersLockRef.current=updater(visualPlayersLockRef.current);
+      }
+    },
     clear({players=false,zhuLight=false,hiddenZhuCardId=false,turnHighlight=false}={}){
       if(players)visualPlayersLockRef.current=null;
       if(zhuLight)visualZhuLightLockRef.current=null;
@@ -1317,47 +1305,11 @@ export default function Game(){
 
   useEffect(()=>{
     if(anim?.type!=='GOD_HIGHLIGHT')return;
+    const playbackKey=anim._playbackId??anim.visualEventId??anim;
+    if(lastGodHighlightPlaybackRef.current===playbackKey)return;
+    lastGodHighlightPlaybackRef.current=playbackKey;
     triggerGodHighlightPanelBurst(anim.targetPid,anim.godKey);
-    // The visible player state may be committed by a following STATE_PATCH.
-    // Record the status represented by this explicit timeline step now, so
-    // the fallback status watcher does not replay the same panel highlight
-    // after the step has already left the queue.
-    const targetPid=anim.targetPid;
-    const committedPlayer=pendingGsRef.current?.players?.[targetPid];
-    const highlightedGodName=committedPlayer?.godName||anim.godKey||null;
-    const highlightedGodLevel=committedPlayer?.godLevel??0;
-    if(targetPid!=null&&highlightedGodName){
-      pendingGodHighlightStatusRef.current.add(`${targetPid}:${highlightedGodName}:${highlightedGodLevel}`);
-    }
-    // Do not advance previousGodStatusRef optimistically here. Interactive
-    // phases (for example, waiting for a hunted player to reveal a card) can
-    // render another snapshot before the queued state patch is committed.
-    // The status watcher below must compare that real commit with the last
-    // rendered snapshot so it can consume this marker without replaying it.
-  },[anim,pendingGsRef,triggerGodHighlightPanelBurst]);
-
-  useEffect(()=>{
-    const statuses=(gs?.players||[]).map(p=>({godName:p?.godName||null,godLevel:p?.godLevel||0}));
-    if(!statuses.length){previousGodStatusRef.current=null;return;}
-    if(!previousGodStatusRef.current){previousGodStatusRef.current=statuses;return;}
-    const prevStatuses=previousGodStatusRef.current;
-    statuses.forEach((status,idx)=>{
-      const prev=prevStatuses[idx]||{};
-      if(status.godName&&(status.godName!==prev.godName||(status.godLevel||0)>(prev.godLevel||0))){
-        const statusKey=`${idx}:${status.godName}:${status.godLevel||0}`;
-        const explicitHighlightPending=pendingGodHighlightStatusRef.current.delete(statusKey);
-        const hasQueuedHighlight=(anim?.type==='GOD_HIGHLIGHT'&&anim.targetPid===idx)
-          ||animQueueRef.current.some(step=>step?.type==='GOD_HIGHLIGHT'&&step.targetPid===idx);
-        if(!explicitHighlightPending&&!hasQueuedHighlight)triggerGodHighlightPanelBurst(idx,status.godName);
-      }
-    });
-    previousGodStatusRef.current=statuses;
-  },[gs?.players,anim,animQueueRef,triggerGodHighlightPanelBurst]);
-
-  useEffect(()=>{
-    if(anim||animExiting||animQueueRef.current.length||pendingGsRef.current)return;
-    pendingGodHighlightStatusRef.current.clear();
-  },[anim,animExiting,gs?.players,animQueueRef,pendingGsRef]);
+  },[anim,triggerGodHighlightPanelBurst]);
 
   useEffect(()=>{
     if(!import.meta.env.DEV||typeof window==='undefined')return undefined;
@@ -3806,9 +3758,6 @@ export default function Game(){
       if(isMultiplayer&&socketRef.current&&roomModal?.roomId){
         suppressNextBroadcastRef.current=true;
         receivedGsRef.current=true;
-        if(nextGs._visualEvents?.length){
-          markConsumedVisualEvents(consumedVisualEventIdsRef.current,nextGs._visualEvents);
-        }
         socketRef.current.emit('mpStateSync',{roomId:roomModal.roomId,gs:derotateGs(nextGs,myPlayerIndexRef.current)});
       }
       const drawStatQ=bindAnimLogChunks(
@@ -7989,7 +7938,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           afterDamageDiscard=[...Disc];
           afterDamageLog=[...L];
         }
-        if(P[huntTi].godZone?.length){Disc.push(...P[huntTi].godZone);P[huntTi].godZone=[];P[huntTi].godName=null;P[huntTi].godLevel=0;}
+        if(P[huntTi].godZone?.length){
+          const defeatedGodCards=[...P[huntTi].godZone];
+          Disc.push(...defeatedGodCards);
+          // Death-faith cards share the post-loot discard beat with whatever
+          // hand cards the hunter left behind.
+          lootDiscardCards.push(...defeatedGodCards);
+          P[huntTi].godZone=[];P[huntTi].godName=null;P[huntTi].godLevel=0;
+        }
       }
       const win=huntDamageResult.abilityData?null:checkWin(P,gs._isMP);
       // 追猎者在追捕后设置skillUsed为true，这样就不能再休息了
@@ -9104,10 +9060,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const hasVisualEvents=Array.isArray(replayState._visualEvents)&&replayState._visualEvents.length>0;
     if((replayState.gameOver&&!hasVisualEvents)||replayState.phase==='TREASURE_WIN')return false;
     const broadcastGs=hasVisualEvents?pruneConsumedVisualEvents(replayState,consumedVisualEventIdsRef.current):replayState;
-    const freshVisualEvents=Array.isArray(broadcastGs._visualEvents)?broadcastGs._visualEvents:[];
-    if(freshVisualEvents.length){
-      markConsumedVisualEvents(consumedVisualEventIdsRef.current,freshVisualEvents);
-    }
     socketRef.current.emit('mpStateSync',{roomId:roomModal.roomId,gs:derotateGs(broadcastGs,myPlayerIndexRef.current)});
     suppressNextBroadcastRef.current=true;
     return true;
@@ -9831,17 +9783,20 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const blockedGodPowerEvent=(!godPowerImmediateHand&&['APO','ZHU','SHU'].includes(godKey)&&hasGodPowerImmunity(P[0]))
       ?createGodPowerBlockedEvent({playerIdx:0,playerName:P[0].name,msgs:[buildGodPowerBlockedLog(P[0])]})
       :null;
-    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,apophisNight:nextApophisNight,phase:isShuBlessingHand?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessingHand?{shuOffspringCount:shuOffspringCountHand,shuChooserIdx:0}:gs.abilityData,_visualEvents:blockedGodPowerEvent?[blockedGodPowerEvent]:[],...inspectionMeta,...(win?{gameOver:win}:{})};
+    const worshipMsg=L.slice(gs.log.length).find(line=>typeof line==='string'&&(line.includes('从手牌信仰')||line.includes('从手牌直接信仰')||line.includes('改信')));
+    const godStatusEvent=createGodStatusChangedEvent({
+      playerIdx:0,playerName:P[0].name,godKey:P[0].godName,godLevel:P[0].godLevel,
+      msgs:worshipMsg?[worshipMsg]:[],playersBefore:gs.players,playersAfter:P,
+    });
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,apophisNight:nextApophisNight,phase:isShuBlessingHand?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessingHand?{shuOffspringCount:shuOffspringCountHand,shuChooserIdx:0}:gs.abilityData,_visualEvents:[...(godStatusEvent?[godStatusEvent]:[]),...(blockedGodPowerEvent?[blockedGodPowerEvent]:[])],...inspectionMeta,...(win?{gameOver:win}:{})};
     // 让"邪神之力"标签与"从手牌信仰"日志同时出现：把信仰后的神之力字段（及已离手的神牌）并入动画基线，
     // 使首个动画步骤的视觉快照就带上新神之力，而不是等到整段动画结束才刷新角色面板。
     const godBadgeBaseline=gs.players.map((p,i)=>i===0?{...p,hand:[...P[0].hand],godName:P[0].godName,godLevel:P[0].godLevel,godEncounters:P[0].godEncounters,godEncounterCount:P[0].godEncounterCount,godZone:P[0].godZone.map(c=>({...c}))}:p);
-    previousGodStatusRef.current=godBadgeBaseline.map(p=>({godName:p?.godName||null,godLevel:p?.godLevel||0}));
     const oldGsForReplay={...gs,players:godBadgeBaseline};
     const replay=buildInspectionAwareAnimQueue(oldGsForReplay,newGs,{buildAnimQueue,copyPlayers});
     if(replay.inspectionEvents.length){
       lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...replay.inspectionEvents.map(ev=>ev.seq||0));
     }
-    const worshipMsg=L.slice(gs.log.length).find(line=>typeof line==='string'&&(line.includes('从手牌信仰')||line.includes('从手牌直接信仰')||line.includes('改信')));
     const queue=prepareWorshipHighlight(
       bindAnimLogChunks(replay.queue,splitAnimBoundLogs(L.slice(gs.log.length))),
       {targetPid:0,godKey,players:godBadgeBaseline,msgs:worshipMsg?[worshipMsg]:[]},

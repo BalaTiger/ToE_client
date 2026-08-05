@@ -131,7 +131,9 @@ describe('statEvents', () => {
 
     expect(queue.map(step => step.type)).toEqual(['HP_DAMAGE', 'SAN_HEAL']);
     expect(queue[0]).toMatchObject({ hitIndices: [0], msgs: ['结算'] });
-    expect(queue[1]).toMatchObject({ hitIndices: [1], targetStats: [{ hp: 7, san: 8, isDead: false }, { hp: 5, san: 5, isDead: false }] });
+    expect(queue[1]).toMatchObject({ hitIndices: [1], statEvents: [events[1]] });
+    expect(queue[0]).not.toHaveProperty('targetStats');
+    expect(queue[1]).not.toHaveProperty('targetStats');
   });
 
   it('不同 seq 的显式事件按结算顺序生成动画，后续 SAN 回复不会抢跑', () => {

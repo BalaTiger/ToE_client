@@ -950,11 +950,15 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(hpSteps[0].idx).toBeGreaterThan(reveals[0].idx);
     expect(hpSteps[0].idx).toBeLessThan(reveals[1].idx);
     expect(hpSteps[0].step.msgs).toEqual(expect.arrayContaining([dianaReveal, dianaDamage]));
-    expect(hpSteps[0].step.targetStats[2].hp).toBe(8);
+    expect(hpSteps[0].step.statEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ target: 2, to: expect.objectContaining({ hp: 8 }) }),
+    ]));
     expect(hpSteps[1].idx).toBeGreaterThan(reveals[1].idx);
     expect(hpSteps[1].idx).toBeLessThan(reveals[2].idx);
     expect(hpSteps[1].step.msgs).toEqual(expect.arrayContaining([youReveal, youDamage]));
-    expect(hpSteps[1].step.targetStats[0].hp).toBe(8);
+    expect(hpSteps[1].step.statEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ target: 0, to: expect.objectContaining({ hp: 8 }) }),
+    ]));
     const carlosPatch = replay.queue.find(step => step.type === 'STATE_PATCH' && step._logChunk?.includes(carlosSleep));
     expect(carlosPatch?._logChunk).toEqual([carlosSleep]);
   });
@@ -1175,7 +1179,7 @@ describe('buildTurnStartDrawReplayQueue', () => {
   });
 
   it('AI 回合开始收入投掷石块即使造成 0 伤害也播放骰子和转盘', () => {
-    const stone = makeZoneCard('B2', 0);
+    const stone = makeZoneCard('B2', 3);
     const limitDiscard = makeZoneCard('A1', 0);
     const beforeDrawPlayers = [
       player('你'),
@@ -1248,6 +1252,25 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(replay.queue[diceIdx]).toMatchObject({ d1: 1, rollerName: '贝拉' });
     expect(replay.queue[randomIdx]).toMatchObject({ sourceIdx: 1, targetIdx: 0, roll: 1, damage: 0 });
     expect(replay.queue[throwIdx]).toMatchObject({ sourceIdx: 1, targetIdx: 0, damage: 0 });
+
+    const resolvedBaselineReplay = buildTurnStartDrawReplayQueue({
+      oldGs: {
+        ...newGs,
+        players: beforeDrawPlayers,
+        log: ['旧日志', '── 贝拉 的回合开始 ──'],
+      },
+      newGs,
+      effectOldGs: {
+        ...newGs,
+        players: beforeDrawPlayers,
+        log: ['旧日志', '── 贝拉 的回合开始 ──'],
+      },
+    });
+    expect(resolvedBaselineReplay.queue.map(step => step.type)).toEqual(expect.arrayContaining([
+      'DICE_ROLL',
+      'RANDOM_TARGET',
+      'THROW_STONE',
+    ]));
   });
 
   it('摸到邪神翻牌后不重播上一回合残留的投掷石块动画', () => {

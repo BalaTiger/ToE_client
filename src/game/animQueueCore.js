@@ -1,6 +1,6 @@
 import { makeTargetStats, statEventsToAnimQueue } from './statEvents';
 import { buildFullHandSwapStepsFromLogs, buryToDeckStep, cardTransferStep, statePatchStep } from './animQueueHelpers';
-import { buildCardEffectStepsFromVisualEvents, buildGodPowerBlockedStepsFromVisualEvents, buildHuntRevealStepFromVisualEvent } from './visualEvents';
+import { buildApophisTargetSteps, buildCardEffectStepsFromVisualEvents, buildGodPowerBlockedStepsFromVisualEvents, buildGodStatusChangedStep, buildHuntRevealStepFromVisualEvent, getVisualEvents, VISUAL_EVENT } from './visualEvents';
 import { isTsathogguaSlime } from './coreUtils';
 import { cardIdentity } from './cardIdentity';
 
@@ -280,8 +280,13 @@ export function buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs 
 
 export function buildAnimQueue(oldGs, newGs) {
   const q = [];
-  const newApophisTargetEvent = newGs?._apophisTargetEvent;
-  if (newApophisTargetEvent?.seq && newApophisTargetEvent.seq > (oldGs?._apophisTargetSeq || 0)) {
+  const oldVisualEventIds = new Set(getVisualEvents(oldGs).map(event => event.id));
+  const freshVisualEvents = getVisualEvents(newGs).filter(event => event?.id && !oldVisualEventIds.has(event.id));
+  const freshApophisEvent = freshVisualEvents.find(event => event.type === VISUAL_EVENT.APOPHIS_TARGET);
+  const newApophisTargetEvent = freshApophisEvent || newGs?._apophisTargetEvent;
+  if (freshApophisEvent) {
+    q.push(...buildApophisTargetSteps(freshApophisEvent, newGs).filter(step => !Array.isArray(step?.statEvents)));
+  } else if (newApophisTargetEvent?.seq && newApophisTargetEvent.seq > (oldGs?._apophisTargetSeq || 0)) {
     const apophisNightForAnim = newGs?.apophisNight || null;
     q.push({
       type: 'DICE_ROLL',
@@ -327,31 +332,35 @@ export function buildAnimQueue(oldGs, newGs) {
       msgs: convertMsgs,
     }));
   });
-  // Make faith/upgrade highlights explicit timeline steps. Derive them from
-  // worship logs rather than player-state diffs: by the time this queue is
-  // built the skill-action baseline may already reflect the new god, so a
-  // state-only check would silently drop the highlight before a hunt.
-  (effectivePlayers || []).forEach((player, targetPid) => {
-    if (!player?.godName) return;
-    const playerName = player.name || '';
-    const worshipMsg = newMsgs.find(line => typeof line === 'string' && (
-      (playerName && line.includes(playerName) && (line.includes('信仰') || line.includes('改信'))) ||
-      (targetPid === 0 && (line.includes('你 从手牌信仰') || line.includes('你从手牌直接信仰')))
-    ));
-    if (worshipMsg) {
-      const beforeHighlightPlayers = clonePlayersForTimeline(oldGs?.players || effectivePlayers);
-      const afterHighlightPlayers = playersAfterGodHighlight(beforeHighlightPlayers, effectivePlayers, { targetPid });
-      q.push({
-        type: 'GOD_HIGHLIGHT',
-        targetPid,
-        godKey: player.godName,
-        msgs: [worshipMsg],
-        visualSetupPatch: { players: beforeHighlightPlayers },
-        // Mounting the panel burst and refreshing the god badge share this frame.
-        visualTimeline: [{ atMs: 0, patch: { players: afterHighlightPlayers } }],
-      });
-    }
-  });
+  const godStatusEvents = getVisualEvents(newGs).filter(event =>
+    event.type === VISUAL_EVENT.GOD_STATUS_CHANGED && !oldVisualEventIds.has(event.id)
+  );
+  if (godStatusEvents.length) {
+    q.push(...godStatusEvents.map(buildGodStatusChangedStep).filter(Boolean));
+  } else {
+    // Compatibility fallback for legacy snapshots that predate explicit god
+    // status events. New rule paths must emit GOD_STATUS_CHANGED instead.
+    (effectivePlayers || []).forEach((player, targetPid) => {
+      if (!player?.godName) return;
+      const playerName = player.name || '';
+      const worshipMsg = newMsgs.find(line => typeof line === 'string' && (
+        (playerName && line.includes(playerName) && (line.includes('信仰') || line.includes('改信'))) ||
+        (targetPid === 0 && (line.includes('你 从手牌信仰') || line.includes('你从手牌直接信仰')))
+      ));
+      if (worshipMsg) {
+        const beforeHighlightPlayers = clonePlayersForTimeline(oldGs?.players || effectivePlayers);
+        const afterHighlightPlayers = playersAfterGodHighlight(beforeHighlightPlayers, effectivePlayers, { targetPid });
+        q.push({
+          type: 'GOD_HIGHLIGHT',
+          targetPid,
+          godKey: player.godName,
+          msgs: [worshipMsg],
+          visualSetupPatch: { players: beforeHighlightPlayers },
+          visualTimeline: [{ atMs: 0, patch: { players: afterHighlightPlayers } }],
+        });
+      }
+    });
+  }
   // 同一邪神只能有一名信徒。新信徒的高亮之后，显式播放旧信徒的
   // godZone 整体进入弃牌堆，确保本地和远端都能观察到信仰被抢夺。
   (oldGs?.players || []).forEach((oldPlayer, targetPid) => {
@@ -384,13 +393,27 @@ export function buildAnimQueue(oldGs, newGs) {
     const nightMsg = newMsgs.find(line => typeof line === 'string' && line.includes('【噬日灭世】黑夜降临'));
     if (nightMsg) q.push({ type: 'APOPHIS_ECLIPSE', msgs: [nightMsg] });
   }
-  const randomTargetEvents = (newGs?._randomTargetEvents || []).filter(ev => ev?.seq > (oldGs?._randomTargetSeq || 0));
+  const freshThrowStoneEvents = freshVisualEvents.filter(event => event.type === VISUAL_EVENT.THROW_STONE);
+  const legacyRandomTargetEvents = (newGs?._randomTargetEvents || []).filter(ev => ev?.seq > (oldGs?._randomTargetSeq || 0));
+  const randomTargetEvents = freshThrowStoneEvents.length
+    ? [
+      ...legacyRandomTargetEvents.filter(event => event?.label !== '投掷石块'),
+      ...freshThrowStoneEvents.map(event => ({
+        ...event,
+        label: '投掷石块',
+        diceBefore: true,
+        phaseOrder: 1,
+        visualEventId: event.id,
+      })),
+    ]
+    : legacyRandomTargetEvents;
   const buildRandomTargetQueue = event => {
     const queue = [];
     const isThrowStone = event?.label === '投掷石块';
     if (event.diceBefore && event.roll != null) {
       queue.push({
         type: 'DICE_ROLL',
+        ...(event.visualEventId ? { visualEventId: event.visualEventId } : {}),
         diceMode: 'throwStone',
         d1: event.roll,
         d2: 0,
@@ -407,6 +430,7 @@ export function buildAnimQueue(oldGs, newGs) {
     if (isThrowStone) {
       queue.push({
         type: 'THROW_STONE',
+        ...(event.visualEventId ? { visualEventId: event.visualEventId } : {}),
         sourceIdx: event.sourceIdx,
         targetIdx: event.targetIdx,
         damage: event.damage || 0,
@@ -526,8 +550,8 @@ export function buildAnimQueue(oldGs, newGs) {
   q.push(...vritraRevealSteps);
   if (deathIdx.length) {
     const deathMsgs = getDeathAnimMsgs(newMsgs, effectivePlayers, deathIdx);
-    q.push({ type: 'GUILLOTINE', msgs: deathMsgs, hitIndices: deathIdx, targetStats });
-    q.push({ type: 'DEATH', msgs: deathMsgs, hitIndices: deathIdx, targetStats });
+    q.push({ type: 'GUILLOTINE', msgs: deathMsgs, hitIndices: deathIdx });
+    q.push({ type: 'DEATH', msgs: deathMsgs, hitIndices: deathIdx });
   }
   const moldyRoll = newGs?._moldyFoodDiceRoll;
   const moldySeq = moldyRoll?.seq ?? newGs?._moldyFoodDiceSeq;
@@ -725,16 +749,19 @@ export function buildAiHuntEventAnimQueue(evt, actorName) {
       } else if (lootMsgs.length) {
         perHuntQueue.push({ type: 'TURN_BOUNDARY_PAUSE', _logChunk: lootMsgs });
       }
-      (evt.lootDiscardCards || []).forEach((card, idx, arr) => {
+      const lootDiscardCards = (evt.lootDiscardCards || []).filter(Boolean);
+      if (lootDiscardCards.length) {
         perHuntQueue.push({
           type: 'DISCARD',
-          card,
+          card: lootDiscardCards[0],
+          cards: lootDiscardCards,
+          count: lootDiscardCards.length,
           triggerName: evt.afterPlayers[evt.targetIdx]?.name || '???',
           targetPid: evt.targetIdx,
-          _logChunk: idx === arr.length - 1 ? discardMsgs : [],
+          _logChunk: discardMsgs,
         });
-      });
-      if (!cardsTaken && !(evt.lootDiscardCards || []).length && discardMsgs.length) {
+      }
+      if (!cardsTaken && !lootDiscardCards.length && discardMsgs.length) {
         perHuntQueue.push({ type: 'TURN_BOUNDARY_PAUSE', _logChunk: discardMsgs });
       }
     }

@@ -25,7 +25,7 @@ import { buildStatEvents } from './statEvents';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { makeProliferatingZState } from './proliferatingZ';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
-import { createCardEffectEvent, createEarthquakeEvent } from './visualEvents';
+import { createCardEffectEvent, createEarthquakeEvent, createInspectionVisualEvent, createRandomTargetVisualEvent, createSphinxResultEvent, createThrowStoneEvent } from './visualEvents';
 import { createGeomagneticRestoreCard } from '../constants/card';
 import {
   addTurnScopedDamageBonus,
@@ -256,13 +256,18 @@ function getLivingCircularDistance(players, fromIdx, toIdx) {
 
 function appendRandomTargetEvent(statePatch, gs, event) {
   const seq = (gs?._randomTargetSeq || 0) + 1 + (statePatch?._randomTargetEvents?.length || 0);
+  const legacyEvent = { ...event, seq };
+  const visualEvent = event?.label === '投掷石块'
+    ? null
+    : createRandomTargetVisualEvent(legacyEvent);
   return {
     ...statePatch,
     _randomTargetSeq: seq,
     _randomTargetEvents: [
       ...(statePatch?._randomTargetEvents || []),
-      { ...event, seq },
+      legacyEvent,
     ],
+    ...(visualEvent ? { _visualEvents: [...(statePatch?._visualEvents || []), visualEvent] } : {}),
   };
 }
 
@@ -483,24 +488,30 @@ function handleInspection(playerIndex, gs) {
     ...((gs?._statEvents) || []),
     ...statEvents,
   ];
+  const inspectionEvent = {
+    seq: newGs._inspectionSeq,
+    card: drawnCard,
+    target: playerIndex,
+    prevLogLen: beforeLogLen,
+    beforePlayers,
+    beforeLog,
+    beforeDiscard,
+    beforeStatEventSeq: gs?._statEventSeq || 0,
+    afterPlayers,
+    afterLog: [...finalLog],
+    afterDiscard,
+    statEvents,
+    statEventSeq: statEvents.length ? statEventSeq : null,
+    ...(gainedCard ? { gainedCard, gainedCardLog } : {}),
+  };
   newGs._inspectionEvents = [
     ...((gs?._inspectionEvents) || []),
-    {
-      seq: newGs._inspectionSeq,
-      card: drawnCard,
-      target: playerIndex,
-      prevLogLen: beforeLogLen,
-      beforePlayers,
-      beforeLog,
-      beforeDiscard,
-      beforeStatEventSeq: gs?._statEventSeq || 0,
-      afterPlayers,
-      afterLog: [...finalLog],
-      afterDiscard,
-      statEvents,
-      statEventSeq: statEvents.length ? statEventSeq : null,
-      ...(gainedCard ? { gainedCard, gainedCardLog } : {}),
-    }
+    inspectionEvent,
+  ];
+  const inspectionVisualEvent = createInspectionVisualEvent(inspectionEvent);
+  newGs._visualEvents = [
+    ...((gs?._visualEvents) || []),
+    ...(inspectionVisualEvent ? [inspectionVisualEvent] : []),
   ];
   // 更新游戏状态
   newGs.players = P;
@@ -527,6 +538,7 @@ function mergeInspectionMeta(target, inspectionResult) {
     _inspectionPrevLogLen: inspectionResult._inspectionPrevLogLen,
     _inspectionBeforePlayers: inspectionResult._inspectionBeforePlayers,
     _inspectionEvents: inspectionResult._inspectionEvents,
+    _visualEvents: inspectionResult._visualEvents,
     _statEvents: inspectionResult._statEvents,
     _statEventSeq: inspectionResult._statEventSeq,
     ...(['TSG_SLIME_BALANCE', 'ETHEREALIZE_DECISION'].includes(inspectionResult.phase) ? { phase: inspectionResult.phase } : {}),
@@ -1671,7 +1683,9 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         if (event) {
           statePatch = {
             ...statePatch,
-            _visualEvents: [...(statePatch._visualEvents || []), event],
+            // The global sweep resolves before its random follow-up target.
+            // Preserve that rule order in the canonical transaction.
+            _visualEvents: [event, ...(statePatch._visualEvents || [])],
           };
         }
       }
@@ -1715,6 +1729,25 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         seq,
         phaseOrder: 2,
       }] : [];
+      const throwStoneEvent = createThrowStoneEvent({
+        sourceIdx: ci,
+        targetIdx: randomTarget,
+        roll,
+        distance,
+        damage,
+        resultText: `${P[randomTarget].name} 被选中`,
+        msgs: msgs.slice(),
+        playersBefore: beforePlayers,
+        playersAfter: copyPlayers(P),
+        statEvents: directStatEvents,
+        legacySeq: statePatch._randomTargetEvents?.at(-1)?.seq,
+      });
+      if (throwStoneEvent) {
+        statePatch = {
+          ...statePatch,
+          _visualEvents: [...(statePatch._visualEvents || []), throwStoneEvent],
+        };
+      }
     },
     sameAbyssChoice: () => {
       if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
@@ -1817,8 +1850,17 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         }
         statePatch = {
           ...statePatch,
-          _animSphinxReveal: { card: actualCard, guessYes, guessCorrect, actorIdx: ci }
+          _animSphinxReveal: { card: actualCard, guessYes, guessCorrect, actorIdx: ci },
         };
+        const sphinxEvent = createSphinxResultEvent({
+          actorIdx: ci,
+          card: actualCard,
+          guessCorrect,
+          msgs: msgs.slice(),
+        });
+        if (sphinxEvent) {
+          statePatch._visualEvents = [...(statePatch._visualEvents || []), sphinxEvent];
+        }
       } else {
         return {
           P, D, Disc, msgs,
@@ -2136,7 +2178,17 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     );
     P = processed.P; D = processed.D; Disc = processed.Disc; inspectionMeta = processed.inspectionMeta;
     msgs = [...msgs, ...processed.log.slice(inspectionBaseLog.length)];
-    statePatch = { ...statePatch, ...inspectionMeta };
+    const mergedVisualEvents = [
+      ...(statePatch._visualEvents || []),
+      ...(inspectionMeta._visualEvents || []),
+    ].filter((event, index, events) => (
+      !event?.id || events.findIndex(candidate => candidate?.id === event.id) === index
+    ));
+    statePatch = {
+      ...statePatch,
+      ...inspectionMeta,
+      ...(mergedVisualEvents.length ? { _visualEvents: mergedVisualEvents } : {}),
+    };
   }
   return finish({ P, D, Disc, msgs, statePatch }, directStatEvents);
 }

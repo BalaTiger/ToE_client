@@ -22,6 +22,15 @@ import { createCardEffectEvent } from '../visualEvents';
 import { makeGodCard, makePlayer, makeZoneCard } from './factory';
 
 describe('animQueueHelpers', () => {
+  it('does not collapse consecutive explicit god status events for one player', () => {
+    const levelOne = { type: 'GOD_HIGHLIGHT', targetPid: 1, godKey: 'TSG', godLevel: 1, visualEventId: 'god:1' };
+    const levelTwo = { type: 'GOD_HIGHLIGHT', targetPid: 1, godKey: 'TSG', godLevel: 2, visualEventId: 'god:2' };
+
+    const queue = prepareWorshipHighlight([levelOne, levelTwo, { ...levelTwo }], { targetPid: 1, godKey: 'TSG' });
+
+    expect(queue.filter(step => step.type === 'GOD_HIGHLIGHT')).toEqual([levelOne, levelTwo]);
+  });
+
   it('斯芬克斯猜对后把同一张明牌从揭示区收入手牌', () => {
     const card = makeZoneCard('B1', 0);
     const queue = buildSphinxResultQueue({
