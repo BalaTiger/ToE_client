@@ -2,6 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { dedupeInferredDiscardTransfers } from '../game/animQueueHelpers';
 import { getVisualEventIdsFromState, markConsumedVisualEvents } from '../game/visualEvents';
 import { attachApophisNightTimeline, mergeApophisTargetQueue } from '../game/apophisAnimQueue';
+import {
+  applyStatAnimationImpact,
+  expandCombinedStatAnimationSteps,
+  primeDisplayStatsForStatQueue,
+  validateStatAnimationContinuity,
+} from '../game/statEvents';
 
 export function useAnimationQueue({
   gs,
@@ -56,12 +62,8 @@ export function useAnimationQueue({
       const players = patch.players ? copyPlayers(patch.players) : null;
       visualStateLocks.lock({ players });
       if (setVisualPlayersOverride) setVisualPlayersOverride(players);
-      // Keep the numeric HP/SAN labels on the same visual timeline as the
-      // bars and hit effects. The committed game state can remain deferred
-      // until the queue's STATE_PATCH boundary.
-      if (players && setDisplayStats) {
-        setDisplayStats(players.map(player => ({ hp: player.hp, san: player.san })));
-      }
+      // Player snapshots own cards/status/identity presentation. Numeric
+      // HP/SAN are exclusively advanced by their stat animation impact.
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'discard')) {
       setVisualDiscard([...(patch.discard || [])]);
@@ -272,6 +274,12 @@ export function useAnimationQueue({
         ? CARD_REVEAL_DURATION
         : Math.round((ANIM_DURATION[anim.type] || ANIM_DURATION.default) * ANIM_SPEED_SCALE);
     let gapTimer = null;
+    let statImpactTimer = null;
+    if (setDisplayStats) {
+      statImpactTimer = setTimeout(() => {
+        setDisplayStats(prev => applyStatAnimationImpact(prev, anim));
+      }, 350);
+    }
     const t1 = setTimeout(() => {
       if (isCard) {
         gapTimer = setTimeout(advanceQueue, ANIM_STEP_GAP);
@@ -282,6 +290,7 @@ export function useAnimationQueue({
     }, dur);
     return () => {
       clearTimeout(t1);
+      if (statImpactTimer) clearTimeout(statImpactTimer);
       if (gapTimer) clearTimeout(gapTimer);
       clearVisualTimelineTimers();
     };
@@ -299,7 +308,7 @@ export function useAnimationQueue({
       ? mergeApophisTargetQueue(queue, gs, nextGs)
       : queue;
     const normalizedQueue = attachApophisNightTimeline(
-      addDrawBackgroundCameraPrelude(dedupeInferredDiscardTransfers(apophisOrderedQueue)),
+      addDrawBackgroundCameraPrelude(expandCombinedStatAnimationSteps(dedupeInferredDiscardTransfers(apophisOrderedQueue))),
       gs?.apophisNight,
       nextGs?.apophisNight,
     );
@@ -355,6 +364,13 @@ export function useAnimationQueue({
 
     visibleLogAuthorityRef.current = Array.isArray(nextGs?.log) ? nextGs.log : (Array.isArray(visibleLogAuthorityRef.current) ? visibleLogAuthorityRef.current : []);
     const preparedQueue = prepareAnimQueueLogs(normalizedQueue, nextGs, visibleLogRef.current);
+    const continuityIssues = validateStatAnimationContinuity(preparedQueue);
+    if (continuityIssues.length && import.meta.env?.DEV) {
+      console.warn('[stat-presentation] discontinuous stat animation queue', continuityIssues);
+    }
+    if (setDisplayStats) {
+      setDisplayStats(prev => primeDisplayStatsForStatQueue(prev, preparedQueue));
+    }
     const setupStep = preparedQueue.find(step => step?.visualSetupPatch && step.visualSetupTiming === 'queueStart');
     if (setupStep) {
       applyVisualPatch(setupStep.visualSetupPatch);
@@ -363,9 +379,6 @@ export function useAnimationQueue({
     const playableQueue = [...preparedQueue];
     while (playableQueue[0]?.type === 'VISUAL_LOCK') {
       const visualLock = playableQueue.shift();
-      // A leading lock is the numeric-stat baseline as well as the card/board
-      // snapshot. Without applying it to displayStats, turn-start damage could
-      // already show its final HP/SAN value before the hit animation began.
       applyVisualPatch({
         ...(Object.prototype.hasOwnProperty.call(visualLock, 'players') ? { players: visualLock.players } : {}),
         ...(Object.prototype.hasOwnProperty.call(visualLock, 'zhuLight') ? { zhuLight: visualLock.zhuLight } : {}),

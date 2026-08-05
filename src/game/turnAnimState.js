@@ -966,6 +966,24 @@ export function buildTurnStartDrawReplayQueue({
   const drawEffectQ = hasEventBoundSlimePop
     ? drawEffectQRaw.filter(step => step?.type !== 'TSG_SLIME_POP')
     : drawEffectQRaw;
+  // Re-assert the pre-worship player snapshot when the god card starts its
+  // reveal. Some turn-start paths commit the resolved AI snapshot after the
+  // banner, which used to let the god-power badge appear during the flip. The
+  // GOD_HIGHLIGHT step below remains the single frame that reveals the badge
+  // and starts the panel burst.
+  const drawCardStepsWithWorshipBaseline = worshipBadgePlayers
+    ? drawCardSteps.map(step => (
+      step?.type === 'DRAW_CARD' && sameDrawCard(step.card, drawnCard)
+        ? {
+          ...step,
+          visualSetupPatch: {
+            ...(step.visualSetupPatch || {}),
+            players: beforeDrawPlayers,
+          },
+        }
+        : step
+    ))
+    : drawCardSteps;
   // Multiple reveal draws can occur in one draw phase (for example a slime
   // extra draw followed by the fixed draw). A forced card's bespoke effect
   // belongs immediately after that card's reveal, not after every later reveal.
@@ -976,11 +994,11 @@ export function buildTurnStartDrawReplayQueue({
     else deferredDrawEffectQ.push(step);
   });
   const orderedDrawCardSteps = immediateEarthquakeQ.length
-    ? drawCardSteps.flatMap(step => {
+    ? drawCardStepsWithWorshipBaseline.flatMap(step => {
         if (step?.type !== 'DRAW_CARD' || step?.card?.type !== 'allDiscard' || !immediateEarthquakeQ.length) return [step];
         return [step, immediateEarthquakeQ.shift()];
       })
-    : drawCardSteps;
+    : drawCardStepsWithWorshipBaseline;
   deferredDrawEffectQ.push(...immediateEarthquakeQ);
   const hasDrawEffectVisualStep = drawEffectQ.some(step => step?.type !== 'STATE_PATCH');
   const drawEffectStatePatch = hasDrawEffectVisualStep

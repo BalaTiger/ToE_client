@@ -128,7 +128,6 @@ import {
   moveTopDeckCardToBottom,
   resolveMpTimeoutToAction,
   resolveMpAiTakeoverState,
-  applyStatEventsToDisplayStats,
   buildStatEvents,
   getEndTurnEvents,
   END_TURN_EVENT,
@@ -255,7 +254,7 @@ import {
   buildInspectionAwareAnimQueue,
   statePatchStep,
   prepareWorshipHighlight,
-  mergePlayerStatsIntoSnapshot,
+  consumeRetainedRandomTargetEvents,
   zhuHideCardStep,
   buryToDeckStep,
   cardTransferStep,
@@ -2523,9 +2522,10 @@ export default function Game(){
         const consumedApophisTargetSeq=Math.max(0,...(rawResult._aiHuntEvents||[])
           .map(evt=>evt?.apophisTargetEvent?.seq||0)
           .filter(Boolean));
+        const actionOldGsBase=consumeRetainedRandomTargetEvents(fakeGs(afterInspectionPlayers,afterInspectionLog));
         const actionOldGsForApophis=consumedApophisTargetSeq
-          ? {...fakeGs(afterInspectionPlayers,afterInspectionLog),_apophisTargetSeq:Math.max(fakeGs(afterInspectionPlayers,afterInspectionLog)._apophisTargetSeq||0,consumedApophisTargetSeq)}
-          : fakeGs(afterInspectionPlayers,afterInspectionLog);
+          ? {...actionOldGsBase,_apophisTargetSeq:Math.max(actionOldGsBase._apophisTargetSeq||0,consumedApophisTargetSeq)}
+          : actionOldGsBase;
         const actionVisualPatch={
           ...(Object.prototype.hasOwnProperty.call(newGs,'apophisNight')?{apophisNight:newGs.apophisNight}:{}),
           ...(newGs._apophisTargetEvent?{_apophisTargetEvent:newGs._apophisTargetEvent}:{}),
@@ -2722,12 +2722,9 @@ export default function Game(){
             if(inspectionEvents.length){
               lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
             }
-            // 飞牌落地只保留技能前的牌区外观；HP/SAN 必须取本次结算后的
-            // 时间线基准，否则整组旧快照会把目标的 SAN 临时写回技能前数值。
-            const bewitchSourcePatchPlayers=mergePlayerStatsIntoSnapshot(
-              copyPlayers(afterInspectionPlayers),
-              P_actionPreInspection,
-            );
+            // 底层 AI 状态已结算到最终值；从技能动画首帧起锁回行动前属性，
+            // 后续 SAN_DAMAGE 再按自身时间线逐段从 9 降到 7、6。
+            const bewitchSourcePatchPlayers=copyPlayers(afterInspectionPlayers);
             if(bewitchSourcePatchPlayers[gs.currentTurn]&&P_actionBeforeHandLimit?.[gs.currentTurn]){
               bewitchSourcePatchPlayers[gs.currentTurn]={
                 ...bewitchSourcePatchPlayers[gs.currentTurn],
@@ -2741,7 +2738,10 @@ export default function Game(){
               bewitchEvent?.targetName||P_actionEnd[bwti]?.name,
               [...actionStatQ,...inspectionFlow.queue,...postInspectionQ],
               bewitchMsgs,
-              {afterGiftPatch:{players:bewitchSourcePatchPlayers}}
+              {
+                skillVisualSetupPatch:{players:copyPlayers(afterInspectionPlayers)},
+                afterGiftPatch:{players:bewitchSourcePatchPlayers},
+              }
             );
           }else{
             const bewitchStep={type:'SKILL_BEWITCH',msgs:bewitchMsgs,targetIdx:bwti>=0?bwti:1};
@@ -3441,43 +3441,6 @@ export default function Game(){
       setDisplayStats(gs.players.map(p => ({ hp: p.hp, san: p.san })));
     }
   }, [gs?.players, anim, gs?.phase, animQueueRef]);
-
-  // 2. 动画期间的精准延迟对齐：当播放某个角色的受击/治疗动画时，延迟 350ms 更新显示数值
-  useEffect(() => {
-    if (anim && anim.targetStats) {
-      const targets = new Set();
-      if (anim.targetPid !== undefined) targets.add(anim.targetPid);
-      if (anim.targetIdx !== undefined) targets.add(anim.targetIdx);
-      if (Array.isArray(anim.targets)) anim.targets.forEach(t => targets.add(t));
-      if (anim.triggerPid !== undefined) targets.add(anim.triggerPid);
-      if (anim.hitIndices && Array.isArray(anim.hitIndices)) anim.hitIndices.forEach(hi => targets.add(hi));
-
-      if (targets.size > 0) {
-        const ts = anim.targetStats;
-        const timer = setTimeout(() => {
-          setDisplayStats(prev => {
-            if (Array.isArray(anim.statEvents) && anim.statEvents.length) {
-              return applyStatEventsToDisplayStats(prev, anim.statEvents, anim.type);
-            }
-            const next = [...prev];
-            targets.forEach(pid => {
-              if (next[pid] && ts[pid]) {
-                if(anim.type==='HP_DAMAGE'||anim.type==='HP_HEAL'){
-                  next[pid] = {...next[pid],hp:ts[pid].hp};
-                }else if(anim.type==='SAN_DAMAGE'||anim.type==='SAN_HEAL'){
-                  next[pid] = {...next[pid],san:ts[pid].san};
-                }else{
-                  next[pid] = { hp: ts[pid].hp, san: ts[pid].san };
-                }
-              }
-            });
-            return next;
-          });
-        }, 350);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [anim]);
 
   function getMpDecisionKey(state=gs){
     const ad=state?.abilityData||{};
@@ -6290,6 +6253,7 @@ export default function Game(){
     };
     let consumedSlimeCard=null;
     let playersBeforeSlimePop=null;
+    let slimeStatPresentation=null;
     if(useSlime){
       const slimeIdx=(target.hand||[]).findIndex(isTsathogguaSlime);
       if(slimeIdx>=0){
@@ -6298,8 +6262,11 @@ export default function Game(){
         const total=clamp((abilityData.afterHp??target.hp)+(abilityData.afterSan??target.san),0,20);
         target.hp=clamp(Math.ceil(total/2));
         target.san=clamp(Math.floor(total/2));
-        // ponytail: 黏液平分直接刷新 displayStats，否则进入 AI 回合后兜底 effect 会跳过 AI_TURN 导致血条延迟到下次受击才更新
-        setDisplayStats(P.map(p=>({hp:p.hp,san:p.san})));
+        slimeStatPresentation={
+          target:targetIdx,
+          from:{hp:playersBeforeSlimePop[targetIdx].hp,san:playersBeforeSlimePop[targetIdx].san},
+          to:{hp:target.hp,san:target.san},
+        };
         L.push(`【撒托古亚的赐福黏液】${localDisplayName(targetIdx,target.name)} 牺牲黏液，将HP/SAN平分为 ${target.hp}/${target.san}`);
       }else{
         L.push(`【撒托古亚的赐福黏液】${localDisplayName(targetIdx,target.name)} 已没有可牺牲的黏液`);
@@ -6319,7 +6286,7 @@ export default function Game(){
       };
       const redirectQueue=[
         ...(useSlime&&consumedSlimeCard?[{
-          type:'TSG_SLIME_POP',targetPid:targetIdx,count:1,cards:[consumedSlimeCard],msgs:L.slice(-2,-1),
+          type:'TSG_SLIME_POP',targetPid:targetIdx,count:1,cards:[consumedSlimeCard],msgs:L.slice(-2,-1),statPresentation:slimeStatPresentation,
           ...(playersBeforeSlimePop?{visualSetupPatch:{players:playersBeforeSlimePop}}:{}),
         }]:[]),
         statePatchStep({players:P,deck:D,discard:Disc,log:L}),
@@ -6343,7 +6310,7 @@ export default function Game(){
         };
         const chainedQueue=[
           ...(useSlime&&consumedSlimeCard?[{
-            type:'TSG_SLIME_POP',targetPid:targetIdx,count:1,cards:[consumedSlimeCard],msgs:L.slice(-2,-1),
+            type:'TSG_SLIME_POP',targetPid:targetIdx,count:1,cards:[consumedSlimeCard],msgs:L.slice(-2,-1),statPresentation:slimeStatPresentation,
             ...(playersBeforeSlimePop?{visualSetupPatch:{players:playersBeforeSlimePop}}:{}),
           }]:[]),
           ...buildAnimQueue(gs,chainedGs),
@@ -6371,7 +6338,7 @@ export default function Game(){
       };
       const queuedAnim=[
         ...(useSlime&&consumedSlimeCard?[{
-          type:'TSG_SLIME_POP',targetPid:targetIdx,count:1,cards:[consumedSlimeCard],msgs:L.slice(-1),
+          type:'TSG_SLIME_POP',targetPid:targetIdx,count:1,cards:[consumedSlimeCard],msgs:L.slice(-1),statPresentation:slimeStatPresentation,
           ...(playersBeforeSlimePop?{visualSetupPatch:{players:playersBeforeSlimePop}}:{}),
         }]:[]),
         statePatchStep({players:P,deck:D,discard:Disc,log:L}),
@@ -6439,6 +6406,7 @@ export default function Game(){
         count:1,
         cards:[consumedSlimeCard],
         msgs:L.slice(-1),
+        statPresentation:slimeStatPresentation,
         ...(playersBeforeSlimePop?{visualSetupPatch:{players:playersBeforeSlimePop}}:{}),
       }]:[]),
       statePatchStep({players:preInspectionGs.players})
@@ -6449,7 +6417,7 @@ export default function Game(){
       if(finalNextGs.phase==='TSG_SLIME_BALANCE'){
         const reactionQueue=[
           ...(useSlime&&consumedSlimeCard?[{
-            type:'TSG_SLIME_POP',targetPid:targetIdx,count:1,cards:[consumedSlimeCard],msgs:L.slice(-1),
+            type:'TSG_SLIME_POP',targetPid:targetIdx,count:1,cards:[consumedSlimeCard],msgs:L.slice(-1),statPresentation:slimeStatPresentation,
             ...(playersBeforeSlimePop?{visualSetupPatch:{players:playersBeforeSlimePop}}:{}),
           }]:[]),
           ...buildAnimQueue(gs,finalNextGs),

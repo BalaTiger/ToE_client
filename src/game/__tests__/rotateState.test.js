@@ -206,6 +206,7 @@ describe('rotateGsForViewer', () => {
               statEvents: [{ type: 'SAN_LOSS', target: 1, from: { san: 10 }, to: { san: 8 } }],
             },
             { type: 'STATE_PATCH', players: [player('ec0'), player('ec1'), player('ec2'), player('ec3')] },
+            { type: 'TSG_SLIME_POP', targetPid: 1, statPresentation: { target: 1, from: { hp: 3, san: 9 }, to: { hp: 6, san: 6 } } },
           ],
         },
       ],
@@ -269,6 +270,10 @@ describe('rotateGsForViewer', () => {
     expect(rotated._visualEvents[11].queue[1].statEvents[0].target).toBe(3);
     expect(rotated._visualEvents[11].queue[1].targetStats.map(stat => stat.san)).toEqual([10, 10, 10, 8]);
     expect(names(rotated._visualEvents[11].queue[2].players)).toEqual(['ec2', 'ec3', 'ec0', 'ec1']);
+    expect(rotated._visualEvents[11].queue[3]).toMatchObject({
+      targetPid: 3,
+      statPresentation: { target: 3, from: { hp: 3, san: 9 }, to: { hp: 6, san: 6 } },
+    });
   });
 
   it('derotates rotated animation snapshots back to host order', () => {

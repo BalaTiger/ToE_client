@@ -257,6 +257,12 @@ function rotateAnimQueueStep(step, rotateIndex, myIndex) {
     beforePlayers: rotatePlayersArray(step.beforePlayers, myIndex),
     targetStats: rotatePlayersArray(step.targetStats, myIndex),
     statEvents: rotateStatEvents(step.statEvents, rotateIndex, myIndex),
+    statPresentation: step.statPresentation
+      ? {
+        ...step.statPresentation,
+        target: step.statPresentation.target != null ? rotateIndex(step.statPresentation.target) : step.statPresentation.target,
+      }
+      : step.statPresentation,
     beforeDiscard: Array.isArray(step.beforeDiscard) ? step.beforeDiscard : step.beforeDiscard,
     discardEvents: Array.isArray(step.discardEvents)
       ? rotateEarthquakeDiscardEvents(step.discardEvents, rotateIndex, myIndex)

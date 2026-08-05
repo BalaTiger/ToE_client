@@ -78,6 +78,13 @@ Vitest tests exist and should be used for focused verification. Useful areas inc
 
 For refactors touching animation order, add or update nearby pure-function tests before relying on a full build.
 
+HP/SAN presentation has a strict ownership boundary: `gs.players` is authoritative,
+but visible bars use `displayStats`. During queued playback only the generic HP/SAN
+damage/heal steps may update their matching resource. Generic player snapshots,
+`VISUAL_LOCK`, and `STATE_PATCH` must not write visible stats. `TSG_SLIME_POP` with
+`statPresentation` is the deliberate exception for slime balance; death overlays such
+as `GUILLOTINE` and `PETRIFY_DEATH` never update HP directly.
+
 ## Encoding And Workflow
 
 Read `CODEX_WORKFLOW.md` before broad text edits. In PowerShell, prefer explicit UTF-8 output and `Get-Content -Encoding UTF8`.

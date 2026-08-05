@@ -53,7 +53,7 @@ Still owns:
 - top-level `gs` state and screen branches
 - battle action handlers and turn-flow orchestration
 - tutorial controller glue
-- animation queue orchestration that depends on React refs/state
+- animation queue construction and React-state bridges around the extracted queue runtime
 - multiplayer authority and broadcast bridges around local actions
 - battle-screen prop composition and remaining decision overlays
 - some global styles
@@ -76,7 +76,8 @@ Pure logic modules with no React dependency. Important files include:
 - `multiplayerRemoteReplay.js` / `multiplayerTimeouts.js` - replay construction and timeout transforms
 - `multiplayerAiTakeover.js` - deterministic disconnect-takeover decisions
 - `animQueueCore.js` / `animQueueHelpers.js` / `animLogs.js` - animation queue and animation-log helpers
-- `visualEvents.js` / `statEvents.js` - event metadata used by animation and sync
+- `visualEvents.js` - visual-event metadata used by animation and sync
+- `statEvents.js` - HP/SAN event compilation, combined-effect normalization, presentation baselines, impact updates, and continuity validation
 - `tutorialScenario.js` / `softGuides.js` - tutorial and soft-guide state helpers
 
 When a rule helper can be expressed as input -> output without DOM or React state, prefer putting it here and testing it under `game/__tests__/`.
@@ -144,6 +145,7 @@ Important extracted layers:
 - lobby/room state -> `hooks/useMultiplayerLobby.js`
 - timers -> `hooks/useMultiplayerTimers.js`
 - animation queue runtime -> `hooks/useAnimationQueue.js`
+- HP/SAN presentation transactions -> `game/statEvents.js` + `hooks/useAnimationQueue.js`
 - socket connection and several multiplayer side effects -> `src/multiplayer/`
 - multiplayer remote replay execution -> `src/multiplayer/multiplayerRemoteReplayExecutor.js`
 - multiplayer disconnect takeover decisions -> `src/game/multiplayerAiTakeover.js`
@@ -156,6 +158,7 @@ Important extracted layers:
 - post-discard end-turn transition wrapper (`confirmDiscard` / `autoDiscardFromRight`) -> `src/game/postDiscardEndTurn.js`
 - hand-limit discard helpers (`splitKeptDestroyedDiscarded`, `discardCardsFromHand*`, `applyHandDiscardSideEffectsWithAnim`) -> `src/game/handLimitDiscard.js`
 - rest action end-turn transition wrapper (`doRest`) -> `src/game/restTurnFlow.js`
+- target-action continuation state/routing -> `src/game/targetContinuation.js`
 - battle screen JSX shell and primary sections -> `src/components/battle/BattleScreen.jsx`, `BattleHeader.jsx`, `SelfPlayerPanel.jsx`, `HandArea.jsx`, `BattleDecisionModals.jsx`, `SwapBlindDrawOverlay.jsx`
 
 ## Remaining High-Value Refactor Targets
@@ -168,7 +171,7 @@ Risk: high. It shares refs, tutorial gates, animation queues, multiplayer sync, 
 
 Suggested next slices:
 
-- target-action continuation and replay/broadcast bridges
+- replay/broadcast bridges around the extracted target-action continuation flow
 - draw/god-choice decision handlers
 - small pure helpers still nested inside action handlers
 
@@ -209,6 +212,23 @@ When changing extracted logic, prefer focused tests first:
 - detached audio timing and cleanup behavior
 
 Then run `npm.cmd run build` for integration confidence.
+
+## HP/SAN Presentation Boundary
+
+Authoritative HP/SAN remain in `gs.players`, but battle stat bars render from
+`displayStats`. During an animation transaction:
+
+- `statEvents.js` primes each affected resource from the first event's `from` value;
+- only `HP_DAMAGE`, `SAN_DAMAGE`, `HP_HEAL`, and `SAN_HEAL` may advance that resource to `to`;
+- combined HP/SAN effects are split into the corresponding generic steps at the playback boundary;
+- generic `visualSetupPatch`, `visualTimeline`, `VISUAL_LOCK`, and `STATE_PATCH` player snapshots must not write `displayStats`;
+- `GUILLOTINE` and `PETRIFY_DEATH` are presentation-only and do not change stat bars;
+- `TSG_SLIME_POP` with `statPresentation` is the sole special path: it commits slime-balance HP/SAN on the slime animation impact without damage/heal effects;
+- queue completion or a truly idle state may reconcile `displayStats` to authoritative state.
+
+Keep the continuity invariant `previous.to === next.from` for sequential changes to
+the same resource. Add focused `statEvents` tests whenever introducing a new stat-changing
+animation path.
 
 ## Maintenance Rule
 

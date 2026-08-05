@@ -817,10 +817,22 @@ describe('buildTurnStartDrawReplayQueue', () => {
       effectOldGs: { ...oldGs, players: beforeDrawPlayers },
     });
     const sanSteps = replay.queue.filter(step => step.type === 'SAN_DAMAGE');
+    const drawIdx = replay.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === tsg.id);
+    const highlightIdx = replay.queue.findIndex(step => step.type === 'GOD_HIGHLIGHT' && step.targetPid === 2);
 
     expect(sanSteps).toHaveLength(1);
     expect(sanSteps[0].hitIndices).toEqual([2]);
     expect(sanSteps[0].statEvents).toMatchObject([{ seq: 2, target: 2 }]);
+    expect(drawIdx).toBeGreaterThan(-1);
+    expect(highlightIdx).toBeGreaterThan(drawIdx);
+    expect(replay.queue[drawIdx].visualSetupPatch.players[2]).toMatchObject({
+      godName: null,
+      godLevel: 0,
+    });
+    expect(replay.queue[highlightIdx].visualSetupPatch.players[2]).toMatchObject({
+      godName: 'TSG',
+      godLevel: 1,
+    });
   });
 
   it('AI 回合开始区域牌伤害只播放本次 HP 扣减，不重播上个 AI 的 HP 回复', () => {

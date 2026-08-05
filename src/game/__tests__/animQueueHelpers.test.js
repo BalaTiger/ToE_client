@@ -10,6 +10,7 @@ import {
   dedupeInferredDiscardTransfers,
   fullHandSwapSteps,
   mergePlayerStatsIntoSnapshot,
+  consumeRetainedRandomTargetEvents,
   prepareWorshipHighlight,
   resolveTurnHighlightForStep,
   swapCardsSteps,
@@ -111,6 +112,15 @@ describe('animQueueHelpers', () => {
     expect(merged[1].godName).toBe('VRI');
     expect(merged[1].godZone).toEqual([oldGod]);
     expect(visualSnapshot.map(player => player.san)).toEqual([9, 9]);
+  });
+
+  it('AI 行动基线将已保留的随机目标事件视为已消费', () => {
+    const state = consumeRetainedRandomTargetEvents({
+      _randomTargetSeq: 1,
+      _randomTargetEvents: [{ seq: 4 }, { seq: 2 }],
+    });
+
+    expect(state._randomTargetSeq).toBe(4);
   });
 
   it('从中文回合开始日志解析当前角色高亮', () => {
@@ -261,10 +271,16 @@ describe('animQueueHelpers', () => {
 
   it('蛊惑赠牌后可先提交施法者手牌中间态，再继续目标结算', () => {
     const gift = makeZoneCard('A1', 0);
+    const beforeSkillPlayers = [
+      makePlayer({ name: '你', san: 9 }),
+      makePlayer({ name: '贝拉', san: 9 }),
+      makePlayer({ name: '目标角色', san: 9 }),
+    ];
     const sourceAfterGift = makePlayer({ name: '贝拉', hand: [makeZoneCard('B1', 0)] });
     const queue = buildBewitchForcedCardQueue(1, 2, gift, '目标角色', [
       { type: 'TURN_BOUNDARY_PAUSE', msgs: ['目标结算'] },
     ], ['贝拉（邪祀者）对目标角色【蛊惑】'], {
+      skillVisualSetupPatch: { players: beforeSkillPlayers },
       afterGiftPatch: { players: [makePlayer({ name: '你' }), sourceAfterGift, makePlayer({ name: '目标角色' })] },
     });
 
@@ -275,6 +291,7 @@ describe('animQueueHelpers', () => {
       'DRAW_CARD',
       'TURN_BOUNDARY_PAUSE',
     ]);
+    expect(queue[0].visualSetupPatch.players.map(player => player.san)).toEqual([9, 9, 9]);
     expect(queue[2]).toMatchObject({ players: expect.any(Array) });
     expect(queue[2].players[1].hand).toHaveLength(1);
   });

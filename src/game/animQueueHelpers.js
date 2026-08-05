@@ -124,6 +124,17 @@ export function cardTransferStep(options={}){
   return step;
 }
 
+export function consumeRetainedRandomTargetEvents(state={}){
+  return {
+    ...state,
+    _randomTargetSeq:Math.max(
+      state?._randomTargetSeq||0,
+      ...(Array.isArray(state?._randomTargetEvents)?state._randomTargetEvents:[])
+        .map(event=>event?.seq||0),
+    ),
+  };
+}
+
 export function filterSphinxResultQueue(queue=[]){
   if(!Array.isArray(queue))return [];
   return queue.filter(step=>step?.type!=="DRAW_CARD"&&step?.type!=="CARD_TRANSFER");
@@ -313,7 +324,12 @@ export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQ
     eventKeys.forEach(key=>seenStatEvents.add(key));
     return true;
   };
-  const ordered=[{type:"SKILL_BEWITCH",msgs,targetIdx:toPid}];
+  const ordered=[{
+    type:"SKILL_BEWITCH",
+    msgs,
+    targetIdx:toPid,
+    ...(options.skillVisualSetupPatch?{visualSetupPatch:options.skillVisualSetupPatch}:{}),
+  }];
   if(toPid!=null&&toPid>=0){
     ordered.push(cardTransferStep({fromPid,dest:"player",toPid,count:1}));
     if(options.afterGiftPatch)ordered.push(statePatchStep(options.afterGiftPatch));

@@ -171,6 +171,145 @@ function eventMatchesAnimationType(event, animationType) {
   return true;
 }
 
+export const STAT_ANIMATION_TYPES = Object.freeze([
+  'HP_DAMAGE',
+  'HP_HEAL',
+  'SAN_DAMAGE',
+  'SAN_HEAL',
+]);
+
+export function isStatAnimationType(type) {
+  return STAT_ANIMATION_TYPES.includes(type);
+}
+
+function statFieldsForAnimationType(type) {
+  if (type === 'HP_DAMAGE' || type === 'HP_HEAL') return ['hp'];
+  if (type === 'SAN_DAMAGE' || type === 'SAN_HEAL') return ['san'];
+  return [];
+}
+
+export function expandCombinedStatAnimationSteps(queue = []) {
+  return (Array.isArray(queue) ? queue : []).flatMap(step => {
+    if (step?.type !== 'HP_SAN_HEAL' && step?.type !== 'HP_SAN_DAMAGE') return [step];
+    const healing = step.type === 'HP_SAN_HEAL';
+    return [
+      { ...step, type: healing ? 'HP_HEAL' : 'HP_DAMAGE' },
+      { ...step, type: healing ? 'SAN_HEAL' : 'SAN_DAMAGE', msgs: [] },
+    ];
+  });
+}
+
+export function primeDisplayStatsForStatQueue(displayStats = [], queue = []) {
+  const next = displayStats.map(stat => ({ ...stat }));
+  const primed = new Set();
+  (Array.isArray(queue) ? queue : []).forEach(step => {
+    if (step?.type === 'TSG_SLIME_POP' && step.statPresentation) {
+      const { target, from } = step.statPresentation;
+      if (target != null && from) {
+        next[target] = {
+          ...(next[target] || {}),
+          ...(from.hp != null ? { hp: from.hp } : {}),
+          ...(from.san != null ? { san: from.san } : {}),
+        };
+      }
+      return;
+    }
+    const fields = statFieldsForAnimationType(step?.type);
+    if (!fields.length) return;
+    const matchingEvents = (Array.isArray(step.statEvents) ? step.statEvents : [])
+      .map(normalizeStatEvent)
+      .filter(Boolean)
+      .filter(event => eventMatchesAnimationType(event, step.type));
+    if (matchingEvents.length) {
+      matchingEvents.forEach(event => {
+        fields.forEach(field => {
+          const key = `${event.target}:${field}`;
+          if (primed.has(key) || event.from?.[field] == null) return;
+          next[event.target] = { ...(next[event.target] || {}), [field]: event.from[field] };
+          primed.add(key);
+        });
+      });
+      return;
+    }
+    const setupPlayers = step.visualSetupPatch?.players ||
+      step.visualTimeline?.find(point => point?.patch?.players)?.patch?.players;
+    (Array.isArray(step.hitIndices) ? step.hitIndices : []).forEach(target => {
+      fields.forEach(field => {
+        const key = `${target}:${field}`;
+        if (primed.has(key) || setupPlayers?.[target]?.[field] == null) return;
+        next[target] = { ...(next[target] || {}), [field]: setupPlayers[target][field] };
+        primed.add(key);
+      });
+    });
+  });
+  return next;
+}
+
+export function applyStatAnimationImpact(displayStats = [], anim = {}) {
+  if (anim?.type === 'TSG_SLIME_POP' && anim.statPresentation) {
+    const { target, to } = anim.statPresentation;
+    if (target == null || !to) return displayStats;
+    const next = displayStats.map(stat => ({ ...stat }));
+    next[target] = {
+      ...(next[target] || {}),
+      ...(to.hp != null ? { hp: to.hp } : {}),
+      ...(to.san != null ? { san: to.san } : {}),
+    };
+    return next;
+  }
+  if (!isStatAnimationType(anim?.type)) return displayStats;
+  if (Array.isArray(anim.statEvents) && anim.statEvents.length) {
+    return applyStatEventsToDisplayStats(displayStats, anim.statEvents, anim.type);
+  }
+  const fields = statFieldsForAnimationType(anim.type);
+  const next = displayStats.map(stat => ({ ...stat }));
+  const targets = new Set([
+    ...(Array.isArray(anim.hitIndices) ? anim.hitIndices : []),
+    ...(Array.isArray(anim.targets) ? anim.targets : []),
+    ...([anim.targetPid, anim.targetIdx, anim.triggerPid].filter(target => target != null)),
+  ]);
+  targets.forEach(target => {
+    const patch = {};
+    fields.forEach(field => {
+      const value = anim.targetStats?.[target]?.[field];
+      if (value != null) patch[field] = value;
+    });
+    if (!Object.keys(patch).length) return;
+    next[target] = { ...(next[target] || {}), ...patch };
+  });
+  return next;
+}
+
+export function validateStatAnimationContinuity(queue = []) {
+  const expected = new Map();
+  const issues = [];
+  (Array.isArray(queue) ? queue : []).forEach((step, stepIndex) => {
+    const fields = statFieldsForAnimationType(step?.type);
+    if (!fields.length || !Array.isArray(step.statEvents)) return;
+    step.statEvents
+      .map(normalizeStatEvent)
+      .filter(Boolean)
+      .filter(event => eventMatchesAnimationType(event, step.type))
+      .forEach(event => {
+        fields.forEach(field => {
+          const key = `${event.target}:${field}`;
+          if (expected.has(key) && event.from?.[field] !== expected.get(key)) {
+            issues.push({
+              stepIndex,
+              type: step.type,
+              target: event.target,
+              field,
+              expectedFrom: expected.get(key),
+              actualFrom: event.from?.[field],
+            });
+          }
+          if (event.to?.[field] != null) expected.set(key, event.to[field]);
+        });
+      });
+  });
+  return issues;
+}
+
 export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) {
   const events = statEvents.map(normalizeStatEvent).filter(Boolean);
   if (!events.length) return [];

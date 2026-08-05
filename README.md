@@ -20,11 +20,17 @@ React + Vite frontend for 《邪神的宝藏》(Treasures of Evils).
 ## Architecture At A Glance
 
 - `src/App.jsx` - top-level game shell and remaining action/tutorial orchestration
-- `src/game/` - rules, AI, turn flow, animation-state builders, multiplayer decisions
+- `src/game/` - rules, AI, turn flow, animation-state builders, stat-presentation transactions, multiplayer decisions
 - `src/audio/` - standalone multi-track sound-sequence controllers
 - `src/hooks/` - React-aware runtime subsystems
 - `src/multiplayer/` - connection, socket handlers, state broadcast, remote replay execution
 - `src/components/` - render-focused battle, lobby, modal, card, and animation layers
+
+HP/SAN use a separate presentation timeline: authoritative values live in game state,
+while visible stat bars advance only at the impact point of `HP_DAMAGE`, `SAN_DAMAGE`,
+`HP_HEAL`, or `SAN_HEAL`. Generic player snapshots must not write visible HP/SAN.
+`TSG_SLIME_POP` is the intentional special case for committing slime-balance values
+without playing damage or recovery effects.
 
 Multiplayer uses signed anonymous identities; account registration is not required. The server relays client-owned game snapshots rather than running authoritative card rules.
 

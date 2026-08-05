@@ -1,12 +1,92 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyStatEventsToDisplayStats,
+  applyStatAnimationImpact,
   buildStatEvents,
+  expandCombinedStatAnimationSteps,
+  primeDisplayStatsForStatQueue,
   statEventsToAnimQueue,
+  validateStatAnimationContinuity,
 } from '../statEvents';
 import { makePlayer } from './factory';
 
 describe('statEvents', () => {
+  it('属性队列开始时只把对应数值锁定到第一段事件的 from', () => {
+    const displayStats = [{ hp: 4, san: 6 }];
+    const queue = statEventsToAnimQueue([
+      { seq: 1, type: 'SAN_LOSS', target: 0, from: { hp: 10, san: 9 }, to: { hp: 10, san: 7 } },
+      { seq: 2, type: 'SAN_LOSS', target: 0, from: { hp: 10, san: 7 }, to: { hp: 10, san: 6 } },
+      { seq: 3, type: 'HP_LOSS', target: 0, from: { hp: 10, san: 6 }, to: { hp: 8, san: 6 } },
+    ], [makePlayer({ hp: 8, san: 6 })]);
+
+    expect(primeDisplayStatsForStatQueue(displayStats, queue)).toEqual([{ hp: 10, san: 9 }]);
+  });
+
+  it('每种属性只在对应特效命中时变化', () => {
+    const events = [{
+      type: 'HP_SAN_LOSS',
+      target: 0,
+      from: { hp: 10, san: 9 },
+      to: { hp: 8, san: 7 },
+    }];
+    const queue = statEventsToAnimQueue(events, [makePlayer({ hp: 8, san: 7 })]);
+    const baseline = primeDisplayStatsForStatQueue([{ hp: 8, san: 7 }], queue);
+    const afterHp = applyStatAnimationImpact(baseline, queue[0]);
+    const afterSan = applyStatAnimationImpact(afterHp, queue[1]);
+
+    expect(baseline).toEqual([{ hp: 10, san: 9 }]);
+    expect(afterHp).toEqual([{ hp: 8, san: 9 }]);
+    expect(afterSan).toEqual([{ hp: 8, san: 7 }]);
+  });
+
+  it('组合恢复在播放边界拆成通用 HP 与 SAN 恢复步骤', () => {
+    const queue = expandCombinedStatAnimationSteps([{
+      type: 'HP_SAN_HEAL',
+      hitIndices: [0],
+      targetStats: [{ hp: 7, san: 6 }],
+      msgs: ['平衡恢复'],
+    }]);
+
+    expect(queue.map(step => step.type)).toEqual(['HP_HEAL', 'SAN_HEAL']);
+    expect(queue[0].msgs).toEqual(['平衡恢复']);
+    expect(queue[1].msgs).toEqual([]);
+  });
+
+  it('断头台与石化死亡不能直接更新 HP 条', () => {
+    const stats = [{ hp: 2, san: 6 }];
+    expect(applyStatAnimationImpact(stats, {
+      type: 'GUILLOTINE', hitIndices: [0], targetStats: [{ hp: 0, san: 6 }],
+    })).toBe(stats);
+    expect(applyStatAnimationImpact(stats, {
+      type: 'PETRIFY_DEATH', hitIndices: [0], targetStats: [{ hp: 0, san: 6 }],
+    })).toBe(stats);
+  });
+
+  it('撒托古亚黏液只在自身动画命中时提交平分结果', () => {
+    const step = {
+      type: 'TSG_SLIME_POP',
+      statPresentation: { target: 0, from: { hp: 3, san: 9 }, to: { hp: 6, san: 6 } },
+    };
+    const baseline = primeDisplayStatsForStatQueue([{ hp: 6, san: 6 }], [step]);
+
+    expect(baseline).toEqual([{ hp: 3, san: 9 }]);
+    expect(applyStatAnimationImpact(baseline, step)).toEqual([{ hp: 6, san: 6 }]);
+  });
+
+  it('检测同一属性动画事务的 from/to 断链', () => {
+    const queue = statEventsToAnimQueue([
+      { seq: 1, type: 'SAN_LOSS', target: 0, from: { san: 9 }, to: { san: 7 } },
+      { seq: 2, type: 'SAN_LOSS', target: 0, from: { san: 8 }, to: { san: 6 } },
+    ], [makePlayer({ san: 6 })]);
+
+    expect(validateStatAnimationContinuity(queue)).toMatchObject([{
+      target: 0,
+      field: 'san',
+      expectedFrom: 7,
+      actualFrom: 8,
+    }]);
+  });
+
   it('旧的 SAN 伤害步骤不会把已降到 6 的显示值回滚到 7', () => {
     const displayStats = [{ hp: 10, san: 6 }];
     const staleDamage = [{
