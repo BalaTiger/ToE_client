@@ -41,6 +41,8 @@ import {
   abandonGodFollower,
   convertGodFollower,
   startNextTurn,
+  aiDrawAndApply,
+  grantTsathogguaSlimeAtEndTurn,
 } from './turnEngine';
 import { withClearedTurnAnimFields } from './turnAnimState';
 import { buildAnimQueue } from './animQueueCore';
@@ -48,13 +50,23 @@ import { cardTransferStep, statePatchStep } from './animQueueHelpers';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, isRevealedCultist } from './coreUtils';
 import { createBlackGoatYoungCard } from '../constants/card';
 import { buildStatEvents } from './statEvents';
-import { END_TURN_EVENT, getEndTurnReplayHandCards } from './endTurnEvents';
+import { END_TURN_EVENT, getEndTurnEvents, getEndTurnReplayHandCards } from './endTurnEvents';
 import { deriveEffectDecisionState, hasEffectDecisionState } from './effectStatePatch';
 import { buildApophisNightLog, getApophisNightForLevel, resolveApophisTarget } from './apophisNight';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { buildGodPowerBlockedLog, canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
-import { createBewitchGiftEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent, createHuntResultEvent, createMultiplyVisualEvent, createSwapCardsEvent } from './visualEvents';
+import {
+  buildGodPowerBlockedStepsFromVisualEvents,
+  buildTsathogguaSlimeGrantSteps,
+  createBewitchGiftEvent,
+  createGodPowerBlockedEvent,
+  createGodStatusChangedEvent,
+  createHuntResultEvent,
+  createMultiplyVisualEvent,
+  createSwapCardsEvent,
+  createTsathogguaSlimeGrantEvent,
+} from './visualEvents';
 import {
   getBestCaveDuelCardIndex,
   resolveCaveDuelOutcome,
@@ -458,6 +470,107 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
   return { P, D, Disc, L, statePatch, replayQueue, replayMsgs };
 }
 
+function processAiCthEndTurnDraws(P, D, Disc, L, ct, gs, drawCount) {
+  if (!drawCount) return { P, D, Disc, L, statePatch: {}, replayQueue: [], replayMsgs: [] };
+  const replayQueue = [];
+  const replayMsgs = [];
+  let statePatch = {};
+  const introMsg = `${P[ct].name}（克苏鲁信徒Lv.${P[ct].godLevel || drawCount}）梦访拉莱耶，翻面结束回合时额外摸${drawCount}张牌`;
+  L.push(introMsg);
+  replayMsgs.push(introMsg);
+  replayQueue.push({ type: 'CTH_RLYEH_DREAM', targetPid: ct, msgs: [introMsg] });
+
+  for (let index = 0; index < drawCount; index++) {
+    if (!P[ct] || P[ct].isDead) break;
+    const beforeGs = {
+      ...gs,
+      ...statePatch,
+      players: copyPlayers(P),
+      deck: [...D],
+      discard: [...Disc],
+      log: [...L],
+    };
+    const result = aiDrawAndApply(ct, P, D, Disc, { ...beforeGs, deferAiGodChoice: false });
+    P = result.P;
+    D = result.D;
+    Disc = result.Disc;
+    statePatch = { ...statePatch, ...(result.statePatch || {}) };
+    const drawMsgs = [result.reshuffleLog, ...(result.effectMsgs || [])].filter(Boolean);
+    L.push(...drawMsgs);
+    replayMsgs.push(...drawMsgs);
+    if (result.drawnCard) {
+      replayQueue.push({
+        type: 'DRAW_CARD',
+        card: result.drawnCard,
+        triggerName: P[ct]?.name || '该AI',
+        targetPid: ct,
+        msgs: drawMsgs,
+      });
+    }
+    const afterGs = {
+      ...gs,
+      ...statePatch,
+      players: P,
+      deck: D,
+      discard: Disc,
+      log: L,
+    };
+    replayQueue.push(
+      ...buildAiEndTurnReplayResolutionQueue({ beforeGs, afterGs }),
+      replayStatePatch(P, D, Disc, L),
+    );
+    if (checkWin(P, gs?._isMP) || hasEffectDecisionState(result.statePatch)) break;
+  }
+  return { P, D, Disc, L, statePatch, replayQueue, replayMsgs };
+}
+
+// AI and player turns share the same end-turn registry and priority order.
+// Handlers remain AI-specific because decisions are automatic, but no AI path
+// may reorder or bypass registered events before entering the next turn.
+export function processAiEndTurnEvents(P, D, Disc, L, ct, gs) {
+  const events = getEndTurnEvents(P, ct);
+  const replayQueue = [];
+  const replayMsgs = [];
+  let statePatch = {};
+
+  for (const event of events) {
+    const eventGs = { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L };
+    if (event.id === END_TURN_EVENT.CTH_REST_DRAW) {
+      const resolved = processAiCthEndTurnDraws(P, D, Disc, L, ct, eventGs, event.drawCount);
+      P = resolved.P; D = resolved.D; Disc = resolved.Disc; L = resolved.L;
+      statePatch = { ...statePatch, ...resolved.statePatch };
+      replayQueue.push(...resolved.replayQueue);
+      replayMsgs.push(...resolved.replayMsgs);
+      continue;
+    }
+    if (event.id === END_TURN_EVENT.TSG_SLIME_GRANT) {
+      const visualEvents = [];
+      const grant = grantTsathogguaSlimeAtEndTurn(P, ct, L, visualEvents);
+      if (grant) {
+        const grantEvent = createTsathogguaSlimeGrantEvent(grant);
+        replayQueue.push(...buildTsathogguaSlimeGrantSteps(grantEvent, eventGs));
+        replayMsgs.push(...(grant.msgs || []));
+        const gainPatch = appendPublicCardGainTriggers(eventGs, P, grant.ownerIdx, grant.cards);
+        statePatch = { ...statePatch, ...gainPatch };
+      } else if (visualEvents.length) {
+        replayQueue.push(...buildGodPowerBlockedStepsFromVisualEvents({ ...eventGs, players: P, _visualEvents: visualEvents }));
+        replayMsgs.push(...visualEvents.flatMap(item => item?.msgs || []));
+      }
+      statePatch = { ...statePatch, _tsgSlimeGrantedAtTurnEnd: true };
+      continue;
+    }
+    if (event.id === END_TURN_EVENT.END_TURN_REPLAY_HAND) {
+      const resolved = processAiEndTurnReplayHand(P, D, Disc, L, ct, eventGs);
+      P = resolved.P; D = resolved.D; Disc = resolved.Disc; L = resolved.L;
+      statePatch = { ...statePatch, ...resolved.statePatch };
+      replayQueue.push(...resolved.replayQueue);
+      replayMsgs.push(...resolved.replayMsgs);
+    }
+  }
+
+  return { P, D, Disc, L, statePatch, replayQueue, replayMsgs, events };
+}
+
 export function aiStep(gs, opts = {}) {
   const{players:ps,currentTurn:ct,abilityData}=gs;
   const incomingVisualEventIds = new Set(
@@ -570,13 +683,7 @@ export function aiStep(gs, opts = {}) {
     _P[_ct].hand = _P[_ct].hand.filter(c => c.id !== _sc.id);
     const bewitchMsg = `${_P[_ct].name}（邪祀者）对 ${_P[_ti].name} 【蛊惑】，赠予 ${cardLogText(_sc, { alwaysShowName: true })}`;
     _L.push(bewitchMsg);
-    const bewitchEvent = createBewitchGiftEvent({
-      sourceIdx: _ct,
-      targetIdx: _ti,
-      targetName: _P[_ti].name,
-      card: _sc,
-      msgs: [bewitchMsg],
-    });
+    let encounterState = null;
     let fxResult = null;
     if (_sc.isGod) {
       const encounterProgress = advanceGodEncounter(_P[_ti], _gs);
@@ -592,6 +699,18 @@ export function aiStep(gs, opts = {}) {
         inspectionMeta = processed.inspectionMeta;
         _L.splice(0, _L.length, ...processed.L);
       }
+      encounterState = {
+        players: copyPlayers(_P),
+        deck: [..._D],
+        discard: [..._Disc],
+        log: [..._L],
+        currentTurn: _gs.currentTurn,
+        _inspectionEvents: [...(inspectionMeta?._inspectionEvents || [])],
+        _inspectionSeq: inspectionMeta?._inspectionSeq || 0,
+        _statEvents: [...(inspectionMeta?._statEvents || [])],
+        _statEventSeq: inspectionMeta?._statEventSeq || 0,
+        _visualEvents: [...(_gs?._visualEvents || [])],
+      };
       const godResolveGs = { ..._gs, ...inspectionMeta };
       const shouldDeferShuTarget = _sc.godKey === 'SHU' && _ti === 0 && !opts.allAi;
       const gr = aiHandleGodCard(_ti, _sc, _P, _D, _Disc, _L, godResolveGs, true, true, { deferShuTarget: shouldDeferShuTarget });
@@ -620,6 +739,14 @@ export function aiStep(gs, opts = {}) {
       _L.push(...fxResult.msgs);
       _gs = { ..._gs, ...fxResult.statePatch };
     }
+    const bewitchEvent = createBewitchGiftEvent({
+      sourceIdx: _ct,
+      targetIdx: _ti,
+      targetName: _P[_ti].name,
+      card: _sc,
+      msgs: [bewitchMsg],
+      encounterState,
+    });
     if (bewitchEvent) {
       _gs = { ..._gs, _visualEvents: [bewitchEvent, ...(_gs._visualEvents || [])] };
     }
@@ -829,6 +956,10 @@ export function aiStep(gs, opts = {}) {
       const willWorship=handGodAction==='worship'||handGodAction==='convert'||handGodAction==='upgrade';
       if(willWorship){
         const handWorshipPlayersBefore=copyPlayers(P);
+        let previousFaithExit=null;
+        let faithEstablished=null;
+        const abandonedFaithExits=[];
+        let presentAfterInspectionSeq=null;
         const worshipLogStart=L.length;
         P[ct].hand.splice(handGodIdx,1);
         if(P[ct].godName===hgc.godKey&&P[ct].godLevel<3){
@@ -837,13 +968,32 @@ export function aiStep(gs, opts = {}) {
           L.push(buildWorshipFromHandLog(P[ct].name,hgc));
         }
         // Forced convert if worshipping different god
-        if(alreadyHasGod){const converted=convertGodFollower(ct,gs.currentTurn,P,D,Disc,L,inspectionMeta,`${P[ct].name} 改信新神，${formatSanLoss(1)}`,hgc);P=converted.P;D=converted.D;Disc=converted.Disc;L=converted.L;inspectionMeta=converted.inspectionMeta;ai=getAi();alive=getAlive();}
-        if(P[ct].godName===hgc.godKey&&P[ct].godLevel<3){
+        if(alreadyHasGod){
+          const inspectionSeqBefore=inspectionMeta?._inspectionSeq||0;
+          const converted=convertGodFollower(ct,gs.currentTurn,P,D,Disc,L,inspectionMeta,`${P[ct].name} 改信新神，${formatSanLoss(1)}`,hgc);
+          P=converted.P;D=converted.D;Disc=converted.Disc;L=converted.L;inspectionMeta=converted.inspectionMeta;
+          previousFaithExit=converted.faithExit||null;
+          faithEstablished=converted.faithEstablished||null;
+          if((inspectionMeta?._inspectionSeq||0)>inspectionSeqBefore)presentAfterInspectionSeq=inspectionMeta._inspectionSeq;
+          ai=getAi();alive=getAlive();
+        } else if(P[ct].godName===hgc.godKey&&P[ct].godLevel<3){
+          const playersBeforeFaithEstablished=copyPlayers(P);
           P[ct].godLevel++;P[ct].godZone.push({...hgc});
-        } else if(!P[ct].godName||alreadyHasGod){
+          faithEstablished={playersBefore:playersBeforeFaithEstablished,playersAfter:copyPlayers(P)};
+        } else if(!P[ct].godName){
+          const playersBeforeFaithEstablished=copyPlayers(P);
           P[ct].godName=hgc.godKey;P[ct].godLevel=1;P[ct].godZone=[{...hgc}];
+          faithEstablished={playersBefore:playersBeforeFaithEstablished,playersAfter:copyPlayers(P)};
         }
         P[ct].hasBelievedGod=true;
+        if(faithEstablished)faithEstablished.playersAfter=copyPlayers(P);
+        P.forEach((p,i)=>{
+          if(i===ct||p.godName!==hgc.godKey)return;
+          const abandoned=abandonGodFollower(i,gs.currentTurn,P,D,Disc,L,inspectionMeta);
+          P=abandoned.P;D=abandoned.D;Disc=abandoned.Disc;L=abandoned.L;inspectionMeta=abandoned.inspectionMeta;
+          if(abandoned.faithExit)abandonedFaithExits.push(abandoned.faithExit);
+          ai=getAi();alive=getAlive();
+        });
         let handWorshipBlockedEvent = null;
         if(['APO','ZHU','SHU'].includes(hgc.godKey)&&hasGodPowerImmunity(P[ct])){
           const blockedLog=buildGodPowerBlockedLog(P[ct]);
@@ -855,15 +1005,16 @@ export function aiStep(gs, opts = {}) {
           L.push(buildApophisNightLog());
         }
 
-        P.forEach((p,i)=>{if(i!==ct&&p.godName===hgc.godKey){const abandoned=abandonGodFollower(i,gs.currentTurn,P,D,Disc,L,inspectionMeta);P=abandoned.P;D=abandoned.D;Disc=abandoned.Disc;L=abandoned.L;inspectionMeta=abandoned.inspectionMeta;ai=getAi();alive=getAlive();}});
         const handWorshipEvent=createGodStatusChangedEvent({
           playerIdx:ct,
           playerName:P[ct].name,
           godKey:P[ct].godName,
           godLevel:P[ct].godLevel,
           msgs:L.slice(worshipLogStart,worshipLogStart+1),
-          playersBefore:handWorshipPlayersBefore,
-          playersAfter:copyPlayers(P),
+          playersBefore:faithEstablished?.playersBefore||handWorshipPlayersBefore,
+          playersAfter:faithEstablished?.playersAfter||copyPlayers(P),
+          faithSettlement:{previousFaithExit,abandonedFollowers:abandonedFaithExits},
+          presentAfterInspectionSeq,
         });
         playersBeforeSkillAction=copyPlayers(P);
         preSkillLogs=L.slice(worshipLogStart);
@@ -923,7 +1074,7 @@ export function aiStep(gs, opts = {}) {
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,...restStatPatch};
     discardAiHandToLimit(P, ct, Disc, L);
     const _P_beforeEndTurnReplay = copyPlayers(P);
-    const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,{...gs,...restStatPatch});
+    const replayed=processAiEndTurnEvents(P,D,Disc,L,ct,{...gs,...restStatPatch});
     P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;ai=getAi();alive=getAlive();
     const _P_afterRest=copyPlayers(P);
     const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,restUsed:true,skillUsed:false,...restStatPatch,...replayed.statePatch,_aiEndTurnReplayQueue:replayed.replayQueue,_aiEndTurnReplayMsgs:replayed.replayMsgs}, opts);
@@ -1010,7 +1161,7 @@ export function aiStep(gs, opts = {}) {
     discardAiHandToLimit(P, ct, Disc, L);
     appendAiEndTurnLog();
     const _P_beforeEndTurnReplay = copyPlayers(P);
-    const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,gs);
+    const replayed=processAiEndTurnEvents(P,D,Disc,L,ct,gs);
     P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};ai=getAi();alive=getAlive();
     const _P_afterAction=copyPlayers(P);
     const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:gs.skillUsed,_aiEndTurnReplayQueue:replayed.replayQueue,_aiEndTurnReplayMsgs:replayed.replayMsgs}, opts);
@@ -1463,7 +1614,7 @@ export function aiStep(gs, opts = {}) {
   }
   const _P_beforeEndTurnReplay = copyPlayers(P);
   const _Disc_beforeEndTurnReplay = [...Disc];
-  const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,gs);
+  const replayed=processAiEndTurnEvents(P,D,Disc,L,ct,gs);
   P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};ai=getAi();alive=getAlive();
   const _P_afterAction=copyPlayers(P);
   let nextGs;

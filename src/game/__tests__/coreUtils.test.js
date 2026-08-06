@@ -21,6 +21,7 @@ import {
   isNegativeZoneCard,
   isNeutralZoneCard,
   isDodgeableZoneCard,
+  shouldTriggerTreasureDodge,
   getZoneCardPolarity,
   getZoneCardEffectScope,
   zoneCardHasGuaranteedHpLoss,
@@ -216,6 +217,13 @@ describe('card type predicates', () => {
     expect(isDodgeableZoneCard(makeZoneCardByName('地磁反转'))).toBe(false);
     expect(isDodgeableZoneCard(makeZoneCardByName('偷吃龙蛋'))).toBe(false);
     expect(isDodgeableZoneCard(makeZoneCardByName('投掷石块'))).toBe(false);
+  });
+
+  it('秤心仪式只在角色本局曾信仰邪神时触发规避', () => {
+    const card = makeZoneCardByName('秤心仪式');
+
+    expect(shouldTriggerTreasureDodge(card, { hasBelievedGod: false })).toBe(false);
+    expect(shouldTriggerTreasureDodge(card, { hasBelievedGod: true })).toBe(true);
   });
 
   it('getZoneCardEffectScope', () => {

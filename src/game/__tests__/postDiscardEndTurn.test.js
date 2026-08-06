@@ -1,18 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolvePostDiscardEndTurn } from '../postDiscardEndTurn';
-import { splitKeptDestroyedDiscarded } from '../handLimitDiscard';
 import { makePlayer, makeGs, makeZoneCard } from './factory';
-
-describe('splitKeptDestroyedDiscarded', () => {
-  it('keeps normal cards and destroys black goat young / slime', () => {
-    const normal = makeZoneCard('A1');
-    const goat = makeZoneCard('A2', 0, { type: 'blackGoatYoung', name: '黑山羊幼仔' });
-    const slime = makeZoneCard('A3', 0, { type: 'tsathogguaSlime', name: '黄液' });
-    const result = splitKeptDestroyedDiscarded([normal, goat, slime]);
-    expect(result.kept).toEqual([normal]);
-    expect(result.destroyed).toEqual([goat, slime]);
-  });
-});
 
 describe('resolvePostDiscardEndTurn', () => {
   const zone = (key = 'A1') => makeZoneCard(key);

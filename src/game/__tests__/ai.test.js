@@ -10,7 +10,7 @@ import {
   orderHunterChaseTargets,
   shouldAiRest,
 } from '../ai';
-import { aiStep, discardAiHandToLimit, processAiEndTurnReplayHand } from '../aiTurn';
+import { aiStep, discardAiHandToLimit, processAiEndTurnEvents, processAiEndTurnReplayHand } from '../aiTurn';
 import { cardLogText, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
 import { startNextTurn } from '../turnEngine';
 import { createBlackGoatYoungCard } from '../../constants/card';
@@ -39,6 +39,150 @@ describe('AI hand-limit discard', () => {
 });
 
 describe('AI visual event handoff', () => {
+  it('AI-to-AI turn transition keeps TSG end-turn resolution before the next banner log', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({
+        name: '蟾蜍AI',
+        role: ROLE_CULTIST,
+        roleRevealed: true,
+        godName: 'TSG',
+        godLevel: 1,
+      }),
+      makePlayer({ name: '下一名AI', role: ROLE_TREASURE }),
+    ];
+    const gs = makeGs({
+      players,
+      deck: [makeZoneCard('B1', 0, { id: 'next-ai-draw' })],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: true,
+      log: [],
+    });
+    const result = aiStep(gs);
+    const slimeLogIdx = result.log.findIndex(line => line.includes('获得1张撒托古亚的赐福黏液'));
+    const nextTurnIdx = result.log.findIndex(line => line.includes('── 下一名AI 的回合开始 ──'));
+
+    expect(result.currentTurn).toBe(2);
+    expect(slimeLogIdx).toBeGreaterThanOrEqual(0);
+    expect(slimeLogIdx).toBeLessThan(nextTurnIdx);
+    expect(result._aiEndTurnReplayQueue.map(step => step.type)).toContain('CARD_TRANSFER');
+  });
+
+  it('AI-to-player transition also finishes TSG boundary events before the player banner log', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const players = [
+      makePlayer({ name: '你', role: ROLE_TREASURE }),
+      makePlayer({
+        name: '蟾蜍AI',
+        role: ROLE_CULTIST,
+        roleRevealed: true,
+        godName: 'TSG',
+        godLevel: 1,
+      }),
+    ];
+    const gs = makeGs({
+      players,
+      deck: [makeZoneCard('B1', 0, { id: 'player-draw-after-tsg' })],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: true,
+      log: [],
+    });
+    const result = aiStep(gs);
+    const slimeLogIdx = result.log.findIndex(line => line.includes('获得1张撒托古亚的赐福黏液'));
+    const nextTurnIdx = result.log.findIndex(line => line.includes('── 你 的回合开始 ──'));
+
+    expect(result.currentTurn).toBe(0);
+    expect(slimeLogIdx).toBeGreaterThanOrEqual(0);
+    expect(slimeLogIdx).toBeLessThan(nextTurnIdx);
+    expect(result._aiEndTurnReplayQueue.map(step => step.type)).toContain('CARD_TRANSFER');
+  });
+
+  it('AI CTH rest resolves its registered end-turn draw before advancing', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({
+        name: '克苏鲁AI',
+        role: ROLE_CULTIST,
+        hp: 1,
+        godName: 'CTH',
+        godLevel: 1,
+      }),
+      makePlayer({ name: '下一名AI', role: ROLE_TREASURE }),
+    ];
+    const gs = makeGs({
+      players,
+      deck: [
+        makeZoneCard('B1', 0, { id: 'next-ai-draw-after-cth' }),
+        makeZoneCard('C1', 0, { id: 'cth-end-turn-draw' }),
+      ],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      log: [],
+    });
+    const result = aiStep(gs);
+    const dreamIdx = result.log.findIndex(line => line.includes('翻面结束回合时额外摸1张牌'));
+    const nextTurnIdx = result.log.findIndex(line => line.includes('── 下一名AI 的回合开始 ──'));
+
+    expect(result.currentTurn).toBe(2);
+    expect(dreamIdx).toBeGreaterThanOrEqual(0);
+    expect(dreamIdx).toBeLessThan(nextTurnIdx);
+    expect(result._aiEndTurnReplayQueue.map(step => step.type)).toContain('CTH_RLYEH_DREAM');
+  });
+
+  it('uses the shared registry order for TSG grant before endless corridor and next turn', () => {
+    const left = makeZoneCard('B1', 0, { id: 'left-of-corridor' });
+    const corridor = makeZoneCard('A3', 0, {
+      id: 'corridor-order',
+      name: '无尽通道',
+      type: 'endTurnReplayHand',
+    });
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '蟾蜍AI', godName: 'TSG', godLevel: 1, hand: [left, corridor] }),
+      makePlayer({ name: '下一名AI' }),
+    ];
+    const gs = makeGs({ players, currentTurn: 1, phase: 'AI_TURN', log: [] });
+    const result = processAiEndTurnEvents(
+      gs.players.map(item => ({ ...item, hand: [...item.hand] })),
+      [], [], [], 1, gs,
+    );
+    const types = result.replayQueue.map(step => step.type);
+
+    expect(result.events.map(event => event.id)).toEqual(['tsgSlimeGrant', 'endTurnReplayHand']);
+    expect(types.indexOf('CARD_TRANSFER')).toBeLessThan(types.indexOf('ENDLESS_CORRIDOR_TUNNEL'));
+    expect(result.statePatch._tsgSlimeGrantedAtTurnEnd).toBe(true);
+    expect(result.P[1].hand.some(card => card.isTsathogguaSlime)).toBe(true);
+  });
+
+  it('resolves AI CTH face-down end-turn draws before endless corridor', () => {
+    const left = makeZoneCard('B1', 0, { id: 'cth-left' });
+    const corridor = makeZoneCard('A3', 0, {
+      id: 'cth-corridor',
+      name: '无尽通道',
+      type: 'endTurnReplayHand',
+    });
+    const draw = makeZoneCard('C1', 0, { id: 'cth-end-draw' });
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '克苏鲁AI', godName: 'CTH', godLevel: 1, isResting: true, hand: [left, corridor] }),
+    ];
+    const gs = makeGs({ players, deck: [draw], currentTurn: 1, phase: 'AI_TURN', log: [] });
+    const result = processAiEndTurnEvents(
+      gs.players.map(item => ({ ...item, hand: [...item.hand] })),
+      [...gs.deck], [], [], 1, gs,
+    );
+    const types = result.replayQueue.map(step => step.type);
+
+    expect(result.events.map(event => event.id)).toEqual(['cthRestDraw', 'endTurnReplayHand']);
+    expect(types.indexOf('CTH_RLYEH_DREAM')).toBeLessThan(types.indexOf('ENDLESS_CORRIDOR_TUNNEL'));
+    expect(result.L.some(line => line.includes('翻面结束回合时额外摸1张牌'))).toBe(true);
+    expect(result.D).toHaveLength(0);
+  });
+
   it('does not restore a consumed earthquake after the next-turn state clears visual events', () => {
     const earthquake = {
       id: 'earthquake:previous-turn',
@@ -984,6 +1128,15 @@ describe('aiStep optional action limits', () => {
       _turnOwner: 1,
     });
     expect(result.players.some(player => player.hand.some(card => card.isBlackGoatYoung))).toBe(false);
+    const bewitchEvent = result._visualEvents.find(event => event.type === 'bewitchGift');
+    expect(bewitchEvent?.encounterState?.players?.[0]).toMatchObject({
+      godName: null,
+      godLevel: 0,
+    });
+    expect(bewitchEvent?.encounterState?.log).toEqual(expect.arrayContaining([
+      expect.stringContaining('遭遇邪神 森之领主'),
+    ]));
+    expect(bewitchEvent?.encounterState?.log.some(line => line.includes('信仰了 森之领主'))).toBe(false);
   });
 
   it('AI 邪祀者更倾向把邪神牌蛊惑给未信仰者而不是同神升级', () => {

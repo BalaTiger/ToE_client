@@ -230,6 +230,15 @@ export const cardContainsFireText = (card) => {
   return [card.name || '', card.subtitle || '', card.desc || ''].join('').toLowerCase().includes('火');
 };
 
+export const shouldTriggerTreasureDodge = (card, player, { moldyFoodRoll = null } = {}) => {
+  if (!isDodgeableZoneCard(card)) return false;
+  if (card.type === 'moldyFood') return moldyFoodRoll != null && moldyFoodRoll % 2 === 1;
+  if (card.type === 'albinoCreature') return !(player?.hand || []).some(cardContainsFireText);
+  if (card.type === 'sphinxGuess') return false;
+  if (card.type === 'sacHealSelfSANCultist') return !!player?.hasBelievedGod;
+  return true;
+};
+
 export const zoneCardHasGuaranteedHpLoss = (card) => {
   if (!card?.type) return false;
   return [

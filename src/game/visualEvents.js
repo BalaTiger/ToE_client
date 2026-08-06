@@ -127,7 +127,14 @@ function createStatEventsEvent({ statEvents = [], msgs = [], turnStartStage = nu
   }, 'stat');
 }
 
-export function createBewitchGiftEvent({ sourceIdx = 0, targetIdx = 0, targetName = '该玩家', card, msgs = [] } = {}) {
+export function createBewitchGiftEvent({
+  sourceIdx = 0,
+  targetIdx = 0,
+  targetName = '该玩家',
+  card,
+  msgs = [],
+  encounterState = null,
+} = {}) {
   if (!card) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.BEWITCH_GIFT,
@@ -137,6 +144,7 @@ export function createBewitchGiftEvent({ sourceIdx = 0, targetIdx = 0, targetNam
     targetName,
     card,
     msgs: Array.isArray(msgs) ? msgs : [],
+    ...(encounterState ? { encounterState } : {}),
   }, 'action');
 }
 
@@ -400,13 +408,21 @@ export function buildSnakeTrapAnimStep(event, state) {
   };
 }
 
-export function createGodPowerBlockedEvent({ playerIdx = 0, playerName = '该玩家', msgs = [] } = {}) {
+export function createGodPowerBlockedEvent({
+  playerIdx = 0,
+  playerName = '该玩家',
+  msgs = [],
+  turnStartStage = null,
+  turnStartStageOrder = null,
+} = {}) {
   return withVisualEventMeta({
     type: VISUAL_EVENT.GOD_POWER_BLOCKED,
     id: `${VISUAL_EVENT.GOD_POWER_BLOCKED}:${visualEventInstanceId}:${++godPowerBlockedEventSeq}`,
     playerIdx,
     playerName,
     msgs: Array.isArray(msgs) ? msgs : [],
+    ...(turnStartStage ? { turnStartStage } : {}),
+    ...(Number.isFinite(turnStartStageOrder) ? { turnStartStageOrder } : {}),
   }, 'action');
 }
 
@@ -425,7 +441,17 @@ export function createTsathogguaSlimePopEvent({ playerIdx = 0, playerName = '该
   }, 'action');
 }
 
-export function createGodStatusChangedEvent({ playerIdx = 0, playerName = '该玩家', godKey = null, godLevel = 0, msgs = [], playersBefore = null, playersAfter = null } = {}) {
+export function createGodStatusChangedEvent({
+  playerIdx = 0,
+  playerName = '该玩家',
+  godKey = null,
+  godLevel = 0,
+  msgs = [],
+  playersBefore = null,
+  playersAfter = null,
+  faithSettlement = null,
+  presentAfterInspectionSeq = null,
+} = {}) {
   if (!godKey || !Array.isArray(playersAfter)) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.GOD_STATUS_CHANGED,
@@ -437,6 +463,8 @@ export function createGodStatusChangedEvent({ playerIdx = 0, playerName = '该�
     msgs: Array.isArray(msgs) ? msgs : [],
     ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
     playersAfter,
+    ...(faithSettlement ? { faithSettlement } : {}),
+    ...(presentAfterInspectionSeq != null ? { presentAfterInspectionSeq } : {}),
   }, 'action');
 }
 
@@ -547,6 +575,8 @@ export function createTsathogguaSlimeGrantEvent(event = {}) {
   if (event.ownerIdx == null || !event.count) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.TSG_SLIME_GRANT,
+    turnStartStage: 'turnBoundary',
+    turnStartStageOrder: 0,
     playerIdx: event.ownerIdx,
     ...event,
   }, 'turn');
@@ -638,6 +668,9 @@ export function buildMultiplySteps(event) {
 
 export function buildGodStatusChangedStep(event) {
   if (!event?.godKey || event.playerIdx == null) return null;
+  const setupPlayers = Array.isArray(event.playersBefore)
+    ? event.playersBefore
+    : event.playersAfter;
   return {
     type: 'GOD_HIGHLIGHT',
     visualEventId: event.id,
@@ -645,7 +678,7 @@ export function buildGodStatusChangedStep(event) {
     godKey: event.godKey,
     godLevel: event.godLevel || 0,
     msgs: Array.isArray(event.msgs) ? event.msgs : [],
-    ...(Array.isArray(event.playersAfter) ? { visualSetupPatch: { players: event.playersAfter } } : {}),
+    ...(Array.isArray(setupPlayers) ? { visualSetupPatch: { players: setupPlayers } } : {}),
     ...(Array.isArray(event.playersAfter) ? { visualTimeline: [{ atMs: 0, patch: { players: event.playersAfter } }] } : {}),
   };
 }
@@ -907,6 +940,8 @@ export function promoteLegacyVisualEvents(state) {
     promoted.push({
       ...event,
       type: VISUAL_EVENT.TSG_SLIME_GRANT,
+      turnStartStage: 'turnBoundary',
+      turnStartStageOrder: 0,
       id: legacyVisualEventId(VISUAL_EVENT.TSG_SLIME_GRANT, [state._turnKey, index, event?.ownerIdx, event?.count]),
       scope: 'turn',
       playerIdx: event?.ownerIdx,

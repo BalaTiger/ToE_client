@@ -9,7 +9,9 @@ import {
   createThrowStoneEvent,
   createHandLimitDiscardEvent,
   createTimedOutDrawDiscardEvent,
+  createTsathogguaSlimeGrantEvent,
   createTsathogguaSlimePopEvent,
+  buildTsathogguaSlimeGrantSteps,
   buildFreshStatVisualEvents,
   buildTurnStartDrawVisualEvents,
   getVisualEvents,
@@ -29,6 +31,68 @@ import { prepareAnimationQueueSteps } from '../animationStepSchema';
 const player = (name, patch = {}) => ({ name, hp: 10, san: 10, hand: [], ...patch });
 
 describe('visualEventTransactionCompiler', () => {
+  it('keeps end-turn boundary events before the next turn banner after canonical merge', () => {
+    const slime = { id: 'boundary-slime', name: '撒托古亚的赐福黏液', isTsathogguaSlime: true };
+    const before = [player('蟾蜍信徒'), player('下一名AI')];
+    const after = [player('蟾蜍信徒', { hand: [slime] }), before[1]];
+    const grant = createTsathogguaSlimeGrantEvent({
+      ownerIdx: 0,
+      count: 1,
+      cards: [slime],
+      msgs: ['蟾蜍信徒获得黏液'],
+      playersBefore: before,
+      playersAfter: after,
+    });
+    const nextTurnState = {
+      players: after,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _turnStartLogs: ['── 下一名AI 的回合开始 ──'],
+    };
+    const turnStart = buildTurnStartDrawVisualEvents(nextTurnState)[0];
+    const transaction = compileRuleVisualEventsToAnimTransaction({
+      ...nextTurnState,
+      _visualEvents: [turnStart, grant],
+    }, null, { visualEventScope: 'turnStart' });
+    const legacyQueue = [
+      ...buildTsathogguaSlimeGrantSteps(grant, nextTurnState),
+      { type: 'YOUR_TURN', name: '下一名AI' },
+    ];
+    const merged = mergeAnimationTransactionQueue(legacyQueue, transaction);
+    const types = merged.map(step => step.type);
+
+    expect(transaction.queue.map(step => step.type)).toEqual([
+      'VISUAL_LOCK', 'CARD_TRANSFER', 'STATE_PATCH', 'TURN_BOUNDARY_PAUSE', 'YOUR_TURN',
+    ]);
+    expect(types.indexOf('CARD_TRANSFER')).toBeLessThan(types.indexOf('YOUR_TURN'));
+    expect(transaction.stageQueues.turnBoundary.map(step => step.type)).toEqual([
+      'VISUAL_LOCK', 'CARD_TRANSFER', 'STATE_PATCH', 'TURN_BOUNDARY_PAUSE',
+    ]);
+  });
+
+  it('keeps end-turn god-power-blocked feedback before the next turn banner', () => {
+    const state = {
+      players: [player('蟾蜍信徒'), player('下一名AI')],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _turnStartLogs: ['── 下一名AI 的回合开始 ──'],
+    };
+    const turnStart = buildTurnStartDrawVisualEvents(state)[0];
+    const blocked = createGodPowerBlockedEvent({
+      playerIdx: 0,
+      playerName: '蟾蜍信徒',
+      msgs: ['【引燃火把】蟾蜍信徒 本回合不受邪神之力影响'],
+      turnStartStage: 'turnBoundary',
+      turnStartStageOrder: 0,
+    });
+    const transaction = compileRuleVisualEventsToAnimTransaction({
+      ...state,
+      _visualEvents: [turnStart, blocked],
+    }, null, { visualEventScope: 'turnStart' });
+
+    expect(transaction.queue.map(step => step.type)).toEqual(['GOD_POWER_BLOCKED', 'YOUR_TURN']);
+  });
+
   it('compiles a god status event into one idempotent highlight step', () => {
     const before = [player('你'), player('贝拉', { godName: 'TSG', godLevel: 1 })];
     const after = [before[0], { ...before[1], godLevel: 2 }];
@@ -48,7 +112,7 @@ describe('visualEventTransactionCompiler', () => {
       targetPid: 1,
       godKey: 'TSG',
       godLevel: 2,
-      visualSetupPatch: { players: after },
+      visualSetupPatch: { players: before },
       visualTimeline: [{ atMs: 0, patch: { players: after } }],
     })]);
   });

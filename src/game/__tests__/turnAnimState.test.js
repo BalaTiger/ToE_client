@@ -13,7 +13,7 @@ import { startNextTurn } from '../turnEngine';
 import { ROLE_CULTIST } from '../coreUtils';
 import { applyFx } from '../effectEngine';
 import { applyStatEventsToDisplayStats } from '../statEvents';
-import { buildFreshStatVisualEvents, createGodPowerBlockedEvent } from '../visualEvents';
+import { buildFreshStatVisualEvents, createGodPowerBlockedEvent, createGodStatusChangedEvent } from '../visualEvents';
 import { buildAnimQueue } from '../animQueueCore';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
@@ -219,6 +219,51 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(combinedQueue.indexOf(blockedSteps[0])).toBeLessThan(
       combinedQueue.findIndex(step => step.type === 'YOUR_TURN')
     );
+  });
+
+  it('上回合蛊惑产生的 GOD_STATUS_CHANGED 不会在下家回合开始重播', () => {
+    const apoCard = makeGodCard('APO');
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '贝拉', godName: 'APO', godLevel: 1, godZone: [apoCard], hasBelievedGod: true }),
+      makePlayer({ name: '卡洛斯' }),
+    ];
+    const drawnCard = makeZoneCard('B2', 0, { id: 'carlos-next-draw' });
+    const godStatusEvent = createGodStatusChangedEvent({
+      playerIdx: 1,
+      playerName: '贝拉',
+      godKey: 'APO',
+      godLevel: 1,
+      msgs: ['贝拉 信仰了 阿波菲斯，获得噬日灭世(Lv.1)'],
+      playersBefore: players.map(p => ({ ...p, godName: null, godLevel: 0, godZone: [] })),
+      playersAfter: players,
+    });
+    const oldGs = makeGs({
+      players,
+      currentTurn: 1,
+      log: ['贝拉 信仰了 阿波菲斯，获得噬日灭世(Lv.1)'],
+    });
+    const newGs = makeGs({
+      players,
+      currentTurn: 2,
+      phase: 'AI_TURN',
+      _aiDrawnCard: drawnCard,
+      _drawnCard: drawnCard,
+      _preTurnPlayers: players,
+      _playersBeforeThisDraw: players,
+      _turnStartLogs: ['── 卡洛斯 的回合开始 ──'],
+      _drawLogs: ['卡洛斯 摸到 [B2] 新鲜空气'],
+      _visualEvents: [godStatusEvent],
+      log: [
+        '贝拉 信仰了 阿波菲斯，获得噬日灭世(Lv.1)',
+        '── 卡洛斯 的回合开始 ──',
+        '卡洛斯 摸到 [B2] 新鲜空气',
+      ],
+    });
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+
+    expect(replay.queue.some(step => step.type === 'GOD_HIGHLIGHT')).toBe(false);
   });
 
   it('keeps a bespoke draw effect before the kept-card transfer on every client', () => {

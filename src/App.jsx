@@ -53,7 +53,7 @@ import {
   copyPlayers,
   isZoneCard,
   isDodgeableZoneCard,
-  cardContainsFireText,
+  shouldTriggerTreasureDodge,
   getZoneCardEffectScope,
   isWinHand,
   localTreasureWinLog,
@@ -263,6 +263,7 @@ import {
   fullHandSwapSteps,
   swapCardsSteps,
 } from "./game/animQueueHelpers";
+import { buildBewitchGiftReplay } from './game/animReplayEvents';
 import { _getZoomCompensatedRect, getPlayerHandAnchorCenter } from './utils/dom';
 import {
   FIRST_BATTLE_DONE_KEY,
@@ -2686,18 +2687,49 @@ export default function Game(){
                 hand:[...(P_actionBeforeHandLimit[gs.currentTurn].hand||[])],
               };
             }
-            orderedActionQ=buildBewitchForcedCardQueue(
-              gs.currentTurn,
-              bwti,
-              giftedCard,
-              bewitchEvent?.targetName||P_actionEnd[bwti]?.name,
-              [...actionStatQ,...inspectionFlow.queue,...postInspectionQ],
-              bewitchMsgs,
-              {
-                skillVisualSetupPatch:{players:copyPlayers(afterInspectionPlayers)},
-                afterGiftPatch:{players:bewitchSourcePatchPlayers},
+            const bewitchQueueOptions={
+              skillVisualSetupPatch:{players:copyPlayers(afterInspectionPlayers)},
+              afterGiftPatch:{players:bewitchSourcePatchPlayers},
+              playersAfter:P_actionEnd,
+            };
+            if(bewitchEvent?.encounterState){
+              const replayNewGs={
+                ...fakeGs(P_actionEnd,actionLog),
+                deck:newGs.deck,
+                discard:newGs.discard,
+                _inspectionEvents:newGs._inspectionEvents||[],
+                _inspectionSeq:newGs._inspectionSeq||0,
+                _statEvents:newGs._statEvents||[],
+                _statEventSeq:newGs._statEventSeq||0,
+                _visualEvents:newGs._visualEvents||[],
+              };
+              const bewitchReplay=buildBewitchGiftReplay({
+                oldGs:actionOldGsForApophis,
+                newGs:replayNewGs,
+                bewitchEvent,
+                logDelta:actionMsgs,
+                queueOptions:bewitchQueueOptions,
+                buildAnimQueue,
+                copyPlayers,
+              });
+              if(bewitchReplay.inspectionEvents.length){
+                lastInspectionSeqRef.current=Math.max(
+                  lastInspectionSeqRef.current,
+                  ...bewitchReplay.inspectionEvents.map(event=>event?.seq||0),
+                );
               }
-            );
+              orderedActionQ=bewitchReplay.queue;
+            }else{
+              orderedActionQ=buildBewitchForcedCardQueue(
+                gs.currentTurn,
+                bwti,
+                giftedCard,
+                bewitchEvent?.targetName||P_actionEnd[bwti]?.name,
+                [...actionStatQ,...inspectionFlow.queue,...postInspectionQ],
+                bewitchMsgs,
+                bewitchQueueOptions,
+              );
+            }
           }else{
             const bewitchStep={type:'SKILL_BEWITCH',msgs:bewitchMsgs,targetIdx:bwti>=0?bwti:1};
             if(inspectionEvents.length){
@@ -5026,13 +5058,11 @@ export default function Game(){
     clearBlindZoneDecisionFlag(P,drawerIdx,dr);
     const isAOENegativeEffect=isDodgeableEffect&&(effectScope==='all'||effectScope==='adjacent');
     const moldyFoodRoll=resolutionCard.type==='moldyFood'?(1+(Math.random()*6|0)):null;
-    const conditionalNegativeApplies=resolutionCard.type==='moldyFood'
-      ?moldyFoodRoll%2===1
-      :resolutionCard.type==='albinoCreature'
-        ?!(P[drawerIdx].hand||[]).some(cardContainsFireText)
-        :resolutionCard.type==='sphinxGuess'
-          ?false
-        :true;
+    const conditionalNegativeApplies=shouldTriggerTreasureDodge(
+      resolutionCard,
+      P[drawerIdx],
+      {moldyFoodRoll},
+    );
     const effectGs=moldyFoodRoll==null?gs:{...gs,_pendingMoldyFoodRoll:moldyFoodRoll};
     
     // 首先检查是否是其他角色触发的AOE负面效果
@@ -5471,7 +5501,7 @@ export default function Game(){
         drawReveal: null,
         abilityData: { winReason: localTreasureWinReason(gs) }
       };
-      return { P, D, Disc, L: pendingWinGs.log, pendingWinGs, d1, dodgeSuccess, who };
+      return { P, D, Disc, L: pendingWinGs.log, pendingWinGs, d1, dodgeSuccess, who, resolutionCard };
     }
     
     const replayPatch=dr.fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
@@ -5520,10 +5550,23 @@ export default function Game(){
       return;
     }
     if(flowKind==='pendingWin'){
-      pendingGsRef.current=result.pendingWinGs;
-      animQueueRef.current=[];
+      const effectQueue=bindAnimLogChunks(buildAnimQueue(gs,result.pendingWinGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
+      const drawerIdx=getTreasureDodgeDrawerIdx(gs,dr,aoe);
+      const transfer=!dr.fromEndTurnReplay&&config.includeStandardTransfer?cardTransferStep({
+        fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,
+        sourceAnchor:'playerArea',effect:'draw',cards:[result.resolutionCard],
+      }):null;
+      const queue=[diceAnim,...effectQueue,transfer].filter(Boolean);
+      if(dr.fromEndTurnReplay){
+        broadcastEndTurnDecisionAnimTransaction(result.pendingWinGs,queue,result.L.slice(gs.log.length));
+      }else if(result.pendingWinGs._isMP){
+        broadcastAnimTransaction(result.pendingWinGs,queue,{
+          context:'drawWin',barrier:'decision',msgs:result.L.slice(gs.log.length),
+          beforePlayers:gs.players,beforeDiscard:gs.discard,
+        });
+      }
       setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-      setAnim(diceAnim);
+      triggerAnimQueue(queue,result.pendingWinGs);
       return;
     }
     if(flowKind==='rest'){
@@ -5547,29 +5590,37 @@ export default function Game(){
       queue.push(statePatchStep({players:result.P,deck:result.D,discard:result.Disc,log:result.L,phase:result.newGs.phase,drawReveal:result.newGs.drawReveal,abilityData:result.newGs.abilityData}));
       queue.push({type:'TURN_BOUNDARY_PAUSE',durationMs:300});
       setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-      setAnim({...diceAnim,onSettled:()=>triggerAnimQueue(queue,result.newGs,()=>_tsgContinueTurnStartDraw(result.newGs))});
+      triggerAnimQueue([diceAnim,...queue],result.newGs,()=>_tsgContinueTurnStartDraw(result.newGs));
       return;
     }
     const queue=bindAnimLogChunks(buildAnimQueue(gs,result.newGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
     const drawerIdx=getTreasureDodgeDrawerIdx(gs,dr,aoe);
     if(config.includeStandardTransfer)queue.push(cardTransferStep({fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,sourceAnchor:'playerArea',effect:'draw',cards:[result.resolutionCard]}));
     // 无论是否有其他动画，都播放骰子动画
+    const playbackQueue=[diceAnim,...queue];
+    const localQueue=dr.fromEndTurnReplay
+      ?[...playbackQueue,statePatchStep({players:result.P,discard:result.Disc})]
+      :playbackQueue;
     if(dr.fromEndTurnReplay){
       appendEndTurnReplaySyncQueue(
-        [{...diceAnim,onSettled:undefined},...queue,statePatchStep({players:result.P,discard:result.Disc})],
+        localQueue,
         result.L.slice(gs.log.length)
       );
       broadcastEndTurnReplaySyncDelta(result.newGs);
     }else if(result.newGs._isMP){
-      broadcastAnimTransaction(result.newGs,[{...diceAnim,onSettled:undefined},...queue],{
+      broadcastAnimTransaction(result.newGs,playbackQueue,{
         context:config.rollContext,barrier:result.newGs.phase==='TSG_SLIME_BALANCE'?'decision':'continuation',
         msgs:result.L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard,
       });
     }
-    pendingGsRef.current=result.newGs;
-    animQueueRef.current=queue;
     setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-    setAnim(diceAnim);
+    triggerAnimQueue(
+      localQueue,
+      result.newGs,
+      dr.fromEndTurnReplay&&result.newGs.phase==='ACTION'&&!result.newGs.gameOver
+        ?()=>continueEndTurnReplay(result.newGs)
+        :undefined
+    );
     if(isTutorialDodgeStep){
       setTutorialDiceResultPending(true);
     }
@@ -8395,6 +8446,20 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     return result.queue;
   }
 
+  function buildPostBewitchStageQueues(oldGs,encounterGs,newGs){
+    if(!encounterGs){
+      const acceptanceQueue=buildPostBewitchStatQueue(oldGs,newGs);
+      return {encounterQueue:[],acceptanceQueue,queue:acceptanceQueue};
+    }
+    const encounterQueue=buildPostBewitchStatQueue(oldGs,encounterGs);
+    const acceptanceQueue=buildPostBewitchStatQueue(encounterGs,newGs);
+    return {
+      encounterQueue,
+      acceptanceQueue,
+      queue:[...encounterQueue,...acceptanceQueue],
+    };
+  }
+
   function bewitchSelectTarget(ti){
     const tutorialAction={type:'selectTarget',pid:ti};
     if(!isTutorialActionAllowed(tutorialAction))return;
@@ -8430,6 +8495,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const forcedConvert=true;
       const shouldDeferShuTarget=!!(gs._isMP&&ti!==0&&bewitchCard.godKey==='SHU');
       const godResolveGs={...gs,players:P,deck:D,discard:Disc,log:L,...inspectionMeta};
+      const encounterGs=clearTurnDrawReplayHints({
+        ...godResolveGs,
+        players:copyPlayers(P),
+        deck:[...D],
+        discard:[...Disc],
+        log:[...L],
+        drawReveal:null,
+      });
       const gres=resolveGodEncounterForAI(ti,bewitchCard,P,D,Disc,godResolveGs,forcedConvert,{deferShuTarget:shouldDeferShuTarget});
       P=gres.P;D=gres.D;Disc=gres.Disc;L.push(...gres.msgs);
       const win=checkWin(P,gs._isMP);
@@ -8450,8 +8523,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           :{};
       const bewitchMsgs=extractSkillLogs(L.slice(gs.log.length),'bewitch');
       const newGs=clearTurnDrawReplayHints({...gs,players:P,deck:D,discard:Disc,log:L,drawReveal:null,skillUsed:true,...mergedInspectionMeta,...nightPatch,...(gres.statePatch||{}),phase:nextPhase,abilityData:nextAbilityData,apophisNight:nextApophisNight,_visualEvents:[...(gres.statePatch?._visualEvents||[])],...(win?{gameOver:win}:{})});
-      const statQueue=buildPostBewitchStatQueue(gs,newGs);
-      const queue=mergeApophisTargetQueue(buildBewitchForcedCardQueue(0,ti,bewitchCard,P[ti]?.name,statQueue,bewitchMsgs),gs,newGs);
+      const stageQueues=buildPostBewitchStageQueues(gs,encounterGs,newGs);
+      const queue=mergeApophisTargetQueue(buildBewitchForcedCardQueue(0,ti,bewitchCard,P[ti]?.name,stageQueues.queue,bewitchMsgs,{
+        playersAfter:P,
+        zhuLightBefore:gs.zhuLight||null,
+        zhuLightAfter:newGs.zhuLight||null,
+        encounterQueue:stageQueues.encounterQueue,
+        acceptanceQueue:stageQueues.acceptanceQueue,
+      }),gs,newGs);
       broadcastAnimTransaction(newGs,queue,{context:'bewitchGift',barrier:nextPhase==='ACTION'?'continuation':'decision',msgs:bewitchMsgs,beforePlayers:gs.players,beforeDiscard:gs.discard});
       finishTutorialActionWithState(
         newGs,
@@ -8477,8 +8556,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       abilityData:phaseAbilityData,
       phase:nextPhase,
       skillUsed:true,...(res.statePatch||{}),...apophisNightPatch(night),_visualEvents:[...(res.statePatch?._visualEvents||[])],...(win?{gameOver:win}:{})});
-      const statQueue=buildPostBewitchStatQueue(gs,newGs);
-      const queue=mergeApophisTargetQueue(buildBewitchForcedCardQueue(0,ti,bewitchCard,res.P[ti]?.name,statQueue,bewitchMsgs),gs,newGs);
+      const stageQueues=buildPostBewitchStageQueues(gs,null,newGs);
+      const queue=mergeApophisTargetQueue(buildBewitchForcedCardQueue(0,ti,bewitchCard,res.P[ti]?.name,stageQueues.queue,bewitchMsgs,{
+        playersAfter:res.P,
+        acceptanceQueue:stageQueues.acceptanceQueue,
+      }),gs,newGs);
       broadcastAnimTransaction(newGs,queue,{context:'bewitchGift',barrier:nextPhase==='ACTION'?'continuation':'decision',msgs:bewitchMsgs,beforePlayers:gs.players,beforeDiscard:gs.discard});
       finishTutorialActionWithState(
         newGs,
@@ -8962,16 +9044,18 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     // A turn-start effect can decide the game before presentation begins. The
     // terminal state still carries the complete replay metadata and must play.
     if(!shouldBuildQueuedAiTurnStartReplay({nextState:nextGs,fromTurn,isAiSeat,getTurnStartDrawnCard}))return [];
-    const nextAiName=nextGs.players?.[nextGs.currentTurn]?.name||'???';
+    const prunedVisualEvents=(pruneConsumedVisualEvents(nextGs,consumedVisualEventIdsRef.current)?._visualEvents)||[];
+    const replayBaseGs={...nextGs,_visualEvents:prunedVisualEvents};
+    const nextAiName=replayBaseGs.players?.[replayBaseGs.currentTurn]?.name||'???';
     const replayOldGs={
-      ...nextGs,
-      players:playersBeforeDraw||nextGs._playersBeforeThisDraw||nextGs.players,
-      log:getTurnStartDrawBaselineLog(nextGs),
-      _statEventSeq:statEventSeq??maxKnownStatEventSeq(nextGs),
+      ...replayBaseGs,
+      players:playersBeforeDraw||replayBaseGs._playersBeforeThisDraw||replayBaseGs.players,
+      log:getTurnStartDrawBaselineLog(replayBaseGs),
+      _statEventSeq:statEventSeq??maxKnownStatEventSeq(replayBaseGs),
       _inspectionSeq:lastInspectionSeqRef.current,
-      _visualEvents:[],
+      _visualEvents:prunedVisualEvents,
     };
-    const replay=buildActorTurnStartReplay(nextGs,{
+    const replay=buildActorTurnStartReplay(replayBaseGs,{
       oldGs:replayOldGs,
       effectOldGs:replayOldGs,
       actorName:nextAiName,
@@ -8979,19 +9063,19 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     });
     logAiTurnStartDebug('buildQueuedNextAiTurnStartReplay',{
       fromTurn,
-      toTurn:nextGs.currentTurn,
+      toTurn:replayBaseGs.currentTurn,
       name:nextAiName,
-      phase:nextGs.phase,
-      turnStartLogs:nextGs._turnStartLogs,
-      drawLogs:nextGs._drawLogs,
-      drawnCard:getTurnStartDrawnCard(nextGs)?.name||null,
+      phase:replayBaseGs.phase,
+      turnStartLogs:replayBaseGs._turnStartLogs,
+      drawLogs:replayBaseGs._drawLogs,
+      drawnCard:getTurnStartDrawnCard(replayBaseGs)?.name||null,
       replayQueue:replay?.queue?.map(step=>step?.type)||[],
     });
     if(!replay?.queue?.length)return [];
-    maskDiscardedTurnDrawUntilDiscardAnim(nextGs);
+    maskDiscardedTurnDrawUntilDiscardAnim(replayBaseGs);
     const preTurnQ=markTurnStartAnimationStage(
-      buildTsathogguaSlimeGrantQueue(nextGs),
-      TURN_START_ANIMATION_STAGE.TURN_START
+      buildTsathogguaSlimeGrantQueue(replayBaseGs),
+      TURN_START_ANIMATION_STAGE.TURN_BOUNDARY
     );
     const replayQueue=normalizeVisibleTurnStartQueue(replay.queue);
     return[
@@ -9007,13 +9091,15 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   function normalizeVisibleTurnStartQueue(queue=[]){
     if(!Array.isArray(queue)||!queue.length)return [];
     const stages=splitTurnStartAnimationStages(queue);
+    const turnBoundaryQueue=stages[TURN_START_ANIMATION_STAGE.TURN_BOUNDARY];
     const turnStartQueue=stages[TURN_START_ANIMATION_STAGE.TURN_START];
     const drawQueue=stages[TURN_START_ANIMATION_STAGE.DRAW];
     const turnIdx=turnStartQueue.findIndex(step=>step?.type==='YOUR_TURN');
-    if(turnIdx<=0)return [...turnStartQueue,...drawQueue];
+    if(turnIdx<=0)return [...turnBoundaryQueue,...turnStartQueue,...drawQueue];
     const leadingLocks=turnStartQueue.slice(0,turnIdx).filter(step=>step?.type==='VISUAL_LOCK');
     const visibleBeforeTurn=turnStartQueue.slice(0,turnIdx).filter(step=>step?.type!=='VISUAL_LOCK');
     return [
+      ...turnBoundaryQueue,
       ...leadingLocks,
       turnStartQueue[turnIdx],
       ...visibleBeforeTurn,
@@ -9810,21 +9896,33 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     P[0].hand.splice(idx,1);
     let L=[...gs.log];
     let inspectionMeta=makeInspectionMeta(gs);
+    let previousFaithExit=null;
+    let faithEstablished=null;
+    const abandonedFaithExits=[];
+    let presentAfterInspectionSeq=null;
     if(isUpgrade){
       L.push(buildWorshipFromHandLog('你',godCard,{upgrade:true,level:P[0].godLevel+1}));
     } else {
       L.push(buildWorshipFromHandLog('你',godCard));
     }
     if(isUpgrade){
+      const playersBeforeFaithEstablished=copyPlayers(P);
       P[0].godLevel++;P[0].godZone.push({...godCard});
+      faithEstablished={playersBefore:playersBeforeFaithEstablished,playersAfter:copyPlayers(P)};
     } else if(P[0].godName&&P[0].godName!==godKey){
+      const inspectionSeqBefore=inspectionMeta?._inspectionSeq||0;
       const converted=convertGodFollower(0,gs.currentTurn,P,D,Disc,L,inspectionMeta,'改信新神，SAN-1，旧神牌入弃牌堆',godCard);
       P=converted.P;D=converted.D;Disc=converted.Disc;L=converted.L;inspectionMeta=converted.inspectionMeta;
-      P[0].godName=godKey;P[0].godLevel=1;P[0].godZone=[{...godCard}];
+      previousFaithExit=converted.faithExit||null;
+      faithEstablished=converted.faithEstablished||null;
+      if((inspectionMeta?._inspectionSeq||0)>inspectionSeqBefore)presentAfterInspectionSeq=inspectionMeta._inspectionSeq;
     } else {
+      const playersBeforeFaithEstablished=copyPlayers(P);
       P[0].godName=godKey;P[0].godLevel=1;P[0].godZone=[{...godCard}];
+      faithEstablished={playersBefore:playersBeforeFaithEstablished,playersAfter:copyPlayers(P)};
     }
     P[0].hasBelievedGod=true;
+    if(faithEstablished)faithEstablished.playersAfter=copyPlayers(P);
     if(['APO','ZHU','SHU'].includes(godKey)&&hasGodPowerImmunity(P[0])){
       L.push(buildGodPowerBlockedLog(P[0]));
     }
@@ -9832,7 +9930,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const godPowerImmediateHand=canGodPowerAffect(P[0]);
     const isShuBlessingHand=godPowerImmediateHand&&godKey==='SHU';
     const shuOffspringCountHand=isShuBlessingHand?(GOD_DEFS.SHU.levels[P[0].godLevel-1]?.offspringCount||0):0;
-    P.forEach((p,i)=>{if(i>0&&p.godName===godKey){const abandoned=abandonGodFollower(i,gs.currentTurn,P,D,Disc,L,inspectionMeta);P=abandoned.P;D=abandoned.D;Disc=abandoned.Disc;L=abandoned.L;inspectionMeta=abandoned.inspectionMeta;}});
+    P.forEach((p,i)=>{if(i>0&&p.godName===godKey){const abandoned=abandonGodFollower(i,gs.currentTurn,P,D,Disc,L,inspectionMeta);P=abandoned.P;D=abandoned.D;Disc=abandoned.Disc;L=abandoned.L;inspectionMeta=abandoned.inspectionMeta;if(abandoned.faithExit)abandonedFaithExits.push(abandoned.faithExit);}});
     const win=checkWin(P,gs._isMP);
     const nextZhuLight=godPowerImmediateHand?buildZhuLight(P,D,0,gs.zhuLight):gs.zhuLight;
     const nextApophisNight=godPowerImmediateHand&&godKey==='APO'?getApophisNightForLevel(P[0].godLevel):gs.apophisNight;
@@ -9843,7 +9941,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const worshipMsg=L.slice(gs.log.length).find(line=>typeof line==='string'&&(line.includes('从手牌信仰')||line.includes('从手牌直接信仰')||line.includes('改信')));
     const godStatusEvent=createGodStatusChangedEvent({
       playerIdx:0,playerName:P[0].name,godKey:P[0].godName,godLevel:P[0].godLevel,
-      msgs:worshipMsg?[worshipMsg]:[],playersBefore:gs.players,playersAfter:P,
+      msgs:worshipMsg?[worshipMsg]:[],playersBefore:faithEstablished?.playersBefore||gs.players,playersAfter:faithEstablished?.playersAfter||P,
+      faithSettlement:{previousFaithExit,abandonedFollowers:abandonedFaithExits},presentAfterInspectionSeq,
     });
     const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,apophisNight:nextApophisNight,phase:isShuBlessingHand?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessingHand?{shuOffspringCount:shuOffspringCountHand,shuChooserIdx:0}:gs.abilityData,_visualEvents:[...(godStatusEvent?[godStatusEvent]:[]),...(blockedGodPowerEvent?[blockedGodPowerEvent]:[])],...inspectionMeta,...(win?{gameOver:win}:{})};
     // 让"邪神之力"标签与"从手牌信仰"日志同时出现：把信仰后的神之力字段（及已离手的神牌）并入动画基线，

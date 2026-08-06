@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import {
   classifyTreasureDodgeRoll,
@@ -52,5 +54,20 @@ describe('treasure dodge flow variants', () => {
       .toMatchObject({ rollerName: '艾伦', durationMs: 2147483647, onSettled });
     expect(createTreasureDodgeDiceAnim({ result, aoe: true, tutorialHold: true, onTutorialSettled: onSettled }))
       .toEqual(expect.not.objectContaining({ durationMs: expect.anything() }));
+  });
+
+  it('routes every treasure-dodge roll branch through the animation queue state machine', () => {
+    const appPath = fileURLToPath(new URL('../../App.jsx', import.meta.url));
+    const source = fs.readFileSync(appPath, 'utf8');
+    const start = source.indexOf('function handleTreasureDodgeRollMode');
+    const end = source.indexOf('function handleTreasureDodgeRoll()', start);
+    const handler = source.slice(start, end);
+
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    expect(handler).not.toContain('pendingGsRef.current=');
+    expect(handler).not.toContain('animQueueRef.current=');
+    expect(handler).not.toMatch(/setAnim\s*\(/);
+    expect(handler.match(/triggerAnimQueue\s*\(/g)).toHaveLength(4);
   });
 });

@@ -30,12 +30,13 @@ export const EMPTY_TURN_ANIM_FIELDS = Object.freeze({
   _earthquakeDiscardEvents: null,
 });
 
-// Turn-start presentation has two explicit stages. Effects produced before
-// the fixed draw (black-goat pulse, linked heal, etc.) belong to TURN_START;
-// the reveal and every consequence caused by that card belong to DRAW.  The
-// marker travels with each step so AI/local/remote queue adapters can reorder
-// or inject steps without having to rediscover the boundary from array indices.
+// A turn transition has three explicit stages. The previous actor's registered
+// end-turn effects belong to TURN_BOUNDARY; effects produced after the next
+// actor starts but before the fixed draw belong to TURN_START; the reveal and
+// every consequence caused by that card belong to DRAW. The marker travels
+// with each step so AI/local/remote adapters never infer boundaries from indices.
 export const TURN_START_ANIMATION_STAGE = Object.freeze({
+  TURN_BOUNDARY: 'turnBoundary',
   TURN_START: 'turnStart',
   DRAW: 'draw',
 });
@@ -49,13 +50,16 @@ export function markTurnStartAnimationStage(queue = [], stage) {
 
 export function splitTurnStartAnimationStages(queue = []) {
   const stages = {
+    [TURN_START_ANIMATION_STAGE.TURN_BOUNDARY]: [],
     [TURN_START_ANIMATION_STAGE.TURN_START]: [],
     [TURN_START_ANIMATION_STAGE.DRAW]: [],
   };
   (Array.isArray(queue) ? queue : []).forEach(step => {
-    const stage = step?.turnStartStage === TURN_START_ANIMATION_STAGE.DRAW
-      ? TURN_START_ANIMATION_STAGE.DRAW
-      : TURN_START_ANIMATION_STAGE.TURN_START;
+    const stage = step?.turnStartStage === TURN_START_ANIMATION_STAGE.TURN_BOUNDARY
+      ? TURN_START_ANIMATION_STAGE.TURN_BOUNDARY
+      : step?.turnStartStage === TURN_START_ANIMATION_STAGE.DRAW
+        ? TURN_START_ANIMATION_STAGE.DRAW
+        : TURN_START_ANIMATION_STAGE.TURN_START;
     stages[stage].push(step);
   });
   return stages;
@@ -757,6 +761,7 @@ export function buildTurnStartDrawReplayQueue({
   const staleVisualEvents = (Array.isArray(newGs?._visualEvents) ? newGs._visualEvents : [])
     .filter(event => (
       boundaryGodPowerBlockedIds.has(event?.id) ||
+      event?.type === VISUAL_EVENT.GOD_STATUS_CHANGED ||
       (event?.card && !sameDrawCard(event?.card, drawnCard))
     ));
   const baselineVisualEvents = [

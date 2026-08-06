@@ -3,7 +3,7 @@
   clamp,
   copyPlayers,
   isDodgeableZoneCard,
-  cardContainsFireText,
+  shouldTriggerTreasureDodge,
   cardLogText,
   isWinHand,
   makeInspectionMeta,
@@ -268,7 +268,7 @@ export function chooseAiGodEncounterAction(ci, godCard, players, forcedConvert =
   return convertScore >= 0.45 ? 'convert' : 'discard';
 }
 
-function appendGodPowerBlockedFeedback({ player, playerIdx, log, events, msgs }) {
+function appendGodPowerBlockedFeedback({ player, playerIdx, log, events, msgs, turnStartStage = null }) {
   if (!player || !hasGodPowerImmunity(player)) return null;
   const msg = buildGodPowerBlockedLog(player);
   if (Array.isArray(log)) log.push(msg);
@@ -277,6 +277,7 @@ function appendGodPowerBlockedFeedback({ player, playerIdx, log, events, msgs })
     playerIdx,
     playerName: player.name,
     msgs: [msg],
+    ...(turnStartStage ? { turnStartStage, turnStartStageOrder: 0 } : {}),
   });
   if (event && Array.isArray(events)) events.push(event);
   return event;
@@ -337,29 +338,94 @@ function splitGodEncounterLogs(effectMsgs = []) {
 }
 
 export function abandonGodFollower(targetIndex, startIndex, P, D, Disc, L, inspectionMeta, logMsg = `被邪神抛弃，${formatSanLoss(1)}`) {
-  L = [...L, `${P[targetIndex].name} ${logMsg}`];
+  const settlementMsg = `${P[targetIndex].name} ${logMsg}`;
+  const playersBeforeFaithExit = copyPlayers(P);
+  const discardBeforeFaithExit = [...Disc];
+  const discardedGodCards = [...(P[targetIndex]?.godZone || [])];
+  const statEventSeqBefore = inspectionMeta?._statEventSeq || 0;
+  const inspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
+  // 信仰退出是抛弃结算的边界：先移除 Tag/神域牌，再结算 SAN 与其
+  // 连带检定。这样后续任何伤害或检定快照都不可能恢复已经失去的信仰。
+  clearPlayerGodZone(P[targetIndex], Disc);
+  const playersAfterFaithExit = copyPlayers(P);
+  const discardAfterFaithExit = [...Disc];
+  L = [...L, settlementMsg];
   const processed = applySanLossToPlayerWithInspection(targetIndex, 1, startIndex, P, D, Disc, L, inspectionMeta);
   P = processed.P; D = processed.D; Disc = processed.Disc; L = processed.L; inspectionMeta = processed.inspectionMeta;
-  clearPlayerGodZone(P[targetIndex], Disc);
-  return { P, D, Disc, L, inspectionMeta };
+  return {
+    P,
+    D,
+    Disc,
+    L,
+    inspectionMeta,
+    faithExit: {
+      playerIdx: targetIndex,
+      cards: discardedGodCards,
+      msgs: [settlementMsg],
+      playersBefore: playersBeforeFaithExit,
+      playersAfter: playersAfterFaithExit,
+      discardBefore: discardBeforeFaithExit,
+      discardAfter: discardAfterFaithExit,
+      statEventSeqBefore,
+      statEventSeqAfter: inspectionMeta?._statEventSeq || statEventSeqBefore,
+      inspectionSeqBefore,
+      inspectionSeqAfter: inspectionMeta?._inspectionSeq || inspectionSeqBefore,
+      playersAfterResolution: copyPlayers(P),
+      discardAfterResolution: [...Disc],
+      effect: 'godAbandon',
+    },
+  };
 }
 
 export function convertGodFollower(targetIndex, startIndex, P, D, Disc, L, inspectionMeta, logMsg, nextGodCard = null) {
   const convertLog = logMsg || `${P[targetIndex].name} 改信新神，${formatSanLoss(1)}`;
   L = [...L, convertLog];
-  if (nextGodCard?.godKey) {
+  const playersBeforeFaithExit = copyPlayers(P);
+  const discardBeforeFaithExit = [...Disc];
+  const discardedGodCards = [...(P[targetIndex]?.godZone || [])];
+  const statEventSeqBefore = inspectionMeta?._statEventSeq || 0;
+  const inspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
+  if (P[targetIndex]?.godName || discardedGodCards.length) {
     clearPlayerGodZone(P[targetIndex], Disc);
+  }
+  const playersAfterFaithExit = copyPlayers(P);
+  const discardAfterFaithExit = [...Disc];
+  const processed = applySanLossToPlayerWithInspection(targetIndex, 1, startIndex, P, D, Disc, L, inspectionMeta);
+  P = processed.P; D = processed.D; Disc = processed.Disc; L = processed.L; inspectionMeta = processed.inspectionMeta;
+  const playersBeforeFaithEstablished = copyPlayers(P);
+  if (nextGodCard?.godKey) {
     P[targetIndex].godName = nextGodCard.godKey;
     P[targetIndex].godLevel = 1;
     P[targetIndex].godZone = [{ ...nextGodCard }];
     P[targetIndex].hasBelievedGod = true;
   }
-  const processed = applySanLossToPlayerWithInspection(targetIndex, 1, startIndex, P, D, Disc, L, inspectionMeta);
-  P = processed.P; D = processed.D; Disc = processed.Disc; L = processed.L; inspectionMeta = processed.inspectionMeta;
-  if (!nextGodCard?.godKey) {
-    clearPlayerGodZone(P[targetIndex], Disc);
-  }
-  return { P, D, Disc, L, inspectionMeta };
+  return {
+    P,
+    D,
+    Disc,
+    L,
+    inspectionMeta,
+    faithExit: discardedGodCards.length ? {
+      playerIdx: targetIndex,
+      cards: discardedGodCards,
+      msgs: [convertLog],
+      playersBefore: playersBeforeFaithExit,
+      playersAfter: playersAfterFaithExit,
+      discardBefore: discardBeforeFaithExit,
+      discardAfter: discardAfterFaithExit,
+      statEventSeqBefore,
+      statEventSeqAfter: inspectionMeta?._statEventSeq || statEventSeqBefore,
+      inspectionSeqBefore,
+      inspectionSeqAfter: inspectionMeta?._inspectionSeq || inspectionSeqBefore,
+      playersAfterResolution: playersBeforeFaithEstablished,
+      discardAfterResolution: [...Disc],
+      effect: 'godConvertDiscard',
+    } : null,
+    faithEstablished: nextGodCard?.godKey ? {
+      playersBefore: playersBeforeFaithEstablished,
+      playersAfter: copyPlayers(P),
+    } : null,
+  };
 }
 
 export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConvert, opts = {}) {
@@ -371,6 +437,10 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     godName: P[ci]?.godName || null,
     godLevel: P[ci]?.godLevel || 0,
   };
+  let previousFaithExit = null;
+  let faithEstablished = null;
+  const abandonedFaithExits = [];
+  let presentAfterInspectionSeq = null;
   let inspectionMeta = makeInspectionMeta(gs);
   P = P.map(p => ({ ...p, godZone: [...(p.godZone || [])] })); // shallow copy godZone arrays
   const hadWinnerAtSettlementStart = !!checkWin(P, gs?._isMP);
@@ -416,62 +486,92 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     }
   };
   if (forcedConvert && P[ci].godName && P[ci].godName !== godKey) {
-    msgs.push(`${P[ci].name} 被迫改信新神，${formatSanLoss(1)}`);
+    const convertMsg = `${P[ci].name} 被迫改信新神，${formatSanLoss(1)}`;
+    msgs.push(convertMsg);
+    const playersBeforeFaithExit = copyPlayers(P);
+    const discardBeforeFaithExit = [...Disc];
+    const discardedGodCards = [...(P[ci]?.godZone || [])];
+    const statEventSeqBefore = inspectionMeta?._statEventSeq || 0;
+    const inspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
+    clearPlayerGodZone(P[ci], Disc);
+    const playersAfterFaithExit = copyPlayers(P);
+    const discardAfterFaithExit = [...Disc];
+    previousFaithExit = {
+      playerIdx: ci,
+      cards: discardedGodCards,
+      msgs: [convertMsg],
+      playersBefore: playersBeforeFaithExit,
+      playersAfter: playersAfterFaithExit,
+      discardBefore: discardBeforeFaithExit,
+      discardAfter: discardAfterFaithExit,
+      statEventSeqBefore,
+      statEventSeqAfter: null,
+      inspectionSeqBefore,
+      inspectionSeqAfter: null,
+      effect: 'godConvertDiscard',
+    };
     const inspectionBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
     const processed = applySanLossToPlayerWithInspection(ci, 1, gs?.currentTurn ?? ci, P, D, Disc, inspectionBaseLog, inspectionMeta);
     P = processed.P; D = processed.D; Disc = processed.Disc; inspectionMeta = processed.inspectionMeta;
+    previousFaithExit.statEventSeqAfter = inspectionMeta?._statEventSeq || statEventSeqBefore;
+    previousFaithExit.inspectionSeqAfter = inspectionMeta?._inspectionSeq || inspectionSeqBefore;
+    previousFaithExit.playersAfterResolution = copyPlayers(P);
+    previousFaithExit.discardAfterResolution = [...Disc];
     const extraMsgs = (processed.L || []).slice(inspectionBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
-    clearPlayerGodZone(P[ci], Disc);
+    if ((inspectionMeta?._inspectionSeq || 0) > inspectionSeqBefore) {
+      presentAfterInspectionSeq = inspectionMeta._inspectionSeq;
+    }
   }
   const proliferatingZGainEvents = [];
+  const abandonCompetingFollowers = () => {
+    P.forEach((p, i) => {
+      if (i === ci || p.godName !== godKey) return;
+      const abandonBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
+      const abandoned = abandonGodFollower(i, gs?.currentTurn ?? ci, P, D, Disc, abandonBaseLog, inspectionMeta);
+      P = abandoned.P; D = abandoned.D; Disc = abandoned.Disc; inspectionMeta = abandoned.inspectionMeta;
+      if (abandoned.faithExit) abandonedFaithExits.push(abandoned.faithExit);
+      const extraMsgs = (abandoned.L || []).slice(abandonBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
+    });
+  };
   const action = chooseAiGodEncounterAction(ci, godCard, P, forcedConvert);
   if (action === 'upgrade') {
+    const playersBeforeFaithEstablished = copyPlayers(P);
     P[ci].godLevel++; P[ci].godZone.push({ ...godCard });
     P[ci].hasBelievedGod = true;
+    faithEstablished = {
+      playersBefore: playersBeforeFaithEstablished,
+      playersAfter: copyPlayers(P),
+    };
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
     msgs.push(`${P[ci].name} 邪神之力升至Lv.${P[ci].godLevel}（${godCard.power}）`);
+    abandonCompetingFollowers();
     applyImmediateGodPower();
-    P.forEach((p, i) => {
-      if (i !== ci && p.godName === godKey) {
-        const abandonBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
-        const abandoned = abandonGodFollower(i, gs?.currentTurn ?? ci, P, D, Disc, abandonBaseLog, inspectionMeta);
-        P = abandoned.P; D = abandoned.D; Disc = abandoned.Disc; inspectionMeta = abandoned.inspectionMeta;
-        const extraMsgs = (abandoned.L || []).slice(abandonBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
-      }
-    });
   } else if (action === 'convert') {
-    // The new faith is chosen before paying the conversion penalty. Keep the
-    // public settlement log in that same order so inspection/discard replay can
-    // place the conversion SAN check after the worship highlight.
     msgs.push(`${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
+    const inspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
     const convertBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
     const converted = convertGodFollower(ci, gs?.currentTurn ?? ci, P, D, Disc, convertBaseLog, inspectionMeta, `${P[ci].name} 改信新神，${formatSanLoss(1)}`, godCard);
     P = converted.P; D = converted.D; Disc = converted.Disc; inspectionMeta = converted.inspectionMeta;
+    previousFaithExit = converted.faithExit || previousFaithExit;
+    faithEstablished = converted.faithEstablished || faithEstablished;
+    if ((inspectionMeta?._inspectionSeq || 0) > inspectionSeqBefore) {
+      presentAfterInspectionSeq = inspectionMeta._inspectionSeq;
+    }
     const extraMsgs = (converted.L || []).slice(convertBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
-    P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }]; P[ci].hasBelievedGod = true;
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
+    abandonCompetingFollowers();
     applyImmediateGodPower();
-    P.forEach((p, i) => {
-      if (i !== ci && p.godName === godKey) {
-        const abandonBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
-        const abandoned = abandonGodFollower(i, gs?.currentTurn ?? ci, P, D, Disc, abandonBaseLog, inspectionMeta);
-        P = abandoned.P; D = abandoned.D; Disc = abandoned.Disc; inspectionMeta = abandoned.inspectionMeta;
-        const extraMsgs = (abandoned.L || []).slice(abandonBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
-      }
-    });
   } else if (action === 'worship') {
+    const playersBeforeFaithEstablished = copyPlayers(P);
     P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }]; P[ci].hasBelievedGod = true;
+    faithEstablished = {
+      playersBefore: playersBeforeFaithEstablished,
+      playersAfter: copyPlayers(P),
+    };
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
     msgs.push(`${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
+    abandonCompetingFollowers();
     applyImmediateGodPower();
-    P.forEach((p, i) => {
-      if (i !== ci && p.godName === godKey) {
-        const abandonBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
-        const abandoned = abandonGodFollower(i, gs?.currentTurn ?? ci, P, D, Disc, abandonBaseLog, inspectionMeta);
-        P = abandoned.P; D = abandoned.D; Disc = abandoned.Disc; inspectionMeta = abandoned.inspectionMeta;
-        const extraMsgs = (abandoned.L || []).slice(abandonBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
-      }
-    });
   } else if (action === 'hand') {
     P[ci].roleRevealed = true;
     P[ci].hand.push({ ...godCard }); msgs.push(`${P[ci].name}（邪祀者）将邪神牌收入手牌`);
@@ -489,16 +589,24 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     godStatusAfter.godLevel !== godStatusBefore.godLevel
   )) {
     const worshipMsgs = msgs.filter(line => typeof line === 'string' && (
-      line.includes('信仰') || line.includes('改信') || line.includes('邪神之力升至')
+      line.includes('信仰了') || line.includes('邪神之力升至')
     ));
+    const fallbackWorshipMsgs = worshipMsgs.length
+      ? worshipMsgs
+      : msgs.filter(line => typeof line === 'string' && line.includes('改信'));
     const godStatusEvent = createGodStatusChangedEvent({
       playerIdx: ci,
       playerName: P[ci]?.name,
       godKey: godStatusAfter.godName,
       godLevel: godStatusAfter.godLevel,
-      msgs: worshipMsgs.slice(0, 1),
-      playersBefore: godStatusPlayersBefore,
-      playersAfter: copyPlayers(P),
+      msgs: fallbackWorshipMsgs.slice(0, 1),
+      playersBefore: faithEstablished?.playersBefore || godStatusPlayersBefore,
+      playersAfter: faithEstablished?.playersAfter || copyPlayers(P),
+      faithSettlement: {
+        previousFaithExit,
+        abandonedFollowers: abandonedFaithExits,
+      },
+      presentAfterInspectionSeq,
     });
     if (godStatusEvent) visualEvents.unshift(godStatusEvent);
   }
@@ -829,13 +937,11 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
     const isDodgeableEffect = isDodgeableZoneCard(drawnCard);
 
     const moldyFoodRoll = drawnCard.type === 'moldyFood' ? 1 + (Math.random() * 6 | 0) : null;
-    const conditionalNegativeApplies = drawnCard.type === 'moldyFood'
-      ? moldyFoodRoll % 2 === 1
-      : drawnCard.type === 'albinoCreature'
-        ? !(P[ci].hand || []).some(cardContainsFireText)
-        : drawnCard.type === 'sphinxGuess'
-          ? false
-        : true;
+    const conditionalNegativeApplies = shouldTriggerTreasureDodge(
+      drawnCard,
+      P[ci],
+      { moldyFoodRoll },
+    );
     const effectGs = moldyFoodRoll == null ? gs : { ...gs, _pendingMoldyFoodRoll: moldyFoodRoll };
 
     let failedDodgeLog = null;
@@ -1091,7 +1197,13 @@ export function grantTsathogguaSlimeAtEndTurn(P, prevTurn, L, visualEvents = [])
   const count = GOD_DEFS.TSG.levels[(p.godLevel || 1) - 1]?.slimeCount || 0;
   if (!count) return null;
   if (hasGodPowerImmunity(p)) {
-    appendGodPowerBlockedFeedback({ player: p, playerIdx: prevTurn, log: L, events: visualEvents });
+    appendGodPowerBlockedFeedback({
+      player: p,
+      playerIdx: prevTurn,
+      log: L,
+      events: visualEvents,
+      turnStartStage: 'turnBoundary',
+    });
     return null;
   }
   const playersBefore = copyPlayers(P);

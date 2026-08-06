@@ -45,7 +45,7 @@ function tagVisualEventSteps(event, steps = []) {
 
 function orderTurnStartVisualEvents(events = []) {
   if (!events.some(event => event?.turnStartStage)) return events;
-  const rank = stage => stage === 'turnStart' ? 0 : stage === 'draw' ? 1 : 2;
+  const rank = stage => stage === 'turnBoundary' ? 0 : stage === 'turnStart' ? 1 : stage === 'draw' ? 2 : 3;
   const result = [];
   let stagedGroup = [];
   const flushStagedGroup = () => {
@@ -405,6 +405,7 @@ export function compileRuleVisualEventsToAnimTransaction(state, previousState = 
     queue,
     ...(events.some(event => event?.turnStartStage) ? {
       stageQueues: {
+        turnBoundary: queue.filter(step => step?.turnStartStage === 'turnBoundary'),
         turnStart: queue.filter(step => step?.turnStartStage === 'turnStart'),
         draw: queue.filter(step => step?.turnStartStage === 'draw'),
       },

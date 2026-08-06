@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CARD_ACQUISITION_STAGE,
   buildBewitchForcedCardQueue,
   buildSphinxResultQueue,
   buildFullHandSwapStepsFromLogs,
@@ -19,9 +20,284 @@ import {
 import { copyPlayers } from '../coreUtils';
 import { buildAnimQueue } from '../animQueueCore';
 import { createCardEffectEvent } from '../visualEvents';
-import { makeGodCard, makePlayer, makeZoneCard } from './factory';
+import { resolveAiGodChoiceTransition } from '../aiDecisionState';
+import { resolveGodEncounterForAI, startNextTurn } from '../turnEngine';
+import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
 describe('animQueueHelpers', () => {
+  it('AI 摸神牌抢夺信仰时按结算子阶段推进且旧信徒状态不回退', () => {
+    const drawnGod = makeGodCard('TSG', { id: 'new-tsg' });
+    const abandonedGod = makeGodCard('TSG', { id: 'old-tsg' });
+    const inspectionCard = { id: 'insomnia', name: '失眠', effect: 'disableRest', value: 1, type: 'negative' };
+    const pendingGs = startNextTurn(makeGs({
+      players: [
+        makePlayer({ name: '你' }),
+        makePlayer({ name: '卡洛斯', san: 10 }),
+        makePlayer({ name: '艾伦', san: 7, godName: 'TSG', godLevel: 1, godZone: [abandonedGod] }),
+      ],
+      currentTurn: 0,
+      deck: [drawnGod],
+      inspectionDeck: [inspectionCard],
+      inspectionDiscard: [],
+      log: [],
+    }));
+    const transition = resolveAiGodChoiceTransition(pendingGs);
+    const replay = buildInspectionAwareAnimQueue(pendingGs, transition.state, { buildAnimQueue, copyPlayers });
+    const queue = replay.queue;
+    const highlightIndices = queue
+      .map((step, index) => step?.type === 'GOD_HIGHLIGHT' && step?.targetPid === 1 ? index : -1)
+      .filter(index => index >= 0);
+    const abandonIndices = queue
+      .map((step, index) => step?.effect === 'godAbandon' && step?.fromPid === 2 ? index : -1)
+      .filter(index => index >= 0);
+    const abandonSanIdx = queue.findIndex(step => (
+      step?.type === 'SAN_DAMAGE' && step?.hitIndices?.includes(2)
+    ));
+    const inspectionIdx = queue.findIndex(step => step?.inspectionSeq != null && step?.targetPid === 2);
+
+    expect(highlightIndices).toHaveLength(1);
+    expect(abandonIndices).toHaveLength(1);
+    expect(abandonIndices[0]).toBeGreaterThan(highlightIndices[0]);
+    expect(abandonSanIdx).toBeGreaterThan(abandonIndices[0]);
+    expect(inspectionIdx).toBeGreaterThan(abandonSanIdx);
+
+    expect(queue[highlightIndices[0]].visualTimeline.at(-1).patch.players[2]).toMatchObject({
+      godName: 'TSG',
+      godLevel: 1,
+      godZone: [abandonedGod],
+    });
+    expect(queue[abandonIndices[0]].visualTimeline.at(-1).patch.players[2]).toMatchObject({
+      godName: null,
+      godLevel: 0,
+      godZone: [],
+    });
+
+    const stepsAfterAbandon = queue.slice(abandonIndices[0] + 1);
+    const playerSnapshots = [
+      queue[abandonIndices[0]].visualTimeline.at(-1).patch.players,
+      ...stepsAfterAbandon.flatMap(step => [
+      step?.players,
+      step?.visualSetupPatch?.players,
+      ...(step?.visualTimeline || []).map(frame => frame?.patch?.players),
+      ]),
+    ].filter(Array.isArray);
+    expect(playerSnapshots.every(players => (
+      players[2]?.godName == null && players[2]?.godLevel === 0 && players[2]?.godZone?.length === 0
+    ))).toBe(true);
+  });
+
+  it('改信者先退出旧信仰并完成 SAN 检定，再建立并高亮新信仰', () => {
+    const oldGod = makeGodCard('NYA', { id: 'old-nya' });
+    const newGod = makeGodCard('TSG', { id: 'new-tsg-convert' });
+    const inspectionCard = { id: 'fatigue', name: '乏力', effect: 'handLimitDecrease', value: 1, type: 'negative' };
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '你' }),
+        makePlayer({ name: '卡洛斯', san: 7, godName: 'NYA', godLevel: 1, godZone: [oldGod] }),
+      ],
+      currentTurn: 1,
+      inspectionDeck: [inspectionCard],
+      inspectionDiscard: [],
+      log: [],
+    });
+    const result = resolveGodEncounterForAI(
+      1,
+      newGod,
+      copyPlayers(oldGs.players),
+      [],
+      [],
+      oldGs,
+      true,
+    );
+    const newGs = {
+      ...oldGs,
+      players: result.P,
+      deck: result.D,
+      discard: result.Disc,
+      log: result.msgs,
+      ...result.inspectionMeta,
+      ...result.statePatch,
+    };
+    const queue = buildInspectionAwareAnimQueue(oldGs, newGs, { buildAnimQueue, copyPlayers }).queue;
+    const exitIdx = queue.findIndex(step => step?.effect === 'godConvertDiscard' && step?.fromPid === 1);
+    const sanIdx = queue.findIndex(step => step?.type === 'SAN_DAMAGE' && step?.hitIndices?.includes(1));
+    const inspectionIdx = queue.findIndex(step => step?.inspectionSeq != null && step?.targetPid === 1);
+    const highlightIdx = queue.findIndex(step => step?.type === 'GOD_HIGHLIGHT' && step?.targetPid === 1);
+
+    expect(exitIdx).toBeGreaterThanOrEqual(0);
+    expect(sanIdx).toBeGreaterThan(exitIdx);
+    expect(inspectionIdx).toBeGreaterThan(sanIdx);
+    expect(highlightIdx).toBeGreaterThan(inspectionIdx);
+    expect(queue.filter(step => step?.effect === 'godConvertDiscard')).toHaveLength(1);
+    expect(queue.filter(step => step?.type === 'GOD_HIGHLIGHT' && step?.targetPid === 1)).toHaveLength(1);
+    expect(queue[highlightIdx].visualEventId).toBeTruthy();
+    expect(queue[exitIdx].visualTimeline.at(-1).patch.players[1]).toMatchObject({
+      godName: null,
+      godLevel: 0,
+      godZone: [],
+      san: 7,
+    });
+    expect(queue[highlightIdx].visualSetupPatch.players[1]).toMatchObject({ godName: null, godLevel: 0 });
+    expect(queue[highlightIdx].visualTimeline.at(-1).patch.players[1]).toMatchObject({ godName: 'TSG', godLevel: 1 });
+  });
+
+  it('改信 SAN 不触发检定时仍在新信仰 highlight 之前结算', () => {
+    const oldGod = makeGodCard('NYA', { id: 'old-nya-no-inspection' });
+    const newGod = makeGodCard('TSG', { id: 'new-tsg-no-inspection' });
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '你' }),
+        makePlayer({ name: '卡洛斯', san: 9, godName: 'NYA', godLevel: 1, godZone: [oldGod] }),
+      ],
+      currentTurn: 1,
+      log: [],
+    });
+    const result = resolveGodEncounterForAI(1, newGod, copyPlayers(oldGs.players), [], [], oldGs, true);
+    const newGs = {
+      ...oldGs,
+      players: result.P,
+      deck: result.D,
+      discard: result.Disc,
+      log: result.msgs,
+      ...result.inspectionMeta,
+      ...result.statePatch,
+    };
+    const queue = buildInspectionAwareAnimQueue(oldGs, newGs, { buildAnimQueue, copyPlayers }).queue;
+    const exitIdx = queue.findIndex(step => step?.effect === 'godConvertDiscard' && step?.fromPid === 1);
+    const sanIdx = queue.findIndex(step => step?.type === 'SAN_DAMAGE' && step?.hitIndices?.includes(1));
+    const highlightIdx = queue.findIndex(step => step?.type === 'GOD_HIGHLIGHT' && step?.targetPid === 1);
+
+    expect([exitIdx, sanIdx, highlightIdx].every(index => index >= 0)).toBe(true);
+    expect(exitIdx).toBeLessThan(sanIdx);
+    expect(sanIdx).toBeLessThan(highlightIdx);
+    expect(queue[sanIdx].visualSetupPatch.players[1]).toMatchObject({
+      godName: null,
+      godLevel: 0,
+      godZone: [],
+      san: 9,
+    });
+    expect(queue[sanIdx].visualTimeline.at(-1).patch.players[1]).toMatchObject({
+      godName: null,
+      godLevel: 0,
+      godZone: [],
+      san: 8,
+    });
+    expect(queue[highlightIdx].visualSetupPatch.players[1]).toMatchObject({ godName: null, godLevel: 0, san: 8 });
+  });
+
+  it('被抛弃 SAN 不触发检定时仍在 APO 即时神力之前结算', () => {
+    const newGod = makeGodCard('APO', { id: 'new-apo-no-inspection' });
+    const followerGod = makeGodCard('APO', { id: 'old-apo-no-inspection' });
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '你' }),
+        makePlayer({ name: '卡洛斯', san: 9 }),
+        makePlayer({ name: '艾伦', san: 9, godName: 'APO', godLevel: 1, godZone: [followerGod] }),
+      ],
+      currentTurn: 1,
+      log: [],
+    });
+    const result = resolveGodEncounterForAI(1, newGod, copyPlayers(oldGs.players), [], [], oldGs, true);
+    const newGs = {
+      ...oldGs,
+      players: result.P,
+      deck: result.D,
+      discard: result.Disc,
+      log: result.msgs,
+      ...result.inspectionMeta,
+      ...result.statePatch,
+    };
+    const queue = buildInspectionAwareAnimQueue(oldGs, newGs, { buildAnimQueue, copyPlayers }).queue;
+    const highlightIdx = queue.findIndex(step => step?.type === 'GOD_HIGHLIGHT' && step?.targetPid === 1);
+    const exitIdx = queue.findIndex(step => step?.effect === 'godAbandon' && step?.fromPid === 2);
+    const sanIdx = queue.findIndex(step => step?.type === 'SAN_DAMAGE' && step?.hitIndices?.includes(2));
+    const powerIdx = queue.findIndex(step => step?.type === 'APOPHIS_ECLIPSE');
+
+    expect([highlightIdx, exitIdx, sanIdx, powerIdx].every(index => index >= 0)).toBe(true);
+    expect(highlightIdx).toBeLessThan(exitIdx);
+    expect(exitIdx).toBeLessThan(sanIdx);
+    expect(sanIdx).toBeLessThan(powerIdx);
+    expect(queue[exitIdx].visualTimeline.at(-1).patch.players[2]).toMatchObject({
+      godName: null,
+      godLevel: 0,
+      godZone: [],
+      san: 9,
+    });
+    expect(queue[sanIdx].visualSetupPatch.players[2]).toMatchObject({ godName: null, godLevel: 0, san: 9 });
+    expect(queue[sanIdx].visualTimeline.at(-1).patch.players[2]).toMatchObject({
+      godName: null,
+      godLevel: 0,
+      godZone: [],
+      san: 8,
+    });
+  });
+
+  it('改信与旧信徒被抛弃各自拥有独立的退出、SAN 与检定子阶段', () => {
+    const oldGod = makeGodCard('NYA', { id: 'actor-old-nya' });
+    const newGod = makeGodCard('TSG', { id: 'actor-new-tsg' });
+    const followerGod = makeGodCard('TSG', { id: 'follower-old-tsg' });
+    const inspectionCards = [
+      { id: 'insomnia-1', name: '失眠', effect: 'disableRest', value: 1, type: 'negative' },
+      { id: 'insomnia-2', name: '失眠', effect: 'disableRest', value: 1, type: 'negative' },
+    ];
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '你' }),
+        makePlayer({ name: '卡洛斯', san: 7, godName: 'NYA', godLevel: 1, godZone: [oldGod] }),
+        makePlayer({ name: '艾伦', san: 7, godName: 'TSG', godLevel: 1, godZone: [followerGod] }),
+      ],
+      currentTurn: 1,
+      inspectionDeck: inspectionCards,
+      inspectionDiscard: [],
+      log: [],
+    });
+    const result = resolveGodEncounterForAI(1, newGod, copyPlayers(oldGs.players), [], [], oldGs, true);
+    const newGs = {
+      ...oldGs,
+      players: result.P,
+      deck: result.D,
+      discard: result.Disc,
+      log: result.msgs,
+      ...result.inspectionMeta,
+      ...result.statePatch,
+    };
+    const queue = buildInspectionAwareAnimQueue(oldGs, newGs, { buildAnimQueue, copyPlayers }).queue;
+    const actorExitIdx = queue.findIndex(step => step?.effect === 'godConvertDiscard' && step?.fromPid === 1);
+    const actorSanIdx = queue.findIndex(step => step?.type === 'SAN_DAMAGE' && step?.hitIndices?.includes(1));
+    const actorInspectionIdx = queue.findIndex(step => step?.inspectionSeq != null && step?.targetPid === 1);
+    const highlightIdx = queue.findIndex(step => step?.type === 'GOD_HIGHLIGHT' && step?.targetPid === 1);
+    const followerExitIdx = queue.findIndex(step => step?.effect === 'godAbandon' && step?.fromPid === 2);
+    const followerSanIdx = queue.findIndex(step => step?.type === 'SAN_DAMAGE' && step?.hitIndices?.includes(2));
+    const followerInspectionIdx = queue.findIndex(step => step?.inspectionSeq != null && step?.targetPid === 2);
+
+    const orderedFaithSettlementIndices = [
+      actorExitIdx,
+      actorSanIdx,
+      actorInspectionIdx,
+      highlightIdx,
+      followerExitIdx,
+      followerSanIdx,
+      followerInspectionIdx,
+    ];
+    expect(orderedFaithSettlementIndices.every(index => index >= 0)).toBe(true);
+    expect(orderedFaithSettlementIndices).toEqual([...orderedFaithSettlementIndices].sort((a, b) => a - b));
+    expect(queue.filter(step => step?.effect === 'godConvertDiscard')).toHaveLength(1);
+    expect(queue.filter(step => step?.effect === 'godAbandon')).toHaveLength(1);
+    expect(queue.filter(step => step?.type === 'GOD_HIGHLIGHT' && step?.targetPid === 1)).toHaveLength(1);
+
+    const snapshotsAfterFollowerExit = [
+      queue[followerExitIdx].visualTimeline.at(-1).patch.players,
+      ...queue.slice(followerExitIdx + 1).flatMap(step => [
+        step?.players,
+        step?.visualSetupPatch?.players,
+        ...(step?.visualTimeline || []).map(frame => frame?.patch?.players),
+      ]),
+    ].filter(Array.isArray);
+    expect(snapshotsAfterFollowerExit.every(players => (
+      players[2]?.godName == null && players[2]?.godLevel === 0 && players[2]?.godZone?.length === 0
+    ))).toBe(true);
+  });
+
   it('does not collapse consecutive explicit god status events for one player', () => {
     const levelOne = { type: 'GOD_HIGHLIGHT', targetPid: 1, godKey: 'TSG', godLevel: 1, visualEventId: 'god:1' };
     const levelTwo = { type: 'GOD_HIGHLIGHT', targetPid: 1, godKey: 'TSG', godLevel: 2, visualEventId: 'god:2' };
@@ -350,6 +626,233 @@ describe('animQueueHelpers', () => {
       sourceAnchor: 'chainEffect',
       msgs: ['未来连锁飞牌'],
     });
+  });
+
+  it('蛊惑邪神牌时 SAN_DAMAGE 在 GOD_HIGHLIGHT 之前，APOPHIS_ECLIPSE 在之后', () => {
+    const apoCard = makeGodCard('APO');
+    const playersAfter = [
+      makePlayer({ name: '艾伦' }),
+      makePlayer({ name: '你', godName: 'APO', godLevel: 1, hasBelievedGod: true }),
+    ];
+    const queue = buildBewitchForcedCardQueue(
+      0,
+      1,
+      apoCard,
+      '你',
+      [
+        { type: 'GOD_HIGHLIGHT', targetPid: 1, godKey: 'APO' },
+        { type: 'APOPHIS_ECLIPSE' },
+        { type: 'SAN_DAMAGE', hitIndices: [1] },
+      ],
+      ['艾伦（邪祀者）对你【蛊惑】，赠予阿波菲斯'],
+      { playersAfter },
+    );
+
+    expect(queue.map(step => step.type)).toEqual([
+      'SKILL_BEWITCH',
+      'CARD_TRANSFER',
+      'DRAW_CARD',
+      'SAN_DAMAGE',
+      'GOD_HIGHLIGHT',
+      'APOPHIS_ECLIPSE',
+    ]);
+  });
+
+  it('蛊惑森之领主时黑山羊幼仔飞牌排在 GOD_HIGHLIGHT 之后', () => {
+    const shuCard = makeGodCard('SHU');
+    const playersAfter = [
+      makePlayer({ name: '艾伦' }),
+      makePlayer({ name: '你', godName: 'SHU', godLevel: 1, hasBelievedGod: true }),
+    ];
+    const queue = buildBewitchForcedCardQueue(
+      0,
+      1,
+      shuCard,
+      '你',
+      [
+        { type: 'GOD_HIGHLIGHT', targetPid: 1, godKey: 'SHU' },
+        cardTransferStep({
+          fromPid: 1,
+          dest: 'player',
+          toPid: 2,
+          count: 1,
+          sourceAnchor: 'godPower',
+          effect: 'blackGoat',
+          durationMs: 1500,
+        }),
+        { type: 'SAN_DAMAGE', hitIndices: [1] },
+      ],
+      ['艾伦（邪祀者）对你【蛊惑】，赠予森之领主'],
+      { playersAfter },
+    );
+
+    const highlightIdx = queue.findIndex(step => step.type === 'GOD_HIGHLIGHT' && step.targetPid === 1);
+    const blackGoatIdx = queue.findIndex(
+      step => step.type === 'CARD_TRANSFER' && step.effect === 'blackGoat',
+    );
+    expect(highlightIdx).toBeGreaterThan(-1);
+    expect(blackGoatIdx).toBeGreaterThan(highlightIdx);
+  });
+
+  it('蛊惑烛九阴时牌堆点亮在 GOD_HIGHLIGHT 之后提交', () => {
+    const zhuCard = makeGodCard('ZHU');
+    const playersAfter = [
+      makePlayer({ name: '艾伦' }),
+      makePlayer({ name: '你', godName: 'ZHU', godLevel: 1, godZone: [zhuCard], hasBelievedGod: true }),
+    ];
+    const zhuLightAfter = { ownerIdx: 1, level: 1, cardIds: ['lit-1'], lightNonce: 2 };
+    const queue = buildBewitchForcedCardQueue(
+      0,
+      1,
+      zhuCard,
+      '你',
+      [],
+      ['艾伦（邪祀者）对你【蛊惑】，赠予烛九阴'],
+      { playersAfter, zhuLightBefore: null, zhuLightAfter },
+    );
+
+    const highlightIdx = queue.findIndex(step => step.type === 'GOD_HIGHLIGHT');
+    const zhuLightIdx = queue.findIndex(step => step.type === 'STATE_PATCH' && step.zhuLight === zhuLightAfter);
+    expect(highlightIdx).toBeGreaterThan(-1);
+    expect(zhuLightIdx).toBeGreaterThan(highlightIdx);
+    expect(queue[zhuLightIdx]).toMatchObject({
+      players: playersAfter,
+      cardAcquisitionStage: CARD_ACQUISITION_STAGE.ON_WORSHIP_POWER,
+    });
+  });
+
+  it('蛊惑信仰时邪神之力被阻止的反馈排在 GOD_HIGHLIGHT 之后', () => {
+    const apoCard = makeGodCard('APO');
+    const playersAfter = [
+      makePlayer({ name: '艾伦' }),
+      makePlayer({ name: '你', godName: 'APO', godLevel: 1, godZone: [apoCard], hasBelievedGod: true }),
+    ];
+    const queue = buildBewitchForcedCardQueue(
+      0,
+      1,
+      apoCard,
+      '你',
+      [
+        { type: 'GOD_POWER_BLOCKED', targetPid: 1 },
+        { type: 'GOD_HIGHLIGHT', targetPid: 1, godKey: 'APO' },
+      ],
+      [],
+      { playersAfter },
+    );
+
+    expect(queue.map(step => step.type).slice(-2)).toEqual(['GOD_HIGHLIGHT', 'GOD_POWER_BLOCKED']);
+    expect(queue.at(-1).cardAcquisitionStage).toBe(CARD_ACQUISITION_STAGE.ON_WORSHIP_POWER);
+  });
+
+  it('蛊惑邪神牌时 GOD_HIGHLIGHT 不重复且即时神力 snapshot 保留邪神徽章', () => {
+    const apoCard = makeGodCard('APO');
+    const playersAfter = [
+      makePlayer({ name: '艾伦' }),
+      makePlayer({
+        name: '你',
+        godName: 'APO',
+        godLevel: 1,
+        hasBelievedGod: true,
+        godZone: [apoCard],
+      }),
+    ];
+    const queue = buildBewitchForcedCardQueue(
+      0,
+      1,
+      apoCard,
+      '你',
+      [
+        { type: 'GOD_HIGHLIGHT', targetPid: 1, godKey: 'APO' },
+        { type: 'GOD_HIGHLIGHT', targetPid: 1, godKey: 'APO' },
+        { type: 'APOPHIS_ECLIPSE' },
+        { type: 'SAN_DAMAGE', hitIndices: [1] },
+        {
+          type: 'STATE_PATCH',
+          players: playersAfter.map(player => ({ ...player, godName: null })),
+          cardAcquisitionStage: CARD_ACQUISITION_STAGE.ON_WORSHIP_POWER,
+        },
+      ],
+      ['艾伦（邪祀者）对你【蛊惑】，赠予阿波菲斯'],
+      { playersAfter },
+    );
+
+    expect(queue.filter(step => step.type === 'GOD_HIGHLIGHT' && step.targetPid === 1).length).toBe(1);
+    const highlightIdx = queue.findIndex(step => step.type === 'GOD_HIGHLIGHT');
+    const statePatchAfterHighlight = queue.find((step, idx) => idx > highlightIdx && step.type === 'STATE_PATCH');
+    expect(statePatchAfterHighlight.players[1].godName).toBe('APO');
+    expect(statePatchAfterHighlight.players[1].godLevel).toBe(1);
+  });
+
+  it('蛊惑邪神的遭遇与信仰结算保持检定链原子顺序', () => {
+    const apoCard = makeGodCard('APO');
+    const beforePlayers = [makePlayer({ name: '艾伦' }), makePlayer({ name: '你' })];
+    const playersAfter = [
+      beforePlayers[0],
+      makePlayer({ name: '你', godName: 'APO', godLevel: 1, godZone: [apoCard], hasBelievedGod: true }),
+    ];
+    const encounterQueue = [
+      { type: 'SAN_DAMAGE', marker: 'encounterDamage', hitIndices: [1] },
+      { type: 'VISUAL_LOCK', marker: 'inspectionLock', players: beforePlayers },
+      { type: 'DRAW_CARD', marker: 'inspectionReveal', card: makeZoneCard('B2'), triggerName: '检定牌', inspectionSeq: 1 },
+      { type: 'HP_DAMAGE', marker: 'inspectionResult', hitIndices: [1] },
+      { type: 'STATE_PATCH', marker: 'inspectionCommit', players: beforePlayers },
+    ];
+    const acceptanceQueue = [
+      { type: 'STATE_PATCH', marker: 'faithCommit', players: playersAfter },
+      { type: 'GOD_HIGHLIGHT', targetPid: 1, godKey: 'APO' },
+      { type: 'APOPHIS_ECLIPSE' },
+    ];
+    const queue = buildBewitchForcedCardQueue(
+      0,
+      1,
+      apoCard,
+      '你',
+      [...acceptanceQueue,...encounterQueue],
+      ['艾伦（邪祀者）对你【蛊惑】，赠予阿波菲斯'],
+      { playersAfter, encounterQueue, acceptanceQueue },
+    );
+
+    const markers = queue.filter(step => step.marker).map(step => step.marker);
+    expect(markers).toEqual([
+      'encounterDamage',
+      'inspectionLock',
+      'inspectionReveal',
+      'inspectionResult',
+      'inspectionCommit',
+      'faithCommit',
+    ]);
+    const highlightIdx = queue.findIndex(step => step.type === 'GOD_HIGHLIGHT');
+    const inspectionCommitIdx = queue.findIndex(step => step.marker === 'inspectionCommit');
+    const eclipseIdx = queue.findIndex(step => step.type === 'APOPHIS_ECLIPSE');
+    expect(highlightIdx).toBeGreaterThan(inspectionCommitIdx);
+    expect(eclipseIdx).toBeGreaterThan(highlightIdx);
+    expect(queue.slice(0, 3).every(step => step.cardAcquisitionStage === CARD_ACQUISITION_STAGE.ACQUISITION)).toBe(true);
+    expect(queue.filter(step => step.marker?.startsWith('inspection') || step.marker === 'encounterDamage')
+      .every(step => step.cardAcquisitionStage === CARD_ACQUISITION_STAGE.GOD_ENCOUNTER)).toBe(true);
+    expect(queue.find(step => step.marker === 'faithCommit').cardAcquisitionStage).toBe(CARD_ACQUISITION_STAGE.ACCEPTANCE);
+    expect(queue[highlightIdx].cardAcquisitionStage).toBe(CARD_ACQUISITION_STAGE.ACCEPTANCE);
+    expect(queue[eclipseIdx].cardAcquisitionStage).toBe(CARD_ACQUISITION_STAGE.ON_WORSHIP_POWER);
+  });
+
+  it('普通蛊惑不因邪神牌后处理改变顺序', () => {
+    const zoneCard = makeZoneCard('A1');
+    const playersAfter = [makePlayer({ name: '艾伦' }), makePlayer({ name: '你' })];
+    const queue = buildBewitchForcedCardQueue(
+      0,
+      1,
+      zoneCard,
+      '你',
+      [{ type: 'SAN_DAMAGE', hitIndices: [1] }],
+      ['艾伦（邪祀者）对你【蛊惑】，赠予空气'],
+      { playersAfter },
+    );
+
+    expect(queue.map(step => step.type)).toEqual([
+      'SKILL_BEWITCH',
+      'CARD_TRANSFER',
+      'DRAW_CARD',
+      'SAN_DAMAGE',
+    ]);
   });
 
   it('检定事件流保证前置变化、检定翻牌、检定效果按顺序入队', () => {

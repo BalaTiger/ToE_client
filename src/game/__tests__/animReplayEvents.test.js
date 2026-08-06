@@ -10,8 +10,9 @@ import {
   isFreshBewitchReplayEvent,
   isStatAnimationStep,
 } from '../animReplayEvents';
-import { copyPlayers } from '../coreUtils';
-import { makePlayer, makeZoneCard } from './factory';
+import { copyPlayers, makeInspectionMeta, ROLE_CULTIST } from '../coreUtils';
+import { applySanLossToPlayerWithInspection, resolveGodEncounterForAI } from '../turnEngine';
+import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
 describe('animReplayEvents', () => {
   it('识别会更新数值或承载数值日志的动画步骤', () => {
@@ -73,9 +74,194 @@ describe('animReplayEvents', () => {
     expect(replay.queue[0]).toMatchObject({ targetIdx: 2, msgs: ['事件蛊惑'] });
     expect(replay.queue[1]).toMatchObject({ fromPid: 0, toPid: 2, count: 1 });
     expect(replay.queue[2]).toMatchObject({ card: gift, triggerName: '贝拉', targetPid: 2, skipTravel: true });
-    expect(replay.queue[3]).toBe(visualSanDamage);
+    expect(replay.queue[3]).toMatchObject({
+      ...visualSanDamage,
+      cardAcquisitionStage: 'acceptance',
+    });
     expect(replay.queue.some(step => step.msgs?.includes('旧差分伤害'))).toBe(false);
     expect(replay.queue.some(step => step._logChunk?.includes('旧数值日志'))).toBe(false);
+  });
+
+  it('邪神蛊惑回放按遭遇边界分别编译遭遇与信仰结算', () => {
+    const god = makeGodCard('APO');
+    const beforePlayers = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦', san: 6 })];
+    const encounterPlayers = copyPlayers(beforePlayers);
+    encounterPlayers[1].san = 5;
+    const finalPlayers = copyPlayers(encounterPlayers);
+    finalPlayers[1] = {
+      ...finalPlayers[1],
+      godName: 'APO',
+      godLevel: 1,
+      godZone: [god],
+      hasBelievedGod: true,
+    };
+    const oldGs = { players: beforePlayers, currentTurn: 0, log: ['旧日志'] };
+    const encounterState = {
+      players: encounterPlayers,
+      currentTurn: 0,
+      log: ['旧日志', '艾伦 遭遇邪神 阿波菲斯，失去1SAN'],
+      _inspectionEvents: [],
+      _inspectionSeq: 0,
+      _statEvents: [],
+      _statEventSeq: 0,
+    };
+    const newGs = {
+      players: finalPlayers,
+      currentTurn: 0,
+      log: [...encounterState.log, '艾伦 信仰了 阿波菲斯', '【噬日灭世】黑夜降临'],
+    };
+    const encounterDamage = { type: 'SAN_DAMAGE', hitIndices: [1] };
+    const highlight = { type: 'GOD_HIGHLIGHT', targetPid: 1, godKey: 'APO' };
+    const eclipse = { type: 'APOPHIS_ECLIPSE' };
+    const buildQueue = vi.fn((from, to) => (
+      to.players === encounterPlayers ? [encounterDamage] : [highlight, eclipse]
+    ));
+
+    const replay = buildBewitchGiftReplay({
+      oldGs,
+      newGs,
+      bewitchEvent: {
+        sourceIdx: 0,
+        targetIdx: 1,
+        targetName: '艾伦',
+        card: god,
+        msgs: ['你对 艾伦 【蛊惑】，赠予阿波菲斯'],
+        encounterState,
+      },
+      buildAnimQueue: buildQueue,
+      copyPlayers,
+    });
+
+    expect(replay.queue.map(step => step.type)).toEqual([
+      'SKILL_BEWITCH',
+      'CARD_TRANSFER',
+      'DRAW_CARD',
+      'SAN_DAMAGE',
+      'GOD_HIGHLIGHT',
+      'APOPHIS_ECLIPSE',
+    ]);
+    expect(replay.queue[3].cardAcquisitionStage).toBe('godEncounter');
+    expect(replay.queue[4].cardAcquisitionStage).toBe('acceptance');
+    expect(replay.queue[5].cardAcquisitionStage).toBe('onWorshipPower');
+  });
+
+  it('遭遇 SAN 未触发检定时，改信 SAN 的检定只在信仰结算阶段播放一次', () => {
+    const oldGod = makeGodCard('NYA', { id: 'old-nya-before-bewitch' });
+    const giftedGod = makeGodCard('VRI', { id: 'gifted-vri' });
+    const sealCard = { id: 'seal-loosening', name: '封印松动', effect: 'sealLoosening', value: 1 };
+    const bewitchMsg = '黛安娜（邪祀者）对 贝拉 【蛊惑】，赠予 弗栗多';
+    const encounterMsg = '贝拉 遭遇邪神 弗栗多！（第2次）失去 2 SAN';
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '黛安娜', role: ROLE_CULTIST }),
+        makePlayer({
+          name: '贝拉',
+          san: 9,
+          godName: 'NYA',
+          godLevel: 1,
+          godZone: [oldGod],
+          hasBelievedGod: true,
+        }),
+      ],
+      currentTurn: 0,
+      log: [],
+      inspectionDeck: [sealCard],
+      inspectionDiscard: [],
+      _inspectionSeq: 0,
+      _inspectionEvents: [],
+      _statEventSeq: 0,
+      _statEvents: [],
+      _visualEvents: [],
+    });
+    const encounterLog = [bewitchMsg, encounterMsg];
+    const encounterResult = applySanLossToPlayerWithInspection(
+      1,
+      2,
+      oldGs.currentTurn,
+      copyPlayers(oldGs.players),
+      [...oldGs.deck],
+      [...oldGs.discard],
+      encounterLog,
+      makeInspectionMeta(oldGs),
+      '邪神遭遇',
+    );
+    const encounterState = {
+      ...oldGs,
+      players: copyPlayers(encounterResult.P),
+      deck: [...encounterResult.D],
+      discard: [...encounterResult.Disc],
+      log: [...encounterResult.L],
+      ...encounterResult.inspectionMeta,
+    };
+    expect(encounterState.players[1].san).toBe(7);
+    expect(encounterState._inspectionEvents).toHaveLength(0);
+
+    const faithResult = resolveGodEncounterForAI(
+      1,
+      giftedGod,
+      copyPlayers(encounterState.players),
+      [...encounterState.deck],
+      [...encounterState.discard],
+      encounterState,
+      true,
+    );
+    const newGs = {
+      ...encounterState,
+      players: faithResult.P,
+      deck: faithResult.D,
+      discard: faithResult.Disc,
+      log: [...encounterState.log, ...faithResult.msgs],
+      ...faithResult.inspectionMeta,
+      ...faithResult.statePatch,
+    };
+    const replay = buildBewitchGiftReplay({
+      oldGs,
+      newGs,
+      bewitchEvent: {
+        sourceIdx: 0,
+        targetIdx: 1,
+        targetName: '贝拉',
+        card: giftedGod,
+        msgs: [bewitchMsg],
+        encounterState,
+      },
+      logDelta: newGs.log,
+      buildAnimQueue,
+      copyPlayers,
+    });
+    const encounterInspections = replay.encounterQueue.filter(step => step?.inspectionSeq != null);
+    const acceptanceInspections = replay.acceptanceQueue.filter(step => step?.inspectionSeq != null);
+    const finalInspections = replay.queue.filter(step => step?.inspectionSeq != null);
+
+    expect(replay.inspectionEvents).toHaveLength(1);
+    expect(replay.inspectionEvents[0]).toMatchObject({ seq: 1, target: 1, card: sealCard });
+    expect(encounterInspections).toHaveLength(0);
+    expect(acceptanceInspections).toHaveLength(1);
+    expect(acceptanceInspections[0]).toMatchObject({
+      type: 'DRAW_CARD',
+      inspectionSeq: 1,
+      targetPid: 1,
+      card: sealCard,
+    });
+    expect(acceptanceInspections[0]).not.toHaveProperty('cardAcquisitionStage');
+    expect(finalInspections).toHaveLength(1);
+    expect(finalInspections[0]).toMatchObject({
+      inspectionSeq: 1,
+      cardAcquisitionStage: 'acceptance',
+    });
+
+    const encounterSanIdx = replay.queue.findIndex(step => (
+      step?.type === 'SAN_DAMAGE' && step?.cardAcquisitionStage === 'godEncounter'
+    ));
+    const convertSanIdx = replay.queue.findIndex(step => (
+      step?.type === 'SAN_DAMAGE' && step?.cardAcquisitionStage === 'acceptance'
+    ));
+    const inspectionIdx = replay.queue.findIndex(step => step?.inspectionSeq === 1);
+    const highlightIdx = replay.queue.findIndex(step => step?.type === 'GOD_HIGHLIGHT' && step?.targetPid === 1);
+    expect([encounterSanIdx, convertSanIdx, inspectionIdx, highlightIdx].every(index => index >= 0)).toBe(true);
+    expect(encounterSanIdx).toBeLessThan(convertSanIdx);
+    expect(convertSanIdx).toBeLessThan(inspectionIdx);
+    expect(inspectionIdx).toBeLessThan(highlightIdx);
   });
 
   it('检定回放委托 inspection-aware 队列并返回新的检定事件', () => {

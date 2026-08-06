@@ -211,7 +211,7 @@ describe('buildAnimQueue stat animations', () => {
     ]));
   });
 
-  it('改信时先把旧神牌正面送入弃牌堆，再高亮新神', () => {
+  it('旧快照兼容路径仍会先把旧神牌正面送入弃牌堆，再高亮新神', () => {
     const oldGod = makeGodCard('VRI');
     const newGod = makeGodCard('APO');
     const oldGs = makeGs({
@@ -521,40 +521,88 @@ describe('buildAnimQueue stat animations', () => {
     expect(queue[secondHpIdx].visualTimeline.at(-1).patch.players.map(p => p.hp)).toEqual([8, 6, 8]);
   });
 
-  it('属性动画的视觉帧会同步玩家的邪神之力变化', () => {
+  it('显式改信结算中 SAN 动画保持无信仰，之后才高亮新邪神', () => {
     const oldGod = makeGodCard('NYA');
     const newGod = makeGodCard('VRI');
-    const playersBefore = [
-      makePlayer({ name: '你' }),
-      makePlayer({ name: '贝拉', san: 7, godEncounters: 2, godName: 'NYA', godLevel: 1, godZone: [oldGod] }),
-    ];
-    const playersAfter = [
-      makePlayer({ name: '你' }),
-      makePlayer({ name: '贝拉', san: 6, godEncounters: 2, godName: 'VRI', godLevel: 1, godZone: [newGod] }),
-    ];
+    const bystander = makePlayer({ name: '你' });
+    const beforeFaithExit = makePlayer({ name: '贝拉', san: 7, godEncounters: 2, godName: 'NYA', godLevel: 1, godZone: [oldGod] });
+    const afterFaithExit = { ...beforeFaithExit, godName: null, godLevel: 0, godZone: [] };
+    const afterSanResolution = { ...afterFaithExit, san: 6 };
+    const afterFaithEstablished = { ...afterSanResolution, godName: 'VRI', godLevel: 1, godZone: [newGod] };
+    const playersBefore = [bystander, beforeFaithExit];
+    const playersAfterExit = [bystander, afterFaithExit];
+    const playersAfterSan = [bystander, afterSanResolution];
+    const playersAfter = [bystander, afterFaithEstablished];
+    const statusEvent = createGodStatusChangedEvent({
+      playerIdx: 1,
+      playerName: '贝拉',
+      godKey: 'VRI',
+      godLevel: 1,
+      msgs: ['贝拉 信仰了 弗栗多，获得不灭之躯(Lv.1)'],
+      playersBefore: playersAfterSan,
+      playersAfter,
+      faithSettlement: {
+        previousFaithExit: {
+          playerIdx: 1,
+          cards: [oldGod],
+          msgs: ['贝拉 被迫改信新神，失去 1 SAN'],
+          playersBefore,
+          playersAfter: playersAfterExit,
+          discardBefore: [],
+          discardAfter: [oldGod],
+          statEventSeqBefore: 0,
+          statEventSeqAfter: 1,
+          inspectionSeqBefore: 0,
+          inspectionSeqAfter: 0,
+          playersAfterResolution: playersAfterSan,
+          discardAfterResolution: [oldGod],
+          effect: 'godConvertDiscard',
+        },
+        abandonedFollowers: [],
+      },
+    });
     const oldGs = makeGs({ players: playersBefore, log: [], _statEventSeq: 0 });
     const newGs = makeGs({
       players: playersAfter,
-      log: ['贝拉 被迫改信新神，SAN-1', '贝拉 信仰了 弗栗多，获得不灭之躯(Lv.1)'],
+      discard: [oldGod],
+      log: ['贝拉 被迫改信新神，失去 1 SAN', '贝拉 信仰了 弗栗多，获得不灭之躯(Lv.1)'],
       _statEventSeq: 1,
       _statEvents: [
-        { type: 'SAN_LOSS', target: 1, from: { hp: 10, san: 7, isDead: false }, to: { hp: 10, san: 6, isDead: false }, seq: 1 },
+        { type: 'SAN_LOSS', target: 1, from: { hp: 10, san: 7, isDead: false }, to: { hp: 10, san: 6, isDead: false }, seq: 1, reason: '改信新神' },
       ],
+      _visualEvents: [statusEvent],
     });
 
     const queue = buildAnimQueue(oldGs, newGs);
-    const highlightStep = queue.find(step => step.type === 'GOD_HIGHLIGHT');
-    const sanStep = queue.find(step => step.type === 'SAN_DAMAGE');
+    const exitIdx = queue.findIndex(step => step?.effect === 'godConvertDiscard');
+    const sanIdx = queue.findIndex(step => step?.type === 'SAN_DAMAGE');
+    const highlightIdx = queue.findIndex(step => step?.type === 'GOD_HIGHLIGHT');
 
-    expect(highlightStep.visualSetupPatch.players[1]).toMatchObject({ san: 7, godName: 'NYA', godLevel: 1 });
-    expect(highlightStep.visualTimeline[0]).toMatchObject({
-      atMs: 0,
-      patch: { players: [expect.anything(), expect.objectContaining({ san: 7, godName: 'VRI', godLevel: 1 })] },
+    expect([exitIdx, sanIdx, highlightIdx].every(index => index >= 0)).toBe(true);
+    expect(exitIdx).toBeLessThan(sanIdx);
+    expect(sanIdx).toBeLessThan(highlightIdx);
+    expect(queue[sanIdx].visualSetupPatch.players[1]).toMatchObject({
+      san: 7,
+      godName: null,
+      godLevel: 0,
+      godZone: [],
     });
-    expect(sanStep.visualSetupPatch.players[1]).toMatchObject({ san: 7, godName: 'VRI', godLevel: 1 });
-    expect(sanStep.visualTimeline[0].patch.players[1]).toMatchObject({ san: 7, godName: 'VRI', godLevel: 1 });
-    expect(sanStep.visualTimeline[1].patch.players[1]).toMatchObject({ san: 6, godEncounters: 2, godName: 'VRI', godLevel: 1 });
-    expect(sanStep.visualTimeline[1].patch.players[1].godZone[0].godKey).toBe('VRI');
+    expect(queue[sanIdx].visualTimeline.at(-1).patch.players[1]).toMatchObject({
+      san: 6,
+      godName: null,
+      godLevel: 0,
+      godZone: [],
+    });
+    expect(queue[highlightIdx].visualSetupPatch.players[1]).toMatchObject({
+      san: 6,
+      godName: null,
+      godLevel: 0,
+    });
+    expect(queue[highlightIdx].visualTimeline.at(-1).patch.players[1]).toMatchObject({
+      san: 6,
+      godName: 'VRI',
+      godLevel: 1,
+    });
   });
 
   it('中途 HP/SAN 结算不提前改变手牌图像（手牌只在动画落地后变化）', () => {
@@ -793,6 +841,50 @@ describe('buildAnimQueue stat animations', () => {
       type: 'CARD_TRANSFER',
       dest: 'player',
       toPid: 1,
+      effect: 'blackGoat',
+      sourceAnchor: 'godPower',
+    });
+  });
+
+  it('被蛊惑者信仰森之领主后，黑山羊幼仔从信仰者飞向目标', () => {
+    const god = makeGodCard('SHU');
+    const goat = { id: 'goat-1', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const oldGs = makeGs({
+      currentTurn: 0,
+      players: [
+        makePlayer({ name: '你', hand: [god] }),
+        makePlayer({ name: '黛安娜', hand: [] }),
+      ],
+      log: [],
+    });
+    const effectivePlayers = [
+      makePlayer({ name: '你', hand: [goat] }),
+      makePlayer({
+        name: '黛安娜',
+        hand: [],
+        godName: 'SHU',
+        godLevel: 1,
+        hasBelievedGod: true,
+        godZone: [god],
+      }),
+    ];
+
+    const queue = buildHandDeltaInferenceQueue({
+      oldGs,
+      effectivePlayers,
+      newMsgs: [
+        '你（邪祀者）对 黛安娜 【蛊惑】，赠予 森之领主',
+        '黛安娜 信仰了 森之领主，获得黑暗子嗣(Lv.1)',
+        '【黑暗子嗣】你 获得1张黑山羊幼仔',
+      ],
+    });
+
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({
+      type: 'CARD_TRANSFER',
+      fromPid: 1,
+      toPid: 0,
+      dest: 'player',
       effect: 'blackGoat',
       sourceAnchor: 'godPower',
     });

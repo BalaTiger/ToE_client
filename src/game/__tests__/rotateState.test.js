@@ -21,6 +21,20 @@ describe('rotateGsForViewer', () => {
         godKey: 'TSG',
         playersBefore: [player('b0'), player('b1'), player('b2')],
         playersAfter: [player('a0'), player('a1'), player('a2')],
+        faithSettlement: {
+          previousFaithExit: {
+            playerIdx: 0,
+            playersBefore: [player('c0'), player('c1'), player('c2')],
+            playersAfter: [player('d0'), player('d1'), player('d2')],
+            playersAfterResolution: [player('r0'), player('r1'), player('r2')],
+          },
+          abandonedFollowers: [{
+            playerIdx: 2,
+            playersBefore: [player('e0'), player('e1'), player('e2')],
+            playersAfter: [player('f0'), player('f1'), player('f2')],
+            playersAfterResolution: [player('s0'), player('s1'), player('s2')],
+          }],
+        },
       }],
     };
 
@@ -29,6 +43,12 @@ describe('rotateGsForViewer', () => {
     expect(event.playerIdx).toBe(1);
     expect(names(event.playersBefore)).toEqual(['b2', 'b0', 'b1']);
     expect(names(event.playersAfter)).toEqual(['a2', 'a0', 'a1']);
+    expect(event.faithSettlement.previousFaithExit.playerIdx).toBe(1);
+    expect(names(event.faithSettlement.previousFaithExit.playersAfter)).toEqual(['d2', 'd0', 'd1']);
+    expect(names(event.faithSettlement.previousFaithExit.playersAfterResolution)).toEqual(['r2', 'r0', 'r1']);
+    expect(event.faithSettlement.abandonedFollowers[0].playerIdx).toBe(0);
+    expect(names(event.faithSettlement.abandonedFollowers[0].playersBefore)).toEqual(['e2', 'e0', 'e1']);
+    expect(names(event.faithSettlement.abandonedFollowers[0].playersAfterResolution)).toEqual(['s2', 's0', 's1']);
   });
 
   it('rotates shared bury-alive choices with their player seats', () => {
@@ -154,7 +174,17 @@ describe('rotateGsForViewer', () => {
         { type: 'turnStart', playerIdx: 3 },
         { type: 'drawCard', playerIdx: 1, card: { name: '测试牌' } },
         { type: 'timedOutDrawDiscard', drawerIdx: 0, card: { name: '弃牌' } },
-        { type: 'bewitchGift', sourceIdx: 3, targetIdx: 1, card: { name: '蛊惑牌' } },
+        {
+          type: 'bewitchGift',
+          sourceIdx: 3,
+          targetIdx: 1,
+          card: { name: '蛊惑牌' },
+          encounterState: {
+            currentTurn: 3,
+            players: [player('bw0'), player('bw1'), player('bw2'), player('bw3')],
+            _statEvents: [{ type: 'SAN_LOSS', target: 1, from: { san: 9 }, to: { san: 8 } }],
+          },
+        },
         { type: 'huntTarget', sourceIdx: 0, targetIdx: 3 },
         { type: 'huntReveal', sourceIdx: 3, targetIdx: 0, card: { name: '亮出牌' } },
         {
@@ -262,6 +292,9 @@ describe('rotateGsForViewer', () => {
     expect(rotated._visualEvents[1].playerIdx).toBe(3);
     expect(rotated._visualEvents[2].drawerIdx).toBe(2);
     expect(rotated._visualEvents[3]).toMatchObject({ sourceIdx: 1, targetIdx: 3 });
+    expect(rotated._visualEvents[3].encounterState.currentTurn).toBe(1);
+    expect(names(rotated._visualEvents[3].encounterState.players)).toEqual(['bw2', 'bw3', 'bw0', 'bw1']);
+    expect(rotated._visualEvents[3].encounterState._statEvents[0].target).toBe(3);
     expect(rotated._visualEvents[4]).toMatchObject({ sourceIdx: 2, targetIdx: 1 });
     expect(rotated._visualEvents[5]).toMatchObject({ sourceIdx: 1, targetIdx: 2 });
     expect(rotated._visualEvents[6]).toMatchObject({ sourceIdx: 1, hunterIdx: 1, targetIdx: 3 });

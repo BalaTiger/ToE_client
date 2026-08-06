@@ -1,7 +1,7 @@
 import { makeTargetStats, statEventsToAnimQueue } from './statEvents';
 import { buildFullHandSwapStepsFromLogs, buryToDeckStep, cardTransferStep, statePatchStep } from './animQueueHelpers';
 import { buildApophisTargetSteps, buildCardEffectStepsFromVisualEvents, buildGodPowerBlockedStepsFromVisualEvents, buildGodStatusChangedStep, buildHuntRevealStepFromVisualEvent, getVisualEvents, VISUAL_EVENT } from './visualEvents';
-import { isTsathogguaSlime } from './coreUtils';
+import { isBlackGoatYoung, isTsathogguaSlime } from './coreUtils';
 import { cardIdentity } from './cardIdentity';
 
 function clonePlayersForTimeline(players = []) {
@@ -65,6 +65,88 @@ function playersAfterGodHighlight(basePlayers = [], afterPlayers = [], step = {}
   return next;
 }
 
+function buildFaithExitTransferStep(transition = {}) {
+  if (!transition) return null;
+  const cards = Array.isArray(transition.cards) ? transition.cards : [];
+  if (transition.playerIdx == null || !cards.length) return null;
+  const beforePlayers = clonePlayersForTimeline(transition.playersBefore || []);
+  const afterPlayers = clonePlayersForTimeline(transition.playersAfter || beforePlayers);
+  const beforeDiscard = Array.isArray(transition.discardBefore) ? [...transition.discardBefore] : [];
+  const afterDiscard = Array.isArray(transition.discardAfter) ? [...transition.discardAfter] : beforeDiscard;
+  return cardTransferStep({
+    fromPid: transition.playerIdx,
+    dest: 'discard',
+    count: cards.length,
+    cards,
+    sourceAnchor: 'godPower',
+    effect: transition.effect || 'godAbandon',
+    durationMs: 1500,
+    msgs: Array.isArray(transition.msgs) ? transition.msgs : [],
+    faithSettlementStep: true,
+    visualSetupTiming: 'queueStart',
+    visualSetupPatch: { players: beforePlayers, discard: beforeDiscard },
+    visualTimeline: [
+      { atMs: 0, patch: { players: beforePlayers, discard: beforeDiscard } },
+      { atMs: 360, patch: { players: afterPlayers, discard: afterDiscard } },
+    ],
+  });
+}
+
+function deriveFaithExitTransition({
+  oldGs,
+  afterPlayers,
+  afterDiscard,
+  targetPid,
+  cards,
+  msgs,
+  effect,
+}) {
+  const beforePlayers = clonePlayersForTimeline(oldGs?.players || afterPlayers || []);
+  const resolvedPlayers = clonePlayersForTimeline(afterPlayers || beforePlayers);
+  if (beforePlayers[targetPid] && resolvedPlayers[targetPid]) {
+    resolvedPlayers[targetPid] = {
+      ...resolvedPlayers[targetPid],
+      hp: beforePlayers[targetPid].hp,
+      san: beforePlayers[targetPid].san,
+      isDead: beforePlayers[targetPid].isDead,
+      hand: [...(beforePlayers[targetPid].hand || [])],
+      godName: null,
+      godLevel: 0,
+      godZone: [],
+    };
+  }
+  const beforeDiscard = [...(oldGs?.discard || [])];
+  const resolvedDiscard = Array.isArray(afterDiscard)
+    ? [...afterDiscard]
+    : [...beforeDiscard, ...(cards || [])];
+  return {
+    playerIdx: targetPid,
+    cards,
+    msgs,
+    effect,
+    playersBefore: beforePlayers,
+    playersAfter: resolvedPlayers,
+    discardBefore: beforeDiscard,
+    discardAfter: resolvedDiscard,
+  };
+}
+
+function playersAfterQueuedFaithSteps(basePlayers = [], steps = [], effectivePlayers = []) {
+  return steps.reduce((players, step) => {
+    if (step?.type === 'GOD_HIGHLIGHT') {
+      const timelinePlayers = step?.visualTimeline?.findLast?.(frame => Array.isArray(frame?.patch?.players))?.patch?.players;
+      return timelinePlayers
+        ? clonePlayersForTimeline(timelinePlayers)
+        : playersAfterGodHighlight(players, effectivePlayers, step);
+    }
+    if (step?.faithSettlementStep) {
+      const timelinePlayers = step?.visualTimeline?.findLast?.(frame => Array.isArray(frame?.patch?.players))?.patch?.players;
+      if (timelinePlayers) return clonePlayersForTimeline(timelinePlayers);
+    }
+    return players;
+  }, clonePlayersForTimeline(basePlayers));
+}
+
 // 中途结算（HP/SAN/神域）会用最终玩家快照，但其中的"最终手牌"不能提前出现：
 // 手牌图像只应在收/送动画真正落地（队列结束）时变化。这里用 handSource 的手牌覆盖 snapshot，
 // 让中途的视觉补丁保留出手/收牌前的手牌，其余字段仍取 snapshot。
@@ -115,6 +197,183 @@ function attachVisualTimelineToSteps(steps = [], beforePlayers = [], beforeDisca
       ],
     };
   });
+}
+
+function faithTransitionOwnsStatEvent(transition = {}, event = {}) {
+  const beforeSeq = transition?.statEventSeqBefore;
+  const afterSeq = transition?.statEventSeqAfter;
+  if (beforeSeq == null || afterSeq == null || event?.seq == null) return false;
+  return event.seq > beforeSeq && event.seq <= afterSeq && Number(event.target) === Number(transition.playerIdx);
+}
+
+function stripVisualTimeline(step = {}) {
+  const {
+    visualSetupTiming: _visualSetupTiming,
+    visualSetupPatch: _visualSetupPatch,
+    visualTimeline: _visualTimeline,
+    ...rest
+  } = step;
+  return rest;
+}
+
+function rebuildClaimedStatSteps(claimedSteps = [], transition = {}) {
+  if (!claimedSteps.length) return [];
+  const rebuilt = claimedSteps.map((step, index) => {
+    const statEvents = Array.isArray(step?.statEvents) ? step.statEvents : [];
+    return {
+      ...stripVisualTimeline(step),
+      statEvents,
+      hitIndices: [...new Set(statEvents.map(event => Number(event.target)).filter(Number.isFinite))],
+      msgs: index === 0 ? [...(transition.msgs || [])] : [],
+      faithSettlementStep: true,
+    };
+  });
+  const beforePlayers = transition.playersAfter || transition.playersBefore || [];
+  const afterPlayers = transition.playersAfterResolution || beforePlayers;
+  const beforeDiscard = transition.discardAfter || transition.discardBefore || [];
+  const afterDiscard = transition.discardAfterResolution || beforeDiscard;
+  return attachVisualTimelineToSteps(
+    rebuilt,
+    beforePlayers,
+    beforeDiscard,
+    afterPlayers,
+    afterDiscard,
+  );
+}
+
+function isFaithSettlementDeathStep(step = {}, transition = {}) {
+  if (!['GUILLOTINE', 'DEATH'].includes(step?.type)) return false;
+  if (!transition?.playersAfterResolution?.[transition.playerIdx]?.isDead) return false;
+  return Array.isArray(step.hitIndices) && step.hitIndices.includes(transition.playerIdx);
+}
+
+function isImmediateFaithPowerStep(step = {}, event = {}) {
+  if (step?.type === 'GOD_POWER_BLOCKED') return step.targetPid === event.playerIdx;
+  if (event.godKey === 'APO') return step?.type === 'APOPHIS_ECLIPSE';
+  if (event.godKey === 'SHU') {
+    return step?.type === 'CARD_TRANSFER' && step.sourceAnchor === 'godPower' && step.effect === 'blackGoat';
+  }
+  if (event.godKey === 'ZHU') {
+    return step?.type === 'STATE_PATCH' && Object.prototype.hasOwnProperty.call(step, 'zhuLight');
+  }
+  return false;
+}
+
+// A faith change is one settlement transaction, even when no inspection splits
+// buildAnimQueue into multiple calls. Claim its stat events by the exact engine
+// sequence boundaries and place them beside the faith transition that produced
+// them. Rebuilding those steps from the transition snapshots is essential: the
+// generic stat timeline starts from the final faith state and would otherwise
+// make a new/removed god tag appear early or briefly come back.
+function composeFaithSettlementAnimQueue(queue = [], godStatusEvents = []) {
+  let result = [...queue];
+  (godStatusEvents || []).forEach(event => {
+    const previousFaithExit = event?.faithSettlement?.previousFaithExit || null;
+    const abandonedFollowers = event?.faithSettlement?.abandonedFollowers || [];
+    const transitions = [previousFaithExit, ...abandonedFollowers].filter(Boolean);
+    if (!transitions.length) return;
+
+    const claimedStatSteps = new Map(transitions.map(transition => [transition, []]));
+    const claimedDeathSteps = new Map(transitions.map(transition => [transition, []]));
+    const retained = [];
+    let insertionIndex = null;
+    let highlightStep = null;
+    let previousExitStep = null;
+    const abandonedExitSteps = new Map();
+    const powerSteps = [];
+
+    const claimIndex = () => {
+      if (insertionIndex == null) insertionIndex = retained.length;
+    };
+
+    result.forEach(step => {
+      if (step?.type === 'GOD_HIGHLIGHT' && step.visualEventId === event.id) {
+        claimIndex();
+        highlightStep = step;
+        return;
+      }
+      if (
+        previousFaithExit &&
+        step?.faithSettlementStep &&
+        step.effect === previousFaithExit.effect &&
+        step.fromPid === previousFaithExit.playerIdx &&
+        (!step.visualEventId || step.visualEventId === event.id)
+      ) {
+        claimIndex();
+        previousExitStep = step;
+        return;
+      }
+      const abandonedTransition = abandonedFollowers.find(transition => (
+        step?.faithSettlementStep &&
+        step.effect === transition.effect &&
+        step.fromPid === transition.playerIdx &&
+        (!step.visualEventId || step.visualEventId === event.id)
+      ));
+      if (abandonedTransition) {
+        claimIndex();
+        abandonedExitSteps.set(abandonedTransition, step);
+        return;
+      }
+      if (Array.isArray(step?.statEvents) && step.statEvents.length) {
+        const owners = new Map();
+        const remainingEvents = [];
+        step.statEvents.forEach(statEvent => {
+          const owner = transitions.find(transition => faithTransitionOwnsStatEvent(transition, statEvent));
+          if (!owner) {
+            remainingEvents.push(statEvent);
+            return;
+          }
+          if (!owners.has(owner)) owners.set(owner, []);
+          owners.get(owner).push(statEvent);
+        });
+        if (owners.size) {
+          claimIndex();
+          owners.forEach((statEvents, owner) => {
+            claimedStatSteps.get(owner).push({ ...step, statEvents });
+          });
+          if (remainingEvents.length) {
+            retained.push({
+              ...step,
+              statEvents: remainingEvents,
+              hitIndices: [...new Set(remainingEvents.map(statEvent => Number(statEvent.target)).filter(Number.isFinite))],
+            });
+          }
+          return;
+        }
+      }
+      const deathOwner = transitions.find(transition => isFaithSettlementDeathStep(step, transition));
+      if (deathOwner) {
+        claimIndex();
+        claimedDeathSteps.get(deathOwner).push(step);
+        return;
+      }
+      if (isImmediateFaithPowerStep(step, event)) {
+        claimIndex();
+        powerSteps.push(step);
+        return;
+      }
+      retained.push(step);
+    });
+
+    if (insertionIndex == null || !highlightStep) return;
+    const phaseSteps = [];
+    if (previousFaithExit) {
+      if (previousExitStep) phaseSteps.push(previousExitStep);
+      phaseSteps.push(...rebuildClaimedStatSteps(claimedStatSteps.get(previousFaithExit), previousFaithExit));
+      phaseSteps.push(...claimedDeathSteps.get(previousFaithExit));
+    }
+    phaseSteps.push(highlightStep);
+    abandonedFollowers.forEach(transition => {
+      const exitStep = abandonedExitSteps.get(transition);
+      if (exitStep) phaseSteps.push(exitStep);
+      phaseSteps.push(...rebuildClaimedStatSteps(claimedStatSteps.get(transition), transition));
+      phaseSteps.push(...claimedDeathSteps.get(transition));
+    });
+    phaseSteps.push(...powerSteps);
+    retained.splice(insertionIndex, 0, ...phaseSteps);
+    result = retained;
+  });
+  return result;
 }
 
 function collectStepStatEvents(steps = []) {
@@ -267,10 +526,26 @@ export function buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs 
       const targetName = shuMatch[1];
       const count = parseInt(shuMatch[2], 10);
       const toPid = targetName === '你' ? 0 : effectivePlayers.findIndex(p => p?.name === targetName);
-      const oldHandCount = oldGs.players?.[toPid]?.hand?.length ?? 0;
-      const newHandCount = effectivePlayers?.[toPid]?.hand?.length ?? 0;
-      if (toPid >= 0 && count > 0 && newHandCount >= oldHandCount + count) {
-        q.push(cardTransferStep({ fromPid: oldGs.currentTurn, dest: 'player', toPid, count, sourceAnchor: 'godPower', effect: 'blackGoat', durationMs: 1500, msgs: [shuMsg] }));
+      const oldHand = oldGs.players?.[toPid]?.hand || [];
+      const newHand = effectivePlayers?.[toPid]?.hand || [];
+      const newGoatCards = newHand.filter(card => (
+        isBlackGoatYoung(card) &&
+        !oldHand.some(oldCard => cardIdentity(oldCard) === cardIdentity(card))
+      ));
+      const actualCount = Math.min(count, newGoatCards.length);
+      const shuCasterIdx = effectivePlayers.findIndex(p => p?.godName === 'SHU');
+      const fromPid = shuCasterIdx >= 0 ? shuCasterIdx : oldGs.currentTurn;
+      if (toPid >= 0 && actualCount > 0) {
+        q.push(cardTransferStep({
+          fromPid,
+          dest: 'player',
+          toPid,
+          count: actualCount,
+          sourceAnchor: 'godPower',
+          effect: 'blackGoat',
+          durationMs: 1500,
+          msgs: [shuMsg],
+        }));
       }
     }
   }
@@ -312,8 +587,27 @@ export function buildAnimQueue(oldGs, newGs) {
   const effectiveLog = newInspectionEvents[0]?.beforeLog || newGs.log;
   const oldLog = Array.isArray(oldGs?.log) ? oldGs.log : [];
   const newMsgs = (Array.isArray(effectiveLog) ? effectiveLog : []).slice(oldLog.length);
+  const oldInspectionSeq = oldGs?._inspectionSeq || 0;
+  const newInspectionSeq = newGs?._inspectionSeq || 0;
+  const godStatusEvents = getVisualEvents(newGs).filter(event => (
+    event.type === VISUAL_EVENT.GOD_STATUS_CHANGED && !oldVisualEventIds.has(event.id)
+  ));
+  const handledConvertTargets = new Set(godStatusEvents
+    .map(event => event?.faithSettlement?.previousFaithExit?.playerIdx)
+    .filter(playerIdx => playerIdx != null));
+  const handledAbandonTargets = new Set(godStatusEvents
+    .flatMap(event => event?.faithSettlement?.abandonedFollowers || [])
+    .map(transition => transition?.playerIdx)
+    .filter(playerIdx => playerIdx != null));
+  godStatusEvents.forEach(event => {
+    const presentationBoundary = event?.presentAfterInspectionSeq;
+    if (presentationBoundary != null && oldInspectionSeq >= presentationBoundary) return;
+    const exitStep = buildFaithExitTransferStep(event?.faithSettlement?.previousFaithExit);
+    if (exitStep) q.push({ ...exitStep, visualEventId: event.id });
+  });
   // 改信直接用新神区替换旧神区，先明确展示旧神牌进入公开弃牌堆。
   (oldGs?.players || []).forEach((oldPlayer, targetPid) => {
+    if (handledConvertTargets.has(targetPid)) return;
     const nextPlayer = newGs?.players?.[targetPid];
     const oldGodCards = Array.isArray(oldPlayer?.godZone) ? oldPlayer.godZone : [];
     if (!oldPlayer?.godName || !nextPlayer?.godName || oldPlayer.godName === nextPlayer.godName || !oldGodCards.length) return;
@@ -321,23 +615,23 @@ export function buildAnimQueue(oldGs, newGs) {
     const convertMsgs = finalMsgs.filter(line => typeof line === 'string' && (
       line.includes('改信新神') || line.includes('旧神牌入弃牌堆')
     ) && (!oldPlayer.name || line.includes(oldPlayer.name) || targetPid === 0));
-    q.push(cardTransferStep({
-      fromPid: targetPid,
-      dest: 'discard',
-      count: oldGodCards.length,
+    const exitStep = buildFaithExitTransferStep(deriveFaithExitTransition({
+      oldGs,
+      afterPlayers: effectivePlayers,
+      afterDiscard: newGs?.discard,
+      targetPid,
       cards: oldGodCards,
-      sourceAnchor: 'godPower',
-      effect: 'godConvertDiscard',
-      durationMs: 1500,
       msgs: convertMsgs,
+      effect: 'godConvertDiscard',
     }));
+    if (exitStep) q.push(exitStep);
   });
-  const godStatusEvents = getVisualEvents(newGs).filter(event =>
-    event.type === VISUAL_EVENT.GOD_STATUS_CHANGED && !oldVisualEventIds.has(event.id)
-  );
-  if (godStatusEvents.length) {
-    q.push(...godStatusEvents.map(buildGodStatusChangedStep).filter(Boolean));
-  } else {
+  const presentableGodStatusEvents = godStatusEvents.filter(event => (
+    event?.presentAfterInspectionSeq == null || newInspectionSeq >= event.presentAfterInspectionSeq
+  ));
+  if (presentableGodStatusEvents.length) {
+    q.push(...presentableGodStatusEvents.map(buildGodStatusChangedStep).filter(Boolean));
+  } else if (!godStatusEvents.length) {
     // Compatibility fallback for legacy snapshots that predate explicit god
     // status events. New rule paths must emit GOD_STATUS_CHANGED instead.
     (effectivePlayers || []).forEach((player, targetPid) => {
@@ -363,7 +657,17 @@ export function buildAnimQueue(oldGs, newGs) {
   }
   // 同一邪神只能有一名信徒。新信徒的高亮之后，显式播放旧信徒的
   // godZone 整体进入弃牌堆，确保本地和远端都能观察到信仰被抢夺。
+  presentableGodStatusEvents.forEach(event => {
+    (event?.faithSettlement?.abandonedFollowers || []).forEach(transition => {
+      const exitStep = buildFaithExitTransferStep(transition);
+      if (exitStep) q.push({ ...exitStep, visualEventId: event.id });
+    });
+  });
   (oldGs?.players || []).forEach((oldPlayer, targetPid) => {
+    // A conversion exit also looks like a temporary "has faith -> no faith"
+    // diff before the new-faith highlight. Its old god cards are already owned
+    // by godConvertDiscard and must never be inferred again as godAbandon.
+    if (handledAbandonTargets.has(targetPid) || handledConvertTargets.has(targetPid)) return;
     // Faith loss is a final settlement result. Inspection playback may use a
     // pre-inspection player snapshot as effectivePlayers, which used to hide
     // this transition on some paths. Always compare against the final state.
@@ -378,16 +682,16 @@ export function buildAnimQueue(oldGs, newGs) {
       && line.includes(oldPlayer.name)
       && (line.includes('被邪神抛弃') || line.includes('失去信仰'))
     ));
-    q.push(cardTransferStep({
-      fromPid: targetPid,
-      dest: 'discard',
-      count: oldGodCards.length,
+    const exitStep = buildFaithExitTransferStep(deriveFaithExitTransition({
+      oldGs,
+      afterPlayers: effectivePlayers,
+      afterDiscard: newGs?.discard,
+      targetPid,
       cards: oldGodCards,
-      sourceAnchor: 'godPower',
-      effect: 'godAbandon',
-      durationMs: 1500,
       msgs: abandonMsgs,
+      effect: 'godAbandon',
     }));
+    if (exitStep) q.push(exitStep);
   });
   if (newGs?.apophisNight?.active) {
     const nightMsg = newMsgs.find(line => typeof line === 'string' && line.includes('【噬日灭世】黑夜降临'));
@@ -485,9 +789,11 @@ export function buildAnimQueue(oldGs, newGs) {
   const targetStats = hasFreshExplicitStatEvents
     ? makeTargetStats(effectivePlayers, statEventsForQueue)
     : effectivePlayers.map(p => ({ hp: p.hp, san: p.san, isDead: p.isDead }));
-  const statTimelineBeforePlayers = q
-    .filter(step => step?.type === 'GOD_HIGHLIGHT')
-    .reduce((players, step) => playersAfterGodHighlight(players, effectivePlayers, step), oldGs?.players || effectivePlayers);
+  const statTimelineBeforePlayers = playersAfterQueuedFaithSteps(
+    oldGs?.players || effectivePlayers,
+    q,
+    effectivePlayers,
+  );
   if (hasFreshExplicitStatEvents) {
     const hasOrderedRandomTarget = randomTargetEvents.some(event => event?.phaseOrder != null);
     const hasOrderedStat = statEventsForQueue.some(event => event?.phaseOrder != null);
@@ -581,7 +887,7 @@ export function buildAnimQueue(oldGs, newGs) {
     const fullHandSwapQ = buildFullHandSwapStepsFromLogs([fullHandSwapMsg], oldGs.players);
     if (fullHandSwapQ.length) {
       q.push(...fullHandSwapQ);
-      return q;
+      return composeFaithSettlementAnimQueue(q, presentableGodStatusEvents);
     }
   }
   const buryMsgs = newMsgs.filter(m => typeof m === 'string' && m.includes('【活埋】') && m.includes('放到了牌堆底'));
@@ -592,10 +898,10 @@ export function buildAnimQueue(oldGs, newGs) {
       const fromPid = name === '你' ? 0 : effectivePlayers.findIndex(p => p?.name === name);
       q.push(buryToDeckStep({ fromPid: fromPid >= 0 ? fromPid : 0, msgs: [msg], players: oldGs.players }));
     });
-    return q;
+    return composeFaithSettlementAnimQueue(q, presentableGodStatusEvents);
   }
   q.push(...buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs }));
-  return q;
+  return composeFaithSettlementAnimQueue(q, presentableGodStatusEvents);
 }
 
 export function buildFullHandSwapTransferQueueFromLogs(logs, players, options = {}) {

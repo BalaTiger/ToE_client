@@ -298,6 +298,39 @@ function rotateEndlessCorridorReplayVisualEvent(event, rotateIndex, myIndex) {
   };
 }
 
+function rotateBewitchEncounterState(state, rotateIndex, myIndex) {
+  if (!state) return state;
+  return {
+    ...state,
+    currentTurn: state.currentTurn != null ? rotateIndex(state.currentTurn) : state.currentTurn,
+    players: rotatePlayersArray(state.players, myIndex),
+    _inspectionEvents: rotateInspectionEvents(state._inspectionEvents, rotateIndex, myIndex),
+    _statEvents: rotateStatEvents(state._statEvents, rotateIndex, myIndex),
+  };
+}
+
+function rotateFaithExitTransition(transition, rotateIndex, myIndex) {
+  if (!transition) return transition;
+  return {
+    ...transition,
+    playerIdx: transition.playerIdx != null ? rotateIndex(transition.playerIdx) : transition.playerIdx,
+    playersBefore: rotatePlayersArray(transition.playersBefore, myIndex),
+    playersAfter: rotatePlayersArray(transition.playersAfter, myIndex),
+    playersAfterResolution: rotatePlayersArray(transition.playersAfterResolution, myIndex),
+  };
+}
+
+function rotateFaithSettlement(settlement, rotateIndex, myIndex) {
+  if (!settlement) return settlement;
+  return {
+    ...settlement,
+    previousFaithExit: rotateFaithExitTransition(settlement.previousFaithExit, rotateIndex, myIndex),
+    abandonedFollowers: Array.isArray(settlement.abandonedFollowers)
+      ? settlement.abandonedFollowers.map(transition => rotateFaithExitTransition(transition, rotateIndex, myIndex))
+      : settlement.abandonedFollowers,
+  };
+}
+
 function rotateVisualEvents(events, rotateIndex, myIndex) {
   if (!Array.isArray(events)) return events;
   return events.map(event => {
@@ -314,6 +347,9 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
         ...(event?.type === 'godStatusChanged' && Array.isArray(event.playersAfter)
           ? { playersAfter: rotatePlayersArray(event.playersAfter, myIndex) }
           : {}),
+        ...(event?.type === 'godStatusChanged' && event.faithSettlement
+          ? { faithSettlement: rotateFaithSettlement(event.faithSettlement, rotateIndex, myIndex) }
+          : {}),
       };
     }
     if (event?.type === 'huntResult') {
@@ -327,6 +363,9 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
         ...event,
         sourceIdx: event.sourceIdx != null ? rotateIndex(event.sourceIdx) : event.sourceIdx,
         targetIdx: event.targetIdx != null ? rotateIndex(event.targetIdx) : event.targetIdx,
+        ...(event?.type === 'bewitchGift' && event.encounterState
+          ? { encounterState: rotateBewitchEncounterState(event.encounterState, rotateIndex, myIndex) }
+          : {}),
         ...(event?.type === 'swapCards' && Array.isArray(event.beforePlayers)
           ? { beforePlayers: rotatePlayersArray(event.beforePlayers, myIndex) }
           : {}),

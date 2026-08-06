@@ -74,6 +74,9 @@ export function prepareWorshipHighlight(queue=[],options={}){
   return prepared.map((step,idx)=>{
     if(idx<=highlightIdx||!step)return step;
     if(step.type==="GOD_HIGHLIGHT")return step;
+    const directPlayers=Array.isArray(step.players)
+      ?mergeBadgeIntoPlayers(step.players)
+      :step.players;
     const visualSetupPatch=step.visualSetupPatch?.players
       ?{...step.visualSetupPatch,players:mergeBadgeIntoPlayers(step.visualSetupPatch.players)}
       :step.visualSetupPatch;
@@ -83,8 +86,112 @@ export function prepareWorshipHighlight(queue=[],options={}){
         patch:{...point.patch,players:mergeBadgeIntoPlayers(point.patch.players)},
       }:point)
       :step.visualTimeline;
-    if(visualSetupPatch===step.visualSetupPatch&&visualTimeline===step.visualTimeline)return step;
-    return {...step,visualSetupPatch,visualTimeline};
+    if(directPlayers===step.players&&visualSetupPatch===step.visualSetupPatch&&visualTimeline===step.visualTimeline)return step;
+    return {...step,players:directPlayers,visualSetupPatch,visualTimeline};
+  });
+}
+
+export const CARD_ACQUISITION_STAGE=Object.freeze({
+  ACQUISITION:"acquisition",
+  GOD_ENCOUNTER:"godEncounter",
+  ACCEPTANCE:"acceptance",
+  ON_WORSHIP_POWER:"onWorshipPower",
+});
+
+function tagCardAcquisitionStage(queue=[],stage){
+  return (Array.isArray(queue)?queue:[]).filter(Boolean).map(step=>(
+    step?.cardAcquisitionStage?step:{...step,cardAcquisitionStage:stage}
+  ));
+}
+
+export function composeCardAcquisitionQueue({
+  acquisitionQueue=[],
+  encounterQueue=[],
+  acceptanceQueue=[],
+  onWorshipPowerQueue=[],
+}={}){
+  return [
+    ...tagCardAcquisitionStage(acquisitionQueue,CARD_ACQUISITION_STAGE.ACQUISITION),
+    ...tagCardAcquisitionStage(encounterQueue,CARD_ACQUISITION_STAGE.GOD_ENCOUNTER),
+    ...tagCardAcquisitionStage(acceptanceQueue,CARD_ACQUISITION_STAGE.ACCEPTANCE),
+    ...tagCardAcquisitionStage(onWorshipPowerQueue,CARD_ACQUISITION_STAGE.ON_WORSHIP_POWER),
+  ];
+}
+
+function isImmediateWorshipPowerStep(step){
+  return step?.cardAcquisitionStage===CARD_ACQUISITION_STAGE.ON_WORSHIP_POWER||
+    step?.type==="GOD_POWER_BLOCKED"||
+    step?.type==="APOPHIS_ECLIPSE"||(
+      step?.type==="CARD_TRANSFER"&&step.sourceAnchor==="godPower"&&step.effect==="blackGoat"
+    );
+}
+
+export function composeBewitchGodAcquisitionQueue({
+  acquisitionQueue=[],
+  settlementQueue=[],
+  encounterQueue=null,
+  acceptanceQueue=null,
+  targetPid=null,
+  godKey=null,
+  playersAfter=null,
+  zhuLightBefore=null,
+  zhuLightAfter=null,
+}={}){
+  if(targetPid==null)return [...acquisitionQueue,...settlementQueue];
+  const targetPlayer=playersAfter?.[targetPid];
+  const highlights=[];
+  const powers=[];
+  const stableSettlement=[];
+  (Array.isArray(settlementQueue)?settlementQueue:[]).forEach(step=>{
+    if(step?.type==="GOD_HIGHLIGHT"&&step.targetPid===targetPid){highlights.push(step);return;}
+    if(isImmediateWorshipPowerStep(step)){powers.push(step);return;}
+    stableSettlement.push(step);
+  });
+  const zhuLightChanged=godKey==="ZHU"&&zhuLightAfter&&JSON.stringify(zhuLightAfter)!==JSON.stringify(zhuLightBefore);
+  if(zhuLightChanged&&!powers.some(step=>Object.prototype.hasOwnProperty.call(step||{},"zhuLight"))){
+    powers.push(statePatchStep({players:playersAfter,zhuLight:zhuLightAfter}));
+  }
+  if(!highlights.length&&!targetPlayer?.godName){
+    return composeCardAcquisitionQueue({
+      acquisitionQueue,
+      acceptanceQueue:settlementQueue,
+    });
+  }
+  const highlightStep=highlights[0]||{
+    type:"GOD_HIGHLIGHT",
+    targetPid,
+    godKey:godKey||targetPlayer.godName,
+    msgs:[],
+    visualSetupPatch:{players:playersAfter},
+    visualTimeline:[{atMs:0,patch:{players:playersAfter}}],
+  };
+  const hasExplicitStageQueues=Array.isArray(encounterQueue)||Array.isArray(acceptanceQueue);
+  const assignedStageSteps=new Set([
+    ...(Array.isArray(encounterQueue)?encounterQueue:[]),
+    ...(Array.isArray(acceptanceQueue)?acceptanceQueue:[]),
+  ]);
+  const stripFaithPresentation=steps=>(Array.isArray(steps)?steps:[]).filter(step=>(
+    !(step?.type==="GOD_HIGHLIGHT"&&step.targetPid===targetPid)&&
+    !isImmediateWorshipPowerStep(step)
+  ));
+  const stagedEncounter=stripFaithPresentation(encounterQueue);
+  const stagedAcceptance=Array.isArray(acceptanceQueue)
+    ?stripFaithPresentation(acceptanceQueue)
+    :stableSettlement;
+  const unassignedSettlement=hasExplicitStageQueues
+    ?stableSettlement.filter(step=>!assignedStageSteps.has(step))
+    :[];
+  const composed=composeCardAcquisitionQueue({
+    acquisitionQueue,
+    encounterQueue:stagedEncounter,
+    acceptanceQueue:[...stagedAcceptance,...unassignedSettlement,highlightStep],
+    onWorshipPowerQueue:powers,
+  });
+  return prepareWorshipHighlight(composed,{
+    targetPid,
+    godKey:godKey||targetPlayer?.godName,
+    players:playersAfter,
+    msgs:[],
   });
 }
 
@@ -209,6 +316,24 @@ export function dedupeInferredDiscardTransfers(queue=[]){
   });
 }
 
+export function dedupeFaithSettlementTransfers(queue=[]){
+  if(!Array.isArray(queue))return [];
+  const keyFor=step=>{
+    if(step?.type!=="CARD_TRANSFER"||!["godConvertDiscard","godAbandon"].includes(step?.effect))return null;
+    const cardKeys=(step.cards||[]).map(card=>card?.id??card?.key??card?.godKey??card?.name).join("|");
+    return `${step.effect}:${step.fromPid}:${cardKeys}`;
+  };
+  const lastIndexByKey=new Map();
+  queue.forEach((step,index)=>{
+    const key=keyFor(step);
+    if(key)lastIndexByKey.set(key,index);
+  });
+  return queue.filter((step,index)=>{
+    const key=keyFor(step);
+    return !key||lastIndexByKey.get(key)===index;
+  });
+}
+
 function resolvePlayerPidByLogName(name,players=[]){
   if(!name)return -1;
   if(name==="你")return 0;
@@ -330,27 +455,40 @@ export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQ
     eventKeys.forEach(key=>seenStatEvents.add(key));
     return true;
   };
-  const ordered=[{
+  const acquisitionQueue=[{
     type:"SKILL_BEWITCH",
     msgs,
     targetIdx:toPid,
     ...(options.skillVisualSetupPatch?{visualSetupPatch:options.skillVisualSetupPatch}:{}),
   }];
   if(toPid!=null&&toPid>=0){
-    ordered.push(cardTransferStep({fromPid,dest:"player",toPid,count:1}));
-    if(options.afterGiftPatch)ordered.push(statePatchStep(options.afterGiftPatch));
+    acquisitionQueue.push(cardTransferStep({fromPid,dest:"player",toPid,count:1}));
+    if(options.afterGiftPatch)acquisitionQueue.push(statePatchStep(options.afterGiftPatch));
   }
   // 注意：被蛊惑者的操作是在当前回合内完成的，不应视为"回合开始"
   // 因此不再添加 YOUR_TURN 动画步骤
   if(card){
-    ordered.push({type:"DRAW_CARD",card,triggerName,targetPid:toPid,skipTravel:true,disableDrawBackgroundCamera:true});
+    acquisitionQueue.push({type:"DRAW_CARD",card,triggerName,targetPid:toPid,skipTravel:true,disableDrawBackgroundCamera:true});
   }
-  ordered.push(...(statQueue||[]).filter(a=>
+  const settlementQueue=(statQueue||[]).filter(a=>
     !isPlainInferredTransfer(a) &&
     !isStaleTurnDrawStep(a) &&
     dedupeStatStep(a)
-  ));
-  return ordered;
+  );
+  if(card?.isGod&&toPid!=null&&toPid>=0){
+    return composeBewitchGodAcquisitionQueue({
+      acquisitionQueue,
+      settlementQueue,
+      encounterQueue:options.encounterQueue,
+      acceptanceQueue:options.acceptanceQueue,
+      targetPid:toPid,
+      godKey:card.godKey,
+      playersAfter:options.playersAfter,
+      zhuLightBefore:options.zhuLightBefore,
+      zhuLightAfter:options.zhuLightAfter,
+    });
+  }
+  return composeCardAcquisitionQueue({acquisitionQueue,acceptanceQueue:settlementQueue});
 }
 
 export function buildInspectionRevealQueue(events){
@@ -486,6 +624,13 @@ export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPl
   );
   const maxInspectionSeq=Math.max(baseInspectionSeq,...inspectionEvents.map(ev=>ev?.seq||0));
   const tailStatEventSeq=Math.max(inspectionFlow.statEventSeq,newGs?._statEventSeq||0);
+  const tailBaselineVisualEvents=Array.isArray(newGs?._visualEvents)
+    ?newGs._visualEvents.filter(event=>(
+      event?.type!==VISUAL_EVENT.GOD_STATUS_CHANGED ||
+      event?.presentAfterInspectionSeq==null ||
+      event.presentAfterInspectionSeq!==maxInspectionSeq
+    ))
+    :(Array.isArray(baseOldGs?._visualEvents)?baseOldGs._visualEvents:[]);
   const tailQueue=buildAnimQueue(
     {
       players:inspectionFlow.players,
@@ -497,14 +642,12 @@ export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPl
       // slime-balance pause) belong to the pre-inspection segment and must be
       // part of this baseline, otherwise buildAnimQueue treats them as fresh
       // and replays the card effect between two inspection reveals.
-      _visualEvents:Array.isArray(newGs?._visualEvents)
-        ?newGs._visualEvents
-        :(Array.isArray(baseOldGs?._visualEvents)?baseOldGs._visualEvents:[]),
+      _visualEvents:tailBaselineVisualEvents,
     },
     newGs
   );
   return {
-    queue:[...preQueue,...inspectionFlow.queue,...tailQueue],
+    queue:dedupeFaithSettlementTransfers([...preQueue,...inspectionFlow.queue,...tailQueue]),
     inspectionEvents,
     inspectionSeq:maxInspectionSeq,
   };

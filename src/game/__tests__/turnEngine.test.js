@@ -80,6 +80,18 @@ describe('checkWin death handling', () => {
 });
 
 describe('AI 寻宝者按实际负面分支规避', () => {
+  it('秤心仪式在本局从未信仰邪神时直接恢复 SAN，不触发规避', () => {
+    const card = makeZoneCard('D1', 0);
+    const players = [makePlayer({ name: '卡洛斯', role: ROLE_TREASURE, hp: 10, san: 6, hasBelievedGod: false })];
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.6);
+    const result = aiDrawAndApply(0, players, [card], [], makeGs({ players, deck: [card], debugForceCardKeepPending: 'keep', debugForceCardKeepTarget: 0 }));
+
+    expect(result.P[0]).toMatchObject({ hp: 10, san: 8, roleRevealed: false });
+    expect(result.effectMsgs.some(line => line.includes('规避负面效果'))).toBe(false);
+    expect(randomSpy).not.toHaveBeenCalled();
+    randomSpy.mockRestore();
+  });
+
   it('霉变食物掷出双数时直接治疗，不掷规避骰', () => {
     const card = { id: 'moldy', key: 'A1', name: '霉变食物', type: 'moldyFood', isZone: true, dodgeable: true };
     const players = [makePlayer({ name: '卡洛斯', role: ROLE_TREASURE, hp: 8 })];
@@ -730,10 +742,19 @@ describe('turnEngine stat events', () => {
     expect(afterDecision.inspectionMeta._inspectionEvents.at(-1).beforePlayers[1]).toMatchObject({
       san: 4,
       godEncounters: 2,
-      godName: 'VRI',
-      godLevel: 1,
+      godName: null,
+      godLevel: 0,
+      godZone: [],
     });
-    expect(afterDecision.inspectionMeta._inspectionEvents.at(-1).beforePlayers[1].godZone[0].godKey).toBe('VRI');
+    const godStatusEvent = afterDecision.statePatch._visualEvents.find(event => event.type === 'godStatusChanged');
+    expect(godStatusEvent).toMatchObject({
+      presentAfterInspectionSeq: 2,
+      playersBefore: [expect.anything(), expect.objectContaining({ godName: null, godLevel: 0, godZone: [] })],
+      playersAfter: [expect.anything(), expect.objectContaining({ godName: 'VRI', godLevel: 1 })],
+      faithSettlement: {
+        previousFaithExit: expect.objectContaining({ playerIdx: 1, effect: 'godConvertDiscard' }),
+      },
+    });
     expect(afterDecision.inspectionMeta._inspectionEvents[0].seq).toBe(1);
     expect(afterDecision.inspectionMeta._inspectionEvents[0].beforePlayers[1]).toMatchObject({
       san: 5,
@@ -1054,7 +1075,7 @@ describe('turnEngine stat events', () => {
       expect.objectContaining({
         type: 'godPowerBlocked',
         playerIdx: 0,
-        turnStartStage: 'turnStart',
+        turnStartStage: 'turnBoundary',
       }),
     ]));
   });
@@ -1600,7 +1621,7 @@ describe('turnEngine stat events', () => {
     expect(result.msgs.some(line => line.includes('放弃了邪神的馈赠'))).toBe(false);
   });
 
-  it('主动改信时先记录新信仰，再结算改信 SAN 与检定', () => {
+  it('主动改信会完整记录信仰结果、改信 SAN 与随后检定日志', () => {
     const paranoia = { id: 'paranoia', name: '迫害妄想', effect: 'discardRandom', value: 1 };
     const players = [makePlayer({
       name: '黛安娜',
