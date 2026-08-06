@@ -377,6 +377,8 @@ export function useAnimationQueue({
       ? compileRuleVisualEventsToAnimTransaction(transactionState, null, {
         consumedEventIds: consumedVisualEventIdsRef?.current,
         buildAnimQueue,
+        ...(Array.isArray(transactionMeta?.eventIds) ? { eventIds: transactionMeta.eventIds } : {}),
+        ...(transactionMeta?.visualEventScope ? { visualEventScope: transactionMeta.visualEventScope } : {}),
       })
       : null;
     const transactionQueue = mergeAnimationTransactionQueue(queue, ruleTransaction);

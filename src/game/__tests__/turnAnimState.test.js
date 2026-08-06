@@ -5,6 +5,7 @@ import {
   buildSkippedTurnReplayQueue,
   buildTsathogguaSlimeGrantQueue,
   buildTurnStartDrawReplayQueue,
+  TURN_START_ANIMATION_STAGE,
   shouldReplaySinglePlayerAiTurnStart,
   withClearedReplayAnimFields,
 } from '../turnAnimState';
@@ -403,6 +404,14 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(types.slice(0, 5)).toEqual(['YOUR_TURN', 'BLACK_GOAT_PULSE', 'HP_DAMAGE', 'SAN_DAMAGE', 'STATE_PATCH']);
     expect(types.indexOf('DRAW_CARD')).toBeGreaterThan(types.indexOf('STATE_PATCH'));
     expect(replay.queue.find(step => step.type === 'BLACK_GOAT_PULSE')).toMatchObject({ targetPid: 1, count: 1 });
+    expect(replay.stageQueues.turnStart.map(step => step.type)).toEqual(types.slice(0, 5));
+    expect(replay.stageQueues.draw[0]).toMatchObject({
+      type: 'DRAW_CARD',
+      turnStartStage: TURN_START_ANIMATION_STAGE.DRAW,
+    });
+    expect(replay.stageQueues.turnStart.every(step => (
+      step.turnStartStage === TURN_START_ANIMATION_STAGE.TURN_START
+    ))).toBe(true);
   });
 
   it('keeps black-goat HP/SAN damage before a following underground-spring heal event', () => {
@@ -823,6 +832,7 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(sanSteps).toHaveLength(1);
     expect(sanSteps[0].hitIndices).toEqual([2]);
     expect(sanSteps[0].statEvents).toMatchObject([{ seq: 2, target: 2 }]);
+    expect(sanSteps[0].turnStartStage).toBe(TURN_START_ANIMATION_STAGE.DRAW);
     expect(drawIdx).toBeGreaterThan(-1);
     expect(highlightIdx).toBeGreaterThan(drawIdx);
     expect(replay.queue[drawIdx].visualSetupPatch.players[2]).toMatchObject({

@@ -93,6 +93,9 @@ import {
   buildTurnStartPreDrawEffectQueue,
   buildSkippedTurnReplayQueue,
   buildTsathogguaSlimeGrantQueue,
+  TURN_START_ANIMATION_STAGE,
+  markTurnStartAnimationStage,
+  splitTurnStartAnimationStages,
   cardsHuntMatch,
   moveEligibleBlankZones,
   isBlackGoatYoung,
@@ -2850,9 +2853,14 @@ export default function Game(){
         if(nextTurnIntroQueue.length){
           const nextTurnIntroGs=markQueuedAiTurnStartReplayShown(newGs,nextTurnIntroQueue);
           if(currentQueueWithPatch.length){
-            triggerAnimQueue(currentQueueWithPatch,nextTurnIntroGs,()=>triggerAnimQueue(nextTurnIntroQueue,nextTurnIntroGs));
+            triggerAnimQueue(
+              currentQueueWithPatch,
+              nextTurnIntroGs,
+              ()=>triggerAnimQueue(nextTurnIntroQueue,nextTurnIntroGs,undefined,{visualEventScope:'turnStart'}),
+              {visualEventScope:'action'}
+            );
           }else{
-            triggerAnimQueue(nextTurnIntroQueue,nextTurnIntroGs);
+            triggerAnimQueue(nextTurnIntroQueue,nextTurnIntroGs,undefined,{visualEventScope:'turnStart'});
           }
         }else{
           triggerAnimQueue(currentQueueWithPatch,newGs);
@@ -5521,14 +5529,15 @@ export default function Game(){
     if(flowKind==='rest'){
       // 播放骰子动画后再处理剩余摸牌
       const queue=bindAnimLogChunks(buildAnimQueue(gs,result.newGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
-      pendingGsRef.current=result.newGs;
-      animQueueRef.current=[
+      setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
+      // This branch used to assign the refs/setAnim directly, bypassing queue
+      // schema normalization and timing. In particular, an AOE HP+SAN result
+      // could leave the dice result on screen instead of reaching CTH resume.
+      triggerAnimQueue([
+        diceAnim,
         ...queue,
         ...(queue.length?[statePatchStep({players:result.P,discard:result.Disc})]:[]),
-        {type:'CTH_CONTINUE',data:{cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining}},
-      ];
-      setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-      setAnim(diceAnim);
+      ],null,()=>_cthContinueRestDraws(result.newGs));
       return;
     }
     if(flowKind==='slime'){
@@ -7515,7 +7524,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     let damageDecision=null;
     if(candidates.length>0){
       randomTarget=candidates[Math.floor(Math.random()*candidates.length)];
-      const beforeTarget={...P[randomTarget]};
       damageDecision=submitDamageEvents({
         players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
         events:[{targetIdx:randomTarget,lostHp:2,lostSan:2,source:'白化生物'}],
@@ -7536,24 +7544,20 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       }
       L.push(`${P[randomTarget].name} 失去 2 HP 和 2 SAN`);
       const statEventSeq=(gs?._statEventSeq||0)+1;
-      statEvents=[{
-        type:'HP_LOSS',
-        target:randomTarget,
-        from:{hp:beforeTarget.hp,san:beforeTarget.san,isDead:beforeTarget.isDead},
-        to:{hp:P[randomTarget].hp,san:P[randomTarget].san,isDead:P[randomTarget].isDead},
-        reason:'白化生物',
-        seq:statEventSeq,
-        phaseOrder:0,
-      }];
+      statEvents=buildStatEvents(
+        gs.players,
+        P,
+        [L[L.length-1]],
+        {reason:'白化生物',seq:statEventSeq},
+      );
       if(P[randomTarget].hp<=0&&!damageDecision.abilityData){
         killPlayerState(P,randomTarget,Disc,L);
       }
     }
-    const revealEvent=createHuntRevealEvent({sourceIdx:actorIdx,targetIdx:actorIdx,card:chosenCard,msgs:[L[L.length-2]]});
+    const revealEvent=createHuntRevealEvent({sourceIdx:actorIdx,targetIdx:actorIdx,card:chosenCard,msgs:[L[gs.log.length]]});
     const revealStep=buildHuntRevealStepFromVisualEvent({...revealEvent,targetIdx:actorIdx,targetName:P[actorIdx]?.name},{players:P},{allowTargetZero:true});
     const queue=[];
     if(revealStep)queue.push(revealStep);
-    queue.push(...buildAnimQueue(gs,{...gs,players:P,deck:D,discard:Disc,log:L}));
     const win=damageDecision?.abilityData?null:checkWin(P,gs._isMP);
     const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:damageDecision?.phase||'ACTION',abilityData:damageDecision?.abilityData||{},drawReveal:null,selectedCard:null,
       ...(win?{gameOver:win}:{}),
@@ -7564,6 +7568,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
 
   function decipherStoneCarvingConfirm({ handCard, deckTopCards, deckBottomCards, allowAi = false }) {
     const abilityData = gs.abilityData || {};
+    const fromEndTurnReplay = !!abilityData.fromEndTurnReplay && !!gs._endTurnReplay;
     const actorIdx = abilityData.playerIndex;
     if ((!isLocalSeatIndex(actorIdx) && !allowAi) || !handCard) return;
     const measureRevealedCardCenter = card => {
@@ -7653,6 +7658,16 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       ...buildAnimQueue(gs, nextGs).filter(step => step?.type !== 'CARD_TRANSFER'),
     ];
     setGs(prev => prev ? { ...prev, phase: 'ACTION', abilityData: {}, drawReveal: null, selectedCard: null } : prev);
+    if (fromEndTurnReplay) {
+      broadcastEndTurnDecisionAnimTransaction(nextGs, queue, L.slice(gs.log.length));
+      // 石刻是无尽通道重播过程中产生的二级决策。必须在收入/归堆动画提交完毕后显式续跑；
+      // 若只等待监听 gs 的兜底 useEffect，pendingGs 在动画完成的同一批更新里仍为非空，
+      // effect 会错过这次 ACTION 状态，导致回合切换表现播完后队列不再推进。
+      triggerAnimQueue(queue, nextGs, () => {
+        if (!nextGs.gameOver) continueEndTurnReplay(nextGs);
+      });
+      return;
+    }
     triggerAnimQueue(queue, nextGs);
   }
 
@@ -8184,9 +8199,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }else if(nextAiTurnIntroQueue.length){
       const nextAiTurnIntroGs=markQueuedAiTurnStartReplayShown(newGs,nextAiTurnIntroQueue);
       if(queue.length){
-        triggerAnimQueue(queue,nextAiTurnIntroGs,()=>triggerAnimQueue(nextAiTurnIntroQueue,nextAiTurnIntroGs));
+        triggerAnimQueue(
+          queue,
+          nextAiTurnIntroGs,
+          ()=>triggerAnimQueue(nextAiTurnIntroQueue,nextAiTurnIntroGs,undefined,{visualEventScope:'turnStart'}),
+          {visualEventScope:'action'}
+        );
       }else{
-        triggerAnimQueue(nextAiTurnIntroQueue,nextAiTurnIntroGs);
+        triggerAnimQueue(nextAiTurnIntroQueue,nextAiTurnIntroGs,undefined,{visualEventScope:'turnStart'});
       }
     }else{
       triggerAnimQueue(queue,newGs);
@@ -8831,13 +8851,19 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   function injectTurnStartSphinxReveal(replay,state){
     const sphinxReveal=state?._animSphinxReveal;
     if(!replay||!isTurnStartSphinxRevealState(state,sphinxReveal))return replay;
-    const steps=buildSphinxRevealAnimSteps(sphinxReveal,state?.log||[]);
+    const steps=markTurnStartAnimationStage(
+      buildSphinxRevealAnimSteps(sphinxReveal,state?.log||[]),
+      TURN_START_ANIMATION_STAGE.DRAW
+    );
     if(!steps.length)return replay;
+    const queue=injectTurnStartStepsAfterDrawCard(replay.queue||[],steps);
+    const startQueue=injectTurnStartStepsAfterDrawCard(replay.startQueue||[],steps);
     return{
       ...replay,
       drawEffectQ:[...(replay.drawEffectQ||[]),...steps],
-      queue:injectTurnStartStepsAfterDrawCard(replay.queue||[],steps),
-      startQueue:injectTurnStartStepsAfterDrawCard(replay.startQueue||[],steps),
+      stageQueues:splitTurnStartAnimationStages(queue),
+      queue,
+      startQueue,
     };
   }
 
@@ -8874,6 +8900,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       drawerName:displayName,
       turnStartStep:replay.turnStartStep?labelStep(replay.turnStartStep):replay.turnStartStep,
       drawCardStep:replay.drawCardStep?labelStep(replay.drawCardStep):replay.drawCardStep,
+      stageQueues:splitTurnStartAnimationStages(queue),
       queue,
       startAnim:replay.startAnim?labelStep(replay.startAnim):replay.startAnim,
       startQueue,
@@ -8894,19 +8921,33 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       {actorName,forceActorName}
     );
     if(replay?.queue?.length)return skippedTurnQueue.length
-      ?{...replay,queue:[...skippedTurnQueue,...replay.queue],startAnim:skippedTurnQueue[0],startQueue:[...skippedTurnQueue.slice(1),...replay.queue]}
+      ?(()=>{
+        const stagedSkippedQueue=markTurnStartAnimationStage(skippedTurnQueue,TURN_START_ANIMATION_STAGE.TURN_START);
+        const queue=[...stagedSkippedQueue,...replay.queue];
+        return{
+          ...replay,
+          stageQueues:splitTurnStartAnimationStages(queue),
+          queue,
+          startAnim:queue[0],
+          startQueue:queue.slice(1),
+        };
+      })()
       :replay;
     const fallbackName=actorName||state?.players?.[state?.currentTurn]?.name||'???';
     const introQueue=buildTurnStartIntroQueue(state,fallbackName);
     const queueBase=introQueue.length||!(state?._turnStartLogs||[]).length
       ?introQueue
       :[{type:'YOUR_TURN',name:fallbackName,msgs:state._turnStartLogs}];
-    const queue=[...skippedTurnQueue,...queueBase];
+    const queue=markTurnStartAnimationStage(
+      [...skippedTurnQueue,...queueBase],
+      TURN_START_ANIMATION_STAGE.TURN_START
+    );
     return{
       ...(replay||{}),
       drawnCard:getTurnStartDrawnCard(state)||null,
       drawerPid:getTurnStartDrawerIdx(state),
       drawerName:fallbackName,
+      stageQueues:splitTurnStartAnimationStages(queue),
       queue,
       startAnim:queue[0]||null,
       startQueue:queue.slice(1),
@@ -8948,26 +8989,36 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     });
     if(!replay?.queue?.length)return [];
     maskDiscardedTurnDrawUntilDiscardAnim(nextGs);
-    const preTurnQ=buildTsathogguaSlimeGrantQueue(nextGs);
+    const preTurnQ=markTurnStartAnimationStage(
+      buildTsathogguaSlimeGrantQueue(nextGs),
+      TURN_START_ANIMATION_STAGE.TURN_START
+    );
     const replayQueue=normalizeVisibleTurnStartQueue(replay.queue);
     return[
       ...preTurnQ,
-      ...(replay.visualLock?[{type:'VISUAL_LOCK',...replay.visualLock}]:[]),
+      ...markTurnStartAnimationStage(
+        replay.visualLock?[{type:'VISUAL_LOCK',...replay.visualLock}]:[],
+        TURN_START_ANIMATION_STAGE.TURN_START
+      ),
       ...replayQueue,
     ];
   }
 
   function normalizeVisibleTurnStartQueue(queue=[]){
     if(!Array.isArray(queue)||!queue.length)return [];
-    const turnIdx=queue.findIndex(step=>step?.type==='YOUR_TURN');
-    if(turnIdx<=0)return queue;
-    const leadingLocks=queue.slice(0,turnIdx).filter(step=>step?.type==='VISUAL_LOCK');
-    const visibleBeforeTurn=queue.slice(0,turnIdx).filter(step=>step?.type!=='VISUAL_LOCK');
+    const stages=splitTurnStartAnimationStages(queue);
+    const turnStartQueue=stages[TURN_START_ANIMATION_STAGE.TURN_START];
+    const drawQueue=stages[TURN_START_ANIMATION_STAGE.DRAW];
+    const turnIdx=turnStartQueue.findIndex(step=>step?.type==='YOUR_TURN');
+    if(turnIdx<=0)return [...turnStartQueue,...drawQueue];
+    const leadingLocks=turnStartQueue.slice(0,turnIdx).filter(step=>step?.type==='VISUAL_LOCK');
+    const visibleBeforeTurn=turnStartQueue.slice(0,turnIdx).filter(step=>step?.type!=='VISUAL_LOCK');
     return [
       ...leadingLocks,
-      queue[turnIdx],
+      turnStartQueue[turnIdx],
       ...visibleBeforeTurn,
-      ...queue.slice(turnIdx+1),
+      ...turnStartQueue.slice(turnIdx+1),
+      ...drawQueue,
     ];
   }
 
@@ -9003,9 +9054,15 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       replayDrawnCard:replay.drawnCard?.name||null,
       replayQueue:replay.queue.map(step=>step?.type),
     });
-    return replay?.queue?.length
-      ? {...replay,queue:normalizeVisibleTurnStartQueue(replay.queue),startQueue:normalizeVisibleTurnStartQueue(replay.startQueue)}
-      : null;
+    if(!replay?.queue?.length)return null;
+    const queue=normalizeVisibleTurnStartQueue(replay.queue);
+    return{
+      ...replay,
+      stageQueues:splitTurnStartAnimationStages(queue),
+      queue,
+      startAnim:queue[0]||null,
+      startQueue:queue.slice(1),
+    };
   }
 
   // 拉莱耶之主(CTH) 在翻面结束/跳过回合时的强制摸牌：参考"无尽通道"的同步方式，

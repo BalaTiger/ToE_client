@@ -31,10 +31,57 @@ function flattenStep(step) {
 
 function tagVisualEventSteps(event, steps = []) {
   return (Array.isArray(steps) ? steps : []).map(step => (
-    step && event?.id && !step.visualEventId
-      ? { ...step, visualEventId: event.id }
+    step
+      ? {
+          ...step,
+          ...(event?.id && !step.visualEventId ? { visualEventId: event.id } : {}),
+          ...(event?.turnStartStage && !step.turnStartStage
+            ? { turnStartStage: event.turnStartStage }
+            : {}),
+        }
       : step
   ));
+}
+
+function orderTurnStartVisualEvents(events = []) {
+  if (!events.some(event => event?.turnStartStage)) return events;
+  const rank = stage => stage === 'turnStart' ? 0 : stage === 'draw' ? 1 : 2;
+  const result = [];
+  let stagedGroup = [];
+  const flushStagedGroup = () => {
+    if (!stagedGroup.length) return;
+    result.push(...stagedGroup
+      .map((event, index) => ({ event, index }))
+      .sort((left, right) => (
+        rank(left.event?.turnStartStage) - rank(right.event?.turnStartStage) ||
+        (left.event?.turnStartStageOrder || 0) - (right.event?.turnStartStageOrder || 0) ||
+        left.index - right.index
+      ))
+      .map(item => item.event));
+    stagedGroup = [];
+  };
+  events.forEach(event => {
+    if (event?.turnStartStage) {
+      stagedGroup.push(event);
+      return;
+    }
+    // An unscoped action event is a hard transaction boundary. Never move a
+    // later turn-start/draw event across it merely to normalize stage order.
+    flushStagedGroup();
+    result.push(event);
+  });
+  flushStagedGroup();
+  return result;
+}
+
+function visualEventMatchesCompileScope(event, options = {}) {
+  if (Array.isArray(options.eventIds)) {
+    const requestedIds = new Set(options.eventIds.filter(Boolean));
+    return !!event?.id && requestedIds.has(event.id);
+  }
+  if (options.visualEventScope === 'action') return !event?.turnStartStage;
+  if (options.visualEventScope === 'turnStart') return !!event?.turnStartStage;
+  return true;
 }
 
 function sameCard(left, right) {
@@ -52,6 +99,58 @@ function sameStatEvents(left = [], right = []) {
   )));
 }
 
+const CARD_EFFECTS_OWNING_STAT_PRESENTATION = new Set([
+  'volcano',
+  'undergroundSpring',
+  'startledBats',
+  'nightWind',
+]);
+
+function suppressStatsOwnedByCardEffects(events = []) {
+  const owningStatEvents = events
+    .filter(event => (
+      event?.type === VISUAL_EVENT.CARD_EFFECT &&
+      CARD_EFFECTS_OWNING_STAT_PRESENTATION.has(event?.effectKey) &&
+      Array.isArray(event?.statEvents) &&
+      event.statEvents.length
+    ))
+    .flatMap(event => event.statEvents);
+  if (!owningStatEvents.length) return { events, suppressedEventIds: [] };
+
+  const suppressedEventIds = [];
+  const filteredEvents = events.flatMap(event => {
+    if (event?.type !== VISUAL_EVENT.STAT_EVENTS || !Array.isArray(event.statEvents)) return [event];
+    const remainingStatEvents = event.statEvents.filter(statEvent => (
+      !owningStatEvents.some(ownedStatEvent => sameStatEvents([statEvent], [ownedStatEvent]))
+    ));
+    if (remainingStatEvents.length === event.statEvents.length) return [event];
+    if (!remainingStatEvents.length) {
+      if (event.id) suppressedEventIds.push(event.id);
+      return [];
+    }
+    return [{ ...event, statEvents: remainingStatEvents }];
+  });
+  return { events: filteredEvents, suppressedEventIds };
+}
+
+function statStepTargets(step) {
+  const targets = [
+    ...(Array.isArray(step?.statEvents) ? step.statEvents.map(event => event?.target) : []),
+    ...(Array.isArray(step?.hitIndices) ? step.hitIndices : []),
+    ...(Array.isArray(step?.targets) ? step.targets : []),
+    step?.targetPid,
+    step?.targetIdx,
+    step?.triggerPid,
+  ].filter(target => target != null).map(Number);
+  return [...new Set(targets)].sort((a, b) => a - b);
+}
+
+function sameStatStepTargets(left, right) {
+  const a = statStepTargets(left);
+  const b = statStepTargets(right);
+  return a.length > 0 && a.length === b.length && a.every((target, index) => target === b[index]);
+}
+
 function isEquivalentAnimationStep(left, right) {
   if (!left || !right || left.type !== right.type) return false;
   if (left.visualEventId && right.visualEventId) return left.visualEventId === right.visualEventId;
@@ -61,7 +160,7 @@ function isEquivalentAnimationStep(left, right) {
     return left.sourceIdx === right.sourceIdx && left.targetIdx === right.targetIdx;
   }
   if (['HP_DAMAGE', 'SAN_DAMAGE', 'HP_HEAL', 'SAN_HEAL'].includes(left.type)) {
-    return sameStatEvents(left.statEvents, right.statEvents);
+    return sameStatEvents(left.statEvents, right.statEvents) || sameStatStepTargets(left, right);
   }
   if (left.type === 'DISCARD') {
     return left.targetPid === right.targetPid && (sameCard(left.card, right.card) || left.count === right.count);
@@ -268,8 +367,18 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
 export function compileRuleVisualEventsToAnimTransaction(state, previousState = null, options = {}) {
   const previousIds = new Set(getVisualEventIdsFromState(previousState));
   const consumedIds = options.consumedEventIds;
-  const events = (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
-    .filter(event => event?.id && !previousIds.has(event.id) && !(consumedIds?.has?.(event.id)));
+  const scopedEvents = (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
+    .filter(event => (
+      event?.id &&
+      !previousIds.has(event.id) &&
+      !(consumedIds?.has?.(event.id)) &&
+      visualEventMatchesCompileScope(event, options)
+    ));
+  const {
+    events: presentationEvents,
+    suppressedEventIds,
+  } = suppressStatsOwnedByCardEffects(scopedEvents);
+  const events = orderTurnStartVisualEvents(presentationEvents);
   const compiledWithEmpty = events.map(event => ({
       event,
       steps: tagVisualEventSteps(event, compileVisualEventToAnimSteps(event, state, previousState, options)),
@@ -281,14 +390,25 @@ export function compileRuleVisualEventsToAnimTransaction(state, previousState = 
     .filter(item => item.steps.length);
   if (!compiled.length) return null;
   const first = compiled[0].event;
-  const eventIds = compiled.map(item => item.event.id);
+  const compiledEventIds = new Set(compiled.map(item => item.event.id));
+  const suppressedIdSet = new Set(suppressedEventIds);
+  const eventIds = scopedEvents
+    .map(event => event.id)
+    .filter(id => compiledEventIds.has(id) || suppressedIdSet.has(id));
+  const queue = compiled.flatMap(item => item.steps);
   const transaction = {
     id: transactionIdFromEventIds(eventIds),
     context: compiled.length === 1
       ? (first.context || first.effectKey || first.type || 'ruleEvent')
       : 'ruleEventBatch',
     barrier: state?.phase && state.phase !== 'ACTION' && state.phase !== 'AI_TURN' ? 'decision' : 'continuation',
-    queue: compiled.flatMap(item => item.steps),
+    queue,
+    ...(events.some(event => event?.turnStartStage) ? {
+      stageQueues: {
+        turnStart: queue.filter(step => step?.turnStartStage === 'turnStart'),
+        draw: queue.filter(step => step?.turnStartStage === 'draw'),
+      },
+    } : {}),
     eventIds,
     beforePlayers: first.beforePlayers || first.playersBefore || previousState?.players || null,
     beforeDiscard: first.beforeDiscard || previousState?.discard || null,

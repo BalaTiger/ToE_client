@@ -94,6 +94,24 @@ describe('animationStepSchema', () => {
     ]);
   });
 
+  it('组合属性事件拆成 HP/SAN 动画后不误报重复事件 ID', () => {
+    const combinedLoss = {
+      id: 'both-loss:1',
+      type: 'HP_SAN_LOSS',
+      target: 0,
+      from: { hp: 10, san: 9 },
+      to: { hp: 8, san: 7 },
+    };
+    const result = prepareAnimationQueueSteps([{
+      type: 'HP_SAN_DAMAGE',
+      hitIndices: [0],
+      statEvents: [combinedLoss],
+    }]);
+
+    expect(result.steps.map(step => step.type)).toEqual(['HP_DAMAGE', 'SAN_DAMAGE']);
+    expect(result.issues).toEqual([]);
+  });
+
   it('校验命中时点以及重复的步骤/事件 ID', () => {
     const issues = validateAnimationQueueSteps([
       { id: 'same', type: 'SAN_DAMAGE', durationMs: 300, impactAtMs: 400, statEvents: [sanLoss] },
@@ -107,4 +125,3 @@ describe('animationStepSchema', () => {
     ]));
   });
 });
-

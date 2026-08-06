@@ -8,6 +8,7 @@ import {
   VISUAL_EVENT,
   buildTurnStartStepFromVisualEvents,
   buildDrawCardStepFromVisualEvents,
+  isPreDrawTurnStartStatEvent,
 } from './visualEvents';
 import { statEventsToAnimQueue } from './statEvents';
 
@@ -28,6 +29,37 @@ export const EMPTY_TURN_ANIM_FIELDS = Object.freeze({
   _earthquakeBeforeDiscard: null,
   _earthquakeDiscardEvents: null,
 });
+
+// Turn-start presentation has two explicit stages. Effects produced before
+// the fixed draw (black-goat pulse, linked heal, etc.) belong to TURN_START;
+// the reveal and every consequence caused by that card belong to DRAW.  The
+// marker travels with each step so AI/local/remote queue adapters can reorder
+// or inject steps without having to rediscover the boundary from array indices.
+export const TURN_START_ANIMATION_STAGE = Object.freeze({
+  TURN_START: 'turnStart',
+  DRAW: 'draw',
+});
+
+export function markTurnStartAnimationStage(queue = [], stage) {
+  return (Array.isArray(queue) ? queue : []).filter(Boolean).map(step => ({
+    ...step,
+    turnStartStage: step?.turnStartStage || stage,
+  }));
+}
+
+export function splitTurnStartAnimationStages(queue = []) {
+  const stages = {
+    [TURN_START_ANIMATION_STAGE.TURN_START]: [],
+    [TURN_START_ANIMATION_STAGE.DRAW]: [],
+  };
+  (Array.isArray(queue) ? queue : []).forEach(step => {
+    const stage = step?.turnStartStage === TURN_START_ANIMATION_STAGE.DRAW
+      ? TURN_START_ANIMATION_STAGE.DRAW
+      : TURN_START_ANIMATION_STAGE.TURN_START;
+    stages[stage].push(step);
+  });
+  return stages;
+}
 
 export function withClearedTurnAnimFields(state, extra = {}) {
   return { ...state, ...EMPTY_TURN_ANIM_FIELDS, ...extra };
@@ -333,10 +365,6 @@ function isLinkHealTurnStartStatEvent(event) {
   return event?.reason === '两人一绳' || String(event?.logHint || '').includes('【两人一绳】');
 }
 
-function isPreDrawTurnStartStatEvent(event) {
-  return isBlackGoatTurnStartStatEvent(event) || isLinkHealTurnStartStatEvent(event);
-}
-
 function getFreshStatEventsFromState(oldGs, newGs) {
   const oldSeq = oldGs?._statEventSeq || 0;
   const visualStatEvents = getVisualEvents(newGs)
@@ -584,13 +612,21 @@ export function buildTurnStartDrawReplayQueue({
   ];
   const drawnCard = getTurnStartDrawnCard(newGs);
   if (!drawnCard) {
+    const turnStartStageQueue = markTurnStartAnimationStage(
+      boundarySteps,
+      TURN_START_ANIMATION_STAGE.TURN_START,
+    );
     return {
       drawnCard: null,
       beforeDrawPlayers: newGs?.players || oldGs?.players || [],
       drawEffectQ: [],
-      queue: [...boundarySteps],
-      startAnim: boundarySteps[0] || null,
-      startQueue: boundarySteps.slice(1),
+      stageQueues: {
+        [TURN_START_ANIMATION_STAGE.TURN_START]: turnStartStageQueue,
+        [TURN_START_ANIMATION_STAGE.DRAW]: [],
+      },
+      queue: turnStartStageQueue,
+      startAnim: turnStartStageQueue[0] || null,
+      startQueue: turnStartStageQueue.slice(1),
       visualLock: null,
       inspectionEvents: [],
     };
@@ -1017,11 +1053,13 @@ export function buildTurnStartDrawReplayQueue({
   const drawEffectStatePatch = hasDrawEffectVisualStep
     ? statePatchStep({ players: newGs?.players, discard: newGs?.discard })
     : null;
-  const queue = [
+  const turnStartStageQueue = markTurnStartAnimationStage([
     ...boundarySteps,
     turnStartStep,
     ...turnStartPreDrawQ,
     ...(turnStartStatePatch ? [turnStartStatePatch] : []),
+  ], TURN_START_ANIMATION_STAGE.TURN_START);
+  const drawStageQueue = markTurnStartAnimationStage([
     ...orderedDrawCardSteps,
     ...(discardDrawnStep ? [discardDrawnStep] : []),
     ...(discardRestoreStep ? [discardRestoreStep] : []),
@@ -1029,20 +1067,14 @@ export function buildTurnStartDrawReplayQueue({
     ...deferredDrawEffectQ,
     ...(drawKeepTransferStep ? [drawKeepTransferStep] : []),
     ...(drawEffectStatePatch ? [drawEffectStatePatch] : []),
-  ];
-  const startAnim = boundarySteps[0] || turnStartStep;
-  const startQueue = [
-    ...(boundarySteps.length ? [...boundarySteps.slice(1), turnStartStep] : []),
-    ...turnStartPreDrawQ,
-    ...(turnStartStatePatch ? [turnStartStatePatch] : []),
-    ...orderedDrawCardSteps,
-    ...(discardDrawnStep ? [discardDrawnStep] : []),
-    ...(discardRestoreStep ? [discardRestoreStep] : []),
-    ...(treasureDodgeDiceStep ? [treasureDodgeDiceStep] : []),
-    ...deferredDrawEffectQ,
-    ...(drawKeepTransferStep ? [drawKeepTransferStep] : []),
-    ...(drawEffectStatePatch ? [drawEffectStatePatch] : []),
-  ];
+  ], TURN_START_ANIMATION_STAGE.DRAW);
+  const stageQueues = {
+    [TURN_START_ANIMATION_STAGE.TURN_START]: turnStartStageQueue,
+    [TURN_START_ANIMATION_STAGE.DRAW]: drawStageQueue,
+  };
+  const queue = [...turnStartStageQueue, ...drawStageQueue];
+  const startAnim = queue[0] || null;
+  const startQueue = queue.slice(1);
   return {
     drawnCard,
     drawerPid,
@@ -1051,6 +1083,7 @@ export function buildTurnStartDrawReplayQueue({
     turnStartStep,
     drawCardStep,
     drawEffectQ,
+    stageQueues,
     queue,
     startAnim,
     startQueue,

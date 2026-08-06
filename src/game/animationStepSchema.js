@@ -86,7 +86,8 @@ export function validateAnimationQueueSteps(queue = [], { allowCombined = false 
     if (explicitStatEvents && hasOwn(step, 'targetStats')) {
       issues.push(issue('STAT_EVENTS_TARGET_STATS_CONFLICT', stepIndex, { type: step.type }));
     }
-    if (explicitStatEvents && !GENERIC_STAT_STEP_TYPES.has(step.type)) {
+    const authorizedCombinedStatEvents = allowCombined && COMBINED_STAT_STEP_TYPES.has(step.type);
+    if (explicitStatEvents && !GENERIC_STAT_STEP_TYPES.has(step.type) && !authorizedCombinedStatEvents) {
       issues.push(issue('UNAUTHORIZED_STAT_EVENTS', stepIndex, { type: step.type }));
     }
     if (targetStats && !GENERIC_STAT_STEP_TYPES.has(step.type) && !COMBINED_STAT_STEP_TYPES.has(step.type)) {
@@ -114,11 +115,24 @@ export function validateAnimationQueueSteps(queue = [], { allowCombined = false 
     (Array.isArray(step.statEvents) ? step.statEvents : []).forEach((event, eventIndex) => {
       if (event?.id == null) return;
       if (eventIds.has(event.id)) {
-        issues.push(issue('DUPLICATE_STAT_EVENT_ID', stepIndex, {
-          id: event.id,
-          eventIndex,
-          firstOccurrence: eventIds.get(event.id),
-        }));
+        const firstOccurrence = eventIds.get(event.id);
+        const firstStep = steps[firstOccurrence.stepIndex];
+        const isSplitCombinedEvent =
+          (event.type === 'HP_SAN_LOSS' || event.type === 'HP_SAN_GAIN') &&
+          ((firstStep?.type === 'HP_DAMAGE' && step.type === 'SAN_DAMAGE') ||
+            (firstStep?.type === 'SAN_DAMAGE' && step.type === 'HP_DAMAGE') ||
+            (firstStep?.type === 'HP_HEAL' && step.type === 'SAN_HEAL') ||
+            (firstStep?.type === 'SAN_HEAL' && step.type === 'HP_HEAL'));
+        // A combined HP/SAN event is deliberately shared by the two normalized
+        // resource animations. It is one rule event with two visual impacts,
+        // not a duplicated write in the same resource timeline.
+        if (!isSplitCombinedEvent) {
+          issues.push(issue('DUPLICATE_STAT_EVENT_ID', stepIndex, {
+            id: event.id,
+            eventIndex,
+            firstOccurrence,
+          }));
+        }
       } else {
         eventIds.set(event.id, { stepIndex, eventIndex });
       }

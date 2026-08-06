@@ -94,6 +94,8 @@ export function createTimedOutDrawDiscardEvent({ card, drawerIdx = 0, drawerName
 function createTurnStartEvent({ playerIdx = 0, playerName = '该玩家', msgs = [] } = {}) {
   return withVisualEventMeta({
     type: VISUAL_EVENT.TURN_START,
+    turnStartStage: 'turnStart',
+    turnStartStageOrder: 0,
     playerIdx,
     playerName,
     msgs: Array.isArray(msgs) ? msgs : [],
@@ -104,6 +106,8 @@ function createDrawCardEvent({ playerIdx = 0, playerName = '该玩家', card, ms
   if (!card) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.DRAW_CARD,
+    turnStartStage: 'draw',
+    turnStartStageOrder: 0,
     playerIdx,
     playerName,
     card,
@@ -112,11 +116,12 @@ function createDrawCardEvent({ playerIdx = 0, playerName = '该玩家', card, ms
   }, 'turn');
 }
 
-function createStatEventsEvent({ statEvents = [], msgs = [] } = {}) {
+function createStatEventsEvent({ statEvents = [], msgs = [], turnStartStage = null } = {}) {
   const events = Array.isArray(statEvents) ? statEvents.filter(Boolean) : [];
   if (!events.length) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.STAT_EVENTS,
+    ...(turnStartStage ? { turnStartStage, turnStartStageOrder: 1 } : {}),
     statEvents: events,
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'stat');
@@ -734,18 +739,20 @@ export function buildTurnStartDrawVisualEvents(state) {
       msgs: state._turnStartLogs,
     }));
   }
+  const turnDrawEvent = (Array.isArray(state._turnDrawEvents) ? state._turnDrawEvents : [])
+    .findLast(event => event?.card);
   const drawCard = state.phase === 'GOD_CHOICE'
     ? state.abilityData?.godCard
-    : state.drawReveal?.card;
+    : (state.drawReveal?.card || turnDrawEvent?.card);
   if (drawCard) {
     const drawerIdx = state.phase === 'GOD_CHOICE'
       ? (state.abilityData?.drawerIdx ?? state.currentTurn ?? 0)
-      : (state.drawReveal?.drawerIdx ?? state.currentTurn ?? 0);
+      : (state.drawReveal?.drawerIdx ?? turnDrawEvent?.drawerIdx ?? state.currentTurn ?? 0);
     const drawEvent = createDrawCardEvent({
       playerIdx: drawerIdx,
-      playerName: state.players?.[drawerIdx]?.name || '该玩家',
+      playerName: turnDrawEvent?.drawerName || state.players?.[drawerIdx]?.name || '该玩家',
       card: drawCard,
-      sourcePile: state.drawReveal?.sourcePile || state.abilityData?.sourcePile || state._drawSourcePile || null,
+      sourcePile: state.drawReveal?.sourcePile || turnDrawEvent?.sourcePile || state.abilityData?.sourcePile || state._drawSourcePile || null,
       msgs: state._drawLogs,
     });
     if (drawEvent) events.push(drawEvent);
@@ -762,8 +769,33 @@ export function buildFreshStatVisualEvents(state, previousStatSeq = 0) {
       (!statLogSet.size || !ev.logHint || statLogSet.has(ev.logHint))
     ))
     : [];
-  const event = createStatEventsEvent({ statEvents: freshStatEvents, msgs: state?._statLogs || [] });
-  return event ? [event] : [];
+  const statLogs = Array.isArray(state?._statLogs) ? state._statLogs : [];
+  const msgsFor = (events, otherEvents) => {
+    if (!otherEvents.length) return statLogs;
+    const hints = new Set(events.map(event => event?.logHint).filter(Boolean));
+    return statLogs.filter(msg => hints.has(msg));
+  };
+  const preDrawEvents = freshStatEvents.filter(isPreDrawTurnStartStatEvent);
+  const drawEvents = freshStatEvents.filter(event => !isPreDrawTurnStartStatEvent(event));
+  return [
+    createStatEventsEvent({
+      statEvents: preDrawEvents,
+      msgs: msgsFor(preDrawEvents, drawEvents),
+      turnStartStage: 'turnStart',
+    }),
+    createStatEventsEvent({
+      statEvents: drawEvents,
+      msgs: msgsFor(drawEvents, preDrawEvents),
+      turnStartStage: 'draw',
+    }),
+  ].filter(Boolean);
+}
+
+export function isPreDrawTurnStartStatEvent(event) {
+  return event?.reason === '黑山羊幼仔' ||
+    String(event?.logHint || '').includes('黑山羊幼仔') ||
+    event?.reason === '两人一绳' ||
+    String(event?.logHint || '').includes('【两人一绳】');
 }
 
 export function getVisualEvents(state) {

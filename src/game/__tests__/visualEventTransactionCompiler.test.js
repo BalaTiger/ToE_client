@@ -3,13 +3,17 @@ import {
   createCardEffectEvent,
   createGodPowerBlockedEvent,
   createGodStatusChangedEvent,
+  createSwapCardsEvent,
   createApophisTargetVisualEvent,
   createInspectionVisualEvent,
   createThrowStoneEvent,
   createHandLimitDiscardEvent,
   createTimedOutDrawDiscardEvent,
   createTsathogguaSlimePopEvent,
+  buildFreshStatVisualEvents,
+  buildTurnStartDrawVisualEvents,
   getVisualEvents,
+  ensureVisualEventState,
   promoteLegacyVisualEvents,
   pruneConsumedVisualEvents,
 } from '../visualEvents';
@@ -20,6 +24,7 @@ import {
   mergeAnimationTransactionQueue,
   validateVisualEventTransaction,
 } from '../visualEventTransactionCompiler';
+import { prepareAnimationQueueSteps } from '../animationStepSchema';
 
 const player = (name, patch = {}) => ({ name, hp: 10, san: 10, hand: [], ...patch });
 
@@ -163,6 +168,253 @@ describe('visualEventTransactionCompiler', () => {
     expect(getAnimationQueueVisualEventIds(transaction.queue)).toEqual(['turn-start-5', 'draw-5']);
   });
 
+  it('keeps an AI god draw ahead of encounter SAN loss and worship highlight', () => {
+    const god = { id: 'zhu-draw', name: '烛九阴', godKey: 'ZHU', isGod: true };
+    const before = [player('你'), player('艾伦')];
+    const after = [before[0], player('艾伦', {
+      san: 9,
+      godName: 'ZHU',
+      godLevel: 1,
+      godZone: [god],
+    })];
+    const encounterLog = '艾伦 遭遇邪神 烛九阴！（第1次）失去 1 SAN';
+    const statEvent = {
+      type: 'SAN_LOSS',
+      target: 1,
+      from: { hp: 10, san: 10, isDead: false },
+      to: { hp: 10, san: 9, isDead: false },
+      reason: '邪神遭遇',
+      logHint: encounterLog,
+      seq: 1,
+    };
+    const baseState = {
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      players: after,
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _drawLogs: ['[调试] 艾伦（追猎者）起手摸到 烛九阴'],
+      _turnDrawEvents: [{ card: god, drawerIdx: 1, drawerName: '艾伦', sourcePile: 'deck' }],
+      _statEventSeq: 1,
+      _statEvents: [statEvent],
+      _statLogs: [encounterLog],
+    };
+    const worshipEvent = createGodStatusChangedEvent({
+      playerIdx: 1,
+      playerName: '艾伦',
+      godKey: 'ZHU',
+      godLevel: 1,
+      playersBefore: before,
+      playersAfter: after,
+    });
+    const state = {
+      ...baseState,
+      _visualEvents: [
+        ...buildTurnStartDrawVisualEvents(baseState),
+        ...buildFreshStatVisualEvents(baseState, 0),
+        worshipEvent,
+      ],
+    };
+
+    const transaction = compileRuleVisualEventsToAnimTransaction(state);
+    expect(transaction.queue.map(step => step.type)).toEqual([
+      'YOUR_TURN',
+      'DRAW_CARD',
+      'SAN_DAMAGE',
+      'GOD_HIGHLIGHT',
+    ]);
+    expect(transaction.queue[1]).toMatchObject({ card: god, targetPid: 1 });
+    expect(transaction.queue.slice(0, 3).map(step => step.turnStartStage)).toEqual([
+      'turnStart',
+      'draw',
+      'draw',
+    ]);
+  });
+
+  it('compiles AI pre-draw effects in the turn-start stage before the draw stage', () => {
+    const card = { id: 'ai-fixed-draw', name: '下一张牌', key: 'B2', type: 'zone' };
+    const goatLog = '【黑山羊幼仔】艾伦 失去 1 HP 和 1 SAN';
+    const baseState = {
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      players: [player('你'), player('艾伦', { hp: 9, san: 9 })],
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _drawLogs: ['艾伦 摸到 [B2] 下一张牌'],
+      _turnDrawEvents: [{ card, drawerIdx: 1, drawerName: '艾伦', sourcePile: 'deck' }],
+      _statEventSeq: 2,
+      _statLogs: [goatLog],
+      _statEvents: [
+        {
+          type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 9, san: 10 },
+          reason: '黑山羊幼仔', logHint: goatLog, seq: 1,
+        },
+        {
+          type: 'SAN_LOSS', target: 1, from: { hp: 9, san: 10 }, to: { hp: 9, san: 9 },
+          reason: '黑山羊幼仔', logHint: goatLog, seq: 2,
+        },
+      ],
+    };
+    const state = {
+      ...baseState,
+      // The producer appends stats after the draw event. Stage ordering must
+      // still move these turn-start effects ahead of the reveal.
+      _visualEvents: [
+        ...buildTurnStartDrawVisualEvents(baseState),
+        ...buildFreshStatVisualEvents(baseState, 0),
+      ],
+    };
+
+    const transaction = compileRuleVisualEventsToAnimTransaction(state);
+
+    expect(transaction.queue.map(step => step.type)).toEqual([
+      'YOUR_TURN',
+      'HP_DAMAGE',
+      'SAN_DAMAGE',
+      'DRAW_CARD',
+    ]);
+    expect(transaction.stageQueues.turnStart.map(step => step.type)).toEqual([
+      'YOUR_TURN',
+      'HP_DAMAGE',
+      'SAN_DAMAGE',
+    ]);
+    expect(transaction.stageQueues.draw.map(step => step.type)).toEqual(['DRAW_CARD']);
+  });
+
+  it('keeps a future fatal draw out of the current AI action transaction', () => {
+    const fall = { id: 'fall-card', name: '坠落', key: 'A1', type: 'zone' };
+    const before = [player('你', { hp: 3 }), player('卡洛斯'), player('黛安娜')];
+    const after = [player('你', { hp: 0, isDead: true }), before[1], before[2]];
+    const swapEvent = createSwapCardsEvent({
+      sourceIdx: 1,
+      targetIdx: 2,
+      beforePlayers: before,
+      afterPlayers: before,
+      msgs: ['卡洛斯（寻宝者）对 黛安娜 【掉包】'],
+    });
+    const nextTurnState = {
+      currentTurn: 0,
+      phase: 'ACTION',
+      players: after,
+      drawReveal: { card: fall, drawerIdx: 0, sourcePile: 'deck' },
+      _turnStartLogs: ['── 你 的回合开始 ──'],
+      _drawLogs: ['你 摸到 [A1] 坠落（强制触发）'],
+      _statLogs: ['你 失去 3 HP'],
+      _statEvents: [{
+        type: 'HP_LOSS',
+        target: 0,
+        from: { hp: 3, san: 10, isDead: false },
+        to: { hp: 0, san: 10, isDead: true },
+        reason: '坠落',
+        logHint: '你 失去 3 HP',
+        seq: 9,
+      }],
+    };
+    const stagedTurnEvents = [
+      ...buildTurnStartDrawVisualEvents(nextTurnState),
+      ...buildFreshStatVisualEvents(nextTurnState, 8),
+    ];
+    const state = { ...nextTurnState, _visualEvents: [swapEvent, ...stagedTurnEvents] };
+
+    const currentAction = compileRuleVisualEventsToAnimTransaction(state, null, {
+      visualEventScope: 'action',
+    });
+    const nextTurn = compileRuleVisualEventsToAnimTransaction(state, null, {
+      visualEventScope: 'turnStart',
+    });
+    const mergedCurrentQueue = mergeAnimationTransactionQueue([
+      { type: 'SKILL_SWAP', sourceIdx: 1, targetIdx: 2 },
+    ], currentAction);
+
+    expect(currentAction.eventIds).toEqual([swapEvent.id]);
+    expect(mergedCurrentQueue.map(step => step.type)).not.toContain('HP_DAMAGE');
+    expect(mergedCurrentQueue.map(step => step.type)).not.toContain('DRAW_CARD');
+    expect(nextTurn.queue.map(step => step.type)).toEqual(['YOUR_TURN', 'DRAW_CARD', 'HP_DAMAGE']);
+    expect(nextTurn.queue.find(step => step.type === 'HP_DAMAGE')).toMatchObject({
+      turnStartStage: 'draw',
+      statEvents: [expect.objectContaining({ target: 0, seq: 9 })],
+    });
+
+    const completeTransaction = compileRuleVisualEventsToAnimTransaction(state);
+    expect(completeTransaction.queue.findIndex(step => step.type === 'SKILL_SWAP'))
+      .toBeLessThan(completeTransaction.queue.findIndex(step => step.type === 'YOUR_TURN'));
+  });
+
+  it('lets the startled-bats card effect own its HP impact after the bats animation', () => {
+    const bats = { id: 'bats-card', name: '惊扰蝙蝠', key: 'C2', type: 'adjDamageHP' };
+    const before = [player('你'), player('艾伦')];
+    const after = [player('你', { hp: 8 }), player('艾伦', { hp: 8 })];
+    const damageLog = '你 与相邻角色各失去 2 HP';
+    const statEvents = [
+      {
+        type: 'HP_LOSS', target: 0, from: { hp: 10, san: 10 }, to: { hp: 8, san: 10 },
+        reason: '惊扰蝙蝠', logHint: damageLog, seq: 4,
+      },
+      {
+        type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 8, san: 10 },
+        reason: '惊扰蝙蝠', logHint: damageLog, seq: 4,
+      },
+    ];
+    const baseState = {
+      currentTurn: 0,
+      phase: 'ACTION',
+      players: after,
+      drawReveal: { card: bats, drawerIdx: 0, sourcePile: 'deck' },
+      _turnStartLogs: ['── 你 的回合开始 ──'],
+      _drawLogs: ['你 摸到 [C2] 惊扰蝙蝠，选择收入手牌并触发效果'],
+      _statLogs: [damageLog],
+      _statEvents: statEvents,
+    };
+    const standaloneStatEvent = buildFreshStatVisualEvents(baseState, 3)[0];
+    const batsEffectEvent = createCardEffectEvent({
+      effectKey: 'startledBats',
+      card: bats,
+      actorIdx: 0,
+      beforePlayers: before,
+      beforeDiscard: [],
+      afterPlayers: after,
+      afterDiscard: [],
+      statEvents,
+      msgs: [damageLog],
+    });
+    const state = {
+      ...baseState,
+      _visualEvents: [
+        ...buildTurnStartDrawVisualEvents(baseState),
+        standaloneStatEvent,
+        { ...batsEffectEvent, turnStartStage: 'draw', turnStartStageOrder: 2 },
+      ],
+    };
+
+    const transaction = compileRuleVisualEventsToAnimTransaction(state, null, {
+      visualEventScope: 'turnStart',
+    });
+
+    expect(transaction.queue.map(step => step.type)).toEqual([
+      'YOUR_TURN',
+      'DRAW_CARD',
+      'STARTLED_BATS',
+      'HP_DAMAGE',
+    ]);
+    expect(transaction.queue.filter(step => step.type === 'HP_DAMAGE')).toHaveLength(1);
+    expect(transaction.eventIds).toEqual(expect.arrayContaining([
+      standaloneStatEvent.id,
+      batsEffectEvent.id,
+    ]));
+  });
+
+  it('honors an explicit visual-event id allowlist', () => {
+    const first = createGodPowerBlockedEvent({ playerIdx: 0, playerName: '你', msgs: ['first'] });
+    const second = createGodPowerBlockedEvent({ playerIdx: 1, playerName: '艾伦', msgs: ['second'] });
+    const transaction = compileRuleVisualEventsToAnimTransaction({
+      players: [player('你'), player('艾伦')],
+      _visualEvents: [first, second],
+    }, null, { eventIds: [second.id] });
+
+    expect(transaction.eventIds).toEqual([second.id]);
+    expect(transaction.queue).toEqual([
+      expect.objectContaining({ type: 'GOD_POWER_BLOCKED', targetPid: 1 }),
+    ]);
+  });
+
   it('compiles black-night target selection from the event id instead of a watermark', () => {
     const players = [player('你'), player('艾伦'), player('贝拉')];
     const event = createApophisTargetVisualEvent({
@@ -231,6 +483,36 @@ describe('visualEventTransactionCompiler', () => {
     );
     expect(merged).toHaveLength(1);
     expect(getAnimationQueueVisualEventIds(merged)).toEqual(['event-1']);
+  });
+
+  it('replaces inferred albino-creature stat effects with one canonical HP/SAN pair', () => {
+    const before = [player('你'), player('艾伦'), player('贝拉')];
+    const after = [before[0], before[1], player('贝拉', { hp: 8, san: 8 })];
+    const statEvents = [
+      { type: 'HP_LOSS', target: 2, from: { hp: 10, san: 10 }, to: { hp: 8, san: 8 }, reason: '白化生物', seq: 1 },
+      { type: 'SAN_LOSS', target: 2, from: { hp: 10, san: 10 }, to: { hp: 8, san: 8 }, reason: '白化生物', seq: 1 },
+    ];
+    const state = ensureVisualEventState({
+      players: after,
+      phase: 'ACTION',
+      _statEventSeq: 1,
+      _statEvents: statEvents,
+    });
+    const transaction = compileRuleVisualEventsToAnimTransaction(state);
+    const legacyQueue = [
+      { type: 'HUNT_REVEAL_CARD', targetPid: 0, card: { id: 'fire-card', name: '活火山' } },
+      { type: 'HP_DAMAGE', hitIndices: [2], targetStats: after.map(({ hp, san }) => ({ hp, san })) },
+      { type: 'SAN_DAMAGE', hitIndices: [2], targetStats: after.map(({ hp, san }) => ({ hp, san })) },
+    ];
+    const prepared = prepareAnimationQueueSteps(
+      mergeAnimationTransactionQueue(legacyQueue, transaction),
+    ).steps;
+
+    expect(prepared.map(step => step.type)).toEqual(['HUNT_REVEAL_CARD', 'HP_DAMAGE', 'SAN_DAMAGE']);
+    expect(prepared.filter(step => step.type === 'HP_DAMAGE')).toHaveLength(1);
+    expect(prepared.filter(step => step.type === 'SAN_DAMAGE')).toHaveLength(1);
+    expect(prepared.filter(step => step.type === 'HP_DAMAGE')[0].statEvents).toEqual([statEvents[0]]);
+    expect(prepared.filter(step => step.type === 'SAN_DAMAGE')[0].statEvents).toEqual([statEvents[1]]);
   });
 
   it('restores a canonical event as one ordered block when legacy inference interleaves it', () => {

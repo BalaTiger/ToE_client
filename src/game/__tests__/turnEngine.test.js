@@ -1051,7 +1051,11 @@ describe('turnEngine stat events', () => {
     expect(result.log).toContain('【引燃火把】你 本回合不受邪神之力影响');
     expect(result._tsgSlimeGrantEvents || []).toHaveLength(0);
     expect(result._visualEvents).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: 'godPowerBlocked', playerIdx: 0 }),
+      expect.objectContaining({
+        type: 'godPowerBlocked',
+        playerIdx: 0,
+        turnStartStage: 'turnStart',
+      }),
     ]));
   });
 

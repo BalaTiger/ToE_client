@@ -34,6 +34,7 @@ import { clearExpiredTurnScopedEffects } from './turnScopedEffects';
 import {
   buildFreshStatVisualEvents,
   buildTurnStartDrawVisualEvents,
+  VISUAL_EVENT,
   createGodPowerBlockedEvent,
   createGodStatusChangedEvent,
   createTsathogguaSlimeGrantEvent,
@@ -2057,10 +2058,23 @@ export function startNextTurn(gs, opts = {}) {
     : gs;
   const nextState = resolveNextTurnState(cleanInput, opts);
   const engineEvents = Array.isArray(nextState?._visualEvents) ? nextState._visualEvents : [];
+  // resolveNextTurnState only produces events for the newly entered turn.
+  // Tag its remaining card/god/effect events as draw-stage events so an AI
+  // action queue can exclude the entire future turn transaction explicitly.
+  const stagedEngineEvents = engineEvents.map(event => {
+    if (event?.turnStartStage) return event;
+    const isPreDrawEvent = [VISUAL_EVENT.GOD_POWER_BLOCKED, VISUAL_EVENT.TSG_SLIME_GRANT]
+      .includes(event?.type);
+    return {
+      ...event,
+      turnStartStage: isPreDrawEvent ? 'turnStart' : 'draw',
+      turnStartStageOrder: isPreDrawEvent ? 1 : 2,
+    };
+  });
   const visualEvents = [
     ...buildTurnStartDrawVisualEvents(nextState),
     ...buildFreshStatVisualEvents(nextState, previousStatSeq),
-    ...engineEvents,
+    ...stagedEngineEvents,
   ];
   return visualEvents.length ? { ...nextState, _visualEvents: visualEvents } : nextState;
 }
