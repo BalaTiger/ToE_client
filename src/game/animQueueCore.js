@@ -600,9 +600,11 @@ export function buildAnimQueue(oldGs, newGs) {
     .map(transition => transition?.playerIdx)
     .filter(playerIdx => playerIdx != null));
   godStatusEvents.forEach(event => {
-    const presentationBoundary = event?.presentAfterInspectionSeq;
-    if (presentationBoundary != null && oldInspectionSeq >= presentationBoundary) return;
-    const exitStep = buildFaithExitTransferStep(event?.faithSettlement?.previousFaithExit);
+    const transition = event?.faithSettlement?.previousFaithExit;
+    const inspectionSeqAfter = Number(transition?.inspectionSeqAfter) || 0;
+    const exitStep = (!inspectionSeqAfter || oldInspectionSeq < inspectionSeqAfter)
+      ? buildFaithExitTransferStep(transition)
+      : null;
     if (exitStep) q.push({ ...exitStep, visualEventId: event.id });
   });
   // 改信直接用新神区替换旧神区，先明确展示旧神牌进入公开弃牌堆。
@@ -631,35 +633,15 @@ export function buildAnimQueue(oldGs, newGs) {
   ));
   if (presentableGodStatusEvents.length) {
     q.push(...presentableGodStatusEvents.map(buildGodStatusChangedStep).filter(Boolean));
-  } else if (!godStatusEvents.length) {
-    // Compatibility fallback for legacy snapshots that predate explicit god
-    // status events. New rule paths must emit GOD_STATUS_CHANGED instead.
-    (effectivePlayers || []).forEach((player, targetPid) => {
-      if (!player?.godName) return;
-      const playerName = player.name || '';
-      const worshipMsg = newMsgs.find(line => typeof line === 'string' && (
-        (playerName && line.includes(playerName) && (line.includes('信仰') || line.includes('改信'))) ||
-        (targetPid === 0 && (line.includes('你 从手牌信仰') || line.includes('你从手牌直接信仰')))
-      ));
-      if (worshipMsg) {
-        const beforeHighlightPlayers = clonePlayersForTimeline(oldGs?.players || effectivePlayers);
-        const afterHighlightPlayers = playersAfterGodHighlight(beforeHighlightPlayers, effectivePlayers, { targetPid });
-        q.push({
-          type: 'GOD_HIGHLIGHT',
-          targetPid,
-          godKey: player.godName,
-          msgs: [worshipMsg],
-          visualSetupPatch: { players: beforeHighlightPlayers },
-          visualTimeline: [{ atMs: 0, patch: { players: afterHighlightPlayers } }],
-        });
-      }
-    });
   }
   // 同一邪神只能有一名信徒。新信徒的高亮之后，显式播放旧信徒的
   // godZone 整体进入弃牌堆，确保本地和远端都能观察到信仰被抢夺。
   presentableGodStatusEvents.forEach(event => {
     (event?.faithSettlement?.abandonedFollowers || []).forEach(transition => {
-      const exitStep = buildFaithExitTransferStep(transition);
+      const inspectionSeqAfter = Number(transition?.inspectionSeqAfter) || 0;
+      const exitStep = (!inspectionSeqAfter || oldInspectionSeq < inspectionSeqAfter)
+        ? buildFaithExitTransferStep(transition)
+        : null;
       if (exitStep) q.push({ ...exitStep, visualEventId: event.id });
     });
   });

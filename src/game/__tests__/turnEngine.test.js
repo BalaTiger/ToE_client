@@ -1,11 +1,36 @@
 import { describe, expect, it } from 'vitest';
 import { makeInspectionMeta, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
-import { aiDrawAndApply, aiHandleGodCard, applySanLossToPlayerWithInspection, checkWin, playerDrawCard, resolveGodEncounterForAI, startNextTurn } from '../turnEngine';
+import { aiDrawAndApply, aiHandleGodCard, applySanLossToPlayerWithInspection, checkWin, createFaithSettlementGodStatusEvent, playerDrawCard, resolveGodEncounterForAI, startNextTurn } from '../turnEngine';
 import { buildTsathogguaSlimeGrantQueue, buildTurnStartDrawReplayQueue } from '../turnAnimState';
 import { makeGodCard, makeGs, makePlayer, makeStandardPlayers, makeZoneCard } from './factory';
 import { createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../../constants/card';
 import { applyInspectionForSanLoss } from '../effectEngine';
 import { makeProliferatingZState } from '../proliferatingZ';
+
+describe('createFaithSettlementGodStatusEvent', () => {
+  it('uses explicit player snapshots for worship and upgrade without log inference', () => {
+    const before = [makePlayer({ name: '联机玩家', godName: null, godLevel: 0 })];
+    const worshipped = [makePlayer({ name: '联机玩家', godName: 'APO', godLevel: 1 })];
+    const upgraded = [makePlayer({ name: '联机玩家', godName: 'APO', godLevel: 2 })];
+    const worship = createFaithSettlementGodStatusEvent({
+      playerIdx: 0,
+      playersBeforeSettlement: before,
+      playersAfterSettlement: worshipped,
+      faithEstablished: { playersBefore: before, playersAfter: worshipped },
+      msgs: ['这是一条与信仰无关的日志'],
+    });
+    const upgrade = createFaithSettlementGodStatusEvent({
+      playerIdx: 0,
+      playersBeforeSettlement: worshipped,
+      playersAfterSettlement: upgraded,
+      faithEstablished: { playersBefore: worshipped, playersAfter: upgraded },
+      msgs: ['邪神之力升至Lv.2'],
+    });
+
+    expect(worship).toMatchObject({ type: 'godStatusChanged', playerIdx: 0, godKey: 'APO', godLevel: 1, msgs: [] });
+    expect(upgrade).toMatchObject({ type: 'godStatusChanged', playerIdx: 0, godKey: 'APO', godLevel: 2 });
+  });
+});
 
 describe('checkWin death handling', () => {
   it('dead cultist cannot win from their own zero SAN but can win from another living zero-SAN target', () => {
@@ -980,8 +1005,8 @@ describe('turnEngine stat events', () => {
     expect(result.abilityData).toMatchObject({
       _turnOwner: 1,
       continueTurnStartDraw: true,
-      pendingTsathogguaSlimes: [slime],
     });
+    expect(result.abilityData.pendingTsathogguaSlimes).toBeUndefined();
   });
 
   it('回合开始的两人一绳未断裂回复产出显式 stat events', () => {

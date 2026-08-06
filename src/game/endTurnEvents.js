@@ -12,6 +12,7 @@ export const END_TURN_PRIORITY = {
 
 export const END_TURN_EVENT = {
   CTH_REST_DRAW: 'cthRestDraw',
+  REVERSE_TURN_ORDER: 'reverseTurnOrder',
   TSG_SLIME_GRANT: 'tsgSlimeGrant',
   END_TURN_REPLAY_HAND: 'endTurnReplayHand',
 };
@@ -48,6 +49,15 @@ export function getEndTurnEvents(players = [], actorIndex = 0) {
     });
   }
 
+  const reverseCount = Math.max(0, Number(actor.pendingTurnDirectionReversals) || 0);
+  if (reverseCount > 0) {
+    events.push({
+      id: END_TURN_EVENT.REVERSE_TURN_ORDER,
+      priority: END_TURN_PRIORITY.ACTIVE_OTHER,
+      reverseCount,
+    });
+  }
+
   const slimeCount = getTsgSlimeGrantCount(actor);
   if (slimeCount > 0) {
     events.push({
@@ -58,15 +68,33 @@ export function getEndTurnEvents(players = [], actorIndex = 0) {
   }
 
   const replayCards = getEndTurnReplayHandCards(actor);
-  if (replayCards.length > 0) {
+  // Hand-dependent checks are dynamic. CTH draws can add, remove or move an
+  // Endless Corridor before the passive-card slot is reached, so schedule a
+  // final check whenever that earlier event may change the hand. The handler
+  // deliberately recomputes from the then-current hand and may no-op.
+  if (replayCards.length > 0 || cthDrawCount > 0) {
     events.push({
       id: END_TURN_EVENT.END_TURN_REPLAY_HAND,
       priority: END_TURN_PRIORITY.PASSIVE_OTHER,
       cardIds: replayCards.map(card => card.id),
+      dynamicHandCheck: true,
     });
   }
 
   return events.sort((a, b) => a.priority - b.priority);
+}
+
+export function resolveReverseTurnOrderAtEnd(players = [], actorIndex = 0, turnDirection = 1, log = [], reverseCount = null) {
+  const actor = players[actorIndex];
+  const count = Math.max(0, Number(reverseCount ?? actor?.pendingTurnDirectionReversals) || 0);
+  if (!actor || count <= 0) return { players, turnDirection, log, msgs: [] };
+  delete actor.pendingTurnDirectionReversals;
+  const nextDirection = count % 2 === 0 ? (turnDirection || 1) : -(turnDirection || 1);
+  const msg = count === 1
+    ? `【逆流】${actor.name} 的回合结束，回合轮换方向变为${nextDirection === 1 ? '顺时针' : '逆时针'}`
+    : `【逆流】${actor.name} 的回合结束，连续反转${count}次，回合轮换方向最终为${nextDirection === 1 ? '顺时针' : '逆时针'}`;
+  log.push(msg);
+  return { players, turnDirection: nextDirection, log, msgs: [msg] };
 }
 
 export function hasEndTurnReplayHandEvent(players = [], actorIndex = 0) {

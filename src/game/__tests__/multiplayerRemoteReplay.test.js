@@ -3,7 +3,7 @@ import { buildAnimQueue } from '../animQueueCore';
 import { copyPlayers } from '../coreUtils';
 import { buildMpRemoteReplayAction, MP_REMOTE_REPLAY } from '../multiplayerRemoteReplay';
 import { rotateGsForViewer } from '../rotateState';
-import { createAnimTransactionEvent, createCardEffectEvent, createEarthquakeEvent, createEndlessCorridorReplayEvent, createHuntResultEvent, createSphinxResultEvent, createSwapCardsEvent } from '../visualEvents';
+import { createAnimTransactionEvent, createCardEffectEvent, createEarthquakeEvent, createEndlessCorridorReplayEvent, createGodPowerBlockedEvent, createHuntResultEvent, createSphinxResultEvent, createSwapCardsEvent } from '../visualEvents';
 
 const card = { id: 'c1', name: '测试牌', type: 'zone' };
 
@@ -664,6 +664,7 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.queue[1]).toMatchObject({ fromPid: 1, toPid: 2, count: 1 });
     expect(action.queue[2]).toMatchObject({ card: gift, triggerName: '贝拉', targetPid: 2, skipTravel: true });
     expect(action.queue.find(step => step.type === 'HP_DAMAGE')).toMatchObject({ hitIndices: [2], msgs: ['事件伤害'] });
+    expect(action.queueAuthority).toBe('queue');
     expect(action.pendingGs._visualEvents).toEqual([]);
   });
 
@@ -2117,6 +2118,99 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.queue.filter(step => step.type === 'YOUR_TURN')).toHaveLength(1);
     expect(action.queue.some(step => step.type === 'DRAW_CARD')).toBe(false);
     expect(action.queue.at(-1)).toMatchObject({ type: 'STATE_PATCH', phase: 'DRAW_REVEAL' });
+    expect(action.queueAuthority).toBe('queue');
+  });
+
+  it('prioritizes an exact god-choice transaction over state-diff replay inference', () => {
+    const godCard = { id: 'exact-god', name: '拉莱耶之主', godKey: 'CTH', isGod: true, type: 'god' };
+    const transaction = createAnimTransactionEvent({
+      id: 'exact-god-choice',
+      context: 'godChoice',
+      queue: [
+        { type: 'GOD_HIGHLIGHT', targetPid: 1, godKey: 'CTH', godLevel: 1 },
+        { type: 'GOD_POWER_BLOCKED', targetPid: 1 },
+      ],
+    });
+    const inferredQueueBuilder = vi.fn(() => [{ type: 'DRAW_CARD', card: godCard }]);
+    const previousGs = makeState({
+      currentTurn: 1,
+      phase: 'GOD_CHOICE',
+      abilityData: { godCard, drawerIdx: 1, godEncounterCost: 1 },
+    });
+    const action = buildAction(makeState({
+      currentTurn: 1,
+      phase: 'ACTION',
+      players: [player('你'), { ...player('艾伦'), godName: 'CTH', godLevel: 1 }, player('贝拉')],
+      _visualEvents: [transaction],
+    }), {
+      previousGs,
+      buildAnimQueue: inferredQueueBuilder,
+    });
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.slice(0, 2).map(step => step.type)).toEqual(['GOD_HIGHLIGHT', 'GOD_POWER_BLOCKED']);
+    expect(action.queue.some(step => step.type === 'DRAW_CARD')).toBe(false);
+    expect(action.queue.at(-1)).toMatchObject({ type: 'STATE_PATCH', phase: 'ACTION' });
+    expect(action.queueAuthority).toBe('queue');
+    expect(action.consumedVisualEventIds).toContain(transaction.id);
+    expect(inferredQueueBuilder).not.toHaveBeenCalled();
+  });
+
+  it('replays uncovered explicit events after an exact transaction without consuming them silently', () => {
+    const statusEvent = {
+      id: 'covered-god-status',
+      type: 'godStatusChanged',
+      playerIdx: 1,
+      godKey: 'CTH',
+      godLevel: 1,
+      playersAfter: [player('你'), { ...player('艾伦'), godName: 'CTH', godLevel: 1 }, player('贝拉')],
+    };
+    const blockedEvent = createGodPowerBlockedEvent({
+      playerIdx: 1,
+      playerName: '艾伦',
+      msgs: ['【引燃火把】艾伦 本回合不受邪神之力影响'],
+    });
+    const transaction = createAnimTransactionEvent({
+      id: 'partially-covered-god-choice',
+      context: 'godChoice',
+      coveredEventIds: [statusEvent.id],
+      queue: [{
+        type: 'GOD_HIGHLIGHT',
+        targetPid: 1,
+        godKey: 'CTH',
+        godLevel: 1,
+        visualEventId: statusEvent.id,
+      }],
+    });
+    const action = buildAction(makeState({
+      players: statusEvent.playersAfter,
+      _visualEvents: [transaction, statusEvent, blockedEvent],
+    }));
+
+    expect(transaction.coveredEventIds).toEqual([statusEvent.id]);
+    expect(action.queue.slice(0, 2).map(step => step.type)).toEqual(['GOD_HIGHLIGHT', 'GOD_POWER_BLOCKED']);
+    expect(action.queue[1]).toMatchObject({ visualEventId: blockedEvent.id, targetPid: 1 });
+    expect(action.uncoveredVisualEventIds).toEqual([blockedEvent.id]);
+    expect(action.consumedVisualEventIds).toEqual(expect.arrayContaining([
+      transaction.id,
+      statusEvent.id,
+      blockedEvent.id,
+    ]));
+  });
+
+  it('does not mark an uncovered event as consumed when no explicit compiler exists', () => {
+    const unknownEvent = { id: 'future-visual-event', type: 'futureVisualEvent' };
+    const transaction = createAnimTransactionEvent({
+      id: 'exact-before-future-event',
+      queue: [{ type: 'YOUR_TURN', name: '艾伦' }],
+    });
+    const action = buildAction(makeState({ _visualEvents: [transaction, unknownEvent] }));
+
+    expect(action.queue.map(step => step.type)).toEqual(['YOUR_TURN', 'STATE_PATCH']);
+    expect(action.uncompiledVisualEventIds).toEqual([unknownEvent.id]);
+    expect(action.consumedVisualEventIds).toContain(transaction.id);
+    expect(action.consumedVisualEventIds).not.toContain(unknownEvent.id);
+    expect(action.pendingGs.phase).toBe('ACTION');
   });
 
   it('accepts a later endless-corridor dodge delta after the opening replay was consumed', () => {

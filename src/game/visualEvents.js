@@ -94,7 +94,7 @@ export function createTimedOutDrawDiscardEvent({ card, drawerIdx = 0, drawerName
 function createTurnStartEvent({ playerIdx = 0, playerName = '该玩家', msgs = [] } = {}) {
   return withVisualEventMeta({
     type: VISUAL_EVENT.TURN_START,
-    turnStartStage: 'turnStart',
+    turnStartStage: 'turnBanner',
     turnStartStageOrder: 0,
     playerIdx,
     playerName,
@@ -253,10 +253,15 @@ export function createAnimTransactionEvent({
   zhuLight = null,
   context = 'generic',
   barrier = 'continuation',
+  coveredEventIds = [],
   id = null,
 } = {}) {
   const replayQueue = Array.isArray(queue) ? queue.filter(Boolean) : [];
   if (!replayQueue.length) return null;
+  const normalizedCoveredEventIds = [...new Set([
+    ...(Array.isArray(coveredEventIds) ? coveredEventIds : []),
+    ...replayQueue.map(step => step?.visualEventId),
+  ].filter(Boolean))];
   return withVisualEventMeta({
     type: VISUAL_EVENT.ANIM_TRANSACTION,
     id: id || `${VISUAL_EVENT.ANIM_TRANSACTION}:${visualEventInstanceId}:${++animTransactionEventSeq}`,
@@ -264,6 +269,7 @@ export function createAnimTransactionEvent({
     actorName,
     context,
     barrier,
+    coveredEventIds: normalizedCoveredEventIds,
     queue: replayQueue,
     msgs: Array.isArray(msgs) ? msgs : [],
     beforePlayers: Array.isArray(beforePlayers) ? beforePlayers : null,
@@ -827,6 +833,8 @@ export function buildFreshStatVisualEvents(state, previousStatSeq = 0) {
 export function isPreDrawTurnStartStatEvent(event) {
   return event?.reason === '黑山羊幼仔' ||
     String(event?.logHint || '').includes('黑山羊幼仔') ||
+    event?.reason === '中毒' ||
+    String(event?.logHint || '').includes('【中毒】') ||
     event?.reason === '两人一绳' ||
     String(event?.logHint || '').includes('【两人一绳】');
 }
@@ -1081,6 +1089,7 @@ export function buildGodPowerBlockedStepsFromVisualEvents(state, oldState = null
       const playerName = event.playerName || state?.players?.[playerIdx]?.name || '该玩家';
       return {
         type: 'GOD_POWER_BLOCKED',
+        visualEventId: event.id,
         targetPid: playerIdx,
         name: localDisplayName(playerIdx, playerName),
         msgs: Array.isArray(event.msgs) ? event.msgs : [],

@@ -502,6 +502,7 @@ export function buildInspectionRevealQueue(events){
 
 export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlayers}){
   const queue=[];
+  const boundarySteps=new Map();
   let cursorPlayers=copyPlayers(baseGs?.players||[]);
   let cursorLog=[...(Array.isArray(baseGs?.log)?baseGs.log:[])];
   let cursorDiscard=[...(Array.isArray(baseGs?.discard)?baseGs.discard:[])];
@@ -568,21 +569,23 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
     );
     if(effectQ.length)queue.push(...effectQ.map(step=>ev?.id?{...step,visualEventId:ev.id}:step));
     const effectHasVisibleStep=effectQ.some(step=>step?.type!=="STATE_PATCH");
-    queue.push({
+    const boundaryStep={
       ...statePatchStep({players:afterPlayers,log:afterLog,discard:afterDiscard}),
       ...(ev?.id?{visualEventId:ev.id}:{}),
       // Non-stat inspection effects (for example 昏睡) may have no animation
       // step, but their log still belongs after this reveal, never to an
       // earlier inspection card.
       ...(!effectHasVisibleStep&&effectLogs.length?{_logChunk:effectLogs}:{}),
-    });
+    };
+    queue.push(boundaryStep);
+    if(ev?.seq!=null)boundarySteps.set(ev.seq,boundaryStep);
     cursorPlayers=afterPlayers;
     cursorLog=afterLog;
     cursorDiscard=afterDiscard;
     cursorStatEventSeq=Math.max(cursorStatEventSeq,beforeStatEventSeq);
     if(ev?.statEventSeq!=null)cursorStatEventSeq=Math.max(cursorStatEventSeq,ev.statEventSeq);
   });
-  return {queue,players:cursorPlayers,log:cursorLog,statEventSeq:cursorStatEventSeq};
+  return {queue,players:cursorPlayers,log:cursorLog,statEventSeq:cursorStatEventSeq,boundarySteps};
 }
 
 export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPlayers}){
@@ -628,7 +631,7 @@ export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPl
     ?newGs._visualEvents.filter(event=>(
       event?.type!==VISUAL_EVENT.GOD_STATUS_CHANGED ||
       event?.presentAfterInspectionSeq==null ||
-      event.presentAfterInspectionSeq!==maxInspectionSeq
+      event.presentAfterInspectionSeq>maxInspectionSeq
     ))
     :(Array.isArray(baseOldGs?._visualEvents)?baseOldGs._visualEvents:[]);
   const tailQueue=buildAnimQueue(
@@ -646,8 +649,20 @@ export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPl
     },
     newGs
   );
+  let queue=dedupeFaithSettlementTransfers([...preQueue,...inspectionFlow.queue,...tailQueue]);
+  getVisualEvents(newGs)
+    .filter(event=>event?.type===VISUAL_EVENT.GOD_STATUS_CHANGED&&event?.presentAfterInspectionSeq!=null)
+    .forEach(event=>{
+      const highlightIndex=queue.findIndex(step=>step?.type==='GOD_HIGHLIGHT'&&step?.visualEventId===event.id);
+      const boundaryStep=inspectionFlow.boundarySteps.get(event.presentAfterInspectionSeq);
+      const boundaryIndex=queue.indexOf(boundaryStep);
+      if(highlightIndex<0||boundaryIndex<0||highlightIndex===boundaryIndex+1)return;
+      const [highlight]=queue.splice(highlightIndex,1);
+      const adjustedBoundaryIndex=highlightIndex<boundaryIndex?boundaryIndex-1:boundaryIndex;
+      queue.splice(adjustedBoundaryIndex+1,0,highlight);
+    });
   return {
-    queue:dedupeFaithSettlementTransfers([...preQueue,...inspectionFlow.queue,...tailQueue]),
+    queue,
     inspectionEvents,
     inspectionSeq:maxInspectionSeq,
   };

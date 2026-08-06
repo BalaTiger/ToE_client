@@ -45,7 +45,7 @@ function tagVisualEventSteps(event, steps = []) {
 
 function orderTurnStartVisualEvents(events = []) {
   if (!events.some(event => event?.turnStartStage)) return events;
-  const rank = stage => stage === 'turnBoundary' ? 0 : stage === 'turnStart' ? 1 : stage === 'draw' ? 2 : 3;
+  const rank = stage => stage === 'turnBoundary' ? 0 : stage === 'turnBanner' ? 1 : stage === 'turnStart' ? 2 : stage === 'draw' ? 3 : 4;
   const result = [];
   let stagedGroup = [];
   const flushStagedGroup = () => {
@@ -171,9 +171,21 @@ function isEquivalentAnimationStep(left, right) {
   return true;
 }
 
-export function mergeAnimationTransactionQueue(queue = [], transaction = null) {
+export const ANIMATION_QUEUE_AUTHORITY = Object.freeze({
+  QUEUE: 'queue',
+  EVENTS: 'events',
+  LEGACY_MERGE: 'legacyMerge',
+});
+
+export function mergeAnimationTransactionQueue(queue = [], transaction = null, options = {}) {
   const legacyQueue = Array.isArray(queue) ? queue.filter(Boolean).map(step => ({ ...step })) : [];
   const canonicalQueue = Array.isArray(transaction?.queue) ? transaction.queue.filter(Boolean) : [];
+  const authority = options.authority || ANIMATION_QUEUE_AUTHORITY.LEGACY_MERGE;
+  // A queue produced by a stage-aware orchestrator is already the canonical
+  // transaction. Recompiling state events here would create a second ordering
+  // authority and can move settlement steps across their phase boundaries.
+  if (authority === ANIMATION_QUEUE_AUTHORITY.QUEUE) return legacyQueue;
+  if (authority === ANIMATION_QUEUE_AUTHORITY.EVENTS) return canonicalQueue.map(step => ({ ...step }));
   if (!canonicalQueue.length) return legacyQueue;
 
   // During migration some callers still submit an inferred queue alongside
@@ -406,6 +418,7 @@ export function compileRuleVisualEventsToAnimTransaction(state, previousState = 
     ...(events.some(event => event?.turnStartStage) ? {
       stageQueues: {
         turnBoundary: queue.filter(step => step?.turnStartStage === 'turnBoundary'),
+        turnBanner: queue.filter(step => step?.turnStartStage === 'turnBanner'),
         turnStart: queue.filter(step => step?.turnStartStage === 'turnStart'),
         draw: queue.filter(step => step?.turnStartStage === 'draw'),
       },

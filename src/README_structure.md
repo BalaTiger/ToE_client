@@ -67,6 +67,8 @@ Pure logic modules with no React dependency. Important files include:
 - `coreUtils.js` - shared rules, card predicates, player copying, card log text
 - `setup.js` - deck, roles, and initial game construction helpers
 - `turnEngine.js` - turn start, draw, god encounter, and turn flow helpers
+- `RULES.md` - normative turn phases, event priority, interruption, and state-snapshot semantics
+- `turnFlowStages.js` / `turnStartEvents.js` / `endTurnEvents.js` - shared phase names and player/AI event registries
 - `ai.js` / `aiTurn.js` - AI choices and AI turn resolution
 - `aiTurnPresentation.js` / `aiDecisionState.js` - AI presentation queues, recovery, and decision-state helpers
 - `effectEngine.js` - zone/check card and public effect resolution

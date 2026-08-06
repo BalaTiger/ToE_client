@@ -6,12 +6,43 @@ import {
   clearPendingAnimDeathPlayers,
   collectExplicitAiTurnLogs,
   finalizeAiPresentationState,
+  scopeAiActionReplayMetadata,
   shouldBuildQueuedAiTurnStartReplay,
   stripAiExecutionFields,
   stripAiPresentationFields,
 } from '../aiTurnPresentation';
+import { createGodStatusChangedEvent } from '../visualEvents';
 
 describe('AI turn presentation helpers', () => {
+  it('keeps the next AI draw heal out of the previous AI action replay', () => {
+    const swapEvent = { id: 'allen-swap', type: 'swapCards' };
+    const healEvent = {
+      type: 'HP_GAIN',
+      target: 2,
+      from: { hp: 8, san: 10 },
+      to: { hp: 9, san: 10 },
+      reason: '蚂蚁虽小',
+      logHint: '贝拉 回复了 1 HP',
+      seq: 12,
+    };
+    const state = {
+      _statEventSeq: 12,
+      _statEvents: [healEvent],
+      _visualEvents: [
+        swapEvent,
+        { id: 'bella-turn', type: 'turnStart', turnStartStage: 'turnStart' },
+        { id: 'bella-draw', type: 'drawCard', turnStartStage: 'draw' },
+        { id: 'bella-heal', type: 'statEvents', turnStartStage: 'draw', statEvents: [healEvent] },
+      ],
+    };
+
+    expect(scopeAiActionReplayMetadata(state)).toEqual({
+      visualEvents: [swapEvent],
+      statEvents: [],
+      statEventSeq: 0,
+    });
+  });
+
   it('keeps a terminal incoming AI turn eligible for queued presentation', () => {
     const nextState = {
       currentTurn: 1,
@@ -184,6 +215,120 @@ describe('AI turn presentation helpers', () => {
     });
 
     expect(result.queue.some(step => step.type === 'DISCARD')).toBe(false);
+  });
+
+  it('plays the complete worship-from-hand settlement before an AI hunt wait', () => {
+    const oldGod = { id: 'old-zhu', name: '烛九阴', godKey: 'ZHU', isGod: true };
+    const newGod = { id: 'new-zhu', name: '烛九阴', godKey: 'ZHU', isGod: true };
+    const beforePlayers = [
+      { name: '你', hp: 10, san: 10, isDead: false, hand: [{ id: 'reveal' }], godName: 'ZHU', godLevel: 1, godZone: [oldGod] },
+      { name: '贝拉', hp: 10, san: 10, isDead: false, hand: [newGod], godName: null, godLevel: 0, godZone: [] },
+    ];
+    const afterHighlightPlayers = [
+      beforePlayers[0],
+      { ...beforePlayers[1], hand: [], godName: 'ZHU', godLevel: 1, godZone: [newGod] },
+    ];
+    const afterAbandonPlayers = [
+      { ...beforePlayers[0], san: 10, godName: null, godLevel: 0, godZone: [] },
+      afterHighlightPlayers[1],
+    ];
+    const settledPlayers = [
+      { ...afterAbandonPlayers[0], san: 9 },
+      afterHighlightPlayers[1],
+    ];
+    const worshipMsg = '贝拉 从手牌信仰 烛九阴，获得衔烛照幽(Lv.1)（骷髅头不计）';
+    const abandonMsg = '你 被邪神抛弃，失去 1 SAN';
+    const huntMsg = '贝拉（追猎者）向你发动【追捕】！请选择亮出一张手牌';
+    const godStatusEvent = createGodStatusChangedEvent({
+      playerIdx: 1,
+      playerName: '贝拉',
+      godKey: 'ZHU',
+      godLevel: 1,
+      msgs: [worshipMsg],
+      playersBefore: beforePlayers,
+      playersAfter: afterHighlightPlayers,
+      faithSettlement: {
+        previousFaithExit: null,
+        abandonedFollowers: [{
+          playerIdx: 0,
+          cards: [oldGod],
+          msgs: [abandonMsg],
+          playersBefore: afterHighlightPlayers,
+          playersAfter: afterAbandonPlayers,
+          discardBefore: [],
+          discardAfter: [oldGod],
+          statEventSeqBefore: 0,
+          statEventSeqAfter: 1,
+          playersAfterResolution: settledPlayers,
+          discardAfterResolution: [oldGod],
+          effect: 'godAbandon',
+        }],
+      },
+    });
+    const previousState = {
+      phase: 'AI_TURN',
+      currentTurn: 1,
+      players: beforePlayers,
+      discard: [],
+      log: [],
+      _aiTurnIntroShown: true,
+      _statEvents: [],
+      _statEventSeq: 0,
+      _visualEvents: [],
+    };
+    const nextState = {
+      ...previousState,
+      phase: 'PLAYER_REVEAL_FOR_HUNT',
+      players: settledPlayers,
+      discard: [oldGod],
+      log: [worshipMsg, abandonMsg, huntMsg],
+      _visualEvents: [godStatusEvent],
+      _statEvents: [{
+        type: 'SAN_LOSS',
+        target: 0,
+        from: { hp: 10, san: 10, isDead: false },
+        to: { hp: 10, san: 9, isDead: false },
+        seq: 1,
+        reason: '被邪神抛弃',
+      }],
+      _statEventSeq: 1,
+    };
+    const rawResult = {
+      _playersBeforeSkillAction: settledPlayers,
+      _preSkillLogs: [worshipMsg, abandonMsg],
+      _preSkillDiscard: [oldGod],
+      _aiHuntEvents: [{
+        hunterIdx: 1,
+        targetIdx: 0,
+        beforePlayers: settledPlayers,
+        msgs: [huntMsg],
+      }],
+    };
+
+    const result = buildAiHuntWaitPresentation({
+      previousState,
+      rawResult,
+      nextState,
+      isDrawnCardActuallyDiscarded: () => false,
+      buildActorTurnStartReplay: vi.fn(),
+      buildTurnStartIntroQueue: vi.fn(),
+    });
+
+    const highlightIdx = result.queue.findIndex(step => step.type === 'GOD_HIGHLIGHT');
+    const abandonIdx = result.queue.findIndex(step => step.effect === 'godAbandon');
+    const sanIdx = result.queue.findIndex(step => step.type === 'SAN_DAMAGE');
+    const huntIdx = result.queue.findIndex(step => step.type === 'SKILL_HUNT');
+
+    expect([highlightIdx, abandonIdx, sanIdx, huntIdx].every(index => index >= 0)).toBe(true);
+    expect(highlightIdx).toBeLessThan(abandonIdx);
+    expect(abandonIdx).toBeLessThan(sanIdx);
+    expect(sanIdx).toBeLessThan(huntIdx);
+    expect(result.queue[abandonIdx]).toMatchObject({
+      fromPid: 0,
+      dest: 'discard',
+      cards: [oldGod],
+      faithSettlementStep: true,
+    });
   });
 
   it('keeps animation metadata available until the final presentation cleanup', () => {

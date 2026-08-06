@@ -20,6 +20,7 @@ import {
   pruneConsumedVisualEvents,
 } from '../visualEvents';
 import {
+  ANIMATION_QUEUE_AUTHORITY,
   compileRuleVisualEventsToAnimTransaction,
   compileVisualEventToAnimSteps,
   getAnimationQueueVisualEventIds,
@@ -288,7 +289,7 @@ describe('visualEventTransactionCompiler', () => {
     ]);
     expect(transaction.queue[1]).toMatchObject({ card: god, targetPid: 1 });
     expect(transaction.queue.slice(0, 3).map(step => step.turnStartStage)).toEqual([
-      'turnStart',
+      'turnBanner',
       'draw',
       'draw',
     ]);
@@ -335,8 +336,8 @@ describe('visualEventTransactionCompiler', () => {
       'SAN_DAMAGE',
       'DRAW_CARD',
     ]);
+    expect(transaction.stageQueues.turnBanner.map(step => step.type)).toEqual(['YOUR_TURN']);
     expect(transaction.stageQueues.turnStart.map(step => step.type)).toEqual([
-      'YOUR_TURN',
       'HP_DAMAGE',
       'SAN_DAMAGE',
     ]);
@@ -547,6 +548,42 @@ describe('visualEventTransactionCompiler', () => {
     );
     expect(merged).toHaveLength(1);
     expect(getAnimationQueueVisualEventIds(merged)).toEqual(['event-1']);
+  });
+
+  it('keeps a stage-aware bewitch queue authoritative at the playback boundary', () => {
+    const encounterSan = {
+      type: 'SAN_DAMAGE',
+      hitIndices: [1],
+      visualSetupPatch: { players: [player('你'), player('黛安娜')] },
+    };
+    const faithHighlight = {
+      type: 'GOD_HIGHLIGHT',
+      targetPid: 1,
+      godKey: 'CTH',
+    };
+    const stagedQueue = [
+      { type: 'SKILL_BEWITCH', targetIdx: 1 },
+      { type: 'CARD_TRANSFER', fromPid: 0, toPid: 1, dest: 'player' },
+      { type: 'DRAW_CARD', targetPid: 1 },
+      encounterSan,
+      faithHighlight,
+    ];
+    const conflictingRecompile = {
+      queue: [faithHighlight, encounterSan],
+    };
+
+    const result = mergeAnimationTransactionQueue(stagedQueue, conflictingRecompile, {
+      authority: ANIMATION_QUEUE_AUTHORITY.QUEUE,
+    });
+
+    expect(result.map(step => step.type)).toEqual([
+      'SKILL_BEWITCH',
+      'CARD_TRANSFER',
+      'DRAW_CARD',
+      'SAN_DAMAGE',
+      'GOD_HIGHLIGHT',
+    ]);
+    expect(result[3].visualSetupPatch.players[1].godName).toBeUndefined();
   });
 
   it('replaces inferred albino-creature stat effects with one canonical HP/SAN pair', () => {

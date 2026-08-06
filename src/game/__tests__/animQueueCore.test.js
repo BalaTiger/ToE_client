@@ -143,10 +143,21 @@ describe('buildAnimQueue stat animations', () => {
       log: [],
     });
     const msg = '艾伦 从手牌信仰 弗栗多，获得不灭之躯(Lv.1)（骷髅头不计）';
+    const afterPlayers = [{ ...oldGs.players[0], hand: [], godName: 'VRI', godLevel: 1, godZone: [godCard] }];
+    const event = createGodStatusChangedEvent({
+      playerIdx: 0,
+      playerName: '艾伦',
+      godKey: 'VRI',
+      godLevel: 1,
+      msgs: [msg],
+      playersBefore: oldGs.players,
+      playersAfter: afterPlayers,
+    });
     const newGs = {
       ...oldGs,
-      players: [{ ...oldGs.players[0], hand: [], godName: 'VRI', godLevel: 1, godZone: [godCard] }],
+      players: afterPlayers,
       log: [msg],
+      _visualEvents: [event],
     };
 
     expect(buildAnimQueue(oldGs, newGs)).toEqual(expect.arrayContaining([
@@ -211,17 +222,42 @@ describe('buildAnimQueue stat animations', () => {
     ]));
   });
 
-  it('旧快照兼容路径仍会先把旧神牌正面送入弃牌堆，再高亮新神', () => {
+  it('显式改信事件会先把旧神牌正面送入弃牌堆，再高亮新神', () => {
     const oldGod = makeGodCard('VRI');
     const newGod = makeGodCard('APO');
     const oldGs = makeGs({
       players: [makePlayer({ name: '你', godName: 'VRI', godLevel: 1, godZone: [oldGod] })],
       log: [],
     });
+    const playersAfterExit = [makePlayer({ name: '你', san: 9, godName: null, godLevel: 0, godZone: [] })];
+    const playersAfter = [makePlayer({ name: '你', san: 9, godName: 'APO', godLevel: 1, godZone: [newGod] })];
+    const event = createGodStatusChangedEvent({
+      playerIdx: 0,
+      playerName: '你',
+      godKey: 'APO',
+      godLevel: 1,
+      msgs: ['你 信仰了 阿波菲斯，获得噬日灭世(Lv.1)'],
+      playersBefore: playersAfterExit,
+      playersAfter,
+      faithSettlement: {
+        previousFaithExit: {
+          playerIdx: 0,
+          cards: [oldGod],
+          msgs: ['你 改信新神，失去1SAN，旧神牌入弃牌堆'],
+          effect: 'godConvertDiscard',
+          playersBefore: oldGs.players,
+          playersAfter: playersAfterExit,
+          discardBefore: [],
+          discardAfter: [oldGod],
+        },
+        abandonedFollowers: [],
+      },
+    });
     const newGs = makeGs({
-      players: [makePlayer({ name: '你', san: 9, godName: 'APO', godLevel: 1, godZone: [newGod] })],
+      players: playersAfter,
       discard: [oldGod],
       log: ['你 改信新神，失去1SAN，旧神牌入弃牌堆', '你 信仰了 阿波菲斯，获得噬日灭世(Lv.1)'],
+      _visualEvents: [event],
     });
 
     const queue = buildAnimQueue(oldGs, newGs);
@@ -1410,17 +1446,24 @@ describe('buildAnimQueue stat animations', () => {
     const players = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' })];
     const msg = '【引燃火把】艾伦 本回合不受邪神之力影响';
     const oldGs = makeGs({ players, log: [] });
+    const event = createGodPowerBlockedEvent({ playerIdx: 1, playerName: '艾伦', msgs: [msg] });
     const newGs = makeGs({
       players,
       log: [msg],
-      _visualEvents: [createGodPowerBlockedEvent({ playerIdx: 1, playerName: '艾伦', msgs: [msg] })],
+      _visualEvents: [event],
     });
 
     const queue = buildAnimQueue(oldGs, newGs);
+    const blockedSteps = queue.filter(step => step.type === 'GOD_POWER_BLOCKED');
 
-    expect(queue).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: 'GOD_POWER_BLOCKED', targetPid: 1, msgs: [msg] }),
-    ]));
+    expect(blockedSteps).toEqual([
+      expect.objectContaining({
+        type: 'GOD_POWER_BLOCKED',
+        targetPid: 1,
+        msgs: [msg],
+        visualEventId: event.id,
+      }),
+    ]);
   });
 });
 

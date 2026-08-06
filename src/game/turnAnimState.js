@@ -30,13 +30,12 @@ export const EMPTY_TURN_ANIM_FIELDS = Object.freeze({
   _earthquakeDiscardEvents: null,
 });
 
-// A turn transition has three explicit stages. The previous actor's registered
-// end-turn effects belong to TURN_BOUNDARY; effects produced after the next
-// actor starts but before the fixed draw belong to TURN_START; the reveal and
-// every consequence caused by that card belong to DRAW. The marker travels
-// with each step so AI/local/remote adapters never infer boundaries from indices.
+// A turn transition keeps the ownership banner separate from rule-bearing
+// turn-start effects. A face-down player may therefore show TURN_BANNER while
+// executing no TURN_START or DRAW stage at all.
 export const TURN_START_ANIMATION_STAGE = Object.freeze({
   TURN_BOUNDARY: 'turnBoundary',
+  TURN_BANNER: 'turnBanner',
   TURN_START: 'turnStart',
   DRAW: 'draw',
 });
@@ -51,12 +50,15 @@ export function markTurnStartAnimationStage(queue = [], stage) {
 export function splitTurnStartAnimationStages(queue = []) {
   const stages = {
     [TURN_START_ANIMATION_STAGE.TURN_BOUNDARY]: [],
+    [TURN_START_ANIMATION_STAGE.TURN_BANNER]: [],
     [TURN_START_ANIMATION_STAGE.TURN_START]: [],
     [TURN_START_ANIMATION_STAGE.DRAW]: [],
   };
   (Array.isArray(queue) ? queue : []).forEach(step => {
     const stage = step?.turnStartStage === TURN_START_ANIMATION_STAGE.TURN_BOUNDARY
       ? TURN_START_ANIMATION_STAGE.TURN_BOUNDARY
+      : step?.turnStartStage === TURN_START_ANIMATION_STAGE.TURN_BANNER
+        ? TURN_START_ANIMATION_STAGE.TURN_BANNER
       : step?.turnStartStage === TURN_START_ANIMATION_STAGE.DRAW
         ? TURN_START_ANIMATION_STAGE.DRAW
         : TURN_START_ANIMATION_STAGE.TURN_START;
@@ -369,6 +371,10 @@ function isLinkHealTurnStartStatEvent(event) {
   return event?.reason === '两人一绳' || String(event?.logHint || '').includes('【两人一绳】');
 }
 
+function isPoisonTurnStartStatEvent(event) {
+  return event?.reason === '中毒' || String(event?.logHint || '').includes('【中毒】');
+}
+
 function getFreshStatEventsFromState(oldGs, newGs) {
   const oldSeq = oldGs?._statEventSeq || 0;
   const visualStatEvents = getVisualEvents(newGs)
@@ -469,6 +475,10 @@ export function buildTurnStartPreDrawEffectQueue({ oldGs, newGs, buildQueue = bu
     if (hpEvents.length) queue.push(...statEventsToAnimQueue(hpEvents, preTurnPlayers, goatMsgs));
     if (sanEvents.length) queue.push(...statEventsToAnimQueue(sanEvents, preTurnPlayers, goatMsgs));
   }
+  const poisonEvents = statEvents.filter(isPoisonTurnStartStatEvent);
+  if (poisonEvents.length) {
+    queue.push(...statEventsToAnimQueue(poisonEvents, preTurnPlayers, eventMsgs(poisonEvents, preDrawMsgs)));
+  }
   const linkHealEvents = statEvents.filter(isLinkHealTurnStartStatEvent);
   if (linkHealEvents.length) {
     queue.push(...statEventsToAnimQueue(linkHealEvents, preTurnPlayers, eventMsgs(linkHealEvents, preDrawMsgs)));
@@ -499,6 +509,7 @@ export function buildSkippedTurnReplayQueue(state, { buildQueue = buildAnimQueue
   return replays.flatMap(replay => {
     const turnBanner = {
       type: 'YOUR_TURN',
+      turnStartStage: TURN_START_ANIMATION_STAGE.TURN_BANNER,
       name: localDisplayName(replay.playerIdx, replay.playerName || state?.players?.[replay.playerIdx]?.name || '???'),
       msgs: replay.turnStartLogs || [],
     };
@@ -657,6 +668,7 @@ export function buildTurnStartDrawReplayQueue({
     : null;
   const turnStartStep = buildTurnStartStepFromVisualEvents(newGs) || {
     type: 'YOUR_TURN',
+    turnStartStage: TURN_START_ANIMATION_STAGE.TURN_BANNER,
     ...(drawerPid === 0 ? {} : { name: drawerName }),
     msgs: newGs?._turnStartLogs,
   };
@@ -1058,9 +1070,13 @@ export function buildTurnStartDrawReplayQueue({
   const drawEffectStatePatch = hasDrawEffectVisualStep
     ? statePatchStep({ players: newGs?.players, discard: newGs?.discard })
     : null;
-  const turnStartStageQueue = markTurnStartAnimationStage([
+  const turnBoundaryStageQueue = markTurnStartAnimationStage([
     ...boundarySteps,
+  ], TURN_START_ANIMATION_STAGE.TURN_BOUNDARY);
+  const turnBannerStageQueue = markTurnStartAnimationStage([
     turnStartStep,
+  ], TURN_START_ANIMATION_STAGE.TURN_BANNER);
+  const turnStartStageQueue = markTurnStartAnimationStage([
     ...turnStartPreDrawQ,
     ...(turnStartStatePatch ? [turnStartStatePatch] : []),
   ], TURN_START_ANIMATION_STAGE.TURN_START);
@@ -1074,10 +1090,12 @@ export function buildTurnStartDrawReplayQueue({
     ...(drawEffectStatePatch ? [drawEffectStatePatch] : []),
   ], TURN_START_ANIMATION_STAGE.DRAW);
   const stageQueues = {
+    [TURN_START_ANIMATION_STAGE.TURN_BOUNDARY]: turnBoundaryStageQueue,
+    [TURN_START_ANIMATION_STAGE.TURN_BANNER]: turnBannerStageQueue,
     [TURN_START_ANIMATION_STAGE.TURN_START]: turnStartStageQueue,
     [TURN_START_ANIMATION_STAGE.DRAW]: drawStageQueue,
   };
-  const queue = [...turnStartStageQueue, ...drawStageQueue];
+  const queue = [...turnBoundaryStageQueue, ...turnBannerStageQueue, ...turnStartStageQueue, ...drawStageQueue];
   const startAnim = queue[0] || null;
   const startQueue = queue.slice(1);
   return {

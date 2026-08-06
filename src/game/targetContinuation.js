@@ -22,6 +22,7 @@ export function getTargetContinuationRoute(state, {
   continueTurnStartDraw = false,
 } = {}) {
   if (continueRest) return TARGET_CONTINUATION_ROUTE.REST_DRAW;
+  if (state?.phase === 'NYA_BORROW') return TARGET_CONTINUATION_ROUTE.DECISION;
   if (continueTurnStartDraw || state?.abilityData?.continueTurnStartDraw) {
     return TARGET_CONTINUATION_ROUTE.TURN_START_DRAW;
   }
@@ -46,6 +47,7 @@ export function buildTargetContinuationAbilityData(abilityData = {}) {
     ...(abilityData?.fromEndTurnReplay ? { fromEndTurnReplay: true } : {}),
     ...(abilityData?.fromTsathogguaSlime ? { fromTsathogguaSlime: true } : {}),
     ...(abilityData?.continueTurnStartDraw ? { continueTurnStartDraw: true } : {}),
+    ...(abilityData?._tsgExtraDrawReady ? { _tsgExtraDrawReady: true } : {}),
     ...(abilityData?.pendingTsathogguaSlime ? { pendingTsathogguaSlime: abilityData.pendingTsathogguaSlime } : {}),
     ...(abilityData?.pendingTsathogguaSlimes ? { pendingTsathogguaSlimes: abilityData.pendingTsathogguaSlimes } : {}),
     ...(abilityData?.cthDrawsRemaining != null ? { cthDrawsRemaining: abilityData.cthDrawsRemaining } : {}),
@@ -54,6 +56,7 @@ export function buildTargetContinuationAbilityData(abilityData = {}) {
     ...(abilityData?.pendingGodChoice ? { pendingGodChoice: abilityData.pendingGodChoice } : {}),
     ...(abilityData?._pendingTurnStartPoison ? { _pendingTurnStartPoison: true } : {}),
     ...(abilityData?._pendingTurnStartLinkHeals ? { _pendingTurnStartLinkHeals: abilityData._pendingTurnStartLinkHeals } : {}),
+    ...(abilityData?._pendingTurnStartEventIds ? { _pendingTurnStartEventIds: abilityData._pendingTurnStartEventIds } : {}),
     ...(abilityData?.pendingSlimeBalanceDecisions?.length ? { pendingSlimeBalanceDecisions: abilityData.pendingSlimeBalanceDecisions } : {}),
   };
 }

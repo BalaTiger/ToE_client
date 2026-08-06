@@ -36,7 +36,12 @@ import {
   VISUAL_EVENT,
   pruneConsumedVisualEvents,
 } from './visualEvents';
-import { compileFreshVisualEventsToAnimSteps, compileVisualEventToAnimSteps, compileVisualEventToAnimTransaction } from './visualEventTransactionCompiler';
+import {
+  ANIMATION_QUEUE_AUTHORITY,
+  compileFreshVisualEventsToAnimSteps,
+  compileVisualEventToAnimSteps,
+  compileVisualEventToAnimTransaction,
+} from './visualEventTransactionCompiler';
 
 export const MP_REMOTE_REPLAY = {
   ROLE_REVEAL: 'ROLE_REVEAL',
@@ -153,6 +158,82 @@ function withApophisTargetReplay(queue = [], previousGs, rotated, buildAnimQueue
 
 function clearRemoteReplayHints(state) {
   return state ? withClearedReplayAnimFields(clearVisualEvents({ ...state, _mpTimedOutDrawDiscard: null })) : state;
+}
+
+function prepareExactTransactionQueue(event) {
+  const exactQueue = [...(event?.queue || [])];
+  if (!exactQueue.length) return [];
+  if (Array.isArray(event.beforePlayers) || Array.isArray(event.beforeDiscard)) {
+    exactQueue[0] = {
+      ...exactQueue[0],
+      visualSetupTiming: 'queueStart',
+      visualSetupPatch: {
+        ...(exactQueue[0].visualSetupPatch || {}),
+        ...(Array.isArray(event.beforePlayers) ? { players: event.beforePlayers } : {}),
+        ...(Array.isArray(event.beforeDiscard) ? { discard: event.beforeDiscard } : {}),
+        ...(event.zhuLight ? { zhuLight: event.zhuLight } : {}),
+      },
+    };
+  }
+  return exactQueue;
+}
+
+function buildExactAnimTransactionReplayAction(events, rotated, previousGs, buildAnimQueue) {
+  const exactEvents = (Array.isArray(events) ? events : [events]).filter(event => (
+    event?.type === VISUAL_EVENT.ANIM_TRANSACTION && Array.isArray(event.queue) && event.queue.length
+  ));
+  if (!exactEvents.length) return null;
+
+  const transactionIds = exactEvents.map(event => event.id).filter(Boolean);
+  const coveredEventIds = new Set(exactEvents.flatMap(event => event.coveredEventIds || []));
+  const exactEventIds = new Set(transactionIds);
+  const uncoveredEvents = (Array.isArray(rotated?._visualEvents) ? rotated._visualEvents : []).filter(event => (
+    event?.id && !exactEventIds.has(event.id) && !coveredEventIds.has(event.id)
+  ));
+  const uncoveredTransactions = uncoveredEvents.map(event => ({
+    event,
+    transaction: compileVisualEventToAnimTransaction(event, rotated, previousGs, {
+      buildAnimQueue,
+      logDelta: getLogDelta(previousGs, rotated),
+    }),
+  }));
+  const compiledUncovered = uncoveredTransactions.filter(item => item.transaction?.queue?.length);
+  const uncompiledEventIds = uncoveredTransactions
+    .filter(item => !item.transaction?.queue?.length)
+    .map(item => item.event.id);
+  const explicitTailQueue = compiledUncovered.flatMap(item => item.transaction.queue);
+  const consumedVisualEventIds = [...new Set([
+    ...transactionIds,
+    ...coveredEventIds,
+    ...compiledUncovered.flatMap(item => item.transaction.eventIds || [item.event.id]),
+  ].filter(Boolean))];
+  const exactQueue = exactEvents.flatMap(prepareExactTransactionQueue);
+  if (uncoveredEvents.length && import.meta.env?.DEV) {
+    console.warn('[animTransaction] uncovered visual events will replay after the exact queue', {
+      transactionIds,
+      uncoveredEventIds: uncoveredEvents.map(event => event.id),
+      uncompiledEventIds,
+    });
+  }
+
+  return {
+    type: MP_REMOTE_REPLAY.ANIM_QUEUE,
+    queueAuthority: ANIMATION_QUEUE_AUTHORITY.QUEUE,
+    maskedGs: buildMaskedActionState(rotated),
+    pendingGs: clearRemoteReplayHints(rotated),
+    queue: appendFinalStatePatch(
+      [...exactQueue, ...explicitTailQueue],
+      rotated,
+      ['players', 'discard', 'log', 'phase', 'abilityData', 'currentTurn', 'drawReveal'],
+    ),
+    consumedVisualEventIds,
+    ...(uncoveredEvents.length ? { uncoveredVisualEventIds: uncoveredEvents.map(event => event.id) } : {}),
+    ...(uncompiledEventIds.length ? { uncompiledVisualEventIds: uncompiledEventIds } : {}),
+    visualLock: {
+      ...(Array.isArray(exactEvents[0].beforePlayers) ? { players: exactEvents[0].beforePlayers } : {}),
+      ...(exactEvents[0].zhuLight ? { zhuLight: exactEvents[0].zhuLight } : {}),
+    },
+  };
 }
 
 function getLogDelta(previousGs, rotated) {
@@ -357,9 +438,21 @@ export function buildMpRemoteReplayAction({
   if (hadVisualEventsBeforePrune && visualEventIds.length === 0 && !hasFreshTurnDrawReplayState(rotated)) {
     return { type: MP_REMOTE_REPLAY.SET_STATE, gs: clearRemoteReplayHints(rotated) };
   }
-  const withConsumedVisualEvents = action => (
-    visualEventIds.length ? { ...action, consumedVisualEventIds: visualEventIds } : action
-  );
+  const withConsumedVisualEvents = action => {
+    // Remote replay planning has already compiled state-only visual events and
+    // assembled any stage/state-patch tail. Playback must execute that exact
+    // result instead of compiling the same state a second time.
+    const plannedAction = [MP_REMOTE_REPLAY.ANIM_QUEUE, MP_REMOTE_REPLAY.START_ANIM]
+      .includes(action?.type)
+      ? { ...action, queueAuthority: ANIMATION_QUEUE_AUTHORITY.QUEUE }
+      : action;
+    const actionEventIds = Array.isArray(action?.consumedVisualEventIds)
+      ? action.consumedVisualEventIds
+      : visualEventIds;
+    return actionEventIds.length
+      ? { ...plannedAction, consumedVisualEventIds: actionEventIds }
+      : plannedAction;
+  };
   if (!roleRevealed && !rotated.gameOver) {
     return withConsumedVisualEvents({
       type: MP_REMOTE_REPLAY.ROLE_REVEAL,
@@ -368,6 +461,17 @@ export function buildMpRemoteReplayAction({
       role: rotated.players?.[0]?.role,
     });
   }
+
+  // Exact transactions are already fully ordered by the rule/orchestration
+  // layer. They always take precedence over every state-diff compatibility
+  // branch, including resolved draw and god-choice inference.
+  const exactTransactionAction = buildExactAnimTransactionReplayAction(
+    (rotated._visualEvents || []).filter(event => event?.type === VISUAL_EVENT.ANIM_TRANSACTION),
+    rotated,
+    previousGs,
+    buildAnimQueue,
+  );
+  if (exactTransactionAction) return withConsumedVisualEvents(exactTransactionAction);
 
   const logDelta = getLogDelta(previousGs, rotated);
   const timedOutDrawDiscardStep = buildTimedOutDrawDiscardStep(rotated, previousGs, logDelta);

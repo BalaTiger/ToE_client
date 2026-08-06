@@ -1,6 +1,7 @@
 import { copyPlayers } from './coreUtils';
 import { getEndTurnEvents } from './endTurnEvents';
 import { startNextTurn as defaultAdvanceTurn } from './turnEngine';
+import { TURN_FLOW_STAGE } from './turnFlowStages';
 
 export const END_TURN_DECISION = {
   DISCARD: 'DISCARD',
@@ -35,6 +36,7 @@ export function resolveEndTurn(gs, {
       gs: {
         ...gs,
         phase: 'DISCARD_PHASE',
+        _turnFlowStage: TURN_FLOW_STAGE.DISCARD,
         abilityData: { discardSelected: [], fromEndTurn: true },
       },
     };
@@ -58,6 +60,7 @@ export function resolveEndTurn(gs, {
         discard: Disc,
         log: L,
         currentTurn: actorIndex,
+        _turnFlowStage: TURN_FLOW_STAGE.END_TURN,
         abilityData: {},
       },
     };
@@ -71,6 +74,7 @@ export function resolveEndTurn(gs, {
     discard: Disc,
     log: L,
     currentTurn: actorIndex,
+    _turnFlowStage: null,
   });
 
   return { decision: END_TURN_DECISION.APPLY_NEXT_TURN, newGs };

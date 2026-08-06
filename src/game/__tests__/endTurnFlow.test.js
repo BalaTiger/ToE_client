@@ -18,6 +18,7 @@ describe('resolveEndTurn', () => {
 
     expect(result.decision).toBe(END_TURN_DECISION.DISCARD);
     expect(result.gs.phase).toBe('DISCARD_PHASE');
+    expect(result.gs._turnFlowStage).toBe('discard');
     expect(result.gs.abilityData).toMatchObject({
       discardSelected: [],
       fromEndTurn: true,
@@ -32,6 +33,7 @@ describe('resolveEndTurn', () => {
 
     expect(result.decision).toBe(END_TURN_DECISION.SCHEDULE_EVENTS);
     expect(result.baseGs.currentTurn).toBe(0);
+    expect(result.baseGs._turnFlowStage).toBe('endTurn');
     expect(result.baseGs.abilityData).toEqual({});
   });
 

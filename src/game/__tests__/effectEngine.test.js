@@ -15,6 +15,29 @@ import { createTsathogguaSlimeCard } from '../../constants/card';
 import { VISUAL_EVENT } from '../visualEvents';
 import { makeProliferatingZState } from '../proliferatingZ';
 
+describe('逆流回合结束时机', () => {
+  it('行动阶段打出时只登记，不立即反转方向', () => {
+    const players = [makePlayer({ name: '艾伦' }), makePlayer({ name: '贝拉' })];
+    const gs = makeGs({ players, currentTurn: 0, turnDirection: 1, _turnFlowStage: 'action' });
+
+    const result = applyFx({ type: 'reverseTurnOrder', name: '逆流' }, 0, null, players, [], [], gs);
+
+    expect(result.P[0].pendingTurnDirectionReversals).toBe(1);
+    expect(result.statePatch?.turnDirection).toBeUndefined();
+    expect(result.msgs[0]).toContain('本回合结束时');
+  });
+
+  it('回合结束事件重播出的逆流在当前回合结束阶段立即生效', () => {
+    const players = [makePlayer({ name: '艾伦' }), makePlayer({ name: '贝拉' })];
+    const gs = makeGs({ players, currentTurn: 0, turnDirection: 1, _turnFlowStage: 'endTurn' });
+
+    const result = applyFx({ type: 'reverseTurnOrder', name: '逆流' }, 0, null, players, [], [], gs);
+
+    expect(result.statePatch.turnDirection).toBe(-1);
+    expect(result.P[0].pendingTurnDirectionReversals).toBeUndefined();
+  });
+});
+
 describe('applyHpDamageWithLink', () => {
   beforeEach(() => resetIds());
 

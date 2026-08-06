@@ -28,6 +28,7 @@ import {
 } from './turnEngine';
 import { getZhuTopGuard, removeZhuLightCard } from './zhuPower';
 import { buildTargetContinuationAbilityData } from './targetContinuation';
+import { hasGodPowerImmunity } from './godPowerImmunity';
 
 export const HEADLESS_TURN_OPTIONS = Object.freeze({ allAi: true });
 
@@ -205,28 +206,37 @@ export function continueHeadlessTurnStartDraw(gs) {
   let L = [...gs.log];
   const abilityData = gs.abilityData || {};
   const drawerIdx = Number.isInteger(abilityData._turnOwner) ? abilityData._turnOwner : gs.currentTurn;
-  const pendingSlime = abilityData.pendingTsathogguaSlime;
-
-  if (pendingSlime) {
-    const holderIdx = P.findIndex(player => (player?.hand || []).some(card => (
-      pendingSlime.id != null ? card?.id === pendingSlime.id : card === pendingSlime || card?.isTsathogguaSlime
-    )));
-    if (holderIdx >= 0) {
-      const slimeIdx = P[holderIdx].hand.findIndex(card => (
-        pendingSlime.id != null ? card?.id === pendingSlime.id : card === pendingSlime || card?.isTsathogguaSlime
-      ));
-      if (slimeIdx >= 0) P[holderIdx].hand.splice(slimeIdx, 1);
+  const extraDrawReady = !!abilityData._tsgExtraDrawReady;
+  if (!extraDrawReady) {
+    const drawer = P[drawerIdx];
+    const slimeIdx = drawer
+      && !drawer.isDead
+      && drawer.godName === 'TSG'
+      && (drawer.godLevel || 0) > 0
+      && !hasGodPowerImmunity(drawer)
+      ? (drawer.hand || []).findIndex(isTsathogguaSlime)
+      : -1;
+    if (slimeIdx >= 0) {
+      drawer.hand.splice(slimeIdx, 1);
+      return {
+        ...gs,
+        players: P,
+        log: L,
+        phase: 'AI_TURN',
+        abilityData: {
+          ...abilityData,
+          _turnOwner: drawerIdx,
+          fromTsathogguaSlime: true,
+          continueTurnStartDraw: true,
+          _tsgExtraDrawReady: true,
+          pendingTsathogguaSlime: undefined,
+          pendingTsathogguaSlimes: undefined,
+        },
+      };
     }
-    const nextAbilityData = { ...abilityData };
-    delete nextAbilityData.pendingTsathogguaSlime;
-    return { ...gs, players: P, log: L, phase: 'AI_TURN', abilityData: nextAbilityData };
   }
 
-  const pendingSlimes = Array.isArray(abilityData.pendingTsathogguaSlimes)
-    ? abilityData.pendingTsathogguaSlimes.filter(Boolean)
-    : [];
-  const continuingSlime = pendingSlimes[0] || null;
-  const remainingSlimes = pendingSlimes.slice(1);
+  const continuingSlime = extraDrawReady;
   const res = aiDrawAndApply(drawerIdx, P, D, Disc, {
     ...gs,
     currentTurn: drawerIdx,
@@ -239,8 +249,6 @@ export function continueHeadlessTurnStartDraw(gs) {
   const continuationAbility = continuingSlime ? {
     fromTsathogguaSlime: true,
     continueTurnStartDraw: true,
-    pendingTsathogguaSlime: continuingSlime,
-    pendingTsathogguaSlimes: remainingSlimes,
     _turnOwner: drawerIdx,
   } : {};
   const base = {

@@ -95,6 +95,32 @@ export function collectExplicitAiTurnLogs(state, queue) {
   ];
 }
 
+// aiStep may return the completed current action together with the already
+// resolved next turn. Keep the latter's staged events out of the current
+// action replay; they are presented by the queued turn-start transaction.
+export function scopeAiActionReplayMetadata(state) {
+  const visualEvents = Array.isArray(state?._visualEvents) ? state._visualEvents : [];
+  const turnStartStatSeqs = new Set(
+    visualEvents
+      .filter(event => !!event?.turnStartStage)
+      .flatMap(event => Array.isArray(event?.statEvents) ? event.statEvents : [])
+      .map(event => event?.seq)
+      .filter(seq => seq != null)
+  );
+  const actionVisualEvents = visualEvents.filter(event => !event?.turnStartStage);
+  const actionStatEvents = (Array.isArray(state?._statEvents) ? state._statEvents : [])
+    .filter(event => event?.seq == null || !turnStartStatSeqs.has(event.seq));
+  const actionStatEventSeq = actionStatEvents.reduce(
+    (max, event) => Number.isFinite(event?.seq) ? Math.max(max, event.seq) : max,
+    0
+  );
+  return {
+    visualEvents: actionVisualEvents,
+    statEvents: actionStatEvents,
+    statEventSeq: actionStatEventSeq,
+  };
+}
+
 export function buildAiHuntWaitPresentation({
   previousState,
   rawResult,
@@ -255,7 +281,17 @@ export function buildAiHuntWaitPresentation({
     : { ...previousState, players: actionBaselinePlayers };
   const actionStatQueueBase = buildAnimQueue(
     actionOldState,
-    fakeState(nextState.players, nextLog)
+    {
+      ...fakeState(nextState.players, nextLog),
+      // AI worship-from-hand is resolved in the rule layer before the hunt
+      // wait state is returned.  Keep the authoritative action events here so
+      // GOD_STATUS_CHANGED can compose highlight, abandoned-god transfer and
+      // its SAN settlement into one transaction ahead of the hunt animation.
+      discard: nextState.discard,
+      _visualEvents: nextState._visualEvents || [],
+      _statEvents: nextState._statEvents || [],
+      _statEventSeq: nextState._statEventSeq || 0,
+    }
   );
   const hasRoseThornGiftAllHand = newMessages.some(message =>
     typeof message === 'string'

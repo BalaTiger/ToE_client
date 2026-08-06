@@ -30,6 +30,7 @@ npm.cmd run test:run -- src/multiplayer/useMultiplayerStateBroadcast.test.js
 ## Current Architecture
 
 Use `src/README_structure.md` as the current source of truth for module boundaries and refactor status.
+Use `src/game/RULES.md` as the source of truth for turn phases, event timing/priority, skipped-turn behavior, and dynamic-versus-locked state reads.
 
 Important directories:
 

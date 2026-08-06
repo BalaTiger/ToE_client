@@ -227,7 +227,7 @@ describe('multiplayer remote replay executor', () => {
     expect(ctx.triggerAnimQueue).toHaveBeenCalledWith([
       animation,
       { type: 'PAUSE' },
-    ], pendingGs);
+    ], pendingGs, undefined, { authority: 'queue' });
     expect(ctx.setAnim).not.toHaveBeenCalled();
     expect(ctx.receivedGsRef.current).toBe(true);
     expect(ctx.suppressNextBroadcastRef.current).toBe(true);
@@ -247,9 +247,39 @@ describe('multiplayer remote replay executor', () => {
       queue: [draw],
     }, pendingGs, ctx);
 
-    expect(ctx.triggerAnimQueue).toHaveBeenCalledWith([turn, draw], pendingGs);
+    expect(ctx.triggerAnimQueue).toHaveBeenCalledWith(
+      [turn, draw],
+      pendingGs,
+      undefined,
+      { authority: 'queue' },
+    );
     expect(ctx.pendingGsRef.current).toBeNull();
     expect(ctx.animQueueRef.current).toEqual([]);
+  });
+
+  it('forwards exact transaction queue authority without dropping event consumption ids', () => {
+    const ctx = context();
+    const pendingGs = state();
+    const queue = [
+      { type: 'SAN_DAMAGE', hitIndices: [1] },
+      { type: 'GOD_HIGHLIGHT', targetPid: 1, godKey: 'CTH' },
+    ];
+
+    applyMultiplayerReplayAction({
+      type: MP_REMOTE_REPLAY.ANIM_QUEUE,
+      maskedGs: state(),
+      pendingGs,
+      queue,
+      queueAuthority: 'queue',
+      consumedVisualEventIds: ['bewitch-transaction'],
+    }, pendingGs, ctx);
+
+    expect(ctx.triggerAnimQueue).toHaveBeenCalledWith(
+      queue,
+      pendingGs,
+      undefined,
+      { eventIds: ['bewitch-transaction'], authority: 'queue' },
+    );
   });
 
   it('ignores stale duplicate state packets', () => {
@@ -302,7 +332,7 @@ describe('multiplayer remote replay executor', () => {
       [expect.objectContaining({ type: 'ENDLESS_CORRIDOR_TUNNEL' }), expect.objectContaining({ type: 'STATE_PATCH' })],
       expect.objectContaining({ _visualEvents: [] }),
       undefined,
-      { eventIds: [replayEvent.id] },
+      { authority: 'queue', eventIds: [replayEvent.id] },
     );
     expect(ctx.consumedVisualEventIdsRef.current).not.toContain(replayEvent.id);
   });

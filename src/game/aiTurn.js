@@ -50,10 +50,11 @@ import { cardTransferStep, statePatchStep } from './animQueueHelpers';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, isRevealedCultist } from './coreUtils';
 import { createBlackGoatYoungCard } from '../constants/card';
 import { buildStatEvents } from './statEvents';
-import { END_TURN_EVENT, getEndTurnEvents, getEndTurnReplayHandCards } from './endTurnEvents';
+import { END_TURN_EVENT, getEndTurnEvents, getEndTurnReplayHandCards, resolveReverseTurnOrderAtEnd } from './endTurnEvents';
 import { deriveEffectDecisionState, hasEffectDecisionState } from './effectStatePatch';
 import { buildApophisNightLog, getApophisNightForLevel, resolveApophisTarget } from './apophisNight';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
+import { TURN_FLOW_STAGE } from './turnFlowStages';
 import { buildGodPowerBlockedLog, canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
 import {
@@ -534,13 +535,26 @@ export function processAiEndTurnEvents(P, D, Disc, L, ct, gs) {
   let statePatch = {};
 
   for (const event of events) {
-    const eventGs = { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L };
+    const eventGs = { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L, _turnFlowStage: TURN_FLOW_STAGE.END_TURN };
     if (event.id === END_TURN_EVENT.CTH_REST_DRAW) {
       const resolved = processAiCthEndTurnDraws(P, D, Disc, L, ct, eventGs, event.drawCount);
       P = resolved.P; D = resolved.D; Disc = resolved.Disc; L = resolved.L;
       statePatch = { ...statePatch, ...resolved.statePatch };
       replayQueue.push(...resolved.replayQueue);
       replayMsgs.push(...resolved.replayMsgs);
+      continue;
+    }
+    if (event.id === END_TURN_EVENT.REVERSE_TURN_ORDER) {
+      const resolved = resolveReverseTurnOrderAtEnd(P, ct, eventGs.turnDirection, L, event.reverseCount);
+      P = resolved.players; L = resolved.log;
+      statePatch = { ...statePatch, turnDirection: resolved.turnDirection };
+      replayQueue.push(statePatchStep({
+        players: copyPlayers(P),
+        log: [...L],
+        turnDirection: resolved.turnDirection,
+        msgs: resolved.msgs,
+      }));
+      replayMsgs.push(...resolved.msgs);
       continue;
     }
     if (event.id === END_TURN_EVENT.TSG_SLIME_GRANT) {

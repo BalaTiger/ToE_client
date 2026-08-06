@@ -9,6 +9,7 @@ import {
 import { rotateGsForViewer } from '../game/rotateState';
 import { getVisualEventIdsFromState } from '../game/visualEvents';
 import { getZhuTopGuard } from '../game/zhuPower';
+import { ANIMATION_QUEUE_AUTHORITY } from '../game/visualEventTransactionCompiler';
 
 const ANIMATED_REPLAY_TYPES = new Set([
   MP_REMOTE_REPLAY.ROLE_REVEAL,
@@ -109,11 +110,13 @@ function maskApophisBadgeForReplayStart(replayAction, latestState) {
 
 function triggerReplayAnimationQueue(context, replayAction, queue) {
   const eventIds = replayAction?.consumedVisualEventIds || [];
-  if (eventIds.length) {
-    context.triggerAnimQueue(queue, replayAction.pendingGs, undefined, { eventIds });
-  } else {
-    context.triggerAnimQueue(queue, replayAction.pendingGs);
-  }
+  const transactionMeta = {
+    ...(eventIds.length ? { eventIds } : {}),
+    authority: replayAction?.queueAuthority || ANIMATION_QUEUE_AUTHORITY.QUEUE,
+  };
+  // Every animated remote replay action is fully planned before execution.
+  // Never let the local playback boundary recompile the synchronized state.
+  context.triggerAnimQueue(queue, replayAction.pendingGs, undefined, transactionMeta);
 }
 
 export function applyMultiplayerReplayAction(

@@ -19,7 +19,7 @@ import {
 } from '../animQueueHelpers';
 import { copyPlayers } from '../coreUtils';
 import { buildAnimQueue } from '../animQueueCore';
-import { createCardEffectEvent } from '../visualEvents';
+import { createCardEffectEvent, createGodStatusChangedEvent } from '../visualEvents';
 import { resolveAiGodChoiceTransition } from '../aiDecisionState';
 import { resolveGodEncounterForAI, startNextTurn } from '../turnEngine';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
@@ -1242,6 +1242,17 @@ describe('animQueueHelpers', () => {
         log: [...secondAfterLog, '你 信仰了 弗栗多，获得不灭之躯(Lv.1)'],
         _statEvents: [encounterSanEvent, convertSanEvent],
         _statEventSeq: 2,
+        _inspectionSeq: 2,
+        _visualEvents: [createGodStatusChangedEvent({
+          playerIdx: 0,
+          playerName: '你',
+          godKey: 'VRI',
+          godLevel: 1,
+          msgs: ['你 信仰了 弗栗多，获得不灭之躯(Lv.1)'],
+          playersBefore: beforeSecond,
+          playersAfter: afterSecond,
+          presentAfterInspectionSeq: 2,
+        })],
       },
     );
 

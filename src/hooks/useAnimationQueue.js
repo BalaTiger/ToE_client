@@ -26,6 +26,7 @@ import {
   resolveAnimationStepTiming,
 } from '../game/animationTiming';
 import {
+  ANIMATION_QUEUE_AUTHORITY,
   compileRuleVisualEventsToAnimTransaction,
   getAnimationQueueVisualEventIds,
   mergeAnimationTransactionQueue,
@@ -372,7 +373,12 @@ export function useAnimationQueue({
     // Bespoke target-action queues do not all originate from buildAnimQueue.
     // Normalize at the common playback boundary so the black-night roll is
     // always shown before the selected action's own visual effects.
-    const transactionState = nextGs ? ensureVisualEventState(nextGs) : null;
+    const queueAuthority = transactionMeta?.authority || ANIMATION_QUEUE_AUTHORITY.LEGACY_MERGE;
+    if (!transactionMeta?.authority && import.meta.env?.DEV) {
+      console.warn('[legacyMerge] implicit fallback is deprecated; pass an explicit authority in transactionMeta');
+    }
+    const shouldCompileRuleEvents = queueAuthority !== ANIMATION_QUEUE_AUTHORITY.QUEUE;
+    const transactionState = nextGs && shouldCompileRuleEvents ? ensureVisualEventState(nextGs) : null;
     const ruleTransaction = transactionState
       ? compileRuleVisualEventsToAnimTransaction(transactionState, null, {
         consumedEventIds: consumedVisualEventIdsRef?.current,
@@ -381,7 +387,7 @@ export function useAnimationQueue({
         ...(transactionMeta?.visualEventScope ? { visualEventScope: transactionMeta.visualEventScope } : {}),
       })
       : null;
-    const transactionQueue = mergeAnimationTransactionQueue(queue, ruleTransaction);
+    const transactionQueue = mergeAnimationTransactionQueue(queue, ruleTransaction, { authority: queueAuthority });
     const apophisOrderedQueue = nextGs
       ? mergeApophisTargetQueue(transactionQueue, gs, nextGs)
       : transactionQueue;

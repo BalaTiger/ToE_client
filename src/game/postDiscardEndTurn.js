@@ -3,6 +3,7 @@ import { createHandLimitDiscardEvent } from './visualEvents';
 import { statePatchStep } from './animQueueHelpers';
 import { buildPlayerTurnDrawQueue } from './turnAnimState';
 import { cardLogText } from './coreUtils';
+import { TURN_FLOW_STAGE } from './turnFlowStages';
 import {
   splitKeptDestroyedDiscarded,
   applyHandDiscardSideEffectsWithAnim as defaultApplyHandDiscardSideEffectsWithAnim,
@@ -87,6 +88,7 @@ export function resolvePostDiscardEndTurn(baseGs, {
     discard: Disc,
     log: L,
     currentTurn: actorIndex,
+    _turnFlowStage: TURN_FLOW_STAGE.END_TURN,
     abilityData: {},
     _mpEndTurnDiscardResolved: mpEndTurnDiscardResolved,
     ...balanceStatePatch,
@@ -110,7 +112,7 @@ export function resolvePostDiscardEndTurn(baseGs, {
     };
   }
 
-  let newGs = advanceTurn(postDiscardGs);
+  let newGs = advanceTurn({ ...postDiscardGs, _turnFlowStage: null });
   if (handLimitDiscardEvent) {
     newGs = {
       ...newGs,

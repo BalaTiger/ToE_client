@@ -32,6 +32,7 @@ import {
   getCurrentExecutionTurnOwner,
   grantTurnScopedGodPowerImmunity,
 } from './turnScopedEffects';
+import { TURN_FLOW_STAGE } from './turnFlowStages';
 
 export function markSkipNextDraw(player, reason = '效果') {
   if (!player || player.isDead) return false;
@@ -2051,9 +2052,14 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     },
     reverseTurnOrder: () => {
       const currentDir = gs?.turnDirection || 1;
-      const newDir = -currentDir;
-      statePatch = { ...statePatch, turnDirection: newDir };
-      msgs.push(`${actor.name} 打出【逆流】，回合轮换方向变为${newDir === 1 ? '顺时针' : '逆时针'}`);
+      if (gs?._turnFlowStage === TURN_FLOW_STAGE.END_TURN) {
+        const newDir = -currentDir;
+        statePatch = { ...statePatch, turnDirection: newDir };
+        msgs.push(`【逆流】${actor.name} 在回合结束阶段令回合轮换方向变为${newDir === 1 ? '顺时针' : '逆时针'}`);
+      } else {
+        actor.pendingTurnDirectionReversals = (actor.pendingTurnDirectionReversals || 0) + 1;
+        msgs.push(`${actor.name} 打出【逆流】，将在本回合结束时反转回合轮换方向`);
+      }
     },
     moldyFood: () => {
       const d1 = Number.isInteger(gs?._pendingMoldyFoodRoll) ? gs._pendingMoldyFoodRoll : 1 + (Math.random() * 6 | 0);

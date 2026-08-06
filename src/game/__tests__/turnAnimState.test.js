@@ -367,7 +367,7 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(combined.some(step => (step.msgs || []).some(msg => msg.includes('艾伦 从休息中醒来')))).toBe(true);
   });
 
-  it('AI 梦访拉莱耶的梦境、摸牌和效果位于休息回合边界内', () => {
+  it('翻面跳过只保留回合悬浮文字，不执行克苏鲁摸牌或任何阶段效果', () => {
     const dreamCard = {
       id: 'dream-heal',
       name: '猎获穴兽',
@@ -398,12 +398,12 @@ describe('buildTurnStartDrawReplayQueue', () => {
     const drawIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.card === dreamCard);
     const effectIdx = queue.findIndex((step, idx) => idx > drawIdx && ['HP_HEAL', 'HP_SAN_HEAL'].includes(step.type));
 
-    expect(newGs._skippedTurnReplays?.[0]?.cthReplay?.draws).toEqual([dreamCard]);
+    expect(newGs._skippedTurnReplays?.[0]?.cthReplay).toBeNull();
     expect(allenTurnIdx).toBeGreaterThanOrEqual(0);
     expect(wakeIdx).toBeGreaterThan(allenTurnIdx);
-    expect(dreamIdx).toBeGreaterThan(wakeIdx);
-    expect(drawIdx).toBeGreaterThan(dreamIdx);
-    expect(effectIdx).toBeGreaterThan(drawIdx);
+    expect(dreamIdx).toBe(-1);
+    expect(drawIdx).toBe(-1);
+    expect(effectIdx).toBe(-1);
   });
 
   it('plays black goat turn-start damage before the draw flip', () => {
@@ -449,7 +449,8 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(types.slice(0, 5)).toEqual(['YOUR_TURN', 'BLACK_GOAT_PULSE', 'HP_DAMAGE', 'SAN_DAMAGE', 'STATE_PATCH']);
     expect(types.indexOf('DRAW_CARD')).toBeGreaterThan(types.indexOf('STATE_PATCH'));
     expect(replay.queue.find(step => step.type === 'BLACK_GOAT_PULSE')).toMatchObject({ targetPid: 1, count: 1 });
-    expect(replay.stageQueues.turnStart.map(step => step.type)).toEqual(types.slice(0, 5));
+    expect(replay.stageQueues.turnBanner.map(step => step.type)).toEqual(['YOUR_TURN']);
+    expect(replay.stageQueues.turnStart.map(step => step.type)).toEqual(types.slice(1, 5));
     expect(replay.stageQueues.draw[0]).toMatchObject({
       type: 'DRAW_CARD',
       turnStartStage: TURN_START_ANIMATION_STAGE.DRAW,
@@ -503,6 +504,27 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(types.indexOf('SAN_DAMAGE')).toBeLessThan(types.indexOf('DRAW_CARD'));
     expect(types.indexOf('DRAW_CARD')).toBeLessThan(types.indexOf('HP_HEAL'));
     expect(replay.queue.find(step => step.type === 'SAN_DAMAGE')?.statEvents).toEqual(goatEvents.slice(1));
+  });
+
+  it('中毒数值动画属于回合开始阶段，不会泄露到摸牌翻牌之前', () => {
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '你' }),
+        makePlayer({ name: '贝拉', poisonStacks: 1 }),
+      ],
+      currentTurn: 0,
+      deck: [makeZoneCard('B3', 0, { id: 'after-poison' })],
+      log: [],
+    });
+    const newGs = startNextTurn(oldGs);
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const poisonStep = replay.queue.find(step => step.type === 'HP_DAMAGE' && step.statEvents?.some(event => event.reason === '中毒'));
+    const drawIndex = replay.queue.findIndex(step => step.type === 'DRAW_CARD');
+
+    expect(poisonStep).toMatchObject({ turnStartStage: TURN_START_ANIMATION_STAGE.TURN_START });
+    expect(replay.queue.indexOf(poisonStep)).toBeLessThan(drawIndex);
+    expect(replay.stageQueues.turnBanner.map(step => step.type)).toEqual(['YOUR_TURN']);
+    expect(replay.stageQueues.turnStart).toContain(poisonStep);
   });
 
   it('replays real AI black-goat damage before an underground-spring draw', () => {
@@ -1542,6 +1564,7 @@ describe('buildSinglePlayerAiTurnStartReplayContext', () => {
       type: 'YOUR_TURN',
       name: '艾伦',
       msgs: ['turn start'],
+      turnStartStage: TURN_START_ANIMATION_STAGE.TURN_BANNER,
     }]);
   });
 

@@ -38,6 +38,7 @@ Multiplayer uses signed anonymous identities; account registration is not requir
 
 - `CLAUDE.md` - agent-facing working guide for this frontend
 - `CODEX_WORKFLOW.md` - terminal encoding and workflow rules
+- `src/game/RULES.md` - authoritative turn phases, card-acquisition/worship order, event priorities, and snapshot semantics
 - `src/README_structure.md` - current module boundaries, extracted areas, and refactor priorities
 - `scripts/README.md` - asset-generation pipeline notes
 - `src/game/TODO.md` - small rule TODOs that are still intentionally open

@@ -7,6 +7,7 @@ import {
   getEndTurnReplayHandCards,
   hasEndTurnReplayHandEvent,
   runEndTurnEvents,
+  resolveReverseTurnOrderAtEnd,
 } from '../endTurnEvents';
 import { makePlayer, makeZoneCard } from './factory';
 
@@ -20,6 +21,7 @@ describe('endTurnEvents', () => {
     expect(getCthRestDrawCount(player)).toBe(2);
     expect(getEndTurnEvents([player], 0)).toEqual([
       expect.objectContaining({ id: END_TURN_EVENT.CTH_REST_DRAW, drawCount: 2 }),
+      expect.objectContaining({ id: END_TURN_EVENT.END_TURN_REPLAY_HAND, dynamicHandCheck: true }),
     ]);
   });
 
@@ -74,6 +76,27 @@ describe('endTurnEvents', () => {
       END_TURN_EVENT.TSG_SLIME_GRANT,
       END_TURN_EVENT.END_TURN_REPLAY_HAND,
     ]);
+  });
+
+  it('逆流登记为回合结束事件并锁定本阶段的反转次数', () => {
+    const player = makePlayer({ pendingTurnDirectionReversals: 1 });
+    expect(getEndTurnEvents([player], 0)).toEqual([
+      expect.objectContaining({
+        id: END_TURN_EVENT.REVERSE_TURN_ORDER,
+        priority: END_TURN_PRIORITY.ACTIVE_OTHER,
+        reverseCount: 1,
+      }),
+    ]);
+  });
+
+  it('逆流结算时反转方向并清除待结算标记', () => {
+    const player = makePlayer({ name: '艾伦', pendingTurnDirectionReversals: 1 });
+    const log = [];
+    const result = resolveReverseTurnOrderAtEnd([player], 0, 1, log, 1);
+
+    expect(result.turnDirection).toBe(-1);
+    expect(player.pendingTurnDirectionReversals).toBeUndefined();
+    expect(result.msgs[0]).toContain('逆流');
   });
 
   it('getEndTurnEvents 始终按优先级升序返回（守卫：新增事件不会乱序）', () => {
