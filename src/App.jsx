@@ -247,9 +247,11 @@ import {
   buildAiHuntWaitPresentation,
   buildAiTurnRecoveryState,
   buildRoseThornSnapshot,
+  bindVisualEventToSteps,
   clearPendingAnimDeathPlayers,
   collectExplicitAiTurnLogs,
   finalizeAiPresentationState,
+  getAiActionQueueCoverage,
   scopeAiActionReplayMetadata,
   shouldBuildQueuedAiTurnStartReplay,
   stripAiPresentationFields,
@@ -2496,7 +2498,21 @@ export default function Game(){
           : (_aiHandLimitBeforePlayers||_playersBeforeEndTurnReplay||P_actionPreInspection)
         );
         const actionLogPreInspection=firstActionInspection?.beforeLog||actionLog;
-        const huntEventQueue=(rawResult._aiHuntEvents||[]).flatMap(evt=>buildAiHuntEventAnimQueue(evt,gs.players[gs.currentTurn]?.name||'???'));
+        const actionReplayMetadata=scopeAiActionReplayMetadata(newGs);
+        const huntVisualEvents=actionReplayMetadata.visualEvents.filter(event=>event?.type==='huntResult');
+        // Keep the raw event's intro/reveal flags; the rule visual event is a
+        // settlement-only representation and intentionally defaults both to
+        // skipped. Pair them only to inherit the authoritative event ID.
+        const huntReplayEvents=(rawResult._aiHuntEvents||[]).map((event,index)=>({
+          ...event,
+          ...(huntVisualEvents[index]?.id?{id:huntVisualEvents[index].id}:{}),
+        }));
+        const huntEventQueue=huntReplayEvents.flatMap(evt=>
+          bindVisualEventToSteps(
+            buildAiHuntEventAnimQueue(evt,gs.players[gs.currentTurn]?.name||'???'),
+            evt
+          )
+        );
         const consumedApophisTargetSeq=Math.max(0,...(rawResult._aiHuntEvents||[])
           .map(evt=>evt?.apophisTargetEvent?.seq||0)
           .filter(Boolean));
@@ -2504,7 +2520,6 @@ export default function Game(){
         const actionOldGsForApophis=consumedApophisTargetSeq
           ? {...actionOldGsBase,_apophisTargetSeq:Math.max(actionOldGsBase._apophisTargetSeq||0,consumedApophisTargetSeq)}
           : actionOldGsBase;
-        const actionReplayMetadata=scopeAiActionReplayMetadata(newGs);
         const actionVisualPatch={
           ...(Object.prototype.hasOwnProperty.call(newGs,'apophisNight')?{apophisNight:newGs.apophisNight}:{}),
           ...(newGs._apophisTargetEvent?{_apophisTargetEvent:newGs._apophisTargetEvent}:{}),
@@ -2609,13 +2624,13 @@ export default function Game(){
           const swapEvent=(Array.isArray(newGs._visualEvents)?newGs._visualEvents:[])
             .find(event=>event?.type==='swapCards'&&event.sourceIdx!=null&&event.targetIdx!=null);
           const swapMsgs=extractSkillLogs(actionMsgs,'swap');
-          const swapIntroStep={type:'SKILL_SWAP',msgs:swapMsgs};
+          const swapIntroStep=bindVisualEventToSteps([{type:'SKILL_SWAP',msgs:swapMsgs}],swapEvent)[0];
           const swapPlayersBefore=swapEvent?.beforePlayers||_playersBeforeSkillAction||afterInspectionPlayers;
           // 本地玩家未参与的掉包（AI↔AI 或其他两名角色互换）不向本地观众暴露牌面，
           // 飞行动画一律以背面展示
           const hideSwapCards=swapEvent&&swapEvent.sourceIdx!==0&&swapEvent.targetIdx!==0;
           const swapTransferSteps=swapEvent
-            ? swapCardsSteps({
+            ? bindVisualEventToSteps(swapCardsSteps({
               sourceIdx:swapEvent.sourceIdx,
               targetIdx:swapEvent.targetIdx,
               sourceCount:swapEvent.sourceCount||1,
@@ -2625,15 +2640,15 @@ export default function Game(){
               msgs:swapEvent.msgs||swapMsgs,
               playersBefore:swapPlayersBefore,
               zhuLight:gs.zhuLight||null,
-            })
+            }),swapEvent)
             : [];
           if(swapTransferSteps.length){
             const swapLandingPlayers=swapEvent?.afterPlayers||P_actionBeforeHandLimit;
             const swapLandingDiscard=swapEvent?.afterDiscard||_aiHandLimitBeforeDiscard||_discardBeforeEndTurnReplay||newGs.discard;
-            const swapCommitStep=statePatchStep({
+            const swapCommitStep=bindVisualEventToSteps([statePatchStep({
               players:swapLandingPlayers,
               discard:swapLandingDiscard,
-            });
+            })],swapEvent)[0];
             const swapLogIdx=actionMsgs.findIndex(line=>/^.+对 .+ 【掉包】/.test(line||''));
             const preSwapQ=actionStatQ.filter(step=>firstStepLogIndex(step)<swapLogIdx);
             const postSwapQ=actionStatQ.filter(step=>firstStepLogIndex(step)>=swapLogIdx);
@@ -2748,9 +2763,9 @@ export default function Game(){
                   ...bewitchReplay.inspectionEvents.map(event=>event?.seq||0),
                 );
               }
-              orderedActionQ=bewitchReplay.queue;
+              orderedActionQ=bindVisualEventToSteps(bewitchReplay.queue,bewitchEvent);
             }else{
-              orderedActionQ=buildBewitchForcedCardQueue(
+              orderedActionQ=bindVisualEventToSteps(buildBewitchForcedCardQueue(
                 gs.currentTurn,
                 bwti,
                 giftedCard,
@@ -2758,10 +2773,12 @@ export default function Game(){
                 [...actionStatQ,...inspectionFlow.queue,...postInspectionQ],
                 bewitchMsgs,
                 bewitchQueueOptions,
-              );
+              ),bewitchEvent);
             }
           }else{
-            const bewitchStep={type:'SKILL_BEWITCH',msgs:bewitchMsgs,targetIdx:bwti>=0?bwti:1};
+            const bewitchStep=bindVisualEventToSteps([{
+              type:'SKILL_BEWITCH',msgs:bewitchMsgs,targetIdx:bwti>=0?bwti:1
+            }],bewitchEvent)[0];
             if(inspectionEvents.length){
               lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
               orderedActionQ=mergeActionQueueByLogOrder(actionStatQ,bewitchStep,inspectionFlow.queue,postInspectionQ);
@@ -2773,15 +2790,20 @@ export default function Game(){
         // Inject custom animations for multiply and sphinx reveal
         const sphinxReveal=isTurnStartSphinxRevealState(gs,rawResult._animSphinxReveal)?null:rawResult._animSphinxReveal;
         const multiplyEvent=rawResult._animMultiplyEvent;
+        const sphinxVisualEvent=actionReplayMetadata.visualEvents.find(event=>event?.type==='sphinxResult');
+        const multiplyVisualEvent=actionReplayMetadata.visualEvents.find(event=>event?.type==='multiply');
         const damageLinkEstablishedMsg=actionMsgs.find(m=>m.includes('【两人一绳】')&&m.includes('间架起链条'));
         const animInjections=[];
         const postActionInjections=[];
         if(sphinxReveal){
-          animInjections.push(...buildSphinxRevealAnimSteps(sphinxReveal,actionMsgs));
+          animInjections.push(...bindVisualEventToSteps(
+            buildSphinxRevealAnimSteps(sphinxReveal,actionMsgs),
+            sphinxVisualEvent
+          ));
         }
         if(multiplyEvent){
           const multiplyMsg=actionMsgs.find(m=>m.includes('【繁衍】'));
-          postActionInjections.push(cardTransferStep({
+          postActionInjections.push(...bindVisualEventToSteps([cardTransferStep({
             fromPid:multiplyEvent.fromIdx,
             dest:'player',
             toPid:multiplyEvent.toIdx,
@@ -2789,8 +2811,7 @@ export default function Game(){
             effect:'blackGoat',
             durationMs:1500,
             msgs:multiplyMsg?[multiplyMsg]:[]
-          }));
-          postActionInjections.push(statePatchStep({players:P_actionEnd,discard:newGs.discard}));
+          }),statePatchStep({players:P_actionEnd,discard:newGs.discard})],multiplyVisualEvent));
         }
         if(damageLinkEstablishedMsg){
           const damageLinkPair=P_actionEnd.flatMap((player,idx)=>{
@@ -2905,6 +2926,21 @@ export default function Game(){
           ...currentTurnQueue,
           ...currentTurnStatePatch,
         ];
+        const actionQueueCoverage=getAiActionQueueCoverage(
+          newGs,
+          currentQueueWithPatch,
+          getAnimationQueueVisualEventIds
+        );
+        const actionQueueMeta=actionQueueCoverage.uncoveredEventIds.length
+          ? LEGACY_MERGE_ACTION_SCOPE_META
+          : actionQueueCoverage.eventIds.length
+            ? {...AUTHORITATIVE_QUEUE_META,eventIds:actionQueueCoverage.eventIds}
+            : AUTHORITATIVE_QUEUE_META;
+        if(actionQueueCoverage.uncoveredEventIds.length&&import.meta.env.DEV){
+          console.warn('[AI action queue] authoritative coverage incomplete; using scoped legacy merge',{
+            uncoveredEventIds:actionQueueCoverage.uncoveredEventIds,
+          });
+        }
         // 更新玫瑰倒刺快照，防止 useEffect 在动画结束后对已在 aiStep 中结算的弃牌重复触发
         roseThornPrevRef.current=buildRoseThornSnapshot(newGs.players);
         // 确保 pendingGs 中也清除 _pendingAnimDeath，防止 STATE_PATCH 后置灰效果被覆盖
@@ -2919,13 +2955,13 @@ export default function Game(){
               currentQueueWithPatch,
               nextTurnIntroGs,
               ()=>triggerAnimQueue(nextTurnIntroQueue,nextTurnIntroGs,undefined,authoritativeTurnStartQueueMeta(nextTurnIntroGs)),
-              LEGACY_MERGE_ACTION_SCOPE_META
+              actionQueueMeta
             );
           }else{
             triggerAnimQueue(nextTurnIntroQueue,nextTurnIntroGs,undefined,authoritativeTurnStartQueueMeta(nextTurnIntroGs));
           }
         }else{
-          triggerAnimQueue(currentQueueWithPatch,newGs);
+          triggerAnimQueue(currentQueueWithPatch,newGs,undefined,actionQueueMeta);
         }
       }catch(e){
         console.error('[AI turn queue error]',e);

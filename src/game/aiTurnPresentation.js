@@ -121,6 +121,46 @@ export function scopeAiActionReplayMetadata(state) {
   };
 }
 
+export function bindVisualEventToSteps(steps, event) {
+  const queue = Array.isArray(steps) ? steps : [];
+  if (!event?.id) return queue;
+  return queue.map(step => step?.visualEventId
+    ? step
+    : { ...step, visualEventId: event.id });
+}
+
+export function getAiActionQueueCoverage(state, queue, getQueueEventIds) {
+  const visualEvents = scopeAiActionReplayMetadata(state).visualEvents;
+  const eventIds = visualEvents
+    .map(event => event?.id)
+    .filter(Boolean);
+  const coveredEventIds = typeof getQueueEventIds === 'function'
+    ? getQueueEventIds(queue)
+    : [];
+  const coveredSet = new Set(coveredEventIds);
+  // A statEvents wrapper can be intentionally suppressed when another visual
+  // event owns the same stat sequence. Treat it as covered only when that
+  // owning event is actually represented in the submitted queue.
+  visualEvents
+    .filter(event => event?.type === 'statEvents' && event?.id)
+    .forEach(statEvent => {
+      const seqs = (statEvent.statEvents || []).map(event => event?.seq).filter(seq => seq != null);
+      const owner = visualEvents.find(event => (
+        event?.type !== 'statEvents'
+        && event?.id
+        && coveredSet.has(event.id)
+        && seqs.length
+        && seqs.every(seq => (event.statEvents || []).some(owned => owned?.seq === seq))
+      ));
+      if (owner) coveredSet.add(statEvent.id);
+    });
+  return {
+    eventIds,
+    coveredEventIds: eventIds.filter(id => coveredSet.has(id)),
+    uncoveredEventIds: eventIds.filter(id => !coveredSet.has(id)),
+  };
+}
+
 export function buildAiHuntWaitPresentation({
   previousState,
   rawResult,

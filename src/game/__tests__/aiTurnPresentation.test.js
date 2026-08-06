@@ -3,9 +3,11 @@ import {
   buildAiHuntWaitPresentation,
   buildAiTurnRecoveryState,
   buildRoseThornSnapshot,
+  bindVisualEventToSteps,
   clearPendingAnimDeathPlayers,
   collectExplicitAiTurnLogs,
   finalizeAiPresentationState,
+  getAiActionQueueCoverage,
   scopeAiActionReplayMetadata,
   shouldBuildQueuedAiTurnStartReplay,
   stripAiExecutionFields,
@@ -14,6 +16,74 @@ import {
 import { createGodStatusChangedEvent } from '../visualEvents';
 
 describe('AI turn presentation helpers', () => {
+  it('binds hand-built action steps to their rule visual event', () => {
+    expect(bindVisualEventToSteps([
+      { type: 'SKILL_SWAP' },
+      { type: 'CARD_TRANSFER', visualEventId: 'nested-event' },
+    ], { id: 'swap-event' })).toEqual([
+      { type: 'SKILL_SWAP', visualEventId: 'swap-event' },
+      { type: 'CARD_TRANSFER', visualEventId: 'nested-event' },
+    ]);
+  });
+
+  it('proves authoritative AI action coverage without consuming next-turn events', () => {
+    const state = {
+      _visualEvents: [
+        { id: 'swap-event', type: 'swapCards' },
+        { id: 'god-event', type: 'godStatusChanged' },
+        { id: 'next-draw', type: 'drawCard', turnStartStage: 'draw' },
+      ],
+    };
+    const queue = [
+      { type: 'SKILL_SWAP', visualEventId: 'swap-event' },
+      { type: 'GOD_HIGHLIGHT', visualEventId: 'god-event' },
+    ];
+
+    expect(getAiActionQueueCoverage(
+      state,
+      queue,
+      steps => steps.map(step => step.visualEventId).filter(Boolean),
+    )).toEqual({
+      eventIds: ['swap-event', 'god-event'],
+      coveredEventIds: ['swap-event', 'god-event'],
+      uncoveredEventIds: [],
+    });
+  });
+
+  it('reports unrepresented action events instead of silently consuming them', () => {
+    const state = {
+      _visualEvents: [
+        { id: 'swap-event', type: 'swapCards' },
+        { id: 'future-event', type: 'futureActionMechanic' },
+      ],
+    };
+
+    expect(getAiActionQueueCoverage(
+      state,
+      [{ type: 'SKILL_SWAP', visualEventId: 'swap-event' }],
+      steps => steps.map(step => step.visualEventId).filter(Boolean),
+    )).toMatchObject({
+      coveredEventIds: ['swap-event'],
+      uncoveredEventIds: ['future-event'],
+    });
+  });
+
+  it('counts a suppressed stat wrapper as covered by its represented owner event', () => {
+    const statEvent = { type: 'SAN_LOSS', seq: 18 };
+    const state = {
+      _visualEvents: [
+        { id: 'god-event', type: 'godStatusChanged', statEvents: [statEvent] },
+        { id: 'stat-wrapper', type: 'statEvents', statEvents: [statEvent] },
+      ],
+    };
+
+    expect(getAiActionQueueCoverage(
+      state,
+      [{ type: 'GOD_HIGHLIGHT', visualEventId: 'god-event' }],
+      steps => steps.map(step => step.visualEventId).filter(Boolean),
+    ).uncoveredEventIds).toEqual([]);
+  });
+
   it('keeps the next AI draw heal out of the previous AI action replay', () => {
     const swapEvent = { id: 'allen-swap', type: 'swapCards' };
     const healEvent = {
