@@ -8,14 +8,58 @@ import {
   collectExplicitAiTurnLogs,
   finalizeAiPresentationState,
   getAiActionQueueCoverage,
+  insertAiRestDiceBeforeSettlement,
   scopeAiActionReplayMetadata,
   shouldBuildQueuedAiTurnStartReplay,
+  shouldPrependAiSkillSnapshot,
   stripAiExecutionFields,
   stripAiPresentationFields,
 } from '../aiTurnPresentation';
 import { createGodStatusChangedEvent } from '../visualEvents';
 
 describe('AI turn presentation helpers', () => {
+  it('keeps a complete hand-worship transaction before the rest dice and heal', () => {
+    const worshipMsg = '贝拉 从手牌信仰 烛九阴，获得衔烛照幽(Lv.1)（骷髅头不计）';
+    const restMsg = '贝拉 选择【休息】，掷骰 3、3，取高值回复 3HP，翻面休息中';
+    const dice = { type: 'DICE_ROLL', d1: 3, d2: 3, heal: 3 };
+    const queue = [
+      { type: 'GOD_HIGHLIGHT', msgs: [worshipMsg], visualEventId: 'god-status' },
+      { type: 'STATE_PATCH', zhuLight: { active: true }, visualEventId: 'god-status' },
+      {
+        type: 'HP_HEAL',
+        msgs: [restMsg],
+        statEvents: [{ type: 'HP_GAIN', reason: '休息', logHint: restMsg }],
+      },
+    ];
+
+    expect(insertAiRestDiceBeforeSettlement(queue, dice, restMsg).map(step => step.type)).toEqual([
+      'GOD_HIGHLIGHT',
+      'STATE_PATCH',
+      'DICE_ROLL',
+      'HP_HEAL',
+    ]);
+    expect(shouldPrependAiSkillSnapshot({
+      playersBeforeSkillAction: [{ godName: 'ZHU' }],
+      restMsg,
+      actionMsgs: [worshipMsg, restMsg],
+      visualEvents: [{
+        type: 'godStatusChanged',
+        msgs: [worshipMsg],
+        playersBefore: [{ godName: null }],
+        playersAfter: [{ godName: 'ZHU' }],
+      }],
+    })).toBe(false);
+  });
+
+  it('preserves the pre-skill snapshot when rest has no complete hand-worship transaction', () => {
+    expect(shouldPrependAiSkillSnapshot({
+      playersBeforeSkillAction: [{ godName: 'ZHU' }],
+      restMsg: '贝拉 选择【休息】，掷骰 3、3，取高值回复 3HP，翻面休息中',
+      actionMsgs: [],
+      visualEvents: [],
+    })).toBe(true);
+  });
+
   it('binds hand-built action steps to their rule visual event', () => {
     expect(bindVisualEventToSteps([
       { type: 'SKILL_SWAP' },

@@ -1,5 +1,5 @@
 import { makeTargetStats, statEventsToAnimQueue } from './statEvents';
-import { buildFullHandSwapStepsFromLogs, buryToDeckStep, cardTransferStep, statePatchStep } from './animQueueHelpers';
+import { buildFullHandSwapStepsFromLogs, buryToDeckStep, buildGraveDigTransferStep, cardTransferStep, statePatchStep } from './animQueueHelpers';
 import { buildApophisTargetSteps, buildCardEffectStepsFromVisualEvents, buildGodPowerBlockedStepsFromVisualEvents, buildGodStatusChangedStep, buildHuntRevealStepFromVisualEvent, getVisualEvents, VISUAL_EVENT } from './visualEvents';
 import { isBlackGoatYoung, isTsathogguaSlime } from './coreUtils';
 import { cardIdentity } from './cardIdentity';
@@ -748,6 +748,10 @@ export function buildAnimQueue(oldGs, newGs) {
     ))
     : [];
   const cardEffectSteps = buildCardEffectStepsFromVisualEvents(newGs, oldGs);
+  const graveDigSteps = getVisualEvents(newGs)
+    .filter(event => event?.type === VISUAL_EVENT.GRAVE_DIG && !oldVisualEventIds.has(event.id))
+    .map(event => buildGraveDigTransferStep(event))
+    .filter(Boolean);
   const godPowerBlockedSteps = buildGodPowerBlockedStepsFromVisualEvents(newGs, oldGs);
   const vritraRevealSteps = buildVritraImmortalRevealSteps(oldGs, newGs, newMsgs);
   const handledCardEffectStatEvents = collectStepStatEvents(cardEffectSteps);
@@ -760,6 +764,7 @@ export function buildAnimQueue(oldGs, newGs) {
     ? explicitStatEvents.filter(event => !handledCardEffectStatSeqs.has(event?.seq))
     : explicitStatEvents;
   q.push(...cardEffectSteps);
+  q.push(...graveDigSteps);
   const petrifyDeathTargets = new Set(explicitStatEvents
     .filter(event => event?.type === 'PETRIFY_DEATH' && event?.target != null)
     .map(event => Number(event.target)));

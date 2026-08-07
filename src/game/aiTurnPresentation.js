@@ -129,6 +129,54 @@ export function bindVisualEventToSteps(steps, event) {
     : { ...step, visualEventId: event.id });
 }
 
+function stepOwnsRestSettlement(step, restMsg) {
+  if (!step || !restMsg) return false;
+  const explicitLogs = [
+    ...(Array.isArray(step._logChunk) ? step._logChunk : []),
+    ...(Array.isArray(step.msgs) ? step.msgs : []),
+  ];
+  if (explicitLogs.includes(restMsg)) return true;
+  return (Array.isArray(step.statEvents) ? step.statEvents : []).some(event => (
+    event?.logHint === restMsg || event?.reason === '休息'
+  ));
+}
+
+export function insertAiRestDiceBeforeSettlement(queue, restDiceStep, restMsg) {
+  const steps = Array.isArray(queue) ? queue : [];
+  if (!restDiceStep) return steps;
+  const settlementIndex = steps.findIndex(step => stepOwnsRestSettlement(step, restMsg));
+  const insertAt = settlementIndex < 0 ? steps.length : settlementIndex;
+  return [
+    ...steps.slice(0, insertAt),
+    restDiceStep,
+    ...steps.slice(insertAt),
+  ];
+}
+
+export function shouldPrependAiSkillSnapshot({
+  playersBeforeSkillAction,
+  restMsg,
+  actionMsgs = [],
+  visualEvents = [],
+} = {}) {
+  if (!playersBeforeSkillAction) return false;
+  if (!restMsg) return true;
+  const hasCompleteHandWorshipTransition = (Array.isArray(visualEvents) ? visualEvents : []).some(event => (
+    event?.type === 'godStatusChanged'
+    && Array.isArray(event.playersBefore)
+    && Array.isArray(event.playersAfter)
+    && (event.msgs || []).some(msg => (
+      typeof msg === 'string'
+      && msg.includes('从手牌信仰')
+      && actionMsgs.includes(msg)
+    ))
+  ));
+  // The GOD_STATUS_CHANGED queue owns the pre-faith snapshot, highlight and
+  // post-faith state. Prepending the already-settled skill snapshot would make
+  // the god tag appear before that transaction and then roll back on setup.
+  return !hasCompleteHandWorshipTransition;
+}
+
 export function getAiActionQueueCoverage(state, queue, getQueueEventIds, consumedEventIds = null) {
   const isConsumed = id => !!id && (
     consumedEventIds?.has?.(id)

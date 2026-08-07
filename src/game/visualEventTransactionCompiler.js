@@ -16,7 +16,7 @@ import {
   getVisualEventIdsFromState,
 } from './visualEvents';
 import { buildAiHuntEventAnimQueue, buildAnimQueue } from './animQueueCore';
-import { buildInspectionEventFlow, buildSphinxResultQueue, swapCardsSteps } from './animQueueHelpers';
+import { buildInspectionEventFlow, buildSphinxResultQueue, buildGraveDigTransferStep, swapCardsSteps } from './animQueueHelpers';
 import { buildBewitchGiftReplay } from './animReplayEvents';
 import { copyPlayers } from './coreUtils';
 
@@ -312,6 +312,8 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
       return buildTsathogguaSlimeGrantSteps(event, state);
     case VISUAL_EVENT.MULTIPLY:
       return buildMultiplySteps(event);
+    case VISUAL_EVENT.GRAVE_DIG:
+      return [buildGraveDigTransferStep(event)].filter(Boolean);
     case VISUAL_EVENT.RANDOM_TARGET:
       return buildRandomTargetSteps(event, state);
     case VISUAL_EVENT.CARD_EFFECT:

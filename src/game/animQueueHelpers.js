@@ -237,6 +237,39 @@ export function cardTransferStep(options={}){
   return step;
 }
 
+// 掘墓：弃牌堆 → 角色手牌区的飞牌步骤。牌面公开（弃牌堆是公开信息），
+// 起飞约 400ms 后弃牌堆与手牌快照切换，与飞行中段对齐。
+export function buildGraveDigTransferStep(event){
+  const card=event?.card;
+  if(!card||event?.playerIdx==null)return null;
+  const beforePlayers=Array.isArray(event.beforePlayers)?event.beforePlayers:null;
+  const afterPlayers=Array.isArray(event.afterPlayers)?event.afterPlayers:beforePlayers;
+  const beforeDiscard=Array.isArray(event.beforeDiscard)?event.beforeDiscard:null;
+  const afterDiscard=Array.isArray(event.afterDiscard)?event.afterDiscard:beforeDiscard;
+  const makePatch=(players,discard)=>({
+    ...(players?{players}:{}),
+    ...(discard?{discard}:{}),
+  });
+  const setupPatch=(beforePlayers||beforeDiscard)?makePatch(beforePlayers,beforeDiscard):null;
+  return cardTransferStep({
+    toPid:event.playerIdx,
+    dest:"player",
+    count:1,
+    cards:[card],
+    sourceAnchor:"discard",
+    effect:"graveDig",
+    faceUp:true,
+    durationMs:1200,
+    msgs:Array.isArray(event.msgs)?event.msgs:[],
+    ...(event.id?{visualEventId:event.id}:{}),
+    ...(setupPatch?{visualSetupPatch:setupPatch}:{}),
+    ...(setupPatch?{visualTimeline:[
+      {atMs:0,patch:setupPatch},
+      {atMs:400,patch:makePatch(afterPlayers,afterDiscard)},
+    ]}:{}),
+  });
+}
+
 export function consumeRetainedRandomTargetEvents(state={}){
   return {
     ...state,

@@ -179,6 +179,7 @@ import {
   createTimedOutDrawDiscardEvent,
   createGodPowerBlockedEvent,
   createGodStatusChangedEvent,
+  createGraveDigEvent,
   createFaithSettlementGodStatusEvent,
   createCardEffectEvent,
   getCurrentExecutionTurnOwner,
@@ -252,8 +253,10 @@ import {
   collectExplicitAiTurnLogs,
   finalizeAiPresentationState,
   getAiActionQueueCoverage,
+  insertAiRestDiceBeforeSettlement,
   scopeAiActionReplayMetadata,
   shouldBuildQueuedAiTurnStartReplay,
+  shouldPrependAiSkillSnapshot,
   stripAiPresentationFields,
 } from './game/aiTurnPresentation';
 import {
@@ -267,6 +270,7 @@ import {
   zhuHideCardStep,
   buryToDeckStep,
   cardTransferStep,
+  buildGraveDigTransferStep,
   buildSphinxResultQueue,
   fullHandSwapSteps,
   swapCardsSteps,
@@ -2496,7 +2500,18 @@ export default function Game(){
           afterInspectionPlayers=inspectionFlow.players;
           afterInspectionLog=inspectionFlow.log;
         }
-        if(_playersBeforeSkillAction){
+        const actionReplayMetadata=scopeAiActionReplayMetadata(newGs);
+        const restMsg=actionMsgs.find(m=>m.includes('选择【休息】')&&m.includes('掷骰'));
+        let restDiceStep=null;
+        if(restMsg){
+          const m=restMsg.match(/掷骰 (\d+)[+、](\d+)，(?:取高值)?回复 (\d+)HP/);
+          if(m){const rd1=+m[1],rd2=+m[2],rh=+m[3];restDiceStep={type:'DICE_ROLL',d1:rd1,d2:rd2,heal:rh,rollerName:rawResult._aiName||gs.players[gs.currentTurn]?.name};}}
+        if(shouldPrependAiSkillSnapshot({
+          playersBeforeSkillAction:_playersBeforeSkillAction,
+          restMsg,
+          actionMsgs,
+          visualEvents:actionReplayMetadata.visualEvents,
+        })){
           queue.push(statePatchStep({
             players:_playersBeforeSkillAction,
             discard:_preSkillDiscard||newGs.discard,
@@ -2505,11 +2520,8 @@ export default function Game(){
           queue.push({type:'VISUAL_LOCK',players:_playersBeforeSkillAction,zhuLight:gs.zhuLight||null});
           queue.push({type:'TURN_BOUNDARY_PAUSE'});
         }
-        // 3. Dice anim (if AI rested)
-        const restMsg=actionMsgs.find(m=>m.includes('选择【休息】')&&m.includes('掷骰'));
-        if(restMsg){
-          const m=restMsg.match(/掷骰 (\d+)[+、](\d+)，(?:取高值)?回复 (\d+)HP/);
-          if(m){const rd1=+m[1],rd2=+m[2],rh=+m[3];queue.push({type:'DICE_ROLL',d1:rd1,d2:rd2,heal:rh,rollerName:rawResult._aiName||gs.players[gs.currentTurn]?.name});}}
+        // 3. Dice anim (if AI rested) is staged above and inserted immediately
+        // before the stat step that owns the rest settlement.
         // 4. Skill anim (if used)
         // 提前清除 _pendingAnimDeath：STATE_PATCH 后面板立即置灰，不再等到整个队列播完
         const pendingActionInspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current&&isCurrentTurnInspectionEvent(ev));
@@ -2521,7 +2533,6 @@ export default function Game(){
           : (_aiHandLimitBeforePlayers||_playersBeforeEndTurnReplay||P_actionPreInspection)
         );
         const actionLogPreInspection=firstActionInspection?.beforeLog||actionLog;
-        const actionReplayMetadata=scopeAiActionReplayMetadata(newGs);
         const huntVisualEvents=actionReplayMetadata.visualEvents.filter(event=>event?.type==='huntResult');
         // Keep the raw event's intro/reveal flags; the rule visual event is a
         // settlement-only representation and intentionally defaults both to
@@ -2862,7 +2873,10 @@ export default function Game(){
         });
         // AI 蛊惑此前会把 actionStatQ 中的黑夜骰放在眼睛、飞牌和翻牌之后。
         // 所有 AI 选目标行动在最终队列成形后统一应用同一条前置规则。
-        const finalActionQ=mergeApophisTargetQueue(assembledActionQ,gs,newGs);
+        let finalActionQ=mergeApophisTargetQueue(assembledActionQ,gs,newGs);
+        // 休息骰按日志顺序归位：插在第一条不早于休息日志的步骤之前，
+        // 使手牌信仰等先行结算的高亮先于掷骰播放，回血等结果紧随其后。
+        finalActionQ=insertAiRestDiceBeforeSettlement(finalActionQ,restDiceStep,restMsg);
         // 5. Stat changes from THIS AI's action only (not next draw — those belong to next AI's queue)
         //    Compare gs (after this AI's draw) → _playersBeforeNextDraw (after action, before next draw)
         // 6. Advance to next player's turn
@@ -7031,10 +7045,23 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const selected=godCards[cardIndex];
     const discardIdx=Disc.findIndex(card=>card?.id===selected?.id);
     if(discardIdx<0)return;
+    const beforePlayers=copyPlayers(P);
+    const beforeDiscard=[...Disc];
     const [godCard]=Disc.splice(discardIdx,1);
     P[actorIdx].hand.push(godCard);
     const actorName=localDisplayName(actorIdx,P[actorIdx]?.name);
-    const L=[...gs.log,`【掘墓】${actorName} 从弃牌堆中取回 ${cardLogText(godCard,{alwaysShowName:true})}`];
+    const retrieveMsg=`【掘墓】${actorName} 从弃牌堆中取回 ${cardLogText(godCard,{alwaysShowName:true})}`;
+    const L=[...gs.log,retrieveMsg];
+    const graveDigEvent=createGraveDigEvent({
+      playerIdx:actorIdx,
+      playerName:P[actorIdx]?.name,
+      card:godCard,
+      msgs:[retrieveMsg],
+      beforePlayers,
+      afterPlayers:copyPlayers(P),
+      beforeDiscard,
+      afterDiscard:[...Disc],
+    });
     const proliferatingZPatch=appendPublicCardGainTriggers(gs,P,actorIdx,godCard);
     let nextGs=buildTargetContinuationGs({
       players:P,
@@ -7043,9 +7070,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       log:L,
       abilityData,
       canResumeAi:false,
-      extraPatch:proliferatingZPatch,
+      extraPatch:{
+        ...proliferatingZPatch,
+        ...(graveDigEvent?{_visualEvents:[...(gs._visualEvents||[]),graveDigEvent]}:{}),
+      },
     });
+    const queue=graveDigEvent?[buildGraveDigTransferStep(graveDigEvent)].filter(Boolean):[];
     finishTargetContinuation({
+      queue,
       nextGs,
       continueRest:!!(abilityData.fromRest&&isLocalSeatIndex(actorIdx)),
     });

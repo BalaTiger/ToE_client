@@ -28,6 +28,7 @@ export const VISUAL_EVENT = {
   TSG_SLIME_GRANT: 'tsgSlimeGrant',
   MULTIPLY: 'multiply',
   RANDOM_TARGET: 'randomTarget',
+  GRAVE_DIG: 'graveDig',
 };
 
 const visualEventInstanceId = Math.random().toString(36).slice(2, 10);
@@ -147,6 +148,30 @@ export function createBewitchGiftEvent({
     card,
     msgs: Array.isArray(msgs) ? msgs : [],
     ...(encounterState ? { encounterState } : {}),
+  }, 'action');
+}
+
+export function createGraveDigEvent({
+  playerIdx = 0,
+  playerName = '该玩家',
+  card,
+  msgs = [],
+  beforePlayers = null,
+  afterPlayers = null,
+  beforeDiscard = null,
+  afterDiscard = null,
+} = {}) {
+  if (!card || playerIdx == null) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.GRAVE_DIG,
+    playerIdx,
+    playerName,
+    card,
+    msgs: Array.isArray(msgs) ? msgs : [],
+    ...(Array.isArray(beforePlayers) ? { beforePlayers } : {}),
+    ...(Array.isArray(afterPlayers) ? { afterPlayers } : {}),
+    ...(Array.isArray(beforeDiscard) ? { beforeDiscard } : {}),
+    ...(Array.isArray(afterDiscard) ? { afterDiscard } : {}),
   }, 'action');
 }
 
@@ -1428,7 +1453,15 @@ export function buildCardEffectStepsFromVisualEvents(state, oldState = null, pre
     .filter(event => (typeof predicate === 'function' ? predicate(event) : true))
     .flatMap(event => {
       const step = buildCardEffectAnimStep(event, state);
-      return step?.type === 'COMPOSITE' ? step.steps : [step];
+      const steps = step?.type === 'COMPOSITE' ? step.steps : [step];
+      // Tag each compiled step with its owning event id so queue-coverage
+      // checks (getAiActionQueueCoverage) recognize the event as presented;
+      // otherwise callers fall back to legacyMerge and the event is compiled
+      // a second time (e.g. 夜风呼啸 gifted via 蛊惑 played its animation and
+      // stat deductions twice).
+      return steps.filter(Boolean).map(s => (
+        event.id && !s.visualEventId ? { ...s, visualEventId: event.id } : s
+      ));
     })
     .filter(Boolean);
 }

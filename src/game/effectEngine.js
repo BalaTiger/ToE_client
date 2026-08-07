@@ -25,7 +25,7 @@ import { buildStatEvents } from './statEvents';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { makeProliferatingZState } from './proliferatingZ';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
-import { createCardEffectEvent, createEarthquakeEvent, createInspectionVisualEvent, createRandomTargetVisualEvent, createSphinxResultEvent, createThrowStoneEvent } from './visualEvents';
+import { createCardEffectEvent, createEarthquakeEvent, createGraveDigEvent, createInspectionVisualEvent, createRandomTargetVisualEvent, createSphinxResultEvent, createThrowStoneEvent } from './visualEvents';
 import { createGeomagneticRestoreCard } from '../constants/card';
 import {
   addTurnScopedDamageBonus,
@@ -1475,10 +1475,29 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       }
       if (isAI) {
         const picked = godCards[godCards.length - 1];
+        const beforePlayers = copyPlayers(P);
+        const beforeDiscard = [...Disc];
         const [godCard] = Disc.splice(picked.discardIndex, 1);
         P[ci].hand.push(godCard);
         statePatch = { ...statePatch, ...appendPublicCardGainTriggers({ ...gs, ...statePatch }, P, ci, godCard) };
-        msgs.push(`${actor.name} 从弃牌堆中取回 ${cardLogText(godCard, { alwaysShowName: true })}`);
+        const retrieveMsg = `${actor.name} 从弃牌堆中取回 ${cardLogText(godCard, { alwaysShowName: true })}`;
+        msgs.push(retrieveMsg);
+        const event = createGraveDigEvent({
+          playerIdx: ci,
+          playerName: actor.name,
+          card: godCard,
+          msgs: [retrieveMsg],
+          beforePlayers,
+          afterPlayers: copyPlayers(P),
+          beforeDiscard,
+          afterDiscard: [...Disc],
+        });
+        if (event) {
+          statePatch = {
+            ...statePatch,
+            _visualEvents: [...(statePatch._visualEvents || []), event],
+          };
+        }
       } else {
         statePatch = {
           ...statePatch,

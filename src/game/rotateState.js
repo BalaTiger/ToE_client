@@ -337,7 +337,7 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
     if (event?.type === 'timedOutDrawDiscard') return rotateTimedOutDrawDiscardEvent(event, rotateIndex);
     if (event?.type === 'earthquake' || event?.type === 'cardEffect') return rotateCardEffectVisualEvent(event, rotateIndex, myIndex);
     if (event?.type === 'endlessCorridorReplay' || event?.type === 'animTransaction') return rotateEndlessCorridorReplayVisualEvent(event, rotateIndex, myIndex);
-    if (event?.type === 'turnStart' || event?.type === 'drawCard' || event?.type === 'handLimitDiscard' || event?.type === 'tsgSlimePop' || event?.type === 'godStatusChanged') {
+    if (event?.type === 'turnStart' || event?.type === 'drawCard' || event?.type === 'handLimitDiscard' || event?.type === 'tsgSlimePop' || event?.type === 'godStatusChanged' || event?.type === 'graveDig') {
       return {
         ...event,
         playerIdx: event.playerIdx != null ? rotateIndex(event.playerIdx) : event.playerIdx,
@@ -349,6 +349,12 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
           : {}),
         ...(event?.type === 'godStatusChanged' && event.faithSettlement
           ? { faithSettlement: rotateFaithSettlement(event.faithSettlement, rotateIndex, myIndex) }
+          : {}),
+        ...(event?.type === 'graveDig' && Array.isArray(event.beforePlayers)
+          ? { beforePlayers: rotatePlayersArray(event.beforePlayers, myIndex) }
+          : {}),
+        ...(event?.type === 'graveDig' && Array.isArray(event.afterPlayers)
+          ? { afterPlayers: rotatePlayersArray(event.afterPlayers, myIndex) }
           : {}),
       };
     }

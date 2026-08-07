@@ -13,6 +13,7 @@ import { buildTsathogguaSlimeBalanceDecision, copyPlayers, makeInspectionMeta } 
 import { resetIds, makePlayer, makeStandardPlayers, makeZoneCard, makeGodCard, makeGs } from './factory';
 import { createTsathogguaSlimeCard } from '../../constants/card';
 import { VISUAL_EVENT } from '../visualEvents';
+import { buildGraveDigTransferStep } from '../animQueueHelpers';
 import { makeProliferatingZState } from '../proliferatingZ';
 
 describe('逆流回合结束时机', () => {
@@ -1181,6 +1182,29 @@ describe('applyFx', () => {
     const res = applyFx(card, 0, null, players, [], discard, gs, false, [], true);
     expect(res.P[0].hand.map(c => c.godKey)).toEqual(['SHU']);
     expect(res.Disc.map(c => c.godKey).filter(Boolean)).toEqual(['NYA']);
+  });
+
+  it('graveDigGod: AI 取回时产生 graveDig 视觉事件并可编译为弃牌堆起点的飞牌步骤', () => {
+    const players = makeStandardPlayers(3);
+    const shu = makeGodCard('SHU');
+    const discard = [makeZoneCard('A1', 0), shu];
+    const card = { type: 'graveDigGod', name: '掘墓', key: 'A4' };
+    const gs = makeGs({ players, discard });
+    const res = applyFx(card, 0, null, players, [], discard, gs, false, [], true);
+    const event = (res.statePatch?._visualEvents || []).find(ev => ev?.type === 'graveDig');
+    expect(event).toMatchObject({ playerIdx: 0, card: expect.objectContaining({ godKey: 'SHU' }) });
+    expect(event.beforeDiscard.some(c => c?.godKey === 'SHU')).toBe(true);
+    expect(event.afterDiscard.some(c => c?.godKey === 'SHU')).toBe(false);
+    const step = buildGraveDigTransferStep(event);
+    expect(step).toMatchObject({
+      type: 'CARD_TRANSFER',
+      sourceAnchor: 'discard',
+      dest: 'player',
+      toPid: 0,
+      faceUp: true,
+      visualEventId: event.id,
+    });
+    expect(step.cards[0].godKey).toBe('SHU');
   });
 
   it('buryAlive: 玩家触发时设置多目标手牌选择状态', () => {
