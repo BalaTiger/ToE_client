@@ -384,7 +384,10 @@ function resolveActionQueueMeta(state, queue, consumedEventIds = null) {
         uncoveredEventIds: coverage.uncoveredEventIds,
       });
     }
-    return LEGACY_MERGE_ACTION_SCOPE_META;
+    return {
+      ...LEGACY_MERGE_ACTION_SCOPE_META,
+      compileEventIds: coverage.uncoveredEventIds,
+    };
   }
   return coverage.eventIds.length
     ? { ...AUTHORITATIVE_QUEUE_META, eventIds: coverage.eventIds }
@@ -1936,7 +1939,7 @@ export default function Game(){
       {buildAnimQueue,copyPlayers}
     );
     const queue=flow.queue;
-    triggerAnimQueue(queue,gs);
+    triggerAnimQueue(queue,gs,undefined,resolveActionQueueMeta(gs,queue,consumedVisualEventIdsRef.current));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[gs?._inspectionSeq,gs?._inspectionEvents,gs?.gameOver,anim,showTutorial,softGuidePauseActive]);
 

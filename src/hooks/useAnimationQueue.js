@@ -32,6 +32,20 @@ import {
   mergeAnimationTransactionQueue,
 } from '../game/visualEventTransactionCompiler';
 
+export function getRuleEventCompileIds(transactionMeta = null) {
+  if (Array.isArray(transactionMeta?.compileEventIds)) return transactionMeta.compileEventIds;
+  if (Array.isArray(transactionMeta?.eventIds)) return transactionMeta.eventIds;
+  return null;
+}
+
+export function collectPendingVisualEventIds(queue, ruleTransaction = null, transactionMeta = null) {
+  return [...new Set([
+    ...getAnimationQueueVisualEventIds(queue),
+    ...(Array.isArray(ruleTransaction?.eventIds) ? ruleTransaction.eventIds : []),
+    ...(Array.isArray(transactionMeta?.eventIds) ? transactionMeta.eventIds : []),
+  ].filter(Boolean))];
+}
+
 export function useAnimationQueue({
   gs,
   copyPlayers,
@@ -379,11 +393,12 @@ export function useAnimationQueue({
     }
     const shouldCompileRuleEvents = queueAuthority !== ANIMATION_QUEUE_AUTHORITY.QUEUE;
     const transactionState = nextGs && shouldCompileRuleEvents ? ensureVisualEventState(nextGs) : null;
+    const compileEventIds = getRuleEventCompileIds(transactionMeta);
     const ruleTransaction = transactionState
       ? compileRuleVisualEventsToAnimTransaction(transactionState, null, {
         consumedEventIds: consumedVisualEventIdsRef?.current,
         buildAnimQueue,
-        ...(Array.isArray(transactionMeta?.eventIds) ? { eventIds: transactionMeta.eventIds } : {}),
+        ...(Array.isArray(compileEventIds) ? { eventIds: compileEventIds } : {}),
         ...(transactionMeta?.visualEventScope ? { visualEventScope: transactionMeta.visualEventScope } : {}),
       })
       : null;
@@ -457,11 +472,11 @@ export function useAnimationQueue({
     reportSchemaIssues('timed queue validation failed', validateAnimationQueueSteps(timedQueue));
     const preparedQueue = prepareAnimQueueLogs(timedQueue, nextGs, visibleLogRef.current)
       .map(step => ({ ...step, _playbackId: ++playbackIdRef.current }));
-    pendingVisualEventIdsRef.current = [...new Set([
-      ...getAnimationQueueVisualEventIds(preparedQueue),
-      ...(Array.isArray(ruleTransaction?.eventIds) ? ruleTransaction.eventIds : []),
-      ...(Array.isArray(transactionMeta?.eventIds) ? transactionMeta.eventIds : []),
-    ].filter(Boolean))];
+    pendingVisualEventIdsRef.current = collectPendingVisualEventIds(
+      preparedQueue,
+      ruleTransaction,
+      transactionMeta,
+    );
     const continuityIssues = validateStatAnimationContinuity(preparedQueue);
     if (continuityIssues.length && import.meta.env?.DEV) {
       console.warn('[stat-presentation] discontinuous stat animation queue', continuityIssues);
