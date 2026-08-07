@@ -32,10 +32,10 @@
 | AI 完整行动结算 | AI 摸牌后执行信仰、技能、追捕、伤害、弃牌，再进入下一回合 | `executeAiTurn`：2347、2912、2922 | **已迁出**：行动段的掉包、追捕、蛊惑、繁衍、斯芬克斯及规则编译步骤均携带事件归属；提交前校验全部 action 事件均被队列覆盖，完整时以 `queue` 权威提交并消费精确事件 ID。开发期发现未覆盖的新机制会告警并临时回退 action-scope 合并，避免静默漏播；`2347` 仍为追捕暂停边界。 |
 | 被追捕玩家亮牌及追捕结果 | 亮出手牌、弃牌/掠夺、伤害、决定是否继续追捕、衔接下回合 | `playerRevealForHunt`：8198、8287、8291、8301；`huntSelectCardFromPublic`：8134；`executeAiTurn`：2347 | **已迁出**：所有追捕相关 `triggerAnimQueue` 改为 `resolveActionQueueMeta` 动态选择权威。覆盖检查会排除前一追捕阶段已经消费的事件；队列覆盖全部未消费 action 事件时使用 `queue` 权威并消费精确事件 ID，只有真正未覆盖的新事件才会 dev 告警并安全回退到 `legacyMerge action-scope`。 |
 | 邪神遭遇后的玩家选择 | 信仰/升级/收入手牌/弃置、旧邪神牌离场、SAN 变化、检定与胜负 | `godResolvePlayer`：8739、8773 | ~~与本次蛊惑问题属于同类：邪神 tag、弃牌、SAN 和检定必须共享一套阶段顺序。~~ **第一阶段已迁出**：`8739` 弃置分支、`8773` 信仰/升级/收入分支已显式传入 `queue` 权威，并手动补入 `GOD_POWER_BLOCKED` 步骤。 |
-| AI 邪神选择 | AI 信仰、转信或放弃邪神馈赠，随后检定/弃牌/继续行动 | 顶层回调：1676、2114、2125、2143 | 当前显式补过“放弃邪神牌弃牌动画”，说明 diff 队列本身并不完整，适合优先改为单一事务。 |
+| AI 邪神选择 | AI 信仰、转信或放弃邪神馈赠，随后检定/弃牌/继续行动 | 顶层回调：1676、2114、2125、2143 | ~~当前显式补过“放弃邪神牌弃牌动画”，说明 diff 队列本身并不完整，适合优先改为单一事务。~~ **已迁出**：`playPendingAiGodEncounterInspection`、`resolvePendingAiGodChoice` 及其 continuation 均通过 `resolveActionQueueMeta` 校验，覆盖完整时以 `queue` 权威提交，未覆盖时安全回退。 |
 | 检定牌结算 | SAN 损失后翻检定牌，再应用检定牌伤害、死亡或后续选择 | 顶层检定监听：1912 | ~~检定经常夹在邪神/卡牌结算中；默认合并可能将属性步骤移到翻牌前后错误位置。~~ **已迁出**：`buildInspectionEventFlow` 队列已覆盖检定链；通过 `resolveActionQueueMeta` 校验，完整时以 `queue` 权威提交。若同包仍有其他未迁移事件，仅通过 `compileEventIds` 请求补编译，只有编译成功的事务事件才会被消费。 |
-| 连锁目标结算 | 一张牌依次作用多个目标，期间可能暂停等待规避、伤害分摊、虚化或黏液平衡 | `finishTargetContinuation`：6259、6264、6269、6274、6278 | 一个机制拆成多次队列与回调，后续目标可能在前一目标状态动画完成前开始。 |
-| 撒托古亚黏液平衡决定 | 伤害后选择消耗/分配黏液，再继续原始伤害或摸牌流程 | `resolveTsathogguaSlimeBalance`：6342、6367、6394、6474 | 同时修改手牌、属性和阶段，且会恢复被暂停的原始结算，存在状态快照回退风险。 |
+| 连锁目标结算 | 一张牌依次作用多个目标，期间可能暂停等待规避、伤害分摊、虚化或黏液平衡 | `finishTargetContinuation`：6259、6264、6269、6274、6278 | ~~一个机制拆成多次队列与回调，后续目标可能在前一目标状态动画完成前开始。~~ **已迁出**：`finishTargetContinuation` 所有分支统一通过 `resolveActionQueueMeta` 选择权威；覆盖完整时以 `queue` 权威提交，`nextGs=null` 的回调续算分支也会通过只读 `compileState` 补编译真正缺失的事件。 |
+| 撒托古亚黏液平衡决定 | 伤害后选择消耗/分配黏液，再继续原始伤害或摸牌流程 | `resolveTsathogguaSlimeBalance`：6342、6367、6394、6474 | ~~同时修改手牌、属性和阶段，且会恢复被暂停的原始结算，存在状态快照回退风险。~~ **已迁出**：所有黏液平衡分支通过 `resolveActionQueueMeta` 校验，覆盖完整时以 `queue` 权威提交。 |
 
 ## P1：高频主流程与多段强制结算
 
@@ -100,12 +100,15 @@
 | `src/App.jsx` | `executeAiTurn` 行动结束两分支 | 覆盖完整时传入带精确 `eventIds` 的 `AUTHORITATIVE_QUEUE_META` | 手工队列步骤绑定规则事件 ID，并在提交前证明当前行动事件已全部覆盖；未覆盖时告警并安全回退，不会把未知事件静默标记为已消费 |
 | `src/App.jsx` | 追捕相关调用（`2347`、`8134`、`8198`、`8287`、`8301` 及 `8299` 结果段） | `resolveActionQueueMeta` 动态选择权威 | 与 `executeAiTurn` 同一套覆盖校验：先排除已由上一阶段消费的事件，再验证追捕亮牌、伤害/掠夺、继续追捕/回合交接队列；完整时用 `queue` 权威，真正缺失时才回退 action-scope 合并 |
 | `src/App.jsx` | 顶层检定监听 `1912` | `resolveActionQueueMeta` 动态选择权威 | 检定链队列已覆盖 `_visualEvents` 中对应事件；完整时切 `queue` 权威，未覆盖时用 `compileEventIds` 限定 action-scope 补编译，空编译或未知事件不会被误消费 |
+| `src/App.jsx` | AI 邪神选择（`1676`、`2114`、`2125`、`2143`） | `resolveActionQueueMeta` 动态选择权威 | AI 信仰/转信/放弃馈赠的检定与弃牌队列已接入覆盖校验 |
+| `src/App.jsx` | `finishTargetContinuation` 所有分支 | `resolveActionQueueMeta` 动态选择权威 | 连锁目标结算的续算队列统一校验覆盖；`nextGs=null` 时以 `compileState` 提供规则事件状态源，但不把该状态作为 pending state 提交 |
+| `src/App.jsx` | `resolveTsathogguaSlimeBalance` 所有分支 | `resolveActionQueueMeta` 动态选择权威 | 黏液平衡、伤害反应、续算队列统一校验覆盖，完整时以 `queue` 权威提交 |
 
 ### 已显式化（仍在用 `legacyMerge`，但不再依赖隐式回退）
 
 | 文件 | 位置 | 说明 |
 | --- | --- | --- |
-| `src/App.jsx` | `resolveActionQueueMeta` 覆盖失败分支 | 仅作为未知或尚未接入事件的安全回退；`compileEventIds` 只限定编译输入，不直接确认消费，已消费事件也不会再触发该分支 |
+| `src/App.jsx` | `resolveActionQueueMeta` 覆盖失败分支 | 仅作为未知或尚未接入事件的安全回退；`compileEventIds` 只限定编译输入，`compileState` 只提供只读规则状态，两者都不会直接确认消费或提交游戏状态 |
 
 ### 暂不迁移
 

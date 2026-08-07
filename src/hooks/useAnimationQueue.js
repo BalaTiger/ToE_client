@@ -38,6 +38,10 @@ export function getRuleEventCompileIds(transactionMeta = null) {
   return null;
 }
 
+export function getRuleEventCompileState(nextGs = null, transactionMeta = null) {
+  return nextGs || transactionMeta?.compileState || null;
+}
+
 export function collectPendingVisualEventIds(queue, ruleTransaction = null, transactionMeta = null) {
   return [...new Set([
     ...getAnimationQueueVisualEventIds(queue),
@@ -392,7 +396,10 @@ export function useAnimationQueue({
       console.warn('[legacyMerge] implicit fallback is deprecated; pass an explicit authority in transactionMeta');
     }
     const shouldCompileRuleEvents = queueAuthority !== ANIMATION_QUEUE_AUTHORITY.QUEUE;
-    const transactionState = nextGs && shouldCompileRuleEvents ? ensureVisualEventState(nextGs) : null;
+    const compileState = getRuleEventCompileState(nextGs, transactionMeta);
+    const transactionState = compileState && shouldCompileRuleEvents
+      ? ensureVisualEventState(compileState)
+      : null;
     const compileEventIds = getRuleEventCompileIds(transactionMeta);
     const ruleTransaction = transactionState
       ? compileRuleVisualEventsToAnimTransaction(transactionState, null, {

@@ -119,9 +119,11 @@ function createDrawCardEvent({ playerIdx = 0, playerName = '该玩家', card, ms
 function createStatEventsEvent({ statEvents = [], msgs = [], turnStartStage = null } = {}) {
   const events = Array.isArray(statEvents) ? statEvents.filter(Boolean) : [];
   if (!events.length) return null;
+  const phaseGroupIds = [...new Set(events.map(event => event?.phaseGroupId).filter(Boolean))];
   return withVisualEventMeta({
     type: VISUAL_EVENT.STAT_EVENTS,
     ...(turnStartStage ? { turnStartStage, turnStartStageOrder: 1 } : {}),
+    ...(phaseGroupIds.length === 1 ? { phaseGroupId: phaseGroupIds[0] } : {}),
     statEvents: events,
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'stat');
@@ -321,6 +323,8 @@ export function createCardEffectEvent({
   card = null,
   actorIdx = null,
   id = null,
+  phaseGroupId = null,
+  phaseOrder = null,
   beforePlayers = [],
   beforeDiscard = [],
   afterPlayers = null,
@@ -337,6 +341,8 @@ export function createCardEffectEvent({
     effectKey,
     card: card || null,
     actorIdx,
+    ...(phaseGroupId ? { phaseGroupId } : {}),
+    ...(phaseOrder != null ? { phaseOrder } : {}),
     beforePlayers: Array.isArray(beforePlayers) ? beforePlayers : [],
     beforeDiscard: Array.isArray(beforeDiscard) ? beforeDiscard : [],
     afterPlayers: Array.isArray(afterPlayers) ? afterPlayers : null,
@@ -640,9 +646,11 @@ export function createRandomTargetVisualEvent(event = {}, { players = null } = {
 export function buildRandomTargetSteps(event, state = null) {
   if (!event || event.sourceIdx == null || event.targetIdx == null) return [];
   return [{
-    type: 'RANDOM_TARGET',
-    visualEventId: event.id,
     ...event,
+    // Spreading the event must not clobber the step type with the event type
+    // ('randomTarget'); the player only recognizes the 'RANDOM_TARGET' step.
+    visualEventId: event.id,
+    type: 'RANDOM_TARGET',
     players: event.playersAfter || state?.players || [],
     msgs: event.resultText ? [event.resultText] : (event.msgs || []),
   }];
@@ -879,13 +887,17 @@ export function promoteLegacyVisualEvents(state) {
     if (!statGroups.has(key)) statGroups.set(key, []);
     statGroups.get(key).push(event);
   });
-  statGroups.forEach((statEvents, key) => promoted.push({
-    type: VISUAL_EVENT.STAT_EVENTS,
-    id: legacyVisualEventId(VISUAL_EVENT.STAT_EVENTS, [key]),
-    scope: 'stat',
-    statEvents,
-    msgs: state._statLogs || [],
-  }));
+  statGroups.forEach((statEvents, key) => {
+    const phaseGroupIds = [...new Set(statEvents.map(event => event?.phaseGroupId).filter(Boolean))];
+    promoted.push({
+      type: VISUAL_EVENT.STAT_EVENTS,
+      id: legacyVisualEventId(VISUAL_EVENT.STAT_EVENTS, [key]),
+      scope: 'stat',
+      ...(phaseGroupIds.length === 1 ? { phaseGroupId: phaseGroupIds[0] } : {}),
+      statEvents,
+      msgs: state._statLogs || [],
+    });
+  });
 
   (state._inspectionEvents || []).forEach(event => {
     if (hasEvent(candidate => candidate.type === VISUAL_EVENT.INSPECTION && candidate.legacySeq === event?.seq)) return;

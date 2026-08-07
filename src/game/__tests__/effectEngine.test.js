@@ -575,12 +575,25 @@ describe('applyFx', () => {
     const gs = makeGs({ players, currentTurn: 0 });
     const res = applyFx({ type: 'allDamageHPRandomExtra', name: '钻地魔虫', val: 2 }, 0, null, players, [], [], gs);
 
-    expect(res.statePatch._randomTargetEvents[0]).toMatchObject({ targetIdx: 1, phaseOrder: 1 });
+    expect(res.statePatch._randomTargetEvents[0]).toMatchObject({
+      targetIdx: 1,
+      phaseOrder: 1,
+      phaseGroupId: expect.any(String),
+    });
+    const phaseGroupId = res.statePatch._randomTargetEvents[0].phaseGroupId;
     expect(res.statePatch._visualEvents[0]).toMatchObject({
       type: VISUAL_EVENT.CARD_EFFECT,
       effectKey: 'burrowingWorm',
       actorIdx: 0,
+      phaseGroupId,
+      phaseOrder: -1,
     });
+    expect(res.statePatch._visualEvents[1]).toMatchObject({
+      type: VISUAL_EVENT.RANDOM_TARGET,
+      phaseGroupId,
+      phaseOrder: 1,
+    });
+    expect(res.statEvents.every(event => event.phaseGroupId === phaseGroupId)).toBe(true);
     expect(res.statEvents.filter(ev => ev.phaseOrder === 0).map(ev => ev.target)).toEqual([0, 1, 2]);
     expect(res.statEvents.filter(ev => ev.phaseOrder === 2)).toMatchObject([{ target: 1 }]);
     expect(res.P[1].hp).toBe(6);

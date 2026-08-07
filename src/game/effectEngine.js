@@ -255,12 +255,16 @@ function getLivingCircularDistance(players, fromIdx, toIdx) {
   return Math.min(diff, order.length - diff);
 }
 
-function appendRandomTargetEvent(statePatch, gs, event) {
+function appendRandomTargetEvent(statePatch, gs, event, { createPhaseGroup = false } = {}) {
   const seq = (gs?._randomTargetSeq || 0) + 1 + (statePatch?._randomTargetEvents?.length || 0);
-  const legacyEvent = { ...event, seq };
-  const visualEvent = event?.label === '投掷石块'
+  let legacyEvent = { ...event, seq };
+  let visualEvent = event?.label === '投掷石块'
     ? null
     : createRandomTargetVisualEvent(legacyEvent);
+  if (createPhaseGroup && visualEvent?.id) {
+    legacyEvent = { ...legacyEvent, phaseGroupId: visualEvent.id };
+    visualEvent = { ...visualEvent, phaseGroupId: visualEvent.id };
+  }
   return {
     ...statePatch,
     _randomTargetSeq: seq,
@@ -1643,7 +1647,10 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           label: card.name || '随机目标',
           resultText: `${P[randomTarget].name} 被选中`,
           phaseOrder: 1,
-        });
+        }, { createPhaseGroup: card?.name === '钻地魔虫' });
+        const phaseGroupId = card?.name === '钻地魔虫'
+          ? statePatch._randomTargetEvents?.at(-1)?.phaseGroupId || null
+          : null;
         msgs.push(`${P[randomTarget].name} 额外失去 ${card.val} HP`);
         if (localMsgs.length) msgs.push(...localMsgs);
         const seq = (gs?._statEventSeq || 0) + 1;
@@ -1658,6 +1665,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
               reason: card?.name || card?.type || '',
               seq,
               phaseOrder: 0,
+              ...(phaseGroupId ? { phaseGroupId } : {}),
             })),
           ...((P[randomTarget]?.hp ?? 0) < (beforeExtraPlayer.hp ?? 0) ? [{
             type: 'HP_LOSS',
@@ -1667,14 +1675,18 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
             reason: card?.name || card?.type || '',
             seq,
             phaseOrder: 2,
+            ...(phaseGroupId ? { phaseGroupId } : {}),
           }] : []),
         ];
       }
       if (card?.name === '钻地魔虫') {
+        const phaseGroupId = statePatch._randomTargetEvents?.at(-1)?.phaseGroupId || null;
         const event = createCardEffectEvent({
           effectKey: 'burrowingWorm',
           card,
           actorIdx: ci,
+          phaseGroupId,
+          phaseOrder: -1,
           beforePlayers: beforeGlobalPlayers,
           beforeDiscard: beforeGlobalDiscard,
           afterPlayers: copyPlayers(P),

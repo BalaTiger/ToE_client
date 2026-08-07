@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CS, GOD_CS } from '../../constants/card';
 import { RINFO } from '../../game';
 import { buildPublicUrl } from '../../utils/url';
+import { CardFaceImage } from '../cards/CardFaceImage';
+import { CARD_FACE_RATIO } from '../cards/CardFaceAssets';
 import { FullscreenLightLayer } from './FullscreenLightLayer';
 
 function GodResurrectionAnim({onDone}){
@@ -192,7 +193,7 @@ function TreasureMapAnim({hand,onConfirm,confirmCountdownSec=null,waitingLabel=n
   },[btnVisible,confirmCountdownSec,onConfirm]);
   // Layout: cards in a grid, max 4 per row
   const COLS=Math.min(N,4),ROWS=Math.ceil(N/COLS);
-  const CW=72,CH=96,GAP=8;
+  const CW=72,CH=Math.round(CW*CARD_FACE_RATIO),GAP=8;
   const gridW=COLS*(CW+GAP)-GAP, gridH=ROWS*(CH+GAP)-GAP;
   // Scatter origins (8 corners/edges)
   const origins=[
@@ -242,25 +243,16 @@ function TreasureMapAnim({hand,onConfirm,confirmCountdownSec=null,waitingLabel=n
           const tx=col*(CW+GAP),ty=row*(CH+GAP);
           const arrived=phase>i;
           const orig=origins[i%origins.length];
-          const s=CS[card.letter]||GOD_CS;
           return(
             <div key={card.id} style={{
               position:'absolute',left:tx,top:ty,width:CW,height:CH,
               transform:arrived?'translate(0,0)':`translate(${orig.x}px,${orig.y}px)`,
               opacity:arrived?1:0,
-              transition:'transform 0.55s cubic-bezier(0.22,1.1,0.36,1), opacity 0.4s ease',
-              borderRadius:5,background:s.bg,
-              border:`1.5px solid ${allIn?'#c8a96e':s.borderBright}`,
-              boxShadow:allIn?`0 0 14px #c8a96e99, 0 0 4px ${s.glow}`:`0 0 4px ${s.glow}`,
-              display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-              transition2:'border-color 0.4s, box-shadow 0.4s',
+              transition:'transform 0.55s cubic-bezier(0.22,1.1,0.36,1), opacity 0.4s ease, box-shadow 0.4s ease',
+              borderRadius:5,
+              boxShadow:allIn?'0 0 14px #c8a96e99, 0 0 26px #c8a96e44':'0 0 4px rgba(0,0,0,0.6)',
             }}>
-              <div style={{fontFamily:"'Cinzel',serif",fontSize:20,fontWeight:700,
-                color:s.text,textShadow:`0 0 10px ${s.glow}`}}>{card.letter}{card.number}</div>
-              <div style={{fontSize:8,color:s.text,opacity:0.88,fontFamily:"'IM Fell English',serif",
-                fontStyle:'italic',textAlign:'center',padding:'0 5px',marginTop:3,lineHeight:1.4}}>
-                {card.name}
-              </div>
+              <CardFaceImage card={card} width={CW} style={{boxShadow:'none'}} />
             </div>
           );
         })}

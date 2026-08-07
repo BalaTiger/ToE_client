@@ -387,6 +387,7 @@ function resolveActionQueueMeta(state, queue, consumedEventIds = null) {
     return {
       ...LEGACY_MERGE_ACTION_SCOPE_META,
       compileEventIds: coverage.uncoveredEventIds,
+      compileState: state,
     };
   }
   return coverage.eventIds.length
@@ -1707,7 +1708,7 @@ export default function Game(){
       applyTutorialStateSnapshot(newGs);
       setTutorialInspectionResuming(false);
       setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE);
-    });
+    },resolveActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current));
     return true;
   },[applyTutorialStateSnapshot,gs,triggerAnimQueue]);
 
@@ -2141,7 +2142,7 @@ export default function Game(){
           setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_CONVERT_CHECK);
         };
         if(preInspectionQueue.length){
-          triggerAnimQueue(preInspectionQueue,pauseGs,showConvertCheck);
+          triggerAnimQueue(preInspectionQueue,pauseGs,showConvertCheck,resolveActionQueueMeta(pauseGs,preInspectionQueue,consumedVisualEventIdsRef.current));
         }else{
           setGs(pauseGs);
           showConvertCheck();
@@ -2152,7 +2153,7 @@ export default function Game(){
     if(replay.queue.length||abandonGiftDiscardStep){
       // 弃牌动画放在 diff/检定队列之后：放弃馈赠是结算的最后一步。
       const queue=[...replay.queue,...(abandonGiftDiscardStep?[abandonGiftDiscardStep]:[])];
-      triggerAnimQueue(queue,newGs,nextTutorialStep?finish:undefined);
+      triggerAnimQueue(queue,newGs,nextTutorialStep?finish:undefined,resolveActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current));
     }else{
       setGs(newGs);
       finish();
@@ -2170,7 +2171,7 @@ export default function Game(){
           setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_PLAYER_DRAW);
         };
         if(continuation.queue?.length){
-          triggerAnimQueue(continuation.queue,continuation.finalGs,finish);
+          triggerAnimQueue(continuation.queue,continuation.finalGs,finish,resolveActionQueueMeta(continuation.finalGs,continuation.queue,consumedVisualEventIdsRef.current));
         }else{
           finish();
         }
@@ -6321,27 +6322,28 @@ export default function Game(){
     }
     if(syncLog&&nextGs?.log)syncVisibleLog(nextGs.log,nextGs);
     const continuationRoute=getTargetContinuationRoute(nextGs,{continueRest,continueTurnStartDraw});
+    const continuationMeta=resolveActionQueueMeta(nextGs,queue,consumedVisualEventIdsRef.current);
     if(continuationRoute===TARGET_CONTINUATION_ROUTE.REST_DRAW){
-      if(queue.length)triggerAnimQueue(queue,null,()=>_cthContinueRestDraws(nextGs));
+      if(queue.length)triggerAnimQueue(queue,null,()=>_cthContinueRestDraws(nextGs),continuationMeta);
       else _cthContinueRestDraws(nextGs);
       return;
     }
     if(continuationRoute===TARGET_CONTINUATION_ROUTE.TURN_START_DRAW){
-      if(queue.length)triggerAnimQueue(queue,null,()=>_tsgContinueTurnStartDraw(nextGs));
+      if(queue.length)triggerAnimQueue(queue,null,()=>_tsgContinueTurnStartDraw(nextGs),continuationMeta);
       else _tsgContinueTurnStartDraw(nextGs);
       return;
     }
     if(continuationRoute===TARGET_CONTINUATION_ROUTE.END_TURN_REPLAY){
-      if(queue.length)triggerAnimQueue(queue,null,()=>continueEndTurnReplay(nextGs));
+      if(queue.length)triggerAnimQueue(queue,null,()=>continueEndTurnReplay(nextGs),continuationMeta);
       else continueEndTurnReplay(nextGs);
       return;
     }
     if(continuationRoute===TARGET_CONTINUATION_ROUTE.PROLIFERATING_Z){
-      if(queue.length)triggerAnimQueue(queue,null,()=>continueProliferatingZDraws(nextGs));
+      if(queue.length)triggerAnimQueue(queue,null,()=>continueProliferatingZDraws(nextGs),continuationMeta);
       else continueProliferatingZDraws(nextGs);
       return;
     }
-    if(queue.length)triggerAnimQueue(queue,nextGs);
+    if(queue.length)triggerAnimQueue(queue,nextGs,undefined,continuationMeta);
     else setGs(nextGs);
   }
 
@@ -6405,7 +6407,7 @@ export default function Game(){
         statePatchStep({players:P,deck:D,discard:Disc,log:L}),
       ];
       if(!broadcastSlimeTransaction(redirectedGs,redirectQueue,L.slice(gs.log.length))&&redirectedGs._isMP)broadcastMpStateBeforeLocalReplay(redirectedGs);
-      triggerAnimQueue(redirectQueue,redirectedGs);
+      triggerAnimQueue(redirectQueue,redirectedGs,undefined,resolveActionQueueMeta(redirectedGs,redirectQueue,consumedVisualEventIdsRef.current));
       return;
     }
     if(linkReaction.applied){
@@ -6430,7 +6432,7 @@ export default function Game(){
           statePatchStep({players:P,deck:D,discard:Disc,log:L}),
         ];
         if(!broadcastSlimeTransaction(chainedGs,chainedQueue,L.slice(gs.log.length))&&chainedGs._isMP)broadcastMpStateBeforeLocalReplay(chainedGs);
-        triggerAnimQueue(chainedQueue,chainedGs);
+        triggerAnimQueue(chainedQueue,chainedGs,undefined,resolveActionQueueMeta(chainedGs,chainedQueue,consumedVisualEventIdsRef.current));
         return;
       }
     }
@@ -6457,7 +6459,7 @@ export default function Game(){
         statePatchStep({players:P,deck:D,discard:Disc,log:L}),
       ];
       if(!broadcastSlimeTransaction(queuedGs,queuedAnim,L.slice(gs.log.length))&&queuedGs._isMP)broadcastMpStateBeforeLocalReplay(queuedGs);
-      triggerAnimQueue(queuedAnim,queuedGs);
+      triggerAnimQueue(queuedAnim,queuedGs,undefined,resolveActionQueueMeta(queuedGs,queuedAnim,consumedVisualEventIdsRef.current));
       return;
     }
     const preInspectionGs={...gs,players:copyPlayers(P),deck:D,discard:Disc,log:[...L]};
@@ -6537,7 +6539,7 @@ export default function Game(){
           statePatchStep({players:finalNextGs.players,deck:finalNextGs.deck,discard:finalNextGs.discard,log:finalNextGs.log}),
         ];
         if(!broadcastSlimeTransaction(finalNextGs,reactionQueue,finalNextGs.log.slice(gs.log.length))&&finalNextGs._isMP)broadcastMpStateBeforeLocalReplay(finalNextGs);
-        triggerAnimQueue(reactionQueue,finalNextGs);
+        triggerAnimQueue(reactionQueue,finalNextGs,undefined,resolveActionQueueMeta(finalNextGs,reactionQueue,consumedVisualEventIdsRef.current));
         return;
       }
     }

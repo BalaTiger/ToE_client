@@ -376,6 +376,63 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
   }
 }
 
+function visualEventPhaseOrder(event) {
+  if (!event) return null;
+  if (event.phaseOrder != null) return event.phaseOrder;
+  if (Array.isArray(event.statEvents) && event.statEvents.some(statEvent => statEvent?.phaseOrder != null)) {
+    return Math.min(...event.statEvents.map(statEvent => statEvent?.phaseOrder ?? 0));
+  }
+  return null;
+}
+
+// phaseOrder is local to one settlement, not global to the state packet.
+// Events that need cross-event interleaving share a phaseGroupId. Compile each
+// group as one stable block at its first event, while preserving boundaries
+// between independent settlements.
+function interleavePhaseOrderedVisualEvents(events = []) {
+  const groups = new Map();
+  events.forEach((event, index) => {
+    if (!event?.phaseGroupId) return;
+    if (!groups.has(event.phaseGroupId)) groups.set(event.phaseGroupId, []);
+    groups.get(event.phaseGroupId).push({ event, index });
+  });
+  if (!groups.size) return events;
+
+  const emittedGroups = new Set();
+  const result = [];
+  events.forEach(event => {
+    const groupId = event?.phaseGroupId;
+    if (!groupId) {
+      result.push(event);
+      return;
+    }
+    if (emittedGroups.has(groupId)) return;
+    emittedGroups.add(groupId);
+    const split = groups.get(groupId).flatMap(({ event: groupedEvent, index }) => {
+      if (groupedEvent?.type !== VISUAL_EVENT.STAT_EVENTS || !Array.isArray(groupedEvent.statEvents)) {
+        return [{ event: groupedEvent, index, phase: visualEventPhaseOrder(groupedEvent) }];
+      }
+      const orders = [...new Set(groupedEvent.statEvents.map(statEvent => statEvent?.phaseOrder ?? 0))].sort((a, b) => a - b);
+      return orders.map((order, sliceIndex) => ({
+        event: {
+          ...groupedEvent,
+          statEvents: groupedEvent.statEvents.filter(statEvent => (statEvent?.phaseOrder ?? 0) === order),
+          msgs: sliceIndex === 0 ? groupedEvent.msgs : [],
+        },
+        index: index + (sliceIndex / Math.max(1, orders.length)),
+        phase: order,
+      }));
+    });
+    result.push(...split
+      .sort((left, right) => (
+        (left.phase ?? Number.NEGATIVE_INFINITY) - (right.phase ?? Number.NEGATIVE_INFINITY) ||
+        left.index - right.index
+      ))
+      .map(item => item.event));
+  });
+  return result;
+}
+
 export function compileRuleVisualEventsToAnimTransaction(state, previousState = null, options = {}) {
   const previousIds = new Set(getVisualEventIdsFromState(previousState));
   const consumedIds = options.consumedEventIds;
@@ -390,7 +447,7 @@ export function compileRuleVisualEventsToAnimTransaction(state, previousState = 
     events: presentationEvents,
     suppressedEventIds,
   } = suppressStatsOwnedByCardEffects(scopedEvents);
-  const events = orderTurnStartVisualEvents(presentationEvents);
+  const events = interleavePhaseOrderedVisualEvents(orderTurnStartVisualEvents(presentationEvents));
   const compiledWithEmpty = events.map(event => ({
       event,
       steps: tagVisualEventSteps(event, compileVisualEventToAnimSteps(event, state, previousState, options)),
