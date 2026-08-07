@@ -14,7 +14,6 @@
 
 | 文件 | 调用点 | 原因 |
 | --- | --- | --- |
-| `src/App.jsx` | 8291 | 被追捕玩家亮牌后的结果段仍按 `visualEventScope: 'action'` 合并规则事件。 |
 | `src/App.jsx` | 1737、1760 | `finishTutorialActionWithState` 的透传边界；调用方传入权威元数据时不会走 `legacyMerge`，未传入时仍回退。 |
 
 ## 优先级定义
@@ -31,7 +30,7 @@
 | 游戏机制 | 玩家看到的过程 | 调用位置 | 风险说明 |
 | --- | --- | --- | --- |
 | AI 完整行动结算 | AI 摸牌后执行信仰、技能、追捕、伤害、弃牌，再进入下一回合 | `executeAiTurn`：2347、2912、2922 | **已迁出**：行动段的掉包、追捕、蛊惑、繁衍、斯芬克斯及规则编译步骤均携带事件归属；提交前校验全部 action 事件均被队列覆盖，完整时以 `queue` 权威提交并消费精确事件 ID。开发期发现未覆盖的新机制会告警并临时回退 action-scope 合并，避免静默漏播；`2347` 仍为追捕暂停边界。 |
-| 被追捕玩家亮牌及追捕结果 | 亮出手牌、弃牌/掠夺、伤害、决定是否继续追捕、衔接下回合 | `playerRevealForHunt`：8198、8287、8291、8301；`huntSelectCardFromPublic`：8134 | 8291 仍按 action scope 合并。追捕本身会跨多个状态快照，最容易把上一段信仰或属性动画带入下一段。 |
+| 被追捕玩家亮牌及追捕结果 | 亮出手牌、弃牌/掠夺、伤害、决定是否继续追捕、衔接下回合 | `playerRevealForHunt`：8198、8287、8291、8301；`huntSelectCardFromPublic`：8134；`executeAiTurn`：2347 | **已迁出**：所有追捕相关 `triggerAnimQueue` 改为 `resolveActionQueueMeta` 动态选择权威。覆盖检查会排除前一追捕阶段已经消费的事件；队列覆盖全部未消费 action 事件时使用 `queue` 权威并消费精确事件 ID，只有真正未覆盖的新事件才会 dev 告警并安全回退到 `legacyMerge action-scope`。 |
 | 邪神遭遇后的玩家选择 | 信仰/升级/收入手牌/弃置、旧邪神牌离场、SAN 变化、检定与胜负 | `godResolvePlayer`：8739、8773 | ~~与本次蛊惑问题属于同类：邪神 tag、弃牌、SAN 和检定必须共享一套阶段顺序。~~ **第一阶段已迁出**：`8739` 弃置分支、`8773` 信仰/升级/收入分支已显式传入 `queue` 权威，并手动补入 `GOD_POWER_BLOCKED` 步骤。 |
 | AI 邪神选择 | AI 信仰、转信或放弃邪神馈赠，随后检定/弃牌/继续行动 | 顶层回调：1676、2114、2125、2143 | 当前显式补过“放弃邪神牌弃牌动画”，说明 diff 队列本身并不完整，适合优先改为单一事务。 |
 | 检定牌结算 | SAN 损失后翻检定牌，再应用检定牌伤害、死亡或后续选择 | 顶层检定监听：1912 | 检定经常夹在邪神/卡牌结算中；默认合并可能将属性步骤移到翻牌前后错误位置。 |
@@ -99,12 +98,13 @@
 | `src/App.jsx` | `3804`、`3809`、`3854` | 传入 `AUTHORITATIVE_QUEUE_META` | 联机摸牌弃置超时分支：`nextGs` 已显式清空 `_visualEvents`，队列 hand-built 完整，不再依赖合并 |
 | `src/App.jsx` | `7215`、`7266`、`7307`、`7367`、`7411`、`7453`、`7495` | 传入 `AUTHORITATIVE_QUEUE_META` | 开发调试动画入口（仅 `import.meta.env.DEV`），队列自包含 |
 | `src/App.jsx` | `executeAiTurn` 行动结束两分支 | 覆盖完整时传入带精确 `eventIds` 的 `AUTHORITATIVE_QUEUE_META` | 手工队列步骤绑定规则事件 ID，并在提交前证明当前行动事件已全部覆盖；未覆盖时告警并安全回退，不会把未知事件静默标记为已消费 |
+| `src/App.jsx` | 追捕相关调用（`2347`、`8134`、`8198`、`8287`、`8301` 及 `8299` 结果段） | `resolveActionQueueMeta` 动态选择权威 | 与 `executeAiTurn` 同一套覆盖校验：先排除已由上一阶段消费的事件，再验证追捕亮牌、伤害/掠夺、继续追捕/回合交接队列；完整时用 `queue` 权威，真正缺失时才回退 action-scope 合并 |
 
 ### 已显式化（仍在用 `legacyMerge`，但不再依赖隐式回退）
 
 | 文件 | 位置 | 说明 |
 | --- | --- | --- |
-| `src/App.jsx` | `8299` | 追捕结果段的 `visualEventScope:'action'` 改为 `LEGACY_MERGE_ACTION_SCOPE_META`，明确标记为待后续整体事务化改造；`executeAiTurn` 仅在覆盖校验失败时使用同一常量作安全回退 |
+| `src/App.jsx` | `resolveActionQueueMeta` 覆盖失败分支 | 仅作为未知或尚未接入事件的安全回退；已消费事件不会再触发该分支 |
 
 ### 暂不迁移
 

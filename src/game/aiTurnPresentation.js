@@ -129,8 +129,13 @@ export function bindVisualEventToSteps(steps, event) {
     : { ...step, visualEventId: event.id });
 }
 
-export function getAiActionQueueCoverage(state, queue, getQueueEventIds) {
-  const visualEvents = scopeAiActionReplayMetadata(state).visualEvents;
+export function getAiActionQueueCoverage(state, queue, getQueueEventIds, consumedEventIds = null) {
+  const isConsumed = id => !!id && (
+    consumedEventIds?.has?.(id)
+    || (Array.isArray(consumedEventIds) && consumedEventIds.includes(id))
+  );
+  const visualEvents = scopeAiActionReplayMetadata(state).visualEvents
+    .filter(event => !isConsumed(event?.id));
   const eventIds = visualEvents
     .map(event => event?.id)
     .filter(Boolean);

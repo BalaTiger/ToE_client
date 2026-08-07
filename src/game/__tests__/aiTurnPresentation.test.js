@@ -68,6 +68,45 @@ describe('AI turn presentation helpers', () => {
     });
   });
 
+  it('ignores action events consumed by an earlier hunt segment', () => {
+    const state = {
+      _visualEvents: [
+        { id: 'faith-before-hunt', type: 'godStatusChanged' },
+        { id: 'current-hunt-result', type: 'huntResult' },
+        { id: 'next-turn-draw', type: 'drawCard', turnStartStage: 'draw' },
+      ],
+    };
+    const queue = [{ type: 'HP_DAMAGE', visualEventId: 'current-hunt-result' }];
+
+    expect(getAiActionQueueCoverage(
+      state,
+      queue,
+      steps => steps.map(step => step.visualEventId).filter(Boolean),
+      new Set(['faith-before-hunt']),
+    )).toEqual({
+      eventIds: ['current-hunt-result'],
+      coveredEventIds: ['current-hunt-result'],
+      uncoveredEventIds: [],
+    });
+  });
+
+  it('allows a later hunt segment with no new rule event after prior events were consumed', () => {
+    const state = {
+      _visualEvents: [{ id: 'previous-hunt-target', type: 'huntTarget' }],
+    };
+
+    expect(getAiActionQueueCoverage(
+      state,
+      [{ type: 'DISCARD' }, { type: 'HP_DAMAGE' }],
+      steps => steps.map(step => step.visualEventId).filter(Boolean),
+      new Set(['previous-hunt-target']),
+    )).toEqual({
+      eventIds: [],
+      coveredEventIds: [],
+      uncoveredEventIds: [],
+    });
+  });
+
   it('counts a suppressed stat wrapper as covered by its represented owner event', () => {
     const statEvent = { type: 'SAN_LOSS', seq: 18 };
     const state = {

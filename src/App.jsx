@@ -371,6 +371,25 @@ function authoritativeTurnStartQueueMeta(state) {
     ? { ...AUTHORITATIVE_QUEUE_META, eventIds }
     : AUTHORITATIVE_QUEUE_META;
 }
+function resolveActionQueueMeta(state, queue, consumedEventIds = null) {
+  const coverage = getAiActionQueueCoverage(
+    state,
+    queue,
+    getAnimationQueueVisualEventIds,
+    consumedEventIds
+  );
+  if (coverage.uncoveredEventIds.length) {
+    if (import.meta.env.DEV) {
+      console.warn('[action queue] authoritative coverage incomplete; using scoped legacy merge', {
+        uncoveredEventIds: coverage.uncoveredEventIds,
+      });
+    }
+    return LEGACY_MERGE_ACTION_SCOPE_META;
+  }
+  return coverage.eventIds.length
+    ? { ...AUTHORITATIVE_QUEUE_META, eventIds: coverage.eventIds }
+    : AUTHORITATIVE_QUEUE_META;
+}
 function getBattleBackgroundStyle(expansionKey,isMobile){
   const url=buildPublicUrl(getBattleBackgroundImage(expansionKey));
   const theme=getBattleTheme(expansionKey);
@@ -2352,7 +2371,7 @@ export default function Game(){
         }
         // 更新玫瑰倒刺快照，防止 useEffect 在动画结束后对已在 aiStep 中结算的弃牌重复触发
         roseThornPrevRef.current=presentation.roseThornSnapshot;
-        triggerAnimQueue(presentation.queue,presentation.nextState);
+        triggerAnimQueue(presentation.queue,presentation.nextState,undefined,resolveActionQueueMeta(presentation.nextState,presentation.queue,consumedVisualEventIdsRef.current));
         return;
       }
       try{
@@ -2929,7 +2948,8 @@ export default function Game(){
         const actionQueueCoverage=getAiActionQueueCoverage(
           newGs,
           currentQueueWithPatch,
-          getAnimationQueueVisualEventIds
+          getAnimationQueueVisualEventIds,
+          consumedVisualEventIdsRef.current
         );
         const actionQueueMeta=actionQueueCoverage.uncoveredEventIds.length
           ? LEGACY_MERGE_ACTION_SCOPE_META
@@ -8174,7 +8194,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const win=checkWin(P,gs._isMP);
       const newGs={...gs,players:P,discard:Disc,log:L,abilityData:{},phase:'ACTION',...(win?{gameOver:win}:{})};
       const queue=buildAnimQueue(gs,newGs);
-      if(queue.length) triggerAnimQueue(queue,newGs); else setGs(newGs);
+      if(queue.length) triggerAnimQueue(queue,newGs,undefined,resolveActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current)); else setGs(newGs);
     }
   }
 
@@ -8238,7 +8258,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         };
         syncVisibleLog(L,newGs);
         const queue=buildAnimQueue(gs,newGs);
-        if(queue.length)triggerAnimQueue(queue,newGs);else setGs(newGs);
+        if(queue.length)triggerAnimQueue(queue,newGs,undefined,resolveActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current));else setGs(newGs);
         return;
       }
       if(P[0].hp<=0&&!(P[0].hand||[]).some(isTsathogguaSlime)){
@@ -8327,7 +8347,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         false
       );
     if(playerNeedsQueuedTurnIntro){
-      triggerAnimQueue(queue,null,()=>applyNextTurnGs(newGs));
+      triggerAnimQueue(queue,null,()=>applyNextTurnGs(newGs),resolveActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current));
     }else if(nextAiTurnIntroQueue.length){
       const nextAiTurnIntroGs=markQueuedAiTurnStartReplayShown(newGs,nextAiTurnIntroQueue);
       if(queue.length){
@@ -8335,13 +8355,13 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           queue,
           nextAiTurnIntroGs,
           ()=>triggerAnimQueue(nextAiTurnIntroQueue,nextAiTurnIntroGs,undefined,authoritativeTurnStartQueueMeta(nextAiTurnIntroGs)),
-          LEGACY_MERGE_ACTION_SCOPE_META
+          resolveActionQueueMeta(nextAiTurnIntroGs,queue,consumedVisualEventIdsRef.current)
         );
       }else{
         triggerAnimQueue(nextAiTurnIntroQueue,nextAiTurnIntroGs,undefined,authoritativeTurnStartQueueMeta(nextAiTurnIntroGs));
       }
     }else{
-      triggerAnimQueue(queue,newGs);
+      triggerAnimQueue(queue,newGs,undefined,resolveActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current));
     }
   }
 
