@@ -15,7 +15,7 @@ import {
   stripAiExecutionFields,
   stripAiPresentationFields,
 } from '../aiTurnPresentation';
-import { createGodStatusChangedEvent } from '../visualEvents';
+import { createGodStatusChangedEvent, createHuntResultEvent } from '../visualEvents';
 
 describe('AI turn presentation helpers', () => {
   it('keeps a complete hand-worship transaction before the rest dice and heal', () => {
@@ -482,6 +482,96 @@ describe('AI turn presentation helpers', () => {
       cards: [oldGod],
       faithSettlementStep: true,
     });
+  });
+
+  it('binds consecutive AI hunt-wait steps to their rule events so playback stays authoritative', () => {
+    const players = [
+      { name: '你', hp: 10, san: 10, hand: [{ id: 'local-card' }] },
+      { name: '贝拉', hp: 10, san: 10, hand: [] },
+      { name: '卡洛斯', hp: 7, san: 9, hand: [{ id: 'revealed', key: 'C4' }] },
+    ];
+    const firstNight = {
+      seq: 1,
+      actorIdx: 1,
+      actorName: '贝拉',
+      targetIdx: 2,
+      roll: 1,
+      changed: true,
+      label: '选择【追捕】目标',
+      log: '【黑夜】贝拉 选择【追捕】目标掷出 1，目标由 你 错乱为 卡洛斯，失去 1 SAN',
+    };
+    const secondNight = {
+      seq: 2,
+      actorIdx: 1,
+      actorName: '贝拉',
+      targetIdx: 0,
+      roll: 6,
+      changed: false,
+      label: '选择【追捕】目标',
+      log: '【黑夜】贝拉 选择【追捕】目标掷出 6，目标未偏移',
+    };
+    const rawHunts = [
+      {
+        apophisTargetEvent: firstNight,
+        hunterIdx: 1,
+        targetIdx: 2,
+        revealedCard: players[2].hand[0],
+        beforePlayers: players,
+        msgs: ['贝拉（追猎者）对 卡洛斯 【追捕】，亮出 [C4]'],
+      },
+      {
+        apophisTargetEvent: secondNight,
+        hunterIdx: 1,
+        targetIdx: 0,
+        beforePlayers: players,
+        msgs: ['贝拉（追猎者）向你发动【追捕】！请选择亮出一张手牌'],
+        skipReveal: true,
+      },
+    ];
+    const huntEvents = rawHunts.map(createHuntResultEvent);
+    const previousState = {
+      phase: 'AI_TURN',
+      currentTurn: 1,
+      players,
+      discard: [],
+      log: [],
+      _aiTurnIntroShown: true,
+      _visualEvents: [],
+    };
+    const nextState = {
+      ...previousState,
+      phase: 'PLAYER_REVEAL_FOR_HUNT',
+      log: rawHunts.flatMap(event => [event.apophisTargetEvent.log, ...event.msgs]),
+      _visualEvents: huntEvents,
+      _apophisTargetSeq: 2,
+      _apophisTargetEvent: secondNight,
+    };
+
+    const result = buildAiHuntWaitPresentation({
+      previousState,
+      rawResult: { _aiHuntEvents: rawHunts },
+      nextState,
+      isDrawnCardActuallyDiscarded: () => false,
+      buildActorTurnStartReplay: vi.fn(),
+      buildTurnStartIntroQueue: vi.fn(),
+    });
+    const orderedSteps = result.queue.filter(step =>
+      step.type === 'DICE_ROLL' || step.type === 'SKILL_HUNT'
+    );
+
+    expect(orderedSteps.map(step => step.type)).toEqual([
+      'DICE_ROLL',
+      'SKILL_HUNT',
+      'DICE_ROLL',
+      'SKILL_HUNT',
+    ]);
+    expect(orderedSteps.slice(0, 2).every(step => step.visualEventId === huntEvents[0].id)).toBe(true);
+    expect(orderedSteps.slice(2).every(step => step.visualEventId === huntEvents[1].id)).toBe(true);
+    expect(getAiActionQueueCoverage(
+      nextState,
+      result.queue,
+      queue => queue.map(step => step.visualEventId).filter(Boolean),
+    ).uncoveredEventIds).toEqual([]);
   });
 
   it('keeps animation metadata available until the final presentation cleanup', () => {

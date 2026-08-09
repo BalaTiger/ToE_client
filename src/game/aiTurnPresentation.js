@@ -351,8 +351,14 @@ export function buildAiHuntWaitPresentation({
       zhuLight: previousState.zhuLight || null,
     }
   );
-  const huntEventQueue = (rawResult._aiHuntEvents || []).flatMap(event =>
-    buildAiHuntEventAnimQueue(event, actorName)
+  const huntVisualEvents = scopeAiActionReplayMetadata(nextState).visualEvents
+    .filter(event => event?.type === 'huntResult');
+  const huntReplayEvents = (rawResult._aiHuntEvents || []).map((event, index) => ({
+    ...event,
+    ...(huntVisualEvents[index]?.id ? { id: huntVisualEvents[index].id } : {}),
+  }));
+  const huntEventQueue = huntReplayEvents.flatMap(event =>
+    bindVisualEventToSteps(buildAiHuntEventAnimQueue(event, actorName), event)
   );
   const consumedApophisTargetSeq = Math.max(
     0,

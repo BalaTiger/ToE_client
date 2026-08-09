@@ -636,6 +636,35 @@ describe('visualEventTransactionCompiler', () => {
     expect(merged.map(step => step.type)).toEqual(['DICE_ROLL', 'RANDOM_TARGET', 'THROW_STONE', 'PAUSE']);
   });
 
+  it('does not anchor an action transaction to an unrelated unbound state patch', () => {
+    const transaction = {
+      id: 'hunt-result',
+      eventIds: ['hunt-result'],
+      queue: [
+        { type: 'DICE_ROLL', diceMode: 'apophisNight', d1: 1, rollerName: '贝拉', visualEventId: 'hunt-result' },
+        { type: 'STATE_PATCH', players: [player('你'), player('贝拉')], visualEventId: 'hunt-result' },
+      ],
+    };
+    const drawPatch = { type: 'STATE_PATCH', players: [player('你'), player('贝拉')] };
+    const merged = mergeAnimationTransactionQueue([
+      { type: 'DRAW_CARD', card: { id: 'underground-sky', name: '地底天空' }, targetPid: 1 },
+      drawPatch,
+      { type: 'DICE_ROLL', diceMode: 'apophisNight', d1: 1, rollerName: '贝拉' },
+      { type: 'SKILL_HUNT', targetIdx: 2 },
+    ], transaction);
+
+    expect(merged.indexOf(drawPatch)).toBeLessThan(
+      merged.findIndex(step => step.type === 'DICE_ROLL')
+    );
+    expect(merged.map(step => step.type)).toEqual([
+      'DRAW_CARD',
+      'STATE_PATCH',
+      'DICE_ROLL',
+      'STATE_PATCH',
+      'SKILL_HUNT',
+    ]);
+  });
+
   it('reports incomplete throw-stone transactions at the compiler boundary', () => {
     const event = { type: 'throwStone', id: 'broken-stone', damage: 3 };
     expect(validateVisualEventTransaction({

@@ -168,6 +168,12 @@ function isEquivalentAnimationStep(left, right) {
   if (left.type === 'CARD_TRANSFER') {
     return left.fromPid === right.fromPid && left.toPid === right.toPid && left.dest === right.dest && left.effect === right.effect;
   }
+  // An unbound state patch has no stable identity. Matching it by type alone
+  // can anchor an action transaction to an unrelated earlier commit (for
+  // example the draw-resolution patch), pulling later dice and settlement
+  // steps across the turn-start boundary. Event-bound patches were handled by
+  // the visualEventId comparison above; leave all other patches in place.
+  if (left.type === 'STATE_PATCH') return false;
   return true;
 }
 
