@@ -10,6 +10,7 @@ import {
   getAiActionQueueCoverage,
   insertAiRestDiceBeforeSettlement,
   scopeAiActionReplayMetadata,
+  scopeAiPreHuntReplayMetadata,
   shouldBuildQueuedAiTurnStartReplay,
   shouldPrependAiSkillSnapshot,
   stripAiExecutionFields,
@@ -572,6 +573,166 @@ describe('AI turn presentation helpers', () => {
       result.queue,
       queue => queue.map(step => step.visualEventId).filter(Boolean),
     ).uncoveredEventIds).toEqual([]);
+  });
+
+  it('keeps worship and consecutive hunts on one monotonic hand timeline', () => {
+    const cards = Array.from({ length: 6 }, (_, index) => ({
+      id: `diana-${index + 1}`,
+      key: index < 3 ? `D${index + 1}` : `A${index + 1}`,
+      name: `手牌${index + 1}`,
+    }));
+    const godCard = { ...cards[0], godKey: 'CTH', isGod: true, name: '拉莱耶之主' };
+    const beforeFaith = [
+      { name: '艾伦', hp: 10, san: 10, isDead: false, hand: [{ id: 'allen-card', key: 'D3' }], godZone: [] },
+      { name: '黛安娜', hp: 10, san: 10, isDead: false, hand: [godCard, ...cards.slice(1)], godZone: [] },
+      { name: '贝拉', hp: 10, san: 10, isDead: false, hand: [{ id: 'bella-card', key: 'D3' }], godZone: [] },
+    ];
+    const afterFaith = [
+      beforeFaith[0],
+      { ...beforeFaith[1], hand: cards.slice(1), godName: 'CTH', godLevel: 1, godZone: [godCard] },
+      beforeFaith[2],
+    ];
+    const afterFirstDiscard = [
+      beforeFaith[0],
+      { ...afterFaith[1], hand: cards.slice(2) },
+      beforeFaith[2],
+    ];
+    const afterFirstHunt = [
+      { ...beforeFaith[0], hp: 7 },
+      afterFirstDiscard[1],
+      beforeFaith[2],
+    ];
+    const afterSecondDiscard = [
+      afterFirstHunt[0],
+      { ...afterFaith[1], hand: cards.slice(3) },
+      beforeFaith[2],
+    ];
+    const afterSecondHunt = [
+      afterFirstHunt[0],
+      afterSecondDiscard[1],
+      { ...beforeFaith[2], hp: 7 },
+    ];
+    const worshipMsg = '黛安娜 从手牌信仰 拉莱耶之主，获得梦访拉莱耶(Lv.1)（骷髅头不计）';
+    const rawHunts = [
+      {
+        hunterIdx: 1,
+        targetIdx: 0,
+        revealedCard: beforeFaith[0].hand[0],
+        discardedCard: cards[1],
+        beforePlayers: afterFaith,
+        afterDiscardPlayers: afterFirstDiscard,
+        afterDiscardDiscard: [cards[1]],
+        afterPlayers: afterFirstHunt,
+        afterResultDiscard: [cards[1]],
+        beforeLog: [worshipMsg],
+        afterLog: [worshipMsg, '黛安娜（追猎者）对 艾伦 【追捕】，亮出 [D3]', '弃 [D1] 扭伤 → 艾伦 受 3HP 伤害！'],
+        msgs: ['黛安娜（追猎者）对 艾伦 【追捕】，亮出 [D3]', '弃 [D1] 扭伤 → 艾伦 受 3HP 伤害！'],
+      },
+      {
+        hunterIdx: 1,
+        targetIdx: 2,
+        revealedCard: beforeFaith[2].hand[0],
+        discardedCard: cards[2],
+        beforePlayers: afterFirstHunt,
+        afterDiscardPlayers: afterSecondDiscard,
+        afterDiscardDiscard: [cards[1], cards[2]],
+        afterPlayers: afterSecondHunt,
+        afterResultDiscard: [cards[1], cards[2]],
+        beforeLog: [worshipMsg],
+        afterLog: [worshipMsg, '黛安娜（追猎者）对 贝拉 【追捕】，亮出 [D3]', '弃 [D2] 鼠群 → 贝拉 受 3HP 伤害！'],
+        msgs: ['黛安娜（追猎者）对 贝拉 【追捕】，亮出 [D3]', '弃 [D2] 鼠群 → 贝拉 受 3HP 伤害！'],
+      },
+      {
+        hunterIdx: 1,
+        targetIdx: 0,
+        revealedCard: beforeFaith[0].hand[0],
+        beforePlayers: afterSecondHunt,
+        afterPlayers: afterSecondHunt,
+        afterResultDiscard: [cards[1], cards[2]],
+        beforeLog: [worshipMsg],
+        afterLog: [worshipMsg, '黛安娜（追猎者）对 艾伦 【追捕】，亮出 [D3]', '无匹配手牌，放弃追捕 艾伦'],
+        msgs: ['黛安娜（追猎者）对 艾伦 【追捕】，亮出 [D3]', '无匹配手牌，放弃追捕 艾伦'],
+      },
+    ];
+    const godEvent = createGodStatusChangedEvent({
+      playerIdx: 1,
+      playerName: '黛安娜',
+      godKey: 'CTH',
+      godLevel: 1,
+      msgs: [worshipMsg],
+      playersBefore: beforeFaith,
+      playersAfter: afterFaith,
+    });
+    const huntEvents = rawHunts.map(event => createHuntResultEvent({
+      ...event,
+      skipIntro: false,
+      skipReveal: false,
+    }));
+    const previousState = {
+      phase: 'AI_TURN',
+      currentTurn: 1,
+      players: beforeFaith,
+      discard: [],
+      log: [],
+      _aiTurnIntroShown: true,
+      _visualEvents: [],
+      _statEvents: [],
+      _statEventSeq: 0,
+    };
+    const nextState = {
+      ...previousState,
+      players: afterSecondHunt,
+      discard: [cards[1], cards[2]],
+      log: [worshipMsg, ...rawHunts.flatMap(event => event.msgs)],
+      _visualEvents: [godEvent, ...huntEvents],
+    };
+    const rawResult = {
+      _playersBeforeSkillAction: afterFaith,
+      _preSkillLogs: [worshipMsg],
+      _preSkillDiscard: [],
+      _aiHuntEvents: rawHunts,
+    };
+
+    const scoped = scopeAiPreHuntReplayMetadata(nextState, rawResult);
+    expect(scoped.players[1].hand.map(card => card.id)).toEqual(cards.slice(1).map(card => card.id));
+    expect(scoped.visualEvents).toEqual([godEvent]);
+
+    const result = buildAiHuntWaitPresentation({
+      previousState,
+      rawResult,
+      nextState,
+      isDrawnCardActuallyDiscarded: () => false,
+      buildActorTurnStartReplay: vi.fn(),
+      buildTurnStartIntroQueue: vi.fn(),
+    });
+
+    let visualPlayers = beforeFaith;
+    const timeline = [];
+    result.queue.forEach(step => {
+      if (step?.visualSetupPatch?.players) visualPlayers = step.visualSetupPatch.players;
+      if (step?.type === 'STATE_PATCH' && Array.isArray(step.players)) visualPlayers = step.players;
+      (step?.visualTimeline || []).forEach(frame => {
+        if (Array.isArray(frame?.patch?.players)) visualPlayers = frame.patch.players;
+      });
+      if (['GOD_HIGHLIGHT', 'SKILL_HUNT', 'STATE_PATCH'].includes(step?.type)) {
+        timeline.push({
+          type: step.type,
+          hand: visualPlayers[1].hand.map(card => card.id),
+        });
+      }
+    });
+
+    const highlight = timeline.find(entry => entry.type === 'GOD_HIGHLIGHT');
+    const hunts = timeline.filter(entry => entry.type === 'SKILL_HUNT');
+    expect(highlight.hand).toEqual(cards.slice(1).map(card => card.id));
+    expect(hunts.map(entry => entry.hand)).toEqual([
+      cards.slice(1).map(card => card.id),
+      cards.slice(2).map(card => card.id),
+      cards.slice(3).map(card => card.id),
+    ]);
+    const highlightIndex = timeline.indexOf(highlight);
+    const firstHuntIndex = timeline.indexOf(hunts[0]);
+    expect(timeline.slice(highlightIndex, firstHuntIndex).some(entry => entry.hand.length === 3)).toBe(false);
   });
 
   it('keeps animation metadata available until the final presentation cleanup', () => {

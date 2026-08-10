@@ -121,6 +121,67 @@ export function scopeAiActionReplayMetadata(state) {
   };
 }
 
+// A chained hunt owns its own per-attempt snapshots.  The transaction before
+// the first hunt must therefore stop at the rule-layer pre-skill snapshot;
+// comparing the action start with the completed AI turn leaks later hunt
+// discards into worship/rest animations and the first hunt then appears to
+// "restore" those cards.
+export function scopeAiPreHuntReplayMetadata(state, rawResult = {}) {
+  const action = scopeAiActionReplayMetadata(state);
+  const firstHuntEventIndex = action.visualEvents.findIndex(event => event?.type === 'huntResult');
+  if (firstHuntEventIndex < 0) {
+    return {
+      ...action,
+      players: state?.players || [],
+      discard: state?.discard || [],
+      hasHuntBoundary: false,
+    };
+  }
+
+  const visualEvents = action.visualEvents.slice(0, firstHuntEventIndex);
+  const ownedStatSeqs = new Set(visualEvents.flatMap(event => [
+    ...(Array.isArray(event?.statEvents) ? event.statEvents : []),
+    ...(Array.isArray(event?.faithSettlement?.abandonedFollowers)
+      ? event.faithSettlement.abandonedFollowers.flatMap(transition => {
+          const before = Number(transition?.statEventSeqBefore);
+          const after = Number(transition?.statEventSeqAfter);
+          if (!Number.isFinite(before) || !Number.isFinite(after)) return [];
+          return action.statEvents.filter(statEvent => (
+            Number.isFinite(statEvent?.seq)
+            && statEvent.seq > before
+            && statEvent.seq <= after
+          ));
+        })
+      : []),
+    ...(() => {
+      const transition = event?.faithSettlement?.previousFaithExit;
+      const before = Number(transition?.statEventSeqBefore);
+      const after = Number(transition?.statEventSeqAfter);
+      if (!Number.isFinite(before) || !Number.isFinite(after)) return [];
+      return action.statEvents.filter(statEvent => (
+        Number.isFinite(statEvent?.seq)
+        && statEvent.seq > before
+        && statEvent.seq <= after
+      ));
+    })(),
+  ]).map(statEvent => statEvent?.seq).filter(seq => seq != null));
+  const statEvents = ownedStatSeqs.size
+    ? action.statEvents.filter(event => ownedStatSeqs.has(event?.seq))
+    : [];
+
+  return {
+    visualEvents,
+    statEvents,
+    statEventSeq: statEvents.reduce(
+      (max, event) => Number.isFinite(event?.seq) ? Math.max(max, event.seq) : max,
+      0
+    ),
+    players: rawResult._playersBeforeSkillAction || state?.players || [],
+    discard: rawResult._preSkillDiscard || state?.discard || [],
+    hasHuntBoundary: true,
+  };
+}
+
 export function bindVisualEventToSteps(steps, event) {
   const queue = Array.isArray(steps) ? steps : [];
   if (!event?.id) return queue;
@@ -160,7 +221,6 @@ export function shouldPrependAiSkillSnapshot({
   visualEvents = [],
 } = {}) {
   if (!playersBeforeSkillAction) return false;
-  if (!restMsg) return true;
   const hasCompleteHandWorshipTransition = (Array.isArray(visualEvents) ? visualEvents : []).some(event => (
     event?.type === 'godStatusChanged'
     && Array.isArray(event.playersBefore)
@@ -174,7 +234,8 @@ export function shouldPrependAiSkillSnapshot({
   // The GOD_STATUS_CHANGED queue owns the pre-faith snapshot, highlight and
   // post-faith state. Prepending the already-settled skill snapshot would make
   // the god tag appear before that transaction and then roll back on setup.
-  return !hasCompleteHandWorshipTransition;
+  if (hasCompleteHandWorshipTransition) return false;
+  return true;
 }
 
 export function getAiActionQueueCoverage(state, queue, getQueueEventIds, consumedEventIds = null) {
@@ -378,18 +439,19 @@ export function buildAiHuntWaitPresentation({
         ),
       }
     : { ...previousState, players: actionBaselinePlayers };
+  const preHuntReplay = scopeAiPreHuntReplayMetadata(nextState, rawResult);
   const actionStatQueueBase = buildAnimQueue(
     actionOldState,
     {
-      ...fakeState(nextState.players, nextLog),
+      ...fakeState(preHuntReplay.players, nextLog),
       // AI worship-from-hand is resolved in the rule layer before the hunt
       // wait state is returned.  Keep the authoritative action events here so
       // GOD_STATUS_CHANGED can compose highlight, abandoned-god transfer and
       // its SAN settlement into one transaction ahead of the hunt animation.
-      discard: nextState.discard,
-      _visualEvents: nextState._visualEvents || [],
-      _statEvents: nextState._statEvents || [],
-      _statEventSeq: nextState._statEventSeq || 0,
+      discard: preHuntReplay.discard,
+      _visualEvents: preHuntReplay.visualEvents,
+      _statEvents: preHuntReplay.statEvents,
+      _statEventSeq: preHuntReplay.statEventSeq,
     }
   );
   const hasRoseThornGiftAllHand = newMessages.some(message =>
@@ -406,7 +468,12 @@ export function buildAiHuntWaitPresentation({
       ? actionStatQueueBase.filter(step => step.type !== 'CARD_TRANSFER')
       : actionStatQueueBase;
 
-  if (rawResult._playersBeforeSkillAction) {
+  if (shouldPrependAiSkillSnapshot({
+    playersBeforeSkillAction: rawResult._playersBeforeSkillAction,
+    restMsg: null,
+    actionMsgs: newMessages,
+    visualEvents: scopeAiActionReplayMetadata(nextState).visualEvents,
+  })) {
     queue.push(statePatchStep({
       players: rawResult._playersBeforeSkillAction,
       discard: rawResult._preSkillDiscard || nextState.discard,

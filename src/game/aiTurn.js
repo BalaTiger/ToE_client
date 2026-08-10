@@ -620,15 +620,31 @@ export function aiStep(gs, opts = {}) {
   };
   let unifiedReplayCacheState = null;
   let unifiedReplayCache = null;
+  const aiActionTransactionId = `ai-action:${gs._turnKey || gs.turn || 0}:${ct}:${gs.log?.length || 0}`;
   const getUnifiedReplayVisualEvents = nextGs => {
     if (unifiedReplayCacheState === nextGs && unifiedReplayCache) return unifiedReplayCache;
     const baseEvents = getReplayVisualEvents(nextGs) || [];
-    const huntEvents = aiHuntEvents.map(createHuntResultEvent).filter(Boolean);
+    const huntEvents = aiHuntEvents.map(event => createHuntResultEvent({
+      ...event,
+      // AI actions are resolved as one rule transaction, so their hunt event
+      // owns the reticle/reveal as well as settlement. Interactive hunt flows
+      // keep createHuntResultEvent's settlement-only defaults.
+      skipIntro: false,
+      skipReveal: !!event.skipReveal,
+    })).filter(Boolean);
     const multiplyVisualEvent = animMultiplyEvent
       ? createMultiplyVisualEvent(animMultiplyEvent)
       : null;
     unifiedReplayCacheState = nextGs;
-    unifiedReplayCache = [...baseEvents, ...huntEvents, ...(multiplyVisualEvent ? [multiplyVisualEvent] : [])];
+    let actionOrder = 0;
+    unifiedReplayCache = [...baseEvents, ...huntEvents, ...(multiplyVisualEvent ? [multiplyVisualEvent] : [])]
+      .map(event => event?.turnStartStage
+        ? event
+        : {
+            ...event,
+            transactionId: event.transactionId || aiActionTransactionId,
+            order: event.order ?? actionOrder++,
+          });
     return unifiedReplayCache;
   };
 

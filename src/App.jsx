@@ -255,6 +255,7 @@ import {
   getAiActionQueueCoverage,
   insertAiRestDiceBeforeSettlement,
   scopeAiActionReplayMetadata,
+  scopeAiPreHuntReplayMetadata,
   shouldBuildQueuedAiTurnStartReplay,
   shouldPrependAiSkillSnapshot,
   stripAiPresentationFields,
@@ -2566,13 +2567,29 @@ export default function Game(){
           _statEvents:actionReplayMetadata.statEvents,
           _statEventSeq:actionReplayMetadata.statEventSeq,
         };
+        const preHuntReplayMetadata=scopeAiPreHuntReplayMetadata(newGs,rawResult);
+        const actionReplayPlayers=preHuntReplayMetadata.hasHuntBoundary
+          ?preHuntReplayMetadata.players
+          :P_actionBeforeHandLimit;
+        const actionReplayDiscard=preHuntReplayMetadata.hasHuntBoundary
+          ?preHuntReplayMetadata.discard
+          :newGs.discard;
+        const scopedActionVisualPatch=preHuntReplayMetadata.hasHuntBoundary
+          ?{
+              ...actionVisualPatch,
+              discard:actionReplayDiscard,
+              _visualEvents:preHuntReplayMetadata.visualEvents,
+              _statEvents:preHuntReplayMetadata.statEvents,
+              _statEventSeq:preHuntReplayMetadata.statEventSeq,
+            }
+          :actionVisualPatch;
         const fullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(actionMsgs,afterInspectionPlayers,{
           playersBefore:afterInspectionPlayers,
           zhuLight:gs.zhuLight||null,
         });
         const actionStatQBase=buildAnimQueue(
           actionOldGsForApophis,
-          {...fakeGs(P_actionBeforeHandLimit,actionLogPreInspection),...actionVisualPatch}
+          {...fakeGs(actionReplayPlayers,actionLogPreInspection),...scopedActionVisualPatch}
         );
         const hasRoseThornGiftAllHand=actionMsgs.some(m=>typeof m==='string'&&m.includes('【玫瑰倒刺】')&&m.includes('将全部手牌交给了'));
         const actionStatQ=fullHandSwapQ.length
