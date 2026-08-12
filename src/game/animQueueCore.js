@@ -647,7 +647,7 @@ export function buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs 
   return q;
 }
 
-export function buildAnimQueue(oldGs, newGs) {
+export function buildAnimQueue(oldGs, newGs, options = {}) {
   const q = [];
   const oldVisualEventIds = new Set(getVisualEvents(oldGs).map(event => event.id));
   const freshVisualEvents = getVisualEvents(newGs).filter(event => event?.id && !oldVisualEventIds.has(event.id));
@@ -968,11 +968,10 @@ export function buildAnimQueue(oldGs, newGs) {
     const fullHandSwapQ = buildFullHandSwapStepsFromLogs([fullHandSwapMsg], oldGs.players);
     if (fullHandSwapQ.length) {
       q.push(...fullHandSwapQ);
-      return finalizeDeathCardSettlement(
-        composeFaithSettlementAnimQueue(q, presentableGodStatusEvents),
-        oldGs,
-        newGs,
-      );
+      const composed = composeFaithSettlementAnimQueue(q, presentableGodStatusEvents);
+      return options.skipDeathCardSettlement
+        ? composed
+        : finalizeDeathCardSettlement(composed, oldGs, newGs);
     }
   }
   const buryMsgs = newMsgs.filter(m => typeof m === 'string' && m.includes('【活埋】') && m.includes('放到了牌堆底'));
@@ -983,18 +982,16 @@ export function buildAnimQueue(oldGs, newGs) {
       const fromPid = name === '你' ? 0 : effectivePlayers.findIndex(p => p?.name === name);
       q.push(buryToDeckStep({ fromPid: fromPid >= 0 ? fromPid : 0, msgs: [msg], players: oldGs.players }));
     });
-    return finalizeDeathCardSettlement(
-      composeFaithSettlementAnimQueue(q, presentableGodStatusEvents),
-      oldGs,
-      newGs,
-    );
+    const composed = composeFaithSettlementAnimQueue(q, presentableGodStatusEvents);
+    return options.skipDeathCardSettlement
+      ? composed
+      : finalizeDeathCardSettlement(composed, oldGs, newGs);
   }
   q.push(...buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs }));
-  return finalizeDeathCardSettlement(
-    composeFaithSettlementAnimQueue(q, presentableGodStatusEvents),
-    oldGs,
-    newGs,
-  );
+  const composed = composeFaithSettlementAnimQueue(q, presentableGodStatusEvents);
+  return options.skipDeathCardSettlement
+    ? composed
+    : finalizeDeathCardSettlement(composed, oldGs, newGs);
 }
 
 export function buildFullHandSwapTransferQueueFromLogs(logs, players, options = {}) {
@@ -1112,7 +1109,11 @@ export function buildAiHuntEventAnimQueue(evt, actorName, options = {}) {
     const damageLog = evt.afterDamageLog || afterLog;
     const resultQueue = buildAnimQueue(
       { players: evt.afterDiscardPlayers || evt.beforePlayers, log: beforeLog },
-      { players: damagePlayers, discard: evt.afterDamageDiscard || evt.afterResultDiscard, log: damageLog }
+      { players: damagePlayers, discard: evt.afterDamageDiscard || evt.afterResultDiscard, log: damageLog },
+      // A lethal hunt owns its post-death card settlement below.  Letting the
+      // generic death compiler infer the same cards creates duplicate discard
+      // beats and separates the hand/god discards with loot animation.
+      { skipDeathCardSettlement: true },
     );
     const resultWithChunks = resultQueue
       .filter(step => {
@@ -1140,8 +1141,12 @@ export function buildAiHuntEventAnimQueue(evt, actorName, options = {}) {
         ];
       }
     }
-    const delayedDeathSteps = resultWithChunks.filter(step => step?.type === 'DEATH');
-    perHuntQueue.push(...resultWithChunks.filter(step => step?.type !== 'DEATH'));
+    // The full-screen death broadcast follows the guillotine immediately.
+    // Keep the panel visually alive until the final patch so loot and explicit
+    // card settlement still originate from the defeated player's panel.
+    perHuntQueue.push(...resultWithChunks.map(step => step?.type === 'DEATH'
+      ? { ...step, deferDeathCommit: true }
+      : step));
     if (evt.afterPlayers[evt.targetIdx]?.isDead && evt.hunterIdx != null) {
       const lootMsgs = followupMsgs.filter(line => /从 .+ 的(?:公开)?手牌中/.test(line || ''));
       const discardMsgs = followupMsgs.filter(line => /衍生牌|黑山羊幼仔/.test(line || ''));
@@ -1163,14 +1168,22 @@ export function buildAiHuntEventAnimQueue(evt, actorName, options = {}) {
           _logChunk: discardMsgs,
         });
       }
+      const defeatedGodCards = (evt.defeatedGodCards || []).filter(Boolean);
+      if (defeatedGodCards.length) {
+        perHuntQueue.push({
+          type: 'DISCARD',
+          card: defeatedGodCards[0],
+          cards: defeatedGodCards,
+          count: defeatedGodCards.length,
+          triggerName: evt.afterPlayers[evt.targetIdx]?.name || '???',
+          targetPid: evt.targetIdx,
+          sourceZone: 'god',
+        });
+      }
       if (!cardsTaken && !lootDiscardCards.length && discardMsgs.length) {
         perHuntQueue.push({ type: 'TURN_BOUNDARY_PAUSE', _logChunk: discardMsgs });
       }
     }
-    // The guillotine/death broadcast belongs to the damage result, but the
-    // panel must remain undimmed while hunt loot and the defeated player's
-    // remaining hand/god cards are visibly settled.
-    perHuntQueue.push(...delayedDeathSteps);
     perHuntQueue.push(statePatchStep({ players: evt.afterPlayers, discard: evt.afterResultDiscard }));
   } else if (followupMsgs.length) {
     perHuntQueue.push({ type: 'TURN_BOUNDARY_PAUSE', _logChunk: [...followupMsgs] });

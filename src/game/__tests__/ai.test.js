@@ -12,7 +12,9 @@ import {
   shouldAiRest,
 } from '../ai';
 import { aiStep, discardAiHandToLimit, processAiEndTurnEvents, processAiEndTurnReplayHand } from '../aiTurn';
+import { buildOwnedAiHuntEventQueue, getAiActionQueueCoverage } from '../aiTurnPresentation';
 import { cardLogText, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
+import { getVisualEventIdsCoveredByAnimationQueue } from '../visualEventTransactionCompiler';
 import { startNextTurn } from '../turnEngine';
 import { createBlackGoatYoungCard } from '../../constants/card';
 import { makeGs, makeGodCard, makePlayer, makeZoneCard } from './factory';
@@ -864,6 +866,47 @@ describe('aiStep optional action limits', () => {
 
     expect(newLogs.some(line => line.includes('选择【休息】'))).toBe(false);
     expect(newLogs.some(line => line.includes('【追捕】'))).toBe(true);
+  });
+
+  it('AI追捕进入虚化决策前保留完整追捕事件与成品队列', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const hunterCard = makeZoneCard('B1', 0, { id: 'hunter-b1' });
+    const reserveCard = makeZoneCard('A2', 0, { id: 'hunter-a2' });
+    const targetCard = makeZoneCard('C1', 0, { id: 'target-c1' });
+    const players = [
+      makePlayer({ name: '你', role: ROLE_TREASURE, hp: 10, hand: [] }),
+      makePlayer({ name: '黛安娜', role: ROLE_HUNTER, roleRevealed: true, hp: 3, hand: [hunterCard, reserveCard] }),
+      makePlayer({ name: '贝拉', role: ROLE_CULTIST, roleRevealed: true, hp: 7, etherealizeStacks: 1, hand: [targetCard] }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+      log: ['旧日志'],
+    });
+
+    const result = aiStep(gs, { allAi: true });
+    expect(result.phase).toBe('ETHEREALIZE_DECISION');
+    expect(result._aiHuntEvents).toHaveLength(1);
+    expect(result._visualEvents?.filter(event => event.type === 'huntResult')).toHaveLength(1);
+
+    const presentation = buildOwnedAiHuntEventQueue({
+      rawHuntEvents: result._aiHuntEvents,
+      state: result,
+      actorName: '黛安娜',
+    });
+    const types = presentation.queue.map(step => step.type);
+    expect(types.indexOf('SKILL_HUNT')).toBeGreaterThanOrEqual(0);
+    expect(types.indexOf('HUNT_REVEAL_CARD')).toBeGreaterThan(types.indexOf('SKILL_HUNT'));
+    expect(types.indexOf('DISCARD')).toBeGreaterThan(types.indexOf('HUNT_REVEAL_CARD'));
+    expect(getAiActionQueueCoverage(
+      result,
+      presentation.queue,
+      queue => getVisualEventIdsCoveredByAnimationQueue(result, queue),
+    ).uncoveredEventIds).toEqual([]);
   });
 
   it('追捕条件不足且不需休息时，把黑山羊幼仔繁衍给低HP高SAN目标', () => {

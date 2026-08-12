@@ -6,6 +6,7 @@ import {
   getAiPreHuntActionSteps,
 } from '../animQueueCore';
 import { dedupeInferredDiscardTransfers } from '../animQueueHelpers';
+import { copyPlayers } from '../coreUtils';
 import { buildFreshStatVisualEvents, createCardEffectEvent, createEarthquakeEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent } from '../visualEvents';
 import { makeGodCard, makeGs, makePlayer } from './factory';
 
@@ -1648,26 +1649,25 @@ describe('buildAiHuntEventAnimQueue', () => {
     expect(queue.map(step => step.type)).toContain('HP_DAMAGE');
   });
 
-  it('追捕击杀后先播放断头台公告，再暗抽并弃置剩余牌，最后置灰面板', () => {
+  it('追捕击杀无信仰角色时按伤害、断头台、死亡、夺牌、一次弃牌、置灰结算', () => {
     const hunterDiscard = { id: 'hunter-d1', key: 'D1', name: '钻地魔虫' };
     const stolenA = { id: 'stolen-a', key: 'A1', name: '坠落' };
     const stolenB = { id: 'stolen-b', key: 'B1', name: '圣甲虫' };
     const leftover = { id: 'leftover', key: 'C1', name: '亡者军团' };
-    const defeatedGod = { id: 'defeated-god', key: 'GOD', name: '邪神牌', isGod: true };
     const beforePlayers = [
       makePlayer({ name: '你' }),
       makePlayer({ name: '卡洛斯', hp: 9, hand: [hunterDiscard] }),
-      makePlayer({ name: '艾伦', hp: 3, hand: [stolenA, stolenB, leftover], godName: 'CTH', godLevel: 1, godZone: [defeatedGod] }),
+      makePlayer({ name: '艾伦', hp: 3, hand: [stolenA, stolenB, leftover] }),
     ];
     const afterDiscardPlayers = [
       makePlayer({ name: '你' }),
       makePlayer({ name: '卡洛斯', hp: 9, hand: [] }),
-      makePlayer({ name: '艾伦', hp: 3, hand: [stolenA, stolenB, leftover], godName: 'CTH', godLevel: 1, godZone: [defeatedGod] }),
+      makePlayer({ name: '艾伦', hp: 3, hand: [stolenA, stolenB, leftover] }),
     ];
     const afterDamagePlayers = [
       makePlayer({ name: '你' }),
       makePlayer({ name: '卡洛斯', hp: 9, hand: [] }),
-      makePlayer({ name: '艾伦', hp: 0, isDead: true, _pendingAnimDeath: true, hand: [stolenA, stolenB, leftover], godName: 'CTH', godLevel: 1, godZone: [defeatedGod] }),
+      makePlayer({ name: '艾伦', hp: 0, isDead: true, _pendingAnimDeath: true, hand: [stolenA, stolenB, leftover] }),
     ];
     const afterPlayers = [
       makePlayer({ name: '你' }),
@@ -1691,7 +1691,7 @@ describe('buildAiHuntEventAnimQueue', () => {
         '☠ 艾伦（邪祀者）倒下了！',
       ],
       afterPlayers,
-      afterResultDiscard: [hunterDiscard, leftover, defeatedGod],
+      afterResultDiscard: [hunterDiscard, leftover],
       beforeLog: ['旧日志'],
       afterLog: [
         '旧日志',
@@ -1709,14 +1709,15 @@ describe('buildAiHuntEventAnimQueue', () => {
         '卡洛斯 从 艾伦 的手牌中暗抽了一张！',
       ],
       lootTransferCount: 2,
-      lootDiscardCards: [leftover, defeatedGod],
+      lootDiscardCards: [leftover],
     }, '卡洛斯');
 
     const types = queue.map(step => step.type);
+    const damageIdx = types.indexOf('HP_DAMAGE');
     const guillotineIdx = types.indexOf('GUILLOTINE');
-    const lootIdx = types.findIndex((type, idx) => type === 'CARD_TRANSFER' && idx > guillotineIdx);
+    const deathIdx = types.indexOf('DEATH');
+    const lootIdx = types.findIndex((type, idx) => type === 'CARD_TRANSFER' && idx > deathIdx);
     const leftoverDiscardIdx = types.findIndex((type, idx) => type === 'DISCARD' && idx > lootIdx && queue[idx].card?.id === leftover.id);
-    const deathIdx = types.findIndex((type, idx) => type === 'DEATH' && idx > leftoverDiscardIdx);
     const finalPatchIdx = types.length - 1;
 
     const hunterDiscardSteps = queue.filter(step =>
@@ -1730,15 +1731,66 @@ describe('buildAiHuntEventAnimQueue', () => {
     expect(prematureTargetDiscardSteps).toHaveLength(0);
 
     expect(guillotineIdx).toBeGreaterThan(-1);
-    expect(lootIdx).toBeGreaterThan(guillotineIdx);
+    expect(guillotineIdx).toBeGreaterThan(damageIdx);
+    expect(deathIdx).toBe(guillotineIdx + 1);
+    expect(queue[deathIdx]).toMatchObject({ deferDeathCommit: true });
+    expect(lootIdx).toBeGreaterThan(deathIdx);
     expect(leftoverDiscardIdx).toBeGreaterThan(lootIdx);
-    expect(deathIdx).toBeGreaterThan(leftoverDiscardIdx);
     expect(queue[leftoverDiscardIdx]).toMatchObject({
       targetPid: 2,
-      count: 2,
-      cards: [leftover, defeatedGod],
+      count: 1,
+      cards: [leftover],
     });
     expect(queue.filter(step => step.type === 'DISCARD' && step.targetPid === 2)).toHaveLength(1);
     expect(types[finalPatchIdx]).toBe('STATE_PATCH');
+  });
+
+  it('追捕击杀信仰角色时在夺牌后连续弃置剩余手牌与邪神牌', () => {
+    const hunterDiscard = { id: 'hunter-d1', key: 'D1', name: '钻地魔虫' };
+    const stolen = { id: 'stolen', key: 'A1', name: '坠落' };
+    const leftover = { id: 'leftover', key: 'C1', name: '亡者军团' };
+    const defeatedGod = { id: 'defeated-god', key: 'GOD', name: '邪神牌', isGod: true };
+    const beforePlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '卡洛斯', hp: 9, hand: [hunterDiscard] }),
+      makePlayer({ name: '艾伦', hp: 3, hand: [stolen, leftover], godName: 'CTH', godLevel: 1, godZone: [defeatedGod] }),
+    ];
+    const afterDiscardPlayers = copyPlayers(beforePlayers);
+    afterDiscardPlayers[1].hand = [];
+    const afterDamagePlayers = copyPlayers(afterDiscardPlayers);
+    afterDamagePlayers[2] = { ...afterDamagePlayers[2], hp: 0, isDead: true, _pendingAnimDeath: true, godName: null, godLevel: 0, godZone: [] };
+    const afterPlayers = copyPlayers(afterDamagePlayers);
+    afterPlayers[1].hand = [stolen];
+    afterPlayers[2] = { ...afterPlayers[2], hand: [], _pendingAnimDeath: false };
+
+    const queue = buildAiHuntEventAnimQueue({
+      hunterIdx: 1,
+      targetIdx: 2,
+      discardedCard: hunterDiscard,
+      beforePlayers,
+      afterDiscardPlayers,
+      afterDiscardDiscard: [hunterDiscard],
+      afterDamagePlayers,
+      afterDamageDiscard: [hunterDiscard, defeatedGod],
+      afterDamageLog: ['旧日志', '☠ 艾伦（邪祀者）倒下了！'],
+      afterPlayers,
+      afterResultDiscard: [hunterDiscard, leftover, defeatedGod],
+      beforeLog: ['旧日志'],
+      afterLog: ['旧日志', '☠ 艾伦（邪祀者）倒下了！', '卡洛斯 从 艾伦 的手牌中暗抽了一张！'],
+      msgs: ['追捕', '伤害', '☠ 艾伦（邪祀者）倒下了！', '卡洛斯 从 艾伦 的手牌中暗抽了一张！'],
+      lootTransferCount: 1,
+      lootDiscardCards: [leftover],
+      defeatedGodCards: [defeatedGod],
+    }, '卡洛斯');
+
+    const deathIdx = queue.findIndex(step => step.type === 'DEATH');
+    const lootIdx = queue.findIndex((step, index) => step.type === 'CARD_TRANSFER' && index > deathIdx);
+    const targetDiscards = queue
+      .map((step, index) => ({ step, index }))
+      .filter(({ step }) => step.type === 'DISCARD' && step.targetPid === 2);
+
+    expect(targetDiscards).toHaveLength(2);
+    expect(targetDiscards[0]).toMatchObject({ index: lootIdx + 1, step: { cards: [leftover] } });
+    expect(targetDiscards[1]).toMatchObject({ index: targetDiscards[0].index + 1, step: { cards: [defeatedGod], sourceZone: 'god' } });
   });
 });

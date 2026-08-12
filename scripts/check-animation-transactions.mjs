@@ -4,7 +4,7 @@ import process from 'node:process';
 
 const sourceRoot = path.resolve('src');
 const legacyBaseline = new Map([
-  ['App.jsx', 4],
+  ['App.jsx', 3],
   ['game/animationTransaction.js', 1],
   ['game/visualEventTransactionCompiler.js', 3],
   ['game/visualEvents.js', 1],
@@ -36,6 +36,21 @@ for (const [file, allowed] of legacyBaseline) {
   const count = actual.get(file) || 0;
   if (count > allowed) issues.push(`${file}: expected at most ${allowed}, found ${count}`);
 }
+
+const appSource = fs.readFileSync(path.join(sourceRoot, 'App.jsx'), 'utf8');
+if (/resolveActionQueueMeta/.test(appSource)) {
+  issues.push('App.jsx: generic resolveActionQueueMeta is forbidden; use strictActionQueueMeta or the tutorial-only router');
+}
+const tutorialResolverRefs = appSource.match(/resolveTutorialQueueMeta\s*\(/g) || [];
+if (tutorialResolverRefs.length !== 2) {
+  issues.push(`App.jsx: resolveTutorialQueueMeta must only appear in its definition and tutorial router (found ${tutorialResolverRefs.length})`);
+}
+appSource.split(/\r?\n/).forEach((line, index) => {
+  if (!line.includes('actionQueueMetaForMode(') || line.includes('function actionQueueMetaForMode(')) return;
+  if (!line.includes('tutorial:')) {
+    issues.push(`App.jsx:${index + 1}: tutorial router call must declare tutorial:true or tutorial:showTutorial explicitly`);
+  }
+});
 
 if (issues.length) {
   console.error('[animation-transaction-gate] failed');

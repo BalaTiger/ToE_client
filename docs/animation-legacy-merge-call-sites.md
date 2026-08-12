@@ -12,7 +12,7 @@
 
 ## 特殊保留
 
-- `resolveActionQueueMeta` 对真正未覆盖事件的精确 ID 补编译仍暂时保留；不会重新编译已由成品队列覆盖的事件。
+- `resolveTutorialQueueMeta` 对教程中真正未覆盖事件的精确 ID 补编译暂时保留；非教程入口统一使用严格覆盖校验。
 - 旧合并器和枚举保留到实测完成后的最终删除阶段，但播放器已不再直接调用它们。
 
 ## 优先级定义
@@ -28,13 +28,13 @@
 
 | 游戏机制 | 玩家看到的过程 | 调用位置 | 风险说明 |
 | --- | --- | --- | --- |
-| AI 完整行动结算 | AI 摸牌后执行信仰、技能、追捕、伤害、弃牌，再进入下一回合 | `executeAiTurn` | **已迁出**：行动段的掉包、追捕、蛊惑、繁衍、斯芬克斯、休息及回合末梦境重播均由成品队列排序。覆盖校验同时识别直接绑定的视觉事件和队列已携带的属性事件，避免休息/地下泉被误判为未覆盖后触发全量 legacy 合并；真正未知的事件只按其精确 ID 补编译。 |
-| 被追捕玩家亮牌及追捕结果 | 亮出手牌、弃牌/掠夺、伤害、决定是否继续追捕、衔接下回合 | `playerRevealForHunt`：8198、8287、8291、8301；`huntSelectCardFromPublic`：8134；`executeAiTurn`：2347 | **已迁出**：所有追捕相关 `triggerAnimQueue` 改为 `resolveActionQueueMeta` 动态选择权威。覆盖检查会排除前一追捕阶段已经消费的事件；队列覆盖全部未消费 action 事件时使用 `queue` 权威并消费精确事件 ID，只有真正未覆盖的新事件才会 dev 告警并安全回退到 `legacyMerge action-scope`。 |
+| AI 完整行动结算 | AI 摸牌后执行信仰、技能、追捕、伤害、弃牌，再进入下一回合 | `executeAiTurn` | **已迁出并收紧**：行动段的掉包、追捕、蛊惑、繁衍、斯芬克斯、休息及回合末梦境重播均由成品队列排序。正式 AI 行动覆盖不完整时直接拒绝提交，不再回退 `legacyMerge`。 |
+| 被追捕玩家亮牌及追捕结果 | 亮出手牌、弃牌/掠夺、伤害、决定是否继续追捕、衔接下回合 | `playerRevealForHunt`、`huntSelectCardFromPublic`、`executeAiTurn` | **已迁出并收紧**：所有正式追捕队列使用严格 `queue` 权威；覆盖检查排除前一阶段已消费事件，发现未覆盖事件时直接拒绝提交。 |
 | 邪神遭遇后的玩家选择 | 信仰/升级/收入手牌/弃置、旧邪神牌离场、SAN 变化、检定与胜负 | `godResolvePlayer`：8739、8773 | ~~与本次蛊惑问题属于同类：邪神 tag、弃牌、SAN 和检定必须共享一套阶段顺序。~~ **第一阶段已迁出**：`8739` 弃置分支、`8773` 信仰/升级/收入分支已显式传入 `queue` 权威，并手动补入 `GOD_POWER_BLOCKED` 步骤。 |
-| AI 邪神选择 | AI 信仰、转信或放弃邪神馈赠，随后检定/弃牌/继续行动 | 顶层回调：1676、2114、2125、2143 | ~~当前显式补过“放弃邪神牌弃牌动画”，说明 diff 队列本身并不完整，适合优先改为单一事务。~~ **已迁出**：`playPendingAiGodEncounterInspection`、`resolvePendingAiGodChoice` 及其 continuation 均通过 `resolveActionQueueMeta` 校验，覆盖完整时以 `queue` 权威提交，未覆盖时安全回退。 |
-| 检定牌结算 | SAN 损失后翻检定牌，再应用检定牌伤害、死亡或后续选择 | 顶层检定监听：1912 | ~~检定经常夹在邪神/卡牌结算中；默认合并可能将属性步骤移到翻牌前后错误位置。~~ **已迁出**：`buildInspectionEventFlow` 队列已覆盖检定链；通过 `resolveActionQueueMeta` 校验，完整时以 `queue` 权威提交。若同包仍有其他未迁移事件，仅通过 `compileEventIds` 请求补编译，只有编译成功的事务事件才会被消费。 |
-| 连锁目标结算 | 一张牌依次作用多个目标，期间可能暂停等待规避、伤害分摊、虚化或黏液平衡 | `finishTargetContinuation`：6259、6264、6269、6274、6278 | ~~一个机制拆成多次队列与回调，后续目标可能在前一目标状态动画完成前开始。~~ **已迁出**：`finishTargetContinuation` 所有分支统一通过 `resolveActionQueueMeta` 选择权威；覆盖完整时以 `queue` 权威提交，`nextGs=null` 的回调续算分支也会通过只读 `compileState` 补编译真正缺失的事件。 |
-| 撒托古亚黏液平衡决定 | 伤害后选择消耗/分配黏液，再继续原始伤害或摸牌流程 | `resolveTsathogguaSlimeBalance`：6342、6367、6394、6474 | ~~同时修改手牌、属性和阶段，且会恢复被暂停的原始结算，存在状态快照回退风险。~~ **已迁出**：所有黏液平衡分支通过 `resolveActionQueueMeta` 校验，覆盖完整时以 `queue` 权威提交。 |
+| AI 邪神选择 | AI 信仰、转信或放弃邪神馈赠，随后检定/弃牌/继续行动 | `resolvePendingAiGodChoice` | **已迁出并分流**：正式对局使用严格 `queue` 权威；教程模式显式进入教程兼容路由。 |
+| 检定牌结算 | SAN 损失后翻检定牌，再应用检定牌伤害、死亡或后续选择 | 顶层检定监听 | **已迁出并收紧**：非教程自动检定使用严格 `queue` 权威；教程检定续播使用教程兼容路由。 |
+| 连锁目标结算 | 一张牌依次作用多个目标，期间可能暂停等待规避、伤害分摊、虚化或黏液平衡 | `finishTargetContinuation` | **已迁出并收紧**：所有正式目标续算使用严格 `queue` 权威，覆盖不完整时直接拒绝提交。 |
+| 撒托古亚黏液平衡决定 | 伤害后选择消耗/分配黏液，再继续原始伤害或摸牌流程 | `resolveTsathogguaSlimeBalance` | **已迁出并收紧**：所有黏液平衡和伤害反应分支使用严格 `queue` 权威。 |
 
 ## P1：高频主流程与多段强制结算
 
@@ -45,12 +45,12 @@
 | 拉莱耶之梦休息摸牌 | 梦境动画、连续摸牌、邪神遭遇、检定及回合交接 | `_cthContinueRestDraws` | **已迁出**：梦境、连续摸牌、邪神/检定及强制牌续算均使用 `queue` 权威。 |
 | 无尽通道/回合结束重播 | 回合末逐张打出手牌、掷骰、结算效果，最后进入下一回合 | `beginEndTurnReplay`、`continueEndTurnReplay` | **已迁出**：展开、邪神遭遇、强制牌、普通决策牌及胜负分支均以 `queue` 为唯一权威；手工队列覆盖的属性事件会精确映射并消费对应 visual event ID，旧事件不再在通道动画前二次编译。 |
 | 回合结束调度器 | 反转顺序、黄液发放、无尽通道、状态提交 | `dispatchEndTurnEvent`；`kickoffEndTurnSeq`；`runTsgSlimeGrantEvent` | **已迁出**：调度种子、方向反转和黄液发放队列均显式使用成品队列。 |
-| 摸牌后选择收入 | 普通牌/邪神牌收入、效果结算、检定、胜负或进入目标选择 | `handleDrawKeep` | **已迁出**：收入、效果、检定、胜负及连续摸牌分支统一通过 `resolveActionQueueMeta` 校验；完整队列使用 `queue` 权威，避免残留 `_inspectionEvents` 在后续投掷石块结算中被 legacy 提升并重播。无尽通道分支继续使用其专用覆盖元数据。 |
+| 摸牌后选择收入 | 普通牌/邪神牌收入、效果结算、检定、胜负或进入目标选择 | `handleDrawKeep` | **已迁出并收紧**：正式收入、效果、检定、胜负及连续摸牌分支使用严格 `queue` 权威；无尽通道继续使用其专用覆盖元数据。 |
 | 摸牌后选择弃置 | 弃置翻开的牌、继续休息/黏液/无尽通道或进入行动阶段 | `handleDrawDiscard`：5819、5823、5827、5834 | 弃牌动画必须先于后续连续摸牌或回合推进。 |
 | 寻宝者规避 | 对单体或群体负面效果掷骰/跳过，成功则收入，失败则结算效果 | `handleTreasureDodgeRollMode`；`handleTreasureDodgeSkipMode` | **已迁出**：普通、休息、黏液、待胜利和无尽通道分支均显式选择对应队列权威。 |
 | 斯芬克斯猜牌后的规避 | 猜测结果、可能的规避骰、卡牌效果和属性变化 | `settleSphinxDodge` | **已迁出**：结算队列使用 `queue` 权威。 |
 | 全手牌交换 | 选择目标后交换双方全部手牌，处理公共牌触发与后续状态 | `zoneSwapSelectTarget` | **已迁出**：胜利、休息、黏液及普通续算共用同一权威队列元数据。 |
-| 虚化连锁 | 将效果重定向给相邻目标，逐段结算链式损失 | `continueOrSettleEtherealizeChain` | **已迁出**：逐段消费与状态提交队列使用 `queue` 权威。 |
+| 虚化连锁 | 将效果重定向给相邻目标，逐段结算链式损失 | `continueOrSettleEtherealizeChain` | **已迁出并收紧**：逐段消费与状态提交队列使用 `queue` 权威，目标续算覆盖不完整时直接拒绝提交。AI 追捕会在进入虚化决策前创建完整 `huntResult`。 |
 | 阿波菲斯目标前奏 | 黑夜骰/目标锁定先于原技能或卡牌效果播放 | `setGsWithApophisTargetAnim`：6190 | 这是公共队列包装器；迁移后可一次覆盖多种目标技能。 |
 | 玫瑰倒刺反应伤害 | 标记手牌离开后自动造成 HP 伤害，可能触发死亡/分摊 | 顶层监听 | **已迁出**：自动监听生成的完整伤害队列使用 `queue` 权威。 |
 | 联机摸牌弃置超时 | 超时自动弃置翻开的牌，再判定胜负、手牌上限或推进回合 | 顶层超时处理：3804、3809、3850 | 涉及联机同步和回合推进，弃牌动画不能被新状态覆盖。 |
@@ -97,28 +97,24 @@
 | `src/App.jsx` | `3804`、`3809`、`3854` | 传入 `AUTHORITATIVE_QUEUE_META` | 联机摸牌弃置超时分支：`nextGs` 已显式清空 `_visualEvents`，队列 hand-built 完整，不再依赖合并 |
 | `src/App.jsx` | `7215`、`7266`、`7307`、`7367`、`7411`、`7453`、`7495` | 传入 `AUTHORITATIVE_QUEUE_META` | 开发调试动画入口（仅 `import.meta.env.DEV`），队列自包含 |
 | `src/App.jsx` | `executeAiTurn` 行动结束两分支 | 覆盖完整时传入带精确 `eventIds` 的 `AUTHORITATIVE_QUEUE_META` | 手工队列步骤绑定规则事件 ID，并在提交前证明当前行动事件已全部覆盖；未覆盖时告警并安全回退，不会把未知事件静默标记为已消费 |
-| `src/App.jsx` | 追捕相关调用（`2347`、`8134`、`8198`、`8287`、`8301` 及 `8299` 结果段） | `resolveActionQueueMeta` 动态选择权威 | 与 `executeAiTurn` 同一套覆盖校验：先排除已由上一阶段消费的事件，再验证追捕亮牌、伤害/掠夺、继续追捕/回合交接队列；完整时用 `queue` 权威，真正缺失时才回退 action-scope 合并 |
-| `src/App.jsx` | 顶层检定监听 `1912` | `resolveActionQueueMeta` 动态选择权威 | 检定链队列已覆盖 `_visualEvents` 中对应事件；完整时切 `queue` 权威，未覆盖时用 `compileEventIds` 限定 action-scope 补编译，空编译或未知事件不会被误消费 |
-| `src/App.jsx` | AI 邪神选择（`1676`、`2114`、`2125`、`2143`） | `resolveActionQueueMeta` 动态选择权威 | AI 信仰/转信/放弃馈赠的检定与弃牌队列已接入覆盖校验 |
-| `src/App.jsx` | `finishTargetContinuation` 所有分支 | `resolveActionQueueMeta` 动态选择权威 | 连锁目标结算的续算队列统一校验覆盖；`nextGs=null` 时以 `compileState` 提供规则事件状态源，但不把该状态作为 pending state 提交 |
-| `src/App.jsx` | `resolveTsathogguaSlimeBalance` 所有分支 | `resolveActionQueueMeta` 动态选择权威 | 黏液平衡、伤害反应、续算队列统一校验覆盖，完整时以 `queue` 权威提交 |
+| `src/App.jsx` | 追捕、自动检定、收入、AI 邪神选择、目标续算、黏液平衡 | `strictActionQueueMeta` | 正式流程统一严格校验；未覆盖事件会携带事件类型和队列步骤报告并拒绝提交 |
 
 ### 已显式化（仍在用 `legacyMerge`，但不再依赖隐式回退）
 
 | 文件 | 位置 | 说明 |
 | --- | --- | --- |
-| `src/App.jsx` | `resolveActionQueueMeta` 覆盖失败分支 | 仅作为未知或尚未接入事件的安全回退；`compileEventIds` 只限定编译输入，`compileState` 只提供只读规则状态，两者都不会直接确认消费或提交游戏状态 |
+| `src/App.jsx` | `resolveTutorialQueueMeta` 覆盖失败分支 | 仅供教程兼容；通过 `actionQueueMetaForMode` 显式声明 `tutorial:true` 或 `tutorial:showTutorial` 后才可进入 |
 
 ### 暂不删除
 
-- `resolveActionQueueMeta` 的精确 ID 兼容补编译。
+- `resolveTutorialQueueMeta` 的精确 ID 兼容补编译，仅为尚未完成回归验证的教程保留；所有非教程入口均不再使用该回退。
 - `ANIMATION_QUEUE_AUTHORITY.LEGACY_MERGE` 与旧合并器实现；待实测无问题后删除。
 
 ### 开发期治理
 
 - `prepareAnimationTransaction` 在缺少 `authority` 时直接抛错并累计诊断计数。
 - ESLint 自定义规则禁止 `triggerAnimQueue` 缺少第四个事务参数。
-- `scripts/check-animation-transactions.mjs` 锁定当前兼容引用基线，禁止任何生产文件新增 `legacyMerge`。
+- `scripts/check-animation-transactions.mjs` 锁定当前兼容引用基线，禁止新增 `legacyMerge`，并确保教程回退函数只能从显式教程路由调用。
 - `pretest:run` 和 `prebuild` 均自动执行静态门禁。
 - 开发环境可通过 `window.__toeDebug.getAnimationTransactionDiagnostics()` 查看隐式权威、未覆盖事件与重编译计数。
 

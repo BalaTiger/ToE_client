@@ -1253,6 +1253,7 @@ export function aiStep(gs, opts = {}) {
               const beforeHuntPlayers=copyPlayers(P);
               const huntLogStart=L.length;
               const targetHandBefore=[...(P[ti]?.hand||[])];
+              const targetGodZoneBefore=[...(P[ti]?.godZone||[])];
               const targetRevealBefore=!!P[ti]?.revealHand;
               const knownHunterCards=P[ti]?.peekMemories?.[ct]||[];
               const rc = aiChooseRevealCard(targetHand, ai.name, L, knownHunterCards);
@@ -1279,6 +1280,22 @@ export function aiStep(gs, opts = {}) {
                   events:[{targetIdx:ti,lostHp:huntDamage,source:'追捕'}],
                 });
                 if(huntDamageResult.phase==='ETHEREALIZE_DECISION'){
+                  aiHuntEvents.push({
+                    apophisTargetEvent,
+                    targetIdx:ti,
+                    hunterIdx:ct,
+                    revealedCard:rc,
+                    discardedCard:dc,
+                    afterDiscardPlayers,
+                    afterDiscardDiscard,
+                    beforePlayers:beforeHuntPlayers,
+                    afterPlayers:copyPlayers(P),
+                    afterResultDiscard:[...Disc],
+                    beforeLog:L.slice(0,huntLogStart),
+                    afterLog:[...L],
+                    msgs:L.slice(huntLogStart),
+                    pendingEtherealize:true,
+                  });
                   return buildReturnPack({
                     ...gs,
                     players:P,
@@ -1298,6 +1315,7 @@ export function aiStep(gs, opts = {}) {
                   let afterDamageLog=null;
                   let lootTransferCount=0;
                   let lootDiscardCards=[];
+                  const defeatedGodCards=[...targetGodZoneBefore];
                   if (targetHandBefore.length) {
                     Disc=removeCardsFromDiscard(Disc,targetHandBefore);
                     P[ti].hand=[...targetHandBefore];
@@ -1341,12 +1359,6 @@ export function aiStep(gs, opts = {}) {
                     afterDamageDiscard=[...Disc];
                     afterDamageLog=[...L];
                   }
-                  if (P[ti].godZone?.length) {
-                    const defeatedGodCards=[...P[ti].godZone];
-                    Disc.push(...defeatedGodCards);
-                    lootDiscardCards.push(...defeatedGodCards);
-                    P[ti].godZone = []; P[ti].godName = null; P[ti].godLevel = 0;
-                  }
                   aiHuntEvents.push({
                     apophisTargetEvent,
                     targetIdx:ti,
@@ -1361,6 +1373,7 @@ export function aiStep(gs, opts = {}) {
                     afterDamageLog,
                     lootTransferCount,
                     lootDiscardCards,
+                    defeatedGodCards,
                     afterPlayers:copyPlayers(P),
                     afterResultDiscard:[...Disc],
                     beforeLog:L.slice(0,huntLogStart),

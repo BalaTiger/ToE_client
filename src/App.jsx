@@ -394,7 +394,7 @@ function authoritativeResolvedQueueMeta(state, queue) {
 function authoritativeEndTurnReplayQueueMeta(state, queue) {
   return authoritativeResolvedQueueMeta(state, queue);
 }
-function resolveActionQueueMeta(state, queue, consumedEventIds = null) {
+function resolveTutorialQueueMeta(state, queue, consumedEventIds = null) {
   const coverage = getAiActionQueueCoverage(
     state,
     queue,
@@ -403,7 +403,7 @@ function resolveActionQueueMeta(state, queue, consumedEventIds = null) {
   );
   if (coverage.uncoveredEventIds.length) {
     if (import.meta.env.DEV) {
-      console.warn('[action queue] authoritative coverage incomplete; using scoped legacy merge', {
+      console.warn('[tutorial queue] authoritative coverage incomplete; using scoped legacy merge', {
         uncoveredEventIds: coverage.uncoveredEventIds,
       });
     }
@@ -416,6 +416,30 @@ function resolveActionQueueMeta(state, queue, consumedEventIds = null) {
   return coverage.eventIds.length
     ? { ...AUTHORITATIVE_QUEUE_META, eventIds: coverage.eventIds }
     : AUTHORITATIVE_QUEUE_META;
+}
+function strictActionQueueMeta(state, queue, consumedEventIds = null, context = 'action queue') {
+  const coverage = getAiActionQueueCoverage(
+    state,
+    queue,
+    steps => getVisualEventIdsCoveredByAnimationQueue(state, steps),
+    consumedEventIds
+  );
+  if (coverage.uncoveredEventIds.length) {
+    const uncoveredSet=new Set(coverage.uncoveredEventIds);
+    const uncoveredEvents=(Array.isArray(state?._visualEvents)?state._visualEvents:[])
+      .filter(event=>uncoveredSet.has(event?.id))
+      .map(event=>({id:event.id,type:event.type,scope:event.scope,transactionId:event.transactionId||null}));
+    const queueTypes=(Array.isArray(queue)?queue:[]).map(step=>step?.type||'UNKNOWN');
+    throw new TypeError(`[${context}] queue is missing visual events: ${JSON.stringify({uncoveredEvents,queueTypes})}`);
+  }
+  return coverage.eventIds.length
+    ? { ...AUTHORITATIVE_QUEUE_META, eventIds: coverage.eventIds }
+    : AUTHORITATIVE_QUEUE_META;
+}
+function actionQueueMetaForMode(state,queue,consumedEventIds,{tutorial=false,context='action queue'}={}){
+  return tutorial
+    ?resolveTutorialQueueMeta(state,queue,consumedEventIds)
+    :strictActionQueueMeta(state,queue,consumedEventIds,context);
 }
 function getBattleBackgroundStyle(expansionKey,isMobile){
   const url=buildPublicUrl(getBattleBackgroundImage(expansionKey));
@@ -1739,7 +1763,7 @@ export default function Game(){
       applyTutorialStateSnapshot(newGs);
       setTutorialInspectionResuming(false);
       setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE);
-    },resolveActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current));
+    },actionQueueMetaForMode(newGs,queue,consumedVisualEventIdsRef.current,{tutorial:true,context:'tutorial inspection resume'}));
     return true;
   },[applyTutorialStateSnapshot,gs,triggerAnimQueue]);
 
@@ -1972,7 +1996,7 @@ export default function Game(){
       {buildAnimQueue,copyPlayers}
     );
     const queue=flow.queue;
-    triggerAnimQueue(queue,gs,undefined,resolveActionQueueMeta(gs,queue,consumedVisualEventIdsRef.current));
+    triggerAnimQueue(queue,gs,undefined,strictActionQueueMeta(gs,queue,consumedVisualEventIdsRef.current,'automatic inspection'));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[gs?._inspectionSeq,gs?._inspectionEvents,gs?.gameOver,anim,showTutorial,softGuidePauseActive]);
 
@@ -2174,7 +2198,7 @@ export default function Game(){
           setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_CONVERT_CHECK);
         };
         if(preInspectionQueue.length){
-          triggerAnimQueue(preInspectionQueue,pauseGs,showConvertCheck,resolveActionQueueMeta(pauseGs,preInspectionQueue,consumedVisualEventIdsRef.current));
+          triggerAnimQueue(preInspectionQueue,pauseGs,showConvertCheck,actionQueueMetaForMode(pauseGs,preInspectionQueue,consumedVisualEventIdsRef.current,{tutorial:true,context:'tutorial god conversion pre-inspection'}));
         }else{
           setGs(pauseGs);
           showConvertCheck();
@@ -2185,7 +2209,7 @@ export default function Game(){
     if(replay.queue.length||abandonGiftDiscardStep){
       // 弃牌动画放在 diff/检定队列之后：放弃馈赠是结算的最后一步。
       const queue=[...replay.queue,...(abandonGiftDiscardStep?[abandonGiftDiscardStep]:[])];
-      triggerAnimQueue(queue,newGs,nextTutorialStep?finish:undefined,resolveActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current));
+      triggerAnimQueue(queue,newGs,nextTutorialStep?finish:undefined,actionQueueMetaForMode(newGs,queue,consumedVisualEventIdsRef.current,{tutorial:showTutorial,context:'AI god choice'}));
     }else{
       setGs(newGs);
       finish();
@@ -2203,7 +2227,7 @@ export default function Game(){
           setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_PLAYER_DRAW);
         };
         if(continuation.queue?.length){
-          triggerAnimQueue(continuation.queue,continuation.finalGs,finish,resolveActionQueueMeta(continuation.finalGs,continuation.queue,consumedVisualEventIdsRef.current));
+          triggerAnimQueue(continuation.queue,continuation.finalGs,finish,actionQueueMetaForMode(continuation.finalGs,continuation.queue,consumedVisualEventIdsRef.current,{tutorial:true,context:'tutorial god conversion continuation'}));
         }else{
           finish();
         }
@@ -2405,7 +2429,7 @@ export default function Game(){
         if(presentation.inspectionEvents?.length)markInspectionEventsSeen(presentation.inspectionEvents);
         // 更新玫瑰倒刺快照，防止 useEffect 在动画结束后对已在 aiStep 中结算的弃牌重复触发
         roseThornPrevRef.current=presentation.roseThornSnapshot;
-        triggerAnimQueue(presentation.queue,presentation.nextState,undefined,resolveActionQueueMeta(presentation.nextState,presentation.queue,consumedVisualEventIdsRef.current));
+        triggerAnimQueue(presentation.queue,presentation.nextState,undefined,strictActionQueueMeta(presentation.nextState,presentation.queue,consumedVisualEventIdsRef.current,'AI hunt wait'));
         return;
       }
       try{
@@ -2996,26 +3020,12 @@ export default function Game(){
           ...currentTurnQueue,
           ...currentTurnStatePatch,
         ];
-        const actionQueueCoverage=getAiActionQueueCoverage(
+        const actionQueueMeta=strictActionQueueMeta(
           newGs,
           currentQueueWithPatch,
-          steps=>getVisualEventIdsCoveredByAnimationQueue(newGs,steps),
-          consumedVisualEventIdsRef.current
+          consumedVisualEventIdsRef.current,
+          'AI action queue'
         );
-        const actionQueueMeta=actionQueueCoverage.uncoveredEventIds.length
-          ? {
-              ...LEGACY_MERGE_ACTION_SCOPE_META,
-              compileEventIds:actionQueueCoverage.uncoveredEventIds,
-              compileState:newGs,
-            }
-          : actionQueueCoverage.eventIds.length
-            ? {...AUTHORITATIVE_QUEUE_META,eventIds:actionQueueCoverage.eventIds}
-            : AUTHORITATIVE_QUEUE_META;
-        if(actionQueueCoverage.uncoveredEventIds.length&&import.meta.env.DEV){
-          console.warn('[AI action queue] authoritative coverage incomplete; using scoped legacy merge',{
-            uncoveredEventIds:actionQueueCoverage.uncoveredEventIds,
-          });
-        }
         // 更新玫瑰倒刺快照，防止 useEffect 在动画结束后对已在 aiStep 中结算的弃牌重复触发
         roseThornPrevRef.current=buildRoseThornSnapshot(newGs.players);
         // 确保 pendingGs 中也清除 _pendingAnimDeath，防止 STATE_PATCH 后置灰效果被覆盖
@@ -5211,7 +5221,7 @@ export default function Game(){
     const dr=gs.drawReveal;if(!dr?.card)return;
     const drawKeepQueueMeta=(state,queue)=>dr.fromEndTurnReplay
       ?authoritativeEndTurnReplayQueueMeta(state,queue)
-      :resolveActionQueueMeta(state,queue,consumedVisualEventIdsRef.current);
+      :strictActionQueueMeta(state,queue,consumedVisualEventIdsRef.current,'draw keep');
     const resolutionCard=revealBlindDrawCard(dr.card);
     // swapAllHands needs target selection before applying
     if(resolutionCard.type==='swapAllHands'){
@@ -6442,7 +6452,7 @@ export default function Game(){
     }
     if(syncLog&&nextGs?.log)syncVisibleLog(nextGs.log,nextGs);
     const continuationRoute=getTargetContinuationRoute(nextGs,{continueRest,continueTurnStartDraw});
-    const continuationMeta=resolveActionQueueMeta(nextGs,queue,consumedVisualEventIdsRef.current);
+    const continuationMeta=strictActionQueueMeta(nextGs,queue,consumedVisualEventIdsRef.current,'target continuation');
     if(continuationRoute===TARGET_CONTINUATION_ROUTE.REST_DRAW){
       if(queue.length)triggerAnimQueue(queue,null,()=>_cthContinueRestDraws(nextGs),continuationMeta);
       else _cthContinueRestDraws(nextGs);
@@ -6527,7 +6537,7 @@ export default function Game(){
         statePatchStep({players:P,deck:D,discard:Disc,log:L}),
       ];
       if(!broadcastSlimeTransaction(redirectedGs,redirectQueue,L.slice(gs.log.length))&&redirectedGs._isMP)broadcastMpStateBeforeLocalReplay(redirectedGs);
-      triggerAnimQueue(redirectQueue,redirectedGs,undefined,resolveActionQueueMeta(redirectedGs,redirectQueue,consumedVisualEventIdsRef.current));
+      triggerAnimQueue(redirectQueue,redirectedGs,undefined,strictActionQueueMeta(redirectedGs,redirectQueue,consumedVisualEventIdsRef.current,'slime damage-link redirect'));
       return;
     }
     if(linkReaction.applied){
@@ -6552,7 +6562,7 @@ export default function Game(){
           statePatchStep({players:P,deck:D,discard:Disc,log:L}),
         ];
         if(!broadcastSlimeTransaction(chainedGs,chainedQueue,L.slice(gs.log.length))&&chainedGs._isMP)broadcastMpStateBeforeLocalReplay(chainedGs);
-        triggerAnimQueue(chainedQueue,chainedGs,undefined,resolveActionQueueMeta(chainedGs,chainedQueue,consumedVisualEventIdsRef.current));
+        triggerAnimQueue(chainedQueue,chainedGs,undefined,strictActionQueueMeta(chainedGs,chainedQueue,consumedVisualEventIdsRef.current,'chained slime balance'));
         return;
       }
     }
@@ -6579,7 +6589,7 @@ export default function Game(){
         statePatchStep({players:P,deck:D,discard:Disc,log:L}),
       ];
       if(!broadcastSlimeTransaction(queuedGs,queuedAnim,L.slice(gs.log.length))&&queuedGs._isMP)broadcastMpStateBeforeLocalReplay(queuedGs);
-      triggerAnimQueue(queuedAnim,queuedGs,undefined,resolveActionQueueMeta(queuedGs,queuedAnim,consumedVisualEventIdsRef.current));
+      triggerAnimQueue(queuedAnim,queuedGs,undefined,strictActionQueueMeta(queuedGs,queuedAnim,consumedVisualEventIdsRef.current,'queued slime balance'));
       return;
     }
     const preInspectionGs={...gs,players:copyPlayers(P),deck:D,discard:Disc,log:[...L]};
@@ -6659,7 +6669,7 @@ export default function Game(){
           statePatchStep({players:finalNextGs.players,deck:finalNextGs.deck,discard:finalNextGs.discard,log:finalNextGs.log}),
         ];
         if(!broadcastSlimeTransaction(finalNextGs,reactionQueue,finalNextGs.log.slice(gs.log.length))&&finalNextGs._isMP)broadcastMpStateBeforeLocalReplay(finalNextGs);
-        triggerAnimQueue(reactionQueue,finalNextGs,undefined,resolveActionQueueMeta(finalNextGs,reactionQueue,consumedVisualEventIdsRef.current));
+        triggerAnimQueue(reactionQueue,finalNextGs,undefined,strictActionQueueMeta(finalNextGs,reactionQueue,consumedVisualEventIdsRef.current,'slime turn-start reaction'));
         return;
       }
     }
@@ -8150,6 +8160,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(myCardIdx>=0){
       const huntLogStart=L.length;
       const targetHandBefore=[...(P[huntTi]?.hand||[])];
+      const targetGodZoneBefore=[...(P[huntTi]?.godZone||[])];
       const targetRevealBefore=!!P[huntTi]?.revealHand;
       const beforeHuntPlayers=copyPlayers(P);
       const dc=P[0].hand.splice(myCardIdx,1)[0];Disc.push(dc);
@@ -8187,17 +8198,23 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       let afterDamageLog=null;
       let lootTransferCount=0;
       let lootDiscardCards=[];
+      let defeatedGodCards=[];
       if(P[huntTi].hp<=0&&!(P[huntTi].hand||[]).some(isTsathogguaSlime)){
         const lootableHand=targetHandBefore;
+        defeatedGodCards=[...targetGodZoneBefore];
+        Disc=removeCardsFromDiscard(Disc,[...lootableHand,...defeatedGodCards]);
+        P[huntTi].hand=[...lootableHand];
+        if(defeatedGodCards.length){
+          P[huntTi].godZone=[...defeatedGodCards];
+          P[huntTi].godName=beforeHuntPlayers[huntTi]?.godName||null;
+          P[huntTi].godLevel=beforeHuntPlayers[huntTi]?.godLevel||0;
+        }
         if(lootableHand.length){
           const maxToTake=3;
           const handCount=lootableHand.length;
           const playersForLootCheck=copyPlayers(P);
-          playersForLootCheck[huntTi].hand=[...lootableHand];
           const shouldOpenLootSelection=shouldDelayHuntLootSelection(playersForLootCheck,huntTi,maxToTake,gs._isMP);
           if(shouldOpenLootSelection){
-            Disc=removeCardsFromDiscard(Disc,lootableHand);
-            P[huntTi].hand=[...lootableHand];
             afterDamagePlayers=copyPlayers(P);
             afterDamageDiscard=[...Disc];
             afterDamageLog=[...L];
@@ -8228,8 +8245,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             if(queue.length) triggerSyncedAnimTransaction(queue,lootSelectGs,{context:'huntResult',barrier:'decision',msgs:L.slice(huntLogStart),beforePlayers:gs.players,beforeDiscard:gs.discard}); else setGs(lootSelectGs);
             return;
           }else if(targetRevealBefore){
-            Disc=removeCardsFromDiscard(Disc,lootableHand);
-            P[huntTi].hand=[...lootableHand];
             afterDamagePlayers=copyPlayers(P);
             afterDamageDiscard=[...Disc];
             afterDamageLog=[...L];
@@ -8238,8 +8253,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
             P[huntTi].hand=[];
             L.push(`你夺取了 ${P[huntTi].name} 的全部公开手牌（${lootableHand.length} 张）！`);
           }else{
-            Disc=removeCardsFromDiscard(Disc,lootableHand);
-            P[huntTi].hand=[...lootableHand];
             afterDamagePlayers=copyPlayers(P);
             afterDamageDiscard=[...Disc];
             afterDamageLog=[...L];
@@ -8260,12 +8273,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           afterDamageDiscard=[...Disc];
           afterDamageLog=[...L];
         }
-        if(P[huntTi].godZone?.length){
-          const defeatedGodCards=[...P[huntTi].godZone];
+        if(defeatedGodCards.length){
           Disc.push(...defeatedGodCards);
-          // Death-faith cards share the post-loot discard beat with whatever
-          // hand cards the hunter left behind.
-          lootDiscardCards.push(...defeatedGodCards);
           P[huntTi].godZone=[];P[huntTi].godName=null;P[huntTi].godLevel=0;
         }
       }
@@ -8290,6 +8299,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         afterDamageLog,
         lootTransferCount,
         lootDiscardCards,
+        defeatedGodCards,
         afterPlayers:copyPlayers(newGs.players),
         afterResultDiscard:[...(newGs.discard||[])],
         beforeLog:L.slice(0,huntLogStart),
@@ -8343,13 +8353,25 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       return;
     }else{
       // 已经选择了足够的手牌，处理剩余的手牌
-      Disc.push(...P[huntTi].hand);
+      const remainingHand=[...P[huntTi].hand];
+      const defeatedGodCards=[...(P[huntTi].godZone||[])];
+      Disc.push(...remainingHand);
       P[huntTi].hand=[];
-      if(P[huntTi].godZone?.length){Disc.push(...P[huntTi].godZone);P[huntTi].godZone=[];P[huntTi].godName=null;P[huntTi].godLevel=0;}
+      if(defeatedGodCards.length){Disc.push(...defeatedGodCards);P[huntTi].godZone=[];P[huntTi].godName=null;P[huntTi].godLevel=0;}
       const win=checkWin(P,gs._isMP);
       const newGs={...gs,players:P,discard:Disc,log:L,abilityData:{},phase:'ACTION',...(win?{gameOver:win}:{})};
-      const queue=buildAnimQueue(gs,newGs);
-      if(queue.length) triggerAnimQueue(queue,newGs,undefined,resolveActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current)); else setGs(newGs);
+      const inferredQueue=buildAnimQueue(gs,newGs).filter(step=>!(
+        step?.type==='CARD_TRANSFER'
+        && step.fromPid===huntTi
+        && step.dest==='discard'
+      ));
+      const queue=[
+        ...inferredQueue,
+        ...(remainingHand.length?[{type:'DISCARD',card:remainingHand[0],cards:remainingHand,count:remainingHand.length,triggerName:P[huntTi]?.name||'???',targetPid:huntTi}]:[]),
+        ...(defeatedGodCards.length?[{type:'DISCARD',card:defeatedGodCards[0],cards:defeatedGodCards,count:defeatedGodCards.length,triggerName:P[huntTi]?.name||'???',targetPid:huntTi,sourceZone:'god'}]:[]),
+        statePatchStep({players:P,discard:Disc,log:L,abilityData:{},phase:'ACTION'}),
+      ];
+      if(queue.length) triggerAnimQueue(queue,newGs,undefined,authoritativeResolvedQueueMeta(newGs,queue)); else setGs(newGs);
     }
   }
 
@@ -8413,7 +8435,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         };
         syncVisibleLog(L,newGs);
         const queue=buildAnimQueue(gs,newGs);
-        if(queue.length)triggerAnimQueue(queue,newGs,undefined,resolveActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current));else setGs(newGs);
+        if(queue.length)triggerAnimQueue(queue,newGs,undefined,strictActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current,'AI hunt player etherealize decision'));else setGs(newGs);
         return;
       }
       if(P[0].hp<=0&&!(P[0].hand||[]).some(isTsathogguaSlime)){
@@ -8503,7 +8525,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         false
       );
     if(playerNeedsQueuedTurnIntro){
-      triggerAnimQueue(queue,null,()=>applyNextTurnGs(newGs),resolveActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current));
+      triggerAnimQueue(queue,null,()=>applyNextTurnGs(newGs),strictActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current,'AI hunt next local turn'));
     }else if(nextAiTurnIntroQueue.length){
       const nextAiTurnIntroGs=markQueuedAiTurnStartReplayShown(newGs,nextAiTurnIntroQueue);
       if(queue.length){
@@ -8511,13 +8533,13 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           queue,
           nextAiTurnIntroGs,
           ()=>triggerAnimQueue(nextAiTurnIntroQueue,nextAiTurnIntroGs,undefined,authoritativeTurnStartQueueMeta(nextAiTurnIntroGs)),
-          resolveActionQueueMeta(nextAiTurnIntroGs,queue,consumedVisualEventIdsRef.current)
+          strictActionQueueMeta(nextAiTurnIntroGs,queue,consumedVisualEventIdsRef.current,'AI hunt next AI turn')
         );
       }else{
         triggerAnimQueue(nextAiTurnIntroQueue,nextAiTurnIntroGs,undefined,authoritativeTurnStartQueueMeta(nextAiTurnIntroGs));
       }
     }else{
-      triggerAnimQueue(queue,newGs,undefined,resolveActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current));
+      triggerAnimQueue(queue,newGs,undefined,strictActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current,'AI hunt resolution'));
     }
   }
 

@@ -91,7 +91,12 @@ export function useAnimationQueue({
   }
 
   function commitDeathPresentation(animStep) {
-    if (animStep?.type !== 'DEATH' || !Array.isArray(animStep.hitIndices) || !animStep.hitIndices.length) return;
+    if (
+      animStep?.type !== 'DEATH'
+      || animStep.deferDeathCommit
+      || !Array.isArray(animStep.hitIndices)
+      || !animStep.hitIndices.length
+    ) return;
     const deathIndices = new Set(animStep.hitIndices);
     const clearDeaths = players => (players || []).map((player, index) => (
       deathIndices.has(index) && player?._pendingAnimDeath
