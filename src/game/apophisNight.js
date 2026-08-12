@@ -1,7 +1,7 @@
 import { GOD_DEFS } from '../constants/card';
 import { buildStatEvents } from './statEvents';
-import { copyPlayers, formatSanLoss } from './coreUtils';
-import { submitDamageEvents } from './effectEngine';
+import { copyPlayers, formatSanLoss, makeInspectionMeta } from './coreUtils';
+import { applyInspectionForSanLoss, submitDamageEvents } from './effectEngine';
 import { hasGodPowerImmunity } from './godPowerImmunity';
 import { createApophisTargetVisualEvent } from './visualEvents';
 
@@ -35,8 +35,8 @@ export function resolveApophisTarget({
   }
 
   let P = players;
-  const D = deck;
-  const Disc = discard;
+  let D = deck;
+  let Disc = discard;
   let L = log;
   const nextCount = (night.count || 0) + 1;
   let nextNight = { ...night, count: nextCount };
@@ -44,6 +44,8 @@ export function resolveApophisTarget({
   let targetIdx = selectedIdx;
   let statPatch = {};
   let statSeq = null;
+  let inspectionPatch = {};
+  let playersAfterNightSan = null;
   const alternatives = legalTargets.filter(i => i !== selectedIdx && P[i] && !P[i].isDead);
   const eventSeq = (gs?._apophisTargetSeq || 0) + 1;
   let eventLog = '';
@@ -63,7 +65,50 @@ export function resolveApophisTarget({
     if (statEvents.length) {
       statPatch = { _statEvents: [...(gs?._statEvents || []), ...statEvents], _statEventSeq: statEventSeq };
     }
-    if (damage.phase) statPatch = { ...statPatch, abilityData: damage.abilityData, phase: damage.phase };
+    playersAfterNightSan = copyPlayers(P);
+    let inspectionMeta = {
+      ...makeInspectionMeta(gs),
+      ...statPatch,
+    };
+    if (damage.abilityData) {
+      inspectionMeta = {
+        ...inspectionMeta,
+        abilityData: {
+          ...damage.abilityData,
+          ...(damage.phase === 'TSG_SLIME_BALANCE' ? {
+            pendingSanInspection: {
+              targetIndex: actorIdx,
+              startIndex: gs?.currentTurn ?? actorIdx,
+              reason: '黑夜',
+            },
+          } : {}),
+        },
+        ...(damage.phase ? { phase: damage.phase } : {}),
+      };
+    } else {
+      const inspected = applyInspectionForSanLoss(
+        actorIdx,
+        P[actorIdx]?.san,
+        gs?.currentTurn ?? actorIdx,
+        P,
+        D,
+        Disc,
+        L,
+        inspectionMeta,
+      );
+      P = inspected.P;
+      D = inspected.D;
+      Disc = inspected.Disc;
+      L = inspected.log;
+      inspectionMeta = inspected.inspectionMeta;
+    }
+    inspectionPatch = inspectionMeta;
+    statPatch = {
+      _statEvents: inspectionMeta._statEvents || statPatch._statEvents || [],
+      _statEventSeq: inspectionMeta._statEventSeq ?? statPatch._statEventSeq ?? (gs?._statEventSeq || 0),
+      ...(inspectionMeta.abilityData ? { abilityData: inspectionMeta.abilityData } : {}),
+      ...(inspectionMeta.phase ? { phase: inspectionMeta.phase } : {}),
+    };
   } else {
     eventLog = `【黑夜】${P[actorIdx].name} ${label}掷出 ${roll}，目标未偏移`;
     L = [...L, eventLog];
@@ -91,9 +136,11 @@ export function resolveApophisTarget({
     statSeq,
   };
   const apophisVisualEvent = createApophisTargetVisualEvent(apophisTargetEvent, {
-    playersAfter: P,
+    playersAfter: playersAfterNightSan || P,
     statEvents: statPatch._statEvents?.filter(event => event?.seq === statSeq) || [],
   });
+  const priorVisualEvents = gs?._visualEvents || [];
+  const inspectionVisualEvents = (inspectionPatch._visualEvents || []).slice(priorVisualEvents.length);
   return {
     players: P,
     deck: D,
@@ -106,11 +153,13 @@ export function resolveApophisTarget({
       apophisNight: nextNight,
       _apophisTargetSeq: eventSeq,
       _apophisTargetEvent: apophisTargetEvent,
-      _visualEvents: [
-        ...(gs?._visualEvents || []),
-        ...(apophisVisualEvent ? [apophisVisualEvent] : []),
-      ],
+      ...inspectionPatch,
       ...statPatch,
+      _visualEvents: [
+        ...priorVisualEvents,
+        ...(apophisVisualEvent ? [apophisVisualEvent] : []),
+        ...inspectionVisualEvents,
+      ],
     },
   };
 }

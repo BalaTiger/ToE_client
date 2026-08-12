@@ -590,12 +590,14 @@ export function buildApophisTargetSteps(event, state = null) {
     msgs: event.log ? [event.log] : [],
     _logChunk: event.log ? [event.log] : [],
   }];
-  if (event.changed && /追捕/.test(event.label || '')) {
-    steps.push({ type: 'SKILL_HUNT', visualEventId: event.id, _apophisTargetSeq: event.legacySeq, _apophisNight: night, targetIdx: event.targetIdx, msgs: [] });
-  } else if (event.changed && /蛊惑/.test(event.label || '')) {
-    steps.push({ type: 'SKILL_BEWITCH', visualEventId: event.id, _apophisTargetSeq: event.legacySeq, _apophisNight: night, targetIdx: event.targetIdx, msgs: [] });
-  }
-  steps.push(...statEventsToAnimQueue(event.statEvents || [], event.playersBefore || players, []));
+  // Target-shift SAN is the immediate result of the night roll. Present it
+  // before the identity skill locks onto / acts on the resolved target.
+  steps.push(...statEventsToAnimQueue(event.statEvents || [], event.playersBefore || players, [])
+    .map(step => ({ ...step, visualEventId: step.visualEventId || event.id })));
+  // The resolved identity action owns its own skill overlay. Keeping that
+  // overlay inside the target event made the canonical compiler place it
+  // before a following SAN-inspection event. The target transaction ends at
+  // the SAN consequence so the action transaction can begin after inspection.
   return steps;
 }
 

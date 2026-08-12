@@ -667,6 +667,51 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(drawTransferIdx).toBe(-1);
   });
 
+  it('AI 寻宝者弃置回合开始摸牌时由动画队列延迟刷新弃牌堆', () => {
+    const previousDiscard = makeZoneCard('A1', 0);
+    const volcano = { ...makeZoneCard('C1', 0), name: '活火山' };
+    const beforeDrawPlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '黛安娜', role: 'treasureHunter' }),
+    ];
+    const oldGs = makeGs({
+      players: beforeDrawPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      discard: [previousDiscard],
+      log: ['旧日志'],
+    });
+    const newGs = makeGs({
+      players: beforeDrawPlayers,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      discard: [previousDiscard, volcano],
+      _drawnCard: volcano,
+      _aiDrawnCard: volcano,
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _discardedDrawnCard: true,
+      _turnStartLogs: ['── 黛安娜 的回合开始 ──'],
+      _drawLogs: ['黛安娜 摸到 [C1] 活火山，评估后选择弃置'],
+      log: [
+        '旧日志',
+        '── 黛安娜 的回合开始 ──',
+        '黛安娜 摸到 [C1] 活火山，评估后选择弃置',
+      ],
+    });
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const banner = replay.queue.find(step => step.type === 'YOUR_TURN');
+    const discardIdx = replay.queue.findIndex(step => step.type === 'DISCARD');
+    const discardCommit = replay.queue.slice(discardIdx + 1).find(step => step.type === 'STATE_PATCH');
+
+    expect(banner).toMatchObject({
+      visualSetupTiming: 'queueStart',
+      visualSetupPatch: { discard: [previousDiscard] },
+    });
+    expect(discardIdx).toBeGreaterThan(replay.queue.findIndex(step => step.type === 'DRAW_CARD'));
+    expect(discardCommit?.discard).toEqual([previousDiscard, volcano]);
+  });
+
   it('已揭示邪祀者将摸到的邪神牌收入手牌时播放收入飞牌动画', () => {
     const godCard = makeGodCard('TSG');
     const beforeDrawPlayers = [
@@ -1168,6 +1213,60 @@ describe('buildTurnStartDrawReplayQueue', () => {
 
     expect(diceIdx).toBeGreaterThan(drawIdx);
     expect(replay.queue[diceIdx]).toMatchObject({ d1: 1, rollerName: '贝拉' });
+  });
+
+  it('AI 霉变食物掷骰不会重播上回合钻地魔虫的随机目标转盘', () => {
+    const moldyFood = makeZoneCard('A1', 0);
+    const beforeDrawPlayers = [player('你'), player('艾伦'), player('黛安娜')];
+    const afterPlayers = [
+      player('你'),
+      { ...player('艾伦'), hp: 10, hand: [moldyFood] },
+      player('黛安娜'),
+    ];
+    // 模拟跨回合展示清理后的旧基线：日志仍在，但一次性事件水位未被带入。
+    const oldGs = {
+      players: beforeDrawPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: ['全体存活角色失去 2 HP', '艾伦 额外失去 2 HP'],
+    };
+    const newGs = {
+      players: afterPlayers,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      log: [
+        ...oldGs.log,
+        '── 艾伦 的回合开始 ──',
+        '艾伦 摸到 [A1] 霉变食物，选择收入手牌并触发效果',
+        '【霉变食物】艾伦 掷出 4 点（双数），恢复 2 HP',
+      ],
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _drawLogs: ['艾伦 摸到 [A1] 霉变食物，选择收入手牌并触发效果'],
+      _statLogs: ['【霉变食物】艾伦 掷出 4 点（双数），恢复 2 HP'],
+      _drawnCard: moldyFood,
+      _aiDrawnCard: moldyFood,
+      _moldyFoodDiceSeq: 1,
+      _moldyFoodDiceRoll: { d1: 4, isEven: true, actorIdx: 1, seq: 1 },
+      _randomTargetSeq: 1,
+      _randomTargetEvents: [{
+        seq: 1,
+        sourceIdx: 0,
+        targetIdx: 1,
+        label: '钻地魔虫',
+        resultText: '艾伦 被选中',
+      }],
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+
+    expect(replay.queue).toContainEqual(expect.objectContaining({
+      type: 'DICE_ROLL',
+      diceMode: 'moldyFood',
+      d1: 4,
+    }));
+    expect(replay.queue.some(step => step.type === 'RANDOM_TARGET')).toBe(false);
+    expect(replay.queue.some(step => step.type === 'BURROWING_WORM')).toBe(false);
   });
 
   it('AI 收入霉变食物掷出双数后立即追捕时仍播放专用掷骰动画', () => {

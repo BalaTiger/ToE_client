@@ -6,6 +6,7 @@ import {
   buildFullHandSwapStepsFromLogs,
   buildInspectionAwareAnimQueue,
   buildInspectionEventFlow,
+  buildWorshipReplayBaselinePlayers,
   buryToDeckStep,
   cardTransferStep,
   dedupeInferredDiscardTransfers,
@@ -305,6 +306,59 @@ describe('animQueueHelpers', () => {
     const queue = prepareWorshipHighlight([levelOne, levelTwo, { ...levelTwo }], { targetPid: 1, godKey: 'TSG' });
 
     expect(queue.filter(step => step.type === 'GOD_HIGHLIGHT')).toEqual([levelOne, levelTwo]);
+  });
+
+  it('从手牌升级时在 GOD_HIGHLIGHT 前保持原邪神之力 tag', () => {
+    const oldGod = makeGodCard('TSG', { id: 'tsg-lv1' });
+    const upgradeGod = makeGodCard('TSG', { id: 'tsg-lv2' });
+    const remainingCard = makeZoneCard('A1', 0);
+    const before = [makePlayer({
+      name: '艾伦',
+      hand: [remainingCard, upgradeGod],
+      godName: 'TSG',
+      godLevel: 1,
+      godZone: [oldGod],
+    })];
+    const after = [makePlayer({
+      ...before[0],
+      hand: [remainingCard],
+      godName: 'TSG',
+      godLevel: 2,
+      godZone: [oldGod, upgradeGod],
+    })];
+
+    const baseline = buildWorshipReplayBaselinePlayers(before, after, 0);
+    const upgradeEvent = createGodStatusChangedEvent({
+      playerIdx: 0,
+      playerName: '艾伦',
+      godKey: 'TSG',
+      godLevel: 2,
+      msgs: ['艾伦 从手牌升级邪神之力至 Lv.2'],
+      playersBefore: before,
+      playersAfter: after,
+    });
+    const oldGs = makeGs({ players: baseline, log: [] });
+    const newGs = {
+      ...oldGs,
+      players: after,
+      log: upgradeEvent.msgs,
+      _visualEvents: [upgradeEvent],
+    };
+    const queue = prepareWorshipHighlight(
+      buildInspectionAwareAnimQueue(oldGs, newGs, { buildAnimQueue, copyPlayers }).queue,
+      { targetPid: 0, godKey: 'TSG', players: after },
+    );
+    const highlight = queue.find(step => step.type === 'GOD_HIGHLIGHT');
+
+    expect(baseline[0]).toMatchObject({
+      hand: [remainingCard],
+      godName: 'TSG',
+      godLevel: 1,
+      godZone: [oldGod],
+    });
+    expect(highlight.visualSetupPatch.players[0]).toMatchObject({ godName: 'TSG', godLevel: 1 });
+    expect(highlight.visualTimeline.at(-1).patch.players[0]).toMatchObject({ godName: 'TSG', godLevel: 2 });
+    expect(after[0]).toMatchObject({ godName: 'TSG', godLevel: 2 });
   });
 
   it('斯芬克斯猜对后把同一张明牌从揭示区收入手牌', () => {

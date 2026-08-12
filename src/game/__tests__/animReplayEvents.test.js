@@ -12,6 +12,7 @@ import {
 } from '../animReplayEvents';
 import { copyPlayers, makeInspectionMeta, ROLE_CULTIST } from '../coreUtils';
 import { applySanLossToPlayerWithInspection, resolveGodEncounterForAI } from '../turnEngine';
+import { createBewitchGiftEvent } from '../visualEvents';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
 describe('animReplayEvents', () => {
@@ -262,6 +263,130 @@ describe('animReplayEvents', () => {
     expect(encounterSanIdx).toBeLessThan(convertSanIdx);
     expect(convertSanIdx).toBeLessThan(inspectionIdx);
     expect(inspectionIdx).toBeLessThan(highlightIdx);
+  });
+
+  it('玩家蛊惑 AI 改信时按语义事件播放改信与原信徒弃神牌的完整队列', () => {
+    const convertedOldGod = makeGodCard('NYA', { id: 'converted-old-nya' });
+    const giftedGod = makeGodCard('TSG', { id: 'gifted-tsg' });
+    const abandonedGod = makeGodCard('TSG', { id: 'abandoned-old-tsg' });
+    const bewitchMsg = '你对 贝拉 【蛊惑】，赠予 蟾蜍之神';
+    const encounterMsg = '贝拉 遭遇邪神 蟾蜍之神（第1次），失去1SAN';
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '你', role: ROLE_CULTIST, roleRevealed: true, hand: [giftedGod] }),
+        makePlayer({ name: '贝拉', san: 10, godName: 'NYA', godLevel: 1, godZone: [convertedOldGod] }),
+        makePlayer({ name: '卡洛斯', san: 10, godName: 'TSG', godLevel: 1, godZone: [abandonedGod] }),
+      ],
+      currentTurn: 0,
+      log: [],
+      _inspectionEvents: [],
+      _inspectionSeq: 0,
+      _statEvents: [],
+      _statEventSeq: 0,
+      _visualEvents: [],
+    });
+    const playersAfterGift = copyPlayers(oldGs.players);
+    playersAfterGift[0].hand = [];
+    const encounterResult = applySanLossToPlayerWithInspection(
+      1,
+      1,
+      oldGs.currentTurn,
+      playersAfterGift,
+      [],
+      [],
+      [bewitchMsg, encounterMsg],
+      makeInspectionMeta(oldGs),
+      '邪神遭遇',
+    );
+    const encounterState = {
+      ...oldGs,
+      players: copyPlayers(encounterResult.P),
+      deck: [...encounterResult.D],
+      discard: [...encounterResult.Disc],
+      log: [...encounterResult.L],
+      ...encounterResult.inspectionMeta,
+    };
+    const faithResult = resolveGodEncounterForAI(
+      1,
+      giftedGod,
+      copyPlayers(encounterState.players),
+      [...encounterState.deck],
+      [...encounterState.discard],
+      encounterState,
+      true,
+    );
+    const bewitchEvent = createBewitchGiftEvent({
+      sourceIdx: 0,
+      targetIdx: 1,
+      targetName: '贝拉',
+      card: giftedGod,
+      msgs: [bewitchMsg],
+      encounterState,
+    });
+    const newGs = {
+      ...encounterState,
+      players: faithResult.P,
+      deck: faithResult.D,
+      discard: faithResult.Disc,
+      log: [...encounterState.log, ...faithResult.msgs],
+      ...faithResult.inspectionMeta,
+      ...faithResult.statePatch,
+      _visualEvents: [bewitchEvent, ...(faithResult.statePatch?._visualEvents || [])],
+    };
+    const replay = buildBewitchGiftReplay({
+      oldGs,
+      newGs,
+      bewitchEvent,
+      logDelta: newGs.log,
+      buildAnimQueue,
+      copyPlayers,
+    });
+    const queue = replay.queue;
+    const encounterSanIdx = queue.findIndex(step => (
+      step?.type === 'SAN_DAMAGE'
+      && step?.cardAcquisitionStage === 'godEncounter'
+      && step?.hitIndices?.includes(1)
+    ));
+    const convertDiscardIdx = queue.findIndex(step => step?.effect === 'godConvertDiscard' && step?.fromPid === 1);
+    const convertSanIdx = queue.findIndex(step => (
+      step?.type === 'SAN_DAMAGE'
+      && step?.cardAcquisitionStage === 'acceptance'
+      && step?.hitIndices?.includes(1)
+    ));
+    const highlightIdx = queue.findIndex(step => step?.type === 'GOD_HIGHLIGHT' && step?.targetPid === 1);
+    const abandonDiscardIdx = queue.findIndex(step => step?.effect === 'godAbandon' && step?.fromPid === 2);
+    const abandonSanIdx = queue.findIndex(step => (
+      step?.type === 'SAN_DAMAGE'
+      && step?.cardAcquisitionStage === 'acceptance'
+      && step?.hitIndices?.includes(2)
+    ));
+
+    expect(queue.slice(0, 3).map(step => step.type)).toEqual(['SKILL_BEWITCH', 'CARD_TRANSFER', 'DRAW_CARD']);
+    expect([
+      encounterSanIdx,
+      convertDiscardIdx,
+      convertSanIdx,
+      highlightIdx,
+      abandonDiscardIdx,
+      abandonSanIdx,
+    ].every(index => index >= 0)).toBe(true);
+    expect([
+      encounterSanIdx,
+      convertDiscardIdx,
+      convertSanIdx,
+      highlightIdx,
+      abandonDiscardIdx,
+      abandonSanIdx,
+    ]).toEqual([...[
+      encounterSanIdx,
+      convertDiscardIdx,
+      convertSanIdx,
+      highlightIdx,
+      abandonDiscardIdx,
+      abandonSanIdx,
+    ]].sort((left, right) => left - right));
+    expect(queue[convertDiscardIdx]).toMatchObject({ cards: [convertedOldGod], dest: 'discard', faceUp: true });
+    expect(queue[abandonDiscardIdx]).toMatchObject({ cards: [abandonedGod], dest: 'discard', faceUp: true });
   });
 
   it('检定回放委托 inspection-aware 队列并返回新的检定事件', () => {

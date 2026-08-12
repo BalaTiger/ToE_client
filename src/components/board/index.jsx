@@ -686,7 +686,6 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
         {handCards.map((card,ci)=>{
           const marginLeft=shouldFillFlatHand?0:(ci===0?0:(handOverlap>0?-handOverlap:HAND_CARD_GAP));
           const width=shouldFillFlatHand?undefined:(handStripWidth>0?computedCardWidth:stretchedHandSlotWidth);
-          const isHiddenDerived=!showFaceUp&&!card._back&&(isBlackGoatYoung(card)||isTsathogguaSlime(card));
           return(
             <div
               key={card.id||`hand-${playerIndex}-${ci}`}
@@ -699,10 +698,10 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
               flex:'0 0 auto',
               width,
               position:'relative',
-              // Hidden derived cards are intentionally revealed; keep them above neighbouring
-              // card backs when the hand overlaps (5+ cards), without overriding the pulse
-              // highlight (z-index 80). Backs keep their natural left-to-right order.
-              zIndex:(isHiddenDerived?30:0)+ci+1
+              // Keep the whole hand in natural left-to-right stacking order. A revealed
+              // derivative card may overlap the card on its left, but card backs to its
+              // right must still cover it just like any other card in the hand.
+              zIndex:ci+1
             }}>
               {card._back
                 ?<div

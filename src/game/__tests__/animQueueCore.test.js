@@ -432,6 +432,47 @@ describe('buildAnimQueue stat animations', () => {
     expect(guillotine?.msgs).toEqual(['☠ 黛安娜（邪祀者）倒下了！']);
   });
 
+  it('非追捕死亡在断头台与死亡置灰之间显式弃置手牌和邪神牌', () => {
+    const handCard = { id: 'dead-hand', key: 'A1', name: '坠落' };
+    const godCard = { id: 'dead-god', key: 'GOD', name: '邪神牌', isGod: true };
+    const oldGs = makeGs({
+      players: [makePlayer({
+        name: '黛安娜', hp: 2, role: '邪祀者', hand: [handCard],
+        godName: 'CTH', godLevel: 1, godZone: [godCard],
+      })],
+      discard: [],
+      log: ['旧日志'],
+    });
+    const newGs = makeGs({
+      players: [makePlayer({
+        name: '黛安娜', hp: 0, role: '邪祀者', isDead: true,
+        _pendingAnimDeath: true, hand: [], godName: null, godLevel: 0, godZone: [],
+      })],
+      discard: [handCard, godCard],
+      log: ['旧日志', '☠ 黛安娜（邪祀者）倒下了！'],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    const guillotineIdx = queue.findIndex(step => step.type === 'GUILLOTINE');
+    const discardIdx = queue.findIndex(step => step.type === 'DISCARD' && step.deathSettlementStep);
+    const deathIdx = queue.findIndex(step => step.type === 'DEATH');
+
+    expect(guillotineIdx).toBeGreaterThanOrEqual(0);
+    expect(discardIdx).toBeGreaterThan(guillotineIdx);
+    expect(deathIdx).toBeGreaterThan(discardIdx);
+    expect(queue[discardIdx]).toMatchObject({
+      targetPid: 0,
+      cards: [handCard, godCard],
+      count: 2,
+    });
+    expect(queue[discardIdx].visualSetupPatch.players[0]).toMatchObject({
+      _pendingAnimDeath: true,
+      hand: [handCard],
+      godName: 'CTH',
+      godZone: [godCard],
+    });
+  });
+
   it('投掷石块会先播放骰子，再播放转盘，最后播放扣血', () => {
     const playersBefore = [makePlayer({ name: '你', hp: 10 }), makePlayer({ name: '艾伦', hp: 10 })];
     const playersAfter = [makePlayer({ name: '你', hp: 10 }), makePlayer({ name: '艾伦', hp: 7 })];
@@ -1607,7 +1648,7 @@ describe('buildAiHuntEventAnimQueue', () => {
     expect(queue.map(step => step.type)).toContain('HP_DAMAGE');
   });
 
-  it('追捕击杀后先播放死亡公告，再暗抽，最后弃置剩余手牌', () => {
+  it('追捕击杀后先播放断头台公告，再暗抽并弃置剩余牌，最后置灰面板', () => {
     const hunterDiscard = { id: 'hunter-d1', key: 'D1', name: '钻地魔虫' };
     const stolenA = { id: 'stolen-a', key: 'A1', name: '坠落' };
     const stolenB = { id: 'stolen-b', key: 'B1', name: '圣甲虫' };
@@ -1616,17 +1657,17 @@ describe('buildAiHuntEventAnimQueue', () => {
     const beforePlayers = [
       makePlayer({ name: '你' }),
       makePlayer({ name: '卡洛斯', hp: 9, hand: [hunterDiscard] }),
-      makePlayer({ name: '艾伦', hp: 3, hand: [stolenA, stolenB, leftover] }),
+      makePlayer({ name: '艾伦', hp: 3, hand: [stolenA, stolenB, leftover], godName: 'CTH', godLevel: 1, godZone: [defeatedGod] }),
     ];
     const afterDiscardPlayers = [
       makePlayer({ name: '你' }),
       makePlayer({ name: '卡洛斯', hp: 9, hand: [] }),
-      makePlayer({ name: '艾伦', hp: 3, hand: [stolenA, stolenB, leftover] }),
+      makePlayer({ name: '艾伦', hp: 3, hand: [stolenA, stolenB, leftover], godName: 'CTH', godLevel: 1, godZone: [defeatedGod] }),
     ];
     const afterDamagePlayers = [
       makePlayer({ name: '你' }),
       makePlayer({ name: '卡洛斯', hp: 9, hand: [] }),
-      makePlayer({ name: '艾伦', hp: 0, isDead: true, hand: [stolenA, stolenB, leftover] }),
+      makePlayer({ name: '艾伦', hp: 0, isDead: true, _pendingAnimDeath: true, hand: [stolenA, stolenB, leftover], godName: 'CTH', godLevel: 1, godZone: [defeatedGod] }),
     ];
     const afterPlayers = [
       makePlayer({ name: '你' }),
@@ -1672,9 +1713,10 @@ describe('buildAiHuntEventAnimQueue', () => {
     }, '卡洛斯');
 
     const types = queue.map(step => step.type);
-    const deathIdx = types.indexOf('DEATH');
-    const lootIdx = types.findIndex((type, idx) => type === 'CARD_TRANSFER' && idx > deathIdx);
+    const guillotineIdx = types.indexOf('GUILLOTINE');
+    const lootIdx = types.findIndex((type, idx) => type === 'CARD_TRANSFER' && idx > guillotineIdx);
     const leftoverDiscardIdx = types.findIndex((type, idx) => type === 'DISCARD' && idx > lootIdx && queue[idx].card?.id === leftover.id);
+    const deathIdx = types.findIndex((type, idx) => type === 'DEATH' && idx > leftoverDiscardIdx);
     const finalPatchIdx = types.length - 1;
 
     const hunterDiscardSteps = queue.filter(step =>
@@ -1687,9 +1729,10 @@ describe('buildAiHuntEventAnimQueue', () => {
     expect(hunterDiscardSteps[0]).toMatchObject({ targetPid: 1 });
     expect(prematureTargetDiscardSteps).toHaveLength(0);
 
-    expect(deathIdx).toBeGreaterThan(-1);
-    expect(lootIdx).toBeGreaterThan(deathIdx);
+    expect(guillotineIdx).toBeGreaterThan(-1);
+    expect(lootIdx).toBeGreaterThan(guillotineIdx);
     expect(leftoverDiscardIdx).toBeGreaterThan(lootIdx);
+    expect(deathIdx).toBeGreaterThan(leftoverDiscardIdx);
     expect(queue[leftoverDiscardIdx]).toMatchObject({
       targetPid: 2,
       count: 2,

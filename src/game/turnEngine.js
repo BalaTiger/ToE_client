@@ -41,6 +41,12 @@ import {
 } from './visualEvents';
 import { advanceGodEncounter, formatGodEncounterProgress, getLatestGodEncounterProgress } from './balancePatches';
 import { TURN_START_EVENT, getTurnStartEvents } from './turnStartEvents';
+import {
+  getActiveDamageLinksForPlayer,
+  getAllDamageLinks,
+  removeDamageLink,
+  removeDamageLinks,
+} from './damageLinks';
 
 function appendStatEventsToInspectionMeta(inspectionMeta, beforePlayers, afterPlayers, logs, reason) {
   const statEventSeq = (inspectionMeta?._statEventSeq || 0) + 1;
@@ -375,6 +381,20 @@ export function abandonGodFollower(targetIndex, startIndex, P, D, Disc, L, inspe
       effect: 'godAbandon',
     },
   };
+}
+
+function appendMissingLogOccurrences(log, routedLogs = []) {
+  const available = new Map();
+  log.forEach(line => available.set(line, (available.get(line) || 0) + 1));
+  const consumed = new Map();
+  routedLogs.forEach(line => {
+    const used = consumed.get(line) || 0;
+    if (used < (available.get(line) || 0)) {
+      consumed.set(line, used + 1);
+    } else {
+      log.push(line);
+    }
+  });
 }
 
 export function createFaithSettlementGodStatusEvent({
@@ -1050,7 +1070,8 @@ function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta) {
   const bgyCount = P[next].hand.filter(isBlackGoatYoung).length;
   if (bgyCount > 0) {
     const beforePlayers = copyPlayers(P);
-    const linkPartnerIdx = P[next].damageLink?.active ? P[next].damageLink.partner : null;
+    const linkPartnerIndices = getActiveDamageLinksForPlayer(P, next)
+      .map(link => link.a === next ? link.b : link.a);
     const logStart = L.length;
     const reactionLogs = [];
     const damage = submitDamageEvents({
@@ -1081,9 +1102,11 @@ function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta) {
     if (P[next].hp <= 0) {
       killPlayerState(P, next, Disc, L);
     }
-    if (linkPartnerIdx != null && !P[next]._pendingDamageLinkBreak && P[linkPartnerIdx]?.hp <= 0) {
-      if (!tryVritraImmortal(P, linkPartnerIdx, next, D, Disc, L)) killPlayerState(P, linkPartnerIdx, Disc, L);
-    }
+    if (!P[next]._pendingDamageLinkBreak) linkPartnerIndices.forEach(partnerIdx => {
+      if (P[partnerIdx]?.hp <= 0 && !tryVritraImmortal(P, partnerIdx, next, D, Disc, L)) {
+        killPlayerState(P, partnerIdx, Disc, L);
+      }
+    });
   }
 
   const winAfterBgy = checkWin(P, gs._isMP);
@@ -1093,8 +1116,8 @@ function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta) {
 // [PASSIVE_OTHER] 两人一绳治愈
 function turnStartEvent_LinkHeal(P, pendingLinkHeals, L, inspectionMeta, statLogs = null) {
   for (const heal of pendingLinkHeals) {
-    if (!P[heal.i]?.damageLink?.active || P[heal.i]?.damageLink?.partner !== heal.partnerIdx ||
-        !P[heal.partnerIdx]?.damageLink?.active || P[heal.partnerIdx]?.damageLink?.partner !== heal.i) continue;
+    const activeLink = getAllDamageLinks(P, { activeOnly: true }).find(link => link.id === heal.linkId);
+    if (!activeLink) continue;
     const beforePlayers = copyPlayers(P);
     if (!P[heal.i].isDead) { P[heal.i].hp = clamp(P[heal.i].hp + heal.amount); }
     if (!P[heal.partnerIdx].isDead) { P[heal.partnerIdx].hp = clamp(P[heal.partnerIdx].hp + heal.amount); }
@@ -1107,8 +1130,7 @@ function turnStartEvent_LinkHeal(P, pendingLinkHeals, L, inspectionMeta, statLog
       '两人一绳',
     );
     if (statLogs) statLogs.push(heal.msg);
-    delete P[heal.i].damageLink;
-    delete P[heal.partnerIdx].damageLink;
+    removeDamageLink(P, heal.linkId);
   }
   return { P, L, inspectionMeta };
 }
@@ -1412,8 +1434,7 @@ export function continueTurnStartAfterDamageReaction(state) {
   }
   const validHeals = pendingEventIds.has(TURN_START_EVENT.DAMAGE_LINK_HEAL)
     ? (abilityData._pendingTurnStartLinkHeals || []).filter(heal => (
-    P[heal.i]?.damageLink?.active && P[heal.i]?.damageLink?.partner === heal.partnerIdx &&
-    P[heal.partnerIdx]?.damageLink?.active && P[heal.partnerIdx]?.damageLink?.partner === heal.i
+    getAllDamageLinks(P, { activeOnly: true }).some(link => link.id === heal.linkId)
     ))
     : [];
   const link = turnStartEvent_LinkHeal(P, validHeals, L, inspectionMeta, statLogs);
@@ -1523,30 +1544,25 @@ function resolveNextTurnState(gs, opts = {}) {
   // 此后所有回合内操作（摸牌、效果结算）都应以 next 为当前回合拥有者，
   // 否则 applyFx 等函数会拿 gs.currentTurn（旧回合）去决定 _turnOwner/检定触发者。
   gs = { ...gs, currentTurn: next };
-  // 清理过期的两人一绳链条
-  P.forEach((p, i) => {
-    const shouldExpire = !P[next].isResting && p.damageLink && (
-      p.damageLink.expiryOwner === next ||
-      (p.damageLink.expiryOwner != null && (!P[p.damageLink.expiryOwner] || P[p.damageLink.expiryOwner].isDead)) ||
-      (p.damageLink.expiryOwner == null && p.damageLink.expiryTurn <= newTurn)
+  // 清理过期的两人一绳链条；多条链按创建顺序分别治疗或移除。
+  const expiredInactiveIds = [];
+  getAllDamageLinks(P).forEach(link => {
+    const shouldExpire = !P[next].isResting && (
+      link.expiryOwner === next ||
+      (link.expiryOwner != null && (!P[link.expiryOwner] || P[link.expiryOwner].isDead)) ||
+      (link.expiryOwner == null && link.expiryTurn <= newTurn)
     );
-    if (shouldExpire) {
-      // 如果链条仍然激活，双方各回复4HP
-      if (p.damageLink.active) {
-        const partnerIdx = p.damageLink.partner;
-        if (P[partnerIdx] && !P[partnerIdx].isDead && i < partnerIdx) {
-          const healAmount = 4;
-          const linkMsg = `【两人一绳】绳索未断裂！${P[i].name} 和 ${P[partnerIdx].name} 各回复 ${healAmount} HP`;
-          pendingLinkHeals.push({ i, partnerIdx, amount: healAmount, msg: linkMsg });
-        }
-      }
-      if (!p.damageLink.active) {
-        if (p.damageLink?.partner != null && P[p.damageLink.partner]?.damageLink?.partner === i) {
-          delete P[p.damageLink.partner].damageLink;
-        }
-        delete p.damageLink;
-      }
+    if (!shouldExpire) return;
+    if (link.active) {
+      const healAmount = 4;
+      const linkMsg = `【两人一绳】绳索未断裂！${P[link.a].name} 和 ${P[link.b].name} 各回复 ${healAmount} HP`;
+      pendingLinkHeals.push({ linkId: link.id, i: link.a, partnerIdx: link.b, amount: healAmount, msg: linkMsg });
+    } else {
+      expiredInactiveIds.push(link.id);
     }
+  });
+  removeDamageLinks(P, expiredInactiveIds);
+  P.forEach(p => {
     // 重置当前回合生效的检定牌相关状态
     p.disableRest = false;
     p.disableSkill = false;
@@ -1745,7 +1761,7 @@ function resolveNextTurnState(gs, opts = {}) {
       }
     }
     if (drawLogs.length > drawLogsSyncedCount) L.push(...drawLogs.slice(drawLogsSyncedCount));
-    if (statLogs.length) L.push(...statLogs);
+    if (statLogs.length) appendMissingLogOccurrences(L, statLogs);
     if (!res.drawnCard) { L.push('牌堆耗尽！'); return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }; }
     if (res.needGodChoice) {
       const inspectionPatch = res.statePatch || {};
@@ -1933,7 +1949,7 @@ function resolveNextTurnState(gs, opts = {}) {
       }
     }
     if (drawLogs.length > drawLogsSyncedCount) L.push(...drawLogs.slice(drawLogsSyncedCount));
-    if (statLogs.length) L.push(...statLogs);
+    if (statLogs.length) appendMissingLogOccurrences(L, statLogs);
     if (!res.drawnCard) { L.push('牌堆耗尽！'); return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }; }
     if (res.needGodChoice) { return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: res.drawnCard, godEncounterCost: res.godEncounterCost }, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, ...(res.statePatch || {}) }; }
     const win = hasPendingDamageReaction(res.statePatch) ? null : checkWin(P, true); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: win };

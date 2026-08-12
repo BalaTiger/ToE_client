@@ -4,6 +4,7 @@ import {
   aiShouldKeepZoneCard,
   canCultistEmptyHandByBewitch,
   chooseAiCultistBewitchPlan,
+  chooseAiDamageLinkTarget,
   decideAiSkillUsage,
   evaluateHunterChaseHandQuality,
   getHunterChaseTargets,
@@ -16,6 +17,42 @@ import { startNextTurn } from '../turnEngine';
 import { createBlackGoatYoungCard } from '../../constants/card';
 import { makeGs, makeGodCard, makePlayer, makeZoneCard } from './factory';
 import { makeProliferatingZState } from '../proliferatingZ';
+import { addDamageLink } from '../damageLinks';
+
+describe('AI 两人一绳策略', () => {
+  const rope = () => makeZoneCard('B4', 0, { name: '两人一绳', type: 'damageLink', polarity: 'neutral' });
+
+  it('满血追猎者跳过已揭晓追猎者并连接下一名可追捕敌人', () => {
+    const players = [
+      makePlayer({ name: '队友', role: ROLE_HUNTER, roleRevealed: true, hand: [makeZoneCard('A1')] }),
+      makePlayer({ name: '追猎者', role: ROLE_HUNTER, hp: 10, hand: [makeZoneCard('B2'), makeZoneCard('C3')] }),
+      makePlayer({ name: '敌人', role: ROLE_TREASURE, roleRevealed: true, hp: 8, hand: [makeZoneCard('B1')] }),
+    ];
+
+    expect(chooseAiDamageLinkTarget(players, 1, [0, 2])).toBe(2);
+  });
+
+  it('追捕排序优先已经连接的合法敌人以兑现断绳伤害', () => {
+    const players = [
+      makePlayer({ name: '追猎者', role: ROLE_HUNTER, hp: 10, hand: [makeZoneCard('A1'), makeZoneCard('B2')] }),
+      makePlayer({ name: '低血敌人', role: ROLE_TREASURE, roleRevealed: true, hp: 4, hand: [makeZoneCard('C1')] }),
+      makePlayer({ name: '绳索敌人', role: ROLE_CULTIST, roleRevealed: true, hp: 8, hand: [makeZoneCard('D1')] }),
+    ];
+    addDamageLink(players, 0, 2);
+    const targets = getHunterChaseTargets(players, 0);
+
+    expect(orderHunterChaseTargets(players, 0, targets, () => 0)[0].idx).toBe(2);
+  });
+
+  it('3HP追猎者不会把两人一绳当作固定高收益牌', () => {
+    const players = [
+      makePlayer({ name: '追猎者', role: ROLE_HUNTER, hp: 3, hand: [makeZoneCard('A1')] }),
+      makePlayer({ name: '目标', role: ROLE_TREASURE, hp: 10, hand: [makeZoneCard('B1')] }),
+    ];
+
+    expect(aiShouldKeepZoneCard(rope(), 0, players)).toBe(false);
+  });
+});
 
 afterEach(() => {
   vi.restoreAllMocks();

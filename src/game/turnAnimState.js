@@ -666,11 +666,23 @@ export function buildTurnStartDrawReplayQueue({
         })(),
       })
     : null;
-  const turnStartStep = buildTurnStartStepFromVisualEvents(newGs) || {
+  const turnStartStepBase = buildTurnStartStepFromVisualEvents(newGs) || {
     type: 'YOUR_TURN',
     turnStartStage: TURN_START_ANIMATION_STAGE.TURN_BANNER,
     ...(drawerPid === 0 ? {} : { name: drawerName }),
     msgs: newGs?._turnStartLogs,
+  };
+  const turnStartStep = {
+    ...turnStartStepBase,
+    // The discard pile is presentation state while this transaction plays.
+    // Pin its pre-draw snapshot at queue start, then let the STATE_PATCH after
+    // DISCARD reveal the resolved pile. This keeps the turn banner/draw reveal
+    // from exposing a discarded card early without inferring from temp fields.
+    visualSetupPatch: {
+      ...(turnStartStepBase.visualSetupPatch || {}),
+      discard: [...(oldGs?.discard || [])],
+    },
+    visualSetupTiming: 'queueStart',
   };
   const visualDrawCardStep = hasExplicitTurnDrawEvents ? null : buildDrawCardStepFromVisualEvents(newGs);
   const drawCardStep = visualDrawCardStep || {
@@ -801,24 +813,25 @@ export function buildTurnStartDrawReplayQueue({
     ...(Array.isArray(oldGs?._randomTargetEvents) ? oldGs._randomTargetEvents : []).map(event => event?.seq || 0),
   );
   const randomTargetEvents = Array.isArray(newGs?._randomTargetEvents) ? newGs._randomTargetEvents : [];
-  const drawRandomTargetSeqs = randomTargetEvents
-    .map(event => event?.seq)
-    .filter(seq => seq != null && seq > oldRandomTargetSeq);
   // Some queued AI-turn entry points build oldGs from the already-resolved
-  // next state. Its random-target watermark therefore includes this draw's
-  // throw-stone event, even though the event has not been presented yet.
-  // Bind the rewind to the currently drawn throwStone card and actor so stale
-  // events retained from earlier turns still remain consumed.
-  const currentThrowStoneSeq = drawnCard?.type === 'throwStone'
+  // next state. Rewind only for a random-target event that the currently drawn
+  // card can actually have produced. Otherwise retained events from an older
+  // turn (for example 钻地魔虫 before a later 霉变食物 draw) must advance the
+  // baseline watermark instead of being replayed beside the new dice roll.
+  const drawCanCreateRandomTarget = drawnCard?.type === 'throwStone'
+    || drawnCard?.type === 'allDamageHPRandomExtra';
+  const currentDrawRandomTargetSeq = drawCanCreateRandomTarget
     ? Math.max(0, ...randomTargetEvents
       .filter(event => event?.sourceIdx === drawerPid && event?.label === drawnCard?.name)
       .map(event => event?.seq || 0))
     : 0;
-  const drawOldRandomTargetSeq = currentThrowStoneSeq > 0
-    ? Math.max(0, currentThrowStoneSeq - 1)
-    : (drawRandomTargetSeqs.length
-      ? Math.max(oldRandomTargetSeq, Math.min(...drawRandomTargetSeqs) - 1)
-      : null);
+  const latestRetainedRandomTargetSeq = Math.max(
+    oldRandomTargetSeq,
+    ...randomTargetEvents.map(event => event?.seq || 0),
+  );
+  const drawOldRandomTargetSeq = currentDrawRandomTargetSeq > 0
+    ? Math.max(0, currentDrawRandomTargetSeq - 1)
+    : latestRetainedRandomTargetSeq;
   const currentMoldySeq = newGs?._moldyFoodDiceRoll?.seq ?? newGs?._moldyFoodDiceSeq;
   const hasCurrentDrawMoldyLog = [
     ...(newGs?._drawLogs || []),

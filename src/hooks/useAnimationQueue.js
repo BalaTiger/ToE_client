@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { dedupeInferredDiscardTransfers } from '../game/animQueueHelpers';
-import { ensureVisualEventState, markConsumedVisualEvents } from '../game/visualEvents';
+import { markConsumedVisualEvents } from '../game/visualEvents';
 import { attachApophisNightTimeline, mergeApophisTargetQueue } from '../game/apophisAnimQueue';
-import { buildAnimQueue } from '../game/animQueueCore';
 import {
   applyStatAnimationImpact,
   primeDisplayStatsForStatQueue,
@@ -27,28 +26,13 @@ import {
 } from '../game/animationTiming';
 import {
   ANIMATION_QUEUE_AUTHORITY,
-  compileRuleVisualEventsToAnimTransaction,
   getAnimationQueueVisualEventIds,
-  mergeAnimationTransactionQueue,
 } from '../game/visualEventTransactionCompiler';
-
-export function getRuleEventCompileIds(transactionMeta = null) {
-  if (Array.isArray(transactionMeta?.compileEventIds)) return transactionMeta.compileEventIds;
-  if (Array.isArray(transactionMeta?.eventIds)) return transactionMeta.eventIds;
-  return null;
-}
-
-export function getRuleEventCompileState(nextGs = null, transactionMeta = null) {
-  return nextGs || transactionMeta?.compileState || null;
-}
-
-export function collectPendingVisualEventIds(queue, ruleTransaction = null, transactionMeta = null) {
-  return [...new Set([
-    ...getAnimationQueueVisualEventIds(queue),
-    ...(Array.isArray(ruleTransaction?.eventIds) ? ruleTransaction.eventIds : []),
-    ...(Array.isArray(transactionMeta?.eventIds) ? transactionMeta.eventIds : []),
-  ].filter(Boolean))];
-}
+export {
+  collectPendingVisualEventIds,
+  getRuleEventCompileIds,
+  getRuleEventCompileState,
+} from '../game/animationTransaction';
 
 export function useAnimationQueue({
   gs,
@@ -384,35 +368,25 @@ export function useAnimationQueue({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anim, paused]);
 
-  function triggerAnimQueue(queue, nextGs, callback, transactionMeta = null) {
+  function playAnimationTransaction(transaction) {
+    if (!transaction || transaction.authority !== ANIMATION_QUEUE_AUTHORITY.QUEUE || !Array.isArray(transaction.queue)) {
+      throw new TypeError('[animation-transaction] playback requires a queue-authoritative transaction');
+    }
+    const {
+      queue,
+      nextState: nextGs,
+      callback,
+      eventIds = [],
+    } = transaction;
     if (Array.isArray(queue) && queue.some(s => s?.type === 'EARTHQUAKE')) {
-      try { console.log('[EQ-DEBUG] triggerAnimQueue received queue =', queue.map(s => s.type), '| hasCallback =', !!callback, '| nextGs.phase =', nextGs?.phase); } catch { /* noop */ }
+      try { console.log('[EQ-DEBUG] playAnimationTransaction received queue =', queue.map(s => s.type), '| hasCallback =', !!callback, '| nextGs.phase =', nextGs?.phase); } catch { /* noop */ }
     }
     // Bespoke target-action queues do not all originate from buildAnimQueue.
     // Normalize at the common playback boundary so the black-night roll is
     // always shown before the selected action's own visual effects.
-    const queueAuthority = transactionMeta?.authority || ANIMATION_QUEUE_AUTHORITY.LEGACY_MERGE;
-    if (!transactionMeta?.authority && import.meta.env?.DEV) {
-      console.warn('[legacyMerge] implicit fallback is deprecated; pass an explicit authority in transactionMeta');
-    }
-    const shouldCompileRuleEvents = queueAuthority !== ANIMATION_QUEUE_AUTHORITY.QUEUE;
-    const compileState = getRuleEventCompileState(nextGs, transactionMeta);
-    const transactionState = compileState && shouldCompileRuleEvents
-      ? ensureVisualEventState(compileState)
-      : null;
-    const compileEventIds = getRuleEventCompileIds(transactionMeta);
-    const ruleTransaction = transactionState
-      ? compileRuleVisualEventsToAnimTransaction(transactionState, null, {
-        consumedEventIds: consumedVisualEventIdsRef?.current,
-        buildAnimQueue,
-        ...(Array.isArray(compileEventIds) ? { eventIds: compileEventIds } : {}),
-        ...(transactionMeta?.visualEventScope ? { visualEventScope: transactionMeta.visualEventScope } : {}),
-      })
-      : null;
-    const transactionQueue = mergeAnimationTransactionQueue(queue, ruleTransaction, { authority: queueAuthority });
     const apophisOrderedQueue = nextGs
-      ? mergeApophisTargetQueue(transactionQueue, gs, nextGs)
-      : transactionQueue;
+      ? mergeApophisTargetQueue(queue, gs, nextGs)
+      : queue;
     const schemaPreparation = prepareAnimationQueueSteps(dedupeInferredDiscardTransfers(apophisOrderedQueue));
     reportSchemaIssues('input normalization failed', schemaPreparation.issues);
     const normalizedQueue = attachApophisNightTimeline(
@@ -427,7 +401,7 @@ export function useAnimationQueue({
       Array.isArray(normalizedQueue) &&
       normalizedQueue.some(step => step?.type === 'YOUR_TURN' || step?.type === 'DRAW_CARD')
     ) {
-      logAiTurnQueueDebug('triggerAnimQueue:start', {
+      logAiTurnQueueDebug('playAnimationTransaction:start', {
         turn: nextGs.currentTurn,
         name: nextGs.players?.[nextGs.currentTurn]?.name,
         queue: normalizedQueue.map(step => step?.type),
@@ -479,11 +453,9 @@ export function useAnimationQueue({
     reportSchemaIssues('timed queue validation failed', validateAnimationQueueSteps(timedQueue));
     const preparedQueue = prepareAnimQueueLogs(timedQueue, nextGs, visibleLogRef.current)
       .map(step => ({ ...step, _playbackId: ++playbackIdRef.current }));
-    pendingVisualEventIdsRef.current = collectPendingVisualEventIds(
-      preparedQueue,
-      ruleTransaction,
-      transactionMeta,
-    );
+    pendingVisualEventIdsRef.current = eventIds.length
+      ? [...new Set(eventIds)]
+      : getAnimationQueueVisualEventIds(preparedQueue);
     const continuityIssues = validateStatAnimationContinuity(preparedQueue);
     if (continuityIssues.length && import.meta.env?.DEV) {
       console.warn('[stat-presentation] discontinuous stat animation queue', continuityIssues);
@@ -545,7 +517,7 @@ export function useAnimationQueue({
     animCallbackRef,
     pendingVisualEventIdsRef,
     queueLifecycleRef,
-    triggerAnimQueue,
+    playAnimationTransaction,
     advanceQueue,
   };
 }

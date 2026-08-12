@@ -4,6 +4,30 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
+const animationTransactions = {
+  rules: {
+    'explicit-trigger-meta': {
+      meta: {
+        type: 'problem',
+        docs: { description: 'Require explicit animation transaction metadata at compatibility call sites' },
+        schema: [],
+        messages: { missing: 'triggerAnimQueue requires a non-null fourth transaction metadata argument.' },
+      },
+      create(context) {
+        return {
+          CallExpression(node) {
+            if (node.callee?.type !== 'Identifier' || node.callee.name !== 'triggerAnimQueue') return
+            const metaArg = node.arguments[3]
+            if (!metaArg || (metaArg.type === 'Literal' && metaArg.value == null)) {
+              context.report({ node, messageId: 'missing' })
+            }
+          },
+        }
+      },
+    },
+  },
+}
+
 export default defineConfig([
   globalIgnores([
     'dist/**',
@@ -13,6 +37,9 @@ export default defineConfig([
   ]),
   {
     files: ['src/**/*.{js,jsx}'],
+    plugins: {
+      'animation-transactions': animationTransactions,
+    },
     extends: [
       js.configs.recommended,
       reactHooks.configs.flat.recommended,
@@ -39,6 +66,7 @@ export default defineConfig([
     },
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      'animation-transactions/explicit-trigger-meta': 'error',
     },
   },
   {

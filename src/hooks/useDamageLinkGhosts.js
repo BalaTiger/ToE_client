@@ -1,12 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { getAllDamageLinks } from '../game/damageLinks';
 
 function extractDamageLinkPairs(players = []) {
-  return players.flatMap((p, i) => {
-    if (!p?.damageLink?.active) return [];
-    const j = p.damageLink.partner;
-    if (j == null || j <= i || !players[j]?.damageLink?.active || players[j].damageLink.partner !== i) return [];
-    return [{ a: i, b: j }];
-  });
+  return getAllDamageLinks(players, { activeOnly: true }).map(link => ({ id: link.id, a: link.a, b: link.b }));
 }
 
 export function useDamageLinkGhosts({ players, log }) {
@@ -46,11 +42,11 @@ export function useDamageLinkGhosts({ players, log }) {
 
     const prevPairs = prevDamageLinksRef.current;
     const currentPairs = extractDamageLinkPairs(players);
-    const currentKeys = new Set(currentPairs.map(p => `${p.a}-${p.b}`));
+    const currentKeys = new Set(currentPairs.map(p => p.id));
     const newLogs = (Array.isArray(log) ? log : []).slice(prevLogLenRef.current);
 
     prevPairs.forEach(pair => {
-      const key = `${pair.a}-${pair.b}`;
+      const key = pair.id;
       if (currentKeys.has(key)) return;
       const aName = players[pair.a]?.name;
       const bName = players[pair.b]?.name;

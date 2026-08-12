@@ -9,6 +9,7 @@ import {
   CAVE_DUEL_SOUND_TIMING,
   startCaveDuelSoundSequence,
 } from '../audio/caveDuelSoundSequence';
+import { startTrackEndFadeMonitor } from '../audio/trackEndFadeMonitor';
 
 const ENDLESS_CORRIDOR_TUNNEL_VOLUME = 0.58;
 const ENDLESS_CORRIDOR_TUNNEL_STOP_MS = 2900;
@@ -271,6 +272,8 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影', {
   const sfxStopTimersRef = useRef({});
   const sfxFadeFramesRef = useRef({});
   const sfxSequenceCleanupsRef = useRef({});
+  const turnStartPlaybackTokenRef = useRef(0);
+  const turnStartMonitorCleanupRef = useRef(null);
   const currentTrackRef = useRef(null);
   const fadeTokenRef = useRef(0);
   const targetVolumesRef = useRef(Object.fromEntries(Object.entries(BGM_AUDIO_BY_KEY).map(([key, config]) => [key, config.volume])));
@@ -587,6 +590,9 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影', {
       ...collectAudioElements(sfxRefs.current).map(audio => bindAudioVolumeScale(audio, sfxVolumeRef)),
     ];
     return () => {
+      turnStartPlaybackTokenRef.current += 1;
+      turnStartMonitorCleanupRef.current?.();
+      turnStartMonitorCleanupRef.current = null;
       Object.values(sfxSequenceCleanupsRef.current).forEach(cleanup => {
         try { cleanup?.(); } catch { /* ignore */ }
       });
@@ -1617,6 +1623,9 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影', {
     const audio = sfxRefs.current.turnStart;
     if (!audio) return undefined;
     const fadeKey = 'turnStart';
+    const token = ++turnStartPlaybackTokenRef.current;
+    turnStartMonitorCleanupRef.current?.();
+    turnStartMonitorCleanupRef.current = null;
     clearTimeout(sfxStopTimersRef.current.turnStart);
     if (sfxFadeFramesRef.current[fadeKey]) {
       cancelAnimationFrame(sfxFadeFramesRef.current[fadeKey]);
@@ -1627,18 +1636,33 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影', {
       audio.currentTime = 0;
       audio.volume = TURN_START_VOLUME;
       audio.playbackRate = 1;
-      audio.play().catch(() => { });
-      scheduleFadeOutAtTrackEnd(
-        audio,
-        'turnStart',
-        fadeKey,
-        TURN_START_FADE_MS,
-        TURN_START_VOLUME,
-        TURN_START_FALLBACK_DURATION_MS,
-        true,
-      );
+      Promise.resolve(audio.play()).then(() => {
+        if (turnStartPlaybackTokenRef.current !== token) return;
+        turnStartMonitorCleanupRef.current = startTrackEndFadeMonitor({
+          audio,
+          baseVolume: TURN_START_VOLUME,
+          fallbackDurationMs: TURN_START_FALLBACK_DURATION_MS,
+          fadeMs: TURN_START_FADE_MS,
+          guardMs: TRACK_END_FADE_GUARD_MS,
+          smooth: true,
+          isCurrent: () => turnStartPlaybackTokenRef.current === token,
+          onComplete: () => {
+            if (turnStartPlaybackTokenRef.current !== token) return;
+            try {
+              audio.pause();
+              audio.currentTime = 0;
+              audio.volume = TURN_START_VOLUME;
+            } catch { /* ignore */ }
+            turnStartMonitorCleanupRef.current = null;
+          },
+        });
+      }).catch(() => { });
     } catch { /* ignore */ }
     return () => {
+      if (turnStartPlaybackTokenRef.current !== token) return;
+      turnStartPlaybackTokenRef.current += 1;
+      turnStartMonitorCleanupRef.current?.();
+      turnStartMonitorCleanupRef.current = null;
       clearTimeout(sfxStopTimersRef.current.turnStart);
       if (sfxFadeFramesRef.current[fadeKey]) {
         cancelAnimationFrame(sfxFadeFramesRef.current[fadeKey]);
@@ -1651,7 +1675,7 @@ export function useGameAudio(isBattleScreen, expansionKey = '地神的潜影', {
         audio.volume = TURN_START_VOLUME;
       } catch { /* ignore */ }
     };
-  }, [noteUserGesture, scheduleFadeOutAtTrackEnd]);
+  }, [noteUserGesture]);
   const playSkillHuntSound = useCallback(() => {
     noteUserGesture();
     const audio = sfxRefs.current.skillHunt;

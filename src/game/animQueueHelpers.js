@@ -9,6 +9,20 @@ export function statePatchStep(patch={}){
   return step;
 }
 
+export function buildWorshipReplayBaselinePlayers(playersBefore=[],playersAfter=[],targetPid=0){
+  const afterPlayer=playersAfter?.[targetPid];
+  if(!Array.isArray(playersBefore)||!afterPlayer)return playersBefore;
+  return playersBefore.map((player,idx)=>idx===targetPid?{
+    ...player,
+    hand:[...(afterPlayer.hand||[])],
+    godEncounters:afterPlayer.godEncounters,
+    godEncounterCount:afterPlayer.godEncounterCount,
+    lastGodEncounterSanLoss:afterPlayer.lastGodEncounterSanLoss,
+    lastGodEncounterCreatedSkull:afterPlayer.lastGodEncounterCreatedSkull,
+    lastGodEncounterPatchEnabled:afterPlayer.lastGodEncounterPatchEnabled,
+  }:player);
+}
+
 export function prepareWorshipHighlight(queue=[],options={}){
   const {
     targetPid=0,
@@ -141,11 +155,11 @@ export function composeBewitchGodAcquisitionQueue({
   const targetPlayer=playersAfter?.[targetPid];
   const highlights=[];
   const powers=[];
-  const stableSettlement=[];
+  const settlementWithoutPowers=[];
   (Array.isArray(settlementQueue)?settlementQueue:[]).forEach(step=>{
-    if(step?.type==="GOD_HIGHLIGHT"&&step.targetPid===targetPid){highlights.push(step);return;}
+    if(step?.type==="GOD_HIGHLIGHT"&&step.targetPid===targetPid)highlights.push(step);
     if(isImmediateWorshipPowerStep(step)){powers.push(step);return;}
-    stableSettlement.push(step);
+    settlementWithoutPowers.push(step);
   });
   const zhuLightChanged=godKey==="ZHU"&&zhuLightAfter&&JSON.stringify(zhuLightAfter)!==JSON.stringify(zhuLightBefore);
   if(zhuLightChanged&&!powers.some(step=>Object.prototype.hasOwnProperty.call(step||{},"zhuLight"))){
@@ -170,21 +184,27 @@ export function composeBewitchGodAcquisitionQueue({
     ...(Array.isArray(encounterQueue)?encounterQueue:[]),
     ...(Array.isArray(acceptanceQueue)?acceptanceQueue:[]),
   ]);
-  const stripFaithPresentation=steps=>(Array.isArray(steps)?steps:[]).filter(step=>(
-    !(step?.type==="GOD_HIGHLIGHT"&&step.targetPid===targetPid)&&
-    !isImmediateWorshipPowerStep(step)
-  ));
-  const stagedEncounter=stripFaithPresentation(encounterQueue);
+  // composeFaithSettlementAnimQueue has already established the semantic
+  // order inside acceptance (old-faith exit -> new highlight -> abandoned
+  // followers). Preserve that order here; only immediate worship powers move
+  // into the final onWorshipPower stage.
+  const stripImmediatePowers=steps=>(Array.isArray(steps)?steps:[])
+    .filter(step=>!isImmediateWorshipPowerStep(step));
+  const stagedEncounter=stripImmediatePowers(encounterQueue);
   const stagedAcceptance=Array.isArray(acceptanceQueue)
-    ?stripFaithPresentation(acceptanceQueue)
-    :stableSettlement;
+    ?stripImmediatePowers(acceptanceQueue)
+    :settlementWithoutPowers.filter(step=>!(step?.type==="GOD_HIGHLIGHT"&&step.targetPid===targetPid));
   const unassignedSettlement=hasExplicitStageQueues
-    ?stableSettlement.filter(step=>!assignedStageSteps.has(step))
+    ?settlementWithoutPowers.filter(step=>!assignedStageSteps.has(step))
     :[];
+  const acceptanceSteps=[...stagedAcceptance,...unassignedSettlement];
+  if(!acceptanceSteps.some(step=>step?.type==="GOD_HIGHLIGHT"&&step.targetPid===targetPid)){
+    acceptanceSteps.push(highlightStep);
+  }
   const composed=composeCardAcquisitionQueue({
     acquisitionQueue,
     encounterQueue:stagedEncounter,
-    acceptanceQueue:[...stagedAcceptance,...unassignedSettlement,highlightStep],
+    acceptanceQueue:acceptanceSteps,
     onWorshipPowerQueue:powers,
   });
   return prepareWorshipHighlight(composed,{

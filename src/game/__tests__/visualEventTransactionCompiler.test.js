@@ -24,6 +24,7 @@ import {
   compileRuleVisualEventsToAnimTransaction,
   compileVisualEventToAnimSteps,
   getAnimationQueueVisualEventIds,
+  getVisualEventIdsCoveredByAnimationQueue,
   mergeAnimationTransactionQueue,
   validateVisualEventTransaction,
 } from '../visualEventTransactionCompiler';
@@ -32,6 +33,28 @@ import { prepareAnimationQueueSteps } from '../animationStepSchema';
 const player = (name, patch = {}) => ({ name, hp: 10, san: 10, hand: [], ...patch });
 
 describe('visualEventTransactionCompiler', () => {
+  it('queue authority consumes only the stat event covered by an endless-corridor replay step', () => {
+    const staleStat = { seq: 4, type: 'SAN_LOSS', target: 0, from: { san: 9 }, to: { san: 8 } };
+    const corridorStat = { seq: 5, type: 'SAN_LOSS', target: 0, from: { san: 8 }, to: { san: 7 } };
+    const state = {
+      players: [player('卡洛斯', { san: 7 })],
+      _statEvents: [staleStat, corridorStat],
+      _statEventSeq: 5,
+      _statLogs: ['卡洛斯 遭遇邪神 伏行之混沌！（第1次）失去 1 SAN'],
+    };
+    const queue = [
+      { type: 'DRAW_CARD', card: { name: '伏行之混沌' }, triggerName: '无尽通道' },
+      { type: 'SAN_DAMAGE', hitIndices: [0], statEvents: [corridorStat] },
+    ];
+
+    expect(getVisualEventIdsCoveredByAnimationQueue(state, queue)).toEqual([
+      'legacy:statEvents:5',
+    ]);
+    expect(mergeAnimationTransactionQueue(queue, null, {
+      authority: ANIMATION_QUEUE_AUTHORITY.QUEUE,
+    }).map(step => step.type)).toEqual(['DRAW_CARD', 'SAN_DAMAGE']);
+  });
+
   it('keeps end-turn boundary events before the next turn banner after canonical merge', () => {
     const slime = { id: 'boundary-slime', name: '撒托古亚的赐福黏液', isTsathogguaSlime: true };
     const before = [player('蟾蜍信徒'), player('下一名AI')];
@@ -495,8 +518,11 @@ describe('visualEventTransactionCompiler', () => {
       apophisNight: { active: true },
     }, { playersAfter: players });
 
+    // The target event owns only the roll and its immediate SAN consequence.
+    // The actual hunt transaction owns the scope overlay so an intervening
+    // inspection can finish before target lock.
     expect(compileVisualEventToAnimSteps(event, { players }).map(step => step.type))
-      .toEqual(['DICE_ROLL', 'SKILL_HUNT']);
+      .toEqual(['DICE_ROLL']);
   });
 
   it('compiles one inspection event as a self-contained reveal flow', () => {

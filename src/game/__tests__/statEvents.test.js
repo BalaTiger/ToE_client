@@ -9,6 +9,9 @@ import {
   validateStatAnimationContinuity,
 } from '../statEvents';
 import { makePlayer } from './factory';
+import { applyHpDamageWithLink } from '../effectEngine';
+import { addDamageLink } from '../damageLinks';
+import { copyPlayers } from '../coreUtils';
 
 describe('statEvents', () => {
   it('属性队列开始时只把对应数值锁定到第一段事件的 from', () => {
@@ -250,6 +253,31 @@ describe('statEvents', () => {
     expect(applyStatEventsToDisplayStats(afterHpHeal, queue[1].statEvents, queue[1].type)).toEqual([
       { hp: 7, san: 6 },
     ]);
+  });
+
+  it('多条绳索断裂按每条绳索的状态补丁与伤害阶段依次入队', () => {
+    const players = [
+      makePlayer({ name: '艾伦', hp: 10 }),
+      makePlayer({ name: '贝拉', hp: 10 }),
+      makePlayer({ name: '卡洛斯', hp: 10 }),
+    ];
+    addDamageLink(players, 0, 1, { createdSeq: 1 });
+    addDamageLink(players, 2, 1, { createdSeq: 2 });
+    const before = copyPlayers(players);
+    const logs = ['贝拉 失去 1 HP'];
+    applyHpDamageWithLink(players, 1, 1, [], logs, 1, []);
+
+    const events = buildStatEvents(before, players, logs, { reason: '测试', seq: 10 });
+    const queue = statEventsToAnimQueue(events, players, logs);
+
+    expect(events.filter(event => event.type === 'DAMAGE_LINK_BREAK').map(event => event.pair)).toEqual([[0, 1], [1, 2]]);
+    expect(queue.map(step => step.type)).toEqual([
+      'HP_DAMAGE',
+      'STATE_PATCH', 'TURN_BOUNDARY_PAUSE', 'HP_DAMAGE',
+      'STATE_PATCH', 'TURN_BOUNDARY_PAUSE', 'HP_DAMAGE',
+    ]);
+    expect(queue[1]._logChunk[0]).toContain('贝拉 和 艾伦');
+    expect(queue[4]._logChunk[0]).toContain('贝拉 和 卡洛斯');
   });
 
   it('同一效果先扣减再恢复HP时按各自特效分段更新HP条', () => {

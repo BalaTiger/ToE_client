@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { canLocalActOnTargetSelectionPhase, derotateGs, rotateGsForViewer } from '../rotateState';
+import { addDamageLink, getAllDamageLinks } from '../damageLinks';
 
 function player(name, hand = []) {
   return { name, hp: 10, san: 10, hand };
@@ -10,6 +11,18 @@ function names(players) {
 }
 
 describe('rotateGsForViewer', () => {
+  it('多条绳索在视角旋转和还原后都保持独立互指', () => {
+    const players = [player('p0'), player('p1'), player('p2'), player('p3')];
+    addDamageLink(players, 0, 2, { createdSeq: 1 });
+    addDamageLink(players, 1, 2, { createdSeq: 2 });
+    const gs = { players, currentTurn: 0, phase: 'ACTION', abilityData: {} };
+
+    const rotated = rotateGsForViewer(gs, 2);
+    expect(getAllDamageLinks(rotated.players).map(link => [link.a, link.b])).toEqual([[0, 2], [0, 3]]);
+
+    const restored = derotateGs(rotated, 2);
+    expect(getAllDamageLinks(restored.players).map(link => [link.a, link.b])).toEqual([[0, 2], [1, 2]]);
+  });
   it('rotates god status event owner and snapshots together', () => {
     const gs = {
       players: [player('p0'), player('p1'), player('p2')],

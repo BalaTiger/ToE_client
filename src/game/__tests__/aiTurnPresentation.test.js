@@ -16,7 +16,13 @@ import {
   stripAiExecutionFields,
   stripAiPresentationFields,
 } from '../aiTurnPresentation';
-import { createGodStatusChangedEvent, createHuntResultEvent } from '../visualEvents';
+import {
+  createApophisTargetVisualEvent,
+  createGodStatusChangedEvent,
+  createHuntResultEvent,
+  createInspectionVisualEvent,
+} from '../visualEvents';
+import { getVisualEventIdsCoveredByAnimationQueue } from '../visualEventTransactionCompiler';
 
 describe('AI turn presentation helpers', () => {
   it('keeps a complete hand-worship transaction before the rest dice and heal', () => {
@@ -259,7 +265,6 @@ describe('AI turn presentation helpers', () => {
       { idx: 1, marked: ['thorn'] },
     ]);
     expect(result.externalVisualLocks).toEqual([]);
-    expect(result.shouldMaskDiscardedTurnDraw).toBe(false);
   });
 
   it('describes replay visual effects for App to execute', () => {
@@ -300,7 +305,92 @@ describe('AI turn presentation helpers', () => {
     expect(result.queue[1]).toBe(replayStep);
     expect(result.queue.some(step => step.type === 'DRAW_CARD')).toBe(false);
     expect(result.externalVisualLocks).toEqual([replayLock]);
-    expect(result.shouldMaskDiscardedTurnDraw).toBe(true);
+  });
+
+  it('treats queued rest and CTH spring heals as authoritative stat-event coverage', () => {
+    const restHeal = {
+      seq: 21,
+      type: 'HP_GAIN',
+      target: 1,
+      from: { hp: 7, san: 10 },
+      to: { hp: 9, san: 10 },
+      reason: '休息',
+    };
+    const springHeal = {
+      seq: 22,
+      type: 'HP_GAIN',
+      target: 1,
+      from: { hp: 9, san: 10 },
+      to: { hp: 10, san: 10 },
+      reason: '地下泉',
+    };
+    const state = {
+      players: [
+        { name: '你', hp: 10, san: 10 },
+        { name: '艾伦', hp: 10, san: 10 },
+      ],
+      _statEvents: [restHeal, springHeal],
+      _statEventSeq: 22,
+      _visualEvents: [
+        { id: 'rest-stats', type: 'statEvents', statEvents: [restHeal] },
+        { id: 'spring-stats', type: 'statEvents', statEvents: [springHeal] },
+      ],
+    };
+    const queue = [
+      { type: 'HP_HEAL', hitIndices: [1], statEvents: [restHeal] },
+      { type: 'CTH_RLYEH_DREAM', targetPid: 1 },
+      { type: 'DRAW_CARD', card: { key: 'C2', name: '地下泉' }, targetPid: 1 },
+      { type: 'HP_HEAL', hitIndices: [1], statEvents: [springHeal] },
+    ];
+
+    expect(getAiActionQueueCoverage(
+      state,
+      queue,
+      steps => getVisualEventIdsCoveredByAnimationQueue(state, steps),
+    )).toEqual({
+      eventIds: ['rest-stats', 'spring-stats'],
+      coveredEventIds: ['rest-stats', 'spring-stats'],
+      uncoveredEventIds: [],
+    });
+    expect(queue.map(step => step.type)).toEqual([
+      'HP_HEAL',
+      'CTH_RLYEH_DREAM',
+      'DRAW_CARD',
+      'HP_HEAL',
+    ]);
+  });
+
+  it('does not treat retained inspection metadata as part of a later throw-stone action', () => {
+    const state = {
+      _inspectionEvents: [{
+        seq: 1,
+        target: 2,
+        card: { id: 'old-inspection', name: '失眠' },
+      }],
+      _visualEvents: [{
+        id: 'throw-stone-event',
+        type: 'throwStone',
+        sourceIdx: 0,
+        targetIdx: 1,
+        roll: 1,
+        damage: 0,
+      }],
+    };
+    const queue = [
+      { type: 'DICE_ROLL', visualEventId: 'throw-stone-event' },
+      { type: 'RANDOM_TARGET', visualEventId: 'throw-stone-event' },
+      { type: 'THROW_STONE', visualEventId: 'throw-stone-event' },
+    ];
+
+    expect(getAiActionQueueCoverage(
+      state,
+      queue,
+      steps => steps.map(step => step.visualEventId).filter(Boolean),
+    )).toEqual({
+      eventIds: ['throw-stone-event'],
+      coveredEventIds: ['throw-stone-event'],
+      uncoveredEventIds: [],
+    });
   });
 
   it('repairs a missing drawn-card discard after the AI turn intro was already shown', () => {
@@ -530,6 +620,10 @@ describe('AI turn presentation helpers', () => {
       },
     ];
     const huntEvents = rawHunts.map(createHuntResultEvent);
+    const apophisEvents = rawHunts.map(event => createApophisTargetVisualEvent(
+      event.apophisTargetEvent,
+      { playersAfter: players },
+    ));
     const previousState = {
       phase: 'AI_TURN',
       currentTurn: 1,
@@ -543,7 +637,7 @@ describe('AI turn presentation helpers', () => {
       ...previousState,
       phase: 'PLAYER_REVEAL_FOR_HUNT',
       log: rawHunts.flatMap(event => [event.apophisTargetEvent.log, ...event.msgs]),
-      _visualEvents: huntEvents,
+      _visualEvents: [apophisEvents[0], huntEvents[0], apophisEvents[1], huntEvents[1]],
       _apophisTargetSeq: 2,
       _apophisTargetEvent: secondNight,
     };
@@ -566,10 +660,105 @@ describe('AI turn presentation helpers', () => {
       'DICE_ROLL',
       'SKILL_HUNT',
     ]);
-    expect(orderedSteps.slice(0, 2).every(step => step.visualEventId === huntEvents[0].id)).toBe(true);
-    expect(orderedSteps.slice(2).every(step => step.visualEventId === huntEvents[1].id)).toBe(true);
+    expect(orderedSteps[0].visualEventId).toBe(apophisEvents[0].id);
+    expect(orderedSteps[1].visualEventId).toBe(huntEvents[0].id);
+    expect(orderedSteps[2].visualEventId).toBe(apophisEvents[1].id);
+    expect(orderedSteps[3].visualEventId).toBe(huntEvents[1].id);
     expect(getAiActionQueueCoverage(
       nextState,
+      result.queue,
+      queue => queue.map(step => step.visualEventId).filter(Boolean),
+    ).uncoveredEventIds).toEqual([]);
+  });
+
+  it('plays an Apophis SAN inspection before the huntResult transaction', () => {
+    const beforePlayers = [
+      { name: '你', hp: 10, san: 10, hand: [] },
+      { name: '贝拉', hp: 10, san: 7, hand: [{ id: 'hunt-card', key: 'A1' }] },
+      { name: '卡洛斯', hp: 10, san: 10, hand: [{ id: 'reveal-card', key: 'A1' }] },
+    ];
+    const afterSanPlayers = beforePlayers.map((player, index) => (
+      index === 1 ? { ...player, san: 6 } : player
+    ));
+    const night = {
+      seq: 1,
+      actorIdx: 1,
+      actorName: '贝拉',
+      selectedIdx: 0,
+      targetIdx: 2,
+      roll: 1,
+      changed: true,
+      label: '选择【追捕】目标',
+      log: '【黑夜】贝拉 选择【追捕】目标掷出 1，目标由 你 错乱为 卡洛斯，失去 1 SAN',
+      statSeq: 1,
+    };
+    const inspectionCard = { id: 'inspection', name: '暂时的平静', effect: 'nothing' };
+    const inspectionLog = '贝拉 的SAN检定结果为"暂时的平静"';
+    const inspectionEvent = {
+      seq: 1,
+      target: 1,
+      card: inspectionCard,
+      beforePlayers: afterSanPlayers,
+      afterPlayers: afterSanPlayers,
+      beforeLog: [night.log],
+      afterLog: [night.log, inspectionLog],
+      beforeDiscard: [],
+      afterDiscard: [],
+      beforeStatEventSeq: 1,
+      statEvents: [],
+    };
+    const rawHunt = {
+      apophisTargetEvent: night,
+      hunterIdx: 1,
+      targetIdx: 2,
+      revealedCard: beforePlayers[2].hand[0],
+      beforePlayers: afterSanPlayers,
+      afterPlayers: afterSanPlayers,
+      beforeLog: [night.log, inspectionLog],
+      afterLog: [night.log, inspectionLog, '贝拉（追猎者）对 卡洛斯 【追捕】，亮出 [A1]'],
+      msgs: ['贝拉（追猎者）对 卡洛斯 【追捕】，亮出 [A1]'],
+    };
+    const apophisEvent = createApophisTargetVisualEvent(night, {
+      playersBefore: beforePlayers,
+      playersAfter: afterSanPlayers,
+      statEvents: [{ type: 'SAN_LOSS', target: 1, amount: 1, seq: 1 }],
+    });
+    const inspectionVisualEvent = createInspectionVisualEvent(inspectionEvent);
+    const huntEvent = createHuntResultEvent(rawHunt);
+    const state = {
+      phase: 'PLAYER_REVEAL_FOR_HUNT',
+      currentTurn: 1,
+      players: afterSanPlayers,
+      discard: [],
+      log: rawHunt.afterLog,
+      _inspectionEvents: [inspectionEvent],
+      _statEvents: apophisEvent.statEvents,
+      _visualEvents: [apophisEvent, inspectionVisualEvent, huntEvent],
+    };
+
+    const result = buildAiHuntWaitPresentation({
+      previousState: { ...state, phase: 'AI_TURN', log: [], _inspectionEvents: [], _visualEvents: [], _aiTurnIntroShown: true },
+      rawResult: { _aiHuntEvents: [rawHunt] },
+      nextState: state,
+      isDrawnCardActuallyDiscarded: () => false,
+      buildActorTurnStartReplay: vi.fn(),
+      buildTurnStartIntroQueue: vi.fn(),
+    });
+    const diceIdx = result.queue.findIndex(step => step.type === 'DICE_ROLL');
+    const sanIdx = result.queue.findIndex(step => step.type === 'SAN_DAMAGE');
+    const inspectionIdx = result.queue.findIndex(step => step.type === 'DRAW_CARD' && step.inspectionSeq === 1);
+    const huntIdx = result.queue.findIndex(step => step.type === 'SKILL_HUNT');
+
+    expect(diceIdx).toBeGreaterThanOrEqual(0);
+    expect(sanIdx).toBeGreaterThan(diceIdx);
+    expect(inspectionIdx).toBeGreaterThan(sanIdx);
+    expect(huntIdx).toBeGreaterThan(inspectionIdx);
+    expect(result.queue[diceIdx].visualEventId).toBe(apophisEvent.id);
+    expect(result.queue[inspectionIdx].visualEventId).toBe(inspectionVisualEvent.id);
+    expect(result.queue[huntIdx].visualEventId).toBe(huntEvent.id);
+    expect(result.inspectionEvents).toEqual([inspectionEvent]);
+    expect(getAiActionQueueCoverage(
+      state,
       result.queue,
       queue => queue.map(step => step.visualEventId).filter(Boolean),
     ).uncoveredEventIds).toEqual([]);

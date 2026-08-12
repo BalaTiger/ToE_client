@@ -30,6 +30,8 @@ function clonePlayersForStatPatch(players = []) {
     hand: [...(player?.hand || [])],
     godZone: [...(player?.godZone || [])],
     zoneCards: [...(player?.zoneCards || [])],
+    damageLink: player?.damageLink ? { ...player.damageLink } : player?.damageLink,
+    damageLinks: Array.isArray(player?.damageLinks) ? player.damageLinks.map(link => ({ ...link })) : player?.damageLinks,
     peekMemories: Object.fromEntries(Object.entries(player?.peekMemories || {}).map(([k, v]) => [k, [...(v || [])]])),
   }));
 }
@@ -117,8 +119,52 @@ function findDamageLinkBreakTimeline(beforePlayers = [], afterPlayers = [], logs
   return null;
 }
 
+function buildExplicitDamageLinkTimeline(beforePlayers = [], afterPlayers = [], options = {}) {
+  const timeline = Array.isArray(afterPlayers?._damageLinkBreakTimeline)
+    ? afterPlayers._damageLinkBreakTimeline
+    : [];
+  if (!timeline.length) return null;
+  delete afterPlayers._damageLinkBreakTimeline;
+  const seq = options.seq;
+  const eventBase = item => ({
+    reason: options.reason || '',
+    logHint: item.breakLine,
+    ...(seq != null ? { seq } : {}),
+  });
+  const events = [];
+  const firstBeforeBreak = timeline[0].beforePlayers;
+  for (let idx = 0; idx < beforePlayers.length; idx += 1) {
+    const from = statOf(beforePlayers[idx]);
+    const to = statOf(firstBeforeBreak[idx]);
+    if (to.hp < from.hp) events.push({ type: 'HP_LOSS', target: idx, from, to, phaseOrder: 0, ...eventBase(timeline[0]) });
+    if (to.san < from.san) events.push({ type: 'SAN_LOSS', target: idx, from, to, phaseOrder: 0, ...eventBase(timeline[0]) });
+  }
+  timeline.forEach((item, index) => {
+    const breakOrder = index * 2 + 1;
+    const damageOrder = breakOrder + 1;
+    events.push({
+      type: 'DAMAGE_LINK_BREAK',
+      players: item.breakPlayers,
+      pair: item.pair,
+      linkId: item.linkId,
+      phaseOrder: breakOrder,
+      _logChunk: [item.breakLine],
+      ...eventBase(item),
+    });
+    item.pair.forEach(target => {
+      const from = statOf(item.beforePlayers[target]);
+      const to = statOf(item.afterPlayers[target]);
+      if (to.hp < from.hp) events.push({
+        type: 'HP_LOSS', target, from, to, phaseOrder: damageOrder, linkDamage: true, ...eventBase(item),
+      });
+    });
+  });
+  return events;
+}
+
 export function buildStatEvents(beforePlayers = [], afterPlayers = [], logs = [], options = {}) {
-  const damageLinkTimeline = findDamageLinkBreakTimeline(beforePlayers, afterPlayers, logs, options);
+  const damageLinkTimeline = buildExplicitDamageLinkTimeline(beforePlayers, afterPlayers, options)
+    || findDamageLinkBreakTimeline(beforePlayers, afterPlayers, logs, options);
 
   const reason = options.reason || '';
   const logHint = Array.isArray(logs) ? logs.find(Boolean) : '';

@@ -1,16 +1,11 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { _getZoomCompensatedRect } from '../../utils/dom';
+import { getAllDamageLinks } from '../../game/damageLinks';
 
 function buildActiveDamageLinks(visualPlayers = []) {
-  return visualPlayers.flatMap((player, playerIndex) => {
-    if (!player.damageLink || !player.damageLink.active) return [];
-    const partnerIndex = player.damageLink.partner;
-    if (partnerIndex == null || partnerIndex <= playerIndex) return [];
-    const partner = visualPlayers[partnerIndex];
-    if (!partner?.damageLink?.active || partner.damageLink.partner !== playerIndex) return [];
-    return [{ id: `active-${playerIndex}-${partnerIndex}`, a: playerIndex, b: partnerIndex, mode: 'active' }];
-  });
+  return getAllDamageLinks(visualPlayers, { activeOnly: true })
+    .map(link => ({ id: `active-${link.id}`, a: link.a, b: link.b, mode: 'active' }));
 }
 
 function makeBindStrands(rect, anchorX, anchorY, keyPrefix, side) {

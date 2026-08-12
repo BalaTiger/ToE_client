@@ -35,6 +35,8 @@ export const copyPlayers = (ps) => ps.map(p => ({
     ...p.huntQualityMemory,
     handIds: [...(p.huntQualityMemory.handIds || [])],
   } : null,
+  damageLink: p.damageLink ? { ...p.damageLink } : p.damageLink,
+  damageLinks: Array.isArray(p.damageLinks) ? p.damageLinks.map(link => ({ ...link })) : p.damageLinks,
   disableRestNextTurn: !!p.disableRestNextTurn,
   disableSkillNextTurn: !!p.disableSkillNextTurn,
   handLimitDecreaseNextTurn: p.handLimitDecreaseNextTurn || 0

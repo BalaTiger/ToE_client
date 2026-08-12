@@ -42,6 +42,7 @@ import {
   compileVisualEventToAnimSteps,
   compileVisualEventToAnimTransaction,
 } from './visualEventTransactionCompiler';
+import { getAllDamageLinks } from './damageLinks';
 
 export const MP_REMOTE_REPLAY = {
   ROLE_REVEAL: 'ROLE_REVEAL',
@@ -1030,13 +1031,11 @@ export function buildMpRemoteReplayAction({
     typeof m === 'string' && m.includes('【两人一绳】') && m.includes('间架起链条')
   ));
   if (damageLinkEstablishMsg && !isDrawAnimationState) {
-    const damageLinkPair = (rotated.players || []).flatMap((player, idx) => {
-      const partnerIdx = player?.damageLink?.partner;
-      if (!player?.damageLink?.active || partnerIdx == null || partnerIdx <= idx) return [];
-      const partner = rotated.players[partnerIdx];
-      if (!partner?.damageLink?.active || partner.damageLink.partner !== idx) return [];
-      return [{ fromPid: idx, toPid: partnerIdx }];
-    })[0] || {};
+    const establishedLink = getAllDamageLinks(rotated.players || [], { activeOnly: true }).at(-1);
+    const damageLinkPair = establishedLink ? {
+      fromPid: establishedLink.sourceIdx ?? establishedLink.a,
+      toPid: establishedLink.sourceIdx === establishedLink.b ? establishedLink.a : establishedLink.b,
+    } : {};
     const queue = appendFinalStatePatch(
       [cardTransferStep({ ...damageLinkPair, effect: 'damageLink', durationMs: 1900, msgs: [damageLinkEstablishMsg] })],
       rotated,

@@ -18,6 +18,69 @@ import {
   ROLE_HUNTER,
   ROLE_CULTIST,
 } from './coreUtils';
+import { getActiveDamageLinksForPlayer } from './damageLinks';
+
+function damageLinkMissingHp(player) {
+  return Math.min(4, Math.max(0, 10 - (player?.hp || 0)));
+}
+
+export function chooseAiDamageLinkTarget(players, sourceIdx, validTargetIndices = []) {
+  const source = players?.[sourceIdx];
+  if (!source || source.isDead) return null;
+  const validTargets = validTargetIndices
+    .filter(idx => idx != null && idx !== sourceIdx && players[idx] && !players[idx].isDead)
+    .map(idx => ({ idx, player: players[idx] }));
+  if (!validTargets.length) return null;
+  const role = source._nyaBorrow || source.role;
+
+  if (role === ROLE_HUNTER && source.hp > 3) {
+    const validSet = new Set(validTargets.map(target => target.idx));
+    const chaseTargets = getHunterChaseTargets(players, sourceIdx)
+      .filter(target => validSet.has(target.idx));
+    if (chaseTargets.length) {
+      return orderHunterChaseTargets(players, sourceIdx, chaseTargets, () => 0)[0]?.idx ?? null;
+    }
+    const publicEnemies = validTargets.filter(({ player }) => player.roleRevealed && player.role !== ROLE_HUNTER);
+    if (publicEnemies.length) {
+      return [...publicEnemies].sort((a, b) => a.player.hp - b.player.hp || a.idx - b.idx)[0].idx;
+    }
+  }
+
+  if (role === ROLE_CULTIST && source.hp > 3) {
+    const revealedHunters = validTargets.filter(({ player }) => player.roleRevealed && player.role === ROLE_HUNTER);
+    if (revealedHunters.length) {
+      return [...revealedHunters].sort((a, b) => a.player.hp - b.player.hp || a.idx - b.idx)[0].idx;
+    }
+  }
+
+  // Defensive fallback: maximize the possible next-turn heal and, on ties,
+  // choose the sturdier target so an incidental hit is less likely to waste it.
+  return [...validTargets].sort((a, b) => (
+    damageLinkMissingHp(b.player) - damageLinkMissingHp(a.player)
+    || b.player.hp - a.player.hp
+    || a.idx - b.idx
+  ))[0].idx;
+}
+
+function estimateDamageLinkZoneCardScore(self, players, ci, role) {
+  const validTargets = players.map((player, idx) => ({ player, idx }))
+    .filter(({ player, idx }) => idx !== ci && player && !player.isDead)
+    .map(({ idx }) => idx);
+  const targetIdx = chooseAiDamageLinkTarget(players, ci, validTargets);
+  if (targetIdx == null) return -100;
+  const target = players[targetIdx];
+  const healValue = damageLinkMissingHp(self) + damageLinkMissingHp(target);
+  if (role === ROLE_HUNTER) {
+    const canAttack = self.hp > 3 && hasHuntRevealableCard(self)
+      && hasHuntRevealableCard(target)
+      && !(target.roleRevealed && target.role === ROLE_HUNTER);
+    const attackValue = canAttack ? (target.hp <= 6 ? 6.5 : 4.2) : 0;
+    const selfRisk = canAttack && self.hp <= 6 ? 3.5 : 0;
+    return attackValue + healValue * 0.45 - selfRisk - (self.hp <= 3 ? 4.5 : 0);
+  }
+  if (role === ROLE_TREASURE) return healValue * 0.65 - (healValue ? 0.8 : 1.4) - (self.hp <= 3 ? 2.5 : 0);
+  return healValue * 0.55 - (healValue ? 0.7 : 1.2) - (self.hp <= 3 ? 2.5 : 0);
+}
 
 function getLivingAdjacentTargets(players, ci) {
   return getAdjacentTargets(players, ci).filter(
@@ -306,7 +369,7 @@ function estimateHunterZoneCardScore(card, self, players, ci) {
       score = -card.val * 1.8 + 0.5;
       break;
     case 'damageLink':
-      score = 4.2;
+      score = estimateDamageLinkZoneCardScore(self, players, ci, ROLE_HUNTER);
       break;
     case 'etherealize':
       score = estimateEtherealizeZoneCardScore(self, players, ci);
@@ -490,7 +553,7 @@ function estimateTreasureZoneCardScore(card, self, players, ci) {
       score = -card.val * 1.8 + 0.6;
       break;
     case 'damageLink':
-      score = 0.1;
+      score = estimateDamageLinkZoneCardScore(self, players, ci, ROLE_TREASURE);
       break;
     case 'etherealize':
       score = estimateEtherealizeZoneCardScore(self, players, ci);
@@ -729,7 +792,7 @@ function estimateCultistZoneCardScore(card, self, players, ci, context = {}) {
     case 'selfBerserk':
       return finishScore(2 + minSan * 0.2);
     case 'damageLink':
-      return finishScore(0.5);
+      return finishScore(estimateDamageLinkZoneCardScore(self, players, ci, ROLE_CULTIST));
     case 'firstComePick':
       return finishScore(1.8);
     case 'proliferatingZ':
@@ -886,9 +949,15 @@ export function orderHunterChaseTargets(players, hunterIdx, targets, random = Ma
     || (!player.roleRevealed && allUnrevealedAreSafe)
   ));
   const shouldConcentrate = safeTargets.length > 0;
+  const linkedTargetIds = new Set(
+    (players?.[hunterIdx]?.hp > 3 ? getActiveDamageLinksForPlayer(players, hunterIdx) : [])
+      .map(link => link.a === hunterIdx ? link.b : link.a)
+  );
   const pool = (shouldConcentrate ? safeTargets : (targets || []))
     .map(target => ({ target, tieBreaker: random() }));
   pool.sort((a, b) => {
+    const linkedOrder = Number(linkedTargetIds.has(b.target.idx)) - Number(linkedTargetIds.has(a.target.idx));
+    if (linkedOrder) return linkedOrder;
     const hpOrder = shouldConcentrate
       ? (a.target.player.hp - b.target.player.hp)
       : (b.target.player.hp - a.target.player.hp);

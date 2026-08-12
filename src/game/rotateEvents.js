@@ -1,21 +1,13 @@
+import { rotatePlayerDamageLinks } from './damageLinks';
+
 export function rotatePlayersArray(players, myIndex) {
   if (!Array.isArray(players) || myIndex === 0) return players;
   const N = players.length;
   // 玩家对象里的座位索引字段必须与数组重排同步重映射，
   // 否则两人一绳的互指校验（partner 互为对方）在旋转视角下必然失败，远端看不到链条特效
   const rotateIndex = i => (i == null || i < 0 ? i : (i - myIndex + N) % N);
-  return [...players.slice(myIndex), ...players.slice(0, myIndex)].map(p => (
-    p?.damageLink
-      ? {
-        ...p,
-        damageLink: {
-          ...p.damageLink,
-          partner: rotateIndex(p.damageLink.partner),
-          expiryOwner: rotateIndex(p.damageLink.expiryOwner),
-        },
-      }
-      : p
-  ));
+  return [...players.slice(myIndex), ...players.slice(0, myIndex)]
+    .map(p => rotatePlayerDamageLinks(p, rotateIndex));
 }
 
 export function rotateStatEvent(statEvent, rotateIndex, myIndex) {

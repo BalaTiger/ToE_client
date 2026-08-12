@@ -37,10 +37,22 @@ export function buildApophisTargetQueueForState(oldState, nextState, buildQueue 
 }
 
 export function mergeApophisTargetQueue(queue = [], oldState, nextState, buildQueue = buildAnimQueue) {
-  const apophisQueue = buildApophisTargetQueueForState(oldState, nextState, buildQueue);
-  if (!apophisQueue.length) return queue || [];
+  const builtApophisQueue = buildApophisTargetQueueForState(oldState, nextState, buildQueue);
+  if (!builtApophisQueue.length) return queue || [];
   const seq = nextState?._apophisTargetEvent?.seq;
   const statSeq = nextState?._apophisTargetEvent?.statSeq;
+  const isTargetStatStep = step => statSeq != null && (
+    Array.isArray(step?.statEvents) && step.statEvents.some(event => event?.seq === statSeq)
+  );
+  // Keep the transaction canonical even when a legacy builder emitted the
+  // skill lock before the roll's SAN consequence.
+  const apophisQueue = [
+    ...builtApophisQueue.filter(step => step?.type === 'DICE_ROLL' && step?.diceMode === 'apophisNight'),
+    ...builtApophisQueue.filter(isTargetStatStep),
+    ...builtApophisQueue.filter(step => !(
+      (step?.type === 'DICE_ROLL' && step?.diceMode === 'apophisNight') || isTargetStatStep(step)
+    )),
+  ];
   const hasEarlierTargetTransaction = (queue || []).some(step => (
     step?._apophisTargetSeq != null && step._apophisTargetSeq !== seq
   ));
@@ -49,6 +61,39 @@ export function mergeApophisTargetQueue(queue = [], oldState, nextState, buildQu
   const queueHasTargetStat = statSeq != null && (queue || []).some(step => (
     Array.isArray(step?.statEvents) && step.statEvents.some(event => event?.seq === statSeq)
   ));
+  const queuedTargetDiceIndex = (queue || []).findIndex(step => (
+    step?.type === 'DICE_ROLL'
+    && step?.diceMode === 'apophisNight'
+    && step?._apophisTargetSeq === seq
+  ));
+  const queuedTargetStatIndex = (queue || []).findIndex(isTargetStatStep);
+  const targetSkillTypes = new Set(
+    apophisQueue
+      .filter(step => step?.type?.startsWith('SKILL_'))
+      .map(step => step.type)
+  );
+  const lastEarlierTargetIndex = (queue || []).findLastIndex(step => (
+    step?._apophisTargetSeq != null && step._apophisTargetSeq !== seq
+  ));
+  const targetSearchStart = lastEarlierTargetIndex + 1;
+  const relativeTargetActionIndex = (queue || []).slice(targetSearchStart).findIndex(step => (
+    targetSkillTypes.size
+      ? (
+          targetSkillTypes.has(step?.type)
+          || (
+            step?._apophisTargetSeq === seq
+            && !(step?.type === 'DICE_ROLL' && step?.diceMode === 'apophisNight')
+          )
+        )
+      : !(
+          step?.type === 'DICE_ROLL'
+          && step?.diceMode === 'apophisNight'
+          && step?._apophisTargetSeq === seq
+        ) && !isTargetStatStep(step)
+  ));
+  const queuedTargetActionIndex = relativeTargetActionIndex < 0
+    ? -1
+    : targetSearchStart + relativeTargetActionIndex;
   const alreadyHasCompleteTransaction = apophisQueue.every(step => {
     if (step?.type === 'DICE_ROLL' && step?.diceMode === 'apophisNight') {
       return (queue || []).some(queued => (
@@ -71,18 +116,26 @@ export function mergeApophisTargetQueue(queue = [], oldState, nextState, buildQu
   // AI hunt presentation already embeds the target-selection transaction in
   // the composed queue. Rebuilding that same transaction at the final playback
   // boundary can remount its dice step after the hunt has been abandoned.
-  if (alreadyHasCompleteTransaction) return queue || [];
+  // “完整”还必须包含正确的先后关系。蛊惑的内联赠牌队列曾经先放入
+  // SKILL_BEWITCH / CARD_TRANSFER，随后才带入同一事务的黑夜骰；仅按
+  // 成员去重会把这个错误顺序原样保留下来。
+  const alreadyOrdered = queuedTargetDiceIndex >= 0
+    && (queuedTargetStatIndex < 0 || queuedTargetDiceIndex <= queuedTargetStatIndex)
+    && (queuedTargetActionIndex < 0 || (
+      queuedTargetStatIndex >= 0
+        ? queuedTargetStatIndex <= queuedTargetActionIndex
+        : queuedTargetDiceIndex <= queuedTargetActionIndex
+    ));
+  if (alreadyHasCompleteTransaction && alreadyOrdered) return queue || [];
   let insertionIndex = null;
   const baseQueue = (queue || []).filter((step, index) => {
     if (step?._apophisTargetSeq === seq) {
       if (insertionIndex == null) insertionIndex = index;
       return false;
     }
-    if (statSeq != null && Array.isArray(step?.statEvents) && step.statEvents.some(event => event?.seq === statSeq)) {
-      // The caller may already have deliberately placed the night SAN loss in
-      // its action timeline (notably after bewitch gift/reveal). Keep that
-      // placement; only supplement the stat step when it is actually absent.
-      return true;
+    if (isTargetStatStep(step)) {
+      if (insertionIndex == null) insertionIndex = index;
+      return false;
     }
     // AI 回合可能先把同一黑夜事件放进追捕事件队列，随后又从权威状态
     // 补入一次。旧路径有时丢失 seq，因此再按唯一的黑夜日志去重。
@@ -96,7 +149,6 @@ export function mergeApophisTargetQueue(queue = [], oldState, nextState, buildQu
   const queuedTypes = new Set(baseQueue.map(step => step?.type));
   const dedupedApophisQueue = apophisQueue.filter(step => {
     if (step?.type?.startsWith('SKILL_') && queuedTypes.has(step.type)) return false;
-    if (queueHasTargetStat && Array.isArray(step?.statEvents) && step.statEvents.some(event => event?.seq === statSeq)) return false;
     return true;
   });
 

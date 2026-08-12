@@ -138,7 +138,18 @@ export function scopeAiPreHuntReplayMetadata(state, rawResult = {}) {
     };
   }
 
-  const visualEvents = action.visualEvents.slice(0, firstHuntEventIndex);
+  const preHuntVisualEvents = action.visualEvents.slice(0, firstHuntEventIndex);
+  const inspectionEvents = Array.isArray(state?._inspectionEvents) ? state._inspectionEvents : [];
+  const huntOwnedInspectionSeqs = new Set(
+    (rawResult?._aiHuntEvents || [])
+      .flatMap(event => collectApophisInspectionChain(inspectionEvents, event))
+      .map(event => event?.seq)
+      .filter(seq => seq != null),
+  );
+  const visualEvents = preHuntVisualEvents.filter(event => {
+    if (event?.type === 'apophisTarget') return false;
+    return event?.type !== 'inspection' || !huntOwnedInspectionSeqs.has(event?.legacySeq);
+  });
   const ownedStatSeqs = new Set(visualEvents.flatMap(event => [
     ...(Array.isArray(event?.statEvents) ? event.statEvents : []),
     ...(Array.isArray(event?.faithSettlement?.abandonedFollowers)
@@ -216,7 +227,6 @@ export function insertAiRestDiceBeforeSettlement(queue, restDiceStep, restMsg) {
 
 export function shouldPrependAiSkillSnapshot({
   playersBeforeSkillAction,
-  restMsg,
   actionMsgs = [],
   visualEvents = [],
 } = {}) {
@@ -412,15 +422,12 @@ export function buildAiHuntWaitPresentation({
       zhuLight: previousState.zhuLight || null,
     }
   );
-  const huntVisualEvents = scopeAiActionReplayMetadata(nextState).visualEvents
-    .filter(event => event?.type === 'huntResult');
-  const huntReplayEvents = (rawResult._aiHuntEvents || []).map((event, index) => ({
-    ...event,
-    ...(huntVisualEvents[index]?.id ? { id: huntVisualEvents[index].id } : {}),
-  }));
-  const huntEventQueue = huntReplayEvents.flatMap(event =>
-    bindVisualEventToSteps(buildAiHuntEventAnimQueue(event, actorName), event)
-  );
+  const huntPresentation = buildOwnedAiHuntEventQueue({
+    rawHuntEvents: rawResult._aiHuntEvents || [],
+    state: nextState,
+    actorName,
+  });
+  const huntEventQueue = huntPresentation.queue;
   const consumedApophisTargetSeq = Math.max(
     0,
     ...(rawResult._aiHuntEvents || [])
@@ -540,7 +547,93 @@ export function buildAiHuntWaitPresentation({
     nextState: finalizeAiPresentationState(nextState),
     roseThornSnapshot: buildRoseThornSnapshot(nextState.players),
     externalVisualLocks,
-    shouldMaskDiscardedTurnDraw: usedTurnStartReplay,
+    inspectionEvents: huntPresentation.inspectionEvents,
+  };
+}
+
+function inspectionBelongsToApophisTarget(inspectionEvent, apophisTargetEvent) {
+  if (!inspectionEvent || !apophisTargetEvent?.log) return false;
+  if (inspectionEvent.target !== apophisTargetEvent.actorIdx) return false;
+  const beforeLog = Array.isArray(inspectionEvent.beforeLog) ? inspectionEvent.beforeLog : [];
+  return beforeLog.at(-1) === apophisTargetEvent.log;
+}
+
+function isLogPrefix(prefix, fullLog) {
+  if (!Array.isArray(prefix) || !Array.isArray(fullLog) || prefix.length > fullLog.length) return false;
+  return prefix.every((line, index) => line === fullLog[index]);
+}
+
+function collectApophisInspectionChain(inspectionEvents, rawHuntEvent) {
+  const firstIndex = inspectionEvents.findIndex(event => (
+    inspectionBelongsToApophisTarget(event, rawHuntEvent?.apophisTargetEvent)
+  ));
+  if (firstIndex < 0) return [];
+  const huntBeforeLog = Array.isArray(rawHuntEvent?.beforeLog) ? rawHuntEvent.beforeLog : null;
+  if (!huntBeforeLog) return [inspectionEvents[firstIndex]];
+  const chain = [];
+  for (let index = firstIndex; index < inspectionEvents.length; index += 1) {
+    const event = inspectionEvents[index];
+    if (!isLogPrefix(event?.afterLog, huntBeforeLog)) break;
+    chain.push(event);
+  }
+  return chain;
+}
+
+export function buildOwnedAiHuntEventQueue({
+  rawHuntEvents = [],
+  state,
+  actorName,
+  buildQueue = buildAnimQueue,
+} = {}) {
+  const metadata = scopeAiActionReplayMetadata(state);
+  const huntVisualEvents = metadata.visualEvents.filter(event => event?.type === 'huntResult');
+  const apophisVisualEvents = metadata.visualEvents.filter(event => event?.type === 'apophisTarget');
+  const inspectionVisualEvents = metadata.visualEvents.filter(event => event?.type === 'inspection');
+  const inspectionEvents = Array.isArray(state?._inspectionEvents) ? state._inspectionEvents : [];
+  const ownedInspectionEvents = [];
+
+  const queue = rawHuntEvents.flatMap((rawEvent, index) => {
+    const huntEvent = {
+      ...rawEvent,
+      ...(huntVisualEvents[index]?.id ? { id: huntVisualEvents[index].id } : {}),
+    };
+    const rawApophisEvent = rawEvent?.apophisTargetEvent;
+    const apophisEvent = rawApophisEvent
+      ? apophisVisualEvents.find(event => event?.legacySeq === rawApophisEvent.seq)
+      : null;
+    const apophisQueue = apophisEvent
+      ? buildApophisTargetSteps(apophisEvent, state).filter(step => step?.type !== 'SKILL_HUNT')
+      : [];
+    const relatedInspections = rawApophisEvent
+      ? collectApophisInspectionChain(inspectionEvents, rawEvent)
+      : [];
+    ownedInspectionEvents.push(...relatedInspections);
+    const inspectionQueue = relatedInspections.flatMap(inspectionEvent => {
+      const flow = buildInspectionEventFlow(
+        {
+          players: inspectionEvent.beforePlayers || state?.players || [],
+          log: inspectionEvent.beforeLog || state?.log || [],
+          discard: inspectionEvent.beforeDiscard || state?.discard || [],
+          _statEventSeq: inspectionEvent.beforeStatEventSeq || 0,
+        },
+        [inspectionEvent],
+        { buildAnimQueue: buildQueue, copyPlayers },
+      );
+      const visualEvent = inspectionVisualEvents.find(event => event?.legacySeq === inspectionEvent.seq);
+      return visualEvent ? bindVisualEventToSteps(flow.queue, visualEvent) : flow.queue;
+    });
+    const huntQueue = bindVisualEventToSteps(
+      buildAiHuntEventAnimQueue(huntEvent, actorName, { includeApophisTarget: false }),
+      huntEvent,
+    );
+    return [...apophisQueue, ...inspectionQueue, ...huntQueue];
+  });
+
+  return {
+    queue,
+    inspectionEvents: ownedInspectionEvents.filter((event, index, events) => (
+      events.findIndex(candidate => candidate?.seq === event?.seq) === index
+    )),
   };
 }
 
@@ -573,12 +666,13 @@ import {
   buildFullHandSwapTransferQueueFromLogs,
   getAiPreHuntActionSteps,
 } from './animQueueCore';
-import { statePatchStep } from './animQueueHelpers';
+import { buildInspectionEventFlow, statePatchStep } from './animQueueHelpers';
 import {
   appendAnimLogChunkToQueueEnd,
   bindAnimLogChunks,
   splitTransitionLogs,
   subtractLogOccurrences,
 } from './animLogs';
-import { removeCardsFromDiscard } from './coreUtils';
+import { copyPlayers, removeCardsFromDiscard } from './coreUtils';
 import { getTurnStartDrawBaselineLog } from './turnAnimState';
+import { buildApophisTargetSteps } from './visualEvents';

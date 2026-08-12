@@ -6,6 +6,7 @@ import { makeGodCard, makeGs, makePlayer, makeStandardPlayers, makeZoneCard } fr
 import { createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../../constants/card';
 import { applyInspectionForSanLoss } from '../effectEngine';
 import { makeProliferatingZState } from '../proliferatingZ';
+import { addDamageLink, getAllDamageLinks } from '../damageLinks';
 
 describe('createFaithSettlementGodStatusEvent', () => {
   it('uses explicit player snapshots for worship and upgrade without log inference', () => {
@@ -1351,6 +1352,26 @@ describe('turnEngine stat events', () => {
       .toEqual(expect.arrayContaining([
         expect.objectContaining({ hp: 9, san: 6 }),
       ]));
+  });
+
+  it('同一角色的多条未断绳索在各自到期时分别治疗', () => {
+    const players = [
+      makePlayer({ name: '你', hp: 2 }),
+      makePlayer({ name: '艾伦', hp: 3 }),
+      makePlayer({ name: '贝拉', hp: 4 }),
+    ];
+    addDamageLink(players, 0, 1, { expiryOwner: 0, createdSeq: 1 });
+    addDamageLink(players, 0, 2, { expiryOwner: 0, createdSeq: 2 });
+    const gs = makeGs({ players, currentTurn: 2, log: [] });
+
+    const result = startNextTurn(gs);
+
+    expect(result.players.map(player => player.hp)).toEqual([10, 7, 8]);
+    expect(getAllDamageLinks(result.players)).toEqual([]);
+    expect(result.log.filter(line => line.includes('绳索未断裂'))).toEqual([
+      '【两人一绳】绳索未断裂！你 和 艾伦 各回复 4 HP',
+      '【两人一绳】绳索未断裂！你 和 贝拉 各回复 4 HP',
+    ]);
   });
 
   it('禁用摸牌时不会触发或消耗撒托古亚黏液', () => {

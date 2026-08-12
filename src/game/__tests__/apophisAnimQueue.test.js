@@ -49,14 +49,14 @@ describe('apophisAnimQueue', () => {
     _apophisTargetEvent: { seq: 2 },
   };
   const buildQueue = () => [
-    { type: 'DICE_ROLL', _apophisTargetSeq: 2 },
+    { type: 'DICE_ROLL', diceMode: 'apophisNight', _apophisTargetSeq: 2 },
     { type: 'SKILL_HUNT', _apophisTargetSeq: 2, targetIdx: 2 },
     { type: 'HP_DAMAGE' },
   ];
 
   it('只取当前阿波菲斯目标事件对应的动画步骤', () => {
     expect(buildApophisTargetQueueForState(oldState, nextState, buildQueue)).toEqual([
-      { type: 'DICE_ROLL', _apophisTargetSeq: 2 },
+      { type: 'DICE_ROLL', diceMode: 'apophisNight', _apophisTargetSeq: 2 },
       { type: 'SKILL_HUNT', _apophisTargetSeq: 2, targetIdx: 2 },
     ]);
   });
@@ -66,13 +66,13 @@ describe('apophisAnimQueue', () => {
       _apophisTargetEvent: { seq: 2, statSeq: 7 },
     };
     const buildQueueWithSanLoss = () => [
-      { type: 'DICE_ROLL', _apophisTargetSeq: 2 },
+      { type: 'DICE_ROLL', diceMode: 'apophisNight', _apophisTargetSeq: 2 },
       { type: 'SAN_DAMAGE', hitIndices: [0], statEvents: [{ type: 'SAN_LOSS', target: 0, seq: 7 }] },
       { type: 'CARD_TRANSFER' },
     ];
 
     expect(buildApophisTargetQueueForState(oldState, stateWithSanLoss, buildQueueWithSanLoss)).toEqual([
-      { type: 'DICE_ROLL', _apophisTargetSeq: 2 },
+      { type: 'DICE_ROLL', diceMode: 'apophisNight', _apophisTargetSeq: 2 },
       { type: 'SAN_DAMAGE', hitIndices: [0], statEvents: [{ type: 'SAN_LOSS', target: 0, seq: 7 }] },
     ]);
   });
@@ -81,7 +81,7 @@ describe('apophisAnimQueue', () => {
     const baseQueue = [{ type: 'SKILL_HUNT', targetIdx: 2, msgs: ['追捕'] }, { type: 'CARD_TRANSFER' }];
 
     expect(mergeApophisTargetQueue(baseQueue, oldState, nextState, buildQueue)).toEqual([
-      { type: 'DICE_ROLL', _apophisTargetSeq: 2 },
+      { type: 'DICE_ROLL', diceMode: 'apophisNight', _apophisTargetSeq: 2 },
       { type: 'SKILL_HUNT', targetIdx: 2, msgs: ['追捕'] },
       { type: 'CARD_TRANSFER' },
     ]);
@@ -92,16 +92,16 @@ describe('apophisAnimQueue', () => {
       { type: 'SKILL_BEWITCH', targetIdx: 1, msgs: ['蛊惑'] },
       { type: 'CARD_TRANSFER' },
       { type: 'DRAW_CARD', card: { id: 'god' } },
-      { type: 'DICE_ROLL', _apophisTargetSeq: 2 },
+      { type: 'DICE_ROLL', diceMode: 'apophisNight', _apophisTargetSeq: 2 },
       { type: 'SAN_DAMAGE' },
     ];
     const buildQueue = () => [
-      { type: 'DICE_ROLL', _apophisTargetSeq: 2 },
+      { type: 'DICE_ROLL', diceMode: 'apophisNight', _apophisTargetSeq: 2 },
       { type: 'SKILL_BEWITCH', _apophisTargetSeq: 2, targetIdx: 2 },
     ];
 
     expect(mergeApophisTargetQueue(baseQueue, oldState, nextState, buildQueue)).toEqual([
-      { type: 'DICE_ROLL', _apophisTargetSeq: 2 },
+      { type: 'DICE_ROLL', diceMode: 'apophisNight', _apophisTargetSeq: 2 },
       { type: 'SKILL_BEWITCH', targetIdx: 1, msgs: ['蛊惑'] },
       { type: 'CARD_TRANSFER' },
       { type: 'DRAW_CARD', card: { id: 'god' } },
@@ -130,7 +130,7 @@ describe('apophisAnimQueue', () => {
     ]);
   });
 
-  it('蛊惑目标偏移时仅前置黑夜骰子，保持赠牌、翻牌和数值结算顺序', () => {
+  it('蛊惑目标偏移时在黑夜骰子后立即结算 SAN，再播放技能与赠牌', () => {
     const nightSan = {
       type: 'SAN_DAMAGE',
       hitIndices: [0],
@@ -152,11 +152,38 @@ describe('apophisAnimQueue', () => {
 
     expect(mergeApophisTargetQueue(baseQueue, oldState, stateWithShift, buildQueueWithShift).map(step => step.type)).toEqual([
       'DICE_ROLL',
+      'SAN_DAMAGE',
       'SKILL_BEWITCH',
       'CARD_TRANSFER',
       'DRAW_CARD',
-      'SAN_DAMAGE',
       'HP_DAMAGE',
+    ]);
+  });
+
+  it.each([
+    ['追捕', 'SKILL_HUNT'],
+    ['掉包', 'SKILL_SWAP'],
+    ['蛊惑', 'SKILL_BEWITCH'],
+  ])('黑夜偏移的%s统一按骰子、SAN、身份技能顺序播放', (_label, skillType) => {
+    const nightSan = {
+      type: 'SAN_DAMAGE',
+      statEvents: [{ type: 'SAN_LOSS', target: 0, seq: 7 }],
+    };
+    const stateWithShift = { _apophisTargetEvent: { seq: 2, statSeq: 7 } };
+    const legacyQueue = [
+      { type: skillType, targetIdx: 2 },
+      nightSan,
+    ];
+    const legacyBuildQueue = () => [
+      { type: 'DICE_ROLL', diceMode: 'apophisNight', _apophisTargetSeq: 2 },
+      { type: skillType, _apophisTargetSeq: 2, targetIdx: 2 },
+      nightSan,
+    ];
+
+    expect(mergeApophisTargetQueue(legacyQueue, oldState, stateWithShift, legacyBuildQueue).map(step => step.type)).toEqual([
+      'DICE_ROLL',
+      'SAN_DAMAGE',
+      skillType,
     ]);
   });
 
@@ -170,11 +197,11 @@ describe('apophisAnimQueue', () => {
       statEvents: [{ type: 'SAN_LOSS', target: 0, seq: 7 }],
     };
     const buildQueueWithSanLoss = () => [
-      { type: 'DICE_ROLL', _apophisTargetSeq: 2 },
+      { type: 'DICE_ROLL', diceMode: 'apophisNight', _apophisTargetSeq: 2 },
       sanStep,
     ];
     const alreadyMerged = [
-      { type: 'DICE_ROLL', _apophisTargetSeq: 2 },
+      { type: 'DICE_ROLL', diceMode: 'apophisNight', _apophisTargetSeq: 2 },
       sanStep,
       { type: 'CARD_TRANSFER' },
     ];
@@ -182,6 +209,52 @@ describe('apophisAnimQueue', () => {
     const merged = mergeApophisTargetQueue(alreadyMerged, oldState, stateWithSanLoss, buildQueueWithSanLoss);
     expect(merged.filter(step => step.type === 'SAN_DAMAGE')).toHaveLength(1);
     expect(merged.map(step => step.type)).toEqual(['DICE_ROLL', 'SAN_DAMAGE', 'CARD_TRANSFER']);
+  });
+
+  it.each([
+    ['掉包', [
+      { type: 'SKILL_SWAP', targetIdx: 2 },
+      { type: 'CARD_TRANSFER', fromPid: 1, toPid: 2 },
+      { type: 'CARD_TRANSFER', fromPid: 2, toPid: 1 },
+    ]],
+    ['两人一绳', [
+      { type: 'CARD_TRANSFER', fromPid: 1, toPid: 2, effect: 'damageLink' },
+    ]],
+    ['玫瑰倒刺', [
+      { type: 'VISUAL_LOCK' },
+      { type: 'CARD_TRANSFER', fromPid: 1, toPid: 2, count: 3 },
+    ]],
+    ['穴居人战争', [
+      { type: 'CAVE_DUEL_REVEAL', sourceIdx: 1, targetIdx: 2 },
+      { type: 'CARD_TRANSFER', fromPid: 2, toPid: 1 },
+    ]],
+  ])('黑夜中的%s行为统一先播放目标偏移骰，再播放行为动画', (_label, actionQueue) => {
+    const stateWithTarget = {
+      _apophisTargetEvent: { seq: 2 },
+    };
+    const buildTargetQueue = () => [{
+      type: 'DICE_ROLL',
+      diceMode: 'apophisNight',
+      _apophisTargetSeq: 2,
+    }];
+
+    // 模拟旧组合器已经把同一颗骰子放进动作尾部；这正是蛊惑之外
+    // 其他指定目标行为也可能遇到的“成员齐全但顺序错误”形态。
+    const lateDice = buildTargetQueue()[0];
+    const merged = mergeApophisTargetQueue(
+      [...actionQueue, lateDice],
+      oldState,
+      stateWithTarget,
+      buildTargetQueue,
+    );
+
+    expect(merged[0]).toMatchObject({
+      type: 'DICE_ROLL',
+      diceMode: 'apophisNight',
+      _apophisTargetSeq: 2,
+    });
+    expect(merged.slice(1)).toEqual(actionQueue);
+    expect(merged.filter(step => step.type === 'DICE_ROLL')).toHaveLength(1);
   });
 
   it('旧路径缺少事件序号时仍按同一条黑夜日志去重', () => {

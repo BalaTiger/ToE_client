@@ -19,6 +19,7 @@ import {
   aiChooseRevealCard,
   aiChooseHunterLootCards,
   chooseAiRoseThornTarget,
+  chooseAiDamageLinkTarget,
   chooseAiCultistBewitchPlan,
   decideAiSkillUsage,
   shouldAiRest,
@@ -72,6 +73,7 @@ import {
   getBestCaveDuelCardIndex,
   resolveCaveDuelOutcome,
 } from './caveDuel';
+import { addDamageLink } from './damageLinks';
 
 /**
  * 检查两张卡是否满足追捕匹配规则。
@@ -854,9 +856,9 @@ export function aiStep(gs, opts = {}) {
   if(Array.isArray(abilityData?.damageLinkTargets)&&abilityData.damageLinkSource===ct){
     const validTargets=abilityData.damageLinkTargets.filter(i=>P[i]&&!P[i].isDead&&i!==ct);
     if(validTargets.length>0){
-      const targetIdx=applyNightTarget(validTargets[0],validTargets,'选择【两人一绳】目标');
-      P[ct].damageLink={partner:targetIdx,active:true,expiryOwner:ct};
-      P[targetIdx].damageLink={partner:ct,active:true,expiryOwner:ct};
+      const selectedTarget=chooseAiDamageLinkTarget(P,ct,validTargets)??validTargets[0];
+      const targetIdx=applyNightTarget(selectedTarget,validTargets,'选择【两人一绳】目标');
+      addDamageLink(P,ct,targetIdx,{expiryOwner:ct});
       L.push(`【两人一绳】${P[ct].name} 与 ${P[targetIdx].name} 间架起链条，一方受到HP伤害时另一方受等量伤害`);
       const win=checkWin(P,gs._isMP);
       if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,abilityData:{},phase:'AI_TURN'};
@@ -1647,6 +1649,7 @@ export function aiStep(gs, opts = {}) {
   const replayed=processAiEndTurnEvents(P,D,Disc,L,ct,gs);
   P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};ai=getAi();alive=getAlive();
   const _P_afterAction=copyPlayers(P);
+  const _Disc_afterAction=[...Disc];
   let nextGs;
 
   // AI状态机扭转关键：只有追猎者才能在同一回合内连续追捕并留在 AI_TURN
@@ -1668,6 +1671,7 @@ export function aiStep(gs, opts = {}) {
     _animDiscardedDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?false:(gs._discardedDrawnCard??false),
     _aiName:ai.name,
     _playersBeforeNextDraw:_P_afterAction,
+    _discardBeforeNextDraw:_Disc_afterAction,
     _playersBeforeEndTurnReplay:_P_beforeEndTurnReplay,
     _discardBeforeEndTurnReplay:_Disc_beforeEndTurnReplay,
     _playersBeforeSkillAction:playersBeforeSkillAction,

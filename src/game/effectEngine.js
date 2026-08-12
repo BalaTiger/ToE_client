@@ -33,6 +33,11 @@ import {
   grantTurnScopedGodPowerImmunity,
 } from './turnScopedEffects';
 import { TURN_FLOW_STAGE } from './turnFlowStages';
+import {
+  getActiveDamageLinksForPlayer,
+  getAllDamageLinks,
+  setDamageLinkActive,
+} from './damageLinks';
 
 export function markSkipNextDraw(player, reason = '效果') {
   if (!player || player.isDead) return false;
@@ -51,40 +56,31 @@ function settleLethalHpDamage(P, i, Disc, L, currentTurn, D) {
 export function applyHpDamageWithLink(P, i, amount, Disc, L, currentTurn, D) {
   if (i == null || !P[i] || P[i].isDead || !(amount > 0)) return;
   P[i].hp = clamp(P[i].hp - amount);
-  if (P[i].damageLink?.active) {
-    const partnerIdx = P[i].damageLink.partner;
-    if (partnerIdx != null && P[partnerIdx] && !P[partnerIdx].isDead) {
-      if (P[i].hp <= 0) {
-        const died = settleLethalHpDamage(P, i, Disc, L, currentTurn, D);
-        if (died) {
-          P[i]._pendingDamageLinkBreak = { sourceIdx: i, partnerIdx, sourceDead: true };
-          return;
-        }
-      }
-      // Damage reactions are ordered: the directly injured player may answer
-      // with slime before the rope breaks. Store a serializable continuation;
-      // the slime resolver will execute the break and feed its damage back
-      // through the same reaction pipeline.
-      const linkBreakHasEtherealize = [i, partnerIdx].some(idx => buildEtherealizeLoss({
-        players: P,
-        targetIdx: idx,
-        currentTurn,
-        lostHp: 3,
-        source: '两人一绳',
-      }));
-      if ((P[i].hand || []).some(isTsathogguaSlime) || linkBreakHasEtherealize) {
-        P[i]._pendingDamageLinkBreak = { sourceIdx: i, partnerIdx };
-        return;
-      }
-      P[i].damageLink.active = false;
-      if (P[partnerIdx].damageLink) P[partnerIdx].damageLink.active = false;
-      const linkDamage = 3;
-      P[i].hp = clamp(P[i].hp - linkDamage);
-      P[partnerIdx].hp = clamp(P[partnerIdx].hp - linkDamage);
-      L.push(`【两人一绳】绳索断裂！${P[i].name} 和 ${P[partnerIdx].name} 各失去 ${linkDamage} HP`);
-      settleLethalHpDamage(P, i, Disc, L, currentTurn, D);
-      settleLethalHpDamage(P, partnerIdx, Disc, L, currentTurn, D);
-    }
+  const triggeredLinks = getActiveDamageLinksForPlayer(P, i);
+  let sourceDead = false;
+  if (P[i].hp <= 0) sourceDead = settleLethalHpDamage(P, i, Disc, L, currentTurn, D);
+  if (triggeredLinks.length) {
+    const queue = triggeredLinks.map(link => ({
+      id: link.id,
+      a: link.a,
+      b: link.b,
+      createdSeq: link.createdSeq ?? 0,
+      triggerIdx: i,
+      ...(sourceDead ? { sourceDeadIdx: i } : {}),
+    }));
+    const first = queue[0];
+    P[i]._pendingDamageLinkBreak = {
+      sourceIdx: i,
+      partnerIdx: first.a === i ? first.b : first.a,
+      sourceDead,
+      queue,
+    };
+    const connectedLinks = getAllDamageLinks(P, { activeOnly: true });
+    const shouldPause = connectedLinks.some(link => [link.a, link.b].some(idx => (
+      (P[idx]?.hand || []).some(isTsathogguaSlime)
+      || buildEtherealizeLoss({ players: P, targetIdx: idx, currentTurn, lostHp: 3, source: '两人一绳' })
+    )));
+    if (!shouldPause) resolvePendingDamageLinkBreak(P, i, Disc, L, currentTurn, D);
   }
   settleLethalHpDamage(P, i, Disc, L, currentTurn, D);
 }
@@ -93,61 +89,102 @@ export function resolvePendingDamageLinkBreak(P, targetIdx, Disc, L, currentTurn
   const pending = P?.[targetIdx]?._pendingDamageLinkBreak;
   if (!pending) return { applied: false, beforePlayers: copyPlayers(P || []), affected: [] };
   delete P[targetIdx]._pendingDamageLinkBreak;
-  const sourceIdx = pending.sourceIdx ?? targetIdx;
-  const partnerIdx = pending.partnerIdx;
-  const sourceDead = !!pending.sourceDead || !!P[sourceIdx]?.isDead;
-  const beforePlayers = copyPlayers(P);
-  if (!P[sourceIdx]?.damageLink?.active || partnerIdx == null || !P[partnerIdx] || P[partnerIdx].isDead) {
-    return { applied: false, beforePlayers, affected: [] };
-  }
-  P[sourceIdx].damageLink.active = false;
-  if (P[partnerIdx].damageLink) P[partnerIdx].damageLink.active = false;
-  const linkDamage = 3;
-  const orderedLosses = (sourceDead ? [partnerIdx] : [sourceIdx, partnerIdx]).map((idx, order) => ({
-    targetIdx: idx,
-    lostHp: linkDamage,
-    lostSan: 0,
-    source: '两人一绳',
-    order,
-  }));
-  const pendingLosses = orderedLosses
-    .map(loss => {
+  const legacyLink = !Array.isArray(pending.queue)
+    ? getActiveDamageLinksForPlayer(P, pending.sourceIdx ?? targetIdx)
+      .find(link => link.a === pending.partnerIdx || link.b === pending.partnerIdx)
+    : null;
+  const queue = (pending.queue || (legacyLink ? [{
+    id: legacyLink.id, a: legacyLink.a, b: legacyLink.b, createdSeq: legacyLink.createdSeq ?? 0,
+    ...(pending.sourceDead ? { sourceDeadIdx: pending.sourceIdx ?? targetIdx } : {}),
+  }] : [])).map(link => ({ ...link }));
+  const scheduled = new Set(queue.map(link => link.id));
+  const affected = [];
+  let beforePlayers = copyPlayers(P);
+  let applied = false;
+  const appendTriggeredLinks = indices => {
+    const discovered = indices.flatMap(idx => getActiveDamageLinksForPlayer(P, idx).map(link => ({ link, triggerIdx: idx })));
+    discovered.forEach(({ link, triggerIdx }) => {
+      if (scheduled.has(link.id)) return;
+      scheduled.add(link.id);
+      queue.push({ id: link.id, a: link.a, b: link.b, createdSeq: link.createdSeq ?? 0, triggerIdx });
+    });
+  };
+  const saveRemaining = holderIdx => {
+    if (!queue.length || holderIdx == null || !P[holderIdx]) return;
+    const first = queue[0];
+    P[holderIdx]._pendingDamageLinkBreak = {
+      sourceIdx: holderIdx,
+      partnerIdx: first.a === holderIdx ? first.b : first.a,
+      queue: queue.map(link => ({ ...link })),
+    };
+  };
+
+  while (queue.length) {
+    const link = queue.shift();
+    const active = getAllDamageLinks(P, { activeOnly: true }).find(item => item.id === link.id);
+    if (!active) continue;
+    beforePlayers = copyPlayers(P);
+    setDamageLinkActive(P, link.id, false);
+    const breakPlayers = copyPlayers(P);
+    const sourceDeadIdx = link.sourceDeadIdx;
+    const triggerIdx = [active.a, active.b].includes(link.triggerIdx) ? link.triggerIdx : active.a;
+    const otherIdx = triggerIdx === active.a ? active.b : active.a;
+    const lossTargets = [triggerIdx, otherIdx].filter(idx => idx !== sourceDeadIdx && P[idx] && !P[idx].isDead);
+    const orderedLosses = lossTargets.map((idx, order) => ({
+      targetIdx: idx, lostHp: 3, lostSan: 0, source: '两人一绳', order,
+    }));
+    const pendingLosses = orderedLosses.map(loss => {
       const eligible = buildEtherealizeLoss({
-        players: P,
-        targetIdx: loss.targetIdx,
-        currentTurn,
-        lostHp: linkDamage,
-        source: loss.source,
+        players: P, targetIdx: loss.targetIdx, currentTurn, lostHp: 3, source: loss.source,
       });
       return eligible ? { ...eligible, order: loss.order } : null;
-    })
-    .filter(Boolean);
-  if (pendingLosses.length) {
-    const eligibleTargets = new Set(pendingLosses.map(loss => loss.targetIdx));
-    const deferredDirectLosses = orderedLosses.filter(loss => !eligibleTargets.has(loss.targetIdx));
-    L.push(sourceDead
-      ? `【两人一绳】绳索断裂！${P[partnerIdx].name} 即将失去 ${linkDamage} HP`
-      : `【两人一绳】绳索断裂！${P[sourceIdx].name} 和 ${P[partnerIdx].name} 即将各失去 ${linkDamage} HP`);
-    return {
-      applied: false,
-      deferred: true,
+    }).filter(Boolean);
+    if (pendingLosses.length) {
+      const eligibleTargets = new Set(pendingLosses.map(loss => loss.targetIdx));
+      const deferredDirectLosses = orderedLosses.filter(loss => !eligibleTargets.has(loss.targetIdx));
+      saveRemaining(lossTargets[0] ?? targetIdx);
+      L.push(lossTargets.length === 1
+        ? `【两人一绳】绳索断裂！${P[lossTargets[0]].name} 即将失去 3 HP`
+        : `【两人一绳】绳索断裂！${P[active.a].name} 和 ${P[active.b].name} 即将各失去 3 HP`);
+      return {
+        applied,
+        deferred: true,
+        beforePlayers,
+        affected: [...affected, ...lossTargets],
+        etherealizeDecision: buildEtherealizeRedirectDecision(pendingLosses, {
+          ...continuation,
+          _turnOwner: currentTurn,
+          ...(deferredDirectLosses.length ? { deferredDirectLosses } : {}),
+        }),
+      };
+    }
+    orderedLosses.forEach(loss => {
+      P[loss.targetIdx].hp = clamp(P[loss.targetIdx].hp - 3);
+    });
+    const breakLine = lossTargets.length === 1
+      ? `【两人一绳】绳索断裂！${P[lossTargets[0]].name} 失去 3 HP`
+      : `【两人一绳】绳索断裂！${P[lossTargets[0]].name} 和 ${P[lossTargets[1]].name} 各失去 3 HP`;
+    L.push(breakLine);
+    lossTargets.forEach(idx => settleLethalHpDamage(P, idx, Disc, L, currentTurn, D));
+    if (!Array.isArray(P._damageLinkBreakTimeline)) P._damageLinkBreakTimeline = [];
+    P._damageLinkBreakTimeline.push({
+      linkId: active.id,
+      pair: [active.a, active.b],
       beforePlayers,
-      affected: orderedLosses.map(loss => loss.targetIdx),
-      etherealizeDecision: buildEtherealizeRedirectDecision(pendingLosses, {
-        ...continuation,
-        _turnOwner: currentTurn,
-        ...(deferredDirectLosses.length ? { deferredDirectLosses } : {}),
-      }),
-    };
+      breakPlayers,
+      afterPlayers: copyPlayers(P),
+      breakLine,
+    });
+    affected.push(...lossTargets);
+    applied = true;
+    appendTriggeredLinks(lossTargets);
+    const slimeTarget = lossTargets.find(idx => (P[idx]?.hand || []).some(isTsathogguaSlime));
+    if (slimeTarget != null) {
+      saveRemaining(slimeTarget);
+      return { applied, beforePlayers, affected };
+    }
   }
-  orderedLosses.forEach(loss => {
-    P[loss.targetIdx].hp = clamp(P[loss.targetIdx].hp - linkDamage);
-    settleLethalHpDamage(P, loss.targetIdx, Disc, L, currentTurn, D);
-  });
-  L.push(sourceDead
-    ? `【两人一绳】绳索断裂！${P[partnerIdx].name} 失去 ${linkDamage} HP`
-    : `【两人一绳】绳索断裂！${P[sourceIdx].name} 和 ${P[partnerIdx].name} 各失去 ${linkDamage} HP`);
-  return { applied: true, beforePlayers, affected: orderedLosses.map(loss => loss.targetIdx) };
+  return { applied, beforePlayers, affected };
 }
 
 // Pure state-layer entry for damage. Callers provide only damage facts and

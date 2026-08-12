@@ -15,6 +15,7 @@ import { createTsathogguaSlimeCard } from '../../constants/card';
 import { VISUAL_EVENT } from '../visualEvents';
 import { buildGraveDigTransferStep } from '../animQueueHelpers';
 import { makeProliferatingZState } from '../proliferatingZ';
+import { addDamageLink, getAllDamageLinks } from '../damageLinks';
 
 describe('逆流回合结束时机', () => {
   it('行动阶段打出时只登记，不立即反转方向', () => {
@@ -88,6 +89,45 @@ describe('applyHpDamageWithLink', () => {
     expect(p0.damageLink.active).toBe(false);
     expect(p1.damageLink.active).toBe(false);
     expect(L.some(s => s.includes('两人一绳'))).toBe(true);
+  });
+
+  it('同一角色连接两条绳索时按创建顺序逐条断裂', () => {
+    const P = [
+      makePlayer({ name: '艾伦', hp: 10 }),
+      makePlayer({ name: '贝拉', hp: 10 }),
+      makePlayer({ name: '卡洛斯', hp: 10 }),
+    ];
+    addDamageLink(P, 0, 1, { createdSeq: 1 });
+    addDamageLink(P, 2, 1, { createdSeq: 2 });
+    const L = [];
+
+    applyHpDamageWithLink(P, 1, 1, [], L, 1, []);
+
+    expect(P.map(player => player.hp)).toEqual([7, 3, 7]);
+    expect(getAllDamageLinks(P).map(link => link.active)).toEqual([false, false]);
+    expect(L.filter(line => line.includes('绳索断裂'))).toEqual([
+      '【两人一绳】绳索断裂！贝拉 和 艾伦 各失去 3 HP',
+      '【两人一绳】绳索断裂！贝拉 和 卡洛斯 各失去 3 HP',
+    ]);
+  });
+
+  it('绳索伤害触发相邻链条时追加到断裂队列末尾', () => {
+    const P = [
+      makePlayer({ name: '艾伦', hp: 10 }),
+      makePlayer({ name: '贝拉', hp: 10 }),
+      makePlayer({ name: '卡洛斯', hp: 10 }),
+    ];
+    addDamageLink(P, 0, 1, { createdSeq: 1 });
+    addDamageLink(P, 1, 2, { createdSeq: 2 });
+    const L = [];
+
+    applyHpDamageWithLink(P, 0, 1, [], L, 0, []);
+
+    expect(P.map(player => player.hp)).toEqual([6, 4, 7]);
+    expect(L.filter(line => line.includes('绳索断裂'))).toEqual([
+      '【两人一绳】绳索断裂！艾伦 和 贝拉 各失去 3 HP',
+      '【两人一绳】绳索断裂！贝拉 和 卡洛斯 各失去 3 HP',
+    ]);
   });
 
   it('原始伤害先等待黏液，之后断绳伤害会再次产生黏液决策', () => {

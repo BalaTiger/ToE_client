@@ -13,6 +13,8 @@ import {
   buildHandLimitDiscardStepsFromVisualEvents,
   buildStatStepsFromVisualEvents,
   buildTimedOutDrawDiscardStepFromVisualEvents,
+  ensureVisualEventState,
+  getVisualEvents,
   getVisualEventIdsFromState,
 } from './visualEvents';
 import { buildAiHuntEventAnimQueue, buildAnimQueue } from './animQueueCore';
@@ -217,6 +219,30 @@ export function mergeAnimationTransactionQueue(queue = [], transaction = null, o
 
 export function getAnimationQueueVisualEventIds(queue = []) {
   return [...new Set((Array.isArray(queue) ? queue : []).map(step => step?.visualEventId).filter(Boolean))];
+}
+
+// Queue-authoritative orchestrators often build stat steps directly from the
+// same _statEvents that legacy promotion wraps as statEvents visual events.
+// Resolve those wrapper ids without compiling them again, so playback can
+// consume the covered events while preserving the orchestrator's exact order.
+export function getVisualEventIdsCoveredByAnimationQueue(state, queue = []) {
+  const steps = Array.isArray(queue) ? queue.filter(Boolean) : [];
+  const directIds = new Set(getAnimationQueueVisualEventIds(steps));
+  const coveredStatSeqs = new Set(steps.flatMap(step => (
+    Array.isArray(step?.statEvents)
+      ? step.statEvents.map(event => event?.seq).filter(seq => seq != null)
+      : []
+  )));
+  const visualState = ensureVisualEventState(state);
+  return getVisualEvents(visualState)
+    .filter(event => {
+      if (!event?.id) return false;
+      if (directIds.has(event.id)) return true;
+      if (event.type !== VISUAL_EVENT.STAT_EVENTS || !Array.isArray(event.statEvents) || !event.statEvents.length) return false;
+      const seqs = event.statEvents.map(statEvent => statEvent?.seq);
+      return seqs.every(seq => seq != null && coveredStatSeqs.has(seq));
+    })
+    .map(event => event.id);
 }
 
 function transactionIdFromEventIds(eventIds = []) {
