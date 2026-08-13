@@ -1,4 +1,4 @@
-import { makeTargetStats, statEventsToAnimQueue } from './statEvents';
+import { buildStatEvents, statEventsToAnimQueue } from './statEvents';
 import { buildFullHandSwapStepsFromLogs, buryToDeckStep, buildGraveDigTransferStep, cardTransferStep, statePatchStep } from './animQueueHelpers';
 import { buildApophisTargetSteps, buildCardEffectStepsFromVisualEvents, buildGodPowerBlockedStepsFromVisualEvents, buildGodStatusChangedStep, buildHuntRevealStepFromVisualEvent, getVisualEvents, VISUAL_EVENT } from './visualEvents';
 import { isBlackGoatYoung, isTsathogguaSlime } from './coreUtils';
@@ -867,9 +867,6 @@ export function buildAnimQueue(oldGs, newGs, options = {}) {
     return acc;
   }, []);
   const hasFreshExplicitStatEvents = statEventsForQueue.length > 0 && (newGs?._statEventSeq == null || newStatSeq > oldStatSeq);
-  const targetStats = hasFreshExplicitStatEvents
-    ? makeTargetStats(effectivePlayers, statEventsForQueue)
-    : effectivePlayers.map(p => ({ hp: p.hp, san: p.san, isDead: p.isDead }));
   const statTimelineBeforePlayers = playersAfterQueuedFaithSteps(
     oldGs?.players || effectivePlayers,
     q,
@@ -919,18 +916,17 @@ export function buildAnimQueue(oldGs, newGs, options = {}) {
     if (!handledCardEffectStatEvents.length) {
       const hasHpHealLog = newMsgs.some(line => /(?:回复|恢复|回满).*HP|HP\s*回满/.test(line || ''));
       const hasSanHealLog = newMsgs.some(line => /(?:回复|恢复).*SAN/.test(line || ''));
-      const hpHealIdx = hasHpHealLog
-        ? effectivePlayers.reduce((acc, p, i) => { if (oldGs.players[i] && p.hp > oldGs.players[i].hp) acc.push(i); return acc; }, [])
-        : [];
-      const sanHealIdx = hasSanHealLog
-        ? effectivePlayers.reduce((acc, p, i) => { if (oldGs.players[i] && p.san > oldGs.players[i].san) acc.push(i); return acc; }, [])
-        : [];
-      const hpHitIdx = effectivePlayers.reduce((acc, p, i) => { if (oldGs.players[i] && p.hp < oldGs.players[i].hp) acc.push(i); return acc; }, []);
-      if (hpHitIdx.length) q.push({ type: 'HP_DAMAGE', msgs: newMsgs, hitIndices: hpHitIdx, targetStats });
-      if (hpHealIdx.length) q.push({ type: 'HP_HEAL', msgs: newMsgs, hitIndices: hpHealIdx, targetStats });
-      if (sanHealIdx.length) q.push({ type: 'SAN_HEAL', msgs: newMsgs, hitIndices: sanHealIdx, targetStats });
-      const sanHitIdx = effectivePlayers.reduce((acc, p, i) => { if (oldGs.players[i] && p.san < oldGs.players[i].san) acc.push(i); return acc; }, []);
-      if (sanHitIdx.length) q.push({ type: 'SAN_DAMAGE', msgs: newMsgs, hitIndices: sanHitIdx, targetStats });
+      const inferredStatEvents = buildStatEvents(
+        oldGs?.players || [],
+        effectivePlayers,
+        newMsgs,
+        { reason: 'legacy-state-diff' },
+      ).filter(event => (
+        event.type !== 'HP_GAIN' || hasHpHealLog
+      ) && (
+        event.type !== 'SAN_GAIN' || hasSanHealLog
+      ));
+      q.push(...statEventsToAnimQueue(inferredStatEvents, oldGs?.players || effectivePlayers, newMsgs));
     }
   }
   q.push(...godPowerBlockedSteps);

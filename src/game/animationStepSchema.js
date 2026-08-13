@@ -83,6 +83,13 @@ export function validateAnimationQueueSteps(queue = [], { allowCombined = false 
 
     const explicitStatEvents = hasExplicitStatEvents(step);
     const targetStats = hasStatTarget(step);
+    if (targetStats && (step.visualEventId || step.turnStartStage)) {
+      issues.push(issue('LEGACY_TARGET_STATS_IN_EVENT_TRANSACTION', stepIndex, {
+        type: step.type,
+        visualEventId: step.visualEventId,
+        turnStartStage: step.turnStartStage,
+      }));
+    }
     if (explicitStatEvents && hasOwn(step, 'targetStats')) {
       issues.push(issue('STAT_EVENTS_TARGET_STATS_CONFLICT', stepIndex, { type: step.type }));
     }

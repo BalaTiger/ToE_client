@@ -553,7 +553,7 @@ export function buildInspectionRevealQueue(events){
   }));
 }
 
-export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlayers}){
+export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlayers,eventOwnedOnly=false}){
   const queue=[];
   const boundarySteps=new Map();
   let cursorPlayers=copyPlayers(baseGs?.players||[]);
@@ -569,7 +569,7 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
     const afterLog=[...(Array.isArray(ev?.afterLog)?ev.afterLog:beforeLog)];
     const afterDiscard=[...(Array.isArray(ev?.afterDiscard)?ev.afterDiscard:beforeDiscard)];
     const beforeStatEventSeq=Math.max(cursorStatEventSeq,ev?.beforeStatEventSeq||0);
-    const preQ=buildAnimQueue(
+    const preQ=eventOwnedOnly?[]:buildAnimQueue(
       {players:cursorPlayers,log:cursorLog,discard:cursorDiscard,_statEvents:availableStatEvents,_statEventSeq:cursorStatEventSeq},
       {players:beforePlayers,log:beforeLog,discard:beforeDiscard,_statEvents:availableStatEvents,_statEventSeq:beforeStatEventSeq}
     );

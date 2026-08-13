@@ -12,7 +12,7 @@ import {
 import { startNextTurn } from '../turnEngine';
 import { ROLE_CULTIST } from '../coreUtils';
 import { applyFx } from '../effectEngine';
-import { applyStatEventsToDisplayStats } from '../statEvents';
+import { applyStatEventsToDisplayStats, primeDisplayStatsForStatQueue } from '../statEvents';
 import { buildFreshStatVisualEvents, createGodPowerBlockedEvent, createGodStatusChangedEvent } from '../visualEvents';
 import { buildAnimQueue } from '../animQueueCore';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
@@ -331,6 +331,67 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(replay.queue.some(step => step.type === 'HP_HEAL')).toBe(false);
     expect(replay.queue.find(step => step.type === 'YOUR_TURN')).toMatchObject({ name: '卡洛斯' });
   });
+
+  it('玩家休息提交后 AI 摸邪神不会按旧 gs 水位重播上一回合回血', () => {
+    const vritra = makeGodCard('VRI');
+    const restLog = '你选择【休息】，掷骰 6、2，取高值回复 6HP，翻面休息中';
+    const restHeal = {
+      seq: 1,
+      type: 'HP_GAIN',
+      target: 0,
+      from: { hp: 4, san: 10, isDead: false },
+      to: { hp: 10, san: 10, isDead: false },
+      reason: '休息',
+      logHint: restLog,
+    };
+    const beforeRestPlayers = [
+      makePlayer({ name: '你', hp: 4 }),
+      makePlayer({ name: '贝拉', role: ROLE_CULTIST }),
+    ];
+    const committedPlayers = [
+      makePlayer({ name: '你', hp: 10, isResting: true }),
+      makePlayer({ name: '贝拉', role: ROLE_CULTIST }),
+    ];
+    const oldGs = makeGs({
+      players: beforeRestPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      _statEventSeq: 0,
+      _statEvents: [],
+      _visualEvents: [],
+      log: [],
+    });
+    const turnLog = '── 贝拉 的回合开始 ──';
+    const drawLog = '[调试] 贝拉（邪祀者）起手摸到 弗栗多';
+    const newGs = makeGs({
+      players: committedPlayers,
+      currentTurn: 1,
+      phase: 'AI_GOD_CHOICE',
+      abilityData: { godCard: vritra, drawerIdx: 1 },
+      _drawnCard: vritra,
+      _aiDrawnCard: vritra,
+      _preTurnPlayers: committedPlayers,
+      _playersBeforeThisDraw: committedPlayers,
+      _turnStartLogs: [turnLog],
+      _drawLogs: [drawLog],
+      _statLogs: [],
+      _statEventSeq: 1,
+      _statEvents: [restHeal],
+      _visualEvents: [
+        { id: 'bella-turn', type: 'turnStart', turnStartStage: 'turnBanner', playerIdx: 1, playerName: '贝拉', msgs: [turnLog] },
+        { id: 'bella-vritra', type: 'drawCard', turnStartStage: 'draw', playerIdx: 1, playerName: '贝拉', card: vritra, msgs: [drawLog] },
+      ],
+      log: [restLog, turnLog, drawLog],
+    });
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const committedDisplayStats = committedPlayers.map(player => ({ hp: player.hp, san: player.san }));
+
+    expect(replay.queue.map(step => step.type)).toEqual(['YOUR_TURN', 'DRAW_CARD']);
+    expect(replay.queue.some(step => step.type === 'HP_HEAL')).toBe(false);
+    expect(primeDisplayStatsForStatQueue(committedDisplayStats, replay.queue)).toEqual(committedDisplayStats);
+  });
+
   it('休息角色保留回合视觉边界，但不执行任何回合开始效果', () => {
     const goat = id => ({ id, name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true });
     const oldGs = makeGs({
@@ -1544,7 +1605,11 @@ describe('buildTurnStartDrawReplayQueue', () => {
       ...base,
       _visualEvents: [
         ...buildFreshStatVisualEvents(base, 0),
-        ...(base._visualEvents || []),
+        ...(base._visualEvents || []).map(event => ({
+          ...event,
+          turnStartStage: 'draw',
+          turnStartStageOrder: 2,
+        })),
       ].filter(Boolean),
     };
 

@@ -7,6 +7,7 @@ import {
   simulateHeadlessGames,
   withRandomSource,
   continueHeadlessTurnStartDraw,
+  validateHeadlessPresentationTransition,
 } from '../headlessSimulator';
 import { ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
 import { createTsathogguaSlimeCard } from '../../constants/card';
@@ -62,6 +63,34 @@ describe('headless simulator', () => {
       status: 'unresolved',
       phase: 'UNIMPLEMENTED_DECISION',
     });
+  });
+
+  it('报告同一属性事件被行动段与下回合段同时拥有', () => {
+    const playersBefore = [makePlayer({ name: '甲', san: 8 })];
+    const playersAfter = [makePlayer({ name: '甲', san: 7 })];
+    const sharedStatEvent = {
+      id: 'stat:shared',
+      seq: 9,
+      type: 'SAN_LOSS',
+      target: 0,
+      from: { hp: 10, san: 8, isDead: false },
+      to: { hp: 10, san: 7, isDead: false },
+    };
+    const before = makeGs({ players: playersBefore, _visualEvents: [] });
+    const after = makeGs({
+      players: playersAfter,
+      _visualEvents: [
+        { id: 'stat:action', type: 'statEvents', statEvents: [sharedStatEvent], msgs: [] },
+        { id: 'stat:turn', type: 'statEvents', turnStartStage: 'draw', statEvents: [sharedStatEvent], msgs: [] },
+      ],
+    });
+
+    expect(validateHeadlessPresentationTransition(before, after)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'STAT_EVENT_HAS_MULTIPLE_REPLAY_OWNERS',
+        statEventId: 'stat:shared',
+      }),
+    ]));
   });
 
   it('黏液权利动态重算：转移到别人手里的黏液不会被原摸牌者消耗', () => {

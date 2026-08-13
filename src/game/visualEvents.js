@@ -836,13 +836,22 @@ export function buildTurnStartDrawVisualEvents(state) {
 
 export function buildFreshStatVisualEvents(state, previousStatSeq = 0) {
   const statLogSet = new Set((Array.isArray(state?._statLogs) ? state._statLogs : []).filter(Boolean));
-  const freshStatEvents = Array.isArray(state?._statEvents)
+  const allFreshStatEvents = Array.isArray(state?._statEvents)
     ? state._statEvents.filter(ev => (
       ev &&
-      (ev.seq == null || ev.seq > (previousStatSeq || 0)) &&
-      (!statLogSet.size || !ev.logHint || statLogSet.has(ev.logHint))
+      (ev.seq == null || ev.seq > (previousStatSeq || 0))
     ))
     : [];
+  const logMatchedStatEvents = allFreshStatEvents.filter(event => (
+    event?.logHint && statLogSet.has(event.logHint)
+  ));
+  // _statLogs is a presentation slice, but inspection flows can replace it
+  // with reveal/worship lines that do not equal the underlying SAN event's
+  // logHint. Use it as a narrowing signal only when it actually identifies at
+  // least one fresh stat event; otherwise the sequence watermark is canonical.
+  const freshStatEvents = statLogSet.size && logMatchedStatEvents.length
+    ? logMatchedStatEvents
+    : allFreshStatEvents;
   const statLogs = Array.isArray(state?._statLogs) ? state._statLogs : [];
   const msgsFor = (events, otherEvents) => {
     if (!otherEvents.length) return statLogs;

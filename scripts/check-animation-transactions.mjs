@@ -20,13 +20,25 @@ function collectSourceFiles(directory) {
 }
 
 const actual = new Map();
+const legacyStatTargetProducers = [];
 for (const file of collectSourceFiles(sourceRoot)) {
   const relative = path.relative(sourceRoot, file).split(path.sep).join('/');
-  const matches = fs.readFileSync(file, 'utf8').match(/legacyMerge|LEGACY_MERGE/g) || [];
+  const source = fs.readFileSync(file, 'utf8');
+  const matches = source.match(/legacyMerge|LEGACY_MERGE/g) || [];
   if (matches.length) actual.set(relative, matches.length);
+  if (relative !== 'game/rotateState.js') {
+    source.split(/\r?\n/).forEach((line, index) => {
+      if (/\btargetStats\s*:/.test(line)) {
+        legacyStatTargetProducers.push(`${relative}:${index + 1}`);
+      }
+    });
+  }
 }
 
 const issues = [];
+legacyStatTargetProducers.forEach(location => {
+  issues.push(`${location}: production targetStats payloads are forbidden; emit statEvents instead`);
+});
 for (const [file, count] of actual) {
   const allowed = legacyBaseline.get(file);
   if (allowed == null) issues.push(`${file}: introduced ${count} legacyMerge reference(s)`);

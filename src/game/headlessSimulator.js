@@ -29,6 +29,8 @@ import {
 import { getZhuTopGuard, removeZhuLightCard } from './zhuPower';
 import { buildTargetContinuationAbilityData } from './targetContinuation';
 import { hasGodPowerImmunity } from './godPowerImmunity';
+import { buildTurnStartDrawReplayQueue } from './turnAnimState';
+import { buildScopedAiActionReplayState, scopeAiActionReplayMetadata } from './aiTurnPresentation';
 
 export const HEADLESS_TURN_OPTIONS = Object.freeze({ allAi: true });
 
@@ -601,6 +603,106 @@ function describeHeadlessTransition(before, after) {
   return { topLevelChanges, playerChanges };
 }
 
+export function validateHeadlessPresentationTransition(before, after) {
+  const stagedEvents = (Array.isArray(after?._visualEvents) ? after._visualEvents : [])
+    .filter(event => !!event?.turnStartStage);
+  if (!stagedEvents.length) return [];
+  const stagedStatSeqs = new Set(stagedEvents
+    .flatMap(event => Array.isArray(event?.statEvents) ? event.statEvents : [])
+    .map(event => event?.seq)
+    .filter(seq => seq != null));
+  const actionMetadata = scopeAiActionReplayMetadata(after);
+  const nextTurnLine = after?._turnStartLogs?.[0];
+  const nextTurnLogIndex = nextTurnLine && Array.isArray(after?.log)
+    ? after.log.lastIndexOf(nextTurnLine)
+    : -1;
+  const actionLog = nextTurnLogIndex >= 0 ? after.log.slice(0, nextTurnLogIndex) : after?.log;
+  const actionInspectionEvents = (Array.isArray(after?._inspectionEvents) ? after._inspectionEvents : [])
+    .filter(event => !((event?.beforeLog || []).some(line => line === nextTurnLine)));
+  const scopedActionState = buildScopedAiActionReplayState({
+    state: after,
+    players: after?._playersBeforeNextDraw || after?.players,
+    discard: after?._discardBeforeNextDraw || after?.discard,
+    log: actionLog,
+    inspectionEvents: actionInspectionEvents,
+    metadata: actionMetadata,
+  });
+  const crossTurnActionIssues = (scopedActionState._statEvents || [])
+    .filter(event => event?.seq != null && stagedStatSeqs.has(event.seq))
+    .map(event => ({
+      code: 'ACTION_REPLAY_OWNS_NEXT_TURN_STAT',
+      statEvent: { seq: event.seq, type: event.type, target: event.target, logHint: event.logHint },
+    }));
+  const replay = buildTurnStartDrawReplayQueue({ oldGs: before, newGs: after });
+  const visualEvents = Array.isArray(after?._visualEvents) ? after._visualEvents : [];
+  const eventsById = new Map(visualEvents
+    .filter(event => event?.id)
+    .map(event => [event.id, event]));
+  const segmentIssues = [];
+  const validateSegment = (queue, expectedTurnStart, segment) => {
+    (queue || []).forEach((step, stepIndex) => {
+      const owner = step?.visualEventId ? eventsById.get(step.visualEventId) : null;
+      if (!owner || !!owner.turnStartStage === expectedTurnStart) return;
+      segmentIssues.push({
+        code: 'VISUAL_EVENT_CROSSES_REPLAY_SEGMENT',
+        segment,
+        stepIndex,
+        stepType: step?.type || 'UNKNOWN',
+        visualEventId: step.visualEventId,
+        ownerStage: owner.turnStartStage || 'action',
+      });
+    });
+  };
+  validateSegment(replay.queue, true, 'turnStart');
+  const statIdentity = event => event?.id || [event?.seq ?? '', event?.type ?? '', event?.target ?? ''].join(':');
+  const ownedStatIds = expectedTurnStart => new Set(visualEvents
+    .filter(event => !!event?.turnStartStage === expectedTurnStart)
+    .flatMap(event => Array.isArray(event?.statEvents) ? event.statEvents : [])
+    .map(statIdentity));
+  const actionStatIds = ownedStatIds(false);
+  const turnStartStatIds = ownedStatIds(true);
+  for (const statEventId of actionStatIds) {
+    if (!turnStartStatIds.has(statEventId)) continue;
+    segmentIssues.push({ code: 'STAT_EVENT_HAS_MULTIPLE_REPLAY_OWNERS', statEventId });
+  }
+  const statEventKey = event => [
+    event?.seq ?? '',
+    event?.type ?? '',
+    event?.target ?? '',
+    event?.logHint ?? '',
+  ].join(':');
+  const stagedStatEventKeys = new Set(stagedEvents
+    .flatMap(event => Array.isArray(event?.statEvents) ? event.statEvents : [])
+    .map(statEventKey));
+  const log = Array.isArray(after?.log) ? after.log : [];
+  const turnStartLine = after?._turnStartLogs?.[0];
+  const turnStartIndex = turnStartLine ? log.lastIndexOf(turnStartLine) : -1;
+  const currentTurnLogSet = new Set(turnStartIndex >= 0 ? log.slice(turnStartIndex) : []);
+  return [
+    ...crossTurnActionIssues,
+    ...segmentIssues,
+    ...replay.queue.flatMap((step, stepIndex) => (
+      Array.isArray(step?.statEvents) ? step.statEvents : []
+    )
+      .filter(event => (
+        !stagedStatEventKeys.has(statEventKey(event))
+        && (!event?.logHint || !currentTurnLogSet.has(event.logHint))
+      ))
+      .map(event => ({
+        stepIndex,
+        stepType: step?.type || 'UNKNOWN',
+        visualEventId: step?.visualEventId || null,
+        statEvent: {
+          seq: event?.seq,
+          type: event?.type,
+          target: event?.target,
+          logHint: event?.logHint,
+        },
+        queueTypes: replay.queue.map(queueStep => queueStep?.type || 'UNKNOWN'),
+      }))),
+  ];
+}
+
 export function runHeadlessGame({
   seed = 1,
   roleCounts = null,
@@ -632,6 +734,17 @@ export function runHeadlessGame({
           steps: step,
           turns: state.turn || 0,
           state,
+          phaseCounts,
+        };
+      }
+      const presentationIssues = validateHeadlessPresentationTransition(state, result.state);
+      if (presentationIssues.length) {
+        return {
+          status: 'presentation-invalid',
+          presentationIssues,
+          steps: step,
+          turns: result.state?.turn || state.turn || 0,
+          state: result.state,
           phaseCounts,
         };
       }

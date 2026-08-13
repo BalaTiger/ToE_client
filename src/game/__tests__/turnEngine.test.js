@@ -1348,9 +1348,9 @@ describe('turnEngine stat events', () => {
     expect(queue.filter(step => step.type === 'NIGHT_WIND')).toHaveLength(1);
     expect(queue.filter(step => step.type === 'HP_DAMAGE')).toHaveLength(1);
     expect(queue.filter(step => step.type === 'SAN_DAMAGE')).toHaveLength(1);
-    expect(queue[queue.findIndex(step => step.type === 'HP_DAMAGE')].targetStats)
+    expect(queue[queue.findIndex(step => step.type === 'HP_DAMAGE')].statEvents)
       .toEqual(expect.arrayContaining([
-        expect.objectContaining({ hp: 9, san: 6 }),
+        expect.objectContaining({ target: 0, to: expect.objectContaining({ hp: 9, san: 6 }) }),
       ]));
   });
 

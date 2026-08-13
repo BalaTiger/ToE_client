@@ -551,6 +551,37 @@ export function buildAiHuntWaitPresentation({
   };
 }
 
+// aiStep can return the completed action and the already-resolved next turn in
+// one state. Build action-only replay endpoints here so a state-diff fallback
+// cannot append the following turn's stat or inspection effects.
+export function buildScopedAiActionReplayState({
+  state,
+  players,
+  discard,
+  log,
+  inspectionEvents = [],
+  metadata = null,
+} = {}) {
+  const actionMetadata = metadata || scopeAiActionReplayMetadata(state);
+  const scopedInspectionEvents = (Array.isArray(inspectionEvents) ? inspectionEvents : [])
+    .filter(Boolean);
+  const inspectionSeq = scopedInspectionEvents.reduce(
+    (max, event) => Number.isFinite(event?.seq) ? Math.max(max, event.seq) : max,
+    0,
+  );
+  return {
+    ...(state || {}),
+    ...(Array.isArray(players) ? { players } : {}),
+    ...(Array.isArray(discard) ? { discard } : {}),
+    ...(Array.isArray(log) ? { log } : {}),
+    _visualEvents: actionMetadata.visualEvents,
+    _statEvents: actionMetadata.statEvents,
+    _statEventSeq: actionMetadata.statEventSeq,
+    _inspectionEvents: scopedInspectionEvents,
+    _inspectionSeq: inspectionSeq,
+  };
+}
+
 function inspectionBelongsToApophisTarget(inspectionEvent, apophisTargetEvent) {
   if (!inspectionEvent || !apophisTargetEvent?.log) return false;
   if (inspectionEvent.target !== apophisTargetEvent.actorIdx) return false;

@@ -21,6 +21,7 @@ import { buildAiHuntEventAnimQueue, buildAnimQueue } from './animQueueCore';
 import { buildInspectionEventFlow, buildSphinxResultQueue, buildGraveDigTransferStep, swapCardsSteps } from './animQueueHelpers';
 import { buildBewitchGiftReplay } from './animReplayEvents';
 import { copyPlayers } from './coreUtils';
+import { statEventsToAnimQueue } from './statEvents';
 
 function stateWithSingleEvent(state, event) {
   return { ...(state || {}), _visualEvents: event ? [event] : [] };
@@ -101,18 +102,10 @@ function sameStatEvents(left = [], right = []) {
   )));
 }
 
-const CARD_EFFECTS_OWNING_STAT_PRESENTATION = new Set([
-  'volcano',
-  'undergroundSpring',
-  'startledBats',
-  'nightWind',
-]);
-
-function suppressStatsOwnedByCardEffects(events = []) {
+function suppressStatsOwnedByExplicitEvents(events = []) {
   const owningStatEvents = events
     .filter(event => (
-      event?.type === VISUAL_EVENT.CARD_EFFECT &&
-      CARD_EFFECTS_OWNING_STAT_PRESENTATION.has(event?.effectKey) &&
+      event?.type !== VISUAL_EVENT.STAT_EVENTS &&
       Array.isArray(event?.statEvents) &&
       event.statEvents.length
     ))
@@ -304,7 +297,10 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
     case VISUAL_EVENT.TURN_START:
       return [buildTurnStartStepFromVisualEvents(isolated)].filter(Boolean);
     case VISUAL_EVENT.DRAW_CARD:
-      return [buildDrawCardStepFromVisualEvents(isolated)].filter(Boolean);
+      return [buildDrawCardStepFromVisualEvents({
+        ...isolated,
+        currentTurn: event.playerIdx ?? isolated?.currentTurn,
+      })].filter(Boolean);
     case VISUAL_EVENT.HAND_LIMIT_DISCARD:
       return buildHandLimitDiscardStepsFromVisualEvents(isolated);
     case VISUAL_EVENT.STAT_EVENTS:
@@ -338,7 +334,7 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
           _statEventSeq: event.beforeStatEventSeq || 0,
         },
         [event],
-        { buildAnimQueue, copyPlayers },
+        { buildAnimQueue, copyPlayers, eventOwnedOnly: true },
       ).queue;
     case VISUAL_EVENT.TSG_SLIME_GRANT:
       return buildTsathogguaSlimeGrantSteps(event, state);
@@ -382,9 +378,15 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
     case VISUAL_EVENT.HUNT_RESULT:
       return buildAiHuntEventAnimQueue(event, state?.players?.[event.hunterIdx]?.name || '???');
     case VISUAL_EVENT.SPHINX_RESULT: {
-      const resultQueue = typeof options.buildAnimQueue === 'function' && !event.guessCorrect
-        ? options.buildAnimQueue(previousState || state, state)
-        : [];
+      const resultQueue = Array.isArray(event.statEvents)
+        ? statEventsToAnimQueue(
+            event.statEvents,
+            event.playersBefore || previousState?.players || state?.players || [],
+            event.msgs || [],
+          )
+        : typeof options.buildAnimQueue === 'function' && !event.guessCorrect
+          ? options.buildAnimQueue(previousState || state, state)
+          : [];
       return buildSphinxResultQueue({
         card: event.card,
         actorIdx: event.actorIdx,
@@ -480,7 +482,7 @@ export function compileRuleVisualEventsToAnimTransaction(state, previousState = 
   const {
     events: presentationEvents,
     suppressedEventIds,
-  } = suppressStatsOwnedByCardEffects(scopedEvents);
+  } = suppressStatsOwnedByExplicitEvents(scopedEvents);
   const events = interleavePhaseOrderedVisualEvents(orderTurnStartVisualEvents(presentationEvents));
   const compiledWithEmpty = events.map(event => ({
       event,

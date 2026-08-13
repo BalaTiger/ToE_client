@@ -39,10 +39,12 @@ import {
 import {
   ANIMATION_QUEUE_AUTHORITY,
   compileFreshVisualEventsToAnimSteps,
+  compileRuleVisualEventsToAnimTransaction,
   compileVisualEventToAnimSteps,
   compileVisualEventToAnimTransaction,
 } from './visualEventTransactionCompiler';
 import { getAllDamageLinks } from './damageLinks';
+import { buildStatEvents, statEventsToAnimQueue } from './statEvents';
 
 export const MP_REMOTE_REPLAY = {
   ROLE_REVEAL: 'ROLE_REVEAL',
@@ -161,6 +163,50 @@ function clearRemoteReplayHints(state) {
   return state ? withClearedReplayAnimFields(clearVisualEvents({ ...state, _mpTimedOutDrawDiscard: null })) : state;
 }
 
+function compileRemoteStateEffects(rotated, previousGs, buildAnimQueue, excludedTypes = []) {
+  const transaction = compileRuleVisualEventsToAnimTransaction(rotated, previousGs, {
+    buildAnimQueue,
+    hidePrivateCards: true,
+  });
+  const excluded = new Set(excludedTypes);
+  const canonicalQueue = (transaction?.queue || []).filter(step => !excluded.has(step?.type));
+  if (canonicalQueue.length) return canonicalQueue;
+
+  // Compatibility packets from an older peer may contain no visual events.
+  // Translate their one-packet snapshot into explicit, event-shaped steps at
+  // the receive boundary; never feed the whole packet back through
+  // buildAnimQueue, which can span unrelated phases.
+  const logDelta = getLogDelta(previousGs, rotated);
+  const explicitStatEvents = buildStatEvents(
+    previousGs?.players || [],
+    rotated?.players || [],
+    logDelta,
+    { reason: 'remote-snapshot-compat' },
+  );
+  const queue = statEventsToAnimQueue(explicitStatEvents, previousGs?.players || rotated?.players || [], logDelta);
+  const worshipLog = logDelta.find(line => (
+    typeof line === 'string'
+    && (line.includes('信仰了 ') || line.includes('信仰 ') || line.includes('改信新神'))
+  ));
+  if (worshipLog) {
+    const targetPid = (rotated?.players || []).findIndex(player => (
+      player?.godName && (!player?.name || worshipLog.includes(player.name))
+    ));
+    if (targetPid >= 0 && !excluded.has('GOD_HIGHLIGHT')) {
+      queue.push({
+        type: 'GOD_HIGHLIGHT',
+        targetPid,
+        godKey: rotated.players[targetPid].godName,
+        players: rotated.players,
+        msgs: [worshipLog],
+      });
+    }
+  }
+  const eclipseLog = logDelta.find(line => typeof line === 'string' && line.includes('【噬日灭世】黑夜降临'));
+  if (eclipseLog && !excluded.has('APOPHIS_ECLIPSE')) queue.push({ type: 'APOPHIS_ECLIPSE', msgs: [eclipseLog] });
+  return queue.filter(step => !excluded.has(step?.type));
+}
+
 function prepareExactTransactionQueue(event) {
   const exactQueue = [...(event?.queue || [])];
   if (!exactQueue.length) return [];
@@ -260,8 +306,12 @@ function buildTreasureDodgeResolutionReplay({ previousGs, rotated, logDelta, bui
     ?? 0;
   const card = previousGs.drawReveal?.card || null;
   const d1 = Number(match[2]);
-  const effectQueue = buildAnimQueue(previousGs, rotated)
-    .filter(step => step?.type !== 'DRAW_CARD' && step?.type !== 'DICE_ROLL');
+  const effectQueue = compileRemoteStateEffects(
+    rotated,
+    previousGs,
+    buildAnimQueue,
+    ['DRAW_CARD', 'DICE_ROLL'],
+  );
   const keptInHand = !!card && (rotated.players?.[drawerIdx]?.hand || []).some(candidate => (
     candidate === card
     || (candidate?.id != null && card?.id != null && candidate.id === card.id)
@@ -400,7 +450,7 @@ function buildResolvedDrawChoiceQueue(rotated, previousGs, logDelta, buildAnimQu
   const inDiscard = (rotated.discard || []).some(candidate => isSameCard(candidate, card));
   if (!inHand && !inDiscard) return null;
   const effectQueue = bindAnimLogChunks(
-    buildAnimQueue(previousGs, rotated).filter(step => !['DRAW_CARD', 'CARD_TRANSFER', 'DISCARD'].includes(step?.type)),
+    compileRemoteStateEffects(rotated, previousGs, buildAnimQueue, ['DRAW_CARD', 'CARD_TRANSFER', 'DISCARD']),
     { statLogs: logDelta },
   );
   const resolutionStep = inHand
@@ -525,7 +575,8 @@ export function buildMpRemoteReplayAction({
     // decision modal opened. A later decision sync must replay only its new
     // effects, never the original card draw and background camera.
     const decisionQueue = bindAnimLogChunks(
-      buildAnimQueue(previousGs, rotated).filter(step => !(step?.type === 'DRAW_CARD' && isSameCard(step.card, resolvedGodChoiceCard))),
+      compileRemoteStateEffects(rotated, previousGs, buildAnimQueue)
+        .filter(step => !(step?.type === 'DRAW_CARD' && isSameCard(step.card, resolvedGodChoiceCard))),
       { statLogs: logDelta },
     );
     if (decisionQueue.length) {
@@ -1052,10 +1103,22 @@ export function buildMpRemoteReplayAction({
   }
 
   if (!isDrawAnimationState) {
-    const replay = buildInspectionReplay(previousGs || buildMaskedActionState(rotated), rotated, { buildAnimQueue, copyPlayers });
+    const inspectionBaseline = previousGs || buildMaskedActionState(rotated);
+    const previousInspectionSeq = Math.max(
+      inspectionBaseline?._inspectionSeq || 0,
+      ...(inspectionBaseline?._inspectionEvents || []).map(event => event?.seq || 0),
+    );
+    const hasFreshInspection = (rotated?._inspectionEvents || [])
+      .some(event => (event?.seq || 0) > previousInspectionSeq);
+    const replay = hasFreshInspection
+      ? buildInspectionReplay(inspectionBaseline, rotated, { buildAnimQueue, copyPlayers })
+      : { queue: [], inspectionEvents: [], inspectionSeq: previousInspectionSeq };
     const rawReplayQueue = replay.inspectionEvents.length
       ? replay.queue
-      : bindAnimLogChunks(replay.queue, { statLogs: logDelta });
+      : bindAnimLogChunks(
+          compileRemoteStateEffects(rotated, previousGs || buildMaskedActionState(rotated), buildAnimQueue),
+          { statLogs: logDelta },
+        );
     const replayQueue = prepareRemoteWorshipFromHandQueue(rawReplayQueue, rotated, logDelta);
     if (replayQueue.length) {
       const queue = appendFinalStatePatch(

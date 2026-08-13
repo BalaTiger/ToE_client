@@ -13,14 +13,14 @@ This folder contains maintained asset-generation scripts and one-off experiments
 - `generate_burrowing_worm_effect_assets.py` - generates burrowing-worm effect assets
 - `generate_rlyeh_bubble_sprites.py` - generates R'lyeh bubble sprite assets
 - `generate_zone_illustrations_comfy.py` - ComfyUI-driven zone illustration generation helper
-- `simulate-headless.mjs` - runs repeated headless games through the shared rule/AI modules
+- `simulate-headless.mjs` - runs repeated games through the shared rule/AI modules and validates staged turn-start presentation queues for cross-turn stat replay
 
 `experiments/` contains one-off ComfyUI exploration scripts. Treat them as prompt/research references, not runtime pipeline dependencies.
 
 ## Package Commands
 
 - `npm run flavor:template` - run `generate-card-flavor-template.mjs`
-- `npm run sim:headless` - run `simulate-headless.mjs`
+- `npm run sim:headless` - run `simulate-headless.mjs`; any rule-flow or presentation-ownership failure exits non-zero
 - `npm run build` / `npm run build:h5` - regenerate the resource manifest before building
 
 ## Runtime Outputs

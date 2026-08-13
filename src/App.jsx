@@ -256,6 +256,7 @@ import {
   buildOwnedAiHuntEventQueue,
   buildAiTurnRecoveryState,
   buildRoseThornSnapshot,
+  buildScopedAiActionReplayState,
   bindVisualEventToSteps,
   clearPendingAnimDeathPlayers,
   collectExplicitAiTurnLogs,
@@ -386,10 +387,7 @@ function authoritativeTurnStartQueueMeta(state) {
     : AUTHORITATIVE_QUEUE_META;
 }
 function authoritativeResolvedQueueMeta(state, queue) {
-  const eventIds = getVisualEventIdsCoveredByAnimationQueue(state, queue);
-  return eventIds.length
-    ? { ...AUTHORITATIVE_QUEUE_META, eventIds }
-    : AUTHORITATIVE_QUEUE_META;
+  return strictActionQueueMeta(state, queue, null, 'resolved action queue');
 }
 function authoritativeEndTurnReplayQueueMeta(state, queue) {
   return authoritativeResolvedQueueMeta(state, queue);
@@ -2833,16 +2831,14 @@ export default function Game(){
               playersAfter:P_actionEnd,
             };
             if(bewitchEvent?.encounterState){
-              const replayNewGs={
-                ...fakeGs(P_actionEnd,actionLog),
-                deck:newGs.deck,
-                discard:newGs.discard,
-                _inspectionEvents:newGs._inspectionEvents||[],
-                _inspectionSeq:newGs._inspectionSeq||0,
-                _statEvents:newGs._statEvents||[],
-                _statEventSeq:newGs._statEventSeq||0,
-                _visualEvents:newGs._visualEvents||[],
-              };
+              const replayNewGs=buildScopedAiActionReplayState({
+                state:{...fakeGs(P_actionEnd,actionLog),deck:newGs.deck},
+                players:P_actionEnd,
+                discard:_discardBeforeNextDraw||newGs.discard,
+                log:actionLog,
+                inspectionEvents:(newGs._inspectionEvents||[]).filter(isCurrentTurnInspectionEvent),
+                metadata:actionReplayMetadata,
+              });
               const bewitchReplay=buildBewitchGiftReplay({
                 oldGs:actionOldGsForApophis,
                 newGs:replayNewGs,

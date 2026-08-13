@@ -3,6 +3,7 @@ import {
   buildAiHuntWaitPresentation,
   buildAiTurnRecoveryState,
   buildRoseThornSnapshot,
+  buildScopedAiActionReplayState,
   bindVisualEventToSteps,
   clearPendingAnimDeathPlayers,
   collectExplicitAiTurnLogs,
@@ -391,6 +392,48 @@ describe('AI turn presentation helpers', () => {
       coveredEventIds: ['throw-stone-event'],
       uncoveredEventIds: [],
     });
+  });
+
+  it('builds a bewitch endpoint without the following turn SAN event', () => {
+    const alanEncounter = {
+      type: 'SAN_LOSS', target: 1, seq: 10,
+      from: { hp: 10, san: 10 }, to: { hp: 10, san: 9 },
+      logHint: '艾伦 遭遇邪神 蟾蜍之神！（第1次）失去 1 SAN',
+    };
+    const giftedEncounter = {
+      type: 'SAN_LOSS', target: 0, seq: 11,
+      from: { hp: 10, san: 10 }, to: { hp: 10, san: 9 },
+      logHint: '你 遭遇邪神 阿波菲斯！（第1次）失去 1 SAN',
+    };
+    const bellaNextTurnEncounter = {
+      type: 'SAN_LOSS', target: 2, seq: 12,
+      from: { hp: 10, san: 10 }, to: { hp: 10, san: 9 },
+      logHint: '贝拉 遭遇邪神 弗栗多！（第1次）失去 1 SAN',
+    };
+    const state = {
+      players: [{ san: 9 }, { san: 9 }, { san: 9 }],
+      log: ['艾伦 的回合', giftedEncounter.logHint, '贝拉 的回合', bellaNextTurnEncounter.logHint],
+      _statEvents: [alanEncounter, giftedEncounter, bellaNextTurnEncounter],
+      _statEventSeq: 12,
+      _visualEvents: [
+        { id: 'bewitch', type: 'bewitchGift' },
+        { id: 'action-stats', type: 'statEvents', statEvents: [alanEncounter, giftedEncounter] },
+        { id: 'bella-turn', type: 'turnStart', turnStartStage: 'turnBanner' },
+        { id: 'bella-stats', type: 'statEvents', turnStartStage: 'draw', statEvents: [bellaNextTurnEncounter] },
+      ],
+    };
+
+    const scoped = buildScopedAiActionReplayState({
+      state,
+      players: [{ san: 9 }, { san: 9 }, { san: 10 }],
+      log: state.log.slice(0, 2),
+      metadata: scopeAiActionReplayMetadata(state),
+    });
+
+    expect(scoped._statEvents.map(event => event.seq)).toEqual([10, 11]);
+    expect(scoped._statEventSeq).toBe(11);
+    expect(scoped._visualEvents.map(event => event.id)).toEqual(['bewitch', 'action-stats']);
+    expect(scoped.log).not.toContain(bellaNextTurnEncounter.logHint);
   });
 
   it('repairs a missing drawn-card discard after the AI turn intro was already shown', () => {

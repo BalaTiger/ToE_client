@@ -34,6 +34,7 @@ import {
   buildFreshStatVisualEvents,
   buildTurnStartDrawVisualEvents,
   VISUAL_EVENT,
+  createInspectionVisualEvent,
   createGodPowerBlockedEvent,
   createGodStatusChangedEvent,
   createTsathogguaSlimeGrantEvent,
@@ -2163,16 +2164,29 @@ function maxKnownStatEventSeq(state) {
   return Math.max(explicit, fromStats, fromVisualEvents);
 }
 
+function maxKnownInspectionEventSeq(state) {
+  const explicit = Number.isFinite(state?._inspectionSeq) ? state._inspectionSeq : 0;
+  const fromInspections = (Array.isArray(state?._inspectionEvents) ? state._inspectionEvents : [])
+    .reduce((max, event) => Number.isFinite(event?.seq) ? Math.max(max, event.seq) : max, 0);
+  const fromVisualEvents = (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
+    .filter(event => event?.type === VISUAL_EVENT.INSPECTION)
+    .reduce((max, event) => Number.isFinite(event?.legacySeq) ? Math.max(max, event.legacySeq) : max, 0);
+  return Math.max(explicit, fromInspections, fromVisualEvents);
+}
+
 // Rule and presentation metadata are produced at the same boundary. Every
 // caller (local player, AI, multiplayer takeover, and setup) receives the same
 // one-shot visual events instead of reconstructing them later in React.
 export function startNextTurn(gs, opts = {}) {
   const previousStatSeq = maxKnownStatEventSeq(gs);
+  const previousInspectionSeq = maxKnownInspectionEventSeq(gs);
   const cleanInput = Array.isArray(gs?._visualEvents) && gs._visualEvents.length
     ? { ...gs, _visualEvents: [] }
     : gs;
   const nextState = resolveNextTurnState(cleanInput, opts);
   const engineEvents = Array.isArray(nextState?._visualEvents) ? nextState._visualEvents : [];
+  const freshStatVisualEvents = buildFreshStatVisualEvents(nextState, previousStatSeq);
+  const freshStatEvents = freshStatVisualEvents.flatMap(event => event?.statEvents || []);
   // resolveNextTurnState only produces events for the newly entered turn.
   // Tag its remaining card/god/effect events as draw-stage events so an AI
   // action queue can exclude the entire future turn transaction explicitly.
@@ -2180,16 +2194,33 @@ export function startNextTurn(gs, opts = {}) {
     if (event?.turnStartStage) return event;
     const isPreDrawEvent = [VISUAL_EVENT.GOD_POWER_BLOCKED, VISUAL_EVENT.TSG_SLIME_GRANT]
       .includes(event?.type);
+    const ownedStatEvents = event?.type === VISUAL_EVENT.SPHINX_RESULT
+      ? freshStatEvents.filter(statEvent => (
+          statEvent?.target === event.actorIdx &&
+          (!statEvent?.logHint || (event.msgs || []).includes(statEvent.logHint))
+        ))
+      : [];
     return {
       ...event,
+      ...(event?.type === VISUAL_EVENT.SPHINX_RESULT ? { statEvents: ownedStatEvents } : {}),
       turnStartStage: isPreDrawEvent ? 'turnStart' : 'draw',
       turnStartStageOrder: isPreDrawEvent ? 1 : 2,
     };
   });
+  const stagedInspectionEvents = (Array.isArray(nextState?._inspectionEvents) ? nextState._inspectionEvents : [])
+    .filter(event => Number.isFinite(event?.seq) && event.seq > previousInspectionSeq)
+    .map(createInspectionVisualEvent)
+    .filter(Boolean)
+    .map(event => ({
+      ...event,
+      turnStartStage: 'draw',
+      turnStartStageOrder: 3,
+    }));
   const visualEvents = [
     ...buildTurnStartDrawVisualEvents(nextState),
-    ...buildFreshStatVisualEvents(nextState, previousStatSeq),
+    ...freshStatVisualEvents,
     ...stagedEngineEvents,
+    ...stagedInspectionEvents,
   ];
   return visualEvents.length ? { ...nextState, _visualEvents: visualEvents } : nextState;
 }

@@ -129,11 +129,14 @@ describe('buildMpRemoteReplayAction', () => {
     ]);
     expect(action.queue[0]).toMatchObject({ d1: 2, rollerName: '艾伦', dodgeSuccess: false });
     expect(action.queue[2]).toMatchObject({ fromPid: 1, toPid: 1, cards: [dodgeCard] });
-    expect(buildQueue).toHaveBeenCalledWith(previousGs, rotated);
+    expect(buildQueue).not.toHaveBeenCalled();
   });
 
   it('finds a remote treasure dodge result even when effect logs follow it', () => {
+    const beforePlayers = [player('你'), player('艾伦'), { ...player('贝拉'), san: 10 }];
+    const afterPlayers = [player('你'), player('艾伦'), { ...player('贝拉'), san: 9 }];
     const previousGs = makeState({
+      players: beforePlayers,
       phase: 'TREASURE_AOE_DODGE_DECISION',
       drawReveal: { card, drawerIdx: 1 },
       abilityData: { drawerIdx: 1 },
@@ -141,6 +144,7 @@ describe('buildMpRemoteReplayAction', () => {
     });
     const action = buildMpRemoteReplayAction({
       rotated: makeState({
+        players: afterPlayers,
         phase: 'ACTION',
         log: ['艾伦 掷出 6 点，成功规避负面效果！', '贝拉 失去 1 SAN'],
       }),
@@ -194,6 +198,11 @@ describe('buildMpRemoteReplayAction', () => {
   it('does not replay the god draw after another player resolves a god choice', () => {
     const godCard = { id: 'god-worship', name: '阿波菲斯', godKey: 'APO', isGod: true, type: 'god' };
     const beforePlayers = [player('你'), player('艾伦'), player('贝拉')];
+    const worshippers = [
+      player('你'),
+      { ...player('艾伦'), godName: 'APO', godLevel: 1, godZone: [godCard], hasBelievedGod: true },
+      player('贝拉'),
+    ];
     const buildQueue = vi.fn(() => [
       { type: 'DRAW_CARD', card: godCard },
       { type: 'GOD_HIGHLIGHT', targetPid: 1, godKey: 'APO' },
@@ -201,11 +210,11 @@ describe('buildMpRemoteReplayAction', () => {
     ]);
     const action = buildMpRemoteReplayAction({
       rotated: makeState({
-        players: beforePlayers,
+        players: worshippers,
         currentTurn: 1,
         phase: 'ACTION',
         abilityData: {},
-        log: ['艾伦 摸到 阿波菲斯', '艾伦 信仰了 阿波菲斯'],
+        log: ['艾伦 摸到 阿波菲斯', '艾伦 信仰了 阿波菲斯', '【噬日灭世】黑夜降临'],
         _drawnCard: godCard,
         _turnStartLogs: ['—— 艾伦 的回合开始 ——'],
         _drawLogs: ['艾伦 摸到 阿波菲斯'],

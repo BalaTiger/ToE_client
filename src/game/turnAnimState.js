@@ -11,6 +11,7 @@ import {
   isPreDrawTurnStartStatEvent,
 } from './visualEvents';
 import { statEventsToAnimQueue } from './statEvents';
+import { compileRuleVisualEventsToAnimTransaction } from './visualEventTransactionCompiler';
 
 export const EMPTY_TURN_ANIM_FIELDS = Object.freeze({
   _aiDrawnCard: null,
@@ -377,11 +378,21 @@ function isPoisonTurnStartStatEvent(event) {
 
 function getFreshStatEventsFromState(oldGs, newGs) {
   const oldSeq = oldGs?._statEventSeq || 0;
-  const visualStatEvents = getVisualEvents(newGs)
+  const visualEvents = getVisualEvents(newGs);
+  const stagedTurnStartEvents = visualEvents.filter(event => !!event?.turnStartStage);
+  const authoritativeEvents = stagedTurnStartEvents.length
+    ? stagedTurnStartEvents
+    : visualEvents;
+  const visualStatEvents = authoritativeEvents
     .filter(ev => ev?.type === VISUAL_EVENT.STAT_EVENTS && Array.isArray(ev.statEvents) && ev.statEvents.length)
     .flatMap(ev => ev.statEvents)
     .filter(ev => ev && (ev.seq == null || ev.seq > oldSeq));
-  if (visualStatEvents.length) return visualStatEvents;
+  // startNextTurn emits a complete staged transaction, including an explicit
+  // absence of statEvents when the new turn did not change HP/SAN. In that
+  // path _statEvents is only retained as a cross-turn history/watermark. Falling
+  // back to it against a React callback's older gs snapshot reclassifies the
+  // previous action (notably rest healing) as a fresh draw effect.
+  if (stagedTurnStartEvents.length || visualStatEvents.length) return visualStatEvents;
   return Array.isArray(newGs?._statEvents)
     ? newGs._statEvents.filter(ev => ev && (ev.seq == null || ev.seq > oldSeq))
     : [];
@@ -782,11 +793,29 @@ export function buildTurnStartDrawReplayQueue({
   const boundaryGodPowerBlockedIds = new Set(
     getGodPowerBlockedBoundaryEvents(newGs).map(event => event?.id).filter(Boolean)
   );
-  const staleVisualEvents = (Array.isArray(newGs?._visualEvents) ? newGs._visualEvents : [])
+  const newVisualEvents = Array.isArray(newGs?._visualEvents) ? newGs._visualEvents : [];
+  const hasStagedTurnStartEvents = newVisualEvents.some(event => !!event?.turnStartStage);
+  const currentTurnLog = Array.isArray(newGs?.log) ? newGs.log : [];
+  const currentTurnStartLine = newGs?._turnStartLogs?.[0];
+  const currentTurnStartIndex = currentTurnStartLine ? currentTurnLog.lastIndexOf(currentTurnStartLine) : -1;
+  const currentTurnMsgSet = new Set(currentTurnStartIndex >= 0 ? currentTurnLog.slice(currentTurnStartIndex) : [
+    ...(newGs?._drawLogs || []),
+    ...(newGs?._statLogs || []),
+  ]);
+  const belongsToCurrentTurn = event => (
+    (event?.card && sameDrawCard(event.card, drawnCard)) ||
+    (Array.isArray(event?.msgs) && event.msgs.some(msg => currentTurnMsgSet.has(msg)))
+  );
+  const staleVisualEvents = newVisualEvents
     .filter(event => (
       boundaryGodPowerBlockedIds.has(event?.id) ||
       event?.type === VISUAL_EVENT.GOD_STATUS_CHANGED ||
-      (event?.card && !sameDrawCard(event?.card, drawnCard))
+      (event?.card && !sameDrawCard(event?.card, drawnCard)) ||
+      // Once a complete staged turn transaction exists, untagged events belong
+      // to the action/end-turn history that produced it. Treat them as baseline
+      // even when they have no card/log hint (for example an endless-corridor
+      // throwStone event); otherwise the next draw compiles that action again.
+      (hasStagedTurnStartEvents && !event?.turnStartStage && !belongsToCurrentTurn(event))
     ));
   const baselineVisualEvents = [
     ...staleVisualEvents,
@@ -801,9 +830,20 @@ export function buildTurnStartDrawReplayQueue({
     .filter(event => event?.seq != null && !isPreDrawTurnStartStatEvent(event))
     .map(event => event.seq);
   const effectiveDrawStatSeqs = drawStatSeqs.length ? drawStatSeqs : visualDrawStatSeqs;
+  const hasAuthoritativeTurnStartEvents = getVisualEvents(newGs).some(event => !!event?.turnStartStage);
   const drawOldStatSeq = effectiveDrawStatSeqs.length
     ? Math.max(0, Math.min(...effectiveDrawStatSeqs) - 1)
-    : null;
+    // An explicit staged transaction with no stat event means "no HP/SAN
+    // change in this turn", not "infer every event newer than oldGs". Advance
+    // the fallback compiler to the retained watermark so callback closures from
+    // the previous action cannot replay already committed stat history.
+    : hasAuthoritativeTurnStartEvents
+      ? Math.max(
+          oldGs?._statEventSeq || 0,
+          newGs?._statEventSeq || 0,
+          ...(Array.isArray(newGs?._statEvents) ? newGs._statEvents : []).map(event => event?.seq || 0),
+        )
+      : null;
   // 只回退到「本次摸牌新产生」的随机目标事件之前。_randomTargetEvents 会随 gs 跨回合
   // 残留（如上一回合行动阶段打出的投掷石块），若按全部事件回退水位，会把旧事件重新
   // 判定为新事件，在翻牌动画后重播骰子/转盘/石块飞行。旧水位取标量与旧事件列表的较大
@@ -861,7 +901,20 @@ export function buildTurnStartDrawReplayQueue({
     // replays the previous card's bespoke animation before the decision modal.
     _visualEvents: baselineVisualEvents,
   };
-  const inspectionEvents = getFreshInspectionEvents(oldGs, newGs);
+  const stagedTurnStartTransaction = hasAuthoritativeTurnStartEvents
+    ? compileRuleVisualEventsToAnimTransaction(newGs, oldGs, {
+        visualEventScope: 'turnStart',
+        buildAnimQueue: buildQueue,
+        players: beforeDrawPlayers,
+      })
+    : null;
+  const stagedDrawEffectQueue = (stagedTurnStartTransaction?.queue || []).filter(step => (
+    step?.type !== 'YOUR_TURN'
+    && (step?.type !== 'DRAW_CARD' || step?.inspectionSeq != null || step?.inspectionGainSeq != null)
+    && step?.turnStartStage !== TURN_START_ANIMATION_STAGE.TURN_BOUNDARY
+    && step?.turnStartStage !== TURN_START_ANIMATION_STAGE.TURN_START
+  ));
+  const inspectionEvents = hasAuthoritativeTurnStartEvents ? [] : getFreshInspectionEvents(oldGs, newGs);
   const preDrawMsgs = getTurnStartPreDrawMsgs(newGs);
   const turnStartInspectionEvents = inspectionEvents.filter(ev => {
     const lines = getInspectionLogLines([ev]);
@@ -872,10 +925,12 @@ export function buildTurnStartDrawReplayQueue({
   const inspectionStatSeqs = getInspectionStatSeqs(inspectionEvents);
   const inspectionLogLines = getInspectionLogLines(inspectionEvents);
   const firstDrawInspectionStatSeq = getFirstInspectionStatSeq(drawInspectionEvents);
-  const drawEffectQBase = filterConsumedTurnStartSteps(bindAnimLogChunks(
-    buildQueue(fallbackOldGs, newGs),
-    { statLogs: withoutLogLines(newGs?._statLogs, inspectionLogLines) },
-  ), preDrawMsgs);
+  const drawEffectQBase = hasAuthoritativeTurnStartEvents
+    ? stagedDrawEffectQueue
+    : filterConsumedTurnStartSteps(bindAnimLogChunks(
+        buildQueue(fallbackOldGs, newGs),
+        { statLogs: withoutLogLines(newGs?._statLogs, inspectionLogLines) },
+      ), preDrawMsgs);
   // visualStatQ 只兜底 fallback 队列「漏掉」的属性事件。若事件已被 fallback 中卡牌专属
   // 复合步骤（如惊扰蝙蝠 STARTLED_BATS + 其尾随的 HP_DAMAGE）按序覆盖，再前置一份会让
   // HP 扣减特效抢在专属动画之前播放，且专属动画自己的属性步骤还会被下方过滤器剥掉。

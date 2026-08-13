@@ -67,6 +67,7 @@ try {
         skillUsed: result.state?.skillUsed,
         restUsed: result.state?.restUsed,
         multiplyUsed: result.state?.multiplyUsed,
+        presentationIssues: result.presentationIssues,
         players: result.state?.players?.map(player => ({
           role: player.role,
           hp: player.hp,
@@ -81,12 +82,7 @@ try {
         recentTransitions: result.recentTransitions,
       })),
   }, null, 2));
-  if (
-    summary.statuses.unresolved
-    || summary.statuses.timeout
-    || summary.statuses.stalled
-    || summary.statuses.runaway
-  ) {
+  if (summary.results.some(result => result.status !== 'complete')) {
     process.exitCode = 2;
   }
 } finally {

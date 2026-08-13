@@ -51,6 +51,19 @@ describe('animationStepSchema', () => {
     });
   });
 
+  it('禁止 canonical 事件事务携带 legacy targetStats', () => {
+    const issues = validateAnimationQueueSteps([{
+      type: 'SAN_DAMAGE',
+      visualEventId: 'inspection:7',
+      turnStartStage: 'draw',
+      targetStats: [{ hp: 8, san: 4 }],
+    }]);
+
+    expect(issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'LEGACY_TARGET_STATS_IN_EVENT_TRANSACTION' }),
+    ]));
+  });
+
   it.each(['GUILLOTINE', 'PETRIFY_DEATH'])(
     '%s 只能展示死亡效果，不能携带属性写入',
     type => {
