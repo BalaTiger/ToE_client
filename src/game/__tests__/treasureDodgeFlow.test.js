@@ -70,4 +70,22 @@ describe('treasure dodge flow variants', () => {
     expect(handler).not.toMatch(/setAnim\s*\(/);
     expect(handler.match(/triggerAnimQueue\s*\(/g)).toHaveLength(4);
   });
+
+  it('routes Sphinx dodge and AI-ZHU turn banner through the animation queue state machine', () => {
+    const appPath = fileURLToPath(new URL('../../App.jsx', import.meta.url));
+    const source = fs.readFileSync(appPath, 'utf8');
+
+    const sphinxStart = source.indexOf('function settleSphinxDodge(');
+    const sphinxEnd = source.indexOf('function handleDrawDiscard()', sphinxStart);
+    const sphinx = source.slice(sphinxStart, sphinxEnd);
+    expect(sphinxStart).toBeGreaterThan(-1);
+    expect(sphinxEnd).toBeGreaterThan(sphinxStart);
+    expect(sphinx).not.toContain('pendingGsRef.current=');
+    expect(sphinx).not.toContain('animQueueRef.current=');
+    expect(sphinx).not.toMatch(/setAnim\s*\(/);
+    expect(sphinx).toContain('triggerAnimQueue(fullQueue,nextGs');
+
+    // The AI-ZHU hide turn banner must also play through the queue machine.
+    expect(source).not.toContain("setAnim({type:'YOUR_TURN'");
+  });
 });

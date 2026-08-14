@@ -30,7 +30,11 @@ import { getZhuTopGuard, removeZhuLightCard } from './zhuPower';
 import { buildTargetContinuationAbilityData } from './targetContinuation';
 import { hasGodPowerImmunity } from './godPowerImmunity';
 import { buildTurnStartDrawReplayQueue } from './turnAnimState';
-import { buildScopedAiActionReplayState, scopeAiActionReplayMetadata } from './aiTurnPresentation';
+import {
+  buildScopedAiActionReplayState,
+  getAiActionSphinxResultEvent,
+  scopeAiActionReplayMetadata,
+} from './aiTurnPresentation';
 
 export const HEADLESS_TURN_OPTIONS = Object.freeze({ allAi: true });
 
@@ -604,8 +608,16 @@ function describeHeadlessTransition(before, after) {
 }
 
 export function validateHeadlessPresentationTransition(before, after) {
+  const beforeVisualEventIds = new Set(
+    (Array.isArray(before?._visualEvents) ? before._visualEvents : [])
+      .map(event => event?.id)
+      .filter(Boolean),
+  );
   const stagedEvents = (Array.isArray(after?._visualEvents) ? after._visualEvents : [])
-    .filter(event => !!event?.turnStartStage);
+    // A staged transaction remains on state while that AI performs its action.
+    // Validate ownership only at the transition that introduced it; requiring
+    // it to compile again on every later state would itself demand a replay.
+    .filter(event => !!event?.turnStartStage && (!event?.id || !beforeVisualEventIds.has(event.id)));
   if (!stagedEvents.length) return [];
   const stagedStatSeqs = new Set(stagedEvents
     .flatMap(event => Array.isArray(event?.statEvents) ? event.statEvents : [])
@@ -654,6 +666,23 @@ export function validateHeadlessPresentationTransition(before, after) {
     });
   };
   validateSegment(replay.queue, true, 'turnStart');
+  const stagedSphinxEvents = stagedEvents.filter(event => event?.type === 'sphinxResult');
+  const actionSphinxEvent = getAiActionSphinxResultEvent(after);
+  stagedSphinxEvents.forEach(event => {
+    const compiledCount = replay.queue.filter(step => step?.visualEventId === event.id).length;
+    if (!compiledCount) {
+      segmentIssues.push({
+        code: 'TURN_START_SPHINX_NOT_COMPILED',
+        visualEventId: event.id || null,
+      });
+    }
+    if (actionSphinxEvent?.id === event.id) {
+      segmentIssues.push({
+        code: 'ACTION_REPLAY_OWNS_NEXT_TURN_SPHINX',
+        visualEventId: event.id || null,
+      });
+    }
+  });
   const statIdentity = event => event?.id || [event?.seq ?? '', event?.type ?? '', event?.target ?? ''].join(':');
   const ownedStatIds = expectedTurnStart => new Set(visualEvents
     .filter(event => !!event?.turnStartStage === expectedTurnStart)

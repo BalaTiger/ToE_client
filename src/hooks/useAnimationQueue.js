@@ -8,6 +8,7 @@ import {
   validateStatAnimationContinuity,
 } from '../game/statEvents';
 import {
+  assertCompleteThrowStoneTransactions,
   prepareAnimationQueueSteps,
   validateAnimationQueueSteps,
 } from '../game/animationStepSchema';
@@ -392,7 +393,9 @@ export function useAnimationQueue({
     const apophisOrderedQueue = nextGs
       ? mergeApophisTargetQueue(queue, gs, nextGs)
       : queue;
-    const schemaPreparation = prepareAnimationQueueSteps(dedupeInferredDiscardTransfers(apophisOrderedQueue));
+    const dedupedQueue = dedupeInferredDiscardTransfers(apophisOrderedQueue);
+    assertCompleteThrowStoneTransactions(dedupedQueue);
+    const schemaPreparation = prepareAnimationQueueSteps(dedupedQueue);
     reportSchemaIssues('input normalization failed', schemaPreparation.issues);
     const normalizedQueue = attachApophisNightTimeline(
       addDrawBackgroundCameraPrelude(schemaPreparation.steps),

@@ -802,8 +802,12 @@ export function buildAnimQueue(oldGs, newGs, options = {}) {
       });
     }
     queue.push({
-      type: 'RANDOM_TARGET',
       ...event,
+      // Canonical visual events carry their rule-level type (`throwStone`).
+      // Keep the playback discriminator authoritative after spreading the
+      // event, otherwise the wheel step is silently rendered as an unknown
+      // animation while the preceding dice still plays.
+      type: 'RANDOM_TARGET',
       players: newGs.players,
       msgs: event.resultText ? [event.resultText] : [],
     });

@@ -1917,10 +1917,6 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           }
           Disc.push(actualCard);
         }
-        statePatch = {
-          ...statePatch,
-          _animSphinxReveal: { card: actualCard, guessYes, guessCorrect, actorIdx: ci },
-        };
         const sphinxEvent = createSphinxResultEvent({
           actorIdx: ci,
           card: actualCard,
@@ -2160,20 +2156,27 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           if (candidates.length > 0) {
             const randomTarget = candidates[Math.floor(Math.random() * candidates.length)];
             const beforeTarget = { ...P[randomTarget] };
+            statePatch = appendRandomTargetEvent(statePatch, gs, {
+              sourceIdx: ci,
+              targetIdx: randomTarget,
+              label: card.name || '白化生物',
+              resultText: `${P[randomTarget].name} 被选中`,
+              phaseOrder: 0,
+            });
             hurtHP(randomTarget, 2);
             hurtSAN(randomTarget, 2);
             settlePendingDamages('eager');
             msgs.push(`${P[randomTarget].name} 失去 2 HP 和 2 SAN`);
             const seq = (gs?._statEventSeq || 0) + 1;
-            directStatEvents = [{
-              type: 'HP_LOSS',
+            directStatEvents = ['HP_LOSS', 'SAN_LOSS'].map(type => ({
+              type,
               target: randomTarget,
               from: playerStats(beforeTarget),
               to: playerStats(P[randomTarget]),
               reason: '白化生物',
               seq,
-              phaseOrder: 0,
-            }];
+              phaseOrder: 1,
+            }));
           }
         } else {
           statePatch = {

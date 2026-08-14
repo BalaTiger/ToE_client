@@ -149,8 +149,54 @@ export function validateAnimationQueueSteps(queue = [], { allowCombined = false 
   return issues;
 }
 
+export function validateThrowStoneTransactions(queue = []) {
+  const steps = Array.isArray(queue) ? queue : [];
+  const eventIds = [...new Set(steps
+    .filter(step => step?.visualEventId && (
+      (step.type === 'DICE_ROLL' && step.diceMode === 'throwStone') ||
+      step.type === 'RANDOM_TARGET' ||
+      step.type === 'THROW_STONE'
+    ))
+    .map(step => step.visualEventId))];
+
+  return eventIds.flatMap(visualEventId => {
+    const eventSteps = steps
+      .map((step, stepIndex) => ({ step, stepIndex }))
+      .filter(item => item.step?.visualEventId === visualEventId);
+    const requiredTypes = ['DICE_ROLL', 'RANDOM_TARGET', 'THROW_STONE'];
+    const requiredIndices = requiredTypes.map(type => eventSteps.find(item => (
+      item.step.type === type && (type !== 'DICE_ROLL' || item.step.diceMode === 'throwStone')
+    ))?.stepIndex ?? -1);
+    if (requiredIndices.some(stepIndex => stepIndex < 0)) {
+      return [issue('INCOMPLETE_THROW_STONE_TRANSACTION', requiredIndices.find(index => index >= 0) ?? -1, {
+        visualEventId,
+        types: eventSteps.map(item => item.step.type),
+        missingTypes: requiredTypes.filter((_, index) => requiredIndices[index] < 0),
+      })];
+    }
+    if (!(requiredIndices[0] < requiredIndices[1] && requiredIndices[1] < requiredIndices[2])) {
+      return [issue('INVALID_THROW_STONE_ORDER', requiredIndices[0], {
+        visualEventId,
+        types: eventSteps.map(item => item.step.type),
+      })];
+    }
+    return [];
+  });
+}
+
+export function assertCompleteThrowStoneTransactions(queue = []) {
+  const issues = validateThrowStoneTransactions(queue);
+  if (issues.length) {
+    throw new TypeError(`[animation-transaction] incomplete throw-stone transaction: ${JSON.stringify(issues)}`);
+  }
+  return queue;
+}
+
 export function prepareAnimationQueueSteps(queue = []) {
-  const sourceIssues = validateAnimationQueueSteps(queue, { allowCombined: true });
+  const sourceIssues = [
+    ...validateAnimationQueueSteps(queue, { allowCombined: true }),
+    ...validateThrowStoneTransactions(queue),
+  ];
   const steps = normalizeAnimationQueueSteps(queue);
   const normalizedIssues = validateAnimationQueueSteps(steps);
   const issueKey = value => JSON.stringify(value);

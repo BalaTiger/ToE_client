@@ -1,4 +1,4 @@
-﻿import React, { lazy, Suspense, useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
+import React, { lazy, Suspense, useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { GodChoiceModal, NyaBorrowModal, DrawRevealModal, TreasureDodgeModal, PeekHandModal, TortoiseOracleModal, FullLogModal } from './components/modals';
 import { DecipherStoneCarvingOverlay } from './components/modals/DecipherStoneCarvingOverlay';
 import { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel } from './components/board';
@@ -192,6 +192,7 @@ import {
   createAnimTransactionEvent,
   createHuntRevealEvent,
   createHuntResultEvent,
+  createRandomTargetVisualEvent,
   buildHuntRevealStepFromVisualEvents,
   buildHuntRevealStepFromVisualEvent,
   pruneConsumedVisualEvents,
@@ -261,6 +262,7 @@ import {
   clearPendingAnimDeathPlayers,
   collectExplicitAiTurnLogs,
   finalizeAiPresentationState,
+  getAiActionSphinxResultEvent,
   getAiActionQueueCoverage,
   insertAiRestDiceBeforeSettlement,
   scopeAiActionReplayMetadata,
@@ -2384,7 +2386,7 @@ export default function Game(){
       if(!prev||prev.phase!=='ZHU_HIDE_AI_DRAW')return prev;
       return {...prev,abilityData:{...prev.abilityData,zhuIntroShown:true}};
     });
-    setAnim({type:'YOUR_TURN',name:gs.players[gs.currentTurn]?.name||'???',msgs:gs._turnStartLogs});
+    triggerAnimQueue([{type:'YOUR_TURN',name:gs.players[gs.currentTurn]?.name||'???',msgs:gs._turnStartLogs}],null,undefined,AUTHORITATIVE_QUEUE_META);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[gs?.phase,gs?.abilityData?.zhuIntroShown,gs?._turnKey,anim,animExiting,showTutorial,softGuidePauseActive]);
 
@@ -2879,9 +2881,9 @@ export default function Game(){
           }
         }
         // Inject custom animations for multiply and sphinx reveal
-        const sphinxReveal=isTurnStartSphinxRevealState(gs,rawResult._animSphinxReveal)?null:rawResult._animSphinxReveal;
+        const sphinxReveal=getAiActionSphinxResultEvent(newGs);
         const multiplyEvent=rawResult._animMultiplyEvent;
-        const sphinxVisualEvent=actionReplayMetadata.visualEvents.find(event=>event?.type==='sphinxResult');
+        const sphinxVisualEvent=sphinxReveal;
         const multiplyVisualEvent=actionReplayMetadata.visualEvents.find(event=>event?.type==='multiply');
         const damageLinkEstablishedMsg=actionMsgs.find(m=>m.includes('【两人一绳】')&&m.includes('间架起链条'));
         const animInjections=[];
@@ -5944,10 +5946,9 @@ export default function Game(){
     const queue=bindAnimLogChunks(buildAnimQueue(gs,nextGs),splitAnimBoundLogs(L.slice(gs.log.length)));
     if(roll){
       const diceAnim=createTreasureDodgeDiceAnim({result:{d1,dodgeSuccess,who:'你'},aoe:false});
-      pendingGsRef.current=nextGs;
-      animQueueRef.current=queue;
+      const fullQueue=[diceAnim,...queue];
       setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-      setAnim(diceAnim);
+      triggerAnimQueue(fullQueue,nextGs,undefined,authoritativeResolvedQueueMeta(nextGs,fullQueue));
     }else if(queue.length){
       triggerAnimQueue(queue,nextGs,undefined,authoritativeResolvedQueueMeta(nextGs,queue));
     }else setGs(nextGs);
@@ -5972,7 +5973,7 @@ export default function Game(){
     const newGs={...gs,players:P,discard:nextDiscard,log:[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),discardLog],phase:'ACTION',drawReveal:null,abilityData:gs.abilityData,...replayPatch};
     const discardQueueMeta=dr.fromEndTurnReplay
       ?authoritativeEndTurnReplayQueueMeta(newGs,queue)
-      :authoritativeResolvedQueueMeta(newGs,queue);
+      :strictActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current,'draw discard');
     if(dr.fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:nextDiscard})],[discardLog]);
     else if(newGs._isMP)broadcastAnimTransaction(newGs,queue,{context:'drawDiscard',barrier:'continuation',msgs:[discardLog],beforePlayers:gs.players,beforeDiscard:gs.discard});
     // CTH fromRest: after discarding, process remaining draws then advance turn
@@ -7826,6 +7827,15 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     let damageDecision=null;
     if(candidates.length>0){
       randomTarget=candidates[Math.floor(Math.random()*candidates.length)];
+      const randomTargetSeq=(gs?._randomTargetSeq||0)+1;
+      const randomTargetEvent=createRandomTargetVisualEvent({
+        seq:randomTargetSeq,
+        sourceIdx:actorIdx,
+        targetIdx:randomTarget,
+        label:'白化生物',
+        resultText:`${P[randomTarget].name} 被选中`,
+        phaseOrder:0,
+      });
       damageDecision=submitDamageEvents({
         players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
         events:[{targetIdx:randomTarget,lostHp:2,lostSan:2,source:'白化生物'}],
@@ -7839,8 +7849,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           ...gs,players:P,deck:D,discard:Disc,log:L,
           phase:damageDecision.phase,abilityData:damageDecision.abilityData,
           drawReveal:null,selectedCard:null,
+          _randomTargetSeq:randomTargetSeq,
+          _randomTargetEvents:[...(gs._randomTargetEvents||[]),{
+            seq:randomTargetSeq,sourceIdx:actorIdx,targetIdx:randomTarget,label:'白化生物',
+            resultText:`${P[randomTarget].name} 被选中`,phaseOrder:0,
+          }],
+          ...(randomTargetEvent?{_visualEvents:[...(gs._visualEvents||[]),randomTargetEvent]}:{}),
         };
-        const queue=[revealStep,statePatchStep({players:P,deck:D,discard:Disc,log:L})].filter(Boolean);
+        const queue=[revealStep,...buildAnimQueue(gs,nextGs),statePatchStep({players:P,deck:D,discard:Disc,log:L})].filter(Boolean);
         triggerSyncedAnimTransaction(queue,nextGs,{context:'albinoCreature',barrier:'decision',msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard});
         return;
       }
@@ -7864,7 +7880,19 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:damageDecision?.phase||'ACTION',abilityData:damageDecision?.abilityData||{},drawReveal:null,selectedCard:null,
       ...(win?{gameOver:win}:{}),
       ...(statEvents.length?{_statEvents:statEvents,_statEventSeq:statEvents[0].seq}:{}),
+      ...(randomTarget>=0?{
+        _randomTargetSeq:(gs?._randomTargetSeq||0)+1,
+        _randomTargetEvents:[...(gs._randomTargetEvents||[]),{
+          seq:(gs?._randomTargetSeq||0)+1,sourceIdx:actorIdx,targetIdx:randomTarget,label:'白化生物',
+          resultText:`${P[randomTarget].name} 被选中`,phaseOrder:0,
+        }],
+        _visualEvents:[...(gs._visualEvents||[]),createRandomTargetVisualEvent({
+          seq:(gs?._randomTargetSeq||0)+1,sourceIdx:actorIdx,targetIdx:randomTarget,label:'白化生物',
+          resultText:`${P[randomTarget].name} 被选中`,phaseOrder:0,
+        })].filter(Boolean),
+      }:{}),
     };
+    queue.push(...buildAnimQueue(gs,nextGs));
     triggerSyncedAnimTransaction(queue,nextGs,{context:'albinoCreature',barrier:nextGs.phase==='ACTION'?'continuation':'decision',msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard});
   }
 
@@ -9200,52 +9228,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       buildQueue:buildAnimQueue,
       buildFullHandSwapTransferQueue:buildFullHandSwapTransferQueueFromLogs,
     });
-    const replayWithSphinx=injectTurnStartSphinxReveal(replay,newGs);
-    markTurnDrawInspectionEventsSeen(replayWithSphinx.inspectionEvents);
-    return replayWithSphinx;
-  }
-
-  function isTurnStartSphinxRevealState(state,sphinxReveal){
-    if(!state||!sphinxReveal)return false;
-    const drawnCard=getTurnStartDrawnCard(state);
-    return !!drawnCard&&(drawnCard.type==='sphinxGuess'||drawnCard.name==='斯芬克斯');
-  }
-
-  function buildSphinxRevealAnimSteps(sphinxReveal,logs=[]){
-    return buildSphinxResultQueue({
-      card:sphinxReveal?.card,
-      actorIdx:sphinxReveal?.actorIdx,
-      guessCorrect:!!sphinxReveal?.guessCorrect,
-      msgs:logs,
-    });
-  }
-
-  function injectTurnStartStepsAfterDrawCard(queue=[],steps=[]){
-    if(!steps.length)return queue;
-    const drawIdx=queue.findIndex(step=>step?.type==='DRAW_CARD'&&step.triggerName!=='斯芬克斯');
-    if(drawIdx<0)return [...queue,...steps];
-    const idx=queue.findIndex((step,stepIdx)=>stepIdx>drawIdx&&step?.type==='CARD_TRANSFER'&&step.effect==='draw');
-    if(idx<0)return [...queue.slice(0,drawIdx+1),...steps,...queue.slice(drawIdx+1)];
-    return [...queue.slice(0,idx),...steps,...queue.slice(idx)];
-  }
-
-  function injectTurnStartSphinxReveal(replay,state){
-    const sphinxReveal=state?._animSphinxReveal;
-    if(!replay||!isTurnStartSphinxRevealState(state,sphinxReveal))return replay;
-    const steps=markTurnStartAnimationStage(
-      buildSphinxRevealAnimSteps(sphinxReveal,state?.log||[]),
-      TURN_START_ANIMATION_STAGE.DRAW
-    );
-    if(!steps.length)return replay;
-    const queue=injectTurnStartStepsAfterDrawCard(replay.queue||[],steps);
-    const startQueue=injectTurnStartStepsAfterDrawCard(replay.startQueue||[],steps);
-    return{
-      ...replay,
-      drawEffectQ:[...(replay.drawEffectQ||[]),...steps],
-      stageQueues:splitTurnStartAnimationStages(queue),
-      queue,
-      startQueue,
-    };
+    markTurnDrawInspectionEventsSeen(replay.inspectionEvents);
+    return replay;
   }
 
   function hideTurnStartDecisionForReplay(prev,replay,newGs){
@@ -9563,7 +9547,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(newGs?.phase==='NYA_BORROW'&&Array.isArray(newGs._turnStartLogs)&&newGs._turnStartLogs.length){
       const introQ=buildTurnStartIntroQueue(newGs,newGs.players?.[newGs.currentTurn]?.name||'???');
       if(introQ.length){
-        pendingGsRef.current=newGs;
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
         triggerAnimQueue([...preTurnQ,...introQ],newGs,undefined,authoritativeTurnStartQueueMeta(newGs));
         return;
@@ -9577,7 +9560,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const queue=[...preTurnQ,...skippedTurnQueue,...buildTurnStartIntroQueue(newGs,drawerName)];
       if(newGs._isMP&&queue.length)broadcastAnimTransaction(newGs,queue,{context:'turnStart',barrier:'decision',msgs:newGs._turnStartLogs||[],beforePlayers:gs.players,beforeDiscard:gs.discard});
       if(queue.length){
-        pendingGsRef.current=newGs;
         if(newGs._playersBeforeThisDraw){
           visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
         }
@@ -9629,15 +9611,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         ?buildAppTurnStartDrawReplay(newGs,{oldGs:gs,effectOldGs:{...gs,players:newGs._playersBeforeThisDraw||gs.players}})
         :null;
       if(localTurnDrawReplay?.drawnCard){
-        pendingGsRef.current=newGs;
         if(localTurnDrawReplay.visualLock)visualStateLocks.lock(localTurnDrawReplay.visualLock);
         setGs(prev=>hideTurnStartDecisionForReplay(prev,localTurnDrawReplay,newGs));
         triggerAnimQueue([...preTurnQ,...localTurnDrawReplay.queue],newGs,undefined,authoritativeTurnStartQueueMeta(newGs));
         return;
       }
       if(playerTurnStartMsgs.length&&newGs.phase==='ACTION'&&drawStatQ.length){
-        pendingGsRef.current=newGs;
-        animQueueRef.current=[...drawStatQ];
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
         triggerAnimQueue([...preTurnQ,{type:'YOUR_TURN',msgs:playerTurnStartMsgs},...drawStatQ],newGs,undefined,authoritativeTurnStartQueueMeta(newGs));
         return;
@@ -9652,8 +9631,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         actorName:drawerName,
         forceActorName:drawerPid!==0,
       });
-      pendingGsRef.current=newGs;
-      animQueueRef.current=replay?.queue?.length?[...replay.queue]:[...drawStatQ];
       if(replay?.visualLock)visualStateLocks.lock(replay.visualLock);
       else if(newGs._playersBeforeThisDraw)visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
       setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
@@ -9670,7 +9647,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       // Also handle forced-card path (phase:'ACTION' but drawReveal.card set for animation)
       if(drawnCard&&(ph==='DRAW_REVEAL'||ph==='GOD_CHOICE'||ph==='DRAW_SELECT_TARGET'||ph==='ACTION')){
         const replay=buildAppTurnStartDrawReplay(newGs,{oldGs:gs,effectOldGs:{...gs,players:newGs._playersBeforeThisDraw||gs.players}});
-        pendingGsRef.current=newGs;
         if(replay.visualLock)visualStateLocks.lock(replay.visualLock);
         const queue=[...preTurnQ,...replay.queue];
         broadcastAnimTransaction(newGs,queue,{context:'turnStartDraw',barrier:'decision',msgs:newGs._drawLogs||[],beforePlayers:gs.players,beforeDiscard:gs.discard});
@@ -9688,8 +9664,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         actorName:drawerName,
         forceActorName:drawerPid!==0,
       });
-      pendingGsRef.current=newGs;
-      animQueueRef.current=replay?.queue?.length?[...replay.queue]:[...drawStatQ];
       if(replay?.visualLock)visualStateLocks.lock(replay.visualLock);
       else if(newGs._playersBeforeThisDraw)visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
       triggerAnimQueue(
@@ -9891,7 +9865,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         if(replay.visualLock)visualStateLocks.lock(replay.visualLock);
         // 遮蔽真实 phase，动画结束后 advanceQueue 再还原（与 applyNextTurnGs 同样模式）
         suppressNextBroadcastRef.current=true; // pendingGs 已广播过，advanceQueue 不再回传
-        pendingGsRef.current=pendingGs;
         setGs({...pendingGs,phase:'ACTION',drawReveal:null,abilityData:{}});
         triggerAnimQueue(replay.queue,pendingGs,undefined,authoritativeTurnStartQueueMeta(pendingGs));
       }else{

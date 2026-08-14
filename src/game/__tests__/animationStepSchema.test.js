@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assertCompleteThrowStoneTransactions,
   normalizeAnimationQueueSteps,
   prepareAnimationQueueSteps,
   validateAnimationQueueSteps,
+  validateThrowStoneTransactions,
 } from '../animationStepSchema';
 
 describe('animationStepSchema', () => {
@@ -136,5 +138,35 @@ describe('animationStepSchema', () => {
       'DUPLICATE_STEP_ID',
       'DUPLICATE_STAT_EVENT_ID',
     ]));
+  });
+
+  it('拒绝只有骰子、缺少转盘的投掷石块事务', () => {
+    const queue = [
+      { type: 'DICE_ROLL', diceMode: 'throwStone', visualEventId: 'stone:1', d1: 5 },
+      { type: 'THROW_STONE', visualEventId: 'stone:1', sourceIdx: 0, targetIdx: 1 },
+    ];
+
+    expect(validateThrowStoneTransactions(queue)).toEqual([
+      expect.objectContaining({
+        code: 'INCOMPLETE_THROW_STONE_TRANSACTION',
+        visualEventId: 'stone:1',
+        missingTypes: ['RANDOM_TARGET'],
+      }),
+    ]);
+    expect(() => assertCompleteThrowStoneTransactions(queue)).toThrow(/incomplete throw-stone transaction/);
+    expect(prepareAnimationQueueSteps(queue).issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'INCOMPLETE_THROW_STONE_TRANSACTION' }),
+    ]));
+  });
+
+  it('接受骰子、转盘、飞石顺序完整的投掷石块事务', () => {
+    const queue = [
+      { type: 'DICE_ROLL', diceMode: 'throwStone', visualEventId: 'stone:2', d1: 5 },
+      { type: 'RANDOM_TARGET', visualEventId: 'stone:2', sourceIdx: 0, targetIdx: 1 },
+      { type: 'THROW_STONE', visualEventId: 'stone:2', sourceIdx: 0, targetIdx: 1 },
+    ];
+
+    expect(validateThrowStoneTransactions(queue)).toEqual([]);
+    expect(assertCompleteThrowStoneTransactions(queue)).toBe(queue);
   });
 });

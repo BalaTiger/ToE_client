@@ -146,6 +146,15 @@ function TreasureMapAnim({hand,onConfirm,confirmCountdownSec=null,waitingLabel=n
   const firedRef=useRef(false);
   const [countdown,setCountdown]=useState(confirmCountdownSec);
   const confirmFiredRef=useRef(false);
+  const [viewport,setViewport]=useState(()=>({
+    width:typeof window==='undefined'?1280:window.innerWidth,
+    height:typeof window==='undefined'?720:window.innerHeight,
+  }));
+  useEffect(()=>{
+    const measure=()=>setViewport({width:window.innerWidth,height:window.innerHeight});
+    window.addEventListener('resize',measure);
+    return()=>window.removeEventListener('resize',measure);
+  },[]);
   useEffect(()=>{
     if(firedRef.current)return;firedRef.current=true;
     const ts=[];
@@ -193,12 +202,18 @@ function TreasureMapAnim({hand,onConfirm,confirmCountdownSec=null,waitingLabel=n
   },[btnVisible,confirmCountdownSec,onConfirm]);
   // Layout: cards in a grid, max 4 per row
   const COLS=Math.min(N,4),ROWS=Math.ceil(N/COLS);
-  const CW=72,CH=Math.round(CW*CARD_FACE_RATIO),GAP=8;
+  // 以 1280x720 下的原始尺寸为基准随视口放大/缩小，并保留标题、按钮和安全边距。
+  const viewportScale=Math.min(viewport.width/1280,viewport.height/720);
+  const desiredCW=72*viewportScale;
+  const maxCWByWidth=(viewport.width-48-(COLS-1)*12)/COLS;
+  const maxCWByHeight=(viewport.height*0.56-(ROWS-1)*12)/(ROWS*CARD_FACE_RATIO);
+  const CW=Math.round(Math.max(52,Math.min(144,desiredCW,maxCWByWidth,maxCWByHeight)));
+  const CH=Math.round(CW*CARD_FACE_RATIO),GAP=Math.round(Math.max(6,Math.min(12,CW/9)));
   const gridW=COLS*(CW+GAP)-GAP, gridH=ROWS*(CH+GAP)-GAP;
   // Scatter origins (8 corners/edges)
   const origins=[
-    {x:-220,y:-170},{x:220,y:-170},{x:-220,y:170},{x:220,y:170},
-    {x:0,y:-190},{x:0,y:190},{x:-200,y:0},{x:200,y:0},
+    {x:-CW*3.05,y:-CH*1.65},{x:CW*3.05,y:-CH*1.65},{x:-CW*3.05,y:CH*1.65},{x:CW*3.05,y:CH*1.65},
+    {x:0,y:-CH*1.85},{x:0,y:CH*1.85},{x:-CW*2.8,y:0},{x:CW*2.8,y:0},
   ];
   return(
     <>

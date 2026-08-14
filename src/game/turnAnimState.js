@@ -910,7 +910,14 @@ export function buildTurnStartDrawReplayQueue({
     : null;
   const stagedDrawEffectQueue = (stagedTurnStartTransaction?.queue || []).filter(step => (
     step?.type !== 'YOUR_TURN'
-    && (step?.type !== 'DRAW_CARD' || step?.inspectionSeq != null || step?.inspectionGainSeq != null)
+    // The primary turn draw is built separately above, but event-owned reveal
+    // draws (inspection and Sphinx) are distinct cards and must stay in their
+    // canonical transaction. Dropping the Sphinx reveal here previously led
+    // App to recreate it from `_animSphinxReveal`, bypassing turn ownership.
+    && (step?.type !== 'DRAW_CARD'
+      || step?.inspectionSeq != null
+      || step?.inspectionGainSeq != null
+      || step?.triggerName === '斯芬克斯')
     && step?.turnStartStage !== TURN_START_ANIMATION_STAGE.TURN_BOUNDARY
     && step?.turnStartStage !== TURN_START_ANIMATION_STAGE.TURN_START
   ));

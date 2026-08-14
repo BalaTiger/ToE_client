@@ -23,6 +23,15 @@ export function chooseAiEtherealizeRedirectTarget(players = [], candidateIndices
   return candidates[0].idx;
 }
 
+// UI and action guards share this predicate so the target highlight cannot drift
+// from the adjacent-target list produced by the rules layer.
+export function isValidEtherealizeRedirectTarget({ players = [], abilityData, targetIdx } = {}) {
+  return Array.isArray(abilityData?.adjacentTargets)
+    && abilityData.adjacentTargets.includes(targetIdx)
+    && !!players?.[targetIdx]
+    && !players[targetIdx].isDead;
+}
+
 // ══════════════════════════════════════════════════════════════
 //  伤害前置事件（虚化）决策链
 //  伤害结算前先逐个询问虚化候选是否转移；转移目标若也有虚化则递归询问；

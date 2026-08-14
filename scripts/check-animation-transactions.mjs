@@ -21,6 +21,7 @@ function collectSourceFiles(directory) {
 
 const actual = new Map();
 const legacyStatTargetProducers = [];
+const legacySphinxHintProducers = [];
 for (const file of collectSourceFiles(sourceRoot)) {
   const relative = path.relative(sourceRoot, file).split(path.sep).join('/');
   const source = fs.readFileSync(file, 'utf8');
@@ -31,6 +32,11 @@ for (const file of collectSourceFiles(sourceRoot)) {
       if (/\btargetStats\s*:/.test(line)) {
         legacyStatTargetProducers.push(`${relative}:${index + 1}`);
       }
+      if (/\b_animSphinxReveal\s*:/.test(line)
+        && relative !== 'game/visualEvents.js'
+        && relative !== 'game/aiTurnPresentation.js') {
+        legacySphinxHintProducers.push(`${relative}:${index + 1}`);
+      }
     });
   }
 }
@@ -38,6 +44,9 @@ for (const file of collectSourceFiles(sourceRoot)) {
 const issues = [];
 legacyStatTargetProducers.forEach(location => {
   issues.push(`${location}: production targetStats payloads are forbidden; emit statEvents instead`);
+});
+legacySphinxHintProducers.forEach(location => {
+  issues.push(`${location}: production _animSphinxReveal hints are forbidden; emit sphinxResult visualEvents instead`);
 });
 for (const [file, count] of actual) {
   const allowed = legacyBaseline.get(file);

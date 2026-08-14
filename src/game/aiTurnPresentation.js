@@ -551,6 +551,15 @@ export function buildAiHuntWaitPresentation({
   };
 }
 
+// `_animSphinxReveal` is a legacy presentation hint and can describe the
+// already-resolved next turn when aiStep returns two turn segments at once.
+// Action playback must therefore be selected from the scoped rule event, not
+// from that top-level hint.  The event is also the canonical reveal payload.
+export function getAiActionSphinxResultEvent(state) {
+  return scopeAiActionReplayMetadata(state).visualEvents
+    .find(event => event?.type === 'sphinxResult') || null;
+}
+
 // aiStep can return the completed action and the already-resolved next turn in
 // one state. Build action-only replay endpoints here so a state-diff fallback
 // cannot append the following turn's stat or inspection effects.

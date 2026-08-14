@@ -13,7 +13,7 @@ import { startNextTurn } from '../turnEngine';
 import { ROLE_CULTIST } from '../coreUtils';
 import { applyFx } from '../effectEngine';
 import { applyStatEventsToDisplayStats, primeDisplayStatsForStatQueue } from '../statEvents';
-import { buildFreshStatVisualEvents, createGodPowerBlockedEvent, createGodStatusChangedEvent } from '../visualEvents';
+import { buildFreshStatVisualEvents, createGodPowerBlockedEvent, createGodStatusChangedEvent, createSphinxResultEvent } from '../visualEvents';
 import { buildAnimQueue } from '../animQueueCore';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
@@ -171,6 +171,48 @@ describe('buildPlayerTurnDrawQueue', () => {
 });
 
 describe('buildTurnStartDrawReplayQueue', () => {
+  it('下家斯芬克斯结果只在其摸牌阶段由规则事件编译一次', () => {
+    const players = [player('艾伦'), player('贝拉')];
+    const sphinx = makeZoneCard('D4', 0, { id: 'bella-sphinx', name: '斯芬克斯', type: 'sphinxGuess' });
+    const reward = makeGodCard('CTH', { id: 'sphinx-reward' });
+    const turnLog = '── 贝拉 的回合开始 ──';
+    const drawLog = '贝拉 摸到 [D4] 斯芬克斯，选择收入手牌并触发效果';
+    const guessLog = '贝拉 猜测牌堆顶的牌不是区域牌';
+    const resultLog = '猜测正确！贝拉 收入了 拉莱耶之主';
+    const event = {
+      ...createSphinxResultEvent({
+        actorIdx: 1,
+        card: reward,
+        guessCorrect: true,
+        msgs: [guessLog, resultLog],
+      }),
+      turnStartStage: 'draw',
+      turnStartStageOrder: 2,
+    };
+    const oldGs = makeGs({ players, currentTurn: 0, log: ['艾伦 结束回合'] });
+    const newGs = makeGs({
+      players: [players[0], { ...players[1], hand: [sphinx, reward] }],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _drawnCard: sphinx,
+      _aiDrawnCard: sphinx,
+      _playersBeforeThisDraw: players,
+      _turnStartLogs: [turnLog],
+      _drawLogs: [drawLog, guessLog, resultLog],
+      _statLogs: [],
+      _visualEvents: [event],
+      log: ['艾伦 结束回合', turnLog, drawLog, guessLog, resultLog],
+    });
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const sphinxSteps = replay.queue.filter(step => step.visualEventId === event.id);
+    const mainDrawIndex = replay.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === sphinx.id);
+
+    expect(sphinxSteps.map(step => step.type)).toEqual(['DRAW_CARD', 'CARD_TRANSFER']);
+    expect(replay.queue.indexOf(sphinxSteps[0])).toBeGreaterThan(mainDrawIndex);
+    expect(sphinxSteps.every(step => step.turnStartStage === 'draw')).toBe(true);
+  });
+
   it('上家回合结束的火把护罩只在下家回合悬浮文字前播放一次', () => {
     const players = [
       makePlayer({ name: '你' }),

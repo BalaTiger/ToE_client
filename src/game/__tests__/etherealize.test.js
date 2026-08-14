@@ -5,11 +5,26 @@ import {
   chooseAiEtherealizeRedirectTarget,
   collectEtherealizeChainSettleLosses,
   getNextEtherealizeChainDecision,
+  isValidEtherealizeRedirectTarget,
   shouldAiUseEtherealize,
 } from '../etherealize';
 import { makePlayer } from './factory';
 
 describe('etherealize AI helpers', () => {
+  it('UI 只将规则层给出的存活相邻角色标记为可转移目标', () => {
+    const players = [
+      makePlayer({ name: '发动者' }),
+      makePlayer({ name: '相邻角色' }),
+      makePlayer({ name: '非相邻角色' }),
+      makePlayer({ name: '死亡的相邻角色', isDead: true }),
+    ];
+    const abilityData = { adjacentTargets: [1, 3] };
+
+    expect(isValidEtherealizeRedirectTarget({ players, abilityData, targetIdx: 1 })).toBe(true);
+    expect(isValidEtherealizeRedirectTarget({ players, abilityData, targetIdx: 2 })).toBe(false);
+    expect(isValidEtherealizeRedirectTarget({ players, abilityData, targetIdx: 3 })).toBe(false);
+  });
+
   it('AI 有虚化且即将损失 HP/SAN 时会选择消耗', () => {
     const player = makePlayer({ hp: 8, san: 8, etherealizeStacks: 2 });
 

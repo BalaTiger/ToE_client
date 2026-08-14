@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildAiHuntWaitPresentation,
@@ -9,6 +11,7 @@ import {
   collectExplicitAiTurnLogs,
   finalizeAiPresentationState,
   getAiActionQueueCoverage,
+  getAiActionSphinxResultEvent,
   insertAiRestDiceBeforeSettlement,
   scopeAiActionReplayMetadata,
   scopeAiPreHuntReplayMetadata,
@@ -26,6 +29,43 @@ import {
 import { getVisualEventIdsCoveredByAnimationQueue } from '../visualEventTransactionCompiler';
 
 describe('AI turn presentation helpers', () => {
+  it('does not treat the next turn staged sphinx result as the current AI action', () => {
+    const card = { id: 'cthulhu', name: '拉莱耶之主', isGod: true };
+    const stagedEvent = {
+      id: 'bella-sphinx',
+      type: 'sphinxResult',
+      actorIdx: 2,
+      card,
+      guessCorrect: true,
+      turnStartStage: 'draw',
+    };
+    const state = {
+      _animSphinxReveal: { card, actorIdx: 2, guessCorrect: true },
+      _visualEvents: [
+        { id: 'allen-corridor', type: 'endlessCorridorReplay' },
+        stagedEvent,
+      ],
+    };
+
+    expect(getAiActionSphinxResultEvent(state)).toBeNull();
+    expect(scopeAiActionReplayMetadata(state).visualEvents).toEqual([state._visualEvents[0]]);
+  });
+
+  it('uses the canonical action event for a sphinx resolved during the current AI action', () => {
+    const event = {
+      id: 'allen-sphinx',
+      type: 'sphinxResult',
+      actorIdx: 1,
+      card: { id: 'zone', name: '遭遇塌方' },
+      guessCorrect: false,
+    };
+
+    expect(getAiActionSphinxResultEvent({
+      _animSphinxReveal: { actorIdx: 99 },
+      _visualEvents: [event],
+    })).toBe(event);
+  });
+
   it('keeps a complete hand-worship transaction before the rest dice and heal', () => {
     const worshipMsg = '贝拉 从手牌信仰 烛九阴，获得衔烛照幽(Lv.1)（骷髅头不计）';
     const restMsg = '贝拉 选择【休息】，掷骰 3、3，取高值回复 3HP，翻面休息中';
@@ -157,6 +197,33 @@ describe('AI turn presentation helpers', () => {
       coveredEventIds: [],
       uncoveredEventIds: [],
     });
+  });
+
+  it('allows draw discard after a previously presented god-status event was consumed', () => {
+    const state = {
+      _visualEvents: [
+        { id: 'prior-ai-faith', type: 'godStatusChanged', scope: 'action' },
+      ],
+    };
+    const queue = [{ type: 'DISCARD', card: { id: 'snake-trap', name: '群蛇陷阱' } }];
+
+    expect(getAiActionQueueCoverage(
+      state,
+      queue,
+      steps => getVisualEventIdsCoveredByAnimationQueue(state, steps),
+      new Set(['prior-ai-faith']),
+    )).toEqual({
+      eventIds: [],
+      coveredEventIds: [],
+      uncoveredEventIds: [],
+    });
+
+    const appPath = fileURLToPath(new URL('../../App.jsx', import.meta.url));
+    const source = fs.readFileSync(appPath, 'utf8');
+    const start = source.indexOf('function handleDrawDiscard()');
+    const end = source.indexOf('function handleDrawDiscardFromModal()', start);
+    const handler = source.slice(start, end);
+    expect(handler).toContain("strictActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current,'draw discard')");
   });
 
   it('counts a suppressed stat wrapper as covered by its represented owner event', () => {

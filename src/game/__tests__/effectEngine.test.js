@@ -14,6 +14,8 @@ import { resetIds, makePlayer, makeStandardPlayers, makeZoneCard, makeGodCard, m
 import { createTsathogguaSlimeCard } from '../../constants/card';
 import { VISUAL_EVENT } from '../visualEvents';
 import { buildGraveDigTransferStep } from '../animQueueHelpers';
+import { buildAnimQueue } from '../animQueueCore';
+import { assertCompleteThrowStoneTransactions } from '../animationStepSchema';
 import { makeProliferatingZState } from '../proliferatingZ';
 import { addDamageLink, getAllDamageLinks } from '../damageLinks';
 
@@ -211,6 +213,66 @@ describe('applyHpDamageWithLink', () => {
     expect(p0.isDead).toBe(true);
     expect(p1.isDead).toBe(true);
     expect(L.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('投掷石块玩家收入回放', () => {
+  it('目标进入黏液决策并选择不牺牲时，仍保留骰子、转盘和飞石', () => {
+    const slime = createTsathogguaSlimeCard();
+    const players = [
+      makePlayer({ name: '你', hp: 10 }),
+      makePlayer({ name: '艾伦', hp: 10, san: 8, hand: [slime] }),
+    ];
+    const oldGs = makeGs({ players: copyPlayers(players), currentTurn: 0, phase: 'DRAW_REVEAL', log: [] });
+    const random = vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0.7) // 骰子 5
+      .mockReturnValueOnce(0); // 唯一合法目标：艾伦
+
+    const result = applyFx(
+      { type: 'throwStone', name: '投掷石块' },
+      0,
+      null,
+      copyPlayers(players),
+      [],
+      [],
+      oldGs,
+    );
+    random.mockRestore();
+    const resolutionLog = ['你 收入了 [B2] 投掷石块', ...result.msgs];
+    const decisionGs = {
+      ...oldGs,
+      players: result.P,
+      deck: result.D,
+      discard: result.Disc,
+      log: resolutionLog,
+      phase: 'TSG_SLIME_BALANCE',
+      ...result.statePatch,
+    };
+    const queue = buildAnimQueue(oldGs, decisionGs);
+
+    expect(decisionGs.abilityData).toMatchObject({ type: 'tsgSlimeBalance', targetIdx: 1 });
+    expect(queue.map(step => step.type)).toEqual(expect.arrayContaining([
+      'DICE_ROLL',
+      'RANDOM_TARGET',
+      'THROW_STONE',
+      'HP_DAMAGE',
+    ]));
+    const stoneSteps = queue.filter(step => step.visualEventId === result.statePatch._visualEvents.at(-1).id);
+    expect(stoneSteps.slice(0, 3).map(step => step.type)).toEqual([
+      'DICE_ROLL',
+      'RANDOM_TARGET',
+      'THROW_STONE',
+    ]);
+    expect(() => assertCompleteThrowStoneTransactions(queue)).not.toThrow();
+
+    const declinedGs = {
+      ...decisionGs,
+      phase: 'ACTION',
+      abilityData: {},
+      log: [...decisionGs.log, '【撒托古亚的赐福黏液】艾伦 没有牺牲黏液'],
+    };
+    expect(declinedGs.players[1].hand).toContain(slime);
+    expect(queue.find(step => step.type === 'RANDOM_TARGET')).toBeTruthy();
   });
 });
 
@@ -762,6 +824,42 @@ describe('applyFx', () => {
     expect(res.msgs).toContain('【白化生物】测试角色1 没有带"火"字的手牌，失去 2 HP 和 2 SAN');
   });
 
+  it('albinoCreature: AI 亮出火牌后先转盘选定目标，再播放 HP/SAN 扣减', () => {
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', hand: [{ id: 'fire', name: '活火山' }] }),
+      makePlayer({ name: '贝拉' }),
+    ];
+    const gs = makeGs({ players: copyPlayers(players), currentTurn: 1, _randomTargetSeq: 0, _statEventSeq: 0 });
+    const randomSpy = vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0) // 选择唯一火牌
+      .mockReturnValueOnce(0.8); // 目标贝拉
+
+    const res = applyFx({ type: 'albinoCreature', name: '白化生物' }, 1, null, copyPlayers(players), [], [], gs, false, [], true);
+    randomSpy.mockRestore();
+    const newGs = {
+      ...gs,
+      players: res.P,
+      log: res.msgs,
+      ...res.statePatch,
+    };
+    const queue = buildAnimQueue(gs, newGs);
+    const types = queue.map(step => step.type);
+    const randomIdx = types.indexOf('RANDOM_TARGET');
+    const hpIdx = types.indexOf('HP_DAMAGE');
+    const sanIdx = types.indexOf('SAN_DAMAGE');
+
+    expect(res.statePatch._randomTargetEvents[0]).toMatchObject({
+      sourceIdx: 1,
+      targetIdx: 2,
+      label: '白化生物',
+      phaseOrder: 0,
+    });
+    expect(randomIdx).toBeGreaterThanOrEqual(0);
+    expect(hpIdx).toBeGreaterThan(randomIdx);
+    expect(sanIdx).toBeGreaterThan(randomIdx);
+  });
+
   it('decipherStoneCarving: 玩家收入后进入解读阶段', () => {
     const players = makeStandardPlayers(3);
     const deck = [makeZoneCard('A1', 0), makeZoneCard('B2', 0), makeGodCard('NYA')];
@@ -1154,7 +1252,10 @@ describe('applyFx', () => {
     expect(res.Disc).toHaveLength(1);
     expect(res.msgs).toContain('猜测错误！测试角色1 即将失去 3 HP');
     expect(res.msgs).toContain('测试角色1（寻宝者）掷出 5 点，成功规避负面效果！');
-    expect(res.statePatch._animSphinxReveal).toMatchObject({ guessCorrect: false, actorIdx: 0 });
+    expect(res.statePatch._animSphinxReveal).toBeUndefined();
+    expect(res.statePatch._visualEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'sphinxResult', guessCorrect: false, actorIdx: 0 }),
+    ]));
     randomSpy.mockRestore();
   });
 

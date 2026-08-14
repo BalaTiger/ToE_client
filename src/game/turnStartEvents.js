@@ -52,6 +52,10 @@ export function getTurnStartEvents(players = [], actorIndex = 0, { pendingLinkHe
   return REGISTRY
     .map((entry, registrationOrder) => ({ ...entry, registrationOrder }))
     .filter(entry => entry.shouldRegister(context))
-    .map(({ shouldRegister: _shouldRegister, ...event }) => event)
+    .map(entry => {
+      const event = { ...entry };
+      delete event.shouldRegister;
+      return event;
+    })
     .sort((a, b) => a.priority - b.priority || a.registrationOrder - b.registrationOrder);
 }
