@@ -17,7 +17,8 @@ const BASE_CANCELABLE_PHASES = new Set([
   'SWAP_SELECT_TARGET',
   'SWAP_STEAL_CARD',
   'SWAP_SELECT_TARGET_CARD',
-  'SWAP_GIVE_CARD',
+  // SWAP_GIVE_CARD 故意不在此列：暗抽已经发生、玩家已看到抽到的手牌，
+  // 若此时还能取消，等于无代价窥探目标手牌（可反复发动掉包再取消）。
   'HUNT_SELECT_TARGET',
   'ZONE_SWAP_SELECT_TARGET',
   'PEEK_HAND_SELECT_TARGET',

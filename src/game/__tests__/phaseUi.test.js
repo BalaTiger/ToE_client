@@ -23,6 +23,12 @@ describe('phaseUi', () => {
     expect(isCancelablePhase('HUNT_CONFIRM', { isMultiplayer: true, localCurrentTurn: true })).toBe(true);
   });
 
+  it('掉包在暗抽前可取消，暗抽后（归还阶段）不可取消，避免无代价窥探手牌', () => {
+    expect(isCancelablePhase('SWAP_SELECT_TARGET', {})).toBe(true);
+    expect(isCancelablePhase('SWAP_STEAL_CARD', {})).toBe(true);
+    expect(isCancelablePhase('SWAP_GIVE_CARD', {})).toBe(false);
+  });
+
   it('行动阶段可显示结束回合按钮', () => {
     const ui = buildPhaseUiState({
       gs: baseGs,

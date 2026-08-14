@@ -1819,7 +1819,10 @@ export default function Game(){
   },[showTutorial,tutorialStep,tutorialStepDef]);
 
   const finishTutorialActionWithState=useCallback((nextGs,nextStep,queue=[],transactionMeta=null)=>{
-    const resolvedTransactionMeta=transactionMeta||authoritativeResolvedQueueMeta(nextGs,queue);
+    // 过滤掉已消费的视觉事件：上一段 AI 行动（如 AI↔AI 掉包、信仰改信）产生的
+    // swapCards / godStatusChanged 等事件仍留在 gs._visualEvents 中，但已被那段动画消费。
+    // 用 authoritativeResolvedQueueMeta 会传 null，把这些旧事件误判为“队列漏播”而抛错。
+    const resolvedTransactionMeta=transactionMeta||strictActionQueueMeta(nextGs,queue,consumedVisualEventIdsRef.current,'resolved action queue');
     if(!nextStep){
       if(queue?.length)triggerAnimQueue(queue,nextGs,undefined,resolvedTransactionMeta);
       else setGs(nextGs);
@@ -2890,7 +2893,12 @@ export default function Game(){
         const postActionInjections=[];
         if(sphinxReveal){
           animInjections.push(...bindVisualEventToSteps(
-            buildSphinxRevealAnimSteps(sphinxReveal,actionMsgs),
+            buildSphinxResultQueue({
+              card:sphinxReveal?.card,
+              actorIdx:sphinxReveal?.actorIdx,
+              guessCorrect:!!sphinxReveal?.guessCorrect,
+              msgs:actionMsgs,
+            }),
             sphinxVisualEvent
           ));
         }
@@ -8030,7 +8038,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const taken=P[swapTi].hand.splice(cardIdx,1)[0];
     if(!taken)return;
     P[0].hand.push(taken);
-    setGs({...gs,players:P,phase:'SWAP_GIVE_CARD',drawReveal:null,
+    // 暗抽/抽取一旦发生，掉包技能即视为已消耗：此时玩家已经看到了抽到的手牌，
+    // 若还允许取消并继续反复发动，就能无代价窥探目标手牌。故在这里落 skillUsed。
+    setGs({...gs,players:P,phase:'SWAP_GIVE_CARD',drawReveal:null,skillUsed:true,
       abilityData:{...gs.abilityData,takenCard:taken},
       log:[...gs.log,targetWasRevealed
         ?`你选择抽取了 ${cardLogText(taken,{alwaysShowName:true})}`

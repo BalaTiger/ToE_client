@@ -58,7 +58,10 @@ export function SwapBlindDrawOverlay({
                   '--start-x': startX, '--start-y': startY, '--start-rz': startRz,
                   '--pile-x': pileX, '--pile-y': pileY,
                   '--final-x': finalX, '--final-y': '0px',
-                  '--final-ry': isFaceUp ? '0deg' : '180deg',
+                  // 内层 face/back 两个 div 已经各自通过 rotateY 决定正反面朝向（face-up: face 0°/back 180°；
+                  // face-down: face 180°/back 0°），外层洗牌动画落到 0° 即可，否则会与内层叠加成双重旋转，
+                  // 让本该背面朝上的牌露出正面。
+                  '--final-ry': '0deg',
                   '--pile-ry': isFaceUp ? '0deg' : `${(Math.sin(seed) * 20).toFixed(1)}deg`,
                   animation: 'swapBlindShuffleIn 1.2s cubic-bezier(0.25,0,0.35,1) both',
                   animationDelay: `${(idx * 0.09).toFixed(2)}s`,
