@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attachApophisNightTimeline, buildApophisTargetQueueForState, mergeApophisTargetQueue } from '../apophisAnimQueue';
+import { attachApophisNightTimeline, buildApophisTargetQueueForState, mergeApophisTargetQueue, normalizeApophisQueueForPlayback } from '../apophisAnimQueue';
 
 describe('apophisAnimQueue', () => {
   it('无日食变化的动画队列全程保持最终权威进度', () => {
@@ -58,6 +58,38 @@ describe('apophisAnimQueue', () => {
     expect(buildApophisTargetQueueForState(oldState, nextState, buildQueue)).toEqual([
       { type: 'DICE_ROLL', diceMode: 'apophisNight', _apophisTargetSeq: 2 },
       { type: 'SKILL_HUNT', _apophisTargetSeq: 2, targetIdx: 2 },
+    ]);
+  });
+
+  it('跨入下一回合后从 action-owned 视觉事件恢复目标事务', () => {
+    const actionEvent = {
+      id: 'apophis-action-2',
+      type: 'apophisTarget',
+      scope: 'action',
+      legacySeq: 2,
+      statSeq: 7,
+      order: 0,
+    };
+    const crossedTurnState = {
+      _apophisTargetSeq: 2,
+      _apophisTargetEvent: null,
+      _visualEvents: [actionEvent],
+    };
+    const built = () => [
+      { type: 'DICE_ROLL', diceMode: 'apophisNight', _apophisTargetSeq: 2, visualEventId: actionEvent.id },
+      { type: 'SAN_DAMAGE', statEvents: [{ seq: 7 }] },
+    ];
+
+    expect(mergeApophisTargetQueue(
+      [{ type: 'SKILL_BEWITCH' }, { type: 'CARD_TRANSFER' }, ...built()],
+      oldState,
+      crossedTurnState,
+      built,
+    ).map(step => step.type)).toEqual([
+      'DICE_ROLL',
+      'SAN_DAMAGE',
+      'SKILL_BEWITCH',
+      'CARD_TRANSFER',
     ]);
   });
 
@@ -333,7 +365,7 @@ describe('apophisAnimQueue', () => {
       dice,
       { type: 'SKILL_HUNT', targetIdx: 2 },
       { type: 'HUNT_REVEAL_CARD' },
-      { type: 'ANIM_LOG', msgs: ['无匹配手牌，放弃追捕 艾伦', '卡洛斯 尝试了所有目标，仍无法追捕'] },
+      { type: 'ANIM_LOG', msgs: ['放弃追捕 艾伦'] },
     ];
     const nextState = { _apophisTargetSeq: 7, _apophisTargetEvent: latestEvent };
     const buildQueue = () => [{ ...dice }];
@@ -342,6 +374,45 @@ describe('apophisAnimQueue', () => {
 
     expect(merged).toBe(queue);
     expect(merged.filter(step => step.type === 'DICE_ROLL' && step._apophisTargetSeq === 7)).toHaveLength(1);
+  });
+
+  it('已分段的 AI 总队列在播放边界保持掉包、无尽通道和斯芬克斯的既定顺序', () => {
+    const targetEvent = {
+      seq: 6,
+      actorIdx: 1,
+      actorName: '黛安娜',
+      targetIdx: 0,
+      roll: 6,
+      changed: false,
+      label: '选择【掉包】目标',
+      log: '【黑夜】黛安娜 选择【掉包】目标掷出 6，目标未偏移',
+    };
+    const queue = [
+      { type: 'DICE_ROLL', diceMode: 'apophisNight', _apophisTargetSeq: 6 },
+      { type: 'SKILL_SWAP', targetIdx: 0 },
+      { type: 'CARD_TRANSFER', fromPid: 1, toPid: 0 },
+      { type: 'ENDLESS_CORRIDOR_TUNNEL' },
+      { type: 'DRAW_CARD', card: { key: 'D4', name: '斯芬克斯' } },
+      { type: 'SPHINX_RESULT' },
+    ];
+    const nextState = { _apophisTargetSeq: 6, _apophisTargetEvent: targetEvent };
+
+    const normalized = normalizeApophisQueueForPlayback(
+      queue,
+      { _apophisTargetSeq: 5 },
+      nextState,
+      { preserveQueueOrder: true },
+    );
+
+    expect(normalized).toBe(queue);
+    expect(normalized.map(step => step.type)).toEqual([
+      'DICE_ROLL',
+      'SKILL_SWAP',
+      'CARD_TRANSFER',
+      'ENDLESS_CORRIDOR_TUNNEL',
+      'DRAW_CARD',
+      'SPHINX_RESULT',
+    ]);
   });
 });
 

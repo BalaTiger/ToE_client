@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { dedupeInferredDiscardTransfers } from '../game/animQueueHelpers';
 import { markConsumedVisualEvents } from '../game/visualEvents';
-import { attachApophisNightTimeline, mergeApophisTargetQueue } from '../game/apophisAnimQueue';
+import { attachApophisNightTimeline, normalizeApophisQueueForPlayback } from '../game/apophisAnimQueue';
 import {
   applyStatAnimationImpact,
   primeDisplayStatsForStatQueue,
@@ -94,7 +94,6 @@ export function useAnimationQueue({
   function commitDeathPresentation(animStep) {
     if (
       animStep?.type !== 'DEATH'
-      || animStep.deferDeathCommit
       || !Array.isArray(animStep.hitIndices)
       || !animStep.hitIndices.length
     ) return;
@@ -383,6 +382,7 @@ export function useAnimationQueue({
       nextState: nextGs,
       callback,
       eventIds = [],
+      preserveQueueOrder = false,
     } = transaction;
     if (Array.isArray(queue) && queue.some(s => s?.type === 'EARTHQUAKE')) {
       try { console.log('[EQ-DEBUG] playAnimationTransaction received queue =', queue.map(s => s.type), '| hasCallback =', !!callback, '| nextGs.phase =', nextGs?.phase); } catch { /* noop */ }
@@ -391,7 +391,7 @@ export function useAnimationQueue({
     // Normalize at the common playback boundary so the black-night roll is
     // always shown before the selected action's own visual effects.
     const apophisOrderedQueue = nextGs
-      ? mergeApophisTargetQueue(queue, gs, nextGs)
+      ? normalizeApophisQueueForPlayback(queue, gs, nextGs, { preserveQueueOrder })
       : queue;
     const dedupedQueue = dedupeInferredDiscardTransfers(apophisOrderedQueue);
     assertCompleteThrowStoneTransactions(dedupedQueue);

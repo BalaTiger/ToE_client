@@ -224,6 +224,8 @@ Rule resolution owns canonical `_visualEvents`; React entry points must not recr
 
 `useAnimationQueue` is the confirmation boundary. A visual event ID enters the client-local consumed set only after its queue reaches commit; multiplayer receive/broadcast paths must not mark an event consumed merely because it was sent, received, or queued. Legacy `_xxxEvents` promotion and `buildAnimQueue(oldGs, newGs)` remain temporary compatibility inputs while the remaining rule producers are migrated, but canonical transaction steps take precedence whenever both forms are present.
 
+A synchronously resolved slime extra draw of a god card attaches its encounter outcome to the draw event instead of being reconstructed downstream: the rule layer records `godEncounter` (stat/inspection seqs + structured `discardedGod`) on `_turnDrawEvents`, `startNextTurn` emits a canonical `GOD_GIFT_DISCARD` event and writes the owned ids back to `godEncounter.visualEventIds`, and `turnAnimState.js` interleaves those steps strictly by event id. See `docs/slime-god-encounter-anim-ownership.md`.
+
 Chained AI hunts are one ordered action transaction. `aiTurn.js` assigns the
 action events a shared `transactionId` and increasing `order`; presentation
 compiles the pre-hunt portion only through `_playersBeforeSkillAction`, then

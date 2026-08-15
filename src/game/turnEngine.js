@@ -1,4 +1,4 @@
-﻿import {
+import {
   shuffle,
   clamp,
   copyPlayers,
@@ -37,6 +37,8 @@ import {
   createInspectionVisualEvent,
   createGodPowerBlockedEvent,
   createGodStatusChangedEvent,
+  createGodGiftDiscardEvent,
+  createStatEventsEvent,
   createTsathogguaSlimeGrantEvent,
   createTsathogguaSlimePopEvent,
 } from './visualEvents';
@@ -345,7 +347,7 @@ function splitGodEncounterLogs(effectMsgs = []) {
 }
 
 export function abandonGodFollower(targetIndex, startIndex, P, D, Disc, L, inspectionMeta, logMsg = `被邪神抛弃，${formatSanLoss(1)}`) {
-  const settlementMsg = `${P[targetIndex].name} ${logMsg}`;
+  let settlementMsg = `${P[targetIndex].name} ${logMsg}`;
   const playersBeforeFaithExit = copyPlayers(P);
   const discardBeforeFaithExit = [...Disc];
   const discardedGodCards = [...(P[targetIndex]?.godZone || [])];
@@ -359,6 +361,10 @@ export function abandonGodFollower(targetIndex, startIndex, P, D, Disc, L, inspe
   L = [...L, settlementMsg];
   const processed = applySanLossToPlayerWithInspection(targetIndex, 1, startIndex, P, D, Disc, L, inspectionMeta);
   P = processed.P; D = processed.D; Disc = processed.Disc; L = processed.L; inspectionMeta = processed.inspectionMeta;
+  if (inspectionMeta?.abilityData?.type === 'etherealizeRedirect') {
+    settlementMsg = settlementMsg.replace('失去', '即将失去');
+    L[L.length - 1] = settlementMsg;
+  }
   return {
     P,
     D,
@@ -444,7 +450,7 @@ export function createFaithSettlementGodStatusEvent({
 }
 
 export function convertGodFollower(targetIndex, startIndex, P, D, Disc, L, inspectionMeta, logMsg, nextGodCard = null) {
-  const convertLog = logMsg || `${P[targetIndex].name} 改信新神，${formatSanLoss(1)}`;
+  let convertLog = logMsg || `${P[targetIndex].name} 改信新神，${formatSanLoss(1)}`;
   L = [...L, convertLog];
   const playersBeforeFaithExit = copyPlayers(P);
   const discardBeforeFaithExit = [...Disc];
@@ -458,6 +464,10 @@ export function convertGodFollower(targetIndex, startIndex, P, D, Disc, L, inspe
   const discardAfterFaithExit = [...Disc];
   const processed = applySanLossToPlayerWithInspection(targetIndex, 1, startIndex, P, D, Disc, L, inspectionMeta);
   P = processed.P; D = processed.D; Disc = processed.Disc; L = processed.L; inspectionMeta = processed.inspectionMeta;
+  if (inspectionMeta?.abilityData?.type === 'etherealizeRedirect') {
+    convertLog = convertLog.replace('失去', '即将失去');
+    L[L.length - 1] = convertLog;
+  }
   const playersBeforeFaithEstablished = copyPlayers(P);
   if (nextGodCard?.godKey) {
     P[targetIndex].godName = nextGodCard.godKey;
@@ -501,6 +511,9 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
   const godStatusPlayersBefore = copyPlayers(P);
   let previousFaithExit = null;
   let faithEstablished = null;
+  // 放弃馈赠时把邪神牌结构化地带回给调用方，供规则层记录到摸牌事件上；
+  // 不要再靠扫描「放弃了邪神的馈赠」日志文本来推断弃牌结果。
+  let discardedGod = null;
   const abandonedFaithExits = [];
   let presentAfterInspectionSeq = null;
   let inspectionMeta = makeInspectionMeta(gs);
@@ -548,7 +561,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     }
   };
   if (forcedConvert && P[ci].godName && P[ci].godName !== godKey) {
-    const convertMsg = `${P[ci].name} 被迫改信新神，${formatSanLoss(1)}`;
+    let convertMsg = `${P[ci].name} 被迫改信新神，${formatSanLoss(1)}`;
     msgs.push(convertMsg);
     const playersBeforeFaithExit = copyPlayers(P);
     const discardBeforeFaithExit = [...Disc];
@@ -575,6 +588,11 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     const inspectionBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
     const processed = applySanLossToPlayerWithInspection(ci, 1, gs?.currentTurn ?? ci, P, D, Disc, inspectionBaseLog, inspectionMeta);
     P = processed.P; D = processed.D; Disc = processed.Disc; inspectionMeta = processed.inspectionMeta;
+    if (inspectionMeta?.abilityData?.type === 'etherealizeRedirect') {
+      convertMsg = convertMsg.replace('失去', '即将失去');
+      msgs[msgs.length - 1] = convertMsg;
+      previousFaithExit.msgs = [convertMsg];
+    }
     previousFaithExit.statEventSeqAfter = inspectionMeta?._statEventSeq || statEventSeqBefore;
     previousFaithExit.inspectionSeqAfter = inspectionMeta?._inspectionSeq || inspectionSeqBefore;
     previousFaithExit.playersAfterResolution = copyPlayers(P);
@@ -640,6 +658,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
   } else {
     Disc.push({ ...godCard }); msgs.push(`${P[ci].name} 放弃了邪神的馈赠`);
+    discardedGod = godCard;
   }
   let zBase = { ...gs, ...statePatch };
   const godStatusEvent = createFaithSettlementGodStatusEvent({
@@ -664,7 +683,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     ...(zBase.proliferatingZQueue ? { proliferatingZQueue: zBase.proliferatingZQueue } : {}),
     ...(visualEvents.length ? { _visualEvents: visualEvents } : {}),
   };
-  return { P, D, Disc, msgs, inspectionMeta, statePatch };
+  return { P, D, Disc, msgs, inspectionMeta, statePatch, discardedGod };
 }
 
 export function aiHandleGodCard(ci, godCard, P, D, Disc, L, gs, skipEffectMsg = false, forcedConvert = false, opts = {}) {
@@ -684,7 +703,7 @@ export function aiHandleGodCard(ci, godCard, P, D, Disc, L, gs, skipEffectMsg = 
   const gres = resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConvert, opts);
   P = gres.P; D = gres.D; Disc = gres.Disc;
   L.push(...gres.msgs);
-  return { P, D, Disc, L, inspectionMeta: gres.inspectionMeta, statePatch: gres.statePatch };
+  return { P, D, Disc, L, inspectionMeta: gres.inspectionMeta, statePatch: gres.statePatch, discardedGod: gres.discardedGod || null };
 }
 
 function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
@@ -764,6 +783,10 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
     if (isAI) {
       let L2 = [];
       let inspectionMeta = makeInspectionMeta(gs);
+      // 同步结算路径（如黏液额外摸到邪神牌）需要把这次遭遇产出的属性/检定事件
+      // 归属到本次摸牌，供回合开始动画把它们排在邪神翻牌之后、下一张摸牌之前。
+      const encounterStatSeqBefore = inspectionMeta?._statEventSeq || 0;
+      const encounterInspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
       let effectMsg = revealedCultist
         ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（${formatGodEncounterProgress(encounterProgress)}）免疫SAN损耗`
         : `${whoName} 遭遇邪神 ${drawnCard.name}！（${formatGodEncounterProgress(encounterProgress)}）${formatSanLoss(cost)}`;
@@ -864,9 +887,24 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
           },
         };
       }
-      const gr = aiHandleGodCard(ci, drawnCard, P, D, Disc, L2, gs, true);
+      // 同步结算路径（如黏液额外摸到邪神牌）必须把「遭遇邪神」已经产生的
+      // SAN 扣减与 SAN 检定元数据一并带入邪神抉择，否则 resolveGodEncounterForAI
+      // 会用空 inspectionMeta 覆盖掉它们，导致后续动画队列丢掉 SAN 扣减与检定翻牌。
+      const gr = aiHandleGodCard(ci, drawnCard, P, D, Disc, L2, { ...gs, ...inspectionMeta }, true);
       P = gr.P; D = gr.D; Disc = gr.Disc;
-      return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: L2, kept: true, statePatch: { ...inspectionMeta, ...(gr.inspectionMeta || {}), ...(gr.statePatch || {}) } };
+      const mergedMeta = { ...inspectionMeta, ...(gr.inspectionMeta || {}), ...(gr.statePatch || {}) };
+      // 本次遭遇产出的属性/检定事件序号 + 结构化的弃牌结果，供 startNextTurn
+      // 把对应的视觉事件归属到这次摸牌（godEncounter.visualEventIds）。
+      const godEncounter = {
+        statSeqs: (mergedMeta._statEvents || [])
+          .map(event => event?.seq)
+          .filter(seq => Number.isFinite(seq) && seq > encounterStatSeqBefore),
+        inspectionSeqs: (mergedMeta._inspectionEvents || [])
+          .map(event => event?.seq)
+          .filter(seq => Number.isFinite(seq) && seq > encounterInspectionSeqBefore),
+        discardedGod: gr.discardedGod || null,
+      };
+      return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: L2, kept: true, statePatch: mergedMeta, godEncounter };
     } else {
       let effectMsg = revealedCultist
         ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（${formatGodEncounterProgress(encounterProgress)}）免疫SAN损耗`
@@ -1476,7 +1514,12 @@ export function continueTurnStartAfterDamageReaction(state) {
 }
 
 function resolveNextTurnState(gs, opts = {}) {
-  const { isDebugMode = false, allAi = false, isAiControlled = null } = opts;
+  const {
+    isDebugMode = false,
+    allAi = false,
+    isAiControlled = null,
+    skipCurrentEndTurnStage = false,
+  } = opts;
   const shouldUseAiController = (playerIndex) => (
     allAi || (typeof isAiControlled === 'function' && !!isAiControlled(playerIndex, gs))
   );
@@ -1520,7 +1563,11 @@ function resolveNextTurnState(gs, opts = {}) {
   let inspectionMeta = makeInspectionMeta(gs);
   const turnDir = gs.turnDirection || 1;
   const tsgSlimeGrantEvents = [...inheritedTsgSlimeGrantEvents];
-  const tsgSlimeGrant = skipEndTurnTsgSlimeGrant ? null : grantTsathogguaSlimeAtEndTurn(P, gs.currentTurn, L, visualEvents);
+  // A recursive hop over a face-down player represents a skipped turn, which
+  // has no end-turn stage. Do not manufacture its passive end-turn events.
+  const tsgSlimeGrant = (skipEndTurnTsgSlimeGrant || skipCurrentEndTurnStage)
+    ? null
+    : grantTsathogguaSlimeAtEndTurn(P, gs.currentTurn, L, visualEvents);
   if (tsgSlimeGrant) {
     tsgSlimeGrantEvents.push(tsgSlimeGrant);
     const grantVisualEvent = createTsathogguaSlimeGrantEvent(tsgSlimeGrant);
@@ -1601,7 +1648,10 @@ function resolveNextTurnState(gs, opts = {}) {
       afterInspectionSeq: inspectionMeta?._inspectionSeq || skippedTurnBeforeInspectionSeq,
       cthReplay: skippedTurnCthReplay,
     };
-    return resolveNextTurnState({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents.slice(inheritedGodPowerBlockedEventCount), _carrySkippedTurnReplays: [...inheritedSkippedTurnReplays, skippedTurnReplay] }, opts);
+    return resolveNextTurnState(
+      { ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents.slice(inheritedGodPowerBlockedEventCount), _carrySkippedTurnReplays: [...inheritedSkippedTurnReplays, skippedTurnReplay] },
+      { ...opts, skipCurrentEndTurnStage: true },
+    );
   }
   // 翻面跳过回合没有回合开始/摸牌/行动/结束阶段，因此所有“下一回合”
   // 状态都只在角色真正进入正常回合时结转或到期。
@@ -2044,7 +2094,19 @@ function resolveNextTurnState(gs, opts = {}) {
         const msg = `【无定形体】${P[next].name} 额外摸到 ${drawCardDecisionText(rSlime.drawnCard)}`;
         L.push(msg);
         drawLogs.push(msg);
-        drawEvent = { card: rSlime.drawnCard, drawerIdx: next, drawerName: P[next].name, sourcePile: rSlime.sourcePile, msgs: [msg], fromTsathogguaSlime: true, slimePop };
+        // 黏液额外摸到邪神牌时是同步结算的（不进入 AI_GOD_CHOICE）。规则层把遭遇
+        // 产出的属性/检定事件序号与弃牌结果记录在摸牌事件上，startNextTurn 据此
+        // 把对应视觉事件归属到这次摸牌，动画队列才能按序补播 SAN/检定/弃牌。
+        drawEvent = {
+          card: rSlime.drawnCard,
+          drawerIdx: next,
+          drawerName: P[next].name,
+          sourcePile: rSlime.sourcePile,
+          msgs: [msg],
+          fromTsathogguaSlime: true,
+          slimePop,
+          ...(rSlime.godEncounter ? { godEncounter: rSlime.godEncounter } : {}),
+        };
         turnDrawEvents.push(drawEvent);
       }
       if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
@@ -2207,8 +2269,21 @@ export function startNextTurn(gs, opts = {}) {
       turnStartStageOrder: isPreDrawEvent ? 1 : 2,
     };
   });
+  // 同步结算路径（如 AI 黏液额外摸到邪神牌）里 handleInspection 已经把一个
+  // 检定视觉事件写进了 _visualEvents，这里再按 _inspectionEvents 重建会造成重复翻牌。
+  // 以 legacySeq 去重，保证每次 SAN 检定只产生一个检定动画。
+  const engineInspectionSeqs = new Set(
+    engineEvents
+      .filter(event => event?.type === VISUAL_EVENT.INSPECTION)
+      .map(event => event?.legacySeq)
+      .filter(seq => seq != null)
+  );
   const stagedInspectionEvents = (Array.isArray(nextState?._inspectionEvents) ? nextState._inspectionEvents : [])
-    .filter(event => Number.isFinite(event?.seq) && event.seq > previousInspectionSeq)
+    .filter(event => (
+      Number.isFinite(event?.seq) &&
+      event.seq > previousInspectionSeq &&
+      !engineInspectionSeqs.has(event.seq)
+    ))
     .map(createInspectionVisualEvent)
     .filter(Boolean)
     .map(event => ({
@@ -2216,11 +2291,84 @@ export function startNextTurn(gs, opts = {}) {
       turnStartStage: 'draw',
       turnStartStageOrder: 3,
     }));
-  const visualEvents = [
+  let visualEvents = [
     ...buildTurnStartDrawVisualEvents(nextState),
     ...freshStatVisualEvents,
     ...stagedEngineEvents,
     ...stagedInspectionEvents,
   ];
-  return visualEvents.length ? { ...nextState, _visualEvents: visualEvents } : nextState;
+  // 黏液额外摸到邪神牌的同步遭遇：把属于该次遭遇的视觉事件显式归属到对应的
+  // 摸牌事件（godEncounter.visualEventIds）。归属信息来自规则层结算时记录的
+  // 序号，呈现层据此把遭遇块（SAN 扣减 → 检定 → 弃牌）插到该邪神牌翻牌之后、
+  // 下一张摸牌之前，不再按步骤类型/队列位置启发式猜测。
+  const godEncounterDraws = (Array.isArray(nextState?._turnDrawEvents) ? nextState._turnDrawEvents : [])
+    .map((event, index) => ({ event, index }))
+    .filter(({ event }) => event?.godEncounter);
+  let finalState = nextState;
+  if (godEncounterDraws.length) {
+    const ownedIdsByDraw = new Map();
+    godEncounterDraws.forEach(({ event: drawEvent, index }) => {
+      const encounter = drawEvent.godEncounter;
+      const ownedIds = [];
+      const ownedStatSeqs = new Set((encounter.statSeqs || []).filter(seq => seq != null));
+      if (ownedStatSeqs.size) {
+        // 遭遇的 SAN 扣减可能与本次摸牌阶段的其它属性事件打包在同一个
+        // STAT_EVENTS 事件里；按规则层记录的序号拆出独立事件，才能整体随遭遇块移动。
+        const splitEvents = [];
+        visualEvents.forEach(visualEvent => {
+          if (visualEvent?.type !== VISUAL_EVENT.STAT_EVENTS || visualEvent?.turnStartStage !== 'draw'
+            || !Array.isArray(visualEvent.statEvents)) {
+            splitEvents.push(visualEvent);
+            return;
+          }
+          const owned = visualEvent.statEvents.filter(statEvent => ownedStatSeqs.has(statEvent?.seq));
+          if (!owned.length) {
+            splitEvents.push(visualEvent);
+            return;
+          }
+          const rest = visualEvent.statEvents.filter(statEvent => !ownedStatSeqs.has(statEvent?.seq));
+          const hints = new Set(owned.map(statEvent => statEvent?.logHint).filter(Boolean));
+          const ownedMsgs = (visualEvent.msgs || []).filter(msg => hints.has(msg));
+          const restMsgs = (visualEvent.msgs || []).filter(msg => !ownedMsgs.includes(msg));
+          if (rest.length) {
+            splitEvents.push(createStatEventsEvent({ statEvents: rest, msgs: restMsgs, turnStartStage: 'draw' }));
+          }
+          const ownedEvent = createStatEventsEvent({ statEvents: owned, msgs: ownedMsgs, turnStartStage: 'draw' });
+          if (ownedEvent) {
+            splitEvents.push(ownedEvent);
+            ownedIds.push(ownedEvent.id);
+          }
+        });
+        visualEvents = splitEvents;
+      }
+      const ownedInspectionSeqs = new Set((encounter.inspectionSeqs || []).filter(seq => seq != null));
+      visualEvents.forEach(visualEvent => {
+        if (visualEvent?.type === VISUAL_EVENT.INSPECTION
+          && ownedInspectionSeqs.has(visualEvent?.legacySeq) && visualEvent?.id) {
+          ownedIds.push(visualEvent.id);
+        }
+      });
+      if (encounter.discardedGod) {
+        const discardEvent = createGodGiftDiscardEvent({
+          card: drawEvent.card,
+          drawerIdx: drawEvent.drawerIdx ?? nextState.currentTurn ?? 0,
+          drawerName: drawEvent.drawerName,
+        });
+        if (discardEvent) {
+          visualEvents = [...visualEvents, discardEvent];
+          ownedIds.push(discardEvent.id);
+        }
+      }
+      ownedIdsByDraw.set(index, ownedIds);
+    });
+    finalState = {
+      ...nextState,
+      _turnDrawEvents: nextState._turnDrawEvents.map((drawEvent, index) => (
+        ownedIdsByDraw.has(index)
+          ? { ...drawEvent, godEncounter: { ...drawEvent.godEncounter, visualEventIds: ownedIdsByDraw.get(index) } }
+          : drawEvent
+      )),
+    };
+  }
+  return visualEvents.length ? { ...finalState, _visualEvents: visualEvents } : finalState;
 }

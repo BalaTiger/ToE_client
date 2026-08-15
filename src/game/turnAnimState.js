@@ -1,7 +1,7 @@
 import { copyPlayers, removeCardsFromDiscard } from './coreUtils';
 import { isAiSeat, localDisplayName } from './rotateState';
 import { bindAnimLogChunks } from './animLogs';
-import { buildAnimQueue, buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
+import { buildAnimQueue, buildDeathAnimSteps, buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
 import { buildInspectionEventFlow, cardTransferStep, prepareWorshipHighlight, statePatchStep } from './animQueueHelpers';
 import {
   getVisualEvents,
@@ -715,6 +715,12 @@ export function buildTurnStartDrawReplayQueue({
         targetPid: event.drawerIdx ?? drawerPid,
         sourcePile: event.sourcePile || newGs?.drawReveal?.sourcePile || newGs?._drawSourcePile || (newGs?.geomagneticReversalActive ? 'discard' : 'deck'),
         msgs: withoutDeckReshuffleLog(event.msgs),
+        // 同步结算的邪神遭遇（黏液额外摸牌）把其视觉事件 id 记在
+        // godEncounter.visualEventIds 上；给翻牌步骤标记来源摸牌事件下标，
+        // 后面才能把遭遇块精确插到这张牌翻牌之后。
+        ...(Array.isArray(event.godEncounter?.visualEventIds) && event.godEncounter.visualEventIds.length
+          ? { _drawEventIdx: eventIdx }
+          : {}),
       };
       const steps = [];
       if (eventIdx === 0 && !hasEventBoundReshuffle) {
@@ -1107,6 +1113,27 @@ export function buildTurnStartDrawReplayQueue({
   const drawEffectQ = hasEventBoundSlimePop
     ? drawEffectQRaw.filter(step => step?.type !== 'TSG_SLIME_POP')
     : drawEffectQRaw;
+  // The staged visual-event transaction emits HP/SAN steps but never derives the
+  // guillotine/death broadcast for a normal lethal hit (petrify death is the one
+  // exception, and it already carries PETRIFY_DEATH + DEATH). Append the derived
+  // death steps here so an AI's turn-start draw that kills the local player still
+  // plays the death animation before the terminal settlement screen.
+  const turnDrawPetrifyDeathTargets = new Set(
+    (Array.isArray(newGs?._statEvents) ? newGs._statEvents : [])
+      .filter(event => event?.type === 'PETRIFY_DEATH' && event?.target != null)
+      .map(event => Number(event.target))
+  );
+  const drawEffectQWithDeath = hasAuthoritativeTurnStartEvents
+    ? [
+      ...drawEffectQ,
+      ...buildDeathAnimSteps({
+        oldPlayers: beforeDrawPlayers,
+        newPlayers: newGs?.players || [],
+        newMsgs: newGs?.log || [],
+        petrifyDeathTargets: turnDrawPetrifyDeathTargets,
+      }),
+    ]
+    : drawEffectQ;
   // Re-assert the pre-worship player snapshot when the god card starts its
   // reveal. Some turn-start paths commit the resolved AI snapshot after the
   // banner, which used to let the god-power badge appear during the flip. The
@@ -1129,8 +1156,8 @@ export function buildTurnStartDrawReplayQueue({
   // extra draw followed by the fixed draw). A forced card's bespoke effect
   // belongs immediately after that card's reveal, not after every later reveal.
   const immediateEarthquakeQ = [];
-  const deferredDrawEffectQ = [];
-  drawEffectQ.forEach(step => {
+  let deferredDrawEffectQ = [];
+  drawEffectQWithDeath.forEach(step => {
     if (step?.type === 'EARTHQUAKE') immediateEarthquakeQ.push(step);
     else deferredDrawEffectQ.push(step);
   });
@@ -1141,7 +1168,38 @@ export function buildTurnStartDrawReplayQueue({
       })
     : drawCardStepsWithWorshipBaseline;
   deferredDrawEffectQ.push(...immediateEarthquakeQ);
-  const hasDrawEffectVisualStep = drawEffectQ.some(step => step?.type !== 'STATE_PATCH');
+  // 黏液额外摸到邪神牌时，遭遇邪神（SAN 扣减 + SAN 检定 + 放弃/信仰）是同步结算的。
+  // 规则层已把遭遇产出的视觉事件 id 记录在摸牌事件的 godEncounter.visualEventIds 上
+  // （含 GOD_GIFT_DISCARD 弃牌事件），这里按 id 精确归队，插到该邪神牌翻牌之后、
+  // 下一张摸牌之前，而不是推迟到所有翻牌之后。
+  const ownedEventIdsByDrawIdx = new Map();
+  turnDrawEvents.forEach((event, eventIdx) => {
+    const ids = event?.godEncounter?.visualEventIds;
+    if (Array.isArray(ids) && ids.length) ownedEventIdsByDrawIdx.set(eventIdx, new Set(ids));
+  });
+  let drawOwnedEffectGroups = null;
+  if (ownedEventIdsByDrawIdx.size) {
+    drawOwnedEffectGroups = new Map();
+    deferredDrawEffectQ = deferredDrawEffectQ.filter(step => {
+      const eventId = step?.visualEventId;
+      if (!eventId) return true;
+      for (const [eventIdx, ids] of ownedEventIdsByDrawIdx) {
+        if (!ids.has(eventId)) continue;
+        if (!drawOwnedEffectGroups.has(eventIdx)) drawOwnedEffectGroups.set(eventIdx, []);
+        drawOwnedEffectGroups.get(eventIdx).push(step);
+        return false;
+      }
+      return true;
+    });
+  }
+  const orderedDrawCardStepsWithGod = drawOwnedEffectGroups
+    ? orderedDrawCardSteps.flatMap(step => (
+      step?.type === 'DRAW_CARD' && step?._drawEventIdx != null && drawOwnedEffectGroups.has(step._drawEventIdx)
+        ? [step, ...drawOwnedEffectGroups.get(step._drawEventIdx)]
+        : [step]
+    ))
+    : orderedDrawCardSteps;
+  const hasDrawEffectVisualStep = drawEffectQWithDeath.some(step => step?.type !== 'STATE_PATCH');
   const drawEffectStatePatch = hasDrawEffectVisualStep
     ? statePatchStep({ players: newGs?.players, discard: newGs?.discard })
     : null;
@@ -1156,7 +1214,7 @@ export function buildTurnStartDrawReplayQueue({
     ...(turnStartStatePatch ? [turnStartStatePatch] : []),
   ], TURN_START_ANIMATION_STAGE.TURN_START);
   const drawStageQueue = markTurnStartAnimationStage([
-    ...orderedDrawCardSteps,
+    ...orderedDrawCardStepsWithGod,
     ...(discardDrawnStep ? [discardDrawnStep] : []),
     ...(discardRestoreStep ? [discardRestoreStep] : []),
     ...(treasureDodgeDiceStep ? [treasureDodgeDiceStep] : []),
@@ -1180,7 +1238,7 @@ export function buildTurnStartDrawReplayQueue({
     beforeDrawPlayers,
     turnStartStep,
     drawCardStep,
-    drawEffectQ,
+    drawEffectQ: drawEffectQWithDeath,
     stageQueues,
     queue,
     startAnim,

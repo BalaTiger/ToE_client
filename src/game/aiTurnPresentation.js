@@ -98,8 +98,23 @@ export function collectExplicitAiTurnLogs(state, queue) {
 // aiStep may return the completed current action together with the already
 // resolved next turn. Keep the latter's staged events out of the current
 // action replay; they are presented by the queued turn-start transaction.
-export function scopeAiActionReplayMetadata(state) {
+export function scopeAiActionReplayMetadata(state, {
+  excludedVisualEventIds = null,
+  excludedStatEventSeqs = null,
+} = {}) {
   const visualEvents = Array.isArray(state?._visualEvents) ? state._visualEvents : [];
+  const excludedVisualIds = new Set(excludedVisualEventIds instanceof Set
+    ? [...excludedVisualEventIds]
+    : (Array.isArray(excludedVisualEventIds) ? excludedVisualEventIds : []));
+  const excludedStatSeqSet = new Set(excludedStatEventSeqs instanceof Set
+    ? [...excludedStatEventSeqs]
+    : (Array.isArray(excludedStatEventSeqs) ? excludedStatEventSeqs : []));
+  const explicitlyExcludedEvents = visualEvents.filter(event => event?.id && excludedVisualIds.has(event.id));
+  explicitlyExcludedEvents.forEach(event => {
+    (Array.isArray(event?.statEvents) ? event.statEvents : []).forEach(statEvent => {
+      if (statEvent?.seq != null) excludedStatSeqSet.add(statEvent.seq);
+    });
+  });
   const turnStartStatSeqs = new Set(
     visualEvents
       .filter(event => !!event?.turnStartStage)
@@ -107,9 +122,15 @@ export function scopeAiActionReplayMetadata(state) {
       .map(event => event?.seq)
       .filter(seq => seq != null)
   );
-  const actionVisualEvents = visualEvents.filter(event => !event?.turnStartStage);
+  const actionVisualEvents = visualEvents.filter(event => (
+    !event?.turnStartStage
+    && (!event?.id || !excludedVisualIds.has(event.id))
+  ));
   const actionStatEvents = (Array.isArray(state?._statEvents) ? state._statEvents : [])
-    .filter(event => event?.seq == null || !turnStartStatSeqs.has(event.seq));
+    .filter(event => event?.seq == null || (
+      !turnStartStatSeqs.has(event.seq)
+      && !excludedStatSeqSet.has(event.seq)
+    ));
   const actionStatEventSeq = actionStatEvents.reduce(
     (max, event) => Number.isFinite(event?.seq) ? Math.max(max, event.seq) : max,
     0

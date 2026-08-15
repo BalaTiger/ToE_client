@@ -1098,8 +1098,8 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         statePatch = { ...statePatch, ...appendPublicCardGainTriggers({ ...gs, ...statePatch }, P, ci, chosen.card) };
         if (chosen.card.isGod) {
           msgs.push(`【解读石刻】${actor.name} 因选择邪神牌失去 1 SAN`);
-          P[ci].san = clamp(P[ci].san - 1);
-          if (P[ci].san > 0 && P[ci].san <= 6) pendingInspectionTargets.push(ci);
+          hurtSAN(ci, 1);
+          settlePendingDamages('eager');
         }
         // 剩余牌：AI 简单策略——非收入牌一半放牌堆顶，一半放牌堆底
         const mid = Math.ceil(remaining.length / 2);

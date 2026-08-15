@@ -6,7 +6,7 @@ import {
   EXPANSIONS,
   INSPECTION_DECK,
 } from '../constants/card';
-import { shuffle, ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
+import { isWinHand, shuffle, ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
 import { resolveBalancePatches } from './balancePatches';
 
 export const EXPANSION_RANDOM_KEY = 'random_battle_expansion';
@@ -224,6 +224,25 @@ export { AI_NAMES, RINFO };
 
 export const INITIAL_HAND_SIZE = 4;
 
+export function getInitialTreasureWin(players) {
+  const winnerIndices = (players || [])
+    .map((player, index) => ({ player, index }))
+    .filter(({ player }) => !player?.isDead && player?.role === ROLE_TREASURE && isWinHand(player.hand))
+    .map(({ index }) => index);
+  if (!winnerIndices.length) return null;
+
+  const winnerNames = winnerIndices.map(index => players[index].name);
+  const reason = winnerIndices.length > 1
+    ? `${winnerNames.join(' 与 ')} 的初始手牌均集齐全部编号，寻宝者共同获胜！`
+    : `${winnerNames[0]} 的初始手牌已集齐全部编号，寻宝者获胜！`;
+  return {
+    winner: ROLE_TREASURE,
+    reason,
+    winnerIdx: winnerIndices[0],
+    ...(winnerIndices[1] != null ? { winnerIdx2: winnerIndices[1] } : {}),
+  };
+}
+
 const zhCount = (count) => ({
   1: '一',
   2: '两',
@@ -374,5 +393,17 @@ export function initGame(
     players, deck, discard: [], inspectionDeck, inspectionDiscard: [], currentTurn: -1, phase: 'DRAW_REVEAL', drawReveal: null, selectedCard: null, abilityData: {}, log: [`游戏开始。每人获得${zhCount(INITIAL_HAND_SIZE)}张初始手牌。`], gameOver: null, skillUsed: false, restUsed: false, multiplyUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner: null, geomagneticReversalActive: false, apophisNight: null, expansionKey: expansionPlan.expansionKey, deckExpansionKey: expansionPlan.deckExpansionKey, temporaryStarsCallReplacement, debugFixedRoleCounts, balancePatches: resolveBalancePatches(options.balancePatches), _turnKey: 0, _isMP: !!playerNames, turn: 0, turnDirection: 1, sealLooseningCount: 0, houndsOfTindalosActive: false, houndsOfTindalosTarget: null, houndsOfTindalosElapsed: 0, debugForceCard: targetCard, debugForceCardTarget
   };
   base.debugForceCardKeep = playerNames ? 'auto' : debugForceCardKeep;
+  const initialTreasureWin = getInitialTreasureWin(players);
+  if (initialTreasureWin) {
+    for (const winnerIdx of [initialTreasureWin.winnerIdx, initialTreasureWin.winnerIdx2]) {
+      if (winnerIdx != null) players[winnerIdx].roleRevealed = true;
+    }
+    return {
+      ...base,
+      players,
+      log: [...base.log, initialTreasureWin.reason],
+      gameOver: initialTreasureWin,
+    };
+  }
   return startNextTurn(base, options.turnOptions || {});
 }

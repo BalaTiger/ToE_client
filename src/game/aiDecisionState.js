@@ -1,5 +1,6 @@
 import { copyPlayers, makeInspectionMeta } from './coreUtils';
 import { applyInspectionForSanLoss } from './effectEngine';
+import { deriveEffectDecisionState } from './effectStatePatch';
 import { checkWin, resolveGodEncounterForAI } from './turnEngine';
 
 /**
@@ -63,7 +64,13 @@ export function resolveAiGodChoiceTransition(gs) {
   deck = result.D;
   discard = result.Disc;
   log.push(...(result.msgs || []));
-  const hasSlimeDecision = result.inspectionMeta?.abilityData?.type === 'tsgSlimeBalance';
+  const decisionState = deriveEffectDecisionState({
+    ...(result.inspectionMeta || {}),
+    ...(result.statePatch || {}),
+  }, {
+    fallbackPhase: 'AI_TURN',
+    turnOwner: actorIdx,
+  });
   const abandonedGodGift = (result.msgs || [])
     .some(message => typeof message === 'string' && message.includes('放弃了邪神的馈赠'));
   const win = checkWin(players, gs._isMP);
@@ -83,10 +90,8 @@ export function resolveAiGodChoiceTransition(gs) {
       selectedCard: null,
       ...(result.inspectionMeta || {}),
       ...(result.statePatch || {}),
-      phase: hasSlimeDecision ? 'TSG_SLIME_BALANCE' : 'AI_TURN',
-      abilityData: hasSlimeDecision
-        ? { ...result.inspectionMeta.abilityData, _turnOwner: actorIdx }
-        : {},
+      phase: decisionState.phase,
+      abilityData: decisionState.abilityData,
       _pendingAiGodChoice: undefined,
       ...(abandonedGodGift ? { _discardedDrawnCard: true } : {}),
       ...(win ? { gameOver: win } : {}),

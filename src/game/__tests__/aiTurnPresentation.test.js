@@ -66,6 +66,34 @@ describe('AI turn presentation helpers', () => {
     })).toBe(event);
   });
 
+  it('excludes a corridor-owned sphinx result and its stat settlement from the action segment', () => {
+    const sphinxDamage = {
+      type: 'HP_LOSS',
+      target: 1,
+      seq: 9,
+      reason: '斯芬克斯',
+    };
+    const actionSwap = { id: 'diana-swap', type: 'swapCards' };
+    const corridorSphinx = {
+      id: 'diana-corridor-sphinx',
+      type: 'sphinxResult',
+      statEvents: [sphinxDamage],
+    };
+    const state = {
+      _visualEvents: [actionSwap, corridorSphinx],
+      _statEvents: [sphinxDamage],
+      _statEventSeq: 9,
+    };
+
+    expect(scopeAiActionReplayMetadata(state, {
+      excludedVisualEventIds: new Set([corridorSphinx.id]),
+    })).toEqual({
+      visualEvents: [actionSwap],
+      statEvents: [],
+      statEventSeq: 0,
+    });
+  });
+
   it('keeps a complete hand-worship transaction before the rest dice and heal', () => {
     const worshipMsg = '贝拉 从手牌信仰 烛九阴，获得衔烛照幽(Lv.1)（骷髅头不计）';
     const restMsg = '贝拉 选择【休息】，掷骰 3、3，取高值回复 3HP，翻面休息中';
@@ -224,6 +252,39 @@ describe('AI turn presentation helpers', () => {
     const end = source.indexOf('function handleDrawDiscardFromModal()', start);
     const handler = source.slice(start, end);
     expect(handler).toContain("strictActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current,'draw discard')");
+  });
+
+  it('lets a CTH rest draw continue past an already-played instant zone effect without hiding fresh omissions', () => {
+    const undergroundSpring = {
+      id: 'cardEffect:undergroundSpring:rest-draw:1',
+      type: 'cardEffect',
+      scope: 'effect',
+      effectKey: 'undergroundSpring',
+    };
+    const state = { _visualEvents: [undergroundSpring] };
+    const nextDrawQueue = [{ type: 'DRAW_CARD', card: { id: 'next-card' }, targetPid: 0 }];
+    const getCoveredIds = steps => getVisualEventIdsCoveredByAnimationQueue(state, steps);
+
+    expect(getAiActionQueueCoverage(
+      state,
+      nextDrawQueue,
+      getCoveredIds,
+      new Set([undergroundSpring.id]),
+    ).uncoveredEventIds).toEqual([]);
+    expect(getAiActionQueueCoverage(
+      state,
+      nextDrawQueue,
+      getCoveredIds,
+      new Set(),
+    ).uncoveredEventIds).toEqual([undergroundSpring.id]);
+
+    const appPath = fileURLToPath(new URL('../../App.jsx', import.meta.url));
+    const source = fs.readFileSync(appPath, 'utf8');
+    const start = source.indexOf('function _cthContinueRestDraws(');
+    const end = source.indexOf('function hasPendingEndTurnReplay(', start);
+    const handler = source.slice(start, end);
+    expect(handler).toContain('consumedVisualEventIdsRef.current');
+    expect(handler).not.toContain('authoritativeResolvedQueueMeta(');
   });
 
   it('counts a suppressed stat wrapper as covered by its represented owner event', () => {
@@ -949,8 +1010,8 @@ describe('AI turn presentation helpers', () => {
         afterPlayers: afterSecondHunt,
         afterResultDiscard: [cards[1], cards[2]],
         beforeLog: [worshipMsg],
-        afterLog: [worshipMsg, '黛安娜（追猎者）对 艾伦 【追捕】，亮出 [D3]', '无匹配手牌，放弃追捕 艾伦'],
-        msgs: ['黛安娜（追猎者）对 艾伦 【追捕】，亮出 [D3]', '无匹配手牌，放弃追捕 艾伦'],
+        afterLog: [worshipMsg, '黛安娜（追猎者）对 艾伦 【追捕】，亮出 [D3]', '放弃追捕 艾伦'],
+        msgs: ['黛安娜（追猎者）对 艾伦 【追捕】，亮出 [D3]', '放弃追捕 艾伦'],
       },
     ];
     const godEvent = createGodStatusChangedEvent({

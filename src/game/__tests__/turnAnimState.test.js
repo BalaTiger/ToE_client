@@ -1120,6 +1120,45 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(hpDamage).toMatchObject({ hitIndices: [1, 2, 3] });
   });
 
+  it('权威回合开始事务中，AI 摸到亡者军团击杀本地玩家时补播断头台与死亡广播', () => {
+    const legion = makeZoneCard('A2', 2); // 亡者军团 adjDamageHP val 4
+    const gs = makeGs({
+      players: [
+        makePlayer({ name: '你', hp: 4, role: '追猎者' }),
+        makePlayer({ name: '黛安娜', hp: 10, role: '追猎者' }),
+      ],
+      deck: [legion],
+      currentTurn: 0,
+      phase: 'AI_TURN',
+      log: ['旧日志'],
+      debugForceCardKeepPending: 'keep',
+      debugForceCardKeepTarget: 1,
+    });
+
+    const nextGs = startNextTurn(gs, { isDebugMode: true });
+
+    expect(nextGs.gameOver).toMatchObject({ winner: 'LOSE' });
+    expect(nextGs.players[0].isDead).toBe(true);
+    // startNextTurn emits the staged turn-start transaction; the replay must
+    // derive the death broadcast even though the staged compiler only emits
+    // the HP/SAN steps.
+    expect((nextGs._visualEvents || []).some(event => !!event?.turnStartStage)).toBe(true);
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs: gs, newGs: nextGs });
+    const types = replay.queue.map(step => step.type);
+    const hpIdx = types.indexOf('HP_DAMAGE');
+    const guillotineIdx = types.indexOf('GUILLOTINE');
+    const deathIdx = types.indexOf('DEATH');
+
+    expect(hpIdx).toBeGreaterThan(-1);
+    expect(guillotineIdx).toBeGreaterThan(hpIdx);
+    expect(deathIdx).toBeGreaterThan(guillotineIdx);
+    const guillotine = replay.queue[guillotineIdx];
+    expect(guillotine).toMatchObject({ hitIndices: [0] });
+    expect(guillotine.msgs).toEqual(['☠ 你（追猎者）倒下了！']);
+    expect(replay.queue[deathIdx]).toMatchObject({ hitIndices: [0] });
+  });
+
   it('幽闭恐惧先结算 SAN，再逐张结算自残并同步 HP 数值', () => {
     const card = { id: 'claustrophobia', name: '幽闭恐惧', key: 'B1', type: 'adjDamageSAN', isZone: true };
     const oldPlayers = [

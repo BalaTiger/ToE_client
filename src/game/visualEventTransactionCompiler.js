@@ -13,6 +13,7 @@ import {
   buildHandLimitDiscardStepsFromVisualEvents,
   buildStatStepsFromVisualEvents,
   buildTimedOutDrawDiscardStepFromVisualEvents,
+  buildGodGiftDiscardStepFromVisualEvents,
   ensureVisualEventState,
   getVisualEvents,
   getVisualEventIdsFromState,
@@ -85,6 +86,28 @@ function visualEventMatchesCompileScope(event, options = {}) {
   if (options.visualEventScope === 'action') return !event?.turnStartStage;
   if (options.visualEventScope === 'turnStart') return !!event?.turnStartStage;
   return true;
+}
+
+function orderEventsWithinActionTransactions(events = []) {
+  const result = [...events];
+  const groups = new Map();
+  result.forEach((event, index) => {
+    if (!event?.transactionId || event?.turnStartStage || event?.order == null) return;
+    if (!groups.has(event.transactionId)) groups.set(event.transactionId, []);
+    groups.get(event.transactionId).push({ event, index });
+  });
+  groups.forEach(items => {
+    if (items.length < 2) return;
+    const indices = items.map(item => item.index).sort((a, b) => a - b);
+    const ordered = [...items].sort((left, right) => (
+      Number(left.event.order) - Number(right.event.order)
+      || left.index - right.index
+    ));
+    indices.forEach((index, position) => {
+      result[index] = ordered[position].event;
+    });
+  });
+  return result;
 }
 
 function sameCard(left, right) {
@@ -294,6 +317,8 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
       return Array.isArray(event.queue) ? event.queue.filter(Boolean) : [];
     case VISUAL_EVENT.TIMED_OUT_DRAW_DISCARD:
       return [buildTimedOutDrawDiscardStepFromVisualEvents(isolated)].filter(Boolean);
+    case VISUAL_EVENT.GOD_GIFT_DISCARD:
+      return [buildGodGiftDiscardStepFromVisualEvents(isolated)].filter(Boolean);
     case VISUAL_EVENT.TURN_START:
       return [buildTurnStartStepFromVisualEvents(isolated)].filter(Boolean);
     case VISUAL_EVENT.DRAW_CARD:
@@ -472,13 +497,15 @@ function interleavePhaseOrderedVisualEvents(events = []) {
 export function compileRuleVisualEventsToAnimTransaction(state, previousState = null, options = {}) {
   const previousIds = new Set(getVisualEventIdsFromState(previousState));
   const consumedIds = options.consumedEventIds;
-  const scopedEvents = (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
+  const scopedEvents = orderEventsWithinActionTransactions(
+    (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
     .filter(event => (
       event?.id &&
       !previousIds.has(event.id) &&
       !(consumedIds?.has?.(event.id)) &&
       visualEventMatchesCompileScope(event, options)
-    ));
+    )),
+  );
   const {
     events: presentationEvents,
     suppressedEventIds,

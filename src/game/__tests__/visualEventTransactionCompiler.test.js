@@ -701,4 +701,23 @@ describe('visualEventTransactionCompiler', () => {
       expect.objectContaining({ code: 'INCOMPLETE_THROW_STONE_TRANSACTION', eventId: event.id }),
     ]));
   });
+
+  it('uses transaction order instead of legacy visual-event array order', () => {
+    const first = {
+      ...createGodPowerBlockedEvent({ playerIdx: 0, playerName: '你', msgs: ['first'] }),
+      transactionId: 'action-1',
+      order: 0,
+    };
+    const second = {
+      ...createGodPowerBlockedEvent({ playerIdx: 1, playerName: '贝拉', msgs: ['second'] }),
+      transactionId: 'action-1',
+      order: 1,
+    };
+    const transaction = compileRuleVisualEventsToAnimTransaction({
+      players: [player('你'), player('贝拉')],
+      _visualEvents: [second, first],
+    });
+
+    expect(transaction.queue.map(step => step.targetPid)).toEqual([0, 1]);
+  });
 });

@@ -1872,6 +1872,36 @@ describe('turnEngine stat events', () => {
     expect(result.log.some(line => line.includes('【中毒】艾伦'))).toBe(false);
   });
 
+  it.each([
+    ['本地玩家', 0, 2, false],
+    ['AI 玩家', 1, 0, false],
+    ['联机远端玩家', 1, 0, true],
+  ])('%s 翻面跳过回合时既不消耗也不获得撒托古亚黏液', (_label, restingIdx, currentTurn, isMP) => {
+    const existingSlime = createTsathogguaSlimeCard();
+    const players = [
+      makePlayer({ name: '本地玩家' }),
+      makePlayer({ name: '远端或 AI' }),
+      makePlayer({ name: '上一位玩家' }),
+    ];
+    players[restingIdx] = makePlayer({
+      ...players[restingIdx],
+      name: restingIdx === 0 ? '本地玩家' : '远端或 AI',
+      isResting: true,
+      godName: 'TSG',
+      godLevel: 2,
+      hand: [existingSlime],
+    });
+
+    const result = startNextTurn(makeGs({ players, currentTurn, _isMP: isMP, log: [] }));
+
+    expect(result.players[restingIdx].hand).toEqual([existingSlime]);
+    expect(result.log.some(line => (
+      line.includes(result.players[restingIdx].name) &&
+      line.includes('获得2张撒托古亚的赐福黏液')
+    ))).toBe(false);
+    expect(result._tsgSlimeGrantEvents || []).toHaveLength(0);
+  });
+
   it('翻面跳过回合不消耗任何下一回合状态', () => {
     const players = [
       makePlayer({ name: '你' }),

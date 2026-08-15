@@ -227,7 +227,7 @@ describe('multiplayer remote replay executor', () => {
     expect(ctx.triggerAnimQueue).toHaveBeenCalledWith([
       animation,
       { type: 'PAUSE' },
-    ], pendingGs, undefined, { authority: 'queue' });
+    ], pendingGs, undefined, { authority: 'queue', preserveQueueOrder: true });
     expect(ctx.setAnim).not.toHaveBeenCalled();
     expect(ctx.receivedGsRef.current).toBe(true);
     expect(ctx.suppressNextBroadcastRef.current).toBe(true);
@@ -251,7 +251,7 @@ describe('multiplayer remote replay executor', () => {
       [turn, draw],
       pendingGs,
       undefined,
-      { authority: 'queue' },
+      { authority: 'queue', preserveQueueOrder: true },
     );
     expect(ctx.pendingGsRef.current).toBeNull();
     expect(ctx.animQueueRef.current).toEqual([]);
@@ -278,7 +278,7 @@ describe('multiplayer remote replay executor', () => {
       queue,
       pendingGs,
       undefined,
-      { eventIds: ['bewitch-transaction'], authority: 'queue' },
+      { eventIds: ['bewitch-transaction'], authority: 'queue', preserveQueueOrder: true },
     );
   });
 
@@ -332,7 +332,7 @@ describe('multiplayer remote replay executor', () => {
       [expect.objectContaining({ type: 'ENDLESS_CORRIDOR_TUNNEL' }), expect.objectContaining({ type: 'STATE_PATCH' })],
       expect.objectContaining({ _visualEvents: [] }),
       undefined,
-      { authority: 'queue', eventIds: [replayEvent.id] },
+      { authority: 'queue', eventIds: [replayEvent.id], preserveQueueOrder: true },
     );
     expect(ctx.consumedVisualEventIdsRef.current).not.toContain(replayEvent.id);
   });

@@ -202,12 +202,12 @@ function TreasureMapAnim({hand,onConfirm,confirmCountdownSec=null,waitingLabel=n
   },[btnVisible,confirmCountdownSec,onConfirm]);
   // Layout: cards in a grid, max 4 per row
   const COLS=Math.min(N,4),ROWS=Math.ceil(N/COLS);
-  // 以 1280x720 下的原始尺寸为基准随视口放大/缩小，并保留标题、按钮和安全边距。
+  // 以 1280x720 下 96px 卡宽为基准随视口放大/缩小；最终仍受可用宽高约束，避免小屏溢出。
   const viewportScale=Math.min(viewport.width/1280,viewport.height/720);
-  const desiredCW=72*viewportScale;
+  const desiredCW=96*viewportScale;
   const maxCWByWidth=(viewport.width-48-(COLS-1)*12)/COLS;
   const maxCWByHeight=(viewport.height*0.56-(ROWS-1)*12)/(ROWS*CARD_FACE_RATIO);
-  const CW=Math.round(Math.max(52,Math.min(144,desiredCW,maxCWByWidth,maxCWByHeight)));
+  const CW=Math.round(Math.max(52,Math.min(180,desiredCW,maxCWByWidth,maxCWByHeight)));
   const CH=Math.round(CW*CARD_FACE_RATIO),GAP=Math.round(Math.max(6,Math.min(12,CW/9)));
   const gridW=COLS*(CW+GAP)-GAP, gridH=ROWS*(CH+GAP)-GAP;
   // Scatter origins (8 corners/edges)

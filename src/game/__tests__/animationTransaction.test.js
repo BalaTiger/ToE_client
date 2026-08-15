@@ -31,6 +31,20 @@ describe('animation transaction boundary', () => {
     });
   });
 
+  it('carries the canonical-order contract to playback', () => {
+    const transaction = prepareAnimationTransaction({
+      queue: [{ type: 'DICE_ROLL' }, { type: 'ENDLESS_CORRIDOR_TUNNEL' }],
+      nextState: { phase: 'ACTION' },
+      transactionMeta: {
+        authority: ANIMATION_QUEUE_AUTHORITY.QUEUE,
+        preserveQueueOrder: true,
+      },
+      context: 'test:canonical-order',
+    });
+
+    expect(transaction.preserveQueueOrder).toBe(true);
+  });
+
   it('rejects an implicit authority before playback', () => {
     expect(() => prepareAnimationTransaction({
       queue: [],

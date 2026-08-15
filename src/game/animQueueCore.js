@@ -35,6 +35,36 @@ function getDeathAnimMsgs(newMsgs = [], players = [], deathIndices = []) {
   return matched.length ? matched : deathLines;
 }
 
+// Derived death presentation steps (guillotine + full-screen death broadcast)
+// for players that transitioned from alive to dead between two snapshots.
+// `petrifyDeathTargets` is optional and mirrors buildAnimQueue's exclusion so a
+// petrified death (which already emits PETRIFY_DEATH + DEATH) is not duplicated.
+export function buildDeathAnimSteps({
+  oldPlayers = [],
+  newPlayers = [],
+  newMsgs = [],
+  petrifyDeathTargets = null,
+} = {}) {
+  const petrifyTargets = petrifyDeathTargets instanceof Set ? petrifyDeathTargets : new Set();
+  const deathIdx = (Array.isArray(newPlayers) ? newPlayers : []).reduce((acc, player, index) => {
+    if (
+      oldPlayers[index] &&
+      !oldPlayers[index].isDead &&
+      player?.isDead &&
+      !petrifyTargets.has(index)
+    ) {
+      acc.push(index);
+    }
+    return acc;
+  }, []);
+  if (!deathIdx.length) return [];
+  const deathMsgs = getDeathAnimMsgs(newMsgs, newPlayers, deathIdx);
+  return [
+    { type: 'GUILLOTINE', msgs: deathMsgs, hitIndices: deathIdx },
+    { type: 'DEATH', msgs: deathMsgs, hitIndices: deathIdx },
+  ];
+}
+
 function mergeStatValuesIntoPlayers(basePlayers = [], statPlayers = []) {
   const base = clonePlayersForTimeline(basePlayers);
   statPlayers.forEach((statPlayer, idx) => {
@@ -83,7 +113,10 @@ function buildFaithExitTransferStep(transition = {}) {
     durationMs: 1500,
     msgs: Array.isArray(transition.msgs) ? transition.msgs : [],
     faithSettlementStep: true,
-    visualSetupTiming: 'queueStart',
+    // This transfer can be nested behind target selection, acquisition,
+    // encounter damage and the new-faith highlight. Its setup belongs to the
+    // transfer step, not to the enclosing action transaction's first frame.
+    visualSetupTiming: 'stepStart',
     visualSetupPatch: { players: beforePlayers, discard: beforeDiscard },
     visualTimeline: [
       { atMs: 0, patch: { players: beforePlayers, discard: beforeDiscard } },
@@ -226,6 +259,7 @@ function rebuildClaimedStatSteps(claimedSteps = [], transition = {}) {
       hitIndices: [...new Set(statEvents.map(event => Number(event.target)).filter(Number.isFinite))],
       msgs: index === 0 ? [...(transition.msgs || [])] : [],
       faithSettlementStep: true,
+      visualSetupTiming: 'stepStart',
     };
   });
   const beforePlayers = transition.playersAfter || transition.playersBefore || [];
@@ -1141,12 +1175,11 @@ export function buildAiHuntEventAnimQueue(evt, actorName, options = {}) {
         ];
       }
     }
-    // The full-screen death broadcast follows the guillotine immediately.
-    // Keep the panel visually alive until the final patch so loot and explicit
-    // card settlement still originate from the defeated player's panel.
-    perHuntQueue.push(...resultWithChunks.map(step => step?.type === 'DEATH'
-      ? { ...step, deferDeathCommit: true }
-      : step));
+    // The full-screen death broadcast follows the guillotine immediately and
+    // owns the panel-dim commit. The queue player snapshots still retain the
+    // defeated player's cards for the following loot/discard animations;
+    // commitDeathPresentation only clears _pendingAnimDeath across them.
+    perHuntQueue.push(...resultWithChunks);
     if (evt.afterPlayers[evt.targetIdx]?.isDead && evt.hunterIdx != null) {
       const lootMsgs = followupMsgs.filter(line => /从 .+ 的(?:公开)?手牌中/.test(line || ''));
       const discardMsgs = followupMsgs.filter(line => /衍生牌|黑山羊幼仔/.test(line || ''));

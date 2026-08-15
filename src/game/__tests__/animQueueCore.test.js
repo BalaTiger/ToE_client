@@ -195,6 +195,7 @@ describe('buildAnimQueue stat animations', () => {
         cards: [oldGod],
         sourceAnchor: 'godPower',
         effect: 'godAbandon',
+        visualSetupTiming: 'stepStart',
         faceUp: true,
       }),
     ]));
@@ -1733,7 +1734,7 @@ describe('buildAiHuntEventAnimQueue', () => {
     expect(guillotineIdx).toBeGreaterThan(-1);
     expect(guillotineIdx).toBeGreaterThan(damageIdx);
     expect(deathIdx).toBe(guillotineIdx + 1);
-    expect(queue[deathIdx]).toMatchObject({ deferDeathCommit: true });
+    expect(queue[deathIdx]).not.toHaveProperty('deferDeathCommit');
     expect(lootIdx).toBeGreaterThan(deathIdx);
     expect(leftoverDiscardIdx).toBeGreaterThan(lootIdx);
     expect(queue[leftoverDiscardIdx]).toMatchObject({

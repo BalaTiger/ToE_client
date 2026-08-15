@@ -113,6 +113,7 @@ function triggerReplayAnimationQueue(context, replayAction, queue) {
   const transactionMeta = {
     ...(eventIds.length ? { eventIds } : {}),
     authority: replayAction?.queueAuthority || ANIMATION_QUEUE_AUTHORITY.QUEUE,
+    preserveQueueOrder: true,
   };
   // Every animated remote replay action is fully planned before execution.
   // Never let the local playback boundary recompile the synchronized state.

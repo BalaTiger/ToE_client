@@ -5,6 +5,7 @@ import { cardIdentity } from './cardIdentity';
 
 export const VISUAL_EVENT = {
   TIMED_OUT_DRAW_DISCARD: 'timedOutDrawDiscard',
+  GOD_GIFT_DISCARD: 'godGiftDiscard',
   TURN_START: 'turnStart',
   DRAW_CARD: 'drawCard',
   STAT_EVENTS: 'statEvents',
@@ -92,6 +93,21 @@ export function createTimedOutDrawDiscardEvent({ card, drawerIdx = 0, drawerName
   }, 'turn');
 }
 
+// 黏液额外摸到邪神牌且同步结算为「放弃馈赠」时，由规则层发出此事件，
+// 弃牌动画步骤由事务编译器统一产出，不再由呈现层根据日志文本补造。
+export function createGodGiftDiscardEvent({ card, drawerIdx = 0, drawerName = '该玩家' } = {}) {
+  if (!card) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.GOD_GIFT_DISCARD,
+    turnStartStage: 'draw',
+    // 排在同次遭遇的 SAN 扣减（1）与 SAN 检定（3）之后。
+    turnStartStageOrder: 4,
+    card,
+    drawerIdx,
+    drawerName,
+  }, 'turn');
+}
+
 function createTurnStartEvent({ playerIdx = 0, playerName = '该玩家', msgs = [] } = {}) {
   return withVisualEventMeta({
     type: VISUAL_EVENT.TURN_START,
@@ -117,7 +133,7 @@ function createDrawCardEvent({ playerIdx = 0, playerName = '该玩家', card, ms
   }, 'turn');
 }
 
-function createStatEventsEvent({ statEvents = [], msgs = [], turnStartStage = null } = {}) {
+export function createStatEventsEvent({ statEvents = [], msgs = [], turnStartStage = null } = {}) {
   const events = Array.isArray(statEvents) ? statEvents.filter(Boolean) : [];
   if (!events.length) return null;
   const phaseGroupIds = [...new Set(events.map(event => event?.phaseGroupId).filter(Boolean))];
@@ -1067,6 +1083,19 @@ export function buildTimedOutDrawDiscardStepFromVisualEvents(state) {
     triggerName: displayName,
     targetPid: drawerIdx,
     msgs: [`(超时) ${displayName} 弃置了 ${cardLogText(event.card, { alwaysShowName: true })}`],
+  };
+}
+
+export function buildGodGiftDiscardStepFromVisualEvents(state) {
+  const event = getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.GOD_GIFT_DISCARD && ev.card);
+  if (!event) return null;
+  const drawerIdx = event.drawerIdx ?? 0;
+  const drawerName = event.drawerName || state?.players?.[drawerIdx]?.name || '???';
+  return {
+    type: 'DISCARD',
+    card: event.card,
+    triggerName: localDisplayName(drawerIdx, drawerName),
+    targetPid: drawerIdx,
   };
 }
 

@@ -45,6 +45,7 @@ export function createQueueAnimationTransaction({
   callback,
   eventIds = [],
   context = 'unknown',
+  preserveQueueOrder = false,
 } = {}) {
   if (!Array.isArray(queue)) throw new TypeError(`[animation-transaction] ${context}: queue must be an array`);
   if (!Array.isArray(eventIds)) throw new TypeError(`[animation-transaction] ${context}: eventIds must be an array`);
@@ -55,6 +56,7 @@ export function createQueueAnimationTransaction({
     callback,
     eventIds: [...new Set(eventIds.filter(Boolean))],
     context,
+    preserveQueueOrder: preserveQueueOrder === true,
   };
 }
 
@@ -97,5 +99,6 @@ export function prepareAnimationTransaction({
     callback,
     eventIds: collectPendingVisualEventIds(preparedQueue, ruleTransaction, transactionMeta),
     context,
+    preserveQueueOrder: transactionMeta?.preserveQueueOrder === true,
   });
 }

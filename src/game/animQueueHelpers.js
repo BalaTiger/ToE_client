@@ -9,6 +9,21 @@ export function statePatchStep(patch={}){
   return step;
 }
 
+// Once a hunt response has been committed, the old decision phase must stop
+// owning the prompt and hand UI. Keep that transition inside the animation
+// transaction so local playback and multiplayer replay cross the same boundary
+// after the response card/discard has visibly left its source.
+export function insertHuntResolutionStatePatch(queue=[],patch={}){
+  const steps=Array.isArray(queue)?[...queue]:[];
+  if(!steps.length)return steps;
+  const responseStepIndex=steps.findIndex(step=>step?.type==='DISCARD'||step?.type==='CARD_TRANSFER');
+  const firstVisualStepIndex=steps.findIndex(step=>step?.type!=='VISUAL_LOCK'&&step?.type!=='STATE_PATCH');
+  const anchorIndex=responseStepIndex>=0?responseStepIndex:firstVisualStepIndex;
+  const insertAt=anchorIndex>=0?anchorIndex+1:0;
+  steps.splice(insertAt,0,statePatchStep(patch));
+  return steps;
+}
+
 export function buildWorshipReplayBaselinePlayers(playersBefore=[],playersAfter=[],targetPid=0){
   const afterPlayer=playersAfter?.[targetPid];
   if(!Array.isArray(playersBefore)||!afterPlayer)return playersBefore;

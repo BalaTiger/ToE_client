@@ -11,10 +11,10 @@ import {
   orderHunterChaseTargets,
   shouldAiRest,
 } from '../ai';
-import { aiStep, discardAiHandToLimit, processAiEndTurnEvents, processAiEndTurnReplayHand } from '../aiTurn';
-import { buildOwnedAiHuntEventQueue, getAiActionQueueCoverage } from '../aiTurnPresentation';
+import { aiStep, continueAiCthRestDraws, discardAiHandToLimit, processAiEndTurnEvents, processAiEndTurnReplayHand } from '../aiTurn';
+import { buildOwnedAiHuntEventQueue, getAiActionQueueCoverage, scopeAiActionReplayMetadata } from '../aiTurnPresentation';
 import { cardLogText, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
-import { getVisualEventIdsCoveredByAnimationQueue } from '../visualEventTransactionCompiler';
+import { getAnimationQueueVisualEventIds, getVisualEventIdsCoveredByAnimationQueue } from '../visualEventTransactionCompiler';
 import { startNextTurn } from '../turnEngine';
 import { createBlackGoatYoungCard } from '../../constants/card';
 import { makeGs, makeGodCard, makePlayer, makeZoneCard } from './factory';
@@ -220,6 +220,74 @@ describe('AI visual event handoff', () => {
     expect(types.indexOf('CTH_RLYEH_DREAM')).toBeLessThan(types.indexOf('ENDLESS_CORRIDOR_TUNNEL'));
     expect(result.L.some(line => line.includes('翻面结束回合时额外摸1张牌'))).toBe(true);
     expect(result.D).toHaveLength(0);
+  });
+
+  it('AI CTH rest draw defers 穴居人战争 and preserves remaining draws', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const duelCard = makeZoneCard('D2', 0, { id: 'cth-duel' });
+    const followUpCard = makeZoneCard('B1', 0, { id: 'cth-followup' });
+    const sourceHandCard = makeZoneCard('A1', 0, { id: 'source-hand' });
+    const targetHandCard = makeZoneCard('A2', 0, { id: 'target-hand' });
+    const players = [
+      makePlayer({ name: '你', hand: [] }),
+      makePlayer({ name: '克苏鲁AI', godName: 'CTH', godLevel: 2, isResting: true, hand: [sourceHandCard] }),
+      makePlayer({ name: '目标AI', hand: [targetHandCard] }),
+    ];
+    const gs = makeGs({ players, deck: [duelCard, followUpCard], currentTurn: 1, phase: 'AI_TURN', log: [] });
+    const result = processAiEndTurnEvents(
+      gs.players.map(p => ({ ...p, hand: [...p.hand] })),
+      [...gs.deck], [], [], 1, gs,
+    );
+
+    expect(result.decision).toBeTruthy();
+    expect(result.decision.phase).toBe('CAVE_DUEL_SELECT_TARGET');
+    expect(result.decision.abilityData).toMatchObject({
+      fromRest: true,
+      cthDrawsRemaining: 1,
+      caveDuelSource: 1,
+    });
+    expect(result.decision.abilityData.caveDuelTargets).toEqual([2]);
+    // 穴居人战争已收入手牌，但第二张 CTH 摸牌尚未抽取
+    expect(result.P[1].hand.some(card => card.id === 'cth-duel')).toBe(true);
+    expect(result.P[1].hand.some(card => card.id === 'cth-followup')).toBe(false);
+    expect(result.D.map(card => card.id)).toEqual(['cth-followup']);
+  });
+
+  it('continueAiCthRestDraws resumes the remaining CTH draw before advancing', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const followUpCard = makeZoneCard('B1', 0, { id: 'cth-followup' });
+    const players = [
+      makePlayer({ name: '你', hand: [] }),
+      makePlayer({ name: '克苏鲁AI', godName: 'CTH', godLevel: 2, isResting: true, hand: [] }),
+      makePlayer({ name: '目标AI', hand: [] }),
+    ];
+    // 决策前已经播放过的回合结束回放片段，续跑不应再携带（避免重复播放）
+    const playedDreamStep = { type: 'CTH_RLYEH_DREAM', targetPid: 1 };
+    const playedCardStep = { type: 'DRAW_CARD', card: { id: 'already-played' } };
+    const gs = makeGs({
+      players,
+      deck: [followUpCard],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      abilityData: { fromRest: true, cthDrawsRemaining: 1 },
+      log: [],
+      _aiEndTurnReplayQueue: [playedDreamStep, playedCardStep],
+      _aiEndTurnReplayMsgs: ['已播放的旧日志'],
+    });
+    const result = continueAiCthRestDraws(gs, { allAi: true });
+
+    // 剩余的那张梦访拉莱耶牌由克苏鲁AI在续跑中摸走（而非留给下一回合的角色）
+    expect(result.log.some(line => (
+      typeof line === 'string' && line.includes('克苏鲁AI 摸到') && line.includes(followUpCard.key)
+    ))).toBe(true);
+    expect(result.currentTurn).not.toBe(1);
+    // 续跑只携带决策之后的回放，不重复携带已播放的片段
+    expect(result._aiEndTurnReplayQueue || []).not.toContain(playedDreamStep);
+    expect(result._aiEndTurnReplayQueue || []).not.toContain(playedCardStep);
+    expect(result._aiEndTurnReplayMsgs || []).not.toContain('已播放的旧日志');
+    // 行动动画的结束快照落在下一回合起手摸牌之前
+    expect(Array.isArray(result._playersBeforeNextDraw)).toBe(true);
+    expect(result._playersBeforeNextDraw[0].name).toBe('你');
   });
 
   it('does not restore a consumed earthquake after the next-turn state clears visual events', () => {
@@ -603,6 +671,50 @@ describe('aiChooseRevealCard', () => {
 });
 
 describe('AI end-turn endless corridor replay', () => {
+  it('斯芬克斯结果只归属无尽通道中的 D4 子事务', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const legion = makeZoneCard('A2', 0, { id: 'diana-legion' });
+    const sphinx = makeZoneCard('D4', 4, { id: 'diana-sphinx' });
+    const corridor = makeZoneCard('A3', 3, { id: 'diana-corridor' });
+    const claustrophobia = makeZoneCard('B1', 0, { id: 'diana-claustrophobia' });
+    const prize = makeZoneCard('A1', 0, { id: 'sphinx-prize' });
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({
+        name: '黛安娜',
+        role: ROLE_TREASURE,
+        hand: [legion, sphinx, corridor, claustrophobia],
+      }),
+    ];
+    const gs = makeGs({ players, deck: [prize], currentTurn: 1, phase: 'AI_TURN', log: [] });
+
+    const result = processAiEndTurnReplayHand(
+      gs.players.map(player => ({ ...player, hand: [...player.hand] })),
+      [...gs.deck],
+      [],
+      [],
+      1,
+      gs,
+    );
+    const sphinxEvent = (result.statePatch._visualEvents || [])
+      .find(event => event?.type === 'sphinxResult');
+    const ownedIds = new Set(getAnimationQueueVisualEventIds(result.replayQueue));
+    const tunnelIndex = result.replayQueue.findIndex(step => step.type === 'ENDLESS_CORRIDOR_TUNNEL');
+    const corridorD4Index = result.replayQueue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === sphinx.id);
+    const resultIndex = result.replayQueue.findIndex(step => step.visualEventId === sphinxEvent?.id);
+
+    expect(sphinxEvent).toBeTruthy();
+    expect(ownedIds.has(sphinxEvent.id)).toBe(true);
+    expect(tunnelIndex).toBeLessThan(corridorD4Index);
+    expect(corridorD4Index).toBeLessThan(resultIndex);
+    expect(scopeAiActionReplayMetadata({
+      _visualEvents: [sphinxEvent],
+      _statEvents: result.statePatch._statEvents || [],
+    }, {
+      excludedVisualEventIds: ownedIds,
+    }).visualEvents).toEqual([]);
+  });
+
   it('按每张牌依次播放无尽通道、翻牌、弃牌或结算动画', () => {
     const badCard = {
       id: 'bad',
@@ -1219,6 +1331,57 @@ describe('aiStep optional action limits', () => {
     expect(bewitchEvent?.encounterState?.log.some(line => line.includes('信仰了 森之领主'))).toBe(false);
   });
 
+  it('AI 黑夜蛊惑跨回合后保留 action-owned 目标与信仰抢夺事务', () => {
+    vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0.99)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0.99)
+      .mockReturnValue(0);
+    const oldApo = makeGodCard('APO', { id: 'old-apo-follower' });
+    const giftedApo = makeGodCard('APO', { id: 'gifted-apo' });
+    const players = [
+      makePlayer({ name: '你', role: ROLE_TREASURE, san: 10, godName: 'APO', godLevel: 1, godZone: [oldApo] }),
+      makePlayer({ name: '艾伦', role: ROLE_CULTIST, roleRevealed: true, hand: [giftedApo] }),
+      makePlayer({ name: '贝拉', role: ROLE_HUNTER, hand: [makeZoneCard('A1')] }),
+      makePlayer({ name: '黛安娜', role: ROLE_TREASURE, hand: [makeZoneCard('A2')] }),
+    ];
+    const gs = makeGs({
+      players,
+      deck: [makeZoneCard('B1'), makeZoneCard('B2')],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+      apophisNight: { active: true, count: 0, limit: 12, threshold: 2 },
+      _apophisTargetSeq: 0,
+      _visualEvents: [],
+      log: [],
+    });
+
+    const result = aiStep(gs);
+    const actionEvents = result._visualEvents
+      .filter(event => !event?.turnStartStage)
+      .sort((left, right) => left.order - right.order);
+    const apophisEvent = actionEvents.find(event => event.type === 'apophisTarget');
+    const bewitchEvent = actionEvents.find(event => event.type === 'bewitchGift');
+    const faithEvent = actionEvents.find(event => event.type === 'godStatusChanged');
+
+    expect(result._apophisTargetEvent).toBeNull();
+    expect(actionEvents.map(event => event.type).slice(0, 3)).toEqual([
+      'apophisTarget',
+      'bewitchGift',
+      'godStatusChanged',
+    ]);
+    expect(apophisEvent).toMatchObject({ legacySeq: 1, changed: true, targetIdx: 3, transactionId: expect.any(String) });
+    expect(bewitchEvent).toMatchObject({ sourceIdx: 1, targetIdx: 3, transactionId: apophisEvent.transactionId });
+    expect(faithEvent?.faithSettlement?.abandonedFollowers?.[0]).toMatchObject({
+      playerIdx: 0,
+      cards: [oldApo],
+      effect: 'godAbandon',
+    });
+  });
+
   it('AI 邪祀者更倾向把邪神牌蛊惑给未信仰者而不是同神升级', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0);
     const shu = makeGodCard('SHU');
@@ -1727,6 +1890,53 @@ describe('aiStep optional action limits', () => {
     });
   });
 
+  it('AI 从手牌抢夺信仰时先处理旧信徒的虚化，再继续行动', () => {
+    const vri = makeGodCard('VRI');
+    const oldVri = makeGodCard('VRI');
+    const players = [
+      makePlayer({ name: '你', hp: 10, san: 10, hand: [makeZoneCard('A1', 0)] }),
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_TREASURE,
+        roleRevealed: true,
+        hp: 10,
+        san: 10,
+        hand: [vri, makeZoneCard('B2', 0), makeZoneCard('C3', 0)],
+      }),
+      makePlayer({
+        name: '艾伦',
+        role: ROLE_CULTIST,
+        hp: 10,
+        san: 8,
+        etherealizeStacks: 1,
+        godName: 'VRI',
+        godLevel: 1,
+        godZone: [oldVri],
+      }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      log: [],
+    });
+
+    const result = aiStep(gs);
+
+    expect(result.phase).toBe('ETHEREALIZE_DECISION');
+    expect(result.abilityData).toMatchObject({
+      type: 'etherealizeRedirect',
+      targetIdx: 2,
+      lostSan: 1,
+      _turnOwner: 1,
+    });
+    expect(result.players[2]).toMatchObject({ san: 8, godName: null, etherealizeStacks: 1 });
+    expect(result.log).toContain('艾伦 被邪神抛弃，即将失去 1 SAN');
+    expect(result.log.some(line => line.includes('【掉包】'))).toBe(false);
+  });
+
   it('AI 寻宝者不会用补编号区域牌换走对自己无益的森之领主', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0);
     const forestLord = makeGodCard('SHU');
@@ -1810,7 +2020,7 @@ describe('aiStep optional action limits', () => {
 
     const result = aiStep(gs);
 
-    expect(result.log.some(line => line.includes('无匹配手牌，放弃追捕 艾伦'))).toBe(true);
+    expect(result.log.some(line => line.includes('放弃追捕 艾伦'))).toBe(true);
     expect(result.log.some(line => line.includes('对 贝拉 【追捕】'))).toBe(false);
     expect(result.currentTurn).not.toBe(1);
   });

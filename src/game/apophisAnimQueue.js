@@ -1,5 +1,25 @@
 import { buildAnimQueue } from './animQueueCore';
 
+function getFreshApophisTargetEvent(oldState, nextState) {
+  const previousIds = new Set((oldState?._visualEvents || []).map(event => event?.id).filter(Boolean));
+  const visualEvent = (nextState?._visualEvents || [])
+    .filter(event => (
+      event?.type === 'apophisTarget'
+      && event?.id
+      && !previousIds.has(event.id)
+      && (event.legacySeq != null || event.seq != null)
+    ))
+    .sort((left, right) => (
+      (Number(left?.order) || 0) - (Number(right?.order) || 0)
+      || (Number(left?.legacySeq ?? left?.seq) || 0) - (Number(right?.legacySeq ?? right?.seq) || 0)
+    ))
+    .at(-1);
+  if (visualEvent) {
+    return { ...visualEvent, seq: visualEvent.legacySeq ?? visualEvent.seq };
+  }
+  return nextState?._apophisTargetEvent || null;
+}
+
 export function attachApophisNightTimeline(queue = [], initialNight = null, finalNight = null) {
   const steps = Array.isArray(queue) ? queue : [];
   const hasNightTransition = steps.some(step => (
@@ -26,7 +46,7 @@ export function attachApophisNightTimeline(queue = [], initialNight = null, fina
 }
 
 export function buildApophisTargetQueueForState(oldState, nextState, buildQueue = buildAnimQueue) {
-  const targetEvent = nextState?._apophisTargetEvent;
+  const targetEvent = getFreshApophisTargetEvent(oldState, nextState);
   const seq = targetEvent?.seq;
   if (!seq || seq <= (oldState?._apophisTargetSeq || 0)) return [];
   const statSeq = targetEvent?.statSeq;
@@ -39,8 +59,9 @@ export function buildApophisTargetQueueForState(oldState, nextState, buildQueue 
 export function mergeApophisTargetQueue(queue = [], oldState, nextState, buildQueue = buildAnimQueue) {
   const builtApophisQueue = buildApophisTargetQueueForState(oldState, nextState, buildQueue);
   if (!builtApophisQueue.length) return queue || [];
-  const seq = nextState?._apophisTargetEvent?.seq;
-  const statSeq = nextState?._apophisTargetEvent?.statSeq;
+  const targetEvent = getFreshApophisTargetEvent(oldState, nextState);
+  const seq = targetEvent?.seq;
+  const statSeq = targetEvent?.statSeq;
   const isTargetStatStep = step => statSeq != null && (
     Array.isArray(step?.statEvents) && step.statEvents.some(event => event?.seq === statSeq)
   );
@@ -164,5 +185,17 @@ export function mergeApophisTargetQueue(queue = [], oldState, nextState, buildQu
     ...dedupedApophisQueue,
     ...baseQueue.slice(targetIndex),
   ];
+}
+
+// A fully composed transaction already owns its segment order. Playback may
+// normalize legacy/interactive queues, but it must not move an action event
+// across an end-turn or next-turn boundary in a canonical queue.
+export function normalizeApophisQueueForPlayback(queue = [], oldState, nextState, {
+  preserveQueueOrder = false,
+  buildQueue = buildAnimQueue,
+} = {}) {
+  return preserveQueueOrder
+    ? (queue || [])
+    : mergeApophisTargetQueue(queue, oldState, nextState, buildQueue);
 }
 

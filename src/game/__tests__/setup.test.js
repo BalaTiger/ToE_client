@@ -8,6 +8,7 @@ import {
   applyTemporaryStarsCallDeckReplacement,
   applySelectedLocalRole,
   EXPANSION_RANDOM_KEY,
+  getInitialTreasureWin,
   initGame,
   mkDeck,
   mkRoles,
@@ -642,6 +643,52 @@ describe('initGame debug force draw', () => {
 
     expect(gs.expansionKey).toBe('群星呼唤');
     expect(gs.debugForceCard).toBeNull();
+  });
+});
+
+describe('initial treasure win', () => {
+  const winningHand = [
+    { letter: 'A', number: 1 },
+    { letter: 'B', number: 2 },
+    { letter: 'C', number: 3 },
+    { letter: 'D', number: 4 },
+  ];
+
+  it('detects an AI treasure hunter that already wins from the initial deal', () => {
+    const players = [
+      { name: '你', role: ROLE_HUNTER, hand: [] },
+      { name: '贝拉', role: ROLE_TREASURE, hand: winningHand },
+    ];
+
+    expect(getInitialTreasureWin(players)).toEqual({
+      winner: ROLE_TREASURE,
+      reason: '贝拉 的初始手牌已集齐全部编号，寻宝者获胜！',
+      winnerIdx: 1,
+    });
+  });
+
+  it('does not treat an initial hand missing one number as a win', () => {
+    const players = [{
+      name: '贝拉',
+      role: ROLE_TREASURE,
+      hand: [...winningHand.slice(0, 3), { letter: 'D', number: 3 }],
+    }];
+
+    expect(getInitialTreasureWin(players)).toBeNull();
+  });
+
+  it('records both treasure hunters when both initial hands satisfy the condition', () => {
+    const players = [
+      { name: '艾伦', role: ROLE_TREASURE, hand: winningHand },
+      { name: '贝拉', role: ROLE_TREASURE, hand: winningHand },
+    ];
+
+    expect(getInitialTreasureWin(players)).toEqual({
+      winner: ROLE_TREASURE,
+      reason: '艾伦 与 贝拉 的初始手牌均集齐全部编号，寻宝者共同获胜！',
+      winnerIdx: 0,
+      winnerIdx2: 1,
+    });
   });
 });
 

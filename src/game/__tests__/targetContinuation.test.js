@@ -111,6 +111,41 @@ describe('buildTargetContinuationState', () => {
     expect(next._drawnCard).toEqual({ id: 'drawn' });
     expect(next.marker).toBe(true);
   });
+
+  // 回归：AI 蛊惑把引燃火把赠给本地玩家，本地玩家完成弃牌决策后，回合拥有者
+  // 仍是 AI。续接必须回到 AI_TURN 让 AI 续跑剩余回合；落到 ACTION 会让 AI 回合
+  // 无人驱动，被看门狗当作"回合状态异常"强制结束。
+  it('resumes AI_TURN after a local ignite-torch decision during an AI turn', () => {
+    const state = createState({
+      currentTurn: 1,
+      phase: 'IGNITE_TORCH_DISCARD',
+      abilityData: { type: 'igniteTorchDiscard', playerIndex: 0 },
+    });
+    const next = buildTargetContinuationState({
+      baseState: state,
+      abilityData: state.abilityData,
+      canResumeAi: true,
+    });
+
+    expect(next.phase).toBe('AI_TURN');
+    expect(next.currentTurn).toBe(1);
+  });
+
+  it('still lands on ACTION for an ignite-torch decision in the local turn', () => {
+    const state = createState({
+      currentTurn: 0,
+      phase: 'IGNITE_TORCH_DISCARD',
+      abilityData: { type: 'igniteTorchDiscard', playerIndex: 0 },
+    });
+    const next = buildTargetContinuationState({
+      baseState: state,
+      abilityData: state.abilityData,
+      canResumeAi: true,
+    });
+
+    expect(next.phase).toBe('ACTION');
+    expect(next.currentTurn).toBe(0);
+  });
 });
 
 describe('getTargetContinuationRoute', () => {

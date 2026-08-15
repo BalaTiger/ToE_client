@@ -11,6 +11,7 @@ import {
   cardTransferStep,
   dedupeInferredDiscardTransfers,
   fullHandSwapSteps,
+  insertHuntResolutionStatePatch,
   mergePlayerStatsIntoSnapshot,
   consumeRetainedRandomTargetEvents,
   prepareWorshipHighlight,
@@ -26,6 +27,36 @@ import { resolveGodEncounterForAI, startNextTurn } from '../turnEngine';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
 describe('animQueueHelpers', () => {
+  it('追捕响应动画完成后在同一队列内退出旧交互阶段', () => {
+    const discard={type:'DISCARD',card:{id:'hunter-card'}};
+    const damage={type:'HP_DAMAGE',hitIndices:[0]};
+    const source=[discard,damage];
+
+    const queue=insertHuntResolutionStatePatch(source,{
+      phase:'AI_TURN',
+      currentTurn:1,
+      abilityData:{},
+    });
+
+    expect(source).toEqual([discard,damage]);
+    expect(queue).toEqual([
+      discard,
+      {type:'STATE_PATCH',phase:'AI_TURN',currentTurn:1,abilityData:{}},
+      damage,
+    ]);
+  });
+
+  it('多人追捕结算没有弃牌步骤时也会在首个可见动画后清理确认态', () => {
+    expect(insertHuntResolutionStatePatch([
+      {type:'VISUAL_LOCK',players:[]},
+      {type:'TURN_BOUNDARY_PAUSE'},
+    ],{phase:'ACTION',abilityData:{}})).toEqual([
+      {type:'VISUAL_LOCK',players:[]},
+      {type:'TURN_BOUNDARY_PAUSE'},
+      {type:'STATE_PATCH',phase:'ACTION',abilityData:{}},
+    ]);
+  });
+
   it('AI 摸神牌抢夺信仰时按结算子阶段推进且旧信徒状态不回退', () => {
     const drawnGod = makeGodCard('TSG', { id: 'new-tsg' });
     const abandonedGod = makeGodCard('TSG', { id: 'old-tsg' });
@@ -85,6 +116,45 @@ describe('animQueueHelpers', () => {
     expect(playerSnapshots.every(players => (
       players[2]?.godName == null && players[2]?.godLevel === 0 && players[2]?.godZone?.length === 0
     ))).toBe(true);
+  });
+
+  it('AI 摸神牌抢夺信仰时会暂停并让回合外旧信徒决定虚化', () => {
+    const drawnGod = makeGodCard('TSG', { id: 'new-tsg-etherealize' });
+    const abandonedGod = makeGodCard('TSG', { id: 'old-tsg-etherealize' });
+    const pendingGs = startNextTurn(makeGs({
+      players: [
+        makePlayer({ name: '你', hp: 8, san: 8 }),
+        makePlayer({ name: '贝拉', hp: 8, san: 8 }),
+        makePlayer({
+          name: '艾伦',
+          hp: 8,
+          san: 8,
+          etherealizeStacks: 1,
+          godName: 'TSG',
+          godLevel: 1,
+          godZone: [abandonedGod],
+        }),
+      ],
+      currentTurn: 0,
+      deck: [drawnGod],
+      log: [],
+    }));
+
+    const transition = resolveAiGodChoiceTransition(pendingGs);
+
+    expect(transition.state.phase).toBe('ETHEREALIZE_DECISION');
+    expect(transition.state.abilityData).toMatchObject({
+      type: 'etherealizeRedirect',
+      targetIdx: 2,
+      lostSan: 1,
+      _turnOwner: 1,
+    });
+    expect(transition.state.players[2]).toMatchObject({
+      san: 8,
+      etherealizeStacks: 1,
+      godName: null,
+    });
+    expect(transition.state.log).toContain('艾伦 被邪神抛弃，即将失去 1 SAN');
   });
 
   it('改信者先退出旧信仰并完成 SAN 检定，再建立并高亮新信仰', () => {

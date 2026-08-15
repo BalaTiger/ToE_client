@@ -899,6 +899,36 @@ describe('applyFx', () => {
     ]);
   });
 
+  it('decipherStoneCarving: AI 回合外选择邪神牌时先进入虚化决策', () => {
+    const players = [
+      makePlayer({ name: '当前回合玩家' }),
+      makePlayer({ name: '解读者', san: 8, etherealizeStacks: 1 }),
+    ];
+    const godCard = makeGodCard('NYA');
+    const gs = makeGs({ players, deck: [godCard], currentTurn: 0 });
+
+    const res = applyFx(
+      { type: 'decipherStoneCarving', name: '解读石刻', key: 'A1', val: 1 },
+      1,
+      null,
+      players,
+      [godCard],
+      [],
+      gs,
+      false,
+      [],
+      true,
+    );
+
+    expect(res.P[1].san).toBe(8);
+    expect(res.statePatch.abilityData).toMatchObject({
+      type: 'etherealizeRedirect',
+      targetIdx: 1,
+      lostSan: 1,
+      source: '解读石刻',
+    });
+  });
+
   it('selfDamageHP: 失去HP', () => {
     const players = makeStandardPlayers(3);
     // A1 variant 1 is selfDamageDiscardHP which includes selfDamageHP

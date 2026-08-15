@@ -53,12 +53,14 @@ import { createBlackGoatYoungCard } from '../constants/card';
 import { buildStatEvents } from './statEvents';
 import { END_TURN_EVENT, getEndTurnEvents, getEndTurnReplayHandCards, resolveReverseTurnOrderAtEnd } from './endTurnEvents';
 import { deriveEffectDecisionState, hasEffectDecisionState } from './effectStatePatch';
+import { getCthRestDrawRemaining } from './cthRestDrawFlow';
 import { buildApophisNightLog, getApophisNightForLevel, resolveApophisTarget } from './apophisNight';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { TURN_FLOW_STAGE } from './turnFlowStages';
 import { buildGodPowerBlockedLog, canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
 import {
+  VISUAL_EVENT,
   buildGodPowerBlockedStepsFromVisualEvents,
   buildTsathogguaSlimeGrantSteps,
   createBewitchGiftEvent,
@@ -69,6 +71,7 @@ import {
   createSwapCardsEvent,
   createTsathogguaSlimeGrantEvent,
 } from './visualEvents';
+import { compileVisualEventToAnimTransaction } from './visualEventTransactionCompiler';
 import {
   getBestCaveDuelCardIndex,
   resolveCaveDuelOutcome,
@@ -336,6 +339,20 @@ export function discardAiHandToLimit(P, ct, Disc, L, D = [], discardedCards = []
 }
 
 function buildAiEndTurnReplayResolutionQueue({ beforeGs, afterGs }) {
+  const previousVisualEventIds = new Set(
+    (Array.isArray(beforeGs?._visualEvents) ? beforeGs._visualEvents : [])
+      .map(event => event?.id)
+      .filter(Boolean),
+  );
+  const sphinxEvent = (Array.isArray(afterGs?._visualEvents) ? afterGs._visualEvents : [])
+    .find(event => (
+      event?.type === VISUAL_EVENT.SPHINX_RESULT
+      && (!event.id || !previousVisualEventIds.has(event.id))
+    ));
+  if (sphinxEvent) {
+    const transaction = compileVisualEventToAnimTransaction(sphinxEvent, afterGs, beforeGs, { buildAnimQueue });
+    if (transaction?.queue?.length) return transaction.queue;
+  }
   return buildAnimQueue(beforeGs, afterGs).filter(step => step?.type !== 'DRAW_CARD');
 }
 
@@ -473,15 +490,17 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
   return { P, D, Disc, L, statePatch, replayQueue, replayMsgs };
 }
 
-function processAiCthEndTurnDraws(P, D, Disc, L, ct, gs, drawCount) {
+function processAiCthEndTurnDraws(P, D, Disc, L, ct, gs, drawCount, { intro = true } = {}) {
   if (!drawCount) return { P, D, Disc, L, statePatch: {}, replayQueue: [], replayMsgs: [] };
   const replayQueue = [];
   const replayMsgs = [];
   let statePatch = {};
-  const introMsg = `${P[ct].name}（克苏鲁信徒Lv.${P[ct].godLevel || drawCount}）梦访拉莱耶，翻面结束回合时额外摸${drawCount}张牌`;
-  L.push(introMsg);
-  replayMsgs.push(introMsg);
-  replayQueue.push({ type: 'CTH_RLYEH_DREAM', targetPid: ct, msgs: [introMsg] });
+  if (intro) {
+    const introMsg = `${P[ct].name}（克苏鲁信徒Lv.${P[ct].godLevel || drawCount}）梦访拉莱耶，翻面结束回合时额外摸${drawCount}张牌`;
+    L.push(introMsg);
+    replayMsgs.push(introMsg);
+    replayQueue.push({ type: 'CTH_RLYEH_DREAM', targetPid: ct, msgs: [introMsg] });
+  }
 
   for (let index = 0; index < drawCount; index++) {
     if (!P[ct] || P[ct].isDead) break;
@@ -522,7 +541,21 @@ function processAiCthEndTurnDraws(P, D, Disc, L, ct, gs, drawCount) {
       ...buildAiEndTurnReplayResolutionQueue({ beforeGs, afterGs }),
       replayStatePatch(P, D, Disc, L),
     );
-    if (checkWin(P, gs?._isMP) || hasEffectDecisionState(result.statePatch)) break;
+    if (checkWin(P, gs?._isMP)) break;
+    if (hasEffectDecisionState(result.statePatch)) {
+      const remaining = drawCount - index - 1;
+      const decisionState = deriveEffectDecisionState(result.statePatch, {
+        baseAbilityData: {
+          fromRest: true,
+          cthDrawsRemaining: remaining,
+        },
+        fallbackPhase: 'AI_TURN',
+      });
+      return {
+        P, D, Disc, L, statePatch, replayQueue, replayMsgs,
+        decision: { phase: decisionState.phase, abilityData: decisionState.abilityData, remaining },
+      };
+    }
   }
   return { P, D, Disc, L, statePatch, replayQueue, replayMsgs };
 }
@@ -530,13 +563,14 @@ function processAiCthEndTurnDraws(P, D, Disc, L, ct, gs, drawCount) {
 // AI and player turns share the same end-turn registry and priority order.
 // Handlers remain AI-specific because decisions are automatic, but no AI path
 // may reorder or bypass registered events before entering the next turn.
-export function processAiEndTurnEvents(P, D, Disc, L, ct, gs) {
+export function processAiEndTurnEvents(P, D, Disc, L, ct, gs, { cursor = 0 } = {}) {
   const events = getEndTurnEvents(P, ct);
   const replayQueue = [];
   const replayMsgs = [];
   let statePatch = {};
 
-  for (const event of events) {
+  for (let eventIndex = cursor; eventIndex < events.length; eventIndex++) {
+    const event = events[eventIndex];
     const eventGs = { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L, _turnFlowStage: TURN_FLOW_STAGE.END_TURN };
     if (event.id === END_TURN_EVENT.CTH_REST_DRAW) {
       const resolved = processAiCthEndTurnDraws(P, D, Disc, L, ct, eventGs, event.drawCount);
@@ -544,6 +578,9 @@ export function processAiEndTurnEvents(P, D, Disc, L, ct, gs) {
       statePatch = { ...statePatch, ...resolved.statePatch };
       replayQueue.push(...resolved.replayQueue);
       replayMsgs.push(...resolved.replayMsgs);
+      if (resolved.decision) {
+        return { P, D, Disc, L, statePatch, replayQueue, replayMsgs, events, decision: resolved.decision };
+      }
       continue;
     }
     if (event.id === END_TURN_EVENT.REVERSE_TURN_ORDER) {
@@ -587,6 +624,77 @@ export function processAiEndTurnEvents(P, D, Disc, L, ct, gs) {
   return { P, D, Disc, L, statePatch, replayQueue, replayMsgs, events };
 }
 
+// Resume the remaining CTH 「梦访拉莱耶」 rest draws after a mid-draw decision
+// (e.g. 穴居人战争) has been resolved. This mirrors the local-player
+// _cthContinueRestDraws continuation but stays inside the AI turn flow.
+export function continueAiCthRestDraws(gs, opts = {}) {
+  const ct = gs.currentTurn;
+  let P = copyPlayers(gs.players);
+  let D = [...gs.deck];
+  let Disc = [...gs.discard];
+  let L = [...gs.log];
+  const remaining = getCthRestDrawRemaining(gs);
+  const drawRes = processAiCthEndTurnDraws(P, D, Disc, L, ct, gs, remaining, { intro: false });
+  P = drawRes.P; D = drawRes.D; Disc = drawRes.Disc; L = drawRes.L;
+  // 决策前的那段回合结束回放（梦访拉莱耶引导 + 首张牌）已在第一次 executeAiTurn 播放，
+  // 续跑只携带决策之后的回放，避免 executeAiTurn 读取 _aiEndTurnReplayQueue 时重复播放。
+  const replayQueue = [...drawRes.replayQueue];
+  const replayMsgs = [...drawRes.replayMsgs];
+  if (drawRes.decision) {
+    return withClearedTurnAnimFields({
+      ...gs,
+      ...drawRes.statePatch,
+      players: P,
+      deck: D,
+      discard: Disc,
+      log: L,
+      currentTurn: ct,
+      phase: drawRes.decision.phase,
+      abilityData: drawRes.decision.abilityData,
+      restUsed: true,
+      skillUsed: false,
+      _aiEndTurnReplayQueue: replayQueue,
+      _aiEndTurnReplayMsgs: replayMsgs,
+    });
+  }
+  const evRes = processAiEndTurnEvents(P, D, Disc, L, ct, { ...gs, ...drawRes.statePatch }, { cursor: 1 });
+  P = evRes.P; D = evRes.D; Disc = evRes.Disc; L = evRes.L;
+  const playersBeforeNextDraw = copyPlayers(P);
+  const discardBeforeNextDraw = [...Disc];
+  const nextGs = startNextTurn({
+    ...gs,
+    ...drawRes.statePatch,
+    ...evRes.statePatch,
+    players: P,
+    deck: D,
+    discard: Disc,
+    log: L,
+    currentTurn: ct,
+    restUsed: true,
+    skillUsed: false,
+    _aiEndTurnReplayQueue: [...replayQueue, ...evRes.replayQueue],
+    _aiEndTurnReplayMsgs: [...replayMsgs, ...evRes.replayMsgs],
+  }, opts);
+  return {
+    ...nextGs,
+    _aiName: gs._aiName ?? P[ct]?.name ?? null,
+    // 行动动画的“结束快照”应落在续跑摸牌之后、下一回合起手摸牌之前，
+    // 否则 executeAiTurn 会拿 nextGs.players（已含下一回合抽牌）当基线。
+    _playersBeforeNextDraw: playersBeforeNextDraw,
+    _discardBeforeNextDraw: discardBeforeNextDraw,
+    ...(gs._playersBeforeEndTurnReplay ? { _playersBeforeEndTurnReplay: gs._playersBeforeEndTurnReplay } : {}),
+  };
+}
+
+// Preserve only the CTH rest-draw continuation fields after an AI decision is
+// resolved mid-draw, so the remaining 「梦访拉莱耶」 draws are not lost.
+function cthRestContinuationAbilityData(abilityData = {}) {
+  return {
+    ...(abilityData?.fromRest ? { fromRest: true } : {}),
+    ...(abilityData?.cthDrawsRemaining != null ? { cthDrawsRemaining: abilityData.cthDrawsRemaining } : {}),
+  };
+}
+
 export function aiStep(gs, opts = {}) {
   const{players:ps,currentTurn:ct,abilityData}=gs;
   const incomingVisualEventIds = new Set(
@@ -595,6 +703,21 @@ export function aiStep(gs, opts = {}) {
       .filter(Boolean),
   );
   const incomingVisualEventRefs = new Set(Array.isArray(gs?._visualEvents) ? gs._visualEvents : []);
+  // Presentation is compiled after rule resolution and may already be across a
+  // turn boundary. Keep an append-only journal of action-owned events so an
+  // intermediate state replacement cannot erase a one-shot visual payload.
+  const ownedActionVisualEvents = [];
+  const ownedActionVisualEventIds = new Set();
+  const recordActionVisualEvents = events => {
+    (Array.isArray(events) ? events : []).forEach(event => {
+      if (!event || event?.turnStartStage) return;
+      if (event.id && incomingVisualEventIds.has(event.id)) return;
+      if (!event.id && incomingVisualEventRefs.has(event)) return;
+      if (event.id && ownedActionVisualEventIds.has(event.id)) return;
+      if (event.id) ownedActionVisualEventIds.add(event.id);
+      ownedActionVisualEvents.push(event);
+    });
+  };
   let P=copyPlayers(ps),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
   const getAi=()=>P[ct];
   const getAlive=()=>P.filter((p,i)=>!p.isDead&&i!==ct);
@@ -614,11 +737,13 @@ export function aiStep(gs, opts = {}) {
     // transaction; never let incoming events from an older replay leak in.
     if (Object.prototype.hasOwnProperty.call(nextGs || {}, '_visualEvents')) {
       const nextTurnEvents = Array.isArray(nextGs._visualEvents) ? nextGs._visualEvents : [];
-      const combined = [...freshCurrentTurnEvents, ...nextTurnEvents]
+      const combined = [...freshCurrentTurnEvents, ...nextTurnEvents, ...ownedActionVisualEvents]
         .filter((event, index, events) => !event?.id || events.findIndex(candidate => candidate?.id === event.id) === index);
       return combined.length ? combined : null;
     }
-    return freshCurrentTurnEvents.length ? freshCurrentTurnEvents : null;
+    const combined = [...freshCurrentTurnEvents, ...ownedActionVisualEvents]
+      .filter((event, index, events) => !event?.id || events.findIndex(candidate => candidate?.id === event.id) === index);
+    return combined.length ? combined : null;
   };
   let unifiedReplayCacheState = null;
   let unifiedReplayCache = null;
@@ -638,14 +763,19 @@ export function aiStep(gs, opts = {}) {
       ? createMultiplyVisualEvent(animMultiplyEvent)
       : null;
     unifiedReplayCacheState = nextGs;
-    let actionOrder = 0;
+    const ownedOrderById = new Map(
+      ownedActionVisualEvents
+        .map((event, index) => [event?.id, index])
+        .filter(([id]) => !!id),
+    );
+    let fallbackActionOrder = ownedActionVisualEvents.length;
     unifiedReplayCache = [...baseEvents, ...huntEvents, ...(multiplyVisualEvent ? [multiplyVisualEvent] : [])]
       .map(event => event?.turnStartStage
         ? event
         : {
             ...event,
             transactionId: event.transactionId || aiActionTransactionId,
-            order: event.order ?? actionOrder++,
+            order: event.order ?? ownedOrderById.get(event.id) ?? fallbackActionOrder++,
           });
     return unifiedReplayCache;
   };
@@ -705,12 +835,16 @@ export function aiStep(gs, opts = {}) {
     Disc = night.discard;
     L = night.log;
     gs = { ...gs, ...(night.statePatch || {}) };
+    recordActionVisualEvents(night.statePatch?._visualEvents);
     lastApophisTargetEvent = night.apophisTargetEvent || null;
     return night.targetIdx;
   };
 
   // 提取蛊惑赠予的核心逻辑（主行动路径与强制路径共用）
   const applyBewitchGift = (_gs, _P, _D, _Disc, _L, _ct, _ti, _sc) => {
+    const visualEventIdsBeforeGift = new Set(
+      (_gs?._visualEvents || []).map(event => event?.id).filter(Boolean),
+    );
     let inspectionMeta = makeInspectionMeta(_gs);
     _P[_ct].hand = _P[_ct].hand.filter(c => c.id !== _sc.id);
     const bewitchMsg = `${_P[_ct].name}（邪祀者）对 ${_P[_ti].name} 【蛊惑】，赠予 ${cardLogText(_sc, { alwaysShowName: true })}`;
@@ -782,6 +916,17 @@ export function aiStep(gs, opts = {}) {
     if (bewitchEvent) {
       _gs = { ..._gs, _visualEvents: [bewitchEvent, ...(_gs._visualEvents || [])] };
     }
+    // The target-selection transaction was recorded before entering this
+    // resolver. The gift itself precedes encounter/acceptance events even
+    // though those events are produced synchronously before the gift wrapper
+    // can be constructed.
+    recordActionVisualEvents([
+      ...(bewitchEvent ? [bewitchEvent] : []),
+      ...(_gs?._visualEvents || []).filter(event => (
+        event !== bewitchEvent
+        && (!event?.id || !visualEventIdsBeforeGift.has(event.id))
+      )),
+    ]);
     return { gs: _gs, P: _P, D: _D, Disc: _Disc, L: _L, fxResult };
   };
 
@@ -862,9 +1007,9 @@ export function aiStep(gs, opts = {}) {
       L.push(`【两人一绳】${P[ct].name} 与 ${P[targetIdx].name} 间架起链条，一方受到HP伤害时另一方受等量伤害`);
       const win=checkWin(P,gs._isMP);
       if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,abilityData:{},phase:'AI_TURN'};
-      return{...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{},phase:'AI_TURN'};
+      return{...gs,players:P,deck:D,discard:Disc,log:L,abilityData:cthRestContinuationAbilityData(abilityData),phase:'AI_TURN'};
     }
-    return {...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{},phase:'AI_TURN'};
+    return {...gs,players:P,deck:D,discard:Disc,log:L,abilityData:cthRestContinuationAbilityData(abilityData),phase:'AI_TURN'};
   }
 
   if(abilityData.roseThornTargets&&abilityData.roseThornSource===ct){
@@ -894,7 +1039,7 @@ export function aiStep(gs, opts = {}) {
       deck:D,
       discard:Disc,
       log:L,
-      abilityData:{},
+      abilityData:cthRestContinuationAbilityData(abilityData),
       phase:'AI_TURN',
     });
   }
@@ -961,18 +1106,23 @@ export function aiStep(gs, opts = {}) {
         }
       }
     }
-    // 清除能力数据
+    // 清除能力数据（保留 CTH 休息摸牌续跑字段）
     return withClearedTurnAnimFields({
       ...gs,
       players:P,
       deck:D,
       discard:Disc,
       log:L,
-      abilityData:{},
+      abilityData:cthRestContinuationAbilityData(abilityData),
       currentTurn:ct,
       phase:'AI_TURN',
       ...proliferatingZPatch,
     });
+  }
+  // 决策（如穴居人战争）在梦访拉莱耶摸牌途中结算后，续跑剩余摸牌（即使已无剩余张数，
+  // 也要补跑 TSG/无尽通道等后续回合结束事件并推进回合）。
+  if(abilityData?.fromRest){
+    return continueAiCthRestDraws(gs, opts);
   }
   if((ai._nyaBorrow||ai.role)===ROLE_TREASURE&&isWinHand(ai.hand)){P[ct].roleRevealed=true;return{...gs,players:P,log:[...L,`${ai.name} 宣告获胜！`],gameOver:{winner:ROLE_TREASURE,reason:`${ai.name} 集齐了全部编号并获胜！`,winnerIdx:ct}};}
   // AI worship-from-hand: face-down god cards in hand can be worshipped (no skull counter, once per turn)
@@ -1056,7 +1206,26 @@ export function aiStep(gs, opts = {}) {
           ...(handWorshipEvent?[handWorshipEvent]:[]),
           ...(handWorshipBlockedEvent?[handWorshipBlockedEvent]:[]),
         ]};
+        recordActionVisualEvents([
+          ...(handWorshipEvent ? [handWorshipEvent] : []),
+          ...(handWorshipBlockedEvent ? [handWorshipBlockedEvent] : []),
+        ]);
         const ww=checkWin(P,gs._isMP);if(ww)return{...gs,players:P,deck:D,discard:Disc,log:L,...inspectionMeta,gameOver:ww};
+        if(hasEffectDecisionState(inspectionMeta)){
+          const decisionState=deriveEffectDecisionState(inspectionMeta,{
+            fallbackPhase:'AI_TURN',
+            turnOwner:ct,
+          });
+          return buildReturnPack({
+            ...gs,
+            players:P,
+            deck:D,
+            discard:Disc,
+            log:L,
+            phase:decisionState.phase,
+            abilityData:decisionState.abilityData,
+          },copyPlayers(P));
+        }
       }
     }
   }
@@ -1109,6 +1278,22 @@ export function aiStep(gs, opts = {}) {
     const replayed=processAiEndTurnEvents(P,D,Disc,L,ct,{...gs,...restStatPatch});
     P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;ai=getAi();alive=getAlive();
     const _P_afterRest=copyPlayers(P);
+    if(replayed.decision){
+      return buildReturnPack(
+        withClearedTurnAnimFields({
+          ...gs,...restStatPatch,...replayed.statePatch,
+          players:P,deck:D,discard:Disc,log:L,
+          currentTurn:ct,
+          phase:replayed.decision.phase,
+          abilityData:replayed.decision.abilityData,
+          restUsed:true,skillUsed:false,
+          _aiEndTurnReplayQueue:replayed.replayQueue,
+          _aiEndTurnReplayMsgs:replayed.replayMsgs,
+        }),
+        _P_afterRest,
+        _P_beforeEndTurnReplay,
+      );
+    }
     const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,restUsed:true,skillUsed:false,...restStatPatch,...replayed.statePatch,_aiEndTurnReplayQueue:replayed.replayQueue,_aiEndTurnReplayMsgs:replayed.replayMsgs}, opts);
     return buildReturnPack(nextGs, _P_afterRest, _P_beforeEndTurnReplay);
   }
@@ -1196,6 +1381,22 @@ export function aiStep(gs, opts = {}) {
     const replayed=processAiEndTurnEvents(P,D,Disc,L,ct,gs);
     P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};ai=getAi();alive=getAlive();
     const _P_afterAction=copyPlayers(P);
+    if(replayed.decision){
+      return buildReturnPack(
+        withClearedTurnAnimFields({
+          ...gs,
+          players:P,deck:D,discard:Disc,log:L,
+          currentTurn:ct,
+          phase:replayed.decision.phase,
+          abilityData:replayed.decision.abilityData,
+          skillUsed:gs.skillUsed,
+          _aiEndTurnReplayQueue:replayed.replayQueue,
+          _aiEndTurnReplayMsgs:replayed.replayMsgs,
+        }),
+        _P_afterAction,
+        _P_beforeEndTurnReplay,
+      );
+    }
     const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:gs.skillUsed,_aiEndTurnReplayQueue:replayed.replayQueue,_aiEndTurnReplayMsgs:replayed.replayMsgs}, opts);
     return buildReturnPack(nextGs, _P_afterAction, _P_beforeEndTurnReplay);
   }
@@ -1220,6 +1421,7 @@ export function aiStep(gs, opts = {}) {
 
           // 遍历所有目标，直到找到可以追捕的目标或用完所有目标
           let foundTarget = false;
+          let abandonedAfterReveal = false;
           for (const targetEntry of sortedTargets) {
             let ti = applyNightTarget(targetEntry.idx, validTargets.map(t => t.idx), '选择【追捕】目标');
             const apophisTargetEvent = consumeLastApophisTargetEvent();
@@ -1405,7 +1607,7 @@ export function aiStep(gs, opts = {}) {
                   break;
                 }
               } else {
-                L.push(`无匹配手牌，放弃追捕 ${tgt.name}`);
+                L.push(`放弃追捕 ${tgt.name}`);
                 aiHuntEvents.push({
                   apophisTargetEvent,
                   targetIdx:ti,
@@ -1423,14 +1625,15 @@ export function aiStep(gs, opts = {}) {
                 // 追猎者放弃追捕后本回合禁用追捕技能
                 P[ct].disableSkill = true;
                 huntContinue = false;
+                abandonedAfterReveal = true;
                 break;
               }
             }
           }
 
           if (!foundTarget) {
-            // 所有目标都尝试过了，仍无法追捕
-            L.push(`${ai.name} 尝试了所有目标，仍无法追捕`);
+            // 亮牌后放弃不公开是主动选择还是没有匹配牌。
+            if (!abandonedAfterReveal) L.push(`${ai.name} 尝试了所有目标，仍无法追捕`);
             markHunterLowQualityHand(P, ct, gs, newAbandoned.length);
             huntContinue = false;
           }
@@ -1555,7 +1758,10 @@ export function aiStep(gs, opts = {}) {
             afterDiscard:[...Disc],
             msgs:[swapPublicLog],
           });
-          if(aiSwapEvent)gs={...gs,_visualEvents:[aiSwapEvent,...(gs._visualEvents||[])]};
+          if(aiSwapEvent){
+            gs={...gs,_visualEvents:[aiSwapEvent,...(gs._visualEvents||[])]};
+            recordActionVisualEvents([aiSwapEvent]);
+          }
           // 只有真正的寻宝者才能通过集齐全部编号获胜
           if((ai._nyaBorrow||ai.role)===ROLE_TREASURE&&isWinHand(P[ct].hand)){
             if(gs.globalOnlySwapOwner===null)P[ct].roleRevealed=true;
@@ -1669,7 +1875,9 @@ export function aiStep(gs, opts = {}) {
   const hasValidTargets = getHunterTargets().length > 0;
   const hasZoneCards = P[ct].hand.filter(canRevealForHunt).length > 0;
   try{
-    if (aiEffRole === ROLE_HUNTER && huntContinue && hasZoneCards && hasValidTargets) {
+    if (replayed.decision) {
+        nextGs = withClearedTurnAnimFields({...gs, players:P, deck:D, discard:Disc, log:L, phase: replayed.decision.phase, currentTurn: ct, abilityData: replayed.decision.abilityData, huntAbandoned: newAbandoned, skillUsed: (useSkill || gs.skillUsed), _aiEndTurnReplayQueue:replayed.replayQueue, _aiEndTurnReplayMsgs: replayed.replayMsgs});
+    } else if (aiEffRole === ROLE_HUNTER && huntContinue && hasZoneCards && hasValidTargets) {
         nextGs = withClearedTurnAnimFields({...gs, players:P, deck:D, discard:Disc, log:L, phase: 'AI_TURN', currentTurn: ct, huntAbandoned: newAbandoned, skillUsed: false});
     } else {
         nextGs = startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct, huntAbandoned: newAbandoned, skillUsed: (useSkill || gs.skillUsed), _aiEndTurnReplayQueue:replayed.replayQueue, _aiEndTurnReplayMsgs: replayed.replayMsgs}, opts);
