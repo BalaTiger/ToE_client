@@ -9332,6 +9332,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       newGs,
       effectOldGs,
       timedOutDrawDiscardStep,
+      // 已提交队列的视觉事件注册表是「已播放」的唯一权威；回合开始 staged 编译
+      // 不再从 oldGs/newGs 的状态差分推断新鲜度。
+      consumedVisualEventIds:consumedVisualEventIdsRef.current,
       buildQueue:buildAnimQueue,
       buildFullHandSwapTransferQueue:buildFullHandSwapTransferQueueFromLogs,
     });

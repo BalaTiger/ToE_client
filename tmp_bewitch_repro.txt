@@ -1,0 +1,23 @@
+log: [
+ "── 贝拉 的回合开始 ──",
+ "贝拉 未使用技能，结束回合",
+ "── 艾伦 的回合开始 ──",
+ "艾伦 摸到 [B3] 猎获穴兽，选择收入手牌并触发效果",
+ "艾伦 回复了 2 HP，相邻角色各回复 1 HP"
+]
+visualEvents: [
+ {
+  "type": "turnStart",
+  "id": "turnStart:duxv5zan:1",
+  "stage": "turnBanner"
+ },
+ {
+  "type": "drawCard",
+  "id": "drawCard:duxv5zan:2",
+  "stage": "draw"
+ }
+]
+bewitchEvent: null
+bewitchReplay.queue: []
+finalQ: []
+nightDiceCount: 0

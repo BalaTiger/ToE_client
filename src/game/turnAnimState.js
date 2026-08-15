@@ -629,6 +629,7 @@ export function buildTurnStartDrawReplayQueue({
   effectOldGs,
   timedOutDrawDiscardStep = null,
   preTurnSteps = [],
+  consumedVisualEventIds = null,
   buildQueue = buildAnimQueue,
   buildFullHandSwapTransferQueue = buildFullHandSwapTransferQueueFromLogs,
 } = {}) {
@@ -907,11 +908,18 @@ export function buildTurnStartDrawReplayQueue({
     // replays the previous card's bespoke animation before the decision modal.
     _visualEvents: baselineVisualEvents,
   };
+  // 新鲜度判据与迁移适配器（animationTransaction.prepareAnimationTransaction）对齐：
+  // 调用方提供 consumed 注册表时，它是「已播放」的唯一权威来源，previousState 传 null——
+  // AI 回合开始回放常从结算后的同一 state 派生 oldGs（仅回滚 players/log），其中仍带着
+  // 本轮 startNextTurn 刚产出的 staged 事件，若按 previousState 的 id 集合判定，会把本轮
+  // 事件误判为「已播放」而丢弃（如群蛇陷阱的 SNAKE_TRAP）。未提供注册表的 legacy 调用方
+  // （测试/headless/远端重播，均传入真正的回合前 oldGs）保持 previousIds 行为不变。
   const stagedTurnStartTransaction = hasAuthoritativeTurnStartEvents
-    ? compileRuleVisualEventsToAnimTransaction(newGs, oldGs, {
+    ? compileRuleVisualEventsToAnimTransaction(newGs, consumedVisualEventIds ? null : oldGs, {
         visualEventScope: 'turnStart',
         buildAnimQueue: buildQueue,
         players: beforeDrawPlayers,
+        ...(consumedVisualEventIds ? { consumedEventIds: consumedVisualEventIds } : {}),
       })
     : null;
   const stagedDrawEffectQueue = (stagedTurnStartTransaction?.queue || []).filter(step => (
