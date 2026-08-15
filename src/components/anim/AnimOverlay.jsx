@@ -12,6 +12,7 @@ import { CthRlyehDreamOverlay } from './CthRlyehDreamOverlay';
 import { NightWindAnim } from './NightWindOverlay';
 import { EtherealizeGainAnim, EtherealizeConsumeAnim } from './EtherealizeOverlay';
 import { BurrowingWormAnim } from './BurrowingWormOverlay';
+import { DeckReshuffleOverlay } from './DeckReshuffleOverlay';
 
 const NO_OVERLAY_TYPES = new Set([
   'CARD_TRANSFER',
@@ -77,6 +78,7 @@ const ANIM_RENDERERS = {
   GOD_POWER_BLOCKED: ({ anim, exiting }) => <TorchWardOverlay anim={anim} exiting={exiting} />,
   TSG_SLIME_POP: ({ anim, exiting }) => <TsathogguaSlimePopOverlay anim={anim} exiting={exiting} />,
   VRI_IMMORTAL_REVEAL: ({ anim, exiting }) => <VritraImmortalRevealOverlay anim={anim} exiting={exiting} />,
+  DECK_RESHUFFLE: ({ anim, exiting }) => <DeckReshuffleOverlay anim={anim} exiting={exiting} />,
 };
 
 function AnimOverlay({ anim, exiting, expansionKey = '地神的潜影', playEndlessCorridorTunnelSound }) {

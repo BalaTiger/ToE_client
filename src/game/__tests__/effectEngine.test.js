@@ -544,11 +544,13 @@ describe('applyFx', () => {
     const players = makeStandardPlayers(3);
     const deck = [{ id: 'deck-1' }, { id: 'deck-2' }];
     const discard = [{ id: 'disc-1' }];
-    const gs = makeGs({ players, deck, discard });
+    const zhuLight = { ownerIdx: 1, level: 2, cardIds: ['deck-1', 'deck-2'], lightNonce: 7 };
+    const gs = makeGs({ players, deck, discard, zhuLight });
     const res = applyFx({ type: 'swapDeckDiscard', name: '地底天空' }, 0, null, players, deck, discard, gs);
 
     expect(res.D).toEqual(discard);
     expect(res.Disc).toEqual(deck);
+    expect(res.statePatch.zhuLight).toEqual({ ...zhuLight, cardIds: [] });
     expect(res.msgs[0]).toContain('牌堆和弃牌堆交换了');
   });
 

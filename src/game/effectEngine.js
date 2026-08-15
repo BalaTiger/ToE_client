@@ -1204,6 +1204,12 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const oldDeck = D;
       D = Disc;
       Disc = oldDeck;
+      statePatch = {
+        ...statePatch,
+        zhuLight: gs?.zhuLight
+          ? { ...gs.zhuLight, cardIds: [] }
+          : null,
+      };
       msgs.push(`【地底天空】牌堆和弃牌堆交换了`);
     },
     geomagneticReversal: () => {

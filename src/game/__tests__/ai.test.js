@@ -464,6 +464,59 @@ describe('aiShouldKeepZoneCard', () => {
     expect(aiShouldKeepZoneCard(card, 1, players)).toBe(true);
   });
 
+  it('满血追猎者有四张区域牌时仍会用1HP收入新的追捕弹药', () => {
+    const thornyRoad = makeZoneCard('D2', 0, {
+      name: '荆棘山路', type: 'selfDamageHP', val: 1, polarity: 'negative',
+    });
+    const players = [
+      makePlayer({ name: '你', role: ROLE_TREASURE }),
+      makePlayer({
+        name: '艾伦', role: ROLE_HUNTER, hp: 10, san: 10,
+        hand: [makeZoneCard('A1'), makeZoneCard('B2'), makeZoneCard('C3'), makeZoneCard('D4')],
+      }),
+      makePlayer({ name: '贝拉', role: ROLE_CULTIST }),
+    ];
+
+    expect(aiShouldKeepZoneCard(thornyRoad, 1, players)).toBe(true);
+  });
+
+  it('低血追猎者不会为了追捕弹药收入荆棘山路', () => {
+    const thornyRoad = makeZoneCard('D2', 0, {
+      name: '荆棘山路', type: 'selfDamageHP', val: 1, polarity: 'negative',
+    });
+    const players = [
+      makePlayer({ name: '你', role: ROLE_TREASURE }),
+      makePlayer({
+        name: '艾伦', role: ROLE_HUNTER, hp: 4, san: 10,
+        hand: [makeZoneCard('A1'), makeZoneCard('B2'), makeZoneCard('C3'), makeZoneCard('D4')],
+      }),
+      makePlayer({ name: '贝拉', role: ROLE_CULTIST }),
+    ];
+
+    expect(aiShouldKeepZoneCard(thornyRoad, 1, players)).toBe(false);
+  });
+
+  it('邪神牌和衍生牌不会虚增追猎者的区域弹药库存', () => {
+    const thornyRoad = makeZoneCard('D2', 0, {
+      name: '荆棘山路', type: 'selfDamageHP', val: 1, polarity: 'negative',
+    });
+    const players = [
+      makePlayer({ name: '你', role: ROLE_TREASURE }),
+      makePlayer({
+        name: '艾伦', role: ROLE_HUNTER, hp: 10, san: 10,
+        hand: [
+          makeGodCard({ name: '烛九阴' }),
+          createBlackGoatYoungCard(),
+          { id: 'slime', name: '黏液', isTsathogguaSlime: true },
+          makeGodCard({ name: '森之领主' }),
+        ],
+      }),
+      makePlayer({ name: '贝拉', role: ROLE_CULTIST }),
+    ];
+
+    expect(aiShouldKeepZoneCard(thornyRoad, 1, players)).toBe(true);
+  });
+
   it('不同身份按新规则评估增殖的Z', () => {
     const card = {
       id: 'z-card',

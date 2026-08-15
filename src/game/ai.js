@@ -279,6 +279,25 @@ function getZoneAxisProgress(card, self) {
   };
 }
 
+function estimateHunterHuntAmmoBonus(card, self) {
+  if (!isZoneCard(card) || !canRevealForHunt(card)) return 0;
+
+  // Only versatile zone cards count as dependable hunt ammunition here.
+  // God and derived cards either disappear before the action phase or cannot
+  // reliably answer a zone card revealed by the target.
+  const huntAmmo = (self?.hand || []).filter(
+    handCard => isZoneCard(handCard) && canRevealForHunt(handCard),
+  ).length;
+  const progress = getZoneAxisProgress(card, self);
+  const coverageBonus = (progress.addsLetter ? 0.35 : 0) + (progress.addsNumber ? 0.35 : 0);
+
+  // Even with four existing zone cards, a new card is worth slightly more
+  // than the residual cost of a safe 1 HP self-damage card. This lets a
+  // healthy hunter prepare for a multi-hunt turn without making heavier
+  // self-damage cards attractive by default.
+  return Math.max(0.9, 2.5 - huntAmmo * 0.4) + coverageBonus;
+}
+
 function isLowRiskHandValueCard(card) {
   if (!card || card.isGod || getZoneCardPolarity(card) === 'negative') return false;
   if (zoneCardHasGuaranteedHpLoss(card) || zoneCardHasGuaranteedSanLoss(card)) return false;
@@ -483,12 +502,17 @@ function estimateHunterZoneCardScore(card, self, players, ci) {
     'selfDamageHP', 'selfDamageSAN', 'selfDamageHPSAN',
     'selfDamageHPPeek', 'selfDamageDiscardHP', 'selfDamageDiscardSAN',
   ].includes(card.type);
+  let isSafeSelfDamageAmmo = false;
   if (isSingleTargetSelfDamage) {
     const hpLoss = zoneCardHasGuaranteedHpLoss(card) ? (card.hpVal || card.val || 1) : 0;
     const sanLoss = zoneCardHasGuaranteedSanLoss(card) ? (card.sanVal || card.val || 1) : 0;
+    isSafeSelfDamageAmmo = self.hp - hpLoss >= 5 && self.san - sanLoss >= 5;
     if (self.hp - hpLoss >= 6 && self.san - sanLoss >= 6) score += 1.25;
   }
   score += estimateRoleHandValueBias(card, self, ROLE_HUNTER);
+  // Ammunition value may justify a safe self-inflicted cost, but it must not
+  // rescue tactically unusable cards (for example an invalid damage link).
+  if (score >= 0 || isSafeSelfDamageAmmo) score += estimateHunterHuntAmmoBonus(card, self);
 
   const abandonedHunts = self?._abandonedHunts || 0;
   const ammoPressure = self.hand.length <= 2 || abandonedHunts >= 2;
