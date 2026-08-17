@@ -1,10 +1,12 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ANIMATION_QUEUE_AUTHORITY,
   createQueueAnimationTransaction,
   getAnimationTransactionDiagnostics,
+  createRandomTargetVisualEvent,
   prepareAnimationTransaction,
   resetAnimationTransactionDiagnostics,
+  submitAnimationPresentation,
 } from '../index';
 
 describe('animation transaction boundary', () => {
@@ -78,5 +80,43 @@ describe('animation transaction boundary', () => {
   it('validates strict transaction input', () => {
     expect(() => createQueueAnimationTransaction({ queue: null })).toThrow('queue must be an array');
     expect(() => createQueueAnimationTransaction({ queue: [], eventIds: null })).toThrow('eventIds must be an array');
+  });
+
+  it('compiles and submits an event-authoritative presentation through one boundary', () => {
+    const players = [{ name: '你' }, { name: '艾伦' }];
+    const event = createRandomTargetVisualEvent({
+      seq: 1,
+      sourceIdx: 0,
+      targetIdx: 1,
+      label: '测试目标',
+      resultText: '艾伦 被选中',
+    }, { players });
+    const playTransaction = vi.fn();
+
+    const transaction = submitAnimationPresentation({
+      playTransaction,
+      nextState: { players, _visualEvents: [event] },
+      authority: ANIMATION_QUEUE_AUTHORITY.EVENTS,
+      eventIds: [event.id],
+      compileOptions: { players },
+      context: 'test:event-presentation',
+    });
+
+    expect(transaction.queue).toMatchObject([{
+      type: 'RANDOM_TARGET',
+      visualEventId: event.id,
+      sourceIdx: 0,
+      targetIdx: 1,
+    }]);
+    expect(transaction.eventIds).toEqual([event.id]);
+    expect(playTransaction).toHaveBeenCalledOnce();
+    expect(playTransaction).toHaveBeenCalledWith(transaction);
+  });
+
+  it('rejects a presentation submission without a player boundary', () => {
+    expect(() => submitAnimationPresentation({
+      queue: [],
+      context: 'test:missing-player',
+    })).toThrow('playTransaction must be a function');
   });
 });

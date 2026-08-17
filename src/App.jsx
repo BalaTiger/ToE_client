@@ -194,6 +194,7 @@ import {
   createHuntRevealEvent,
   createHuntResultEvent,
   createRandomTargetVisualEvent,
+  createTsathogguaSlimeGrantEvent,
   buildHuntRevealStepFromVisualEvents,
   buildHuntRevealStepFromVisualEvent,
   pruneConsumedVisualEvents,
@@ -213,7 +214,7 @@ import {
   getAnimationQueueVisualEventIds,
   getAnimationTransactionDiagnostics,
   getVisualEventIdsCoveredByAnimationQueue,
-  prepareAnimationTransaction,
+  submitAnimationPresentation,
 } from "./game";
 import {
   rotateGsForViewer,
@@ -700,7 +701,7 @@ function buildTurnStartStatQueue(state){
     log:[],
     _statEventSeq:0,
     _statEvents:[],
-    _inspectionEvents:[],
+    _inspectionEvents:[], // legacy-visual-allow: compatibility diff baseline
   };
   const newGs={
     ...state,
@@ -708,7 +709,7 @@ function buildTurnStartStatQueue(state){
     log:statLogs,
     _statEventSeq:1,
     _statEvents:statEvents,
-    _inspectionEvents:[],
+    _inspectionEvents:[], // legacy-visual-allow: compatibility diff baseline
   };
   const queue=bindAnimLogChunks(buildAnimQueue(oldGs,newGs),{statLogs});
   if(statLogs.some(line=>typeof line==='string'&&line.includes('黑山羊幼仔'))){
@@ -1416,20 +1417,42 @@ export default function Game(){
     ANIM_SPEED_SCALE,
     paused:isSoloPaused,
   });
-  // Compatibility facade retained until the final legacy deletion pass. Rule
-  // event compilation happens here, before the strict playback boundary.
-  const triggerAnimQueue=useCallback((queue,nextState,callback,transactionMeta=null)=>{
-    const transaction=prepareAnimationTransaction({
+  const submitPresentation=useCallback(({
+    queue=[],nextState=null,callback,authority=ANIMATION_QUEUE_AUTHORITY.QUEUE,
+    eventIds,compileEventIds,compileState,visualEventScope,compileOptions,
+    preserveQueueOrder=false,context='App:presentation',
+  }={})=>submitAnimationPresentation({
+      playTransaction:playAnimationTransaction,
       queue,
       nextState,
       callback,
-      transactionMeta,
+      authority,
+      eventIds,
+      compileEventIds,
+      compileState,
+      visualEventScope,
+      compileOptions,
+      preserveQueueOrder,
       consumedEventIds:consumedVisualEventIdsRef.current,
       buildAnimQueue,
+      context,
+    }),[playAnimationTransaction]);
+  // Compatibility facade retained while older call sites are migrated to the
+  // descriptor-based presentation boundary above.
+  const triggerAnimQueue=useCallback((queue,nextState,callback,transactionMeta=null)=>{
+    submitPresentation({
+      queue,nextState,callback,
+      ...(transactionMeta||{}),
       context:transactionMeta?.context||`App:${nextState?.phase||gs?.phase||'callback'}`,
     });
-    playAnimationTransaction(transaction);
-  },[gs?.phase,playAnimationTransaction]);
+  },[gs?.phase,submitPresentation]);
+  const submitTurnStartPresentation=useCallback((queue,nextState,callback,context='turn-start presentation')=>{
+    submitPresentation({
+      queue,nextState,callback,
+      ...authoritativeTurnStartQueueMeta(nextState),
+      context,
+    });
+  },[submitPresentation]);
 
   useEffect(()=>{
     if(anim?.type!=='GOD_HIGHLIGHT')return;
@@ -2034,17 +2057,15 @@ export default function Game(){
       !consumedVisualEventIdsRef.current.has(event.id)
     ));
     if(pendingExplicitInspectionEvents.length){
-      const transaction=compileRuleVisualEventsToAnimTransaction(gs,null,{
+      const transaction=submitPresentation({
+        nextState:gs,
+        authority:ANIMATION_QUEUE_AUTHORITY.EVENTS,
         eventIds:pendingExplicitInspectionEvents.map(event=>event.id),
-        consumedEventIds:consumedVisualEventIdsRef.current,
-        buildAnimQueue,
-        players:pendingExplicitInspectionEvents[0]?.beforePlayers||gs.players,
+        compileState:gs,
+        compileOptions:{players:pendingExplicitInspectionEvents[0]?.beforePlayers||gs.players},
+        context:'automatic inspection events',
       });
       if(transaction?.queue?.length){
-        triggerAnimQueue(transaction.queue,gs,undefined,{
-          ...AUTHORITATIVE_QUEUE_META,
-          eventIds:transaction.eventIds,
-        });
         return;
       }
     }
@@ -2064,7 +2085,11 @@ export default function Game(){
       {buildAnimQueue,copyPlayers}
     );
     const queue=flow.queue;
-    triggerAnimQueue(queue,gs,undefined,strictActionQueueMeta(gs,queue,consumedVisualEventIdsRef.current,'automatic inspection'));
+    submitPresentation({
+      queue,nextState:gs,
+      ...strictActionQueueMeta(gs,queue,consumedVisualEventIdsRef.current,'automatic inspection'),
+      context:'automatic inspection compatibility',
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[gs?._inspectionSeq,gs?._inspectionEvents,gs?.gameOver,anim,showTutorial,softGuidePauseActive]);
 
@@ -2106,11 +2131,11 @@ export default function Game(){
       if(queue.length){
         if(replay?.visualLock)visualStateLocks.lock(replay.visualLock);
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
-        triggerAnimQueue(queue,nextGs,()=>{
+        submitTurnStartPresentation(queue,nextGs,()=>{
           applyTutorialStateSnapshot(nextGs);
           setDrawRevealKeepButtonRect(null);
           setTutorialStep(TUTORIAL_FLOW.TREASURE_DRAW_REVEAL);
-        },authoritativeTurnStartQueueMeta(nextGs));
+        },'tutorial treasure turn-start draw');
       }else{
         applyTutorialStateSnapshot(nextGs);
         setDrawRevealKeepButtonRect(null);
@@ -2131,10 +2156,10 @@ export default function Game(){
       if(queue.length){
         if(replay?.visualLock)visualStateLocks.lock(replay.visualLock);
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
-        triggerAnimQueue(queue,nextGs,()=>{
+        submitTurnStartPresentation(queue,nextGs,()=>{
           applyTutorialStateSnapshot(nextGs);
           setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_OPPONENT_DRAW);
-        },authoritativeTurnStartQueueMeta(nextGs));
+        },'tutorial cultist opponent turn-start draw');
       }else{
         applyTutorialStateSnapshot(nextGs);
         setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_OPPONENT_DRAW);
@@ -2155,10 +2180,10 @@ export default function Game(){
       if(queue.length){
         if(replay?.visualLock)visualStateLocks.lock(replay.visualLock);
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
-        triggerAnimQueue(queue,nextGs,()=>{
+        submitTurnStartPresentation(queue,nextGs,()=>{
           applyTutorialStateSnapshot(nextGs);
           setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_KEEP_HAND);
-        },authoritativeTurnStartQueueMeta(nextGs));
+        },'tutorial cultist player turn-start draw');
       }else{
         applyTutorialStateSnapshot(nextGs);
         setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_KEEP_HAND);
@@ -2231,7 +2256,7 @@ export default function Game(){
           ...newGs,
           players:pausePlayers,
           log:beforeInspectionLog,
-          _inspectionEvents:gs._inspectionEvents||[],
+          _inspectionEvents:gs._inspectionEvents||[], // legacy-visual-allow: tutorial split-state snapshot
           _inspectionSeq:gs._inspectionSeq||0,
           _statEvents:pauseStatEvents,
           _statEventSeq:pauseStatSeq,
@@ -3127,11 +3152,11 @@ export default function Game(){
             triggerAnimQueue(
               currentQueueWithPatch,
               nextTurnIntroGs,
-              ()=>triggerAnimQueue(nextTurnIntroQueue,nextTurnIntroGs,undefined,authoritativeTurnStartQueueMeta(nextTurnIntroGs)),
+              ()=>submitTurnStartPresentation(nextTurnIntroQueue,nextTurnIntroGs,undefined,'queued AI turn start'),
               orderedActionQueueMeta
             );
           }else{
-            triggerAnimQueue(nextTurnIntroQueue,nextTurnIntroGs,undefined,authoritativeTurnStartQueueMeta(nextTurnIntroGs));
+            submitTurnStartPresentation(nextTurnIntroQueue,nextTurnIntroGs,undefined,'queued AI turn start');
           }
         }else{
           triggerAnimQueue(currentQueueWithPatch,newGs,undefined,orderedActionQueueMeta);
@@ -5078,7 +5103,8 @@ export default function Game(){
     if(tsgSlimeGrant){
       L.push(...slimeLog);
       const zPatch=appendPublicCardGainTriggers(baseGs,P,tsgSlimeGrant.ownerIdx,tsgSlimeGrant.cards);
-      slimePreQueue=buildTsathogguaSlimeGrantQueue({_tsgSlimeGrantEvents:[tsgSlimeGrant],zhuLight:baseGs.zhuLight||null,players:P});
+      const slimeGrantEvent=createTsathogguaSlimeGrantEvent(tsgSlimeGrant);
+      slimePreQueue=buildTsathogguaSlimeGrantQueue({_visualEvents:slimeGrantEvent?[slimeGrantEvent]:[],zhuLight:baseGs.zhuLight||null,players:P});
       baseGs={...baseGs,_tsgSlimeGrantedAtTurnEnd:true,...(zPatch.proliferatingZQueue?{proliferatingZQueue:zPatch.proliferatingZQueue}:{})};
     }
     const nextState=buildEndTurnReplayStartState({baseGs,players:P,deck:D,discard:Disc,log:L,actorIndex:0,actorLabel:'你'});
@@ -5293,7 +5319,8 @@ export default function Game(){
     if(!grant)return advanceEndTurnSeq(state); // 免疫/非 TSG：无发放，直接推进
     L.push(...slimeLog);
     const zPatch=appendPublicCardGainTriggers(state,P,grant.ownerIdx,grant.cards);
-    const queue=buildTsathogguaSlimeGrantQueue({_tsgSlimeGrantEvents:[grant],zhuLight:state.zhuLight||null,players:P});
+    const grantEvent=createTsathogguaSlimeGrantEvent(grant);
+    const queue=buildTsathogguaSlimeGrantQueue({_visualEvents:grantEvent?[grantEvent]:[],zhuLight:state.zhuLight||null,players:P});
     const nextState={...state,players:P,log:L,_tsgSlimeGrantedAtTurnEnd:true,
       ...(zPatch.proliferatingZQueue?{proliferatingZQueue:zPatch.proliferatingZQueue}:{})};
     if(nextState._isMP){
@@ -6250,8 +6277,7 @@ export default function Game(){
       ...(abilityData.houndsOfTindalosTarget!=null?{houndsOfTindalosTarget:abilityData.houndsOfTindalosTarget}:{}),
       ...(abilityData.houndsOfTindalosElapsed!=null?{houndsOfTindalosElapsed:abilityData.houndsOfTindalosElapsed}:{}),
       ...(abilityData._inspectionSeq!=null?{_inspectionSeq:abilityData._inspectionSeq}:{}),
-      ...(abilityData._inspectionEvents?{_inspectionEvents:abilityData._inspectionEvents}:{}),
-      _visualEvents:[],
+      _visualEvents:Array.isArray(abilityData._visualEvents)?abilityData._visualEvents:[],
     };
     let nextGs=buildTargetContinuationGs({
       players,
@@ -6740,7 +6766,7 @@ export default function Game(){
         _inspectionTarget:processed.inspectionMeta._inspectionTarget,
         _inspectionPrevLogLen:processed.inspectionMeta._inspectionPrevLogLen,
         _inspectionBeforePlayers:processed.inspectionMeta._inspectionBeforePlayers,
-        _inspectionEvents:processed.inspectionMeta._inspectionEvents,
+        _visualEvents:processed.inspectionMeta._visualEvents,
         _statEvents:processed.inspectionMeta._statEvents,
         _statEventSeq:processed.inspectionMeta._statEventSeq,
       };
@@ -6837,12 +6863,12 @@ export default function Game(){
           log:drawBaselineLog,
           _statEventSeq:state._statEventSeq||0,
           _statEvents:[],
-          _inspectionEvents:[],
+          _inspectionEvents:[], // legacy-visual-allow: compatibility diff baseline
         },
         {
           ...state,
           _statEvents:[],
-          _inspectionEvents:[],
+          _inspectionEvents:[], // legacy-visual-allow: compatibility diff baseline
         }
       ),
       {statLogs:state._statLogs}
@@ -7975,10 +8001,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           phase:damageDecision.phase,abilityData:damageDecision.abilityData,
           drawReveal:null,selectedCard:null,
           _randomTargetSeq:randomTargetSeq,
-          _randomTargetEvents:[...(gs._randomTargetEvents||[]),{
-            seq:randomTargetSeq,sourceIdx:actorIdx,targetIdx:randomTarget,label:'白化生物',
-            resultText:`${P[randomTarget].name} 被选中`,phaseOrder:0,
-          }],
           ...(randomTargetEvent?{_visualEvents:[...(gs._visualEvents||[]),randomTargetEvent]}:{}),
         };
         const queue=[revealStep,...buildAnimQueue(gs,nextGs),statePatchStep({players:P,deck:D,discard:Disc,log:L})].filter(Boolean);
@@ -8007,10 +8029,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       ...(statEvents.length?{_statEvents:statEvents,_statEventSeq:statEvents[0].seq}:{}),
       ...(randomTarget>=0?{
         _randomTargetSeq:(gs?._randomTargetSeq||0)+1,
-        _randomTargetEvents:[...(gs._randomTargetEvents||[]),{
-          seq:(gs?._randomTargetSeq||0)+1,sourceIdx:actorIdx,targetIdx:randomTarget,label:'白化生物',
-          resultText:`${P[randomTarget].name} 被选中`,phaseOrder:0,
-        }],
         _visualEvents:[...(gs._visualEvents||[]),createRandomTargetVisualEvent({
           seq:(gs?._randomTargetSeq||0)+1,sourceIdx:actorIdx,targetIdx:randomTarget,label:'白化生物',
           resultText:`${P[randomTarget].name} 被选中`,phaseOrder:0,
@@ -8699,11 +8717,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         triggerAnimQueue(
           resolutionQueue,
           nextAiTurnIntroGs,
-          ()=>triggerAnimQueue(nextAiTurnIntroQueue,nextAiTurnIntroGs,undefined,authoritativeTurnStartQueueMeta(nextAiTurnIntroGs)),
+          ()=>submitTurnStartPresentation(nextAiTurnIntroQueue,nextAiTurnIntroGs,undefined,'AI hunt next turn start'),
           strictActionQueueMeta(nextAiTurnIntroGs,resolutionQueue,consumedVisualEventIdsRef.current,'AI hunt next AI turn')
         );
       }else{
-        triggerAnimQueue(nextAiTurnIntroQueue,nextAiTurnIntroGs,undefined,authoritativeTurnStartQueueMeta(nextAiTurnIntroGs));
+        submitTurnStartPresentation(nextAiTurnIntroQueue,nextAiTurnIntroGs,undefined,'AI hunt next turn start');
       }
     }else{
       triggerAnimQueue(resolutionQueue,newGs,undefined,strictActionQueueMeta(newGs,resolutionQueue,consumedVisualEventIdsRef.current,'AI hunt resolution'));
@@ -9681,7 +9699,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         });
         if(!cthEvent||!broadcastCthRestDrawReplay(newGs,cthEvent))broadcastMpStateBeforeLocalReplay(newGs);
       }
-      triggerAnimQueue([...preTurnQ,dreamStep,...cthQueue,...statQ],cleanedGs,undefined,authoritativeTurnStartQueueMeta(newGs));
+      submitTurnStartPresentation([...preTurnQ,dreamStep,...cthQueue,...statQ],cleanedGs,undefined,'CTH turn-start replay');
       return;
     }
     const drawStatQ=newGs?bindAnimLogChunks(
@@ -9698,14 +9716,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         ...(aiTurnStartReplay.queue.some(step=>step?.type==='DISCARD')?{_aiTurnDiscardShown:true}:{}),
       };
       setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
-      triggerAnimQueue([...preTurnQ,...aiTurnStartReplay.queue],introShownGs,undefined,authoritativeTurnStartQueueMeta(newGs));
+      submitTurnStartPresentation([...preTurnQ,...aiTurnStartReplay.queue],introShownGs,undefined,'single-player AI turn-start draw');
       return;
     }
     if(newGs?.phase==='NYA_BORROW'&&Array.isArray(newGs._turnStartLogs)&&newGs._turnStartLogs.length){
       const introQ=buildTurnStartIntroQueue(newGs,newGs.players?.[newGs.currentTurn]?.name||'???');
       if(introQ.length){
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
-        triggerAnimQueue([...preTurnQ,...introQ],newGs,undefined,authoritativeTurnStartQueueMeta(newGs));
+        submitTurnStartPresentation([...preTurnQ,...introQ],newGs,undefined,'NYA borrow turn start');
         return;
       }
     }
@@ -9721,7 +9739,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
         }
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
-        triggerAnimQueue(queue,newGs,undefined,authoritativeTurnStartQueueMeta(newGs));
+        submitTurnStartPresentation(queue,newGs,undefined,'ZHU turn-start decision');
         return;
       }
       setGs(newGs);
@@ -9755,7 +9773,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       if(queue.length){
         if(replay?.visualLock)visualStateLocks.lock(replay.visualLock);
         else if(newGs._playersBeforeThisDraw&&newGs._drawnCard)visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
-        triggerAnimQueue([...preTurnQ,...queue],newGs,undefined,authoritativeTurnStartQueueMeta(newGs));
+        submitTurnStartPresentation([...preTurnQ,...queue],newGs,undefined,'AI game-over turn-start replay');
         return;
       }
     }
@@ -9770,12 +9788,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       if(localTurnDrawReplay?.drawnCard){
         if(localTurnDrawReplay.visualLock)visualStateLocks.lock(localTurnDrawReplay.visualLock);
         setGs(prev=>hideTurnStartDecisionForReplay(prev,localTurnDrawReplay,newGs));
-        triggerAnimQueue([...preTurnQ,...localTurnDrawReplay.queue],newGs,undefined,authoritativeTurnStartQueueMeta(newGs));
+        submitTurnStartPresentation([...preTurnQ,...localTurnDrawReplay.queue],newGs,undefined,'local turn-start draw');
         return;
       }
       if(playerTurnStartMsgs.length&&newGs.phase==='ACTION'&&drawStatQ.length){
         setGs(prev=>prev?{...prev,phase:'ACTION',drawReveal:null,abilityData:{}}:prev);
-        triggerAnimQueue([...preTurnQ,{type:'YOUR_TURN',msgs:playerTurnStartMsgs},...drawStatQ],newGs,undefined,authoritativeTurnStartQueueMeta(newGs));
+        submitTurnStartPresentation([...preTurnQ,{type:'YOUR_TURN',msgs:playerTurnStartMsgs},...drawStatQ],newGs,undefined,'local turn-start stat fallback');
         return;
       }
     }
@@ -9795,7 +9813,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
           ?[...preTurnQ,...replay.queue]
           :[...preTurnQ,{type:'DRAW_CARD',card:newGs._drawnCard,triggerName:drawerName,targetPid:drawerPid,msgs:newGs._drawLogs},...drawStatQ];
       if(newGs._isMP&&newGs.currentTurn!==0)broadcastAnimTransaction(newGs,queue,{context:'turnStartDraw',barrier:'decision',msgs:newGs._drawLogs||[],beforePlayers:gs.players,beforeDiscard:gs.discard});
-      triggerAnimQueue(queue,newGs,undefined,authoritativeTurnStartQueueMeta(newGs));
+      submitTurnStartPresentation(queue,newGs,undefined,'turn-start decision draw');
       return;
     }
     if(newGs._isMP&&newGs.currentTurn!==0){
@@ -9807,7 +9825,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         if(replay.visualLock)visualStateLocks.lock(replay.visualLock);
         const queue=[...preTurnQ,...replay.queue];
         broadcastAnimTransaction(newGs,queue,{context:'turnStartDraw',barrier:'decision',msgs:newGs._drawLogs||[],beforePlayers:gs.players,beforeDiscard:gs.discard});
-        triggerAnimQueue(queue,newGs,undefined,authoritativeTurnStartQueueMeta(newGs));
+        submitTurnStartPresentation(queue,newGs,undefined,'remote turn-start draw');
         return;
       }
     }
@@ -9823,13 +9841,13 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       });
       if(replay?.visualLock)visualStateLocks.lock(replay.visualLock);
       else if(newGs._playersBeforeThisDraw)visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
-      triggerAnimQueue(
+      submitTurnStartPresentation(
         replay?.queue?.length
           ?[...preTurnQ,...replay.queue]
           :[...preTurnQ,{type:'DRAW_CARD',card:newGs.drawReveal.card,triggerName:drawerName,targetPid:drawerPid,msgs:newGs._drawLogs},...drawStatQ],
         newGs,
         undefined,
-        authoritativeTurnStartQueueMeta(newGs)
+        'forced turn-start draw'
       );
       return;
     }
@@ -9841,7 +9859,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const skippedTurnQ=buildSkippedTurnReplayQueue(newGs,{buildQueue:buildAnimQueue});
     const boundaryQ=[...preTurnQ,...skippedTurnQ];
     if(boundaryQ.length){
-      triggerAnimQueue(boundaryQ,newGs,undefined,authoritativeTurnStartQueueMeta(newGs));
+      submitTurnStartPresentation(boundaryQ,newGs,undefined,'skipped turn boundary');
       return;
     }
     setGs(newGs);
@@ -10003,7 +10021,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         if(pendingGs._playersBeforeThisDraw){
           visualStateLocks.lock({players:pendingGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||pendingGs.zhuLight||null});
         }
-        triggerAnimQueue(buildTurnStartIntroQueue(pendingGs,drawerName),pendingGs,undefined,authoritativeTurnStartQueueMeta(pendingGs));
+        submitTurnStartPresentation(buildTurnStartIntroQueue(pendingGs,drawerName),pendingGs,undefined,'opening ZHU turn start');
       }else{
         setGs(pendingGs);
       }
@@ -10023,9 +10041,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         // 遮蔽真实 phase，动画结束后 advanceQueue 再还原（与 applyNextTurnGs 同样模式）
         suppressNextBroadcastRef.current=true; // pendingGs 已广播过，advanceQueue 不再回传
         setGs({...pendingGs,phase:'ACTION',drawReveal:null,abilityData:{}});
-        triggerAnimQueue(replay.queue,pendingGs,undefined,authoritativeTurnStartQueueMeta(pendingGs));
+        submitTurnStartPresentation(replay.queue,pendingGs,undefined,'opening remote turn-start draw');
       }else{
-        triggerAnimQueue([{type:'YOUR_TURN',name:activeName,msgs:pendingGs._turnStartLogs}],pendingGs,undefined,authoritativeTurnStartQueueMeta(pendingGs));
+        submitTurnStartPresentation([{type:'YOUR_TURN',name:activeName,msgs:pendingGs._turnStartLogs}],pendingGs,undefined,'opening remote turn banner');
       }
       return;
     }
@@ -10038,17 +10056,17 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       try{ if((replay.queue||[]).some(s=>s.type==='EARTHQUAKE')||localDrawnCard?.type==='allDiscard') console.log('[EQ-DEBUG] _onRoleRevealDone localDraw: replay.drawnCard=',!!replay.drawnCard,'queue=',(replay.queue||[]).map(s=>s.type)); }catch{ /* noop */ }
       if(replay.drawnCard){
         if(replay.visualLock)visualStateLocks.lock(replay.visualLock);
-        triggerAnimQueue(replay.queue,pendingGs,undefined,authoritativeTurnStartQueueMeta(pendingGs));
+        submitTurnStartPresentation(replay.queue,pendingGs,undefined,'opening local turn-start draw');
       }else{
         const drawStatQ=bindAnimLogChunks(
           buildAnimQueue({...gs,players:pendingGs._playersBeforeThisDraw||gs.players},pendingGs),
           {statLogs:pendingGs._statLogs}
         );
-        triggerAnimQueue([
+        submitTurnStartPresentation([
           {type:'YOUR_TURN',msgs:pendingGs._turnStartLogs},
           {type:'DRAW_CARD',card:localDrawnCard,triggerName:'你',targetPid:0,msgs:pendingGs._drawLogs},
           ...drawStatQ
-        ],pendingGs,undefined,authoritativeTurnStartQueueMeta(pendingGs));
+        ],pendingGs,undefined,'opening local turn-start fallback');
       }
     }else{
       const queue=[{type:'YOUR_TURN',msgs:pendingGs._turnStartLogs}];
@@ -10056,7 +10074,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         buildAnimQueue({...gs,players:pendingGs._playersBeforeThisDraw||gs.players},pendingGs),
         {statLogs:pendingGs._statLogs}
       ));
-      triggerAnimQueue(queue,pendingGs,undefined,authoritativeTurnStartQueueMeta(pendingGs));
+      submitTurnStartPresentation(queue,pendingGs,undefined,'opening turn banner fallback');
     }
   }
 

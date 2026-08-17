@@ -19,6 +19,11 @@ import { assertCompleteThrowStoneTransactions } from '../animationStepSchema';
 import { makeProliferatingZState } from '../proliferatingZ';
 import { addDamageLink, getAllDamageLinks } from '../damageLinks';
 
+const inspectionEventsOf = state => (state?._visualEvents || [])
+  .filter(event => event?.type === VISUAL_EVENT.INSPECTION);
+const randomTargetEventsOf = state => (state?._visualEvents || [])
+  .filter(event => event?.type === VISUAL_EVENT.RANDOM_TARGET || event?.type === VISUAL_EVENT.THROW_STONE);
+
 describe('逆流回合结束时机', () => {
   it('行动阶段打出时只登记，不立即反转方向', () => {
     const players = [makePlayer({ name: '艾伦' }), makePlayer({ name: '贝拉' })];
@@ -430,7 +435,7 @@ describe('applyFx', () => {
     const res = applyFx({ id: 'night-wind', name: '夜风呼啸', type: 'allDamageBoth', val: 1 }, 2, 2, players, [], [], gs);
     randomSpy.mockRestore();
 
-    expect(res.statePatch._inspectionEvents.map(event => event.card.name)).toEqual(['失忆', '自残', '超人意志']);
+    expect(inspectionEventsOf(res.statePatch).map(event => event.card.name)).toEqual(['失忆', '自残', '超人意志']);
     expect(res.statePatch._statEventSeq).toBe(3);
     expect(res.statePatch._statEvents.map(event => event.seq)).toEqual([1, 1, 1, 1, 1, 1, 2, 3]);
     expect(res.statePatch._statEvents.at(-2)).toMatchObject({ type: 'HP_LOSS', target: 1, reason: '自残' });
@@ -581,15 +586,12 @@ describe('applyFx', () => {
     expect(res.P[3].hp).toBe(10);
     expect(res.msgs[0]).toContain('掷出 6 点');
     expect(res.msgs[0]).toContain('距离1');
-    expect(res.statePatch._randomTargetEvents[0]).toMatchObject({
+    expect(randomTargetEventsOf(res.statePatch)[0]).toMatchObject({
       sourceIdx: 0,
       targetIdx: 1,
       roll: 6,
       distance: 1,
       damage: 5,
-      label: '投掷石块',
-      diceBefore: true,
-      phaseOrder: 1,
     });
     expect(res.statEvents[0]).toMatchObject({ target: 1, phaseOrder: 2 });
     expect(res.statePatch._visualEvents.at(-1)).toMatchObject({
@@ -680,12 +682,12 @@ describe('applyFx', () => {
     const gs = makeGs({ players, currentTurn: 0 });
     const res = applyFx({ type: 'allDamageHPRandomExtra', name: '钻地魔虫', val: 2 }, 0, null, players, [], [], gs);
 
-    expect(res.statePatch._randomTargetEvents[0]).toMatchObject({
+    expect(randomTargetEventsOf(res.statePatch)[0]).toMatchObject({
       targetIdx: 1,
       phaseOrder: 1,
       phaseGroupId: expect.any(String),
     });
-    const phaseGroupId = res.statePatch._randomTargetEvents[0].phaseGroupId;
+    const phaseGroupId = randomTargetEventsOf(res.statePatch)[0].phaseGroupId;
     expect(res.statePatch._visualEvents[0]).toMatchObject({
       type: VISUAL_EVENT.CARD_EFFECT,
       effectKey: 'burrowingWorm',
@@ -851,7 +853,7 @@ describe('applyFx', () => {
     const hpIdx = types.indexOf('HP_DAMAGE');
     const sanIdx = types.indexOf('SAN_DAMAGE');
 
-    expect(res.statePatch._randomTargetEvents[0]).toMatchObject({
+    expect(randomTargetEventsOf(res.statePatch)[0]).toMatchObject({
       sourceIdx: 1,
       targetIdx: 2,
       label: '白化生物',
@@ -1649,8 +1651,8 @@ describe('applyInspectionForSanLoss', () => {
 
     expect(res.P[0].hp).toBe(9);
     expect(res.inspectionMeta._statEventSeq).toBe(5);
-    expect(res.inspectionMeta._inspectionEvents[0].statEventSeq).toBe(5);
-    expect(res.inspectionMeta._inspectionEvents[0].statEvents).toMatchObject([
+    expect(inspectionEventsOf(res.inspectionMeta)[0].statEventSeq).toBe(5);
+    expect(inspectionEventsOf(res.inspectionMeta)[0].statEvents).toMatchObject([
       { type: 'HP_LOSS', target: 0, from: { hp: 10 }, to: { hp: 9 }, seq: 5 },
     ]);
   });
@@ -1680,11 +1682,11 @@ describe('applyInspectionForSanLoss', () => {
     expect(res.P[0].hand).toMatchObject([{ id: 'truth-draw' }]);
     expect(res.P[0].san).toBe(6);
     expect(res.log.at(-1)).toBe('你 揭开真相，直接摸1张牌收入手牌（不触发效果）');
-    expect(res.inspectionMeta._inspectionEvents.at(-1)).toMatchObject({
+    expect(inspectionEventsOf(res.inspectionMeta).at(-1)).toMatchObject({
       gainedCard: { hiddenDraw: true },
       gainedCardLog: '你 揭开真相，直接摸1张牌收入手牌（不触发效果）',
     });
-    expect(res.inspectionMeta._inspectionEvents.at(-1).gainedCard).not.toHaveProperty('name');
+    expect(inspectionEventsOf(res.inspectionMeta).at(-1).gainedCard).not.toHaveProperty('name');
   });
 
   it('批量 SAN 检定遇到任意待结算决策都会暂停后续检定', () => {
@@ -1713,7 +1715,7 @@ describe('applyInspectionForSanLoss', () => {
       },
     );
 
-    expect(res.inspectionMeta._inspectionEvents.map(event => event.card.name)).toEqual(['自残']);
+    expect(inspectionEventsOf(res.inspectionMeta).map(event => event.card.name)).toEqual(['自残']);
     expect(res.inspectionMeta.abilityData).toMatchObject({
       type: 'tsgSlimeBalance',
       pendingInspectionContinuation: { targets: [1], startIndex: 0 },
@@ -1746,7 +1748,7 @@ describe('applyInspectionForSanLoss', () => {
     expect(res.P[0].hp).toBe(10);
     expect(res.P[1].hp).toBe(9);
     expect(res.log.filter(line => line.includes('贝拉 被乱抓'))).toHaveLength(1);
-    expect(res.inspectionMeta._inspectionEvents[0].statEvents).toMatchObject([
+    expect(inspectionEventsOf(res.inspectionMeta)[0].statEvents).toMatchObject([
       { type: 'HP_LOSS', target: 1, from: { hp: 10 }, to: { hp: 9 } },
     ]);
   });

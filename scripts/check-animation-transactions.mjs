@@ -9,6 +9,20 @@ const legacyBaseline = new Map([
   ['game/visualEventTransactionCompiler.js', 3],
   ['game/visualEvents.js', 1],
 ]);
+const legacyVisualStateFields = [
+  '_inspectionEvents',
+  '_randomTargetEvents',
+  '_tsgSlimeGrantEvents',
+];
+const legacyVisualObjectProducerPattern = new RegExp(`(?:^|[{,])\\s*(${legacyVisualStateFields.join('|')})\\s*:`);
+const legacyVisualAssignmentPattern = new RegExp(`\\.(${legacyVisualStateFields.join('|')})\\s*=(?!=)`);
+const LEGACY_VISUAL_ALLOW_MARKER = 'legacy-visual-allow:';
+
+function isTutorialSource(relative) {
+  return relative === 'game/tutorialScenario.js'
+    || relative.startsWith('components/tutorial/')
+    || relative.toLowerCase().includes('/tutorial/');
+}
 
 function collectSourceFiles(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
@@ -22,6 +36,7 @@ function collectSourceFiles(directory) {
 const actual = new Map();
 const legacyStatTargetProducers = [];
 const legacySphinxHintProducers = [];
+const legacyVisualFieldProducers = [];
 for (const file of collectSourceFiles(sourceRoot)) {
   const relative = path.relative(sourceRoot, file).split(path.sep).join('/');
   const source = fs.readFileSync(file, 'utf8');
@@ -29,6 +44,11 @@ for (const file of collectSourceFiles(sourceRoot)) {
   if (matches.length) actual.set(relative, matches.length);
   if (relative !== 'game/rotateState.js') {
     source.split(/\r?\n/).forEach((line, index) => {
+      if ((legacyVisualObjectProducerPattern.test(line) || legacyVisualAssignmentPattern.test(line))
+        && !isTutorialSource(relative)
+        && !line.includes(LEGACY_VISUAL_ALLOW_MARKER)) {
+        legacyVisualFieldProducers.push(`${relative}:${index + 1}: ${line.trim()}`);
+      }
       if (/\btargetStats\s*:/.test(line)) {
         legacyStatTargetProducers.push(`${relative}:${index + 1}`);
       }
@@ -42,6 +62,9 @@ for (const file of collectSourceFiles(sourceRoot)) {
 }
 
 const issues = [];
+legacyVisualFieldProducers.forEach(location => {
+  issues.push(`${location}: legacy visual field production is forbidden; emit a canonical visual event (tutorial/compatibility code must use an explicit ${LEGACY_VISUAL_ALLOW_MARKER} marker)`);
+});
 legacyStatTargetProducers.forEach(location => {
   issues.push(`${location}: production targetStats payloads are forbidden; emit statEvents instead`);
 });

@@ -109,8 +109,8 @@ describe('apophisNight', () => {
     expect(res.log[0]).toContain('目标由');
     expect(res.log).toContain(`${players[0].name} 的SAN检定结果为"暂时的平静"`);
     expect(res.statePatch._inspectionSeq).toBe(1);
-    expect(res.statePatch._inspectionEvents).toHaveLength(1);
-    expect(res.statePatch._inspectionEvents[0]).toMatchObject({
+    const inspectionEvent = res.statePatch._visualEvents.find(event => event.type === 'inspection');
+    expect(inspectionEvent).toMatchObject({
       target: 0,
       card: inspectionCard,
       beforeStatEventSeq: 1,

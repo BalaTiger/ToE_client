@@ -25,7 +25,7 @@ import { buildStatEvents } from './statEvents';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { makeProliferatingZState } from './proliferatingZ';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
-import { createCardEffectEvent, createEarthquakeEvent, createGraveDigEvent, createInspectionVisualEvent, createRandomTargetVisualEvent, createSphinxResultEvent, createThrowStoneEvent } from './visualEvents';
+import { VISUAL_EVENT, createCardEffectEvent, createEarthquakeEvent, createGraveDigEvent, createInspectionVisualEvent, createRandomTargetVisualEvent, createSphinxResultEvent, createThrowStoneEvent } from './visualEvents';
 import { createGeomagneticRestoreCard } from '../constants/card';
 import {
   addTurnScopedDamageBonus,
@@ -293,7 +293,10 @@ function getLivingCircularDistance(players, fromIdx, toIdx) {
 }
 
 function appendRandomTargetEvent(statePatch, gs, event, { createPhaseGroup = false } = {}) {
-  const seq = (gs?._randomTargetSeq || 0) + 1 + (statePatch?._randomTargetEvents?.length || 0);
+  const pendingRandomTargetSeq = (statePatch?._visualEvents || [])
+    .filter(candidate => candidate?.type === VISUAL_EVENT.RANDOM_TARGET || candidate?.type === VISUAL_EVENT.THROW_STONE)
+    .reduce((max, candidate) => Math.max(max, candidate?.legacySeq || 0), 0);
+  const seq = Math.max(gs?._randomTargetSeq || 0, pendingRandomTargetSeq) + 1;
   let legacyEvent = { ...event, seq };
   let visualEvent = event?.label === '投掷石块'
     ? null
@@ -305,10 +308,6 @@ function appendRandomTargetEvent(statePatch, gs, event, { createPhaseGroup = fal
   return {
     ...statePatch,
     _randomTargetSeq: seq,
-    _randomTargetEvents: [
-      ...(statePatch?._randomTargetEvents || []),
-      legacyEvent,
-    ],
     ...(visualEvent ? { _visualEvents: [...(statePatch?._visualEvents || []), visualEvent] } : {}),
   };
 }
@@ -546,10 +545,6 @@ function handleInspection(playerIndex, gs) {
     statEventSeq: statEvents.length ? statEventSeq : null,
     ...(gainedCard ? { gainedCard, gainedCardLog } : {}),
   };
-  newGs._inspectionEvents = [
-    ...((gs?._inspectionEvents) || []),
-    inspectionEvent,
-  ];
   const inspectionVisualEvent = createInspectionVisualEvent(inspectionEvent);
   newGs._visualEvents = [
     ...((gs?._visualEvents) || []),
@@ -579,7 +574,6 @@ function mergeInspectionMeta(target, inspectionResult) {
     _inspectionTarget: inspectionResult._inspectionTarget,
     _inspectionPrevLogLen: inspectionResult._inspectionPrevLogLen,
     _inspectionBeforePlayers: inspectionResult._inspectionBeforePlayers,
-    _inspectionEvents: inspectionResult._inspectionEvents,
     _visualEvents: inspectionResult._visualEvents,
     _statEvents: inspectionResult._statEvents,
     _statEventSeq: inspectionResult._statEventSeq,
@@ -605,7 +599,7 @@ export function processInspectionTargets(targets, startIndex, P, D, Disc, baseLo
       houndsOfTindalosTarget: nextMeta.houndsOfTindalosTarget,
       houndsOfTindalosElapsed: nextMeta.houndsOfTindalosElapsed,
       _inspectionSeq: nextMeta._inspectionSeq,
-      _inspectionEvents: nextMeta._inspectionEvents,
+      _visualEvents: nextMeta._visualEvents,
       _statEvents: nextMeta._statEvents,
       _statEventSeq: nextMeta._statEventSeq,
       currentTurn: startIndex,
@@ -1711,7 +1705,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           phaseOrder: 1,
         }, { createPhaseGroup: card?.name === '钻地魔虫' });
         const phaseGroupId = card?.name === '钻地魔虫'
-          ? statePatch._randomTargetEvents?.at(-1)?.phaseGroupId || null
+          ? statePatch._visualEvents?.findLast(event => event?.type === VISUAL_EVENT.RANDOM_TARGET)?.phaseGroupId || null
           : null;
         msgs.push(`${P[randomTarget].name} 额外失去 ${card.val} HP`);
         if (localMsgs.length) msgs.push(...localMsgs);
@@ -1742,7 +1736,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         ];
       }
       if (card?.name === '钻地魔虫') {
-        const phaseGroupId = statePatch._randomTargetEvents?.at(-1)?.phaseGroupId || null;
+        const phaseGroupId = statePatch._visualEvents?.findLast(event => event?.type === VISUAL_EVENT.RANDOM_TARGET)?.phaseGroupId || null;
         const event = createCardEffectEvent({
           effectKey: 'burrowingWorm',
           card,
@@ -1815,7 +1809,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         playersBefore: beforePlayers,
         playersAfter: copyPlayers(P),
         statEvents: directStatEvents,
-        legacySeq: statePatch._randomTargetEvents?.at(-1)?.seq,
+        legacySeq: statePatch._randomTargetSeq,
       });
       if (throwStoneEvent) {
         statePatch = {

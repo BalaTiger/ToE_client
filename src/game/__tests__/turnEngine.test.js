@@ -7,6 +7,12 @@ import { createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../../const
 import { applyInspectionForSanLoss } from '../effectEngine';
 import { makeProliferatingZState } from '../proliferatingZ';
 import { addDamageLink, getAllDamageLinks } from '../damageLinks';
+import { VISUAL_EVENT } from '../visualEvents';
+
+const inspectionEventsOf = state => (state?._visualEvents || [])
+  .filter(event => event?.type === VISUAL_EVENT.INSPECTION);
+const slimeGrantEventsOf = state => (state?._visualEvents || [])
+  .filter(event => event?.type === VISUAL_EVENT.TSG_SLIME_GRANT);
 
 describe('createFaithSettlementGodStatusEvent', () => {
   it('uses explicit player snapshots for worship and upgrade without log inference', () => {
@@ -642,7 +648,7 @@ describe('turnEngine stat events', () => {
       { type: 'SAN_LOSS', target: 0, from: { san: 7 }, to: { san: 6 }, seq: 1 },
       { type: 'HP_LOSS', target: 0, from: { hp: 10 }, to: { hp: 9 }, seq: 2 },
     ]);
-    expect(result.statePatch._inspectionEvents[0].statEventSeq).toBe(2);
+    expect(inspectionEventsOf(result.statePatch)[0].statEventSeq).toBe(2);
   });
 
   it('SAN 损失后若可牺牲黏液，会先暂停在黏液抉择而不是提前翻检定牌', () => {
@@ -737,7 +743,7 @@ describe('turnEngine stat events', () => {
       result.effectMsgs,
       { ...gs, players: result.P, deck: result.D, discard: result.Disc, log: result.effectMsgs, ...result.statePatch },
     );
-    expect(inspected.inspectionMeta._inspectionEvents).toHaveLength(1);
+    expect(inspectionEventsOf(inspected.inspectionMeta)).toHaveLength(1);
 
     const afterDecision = resolveGodEncounterForAI(
       1,
@@ -761,11 +767,11 @@ describe('turnEngine stat events', () => {
     expect(afterDecision.P[1].san).toBe(4);
     expect(afterDecision.P[1].godName).toBe('VRI');
     expect(afterDecision.P[1].godEncounters).toBe(2);
-    expect(afterDecision.inspectionMeta._inspectionEvents).toHaveLength(2);
-    expect(afterDecision.inspectionMeta._inspectionEvents.at(-1).seq).toBe(2);
-    expect(afterDecision.inspectionMeta._inspectionEvents[0].beforeStatEventSeq).toBe(1);
-    expect(afterDecision.inspectionMeta._inspectionEvents[1].beforeStatEventSeq).toBe(2);
-    expect(afterDecision.inspectionMeta._inspectionEvents.at(-1).beforePlayers[1]).toMatchObject({
+    expect(inspectionEventsOf(afterDecision.inspectionMeta)).toHaveLength(2);
+    expect(inspectionEventsOf(afterDecision.inspectionMeta).at(-1).legacySeq).toBe(2);
+    expect(inspectionEventsOf(afterDecision.inspectionMeta)[0].beforeStatEventSeq).toBe(1);
+    expect(inspectionEventsOf(afterDecision.inspectionMeta)[1].beforeStatEventSeq).toBe(2);
+    expect(inspectionEventsOf(afterDecision.inspectionMeta).at(-1).beforePlayers[1]).toMatchObject({
       san: 4,
       godEncounters: 2,
       godName: null,
@@ -781,8 +787,8 @@ describe('turnEngine stat events', () => {
         previousFaithExit: expect.objectContaining({ playerIdx: 1, effect: 'godConvertDiscard' }),
       },
     });
-    expect(afterDecision.inspectionMeta._inspectionEvents[0].seq).toBe(1);
-    expect(afterDecision.inspectionMeta._inspectionEvents[0].beforePlayers[1]).toMatchObject({
+    expect(inspectionEventsOf(afterDecision.inspectionMeta)[0].legacySeq).toBe(1);
+    expect(inspectionEventsOf(afterDecision.inspectionMeta)[0].beforePlayers[1]).toMatchObject({
       san: 5,
       godEncounters: 2,
       godName: 'NYA',
@@ -1059,10 +1065,10 @@ describe('turnEngine stat events', () => {
 
     expect(result.players[0].hand.filter(c => c.isTsathogguaSlime)).toHaveLength(2);
     expect(result.log.some(line => line.includes('获得2张撒托古亚的赐福黏液'))).toBe(true);
-    expect(result._tsgSlimeGrantEvents).toHaveLength(1);
-    expect(result._tsgSlimeGrantEvents[0]).toMatchObject({ ownerIdx: 0, count: 2 });
-    expect(result._tsgSlimeGrantEvents[0].playersBefore[0].hand).toHaveLength(0);
-    expect(result._tsgSlimeGrantEvents[0].playersAfter[0].hand.filter(c => c.isTsathogguaSlime)).toHaveLength(2);
+    expect(slimeGrantEventsOf(result)).toHaveLength(1);
+    expect(slimeGrantEventsOf(result)[0]).toMatchObject({ ownerIdx: 0, count: 2 });
+    expect(slimeGrantEventsOf(result)[0].playersBefore[0].hand).toHaveLength(0);
+    expect(slimeGrantEventsOf(result)[0].playersAfter[0].hand.filter(c => c.isTsathogguaSlime)).toHaveLength(2);
     expect(result._preTurnPlayers[0].hand.filter(c => c.isTsathogguaSlime)).toHaveLength(2);
   });
 

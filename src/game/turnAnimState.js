@@ -26,7 +26,7 @@ export const EMPTY_TURN_ANIM_FIELDS = Object.freeze({
   _statLogs: [],
   _statEvents: [],
   _preTurnPlayers: null,
-  _tsgSlimeGrantEvents: null,
+  _tsgSlimeGrantEvents: null, // legacy-visual-allow: old save/peer cleanup
   _earthquakeBeforePlayers: null,
   _earthquakeBeforeDiscard: null,
   _earthquakeDiscardEvents: null,

@@ -681,7 +681,12 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
   statePatch = {
     ...statePatch,
     ...(zBase.proliferatingZQueue ? { proliferatingZQueue: zBase.proliferatingZQueue } : {}),
-    ...(visualEvents.length ? { _visualEvents: visualEvents } : {}),
+    _visualEvents: [
+      ...(inspectionMeta?._visualEvents || []),
+      ...visualEvents,
+    ].filter((event, index, events) => (
+      !event?.id || events.findIndex(candidate => candidate?.id === event.id) === index
+    )),
   };
   return { P, D, Disc, msgs, inspectionMeta, statePatch, discardedGod };
 }
@@ -899,8 +904,9 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
         statSeqs: (mergedMeta._statEvents || [])
           .map(event => event?.seq)
           .filter(seq => Number.isFinite(seq) && seq > encounterStatSeqBefore),
-        inspectionSeqs: (mergedMeta._inspectionEvents || [])
-          .map(event => event?.seq)
+        inspectionSeqs: (mergedMeta._visualEvents || [])
+          .filter(event => event?.type === VISUAL_EVENT.INSPECTION)
+          .map(event => event?.legacySeq)
           .filter(seq => Number.isFinite(seq) && seq > encounterInspectionSeqBefore),
         discardedGod: gr.discardedGod || null,
       };
@@ -1538,7 +1544,9 @@ function resolveNextTurnState(gs, opts = {}) {
     allAi || (typeof isAiControlled === 'function' && !!isAiControlled(playerIndex, gs))
   );
   // Reset multiplyUsed at the start of every turn
-  const inheritedTsgSlimeGrantEvents = Array.isArray(gs._carryTsgSlimeGrantEvents) ? gs._carryTsgSlimeGrantEvents : [];
+  const inheritedTsgSlimeGrantEvents = (Array.isArray(gs._carryTsgSlimeGrantEvents) ? gs._carryTsgSlimeGrantEvents : [])
+    .map(event => event?.type === VISUAL_EVENT.TSG_SLIME_GRANT ? event : createTsathogguaSlimeGrantEvent(event))
+    .filter(Boolean);
   const inheritedGodPowerBlockedEvents = Array.isArray(gs._carryGodPowerBlockedEvents) ? gs._carryGodPowerBlockedEvents : [];
   const inheritedSkippedTurnReplays = Array.isArray(gs._carrySkippedTurnReplays) ? gs._carrySkippedTurnReplays : [];
   // 黄液（蟾蜍之神回合结束发放）属神牌事件，按 END_TURN_PRIORITY 应先于其他卡牌（如无尽通道）结算。
@@ -1551,8 +1559,7 @@ function resolveNextTurnState(gs, opts = {}) {
     // increasing _apophisTargetSeq watermark across turns, but never let the
     // previous turn's final roll enter the next turn's draw replay.
     _apophisTargetEvent: null,
-    _visualEvents: [...inheritedGodPowerBlockedEvents],
-    _tsgSlimeGrantEvents: null,
+    _visualEvents: [...inheritedGodPowerBlockedEvents, ...inheritedTsgSlimeGrantEvents],
     _skippedTurnReplays: inheritedSkippedTurnReplays,
     _carryTsgSlimeGrantEvents: null,
     _carryGodPowerBlockedEvents: null,
@@ -1560,7 +1567,7 @@ function resolveNextTurnState(gs, opts = {}) {
     _tsgSlimeGrantedAtTurnEnd: undefined,
   };
   const visualEvents = gs._visualEvents;
-  const inheritedGodPowerBlockedEventCount = visualEvents.length;
+  const inheritedGodPowerBlockedEventCount = inheritedGodPowerBlockedEvents.length;
   const N = gs.players.length;
   let P = copyPlayers(gs.players), D = [...gs.deck], Disc = [...gs.discard], L = [...gs.log];
   let _P_beforeTurn = copyPlayers(P);
@@ -1583,15 +1590,16 @@ function resolveNextTurnState(gs, opts = {}) {
     ? null
     : grantTsathogguaSlimeAtEndTurn(P, gs.currentTurn, L, visualEvents);
   if (tsgSlimeGrant) {
-    tsgSlimeGrantEvents.push(tsgSlimeGrant);
     const grantVisualEvent = createTsathogguaSlimeGrantEvent(tsgSlimeGrant);
-    if (grantVisualEvent) visualEvents.push(grantVisualEvent);
+    if (grantVisualEvent) {
+      tsgSlimeGrantEvents.push(grantVisualEvent);
+      visualEvents.push(grantVisualEvent);
+    }
     const proliferatingZPatch = appendPublicCardGainTriggers(gs, P, tsgSlimeGrant.ownerIdx, tsgSlimeGrant.cards);
     if (proliferatingZPatch.proliferatingZQueue) {
       gs = { ...gs, proliferatingZQueue: proliferatingZPatch.proliferatingZQueue };
     }
   }
-  gs = { ...gs, _tsgSlimeGrantEvents: tsgSlimeGrantEvents.length ? tsgSlimeGrantEvents : null };
   for (let i = 1; i <= N; i++) { next = (gs.currentTurn + i * turnDir + N) % N; if (!P[next].isDead) break; }
   const nextProliferatingZ = clearExpiredProliferatingZ(gs, gs.currentTurn);
   gs = nextProliferatingZ === gs.proliferatingZ
@@ -1663,7 +1671,7 @@ function resolveNextTurnState(gs, opts = {}) {
       cthReplay: skippedTurnCthReplay,
     };
     return resolveNextTurnState(
-      { ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents.slice(inheritedGodPowerBlockedEventCount), _carrySkippedTurnReplays: [...inheritedSkippedTurnReplays, skippedTurnReplay] },
+      { ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents.filter(event => event?.type === VISUAL_EVENT.GOD_POWER_BLOCKED).slice(inheritedGodPowerBlockedEventCount), _carrySkippedTurnReplays: [...inheritedSkippedTurnReplays, skippedTurnReplay] },
       { ...opts, skipCurrentEndTurnStage: true },
     );
   }
@@ -1815,7 +1823,7 @@ function resolveNextTurnState(gs, opts = {}) {
     }
     if (res.effectMsgs?.length) {
       if (res.needGodChoice) {
-        // 邪神牌：遭遇消息跟随翻牌动画；检定消息由 _inspectionEvents 单独驱动检定动画
+        // 邪神牌：遭遇消息跟随翻牌动画；检定消息由 INSPECTION 视觉事件单独驱动。
         const split = splitGodEncounterLogs(res.effectMsgs);
         drawLogs.push(...split.encounterLogs);
         statLogs.push(...split.inspectionLogs);
@@ -1865,7 +1873,7 @@ function resolveNextTurnState(gs, opts = {}) {
         houndsOfTindalosActive: inspectionPatch.houndsOfTindalosActive,
         houndsOfTindalosTarget: inspectionPatch.houndsOfTindalosTarget,
         houndsOfTindalosElapsed: inspectionPatch.houndsOfTindalosElapsed,
-        _inspectionEvents: inspectionPatch._inspectionEvents,
+        _visualEvents: inspectionPatch._visualEvents,
         _inspectionSeq: inspectionPatch._inspectionSeq,
         _inspectionCard: inspectionPatch._inspectionCard,
         _inspectionTarget: inspectionPatch._inspectionTarget,
@@ -2003,7 +2011,7 @@ function resolveNextTurnState(gs, opts = {}) {
     }
     if (res.effectMsgs?.length) {
       if (res.needGodChoice) {
-        // 邪神牌：遭遇消息跟随翻牌动画；检定消息由 _inspectionEvents 单独驱动检定动画
+        // 邪神牌：遭遇消息跟随翻牌动画；检定消息由 INSPECTION 视觉事件单独驱动。
         const split = splitGodEncounterLogs(res.effectMsgs);
         drawLogs.push(...split.encounterLogs);
         statLogs.push(...split.inspectionLogs);

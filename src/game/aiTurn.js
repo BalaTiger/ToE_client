@@ -963,11 +963,10 @@ export function aiStep(gs, opts = {}) {
         discard: [..._Disc],
         log: [..._L],
         currentTurn: _gs.currentTurn,
-        _inspectionEvents: [...(inspectionMeta?._inspectionEvents || [])],
         _inspectionSeq: inspectionMeta?._inspectionSeq || 0,
         _statEvents: [...(inspectionMeta?._statEvents || [])],
         _statEventSeq: inspectionMeta?._statEventSeq || 0,
-        _visualEvents: [...(_gs?._visualEvents || [])],
+        _visualEvents: [...(inspectionMeta?._visualEvents || _gs?._visualEvents || [])],
       };
       const godResolveGs = { ..._gs, ...inspectionMeta };
       const shouldDeferShuTarget = _sc.godKey === 'SHU' && _ti === 0 && !opts.allAi;

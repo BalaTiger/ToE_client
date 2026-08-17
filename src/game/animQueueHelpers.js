@@ -702,7 +702,7 @@ export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPl
     ...newGs,
     players:firstEvent?.beforePlayers||newGs.players,
     log:firstEvent?.beforeLog||newGs.log,
-    _inspectionEvents:baseOldGs._inspectionEvents||[],
+    _inspectionEvents:baseOldGs._inspectionEvents||[], // legacy-visual-allow: compatibility presentation baseline
     _inspectionSeq:baseInspectionSeq,
     _statEvents:baseOldGs._statEvents||[],
     _statEventSeq:baseOldGs._statEventSeq||0,

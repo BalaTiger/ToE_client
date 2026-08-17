@@ -304,7 +304,7 @@ function rotateBewitchEncounterState(state, rotateIndex, myIndex) {
     ...state,
     currentTurn: state.currentTurn != null ? rotateIndex(state.currentTurn) : state.currentTurn,
     players: rotatePlayersArray(state.players, myIndex),
-    _inspectionEvents: rotateInspectionEvents(state._inspectionEvents, rotateIndex, myIndex),
+    _inspectionEvents: rotateInspectionEvents(state._inspectionEvents, rotateIndex, myIndex), // legacy-visual-allow: old peer rotation
     _statEvents: rotateStatEvents(state._statEvents, rotateIndex, myIndex),
   };
 }
@@ -441,14 +441,14 @@ export function rotateGsForViewer(gs, myIndex) {
     ...(gs._earthquakeDiscardEvents ? { _earthquakeDiscardEvents: rotateEarthquakeDiscardEvents(gs._earthquakeDiscardEvents, rotateIndex, myIndex) } : {}),
     ...(gs._aiHuntEvents ? { _aiHuntEvents: rotateAiHuntEvents(gs._aiHuntEvents, rotateIndex, myIndex) } : {}),
     ...(gs._statEvents ? { _statEvents: rotateStatEvents(gs._statEvents, rotateIndex, myIndex) } : {}),
-    ...(gs._inspectionEvents ? { _inspectionEvents: rotateInspectionEvents(gs._inspectionEvents, rotateIndex, myIndex) } : {}),
+    ...(gs._inspectionEvents ? { _inspectionEvents: rotateInspectionEvents(gs._inspectionEvents, rotateIndex, myIndex) } : {}), // legacy-visual-allow: old peer rotation
     ...(gs._inspectionTarget != null ? { _inspectionTarget: rotateIndex(gs._inspectionTarget) } : {}),
     ...(gs._animMultiplyEvent ? { _animMultiplyEvent: rotateAnimMultiplyEvent(gs._animMultiplyEvent, rotateIndex) } : {}),
     ...(gs._animSphinxReveal ? { _animSphinxReveal: rotateAnimSphinxReveal(gs._animSphinxReveal, rotateIndex) } : {}),
     ...(gs._apophisTargetEvent ? { _apophisTargetEvent: rotateApophisTargetEvent(gs._apophisTargetEvent, rotateIndex) } : {}),
-    ...(gs._randomTargetEvents ? { _randomTargetEvents: rotateRandomTargetEvents(gs._randomTargetEvents, rotateIndex) } : {}),
+    ...(gs._randomTargetEvents ? { _randomTargetEvents: rotateRandomTargetEvents(gs._randomTargetEvents, rotateIndex) } : {}), // legacy-visual-allow: old peer rotation
     ...(gs._mpTimedOutDrawDiscard ? { _mpTimedOutDrawDiscard: rotateTimedOutDrawDiscardEvent(gs._mpTimedOutDrawDiscard, rotateIndex) } : {}),
-    ...(gs._tsgSlimeGrantEvents ? { _tsgSlimeGrantEvents: rotateTsathogguaSlimeGrantEvents(gs._tsgSlimeGrantEvents, rotateIndex, myIndex) } : {}),
+    ...(gs._tsgSlimeGrantEvents ? { _tsgSlimeGrantEvents: rotateTsathogguaSlimeGrantEvents(gs._tsgSlimeGrantEvents, rotateIndex, myIndex) } : {}), // legacy-visual-allow: old peer rotation
     ...(gs._turnDrawEvents ? { _turnDrawEvents: rotateTurnDrawEvents(gs._turnDrawEvents, rotateIndex, myIndex) } : {}),
     ...(gs._visualEvents ? { _visualEvents: rotateVisualEvents(gs._visualEvents, rotateIndex, myIndex) } : {}),
   };

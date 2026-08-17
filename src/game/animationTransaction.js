@@ -84,9 +84,10 @@ export function prepareAnimationTransaction({
   const compileEventIds = getRuleEventCompileIds(transactionMeta);
   if (shouldCompile && Array.isArray(compileEventIds)) diagnostics.uncoveredEventCount += compileEventIds.length;
   const ruleTransaction = compileState && shouldCompile
-    ? compileRuleVisualEventsToAnimTransaction(ensureVisualEventState(compileState), null, {
-        consumedEventIds,
-        buildAnimQueue,
+      ? compileRuleVisualEventsToAnimTransaction(ensureVisualEventState(compileState), null, {
+         consumedEventIds,
+         buildAnimQueue,
+         ...(transactionMeta?.compileOptions || {}),
         ...(Array.isArray(compileEventIds) ? { eventIds: compileEventIds } : {}),
         ...(transactionMeta?.visualEventScope ? { visualEventScope: transactionMeta.visualEventScope } : {}),
       })
@@ -101,4 +102,48 @@ export function prepareAnimationTransaction({
     context,
     preserveQueueOrder: transactionMeta?.preserveQueueOrder === true,
   });
+}
+
+// Canonical presentation boundary for new call sites. Callers describe the
+// authority and event scope; this function owns transaction preparation and
+// hands the player one queue-authoritative transaction.
+export function submitAnimationPresentation({
+  playTransaction,
+  queue = [],
+  nextState = null,
+  callback,
+  authority = ANIMATION_QUEUE_AUTHORITY.QUEUE,
+  eventIds,
+  compileEventIds,
+  compileState,
+  visualEventScope,
+  compileOptions,
+  preserveQueueOrder = false,
+  consumedEventIds = null,
+  buildAnimQueue,
+  context = 'presentation',
+} = {}) {
+  if (typeof playTransaction !== 'function') {
+    throw new TypeError(`[animation-transaction] ${context}: playTransaction must be a function`);
+  }
+  const transactionMeta = {
+    authority,
+    ...(Array.isArray(eventIds) ? { eventIds } : {}),
+    ...(Array.isArray(compileEventIds) ? { compileEventIds } : {}),
+    ...(compileState ? { compileState } : {}),
+    ...(visualEventScope ? { visualEventScope } : {}),
+    ...(compileOptions ? { compileOptions } : {}),
+    ...(preserveQueueOrder ? { preserveQueueOrder: true } : {}),
+  };
+  const transaction = prepareAnimationTransaction({
+    queue,
+    nextState,
+    callback,
+    transactionMeta,
+    consumedEventIds,
+    buildAnimQueue,
+    context,
+  });
+  playTransaction(transaction);
+  return transaction;
 }

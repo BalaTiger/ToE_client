@@ -45,16 +45,16 @@ describe('AI 黏液额外摸到邪神牌（同步结算）动画队列', () => {
 
     // 规则层元数据没有被覆盖丢失
     expect(result._statEvents.map(event => event.type)).toContain('SAN_LOSS');
-    expect(result._inspectionEvents.map(event => event.card?.name)).toEqual(['昏睡']);
     // 检定视觉事件只出现一次
     const inspectionVisualEvents = (result._visualEvents || []).filter(event => event?.type === 'inspection');
     expect(inspectionVisualEvents).toHaveLength(1);
+    expect(inspectionVisualEvents.map(event => event.card?.name)).toEqual(['昏睡']);
     // 遭遇归属由规则层结构化记录：序号 + 弃牌结果 + 视觉事件 id
     const godDrawEvent = result._turnDrawEvents.find(event => event.card === god);
     expect(godDrawEvent?.godEncounter?.discardedGod).toBeTruthy();
     expect(godDrawEvent?.godEncounter?.statSeqs.length).toBeGreaterThan(0);
     expect(godDrawEvent?.godEncounter?.inspectionSeqs).toEqual([
-      result._inspectionEvents[0]?.seq,
+      inspectionVisualEvents[0]?.legacySeq,
     ]);
     const ownedIds = godDrawEvent?.godEncounter?.visualEventIds || [];
     expect(ownedIds.length).toBeGreaterThanOrEqual(3); // SAN 扣减 + 检定 + 弃牌
