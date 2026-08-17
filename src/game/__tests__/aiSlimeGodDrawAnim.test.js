@@ -3,6 +3,7 @@ import { startNextTurn } from '../turnEngine';
 import { buildTurnStartDrawReplayQueue } from '../turnAnimState';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 import { createTsathogguaSlimeCard } from '../../constants/card';
+import { VISUAL_EVENT } from '../visualEvents';
 
 function stepTypes(queue) {
   return queue.map(step => step.type);
@@ -50,7 +51,7 @@ describe('AI 黏液额外摸到邪神牌（同步结算）动画队列', () => {
     expect(inspectionVisualEvents).toHaveLength(1);
     expect(inspectionVisualEvents.map(event => event.card?.name)).toEqual(['昏睡']);
     // 遭遇归属由规则层结构化记录：序号 + 弃牌结果 + 视觉事件 id
-    const godDrawEvent = result._turnDrawEvents.find(event => event.card === god);
+    const godDrawEvent = result._visualEvents.find(event => event.type === VISUAL_EVENT.DRAW_CARD && event.card === god);
     expect(godDrawEvent?.godEncounter?.discardedGod).toBeTruthy();
     expect(godDrawEvent?.godEncounter?.statSeqs.length).toBeGreaterThan(0);
     expect(godDrawEvent?.godEncounter?.inspectionSeqs).toEqual([
@@ -127,7 +128,7 @@ describe('AI 黏液额外摸到邪神牌（同步结算）动画队列', () => {
 
     // 无 SAN 检定：归属只含 SAN 扣减与弃牌
     expect(result._inspectionEvents || []).toHaveLength(0);
-    const godDrawEvent = result._turnDrawEvents.find(event => event.card === god);
+    const godDrawEvent = result._visualEvents.find(event => event.type === VISUAL_EVENT.DRAW_CARD && event.card === god);
     expect(godDrawEvent?.godEncounter?.inspectionSeqs).toEqual([]);
     expect(godDrawEvent?.godEncounter?.discardedGod).toBeTruthy();
     const ownedIds = godDrawEvent?.godEncounter?.visualEventIds || [];

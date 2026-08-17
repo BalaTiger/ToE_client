@@ -460,16 +460,18 @@ describe('rotateGsForViewer', () => {
     expect(rotated.players[2].damageLink).toMatchObject({ partner: 0, active: true, expiryTurn: 7 });
   });
 
-  it('rotates _turnDrawEvents seat indices so draw flights land on the drawer', () => {
+  it('rotates canonical drawCard seat indices and nested slime snapshots', () => {
     // 发送端（座位 0 视角）为下家（座位 1）生成的回合开始摸牌事件
     const gs = {
       players: [player('你'), player('艾伦')],
       currentTurn: 1,
       abilityData: {},
-      _turnDrawEvents: [{
+      _visualEvents: [{
+        id: 'turn-draw-1',
+        type: 'drawCard',
         card: { id: 'c1', name: '荆棘山路' },
-        drawerIdx: 1,
-        drawerName: '艾伦',
+        playerIdx: 1,
+        playerName: '艾伦',
         msgs: ['艾伦 摸到 荆棘山路'],
         slimePop: {
           type: 'tsgSlimePop',
@@ -483,15 +485,15 @@ describe('rotateGsForViewer', () => {
     // 摸牌者（艾伦，myIndex=1）收到并旋转：自己变为 0 号位
     const rotated = rotateGsForViewer(gs, 1);
 
-    expect(rotated._turnDrawEvents[0].drawerIdx).toBe(0);
-    expect(rotated._turnDrawEvents[0].slimePop.playerIdx).toBe(0);
-    expect(rotated._turnDrawEvents[0].slimePop.targetPid).toBe(0);
-    expect(rotated._turnDrawEvents[0].slimePop.playersBefore.map(p => p.name)).toEqual(['艾伦', '你']);
+    expect(rotated._visualEvents[0].playerIdx).toBe(0);
+    expect(rotated._visualEvents[0].slimePop.playerIdx).toBe(0);
+    expect(rotated._visualEvents[0].slimePop.targetPid).toBe(0);
+    expect(rotated._visualEvents[0].slimePop.playersBefore.map(p => p.name)).toEqual(['艾伦', '你']);
 
     // 反旋转回规范坐标后索引还原
     const restored = derotateGs(rotated, 1);
-    expect(restored._turnDrawEvents[0].drawerIdx).toBe(1);
-    expect(restored._turnDrawEvents[0].slimePop.playerIdx).toBe(1);
+    expect(restored._visualEvents[0].playerIdx).toBe(1);
+    expect(restored._visualEvents[0].slimePop.playerIdx).toBe(1);
   });
 
   it('SHU_SELECT_TARGET 的行动权跟随黑暗子嗣选择者旋转', () => {

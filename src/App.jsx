@@ -195,6 +195,7 @@ import {
   createHuntResultEvent,
   createRandomTargetVisualEvent,
   createTsathogguaSlimeGrantEvent,
+  createTurnDrawVisualEvents,
   buildHuntRevealStepFromVisualEvents,
   buildHuntRevealStepFromVisualEvent,
   pruneConsumedVisualEvents,
@@ -4728,6 +4729,19 @@ export default function Game(){
     }
     if(drawLogs.length)L.push(...drawLogs);
     if(statLogs.length)L.push(...statLogs);
+    const continuationVisualEvents=[
+      ...(Array.isArray(baseGsAfterDecision._visualEvents)?baseGsAfterDecision._visualEvents:[]),
+      ...(Array.isArray(res.statePatch?._visualEvents)?res.statePatch._visualEvents:[]),
+      ...createTurnDrawVisualEvents({
+        playerIdx:drawerIdx,
+        playerName:P[drawerIdx]?.name,
+        card:res.drawnCard,
+        sourcePile:res.sourcePile,
+        msgs:drawLogs.slice(0,1),
+        reshuffleLog:res.reshuffleLog,
+        fromTsathogguaSlime:!!continuingSlime,
+      }),
+    ].filter((event,index,events)=>!event?.id||events.findIndex(candidate=>candidate?.id===event.id)===index);
     const baseMeta={
       ...baseGsAfterDecision,
       players:P,
@@ -4744,7 +4758,7 @@ export default function Game(){
       _playersBeforeThisDraw:_P_beforeDraw,
       _turnStartLogs:[],
       _drawLogs:drawLogs,
-      _turnDrawEvents:res.drawnCard?[{card:res.drawnCard,drawerIdx,drawerName:P[drawerIdx]?.name,sourcePile:res.sourcePile,msgs:drawLogs.slice(0,1),fromTsathogguaSlime:!!continuingSlime}]:[],
+      _visualEvents:continuationVisualEvents,
       _statLogs:statLogs,
       _preTurnPlayers:baseGsAfterDecision._preTurnPlayers,
       _drawSourcePile:res.sourcePile,
@@ -4789,7 +4803,7 @@ export default function Game(){
       const godAbilityData=pendingAiGodChoice
         ?{...pendingAiGodChoice}
         :{godCard:res.drawnCard,drawerIdx,godEncounterCost:res.godEncounterCost};
-      const newGs={...baseMeta,...(res.statePatch||{}),phase,abilityData:{...godAbilityData,...continuationAbility},drawReveal:null,selectedCard:null,_drawnCard:res.drawnCard};
+      const newGs={...baseMeta,...(res.statePatch||{}),_visualEvents:continuationVisualEvents,phase,abilityData:{...godAbilityData,...continuationAbility},drawReveal:null,selectedCard:null,_drawnCard:res.drawnCard};
       const drawStep={type:'DRAW_CARD',card:res.drawnCard,triggerName:drawerName,targetPid:drawerIdx,msgs:drawLogs};
       const queue=buildGodChoiceDrawInspectionQueue({
         oldGs:{...baseGsAfterDecision,players:_P_beforeDraw,log:baseGsAfterDecision.log,_statEventSeq:baseGsAfterDecision._statEventSeq||0,_inspectionSeq:baseGsAfterDecision._inspectionSeq||0},
@@ -4801,12 +4815,12 @@ export default function Game(){
     }
     const win=checkWin(P,baseGsAfterDecision._isMP);
     if(win){
-      setGs({...baseMeta,gameOver:win,phase:'ACTION',drawReveal:null,selectedCard:null,abilityData:{},...(res.statePatch||{})});
+      setGs({...baseMeta,gameOver:win,phase:'ACTION',drawReveal:null,selectedCard:null,abilityData:{},...(res.statePatch||{}),_visualEvents:continuationVisualEvents});
       return;
     }
     if(res.discardedDrawnCard){
       const finalPhase=isAiDrawer?'AI_TURN':'ACTION';
-      const newGs={...baseMeta,...(res.statePatch||{}),phase:finalPhase,drawReveal:null,selectedCard:null,abilityData:continuationAbility};
+      const newGs={...baseMeta,...(res.statePatch||{}),_visualEvents:continuationVisualEvents,phase:finalPhase,drawReveal:null,selectedCard:null,abilityData:continuationAbility};
       const queue=buildResolvedDrawQueue(newGs,{discarded:true});
       triggerAnimQueue(queue,newGs,shouldContinueAfterResolvedSlimeDraw(finalPhase)?()=>_tsgContinueTurnStartDraw(newGs):undefined,authoritativeResolvedQueueMeta(newGs,queue));
       return;
@@ -4817,7 +4831,7 @@ export default function Game(){
       const pendingAiGodChoice=res.pendingAiGodChoice||res.statePatch?._pendingAiGodChoice||null;
       const finalPhase=pendingAiGodChoice?'AI_GOD_CHOICE':(decisionState.phase==='ACTION'?fallbackPhase:decisionState.phase);
       const finalAbilityData=pendingAiGodChoice?{...pendingAiGodChoice}:decisionState.abilityData;
-      const newGs={...baseMeta,...(res.statePatch||{}),phase:finalPhase,drawReveal:null,selectedCard:null,abilityData:{...finalAbilityData,...continuationAbility}};
+      const newGs={...baseMeta,...(res.statePatch||{}),_visualEvents:continuationVisualEvents,phase:finalPhase,drawReveal:null,selectedCard:null,abilityData:{...finalAbilityData,...continuationAbility}};
       const queue=buildResolvedDrawQueue(newGs,{discarded:false});
       triggerAnimQueue(queue,newGs,shouldContinueAfterResolvedSlimeDraw(finalPhase)?()=>_tsgContinueTurnStartDraw(newGs):undefined,authoritativeResolvedQueueMeta(newGs,queue));
       return;
@@ -7492,12 +7506,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         _preTurnPlayers:afterSwap,_playersBeforeThisDraw:afterSwap,
         _turnStartLogs:['── 艾伦 的回合开始 ──'],
         _drawLogs:['【无定形体】艾伦 的1张撒托古亚的赐福黏液消失','【无定形体】艾伦 额外摸到 [D3] 偷吃龙蛋','艾伦 遭遇邪神 伏行之混沌！（第2次）失去 2 SAN'],
-        _turnDrawEvents:[
-          {card:extraDraw,drawerIdx:1,drawerName:'艾伦',fromTsathogguaSlime:true,msgs:['【无定形体】艾伦 额外摸到 [D3] 偷吃龙蛋']},
-          {card:normalDraw,drawerIdx:1,drawerName:'艾伦',msgs:['艾伦 遭遇邪神 伏行之混沌！（第2次）失去 2 SAN']},
-        ],
         log:[swapMsg,'── 艾伦 的回合开始 ──','【无定形体】艾伦 的1张撒托古亚的赐福黏液消失','【无定形体】艾伦 额外摸到 [D3] 偷吃龙蛋','艾伦 遭遇邪神 伏行之混沌！（第2次）失去 2 SAN'],
-        _visualEvents:[],
+        _visualEvents:[
+          ...createTurnDrawVisualEvents({playerIdx:1,playerName:'艾伦',card:extraDraw,drawOrder:0,fromTsathogguaSlime:true,msgs:['【无定形体】艾伦 额外摸到 [D3] 偷吃龙蛋']}),
+          ...createTurnDrawVisualEvents({playerIdx:1,playerName:'艾伦',card:normalDraw,drawOrder:1,msgs:['艾伦 遭遇邪神 伏行之混沌！（第2次）失去 2 SAN']}),
+        ],
       };
 
       clearBattleAnimationState();

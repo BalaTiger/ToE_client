@@ -191,20 +191,23 @@ function rotateTsathogguaSlimeGrantEvents(events, rotateIndex, myIndex) {
 // _turnDrawEvents 由执行摸牌的客户端按自身视角生成（drawerIdx 常为自己的 0 号位），
 // 必须随广播状态一起旋转，否则接收端 DRAW_CARD 的 targetPid 指向错误座位，
 // 飞牌终点会从摸牌者手牌区错落到对手面板
+function rotateTsathogguaSlimePop(slimePop, rotateIndex, myIndex) {
+  if (!slimePop) return slimePop;
+  return {
+    ...slimePop,
+    playerIdx: slimePop.playerIdx != null ? rotateIndex(slimePop.playerIdx) : slimePop.playerIdx,
+    targetPid: slimePop.targetPid != null ? rotateIndex(slimePop.targetPid) : slimePop.targetPid,
+    playersBefore: rotatePlayersArray(slimePop.playersBefore, myIndex),
+    playersAfter: rotatePlayersArray(slimePop.playersAfter, myIndex),
+  };
+}
+
 function rotateTurnDrawEvents(events, rotateIndex, myIndex) {
   if (!Array.isArray(events)) return events;
   return events.map(event => ({
     ...event,
     drawerIdx: event.drawerIdx != null ? rotateIndex(event.drawerIdx) : event.drawerIdx,
-    slimePop: event.slimePop
-      ? {
-        ...event.slimePop,
-        playerIdx: event.slimePop.playerIdx != null ? rotateIndex(event.slimePop.playerIdx) : event.slimePop.playerIdx,
-        targetPid: event.slimePop.targetPid != null ? rotateIndex(event.slimePop.targetPid) : event.slimePop.targetPid,
-        playersBefore: rotatePlayersArray(event.slimePop.playersBefore, myIndex),
-        playersAfter: rotatePlayersArray(event.slimePop.playersAfter, myIndex),
-      }
-      : event.slimePop,
+    slimePop: rotateTsathogguaSlimePop(event.slimePop, rotateIndex, myIndex),
   }));
 }
 
@@ -341,6 +344,9 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
       return {
         ...event,
         playerIdx: event.playerIdx != null ? rotateIndex(event.playerIdx) : event.playerIdx,
+        ...(event?.type === 'drawCard' && event.slimePop
+          ? { slimePop: rotateTsathogguaSlimePop(event.slimePop, rotateIndex, myIndex) }
+          : {}),
         ...(event?.type === 'godStatusChanged' && Array.isArray(event.playersBefore)
           ? { playersBefore: rotatePlayersArray(event.playersBefore, myIndex) }
           : {}),

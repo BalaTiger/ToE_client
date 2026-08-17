@@ -34,19 +34,20 @@ handleCardDrawCore（邪神牌、AI、同步路径）
        discardedGod,    // 结构化弃牌结果（resolveGodEncounterForAI 返回，非日志推断）
      }
 resolveNextTurnState 黏液循环
-  └─ 挂到 _turnDrawEvents[i].godEncounter
+  └─ 生成 canonical DRAW_CARD 事件并挂到 event.godEncounter
 startNextTurn
   ├─ 把遭遇的 SAN 扣减从打包的 STAT_EVENTS 事件里按序号拆成独立事件
   ├─ 弃牌结果发 canonical 事件 VISUAL_EVENT.GOD_GIFT_DISCARD
   │    （编译器 case → DISCARD 步骤，见 visualEventTransactionCompiler.js）
-  └─ 把这些事件的 id 写回 _turnDrawEvents[i].godEncounter.visualEventIds
+  └─ 把这些事件的 id 写回 DRAW_CARD.godEncounter.visualEventIds
 buildTurnStartDrawReplayQueue（turnAnimState.js）
   └─ 按 visualEventId ∈ godEncounter.visualEventIds 从扁平效果队列精确归队，
-     插到对应 DRAW_CARD（翻牌步骤带 _drawEventIdx 标记）之后、下一张摸牌之前
+     插到对应 DRAW_CARD（翻牌步骤带 visualEventId）之后、下一张摸牌之前
 ```
 
 播放顺序：邪神翻牌 → SAN 扣减 → 检定翻牌（含翻面等检定流程步骤）→ 弃牌 →
-下一张摸牌。`_visualEvents` 与 `_turnDrawEvents` 随 gs 广播，联机远程回放
+下一张摸牌。新状态只广播 `_visualEvents`；`_turnDrawEvents` 仅作为旧存档/旧 peer
+兼容输入。联机远程回放
 走同一个 `buildTurnStartDrawReplayQueue`，行为一致。
 
 ## 事件消费与去重

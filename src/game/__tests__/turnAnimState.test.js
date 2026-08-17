@@ -13,7 +13,7 @@ import { startNextTurn } from '../turnEngine';
 import { ROLE_CULTIST } from '../coreUtils';
 import { applyFx } from '../effectEngine';
 import { applyStatEventsToDisplayStats, primeDisplayStatsForStatQueue } from '../statEvents';
-import { buildFreshStatVisualEvents, createGodPowerBlockedEvent, createGodStatusChangedEvent, createSphinxResultEvent, createTsathogguaSlimeGrantEvent } from '../visualEvents';
+import { buildFreshStatVisualEvents, createGodPowerBlockedEvent, createGodStatusChangedEvent, createSphinxResultEvent, createTsathogguaSlimeGrantEvent, createTurnDrawVisualEvents } from '../visualEvents';
 import { buildAnimQueue } from '../animQueueCore';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
@@ -85,7 +85,14 @@ describe('buildPlayerTurnDrawQueue', () => {
       _playersBeforeThisDraw: beforePlayers,
       _turnStartLogs: ['── 艾伦 的回合开始 ──'],
       _drawLogs: ['牌堆耗尽，重洗弃牌堆', '艾伦 摸到 [D3] 偷吃龙蛋'],
-      _turnDrawEvents: [{ card, drawerIdx: 1, drawerName: '艾伦', msgs: ['艾伦 摸到 [D3] 偷吃龙蛋'] }],
+      _visualEvents: createTurnDrawVisualEvents({
+        playerIdx: 1,
+        playerName: '艾伦',
+        card,
+        sourcePile: 'deck',
+        reshuffleLog: '牌堆耗尽，重洗弃牌堆',
+        msgs: ['艾伦 摸到 [D3] 偷吃龙蛋'],
+      }),
       log: ['── 艾伦 的回合开始 ──', '牌堆耗尽，重洗弃牌堆', '艾伦 摸到 [D3] 偷吃龙蛋'],
     });
 
@@ -97,6 +104,33 @@ describe('buildPlayerTurnDrawQueue', () => {
     ]);
     expect(replay.queue[1].msgs).toEqual(['牌堆耗尽，重洗弃牌堆']);
     expect(replay.queue[2].msgs).not.toContain('牌堆耗尽，重洗弃牌堆');
+    expect(replay.queue[1].visualEventId).toBe(newGs._visualEvents[0].id);
+    expect(replay.queue[2].visualEventId).toBe(newGs._visualEvents[1].id);
+  });
+
+  it('canonical multiple draws preserve drawOrder without fallback duplicates', () => {
+    const extra = makeZoneCard('B2', 0, { id: 'extra-draw' });
+    const fixed = makeZoneCard('D3', 0, { id: 'fixed-draw' });
+    const players = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' })];
+    const oldGs = makeGs({ players, currentTurn: 0, phase: 'ACTION' });
+    const newGs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _drawnCard: fixed,
+      _aiDrawnCard: fixed,
+      _playersBeforeThisDraw: players,
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _visualEvents: [
+        ...createTurnDrawVisualEvents({ playerIdx: 1, playerName: '艾伦', card: extra, drawOrder: 0, fromTsathogguaSlime: true }),
+        ...createTurnDrawVisualEvents({ playerIdx: 1, playerName: '艾伦', card: fixed, drawOrder: 1 }),
+      ],
+    });
+
+    const drawSteps = buildTurnStartDrawReplayQueue({ oldGs, newGs }).queue
+      .filter(step => step.type === 'DRAW_CARD');
+    expect(drawSteps.map(step => step.card)).toEqual([extra, fixed]);
+    expect(drawSteps.map(step => step.visualEventId)).toEqual(newGs._visualEvents.map(event => event.id));
   });
 
   it('does not replay discard for an AI god worshipped after a previous player abandoned a god', () => {

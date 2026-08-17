@@ -10,6 +10,7 @@ import {
   buildRandomTargetSteps,
   buildTurnStartStepFromVisualEvents,
   buildDrawCardStepFromVisualEvents,
+  buildDeckReshuffleStepFromVisualEvent,
   buildHandLimitDiscardStepsFromVisualEvents,
   buildStatStepsFromVisualEvents,
   buildTimedOutDrawDiscardStepFromVisualEvents,
@@ -321,6 +322,8 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
       return [buildGodGiftDiscardStepFromVisualEvents(isolated)].filter(Boolean);
     case VISUAL_EVENT.TURN_START:
       return [buildTurnStartStepFromVisualEvents(isolated)].filter(Boolean);
+    case VISUAL_EVENT.DECK_RESHUFFLE:
+      return [buildDeckReshuffleStepFromVisualEvent(event)].filter(Boolean);
     case VISUAL_EVENT.DRAW_CARD:
       return [buildDrawCardStepFromVisualEvents({
         ...isolated,

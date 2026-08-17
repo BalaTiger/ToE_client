@@ -7,6 +7,7 @@ export const VISUAL_EVENT = {
   TIMED_OUT_DRAW_DISCARD: 'timedOutDrawDiscard',
   GOD_GIFT_DISCARD: 'godGiftDiscard',
   TURN_START: 'turnStart',
+  DECK_RESHUFFLE: 'deckReshuffle',
   DRAW_CARD: 'drawCard',
   STAT_EVENTS: 'statEvents',
   BEWITCH_GIFT: 'bewitchGift',
@@ -119,18 +120,70 @@ function createTurnStartEvent({ playerIdx = 0, playerName = '该玩家', msgs = 
   }, 'turn');
 }
 
-function createDrawCardEvent({ playerIdx = 0, playerName = '该玩家', card, msgs = [], sourcePile = null } = {}) {
+export function createDrawCardEvent({
+  playerIdx = 0,
+  playerName = '该玩家',
+  card,
+  msgs = [],
+  sourcePile = null,
+  drawOrder = 0,
+  transactionId = null,
+  fromTsathogguaSlime = false,
+  slimePop = null,
+  godEncounter = null,
+} = {}) {
   if (!card) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.DRAW_CARD,
     turnStartStage: 'draw',
-    turnStartStageOrder: 0,
+    turnStartStageOrder: drawOrder * 2 + 1,
+    drawOrder,
+    ...(transactionId ? { transactionId } : {}),
     playerIdx,
     playerName,
     card,
     ...(sourcePile ? { sourcePile } : {}),
+    ...(fromTsathogguaSlime ? { fromTsathogguaSlime: true } : {}),
+    ...(slimePop ? { slimePop } : {}),
+    ...(godEncounter ? { godEncounter } : {}),
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'turn');
+}
+
+export function createDeckReshuffleEvent({
+  playerIdx = 0,
+  drawEventId = null,
+  msgs = [],
+  drawOrder = 0,
+  transactionId = null,
+} = {}) {
+  const normalizedMsgs = Array.isArray(msgs) ? msgs.filter(Boolean) : [];
+  if (!normalizedMsgs.length) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.DECK_RESHUFFLE,
+    turnStartStage: 'draw',
+    turnStartStageOrder: drawOrder * 2,
+    drawOrder,
+    ...(transactionId ? { transactionId } : {}),
+    ...(drawEventId ? { drawEventId } : {}),
+    playerIdx,
+    msgs: normalizedMsgs,
+  }, 'turn');
+}
+
+export function createTurnDrawVisualEvents(draw = {}) {
+  const drawEvent = createDrawCardEvent(draw);
+  if (!drawEvent) return [];
+  const reshuffleEvent = draw.reshuffleLog
+    ? createDeckReshuffleEvent({
+        playerIdx: drawEvent.playerIdx,
+        drawEventId: drawEvent.id,
+        msgs: [draw.reshuffleLog],
+        drawOrder: drawEvent.drawOrder,
+        transactionId: drawEvent.transactionId,
+      })
+    : null;
+  return [reshuffleEvent, drawEvent].filter(Boolean);
 }
 
 export function createStatEventsEvent({ statEvents = [], msgs = [], turnStartStage = null } = {}) {
@@ -829,12 +882,13 @@ export function buildTurnStartDrawVisualEvents(state) {
       msgs: state._turnStartLogs,
     }));
   }
+  const explicitDrawEvents = getVisualEvents(state).filter(event => event?.type === VISUAL_EVENT.DRAW_CARD && event?.card);
   const turnDrawEvent = (Array.isArray(state._turnDrawEvents) ? state._turnDrawEvents : [])
     .findLast(event => event?.card);
   const drawCard = state.phase === 'GOD_CHOICE'
     ? state.abilityData?.godCard
     : (state.drawReveal?.card || turnDrawEvent?.card);
-  if (drawCard) {
+  if (drawCard && !explicitDrawEvents.length) {
     const drawerIdx = state.phase === 'GOD_CHOICE'
       ? (state.abilityData?.drawerIdx ?? state.currentTurn ?? 0)
       : (state.drawReveal?.drawerIdx ?? turnDrawEvent?.drawerIdx ?? state.currentTurn ?? 0);
@@ -1142,10 +1196,20 @@ export function buildDrawCardStepFromVisualEvents(state) {
   const playerName = event.playerName || state?.players?.[playerIdx]?.name || '???';
   return {
     type: 'DRAW_CARD',
+    visualEventId: event.id,
     card: event.card,
     triggerName: localDisplayName(playerIdx, playerName),
     targetPid: playerIdx,
     sourcePile: event.sourcePile || state?.drawReveal?.sourcePile || state?._drawSourcePile || 'deck',
+    msgs: Array.isArray(event.msgs) ? event.msgs : [],
+  };
+}
+
+export function buildDeckReshuffleStepFromVisualEvent(event) {
+  if (!event || event.type !== VISUAL_EVENT.DECK_RESHUFFLE) return null;
+  return {
+    type: 'DECK_RESHUFFLE',
+    visualEventId: event.id,
     msgs: Array.isArray(event.msgs) ? event.msgs : [],
   };
 }

@@ -13,6 +13,7 @@ const legacyVisualStateFields = [
   '_inspectionEvents',
   '_randomTargetEvents',
   '_tsgSlimeGrantEvents',
+  '_turnDrawEvents',
 ];
 const legacyVisualObjectProducerPattern = new RegExp(`(?:^|[{,])\\s*(${legacyVisualStateFields.join('|')})\\s*:`);
 const legacyVisualAssignmentPattern = new RegExp(`\\.(${legacyVisualStateFields.join('|')})\\s*=(?!=)`);

@@ -7,7 +7,6 @@ import {
   getVisualEvents,
   VISUAL_EVENT,
   buildTurnStartStepFromVisualEvents,
-  buildDrawCardStepFromVisualEvents,
   buildTsathogguaSlimeGrantSteps,
   isPreDrawTurnStartStatEvent,
 } from './visualEvents';
@@ -22,7 +21,7 @@ export const EMPTY_TURN_ANIM_FIELDS = Object.freeze({
   _playersBeforeThisDraw: null,
   _turnStartLogs: [],
   _drawLogs: [],
-  _turnDrawEvents: [],
+  _turnDrawEvents: [], // legacy-visual-allow: clear compatibility input after replay
   _statLogs: [],
   _statEvents: [],
   _preTurnPlayers: null,
@@ -189,8 +188,19 @@ function sameDrawCard(a, b) {
 }
 
 function normalizeTurnDrawEvents(state, fallbackCard, drawerPid, drawerName) {
-  const sourceEvents = Array.isArray(state?._turnDrawEvents) ? state._turnDrawEvents : [];
-  const events = sourceEvents
+  const allExplicitEvents = getVisualEvents(state)
+    .filter(event => event?.type === VISUAL_EVENT.DRAW_CARD && event?.card);
+  const currentDrawerEvents = allExplicitEvents.filter(event => event.playerIdx === drawerPid);
+  const explicitEvents = (currentDrawerEvents.length ? currentDrawerEvents : allExplicitEvents)
+    .map(event => ({
+      ...event,
+      drawerIdx: event.playerIdx ?? drawerPid,
+      drawerName: event.playerName || drawerName,
+      msgs: Array.isArray(event.msgs) ? event.msgs : [],
+    }));
+  if (explicitEvents.length) return explicitEvents;
+  // Compatibility only: old saves/peers may still carry draw snapshots.
+  const events = (Array.isArray(state?._turnDrawEvents) ? state._turnDrawEvents : [])
     .filter(event => event?.card)
     .map(event => ({
       ...event,
@@ -697,7 +707,13 @@ export function buildTurnStartDrawReplayQueue({
   }
   const drawerPid = getTurnStartDrawerIdx(newGs);
   const drawerName = newGs?.players?.[drawerPid]?.name || '???';
-  const hasExplicitTurnDrawEvents = Array.isArray(newGs?._turnDrawEvents) && newGs._turnDrawEvents.some(event => event?.card);
+  const explicitTurnDrawEvents = getVisualEvents(newGs)
+    .filter(event => event?.type === VISUAL_EVENT.DRAW_CARD && event?.card && event.playerIdx === drawerPid);
+  const reshuffleVisualEvents = getVisualEvents(newGs)
+    .filter(event => event?.type === VISUAL_EVENT.DECK_RESHUFFLE);
+  const hasExplicitTurnDrawEvents = explicitTurnDrawEvents.length > 0;
+  const hasStructuredTurnDrawEvents = hasExplicitTurnDrawEvents
+    || (Array.isArray(newGs?._turnDrawEvents) && newGs._turnDrawEvents.some(event => event?.card));
   const turnDrawEvents = normalizeTurnDrawEvents(newGs, drawnCard, drawerPid, drawerName);
   const beforeDrawPlayers = newGs?._playersBeforeThisDraw || oldGs?.players || newGs?.players || [];
   const turnStartPreDrawQ = buildTurnStartPreDrawEffectQueue({
@@ -738,8 +754,7 @@ export function buildTurnStartDrawReplayQueue({
     },
     visualSetupTiming: 'queueStart',
   };
-  const visualDrawCardStep = hasExplicitTurnDrawEvents ? null : buildDrawCardStepFromVisualEvents(newGs);
-  const drawCardStep = visualDrawCardStep || {
+  const drawCardStep = {
     type: 'DRAW_CARD',
     card: drawnCard,
     triggerName: localDisplayName(drawerPid, drawerName),
@@ -747,12 +762,22 @@ export function buildTurnStartDrawReplayQueue({
     sourcePile: newGs?.drawReveal?.sourcePile || newGs?._drawSourcePile || (newGs?.geomagneticReversalActive ? 'discard' : 'deck'),
     msgs: withoutDeckReshuffleLog(newGs?._drawLogs),
   };
-  const hasEventBoundReshuffle = turnDrawEvents.some(event => deckReshuffleStep(event.msgs));
-  const drawCardSteps = hasExplicitTurnDrawEvents
+  const hasEventBoundReshuffle = reshuffleVisualEvents.length > 0
+    || turnDrawEvents.some(event => deckReshuffleStep(event.msgs));
+  const drawCardSteps = hasStructuredTurnDrawEvents
     ? turnDrawEvents.flatMap((event, eventIdx) => {
-      const reshuffleStep = deckReshuffleStep(event.msgs);
+      const explicitReshuffleSteps = reshuffleVisualEvents
+        .filter(reshuffle => reshuffle?.drawEventId === event?.id)
+        .map(reshuffle => ({
+          type: 'DECK_RESHUFFLE',
+          visualEventId: reshuffle.id,
+          msgs: reshuffle.msgs || [],
+        }));
+      const reshuffleStep = explicitReshuffleSteps.length ? null : deckReshuffleStep(event.msgs);
       const drawStep = {
         type: 'DRAW_CARD',
+        ...(event?.id ? { visualEventId: event.id } : {}),
+        _drawEventId: event?.id || `legacy-draw-${eventIdx}`,
         card: event.card,
         triggerName: localDisplayName(event.drawerIdx ?? drawerPid, event.drawerName || drawerName),
         targetPid: event.drawerIdx ?? drawerPid,
@@ -761,9 +786,6 @@ export function buildTurnStartDrawReplayQueue({
         // 同步结算的邪神遭遇（黏液额外摸牌）把其视觉事件 id 记在
         // godEncounter.visualEventIds 上；给翻牌步骤标记来源摸牌事件下标，
         // 后面才能把遭遇块精确插到这张牌翻牌之后。
-        ...(Array.isArray(event.godEncounter?.visualEventIds) && event.godEncounter.visualEventIds.length
-          ? { _drawEventIdx: eventIdx }
-          : {}),
       };
       const steps = [];
       if (eventIdx === 0 && !hasEventBoundReshuffle) {
@@ -776,6 +798,7 @@ export function buildTurnStartDrawReplayQueue({
           targetPid: event.slimePop.targetPid ?? event.drawerIdx ?? drawerPid,
         }));
       }
+      steps.push(...explicitReshuffleSteps);
       if (reshuffleStep) steps.push(reshuffleStep);
       steps.push(drawStep);
       return steps;
@@ -1222,21 +1245,22 @@ export function buildTurnStartDrawReplayQueue({
   // 规则层已把遭遇产出的视觉事件 id 记录在摸牌事件的 godEncounter.visualEventIds 上
   // （含 GOD_GIFT_DISCARD 弃牌事件），这里按 id 精确归队，插到该邪神牌翻牌之后、
   // 下一张摸牌之前，而不是推迟到所有翻牌之后。
-  const ownedEventIdsByDrawIdx = new Map();
+  const ownedEventIdsByDrawId = new Map();
   turnDrawEvents.forEach((event, eventIdx) => {
     const ids = event?.godEncounter?.visualEventIds;
-    if (Array.isArray(ids) && ids.length) ownedEventIdsByDrawIdx.set(eventIdx, new Set(ids));
+    const drawId = event?.id || `legacy-draw-${eventIdx}`;
+    if (Array.isArray(ids) && ids.length) ownedEventIdsByDrawId.set(drawId, new Set(ids));
   });
   let drawOwnedEffectGroups = null;
-  if (ownedEventIdsByDrawIdx.size) {
+  if (ownedEventIdsByDrawId.size) {
     drawOwnedEffectGroups = new Map();
     deferredDrawEffectQ = deferredDrawEffectQ.filter(step => {
       const eventId = step?.visualEventId;
       if (!eventId) return true;
-      for (const [eventIdx, ids] of ownedEventIdsByDrawIdx) {
+      for (const [drawId, ids] of ownedEventIdsByDrawId) {
         if (!ids.has(eventId)) continue;
-        if (!drawOwnedEffectGroups.has(eventIdx)) drawOwnedEffectGroups.set(eventIdx, []);
-        drawOwnedEffectGroups.get(eventIdx).push(step);
+        if (!drawOwnedEffectGroups.has(drawId)) drawOwnedEffectGroups.set(drawId, []);
+        drawOwnedEffectGroups.get(drawId).push(step);
         return false;
       }
       return true;
@@ -1244,8 +1268,8 @@ export function buildTurnStartDrawReplayQueue({
   }
   const orderedDrawCardStepsWithGod = drawOwnedEffectGroups
     ? orderedDrawCardSteps.flatMap(step => (
-      step?.type === 'DRAW_CARD' && step?._drawEventIdx != null && drawOwnedEffectGroups.has(step._drawEventIdx)
-        ? [step, ...drawOwnedEffectGroups.get(step._drawEventIdx)]
+      step?.type === 'DRAW_CARD' && step?._drawEventId != null && drawOwnedEffectGroups.has(step._drawEventId)
+        ? [step, ...drawOwnedEffectGroups.get(step._drawEventId)]
         : [step]
     ))
     : orderedDrawCardSteps;

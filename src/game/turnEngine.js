@@ -41,6 +41,7 @@ import {
   createStatEventsEvent,
   createTsathogguaSlimeGrantEvent,
   createTsathogguaSlimePopEvent,
+  createTurnDrawVisualEvents,
 } from './visualEvents';
 import { advanceGodEncounter, formatGodEncounterProgress, getLatestGodEncounterProgress } from './balancePatches';
 import { TURN_START_EVENT, getTurnStartEvents } from './turnStartEvents';
@@ -60,6 +61,29 @@ function appendStatEventsToInspectionMeta(inspectionMeta, beforePlayers, afterPl
     _statEvents: [...(inspectionMeta?._statEvents || []), ...statEvents],
     _statEventSeq: statEventSeq,
   };
+}
+
+function mergeVisualEventLists(...lists) {
+  const merged = lists.flatMap(list => (Array.isArray(list) ? list : [])).filter(Boolean);
+  const seenIds = new Set();
+  return merged.filter(event => {
+    if (!event?.id) return true;
+    if (seenIds.has(event.id)) return false;
+    seenIds.add(event.id);
+    return true;
+  });
+}
+
+function appendTurnDrawVisualEvents(events, draw) {
+  const drawOrder = events.filter(event => event?.type === VISUAL_EVENT.DRAW_CARD).length;
+  const created = createTurnDrawVisualEvents({ ...draw, drawOrder });
+  events.push(...created);
+  return created.find(event => event?.type === VISUAL_EVENT.DRAW_CARD) || null;
+}
+
+function withMergedVisualEvents(state, ...eventLists) {
+  const visualEvents = mergeVisualEventLists(state?._visualEvents, ...eventLists);
+  return visualEvents.length ? { ...state, _visualEvents: visualEvents } : state;
 }
 
 function getDebugForceTargetIndex(target) {
@@ -1426,7 +1450,7 @@ function buildSkippedDrawActionState({
 
 function buildPendingZhuRevealState({
   gs, guard, players, deck, discard, log, currentTurn, newTurn, newTurnKey,
-  turnStartLogs, drawLogs, turnDrawEvents, statLogs, preTurnPlayers,
+  turnStartLogs, drawLogs, turnDrawVisualEvents, statLogs, preTurnPlayers,
   beforeDrawPlayers, globalOnlySwapOwner, abilityData = {},
 }) {
   return {
@@ -1451,7 +1475,7 @@ function buildPendingZhuRevealState({
     _turnKey: newTurnKey,
     _turnStartLogs: turnStartLogs,
     _drawLogs: drawLogs,
-    _turnDrawEvents: turnDrawEvents,
+    _visualEvents: mergeVisualEventLists(gs._visualEvents, turnDrawVisualEvents),
     _statLogs: statLogs,
     _preTurnPlayers: preTurnPlayers,
     _playersBeforeThisDraw: beforeDrawPlayers,
@@ -1760,7 +1784,7 @@ function resolveNextTurnState(gs, opts = {}) {
       });
     }
     const _P_beforeDraw = copyPlayers(P);
-    const turnDrawEvents = [];
+    const turnDrawVisualEvents = [];
     // Do not snapshot slime entitlement at draw-phase start. Each extra draw
     // consumes one slime that is still in the current drawer's hand now; a
     // slime lost during an earlier draw can no longer grant a later draw.
@@ -1773,7 +1797,7 @@ function resolveNextTurnState(gs, opts = {}) {
         const guard = getZhuTopGuard({ ...gs, players: P, deck: D, currentTurn: 0, zhuLight }, D);
         if (guard) return buildPendingZhuRevealState({
           gs, guard, players: P, deck: D, discard: Disc, log: L, currentTurn: 0,
-          newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawEvents, statLogs,
+          newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawVisualEvents, statLogs,
           preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeDraw, globalOnlySwapOwner,
           abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _tsgExtraDrawReady: true, _turnOwner: 0 },
         });
@@ -1784,20 +1808,27 @@ function resolveNextTurnState(gs, opts = {}) {
       // reversal/restoration produced by this draw must affect the very next
       // slime/fixed draw in the same draw phase.
       if (rSlime.statePatch) gs = { ...gs, ...rSlime.statePatch };
-      let drawEvent = null;
       if (rSlime.drawnCard) {
         if (rSlime.reshuffleLog) { L.push(rSlime.reshuffleLog); drawLogs.push(rSlime.reshuffleLog); }
         if (slimePop) drawLogs.push(...slimePop.msgs);
         const msg = `【无定形体】你额外摸到 ${drawCardDecisionText(rSlime.drawnCard)}`;
         L.push(msg); drawLogs.push(msg);
-        drawEvent = { card: rSlime.drawnCard, drawerIdx: 0, drawerName: P[0].name, sourcePile: rSlime.sourcePile, msgs: [msg], fromTsathogguaSlime: true, slimePop };
-        turnDrawEvents.push(drawEvent);
+        appendTurnDrawVisualEvents(turnDrawVisualEvents, {
+          playerIdx: 0,
+          playerName: P[0].name,
+          card: rSlime.drawnCard,
+          sourcePile: rSlime.sourcePile,
+          msgs: [msg],
+          reshuffleLog: rSlime.reshuffleLog,
+          fromTsathogguaSlime: true,
+          slimePop,
+        });
       }
       if (rSlime.needGodChoice) {
-        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: rSlime.drawnCard, drawerIdx: 0, godEncounterCost: rSlime.godEncounterCost, fromTsathogguaSlime: true, continueTurnStartDraw: true, _turnOwner: 0 }, drawReveal: null, selectedCard: null, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
+        return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: rSlime.drawnCard, drawerIdx: 0, godEncounterCost: rSlime.godEncounterCost, fromTsathogguaSlime: true, continueTurnStartDraw: true, _turnOwner: 0 }, drawReveal: null, selectedCard: null, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }, turnDrawVisualEvents);
       }
       if (rSlime.needsDecision) {
-        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: 0, drawerName: P[0].name, fromTsathogguaSlime: true, reshuffleLog: rSlime.reshuffleLog }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _turnOwner: 0 }, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
+        return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: 0, drawerName: P[0].name, fromTsathogguaSlime: true, reshuffleLog: rSlime.reshuffleLog }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _turnOwner: 0 }, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }, turnDrawVisualEvents);
       }
       if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
     }
@@ -1808,7 +1839,7 @@ function resolveNextTurnState(gs, opts = {}) {
       const guard = getZhuTopGuard({ ...gs, players: P, deck: D, currentTurn: 0, zhuLight }, D);
       if (guard) return buildPendingZhuRevealState({
         gs, guard, players: P, deck: D, discard: Disc, log: L, currentTurn: 0,
-        newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawEvents, statLogs,
+        newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawVisualEvents, statLogs,
         preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeDraw, globalOnlySwapOwner,
       });
     }
@@ -1819,7 +1850,14 @@ function resolveNextTurnState(gs, opts = {}) {
     if (res.drawnCard && !res.kept) {
       const msg = `${gs._isMP ? P[0].name : '你'} 摸到 ${drawCardDecisionText(res.drawnCard)}`;
       drawLogs.push(msg);
-      turnDrawEvents.push({ card: res.drawnCard, drawerIdx: 0, drawerName: P[0].name, sourcePile: res.sourcePile, msgs: [msg] });
+      appendTurnDrawVisualEvents(turnDrawVisualEvents, {
+        playerIdx: 0,
+        playerName: P[0].name,
+        card: res.drawnCard,
+        sourcePile: res.sourcePile,
+        msgs: [msg],
+        reshuffleLog: res.reshuffleLog,
+      });
     }
     if (res.effectMsgs?.length) {
       if (res.needGodChoice) {
@@ -1835,7 +1873,7 @@ function resolveNextTurnState(gs, opts = {}) {
     }
     if (drawLogs.length > drawLogsSyncedCount) L.push(...drawLogs.slice(drawLogsSyncedCount));
     if (statLogs.length) appendMissingLogOccurrences(L, statLogs);
-    if (!res.drawnCard) { L.push('牌堆耗尽！'); return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }; }
+    if (!res.drawnCard) { L.push('牌堆耗尽！'); return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }, turnDrawVisualEvents); }
     if (res.needGodChoice) {
       const inspectionPatch = res.statePatch || {};
       return {
@@ -1861,7 +1899,7 @@ function resolveNextTurnState(gs, opts = {}) {
         _turnKey: newTurnKey,
         _turnStartLogs: turnStartLogs,
         _drawLogs: drawLogs,
-        _turnDrawEvents: turnDrawEvents,
+        _visualEvents: mergeVisualEventLists(inspectionPatch._visualEvents, turnDrawVisualEvents),
         _statLogs: statLogs,
         _preTurnPlayers: _P_beforeTurn,
         _aiDrawnCard: null,
@@ -1873,7 +1911,6 @@ function resolveNextTurnState(gs, opts = {}) {
         houndsOfTindalosActive: inspectionPatch.houndsOfTindalosActive,
         houndsOfTindalosTarget: inspectionPatch.houndsOfTindalosTarget,
         houndsOfTindalosElapsed: inspectionPatch.houndsOfTindalosElapsed,
-        _visualEvents: inspectionPatch._visualEvents,
         _inspectionSeq: inspectionPatch._inspectionSeq,
         _inspectionCard: inspectionPatch._inspectionCard,
         _inspectionTarget: inspectionPatch._inspectionTarget,
@@ -1909,7 +1946,7 @@ function resolveNextTurnState(gs, opts = {}) {
       _playersBeforeThisDraw: _P_beforeDraw,
       _turnStartLogs: turnStartLogs,
       _drawLogs: drawLogs,
-      _turnDrawEvents: turnDrawEvents,
+      _visualEvents: mergeVisualEventLists(res.statePatch?._visualEvents, turnDrawVisualEvents),
       _statLogs: statLogs,
       _preTurnPlayers: _P_beforeTurn,
       ...(res.statePatch || {}),
@@ -1921,9 +1958,9 @@ function resolveNextTurnState(gs, opts = {}) {
         baseAbilityData: {},
         fallbackPhase: 'ACTION',
       });
-      return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: decisionState.phase, drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: 0, drawerName: P[0].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: decisionState.abilityData, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _drawSourcePile: res.sourcePile, ...(res.statePatch || {}) };
+      return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: decisionState.phase, drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: 0, drawerName: P[0].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: decisionState.abilityData, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _drawSourcePile: res.sourcePile, ...(res.statePatch || {}) }, turnDrawVisualEvents);
     }
-    return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: 0, drawerName: P[0].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _drawSourcePile: res.sourcePile };
+    return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: 0, drawerName: P[0].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _drawSourcePile: res.sourcePile }, turnDrawVisualEvents);
   } else if (gs._isMP && !shouldUseAiController(next)) {
     // Multiplayer: next player is human — draw their card and enter DRAW_REVEAL
     // [ACTIVE_GOD] NYA 偷身份
@@ -1954,7 +1991,7 @@ function resolveNextTurnState(gs, opts = {}) {
       });
     }
     const _P_beforeMpDraw = copyPlayers(P);
-    const turnDrawEvents = [];
+    const turnDrawVisualEvents = [];
     while (true) {
       const tsgSlime = getTsathogguaSlimesForDraw(P, next, L, visualEvents)[0];
       if (!tsgSlime) break;
@@ -1964,7 +2001,7 @@ function resolveNextTurnState(gs, opts = {}) {
         const guard = getZhuTopGuard({ ...gs, players: P, deck: D, currentTurn: next, zhuLight }, D);
         if (guard) return buildPendingZhuRevealState({
           gs, guard, players: P, deck: D, discard: Disc, log: L, currentTurn: next,
-          newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawEvents, statLogs,
+          newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawVisualEvents, statLogs,
           preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeMpDraw, globalOnlySwapOwner,
           abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _tsgExtraDrawReady: true, _turnOwner: next },
         });
@@ -1972,20 +2009,27 @@ function resolveNextTurnState(gs, opts = {}) {
       const rSlime = playerDrawCard(P, D, Disc, next, gs);
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
       if (rSlime.statePatch) gs = { ...gs, ...rSlime.statePatch };
-      let drawEvent = null;
       if (rSlime.drawnCard) {
         if (rSlime.reshuffleLog) { L.push(rSlime.reshuffleLog); drawLogs.push(rSlime.reshuffleLog); }
         if (slimePop) drawLogs.push(...slimePop.msgs);
         const msg = `【无定形体】${P[next].name} 额外摸到 ${drawCardDecisionText(rSlime.drawnCard)}`;
         L.push(msg); drawLogs.push(msg);
-        drawEvent = { card: rSlime.drawnCard, drawerIdx: next, drawerName: P[next].name, sourcePile: rSlime.sourcePile, msgs: [msg], fromTsathogguaSlime: true, slimePop };
-        turnDrawEvents.push(drawEvent);
+        appendTurnDrawVisualEvents(turnDrawVisualEvents, {
+          playerIdx: next,
+          playerName: P[next].name,
+          card: rSlime.drawnCard,
+          sourcePile: rSlime.sourcePile,
+          msgs: [msg],
+          reshuffleLog: rSlime.reshuffleLog,
+          fromTsathogguaSlime: true,
+          slimePop,
+        });
       }
       if (rSlime.needGodChoice) {
-        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: rSlime.drawnCard, godEncounterCost: rSlime.godEncounterCost, fromTsathogguaSlime: true, continueTurnStartDraw: true, _turnOwner: next }, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw };
+        return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: rSlime.drawnCard, godEncounterCost: rSlime.godEncounterCost, fromTsathogguaSlime: true, continueTurnStartDraw: true, _turnOwner: next }, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }, turnDrawVisualEvents);
       }
       if (rSlime.needsDecision) {
-        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: next, drawerName: P[next].name, fromTsathogguaSlime: true, reshuffleLog: rSlime.reshuffleLog }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _turnOwner: next }, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw };
+        return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: next, drawerName: P[next].name, fromTsathogguaSlime: true, reshuffleLog: rSlime.reshuffleLog }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _turnOwner: next }, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }, turnDrawVisualEvents);
       }
       if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
     }
@@ -1996,7 +2040,7 @@ function resolveNextTurnState(gs, opts = {}) {
       const guard = getZhuTopGuard({ ...gs, players: P, deck: D, currentTurn: next, zhuLight }, D);
       if (guard) return buildPendingZhuRevealState({
         gs, guard, players: P, deck: D, discard: Disc, log: L, currentTurn: next,
-        newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawEvents, statLogs,
+        newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawVisualEvents, statLogs,
         preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeMpDraw, globalOnlySwapOwner,
       });
     }
@@ -2007,7 +2051,14 @@ function resolveNextTurnState(gs, opts = {}) {
     if (res.drawnCard && !res.kept) {
       const msg = `${P[next].name} 摸到 ${drawCardDecisionText(res.drawnCard)}`;
       drawLogs.push(msg);
-      turnDrawEvents.push({ card: res.drawnCard, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile, msgs: [msg] });
+      appendTurnDrawVisualEvents(turnDrawVisualEvents, {
+        playerIdx: next,
+        playerName: P[next].name,
+        card: res.drawnCard,
+        sourcePile: res.sourcePile,
+        msgs: [msg],
+        reshuffleLog: res.reshuffleLog,
+      });
     }
     if (res.effectMsgs?.length) {
       if (res.needGodChoice) {
@@ -2023,14 +2074,14 @@ function resolveNextTurnState(gs, opts = {}) {
     }
     if (drawLogs.length > drawLogsSyncedCount) L.push(...drawLogs.slice(drawLogsSyncedCount));
     if (statLogs.length) appendMissingLogOccurrences(L, statLogs);
-    if (!res.drawnCard) { L.push('牌堆耗尽！'); return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }; }
-    if (res.needGodChoice) { return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: res.drawnCard, godEncounterCost: res.godEncounterCost }, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, ...(res.statePatch || {}) }; }
-    const win = hasPendingDamageReaction(res.statePatch) ? null : checkWin(P, true); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: win };
+    if (!res.drawnCard) { L.push('牌堆耗尽！'); return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }, turnDrawVisualEvents); }
+    if (res.needGodChoice) { return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: res.drawnCard, godEncounterCost: res.godEncounterCost }, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, ...(res.statePatch || {}) }, turnDrawVisualEvents); }
+    const win = hasPendingDamageReaction(res.statePatch) ? null : checkWin(P, true); if (win) return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: win, ...(res.statePatch || {}) }, turnDrawVisualEvents);
     // 强制触发牌：效果已执行，直接进入 ACTION；不向其他玩家广播 DRAW_REVEAL 界面
     if (res.kept) {
-      return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'ACTION', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, _drawSourcePile: res.sourcePile, ...(res.statePatch || {}) };
+      return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'ACTION', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, _drawSourcePile: res.sourcePile, ...(res.statePatch || {}) }, turnDrawVisualEvents);
     }
-    return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, _drawSourcePile: res.sourcePile };
+    return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, _drawSourcePile: res.sourcePile }, turnDrawVisualEvents);
   } else {
     // [ACTIVE_GOD] NYA 偷身份（AI 自动处理）
     if (turnStartEventIds.has(TURN_START_EVENT.NYA_BORROW)) {
@@ -2063,7 +2114,7 @@ function resolveNextTurnState(gs, opts = {}) {
     }
     applyDebugForceDrawToTop(gs, next, D);
     const _P_beforeDraw = copyPlayers(P);
-    const turnDrawEvents = [];
+    const turnDrawVisualEvents = [];
     while (true) {
       const tsgSlime = getTsathogguaSlimesForDraw(P, next, L, visualEvents)[0];
       if (!tsgSlime) break;
@@ -2099,7 +2150,7 @@ function resolveNextTurnState(gs, opts = {}) {
             _turnKey: newTurnKey,
             _turnStartLogs: turnStartLogs,
             _drawLogs: drawLogs,
-            _turnDrawEvents: turnDrawEvents,
+            _visualEvents: mergeVisualEventLists(gs._visualEvents, turnDrawVisualEvents),
             _statLogs: statLogs,
             _preTurnPlayers: _P_beforeTurn,
             globalOnlySwapOwner,
@@ -2109,7 +2160,6 @@ function resolveNextTurnState(gs, opts = {}) {
       const rSlime = aiDrawAndApply(next, P, D, Disc, gs);
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
       if (rSlime.statePatch) gs = { ...gs, ...rSlime.statePatch };
-      let drawEvent = null;
       if (rSlime.drawnCard) {
         if (rSlime.reshuffleLog) { L.push(rSlime.reshuffleLog); drawLogs.push(rSlime.reshuffleLog); }
         if (slimePop) drawLogs.push(...slimePop.msgs);
@@ -2119,17 +2169,17 @@ function resolveNextTurnState(gs, opts = {}) {
         // 黏液额外摸到邪神牌时是同步结算的（不进入 AI_GOD_CHOICE）。规则层把遭遇
         // 产出的属性/检定事件序号与弃牌结果记录在摸牌事件上，startNextTurn 据此
         // 把对应视觉事件归属到这次摸牌，动画队列才能按序补播 SAN/检定/弃牌。
-        drawEvent = {
+        appendTurnDrawVisualEvents(turnDrawVisualEvents, {
+          playerIdx: next,
+          playerName: P[next].name,
           card: rSlime.drawnCard,
-          drawerIdx: next,
-          drawerName: P[next].name,
           sourcePile: rSlime.sourcePile,
           msgs: [msg],
+          reshuffleLog: rSlime.reshuffleLog,
           fromTsathogguaSlime: true,
           slimePop,
-          ...(rSlime.godEncounter ? { godEncounter: rSlime.godEncounter } : {}),
-        };
-        turnDrawEvents.push(drawEvent);
+          godEncounter: rSlime.godEncounter,
+        });
       }
       if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
     }
@@ -2159,7 +2209,7 @@ function resolveNextTurnState(gs, opts = {}) {
         _turnKey: (gs._turnKey || 0) + 1,
         _turnStartLogs: turnStartLogs,
         _drawLogs: drawLogs,
-        _turnDrawEvents: turnDrawEvents,
+        _visualEvents: mergeVisualEventLists(gs._visualEvents, turnDrawVisualEvents),
         _statLogs: statLogs,
         _preTurnPlayers: _P_beforeTurn,
         globalOnlySwapOwner,
@@ -2188,7 +2238,14 @@ function resolveNextTurnState(gs, opts = {}) {
     if (res.effectMsgs?.length) L.push(...res.effectMsgs);
     if (res.drawnCard) {
       const eventMsgs = (res.effectMsgs || []).filter(msg => (drawLogs || []).includes(msg));
-      turnDrawEvents.push({ card: res.drawnCard, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile, msgs: eventMsgs.length ? eventMsgs : drawLogs.slice(-1) });
+      appendTurnDrawVisualEvents(turnDrawVisualEvents, {
+        playerIdx: next,
+        playerName: P[next].name,
+        card: res.drawnCard,
+        sourcePile: res.sourcePile,
+        msgs: eventMsgs.length ? eventMsgs : drawLogs.slice(-1),
+        reshuffleLog: res.reshuffleLog,
+      });
     }
     const pendingAiGodChoice = res.pendingAiGodChoice || res.statePatch?._pendingAiGodChoice || null;
     const { phase: resolvedNextPhase, abilityData: resolvedNextAbilityData } = deriveEffectDecisionState(res.statePatch, {
@@ -2215,14 +2272,14 @@ function resolveNextTurnState(gs, opts = {}) {
       _turnKey: (gs._turnKey || 0) + 1,
       _turnStartLogs: turnStartLogs,
       _drawLogs: drawLogs,
-      _turnDrawEvents: turnDrawEvents,
+      _visualEvents: mergeVisualEventLists(res.statePatch?._visualEvents, turnDrawVisualEvents),
       _statLogs: statLogs,
       _preTurnPlayers: _P_beforeTurn,
     };
-    const win = hasPendingDamageReaction(res.statePatch) ? null : checkWin(res.P, gs._isMP); if (win) return { ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, gameOver: win, ...aiTurnAnimMeta, ...(res.statePatch || {}), globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) };
+    const win = hasPendingDamageReaction(res.statePatch) ? null : checkWin(res.P, gs._isMP); if (win) return withMergedVisualEvents({ ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, gameOver: win, ...aiTurnAnimMeta, ...(res.statePatch || {}), globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) }, turnDrawVisualEvents);
     if (!res.P[next].isDead && res.P[next].role === ROLE_TREASURE && isWinHand(res.P[next].hand)) {
       res.P[next].roleRevealed = true;
-      return {
+      return withMergedVisualEvents({
         ...gs,
         players: res.P,
         deck: D,
@@ -2232,9 +2289,9 @@ function resolveNextTurnState(gs, opts = {}) {
         ...aiTurnAnimMeta,
         ...(res.statePatch || {}),
         globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner)
-      };
+      }, turnDrawVisualEvents);
     }
-    return { ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, drawReveal: null, selectedCard: null, huntAbandoned: [], _aiDrawnCard: res.drawnCard ?? null, _drawnCard: res.drawnCard ?? null, _discardedDrawnCard: !!res.discardedDrawnCard, _playersBeforeThisDraw: _P_beforeDraw, _turnKey: (gs._turnKey || 0) + 1, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}), phase: nextPhase, abilityData: nextAbilityData, globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) };
+    return withMergedVisualEvents({ ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, drawReveal: null, selectedCard: null, huntAbandoned: [], _aiDrawnCard: res.drawnCard ?? null, _drawnCard: res.drawnCard ?? null, _discardedDrawnCard: !!res.discardedDrawnCard, _playersBeforeThisDraw: _P_beforeDraw, _turnKey: (gs._turnKey || 0) + 1, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}), phase: nextPhase, abilityData: nextAbilityData, globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) }, turnDrawVisualEvents);
   }
 }
 
@@ -2323,13 +2380,11 @@ export function startNextTurn(gs, opts = {}) {
   // 摸牌事件（godEncounter.visualEventIds）。归属信息来自规则层结算时记录的
   // 序号，呈现层据此把遭遇块（SAN 扣减 → 检定 → 弃牌）插到该邪神牌翻牌之后、
   // 下一张摸牌之前，不再按步骤类型/队列位置启发式猜测。
-  const godEncounterDraws = (Array.isArray(nextState?._turnDrawEvents) ? nextState._turnDrawEvents : [])
-    .map((event, index) => ({ event, index }))
-    .filter(({ event }) => event?.godEncounter);
-  let finalState = nextState;
+  const godEncounterDraws = visualEvents
+    .filter(event => event?.type === VISUAL_EVENT.DRAW_CARD && event?.id && event?.godEncounter);
   if (godEncounterDraws.length) {
     const ownedIdsByDraw = new Map();
-    godEncounterDraws.forEach(({ event: drawEvent, index }) => {
+    godEncounterDraws.forEach(drawEvent => {
       const encounter = drawEvent.godEncounter;
       const ownedIds = [];
       const ownedStatSeqs = new Set((encounter.statSeqs || []).filter(seq => seq != null));
@@ -2373,24 +2428,21 @@ export function startNextTurn(gs, opts = {}) {
       if (encounter.discardedGod) {
         const discardEvent = createGodGiftDiscardEvent({
           card: drawEvent.card,
-          drawerIdx: drawEvent.drawerIdx ?? nextState.currentTurn ?? 0,
-          drawerName: drawEvent.drawerName,
+          drawerIdx: drawEvent.playerIdx ?? nextState.currentTurn ?? 0,
+          drawerName: drawEvent.playerName,
         });
         if (discardEvent) {
           visualEvents = [...visualEvents, discardEvent];
           ownedIds.push(discardEvent.id);
         }
       }
-      ownedIdsByDraw.set(index, ownedIds);
+      ownedIdsByDraw.set(drawEvent.id, ownedIds);
     });
-    finalState = {
-      ...nextState,
-      _turnDrawEvents: nextState._turnDrawEvents.map((drawEvent, index) => (
-        ownedIdsByDraw.has(index)
-          ? { ...drawEvent, godEncounter: { ...drawEvent.godEncounter, visualEventIds: ownedIdsByDraw.get(index) } }
-          : drawEvent
-      )),
-    };
+    visualEvents = visualEvents.map(event => (
+      ownedIdsByDraw.has(event?.id)
+        ? { ...event, godEncounter: { ...event.godEncounter, visualEventIds: ownedIdsByDraw.get(event.id) } }
+        : event
+    ));
   }
-  return visualEvents.length ? { ...finalState, _visualEvents: visualEvents } : finalState;
+  return visualEvents.length ? { ...nextState, _visualEvents: visualEvents } : nextState;
 }

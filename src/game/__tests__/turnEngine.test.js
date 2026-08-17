@@ -229,8 +229,9 @@ describe('地磁反转暗抽', () => {
     const drawStep = buildTurnStartDrawReplayQueue({ oldGs: gs, newGs: result }).queue
       .find(step => step.type === 'DRAW_CARD');
 
-    expect(result._turnDrawEvents).toHaveLength(1);
-    expect(result._turnDrawEvents[0]).toMatchObject({ card: deckCard, sourcePile: 'deck' });
+    const drawEvents = result._visualEvents.filter(event => event.type === VISUAL_EVENT.DRAW_CARD);
+    expect(drawEvents).toHaveLength(1);
+    expect(drawEvents[0]).toMatchObject({ card: deckCard, sourcePile: 'deck' });
     expect(result.geomagneticReversalActive).toBe(false);
     expect(result.discard).toEqual([staleDiscardCard]);
     expect(drawStep).toMatchObject({ card: deckCard, targetPid: 1, sourcePile: 'deck' });
