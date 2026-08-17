@@ -13,6 +13,14 @@ function clonePlayersForTimeline(players = []) {
   }));
 }
 
+function collectExplicitDiscardTargets(steps = [], targets = new Set()) {
+  (steps || []).forEach(step => {
+    if (step?.type === 'DISCARD' && step.targetPid != null) targets.add(step.targetPid);
+    if (Array.isArray(step?.steps)) collectExplicitDiscardTargets(step.steps, targets);
+  });
+  return targets;
+}
+
 function playersAfterStatEvents(basePlayers = [], statEvents = []) {
   const next = clonePlayersForTimeline(basePlayers);
   statEvents.forEach(event => {
@@ -24,45 +32,6 @@ function playersAfterStatEvents(basePlayers = [], statEvents = []) {
     if (Object.prototype.hasOwnProperty.call(to, 'isDead')) target.isDead = to.isDead;
   });
   return next;
-}
-
-function getDeathAnimMsgs(newMsgs = [], players = [], deathIndices = []) {
-  const deathLines = (Array.isArray(newMsgs) ? newMsgs : []).filter(line => typeof line === 'string' && line.includes('倒下了'));
-  if (!deathLines.length) return [];
-  const names = new Set((deathIndices || []).map(idx => players?.[idx]?.name).filter(Boolean));
-  if (!names.size) return deathLines;
-  const matched = deathLines.filter(line => [...names].some(name => line.includes(name)));
-  return matched.length ? matched : deathLines;
-}
-
-// Derived death presentation steps (guillotine + full-screen death broadcast)
-// for players that transitioned from alive to dead between two snapshots.
-// `petrifyDeathTargets` is optional and mirrors buildAnimQueue's exclusion so a
-// petrified death (which already emits PETRIFY_DEATH + DEATH) is not duplicated.
-export function buildDeathAnimSteps({
-  oldPlayers = [],
-  newPlayers = [],
-  newMsgs = [],
-  petrifyDeathTargets = null,
-} = {}) {
-  const petrifyTargets = petrifyDeathTargets instanceof Set ? petrifyDeathTargets : new Set();
-  const deathIdx = (Array.isArray(newPlayers) ? newPlayers : []).reduce((acc, player, index) => {
-    if (
-      oldPlayers[index] &&
-      !oldPlayers[index].isDead &&
-      player?.isDead &&
-      !petrifyTargets.has(index)
-    ) {
-      acc.push(index);
-    }
-    return acc;
-  }, []);
-  if (!deathIdx.length) return [];
-  const deathMsgs = getDeathAnimMsgs(newMsgs, newPlayers, deathIdx);
-  return [
-    { type: 'GUILLOTINE', msgs: deathMsgs, hitIndices: deathIdx },
-    { type: 'DEATH', msgs: deathMsgs, hitIndices: deathIdx },
-  ];
 }
 
 function mergeStatValuesIntoPlayers(basePlayers = [], statPlayers = []) {
@@ -209,16 +178,21 @@ function attachVisualTimelineToSteps(steps = [], beforePlayers = [], beforeDisca
       visualSetupTiming: step.visualSetupTiming || 'queueStart',
       visualSetupPatch: {
         ...(step.visualSetupPatch || {}),
-        players: cursorPlayers,
-        discard: cursorDiscard,
+        players: step.visualSetupPatch?.players || cursorPlayers,
+        discard: step.visualSetupPatch?.discard || cursorDiscard,
       },
       visualTimeline: Array.isArray(step.visualTimeline) ? step.visualTimeline : [
         { atMs: 0, patch: { players: cursorPlayers, discard: cursorDiscard } },
         { atMs: 360, patch: { players: nextPlayers, discard: nextDiscard } },
       ],
     };
-    cursorPlayers = nextPlayers;
-    cursorDiscard = nextDiscard;
+    const finalVisualPatch = timedStep.visualTimeline?.findLast?.(frame => frame?.patch)?.patch;
+    cursorPlayers = Array.isArray(finalVisualPatch?.players)
+      ? clonePlayersForTimeline(finalVisualPatch.players)
+      : nextPlayers;
+    cursorDiscard = Array.isArray(finalVisualPatch?.discard)
+      ? [...finalVisualPatch.discard]
+      : nextDiscard;
     return timedStep;
   }).map((step, index, arr) => {
     if (index !== arr.length - 1 || step?.type === 'STATE_PATCH') return step;
@@ -467,100 +441,6 @@ function getRemovedHandCards(oldHand = [], newHand = []) {
   });
 }
 
-function takeMatchingCards(cards = [], availableCards = []) {
-  const available = new Map();
-  (availableCards || []).forEach(card => {
-    const id = cardIdentity(card);
-    if (!id) return;
-    available.set(id, (available.get(id) || 0) + 1);
-  });
-  return (cards || []).filter(card => {
-    const id = cardIdentity(card);
-    const count = id ? (available.get(id) || 0) : 0;
-    if (!count) return false;
-    available.set(id, count - 1);
-    return true;
-  });
-}
-
-function removeMatchingCards(cards = [], removedCards = []) {
-  const remaining = new Map();
-  (removedCards || []).forEach(card => {
-    const id = cardIdentity(card);
-    if (!id) return;
-    remaining.set(id, (remaining.get(id) || 0) + 1);
-  });
-  return (cards || []).filter(card => {
-    const id = cardIdentity(card);
-    const count = id ? (remaining.get(id) || 0) : 0;
-    if (!count) return true;
-    remaining.set(id, count - 1);
-    return false;
-  });
-}
-
-// Death owns its card settlement.  In particular, a dead follower losing
-// godName must not be mistaken for an ordinary faith exit and merged ahead of
-// the guillotine.  Keep the panel alive through the explicit discard, then let
-// DEATH clear _pendingAnimDeath and dim it.
-function finalizeDeathCardSettlement(queue = [], oldGs = {}, newGs = {}) {
-  const deathTargets = [...new Set(queue
-    .filter(step => step?.type === 'DEATH')
-    .flatMap(step => step.hitIndices || []))]
-    .filter(targetPid => (
-      oldGs?.players?.[targetPid] &&
-      !oldGs.players[targetPid].isDead &&
-      newGs?.players?.[targetPid]?.isDead
-    ));
-  if (!deathTargets.length) return queue;
-
-  const newlyDiscarded = getRemovedHandCards(newGs?.discard || [], oldGs?.discard || []);
-  let availableDiscarded = [...newlyDiscarded];
-  const discardSteps = [];
-  deathTargets.forEach(targetPid => {
-    const oldPlayer = oldGs.players[targetPid];
-    const candidates = [...(oldPlayer.hand || []), ...(oldPlayer.godZone || [])];
-    const cards = takeMatchingCards(candidates, availableDiscarded);
-    if (!cards.length) return;
-    availableDiscarded = removeMatchingCards(availableDiscarded, cards);
-
-    const beforePlayers = clonePlayersForTimeline(newGs.players || []);
-    if (beforePlayers[targetPid]) {
-      beforePlayers[targetPid] = {
-        ...beforePlayers[targetPid],
-        hand: [...(oldPlayer.hand || [])],
-        godName: oldPlayer.godName,
-        godLevel: oldPlayer.godLevel,
-        godZone: [...(oldPlayer.godZone || [])],
-        _pendingAnimDeath: true,
-      };
-    }
-    const beforeDiscard = removeMatchingCards(newGs?.discard || [], cards);
-    discardSteps.push({
-      type: 'DISCARD',
-      card: cards[0],
-      cards,
-      count: cards.length,
-      triggerName: oldPlayer.name || '角色',
-      targetPid,
-      deathSettlementStep: true,
-      visualSetupTiming: 'queueStart',
-      visualSetupPatch: { players: beforePlayers, discard: beforeDiscard },
-      visualTimeline: [
-        { atMs: 0, patch: { players: beforePlayers, discard: beforeDiscard } },
-        { atMs: 360, patch: { players: newGs.players || [], discard: newGs.discard || [] } },
-      ],
-    });
-  });
-  if (!discardSteps.length) return queue;
-
-  const firstDeathIdx = queue.findIndex(step => step?.type === 'DEATH');
-  if (firstDeathIdx < 0) return queue;
-  const result = [...queue];
-  result.splice(firstDeathIdx, 0, ...discardSteps);
-  return result;
-}
-
 export function buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs }) {
   const q = [];
   if (!oldGs || !Array.isArray(oldGs.players) || !Array.isArray(effectivePlayers)) return q;
@@ -681,7 +561,7 @@ export function buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs 
   return q;
 }
 
-export function buildAnimQueue(oldGs, newGs, options = {}) {
+export function buildAnimQueue(oldGs, newGs) {
   const q = [];
   const oldVisualEventIds = new Set(getVisualEvents(oldGs).map(event => event.id));
   const freshVisualEvents = getVisualEvents(newGs).filter(event => event?.id && !oldVisualEventIds.has(event.id));
@@ -907,13 +787,6 @@ export function buildAnimQueue(oldGs, newGs, options = {}) {
     : explicitStatEvents;
   q.push(...cardEffectSteps);
   q.push(...graveDigSteps);
-  const petrifyDeathTargets = new Set(explicitStatEvents
-    .filter(event => event?.type === 'PETRIFY_DEATH' && event?.target != null)
-    .map(event => Number(event.target)));
-  const deathIdx = effectivePlayers.reduce((acc, p, i) => {
-    if (oldGs.players[i] && !oldGs.players[i].isDead && p.isDead && !petrifyDeathTargets.has(i)) acc.push(i);
-    return acc;
-  }, []);
   const hasFreshExplicitStatEvents = statEventsForQueue.length > 0 && (newGs?._statEventSeq == null || newStatSeq > oldStatSeq);
   const statTimelineBeforePlayers = playersAfterQueuedFaithSteps(
     oldGs?.players || effectivePlayers,
@@ -968,7 +841,7 @@ export function buildAnimQueue(oldGs, newGs, options = {}) {
         oldGs?.players || [],
         effectivePlayers,
         newMsgs,
-        { reason: 'legacy-state-diff' },
+        { reason: 'legacy-state-diff', includeDefeat: false },
       ).filter(event => (
         event.type !== 'HP_GAIN' || hasHpHealLog
       ) && (
@@ -979,11 +852,6 @@ export function buildAnimQueue(oldGs, newGs, options = {}) {
   }
   q.push(...godPowerBlockedSteps);
   q.push(...vritraRevealSteps);
-  if (deathIdx.length) {
-    const deathMsgs = getDeathAnimMsgs(newMsgs, effectivePlayers, deathIdx);
-    q.push({ type: 'GUILLOTINE', msgs: deathMsgs, hitIndices: deathIdx });
-    q.push({ type: 'DEATH', msgs: deathMsgs, hitIndices: deathIdx });
-  }
   const moldyRoll = newGs?._moldyFoodDiceRoll;
   const moldySeq = moldyRoll?.seq ?? newGs?._moldyFoodDiceSeq;
   const oldMoldySeq = oldGs?._moldyFoodDiceSeq || oldGs?._moldyFoodDiceRoll?.seq || 0;
@@ -1013,9 +881,7 @@ export function buildAnimQueue(oldGs, newGs, options = {}) {
     if (fullHandSwapQ.length) {
       q.push(...fullHandSwapQ);
       const composed = composeFaithSettlementAnimQueue(q, presentableGodStatusEvents);
-      return options.skipDeathCardSettlement
-        ? composed
-        : finalizeDeathCardSettlement(composed, oldGs, newGs);
+      return composed;
     }
   }
   const buryMsgs = newMsgs.filter(m => typeof m === 'string' && m.includes('【活埋】') && m.includes('放到了牌堆底'));
@@ -1027,15 +893,23 @@ export function buildAnimQueue(oldGs, newGs, options = {}) {
       q.push(buryToDeckStep({ fromPid: fromPid >= 0 ? fromPid : 0, msgs: [msg], players: oldGs.players }));
     });
     const composed = composeFaithSettlementAnimQueue(q, presentableGodStatusEvents);
-    return options.skipDeathCardSettlement
-      ? composed
-      : finalizeDeathCardSettlement(composed, oldGs, newGs);
+    return composed;
   }
-  q.push(...buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs }));
+  const explicitDiscardTargets = collectExplicitDiscardTargets(q);
+  const inferredHandQueue = buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs })
+    .filter(step => !(
+      explicitDiscardTargets.has(step?.fromPid)
+      && step?.type === 'CARD_TRANSFER'
+      && step?.dest === 'discard'
+      && step?.inferredHandLoss
+    ))
+    .filter(step => !(
+      explicitDiscardTargets.has(step?.targetPid)
+      && step?.type === 'TSG_SLIME_POP'
+    ));
+  q.push(...inferredHandQueue);
   const composed = composeFaithSettlementAnimQueue(q, presentableGodStatusEvents);
-  return options.skipDeathCardSettlement
-    ? composed
-    : finalizeDeathCardSettlement(composed, oldGs, newGs);
+  return composed;
 }
 
 export function buildFullHandSwapTransferQueueFromLogs(logs, players, options = {}) {
@@ -1147,17 +1021,10 @@ export function buildAiHuntEventAnimQueue(evt, actorName, options = {}) {
     }
   }
   if (evt.beforePlayers && evt.afterPlayers) {
-    const beforeLog = Array.isArray(evt.beforeLog) ? evt.beforeLog : [];
-    const afterLog = Array.isArray(evt.afterLog) ? evt.afterLog : [...beforeLog, ...(evt.msgs || [])];
-    const damagePlayers = evt.afterDamagePlayers || evt.afterPlayers;
-    const damageLog = evt.afterDamageLog || afterLog;
-    const resultQueue = buildAnimQueue(
-      { players: evt.afterDiscardPlayers || evt.beforePlayers, log: beforeLog },
-      { players: damagePlayers, discard: evt.afterDamageDiscard || evt.afterResultDiscard, log: damageLog },
-      // A lethal hunt owns its post-death card settlement below.  Letting the
-      // generic death compiler infer the same cards creates duplicate discard
-      // beats and separates the hand/god discards with loot animation.
-      { skipDeathCardSettlement: true },
+    const resultQueue = statEventsToAnimQueue(
+      evt.statEvents || [],
+      evt.afterDiscardPlayers || evt.beforePlayers,
+      followupMsgs,
     );
     const resultWithChunks = resultQueue
       .filter(step => {
@@ -1185,10 +1052,6 @@ export function buildAiHuntEventAnimQueue(evt, actorName, options = {}) {
         ];
       }
     }
-    // The full-screen death broadcast follows the guillotine immediately and
-    // owns the panel-dim commit. The queue player snapshots still retain the
-    // defeated player's cards for the following loot/discard animations;
-    // commitDeathPresentation only clears _pendingAnimDeath across them.
     perHuntQueue.push(...resultWithChunks);
     if (evt.afterPlayers[evt.targetIdx]?.isDead && evt.hunterIdx != null) {
       const lootMsgs = followupMsgs.filter(line => /从 .+ 的(?:公开)?手牌中/.test(line || ''));

@@ -104,7 +104,7 @@ export function buildPhaseUiState({
           : `等待 ${players[abilityData.huntTi ?? 1]?.name || '对方'} 亮出手牌…`;
       case 'TREASURE_DODGE_DECISION':
         return local.treasureDodge
-          ? (canShowTurnDecisionModal ? '【寻宝者】触发负面区域牌！是否掷骰子规避？' : '规避判定中…')
+          ? (canShowTurnDecisionModal ? '【寻宝者】即将承受负面效果！是否掷骰子规避？' : '规避判定中…')
           : (isMultiplayer ? `等候 ${players[gs?.currentTurn]?.name} 做出选择…` : `${players[gs?.currentTurn]?.name} 正在思考…`);
       case 'BEWITCH_SELECT_CARD':
         return '【蛊惑】选择要赠送的手牌';

@@ -1150,6 +1150,22 @@ describe('applyFx', () => {
     expect(res.statePatch._earthquakeSeq).toBeUndefined();
   });
 
+  it('allDiscard: 衍生牌销毁但仍进入地震弃牌动画事件', () => {
+    const derived = { id: 'quake-derived', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const players = makeStandardPlayers(2);
+    players[0].hand = [derived];
+    players[1].hand = [];
+    const card = { type: 'allDiscard', name: '地动山摇', key: 'QUAKE' };
+
+    const res = applyFx(card, 0, null, players, [], [], makeGs({ players }));
+
+    expect(res.P[0].hand).toEqual([]);
+    expect(res.Disc).toEqual([]);
+    expect(res.statePatch._visualEvents?.[0]?.discardEvents).toEqual([
+      expect.objectContaining({ playerIndex: 0, card: derived, afterDiscard: [] }),
+    ]);
+  });
+
   it('selfHealAdjDamageHP: 治疗自己并伤害相邻', () => {
     const players = makeStandardPlayers(5);
     players[0].hp = 5;
@@ -1293,6 +1309,22 @@ describe('applyFx', () => {
     randomSpy.mockRestore();
   });
 
+  it('sphinxGuess: AI 普通角色猜错只记录一条最终伤害结果', () => {
+    const players = makeStandardPlayers(3);
+    players[0].role = '追猎者';
+    const deck = [makeZoneCard('A1', 0)];
+    const card = { type: 'sphinxGuess', name: '斯芬克斯', key: 'D4' };
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.8); // guessYes = false, top card is zone => wrong
+
+    const res = applyFx(card, 0, null, players, deck, [], makeGs({ players }), false, [], true);
+    randomSpy.mockRestore();
+
+    expect(res.P[0].hp).toBe(7);
+    expect(res.msgs.filter(line => line.includes('猜测错误！'))).toEqual([
+      '猜测错误！测试角色1 失去 3 HP',
+    ]);
+  });
+
   it('sphinxGuess: AI 寻宝者猜对时不掷规避骰', () => {
     const players = makeStandardPlayers(3);
     players[0].role = '寻宝者';
@@ -1303,6 +1335,8 @@ describe('applyFx', () => {
     const res = applyFx(card, 0, null, players, deck, [], makeGs({ players }), false, [], true);
 
     expect(res.msgs.some(line => line.includes('规避负面效果'))).toBe(false);
+    expect(res.msgs.filter(line => line.includes('猜测正确！'))).toHaveLength(1);
+    expect(res.msgs.some(line => line.includes('猜测错误！'))).toBe(false);
     expect(randomSpy).toHaveBeenCalledTimes(1);
     randomSpy.mockRestore();
   });
@@ -1567,7 +1601,7 @@ describe('applyFx', () => {
       accomplices: [],
     });
     expect(res.statEvents).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: 'PETRIFY_DEATH', target: 1 }),
+      expect.objectContaining({ type: 'PLAYER_DEFEATED', cause: 'petrification', target: 1 }),
       expect.objectContaining({ type: 'SAN_LOSS', target: 0 }),
       expect.objectContaining({ type: 'SAN_LOSS', target: 2 }),
     ]));
@@ -1817,9 +1851,27 @@ describe('inspection and AI decision regressions', () => {
     expect(result.Disc).toEqual([handCard]);
   });
 
+  it('迫害妄想销毁衍生牌但保留标准弃牌动画事件', () => {
+    const inspectionCard = { id: 'discard-derived', name: '迫害妄想', effect: 'discardRandom' };
+    const derived = { id: 'inspection-derived', name: '赐福黏液', type: 'tsathogguaSlime', isTsathogguaSlime: true };
+    const players = [makePlayer({ name: '检定者', hand: [derived] })];
+    const meta = makeInspectionMeta({ inspectionDeck: [inspectionCard], inspectionDiscard: [] });
+
+    const result = processInspectionTargets([0], 0, players, [], [], [], meta);
+
+    expect(result.P[0].hand).toEqual([]);
+    expect(result.Disc).toEqual([]);
+    const event = result.inspectionMeta._visualEvents?.find(item => item.type === VISUAL_EVENT.INSPECTION);
+    expect(event?.discardEvents).toEqual([
+      expect.objectContaining({ playerIndex: 0, card: derived, afterDiscard: [] }),
+    ]);
+  });
+
   it('auto-resolves same abyss for AI-controlled seat zero', () => {
+    const derived = { id: 'same-abyss-derived', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const discardedNormal = { id: 'a' };
     const players = [
-      makePlayer({ name: 'AI-0', hp: 5, hand: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }] }),
+      makePlayer({ name: 'AI-0', hp: 5, hand: [derived, discardedNormal, { id: 'c' }, { id: 'd' }] }),
       makePlayer({ name: '触发者', hand: [{ id: 'x' }] }),
     ];
     const card = { id: 'same-abyss', type: 'sameAbyssChoice', name: '同归深渊', hpVal: 2 };
@@ -1828,6 +1880,11 @@ describe('inspection and AI decision regressions', () => {
 
     expect(result.statePatch.abilityData).toBeUndefined();
     expect(result.P[0].hand).toHaveLength(2);
+    expect(result.Disc).toEqual([discardedNormal]);
+    expect(result.statePatch._visualEvents?.at(-1)?.discardEvents.map(event => event.card)).toEqual([
+      derived,
+      discardedNormal,
+    ]);
   });
 });
 
@@ -1878,7 +1935,7 @@ describe('submitDamageEvents', () => {
     expect(P[2]).toMatchObject({ hp: 7, isDead: false, damageLink: { active: false } });
   });
 
-  it('无待处理响应的致死伤害会立即落实死亡与死亡动画标记', () => {
+  it('无待处理响应的致死伤害会立即落实死亡且不写入表现层标记', () => {
     const targetCard = makeZoneCard('A1', 0);
     const P = [makePlayer({ hp: 10 }), makePlayer({ hp: 3, hand: [targetCard] })];
     const discard = [];
@@ -1893,7 +1950,8 @@ describe('submitDamageEvents', () => {
     });
 
     expect(result.abilityData).toBeNull();
-    expect(P[1]).toMatchObject({ hp: 0, isDead: true, _pendingAnimDeath: true, roleRevealed: true });
+    expect(P[1]).toMatchObject({ hp: 0, isDead: true, roleRevealed: true });
+    expect(P[1]).not.toHaveProperty('_pendingAnimDeath');
     expect(P[1].hand).toEqual([]);
     expect(discard).toContain(targetCard);
     expect(log.some(line => line.includes('倒下了'))).toBe(true);

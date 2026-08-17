@@ -133,7 +133,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "无尽通道",
-      "desc": "回合结束时，若此牌在手中，展示所有手牌，使所有“无尽通道”左边的牌视为被重新摸到并依次结算",
+      "desc": "回合结束时，若此牌在手中，展示所有手牌，使所有“无尽通道”左边的非衍生牌视为被重新摸到并依次结算",
       "type": "endTurnReplayHand",
       "val": 0,
       "slotKey": "A3",

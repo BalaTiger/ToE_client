@@ -1,4 +1,4 @@
-import { copyPlayers } from './coreUtils';
+import { copyPlayers, splitHandDiscardCards } from './coreUtils';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { applyHpDamageWithLink, submitDamageEvents } from './effectEngine';
 import { buildStatEvents } from './statEvents';
@@ -6,16 +6,7 @@ import { buildAnimQueue } from './animQueueCore';
 import { bindAnimLogChunks } from './animLogs';
 
 export function splitKeptDestroyedDiscarded(discarded = []) {
-  const kept = [];
-  const destroyed = [];
-  for (const c of discarded) {
-    if (c?.type === 'blackGoatYoung' || c?.type === 'tsathogguaSlime') {
-      destroyed.push(c);
-    } else {
-      kept.push(c);
-    }
-  }
-  return { kept, destroyed };
+  return splitHandDiscardCards(discarded);
 }
 
 export function discardCardsFromHand(players, actorIndex, indices) {
@@ -61,7 +52,12 @@ export function applyHandDiscardSideEffectsWithAnim({
     return { ...result, statePatch: {}, queue: [] };
   }
   const statEventSeq = (baseGs?._statEventSeq || 0) + 1;
-  const statEvents = buildStatEvents(beforePlayers, result.players, sideLogs, { reason: '天平', seq: statEventSeq });
+  const statEvents = buildStatEvents(beforePlayers, result.players, sideLogs, {
+    reason: '天平',
+    seq: statEventSeq,
+    discardBefore: baseGs?.discard,
+    discardAfter: result.discard,
+  });
   const statePatch = statEvents.length
     ? { _statEvents: [...(baseGs?._statEvents || []), ...statEvents], _statEventSeq: statEventSeq }
     : {};

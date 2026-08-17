@@ -261,7 +261,7 @@ function TreasureDodgeModal({ drawReveal, onRoll, onSkip, thinkingText, rollButt
         <PreviewCard card={card} scale={tm.cardScale}/>
 
         <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#c8a96e', fontSize: 14*ui, marginTop: 12*ui, lineHeight: 1.6 }}>
-          这张牌带有负面效果！作为寻宝者，你可以掷骰子尝试规避。
+          你即将承受这张牌的负面效果！作为寻宝者，你可以掷骰子尝试规避。
         </div>
         <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#a08060', fontSize: 13*ui, marginTop: 8*ui }}>
           掷出 4、5、6 点可成功规避负面效果。

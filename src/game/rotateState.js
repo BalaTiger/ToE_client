@@ -131,6 +131,7 @@ function rotateAiHuntEvents(events, rotateIndex, myIndex) {
     afterDiscardPlayers: rotatePlayersArray(event.afterDiscardPlayers, myIndex),
     afterDamagePlayers: rotatePlayersArray(event.afterDamagePlayers, myIndex),
     afterPlayers: rotatePlayersArray(event.afterPlayers, myIndex),
+    statEvents: rotateStatEvents(event.statEvents, rotateIndex, myIndex),
   }));
 }
 
@@ -143,11 +144,14 @@ function rotateAnimMultiplyEvent(event, rotateIndex) {
   };
 }
 
-function rotateAnimSphinxReveal(event, rotateIndex) {
+function rotateAnimSphinxReveal(event, rotateIndex, myIndex) {
   if (!event) return event;
   return {
     ...event,
     actorIdx: event.actorIdx != null ? rotateIndex(event.actorIdx) : event.actorIdx,
+    playersBefore: rotatePlayersArray(event.playersBefore, myIndex),
+    playersAfter: rotatePlayersArray(event.playersAfter, myIndex),
+    statEvents: rotateStatEvents(event.statEvents, rotateIndex, myIndex),
   };
 }
 
@@ -207,6 +211,9 @@ function rotateTurnDrawEvents(events, rotateIndex, myIndex) {
   return events.map(event => ({
     ...event,
     drawerIdx: event.drawerIdx != null ? rotateIndex(event.drawerIdx) : event.drawerIdx,
+    playersBefore: rotatePlayersArray(event.playersBefore, myIndex),
+    playersAfterKeep: rotatePlayersArray(event.playersAfterKeep, myIndex),
+    playersAfterResolution: rotatePlayersArray(event.playersAfterResolution, myIndex),
     slimePop: rotateTsathogguaSlimePop(event.slimePop, rotateIndex, myIndex),
   }));
 }
@@ -347,6 +354,11 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
         ...(event?.type === 'drawCard' && event.slimePop
           ? { slimePop: rotateTsathogguaSlimePop(event.slimePop, rotateIndex, myIndex) }
           : {}),
+        ...(event?.type === 'drawCard' ? {
+          playersBefore: rotatePlayersArray(event.playersBefore, myIndex),
+          playersAfterKeep: rotatePlayersArray(event.playersAfterKeep, myIndex),
+          playersAfterResolution: rotatePlayersArray(event.playersAfterResolution, myIndex),
+        } : {}),
         ...(event?.type === 'godStatusChanged' && Array.isArray(event.playersBefore)
           ? { playersBefore: rotatePlayersArray(event.playersBefore, myIndex) }
           : {}),
@@ -368,7 +380,7 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
       return rotateAiHuntEvents([event], rotateIndex, myIndex)[0];
     }
     if (event?.type === 'sphinxResult') {
-      return rotateAnimSphinxReveal(event, rotateIndex);
+      return rotateAnimSphinxReveal(event, rotateIndex, myIndex);
     }
     if (event?.type === 'bewitchGift' || event?.type === 'swapCards' || event?.type === 'huntTarget' || event?.type === 'huntReveal') {
       return {

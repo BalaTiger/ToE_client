@@ -81,6 +81,37 @@ function appendTurnDrawVisualEvents(events, draw) {
   return created.find(event => event?.type === VISUAL_EVENT.DRAW_CARD) || null;
 }
 
+function sameDrawnCard(left, right) {
+  if (!left || !right) return false;
+  if (left === right) return true;
+  if (left.id != null && right.id != null) return left.id === right.id;
+  return left.key === right.key && left.name === right.name && left.type === right.type;
+}
+
+// Every resolved draw owns the presentation snapshots for its own keep step.
+// playersAfterKeep deliberately changes only the hand: card effects (including
+// Sphinx's reward card) are committed by their later visual events instead of
+// leaking into the frame where the originally drawn card lands.
+function buildDrawKeepPresentation({ playersBefore = [], playersAfter = [], playerIdx = 0, card } = {}) {
+  const before = copyPlayers(playersBefore);
+  const after = copyPlayers(playersAfter);
+  const keptInHand = !!card && (after[playerIdx]?.hand || []).some(candidate => sameDrawnCard(candidate, card));
+  const playersAfterKeep = keptInHand
+    ? before.map((player, idx) => idx === playerIdx ? {
+        ...player,
+        hand: (player.hand || []).some(candidate => sameDrawnCard(candidate, card))
+          ? [...(player.hand || [])]
+          : [...(player.hand || []), card],
+      } : player)
+    : null;
+  return {
+    keptInHand,
+    playersBefore: before,
+    ...(playersAfterKeep ? { playersAfterKeep } : {}),
+    playersAfterResolution: after,
+  };
+}
+
 function withMergedVisualEvents(state, ...eventLists) {
   const visualEvents = mergeVisualEventLists(state?._visualEvents, ...eventLists);
   return visualEvents.length ? { ...state, _visualEvents: visualEvents } : state;
@@ -1054,6 +1085,10 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
       { moldyFoodRoll },
     );
     const effectGs = moldyFoodRoll == null ? gs : { ...gs, _pendingMoldyFoodRoll: moldyFoodRoll };
+    // Sphinx is the one zone card whose effect visually and semantically starts
+    // after the trigger card has entered the hand. Keep it before applyFx so a
+    // correctly guessed reward is appended after D4 in both rule and visual state.
+    const keepBeforeEffect = drawnCard.type === 'sphinxGuess' || drawnCard.name === '斯芬克斯';
 
     let failedDodgeLog = null;
     if (isTreasureHunter && isDodgeableEffect && conditionalNegativeApplies) {
@@ -1061,8 +1096,10 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
       const d1 = 1 + (Math.random() * 6 | 0);
       const dodgeSuccess = d1 >= 4;
       if (dodgeSuccess) {
+        if (keepBeforeEffect) P[ci].hand.push(drawnCard);
         const res = applyFx(drawnCard, ci, null, P, D, Disc, effectGs, true, [], isAI);
-        P = res.P; D = res.D; Disc = res.Disc; P[ci].hand.push(drawnCard);
+        P = res.P; D = res.D; Disc = res.Disc;
+        if (!keepBeforeEffect) P[ci].hand.push(drawnCard);
         const dodgeLog = `${P[ci].name}（寻宝者）摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，掷出 ${d1} 点，成功规避负面效果！`;
         const effectMsgs = drawnCard.type === 'albinoCreature' ? [...res.msgs, dodgeLog] : [dodgeLog, ...res.msgs];
         return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs, statePatch: res.statePatch, kept: true, needsDecision: false, _aiDrawnCard: drawnCard };
@@ -1071,8 +1108,10 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
     }
 
     // Apply effect for AI
+    if (keepBeforeEffect) P[ci].hand.push(drawnCard);
     const res = applyFx(drawnCard, ci, null, P, D, Disc, effectGs, false, [], isAI);
-    P = res.P; D = res.D; Disc = res.Disc; P[ci].hand.push(drawnCard);
+    P = res.P; D = res.D; Disc = res.Disc;
+    if (!keepBeforeEffect) P[ci].hand.push(drawnCard);
     const keepLog = `${P[ci].name} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，选择收入手牌并触发效果`;
     return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: failedDodgeLog ? [failedDodgeLog, ...res.msgs] : [keepLog, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false, _aiDrawnCard: drawnCard };
   }
@@ -1802,6 +1841,7 @@ function resolveNextTurnState(gs, opts = {}) {
           abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _tsgExtraDrawReady: true, _turnOwner: 0 },
         });
       }
+      const playersBeforeSlimeDraw = copyPlayers(P);
       const rSlime = playerDrawCard(P, D, Disc, 0, gs);
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
       // Every reveal draw re-evaluates its source. Effects such as geomagnetic
@@ -1822,6 +1862,12 @@ function resolveNextTurnState(gs, opts = {}) {
           reshuffleLog: rSlime.reshuffleLog,
           fromTsathogguaSlime: true,
           slimePop,
+          ...buildDrawKeepPresentation({
+            playersBefore: playersBeforeSlimeDraw,
+            playersAfter: P,
+            playerIdx: 0,
+            card: rSlime.drawnCard,
+          }),
         });
       }
       if (rSlime.needGodChoice) {
@@ -1843,6 +1889,7 @@ function resolveNextTurnState(gs, opts = {}) {
         preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeDraw, globalOnlySwapOwner,
       });
     }
+    const playersBeforeFixedDraw = copyPlayers(P);
     const res = playerDrawCard(P, D, Disc, 0, gs);
     P = res.P; D = res.D; Disc = res.Disc;
     // 多人游戏中记录玩家0摸牌信息到日志，让其他玩家可见（单机不需要，DRAW_REVEAL 时可见）
@@ -1857,6 +1904,12 @@ function resolveNextTurnState(gs, opts = {}) {
         sourcePile: res.sourcePile,
         msgs: [msg],
         reshuffleLog: res.reshuffleLog,
+        ...buildDrawKeepPresentation({
+          playersBefore: playersBeforeFixedDraw,
+          playersAfter: P,
+          playerIdx: 0,
+          card: res.drawnCard,
+        }),
       });
     }
     if (res.effectMsgs?.length) {
@@ -2006,6 +2059,7 @@ function resolveNextTurnState(gs, opts = {}) {
           abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _tsgExtraDrawReady: true, _turnOwner: next },
         });
       }
+      const playersBeforeSlimeDraw = copyPlayers(P);
       const rSlime = playerDrawCard(P, D, Disc, next, gs);
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
       if (rSlime.statePatch) gs = { ...gs, ...rSlime.statePatch };
@@ -2023,6 +2077,12 @@ function resolveNextTurnState(gs, opts = {}) {
           reshuffleLog: rSlime.reshuffleLog,
           fromTsathogguaSlime: true,
           slimePop,
+          ...buildDrawKeepPresentation({
+            playersBefore: playersBeforeSlimeDraw,
+            playersAfter: P,
+            playerIdx: next,
+            card: rSlime.drawnCard,
+          }),
         });
       }
       if (rSlime.needGodChoice) {
@@ -2044,6 +2104,7 @@ function resolveNextTurnState(gs, opts = {}) {
         preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeMpDraw, globalOnlySwapOwner,
       });
     }
+    const playersBeforeFixedDraw = copyPlayers(P);
     const res = playerDrawCard(P, D, Disc, next, gs);
     P = res.P; D = res.D; Disc = res.Disc;
     // 记录摸牌信息到日志（与单机AI摸牌保持一致：[key] 名称）
@@ -2058,6 +2119,12 @@ function resolveNextTurnState(gs, opts = {}) {
         sourcePile: res.sourcePile,
         msgs: [msg],
         reshuffleLog: res.reshuffleLog,
+        ...buildDrawKeepPresentation({
+          playersBefore: playersBeforeFixedDraw,
+          playersAfter: P,
+          playerIdx: next,
+          card: res.drawnCard,
+        }),
       });
     }
     if (res.effectMsgs?.length) {
@@ -2157,6 +2224,7 @@ function resolveNextTurnState(gs, opts = {}) {
           };
         }
       }
+      const playersBeforeSlimeDraw = copyPlayers(P);
       const rSlime = aiDrawAndApply(next, P, D, Disc, gs);
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
       if (rSlime.statePatch) gs = { ...gs, ...rSlime.statePatch };
@@ -2179,6 +2247,12 @@ function resolveNextTurnState(gs, opts = {}) {
           fromTsathogguaSlime: true,
           slimePop,
           godEncounter: rSlime.godEncounter,
+          ...buildDrawKeepPresentation({
+            playersBefore: playersBeforeSlimeDraw,
+            playersAfter: P,
+            playerIdx: next,
+            card: rSlime.drawnCard,
+          }),
         });
       }
       if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
@@ -2215,6 +2289,7 @@ function resolveNextTurnState(gs, opts = {}) {
         globalOnlySwapOwner,
       };
     }
+    const playersBeforeFixedDraw = copyPlayers(P);
     const res = aiDrawAndApply(next, P, D, Disc, { ...gs, deferAiGodChoice: true });
     gs.debugForceCardKeepPending = null;
     gs.debugForceCardKeepTarget = null;
@@ -2245,6 +2320,12 @@ function resolveNextTurnState(gs, opts = {}) {
         sourcePile: res.sourcePile,
         msgs: eventMsgs.length ? eventMsgs : drawLogs.slice(-1),
         reshuffleLog: res.reshuffleLog,
+        ...buildDrawKeepPresentation({
+          playersBefore: playersBeforeFixedDraw,
+          playersAfter: P,
+          playerIdx: next,
+          card: res.drawnCard,
+        }),
       });
     }
     const pendingAiGodChoice = res.pendingAiGodChoice || res.statePatch?._pendingAiGodChoice || null;

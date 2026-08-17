@@ -6,7 +6,7 @@ const STAT_EVENT_TYPES = new Set([
   'HP_SAN_LOSS',
   'HP_SAN_GAIN',
   'DAMAGE_LINK_BREAK',
-  'PETRIFY_DEATH',
+  'PLAYER_DEFEATED',
 ]);
 
 function statOf(player) {
@@ -119,6 +119,59 @@ function findDamageLinkBreakTimeline(beforePlayers = [], afterPlayers = [], logs
   return null;
 }
 
+export function createPlayerDefeatedStatEvent({
+  target,
+  cause = 'hpDepleted',
+  from = {},
+  to = {},
+  reason = '',
+  logHint = '',
+  seq,
+  phaseOrder,
+  playersBefore = [],
+  playersAfter = [],
+  discardBefore = null,
+  discardAfter = null,
+  settlementOwner = null,
+} = {}) {
+  if (target == null) return null;
+  const beforeSnapshot = clonePlayersForStatPatch(playersBefore);
+  const afterSnapshot = clonePlayersForStatPatch(playersAfter);
+  const beforePlayer = beforeSnapshot[target];
+  const afterPlayer = afterSnapshot[target];
+  const committedPlayers = clonePlayersForStatPatch(beforeSnapshot);
+  if (committedPlayers[target]) {
+    committedPlayers[target] = {
+      ...committedPlayers[target],
+      hp: afterPlayer?.hp ?? to?.hp ?? committedPlayers[target].hp,
+      san: afterPlayer?.san ?? to?.san ?? committedPlayers[target].san,
+      isDead: true,
+      roleRevealed: true,
+    };
+  }
+  return {
+    type: 'PLAYER_DEFEATED',
+    target: Number(target),
+    cause,
+    from,
+    to: { ...to, isDead: true },
+    reason,
+    logHint,
+    ...(seq != null ? { seq } : {}),
+    ...(phaseOrder != null ? { phaseOrder } : {}),
+    ...(settlementOwner ? { settlementOwner } : {}),
+    playersBefore: beforeSnapshot,
+    committedPlayers,
+    playersAfter: afterSnapshot,
+    ...(Array.isArray(discardBefore) ? { discardBefore: [...discardBefore] } : {}),
+    ...(Array.isArray(discardAfter) ? { discardAfter: [...discardAfter] } : {}),
+    deathCards: [
+      ...(beforePlayer?.hand || []),
+      ...(beforePlayer?.godZone || []),
+    ],
+  };
+}
+
 function buildExplicitDamageLinkTimeline(beforePlayers = [], afterPlayers = [], options = {}) {
   const timeline = Array.isArray(afterPlayers?._damageLinkBreakTimeline)
     ? afterPlayers._damageLinkBreakTimeline
@@ -163,6 +216,9 @@ function buildExplicitDamageLinkTimeline(beforePlayers = [], afterPlayers = [], 
 }
 
 export function buildStatEvents(beforePlayers = [], afterPlayers = [], logs = [], options = {}) {
+  const withEventIds = list => options.eventIdPrefix
+    ? list.map((event, index) => ({ ...event, id: event.id || `${options.eventIdPrefix}:${index}` }))
+    : list;
   const damageLinkTimeline = buildExplicitDamageLinkTimeline(beforePlayers, afterPlayers, options)
     || findDamageLinkBreakTimeline(beforePlayers, afterPlayers, logs, options);
 
@@ -182,6 +238,29 @@ export function buildStatEvents(beforePlayers = [], afterPlayers = [], logs = []
     if (to.hp > from.hp) events.push({ ...base, type: 'HP_GAIN' });
     if (to.san < from.san) events.push({ ...base, type: 'SAN_LOSS' });
     if (to.san > from.san) events.push({ ...base, type: 'SAN_GAIN' });
+    if (options.includeDefeat !== false && !from.isDead && to.isDead && to.hp <= 0 && to.hp < from.hp) {
+      const defeatPlayersBefore = options.defeatPlayersBefore?.[i] && !options.defeatPlayersBefore[i].isDead
+        ? options.defeatPlayersBefore
+        : beforePlayers;
+      const defeatDiscardBefore = defeatPlayersBefore === options.defeatPlayersBefore
+        ? options.defeatDiscardBefore
+        : options.discardBefore;
+      const defeatLog = (Array.isArray(logs) ? logs : []).find(line => (
+        typeof line === 'string'
+        && (!before.name || line.includes(before.name))
+        && (line.includes('倒下了') || line.includes('被石化了') || line.includes('立即死亡并石化'))
+      ));
+      events.push(createPlayerDefeatedStatEvent({
+        ...base,
+        logHint: defeatLog || logHint,
+        cause: 'hpDepleted',
+        playersBefore: defeatPlayersBefore,
+        playersAfter: afterPlayers,
+        discardBefore: defeatDiscardBefore,
+        discardAfter: options.discardAfter,
+        settlementOwner: options.defeatSettlementOwner || null,
+      }));
+    }
   }
   if (damageLinkTimeline) {
     const linkHpTargets = new Set(
@@ -191,10 +270,16 @@ export function buildStatEvents(beforePlayers = [], afterPlayers = [], logs = []
     );
     const extraEvents = events
       .filter(event => !(event.type === 'HP_LOSS' && linkHpTargets.has(event.target)))
-      .map(event => ({ ...event, phaseOrder: 0 }));
-    return [...damageLinkTimeline, ...extraEvents];
+      .map(event => {
+        if (event.type !== 'PLAYER_DEFEATED') return { ...event, phaseOrder: 0 };
+        const lethalHpOrder = damageLinkTimeline
+          .filter(item => item.type === 'HP_LOSS' && item.target === event.target)
+          .reduce((max, item) => Math.max(max, item.phaseOrder ?? 0), 0);
+        return { ...event, phaseOrder: lethalHpOrder };
+      });
+    return withEventIds([...damageLinkTimeline, ...extraEvents]);
   }
-  return events;
+  return withEventIds(events);
 }
 
 export function makeTargetStats(players = [], statEvents = []) {
@@ -422,20 +507,6 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
   const hpHeal = [...byType.HP_HEAL];
   const sanHeal = [...byType.SAN_HEAL];
   const queue = [];
-  const petrifyEvents = events.filter(event => event.type === 'PETRIFY_DEATH');
-  petrifyEvents.forEach(event => {
-    const deathMsgs = msgs.length ? msgs : ['死亡降临'];
-    queue.push({
-      type: 'PETRIFY_DEATH',
-      msgs: [],
-      hitIndices: [event.target],
-    });
-    queue.push({
-      type: 'DEATH',
-      msgs: deathMsgs,
-      hitIndices: [event.target],
-    });
-  });
   const push = (type, hitIndices) => {
     if (!hitIndices.length) return;
     const matchingEvents = events.filter(event => eventMatchesAnimationType(event, type));
@@ -463,6 +534,113 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
     .filter(group => group.hitIndices.length)
     .sort((a, b) => a.firstEventIndex - b.firstEventIndex || a.stableOrder - b.stableOrder)
     .forEach(group => push(group.type, group.hitIndices));
+  const defeatEvents = events.filter(event => event.type === 'PLAYER_DEFEATED');
+  let deathCursorPlayers = clonePlayersForStatPatch(
+    defeatEvents[0]?.playersBefore?.length ? defeatEvents[0].playersBefore : players,
+  );
+  const ordinarySettlements = [];
+  defeatEvents.forEach(event => {
+    const target = event.target;
+    const allDeathMsgs = (Array.isArray(msgs) ? msgs : []).filter(line => (
+      typeof line === 'string' && (
+        line.includes('倒下了')
+        || line.includes('被石化了')
+        || line.includes('立即死亡并石化')
+      )
+    ));
+    const targetName = event.playersBefore?.[target]?.name || event.committedPlayers?.[target]?.name;
+    const matchingDeathMsgs = targetName
+      ? allDeathMsgs.filter(line => line.includes(targetName))
+      : allDeathMsgs;
+    const deathMsgs = matchingDeathMsgs.length ? matchingDeathMsgs : allDeathMsgs;
+    const eventCommittedPlayers = event.committedPlayers?.length
+      ? clonePlayersForStatPatch(event.committedPlayers)
+      : clonePlayersForStatPatch(players).map((player, index) => index === target ? {
+          ...player,
+          hp: event.to?.hp ?? player.hp,
+          san: event.to?.san ?? player.san,
+          isDead: true,
+          roleRevealed: true,
+        } : player);
+    const afterPlayers = event.playersAfter?.length
+      ? clonePlayersForStatPatch(event.playersAfter)
+      : eventCommittedPlayers;
+    const committedTarget = eventCommittedPlayers[target];
+    if (committedTarget && deathCursorPlayers[target]) {
+      deathCursorPlayers[target] = {
+        ...deathCursorPlayers[target],
+        ...committedTarget,
+        hand: [...(committedTarget.hand || [])],
+        godZone: [...(committedTarget.godZone || [])],
+      };
+    }
+    const committedPlayers = clonePlayersForStatPatch(deathCursorPlayers);
+    queue.push({
+      type: event.cause === 'petrification' ? 'PETRIFY_DEATH' : 'GUILLOTINE',
+      msgs: event.cause === 'petrification'
+        ? []
+        : (deathMsgs.length ? deathMsgs : (event.logHint ? [event.logHint] : [])),
+      hitIndices: [target],
+    });
+    queue.push({
+      type: 'DEATH',
+      msgs: deathMsgs.length ? deathMsgs : (event.logHint ? [event.logHint] : ['死亡降临']),
+      hitIndices: [target],
+      visualSetupTiming: 'stepStart',
+      visualSetupPatch: { players: committedPlayers },
+      visualTimeline: [{ atMs: 0, patch: { players: committedPlayers } }],
+    });
+    if (!event.settlementOwner) {
+      ordinarySettlements.push({ event, target, afterPlayers });
+    }
+  });
+  let settlementPlayers = clonePlayersForStatPatch(deathCursorPlayers);
+  let settlementDiscard = ordinarySettlements.find(({ event }) => Array.isArray(event.discardBefore))?.event.discardBefore;
+  ordinarySettlements.forEach(({ event, target, afterPlayers }) => {
+    const deathCards = Array.isArray(event.deathCards) ? event.deathCards.filter(Boolean) : [];
+    const beforePlayers = clonePlayersForStatPatch(settlementPlayers);
+    if (afterPlayers[target]) {
+      settlementPlayers[target] = {
+        ...settlementPlayers[target],
+        ...afterPlayers[target],
+        hand: [...(afterPlayers[target].hand || [])],
+        godZone: [...(afterPlayers[target].godZone || [])],
+      };
+    }
+    const discardAfter = Array.isArray(event.discardAfter) ? [...event.discardAfter] : settlementDiscard;
+    if (deathCards.length) {
+      queue.push({
+        type: 'DISCARD',
+        card: deathCards[0],
+        cards: deathCards,
+        count: deathCards.length,
+        targetPid: target,
+        triggerName: beforePlayers[target]?.name || '角色',
+        deathSettlementStep: true,
+        visualSetupTiming: 'stepStart',
+        visualSetupPatch: {
+          players: beforePlayers,
+          ...(Array.isArray(settlementDiscard) ? { discard: [...settlementDiscard] } : {}),
+        },
+        visualTimeline: [{
+          atMs: 360,
+          patch: {
+            players: clonePlayersForStatPatch(settlementPlayers),
+            ...(Array.isArray(discardAfter) ? { discard: [...discardAfter] } : {}),
+          },
+        }],
+      });
+    }
+    settlementDiscard = discardAfter;
+  });
+  if (ordinarySettlements.length) {
+    const finalAfterPlayers = ordinarySettlements.at(-1).afterPlayers;
+    queue.push({
+      type: 'STATE_PATCH',
+      players: finalAfterPlayers,
+      ...(Array.isArray(settlementDiscard) ? { discard: [...settlementDiscard] } : {}),
+    });
+  }
   return queue;
 }
 

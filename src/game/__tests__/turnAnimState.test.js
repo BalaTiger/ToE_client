@@ -97,24 +97,28 @@ describe('buildPlayerTurnDrawQueue', () => {
     });
 
     const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
-    expect(replay.queue.slice(0, 3).map(step => step.type)).toEqual([
+    expect(replay.queue.slice(0, 4).map(step => step.type)).toEqual([
       'YOUR_TURN',
       'DECK_RESHUFFLE',
+      'STATE_PATCH',
       'DRAW_CARD',
     ]);
     expect(replay.queue[1].msgs).toEqual(['牌堆耗尽，重洗弃牌堆']);
-    expect(replay.queue[2].msgs).not.toContain('牌堆耗尽，重洗弃牌堆');
+    expect(replay.queue[2]).toMatchObject({ deck: [card], discard: [] });
+    expect(replay.queue[3].msgs).not.toContain('牌堆耗尽，重洗弃牌堆');
     expect(replay.queue[1].visualEventId).toBe(newGs._visualEvents[0].id);
-    expect(replay.queue[2].visualEventId).toBe(newGs._visualEvents[1].id);
+    expect(replay.queue[3].visualEventId).toBe(newGs._visualEvents[1].id);
   });
 
   it('canonical multiple draws preserve drawOrder without fallback duplicates', () => {
     const extra = makeZoneCard('B2', 0, { id: 'extra-draw' });
     const fixed = makeZoneCard('D3', 0, { id: 'fixed-draw' });
     const players = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' })];
+    const playersAfterExtra = [players[0], { ...players[1], hand: [extra] }];
+    const playersAfterFixed = [players[0], { ...players[1], hand: [extra, fixed] }];
     const oldGs = makeGs({ players, currentTurn: 0, phase: 'ACTION' });
     const newGs = makeGs({
-      players,
+      players: playersAfterFixed,
       currentTurn: 1,
       phase: 'AI_TURN',
       _drawnCard: fixed,
@@ -122,15 +126,46 @@ describe('buildPlayerTurnDrawQueue', () => {
       _playersBeforeThisDraw: players,
       _turnStartLogs: ['── 艾伦 的回合开始 ──'],
       _visualEvents: [
-        ...createTurnDrawVisualEvents({ playerIdx: 1, playerName: '艾伦', card: extra, drawOrder: 0, fromTsathogguaSlime: true }),
-        ...createTurnDrawVisualEvents({ playerIdx: 1, playerName: '艾伦', card: fixed, drawOrder: 1 }),
+        ...createTurnDrawVisualEvents({
+          playerIdx: 1,
+          playerName: '艾伦',
+          card: extra,
+          drawOrder: 0,
+          fromTsathogguaSlime: true,
+          keptInHand: true,
+          playersBefore: players,
+          playersAfterKeep: playersAfterExtra,
+          playersAfterResolution: playersAfterExtra,
+        }),
+        ...createTurnDrawVisualEvents({
+          playerIdx: 1,
+          playerName: '艾伦',
+          card: fixed,
+          drawOrder: 1,
+          keptInHand: true,
+          playersBefore: playersAfterExtra,
+          playersAfterKeep: playersAfterFixed,
+          playersAfterResolution: playersAfterFixed,
+        }),
       ],
     });
 
-    const drawSteps = buildTurnStartDrawReplayQueue({ oldGs, newGs }).queue
+    const queue = buildTurnStartDrawReplayQueue({ oldGs, newGs }).queue;
+    const drawSteps = queue
       .filter(step => step.type === 'DRAW_CARD');
     expect(drawSteps.map(step => step.card)).toEqual([extra, fixed]);
     expect(drawSteps.map(step => step.visualEventId)).toEqual(newGs._visualEvents.map(event => event.id));
+    const drawAndKeepSteps = queue.filter(step => (
+      step.type === 'DRAW_CARD' ||
+      (step.type === 'CARD_TRANSFER' && step.effect === 'draw') ||
+      (step.type === 'STATE_PATCH' && step.players)
+    ));
+    expect(drawAndKeepSteps.map(step => step.type)).toEqual([
+      'DRAW_CARD', 'CARD_TRANSFER', 'STATE_PATCH',
+      'DRAW_CARD', 'CARD_TRANSFER', 'STATE_PATCH',
+    ]);
+    expect(drawAndKeepSteps[2].players[1].hand).toEqual([extra]);
+    expect(drawAndKeepSteps[5].players[1].hand).toEqual([extra, fixed]);
   });
 
   it('does not replay discard for an AI god worshipped after a previous player abandoned a god', () => {
@@ -213,12 +248,27 @@ describe('buildTurnStartDrawReplayQueue', () => {
     const drawLog = '贝拉 摸到 [D4] 斯芬克斯，选择收入手牌并触发效果';
     const guessLog = '贝拉 猜测牌堆顶的牌不是区域牌';
     const resultLog = '猜测正确！贝拉 收入了 拉莱耶之主';
+    const playersAfterKeep = [players[0], { ...players[1], hand: [sphinx] }];
+    const drawEvents = createTurnDrawVisualEvents({
+      playerIdx: 1,
+      playerName: '贝拉',
+      card: sphinx,
+      drawOrder: 0,
+      keptInHand: true,
+      playersBefore: players,
+      playersAfterKeep,
+      playersAfterResolution: [players[0], { ...players[1], hand: [sphinx, reward] }],
+      msgs: [drawLog],
+    });
     const event = {
       ...createSphinxResultEvent({
         actorIdx: 1,
         card: reward,
+        sourceCard: sphinx,
         guessCorrect: true,
         msgs: [guessLog, resultLog],
+        playersBefore: players,
+        playersAfter: [players[0], { ...players[1], hand: [reward] }],
       }),
       turnStartStage: 'draw',
       turnStartStageOrder: 2,
@@ -234,17 +284,95 @@ describe('buildTurnStartDrawReplayQueue', () => {
       _turnStartLogs: [turnLog],
       _drawLogs: [drawLog, guessLog, resultLog],
       _statLogs: [],
-      _visualEvents: [event],
+      _visualEvents: [...drawEvents, event],
       log: ['艾伦 结束回合', turnLog, drawLog, guessLog, resultLog],
     });
 
     const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
     const sphinxSteps = replay.queue.filter(step => step.visualEventId === event.id);
     const mainDrawIndex = replay.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === sphinx.id);
+    const sphinxKeepIndex = replay.queue.findIndex(step => (
+      step.type === 'CARD_TRANSFER' && step.effect === 'draw' && step.cards?.[0]?.id === sphinx.id
+    ));
 
-    expect(sphinxSteps.map(step => step.type)).toEqual(['DRAW_CARD', 'CARD_TRANSFER']);
+    expect(sphinxSteps.map(step => step.type)).toEqual(['DRAW_CARD', 'CARD_TRANSFER', 'STATE_PATCH']);
     expect(replay.queue.indexOf(sphinxSteps[0])).toBeGreaterThan(mainDrawIndex);
+    expect(sphinxKeepIndex).toBeGreaterThan(mainDrawIndex);
+    expect(sphinxKeepIndex).toBeLessThan(replay.queue.indexOf(sphinxSteps[0]));
+    const keepPatch = replay.queue[sphinxKeepIndex + 1];
+    const rewardPatch = sphinxSteps.at(-1);
+    expect(keepPatch).toMatchObject({ type: 'STATE_PATCH' });
+    expect(keepPatch.players[1].hand).toEqual([sphinx]);
+    expect(rewardPatch.players[1].hand).toEqual([sphinx, reward]);
     expect(sphinxSteps.every(step => step.turnStartStage === 'draw')).toBe(true);
+  });
+
+  it('AI 寻宝者斯芬克斯猜错按揭示、规避骰、伤害的顺序播放', () => {
+    const players = [player('你'), { ...player('贝拉'), role: '寻宝者' }];
+    const sphinx = makeZoneCard('D4', 0, { id: 'treasure-sphinx', name: '斯芬克斯', type: 'sphinxGuess' });
+    const topCard = makeZoneCard('A1', 0, { id: 'wrong-top-card' });
+    const drawLog = '贝拉 摸到 [D4] 斯芬克斯，选择收入手牌并触发效果';
+    const guessLog = '贝拉 猜测牌堆顶的牌不是区域牌';
+    const wrongLog = '猜测错误！贝拉 即将失去 3 HP';
+    const diceLog = '贝拉（寻宝者）掷出 2 点，未能规避，触发负面效果！';
+    const playersAfterKeep = [players[0], { ...players[1], hand: [sphinx] }];
+    const drawEvents = createTurnDrawVisualEvents({
+      playerIdx: 1,
+      playerName: '贝拉',
+      card: sphinx,
+      keptInHand: true,
+      playersBefore: players,
+      playersAfterKeep,
+      playersAfterResolution: [players[0], { ...playersAfterKeep[1], hp: 7 }],
+      msgs: [drawLog],
+    });
+    const resultEvent = {
+      ...createSphinxResultEvent({
+        actorIdx: 1,
+        card: topCard,
+        sourceCard: sphinx,
+        guessCorrect: false,
+        msgs: [guessLog, wrongLog, diceLog],
+        playersBefore: players,
+        playersAfter: [players[0], { ...players[1], hp: 7 }],
+      }),
+      statEvents: [{
+        type: 'HP_LOSS',
+        target: 1,
+        from: { hp: 10, san: 10 },
+        to: { hp: 7, san: 10 },
+        seq: 1,
+        logHint: wrongLog,
+      }],
+      turnStartStage: 'draw',
+      turnStartStageOrder: 2,
+    };
+    const oldGs = makeGs({ players, currentTurn: 0, log: [] });
+    const newGs = makeGs({
+      players: [players[0], { ...playersAfterKeep[1], hp: 7 }],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _drawnCard: sphinx,
+      _aiDrawnCard: sphinx,
+      _playersBeforeThisDraw: players,
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: [drawLog, guessLog, wrongLog, diceLog],
+      _statLogs: [wrongLog],
+      _visualEvents: [...drawEvents, resultEvent],
+      log: [drawLog, guessLog, wrongLog, diceLog],
+    });
+
+    const queue = buildTurnStartDrawReplayQueue({ oldGs, newGs }).queue;
+    const keepIdx = queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.effect === 'draw');
+    const revealIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.triggerName === '斯芬克斯');
+    const wrongResultIdx = queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.effect === 'sphinxResult');
+    const diceIdx = queue.findIndex(step => step.type === 'DICE_ROLL' && step.d1 === 2);
+    const damageIdx = queue.findIndex(step => step.type === 'HP_DAMAGE');
+
+    expect(keepIdx).toBeLessThan(revealIdx);
+    expect(revealIdx).toBeLessThan(wrongResultIdx);
+    expect(wrongResultIdx).toBeLessThan(diceIdx);
+    expect(diceIdx).toBeLessThan(damageIdx);
   });
 
   it('上家回合结束的火把护罩只在下家回合悬浮文字前播放一次', () => {

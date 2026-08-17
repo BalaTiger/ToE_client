@@ -37,7 +37,6 @@ import {
   getPrevLivingIndex,
   getNextLivingIndex,
   killPlayerState,
-  clearPendingAnimDeathFlags,
   makeInspectionMeta,
   sortInspectionTargets,
   buildEtherealizeLoss,
@@ -440,7 +439,7 @@ describe('killPlayerState', () => {
 
     expect(p.isDead).toBe(true);
     expect(p.roleRevealed).toBe(true);
-    expect(p._pendingAnimDeath).toBe(true);
+    expect(p).not.toHaveProperty('_pendingAnimDeath');
     expect(p.hand).toHaveLength(0);
     expect(p.godZone).toHaveLength(0);
     expect(p.godName).toBe(null);
@@ -460,6 +459,20 @@ describe('killPlayerState', () => {
     expect(Disc).toHaveLength(0);
   });
 
+  it('死亡清手牌时衍生牌销毁，规则状态不携带动画清单', () => {
+    const normal = makeZoneCard('A1', 0, { id: 'death-normal' });
+    const derived = makeZoneCard('A2', 0, { id: 'death-derived', type: 'blackGoatYoung', isBlackGoatYoung: true });
+    const p = makePlayer({ hand: [normal, derived] });
+    const Disc = [];
+    const L = [];
+
+    killPlayerState([p], 0, Disc, L);
+
+    expect(Disc).toEqual([normal]);
+    expect(p).not.toHaveProperty('_pendingDeathDiscardCards');
+    expect(L.some(line => line.includes('1 张衍生牌被销毁'))).toBe(true);
+  });
+
   it('索引无效时安全返回', () => {
     const Disc = [];
     const L = [];
@@ -476,44 +489,6 @@ describe('killPlayerState', () => {
 
     killPlayerState([p], 0, Disc, L);
     expect(Disc).toHaveLength(0);
-  });
-});
-
-describe('clearPendingAnimDeathFlags', () => {
-  it('清除标记', () => {
-    const players = [
-      { _pendingAnimDeath: true },
-      { _pendingAnimDeath: true },
-      { _pendingAnimDeath: false },
-    ];
-
-    const result = clearPendingAnimDeathFlags(players);
-    expect(result[0]._pendingAnimDeath).toBe(false);
-    expect(result[1]._pendingAnimDeath).toBe(false);
-    expect(result[2]._pendingAnimDeath).toBe(false);
-  });
-
-  it('保留指定玩家', () => {
-    const players = [
-      { _pendingAnimDeath: true },
-      { _pendingAnimDeath: true },
-    ];
-
-    const result = clearPendingAnimDeathFlags(players, 1);
-    expect(result[0]._pendingAnimDeath).toBe(false);
-    expect(result[1]._pendingAnimDeath).toBe(true);
-  });
-
-  it('返回新对象不修改原数组', () => {
-    const players = [{ _pendingAnimDeath: true }];
-    const result = clearPendingAnimDeathFlags(players);
-    expect(result).not.toBe(players);
-    expect(result[0]).not.toBe(players[0]);
-  });
-
-  it('空输入安全', () => {
-    expect(clearPendingAnimDeathFlags(null)).toEqual([]);
-    expect(clearPendingAnimDeathFlags([])).toEqual([]);
   });
 });
 

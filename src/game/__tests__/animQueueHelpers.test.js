@@ -434,14 +434,16 @@ describe('animQueueHelpers', () => {
 
   it('斯芬克斯猜对后把同一张明牌从揭示区收入手牌', () => {
     const card = makeZoneCard('B1', 0);
+    const playersAfterResult = [makePlayer({ name: '你' }), makePlayer({ name: '贝拉', hand: [card] })];
     const queue = buildSphinxResultQueue({
       card,
       actorIdx: 2,
       guessCorrect: true,
       msgs: ['贝拉猜测牌堆顶的牌是区域牌', '猜测正确！贝拉收入了 [B1]'],
+      playersAfterResult,
     });
 
-    expect(queue.map(step => step.type)).toEqual(['DRAW_CARD', 'CARD_TRANSFER']);
+    expect(queue.map(step => step.type)).toEqual(['DRAW_CARD', 'CARD_TRANSFER', 'STATE_PATCH']);
     expect(queue[0]).toMatchObject({
       card,
       triggerName: '斯芬克斯',
@@ -456,6 +458,7 @@ describe('animQueueHelpers', () => {
       effect: 'sphinxResult',
       cards: [card],
     });
+    expect(queue[2]).toMatchObject({ type: 'STATE_PATCH', players: playersAfterResult });
   });
 
   it('斯芬克斯猜错后先把同一张明牌移入弃牌堆，再播放伤害', () => {
@@ -1385,6 +1388,37 @@ describe('animQueueHelpers', () => {
     expect(flow.queue.filter(step => step.type === 'SAN_DAMAGE')).toHaveLength(1);
     expect(tailQueue.some(step => step.type === 'GOD_HIGHLIGHT')).toBe(true);
     expect(tailQueue.some(step => step.type === 'SAN_DAMAGE')).toBe(false);
+  });
+
+  it('迫害妄想弃置黏液时显式播放 DISCARD，不误播黏液消失', () => {
+    const slime = { id: 'inspection-slime', name: '赐福黏液', type: 'tsathogguaSlime', isTsathogguaSlime: true };
+    const beforePlayers = [makePlayer({ name: '你', hand: [slime] })];
+    const afterPlayers = [makePlayer({ name: '你', hand: [] })];
+    const beforeLog = ['你 的SAN检定结果为"迫害妄想"'];
+    const afterLog = [...beforeLog, '你 迫害妄想，弃置了一张牌', '你的衍生牌被销毁'];
+
+    const flow = buildInspectionEventFlow(
+      { players: beforePlayers, discard: [], log: [] },
+      [{
+        seq: 1,
+        card: { name: '迫害妄想', effect: 'discardRandom' },
+        target: 0,
+        beforePlayers,
+        beforeDiscard: [],
+        beforeLog,
+        afterPlayers,
+        afterDiscard: [],
+        afterLog,
+        discardEvents: [{ playerIndex: 0, card: slime, afterPlayers, afterDiscard: [] }],
+      }],
+      { buildAnimQueue, copyPlayers },
+    );
+
+    expect(flow.queue).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'DISCARD', card: slime, targetPid: 0 }),
+    ]));
+    expect(flow.queue.some(step => step.type === 'TSG_SLIME_POP')).toBe(false);
+    expect(flow.queue.some(step => step.type === 'CARD_TRANSFER' && step.dest === 'discard')).toBe(false);
   });
 
   it('揭开真相的额外摸牌保留暗抽飞牌，但去除背景运镜与翻牌', () => {

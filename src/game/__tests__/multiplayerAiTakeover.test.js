@@ -86,6 +86,32 @@ describe('multiplayer AI takeover decisions', () => {
     });
   });
 
+  it('auto hand-limit discard destroys derived cards but publishes all discarded cards for animation', () => {
+    const normal = makeZoneCard('C3', 0, { id: 'takeover-normal' });
+    const derived = { id: 'takeover-derived', name: '赐福黏液', type: 'tsathogguaSlime', isTsathogguaSlime: true };
+    const kept = ['A1', 'A2', 'B1', 'B2'].map(key => makeZoneCard(key, 0));
+    const state = makeGs({
+      players: [
+        makePlayer({ name: '掉线玩家', hand: [...kept, normal, derived] }),
+        makePlayer({ name: '下一位' }),
+      ],
+      currentTurn: 0,
+      phase: 'DISCARD_PHASE',
+      deck: [makeZoneCard('D4', 0, { id: 'next-draw' })],
+      discard: [],
+      log: [],
+    });
+
+    const result = resolveMpAiTakeoverState(state, 0, dependencies);
+
+    expect(result.discard).toContain(normal);
+    expect(result.discard).not.toContain(derived);
+    expect(result._visualEvents?.find(event => event.type === 'handLimitDiscard')?.cards).toEqual([
+      derived,
+      normal,
+    ]);
+  });
+
   it('records one cave-duel choice while the other player is pending', () => {
     const sourceHand = [
       makeZoneCard('A1', 0),

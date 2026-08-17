@@ -195,7 +195,7 @@ describe('AI hand-limit discard', () => {
 
     expect(players[0].hand).toEqual([]);
     expect(discard).toEqual([normal]);
-    expect(discardedCards).toEqual([normal]);
+    expect(discardedCards).toEqual([goat, slime, normal]);
   });
 });
 
@@ -2169,7 +2169,7 @@ describe('aiStep optional action limits', () => {
 
     const result = aiStep(gs);
 
-    expect(result.log.some(line => line.includes('放弃追捕 艾伦'))).toBe(true);
+    expect(result.log.some(line => line.includes('卡洛斯（追猎者）放弃追捕 艾伦'))).toBe(true);
     expect(result.log.some(line => line.includes('向你发动【追捕】'))).toBe(false);
   });
 
@@ -2196,7 +2196,7 @@ describe('aiStep optional action limits', () => {
 
     const result = aiStep(gs);
 
-    expect(result.log.some(line => line.includes('放弃追捕 艾伦'))).toBe(true);
+    expect(result.log.some(line => line.includes('卡洛斯（追猎者）放弃追捕 艾伦'))).toBe(true);
     expect(result.log.some(line => line.includes('对 贝拉 【追捕】'))).toBe(false);
     expect(result.currentTurn).not.toBe(1);
   });

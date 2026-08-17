@@ -181,7 +181,7 @@ function compileRemoteStateEffects(rotated, previousGs, buildAnimQueue, excluded
     previousGs?.players || [],
     rotated?.players || [],
     logDelta,
-    { reason: 'remote-snapshot-compat' },
+    { reason: 'remote-snapshot-compat', includeDefeat: false },
   );
   const queue = statEventsToAnimQueue(explicitStatEvents, previousGs?.players || rotated?.players || [], logDelta);
   const worshipLog = logDelta.find(line => (

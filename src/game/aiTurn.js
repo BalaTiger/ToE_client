@@ -5,6 +5,7 @@ import {
   isBlankZoneCard,
   isBlackGoatYoung,
   isTsathogguaSlime,
+  isVanishingDerivedCard,
   canRevealForHunt,
   hasHuntRevealableCard,
   separateBlackGoatYoung,
@@ -415,11 +416,13 @@ export function discardAiHandToLimit(P, ct, Disc, L, D = [], discardedCards = []
   const aiHandLimit = P[ct]._nyaHandLimit ?? 4;
   while (P[ct].hand.length > aiHandLimit) {
     const c = P[ct].hand.shift();
-    if (isBlackGoatYoung(c) || isTsathogguaSlime(c)) {
+    // Animation owns the attempted discard, even when the rules destroy the
+    // derived card instead of adding it to the discard pile.
+    discardedCards.push(c);
+    if (isVanishingDerivedCard(c)) {
       L.push(`${P[ct].name} 的衍生牌被销毁`);
     } else {
       Disc.push(c);
-      discardedCards.push(c);
       L.push(`${P[ct].name} 弃 ${cardLogText(c, { alwaysShowName: true })}（上限）`);
       const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: L, ownerIdx: ct, cards: [c], reason: '手牌上限弃牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitDamageEvents, currentTurn: ct });
       P.splice(0, P.length, ...balance.players);
@@ -518,19 +521,21 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
     const keep = card?.type === END_TURN_EVENT.END_TURN_REPLAY_HAND || !isZoneCard(card) || aiShouldKeepZoneCard(card, ct, P, false, { discard: Disc, deck: D, gs });
     if (!keep) {
       const [discarded] = P[ct].hand.splice(handIdx, 1);
-      if (isBlackGoatYoung(discarded) || isTsathogguaSlime(discarded)) L.push(`${P[ct].name} 的衍生牌被销毁`);
-      else {
+      const derivedDiscard = isVanishingDerivedCard(discarded);
+      const discardMsg = derivedDiscard
+        ? `${P[ct].name} 的衍生牌被销毁`
+        : `${P[ct].name} 弃置了 ${cardLogText(discarded, { alwaysShowName: true })}`;
+      L.push(discardMsg);
+      replayMsgs.push(discardMsg);
+      replayQueue.push({
+        type: 'DISCARD',
+        card: discarded,
+        triggerName: P[ct].name,
+        targetPid: ct,
+        msgs: [discardMsg],
+      });
+      if (!derivedDiscard) {
         Disc.push(discarded);
-        const discardMsg = `${P[ct].name} 弃置了 ${cardLogText(discarded, { alwaysShowName: true })}`;
-        L.push(discardMsg);
-        replayMsgs.push(discardMsg);
-        replayQueue.push({
-          type: 'DISCARD',
-          card: discarded,
-          triggerName: P[ct].name,
-          targetPid: ct,
-          msgs: [discardMsg],
-        });
         const beforeBalancePlayers = copyPlayers(P);
         const beforeBalanceDeck = [...D];
         const beforeBalanceDiscard = [...Disc];
@@ -843,7 +848,7 @@ export function aiStep(gs, opts = {}) {
   const getUnifiedReplayVisualEvents = nextGs => {
     if (unifiedReplayCacheState === nextGs && unifiedReplayCache) return unifiedReplayCache;
     const baseEvents = getReplayVisualEvents(nextGs) || [];
-    const huntEvents = aiHuntEvents.map(event => createHuntResultEvent({
+    const huntEvents = aiHuntEvents.filter(event => !event?.targetOnly).map(event => createHuntResultEvent({
       ...event,
       // AI actions are resolved as one rule transaction, so their hunt event
       // owns the reticle/reveal as well as settlement. Interactive hunt flows
@@ -1509,11 +1514,29 @@ export function aiStep(gs, opts = {}) {
           let foundTarget = false;
           let abandonedAfterReveal = false;
           for (const targetEntry of sortedTargets) {
+            const targetAttemptBeforePlayers = copyPlayers(P);
+            const targetAttemptLogStart = L.length;
             let ti = applyNightTarget(targetEntry.idx, validTargets.map(t => t.idx), '选择【追捕】目标');
             const apophisTargetEvent = consumeLastApophisTargetEvent();
+            const recordTargetOnlyAttempt = () => {
+              if (!apophisTargetEvent) return;
+              aiHuntEvents.push({
+                targetOnly: true,
+                apophisTargetEvent,
+                targetIdx: ti,
+                hunterIdx: ct,
+                beforePlayers: targetAttemptBeforePlayers,
+                afterPlayers: copyPlayers(P),
+                afterResultDiscard: [...Disc],
+                beforeLog: L.slice(0, targetAttemptLogStart),
+                afterLog: [...L],
+                msgs: [],
+              });
+            };
             const tgt = P[ti];
             const targetHand = P[ti].hand;
             if (!hasHuntRevealableCard(targetHand)) {
+              recordTargetOnlyAttempt();
               newAbandoned = [...new Set([...newAbandoned, ti])];
               continue;
             }
@@ -1546,6 +1569,7 @@ export function aiStep(gs, opts = {}) {
               const knownHunterCards=P[ti]?.peekMemories?.[ct]||[];
               const rc = aiChooseRevealCard(targetHand, ai.name, L, knownHunterCards);
               if (!rc) {
+                recordTargetOnlyAttempt();
                 newAbandoned = [...new Set([...newAbandoned, ti])];
                 continue;
               }
@@ -1597,6 +1621,17 @@ export function aiStep(gs, opts = {}) {
                     huntAbandoned:newAbandoned,
                   },copyPlayers(P));
                 }
+                const huntStatEvents=buildStatEvents(
+                  afterDiscardPlayers,
+                  copyPlayers(P),
+                  L.slice(huntLogStart),
+                  {
+                    reason:'追捕',
+                    seq:(gs._statEventSeq||0)+1,
+                    eventIdPrefix:`hunt:${gs._turnKey||gs.turn||0}:${ct}:${ti}:${aiHuntEvents.length}`,
+                    defeatSettlementOwner:'huntResult',
+                  },
+                );
                 if (P[ti].hp <= 0 && !(P[ti].hand || []).some(isTsathogguaSlime)) {
                   let afterDamagePlayers=null;
                   let afterDamageDiscard=null;
@@ -1607,7 +1642,9 @@ export function aiStep(gs, opts = {}) {
                   if (targetHandBefore.length) {
                     Disc=removeCardsFromDiscard(Disc,targetHandBefore);
                     P[ti].hand=[...targetHandBefore];
-                    afterDamagePlayers=copyPlayers(P);
+                    afterDamagePlayers=copyPlayers(
+                      huntStatEvents.find(event=>event.type==='PLAYER_DEFEATED'&&event.target===ti)?.committedPlayers||P,
+                    );
                     afterDamageDiscard=[...Disc];
                     afterDamageLog=[...L];
                     const maxToTake=3;
@@ -1622,10 +1659,10 @@ export function aiStep(gs, opts = {}) {
                           L.push(`${ai.name} 从 ${tgt.name} 的公开手牌中选择了 ${cardLogText(stolenCard)}！`);
                         }
                       });
-                      const { kept: kept1, destroyed: destroyed1 } = separateBlackGoatYoung(P[ti].hand);
-                      lootDiscardCards=[...kept1];
+                      const { kept: kept1, destroyed: destroyed1, animationCards: discarded1 } = separateBlackGoatYoung(P[ti].hand);
+                      lootDiscardCards=[...discarded1];
                       if (kept1.length) Disc.push(...kept1);
-                      if (destroyed1.length) L.push(`${P[ti].name} 的 ${destroyed1.length} 张黑山羊幼仔被销毁`);
+                        if (destroyed1.length) L.push(`${P[ti].name} 的 ${destroyed1.length} 张衍生牌被销毁`);
                       P[ti].hand = [];
                     } else {
                       const cardsToTake=Math.min(maxToTake,P[ti].hand.length);
@@ -1636,14 +1673,16 @@ export function aiStep(gs, opts = {}) {
                         lootTransferCount++;
                         L.push(`${ai.name} 从 ${tgt.name} 的手牌中暗抽了一张！`);
                       }
-                      const { kept: kept2, destroyed: destroyed2 } = separateBlackGoatYoung(P[ti].hand);
-                      lootDiscardCards=[...kept2];
+                      const { kept: kept2, destroyed: destroyed2, animationCards: discarded2 } = separateBlackGoatYoung(P[ti].hand);
+                      lootDiscardCards=[...discarded2];
                       if (kept2.length) Disc.push(...kept2);
-                      if (destroyed2.length) L.push(`${P[ti].name} 的 ${destroyed2.length} 张黑山羊幼仔被销毁`);
+                        if (destroyed2.length) L.push(`${P[ti].name} 的 ${destroyed2.length} 张衍生牌被销毁`);
                       P[ti].hand = [];
                     }
                   } else {
-                    afterDamagePlayers=copyPlayers(P);
+                    afterDamagePlayers=copyPlayers(
+                      huntStatEvents.find(event=>event.type==='PLAYER_DEFEATED'&&event.target===ti)?.committedPlayers||P,
+                    );
                     afterDamageDiscard=[...Disc];
                     afterDamageLog=[...L];
                   }
@@ -1659,6 +1698,7 @@ export function aiStep(gs, opts = {}) {
                     afterDamagePlayers,
                     afterDamageDiscard,
                     afterDamageLog,
+                    statEvents:huntStatEvents,
                     lootTransferCount,
                     lootDiscardCards,
                     defeatedGodCards,
@@ -1681,6 +1721,7 @@ export function aiStep(gs, opts = {}) {
                     discardedCard:dc,
                     afterDiscardPlayers,
                     afterDiscardDiscard,
+                    statEvents:huntStatEvents,
                     beforePlayers:beforeHuntPlayers,
                     afterPlayers:copyPlayers(P),
                     afterResultDiscard:[...Disc],
@@ -1693,7 +1734,7 @@ export function aiStep(gs, opts = {}) {
                   break;
                 }
               } else {
-                L.push(`放弃追捕 ${tgt.name}`);
+                L.push(`${ai.name}（追猎者）放弃追捕 ${tgt.name}`);
                 aiHuntEvents.push({
                   apophisTargetEvent,
                   targetIdx:ti,

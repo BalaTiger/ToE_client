@@ -4,6 +4,7 @@ import { copyPlayers } from '../coreUtils';
 import { buildMpRemoteReplayAction, MP_REMOTE_REPLAY } from '../multiplayerRemoteReplay';
 import { rotateGsForViewer } from '../rotateState';
 import { createAnimTransactionEvent, createCardEffectEvent, createEarthquakeEvent, createEndlessCorridorReplayEvent, createGodPowerBlockedEvent, createHuntResultEvent, createSphinxResultEvent, createSwapCardsEvent } from '../visualEvents';
+import { buildStatEvents } from '../statEvents';
 
 const card = { id: 'c1', name: '测试牌', type: 'zone' };
 
@@ -2613,6 +2614,9 @@ describe('buildMpRemoteReplayAction', () => {
       afterDiscardDiscard: [discardedCard],
       afterPlayers,
       afterResultDiscard: [discardedCard],
+      statEvents: buildStatEvents(afterDiscardPlayers, afterPlayers, ['弃 [C3] 同编号牌 → 贝拉 受 3HP 伤害'], {
+        reason: '追捕', seq: 1, defeatSettlementOwner: 'huntResult',
+      }),
       beforeLog: ['旧日志'],
       afterLog: ['旧日志', '弃 [C3] 同编号牌 → 贝拉 受 3HP 伤害'],
       msgs: ['弃 [C3] 同编号牌 → 贝拉 受 3HP 伤害'],
@@ -2673,6 +2677,9 @@ describe('buildMpRemoteReplayAction', () => {
       afterDiscardDiscard: [discardedCard],
       afterPlayers,
       afterResultDiscard: [discardedCard],
+      statEvents: buildStatEvents(afterDiscardPlayers, afterPlayers, ['弃 [C3] 同编号牌 → 你 受 3HP 伤害'], {
+        reason: '追捕', seq: 1, defeatSettlementOwner: 'huntResult',
+      }),
       beforeLog: ['旧日志'],
       afterLog: ['旧日志', '弃 [C3] 同编号牌 → 你 受 3HP 伤害'],
       msgs: ['弃 [C3] 同编号牌 → 你 受 3HP 伤害'],

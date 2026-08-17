@@ -1,7 +1,7 @@
 import { copyPlayers, removeCardsFromDiscard } from './coreUtils';
 import { isAiSeat, localDisplayName } from './rotateState';
 import { bindAnimLogChunks } from './animLogs';
-import { buildAnimQueue, buildDeathAnimSteps, buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
+import { buildAnimQueue, buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
 import { buildInspectionEventFlow, cardTransferStep, prepareWorshipHighlight, statePatchStep } from './animQueueHelpers';
 import {
   getVisualEvents,
@@ -185,6 +185,16 @@ function sameDrawCard(a, b) {
   if (a.id != null && b.id != null) return a.id === b.id;
   return [a.key, a.godKey, a.name, a.type].filter(Boolean).join(':') ===
     [b.key, b.godKey, b.name, b.type].filter(Boolean).join(':');
+}
+
+function addCardToHandSnapshot(players = [], playerIdx = 0, card = null) {
+  if (!Array.isArray(players) || !card || !players[playerIdx]) return players;
+  return copyPlayers(players).map((player, idx) => idx === playerIdx ? {
+    ...player,
+    hand: (player.hand || []).some(candidate => sameDrawCard(candidate, card))
+      ? [...(player.hand || [])]
+      : [...(player.hand || []), card],
+  } : player);
 }
 
 function normalizeTurnDrawEvents(state, fallbackCard, drawerPid, drawerName) {
@@ -764,6 +774,14 @@ export function buildTurnStartDrawReplayQueue({
   };
   const hasEventBoundReshuffle = reshuffleVisualEvents.length > 0
     || turnDrawEvents.some(event => deckReshuffleStep(event.msgs));
+  const reshuffleLandingStep = statePatchStep({
+    // The rule state has already completed the following draw, while the
+    // presentation is still between reshuffle and draw. Restore the cards
+    // that visibly moved out of the old discard pile so the draw animation
+    // starts from a non-empty deck.
+    deck: [...(oldGs?.discard || [])],
+    discard: [],
+  });
   const drawCardSteps = hasStructuredTurnDrawEvents
     ? turnDrawEvents.flatMap((event, eventIdx) => {
       const explicitReshuffleSteps = reshuffleVisualEvents
@@ -790,7 +808,7 @@ export function buildTurnStartDrawReplayQueue({
       const steps = [];
       if (eventIdx === 0 && !hasEventBoundReshuffle) {
         const fallbackReshuffleStep = deckReshuffleStep(newGs?._drawLogs);
-        if (fallbackReshuffleStep) steps.push(fallbackReshuffleStep);
+        if (fallbackReshuffleStep) steps.push(fallbackReshuffleStep, reshuffleLandingStep);
       }
       if (event.slimePop) {
         steps.push(tsgSlimePopStepFromEvent({
@@ -799,11 +817,19 @@ export function buildTurnStartDrawReplayQueue({
         }));
       }
       steps.push(...explicitReshuffleSteps);
-      if (reshuffleStep) steps.push(reshuffleStep);
+      if (explicitReshuffleSteps.length) steps.push(reshuffleLandingStep);
+      if (reshuffleStep) steps.push(reshuffleStep, reshuffleLandingStep);
       steps.push(drawStep);
       return steps;
     })
-    : [deckReshuffleStep(newGs?._drawLogs), drawCardStep].filter(Boolean);
+    : (() => {
+      const fallbackReshuffleStep = deckReshuffleStep(newGs?._drawLogs);
+      return [
+        fallbackReshuffleStep,
+        ...(fallbackReshuffleStep ? [reshuffleLandingStep] : []),
+        drawCardStep,
+      ].filter(Boolean);
+    })();
   // A previous player's god choice can remain in the accumulated game log. Only
   // inspect this turn's section, otherwise an earlier "放弃邪神的馈赠" makes a
   // newly drawn and worshipped god play a bogus discard animation.
@@ -834,7 +860,29 @@ export function buildTurnStartDrawReplayQueue({
     !newGs?.drawReveal?.card &&
     newGs?.phase !== 'GOD_CHOICE' &&
     (!isGodDrawnCard(drawnCard) || godDrawResolution === 'hand');
-  const drawKeepTransferStep = shouldPlayDrawKeepTransfer
+  const eventOwnedKeepDraws = turnDrawEvents.filter(event => (
+    event?.id &&
+    event?.keptInHand &&
+    !isGodDrawnCard(event.card) &&
+    Array.isArray(event.playersAfterKeep)
+  ));
+  const eventOwnedKeepEventById = new Map(eventOwnedKeepDraws.map(event => [event.id, event]));
+  const eventOwnedKeepStepsByDrawId = new Map(eventOwnedKeepDraws.map(event => [
+    event.id,
+    [
+      cardTransferStep({
+        fromPid: event.drawerIdx ?? drawerPid,
+        dest: 'player',
+        toPid: event.drawerIdx ?? drawerPid,
+        count: 1,
+        sourceAnchor: 'playerArea',
+        effect: 'draw',
+        cards: [event.card],
+      }),
+      statePatchStep({ players: event.playersAfterKeep }),
+    ],
+  ]));
+  const drawKeepTransferStep = shouldPlayDrawKeepTransfer && !eventOwnedKeepStepsByDrawId.size
     ? cardTransferStep({
       fromPid: drawerPid,
       dest: 'player',
@@ -1186,27 +1234,7 @@ export function buildTurnStartDrawReplayQueue({
   const drawEffectQ = hasEventBoundSlimePop
     ? drawEffectQRaw.filter(step => step?.type !== 'TSG_SLIME_POP')
     : drawEffectQRaw;
-  // The staged visual-event transaction emits HP/SAN steps but never derives the
-  // guillotine/death broadcast for a normal lethal hit (petrify death is the one
-  // exception, and it already carries PETRIFY_DEATH + DEATH). Append the derived
-  // death steps here so an AI's turn-start draw that kills the local player still
-  // plays the death animation before the terminal settlement screen.
-  const turnDrawPetrifyDeathTargets = new Set(
-    (Array.isArray(newGs?._statEvents) ? newGs._statEvents : [])
-      .filter(event => event?.type === 'PETRIFY_DEATH' && event?.target != null)
-      .map(event => Number(event.target))
-  );
-  const drawEffectQWithDeath = hasAuthoritativeTurnStartEvents
-    ? [
-      ...drawEffectQ,
-      ...buildDeathAnimSteps({
-        oldPlayers: beforeDrawPlayers,
-        newPlayers: newGs?.players || [],
-        newMsgs: newGs?.log || [],
-        petrifyDeathTargets: turnDrawPetrifyDeathTargets,
-      }),
-    ]
-    : drawEffectQ;
+  const drawEffectQWithDeath = drawEffectQ;
   // Re-assert the pre-worship player snapshot when the god card starts its
   // reveal. Some turn-start paths commit the resolved AI snapshot after the
   // banner, which used to let the god-power badge appear during the flip. The
@@ -1266,13 +1294,80 @@ export function buildTurnStartDrawReplayQueue({
       return true;
     });
   }
-  const orderedDrawCardStepsWithGod = drawOwnedEffectGroups
-    ? orderedDrawCardSteps.flatMap(step => (
-      step?.type === 'DRAW_CARD' && step?._drawEventId != null && drawOwnedEffectGroups.has(step._drawEventId)
-        ? [step, ...drawOwnedEffectGroups.get(step._drawEventId)]
-        : [step]
-    ))
-    : orderedDrawCardSteps;
+  // Sphinx's result event is owned by the draw that revealed the D4 trigger.
+  // Keep the whole block beside that draw even when slime creates several draws
+  // in one turn. Its dodge die belongs after the wrong-result reveal and before
+  // the event-owned HP loss.
+  const sphinxEventById = new Map(newVisualEvents
+    .filter(event => event?.type === VISUAL_EVENT.SPHINX_RESULT && event?.id)
+    .map(event => [event.id, event]));
+  const sphinxDrawIdByEventId = new Map();
+  sphinxEventById.forEach((event, eventId) => {
+    const owner = turnDrawEvents.find(drawEvent => (
+      drawEvent?.id &&
+      (drawEvent.drawerIdx ?? drawerPid) === event.actorIdx &&
+      sameDrawCard(drawEvent.card, event.sourceCard)
+    ));
+    if (owner?.id) sphinxDrawIdByEventId.set(eventId, owner.id);
+  });
+  if (sphinxDrawIdByEventId.size) {
+    if (!drawOwnedEffectGroups) drawOwnedEffectGroups = new Map();
+    const sphinxStepsByEventId = new Map();
+    deferredDrawEffectQ = deferredDrawEffectQ.filter(step => {
+      const eventId = step?.visualEventId;
+      if (!sphinxDrawIdByEventId.has(eventId)) return true;
+      if (!sphinxStepsByEventId.has(eventId)) sphinxStepsByEventId.set(eventId, []);
+      sphinxStepsByEventId.get(eventId).push(step);
+      return false;
+    });
+    sphinxStepsByEventId.forEach((steps, eventId) => {
+      const event = sphinxEventById.get(eventId);
+      const diceStep = buildTreasureDodgeDiceStepFromLogs(event?.msgs || [], drawerName);
+      const ownedSteps = [...steps];
+      if (diceStep) {
+        const resultTransferIdx = ownedSteps.findIndex(step => (
+          step?.type === 'CARD_TRANSFER' && step?.effect === 'sphinxResult'
+        ));
+        let insertAt = resultTransferIdx >= 0 ? resultTransferIdx + 1 : 0;
+        while (ownedSteps[insertAt]?.type === 'STATE_PATCH') insertAt += 1;
+        ownedSteps.splice(insertAt, 0, diceStep);
+      }
+      const drawId = sphinxDrawIdByEventId.get(eventId);
+      drawOwnedEffectGroups.set(drawId, [
+        ...(drawOwnedEffectGroups.get(drawId) || []),
+        ...ownedSteps,
+      ]);
+    });
+  }
+  const hasOwnedSphinxResult = sphinxDrawIdByEventId.size > 0;
+  const multipleTurnDraws = turnDrawEvents.length > 1;
+  const deferredEventOwnedKeepSteps = [];
+  const isSphinxDrawCard = card => card?.type === 'sphinxGuess' || card?.name === '斯芬克斯';
+  const orderedDrawCardStepsWithOwnedFlows = orderedDrawCardSteps.flatMap(step => {
+    if (step?.type !== 'DRAW_CARD' || step?._drawEventId == null) return [step];
+    const keepSteps = eventOwnedKeepStepsByDrawId.get(step._drawEventId) || [];
+    const keepEvent = eventOwnedKeepEventById.get(step._drawEventId);
+    const effectSteps = drawOwnedEffectGroups?.get(step._drawEventId) || [];
+    const immediateKeep = multipleTurnDraws || isSphinxDrawCard(step.card);
+    if (!immediateKeep && keepSteps.length) {
+      deferredEventOwnedKeepSteps.push(
+        keepSteps[0],
+        statePatchStep({ players: keepEvent?.playersAfterResolution || keepEvent?.playersAfterKeep }),
+      );
+    }
+    return [
+      step,
+      ...(immediateKeep ? keepSteps : []),
+      ...effectSteps,
+    ];
+  });
+  const legacySphinxKeepSteps = drawKeepTransferStep && isSphinxDrawCard(drawnCard)
+    ? [
+        drawKeepTransferStep,
+        statePatchStep({ players: addCardToHandSnapshot(beforeDrawPlayers, drawerPid, drawnCard) }),
+      ]
+    : [];
+  const deferredLegacyKeepStep = legacySphinxKeepSteps.length ? null : drawKeepTransferStep;
   const hasDrawEffectVisualStep = drawEffectQWithDeath.some(step => step?.type !== 'STATE_PATCH');
   const drawEffectStatePatch = hasDrawEffectVisualStep
     ? statePatchStep({ players: newGs?.players, discard: newGs?.discard })
@@ -1288,12 +1383,14 @@ export function buildTurnStartDrawReplayQueue({
     ...(turnStartStatePatch ? [turnStartStatePatch] : []),
   ], TURN_START_ANIMATION_STAGE.TURN_START);
   const drawStageQueue = markTurnStartAnimationStage([
-    ...orderedDrawCardStepsWithGod,
+    ...orderedDrawCardStepsWithOwnedFlows,
     ...(discardDrawnStep ? [discardDrawnStep] : []),
     ...(discardRestoreStep ? [discardRestoreStep] : []),
-    ...(treasureDodgeDiceStep ? [treasureDodgeDiceStep] : []),
+    ...legacySphinxKeepSteps,
+    ...(treasureDodgeDiceStep && !hasOwnedSphinxResult ? [treasureDodgeDiceStep] : []),
     ...deferredDrawEffectQ,
-    ...(drawKeepTransferStep ? [drawKeepTransferStep] : []),
+    ...deferredEventOwnedKeepSteps,
+    ...(deferredLegacyKeepStep ? [deferredLegacyKeepStep] : []),
     ...(drawEffectStatePatch ? [drawEffectStatePatch] : []),
   ], TURN_START_ANIMATION_STAGE.DRAW);
   const stageQueues = {

@@ -18,6 +18,7 @@ import {
 } from './turnEngine';
 import {
   createHuntRevealEvent,
+  createHandLimitDiscardEvent,
   createTimedOutDrawDiscardEvent,
 } from './visualEvents';
 import { getBestCaveDuelCardIndex } from './caveDuel';
@@ -125,6 +126,7 @@ function autoDiscardSeatAndAdvance(
   const {
     kept: keptDiscarded,
     destroyed: destroyedDiscarded,
+    animationCards: discardAnimationCards,
   } = splitKeptDestroyedDiscarded(discarded);
   let deck = [...(baseState.deck || [])];
   let discard = [...(baseState.discard || [])];
@@ -162,6 +164,17 @@ function autoDiscardSeatAndAdvance(
       `(AI接管) ${actorName} 的衍生牌 ×${destroyedDiscarded.length} 被销毁`
     );
   }
+  const handLimitDiscardEvent = discardAnimationCards.length
+    ? createHandLimitDiscardEvent({
+        playerIdx: seatIdx,
+        playerName: players[seatIdx]?.name || '该玩家',
+        cards: discardAnimationCards,
+        msgs: log.slice(baseState.log?.length || 0),
+      })
+    : null;
+  const carriedVisualEvents = Array.isArray(balanceStatePatch._visualEvents)
+    ? balanceStatePatch._visualEvents
+    : (baseState._visualEvents || []);
   const postDiscardState = {
     ...baseState,
     players,
@@ -174,10 +187,20 @@ function autoDiscardSeatAndAdvance(
     selectedCard: null,
     abilityData: {},
     ...balanceStatePatch,
+    ...(handLimitDiscardEvent ? { _visualEvents: [...carriedVisualEvents, handLimitDiscardEvent] } : {}),
   };
   const win = checkWin(players, true);
   if (win) return { ...postDiscardState, gameOver: win };
-  return startNextTurn(postDiscardState);
+  const nextTurnState = startNextTurn(postDiscardState);
+  if (!handLimitDiscardEvent) return nextTurnState;
+  const nextVisualEvents = Array.isArray(nextTurnState._visualEvents) ? nextTurnState._visualEvents : [];
+  return {
+    ...nextTurnState,
+    _visualEvents: [
+      handLimitDiscardEvent,
+      ...nextVisualEvents.filter(event => event?.id !== handLimitDiscardEvent.id),
+    ],
+  };
 }
 
 function finishMpAiTakeoverTurn(

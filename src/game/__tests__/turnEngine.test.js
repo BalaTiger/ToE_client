@@ -1286,11 +1286,20 @@ describe('turnEngine stat events', () => {
     const popStep = queue.find(step => step.type === 'TSG_SLIME_POP');
     const popIdx = queue.indexOf(popStep);
     const extraDrawIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === 'extra');
+    const extraKeepIdx = queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.effect === 'draw' && step.cards?.[0]?.id === 'extra');
+    const normalDrawIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === 'normal');
+    const normalKeepIdx = queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.effect === 'draw' && step.cards?.[0]?.id === 'normal');
 
     expect(popStep).toMatchObject({ targetPid: 1, count: 1, cards: [slime] });
     expect(popIdx).toBeLessThan(extraDrawIdx);
     expect(popStep.visualSetupPatch.players[1].hand).toContain(slime);
     expect(popStep.visualTimeline.at(-1).patch.players[1].hand).not.toContain(slime);
+    expect(extraDrawIdx).toBeLessThan(extraKeepIdx);
+    expect(extraKeepIdx).toBeLessThan(normalDrawIdx);
+    expect(normalDrawIdx).toBeLessThan(normalKeepIdx);
+    expect(queue[extraKeepIdx + 1]).toMatchObject({ type: 'STATE_PATCH' });
+    expect(queue[extraKeepIdx + 1].players[1].hand.map(card => card.id)).toEqual(['extra']);
+    expect(queue[normalKeepIdx + 1].players[1].hand.map(card => card.id)).toEqual(['extra', 'normal']);
     expect(queue.some(step => step.type === 'CARD_TRANSFER' && step.dest === 'discard')).toBe(false);
     expect(queue.some(step => step.type === 'DISCARD' && step.card?.id === slime.id)).toBe(false);
   });

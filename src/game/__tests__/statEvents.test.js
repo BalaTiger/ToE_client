@@ -3,6 +3,7 @@ import {
   applyStatEventsToDisplayStats,
   applyStatAnimationImpact,
   buildStatEvents,
+  createPlayerDefeatedStatEvent,
   expandCombinedStatAnimationSteps,
   primeDisplayStatsForStatQueue,
   statEventsToAnimQueue,
@@ -164,12 +165,23 @@ describe('statEvents', () => {
   });
 
   it('石化死亡先播放面板石化动画，再复用通用死亡公告', () => {
-    const players = [
+    const beforePlayers = [
       makePlayer({ name: '你', hp: 10, san: 8 }),
-      makePlayer({ name: '艾伦', hp: 0, san: 5, isDead: true }),
+      makePlayer({ name: '艾伦', hp: 2, san: 5 }),
     ];
+    const players = copyPlayers(beforePlayers);
+    players[1] = { ...players[1], hp: 0, isDead: true, roleRevealed: true };
     const events = [
-      { type: 'PETRIFY_DEATH', target: 1, from: { hp: 2, san: 5, isDead: false }, to: { hp: 0, san: 5, isDead: true } },
+      createPlayerDefeatedStatEvent({
+        target: 1,
+        cause: 'petrification',
+        from: { hp: 2, san: 5, isDead: false },
+        to: { hp: 0, san: 5, isDead: true },
+        logHint: '艾伦 被石化',
+        playersBefore: beforePlayers,
+        playersAfter: players,
+        settlementOwner: 'test',
+      }),
     ];
 
     const queue = statEventsToAnimQueue(events, players, ['艾伦 被石化']);
@@ -177,6 +189,45 @@ describe('statEvents', () => {
     expect(queue.map(step => step.type)).toEqual(['PETRIFY_DEATH', 'DEATH']);
     expect(queue[0]).toMatchObject({ hitIndices: [1], msgs: [] });
     expect(queue[1]).toMatchObject({ hitIndices: [1], msgs: ['艾伦 被石化'] });
+  });
+
+  it('AOE 多人致死会累计死亡提交，并且只在事务末尾提交一次终态', () => {
+    const cards = [{ id: 'a' }, { id: 'b' }];
+    const before = [
+      makePlayer({ name: '艾伦', hp: 1, hand: [cards[0]] }),
+      makePlayer({ name: '贝拉', hp: 1, hand: [cards[1]] }),
+    ];
+    const after = copyPlayers(before).map(player => ({
+      ...player,
+      hp: 0,
+      isDead: true,
+      roleRevealed: true,
+      hand: [],
+    }));
+    const logs = ['全体失去 1 HP', '☠ 艾伦倒下了！', '☠ 贝拉倒下了！'];
+    const events = buildStatEvents(before, after, logs, {
+      reason: 'AOE', seq: 1, discardBefore: [], discardAfter: cards,
+    });
+
+    const queue = statEventsToAnimQueue(events, before, logs);
+    const deathSteps = queue.filter(step => step.type === 'DEATH');
+
+    expect(queue.map(step => step.type)).toEqual([
+      'HP_DAMAGE',
+      'GUILLOTINE', 'DEATH',
+      'GUILLOTINE', 'DEATH',
+      'DISCARD', 'DISCARD',
+      'STATE_PATCH',
+    ]);
+    expect(deathSteps[0].visualSetupPatch.players).toMatchObject([
+      { isDead: true, hand: [cards[0]] },
+      { isDead: false, hand: [cards[1]] },
+    ]);
+    expect(deathSteps[1].visualSetupPatch.players).toMatchObject([
+      { isDead: true, hand: [cards[0]] },
+      { isDead: true, hand: [cards[1]] },
+    ]);
+    expect(queue.filter(step => step.type === 'STATE_PATCH')).toHaveLength(1);
   });
 
   it('两人一绳断裂会拆成原伤害、断裂、绳索伤害三段', () => {

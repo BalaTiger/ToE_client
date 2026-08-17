@@ -131,6 +131,10 @@ export function createDrawCardEvent({
   fromTsathogguaSlime = false,
   slimePop = null,
   godEncounter = null,
+  keptInHand = false,
+  playersBefore = null,
+  playersAfterKeep = null,
+  playersAfterResolution = null,
 } = {}) {
   if (!card) return null;
   return withVisualEventMeta({
@@ -146,6 +150,10 @@ export function createDrawCardEvent({
     ...(fromTsathogguaSlime ? { fromTsathogguaSlime: true } : {}),
     ...(slimePop ? { slimePop } : {}),
     ...(godEncounter ? { godEncounter } : {}),
+    ...(keptInHand ? { keptInHand: true } : {}),
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfterKeep) ? { playersAfterKeep } : {}),
+    ...(Array.isArray(playersAfterResolution) ? { playersAfterResolution } : {}),
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'turn');
 }
@@ -315,15 +323,26 @@ export function createHuntResultEvent(event = {}) {
   }, 'action');
 }
 
-export function createSphinxResultEvent({ actorIdx = 0, card, guessCorrect = false, msgs = [] } = {}) {
+export function createSphinxResultEvent({
+  actorIdx = 0,
+  card,
+  sourceCard = null,
+  guessCorrect = false,
+  msgs = [],
+  playersBefore = null,
+  playersAfter = null,
+} = {}) {
   if (!card) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.SPHINX_RESULT,
     id: `${VISUAL_EVENT.SPHINX_RESULT}:${visualEventInstanceId}:${++actionEventSeq}`,
     actorIdx,
     card,
+    ...(sourceCard ? { sourceCard } : {}),
     guessCorrect: !!guessCorrect,
     msgs: Array.isArray(msgs) ? msgs : [],
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfter) ? { playersAfter } : {}),
   }, 'action');
 }
 
@@ -915,12 +934,19 @@ export function buildFreshStatVisualEvents(state, previousStatSeq = 0) {
   const logMatchedStatEvents = allFreshStatEvents.filter(event => (
     event?.logHint && statLogSet.has(event.logHint)
   ));
+  const logMatchedSeqs = new Set(
+    logMatchedStatEvents.map(event => event?.seq).filter(seq => seq != null),
+  );
+  const logMatchedTransactionEvents = allFreshStatEvents.filter(event => (
+    (event?.seq != null && logMatchedSeqs.has(event.seq))
+    || (event?.seq == null && logMatchedStatEvents.includes(event))
+  ));
   // _statLogs is a presentation slice, but inspection flows can replace it
   // with reveal/worship lines that do not equal the underlying SAN event's
   // logHint. Use it as a narrowing signal only when it actually identifies at
   // least one fresh stat event; otherwise the sequence watermark is canonical.
   const freshStatEvents = statLogSet.size && logMatchedStatEvents.length
-    ? logMatchedStatEvents
+    ? logMatchedTransactionEvents
     : allFreshStatEvents;
   const statLogs = Array.isArray(state?._statLogs) ? state._statLogs : [];
   const msgsFor = (events, otherEvents) => {
@@ -1040,6 +1066,7 @@ export function promoteLegacyVisualEvents(state) {
   });
 
   (state._aiHuntEvents || []).forEach((event, index) => {
+    if (event?.targetOnly) return;
     if (hasEvent(candidate => candidate.type === VISUAL_EVENT.HUNT_RESULT && candidate.hunterIdx === event?.hunterIdx && candidate.targetIdx === event?.targetIdx)) return;
     promoted.push({
       ...event,

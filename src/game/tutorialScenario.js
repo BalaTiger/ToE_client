@@ -882,7 +882,7 @@ export function clearTutorialWinState(gs, stepId) {
     TUTORIAL_FLOW.CULTIST_GOD_RESULT,
   ]);
   if (!resultSteps.has(stepId)) return gs;
-  const players = copyPlayers(gs.players || []).map(player => ({ ...player, _pendingAnimDeath: false }));
+  const players = copyPlayers(gs.players || []);
   return {
     ...gs,
     players,

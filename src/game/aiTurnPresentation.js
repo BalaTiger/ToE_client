@@ -43,22 +43,6 @@ export function stripAiPresentationFields(rawResult) {
   return omitFields(rawResult, PRESENTATION_ONLY_FIELDS);
 }
 
-export function clearPendingAnimDeathPlayers(players) {
-  return (players || []).map(player =>
-    player?._pendingAnimDeath
-      ? { ...player, _pendingAnimDeath: false }
-      : player
-  );
-}
-
-export function finalizeAiPresentationState(state) {
-  if (!state) return state;
-  return {
-    ...state,
-    players: clearPendingAnimDeathPlayers(state.players),
-  };
-}
-
 export function shouldBuildQueuedAiTurnStartReplay({
   nextState,
   fromTurn = null,
@@ -565,7 +549,7 @@ export function buildAiHuntWaitPresentation({
 
   return {
     queue: appendAnimLogChunkToQueueEnd(queue, residualLogs),
-    nextState: finalizeAiPresentationState(nextState),
+    nextState,
     roseThornSnapshot: buildRoseThornSnapshot(nextState.players),
     externalVisualLocks,
     inspectionEvents: huntPresentation.inspectionEvents,
@@ -652,11 +636,13 @@ export function buildOwnedAiHuntEventQueue({
   const inspectionVisualEvents = metadata.visualEvents.filter(event => event?.type === 'inspection');
   const inspectionEvents = Array.isArray(state?._inspectionEvents) ? state._inspectionEvents : [];
   const ownedInspectionEvents = [];
+  let huntVisualEventIndex = 0;
 
-  const queue = rawHuntEvents.flatMap((rawEvent, index) => {
+  const queue = rawHuntEvents.flatMap(rawEvent => {
+    const huntVisualEvent = rawEvent?.targetOnly ? null : huntVisualEvents[huntVisualEventIndex++];
     const huntEvent = {
       ...rawEvent,
-      ...(huntVisualEvents[index]?.id ? { id: huntVisualEvents[index].id } : {}),
+      ...(huntVisualEvent?.id ? { id: huntVisualEvent.id } : {}),
     };
     const rawApophisEvent = rawEvent?.apophisTargetEvent;
     const apophisEvent = rawApophisEvent
@@ -683,10 +669,12 @@ export function buildOwnedAiHuntEventQueue({
       const visualEvent = inspectionVisualEvents.find(event => event?.legacySeq === inspectionEvent.seq);
       return visualEvent ? bindVisualEventToSteps(flow.queue, visualEvent) : flow.queue;
     });
-    const huntQueue = bindVisualEventToSteps(
-      buildAiHuntEventAnimQueue(huntEvent, actorName, { includeApophisTarget: false }),
-      huntEvent,
-    );
+    const huntQueue = rawEvent?.targetOnly
+      ? []
+      : bindVisualEventToSteps(
+          buildAiHuntEventAnimQueue(huntEvent, actorName, { includeApophisTarget: false }),
+          huntEvent,
+        );
     return [...apophisQueue, ...inspectionQueue, ...huntQueue];
   });
 

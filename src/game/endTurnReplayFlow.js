@@ -1,4 +1,4 @@
-import { cardLogText, formatSanLoss } from './coreUtils';
+import { cardLogText, copyPlayers, formatSanLoss, isVanishingDerivedCard } from './coreUtils';
 import { getEndTurnReplayHandCards } from './endTurnEvents';
 import { withClearedTurnAnimFields } from './turnAnimState';
 import { advanceGodEncounter, formatGodEncounterProgress } from './balancePatches';
@@ -148,4 +148,23 @@ export function advanceEndTurnReplayPatch(stateLike) {
   return stateLike?._endTurnReplay
     ? { _endTurnReplay: { ...stateLike._endTurnReplay, index: (stateLike._endTurnReplay.index || 0) + 1 } }
     : {};
+}
+
+export function resolveEndTurnReplayDiscard({
+  players = [],
+  discard = [],
+  actorIndex = 0,
+  card,
+} = {}) {
+  const nextPlayers = copyPlayers(players);
+  const hand = nextPlayers[actorIndex]?.hand || [];
+  const cardIndex = hand.findIndex(handCard => handCard?.id === card?.id);
+  if (cardIndex >= 0) hand.splice(cardIndex, 1);
+
+  const destroyed = isVanishingDerivedCard(card);
+  return {
+    players: nextPlayers,
+    discard: destroyed ? [...discard] : [...discard, card],
+    destroyed,
+  };
 }

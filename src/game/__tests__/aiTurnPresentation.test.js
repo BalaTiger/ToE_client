@@ -3,13 +3,12 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildAiHuntWaitPresentation,
+  buildOwnedAiHuntEventQueue,
   buildAiTurnRecoveryState,
   buildRoseThornSnapshot,
   buildScopedAiActionReplayState,
   bindVisualEventToSteps,
-  clearPendingAnimDeathPlayers,
   collectExplicitAiTurnLogs,
-  finalizeAiPresentationState,
   getAiActionQueueCoverage,
   getAiActionSphinxResultEvent,
   insertAiRestDiceBeforeSettlement,
@@ -287,6 +286,42 @@ describe('AI turn presentation helpers', () => {
     expect(handler).not.toContain('authoritativeResolvedQueueMeta(');
   });
 
+  it('lets chained slime draws prune played effects while still rejecting a fresh omitted effect', () => {
+    const playedNightWind = {
+      id: 'cardEffect:nightWind:slime-draw:1',
+      type: 'cardEffect',
+      scope: 'effect',
+      effectKey: 'nightWind',
+    };
+    const freshEarthquake = {
+      id: 'cardEffect:earthquake:fixed-draw:2',
+      type: 'cardEffect',
+      scope: 'effect',
+      effectKey: 'earthquake',
+    };
+    const state = { _visualEvents: [playedNightWind, freshEarthquake] };
+    const nextDrawQueue = [{ type: 'DRAW_CARD', card: { id: 'next-card' }, targetPid: 0 }];
+    const consumed = new Set([playedNightWind.id]);
+
+    const coverage = getAiActionQueueCoverage(
+      state,
+      nextDrawQueue,
+      steps => getVisualEventIdsCoveredByAnimationQueue(state, steps),
+      consumed,
+    );
+    expect(coverage.uncoveredEventIds).toEqual([freshEarthquake.id]);
+
+    const appPath = fileURLToPath(new URL('../../App.jsx', import.meta.url));
+    const source = fs.readFileSync(appPath, 'utf8');
+    const start = source.indexOf('function _tsgContinueTurnStartDraw(');
+    const end = source.indexOf('function _cthContinueRestDraws(', start);
+    const handler = source.slice(start, end);
+    expect(handler).toContain('pruneConsumedVisualEvents(');
+    expect(handler).toContain("consumedVisualEventIdsRef.current,\n      'tsg turn-start draw'");
+    expect(handler).toContain('.filter(event=>!event?.id||!consumedVisualEventIdsRef.current.has(event.id))');
+    expect(handler).not.toContain('authoritativeResolvedQueueMeta(');
+  });
+
   it('counts a suppressed stat wrapper as covered by its represented owner event', () => {
     const statEvent = { type: 'SAN_LOSS', seq: 18 };
     const state = {
@@ -366,7 +401,6 @@ describe('AI turn presentation helpers', () => {
         previousState.players[0],
         {
           ...previousState.players[1],
-          _pendingAnimDeath: true,
           hand: [{ id: 'thorn', roseThornHolderId: 1 }],
         },
       ],
@@ -388,7 +422,7 @@ describe('AI turn presentation helpers', () => {
     expect(buildTurnStartIntroQueue).toHaveBeenCalledWith(previousState, 'Bot');
     expect(result.queue[0]).toMatchObject(introStep);
     expect(result.queue.flatMap(step => step.msgs || [])).toContain('unbound result');
-    expect(result.nextState.players[1]._pendingAnimDeath).toBe(false);
+    expect(result.nextState.players[1]).not.toHaveProperty('_pendingAnimDeath');
     expect(result.roseThornSnapshot).toEqual([
       { idx: 0, marked: [] },
       { idx: 1, marked: ['thorn'] },
@@ -842,6 +876,81 @@ describe('AI turn presentation helpers', () => {
     ).uncoveredEventIds).toEqual([]);
   });
 
+  it('plays target-only Apophis attempts without manufacturing a huntResult', () => {
+    const players = [
+      { name: '你', hp: 10, san: 10, hand: [] },
+      { name: '艾伦', hp: 10, san: 9, hand: [{ id: 'hunter-card', key: 'A1' }] },
+      { name: '贝拉', hp: 10, san: 10, hand: [{ id: 'derived-card' }] },
+    ];
+    const skippedNight = {
+      seq: 6,
+      actorIdx: 1,
+      actorName: '艾伦',
+      selectedIdx: 0,
+      targetIdx: 2,
+      roll: 1,
+      changed: true,
+      label: '选择【追捕】目标',
+      log: '【黑夜】艾伦 选择【追捕】目标掷出 1，目标由 你 错乱为 贝拉，失去 1 SAN',
+    };
+    const huntedNight = {
+      seq: 7,
+      actorIdx: 1,
+      actorName: '艾伦',
+      selectedIdx: 0,
+      targetIdx: 0,
+      roll: 4,
+      changed: false,
+      label: '选择【追捕】目标',
+      log: '【黑夜】艾伦 选择【追捕】目标掷出 4，目标未偏移',
+    };
+    const rawHunts = [
+      {
+        targetOnly: true,
+        apophisTargetEvent: skippedNight,
+        hunterIdx: 1,
+        targetIdx: 2,
+        beforePlayers: players,
+        afterPlayers: players,
+        beforeLog: [],
+        afterLog: [skippedNight.log],
+        msgs: [],
+      },
+      {
+        apophisTargetEvent: huntedNight,
+        hunterIdx: 1,
+        targetIdx: 0,
+        beforePlayers: players,
+        afterPlayers: players,
+        revealedCard: players[0].hand[0],
+        msgs: ['艾伦（追猎者）向你发动【追捕】'],
+      },
+    ];
+    const apophisEvents = [skippedNight, huntedNight]
+      .map(event => createApophisTargetVisualEvent(event, { playersAfter: players }));
+    const huntEvent = createHuntResultEvent(rawHunts[1]);
+    const state = {
+      players,
+      _visualEvents: [...apophisEvents, huntEvent],
+      _inspectionEvents: [],
+    };
+
+    const result = buildOwnedAiHuntEventQueue({ rawHuntEvents: rawHunts, state, actorName: '艾伦' });
+    const ownedSteps = result.queue.filter(step => step.type === 'DICE_ROLL' || step.type === 'SKILL_HUNT');
+
+    expect(ownedSteps.map(step => step.type)).toEqual(['DICE_ROLL', 'DICE_ROLL', 'SKILL_HUNT']);
+    expect(ownedSteps.map(step => step.visualEventId)).toEqual([
+      apophisEvents[0].id,
+      apophisEvents[1].id,
+      huntEvent.id,
+    ]);
+    expect(getAiActionQueueCoverage(
+      state,
+      result.queue,
+      queue => queue.map(step => step.visualEventId).filter(Boolean),
+    ).uncoveredEventIds).toEqual([]);
+  });
+
   it('plays an Apophis SAN inspection before the huntResult transaction', () => {
     const beforePlayers = [
       { name: '你', hp: 10, san: 10, hand: [] },
@@ -1010,8 +1119,8 @@ describe('AI turn presentation helpers', () => {
         afterPlayers: afterSecondHunt,
         afterResultDiscard: [cards[1], cards[2]],
         beforeLog: [worshipMsg],
-        afterLog: [worshipMsg, '黛安娜（追猎者）对 艾伦 【追捕】，亮出 [D3]', '放弃追捕 艾伦'],
-        msgs: ['黛安娜（追猎者）对 艾伦 【追捕】，亮出 [D3]', '放弃追捕 艾伦'],
+        afterLog: [worshipMsg, '黛安娜（追猎者）对 艾伦 【追捕】，亮出 [D3]', '黛安娜（追猎者）放弃追捕 艾伦'],
+        msgs: ['黛安娜（追猎者）对 艾伦 【追捕】，亮出 [D3]', '黛安娜（追猎者）放弃追捕 艾伦'],
       },
     ];
     const godEvent = createGodStatusChangedEvent({
@@ -1126,20 +1235,6 @@ describe('AI turn presentation helpers', () => {
       { idx: 0, marked: ['h0', 'g0'] },
       { idx: 1, marked: ['h1'] },
     ]);
-  });
-
-  it('clears pending animation deaths without mutating unaffected players', () => {
-    const stable = { name: 'stable' };
-    const players = clearPendingAnimDeathPlayers([
-      { name: 'dying', _pendingAnimDeath: true },
-      stable,
-    ]);
-    expect(players[0]).toEqual({ name: 'dying', _pendingAnimDeath: false });
-    expect(players[1]).toBe(stable);
-    expect(finalizeAiPresentationState({ phase: 'ACTION', players })).toEqual({
-      phase: 'ACTION',
-      players,
-    });
   });
 
   it('collects explicit timeline logs in playback order', () => {

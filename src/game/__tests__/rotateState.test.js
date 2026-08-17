@@ -185,7 +185,14 @@ describe('rotateGsForViewer', () => {
       _animSphinxReveal: { actorIdx: 0, card: { name: '斯芬克斯' } },
       _visualEvents: [
         { type: 'turnStart', playerIdx: 3 },
-        { type: 'drawCard', playerIdx: 1, card: { name: '测试牌' } },
+        {
+          type: 'drawCard',
+          playerIdx: 1,
+          card: { name: '测试牌' },
+          playersBefore: [player('drawB0'), player('drawB1'), player('drawB2'), player('drawB3')],
+          playersAfterKeep: [player('drawK0'), player('drawK1'), player('drawK2'), player('drawK3')],
+          playersAfterResolution: [player('drawR0'), player('drawR1'), player('drawR2'), player('drawR3')],
+        },
         { type: 'timedOutDrawDiscard', drawerIdx: 0, card: { name: '弃牌' } },
         {
           type: 'bewitchGift',
@@ -216,6 +223,9 @@ describe('rotateGsForViewer', () => {
           card: { name: '斯芬克斯牌' },
           guessCorrect: true,
           msgs: ['猜测正确'],
+          playersBefore: [player('sphB0'), player('sphB1'), player('sphB2'), player('sphB3')],
+          playersAfter: [player('sphA0'), player('sphA1'), player('sphA2'), player('sphA3')],
+          statEvents: [{ type: 'HP_LOSS', target: 2, from: { hp: 10 }, to: { hp: 7 } }],
         },
         {
           type: 'statEvents',
@@ -303,6 +313,9 @@ describe('rotateGsForViewer', () => {
     expect(rotated._animSphinxReveal).toMatchObject({ actorIdx: 2 });
     expect(rotated._visualEvents[0].playerIdx).toBe(1);
     expect(rotated._visualEvents[1].playerIdx).toBe(3);
+    expect(names(rotated._visualEvents[1].playersBefore)).toEqual(['drawB2', 'drawB3', 'drawB0', 'drawB1']);
+    expect(names(rotated._visualEvents[1].playersAfterKeep)).toEqual(['drawK2', 'drawK3', 'drawK0', 'drawK1']);
+    expect(names(rotated._visualEvents[1].playersAfterResolution)).toEqual(['drawR2', 'drawR3', 'drawR0', 'drawR1']);
     expect(rotated._visualEvents[2].drawerIdx).toBe(2);
     expect(rotated._visualEvents[3]).toMatchObject({ sourceIdx: 1, targetIdx: 3 });
     expect(rotated._visualEvents[3].encounterState.currentTurn).toBe(1);
@@ -316,6 +329,9 @@ describe('rotateGsForViewer', () => {
     expect(names(rotated._visualEvents[6].afterDamagePlayers)).toEqual(['hrM2', 'hrM3', 'hrM0', 'hrM1']);
     expect(names(rotated._visualEvents[6].afterPlayers)).toEqual(['hrA2', 'hrA3', 'hrA0', 'hrA1']);
     expect(rotated._visualEvents[7]).toMatchObject({ actorIdx: 0, guessCorrect: true });
+    expect(names(rotated._visualEvents[7].playersBefore)).toEqual(['sphB2', 'sphB3', 'sphB0', 'sphB1']);
+    expect(names(rotated._visualEvents[7].playersAfter)).toEqual(['sphA2', 'sphA3', 'sphA0', 'sphA1']);
+    expect(rotated._visualEvents[7].statEvents[0].target).toBe(0);
     expect(rotated._visualEvents[8].statEvents[0].target).toBe(3);
     expect(rotated._visualEvents[8].statEvents[1].pair).toEqual([2, 1]);
     expect(names(rotated._visualEvents[8].statEvents[1].players)).toEqual(['v2', 'v3', 'v0', 'v1']);

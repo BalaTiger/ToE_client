@@ -239,7 +239,6 @@ export function mergePlayerStatsIntoSnapshot(snapshotPlayers=[],statPlayers=[]){
       hp:stats.hp,
       san:stats.san,
       isDead:!!stats.isDead,
-      _pendingAnimDeath:!!stats._pendingAnimDeath,
     };
   });
 }
@@ -327,6 +326,7 @@ export function buildSphinxResultQueue({
   guessCorrect,
   msgs = [],
   resultQueue = [],
+  playersAfterResult = null,
 } = {}) {
   if (!card) return filterSphinxResultQueue(resultQueue);
   const safeMsgs = Array.isArray(msgs) ? msgs : [];
@@ -352,6 +352,9 @@ export function buildSphinxResultQueue({
       cards: [card],
       msgs: resultMsg ? [resultMsg] : [],
     }),
+    ...(guessCorrect && Array.isArray(playersAfterResult)
+      ? [statePatchStep({ players: playersAfterResult })]
+      : []),
     ...filterSphinxResultQueue(resultQueue),
   ];
 }
@@ -646,6 +649,33 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
         msgs:ev.gainedCardLog?[ev.gainedCardLog]:[],
       });
     }
+    const explicitDiscardEvents=Array.isArray(ev?.discardEvents)?ev.discardEvents.filter(event=>event?.card):[];
+    let discardCursorPlayers=beforePlayers;
+    let discardCursor=beforeDiscard;
+    const explicitDiscardQ=explicitDiscardEvents.map((discardEvent,index)=>{
+      const targetPid=discardEvent.playerIndex??ev.target??0;
+      const nextPlayers=copyPlayers(discardEvent.afterPlayers||afterPlayers);
+      const nextDiscard=[...(Array.isArray(discardEvent.afterDiscard)?discardEvent.afterDiscard:afterDiscard)];
+      const step={
+        type:"DISCARD",
+        card:discardEvent.card,
+        cards:[discardEvent.card],
+        count:1,
+        triggerName:beforePlayers[targetPid]?.name||"角色",
+        targetPid,
+        msgs:index===0?effectLogs:[],
+        visualSetupTiming:"stepStart",
+        visualSetupPatch:{players:discardCursorPlayers,discard:discardCursor},
+        visualTimeline:[
+          {atMs:0,patch:{players:discardCursorPlayers,discard:discardCursor}},
+          {atMs:900,patch:{players:nextPlayers,discard:nextDiscard}},
+        ],
+      };
+      discardCursorPlayers=nextPlayers;
+      discardCursor=nextDiscard;
+      return step;
+    });
+    const explicitDiscardTargets=new Set(explicitDiscardEvents.map(event=>event.playerIndex??ev.target??0));
     const effectQ=buildAnimQueue(
       {players:beforePlayers,log:beforeLog,discard:beforeDiscard,_statEventSeq:beforeStatEventSeq},
       {
@@ -654,9 +684,18 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
         discard:afterDiscard,
         ...(Array.isArray(ev?.statEvents)&&ev.statEvents.length?{_statEvents:ev.statEvents,_statEventSeq:ev.statEventSeq}:{}),
       }
-    );
+    ).filter(step=>!(
+      explicitDiscardTargets.has(step?.fromPid)
+      && step?.type==="CARD_TRANSFER"
+      && step?.dest==="discard"
+      && step?.inferredHandLoss
+    )&&!(
+      explicitDiscardTargets.has(step?.targetPid)
+      && step?.type==="TSG_SLIME_POP"
+    ));
+    if(explicitDiscardQ.length)queue.push(...explicitDiscardQ.map(step=>ev?.id?{...step,visualEventId:ev.id}:step));
     if(effectQ.length)queue.push(...effectQ.map(step=>ev?.id?{...step,visualEventId:ev.id}:step));
-    const effectHasVisibleStep=effectQ.some(step=>step?.type!=="STATE_PATCH");
+    const effectHasVisibleStep=explicitDiscardQ.length>0||effectQ.some(step=>step?.type!=="STATE_PATCH");
     const boundaryStep={
       ...statePatchStep({players:afterPlayers,log:afterLog,discard:afterDiscard}),
       ...(ev?.id?{visualEventId:ev.id}:{}),

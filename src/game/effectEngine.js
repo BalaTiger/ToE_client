@@ -10,8 +10,9 @@ import {
   isZoneCard,
   isPositiveZoneCard,
   isNegativeZoneCard,
-  isBlackGoatYoung,
   isTsathogguaSlime,
+  isVanishingDerivedCard,
+  splitHandDiscardCards,
   makeInspectionMeta,
   sortInspectionTargets,
   tryVritraImmortal,
@@ -21,7 +22,7 @@ import {
   buildTsathogguaSlimeBalanceDecision,
   cardContainsFireText,
 } from './coreUtils';
-import { buildStatEvents } from './statEvents';
+import { buildStatEvents, createPlayerDefeatedStatEvent } from './statEvents';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { makeProliferatingZState } from './proliferatingZ';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
@@ -345,6 +346,7 @@ function handleInspection(playerIndex, gs) {
   const beforeLogLen = Array.isArray(gs.log) ? gs.log.length : 0;
   let gainedCard = null;
   let gainedCardLog = null;
+  const inspectionDiscardEvents = [];
   let inspectionDamageDecision = null;
   // 检查检定牌堆是否为空，如果为空则洗牌
   if (newGs.inspectionDeck.length === 0) {
@@ -365,21 +367,7 @@ function handleInspection(playerIndex, gs) {
     if (newGs.currentTurn != null && newGs.deck != null && tryVritraImmortal(P, i, newGs.currentTurn, newGs.deck, newGs.discard, L)) {
       return;
     }
-    // 标记待播放死亡特效的角色（用于面板延迟置灰）
-    P[i]._pendingAnimDeath = true;
-    P[i].isDead = true;
-    P[i].roleRevealed = true;
-    L.push(`☠ ${P[i].name}（${P[i].role}）倒下了！`);
-    if (P[i].hand?.length) {
-      newGs.discard.push(...P[i].hand);
-      P[i].hand = [];
-    }
-    if (P[i].godZone?.length) {
-      newGs.discard.push(...P[i].godZone);
-      P[i].godZone = [];
-      P[i].godName = null;
-      P[i].godLevel = 0;
-    }
+    killPlayerState(P, i, newGs.discard, L);
   };
   switch (drawnCard.effect) {
     case 'adjacentDamageHP': {
@@ -442,8 +430,16 @@ function handleInspection(playerIndex, gs) {
       if (P[playerIndex].hand.length > 0) {
         const randomIndex = Math.floor(Math.random() * P[playerIndex].hand.length);
         const discardedCard = P[playerIndex].hand.splice(randomIndex, 1)[0];
-        newGs.discard.push(discardedCard);
+        const { kept, destroyed } = splitHandDiscardCards([discardedCard]);
+        if (kept.length) newGs.discard.push(...kept);
         L.push(`${P[playerIndex].name} 迫害妄想，弃置了一张牌`);
+        if (destroyed.length) L.push(`${P[playerIndex].name} 的衍生牌被销毁`);
+        inspectionDiscardEvents.push({
+          playerIndex,
+          card: discardedCard,
+          afterPlayers: copyPlayers(P),
+          afterDiscard: [...newGs.discard],
+        });
       }
       break;
     }
@@ -543,6 +539,7 @@ function handleInspection(playerIndex, gs) {
     afterDiscard,
     statEvents,
     statEventSeq: statEvents.length ? statEventSeq : null,
+    ...(inspectionDiscardEvents.length ? { discardEvents: inspectionDiscardEvents } : {}),
     ...(gainedCard ? { gainedCard, gainedCardLog } : {}),
   };
   const inspectionVisualEvent = createInspectionVisualEvent(inspectionEvent);
@@ -638,6 +635,7 @@ export function applyInspectionForSanLoss(targetIndex, newSan, startIndex, P, D,
 export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false, avoidNegativeFor = [], isAI = false) {
   let P = copyPlayers(ps), D = [...deck], Disc = [...disc], msgs = [];
   const beforePlayers = copyPlayers(P);
+  const initialDiscard = [...Disc];
   let statePatch = {};
   let inspectionMeta = makeInspectionMeta(gs);
   const pendingInspectionTargets = [];
@@ -727,7 +725,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         const x = 0 | Math.random() * P[i].hand.length;
         const c = P[i].hand.splice(x, 1)[0];
         // 黑山羊幼仔被弃置时销毁，不进入弃牌堆
-        if (isBlackGoatYoung(c) || isTsathogguaSlime(c)) {
+        if (isVanishingDerivedCard(c)) {
           msgs.push(`${P[i].name} 的衍生牌被销毁`);
         } else if (c.type !== 'blankZone') {
           Disc.push(c);
@@ -737,14 +735,16 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           (balance.etherealizeDecision?.pendingLosses || []).forEach(loss => {
             pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, { ...loss, order: damageOrderSeq++ });
           });
+        } else {
+          msgs.push(`${P[i].name} 的空白区域牌消失了`);
+        }
+        if (c.type !== 'blankZone') {
           discardEvents.push({
             playerIndex: i,
             card: c,
             afterPlayers: copyPlayers(P),
             afterDiscard: [...Disc],
           });
-        } else {
-          msgs.push(`${P[i].name} 的空白区域牌消失了`);
         }
       }
     }
@@ -783,6 +783,8 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     return decision;
   };
   const finish = (result, explicitStatEvents = null) => {
+    const beforeDamageSettlementPlayers = copyPlayers(result.P || P);
+    const beforeDamageSettlementDiscard = [...(result.Disc || Disc)];
     settlePendingDamages('batch');
     let linkEtherealizeDecision = null;
     const pendingLinkTarget = (result.P || P).findIndex(player => (
@@ -800,7 +802,14 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       linkEtherealizeDecision = reaction.etherealizeDecision || null;
     }
     const statEventSeq = (gs?._statEventSeq || 0) + 1;
-    const statEvents = explicitStatEvents || buildStatEvents(beforePlayers, result.P || P, result.msgs || msgs, { reason: card?.name || card?.type || '', seq: statEventSeq });
+    const statEvents = explicitStatEvents || buildStatEvents(beforePlayers, result.P || P, result.msgs || msgs, {
+      reason: card?.name || card?.type || '',
+      seq: statEventSeq,
+      discardBefore: initialDiscard,
+      discardAfter: result.Disc || Disc,
+      defeatPlayersBefore: beforeDamageSettlementPlayers,
+      defeatDiscardBefore: beforeDamageSettlementDiscard,
+    });
     const patchedStatEvents = Array.isArray(result.statePatch?._statEvents)
       ? result.statePatch._statEvents
       : [];
@@ -848,22 +857,14 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   const killPlayerByPetrification = (idx) => {
     if (idx == null || !P[idx] || P[idx].isDead) return;
     const target = P[idx];
-    target._pendingAnimDeath = true;
     target._petrified = true;
     target.isDead = true;
     target.roleRevealed = true;
     msgs.push(`☠ ${target.name}（${target.role}）被石化了！`);
-    const kept = [];
-    let destroyed = 0;
-    (target.hand || []).forEach(handCard => {
-      if (isBlackGoatYoung(handCard) || isTsathogguaSlime(handCard)) {
-        destroyed += 1;
-      } else if (handCard.type !== 'blankZone') {
-        kept.push(handCard);
-      }
-    });
+    const deathDiscardCards = (target.hand || []).filter(handCard => handCard?.type !== 'blankZone');
+    const { kept, destroyed } = splitHandDiscardCards(deathDiscardCards);
     if (kept.length) Disc.push(...kept);
-    if (destroyed) msgs.push(`${target.name} 的 ${destroyed} 张衍生牌被销毁`);
+    if (destroyed.length) msgs.push(`${target.name} 的 ${destroyed.length} 张衍生牌被销毁`);
     target.hand = [];
     if (target.godZone?.length) {
       Disc.push(...target.godZone);
@@ -1015,6 +1016,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       }
       const minHp = Math.min(...candidates.map(item => item.player.hp));
       const targetIdx = candidates.find(item => item.player.hp === minHp)?.idx;
+      const beforePetrificationPlayers = copyPlayers(P);
       const beforePetrifyTarget = { ...P[targetIdx] };
       killPlayerByPetrification(targetIdx);
       msgs.push(`【石化配方】场上 HP 最低的 ${beforePetrifyTarget.name} 立即死亡并石化`);
@@ -1047,15 +1049,20 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       });
       const seq = (gs?._statEventSeq || 0) + 1;
       directStatEvents = [
-        {
-          type: 'PETRIFY_DEATH',
+        createPlayerDefeatedStatEvent({
           target: targetIdx,
+          cause: 'petrification',
           from: playerStats(beforePetrifyTarget),
           to: playerStats(P[targetIdx]),
           reason: card?.name || card?.type || '',
+          logHint: msgs.find(line => line.includes(`${beforePetrifyTarget.name}（${beforePetrifyTarget.role}）被石化了`)) || '',
           seq,
           phaseOrder: 0,
-        },
+          playersBefore: beforePetrificationPlayers,
+          playersAfter: copyPlayers(P),
+          discardBefore: initialDiscard,
+          discardAfter: Disc,
+        }),
         ...sanEvents.map(idx => ({
           type: 'SAN_LOSS',
           target: idx,
@@ -1461,7 +1468,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         if (!avoidNegativeFor.includes(i) && P[i]?.hand?.length) {
           const x = 0 | Math.random() * P[i].hand.length;
           const c = P[i].hand.splice(x, 1)[0];
-          if (isBlackGoatYoung(c) || isTsathogguaSlime(c)) {
+          if (isVanishingDerivedCard(c)) {
             msgs.push(`${P[i].name} 的衍生牌被销毁`);
           } else if (c.type !== 'blankZone') {
             Disc.push(c);
@@ -1471,14 +1478,16 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
             (balance.etherealizeDecision?.pendingLosses || []).forEach(loss => {
               pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, { ...loss, order: damageOrderSeq++ });
             });
+          } else {
+            msgs.push(`${P[i].name} 的空白区域牌消失了`);
+          }
+          if (c.type !== 'blankZone') {
             earthquakeDiscardEvents.push({
               playerIndex: i,
               card: c,
               afterPlayers: copyPlayers(P),
               afterDiscard: [...Disc],
             });
-          } else {
-            msgs.push(`${P[i].name} 的空白区域牌消失了`);
           }
         }
       });
@@ -1865,10 +1874,13 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       }
       const target = P[targetIdx];
       if (discardCount > 0 && target.hp <= 5) {
+        const beforeSameAbyssPlayers = copyPlayers(P);
+        const beforeSameAbyssDiscard = [...Disc];
+        const sameAbyssDiscardEvents = [];
         for (let d = 0; d < discardCount; d++) {
           if (target.hand.length > actorHandCount) {
             const c = target.hand.shift();
-            if (isBlackGoatYoung(c) || isTsathogguaSlime(c)) {
+            if (isVanishingDerivedCard(c)) {
               msgs.push(`${target.name} 的衍生牌被销毁`);
             } else if (c.type !== 'blankZone') {
               Disc.push(c);
@@ -1878,9 +1890,31 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
                 pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, { ...loss, order: damageOrderSeq++ });
               });
             }
+            if (c.type !== 'blankZone') {
+              sameAbyssDiscardEvents.push({
+                playerIndex: targetIdx,
+                card: c,
+                afterPlayers: copyPlayers(P),
+                afterDiscard: [...Disc],
+              });
+            }
           }
         }
         msgs.push(`【同归深渊】${target.name} 选择弃置手牌至 ${actorHandCount} 张`);
+        if (sameAbyssDiscardEvents.length) {
+          const event = createCardEffectEvent({
+            effectKey: 'forcedRandomDiscard',
+            card,
+            actorIdx: ci,
+            beforePlayers: beforeSameAbyssPlayers,
+            beforeDiscard: beforeSameAbyssDiscard,
+            afterPlayers: copyPlayers(P),
+            afterDiscard: [...Disc],
+            discardEvents: sameAbyssDiscardEvents,
+            msgs: msgs.slice(),
+          });
+          if (event) statePatch = { ...statePatch, _visualEvents: [...(statePatch._visualEvents || []), event] };
+        }
       } else {
         msgs.push(`【同归深渊】${target.name} 选择承受伤害，失去 4 HP`);
         hurtHP(targetIdx, 4);
@@ -1894,6 +1928,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const topCard = D[0];
       const isZone = isZoneCard(topCard);
       if (isAI) {
+        const sphinxPlayersBefore = copyPlayers(P);
         const guessYes = Math.random() < 0.5;
         msgs.push(`${actor.name} 猜测牌堆顶的牌${guessYes ? '是' : '不是'}区域牌`);
         const actualCard = D.shift();
@@ -1906,13 +1941,14 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           const isTreasureHunter = (actor._nyaBorrow || actor.role) === '寻宝者';
           const dodgeRoll = isTreasureHunter ? 1 + (Math.random() * 6 | 0) : null;
           const sphinxAvoided = dodgeRoll != null && dodgeRoll >= 4;
-          msgs.push(`猜测错误！${actor.name} 即将失去 3 HP`);
+          // 只有真正存在规避结算时才使用“即将失去”。普通角色的伤害会在
+          // 本次结算中直接生效，提前再写一条会和下方最终结果重复。
+          msgs.push(`猜测错误！${actor.name} ${dodgeRoll != null ? '即将失去' : '失去'} 3 HP`);
           if (dodgeRoll != null) {
             P[ci].roleRevealed = true;
             msgs.push(`${actor.name}（寻宝者）掷出 ${dodgeRoll} 点，${sphinxAvoided ? '成功规避负面效果！' : '未能规避，触发负面效果！'}`);
           }
           if (!sphinxAvoided) {
-            msgs.push(`猜测错误！${actor.name} 失去 3 HP`);
             hurtHP(ci, 3);
           }
           Disc.push(actualCard);
@@ -1920,8 +1956,11 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         const sphinxEvent = createSphinxResultEvent({
           actorIdx: ci,
           card: actualCard,
+          sourceCard: card,
           guessCorrect,
           msgs: msgs.slice(),
+          playersBefore: sphinxPlayersBefore,
+          playersAfter: copyPlayers(P),
         });
         if (sphinxEvent) {
           statePatch._visualEvents = [...(statePatch._visualEvents || []), sphinxEvent];

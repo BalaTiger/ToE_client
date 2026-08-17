@@ -27,7 +27,7 @@ export function isTransferLog(line){
 }
 
 export function isDrawLikeLog(line){
-  return new RegExp("摸到 \\[|收入了 \\[|偶遇灵魂|将神牌收入手牌|展示了一张牌顶|这是带有负面效果的区域牌|抽出 \\d+ 点准备看|准备使用两人一绳进行随机居战?").test(line||"");
+  return new RegExp("摸到 \\[|收入了 \\[|偶遇灵魂|将神牌收入手牌|展示了一张牌顶|即将承受.*负面效果|抽出 \\d+ 点准备看|准备使用两人一绳进行随机居战?").test(line||"");
 }
 
 export function splitAnimBoundLogs(lines){

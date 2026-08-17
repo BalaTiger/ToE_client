@@ -147,7 +147,19 @@ export function mergeApophisTargetQueue(queue = [], oldState, nextState, buildQu
         ? queuedTargetStatIndex <= queuedTargetActionIndex
         : queuedTargetDiceIndex <= queuedTargetActionIndex
     ));
-  if (alreadyHasCompleteTransaction && alreadyOrdered) return queue || [];
+  if (alreadyHasCompleteTransaction && alreadyOrdered) {
+    if (!targetEvent?.id || (queue || []).some(step => step?.visualEventId === targetEvent.id)) {
+      return queue || [];
+    }
+    // A legacy-composed roll can be structurally complete while carrying no
+    // canonical ownership id. Preserve its established order, but bind every
+    // step owned by this target transaction so strict coverage can consume it.
+    return (queue || []).map(step => (
+      step?._apophisTargetSeq === seq || isTargetStatStep(step)
+        ? { ...step, visualEventId: targetEvent.id }
+        : step
+    ));
+  }
   let insertionIndex = null;
   const baseQueue = (queue || []).filter((step, index) => {
     if (step?._apophisTargetSeq === seq) {

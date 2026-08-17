@@ -41,7 +41,6 @@ export function makePlayer(overrides = {}) {
     disableRestNextTurn: false,
     disableSkillNextTurn: false,
     handLimitDecreaseNextTurn: 0,
-    _pendingAnimDeath: false,
     ...overrides,
   };
 }

@@ -31,7 +31,9 @@ const NO_OVERLAY_TYPES = new Set([
 ]);
 
 const ANIM_RENDERERS = {
-  YOUR_TURN: ({ anim }) => <YourTurnAnim name={anim.name} local={!!anim.local} />,
+  // Consecutive turn banners must remount so the CSS fade animation restarts.
+  // Every queued step receives a unique playback id at the playback boundary.
+  YOUR_TURN: ({ anim }) => <YourTurnAnim key={anim._playbackId} name={anim.name} local={!!anim.local} />,
   DRAW_CARD: ({ anim, exiting, expansionKey }) => (
     <CardFlipAnim
       key={[

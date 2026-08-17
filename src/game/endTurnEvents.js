@@ -1,5 +1,6 @@
 import { hasGodPowerImmunity } from './godPowerImmunity';
 import { GOD_DEFS } from '../constants/card';
+import { isVanishingDerivedCard } from './coreUtils';
 
 export const END_TURN_PRIORITY = {
   ACTIVE_GOD: 1,
@@ -32,7 +33,9 @@ export function getTsgSlimeGrantCount(player) {
 export function getEndTurnReplayHandCards(player) {
   const handCards = [...(player?.hand || [])];
   const corridorIndex = handCards.findIndex(card => card?.type === END_TURN_EVENT.END_TURN_REPLAY_HAND);
-  return corridorIndex > 0 ? handCards.slice(0, corridorIndex).filter(card => card?.id != null) : [];
+  return corridorIndex > 0
+    ? handCards.slice(0, corridorIndex).filter(card => card?.id != null && !isVanishingDerivedCard(card))
+    : [];
 }
 
 export function getEndTurnEvents(players = [], actorIndex = 0) {

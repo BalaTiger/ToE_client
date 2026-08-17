@@ -11,12 +11,13 @@ import {
 import {
   buildTsathogguaSlimeBalanceDecision,
   copyPlayers,
-  isBlackGoatYoung,
+  splitHandDiscardCards,
   isTsathogguaSlime,
   killPlayerState,
   tryVritraImmortal,
   makeInspectionMeta,
 } from './coreUtils';
+import { createCardEffectEvent } from './visualEvents';
 import { applyHpDamageWithLink, applyInspectionForSanLoss, resolvePendingDamageLinkBreak, submitDamageEvents } from './effectEngine';
 import { deriveEffectDecisionState } from './effectStatePatch';
 import { initGame } from './setup';
@@ -475,12 +476,24 @@ export function resolveHeadlessSameAbyss(gs) {
   const target = P[targetIdx];
   if (!target) return null;
   const beforeLossPlayers = copyPlayers(P);
+  const beforeLossDiscard = [...Disc];
+  const discardEvents = [];
 
   const canDiscard = discardCount > 0 && target.hand.length > actorHandCount;
   if (canDiscard) {
     for (let count = 0; count < discardCount && target.hand.length > actorHandCount; count++) {
       const card = target.hand.shift();
-      if (!isBlackGoatYoung(card) && !isTsathogguaSlime(card) && card?.type !== 'blankZone') Disc.push(card);
+      const { kept, destroyed } = splitHandDiscardCards([card]);
+      if (card?.type !== 'blankZone') {
+        Disc.push(...kept);
+        if (destroyed.length) L.push(`${target.name} 的衍生牌被销毁`);
+        discardEvents.push({
+          playerIndex: targetIdx,
+          card,
+          afterPlayers: copyPlayers(P),
+          afterDiscard: [...Disc],
+        });
+      }
     }
     L.push(`【同归深渊】${target.name} 选择弃置手牌至 ${actorHandCount} 张`);
   } else {
@@ -508,6 +521,17 @@ export function resolveHeadlessSameAbyss(gs) {
   const slimeDecision = win
     ? null
     : buildTsathogguaSlimeBalanceDecision(beforeLossPlayers, P, { _turnOwner: turnOwner });
+  const discardEvent = discardEvents.length ? createCardEffectEvent({
+    effectKey: 'forcedRandomDiscard',
+    card: { name: '同归深渊', type: 'sameAbyssChoice' },
+    actorIdx: gs.abilityData?.actorIdx ?? gs.currentTurn,
+    beforePlayers: beforeLossPlayers,
+    beforeDiscard: beforeLossDiscard,
+    afterPlayers: copyPlayers(P),
+    afterDiscard: [...Disc],
+    discardEvents,
+    msgs: L.slice(gs.log.length),
+  }) : null;
   return {
     ...gs,
     players: P,
@@ -517,6 +541,7 @@ export function resolveHeadlessSameAbyss(gs) {
     currentTurn: turnOwner,
     phase: slimeDecision ? 'TSG_SLIME_BALANCE' : 'AI_TURN',
     abilityData: slimeDecision || {},
+    ...(discardEvent ? { _visualEvents: [...(gs._visualEvents || []), discardEvent] } : {}),
     ...(win ? { gameOver: win } : {}),
   };
 }

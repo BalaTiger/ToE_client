@@ -117,6 +117,16 @@ function sameCard(left, right) {
     (left.key && right.key && left.key === right.key && left.name === right.name);
 }
 
+function addCardToPlayerSnapshot(players = [], playerIdx = 0, card = null, { prepend = false } = {}) {
+  if (!Array.isArray(players) || !card || !players[playerIdx]) return players;
+  return copyPlayers(players).map((player, idx) => idx === playerIdx ? {
+    ...player,
+    hand: (player.hand || []).some(candidate => sameCard(candidate, card))
+      ? [...(player.hand || [])]
+      : (prepend ? [card, ...(player.hand || [])] : [...(player.hand || []), card]),
+  } : player);
+}
+
 function sameStatEvents(left = [], right = []) {
   const a = Array.isArray(left) ? left : [];
   const b = Array.isArray(right) ? right : [];
@@ -406,10 +416,24 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
     case VISUAL_EVENT.HUNT_RESULT:
       return buildAiHuntEventAnimQueue(event, state?.players?.[event.hunterIdx]?.name || '???');
     case VISUAL_EVENT.SPHINX_RESULT: {
+      const playersBeforeResult = addCardToPlayerSnapshot(
+        event.playersBefore || previousState?.players || state?.players || [],
+        event.actorIdx,
+        event.sourceCard,
+        { prepend: true },
+      );
+      const playersAfterResult = event.guessCorrect && (Array.isArray(event.playersAfter) || event.sourceCard)
+        ? addCardToPlayerSnapshot(
+            event.playersAfter || state?.players || [],
+            event.actorIdx,
+            event.sourceCard,
+            { prepend: true },
+          )
+        : null;
       const resultQueue = Array.isArray(event.statEvents)
         ? statEventsToAnimQueue(
             event.statEvents,
-            event.playersBefore || previousState?.players || state?.players || [],
+            playersBeforeResult,
             event.msgs || [],
           )
         : typeof options.buildAnimQueue === 'function' && !event.guessCorrect
@@ -421,6 +445,7 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
         guessCorrect: !!event.guessCorrect,
         msgs: event.msgs || [],
         resultQueue,
+        playersAfterResult,
       });
     }
     case VISUAL_EVENT.BEWITCH_GIFT: {

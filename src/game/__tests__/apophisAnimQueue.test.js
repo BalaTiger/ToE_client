@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { attachApophisNightTimeline, buildApophisTargetQueueForState, mergeApophisTargetQueue, normalizeApophisQueueForPlayback } from '../apophisAnimQueue';
+import { createApophisTargetVisualEvent } from '../visualEvents';
 
 describe('apophisAnimQueue', () => {
   it('无日食变化的动画队列全程保持最终权威进度', () => {
@@ -365,7 +366,7 @@ describe('apophisAnimQueue', () => {
       dice,
       { type: 'SKILL_HUNT', targetIdx: 2 },
       { type: 'HUNT_REVEAL_CARD' },
-      { type: 'ANIM_LOG', msgs: ['放弃追捕 艾伦'] },
+      { type: 'ANIM_LOG', msgs: ['卡洛斯（追猎者）放弃追捕 艾伦'] },
     ];
     const nextState = { _apophisTargetSeq: 7, _apophisTargetEvent: latestEvent };
     const buildQueue = () => [{ ...dice }];
@@ -374,6 +375,45 @@ describe('apophisAnimQueue', () => {
 
     expect(merged).toBe(queue);
     expect(merged.filter(step => step.type === 'DICE_ROLL' && step._apophisTargetSeq === 7)).toHaveLength(1);
+  });
+
+  it('已有旧式黑夜骰子时补绑 canonical visualEventId', () => {
+    const targetEvent = {
+      seq: 7,
+      actorIdx: 1,
+      actorName: '艾伦',
+      selectedIdx: 2,
+      targetIdx: 2,
+      roll: 4,
+      changed: false,
+      label: '选择【追捕】目标',
+      log: '【黑夜】艾伦 选择【追捕】目标掷出 4，目标未偏移',
+    };
+    const visualEvent = createApophisTargetVisualEvent(targetEvent);
+    const legacyDice = {
+      type: 'DICE_ROLL',
+      diceMode: 'apophisNight',
+      d1: 4,
+      _apophisTargetSeq: 7,
+      msgs: [targetEvent.log],
+    };
+    const queue = [legacyDice, { type: 'SKILL_HUNT', targetIdx: 2 }];
+    const nextState = {
+      _apophisTargetSeq: 7,
+      _apophisTargetEvent: targetEvent,
+      _visualEvents: [visualEvent],
+    };
+    const canonicalDice = { ...legacyDice, visualEventId: visualEvent.id };
+
+    const merged = mergeApophisTargetQueue(
+      queue,
+      { _apophisTargetSeq: 6, _visualEvents: [] },
+      nextState,
+      () => [canonicalDice],
+    );
+
+    expect(merged.map(step => step.type)).toEqual(['DICE_ROLL', 'SKILL_HUNT']);
+    expect(merged[0]).toMatchObject({ visualEventId: visualEvent.id, _apophisTargetSeq: 7 });
   });
 
   it('已分段的 AI 总队列在播放边界保持掉包、无尽通道和斯芬克斯的既定顺序', () => {

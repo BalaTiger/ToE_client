@@ -7,6 +7,7 @@ import {
 } from '../animQueueCore';
 import { dedupeInferredDiscardTransfers } from '../animQueueHelpers';
 import { copyPlayers } from '../coreUtils';
+import { buildStatEvents } from '../statEvents';
 import { buildFreshStatVisualEvents, createCardEffectEvent, createEarthquakeEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent, createRandomTargetVisualEvent } from '../visualEvents';
 import { makeGodCard, makeGs, makePlayer } from './factory';
 
@@ -330,7 +331,6 @@ describe('buildAnimQueue stat animations', () => {
         { seq: 8, type: 'SAN_LOSS', target: 0, from: { hp: 6, san: 8 }, to: { hp: 6, san: 6 }, logHint: playerGoatLog },
       ],
     });
-
     const queue = buildAnimQueue(oldGs, newGs);
 
     expect(queue.filter(step => step.type === 'HP_HEAL')).toHaveLength(0);
@@ -416,7 +416,7 @@ describe('buildAnimQueue stat animations', () => {
     const newGs = makeGs({
       players: [
         makePlayer({ name: '卡洛斯', hp: 9 }),
-        makePlayer({ name: '黛安娜', hp: 0, role: '邪祀者', isDead: true }),
+        makePlayer({ name: '黛安娜', hp: 0, role: '邪祀者', isDead: true, roleRevealed: true }),
       ],
       log: [
         '旧日志',
@@ -424,6 +424,10 @@ describe('buildAnimQueue stat animations', () => {
         '卡洛斯 回复了 3 HP，相邻角色各失去 2 HP',
         '☠ 黛安娜（邪祀者）倒下了！',
       ],
+    });
+    newGs._statEventSeq = 1;
+    newGs._statEvents = buildStatEvents(oldGs.players, newGs.players, newGs.log.slice(1), {
+      reason: '偷吃龙蛋', seq: 1, discardBefore: oldGs.discard, discardAfter: newGs.discard,
     });
 
     const queue = buildAnimQueue(oldGs, newGs);
@@ -434,7 +438,46 @@ describe('buildAnimQueue stat animations', () => {
     expect(guillotine?.msgs).toEqual(['☠ 黛安娜（邪祀者）倒下了！']);
   });
 
-  it('非追捕死亡在断头台与死亡置灰之间显式弃置手牌和邪神牌', () => {
+  it('alive→dead 快照差异本身不再生成死亡动画', () => {
+    const oldGs = makeGs({ players: [makePlayer({ hp: 2 })], log: [] });
+    const newGs = makeGs({
+      players: [makePlayer({ hp: 0, isDead: true, roleRevealed: true })],
+      log: ['☠ 你（寻宝者）倒下了！'],
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+
+    expect(queue.map(step => step.type)).not.toContain('GUILLOTINE');
+    expect(queue.map(step => step.type)).not.toContain('DEATH');
+  });
+
+  it('显式衍生牌弃置事件使用 DISCARD，且不再推断黏液消失动画', () => {
+    const slime = { id: 'forced-slime', name: '赐福黏液', type: 'tsathogguaSlime', isTsathogguaSlime: true };
+    const beforePlayers = [makePlayer({ name: '你', hand: [slime] })];
+    const afterPlayers = [makePlayer({ name: '你', hand: [] })];
+    const oldGs = makeGs({ players: beforePlayers, discard: [], log: [] });
+    const event = createCardEffectEvent({
+      effectKey: 'forcedRandomDiscard',
+      actorIdx: 0,
+      beforePlayers,
+      beforeDiscard: [],
+      afterPlayers,
+      afterDiscard: [],
+      discardEvents: [{ playerIndex: 0, card: slime, afterPlayers, afterDiscard: [] }],
+      msgs: ['你的衍生牌被销毁'],
+    });
+    const newGs = { ...oldGs, players: afterPlayers, _visualEvents: [event], log: event.msgs };
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    const visibleSteps = queue.flatMap(step => Array.isArray(step.steps) ? step.steps : [step]);
+
+    expect(visibleSteps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'DISCARD', card: slime, targetPid: 0 }),
+    ]));
+    expect(queue.some(step => step.type === 'TSG_SLIME_POP')).toBe(false);
+  });
+
+  it('非追捕死亡由 canonical 事件按伤害、断头台、死亡、弃牌、终态提交', () => {
     const handCard = { id: 'dead-hand', key: 'A1', name: '坠落' };
     const godCard = { id: 'dead-god', key: 'GOD', name: '邪神牌', isGod: true };
     const oldGs = makeGs({
@@ -448,10 +491,14 @@ describe('buildAnimQueue stat animations', () => {
     const newGs = makeGs({
       players: [makePlayer({
         name: '黛安娜', hp: 0, role: '邪祀者', isDead: true,
-        _pendingAnimDeath: true, hand: [], godName: null, godLevel: 0, godZone: [],
+        hand: [], godName: null, godLevel: 0, godZone: [], roleRevealed: true,
       })],
       discard: [handCard, godCard],
       log: ['旧日志', '☠ 黛安娜（邪祀者）倒下了！'],
+    });
+    newGs._statEventSeq = 1;
+    newGs._statEvents = buildStatEvents(oldGs.players, newGs.players, newGs.log.slice(1), {
+      reason: '测试致死', seq: 1, discardBefore: oldGs.discard, discardAfter: newGs.discard,
     });
 
     const queue = buildAnimQueue(oldGs, newGs);
@@ -460,19 +507,46 @@ describe('buildAnimQueue stat animations', () => {
     const deathIdx = queue.findIndex(step => step.type === 'DEATH');
 
     expect(guillotineIdx).toBeGreaterThanOrEqual(0);
-    expect(discardIdx).toBeGreaterThan(guillotineIdx);
-    expect(deathIdx).toBeGreaterThan(discardIdx);
+    expect(deathIdx).toBe(guillotineIdx + 1);
+    expect(discardIdx).toBeGreaterThan(deathIdx);
     expect(queue[discardIdx]).toMatchObject({
       targetPid: 0,
       cards: [handCard, godCard],
       count: 2,
     });
     expect(queue[discardIdx].visualSetupPatch.players[0]).toMatchObject({
-      _pendingAnimDeath: true,
+      isDead: true,
       hand: [handCard],
       godName: 'CTH',
       godZone: [godCard],
     });
+  });
+
+  it('死亡弃置会播放衍生牌动画，但最终弃牌堆不包含衍生牌', () => {
+    const normal = { id: 'death-normal', key: 'A1', name: '普通牌' };
+    const derived = { id: 'death-derived', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const oldGs = makeGs({
+      players: [makePlayer({ name: '黛安娜', hp: 1, hand: [normal, derived] })],
+      discard: [],
+      log: [],
+    });
+    const newGs = makeGs({
+      players: [makePlayer({
+        name: '黛安娜', hp: 0, isDead: true, roleRevealed: true, hand: [],
+      })],
+      discard: [normal],
+      log: ['☠ 黛安娜倒下了！', '黛安娜 的 1 张衍生牌被销毁'],
+    });
+    newGs._statEventSeq = 1;
+    newGs._statEvents = buildStatEvents(oldGs.players, newGs.players, newGs.log, {
+      reason: '测试致死', seq: 1, discardBefore: oldGs.discard, discardAfter: newGs.discard,
+    });
+
+    const queue = buildAnimQueue(oldGs, newGs);
+    const discardStep = queue.find(step => step.type === 'DISCARD' && step.deathSettlementStep);
+
+    expect(discardStep?.cards).toEqual([normal, derived]);
+    expect(discardStep?.visualTimeline.at(-1).patch.discard).toEqual([normal]);
   });
 
   it('投掷石块会先播放骰子，再播放转盘，最后播放扣血', () => {
@@ -1646,6 +1720,9 @@ describe('buildAiHuntEventAnimQueue', () => {
       makePlayer({ name: '卡洛斯', hp: 9, hand: [] }),
       makePlayer({ name: '艾伦', hp: 6 }),
     ];
+    const statEvents = buildStatEvents(afterDiscardPlayers, afterPlayers, ['弃 [D1] 钻地魔虫 → 艾伦 受 3HP 伤害'], {
+      reason: '追捕', seq: 1, defeatSettlementOwner: 'huntResult',
+    });
 
     const queue = buildAiHuntEventAnimQueue({
       hunterIdx: 1,
@@ -1656,6 +1733,7 @@ describe('buildAiHuntEventAnimQueue', () => {
       afterDiscardDiscard: [hunterDiscard],
       afterPlayers,
       afterResultDiscard: [hunterDiscard],
+      statEvents,
       beforeLog: ['旧日志'],
       afterLog: ['旧日志', '弃 [D1] 钻地魔虫 → 艾伦 受 3HP 伤害'],
       msgs: ['弃 [D1] 钻地魔虫 → 艾伦 受 3HP 伤害'],
@@ -1684,11 +1762,12 @@ describe('buildAiHuntEventAnimQueue', () => {
       makePlayer({ name: '卡洛斯', hp: 9, hand: [] }),
       makePlayer({ name: '艾伦', hp: 3, hand: [stolenA, stolenB, leftover] }),
     ];
-    const afterDamagePlayers = [
-      makePlayer({ name: '你' }),
-      makePlayer({ name: '卡洛斯', hp: 9, hand: [] }),
-      makePlayer({ name: '艾伦', hp: 0, isDead: true, _pendingAnimDeath: true, hand: [stolenA, stolenB, leftover] }),
-    ];
+    const rulesAfterDamage = copyPlayers(afterDiscardPlayers);
+    rulesAfterDamage[2] = { ...rulesAfterDamage[2], hp: 0, isDead: true, roleRevealed: true, hand: [] };
+    const statEvents = buildStatEvents(afterDiscardPlayers, rulesAfterDamage, ['☠ 艾伦（邪祀者）倒下了！'], {
+      reason: '追捕', seq: 1, defeatSettlementOwner: 'huntResult',
+    });
+    const afterDamagePlayers = copyPlayers(statEvents.find(event => event.type === 'PLAYER_DEFEATED').committedPlayers);
     const afterPlayers = [
       makePlayer({ name: '你' }),
       makePlayer({ name: '卡洛斯', hp: 9, hand: [stolenA, stolenB] }),
@@ -1710,6 +1789,7 @@ describe('buildAiHuntEventAnimQueue', () => {
         '弃 [D1] 钻地魔虫 → 艾伦 受 3HP 伤害！',
         '☠ 艾伦（邪祀者）倒下了！',
       ],
+      statEvents,
       afterPlayers,
       afterResultDiscard: [hunterDiscard, leftover],
       beforeLog: ['旧日志'],
@@ -1733,6 +1813,7 @@ describe('buildAiHuntEventAnimQueue', () => {
     }, '卡洛斯');
 
     const types = queue.map(step => step.type);
+    const firstPlayersSetup = queue.find(step => Array.isArray(step.visualSetupPatch?.players));
     const damageIdx = types.indexOf('HP_DAMAGE');
     const guillotineIdx = types.indexOf('GUILLOTINE');
     const deathIdx = types.indexOf('DEATH');
@@ -1749,6 +1830,10 @@ describe('buildAiHuntEventAnimQueue', () => {
     expect(hunterDiscardSteps).toHaveLength(1);
     expect(hunterDiscardSteps[0]).toMatchObject({ targetPid: 1 });
     expect(prematureTargetDiscardSteps).toHaveLength(0);
+    expect(firstPlayersSetup.visualSetupPatch.players[2]).toMatchObject({
+      isDead: false,
+      hand: [stolenA, stolenB, leftover],
+    });
 
     expect(guillotineIdx).toBeGreaterThan(-1);
     expect(guillotineIdx).toBeGreaterThan(damageIdx);
@@ -1777,11 +1862,14 @@ describe('buildAiHuntEventAnimQueue', () => {
     ];
     const afterDiscardPlayers = copyPlayers(beforePlayers);
     afterDiscardPlayers[1].hand = [];
-    const afterDamagePlayers = copyPlayers(afterDiscardPlayers);
-    afterDamagePlayers[2] = { ...afterDamagePlayers[2], hp: 0, isDead: true, _pendingAnimDeath: true, godName: null, godLevel: 0, godZone: [] };
-    const afterPlayers = copyPlayers(afterDamagePlayers);
+    const rulesAfterDamage = copyPlayers(afterDiscardPlayers);
+    rulesAfterDamage[2] = { ...rulesAfterDamage[2], hp: 0, isDead: true, roleRevealed: true, hand: [], godName: null, godLevel: 0, godZone: [] };
+    const statEvents = buildStatEvents(afterDiscardPlayers, rulesAfterDamage, ['☠ 艾伦（邪祀者）倒下了！'], {
+      reason: '追捕', seq: 1, defeatSettlementOwner: 'huntResult',
+    });
+    const afterDamagePlayers = copyPlayers(statEvents.find(event => event.type === 'PLAYER_DEFEATED').committedPlayers);
+    const afterPlayers = copyPlayers(rulesAfterDamage);
     afterPlayers[1].hand = [stolen];
-    afterPlayers[2] = { ...afterPlayers[2], hand: [], _pendingAnimDeath: false };
 
     const queue = buildAiHuntEventAnimQueue({
       hunterIdx: 1,
@@ -1793,6 +1881,7 @@ describe('buildAiHuntEventAnimQueue', () => {
       afterDamagePlayers,
       afterDamageDiscard: [hunterDiscard, defeatedGod],
       afterDamageLog: ['旧日志', '☠ 艾伦（邪祀者）倒下了！'],
+      statEvents,
       afterPlayers,
       afterResultDiscard: [hunterDiscard, leftover, defeatedGod],
       beforeLog: ['旧日志'],

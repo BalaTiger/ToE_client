@@ -46,7 +46,6 @@ export function useAnimationQueue({
   appendVisibleLog,
   getVisualDiscardForState,
   resolveTurnHighlightForStep,
-  clearPendingAnimDeathFlags,
   prepareAnimQueueLogs,
   startNextTurn,
   applyNextTurnGs,
@@ -89,37 +88,6 @@ export function useAnimationQueue({
     if (Array.isArray(animStep._logChunk) && animStep._logChunk.length) {
       appendVisibleLog(animStep._logChunk);
     }
-  }
-
-  function commitDeathPresentation(animStep) {
-    if (
-      animStep?.type !== 'DEATH'
-      || !Array.isArray(animStep.hitIndices)
-      || !animStep.hitIndices.length
-    ) return;
-    const deathIndices = new Set(animStep.hitIndices);
-    const clearDeaths = players => (players || []).map((player, index) => (
-      deathIndices.has(index) && player?._pendingAnimDeath
-        ? { ...player, _pendingAnimDeath: false }
-        : player
-    ));
-
-    // DEATH begins after the guillotine/petrify effect. Dim the panel when
-    // its death broadcast appears, without waiting for a chained action.
-    setGs(prev => prev?.players ? { ...prev, players: clearDeaths(prev.players) } : prev);
-    if (setVisualPlayersOverride) {
-      setVisualPlayersOverride(prev => prev ? clearDeaths(prev) : prev);
-    }
-    visualStateLocks.updatePlayers?.(clearDeaths);
-    if (pendingGsRef.current?.players) {
-      pendingGsRef.current = {
-        ...pendingGsRef.current,
-        players: clearDeaths(pendingGsRef.current.players),
-      };
-    }
-    animQueueRef.current = animQueueRef.current.map(step => (
-      step?.players ? { ...step, players: clearDeaths(step.players) } : step
-    ));
   }
 
   function applyVisualPatch(patch = {}) {
@@ -256,7 +224,6 @@ export function useAnimationQueue({
         sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.STEP_ADVANCED);
         setAnim(displayStep);
         revealAnimLogs(displayStep);
-        commitDeathPresentation(displayStep);
       }
     } else {
       sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.COMMIT_STARTED);
@@ -301,12 +268,6 @@ export function useAnimationQueue({
         }
         setGs(prev => {
           if (prev?.gameOver || prev?.phase === 'PLAYER_WIN_PENDING' || prev?.phase === 'TREASURE_WIN') return prev;
-          const preservePendingDeathPid = normalizedNext?.phase === 'HUNT_SELECT_CARD_FROM_PUBLIC'
-            ? (normalizedNext?.abilityData?.huntTi ?? null)
-            : null;
-          if (normalizedNext?.players) {
-            return { ...normalizedNext, players: clearPendingAnimDeathFlags(normalizedNext.players, preservePendingDeathPid) };
-          }
           return normalizedNext;
         });
       }
@@ -402,8 +363,6 @@ export function useAnimationQueue({
       gs?.apophisNight,
       nextGs?.apophisNight,
     );
-    const hasDeathAnim = normalizedQueue.some(a => a.type === 'DEATH' || a.type === 'GUILLOTINE');
-    const pendingDeathPlayers = nextGs?.players?.filter(p => p._pendingAnimDeath)?.map((_, i) => i) || [];
     if (
       nextGs?.phase === 'AI_TURN' &&
       Array.isArray(normalizedQueue) &&
@@ -428,29 +387,12 @@ export function useAnimationQueue({
         const normalizedNextGs = normalizePendingState(nextGs);
         if (nextGs?.log) syncVisibleLog(nextGs.log);
         syncDisplayStatsFromState(normalizedNextGs);
-        if (hasDeathAnim && pendingDeathPlayers.length) {
-          setGs({ ...normalizedNextGs });
-        } else {
-          setGs(normalizedNextGs);
-        }
+        setGs(normalizedNextGs);
       }
       return;
     }
 
-    const wrappedCallback = hasDeathAnim && pendingDeathPlayers.length ? () => {
-      const preservePendingDeathPid = nextGs?.phase === 'HUNT_SELECT_CARD_FROM_PUBLIC'
-        ? (nextGs?.abilityData?.huntTi ?? null)
-        : null;
-      const cleanedPlayers = clearPendingAnimDeathFlags(nextGs.players, preservePendingDeathPid);
-      const finalGs = normalizePendingState({ ...nextGs, players: cleanedPlayers });
-      if (callback) {
-        callback();
-      } else {
-        if (finalGs.log) syncVisibleLog(finalGs.log);
-        syncDisplayStatsFromState(finalGs);
-        setGs(finalGs);
-      }
-    } : callback;
+    const wrappedCallback = callback;
 
     visibleLogAuthorityRef.current = Array.isArray(nextGs?.log) ? nextGs.log : (Array.isArray(visibleLogAuthorityRef.current) ? visibleLogAuthorityRef.current : []);
     const timedQueue = normalizedQueue.map(step => resolveAnimationStepTiming(step, {
@@ -512,7 +454,6 @@ export function useAnimationQueue({
       : playableQueue[0];
     setAnim(firstStep);
     revealAnimLogs(firstStep);
-    commitDeathPresentation(firstStep);
   }
 
   return {

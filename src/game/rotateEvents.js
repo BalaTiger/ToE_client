@@ -17,6 +17,9 @@ export function rotateStatEvent(statEvent, rotateIndex, myIndex) {
     target: statEvent?.target != null ? rotateIndex(statEvent.target) : statEvent?.target,
     pair: Array.isArray(statEvent?.pair) ? statEvent.pair.map(rotateIndex) : statEvent?.pair,
     players: rotatePlayersArray(statEvent?.players, myIndex),
+    playersBefore: rotatePlayersArray(statEvent?.playersBefore, myIndex),
+    committedPlayers: rotatePlayersArray(statEvent?.committedPlayers, myIndex),
+    playersAfter: rotatePlayersArray(statEvent?.playersAfter, myIndex),
   };
 }
 

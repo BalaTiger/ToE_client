@@ -42,6 +42,25 @@ describe('endTurnEvents', () => {
     expect(getEndTurnReplayHandCards(player).map(card => card.id)).toEqual(['left-a', 'left-b']);
   });
 
+  it('filters derived cards left of endless corridor from end-turn replay', () => {
+    const goat = { id: 'goat', isBlackGoatYoung: true };
+    const slime = { id: 'slime', isTsathogguaSlime: true };
+    const restore = { id: 'restore', isGeomagneticRestore: true };
+    const playable = leftCard('playable');
+    const player = makePlayer({ hand: [goat, slime, restore, playable, corridor()] });
+
+    expect(getEndTurnReplayHandCards(player).map(card => card.id)).toEqual(['playable']);
+  });
+
+  it('does not register endless corridor when only derived cards are on its left', () => {
+    const player = makePlayer({
+      hand: [{ id: 'goat', isBlackGoatYoung: true }, corridor()],
+    });
+
+    expect(hasEndTurnReplayHandEvent([player], 0)).toBe(false);
+    expect(getEndTurnEvents([player], 0)).toEqual([]);
+  });
+
   it('sorts active god events before passive card events', () => {
     const left = makeZoneCard('A1', 0, { id: 'left' });
     const player = makePlayer({

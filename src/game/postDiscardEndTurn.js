@@ -76,7 +76,7 @@ export function resolvePostDiscardEndTurn(baseGs, {
     ? createHandLimitDiscardEvent({
         playerIdx: actorIndex,
         playerName: P[actorIndex]?.name || '该玩家',
-        cards: kept.length ? kept : discarded,
+        cards: discarded,
         msgs: discardAnimMsgs,
       })
     : null;

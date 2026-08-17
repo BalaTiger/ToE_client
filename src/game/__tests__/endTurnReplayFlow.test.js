@@ -7,6 +7,7 @@ import {
   buildEndTurnReplayZoneDraw,
   endlessCorridorTunnelStep,
   getCurrentEndTurnReplayCard,
+  resolveEndTurnReplayDiscard,
 } from '../endTurnReplayFlow';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
@@ -202,6 +203,39 @@ describe('endTurnReplayFlow', () => {
       abilityData: {},
       _endTurnReplay: null,
     }));
+  });
+
+  it('destroys a derived card discarded by a stale end-turn replay state', () => {
+    const derived = { id: 'derived', name: '黑山羊幼仔', isBlackGoatYoung: true };
+    const player = makePlayer({ hand: [derived] });
+    const oldDiscard = [makeZoneCard('A1', 0, { id: 'old-discard' })];
+
+    const result = resolveEndTurnReplayDiscard({
+      players: [player],
+      discard: oldDiscard,
+      actorIndex: 0,
+      card: derived,
+    });
+
+    expect(result.destroyed).toBe(true);
+    expect(result.players[0].hand).toEqual([]);
+    expect(result.discard).toEqual(oldDiscard);
+  });
+
+  it('keeps normal replay discards in the discard pile', () => {
+    const card = makeZoneCard('A1', 0, { id: 'normal' });
+    const player = makePlayer({ hand: [card] });
+
+    const result = resolveEndTurnReplayDiscard({
+      players: [player],
+      discard: [],
+      actorIndex: 0,
+      card,
+    });
+
+    expect(result.destroyed).toBe(false);
+    expect(result.players[0].hand).toEqual([]);
+    expect(result.discard).toEqual([card]);
   });
   it('uses SAN cost for unrevealed cultist replay encounters', () => {
     const god = makeGodCard('CTH', { id: 'god' });

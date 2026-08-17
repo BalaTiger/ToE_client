@@ -46,9 +46,9 @@ export const isZoneCard = (card) => !!card?.isZone;
 
 export const isBlankZoneCard = (card) => card?.type === 'blankZone';
 
-export const isBlackGoatYoung = (card) => !!card?.isBlackGoatYoung;
-export const isTsathogguaSlime = (card) => !!card?.isTsathogguaSlime;
-export const isGeomagneticRestore = (card) => !!card?.isGeomagneticRestore;
+export const isBlackGoatYoung = (card) => !!card?.isBlackGoatYoung || card?.type === 'blackGoatYoung';
+export const isTsathogguaSlime = (card) => !!card?.isTsathogguaSlime || card?.type === 'tsathogguaSlime';
+export const isGeomagneticRestore = (card) => !!card?.isGeomagneticRestore || card?.type === 'geomagneticRestore';
 export const isVanishingDerivedCard = (card) => isBlackGoatYoung(card) || isTsathogguaSlime(card) || isGeomagneticRestore(card);
 export const canRevealForHunt = (card) => !!card && !isBlackGoatYoung(card) && !isTsathogguaSlime(card);
 export const isRevealedCultist = (player) => ((player?._nyaBorrow || player?.role) === ROLE_CULTIST) && !!player?.roleRevealed;
@@ -160,16 +160,21 @@ export function buildEtherealizeRedirectDecision(pendingLosses, extra = {}) {
   };
 }
 
-export const separateBlackGoatYoung = (cards) => {
-  if (!cards) return { kept: [], destroyed: [] };
+export const splitHandDiscardCards = (cards) => {
+  const animationCards = Array.isArray(cards) ? cards.filter(Boolean) : [];
   const kept = [];
   const destroyed = [];
-  for (const c of cards) {
+  for (const c of animationCards) {
     if (isVanishingDerivedCard(c)) destroyed.push(c);
     else kept.push(c);
   }
-  return { kept, destroyed };
+  return { kept, destroyed, animationCards };
 };
+
+// Backward-compatible name used by death/loot settlement. New discard paths
+// should prefer splitHandDiscardCards so the animation-only card list is not
+// accidentally confused with the cards that actually enter the discard pile.
+export const separateBlackGoatYoung = (cards) => splitHandDiscardCards(cards);
 
 export function tryVritraImmortal(P, i, currentTurn, D, Disc, L) {
   if (currentTurn == null || D == null || currentTurn === i) return false;
@@ -388,11 +393,10 @@ export const getNextLivingIndex = (players, ci) => {
 
 export function killPlayerState(P, i, Disc, L) {
   if (i == null || !P[i] || P[i].isDead) return;
-  P[i]._pendingAnimDeath = true;
   P[i].isDead = true;
   P[i].roleRevealed = true;
   L.push(`☠ ${P[i].name}（${P[i].role}）倒下了！`);
-  const { kept, destroyed } = separateBlackGoatYoung(P[i].hand);
+  const { kept, destroyed } = splitHandDiscardCards(P[i].hand);
   if (kept.length) Disc.push(...kept);
   if (destroyed.length) L.push(`${P[i].name} 的 ${destroyed.length} 张衍生牌被销毁`);
   P[i].hand = [];
@@ -402,14 +406,6 @@ export function killPlayerState(P, i, Disc, L) {
     P[i].godName = null;
     P[i].godLevel = 0;
   }
-}
-
-export function clearPendingAnimDeathFlags(players, preservePid = null) {
-  return (players || []).map((p, idx) => {
-    if (!p) return p;
-    if (p._pendingAnimDeath && idx !== preservePid) return { ...p, _pendingAnimDeath: false };
-    return { ...p };
-  });
 }
 
 export function makeInspectionMeta(gs){
