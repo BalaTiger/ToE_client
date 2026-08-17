@@ -96,6 +96,7 @@ import {
   buildTurnStartPreDrawEffectQueue,
   buildSkippedTurnReplayQueue,
   buildTsathogguaSlimeGrantQueue,
+  scopeTurnStartVisualEvents,
   TURN_START_ANIMATION_STAGE,
   TURN_FLOW_STAGE,
   markTurnStartAnimationStage,
@@ -206,6 +207,7 @@ import {
   buildTargetContinuationState,
   getTargetContinuationRoute,
   TARGET_CONTINUATION_ROUTE,
+  VISUAL_EVENT,
   ANIMATION_QUEUE_AUTHORITY,
   compileRuleVisualEventsToAnimTransaction,
   getAnimationQueueVisualEventIds,
@@ -274,6 +276,7 @@ import {
   resolveTurnHighlightForStep,
   buildBewitchForcedCardQueue,
   buildInspectionEventFlow,
+  getFreshInspectionReplayEvents,
   buildInspectionAwareAnimQueue,
   buildWorshipReplayBaselinePlayers,
   statePatchStep,
@@ -2024,7 +2027,35 @@ export default function Game(){
 
   useEffect(()=>{
     if(!gs||showTutorial||softGuidePauseActive||anim||animQueueRef.current.length>0||gs.gameOver||gs.phase==='AI_TURN')return;
-    const events=(gs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current);
+    const explicitInspectionEvents=(gs._visualEvents||[]).filter(event=>(
+      event?.type===VISUAL_EVENT.INSPECTION&&event?.id&&event?.legacySeq!=null
+    ));
+    const pendingExplicitInspectionEvents=explicitInspectionEvents.filter(event=>(
+      !consumedVisualEventIdsRef.current.has(event.id)
+    ));
+    if(pendingExplicitInspectionEvents.length){
+      const transaction=compileRuleVisualEventsToAnimTransaction(gs,null,{
+        eventIds:pendingExplicitInspectionEvents.map(event=>event.id),
+        consumedEventIds:consumedVisualEventIdsRef.current,
+        buildAnimQueue,
+        players:pendingExplicitInspectionEvents[0]?.beforePlayers||gs.players,
+      });
+      if(transaction?.queue?.length){
+        triggerAnimQueue(transaction.queue,gs,undefined,{
+          ...AUTHORITATIVE_QUEUE_META,
+          eventIds:transaction.eventIds,
+        });
+        return;
+      }
+    }
+    const explicitInspectionSeqs=new Set(explicitInspectionEvents.map(event=>event.legacySeq));
+    const consumedExplicitInspectionEvents=explicitInspectionEvents
+      .filter(event=>consumedVisualEventIdsRef.current.has(event.id))
+      .map(event=>({seq:event.legacySeq}));
+    markInspectionEventsSeen(consumedExplicitInspectionEvents);
+    const events=(gs._inspectionEvents||[]).filter(ev=>(
+      ev?.seq>lastInspectionSeqRef.current&&!explicitInspectionSeqs.has(ev.seq)
+    ));
     if(!events.length)return;
     markInspectionEventsSeen(events);
     const flow=buildInspectionEventFlow(
@@ -2575,7 +2606,7 @@ export default function Game(){
         // Append inspection events triggered by the draw
         let afterInspectionPlayers=gs.players;
         let afterInspectionLog=gs.log;
-        const drawInspectionEvents=(gs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current);
+        const drawInspectionEvents=getFreshInspectionReplayEvents(gs,{afterSeq:lastInspectionSeqRef.current});
         if(drawInspectionEvents.length){
           lastInspectionSeqRef.current=Math.max(...drawInspectionEvents.map(ev=>ev.seq));
           const inspectionFlow=buildInspectionEventFlow(
@@ -2623,7 +2654,10 @@ export default function Game(){
         // before the stat step that owns the rest settlement.
         // 4. Skill anim (if used)
         // 提前清除 _pendingAnimDeath：STATE_PATCH 后面板立即置灰，不再等到整个队列播完
-        const pendingActionInspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current&&isCurrentTurnInspectionEvent(ev));
+        const pendingActionInspectionEvents=getFreshInspectionReplayEvents(newGs,{
+          afterSeq:lastInspectionSeqRef.current,
+          predicate:isCurrentTurnInspectionEvent,
+        });
         const firstActionInspection=pendingActionInspectionEvents[0]||null;
         const P_actionEnd=clearPendingAnimDeathPlayers(rawResult._playersBeforeNextDraw||newGs.players);
         const P_actionPreInspection=clearPendingAnimDeathPlayers(firstActionInspection?.beforePlayers||P_actionEnd);
@@ -2884,7 +2918,7 @@ export default function Game(){
                 players:P_actionEnd,
                 discard:_discardBeforeNextDraw||newGs.discard,
                 log:actionLog,
-                inspectionEvents:(newGs._inspectionEvents||[]).filter(isCurrentTurnInspectionEvent),
+                inspectionEvents:getFreshInspectionReplayEvents(newGs,{predicate:isCurrentTurnInspectionEvent}),
                 metadata:actionReplayMetadata,
               });
               const bewitchReplay=buildBewitchGiftReplay({
@@ -3049,7 +3083,10 @@ export default function Game(){
           }
         }
         // Append inspection events triggered by the AI action
-        const actionInspectionEvents=(newGs._inspectionEvents||[]).filter(ev=>ev?.seq>lastInspectionSeqRef.current&&isCurrentTurnInspectionEvent(ev));
+        const actionInspectionEvents=getFreshInspectionReplayEvents(newGs,{
+          afterSeq:lastInspectionSeqRef.current,
+          predicate:isCurrentTurnInspectionEvent,
+        });
         if(actionInspectionEvents.length){
           lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...actionInspectionEvents.map(ev=>ev.seq));
           const inspectionFlow=buildInspectionEventFlow(
@@ -6469,8 +6506,7 @@ export default function Game(){
         beforeContinuationLog,
         continuationMeta
       );
-      const freshInspectionEvents=(processed.inspectionMeta._inspectionEvents||[])
-        .filter(ev=>ev?.seq>oldInspectionSeq);
+      const freshInspectionEvents=getFreshInspectionReplayEvents(processed.inspectionMeta,{afterSeq:oldInspectionSeq});
       // 续播的检定已在 continuationQueue 中播放，标记为已见，避免自动检定 useEffect 再重播一次
       if(freshInspectionEvents.length)markInspectionEventsSeen(freshInspectionEvents);
       const continuationQueue=freshInspectionEvents.length
@@ -9338,7 +9374,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       buildQueue:buildAnimQueue,
       buildFullHandSwapTransferQueue:buildFullHandSwapTransferQueueFromLogs,
     });
-    markTurnDrawInspectionEventsSeen(replay.inspectionEvents);
+    markTurnDrawInspectionEventsSeen([
+      ...(replay.inspectionEvents||[]),
+      ...(replay.queue||[])
+        .filter(step=>step?.inspectionSeq!=null)
+        .map(step=>({seq:step.inspectionSeq})),
+    ]);
     return replay;
   }
 
@@ -9433,8 +9474,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     // A turn-start effect can decide the game before presentation begins. The
     // terminal state still carries the complete replay metadata and must play.
     if(!shouldBuildQueuedAiTurnStartReplay({nextState:nextGs,fromTurn,isAiSeat,getTurnStartDrawnCard}))return [];
-    const prunedVisualEvents=(pruneConsumedVisualEvents(nextGs,consumedVisualEventIdsRef.current)?._visualEvents)||[];
-    const replayBaseGs={...nextGs,_visualEvents:prunedVisualEvents};
+    const unconsumedVisualEvents=(pruneConsumedVisualEvents(nextGs,consumedVisualEventIdsRef.current)?._visualEvents)||[];
+    // This queue owns only the already-resolved next turn. aiStep returns the
+    // previous action events beside the staged turn-start transaction, and the
+    // action queue has not committed yet, so those ids are not consumed here.
+    // Remove them by rule ownership before any legacy/state-diff helper sees
+    // the replay state; compile scope remains a defensive second boundary.
+    const turnStartVisualEvents=scopeTurnStartVisualEvents(unconsumedVisualEvents);
+    const replayBaseGs={...nextGs,_visualEvents:turnStartVisualEvents};
     const nextAiName=replayBaseGs.players?.[replayBaseGs.currentTurn]?.name||'???';
     const replayOldGs={
       ...replayBaseGs,
@@ -9443,7 +9490,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       log:getTurnStartDrawBaselineLog(replayBaseGs),
       _statEventSeq:statEventSeq??maxKnownStatEventSeq(replayBaseGs),
       _inspectionSeq:lastInspectionSeqRef.current,
-      _visualEvents:prunedVisualEvents,
+      _visualEvents:turnStartVisualEvents,
     };
     const replay=buildActorTurnStartReplay(replayBaseGs,{
       oldGs:replayOldGs,

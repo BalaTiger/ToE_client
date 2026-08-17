@@ -1391,91 +1391,6 @@ export function aiShouldKeepZoneCard(card, ci, players, forced = false, context 
   return estimateZoneCardKeepScore(card, ci, players) > 0;
 }
 
-function canTreasureHunterWinBySwap(players, ti) {
-  const self = players[ti];
-  if (!self || self.isDead) return null;
-  const role = self._nyaBorrow || self.role;
-  if (role !== ROLE_TREASURE) return null;
-
-  const myHand = self.hand || [];
-  const myLetters = new Set(myHand.filter(c => c.letter && !c.isGod).map(c => c.letter));
-  const myNumbers = new Set(myHand.filter(c => c.number != null && !c.isGod).map(c => c.number));
-  const missingLetters = ['A', 'B', 'C', 'D'].filter(l => !myLetters.has(l));
-  const missingNumbers = [1, 2, 3, 4].filter(n => !myNumbers.has(n));
-
-  if (missingLetters.length === 0 && missingNumbers.length === 0) return null;
-  if (missingLetters.length > 1 || missingNumbers.length > 1) return null;
-
-  const neededLetter = missingLetters.length === 1 ? missingLetters[0] : null;
-  const neededNumber = missingNumbers.length === 1 ? missingNumbers[0] : null;
-
-  const targetPlayers = players
-    .map((p, i) => ({ player: p, idx: i }))
-    .filter(({ player, idx }) => idx !== ti && !player.isDead);
-
-  for (const { player, idx } of targetPlayers) {
-    for (const card of player.hand || []) {
-      if (card.isGod) continue;
-      const hasNeeded = (neededLetter && card.letter === neededLetter) || (neededNumber && card.number === neededNumber);
-      if (hasNeeded) {
-        const giveCard = player.hand.find(c => !c.isGod && !((neededLetter && c.letter === neededLetter) || (neededNumber && c.number === neededNumber)));
-        const newMissingLetters = ['A', 'B', 'C', 'D'].filter(l => {
-          if (neededLetter && l === neededLetter) return false;
-          if (giveCard && giveCard.letter === l) return false;
-          return !myLetters.has(l);
-        });
-        const newMissingNumbers = [1, 2, 3, 4].filter(n => {
-          if (neededNumber && n === neededNumber) return false;
-          if (giveCard && giveCard.number === n) return false;
-          return !myNumbers.has(n);
-        });
-        if (newMissingLetters.length === 0 && newMissingNumbers.length === 0) {
-          return { targetIdx: idx, neededCard: card };
-        }
-      }
-    }
-  }
-  return null;
-}
-
-function shouldTreasureHunterSwapToAvoidRegression(players, ti) {
-  const self = players[ti];
-  if (!self || self.isDead) return null;
-  const role = self._nyaBorrow || self.role;
-  if (role !== ROLE_TREASURE) return null;
-
-  const handLimit = self._nyaHandLimit ?? 4;
-  const zoneCards = (self.hand || []).filter(isZoneCard);
-  if (zoneCards.length <= handLimit) return null;
-
-  const myHand = self.hand || [];
-  const myLetters = new Set(myHand.filter(c => c.letter && !c.isGod).map(c => c.letter));
-  const myNumbers = new Set(myHand.filter(c => c.number != null && !c.isGod).map(c => c.number));
-  const missingLetters = ['A', 'B', 'C', 'D'].filter(l => !myLetters.has(l));
-  const missingNumbers = [1, 2, 3, 4].filter(n => !myNumbers.has(n));
-
-  if (missingLetters.length === 0 && missingNumbers.length === 0) return null;
-  if (missingLetters.length > 1 || missingNumbers.length > 1) return null;
-
-  const neededLetter = missingLetters.length === 1 ? missingLetters[0] : null;
-  const neededNumber = missingNumbers.length === 1 ? missingNumbers[0] : null;
-
-  const targetPlayers = players
-    .map((p, i) => ({ player: p, idx: i }))
-    .filter(({ player, idx }) => idx !== ti && !player.isDead);
-
-  for (const { player, idx } of targetPlayers) {
-    for (const card of player.hand || []) {
-      if (card.isGod) continue;
-      const hasNeeded = (neededLetter && card.letter === neededLetter) || (neededNumber && card.number === neededNumber);
-      if (hasNeeded) {
-        return { targetIdx: idx, neededCard: card };
-      }
-    }
-  }
-  return null;
-}
-
 export function canCultistWinByBewitch(players, ti) {
   const cultistPlan = chooseAiCultistBewitchPlan(players, ti);
   if (!cultistPlan) return false;
@@ -1509,12 +1424,6 @@ export function aiShouldNotRest(gs, ai, aiEffRole, players, ti) {
   if (ai.hp >= 9) return false;
 
   if (aiEffRole === ROLE_TREASURE && ai.hp <= 4) {
-    const winSwap = canTreasureHunterWinBySwap(players, ti);
-    if (winSwap) return { shouldNotRest: true, reason: 'swapWin', targetIdx: winSwap.targetIdx };
-
-    const regressionSwap = shouldTreasureHunterSwapToAvoidRegression(players, ti);
-    if (regressionSwap) return { shouldNotRest: true, reason: 'swapAvoidRegression', targetIdx: regressionSwap.targetIdx };
-
     return { shouldNotRest: false };
   }
 

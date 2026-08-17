@@ -568,6 +568,26 @@ export function buildInspectionRevealQueue(events){
   }));
 }
 
+// Prefer canonical inspection visual events for every sequence they cover and
+// retain legacy snapshots only for old saves/peers that did not emit one. This
+// keeps specialized orchestrators from rebuilding the same inspection through
+// `_inspectionEvents` while still supporting mixed migration-era states.
+export function getFreshInspectionReplayEvents(state,{afterSeq=0,predicate=null}={}){
+  const matches=event=>{
+    const seq=event?.legacySeq??event?.seq??0;
+    return seq>afterSeq&&(!predicate||predicate(event));
+  };
+  const explicit=getVisualEvents(state)
+    .filter(event=>event?.type===VISUAL_EVENT.INSPECTION&&matches(event));
+  const explicitSeqs=new Set(explicit.map(event=>event?.legacySeq??event?.seq).filter(seq=>seq!=null));
+  const legacy=(state?._inspectionEvents||[])
+    .filter(matches)
+    .filter(event=>!explicitSeqs.has(event?.seq));
+  return [...explicit,...legacy].sort((left,right)=>(
+    (left?.legacySeq??left?.seq??0)-(right?.legacySeq??right?.seq??0)
+  ));
+}
+
 export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlayers,eventOwnedOnly=false}){
   const queue=[];
   const boundarySteps=new Map();

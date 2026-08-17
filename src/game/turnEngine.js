@@ -1133,9 +1133,23 @@ function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta) {
     if (winAfterSanDepletion) return { P, D, Disc, L, inspectionMeta, winAfterBgy: winAfterSanDepletion };
     if (P[next].san > 0 && P[next].san <= 6) {
       const baseLog = [...L];
+      const inspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
       const processed = applyInspectionForSanLoss(next, P[next].san, next, P, D, Disc, baseLog, inspectionMeta);
       P = processed.P; D = processed.D; Disc = processed.Disc;
-      inspectionMeta = processed.inspectionMeta;
+      inspectionMeta = {
+        ...processed.inspectionMeta,
+        // This inspection is caused by a pre-draw passive. Declare that
+        // ownership at the rule boundary so the turn-start transaction can
+        // compile it once, before the fixed draw, without log/state-diff
+        // inference in the presentation layer.
+        _visualEvents: (processed.inspectionMeta?._visualEvents || []).map(event => (
+          event?.type === VISUAL_EVENT.INSPECTION &&
+          Number.isFinite(event?.legacySeq) &&
+          event.legacySeq > inspectionSeqBefore
+            ? { ...event, turnStartStage: 'turnStart', turnStartStageOrder: 2 }
+            : event
+        )),
+      };
       L.push(...processed.log.slice(baseLog.length));
     }
     if (P[next].hp <= 0) {

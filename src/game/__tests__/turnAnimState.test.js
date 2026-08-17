@@ -13,7 +13,7 @@ import { startNextTurn } from '../turnEngine';
 import { ROLE_CULTIST } from '../coreUtils';
 import { applyFx } from '../effectEngine';
 import { applyStatEventsToDisplayStats, primeDisplayStatsForStatQueue } from '../statEvents';
-import { buildFreshStatVisualEvents, createGodPowerBlockedEvent, createGodStatusChangedEvent, createSphinxResultEvent } from '../visualEvents';
+import { buildFreshStatVisualEvents, createGodPowerBlockedEvent, createGodStatusChangedEvent, createSphinxResultEvent, createTsathogguaSlimeGrantEvent } from '../visualEvents';
 import { buildAnimQueue } from '../animQueueCore';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
@@ -261,6 +261,31 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(combinedQueue.indexOf(blockedSteps[0])).toBeLessThan(
       combinedQueue.findIndex(step => step.type === 'YOUR_TURN')
     );
+  });
+
+  it('黏液发放同时存在显式事件和 legacy 快照时只编译显式事件', () => {
+    const beforePlayers = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' })];
+    const slime = { id: 'grant-slime', name: '撒托古亚的赐福黏液', isTsathogguaSlime: true };
+    const afterPlayers = [beforePlayers[0], { ...beforePlayers[1], hand: [slime] }];
+    const grant = {
+      ownerIdx: 1,
+      count: 1,
+      cards: [slime],
+      playersBefore: beforePlayers,
+      playersAfter: afterPlayers,
+      msgs: ['艾伦 获得1张撒托古亚的赐福黏液'],
+    };
+    const visualEvent = createTsathogguaSlimeGrantEvent(grant);
+
+    const queue = buildTsathogguaSlimeGrantQueue({
+      players: afterPlayers,
+      _tsgSlimeGrantEvents: [grant],
+      _visualEvents: [visualEvent],
+    });
+    const transfers = queue.filter(step => step.type === 'CARD_TRANSFER' && step.effect === 'tsgSlime');
+
+    expect(transfers).toHaveLength(1);
+    expect(transfers[0]).toMatchObject({ visualEventId: visualEvent.id, toPid: 1, cards: [slime] });
   });
 
   it('上回合蛊惑产生的 GOD_STATUS_CHANGED 不会在下家回合开始重播', () => {
@@ -561,6 +586,55 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(replay.stageQueues.turnStart.every(step => (
       step.turnStartStage === TURN_START_ANIMATION_STAGE.TURN_START
     ))).toBe(true);
+  });
+
+  it('黑山羊检定为揭开真相时只翻一次检定牌，再播放固定摸牌翻牌', () => {
+    const goat = { id: 'truth-goat', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const truth = { id: 'truth-check', name: '揭开真相', effect: 'drawCard', value: 1, type: 'positive' };
+    const hiddenDraw = makeZoneCard('A1', 0, { id: 'truth-hidden-draw', name: '暗抽牌' });
+    const spikeTrap = makeZoneCard('B4', 0, {
+      id: 'truth-fixed-draw', name: '地刺陷阱', type: 'adjDamageHP', val: 3,
+    });
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '你', hp: 10, san: 7, hand: [goat] }),
+        makePlayer({ name: '艾伦' }),
+        makePlayer({ name: '黛安娜' }),
+      ],
+      currentTurn: 2,
+      deck: [hiddenDraw, spikeTrap],
+      inspectionDeck: [truth],
+      inspectionDiscard: [],
+      log: [],
+      _inspectionSeq: 0,
+      _statEventSeq: 0,
+    });
+
+    const newGs = startNextTurn(oldGs);
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const inspectionEvent = newGs._visualEvents.find(event => event.type === 'inspection');
+    const inspectionDraws = replay.queue.filter(step => step.type === 'DRAW_CARD' && step.inspectionSeq === 1);
+    const hiddenTravels = replay.queue.filter(step => step.type === 'DRAW_CARD' && step.inspectionGainSeq === 1);
+    const spikeDraws = replay.queue.filter(step => step.type === 'DRAW_CARD' && step.card?.id === spikeTrap.id);
+
+    expect(inspectionEvent).toMatchObject({
+      legacySeq: 1,
+      turnStartStage: TURN_START_ANIMATION_STAGE.TURN_START,
+      turnStartStageOrder: 2,
+    });
+    expect(inspectionDraws).toHaveLength(1);
+    expect(hiddenTravels).toHaveLength(1);
+    expect(spikeDraws).toHaveLength(1);
+    expect(replay.queue.indexOf(inspectionDraws[0])).toBeLessThan(replay.queue.indexOf(hiddenTravels[0]));
+    expect(replay.queue.indexOf(hiddenTravels[0])).toBeLessThan(replay.queue.indexOf(spikeDraws[0]));
+
+    const consumedReplay = buildTurnStartDrawReplayQueue({
+      oldGs,
+      newGs,
+      consumedVisualEventIds: new Set([inspectionEvent.id]),
+    });
+    expect(consumedReplay.queue.some(step => step.inspectionSeq === 1)).toBe(false);
+    expect(consumedReplay.queue.filter(step => step.type === 'DRAW_CARD' && step.card?.id === spikeTrap.id)).toHaveLength(1);
   });
 
   it('keeps black-goat HP/SAN damage before a following underground-spring heal event', () => {

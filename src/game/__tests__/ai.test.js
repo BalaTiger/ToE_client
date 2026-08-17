@@ -11,7 +11,7 @@ import {
   orderHunterChaseTargets,
   shouldAiRest,
 } from '../ai';
-import { aiStep, continueAiCthRestDraws, discardAiHandToLimit, processAiEndTurnEvents, processAiEndTurnReplayHand } from '../aiTurn';
+import { aiStep, chooseAiTreasureSwapPlan, continueAiCthRestDraws, discardAiHandToLimit, processAiEndTurnEvents, processAiEndTurnReplayHand } from '../aiTurn';
 import { buildOwnedAiHuntEventQueue, getAiActionQueueCoverage, scopeAiActionReplayMetadata } from '../aiTurnPresentation';
 import { cardLogText, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
 import { getAnimationQueueVisualEventIds, getVisualEventIdsCoveredByAnimationQueue } from '../visualEventTransactionCompiler';
@@ -58,6 +58,128 @@ describe('AI 两人一绳策略', () => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe('AI 寻宝者公开信息掉包策略', () => {
+  it('可挑选的公开手牌中只要有推进牌，就压过日志中的双轴推进线索', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const players = [
+      makePlayer({ name: '寻宝者', role: ROLE_TREASURE, hand: [makeZoneCard('A1'), makeZoneCard('B2')] }),
+      makePlayer({
+        name: '公开手牌目标',
+        revealHand: true,
+        pickInsteadOfRandom: true,
+        hand: [makeZoneCard('A3')],
+      }),
+      makePlayer({ name: '日志目标', hand: [makeZoneCard('D4')] }),
+    ];
+    const log = ['日志目标 收入了 [C4] 双轴推进牌'];
+
+    const plan = chooseAiTreasureSwapPlan(players, 0, [1, 2], log);
+
+    expect(plan).toMatchObject({ targetIdx: 1, canPickPublicHand: true, progressPriority: 1 });
+  });
+
+  it('对可挑选的公开手牌精确拿走推进最多的牌', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const singleAxisCard = makeZoneCard('A3', 0, { id: 'public-single-axis' });
+    const dualAxisCard = makeZoneCard('C4', 0, { id: 'public-dual-axis' });
+    const players = [
+      makePlayer({
+        name: '你',
+        revealHand: true,
+        pickInsteadOfRandom: true,
+        hand: [singleAxisCard, dualAxisCard],
+      }),
+      makePlayer({
+        name: 'AI寻宝者',
+        role: ROLE_TREASURE,
+        hp: 10,
+        hand: [
+          makeZoneCard('A1', 0),
+          makeZoneCard('B2', 0),
+          makeZoneCard('B2', 0, { id: 'duplicate-b2-public-pick' }),
+        ],
+      }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+      globalOnlySwapOwner: null,
+      log: ['旧日志'],
+    });
+
+    const result = aiStep(gs);
+
+    expect(result._visualEvents?.[0]).toMatchObject({ targetIdx: 0, takenCard: dualAxisCard });
+    expect(result.log).toContain(`AI寻宝者（寻宝者）从 你 的公开手牌中选择了 ${cardLogText(dualAxisCard, { alwaysShowName: true })}`);
+  });
+
+  it('优先选择日志中获得可同时推进字母和数字牌的角色', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const players = [
+      makePlayer({ name: '寻宝者', role: ROLE_TREASURE, hand: [makeZoneCard('A1'), makeZoneCard('B2')] }),
+      makePlayer({ name: '单轴目标', hand: [makeZoneCard('D4')] }),
+      makePlayer({ name: '双轴目标', hand: [makeZoneCard('A1')] }),
+    ];
+    const log = [
+      '单轴目标 摸到 [A3] 单轴牌，选择收入手牌并触发效果',
+      '双轴目标 收入了 [C4] 双轴牌',
+    ];
+
+    const plan = chooseAiTreasureSwapPlan(players, 0, [1, 2], log);
+
+    expect(plan).toMatchObject({ targetIdx: 2, progressPriority: 2 });
+  });
+
+  it('同进度且可换出非区域牌时，优先已确认非邪祀者，其次已确认邪祀者', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const self = makePlayer({
+      name: '寻宝者',
+      role: ROLE_TREASURE,
+      hand: [makeZoneCard('A1'), { id: 'non-zone', name: '非区域牌' }],
+    });
+    const players = [
+      self,
+      makePlayer({ name: '邪祀者', role: ROLE_CULTIST, roleRevealed: true, hand: [makeZoneCard('D4')] }),
+      makePlayer({ name: '追猎者', role: ROLE_HUNTER, roleRevealed: true, hand: [makeZoneCard('A2')] }),
+      makePlayer({ name: '身份未知', role: ROLE_HUNTER, roleRevealed: false, hand: [makeZoneCard('B3')] }),
+    ];
+    const log = [
+      '邪祀者 收入了 [B2] 推进牌',
+      '追猎者 收入了 [B2] 推进牌',
+      '身份未知 收入了 [B2] 推进牌',
+    ];
+
+    expect(chooseAiTreasureSwapPlan(players, 0, [1, 2, 3], log).targetIdx).toBe(2);
+    expect(chooseAiTreasureSwapPlan(players, 0, [1, 3], log).targetIdx).toBe(1);
+  });
+
+  it('日志没有推进线索时随机选目标，不读取隐藏手牌也不套用身份优先级', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.75);
+    const self = makePlayer({
+      name: '寻宝者',
+      role: ROLE_TREASURE,
+      hand: [makeZoneCard('A1'), { id: 'non-zone', name: '非区域牌' }],
+    });
+    const firstPlayers = [
+      self,
+      makePlayer({ name: '目标甲', role: ROLE_CULTIST, roleRevealed: true, hand: [makeZoneCard('B2')] }),
+      makePlayer({ name: '目标乙', role: ROLE_HUNTER, roleRevealed: true, hand: [makeZoneCard('D4')] }),
+    ];
+    const secondPlayers = [
+      self,
+      makePlayer({ name: '目标甲', role: ROLE_HUNTER, roleRevealed: true, hand: [makeZoneCard('D4')] }),
+      makePlayer({ name: '目标乙', role: ROLE_CULTIST, roleRevealed: true, hand: [makeZoneCard('B2')] }),
+    ];
+
+    expect(chooseAiTreasureSwapPlan(firstPlayers, 0, [1, 2], ['旧日志']).targetIdx).toBe(2);
+    expect(chooseAiTreasureSwapPlan(secondPlayers, 0, [1, 2], ['旧日志']).targetIdx).toBe(2);
+  });
 });
 
 describe('AI hand-limit discard', () => {
@@ -1166,7 +1288,7 @@ describe('aiStep optional action limits', () => {
       skillUsed: false,
       restUsed: false,
       multiplyUsed: false,
-      log: ['旧日志'],
+      log: ['你 摸到 [D3] 已公开的推进牌，选择收入手牌并触发效果'],
     });
 
     const result = aiStep(gs);
@@ -1990,7 +2112,7 @@ describe('aiStep optional action limits', () => {
     expect(result.log.some(line => line.includes('【掉包】'))).toBe(false);
   });
 
-  it('AI 寻宝者不会用补编号区域牌换走对自己无益的森之领主', () => {
+  it('AI 寻宝者不会根据目标的隐藏森之领主放弃原本决定的掉包', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0);
     const forestLord = makeGodCard('SHU');
     const usefulZone = makeZoneCard('A2', 0);
@@ -2018,7 +2140,8 @@ describe('aiStep optional action limits', () => {
     const result = aiStep(gs);
     const newLogs = result.log.slice(gs.log.length);
 
-    expect(newLogs.some(line => line.includes('【掉包】'))).toBe(false);
+    expect(newLogs.some(line => line.includes('【掉包】'))).toBe(true);
+    expect(result._visualEvents?.[0]).toMatchObject({ takenCard: forestLord, givenCard: forestLord });
     expect(result.players[1].hand).toEqual([usefulZone]);
     expect(result.players[0].hand).toEqual([forestLord]);
   });

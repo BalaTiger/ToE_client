@@ -1,6 +1,7 @@
 import { bindAnimLogChunks, isDrawLikeLog, isTurnStartLog } from './animLogs';
 import { buildBewitchForcedCardQueue, buildInspectionAwareAnimQueue } from './animQueueHelpers';
 import { appendFinalStatePatch } from './animStatePatch';
+import { getVisualEvents, VISUAL_EVENT } from './visualEvents';
 
 export function isStatAnimationStep(step) {
   if (!step) return false;
@@ -60,6 +61,12 @@ export function findFreshBewitchReplayLog(logDelta = []) {
 }
 
 export function hasFreshRandomTargetEvents(newGs, oldGs) {
+  const oldVisualEventIds = new Set(getVisualEvents(oldGs).map(event => event?.id).filter(Boolean));
+  if (getVisualEvents(newGs).some(event => (
+    (event?.type === VISUAL_EVENT.RANDOM_TARGET || event?.type === VISUAL_EVENT.THROW_STONE) &&
+    event?.id &&
+    !oldVisualEventIds.has(event.id)
+  ))) return true;
   const oldSeq = oldGs?._randomTargetSeq || 0;
   return (newGs?._randomTargetEvents || []).some(event => event?.seq > oldSeq);
 }

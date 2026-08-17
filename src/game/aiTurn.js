@@ -127,11 +127,6 @@ function treasureCardRetentionValue(card, hand = [], index = -1) {
   return axisContribution * 8 + 1;
 }
 
-function treasureHandValue(hand = []) {
-  return countTreasureAxes(hand) * 10
-    + hand.reduce((sum, card, index) => sum + treasureCardRetentionValue(card, hand, index) * 0.2, 0);
-}
-
 function chooseTreasureSwapGiveIndex(hand = []) {
   if (!hand.length) return -1;
   return hand.reduce((bestIdx, card, index) => {
@@ -141,34 +136,131 @@ function chooseTreasureSwapGiveIndex(hand = []) {
   }, 0);
 }
 
-function evaluateTreasureSwapSteal(selfHand = [], takenCard) {
-  const beforeScore = treasureHandValue(selfHand);
-  const handAfterSteal = [...selfHand, takenCard];
-  const giveIdx = chooseTreasureSwapGiveIndex(handAfterSteal);
-  if (giveIdx < 0) return { score: -Infinity, giveIdx: -1 };
-  const handAfterSwap = handAfterSteal.filter((_, index) => index !== giveIdx);
-  return {
-    score: treasureHandValue(handAfterSwap) - beforeScore,
-    giveIdx,
-  };
+function escapeRegExp(value = '') {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function chooseAiTreasureSwapPlan(players = [], sourceIdx, targetIndices = [], overrideTargetIdx = null) {
+function getPublicTreasureGainKeys(log = [], playerName = '') {
+  if (!playerName) return [];
+  const escapedName = escapeRegExp(playerName);
+  const explicitGain = new RegExp(
+    `(?:^|】|！|\\s)${escapedName}(?:（[^）]+）)?\\s*(?:收入了|收入|获得)`,
+  );
+  const qualifiedDraw = new RegExp(
+    `(?:^|】|！|\\s)${escapedName}(?:（[^）]+）)?\\s*摸到`,
+  );
+  const firstComeGain = new RegExp(`【先到先得】${escapedName}\\s*选择了`);
+  const bewitchGain = new RegExp(`对\\s+${escapedName}\\s+【蛊惑】，赠予`);
+  const keys = [];
+
+  for (const line of log || []) {
+    if (typeof line !== 'string' || /选择弃置|评估后选择弃置/.test(line)) continue;
+    const keptDraw = qualifiedDraw.test(line) && /选择收入|规避|强制触发|强制展示/.test(line);
+    if (!explicitGain.test(line) && !keptDraw && !firstComeGain.test(line) && !bewitchGain.test(line)) continue;
+    for (const match of line.matchAll(/\[([A-D])([1-4])\]/g)) {
+      keys.push({ letter: match[1], number: Number(match[2]), key: `${match[1]}${match[2]}` });
+    }
+  }
+  return keys;
+}
+
+function pickRandomItem(items = []) {
+  if (!items.length) return null;
+  return items[Math.min(items.length - 1, Math.floor(Math.random() * items.length))];
+}
+
+function getTreasureProgressPriority(selfHand = [], card) {
+  if (!isZoneCard(card) || card.isGod) return 0;
+  const myZoneCards = selfHand.filter(handCard => isZoneCard(handCard) && !handCard.isGod);
+  const myLetters = new Set(myZoneCards.map(handCard => handCard.letter).filter(Boolean));
+  const myNumbers = new Set(myZoneCards.map(handCard => handCard.number).filter(number => number != null));
+  return Number(!!card.letter && !myLetters.has(card.letter))
+    + Number(card.number != null && !myNumbers.has(card.number));
+}
+
+function chooseTreasurePublicTakeIndex(selfHand = [], target) {
+  if (!target?.revealHand || !target?.pickInsteadOfRandom || !target.hand?.length) return -1;
+  const scored = target.hand.map((card, index) => ({
+    index,
+    progressPriority: getTreasureProgressPriority(selfHand, card),
+  }));
+  const bestProgressPriority = Math.max(...scored.map(candidate => candidate.progressPriority));
+  if (bestProgressPriority <= 0) return -1;
+  return pickRandomItem(scored.filter(candidate => candidate.progressPriority === bestProgressPriority))?.index ?? -1;
+}
+
+export function chooseAiTreasureSwapPlan(players = [], sourceIdx, targetIndices = [], log = [], options = {}) {
   const self = players[sourceIdx];
   if (!self?.hand?.length) return null;
-  const candidates = overrideTargetIdx != null ? [overrideTargetIdx] : targetIndices;
-  const scoredTargets = candidates
+
+  const canGiveNonZone = self.hand.some(card => !isZoneCard(card));
+  let candidates = targetIndices
     .filter(idx => idx != null && idx !== sourceIdx && players[idx] && !players[idx].isDead && players[idx].hand?.length)
     .map(idx => {
-      const targetHand = players[idx].hand || [];
-      const outcomes = targetHand.map(card => evaluateTreasureSwapSteal(self.hand, card));
-      const expectedScore = outcomes.reduce((sum, outcome) => sum + outcome.score, 0) / Math.max(1, outcomes.length);
-      return { idx, expectedScore };
-    })
-    .sort((a, b) => b.expectedScore - a.expectedScore || a.idx - b.idx);
-  if (!scoredTargets.length) return null;
-  if (overrideTargetIdx == null && scoredTargets[0].expectedScore <= 0.05) return null;
-  return { targetIdx: scoredTargets[0].idx, expectedScore: scoredTargets[0].expectedScore };
+      const target = players[idx];
+      const canPickPublicHand = !!target.revealHand && !!target.pickInsteadOfRandom;
+      const publicGainKeys = canPickPublicHand
+        ? target.hand.filter(card => isZoneCard(card) && !card.isGod).map(card => ({
+          letter: card.letter,
+          number: card.number,
+          key: card.key,
+        }))
+        : getPublicTreasureGainKeys(log, target.name);
+      const progressPriority = publicGainKeys.reduce((best, card) => (
+        Math.max(best, getTreasureProgressPriority(self.hand, { ...card, isZone: true }))
+      ), 0);
+      const informationPriority = progressPriority > 0 ? (canPickPublicHand ? 2 : 1) : 0;
+      return { idx, informationPriority, progressPriority, publicGainKeys, canPickPublicHand };
+    });
+  if (!candidates.length) return null;
+
+  const bestInformationPriority = Math.max(...candidates.map(candidate => candidate.informationPriority));
+  if (bestInformationPriority > 0) {
+    candidates = candidates.filter(candidate => candidate.informationPriority === bestInformationPriority);
+  }
+  const bestProgressPriority = Math.max(...candidates.map(candidate => candidate.progressPriority));
+  if (options.requireProgress && bestProgressPriority <= 0) return null;
+  if (bestProgressPriority > 0) {
+    candidates = candidates.filter(candidate => candidate.progressPriority === bestProgressPriority);
+  }
+
+  if (bestProgressPriority > 0 && canGiveNonZone && candidates.length > 1) {
+    const confirmedNonCultists = candidates.filter(({ idx }) => (
+      players[idx].roleRevealed && players[idx].role !== ROLE_CULTIST
+    ));
+    const confirmedCultists = candidates.filter(({ idx }) => (
+      players[idx].roleRevealed && players[idx].role === ROLE_CULTIST
+    ));
+    if (confirmedNonCultists.length) candidates = confirmedNonCultists;
+    else if (confirmedCultists.length) candidates = confirmedCultists;
+  }
+
+  const selected = pickRandomItem(candidates);
+  return selected ? {
+    targetIdx: selected.idx,
+    progressPriority: selected.progressPriority,
+    publicGainKeys: selected.publicGainKeys,
+    canPickPublicHand: selected.canPickPublicHand,
+    canGiveNonZone,
+  } : null;
+}
+
+function shouldTreasureSwapInsteadOfRest(self, plan) {
+  if (!self || !plan?.progressPriority) return false;
+  const zoneCards = (self.hand || []).filter(card => isZoneCard(card) && !card.isGod);
+  const letters = new Set(zoneCards.map(card => card.letter).filter(Boolean));
+  const numbers = new Set(zoneCards.map(card => card.number).filter(number => number != null));
+  const missingLetters = ['A', 'B', 'C', 'D'].filter(letter => !letters.has(letter));
+  const missingNumbers = [1, 2, 3, 4].filter(number => !numbers.has(number));
+  const knownGainCouldComplete = plan.publicGainKeys.some(card => (
+    (missingLetters.length > 0 || missingNumbers.length > 0)
+    && missingLetters.every(letter => card.letter === letter)
+    && missingNumbers.every(number => card.number === number)
+  ));
+  const overHandLimitNearCompletion = zoneCards.length > (self._nyaHandLimit ?? 4)
+    && missingLetters.length <= 1
+    && missingNumbers.length <= 1;
+  return knownGainCouldComplete || overHandLimitNearCompletion;
 }
 
 /**
@@ -1236,20 +1328,15 @@ export function aiStep(gs, opts = {}) {
   // 邪祀者HP≤2：除非蛊惑可获胜，否则必须休息（已进入AOE斩杀线）
   // 追猎者HP≤5：积极休息
   const aiEffRole=gs.globalOnlySwapOwner!=null?ROLE_TREASURE:(P[ct]._nyaBorrow||P[ct].role);
-  const noRestReason=aiShouldNotRest(gs,P[ct],aiEffRole,P,ct);
-  let swapTargetOverride=null;
-  let treasureSwapPlan=null;
-  if(noRestReason?.shouldNotRest){
-    if(noRestReason.reason==='swapWin'){
-      swapTargetOverride={targetIdx:noRestReason.targetIdx,reason:'win'};
-    }else if(noRestReason.reason==='swapAvoidRegression'){
-      swapTargetOverride={targetIdx:noRestReason.targetIdx,reason:'avoidRegression'};
-    }
-  }
-  if(aiEffRole===ROLE_TREASURE&&swapTargetOverride?.targetIdx!=null){
-    const treasureSwapTargets=alive.filter(p=>p.hand.length>0).map(p=>P.indexOf(p)).filter(i=>i>=0);
-    treasureSwapPlan=chooseAiTreasureSwapPlan(P,ct,treasureSwapTargets,swapTargetOverride.targetIdx);
-    if(!treasureSwapPlan)swapTargetOverride=null;
+  const treasureSwapTargets=aiEffRole===ROLE_TREASURE
+    ?alive.filter(p=>p.hand.length>0).map(p=>P.indexOf(p)).filter(i=>i>=0)
+    :[];
+  let treasureSwapPlan=aiEffRole===ROLE_TREASURE&&P[ct].hp<=4
+    ?chooseAiTreasureSwapPlan(P,ct,treasureSwapTargets,L,{requireProgress:true})
+    :null;
+  let noRestReason=aiShouldNotRest(gs,P[ct],aiEffRole,P,ct);
+  if(aiEffRole===ROLE_TREASURE&&P[ct].hp<=4&&shouldTreasureSwapInsteadOfRest(P[ct],treasureSwapPlan)){
+    noRestReason={shouldNotRest:true,reason:'publicTreasureProgressSwap',targetIdx:treasureSwapPlan.targetIdx};
   }
   let newAbandoned = gs.huntAbandoned || [];
   const getHunterTargets = () => getHunterChaseTargets(P,ct,newAbandoned);
@@ -1260,7 +1347,7 @@ export function aiStep(gs, opts = {}) {
     && hasImmediateHunterKill(P,ct,newAbandoned);
   const hunterMustChase = !!preRestHunterDecision?.forceHunterChase || hunterHasImmediateKill;
   const shouldRest=(()=>{
-    if(noRestReason?.shouldNotRest&&(aiEffRole!==ROLE_TREASURE||!!swapTargetOverride))return false;
+    if(noRestReason?.shouldNotRest&&(aiEffRole!==ROLE_TREASURE||!!treasureSwapPlan))return false;
     if(aiEffRole===ROLE_HUNTER&&hunterMustChase)return false;
     return shouldAiRest(gs, P[ct], aiEffRole);
   })();
@@ -1329,7 +1416,7 @@ export function aiStep(gs, opts = {}) {
   if (aiEffRole === ROLE_TREASURE && aiSkillDecision.canSwapHands && hasTreasureSwapBuffer(P[ct].hand)) {
     useSkill = true;
   }
-  if (aiEffRole === ROLE_TREASURE && treasureSwapPlan) {
+  if (aiEffRole === ROLE_TREASURE && treasureSwapPlan && noRestReason?.shouldNotRest) {
     useSkill = true;
   }
   if (aiEffRole === ROLE_CULTIST && cultistBewitchPlan && bestCultistBewitchSanLoss(P[ct].hand) > 1) {
@@ -1338,7 +1425,7 @@ export function aiStep(gs, opts = {}) {
   if (aiEffRole === ROLE_TREASURE && useSkill) {
     if (!treasureSwapPlan) {
       const treasureSwapTargets = alive.filter(p => p.hand.length > 0).map(p => P.indexOf(p)).filter(i => i >= 0);
-      treasureSwapPlan = chooseAiTreasureSwapPlan(P, ct, treasureSwapTargets, swapTargetOverride?.targetIdx);
+      treasureSwapPlan = chooseAiTreasureSwapPlan(P, ct, treasureSwapTargets, L);
     }
     if (!treasureSwapPlan) useSkill = false;
   }
@@ -1730,7 +1817,9 @@ export function aiStep(gs, opts = {}) {
         if(P[ti]?.hand.length&&P[ct].hand.length){
           const swapBeforePlayers=copyPlayers(P);
           const swapBeforeDiscard=[...Disc];
-          const ri=0|Math.random()*P[ti].hand.length;const taken=P[ti].hand.splice(ri,1)[0];
+          const publicTakeIdx=chooseTreasurePublicTakeIndex(P[ct].hand,P[ti]);
+          const targetAllowsPick=!!P[ti].revealHand&&!!P[ti].pickInsteadOfRandom;
+          const ri=publicTakeIdx>=0?publicTakeIdx:(0|Math.random()*P[ti].hand.length);const taken=P[ti].hand.splice(ri,1)[0];
           P[ct].hand.push(taken);
           const gi=chooseTreasureSwapGiveIndex(P[ct].hand);
           const given=P[ct].hand.splice(gi,1)[0];
@@ -1739,8 +1828,12 @@ export function aiStep(gs, opts = {}) {
           const swapActorLabel=`${ai.name}${gs.globalOnlySwapOwner===null?'（寻宝者）':''}`;
           const swapPublicLog=`${swapActorLabel}对 ${tgt.name} 【掉包】`;
           L.push(swapPublicLog);
-          if(ti===0&&!gs._isMP){
+          if(targetAllowsPick){
+            L.push(`${swapActorLabel}从 ${tgt.name} 的公开手牌中选择了 ${cardLogText(taken,{alwaysShowName:true})}`);
+          }else if(ti===0&&!gs._isMP){
             L.push(`你的手牌${cardLogText(taken,{alwaysShowName:true})}被暗抽`);
+          }
+          if(ti===0&&!gs._isMP){
             L.push(`${swapActorLabel}给你一张${cardLogText(given,{alwaysShowName:true})}`);
           }
           const aiSwapEvent=createSwapCardsEvent({

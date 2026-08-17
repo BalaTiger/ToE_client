@@ -6,6 +6,7 @@ import {
   buildFullHandSwapStepsFromLogs,
   buildInspectionAwareAnimQueue,
   buildInspectionEventFlow,
+  getFreshInspectionReplayEvents,
   buildWorshipReplayBaselinePlayers,
   buryToDeckStep,
   cardTransferStep,
@@ -21,7 +22,7 @@ import {
 } from '../animQueueHelpers';
 import { copyPlayers } from '../coreUtils';
 import { buildAnimQueue } from '../animQueueCore';
-import { createCardEffectEvent, createGodStatusChangedEvent } from '../visualEvents';
+import { createCardEffectEvent, createGodStatusChangedEvent, createInspectionVisualEvent } from '../visualEvents';
 import { resolveAiGodChoiceTransition } from '../aiDecisionState';
 import { resolveGodEncounterForAI, startNextTurn } from '../turnEngine';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
@@ -1423,6 +1424,24 @@ describe('animQueueHelpers', () => {
       durationMs: 700,
       msgs: [gainedCardLog],
     });
+  });
+
+  it('检定回放按序号优先使用显式视觉事件，仅对无显式事件的旧状态回退', () => {
+    const legacyFirst = { seq: 1, target: 0, card: { id: 'first', name: '旧检定一' } };
+    const legacySecond = { seq: 2, target: 0, card: { id: 'second', name: '旧检定二' } };
+    const explicitSecond = {
+      ...createInspectionVisualEvent(legacySecond),
+      turnStartStage: 'turnStart',
+    };
+    const events = getFreshInspectionReplayEvents({
+      _inspectionEvents: [legacyFirst, legacySecond],
+      _visualEvents: [explicitSecond],
+    });
+
+    expect(events).toHaveLength(2);
+    expect(events[0]).toBe(legacyFirst);
+    expect(events[1]).toMatchObject({ id: explicitSecond.id, legacySeq: 2, turnStartStage: 'turnStart' });
+    expect(events.filter(event => (event.legacySeq ?? event.seq) === 2)).toHaveLength(1);
   });
 
   it('蛊惑分段回放不会重复播放同一个属性事件', () => {

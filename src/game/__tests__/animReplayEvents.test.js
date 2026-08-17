@@ -12,7 +12,7 @@ import {
 } from '../animReplayEvents';
 import { copyPlayers, makeInspectionMeta, ROLE_CULTIST } from '../coreUtils';
 import { applySanLossToPlayerWithInspection, resolveGodEncounterForAI } from '../turnEngine';
-import { createBewitchGiftEvent } from '../visualEvents';
+import { createBewitchGiftEvent, createRandomTargetVisualEvent } from '../visualEvents';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
 describe('animReplayEvents', () => {
@@ -489,5 +489,17 @@ describe('animReplayEvents', () => {
       phase: 'ACTION',
       abilityData: {},
     });
+  });
+
+  it('纯显式随机目标事件不依赖 legacy 序号也会进入回放', () => {
+    const event = createRandomTargetVisualEvent({
+      seq: 4,
+      sourceIdx: 0,
+      targetIdx: 1,
+      label: '白化生物',
+    });
+
+    expect(hasFreshRandomTargetEvents({ _visualEvents: [event] }, { _visualEvents: [] })).toBe(true);
+    expect(hasFreshRandomTargetEvents({ _visualEvents: [event] }, { _visualEvents: [event] })).toBe(false);
   });
 });

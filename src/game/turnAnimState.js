@@ -8,6 +8,7 @@ import {
   VISUAL_EVENT,
   buildTurnStartStepFromVisualEvents,
   buildDrawCardStepFromVisualEvents,
+  buildTsathogguaSlimeGrantSteps,
   isPreDrawTurnStartStatEvent,
 } from './visualEvents';
 import { statEventsToAnimQueue } from './statEvents';
@@ -68,6 +69,10 @@ export function splitTurnStartAnimationStages(queue = []) {
   return stages;
 }
 
+export function scopeTurnStartVisualEvents(events = []) {
+  return (Array.isArray(events) ? events : []).filter(event => !!event?.turnStartStage);
+}
+
 export function withClearedTurnAnimFields(state, extra = {}) {
   return { ...state, ...EMPTY_TURN_ANIM_FIELDS, ...extra };
 }
@@ -91,8 +96,13 @@ export function buildPlayerTurnDrawQueue(oldGs, newGs, seedQueue = []) {
 }
 
 export function buildTsathogguaSlimeGrantQueue(state) {
-  const events = Array.isArray(state?._tsgSlimeGrantEvents) ? state._tsgSlimeGrantEvents : [];
+  const explicitEvents = getVisualEvents(state)
+    .filter(event => event?.type === VISUAL_EVENT.TSG_SLIME_GRANT);
+  const explicitKeys = new Set(explicitEvents.map(event => `${event?.ownerIdx}:${event?.count}`));
+  const events = (Array.isArray(state?._tsgSlimeGrantEvents) ? state._tsgSlimeGrantEvents : [])
+    .filter(event => !explicitKeys.has(`${event?.ownerIdx}:${event?.count}`));
   const queue = buildGodPowerBlockedBoundaryQueue(state);
+  explicitEvents.forEach(event => queue.push(...buildTsathogguaSlimeGrantSteps(event, state)));
   events.forEach(ev => {
     if (!ev || ev.ownerIdx == null || !ev.count) return;
     queue.push(
@@ -449,7 +459,12 @@ function tsgSlimePopStepFromEvent(event) {
   };
 }
 
-export function buildTurnStartPreDrawEffectQueue({ oldGs, newGs, buildQueue = buildAnimQueue } = {}) {
+export function buildTurnStartPreDrawEffectQueue({
+  oldGs,
+  newGs,
+  buildQueue = buildAnimQueue,
+  consumedVisualEventIds = null,
+} = {}) {
   const beforeDrawPlayers = newGs?._playersBeforeThisDraw || newGs?.players || oldGs?.players || [];
   const preTurnPlayers = newGs?._preTurnPlayers || oldGs?.players || beforeDrawPlayers;
   const preDrawMsgs = getTurnStartPreDrawMsgs(newGs);
@@ -494,7 +509,29 @@ export function buildTurnStartPreDrawEffectQueue({ oldGs, newGs, buildQueue = bu
   if (linkHealEvents.length) {
     queue.push(...statEventsToAnimQueue(linkHealEvents, preTurnPlayers, eventMsgs(linkHealEvents, preDrawMsgs)));
   }
+  const explicitInspectionEvents = getVisualEvents(newGs)
+    .filter(event => (
+      event?.type === VISUAL_EVENT.INSPECTION &&
+      event?.turnStartStage === TURN_START_ANIMATION_STAGE.TURN_START
+    ));
+  const explicitInspectionSeqs = new Set(
+    explicitInspectionEvents.map(event => event?.legacySeq).filter(seq => seq != null)
+  );
+  if (explicitInspectionEvents.length) {
+    const inspectionTransaction = compileRuleVisualEventsToAnimTransaction(newGs, oldGs, {
+      eventIds: explicitInspectionEvents.map(event => event.id).filter(Boolean),
+      buildAnimQueue: buildQueue,
+      players: beforeDrawPlayers,
+      ...(consumedVisualEventIds ? { consumedEventIds: consumedVisualEventIds } : {}),
+    });
+    queue.push(...(inspectionTransaction?.queue || []));
+  }
+  // Compatibility only: old saves/peers may carry `_inspectionEvents` without
+  // canonical visual events. Never reconstruct an inspection already owned by
+  // an explicit event, or it will be emitted once here and once by the staged
+  // transaction compiler.
   const inspectionEvents = getFreshInspectionEvents(oldGs, newGs)
+    .filter(event => !explicitInspectionSeqs.has(event?.seq))
     .filter(ev => {
       const lines = getInspectionLogLines([ev]);
       if (!lines.size) return false;
@@ -663,7 +700,12 @@ export function buildTurnStartDrawReplayQueue({
   const hasExplicitTurnDrawEvents = Array.isArray(newGs?._turnDrawEvents) && newGs._turnDrawEvents.some(event => event?.card);
   const turnDrawEvents = normalizeTurnDrawEvents(newGs, drawnCard, drawerPid, drawerName);
   const beforeDrawPlayers = newGs?._playersBeforeThisDraw || oldGs?.players || newGs?.players || [];
-  const turnStartPreDrawQ = buildTurnStartPreDrawEffectQueue({ oldGs, newGs, buildQueue });
+  const turnStartPreDrawQ = buildTurnStartPreDrawEffectQueue({
+    oldGs,
+    newGs,
+    buildQueue,
+    consumedVisualEventIds,
+  });
   const hasTurnStartPreDrawQ = turnStartPreDrawQ.length > 0;
   const turnStartStatePatch = hasTurnStartPreDrawQ
     ? statePatchStep({

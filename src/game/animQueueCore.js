@@ -807,20 +807,30 @@ export function buildAnimQueue(oldGs, newGs, options = {}) {
     const nightMsg = newMsgs.find(line => typeof line === 'string' && line.includes('【噬日灭世】黑夜降临'));
     if (nightMsg) q.push({ type: 'APOPHIS_ECLIPSE', msgs: [nightMsg] });
   }
-  const freshThrowStoneEvents = freshVisualEvents.filter(event => event.type === VISUAL_EVENT.THROW_STONE);
+  const freshRandomTargetVisualEvents = freshVisualEvents.filter(event => (
+    event.type === VISUAL_EVENT.THROW_STONE || event.type === VISUAL_EVENT.RANDOM_TARGET
+  ));
+  const explicitRandomTargetSeqs = new Set(
+    freshRandomTargetVisualEvents
+      .map(event => event?.legacySeq ?? event?.seq)
+      .filter(seq => seq != null)
+  );
   const legacyRandomTargetEvents = (newGs?._randomTargetEvents || []).filter(ev => ev?.seq > (oldGs?._randomTargetSeq || 0));
-  const randomTargetEvents = freshThrowStoneEvents.length
-    ? [
-      ...legacyRandomTargetEvents.filter(event => event?.label !== '投掷石块'),
-      ...freshThrowStoneEvents.map(event => ({
-        ...event,
+  const randomTargetEvents = [
+    ...legacyRandomTargetEvents.filter(event => !explicitRandomTargetSeqs.has(event?.seq)),
+    ...freshRandomTargetVisualEvents.map(event => ({
+      ...event,
+      ...(event.type === VISUAL_EVENT.THROW_STONE ? {
         label: '投掷石块',
         diceBefore: true,
-        phaseOrder: 1,
-        visualEventId: event.id,
-      })),
-    ]
-    : legacyRandomTargetEvents;
+        phaseOrder: event.phaseOrder ?? 1,
+      } : {}),
+      visualEventId: event.id,
+    })),
+  ].sort((left, right) => (
+    (left?.phaseOrder ?? 0) - (right?.phaseOrder ?? 0) ||
+    (left?.legacySeq ?? left?.seq ?? 0) - (right?.legacySeq ?? right?.seq ?? 0)
+  ));
   const buildRandomTargetQueue = event => {
     const queue = [];
     const isThrowStone = event?.label === '投掷石块';

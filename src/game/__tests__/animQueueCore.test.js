@@ -7,7 +7,7 @@ import {
 } from '../animQueueCore';
 import { dedupeInferredDiscardTransfers } from '../animQueueHelpers';
 import { copyPlayers } from '../coreUtils';
-import { buildFreshStatVisualEvents, createCardEffectEvent, createEarthquakeEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent } from '../visualEvents';
+import { buildFreshStatVisualEvents, createCardEffectEvent, createEarthquakeEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent, createRandomTargetVisualEvent } from '../visualEvents';
 import { makeGodCard, makeGs, makePlayer } from './factory';
 
 describe('buildAnimQueue stat animations', () => {
@@ -682,6 +682,25 @@ describe('buildAnimQueue stat animations', () => {
       godName: 'VRI',
       godLevel: 1,
     });
+  });
+
+  it('普通随机目标同时存在显式事件和 legacy 快照时只编译显式事件', () => {
+    const players = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' })];
+    const legacyEvent = { seq: 1, sourceIdx: 0, targetIdx: 1, label: '白化生物', phaseOrder: 1 };
+    const visualEvent = createRandomTargetVisualEvent({ ...legacyEvent, players });
+    const oldGs = makeGs({ players, _randomTargetSeq: 0, log: [] });
+    const newGs = makeGs({
+      players,
+      _randomTargetSeq: 1,
+      _randomTargetEvents: [legacyEvent],
+      _visualEvents: [visualEvent],
+      log: ['艾伦 被选中'],
+    });
+
+    const targets = buildAnimQueue(oldGs, newGs).filter(step => step.type === 'RANDOM_TARGET');
+
+    expect(targets).toHaveLength(1);
+    expect(targets[0]).toMatchObject({ targetIdx: 1, visualEventId: visualEvent.id });
   });
 
   it('中途 HP/SAN 结算不提前改变手牌图像（手牌只在动画落地后变化）', () => {
