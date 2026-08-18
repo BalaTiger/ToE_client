@@ -1,6 +1,5 @@
 import {
   copyPlayers,
-  clamp,
   isZoneCard,
   isBlankZoneCard,
   isBlackGoatYoung,
@@ -33,7 +32,7 @@ import {
   aiShouldNotRest,
   isCultistEndingTurnUnreasonable,
 } from './ai';
-import { applyFx, applyHpDamageWithLink, submitDamageEvents } from './effectEngine';
+import { applyFx, applyHpDamageWithLink, submitLossEvents } from './effectEngine';
 import { advanceGodEncounter, formatGodEncounterProgress } from './balancePatches';
 import {
   checkWin,
@@ -52,6 +51,7 @@ import { cardTransferStep, statePatchStep } from './animQueueHelpers';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, isRevealedCultist } from './coreUtils';
 import { createBlackGoatYoungCard } from '../constants/card';
 import { buildStatEvents } from './statEvents';
+import { appendStatChangeResult, submitRecoveryEvents } from './statChangeEngine';
 import { END_TURN_EVENT, getEndTurnEvents, getEndTurnReplayHandCards, resolveReverseTurnOrderAtEnd } from './endTurnEvents';
 import { deriveEffectDecisionState, hasEffectDecisionState } from './effectStatePatch';
 import { getCthRestDrawRemaining } from './cthRestDrawFlow';
@@ -66,6 +66,7 @@ import {
   buildGodPowerBlockedStepsFromVisualEvents,
   buildTsathogguaSlimeGrantSteps,
   createBewitchGiftEvent,
+  createApophisEclipseEvent,
   createGodPowerBlockedEvent,
   createGodStatusChangedEvent,
   createHuntResultEvent,
@@ -73,6 +74,7 @@ import {
   createSwapCardsEvent,
   createTsathogguaSlimeGrantEvent,
 } from './visualEvents';
+import { createRuleResolutionTransaction } from './ruleResolutionTransaction';
 import { compileVisualEventToAnimTransaction } from './visualEventTransactionCompiler';
 import {
   getBestCaveDuelCardIndex,
@@ -425,7 +427,7 @@ export function discardAiHandToLimit(P, ct, Disc, L, D = [], discardedCards = []
     } else {
       Disc.push(c);
       L.push(`${P[ct].name} 弃 ${cardLogText(c, { alwaysShowName: true })}（上限）`);
-      const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: L, ownerIdx: ct, cards: [c], reason: '手牌上限弃牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitDamageEvents, currentTurn: ct });
+      const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: L, ownerIdx: ct, cards: [c], reason: '手牌上限弃牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitLossEvents, currentTurn: ct });
       P.splice(0, P.length, ...balance.players);
       D.splice(0, D.length, ...balance.deck);
       Disc.splice(0, Disc.length, ...balance.discard);
@@ -542,7 +544,7 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
         const beforeBalanceDiscard = [...Disc];
         const beforeBalanceLog = [...L];
         const beforeBalancePatch = statePatch;
-        const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: L, ownerIdx: ct, cards: [discarded], reason: '无尽通道弃牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitDamageEvents, currentTurn: gs.currentTurn });
+        const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: L, ownerIdx: ct, cards: [discarded], reason: '无尽通道弃牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitLossEvents, currentTurn: gs.currentTurn });
         P = balance.players; D = balance.deck; Disc = balance.discard; L = balance.log;
         const balanceQueue = buildAiEndTurnReplayResolutionQueue({
           beforeGs: { ...gs, ...beforeBalancePatch, players: beforeBalancePlayers, deck: beforeBalanceDeck, discard: beforeBalanceDiscard, log: beforeBalanceLog },
@@ -879,8 +881,13 @@ export function aiStep(gs, opts = {}) {
         ? event
         : {
             ...event,
-            transactionId: event.transactionId || aiActionTransactionId,
-            order: event.order ?? ownedOrderById.get(event.id) ?? fallbackActionOrder++,
+            // AI 的一次完整行动只有一个规则结算游标。子结算（如信仰
+            // 高亮+日食）保留语义阶段，但必须重新挂到行动事务，避免
+            // 嵌套事务各自从 order=0 开始而抢到技能动画之前。
+            transactionId: aiActionTransactionId,
+            order: event.transactionId === aiActionTransactionId && event.order != null
+              ? event.order
+              : ownedOrderById.get(event.id) ?? fallbackActionOrder++,
           });
     return unifiedReplayCache;
   };
@@ -1291,9 +1298,19 @@ export function aiStep(gs, opts = {}) {
           L.push(blockedLog);
           handWorshipBlockedEvent=createGodPowerBlockedEvent({playerIdx:ct,playerName:P[ct].name,msgs:[blockedLog]});
         }
+        let handWorshipEclipseEvent=null;
         if(hgc.godKey==='APO'&&canGodPowerAffect(P[ct])){
-          gs={...gs,apophisNight:getApophisNightForLevel(P[ct].godLevel)};
-          L.push(buildApophisNightLog());
+          const apophisNight=getApophisNightForLevel(P[ct].godLevel);
+          const nightMsg=buildApophisNightLog();
+          gs={...gs,apophisNight};
+          L.push(nightMsg);
+          handWorshipEclipseEvent=createApophisEclipseEvent({
+            playerIdx:ct,
+            playerName:P[ct].name,
+            apophisNight,
+            msgs:[nightMsg],
+            presentAfterInspectionSeq,
+          });
         }
 
         const handWorshipEvent=createGodStatusChangedEvent({
@@ -1307,16 +1324,20 @@ export function aiStep(gs, opts = {}) {
           faithSettlement:{previousFaithExit,abandonedFollowers:abandonedFaithExits},
           presentAfterInspectionSeq,
         });
+        const handFaithEvents=[handWorshipEvent,handWorshipEclipseEvent].filter(Boolean);
+        const orderedHandFaithEvents=handFaithEvents.length>1
+          ?createRuleResolutionTransaction({id:`faith:${handWorshipEvent.id}`,phase:'faithSettlement',events:handFaithEvents}).events
+          :handFaithEvents;
         playersBeforeSkillAction=copyPlayers(P);
         preSkillLogs=L.slice(worshipLogStart);
         preSkillDiscard=[...Disc];
         gs={...gs,...inspectionMeta,_visualEvents:[
           ...(gs._visualEvents||[]),
-          ...(handWorshipEvent?[handWorshipEvent]:[]),
+          ...orderedHandFaithEvents,
           ...(handWorshipBlockedEvent?[handWorshipBlockedEvent]:[]),
         ]};
         recordActionVisualEvents([
-          ...(handWorshipEvent ? [handWorshipEvent] : []),
+          ...orderedHandFaithEvents,
           ...(handWorshipBlockedEvent ? [handWorshipBlockedEvent] : []),
         ]);
         const ww=checkWin(P,gs._isMP);if(ww)return{...gs,players:P,deck:D,discard:Disc,log:L,...inspectionMeta,gameOver:ww};
@@ -1370,12 +1391,12 @@ export function aiStep(gs, opts = {}) {
   })();
   if(shouldRest){
     const d1=(1+Math.random()*6|0),d2=(1+Math.random()*6|0),heal=Math.max(d1,d2);
-    const beforeRestPlayers=copyPlayers(P);
-    P[ct].hp=clamp(P[ct].hp+heal);P[ct].isResting=true;
-    L.push(`${ai.name} 选择【休息】，掷骰 ${d1}、${d2}，取高值回复 ${heal}HP，翻面休息中`);
     const restStatEventSeq=(gs._statEventSeq||0)+1;
-    const restStatEvents=buildStatEvents(beforeRestPlayers,P,L.slice(-1),{reason:'休息',seq:restStatEventSeq});
-    const restStatPatch=restStatEvents.length?{_statEvents:[...(gs._statEvents||[]),...restStatEvents],_statEventSeq:restStatEventSeq}:{};
+    const recovery=submitRecoveryEvents({players:P,events:[{targetIdx:ct,gainHp:heal,source:'休息'}],statEventSeq:restStatEventSeq});
+    P[ct].isResting=true;
+    L.push(`${ai.name} 选择【休息】，掷骰 ${d1}、${d2}，取高值回复 ${heal}HP，翻面休息中`);
+    const restMeta=appendStatChangeResult(gs,recovery);
+    const restStatPatch=recovery.statEvents.length?{_statEvents:restMeta._statEvents,_statEventSeq:restMeta._statEventSeq}:{};
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,...restStatPatch};
     discardAiHandToLimit(P, ct, Disc, L);
     const _P_beforeEndTurnReplay = copyPlayers(P);
@@ -1612,7 +1633,7 @@ export function aiStep(gs, opts = {}) {
                 const afterDiscardDiscard=[...Disc];
                 const huntDamage=3+(P[ct].damageBonus||0);
                 L.push(`弃 ${cardLogText(dc,{alwaysShowName:true})} → ${tgt.name} 受 ${huntDamage}HP 伤害！`);
-                const huntDamageResult=submitDamageEvents({
+                const huntDamageResult=submitLossEvents({
                   players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
                   events:[{targetIdx:ti,lostHp:huntDamage,source:'追捕'}],
                 });
@@ -2007,7 +2028,7 @@ export function aiStep(gs, opts = {}) {
       L.push(`【玫瑰倒刺】${P[holderIdx].name} 失去标记手牌，受到 ${2*count} HP 伤害`);
       return {targetIdx:holderIdx,lostHp:2*count,source:'玫瑰倒刺',order};
     });
-    const thornDamage=submitDamageEvents({
+    const thornDamage=submitLossEvents({
       players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
       events:thornDamageEvents,continuation:{_turnOwner:ct},
     });

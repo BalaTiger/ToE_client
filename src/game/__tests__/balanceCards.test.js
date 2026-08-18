@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { applyBalanceDiscardSideEffects } from '../balanceCards';
-import { submitDamageEvents } from '../effectEngine';
+import { submitLossEvents } from '../effectEngine';
 import { makeStandardPlayers } from './factory';
 
 describe('balanceCards', () => {
@@ -16,7 +16,7 @@ describe('balanceCards', () => {
       ownerIdx: 1,
       cards: [{ type: 'lifeBalance', name: '生命天平' }],
       currentTurn: 0,
-      submitDamage: submitDamageEvents,
+      submitDamage: submitLossEvents,
     });
 
     expect(players[1].hp).toBe(8);

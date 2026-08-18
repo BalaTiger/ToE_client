@@ -1,6 +1,6 @@
-import { buildStatEvents, statEventsToAnimQueue } from './statEvents';
+import { statEventsToAnimQueue } from './statEvents';
 import { buildFullHandSwapStepsFromLogs, buryToDeckStep, buildGraveDigTransferStep, cardTransferStep, statePatchStep } from './animQueueHelpers';
-import { buildApophisTargetSteps, buildCardEffectStepsFromVisualEvents, buildGodPowerBlockedStepsFromVisualEvents, buildGodStatusChangedStep, buildHuntRevealStepFromVisualEvent, getVisualEvents, VISUAL_EVENT } from './visualEvents';
+import { buildApophisEclipseStep, buildApophisTargetSteps, buildCardEffectStepsFromVisualEvents, buildGodPowerBlockedStepsFromVisualEvents, buildGodStatusChangedStep, buildHuntRevealStepFromVisualEvent, getVisualEvents, VISUAL_EVENT } from './visualEvents';
 import { isBlackGoatYoung, isTsathogguaSlime } from './coreUtils';
 import { cardIdentity } from './cardIdentity';
 
@@ -595,8 +595,19 @@ export function buildAnimQueue(oldGs, newGs) {
   const effectiveLog = newInspectionEvents[0]?.beforeLog || newGs.log;
   const oldLog = Array.isArray(oldGs?.log) ? oldGs.log : [];
   const newMsgs = (Array.isArray(effectiveLog) ? effectiveLog : []).slice(oldLog.length);
-  const oldInspectionSeq = oldGs?._inspectionSeq || 0;
-  const newInspectionSeq = newGs?._inspectionSeq || 0;
+  const inspectionPresentationSeq = state => {
+    if (Number.isFinite(Number(state?._inspectionPresentationSeq))) {
+      return Number(state._inspectionPresentationSeq);
+    }
+    return Math.max(
+      state?._inspectionSeq || 0,
+      ...getVisualEvents(state)
+        .filter(event => event?.type === VISUAL_EVENT.INSPECTION)
+        .map(event => Number(event?.legacySeq ?? event?.seq) || 0),
+    );
+  };
+  const oldInspectionSeq = inspectionPresentationSeq(oldGs);
+  const newInspectionSeq = inspectionPresentationSeq(newGs);
   const godStatusEvents = getVisualEvents(newGs).filter(event => (
     event.type === VISUAL_EVENT.GOD_STATUS_CHANGED && !oldVisualEventIds.has(event.id)
   ));
@@ -642,6 +653,13 @@ export function buildAnimQueue(oldGs, newGs) {
   if (presentableGodStatusEvents.length) {
     q.push(...presentableGodStatusEvents.map(buildGodStatusChangedStep).filter(Boolean));
   }
+  const presentableApophisEclipseEvents = freshVisualEvents.filter(event => (
+    event.type === VISUAL_EVENT.APOPHIS_ECLIPSE &&
+    (event?.presentAfterInspectionSeq == null || newInspectionSeq >= event.presentAfterInspectionSeq)
+  ));
+  if (presentableApophisEclipseEvents.length) {
+    q.push(...presentableApophisEclipseEvents.map(buildApophisEclipseStep).filter(Boolean));
+  }
   // 同一邪神只能有一名信徒。新信徒的高亮之后，显式播放旧信徒的
   // godZone 整体进入弃牌堆，确保本地和远端都能观察到信仰被抢夺。
   presentableGodStatusEvents.forEach(event => {
@@ -683,10 +701,6 @@ export function buildAnimQueue(oldGs, newGs) {
     }));
     if (exitStep) q.push(exitStep);
   });
-  if (newGs?.apophisNight?.active) {
-    const nightMsg = newMsgs.find(line => typeof line === 'string' && line.includes('【噬日灭世】黑夜降临'));
-    if (nightMsg) q.push({ type: 'APOPHIS_ECLIPSE', msgs: [nightMsg] });
-  }
   const freshRandomTargetVisualEvents = freshVisualEvents.filter(event => (
     event.type === VISUAL_EVENT.THROW_STONE || event.type === VISUAL_EVENT.RANDOM_TARGET
   ));
@@ -770,6 +784,7 @@ export function buildAnimQueue(oldGs, newGs) {
   const explicitStatEvents = Array.isArray(newGs?._statEvents)
     ? newGs._statEvents.filter(ev => (
       (newGs?._statEventSeq == null || ev?.seq == null || ev.seq > oldStatSeq) &&
+      (newGs?._statEventSeq == null || ev?.seq == null || ev.seq <= newStatSeq) &&
       !inspectionStatSeqs.has(ev?.seq)
     ))
     : [];
@@ -838,21 +853,6 @@ export function buildAnimQueue(oldGs, newGs) {
     }
   } else {
     randomTargetEvents.forEach(event => q.push(...buildRandomTargetQueue(event)));
-    if (!handledCardEffectStatEvents.length) {
-      const hasHpHealLog = newMsgs.some(line => /(?:回复|恢复|回满).*HP|HP\s*回满/.test(line || ''));
-      const hasSanHealLog = newMsgs.some(line => /(?:回复|恢复).*SAN/.test(line || ''));
-      const inferredStatEvents = buildStatEvents(
-        oldGs?.players || [],
-        effectivePlayers,
-        newMsgs,
-        { reason: 'legacy-state-diff', includeDefeat: false },
-      ).filter(event => (
-        event.type !== 'HP_GAIN' || hasHpHealLog
-      ) && (
-        event.type !== 'SAN_GAIN' || hasSanHealLog
-      ));
-      q.push(...statEventsToAnimQueue(inferredStatEvents, oldGs?.players || effectivePlayers, newMsgs));
-    }
   }
   q.push(...godPowerBlockedSteps);
   q.push(...vritraRevealSteps);

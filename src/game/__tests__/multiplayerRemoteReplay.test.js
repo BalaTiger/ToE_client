@@ -3,8 +3,9 @@ import { buildAnimQueue } from '../animQueueCore';
 import { copyPlayers } from '../coreUtils';
 import { buildMpRemoteReplayAction, MP_REMOTE_REPLAY } from '../multiplayerRemoteReplay';
 import { rotateGsForViewer } from '../rotateState';
-import { createAnimTransactionEvent, createCardEffectEvent, createEarthquakeEvent, createEndlessCorridorReplayEvent, createGodPowerBlockedEvent, createHuntResultEvent, createSphinxResultEvent, createSwapCardsEvent } from '../visualEvents';
+import { createAnimTransactionEvent, createApophisEclipseEvent, createCardEffectEvent, createEarthquakeEvent, createEndlessCorridorReplayEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent, createHuntResultEvent, createSphinxResultEvent, createStatEventsEvent, createSwapCardsEvent } from '../visualEvents';
 import { buildStatEvents } from '../statEvents';
+import { createRuleResolutionTransaction } from '../ruleResolutionTransaction';
 
 const card = { id: 'c1', name: '测试牌', type: 'zone' };
 
@@ -93,6 +94,8 @@ describe('buildMpRemoteReplayAction', () => {
     const dodgeCard = { id: 'dodge-card', key: 'A1', name: '负面区域牌', type: 'zone' };
     const beforePlayers = [player('你'), { ...player('艾伦'), role: '寻宝者', hp: 10 }];
     const afterPlayers = [player('你'), { ...player('艾伦'), role: '寻宝者', hp: 8, hand: [dodgeCard] }];
+    const lossMsgs = ['艾伦 失去 2 HP'];
+    const statEvents = buildStatEvents(beforePlayers, afterPlayers, lossMsgs, { reason: '负面区域牌', seq: 1 });
     const previousGs = makeState({
       players: beforePlayers,
       currentTurn: 1,
@@ -108,8 +111,11 @@ describe('buildMpRemoteReplayAction', () => {
       log: [
         ...previousGs.log,
         '艾伦 掷出 2 点，未能规避，触发负面效果！',
-        '艾伦 失去 2 HP',
+        ...lossMsgs,
       ],
+      _statEvents: statEvents,
+      _statEventSeq: 1,
+      _visualEvents: [createStatEventsEvent({ statEvents, msgs: lossMsgs })],
     });
     const buildQueue = vi.fn(() => [{ type: 'HP_DAMAGE', hitIndices: [1] }]);
 
@@ -136,6 +142,8 @@ describe('buildMpRemoteReplayAction', () => {
   it('finds a remote treasure dodge result even when effect logs follow it', () => {
     const beforePlayers = [player('你'), player('艾伦'), { ...player('贝拉'), san: 10 }];
     const afterPlayers = [player('你'), player('艾伦'), { ...player('贝拉'), san: 9 }];
+    const lossMsgs = ['贝拉 失去 1 SAN'];
+    const statEvents = buildStatEvents(beforePlayers, afterPlayers, lossMsgs, { reason: '区域牌效果', seq: 1 });
     const previousGs = makeState({
       players: beforePlayers,
       phase: 'TREASURE_AOE_DODGE_DECISION',
@@ -147,7 +155,10 @@ describe('buildMpRemoteReplayAction', () => {
       rotated: makeState({
         players: afterPlayers,
         phase: 'ACTION',
-        log: ['艾伦 掷出 6 点，成功规避负面效果！', '贝拉 失去 1 SAN'],
+        log: ['艾伦 掷出 6 点，成功规避负面效果！', ...lossMsgs],
+        _statEvents: statEvents,
+        _statEventSeq: 1,
+        _visualEvents: [createStatEventsEvent({ statEvents, msgs: lossMsgs })],
       }),
       previousGs,
       roleRevealed: true,
@@ -204,18 +215,37 @@ describe('buildMpRemoteReplayAction', () => {
       { ...player('艾伦'), godName: 'APO', godLevel: 1, godZone: [godCard], hasBelievedGod: true },
       player('贝拉'),
     ];
-    const buildQueue = vi.fn(() => [
-      { type: 'DRAW_CARD', card: godCard },
-      { type: 'GOD_HIGHLIGHT', targetPid: 1, godKey: 'APO' },
-      { type: 'APOPHIS_ECLIPSE', msgs: ['黑夜降临'] },
-    ]);
+    const apophisNight = { active: true, level: 1 };
+    const godStatusEvent = createGodStatusChangedEvent({
+      playerIdx: 1,
+      playerName: '艾伦',
+      godKey: 'APO',
+      godLevel: 1,
+      msgs: ['艾伦 信仰了 阿波菲斯'],
+      playersBefore: beforePlayers,
+      playersAfter: worshippers,
+    });
+    const eclipseEvent = createApophisEclipseEvent({
+      playerIdx: 1,
+      playerName: '艾伦',
+      apophisNight,
+      msgs: ['【噬日灭世】黑夜降临'],
+    });
+    const faithEvents = createRuleResolutionTransaction({
+      id: `faith:${godStatusEvent.id}`,
+      phase: 'faithSettlement',
+      events: [godStatusEvent, eclipseEvent],
+    }).events;
+    const buildQueue = vi.fn(() => [{ type: 'DRAW_CARD', card: godCard }]);
     const action = buildMpRemoteReplayAction({
       rotated: makeState({
         players: worshippers,
         currentTurn: 1,
         phase: 'ACTION',
         abilityData: {},
+        apophisNight,
         log: ['艾伦 摸到 阿波菲斯', '艾伦 信仰了 阿波菲斯', '【噬日灭世】黑夜降临'],
+        _visualEvents: faithEvents,
         _drawnCard: godCard,
         _turnStartLogs: ['—— 艾伦 的回合开始 ——'],
         _drawLogs: ['艾伦 摸到 阿波菲斯'],
@@ -239,8 +269,8 @@ describe('buildMpRemoteReplayAction', () => {
   });
 
   it('replays apophis night eclipse for a remote worship-from-hand sync', () => {
-    // 从手牌信仰阿波菲斯：普通 ACTION→ACTION 同步，无视觉事件，走通用兜底队列。
-    // 远端必须凭 buildAnimQueue 自行重建日食步骤，才能与本地动画同步开始。
+    // 从手牌信仰阿波菲斯：普通 ACTION→ACTION 同步仍由显式信仰事务驱动，
+    // 远端不扫描终态或日志补造高亮、日食。
     const godCard = { id: 'apo-hand', name: '阿波菲斯', godKey: 'APO', isGod: true, type: 'god' };
     const beforePlayers = [player('你'), { ...player('艾伦'), hand: [godCard] }, player('贝拉')];
     const worshippers = [player('你'), {
@@ -250,13 +280,35 @@ describe('buildMpRemoteReplayAction', () => {
       godZone: [godCard],
       hasBelievedGod: true,
     }, player('贝拉')];
+    const apophisNight = { active: true, level: 1 };
+    const godStatusEvent = createGodStatusChangedEvent({
+      playerIdx: 1,
+      playerName: '艾伦',
+      godKey: 'APO',
+      godLevel: 1,
+      msgs: ['艾伦 从手牌信仰了 阿波菲斯，获得日食(Lv.1)'],
+      playersBefore: beforePlayers,
+      playersAfter: worshippers,
+    });
+    const eclipseEvent = createApophisEclipseEvent({
+      playerIdx: 1,
+      playerName: '艾伦',
+      apophisNight,
+      msgs: ['【噬日灭世】黑夜降临'],
+    });
+    const faithEvents = createRuleResolutionTransaction({
+      id: `faith:${godStatusEvent.id}`,
+      phase: 'faithSettlement',
+      events: [godStatusEvent, eclipseEvent],
+    }).events;
     const action = buildMpRemoteReplayAction({
       rotated: makeState({
         players: worshippers,
         currentTurn: 1,
         phase: 'ACTION',
-        apophisNight: { active: true, level: 1 },
+        apophisNight,
         log: ['艾伦 从手牌信仰了 阿波菲斯，获得日食(Lv.1)', '【噬日灭世】黑夜降临'],
+        _visualEvents: faithEvents,
       }),
       previousGs: makeState({
         players: beforePlayers,
@@ -266,7 +318,7 @@ describe('buildMpRemoteReplayAction', () => {
         log: [],
       }),
       roleRevealed: true,
-      buildAnimQueue,
+      buildAnimQueue: vi.fn(() => []),
       buildFullHandSwapTransferQueueFromLogs: vi.fn(() => []),
     });
 
@@ -891,6 +943,7 @@ describe('buildMpRemoteReplayAction', () => {
         beforeLog: log.slice(0, 2),
         afterPlayers: afterSanPlayers,
         afterLog: log.slice(0, 3),
+        beforeStatEventSeq: 1,
         statEvents: [],
         statEventSeq: null,
       }, {
@@ -901,6 +954,7 @@ describe('buildMpRemoteReplayAction', () => {
         beforeLog: log.slice(0, 3),
         afterPlayers: finalPlayers,
         afterLog: log,
+        beforeStatEventSeq: 1,
         statEvents: [],
         statEventSeq: null,
       }],
@@ -1130,6 +1184,7 @@ describe('buildMpRemoteReplayAction', () => {
             '诺亚 的SAN检定结果为"自残"',
             '诺亚 自残，失去 1 HP',
           ],
+          beforeStatEventSeq: 1,
           statEvents: [{
             seq: 2,
             type: 'HP_LOSS',
@@ -1153,6 +1208,7 @@ describe('buildMpRemoteReplayAction', () => {
           ],
           afterPlayers: afterSecondInspectionPlayers,
           afterLog: fullLog,
+          beforeStatEventSeq: 3,
           statEvents: [],
           statEventSeq: 3,
         },
@@ -1264,6 +1320,8 @@ describe('buildMpRemoteReplayAction', () => {
     const dragonHeart = { id: 'dragon-heart', key: 'C3', name: '龙之心', type: 'zone' };
     const beforePlayers = [player('你'), { ...player('艾伦'), hp: 4, san: 6 }];
     const afterPlayers = [player('你'), { ...player('艾伦'), hp: 7, san: 7, hand: [dragonHeart] }];
+    const recoveryMsgs = ['艾伦 恢复 3 HP', '艾伦 恢复 1 SAN'];
+    const statEvents = buildStatEvents(beforePlayers, afterPlayers, recoveryMsgs, { reason: '龙之心', seq: 1 });
     const previousGs = makeState({
       currentTurn: 1,
       phase: 'DRAW_REVEAL',
@@ -1274,7 +1332,10 @@ describe('buildMpRemoteReplayAction', () => {
       currentTurn: 1,
       phase: 'ACTION',
       players: afterPlayers,
-      log: ['艾伦 收入了 [C3] 龙之心', '艾伦 恢复 3 HP', '艾伦 恢复 1 SAN'],
+      log: ['艾伦 收入了 [C3] 龙之心', ...recoveryMsgs],
+      _statEvents: statEvents,
+      _statEventSeq: 1,
+      _visualEvents: [createStatEventsEvent({ statEvents, msgs: recoveryMsgs })],
     });
     const action = buildAction(rotated, {
       previousGs,
@@ -1597,6 +1658,15 @@ describe('buildMpRemoteReplayAction', () => {
       phase: 'ACTION',
       players: beforeInspectionPlayers,
       log: afterInspectionLog,
+      _statEventSeq: 1,
+      _statEvents: [{
+        seq: 1,
+        type: 'SAN_LOSS',
+        target: 2,
+        from: { hp: 10, san: 8, isDead: false },
+        to: { hp: 10, san: 6, isDead: false },
+        reason: '蛊惑遭遇',
+      }],
       _inspectionSeq: 1,
       _inspectionEvents: [{
         seq: 1,
@@ -1606,6 +1676,7 @@ describe('buildMpRemoteReplayAction', () => {
         beforeLog: beforeInspectionLog,
         afterPlayers: beforeInspectionPlayers,
         afterLog: afterInspectionLog,
+        beforeStatEventSeq: 1,
         statEvents: [],
         statEventSeq: 0,
       }],

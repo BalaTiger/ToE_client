@@ -9,7 +9,7 @@ import { dedupeInferredDiscardTransfers } from '../animQueueHelpers';
 import { assertCompleteThrowStoneTransactions } from '../animationStepSchema';
 import { copyPlayers } from '../coreUtils';
 import { buildStatEvents } from '../statEvents';
-import { buildFreshStatVisualEvents, createCardEffectEvent, createEarthquakeEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent, createRandomTargetVisualEvent } from '../visualEvents';
+import { buildFreshStatVisualEvents, createApophisEclipseEvent, createCardEffectEvent, createEarthquakeEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent, createRandomTargetVisualEvent } from '../visualEvents';
 import { makeGodCard, makeGs, makePlayer } from './factory';
 
 describe('buildAnimQueue stat animations', () => {
@@ -365,6 +365,12 @@ describe('buildAnimQueue stat animations', () => {
       players: [makePlayer()],
       log: ['旧日志', '【噬日灭世】黑夜降临，选中目标累计12次后结束'],
       apophisNight: { active: true, threshold: 2, count: 0, limit: 12 },
+      _visualEvents: [createApophisEclipseEvent({
+        playerIdx: 0,
+        playerName: '你',
+        apophisNight: { active: true, threshold: 2, count: 0, limit: 12 },
+        msgs: ['【噬日灭世】黑夜降临，选中目标累计12次后结束'],
+      })],
     });
 
     expect(buildAnimQueue(oldGs, newGs).map(step => step.type)).toContain('APOPHIS_ECLIPSE');
@@ -872,7 +878,16 @@ describe('buildAnimQueue stat animations', () => {
     expect(buildAnimQueue(oldGs, newGs).some(step => step.type === 'SAN_HEAL')).toBe(false);
   });
 
-  it('有 SAN 回复日志且数值上升时播放 SAN 回复特效', () => {
+  it('不会从玩家快照差分推断伤害动画', () => {
+    const oldGs = makeGs({ players: [makePlayer({ hp: 10, san: 10 })], log: [] });
+    const newGs = makeGs({ players: [makePlayer({ hp: 8, san: 9 })], log: ['你 失去 2 HP 和 1 SAN'] });
+
+    expect(buildAnimQueue(oldGs, newGs).some(step => (
+      step.type === 'HP_DAMAGE' || step.type === 'SAN_DAMAGE'
+    ))).toBe(false);
+  });
+
+  it('有显式 SAN 回复事件时播放 SAN 回复特效', () => {
     const oldGs = makeGs({
       players: [makePlayer({ san: 3 })],
       log: [],
@@ -880,12 +895,14 @@ describe('buildAnimQueue stat animations', () => {
     const newGs = makeGs({
       players: [makePlayer({ san: 5 })],
       log: ['你 回复 2 SAN'],
+      _statEventSeq: 1,
     });
+    newGs._statEvents = buildStatEvents(oldGs.players, newGs.players, newGs.log, { reason: '回复', seq: 1 });
 
     expect(buildAnimQueue(oldGs, newGs).some(step => step.type === 'SAN_HEAL')).toBe(true);
   });
 
-  it('恢复 HP 同时失去 SAN 时同时播放治疗和 SAN 损失动画', () => {
+  it('显式记录恢复 HP 同时失去 SAN 时播放两种动画', () => {
     const oldGs = makeGs({
       players: [makePlayer({ hp: 5, san: 8 })],
       log: [],
@@ -893,7 +910,9 @@ describe('buildAnimQueue stat animations', () => {
     const newGs = makeGs({
       players: [makePlayer({ hp: 10, san: 6 })],
       log: ['你 回复 5 HP，失去 2 SAN'],
+      _statEventSeq: 1,
     });
+    newGs._statEvents = buildStatEvents(oldGs.players, newGs.players, newGs.log, { reason: '混合结算', seq: 1 });
 
     expect(buildAnimQueue(oldGs, newGs).map(step => step.type)).toEqual(['HP_HEAL', 'SAN_DAMAGE']);
   });
@@ -1294,6 +1313,7 @@ describe('buildAnimQueue stat animations', () => {
       beforeDiscard: [],
       afterPlayers,
       afterDiscard: [],
+      statEvents: buildStatEvents(beforePlayers, afterPlayers, ['全体存活角色失去 4 HP'], { reason: '活火山', seq: 1 }),
       msgs: ['全体存活角色失去 4 HP'],
     });
     const newGs = makeGs({
@@ -1336,6 +1356,7 @@ describe('buildAnimQueue stat animations', () => {
       beforeDiscard: [],
       afterPlayers,
       afterDiscard: [],
+      statEvents: buildStatEvents(beforePlayers, afterPlayers, ['全体存活角色回复 2 HP'], { reason: '地下泉', seq: 1 }),
       msgs: ['全体存活角色回复 2 HP'],
     });
     const newGs = makeGs({
@@ -1383,6 +1404,7 @@ describe('buildAnimQueue stat animations', () => {
       beforeDiscard: [],
       afterPlayers,
       afterDiscard: [],
+      statEvents: buildStatEvents(beforePlayers, afterPlayers, ['你 与相邻角色各失去 2 HP'], { reason: '惊扰蝙蝠', seq: 1 }),
       msgs: ['你 与相邻角色各失去 2 HP'],
     });
     const newGs = makeGs({
@@ -1430,6 +1452,7 @@ describe('buildAnimQueue stat animations', () => {
       beforeDiscard: [],
       afterPlayers,
       afterDiscard: [],
+      statEvents: buildStatEvents(beforePlayers, afterPlayers, ['全体存活角色失去 1 HP 和 SAN'], { reason: '夜风呼啸', seq: 1 }),
       msgs: ['全体存活角色失去 1 HP 和 SAN'],
     });
     const newGs = makeGs({

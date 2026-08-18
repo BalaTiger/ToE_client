@@ -18,7 +18,7 @@ import {
   makeInspectionMeta,
 } from './coreUtils';
 import { createCardEffectEvent } from './visualEvents';
-import { applyHpDamageWithLink, applyInspectionForSanLoss, resolvePendingDamageLinkBreak, submitDamageEvents } from './effectEngine';
+import { applyHpDamageWithLink, applyInspectionForSanLoss, resolvePendingDamageLinkBreak, submitLossEvents } from './effectEngine';
 import { deriveEffectDecisionState } from './effectStatePatch';
 import { initGame } from './setup';
 import {
@@ -498,7 +498,7 @@ export function resolveHeadlessSameAbyss(gs) {
     L.push(`【同归深渊】${target.name} 选择弃置手牌至 ${actorHandCount} 张`);
   } else {
     L.push(`【同归深渊】${target.name} 选择承受伤害，失去 4 HP`);
-    const damage = submitDamageEvents({
+    const damage = submitLossEvents({
       players: P, deck: D, discard: Disc, log: L, currentTurn: gs.currentTurn,
       events: [{ targetIdx, lostHp: 4, source: '同归深渊' }],
       continuation: { _turnOwner: gs.abilityData?._turnOwner ?? gs.currentTurn },

@@ -3,6 +3,7 @@ import {
   buildCardEffectAnimStep,
   buildGodPowerBlockedStepsFromVisualEvents,
   buildGodStatusChangedStep,
+  buildApophisEclipseStep,
   buildThrowStoneSteps,
   buildApophisTargetSteps,
   buildMultiplySteps,
@@ -24,6 +25,7 @@ import { buildInspectionEventFlow, buildSphinxResultQueue, buildGraveDigTransfer
 import { buildBewitchGiftReplay } from './animReplayEvents';
 import { copyPlayers } from './coreUtils';
 import { statEventsToAnimQueue } from './statEvents';
+import { assertValidRuleResolutionEvents, orderRuleResolutionEvents, statEventIdentity, validateRuleResolutionEvents } from './ruleResolutionTransaction';
 
 function stateWithSingleEvent(state, event) {
   return { ...(state || {}), _visualEvents: event ? [event] : [] };
@@ -89,28 +91,6 @@ function visualEventMatchesCompileScope(event, options = {}) {
   return true;
 }
 
-function orderEventsWithinActionTransactions(events = []) {
-  const result = [...events];
-  const groups = new Map();
-  result.forEach((event, index) => {
-    if (!event?.transactionId || event?.turnStartStage || event?.order == null) return;
-    if (!groups.has(event.transactionId)) groups.set(event.transactionId, []);
-    groups.get(event.transactionId).push({ event, index });
-  });
-  groups.forEach(items => {
-    if (items.length < 2) return;
-    const indices = items.map(item => item.index).sort((a, b) => a - b);
-    const ordered = [...items].sort((left, right) => (
-      Number(left.event.order) - Number(right.event.order)
-      || left.index - right.index
-    ));
-    indices.forEach((index, position) => {
-      result[index] = ordered[position].event;
-    });
-  });
-  return result;
-}
-
 function sameCard(left, right) {
   if (!left || !right) return left === right;
   return (left.id && right.id && left.id === right.id) ||
@@ -131,9 +111,7 @@ function sameStatEvents(left = [], right = []) {
   const a = Array.isArray(left) ? left : [];
   const b = Array.isArray(right) ? right : [];
   if (!a.length || !b.length) return false;
-  return a.some(x => b.some(y => (
-    x?.id && y?.id ? x.id === y.id : x?.seq === y?.seq && x?.type === y?.type && x?.target === y?.target
-  )));
+  return a.some(x => b.some(y => statEventIdentity(x) === statEventIdentity(y)));
 }
 
 function suppressStatsOwnedByExplicitEvents(events = []) {
@@ -284,6 +262,7 @@ export function validateVisualEventTransaction(transaction, events = []) {
   const queue = Array.isArray(transaction.queue) ? transaction.queue : [];
   const eventIds = Array.isArray(transaction.eventIds) ? transaction.eventIds : [];
   const scopedEvents = (Array.isArray(events) ? events : []).filter(Boolean);
+  issues.push(...validateRuleResolutionEvents(scopedEvents));
   const eventIndexById = new Map(
     scopedEvents.map((event, index) => [event?.id, index]).filter(([id]) => !!id),
   );
@@ -409,6 +388,8 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
     }
     case VISUAL_EVENT.GOD_STATUS_CHANGED:
       return [buildGodStatusChangedStep(event)].filter(Boolean);
+    case VISUAL_EVENT.APOPHIS_ECLIPSE:
+      return [buildApophisEclipseStep(event)].filter(Boolean);
     case VISUAL_EVENT.THROW_STONE:
       return buildThrowStoneSteps(event, state);
     case VISUAL_EVENT.APOPHIS_TARGET:
@@ -575,15 +556,15 @@ function interleavePhaseOrderedVisualEvents(events = []) {
 export function compileRuleVisualEventsToAnimTransaction(state, previousState = null, options = {}) {
   const previousIds = new Set(getVisualEventIdsFromState(previousState));
   const consumedIds = options.consumedEventIds;
-  const scopedEvents = orderEventsWithinActionTransactions(
-    (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
+  const freshScopedEvents = (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
     .filter(event => (
       event?.id &&
       !previousIds.has(event.id) &&
       !(consumedIds?.has?.(event.id)) &&
       visualEventMatchesCompileScope(event, options)
-    )),
-  );
+    ));
+  assertValidRuleResolutionEvents(freshScopedEvents);
+  const scopedEvents = orderRuleResolutionEvents(freshScopedEvents);
   const {
     events: presentationEvents,
     suppressedEventIds,

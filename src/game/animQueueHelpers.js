@@ -599,6 +599,9 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
   let cursorDiscard=[...(Array.isArray(baseGs?.discard)?baseGs.discard:[])];
   let cursorStatEventSeq=baseGs?._statEventSeq||0;
   const availableStatEvents=Array.isArray(baseGs?._statEvents)?baseGs._statEvents:[];
+  const statEventsThrough=seq=>availableStatEvents.filter(event=>(
+    event?.seq==null||event.seq<=seq
+  ));
   (events||[]).forEach(ev=>{
     const beforePlayers=copyPlayers(ev?.beforePlayers||cursorPlayers);
     const beforeLog=[...(Array.isArray(ev?.beforeLog)?ev.beforeLog:cursorLog)];
@@ -608,8 +611,8 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
     const afterDiscard=[...(Array.isArray(ev?.afterDiscard)?ev.afterDiscard:beforeDiscard)];
     const beforeStatEventSeq=Math.max(cursorStatEventSeq,ev?.beforeStatEventSeq||0);
     const preQ=eventOwnedOnly?[]:buildAnimQueue(
-      {players:cursorPlayers,log:cursorLog,discard:cursorDiscard,_statEvents:availableStatEvents,_statEventSeq:cursorStatEventSeq},
-      {players:beforePlayers,log:beforeLog,discard:beforeDiscard,_statEvents:availableStatEvents,_statEventSeq:beforeStatEventSeq}
+      {players:cursorPlayers,log:cursorLog,discard:cursorDiscard,_statEvents:statEventsThrough(cursorStatEventSeq),_statEventSeq:cursorStatEventSeq},
+      {players:beforePlayers,log:beforeLog,discard:beforeDiscard,_statEvents:statEventsThrough(beforeStatEventSeq),_statEventSeq:beforeStatEventSeq}
     );
     // Lock the state visible at the start of the inspection segment before any
     // preceding stat animations run. The committed game state may already be
@@ -741,14 +744,24 @@ export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPl
     ...newGs,
     players:firstEvent?.beforePlayers||newGs.players,
     log:firstEvent?.beforeLog||newGs.log,
+    // This snapshot is the presentation cursor immediately before the first
+    // inspection. It may already carry the final event journal so faith-exit
+    // transfers can compile, but post-inspection events must not cross it.
+    _inspectionPresentationSeq:baseInspectionSeq,
     _inspectionEvents:baseOldGs._inspectionEvents||[], // legacy-visual-allow: compatibility presentation baseline
     _inspectionSeq:baseInspectionSeq,
-    _statEvents:baseOldGs._statEvents||[],
-    _statEventSeq:baseOldGs._statEventSeq||0,
+    _statEvents:newGs?._statEvents||[],
+    _statEventSeq:firstEvent?.beforeStatEventSeq??baseOldGs._statEventSeq??0,
   };
   const preQueue=buildAnimQueue(baseOldGs,preInspectionGs);
   const inspectionFlow=buildInspectionEventFlow(
-    {players:preInspectionGs.players,log:preInspectionGs.log},
+    {
+      players:preInspectionGs.players,
+      log:preInspectionGs.log,
+      discard:preInspectionGs.discard,
+      _statEvents:newGs?._statEvents||[],
+      _statEventSeq:preInspectionGs._statEventSeq,
+    },
     inspectionEvents,
     {buildAnimQueue,copyPlayers}
   );
@@ -756,7 +769,6 @@ export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPl
   const tailStatEventSeq=Math.max(inspectionFlow.statEventSeq,newGs?._statEventSeq||0);
   const tailBaselineVisualEvents=Array.isArray(newGs?._visualEvents)
     ?newGs._visualEvents.filter(event=>(
-      event?.type!==VISUAL_EVENT.GOD_STATUS_CHANGED ||
       event?.presentAfterInspectionSeq==null ||
       event.presentAfterInspectionSeq>maxInspectionSeq
     ))

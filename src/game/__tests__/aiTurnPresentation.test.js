@@ -843,6 +843,7 @@ describe('AI turn presentation helpers', () => {
     const firstNight = {
       seq: 1,
       transactionId: 'ai-action:consecutive',
+      order: 0,
       phaseGroupId: 'hunt-attempt:1',
       phaseOrder: 0,
       actorIdx: 1,
@@ -856,6 +857,7 @@ describe('AI turn presentation helpers', () => {
     const secondNight = {
       seq: 2,
       transactionId: 'ai-action:consecutive',
+      order: 2,
       phaseGroupId: 'hunt-attempt:2',
       phaseOrder: 0,
       actorIdx: 1,
@@ -871,6 +873,8 @@ describe('AI turn presentation helpers', () => {
         attemptId: 'hunt-attempt:1',
         phaseGroupId: 'hunt-attempt:1',
         phaseOrder: 30,
+        transactionId: 'ai-action:consecutive',
+        order: 1,
         hunterIdx: 1,
         targetIdx: 2,
         revealedCard: players[2].hand[0],
@@ -881,6 +885,8 @@ describe('AI turn presentation helpers', () => {
         attemptId: 'hunt-attempt:2',
         phaseGroupId: 'hunt-attempt:2',
         phaseOrder: 30,
+        transactionId: 'ai-action:consecutive',
+        order: 3,
         hunterIdx: 1,
         targetIdx: 0,
         beforePlayers: players,
@@ -960,6 +966,7 @@ describe('AI turn presentation helpers', () => {
       label: '选择【追捕】目标',
       log: '【黑夜】艾伦 选择【追捕】目标掷出 1，目标由 你 错乱为 贝拉，失去 1 SAN',
       transactionId: 'ai-action:target-only',
+      order: 0,
       phaseGroupId: 'hunt-attempt:6',
       phaseOrder: 0,
     };
@@ -974,6 +981,7 @@ describe('AI turn presentation helpers', () => {
       label: '选择【追捕】目标',
       log: '【黑夜】艾伦 选择【追捕】目标掷出 4，目标未偏移',
       transactionId: 'ai-action:target-only',
+      order: 1,
       phaseGroupId: 'hunt-attempt:7',
       phaseOrder: 0,
     };
@@ -983,6 +991,8 @@ describe('AI turn presentation helpers', () => {
         attemptId: 'hunt-attempt:6',
         phaseGroupId: 'hunt-attempt:6',
         phaseOrder: 30,
+        transactionId: 'ai-action:target-only',
+        order: 2,
         hunterIdx: 1,
         targetIdx: 2,
         beforePlayers: players,

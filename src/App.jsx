@@ -64,7 +64,7 @@ import {
   killPlayerState,
   tryVritraImmortal,
   applyHpDamageWithLink,
-  submitDamageEvents,
+  submitLossEvents,
   resolvePendingDamageLinkBreak,
   applyFx,
   applySanLossToPlayerWithInspection,
@@ -189,6 +189,7 @@ import {
   buildSinglePlayerAiTurnStartReplayContext,
   createTimedOutDrawDiscardEvent,
   createBewitchGiftEvent,
+  createApophisEclipseEvent,
   createGodPowerBlockedEvent,
   createGodStatusChangedEvent,
   createGraveDigEvent,
@@ -203,6 +204,7 @@ import {
   createRandomTargetVisualEvent,
   createTsathogguaSlimeGrantEvent,
   createTurnDrawVisualEvents,
+  createRuleResolutionTransaction,
   buildHuntRevealStepFromVisualEvents,
   buildHuntRevealStepFromVisualEvent,
   pruneConsumedVisualEvents,
@@ -1758,7 +1760,7 @@ export default function Game(){
         const ti=prev.currentTurn;
         let damageDecision=null;
         if(P[ti]&&!P[ti].isDead){
-          damageDecision=submitDamageEvents({
+          damageDecision=submitLossEvents({
             players:P,deck:[...(prev.deck||[])],discard:Disc,log:L,currentTurn:prev.currentTurn,
             events:[{targetIdx:ti,lostHp:4,source:'廷达罗斯猎犬'}],
           });
@@ -3256,7 +3258,7 @@ export default function Game(){
       L.push(`【玫瑰倒刺】${P[idx].name} 失去标记手牌，受到 ${2 * lostCount} HP 伤害`);
       return {targetIdx:idx,lostHp:2*lostCount,source:'玫瑰倒刺',order:hitOrder};
     });
-    const damage=submitDamageEvents({players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,events:damageEvents});
+    const damage=submitLossEvents({players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,events:damageEvents});
     const win = damage.abilityData ? null : checkWin(P, gs._isMP);
     const newGs = {
       ...gs,
@@ -4842,7 +4844,7 @@ export default function Game(){
           turnDirection:resolved.turnDirection,
           msgs:resolved.msgs,
         })];
-        triggerAnimQueue(queue,nextState,()=>advanceEndTurnSeq(nextState),authoritativeResolvedQueueMeta(nextState,queue));
+        triggerAnimQueue(queue,nextState,()=>advanceEndTurnSeq(nextState),authoritativeResolvedQueueMeta(nextState,queue,consumedVisualEventIdsRef.current));
         return true;
       }
       case END_TURN_EVENT.TSG_SLIME_GRANT:
@@ -4882,7 +4884,7 @@ export default function Game(){
           ?{...seqState,_visualEvents:[seedEvent,...(seqState._visualEvents||[])]}
           :seqState);
       }
-      triggerAnimQueue(seedQueue,seqState,()=>stepEndTurnSeq(seqState),authoritativeResolvedQueueMeta(seqState,seedQueue));
+      triggerAnimQueue(seedQueue,seqState,()=>stepEndTurnSeq(seqState),authoritativeResolvedQueueMeta(seqState,seedQueue,consumedVisualEventIdsRef.current));
     }else{
       stepEndTurnSeq(seqState);
     }
@@ -4899,9 +4901,10 @@ export default function Game(){
     L.push(...slimeLog);
     const zPatch=appendPublicCardGainTriggers(state,P,grant.ownerIdx,grant.cards);
     const grantEvent=createTsathogguaSlimeGrantEvent(grant);
-    const queue=buildTsathogguaSlimeGrantQueue({_visualEvents:grantEvent?[grantEvent]:[],zhuLight:state.zhuLight||null,players:P});
     const nextState={...state,players:P,log:L,_tsgSlimeGrantedAtTurnEnd:true,
+      _visualEvents:grantEvent?[...(state._visualEvents||[]),grantEvent]:(state._visualEvents||[]),
       ...(zPatch.proliferatingZQueue?{proliferatingZQueue:zPatch.proliferatingZQueue}:{})};
+    const queue=buildTsathogguaSlimeGrantQueue(nextState);
     if(nextState._isMP){
       // 复用无尽通道事件通道广播；黄液动画自带 VISUAL_LOCK，从发放前快照"长出"，远端按 actor 旋转后同步。
       const event=createEndlessCorridorReplayEvent({
@@ -4912,7 +4915,17 @@ export default function Game(){
       if(event)broadcastMpStateBeforeLocalReplay({...nextState,_visualEvents:[event,...(nextState._visualEvents||[])]});
       else broadcastMpStateBeforeLocalReplay(nextState);
     }
-    triggerAnimQueue(queue,nextState,()=>advanceEndTurnSeq(nextState),authoritativeResolvedQueueMeta(nextState,queue));
+    triggerAnimQueue(
+      queue,
+      nextState,
+      ()=>advanceEndTurnSeq(nextState),
+      authoritativeResolvedQueueMeta(
+        nextState,
+        queue,
+        consumedVisualEventIdsRef.current,
+        grantEvent?[grantEvent.id]:[],
+      ),
+    );
   }
   // 无尽通道事件：PASSIVE_OTHER，序列末环。复用 beginEndTurnReplay（黄液由前序事件发放并打标记，故跳过）。
   function runEndTurnReplayEvent(state){
@@ -5647,7 +5660,7 @@ export default function Game(){
     let damageDecision=null;
     if(!dodgeSuccess){
       L.push('猜测错误！你失去 3 HP');
-      damageDecision=submitDamageEvents({
+      damageDecision=submitLossEvents({
         players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
         events:[{targetIdx:0,lostHp:3,source:'斯芬克斯'}],
         continuation:continuationAbilityData,
@@ -6901,7 +6914,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }else{
       Disc.push(discardedCard);
       L.push(`${P[actorIdx].name} 弃置 ${cardLogText(discardedCard,{alwaysShowName:true})}`);
-      const balance=applyBalanceDiscardSideEffects({players:P,deck:D,discard:Disc,log:L,ownerIdx:actorIdx,cards:[discardedCard],reason:'引燃火把弃牌',applyHpDamage:applyHpDamageWithLink,submitDamage:submitDamageEvents,currentTurn:gs.currentTurn});
+      const balance=applyBalanceDiscardSideEffects({players:P,deck:D,discard:Disc,log:L,ownerIdx:actorIdx,cards:[discardedCard],reason:'引燃火把弃牌',applyHpDamage:applyHpDamageWithLink,submitDamage:submitLossEvents,currentTurn:gs.currentTurn});
       P=balance.players;D=balance.deck;Disc=balance.discard;L=balance.log;
       damageDecision=balance.damageDecision||null;
     }
@@ -7513,7 +7526,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         resultText:`${P[randomTarget].name} 被选中`,
         phaseOrder:0,
       });
-      damageDecision=submitDamageEvents({
+      damageDecision=submitLossEvents({
         players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
         events:[{targetIdx:randomTarget,lostHp:2,lostSan:2,source:'白化生物'}],
         continuation:buildTargetContinuationAbilityData(abilityData),
@@ -7881,7 +7894,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const afterDiscardDiscard=[...Disc];
       const huntDamage=3+(P[0].damageBonus||0);
       L.push(`弃 ${cardLogText(dc,{alwaysShowName:true})} → ${P[huntTi].name} 受 ${huntDamage}HP 伤害`);
-      const huntDamageResult=submitDamageEvents({
+      const huntDamageResult=submitLossEvents({
         players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
         events:[{targetIdx:huntTi,lostHp:huntDamage,source:'追捕'}],
       });
@@ -8170,7 +8183,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       afterDiscardDiscard=[...Disc];
       const huntDamage=3+(P[huntingAI].damageBonus||0);
       L.push(`${aiHunterName} 弃 ${cardLogText(discardedCard,{alwaysShowName:true})}，你受 ${huntDamage}HP 伤害！`);
-      damage=submitDamageEvents({
+      damage=submitLossEvents({
         players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
         events:[{targetIdx:0,lostHp:huntDamage,source:'追捕'}],
       });
@@ -8451,7 +8464,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       L.push(`【同归深渊】${target.name} 选择弃置手牌至 ${actorHandCount} 张`);
     }else{
       L.push(`【同归深渊】${target.name} 选择承受伤害，失去 4 HP`);
-      damage=submitDamageEvents({
+      damage=submitLossEvents({
         players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
         events:[{targetIdx,lostHp:4,source:'同归深渊'}],
         continuation:{...buildTargetContinuationAbilityData(abilityData),_turnOwner:abilityData._turnOwner??gs.currentTurn},
@@ -8529,7 +8542,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const localMsgs=[];
       Disc.push(actualCard);
       if(!needsSphinxDodge){
-        damageDecision=submitDamageEvents({
+        damageDecision=submitLossEvents({
           players:P,deck:D,discard:Disc,log:localMsgs,currentTurn:gs.currentTurn,
           events:[{targetIdx:actorIdx,lostHp:3,source:'斯芬克斯'}],
           continuation:continuationAbilityData,
@@ -8804,8 +8817,17 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const nextApophisNight=godPowerImmediate&&gk==='APO'
       ?getApophisNightForLevel(P[0].godLevel)
       :gs.apophisNight;
+    let apophisEclipseEvent=null;
     if(godPowerImmediate&&gk==='APO'){
-      L.push(buildApophisNightLog());
+      const nightMsg=buildApophisNightLog();
+      L.push(nightMsg);
+      apophisEclipseEvent=createApophisEclipseEvent({
+        playerIdx:0,
+        playerName:P[0].name,
+        apophisNight:nextApophisNight,
+        msgs:[nightMsg],
+        presentAfterInspectionSeq,
+      });
     }
     const blockedGodPowerEvent=(!godPowerImmediate&&(action==='worship'||action==='upgrade'||action==='forcedConvert')&&['APO','ZHU','SHU'].includes(gk)&&hasGodPowerImmunity(P[0]))
       ?createGodPowerBlockedEvent({playerIdx:0,playerName:P[0].name,msgs:[buildGodPowerBlockedLog(P[0])]})
@@ -8843,9 +8865,13 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       msgs:L.slice(gs.log.length),
       presentAfterInspectionSeq,
     });
+    const faithResolutionEvents=[godStatusEvent,apophisEclipseEvent].filter(Boolean);
+    const orderedFaithResolutionEvents=faithResolutionEvents.length>1
+      ?createRuleResolutionTransaction({id:`faith:${godStatusEvent.id}`,phase:'faithSettlement',events:faithResolutionEvents}).events
+      :faithResolutionEvents;
     // 保留abilityData中的cthDrawsRemaining信息
     const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,apophisNight:nextApophisNight,phase:nextPhase,abilityData:nextAbilityData,
-      _visualEvents:[...(godStatusEvent?[godStatusEvent]:[]),...(blockedGodPowerEvent?[blockedGodPowerEvent]:[])],
+      _visualEvents:[...orderedFaithResolutionEvents,...(blockedGodPowerEvent?[blockedGodPowerEvent]:[])],
       godTriggeredThisTurn:consumesSlot,...inspectionMetaWithoutAbilityData,...replayPatch,...proliferatingZPatch};
     const finishGodChoice=(state)=>{
       const win=checkWin(state.players,state._isMP);
@@ -9977,7 +10003,18 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const win=checkWin(P,gs._isMP);
     const nextZhuLight=godPowerImmediateHand?buildZhuLight(P,D,0,gs.zhuLight):gs.zhuLight;
     const nextApophisNight=godPowerImmediateHand&&godKey==='APO'?getApophisNightForLevel(P[0].godLevel):gs.apophisNight;
-    if(godPowerImmediateHand&&godKey==='APO')L.push(buildApophisNightLog());
+    let apophisEclipseEvent=null;
+    if(godPowerImmediateHand&&godKey==='APO'){
+      const nightMsg=buildApophisNightLog();
+      L.push(nightMsg);
+      apophisEclipseEvent=createApophisEclipseEvent({
+        playerIdx:0,
+        playerName:P[0].name,
+        apophisNight:nextApophisNight,
+        msgs:[nightMsg],
+        presentAfterInspectionSeq,
+      });
+    }
     const blockedGodPowerEvent=(!godPowerImmediateHand&&['APO','ZHU','SHU'].includes(godKey)&&hasGodPowerImmunity(P[0]))
       ?createGodPowerBlockedEvent({playerIdx:0,playerName:P[0].name,msgs:[buildGodPowerBlockedLog(P[0])]})
       :null;
@@ -9987,7 +10024,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       msgs:worshipMsg?[worshipMsg]:[],playersBefore:faithEstablished?.playersBefore||gs.players,playersAfter:faithEstablished?.playersAfter||P,
       faithSettlement:{previousFaithExit,abandonedFollowers:abandonedFaithExits},presentAfterInspectionSeq,
     });
-    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,apophisNight:nextApophisNight,phase:isShuBlessingHand?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessingHand?{shuOffspringCount:shuOffspringCountHand,shuChooserIdx:0}:gs.abilityData,_visualEvents:[...(godStatusEvent?[godStatusEvent]:[]),...(blockedGodPowerEvent?[blockedGodPowerEvent]:[])],...inspectionMeta,...(win?{gameOver:win}:{})};
+    const faithResolutionEvents=[godStatusEvent,apophisEclipseEvent].filter(Boolean);
+    const orderedFaithResolutionEvents=faithResolutionEvents.length>1
+      ?createRuleResolutionTransaction({id:`faith:${godStatusEvent.id}`,phase:'faithSettlement',events:faithResolutionEvents}).events
+      :faithResolutionEvents;
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,apophisNight:nextApophisNight,phase:isShuBlessingHand?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessingHand?{shuOffspringCount:shuOffspringCountHand,shuChooserIdx:0}:gs.abilityData,_visualEvents:[...orderedFaithResolutionEvents,...(blockedGodPowerEvent?[blockedGodPowerEvent]:[])],...inspectionMeta,...(win?{gameOver:win}:{})};
     // 手牌移动立即进入回放基线，但邪神 tag 保持升级前状态；
     // GOD_HIGHLIGHT 仍是新等级正式进入可见状态的唯一边界。
     const worshipReplayBaseline=buildWorshipReplayBaselinePlayers(gs.players,P,0);
@@ -10009,8 +10050,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       }));
     }
     if(queue.length){
-      // 先广播再播本地动画：远端凭 buildAnimQueue 自行重建日食(APOPHIS_ECLIPSE)等步骤，
-      // 否则自动广播会等本地动画播完才发出，远端日食进度滞后整个动画时长
+      // 先广播再播本地动画：远端从同一规则结算事务编译邪神高亮与日食，
+      // 与本地共享唯一的事件顺序和播放起点。
       triggerSyncedAnimTransaction(queue,newGs,{context:'worshipFromHand',barrier:isShuBlessingHand?'decision':'continuation',msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard});
     }
     else setGs(newGs);

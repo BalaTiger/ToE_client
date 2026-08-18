@@ -1,5 +1,5 @@
-import { copyPlayers, clamp } from './coreUtils';
-import { buildStatEvents } from './statEvents';
+import { copyPlayers } from './coreUtils';
+import { appendStatChangeResult, submitRecoveryEvents } from './statChangeEngine';
 import { buildAnimQueue } from './animQueueCore';
 import { getEndTurnEvents } from './endTurnEvents';
 import { checkWin } from './turnEngine';
@@ -30,18 +30,21 @@ export function resolveRestTurnEnd(gs, {
   if (!actor) throw new Error(`resolveRestTurnEnd: missing player at index ${actorIndex}`);
 
   const P = copyPlayers(gs.players);
-  const beforeRestPlayers = copyPlayers(P);
-  P[actorIndex].hp = clamp((P[actorIndex].hp || 0) + heal);
+  const restStatEventSeq = (gs._statEventSeq || 0) + 1;
+  const recovery = submitRecoveryEvents({
+    players: P,
+    events: [{ targetIdx: actorIndex, gainHp: heal, source: '休息' }],
+    statEventSeq: restStatEventSeq,
+  });
   const wasResting = P[actorIndex].isResting;
   P[actorIndex].isResting = !wasResting;
 
   const restLog = `你选择【休息】，掷骰 ${d1}、${d2}，取高值回复 ${heal}HP，${wasResting ? '翻回正常状态' : '翻面休息中'}`;
   const L = [...gs.log, restLog];
 
-  const restStatEventSeq = (gs._statEventSeq || 0) + 1;
-  const restStatEvents = buildStatEvents(beforeRestPlayers, P, [restLog], { reason: '休息', seq: restStatEventSeq });
-  const restStatPatch = restStatEvents.length
-    ? { _statEvents: [...(gs._statEvents || []), ...restStatEvents], _statEventSeq: restStatEventSeq }
+  const restMeta = appendStatChangeResult(gs, recovery);
+  const restStatPatch = recovery.statEvents.length
+    ? { _statEvents: restMeta._statEvents, _statEventSeq: restMeta._statEventSeq }
     : {};
 
   const win = checkWin(P, gs._isMP);

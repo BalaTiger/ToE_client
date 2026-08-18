@@ -47,8 +47,18 @@ export function strictActionQueueMeta(state, queue, consumedEventIds = null, con
     : AUTHORITATIVE_QUEUE_META;
 }
 
-export function authoritativeResolvedQueueMeta(state, queue) {
-  return strictActionQueueMeta(state, queue, null, 'resolved action queue');
+export function authoritativeResolvedQueueMeta(
+  state,
+  queue,
+  consumedEventIds = null,
+  additionalEventIds = [],
+) {
+  const base = strictActionQueueMeta(state, queue, consumedEventIds, 'resolved action queue');
+  const eventIds = [...new Set([
+    ...(base.eventIds || []),
+    ...(Array.isArray(additionalEventIds) ? additionalEventIds : []),
+  ].filter(Boolean))];
+  return eventIds.length ? { ...AUTHORITATIVE_QUEUE_META, eventIds } : AUTHORITATIVE_QUEUE_META;
 }
 
 export function authoritativeEndTurnReplayQueueMeta(state, queue, consumedEventIds = null) {

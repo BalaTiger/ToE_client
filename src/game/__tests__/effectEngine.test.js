@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   applyHpDamageWithLink,
   resolvePendingDamageLinkBreak,
-  submitDamageEvents,
+  submitLossEvents,
   applyInspectionForSanLoss,
   processInspectionTargets,
   getAdjacentTargets,
@@ -1888,12 +1888,12 @@ describe('inspection and AI decision regressions', () => {
   });
 });
 
-describe('submitDamageEvents', () => {
+describe('submitLossEvents', () => {
   it('致死伤害不再触发受伤者的黏液响应', () => {
     const slime = createTsathogguaSlimeCard();
     const P = [makePlayer({ hp: 10 }), makePlayer({ hp: 2, san: 8, hand: [slime] })];
 
-    const result = submitDamageEvents({
+    const result = submitLossEvents({
       players: P,
       currentTurn: 0,
       events: [{ targetIdx: 1, lostHp: 2, source: '致死伤害' }],
@@ -1907,7 +1907,7 @@ describe('submitDamageEvents', () => {
     const slime = createTsathogguaSlimeCard();
     const P = [makePlayer({ hp: 10 }), makePlayer({ hp: 1, san: 1, hand: [slime] })];
 
-    const result = submitDamageEvents({
+    const result = submitLossEvents({
       players: P,
       currentTurn: 0,
       events: [{ targetIdx: 1, lostHp: 1, lostSan: 1, source: '组合致死伤害' }],
@@ -1924,7 +1924,7 @@ describe('submitDamageEvents', () => {
       makePlayer({ hp: 10, damageLink: { active: true, partner: 1 } }),
     ];
 
-    const result = submitDamageEvents({
+    const result = submitLossEvents({
       players: P,
       currentTurn: 0,
       events: [{ targetIdx: 1, lostHp: 2, source: '致死伤害' }],
@@ -1941,7 +1941,7 @@ describe('submitDamageEvents', () => {
     const discard = [];
     const log = [];
 
-    const result = submitDamageEvents({
+    const result = submitLossEvents({
       players: P,
       discard,
       log,
@@ -1963,7 +1963,7 @@ describe('submitDamageEvents', () => {
       makePlayer({ hp: 10, etherealizeStacks: 1 }),
       makePlayer({ hp: 10 }),
     ];
-    const result = submitDamageEvents({
+    const result = submitLossEvents({
       players: P,
       currentTurn: 0,
       events: [
@@ -1985,7 +1985,7 @@ describe('submitDamageEvents', () => {
   it('统一入口落实伤害后生成黏液决策', () => {
     const slime = createTsathogguaSlimeCard();
     const P = [makePlayer({ hp: 10 }), makePlayer({ hp: 8, san: 8, hand: [slime] })];
-    const result = submitDamageEvents({
+    const result = submitLossEvents({
       players: P,
       currentTurn: 0,
       events: [{ targetIdx: 1, lostHp: 2, lostSan: 1, source: '组合伤害' }],

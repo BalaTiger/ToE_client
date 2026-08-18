@@ -3,6 +3,7 @@ import {
   ANIMATION_QUEUE_AUTHORITY,
   AUTHORITATIVE_QUEUE_META,
   authoritativeEndTurnReplayQueueMeta,
+  authoritativeResolvedQueueMeta,
   authoritativeTurnStartQueueMeta,
   buildThrowStoneSteps,
   createRandomTargetVisualEvent,
@@ -73,6 +74,32 @@ describe('animation queue policy', () => {
     );
     expect(() => authoritativeEndTurnReplayQueueMeta(state, nextCardQueue, new Set()))
       .toThrow(/end-turn replay queue.*missing visual events/);
+  });
+
+  it('starts a slime-grant subtransaction after consumed multiply and inspection events', () => {
+    const multiply = { id: 'multiply:old', type: 'multiply', scope: 'action' };
+    const inspection = { id: 'inspection:old', type: 'inspection', scope: 'inspection' };
+    const grant = {
+      id: 'tsg-grant:fresh',
+      type: 'tsgSlimeGrant',
+      scope: 'turn',
+      turnStartStage: 'turnBoundary',
+    };
+    const state = { _visualEvents: [multiply, inspection, grant] };
+    const queue = [
+      { type: 'VISUAL_LOCK', visualEventId: grant.id },
+      { type: 'CARD_TRANSFER', visualEventId: grant.id },
+      { type: 'STATE_PATCH', visualEventId: grant.id },
+      { type: 'TURN_BOUNDARY_PAUSE', visualEventId: grant.id },
+    ];
+    const consumed = new Set([multiply.id, inspection.id]);
+
+    expect(authoritativeResolvedQueueMeta(state, queue, consumed, [grant.id])).toEqual({
+      authority: ANIMATION_QUEUE_AUTHORITY.QUEUE,
+      eventIds: [grant.id],
+    });
+    expect(() => authoritativeResolvedQueueMeta(state, queue, new Set(), [grant.id]))
+      .toThrow(/resolved action queue.*missing visual events/);
   });
 
   it('scopes turn-start ownership without compiling or changing the queue', () => {

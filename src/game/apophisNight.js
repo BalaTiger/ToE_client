@@ -1,7 +1,7 @@
 import { GOD_DEFS } from '../constants/card';
 import { buildStatEvents } from './statEvents';
 import { copyPlayers, formatSanLoss, makeInspectionMeta } from './coreUtils';
-import { applyInspectionForSanLoss, submitDamageEvents } from './effectEngine';
+import { applyInspectionForSanLoss, submitLossEvents } from './effectEngine';
 import { hasGodPowerImmunity } from './godPowerImmunity';
 import { createApophisTargetVisualEvent } from './visualEvents';
 
@@ -54,7 +54,7 @@ export function resolveApophisTarget({
   if (roll <= night.threshold && alternatives.length) {
     targetIdx = alternatives[Math.floor(Math.random() * alternatives.length)];
     const beforePlayers = copyPlayers(P);
-    const damage = submitDamageEvents({
+    const damage = submitLossEvents({
       players: P, deck: D, discard: Disc, log: L, currentTurn: gs?.currentTurn ?? actorIdx,
       events: [{ targetIdx: actorIdx, lostSan: 1, source: '黑夜' }],
     });

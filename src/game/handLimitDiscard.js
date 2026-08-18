@@ -1,6 +1,6 @@
 import { copyPlayers, splitHandDiscardCards } from './coreUtils';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
-import { applyHpDamageWithLink, submitDamageEvents } from './effectEngine';
+import { applyHpDamageWithLink, submitLossEvents } from './effectEngine';
 import { buildStatEvents } from './statEvents';
 import { buildAnimQueue } from './animQueueCore';
 import { bindAnimLogChunks } from './animLogs';
@@ -46,7 +46,7 @@ export function applyHandDiscardSideEffectsWithAnim({
 }) {
   const beforePlayers = copyPlayers(players);
   const beforeLogLength = log.length;
-  const result = applyBalanceDiscardSideEffects({ players, deck, discard, log, ownerIdx, cards, reason, applyHpDamage: applyHpDamageWithLink, submitDamage: submitDamageEvents, currentTurn: baseGs?.currentTurn });
+  const result = applyBalanceDiscardSideEffects({ players, deck, discard, log, ownerIdx, cards, reason, applyHpDamage: applyHpDamageWithLink, submitDamage: submitLossEvents, currentTurn: baseGs?.currentTurn });
   const sideLogs = result.log.slice(beforeLogLength);
   if (!sideLogs.length) {
     return { ...result, statePatch: {}, queue: [] };

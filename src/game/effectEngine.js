@@ -23,6 +23,7 @@ import {
   cardContainsFireText,
 } from './coreUtils';
 import { buildStatEvents, createPlayerDefeatedStatEvent } from './statEvents';
+import { submitRecoveryEvents } from './statChangeEngine';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { makeProliferatingZState } from './proliferatingZ';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
@@ -190,7 +191,7 @@ export function resolvePendingDamageLinkBreak(P, targetIdx, Disc, L, currentTurn
 
 // Pure state-layer entry for damage. Callers provide only damage facts and
 // continuation metadata; card/phase code remains responsible for presentation.
-export function submitDamageEvents({
+export function submitLossEvents({
   players,
   deck = [],
   discard = [],
@@ -199,11 +200,15 @@ export function submitDamageEvents({
   events = [],
   continuation = {},
   skipEtherealize = false,
+  statEventSeq = null,
+  statEventReason = null,
+  statEventLogs = [],
 } = {}) {
   const P = players;
   const D = deck;
   const Disc = discard;
   const L = log;
+  const beforeDiscard = [...(Disc || [])];
   const normalized = (events || [])
     .map((event, order) => ({
       ...event,
@@ -213,7 +218,7 @@ export function submitDamageEvents({
     }))
     .filter(event => event.targetIdx != null && P?.[event.targetIdx] && !P[event.targetIdx].isDead && (event.lostHp || event.lostSan));
   const beforePlayers = copyPlayers(P || []);
-  if (!normalized.length) return { players: P, deck: D, discard: Disc, log: L, beforePlayers, phase: null, abilityData: null };
+  if (!normalized.length) return { players: P, deck: D, discard: Disc, log: L, beforePlayers, statEvents: [], statEventSeq: null, phase: null, abilityData: null };
 
   if (!skipEtherealize) {
     const pendingLosses = normalized.map(event => {
@@ -235,7 +240,7 @@ export function submitDamageEvents({
         _turnOwner: currentTurn,
         ...(deferredDirectLosses.length ? { deferredDirectLosses } : {}),
       });
-      return { players: P, deck: D, discard: Disc, log: L, beforePlayers, phase: 'ETHEREALIZE_DECISION', abilityData };
+      return { players: P, deck: D, discard: Disc, log: L, beforePlayers, statEvents: [], statEventSeq: null, phase: 'ETHEREALIZE_DECISION', abilityData };
     }
   }
 
@@ -267,12 +272,24 @@ export function submitDamageEvents({
     ...continuation,
     _turnOwner: currentTurn,
   });
+  const sourceNames = [...new Set(normalized.map(event => event.source).filter(Boolean))];
+  const eventLogs = Array.isArray(statEventLogs) && statEventLogs.length
+    ? statEventLogs
+    : normalized.map(event => event.logHint).filter(Boolean);
+  const statEvents = buildStatEvents(beforePlayers, P, eventLogs, {
+    reason: statEventReason || sourceNames.join(' / ') || '属性扣减',
+    ...(statEventSeq != null ? { seq: statEventSeq } : {}),
+    discardBefore: beforeDiscard,
+    discardAfter: Disc,
+  });
   return {
     players: P,
     deck: D,
     discard: Disc,
     log: L,
     beforePlayers,
+    statEvents,
+    statEventSeq: statEvents.length ? statEventSeq : null,
     phase: abilityData ? 'TSG_SLIME_BALANCE' : null,
     abilityData,
   };
@@ -372,7 +389,7 @@ function handleInspection(playerIndex, gs) {
   switch (drawnCard.effect) {
     case 'adjacentDamageHP': {
       const targets = getLivingAdjacentTargets(P, playerIndex);
-      inspectionDamageDecision = submitDamageEvents({
+      inspectionDamageDecision = submitLossEvents({
         players: P,
         deck: newGs.deck,
         discard: newGs.discard,
@@ -393,7 +410,7 @@ function handleInspection(playerIndex, gs) {
       break;
     }
     case 'selfDamageHP': {
-      inspectionDamageDecision = submitDamageEvents({
+      inspectionDamageDecision = submitLossEvents({
         players: P,
         deck: newGs.deck,
         discard: newGs.discard,
@@ -457,7 +474,10 @@ function handleInspection(playerIndex, gs) {
     }
     case 'healSAN': {
       // 恢复 1 SAN
-      P[playerIndex].san = Math.min(10, P[playerIndex].san + drawnCard.value);
+      submitRecoveryEvents({
+        players: P,
+        events: [{ targetIdx: playerIndex, gainSan: drawnCard.value, source: drawnCard.name || 'SAN检定' }],
+      });
       L.push(`${P[playerIndex].name} 超人意志，恢复 ${drawnCard.value} SAN`);
       break;
     }
@@ -646,8 +666,14 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   let directStatEvents = null;
   const executionTurnOwner = getCurrentExecutionTurnOwner(gs, ci);
   const dmgBonus = P[ci]?.damageBonus || 0;
-  const healHP = (i, v) => { if (i == null || !P[i] || P[i].isDead) return; P[i].hp = clamp(P[i].hp + v); };
-  const healSAN = (i, v) => { if (i == null || !P[i] || P[i].isDead) return; P[i].san = clamp(P[i].san + v); };
+  const healHP = (i, v, source = card?.name || card?.type || 'HP恢复') => submitRecoveryEvents({
+    players: P,
+    events: [{ targetIdx: i, gainHp: v, source }],
+  });
+  const healSAN = (i, v, source = card?.name || card?.type || 'SAN恢复') => submitRecoveryEvents({
+    players: P,
+    events: [{ targetIdx: i, gainSan: v, source }],
+  });
   // 伤害不再立即结算，而是先进入待结算队列：
   // - 'eager' 模式立即逐条结算（虚化候选仍转入决策），供效果中途依赖结算后状态的场景使用；
   // - 'batch' 模式在效果结束时统一处理：一旦存在虚化候选（伤害前置事件），
@@ -730,7 +756,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         } else if (c.type !== 'blankZone') {
           Disc.push(c);
           msgs.push(`${P[i].name} 失去了 ${cardLogText(c, { alwaysShowName: true })}`);
-          const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: i, cards: [c], reason: '失去手牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitDamageEvents, currentTurn: gs?.currentTurn });
+          const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: i, cards: [c], reason: '失去手牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitLossEvents, currentTurn: gs?.currentTurn });
           msgs.splice(0, msgs.length, ...balance.log);
           (balance.etherealizeDecision?.pendingLosses || []).forEach(loss => {
             pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, { ...loss, order: damageOrderSeq++ });
@@ -1024,7 +1050,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const beforeAccomplicePlayers = copyPlayers(P);
       const livingAccomplices = [...accomplices].filter(idx => P[idx] && !P[idx].isDead);
       const sanEvents = [];
-      const accompliceDamage = submitDamageEvents({
+      const accompliceDamage = submitLossEvents({
         players: P, deck: D, discard: Disc, log: msgs, currentTurn: gs?.currentTurn,
         events: livingAccomplices.map((idx, order) => ({
           targetIdx: idx, lostSan: 1, source: card?.name || '石化配方', order,
@@ -1179,7 +1205,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       }
       actor.revealHand = true; actor.pickInsteadOfRandom = true;
     },
-    selfRevealHandSAN: () => { actor.san = Math.min(10, actor.san + card.val); actor.revealHand = true; actor.pickInsteadOfRandom = true; msgs.push(`${actor.name} 回复 ${card.val} SAN，手牌公开且盲抽改为挑选`); },
+    selfRevealHandSAN: () => { healSAN(ci, card.val); actor.revealHand = true; actor.pickInsteadOfRandom = true; msgs.push(`${actor.name} 回复 ${card.val} SAN，手牌公开且盲抽改为挑选`); },
     globalOnlySwap: () => { statePatch = { globalOnlySwapOwner: ci }; msgs.push(`直到 ${actor.name} 的下回合开始前，所有角色技能都视为"掉包"`); },
     endTurnReplayHand: () => {},
     igniteTorch: () => {
@@ -1473,7 +1499,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           } else if (c.type !== 'blankZone') {
             Disc.push(c);
             msgs.push(`${P[i].name} 失去了 ${cardLogText(c, { alwaysShowName: true })}`);
-            const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: i, cards: [c], reason: '失去手牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitDamageEvents, currentTurn: gs?.currentTurn });
+            const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: i, cards: [c], reason: '失去手牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitLossEvents, currentTurn: gs?.currentTurn });
             msgs.splice(0, msgs.length, ...balance.log);
             (balance.etherealizeDecision?.pendingLosses || []).forEach(loss => {
               pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, { ...loss, order: damageOrderSeq++ });
@@ -1884,7 +1910,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
               msgs.push(`${target.name} 的衍生牌被销毁`);
             } else if (c.type !== 'blankZone') {
               Disc.push(c);
-              const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: targetIdx, cards: [c], reason: '同归深渊弃牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitDamageEvents, currentTurn: gs?.currentTurn });
+              const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: targetIdx, cards: [c], reason: '同归深渊弃牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitLossEvents, currentTurn: gs?.currentTurn });
               msgs.splice(0, msgs.length, ...balance.log);
               (balance.etherealizeDecision?.pendingLosses || []).forEach(loss => {
                 pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, { ...loss, order: damageOrderSeq++ });

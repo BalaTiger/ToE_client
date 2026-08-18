@@ -38,9 +38,13 @@ const actual = new Map();
 const legacyStatTargetProducers = [];
 const legacySphinxHintProducers = [];
 const legacyVisualFieldProducers = [];
+const presentationStatDiffFallbacks = [];
 for (const file of collectSourceFiles(sourceRoot)) {
   const relative = path.relative(sourceRoot, file).split(path.sep).join('/');
   const source = fs.readFileSync(file, 'utf8');
+  if (/buildStatEventsFromPlayerSnapshots|remote-snapshot-compat|legacy-state-diff/.test(source)) {
+    presentationStatDiffFallbacks.push(relative);
+  }
   const matches = source.match(/legacyMerge|LEGACY_MERGE/g) || [];
   if (matches.length) actual.set(relative, matches.length);
   if (relative !== 'game/rotateState.js') {
@@ -71,6 +75,9 @@ legacyStatTargetProducers.forEach(location => {
 });
 legacySphinxHintProducers.forEach(location => {
   issues.push(`${location}: production _animSphinxReveal hints are forbidden; emit sphinxResult visualEvents instead`);
+});
+presentationStatDiffFallbacks.forEach(relative => {
+  issues.push(`${relative}: presentation-layer HP/SAN snapshot diff fallback is forbidden; consume canonical statEvents`);
 });
 for (const [file, count] of actual) {
   const allowed = legacyBaseline.get(file);

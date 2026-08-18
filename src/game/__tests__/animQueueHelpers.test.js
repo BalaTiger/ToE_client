@@ -1222,6 +1222,7 @@ describe('animQueueHelpers', () => {
           beforeLog: newLog.slice(0, 2),
           afterPlayers: afterNoahInspectionPlayers,
           afterLog: newLog.slice(0, 3),
+          beforeStatEventSeq: 1,
           statEvents: [],
           statEventSeq: null,
         }, {
@@ -1232,6 +1233,7 @@ describe('animQueueHelpers', () => {
           beforeLog: newLog.slice(0, 3),
           afterPlayers: finalPlayers,
           afterLog: newLog,
+          beforeStatEventSeq: 1,
           statEvents: [],
           statEventSeq: null,
         }],
@@ -1440,7 +1442,12 @@ describe('animQueueHelpers', () => {
       '你 乏力，下一回合手牌上限-1',
     ];
     const flow = buildInspectionEventFlow(
-      { players: beforeFirst, log: [], _statEventSeq: 1 },
+      {
+        players: beforeFirst,
+        log: [],
+        _statEventSeq: 1,
+        _statEvents: [encounterSanEvent, convertSanEvent],
+      },
       [
         {
           seq: 1,

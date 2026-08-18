@@ -1,6 +1,5 @@
 import {
   shuffle,
-  clamp,
   copyPlayers,
   isDodgeableZoneCard,
   shouldTriggerTreasureDodge,
@@ -20,7 +19,8 @@ import { clearPlayerGodZone } from './aiTurn';
 import { splitAnimBoundLogs } from './animLogs';
 import { GOD_DEFS, createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../constants/card';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, isRevealedCultist } from './coreUtils';
-import { applyFx, applyInspectionForSanLoss, submitDamageEvents } from './effectEngine';
+import { applyFx, applyInspectionForSanLoss, submitLossEvents } from './effectEngine';
+import { appendStatChangeResult, submitRecoveryEvents } from './statChangeEngine';
 import { buildZhuLight, getZhuTopGuard } from './zhuPower';
 import { buildStatEvents } from './statEvents';
 import { deriveEffectDecisionState } from './effectStatePatch';
@@ -35,6 +35,7 @@ import {
   buildTurnStartDrawVisualEvents,
   VISUAL_EVENT,
   createInspectionVisualEvent,
+  createApophisEclipseEvent,
   createGodPowerBlockedEvent,
   createGodStatusChangedEvent,
   createGodGiftDiscardEvent,
@@ -43,6 +44,7 @@ import {
   createTsathogguaSlimePopEvent,
   createTurnDrawVisualEvents,
 } from './visualEvents';
+import { createRuleResolutionTransaction } from './ruleResolutionTransaction';
 import { advanceGodEncounter, formatGodEncounterProgress, getLatestGodEncounterProgress } from './balancePatches';
 import { TURN_START_EVENT, getTurnStartEvents } from './turnStartEvents';
 import { TURN_FLOW_STAGE } from './turnFlowStages';
@@ -366,7 +368,8 @@ function appendGodPowerBlockedFeedback({ player, playerIdx, log, events, msgs, t
 }
 
 export function applySanLossToPlayerWithInspection(targetIndex, amount, startIndex, P, D, Disc, L, inspectionMeta, reason = 'SAN损失', options = {}) {
-  const damage = submitDamageEvents({
+  const statEventSeq = (inspectionMeta?._statEventSeq || 0) + 1;
+  const damage = submitLossEvents({
     players: P,
     deck: D,
     discard: Disc,
@@ -374,14 +377,11 @@ export function applySanLossToPlayerWithInspection(targetIndex, amount, startInd
     currentTurn: startIndex,
     events: [{ targetIdx: targetIndex, lostSan: amount, source: reason }],
     skipEtherealize: !!options.skipEtherealize,
+    statEventSeq,
+    statEventReason: reason,
+    statEventLogs: L.slice(-1),
   });
-  const nextInspectionMeta = appendStatEventsToInspectionMeta(
-    inspectionMeta,
-    damage.beforePlayers,
-    P,
-    L.slice(-1),
-    reason,
-  );
+  const nextInspectionMeta = appendStatChangeResult(inspectionMeta, damage);
   if (damage.abilityData) {
     return {
       P,
@@ -581,6 +581,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
   const msgs = []; const godKey = godCard.godKey;
   let statePatch = {};
   const visualEvents = [];
+  let apophisEclipseEvent = null;
   const godStatusPlayersBefore = copyPlayers(P);
   let previousFaithExit = null;
   let faithEstablished = null;
@@ -605,7 +606,14 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     }
     if (godKey === 'APO') {
       statePatch.apophisNight = getApophisNightForLevel(P[ci].godLevel);
-      msgs.push(buildApophisNightLog());
+      const nightMsg = buildApophisNightLog();
+      msgs.push(nightMsg);
+      apophisEclipseEvent = createApophisEclipseEvent({
+        playerIdx: ci,
+        playerName: P[ci].name,
+        apophisNight: statePatch.apophisNight,
+        msgs: [nightMsg],
+      });
     }
     if (godKey === 'ZHU') {
       statePatch.zhuLight = buildZhuLight(P, D, ci, gs?.zhuLight);
@@ -744,7 +752,19 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     msgs,
     presentAfterInspectionSeq,
   });
-  if (godStatusEvent) visualEvents.unshift(godStatusEvent);
+  const faithResolutionEvents = [godStatusEvent, apophisEclipseEvent].filter(Boolean);
+  if (faithResolutionEvents.length > 1) {
+    visualEvents.unshift(...createRuleResolutionTransaction({
+      id: `faith:${godStatusEvent.id}`,
+      phase: 'faithSettlement',
+      events: faithResolutionEvents,
+    }).events.map(event => ({
+      ...event,
+      ...(presentAfterInspectionSeq != null ? { presentAfterInspectionSeq } : {}),
+    })));
+  } else if (faithResolutionEvents.length) {
+    visualEvents.unshift(...faithResolutionEvents);
+  }
   if (!settlementHasNewWinner()) {
     proliferatingZGainEvents.forEach(event => {
       const patch = appendPublicCardGainTriggers(zBase, P, event.ownerIdx, event.cards);
@@ -876,7 +896,7 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
           godCard: drawnCard,
           pendingEncounterInspection: true,
         };
-        const damage = submitDamageEvents({
+        const damage = submitLossEvents({
           players: P, deck: D, discard: Disc, log: L2, currentTurn: gs?.currentTurn ?? ci,
           events: [{ targetIdx: ci, lostSan: cost, source: '邪神遭遇' }],
           continuation: { pendingGodChoice },
@@ -998,7 +1018,7 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
           drawerIdx: ci,
           godEncounterCost: 0,
         };
-        const damage = submitDamageEvents({
+        const damage = submitLossEvents({
           players: P, deck: D, discard: Disc, log: effectMsgs,
           currentTurn: gs?.currentTurn ?? ci,
           events: [{ targetIdx: ci, lostSan: cost, source: '邪神遭遇' }],
@@ -1206,7 +1226,7 @@ function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta) {
       .map(link => link.a === next ? link.b : link.a);
     const logStart = L.length;
     const reactionLogs = [];
-    const damage = submitDamageEvents({
+    const damage = submitLossEvents({
       players: P, deck: D, discard: Disc, log: reactionLogs, currentTurn: next,
       events: [{ targetIdx: next, lostHp: bgyCount, lostSan: bgyCount, source: '黑山羊幼仔' }],
     });
@@ -1264,17 +1284,18 @@ function turnStartEvent_LinkHeal(P, pendingLinkHeals, L, inspectionMeta, statLog
   for (const heal of pendingLinkHeals) {
     const activeLink = getAllDamageLinks(P, { activeOnly: true }).find(link => link.id === heal.linkId);
     if (!activeLink) continue;
-    const beforePlayers = copyPlayers(P);
-    if (!P[heal.i].isDead) { P[heal.i].hp = clamp(P[heal.i].hp + heal.amount); }
-    if (!P[heal.partnerIdx].isDead) { P[heal.partnerIdx].hp = clamp(P[heal.partnerIdx].hp + heal.amount); }
     L.push(heal.msg);
-    inspectionMeta = appendStatEventsToInspectionMeta(
-      inspectionMeta,
-      beforePlayers,
-      P,
-      [heal.msg],
-      '两人一绳',
-    );
+    const statEventSeq = (inspectionMeta?._statEventSeq || 0) + 1;
+    const recovery = submitRecoveryEvents({
+      players: P,
+      events: [
+        { targetIdx: heal.i, gainHp: heal.amount, source: '两人一绳', logHint: heal.msg },
+        { targetIdx: heal.partnerIdx, gainHp: heal.amount, source: '两人一绳', logHint: heal.msg },
+      ],
+      statEventSeq,
+      logs: [heal.msg],
+    });
+    inspectionMeta = appendStatChangeResult(inspectionMeta, recovery);
     if (statLogs) statLogs.push(heal.msg);
     removeDamageLink(P, heal.linkId);
   }
@@ -1289,7 +1310,7 @@ function turnStartEvent_PoisonDamage(P, next, D, Disc, L, gs, inspectionMeta, st
 
   const beforePlayers = copyPlayers(P);
   const reactionLogs = [];
-  const damage = submitDamageEvents({
+  const damage = submitLossEvents({
     players: P, deck: D, discard: Disc, log: reactionLogs, currentTurn: next,
     events: [{ targetIdx: next, lostHp: poisonStacks, source: '中毒' }],
   });

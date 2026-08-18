@@ -24,6 +24,7 @@ export const VISUAL_EVENT = {
   GOD_POWER_BLOCKED: 'godPowerBlocked',
   TSG_SLIME_POP: 'tsgSlimePop',
   GOD_STATUS_CHANGED: 'godStatusChanged',
+  APOPHIS_ECLIPSE: 'apophisEclipse',
   THROW_STONE: 'throwStone',
   APOPHIS_TARGET: 'apophisTarget',
   INSPECTION: 'inspection',
@@ -194,13 +195,25 @@ export function createTurnDrawVisualEvents(draw = {}) {
   return [reshuffleEvent, drawEvent].filter(Boolean);
 }
 
-export function createStatEventsEvent({ statEvents = [], msgs = [], turnStartStage = null } = {}) {
+export function createStatEventsEvent({
+  statEvents = [],
+  msgs = [],
+  turnStartStage = null,
+  transactionId = null,
+  order = null,
+  resolutionPhase = null,
+  barrier = null,
+} = {}) {
   const events = Array.isArray(statEvents) ? statEvents.filter(Boolean) : [];
   if (!events.length) return null;
   const phaseGroupIds = [...new Set(events.map(event => event?.phaseGroupId).filter(Boolean))];
   return withVisualEventMeta({
     type: VISUAL_EVENT.STAT_EVENTS,
     ...(turnStartStage ? { turnStartStage, turnStartStageOrder: 1 } : {}),
+    ...(transactionId ? { transactionId } : {}),
+    ...(order != null ? { order } : {}),
+    ...(resolutionPhase ? { resolutionPhase } : {}),
+    ...(barrier ? { barrier } : {}),
     ...(phaseGroupIds.length === 1 ? { phaseGroupId: phaseGroupIds[0] } : {}),
     statEvents: events,
     msgs: Array.isArray(msgs) ? msgs : [],
@@ -438,6 +451,10 @@ export function createCardEffectEvent({
   id = null,
   phaseGroupId = null,
   phaseOrder = null,
+  transactionId = null,
+  order = null,
+  resolutionPhase = null,
+  barrier = null,
   beforePlayers = [],
   beforeDiscard = [],
   afterPlayers = null,
@@ -456,6 +473,10 @@ export function createCardEffectEvent({
     actorIdx,
     ...(phaseGroupId ? { phaseGroupId } : {}),
     ...(phaseOrder != null ? { phaseOrder } : {}),
+    ...(transactionId ? { transactionId } : {}),
+    ...(order != null ? { order } : {}),
+    ...(resolutionPhase ? { resolutionPhase } : {}),
+    ...(barrier ? { barrier } : {}),
     beforePlayers: Array.isArray(beforePlayers) ? beforePlayers : [],
     beforeDiscard: Array.isArray(beforeDiscard) ? beforeDiscard : [],
     afterPlayers: Array.isArray(afterPlayers) ? afterPlayers : null,
@@ -591,6 +612,43 @@ export function createGodStatusChangedEvent({
     ...(faithSettlement ? { faithSettlement } : {}),
     ...(presentAfterInspectionSeq != null ? { presentAfterInspectionSeq } : {}),
   }, 'action');
+}
+
+export function createApophisEclipseEvent({
+  playerIdx = 0,
+  playerName = '该玩家',
+  apophisNight = null,
+  msgs = [],
+  transactionId = null,
+  order = null,
+  resolutionPhase = 'immediateGodPower',
+  barrier = 'continuation',
+  presentAfterInspectionSeq = null,
+} = {}) {
+  if (!apophisNight?.active) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.APOPHIS_ECLIPSE,
+    playerIdx,
+    playerName,
+    apophisNight,
+    msgs: Array.isArray(msgs) ? msgs : [],
+    ...(transactionId ? { transactionId } : {}),
+    ...(order != null ? { order } : {}),
+    ...(resolutionPhase ? { resolutionPhase } : {}),
+    ...(barrier ? { barrier } : {}),
+    ...(presentAfterInspectionSeq != null ? { presentAfterInspectionSeq } : {}),
+  }, 'action');
+}
+
+export function buildApophisEclipseStep(event) {
+  if (!event?.apophisNight?.active) return null;
+  return {
+    type: 'APOPHIS_ECLIPSE',
+    visualEventId: event.id,
+    targetPid: event.playerIdx,
+    _apophisNight: event.apophisNight,
+    msgs: Array.isArray(event.msgs) ? event.msgs : [],
+  };
 }
 
 export function createThrowStoneEvent({ sourceIdx = 0, targetIdx = 0, roll = 1, distance = 0, damage = 0, resultText = '', msgs = [], playersBefore = null, playersAfter = null, statEvents = [], legacySeq = null } = {}) {
@@ -814,33 +872,6 @@ export function buildGodStatusChangedStep(event) {
     ...(Array.isArray(setupPlayers) ? { visualSetupPatch: { players: setupPlayers } } : {}),
     ...(Array.isArray(event.playersAfter) ? { visualTimeline: [{ atMs: 0, patch: { players: event.playersAfter } }] } : {}),
   };
-}
-
-function buildStatEventsFromPlayerSnapshots(beforePlayers = [], afterPlayers = [], msgs = [], reason = '卡牌效果') {
-  if (!Array.isArray(beforePlayers) || !Array.isArray(afterPlayers)) return [];
-  const logHint = Array.isArray(msgs) ? msgs[0] : undefined;
-  return beforePlayers.flatMap((before, target) => {
-    const after = afterPlayers[target];
-    if (!before || !after) return [];
-    const hpLoss = Math.max(0, Number(before.hp ?? 0) - Number(after.hp ?? before.hp ?? 0));
-    const hpGain = Math.max(0, Number(after.hp ?? 0) - Number(before.hp ?? after.hp ?? 0));
-    const sanLoss = Math.max(0, Number(before.san ?? 0) - Number(after.san ?? before.san ?? 0));
-    const sanGain = Math.max(0, Number(after.san ?? 0) - Number(before.san ?? after.san ?? 0));
-    const from = { hp: before.hp, san: before.san, isDead: !!before.isDead };
-    const to = { hp: after.hp, san: after.san, isDead: !!after.isDead };
-    const events = [];
-    if (hpLoss && sanLoss) events.push({ type: 'HP_SAN_LOSS', target, from, to, reason, logHint });
-    else {
-      if (hpLoss) events.push({ type: 'HP_LOSS', target, from, to, reason, logHint });
-      if (sanLoss) events.push({ type: 'SAN_LOSS', target, from, to, reason, logHint });
-    }
-    if (hpGain && sanGain) events.push({ type: 'HP_SAN_GAIN', target, from, to, reason, logHint });
-    else {
-      if (hpGain) events.push({ type: 'HP_GAIN', target, from, to, reason, logHint });
-      if (sanGain) events.push({ type: 'SAN_GAIN', target, from, to, reason, logHint });
-    }
-    return events;
-  });
 }
 
 export function buildEarthquakeAnimStep({
@@ -1369,14 +1400,7 @@ export function buildCardEffectAnimStep(event, state) {
     };
   }
   if (event.effectKey === 'volcano') {
-    const volcanoStatEvents = Array.isArray(event.statEvents) && event.statEvents.length
-      ? event.statEvents
-      : buildStatEventsFromPlayerSnapshots(
-        event.beforePlayers,
-        event.afterPlayers || state?.players || [],
-        event.msgs || [],
-        event.card?.name || '活火山'
-      );
+    const volcanoStatEvents = Array.isArray(event.statEvents) ? event.statEvents : [];
     const sync = buildSyncedCardEffectTimeline({
       beforePlayers: event.beforePlayers,
       beforeDiscard: event.beforeDiscard,
@@ -1407,14 +1431,7 @@ export function buildCardEffectAnimStep(event, state) {
     };
   }
   if (event.effectKey === 'undergroundSpring') {
-    const springStatEvents = Array.isArray(event.statEvents) && event.statEvents.length
-      ? event.statEvents
-      : buildStatEventsFromPlayerSnapshots(
-        event.beforePlayers,
-        event.afterPlayers || state?.players || [],
-        event.msgs || [],
-        event.card?.name || '地下泉'
-      );
+    const springStatEvents = Array.isArray(event.statEvents) ? event.statEvents : [];
     const sync = buildSyncedCardEffectTimeline({
       beforePlayers: event.beforePlayers,
       beforeDiscard: event.beforeDiscard,
@@ -1445,14 +1462,7 @@ export function buildCardEffectAnimStep(event, state) {
     };
   }
   if (event.effectKey === 'startledBats') {
-    const batsStatEvents = Array.isArray(event.statEvents) && event.statEvents.length
-      ? event.statEvents
-      : buildStatEventsFromPlayerSnapshots(
-        event.beforePlayers,
-        event.afterPlayers || state?.players || [],
-        event.msgs || [],
-        event.card?.name || '惊扰蝙蝠'
-      );
+    const batsStatEvents = Array.isArray(event.statEvents) ? event.statEvents : [];
     const sync = buildSyncedCardEffectTimeline({
       beforePlayers: event.beforePlayers,
       beforeDiscard: event.beforeDiscard,
@@ -1483,14 +1493,7 @@ export function buildCardEffectAnimStep(event, state) {
     };
   }
   if (event.effectKey === 'nightWind') {
-    const nightWindStatEvents = Array.isArray(event.statEvents) && event.statEvents.length
-      ? event.statEvents
-      : buildStatEventsFromPlayerSnapshots(
-        event.beforePlayers,
-        event.afterPlayers || state?.players || [],
-        event.msgs || [],
-        event.card?.name || '夜风呼啸'
-      );
+    const nightWindStatEvents = Array.isArray(event.statEvents) ? event.statEvents : [];
     const sync = buildSyncedCardEffectTimeline({
       beforePlayers: event.beforePlayers,
       beforeDiscard: event.beforeDiscard,

@@ -13,6 +13,8 @@ export * from './zhuPower';
 export * from './multiplayerTimeouts';
 export * from './multiplayerDecisionPolicy';
 export * from './statEvents';
+export * from './statChangeEngine';
+export * from './ruleResolutionTransaction';
 export * from './animationTiming';
 export * from './animationStepSchema';
 export * from './animationQueueMachine';

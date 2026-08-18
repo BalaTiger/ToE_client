@@ -44,7 +44,6 @@ import {
   compileVisualEventToAnimTransaction,
 } from './visualEventTransactionCompiler';
 import { getAllDamageLinks } from './damageLinks';
-import { buildStatEvents, statEventsToAnimQueue } from './statEvents';
 
 export const MP_REMOTE_REPLAY = {
   ROLE_REVEAL: 'ROLE_REVEAL',
@@ -170,41 +169,7 @@ function compileRemoteStateEffects(rotated, previousGs, buildAnimQueue, excluded
   });
   const excluded = new Set(excludedTypes);
   const canonicalQueue = (transaction?.queue || []).filter(step => !excluded.has(step?.type));
-  if (canonicalQueue.length) return canonicalQueue;
-
-  // Compatibility packets from an older peer may contain no visual events.
-  // Translate their one-packet snapshot into explicit, event-shaped steps at
-  // the receive boundary; never feed the whole packet back through
-  // buildAnimQueue, which can span unrelated phases.
-  const logDelta = getLogDelta(previousGs, rotated);
-  const explicitStatEvents = buildStatEvents(
-    previousGs?.players || [],
-    rotated?.players || [],
-    logDelta,
-    { reason: 'remote-snapshot-compat', includeDefeat: false },
-  );
-  const queue = statEventsToAnimQueue(explicitStatEvents, previousGs?.players || rotated?.players || [], logDelta);
-  const worshipLog = logDelta.find(line => (
-    typeof line === 'string'
-    && (line.includes('信仰了 ') || line.includes('信仰 ') || line.includes('改信新神'))
-  ));
-  if (worshipLog) {
-    const targetPid = (rotated?.players || []).findIndex(player => (
-      player?.godName && (!player?.name || worshipLog.includes(player.name))
-    ));
-    if (targetPid >= 0 && !excluded.has('GOD_HIGHLIGHT')) {
-      queue.push({
-        type: 'GOD_HIGHLIGHT',
-        targetPid,
-        godKey: rotated.players[targetPid].godName,
-        players: rotated.players,
-        msgs: [worshipLog],
-      });
-    }
-  }
-  const eclipseLog = logDelta.find(line => typeof line === 'string' && line.includes('【噬日灭世】黑夜降临'));
-  if (eclipseLog && !excluded.has('APOPHIS_ECLIPSE')) queue.push({ type: 'APOPHIS_ECLIPSE', msgs: [eclipseLog] });
-  return queue.filter(step => !excluded.has(step?.type));
+  return canonicalQueue;
 }
 
 function prepareExactTransactionQueue(event) {
