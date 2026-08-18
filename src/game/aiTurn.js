@@ -824,6 +824,7 @@ export function aiStep(gs, opts = {}) {
   const getAlive=()=>P.filter((p,i)=>!p.isDead&&i!==ct);
   let ai=getAi();let alive=getAlive();
   const aiHuntEvents=[];
+  let aiHuntAttemptSeq=0;
   let animMultiplyEvent = null;
   let playersBeforeSkillAction=null;
   let preSkillLogs=[];
@@ -852,14 +853,17 @@ export function aiStep(gs, opts = {}) {
   const getUnifiedReplayVisualEvents = nextGs => {
     if (unifiedReplayCacheState === nextGs && unifiedReplayCache) return unifiedReplayCache;
     const baseEvents = getReplayVisualEvents(nextGs) || [];
-    const huntEvents = aiHuntEvents.filter(event => !event?.targetOnly).map(event => createHuntResultEvent({
-      ...event,
-      // AI actions are resolved as one rule transaction, so their hunt event
-      // owns the reticle/reveal as well as settlement. Interactive hunt flows
-      // keep createHuntResultEvent's settlement-only defaults.
-      skipIntro: false,
-      skipReveal: !!event.skipReveal,
-    })).filter(Boolean);
+    const huntEvents = aiHuntEvents.filter(event => !event?.targetOnly).map(event => {
+      return createHuntResultEvent({
+        ...event,
+        // AI actions are resolved as one rule transaction, so their hunt event
+        // owns the reticle/reveal as well as settlement. Interactive hunt flows
+        // keep createHuntResultEvent's settlement-only defaults.
+        skipIntro: false,
+        skipReveal: !!event.skipReveal,
+        phaseOrder: event.phaseOrder ?? 30,
+      });
+    }).filter(Boolean);
     const multiplyVisualEvent = animMultiplyEvent
       ? createMultiplyVisualEvent(animMultiplyEvent)
       : null;
@@ -912,13 +916,13 @@ export function aiStep(gs, opts = {}) {
     };
   };
 
-  let lastApophisTargetEvent = null;
-  const consumeLastApophisTargetEvent = () => {
-    const event = lastApophisTargetEvent;
-    lastApophisTargetEvent = null;
-    return event;
+  let lastTargetResolutionEventId = null;
+  const consumeLastTargetResolutionEventId = () => {
+    const eventId = lastTargetResolutionEventId;
+    lastTargetResolutionEventId = null;
+    return eventId;
   };
-  const applyNightTarget = (selectedIdx, legalTargets, label) => {
+  const applyNightTarget = (selectedIdx, legalTargets, label, { phaseGroupId = null } = {}) => {
     const night = resolveApophisTarget({
       gs,
       players: P,
@@ -929,6 +933,11 @@ export function aiStep(gs, opts = {}) {
       selectedIdx,
       legalTargets,
       label,
+      visualMeta: {
+        transactionId: aiActionTransactionId,
+        ...(phaseGroupId ? { phaseGroupId } : {}),
+        phaseOrder: 0,
+      },
     });
     P = night.players;
     ai=getAi();alive=getAlive();
@@ -937,7 +946,7 @@ export function aiStep(gs, opts = {}) {
     L = night.log;
     gs = { ...gs, ...(night.statePatch || {}) };
     recordActionVisualEvents(night.statePatch?._visualEvents);
-    lastApophisTargetEvent = night.apophisTargetEvent || null;
+    lastTargetResolutionEventId = night.targetResolutionEventId || null;
     return night.targetIdx;
   };
 
@@ -1518,15 +1527,27 @@ export function aiStep(gs, opts = {}) {
           let foundTarget = false;
           let abandonedAfterReveal = false;
           for (const targetEntry of sortedTargets) {
+            const attemptId = `${aiActionTransactionId}:hunt-attempt:${++aiHuntAttemptSeq}`;
             const targetAttemptBeforePlayers = copyPlayers(P);
             const targetAttemptLogStart = L.length;
-            let ti = applyNightTarget(targetEntry.idx, validTargets.map(t => t.idx), '选择【追捕】目标');
-            const apophisTargetEvent = consumeLastApophisTargetEvent();
+            let ti = applyNightTarget(
+              targetEntry.idx,
+              validTargets.map(t => t.idx),
+              '选择【追捕】目标',
+              { phaseGroupId: attemptId },
+            );
+            const targetResolutionEventId = consumeLastTargetResolutionEventId();
+            const targetAttemptOwnership = {
+              attemptId,
+              phaseGroupId: attemptId,
+              phaseOrder: 30,
+              ...(targetResolutionEventId ? { targetResolutionEventId } : {}),
+            };
             const recordTargetOnlyAttempt = () => {
-              if (!apophisTargetEvent) return;
+              if (!targetResolutionEventId) return;
               aiHuntEvents.push({
+                ...targetAttemptOwnership,
                 targetOnly: true,
-                apophisTargetEvent,
                 targetIdx: ti,
                 hunterIdx: ct,
                 beforePlayers: targetAttemptBeforePlayers,
@@ -1548,7 +1569,7 @@ export function aiStep(gs, opts = {}) {
               const huntPromptLogStart = L.length;
               L.push(`${ai.name}（追猎者）向你发动【追捕】！请选择亮出一张手牌`);
               aiHuntEvents.push({
-                apophisTargetEvent,
+                ...targetAttemptOwnership,
                 targetIdx:ti,
                 hunterIdx:ct,
                 beforePlayers:copyPlayers(P),
@@ -1597,7 +1618,7 @@ export function aiStep(gs, opts = {}) {
                 });
                 if(huntDamageResult.phase==='ETHEREALIZE_DECISION'){
                   aiHuntEvents.push({
-                    apophisTargetEvent,
+                    ...targetAttemptOwnership,
                     targetIdx:ti,
                     hunterIdx:ct,
                     revealedCard:rc,
@@ -1691,7 +1712,7 @@ export function aiStep(gs, opts = {}) {
                     afterDamageLog=[...L];
                   }
                   aiHuntEvents.push({
-                    apophisTargetEvent,
+                    ...targetAttemptOwnership,
                     targetIdx:ti,
                     hunterIdx:ct,
                     revealedCard:rc,
@@ -1718,7 +1739,7 @@ export function aiStep(gs, opts = {}) {
                   break;
                 } else {
                   aiHuntEvents.push({
-                    apophisTargetEvent,
+                    ...targetAttemptOwnership,
                     targetIdx:ti,
                     hunterIdx:ct,
                     revealedCard:rc,
@@ -1740,7 +1761,7 @@ export function aiStep(gs, opts = {}) {
               } else {
                 L.push(`${ai.name}（追猎者）放弃追捕 ${tgt.name}`);
                 aiHuntEvents.push({
-                  apophisTargetEvent,
+                  ...targetAttemptOwnership,
                   targetIdx:ti,
                   hunterIdx:ct,
                   revealedCard:rc,

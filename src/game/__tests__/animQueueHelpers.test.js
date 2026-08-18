@@ -24,10 +24,116 @@ import { copyPlayers } from '../coreUtils';
 import { buildAnimQueue } from '../animQueueCore';
 import { createCardEffectEvent, createGodStatusChangedEvent, createInspectionVisualEvent } from '../visualEvents';
 import { resolveAiGodChoiceTransition } from '../aiDecisionState';
+import { scopeAiReplayMetadataBeforeInspection } from '../aiTurnPresentation';
 import { resolveGodEncounterForAI, startNextTurn } from '../turnEngine';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
 describe('animQueueHelpers', () => {
+  it('AI 蛊惑鼠群时自残扣血紧跟对应检定翻牌', () => {
+    const gift = makeZoneCard('D3', 0, { id: 'rat-swarm', name: '鼠群' });
+    const playersBeforeRatSwarm = [
+      makePlayer({ name: '黛安娜', hp: 10, san: 6 }),
+      makePlayer({ name: '卡洛斯', hp: 10, san: 6 }),
+      makePlayer({ name: '艾伦', hp: 10, san: 6 }),
+      makePlayer({ name: '贝拉', hp: 10, san: 6 }),
+    ];
+    const afterRatSwarm = copyPlayers(playersBeforeRatSwarm);
+    afterRatSwarm.forEach(player => { player.san = 5; });
+    const afterSelfHarm = copyPlayers(afterRatSwarm);
+    afterSelfHarm[2].hp = 8;
+    const bewitchLog = '卡洛斯（邪祀者）对 黛安娜 【蛊惑】，赠予 [D3] 鼠群';
+    const ratSwarmLog = '全体存活角色失去 1 SAN';
+    const prefix = [bewitchLog, ratSwarmLog];
+    const ratSwarmStats = playersBeforeRatSwarm.map((player, target) => ({
+      seq: 1,
+      type: 'SAN_LOSS',
+      target,
+      from: { hp: player.hp, san: player.san, isDead: false },
+      to: { hp: player.hp, san: afterRatSwarm[target].san, isDead: false },
+      reason: '鼠群',
+      logHint: ratSwarmLog,
+    }));
+    const selfHarmLog = '艾伦 自残，失去 2 HP';
+    const selfHarmStat = {
+      seq: 2,
+      type: 'HP_LOSS',
+      target: 2,
+      from: { hp: 10, san: 5, isDead: false },
+      to: { hp: 8, san: 5, isDead: false },
+      reason: '自残',
+      logHint: selfHarmLog,
+    };
+    const inspections = [
+      {
+        seq: 1,
+        card: { id: 'insomnia', name: '失眠', effect: 'disableRest' },
+        target: 1,
+        beforePlayers: afterRatSwarm,
+        afterPlayers: afterRatSwarm,
+        beforeLog: prefix,
+        afterLog: [...prefix, '卡洛斯 的SAN检定结果为"失眠"', '卡洛斯 失眠，下一回合禁用休息'],
+        beforeStatEventSeq: 1,
+        statEvents: [],
+      },
+      {
+        seq: 2,
+        card: { id: 'self-harm', name: '自残', effect: 'selfDamageHP', value: 2 },
+        target: 2,
+        beforePlayers: afterRatSwarm,
+        afterPlayers: afterSelfHarm,
+        beforeLog: [...prefix, '卡洛斯 的SAN检定结果为"失眠"', '卡洛斯 失眠，下一回合禁用休息'],
+        afterLog: [...prefix, '卡洛斯 的SAN检定结果为"失眠"', '卡洛斯 失眠，下一回合禁用休息', '艾伦 的SAN检定结果为"自残"', selfHarmLog],
+        beforeStatEventSeq: 1,
+        statEvents: [selfHarmStat],
+        statEventSeq: 2,
+      },
+      {
+        seq: 3,
+        card: { id: 'fatigue', name: '乏力', effect: 'handLimitDecrease' },
+        target: 3,
+        beforePlayers: afterSelfHarm,
+        afterPlayers: afterSelfHarm,
+        beforeLog: [...prefix, '卡洛斯 的SAN检定结果为"失眠"', '卡洛斯 失眠，下一回合禁用休息', '艾伦 的SAN检定结果为"自残"', selfHarmLog],
+        afterLog: [...prefix, '卡洛斯 的SAN检定结果为"失眠"', '卡洛斯 失眠，下一回合禁用休息', '艾伦 的SAN检定结果为"自残"', selfHarmLog, '贝拉 的SAN检定结果为"乏力"', '贝拉 乏力，下一回合手牌上限-1'],
+        beforeStatEventSeq: 2,
+        statEvents: [],
+      },
+    ];
+    const actionMetadata = scopeAiReplayMetadataBeforeInspection({
+      statEvents: [...ratSwarmStats, selfHarmStat],
+      statEventSeq: 2,
+    }, inspections[0]);
+    const actionPrelude = buildAnimQueue(
+      { players: playersBeforeRatSwarm, log: [], _statEvents: [], _statEventSeq: 0 },
+      { players: afterRatSwarm, log: prefix, _statEvents: actionMetadata.statEvents, _statEventSeq: actionMetadata.statEventSeq },
+    );
+    const inspectionFlow = buildInspectionEventFlow(
+      { players: afterRatSwarm, log: prefix, _statEvents: ratSwarmStats, _statEventSeq: 1 },
+      inspections,
+      { buildAnimQueue, copyPlayers },
+    );
+    const queue = buildBewitchForcedCardQueue(
+      1,
+      0,
+      gift,
+      '黛安娜',
+      [...actionPrelude, ...inspectionFlow.queue],
+      [bewitchLog],
+    );
+    const selfHarmRevealIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.card === inspections[1].card);
+    const selfHarmDamageIdx = queue.findIndex(step => step.type === 'HP_DAMAGE');
+    const fatigueRevealIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.card === inspections[2].card);
+
+    expect(actionPrelude.some(step => step.type === 'HP_DAMAGE')).toBe(false);
+    expect(selfHarmRevealIdx).toBeGreaterThan(-1);
+    expect(selfHarmDamageIdx).toBeGreaterThan(selfHarmRevealIdx);
+    expect(selfHarmDamageIdx).toBeLessThan(fatigueRevealIdx);
+    expect(queue[selfHarmDamageIdx]).toMatchObject({
+      hitIndices: [2],
+      msgs: expect.arrayContaining(['艾伦 的SAN检定结果为"自残"', selfHarmLog]),
+    });
+  });
+
   it('追捕响应动画完成后在同一队列内退出旧交互阶段', () => {
     const discard={type:'DISCARD',card:{id:'hunter-card'}};
     const damage={type:'HP_DAMAGE',hitIndices:[0]};

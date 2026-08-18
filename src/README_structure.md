@@ -229,9 +229,20 @@ A synchronously resolved slime extra draw of a god card attaches its encounter o
 Chained AI hunts are one ordered action transaction. `aiTurn.js` assigns the
 action events a shared `transactionId` and increasing `order`; presentation
 compiles the pre-hunt portion only through `_playersBeforeSkillAction`, then
-appends each hunt event from its own `beforePlayers`/`afterPlayers` snapshots.
+selects every canonical event owned by the hunt attempts and compiles that set
+in one transaction. A pending player reveal may append a queue-owned prompt,
+but it does not manufacture a rule event.
 Never compare the action start directly with the completed chained-hunt state,
 because that leaks later hunt discards into worship or other pre-hunt steps.
+Each hunt attempt also owns a stable `attemptId`/`phaseGroupId`. An Apophis
+target event is a sibling canonical event and exposes its id as
+`targetResolutionEventId`; inspection events reference it through
+`causedByEventId`, and `huntResult` references the same target event instead of
+embedding or recreating an Apophis payload. `_aiHuntEvents` contains only stable
+ownership ids and execution snapshots; hunt presentation never associates
+events through `legacySeq` or log text. The AI final boundary never calls the
+legacy final-state `mergeApophisTargetQueue`, leaving the transaction compiler
+as the only ordering authority.
 
 ## HP/SAN Presentation Boundary
 

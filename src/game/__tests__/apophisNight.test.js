@@ -103,6 +103,11 @@ describe('apophisNight', () => {
       selectedIdx: 1,
       legalTargets: [1, 2],
       label: '选择【掉包】目标',
+      visualMeta: {
+        transactionId: 'action-1',
+        phaseGroupId: 'attempt-1',
+        phaseOrder: 0,
+      },
     });
 
     expect(res.players[0].san).toBe(6);
@@ -110,10 +115,21 @@ describe('apophisNight', () => {
     expect(res.log).toContain(`${players[0].name} 的SAN检定结果为"暂时的平静"`);
     expect(res.statePatch._inspectionSeq).toBe(1);
     const inspectionEvent = res.statePatch._visualEvents.find(event => event.type === 'inspection');
+    const apophisEvent = res.statePatch._visualEvents.find(event => event.type === 'apophisTarget');
+    expect(res.targetResolutionEventId).toBe(apophisEvent.id);
+    expect(apophisEvent).toMatchObject({
+      transactionId: 'action-1',
+      phaseGroupId: 'attempt-1',
+      phaseOrder: 0,
+    });
     expect(inspectionEvent).toMatchObject({
       target: 0,
       card: inspectionCard,
       beforeStatEventSeq: 1,
+      transactionId: 'action-1',
+      phaseGroupId: 'attempt-1',
+      phaseOrder: 10,
+      causedByEventId: apophisEvent.id,
     });
     expect(res.statePatch._visualEvents.map(event => event.type)).toEqual([
       'apophisTarget',

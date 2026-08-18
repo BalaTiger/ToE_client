@@ -283,11 +283,15 @@ export function validateVisualEventTransaction(transaction, events = []) {
   const issues = [];
   const queue = Array.isArray(transaction.queue) ? transaction.queue : [];
   const eventIds = Array.isArray(transaction.eventIds) ? transaction.eventIds : [];
+  const scopedEvents = (Array.isArray(events) ? events : []).filter(Boolean);
+  const eventIndexById = new Map(
+    scopedEvents.map((event, index) => [event?.id, index]).filter(([id]) => !!id),
+  );
   if (!transaction.id) issues.push({ code: 'MISSING_TRANSACTION_ID' });
   if (!queue.length) issues.push({ code: 'EMPTY_TRANSACTION_QUEUE' });
   if (!eventIds.length) issues.push({ code: 'MISSING_TRANSACTION_EVENT_IDS' });
 
-  (Array.isArray(events) ? events : []).forEach(event => {
+  scopedEvents.forEach(event => {
     const eventQueue = queue.filter(step => step?.visualEventId === event?.id);
     if (!eventQueue.length) {
       issues.push({ code: 'EMPTY_VISUAL_EVENT_QUEUE', eventId: event?.id, eventType: event?.type });
@@ -308,6 +312,52 @@ export function validateVisualEventTransaction(transaction, events = []) {
       const damageIndex = types.indexOf('HP_DAMAGE');
       if (damageIndex <= indices[2]) {
         issues.push({ code: 'MISSING_THROW_STONE_DAMAGE', eventId: event.id, types });
+      }
+    }
+  });
+  queue.forEach(step => {
+    if (step?.visualEventId && !eventIndexById.has(step.visualEventId)) {
+      issues.push({
+        code: 'UNKNOWN_STEP_VISUAL_EVENT_ID',
+        visualEventId: step.visualEventId,
+        stepType: step.type || null,
+      });
+    }
+  });
+  scopedEvents.forEach(event => {
+    ['causedByEventId', 'targetResolutionEventId'].forEach(field => {
+      const dependencyId = event?.[field];
+      if (!dependencyId) return;
+      const dependencyIndex = eventIndexById.get(dependencyId);
+      if (dependencyIndex == null) {
+        issues.push({
+          code: 'MISSING_VISUAL_EVENT_DEPENDENCY',
+          eventId: event.id,
+          eventType: event.type,
+          field,
+          dependencyId,
+        });
+        return;
+      }
+      if (dependencyIndex >= eventIndexById.get(event.id)) {
+        issues.push({
+          code: 'VISUAL_EVENT_DEPENDENCY_OUT_OF_ORDER',
+          eventId: event.id,
+          eventType: event.type,
+          field,
+          dependencyId,
+        });
+      }
+    });
+    if (event?.type === VISUAL_EVENT.HUNT_RESULT && event?.targetResolutionEventId) {
+      const targetEvent = scopedEvents[eventIndexById.get(event.targetResolutionEventId)];
+      if (targetEvent?.type !== VISUAL_EVENT.APOPHIS_TARGET) {
+        issues.push({
+          code: 'INVALID_HUNT_TARGET_RESOLUTION_EVENT',
+          eventId: event.id,
+          targetResolutionEventId: event.targetResolutionEventId,
+          targetEventType: targetEvent?.type || null,
+        });
       }
     }
   });

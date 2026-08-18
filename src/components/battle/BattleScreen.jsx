@@ -94,6 +94,7 @@ export function BattleScreen(props) {
     phase,
     myTurn,
     isVisualPlayerTurn,
+    decisionContext,
     isActionControlsHidden,
     cancelable,
     showCancelBtn,
@@ -141,6 +142,7 @@ export function BattleScreen(props) {
     mobileGodCardRefs,
     isLocalSeatIndex,
     isLocalNyaBorrowPhase,
+    isLocalTortoiseSelectPhase,
     hasHuntRevealableCard,
     isLocalCurrentTurn,
     pendingZhuDrawCard,
@@ -394,18 +396,19 @@ export function BattleScreen(props) {
 
       {/* Animations rendered outside the zoom container, see Fragment below */}
       {/* Target selection mask + floating prompt */}
-      <TargetSelectOverlay drawReveal={gs.drawReveal} phase={isVisualPlayerTurn?phase:null} bewitchCard={gs.abilityData?.bewitchCard}/>
+      <TargetSelectOverlay drawReveal={gs.drawReveal} phase={canLocalTargetSelect?phase:null} bewitchCard={gs.abilityData?.bewitchCard}/>
 
       <BattleDecisionModals
         gs={gs}
         me={me}
         phase={phase}
-        myTurn={myTurn}
+        decisionContext={decisionContext}
         suppressAnim={suppressAnim}
         canShowTurnDecisionModal={canShowTurnDecisionModal}
         isLocalGodChoice={isLocalGodChoice}
         isLocalDrawDecision={isLocalDrawDecision}
         isLocalNyaBorrowPhase={isLocalNyaBorrowPhase}
+        isLocalTortoiseSelectPhase={isLocalTortoiseSelectPhase}
         isLocalTreasureDodgePhase={isLocalTreasureDodgePhase}
         isLocalTreasureAoEDodgePhase={isLocalTreasureAoEDodgePhase}
         isLocalSeatIndex={isLocalSeatIndex}
@@ -496,9 +499,9 @@ export function BattleScreen(props) {
             const isEtherealizeTargetAllowed=phase!=='ETHEREALIZE_SELECT_TARGET'||isValidEtherealizeRedirectTarget({players:visualPlayers,abilityData:gs.abilityData,targetIdx:pi});
             const isSel=selectingOther&&!p.isDead&&!isBlocked&&isTutorialTargetAllowed&&isEtherealizeTargetAllowed&&!(phase==='HUNT_SELECT_TARGET'&&(!hasHuntRevealableCard(p)||huntAbandoned.includes(pi)));
             // 掉包：公开手牌时正面选择；暗抽时改为全屏遮罩选择，不再点击手牌区
-            const isSwapPublicTargetCardPhase=phase==='SWAP_SELECT_TARGET_CARD'&&myTurn&&gs.abilityData?.swapTi===pi;
+            const isSwapPublicTargetCardPhase=phase==='SWAP_SELECT_TARGET_CARD'&&decisionContext?.localCanAct&&gs.abilityData?.swapTi===pi;
             // 在HUNT_SELECT_CARD_FROM_PUBLIC阶段，如果这是死者玩家，显示其手牌并允许选择
-            const isHuntCardFromPublicPhase=phase==='HUNT_SELECT_CARD_FROM_PUBLIC'&&myTurn&&gs.abilityData?.huntTi===pi;
+            const isHuntCardFromPublicPhase=phase==='HUNT_SELECT_CARD_FROM_PUBLIC'&&decisionContext?.localCanAct&&gs.abilityData?.huntTi===pi;
             const showFaceUpForSwap=isSwapPublicTargetCardPhase||isHuntCardFromPublicPhase||p.revealHand;
             const onCardSelectForSwap=isSwapPublicTargetCardPhase?((cardIdx)=>swapSelectTargetCard(cardIdx)):isHuntCardFromPublicPhase?((cardIdx)=>huntSelectCardFromPublic(cardIdx)):null;
               return(
@@ -610,6 +613,7 @@ export function BattleScreen(props) {
           ri={ri}
           phase={phase}
           myTurn={myTurn}
+          decisionContext={decisionContext}
           isSpectating={isSpectating}
           isVisualPlayerTurn={isVisualPlayerTurn}
           isActionControlsHidden={isActionControlsHidden}

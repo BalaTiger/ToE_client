@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   buildAiHuntWaitPresentation,
   buildOwnedAiHuntEventQueue,
+  buildAiPresentationRecoveryState,
   buildAiTurnRecoveryState,
   buildRoseThornSnapshot,
   buildScopedAiActionReplayState,
@@ -13,6 +14,7 @@ import {
   getAiActionSphinxResultEvent,
   insertAiRestDiceBeforeSettlement,
   scopeAiActionReplayMetadata,
+  scopeAiReplayMetadataBeforeInspection,
   scopeAiPreHuntReplayMetadata,
   shouldBuildQueuedAiTurnStartReplay,
   shouldPrependAiSkillSnapshot,
@@ -28,6 +30,58 @@ import {
 import { getVisualEventIdsCoveredByAnimationQueue } from '../visualEventTransactionCompiler';
 
 describe('AI turn presentation helpers', () => {
+  it('keeps inspection-owned self-harm damage out of the AI action prelude', () => {
+    const ratSwarmLoss = {
+      seq: 4,
+      type: 'SAN_LOSS',
+      target: 0,
+      reason: '鼠群',
+    };
+    const selfHarm = {
+      seq: 5,
+      type: 'HP_LOSS',
+      target: 1,
+      reason: '自残',
+      from: { hp: 10, san: 4 },
+      to: { hp: 8, san: 4 },
+    };
+    const laterInspection = {
+      seq: 6,
+      type: 'SAN_LOSS',
+      target: 2,
+      reason: '后续检定',
+    };
+    const metadata = {
+      visualEvents: [{ type: 'bewitchGift' }, { type: 'inspection' }],
+      statEvents: [ratSwarmLoss, selfHarm, laterInspection],
+      statEventSeq: 6,
+    };
+
+    const scoped = scopeAiReplayMetadataBeforeInspection(metadata, {
+      beforeStatEventSeq: 4,
+      statEvents: [selfHarm],
+    });
+
+    expect(scoped.visualEvents).toBe(metadata.visualEvents);
+    expect(scoped.statEvents).toEqual([ratSwarmLoss]);
+    expect(scoped.statEventSeq).toBe(4);
+  });
+
+  it('derives the pre-inspection boundary from the self-harm event for legacy snapshots', () => {
+    const beforeInspection = { seq: 2, type: 'SAN_LOSS', target: 0 };
+    const selfHarm = { seq: 3, type: 'HP_LOSS', target: 1, reason: '自残' };
+
+    const scoped = scopeAiReplayMetadataBeforeInspection({
+      statEvents: [beforeInspection, selfHarm],
+      statEventSeq: 3,
+    }, {
+      statEvents: [selfHarm],
+    });
+
+    expect(scoped.statEvents).toEqual([beforeInspection]);
+    expect(scoped.statEventSeq).toBe(2);
+  });
+
   it('does not treat the next turn staged sphinx result as the current AI action', () => {
     const card = { id: 'cthulhu', name: '拉莱耶之主', isGod: true };
     const stagedEvent = {
@@ -788,6 +842,9 @@ describe('AI turn presentation helpers', () => {
     ];
     const firstNight = {
       seq: 1,
+      transactionId: 'ai-action:consecutive',
+      phaseGroupId: 'hunt-attempt:1',
+      phaseOrder: 0,
       actorIdx: 1,
       actorName: '贝拉',
       targetIdx: 2,
@@ -798,6 +855,9 @@ describe('AI turn presentation helpers', () => {
     };
     const secondNight = {
       seq: 2,
+      transactionId: 'ai-action:consecutive',
+      phaseGroupId: 'hunt-attempt:2',
+      phaseOrder: 0,
       actorIdx: 1,
       actorName: '贝拉',
       targetIdx: 0,
@@ -808,7 +868,9 @@ describe('AI turn presentation helpers', () => {
     };
     const rawHunts = [
       {
-        apophisTargetEvent: firstNight,
+        attemptId: 'hunt-attempt:1',
+        phaseGroupId: 'hunt-attempt:1',
+        phaseOrder: 30,
         hunterIdx: 1,
         targetIdx: 2,
         revealedCard: players[2].hand[0],
@@ -816,7 +878,9 @@ describe('AI turn presentation helpers', () => {
         msgs: ['贝拉（追猎者）对 卡洛斯 【追捕】，亮出 [C4]'],
       },
       {
-        apophisTargetEvent: secondNight,
+        attemptId: 'hunt-attempt:2',
+        phaseGroupId: 'hunt-attempt:2',
+        phaseOrder: 30,
         hunterIdx: 1,
         targetIdx: 0,
         beforePlayers: players,
@@ -824,11 +888,14 @@ describe('AI turn presentation helpers', () => {
         skipReveal: true,
       },
     ];
-    const huntEvents = rawHunts.map(createHuntResultEvent);
-    const apophisEvents = rawHunts.map(event => createApophisTargetVisualEvent(
-      event.apophisTargetEvent,
+    const apophisEvents = [firstNight, secondNight].map(event => createApophisTargetVisualEvent(
+      event,
       { playersAfter: players },
     ));
+    rawHunts.forEach((event, index) => {
+      event.targetResolutionEventId = apophisEvents[index].id;
+    });
+    const huntEvents = rawHunts.map(event => createHuntResultEvent({ ...event, skipIntro: false }));
     const previousState = {
       phase: 'AI_TURN',
       currentTurn: 1,
@@ -841,7 +908,7 @@ describe('AI turn presentation helpers', () => {
     const nextState = {
       ...previousState,
       phase: 'PLAYER_REVEAL_FOR_HUNT',
-      log: rawHunts.flatMap(event => [event.apophisTargetEvent.log, ...event.msgs]),
+      log: rawHunts.flatMap((event, index) => [[firstNight, secondNight][index].log, ...event.msgs]),
       _visualEvents: [apophisEvents[0], huntEvents[0], apophisEvents[1], huntEvents[1]],
       _apophisTargetSeq: 2,
       _apophisTargetEvent: secondNight,
@@ -892,6 +959,9 @@ describe('AI turn presentation helpers', () => {
       changed: true,
       label: '选择【追捕】目标',
       log: '【黑夜】艾伦 选择【追捕】目标掷出 1，目标由 你 错乱为 贝拉，失去 1 SAN',
+      transactionId: 'ai-action:target-only',
+      phaseGroupId: 'hunt-attempt:6',
+      phaseOrder: 0,
     };
     const huntedNight = {
       seq: 7,
@@ -903,11 +973,16 @@ describe('AI turn presentation helpers', () => {
       changed: false,
       label: '选择【追捕】目标',
       log: '【黑夜】艾伦 选择【追捕】目标掷出 4，目标未偏移',
+      transactionId: 'ai-action:target-only',
+      phaseGroupId: 'hunt-attempt:7',
+      phaseOrder: 0,
     };
     const rawHunts = [
       {
         targetOnly: true,
-        apophisTargetEvent: skippedNight,
+        attemptId: 'hunt-attempt:6',
+        phaseGroupId: 'hunt-attempt:6',
+        phaseOrder: 30,
         hunterIdx: 1,
         targetIdx: 2,
         beforePlayers: players,
@@ -917,7 +992,9 @@ describe('AI turn presentation helpers', () => {
         msgs: [],
       },
       {
-        apophisTargetEvent: huntedNight,
+        attemptId: 'hunt-attempt:7',
+        phaseGroupId: 'hunt-attempt:7',
+        phaseOrder: 30,
         hunterIdx: 1,
         targetIdx: 0,
         beforePlayers: players,
@@ -928,7 +1005,10 @@ describe('AI turn presentation helpers', () => {
     ];
     const apophisEvents = [skippedNight, huntedNight]
       .map(event => createApophisTargetVisualEvent(event, { playersAfter: players }));
-    const huntEvent = createHuntResultEvent(rawHunts[1]);
+    rawHunts.forEach((event, index) => {
+      event.targetResolutionEventId = apophisEvents[index].id;
+    });
+    const huntEvent = createHuntResultEvent({ ...rawHunts[1], skipIntro: false });
     const state = {
       players,
       _visualEvents: [...apophisEvents, huntEvent],
@@ -944,11 +1024,67 @@ describe('AI turn presentation helpers', () => {
       apophisEvents[1].id,
       huntEvent.id,
     ]);
+    expect(result.eventIds).toEqual([apophisEvents[0].id, apophisEvents[1].id, huntEvent.id]);
+    expect(result.transactionId).toBe(`visual-transaction:${result.eventIds.join('+')}`);
+    expect(new Set(result.eventIds).size).toBe(result.eventIds.length);
+    expect(result.targetEventIds).toEqual(apophisEvents.map(event => event.id));
     expect(getAiActionQueueCoverage(
       state,
       result.queue,
       queue => queue.map(step => step.visualEventId).filter(Boolean),
     ).uncoveredEventIds).toEqual([]);
+  });
+
+  it('selects a hunt target by explicit event id when legacy sequences collide', () => {
+    const players = [
+      { name: '你', hp: 10, san: 10, hand: [] },
+      { name: '艾伦', hp: 10, san: 9, hand: [] },
+      { name: '贝拉', hp: 10, san: 10, hand: [] },
+    ];
+    const decoy = createApophisTargetVisualEvent({
+      seq: 4,
+      actorIdx: 2,
+      actorName: '贝拉',
+      selectedIdx: 0,
+      targetIdx: 0,
+      roll: 6,
+      changed: false,
+      label: '选择目标',
+      log: '无关黑夜事件',
+    }, { playersAfter: players });
+    const owned = createApophisTargetVisualEvent({
+      seq: 4,
+      actorIdx: 1,
+      actorName: '艾伦',
+      selectedIdx: 0,
+      targetIdx: 2,
+      roll: 1,
+      changed: true,
+      label: '选择【追捕】目标',
+      log: '追捕黑夜事件',
+      phaseGroupId: 'hunt-attempt:collision',
+      phaseOrder: 0,
+    }, { playersAfter: players });
+    const rawHunt = {
+      attemptId: 'hunt-attempt:collision',
+      phaseGroupId: 'hunt-attempt:collision',
+      targetResolutionEventId: owned.id,
+      targetOnly: true,
+      hunterIdx: 1,
+      targetIdx: 2,
+    };
+
+    const result = buildOwnedAiHuntEventQueue({
+      rawHuntEvents: [rawHunt],
+      state: { players, _visualEvents: [decoy, owned] },
+      actorName: '艾伦',
+    });
+
+    expect(result.eventIds).toEqual([owned.id]);
+    expect(result.targetEventIds).toEqual([owned.id]);
+    expect(result.queue.filter(step => step.type === 'DICE_ROLL')).toEqual([
+      expect.objectContaining({ visualEventId: owned.id, d1: 1 }),
+    ]);
   });
 
   it('plays an Apophis SAN inspection before the huntResult transaction', () => {
@@ -962,6 +1098,9 @@ describe('AI turn presentation helpers', () => {
     ));
     const night = {
       seq: 1,
+      transactionId: 'ai-action:inspection',
+      phaseGroupId: 'hunt-attempt:inspection',
+      phaseOrder: 0,
       actorIdx: 1,
       actorName: '贝拉',
       selectedIdx: 0,
@@ -988,7 +1127,9 @@ describe('AI turn presentation helpers', () => {
       statEvents: [],
     };
     const rawHunt = {
-      apophisTargetEvent: night,
+      attemptId: 'hunt-attempt:inspection',
+      phaseGroupId: 'hunt-attempt:inspection',
+      phaseOrder: 30,
       hunterIdx: 1,
       targetIdx: 2,
       revealedCard: beforePlayers[2].hand[0],
@@ -1003,8 +1144,15 @@ describe('AI turn presentation helpers', () => {
       playersAfter: afterSanPlayers,
       statEvents: [{ type: 'SAN_LOSS', target: 1, amount: 1, seq: 1 }],
     });
-    const inspectionVisualEvent = createInspectionVisualEvent(inspectionEvent);
-    const huntEvent = createHuntResultEvent(rawHunt);
+    rawHunt.targetResolutionEventId = apophisEvent.id;
+    const inspectionVisualEvent = createInspectionVisualEvent({
+      ...inspectionEvent,
+      transactionId: 'ai-action:inspection',
+      phaseGroupId: 'hunt-attempt:inspection',
+      phaseOrder: 10,
+      causedByEventId: apophisEvent.id,
+    });
+    const huntEvent = createHuntResultEvent({ ...rawHunt, skipIntro: false });
     const state = {
       phase: 'PLAYER_REVEAL_FOR_HUNT',
       currentTurn: 1,
@@ -1036,7 +1184,7 @@ describe('AI turn presentation helpers', () => {
     expect(result.queue[diceIdx].visualEventId).toBe(apophisEvent.id);
     expect(result.queue[inspectionIdx].visualEventId).toBe(inspectionVisualEvent.id);
     expect(result.queue[huntIdx].visualEventId).toBe(huntEvent.id);
-    expect(result.inspectionEvents).toEqual([inspectionEvent]);
+    expect(result.inspectionEvents).toEqual([inspectionVisualEvent]);
     expect(getAiActionQueueCoverage(
       state,
       result.queue,
@@ -1084,6 +1232,9 @@ describe('AI turn presentation helpers', () => {
     const worshipMsg = '黛安娜 从手牌信仰 拉莱耶之主，获得梦访拉莱耶(Lv.1)（骷髅头不计）';
     const rawHunts = [
       {
+        attemptId: 'hunt-attempt:timeline:1',
+        phaseGroupId: 'hunt-attempt:timeline:1',
+        phaseOrder: 30,
         hunterIdx: 1,
         targetIdx: 0,
         revealedCard: beforeFaith[0].hand[0],
@@ -1098,6 +1249,9 @@ describe('AI turn presentation helpers', () => {
         msgs: ['黛安娜（追猎者）对 艾伦 【追捕】，亮出 [D3]', '弃 [D1] 扭伤 → 艾伦 受 3HP 伤害！'],
       },
       {
+        attemptId: 'hunt-attempt:timeline:2',
+        phaseGroupId: 'hunt-attempt:timeline:2',
+        phaseOrder: 30,
         hunterIdx: 1,
         targetIdx: 2,
         revealedCard: beforeFaith[2].hand[0],
@@ -1112,6 +1266,9 @@ describe('AI turn presentation helpers', () => {
         msgs: ['黛安娜（追猎者）对 贝拉 【追捕】，亮出 [D3]', '弃 [D2] 鼠群 → 贝拉 受 3HP 伤害！'],
       },
       {
+        attemptId: 'hunt-attempt:timeline:3',
+        phaseGroupId: 'hunt-attempt:timeline:3',
+        phaseOrder: 30,
         hunterIdx: 1,
         targetIdx: 0,
         revealedCard: beforeFaith[0].hand[0],
@@ -1270,5 +1427,33 @@ describe('AI turn presentation helpers', () => {
       restUsed: false,
       huntAbandoned: [],
     }));
+  });
+
+  it('keeps the resolved rule state when only AI presentation compilation fails', () => {
+    const actionEvent = { id: 'action-event', type: 'apophisTarget', scope: 'action' };
+    const nextTurnEvent = { id: 'next-draw', type: 'drawCard', turnStartStage: 'draw' };
+    const resolvedState = {
+      phase: 'PLAYER_REVEAL_FOR_HUNT',
+      currentTurn: 1,
+      players: [{ name: '你' }, { name: 'Bot', hp: 7, san: 8 }],
+      log: ['追捕规则已经结算'],
+      _apophisTargetEvent: { seq: 2 },
+      _visualEvents: [actionEvent, nextTurnEvent],
+    };
+
+    const recovered = buildAiPresentationRecoveryState({
+      snapshot: { currentTurn: 1, players: [{ name: '你' }, { name: 'Bot' }] },
+      resolvedState,
+      error: new Error('bad queue'),
+    });
+
+    expect(recovered).toMatchObject({
+      phase: 'PLAYER_REVEAL_FOR_HUNT',
+      currentTurn: 1,
+      players: resolvedState.players,
+      _apophisTargetEvent: null,
+      _visualEvents: [nextTurnEvent],
+    });
+    expect(recovered.log.at(-1)).toBe('Bot 的行动动画已降级（bad queue），规则结算继续');
   });
 });

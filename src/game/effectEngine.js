@@ -1971,6 +1971,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           statePatch: {
             abilityData: {
               type: 'sphinxGuess',
+              playerIndex: ci,
               topCard,
             }
           }

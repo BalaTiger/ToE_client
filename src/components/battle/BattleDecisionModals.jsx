@@ -18,12 +18,13 @@ export function BattleDecisionModals({
   gs,
   me,
   phase,
-  myTurn,
+  decisionContext,
   suppressAnim,
   canShowTurnDecisionModal,
   isLocalGodChoice,
   isLocalDrawDecision,
   isLocalNyaBorrowPhase,
+  isLocalTortoiseSelectPhase,
   isLocalTreasureDodgePhase,
   isLocalTreasureAoEDodgePhase,
   isLocalSeatIndex,
@@ -254,7 +255,12 @@ export function BattleDecisionModals({
 
       {/* Tortoise oracle select */}
       {!suppressAnim && phase === 'TORTOISE_ORACLE_SELECT' && gs.abilityData && (
-        <TortoiseOracleModal abilityData={gs.abilityData} onSelect={tortoiseOracleSelect} myTurn={myTurn} expansionKey={gs.expansionKey} />
+        <TortoiseOracleModal
+          abilityData={gs.abilityData}
+          onSelect={tortoiseOracleSelect}
+          canPick={isLocalTortoiseSelectPhase(gs) && decisionContext?.presentation === 'interactive'}
+          expansionKey={gs.expansionKey}
+        />
       )}
 
       {/* Private peek */}

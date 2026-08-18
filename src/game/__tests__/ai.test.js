@@ -1172,6 +1172,9 @@ describe('aiStep optional action limits', () => {
       skillUsed: false,
       restUsed: false,
       multiplyUsed: false,
+      apophisNight: { active: true, count: 0, limit: 12, threshold: 2 },
+      _apophisTargetSeq: 0,
+      _visualEvents: [],
       log: ['旧日志'],
     });
 
@@ -1179,6 +1182,22 @@ describe('aiStep optional action limits', () => {
     expect(result.phase).toBe('ETHEREALIZE_DECISION');
     expect(result._aiHuntEvents).toHaveLength(1);
     expect(result._visualEvents?.filter(event => event.type === 'huntResult')).toHaveLength(1);
+    const rawHunt = result._aiHuntEvents[0];
+    const apophisEvent = result._visualEvents.find(event => event.type === 'apophisTarget');
+    const huntEvent = result._visualEvents.find(event => event.type === 'huntResult');
+    expect(rawHunt).toMatchObject({
+      attemptId: expect.any(String),
+      phaseGroupId: expect.any(String),
+      targetResolutionEventId: apophisEvent.id,
+    });
+    expect(apophisEvent.phaseGroupId).toBe(rawHunt.attemptId);
+    expect(huntEvent).toMatchObject({
+      attemptId: rawHunt.attemptId,
+      phaseGroupId: rawHunt.attemptId,
+      targetResolutionEventId: apophisEvent.id,
+    });
+    expect(rawHunt).not.toHaveProperty('apophisTargetEvent');
+    expect(huntEvent).not.toHaveProperty('apophisTargetEvent');
 
     const presentation = buildOwnedAiHuntEventQueue({
       rawHuntEvents: result._aiHuntEvents,
@@ -1186,6 +1205,8 @@ describe('aiStep optional action limits', () => {
       actorName: '黛安娜',
     });
     const types = presentation.queue.map(step => step.type);
+    expect(presentation.targetEventIds).toEqual([apophisEvent.id]);
+    expect(presentation.eventIds).toEqual(expect.arrayContaining([apophisEvent.id, huntEvent.id]));
     expect(types.indexOf('SKILL_HUNT')).toBeGreaterThanOrEqual(0);
     expect(types.indexOf('HUNT_REVEAL_CARD')).toBeGreaterThan(types.indexOf('SKILL_HUNT'));
     expect(types.indexOf('DISCARD')).toBeGreaterThan(types.indexOf('HUNT_REVEAL_CARD'));

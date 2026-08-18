@@ -8,6 +8,7 @@ import {
   createInspectionVisualEvent,
   createThrowStoneEvent,
   createHandLimitDiscardEvent,
+  createHuntResultEvent,
   createTimedOutDrawDiscardEvent,
   createTsathogguaSlimeGrantEvent,
   createTsathogguaSlimePopEvent,
@@ -719,5 +720,42 @@ describe('visualEventTransactionCompiler', () => {
     });
 
     expect(transaction.queue.map(step => step.targetPid)).toEqual([0, 1]);
+  });
+
+  it('validates explicit hunt target dependencies at the transaction boundary', () => {
+    const targetEvent = createApophisTargetVisualEvent({
+      seq: 1,
+      actorIdx: 1,
+      targetIdx: 2,
+      roll: 4,
+      transactionId: 'action-1',
+      phaseGroupId: 'attempt-1',
+      phaseOrder: 0,
+    });
+    const huntEvent = createHuntResultEvent({
+      hunterIdx: 1,
+      targetIdx: 2,
+      targetResolutionEventId: targetEvent.id,
+      transactionId: 'action-1',
+      phaseGroupId: 'attempt-1',
+      phaseOrder: 30,
+    });
+    const transaction = {
+      id: 'action-1',
+      eventIds: [targetEvent.id, huntEvent.id],
+      queue: [
+        { type: 'DICE_ROLL', visualEventId: targetEvent.id },
+        { type: 'SKILL_HUNT', visualEventId: huntEvent.id },
+      ],
+    };
+
+    expect(validateVisualEventTransaction(transaction, [targetEvent, huntEvent])).toEqual([]);
+    expect(validateVisualEventTransaction(transaction, [huntEvent, targetEvent])).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'VISUAL_EVENT_DEPENDENCY_OUT_OF_ORDER',
+        eventId: huntEvent.id,
+        dependencyId: targetEvent.id,
+      }),
+    ]));
   });
 });

@@ -126,6 +126,69 @@ export function scopeAiActionReplayMetadata(state, {
   };
 }
 
+// AI actions may resolve a whole SAN-inspection chain synchronously.  The
+// action prelude is rendered against the snapshot immediately before the
+// first inspection, so it must not also compile stat events owned by that
+// inspection (or anything settled after it).  Otherwise the HP loss from
+// 自残 is played before the card reveal and the inspection flow's copy is
+// subsequently removed as a duplicate.
+export function scopeAiReplayMetadataBeforeInspection(metadata = {}, firstInspection = null) {
+  if (!firstInspection) return metadata;
+  const explicitBoundary = Number(firstInspection.beforeStatEventSeq);
+  const inspectionSeqs = (Array.isArray(firstInspection.statEvents) ? firstInspection.statEvents : [])
+    .map(event => Number(event?.seq))
+    .filter(Number.isFinite);
+  const fallbackBoundary = inspectionSeqs.length ? Math.min(...inspectionSeqs) - 1 : null;
+  const boundary = Number.isFinite(explicitBoundary) ? explicitBoundary : fallbackBoundary;
+  if (!Number.isFinite(boundary)) return metadata;
+  const statEvents = (Array.isArray(metadata?.statEvents) ? metadata.statEvents : [])
+    .filter(event => !Number.isFinite(Number(event?.seq)) || Number(event.seq) <= boundary);
+  return {
+    ...metadata,
+    statEvents,
+    statEventSeq: statEvents.reduce(
+      (max, event) => Number.isFinite(Number(event?.seq)) ? Math.max(max, Number(event.seq)) : max,
+      0,
+    ),
+  };
+}
+
+function collectOwnedAiHuntVisualEvents(visualEvents = [], rawHuntEvents = []) {
+  const attempts = (Array.isArray(rawHuntEvents) ? rawHuntEvents : []).filter(event => (
+    event?.attemptId || event?.phaseGroupId
+  ));
+  const attemptIds = new Set(attempts.flatMap(event => (
+    [event?.attemptId, event?.phaseGroupId].filter(Boolean)
+  )));
+  const huntEvents = (Array.isArray(visualEvents) ? visualEvents : []).filter(event => (
+    event?.type === 'huntResult'
+    && (attemptIds.has(event?.attemptId) || attemptIds.has(event?.phaseGroupId))
+  ));
+  const targetEventIds = new Set([
+    ...attempts.map(event => event?.targetResolutionEventId).filter(Boolean),
+    ...huntEvents.map(event => event?.targetResolutionEventId).filter(Boolean),
+  ]);
+  const targetEvents = visualEvents.filter(event => (
+    event?.type === 'apophisTarget' && targetEventIds.has(event?.id)
+  ));
+  const resolvedTargetEventIds = new Set(targetEvents.map(event => event.id));
+  const inspectionEvents = visualEvents.filter(event => (
+    event?.type === 'inspection' && resolvedTargetEventIds.has(event?.causedByEventId)
+  ));
+  const ownedEventIds = new Set([
+    ...targetEvents,
+    ...inspectionEvents,
+    ...huntEvents,
+  ].map(event => event?.id).filter(Boolean));
+  return {
+    events: visualEvents.filter(event => ownedEventIds.has(event?.id)),
+    huntEvents,
+    targetEvents,
+    inspectionEvents,
+    eventIds: [...ownedEventIds],
+  };
+}
+
 // A chained hunt owns its own per-attempt snapshots.  The transaction before
 // the first hunt must therefore stop at the rule-layer pre-skill snapshot;
 // comparing the action start with the completed AI turn leaks later hunt
@@ -133,7 +196,12 @@ export function scopeAiActionReplayMetadata(state, {
 // "restore" those cards.
 export function scopeAiPreHuntReplayMetadata(state, rawResult = {}) {
   const action = scopeAiActionReplayMetadata(state);
-  const firstHuntEventIndex = action.visualEvents.findIndex(event => event?.type === 'huntResult');
+  const ownedHuntEvents = collectOwnedAiHuntVisualEvents(
+    action.visualEvents,
+    rawResult?._aiHuntEvents || [],
+  );
+  const ownedEventIds = new Set(ownedHuntEvents.eventIds);
+  const firstHuntEventIndex = action.visualEvents.findIndex(event => ownedEventIds.has(event?.id));
   if (firstHuntEventIndex < 0) {
     return {
       ...action,
@@ -143,18 +211,9 @@ export function scopeAiPreHuntReplayMetadata(state, rawResult = {}) {
     };
   }
 
-  const preHuntVisualEvents = action.visualEvents.slice(0, firstHuntEventIndex);
-  const inspectionEvents = Array.isArray(state?._inspectionEvents) ? state._inspectionEvents : [];
-  const huntOwnedInspectionSeqs = new Set(
-    (rawResult?._aiHuntEvents || [])
-      .flatMap(event => collectApophisInspectionChain(inspectionEvents, event))
-      .map(event => event?.seq)
-      .filter(seq => seq != null),
-  );
-  const visualEvents = preHuntVisualEvents.filter(event => {
-    if (event?.type === 'apophisTarget') return false;
-    return event?.type !== 'inspection' || !huntOwnedInspectionSeqs.has(event?.legacySeq);
-  });
+  const visualEvents = action.visualEvents
+    .slice(0, firstHuntEventIndex)
+    .filter(event => !ownedEventIds.has(event?.id));
   const ownedStatSeqs = new Set(visualEvents.flatMap(event => [
     ...(Array.isArray(event?.statEvents) ? event.statEvents : []),
     ...(Array.isArray(event?.faithSettlement?.abandonedFollowers)
@@ -433,12 +492,9 @@ export function buildAiHuntWaitPresentation({
     actorName,
   });
   const huntEventQueue = huntPresentation.queue;
-  const consumedApophisTargetSeq = Math.max(
-    0,
-    ...(rawResult._aiHuntEvents || [])
-      .map(event => event?.apophisTargetEvent?.seq || 0)
-      .filter(Boolean)
-  );
+  const consumedApophisTargetSeq = huntPresentation.targetEventIds.length
+    ? (nextState?._apophisTargetSeq || 0)
+    : 0;
   const actionBaselinePlayers = rawResult._playersBeforeSkillAction
     || previousState.players;
   const actionOldState = consumedApophisTargetSeq
@@ -596,34 +652,6 @@ export function buildScopedAiActionReplayState({
   };
 }
 
-function inspectionBelongsToApophisTarget(inspectionEvent, apophisTargetEvent) {
-  if (!inspectionEvent || !apophisTargetEvent?.log) return false;
-  if (inspectionEvent.target !== apophisTargetEvent.actorIdx) return false;
-  const beforeLog = Array.isArray(inspectionEvent.beforeLog) ? inspectionEvent.beforeLog : [];
-  return beforeLog.at(-1) === apophisTargetEvent.log;
-}
-
-function isLogPrefix(prefix, fullLog) {
-  if (!Array.isArray(prefix) || !Array.isArray(fullLog) || prefix.length > fullLog.length) return false;
-  return prefix.every((line, index) => line === fullLog[index]);
-}
-
-function collectApophisInspectionChain(inspectionEvents, rawHuntEvent) {
-  const firstIndex = inspectionEvents.findIndex(event => (
-    inspectionBelongsToApophisTarget(event, rawHuntEvent?.apophisTargetEvent)
-  ));
-  if (firstIndex < 0) return [];
-  const huntBeforeLog = Array.isArray(rawHuntEvent?.beforeLog) ? rawHuntEvent.beforeLog : null;
-  if (!huntBeforeLog) return [inspectionEvents[firstIndex]];
-  const chain = [];
-  for (let index = firstIndex; index < inspectionEvents.length; index += 1) {
-    const event = inspectionEvents[index];
-    if (!isLogPrefix(event?.afterLog, huntBeforeLog)) break;
-    chain.push(event);
-  }
-  return chain;
-}
-
 export function buildOwnedAiHuntEventQueue({
   rawHuntEvents = [],
   state,
@@ -631,58 +659,30 @@ export function buildOwnedAiHuntEventQueue({
   buildQueue = buildAnimQueue,
 } = {}) {
   const metadata = scopeAiActionReplayMetadata(state);
-  const huntVisualEvents = metadata.visualEvents.filter(event => event?.type === 'huntResult');
-  const apophisVisualEvents = metadata.visualEvents.filter(event => event?.type === 'apophisTarget');
-  const inspectionVisualEvents = metadata.visualEvents.filter(event => event?.type === 'inspection');
-  const inspectionEvents = Array.isArray(state?._inspectionEvents) ? state._inspectionEvents : [];
-  const ownedInspectionEvents = [];
-  let huntVisualEventIndex = 0;
-
-  const queue = rawHuntEvents.flatMap(rawEvent => {
-    const huntVisualEvent = rawEvent?.targetOnly ? null : huntVisualEvents[huntVisualEventIndex++];
-    const huntEvent = {
-      ...rawEvent,
-      ...(huntVisualEvent?.id ? { id: huntVisualEvent.id } : {}),
-    };
-    const rawApophisEvent = rawEvent?.apophisTargetEvent;
-    const apophisEvent = rawApophisEvent
-      ? apophisVisualEvents.find(event => event?.legacySeq === rawApophisEvent.seq)
-      : null;
-    const apophisQueue = apophisEvent
-      ? buildApophisTargetSteps(apophisEvent, state).filter(step => step?.type !== 'SKILL_HUNT')
-      : [];
-    const relatedInspections = rawApophisEvent
-      ? collectApophisInspectionChain(inspectionEvents, rawEvent)
-      : [];
-    ownedInspectionEvents.push(...relatedInspections);
-    const inspectionQueue = relatedInspections.flatMap(inspectionEvent => {
-      const flow = buildInspectionEventFlow(
-        {
-          players: inspectionEvent.beforePlayers || state?.players || [],
-          log: inspectionEvent.beforeLog || state?.log || [],
-          discard: inspectionEvent.beforeDiscard || state?.discard || [],
-          _statEventSeq: inspectionEvent.beforeStatEventSeq || 0,
-        },
-        [inspectionEvent],
-        { buildAnimQueue: buildQueue, copyPlayers },
-      );
-      const visualEvent = inspectionVisualEvents.find(event => event?.legacySeq === inspectionEvent.seq);
-      return visualEvent ? bindVisualEventToSteps(flow.queue, visualEvent) : flow.queue;
-    });
-    const huntQueue = rawEvent?.targetOnly
-      ? []
-      : bindVisualEventToSteps(
-          buildAiHuntEventAnimQueue(huntEvent, actorName, { includeApophisTarget: false }),
-          huntEvent,
-        );
-    return [...apophisQueue, ...inspectionQueue, ...huntQueue];
+  const owned = collectOwnedAiHuntVisualEvents(metadata.visualEvents, rawHuntEvents);
+  const transaction = owned.events.length
+    ? compileRuleVisualEventsToAnimTransaction(state, null, {
+        buildAnimQueue: buildQueue,
+        eventIds: owned.events.map(event => event.id),
+      })
+    : null;
+  const compiledHuntAttempts = new Set(owned.huntEvents.flatMap(event => (
+    [event?.attemptId, event?.phaseGroupId].filter(Boolean)
+  )));
+  const pendingPromptQueue = rawHuntEvents.flatMap(rawEvent => {
+    if (rawEvent?.targetOnly) return [];
+    if (compiledHuntAttempts.has(rawEvent?.attemptId) || compiledHuntAttempts.has(rawEvent?.phaseGroupId)) {
+      return [];
+    }
+    return buildAiHuntEventAnimQueue(rawEvent, actorName, { includeApophisTarget: false });
   });
 
   return {
-    queue,
-    inspectionEvents: ownedInspectionEvents.filter((event, index, events) => (
-      events.findIndex(candidate => candidate?.seq === event?.seq) === index
-    )),
+    queue: [...(transaction?.queue || []), ...pendingPromptQueue],
+    transactionId: transaction?.id || null,
+    eventIds: transaction?.eventIds || [],
+    targetEventIds: owned.targetEvents.map(event => event.id),
+    inspectionEvents: owned.inspectionEvents,
   };
 }
 
@@ -709,19 +709,45 @@ export function buildAiTurnRecoveryState({
     huntAbandoned: [],
   });
 }
+
+// Rule resolution has already succeeded when queue composition fails. Preserve
+// that authoritative result and drop only the failed action presentation
+// payload; forcing startNextTurn here would turn a visual defect into a rules
+// mutation and can discard an already-settled hunt.
+export function buildAiPresentationRecoveryState({
+  snapshot,
+  resolvedState,
+  error,
+} = {}) {
+  if (!resolvedState) return snapshot;
+  const actorName = snapshot?.players?.[snapshot.currentTurn]?.name || '该AI';
+  const suffix = error?.message ? `（${error.message}）` : '';
+  const visualEvents = Array.isArray(resolvedState?._visualEvents)
+    ? resolvedState._visualEvents.filter(event => !!event?.turnStartStage)
+    : [];
+  return {
+    ...resolvedState,
+    _visualEvents: visualEvents,
+    _apophisTargetEvent: null,
+    log: [
+      ...(Array.isArray(resolvedState?.log) ? resolvedState.log : []),
+      `${actorName} 的行动动画已降级${suffix}，规则结算继续`,
+    ],
+  };
+}
 import {
   buildAiHuntEventAnimQueue,
   buildAnimQueue,
   buildFullHandSwapTransferQueueFromLogs,
   getAiPreHuntActionSteps,
 } from './animQueueCore';
-import { buildInspectionEventFlow, statePatchStep } from './animQueueHelpers';
+import { statePatchStep } from './animQueueHelpers';
 import {
   appendAnimLogChunkToQueueEnd,
   bindAnimLogChunks,
   splitTransitionLogs,
   subtractLogOccurrences,
 } from './animLogs';
-import { copyPlayers, removeCardsFromDiscard } from './coreUtils';
+import { removeCardsFromDiscard } from './coreUtils';
 import { getTurnStartDrawBaselineLog } from './turnAnimState';
-import { buildApophisTargetSteps } from './visualEvents';
+import { compileRuleVisualEventsToAnimTransaction } from './visualEventTransactionCompiler';

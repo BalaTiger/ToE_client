@@ -63,6 +63,7 @@ export function buildPhaseUiState({
   localCurrentTurn = false,
   committedTargetAction = false,
   committedAction = false,
+  decisionContext = null,
   local = {},
 } = {}) {
   const players = gs?.players || [];
@@ -72,13 +73,21 @@ export function buildPhaseUiState({
   const promptColors = getPhasePromptColors(gs?.expansionKey);
   const isMultiplayer = !!gs?._isMP;
   const thinkingText = idx => `${players[idx]?.name || '目标'} 正在思考…`;
+  const localOwnsCurrentDecision = decisionContext ? decisionContext.localCanAct : localCurrentTurn;
+  const decisionPrompt = localText => {
+    if (localOwnsCurrentDecision) return localText;
+    const ownerIdx = decisionContext?.ownerSeats?.[0];
+    return isMultiplayer
+      ? `等待 ${players[ownerIdx]?.name || '其他玩家'} 选择…`
+      : thinkingText(ownerIdx);
+  };
 
   const label = (() => {
     switch (phase) {
       case 'ACTION':
         return localCurrentTurn ? '你的回合 — 可发动技能、休息，或结束回合' : '等候其他旅者…';
       case 'SWAP_SELECT_TARGET':
-        return '【掉包】选择目标角色';
+        return decisionPrompt('【掉包】选择目标角色');
       case 'SWAP_STEAL_CARD':
         return `【掉包】从 ${players[abilityData.swapTi]?.name} 的手牌中暗抽一张`;
       case 'SWAP_SELECT_TARGET_CARD':
@@ -88,7 +97,7 @@ export function buildPhaseUiState({
           ? `${players[abilityData.swapTi]?.revealHand ? '抽到' : '暗抽到'} ${cardLogText(abilityData.takenCard)}，选一张手牌还给对方`
           : '等待掉包者归还手牌…';
       case 'HUNT_SELECT_TARGET':
-        return '【追捕】选择猎物';
+        return decisionPrompt('【追捕】选择猎物');
       case 'HUNT_CONFIRM':
         return local.huntConfirm
           ? `${cardLogText(abilityData.revCard, { alwaysShowName: true })} 已亮出！${abilityData.revCard && !isZoneCard(abilityData.revCard) ? '弃出任意手牌' : '弃出匹配手牌'}造成3HP，或放弃`
@@ -107,11 +116,15 @@ export function buildPhaseUiState({
           ? (canShowTurnDecisionModal ? '【寻宝者】即将承受负面效果！是否掷骰子规避？' : '规避判定中…')
           : (isMultiplayer ? `等候 ${players[gs?.currentTurn]?.name} 做出选择…` : `${players[gs?.currentTurn]?.name} 正在思考…`);
       case 'BEWITCH_SELECT_CARD':
-        return '【蛊惑】选择要赠送的手牌';
+        return decisionPrompt('【蛊惑】选择要赠送的手牌');
+      case 'BEWITCH_SELECT_TARGET':
+        return decisionPrompt('【蛊惑】选择目标角色');
       case 'MULTIPLY_SELECT_TARGET':
-        return '【繁衍】选择另一名角色传播黑山羊幼仔';
+        return decisionPrompt('【繁衍】选择另一名角色传播黑山羊幼仔');
       case 'SHU_SELECT_TARGET':
-        return '【黑暗子嗣】选择一名角色获得黑山羊幼仔';
+        return decisionPrompt('【黑暗子嗣】选择一名角色获得黑山羊幼仔');
+      case 'TORTOISE_ORACLE_SELECT':
+        return decisionPrompt('【灵龟卜祝】选择一个字母或数字编号');
       case 'IGNITE_TORCH_DISCARD':
         return local.igniteTorch ? '【引燃火把】选择一张手牌弃置' : (isMultiplayer ? '请等待其他玩家选择…' : thinkingText(abilityData.playerIndex));
       case 'DECIPHER_STONE_CARVING':
@@ -166,11 +179,13 @@ export function buildPhaseUiState({
       case 'TREASURE_WIN':
         return '✦ 你已集齐全部编号！';
       case 'ZONE_SWAP_SELECT_TARGET':
-        return '【触底反弹】选择要交换全部手牌的目标';
+        return decisionPrompt('【触底反弹】选择要交换全部手牌的目标');
+      case 'PEEK_HAND_SELECT_TARGET':
+        return decisionPrompt('【血之窥探】选择要偷看手牌的目标');
       case 'DAMAGE_LINK_SELECT_TARGET':
-        return '请选择绳索连接目标';
+        return decisionPrompt('请选择绳索连接目标');
       case 'CAVE_DUEL_SELECT_TARGET':
-        return '请选择“穴居人战争”的目标';
+        return decisionPrompt('请选择“穴居人战争”的目标');
       case 'CAVE_DUEL_SELECT_CARD':
         return local.caveDuel
           ? `⚠ 和${players[abilityData.caveDuelSource]?.name || '对手'}来一场穴居人式的对决！无编号可赢4但会输给1~3，如果落败将失去这张牌`
@@ -180,7 +195,7 @@ export function buildPhaseUiState({
           ? '⚠ 请选择穴居人战争要亮出的手牌（20秒）'
           : '等待穴居人战争双方亮牌…';
       case 'ROSE_THORN_SELECT_TARGET':
-        return '【玫瑰倒刺】选择承受倒刺的目标';
+        return decisionPrompt('【玫瑰倒刺】选择承受倒刺的目标');
       case 'GRAVE_DIG_SELECT':
         return local.graveDig ? '【掘墓】从弃牌堆选择一张邪神牌' : (isMultiplayer ? '等待掘墓选择…' : thinkingText(abilityData.playerIndex));
       case 'BURY_ALIVE_SELECT': {
@@ -213,7 +228,7 @@ export function buildPhaseUiState({
     !committedAction &&
     phase !== 'HUNT_CONFIRM' &&
     !isSpectating &&
-    localCurrentTurn &&
+    localOwnsCurrentDecision &&
     (!(phase || '').includes('DAMAGE_LINK') || local.damageLinkSelect) &&
     !anim
   );

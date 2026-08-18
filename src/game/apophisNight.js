@@ -25,6 +25,7 @@ export function resolveApophisTarget({
   selectedIdx,
   legalTargets,
   label = '选中目标',
+  visualMeta = null,
 }) {
   const night = gs?.apophisNight;
   if (!night?.active || actorIdx == null || selectedIdx == null || !Array.isArray(legalTargets) || !legalTargets.includes(selectedIdx)) {
@@ -134,6 +135,10 @@ export function resolveApophisTarget({
     log: eventLog,
     apophisNight: nextNight,
     statSeq,
+    ...(visualMeta?.transactionId ? { transactionId: visualMeta.transactionId } : {}),
+    ...(visualMeta?.phaseGroupId ? { phaseGroupId: visualMeta.phaseGroupId } : {}),
+    ...(visualMeta?.order != null ? { order: visualMeta.order } : {}),
+    ...(visualMeta?.phaseOrder != null ? { phaseOrder: visualMeta.phaseOrder } : {}),
   };
   const apophisVisualEvent = createApophisTargetVisualEvent(apophisTargetEvent, {
     playersAfter: playersAfterNightSan || P,
@@ -141,6 +146,13 @@ export function resolveApophisTarget({
   });
   const priorVisualEvents = gs?._visualEvents || [];
   const inspectionVisualEvents = (inspectionPatch._visualEvents || []).slice(priorVisualEvents.length);
+  const ownedInspectionVisualEvents = inspectionVisualEvents.map((event, index) => ({
+    ...event,
+    ...(visualMeta?.transactionId ? { transactionId: visualMeta.transactionId } : {}),
+    ...(visualMeta?.phaseGroupId ? { phaseGroupId: visualMeta.phaseGroupId } : {}),
+    ...(apophisVisualEvent?.id ? { causedByEventId: apophisVisualEvent.id } : {}),
+    phaseOrder: (visualMeta?.phaseOrder ?? 0) + 10 + index,
+  }));
   return {
     players: P,
     deck: D,
@@ -149,6 +161,8 @@ export function resolveApophisTarget({
     targetIdx,
     apophisNight: nextNight,
     apophisTargetEvent,
+    apophisVisualEvent,
+    targetResolutionEventId: apophisVisualEvent?.id || null,
     statePatch: {
       apophisNight: nextNight,
       _apophisTargetSeq: eventSeq,
@@ -158,7 +172,7 @@ export function resolveApophisTarget({
       _visualEvents: [
         ...priorVisualEvents,
         ...(apophisVisualEvent ? [apophisVisualEvent] : []),
-        ...inspectionVisualEvents,
+        ...ownedInspectionVisualEvents,
       ],
     },
   };

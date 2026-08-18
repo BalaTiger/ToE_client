@@ -347,11 +347,10 @@ function PeekHandModal({ card, targetName, onClose }) {
   );
 }
 
-function TortoiseOracleModal({ abilityData, onSelect, myTurn, expansionKey = '地神的潜影' }) {
+function TortoiseOracleModal({ abilityData, onSelect, canPick = false, expansionKey = '地神的潜影' }) {
   const revealedCards = useMemo(() => abilityData?.revealedCards || [], [abilityData?.revealedCards]);
   const selectableKeys = abilityData?.selectableKeys || [];
   const [revealedCount, setRevealedCount] = useState(0);
-  const canPick = !!myTurn;
   const revealedCardsKey = useMemo(() => revealedCards.map(c => c.id ?? c.key).join('|'), [revealedCards]);
 
   useEffect(() => {

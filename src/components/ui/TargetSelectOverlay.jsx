@@ -9,7 +9,19 @@ function getBewitchEffectDesc(card) {
 }
 
 export function TargetSelectOverlay({ drawReveal, phase, bewitchCard }) {
-  const isActive = ['DRAW_SELECT_TARGET', 'SWAP_SELECT_TARGET', 'HUNT_SELECT_TARGET', 'BEWITCH_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET', 'ETHEREALIZE_SELECT_TARGET'].includes(phase);
+  const isActive = [
+    'SWAP_SELECT_TARGET',
+    'HUNT_SELECT_TARGET',
+    'BEWITCH_SELECT_TARGET',
+    'ZONE_SWAP_SELECT_TARGET',
+    'PEEK_HAND_SELECT_TARGET',
+    'CAVE_DUEL_SELECT_TARGET',
+    'DAMAGE_LINK_SELECT_TARGET',
+    'ROSE_THORN_SELECT_TARGET',
+    'MULTIPLY_SELECT_TARGET',
+    'SHU_SELECT_TARGET',
+    'ETHEREALIZE_SELECT_TARGET',
+  ].includes(phase);
   if (!isActive) return null;
   const isBewitch = phase === 'BEWITCH_SELECT_TARGET';
   const showCard = phase !== 'HUNT_SELECT_TARGET';
@@ -22,9 +34,12 @@ export function TargetSelectOverlay({ drawReveal, phase, bewitchCard }) {
     PEEK_HAND_SELECT_TARGET: '请点击目标角色以偷看其一张手牌',
     HUNT_SELECT_TARGET: '请点击目标角色以发动【追捕】',
     BEWITCH_SELECT_TARGET: '请选择蛊惑目标',
+    ZONE_SWAP_SELECT_TARGET: '请选择交换全部手牌的目标',
     CAVE_DUEL_SELECT_TARGET: '请选择一名有手牌的角色进行【穴居人战争】',
     DAMAGE_LINK_SELECT_TARGET: '请选择一名角色建立【两人一绳】链条',
     ROSE_THORN_SELECT_TARGET: '请选择承受【玫瑰倒刺】的目标',
+    MULTIPLY_SELECT_TARGET: '请选择传播黑山羊幼仔的目标',
+    SHU_SELECT_TARGET: '请选择获得黑山羊幼仔的角色',
     ETHEREALIZE_SELECT_TARGET: '请选择一名相邻角色承受这次伤害',
     FIRST_COME_PICK_SELECT: '请从翻开的牌中选择一张收入手牌',
   }[phase] || '请选择目标';

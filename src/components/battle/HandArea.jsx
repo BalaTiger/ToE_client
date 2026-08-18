@@ -15,6 +15,7 @@ export function HandArea({
   ri,
   phase,
   myTurn,
+  decisionContext,
   isSpectating,
   isVisualPlayerTurn,
   isActionControlsHidden,
@@ -244,7 +245,7 @@ export function HandArea({
                 ✕ 取消
               </button>
             )}
-            {phase === 'HUNT_CONFIRM' && !isScriptedTutorial && (!gs._isMP || isVisualPlayerTurn) && !anim && (
+            {phase === 'HUNT_CONFIRM' && !isScriptedTutorial && decisionContext?.localCanAct && !anim && (
               <button onClick={() => huntConfirm(-1)} style={getButtonStyle({ enabled: true })}>
                 ✕ 放弃追捕
               </button>

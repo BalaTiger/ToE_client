@@ -1,4 +1,5 @@
 import { rotateInspectionEvents, rotatePlayersArray, rotateStatEvents } from './rotateEvents';
+import { getDecisionOwnerSeats, isTargetSelectionDecisionPhase } from './decisionContext';
 
 const ROTATE_GS_TOP_LEVEL_INDEX_FIELDS = ['currentTurn'];
 const ROTATE_GS_TOP_LEVEL_INDEX_ARRAY_FIELDS = ['huntAbandoned'];
@@ -19,6 +20,7 @@ const ROTATE_ABILITYDATA_INDEX_FIELDS = [
   'swapTi',
   'huntTi',
   'huntingAI',
+  'zoneSwapSource',
   'peekHandSource',
   'caveDuelSource',
   'caveDuelTarget',
@@ -121,18 +123,21 @@ function rotateEarthquakeDiscardEvents(events, rotateIndex, myIndex) {
 
 function rotateAiHuntEvents(events, rotateIndex, myIndex) {
   if (!Array.isArray(events)) return events;
-  return events.map(event => ({
-    ...event,
-    targetIdx: event.targetIdx != null ? rotateIndex(event.targetIdx) : event.targetIdx,
-    sourceIdx: event.sourceIdx != null ? rotateIndex(event.sourceIdx) : event.sourceIdx,
-    hunterIdx: event.hunterIdx != null ? rotateIndex(event.hunterIdx) : event.hunterIdx,
-    apophisTargetEvent: rotateApophisTargetEvent(event.apophisTargetEvent, rotateIndex),
-    beforePlayers: rotatePlayersArray(event.beforePlayers, myIndex),
-    afterDiscardPlayers: rotatePlayersArray(event.afterDiscardPlayers, myIndex),
-    afterDamagePlayers: rotatePlayersArray(event.afterDamagePlayers, myIndex),
-    afterPlayers: rotatePlayersArray(event.afterPlayers, myIndex),
-    statEvents: rotateStatEvents(event.statEvents, rotateIndex, myIndex),
-  }));
+  return events.map(event => {
+    const normalizedEvent = { ...event };
+    delete normalizedEvent.apophisTargetEvent;
+    return {
+      ...normalizedEvent,
+      targetIdx: event.targetIdx != null ? rotateIndex(event.targetIdx) : event.targetIdx,
+      sourceIdx: event.sourceIdx != null ? rotateIndex(event.sourceIdx) : event.sourceIdx,
+      hunterIdx: event.hunterIdx != null ? rotateIndex(event.hunterIdx) : event.hunterIdx,
+      beforePlayers: rotatePlayersArray(event.beforePlayers, myIndex),
+      afterDiscardPlayers: rotatePlayersArray(event.afterDiscardPlayers, myIndex),
+      afterDamagePlayers: rotatePlayersArray(event.afterDamagePlayers, myIndex),
+      afterPlayers: rotatePlayersArray(event.afterPlayers, myIndex),
+      statEvents: rotateStatEvents(event.statEvents, rotateIndex, myIndex),
+    };
+  });
 }
 
 function rotateAnimMultiplyEvent(event, rotateIndex) {
@@ -524,32 +529,23 @@ export function isLocalSameAbyssTargetPhase(gs) {
 }
 
 export function isLocalSphinxGuessPhase(gs) {
-  return gs?.phase === 'SPHINX_GUESS' && isLocalCurrentTurn(gs);
+  return gs?.phase === 'SPHINX_GUESS' && getDecisionOwnerSeats(gs).includes(0);
 }
 
 export function isLocalDamageLinkSourcePhase(gs) {
-  return gs?.phase === 'DAMAGE_LINK_SELECT_TARGET' && isLocalActorSeat(gs, gs?.abilityData?.damageLinkSource);
+  return gs?.phase === 'DAMAGE_LINK_SELECT_TARGET' && getDecisionOwnerSeats(gs).includes(0);
 }
 
 export function isLocalEtherealizeTargetPhase(gs) {
-  return gs?.phase === 'ETHEREALIZE_SELECT_TARGET' && isLocalSeatIndex(gs?.abilityData?.targetIdx);
+  return gs?.phase === 'ETHEREALIZE_SELECT_TARGET' && getDecisionOwnerSeats(gs).includes(0);
 }
 
 export function isLocalShuTargetPhase(gs) {
-  return gs?.phase === 'SHU_SELECT_TARGET' && isLocalActorSeat(gs, gs?.abilityData?.shuChooserIdx, gs?.currentTurn);
+  return gs?.phase === 'SHU_SELECT_TARGET' && getDecisionOwnerSeats(gs).includes(0);
 }
 
 export function canLocalActOnTargetSelectionPhase(gs) {
-  const phase = gs?.phase;
-  return (
-    (
-      ['SWAP_SELECT_TARGET', 'HUNT_SELECT_TARGET', 'BEWITCH_SELECT_TARGET', 'ZONE_SWAP_SELECT_TARGET', 'PEEK_HAND_SELECT_TARGET', 'CAVE_DUEL_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET', 'MULTIPLY_SELECT_TARGET'].includes(phase)
-      && isLocalCurrentTurn(gs)
-    )
-    || isLocalShuTargetPhase(gs)
-    || isLocalDamageLinkSourcePhase(gs)
-    || isLocalEtherealizeTargetPhase(gs)
-  );
+  return isTargetSelectionDecisionPhase(gs?.phase) && getDecisionOwnerSeats(gs).includes(0);
 }
 
 export function isLocalSwapGivePhase(gs) {
@@ -561,7 +557,7 @@ export function isLocalBewitchCardPhase(gs) {
 }
 
 export function isLocalTortoiseSelectPhase(gs) {
-  return gs?.phase === 'TORTOISE_ORACLE_SELECT' && isLocalCurrentTurn(gs);
+  return gs?.phase === 'TORTOISE_ORACLE_SELECT' && getDecisionOwnerSeats(gs).includes(0);
 }
 
 export function isLocalHuntConfirmPhase(gs) {
@@ -585,11 +581,11 @@ export function isLocalNyaBorrowPhase(gs) {
 }
 
 export function isLocalTreasureDodgePhase(gs) {
-  return gs?.phase === 'TREASURE_DODGE_DECISION' && isLocalCurrentTurn(gs);
+  return gs?.phase === 'TREASURE_DODGE_DECISION' && getDecisionOwnerSeats(gs).includes(0);
 }
 
 export function isLocalTreasureAoEDodgePhase(gs) {
-  return gs?.phase === 'TREASURE_AOE_DODGE_DECISION' && isLocalCurrentTurn(gs);
+  return gs?.phase === 'TREASURE_AOE_DODGE_DECISION' && getDecisionOwnerSeats(gs).includes(0);
 }
 
 export function isLocalWinnerSeat(gameOver) {
