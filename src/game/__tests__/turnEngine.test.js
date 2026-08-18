@@ -109,6 +109,57 @@ describe('checkWin death handling', () => {
     });
     expect(result.P[0].godName).toBe('NYA');
   });
+
+  it('邪神遭遇后的乱抓先进入虚化决策，并把邪神选择挂入独立续接栈', () => {
+    const godCard = makeGodCard('NYA');
+    const scratch = { name: '乱抓', effect: 'adjacentDamageHP', value: 2, type: 'negative' };
+    const players = [
+      makePlayer({ name: '你', san: 6 }),
+      makePlayer({ name: '艾伦', hp: 10, etherealizeStacks: 1 }),
+      makePlayer({ name: '黛安娜', hp: 10 }),
+    ];
+    const gs = makeGs({
+      players,
+      deck: [godCard],
+      currentTurn: 2,
+      inspectionDeck: [scratch],
+      inspectionDiscard: [],
+    });
+
+    const next = startNextTurn(gs);
+
+    expect(next.phase).toBe('ETHEREALIZE_DECISION');
+    expect(next.abilityData).toMatchObject({
+      type: 'etherealizeRedirect',
+      targetIdx: 1,
+      lostHp: 2,
+    });
+    expect(next.players[1].hp).toBe(10);
+    expect(next.players[2].hp).toBe(10);
+    expect(next._decisionContinuations).toEqual([
+      expect.objectContaining({
+        phase: 'GOD_CHOICE',
+        abilityData: expect.objectContaining({ godCard, drawerIdx: 0 }),
+      }),
+    ]);
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs: gs, newGs: next });
+    const godDrawIdx = replay.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === godCard.id);
+    const encounterSanIdx = replay.queue.findIndex(step => (
+      step.type === 'SAN_DAMAGE' &&
+      step.statEvents?.some(event => event.reason === '邪神遭遇')
+    ));
+    const scratchInspectionIdx = replay.queue.findIndex(step => (
+      step.type === 'DRAW_CARD' && step.card?.name === '乱抓'
+    ));
+    expect(godDrawIdx).toBeGreaterThanOrEqual(0);
+    expect(encounterSanIdx).toBeGreaterThan(godDrawIdx);
+    expect(scratchInspectionIdx).toBeGreaterThan(encounterSanIdx);
+    expect(replay.queue.some(step => (
+      step.type === 'HP_DAMAGE' &&
+      step.statEvents?.some(event => event.reason === '乱抓')
+    ))).toBe(false);
+  });
 });
 
 describe('AI 寻宝者按实际负面分支规避', () => {
@@ -206,6 +257,105 @@ describe('地磁反转暗抽', () => {
     expect(result.geomagneticReversalActive).toBe(false);
     expect(result.drawReveal?.card).toBe(restoreCard);
     expect(drawStep).toMatchObject({ card: restoreCard, targetPid: 0, sourcePile: 'discard' });
+  });
+
+  it('AI 抽到反转复原时只翻牌复原，不播放收入手牌', () => {
+    const restoreCard = {
+      id: 'gmr-ai-turn-start',
+      name: '反转复原',
+      type: 'geomagneticRestore',
+      isGeomagneticRestore: true,
+    };
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', isAI: true }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 0,
+      deck: [],
+      discard: [restoreCard],
+      geomagneticReversalActive: true,
+      log: [],
+    });
+
+    const result = startNextTurn(gs);
+    const queue = buildTurnStartDrawReplayQueue({ oldGs: gs, newGs: result }).queue;
+    const drawEvent = result._visualEvents.find(event => event.type === VISUAL_EVENT.DRAW_CARD);
+
+    expect(result.players[1].hand).toEqual([]);
+    expect(drawEvent).toMatchObject({ card: restoreCard, sourcePile: 'discard' });
+    expect(drawEvent.keptInHand).toBeUndefined();
+    expect(queue).toContainEqual(expect.objectContaining({
+      type: 'DRAW_CARD',
+      card: restoreCard,
+      targetPid: 1,
+      sourcePile: 'discard',
+    }));
+    expect(queue.some(step => step.type === 'CARD_TRANSFER' && step.effect === 'draw')).toBe(false);
+  });
+
+  it('普通 AI 收入仍在飞牌落地后更新手牌快照', () => {
+    const drawnCard = makeZoneCard('A2', 0, { id: 'ai-normal-keep' });
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', isAI: true }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 0,
+      deck: [drawnCard],
+      discard: [],
+      log: [],
+      debugForceCardKeepPending: 'keep',
+      debugForceCardKeepTarget: 1,
+    });
+
+    const result = startNextTurn(gs);
+    const queue = buildTurnStartDrawReplayQueue({ oldGs: gs, newGs: result }).queue;
+    const drawIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === drawnCard.id);
+    const keepIdx = queue.findIndex(step => (
+      step.type === 'CARD_TRANSFER' &&
+      step.effect === 'draw' &&
+      step.cards?.[0]?.id === drawnCard.id
+    ));
+    const landingPatch = queue[keepIdx + 1];
+
+    expect(drawIdx).toBeGreaterThanOrEqual(0);
+    expect(keepIdx).toBeGreaterThan(drawIdx);
+    expect(landingPatch).toMatchObject({ type: 'STATE_PATCH' });
+    expect(landingPatch.players[1].hand.some(card => card.id === drawnCard.id)).toBe(true);
+  });
+
+  it('普通 AI 弃牌仍在弃牌动画后更新弃牌堆且不增加手牌', () => {
+    const drawnCard = makeZoneCard('A2', 0, { id: 'ai-normal-discard' });
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', isAI: true }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 0,
+      deck: [drawnCard],
+      discard: [],
+      log: [],
+      debugForceCardKeepPending: 'discard',
+      debugForceCardKeepTarget: 1,
+    });
+
+    const result = startNextTurn(gs);
+    const queue = buildTurnStartDrawReplayQueue({ oldGs: gs, newGs: result }).queue;
+    const drawIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === drawnCard.id);
+    const discardIdx = queue.findIndex(step => step.type === 'DISCARD' && step.card?.id === drawnCard.id);
+    const discardPatch = queue[discardIdx + 1];
+
+    expect(result.players[1].hand).toEqual([]);
+    expect(drawIdx).toBeGreaterThanOrEqual(0);
+    expect(discardIdx).toBeGreaterThan(drawIdx);
+    expect(queue.some(step => step.type === 'CARD_TRANSFER' && step.effect === 'draw')).toBe(false);
+    expect(discardPatch).toMatchObject({ type: 'STATE_PATCH' });
+    expect(discardPatch.players[1].hand).toEqual([]);
+    expect(discardPatch.discard.some(card => card.id === drawnCard.id)).toBe(true);
   });
 
   it('反转复原解除效果后的下一次摸牌显式改回牌堆来源', () => {
@@ -886,6 +1036,33 @@ describe('turnEngine stat events', () => {
       { type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 9, san: 9 }, seq: 1 },
       { type: 'SAN_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 9, san: 9 }, seq: 1 },
     ]);
+    expect(result._visualEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: VISUAL_EVENT.STAT_EVENTS,
+        turnStartStage: 'turnStart',
+        statEvents: expect.arrayContaining([
+          expect.objectContaining({ reason: '黑山羊幼仔', seq: 1 }),
+        ]),
+      }),
+    ]));
+  });
+
+  it('邪神遭遇 SAN 事件明确归属摸牌阶段', () => {
+    const godCard = makeGodCard('NYA');
+    const players = [makePlayer({ name: '你', san: 10 }), makePlayer({ name: '艾伦' })];
+    const result = startNextTurn(makeGs({
+      players,
+      currentTurn: 1,
+      deck: [godCard],
+      log: [],
+    }));
+
+    const encounterStat = result._statEvents.find(event => event.reason === '邪神遭遇');
+    const owner = result._visualEvents.find(event => (
+      event.type === VISUAL_EVENT.STAT_EVENTS &&
+      event.statEvents?.some(statEvent => statEvent.seq === encounterStat.seq)
+    ));
+    expect(owner).toMatchObject({ turnStartStage: 'draw' });
   });
 
   it('黑山羊幼仔的 HP 伤害会立即扯断两人一绳且不再于到期时回复', () => {

@@ -13,7 +13,7 @@ import { startNextTurn } from '../turnEngine';
 import { ROLE_CULTIST } from '../coreUtils';
 import { applyFx } from '../effectEngine';
 import { applyStatEventsToDisplayStats, primeDisplayStatsForStatQueue } from '../statEvents';
-import { buildFreshStatVisualEvents, createGodPowerBlockedEvent, createGodStatusChangedEvent, createSphinxResultEvent, createTsathogguaSlimeGrantEvent, createTurnDrawVisualEvents } from '../visualEvents';
+import { buildFreshStatVisualEvents, createGodPowerBlockedEvent, createGodStatusChangedEvent, createSphinxResultEvent, createTsathogguaSlimeGrantEvent, createTurnDrawVisualEvents, VISUAL_EVENT } from '../visualEvents';
 import { buildAnimQueue } from '../animQueueCore';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
@@ -910,6 +910,77 @@ describe('buildTurnStartDrawReplayQueue', () => {
       { type: 'SAN_DAMAGE', hp: 9, san: 9 },
       { type: 'HP_HEAL', hp: 10, san: 9 },
     ]);
+
+    const goatEvent = newGs._visualEvents.find(event => (
+      event.type === VISUAL_EVENT.STAT_EVENTS &&
+      event.turnStartStage === TURN_START_ANIMATION_STAGE.TURN_START &&
+      event.statEvents?.some(statEvent => statEvent.reason === '黑山羊幼仔')
+    ));
+    expect(goatEvent?.id).toBeTruthy();
+    expect(replay.queue.filter(step => step.visualEventId === goatEvent.id).map(step => step.type))
+      .toEqual(['BLACK_GOAT_PULSE', 'HP_DAMAGE', 'SAN_DAMAGE']);
+
+    const replayAfterConsumption = buildTurnStartDrawReplayQueue({
+      oldGs,
+      newGs,
+      consumedVisualEventIds: new Set([goatEvent.id]),
+    });
+    expect(replayAfterConsumption.queue.some(step => (
+      step.type === 'BLACK_GOAT_PULSE' ||
+      step.statEvents?.some(statEvent => statEvent.reason === '黑山羊幼仔')
+    ))).toBe(false);
+    expect(replayAfterConsumption.queue.filter(step => step.type === 'DRAW_CARD' && step.card?.id === spring.id))
+      .toHaveLength(1);
+  });
+
+  it('keeps consecutive Diana goat and local god-encounter transactions disjoint by event id', () => {
+    const goat = { id: 'goat-consecutive', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const dianaCard = makeZoneCard('B3', 0, { id: 'diana-fixed-draw' });
+    const godCard = makeGodCard('NYA', { id: 'local-god-draw' });
+    const calm = { id: 'calm-check', name: '平静', effect: 'nothing', value: 0, type: 'positive' };
+    const initial = makeGs({
+      players: [
+        makePlayer({ name: '你', san: 6 }),
+        makePlayer({ name: '卡洛斯' }),
+        makePlayer({ name: '贝拉' }),
+        makePlayer({ name: '黛安娜', hp: 10, san: 10, hand: [goat] }),
+      ],
+      currentTurn: 2,
+      deck: [dianaCard, godCard],
+      inspectionDeck: [calm],
+      inspectionDiscard: [],
+      log: [],
+    });
+
+    const dianaState = startNextTurn(initial, { isDebugMode: true });
+    const dianaReplay = buildTurnStartDrawReplayQueue({ oldGs: initial, newGs: dianaState });
+    const dianaIds = new Set(dianaState._visualEvents.map(event => event.id).filter(Boolean));
+    const dianaVisible = dianaReplay.queue
+      .filter(step => !['VISUAL_LOCK', 'STATE_PATCH'].includes(step.type))
+      .map(step => step.type);
+    expect(dianaVisible.slice(0, 5)).toEqual([
+      'YOUR_TURN', 'BLACK_GOAT_PULSE', 'HP_DAMAGE', 'SAN_DAMAGE', 'DRAW_CARD',
+    ]);
+
+    const localState = startNextTurn({ ...dianaState, currentTurn: 3 });
+    const localReplay = buildTurnStartDrawReplayQueue({
+      oldGs: dianaState,
+      newGs: localState,
+      consumedVisualEventIds: dianaIds,
+    });
+    const localVisible = localReplay.queue.filter(step => !['VISUAL_LOCK', 'STATE_PATCH'].includes(step.type));
+    const localTypes = localVisible.map(step => step.type);
+    const godDrawIdx = localVisible.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === godCard.id);
+    const sanIdx = localVisible.findIndex(step => step.type === 'SAN_DAMAGE');
+    const inspectionIdx = localVisible.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === calm.id);
+
+    expect(localTypes[0]).toBe('YOUR_TURN');
+    expect(godDrawIdx).toBeGreaterThan(0);
+    expect(sanIdx).toBeGreaterThan(godDrawIdx);
+    expect(inspectionIdx).toBeGreaterThan(sanIdx);
+    expect(localVisible.some(step => step.type === 'BLACK_GOAT_PULSE')).toBe(false);
+    expect(localVisible.flatMap(step => step.statEvents || []).some(event => event.reason === '黑山羊幼仔')).toBe(false);
+    expect(localVisible.flatMap(step => step.visualEventId ? [step.visualEventId] : []).some(id => dianaIds.has(id))).toBe(false);
   });
 
   it('地磁反转摸牌动画从弃牌堆起飞', () => {

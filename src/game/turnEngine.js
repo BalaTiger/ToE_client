@@ -48,6 +48,11 @@ import { TURN_START_EVENT, getTurnStartEvents } from './turnStartEvents';
 import { TURN_FLOW_STAGE } from './turnFlowStages';
 import { enterTurnBoundary, enterTurnFlowStage, normalizeTurnOpeningFlowState } from './turnFlowManager';
 import {
+  appendDecisionContinuation,
+  createDecisionContinuation,
+  DECISION_CONTINUATION_PHASE,
+} from './decisionContinuations';
+import {
   getActiveDamageLinksForPlayer,
   getAllDamageLinks,
   removeDamageLink,
@@ -74,6 +79,17 @@ function mergeVisualEventLists(...lists) {
     seenIds.add(event.id);
     return true;
   });
+}
+
+function appendGodChoiceContinuation(statePatch, baseState, abilityData) {
+  const frame = createDecisionContinuation(DECISION_CONTINUATION_PHASE.GOD_CHOICE, abilityData);
+  return {
+    ...(statePatch || {}),
+    _decisionContinuations: appendDecisionContinuation(
+      statePatch?._decisionContinuations || baseState,
+      frame,
+    ),
+  };
 }
 
 function appendTurnDrawVisualEvents(events, draw) {
@@ -1003,7 +1019,7 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
             kept: true,
             needsDecision: false,
             statePatch: {
-              ...inspectionMeta,
+              ...appendGodChoiceContinuation(inspectionMeta, gs, pendingGodChoice),
               abilityData: {
                 ...damage.abilityData,
                 ...(damage.phase === 'TSG_SLIME_BALANCE' ? {
@@ -1044,7 +1060,13 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
         effectMsgs,
         needGodChoice: true, needsDecision: false,
         godEncounterCost: 0,
-        statePatch: { ...inspectionMeta }
+        statePatch: hasPendingDamageReaction(inspectionMeta)
+          ? appendGodChoiceContinuation(inspectionMeta, gs, {
+              godCard: drawnCard,
+              drawerIdx: ci,
+              godEncounterCost: 0,
+            })
+          : { ...inspectionMeta }
       };
     }
   }
@@ -1297,6 +1319,16 @@ function turnStartEvent_PoisonDamage(P, next, D, Disc, L, gs, inspectionMeta, st
 
 function hasPendingDamageReaction(statePatch) {
   return ['tsgSlimeBalance', 'etherealizeRedirect'].includes(statePatch?.abilityData?.type);
+}
+
+function deriveGodEncounterDecisionState(statePatch, godChoiceAbilityData) {
+  if (!hasPendingDamageReaction(statePatch)) {
+    return { phase: 'GOD_CHOICE', abilityData: godChoiceAbilityData };
+  }
+  return deriveEffectDecisionState(statePatch, {
+    baseAbilityData: {},
+    fallbackPhase: 'GOD_CHOICE',
+  });
 }
 
 // [ACTIVE_GOD] NYA 偷身份
@@ -1874,7 +1906,9 @@ function resolveNextTurnState(gs, opts = {}) {
         });
       }
       if (rSlime.needGodChoice) {
-        return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: rSlime.drawnCard, drawerIdx: 0, godEncounterCost: rSlime.godEncounterCost, fromTsathogguaSlime: true, continueTurnStartDraw: true, _turnOwner: 0 }, drawReveal: null, selectedCard: null, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }, turnDrawVisualEvents);
+        const godChoiceAbilityData={godCard:rSlime.drawnCard,drawerIdx:0,godEncounterCost:rSlime.godEncounterCost,fromTsathogguaSlime:true,continueTurnStartDraw:true,_turnOwner:0};
+        const decisionState=deriveGodEncounterDecisionState(rSlime.statePatch,godChoiceAbilityData);
+        return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: decisionState.phase, abilityData: decisionState.abilityData, drawReveal: null, selectedCard: null, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }, turnDrawVisualEvents);
       }
       if (rSlime.needsDecision) {
         return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: 0, drawerName: P[0].name, fromTsathogguaSlime: true, reshuffleLog: rSlime.reshuffleLog }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _turnOwner: 0 }, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }, turnDrawVisualEvents);
@@ -1932,6 +1966,8 @@ function resolveNextTurnState(gs, opts = {}) {
     if (!res.drawnCard) { L.push('牌堆耗尽！'); return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }, turnDrawVisualEvents); }
     if (res.needGodChoice) {
       const inspectionPatch = res.statePatch || {};
+      const godChoiceAbilityData={godCard:res.drawnCard,drawerIdx:0,godEncounterCost:res.godEncounterCost};
+      const decisionState=deriveGodEncounterDecisionState(inspectionPatch,godChoiceAbilityData);
       return {
         ...gs,
         zhuLight,
@@ -1945,8 +1981,8 @@ function resolveNextTurnState(gs, opts = {}) {
         huntAbandoned: [],
         godFromHandUsed: false,
         godTriggeredThisTurn: true,
-        phase: 'GOD_CHOICE',
-        abilityData: { godCard: res.drawnCard, drawerIdx: 0, godEncounterCost: res.godEncounterCost },
+        phase: decisionState.phase,
+        abilityData: decisionState.abilityData,
         drawReveal: null,
         selectedCard: null,
         globalOnlySwapOwner,
@@ -1974,6 +2010,7 @@ function resolveNextTurnState(gs, opts = {}) {
         _inspectionPrevLogLen: inspectionPatch._inspectionPrevLogLen,
         _statEvents: inspectionPatch._statEvents,
         _statEventSeq: inspectionPatch._statEventSeq,
+        _decisionContinuations: inspectionPatch._decisionContinuations || [],
       };
     }
     const playerTurnAnimMeta = {
@@ -2090,7 +2127,9 @@ function resolveNextTurnState(gs, opts = {}) {
         });
       }
       if (rSlime.needGodChoice) {
-        return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: rSlime.drawnCard, godEncounterCost: rSlime.godEncounterCost, fromTsathogguaSlime: true, continueTurnStartDraw: true, _turnOwner: next }, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }, turnDrawVisualEvents);
+        const godChoiceAbilityData={godCard:rSlime.drawnCard,godEncounterCost:rSlime.godEncounterCost,fromTsathogguaSlime:true,continueTurnStartDraw:true,_turnOwner:next};
+        const decisionState=deriveGodEncounterDecisionState(rSlime.statePatch,godChoiceAbilityData);
+        return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: decisionState.phase, abilityData: decisionState.abilityData, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }, turnDrawVisualEvents);
       }
       if (rSlime.needsDecision) {
         return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: next, drawerName: P[next].name, fromTsathogguaSlime: true, reshuffleLog: rSlime.reshuffleLog }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _turnOwner: next }, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }, turnDrawVisualEvents);
@@ -2146,7 +2185,10 @@ function resolveNextTurnState(gs, opts = {}) {
     if (drawLogs.length > drawLogsSyncedCount) L.push(...drawLogs.slice(drawLogsSyncedCount));
     if (statLogs.length) appendMissingLogOccurrences(L, statLogs);
     if (!res.drawnCard) { L.push('牌堆耗尽！'); return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }, turnDrawVisualEvents); }
-    if (res.needGodChoice) { return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: res.drawnCard, godEncounterCost: res.godEncounterCost }, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, ...(res.statePatch || {}) }, turnDrawVisualEvents); }
+    if (res.needGodChoice) {
+      const decisionState=deriveGodEncounterDecisionState(res.statePatch,{godCard:res.drawnCard,godEncounterCost:res.godEncounterCost});
+      return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, ...(res.statePatch || {}), phase:decisionState.phase,abilityData:decisionState.abilityData }, turnDrawVisualEvents);
+    }
     const win = hasPendingDamageReaction(res.statePatch) ? null : checkWin(P, true); if (win) return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: win, ...(res.statePatch || {}) }, turnDrawVisualEvents);
     // 强制触发牌：效果已执行，直接进入 ACTION；不向其他玩家广播 DRAW_REVEAL 界面
     if (res.kept) {

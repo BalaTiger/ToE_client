@@ -89,9 +89,23 @@ function rotateAbilityDataForViewer(abilityData, rotateIndex, myIndex) {
   if (!abilityData) return abilityData;
   const rotatedIndices = rotateIndexedFields(abilityData, ROTATE_ABILITYDATA_INDEX_FIELDS, rotateIndex);
   const rotatedArrays = rotateIndexedArrayFields(rotatedIndices, ROTATE_ABILITYDATA_INDEX_ARRAY_FIELDS, rotateIndex);
-  return Array.isArray(rotatedArrays.buryAliveChoices)
+  const rotatedChoices = Array.isArray(rotatedArrays.buryAliveChoices)
     ? { ...rotatedArrays, buryAliveChoices: rotatePlayersArray(rotatedArrays.buryAliveChoices, myIndex) }
     : rotatedArrays;
+  return rotatedChoices.pendingGodChoice
+    ? {
+        ...rotatedChoices,
+        pendingGodChoice: rotateAbilityDataForViewer(rotatedChoices.pendingGodChoice, rotateIndex, myIndex),
+      }
+    : rotatedChoices;
+}
+
+function rotateDecisionContinuationsForViewer(frames, rotateIndex, myIndex) {
+  if (!Array.isArray(frames)) return frames;
+  return frames.map(frame => ({
+    ...frame,
+    abilityData: rotateAbilityDataForViewer(frame?.abilityData || {}, rotateIndex, myIndex),
+  }));
 }
 
 function rotateTopLevelGsFieldsForViewer(gs, rotateIndex) {
@@ -459,6 +473,9 @@ export function rotateGsForViewer(gs, myIndex) {
     players,
     gameOver,
     abilityData,
+    ...(gs._decisionContinuations ? {
+      _decisionContinuations: rotateDecisionContinuationsForViewer(gs._decisionContinuations, rotateIndex, myIndex),
+    } : {}),
     drawReveal,
     zhuLight,
     ...(gs._earthquakeDiscardEvents ? { _earthquakeDiscardEvents: rotateEarthquakeDiscardEvents(gs._earthquakeDiscardEvents, rotateIndex, myIndex) } : {}),

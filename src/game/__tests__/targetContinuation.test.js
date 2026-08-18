@@ -102,6 +102,28 @@ describe('buildTargetContinuationState', () => {
     expect(next.abilityData).toEqual(pendingGodChoice);
   });
 
+  it('pops a root decision continuation only after the current blocking decision finishes', () => {
+    const godChoice = { godCard: { id: 'god' }, drawerIdx: 0 };
+    const state = createState({
+      phase: 'ETHEREALIZE_DECISION',
+      abilityData: { type: 'etherealizeRedirect', targetIdx: 1 },
+      _decisionContinuations: [{ phase: 'GOD_CHOICE', abilityData: godChoice }],
+    });
+
+    const stillBlocked = buildTargetContinuationState({
+      baseState: state,
+      phase: 'TSG_SLIME_BALANCE',
+      abilityData: { type: 'tsgSlimeBalance', targetIdx: 1 },
+    });
+    expect(stillBlocked.phase).toBe('TSG_SLIME_BALANCE');
+    expect(stillBlocked._decisionContinuations).toHaveLength(1);
+
+    const resumed = buildTargetContinuationState({ baseState: state });
+    expect(resumed.phase).toBe('GOD_CHOICE');
+    expect(resumed.abilityData).toEqual(godChoice);
+    expect(resumed._decisionContinuations).toEqual([]);
+  });
+
   it('honors an explicit phase and can retain animation fields', () => {
     const state = createState({ currentTurn: 1 });
     const next = buildTargetContinuationState({

@@ -1,6 +1,7 @@
 import { isAiSeat } from './rotateState';
 import { withClearedTurnAnimFields } from './turnAnimState';
 import { resolveTurnFlowAfterEvent, TURN_FLOW_DIRECTIVE } from './turnFlowManager';
+import { popDecisionContinuation } from './decisionContinuations';
 
 export const TARGET_CONTINUATION_ROUTE = Object.freeze({
   REST_DRAW: 'REST_DRAW',
@@ -69,8 +70,13 @@ export function buildTargetContinuationState({
 } = {}) {
   if (!baseState) return baseState;
 
-  const nextPhase = phase || (
-    abilityData?.pendingGodChoice?.godCard
+  const queuedDecision = phase ? { frame: null, remaining: baseState._decisionContinuations || [] }
+    : popDecisionContinuation(baseState);
+  const legacyGodChoice = abilityData?.pendingGodChoice?.godCard
+    ? abilityData.pendingGodChoice
+    : null;
+  const nextPhase = phase || queuedDecision.frame?.phase || (
+    legacyGodChoice
       ? 'GOD_CHOICE'
       : canResumeAi
         && isAiSeat(baseState, turnOwner)
@@ -79,10 +85,15 @@ export function buildTargetContinuationState({
         ? 'AI_TURN'
         : 'ACTION'
   );
-  const nextAbilityData = abilityData?.pendingGodChoice?.godCard
+  const nextAbilityData = queuedDecision.frame
     ? {
-        ...abilityData.pendingGodChoice,
-        ...buildTargetContinuationAbilityData(abilityData.pendingGodChoice),
+        ...queuedDecision.frame.abilityData,
+        ...buildTargetContinuationAbilityData(queuedDecision.frame.abilityData),
+      }
+    : legacyGodChoice
+    ? {
+        ...legacyGodChoice,
+        ...buildTargetContinuationAbilityData(legacyGodChoice),
       }
     : buildTargetContinuationAbilityData(abilityData);
   const nextState = {
@@ -94,6 +105,7 @@ export function buildTargetContinuationState({
     currentTurn: turnOwner,
     phase: nextPhase,
     abilityData: nextAbilityData,
+    _decisionContinuations: queuedDecision.remaining,
     ...extraPatch,
   };
 

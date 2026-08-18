@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   ANIMATION_QUEUE_AUTHORITY,
   AUTHORITATIVE_QUEUE_META,
+  authoritativeEndTurnReplayQueueMeta,
   authoritativeTurnStartQueueMeta,
+  buildThrowStoneSteps,
   createRandomTargetVisualEvent,
+  createThrowStoneEvent,
   strictActionQueueMeta,
 } from '../index';
 
@@ -38,6 +41,38 @@ describe('animation queue policy', () => {
       null,
       'test action',
     )).toThrow(/test action.*missing visual events/);
+  });
+
+  it('continues an end-turn replay after a consumed throw-stone event', () => {
+    const players = [{ name: '你' }, { name: '艾伦' }];
+    const event = createThrowStoneEvent({
+      sourceIdx: 0,
+      targetIdx: 1,
+      roll: 4,
+      distance: 1,
+      damage: 3,
+      playersBefore: players,
+      playersAfter: players,
+    });
+    const state = { players, _visualEvents: [event] };
+    const throwStoneQueue = buildThrowStoneSteps(event, state);
+    const firstSegmentMeta = authoritativeEndTurnReplayQueueMeta(state, throwStoneQueue);
+    const consumedEventIds = new Set(firstSegmentMeta.eventIds);
+    const nextCardQueue = [{
+      type: 'DRAW_CARD',
+      card: { id: 'grilled-blind-fish', name: '烤盲鱼' },
+      targetPid: 0,
+    }];
+
+    expect(firstSegmentMeta).toEqual({
+      authority: ANIMATION_QUEUE_AUTHORITY.QUEUE,
+      eventIds: [event.id],
+    });
+    expect(authoritativeEndTurnReplayQueueMeta(state, nextCardQueue, consumedEventIds)).toEqual(
+      AUTHORITATIVE_QUEUE_META,
+    );
+    expect(() => authoritativeEndTurnReplayQueueMeta(state, nextCardQueue, new Set()))
+      .toThrow(/end-turn replay queue.*missing visual events/);
   });
 
   it('scopes turn-start ownership without compiling or changing the queue', () => {

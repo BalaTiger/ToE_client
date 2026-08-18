@@ -51,8 +51,8 @@ export function authoritativeResolvedQueueMeta(state, queue) {
   return strictActionQueueMeta(state, queue, null, 'resolved action queue');
 }
 
-export function authoritativeEndTurnReplayQueueMeta(state, queue) {
-  return authoritativeResolvedQueueMeta(state, queue);
+export function authoritativeEndTurnReplayQueueMeta(state, queue, consumedEventIds = null) {
+  return strictActionQueueMeta(state, queue, consumedEventIds, 'end-turn replay queue');
 }
 
 export function resolveTutorialQueueMeta(state, queue, consumedEventIds = null) {

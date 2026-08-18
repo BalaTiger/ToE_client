@@ -11,6 +11,28 @@ function names(players) {
 }
 
 describe('rotateGsForViewer', () => {
+  it('rotates seat indices inside root decision continuation frames', () => {
+    const godCard = { id: 'god' };
+    const gs = {
+      players: [player('p0'), player('p1'), player('p2')],
+      currentTurn: 0,
+      phase: 'ETHEREALIZE_DECISION',
+      abilityData: { targetIdx: 1, _turnOwner: 0 },
+      _decisionContinuations: [{
+        phase: 'GOD_CHOICE',
+        abilityData: { godCard, drawerIdx: 0, playerIndex: 0 },
+      }],
+    };
+
+    const rotated = rotateGsForViewer(gs, 1);
+
+    expect(rotated.abilityData).toMatchObject({ targetIdx: 0, _turnOwner: 2 });
+    expect(rotated._decisionContinuations).toEqual([{
+      phase: 'GOD_CHOICE',
+      abilityData: { godCard, drawerIdx: 2, playerIndex: 2 },
+    }]);
+  });
+
   it('多条绳索在视角旋转和还原后都保持独立互指', () => {
     const players = [player('p0'), player('p1'), player('p2'), player('p3')];
     addDamageLink(players, 0, 2, { createdSeq: 1 });

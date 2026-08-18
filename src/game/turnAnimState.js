@@ -500,6 +500,17 @@ export function buildTurnStartPreDrawEffectQueue({
     .forEach(ev => statEventsByKey.set(statEventKey(ev), ev));
   const statEvents = [...statEventsByKey.values()];
   const queue = [];
+  const canonicalTurnStartStatEvents = getVisualEvents(newGs)
+    .filter(event => (
+      event?.type === VISUAL_EVENT.STAT_EVENTS &&
+      event?.turnStartStage === TURN_START_ANIMATION_STAGE.TURN_START &&
+      Array.isArray(event?.statEvents) &&
+      event.statEvents.length
+    ));
+  const isConsumedVisualEvent = event => !!event?.id && (
+    consumedVisualEventIds?.has?.(event.id) ||
+    (Array.isArray(consumedVisualEventIds) && consumedVisualEventIds.includes(event.id))
+  );
   const preDrawBlockedSteps = getVisualEvents(newGs)
     .filter(event => event?.type === VISUAL_EVENT.GOD_POWER_BLOCKED)
     .filter(event => (event?.msgs || []).some(msg => preDrawMsgs.includes(msg)))
@@ -511,23 +522,48 @@ export function buildTurnStartPreDrawEffectQueue({
     .map(tsgSlimePopStepFromEvent)
     .filter(Boolean);
   queue.push(...slimePopSteps);
-  const blackGoatEvents = statEvents.filter(isBlackGoatTurnStartStatEvent);
-  if (blackGoatEvents.length) {
-    const pulse = blackGoatPulseStep(blackGoatEvents);
-    if (pulse) queue.push(pulse);
-    const goatMsgs = eventMsgs(blackGoatEvents, preDrawMsgs);
-    const hpEvents = blackGoatEvents.filter(ev => ev?.type === 'HP_LOSS' || ev?.type === 'HP_SAN_LOSS');
-    const sanEvents = blackGoatEvents.filter(ev => ev?.type === 'SAN_LOSS' || ev?.type === 'HP_SAN_LOSS');
-    if (hpEvents.length) queue.push(...statEventsToAnimQueue(hpEvents, preTurnPlayers, goatMsgs));
-    if (sanEvents.length) queue.push(...statEventsToAnimQueue(sanEvents, preTurnPlayers, goatMsgs));
-  }
-  const poisonEvents = statEvents.filter(isPoisonTurnStartStatEvent);
-  if (poisonEvents.length) {
-    queue.push(...statEventsToAnimQueue(poisonEvents, preTurnPlayers, eventMsgs(poisonEvents, preDrawMsgs)));
-  }
-  const linkHealEvents = statEvents.filter(isLinkHealTurnStartStatEvent);
-  if (linkHealEvents.length) {
-    queue.push(...statEventsToAnimQueue(linkHealEvents, preTurnPlayers, eventMsgs(linkHealEvents, preDrawMsgs)));
+  if (canonicalTurnStartStatEvents.length) {
+    const freshCanonicalEvents = canonicalTurnStartStatEvents.filter(event => !isConsumedVisualEvent(event));
+    const statTransaction = freshCanonicalEvents.length
+      ? compileRuleVisualEventsToAnimTransaction(newGs, null, {
+          eventIds: freshCanonicalEvents.map(event => event.id).filter(Boolean),
+          buildAnimQueue: buildQueue,
+          players: preTurnPlayers,
+          ...(consumedVisualEventIds ? { consumedEventIds: consumedVisualEventIds } : {}),
+        })
+      : null;
+    const statQueue = [...(statTransaction?.queue || [])];
+    freshCanonicalEvents.forEach(event => {
+      const goatEvents = event.statEvents.filter(isBlackGoatTurnStartStatEvent);
+      if (!goatEvents.length) return;
+      const pulse = blackGoatPulseStep(goatEvents);
+      if (!pulse) return;
+      const firstOwnedStep = statQueue.findIndex(step => step?.visualEventId === event.id);
+      const ownedPulse = { ...pulse, visualEventId: event.id };
+      if (firstOwnedStep >= 0) statQueue.splice(firstOwnedStep, 0, ownedPulse);
+      else statQueue.push(ownedPulse);
+    });
+    queue.push(...statQueue);
+  } else {
+    // Compatibility only: old saves/peers without canonical stat-event wrappers.
+    const blackGoatEvents = statEvents.filter(isBlackGoatTurnStartStatEvent);
+    if (blackGoatEvents.length) {
+      const pulse = blackGoatPulseStep(blackGoatEvents);
+      if (pulse) queue.push(pulse);
+      const goatMsgs = eventMsgs(blackGoatEvents, preDrawMsgs);
+      const hpEvents = blackGoatEvents.filter(ev => ev?.type === 'HP_LOSS' || ev?.type === 'HP_SAN_LOSS');
+      const sanEvents = blackGoatEvents.filter(ev => ev?.type === 'SAN_LOSS' || ev?.type === 'HP_SAN_LOSS');
+      if (hpEvents.length) queue.push(...statEventsToAnimQueue(hpEvents, preTurnPlayers, goatMsgs));
+      if (sanEvents.length) queue.push(...statEventsToAnimQueue(sanEvents, preTurnPlayers, goatMsgs));
+    }
+    const poisonEvents = statEvents.filter(isPoisonTurnStartStatEvent);
+    if (poisonEvents.length) {
+      queue.push(...statEventsToAnimQueue(poisonEvents, preTurnPlayers, eventMsgs(poisonEvents, preDrawMsgs)));
+    }
+    const linkHealEvents = statEvents.filter(isLinkHealTurnStartStatEvent);
+    if (linkHealEvents.length) {
+      queue.push(...statEventsToAnimQueue(linkHealEvents, preTurnPlayers, eventMsgs(linkHealEvents, preDrawMsgs)));
+    }
   }
   const explicitInspectionEvents = getVisualEvents(newGs)
     .filter(event => (
@@ -882,7 +918,17 @@ export function buildTurnStartDrawReplayQueue({
       statePatchStep({ players: event.playersAfterKeep }),
     ],
   ]));
-  const drawKeepTransferStep = shouldPlayDrawKeepTransfer && !eventOwnedKeepStepsByDrawId.size
+  // A current structured draw event owns the keep decision. If it does not
+  // declare keptInHand, the card never lands in the hand (for example,
+  // "反转复原" vanishes after being revealed). Do not reinterpret that
+  // explicit non-keep as a legacy automatic keep merely because AI draws have
+  // no drawReveal phase.
+  const hasExplicitResolutionForDrawnCard = explicitTurnDrawEvents.some(event => (
+    sameDrawCard(event.card, drawnCard)
+  ));
+  const drawKeepTransferStep = shouldPlayDrawKeepTransfer &&
+    !eventOwnedKeepStepsByDrawId.size &&
+    !hasExplicitResolutionForDrawnCard
     ? cardTransferStep({
       fromPid: drawerPid,
       dest: 'player',

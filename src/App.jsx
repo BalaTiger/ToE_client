@@ -4694,7 +4694,7 @@ export default function Game(){
     appendEndTurnReplaySyncQueue(queue,nextState.log?.slice((baseGs.log||[]).length)||[]);
     // 提前广播初始无尽通道动画，让远端同步开始播放
     if(nextState._isMP)broadcastEndTurnReplaySyncDelta(nextState);
-    triggerAnimQueue(queue,nextState,()=>continueEndTurnReplay(nextState),authoritativeEndTurnReplayQueueMeta(nextState,queue));
+    triggerAnimQueue(queue,nextState,()=>continueEndTurnReplay(nextState),authoritativeEndTurnReplayQueueMeta(nextState,queue,consumedVisualEventIdsRef.current));
     return true;
   }
 
@@ -4735,7 +4735,7 @@ export default function Game(){
         const queue=[{type:'DRAW_CARD',card,triggerName:'无尽通道',targetPid:actorIndex,skipTravel:true,msgs:split.preStat.length?split.preStat:[encounter.effectMsg]},...statQ];
         appendEndTurnReplaySyncQueue(queue,L.slice((stateLike.log||[]).length));
         const pendingGs=broadcastEndTurnReplayDecisionState(newGs,queue,L.slice((stateLike.log||[]).length));
-        triggerAnimQueue(queue,pendingGs,undefined,authoritativeEndTurnReplayQueueMeta(pendingGs,queue));
+        triggerAnimQueue(queue,pendingGs,undefined,authoritativeEndTurnReplayQueueMeta(pendingGs,queue,consumedVisualEventIdsRef.current));
         return true;
       }
       const zoneDraw=buildEndTurnReplayZoneDraw({stateLike,players:P,replay,actorIndex,index,card,actorName:P[actorIndex]?.name||'你'});
@@ -4765,19 +4765,19 @@ export default function Game(){
           const winGs={...newGs,gameOver:win,phase:'ACTION',drawReveal:null};
           appendEndTurnReplaySyncQueue([zoneDraw.drawStep,statePatchStep({players:P,deck:D,discard:Disc,log:L,phase:winGs.phase,drawReveal:null,abilityData:winGs.abilityData})],L.slice((stateLike.log||[]).length));
           const winQueue=[zoneDraw.drawStep,statePatchStep({players:P,deck:D,discard:Disc,log:L,phase:winGs.phase,drawReveal:null,abilityData:winGs.abilityData})];
-          triggerAnimQueue(winQueue,winGs,undefined,authoritativeEndTurnReplayQueueMeta(winGs,winQueue));
+          triggerAnimQueue(winQueue,winGs,undefined,authoritativeEndTurnReplayQueueMeta(winGs,winQueue,consumedVisualEventIdsRef.current));
           return true;
         }
         const effectQueue=bindAnimLogChunks(buildAnimQueue(zoneDraw.state,newGs),splitAnimBoundLogs(L.slice((stateLike.log||[]).length)));
         const queue=[zoneDraw.drawStep,...effectQueue,statePatchStep({players:P,deck:D,discard:Disc,log:L,phase:newGs.phase,drawReveal:newGs.drawReveal,abilityData:newGs.abilityData})];
         appendEndTurnReplaySyncQueue(queue,L.slice((stateLike.log||[]).length));
         const pendingGs=broadcastEndTurnReplayDecisionState(newGs,queue,L.slice((stateLike.log||[]).length));
-        triggerAnimQueue(queue,pendingGs,()=>{if(pendingGs.phase==='ACTION'&&!pendingGs.gameOver)continueEndTurnReplay(pendingGs);},authoritativeEndTurnReplayQueueMeta(pendingGs,queue));
+        triggerAnimQueue(queue,pendingGs,()=>{if(pendingGs.phase==='ACTION'&&!pendingGs.gameOver)continueEndTurnReplay(pendingGs);},authoritativeEndTurnReplayQueueMeta(pendingGs,queue,consumedVisualEventIdsRef.current));
         return true;
       }
       appendEndTurnReplaySyncQueue([zoneDraw.drawStep],zoneDraw.drawStep.msgs);
       const pendingGs=broadcastEndTurnReplayDecisionState(zoneDraw.state,[zoneDraw.drawStep],zoneDraw.drawStep.msgs);
-      triggerAnimQueue([zoneDraw.drawStep],pendingGs,undefined,authoritativeEndTurnReplayQueueMeta(pendingGs,[zoneDraw.drawStep]));
+      triggerAnimQueue([zoneDraw.drawStep],pendingGs,undefined,authoritativeEndTurnReplayQueueMeta(pendingGs,[zoneDraw.drawStep],consumedVisualEventIdsRef.current));
       return true;
     }
     const cleaned=buildEndTurnReplayFinishedState({stateLike,players:P});
@@ -4924,7 +4924,7 @@ export default function Game(){
   function handleDrawKeep(){
     const dr=gs.drawReveal;if(!dr?.card)return;
     const drawKeepQueueMeta=(state,queue)=>dr.fromEndTurnReplay
-      ?authoritativeEndTurnReplayQueueMeta(state,queue)
+      ?authoritativeEndTurnReplayQueueMeta(state,queue,consumedVisualEventIdsRef.current)
       :strictActionQueueMeta(state,queue,consumedVisualEventIdsRef.current,'draw keep');
     const resolutionCard=revealBlindDrawCard(dr.card);
     // swapAllHands needs target selection before applying
@@ -5462,7 +5462,7 @@ export default function Game(){
       }
       setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
       triggerAnimQueue(queue,result.pendingWinGs,undefined,dr.fromEndTurnReplay
-        ?authoritativeEndTurnReplayQueueMeta(result.pendingWinGs,queue)
+        ?authoritativeEndTurnReplayQueueMeta(result.pendingWinGs,queue,consumedVisualEventIdsRef.current)
         :authoritativeResolvedQueueMeta(result.pendingWinGs,queue));
       return;
     }
@@ -5520,7 +5520,7 @@ export default function Game(){
         ?()=>continueEndTurnReplay(result.newGs)
         :undefined,
       dr.fromEndTurnReplay
-        ?authoritativeEndTurnReplayQueueMeta(result.newGs,localQueue)
+        ?authoritativeEndTurnReplayQueueMeta(result.newGs,localQueue,consumedVisualEventIdsRef.current)
         :authoritativeResolvedQueueMeta(result.newGs,localQueue)
     );
     if(isTutorialDodgeStep){
@@ -5563,7 +5563,7 @@ export default function Game(){
       }):null;
       const pendingWinQueue=[transfer,...effectQueue].filter(Boolean);
       triggerAnimQueue(pendingWinQueue,pendingWinGs,undefined,dr.fromEndTurnReplay
-        ?authoritativeEndTurnReplayQueueMeta(pendingWinGs,pendingWinQueue)
+        ?authoritativeEndTurnReplayQueueMeta(pendingWinGs,pendingWinQueue,consumedVisualEventIdsRef.current)
         :authoritativeResolvedQueueMeta(pendingWinGs,pendingWinQueue));
       return;
     }
@@ -5609,7 +5609,7 @@ export default function Game(){
       triggerAnimQueue(queue,newGs,dr.fromEndTurnReplay&&newGs.phase==='ACTION'&&!newGs.gameOver
         ?()=>continueEndTurnReplay(newGs)
         :undefined,dr.fromEndTurnReplay
-        ?authoritativeEndTurnReplayQueueMeta(newGs,queue)
+        ?authoritativeEndTurnReplayQueueMeta(newGs,queue,consumedVisualEventIdsRef.current)
         :authoritativeResolvedQueueMeta(newGs,queue));
     }else if(dr.fromEndTurnReplay&&newGs.phase==='ACTION'&&!newGs.gameOver)continueEndTurnReplay(newGs);
     else setGs(newGs);
@@ -5702,7 +5702,7 @@ export default function Game(){
     const replayPatch=dr.fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
     const newGs={...gs,players:P,discard:nextDiscard,log:[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),discardLog],phase:'ACTION',drawReveal:null,abilityData:gs.abilityData,...replayPatch};
     const discardQueueMeta=dr.fromEndTurnReplay
-      ?authoritativeEndTurnReplayQueueMeta(newGs,queue)
+      ?authoritativeEndTurnReplayQueueMeta(newGs,queue,consumedVisualEventIdsRef.current)
       :strictActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current,'draw discard');
     if(dr.fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:nextDiscard})],[discardLog]);
     else if(newGs._isMP)broadcastAnimTransaction(newGs,queue,{context:'drawDiscard',barrier:'continuation',msgs:[discardLog],beforePlayers:gs.players,beforeDiscard:gs.discard});
@@ -5818,7 +5818,7 @@ export default function Game(){
         ...buildAnimQueue(gs,pendingWinGs).filter(a=>a.type!=='CARD_TRANSFER'&&a.type!=='SKILL_SWAP'),
       ];
       triggerAnimQueue(queue,pendingWinGs,undefined,fromEndTurnReplay
-        ?authoritativeEndTurnReplayQueueMeta(pendingWinGs,queue)
+        ?authoritativeEndTurnReplayQueueMeta(pendingWinGs,queue,consumedVisualEventIdsRef.current)
         :authoritativeResolvedQueueMeta(pendingWinGs,queue));
       return;
     }
@@ -5846,7 +5846,7 @@ export default function Game(){
     // is published.
     const queue=mergeApophisTargetQueue([...swapSteps,...statQ],gs,newGs);
     const baseQueueMeta=fromEndTurnReplay
-      ?authoritativeEndTurnReplayQueueMeta(newGs,queue)
+      ?authoritativeEndTurnReplayQueueMeta(newGs,queue,consumedVisualEventIdsRef.current)
       :authoritativeResolvedQueueMeta(newGs,queue);
     const queueMeta={...baseQueueMeta,preserveQueueOrder:true};
     if(fromRest){triggerAnimQueue(queue,null,()=>_cthContinueRestDraws(newGs),queueMeta);return;}
@@ -5887,22 +5887,23 @@ export default function Game(){
       ...(abilityData._inspectionSeq!=null?{_inspectionSeq:abilityData._inspectionSeq}:{}),
       _visualEvents:Array.isArray(abilityData._visualEvents)?abilityData._visualEvents:[],
     };
-    let nextGs=buildTargetContinuationGs({
-      players,
-      deck,
-      discard,
-      log,
-      turnOwner,
-      abilityData,
-      canResumeAi:true,
-      extraPatch,
-    });
     const slimeDecision=beforeDamagePlayers
       ?buildTsathogguaSlimeBalanceDecision(beforeDamagePlayers,players,{
         ...buildTargetContinuationAbilityData(abilityData),
         _turnOwner:turnOwner,
       })
       :null;
+    let nextGs=buildTargetContinuationGs({
+      players,
+      deck,
+      discard,
+      log,
+      turnOwner,
+      abilityData:slimeDecision||abilityData,
+      phase:slimeDecision?'TSG_SLIME_BALANCE':null,
+      canResumeAi:!slimeDecision,
+      extraPatch,
+    });
     if(slimeDecision)nextGs={...nextGs,phase:'TSG_SLIME_BALANCE',abilityData:slimeDecision};
     const win=slimeDecision?null:checkWin(players,gs._isMP);
     if(win)nextGs={...nextGs,phase:'ACTION',abilityData:{},gameOver:win};
@@ -7673,7 +7674,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       // effect 会错过这次 ACTION 状态，导致回合切换表现播完后队列不再推进。
       triggerAnimQueue(queue, nextGs, () => {
         if (!nextGs.gameOver) continueEndTurnReplay(nextGs);
-      }, authoritativeEndTurnReplayQueueMeta(nextGs, queue));
+      }, authoritativeEndTurnReplayQueueMeta(nextGs, queue, consumedVisualEventIdsRef.current));
       return;
     }
     if(abilityData.fromRest&&!nextGs.gameOver){
@@ -9396,7 +9397,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         return;
       }
     }
-    if(['FIRST_COME_PICK_SELECT','DAMAGE_LINK_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','ROSE_THORN_SELECT_TARGET','SAME_ABYSS_SELECT','SPHINX_GUESS','GRAVE_DIG_SELECT','BURY_ALIVE_SELECT','TSG_SLIME_BALANCE'].includes(newGs.phase)&&newGs._drawnCard){
+    if(['FIRST_COME_PICK_SELECT','DAMAGE_LINK_SELECT_TARGET','CAVE_DUEL_SELECT_TARGET','PEEK_HAND_SELECT_TARGET','ROSE_THORN_SELECT_TARGET','SAME_ABYSS_SELECT','SPHINX_GUESS','GRAVE_DIG_SELECT','BURY_ALIVE_SELECT','TSG_SLIME_BALANCE','ETHEREALIZE_DECISION'].includes(newGs.phase)&&newGs._drawnCard){
       const drawerName=newGs.players[newGs.currentTurn]?.name||'???';
       const drawerPid=newGs.currentTurn;
       const replay=buildActorTurnStartReplay(newGs,{
