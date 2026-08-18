@@ -5,3 +5,11 @@ export function cardIdentity(card) {
     || [card.key, card.godKey, card.name, card.type].filter(Boolean).join(':')
     || null;
 }
+
+export function sameCardIdentity(left, right) {
+  if (!left || !right) return false;
+  const leftStableId = left.id ?? left.uid;
+  const rightStableId = right.id ?? right.uid;
+  if (leftStableId != null || rightStableId != null) return leftStableId === rightStableId;
+  return (left.key ?? left.name ?? left.letter) === (right.key ?? right.name ?? right.letter);
+}

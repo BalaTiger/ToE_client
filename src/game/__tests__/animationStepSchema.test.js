@@ -169,4 +169,18 @@ describe('animationStepSchema', () => {
     expect(validateThrowStoneTransactions(queue)).toEqual([]);
     expect(assertCompleteThrowStoneTransactions(queue)).toBe(queue);
   });
+
+  it('普通随机目标携带规范视觉事件 ID 时不要求投石步骤', () => {
+    const queue = [{
+      type: 'RANDOM_TARGET',
+      visualEventId: 'randomTarget:test:1',
+      visualEventType: 'randomTarget',
+      sourceIdx: 1,
+      targetIdx: 2,
+      label: '钻地魔虫',
+    }];
+
+    expect(validateThrowStoneTransactions(queue)).toEqual([]);
+    expect(assertCompleteThrowStoneTransactions(queue)).toBe(queue);
+  });
 });

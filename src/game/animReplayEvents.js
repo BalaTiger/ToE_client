@@ -1,7 +1,56 @@
 import { bindAnimLogChunks, isDrawLikeLog, isTurnStartLog } from './animLogs';
 import { buildBewitchForcedCardQueue, buildInspectionAwareAnimQueue } from './animQueueHelpers';
 import { appendFinalStatePatch } from './animStatePatch';
-import { getVisualEvents, VISUAL_EVENT } from './visualEvents';
+import { copyPlayers } from './coreUtils';
+import { createAnimTransactionEvent, getVisualEvents, VISUAL_EVENT } from './visualEvents';
+
+export function createCthRlyehDreamStep(targetPid = 0, msgs = []) {
+  return {
+    type: 'CTH_RLYEH_DREAM',
+    targetPid,
+    msgs: Array.isArray(msgs) ? msgs.filter(Boolean) : [],
+  };
+}
+
+export function createCthRestDrawReplayEvent({
+  beforePlayers,
+  beforeDiscard,
+  zhuLight,
+  actorName,
+  cthDraws,
+  cthDrawLogs,
+  preSteps = [],
+  statSteps = [],
+  playDream = true,
+} = {}) {
+  const draws = (Array.isArray(cthDraws) ? cthDraws : []).filter(Boolean);
+  if (!draws.length) return null;
+  const logs = Array.isArray(cthDrawLogs) ? cthDrawLogs.filter(Boolean) : [];
+  const triggerLabel = actorName || '你';
+  const drawSteps = draws.map(card => ({
+    type: 'DRAW_CARD',
+    card,
+    triggerName: triggerLabel,
+    targetPid: 0,
+    msgs: logs.filter(line => line.includes(card.name) || (card.key && line.includes(card.key))),
+  }));
+  return createAnimTransactionEvent({
+    actorIdx: 0,
+    actorName: actorName || '你',
+    context: 'cthRlyehDream',
+    barrier: 'turnBoundary',
+    queue: [
+      ...(Array.isArray(preSteps) ? preSteps : []),
+      ...(playDream ? [createCthRlyehDreamStep(0, logs)] : []),
+      ...drawSteps,
+      ...(Array.isArray(statSteps) ? statSteps : []),
+    ],
+    msgs: logs,
+    beforePlayers: copyPlayers(beforePlayers || []),
+    beforeDiscard: [...(beforeDiscard || [])],
+    zhuLight: zhuLight || null,
+  });
+}
 
 export function isStatAnimationStep(step) {
   if (!step) return false;

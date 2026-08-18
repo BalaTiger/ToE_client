@@ -153,9 +153,10 @@ export function validateThrowStoneTransactions(queue = []) {
   const steps = Array.isArray(queue) ? queue : [];
   const eventIds = [...new Set(steps
     .filter(step => step?.visualEventId && (
+      step.visualEventType === 'throwStone' ||
       (step.type === 'DICE_ROLL' && step.diceMode === 'throwStone') ||
-      step.type === 'RANDOM_TARGET' ||
-      step.type === 'THROW_STONE'
+      step.type === 'THROW_STONE' ||
+      (step.type === 'RANDOM_TARGET' && step.label === '投掷石块')
     ))
     .map(step => step.visualEventId))];
 

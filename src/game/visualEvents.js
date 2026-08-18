@@ -617,6 +617,7 @@ export function buildThrowStoneSteps(event, state = null) {
     {
       type: 'DICE_ROLL',
       visualEventId: event.id,
+      visualEventType: VISUAL_EVENT.THROW_STONE,
       diceMode: 'throwStone',
       d1: event.roll,
       d2: 0,
@@ -626,6 +627,7 @@ export function buildThrowStoneSteps(event, state = null) {
     {
       type: 'RANDOM_TARGET',
       visualEventId: event.id,
+      visualEventType: VISUAL_EVENT.THROW_STONE,
       sourceIdx: event.sourceIdx,
       targetIdx: event.targetIdx,
       roll: event.roll,
@@ -638,6 +640,7 @@ export function buildThrowStoneSteps(event, state = null) {
     {
       type: 'THROW_STONE',
       visualEventId: event.id,
+      visualEventType: VISUAL_EVENT.THROW_STONE,
       sourceIdx: event.sourceIdx,
       targetIdx: event.targetIdx,
       damage: event.damage || 0,
@@ -765,6 +768,7 @@ export function buildRandomTargetSteps(event, state = null) {
     // Spreading the event must not clobber the step type with the event type
     // ('randomTarget'); the player only recognizes the 'RANDOM_TARGET' step.
     visualEventId: event.id,
+    visualEventType: VISUAL_EVENT.RANDOM_TARGET,
     type: 'RANDOM_TARGET',
     players: event.playersAfter || state?.players || [],
     msgs: event.resultText ? [event.resultText] : (event.msgs || []),

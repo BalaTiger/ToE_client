@@ -714,10 +714,12 @@ export function buildAnimQueue(oldGs, newGs) {
   const buildRandomTargetQueue = event => {
     const queue = [];
     const isThrowStone = event?.label === '投掷石块';
+    const visualEventType = isThrowStone ? VISUAL_EVENT.THROW_STONE : VISUAL_EVENT.RANDOM_TARGET;
     if (event.diceBefore && event.roll != null) {
       queue.push({
         type: 'DICE_ROLL',
         ...(event.visualEventId ? { visualEventId: event.visualEventId } : {}),
+        visualEventType,
         diceMode: 'throwStone',
         d1: event.roll,
         d2: 0,
@@ -732,6 +734,7 @@ export function buildAnimQueue(oldGs, newGs) {
       // event, otherwise the wheel step is silently rendered as an unknown
       // animation while the preceding dice still plays.
       type: 'RANDOM_TARGET',
+      visualEventType,
       players: newGs.players,
       msgs: event.resultText ? [event.resultText] : [],
     });
@@ -739,6 +742,7 @@ export function buildAnimQueue(oldGs, newGs) {
       queue.push({
         type: 'THROW_STONE',
         ...(event.visualEventId ? { visualEventId: event.visualEventId } : {}),
+        visualEventType,
         sourceIdx: event.sourceIdx,
         targetIdx: event.targetIdx,
         damage: event.damage || 0,

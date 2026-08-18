@@ -4,7 +4,7 @@ import process from 'node:process';
 
 const sourceRoot = path.resolve('src');
 const legacyBaseline = new Map([
-  ['App.jsx', 3],
+  ['game/animationQueuePolicy.js', 3],
   ['game/animationTransaction.js', 1],
   ['game/visualEventTransactionCompiler.js', 3],
   ['game/visualEvents.js', 1],
@@ -86,9 +86,10 @@ const appSource = fs.readFileSync(path.join(sourceRoot, 'App.jsx'), 'utf8');
 if (/resolveActionQueueMeta/.test(appSource)) {
   issues.push('App.jsx: generic resolveActionQueueMeta is forbidden; use strictActionQueueMeta or the tutorial-only router');
 }
-const tutorialResolverRefs = appSource.match(/resolveTutorialQueueMeta\s*\(/g) || [];
+const animationQueuePolicySource = fs.readFileSync(path.join(sourceRoot, 'game/animationQueuePolicy.js'), 'utf8');
+const tutorialResolverRefs = animationQueuePolicySource.match(/resolveTutorialQueueMeta\s*\(/g) || [];
 if (tutorialResolverRefs.length !== 2) {
-  issues.push(`App.jsx: resolveTutorialQueueMeta must only appear in its definition and tutorial router (found ${tutorialResolverRefs.length})`);
+  issues.push(`game/animationQueuePolicy.js: resolveTutorialQueueMeta must only appear in its definition and tutorial router (found ${tutorialResolverRefs.length})`);
 }
 appSource.split(/\r?\n/).forEach((line, index) => {
   if (!line.includes('actionQueueMetaForMode(') || line.includes('function actionQueueMetaForMode(')) return;

@@ -1,0 +1,91 @@
+import { getAiActionQueueCoverage } from './aiTurnPresentation';
+import {
+  ANIMATION_QUEUE_AUTHORITY,
+  getVisualEventIdsCoveredByAnimationQueue,
+} from './visualEventTransactionCompiler';
+
+export const AUTHORITATIVE_QUEUE_META = Object.freeze({
+  authority: ANIMATION_QUEUE_AUTHORITY.QUEUE,
+});
+
+export const LEGACY_MERGE_ACTION_SCOPE_META = Object.freeze({
+  authority: ANIMATION_QUEUE_AUTHORITY.LEGACY_MERGE,
+  visualEventScope: 'action',
+});
+
+export function authoritativeTurnStartQueueMeta(state) {
+  const eventIds = (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
+    .filter(event => event?.turnStartStage && event?.id)
+    .map(event => event.id);
+  return eventIds.length
+    ? { ...AUTHORITATIVE_QUEUE_META, eventIds }
+    : AUTHORITATIVE_QUEUE_META;
+}
+
+export function strictActionQueueMeta(state, queue, consumedEventIds = null, context = 'action queue') {
+  const coverage = getAiActionQueueCoverage(
+    state,
+    queue,
+    steps => getVisualEventIdsCoveredByAnimationQueue(state, steps),
+    consumedEventIds,
+  );
+  if (coverage.uncoveredEventIds.length) {
+    const uncoveredSet = new Set(coverage.uncoveredEventIds);
+    const uncoveredEvents = (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
+      .filter(event => uncoveredSet.has(event?.id))
+      .map(event => ({
+        id: event.id,
+        type: event.type,
+        scope: event.scope,
+        transactionId: event.transactionId || null,
+      }));
+    const queueTypes = (Array.isArray(queue) ? queue : []).map(step => step?.type || 'UNKNOWN');
+    throw new TypeError(`[${context}] queue is missing visual events: ${JSON.stringify({ uncoveredEvents, queueTypes })}`);
+  }
+  return coverage.eventIds.length
+    ? { ...AUTHORITATIVE_QUEUE_META, eventIds: coverage.eventIds }
+    : AUTHORITATIVE_QUEUE_META;
+}
+
+export function authoritativeResolvedQueueMeta(state, queue) {
+  return strictActionQueueMeta(state, queue, null, 'resolved action queue');
+}
+
+export function authoritativeEndTurnReplayQueueMeta(state, queue) {
+  return authoritativeResolvedQueueMeta(state, queue);
+}
+
+export function resolveTutorialQueueMeta(state, queue, consumedEventIds = null) {
+  const coverage = getAiActionQueueCoverage(
+    state,
+    queue,
+    steps => getVisualEventIdsCoveredByAnimationQueue(state, steps),
+    consumedEventIds,
+  );
+  if (coverage.uncoveredEventIds.length) {
+    if (import.meta.env.DEV) {
+      console.warn('[tutorial queue] authoritative coverage incomplete; using scoped legacy merge', {
+        uncoveredEventIds: coverage.uncoveredEventIds,
+      });
+    }
+    return {
+      ...LEGACY_MERGE_ACTION_SCOPE_META,
+      compileEventIds: coverage.uncoveredEventIds,
+      compileState: state,
+    };
+  }
+  return coverage.eventIds.length
+    ? { ...AUTHORITATIVE_QUEUE_META, eventIds: coverage.eventIds }
+    : AUTHORITATIVE_QUEUE_META;
+}
+
+export function actionQueueMetaForMode(
+  state,
+  queue,
+  consumedEventIds,
+  { tutorial = false, context = 'action queue' } = {},
+) {
+  return tutorial
+    ? resolveTutorialQueueMeta(state, queue, consumedEventIds)
+    : strictActionQueueMeta(state, queue, consumedEventIds, context);
+}

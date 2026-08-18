@@ -3,6 +3,8 @@ import {
   compareCaveDuelCards,
   copyPlayers,
 } from './coreUtils';
+import { appendPublicCardGainTriggers } from './cardGainEvents';
+import { buildTargetContinuationState } from './targetContinuation';
 
 export function resolveHandCardSelection(
   player,
@@ -132,4 +134,47 @@ export function resolveCaveDuelOutcome({
     targetCard: actualTargetCard,
     logLine: `【穴居人战争】${sourcePlayer.name} 亮出 ${sourceCardText}，${targetPlayer.name} 亮出 ${targetCardText}，平局，各自收回自己的牌`,
   };
+}
+
+export function resolveCaveDuelState(
+  players,
+  sourceIdx,
+  targetIdx,
+  sourceCardIndex,
+  targetCardIndex,
+  sourceCard,
+  targetCard,
+  state,
+) {
+  const outcome = resolveCaveDuelOutcome({
+    players,
+    sourceIdx,
+    targetIdx,
+    sourceCardIndex,
+    targetCardIndex,
+    sourceCard,
+    targetCard,
+  });
+  const nextPlayers = outcome.players;
+  const log = [...state.log, outcome.logLine];
+  let proliferatingZPatch = {};
+  if (outcome.duelCompare > 0) {
+    proliferatingZPatch = appendPublicCardGainTriggers(state, nextPlayers, sourceIdx, outcome.gainedCard);
+  } else if (outcome.duelCompare < 0) {
+    proliferatingZPatch = appendPublicCardGainTriggers(state, nextPlayers, targetIdx, outcome.gainedCard);
+  }
+  const nextGs = {
+    ...buildTargetContinuationState({
+      baseState: state,
+      players: nextPlayers,
+      deck: state.deck,
+      discard: state.discard,
+      log,
+      abilityData: state.abilityData,
+      extraPatch: proliferatingZPatch,
+    }),
+    ...(Object.prototype.hasOwnProperty.call(state, 'apophisNight') ? { apophisNight: state.apophisNight } : {}),
+    ...(state._statEvents ? { _statEvents: state._statEvents, _statEventSeq: state._statEventSeq } : {}),
+  };
+  return { nextGs, duelCompare: outcome.duelCompare, L: log };
 }

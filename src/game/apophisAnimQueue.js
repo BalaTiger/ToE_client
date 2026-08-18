@@ -1,4 +1,5 @@
 import { buildAnimQueue } from './animQueueCore';
+import { compileRuleVisualEventsToAnimTransaction } from './visualEventTransactionCompiler';
 
 function getFreshApophisTargetEvent(oldState, nextState) {
   const previousIds = new Set((oldState?._visualEvents || []).map(event => event?.id).filter(Boolean));
@@ -54,6 +55,25 @@ export function buildApophisTargetQueueForState(oldState, nextState, buildQueue 
     step?._apophisTargetSeq === seq ||
     (statSeq != null && Array.isArray(step?.statEvents) && step.statEvents.some(event => event?.seq === statSeq))
   ));
+}
+
+export function compileApophisTargetPrelude(nextState, oldState, buildQueue = buildAnimQueue) {
+  const targetEvent = nextState?._apophisTargetEvent;
+  if (!targetEvent?.seq) return null;
+  const oldEventIds = new Set((oldState?._visualEvents || []).map(event => event?.id).filter(Boolean));
+  const freshEvents = (nextState?._visualEvents || []).filter(event => event?.id && !oldEventIds.has(event.id));
+  const apophisEvent = freshEvents.find(event => event?.type === 'apophisTarget' && event?.legacySeq === targetEvent.seq);
+  if (!apophisEvent) return null;
+  const freshInspections = freshEvents.filter(event => event?.type === 'inspection');
+  const firstInspectionIndex = freshInspections.findIndex(event => {
+    const beforeLog = Array.isArray(event?.beforeLog) ? event.beforeLog : [];
+    return event?.target === targetEvent.actorIdx && beforeLog.at(-1) === targetEvent.log;
+  });
+  const ownedInspections = firstInspectionIndex >= 0 ? freshInspections.slice(firstInspectionIndex) : [];
+  return compileRuleVisualEventsToAnimTransaction(nextState, oldState, {
+    buildAnimQueue: buildQueue,
+    eventIds: [apophisEvent.id, ...ownedInspections.map(event => event.id)],
+  });
 }
 
 export function mergeApophisTargetQueue(queue = [], oldState, nextState, buildQueue = buildAnimQueue) {

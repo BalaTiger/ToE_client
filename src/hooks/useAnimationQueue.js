@@ -248,18 +248,32 @@ export function useAnimationQueue({
         markConsumedVisualEvents(consumedVisualEventIdsRef.current, nextVisualEventIds.map(id => ({ id, type: 'consumed' })));
       }
       pendingVisualEventIdsRef.current = [];
+      let callbackFailed = false;
       if (callback) {
         const pendingBeforeCallback = pendingGsRef.current;
         const callbackBeforeCallback = animCallbackRef.current;
-        callback();
+        try {
+          callback();
+        } catch (error) {
+          callbackFailed = true;
+          // The rule state has already been resolved. A presentation failure in
+          // the chained queue must not strand the previous turn's visual locks
+          // or leave the game permanently stuck at the callback boundary.
+          console.error('[animation-transaction] chained presentation callback failed; committing resolved state', error);
+        }
         const callbackStartedNextQueue =
           pendingGsRef.current !== pendingBeforeCallback ||
           animCallbackRef.current !== callbackBeforeCallback ||
           animQueueRef.current.length > 0;
-        if (callbackStartedNextQueue) {
+        if (!callbackFailed && callbackStartedNextQueue) {
           return;
         }
-      } else if (normalizedNext) {
+      }
+      if (callbackFailed) {
+        animQueueRef.current = [];
+        pendingVisualEventIdsRef.current = [];
+      }
+      if ((!callback || callbackFailed) && normalizedNext) {
         setVisualDiscard(getVisualDiscardForState(normalizedNext));
         syncDisplayStatsFromState(normalizedNext);
         if (suppressNextBroadcastRef.current) {
@@ -276,7 +290,9 @@ export function useAnimationQueue({
       visualStateLocks.clear({turnHighlight:true,players:true,zhuLight:true,hiddenZhuCardId:true});
       if (setVisualPlayersOverride) setVisualPlayersOverride(null);
       setAnim(null);
-      sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.QUEUE_COMPLETED);
+      sendQueueLifecycleEvent(callbackFailed
+        ? ANIMATION_QUEUE_EVENT.INTERRUPTED
+        : ANIMATION_QUEUE_EVENT.QUEUE_COMPLETED);
     }
   }
 

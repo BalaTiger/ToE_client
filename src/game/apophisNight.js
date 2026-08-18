@@ -163,3 +163,20 @@ export function resolveApophisTarget({
     },
   };
 }
+
+export function resolveApophisTargetWithStats(options) {
+  const result = resolveApophisTarget(options);
+  if (result.statePatch?._statEvents) {
+    result.apophisNight = {
+      ...(result.apophisNight || {}),
+      _statEvents: result.statePatch._statEvents,
+      _statEventSeq: result.statePatch._statEventSeq,
+    };
+  }
+  return result;
+}
+
+export function apophisNightPatch(nightResult) {
+  if (!nightResult) return {};
+  return nightResult.statePatch || { apophisNight: nightResult.apophisNight ?? null };
+}

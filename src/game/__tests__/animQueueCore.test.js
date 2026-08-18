@@ -6,6 +6,7 @@ import {
   getAiPreHuntActionSteps,
 } from '../animQueueCore';
 import { dedupeInferredDiscardTransfers } from '../animQueueHelpers';
+import { assertCompleteThrowStoneTransactions } from '../animationStepSchema';
 import { copyPlayers } from '../coreUtils';
 import { buildStatEvents } from '../statEvents';
 import { buildFreshStatVisualEvents, createCardEffectEvent, createEarthquakeEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent, createRandomTargetVisualEvent } from '../visualEvents';
@@ -625,6 +626,15 @@ describe('buildAnimQueue stat animations', () => {
       makePlayer({ name: '贝拉', hp: 8 }),
     ];
     const oldGs = makeGs({ players: playersBefore, log: [], _randomTargetSeq: 0, _statEventSeq: 0 });
+    const randomTargetEvent = createRandomTargetVisualEvent({
+      seq: 1,
+      sourceIdx: 0,
+      targetIdx: 1,
+      label: '钻地魔虫',
+      resultText: '艾伦 被选中',
+      phaseOrder: 1,
+    });
+    const phaseGroupId = randomTargetEvent.id;
     const newGs = makeGs({
       players: playersAfter,
       log: ['全体存活角色失去 2 HP', '艾伦 额外失去 2 HP'],
@@ -638,16 +648,18 @@ describe('buildAnimQueue stat animations', () => {
           afterPlayers: playersAfter,
           afterDiscard: [],
           msgs: ['全体存活角色失去 2 HP'],
+          phaseGroupId,
+          phaseOrder: -1,
         }),
+        { ...randomTargetEvent, phaseGroupId },
       ],
       _randomTargetSeq: 1,
-      _randomTargetEvents: [{ seq: 1, sourceIdx: 0, targetIdx: 1, label: '钻地魔虫', phaseOrder: 1 }],
       _statEventSeq: 1,
       _statEvents: [
-        { type: 'HP_LOSS', target: 0, from: { hp: 10, san: 10, isDead: false }, to: { hp: 8, san: 10, isDead: false }, seq: 1, phaseOrder: 0 },
-        { type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10, isDead: false }, to: { hp: 8, san: 10, isDead: false }, seq: 1, phaseOrder: 0 },
-        { type: 'HP_LOSS', target: 2, from: { hp: 10, san: 10, isDead: false }, to: { hp: 8, san: 10, isDead: false }, seq: 1, phaseOrder: 0 },
-        { type: 'HP_LOSS', target: 1, from: { hp: 8, san: 10, isDead: false }, to: { hp: 6, san: 10, isDead: false }, seq: 1, phaseOrder: 2 },
+        { type: 'HP_LOSS', target: 0, from: { hp: 10, san: 10, isDead: false }, to: { hp: 8, san: 10, isDead: false }, seq: 1, phaseOrder: 0, phaseGroupId },
+        { type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10, isDead: false }, to: { hp: 8, san: 10, isDead: false }, seq: 1, phaseOrder: 0, phaseGroupId },
+        { type: 'HP_LOSS', target: 2, from: { hp: 10, san: 10, isDead: false }, to: { hp: 8, san: 10, isDead: false }, seq: 1, phaseOrder: 0, phaseGroupId },
+        { type: 'HP_LOSS', target: 1, from: { hp: 8, san: 10, isDead: false }, to: { hp: 6, san: 10, isDead: false }, seq: 1, phaseOrder: 2, phaseGroupId },
       ],
     });
 
@@ -672,6 +684,11 @@ describe('buildAnimQueue stat animations', () => {
     expect(queue[randomIdx].visualTimeline[0].patch.players.map(p => p.hp)).toEqual([8, 8, 8]);
     expect(queue[secondHpIdx].visualSetupPatch.players.map(p => p.hp)).toEqual([8, 8, 8]);
     expect(queue[secondHpIdx].visualTimeline.at(-1).patch.players.map(p => p.hp)).toEqual([8, 6, 8]);
+    expect(queue[randomIdx]).toMatchObject({
+      visualEventId: randomTargetEvent.id,
+      visualEventType: 'randomTarget',
+    });
+    expect(() => assertCompleteThrowStoneTransactions(queue)).not.toThrow();
   });
 
   it('显式改信结算中 SAN 动画保持无信仰，之后才高亮新邪神', () => {
