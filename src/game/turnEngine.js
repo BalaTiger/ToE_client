@@ -45,6 +45,8 @@ import {
 } from './visualEvents';
 import { advanceGodEncounter, formatGodEncounterProgress, getLatestGodEncounterProgress } from './balancePatches';
 import { TURN_START_EVENT, getTurnStartEvents } from './turnStartEvents';
+import { TURN_FLOW_STAGE } from './turnFlowStages';
+import { enterTurnBoundary, enterTurnFlowStage, normalizeTurnOpeningFlowState } from './turnFlowManager';
 import {
   getActiveDamageLinksForPlayer,
   getAllDamageLinks,
@@ -1676,7 +1678,7 @@ function resolveNextTurnState(gs, opts = {}) {
   _P_beforeTurn = copyPlayers(P);
   // 此后所有回合内操作（摸牌、效果结算）都应以 next 为当前回合拥有者，
   // 否则 applyFx 等函数会拿 gs.currentTurn（旧回合）去决定 _turnOwner/检定触发者。
-  gs = { ...gs, currentTurn: next };
+  gs = enterTurnFlowStage({ ...gs, currentTurn: next }, TURN_FLOW_STAGE.TURN_START);
   // 清理过期的两人一绳链条；多条链按创建顺序分别治疗或移除。
   const expiredInactiveIds = [];
   getAllDamageLinks(P).forEach(link => {
@@ -1802,6 +1804,7 @@ function resolveNextTurnState(gs, opts = {}) {
     if (nya.shouldEnterPhase) {
       return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: [...L, nya.logMsg], currentTurn: 0, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'NYA_BORROW', abilityData: {}, drawReveal: null, selectedCard: null, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: copyPlayers(P) };
     }
+    gs = enterTurnFlowStage(gs, TURN_FLOW_STAGE.DRAW);
     // 检查是否需要跳过摸牌
     if (consumeSkipNextDraw(P, 0, L, { local: true })) {
       const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, gameOver: win, turn: newTurn, _turnKey: newTurnKey, debugForceCard: null, debugForceCardTarget: null };
@@ -2023,6 +2026,7 @@ function resolveNextTurnState(gs, opts = {}) {
     if (nyaMp.shouldEnterPhase) {
       return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: [...L, nyaMp.logMsg], currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'NYA_BORROW', abilityData: {}, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: copyPlayers(P) };
     }
+    gs = enterTurnFlowStage(gs, TURN_FLOW_STAGE.DRAW);
     // 检查是否需要跳过摸牌
     if (consumeSkipNextDraw(P, next, L)) {
       const win = checkWin(P, true); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: win };
@@ -2154,6 +2158,7 @@ function resolveNextTurnState(gs, opts = {}) {
     if (turnStartEventIds.has(TURN_START_EVENT.NYA_BORROW)) {
       turnStartEvent_NyaBorrow(P, next, L, gs, visualEvents);
     }
+    gs = enterTurnFlowStage(gs, TURN_FLOW_STAGE.DRAW);
     // 检查是否需要跳过摸牌
     if (consumeSkipNextDraw(P, next, L)) {
       const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: win, debugForceCard: null, debugForceCardTarget: null };
@@ -2405,7 +2410,10 @@ export function startNextTurn(gs, opts = {}) {
   const cleanInput = Array.isArray(gs?._visualEvents) && gs._visualEvents.length
     ? { ...gs, _visualEvents: [] }
     : gs;
-  const nextState = resolveNextTurnState(cleanInput, opts);
+  // Cleanup, expiry, next-seat selection and turn-key advancement are rules
+  // executed at the turn boundary, before the next TURN_START stage begins.
+  const boundaryInput = enterTurnBoundary(cleanInput);
+  const nextState = normalizeTurnOpeningFlowState(resolveNextTurnState(boundaryInput, opts));
   const engineEvents = Array.isArray(nextState?._visualEvents) ? nextState._visualEvents : [];
   const freshStatVisualEvents = buildFreshStatVisualEvents(nextState, previousStatSeq);
   const freshStatEvents = freshStatVisualEvents.flatMap(event => event?.statEvents || []);

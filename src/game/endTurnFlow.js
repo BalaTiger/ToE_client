@@ -2,6 +2,7 @@ import { copyPlayers } from './coreUtils';
 import { getEndTurnEvents } from './endTurnEvents';
 import { startNextTurn as defaultAdvanceTurn } from './turnEngine';
 import { TURN_FLOW_STAGE } from './turnFlowStages';
+import { enterTurnBoundary, transitionTurnFlowStage } from './turnFlowManager';
 
 export const END_TURN_DECISION = {
   DISCARD: 'DISCARD',
@@ -33,12 +34,10 @@ export function resolveEndTurn(gs, {
   if ((actor.hand?.length || 0) > effectiveHandLimit) {
     return {
       decision: END_TURN_DECISION.DISCARD,
-      gs: {
+      gs: transitionTurnFlowStage({
         ...gs,
-        phase: 'DISCARD_PHASE',
-        _turnFlowStage: TURN_FLOW_STAGE.DISCARD,
         abilityData: { discardSelected: [], fromEndTurn: true },
-      },
+      }, TURN_FLOW_STAGE.DISCARD, { phase: 'DISCARD_PHASE' }),
     };
   }
 
@@ -53,29 +52,27 @@ export function resolveEndTurn(gs, {
   if (endTurnEvents.length) {
     return {
       decision: END_TURN_DECISION.SCHEDULE_EVENTS,
-      baseGs: {
+      baseGs: transitionTurnFlowStage({
         ...gs,
         players: P,
         deck: D,
         discard: Disc,
         log: L,
         currentTurn: actorIndex,
-        _turnFlowStage: TURN_FLOW_STAGE.END_TURN,
         abilityData: {},
-      },
+      }, TURN_FLOW_STAGE.END_TURN),
     };
   }
 
   // 无事件：直接进入下家回合。
-  const newGs = advanceTurn({
+  const newGs = advanceTurn(enterTurnBoundary({
     ...gs,
     players: P,
     deck: D,
     discard: Disc,
     log: L,
     currentTurn: actorIndex,
-    _turnFlowStage: null,
-  });
+  }));
 
   return { decision: END_TURN_DECISION.APPLY_NEXT_TURN, newGs };
 }

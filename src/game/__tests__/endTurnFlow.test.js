@@ -81,6 +81,7 @@ describe('resolveEndTurn', () => {
     expect(advanceTurn).toHaveBeenCalledWith(expect.objectContaining({
       currentTurn: 0,
       players: expect.any(Array),
+      _turnFlowStage: 'turnBoundary',
     }));
     expect(result.decision).toBe(END_TURN_DECISION.APPLY_NEXT_TURN);
     expect(result.newGs._visualEvents).toEqual([{ type: 'turnStart', id: 'wrapped-event' }]);

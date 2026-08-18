@@ -17,6 +17,7 @@ export * from './animationTransaction';
 export * from './endTurnEvents';
 export * from './endTurnFlow';
 export * from './turnFlowStages';
+export * from './turnFlowManager';
 export * from './turnStartEvents';
 export * from './postDiscardEndTurn';
 export * from './handLimitDiscard';

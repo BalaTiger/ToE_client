@@ -40,6 +40,7 @@ describe('resolvePostDiscardEndTurn', () => {
 
     expect(result.decision).toBe('APPLY_NEXT_TURN');
     expect(advanceTurn).toHaveBeenCalledTimes(1);
+    expect(advanceTurn).toHaveBeenCalledWith(expect.objectContaining({ _turnFlowStage: 'turnBoundary' }));
     expect(applyHandDiscardSideEffectsWithAnim).toHaveBeenCalledWith(
       expect.objectContaining({ ownerIdx: 0, cards: discarded, reason: '手牌上限弃牌' })
     );

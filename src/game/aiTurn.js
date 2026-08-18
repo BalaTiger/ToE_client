@@ -58,6 +58,7 @@ import { getCthRestDrawRemaining } from './cthRestDrawFlow';
 import { buildApophisNightLog, getApophisNightForLevel, resolveApophisTarget } from './apophisNight';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { TURN_FLOW_STAGE } from './turnFlowStages';
+import { enterTurnFlowStage } from './turnFlowManager';
 import { buildGodPowerBlockedLog, canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
 import {
@@ -668,7 +669,10 @@ export function processAiEndTurnEvents(P, D, Disc, L, ct, gs, { cursor = 0 } = {
 
   for (let eventIndex = cursor; eventIndex < events.length; eventIndex++) {
     const event = events[eventIndex];
-    const eventGs = { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L, _turnFlowStage: TURN_FLOW_STAGE.END_TURN };
+    const eventGs = enterTurnFlowStage(
+      { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L },
+      TURN_FLOW_STAGE.END_TURN,
+    );
     if (event.id === END_TURN_EVENT.CTH_REST_DRAW) {
       const resolved = processAiCthEndTurnDraws(P, D, Disc, L, ct, eventGs, event.drawCount);
       P = resolved.P; D = resolved.D; Disc = resolved.Disc; L = resolved.L;

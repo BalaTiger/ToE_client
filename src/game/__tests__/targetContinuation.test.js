@@ -1,10 +1,14 @@
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   buildTargetContinuationAbilityData,
   buildTargetContinuationState,
   getTargetContinuationRoute,
+  resolveTargetContinuation,
   TARGET_CONTINUATION_ROUTE,
 } from '../targetContinuation';
+import { TURN_FLOW_STAGE } from '../turnFlowStages';
 
 function createState(overrides = {}) {
   return {
@@ -173,20 +177,73 @@ describe('getTargetContinuationRoute', () => {
     })).toBe(TARGET_CONTINUATION_ROUTE.PROLIFERATING_Z);
   });
 
-  it('only resumes replay queues from an actionable phase', () => {
+  it('holds a nested interaction instead of resuming replay queues', () => {
     expect(getTargetContinuationRoute(createState({
       phase: 'GOD_CHOICE',
       abilityData: { fromEndTurnReplay: true },
       proliferatingZQueue: [{ id: 'pending' }],
-    }))).toBe(TARGET_CONTINUATION_ROUTE.APPLY_STATE);
+    }))).toBe(TARGET_CONTINUATION_ROUTE.DECISION);
   });
 
   it.each([
     'TSG_SLIME_BALANCE',
     'ETHEREALIZE_DECISION',
     'ETHEREALIZE_SELECT_TARGET',
-  ])('keeps %s open as a decision route', phase => {
-    expect(getTargetContinuationRoute(createState({ phase })))
+  ])('keeps %s open as a decision route even when a draw continuation is pending', phase => {
+    expect(getTargetContinuationRoute(createState({ phase }), {
+      continueRest: true,
+      continueTurnStartDraw: true,
+    }))
       .toBe(TARGET_CONTINUATION_ROUTE.DECISION);
+  });
+
+  it('holds an unrelated nested decision instead of resuming a rest draw', () => {
+    expect(getTargetContinuationRoute(createState({
+      phase: 'SPHINX_GUESS',
+      abilityData: { fromRest: true, cthDrawsRemaining: 0 },
+    }), { continueRest: true })).toBe(TARGET_CONTINUATION_ROUTE.DECISION);
+  });
+
+  it('moves a completed draw event to the action stage without changing its interaction phase', () => {
+    const state = createState({ phase: 'ACTION', _turnFlowStage: TURN_FLOW_STAGE.DRAW });
+    const resolved = resolveTargetContinuation(state);
+
+    expect(resolved.route).toBe(TARGET_CONTINUATION_ROUTE.APPLY_STATE);
+    expect(resolved.state.phase).toBe('ACTION');
+    expect(resolved.state._turnFlowStage).toBe(TURN_FLOW_STAGE.ACTION);
+  });
+
+  it('advances the end-turn scheduler when legacy continuation metadata was lost', () => {
+    const state = createState({
+      phase: 'ACTION',
+      abilityData: {},
+      _turnFlowStage: TURN_FLOW_STAGE.END_TURN,
+    });
+    const resolved = resolveTargetContinuation(state);
+
+    expect(resolved.route).toBe(TARGET_CONTINUATION_ROUTE.ADVANCE_END_TURN);
+    expect(resolved.state).toBe(state);
+  });
+});
+
+describe('end-turn nested decision resolvers', () => {
+  const appPath = fileURLToPath(new URL('../../App.jsx', import.meta.url));
+  const source = fs.readFileSync(appPath, 'utf8');
+
+  it.each([
+    ['tortoiseOracleSelect', 'sameAbyssSelect'],
+    ['sameAbyssSelect', 'sphinxGuess'],
+    ['sphinxGuess', 'bewitchSelectTarget'],
+    ['albinoCreatureSelectCard', 'decipherStoneCarvingConfirm'],
+    ['decipherStoneCarvingConfirm', 'handleSwapBlindDrawSelect'],
+  ])('%s keeps the end-turn draw continuation instead of settling in ACTION', (handlerName, nextHandlerName) => {
+    const start = source.indexOf(`function ${handlerName}(`);
+    const end = source.indexOf(`function ${nextHandlerName}(`, start);
+    const handler = source.slice(start, end);
+
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    expect(handler).toContain('finishTargetContinuation({');
+    expect(handler).toContain('fromRest');
   });
 });

@@ -98,6 +98,9 @@ import {
   scopeTurnStartVisualEvents,
   TURN_START_ANIMATION_STAGE,
   TURN_FLOW_STAGE,
+  enterTurnFlowStage,
+  enterTurnBoundary,
+  transitionTurnFlowStage,
   markTurnStartAnimationStage,
   splitTurnStartAnimationStages,
   cardsHuntMatch,
@@ -210,7 +213,7 @@ import {
   getNextEtherealizeChainDecision,
   buildTargetContinuationAbilityData,
   buildTargetContinuationState,
-  getTargetContinuationRoute,
+  resolveTargetContinuation,
   TARGET_CONTINUATION_ROUTE,
   VISUAL_EVENT,
   ANIMATION_QUEUE_AUTHORITY,
@@ -4019,7 +4022,7 @@ export default function Game(){
       if(win){setGs({...resolvedBase,gameOver:win});return;}
       const baseHandLimit=getHandLimitForPlayer(resolvedBase.players?.[0]);
       if(resolvedBase.players[0].hand.length>baseHandLimit){
-        setGs({...resolvedBase,phase:'DISCARD_PHASE',_turnFlowStage:TURN_FLOW_STAGE.DISCARD,abilityData:{discardSelected:[],fromEndTurn:true}});
+        setGs(transitionTurnFlowStage({...resolvedBase,abilityData:{discardSelected:[],fromEndTurn:true}},TURN_FLOW_STAGE.DISCARD,{phase:'DISCARD_PHASE'}));
         return;
       }
       const nextGs=startNextTurn({...resolvedBase,currentTurn:0});
@@ -4038,7 +4041,7 @@ export default function Game(){
       }
       const baseHandLimit=getHandLimitForPlayer(base.players?.[0]);
       if(base.players[0].hand.length>baseHandLimit){
-        triggerAnimQueue([{type:'DISCARD',card:dr.card,triggerName:who,targetPid:drawerIdx,msgs:[discardMsg]}],{...base,phase:'DISCARD_PHASE',_turnFlowStage:TURN_FLOW_STAGE.DISCARD,abilityData:{discardSelected:[],fromEndTurn:true}},undefined,AUTHORITATIVE_QUEUE_META);
+        triggerAnimQueue([{type:'DISCARD',card:dr.card,triggerName:who,targetPid:drawerIdx,msgs:[discardMsg]}],transitionTurnFlowStage({...base,abilityData:{discardSelected:[],fromEndTurn:true}},TURN_FLOW_STAGE.DISCARD,{phase:'DISCARD_PHASE'}),undefined,AUTHORITATIVE_QUEUE_META);
         return;
       }
       const timeoutDiscardEvent=createTimedOutDrawDiscardEvent({
@@ -5248,7 +5251,7 @@ export default function Game(){
   }
   function advanceEndTurnSeq(state){
     const seq=endTurnSeqRef.current;
-    if(!seq){applyNextTurnGs(startNextTurn({...state,_turnFlowStage:null}));return false;} // 非调度路径兜底
+    if(!seq){applyNextTurnGs(startNextTurn(enterTurnBoundary(state)));return false;} // 非调度路径兜底
     endTurnSeqRef.current={...seq,cursor:seq.cursor+1};
     return stepEndTurnSeq(state);
   }
@@ -5298,7 +5301,7 @@ export default function Game(){
   function finishEndTurnSeq(state){
     endTurnSeqRef.current=null;
     // withEndTurnReplaySyncEvent：无尽通道结算时补挂联机同步事件；无同步队列时为恒等返回。
-    const nextGs=withEndTurnReplaySyncEvent(startNextTurn({...state,_turnFlowStage:null}));
+    const nextGs=withEndTurnReplaySyncEvent(startNextTurn(enterTurnBoundary(state)));
     applyNextTurnGs(nextGs);
     return true;
   }
@@ -5307,7 +5310,7 @@ export default function Game(){
   function kickoffEndTurnSeq(baseGs,{seedQueue=[],preStatePatch={}}={}){
     endTurnSeqRef.current={events:getEndTurnEvents(baseGs.players,baseGs.currentTurn||0),cursor:0};
     // 序列起始态清掉行动方"回合开始摸牌"展示残留，避免远端在首段事件(CTH/黄液)广播时误合成开场动画。
-    const seqState=withClearedTurnAnimFields({...baseGs,...preStatePatch,_turnFlowStage:TURN_FLOW_STAGE.END_TURN});
+    const seqState=withClearedTurnAnimFields(enterTurnFlowStage({...baseGs,...preStatePatch},TURN_FLOW_STAGE.END_TURN));
     if(seedQueue.length){
       // 先同步 seed 段（弃牌/骰子等，含其 visualEvents），远端按序回放，再衔接各事件的增量广播。
       if(seqState._isMP){
@@ -5398,7 +5401,7 @@ export default function Game(){
     // 首先检查是否是其他角色触发的AOE负面效果
     if(isAOENegativeEffect&&isTreasureHunter&&drawerIdx!==0){
       // 触发AOE负面效果时，寻宝者可以选择掷骰子规避
-      setGs({...gs,phase:'TREASURE_AOE_DODGE_DECISION',drawReveal:dr,abilityData:{fromRest:gs.abilityData?.fromRest,fromTsathogguaSlime:gs.abilityData?.fromTsathogguaSlime,continueTurnStartDraw:gs.abilityData?.continueTurnStartDraw,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining,drawerIdx:drawerIdx},
+      setGs({...gs,phase:'TREASURE_AOE_DODGE_DECISION',drawReveal:dr,abilityData:{...buildTargetContinuationAbilityData(gs.abilityData),...(dr.fromEndTurnReplay?{fromEndTurnReplay:true}:{}),drawerIdx},
         log:[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),`${localDisplayName(drawerIdx,P[drawerIdx].name)} 触发了 ${cardLogText(resolutionCard,{alwaysShowName:true})} 的负面效果！作为寻宝者，你可以选择掷骰子尝试规避。`]});
       return;
     }
@@ -5406,7 +5409,7 @@ export default function Game(){
     // 然后检查是否是寻宝者自己触发的负面区域牌
     if(isTreasureHunter&&isLocalSeatIndex(drawerIdx)&&isDodgeableEffect&&conditionalNegativeApplies){
       // Preserve cthDrawsRemaining so CTH rest-draws aren't lost after dodge decision
-      setGs({...effectGs,phase:'TREASURE_DODGE_DECISION',drawReveal:dr,abilityData:{fromRest:gs.abilityData?.fromRest,fromTsathogguaSlime:gs.abilityData?.fromTsathogguaSlime,continueTurnStartDraw:gs.abilityData?.continueTurnStartDraw,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining},
+      setGs({...effectGs,phase:'TREASURE_DODGE_DECISION',drawReveal:dr,abilityData:{...buildTargetContinuationAbilityData(gs.abilityData),...(dr.fromEndTurnReplay?{fromEndTurnReplay:true}:{})},
         log:[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),`你即将承受 ${cardLogText(resolutionCard,{alwaysShowName:true})} 的负面效果！是否掷骰子尝试规避？`]});
       return;
     }
@@ -5456,6 +5459,7 @@ export default function Game(){
         fallbackPhase:'ACTION',
         extraAbilityData:{
           ...(dr.fromRest?{fromRest:true}:{}),
+          ...(dr.fromEndTurnReplay?{fromEndTurnReplay:true}:{}),
           ...(dr.fromTsathogguaSlime?{fromTsathogguaSlime:true,continueTurnStartDraw:true,_turnOwner:gs.abilityData?._turnOwner??drawerIdx}:{}),
           ...(gs.abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:gs.abilityData.cthDrawsRemaining}:{}),
         },
@@ -5844,12 +5848,13 @@ export default function Game(){
       baseAbilityData:gs.abilityData,
       fallbackPhase:'ACTION',
       extraAbilityData:{
-        ...(dr.fromRest?{fromRest:true}:{}),
-        ...(dr.fromTsathogguaSlime?{fromTsathogguaSlime:true,continueTurnStartDraw:true,_turnOwner:gs.abilityData?._turnOwner??drawerIdx}:{}),
+          ...(dr.fromRest?{fromRest:true}:{}),
+          ...(dr.fromEndTurnReplay?{fromEndTurnReplay:true}:{}),
+          ...(dr.fromTsathogguaSlime?{fromTsathogguaSlime:true,continueTurnStartDraw:true,_turnOwner:gs.abilityData?._turnOwner??drawerIdx}:{}),
         ...(gs.abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:gs.abilityData.cthDrawsRemaining}:{}),
       },
     });
-    const fallbackAbilityData={fromRest:gs.abilityData?.fromRest,fromTsathogguaSlime:gs.abilityData?.fromTsathogguaSlime,continueTurnStartDraw:gs.abilityData?.continueTurnStartDraw,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining,_turnOwner:gs.abilityData?._turnOwner};
+    const fallbackAbilityData={...buildTargetContinuationAbilityData(gs.abilityData),...(dr.fromEndTurnReplay?{fromEndTurnReplay:true}:{})};
     const newGs = {
       ...gs,
       players: P,
@@ -6008,13 +6013,14 @@ export default function Game(){
       return;
     }
     const replayPatch=dr.fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
-    const fallbackAbilityData={fromRest:gs.abilityData?.fromRest,fromTsathogguaSlime:gs.abilityData?.fromTsathogguaSlime,continueTurnStartDraw:gs.abilityData?.continueTurnStartDraw,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining};
+    const fallbackAbilityData={...buildTargetContinuationAbilityData(gs.abilityData),...(dr.fromEndTurnReplay?{fromEndTurnReplay:true}:{})};
     const decisionState=config.deriveSkipDecision?deriveEffectDecisionState(res.statePatch,{
       baseAbilityData:gs.abilityData,
       fallbackPhase:'ACTION',
       extraAbilityData:{
-        ...(dr.fromRest?{fromRest:true}:{}),
-        ...(dr.fromTsathogguaSlime?{fromTsathogguaSlime:true,continueTurnStartDraw:true,_turnOwner:gs.abilityData?._turnOwner??drawerIdx}:{}),
+          ...(dr.fromRest?{fromRest:true}:{}),
+          ...(dr.fromEndTurnReplay?{fromEndTurnReplay:true}:{}),
+          ...(dr.fromTsathogguaSlime?{fromTsathogguaSlime:true,continueTurnStartDraw:true,_turnOwner:gs.abilityData?._turnOwner??drawerIdx}:{}),
         ...(gs.abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:gs.abilityData.cthDrawsRemaining}:{}),
       },
     }):{hasDecision:false,phase:'ACTION',abilityData:fallbackAbilityData};
@@ -6045,10 +6051,13 @@ export default function Game(){
         });
       }
       setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-      triggerAnimQueue(queue,newGs,undefined,dr.fromEndTurnReplay
+      triggerAnimQueue(queue,newGs,dr.fromEndTurnReplay&&newGs.phase==='ACTION'&&!newGs.gameOver
+        ?()=>continueEndTurnReplay(newGs)
+        :undefined,dr.fromEndTurnReplay
         ?authoritativeEndTurnReplayQueueMeta(newGs,queue)
         :authoritativeResolvedQueueMeta(newGs,queue));
-    }else setGs(newGs);
+    }else if(dr.fromEndTurnReplay&&newGs.phase==='ACTION'&&!newGs.gameOver)continueEndTurnReplay(newGs);
+    else setGs(newGs);
   }
 
   function handleTreasureDodgeSkip(){
@@ -6067,6 +6076,11 @@ export default function Game(){
     const pending=gs.abilityData?.sphinxPending;
     if(!pending)return;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
+    const turnOwner=pending.turnOwner??gs.abilityData?._turnOwner??gs.currentTurn;
+    const continuationAbilityData={
+      ...buildTargetContinuationAbilityData(gs.abilityData),
+      _turnOwner:turnOwner,
+    };
     const d1=roll?(1+(Math.random()*6|0)):null;
     const dodgeSuccess=roll&&d1>=4;
     if(roll){
@@ -6081,25 +6095,30 @@ export default function Game(){
       damageDecision=submitDamageEvents({
         players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
         events:[{targetIdx:0,lostHp:3,source:'斯芬克斯'}],
-        continuation:{_turnOwner:pending.turnOwner??gs.currentTurn},
+        continuation:continuationAbilityData,
       });
     }
     const win=damageDecision?.abilityData?null:checkWin(P,gs._isMP);
-    const turnOwner=pending.turnOwner??gs.currentTurn;
     const resumesAiTurn=isAiSeat(gs,turnOwner)&&!P[turnOwner]?.isDead;
     const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,drawReveal:null,currentTurn:turnOwner,
-      phase:damageDecision?.phase||(resumesAiTurn?'AI_TURN':'ACTION'),abilityData:damageDecision?.abilityData||{},
+      phase:damageDecision?.phase||(resumesAiTurn?'AI_TURN':'ACTION'),abilityData:damageDecision?.abilityData||continuationAbilityData,
       ...(win?{gameOver:win}:{}),
     };
     const queue=bindAnimLogChunks(buildAnimQueue(gs,nextGs),splitAnimBoundLogs(L.slice(gs.log.length)));
-    if(roll){
-      const diceAnim=createTreasureDodgeDiceAnim({result:{d1,dodgeSuccess,who:'你'},aoe:false});
-      const fullQueue=[diceAnim,...queue];
-      setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-      triggerAnimQueue(fullQueue,nextGs,undefined,authoritativeResolvedQueueMeta(nextGs,fullQueue));
-    }else if(queue.length){
-      triggerAnimQueue(queue,nextGs,undefined,authoritativeResolvedQueueMeta(nextGs,queue));
-    }else setGs(nextGs);
+    const fullQueue=roll
+      ?[createTreasureDodgeDiceAnim({result:{d1,dodgeSuccess,who:'你'},aoe:false}),...queue]
+      :queue;
+    const logDelta=L.slice(gs.log.length);
+    if(gs._endTurnReplay)broadcastEndTurnDecisionAnimTransaction(nextGs,fullQueue,logDelta);
+    else if(nextGs._isMP&&fullQueue.length)broadcastAnimTransaction(nextGs,fullQueue,{
+      context:'sphinxDodge',barrier:damageDecision?.phase?'decision':'continuation',msgs:logDelta,
+      beforePlayers:gs.players,beforeDiscard:gs.discard,
+    });
+    finishTargetContinuation({
+      queue:fullQueue,
+      nextGs,
+      continueRest:!damageDecision?.phase&&!win&&!!continuationAbilityData.fromRest,
+    });
   }
 
   function handleDrawDiscard(){
@@ -6608,7 +6627,9 @@ export default function Game(){
       ];
     }
     if(syncLog&&nextGs?.log)syncVisibleLog(nextGs.log,nextGs);
-    const continuationRoute=getTargetContinuationRoute(nextGs,{continueRest,continueTurnStartDraw});
+    const flowResolution=resolveTargetContinuation(nextGs,{continueRest,continueTurnStartDraw});
+    nextGs=flowResolution.state;
+    const continuationRoute=flowResolution.route;
     const continuationMeta={
       ...strictActionQueueMeta(nextGs,queue,consumedVisualEventIdsRef.current,'target continuation'),
       preserveQueueOrder:true,
@@ -6647,6 +6668,11 @@ export default function Game(){
     if(continuationRoute===TARGET_CONTINUATION_ROUTE.PROLIFERATING_Z){
       if(queue.length)triggerAnimQueue(queue,null,()=>continueProliferatingZDraws(nextGs),continuationMeta);
       else continueProliferatingZDraws(nextGs);
+      return;
+    }
+    if(continuationRoute===TARGET_CONTINUATION_ROUTE.ADVANCE_END_TURN){
+      if(queue.length)triggerAnimQueue(queue,null,()=>advanceEndTurnSeq(nextGs),continuationMeta);
+      else advanceEndTurnSeq(nextGs);
       return;
     }
     if(queue.length)triggerAnimQueue(queue,nextGs,undefined,continuationMeta);
@@ -8021,6 +8047,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
 
   function albinoCreatureSelectCard(cardIndex, allowAi=false){
     const abilityData=gs.abilityData||{};
+    const continuationAbilityData=buildTargetContinuationAbilityData(abilityData);
     const actorIdx=abilityData.playerIndex;
     if((!isLocalSeatIndex(actorIdx)&&!allowAi)||cardIndex<0)return;
     const chosenCard=gs.players?.[actorIdx]?.hand?.[cardIndex];
@@ -8082,7 +8109,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const queue=[];
     if(revealStep)queue.push(revealStep);
     const win=damageDecision?.abilityData?null:checkWin(P,gs._isMP);
-    const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:damageDecision?.phase||'ACTION',abilityData:damageDecision?.abilityData||{},drawReveal:null,selectedCard:null,
+    const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:damageDecision?.phase||'ACTION',abilityData:damageDecision?.abilityData||continuationAbilityData,drawReveal:null,selectedCard:null,
       ...(win?{gameOver:win}:{}),
       ...(statEvents.length?{_statEvents:statEvents,_statEventSeq:statEvents[0].seq}:{}),
       ...(randomTarget>=0?{
@@ -8094,6 +8121,15 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       }:{}),
     };
     queue.push(...buildAnimQueue(gs,nextGs));
+    if(nextGs.phase==='ACTION'&&!win&&(abilityData.fromRest||abilityData.fromEndTurnReplay)){
+      const logDelta=L.slice(gs.log.length);
+      if(abilityData.fromEndTurnReplay)broadcastEndTurnDecisionAnimTransaction(nextGs,queue,logDelta);
+      else if(nextGs._isMP&&queue.length)broadcastAnimTransaction(nextGs,queue,{
+        context:'albinoCreature',barrier:'continuation',msgs:logDelta,beforePlayers:gs.players,beforeDiscard:gs.discard,
+      });
+      finishTargetContinuation({queue,nextGs,continueRest:!!abilityData.fromRest});
+      return;
+    }
     triggerSyncedAnimTransaction(queue,nextGs,{context:'albinoCreature',barrier:nextGs.phase==='ACTION'?'continuation':'decision',msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard});
   }
 
@@ -8146,9 +8182,10 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       L.push(`【解读石刻】${normalizedBottom.length} 张牌放到牌堆底`);
     }
     const win = checkWin(P, gs._isMP);
+    const continuationAbilityData=buildTargetContinuationAbilityData(abilityData);
     const nextGs = {
       ...gs, players: P, deck: D, discard: Disc, log: L,
-      phase: 'ACTION', abilityData: {}, drawReveal: null, selectedCard: null,
+      phase: 'ACTION', abilityData: continuationAbilityData, drawReveal: null, selectedCard: null,
       ...inspectionMeta,
       ...proliferatingZPatch,
       ...(win ? { gameOver: win } : {}),
@@ -8197,6 +8234,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       triggerAnimQueue(queue, nextGs, () => {
         if (!nextGs.gameOver) continueEndTurnReplay(nextGs);
       }, authoritativeEndTurnReplayQueueMeta(nextGs, queue));
+      return;
+    }
+    if(abilityData.fromRest&&!nextGs.gameOver){
+      if(nextGs._isMP&&queue.length)broadcastAnimTransaction(nextGs,queue,{
+        context:'decipherStoneCarving',barrier:'continuation',msgs:L.slice(gs.log.length),
+        beforePlayers:gs.players,beforeDiscard:gs.discard,
+      });
+      finishTargetContinuation({queue,nextGs,continueRest:true});
       return;
     }
     triggerAnimQueue(queue,nextGs,undefined,authoritativeResolvedQueueMeta(nextGs,queue));
@@ -8898,7 +8943,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     if(tutorialNext)setTutorialStep(tutorialNext);
   }
   function tortoiseOracleSelect(key){    
-    const {type, playerIndex, revealedCards, selectableKeys}=gs.abilityData;
+    const abilityData=gs.abilityData||{};
+    const {type, playerIndex, revealedCards, selectableKeys}=abilityData;
     if(type!=='tortoiseOracleSelect'||!selectableKeys.includes(key))return;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
     const isZoneMatchKey=(card,keyToMatch)=>{
@@ -8922,16 +8968,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }
     const win=checkWin(P,gs._isMP);
     if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{}});return;}
-    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'ACTION',abilityData:{}};
+    const newGs=buildTargetContinuationGs({players:P,deck:D,discard:Disc,log:L,abilityData});
     const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
-    if(queue.length){
-      setGs(p=>p?{...p,phase:'ACTION',abilityData:{}}:p);
-      triggerAnimQueue(queue,newGs,undefined,authoritativeResolvedQueueMeta(newGs,queue));
-    }else setGs(newGs);
+    finishTargetContinuation({queue,nextGs:newGs,continueRest:!!abilityData.fromRest});
   }
 
   function sameAbyssSelect(choice, allowAi=false){
-    const{targetIdx,actorHandCount,discardCount}=gs.abilityData||{};
+    const abilityData=gs.abilityData||{};
+    const{targetIdx,actorHandCount,discardCount}=abilityData;
     if(gs.phase!=='SAME_ABYSS_SELECT'||(!isLocalSameAbyssTargetPhase(gs)&&!allowAi))return;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
     const L=[...gs.log];
@@ -8969,7 +9013,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       damage=submitDamageEvents({
         players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
         events:[{targetIdx,lostHp:4,source:'同归深渊'}],
-        continuation:{_turnOwner:gs.abilityData?._turnOwner??gs.currentTurn},
+        continuation:{...buildTargetContinuationAbilityData(abilityData),_turnOwner:abilityData._turnOwner??gs.currentTurn},
       });
       if(damage.phase==='ETHEREALIZE_DECISION'){
         const newGs={
@@ -8987,6 +9031,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const nextTurn=gs.abilityData?._turnOwner??gs.currentTurn;
     const resumesAiTurn=isAiSeat(gs,nextTurn)&&!P[nextTurn]?.isDead;
     const nextPhase=resumesAiTurn?'AI_TURN':'ACTION';
+    const continuationAbilityData=buildTargetContinuationAbilityData(abilityData);
     const sameAbyssDiscardEvent=sameAbyssDiscardEvents.length?createCardEffectEvent({
       effectKey:'forcedRandomDiscard',
       card:{name:'同归深渊',type:'sameAbyssChoice'},
@@ -9000,21 +9045,27 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }):null;
     const newGs={
       ...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:nextTurn,
-      phase:damage?.phase||nextPhase,abilityData:damage?.abilityData||{},
+      phase:damage?.phase||nextPhase,abilityData:damage?.abilityData||continuationAbilityData,
       ...(sameAbyssDiscardEvent?{_visualEvents:[...(gs._visualEvents||[]),sameAbyssDiscardEvent]}:{}),
       ...(win?{gameOver:win}:{}),
     };
     const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
-    if(queue.length){
-      setGs(p=>p?{...p,phase:nextPhase,abilityData:{}}:p);
-      triggerAnimQueue(queue,newGs,undefined,authoritativeResolvedQueueMeta(newGs,queue));
-    }else setGs(newGs);
+    finishTargetContinuation({
+      queue,
+      nextGs:newGs,
+      continueRest:!damage?.phase&&!win&&!!abilityData.fromRest,
+    });
   }
 
   function sphinxGuess(guessYes, allowAi=false){
     if(gs.phase!=='SPHINX_GUESS'||(!isLocalSphinxGuessPhase(gs)&&!allowAi))return;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
     const L=[...gs.log];
+    const turnOwner=gs.abilityData?._turnOwner??gs.currentTurn;
+    const continuationAbilityData={
+      ...buildTargetContinuationAbilityData(gs.abilityData),
+      _turnOwner:turnOwner,
+    };
     const topCard=D[0];
     const isZone=isZoneCard(topCard);
     const actualCard=D.shift();
@@ -9037,7 +9088,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         damageDecision=submitDamageEvents({
           players:P,deck:D,discard:Disc,log:localMsgs,currentTurn:gs.currentTurn,
           events:[{targetIdx:gs.currentTurn,lostHp:3,source:'斯芬克斯'}],
-          continuation:{_turnOwner:gs.abilityData?._turnOwner??gs.currentTurn},
+          continuation:continuationAbilityData,
         });
         if(localMsgs.length)L.push(...localMsgs);
       }
@@ -9065,22 +9116,34 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       triggerSyncedAnimTransaction(queue,winGs,{context:'sphinxResult',barrier:'gameOver',msgs:logDelta,beforePlayers:gs.players,beforeDiscard:gs.discard});
       return;
     }
-    const nextTurn=gs.abilityData?._turnOwner??gs.currentTurn;
+    const nextTurn=turnOwner;
     const resumesAiTurn=isAiSeat(gs,nextTurn)&&!P[nextTurn]?.isDead;
     const nextPhase=resumesAiTurn?'AI_TURN':'ACTION';
     const newGs={
       ...gs,players:P,deck:D,discard:Disc,log:L,
       phase:needsSphinxDodge?'TREASURE_DODGE_DECISION':(damageDecision?.phase||nextPhase),currentTurn:nextTurn,
-      abilityData:needsSphinxDodge?{sphinxPending:{turnOwner:nextTurn}}:(damageDecision?.abilityData||{}),
+      abilityData:needsSphinxDodge
+        ?{...continuationAbilityData,sphinxPending:{turnOwner:nextTurn}}
+        :(damageDecision?.abilityData||continuationAbilityData),
       drawReveal:needsSphinxDodge?{card:(P[nextTurn]?.hand||[]).find(card=>card.type==='sphinxGuess'||card.name==='斯芬克斯'),drawerIdx:nextTurn}:gs.drawReveal,
       ...proliferatingZPatch,
     };
     const newGsWithEvent=newGs;
     const queue=buildSphinxQueue(newGsWithEvent);
-    if(queue.length){
-      setGs(p=>p?{...p,phase:nextPhase,abilityData:{}}:p);
+    if(needsSphinxDodge){
       triggerSyncedAnimTransaction(queue,newGsWithEvent,{context:'sphinxResult',barrier:(damageDecision||needsSphinxDodge)?'decision':'continuation',msgs:logDelta,beforePlayers:gs.players,beforeDiscard:gs.discard});
-    }else setGs(newGsWithEvent);
+      return;
+    }
+    if(gs._endTurnReplay)broadcastEndTurnDecisionAnimTransaction(newGsWithEvent,queue,logDelta);
+    else if(newGsWithEvent._isMP&&queue.length)broadcastAnimTransaction(newGsWithEvent,queue,{
+      context:'sphinxResult',barrier:damageDecision?.phase?'decision':'continuation',msgs:logDelta,
+      beforePlayers:gs.players,beforeDiscard:gs.discard,
+    });
+    finishTargetContinuation({
+      queue,
+      nextGs:newGsWithEvent,
+      continueRest:!damageDecision?.phase&&!!continuationAbilityData.fromRest,
+    });
   }
 
   function bewitchSelectTarget(ti){
@@ -9347,16 +9410,19 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         setGs(state);
         setTutorialStep(tutorialNext);
       }else{
-        const continuationRoute=getTargetContinuationRoute(state,{
+        const flowResolution=resolveTargetContinuation(state,{
           continueRest:!!gs.abilityData?.fromRest,
           continueTurnStartDraw:!!gs.abilityData?.continueTurnStartDraw,
         });
-        if(continuationRoute===TARGET_CONTINUATION_ROUTE.REST_DRAW)_cthContinueRestDraws(state);
-        else if(continuationRoute===TARGET_CONTINUATION_ROUTE.TURN_START_DRAW)_tsgContinueTurnStartDraw(state);
-        else if(continuationRoute===TARGET_CONTINUATION_ROUTE.END_TURN_REPLAY)continueEndTurnReplay(state);
-        else if(continuationRoute===TARGET_CONTINUATION_ROUTE.PROLIFERATING_Z)continueProliferatingZDraws(state);
-        else if(continuationRoute===TARGET_CONTINUATION_ROUTE.DECISION)setGs(state);
-        else resumeEndTurnSeqOrSetGs(state);
+        const flowState=flowResolution.state;
+        const continuationRoute=flowResolution.route;
+        if(continuationRoute===TARGET_CONTINUATION_ROUTE.REST_DRAW)_cthContinueRestDraws(flowState);
+        else if(continuationRoute===TARGET_CONTINUATION_ROUTE.TURN_START_DRAW)_tsgContinueTurnStartDraw(flowState);
+        else if(continuationRoute===TARGET_CONTINUATION_ROUTE.END_TURN_REPLAY)continueEndTurnReplay(flowState);
+        else if(continuationRoute===TARGET_CONTINUATION_ROUTE.PROLIFERATING_Z)continueProliferatingZDraws(flowState);
+        else if(continuationRoute===TARGET_CONTINUATION_ROUTE.ADVANCE_END_TURN)advanceEndTurnSeq(flowState);
+        else if(continuationRoute===TARGET_CONTINUATION_ROUTE.DECISION)setGs(flowState);
+        else resumeEndTurnSeqOrSetGs(flowState);
       }
     };
     if(isDiscardAction){

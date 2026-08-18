@@ -66,6 +66,7 @@ describe('resolveRestTurnEnd', () => {
 
     expect(result.decision).toBe('APPLY_NEXT_TURN');
     expect(advanceTurn).toHaveBeenCalledTimes(1);
+    expect(advanceTurn).toHaveBeenCalledWith(expect.objectContaining({ _turnFlowStage: 'turnBoundary' }));
     expect(result.nextGs.currentTurn).toBe(1);
     expect(result.queue[0]).toMatchObject({ type: 'DICE_ROLL', heal: 6 });
   });
