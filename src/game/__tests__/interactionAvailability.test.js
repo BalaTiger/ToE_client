@@ -5,11 +5,30 @@ import {
   canRespondWithAnyHandCard,
   canRespondWithFireHandCard,
   canRespondWithZoneCard,
+  canShowTargetSelectionUi,
   canUseTutorialHandCard,
   getRestActionBlockReason,
 } from '../interactionAvailability';
 
 describe('interactionAvailability', () => {
+  it('确认目标并启动动画事务后立即隐藏目标选择界面', () => {
+    expect(canShowTargetSelectionUi({ ownsLocalTargetSelection: true })).toBe(true);
+    expect(canShowTargetSelectionUi({
+      ownsLocalTargetSelection: true,
+      anim: { type: 'SKILL_BEWITCH' },
+      animQueueLength: 2,
+      hasPendingGs: true,
+    })).toBe(false);
+    expect(canShowTargetSelectionUi({
+      ownsLocalTargetSelection: true,
+      animExiting: true,
+    })).toBe(false);
+    expect(canShowTargetSelectionUi({
+      ownsLocalTargetSelection: true,
+      hasPendingGs: true,
+    })).toBe(false);
+  });
+
   it('失眠时休息按钮与执行入口使用相同的禁用原因', () => {
     expect(getRestActionBlockReason({
       phase: 'ACTION',

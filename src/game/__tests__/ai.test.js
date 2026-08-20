@@ -344,6 +344,38 @@ describe('AI visual event handoff', () => {
     expect(result.D).toHaveLength(0);
   });
 
+  it('pauses an AI CTH rest draw before revealing a ZHU-lit top card', () => {
+    const litCard = makeZoneCard('C1', 0, { id: 'cth-zhu-lit' });
+    const players = [
+      makePlayer({ name: '烛九阴信徒', godName: 'ZHU', godLevel: 3 }),
+      makePlayer({ name: '克苏鲁AI', godName: 'CTH', godLevel: 1, isResting: true }),
+    ];
+    const zhuLight = { ownerIdx: 0, level: 3, cardIds: [litCard.id], lightNonce: 1 };
+    const gs = makeGs({ players, deck: [litCard], currentTurn: 1, phase: 'AI_TURN', zhuLight, log: [] });
+
+    const result = processAiEndTurnEvents(
+      gs.players.map(player => ({ ...player, hand: [...player.hand] })),
+      [...gs.deck],
+      [],
+      [],
+      1,
+      gs,
+    );
+
+    expect(result.decision).toMatchObject({
+      phase: 'ZHU_HIDE_AI_DRAW',
+      abilityData: {
+        drawerIdx: 1,
+        fromRest: true,
+        cthDrawsRemaining: 1,
+        zhuGuard: { card: litCard, ownerIdx: 0 },
+      },
+    });
+    expect(result.D).toEqual([litCard]);
+    expect(result.P[1].hand).not.toContain(litCard);
+    expect(result.replayQueue.map(step => step.type)).toEqual(['CTH_RLYEH_DREAM']);
+  });
+
   it('AI CTH rest draw defers 穴居人战争 and preserves remaining draws', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0);
     const duelCard = makeZoneCard('D2', 0, { id: 'cth-duel' });

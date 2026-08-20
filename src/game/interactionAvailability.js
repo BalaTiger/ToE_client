@@ -1,6 +1,22 @@
 import { canRevealForHunt } from './coreUtils.js';
 import { cardsHuntMatch } from './aiTurn.js';
 
+export function canShowTargetSelectionUi({
+  ownsLocalTargetSelection = false,
+  anim = null,
+  animExiting = false,
+  animQueueLength = 0,
+  hasPendingGs = false,
+} = {}) {
+  return !!(
+    ownsLocalTargetSelection &&
+    !anim &&
+    !animExiting &&
+    animQueueLength === 0 &&
+    !hasPendingGs
+  );
+}
+
 export function canUseTutorialHandCard({
   canLocalSwapGive = false,
   canLocalBewitchCard = false,

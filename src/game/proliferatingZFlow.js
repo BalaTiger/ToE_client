@@ -1,3 +1,9 @@
+import {
+  ZHU_REVEAL_SOURCE,
+  buildZhuRevealAbilityData,
+  requestZhuReveal,
+} from './zhuPower';
+
 export function buildProliferatingZDrawFlow(stateLike, deps) {
   const {
     copyPlayers,
@@ -40,6 +46,26 @@ export function buildProliferatingZDrawFlow(stateLike, deps) {
     proliferatingZQueue: queue,
     abilityData: { ...(stateLike.abilityData || {}), fromProliferatingZ: true },
   };
+  const zhuRequest = requestZhuReveal(drawBase, {
+    deck,
+    drawerIdx,
+    source: ZHU_REVEAL_SOURCE.PROLIFERATING_Z,
+    continuation: { remainingQueueLength: queue.length },
+  });
+  if (zhuRequest) {
+    return {
+      handled: true,
+      action: 'setState',
+      state: {
+        ...drawBase,
+        zhuLight: zhuRequest.zhuLight,
+        phase: 'ZHU_HIDE_AI_DRAW',
+        drawReveal: null,
+        selectedCard: null,
+        abilityData: buildZhuRevealAbilityData(zhuRequest, { fromProliferatingZ: true }),
+      },
+    };
+  }
   const drawResult = isAiSeat(drawBase, drawerIdx)
     ? aiDrawAndApply(drawerIdx, players, deck, discard, drawBase)
     : playerDrawCard(players, deck, discard, drawerIdx, drawBase);

@@ -94,45 +94,6 @@ function buildFaithExitTransferStep(transition = {}) {
   });
 }
 
-function deriveFaithExitTransition({
-  oldGs,
-  afterPlayers,
-  afterDiscard,
-  targetPid,
-  cards,
-  msgs,
-  effect,
-}) {
-  const beforePlayers = clonePlayersForTimeline(oldGs?.players || afterPlayers || []);
-  const resolvedPlayers = clonePlayersForTimeline(afterPlayers || beforePlayers);
-  if (beforePlayers[targetPid] && resolvedPlayers[targetPid]) {
-    resolvedPlayers[targetPid] = {
-      ...resolvedPlayers[targetPid],
-      hp: beforePlayers[targetPid].hp,
-      san: beforePlayers[targetPid].san,
-      isDead: beforePlayers[targetPid].isDead,
-      hand: [...(beforePlayers[targetPid].hand || [])],
-      godName: null,
-      godLevel: 0,
-      godZone: [],
-    };
-  }
-  const beforeDiscard = [...(oldGs?.discard || [])];
-  const resolvedDiscard = Array.isArray(afterDiscard)
-    ? [...afterDiscard]
-    : [...beforeDiscard, ...(cards || [])];
-  return {
-    playerIdx: targetPid,
-    cards,
-    msgs,
-    effect,
-    playersBefore: beforePlayers,
-    playersAfter: resolvedPlayers,
-    discardBefore: beforeDiscard,
-    discardAfter: resolvedDiscard,
-  };
-}
-
 function playersAfterQueuedFaithSteps(basePlayers = [], steps = [], effectivePlayers = []) {
   return steps.reduce((players, step) => {
     if (step?.type === 'GOD_HIGHLIGHT') {
@@ -611,41 +572,18 @@ export function buildAnimQueue(oldGs, newGs) {
   const godStatusEvents = getVisualEvents(newGs).filter(event => (
     event.type === VISUAL_EVENT.GOD_STATUS_CHANGED && !oldVisualEventIds.has(event.id)
   ));
-  const handledConvertTargets = new Set(godStatusEvents
-    .map(event => event?.faithSettlement?.previousFaithExit?.playerIdx)
-    .filter(playerIdx => playerIdx != null));
-  const handledAbandonTargets = new Set(godStatusEvents
-    .flatMap(event => event?.faithSettlement?.abandonedFollowers || [])
-    .map(transition => transition?.playerIdx)
-    .filter(playerIdx => playerIdx != null));
+  // Faith exits are rule-owned transitions. Compile only the structured
+  // settlement payload; player-state diffs are ambiguous during inspection
+  // snapshots and previously inferred a second godAbandon for a conversion.
   godStatusEvents.forEach(event => {
-    const transition = event?.faithSettlement?.previousFaithExit;
-    const inspectionSeqAfter = Number(transition?.inspectionSeqAfter) || 0;
-    const exitStep = (!inspectionSeqAfter || oldInspectionSeq < inspectionSeqAfter)
-      ? buildFaithExitTransferStep(transition)
-      : null;
-    if (exitStep) q.push({ ...exitStep, visualEventId: event.id });
-  });
-  // 改信直接用新神区替换旧神区，先明确展示旧神牌进入公开弃牌堆。
-  (oldGs?.players || []).forEach((oldPlayer, targetPid) => {
-    if (handledConvertTargets.has(targetPid)) return;
-    const nextPlayer = newGs?.players?.[targetPid];
-    const oldGodCards = Array.isArray(oldPlayer?.godZone) ? oldPlayer.godZone : [];
-    if (!oldPlayer?.godName || !nextPlayer?.godName || oldPlayer.godName === nextPlayer.godName || !oldGodCards.length) return;
-    const finalMsgs = (Array.isArray(newGs?.log) ? newGs.log : []).slice(oldLog.length);
-    const convertMsgs = finalMsgs.filter(line => typeof line === 'string' && (
-      line.includes('改信新神') || line.includes('旧神牌入弃牌堆')
-    ) && (!oldPlayer.name || line.includes(oldPlayer.name) || targetPid === 0));
-    const exitStep = buildFaithExitTransferStep(deriveFaithExitTransition({
-      oldGs,
-      afterPlayers: effectivePlayers,
-      afterDiscard: newGs?.discard,
-      targetPid,
-      cards: oldGodCards,
-      msgs: convertMsgs,
-      effect: 'godConvertDiscard',
-    }));
-    if (exitStep) q.push(exitStep);
+    const transitions = [
+      event?.faithSettlement?.previousFaithExit,
+      ...(event?.faithSettlement?.abandonedFollowers || []),
+    ].filter(Boolean);
+    transitions.forEach(transition => {
+      const exitStep = buildFaithExitTransferStep(transition);
+      if (exitStep) q.push({ ...exitStep, visualEventId: event.id });
+    });
   });
   const presentableGodStatusEvents = godStatusEvents.filter(event => (
     event?.presentAfterInspectionSeq == null || newInspectionSeq >= event.presentAfterInspectionSeq
@@ -667,47 +605,6 @@ export function buildAnimQueue(oldGs, newGs) {
   if (presentableApophisEclipseEvents.length) {
     q.push(...presentableApophisEclipseEvents.map(buildApophisEclipseStep).filter(Boolean));
   }
-  // 同一邪神只能有一名信徒。新信徒的高亮之后，显式播放旧信徒的
-  // godZone 整体进入弃牌堆，确保本地和远端都能观察到信仰被抢夺。
-  presentableGodStatusEvents.forEach(event => {
-    (event?.faithSettlement?.abandonedFollowers || []).forEach(transition => {
-      const inspectionSeqAfter = Number(transition?.inspectionSeqAfter) || 0;
-      const exitStep = (!inspectionSeqAfter || oldInspectionSeq < inspectionSeqAfter)
-        ? buildFaithExitTransferStep(transition)
-        : null;
-      if (exitStep) q.push({ ...exitStep, visualEventId: event.id });
-    });
-  });
-  (oldGs?.players || []).forEach((oldPlayer, targetPid) => {
-    // A conversion exit also looks like a temporary "has faith -> no faith"
-    // diff before the new-faith highlight. Its old god cards are already owned
-    // by godConvertDiscard and must never be inferred again as godAbandon.
-    if (handledAbandonTargets.has(targetPid) || handledConvertTargets.has(targetPid)) return;
-    // Faith loss is a final settlement result. Inspection playback may use a
-    // pre-inspection player snapshot as effectivePlayers, which used to hide
-    // this transition on some paths. Always compare against the final state.
-    const nextPlayer = newGs?.players?.[targetPid];
-    const oldGodCards = Array.isArray(oldPlayer?.godZone) ? oldPlayer.godZone : [];
-    const nextGodCards = Array.isArray(nextPlayer?.godZone) ? nextPlayer.godZone : [];
-    if (!oldPlayer?.godName || nextPlayer?.godName || nextPlayer?.isDead || !oldGodCards.length || nextGodCards.length) return;
-    const finalMsgs = (Array.isArray(newGs?.log) ? newGs.log : []).slice(oldLog.length);
-    const abandonMsgs = finalMsgs.filter(line => (
-      typeof line === 'string'
-      && oldPlayer.name
-      && line.includes(oldPlayer.name)
-      && (line.includes('被邪神抛弃') || line.includes('失去信仰'))
-    ));
-    const exitStep = buildFaithExitTransferStep(deriveFaithExitTransition({
-      oldGs,
-      afterPlayers: effectivePlayers,
-      afterDiscard: newGs?.discard,
-      targetPid,
-      cards: oldGodCards,
-      msgs: abandonMsgs,
-      effect: 'godAbandon',
-    }));
-    if (exitStep) q.push(exitStep);
-  });
   const freshRandomTargetVisualEvents = freshVisualEvents.filter(event => (
     event.type === VISUAL_EVENT.THROW_STONE || event.type === VISUAL_EVENT.RANDOM_TARGET
   ));

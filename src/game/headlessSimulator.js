@@ -27,7 +27,14 @@ import {
   checkWin,
   startNextTurn,
 } from './turnEngine';
-import { getZhuTopGuard, removeZhuLightCard } from './zhuPower';
+import {
+  ZHU_REVEAL_SOURCE,
+  buildZhuRevealAbilityData,
+  getZhuRevealDecision,
+  getZhuTopGuard,
+  removeZhuLightCard,
+  requestZhuReveal,
+} from './zhuPower';
 import { buildTargetContinuationAbilityData } from './targetContinuation';
 import { hasGodPowerImmunity } from './godPowerImmunity';
 import { buildTurnStartDrawReplayQueue } from './turnAnimState';
@@ -244,6 +251,32 @@ export function continueHeadlessTurnStartDraw(gs) {
   }
 
   const continuingSlime = extraDrawReady;
+  const zhuRequest = requestZhuReveal({ ...gs, players: P, deck: D, currentTurn: drawerIdx }, {
+    deck: D,
+    drawerIdx,
+    source: continuingSlime ? ZHU_REVEAL_SOURCE.TSG_SLIME : ZHU_REVEAL_SOURCE.TURN_DRAW,
+    continuation: continuingSlime
+      ? { continueTurnStartDraw: true, extraDrawReady: true, turnOwner: drawerIdx }
+      : null,
+  });
+  if (zhuRequest) {
+    return {
+      ...gs,
+      players: P,
+      deck: D,
+      discard: Disc,
+      log: L,
+      currentTurn: drawerIdx,
+      zhuLight: zhuRequest.zhuLight,
+      phase: 'ZHU_HIDE_AI_DRAW',
+      abilityData: buildZhuRevealAbilityData(zhuRequest, continuingSlime ? {
+        fromTsathogguaSlime: true,
+        continueTurnStartDraw: true,
+        _tsgExtraDrawReady: true,
+        _turnOwner: drawerIdx,
+      } : {}),
+    };
+  }
   const res = aiDrawAndApply(drawerIdx, P, D, Disc, {
     ...gs,
     currentTurn: drawerIdx,
@@ -293,7 +326,8 @@ export function resolveHeadlessZhuDraw(gs) {
   const guard = gs.abilityData?.zhuGuard || getZhuTopGuard(gs, gs.deck);
   const card = guard?.card || gs.deck?.[0];
   if (!card) return null;
-  const drawerIdx = gs.abilityData?.drawerIdx ?? gs.currentTurn ?? 0;
+  const zhuDecision = getZhuRevealDecision(gs);
+  const drawerIdx = zhuDecision?.drawerIdx ?? gs.abilityData?.drawerIdx ?? gs.currentTurn ?? 0;
   const nextZhuLight = removeZhuLightCard(gs.zhuLight, card);
   let P = copyPlayers(gs.players);
   let D = [...gs.deck];
@@ -310,6 +344,18 @@ export function resolveHeadlessZhuDraw(gs) {
   const L = [...gs.log, ...(res.effectMsgs || [])];
   const pendingAiGodChoice = res.pendingAiGodChoice || res.statePatch?._pendingAiGodChoice || null;
   const decisionState = deriveEffectDecisionState(res.statePatch, { fallbackPhase: 'AI_TURN' });
+  const continuation = zhuDecision?.continuation || {};
+  const continuationAbility = zhuDecision?.source === ZHU_REVEAL_SOURCE.TSG_SLIME
+    ? {
+      fromTsathogguaSlime: true,
+      continueTurnStartDraw: continuation.continueTurnStartDraw !== false,
+      _turnOwner: continuation.turnOwner ?? drawerIdx,
+    }
+    : (zhuDecision?.source === ZHU_REVEAL_SOURCE.CTH_REST
+      ? { fromRest: true, cthDrawsRemaining: Math.max(0, (continuation.remaining || 0) - 1) }
+      : (zhuDecision?.source === ZHU_REVEAL_SOURCE.PROLIFERATING_Z
+        ? { fromProliferatingZ: true }
+        : {}));
   const win = checkWin(P, gs._isMP);
   return {
     ...gs,
@@ -320,7 +366,7 @@ export function resolveHeadlessZhuDraw(gs) {
     log: L,
     zhuLight: nextZhuLight,
     phase: pendingAiGodChoice ? 'AI_GOD_CHOICE' : decisionState.phase,
-    abilityData: pendingAiGodChoice || decisionState.abilityData,
+    abilityData: { ...(pendingAiGodChoice || decisionState.abilityData), ...continuationAbility },
     drawReveal: null,
     selectedCard: null,
     _aiDrawnCard: res.drawnCard ?? null,

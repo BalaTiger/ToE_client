@@ -1,4 +1,5 @@
 import { isTurnStartLog } from "./animLogs";
+import { cardIdentity } from "./cardIdentity";
 import { getVisualEvents, VISUAL_EVENT } from "./visualEvents";
 
 export function statePatchStep(patch={}){
@@ -405,6 +406,76 @@ export function dedupeFaithSettlementTransfers(queue=[]){
   });
 }
 
+function withFaithExitPlayer(players=[],playerIdx,faithlessPlayer=null){
+  if(!Array.isArray(players)||playerIdx==null||!players[playerIdx]||!faithlessPlayer)return players;
+  return players.map((player,index)=>index===playerIdx?{
+    ...player,
+    godName:faithlessPlayer.godName??null,
+    godLevel:faithlessPlayer.godLevel??0,
+    godZone:[...(faithlessPlayer.godZone||[])],
+  }:player);
+}
+
+function withRequiredDiscardCards(discard=[],requiredCards=[]){
+  if(!Array.isArray(discard)||!requiredCards.length)return discard;
+  const available=new Map();
+  discard.forEach(card=>{
+    const key=cardIdentity(card);
+    if(key)available.set(key,(available.get(key)||0)+1);
+  });
+  const missing=[];
+  requiredCards.forEach(card=>{
+    const key=cardIdentity(card);
+    const count=key?(available.get(key)||0):0;
+    if(count>0)available.set(key,count-1);
+    else missing.push(card);
+  });
+  return missing.length?[...discard,...missing]:discard;
+}
+
+function preserveFaithExitSnapshots(queue=[],exitStep=null,transition={},stopStep=null){
+  const exitIndex=queue.indexOf(exitStep);
+  if(exitIndex<0||transition?.playerIdx==null)return queue;
+  const faithlessPlayer=transition?.playersAfter?.[transition.playerIdx];
+  const requiredDiscard=Array.isArray(transition?.cards)?transition.cards.filter(Boolean):[];
+  if(!faithlessPlayer)return queue;
+  const patchSnapshot=(snapshot={})=>({
+    ...snapshot,
+    ...(Array.isArray(snapshot?.players)?{
+      players:withFaithExitPlayer(snapshot.players,transition.playerIdx,faithlessPlayer),
+    }:{}),
+    ...(Array.isArray(snapshot?.discard)?{
+      discard:withRequiredDiscardCards(snapshot.discard,requiredDiscard),
+    }:{}),
+  });
+  for(let index=exitIndex+1;index<queue.length;index+=1){
+    const step=queue[index];
+    const establishesNewFaith=step===stopStep||(
+      step?.type==='GOD_HIGHLIGHT'&&step?.targetPid===transition.playerIdx
+    );
+    queue[index]={
+      ...step,
+      ...(!establishesNewFaith&&Array.isArray(step?.players)?{
+        players:withFaithExitPlayer(step.players,transition.playerIdx,faithlessPlayer),
+      }:{}),
+      ...(!establishesNewFaith&&Array.isArray(step?.discard)?{
+        discard:withRequiredDiscardCards(step.discard,requiredDiscard),
+      }:{}),
+      ...(step?.visualSetupPatch?{
+        visualSetupPatch:patchSnapshot(step.visualSetupPatch),
+      }:{}),
+      ...(!establishesNewFaith&&Array.isArray(step?.visualTimeline)?{
+        visualTimeline:step.visualTimeline.map(frame=>frame?.patch?{
+          ...frame,
+          patch:patchSnapshot(frame.patch),
+        }:frame),
+      }:{}),
+    };
+    if(establishesNewFaith)break;
+  }
+  return queue;
+}
+
 function resolvePlayerPidByLogName(name,players=[]){
   if(!name)return -1;
   if(name==="你")return 0;
@@ -789,16 +860,64 @@ export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPl
     newGs
   );
   let queue=dedupeFaithSettlementTransfers([...preQueue,...inspectionFlow.queue,...tailQueue]);
+  const moveStepAfterAnchors=(step,anchors=[],fallbackIndex=null)=>{
+    if(!step)return;
+    const currentIndex=queue.indexOf(step);
+    if(currentIndex<0)return;
+    const presentAnchors=anchors.filter(Boolean).filter(anchor=>queue.includes(anchor));
+    const [moved]=queue.splice(currentIndex,1);
+    if(presentAnchors.length){
+      const anchorIndex=Math.max(...presentAnchors.map(anchor=>queue.indexOf(anchor)));
+      queue.splice(anchorIndex+1,0,moved);
+    }else if(fallbackIndex!=null){
+      queue.splice(Math.max(0,Math.min(fallbackIndex,queue.length)),0,moved);
+    }else{
+      queue.splice(Math.min(currentIndex,queue.length),0,moved);
+    }
+  };
   getVisualEvents(newGs)
     .filter(event=>event?.type===VISUAL_EVENT.GOD_STATUS_CHANGED&&event?.presentAfterInspectionSeq!=null)
     .forEach(event=>{
+      const previousFaithExit=event?.faithSettlement?.previousFaithExit||null;
+      const previousExitStep=previousFaithExit?queue.find(step=>(
+        step?.type==='CARD_TRANSFER'
+        &&step?.visualEventId===event.id
+        &&step?.effect===previousFaithExit.effect
+        &&step?.fromPid===previousFaithExit.playerIdx
+      )):null;
+      const previousExitBoundary=inspectionFlow.boundarySteps.get(previousFaithExit?.inspectionSeqBefore);
+      if(previousExitStep){
+        moveStepAfterAnchors(
+          previousExitStep,
+          [previousExitBoundary],
+          previousFaithExit?.inspectionSeqAfter>previousFaithExit?.inspectionSeqBefore?0:null,
+        );
+      }
       const highlightIndex=queue.findIndex(step=>step?.type==='GOD_HIGHLIGHT'&&step?.visualEventId===event.id);
       const boundaryStep=inspectionFlow.boundarySteps.get(event.presentAfterInspectionSeq);
       const boundaryIndex=queue.indexOf(boundaryStep);
-      if(highlightIndex<0||boundaryIndex<0||highlightIndex===boundaryIndex+1)return;
-      const [highlight]=queue.splice(highlightIndex,1);
-      const adjustedBoundaryIndex=highlightIndex<boundaryIndex?boundaryIndex-1:boundaryIndex;
-      queue.splice(adjustedBoundaryIndex+1,0,highlight);
+      const highlight=highlightIndex>=0?queue[highlightIndex]:null;
+      if(highlight&&boundaryIndex>=0&&highlightIndex!==boundaryIndex+1){
+        moveStepAfterAnchors(highlight,[boundaryStep]);
+      }
+      let previousFollowerExit=null;
+      const followerExits=[];
+      (event?.faithSettlement?.abandonedFollowers||[]).forEach(transition=>{
+        const exitStep=queue.find(step=>(
+          step?.type==='CARD_TRANSFER'
+          &&step?.visualEventId===event.id
+          &&step?.effect===transition.effect
+          &&step?.fromPid===transition.playerIdx
+        ));
+        const transitionBoundary=inspectionFlow.boundarySteps.get(transition?.inspectionSeqBefore);
+        moveStepAfterAnchors(exitStep,[transitionBoundary,highlight,previousFollowerExit]);
+        if(exitStep)followerExits.push([exitStep,transition]);
+        previousFollowerExit=exitStep||previousFollowerExit;
+      });
+      preserveFaithExitSnapshots(queue,previousExitStep,previousFaithExit,highlight);
+      followerExits.forEach(([exitStep,transition])=>{
+        preserveFaithExitSnapshots(queue,exitStep,transition);
+      });
     });
   return {
     queue,

@@ -20,7 +20,7 @@ import {
   swapCardsSteps,
   zhuHideCardStep,
 } from '../animQueueHelpers';
-import { copyPlayers } from '../coreUtils';
+import { copyPlayers, ROLE_CULTIST, ROLE_TREASURE } from '../coreUtils';
 import { buildAnimQueue } from '../animQueueCore';
 import { createCardEffectEvent, createGodStatusChangedEvent, createInspectionVisualEvent, VISUAL_EVENT } from '../visualEvents';
 import { resolveAiGodChoiceTransition } from '../aiDecisionState';
@@ -395,6 +395,63 @@ describe('animQueueHelpers', () => {
     });
     expect(queue[highlightIdx].visualSetupPatch.players[1]).toMatchObject({ godName: null, godLevel: 0 });
     expect(queue[highlightIdx].visualTimeline.at(-1).patch.players[1]).toMatchObject({ godName: 'TSG', godLevel: 1 });
+  });
+
+  it('遭遇与改信连续检定时只播放一次旧神牌弃置且保持正面', () => {
+    const oldGod = makeGodCard('NYA', { id: 'reported-old-god' });
+    const forestLord = makeGodCard('SHU', { id: 'reported-forest-lord' });
+    const truthGain = makeZoneCard('A1', 0, { id: 'reported-truth-gain' });
+    const truth = { id: 'reported-truth', name: '揭开真相', effect: 'drawCard', value: 1, type: 'positive' };
+    const selfHarm = { id: 'reported-self-harm', name: '自残', effect: 'selfDamageHP', value: 2, type: 'negative' };
+    const base = makeGs({
+      players: [
+        makePlayer({ name: '你', role: ROLE_CULTIST }),
+        makePlayer({
+          name: '贝拉', role: ROLE_TREASURE, hp: 10, san: 7, godEncounters: 2,
+          godName: 'NYA', godLevel: 1, godZone: [oldGod],
+        }),
+      ],
+      currentTurn: 0,
+      deck: [forestLord, truthGain],
+      inspectionDeck: [truth, selfHarm],
+      inspectionDiscard: [],
+      log: [],
+    });
+    const pending = startNextTurn(base);
+    const transition = resolveAiGodChoiceTransition(pending);
+    const queue = buildInspectionAwareAnimQueue(
+      pending,
+      transition.state,
+      { buildAnimQueue, copyPlayers },
+    ).queue;
+    const faithDiscards = queue.filter(step => (
+      step?.type === 'CARD_TRANSFER'
+      && ['godConvertDiscard', 'godAbandon'].includes(step?.effect)
+      && step?.fromPid === 1
+    ));
+    const truthIdx = queue.findIndex(step => step?.type === 'DRAW_CARD' && step?.card?.id === truth.id);
+    const discardIdx = queue.indexOf(faithDiscards[0]);
+    const convertSanIdx = queue.findIndex((step, index) => (
+      index > discardIdx && step?.type === 'SAN_DAMAGE'
+      && step?.hitIndices?.includes(1)
+    ));
+    const selfHarmIdx = queue.findIndex((step, index) => (
+      index > convertSanIdx
+      && step?.type === 'DRAW_CARD'
+      && step?.targetPid === 1
+      && step?.inspectionSeq != null
+    ));
+
+    expect(faithDiscards).toHaveLength(1);
+    expect(faithDiscards[0]).toMatchObject({
+      effect: 'godConvertDiscard',
+      cards: [oldGod],
+      dest: 'discard',
+      faceUp: true,
+    });
+    expect(truthIdx).toBeLessThan(discardIdx);
+    expect(discardIdx).toBeLessThan(convertSanIdx);
+    expect(convertSanIdx).toBeLessThan(selfHarmIdx);
   });
 
   it('改信 SAN 不触发检定时仍在新信仰 highlight 之前结算', () => {

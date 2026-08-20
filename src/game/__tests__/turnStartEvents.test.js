@@ -34,11 +34,10 @@ describe('turn-start event registry', () => {
     ]);
   });
 
-  it('registers ZHU light as an active-god turn-start event', () => {
+  it('registers only the ZHU owner-turn refresh as an active-god event', () => {
     const player = makePlayer({ godName: 'ZHU', godLevel: 1 });
     expect(getTurnStartEvents([player], 0).map(event => event.id)).toEqual([
-      TURN_START_EVENT.ZHU_LIGHT,
+      TURN_START_EVENT.ZHU_LIGHT_REFRESH,
     ]);
   });
 });
-

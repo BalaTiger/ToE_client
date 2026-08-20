@@ -168,7 +168,7 @@ describe('buildAnimQueue stat animations', () => {
     ]));
   });
 
-  it('抢夺同一邪神信仰时显式播放旧信徒神牌进入弃牌堆', () => {
+  it('抢夺同一邪神信仰时按结构化结算播放旧信徒神牌进入弃牌堆', () => {
     const oldGod = makeGodCard('VRI');
     const newGod = makeGodCard('VRI');
     const oldGs = makeGs({
@@ -178,13 +178,40 @@ describe('buildAnimQueue stat animations', () => {
       ],
       log: [],
     });
+    const playersAfterHighlight = [
+      makePlayer({ name: '新信徒', hand: [], godName: 'VRI', godLevel: 1, godZone: [newGod] }),
+      oldGs.players[1],
+    ];
+    const playersAfterAbandon = [
+      playersAfterHighlight[0],
+      makePlayer({ name: '旧信徒', san: 9, godName: null, godLevel: 0, godZone: [] }),
+    ];
+    const event = createGodStatusChangedEvent({
+      playerIdx: 0,
+      playerName: '新信徒',
+      godKey: 'VRI',
+      godLevel: 1,
+      playersBefore: oldGs.players,
+      playersAfter: playersAfterHighlight,
+      faithSettlement: {
+        previousFaithExit: null,
+        abandonedFollowers: [{
+          playerIdx: 1,
+          cards: [oldGod],
+          msgs: ['旧信徒 被邪神抛弃，失去1SAN'],
+          playersBefore: playersAfterHighlight,
+          playersAfter: playersAfterAbandon,
+          discardBefore: [],
+          discardAfter: [oldGod],
+          effect: 'godAbandon',
+        }],
+      },
+    });
     const newGs = makeGs({
-      players: [
-        makePlayer({ name: '新信徒', hand: [], godName: 'VRI', godLevel: 1, godZone: [newGod] }),
-        makePlayer({ name: '旧信徒', san: 9, godName: null, godLevel: 0, godZone: [] }),
-      ],
+      players: playersAfterAbandon,
       discard: [oldGod],
       log: ['新信徒 从手牌信仰 弗栗多', '旧信徒 被邪神抛弃，失去1SAN'],
+      _visualEvents: [event],
     });
 
     const queue = buildAnimQueue(oldGs, newGs);
@@ -203,7 +230,7 @@ describe('buildAnimQueue stat animations', () => {
     ]));
   });
 
-  it('邪神抛弃不会被检定前的中间快照吞掉', () => {
+  it('无结构化信仰事件时不再从状态差分推断邪神抛弃', () => {
     const oldGod = makeGodCard('VRI');
     const oldFollower = makePlayer({ name: '旧信徒', godName: 'VRI', godLevel: 1, godZone: [oldGod] });
     const abandoned = makePlayer({ name: '旧信徒', san: 9, godName: null, godLevel: 0, godZone: [] });
@@ -215,15 +242,9 @@ describe('buildAnimQueue stat animations', () => {
       _inspectionEvents: [{ seq: 1, beforePlayers: [oldFollower], beforeLog: [] }],
     });
 
-    expect(buildAnimQueue(oldGs, newGs)).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        type: 'CARD_TRANSFER',
-        dest: 'discard',
-        cards: [oldGod],
-        effect: 'godAbandon',
-        faceUp: true,
-      }),
-    ]));
+    expect(buildAnimQueue(oldGs, newGs).some(step => (
+      step?.type === 'CARD_TRANSFER' && step?.effect === 'godAbandon'
+    ))).toBe(false);
   });
 
   it('显式改信事件会先把旧神牌正面送入弃牌堆，再高亮新神', () => {

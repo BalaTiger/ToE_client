@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ANIM_STEP_GAP } from '../components/anim/constants';
 import { _getZoomCompensatedRect, getGodChoiceAnchorCenter, getPileAnchorCenter, getPlayerAreaAnchorCenter, getPlayerGodPowerAnchorCenter, getPlayerHandAnchorCenter } from '../utils/dom';
 
+export function resolveCardTransferFaceUp(transfer = {}) {
+  return transfer.faceUp ?? transfer.dest === 'discard';
+}
+
 export function useCardTransferAnimationEffects({ anim }) {
   const [cardTransfers, setCardTransfers] = useState([]);
   const [damageLinkEstablishAnims, setDamageLinkEstablishAnims] = useState([]);
@@ -87,7 +91,9 @@ export function useCardTransferAnimationEffects({ anim }) {
         key,
         effect: transfer?.effect,
         cards: transfer?.cards,
-        faceUp: transfer?.faceUp,
+        // The discard pile is public. Preserve an explicit choice, while also
+        // protecting raw/nested transaction steps that bypass cardTransferStep.
+        faceUp: resolveCardTransferFaceUp(transfer),
       };
     };
 
@@ -133,7 +139,7 @@ export function useCardTransferAnimationEffects({ anim }) {
           faceUp,
           ...transfer,
         }, idx))
-        : [buildTransfer({ fromPid, dest, toPid, count, sourceAnchor, effect, cards })];
+        : [buildTransfer({ fromPid, dest, toPid, count, sourceAnchor, effect, cards, faceUp })];
       const cleanupMs = Number.isFinite(anim.durationMs)
         ? anim.durationMs + ANIM_STEP_GAP + 100
         : effect === 'blackGoat' ? 1700 : effect === 'tsgSlime' ? 950 : 750;

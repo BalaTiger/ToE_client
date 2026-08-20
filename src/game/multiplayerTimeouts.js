@@ -1,6 +1,11 @@
 import { applyFx } from './effectEngine';
 import { cardLogText, copyPlayers } from './coreUtils';
 import { playerDrawCard } from './turnEngine';
+import {
+  ZHU_REVEAL_SOURCE,
+  buildZhuRevealAbilityData,
+  requestZhuReveal,
+} from './zhuPower';
 
 export function resolveMpTimeoutToAction(gs) {
   const phase = gs?.phase;
@@ -64,6 +69,25 @@ export function resolveMpTimeoutToAction(gs) {
     let P = copyPlayers(gs.players);
     let D = [...gs.deck];
     let Disc = [...gs.discard];
+    const zhuRequest = requestZhuReveal({ ...gs, players: P, deck: D, currentTurn: 0 }, {
+      deck: D,
+      drawerIdx: 0,
+      source: ZHU_REVEAL_SOURCE.TURN_DRAW,
+    });
+    if (zhuRequest) {
+      return {
+        ...gs,
+        players: P,
+        deck: D,
+        discard: Disc,
+        log: [...gs.log, '(超时) 跳过借身'],
+        zhuLight: zhuRequest.zhuLight,
+        phase: 'ZHU_HIDE_AI_DRAW',
+        drawReveal: null,
+        selectedCard: null,
+        abilityData: buildZhuRevealAbilityData(zhuRequest),
+      };
+    }
     const res = playerDrawCard(P, D, Disc, 0, gs);
     P = res.P;
     D = res.D;

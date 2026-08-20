@@ -139,6 +139,38 @@ describe('headless simulator', () => {
     expect(next.abilityData._tsgExtraDrawReady).toBeUndefined();
   });
 
+  it('黏液续抽在真正翻牌前重新经过烛九阴网关', () => {
+    const litCard = makeZoneCard('B3', 0, { id: 'lit-slime-continuation' });
+    const players = [
+      makePlayer({ name: '摸牌者', godName: 'TSG', godLevel: 1 }),
+      makePlayer({ name: '烛九阴信徒', godName: 'ZHU', godLevel: 3 }),
+    ];
+    const state = makeGs({
+      players,
+      currentTurn: 0,
+      deck: [litCard],
+      zhuLight: { ownerIdx: 1, level: 3, cardIds: [litCard.id], lightNonce: 2 },
+      phase: 'AI_TURN',
+      abilityData: {
+        continueTurnStartDraw: true,
+        fromTsathogguaSlime: true,
+        _tsgExtraDrawReady: true,
+        _turnOwner: 0,
+      },
+    });
+
+    const next = continueHeadlessTurnStartDraw(state);
+
+    expect(next.phase).toBe('ZHU_HIDE_AI_DRAW');
+    expect(next.deck[0]).toBe(litCard);
+    expect(next.abilityData.zhuDecision).toMatchObject({
+      drawerIdx: 0,
+      cardId: litCard.id,
+      source: 'tsgSlime',
+      continuation: { continueTurnStartDraw: true, extraDrawReady: true, turnOwner: 0 },
+    });
+  });
+
   it.each(PRESETS)('completes a seeded batch for role composition %#', roleCounts => {
     const summary = simulateHeadlessGames({
       games: 40,

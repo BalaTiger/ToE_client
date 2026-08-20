@@ -1532,9 +1532,29 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     },
     selfRenounceGod: () => {
       if (actor.godName) {
-        if (actor.godZone?.length) Disc.push(...actor.godZone);
+        const beforePlayers = copyPlayers(P);
+        const beforeDiscard = [...Disc];
+        const renouncedGodCards = [...(actor.godZone || [])];
+        if (renouncedGodCards.length) Disc.push(...renouncedGodCards);
         actor.godZone = []; actor.godName = null; actor.godLevel = 0;
         msgs.push(`${actor.name} 放弃信仰`);
+        const event = createCardEffectEvent({
+          effectKey: 'selfRenounceGod',
+          card,
+          actorIdx: ci,
+          beforePlayers,
+          beforeDiscard,
+          afterPlayers: copyPlayers(P),
+          afterDiscard: [...Disc],
+          msgs: [msgs[msgs.length - 1]],
+          payload: { cards: renouncedGodCards },
+        });
+        if (event) {
+          statePatch = {
+            ...statePatch,
+            _visualEvents: [...(statePatch._visualEvents || []), event],
+          };
+        }
       }
     },
     graveDigGod: () => {

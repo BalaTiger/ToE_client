@@ -12,7 +12,7 @@ export const TURN_START_EVENT = Object.freeze({
   BLACK_GOAT_YOUNG_DAMAGE: 'blackGoatYoungDamage',
   POISON_DAMAGE: 'poisonDamage',
   DAMAGE_LINK_HEAL: 'damageLinkHeal',
-  ZHU_LIGHT: 'zhuLight',
+  ZHU_LIGHT_REFRESH: 'zhuLightRefresh',
   NYA_BORROW: 'nyaBorrow',
 });
 
@@ -36,7 +36,7 @@ const REGISTRY = Object.freeze([
     shouldRegister: ({ pendingLinkHeals }) => pendingLinkHeals.length > 0,
   },
   {
-    id: TURN_START_EVENT.ZHU_LIGHT,
+    id: TURN_START_EVENT.ZHU_LIGHT_REFRESH,
     priority: TURN_START_PRIORITY.ACTIVE_GOD,
     shouldRegister: ({ player }) => player?.godName === 'ZHU' && (player?.godLevel || 0) > 0,
   },

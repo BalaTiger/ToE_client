@@ -101,4 +101,27 @@ describe('proliferatingZFlow', () => {
     expect(flow.state.phase).toBe('ACTION');
     expect(flow.state.log.at(-1)).toBe('你 失去 1 HP');
   });
+
+  it('增殖摸牌在移出牌堆前进入烛九阴决策', () => {
+    const litCard = makeZoneCard('A1', 0, { id: 'proliferating-zhu-lit' });
+    const players = [
+      makePlayer({ name: '你', godName: 'ZHU', godLevel: 3 }),
+      makePlayer({ name: '艾伦' }),
+    ];
+    const deps = baseDeps({ playerDrawCard: vi.fn() });
+    const flow = buildProliferatingZDrawFlow(makeState({
+      players,
+      deck: [litCard],
+      zhuLight: { ownerIdx: 0, level: 3, cardIds: [litCard.id], lightNonce: 1 },
+    }), deps);
+
+    expect(deps.playerDrawCard).not.toHaveBeenCalled();
+    expect(flow.action).toBe('setState');
+    expect(flow.state.phase).toBe('ZHU_HIDE_AI_DRAW');
+    expect(flow.state.abilityData.zhuDecision).toMatchObject({
+      drawerIdx: 0,
+      cardId: litCard.id,
+      source: 'proliferatingZ',
+    });
+  });
 });

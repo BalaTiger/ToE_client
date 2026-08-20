@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeInspectionMeta, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
-import { aiDrawAndApply, aiHandleGodCard, applySanLossToPlayerWithInspection, checkWin, createFaithSettlementGodStatusEvent, playerDrawCard, resolveGodEncounterForAI, startNextTurn } from '../turnEngine';
+import { aiDrawAndApply, aiHandleGodCard, applySanLossToPlayerWithInspection, checkWin, continueTurnStartAfterDamageReaction, createFaithSettlementGodStatusEvent, playerDrawCard, resolveGodEncounterForAI, startNextTurn } from '../turnEngine';
 import { buildTsathogguaSlimeGrantQueue, buildTurnStartDrawReplayQueue } from '../turnAnimState';
 import { makeGodCard, makeGs, makePlayer, makeStandardPlayers, makeZoneCard } from './factory';
 import { createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../../constants/card';
@@ -744,6 +744,84 @@ describe('turnEngine stat events', () => {
     expect(result.drawReveal.card.name).toBe('偷吃龙蛋');
     expect(result.debugForceCard).toBeNull();
     expect(result.debugForceCardTarget).toBeNull();
+  });
+
+  it('单机 Debug 强制 AI 摸牌只延后被点亮顶牌，不会清除烛九阴拦截', () => {
+    const litCard = makeZoneCard('A1', 0, { id: 'zhu-lit-before-debug-force' });
+    const forcedCard = makeZoneCard('C4', 0, {
+      id: 'debug-force-ai4',
+      name: '半物质化',
+      type: 'etherealize',
+    });
+    const players = [
+      makePlayer({ name: '你', godName: 'ZHU', godLevel: 1 }),
+      makePlayer({ name: '艾伦' }),
+      makePlayer({ name: '贝拉' }),
+      makePlayer({ name: '卡洛斯' }),
+      makePlayer({ name: '黛安娜' }),
+    ];
+    const zhuLight = { ownerIdx: 0, level: 1, cardIds: [litCard.id], lightNonce: 1 };
+    const beforeDiana = makeGs({
+      players,
+      deck: [litCard, makeZoneCard('B2'), makeZoneCard('D3')],
+      currentTurn: 3,
+      phase: 'AI_TURN',
+      zhuLight,
+      debugForceCard: forcedCard,
+      debugForceCardTarget: 'ai4',
+      debugForceCardKeep: 'keep',
+      log: [],
+    });
+
+    const dianaTurn = startNextTurn(beforeDiana, { isDebugMode: true });
+    expect(dianaTurn.currentTurn).toBe(4);
+    expect(dianaTurn._drawnCard).toBe(forcedCard);
+    expect(dianaTurn.deck[0]).toBe(litCard);
+    expect(dianaTurn.zhuLight.cardIds).toContain(litCard.id);
+
+    const localTurn = startNextTurn({ ...dianaTurn, currentTurn: 4 });
+    expect(localTurn.phase).toBe('ZHU_HIDE_AI_DRAW');
+    expect(localTurn.currentTurn).toBe(0);
+    expect(localTurn.abilityData).toMatchObject({
+      drawerIdx: 0,
+      zhuGuard: { card: litCard, ownerIdx: 0 },
+    });
+  });
+
+  it('回合开始被决策中断后，非信徒回合只维护点亮状态而信徒回合执行一次刷新', () => {
+    const deck = [
+      makeZoneCard('A1', 0, { id: 'zhu-top' }),
+      makeZoneCard('A2', 0, { id: 'zhu-middle' }),
+      makeZoneCard('A3', 0, { id: 'zhu-refresh-target' }),
+      makeZoneCard('A4', 0, { id: 'zhu-old' }),
+    ];
+    const players = [
+      makePlayer({ name: '你', godName: 'ZHU', godLevel: 1 }),
+      makePlayer({ name: '艾伦' }),
+    ];
+    const zhuLight = { ownerIdx: 0, level: 1, cardIds: ['zhu-old'], lightNonce: 4 };
+    const otherTurn = continueTurnStartAfterDamageReaction(makeGs({
+      players,
+      deck,
+      currentTurn: 1,
+      zhuLight,
+      abilityData: { _turnOwner: 1, _pendingTurnStartEventIds: [] },
+    }));
+    expect(otherTurn.zhuLight).toEqual(zhuLight);
+
+    const ownerTurn = continueTurnStartAfterDamageReaction(makeGs({
+      players,
+      deck,
+      currentTurn: 0,
+      zhuLight,
+      abilityData: { _turnOwner: 0, _pendingTurnStartEventIds: ['zhuLightRefresh'] },
+    }));
+    expect(ownerTurn.zhuLight).toEqual({
+      ownerIdx: 0,
+      level: 1,
+      cardIds: ['zhu-old', 'zhu-refresh-target'],
+      lightNonce: 5,
+    });
   });
 
   it('联机状态即使残留 Debug 强制收入字段，也不会跳过玩家抉择', () => {

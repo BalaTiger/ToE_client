@@ -1355,6 +1355,31 @@ export function buildGodPowerBlockedStepsFromVisualEvents(state, oldState = null
 
 export function buildCardEffectAnimStep(event, state) {
   if (!event) return null;
+  if (event.effectKey === 'selfRenounceGod') {
+    const cards = Array.isArray(event.payload?.cards) ? event.payload.cards.filter(Boolean) : [];
+    if (!cards.length || event.actorIdx == null) return null;
+    return {
+      type: 'CARD_TRANSFER',
+      fromPid: event.actorIdx,
+      dest: 'discard',
+      count: cards.length,
+      cards,
+      faceUp: true,
+      sourceAnchor: 'godPower',
+      effect: 'godRenounce',
+      durationMs: 1500,
+      msgs: Array.isArray(event.msgs) ? event.msgs : [],
+      visualSetupTiming: 'stepStart',
+      visualSetupPatch: {
+        players: event.beforePlayers || state?.players || [],
+        discard: event.beforeDiscard || state?.discard || [],
+      },
+      visualTimeline: [
+        { atMs: 0, patch: { players: event.beforePlayers || state?.players || [], discard: event.beforeDiscard || state?.discard || [] } },
+        { atMs: 360, patch: { players: event.afterPlayers || state?.players || [], discard: event.afterDiscard || state?.discard || [] } },
+      ],
+    };
+  }
   if (event.effectKey === 'earthquake' || event.type === VISUAL_EVENT.EARTHQUAKE) {
     return buildEarthquakeAnimStep({
       beforePlayers: event.beforePlayers,

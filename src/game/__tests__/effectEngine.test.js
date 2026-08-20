@@ -1261,6 +1261,27 @@ describe('applyFx', () => {
     expect(res.P[0].godLevel).toBe(0);
     expect(res.P[0].godZone).toHaveLength(0);
     expect(res.Disc).toHaveLength(1);
+    const renounceEvent = res.statePatch._visualEvents.find(event => event?.effectKey === 'selfRenounceGod');
+    expect(renounceEvent).toMatchObject({
+      actorIdx: 0,
+      payload: { cards: [expect.objectContaining({ godKey: 'NYA' })] },
+    });
+    const queue = buildAnimQueue(gs, {
+      ...gs,
+      players: res.P,
+      discard: res.Disc,
+      log: res.msgs,
+      ...res.statePatch,
+    });
+    expect(queue).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'CARD_TRANSFER',
+        effect: 'godRenounce',
+        dest: 'discard',
+        faceUp: true,
+        cards: [expect.objectContaining({ godKey: 'NYA' })],
+      }),
+    ]));
   });
 
   it('firstComePick: 翻开牌并设置状态', () => {

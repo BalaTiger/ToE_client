@@ -21,7 +21,13 @@ import { GOD_DEFS, createBlackGoatYoungCard, createTsathogguaSlimeCard } from '.
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, isRevealedCultist } from './coreUtils';
 import { applyFx, applyInspectionForSanLoss, submitLossEvents } from './effectEngine';
 import { appendStatChangeResult, submitRecoveryEvents } from './statChangeEngine';
-import { buildZhuLight, getZhuTopGuard } from './zhuPower';
+import {
+  ZHU_REVEAL_SOURCE,
+  buildZhuRevealAbilityData,
+  reconcileZhuLight,
+  requestZhuReveal,
+  refreshZhuLightAtOwnerTurn,
+} from './zhuPower';
 import { buildStatEvents } from './statEvents';
 import { deriveEffectDecisionState } from './effectStatePatch';
 import { buildApophisNightLog, getApophisNightForLevel } from './apophisNight';
@@ -617,7 +623,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
       });
     }
     if (godKey === 'ZHU') {
-      statePatch.zhuLight = buildZhuLight(P, D, ci, gs?.zhuLight);
+      statePatch.zhuLight = refreshZhuLightAtOwnerTurn(P, D, ci, gs?.zhuLight);
     }
     if (godKey === 'SHU') {
       const count = GOD_DEFS.SHU.levels[(P[ci].godLevel || 1) - 1]?.offspringCount || 0;
@@ -869,8 +875,13 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
 
   if (!geomagneticDraw) {
     if (gs?._zhuRequestDecision && !gs?._zhuBypassTopGuard) {
-      const zhuGuard = getZhuTopGuard({ ...gs, players: P, deck: D }, D);
-      if (zhuGuard) {
+      const zhuRequest = requestZhuReveal({ ...gs, players: P, deck: D }, {
+        deck: D,
+        drawerIdx: ci,
+        source: gs?._zhuRevealSource || ZHU_REVEAL_SOURCE.TURN_DRAW,
+        continuation: gs?._zhuRevealContinuation || null,
+      });
+      if (zhuRequest) {
         return {
           P,
           D,
@@ -879,7 +890,8 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
           effectMsgs: [],
           needsDecision: false,
           zhuHideDecision: true,
-          zhuGuard,
+          zhuGuard: zhuRequest.guard,
+          zhuDecision: zhuRequest.decision,
         };
       }
     }
@@ -1398,8 +1410,8 @@ function turnStartEvent_NyaBorrow(P, next, L, gs, visualEvents = []) {
   return { shouldEnterPhase: false };
 }
 
-function turnStartEvent_ZhuLight(P, D, next, gs) {
-  return buildZhuLight(P, D, next, gs.zhuLight);
+function turnStartEvent_ZhuLightRefresh(P, D, next, zhuLight) {
+  return refreshZhuLightAtOwnerTurn(P, D, next, zhuLight);
 }
 
 function endPreviousTurnCleanup(P, prevTurn) {
@@ -1558,13 +1570,13 @@ function buildSkippedDrawActionState({
 }
 
 function buildPendingZhuRevealState({
-  gs, guard, players, deck, discard, log, currentTurn, newTurn, newTurnKey,
+  gs, request, guard = request?.guard, players, deck, discard, log, currentTurn, newTurn, newTurnKey,
   turnStartLogs, drawLogs, turnDrawVisualEvents, statLogs, preTurnPlayers,
   beforeDrawPlayers, globalOnlySwapOwner, abilityData = {},
 }) {
   return {
     ...gs,
-    zhuLight: guard.zhuLight,
+    zhuLight: request?.zhuLight || guard.zhuLight,
     players,
     deck,
     discard,
@@ -1573,7 +1585,10 @@ function buildPendingZhuRevealState({
     phase: 'ZHU_HIDE_AI_DRAW',
     drawReveal: null,
     selectedCard: null,
-    abilityData: { zhuGuard: guard, drawerIdx: currentTurn, ...abilityData },
+    abilityData: buildZhuRevealAbilityData(request || {
+      guard,
+      decision: { ownerIdx: guard.ownerIdx, drawerIdx: currentTurn, cardId: guard.card?.id || null, source: ZHU_REVEAL_SOURCE.TURN_DRAW, continuation: null },
+    }, abilityData),
     skillUsed: false,
     restUsed: false,
     huntAbandoned: [],
@@ -1635,9 +1650,10 @@ export function continueTurnStartAfterDamageReaction(state) {
   delete cleanedAbilityData._pendingTurnStartPoison;
   delete cleanedAbilityData._pendingTurnStartLinkHeals;
   delete cleanedAbilityData._pendingTurnStartEventIds;
-  const zhuLight = pendingEventIds.has(TURN_START_EVENT.ZHU_LIGHT)
-    ? turnStartEvent_ZhuLight(P, D, next, state)
-    : state.zhuLight;
+  let zhuLight = reconcileZhuLight(P, D, state.zhuLight);
+  if (pendingEventIds.has(TURN_START_EVENT.ZHU_LIGHT_REFRESH)) {
+    zhuLight = turnStartEvent_ZhuLightRefresh(P, D, next, zhuLight);
+  }
   const nya = pendingEventIds.has(TURN_START_EVENT.NYA_BORROW)
     ? turnStartEvent_NyaBorrow(P, next, L, state, state._visualEvents || [])
     : { shouldEnterPhase: false };
@@ -1708,11 +1724,10 @@ function resolveNextTurnState(gs, opts = {}) {
   let turnStartLogs = [];
   let drawLogs = [];
   let statLogs = [];
-  // Keep the currently lit deck cards until a real turn-start refresh replaces
-  // them. A face-down/resting player has no turn-start phase, but CTH rest draws
-  // are still reveal draws and may therefore be intercepted by an existing ZHU
-  // light from its owner.
-  let zhuLight = gs.zhuLight || null;
+  // Persistent ZHU state is reconciled independently from turn-start event
+  // registration. A face-down/resting player has no refresh event, but reveal
+  // draws may still be intercepted by an existing light from its owner.
+  let zhuLight = reconcileZhuLight(P, D, gs.zhuLight);
   let pendingLinkHeals = [];
   let inspectionMeta = makeInspectionMeta(gs);
   const turnDir = gs.turnDirection || 1;
@@ -1832,9 +1847,8 @@ function resolveNextTurnState(gs, opts = {}) {
     const eventIndex = turnStartEvents.findIndex(event => event.id === eventId);
     return turnStartEvents.slice(eventIndex + 1).map(event => event.id);
   };
-  // A real turn start refreshes ZHU light. Skipped face-down turns returned
-  // above and therefore neither clear nor execute any turn-start stage.
-  zhuLight = null;
+  // Lifecycle reconciliation is not a registered event. The owner refresh is
+  // an active-god event and can therefore be resumed after passive decisions.
   // [PASSIVE_GOD_DERIVATIVE] 黑山羊幼仔回合开始伤害
   const bgy = turnStartEventIds.has(TURN_START_EVENT.BLACK_GOAT_YOUNG_DAMAGE)
     ? turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta)
@@ -1859,8 +1873,9 @@ function resolveNextTurnState(gs, opts = {}) {
   // [PASSIVE_OTHER] 两人一绳治愈
   const link = turnStartEvent_LinkHeal(P, turnStartEventIds.has(TURN_START_EVENT.DAMAGE_LINK_HEAL) ? pendingLinkHeals : [], L, inspectionMeta, statLogs);
   P = link.P; L = link.L; inspectionMeta = link.inspectionMeta; gs = { ...gs, ...inspectionMeta };
-  if (turnStartEventIds.has(TURN_START_EVENT.ZHU_LIGHT)) {
-    zhuLight = turnStartEvent_ZhuLight(P, D, next, gs);
+  zhuLight = reconcileZhuLight(P, D, zhuLight);
+  if (turnStartEventIds.has(TURN_START_EVENT.ZHU_LIGHT_REFRESH)) {
+    zhuLight = turnStartEvent_ZhuLightRefresh(P, D, next, zhuLight);
   }
   if (next === 0 && !shouldUseAiController(next)) {
     // Debug: 强制摸牌 - 玩家
@@ -1903,10 +1918,15 @@ function resolveNextTurnState(gs, opts = {}) {
       if (!tsgSlime) break;
       const slimePop = consumeTsathogguaSlimeBeforeDraw(P, 0, tsgSlime, L, visualEvents);
       if (!slimePop) continue;
-      if (!gs.geomagneticReversalActive) {
-        const guard = getZhuTopGuard({ ...gs, players: P, deck: D, currentTurn: 0, zhuLight }, D);
-        if (guard) return buildPendingZhuRevealState({
-          gs, guard, players: P, deck: D, discard: Disc, log: L, currentTurn: 0,
+      {
+        const request = requestZhuReveal({ ...gs, players: P, deck: D, currentTurn: 0, zhuLight }, {
+          deck: D,
+          drawerIdx: 0,
+          source: ZHU_REVEAL_SOURCE.TSG_SLIME,
+          continuation: { continueTurnStartDraw: true, extraDrawReady: true, turnOwner: 0 },
+        });
+        if (request) return buildPendingZhuRevealState({
+          gs, request, players: P, deck: D, discard: Disc, log: L, currentTurn: 0,
           newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawVisualEvents, statLogs,
           preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeDraw, globalOnlySwapOwner,
           abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _tsgExtraDrawReady: true, _turnOwner: 0 },
@@ -1954,10 +1974,14 @@ function resolveNextTurnState(gs, opts = {}) {
     // 循环内的黏液额外摸牌消息已逐条写入 L，最终统一 flush 时只补固定摸牌新增的部分，
     // 否则额外摸牌/黏液消失消息会在日志里重复出现两次。
     const drawLogsSyncedCount = drawLogs.length;
-    if (!gs.geomagneticReversalActive) {
-      const guard = getZhuTopGuard({ ...gs, players: P, deck: D, currentTurn: 0, zhuLight }, D);
-      if (guard) return buildPendingZhuRevealState({
-        gs, guard, players: P, deck: D, discard: Disc, log: L, currentTurn: 0,
+    {
+      const request = requestZhuReveal({ ...gs, players: P, deck: D, currentTurn: 0, zhuLight }, {
+        deck: D,
+        drawerIdx: 0,
+        source: ZHU_REVEAL_SOURCE.TURN_DRAW,
+      });
+      if (request) return buildPendingZhuRevealState({
+        gs, request, players: P, deck: D, discard: Disc, log: L, currentTurn: 0,
         newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawVisualEvents, statLogs,
         preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeDraw, globalOnlySwapOwner,
       });
@@ -2127,10 +2151,15 @@ function resolveNextTurnState(gs, opts = {}) {
       if (!tsgSlime) break;
       const slimePop = consumeTsathogguaSlimeBeforeDraw(P, next, tsgSlime, L, visualEvents);
       if (!slimePop) continue;
-      if (!gs.geomagneticReversalActive) {
-        const guard = getZhuTopGuard({ ...gs, players: P, deck: D, currentTurn: next, zhuLight }, D);
-        if (guard) return buildPendingZhuRevealState({
-          gs, guard, players: P, deck: D, discard: Disc, log: L, currentTurn: next,
+      {
+        const request = requestZhuReveal({ ...gs, players: P, deck: D, currentTurn: next, zhuLight }, {
+          deck: D,
+          drawerIdx: next,
+          source: ZHU_REVEAL_SOURCE.TSG_SLIME,
+          continuation: { continueTurnStartDraw: true, extraDrawReady: true, turnOwner: next },
+        });
+        if (request) return buildPendingZhuRevealState({
+          gs, request, players: P, deck: D, discard: Disc, log: L, currentTurn: next,
           newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawVisualEvents, statLogs,
           preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeMpDraw, globalOnlySwapOwner,
           abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _tsgExtraDrawReady: true, _turnOwner: next },
@@ -2175,10 +2204,14 @@ function resolveNextTurnState(gs, opts = {}) {
     // 循环内的黏液额外摸牌消息已逐条写入 L，最终统一 flush 时只补固定摸牌新增的部分，
     // 否则额外摸牌/黏液消失消息会在日志里重复出现两次。
     const drawLogsSyncedCount = drawLogs.length;
-    if (!gs.geomagneticReversalActive) {
-      const guard = getZhuTopGuard({ ...gs, players: P, deck: D, currentTurn: next, zhuLight }, D);
-      if (guard) return buildPendingZhuRevealState({
-        gs, guard, players: P, deck: D, discard: Disc, log: L, currentTurn: next,
+    {
+      const request = requestZhuReveal({ ...gs, players: P, deck: D, currentTurn: next, zhuLight }, {
+        deck: D,
+        drawerIdx: next,
+        source: ZHU_REVEAL_SOURCE.TURN_DRAW,
+      });
+      if (request) return buildPendingZhuRevealState({
+        gs, request, players: P, deck: D, discard: Disc, log: L, currentTurn: next,
         newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawVisualEvents, statLogs,
         preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeMpDraw, globalOnlySwapOwner,
       });
@@ -2273,39 +2306,19 @@ function resolveNextTurnState(gs, opts = {}) {
       // ZHU is a per-reveal guard, not a once-per-phase precondition. Stop
       // before consuming the lit top card even when this reveal comes from a
       // slime extra draw.
-      if (!gs.geomagneticReversalActive) {
-        const slimeZhuGuard = getZhuTopGuard({ ...gs, players: P, deck: D, currentTurn: next, zhuLight }, D);
-        if (slimeZhuGuard) {
-          return {
-            ...gs,
-            zhuLight: slimeZhuGuard.zhuLight,
-            players: P,
-            deck: D,
-            discard: Disc,
-            log: L,
-            currentTurn: next,
-            phase: 'ZHU_HIDE_AI_DRAW',
-            drawReveal: null,
-            selectedCard: null,
-            abilityData: {
-              zhuGuard: slimeZhuGuard,
-              drawerIdx: next,
-              fromTsathogguaSlime: true,
-              continueTurnStartDraw: true,
-              _tsgExtraDrawReady: true,
-              _turnOwner: next,
-            },
-            _playersBeforeThisDraw: _P_beforeDraw,
-            turn: newTurn,
-            _turnKey: newTurnKey,
-            _turnStartLogs: turnStartLogs,
-            _drawLogs: drawLogs,
-            _visualEvents: mergeVisualEventLists(gs._visualEvents, turnDrawVisualEvents),
-            _statLogs: statLogs,
-            _preTurnPlayers: _P_beforeTurn,
-            globalOnlySwapOwner,
-          };
-        }
+      {
+        const request = requestZhuReveal({ ...gs, players: P, deck: D, currentTurn: next, zhuLight }, {
+          deck: D,
+          drawerIdx: next,
+          source: ZHU_REVEAL_SOURCE.TSG_SLIME,
+          continuation: { continueTurnStartDraw: true, extraDrawReady: true, turnOwner: next },
+        });
+        if (request) return buildPendingZhuRevealState({
+          gs, request, players: P, deck: D, discard: Disc, log: L, currentTurn: next,
+          newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawVisualEvents, statLogs,
+          preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeDraw, globalOnlySwapOwner,
+          abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _tsgExtraDrawReady: true, _turnOwner: next },
+        });
       }
       const playersBeforeSlimeDraw = copyPlayers(P);
       const rSlime = aiDrawAndApply(next, P, D, Disc, gs);
@@ -2342,36 +2355,16 @@ function resolveNextTurnState(gs, opts = {}) {
     }
     // 循环内的黏液额外摸牌消息已逐条写入 L，最终统一 flush 时只补固定摸牌新增的部分，
     // 否则额外摸牌/黏液消失消息会在日志里重复出现两次。
-    const zhuGuard = getZhuTopGuard({ ...gs, players: P, deck: D, currentTurn: next, zhuLight }, D);
-    if (zhuGuard) {
-      return {
-        ...gs,
-        zhuLight: zhuGuard.zhuLight,
-        players: P,
-        deck: D,
-        discard: Disc,
-        log: L,
-        currentTurn: next,
-        phase: 'ZHU_HIDE_AI_DRAW',
-        drawReveal: null,
-        selectedCard: null,
-        abilityData: { zhuGuard, drawerIdx: next },
-        skillUsed: false,
-        restUsed: false,
-        huntAbandoned: [],
-        godFromHandUsed: false,
-        godTriggeredThisTurn: false,
-        _playersBeforeThisDraw: _P_beforeDraw,
-        turn: newTurn,
-        _turnKey: (gs._turnKey || 0) + 1,
-        _turnStartLogs: turnStartLogs,
-        _drawLogs: drawLogs,
-        _visualEvents: mergeVisualEventLists(gs._visualEvents, turnDrawVisualEvents),
-        _statLogs: statLogs,
-        _preTurnPlayers: _P_beforeTurn,
-        globalOnlySwapOwner,
-      };
-    }
+    const request = requestZhuReveal({ ...gs, players: P, deck: D, currentTurn: next, zhuLight }, {
+      deck: D,
+      drawerIdx: next,
+      source: ZHU_REVEAL_SOURCE.TURN_DRAW,
+    });
+    if (request) return buildPendingZhuRevealState({
+      gs, request, players: P, deck: D, discard: Disc, log: L, currentTurn: next,
+      newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawVisualEvents, statLogs,
+      preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeDraw, globalOnlySwapOwner,
+    });
     const playersBeforeFixedDraw = copyPlayers(P);
     const res = aiDrawAndApply(next, P, D, Disc, { ...gs, deferAiGodChoice: true });
     gs.debugForceCardKeepPending = null;

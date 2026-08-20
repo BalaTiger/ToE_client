@@ -42,6 +42,7 @@ import {
   canRespondWithAnyHandCard as canRespondWithAnyHandCardByAvailability,
   canRespondWithFireHandCard as canRespondWithFireHandCardByAvailability,
   canRespondWithZoneCard as canRespondWithZoneCardByAvailability,
+  canShowTargetSelectionUi,
   canUseTutorialHandCard,
   getRestActionBlockReason,
 } from './game/interactionAvailability';
@@ -129,12 +130,16 @@ import {
   shouldTriggerGodResurrection,
   abandonGodFollower,
   convertGodFollower,
-  buildZhuLight,
+  refreshZhuLightAtOwnerTurn,
+  ZHU_REVEAL_SOURCE,
+  buildZhuRevealAbilityData,
   getZhuDrawHiddenCardId,
   getZhuLitDeckCards,
+  getZhuRevealDecision,
   getZhuTopGuard,
   removeZhuLightCard,
   moveTopDeckCardToBottom,
+  requestZhuReveal,
   resolveMpTimeoutToAction,
   resolveMpAiTakeoverState,
   buildStatEvents,
@@ -4225,9 +4230,15 @@ export default function Game(){
   const pendingZhuGodAnyCard=phase==='GOD_CHOICE'&&gs.abilityData?.godCard&&!gs.abilityData?.zhuResolved&&zhuLightForView?.cardIds?.includes(gs.abilityData.godCard.id)
     ?gs.abilityData.godCard
     :null;
-  const pendingZhuSphinxAnyCard=phase==='SPHINX_GUESS'&&gs.deck?.[0]?.id&&zhuLightForView?.cardIds?.includes(gs.deck[0].id)
-    ?gs.deck[0]
+  const pendingZhuSphinxRequest=phase==='SPHINX_GUESS'
+    ?requestZhuReveal({...gs,zhuLight:zhuLightForView},{
+      deck:gs.deck,
+      drawerIdx:gs.abilityData?.playerIndex??gs.currentTurn??0,
+      source:ZHU_REVEAL_SOURCE.SPHINX,
+      respectGeomagnetic:false,
+    })
     :null;
+  const pendingZhuSphinxAnyCard=pendingZhuSphinxRequest?.guard?.card||null;
   const pendingZhuAiDrawAnyCard=phase==='ZHU_HIDE_AI_DRAW'&&(gs.abilityData?.zhuIntroShown||!(gs._turnStartLogs||[]).length)
     ?(gs.abilityData?.zhuGuard?.card||getZhuTopGuard(gs,gs.deck)?.card||null)
     :null;
@@ -4388,6 +4399,37 @@ export default function Game(){
       ?{fromTsathogguaSlime:true,continueTurnStartDraw:true,_turnOwner:drawerIdx}
       :{};
     const _P_beforeDraw=copyPlayers(P);
+    const zhuSource=continuingSlime?ZHU_REVEAL_SOURCE.TSG_SLIME:ZHU_REVEAL_SOURCE.TURN_DRAW;
+    const zhuRequest=requestZhuReveal({...baseGsAfterDecision,players:P,deck:D,currentTurn:drawerIdx},{
+      deck:D,
+      drawerIdx,
+      source:zhuSource,
+      continuation:continuingSlime
+        ?{continueTurnStartDraw:true,extraDrawReady:true,turnOwner:drawerIdx}
+        :null,
+    });
+    if(zhuRequest){
+      const legacyContinuation=continuingSlime
+        ?{fromTsathogguaSlime:true,continueTurnStartDraw:true,_tsgExtraDrawReady:true,_turnOwner:drawerIdx}
+        :{};
+      const pendingZhuGs={
+        ...baseGsAfterDecision,
+        players:P,
+        deck:D,
+        discard:Disc,
+        log:L,
+        currentTurn:drawerIdx,
+        zhuLight:zhuRequest.zhuLight,
+        phase:'ZHU_HIDE_AI_DRAW',
+        drawReveal:null,
+        selectedCard:null,
+        abilityData:buildZhuRevealAbilityData(zhuRequest,legacyContinuation),
+        _playersBeforeThisDraw:_P_beforeDraw,
+      };
+      if(pendingZhuGs._isMP)broadcastMpStateBeforeLocalReplay(pendingZhuGs);
+      setGs(pendingZhuGs);
+      return;
+    }
     const res=isAiDrawer
       ?aiDrawAndApply(drawerIdx,P,D,Disc,{...baseGsAfterDecision,currentTurn:drawerIdx,deferAiGodChoice:true})
       :playerDrawCard(P,D,Disc,drawerIdx,{...baseGsAfterDecision,currentTurn:drawerIdx});
@@ -4585,14 +4627,19 @@ export default function Game(){
     for(let _d=0;_d<remaining;_d++){
       const cthBeforeDrawPlayers=copyPlayers(P);
       const cthBeforeDrawDiscard=[...Disc];
-      if(!baseGsAfterDecision.geomagneticReversalActive){
-        const zhuGuard=getZhuTopGuard({...baseGsAfterDecision,players:P,deck:D,currentTurn:0},D);
-        if(zhuGuard){
+      {
+        const zhuRequest=requestZhuReveal({...baseGsAfterDecision,players:P,deck:D,currentTurn:0},{
+          deck:D,
+          drawerIdx:0,
+          source:ZHU_REVEAL_SOURCE.CTH_REST,
+          continuation:{remaining:remaining-_d,playDream},
+        });
+        if(zhuRequest){
           const pendingZhuGs={
             ...baseGsAfterDecision,
-            players:P,deck:D,discard:Disc,log:L,zhuLight:zhuGuard.zhuLight,
+            players:P,deck:D,discard:Disc,log:L,zhuLight:zhuRequest.zhuLight,
             phase:'ZHU_HIDE_AI_DRAW',drawReveal:null,selectedCard:null,
-            abilityData:{zhuGuard,drawerIdx:0,fromRest:true,cthDrawsRemaining:remaining-_d,cthDreamPending:playDream},
+            abilityData:buildZhuRevealAbilityData(zhuRequest,{fromRest:true,cthDrawsRemaining:remaining-_d,cthDreamPending:playDream}),
           };
           if(pendingZhuGs._isMP)broadcastMpStateBeforeLocalReplay(pendingZhuGs);
           const afterDreamGs={
@@ -5302,7 +5349,10 @@ export default function Game(){
     const guard=gs.abilityData?.zhuGuard||getZhuTopGuard(gs,gs.deck);
     const card=guard?.card||gs.deck?.[0];
     if(!card)return;
-    const drawerIdx=gs.abilityData?.drawerIdx??gs.currentTurn??0;
+    const zhuDecision=getZhuRevealDecision(gs);
+    const drawerIdx=zhuDecision?.drawerIdx??gs.abilityData?.drawerIdx??gs.currentTurn??0;
+    const revealSource=zhuDecision?.source||ZHU_REVEAL_SOURCE.TURN_DRAW;
+    const revealContinuation=zhuDecision?.continuation||{};
     const nextZhuLight=removeZhuLightCard(gs.zhuLight,card);
     let P=copyPlayers(gs.players);
     let D=hide?moveTopDeckCardToBottom(gs.deck):[...gs.deck];
@@ -5325,16 +5375,17 @@ export default function Game(){
     const {phase:derivedPhase,abilityData:nextAbilityData}=deriveEffectDecisionState(res.statePatch,{fallbackPhase:fallbackAfterZhuDraw});
     const nextPhase=res.needGodChoice?'GOD_CHOICE':(res.needsDecision?'DRAW_REVEAL':derivedPhase);
     const zhuContinuation={
-      ...(gs.abilityData?.fromTsathogguaSlime?{
+      ...(revealSource===ZHU_REVEAL_SOURCE.TSG_SLIME?{
         fromTsathogguaSlime:true,
-        continueTurnStartDraw:true,
-        _turnOwner:gs.abilityData?._turnOwner??drawerIdx,
+        continueTurnStartDraw:revealContinuation.continueTurnStartDraw!==false,
+        _turnOwner:revealContinuation.turnOwner??gs.abilityData?._turnOwner??drawerIdx,
       }:{}),
-      ...(gs.abilityData?.fromRest?{
+      ...(revealSource===ZHU_REVEAL_SOURCE.CTH_REST?{
         fromRest:true,
-        cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining||0,
+        cthDrawsRemaining:Math.max(0,(revealContinuation.remaining??getCthRestDrawRemaining(gs))-1),
         cthDreamShown:!!gs.abilityData?.cthDreamShown,
       }:{}),
+      ...(revealSource===ZHU_REVEAL_SOURCE.PROLIFERATING_Z?{fromProliferatingZ:true}:{}),
     };
     const newGs={
       ...gs,
@@ -5353,7 +5404,8 @@ export default function Game(){
       drawReveal:res.needsDecision?{
         card:res.drawnCard,msgs:res.effectMsgs||[],needsDecision:true,forcedKeep:!!res.forcedKeep,
         drawerIdx,drawerName:P[drawerIdx]?.name,sourcePile:res.sourcePile,
-        ...(gs.abilityData?.fromRest?{fromRest:true}:{}),
+        ...(revealSource===ZHU_REVEAL_SOURCE.CTH_REST?{fromRest:true}:{}),
+        ...(revealSource===ZHU_REVEAL_SOURCE.PROLIFERATING_Z?{fromProliferatingZ:true}:{}),
       }:null,
       selectedCard:null,
       _aiDrawnCard:null,
@@ -5375,9 +5427,9 @@ export default function Game(){
     if(statQ.length){
       visualStateLocks.lock({players:beforeDrawPlayers,zhuLight:gs.zhuLight||null});
     }
-    const continueAfterZhuDraw=!win&&(nextPhase==='AI_TURN'||nextPhase==='ACTION')&&gs.abilityData?.continueTurnStartDraw
+    const continueAfterZhuDraw=!win&&(nextPhase==='AI_TURN'||nextPhase==='ACTION')&&revealSource===ZHU_REVEAL_SOURCE.TSG_SLIME
       ?()=>_tsgContinueTurnStartDraw(newGs)
-      :(!win&&(nextPhase==='AI_TURN'||nextPhase==='ACTION')&&gs.abilityData?.fromRest
+      :(!win&&!isAiDrawer&&(nextPhase==='AI_TURN'||nextPhase==='ACTION')&&revealSource===ZHU_REVEAL_SOURCE.CTH_REST
         ?()=>_cthContinueRestDraws(newGs)
         :undefined);
     triggerSyncedAnimTransaction([...drawQueue,...statQ,statePatchStep({players:P,discard:Disc})],newGs,{
@@ -8851,7 +8903,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       :{};
     const godPowerImmediate=(action==='worship'||action==='upgrade'||action==='forcedConvert')&&canGodPowerAffect(P[0]);
     const nextZhuLight=godPowerImmediate
-      ?buildZhuLight(P,D,0,gs.zhuLight)
+      ?refreshZhuLightAtOwnerTurn(P,D,0,gs.zhuLight)
       :gs.zhuLight;
     const nextApophisNight=godPowerImmediate&&gk==='APO'
       ?getApophisNightForLevel(P[0].godLevel)
@@ -9032,6 +9084,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     let D=[...gs.deck],Disc=[...gs.discard];
     const preDrawPlayers=copyPlayers(P);
     const preDrawDeck=[...D],preDrawDiscard=[...Disc];
+    const zhuRequest=requestZhuReveal({...gs,players:P,deck:D,currentTurn:0},{deck:D,drawerIdx:0,source:ZHU_REVEAL_SOURCE.TURN_DRAW});
+    if(zhuRequest){
+      setGs({...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:zhuRequest.zhuLight,phase:'ZHU_HIDE_AI_DRAW',drawReveal:null,selectedCard:null,abilityData:buildZhuRevealAbilityData(zhuRequest)});
+      return;
+    }
     const res=playerDrawCard(P,D,Disc,0,gs);
     finishNyaBorrowDraw(res,L,preDrawPlayers,preDrawDeck,preDrawDiscard);
   }
@@ -9040,6 +9097,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
     const preDrawPlayers=copyPlayers(P);
     const preDrawDeck=[...D],preDrawDiscard=[...Disc];
+    const zhuRequest=requestZhuReveal({...gs,players:P,deck:D,currentTurn:0},{deck:D,drawerIdx:0,source:ZHU_REVEAL_SOURCE.TURN_DRAW});
+    if(zhuRequest){
+      setGs({...gs,players:P,deck:D,discard:Disc,zhuLight:zhuRequest.zhuLight,phase:'ZHU_HIDE_AI_DRAW',drawReveal:null,selectedCard:null,abilityData:buildZhuRevealAbilityData(zhuRequest)});
+      return;
+    }
     const res=playerDrawCard(P,D,Disc,0,gs);
     finishNyaBorrowDraw(res,gs.log,preDrawPlayers,preDrawDeck,preDrawDiscard);
   }
@@ -9900,7 +9962,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   const promptMutedTextColor=promptColors.muted;
   const isSelfDeadPanelDimmed=!!me?.isDead;
 
-  const canLocalTargetSelect=!!gs&&!isSpectating&&canLocalActOnTargetSelectionPhase(gs);
+  const ownsLocalTargetSelection=!!gs&&!isSpectating&&canLocalActOnTargetSelectionPhase(gs);
+  const canLocalTargetSelect=canShowTargetSelectionUi({
+    ownsLocalTargetSelection,
+    anim,
+    animExiting,
+    animQueueLength:animQueueRef.current.length,
+    hasPendingGs:!!pendingGsRef.current,
+  });
   const canLocalSwapGive=!!gs&&!isSpectating&&isLocalSwapGivePhase(gs);
   const canLocalBewitchCard=!!gs&&!isSpectating&&isLocalBewitchCardPhase(gs);
   const selectingOther=canLocalTargetSelect;
@@ -10040,7 +10109,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const shuOffspringCountHand=isShuBlessingHand?(GOD_DEFS.SHU.levels[P[0].godLevel-1]?.offspringCount||0):0;
     P.forEach((p,i)=>{if(i>0&&p.godName===godKey){const abandoned=abandonGodFollower(i,gs.currentTurn,P,D,Disc,L,inspectionMeta);P=abandoned.P;D=abandoned.D;Disc=abandoned.Disc;L=abandoned.L;inspectionMeta=abandoned.inspectionMeta;if(abandoned.faithExit)abandonedFaithExits.push(abandoned.faithExit);}});
     const win=checkWin(P,gs._isMP);
-    const nextZhuLight=godPowerImmediateHand?buildZhuLight(P,D,0,gs.zhuLight):gs.zhuLight;
+    const nextZhuLight=godPowerImmediateHand?refreshZhuLightAtOwnerTurn(P,D,0,gs.zhuLight):gs.zhuLight;
     const nextApophisNight=godPowerImmediateHand&&godKey==='APO'?getApophisNightForLevel(P[0].godLevel):gs.apophisNight;
     let apophisEclipseEvent=null;
     if(godPowerImmediateHand&&godKey==='APO'){

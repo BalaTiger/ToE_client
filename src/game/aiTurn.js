@@ -55,6 +55,11 @@ import { appendStatChangeResult, submitRecoveryEvents } from './statChangeEngine
 import { END_TURN_EVENT, getEndTurnEvents, getEndTurnReplayHandCards, resolveReverseTurnOrderAtEnd } from './endTurnEvents';
 import { deriveEffectDecisionState, hasEffectDecisionState } from './effectStatePatch';
 import { getCthRestDrawRemaining } from './cthRestDrawFlow';
+import {
+  ZHU_REVEAL_SOURCE,
+  buildZhuRevealAbilityData,
+  requestZhuReveal,
+} from './zhuPower';
 import { buildApophisNightLog, getApophisNightForLevel, resolveApophisTarget } from './apophisNight';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { TURN_FLOW_STAGE } from './turnFlowStages';
@@ -612,6 +617,33 @@ function processAiCthEndTurnDraws(P, D, Disc, L, ct, gs, drawCount, { intro = tr
       discard: [...Disc],
       log: [...L],
     };
+    const zhuRequest = requestZhuReveal({ ...beforeGs, players: P, deck: D, currentTurn: ct }, {
+      deck: D,
+      drawerIdx: ct,
+      source: ZHU_REVEAL_SOURCE.CTH_REST,
+      continuation: { remaining: drawCount - index },
+    });
+    if (zhuRequest) {
+      return {
+        P,
+        D,
+        Disc,
+        L,
+        statePatch: { ...statePatch, zhuLight: zhuRequest.zhuLight },
+        replayQueue,
+        replayMsgs,
+        decision: {
+          phase: 'ZHU_HIDE_AI_DRAW',
+          abilityData: buildZhuRevealAbilityData(zhuRequest, {
+            fromRest: true,
+            // This count still includes the guarded reveal. The ZHU decision
+            // handler consumes it after drawing the chosen replacement card.
+            cthDrawsRemaining: drawCount - index,
+          }),
+          remaining: drawCount - index,
+        },
+      };
+    }
     const result = aiDrawAndApply(ct, P, D, Disc, { ...beforeGs, deferAiGodChoice: false });
     P = result.P;
     D = result.D;
