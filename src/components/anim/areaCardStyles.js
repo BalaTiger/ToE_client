@@ -23,6 +23,7 @@ export const AREA_CARD_ANIMATION_STYLES = `
   .etherealize-stage {
     position: absolute;
     z-index: 2;
+    --ethereal-panel-bleed: 28px;
     transform-style: preserve-3d;
     transform-origin: 50% 50%;
     animation: etherealizePanelFlight 3.6s cubic-bezier(.16,.78,.18,1) both;
@@ -36,7 +37,7 @@ export const AREA_CARD_ANIMATION_STYLES = `
   }
   .etherealize-slice {
     position: absolute;
-    inset: 0;
+    inset: calc(0px - var(--ethereal-panel-bleed));
     overflow: hidden;
     border-radius: 4px;
     z-index: 1;
@@ -79,7 +80,7 @@ export const AREA_CARD_ANIMATION_STYLES = `
   }
   .etherealize-unified-panel {
     position: absolute;
-    inset: 0;
+    inset: calc(0px - var(--ethereal-panel-bleed));
     z-index: 2;
     overflow: hidden;
     border-radius: 4px;
@@ -90,9 +91,10 @@ export const AREA_CARD_ANIMATION_STYLES = `
   }
   .etherealize-panel-html {
     position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
+    left: var(--ethereal-panel-bleed);
+    top: var(--ethereal-panel-bleed);
+    width: calc(100% - var(--ethereal-panel-bleed) - var(--ethereal-panel-bleed));
+    height: calc(100% - var(--ethereal-panel-bleed) - var(--ethereal-panel-bleed));
     transform-origin: 0 0;
   }
   .etherealize-panel-html [data-pid],
