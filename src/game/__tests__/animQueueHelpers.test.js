@@ -22,7 +22,7 @@ import {
 } from '../animQueueHelpers';
 import { copyPlayers } from '../coreUtils';
 import { buildAnimQueue } from '../animQueueCore';
-import { createCardEffectEvent, createGodStatusChangedEvent, createInspectionVisualEvent } from '../visualEvents';
+import { createCardEffectEvent, createGodStatusChangedEvent, createInspectionVisualEvent, VISUAL_EVENT } from '../visualEvents';
 import { resolveAiGodChoiceTransition } from '../aiDecisionState';
 import { scopeAiReplayMetadataBeforeInspection } from '../aiTurnPresentation';
 import { resolveGodEncounterForAI, startNextTurn } from '../turnEngine';
@@ -162,6 +162,84 @@ describe('animQueueHelpers', () => {
       {type:'TURN_BOUNDARY_PAUSE'},
       {type:'STATE_PATCH',phase:'ACTION',abilityData:{}},
     ]);
+  });
+
+  it('AI_GOD_CHOICE 收入邪神馈赠时由新的结果事件统一生成飞牌和落点状态', () => {
+    const godCard = makeGodCard('NYA', { id: 'deferred-god-gift-keep' });
+    const pendingGs = startNextTurn(makeGs({
+      players: [
+        makePlayer({ name: '你' }),
+        makePlayer({ name: '艾伦', role: '邪祀者', roleRevealed: true, hand: [] }),
+      ],
+      currentTurn: 0,
+      deck: [godCard],
+      log: [],
+    }));
+    const drawEvent = pendingGs._visualEvents.find(event => (
+      event?.type === VISUAL_EVENT.DRAW_CARD && event.card?.id === godCard.id
+    ));
+
+    expect(pendingGs.phase).toBe('AI_GOD_CHOICE');
+    expect(pendingGs.abilityData.drawEventId).toBe(drawEvent.id);
+
+    const transition = resolveAiGodChoiceTransition(pendingGs);
+    const keepEvent = transition.state._visualEvents.find(event => (
+      event?.type === VISUAL_EVENT.GOD_GIFT_KEEP
+    ));
+    const replay = buildInspectionAwareAnimQueue(
+      pendingGs,
+      transition.state,
+      { buildAnimQueue, copyPlayers },
+    );
+    const ownedSteps = replay.queue.filter(step => step?.visualEventId === keepEvent.id);
+
+    expect(keepEvent).toMatchObject({
+      drawEventId: drawEvent.id,
+      drawerIdx: 1,
+      card: expect.objectContaining({ id: godCard.id }),
+    });
+    expect(ownedSteps.map(step => step.type)).toEqual(['CARD_TRANSFER', 'STATE_PATCH']);
+    expect(ownedSteps[0]).toMatchObject({
+      fromPid: 1,
+      toPid: 1,
+      dest: 'player',
+      sourceAnchor: 'playerArea',
+      cards: [expect.objectContaining({ id: godCard.id })],
+    });
+    expect(ownedSteps[1].players[1].hand).toContainEqual(expect.objectContaining({ id: godCard.id }));
+  });
+
+  it('邪神馈赠收入事件在同批SAN检定完成后才飞入手牌', () => {
+    const godCard = makeGodCard('NYA', { id: 'inspected-god-gift-keep' });
+    const inspectionCard = { id: 'calm-after-god', name: '暂时的平静', effect: 'nothing', value: 0, type: 'neutral' };
+    const pendingGs = startNextTurn(makeGs({
+      players: [
+        makePlayer({ name: '你' }),
+        makePlayer({ name: '艾伦', role: '邪祀者', roleRevealed: false, san: 6, hand: [] }),
+      ],
+      currentTurn: 0,
+      deck: [godCard],
+      inspectionDeck: [inspectionCard],
+      inspectionDiscard: [],
+      log: [],
+    }));
+    const transition = resolveAiGodChoiceTransition(pendingGs);
+    const keepEvent = transition.state._visualEvents.find(event => event?.type === VISUAL_EVENT.GOD_GIFT_KEEP);
+    const replay = buildInspectionAwareAnimQueue(
+      pendingGs,
+      transition.state,
+      { buildAnimQueue, copyPlayers },
+    );
+    const inspectionIdx = replay.queue.findIndex(step => (
+      step?.type === 'DRAW_CARD' && step.card?.id === inspectionCard.id
+    ));
+    const transferIdx = replay.queue.findIndex(step => (
+      step?.type === 'CARD_TRANSFER' && step.visualEventId === keepEvent.id
+    ));
+
+    expect(keepEvent.presentAfterInspectionSeq).toBeGreaterThan(0);
+    expect(inspectionIdx).toBeGreaterThan(-1);
+    expect(transferIdx).toBeGreaterThan(inspectionIdx);
   });
 
   it('AI 摸神牌抢夺信仰时按结算子阶段推进且旧信徒状态不回退', () => {

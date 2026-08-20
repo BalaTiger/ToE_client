@@ -489,6 +489,37 @@ export function buildMpRemoteReplayAction({
   );
   if (exactTransactionAction) return withConsumedVisualEvents(exactTransactionAction);
 
+  const previousVisualEventIds = new Set(getVisualEventIdsFromState(previousGs));
+  const freshGodGiftKeepEvent = (rotated._visualEvents || []).find(event => (
+    event?.type === VISUAL_EVENT.GOD_GIFT_KEEP
+    && event?.id
+    && !previousVisualEventIds.has(event.id)
+  ));
+  if (freshGodGiftKeepEvent) {
+    const transaction = compileRuleVisualEventsToAnimTransaction(rotated, previousGs, {
+      buildAnimQueue,
+      hidePrivateCards: true,
+    });
+    if (transaction?.queue?.length) {
+      const queue = appendFinalStatePatch(
+        transaction.queue,
+        rotated,
+        ['players', 'deck', 'discard', 'log', 'phase', 'drawReveal', 'abilityData'],
+      );
+      return withConsumedVisualEvents({
+        type: MP_REMOTE_REPLAY.ANIM_QUEUE,
+        maskedGs: buildMaskedActionState(rotated),
+        pendingGs: clearRemoteReplayHints(rotated),
+        queue,
+        visualLock: {
+          players: freshGodGiftKeepEvent.playersBefore || previousGs?.players || null,
+          zhuLight: previousGs?.zhuLight || rotated.zhuLight || null,
+        },
+        consumedVisualEventIds: transaction.eventIds,
+      });
+    }
+  }
+
   const logDelta = getLogDelta(previousGs, rotated);
   const timedOutDrawDiscardStep = buildTimedOutDrawDiscardStep(rotated, previousGs, logDelta);
   const handLimitDiscardSteps = compileFreshVisualEventsToAnimSteps(rotated, null, [VISUAL_EVENT.HAND_LIMIT_DISCARD]);

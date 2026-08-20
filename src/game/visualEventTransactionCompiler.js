@@ -16,6 +16,7 @@ import {
   buildStatStepsFromVisualEvents,
   buildTimedOutDrawDiscardStepFromVisualEvents,
   buildGodGiftDiscardStepFromVisualEvents,
+  buildGodGiftKeepSteps,
   ensureVisualEventState,
   getVisualEvents,
   getVisualEventIdsFromState,
@@ -359,6 +360,8 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
       return [buildTimedOutDrawDiscardStepFromVisualEvents(isolated)].filter(Boolean);
     case VISUAL_EVENT.GOD_GIFT_DISCARD:
       return [buildGodGiftDiscardStepFromVisualEvents(isolated)].filter(Boolean);
+    case VISUAL_EVENT.GOD_GIFT_KEEP:
+      return buildGodGiftKeepSteps(event);
     case VISUAL_EVENT.TURN_START:
       return [buildTurnStartStepFromVisualEvents(isolated)].filter(Boolean);
     case VISUAL_EVENT.DECK_RESHUFFLE:

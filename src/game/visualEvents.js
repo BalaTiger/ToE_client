@@ -6,6 +6,7 @@ import { cardIdentity } from './cardIdentity';
 export const VISUAL_EVENT = {
   TIMED_OUT_DRAW_DISCARD: 'timedOutDrawDiscard',
   GOD_GIFT_DISCARD: 'godGiftDiscard',
+  GOD_GIFT_KEEP: 'godGiftKeep',
   TURN_START: 'turnStart',
   DECK_RESHUFFLE: 'deckReshuffle',
   DRAW_CARD: 'drawCard',
@@ -157,6 +158,58 @@ export function createDrawCardEvent({
     ...(Array.isArray(playersAfterResolution) ? { playersAfterResolution } : {}),
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'turn');
+}
+
+// 邪神馈赠经过独立决策后进入手牌时，由规则层发出新的结果事件。
+// 原 DRAW_CARD 事件可能已经播放并被消费，不能在决策完成后回写它的 keptInHand。
+export function createGodGiftKeepEvent({
+  card,
+  drawerIdx = 0,
+  drawerName = '该玩家',
+  drawEventId = null,
+  playersBefore = null,
+  playersAfter = null,
+  msgs = [],
+  presentAfterInspectionSeq = null,
+} = {}) {
+  if (!card || !Array.isArray(playersBefore) || !Array.isArray(playersAfter)) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.GOD_GIFT_KEEP,
+    card,
+    drawerIdx,
+    drawerName,
+    ...(drawEventId ? { drawEventId } : {}),
+    playersBefore,
+    playersAfter,
+    msgs: Array.isArray(msgs) ? msgs : [],
+    ...(presentAfterInspectionSeq != null ? { presentAfterInspectionSeq } : {}),
+  }, 'turn');
+}
+
+export function buildGodGiftKeepSteps(event) {
+  if (!event?.card || event.drawerIdx == null
+    || !Array.isArray(event.playersBefore) || !Array.isArray(event.playersAfter)) return [];
+  return [
+    {
+      type: 'CARD_TRANSFER',
+      visualEventId: event.id,
+      fromPid: event.drawerIdx,
+      dest: 'player',
+      toPid: event.drawerIdx,
+      count: 1,
+      sourceAnchor: 'playerArea',
+      effect: 'draw',
+      cards: [event.card],
+      msgs: event.msgs || [],
+      visualSetupTiming: 'stepStart',
+      visualSetupPatch: { players: event.playersBefore },
+    },
+    {
+      type: 'STATE_PATCH',
+      visualEventId: event.id,
+      players: event.playersAfter,
+    },
+  ];
 }
 
 export function createDeckReshuffleEvent({

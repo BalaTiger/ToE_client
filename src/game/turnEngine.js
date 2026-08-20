@@ -39,6 +39,7 @@ import {
   createGodPowerBlockedEvent,
   createGodStatusChangedEvent,
   createGodGiftDiscardEvent,
+  createGodGiftKeepEvent,
   createStatEventsEvent,
   createTsathogguaSlimeGrantEvent,
   createTsathogguaSlimePopEvent,
@@ -735,7 +736,21 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     applyImmediateGodPower();
   } else if (action === 'hand') {
     P[ci].roleRevealed = true;
-    P[ci].hand.push({ ...godCard }); msgs.push(`${P[ci].name}（邪祀者）将邪神牌收入手牌`);
+    const playersBeforeGodGiftKeep = copyPlayers(P);
+    P[ci].hand.push({ ...godCard });
+    const keepMsg = `${P[ci].name}（邪祀者）将邪神牌收入手牌`;
+    msgs.push(keepMsg);
+    const keepEvent = createGodGiftKeepEvent({
+      card: godCard,
+      drawerIdx: ci,
+      drawerName: P[ci].name,
+      drawEventId: opts?.drawEventId || null,
+      playersBefore: playersBeforeGodGiftKeep,
+      playersAfter: copyPlayers(P),
+      msgs: [keepMsg],
+      presentAfterInspectionSeq: inspectionMeta?._inspectionSeq || null,
+    });
+    if (keepEvent) visualEvents.push(keepEvent);
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
   } else {
     Disc.push({ ...godCard }); msgs.push(`${P[ci].name} 放弃了邪神的馈赠`);
@@ -2379,9 +2394,10 @@ function resolveNextTurnState(gs, opts = {}) {
     // classified as a stat log while the inspection result is not.
     if (res.reshuffleLog) L.push(res.reshuffleLog);
     if (res.effectMsgs?.length) L.push(...res.effectMsgs);
+    let fixedDrawEvent = null;
     if (res.drawnCard) {
       const eventMsgs = (res.effectMsgs || []).filter(msg => (drawLogs || []).includes(msg));
-      appendTurnDrawVisualEvents(turnDrawVisualEvents, {
+      fixedDrawEvent = appendTurnDrawVisualEvents(turnDrawVisualEvents, {
         playerIdx: next,
         playerName: P[next].name,
         card: res.drawnCard,
@@ -2396,7 +2412,13 @@ function resolveNextTurnState(gs, opts = {}) {
         }),
       });
     }
-    const pendingAiGodChoice = res.pendingAiGodChoice || res.statePatch?._pendingAiGodChoice || null;
+    const rawPendingAiGodChoice = res.pendingAiGodChoice || res.statePatch?._pendingAiGodChoice || null;
+    const pendingAiGodChoice = rawPendingAiGodChoice
+      ? {
+          ...rawPendingAiGodChoice,
+          ...(fixedDrawEvent?.id ? { drawEventId: fixedDrawEvent.id } : {}),
+        }
+      : null;
     const { phase: resolvedNextPhase, abilityData: resolvedNextAbilityData } = deriveEffectDecisionState(res.statePatch, {
       baseAbilityData: gs.abilityData,
       fallbackPhase: 'AI_TURN',
@@ -2587,6 +2609,23 @@ export function startNextTurn(gs, opts = {}) {
           visualEvents = [...visualEvents, discardEvent];
           ownedIds.push(discardEvent.id);
         }
+      }
+      const keepEvent = visualEvents.find(visualEvent => (
+        visualEvent?.type === VISUAL_EVENT.GOD_GIFT_KEEP
+        && visualEvent?.id
+        && (visualEvent.drawEventId === drawEvent.id || (
+          !visualEvent.drawEventId
+          && visualEvent.drawerIdx === drawEvent.playerIdx
+          && sameDrawnCard(visualEvent.card, drawEvent.card)
+        ))
+      ));
+      if (keepEvent) {
+        visualEvents = visualEvents.map(visualEvent => (
+          visualEvent?.id === keepEvent.id
+            ? { ...visualEvent, drawEventId: drawEvent.id }
+            : visualEvent
+        ));
+        ownedIds.push(keepEvent.id);
       }
       ownedIdsByDraw.set(drawEvent.id, ownedIds);
     });

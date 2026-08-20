@@ -11,6 +11,32 @@ function names(players) {
 }
 
 describe('rotateGsForViewer', () => {
+  it('rotates god-gift keep owner and landing snapshots together', () => {
+    const godCard = { id: 'god-gift', name: '伏行之混沌' };
+    const gs = {
+      players: [player('p0'), player('p1'), player('p2')],
+      currentTurn: 0,
+      phase: 'AI_TURN',
+      abilityData: {},
+      _visualEvents: [{
+        id: 'god-gift-keep:1',
+        type: 'godGiftKeep',
+        drawerIdx: 0,
+        card: godCard,
+        playersBefore: [player('before0'), player('before1'), player('before2')],
+        playersAfter: [player('after0', [godCard]), player('after1'), player('after2')],
+      }],
+    };
+
+    const rotated = rotateGsForViewer(gs, 1);
+    const event = rotated._visualEvents[0];
+
+    expect(event.drawerIdx).toBe(2);
+    expect(names(event.playersBefore)).toEqual(['before1', 'before2', 'before0']);
+    expect(names(event.playersAfter)).toEqual(['after1', 'after2', 'after0']);
+    expect(event.playersAfter[2].hand).toEqual([godCard]);
+  });
+
   it('rotates seat indices inside root decision continuation frames', () => {
     const godCard = { id: 'god' };
     const gs = {

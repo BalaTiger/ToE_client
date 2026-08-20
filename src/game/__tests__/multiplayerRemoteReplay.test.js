@@ -3,7 +3,7 @@ import { buildAnimQueue } from '../animQueueCore';
 import { copyPlayers } from '../coreUtils';
 import { buildMpRemoteReplayAction, MP_REMOTE_REPLAY } from '../multiplayerRemoteReplay';
 import { rotateGsForViewer } from '../rotateState';
-import { createAnimTransactionEvent, createApophisEclipseEvent, createCardEffectEvent, createEarthquakeEvent, createEndlessCorridorReplayEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent, createHuntResultEvent, createSphinxResultEvent, createStatEventsEvent, createSwapCardsEvent } from '../visualEvents';
+import { createAnimTransactionEvent, createApophisEclipseEvent, createCardEffectEvent, createEarthquakeEvent, createEndlessCorridorReplayEvent, createGodGiftKeepEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent, createHuntResultEvent, createSphinxResultEvent, createStatEventsEvent, createSwapCardsEvent, VISUAL_EVENT } from '../visualEvents';
 import { buildStatEvents } from '../statEvents';
 import { createRuleResolutionTransaction } from '../ruleResolutionTransaction';
 
@@ -38,6 +38,56 @@ function buildAction(rotated, extra = {}) {
 }
 
 describe('buildMpRemoteReplayAction', () => {
+  it('replays a god-gift keep from the same structured result event used locally', () => {
+    const godCard = { id: 'remote-god-gift', name: '伏行之混沌', isGod: true, godKey: 'NYA' };
+    const beforePlayers = [player('你'), player('艾伦'), player('贝拉')];
+    const afterPlayers = [beforePlayers[0], { ...beforePlayers[1], hand: [godCard] }, beforePlayers[2]];
+    const drawEvent = {
+      id: 'draw:remote-god-gift',
+      type: VISUAL_EVENT.DRAW_CARD,
+      playerIdx: 1,
+      card: godCard,
+    };
+    const keepEvent = createGodGiftKeepEvent({
+      card: godCard,
+      drawerIdx: 1,
+      drawerName: '艾伦',
+      drawEventId: drawEvent.id,
+      playersBefore: beforePlayers,
+      playersAfter: afterPlayers,
+      msgs: ['艾伦（邪祀者）将邪神牌收入手牌'],
+    });
+    const previousGs = makeState({
+      players: beforePlayers,
+      currentTurn: 1,
+      phase: 'AI_GOD_CHOICE',
+      abilityData: { playerIndex: 1, godCard, drawEventId: drawEvent.id },
+      _visualEvents: [drawEvent],
+    });
+    const rotated = makeState({
+      players: afterPlayers,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      log: ['艾伦（邪祀者）将邪神牌收入手牌'],
+      _visualEvents: [drawEvent, keepEvent],
+    });
+
+    const action = buildMpRemoteReplayAction({
+      rotated,
+      previousGs,
+      roleRevealed: true,
+      buildAnimQueue,
+      buildFullHandSwapTransferQueueFromLogs: vi.fn(() => []),
+    });
+    const ownedSteps = action.queue.filter(step => step?.visualEventId === keepEvent.id);
+
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(ownedSteps.map(step => step.type)).toEqual(['CARD_TRANSFER', 'STATE_PATCH']);
+    expect(ownedSteps[0]).toMatchObject({ fromPid: 1, toPid: 1, cards: [godCard] });
+    expect(action.consumedVisualEventIds).toContain(keepEvent.id);
+    expect(action.visualLock.players).toBe(beforePlayers);
+  });
+
   it('requests role reveal for the first non-game-over state', () => {
     const rotated = makeState({ players: [{ ...player('你'), role: '寻宝者' }, player('艾伦')] });
     const action = buildMpRemoteReplayAction({

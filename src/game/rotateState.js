@@ -225,6 +225,16 @@ function rotateTsathogguaSlimePop(slimePop, rotateIndex, myIndex) {
   };
 }
 
+function rotateGodGiftKeepEvent(event, rotateIndex, myIndex) {
+  if (!event) return event;
+  return {
+    ...event,
+    drawerIdx: event.drawerIdx != null ? rotateIndex(event.drawerIdx) : event.drawerIdx,
+    playersBefore: rotatePlayersArray(event.playersBefore, myIndex),
+    playersAfter: rotatePlayersArray(event.playersAfter, myIndex),
+  };
+}
+
 function rotateTurnDrawEvents(events, rotateIndex, myIndex) {
   if (!Array.isArray(events)) return events;
   return events.map(event => ({
@@ -364,6 +374,8 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
   if (!Array.isArray(events)) return events;
   return events.map(event => {
     if (event?.type === 'timedOutDrawDiscard') return rotateTimedOutDrawDiscardEvent(event, rotateIndex);
+    if (event?.type === 'godGiftDiscard') return rotateTimedOutDrawDiscardEvent(event, rotateIndex);
+    if (event?.type === 'godGiftKeep') return rotateGodGiftKeepEvent(event, rotateIndex, myIndex);
     if (event?.type === 'earthquake' || event?.type === 'cardEffect') return rotateCardEffectVisualEvent(event, rotateIndex, myIndex);
     if (event?.type === 'endlessCorridorReplay' || event?.type === 'animTransaction') return rotateEndlessCorridorReplayVisualEvent(event, rotateIndex, myIndex);
     if (event?.type === 'turnStart' || event?.type === 'drawCard' || event?.type === 'handLimitDiscard' || event?.type === 'tsgSlimePop' || event?.type === 'godStatusChanged' || event?.type === 'graveDig') {

@@ -1,6 +1,6 @@
 import { statEventsToAnimQueue } from './statEvents';
 import { buildFullHandSwapStepsFromLogs, buryToDeckStep, buildGraveDigTransferStep, cardTransferStep, statePatchStep } from './animQueueHelpers';
-import { buildApophisEclipseStep, buildApophisTargetSteps, buildCardEffectStepsFromVisualEvents, buildGodPowerBlockedStepsFromVisualEvents, buildGodStatusChangedStep, buildHuntRevealStepFromVisualEvent, getVisualEvents, VISUAL_EVENT } from './visualEvents';
+import { buildApophisEclipseStep, buildApophisTargetSteps, buildCardEffectStepsFromVisualEvents, buildGodGiftKeepSteps, buildGodPowerBlockedStepsFromVisualEvents, buildGodStatusChangedStep, buildHuntRevealStepFromVisualEvent, getVisualEvents, VISUAL_EVENT } from './visualEvents';
 import { isBlackGoatYoung, isTsathogguaSlime } from './coreUtils';
 import { cardIdentity } from './cardIdentity';
 
@@ -652,6 +652,13 @@ export function buildAnimQueue(oldGs, newGs) {
   ));
   if (presentableGodStatusEvents.length) {
     q.push(...presentableGodStatusEvents.map(buildGodStatusChangedStep).filter(Boolean));
+  }
+  const presentableGodGiftKeepEvents = freshVisualEvents.filter(event => (
+    event.type === VISUAL_EVENT.GOD_GIFT_KEEP
+    && (event?.presentAfterInspectionSeq == null || newInspectionSeq >= event.presentAfterInspectionSeq)
+  ));
+  if (presentableGodGiftKeepEvents.length) {
+    q.push(...presentableGodGiftKeepEvents.flatMap(buildGodGiftKeepSteps));
   }
   const presentableApophisEclipseEvents = freshVisualEvents.filter(event => (
     event.type === VISUAL_EVENT.APOPHIS_ECLIPSE &&

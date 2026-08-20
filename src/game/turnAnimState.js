@@ -907,6 +907,7 @@ export function buildTurnStartDrawReplayQueue({
     event.id,
     [
       cardTransferStep({
+        visualEventId: event.id,
         fromPid: event.drawerIdx ?? drawerPid,
         dest: 'player',
         toPid: event.drawerIdx ?? drawerPid,
@@ -915,7 +916,7 @@ export function buildTurnStartDrawReplayQueue({
         effect: 'draw',
         cards: [event.card],
       }),
-      statePatchStep({ players: event.playersAfterKeep }),
+      statePatchStep({ visualEventId: event.id, players: event.playersAfterKeep }),
     ],
   ]));
   // A current structured draw event owns the keep decision. If it does not
@@ -1398,7 +1399,10 @@ export function buildTurnStartDrawReplayQueue({
     if (!immediateKeep && keepSteps.length) {
       deferredEventOwnedKeepSteps.push(
         keepSteps[0],
-        statePatchStep({ players: keepEvent?.playersAfterResolution || keepEvent?.playersAfterKeep }),
+        statePatchStep({
+          visualEventId: keepEvent?.id,
+          players: keepEvent?.playersAfterResolution || keepEvent?.playersAfterKeep,
+        }),
       );
     }
     return [

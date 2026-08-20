@@ -2,6 +2,18 @@ import { copyPlayers, makeInspectionMeta } from './coreUtils';
 import { applyInspectionForSanLoss } from './effectEngine';
 import { deriveEffectDecisionState } from './effectStatePatch';
 import { checkWin, resolveGodEncounterForAI } from './turnEngine';
+import { cardIdentity } from './cardIdentity';
+import { VISUAL_EVENT } from './visualEvents';
+
+function getPendingGodDrawEventId(gs, actorIdx, godCard) {
+  const targetCardId = cardIdentity(godCard);
+  if (!targetCardId) return null;
+  return [...(gs?._visualEvents || [])].reverse().find(event => (
+    event?.type === VISUAL_EVENT.DRAW_CARD
+    && event?.playerIdx === actorIdx
+    && cardIdentity(event.card) === targetCardId
+  ))?.id || null;
+}
 
 /**
  * Resolve the delayed AI god-card decision without any React/UI dependencies.
@@ -59,6 +71,7 @@ export function resolveAiGodChoiceTransition(gs) {
     discard,
     resolveBaseGs,
     false,
+    { drawEventId: pending.drawEventId || getPendingGodDrawEventId(gs, actorIdx, godCard) },
   );
   players = result.P;
   deck = result.D;

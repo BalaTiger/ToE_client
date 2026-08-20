@@ -313,17 +313,36 @@ describe('地磁反转暗抽', () => {
 
     const result = startNextTurn(gs);
     const queue = buildTurnStartDrawReplayQueue({ oldGs: gs, newGs: result }).queue;
+    const drawEvent = result._visualEvents.find(event => (
+      event.type === VISUAL_EVENT.DRAW_CARD && event.card?.id === drawnCard.id
+    ));
     const drawIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === drawnCard.id);
-    const keepIdx = queue.findIndex(step => (
+    const keepSteps = queue.filter(step => (
       step.type === 'CARD_TRANSFER' &&
       step.effect === 'draw' &&
       step.cards?.[0]?.id === drawnCard.id
     ));
+    const keepIdx = queue.indexOf(keepSteps[0]);
     const landingPatch = queue[keepIdx + 1];
 
+    expect(drawEvent).toMatchObject({
+      playerIdx: 1,
+      card: drawnCard,
+      keptInHand: true,
+    });
+    expect(drawEvent.playersBefore[1].hand).toEqual([]);
+    expect(drawEvent.playersAfterKeep[1].hand).toContainEqual(drawnCard);
+    expect(keepSteps).toHaveLength(1);
+    expect(keepSteps[0].visualEventId).toBe(drawEvent.id);
+    expect(queue.filter(step => (
+      step.type === 'STATE_PATCH' && step.visualEventId === drawEvent.id
+    ))).toHaveLength(1);
     expect(drawIdx).toBeGreaterThanOrEqual(0);
     expect(keepIdx).toBeGreaterThan(drawIdx);
-    expect(landingPatch).toMatchObject({ type: 'STATE_PATCH' });
+    expect(landingPatch).toMatchObject({
+      type: 'STATE_PATCH',
+      visualEventId: drawEvent.id,
+    });
     expect(landingPatch.players[1].hand.some(card => card.id === drawnCard.id)).toBe(true);
   });
 

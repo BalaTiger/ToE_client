@@ -10,6 +10,7 @@ import {
   createHandLimitDiscardEvent,
   createHuntResultEvent,
   createTimedOutDrawDiscardEvent,
+  createGodGiftKeepEvent,
   createTsathogguaSlimeGrantEvent,
   createTsathogguaSlimePopEvent,
   buildTsathogguaSlimeGrantSteps,
@@ -34,6 +35,39 @@ import { prepareAnimationQueueSteps } from '../animationStepSchema';
 const player = (name, patch = {}) => ({ name, hp: 10, san: 10, hand: [], ...patch });
 
 describe('visualEventTransactionCompiler', () => {
+  it('compiles a resolved god-gift keep as one owned transfer and landing patch', () => {
+    const godCard = { id: 'gift-god', name: '伏行之混沌', isGod: true, godKey: 'NYA' };
+    const beforePlayers = [player('你'), player('艾伦')];
+    const afterPlayers = [beforePlayers[0], player('艾伦', { hand: [godCard] })];
+    const event = createGodGiftKeepEvent({
+      card: godCard,
+      drawerIdx: 1,
+      drawerName: '艾伦',
+      drawEventId: 'draw:gift-god',
+      playersBefore: beforePlayers,
+      playersAfter: afterPlayers,
+      msgs: ['艾伦（邪祀者）将邪神牌收入手牌'],
+    });
+
+    const steps = compileVisualEventToAnimSteps(event, {
+      players: afterPlayers,
+      _visualEvents: [event],
+    });
+
+    expect(steps.map(step => step.type)).toEqual(['CARD_TRANSFER', 'STATE_PATCH']);
+    expect(steps[0]).toMatchObject({
+      visualEventId: event.id,
+      fromPid: 1,
+      toPid: 1,
+      dest: 'player',
+      sourceAnchor: 'playerArea',
+      effect: 'draw',
+      cards: [godCard],
+      visualSetupPatch: { players: beforePlayers },
+    });
+    expect(steps[1]).toMatchObject({ visualEventId: event.id, players: afterPlayers });
+  });
+
   it('queue authority consumes only the stat event covered by an endless-corridor replay step', () => {
     const staleStat = { seq: 4, type: 'SAN_LOSS', target: 0, from: { san: 9 }, to: { san: 8 } };
     const corridorStat = { seq: 5, type: 'SAN_LOSS', target: 0, from: { san: 8 }, to: { san: 7 } };
