@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ALL_SOFT_GUIDE_IDS,
   SOFT_GUIDE_IDS,
+  SOFT_GUIDE_STAGE,
   canPresentSoftGuide,
   getFirstRestingPlayerIndex,
   getQueuedSoftGuideId,
@@ -11,10 +12,31 @@ import {
   markSoftGuideDone,
   parseSoftGuideDone,
   serializeSoftGuideDone,
+  resolveSoftGuideStage,
   shouldTriggerRestSoftGuide,
 } from '../softGuides';
 
 describe('softGuides', () => {
+  it('按 idle / preparing / presenting / paused 显式判定软引导状态', () => {
+    expect(resolveSoftGuideStage({ preparingId: SOFT_GUIDE_IDS.FLIP })).toEqual({
+      stage: SOFT_GUIDE_STAGE.PREPARING,
+      blocking: true,
+    });
+    expect(resolveSoftGuideStage({
+      preparingId: SOFT_GUIDE_IDS.FLIP,
+      doneMap: { [SOFT_GUIDE_IDS.FLIP]: true },
+    })).toEqual({ stage: SOFT_GUIDE_STAGE.IDLE, blocking: false });
+    expect(resolveSoftGuideStage({
+      pendingId: SOFT_GUIDE_IDS.FLIP,
+      doneMap: { [SOFT_GUIDE_IDS.FLIP]: true },
+    })).toEqual({ stage: SOFT_GUIDE_STAGE.PRESENTING, blocking: true });
+    expect(resolveSoftGuideStage({ userPaused: true })).toEqual({
+      stage: SOFT_GUIDE_STAGE.PAUSED,
+      blocking: true,
+    });
+    expect(resolveSoftGuideStage()).toEqual({ stage: SOFT_GUIDE_STAGE.IDLE, blocking: false });
+  });
+
   it('解析本地已读状态时容错非法数据', () => {
     expect(parseSoftGuideDone('')).toEqual({});
     expect(parseSoftGuideDone('{bad')).toEqual({});

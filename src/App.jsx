@@ -402,6 +402,7 @@ import {
   SOFT_GUIDE_DEFS,
   SOFT_GUIDE_IDS,
   SOFT_GUIDE_STORAGE_KEY,
+  resolveSoftGuideStage,
   canPresentSoftGuide,
   getFirstRestingPlayerIndex,
   getQueuedSoftGuideId,
@@ -546,7 +547,13 @@ export default function Game(){
   const [pendingSoftGuideId,setPendingSoftGuideId]=useState(null);
   const [preparingSoftGuideId,setPreparingSoftGuideId]=useState(null);
   const [isSoloPaused,setIsSoloPaused]=useState(false);
-  const softGuidePauseActive=!!(pendingSoftGuideId||preparingSoftGuideId||isSoloPaused);
+  const softGuideStage=resolveSoftGuideStage({
+    pendingId:pendingSoftGuideId,
+    preparingId:preparingSoftGuideId,
+    doneMap:softGuideDone,
+    userPaused:isSoloPaused,
+  });
+  const softGuidePauseActive=softGuideStage.blocking;
   useEffect(()=>{
     if(!isSoloPaused)return undefined;
     const resumeOnEscape=e=>{
@@ -656,6 +663,12 @@ export default function Game(){
   const {noteUserGesture,playOpenSound,playCloseSound,playTickSound,playHpDamageSound,playSanDamageSound,playHpRecoverSound,playSanRecoverSound,playApophisEclipseSound,playThrowStoneThrowSound,playThrowStoneRollingSound,playEndlessCorridorTunnelSound,playEarthquakeSound,playGeomagneticReversalSound,playStartledBatsSound,playNightWindSound,playIgniteTorchFireSound,playRopeSound,playUndergroundSpringDropletSound,playVolcanoSound,playSemiMaterialSound,playBurrowingWormSound,playSnakeTrapSound,playCthRlyehDreamSound,playGodPowerBlockedSound,playTsgSlimePopSound,playTsgSlimeCreateSound,playOneCardShiftSound,playMultiCardShiftSound,playDiceRollSound,playTurnStartSound,playSkillHuntSound,playSkillSwapSound,playSkillBewitchSound,playGodHighlightSound,playVritraImmortalRevealSound,playPositiveCardFlipSound,playNeutralCardFlipSound,playCaveDuelSound,playWheelSpinSound,playBlackGoatRunSound,playBlackGoatPulseSound,playGuillotineDeathSound,playPetrifyDeathSound,playNegativeCardFlipSound}=useGameAudio(isBattleScreen,gs?.expansionKey||'地神的潜影',{musicVolume,sfxVolume});
   const persistSoftGuideDone=useCallback((nextDone)=>{
     setSoftGuideDone(nextDone);
+    // A guide can finish through another path while its spotlight is still
+    // being prepared.  Never leave that stale preparation as a global pause.
+    setPreparingSoftGuideId(prev=>prev&&nextDone?.[prev]?null:prev);
+    if(queuedSoftGuideIdRef.current&&nextDone?.[queuedSoftGuideIdRef.current]){
+      queuedSoftGuideIdRef.current=null;
+    }
     if(canPersistTutorial)safeLS.set(SOFT_GUIDE_STORAGE_KEY,serializeSoftGuideDone(nextDone));
   },[canPersistTutorial]);
 
@@ -3350,7 +3363,22 @@ export default function Game(){
     softGuidePrevPlayersRef.current=nextPlayers?copyPlayers(nextPlayers):null;
   },[gs?.players,gs?._isMP,softGuideDone]);
 
+  // Persisted completion wins over an in-flight preparation.  This also
+  // handles completion written by reset/debug flows rather than the overlay
+  // activation path itself.
   useEffect(()=>{
+    if(!preparingSoftGuideId||!softGuideDone[preparingSoftGuideId])return;
+    setPreparingSoftGuideId(null);
+    if(queuedSoftGuideIdRef.current===preparingSoftGuideId){
+      queuedSoftGuideIdRef.current=null;
+    }
+  },[preparingSoftGuideId,softGuideDone]);
+
+  useEffect(()=>{
+    // Once a guide has entered preparation, wait for this invocation to
+    // finish it.  Without this guard every render could start a second RAF
+    // loop for the same guide.
+    if(preparingSoftGuideId&&!queuedSoftGuideIdRef.current)return;
     if(!canPresentSoftGuide({
       gs,
       showTutorial,
@@ -3394,8 +3422,16 @@ export default function Game(){
     const showSoftGuideWhenReady=guideId=>{
       let rafId=null;
       let cancelled=false;
+      let spotlightAttempts=0;
+      const MAX_SPOTLIGHT_ATTEMPTS=60;
       const needsSpotlight=guideId===SOFT_GUIDE_IDS.REST||guideId===SOFT_GUIDE_IDS.FLIP;
       setPreparingSoftGuideId(guideId);
+      const activateGuide=spotlights=>{
+        setSoftGuideSpotlights(spotlights);
+        setPreparingSoftGuideId(prev=>prev===guideId?null:prev);
+        setPendingSoftGuideId(guideId);
+        markSoftGuideSeen(guideId);
+      };
       const tryShowGuide=()=>{
         if(cancelled)return;
         if(
@@ -3414,19 +3450,21 @@ export default function Game(){
         }
         const spotlights=measureSoftGuideSpotlights(guideId);
         if(spotlights){
-          setSoftGuideSpotlights(spotlights);
-          setPreparingSoftGuideId(prev=>prev===guideId?null:prev);
-          setPendingSoftGuideId(guideId);
-          markSoftGuideSeen(guideId);
+          activateGuide(spotlights);
           return;
         }
         if(needsSpotlight){
-          rafId=requestAnimationFrame(tryShowGuide);
+          spotlightAttempts+=1;
+          if(spotlightAttempts<MAX_SPOTLIGHT_ATTEMPTS){
+            rafId=requestAnimationFrame(tryShowGuide);
+          }else{
+            // A spotlight is an enhancement, not a prerequisite for game
+            // progress.  Show the guide centered when its target never
+            // mounts (for example an AI panel that is not rendered).
+            activateGuide([]);
+          }
         }else{
-          setSoftGuideSpotlights([]);
-          setPreparingSoftGuideId(prev=>prev===guideId?null:prev);
-          setPendingSoftGuideId(guideId);
-          markSoftGuideSeen(guideId);
+          activateGuide([]);
         }
       };
       rafId=requestAnimationFrame(tryShowGuide);
@@ -3446,6 +3484,7 @@ export default function Game(){
     gs,
     showTutorial,
     pendingSoftGuideId,
+    preparingSoftGuideId,
     pendingRoleSelection,
     roleRevealAnim,
     anim,
