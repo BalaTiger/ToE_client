@@ -1969,7 +1969,20 @@ function resolveNextTurnState(gs, opts = {}) {
       if (rSlime.needsDecision) {
         return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: 0, drawerName: P[0].name, fromTsathogguaSlime: true, reshuffleLog: rSlime.reshuffleLog }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _turnOwner: 0 }, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }, turnDrawVisualEvents);
       }
-      if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
+      // 与固定摸牌一致：同步结算的效果日志按动画/统计分桶进 drawLogs/statLogs，
+      // 让对应 stat 事件在回合开始重放中能绑到正确的日志块。
+      if (rSlime.effectMsgs?.length) {
+        const splitSlimeEffectMsgs = splitAnimBoundLogs(rSlime.effectMsgs);
+        drawLogs.push(...splitSlimeEffectMsgs.preStat);
+        statLogs.push(...splitSlimeEffectMsgs.stat);
+        L.push(...rSlime.effectMsgs);
+      }
+      // 摸牌阶段的结算可能在两张牌之间终结对局（如夜风呼啸 AOE 杀死本地玩家）。
+      // 立即截断摸牌阶段：不再消耗后续黏液与固定摸牌，终结后的日志与动画不再产生。
+      const slimeDrawWin = hasPendingDamageReaction(rSlime.statePatch) ? null : checkWin(P, gs._isMP);
+      if (slimeDrawWin) {
+        return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, drawReveal: null, selectedCard: null, globalOnlySwapOwner, gameOver: slimeDrawWin, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }, turnDrawVisualEvents);
+      }
     }
     // 循环内的黏液额外摸牌消息已逐条写入 L，最终统一 flush 时只补固定摸牌新增的部分，
     // 否则额外摸牌/黏液消失消息会在日志里重复出现两次。
@@ -2199,7 +2212,20 @@ function resolveNextTurnState(gs, opts = {}) {
       if (rSlime.needsDecision) {
         return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: next, drawerName: P[next].name, fromTsathogguaSlime: true, reshuffleLog: rSlime.reshuffleLog }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _turnOwner: next }, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }, turnDrawVisualEvents);
       }
-      if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
+      // 与固定摸牌一致：同步结算的效果日志按动画/统计分桶进 drawLogs/statLogs，
+      // 让对应 stat 事件在回合开始重放中能绑到正确的日志块。
+      if (rSlime.effectMsgs?.length) {
+        const splitSlimeEffectMsgs = splitAnimBoundLogs(rSlime.effectMsgs);
+        drawLogs.push(...splitSlimeEffectMsgs.preStat);
+        statLogs.push(...splitSlimeEffectMsgs.stat);
+        L.push(...rSlime.effectMsgs);
+      }
+      // 摸牌阶段的结算可能在两张牌之间终结对局（如夜风呼啸 AOE 团灭非追猎者）。
+      // 立即截断摸牌阶段：不再消耗后续黏液与固定摸牌，终结后的日志与动画不再产生。
+      const slimeDrawWin = hasPendingDamageReaction(rSlime.statePatch) ? null : checkWin(P, true);
+      if (slimeDrawWin) {
+        return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, gameOver: slimeDrawWin, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }, turnDrawVisualEvents);
+      }
     }
     // 循环内的黏液额外摸牌消息已逐条写入 L，最终统一 flush 时只补固定摸牌新增的部分，
     // 否则额外摸牌/黏液消失消息会在日志里重复出现两次。
@@ -2351,7 +2377,35 @@ function resolveNextTurnState(gs, opts = {}) {
           }),
         });
       }
-      if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
+      // 与固定摸牌一致：同步结算的效果日志按动画/统计分桶进 drawLogs/statLogs，
+      // 让对应 stat 事件在回合开始重放中能绑到正确的日志块。
+      if (rSlime.effectMsgs?.length) {
+        const splitSlimeEffectMsgs = splitAnimBoundLogs(rSlime.effectMsgs);
+        drawLogs.push(...splitSlimeEffectMsgs.preStat);
+        statLogs.push(...splitSlimeEffectMsgs.stat);
+        L.push(...rSlime.effectMsgs);
+      }
+      // 摸牌阶段的结算可能在两张牌之间终结对局（如夜风呼啸 AOE 杀死本地玩家）。
+      // 立即截断摸牌阶段：不再消耗后续黏液与固定摸牌，终结后的日志与动画不再产生。
+      const slimeDrawWin = hasPendingDamageReaction(rSlime.statePatch) ? null : checkWin(P, gs._isMP);
+      if (slimeDrawWin) {
+        return withMergedVisualEvents({
+          ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: slimeDrawWin,
+          currentTurn: next, turn: newTurn, phase: 'AI_TURN',
+          skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false,
+          drawReveal: null, selectedCard: null, huntAbandoned: [],
+          _aiDrawnCard: rSlime.drawnCard ?? null,
+          _drawnCard: rSlime.drawnCard ?? null,
+          _discardedDrawnCard: !!rSlime.discardedDrawnCard,
+          _playersBeforeThisDraw: _P_beforeDraw,
+          _turnKey: (gs._turnKey || 0) + 1,
+          _turnStartLogs: turnStartLogs,
+          _drawLogs: drawLogs,
+          _statLogs: statLogs,
+          _preTurnPlayers: _P_beforeTurn,
+          globalOnlySwapOwner,
+        }, turnDrawVisualEvents);
+      }
     }
     // 循环内的黏液额外摸牌消息已逐条写入 L，最终统一 flush 时只补固定摸牌新增的部分，
     // 否则额外摸牌/黏液消失消息会在日志里重复出现两次。

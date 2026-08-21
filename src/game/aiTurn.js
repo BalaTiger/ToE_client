@@ -50,7 +50,7 @@ import { buildAnimQueue } from './animQueueCore';
 import { cardTransferStep, statePatchStep } from './animQueueHelpers';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, isRevealedCultist } from './coreUtils';
 import { createBlackGoatYoungCard } from '../constants/card';
-import { buildStatEvents } from './statEvents';
+import { buildStatEvents, statEventsToAnimQueue } from './statEvents';
 import { appendStatChangeResult, submitRecoveryEvents } from './statChangeEngine';
 import { END_TURN_EVENT, getEndTurnEvents, getEndTurnReplayHandCards, resolveReverseTurnOrderAtEnd } from './endTurnEvents';
 import { deriveEffectDecisionState, hasEffectDecisionState } from './effectStatePatch';
@@ -67,7 +67,6 @@ import { enterTurnFlowStage } from './turnFlowManager';
 import { buildGodPowerBlockedLog, canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
 import {
-  VISUAL_EVENT,
   buildGodPowerBlockedStepsFromVisualEvents,
   buildTsathogguaSlimeGrantSteps,
   createBewitchGiftEvent,
@@ -441,22 +440,49 @@ export function discardAiHandToLimit(P, ct, Disc, L, D = [], discardedCards = []
   }
 }
 
+// 逐事件编译：本张牌结算新增的规范视觉事件各自编译为事务步骤（创建顺序即规则
+// 顺序）；未被任何规范事件/已编译步骤认领的属性事件（纯数值结算）按 seq 水位
+// 直接编译。不再对整段 before/after 做 buildAnimQueue 状态差分——差分会跨结算
+// 边界捞取后续事件，曾导致死亡广播丢失与上一回合抢播。
 function buildAiEndTurnReplayResolutionQueue({ beforeGs, afterGs }) {
   const previousVisualEventIds = new Set(
     (Array.isArray(beforeGs?._visualEvents) ? beforeGs._visualEvents : [])
       .map(event => event?.id)
       .filter(Boolean),
   );
-  const sphinxEvent = (Array.isArray(afterGs?._visualEvents) ? afterGs._visualEvents : [])
-    .find(event => (
-      event?.type === VISUAL_EVENT.SPHINX_RESULT
-      && (!event.id || !previousVisualEventIds.has(event.id))
-    ));
-  if (sphinxEvent) {
-    const transaction = compileVisualEventToAnimTransaction(sphinxEvent, afterGs, beforeGs, { buildAnimQueue });
-    if (transaction?.queue?.length) return transaction.queue;
+  const freshEvents = (Array.isArray(afterGs?._visualEvents) ? afterGs._visualEvents : [])
+    .filter(event => event?.id && !previousVisualEventIds.has(event.id));
+  const queue = [];
+  const ownedStatSeqs = new Set();
+  const claimStatSeq = statEvent => {
+    if (statEvent?.seq != null) ownedStatSeqs.add(statEvent.seq);
+  };
+  const claimStepStatSeqs = (steps = []) => {
+    steps.forEach(step => {
+      (Array.isArray(step?.statEvents) ? step.statEvents : []).forEach(claimStatSeq);
+      if (Array.isArray(step?.steps)) claimStepStatSeqs(step.steps);
+    });
+  };
+  freshEvents.forEach(event => {
+    (Array.isArray(event?.statEvents) ? event.statEvents : []).forEach(claimStatSeq);
+    const transaction = compileVisualEventToAnimTransaction(event, afterGs, beforeGs, { buildAnimQueue });
+    if (transaction?.queue?.length) {
+      queue.push(...transaction.queue);
+      claimStepStatSeqs(transaction.queue);
+    }
+  });
+  const beforeStatSeq = Math.max(
+    beforeGs?._statEventSeq || 0,
+    ...(Array.isArray(beforeGs?._statEvents) ? beforeGs._statEvents : []).map(event => event?.seq || 0),
+  );
+  const unownedStatEvents = (Array.isArray(afterGs?._statEvents) ? afterGs._statEvents : [])
+    .filter(event => event && (event.seq == null || event.seq > beforeStatSeq) && (event.seq == null || !ownedStatSeqs.has(event.seq)));
+  if (unownedStatEvents.length) {
+    const beforeLogLength = Array.isArray(beforeGs?.log) ? beforeGs.log.length : 0;
+    const newMsgs = (Array.isArray(afterGs?.log) ? afterGs.log : []).slice(beforeLogLength);
+    queue.push(...statEventsToAnimQueue(unownedStatEvents, beforeGs?.players || afterGs?.players || [], newMsgs));
   }
-  return buildAnimQueue(beforeGs, afterGs).filter(step => step?.type !== 'DRAW_CARD');
+  return queue;
 }
 
 function replayStatePatch(P, D, Disc, L) {

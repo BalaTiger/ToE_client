@@ -1853,6 +1853,25 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         seq,
         phaseOrder: 2,
       }] : [];
+      // 手写的 HP_LOSS 会顶掉 finish() 里 buildStatEvents 的 includeDefeat 合成，
+      // 致死时必须显式补发 PLAYER_DEFEATED（同石化配方），否则呈现层没有
+      // GUILLOTINE/DEATH 可播，目标只靠 HP_DAMAGE 的 timeline 提前置灰。
+      if (damage > 0 && !beforeTarget.isDead && P[randomTarget]?.isDead) {
+        directStatEvents.push(createPlayerDefeatedStatEvent({
+          target: randomTarget,
+          cause: 'hpDepleted',
+          from: playerStats(beforeTarget),
+          to: playerStats(P[randomTarget]),
+          reason: card?.name || card?.type || '',
+          logHint: msgs.find(line => line.includes(P[randomTarget].name) && line.includes('倒下了')) || '',
+          seq,
+          phaseOrder: 3,
+          playersBefore: beforePlayers,
+          playersAfter: copyPlayers(P),
+          discardBefore: initialDiscard,
+          discardAfter: Disc,
+        }));
+      }
       const throwStoneEvent = createThrowStoneEvent({
         sourceIdx: ci,
         targetIdx: randomTarget,

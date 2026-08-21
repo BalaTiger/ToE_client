@@ -980,6 +980,49 @@ describe('AI end-turn endless corridor replay', () => {
     expect(result.replayQueue[0].msgs).toEqual([expect.stringContaining('【无尽通道】艾伦 展示所有手牌')]);
   });
 
+  it('无尽通道重播投掷石块致死时，依次播出飞石、伤害、断头台与死亡广播', () => {
+    const stone = {
+      id: 'stone', key: 'B2', name: '投掷石块', type: 'throwStone',
+      isZone: true, letter: 'B', number: 2, polarity: 'negative',
+    };
+    const corridor = {
+      id: 'corridor', key: 'A3', name: '无尽通道', type: 'endTurnReplayHand',
+      isZone: true, letter: 'A', number: 3,
+    };
+    const players = [
+      makePlayer({ name: '你', hp: 1, san: 10 }),
+      makePlayer({ name: '卡洛斯', role: ROLE_HUNTER, hp: 8, san: 8, hand: [stone, corridor] }),
+    ];
+    const gs = makeGs({ players, currentTurn: 1, phase: 'AI_TURN', log: ['旧日志'] });
+    const random = vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0.999) // 骰子 6
+      .mockReturnValue(0); // 随机目标：你
+
+    const result = processAiEndTurnReplayHand(
+      gs.players.map(player => ({ ...player, hand: [...(player.hand || [])] })),
+      [],
+      [],
+      [...gs.log],
+      1,
+      gs
+    );
+    random.mockRestore();
+
+    expect(result.P[0].isDead).toBe(true);
+    const types = result.replayQueue.map(step => step.type);
+    const stoneIdx = types.indexOf('THROW_STONE');
+    const hpIdx = types.indexOf('HP_DAMAGE');
+    const guillotineIdx = types.indexOf('GUILLOTINE');
+    const deathIdx = types.indexOf('DEATH');
+    expect(stoneIdx).toBeGreaterThan(-1);
+    expect(hpIdx).toBeGreaterThan(stoneIdx);
+    expect(guillotineIdx).toBeGreaterThan(hpIdx);
+    expect(deathIdx).toBeGreaterThan(guillotineIdx);
+    expect(result.replayQueue[guillotineIdx].msgs).toEqual(
+      expect.arrayContaining([expect.stringContaining('倒下了')]),
+    );
+  });
+
   it('为连续弃牌保留逐步状态快照，不让后续结算污染前一帧', () => {
     const discardA = {
       id: 'discard-a', key: 'C2', name: '惊扰蝙蝠', type: 'selfDamageHP', val: 1,

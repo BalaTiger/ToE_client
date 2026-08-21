@@ -1012,30 +1012,26 @@ export function buildTurnStartDrawVisualEvents(state) {
 }
 
 export function buildFreshStatVisualEvents(state, previousStatSeq = 0) {
-  const statLogSet = new Set((Array.isArray(state?._statLogs) ? state._statLogs : []).filter(Boolean));
   const allFreshStatEvents = Array.isArray(state?._statEvents)
     ? state._statEvents.filter(ev => (
       ev &&
       (ev.seq == null || ev.seq > (previousStatSeq || 0))
     ))
     : [];
-  const logMatchedStatEvents = allFreshStatEvents.filter(event => (
-    event?.logHint && statLogSet.has(event.logHint)
+  // 归属判断只认规范事件内嵌的 statEvents（按 seq / 对象引用）。此前用 _statLogs
+  // 文本匹配收窄，但黏液额外摸牌等路径不把效果日志写进 _statLogs，收窄会把这些
+  // 事件挤出规范归属，随后被上一回合 AI 行动队列的旧式差分捡走抢播。
+  const ownedStatSeqs = new Set();
+  const ownedStatRefs = new Set();
+  (Array.isArray(state?._visualEvents) ? state._visualEvents : []).forEach(event => {
+    (Array.isArray(event?.statEvents) ? event.statEvents : []).forEach(statEvent => {
+      if (statEvent?.seq != null) ownedStatSeqs.add(statEvent.seq);
+      else if (statEvent) ownedStatRefs.add(statEvent);
+    });
+  });
+  const freshStatEvents = allFreshStatEvents.filter(event => (
+    event?.seq != null ? !ownedStatSeqs.has(event.seq) : !ownedStatRefs.has(event)
   ));
-  const logMatchedSeqs = new Set(
-    logMatchedStatEvents.map(event => event?.seq).filter(seq => seq != null),
-  );
-  const logMatchedTransactionEvents = allFreshStatEvents.filter(event => (
-    (event?.seq != null && logMatchedSeqs.has(event.seq))
-    || (event?.seq == null && logMatchedStatEvents.includes(event))
-  ));
-  // _statLogs is a presentation slice, but inspection flows can replace it
-  // with reveal/worship lines that do not equal the underlying SAN event's
-  // logHint. Use it as a narrowing signal only when it actually identifies at
-  // least one fresh stat event; otherwise the sequence watermark is canonical.
-  const freshStatEvents = statLogSet.size && logMatchedStatEvents.length
-    ? logMatchedTransactionEvents
-    : allFreshStatEvents;
   const statLogs = Array.isArray(state?._statLogs) ? state._statLogs : [];
   const msgsFor = (events, otherEvents) => {
     if (!otherEvents.length) return statLogs;

@@ -279,6 +279,55 @@ describe('投掷石块玩家收入回放', () => {
     expect(declinedGs.players[1].hand).toContain(slime);
     expect(queue.find(step => step.type === 'RANDOM_TARGET')).toBeTruthy();
   });
+
+  it('致死投掷石块补发 PLAYER_DEFEATED，回放含断头台与死亡广播', () => {
+    const players = [
+      makePlayer({ name: '你', hp: 10 }),
+      makePlayer({ name: '艾伦', hp: 1 }),
+      makePlayer({ name: '贝拉', hp: 10 }),
+    ];
+    const oldGs = makeGs({ players: copyPlayers(players), currentTurn: 0, phase: 'DRAW_REVEAL', log: [] });
+    const random = vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0.999) // 骰子 6
+      .mockReturnValueOnce(0); // 候选目标 [艾伦, 贝拉] 中的第 0 个：艾伦
+
+    const result = applyFx(
+      { type: 'throwStone', name: '投掷石块' },
+      0,
+      null,
+      copyPlayers(players),
+      [],
+      [],
+      oldGs,
+    );
+    random.mockRestore();
+
+    expect(result.P[1].isDead).toBe(true);
+    const statEvents = result.statePatch?._statEvents || [];
+    const defeat = statEvents.find(event => event?.type === 'PLAYER_DEFEATED');
+    expect(defeat).toMatchObject({ target: 1, cause: 'hpDepleted' });
+
+    const nextGs = {
+      ...oldGs,
+      players: result.P,
+      deck: result.D,
+      discard: result.Disc,
+      log: result.msgs,
+      ...result.statePatch,
+    };
+    const queue = buildAnimQueue(oldGs, nextGs);
+    const types = queue.map(step => step.type);
+    const hpIdx = types.indexOf('HP_DAMAGE');
+    const guillotineIdx = types.indexOf('GUILLOTINE');
+    const deathIdx = types.indexOf('DEATH');
+    expect(hpIdx).toBeGreaterThan(-1);
+    expect(guillotineIdx).toBeGreaterThan(hpIdx);
+    expect(deathIdx).toBeGreaterThan(guillotineIdx);
+    expect(queue[guillotineIdx].msgs).toEqual(
+      expect.arrayContaining([expect.stringContaining('倒下了')]),
+    );
+    expect(() => assertCompleteThrowStoneTransactions(queue)).not.toThrow();
+  });
 });
 
 describe('getAdjacentTargets', () => {

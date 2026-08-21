@@ -361,11 +361,15 @@ describe('buildAnimQueue stat animations', () => {
     expect(queue.find(step => step.type === 'SAN_DAMAGE')).toMatchObject({ hitIndices: [0] });
   });
 
-  it('stat visual event 只包含本次 statLogs 对应的事件，避免重播上个 AI 的 SAN 扣减', () => {
+  it('stat visual event 排除已被规范事件认领的统计事件，认领外的 fresh 事件全部保留', () => {
     const allenLog = '艾伦 遭遇邪神 森之领主！（第1次）失去1SAN';
     const bellaLog = '贝拉 遭遇邪神 阿波菲斯！（第1次）失去1SAN';
     const events = buildFreshStatVisualEvents({
       _statLogs: [bellaLog],
+      _visualEvents: [{
+        type: 'drawCard',
+        statEvents: [{ type: 'SAN_LOSS', target: 1, from: { san: 10 }, to: { san: 9 }, logHint: allenLog, seq: 1 }],
+      }],
       _statEvents: [
         { type: 'SAN_LOSS', target: 1, from: { san: 10 }, to: { san: 9 }, logHint: allenLog, seq: 1 },
         { type: 'SAN_LOSS', target: 2, from: { san: 10 }, to: { san: 9 }, logHint: bellaLog, seq: 2 },

@@ -1469,6 +1469,35 @@ describe('turnEngine stat events', () => {
     expect(slimePopIdx).toBeLessThan(extraDrawIdx);
   });
 
+  it('黏液额外摸到区域牌时，效果统计事件全部被规范回合开始事件认领', () => {
+    const slime = createTsathogguaSlimeCard();
+    const claustro = {
+      id: 'slime-claustrophobia', key: 'B1', letter: 'B', number: 1,
+      name: '幽闭恐惧', type: 'adjDamageSAN', val: 2, isZone: true, polarity: 'negative',
+    };
+    const god = makeGodCard('NYA', { id: 'slime-god-nya' });
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '黛安娜', godName: 'TSG', godLevel: 1, hand: [slime] }),
+      makePlayer({ name: '艾伦' }),
+    ];
+    const gs = makeGs({ players, deck: [claustro, god], currentTurn: 0, log: [] });
+
+    const result = startNextTurn(gs);
+
+    const sanEvents = (result._statEvents || []).filter(event => event?.type === 'SAN_LOSS');
+    expect(sanEvents.length).toBeGreaterThan(0);
+    // 未被任何 turnStartStage 事件认领的 seq 会被上一回合 AI 行动队列的
+    // 旧式差分捡走抢播（幽闭恐惧 SAN 在上一回合播出的线上 bug）。
+    const ownedSeqs = new Set((result._visualEvents || [])
+      .filter(event => event?.turnStartStage)
+      .flatMap(event => Array.isArray(event?.statEvents) ? event.statEvents : [])
+      .map(event => event?.seq)
+      .filter(seq => seq != null));
+    const leaked = sanEvents.filter(event => event.seq != null && !ownedSeqs.has(event.seq));
+    expect(leaked).toEqual([]);
+  });
+
   it('本地玩家黏液额外摸牌进入抉择时保留正常摸牌续接标记', () => {
     const slime = createTsathogguaSlimeCard();
     const extraDecisionCard = makeZoneCard('B4', 0);
@@ -1500,6 +1529,32 @@ describe('turnEngine stat events', () => {
     expect(result.deck[0]).toBe(normalCard);
     expect(result.log.some(line => line.includes('额外摸到'))).toBe(true);
     expect(result.log.some(line => line.includes('正常牌'))).toBe(false);
+  });
+
+  it('黏液额外摸牌的 AOE 杀死本地玩家时截断摸牌阶段，死亡步骤后不再有摸牌动画', () => {
+    const slime = createTsathogguaSlimeCard();
+    const nightWind = { id: 'c4', key: 'C4', letter: 'C', number: 4, name: '夜风呼啸', type: 'allDamageBoth', val: 1, isZone: true, polarity: 'negative' };
+    const torch = { id: 'c3', key: 'C3', letter: 'C', number: 3, name: '引燃火把', type: 'igniteTorch', isZone: true, polarity: 'neutral' };
+    const players = [
+      makePlayer({ name: '你', hp: 1, role: '追猎者' }),
+      makePlayer({ name: '黛安娜', hp: 10, san: 5, godName: 'TSG', godLevel: 1, hand: [slime], role: '追猎者' }),
+      makePlayer({ name: '艾伦', hp: 10, role: '寻宝者' }),
+    ];
+    const gs = makeGs({ players, deck: [nightWind, torch], currentTurn: 0, log: [] });
+
+    const result = startNextTurn(gs);
+
+    expect(result.gameOver).toMatchObject({ winner: 'LOSE' });
+    // 规则截断：死亡之后的固定摸牌不再结算，日志里不出现第二张牌
+    expect(result.log.some(line => line.includes('引燃火把'))).toBe(false);
+    // 呈现顺序：HP/SAN 伤害 → 断头台 → 死亡广播，之后不存在任何摸牌步骤
+    const replay = buildTurnStartDrawReplayQueue({ oldGs: gs, newGs: result });
+    const types = replay.queue.map(step => step.type);
+    const deathIdx = types.indexOf('DEATH');
+    expect(types.indexOf('HP_DAMAGE')).toBeGreaterThan(-1);
+    expect(types.indexOf('GUILLOTINE')).toBeGreaterThan(types.indexOf('HP_DAMAGE'));
+    expect(deathIdx).toBeGreaterThan(types.indexOf('GUILLOTINE'));
+    expect(types.slice(deathIdx).some(type => type === 'DRAW_CARD')).toBe(false);
   });
 
   it('黏液额外摸到伤害牌时，牌效结算前黏液已消耗，不能再用于平分 HP/SAN', () => {
