@@ -7,12 +7,12 @@ const PLAYER_STATUS_TAG_ORDER = [
   'poison',
 ];
 
-function hasPlayerStatusTags(player, visualPlayer = player) {
+function hasPlayerStatusTags(player) {
   return !!(
     player?.godName ||
     (player?.godEncounters || 0) > 0 ||
-    (visualPlayer?.etherealizeStacks || 0) > 0 ||
-    (visualPlayer?.poisonStacks || 0) > 0
+    (player?.etherealizeStacks || 0) > 0 ||
+    (player?.poisonStacks || 0) > 0
   );
 }
 
@@ -102,28 +102,27 @@ function PoisonTag({ count, variant, fontSize }) {
 
 export function PlayerStatusTags({
   player,
-  visualPlayer = player,
   playerIndex,
   variant = 'compact',
   fontSizes = {},
   renderGodPower,
 }) {
-  if (!hasPlayerStatusTags(player, visualPlayer)) return null;
+  if (!hasPlayerStatusTags(player)) return null;
   const isStack = variant === 'stack';
   const tagFontSize = isStack ? fontSizes.small : 10;
   const encounterFontSize = isStack ? fontSizes.small : 9;
   const tags = PLAYER_STATUS_TAG_ORDER.map(type => {
     if (type === 'godPower' && player?.godName && renderGodPower) {
-      return <React.Fragment key={type}>{renderGodPower()}</React.Fragment>;
+      return <React.Fragment key={type}>{renderGodPower(player)}</React.Fragment>;
     }
     if (type === 'godEncounters') {
       return <GodEncountersTag key={type} count={player?.godEncounters || 0} variant={variant} fontSize={encounterFontSize} />;
     }
     if (type === 'etherealize') {
-      return <EtherealizeTag key={type} playerIndex={playerIndex} count={visualPlayer?.etherealizeStacks || 0} variant={variant} fontSize={tagFontSize} />;
+      return <EtherealizeTag key={type} playerIndex={playerIndex} count={player?.etherealizeStacks || 0} variant={variant} fontSize={tagFontSize} />;
     }
     if (type === 'poison') {
-      return <PoisonTag key={type} count={visualPlayer?.poisonStacks || 0} variant={variant} fontSize={tagFontSize} />;
+      return <PoisonTag key={type} count={player?.poisonStacks || 0} variant={variant} fontSize={tagFontSize} />;
     }
     return null;
   }).filter(Boolean);

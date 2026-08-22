@@ -1203,6 +1203,67 @@ describe('animQueueHelpers', () => {
     expect(queue[eclipseIdx].cardAcquisitionStage).toBe(CARD_ACQUISITION_STAGE.ON_WORSHIP_POWER);
   });
 
+  it('遭遇检定后首次信仰时，抛弃信徒的 SAN 事件不被状态差分吞掉', () => {
+    const godCard = makeGodCard('CTH', { id: 'cth-draw', name: '拉莱耶之主' });
+    const oldFollowerGod = makeGodCard('CTH', { id: 'cth-bella' });
+    const oldPlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '黛安娜', role: ROLE_TREASURE, san: 5 }),
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_TREASURE,
+        san: 10,
+        godName: 'CTH',
+        godLevel: 1,
+        godZone: [oldFollowerGod],
+      }),
+    ];
+    const pendingState = makeGs({
+      players: oldPlayers,
+      currentTurn: 1,
+      phase: 'AI_GOD_CHOICE',
+      deck: [],
+      discard: [],
+      inspectionDeck: [{ id: 'seal-loosened', name: '封印松动', effect: 'nothing' }],
+      inspectionDiscard: [],
+      log: ['黛安娜 遭遇邪神 拉莱耶之主！（第1次）失去 1 SAN'],
+      _statEvents: [{
+        target: 1,
+        from: { hp: 10, san: 6, isDead: false },
+        to: { hp: 10, san: 5, isDead: false },
+        reason: '邪神遭遇',
+        logHint: '黛安娜 遭遇邪神 拉莱耶之主！（第1次）失去 1 SAN',
+        seq: 1,
+        type: 'SAN_LOSS',
+      }],
+      _statEventSeq: 1,
+      _inspectionSeq: 0,
+      abilityData: {
+        playerIndex: 1,
+        godCard,
+        pendingEncounterInspection: true,
+      },
+    });
+    const resolved = resolveAiGodChoiceTransition(pendingState).state;
+    const queue = buildInspectionAwareAnimQueue(
+      pendingState,
+      resolved,
+      { buildAnimQueue, copyPlayers },
+    ).queue;
+    const inspectionIdx = queue.findIndex(step => step?.type === 'DRAW_CARD' && step?.inspectionSeq != null);
+    const highlightIdx = queue.findIndex(step => step?.type === 'GOD_HIGHLIGHT');
+    const abandonIdx = queue.findIndex(step => step?.effect === 'godAbandon');
+    const sanIdx = queue.findIndex(step => step?.type === 'SAN_DAMAGE' && step?.hitIndices?.includes(2));
+
+    expect([inspectionIdx, highlightIdx, abandonIdx, sanIdx].every(index => index >= 0)).toBe(true);
+    expect([inspectionIdx, highlightIdx, abandonIdx, sanIdx]).toEqual(
+      [...[inspectionIdx, highlightIdx, abandonIdx, sanIdx]].sort((a, b) => a - b),
+    );
+    expect(queue[sanIdx].statEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ target: 2, seq: 2, type: 'SAN_LOSS' }),
+    ]));
+  });
+
   it('普通蛊惑不因邪神牌后处理改变顺序', () => {
     const zoneCard = makeZoneCard('A1');
     const playersAfter = [makePlayer({ name: '艾伦' }), makePlayer({ name: '你' })];

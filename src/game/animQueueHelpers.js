@@ -837,7 +837,14 @@ export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPl
     {buildAnimQueue,copyPlayers}
   );
   const maxInspectionSeq=Math.max(baseInspectionSeq,...inspectionEvents.map(ev=>ev?.seq||0));
-  const tailStatEventSeq=Math.max(inspectionFlow.statEventSeq,newGs?._statEventSeq||0);
+  // The tail starts at the stat-event watermark reached by the inspection
+  // flow.  Do not advance this baseline to newGs._statEventSeq: that scalar
+  // also includes post-inspection settlement losses (for example a competing
+  // follower losing SAN during faith establishment).  Treating the final
+  // watermark as already consumed is the old state-diff failure mode: the
+  // follower's SAN bar changes with the snapshot, but no SAN_DAMAGE step is
+  // emitted.
+  const tailStatEventSeq=inspectionFlow.statEventSeq;
   const tailBaselineVisualEvents=Array.isArray(newGs?._visualEvents)
     ?newGs._visualEvents.filter(event=>(
       event?.presentAfterInspectionSeq==null ||
@@ -876,9 +883,19 @@ export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPl
     }
   };
   getVisualEvents(newGs)
-    .filter(event=>event?.type===VISUAL_EVENT.GOD_STATUS_CHANGED&&event?.presentAfterInspectionSeq!=null)
+    .filter(event=>event?.type===VISUAL_EVENT.GOD_STATUS_CHANGED)
     .forEach(event=>{
       const previousFaithExit=event?.faithSettlement?.previousFaithExit||null;
+      const abandonedFollowers=event?.faithSettlement?.abandonedFollowers||[];
+      const faithTransitions=[previousFaithExit,...abandonedFollowers].filter(Boolean);
+      // A first-time worship has no `presentAfterInspectionSeq` of its own,
+      // but it can still follow an encounter inspection.  The structured
+      // faith-exit snapshots carry the exact boundary in that case.
+      const faithBoundarySeq=event?.presentAfterInspectionSeq!=null
+        ?event.presentAfterInspectionSeq
+        :Math.max(0,...faithTransitions.map(transition=>Number(
+          transition?.inspectionSeqBefore ?? 0,
+        )||0));
       const previousExitStep=previousFaithExit?queue.find(step=>(
         step?.type==='CARD_TRANSFER'
         &&step?.visualEventId===event.id
@@ -894,7 +911,7 @@ export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPl
         );
       }
       const highlightIndex=queue.findIndex(step=>step?.type==='GOD_HIGHLIGHT'&&step?.visualEventId===event.id);
-      const boundaryStep=inspectionFlow.boundarySteps.get(event.presentAfterInspectionSeq);
+      const boundaryStep=inspectionFlow.boundarySteps.get(faithBoundarySeq);
       const boundaryIndex=queue.indexOf(boundaryStep);
       const highlight=highlightIndex>=0?queue[highlightIndex]:null;
       if(highlight&&boundaryIndex>=0&&highlightIndex!==boundaryIndex+1){

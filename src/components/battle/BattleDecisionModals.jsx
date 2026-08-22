@@ -160,7 +160,7 @@ export function BattleDecisionModals({
       )}
 
       {/* Treasure hunter dodge modal */}
-      {!suppressAnim && phase === 'TREASURE_DODGE_DECISION' && gs.drawReveal && isLocalTreasureDodgePhase(gs) && (
+      {!suppressAnim && canShowTurnDecisionModal && phase === 'TREASURE_DODGE_DECISION' && gs.drawReveal && isLocalTreasureDodgePhase(gs) && (
         <TreasureDodgeModal
           drawReveal={gs.drawReveal}
           onRoll={handleTreasureDodgeRoll}
@@ -172,7 +172,7 @@ export function BattleDecisionModals({
       )}
 
       {/* Treasure hunter AOE dodge modal */}
-      {!suppressAnim && phase === 'TREASURE_AOE_DODGE_DECISION' && gs.drawReveal && isLocalTreasureAoEDodgePhase(gs) && (
+      {!suppressAnim && canShowTurnDecisionModal && phase === 'TREASURE_AOE_DODGE_DECISION' && gs.drawReveal && isLocalTreasureAoEDodgePhase(gs) && (
         <TreasureDodgeModal
           drawReveal={gs.drawReveal}
           onRoll={handleTreasureAOEDodgeRoll}

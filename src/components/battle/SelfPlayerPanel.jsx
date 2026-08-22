@@ -11,8 +11,7 @@ export function SelfPlayerPanel({
   selfPanelRef,
   roleTextRef,
   emojiButtonRef,
-  me,
-  visualMe,
+  player,
   displayStats,
   ri,
   phase,
@@ -151,9 +150,9 @@ export function SelfPlayerPanel({
                 letterSpacing: 1,
               }}
             >
-              {ri.icon} {me.role}
+              {ri.icon} {player.role}
             </div>
-            {me.isDead && <span style={{ fontSize: fontSizes.body, color: '#882020', marginLeft: 'auto' }}>☠</span>}
+            {player.isDead && <span style={{ fontSize: fontSizes.body, color: '#882020', marginLeft: 'auto' }}>☠</span>}
           </div>
           <div
             style={{
@@ -168,7 +167,7 @@ export function SelfPlayerPanel({
           >
             {ri.goal}
           </div>
-          {me.isResting && (
+          {player.isResting && (
             <div
               data-resting-marker="0"
               style={{
@@ -184,37 +183,36 @@ export function SelfPlayerPanel({
             </div>
           )}
           <PlayerStatusTags
-            player={me}
-            visualPlayer={visualMe}
+            player={player}
             playerIndex={0}
             variant="stack"
             fontSizes={fontSizes}
-            renderGodPower={() => (
-              <LocalGodPowerTag def={GOD_DEFS[me.godName]} godLevel={me.godLevel}>
+            renderGodPower={presentationPlayer => (
+              <LocalGodPowerTag def={GOD_DEFS[presentationPlayer.godName]} godLevel={presentationPlayer.godLevel}>
                 <div
                   style={{
                     fontSize: fontSizes.small,
-                    color: GOD_DEFS[me.godName]?.col,
+                    color: GOD_DEFS[presentationPlayer.godName]?.col,
                     fontFamily: "'Cinzel',serif",
                     letterSpacing: 0.5,
                     fontWeight: 700,
-                    textShadow: `0 0 6px ${GOD_DEFS[me.godName]?.col}66`,
+                    textShadow: `0 0 6px ${GOD_DEFS[presentationPlayer.godName]?.col}66`,
                   }}
                 >
-                  {GOD_DEFS[me.godName]?.name}
+                  {GOD_DEFS[presentationPlayer.godName]?.name}
                 </div>
                 <div style={{ fontSize: fontSizes.small, color: '#d4b0b0', fontFamily: "'IM Fell English',serif", fontStyle: 'italic' }}>
-                  {GOD_DEFS[me.godName]?.power} Lv.{me.godLevel}
+                  {GOD_DEFS[presentationPlayer.godName]?.power} Lv.{presentationPlayer.godLevel}
                 </div>
                 <div style={{ fontSize: fontSizes.tiny, color: '#a07878', fontStyle: 'italic', marginTop: 1, lineHeight: 1.4 }}>
-                  {GOD_DEFS[me.godName]?.levels[(me.godLevel || 1) - 1]?.desc}
+                  {GOD_DEFS[presentationPlayer.godName]?.levels[(presentationPlayer.godLevel || 1) - 1]?.desc}
                 </div>
               </LocalGodPowerTag>
             )}
           />
-          {!!me.zoneCards?.length && (
+          {!!player.zoneCards?.length && (
             <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {me.zoneCards.map((c, ci) => (
+              {player.zoneCards.map((c, ci) => (
                 <DDCard key={c.id || `self-zone-${ci}`} card={c} small holderId={0} />
               ))}
             </div>
@@ -223,7 +221,7 @@ export function SelfPlayerPanel({
         <div style={{ borderTop: '1px solid var(--toe-line-dim,#2a1a08)', paddingTop: 8 }}>
           <StatBar
             label="HP"
-            val={displayStats[0]?.hp ?? me.hp}
+            val={displayStats[0]?.hp ?? player.hp}
             color="#7a1515"
             trackColor="#1a0808"
             scaleRatio={boardScaleRatio}
@@ -234,7 +232,7 @@ export function SelfPlayerPanel({
           />
           <StatBar
             label="SAN"
-            val={displayStats[0]?.san ?? me.san}
+            val={displayStats[0]?.san ?? player.san}
             color="#3a1078"
             trackColor="#120820"
             scaleRatio={boardScaleRatio}

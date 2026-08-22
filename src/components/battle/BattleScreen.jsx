@@ -518,8 +518,7 @@ export function BattleScreen(props) {
             selfPanelRef={selfPanelRef}
             roleTextRef={roleTextRef}
             emojiButtonRef={emojiButtonRef}
-            me={me}
-            visualMe={visualMe}
+            player={visualMe}
             displayStats={displayStats}
             ri={ri}
             phase={phase}

@@ -661,12 +661,12 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
       <PlayerStatusTags
         player={player}
         playerIndex={playerIndex}
-        renderGodPower={() => (
+        renderGodPower={presentationPlayer => (
           <span
             data-god-power-anchor={playerIndex}
             style={{display:'inline-flex',alignItems:'center'}}
           >
-            <GodPowerBadge player={player} playerIndex={playerIndex}/>
+            <GodPowerBadge player={presentationPlayer} playerIndex={playerIndex}/>
           </span>
         )}
       />
