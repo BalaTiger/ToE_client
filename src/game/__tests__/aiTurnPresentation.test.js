@@ -25,6 +25,7 @@ import {
   createApophisTargetVisualEvent,
   createGodStatusChangedEvent,
   createHuntResultEvent,
+  createHuntTargetEvent,
   createInspectionVisualEvent,
 } from '../visualEvents';
 import { getVisualEventIdsCoveredByAnimationQueue } from '../visualEventTransactionCompiler';
@@ -522,6 +523,83 @@ describe('AI turn presentation helpers', () => {
     expect(result.queue[1]).toBe(replayStep);
     expect(result.queue.some(step => step.type === 'DRAW_CARD')).toBe(false);
     expect(result.externalVisualLocks).toEqual([replayLock]);
+  });
+
+  it('declares only the current hunt transaction when an old inspection remains on gs', () => {
+    const players = [
+      { name: '你', hand: [{ id: 'local-a1', key: 'A1' }], godZone: [] },
+      { name: '卡洛斯', hand: [{ id: 'hunter-a2', key: 'A2' }], godZone: [] },
+    ];
+    const oldInspection = {
+      id: 'inspection:old-sleep',
+      type: 'inspection',
+      scope: 'inspection',
+      card: { id: 'sleep', name: '昏睡' },
+      target: 1,
+    };
+    const attemptId = 'ai-action:8:1:12:hunt-attempt:1';
+    const huntMsg = '卡洛斯（追猎者）向你发动【追捕】！请选择亮出一张手牌';
+    const huntTarget = createHuntTargetEvent({
+      sourceIdx: 1,
+      targetIdx: 0,
+      msgs: [huntMsg],
+      attemptId,
+      phaseGroupId: attemptId,
+      phaseOrder: 30,
+      transactionId: 'ai-action:8:1:12',
+      order: 0,
+      beforePlayers: players,
+      afterPlayers: players,
+    });
+    const previousState = {
+      phase: 'AI_TURN',
+      currentTurn: 1,
+      players,
+      discard: [],
+      log: ['旧日志'],
+      _aiTurnIntroShown: true,
+      _visualEvents: [oldInspection],
+    };
+    const nextState = {
+      ...previousState,
+      phase: 'PLAYER_REVEAL_FOR_HUNT',
+      abilityData: { huntingAI: 1, aiHunterName: '卡洛斯', huntPromptId: attemptId },
+      log: [...previousState.log, huntMsg],
+      _visualEvents: [oldInspection, huntTarget],
+    };
+    const rawHunt = {
+      attemptId,
+      phaseGroupId: attemptId,
+      phaseOrder: 30,
+      hunterIdx: 1,
+      targetIdx: 0,
+      beforePlayers: players,
+      afterPlayers: players,
+      msgs: [huntMsg],
+      pendingPrompt: true,
+      skipReveal: true,
+    };
+
+    const result = buildAiHuntWaitPresentation({
+      previousState,
+      rawResult: {
+        _aiActionTransactionId: 'ai-action:8:1:12',
+        _aiHuntEvents: [rawHunt],
+      },
+      nextState,
+      isDrawnCardActuallyDiscarded: () => false,
+      buildActorTurnStartReplay: vi.fn(),
+      buildTurnStartIntroQueue: vi.fn(),
+    });
+
+    expect(result.actionTransactionId).toBe('ai-action:8:1:12');
+    expect(result.eventIds).toEqual([huntTarget.id]);
+    expect(result.queue).toContainEqual(expect.objectContaining({
+      type: 'SKILL_HUNT',
+      visualEventId: huntTarget.id,
+      targetIdx: 0,
+    }));
+    expect(result.queue.some(step => step?.visualEventId === oldInspection.id)).toBe(false);
   });
 
   it('treats queued rest and CTH spring heals as authoritative stat-event coverage', () => {

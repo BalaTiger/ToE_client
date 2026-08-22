@@ -1849,6 +1849,13 @@ describe('aiStep optional action limits', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0);
     const matchingCard = makeZoneCard('C1', 0);
     const remainingCard = makeZoneCard('A1', 0);
+    const historicalInspection = {
+      id: 'inspection:historical-turn-start',
+      type: 'inspection',
+      scope: 'inspection',
+      card: { id: 'sleep', name: '昏睡' },
+      target: 1,
+    };
     const players = [
       makePlayer({
         name: '你',
@@ -1872,6 +1879,7 @@ describe('aiStep optional action limits', () => {
       skillUsed: false,
       restUsed: false,
       multiplyUsed: false,
+      _visualEvents: [historicalInspection],
       log: ['旧日志'],
     }));
     expect(huntPrompt).toMatchObject({
@@ -1879,6 +1887,28 @@ describe('aiStep optional action limits', () => {
       skillUsed: true,
       skillActivatedTurn: 7,
     });
+    const huntTargetEvent = huntPrompt._visualEvents.find(event => event?.type === 'huntTarget');
+    expect(huntPrompt._visualEvents).not.toContain(historicalInspection);
+    expect(huntTargetEvent).toMatchObject({
+      attemptId: huntPrompt.abilityData.huntPromptId,
+      phaseGroupId: huntPrompt.abilityData.huntPromptId,
+      sourceIdx: 1,
+      targetIdx: 0,
+      transactionId: huntPrompt._aiActionTransactionId,
+      order: expect.any(Number),
+    });
+    expect(huntPrompt._visualEvents.some(event => event?.type === 'huntResult')).toBe(false);
+    const pendingPresentation = buildOwnedAiHuntEventQueue({
+      rawHuntEvents: huntPrompt._aiHuntEvents,
+      state: huntPrompt,
+      actorName: '卡洛斯',
+    });
+    expect(pendingPresentation.eventIds).toContain(huntTargetEvent.id);
+    expect(pendingPresentation.queue).toContainEqual(expect.objectContaining({
+      type: 'SKILL_HUNT',
+      visualEventId: huntTargetEvent.id,
+      targetIdx: 0,
+    }));
 
     const resumedGs = {
       ...huntPrompt,

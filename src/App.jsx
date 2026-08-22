@@ -2300,7 +2300,18 @@ export default function Game(){
           if(presentation.inspectionEvents?.length)markInspectionEventsSeen(presentation.inspectionEvents);
           // 更新玫瑰倒刺快照，防止 useEffect 在动画结束后对已在 aiStep 中结算的弃牌重复触发
           roseThornPrevRef.current=presentation.roseThornSnapshot;
-          triggerAnimQueue(presentation.queue,presentation.nextState,undefined,strictActionQueueMeta(presentation.nextState,presentation.queue,consumedVisualEventIdsRef.current,'AI hunt wait'));
+          triggerAnimQueue(
+            presentation.queue,
+            presentation.nextState,
+            undefined,
+            strictActionQueueMeta(
+              presentation.nextState,
+              presentation.queue,
+              consumedVisualEventIdsRef.current,
+              'AI hunt wait',
+              {eventIds:presentation.eventIds},
+            ),
+          );
         }catch(e){
           console.error('[AI hunt presentation error]',e);
           setGs(buildAiPresentationRecoveryState({snapshot:gs,resolvedState:newGs,error:e}));

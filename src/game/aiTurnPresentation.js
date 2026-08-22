@@ -12,6 +12,7 @@ const EXECUTION_ONLY_FIELDS = [
   '_animSphinxReveal',
   '_aiTurnIntroShown',
   '_aiTurnDiscardShown',
+  '_aiActionTransactionId',
 ];
 
 const PRESENTATION_ONLY_FIELDS = [
@@ -161,7 +162,7 @@ function collectOwnedAiHuntVisualEvents(visualEvents = [], rawHuntEvents = []) {
     [event?.attemptId, event?.phaseGroupId].filter(Boolean)
   )));
   const huntEvents = (Array.isArray(visualEvents) ? visualEvents : []).filter(event => (
-    event?.type === 'huntResult'
+    (event?.type === 'huntResult' || event?.type === 'huntTarget')
     && (attemptIds.has(event?.attemptId) || attemptIds.has(event?.phaseGroupId))
   ));
   const targetEventIds = new Set([
@@ -195,7 +196,24 @@ function collectOwnedAiHuntVisualEvents(visualEvents = [], rawHuntEvents = []) {
 // discards into worship/rest animations and the first hunt then appears to
 // "restore" those cards.
 export function scopeAiPreHuntReplayMetadata(state, rawResult = {}) {
-  const action = scopeAiActionReplayMetadata(state);
+  const unscopedAction = scopeAiActionReplayMetadata(state);
+  const actionTransactionId = rawResult?._aiActionTransactionId || null;
+  const transactionVisualEvents = actionTransactionId
+    ? unscopedAction.visualEvents.filter(event => event?.transactionId === actionTransactionId)
+    : unscopedAction.visualEvents;
+  const transactionStatSeqs = new Set(transactionVisualEvents
+    .flatMap(event => Array.isArray(event?.statEvents) ? event.statEvents : [])
+    .map(event => event?.seq)
+    .filter(seq => seq != null));
+  const action = actionTransactionId
+    ? {
+        ...unscopedAction,
+        visualEvents: transactionVisualEvents,
+        statEvents: unscopedAction.statEvents.filter(event => (
+          event?.seq != null && transactionStatSeqs.has(event.seq)
+        )),
+      }
+    : unscopedAction;
   const ownedHuntEvents = collectOwnedAiHuntVisualEvents(
     action.visualEvents,
     rawResult?._aiHuntEvents || [],
@@ -323,9 +341,10 @@ export function getAiActionQueueCoverage(
     consumedEventIds?.has?.(id)
     || (Array.isArray(consumedEventIds) && consumedEventIds.includes(id))
   );
-  // A rule transaction owns only events introduced after its input snapshot.
-  // Historical events remain in the serialized game state for multiplayer
-  // replay, but must not make an unrelated local action fail coverage.
+  // Explicit ownership is authoritative even when the same serialized event
+  // is already present in a previous snapshot (for example after reconnect).
+  // The previous-state diff remains only as a compatibility fallback for
+  // callers that have not migrated to transaction/event-id ownership yet.
   const previousIds = new Set(
     (Array.isArray(previousState?._visualEvents) ? previousState._visualEvents : [])
       .map(event => event?.id)
@@ -336,10 +355,13 @@ export function getAiActionQueueCoverage(
     : new Set((ownedEventIds instanceof Set
       ? [...ownedEventIds]
       : Array.isArray(ownedEventIds) ? ownedEventIds : []).filter(Boolean));
-  const visualEvents = scopeAiActionReplayMetadata(state).visualEvents
+  const candidateVisualEvents = ownedIds
+    ? (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
+    : scopeAiActionReplayMetadata(state).visualEvents;
+  const visualEvents = candidateVisualEvents
     .filter(event => (
       !isConsumed(event?.id)
-      && (!previousState || !previousIds.has(event?.id))
+      && (ownedIds || !previousState || !previousIds.has(event?.id))
       && (!ownedIds || ownedIds.has(event?.id))
     ));
   const eventIds = visualEvents
@@ -625,10 +647,34 @@ export function buildAiHuntWaitPresentation({
     currentTurnLogs,
     explicitCurrentLogs
   );
+  const finalQueue = appendAnimLogChunkToQueueEnd(queue, residualLogs);
+  const actionTransactionId = rawResult?._aiActionTransactionId || null;
+  const stateVisualEvents = Array.isArray(nextState?._visualEvents) ? nextState._visualEvents : [];
+  const stateVisualEventsById = new Map(
+    stateVisualEvents.map(event => [event?.id, event]).filter(([id]) => !!id),
+  );
+  const actionTransactionEventIds = actionTransactionId
+    ? stateVisualEvents
+        .filter(event => event?.transactionId === actionTransactionId && event?.id)
+        .map(event => event.id)
+    : [];
+  // A combined wait presentation may still contain a staged turn-start replay.
+  // Those events are a separate declared transaction, not part of the AI
+  // action transaction, so include only staged ids that the queue binds
+  // explicitly rather than claiming every staged event retained on the state.
+  const queuedTurnStartEventIds = getAnimationQueueVisualEventIds(finalQueue)
+    .filter(id => !!stateVisualEventsById.get(id)?.turnStartStage);
+  const eventIds = [...new Set([
+    ...actionTransactionEventIds,
+    ...(huntPresentation.eventIds || []),
+    ...queuedTurnStartEventIds,
+  ])];
 
   return {
-    queue: appendAnimLogChunkToQueueEnd(queue, residualLogs),
+    queue: finalQueue,
     nextState,
+    actionTransactionId,
+    eventIds,
     roseThornSnapshot: buildRoseThornSnapshot(nextState.players),
     externalVisualLocks,
     inspectionEvents: huntPresentation.inspectionEvents,
@@ -773,4 +819,7 @@ import {
 } from './animLogs';
 import { removeCardsFromDiscard } from './coreUtils';
 import { getTurnStartDrawBaselineLog } from './turnAnimState';
-import { compileRuleVisualEventsToAnimTransaction } from './visualEventTransactionCompiler';
+import {
+  compileRuleVisualEventsToAnimTransaction,
+  getAnimationQueueVisualEventIds,
+} from './visualEventTransactionCompiler';

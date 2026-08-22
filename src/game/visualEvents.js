@@ -362,12 +362,32 @@ export function createSwapCardsEvent({
   }, 'action');
 }
 
-export function createHuntTargetEvent({ sourceIdx = 0, targetIdx = 0, msgs = [] } = {}) {
+export function createHuntTargetEvent({
+  sourceIdx = 0,
+  targetIdx = 0,
+  msgs = [],
+  attemptId = null,
+  targetResolutionEventId = null,
+  phaseGroupId = null,
+  phaseOrder = null,
+  transactionId = null,
+  order = null,
+  beforePlayers = null,
+  afterPlayers = null,
+} = {}) {
   return withVisualEventMeta({
     type: VISUAL_EVENT.HUNT_TARGET,
     id: `${VISUAL_EVENT.HUNT_TARGET}:${visualEventInstanceId}:${++actionEventSeq}`,
     sourceIdx,
     targetIdx,
+    ...(attemptId ? { attemptId } : {}),
+    ...(targetResolutionEventId ? { targetResolutionEventId } : {}),
+    ...(phaseGroupId ? { phaseGroupId } : {}),
+    ...(phaseOrder != null ? { phaseOrder } : {}),
+    ...(transactionId ? { transactionId } : {}),
+    ...(order != null ? { order } : {}),
+    ...(Array.isArray(beforePlayers) ? { beforePlayers } : {}),
+    ...(Array.isArray(afterPlayers) ? { afterPlayers } : {}),
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'action');
 }

@@ -567,7 +567,6 @@ export function buildAnimQueue(oldGs, newGs) {
         .map(event => Number(event?.legacySeq ?? event?.seq) || 0),
     );
   };
-  const oldInspectionSeq = inspectionPresentationSeq(oldGs);
   const newInspectionSeq = inspectionPresentationSeq(newGs);
   const godStatusEvents = getVisualEvents(newGs).filter(event => (
     event.type === VISUAL_EVENT.GOD_STATUS_CHANGED && !oldVisualEventIds.has(event.id)

@@ -73,6 +73,7 @@ import {
   createApophisEclipseEvent,
   createGodPowerBlockedEvent,
   createGodStatusChangedEvent,
+  createHuntTargetEvent,
   createHuntResultEvent,
   createMultiplyVisualEvent,
   createSwapCardsEvent,
@@ -921,7 +922,15 @@ export function aiStep(gs, opts = {}) {
     // layer. Preserve action events first, then append that next-turn
     // transaction; never let incoming events from an older replay leak in.
     if (Object.prototype.hasOwnProperty.call(nextGs || {}, '_visualEvents')) {
-      const nextTurnEvents = Array.isArray(nextGs._visualEvents) ? nextGs._visualEvents : [];
+      // A paused decision state normally spreads the input gs.  Do not let
+      // those retained journal entries become owned by the new AI action just
+      // because they are present on nextGs.  Actual action events are carried
+      // by freshCurrentTurnEvents/ownedActionVisualEvents; startNextTurn emits
+      // new ids, so its staged events still pass this filter.
+      const nextTurnEvents = (Array.isArray(nextGs._visualEvents) ? nextGs._visualEvents : [])
+        .filter(event => event?.id
+          ? !incomingVisualEventIds.has(event.id)
+          : !incomingVisualEventRefs.has(event));
       const combined = [...freshCurrentTurnEvents, ...nextTurnEvents, ...ownedActionVisualEvents]
         .filter((event, index, events) => !event?.id || events.findIndex(candidate => candidate?.id === event.id) === index);
       return combined.length ? combined : null;
@@ -937,6 +946,19 @@ export function aiStep(gs, opts = {}) {
     if (unifiedReplayCacheState === nextGs && unifiedReplayCache) return unifiedReplayCache;
     const baseEvents = getReplayVisualEvents(nextGs) || [];
     const huntEvents = aiHuntEvents.filter(event => !event?.targetOnly).map(event => {
+      if (event?.pendingPrompt) {
+        return createHuntTargetEvent({
+          sourceIdx: event.hunterIdx,
+          targetIdx: event.targetIdx,
+          msgs: event.msgs,
+          attemptId: event.attemptId,
+          targetResolutionEventId: event.targetResolutionEventId,
+          phaseGroupId: event.phaseGroupId,
+          phaseOrder: event.phaseOrder ?? 30,
+          beforePlayers: event.beforePlayers,
+          afterPlayers: event.afterPlayers,
+        });
+      }
       return createHuntResultEvent({
         ...event,
         // AI actions are resolved as one rule transaction, so their hunt event
@@ -982,6 +1004,7 @@ export function aiStep(gs, opts = {}) {
     _playersBeforeSkillAction: playersBeforeSkillAction,
     _preSkillLogs: preSkillLogs,
     _preSkillDiscard: preSkillDiscard,
+    _aiActionTransactionId: aiActionTransactionId,
     ...(P_beforeEndTurnReplay ? { _playersBeforeEndTurnReplay: P_beforeEndTurnReplay } : {}),
     ...(aiHuntEvents.length ? { _aiHuntEvents: aiHuntEvents } : {}),
     ...(animMultiplyEvent ? { _animMultiplyEvent: animMultiplyEvent } : {}),
@@ -1702,12 +1725,14 @@ export function aiStep(gs, opts = {}) {
                 afterLog:[...L],
                 msgs:L.slice(huntPromptLogStart),
                 skipReveal:true,
+                pendingPrompt:true,
               });
               const updatedAbandoned = [...newAbandoned, ti];
-              return {...gs, players:P, deck:D, discard:Disc, log:L,
+              const pendingHuntState={...gs, players:P, deck:D, discard:Disc, log:L,
                 phase:'PLAYER_REVEAL_FOR_HUNT',
                 abilityData:{huntingAI:ct, aiHunterName:ai.name, huntPromptId:attemptId},
-                skillUsed:true, skillActivatedTurn:gs.turn, huntAbandoned: updatedAbandoned, _aiName:ai.name, _drawnCard:gs._drawnCard, _aiDrawnCard:gs._aiDrawnCard??gs._drawnCard??null, _discardedDrawnCard:gs._discardedDrawnCard??false, _playersBeforeSkillAction:playersBeforeSkillAction, _preSkillLogs:preSkillLogs, _preSkillDiscard:preSkillDiscard, _aiHuntEvents:aiHuntEvents};
+                skillUsed:true, skillActivatedTurn:gs.turn, huntAbandoned: updatedAbandoned};
+              return buildReturnPack(pendingHuntState,copyPlayers(P));
             } else {
               const beforeHuntPlayers=copyPlayers(P);
               const huntLogStart=L.length;

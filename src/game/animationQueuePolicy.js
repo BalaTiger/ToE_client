@@ -1,6 +1,7 @@
 import { getAiActionQueueCoverage } from './aiTurnPresentation';
 import {
   ANIMATION_QUEUE_AUTHORITY,
+  getAnimationQueueVisualEventIds,
   getVisualEventIdsCoveredByAnimationQueue,
 } from './visualEventTransactionCompiler';
 
@@ -29,6 +30,42 @@ export function strictActionQueueMeta(
   context = 'action queue',
   coverageOptions = {},
 ) {
+  const declaredEventIds = Array.isArray(coverageOptions?.eventIds)
+    ? [...new Set(coverageOptions.eventIds.filter(Boolean))]
+    : null;
+  if (declaredEventIds) {
+    const declaredSet = new Set(declaredEventIds);
+    const stateEvents = Array.isArray(state?._visualEvents) ? state._visualEvents : [];
+    const stateEventIds = new Set(stateEvents.map(event => event?.id).filter(Boolean));
+    const missingDeclaredEventIds = declaredEventIds.filter(id => !stateEventIds.has(id));
+    const foreignQueueEventIds = getAnimationQueueVisualEventIds(queue)
+      .filter(id => !declaredSet.has(id));
+    if (missingDeclaredEventIds.length || foreignQueueEventIds.length) {
+      throw new TypeError(`[${context}] queue ownership mismatch: ${JSON.stringify({
+        missingDeclaredEventIds,
+        foreignQueueEventIds,
+      })}`);
+    }
+    // Unscoped action events are migration-era journal orphans. They must not
+    // make an unrelated declared transaction fail, but keep them observable so
+    // their producer can be migrated instead of being silently forgotten.
+    const isConsumed = id => !!id && (
+      consumedEventIds?.has?.(id)
+      || (Array.isArray(consumedEventIds) && consumedEventIds.includes(id))
+    );
+    const orphanEventIds = stateEvents
+      .filter(event => (
+        event?.id
+        && !event?.turnStartStage
+        && !event?.transactionId
+        && !declaredSet.has(event.id)
+        && !isConsumed(event.id)
+      ))
+      .map(event => event.id);
+    if (orphanEventIds.length && import.meta.env?.DEV) {
+      console.warn(`[${context}] unowned visual event journal entries`, { orphanEventIds });
+    }
+  }
   const coverage = getAiActionQueueCoverage(
     state,
     queue,
