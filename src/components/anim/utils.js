@@ -2,6 +2,16 @@ import { getInspectionCardDescription } from '../../constants/card';
 
 const POSITIVE_INSPECTION_EFFECTS = new Set(['healSAN', 'drawCard']);
 
+const CARD_FLIP_GLOW_BY_POLARITY = Object.freeze({
+  positive: '#49d17d',
+  neutral: '#91a1c2',
+  negative: '#b24ad1',
+});
+
+export function getCardFlipGlowColor(polarity){
+  return CARD_FLIP_GLOW_BY_POLARITY[polarity] ?? CARD_FLIP_GLOW_BY_POLARITY.neutral;
+}
+
 export function getInspectionCardPolarity(card){
   if(POSITIVE_INSPECTION_EFFECTS.has(card?.effect)) return 'positive';
   if(card?.effect==='nothing') return 'neutral';

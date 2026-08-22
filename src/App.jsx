@@ -377,6 +377,7 @@ import { ApophisNightBadge } from './components/anim/ApophisOverlays';
 import { formatFileSize, useResourcePreload } from './hooks/useResourcePreload';
 import { useMultiplayerLobby } from './hooks/useMultiplayerLobby';
 import { useAnimationQueue } from './hooks/useAnimationQueue';
+import { useDecisionTransaction } from './hooks/useDecisionTransaction';
 import { useGlobalShakeEffects } from './hooks/useGlobalShakeEffects';
 import { useCardTransferAnimationEffects } from './hooks/useCardTransferAnimationEffects';
 import { useDamageAnimationEffects } from './hooks/useDamageAnimationEffects';
@@ -1197,6 +1198,38 @@ export default function Game(){
     ANIM_SPEED_SCALE,
     paused:isSoloPaused,
   });
+  const decisionTransaction=useDecisionTransaction();
+  const {
+    isSubmitting:decisionSubmitting,
+    error:decisionError,
+    complete:completeDecisionTransaction,
+    begin:beginDecisionTransaction,
+    fail:failDecisionTransaction,
+  }=decisionTransaction;
+  const runDecision=useCallback((decisionId, action)=>{
+    if(typeof action!=='function')return false;
+    if(!beginDecisionTransaction(decisionId))return false;
+    try{
+      action();
+      return true;
+    }catch(error){
+      failDecisionTransaction(decisionId,error);
+      console.error(`[decision-transaction] ${decisionId} preparation failed`,error);
+      return false;
+    }
+  },[beginDecisionTransaction,failDecisionTransaction]);
+  // A decision owns the modal until its prepared queue commits.  Direct
+  // decision continuations (for example treasure-dodge or zone-swap prompts)
+  // may leave DRAW_REVEAL without starting an animation, while chained rest
+  // draws may enter a *new* DRAW_REVEAL after the previous queue callback.
+  // Queue ownership—not the phase name alone—is therefore the completion
+  // signal; releasing only when no active/pending presentation remains keeps
+  // the next decision interactive without exposing a mid-animation modal.
+  useEffect(()=>{
+    if(!decisionSubmitting)return;
+    const queueActive=!!anim||!!animExiting||animQueueRef.current.length>0||!!pendingGsRef.current;
+    if(!queueActive)completeDecisionTransaction();
+  },[decisionSubmitting,completeDecisionTransaction,anim,animExiting,animQueueRef,pendingGsRef,gs?.phase]);
   const submitPresentation=useCallback(({
     queue=[],nextState=null,callback,authority=ANIMATION_QUEUE_AUTHORITY.QUEUE,
     eventIds,compileEventIds,compileState,visualEventScope,compileOptions,
@@ -4530,10 +4563,20 @@ export default function Game(){
     }
     const shouldContinueAfterResolvedSlimeDraw=(phase)=>!!continuingSlime&&(phase==='AI_TURN'||phase==='ACTION');
     const buildResolvedDrawQueue=(newGs,{discarded=false}={})=>{
-      const inferred=bindAnimLogChunks(
-        buildAnimQueue({...baseGsAfterDecision,players:_P_beforeDraw,log:baseGsAfterDecision.log},newGs),
-        {statLogs}
+      const drawBaseline={...baseGsAfterDecision,players:_P_beforeDraw,log:baseGsAfterDecision.log};
+      // An automatically resolved slime/turn-start draw can synchronously
+      // lower SAN enough to produce an inspection. The state-diff queue owns
+      // the resulting stat changes, but only the inspection-aware builder
+      // inserts the reveal between the SAN loss and its derived effects.
+      const inspectionReplay=buildInspectionAwareAnimQueue(
+        drawBaseline,
+        newGs,
+        {buildAnimQueue,copyPlayers}
       );
+      if(inspectionReplay.inspectionEvents.length)markInspectionEventsSeen(inspectionReplay.inspectionEvents);
+      const inferred=inspectionReplay.inspectionEvents.length
+        ?inspectionReplay.queue
+        :bindAnimLogChunks(inspectionReplay.queue,{statLogs});
       const hasDraw=inferred.some(step=>step?.type==='DRAW_CARD'&&step.card===res.drawnCard);
       const hasDiscard=inferred.some(step=>step?.type==='DISCARD'&&step.card===res.drawnCard);
       const hasKeepTransfer=inferred.some(step=>step?.type==='CARD_TRANSFER'&&step.effect==='draw'&&step.cards?.some(card=>card===res.drawnCard||card?.id===res.drawnCard?.id));
@@ -5057,6 +5100,23 @@ export default function Game(){
   }
 
   function handleDrawKeep(){
+    const card=gs.drawReveal?.card;
+    if(!card)return;
+    const decisionId=`draw-keep:${card.id||card.key||card.name||'card'}`;
+    if(!decisionTransaction.begin(decisionId))return;
+    try{
+      handleDrawKeepResolved();
+    }catch(error){
+      // Rule resolution is pure until the prepared animation transaction is
+      // submitted.  If preparation/ownership validation fails, keep the
+      // original modal state intact and let the player retry instead of
+      // leaking a synchronous exception from the click handler.
+      decisionTransaction.fail(decisionId,error);
+      console.error('[decision-transaction] draw keep preparation failed',error);
+    }
+  }
+
+  function handleDrawKeepResolved(){
     const dr=gs.drawReveal;if(!dr?.card)return;
     const drawKeepQueueMeta=(state,queue)=>dr.fromEndTurnReplay
       ?authoritativeEndTurnReplayQueueMeta(state,queue,consumedVisualEventIdsRef.current)
@@ -5111,7 +5171,18 @@ export default function Game(){
     // 1. 检查卡牌效果是否让任何人HP归零或SAN归零（通过checkWin）
     const win=checkWin(P,gs._isMP);if(win){
       const winGs={...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,drawReveal:null,...(res.statePatch||{})};
-      const winEffectQueue=bindAnimLogChunks(buildAnimQueue(gs,winGs),splitAnimBoundLogs(L.slice(gs.log.length)));
+      // A card such as 鼠群 can synchronously trigger SAN inspections whose
+      // effect ends the game.  The generic state-diff queue contains the
+      // resulting damage/death steps, but not the inspection reveal itself;
+      // compile the inspection-aware transaction so strict queue ownership
+      // sees every fresh visual event before the terminal state is committed.
+      const winInspectionResult=buildInspectionAwareAnimQueue(gs,winGs,{buildAnimQueue,copyPlayers});
+      if(winInspectionResult.inspectionEvents.length){
+        lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...winInspectionResult.inspectionEvents.map(ev=>ev.seq||0));
+      }
+      const winEffectQueue=winInspectionResult.inspectionEvents.length
+        ?winInspectionResult.queue
+        :bindAnimLogChunks(winInspectionResult.queue,splitAnimBoundLogs(L.slice(gs.log.length)));
       const winTransfer=cardTransferStep({
         fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,
         sourceAnchor:'playerArea',effect:'draw',cards:[resolutionCard],
@@ -5263,7 +5334,6 @@ export default function Game(){
       else if(newGs._isMP)broadcastAnimTransaction(newGs,[...incomeQueue,incomeStatePatch],{
         context:resolutionCard.type||'drawEffect',barrier:'continuation',msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard,
       });
-      setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
       const playbackQueue=[...incomeQueue,incomeStatePatch];
       triggerAnimQueue(playbackQueue,newGs,undefined,drawKeepQueueMeta(newGs,playbackQueue));
     }else{
@@ -5627,7 +5697,6 @@ export default function Game(){
       queue.push(cardTransferStep({fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,sourceAnchor:'playerArea',effect:'draw',cards:[resolutionCard]}));
       queue.push(statePatchStep({players:P,deck:D,discard:Disc,log:L,phase:newGs.phase,drawReveal:newGs.drawReveal,abilityData:newGs.abilityData}));
       queue.push({type:'TURN_BOUNDARY_PAUSE',durationMs:300});
-      setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
       triggerAnimQueue(queue,newGs,()=>_tsgContinueTurnStartDraw(newGs),authoritativeResolvedQueueMeta(newGs,queue));
       return;
     }
@@ -5641,7 +5710,6 @@ export default function Game(){
           msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard,
         });
       }
-      setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
       triggerAnimQueue(queue,newGs,dr.fromEndTurnReplay&&newGs.phase==='ACTION'&&!newGs.gameOver
         ?()=>continueEndTurnReplay(newGs)
         :undefined,dr.fromEndTurnReplay
@@ -5713,6 +5781,19 @@ export default function Game(){
   }
 
   function handleDrawDiscard(){
+    const card=gs.drawReveal?.card;
+    if(!card)return;
+    const decisionId=`draw-discard:${card.id||card.key||card.name||'card'}`;
+    if(!decisionTransaction.begin(decisionId))return;
+    try{
+      handleDrawDiscardResolved();
+    }catch(error){
+      decisionTransaction.fail(decisionId,error);
+      console.error('[decision-transaction] draw discard preparation failed',error);
+    }
+  }
+
+  function handleDrawDiscardResolved(){
     const dr=gs.drawReveal;if(!dr?.card)return;
     const drawerIdx=dr.drawerIdx??0;
     const who=localDisplayName(drawerIdx,(dr.drawerName||gs.players[drawerIdx]?.name||'该角色'));
@@ -7702,7 +7783,6 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       ...(decipherTransferStep ? [decipherTransferStep] : []),
       ...buildAnimQueue(gs, nextGs).filter(step => step?.type !== 'CARD_TRANSFER'),
     ];
-    setGs(prev => prev ? { ...prev, phase: 'ACTION', abilityData: {}, drawReveal: null, selectedCard: null } : prev);
     if (fromEndTurnReplay) {
       broadcastEndTurnDecisionAnimTransaction(nextGs, queue, L.slice(gs.log.length));
       // 石刻是无尽通道重播过程中产生的二级决策。必须在收入/归堆动画提交完毕后显式续跑；
@@ -9886,6 +9966,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     huntRevealPromptActive,
     isScriptedTutorial,
     isBlocked,
+    decisionSubmitting,
     isVisualPlayerTurn,
     localCurrentTurn:myTurn,
     committedTargetAction:committedTargetActionRef.current,
@@ -10281,7 +10362,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     isLocalSeatIndex,isLocalNyaBorrowPhase,isLocalTortoiseSelectPhase,hasHuntRevealableCard,isLocalCurrentTurn,
     // decisions / modals
     pendingZhuDrawCard,pendingZhuGodCard,pendingZhuSphinxCard,pendingZhuAiDrawCard,pendingZhuAnyCard,
-    canShowTurnDecisionModal,pendingZhuDrawAnyCard,pendingZhuGodAnyCard,pendingZhuSphinxAnyCard,
+    canShowTurnDecisionModal,decisionError,pendingZhuDrawAnyCard,pendingZhuGodAnyCard,pendingZhuSphinxAnyCard,
     isLocalGodChoice,isLocalDrawDecision,isLocalTreasureDodgePhase,isLocalTreasureAoEDodgePhase,
     isLocalFirstComePicker,isLocalSameAbyssTargetPhase,isLocalSphinxGuessPhase,
     // tutorial / soft guide
@@ -10313,7 +10394,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     sphinxGuess,tortoiseOracleSelect,decipherStoneCarvingConfirm,swapSelectTargetCard,
     huntSelectCardFromPublic,handleSwapBlindDrawSelect,confirmRoleSelection,
     resetDisconnectedToStart,setPrivatePeek,setEmojiButtonPos,setShowEmojiPicker,handleEmojiClick,
-    godResolvePlayer,nyaBorrow,nyaSkip,
+    godResolvePlayer,nyaBorrow,nyaSkip,runDecision,
     setGs,setAnim,setPreparingSoftGuideId,setPendingSoftGuideId,setSoftGuideSpotlights,
     setTutorialStep,advanceTutorialStep,handleTutorialResultNext,completeTutorial,_onRoleRevealDone,
     handleGamma,handleMusicVolume,handleSfxVolume,handleTutorialTreasureMapConfirm,

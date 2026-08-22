@@ -85,12 +85,13 @@ export function buildPhaseUiState({
   localCurrentTurn = false,
   committedTargetAction = false,
   committedAction = false,
+  decisionSubmitting = false,
   decisionContext = null,
   local = {},
 } = {}) {
   const players = gs?.players || [];
   const abilityData = gs?.abilityData || {};
-  const canShowTurnDecisionModal = !isSpectating && !softGuidePauseActive && !anim && !animExiting && animQueueLength === 0;
+  const canShowTurnDecisionModal = !isSpectating && !softGuidePauseActive && !decisionSubmitting && !anim && !animExiting && animQueueLength === 0;
   const isPhaseWarningText = (
     !isDiscardPhaseResolving
     && (

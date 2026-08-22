@@ -41,6 +41,17 @@ describe('phaseUi', () => {
     expect(ui.canShowEndTurnButton).toBe(true);
   });
 
+  it('决策事务提交期间隐藏决策弹窗，避免重复交互', () => {
+    const ui = buildPhaseUiState({
+      gs: { ...baseGs, phase: 'DRAW_REVEAL', drawReveal: { card: { name: '鼠群' } } },
+      phase: 'DRAW_REVEAL',
+      decisionSubmitting: true,
+      local: { drawDecision: true },
+    });
+
+    expect(ui.canShowTurnDecisionModal).toBe(false);
+  });
+
   it('弃牌结算动画期间显示下个回合等待提示', () => {
     const ui = buildPhaseUiState({
       gs: { ...baseGs, phase: 'DISCARD_PHASE' },

@@ -21,6 +21,8 @@ export function BattleDecisionModals({
   decisionContext,
   suppressAnim,
   canShowTurnDecisionModal,
+  decisionError,
+  runDecision,
   isLocalGodChoice,
   isLocalDrawDecision,
   isLocalNyaBorrowPhase,
@@ -78,6 +80,11 @@ export function BattleDecisionModals({
 
   return (
     <>
+      {decisionError && canShowTurnDecisionModal && phase !== 'DRAW_REVEAL' && (
+        <div role="alert" style={{ position: 'fixed', top: '8vh', left: '50%', transform: 'translateX(-50%)', zIndex: 1200, padding: '8px 14px', border: '1px solid #a64f4f', borderRadius: 3, background: '#2a1111ee', color: '#e8a0a0', fontFamily: "'Cinzel',serif", fontSize: 12, letterSpacing: 1, pointerEvents: 'none' }}>
+          结算准备失败，请重试。
+        </div>
+      )}
       {/* God choice modal */}
       {!pendingZhuGodAnyCard && canShowTurnDecisionModal && phase === 'GOD_CHOICE' && gs.abilityData?.godCard && (isLocalGodChoice || gs._isMP) && (() => {
         const godCard = gs.abilityData.godCard;
@@ -100,9 +107,9 @@ export function BattleDecisionModals({
             allowWorship={!lockTutorialGodKeep}
             allowKeepHand={!lockTutorialGodKeep || isTutorialActionAllowed({ type: 'godKeepHand' })}
             allowDiscard={!lockTutorialGodKeep}
-            onWorship={() => godResolvePlayer(alreadyWorship && canUpgrade ? 'upgrade' : isConvert ? 'worship' : 'worship')}
-            onKeepHand={() => godResolvePlayer('keepHand')}
-            onDiscard={() => godResolvePlayer('discard')}
+            onWorship={() => runDecision(`god-choice:worship:${gk}`, () => godResolvePlayer(alreadyWorship && canUpgrade ? 'upgrade' : 'worship'))}
+            onKeepHand={() => runDecision(`god-choice:keep:${gk}`, () => godResolvePlayer('keepHand'))}
+            onDiscard={() => runDecision(`god-choice:discard:${gk}`, () => godResolvePlayer('discard'))}
             keepButtonRef={godKeepHandButtonRef}
             scaleRatio={scaleRatio}
           />
@@ -110,9 +117,14 @@ export function BattleDecisionModals({
       })()}
 
       {/* NYA borrow modal */}
-      {phase === 'NYA_BORROW' && isLocalNyaBorrowPhase(gs) && (() => {
+      {canShowTurnDecisionModal && phase === 'NYA_BORROW' && isLocalNyaBorrowPhase(gs) && (() => {
         const deadOthers = gs.players.filter((p, i) => i > 0 && p.isDead);
-        return (<NyaBorrowModal deadPlayers={deadOthers} godLevel={me.godLevel} onBorrow={nyaBorrow} onSkip={nyaSkip} />);
+        return (<NyaBorrowModal
+          deadPlayers={deadOthers}
+          godLevel={me.godLevel}
+          onBorrow={deadPlayer => runDecision(`nya-borrow:${deadPlayer?.role || 'unknown'}`, () => nyaBorrow(deadPlayer))}
+          onSkip={() => runDecision('nya-borrow:skip', nyaSkip)}
+        />);
       })()}
 
       {/* Zhu hide card modal */}
@@ -125,11 +137,11 @@ export function BattleDecisionModals({
             </div>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
               <button
-                onClick={() => pendingZhuDrawCard ? handleZhuHideDrawnCard(true) : pendingZhuGodCard ? handleZhuHideGodCard(true) : pendingZhuSphinxCard ? handleZhuHideTopCardDuringSphinx(true) : handleZhuHideAiDrawCard(true)}
+                onClick={() => runDecision(`zhu-hide:${phase}:yes`, () => pendingZhuDrawCard ? handleZhuHideDrawnCard(true) : pendingZhuGodCard ? handleZhuHideGodCard(true) : pendingZhuSphinxCard ? handleZhuHideTopCardDuringSphinx(true) : handleZhuHideAiDrawCard(true))}
                 style={{ padding: '8px 18px', background: '#1b1408', border: `1.5px solid ${GOD_DEFS.ZHU.col}`, color: '#f2df8a', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}
               >是</button>
               <button
-                onClick={() => pendingZhuDrawCard ? handleZhuHideDrawnCard(false) : pendingZhuGodCard ? handleZhuHideGodCard(false) : pendingZhuSphinxCard ? handleZhuHideTopCardDuringSphinx(false) : handleZhuHideAiDrawCard(false)}
+                onClick={() => runDecision(`zhu-hide:${phase}:no`, () => pendingZhuDrawCard ? handleZhuHideDrawnCard(false) : pendingZhuGodCard ? handleZhuHideGodCard(false) : pendingZhuSphinxCard ? handleZhuHideTopCardDuringSphinx(false) : handleZhuHideAiDrawCard(false))}
                 style={{ padding: '8px 18px', background: '#100c08', border: '1.5px solid #6a5430', color: '#c8a96e', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}
               >否</button>
             </div>
@@ -150,6 +162,7 @@ export function BattleDecisionModals({
           drawReveal={gs.drawReveal}
           onKeep={handleDrawKeepFromModal}
           onDiscard={handleDrawDiscardFromModal}
+          decisionError={decisionError}
           canChoose={isLocalDrawDecision}
           thinkingText={gs._isMP && !isLocalDrawDecision ? `${gs.drawReveal.drawerName || gs.players[gs.currentTurn]?.name || '对方'}正在思考…` : ''}
           canKeep={!isTutorialDrawKeepStep || isTutorialActionAllowed({ type: 'drawKeep' })}
@@ -163,8 +176,8 @@ export function BattleDecisionModals({
       {!suppressAnim && canShowTurnDecisionModal && phase === 'TREASURE_DODGE_DECISION' && gs.drawReveal && isLocalTreasureDodgePhase(gs) && (
         <TreasureDodgeModal
           drawReveal={gs.drawReveal}
-          onRoll={handleTreasureDodgeRoll}
-          onSkip={handleTreasureDodgeSkip}
+          onRoll={() => runDecision('treasure-dodge:roll', handleTreasureDodgeRoll)}
+          onSkip={() => runDecision('treasure-dodge:skip', handleTreasureDodgeSkip)}
           rollButtonRef={dodgeRollButtonRef}
           canSkip={!isScriptedTutorial || tutorialStep !== TUTORIAL_FLOW.TREASURE_DODGE_PROMPT}
           scaleRatio={scaleRatio}
@@ -175,8 +188,8 @@ export function BattleDecisionModals({
       {!suppressAnim && canShowTurnDecisionModal && phase === 'TREASURE_AOE_DODGE_DECISION' && gs.drawReveal && isLocalTreasureAoEDodgePhase(gs) && (
         <TreasureDodgeModal
           drawReveal={gs.drawReveal}
-          onRoll={handleTreasureAOEDodgeRoll}
-          onSkip={handleTreasureAOEDodgeSkip}
+          onRoll={() => runDecision('treasure-dodge:aoe-roll', handleTreasureAOEDodgeRoll)}
+          onSkip={() => runDecision('treasure-dodge:aoe-skip', handleTreasureAOEDodgeSkip)}
           thinkingText={gs._isMP && !isLocalTreasureAoEDodgePhase(gs) ? `其他玩家思考中…` : ''}
           rollButtonRef={dodgeRollButtonRef}
           canSkip={true}
@@ -215,8 +228,8 @@ export function BattleDecisionModals({
             </div>
             {isLocalSeatIndex(gs.abilityData?.targetIdx) ? (
               <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-                <button onClick={() => resolveTsathogguaSlimeBalance(true)} style={{ padding: '8px 18px', background: '#17220e', border: '1.5px solid #5f8f4a', color: '#d8f0bd', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>是</button>
-                <button onClick={() => resolveTsathogguaSlimeBalance(false)} style={{ padding: '8px 18px', background: '#100c08', border: '1.5px solid #6a5430', color: '#c8a96e', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>否</button>
+                <button onClick={() => runDecision('tsg-slime:yes', () => resolveTsathogguaSlimeBalance(true))} style={{ padding: '8px 18px', background: '#17220e', border: '1.5px solid #5f8f4a', color: '#d8f0bd', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>是</button>
+                <button onClick={() => runDecision('tsg-slime:no', () => resolveTsathogguaSlimeBalance(false))} style={{ padding: '8px 18px', background: '#100c08', border: '1.5px solid #6a5430', color: '#c8a96e', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>否</button>
               </div>
             ) : (
               <div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, color: '#a07838', letterSpacing: 1 }}>
@@ -241,8 +254,8 @@ export function BattleDecisionModals({
             </div>
             {isLocalSeatIndex(gs.abilityData?.targetIdx) ? (
               <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-                <button onClick={() => resolveEtherealizeRedirect(true)} style={{ padding: '8px 18px', background: '#101a22', border: '1.5px solid #87a9c8', color: '#d9efff', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>是</button>
-                <button onClick={() => resolveEtherealizeRedirect(false)} style={{ padding: '8px 18px', background: '#100c08', border: '1.5px solid #6a5430', color: '#c8a96e', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>否</button>
+                <button onClick={() => runDecision('etherealize:yes', () => resolveEtherealizeRedirect(true))} style={{ padding: '8px 18px', background: '#101a22', border: '1.5px solid #87a9c8', color: '#d9efff', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>是</button>
+                <button onClick={() => runDecision('etherealize:no', () => resolveEtherealizeRedirect(false))} style={{ padding: '8px 18px', background: '#100c08', border: '1.5px solid #6a5430', color: '#c8a96e', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>否</button>
               </div>
             ) : (
               <div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, color: '#a07838', letterSpacing: 1 }}>
@@ -254,10 +267,10 @@ export function BattleDecisionModals({
       )}
 
       {/* Tortoise oracle select */}
-      {!suppressAnim && phase === 'TORTOISE_ORACLE_SELECT' && gs.abilityData && (
+      {!suppressAnim && canShowTurnDecisionModal && phase === 'TORTOISE_ORACLE_SELECT' && gs.abilityData && (
         <TortoiseOracleModal
           abilityData={gs.abilityData}
-          onSelect={tortoiseOracleSelect}
+          onSelect={key => runDecision(`tortoise-oracle:${key}`, () => tortoiseOracleSelect(key))}
           canPick={isLocalTortoiseSelectPhase(gs) && decisionContext?.presentation === 'interactive'}
           expansionKey={gs.expansionKey}
         />
@@ -289,7 +302,7 @@ export function BattleDecisionModals({
                     key={card.id ?? `${card.key}-${index}`}
                     card={card}
                     compact={isMobile}
-                    onClick={canPick ? () => firstComePickSelectCard(index) : undefined}
+                    onClick={canPick ? () => runDecision(`first-come:${index}`, () => firstComePickSelectCard(index)) : undefined}
                     disabled={!canPick}
                     highlight={canPick}
                     holderId={pickerIdx}
@@ -322,7 +335,7 @@ export function BattleDecisionModals({
                     key={card.id ?? `${card.godKey}-${index}`}
                     card={card}
                     compact={isMobile}
-                    onClick={canPick ? () => graveDigSelectGod(index) : undefined}
+                    onClick={canPick ? () => runDecision(`grave-dig:${index}`, () => graveDigSelectGod(index)) : undefined}
                     disabled={!canPick}
                     highlight={canPick}
                     holderId={gs.abilityData?.playerIndex}
@@ -340,7 +353,7 @@ export function BattleDecisionModals({
       )}
 
       {/* Same abyss select */}
-      {!suppressAnim && phase === 'SAME_ABYSS_SELECT' && gs.abilityData && (
+      {!suppressAnim && canShowTurnDecisionModal && phase === 'SAME_ABYSS_SELECT' && gs.abilityData && (
         <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: isMobile ? '7vh' : '5vh', zIndex: 400, pointerEvents: 'none' }}>
           <div style={{ background: '#150e07ee', border: '2px solid #d7b46a', boxShadow: '0 0 60px #d7b46a33, 0 0 120px #000a', borderRadius: 4, padding: '20px 24px', maxWidth: 560, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
             <div style={{ fontFamily: "'Cinzel',serif", color: '#e6c577', fontSize: 16, letterSpacing: 2, marginBottom: 10 }}>── 同归深渊 ──</div>
@@ -350,10 +363,10 @@ export function BattleDecisionModals({
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
               {isLocalSameAbyssTargetPhase(gs) ? (
                 <>
-                  <button onClick={() => sameAbyssSelect('discard')} style={{ padding: '8px 16px', background: '#1a1008', border: '1.5px solid #8a6a3a', color: '#c8a96e', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>
+                  <button onClick={() => runDecision('same-abyss:discard', () => sameAbyssSelect('discard'))} style={{ padding: '8px 16px', background: '#1a1008', border: '1.5px solid #8a6a3a', color: '#c8a96e', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>
                     {(gs.abilityData?.discardCount || 0) > 0 ? '弃置手牌至' : '不弃牌，保持'} {gs.abilityData?.actorHandCount || 0} 张
                   </button>
-                  <button onClick={() => sameAbyssSelect('hp')} style={{ padding: '8px 16px', background: '#1a1008', border: '1.5px solid #8a3a3a', color: '#c87878', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>
+                  <button onClick={() => runDecision('same-abyss:hp', () => sameAbyssSelect('hp'))} style={{ padding: '8px 16px', background: '#1a1008', border: '1.5px solid #8a3a3a', color: '#c87878', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>
                     失去 4 HP
                   </button>
                 </>
@@ -368,7 +381,7 @@ export function BattleDecisionModals({
       )}
 
       {/* Sphinx guess */}
-      {!pendingZhuSphinxAnyCard && !suppressAnim && phase === 'SPHINX_GUESS' && gs.abilityData && (
+      {!pendingZhuSphinxAnyCard && !suppressAnim && canShowTurnDecisionModal && phase === 'SPHINX_GUESS' && gs.abilityData && (
         <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: isMobile ? '7vh' : '5vh', zIndex: 400, pointerEvents: 'none' }}>
           <div style={{ background: '#150e07ee', border: '2px solid #d7b46a', boxShadow: '0 0 60px #d7b46a33, 0 0 120px #000a', borderRadius: 4, padding: '20px 24px', maxWidth: 560, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
             <div style={{ fontFamily: "'Cinzel',serif", color: '#e6c577', fontSize: 16, letterSpacing: 2, marginBottom: 10 }}>── 斯芬克斯 ──</div>
@@ -378,10 +391,10 @@ export function BattleDecisionModals({
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
               {isLocalSphinxGuessPhase(gs) ? (
                 <>
-                  <button onClick={() => sphinxGuess(true)} style={{ padding: '8px 16px', background: '#1a1008', border: '1.5px solid #8a6a3a', color: '#c8a96e', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>
+                  <button onClick={() => runDecision('sphinx:true', () => sphinxGuess(true))} style={{ padding: '8px 16px', background: '#1a1008', border: '1.5px solid #8a6a3a', color: '#c8a96e', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>
                     是区域牌
                   </button>
-                  <button onClick={() => sphinxGuess(false)} style={{ padding: '8px 16px', background: '#1a1008', border: '1.5px solid #8a6a3a', color: '#c8a96e', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>
+                  <button onClick={() => runDecision('sphinx:false', () => sphinxGuess(false))} style={{ padding: '8px 16px', background: '#1a1008', border: '1.5px solid #8a6a3a', color: '#c8a96e', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>
                     不是区域牌
                   </button>
                 </>
@@ -396,14 +409,14 @@ export function BattleDecisionModals({
       )}
 
       {/* Decipher stone carving */}
-      {!suppressAnim && phase === 'DECIPHER_STONE_CARVING' && gs.abilityData && (
+      {!suppressAnim && canShowTurnDecisionModal && phase === 'DECIPHER_STONE_CARVING' && gs.abilityData && (
         <DecipherStoneCarvingOverlay
           key={(gs.abilityData?.revealedCards || []).map(card => card?.id).join('|')}
           revealedCards={gs.abilityData?.revealedCards || []}
           actorName={isLocalSeatIndex(gs.abilityData?.playerIndex) ? '你' : (gs.players?.[gs.abilityData?.playerIndex]?.name || '该玩家')}
           readOnly={!isLocalSeatIndex(gs.abilityData?.playerIndex)}
           expansionKey={gs.expansionKey}
-          onConfirm={decipherStoneCarvingConfirm}
+          onConfirm={payload => runDecision('decipher-stone', () => decipherStoneCarvingConfirm(payload))}
         />
       )}
     </>

@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { INSPECTION_DECK } from '../../../constants/card';
-import { getInspectionCardDesc, getInspectionCardPolarity } from '../utils';
+import { getCardFlipGlowColor, getInspectionCardDesc, getInspectionCardPolarity } from '../utils';
+
+describe('getCardFlipGlowColor', () => {
+  it('maps semantic card polarity to the shared flip glow palette', () => {
+    expect(getCardFlipGlowColor('positive')).toBe('#49d17d');
+    expect(getCardFlipGlowColor('neutral')).toBe('#91a1c2');
+    expect(getCardFlipGlowColor('negative')).toBe('#b24ad1');
+  });
+
+  it('uses neutral glow for an unknown polarity', () => {
+    expect(getCardFlipGlowColor('futurePolarity')).toBe('#91a1c2');
+  });
+});
 
 describe('getInspectionCardDesc', () => {
   it('uses the configured damage value for damage inspection cards', () => {

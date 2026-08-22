@@ -185,7 +185,7 @@ function NyaBorrowModal({ deadPlayers, godLevel, onBorrow, onSkip }) {
 }
 
 // ── Draw Reveal Modal ─────────────────────────────────────────
-function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingText, canKeep = true, canDiscard = true, keepButtonRef, scaleRatio = 1 }) {
+function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingText, decisionError = null, canKeep = true, canDiscard = true, keepButtonRef, scaleRatio = 1 }) {
   if (!drawReveal?.card) return null;
   const { card } = drawReveal;
   const s = CS[card.letter] || GOD_CS;
@@ -211,6 +211,12 @@ function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingTex
             {thinkingText}
           </div>
         ) : (
+          <>
+          {decisionError && (
+            <div role="alert" style={{ color: '#e08888', fontSize: 12*ui, lineHeight: 1.5, marginTop: 12*ui, marginBottom: 4*ui }}>
+              结算准备失败，请重试。
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 12*ui, justifyContent: 'center', flexWrap: 'wrap', marginTop: 16*ui }}>
             <button ref={keepButtonRef} disabled={!canKeep} onClick={canKeep ? onKeep : undefined} style={{
               padding: `${10*ui}px ${22*ui}px`, background: '#1c1008', border: '1.5px solid #c8a96e',
@@ -234,6 +240,7 @@ function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingTex
               弃置此牌
             </button>
           </div>
+          </>
         )}
       </div>
     </div>

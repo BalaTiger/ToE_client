@@ -150,6 +150,7 @@ export function BattleScreen(props) {
     pendingZhuSphinxCard,
     pendingZhuAiDrawCard,
     pendingZhuAnyCard,
+    decisionError,
     canShowTurnDecisionModal,
     pendingZhuDrawAnyCard,
     pendingZhuGodAnyCard,
@@ -240,6 +241,7 @@ export function BattleScreen(props) {
     handleZhuHideAiDrawCard,
     handleDrawKeepFromModal,
     handleDrawDiscardFromModal,
+    runDecision,
     handleTreasureDodgeRoll,
     handleTreasureDodgeSkip,
     handleTreasureAOEDodgeRoll,
@@ -405,6 +407,8 @@ export function BattleScreen(props) {
         decisionContext={decisionContext}
         suppressAnim={suppressAnim}
         canShowTurnDecisionModal={canShowTurnDecisionModal}
+        decisionError={decisionError}
+        runDecision={runDecision}
         isLocalGodChoice={isLocalGodChoice}
         isLocalDrawDecision={isLocalDrawDecision}
         isLocalNyaBorrowPhase={isLocalNyaBorrowPhase}

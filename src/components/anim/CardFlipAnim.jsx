@@ -1,12 +1,12 @@
 ﻿import React from 'react';
-import { CS, GOD_CS } from '../../constants/card';
+import { GOD_CS } from '../../constants/card';
 import { CardBackLayer } from '../cards/AnimatedCardBack';
 import { CardFaceImage } from '../cards';
 import { getZoneCardPolarity } from '../../game/coreUtils';
 import { shouldHideBlindZoneIdentity } from '../../game/blindZoneDecision';
 import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 import { SMOKE_COLS, FLOWER_CONFIGS } from './data';
-import { getInspectionCardPolarity, petalPath } from './utils';
+import { getCardFlipGlowColor, getInspectionCardPolarity, petalPath } from './utils';
 import { GodHighlightBurst } from './GodHighlightBurst';
 
 function FlowerSVG({petals,hue,variant,size}){
@@ -123,17 +123,10 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
   const hideZoneIdentity=shouldHideBlindZoneIdentity(card,targetPid===0)&&!isInspection;
   const displayTriggerName=isInspection&&(targetPid??0)===0?'你':triggerName;
   const inspectionTone=isInspection?getInspectionCardPolarity(card):null;
-  const s=isInspection
-    ?({
-      bg:inspectionTone==='positive'?'linear-gradient(135deg,#11331d,#08160d)':inspectionTone==='neutral'?'linear-gradient(135deg,#1a1d24,#0b0e13)':'linear-gradient(135deg,#241126,#0f0713)',
-      borderBright:inspectionTone==='positive'?'#56d184':inspectionTone==='neutral'?'#7b889b':'#d16acb',
-      border:inspectionTone==='positive'?'#3da865':inspectionTone==='neutral'?'#5d6978':'#9e4a92',
-      text:inspectionTone==='positive'?'#b8ffd1':inspectionTone==='neutral'?'#d7e0ef':'#ffd0ff',
-      glow:inspectionTone==='positive'?'#49d17d':inspectionTone==='neutral'?'#91a1c2':'#b24ad1',
-    })
-    :(CS[card.letter]||GOD_CS);
   // Blind Fish must not leak the concealed card's effect through reveal VFX.
   const cardPolarity=hideZoneIdentity?'neutral':isInspection?inspectionTone:(card.isGod?'negative':getZoneCardPolarity(card));
+  // Zone and inspection cards share one semantic glow palette; god cards keep their bespoke glow.
+  const primaryGlow=card.isGod&&!isInspection?GOD_CS.glow:getCardFlipGlowColor(cardPolarity);
   const isEvil=cardPolarity==='negative';
   const isNeutralCard=cardPolarity==='neutral';
   const showAtmosphereEffects=true;
@@ -358,7 +351,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
             <div style={{
               position:'absolute',inset:0,backfaceVisibility:'hidden',
               borderRadius:5,
-              boxShadow:(isNeutralCard)?'0 0 18px rgba(120,136,155,0.22)':`0 0 30px ${s.glow}88, 0 0 60px ${isEvil?'#6010aa':'#c8a96e'}44`,
+              boxShadow:(isNeutralCard)?'0 0 18px rgba(120,136,155,0.22)':`0 0 30px ${primaryGlow}88, 0 0 60px ${isEvil?'#6010aa':'#c8a96e'}44`,
             }}>
               <CardFaceImage card={card} godLevel={1} width={flipW} style={{borderRadius:5,boxShadow:'none'}}/>
             </div>
