@@ -2,6 +2,27 @@ import { cardLogText, isZoneCard } from './coreUtils.js';
 
 export const CARD_HINT_TEXT = '鼠标悬停查看卡牌详情（移动端请点击卡牌）';
 
+export function getHuntRevealPromptId(gs) {
+  const phase = gs?.phase;
+  if (phase !== 'PLAYER_REVEAL_FOR_HUNT' && phase !== 'HUNT_WAIT_REVEAL') return null;
+  const abilityData = gs?.abilityData || {};
+  if (abilityData.huntPromptId != null) return String(abilityData.huntPromptId);
+
+  // Older/local snapshots may not carry the explicit prompt id yet. Keep a
+  // stable fallback for the lifetime of that prompt, while ensuring a later
+  // hunt in the same turn gets a different UI-session identity.
+  const promptLogIndex = (gs?.log || []).findLastIndex(line => (
+    typeof line === 'string' && (line.includes('向你发动【追捕】') || line.includes('等待对方亮出一张手牌'))
+  ));
+  return [
+    'hunt-prompt',
+    gs?._turnKey ?? gs?.turn ?? 0,
+    gs?.currentTurn ?? 0,
+    abilityData.huntingAI ?? abilityData.huntTi ?? 'unknown',
+    promptLogIndex,
+  ].join(':');
+}
+
 export function getPhasePromptColors(expansionKey) {
   const isStarsCallTheme = expansionKey === '群星呼唤';
   return {
@@ -57,6 +78,7 @@ export function buildPhaseUiState({
   pendingAfterDiscardGs = null,
   isDiscardPhaseResolving = false,
   isLocalHuntRevealPrompt = false,
+  huntRevealPromptActive = true,
   isScriptedTutorial = false,
   isBlocked = false,
   isVisualPlayerTurn = false,
@@ -69,7 +91,13 @@ export function buildPhaseUiState({
   const players = gs?.players || [];
   const abilityData = gs?.abilityData || {};
   const canShowTurnDecisionModal = !isSpectating && !softGuidePauseActive && !anim && !animExiting && animQueueLength === 0;
-  const isPhaseWarningText = (!isDiscardPhaseResolving && ['DISCARD_PHASE', 'PLAYER_REVEAL_FOR_HUNT', 'CAVE_DUEL_SELECT_CARD', 'CAVE_DUEL_WAIT_REVEAL'].includes(phase)) || isLocalHuntRevealPrompt;
+  const isPhaseWarningText = (
+    !isDiscardPhaseResolving
+    && (
+      ['DISCARD_PHASE', 'CAVE_DUEL_SELECT_CARD', 'CAVE_DUEL_WAIT_REVEAL'].includes(phase)
+      || (phase === 'PLAYER_REVEAL_FOR_HUNT' && huntRevealPromptActive)
+    )
+  ) || (isLocalHuntRevealPrompt && huntRevealPromptActive);
   const promptColors = getPhasePromptColors(gs?.expansionKey);
   const isMultiplayer = !!gs?._isMP;
   const thinkingText = idx => `${players[idx]?.name || '目标'} 正在思考…`;
@@ -105,11 +133,15 @@ export function buildPhaseUiState({
       case 'HUNT_SELECT_CARD_FROM_PUBLIC':
         return `【追捕】从 ${players[abilityData.huntTi]?.name} 的公开手牌中选择一张`;
       case 'PLAYER_REVEAL_FOR_HUNT':
-        return `⚠ ${abilityData.aiHunterName || '追猎者'} 正在追捕你！请选择一张手牌亮出`;
+        return huntRevealPromptActive
+          ? `⚠ ${abilityData.aiHunterName || '追猎者'} 正在追捕你！请选择一张手牌亮出`
+          : `已亮出手牌，${abilityData.aiHunterName || '追猎者'} 正在结算追捕…`;
       case 'HUNT_WAIT_REVEAL':
         if (localCurrentTurn) return `等待 ${players[abilityData.huntTi ?? 1]?.name || '对方'} 亮出手牌…`;
         return local.huntTarget
-          ? '⚠ 追猎者正在追捕你！请选择一张手牌亮出（20秒）'
+          ? (huntRevealPromptActive
+            ? '⚠ 追猎者正在追捕你！请选择一张手牌亮出（20秒）'
+            : '已亮出手牌，等待追捕结算…')
           : `等待 ${players[abilityData.huntTi ?? 1]?.name || '对方'} 亮出手牌…`;
       case 'TREASURE_DODGE_DECISION':
         return local.treasureDodge

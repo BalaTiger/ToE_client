@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPhaseUiState, getPhasePromptColors, isCancelablePhase } from '../phaseUi';
+import { buildPhaseUiState, getHuntRevealPromptId, getPhasePromptColors, isCancelablePhase } from '../phaseUi';
 
 const baseGs = {
   _isMP: false,
@@ -110,6 +110,49 @@ describe('phaseUi', () => {
     });
 
     expect(ui.displayPhaseLabel).toBe('艾伦 正在思考…');
+  });
+
+  it('追捕亮牌提交后由提示会话立即退出警告态', () => {
+    const huntGs = {
+      ...baseGs,
+      phase: 'PLAYER_REVEAL_FOR_HUNT',
+      abilityData: { huntingAI: 1, aiHunterName: '贝拉', huntPromptId: 'hunt-2' },
+    };
+
+    expect(getHuntRevealPromptId(huntGs)).toBe('hunt-2');
+    expect(buildPhaseUiState({
+      gs: huntGs,
+      phase: huntGs.phase,
+      huntRevealPromptActive: true,
+    })).toMatchObject({
+      displayPhaseLabel: '⚠ 贝拉 正在追捕你！请选择一张手牌亮出',
+      isPhaseWarningText: true,
+    });
+    expect(buildPhaseUiState({
+      gs: huntGs,
+      phase: huntGs.phase,
+      huntRevealPromptActive: false,
+    })).toMatchObject({
+      displayPhaseLabel: '已亮出手牌，贝拉 正在结算追捕…',
+      isPhaseWarningText: false,
+    });
+  });
+
+  it('旧快照没有显式 id 时，连续追捕仍会生成不同的提示会话', () => {
+    const first = {
+      ...baseGs,
+      _turnKey: 7,
+      currentTurn: 1,
+      phase: 'PLAYER_REVEAL_FOR_HUNT',
+      abilityData: { huntingAI: 1 },
+      log: ['贝拉（追猎者）向你发动【追捕】！请选择亮出一张手牌'],
+    };
+    const second = {
+      ...first,
+      log: [...first.log, '你亮出 [D4] 斯芬克斯', '贝拉（追猎者）向你发动【追捕】！请选择亮出一张手牌'],
+    };
+
+    expect(getHuntRevealPromptId(first)).not.toBe(getHuntRevealPromptId(second));
   });
 
   it('联机远端烛九阴藏牌阶段仍显示等待其他玩家', () => {

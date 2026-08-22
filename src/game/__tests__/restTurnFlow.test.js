@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolveRestTurnEnd } from '../restTurnFlow';
+import { buildRestActionQueue } from '../restTurnPresentation';
 import { makePlayer, makeGs } from './factory';
 
 describe('resolveRestTurnEnd', () => {
@@ -40,7 +41,7 @@ describe('resolveRestTurnEnd', () => {
     expect(result.decision).toBe('DISCARD_PHASE');
     expect(result.pendingGs.phase).toBe('DISCARD_PHASE');
     expect(result.pendingGs.abilityData).toEqual({ discardSelected: [] });
-    expect(result.queue[0]).toMatchObject({ type: 'DICE_ROLL', d1: 2, d2: 5, heal: 5 });
+    expect(buildRestActionQueue(result.transaction)[0]).toMatchObject({ type: 'DICE_ROLL', d1: 2, d2: 5, heal: 5 });
     expect(advanceTurn).not.toHaveBeenCalled();
   });
 
@@ -53,7 +54,7 @@ describe('resolveRestTurnEnd', () => {
 
     expect(result.decision).toBe('SCHEDULE_EVENTS');
     expect(result.afterRest.currentTurn).toBe(0);
-    expect(result.seedQueue[0]).toMatchObject({ type: 'DICE_ROLL' });
+    expect(buildRestActionQueue(result.transaction)[0]).toMatchObject({ type: 'DICE_ROLL' });
     expect(advanceTurn).not.toHaveBeenCalled();
   });
 
@@ -68,7 +69,7 @@ describe('resolveRestTurnEnd', () => {
     expect(advanceTurn).toHaveBeenCalledTimes(1);
     expect(advanceTurn).toHaveBeenCalledWith(expect.objectContaining({ _turnFlowStage: 'turnBoundary' }));
     expect(result.nextGs.currentTurn).toBe(1);
-    expect(result.queue[0]).toMatchObject({ type: 'DICE_ROLL', heal: 6 });
+    expect(buildRestActionQueue(result.transaction)[0]).toMatchObject({ type: 'DICE_ROLL', heal: 6 });
   });
 
   it('toggles resting state and heals the actor', () => {

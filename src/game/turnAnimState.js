@@ -172,6 +172,7 @@ export function getTurnStartDrawBaselineLog(state) {
 }
 
 export function getTurnStartDrawnCard(state) {
+  if (state?._turnStartAbortedByDeath) return null;
   if (state?._drawnCard || state?._aiDrawnCard) return state._drawnCard || state._aiDrawnCard;
   if (state?.phase === 'ZONE_SWAP_SELECT_TARGET') return state.abilityData?.zoneSwapCard || null;
   return state?.phase === 'GOD_CHOICE'
@@ -732,6 +733,57 @@ export function buildTurnStartDrawReplayQueue({
   ];
   const drawnCard = getTurnStartDrawnCard(newGs);
   if (!drawnCard) {
+    if (newGs?._turnStartAbortedByDeath) {
+      const drawerPid = getTurnStartDrawerIdx(newGs);
+      const drawerName = newGs?.players?.[drawerPid]?.name || '???';
+      const beforeDrawPlayers = newGs?._playersBeforeThisDraw || newGs?.players || oldGs?.players || [];
+      const turnStartStep = buildTurnStartStepFromVisualEvents(newGs) || {
+        type: 'YOUR_TURN',
+        turnStartStage: TURN_START_ANIMATION_STAGE.TURN_BANNER,
+        ...(drawerPid === 0 ? {} : { name: drawerName }),
+        msgs: newGs?._turnStartLogs,
+      };
+      const turnStartPreDrawQ = buildTurnStartPreDrawEffectQueue({
+        oldGs,
+        newGs,
+        buildQueue,
+        consumedVisualEventIds,
+      });
+      const turnBoundaryStageQueue = markTurnStartAnimationStage(
+        boundarySteps,
+        TURN_START_ANIMATION_STAGE.TURN_BOUNDARY,
+      );
+      const turnBannerStageQueue = markTurnStartAnimationStage(
+        [turnStartStep],
+        TURN_START_ANIMATION_STAGE.TURN_BANNER,
+      );
+      const turnStartStageQueue = markTurnStartAnimationStage([
+        ...turnStartPreDrawQ,
+        ...(turnStartPreDrawQ.length ? [statePatchStep({ players: beforeDrawPlayers })] : []),
+      ], TURN_START_ANIMATION_STAGE.TURN_START);
+      const queue = [...turnBoundaryStageQueue, ...turnBannerStageQueue, ...turnStartStageQueue];
+      return {
+        drawnCard: null,
+        drawerPid,
+        drawerName,
+        beforeDrawPlayers,
+        turnStartStep,
+        drawEffectQ: [],
+        stageQueues: {
+          [TURN_START_ANIMATION_STAGE.TURN_BOUNDARY]: turnBoundaryStageQueue,
+          [TURN_START_ANIMATION_STAGE.TURN_BANNER]: turnBannerStageQueue,
+          [TURN_START_ANIMATION_STAGE.TURN_START]: turnStartStageQueue,
+          [TURN_START_ANIMATION_STAGE.DRAW]: [],
+        },
+        queue,
+        startAnim: queue[0] || null,
+        startQueue: queue.slice(1),
+        visualLock: turnStartPreDrawQ.length && newGs?._preTurnPlayers
+          ? { players: newGs._preTurnPlayers, zhuLight: oldGs?.zhuLight || newGs?.zhuLight || null }
+          : null,
+        inspectionEvents: [],
+      };
+    }
     const turnStartStageQueue = markTurnStartAnimationStage(
       boundarySteps,
       TURN_START_ANIMATION_STAGE.TURN_START,

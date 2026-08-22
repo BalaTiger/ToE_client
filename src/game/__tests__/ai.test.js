@@ -200,6 +200,33 @@ describe('AI hand-limit discard', () => {
 });
 
 describe('AI visual event handoff', () => {
+  it('死亡 AI 会在任何遗留决策前直接离开回合', () => {
+    const players = [
+      makePlayer({ name: '你', role: ROLE_TREASURE }),
+      makePlayer({ name: '死亡AI', role: ROLE_HUNTER, isDead: true, hp: 0 }),
+      makePlayer({ name: '下一名AI', role: ROLE_HUNTER }),
+      makePlayer({ name: '邪祀者', role: ROLE_CULTIST }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      deck: [makeZoneCard('A1', 0, { id: 'next-ai-card' })],
+      log: [],
+      abilityData: {
+        damageLinkSource: 1,
+        damageLinkTargets: [2],
+      },
+    });
+
+    const result = aiStep(gs);
+
+    expect(result.currentTurn).toBe(2);
+    expect(result.log.some(line => line.includes('间架起链条'))).toBe(false);
+    expect(result.players[1].damageLink).toBeFalsy();
+    expect(result.players[2].damageLink).toBeFalsy();
+  });
+
   it('AI-to-AI turn transition keeps TSG end-turn resolution before the next banner log', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     const players = [
@@ -978,6 +1005,43 @@ describe('AI end-turn endless corridor replay', () => {
     expect(healIdx).toBeGreaterThan(incomeIdx);
     expect(types.lastIndexOf('STATE_PATCH')).toBeGreaterThan(types.indexOf('SAN_HEAL'));
     expect(result.replayQueue[0].msgs).toEqual([expect.stringContaining('【无尽通道】艾伦 展示所有手牌')]);
+  });
+
+  it('无尽通道触发触底反弹时，整手换牌飞行跟在通道动画之后', () => {
+    const bounce = makeZoneCard('C4', 0, {
+      id: 'corridor-bounce',
+      name: '触底反弹',
+      type: 'swapAllHands',
+    });
+    const corridor = makeZoneCard('A3', 3, {
+      id: 'corridor-bounce-trigger',
+      name: '无尽通道',
+      type: 'endTurnReplayHand',
+    });
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '贝拉', hand: [bounce, corridor] }),
+      makePlayer({ name: '卡洛斯', hand: [makeZoneCard('B1'), makeZoneCard('B2'), makeZoneCard('B3')] }),
+    ];
+    const result = processAiEndTurnReplayHand(
+      players.map(player => ({ ...player, hand: [...player.hand] })),
+      [],
+      [],
+      [],
+      1,
+      makeGs({ players, currentTurn: 1, phase: 'AI_TURN', log: [] }),
+    );
+    const queue = result.replayQueue;
+    const tunnelIdx = queue.findIndex(step => step.type === 'ENDLESS_CORRIDOR_TUNNEL');
+    const bounceDrawIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === bounce.id);
+    const swapFlightIdx = queue.findIndex(step => (
+      step.type === 'CARD_TRANSFER' && step.effect !== 'draw'
+    ));
+
+    expect(tunnelIdx).toBeGreaterThanOrEqual(0);
+    expect(bounceDrawIdx).toBeGreaterThan(tunnelIdx);
+    expect(swapFlightIdx).toBeGreaterThan(bounceDrawIdx);
+    expect(result.replayMsgs.some(msg => msg.includes('交换了全部手牌'))).toBe(true);
   });
 
   it('无尽通道重播投掷石块致死时，依次播出飞石、伤害、断头台与死亡广播', () => {

@@ -1271,7 +1271,10 @@ function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta) {
     if (slimeDecision) return { P, D, Disc, L, inspectionMeta, winAfterBgy: null };
     const winAfterSanDepletion = checkWin(P, gs._isMP);
     if (winAfterSanDepletion) return { P, D, Disc, L, inspectionMeta, winAfterBgy: winAfterSanDepletion };
-    if (P[next].san > 0 && P[next].san <= 6) {
+    // submitLossEvents may kill the turn owner while resolving the HP half of
+    // the combined loss. A defeated player must not perform the SAN inspection
+    // (or any later turn-start work) after their death has been committed.
+    if (!P[next].isDead && P[next].san > 0 && P[next].san <= 6) {
       const baseLog = [...L];
       const inspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
       const processed = applyInspectionForSanLoss(next, P[next].san, next, P, D, Disc, baseLog, inspectionMeta);
@@ -1714,6 +1717,9 @@ function resolveNextTurnState(gs, opts = {}) {
     _carryGodPowerBlockedEvents: null,
     _carrySkippedTurnReplays: null,
     _tsgSlimeGrantedAtTurnEnd: undefined,
+    // One-shot rule/presentation guard. A later startNextTurn call must not
+    // inherit the previous dead owner's pre-draw abort marker.
+    _turnStartAbortedByDeath: undefined,
   };
   const visualEvents = gs._visualEvents;
   const inheritedGodPowerBlockedEventCount = inheritedGodPowerBlockedEvents.length;
@@ -1847,6 +1853,39 @@ function resolveNextTurnState(gs, opts = {}) {
     const eventIndex = turnStartEvents.findIndex(event => event.id === eventId);
     return turnStartEvents.slice(eventIndex + 1).map(event => event.id);
   };
+  const isAiTurnOwner = (next !== 0 && !gs._isMP) || shouldUseAiController(next);
+  const buildTurnStartDeathAbortState = () => ({
+    ...gs,
+    ...inspectionMeta,
+    zhuLight,
+    players: P,
+    deck: D,
+    discard: Disc,
+    log: L,
+    currentTurn: next,
+    turn: newTurn,
+    _turnKey: newTurnKey,
+    phase: 'AI_TURN',
+    abilityData: {},
+    drawReveal: null,
+    selectedCard: null,
+    skillUsed: false,
+    restUsed: false,
+    huntAbandoned: [],
+    godFromHandUsed: false,
+    godTriggeredThisTurn: false,
+    globalOnlySwapOwner,
+    _aiDrawnCard: null,
+    _drawnCard: null,
+    _drawSourcePile: null,
+    _discardedDrawnCard: false,
+    _turnStartLogs: turnStartLogs,
+    _drawLogs: [],
+    _statLogs: statLogs,
+    _preTurnPlayers: _P_beforeTurn,
+    _playersBeforeThisDraw: copyPlayers(P),
+    _turnStartAbortedByDeath: true,
+  });
   // Lifecycle reconciliation is not a registered event. The owner refresh is
   // an active-god event and can therefore be resumed after passive decisions.
   // [PASSIVE_GOD_DERIVATIVE] 黑山羊幼仔回合开始伤害
@@ -1855,6 +1894,10 @@ function resolveNextTurnState(gs, opts = {}) {
     : { P, D, Disc, L, inspectionMeta, winAfterBgy: null };
   P = bgy.P; D = bgy.D; Disc = bgy.Disc; L = bgy.L; inspectionMeta = bgy.inspectionMeta; gs = { ...gs, ...inspectionMeta };
   if (bgy.winAfterBgy) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: bgy.winAfterBgy, multiplyUsed: false };
+  // Death during the pre-draw opening is a hard rule boundary for AI turns.
+  // Return a draw-less state so the presentation can finish the fatal effect;
+  // aiStep's dead-owner guard will then advance to the next living player.
+  if (isAiTurnOwner && P[next].isDead) return buildTurnStartDeathAbortState();
   if (inspectionMeta?.abilityData?.type === 'tsgSlimeBalance') {
     // 黑山羊伤害发生在本回合的摸牌阶段之前。黏液平衡会暂时
     // 中断 startNextTurn，因此必须显式保存后续的黏液额外摸牌与
@@ -1870,6 +1913,7 @@ function resolveNextTurnState(gs, opts = {}) {
     return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, phase: 'TSG_SLIME_BALANCE', abilityData: { ...poison.slimeDecision, _turnOwner: next, continueTurnStartDraw: true, _pendingTurnStartLinkHeals: pendingLinkHeals, _pendingTurnStartEventIds: pendingAfter(TURN_START_EVENT.POISON_DAMAGE) }, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: copyPlayers(P) };
   }
   if (poison.winAfterPoison) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: poison.winAfterPoison, multiplyUsed: false };
+  if (isAiTurnOwner && P[next].isDead) return buildTurnStartDeathAbortState();
   // [PASSIVE_OTHER] 两人一绳治愈
   const link = turnStartEvent_LinkHeal(P, turnStartEventIds.has(TURN_START_EVENT.DAMAGE_LINK_HEAL) ? pendingLinkHeals : [], L, inspectionMeta, statLogs);
   P = link.P; L = link.L; inspectionMeta = link.inspectionMeta; gs = { ...gs, ...inspectionMeta };
@@ -2431,9 +2475,20 @@ function resolveNextTurnState(gs, opts = {}) {
     }
     if (res.reshuffleLog) drawLogs.push(res.reshuffleLog);
     if (res.effectMsgs?.length) {
-      const split = splitAnimBoundLogs(res.effectMsgs);
-      drawLogs.push(...split.preStat);
-      statLogs.push(...split.stat);
+      // A deferred AI god choice returns only the encounter line here; the
+      // SAN inspection and gift decision are resolved by the later
+      // AI_GOD_CHOICE transition. Keep the encounter with the card reveal
+      // instead of classifying its "失去 N SAN" text as a stat log, otherwise
+      // realtime logs show inspection/discard before "遭遇邪神".
+      if (res.needGodChoice || res.pendingAiGodChoice || res.statePatch?._pendingAiGodChoice) {
+        const split = splitGodEncounterLogs(res.effectMsgs);
+        drawLogs.push(...split.encounterLogs);
+        statLogs.push(...split.inspectionLogs);
+      } else {
+        const split = splitAnimBoundLogs(res.effectMsgs);
+        drawLogs.push(...split.preStat);
+        statLogs.push(...split.stat);
+      }
     }
     // drawLogs/statLogs are animation routing buckets, not the authoritative
     // adventure-log order. Appending the buckets separately moves inspection

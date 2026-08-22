@@ -989,6 +989,10 @@ export function buildTurnStartDrawVisualEvents(state) {
       msgs: state._turnStartLogs,
     }));
   }
+  // The rule layer explicitly aborted this opening before the draw phase.
+  // Ignore compatibility snapshots from an older turn as well as any stale
+  // drawReveal payload instead of manufacturing a visual draw for the corpse.
+  if (state._turnStartAbortedByDeath) return events;
   const explicitDrawEvents = getVisualEvents(state).filter(event => event?.type === VISUAL_EVENT.DRAW_CARD && event?.card);
   const turnDrawEvent = (Array.isArray(state._turnDrawEvents) ? state._turnDrawEvents : [])
     .findLast(event => event?.card);

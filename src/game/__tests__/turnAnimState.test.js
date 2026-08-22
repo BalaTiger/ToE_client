@@ -10,7 +10,7 @@ import {
   withClearedReplayAnimFields,
 } from '../turnAnimState';
 import { startNextTurn } from '../turnEngine';
-import { ROLE_CULTIST } from '../coreUtils';
+import { ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
 import { applyFx } from '../effectEngine';
 import { applyStatEventsToDisplayStats, primeDisplayStatsForStatQueue } from '../statEvents';
 import { buildFreshStatVisualEvents, createGodPowerBlockedEvent, createGodStatusChangedEvent, createSphinxResultEvent, createTsathogguaSlimeGrantEvent, createTurnDrawVisualEvents, VISUAL_EVENT } from '../visualEvents';
@@ -655,6 +655,37 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(bellaTurnIdx).toBeGreaterThan(allenTurnIdx);
     expect(bellaGoatIdx).toBeGreaterThan(bellaTurnIdx);
     expect(combined.some(step => (step.msgs || []).some(msg => msg.includes('艾伦 从休息中醒来')))).toBe(true);
+  });
+
+  it('AI 开场死亡的视觉事务只播放致死结算，不播放摸牌或后续检定', () => {
+    const goat = id => ({ id, name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true });
+    const forcedGod = makeGodCard('VRI');
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '存活追猎者', role: ROLE_HUNTER }),
+        makePlayer({ name: '黛安娜', role: ROLE_HUNTER, hp: 2, san: 5, hand: [goat('g1'), goat('g2')] }),
+        makePlayer({ name: '邪祀者', role: ROLE_CULTIST }),
+        makePlayer({ name: '寻宝者', role: ROLE_TREASURE }),
+      ],
+      currentTurn: 0,
+      deck: [forcedGod],
+      log: [],
+      inspectionDeck: [{ id: 'self-harm', name: '自残', effect: 'selfDamageHP', value: 2, type: 'negative' }],
+      inspectionDiscard: [],
+    });
+
+    const newGs = startNextTurn(oldGs);
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const types = replay.queue.map(step => step.type);
+
+    expect(types).toContain('YOUR_TURN');
+    expect(types).toContain('BLACK_GOAT_PULSE');
+    expect(types).toContain('HP_DAMAGE');
+    expect(types).toContain('DEATH');
+    expect(types).not.toContain('DRAW_CARD');
+    expect(types).not.toContain('INSPECTION_REVEAL');
+    expect(replay.drawnCard).toBeNull();
+    expect(newGs.deck).toEqual([forcedGod]);
   });
 
   it('翻面跳过只保留回合悬浮文字，不执行克苏鲁摸牌或任何阶段效果', () => {

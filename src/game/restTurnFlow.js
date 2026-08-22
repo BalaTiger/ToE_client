@@ -1,6 +1,5 @@
 import { copyPlayers } from './coreUtils';
 import { appendStatChangeResult, submitRecoveryEvents } from './statChangeEngine';
-import { buildAnimQueue } from './animQueueCore';
 import { getEndTurnEvents } from './endTurnEvents';
 import { checkWin } from './turnEngine';
 import { TURN_FLOW_STAGE } from './turnFlowStages';
@@ -57,6 +56,17 @@ export function resolveRestTurnEnd(gs, {
 
   const oldGs = { ...gs, players: copyPlayers(gs.players) };
   const newGs = { ...gs, players: P, log: L, restUsed: true, skillUsed: true, ...restStatPatch };
+  const createRestTransaction = afterState => ({
+    type: 'rest',
+    beforeState: oldGs,
+    afterState,
+    dice: {
+      d1,
+      d2,
+      heal,
+      rollerName: actor.name || '你',
+    },
+  });
 
   // 如果手牌超限，先进入弃牌阶段，弃牌后再触发拉莱耶之主摸牌
   if ((actor.hand?.length || 0) > effectiveHandLimit) {
@@ -65,17 +75,17 @@ export function resolveRestTurnEnd(gs, {
       TURN_FLOW_STAGE.DISCARD,
       { phase: 'DISCARD_PHASE' },
     );
-    const statQueue = buildAnimQueue(oldGs, { ...newGs, players: P });
-    const queue = [{ type: 'DICE_ROLL', d1, d2, heal, rollerName: actor.name || '你' }, ...statQueue];
-    return { decision: 'DISCARD_PHASE', pendingGs, queue };
+    return {
+      decision: 'DISCARD_PHASE',
+      pendingGs,
+      transaction: createRestTransaction({ ...newGs, players: P }),
+    };
   }
 
   // 复制牌堆/弃牌堆，因为后续 startNextTurn 会直接修改它们
   const D = [...gs.deck];
   const Disc = [...gs.discard];
   const finalGs = { ...gs, players: P, deck: D, discard: Disc, log: L, restUsed: true, skillUsed: true, ...restStatPatch };
-  const statQueue = buildAnimQueue(oldGs, { ...finalGs, players: P });
-  const diceQueue = [{ type: 'DICE_ROLL', d1, d2, heal, rollerName: actor.name || '你' }, ...statQueue];
   const afterRest = transitionTurnFlowStage(
     { ...finalGs, currentTurn: actorIndex },
     TURN_FLOW_STAGE.END_TURN,
@@ -83,9 +93,17 @@ export function resolveRestTurnEnd(gs, {
 
   const endTurnEvents = getEndTurnEvents(P, actorIndex);
   if (endTurnEvents.length) {
-    return { decision: 'SCHEDULE_EVENTS', afterRest, seedQueue: diceQueue };
+    return {
+      decision: 'SCHEDULE_EVENTS',
+      afterRest,
+      transaction: createRestTransaction({ ...finalGs, players: P }),
+    };
   }
 
   const nextGs = advanceTurn(enterTurnBoundary(afterRest));
-  return { decision: 'APPLY_NEXT_TURN', nextGs, queue: diceQueue };
+  return {
+    decision: 'APPLY_NEXT_TURN',
+    nextGs,
+    transaction: createRestTransaction({ ...finalGs, players: P }),
+  };
 }

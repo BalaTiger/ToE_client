@@ -312,13 +312,36 @@ export function shouldPrependAiSkillSnapshot({
   return true;
 }
 
-export function getAiActionQueueCoverage(state, queue, getQueueEventIds, consumedEventIds = null) {
+export function getAiActionQueueCoverage(
+  state,
+  queue,
+  getQueueEventIds,
+  consumedEventIds = null,
+  { previousState = null, eventIds: ownedEventIds = null } = {},
+) {
   const isConsumed = id => !!id && (
     consumedEventIds?.has?.(id)
     || (Array.isArray(consumedEventIds) && consumedEventIds.includes(id))
   );
+  // A rule transaction owns only events introduced after its input snapshot.
+  // Historical events remain in the serialized game state for multiplayer
+  // replay, but must not make an unrelated local action fail coverage.
+  const previousIds = new Set(
+    (Array.isArray(previousState?._visualEvents) ? previousState._visualEvents : [])
+      .map(event => event?.id)
+      .filter(Boolean),
+  );
+  const ownedIds = ownedEventIds == null
+    ? null
+    : new Set((ownedEventIds instanceof Set
+      ? [...ownedEventIds]
+      : Array.isArray(ownedEventIds) ? ownedEventIds : []).filter(Boolean));
   const visualEvents = scopeAiActionReplayMetadata(state).visualEvents
-    .filter(event => !isConsumed(event?.id));
+    .filter(event => (
+      !isConsumed(event?.id)
+      && (!previousState || !previousIds.has(event?.id))
+      && (!ownedIds || ownedIds.has(event?.id))
+    ));
   const eventIds = visualEvents
     .map(event => event?.id)
     .filter(Boolean);

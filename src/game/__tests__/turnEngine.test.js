@@ -1204,6 +1204,46 @@ describe('turnEngine stat events', () => {
     expect(result._inspectionEvents || []).toEqual([]);
   });
 
+  it('AI 在自己回合的开场伤害中死亡后立即中止，不做检定或摸牌', () => {
+    const forcedGod = makeGodCard('VRI');
+    const players = [
+      makePlayer({ name: '存活追猎者', role: ROLE_HUNTER }),
+      makePlayer({
+        name: '黛安娜',
+        role: ROLE_HUNTER,
+        hp: 2,
+        san: 5,
+        hand: [createBlackGoatYoungCard(), createBlackGoatYoungCard()],
+      }),
+      makePlayer({ name: '邪祀者', role: ROLE_CULTIST }),
+      makePlayer({ name: '寻宝者', role: ROLE_TREASURE }),
+    ];
+    const gs = makeGs({
+      players,
+      currentTurn: 0,
+      deck: [forcedGod],
+      log: [],
+      inspectionDeck: [{ name: '自残', effect: 'selfDamageHP', value: 2, type: 'negative' }],
+      inspectionDiscard: [],
+    });
+
+    const result = startNextTurn(gs);
+
+    expect(result.currentTurn).toBe(1);
+    expect(result.phase).toBe('AI_TURN');
+    expect(result.players[1]).toMatchObject({ hp: 0, isDead: true });
+    expect(result._turnStartAbortedByDeath).toBe(true);
+    expect(result.deck).toEqual([forcedGod]);
+    expect(result._drawnCard).toBeNull();
+    expect(result._aiDrawnCard).toBeNull();
+    expect(result._drawLogs).toEqual([]);
+    expect(result.log.some(line => line.includes('SAN检定结果'))).toBe(false);
+    expect(result.log.some(line => line.includes('摸到'))).toBe(false);
+    expect(result.log.some(line => line.includes('遭遇邪神'))).toBe(false);
+    expect((result._visualEvents || []).some(event => event.type === VISUAL_EVENT.DRAW_CARD)).toBe(false);
+    expect((result._visualEvents || []).some(event => event.type === VISUAL_EVENT.INSPECTION)).toBe(false);
+  });
+
   it('AI 回合开始摸牌触发撒托古亚黏液时，_turnOwner 应为新回合玩家而非上家', () => {
     const players = [
       makePlayer({ name: '你' }),

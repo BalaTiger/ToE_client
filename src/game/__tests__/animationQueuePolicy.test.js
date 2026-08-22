@@ -4,6 +4,7 @@ import {
   AUTHORITATIVE_QUEUE_META,
   authoritativeEndTurnReplayQueueMeta,
   authoritativeResolvedQueueMeta,
+  authoritativeResolvedTransitionQueueMeta,
   authoritativeTurnStartQueueMeta,
   buildThrowStoneSteps,
   createRandomTargetVisualEvent,
@@ -74,6 +75,39 @@ describe('animation queue policy', () => {
     );
     expect(() => authoritativeEndTurnReplayQueueMeta(state, nextCardQueue, new Set()))
       .toThrow(/end-turn replay queue.*missing visual events/);
+  });
+
+  it('scopes resolved action coverage to events introduced by the transaction', () => {
+    const players = [{ name: '你' }, { name: '艾伦' }];
+    const staleEvent = createRandomTargetVisualEvent({
+      seq: 3,
+      sourceIdx: 0,
+      targetIdx: 1,
+    }, { players });
+    const freshEvent = createRandomTargetVisualEvent({
+      seq: 4,
+      sourceIdx: 1,
+      targetIdx: 0,
+    }, { players });
+    const previousState = { players, _visualEvents: [staleEvent] };
+    const state = { players, _visualEvents: [staleEvent, freshEvent] };
+    const queue = [{ type: 'RANDOM_TARGET', visualEventId: freshEvent.id }];
+
+    expect(authoritativeResolvedTransitionQueueMeta(
+      previousState,
+      state,
+      queue,
+      new Set(),
+    )).toEqual({
+      authority: ANIMATION_QUEUE_AUTHORITY.QUEUE,
+      eventIds: [freshEvent.id],
+    });
+    expect(() => authoritativeResolvedTransitionQueueMeta(
+      previousState,
+      state,
+      [{ type: 'DRAW_CARD' }],
+      new Set(),
+    )).toThrow(/resolved action queue.*missing visual events/);
   });
 
   it('starts a slime-grant subtransaction after consumed multiply and inspection events', () => {

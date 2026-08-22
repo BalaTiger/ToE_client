@@ -10,10 +10,14 @@ import { shouldPlayGodResurrection } from './game/gameOverPresentation';
 import {
   classifyTreasureDodgeRoll,
   classifyTreasureDodgeSkip,
-  createTreasureDodgeDiceAnim,
   getTreasureDodgeDrawerIdx,
   treasureDodgeModeConfig,
 } from './game/treasureDodgeFlow';
+import { resolveTreasureDodge } from './game/treasureDodgeResolution';
+import {
+  buildTreasureDodgeRollPresentation,
+  createTreasureDodgeDiceAnim,
+} from './game/treasureDodgePresentation';
 import { LoadingPentagramSpinner } from './components/LoadingPentagramSpinner';
 import { BattlePhaseBar } from './components/phase/BattlePhaseBar';
 import InGameTutorialOverlay from './components/tutorial/InGameTutorialOverlay';
@@ -36,7 +40,7 @@ import {
   createTsathogguaSlimeCard,
 } from "./constants/card";
 import { getBattleBackgroundImage, getBattlePredecodeImages, getBattleTheme } from './constants/theme';
-import { buildPhaseUiState } from './game/phaseUi';
+import { buildPhaseUiState, getHuntRevealPromptId } from './game/phaseUi';
 import {
   canClickHandCard as canClickHandCardByAvailability,
   canRespondWithAnyHandCard as canRespondWithAnyHandCardByAvailability,
@@ -155,6 +159,7 @@ import {
   discardCardsFromHandFromRight,
   splitKeptDestroyedDiscarded,
   resolveRestTurnEnd,
+  buildRestActionQueue,
   hasEndTurnReplayHandEvent,
   buildEndTurnReplayStartState,
   buildEndTurnReplayGodEncounter,
@@ -231,6 +236,7 @@ import {
   AUTHORITATIVE_QUEUE_META,
   authoritativeTurnStartQueueMeta,
   authoritativeResolvedQueueMeta,
+  authoritativeResolvedTransitionQueueMeta,
   authoritativeEndTurnReplayQueueMeta,
   strictActionQueueMeta,
   actionQueueMetaForMode,
@@ -993,9 +999,14 @@ export default function Game(){
   },[isTutorialDrawKeepHighlightStep,gs?.phase,gs?.drawReveal?.card?.id]);
   const logRef=useRef(null);
   const [visibleLog,setVisibleLog]=useState(Array.isArray(gs?.log)?gs.log:[]);
+  const [dismissedHuntRevealPromptId,setDismissedHuntRevealPromptId]=useState(null);
   const visibleLogRef=useRef(Array.isArray(gs?.log)?gs.log:[]);
   const visibleLogCountRef=useRef(Array.isArray(gs?.log)?gs.log.length:0);
   const visibleLogAuthorityRef=useRef(Array.isArray(gs?.log)?gs.log:[]);
+
+  useEffect(()=>{
+    if(!gs)setDismissedHuntRevealPromptId(null);
+  },[gs]);
 
   const lastInspectionSeqRef=useRef(0);
   function markInspectionEventsSeen(events=[]){
@@ -2317,7 +2328,16 @@ export default function Game(){
         const aiTurnDrawnCard=hasTurnStartDraw?(rawResult._animAiDrawnCard??rawResult._aiDrawnCard??gs._aiDrawnCard??gs._drawnCard??null):null;
         const aiTurnDiscarded=hasTurnStartDraw?isDrawnCardActuallyDiscarded(rawResult,aiTurnDrawnCard):false;
         const {currentTurnLogs}=splitTransitionLogs(oldLog,nextLog);
-        const actionMsgs=currentTurnLogs;
+        // An AI end-turn replay is already represented by its own ordered
+        // queue (tunnel -> reveal -> card effect).  Its logs still share the
+        // current-turn log, so exclude the explicitly owned lines before any
+        // legacy log/state-diff compiler sees them.  Otherwise a synchronous
+        // 触底反弹 swap is inferred into actionStatQ and its card flights run
+        // ahead of ENDLESS_CORRIDOR_TUNNEL.
+        const endTurnReplayMsgSet = new Set(
+          Array.isArray(newGs._aiEndTurnReplayMsgs) ? newGs._aiEndTurnReplayMsgs : []
+        );
+        const actionMsgs=currentTurnLogs.filter(msg => !endTurnReplayMsgSet.has(msg));
         const actionJ=actionMsgs.join(' ');
         const actionLog=[...oldLog,...actionMsgs];
         const isCurrentTurnInspectionEvent=event=>{
@@ -5439,193 +5459,83 @@ export default function Game(){
     },continueAfterZhuDraw);
   }
 
-  // Generic Treasure Hunter dodge handler
-  function handleTreasureDodge(gs, dr, isAOE = false) {
-    const isTutorialDodge = showTutorial && (tutorialStep === TUTORIAL_FLOW.TREASURE_DODGE_PROMPT || tutorialStep === TUTORIAL_FLOW.TREASURE_DODGE_ROLL);
-    const d1 = isTutorialDodge ? 6 : (1 + (Math.random() * 6 | 0));
-    const dodgeSuccess = isTutorialDodge ? true : d1 >= 4;
-    let P = copyPlayers(gs.players), D = [...gs.deck], Disc = [...gs.discard];
-    const drawerIdx = isAOE ? (gs.abilityData?.drawerIdx ?? 0) : (dr.drawerIdx ?? 0);
-    const who = drawerIdx === 0 ? '你' : P[drawerIdx].name;
-    const resolutionCard = revealBlindDrawCard(dr.card);
-    clearBlindZoneDecisionFlag(P, drawerIdx, dr);
-    
-    // Reveal role when Treasure Hunter rolls dice
-    if (drawerIdx === 0 && P[0].role === '寻宝者') {
-      P[0].roleRevealed = true;
-    }
-    
-    const dodgeLog = `${who} 掷出 ${d1} 点，${dodgeSuccess ? '成功规避负面效果！' : '未能规避，触发负面效果！'}`;
-    let L = [...gs.log];
-    let res;
-    
-    if (isAOE) {
-      // AOE dodge: only avoid for current player
-      const avoidNegativeFor = dodgeSuccess ? [0] : [];
-      res = applyFx(resolutionCard, drawerIdx, null, P, D, Disc, gs, false, avoidNegativeFor, false);
-    } else {
-      // Regular dodge: avoid all negative effects for the drawer
-      res = applyFx(resolutionCard, drawerIdx, null, P, D, Disc, gs, dodgeSuccess, [], false);
-    }
-    
-    P = res.P; D = res.D; Disc = res.Disc;
-    if(!dr.fromEndTurnReplay)P[drawerIdx].hand.push(resolutionCard);
-    const effectPrecedesDodge = resolutionCard.type === 'albinoCreature';
-    if (effectPrecedesDodge) L.push(...res.msgs, dodgeLog);
-    else L.push(dodgeLog);
-    
-    if (dodgeSuccess && !isAOE) {
-      L.push(`${who} 收入了 ${cardLogText(resolutionCard,{alwaysShowName:true})}（负面效果已规避）`, ...(effectPrecedesDodge?[]:res.msgs));
-    } else {
-      L.push(`${who} 收入了 ${cardLogText(resolutionCard,{alwaysShowName:true})}`, ...(effectPrecedesDodge?[]:res.msgs));
-    }
-    
-    // 1. 检查卡牌效果是否让任何人HP归零或SAN归零（通过checkWin）
-    const win = checkWin(P, gs._isMP);
-    if (win) {
-      return { P, D, Disc, L, win };
-    }
-    
-    // 2. 最后，如果游戏仍未结束，且该寻宝者仍然存活，检查该寻宝者是否达成胜利条件
-    if (drawerIdx === 0 && !P[0].isDead && P[0].role === '寻宝者' && isWinHand(P[0].hand)) {
-      P[0].roleRevealed = true;
-      const pendingWinGs = {
-        ...gs,
-        players: P,
-        deck: D,
-        discard: Disc,
-        log: [...L, localTreasureWinLog(gs)],
-        phase: 'PLAYER_WIN_PENDING',
-        drawReveal: null,
-        abilityData: { winReason: localTreasureWinReason(gs) }
-      };
-      return { P, D, Disc, L: pendingWinGs.log, pendingWinGs, d1, dodgeSuccess, who, resolutionCard };
-    }
-    
-    const replayPatch=dr.fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
-    const decisionState=deriveEffectDecisionState(res.statePatch,{
-      baseAbilityData:gs.abilityData,
-      fallbackPhase:'ACTION',
-      extraAbilityData:{
-          ...(dr.fromRest?{fromRest:true}:{}),
-          ...(dr.fromEndTurnReplay?{fromEndTurnReplay:true}:{}),
-          ...(dr.fromTsathogguaSlime?{fromTsathogguaSlime:true,continueTurnStartDraw:true,_turnOwner:gs.abilityData?._turnOwner??drawerIdx}:{}),
-        ...(gs.abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:gs.abilityData.cthDrawsRemaining}:{}),
-      },
-    });
-    const fallbackAbilityData={...buildTargetContinuationAbilityData(gs.abilityData),...(dr.fromEndTurnReplay?{fromEndTurnReplay:true}:{})};
-    const newGs = {
-      ...gs,
-      players: P,
-      deck: D,
-      discard: Disc,
-      log: L,
-      phase: decisionState.hasDecision?decisionState.phase:'ACTION',
-      drawReveal: null,
-      abilityData: decisionState.hasDecision?decisionState.abilityData:fallbackAbilityData,
-      ...(res.statePatch||{}),
-      ...replayPatch
-    };
-    if(decisionState.hasDecision){
-      newGs.phase=decisionState.phase;
-      newGs.abilityData=decisionState.abilityData;
-    }
-    return { P, D, Disc, L, newGs, d1, dodgeSuccess, who, hasDecision:decisionState.hasDecision, resolutionCard };
-  }
-
   function handleTreasureDodgeRollMode(aoe=false){
     if(!aoe&&gs.abilityData?.sphinxPending){
       settleSphinxDodge(true);
       return;
     }
     const dr=gs.drawReveal;if(!dr?.card)return;
-    const result=handleTreasureDodge(gs,dr,aoe);
+    const isTutorialDodgeStep=!aoe&&showTutorial&&(tutorialStep===TUTORIAL_FLOW.TREASURE_DODGE_PROMPT||tutorialStep===TUTORIAL_FLOW.TREASURE_DODGE_ROLL);
+    const drawerIdx=getTreasureDodgeDrawerIdx(gs,dr,aoe);
+    const result=resolveTreasureDodge(gs,dr,{
+      isAOE:aoe,
+      roll:isTutorialDodgeStep?6:(1+(Math.random()*6|0)),
+      actorLabel:drawerIdx===0?'你':gs.players?.[drawerIdx]?.name,
+    });
     const config=treasureDodgeModeConfig(aoe);
     const flowKind=classifyTreasureDodgeRoll(dr,result,aoe);
-    const isTutorialDodgeStep=!aoe&&showTutorial&&(tutorialStep===TUTORIAL_FLOW.TREASURE_DODGE_PROMPT||tutorialStep===TUTORIAL_FLOW.TREASURE_DODGE_ROLL);
-    const diceAnim=createTreasureDodgeDiceAnim({result,aoe,tutorialHold:isTutorialDodgeStep,onTutorialSettled:()=>{setTutorialStep(TUTORIAL_FLOW.TREASURE_DODGE_RESULT);setTutorialDiceResultPending(false);}});
+    const presentation=buildTreasureDodgeRollPresentation(result.transaction,{
+      flowKind,
+      tutorialHold:isTutorialDodgeStep,
+      onTutorialSettled:()=>{setTutorialStep(TUTORIAL_FLOW.TREASURE_DODGE_RESULT);setTutorialDiceResultPending(false);},
+    });
+    const queue=presentation.queue;
+    const afterState=presentation.afterState;
+    const queueMeta=dr.fromEndTurnReplay
+      ?authoritativeEndTurnReplayQueueMeta(afterState,queue,consumedVisualEventIdsRef.current)
+      :authoritativeResolvedTransitionQueueMeta(gs,afterState,queue,consumedVisualEventIdsRef.current);
     if(flowKind==='win'){
-      setGs({...gs,players:result.P,deck:result.D,discard:result.Disc,log:result.L,gameOver:result.win,drawReveal:null});
+      if(afterState._isMP)broadcastAnimTransaction(afterState,queue,{
+        context:'treasureDodgeWin',barrier:'decision',msgs:presentation.logDelta,
+        beforePlayers:gs.players,beforeDiscard:gs.discard,
+      });
+      triggerAnimQueue(queue,afterState,undefined,queueMeta);
       return;
     }
     if(flowKind==='pendingWin'){
-      const effectQueue=bindAnimLogChunks(buildAnimQueue(gs,result.pendingWinGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
-      const drawerIdx=getTreasureDodgeDrawerIdx(gs,dr,aoe);
-      const transfer=!dr.fromEndTurnReplay&&config.includeStandardTransfer?cardTransferStep({
-        fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,
-        sourceAnchor:'playerArea',effect:'draw',cards:[result.resolutionCard],
-      }):null;
-      const queue=[diceAnim,...effectQueue,transfer].filter(Boolean);
       if(dr.fromEndTurnReplay){
-        broadcastEndTurnDecisionAnimTransaction(result.pendingWinGs,queue,result.L.slice(gs.log.length));
-      }else if(result.pendingWinGs._isMP){
-        broadcastAnimTransaction(result.pendingWinGs,queue,{
-          context:'drawWin',barrier:'decision',msgs:result.L.slice(gs.log.length),
+        broadcastEndTurnDecisionAnimTransaction(afterState,queue,presentation.logDelta);
+      }else if(afterState._isMP){
+        broadcastAnimTransaction(afterState,queue,{
+          context:'drawWin',barrier:'decision',msgs:presentation.logDelta,
           beforePlayers:gs.players,beforeDiscard:gs.discard,
         });
       }
-      setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-      triggerAnimQueue(queue,result.pendingWinGs,undefined,dr.fromEndTurnReplay
-        ?authoritativeEndTurnReplayQueueMeta(result.pendingWinGs,queue,consumedVisualEventIdsRef.current)
-        :authoritativeResolvedQueueMeta(result.pendingWinGs,queue));
+      triggerAnimQueue(queue,afterState,undefined,queueMeta);
       return;
     }
     if(flowKind==='rest'){
-      // 播放骰子动画后再处理剩余摸牌
-      const queue=bindAnimLogChunks(buildAnimQueue(gs,result.newGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
-      setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-      // This branch used to assign the refs/setAnim directly, bypassing queue
-      // schema normalization and timing. In particular, an AOE HP+SAN result
-      // could leave the dice result on screen instead of reaching CTH resume.
-      const restQueue=[
-        diceAnim,
-        ...queue,
-        ...(queue.length?[statePatchStep({players:result.P,discard:result.Disc})]:[]),
-      ];
-      triggerAnimQueue(restQueue,null,()=>_cthContinueRestDraws(result.newGs),authoritativeResolvedQueueMeta(result.newGs,restQueue));
+      if(afterState._isMP)broadcastAnimTransaction(afterState,queue,{
+        context:'cthTreasureDodge',barrier:'continuation',msgs:presentation.logDelta,
+        beforePlayers:gs.players,beforeDiscard:gs.discard,
+      });
+      triggerAnimQueue(queue,null,()=>_cthContinueRestDraws(afterState),queueMeta);
       return;
     }
     if(flowKind==='slime'){
-      const queue=bindAnimLogChunks(buildAnimQueue(gs,result.newGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
-      const drawerIdx=getTreasureDodgeDrawerIdx(gs,dr,aoe);
-      queue.push(cardTransferStep({fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,sourceAnchor:'playerArea',effect:'draw',cards:[result.resolutionCard]}));
-      queue.push(statePatchStep({players:result.P,deck:result.D,discard:result.Disc,log:result.L,phase:result.newGs.phase,drawReveal:result.newGs.drawReveal,abilityData:result.newGs.abilityData}));
-      queue.push({type:'TURN_BOUNDARY_PAUSE',durationMs:300});
-      setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
-      const slimeQueue=[diceAnim,...queue];
-      triggerAnimQueue(slimeQueue,result.newGs,()=>_tsgContinueTurnStartDraw(result.newGs),authoritativeResolvedQueueMeta(result.newGs,slimeQueue));
+      if(afterState._isMP)broadcastAnimTransaction(afterState,queue,{
+        context:'treasureSlimeDodge',barrier:'continuation',msgs:presentation.logDelta,
+        beforePlayers:gs.players,beforeDiscard:gs.discard,
+      });
+      triggerAnimQueue(queue,null,()=>_tsgContinueTurnStartDraw(afterState),queueMeta);
       return;
     }
-    const queue=bindAnimLogChunks(buildAnimQueue(gs,result.newGs),splitAnimBoundLogs(result.L.slice(gs.log.length)));
-    const drawerIdx=getTreasureDodgeDrawerIdx(gs,dr,aoe);
-    if(config.includeStandardTransfer)queue.push(cardTransferStep({fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,sourceAnchor:'playerArea',effect:'draw',cards:[result.resolutionCard]}));
-    // 无论是否有其他动画，都播放骰子动画
-    const playbackQueue=[diceAnim,...queue];
-    const localQueue=dr.fromEndTurnReplay
-      ?[...playbackQueue,statePatchStep({players:result.P,discard:result.Disc})]
-      :playbackQueue;
     if(dr.fromEndTurnReplay){
-      appendEndTurnReplaySyncQueue(
-        localQueue,
-        result.L.slice(gs.log.length)
-      );
-      broadcastEndTurnReplaySyncDelta(result.newGs);
-    }else if(result.newGs._isMP){
-      broadcastAnimTransaction(result.newGs,playbackQueue,{
-        context:config.rollContext,barrier:result.newGs.phase==='TSG_SLIME_BALANCE'?'decision':'continuation',
-        msgs:result.L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard,
+      appendEndTurnReplaySyncQueue(queue,presentation.logDelta);
+      broadcastEndTurnReplaySyncDelta(afterState);
+    }else if(afterState._isMP){
+      broadcastAnimTransaction(afterState,queue,{
+        context:config.rollContext,barrier:afterState.phase==='TSG_SLIME_BALANCE'?'decision':'continuation',
+        msgs:presentation.logDelta,beforePlayers:gs.players,beforeDiscard:gs.discard,
       });
     }
-    setGs(p=>p?{...p,phase:'ACTION',drawReveal:null}:p);
     triggerAnimQueue(
-      localQueue,
-      result.newGs,
-      dr.fromEndTurnReplay&&result.newGs.phase==='ACTION'&&!result.newGs.gameOver
-        ?()=>continueEndTurnReplay(result.newGs)
+      queue,
+      afterState,
+      dr.fromEndTurnReplay&&afterState.phase==='ACTION'&&!afterState.gameOver
+        ?()=>continueEndTurnReplay(afterState)
         :undefined,
-      dr.fromEndTurnReplay
-        ?authoritativeEndTurnReplayQueueMeta(result.newGs,localQueue,consumedVisualEventIdsRef.current)
-        :authoritativeResolvedQueueMeta(result.newGs,localQueue)
+      queueMeta,
     );
     if(isTutorialDodgeStep){
       setTutorialDiceResultPending(true);
@@ -5765,7 +5675,7 @@ export default function Game(){
     };
     const queue=bindAnimLogChunks(buildAnimQueue(gs,nextGs),splitAnimBoundLogs(L.slice(gs.log.length)));
     const fullQueue=roll
-      ?[createTreasureDodgeDiceAnim({result:{d1,dodgeSuccess,who:'你'},aoe:false}),...queue]
+      ?[createTreasureDodgeDiceAnim({transaction:{isAOE:false,roll:{d1,dodgeSuccess,rollerName:'你'}}}),...queue]
       :queue;
     const logDelta=L.slice(gs.log.length);
     if(gs._endTurnReplay)broadcastEndTurnDecisionAnimTransaction(nextGs,fullQueue,logDelta);
@@ -7929,7 +7839,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       // 多人游戏：目标是真人玩家，让目标自己选择亮出哪张牌（20秒超时随机）
       // 暂停房主回合计时器：进入 HUNT_WAIT_REVEAL 子阶段，目标玩家选完后恢复
       const huntWaitGs={...gs,players:P,deck:D,discard:Disc,phase:'HUNT_WAIT_REVEAL',
-        abilityData:{...(gs.abilityData||{}),huntTi:ti},
+        abilityData:{
+          ...(gs.abilityData||{}),
+          huntTi:ti,
+          huntPromptId:`mp-hunt:${gs._turnKey??gs.turn??0}:${gs.currentTurn??0}:${ti}:${baseLog.length}`,
+        },
         log:[...baseLog,`你（追猎者）追捕 ${P[ti].name}，等待对方亮出一张手牌…`],...apophisNightPatch(night)};
       const huntMsgs=extractSkillLogs(huntWaitGs.log.slice(gs.log.length),'hunt');
       const huntWaitGsWithEvent=huntWaitGs;
@@ -8222,6 +8136,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   function humanRevealForMPHunt(cardIdx){
     const card=me.hand[cardIdx];
     if(!canRevealForHunt(card))return;
+    setDismissedHuntRevealPromptId(getHuntRevealPromptId(gs));
     // huntTi = 被追捕者在当前视角下的 index（非0）
     // 被追捕者将选择结果推送回规范 gs 并广播：
     // 设置 revCard，切换到 HUNT_CONFIRM 让追猎者（currentTurn=0 视角）完成后续
@@ -8246,6 +8161,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   function playerRevealForHunt(cardIdx){
     const card=me.hand[cardIdx];
     if(!card||isBlackGoatYoung(card)||isTsathogguaSlime(card))return;
+    setDismissedHuntRevealPromptId(getHuntRevealPromptId(gs));
     const{huntingAI,aiHunterName}=gs.abilityData;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
     const huntLogStart=L.length;
@@ -9141,7 +9057,17 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       return;
     }
     if(result.newGs._isMP&&result.queue.length)broadcastAnimTransaction(result.newGs,result.queue,{context:'endTurnDiscard',barrier:'turnBoundary',beforePlayers:baseGs.players,beforeDiscard:baseGs.discard});
-    triggerAnimQueue(result.queue,result.newGs,undefined,authoritativeResolvedQueueMeta(result.newGs,result.queue));
+    triggerAnimQueue(
+      result.queue,
+      result.newGs,
+      undefined,
+      authoritativeResolvedTransitionQueueMeta(
+        baseGs,
+        result.newGs,
+        result.queue,
+        consumedVisualEventIdsRef.current,
+      ),
+    );
   }
 
   function doRest(){
@@ -9152,26 +9078,33 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const result=resolveRestTurnEnd(gs,{
       d1,d2,heal,effectiveHandLimit,actorIndex:0,advanceTurn:startNextTurn,
     });
+    const restQueue=buildRestActionQueue(result.transaction);
 
     const broadcastRestQueue=(state,queue)=>{
       if(!state?._isMP||!queue?.length)return;
       broadcastAnimTransaction(state,queue,{context:'rest',barrier:'turnBoundary',beforePlayers:gs.players,beforeDiscard:gs.discard});
     };
+    const restQueueMeta=(state,queue)=>authoritativeResolvedTransitionQueueMeta(
+      gs,
+      state,
+      queue,
+      consumedVisualEventIdsRef.current,
+    );
 
     switch(result.decision){
       case 'WIN':
         setGs(result.gs);
         return;
       case 'DISCARD_PHASE':
-        broadcastRestQueue(result.pendingGs,result.queue);
-        triggerAnimQueue(result.queue,result.pendingGs,undefined,authoritativeResolvedQueueMeta(result.pendingGs,result.queue));
+        broadcastRestQueue(result.pendingGs,restQueue);
+        triggerAnimQueue(restQueue,result.pendingGs,undefined,restQueueMeta(result.pendingGs,restQueue));
         return;
       case 'SCHEDULE_EVENTS':
-        kickoffEndTurnSeq(result.afterRest,{seedQueue:result.seedQueue});
+        kickoffEndTurnSeq(result.afterRest,{seedQueue:restQueue});
         return;
       case 'APPLY_NEXT_TURN':
-        broadcastRestQueue(result.nextGs,result.queue);
-        triggerAnimQueue(result.queue,null,()=>applyNextTurnGs(result.nextGs),authoritativeResolvedQueueMeta(result.nextGs,result.queue));
+        broadcastRestQueue(result.nextGs,restQueue);
+        triggerAnimQueue(restQueue,null,()=>applyNextTurnGs(result.nextGs),restQueueMeta(result.nextGs,restQueue));
         return;
       default:
         return;
@@ -9634,7 +9567,17 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       return;
     }
     if(result.newGs._isMP&&result.queue.length)broadcastAnimTransaction(result.newGs,result.queue,{context:'endTurnTimeoutDiscard',barrier:'turnBoundary',beforePlayers:gs.players,beforeDiscard:gs.discard});
-    triggerAnimQueue(result.queue,result.newGs,undefined,authoritativeResolvedQueueMeta(result.newGs,result.queue));
+    triggerAnimQueue(
+      result.queue,
+      result.newGs,
+      undefined,
+      authoritativeResolvedTransitionQueueMeta(
+        gs,
+        result.newGs,
+        result.queue,
+        consumedVisualEventIdsRef.current,
+      ),
+    );
   }
   autoDiscardRef.current=autoDiscardFromRight;
 
@@ -9896,6 +9839,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
   const decisionContext=getDecisionContext(gs,{isSpectating});
   const isLocalDamageLinkSelect=!!gs&&isLocalDamageLinkSourcePhase(gs);
   const isLocalHuntRevealPrompt=phase==='HUNT_WAIT_REVEAL'&&!myTurn&&isLocalHuntTargetSeat(gs);
+  const huntRevealPromptId=getHuntRevealPromptId(gs);
+  const huntRevealPromptActive=!!huntRevealPromptId&&huntRevealPromptId!==dismissedHuntRevealPromptId;
   const isDiscardPhaseResolving=phase==='DISCARD_PHASE'&&(!!anim||!!animExiting||!!pendingGsRef.current);
   const isDiscardPhasePromptActive=phase==='DISCARD_PHASE'&&!anim&&!animExiting&&!pendingGsRef.current;
   const pendingAfterDiscardGs=isDiscardPhaseResolving?pendingGsRef.current:null;
@@ -9916,6 +9861,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     pendingAfterDiscardGs,
     isDiscardPhaseResolving,
     isLocalHuntRevealPrompt,
+    huntRevealPromptActive,
     isScriptedTutorial,
     isBlocked,
     isVisualPlayerTurn,

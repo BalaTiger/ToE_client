@@ -9,7 +9,7 @@ import { dedupeInferredDiscardTransfers } from '../animQueueHelpers';
 import { assertCompleteThrowStoneTransactions } from '../animationStepSchema';
 import { copyPlayers } from '../coreUtils';
 import { buildStatEvents } from '../statEvents';
-import { buildFreshStatVisualEvents, createApophisEclipseEvent, createCardEffectEvent, createEarthquakeEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent, createRandomTargetVisualEvent } from '../visualEvents';
+import { buildFreshStatVisualEvents, createApophisEclipseEvent, createCardEffectEvent, createEarthquakeEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent, createRandomTargetVisualEvent, createTurnDrawVisualEvents } from '../visualEvents';
 import { makeGodCard, makeGs, makePlayer } from './factory';
 
 describe('buildAnimQueue stat animations', () => {
@@ -997,6 +997,36 @@ describe('buildAnimQueue stat animations', () => {
       cards: [slime],
     });
     expect(queue.some(step => step.type === 'CARD_TRANSFER')).toBe(false);
+  });
+
+  it('规范额外摸牌事件已携带黏液破裂时，不再由旧手牌差分抢播第二次', () => {
+    const slime = { id: 'canonical-slime', name: '撒托古亚的赐福黏液', isTsathogguaSlime: true };
+    const extra = { id: 'canonical-extra', key: 'D3', name: '额外牌', type: 'zone' };
+    const beforePlayers = [makePlayer({ name: '你', hand: [slime] })];
+    const afterPlayers = [makePlayer({ name: '你', hand: [extra] })];
+    const drawEvents = createTurnDrawVisualEvents({
+      playerIdx: 0,
+      playerName: '你',
+      card: extra,
+      fromTsathogguaSlime: true,
+      slimePop: {
+        targetPid: 0,
+        cards: [slime],
+        playersBefore: beforePlayers,
+        playersAfter: afterPlayers,
+      },
+      msgs: ['【无定形体】你 额外摸到 [D3] 额外牌'],
+    });
+    const queue = buildAnimQueue(
+      makeGs({ players: beforePlayers, log: [] }),
+      makeGs({
+        players: afterPlayers,
+        log: ['【无定形体】你 额外摸到 [D3] 额外牌'],
+        _visualEvents: drawEvents,
+      }),
+    );
+
+    expect(queue.some(step => step.type === 'TSG_SLIME_POP')).toBe(false);
   });
 
   it('手牌减少且其他角色手牌增加时推断为玩家间飞牌', () => {

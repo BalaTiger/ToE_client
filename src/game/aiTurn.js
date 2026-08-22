@@ -46,7 +46,7 @@ import {
   grantTsathogguaSlimeAtEndTurn,
 } from './turnEngine';
 import { withClearedTurnAnimFields } from './turnAnimState';
-import { buildAnimQueue } from './animQueueCore';
+import { buildAnimQueue, buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
 import { cardTransferStep, statePatchStep } from './animQueueHelpers';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, isRevealedCultist } from './coreUtils';
 import { createBlackGoatYoungCard } from '../constants/card';
@@ -593,7 +593,19 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
     const beforePatch = statePatch;
     const res = applyFx(card, ct, null, P, D, Disc, { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L }, false, [], true);
     P = res.P; D = res.D; Disc = res.Disc;
-    if (res.msgs?.length) L.push(...res.msgs);
+    if (res.msgs?.length) {
+      L.push(...res.msgs);
+      // Keep the synchronous full-hand swap log attached to the corridor
+      // replay. The outer AI action compiler uses this list to keep the
+      // legacy log-based diff out of the action segment; without it a
+      // swapAllHands message is inferred before ENDLESS_CORRIDOR_TUNNEL.
+      if (
+        card?.type === 'swapAllHands' &&
+        res.msgs.some(msg => typeof msg === 'string' && msg.includes('交换了全部手牌'))
+      ) {
+        replayMsgs.push(...res.msgs);
+      }
+    }
     statePatch = { ...statePatch, ...(res.statePatch || {}) };
     // The replayed card already exists in the logical hand, but it is visually
     // treated as a fresh draw.  Commit that visible "gain" before resolving its
@@ -609,6 +621,17 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
       cards: [card],
       msgs: [drawMsg],
     }));
+    // A corridor-triggered 触底反弹 resolves its hand swap synchronously in
+    // applyFx. Keep the swap flight beside this card's replay (after the
+    // corridor tunnel and reveal), instead of letting the outer legacy state
+    // diff prepend it to the action queue.
+    if (card?.type === 'swapAllHands' && res.msgs?.length) {
+      replayQueue.push(...buildFullHandSwapTransferQueueFromLogs(
+        res.msgs,
+        beforePlayers,
+        { playersBefore: beforePlayers },
+      ));
+    }
     const resolutionQueue = buildAiEndTurnReplayResolutionQueue({
       beforeGs: { ...gs, ...beforePatch, players: beforePlayers, deck: beforeDeck, discard: beforeDiscard, log: beforeLog },
       afterGs: { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L },
@@ -1152,6 +1175,27 @@ export function aiStep(gs, opts = {}) {
     });
   };
 
+  // A defeated turn owner has exactly one legal transition: leave the turn.
+  // Put this before every pending-decision/action branch so stale abilityData
+  // cannot make a dead AI choose targets, resolve skills, or touch its hand.
+  if (P[ct]?.isDead) {
+    const win = checkWin(P, gs._isMP);
+    if (win) return { ...gs, players: P, deck: D, discard: Disc, log: L, gameOver: win };
+    const playersAfterDeath = copyPlayers(P);
+    const nextGs = startNextTurn({
+      ...gs,
+      players: P,
+      deck: D,
+      discard: Disc,
+      log: L,
+      currentTurn: ct,
+      abilityData: {},
+      huntAbandoned: [],
+      skillUsed: true,
+    }, opts);
+    return buildReturnPack(nextGs, playersAfterDeath);
+  }
+
   if(abilityData?.type==='firstComePick'&&Array.isArray(abilityData.revealedCards)){
     const pickOrder=abilityData.pickOrder||[];
     const pickIndex=abilityData.pickIndex||0;
@@ -1662,7 +1706,7 @@ export function aiStep(gs, opts = {}) {
               const updatedAbandoned = [...newAbandoned, ti];
               return {...gs, players:P, deck:D, discard:Disc, log:L,
                 phase:'PLAYER_REVEAL_FOR_HUNT',
-                abilityData:{huntingAI:ct, aiHunterName:ai.name},
+                abilityData:{huntingAI:ct, aiHunterName:ai.name, huntPromptId:attemptId},
                 skillUsed:true, skillActivatedTurn:gs.turn, huntAbandoned: updatedAbandoned, _aiName:ai.name, _drawnCard:gs._drawnCard, _aiDrawnCard:gs._aiDrawnCard??gs._drawnCard??null, _discardedDrawnCard:gs._discardedDrawnCard??false, _playersBeforeSkillAction:playersBeforeSkillAction, _preSkillLogs:preSkillLogs, _preSkillDiscard:preSkillDiscard, _aiHuntEvents:aiHuntEvents};
             } else {
               const beforeHuntPlayers=copyPlayers(P);

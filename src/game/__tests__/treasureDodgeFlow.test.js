@@ -4,10 +4,17 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   classifyTreasureDodgeRoll,
   classifyTreasureDodgeSkip,
-  createTreasureDodgeDiceAnim,
   getTreasureDodgeDrawerIdx,
   treasureDodgeModeConfig,
 } from '../treasureDodgeFlow';
+import {
+  buildTreasureDodgeRollPresentation,
+  createTreasureDodgeDiceAnim,
+} from '../treasureDodgePresentation';
+import { resolveTreasureDodge } from '../treasureDodgeResolution';
+import { authoritativeResolvedTransitionQueueMeta } from '../animationQueuePolicy';
+import { createRandomTargetVisualEvent } from '../visualEvents';
+import { makeGs, makePlayer, makeZoneCard } from './factory';
 
 describe('treasure dodge flow variants', () => {
   it('preserves normal and AOE mode differences', () => {
@@ -49,11 +56,56 @@ describe('treasure dodge flow variants', () => {
 
   it('keeps tutorial hold only on the normal roll', () => {
     const onSettled = vi.fn();
-    const result = { d1: 6, who: '艾伦', dodgeSuccess: true };
-    expect(createTreasureDodgeDiceAnim({ result, tutorialHold: true, onTutorialSettled: onSettled }))
+    const transaction = { isAOE: false, roll: { d1: 6, rollerName: '艾伦', dodgeSuccess: true } };
+    expect(createTreasureDodgeDiceAnim({ transaction, tutorialHold: true, onTutorialSettled: onSettled }))
       .toMatchObject({ rollerName: '艾伦', durationMs: 2147483647, onSettled });
-    expect(createTreasureDodgeDiceAnim({ result, aoe: true, tutorialHold: true, onTutorialSettled: onSettled }))
+    expect(createTreasureDodgeDiceAnim({ transaction: { ...transaction, isAOE: true }, tutorialHold: true, onTutorialSettled: onSettled }))
       .toEqual(expect.not.objectContaining({ durationMs: expect.anything() }));
+  });
+
+  it('keeps a CTH rest dodge in one explicit transaction despite historical visual events', () => {
+    const players = [
+      makePlayer({ name: '你', role: '寻宝者', san: 8 }),
+      makePlayer({ name: '艾伦', role: '猎人', san: 8 }),
+      makePlayer({ name: '贝拉', role: '邪祀者', san: 8 }),
+      makePlayer({ name: '卡洛斯', role: '猎人', san: 8 }),
+    ];
+    const card = makeZoneCard('A4', 1, { id: 'echoing-valley' });
+    const historicalEvent = createRandomTargetVisualEvent({
+      seq: 1,
+      sourceIdx: 0,
+      targetIdx: 1,
+      resultText: '历史事件',
+    }, { players });
+    const drawReveal = { card, drawerIdx: 0, fromRest: true, needsDecision: true };
+    const gs = makeGs({
+      players,
+      phase: 'TREASURE_DODGE_DECISION',
+      drawReveal,
+      abilityData: { fromRest: true, cthDrawsRemaining: 1 },
+      _visualEvents: [historicalEvent],
+      log: ['你即将承受 [A4] 空谷传音 的负面效果！是否掷骰子尝试规避？'],
+    });
+
+    const result = resolveTreasureDodge(gs, drawReveal, { roll: 6, actorLabel: '你' });
+    const presentation = buildTreasureDodgeRollPresentation(result.transaction, { flowKind: 'rest' });
+    const types = presentation.queue.map(step => step.type);
+
+    expect(result.transaction).toMatchObject({
+      type: 'treasureDodge',
+      beforeState: gs,
+      outcome: 'resolved',
+      roll: { d1: 6, dodgeSuccess: true },
+    });
+    expect(types[0]).toBe('DICE_ROLL');
+    expect(types).toContain('CARD_TRANSFER');
+    expect(types.slice(-2)).toEqual(['STATE_PATCH', 'TURN_BOUNDARY_PAUSE']);
+    expect(() => authoritativeResolvedTransitionQueueMeta(
+      gs,
+      result.newGs,
+      presentation.queue,
+      new Set(),
+    )).not.toThrow();
   });
 
   it('routes every treasure-dodge roll branch through the animation queue state machine', () => {
@@ -68,7 +120,10 @@ describe('treasure dodge flow variants', () => {
     expect(handler).not.toContain('pendingGsRef.current=');
     expect(handler).not.toContain('animQueueRef.current=');
     expect(handler).not.toMatch(/setAnim\s*\(/);
-    expect(handler.match(/triggerAnimQueue\s*\(/g)).toHaveLength(4);
+    expect(handler).not.toMatch(/setGs\s*\(/);
+    expect(handler).toContain('resolveTreasureDodge(gs,dr');
+    expect(handler).toContain('buildTreasureDodgeRollPresentation(result.transaction');
+    expect(handler).toContain('authoritativeResolvedTransitionQueueMeta(gs,afterState,queue');
   });
 
   it('routes Sphinx dodge and AI-ZHU turn banner through the animation queue state machine', () => {

@@ -804,6 +804,18 @@ export function buildAnimQueue(oldGs, newGs) {
     return composed;
   }
   const explicitDiscardTargets = collectExplicitDiscardTargets(q);
+  // A turn-start draw event can carry the slime consumption that produced the
+  // draw.  The hand snapshot also changes at that boundary, so the legacy
+  // hand-delta compiler would otherwise manufacture a second TSG_SLIME_POP
+  // (usually in the preceding AI action queue, before the next YOUR_TURN
+  // banner).  The canonical draw event owns that pop; let the compatibility
+  // compiler infer slime loss only when no such owner exists.
+  const canonicalSlimePopTargets = new Set(
+    getVisualEvents(newGs)
+      .filter(event => event?.type === VISUAL_EVENT.DRAW_CARD && event?.slimePop)
+      .map(event => event?.slimePop?.targetPid ?? event?.playerIdx ?? event?.drawerIdx)
+      .filter(Number.isInteger)
+  );
   const inferredHandQueue = buildHandDeltaInferenceQueue({ oldGs, effectivePlayers, newMsgs })
     .filter(step => !(
       explicitDiscardTargets.has(step?.fromPid)
@@ -813,6 +825,10 @@ export function buildAnimQueue(oldGs, newGs) {
     ))
     .filter(step => !(
       explicitDiscardTargets.has(step?.targetPid)
+      && step?.type === 'TSG_SLIME_POP'
+    ))
+    .filter(step => !(
+      canonicalSlimePopTargets.has(step?.targetPid)
       && step?.type === 'TSG_SLIME_POP'
     ));
   q.push(...inferredHandQueue);

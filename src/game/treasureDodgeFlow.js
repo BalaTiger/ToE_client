@@ -43,19 +43,3 @@ export function classifyTreasureDodgeSkip(drawReveal, hasDecision, aoe = false) 
   if (drawReveal?.fromTsathogguaSlime && (aoe || !hasDecision)) return 'slime';
   return 'standard';
 }
-
-export function createTreasureDodgeDiceAnim({ result, aoe = false, tutorialHold = false, onTutorialSettled } = {}) {
-  const config = treasureDodgeModeConfig(aoe);
-  return {
-    type: 'DICE_ROLL',
-    d1: result?.d1,
-    d2: 0,
-    heal: 0,
-    rollerName: config.rollerName || result?.who,
-    dodgeSuccess: !!result?.dodgeSuccess,
-    ...(tutorialHold && config.supportsTutorialHold ? {
-      durationMs: 2147483647,
-      onSettled: onTutorialSettled,
-    } : {}),
-  };
-}

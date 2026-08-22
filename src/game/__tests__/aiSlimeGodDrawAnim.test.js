@@ -151,4 +151,48 @@ describe('AI 黏液额外摸到邪神牌（同步结算）动画队列', () => {
     expect(discardIdx).toBeLessThan(decipherDrawIdx);
     expect(replay.queue.filter(step => step.type === 'DRAW_CARD' && step.triggerName === '检定牌')).toHaveLength(0);
   });
+
+  it('固定摸牌延迟 AI 邪神决策时，遭遇日志仍归属邪神翻牌而非 SAN 属性队列', () => {
+    const slime = createTsathogguaSlimeCard();
+    const dragonHeart = makeZoneCard('C3', 0, { name: '龙之心' });
+    const god = makeGodCard('VRI', { name: '弗栗多' });
+    const players = [
+      makePlayer({ name: '你', san: 10 }),
+      makePlayer({
+        name: '卡洛斯',
+        role: 'treasureHunter',
+        san: 7,
+        godEncounters: 2,
+        godName: 'TSG',
+        godLevel: 1,
+        godZone: [makeGodCard('TSG')],
+        hand: [slime],
+      }),
+    ];
+    const encounterLog = '卡洛斯 遭遇邪神 弗栗多！（第3次）失去 3 SAN';
+    const gs = makeGs({
+      players,
+      deck: [dragonHeart, god],
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: ['旧日志'],
+      inspectionDeck: [{ id: 'sleep-check', name: '昏睡', effect: 'flip', value: 1, type: 'neutral' }],
+      inspectionDiscard: [],
+      _inspectionSeq: 0,
+      _statEventSeq: 0,
+    });
+
+    const result = startNextTurn(gs);
+    expect(result.phase).toBe('AI_GOD_CHOICE');
+    expect(result._drawLogs).toContain(encounterLog);
+    expect(result._statLogs).not.toContain(encounterLog);
+
+    const replay = buildTurnStartDrawReplayQueue({
+      oldGs: gs,
+      newGs: result,
+      effectOldGs: { ...gs, players: result._playersBeforeThisDraw || gs.players },
+    });
+    const godDraw = replay.queue.find(step => step.type === 'DRAW_CARD' && step.card === god);
+    expect(godDraw?.msgs).toContain(encounterLog);
+  });
 });

@@ -22,12 +22,19 @@ export function authoritativeTurnStartQueueMeta(state) {
     : AUTHORITATIVE_QUEUE_META;
 }
 
-export function strictActionQueueMeta(state, queue, consumedEventIds = null, context = 'action queue') {
+export function strictActionQueueMeta(
+  state,
+  queue,
+  consumedEventIds = null,
+  context = 'action queue',
+  coverageOptions = {},
+) {
   const coverage = getAiActionQueueCoverage(
     state,
     queue,
     steps => getVisualEventIdsCoveredByAnimationQueue(state, steps),
     consumedEventIds,
+    coverageOptions,
   );
   if (coverage.uncoveredEventIds.length) {
     const uncoveredSet = new Set(coverage.uncoveredEventIds);
@@ -52,13 +59,39 @@ export function authoritativeResolvedQueueMeta(
   queue,
   consumedEventIds = null,
   additionalEventIds = [],
+  coverageOptions = {},
 ) {
-  const base = strictActionQueueMeta(state, queue, consumedEventIds, 'resolved action queue');
+  const base = strictActionQueueMeta(
+    state,
+    queue,
+    consumedEventIds,
+    'resolved action queue',
+    coverageOptions,
+  );
   const eventIds = [...new Set([
     ...(base.eventIds || []),
     ...(Array.isArray(additionalEventIds) ? additionalEventIds : []),
   ].filter(Boolean))];
   return eventIds.length ? { ...AUTHORITATIVE_QUEUE_META, eventIds } : AUTHORITATIVE_QUEUE_META;
+}
+
+// Transaction-aware adapter for local action flows. The previous state marks
+// the input snapshot, so coverage includes only visual events introduced by
+// this resolved action and leaves replay history out of the invariant check.
+export function authoritativeResolvedTransitionQueueMeta(
+  previousState,
+  state,
+  queue,
+  consumedEventIds = null,
+  additionalEventIds = [],
+) {
+  return authoritativeResolvedQueueMeta(
+    state,
+    queue,
+    consumedEventIds,
+    additionalEventIds,
+    { previousState },
+  );
 }
 
 export function authoritativeEndTurnReplayQueueMeta(state, queue, consumedEventIds = null) {
