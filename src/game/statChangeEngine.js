@@ -72,3 +72,17 @@ export function appendStatChangeResult(meta = {}, result = {}) {
     _statEventSeq: nextSeq,
   };
 }
+
+// React/controller entry points often need to merge only the presentation
+// metadata produced by a stat transaction into a separately assembled state.
+// Returning a narrow patch avoids spreading the old authoritative players/log
+// snapshot back over the already-resolved state.
+export function buildStatChangeStatePatch(meta = {}, result = {}) {
+  const statEvents = Array.isArray(result?.statEvents) ? result.statEvents : [];
+  if (!statEvents.length) return {};
+  const merged = appendStatChangeResult(meta, result);
+  return {
+    _statEvents: merged._statEvents,
+    _statEventSeq: merged._statEventSeq,
+  };
+}

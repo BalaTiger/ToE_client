@@ -70,6 +70,7 @@ import {
   tryVritraImmortal,
   applyHpDamageWithLink,
   submitLossEvents,
+  buildStatChangeStatePatch,
   resolvePendingDamageLinkBreak,
   applyFx,
   applySanLossToPlayerWithInspection,
@@ -5749,18 +5750,23 @@ export default function Game(){
       L.push('你选择不规避负面效果');
     }
     let damageDecision=null;
+    let damageStatPatch={};
     if(!dodgeSuccess){
       L.push('猜测错误！你失去 3 HP');
+      const statEventSeq=(gs._statEventSeq||0)+1;
       damageDecision=submitLossEvents({
         players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
         events:[{targetIdx:0,lostHp:3,source:'斯芬克斯'}],
         continuation:continuationAbilityData,
+        statEventSeq,statEventReason:'斯芬克斯',statEventLogs:[L.at(-1)],
       });
+      damageStatPatch=buildStatChangeStatePatch(gs,damageDecision);
     }
     const win=damageDecision?.abilityData?null:checkWin(P,gs._isMP);
     const resumesAiTurn=isAiSeat(gs,turnOwner)&&!P[turnOwner]?.isDead;
     const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,drawReveal:null,currentTurn:turnOwner,
       phase:damageDecision?.phase||(resumesAiTurn?'AI_TURN':'ACTION'),abilityData:damageDecision?.abilityData||continuationAbilityData,
+      ...damageStatPatch,
       ...(win?{gameOver:win}:{}),
     };
     const queue=bindAnimLogChunks(buildAnimQueue(gs,nextGs),splitAnimBoundLogs(L.slice(gs.log.length)));
@@ -8640,6 +8646,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const guessCorrect=(guessYes&&isZone)||(!guessYes&&!isZone);
     let proliferatingZPatch={};
     let damageDecision=null;
+    let damageStatPatch={};
     let needsSphinxDodge=false;
     if(guessCorrect){
       L.push(`猜测正确！${actorLabel}收入了 ${cardLogText(actualCard)}`);
@@ -8651,11 +8658,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const localMsgs=[];
       Disc.push(actualCard);
       if(!needsSphinxDodge){
+        const statEventSeq=(gs._statEventSeq||0)+1;
         damageDecision=submitLossEvents({
           players:P,deck:D,discard:Disc,log:localMsgs,currentTurn:gs.currentTurn,
           events:[{targetIdx:actorIdx,lostHp:3,source:'斯芬克斯'}],
           continuation:continuationAbilityData,
+          statEventSeq,statEventReason:'斯芬克斯',statEventLogs:[L.at(-1)],
         });
+        damageStatPatch=buildStatChangeStatePatch(gs,damageDecision);
         if(localMsgs.length)L.push(...localMsgs);
       }
     }
@@ -8676,7 +8686,8 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const win=checkWin(P,gs._isMP);
     if(win){
       const winGs={
-        ...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{},...proliferatingZPatch,
+        ...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{},
+        ...damageStatPatch,...proliferatingZPatch,
       };
       const queue=buildSphinxQueue(winGs);
       triggerSyncedAnimTransaction(queue,winGs,{context:'sphinxResult',barrier:'gameOver',msgs:logDelta,beforePlayers:gs.players,beforeDiscard:gs.discard});
@@ -8692,7 +8703,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         ?{...continuationAbilityData,sphinxPending:{turnOwner:nextTurn}}
         :(damageDecision?.abilityData||continuationAbilityData),
       drawReveal:needsSphinxDodge?{card:(P[actorIdx]?.hand||[]).find(card=>card.type==='sphinxGuess'||card.name==='斯芬克斯'),drawerIdx:actorIdx}:gs.drawReveal,
-      ...proliferatingZPatch,
+      ...damageStatPatch,...proliferatingZPatch,
     };
     const newGsWithEvent=newGs;
     const queue=buildSphinxQueue(newGsWithEvent);

@@ -267,5 +267,10 @@ describe('end-turn nested decision resolvers', () => {
     expect(end).toBeGreaterThan(start);
     expect(handler).toContain('finishTargetContinuation({');
     expect(handler).toContain('fromRest');
+    if (handlerName === 'sphinxGuess') {
+      expect(handler).toContain("statEventReason:'斯芬克斯'");
+      expect(handler).toContain('damageStatPatch=buildStatChangeStatePatch(gs,damageDecision)');
+      expect(handler).toContain('...damageStatPatch');
+    }
   });
 });

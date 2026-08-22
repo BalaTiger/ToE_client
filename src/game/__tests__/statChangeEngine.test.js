@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { submitLossEvents } from '../effectEngine';
-import { appendStatChangeResult, submitRecoveryEvents } from '../statChangeEngine';
+import { buildAnimQueue } from '../animQueueCore';
+import { buildSphinxResultQueue } from '../animQueueHelpers';
+import { appendStatChangeResult, buildStatChangeStatePatch, submitRecoveryEvents } from '../statChangeEngine';
 import { makePlayer } from './factory';
 
 describe('stat change rule entry points', () => {
@@ -53,5 +55,61 @@ describe('stat change rule entry points', () => {
     });
 
     expect(result.statEvents).toEqual([]);
+  });
+
+  it('turns a controller-owned Sphinx loss into an HP damage presentation step', () => {
+    const oldPlayers = [makePlayer({ hp: 10, san: 8 })];
+    const players = [makePlayer({ hp: 10, san: 8 })];
+    const oldState = {
+      players: oldPlayers,
+      discard: [],
+      log: [],
+      _statEvents: [],
+      _statEventSeq: 4,
+    };
+    const damage = submitLossEvents({
+      players,
+      discard: [],
+      log: [],
+      currentTurn: 0,
+      events: [{ targetIdx: 0, lostHp: 3, source: '斯芬克斯' }],
+      statEventSeq: 5,
+      statEventReason: '斯芬克斯',
+      statEventLogs: ['猜测错误！你失去 3 HP'],
+    });
+    const nextState = {
+      ...oldState,
+      players,
+      log: ['猜测错误！你失去 3 HP'],
+      ...buildStatChangeStatePatch(oldState, damage),
+    };
+
+    expect(buildStatChangeStatePatch(oldState, damage)).toMatchObject({
+      _statEventSeq: 5,
+      _statEvents: [expect.objectContaining({
+        type: 'HP_LOSS',
+        target: 0,
+        seq: 5,
+        reason: '斯芬克斯',
+        from: expect.objectContaining({ hp: 10, san: 8 }),
+        to: expect.objectContaining({ hp: 7, san: 8 }),
+      })],
+    });
+    const resultQueue = buildAnimQueue(oldState, nextState);
+    expect(resultQueue).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'HP_DAMAGE',
+        hitIndices: [0],
+        statEvents: [expect.objectContaining({ type: 'HP_LOSS', target: 0, seq: 5 })],
+      }),
+    ]));
+    const sphinxQueue = buildSphinxResultQueue({
+      card: { id: 'sphinx-top-card', name: '牌堆顶', type: 'zone' },
+      actorIdx: 0,
+      guessCorrect: false,
+      msgs: nextState.log,
+      resultQueue,
+    });
+    expect(sphinxQueue.map(step => step.type)).toEqual(['DRAW_CARD', 'CARD_TRANSFER', 'HP_DAMAGE']);
   });
 });

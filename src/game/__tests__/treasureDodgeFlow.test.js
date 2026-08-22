@@ -141,6 +141,9 @@ describe('treasure dodge flow variants', () => {
     expect(sphinx).toContain('finishTargetContinuation({');
     expect(sphinx).toContain('queue:fullQueue');
     expect(sphinx).toContain('continuation:continuationAbilityData');
+    expect(sphinx).toContain("statEventReason:'斯芬克斯'");
+    expect(sphinx).toContain('damageStatPatch=buildStatChangeStatePatch(gs,damageDecision)');
+    expect(sphinx).toContain('...damageStatPatch');
     expect(sphinx).toContain('continueRest:!damageDecision?.phase&&!win&&!!continuationAbilityData.fromRest');
 
     // The AI-ZHU hide turn banner must also play through the queue machine.
