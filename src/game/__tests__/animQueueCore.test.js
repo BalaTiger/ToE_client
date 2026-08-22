@@ -418,15 +418,22 @@ describe('buildAnimQueue stat animations', () => {
       discard: revealed,
       log: ['旧日志', '贝拉 失去 5 HP', vriLog],
       _statEventSeq: 1,
-      _statEvents: [{ type: 'HP_LOSS', target: 1, from: { hp: 3, san: 10, isDead: false }, to: { hp: 1, san: 10, isDead: false }, seq: 1, logHint: '贝拉 失去 5 HP' }],
+      _statEvents: [
+        { type: 'HP_LOSS', target: 1, from: { hp: 3, san: 10, isDead: false }, to: { hp: 0, san: 10, isDead: false }, seq: 1, phaseOrder: 0, vritraImmortalStage: 'damageToZero', logHint: '贝拉 失去 5 HP' },
+        { type: 'HP_GAIN', target: 1, from: { hp: 0, san: 10, isDead: false }, to: { hp: 1, san: 10, isDead: false }, seq: 1, phaseOrder: 2, vritraImmortalStage: 'recoverToOne', logHint: vriLog },
+      ],
     });
 
     const queue = buildAnimQueue(oldGs, newGs);
     const hpIdx = queue.findIndex(step => step.type === 'HP_DAMAGE');
     const revealIdx = queue.findIndex(step => step.type === 'VRI_IMMORTAL_REVEAL');
+    const healIdx = queue.findIndex(step => step.type === 'HP_HEAL');
     const deathIdx = queue.findIndex(step => step.type === 'DEATH');
 
     expect(revealIdx).toBeGreaterThan(hpIdx);
+    expect(healIdx).toBeGreaterThan(revealIdx);
+    expect(queue[hpIdx].statEvents[0].to.hp).toBe(0);
+    expect(queue[healIdx].statEvents[0]).toMatchObject({ from: { hp: 0 }, to: { hp: 1 } });
     expect(deathIdx).toBe(-1);
     expect(queue[revealIdx]).toMatchObject({
       targetPid: 1,

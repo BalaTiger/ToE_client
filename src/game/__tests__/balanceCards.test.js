@@ -59,4 +59,26 @@ describe('balanceCards', () => {
     expect(soul.log.at(-2)).toContain('生命天平');
     expect(soul.log.at(-1)).toContain('灵魂天平');
   });
+
+  it('通过统一扣减入口返回可归属的规范属性事件', () => {
+    const players = makeStandardPlayers(2);
+    players[1].san = 8;
+    const result = applyBalanceDiscardSideEffects({
+      players,
+      deck: [],
+      discard: [],
+      log: [],
+      ownerIdx: 1,
+      cards: [{ type: 'soulBalance', name: '灵魂天平' }],
+      reason: '追捕弃牌',
+      currentTurn: 1,
+      submitDamage: submitLossEvents,
+      statEventSeq: 12,
+    });
+
+    expect(result.statEvents).toEqual([
+      expect.objectContaining({ type: 'SAN_LOSS', target: 1, seq: 12, from: expect.objectContaining({ san: 8 }), to: expect.objectContaining({ san: 5 }) }),
+    ]);
+    expect(result.log.at(-1)).toContain('【灵魂天平】');
+  });
 });

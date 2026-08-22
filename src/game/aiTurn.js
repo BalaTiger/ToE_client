@@ -61,7 +61,7 @@ import {
   requestZhuReveal,
 } from './zhuPower';
 import { buildApophisNightLog, getApophisNightForLevel, resolveApophisTarget } from './apophisNight';
-import { applyBalanceDiscardSideEffects } from './balanceCards';
+import { applyBalanceDiscardSideEffects, buildBalanceDiscardLogLines, buildBalanceDiscardLossEvents } from './balanceCards';
 import { TURN_FLOW_STAGE } from './turnFlowStages';
 import { enterTurnFlowStage } from './turnFlowManager';
 import { buildGodPowerBlockedLog, canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
@@ -422,6 +422,7 @@ export function clearPlayerGodZone(targetPlayer, discard) {
  */
 export function discardAiHandToLimit(P, ct, Disc, L, D = [], discardedCards = []) {
   const aiHandLimit = P[ct]._nyaHandLimit ?? 4;
+  let damageDecision = null;
   while (P[ct].hand.length > aiHandLimit) {
     const c = P[ct].hand.shift();
     // Animation owns the attempted discard, even when the rules destroy the
@@ -437,8 +438,13 @@ export function discardAiHandToLimit(P, ct, Disc, L, D = [], discardedCards = []
       D.splice(0, D.length, ...balance.deck);
       Disc.splice(0, Disc.length, ...balance.discard);
       L.splice(0, L.length, ...balance.log);
+      if (balance.damageDecision?.phase) {
+        damageDecision = balance.damageDecision;
+        break;
+      }
     }
   }
+  return { damageDecision };
 }
 
 // 逐事件编译：本张牌结算新增的规范视觉事件各自编译为事务步骤（创建顺序即规则
@@ -576,13 +582,32 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
         const beforeBalanceDiscard = [...Disc];
         const beforeBalanceLog = [...L];
         const beforeBalancePatch = statePatch;
-        const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: L, ownerIdx: ct, cards: [discarded], reason: '无尽通道弃牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitLossEvents, currentTurn: gs.currentTurn });
+        const statMetaBase={
+          _statEvents:statePatch._statEvents||gs._statEvents||[],
+          _statEventSeq:Math.max(statePatch._statEventSeq||0,gs._statEventSeq||0),
+        };
+        const balanceSeq=statMetaBase._statEventSeq+1;
+        const balance = applyBalanceDiscardSideEffects({
+          players: P, deck: D, discard: Disc, log: L, ownerIdx: ct, cards: [discarded],
+          reason: '无尽通道弃牌', applyHpDamage: applyHpDamageWithLink,
+          submitDamage: submitLossEvents, currentTurn: gs.currentTurn,
+          statEventSeq:balanceSeq,statEventReason:'无尽通道弃牌',
+        });
         P = balance.players; D = balance.deck; Disc = balance.discard; L = balance.log;
+        const balanceMeta=appendStatChangeResult(statMetaBase,balance.damageDecision);
+        statePatch={...statePatch,...balanceMeta};
         const balanceQueue = buildAiEndTurnReplayResolutionQueue({
           beforeGs: { ...gs, ...beforeBalancePatch, players: beforeBalancePlayers, deck: beforeBalanceDeck, discard: beforeBalanceDiscard, log: beforeBalanceLog },
           afterGs: { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L },
         });
         replayQueue.push(...balanceQueue);
+        if(balance.damageDecision?.phase){
+          replayQueue.push(replayStatePatch(P,D,Disc,L));
+          return {
+            P,D,Disc,L,statePatch,replayQueue,replayMsgs,
+            decision:{phase:balance.damageDecision.phase,abilityData:balance.damageDecision.abilityData},
+          };
+        }
       }
       replayQueue.push(replayStatePatch(P, D, Disc, L));
       continue;
@@ -995,6 +1020,7 @@ export function aiStep(gs, opts = {}) {
     return unifiedReplayCache;
   };
 
+  let aiHandLimitPresentation=null;
   const buildReturnPack = (nextGs, P_afterAction, P_beforeEndTurnReplay = null) => ({
     ...nextGs,
     _animAiDrawnCard: gs._aiDrawnCard ?? gs._drawnCard ?? null,
@@ -1008,8 +1034,65 @@ export function aiStep(gs, opts = {}) {
     ...(P_beforeEndTurnReplay ? { _playersBeforeEndTurnReplay: P_beforeEndTurnReplay } : {}),
     ...(aiHuntEvents.length ? { _aiHuntEvents: aiHuntEvents } : {}),
     ...(animMultiplyEvent ? { _animMultiplyEvent: animMultiplyEvent } : {}),
+    ...(aiHandLimitPresentation||{}),
     ...(getUnifiedReplayVisualEvents(nextGs).length ? { _visualEvents: getUnifiedReplayVisualEvents(nextGs) } : {})
   });
+
+  const settleAiHandLimit=()=>{
+    const beforePlayers=copyPlayers(P);
+    const beforeDiscard=[...Disc];
+    const beforeLog=[...L];
+    const discardedCards=[];
+    const discardResult=discardAiHandToLimit(P,ct,Disc,L,D,discardedCards);
+    const afterDiscardPlayers=copyPlayers(P);
+    const afterDiscardPile=[...Disc];
+    const afterDiscardLogLength=L.length;
+    let damageDecision=discardResult.damageDecision||null;
+    if(!damageDecision?.phase&&discardedCards.length){
+      const thornLosses={};
+      discardedCards.forEach(card=>{
+        if(card?.roseThornHolderId!=null&&P[card.roseThornHolderId]&&!P[card.roseThornHolderId].isDead){
+          thornLosses[card.roseThornHolderId]=(thornLosses[card.roseThornHolderId]||0)+1;
+        }
+      });
+      const thornEvents=Object.entries(thornLosses).map(([holderIdxText,count],order)=>{
+        const holderIdx=Number(holderIdxText);
+        L.push(`【玫瑰倒刺】${P[holderIdx].name} 失去标记手牌，受到 ${2*count} HP 伤害`);
+        return {targetIdx:holderIdx,lostHp:2*count,source:'玫瑰倒刺',order};
+      });
+      if(thornEvents.length){
+        damageDecision=submitLossEvents({
+          players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
+          events:thornEvents,continuation:{_turnOwner:ct},
+        });
+      }
+    }
+    const statEventSeqs=[];
+    const discardStatEventSeq=(gs._statEventSeq||0)+1;
+    const discardStatEvents=buildStatEvents(beforePlayers,afterDiscardPlayers,L.slice(beforeLog.length,afterDiscardLogLength),{
+      reason:'手牌上限弃牌',seq:discardStatEventSeq,discardBefore:beforeDiscard,discardAfter:afterDiscardPile,
+    });
+    if(discardStatEvents.length){
+      gs=appendStatChangeResult(gs,{statEvents:discardStatEvents,statEventSeq:discardStatEventSeq});
+      statEventSeqs.push(discardStatEventSeq);
+    }
+    const thornStatEventSeq=(gs._statEventSeq||0)+1;
+    const thornStatEvents=buildStatEvents(afterDiscardPlayers,P,L.slice(afterDiscardLogLength),{
+      reason:'玫瑰倒刺',seq:thornStatEventSeq,discardBefore:afterDiscardPile,discardAfter:Disc,
+    });
+    if(thornStatEvents.length){
+      gs=appendStatChangeResult(gs,{statEvents:thornStatEvents,statEventSeq:thornStatEventSeq});
+      statEventSeqs.push(thornStatEventSeq);
+    }
+    aiHandLimitPresentation=discardedCards.length?{
+      _aiHandLimitDiscards:discardedCards,
+      _aiHandLimitBeforePlayers:beforePlayers,
+      _aiHandLimitBeforeDiscard:beforeDiscard,
+      _aiHandLimitBeforeLog:beforeLog,
+      ...(statEventSeqs.length?{_aiHandLimitStatEventSeqs:statEventSeqs}:{}),
+    }:null;
+    return {damageDecision,discardedCards,beforePlayers,beforeDiscard,beforeLog};
+  };
 
   const buildPendingSlimeBalanceState = (state, nextPlayers, nextDeck, nextDiscard, nextLog, extra = {}) => {
     if (state?.abilityData?.type !== 'tsgSlimeBalance') return null;
@@ -1523,7 +1606,15 @@ export function aiStep(gs, opts = {}) {
     const restMeta=appendStatChangeResult(gs,recovery);
     const restStatPatch=recovery.statEvents.length?{_statEvents:restMeta._statEvents,_statEventSeq:restMeta._statEventSeq}:{};
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,...restStatPatch};
-    discardAiHandToLimit(P, ct, Disc, L);
+    gs={...gs,...restStatPatch};
+    const handLimit=settleAiHandLimit();
+    if(handLimit.damageDecision?.phase){
+      return buildReturnPack({
+        ...gs,...restStatPatch,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,
+        phase:handLimit.damageDecision.phase,abilityData:handLimit.damageDecision.abilityData,
+        restUsed:true,skillUsed:false,
+      },copyPlayers(P));
+    }
     const _P_beforeEndTurnReplay = copyPlayers(P);
     const replayed=processAiEndTurnEvents(P,D,Disc,L,ct,{...gs,...restStatPatch});
     P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;ai=getAi();alive=getAlive();
@@ -1625,7 +1716,14 @@ export function aiStep(gs, opts = {}) {
 
   if(aiEffRole!==ROLE_HUNTER && alive.length===0){
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
-    discardAiHandToLimit(P, ct, Disc, L);
+    const handLimit=settleAiHandLimit();
+    if(handLimit.damageDecision?.phase){
+      return buildReturnPack({
+        ...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,
+        phase:handLimit.damageDecision.phase,abilityData:handLimit.damageDecision.abilityData,
+        skillUsed:gs.skillUsed,
+      },copyPlayers(P));
+    }
     appendAiEndTurnLog();
     const _P_beforeEndTurnReplay = copyPlayers(P);
     const replayed=processAiEndTurnEvents(P,D,Disc,L,ct,gs);
@@ -1759,10 +1857,12 @@ export function aiStep(gs, opts = {}) {
                 const afterDiscardPlayers=copyPlayers(P);
                 const afterDiscardDiscard=[...Disc];
                 const huntDamage=3+(P[ct].damageBonus||0);
+                const balanceEvents=buildBalanceDiscardLossEvents([dc],ct,{reason:'追捕弃牌'});
+                L.push(...buildBalanceDiscardLogLines([dc],P[ct].name,'追捕弃牌'));
                 L.push(`弃 ${cardLogText(dc,{alwaysShowName:true})} → ${tgt.name} 受 ${huntDamage}HP 伤害！`);
                 const huntDamageResult=submitLossEvents({
                   players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
-                  events:[{targetIdx:ti,lostHp:huntDamage,source:'追捕'}],
+                  events:[...balanceEvents,{targetIdx:ti,lostHp:huntDamage,source:'追捕',order:balanceEvents.length}],
                 });
                 if(huntDamageResult.phase==='ETHEREALIZE_DECISION'){
                   aiHuntEvents.push({
@@ -2137,37 +2237,20 @@ export function aiStep(gs, opts = {}) {
     return{...nextGs,_animAiDrawnCard:gs._aiDrawnCard??gs._drawnCard??null,_animDiscardedDrawnCard:gs._discardedDrawnCard??false,_aiName:ai.name,_playersBeforeNextDraw:_P_afterAction,_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard,_aiHuntEvents:aiHuntEvents};
   }
   const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
-  const discardedCards=[];
-  const handLimitBeforePlayers=copyPlayers(P);
-  const handLimitBeforeDiscard=[...Disc];
-  const handLimitBeforeLog=[...L];
-  discardAiHandToLimit(P,ct,Disc,L,D,discardedCards);
-  // 结算玫瑰倒刺：弃掉的标记牌立即造成伤害，日志紧跟在弃牌日志之后
-  if(discardedCards.length){
-    const thornLosses={};
-    discardedCards.forEach(c=>{
-      if(c.roseThornHolderId!=null && P[c.roseThornHolderId] && !P[c.roseThornHolderId].isDead){
-        thornLosses[c.roseThornHolderId]=(thornLosses[c.roseThornHolderId]||0)+1;
-      }
-    });
-    const thornDamageEvents=Object.entries(thornLosses).map(([holderIdxStr,count],order)=>{
-      const holderIdx=+holderIdxStr;
-      L.push(`【玫瑰倒刺】${P[holderIdx].name} 失去标记手牌，受到 ${2*count} HP 伤害`);
-      return {targetIdx:holderIdx,lostHp:2*count,source:'玫瑰倒刺',order};
-    });
-    const thornDamage=submitLossEvents({
-      players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
-      events:thornDamageEvents,continuation:{_turnOwner:ct},
-    });
-    if(thornDamage.phase)gs={...gs,phase:thornDamage.phase,abilityData:thornDamage.abilityData};
-    const pendingDecision=!!thornDamage.abilityData;
-    if(pendingDecision){
-      return buildReturnPack({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,skillUsed:(useSkill||gs.skillUsed)},copyPlayers(P));
-    }
+  const handLimit=settleAiHandLimit();
+  if(handLimit.damageDecision?.phase){
+    return buildReturnPack({
+      ...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,
+      phase:handLimit.damageDecision.phase,abilityData:handLimit.damageDecision.abilityData,
+      skillUsed:(useSkill||gs.skillUsed),
+    },copyPlayers(P));
   }
   const winAfterDiscard=checkWin(P,gs._isMP);
   if(winAfterDiscard){
-    return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:winAfterDiscard,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:(useSkill||gs.skillUsed),_animAiDrawnCard:gs._aiDrawnCard??gs._drawnCard??null,_animDiscardedDrawnCard:gs._discardedDrawnCard??false,_aiName:ai.name,_playersBeforeNextDraw:copyPlayers(P),_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard,_aiHuntEvents:aiHuntEvents};
+    return buildReturnPack({
+      ...gs,players:P,deck:D,discard:Disc,log:L,gameOver:winAfterDiscard,
+      currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:(useSkill||gs.skillUsed),
+    },copyPlayers(P));
   }
   const _P_beforeEndTurnReplay = copyPlayers(P);
   const _Disc_beforeEndTurnReplay = [...Disc];
@@ -2206,12 +2289,7 @@ export function aiStep(gs, opts = {}) {
     _preSkillDiscard:preSkillDiscard,
     _aiHuntEvents:aiHuntEvents,
     ...(getUnifiedReplayVisualEvents(nextGs).length ? { _visualEvents: getUnifiedReplayVisualEvents(nextGs) } : {}),
-    _aiHandLimitDiscards:discardedCards,
-    ...(discardedCards.length?{
-      _aiHandLimitBeforePlayers:handLimitBeforePlayers,
-      _aiHandLimitBeforeDiscard:handLimitBeforeDiscard,
-      _aiHandLimitBeforeLog:handLimitBeforeLog,
-    }:{}),
+    ...(aiHandLimitPresentation||{}),
     ...(animMultiplyEvent?{_animMultiplyEvent:animMultiplyEvent}:{}),
   };
 }

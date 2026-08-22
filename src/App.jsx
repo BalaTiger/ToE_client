@@ -180,6 +180,8 @@ import {
   compileApophisTargetPrelude,
   mergeApophisTargetQueue,
   applyBalanceDiscardSideEffects,
+  buildBalanceDiscardLossEvents,
+  buildBalanceDiscardLogLines,
   canGodPowerAffect,
   hasGodPowerImmunity,
   buildGodPowerBlockedLog,
@@ -2366,6 +2368,7 @@ export default function Game(){
           _aiHandLimitBeforePlayers,
           _aiHandLimitBeforeDiscard,
           _aiHandLimitBeforeLog,
+          _aiHandLimitStatEventSeqs,
         }=rawResult;
         newGs=stripAiPresentationFields(rawResult);
         const oldLog=Array.isArray(gs.log)?gs.log:[];
@@ -2555,7 +2558,9 @@ export default function Game(){
           // 绕过邪神高亮、旧信徒弃神牌和被抛弃 SAN 结算直接开播。
           discard:newGs.discard,
           _visualEvents:actionReplayMetadata.visualEvents,
-          _statEvents:actionReplayMetadata.statEvents,
+          _statEvents:!_aiHandLimitStatEventSeqs?.length
+            ?actionReplayMetadata.statEvents
+            :actionReplayMetadata.statEvents.filter(event=>!_aiHandLimitStatEventSeqs.includes(event?.seq)),
           _statEventSeq:actionReplayMetadata.statEventSeq,
         };
         const preHuntReplayMetadata=scopeAiPreHuntReplayMetadata(newGs,rawResult);
@@ -2607,7 +2612,7 @@ export default function Game(){
         const handLimitStatQueue=_aiHandLimitBeforePlayers
           ? buildAnimQueue(
               {players:_aiHandLimitBeforePlayers,discard:_aiHandLimitBeforeDiscard||gs.discard,log:_aiHandLimitBeforeLog||gs.log,_statEventSeq:gs._statEventSeq||0},
-              {players:P_actionEnd,discard:newGs.discard,log:actionLog}
+              {players:P_actionEnd,discard:newGs.discard,log:actionLog,_statEvents:newGs._statEvents||[],_statEventSeq:newGs._statEventSeq||0}
             ).filter(step=>step.type!=='CARD_TRANSFER')
           : [];
         let orderedActionQ=null;
@@ -3346,7 +3351,13 @@ export default function Game(){
       L.push(`【玫瑰倒刺】${P[idx].name} 失去标记手牌，受到 ${2 * lostCount} HP 伤害`);
       return {targetIdx:idx,lostHp:2*lostCount,source:'玫瑰倒刺',order:hitOrder};
     });
-    const damage=submitLossEvents({players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,events:damageEvents});
+    const statEventSeq=(gs._statEventSeq||0)+1;
+    const thornLogs=L.slice(gs.log.length);
+    const damage=submitLossEvents({
+      players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,events:damageEvents,
+      statEventSeq,statEventReason:'玫瑰倒刺',statEventLogs:thornLogs,
+    });
+    const statPatch=buildStatChangeStatePatch(gs,damage);
     const win = damage.abilityData ? null : checkWin(P, gs._isMP);
     const newGs = {
       ...gs,
@@ -3354,6 +3365,7 @@ export default function Game(){
       deck: D,
       discard: Disc,
       log: L,
+      ...statPatch,
       ...(damage.phase?{phase:damage.phase,abilityData:damage.abilityData}:{}),
       ...(win ? { gameOver: win } : {})
     };
@@ -5805,6 +5817,7 @@ export default function Game(){
     const who=localDisplayName(drawerIdx,(dr.drawerName||gs.players[drawerIdx]?.name||'该角色'));
     const discardCard=revealBlindDrawCard(dr.card);
     let P=copyPlayers(gs.players);
+    let nextDeck=[...gs.deck];
     clearBlindZoneDecisionFlag(P,drawerIdx,dr);
     let destroyedDerived=false;
     let nextDiscard;
@@ -5821,16 +5834,40 @@ export default function Game(){
     const discardLog=destroyedDerived
       ?`${who} 的衍生牌被销毁`
       :`${who} 弃置了 ${cardLogText(discardCard,{alwaysShowName:true})}`;
-    const queue=[{type:'DISCARD',card:discardCard,triggerName:who,msgs:[discardLog]}];
+    let nextLog=[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),discardLog];
+    let balanceDecision=null;
+    let balanceStatPatch={};
+    if(dr.fromEndTurnReplay&&!destroyedDerived&&discardCard.type!=='blankZone'){
+      const balance=applyBalanceDiscardSideEffects({
+        players:P,deck:nextDeck,discard:nextDiscard,log:nextLog,ownerIdx:drawerIdx,cards:[discardCard],
+        reason:'摸牌后弃置',applyHpDamage:applyHpDamageWithLink,submitDamage:submitLossEvents,
+        currentTurn:gs.currentTurn,statEventSeq:(gs._statEventSeq||0)+1,statEventReason:'摸牌后弃置',
+        continuation:{...(gs.abilityData||{}),_turnOwner:gs.abilityData?._turnOwner??gs.currentTurn},
+      });
+      P=balance.players;nextDeck=balance.deck;nextDiscard=balance.discard;nextLog=balance.log;
+      balanceDecision=balance.damageDecision||null;
+      balanceStatPatch=buildStatChangeStatePatch(gs,balanceDecision);
+    }
+    const queue=[
+      {type:'DISCARD',card:discardCard,triggerName:who,msgs:[discardLog]},
+      ...statEventsToAnimQueue(balanceDecision?.statEvents||[],P,nextLog.slice(gs.log.length)),
+    ];
     const replayPatch=dr.fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
-    const newGs={...gs,players:P,discard:nextDiscard,log:[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),discardLog],phase:'ACTION',drawReveal:null,abilityData:gs.abilityData,...replayPatch};
+    const newGs={
+      ...gs,players:P,deck:nextDeck,discard:nextDiscard,log:nextLog,
+      phase:balanceDecision?.phase||'ACTION',drawReveal:null,
+      abilityData:balanceDecision?.abilityData||gs.abilityData,
+      ...replayPatch,...balanceStatPatch,
+    };
     const discardQueueMeta=dr.fromEndTurnReplay
       ?authoritativeEndTurnReplayQueueMeta(newGs,queue,consumedVisualEventIdsRef.current)
       :strictActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current,'draw discard');
-    if(dr.fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:nextDiscard})],[discardLog]);
+    if(dr.fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:nextDiscard})],nextLog.slice(gs.log.length));
     else if(newGs._isMP)broadcastAnimTransaction(newGs,queue,{context:'drawDiscard',barrier:'continuation',msgs:[discardLog],beforePlayers:gs.players,beforeDiscard:gs.discard});
     // CTH fromRest: after discarding, process remaining draws then advance turn
-    if(dr.fromRest){
+    if(balanceDecision?.phase){
+      triggerAnimQueue(queue,newGs,undefined,discardQueueMeta);
+    }else if(dr.fromRest){
       // 播放动画后继续处理剩余抽牌
       triggerAnimQueue(queue,newGs,()=>{
         _cthContinueRestDraws(newGs);
@@ -7014,8 +7051,10 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       if(cardToDiscard?.id)igniteTorchFlamingCardIdsRef.current.delete(cardToDiscard.id);
     }
     const [discardedCard]=P[actorIdx].hand.splice(cardIndex,1);
-    let L=[...gs.log];
+    const playersAfterDiscard=copyPlayers(P);
+    let L=[...activeGs.log];
     let damageDecision=null;
+    let balanceStatPatch={};
     const discardedCardIsDerived=splitKeptDestroyedDiscarded([discardedCard]).destroyed.length>0;
     if(discardedCardIsDerived){
       L.push(`${P[actorIdx].name} 的衍生牌被销毁`);
@@ -7024,9 +7063,14 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     }else{
       Disc.push(discardedCard);
       L.push(`${P[actorIdx].name} 弃置 ${cardLogText(discardedCard,{alwaysShowName:true})}`);
-      const balance=applyBalanceDiscardSideEffects({players:P,deck:D,discard:Disc,log:L,ownerIdx:actorIdx,cards:[discardedCard],reason:'引燃火把弃牌',applyHpDamage:applyHpDamageWithLink,submitDamage:submitLossEvents,currentTurn:gs.currentTurn});
+      const balance=applyBalanceDiscardSideEffects({
+        players:P,deck:D,discard:Disc,log:L,ownerIdx:actorIdx,cards:[discardedCard],reason:'引燃火把弃牌',
+        applyHpDamage:applyHpDamageWithLink,submitDamage:submitLossEvents,currentTurn:activeGs.currentTurn,
+        statEventSeq:(activeGs._statEventSeq||0)+1,statEventReason:'引燃火把弃牌',
+      });
       P=balance.players;D=balance.deck;Disc=balance.discard;L=balance.log;
       damageDecision=balance.damageDecision||null;
+      balanceStatPatch=buildStatChangeStatePatch(activeGs,damageDecision);
     }
     grantTurnScopedGodPowerImmunity(P[actorIdx], getCurrentExecutionTurnOwner(activeGs, actorIdx));
     L.push(`【引燃火把】${localDisplayName(actorIdx,P[actorIdx]?.name)} 本回合不受邪神之力影响`);
@@ -7044,9 +7088,10 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       discardEvents:[{
         playerIndex:actorIdx,
         card:discardedCard,
-        afterPlayers:copyPlayers(P),
+        afterPlayers:playersAfterDiscard,
         afterDiscard:[...Disc],
       }],
+      statEvents:damageDecision?.statEvents||[],
       msgs:L.slice(-2),
     }):null;
     let nextGs=buildTargetContinuationGs({
@@ -7061,12 +7106,20 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       // 当作"回合状态异常"强制推进、提前结束 AI 回合。本地玩家自己回合用火把时
       // isAiSeat 为 false，落点仍是 ACTION，行为不变。
       canResumeAi:true,
-      extraPatch:discardEvent&&activeGs._isMP?{
-        _visualEvents:[discardEvent,...(activeGs._visualEvents||[])],
-      }:{},
+      extraPatch:{
+        ...balanceStatPatch,
+        ...(discardEvent&&activeGs._isMP?{
+          _visualEvents:[discardEvent,...(activeGs._visualEvents||[])],
+        }:{}),
+      },
     });
     if(damageDecision?.phase)nextGs={...nextGs,phase:damageDecision.phase,abilityData:damageDecision.abilityData};
-    const effectQueue=[{type:'DISCARD',card:discardedCard,targetPid:actorIdx,msgs:L.slice(-2)},statePatchStep({players:P,discard:Disc,log:L})];
+    const balanceSteps=statEventsToAnimQueue(damageDecision?.statEvents||[],playersAfterDiscard,L.slice(activeGs.log.length));
+    const effectQueue=[
+      {type:'DISCARD',card:discardedCard,targetPid:actorIdx,msgs:L.slice(activeGs.log.length,activeGs.log.length+1)},
+      ...balanceSteps,
+      statePatchStep({players:P,discard:Disc,log:L}),
+    ].map(step=>discardEvent?.id&&!step.visualEventId?{...step,visualEventId:discardEvent.id}:step);
     if(nextGs._isMP)broadcastAnimTransaction(nextGs,effectQueue,{context:'cardEffectDiscard',barrier:nextGs.phase==='ACTION'?'continuation':'decision',msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard});
     finishTargetContinuation({
       queue:effectQueue,
@@ -8006,10 +8059,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       const afterDiscardPlayers=copyPlayers(P);
       const afterDiscardDiscard=[...Disc];
       const huntDamage=3+(P[0].damageBonus||0);
+      const balanceEvents=buildBalanceDiscardLossEvents([dc],0,{reason:'追捕弃牌'});
+      L.push(...buildBalanceDiscardLogLines([dc],P[0].name,'追捕弃牌'));
       L.push(`弃 ${cardLogText(dc,{alwaysShowName:true})} → ${P[huntTi].name} 受 ${huntDamage}HP 伤害`);
       const huntDamageResult=submitLossEvents({
         players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
-        events:[{targetIdx:huntTi,lostHp:huntDamage,source:'追捕'}],
+        events:[...balanceEvents,{targetIdx:huntTi,lostHp:huntDamage,source:'追捕',order:balanceEvents.length}],
       });
       if(huntDamageResult.phase==='ETHEREALIZE_DECISION'){
         P[0].roleRevealed=true;
@@ -8297,10 +8352,12 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       afterDiscardPlayers=copyPlayers(P);
       afterDiscardDiscard=[...Disc];
       const huntDamage=3+(P[huntingAI].damageBonus||0);
+      const balanceEvents=buildBalanceDiscardLossEvents([discardedCard],huntingAI,{reason:'追捕弃牌'});
+      L.push(...buildBalanceDiscardLogLines([discardedCard],P[huntingAI].name,'追捕弃牌'));
       L.push(`${aiHunterName} 弃 ${cardLogText(discardedCard,{alwaysShowName:true})}，你受 ${huntDamage}HP 伤害！`);
       damage=submitLossEvents({
         players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
-        events:[{targetIdx:0,lostHp:huntDamage,source:'追捕'}],
+        events:[...balanceEvents,{targetIdx:0,lostHp:huntDamage,source:'追捕',order:balanceEvents.length}],
       });
       if(damage.phase==='ETHEREALIZE_DECISION'){
         const newGs={
@@ -8551,9 +8608,11 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
     const target=P[targetIdx];
     if(!target)return;
     let damage=null;
+    let damageStatPatch={};
     const beforeSameAbyssPlayers=copyPlayers(P);
     const beforeSameAbyssDiscard=[...Disc];
     const sameAbyssDiscardEvents=[];
+    const sameAbyssBalanceCards=[];
     if(choice==='discard'){
       if(discardCount>0){
         for(let d=0;d<discardCount;d++){
@@ -8564,6 +8623,7 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
               L.push(`${target.name} 的衍生牌被销毁`);
             }else if(c.type!=='blankZone'){
               Disc.push(...kept);
+              sameAbyssBalanceCards.push(...kept);
             }
             if(c.type!=='blankZone'){
               sameAbyssDiscardEvents.push({
@@ -8577,24 +8637,28 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
         }
       }
       L.push(`【同归深渊】${target.name} 选择弃置手牌至 ${actorHandCount} 张`);
+      if(sameAbyssBalanceCards.length){
+        const balance=applyBalanceDiscardSideEffects({
+          players:P,deck:D,discard:Disc,log:L,ownerIdx:targetIdx,cards:sameAbyssBalanceCards,
+          reason:'同归深渊弃牌',applyHpDamage:applyHpDamageWithLink,submitDamage:submitLossEvents,
+          currentTurn:gs.currentTurn,statEventSeq:(gs._statEventSeq||0)+1,statEventReason:'同归深渊弃牌',
+          continuation:{...buildTargetContinuationAbilityData(abilityData),_turnOwner:abilityData._turnOwner??gs.currentTurn},
+        });
+        P=balance.players;D=balance.deck;Disc=balance.discard;
+        L.splice(0,L.length,...balance.log);
+        damage=balance.damageDecision||null;
+        damageStatPatch=buildStatChangeStatePatch(gs,damage);
+      }
     }else{
       L.push(`【同归深渊】${target.name} 选择承受伤害，失去 4 HP`);
+      const statEventSeq=(gs._statEventSeq||0)+1;
       damage=submitLossEvents({
         players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
         events:[{targetIdx,lostHp:4,source:'同归深渊'}],
         continuation:{...buildTargetContinuationAbilityData(abilityData),_turnOwner:abilityData._turnOwner??gs.currentTurn},
+        statEventSeq,statEventReason:'同归深渊',statEventLogs:[L.at(-1)],
       });
-      if(damage.phase==='ETHEREALIZE_DECISION'){
-        const newGs={
-          ...gs,
-          players:P,deck:D,discard:Disc,log:L,
-          phase:damage.phase,
-          abilityData:damage.abilityData,
-        };
-        const queue=bindAnimLogChunks(buildAnimQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
-        if(queue.length)triggerAnimQueue(queue,newGs,undefined,authoritativeResolvedQueueMeta(newGs,queue));else setGs(newGs);
-        return;
-      }
+      damageStatPatch=buildStatChangeStatePatch(gs,damage);
     }
     const win=damage?.abilityData?null:checkWin(P,gs._isMP);
     const nextTurn=gs.abilityData?._turnOwner??gs.currentTurn;
@@ -8610,11 +8674,13 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       afterPlayers:copyPlayers(P),
       afterDiscard:[...Disc],
       discardEvents:sameAbyssDiscardEvents,
+      statEvents:damage?.statEvents||[],
       msgs:L.slice(gs.log.length),
     }):null;
     const newGs={
       ...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:nextTurn,
       phase:damage?.phase||nextPhase,abilityData:damage?.abilityData||continuationAbilityData,
+      ...damageStatPatch,
       ...(sameAbyssDiscardEvent?{_visualEvents:[...(gs._visualEvents||[]),sameAbyssDiscardEvent]}:{}),
       ...(win?{gameOver:win}:{}),
     };

@@ -383,6 +383,30 @@ function buildVritraImmortalRevealSteps(oldGs, newGs, newMsgs = []) {
   });
 }
 
+function insertVritraImmortalRevealSteps(queue = [], revealSteps = []) {
+  revealSteps.forEach(reveal => {
+    const target = reveal?.targetPid;
+    const damageIndex = queue.findLastIndex(step => (
+      step?.type === 'HP_DAMAGE'
+      && (Array.isArray(step.statEvents) ? step.statEvents : []).some(event => (
+        Number(event?.target) === Number(target)
+        && (event?.vritraImmortalStage === 'damageToZero' || event?.to?.hp === 0)
+      ))
+    ));
+    if (damageIndex >= 0) {
+      queue.splice(damageIndex + 1, 0, reveal);
+      return;
+    }
+    const deathIndex = queue.findIndex(step => (
+      ['GUILLOTINE', 'PETRIFY_DEATH', 'DEATH'].includes(step?.type)
+      && (step?.hitIndices || []).some(index => Number(index) === Number(target))
+    ));
+    if (deathIndex >= 0) queue.splice(deathIndex, 0, reveal);
+    else queue.push(reveal);
+  });
+  return queue;
+}
+
 function getRemovedHandCards(oldHand = [], newHand = []) {
   const remaining = new Map();
   (newHand || []).forEach(card => {
@@ -758,7 +782,7 @@ export function buildAnimQueue(oldGs, newGs) {
     randomTargetEvents.forEach(event => q.push(...buildRandomTargetQueue(event)));
   }
   q.push(...godPowerBlockedSteps);
-  q.push(...vritraRevealSteps);
+  insertVritraImmortalRevealSteps(q, vritraRevealSteps);
   const moldyRoll = newGs?._moldyFoodDiceRoll;
   const moldySeq = moldyRoll?.seq ?? newGs?._moldyFoodDiceSeq;
   const oldMoldySeq = oldGs?._moldyFoodDiceSeq || oldGs?._moldyFoodDiceRoll?.seq || 0;

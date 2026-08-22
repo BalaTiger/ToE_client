@@ -1007,6 +1007,36 @@ describe('AI end-turn endless corridor replay', () => {
     expect(result.replayQueue[0].msgs).toEqual([expect.stringContaining('【无尽通道】艾伦 展示所有手牌')]);
   });
 
+  it('无尽通道弃置生命天平时由该弃牌子事务持有后续 HP 扣减', () => {
+    const balance = {
+      id: 'corridor-life-balance', key: 'B1', name: '生命天平', type: 'lifeBalance',
+      val: 3, isZone: true, letter: 'B', number: 1, polarity: 'negative',
+    };
+    const corridor = {
+      id: 'corridor-balance-trigger', key: 'A3', name: '无尽通道', type: 'endTurnReplayHand',
+      isZone: true, letter: 'A', number: 3,
+    };
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', role: ROLE_TREASURE, hp: 10, hand: [balance, corridor] }),
+    ];
+    const gs = makeGs({ players, currentTurn: 1, phase: 'AI_TURN', log: [], _statEventSeq: 2, _statEvents: [] });
+
+    const result = processAiEndTurnReplayHand(
+      gs.players.map(player => ({ ...player, hand: [...player.hand] })),
+      [], [], [], 1, gs,
+    );
+    const discardIndex = result.replayQueue.findIndex(step => step.type === 'DISCARD' && step.card?.id === balance.id);
+    const damageIndex = result.replayQueue.findIndex(step => step.type === 'HP_DAMAGE');
+
+    expect(result.P[1].hp).toBe(7);
+    expect(discardIndex).toBeGreaterThanOrEqual(0);
+    expect(damageIndex).toBeGreaterThan(discardIndex);
+    expect(result.statePatch._statEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'HP_LOSS', target: 1, reason: '无尽通道弃牌' }),
+    ]));
+  });
+
   it('无尽通道触发触底反弹时，整手换牌飞行跟在通道动画之后', () => {
     const bounce = makeZoneCard('C4', 0, {
       id: 'corridor-bounce',

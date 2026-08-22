@@ -1466,9 +1466,14 @@ export function buildCardEffectAnimStep(event, state) {
       cursorDiscard = nextDiscard;
       return step;
     });
+    const statSteps = statEventsToAnimQueue(
+      event.statEvents || [],
+      cursorPlayers,
+      event.msgs || [],
+    );
     return {
       type: 'COMPOSITE',
-      steps,
+      steps: [...steps, ...statSteps],
     };
   }
   if (event.effectKey === 'geomagneticReversal') {

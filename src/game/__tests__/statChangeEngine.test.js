@@ -112,4 +112,76 @@ describe('stat change rule entry points', () => {
     });
     expect(sphinxQueue.map(step => step.type)).toEqual(['DRAW_CARD', 'CARD_TRANSFER', 'HP_DAMAGE']);
   });
+
+  it('不灭之躯成功时把致死伤害与恢复拆成连续的 0 HP 翻牌边界', () => {
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '贝拉', hp: 3, godName: 'VRI', godLevel: 1 }),
+    ];
+    const deck = Array.from({ length: 6 }, (_, index) => ({
+      id: `vri-${index}`,
+      name: `区域牌${index}`,
+      isZone: true,
+    }));
+    const log = ['贝拉 失去 5 HP'];
+    const result = submitLossEvents({
+      players,
+      deck,
+      discard: [],
+      log,
+      currentTurn: 0,
+      events: [{ targetIdx: 1, lostHp: 5, source: '致死伤害' }],
+      statEventSeq: 9,
+      statEventLogs: log,
+    });
+
+    expect(players[1]).toMatchObject({ hp: 1, isDead: false });
+    expect(result.statEvents.filter(event => event.target === 1)).toMatchObject([
+      { type: 'HP_LOSS', seq: 9, phaseOrder: 0, vritraImmortalStage: 'damageToZero', from: { hp: 3 }, to: { hp: 0 } },
+      { type: 'HP_GAIN', seq: 9, phaseOrder: 2, vritraImmortalStage: 'recoverToOne', from: { hp: 0 }, to: { hp: 1 } },
+    ]);
+  });
+
+  it('不灭之躯失败时在扣至 0 后翻牌，再进入死亡结算', () => {
+    const oldPlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '贝拉', hp: 2, godName: 'VRI', godLevel: 3 }),
+    ];
+    const players = oldPlayers.map(player => ({ ...player, hand: [...player.hand], godZone: [...player.godZone] }));
+    const deck = [
+      { id: 'failed-god', name: '邪神牌', isGod: true },
+      { id: 'failed-zone', name: '区域牌', isZone: true },
+    ];
+    const discard = [];
+    const log = ['贝拉 失去 3 HP'];
+    const damage = submitLossEvents({
+      players,
+      deck,
+      discard,
+      log,
+      currentTurn: 0,
+      events: [{ targetIdx: 1, lostHp: 3, source: '致死伤害' }],
+      statEventSeq: 10,
+      statEventLogs: log,
+    });
+    const oldState = { players: oldPlayers, deck: [...deck, ...discard], discard: [], log: [], _statEvents: [], _statEventSeq: 9 };
+    const nextState = {
+      ...oldState,
+      players,
+      deck,
+      discard,
+      log,
+      ...buildStatChangeStatePatch(oldState, damage),
+    };
+
+    const queue = buildAnimQueue(oldState, nextState);
+    const damageIndex = queue.findIndex(step => step.type === 'HP_DAMAGE');
+    const revealIndex = queue.findIndex(step => step.type === 'VRI_IMMORTAL_REVEAL');
+    const deathIndex = queue.findIndex(step => step.type === 'GUILLOTINE');
+
+    expect(players[1]).toMatchObject({ hp: 0, isDead: true });
+    expect(damageIndex).toBeGreaterThanOrEqual(0);
+    expect(revealIndex).toBeGreaterThan(damageIndex);
+    expect(deathIndex).toBeGreaterThan(revealIndex);
+  });
 });

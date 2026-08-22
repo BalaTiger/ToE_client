@@ -262,6 +262,7 @@ export function buildStatEvents(beforePlayers = [], afterPlayers = [], logs = []
       }));
     }
   }
+  let resultEvents = events;
   if (damageLinkTimeline) {
     const linkHpTargets = new Set(
       damageLinkTimeline
@@ -277,9 +278,66 @@ export function buildStatEvents(beforePlayers = [], afterPlayers = [], logs = []
           .reduce((max, item) => Math.max(max, item.phaseOrder ?? 0), 0);
         return { ...event, phaseOrder: lethalHpOrder };
       });
-    return withEventIds([...damageLinkTimeline, ...extraEvents]);
+    resultEvents = [...damageLinkTimeline, ...extraEvents];
   }
-  return withEventIds(events);
+
+  // 不灭之躯的规则终态是 1 HP，但视觉上必须先完整呈现致死伤害，
+  // 等翻牌结果公开后再恢复到 1。仅用 before/final 快照会把 3→1
+  // 错编译成一次普通扣血，提前泄露“判定成功”。
+  const logLines = Array.isArray(logs) ? logs : [];
+  beforePlayers.forEach((before, target) => {
+    const after = afterPlayers[target];
+    if (!before || !after || before.isDead || after.isDead || after.hp !== 1 || !(before.hp > 0)) return;
+    const revealLine = logLines.find(line => (
+      typeof line === 'string'
+      && line.includes('【不灭之躯】')
+      && line.includes('翻开')
+      && (line.includes('未见邪神牌') || line.includes('HP恢复至1'))
+      && (line.includes(`【不灭之躯】${before.name} `) || (target === 0 && line.includes('【不灭之躯】你 ')))
+    ));
+    if (!revealLine) return;
+
+    const targetLosses = resultEvents
+      .map((event, index) => ({ event, index }))
+      .filter(({ event }) => event?.type === 'HP_LOSS' && Number(event.target) === target);
+    const lastLoss = targetLosses.at(-1);
+    const zeroStats = { ...statOf(after), hp: 0, isDead: false };
+    let damageOrder = 0;
+    if (lastLoss) {
+      damageOrder = lastLoss.event.phaseOrder ?? 0;
+      resultEvents[lastLoss.index] = {
+        ...lastLoss.event,
+        to: zeroStats,
+        phaseOrder: damageOrder,
+        vritraImmortalStage: 'damageToZero',
+      };
+    } else {
+      resultEvents.push({
+        type: 'HP_LOSS',
+        target,
+        from: statOf(before),
+        to: zeroStats,
+        reason,
+        logHint: revealLine,
+        ...(seq != null ? { seq } : {}),
+        phaseOrder: damageOrder,
+        vritraImmortalStage: 'damageToZero',
+      });
+    }
+    resultEvents.push({
+      type: 'HP_GAIN',
+      target,
+      from: zeroStats,
+      to: statOf(after),
+      reason: '不灭之躯',
+      logHint: revealLine,
+      ...(seq != null ? { seq } : {}),
+      phaseOrder: damageOrder + 2,
+      vritraImmortalStage: 'recoverToOne',
+    });
+  });
+
+  return withEventIds(resultEvents);
 }
 
 export function makeTargetStats(players = [], statEvents = []) {

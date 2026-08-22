@@ -26,6 +26,7 @@ const PRESENTATION_ONLY_FIELDS = [
   '_aiHandLimitBeforePlayers',
   '_aiHandLimitBeforeDiscard',
   '_aiHandLimitBeforeLog',
+  '_aiHandLimitStatEventSeqs',
 ];
 
 function omitFields(value, fields) {

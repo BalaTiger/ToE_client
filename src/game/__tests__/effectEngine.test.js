@@ -1937,6 +1937,23 @@ describe('inspection and AI decision regressions', () => {
     ]);
   });
 
+  it('迫害妄想弃置生命天平时结算惩罚并生成 HP 事件', () => {
+    const inspectionCard = { id: 'discard-life-balance', name: '迫害妄想', effect: 'discardRandom' };
+    const lifeBalance = { id: 'life-balance', name: '生命天平', type: 'lifeBalance' };
+    const players = [makePlayer({ name: '检定者', hp: 8, hand: [lifeBalance] })];
+    const meta = makeInspectionMeta({ inspectionDeck: [inspectionCard], inspectionDiscard: [] });
+
+    const result = processInspectionTargets([0], 0, players, [], [], [], meta);
+    const event = result.inspectionMeta._visualEvents?.find(item => item.type === VISUAL_EVENT.INSPECTION);
+
+    expect(result.P[0].hp).toBe(5);
+    expect(result.Disc).toEqual([lifeBalance]);
+    expect(event?.statEvents).toEqual([
+      expect.objectContaining({ type: 'HP_LOSS', target: 0, from: expect.objectContaining({ hp: 8 }), to: expect.objectContaining({ hp: 5 }) }),
+    ]);
+    expect(event?.discardEvents[0].afterPlayers[0].hp).toBe(8);
+  });
+
   it('auto-resolves same abyss for AI-controlled seat zero', () => {
     const derived = { id: 'same-abyss-derived', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
     const discardedNormal = { id: 'a' };

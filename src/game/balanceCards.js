@@ -6,6 +6,23 @@ export function isBalanceCard(card, type = null) {
   return card.type === 'lifeBalance' || card.type === 'soulBalance';
 }
 
+export function buildBalanceDiscardLossEvents(cards = [], ownerIdx = null, { startOrder = 0, reason = '弃牌' } = {}) {
+  if (ownerIdx == null) return [];
+  return cards.filter(card => isBalanceCard(card)).map((card, index) => ({
+    targetIdx: ownerIdx,
+    lostHp: card.type === 'lifeBalance' ? 3 : 0,
+    lostSan: card.type === 'soulBalance' ? 3 : 0,
+    source: card.name || reason,
+    order: startOrder + index,
+  }));
+}
+
+export function buildBalanceDiscardLogLines(cards = [], playerName = '角色', reason = '弃牌') {
+  return cards.filter(card => isBalanceCard(card)).map(card => (
+    `【${card.type === 'lifeBalance' ? '生命天平' : '灵魂天平'}】${playerName} 因${reason}失去 3 ${card.type === 'lifeBalance' ? 'HP' : 'SAN'}`
+  ));
+}
+
 export function applyBalanceDiscardSideEffects({
   players,
   deck,
@@ -17,6 +34,10 @@ export function applyBalanceDiscardSideEffects({
   applyHpDamage = null,
   submitDamage = null,
   currentTurn = null,
+  statEventSeq = null,
+  statEventReason = null,
+  statEventLogs = [],
+  continuation = {},
 }) {
   let P = players;
   const D = deck;
@@ -24,23 +45,21 @@ export function applyBalanceDiscardSideEffects({
   let L = log;
   const balanceCards = (cards || []).filter(card => isBalanceCard(card));
   if (submitDamage && balanceCards.length && ownerIdx != null && P[ownerIdx] && !P[ownerIdx].isDead) {
+    const balanceLines = buildBalanceDiscardLogLines(balanceCards, P[ownerIdx].name, reason);
     const damage = submitDamage({
       players: P,
       deck: D,
       discard: Disc,
       log: L,
       currentTurn,
-      events: balanceCards.map((card, order) => ({
-        targetIdx: ownerIdx,
-        lostHp: card.type === 'lifeBalance' ? 3 : 0,
-        lostSan: card.type === 'soulBalance' ? 3 : 0,
-        source: card.name || reason,
-        order,
-      })),
+      statEventSeq,
+      statEventReason: statEventReason || reason,
+      statEventLogs: Array.isArray(statEventLogs) && statEventLogs.length ? statEventLogs : balanceLines,
+      continuation,
+      events: buildBalanceDiscardLossEvents(balanceCards, ownerIdx, { reason }),
     });
-    balanceCards.forEach(card => {
-      const pending = damage.phase === 'ETHEREALIZE_DECISION' ? '即将失去' : '失去';
-      L = [...L, `【${card.type === 'lifeBalance' ? '生命天平' : '灵魂天平'}】${P[ownerIdx].name} 因${reason}${pending} 3 ${card.type === 'lifeBalance' ? 'HP' : 'SAN'}`];
+    balanceLines.forEach(line => {
+      L = [...L, damage.phase === 'ETHEREALIZE_DECISION' ? line.replace('失去 3', '即将失去 3') : line];
     });
     return {
       players: P,
@@ -48,6 +67,8 @@ export function applyBalanceDiscardSideEffects({
       discard: Disc,
       log: L,
       damageDecision: damage,
+      statEvents: damage.statEvents || [],
+      statEventSeq: damage.statEventSeq,
       ...(damage.phase === 'ETHEREALIZE_DECISION' ? { etherealizeDecision: damage.abilityData } : {}),
     };
   }

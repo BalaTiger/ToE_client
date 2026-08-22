@@ -751,7 +751,12 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
     });
     const explicitDiscardTargets=new Set(explicitDiscardEvents.map(event=>event.playerIndex??ev.target??0));
     const effectQ=buildAnimQueue(
-      {players:beforePlayers,log:beforeLog,discard:beforeDiscard,_statEventSeq:beforeStatEventSeq},
+      {
+        players:explicitDiscardQ.length?discardCursorPlayers:beforePlayers,
+        log:beforeLog,
+        discard:explicitDiscardQ.length?discardCursor:beforeDiscard,
+        _statEventSeq:beforeStatEventSeq,
+      },
       {
         players:afterPlayers,
         log:afterLog,

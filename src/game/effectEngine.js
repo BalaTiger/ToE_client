@@ -457,6 +457,23 @@ function handleInspection(playerIndex, gs) {
           afterPlayers: copyPlayers(P),
           afterDiscard: [...newGs.discard],
         });
+        if (kept.length) {
+          const balance = applyBalanceDiscardSideEffects({
+            players: P,
+            deck: newGs.deck,
+            discard: newGs.discard,
+            log: L,
+            ownerIdx: playerIndex,
+            cards: kept,
+            reason: '迫害妄想弃牌',
+            applyHpDamage: applyHpDamageWithLink,
+            submitDamage: submitLossEvents,
+            currentTurn: newGs.currentTurn,
+            continuation: { _turnOwner: newGs.currentTurn },
+          });
+          L.splice(0, L.length, ...balance.log);
+          inspectionDamageDecision = balance.damageDecision || inspectionDamageDecision;
+        }
       }
       break;
     }
@@ -756,15 +773,23 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         } else if (c.type !== 'blankZone') {
           Disc.push(c);
           msgs.push(`${P[i].name} 失去了 ${cardLogText(c, { alwaysShowName: true })}`);
+          const afterDiscardPlayers = copyPlayers(P);
+          const afterDiscard = [...Disc];
           const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: i, cards: [c], reason: '失去手牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitLossEvents, currentTurn: gs?.currentTurn });
           msgs.splice(0, msgs.length, ...balance.log);
           (balance.etherealizeDecision?.pendingLosses || []).forEach(loss => {
             pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, { ...loss, order: damageOrderSeq++ });
           });
+          discardEvents.push({
+            playerIndex: i,
+            card: c,
+            afterPlayers: afterDiscardPlayers,
+            afterDiscard,
+          });
         } else {
           msgs.push(`${P[i].name} 的空白区域牌消失了`);
         }
-        if (c.type !== 'blankZone') {
+        if (c.type !== 'blankZone' && !discardEvents.some(event => event.card === c)) {
           discardEvents.push({
             playerIndex: i,
             card: c,
@@ -862,8 +887,14 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     const slimeDecision = etherealizeDecision || statePatch?.abilityData?.type
       ? null
       : buildTsathogguaSlimeBalanceDecision(beforePlayers, result.P || P, { _turnOwner: gs?.currentTurn ?? ci });
+    const ownedVisualEvents = (result.statePatch?._visualEvents || []).map(event => (
+      event?.type === VISUAL_EVENT.CARD_EFFECT && event?.effectKey === 'forcedRandomDiscard'
+        ? { ...event, statEvents }
+        : event
+    ));
     const nextStatePatch = {
       ...(result.statePatch || {}),
+      ...(ownedVisualEvents.length ? { _visualEvents: ownedVisualEvents } : {}),
       ...(etherealizeDecision ? { abilityData: etherealizeDecision } : {}),
       ...(slimeDecision ? { abilityData: slimeDecision } : {}),
       ...(mergedStatEvents.length ? { _statEvents: mergedStatEvents, _statEventSeq: mergedStatEventSeq } : {}),
@@ -1499,15 +1530,23 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           } else if (c.type !== 'blankZone') {
             Disc.push(c);
             msgs.push(`${P[i].name} 失去了 ${cardLogText(c, { alwaysShowName: true })}`);
+            const afterDiscardPlayers = copyPlayers(P);
+            const afterDiscard = [...Disc];
             const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: i, cards: [c], reason: '失去手牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitLossEvents, currentTurn: gs?.currentTurn });
             msgs.splice(0, msgs.length, ...balance.log);
             (balance.etherealizeDecision?.pendingLosses || []).forEach(loss => {
               pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, { ...loss, order: damageOrderSeq++ });
             });
+            earthquakeDiscardEvents.push({
+              playerIndex: i,
+              card: c,
+              afterPlayers: afterDiscardPlayers,
+              afterDiscard,
+            });
           } else {
             msgs.push(`${P[i].name} 的空白区域牌消失了`);
           }
-          if (c.type !== 'blankZone') {
+          if (c.type !== 'blankZone' && !earthquakeDiscardEvents.some(event => event.card === c)) {
             earthquakeDiscardEvents.push({
               playerIndex: i,
               card: c,
@@ -1949,13 +1988,21 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
               msgs.push(`${target.name} 的衍生牌被销毁`);
             } else if (c.type !== 'blankZone') {
               Disc.push(c);
+              const afterDiscardPlayers = copyPlayers(P);
+              const afterDiscard = [...Disc];
               const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: targetIdx, cards: [c], reason: '同归深渊弃牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitLossEvents, currentTurn: gs?.currentTurn });
               msgs.splice(0, msgs.length, ...balance.log);
               (balance.etherealizeDecision?.pendingLosses || []).forEach(loss => {
                 pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, { ...loss, order: damageOrderSeq++ });
               });
+              sameAbyssDiscardEvents.push({
+                playerIndex: targetIdx,
+                card: c,
+                afterPlayers: afterDiscardPlayers,
+                afterDiscard,
+              });
             }
-            if (c.type !== 'blankZone') {
+            if (c.type !== 'blankZone' && !sameAbyssDiscardEvents.some(event => event.card === c)) {
               sameAbyssDiscardEvents.push({
                 playerIndex: targetIdx,
                 card: c,
