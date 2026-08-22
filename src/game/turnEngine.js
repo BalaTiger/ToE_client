@@ -108,6 +108,12 @@ function appendTurnDrawVisualEvents(events, draw) {
   return created.find(event => event?.type === VISUAL_EVENT.DRAW_CARD) || null;
 }
 
+function collectFreshStatEventSeqs(state, afterSeq = 0) {
+  return [...new Set((Array.isArray(state?._statEvents) ? state._statEvents : [])
+    .map(event => event?.seq)
+    .filter(seq => Number.isFinite(seq) && seq > afterSeq))];
+}
+
 function sameDrawnCard(left, right) {
   if (!left || !right) return false;
   if (left === right) return true;
@@ -1977,6 +1983,7 @@ function resolveNextTurnState(gs, opts = {}) {
         });
       }
       const playersBeforeSlimeDraw = copyPlayers(P);
+      const statEventSeqBeforeSlimeDraw = maxKnownStatEventSeq(gs);
       const rSlime = playerDrawCard(P, D, Disc, 0, gs);
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
       // Every reveal draw re-evaluates its source. Effects such as geomagnetic
@@ -1997,6 +2004,7 @@ function resolveNextTurnState(gs, opts = {}) {
           reshuffleLog: rSlime.reshuffleLog,
           fromTsathogguaSlime: true,
           slimePop,
+          statEventSeqs: collectFreshStatEventSeqs(rSlime.statePatch, statEventSeqBeforeSlimeDraw),
           ...buildDrawKeepPresentation({
             playersBefore: playersBeforeSlimeDraw,
             playersAfter: P,
@@ -2044,6 +2052,7 @@ function resolveNextTurnState(gs, opts = {}) {
       });
     }
     const playersBeforeFixedDraw = copyPlayers(P);
+    const statEventSeqBeforeFixedDraw = maxKnownStatEventSeq(gs);
     const res = playerDrawCard(P, D, Disc, 0, gs);
     P = res.P; D = res.D; Disc = res.Disc;
     // 多人游戏中记录玩家0摸牌信息到日志，让其他玩家可见（单机不需要，DRAW_REVEAL 时可见）
@@ -2058,6 +2067,7 @@ function resolveNextTurnState(gs, opts = {}) {
         sourcePile: res.sourcePile,
         msgs: [msg],
         reshuffleLog: res.reshuffleLog,
+        statEventSeqs: collectFreshStatEventSeqs(res.statePatch, statEventSeqBeforeFixedDraw),
         ...buildDrawKeepPresentation({
           playersBefore: playersBeforeFixedDraw,
           playersAfter: P,
@@ -2223,6 +2233,7 @@ function resolveNextTurnState(gs, opts = {}) {
         });
       }
       const playersBeforeSlimeDraw = copyPlayers(P);
+      const statEventSeqBeforeSlimeDraw = maxKnownStatEventSeq(gs);
       const rSlime = playerDrawCard(P, D, Disc, next, gs);
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
       if (rSlime.statePatch) gs = { ...gs, ...rSlime.statePatch };
@@ -2240,6 +2251,7 @@ function resolveNextTurnState(gs, opts = {}) {
           reshuffleLog: rSlime.reshuffleLog,
           fromTsathogguaSlime: true,
           slimePop,
+          statEventSeqs: collectFreshStatEventSeqs(rSlime.statePatch, statEventSeqBeforeSlimeDraw),
           ...buildDrawKeepPresentation({
             playersBefore: playersBeforeSlimeDraw,
             playersAfter: P,
@@ -2287,6 +2299,7 @@ function resolveNextTurnState(gs, opts = {}) {
       });
     }
     const playersBeforeFixedDraw = copyPlayers(P);
+    const statEventSeqBeforeFixedDraw = maxKnownStatEventSeq(gs);
     const res = playerDrawCard(P, D, Disc, next, gs);
     P = res.P; D = res.D; Disc = res.Disc;
     // 记录摸牌信息到日志（与单机AI摸牌保持一致：[key] 名称）
@@ -2301,6 +2314,7 @@ function resolveNextTurnState(gs, opts = {}) {
         sourcePile: res.sourcePile,
         msgs: [msg],
         reshuffleLog: res.reshuffleLog,
+        statEventSeqs: collectFreshStatEventSeqs(res.statePatch, statEventSeqBeforeFixedDraw),
         ...buildDrawKeepPresentation({
           playersBefore: playersBeforeFixedDraw,
           playersAfter: P,
@@ -2391,6 +2405,7 @@ function resolveNextTurnState(gs, opts = {}) {
         });
       }
       const playersBeforeSlimeDraw = copyPlayers(P);
+      const statEventSeqBeforeSlimeDraw = maxKnownStatEventSeq(gs);
       const rSlime = aiDrawAndApply(next, P, D, Disc, gs);
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
       if (rSlime.statePatch) gs = { ...gs, ...rSlime.statePatch };
@@ -2413,6 +2428,7 @@ function resolveNextTurnState(gs, opts = {}) {
           fromTsathogguaSlime: true,
           slimePop,
           godEncounter: rSlime.godEncounter,
+          statEventSeqs: collectFreshStatEventSeqs(rSlime.statePatch, statEventSeqBeforeSlimeDraw),
           ...buildDrawKeepPresentation({
             playersBefore: playersBeforeSlimeDraw,
             playersAfter: P,
@@ -2464,6 +2480,7 @@ function resolveNextTurnState(gs, opts = {}) {
       preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeDraw, globalOnlySwapOwner,
     });
     const playersBeforeFixedDraw = copyPlayers(P);
+    const statEventSeqBeforeFixedDraw = maxKnownStatEventSeq(gs);
     const res = aiDrawAndApply(next, P, D, Disc, { ...gs, deferAiGodChoice: true });
     gs.debugForceCardKeepPending = null;
     gs.debugForceCardKeepTarget = null;
@@ -2506,6 +2523,7 @@ function resolveNextTurnState(gs, opts = {}) {
         sourcePile: res.sourcePile,
         msgs: eventMsgs.length ? eventMsgs : drawLogs.slice(-1),
         reshuffleLog: res.reshuffleLog,
+        statEventSeqs: collectFreshStatEventSeqs(res.statePatch, statEventSeqBeforeFixedDraw),
         ...buildDrawKeepPresentation({
           playersBefore: playersBeforeFixedDraw,
           playersAfter: P,
@@ -2588,6 +2606,70 @@ function maxKnownInspectionEventSeq(state) {
   return Math.max(explicit, fromInspections, fromVisualEvents);
 }
 
+function attachTurnDrawStatEventOwnership(events = []) {
+  let result = [...events];
+  const draws = result.filter(event => (
+    event?.type === VISUAL_EVENT.DRAW_CARD &&
+    event?.id &&
+    !event?.godEncounter &&
+    Array.isArray(event?.statEventSeqs) &&
+    event.statEventSeqs.length
+  ));
+
+  draws.forEach(drawEvent => {
+    const ownedSeqs = new Set(drawEvent.statEventSeqs);
+    const ownedVisualEventIds = [];
+    const splitEvents = [];
+
+    result.forEach(visualEvent => {
+      const statEvents = Array.isArray(visualEvent?.statEvents) ? visualEvent.statEvents : [];
+      const owned = statEvents.filter(statEvent => ownedSeqs.has(statEvent?.seq));
+      if (!owned.length) {
+        splitEvents.push(visualEvent);
+        return;
+      }
+
+      if (visualEvent.type !== VISUAL_EVENT.STAT_EVENTS) {
+        splitEvents.push(visualEvent);
+        if (visualEvent.id) ownedVisualEventIds.push(visualEvent.id);
+        return;
+      }
+
+      const rest = statEvents.filter(statEvent => !ownedSeqs.has(statEvent?.seq));
+      const ownedHints = new Set(owned.map(statEvent => statEvent?.logHint).filter(Boolean));
+      const ownedMsgs = rest.length
+        ? (visualEvent.msgs || []).filter(msg => ownedHints.has(msg))
+        : (visualEvent.msgs || []);
+      const restMsgs = (visualEvent.msgs || []).filter(msg => !ownedMsgs.includes(msg));
+      const recreate = (slice, msgs) => createStatEventsEvent({
+        statEvents: slice,
+        msgs,
+        turnStartStage: visualEvent.turnStartStage,
+        transactionId: visualEvent.transactionId,
+        order: visualEvent.order,
+        resolutionPhase: visualEvent.resolutionPhase,
+        barrier: visualEvent.barrier,
+      });
+      if (rest.length) {
+        const restEvent = recreate(rest, restMsgs);
+        if (restEvent) splitEvents.push(restEvent);
+      }
+      const ownedEvent = recreate(owned, ownedMsgs);
+      if (ownedEvent) {
+        splitEvents.push(ownedEvent);
+        ownedVisualEventIds.push(ownedEvent.id);
+      }
+    });
+
+    const uniqueOwnedIds = [...new Set(ownedVisualEventIds)];
+    result = splitEvents.map(event => event?.id === drawEvent.id
+      ? { ...event, statVisualEventIds: uniqueOwnedIds }
+      : event);
+  });
+
+  return result;
+}
+
 // Rule and presentation metadata are produced at the same boundary. Every
 // caller (local player, AI, multiplayer takeover, and setup) receives the same
 // one-shot visual events instead of reconstructing them later in React.
@@ -2652,6 +2734,11 @@ export function startNextTurn(gs, opts = {}) {
     ...stagedEngineEvents,
     ...stagedInspectionEvents,
   ];
+  // A draw phase may reveal several cards (notably one slime draw followed by
+  // the fixed draw). Keep each ordinary card's stat settlement beside the draw
+  // that produced it, instead of leaving every HP/SAN step in one phase-wide
+  // bucket that later full-hand transfers can jump ahead of.
+  visualEvents = attachTurnDrawStatEventOwnership(visualEvents);
   // 黏液额外摸到邪神牌的同步遭遇：把属于该次遭遇的视觉事件显式归属到对应的
   // 摸牌事件（godEncounter.visualEventIds）。归属信息来自规则层结算时记录的
   // 序号，呈现层据此把遭遇块（SAN 扣减 → 检定 → 弃牌）插到该邪神牌翻牌之后、

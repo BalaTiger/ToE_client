@@ -527,11 +527,26 @@ function tsgSlimePopStepFromEvent(event) {
   };
 }
 
+// The black-goat pulse and its HP/SAN settlement form one default atomic
+// presentation block. A future in-turn damage-prelude rule may explicitly
+// occupy the gap after the pulse, but ordinary turn-start effects must not be
+// interleaved there implicitly.
+export function insertBlackGoatDamagePreludeSteps(queue = [], preludeSteps = []) {
+  const steps = Array.isArray(queue) ? [...queue] : [];
+  const preludes = Array.isArray(preludeSteps) ? preludeSteps.filter(Boolean) : [];
+  if (!preludes.length) return steps;
+  const pulseIdx = steps.findIndex(step => step?.type === 'BLACK_GOAT_PULSE');
+  if (pulseIdx < 0) return [...preludes, ...steps];
+  steps.splice(pulseIdx + 1, 0, ...preludes);
+  return steps;
+}
+
 export function buildTurnStartPreDrawEffectQueue({
   oldGs,
   newGs,
   buildQueue = buildAnimQueue,
   consumedVisualEventIds = null,
+  blackGoatDamagePreludeSteps = [],
 } = {}) {
   const beforeDrawPlayers = newGs?._playersBeforeThisDraw || newGs?.players || oldGs?.players || [];
   const preTurnPlayers = newGs?._preTurnPlayers || oldGs?.players || beforeDrawPlayers;
@@ -569,7 +584,6 @@ export function buildTurnStartPreDrawEffectQueue({
     .filter(event => (event?.msgs || []).some(msg => preDrawMsgs.includes(msg)))
     .map(tsgSlimePopStepFromEvent)
     .filter(Boolean);
-  queue.push(...slimePopSteps);
   if (canonicalTurnStartStatEvents.length) {
     const freshCanonicalEvents = canonicalTurnStartStatEvents.filter(event => !isConsumedVisualEvent(event));
     const statTransaction = freshCanonicalEvents.length
@@ -591,28 +605,36 @@ export function buildTurnStartPreDrawEffectQueue({
       if (firstOwnedStep >= 0) statQueue.splice(firstOwnedStep, 0, ownedPulse);
       else statQueue.push(ownedPulse);
     });
-    queue.push(...statQueue);
+    queue.push(...insertBlackGoatDamagePreludeSteps(statQueue, blackGoatDamagePreludeSteps));
   } else {
     // Compatibility only: old saves/peers without canonical stat-event wrappers.
+    const legacyStatQueue = [];
     const blackGoatEvents = statEvents.filter(isBlackGoatTurnStartStatEvent);
     if (blackGoatEvents.length) {
       const pulse = blackGoatPulseStep(blackGoatEvents);
-      if (pulse) queue.push(pulse);
+      if (pulse) legacyStatQueue.push(pulse);
       const goatMsgs = eventMsgs(blackGoatEvents, preDrawMsgs);
       const hpEvents = blackGoatEvents.filter(ev => ev?.type === 'HP_LOSS' || ev?.type === 'HP_SAN_LOSS');
       const sanEvents = blackGoatEvents.filter(ev => ev?.type === 'SAN_LOSS' || ev?.type === 'HP_SAN_LOSS');
-      if (hpEvents.length) queue.push(...statEventsToAnimQueue(hpEvents, preTurnPlayers, goatMsgs));
-      if (sanEvents.length) queue.push(...statEventsToAnimQueue(sanEvents, preTurnPlayers, goatMsgs));
+      if (hpEvents.length) legacyStatQueue.push(...statEventsToAnimQueue(hpEvents, preTurnPlayers, goatMsgs));
+      if (sanEvents.length) legacyStatQueue.push(...statEventsToAnimQueue(sanEvents, preTurnPlayers, goatMsgs));
     }
     const poisonEvents = statEvents.filter(isPoisonTurnStartStatEvent);
     if (poisonEvents.length) {
-      queue.push(...statEventsToAnimQueue(poisonEvents, preTurnPlayers, eventMsgs(poisonEvents, preDrawMsgs)));
+      legacyStatQueue.push(...statEventsToAnimQueue(poisonEvents, preTurnPlayers, eventMsgs(poisonEvents, preDrawMsgs)));
     }
     const linkHealEvents = statEvents.filter(isLinkHealTurnStartStatEvent);
     if (linkHealEvents.length) {
-      queue.push(...statEventsToAnimQueue(linkHealEvents, preTurnPlayers, eventMsgs(linkHealEvents, preDrawMsgs)));
+      legacyStatQueue.push(...statEventsToAnimQueue(linkHealEvents, preTurnPlayers, eventMsgs(linkHealEvents, preDrawMsgs)));
     }
+    queue.push(...insertBlackGoatDamagePreludeSteps(legacyStatQueue, blackGoatDamagePreludeSteps));
   }
+  // A slime pop belongs to the draw/reaction continuation. It may be present
+  // in the same resolved snapshot as turn-start passive effects, but it is
+  // never allowed to split the black-goat pulse from its HP/SAN settlement.
+  // Keep it after the complete pre-draw stat block; the state patch below then
+  // establishes the draw-phase baseline before any card reveal starts.
+  queue.push(...slimePopSteps);
   const explicitInspectionEvents = getVisualEvents(newGs)
     .filter(event => (
       event?.type === VISUAL_EVENT.INSPECTION &&
@@ -771,6 +793,7 @@ export function buildTurnStartDrawReplayQueue({
   timedOutDrawDiscardStep = null,
   preTurnSteps = [],
   consumedVisualEventIds = null,
+  blackGoatDamagePreludeSteps = [],
   buildQueue = buildAnimQueue,
   buildFullHandSwapTransferQueue = buildFullHandSwapTransferQueueFromLogs,
 } = {}) {
@@ -795,6 +818,7 @@ export function buildTurnStartDrawReplayQueue({
         newGs,
         buildQueue,
         consumedVisualEventIds,
+        blackGoatDamagePreludeSteps,
       });
       const turnBoundaryStageQueue = markTurnStartAnimationStage(
         boundarySteps,
@@ -866,6 +890,7 @@ export function buildTurnStartDrawReplayQueue({
     newGs,
     buildQueue,
     consumedVisualEventIds,
+    blackGoatDamagePreludeSteps,
   });
   const hasTurnStartPreDrawQ = turnStartPreDrawQ.length > 0;
   const turnStartStatePatch = hasTurnStartPreDrawQ
@@ -1415,15 +1440,18 @@ export function buildTurnStartDrawReplayQueue({
       })
     : drawCardStepsWithWorshipBaseline;
   deferredDrawEffectQ.push(...immediateEarthquakeQ);
-  // 黏液额外摸到邪神牌时，遭遇邪神（SAN 扣减 + SAN 检定 + 放弃/信仰）是同步结算的。
-  // 规则层已把遭遇产出的视觉事件 id 记录在摸牌事件的 godEncounter.visualEventIds 上
-  // （含 GOD_GIFT_DISCARD 弃牌事件），这里按 id 精确归队，插到该邪神牌翻牌之后、
-  // 下一张摸牌之前，而不是推迟到所有翻牌之后。
+  // Every resolved draw may own stat visual events. Slime god encounters also
+  // own their complete encounter block (including GOD_GIFT_DISCARD). Group all
+  // of those steps by id so they stay after their source reveal and before the
+  // next draw instead of being deferred behind unrelated full-hand transfers.
   const ownedEventIdsByDrawId = new Map();
   turnDrawEvents.forEach((event, eventIdx) => {
-    const ids = event?.godEncounter?.visualEventIds;
+    const ids = [
+      ...(Array.isArray(event?.statVisualEventIds) ? event.statVisualEventIds : []),
+      ...(Array.isArray(event?.godEncounter?.visualEventIds) ? event.godEncounter.visualEventIds : []),
+    ];
     const drawId = event?.id || `legacy-draw-${eventIdx}`;
-    if (Array.isArray(ids) && ids.length) ownedEventIdsByDrawId.set(drawId, new Set(ids));
+    if (ids.length) ownedEventIdsByDrawId.set(drawId, new Set(ids));
   });
   let drawOwnedEffectGroups = null;
   if (ownedEventIdsByDrawId.size) {

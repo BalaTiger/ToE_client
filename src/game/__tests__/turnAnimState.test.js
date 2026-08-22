@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   buildPlayerTurnDrawQueue,
   buildSinglePlayerAiTurnStartReplayContext,
@@ -7,6 +7,7 @@ import {
   buildTurnStartDrawReplayQueue,
   buildUnconsumedTurnBannerStep,
   buildZhuHideReplacementDrawQueue,
+  insertBlackGoatDamagePreludeSteps,
   TURN_START_ANIMATION_STAGE,
   shouldReplaySinglePlayerAiTurnStart,
   withClearedReplayAnimFields,
@@ -68,6 +69,19 @@ describe('withClearedReplayAnimFields', () => {
     expect(buildAnimQueue(replayBaseline, next).some(step => (
       step.type === 'DICE_ROLL' && step.diceMode === 'apophisNight'
     ))).toBe(false);
+  });
+});
+
+describe('black-goat damage presentation boundary', () => {
+  it('默认保持幼仔跳动与 HP/SAN 相邻，并允许显式伤害前置步骤占据插槽', () => {
+    const base = [
+      { type: 'BLACK_GOAT_PULSE' },
+      { type: 'HP_DAMAGE' },
+      { type: 'SAN_DAMAGE' },
+    ];
+    expect(insertBlackGoatDamagePreludeSteps(base)).toEqual(base);
+    expect(insertBlackGoatDamagePreludeSteps(base, [{ type: 'DAMAGE_PRELUDE' }]).map(step => step.type))
+      .toEqual(['BLACK_GOAT_PULSE', 'DAMAGE_PRELUDE', 'HP_DAMAGE', 'SAN_DAMAGE']);
   });
 });
 
@@ -854,6 +868,76 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(replay.stageQueues.turnStart.every(step => (
       step.turnStartStage === TURN_START_ANIMATION_STAGE.TURN_START
     ))).toBe(true);
+  });
+
+  it('黑山羊幼仔统计块始终紧邻跳动，即使同一快照含有黏液破裂事件', () => {
+    const goat = { id: 'goat-adjacent', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const slime = { id: 'slime-adjacent', name: '撒托古亚的赐福黏液', type: 'tsathogguaSlime', isTsathogguaSlime: true };
+    const card = { id: 'after-adjacent', name: '下一张牌', key: 'B2', type: 'zone' };
+    const preTurnPlayers = [player('你'), { ...player('卡洛斯'), hand: [goat, slime], hp: 10, san: 10 }];
+    const beforeDrawPlayers = [player('你'), { ...player('卡洛斯'), hand: [goat], hp: 9, san: 9 }];
+    const goatLog = '【黑山羊幼仔】卡洛斯 失去 1 HP 和 1 SAN';
+    const slimeLog = '【无定形体】卡洛斯 的1张撒托古亚的赐福黏液消失';
+    const oldGs = {
+      players: preTurnPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: [],
+      _statEventSeq: 0,
+    };
+    const newGs = {
+      players: beforeDrawPlayers,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _preTurnPlayers: preTurnPlayers,
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 卡洛斯 的回合开始 ──'],
+      _drawLogs: ['卡洛斯 摸到 [B2] 下一张牌'],
+      _statLogs: [],
+      _statEventSeq: 1,
+      _statEvents: [
+        { type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 9, san: 9 }, reason: '黑山羊幼仔', logHint: goatLog, seq: 1 },
+        { type: 'SAN_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 9, san: 9 }, reason: '黑山羊幼仔', logHint: goatLog, seq: 1 },
+      ],
+      _visualEvents: [
+        {
+          id: 'goat-adjacent-stats',
+          type: VISUAL_EVENT.STAT_EVENTS,
+          turnStartStage: TURN_START_ANIMATION_STAGE.TURN_START,
+          statEvents: [
+            { type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 9, san: 9 }, reason: '黑山羊幼仔', logHint: goatLog, seq: 1 },
+            { type: 'SAN_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 9, san: 9 }, reason: '黑山羊幼仔', logHint: goatLog, seq: 1 },
+          ],
+          msgs: [goatLog],
+        },
+        {
+          id: 'slime-adjacent-pop',
+          type: VISUAL_EVENT.TSG_SLIME_POP,
+          playerIdx: 1,
+          cards: [slime],
+          msgs: [slimeLog],
+          playersBefore: preTurnPlayers,
+          playersAfter: beforeDrawPlayers,
+          turnStartStage: TURN_START_ANIMATION_STAGE.DRAW,
+        },
+      ],
+      log: ['── 卡洛斯 的回合开始 ──', goatLog, slimeLog, '卡洛斯 摸到 [B2] 下一张牌'],
+      drawReveal: { card, drawerIdx: 1 },
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const types = replay.queue.map(step => step.type);
+    const pulseIdx = types.indexOf('BLACK_GOAT_PULSE');
+    const hpIdx = types.indexOf('HP_DAMAGE');
+    const sanIdx = types.indexOf('SAN_DAMAGE');
+    const slimeIdx = types.indexOf('TSG_SLIME_POP');
+
+    expect([types[pulseIdx], types[hpIdx], types[sanIdx]]).toEqual([
+      'BLACK_GOAT_PULSE', 'HP_DAMAGE', 'SAN_DAMAGE',
+    ]);
+    expect(hpIdx).toBe(pulseIdx + 1);
+    expect(sanIdx).toBe(pulseIdx + 2);
+    expect(slimeIdx).toBeGreaterThan(sanIdx);
   });
 
   it('黑山羊检定为揭开真相时只翻一次检定牌，再播放固定摸牌翻牌', () => {
@@ -1730,6 +1814,69 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(types[0]).toBe('YOUR_TURN');
     expect(types[1]).toBe('DRAW_CARD');
     expect(types.findIndex(type => type === 'CARD_TRANSFER')).toBeGreaterThan(types.indexOf('DRAW_CARD'));
+  });
+
+  it('黏液额外摸到烤盲鱼时在后续触底反弹换手前结算且只播放一次回血', () => {
+    const fish = makeZoneCard('C1', 4); // 烤盲鱼
+    const bounce = makeZoneCard('C4', 0); // 触底反弹
+    const filler = () => makeZoneCard('A3', 0);
+    const players = [
+      makePlayer({ name: '你', role: ROLE_HUNTER, hand: [filler(), filler(), filler(), filler()] }),
+      makePlayer({ name: '艾伦', role: ROLE_HUNTER, hand: [filler(), filler(), filler(), filler()] }),
+      makePlayer({ name: '贝拉', role: ROLE_CULTIST }),
+      makePlayer({
+        name: '卡洛斯',
+        role: ROLE_TREASURE,
+        hp: 6,
+        godName: 'TSG',
+        godLevel: 1,
+        hand: [
+          { id: 'slime', name: '撒托古亚的赐福黏液', type: 'tsathogguaSlime', isTsathogguaSlime: true },
+          filler(),
+          filler(),
+          filler(),
+        ],
+      }),
+    ];
+    const oldGs = makeGs({
+      players,
+      deck: [fish, bounce],
+      currentTurn: 2,
+      phase: 'AI_TURN',
+      log: [],
+    });
+
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.2);
+    let newGs;
+    try {
+      newGs = startNextTurn(oldGs, { allAi: true, isDebugMode: true });
+    } finally {
+      randomSpy.mockRestore();
+    }
+    const fishDrawEvent = newGs._visualEvents.find(event => (
+      event.type === VISUAL_EVENT.DRAW_CARD && event.card?.id === fish.id
+    ));
+    const replay = buildTurnStartDrawReplayQueue({
+      oldGs,
+      newGs,
+      effectOldGs: { ...oldGs, players: newGs._playersBeforeThisDraw, log: [] },
+    });
+    const healSteps = replay.queue.filter(step => step.type === 'HP_HEAL');
+    const fishDrawIdx = replay.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === fish.id);
+    const healIdx = replay.queue.findIndex(step => step.type === 'HP_HEAL');
+    const bounceDrawIdx = replay.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === bounce.id);
+    const fullHandSwapIdx = replay.queue.findIndex(step => (
+      step.type === 'CARD_TRANSFER' && (step.msgs || []).some(msg => msg.includes('交换了全部手牌'))
+    ));
+
+    expect(fishDrawEvent?.statEventSeqs).toEqual([1]);
+    expect(fishDrawEvent?.statVisualEventIds).toHaveLength(1);
+    expect(healSteps).toHaveLength(1);
+    expect(healSteps[0].statEvents).toMatchObject([{ seq: 1, reason: '烤盲鱼' }]);
+    expect(fishDrawIdx).toBeGreaterThan(-1);
+    expect(healIdx).toBeGreaterThan(fishDrawIdx);
+    expect(healIdx).toBeLessThan(bounceDrawIdx);
+    expect(bounceDrawIdx).toBeLessThan(fullHandSwapIdx);
   });
 
   it('AI 回合开始收入霉变食物时保留专用掷骰动画', () => {

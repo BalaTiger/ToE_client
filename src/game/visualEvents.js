@@ -147,6 +147,7 @@ export function createDrawCardEvent({
   playersBefore = null,
   playersAfterKeep = null,
   playersAfterResolution = null,
+  statEventSeqs = [],
 } = {}) {
   if (!card) return null;
   return withVisualEventMeta({
@@ -166,6 +167,9 @@ export function createDrawCardEvent({
     ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
     ...(Array.isArray(playersAfterKeep) ? { playersAfterKeep } : {}),
     ...(Array.isArray(playersAfterResolution) ? { playersAfterResolution } : {}),
+    ...(Array.isArray(statEventSeqs) && statEventSeqs.length
+      ? { statEventSeqs: [...new Set(statEventSeqs.filter(seq => seq != null))] }
+      : {}),
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'turn');
 }
