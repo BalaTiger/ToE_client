@@ -2,12 +2,13 @@ import { copyPlayers, removeCardsFromDiscard } from './coreUtils';
 import { isAiSeat, localDisplayName } from './rotateState';
 import { bindAnimLogChunks } from './animLogs';
 import { buildAnimQueue, buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
-import { buildInspectionEventFlow, cardTransferStep, prepareWorshipHighlight, statePatchStep } from './animQueueHelpers';
+import { buildInspectionEventFlow, cardTransferStep, prepareWorshipHighlight, statePatchStep, zhuHideCardStep } from './animQueueHelpers';
 import {
   getVisualEvents,
   VISUAL_EVENT,
   buildTurnStartStepFromVisualEvents,
   buildTsathogguaSlimeGrantSteps,
+  getTurnBannerVisualEventId,
   isPreDrawTurnStartStatEvent,
 } from './visualEvents';
 import { statEventsToAnimQueue } from './statEvents';
@@ -66,6 +67,52 @@ export function splitTurnStartAnimationStages(queue = []) {
     stages[stage].push(step);
   });
   return stages;
+}
+
+export function buildUnconsumedTurnBannerStep(state, consumedVisualEventIds = null) {
+  if (!Array.isArray(state?._turnStartLogs) || !state._turnStartLogs.length) return null;
+  const canonicalStep = buildTurnStartStepFromVisualEvents(state);
+  const visualEventId = canonicalStep?.visualEventId || getTurnBannerVisualEventId(state);
+  if (visualEventId && consumedVisualEventIds?.has?.(visualEventId)) return null;
+  return {
+    type: 'YOUR_TURN',
+    turnStartStage: TURN_START_ANIMATION_STAGE.TURN_BANNER,
+    ...(canonicalStep || {}),
+    ...(visualEventId ? { visualEventId } : {}),
+    name: canonicalStep?.name || localDisplayName(
+      state?.currentTurn ?? 0,
+      state?.players?.[state?.currentTurn ?? 0]?.name || '???',
+    ),
+    msgs: canonicalStep?.msgs || state._turnStartLogs,
+  };
+}
+
+export function buildZhuHideReplacementDrawQueue({
+  state,
+  consumedVisualEventIds = null,
+  hide = false,
+  hiddenCard = null,
+  drawnCard = null,
+  drawerIdx = state?.currentTurn ?? 0,
+  drawerName = state?.players?.[drawerIdx]?.name || '???',
+  drawMsgs = [],
+} = {}) {
+  const queue = [];
+  if (state?._playersBeforeThisDraw) {
+    const turnBanner = buildUnconsumedTurnBannerStep(state, consumedVisualEventIds);
+    if (turnBanner) queue.push(turnBanner);
+  }
+  if (hide && hiddenCard) queue.push(zhuHideCardStep(hiddenCard));
+  if (drawnCard) {
+    queue.push({
+      type: 'DRAW_CARD',
+      card: drawnCard,
+      triggerName: localDisplayName(drawerIdx, drawerName),
+      targetPid: drawerIdx,
+      msgs: Array.isArray(drawMsgs) ? drawMsgs : [],
+    });
+  }
+  return queue;
 }
 
 export function scopeTurnStartVisualEvents(events = []) {

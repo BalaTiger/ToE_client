@@ -3,6 +3,7 @@ import { buildAnimQueue } from './animQueueCore';
 import { statePatchStep } from './animQueueHelpers';
 import { cardLogText, copyPlayers } from './coreUtils';
 import { buildStatEvents } from './statEvents';
+import { buildTurnStartStepFromVisualEvents, getTurnBannerVisualEventId } from './visualEvents';
 import {
   buildTurnStartPreDrawEffectQueue,
   getTurnStartDrawerIdx,
@@ -224,11 +225,14 @@ export function buildTurnStartIntroQueue(state, name) {
       zhuLight: state.zhuLight || null,
     });
   }
+  const canonicalTurnBanner = buildTurnStartStepFromVisualEvents(state);
   queue.push({
     type: 'YOUR_TURN',
     turnStartStage: TURN_START_ANIMATION_STAGE.TURN_BANNER,
-    name: name || state.players?.[state.currentTurn]?.name || '???',
-    msgs: state._turnStartLogs,
+    ...(canonicalTurnBanner || {}),
+    visualEventId: canonicalTurnBanner?.visualEventId || getTurnBannerVisualEventId(state),
+    name: name || canonicalTurnBanner?.name || state.players?.[state.currentTurn]?.name || '???',
+    msgs: canonicalTurnBanner?.msgs || state._turnStartLogs,
   });
   queue.push(...turnStartStatQueue);
   if (turnStartStatQueue.length) queue.push(statePatchStep({ players: state._playersBeforeThisDraw }));

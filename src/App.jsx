@@ -195,6 +195,8 @@ import {
   buildCthRestDrawFinishedState,
   getTurnStartDrawnCard,
   getTurnStartDrawerIdx,
+  buildUnconsumedTurnBannerStep,
+  buildZhuHideReplacementDrawQueue,
   shouldReplaySinglePlayerAiTurnStart,
   buildSinglePlayerAiTurnStartReplayContext,
   createTimedOutDrawDiscardEvent,
@@ -2247,11 +2249,14 @@ export default function Game(){
     if(!gs||gs.phase!=='ZHU_HIDE_AI_DRAW'||gs.gameOver||anim||animExiting||showTutorial||softGuidePauseActive)return;
     if(gs.abilityData?.zhuIntroShown)return;
     if(!(gs._turnStartLogs||[]).length)return;
+    // zhuIntroShown only gates the modal. The event-consumption registry owns
+    // whether this logical turn's banner still needs presentation.
+    const turnBannerStep=buildUnconsumedTurnBannerStep(gs,consumedVisualEventIdsRef.current);
     setGs(prev=>{
       if(!prev||prev.phase!=='ZHU_HIDE_AI_DRAW')return prev;
       return {...prev,abilityData:{...prev.abilityData,zhuIntroShown:true}};
     });
-    triggerAnimQueue([{type:'YOUR_TURN',name:gs.players[gs.currentTurn]?.name||'???',msgs:gs._turnStartLogs}],null,undefined,AUTHORITATIVE_QUEUE_META);
+    if(turnBannerStep)triggerAnimQueue([turnBannerStep],null,undefined,AUTHORITATIVE_QUEUE_META);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[gs?.phase,gs?.abilityData?.zhuIntroShown,gs?._turnKey,anim,animExiting,showTutorial,softGuidePauseActive]);
 
@@ -5436,10 +5441,16 @@ export default function Game(){
       _statLogs:[],
       ...(win?{gameOver:win}:{}),
     };
-    const drawQueue=[];
-    if(gs._playersBeforeThisDraw&&!gs.abilityData?.zhuIntroShown)drawQueue.push({type:'YOUR_TURN',name:gs.players[gs.currentTurn]?.name||'???',msgs:gs._turnStartLogs});
-    if(hide)drawQueue.push(zhuHideCardStep(card));
-    if(res.drawnCard)drawQueue.push({type:'DRAW_CARD',card:res.drawnCard,triggerName:localDisplayName(drawerIdx,P[drawerIdx]?.name),targetPid:drawerIdx,msgs:split.preStat});
+    const drawQueue=buildZhuHideReplacementDrawQueue({
+      state:gs,
+      consumedVisualEventIds:consumedVisualEventIdsRef.current,
+      hide,
+      hiddenCard:card,
+      drawnCard:res.drawnCard,
+      drawerIdx,
+      drawerName:P[drawerIdx]?.name,
+      drawMsgs:split.preStat,
+    });
     const statQ=bindAnimLogChunks(
       buildAnimQueue({...gs,players:beforeDrawPlayers,log:gs.log},{...newGs,players:P,log:L}),
       {statLogs:split.stat}

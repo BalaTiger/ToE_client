@@ -5,6 +5,8 @@ import {
   buildSkippedTurnReplayQueue,
   buildTsathogguaSlimeGrantQueue,
   buildTurnStartDrawReplayQueue,
+  buildUnconsumedTurnBannerStep,
+  buildZhuHideReplacementDrawQueue,
   TURN_START_ANIMATION_STAGE,
   shouldReplaySinglePlayerAiTurnStart,
   withClearedReplayAnimFields,
@@ -13,7 +15,7 @@ import { startNextTurn } from '../turnEngine';
 import { ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
 import { applyFx } from '../effectEngine';
 import { applyStatEventsToDisplayStats, primeDisplayStatsForStatQueue } from '../statEvents';
-import { buildFreshStatVisualEvents, createGodPowerBlockedEvent, createGodStatusChangedEvent, createSphinxResultEvent, createTsathogguaSlimeGrantEvent, createTurnDrawVisualEvents, VISUAL_EVENT } from '../visualEvents';
+import { buildFreshStatVisualEvents, buildTurnStartDrawVisualEvents, createGodPowerBlockedEvent, createGodStatusChangedEvent, createSphinxResultEvent, createTsathogguaSlimeGrantEvent, createTurnDrawVisualEvents, getTurnBannerVisualEventId, VISUAL_EVENT } from '../visualEvents';
 import { buildAnimQueue } from '../animQueueCore';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
@@ -66,6 +68,79 @@ describe('withClearedReplayAnimFields', () => {
     expect(buildAnimQueue(replayBaseline, next).some(step => (
       step.type === 'DICE_ROLL' && step.diceMode === 'apophisNight'
     ))).toBe(false);
+  });
+});
+
+describe('烛九阴藏牌续抽的回合横幅所有权', () => {
+  function makeZhuContinuationState() {
+    const players = [
+      makePlayer({ name: '你', godName: 'ZHU', godLevel: 3 }),
+      makePlayer({ name: '艾伦' }),
+      makePlayer({ name: '卡洛斯', godName: 'TSG', godLevel: 1 }),
+    ];
+    const base = makeGs({
+      players,
+      currentTurn: 2,
+      _turnKey: 37,
+      _turnStartLogs: ['── 卡洛斯 的回合开始 ──'],
+      _playersBeforeThisDraw: players,
+      phase: 'ZHU_HIDE_AI_DRAW',
+    });
+    return { ...base, _visualEvents: buildTurnStartDrawVisualEvents(base) };
+  }
+
+  it('同一 _turnKey 重建状态时使用相同的横幅事件 ID', () => {
+    const state = makeZhuContinuationState();
+    const first = buildUnconsumedTurnBannerStep(state, new Set());
+    const rebuilt = buildUnconsumedTurnBannerStep({ ...state, abilityData: {} }, new Set());
+
+    expect(first.visualEventId).toBe(getTurnBannerVisualEventId(state));
+    expect(rebuilt.visualEventId).toBe(first.visualEventId);
+  });
+
+  it('选择不藏时只播放弗栗多翻牌，不重播回合横幅', () => {
+    const state = makeZhuContinuationState();
+    const vritra = { ...makeGodCard('VRI'), id: 'lit-vritra' };
+    const consumed = new Set([getTurnBannerVisualEventId(state)]);
+
+    const queue = buildZhuHideReplacementDrawQueue({
+      state,
+      consumedVisualEventIds: consumed,
+      hide: false,
+      hiddenCard: vritra,
+      drawnCard: vritra,
+      drawerIdx: 2,
+      drawerName: '卡洛斯',
+      drawMsgs: ['卡洛斯 遭遇邪神 弗栗多！'],
+    });
+
+    expect(queue.map(step => step.type)).toEqual(['DRAW_CARD']);
+    expect(queue[0]).toMatchObject({ card: vritra, targetPid: 2, triggerName: '卡洛斯' });
+    expect(queue.some(step => step.type === 'YOUR_TURN')).toBe(false);
+    expect(queue.some(step => step.type === 'ZHU_HIDE_CARD')).toBe(false);
+  });
+
+  it('选择藏牌时先藏弗栗多再播放替代牌，不重播回合横幅', () => {
+    const state = makeZhuContinuationState();
+    const vritra = { ...makeGodCard('VRI'), id: 'lit-vritra' };
+    const replacement = { ...makeZoneCard('A1'), id: 'replacement-card' };
+    const consumed = new Set([getTurnBannerVisualEventId(state)]);
+
+    const queue = buildZhuHideReplacementDrawQueue({
+      state,
+      consumedVisualEventIds: consumed,
+      hide: true,
+      hiddenCard: vritra,
+      drawnCard: replacement,
+      drawerIdx: 2,
+      drawerName: '卡洛斯',
+      drawMsgs: ['卡洛斯 摸到替代牌'],
+    });
+
+    expect(queue.map(step => step.type)).toEqual(['ZHU_HIDE_CARD', 'DRAW_CARD']);
+    expect(queue[0]).toMatchObject({ card: vritra });
+    expect(queue[1]).toMatchObject({ card: replacement, targetPid: 2, triggerName: '卡洛斯' });
+    expect(queue.some(step => step.type === 'YOUR_TURN')).toBe(false);
   });
 });
 

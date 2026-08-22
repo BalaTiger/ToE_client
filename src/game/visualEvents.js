@@ -111,9 +111,19 @@ export function createGodGiftDiscardEvent({ card, drawerIdx = 0, drawerName = '�
   }, 'turn');
 }
 
-function createTurnStartEvent({ playerIdx = 0, playerName = '该玩家', msgs = [] } = {}) {
+export function getTurnBannerVisualEventId(state = {}) {
+  // A continuation may rebuild abilityData and prune the consumed TURN_START
+  // payload. Keep the identity tied to the logical turn, not to a state diff or
+  // to the lifetime of a particular decision object.
+  const turnKey = state?._turnKey ?? state?.turn ?? 'unknown';
+  const playerIdx = state?.currentTurn ?? 0;
+  return `${VISUAL_EVENT.TURN_START}:turn-${String(turnKey)}:player-${playerIdx}`;
+}
+
+function createTurnStartEvent({ id = null, playerIdx = 0, playerName = '该玩家', msgs = [] } = {}) {
   return withVisualEventMeta({
     type: VISUAL_EVENT.TURN_START,
+    ...(id ? { id } : {}),
     turnStartStage: 'turnBanner',
     turnStartStageOrder: 0,
     playerIdx,
@@ -984,6 +994,7 @@ export function buildTurnStartDrawVisualEvents(state) {
   const events = [];
   if (Array.isArray(state._turnStartLogs) && state._turnStartLogs.length) {
     events.push(createTurnStartEvent({
+      id: getTurnBannerVisualEventId(state),
       playerIdx: state.currentTurn ?? 0,
       playerName: state.players?.[state.currentTurn]?.name || '该玩家',
       msgs: state._turnStartLogs,
@@ -1295,6 +1306,8 @@ export function buildTurnStartStepFromVisualEvents(state) {
   const playerName = event.playerName || state?.players?.[playerIdx]?.name || '???';
   return {
     type: 'YOUR_TURN',
+    visualEventId: event.id,
+    turnStartStage: event.turnStartStage || 'turnBanner',
     name: localDisplayName(playerIdx, playerName),
     msgs: Array.isArray(event.msgs) ? event.msgs : [],
   };
