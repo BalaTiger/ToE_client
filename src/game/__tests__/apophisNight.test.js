@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { getApophisNightForLevel, resolveApophisTarget } from '../apophisNight';
-import { buildAnimQueue } from '../animQueueCore';
-import { compileRuleVisualEventsToAnimTransaction } from '../visualEventTransactionCompiler';
+import { compileFreshVisualEventQueue as buildAnimQueue, compileRuleVisualEventsToAnimTransaction } from '../visualEventTransactionCompiler';
 import { createHuntTargetEvent } from '../visualEvents';
 import { makeGs, makeStandardPlayers } from './factory';
 

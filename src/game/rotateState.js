@@ -303,16 +303,6 @@ function rotateEndlessCorridorReplayVisualEvent(event, rotateIndex, myIndex) {
   };
 }
 
-function rotateBewitchEncounterState(state, rotateIndex, myIndex) {
-  if (!state) return state;
-  return {
-    ...state,
-    currentTurn: state.currentTurn != null ? rotateIndex(state.currentTurn) : state.currentTurn,
-    players: rotatePlayersArray(state.players, myIndex),
-    _statEvents: rotateStatEvents(state._statEvents, rotateIndex, myIndex),
-  };
-}
-
 function rotateFaithExitTransition(transition, rotateIndex, myIndex) {
   if (!transition) return transition;
   return {
@@ -393,9 +383,12 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
         ...event,
         sourceIdx: event.sourceIdx != null ? rotateIndex(event.sourceIdx) : event.sourceIdx,
         targetIdx: event.targetIdx != null ? rotateIndex(event.targetIdx) : event.targetIdx,
-        ...(event?.type === 'bewitchGift' && event.encounterState
-          ? { encounterState: rotateBewitchEncounterState(event.encounterState, rotateIndex, myIndex) }
-          : {}),
+        ...(event?.type === 'bewitchGift' ? {
+          playersBefore: rotatePlayersArray(event.playersBefore, myIndex),
+          playersAfter: rotatePlayersArray(event.playersAfter, myIndex),
+          statEvents: rotateStatEvents(event.statEvents, rotateIndex, myIndex),
+          settlementEvents: rotateVisualEvents(event.settlementEvents, rotateIndex, myIndex),
+        } : {}),
         ...(event?.type === 'swapCards' && Array.isArray(event.beforePlayers)
           ? { beforePlayers: rotatePlayersArray(event.beforePlayers, myIndex) }
           : {}),
@@ -455,13 +448,8 @@ export function rotateGsForViewer(gs, myIndex) {
   const zhuLight = rotateZhuLightForViewer(gs.zhuLight, rotateIndex);
   const abilityData = rotateAbilityDataForViewer(gs.abilityData || {}, rotateIndex, myIndex);
   const rotatedSnapshots = rotatePlayerSnapshotFields(rotatedTopLevel, ROTATE_GS_PLAYER_SNAPSHOT_FIELDS, myIndex);
-  const canonicalSnapshots = { ...rotatedSnapshots };
-  delete canonicalSnapshots._inspectionEvents;
-  delete canonicalSnapshots._randomTargetEvents;
-  delete canonicalSnapshots._turnDrawEvents;
-  delete canonicalSnapshots._tsgSlimeGrantEvents;
   return {
-    ...canonicalSnapshots,
+    ...rotatedSnapshots,
     players,
     gameOver,
     abilityData,

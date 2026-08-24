@@ -27,7 +27,7 @@ import { submitRecoveryEvents } from './statChangeEngine';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { makeProliferatingZState } from './proliferatingZ';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
-import { VISUAL_EVENT, createCardEffectEvent, createEarthquakeEvent, createGraveDigEvent, createInspectionVisualEvent, createRandomTargetVisualEvent, createSphinxResultEvent, createThrowStoneEvent } from './visualEvents';
+import { VISUAL_EVENT, createCardEffectEvent, createDiceResultVisualEvent, createEarthquakeEvent, createGraveDigEvent, createInspectionVisualEvent, createRandomTargetVisualEvent, createSphinxResultEvent, createStatEventsEvent, createThrowStoneEvent, createVritraImmortalRevealEvent } from './visualEvents';
 import { createGeomagneticRestoreCard } from '../constants/card';
 import {
   addTurnScopedDamageBonus,
@@ -53,6 +53,26 @@ function settleLethalHpDamage(P, i, Disc, L, currentTurn, D) {
   if (currentTurn != null && D != null && tryVritraImmortal(P, i, currentTurn, D, Disc, L)) return false;
   killPlayerState(P, i, Disc, L);
   return true;
+}
+
+function takeVritraImmortalRevealEvents(players = []) {
+  return (players || []).flatMap(player => {
+    const payload = player?._vritraImmortalReveal;
+    if (!payload) return [];
+    delete player._vritraImmortalReveal;
+    const event = createVritraImmortalRevealEvent(payload);
+    return event ? [event] : [];
+  });
+}
+
+function attachVritraRevealsToStatEvents(statEvents = [], revealEvents = []) {
+  const pendingByTarget = new Map((revealEvents || []).map(event => [event?.targetIdx, event]));
+  return (statEvents || []).map(event => {
+    const reveal = pendingByTarget.get(event?.target);
+    if (!reveal || event?.type !== 'HP_LOSS') return event;
+    pendingByTarget.delete(event.target);
+    return { ...event, vritraImmortalReveal: reveal };
+  });
 }
 
 export function applyHpDamageWithLink(P, i, amount, Disc, L, currentTurn, D) {
@@ -276,12 +296,14 @@ export function submitLossEvents({
   const eventLogs = Array.isArray(statEventLogs) && statEventLogs.length
     ? statEventLogs
     : normalized.map(event => event.logHint).filter(Boolean);
-  const statEvents = buildStatEvents(beforePlayers, P, eventLogs, {
+  let statEvents = buildStatEvents(beforePlayers, P, eventLogs, {
     reason: statEventReason || sourceNames.join(' / ') || '属性扣减',
     ...(statEventSeq != null ? { seq: statEventSeq } : {}),
     discardBefore: beforeDiscard,
     discardAfter: Disc,
   });
+  const vritraVisualEvents = takeVritraImmortalRevealEvents(P);
+  statEvents = attachVritraRevealsToStatEvents(statEvents, vritraVisualEvents);
   return {
     players: P,
     deck: D,
@@ -574,7 +596,10 @@ function handleInspection(playerIndex, gs) {
     afterPlayers,
     afterLog: [...finalLog],
     afterDiscard,
+    revealMsgs: finalLog.slice(beforeLogLen, beforeLogLen + 1),
+    effectMsgs: finalLog.slice(beforeLogLen + 1),
     statEvents,
+    visualEvents: [],
     statEventSeq: statEvents.length ? statEventSeq : null,
     ...(inspectionDiscardEvents.length ? { discardEvents: inspectionDiscardEvents } : {}),
     ...(gainedCard ? { gainedCard, gainedCardLog } : {}),
@@ -853,7 +878,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       linkEtherealizeDecision = reaction.etherealizeDecision || null;
     }
     const statEventSeq = (gs?._statEventSeq || 0) + 1;
-    const statEvents = explicitStatEvents || buildStatEvents(beforePlayers, result.P || P, result.msgs || msgs, {
+    let statEvents = explicitStatEvents || buildStatEvents(beforePlayers, result.P || P, result.msgs || msgs, {
       reason: card?.name || card?.type || '',
       seq: statEventSeq,
       discardBefore: initialDiscard,
@@ -861,6 +886,8 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       defeatPlayersBefore: beforeDamageSettlementPlayers,
       defeatDiscardBefore: beforeDamageSettlementDiscard,
     });
+    const vritraVisualEvents = takeVritraImmortalRevealEvents(result.P || P);
+    statEvents = attachVritraRevealsToStatEvents(statEvents, vritraVisualEvents);
     const patchedStatEvents = Array.isArray(result.statePatch?._statEvents)
       ? result.statePatch._statEvents
       : [];
@@ -887,14 +914,29 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     const slimeDecision = etherealizeDecision || statePatch?.abilityData?.type
       ? null
       : buildTsathogguaSlimeBalanceDecision(beforePlayers, result.P || P, { _turnOwner: gs?.currentTurn ?? ci });
-    const ownedVisualEvents = (result.statePatch?._visualEvents || []).map(event => (
-      event?.type === VISUAL_EVENT.CARD_EFFECT && event?.effectKey === 'forcedRandomDiscard'
-        ? { ...event, statEvents }
-        : event
-    ));
+    const ownedVisualEvents = (result.statePatch?._visualEvents || []).map(event => {
+      if (event?.type === VISUAL_EVENT.CARD_EFFECT && event?.effectKey === 'forcedRandomDiscard') {
+        return { ...event, statEvents };
+      }
+      if (event?.type === VISUAL_EVENT.SPHINX_RESULT) {
+        return {
+          ...event,
+          statEvents: statEvents.filter(statEvent => statEvent?.target === event.actorIdx),
+        };
+      }
+      return event;
+    });
+    const statVisualEvent = createStatEventsEvent({
+      statEvents,
+      msgs: result.msgs || msgs,
+    });
+    const canonicalVisualEvents = [
+      ...ownedVisualEvents,
+      ...(statVisualEvent ? [statVisualEvent] : []),
+    ];
     const nextStatePatch = {
       ...(result.statePatch || {}),
-      ...(ownedVisualEvents.length ? { _visualEvents: ownedVisualEvents } : {}),
+      ...(canonicalVisualEvents.length ? { _visualEvents: canonicalVisualEvents } : {}),
       ...(etherealizeDecision ? { abilityData: etherealizeDecision } : {}),
       ...(slimeDecision ? { abilityData: slimeDecision } : {}),
       ...(mergedStatEvents.length ? { _statEvents: mergedStatEvents, _statEventSeq: mergedStatEventSeq } : {}),
@@ -2295,6 +2337,21 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         } else {
           msgs.push(`【霉变食物】${actor.name} 掷出 ${d1} 点（单数），负面效果已规避`);
         }
+      }
+      const diceEvent = createDiceResultVisualEvent({
+        mode: 'moldyFood',
+        actorIdx: ci,
+        actorName: actor.name,
+        d1,
+        d2: 0,
+        negativeAvoided,
+        msgs: msgs.slice(-1),
+      });
+      if (diceEvent) {
+        statePatch = {
+          ...statePatch,
+          _visualEvents: [...(statePatch._visualEvents || []), diceEvent],
+        };
       }
     },
     albinoCreature: () => {

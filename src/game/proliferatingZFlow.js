@@ -3,6 +3,7 @@ import {
   buildZhuRevealAbilityData,
   requestZhuReveal,
 } from './zhuPower';
+import { compileFreshVisualEventReplay } from './visualEventTransactionCompiler';
 
 export function buildProliferatingZDrawFlow(stateLike, deps) {
   const {
@@ -14,9 +15,6 @@ export function buildProliferatingZDrawFlow(stateLike, deps) {
     drawCardDecisionText,
     hasEffectDecisionState,
     deriveEffectDecisionState,
-    splitAnimBoundLogs,
-    bindAnimLogChunks,
-    buildAnimQueue,
     statePatchStep,
   } = deps;
 
@@ -157,11 +155,7 @@ export function buildProliferatingZDrawFlow(stateLike, deps) {
     };
   }
 
-  const split = splitAnimBoundLogs(log.slice((stateLike.log || []).length));
-  const statQueue = bindAnimLogChunks(
-    buildAnimQueue(stateLike, newGs),
-    { preStatLogs: split.preStat, statLogs: split.stat }
-  );
+  const statQueue = compileFreshVisualEventReplay(stateLike, newGs).queue;
   return {
     handled: true,
     action: 'triggerQueueAndContinue',

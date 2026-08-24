@@ -1,9 +1,7 @@
 import { copyPlayers, splitHandDiscardCards } from './coreUtils';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { applyHpDamageWithLink, submitLossEvents } from './effectEngine';
-import { buildStatEvents } from './statEvents';
-import { buildAnimQueue } from './animQueueCore';
-import { bindAnimLogChunks } from './animLogs';
+import { buildStatEvents, statEventsToAnimQueue } from './statEvents';
 
 export function splitKeptDestroyedDiscarded(discarded = []) {
   return splitHandDiscardCards(discarded);
@@ -65,12 +63,8 @@ export function applyHandDiscardSideEffectsWithAnim({
     statePatch.phase = result.damageDecision.phase;
     statePatch.abilityData = result.damageDecision.abilityData;
   }
-  const afterGs = { ...baseGs, players: result.players, deck: result.deck, discard: result.discard, log: result.log, ...statePatch };
   const queue = statEvents.length
-    ? bindAnimLogChunks(
-        buildAnimQueue({ ...baseGs, players: beforePlayers, deck, discard, log }, afterGs),
-        { statLogs: sideLogs }
-      ).filter(step => step.type !== 'CARD_TRANSFER')
+    ? statEventsToAnimQueue(statEvents, beforePlayers, sideLogs)
     : [];
   return { ...result, statePatch, queue };
 }

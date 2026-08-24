@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { aiStep } from '../aiTurn';
-import { buildAnimQueue } from '../animQueueCore';
+import { compileFreshVisualEventQueue as buildAnimQueue } from '../visualEventTransactionCompiler';
 import { buildBewitchGiftReplay } from '../animReplayEvents';
 import { mergeApophisTargetQueue } from '../apophisAnimQueue';
 import { scopeAiActionReplayMetadata, buildScopedAiActionReplayState } from '../aiTurnPresentation';

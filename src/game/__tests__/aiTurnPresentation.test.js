@@ -27,6 +27,7 @@ import {
   createHuntResultEvent,
   createHuntTargetEvent,
   createInspectionVisualEvent,
+  createStatEventsEvent,
 } from '../visualEvents';
 import { getVisualEventIdsCoveredByAnimationQueue } from '../visualEventTransactionCompiler';
 
@@ -860,21 +861,25 @@ describe('AI turn presentation helpers', () => {
       _statEventSeq: 0,
       _visualEvents: [],
     };
+    const abandonSanEvent = {
+      type: 'SAN_LOSS',
+      target: 0,
+      from: { hp: 10, san: 10, isDead: false },
+      to: { hp: 10, san: 9, isDead: false },
+      seq: 1,
+      reason: '被邪神抛弃',
+    };
     const nextState = {
       ...previousState,
       phase: 'PLAYER_REVEAL_FOR_HUNT',
       players: settledPlayers,
       discard: [oldGod],
       log: [worshipMsg, abandonMsg, huntMsg],
-      _visualEvents: [godStatusEvent],
-      _statEvents: [{
-        type: 'SAN_LOSS',
-        target: 0,
-        from: { hp: 10, san: 10, isDead: false },
-        to: { hp: 10, san: 9, isDead: false },
-        seq: 1,
-        reason: '被邪神抛弃',
-      }],
+      _visualEvents: [
+        godStatusEvent,
+        createStatEventsEvent({ statEvents: [abandonSanEvent], msgs: [abandonMsg] }),
+      ],
+      _statEvents: [abandonSanEvent],
       _statEventSeq: 1,
     };
     const rawResult = {

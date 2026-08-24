@@ -1,8 +1,7 @@
 import { bindAnimLogChunks, subtractLogOccurrences } from './animLogs';
-import { buildAnimQueue } from './animQueueCore';
 import { statePatchStep } from './animQueueHelpers';
 import { cardLogText, copyPlayers } from './coreUtils';
-import { buildStatEvents } from './statEvents';
+import { buildStatEvents, statEventsToAnimQueue } from './statEvents';
 import { buildTurnStartStepFromVisualEvents, getTurnBannerVisualEventId } from './visualEvents';
 import {
   buildTurnStartPreDrawEffectQueue,
@@ -187,21 +186,10 @@ export function buildTurnStartStatQueue(state) {
     { reason: '回合开始', seq: 1, includeDefeat: false },
   );
   if (!statEvents.length) return [];
-  const oldGs = {
-    ...state,
-    players: state._preTurnPlayers,
-    log: [],
-    _statEventSeq: 0,
-    _statEvents: [],
-  };
-  const newGs = {
-    ...state,
-    players: state._playersBeforeThisDraw,
-    log: statLogs,
-    _statEventSeq: 1,
-    _statEvents: statEvents,
-  };
-  const queue = bindAnimLogChunks(buildAnimQueue(oldGs, newGs), { statLogs });
+  const queue = bindAnimLogChunks(
+    statEventsToAnimQueue(statEvents, state._preTurnPlayers, statLogs),
+    { statLogs },
+  );
   if (statLogs.some(line => typeof line === 'string' && line.includes('黑山羊幼仔'))) {
     queue.unshift({ type: 'BLACK_GOAT_PULSE', targetPid: state.currentTurn, msgs: [] });
   }

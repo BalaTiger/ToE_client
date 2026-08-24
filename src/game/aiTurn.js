@@ -46,7 +46,7 @@ import {
   grantTsathogguaSlimeAtEndTurn,
 } from './turnEngine';
 import { withClearedTurnAnimFields } from './turnAnimState';
-import { buildAnimQueue, buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
+import { buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
 import { cardTransferStep, statePatchStep } from './animQueueHelpers';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, isRevealedCultist } from './coreUtils';
 import { createBlackGoatYoungCard } from '../constants/card';
@@ -70,13 +70,18 @@ import {
   buildGodPowerBlockedStepsFromVisualEvents,
   buildTsathogguaSlimeGrantSteps,
   createBewitchGiftEvent,
+  createCardMoveVisualEvent,
+  createOrderedSettlementEvents,
   createApophisEclipseEvent,
   createGodPowerBlockedEvent,
   createGodStatusChangedEvent,
+  createDiceResultVisualEvent,
+  createHandLimitDiscardEvent,
   createHuntTargetEvent,
   createHuntResultEvent,
   createMultiplyVisualEvent,
   createSwapCardsEvent,
+  createStatEventsEvent,
   createTsathogguaSlimeGrantEvent,
 } from './visualEvents';
 import { createRuleResolutionTransaction } from './ruleResolutionTransaction';
@@ -449,7 +454,7 @@ export function discardAiHandToLimit(P, ct, Disc, L, D = [], discardedCards = []
 
 // 逐事件编译：本张牌结算新增的规范视觉事件各自编译为事务步骤（创建顺序即规则
 // 顺序）；未被任何规范事件/已编译步骤认领的属性事件（纯数值结算）按 seq 水位
-// 直接编译。不再对整段 before/after 做 buildAnimQueue 状态差分——差分会跨结算
+// 直接编译。不再对整段 before/after 做状态差分——差分会跨结算
 // 边界捞取后续事件，曾导致死亡广播丢失与上一回合抢播。
 function buildAiEndTurnReplayResolutionQueue({ beforeGs, afterGs }) {
   const previousVisualEventIds = new Set(
@@ -472,7 +477,7 @@ function buildAiEndTurnReplayResolutionQueue({ beforeGs, afterGs }) {
   };
   freshEvents.forEach(event => {
     (Array.isArray(event?.statEvents) ? event.statEvents : []).forEach(claimStatSeq);
-    const transaction = compileVisualEventToAnimTransaction(event, afterGs, beforeGs, { buildAnimQueue });
+    const transaction = compileVisualEventToAnimTransaction(event, afterGs, beforeGs);
     if (transaction?.queue?.length) {
       queue.push(...transaction.queue);
       claimStepStatSeqs(transaction.queue);
@@ -1084,6 +1089,26 @@ export function aiStep(gs, opts = {}) {
       gs=appendStatChangeResult(gs,{statEvents:thornStatEvents,statEventSeq:thornStatEventSeq});
       statEventSeqs.push(thornStatEventSeq);
     }
+    const handLimitDiscardEvent=createHandLimitDiscardEvent({
+      playerIdx:ct,
+      playerName:P[ct]?.name||'该玩家',
+      cards:discardedCards,
+      msgs:L.slice(beforeLog.length,afterDiscardLogLength),
+    });
+    const handLimitStatEvent=createStatEventsEvent({
+      statEvents:[...discardStatEvents,...thornStatEvents],
+      msgs:L.slice(afterDiscardLogLength),
+      transactionId:aiActionTransactionId,
+      order:ownedActionVisualEvents.length+(handLimitDiscardEvent?1:0),
+    });
+    recordActionVisualEvents([
+      handLimitDiscardEvent?{
+        ...handLimitDiscardEvent,
+        transactionId:aiActionTransactionId,
+        order:ownedActionVisualEvents.length,
+      }:null,
+      handLimitStatEvent,
+    ]);
     aiHandLimitPresentation=discardedCards.length?{
       _aiHandLimitDiscards:discardedCards,
       _aiHandLimitBeforePlayers:beforePlayers,
@@ -1146,14 +1171,18 @@ export function aiStep(gs, opts = {}) {
 
   // 提取蛊惑赠予的核心逻辑（主行动路径与强制路径共用）
   const applyBewitchGift = (_gs, _P, _D, _Disc, _L, _ct, _ti, _sc) => {
+    const playersBeforeGift = copyPlayers(_P);
+    const discardBeforeGift = [..._Disc];
+    const zhuLightBeforeGift = _gs?.zhuLight || null;
+    const statEventKeysBeforeGift = new Set((_gs?._statEvents || []).map(event => JSON.stringify(event)));
     const visualEventIdsBeforeGift = new Set(
       (_gs?._visualEvents || []).map(event => event?.id).filter(Boolean),
     );
     let inspectionMeta = makeInspectionMeta(_gs);
+    let encounterEvents = [];
     _P[_ct].hand = _P[_ct].hand.filter(c => c.id !== _sc.id);
     const bewitchMsg = `${_P[_ct].name}（邪祀者）对 ${_P[_ti].name} 【蛊惑】，赠予 ${cardLogText(_sc, { alwaysShowName: true })}`;
     _L.push(bewitchMsg);
-    let encounterState = null;
     let fxResult = null;
     if (_sc.isGod) {
       const encounterProgress = advanceGodEncounter(_P[_ti], _gs);
@@ -1169,17 +1198,15 @@ export function aiStep(gs, opts = {}) {
         inspectionMeta = processed.inspectionMeta;
         _L.splice(0, _L.length, ...processed.L);
       }
-      encounterState = {
-        players: copyPlayers(_P),
-        deck: [..._D],
-        discard: [..._Disc],
-        log: [..._L],
-        currentTurn: _gs.currentTurn,
-        _inspectionSeq: inspectionMeta?._inspectionSeq || 0,
-        _statEvents: [...(inspectionMeta?._statEvents || [])],
-        _statEventSeq: inspectionMeta?._statEventSeq || 0,
-        _visualEvents: [...(inspectionMeta?._visualEvents || _gs?._visualEvents || [])],
-      };
+      const encounterVisualEvents = (inspectionMeta?._visualEvents || []).filter(event => (
+        event && (!event?.id || !visualEventIdsBeforeGift.has(event.id))
+      ));
+      const encounterStatEvents = (inspectionMeta?._statEvents || [])
+        .filter(event => !statEventKeysBeforeGift.has(JSON.stringify(event)));
+      encounterEvents = createOrderedSettlementEvents({
+        events: encounterVisualEvents,
+        statEvents: encounterStatEvents,
+      });
       const godResolveGs = { ..._gs, ...inspectionMeta };
       const shouldDeferShuTarget = _sc.godKey === 'SHU' && _ti === 0 && !opts.allAi;
       const gr = aiHandleGodCard(_ti, _sc, _P, _D, _Disc, _L, godResolveGs, true, true, { deferShuTarget: shouldDeferShuTarget });
@@ -1208,13 +1235,30 @@ export function aiStep(gs, opts = {}) {
       _L.push(...fxResult.msgs);
       _gs = { ..._gs, ...fxResult.statePatch };
     }
+    const encounterEventIds = new Set(encounterEvents.map(event => event?.id).filter(Boolean));
+    const settlementVisualEvents = (_gs?._visualEvents || []).filter(event => (
+      event && (!event?.id || (!visualEventIdsBeforeGift.has(event.id) && !encounterEventIds.has(event.id)))
+    ));
+    const encounterStatKeys = new Set(encounterEvents.flatMap(event => event?.statEvents || []).map(event => JSON.stringify(event)));
+    const settlementStatEvents = (_gs?._statEvents || [])
+      .filter(event => !statEventKeysBeforeGift.has(JSON.stringify(event)) && !encounterStatKeys.has(JSON.stringify(event)));
     const bewitchEvent = createBewitchGiftEvent({
       sourceIdx: _ct,
       targetIdx: _ti,
       targetName: _P[_ti].name,
       card: _sc,
       msgs: [bewitchMsg],
-      encounterState,
+      playersBefore: playersBeforeGift,
+      playersAfter: copyPlayers(_P),
+      discardBefore: discardBeforeGift,
+      discardAfter: [..._Disc],
+      encounterEvents,
+      acceptanceEvents: createOrderedSettlementEvents({
+        events: settlementVisualEvents,
+        statEvents: settlementStatEvents,
+      }),
+      zhuLightBefore: zhuLightBeforeGift,
+      zhuLightAfter: _gs?.zhuLight || null,
     });
     if (bewitchEvent) {
       _gs = { ..._gs, _visualEvents: [bewitchEvent, ...(_gs._visualEvents || [])] };
@@ -1326,12 +1370,25 @@ export function aiStep(gs, opts = {}) {
     const validTargets=abilityData.damageLinkTargets.filter(i=>P[i]&&!P[i].isDead&&i!==ct);
     if(validTargets.length>0){
       const selectedTarget=chooseAiDamageLinkTarget(P,ct,validTargets)??validTargets[0];
+      const playersBeforeDamageLink=copyPlayers(P);
       const targetIdx=applyNightTarget(selectedTarget,validTargets,'选择【两人一绳】目标');
       addDamageLink(P,ct,targetIdx,{expiryOwner:ct});
       L.push(`【两人一绳】${P[ct].name} 与 ${P[targetIdx].name} 间架起链条，一方受到HP伤害时另一方受等量伤害`);
+      const damageLinkEvent=createCardMoveVisualEvent({
+        from:{zone:'playerArea',playerIdx:ct},
+        to:{zone:'hand',playerIdx:targetIdx},
+        count:1,
+        effect:'damageLink',
+        durationMs:1900,
+        playersBefore:playersBeforeDamageLink,
+        playersAfter:P,
+        msgs:[L.at(-1)],
+      });
+      recordActionVisualEvents([damageLinkEvent]);
       const win=checkWin(P,gs._isMP);
-      if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,abilityData:{},phase:'AI_TURN'};
-      return{...gs,players:P,deck:D,discard:Disc,log:L,abilityData:cthRestContinuationAbilityData(abilityData),phase:'AI_TURN'};
+      const visualPatch=getUnifiedReplayVisualEvents(gs);
+      if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,abilityData:{},phase:'AI_TURN',_visualEvents:visualPatch};
+      return{...gs,players:P,deck:D,discard:Disc,log:L,abilityData:cthRestContinuationAbilityData(abilityData),phase:'AI_TURN',_visualEvents:visualPatch};
     }
     return {...gs,players:P,deck:D,discard:Disc,log:L,abilityData:cthRestContinuationAbilityData(abilityData),phase:'AI_TURN'};
   }
@@ -1340,9 +1397,21 @@ export function aiStep(gs, opts = {}) {
     const validTargets=abilityData.roseThornTargets.filter(i=>P[i]&&!P[i].isDead&&i!==ct);
     if(validTargets.length){
       const targetIdx=applyNightTarget(chooseAiRoseThornTarget(P, ct, validTargets),validTargets,'选择【玫瑰倒刺】目标');
+      const playersBeforeRoseThorn=copyPlayers(P);
       const gifted=P[ct].hand.splice(0).map(card=>({...card,roseThornHolderId:targetIdx,roseThornSourceId:ct,roseThornSourceName:P[ct].name}));
       P[targetIdx].hand.push(...gifted);
       L.push(`【玫瑰倒刺】${P[ct].name} 将全部手牌交给了 ${P[targetIdx].name}`);
+      const roseThornEvent=createCardMoveVisualEvent({
+        from:{zone:'hand',playerIdx:ct},
+        to:{zone:'hand',playerIdx:targetIdx},
+        cards:gifted,
+        count:gifted.length,
+        effect:'roseThornGiftAllHand',
+        playersBefore:playersBeforeRoseThorn,
+        playersAfter:P,
+        msgs:[L.at(-1)],
+      });
+      recordActionVisualEvents([roseThornEvent]);
       if(!P[targetIdx].isDead&&P[targetIdx].role===ROLE_TREASURE&&isWinHand(P[targetIdx].hand)){
         P[targetIdx].roleRevealed=true;
         return withClearedTurnAnimFields({
@@ -1354,6 +1423,7 @@ export function aiStep(gs, opts = {}) {
           gameOver:{winner:ROLE_TREASURE,reason:`${P[targetIdx].name} 集齐了全部编号并获胜！`,winnerIdx:targetIdx},
           abilityData:{},
           phase:'AI_TURN',
+          _visualEvents:getUnifiedReplayVisualEvents(gs),
         });
       }
     }
@@ -1365,6 +1435,7 @@ export function aiStep(gs, opts = {}) {
       log:L,
       abilityData:cthRestContinuationAbilityData(abilityData),
       phase:'AI_TURN',
+      _visualEvents:getUnifiedReplayVisualEvents(gs),
     });
   }
   if(P[ct].isDead){
@@ -1599,10 +1670,24 @@ export function aiStep(gs, opts = {}) {
   })();
   if(shouldRest){
     const d1=(1+Math.random()*6|0),d2=(1+Math.random()*6|0),heal=Math.max(d1,d2);
+    const restPlayersBefore=copyPlayers(P);
     const restStatEventSeq=(gs._statEventSeq||0)+1;
     const recovery=submitRecoveryEvents({players:P,events:[{targetIdx:ct,gainHp:heal,source:'休息'}],statEventSeq:restStatEventSeq});
     P[ct].isResting=true;
     L.push(`${ai.name} 选择【休息】，掷骰 ${d1}、${d2}，取高值回复 ${heal}HP，翻面休息中`);
+    const restMsg=L.at(-1);
+    recordActionVisualEvents([
+      createDiceResultVisualEvent({
+        mode:'rest',actorIdx:ct,actorName:ai.name,d1,d2,heal,msgs:[restMsg],
+        playersBefore:restPlayersBefore,
+      }),
+      createStatEventsEvent({
+        statEvents:recovery.statEvents,
+        msgs:[restMsg],
+        transactionId:aiActionTransactionId,
+        order:ownedActionVisualEvents.length+1,
+      }),
+    ]);
     const restMeta=appendStatChangeResult(gs,recovery);
     const restStatPatch=recovery.statEvents.length?{_statEvents:restMeta._statEvents,_statEventSeq:restMeta._statEventSeq}:{};
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,...restStatPatch};

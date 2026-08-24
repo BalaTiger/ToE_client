@@ -60,6 +60,8 @@ export function resolveRestTurnEnd(gs, {
     type: 'rest',
     beforeState: oldGs,
     afterState,
+    statEvents: recovery.statEvents,
+    msgs: [restLog],
     dice: {
       d1,
       d2,

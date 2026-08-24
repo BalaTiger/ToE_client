@@ -1,4 +1,4 @@
-import { buildAnimQueue } from './animQueueCore';
+import { statEventsToAnimQueue } from './statEvents';
 
 /**
  * Compile the rule-layer rest transaction into its presentation queue.
@@ -14,7 +14,10 @@ export function buildRestActionQueue(transaction) {
       type: 'DICE_ROLL',
       ...(transaction.dice || {}),
     },
-    ...buildAnimQueue(transaction.beforeState, transaction.afterState),
+    ...statEventsToAnimQueue(
+      transaction.statEvents || [],
+      transaction.beforeState.players || [],
+      transaction.msgs || [],
+    ),
   ];
 }
-

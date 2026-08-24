@@ -363,7 +363,7 @@ export function useAnimationQueue({
     if (Array.isArray(queue) && queue.some(s => s?.type === 'EARTHQUAKE')) {
       try { console.log('[EQ-DEBUG] playAnimationTransaction received queue =', queue.map(s => s.type), '| hasCallback =', !!callback, '| nextGs.phase =', nextGs?.phase); } catch { /* noop */ }
     }
-    // Bespoke target-action queues do not all originate from buildAnimQueue.
+    // Bespoke target-action queues do not all originate from the visual-event compiler.
     // Normalize at the common playback boundary so the black-night roll is
     // always shown before the selected action's own visual effects.
     const apophisOrderedQueue = nextGs

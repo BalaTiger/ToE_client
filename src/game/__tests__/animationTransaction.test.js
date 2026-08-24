@@ -57,25 +57,17 @@ describe('animation transaction boundary', () => {
     expect(getAnimationTransactionDiagnostics().implicitAuthorityCount).toBe(1);
   });
 
-  it('records the explicitly retained uncovered-event compatibility path', () => {
-    const transaction = prepareAnimationTransaction({
+  it('rejects removed merge authority before playback', () => {
+    expect(() => prepareAnimationTransaction({
       queue: [{ type: 'DRAW_CARD' }],
       nextState: { players: [], _visualEvents: [] },
       transactionMeta: {
-        authority: ANIMATION_QUEUE_AUTHORITY.LEGACY_MERGE,
+        authority: 'legacyMerge',
         compileEventIds: ['future-event'],
         visualEventScope: 'action',
       },
-      buildAnimQueue: () => [],
-      context: 'test:legacy-compat',
-    });
-
-    expect(transaction.authority).toBe(ANIMATION_QUEUE_AUTHORITY.QUEUE);
-    expect(getAnimationTransactionDiagnostics()).toMatchObject({
-      implicitAuthorityCount: 0,
-      uncoveredEventCount: 1,
-      recompiledEventCount: 0,
-    });
+      context: 'test:removed-merge',
+    })).toThrow('unsupported authority legacyMerge');
   });
 
   it('validates strict transaction input', () => {

@@ -3,12 +3,15 @@ import {
   createCardEffectEvent,
   createCardMoveVisualEvent,
   createCardRevealVisualEvent,
+  createBewitchGiftEvent,
   createDiceResultVisualEvent,
   createGodPowerBlockedEvent,
   createGodStatusChangedEvent,
   createSwapCardsEvent,
   createApophisTargetVisualEvent,
   createInspectionVisualEvent,
+  createSphinxResultEvent,
+  createStatEventsEvent,
   createThrowStoneEvent,
   createHandLimitDiscardEvent,
   createHuntResultEvent,
@@ -21,24 +24,58 @@ import {
   buildFreshStatVisualEvents,
   buildTurnStartDrawVisualEvents,
   getVisualEvents,
-  ensureVisualEventState,
-  promoteLegacyVisualEvents,
   pruneConsumedVisualEvents,
 } from '../visualEvents';
 import {
   ANIMATION_QUEUE_AUTHORITY,
+  compileFreshVisualEventReplay,
   compileRuleVisualEventsToAnimTransaction,
   compileVisualEventToAnimSteps,
+  compileVisualEventToAnimTransaction,
   getAnimationQueueVisualEventIds,
   getVisualEventIdsCoveredByAnimationQueue,
-  mergeAnimationTransactionQueue,
   validateVisualEventTransaction,
 } from '../visualEventTransactionCompiler';
 import { prepareAnimationQueueSteps } from '../animationStepSchema';
 
+const selectTransactionQueue = (queue, transaction, options = {}) => (
+  options.authority === ANIMATION_QUEUE_AUTHORITY.QUEUE
+    ? queue
+    : (transaction?.queue || queue)
+);
+
 const player = (name, patch = {}) => ({ name, hp: 10, san: 10, hand: [], ...patch });
 
 describe('visualEventTransactionCompiler', () => {
+  it('compiles non-inspection settlements from canonical events without snapshot fallback', () => {
+    const beforePlayers = [player('你', { san: 10 })];
+    const afterPlayers = [player('你', { san: 8 })];
+    const statEvent = createStatEventsEvent({
+      statEvents: [{
+        seq: 1,
+        type: 'SAN_LOSS',
+        target: 0,
+        from: { hp: 10, san: 10, isDead: false },
+        to: { hp: 10, san: 8, isDead: false },
+      }],
+      msgs: ['你 失去 2 SAN'],
+    });
+    const replay = compileFreshVisualEventReplay(
+      { players: beforePlayers, _visualEvents: [] },
+      { players: afterPlayers, _visualEvents: [statEvent] },
+    );
+    const snapshotOnlyReplay = compileFreshVisualEventReplay(
+      { players: beforePlayers, _visualEvents: [] },
+      { players: afterPlayers, _visualEvents: [] },
+    );
+
+    expect(replay.inspectionEvents).toEqual([]);
+    expect(replay.queue).toEqual([
+      expect.objectContaining({ type: 'SAN_DAMAGE', hitIndices: [0], visualEventId: statEvent.id }),
+    ]);
+    expect(snapshotOnlyReplay.queue).toEqual([]);
+  });
+
   it('keeps terminal turn-start and draw facts as canonical events', () => {
     const card = { id: 'terminal-draw', name: '撒托古亚', isGod: true };
     const state = {
@@ -203,11 +240,14 @@ describe('visualEventTransactionCompiler', () => {
   it('queue authority consumes only the stat event covered by an endless-corridor replay step', () => {
     const staleStat = { seq: 4, type: 'SAN_LOSS', target: 0, from: { san: 9 }, to: { san: 8 } };
     const corridorStat = { seq: 5, type: 'SAN_LOSS', target: 0, from: { san: 8 }, to: { san: 7 } };
+    const staleStatEvent = createStatEventsEvent({ statEvents: [staleStat] });
+    const corridorStatEvent = createStatEventsEvent({ statEvents: [corridorStat] });
     const state = {
       players: [player('卡洛斯', { san: 7 })],
       _statEvents: [staleStat, corridorStat],
       _statEventSeq: 5,
       _statLogs: ['卡洛斯 遭遇邪神 伏行之混沌！（第1次）失去 1 SAN'],
+      _visualEvents: [staleStatEvent, corridorStatEvent],
     };
     const queue = [
       { type: 'DRAW_CARD', card: { name: '伏行之混沌' }, triggerName: '无尽通道' },
@@ -215,9 +255,9 @@ describe('visualEventTransactionCompiler', () => {
     ];
 
     expect(getVisualEventIdsCoveredByAnimationQueue(state, queue)).toEqual([
-      'legacy:statEvents:5',
+      corridorStatEvent.id,
     ]);
-    expect(mergeAnimationTransactionQueue(queue, null, {
+    expect(selectTransactionQueue(queue, null, {
       authority: ANIMATION_QUEUE_AUTHORITY.QUEUE,
     }).map(step => step.type)).toEqual(['DRAW_CARD', 'SAN_DAMAGE']);
   });
@@ -249,7 +289,7 @@ describe('visualEventTransactionCompiler', () => {
       ...buildTsathogguaSlimeGrantSteps(grant, nextTurnState),
       { type: 'YOUR_TURN', name: '下一名AI' },
     ];
-    const merged = mergeAnimationTransactionQueue(legacyQueue, transaction);
+    const merged = selectTransactionQueue(legacyQueue, transaction);
     const types = merged.map(step => step.type);
 
     expect(transaction.queue.map(step => step.type)).toEqual([
@@ -575,7 +615,7 @@ describe('visualEventTransactionCompiler', () => {
     const nextTurn = compileRuleVisualEventsToAnimTransaction(state, null, {
       visualEventScope: 'turnStart',
     });
-    const mergedCurrentQueue = mergeAnimationTransactionQueue([
+    const mergedCurrentQueue = selectTransactionQueue([
       { type: 'SKILL_SWAP', sourceIdx: 1, targetIdx: 2 },
     ], currentAction);
 
@@ -714,28 +754,12 @@ describe('visualEventTransactionCompiler', () => {
     expect(steps.find(step => step.type === 'DRAW_CARD')).toMatchObject({ inspectionSeq: 3 });
   });
 
-  it('does not promote removed inspection compatibility metadata', () => {
-    const card = { id: 'legacy-card', name: '旧检定牌' };
-    const state = {
-      _turnKey: 4,
-      _statEventSeq: 3,
-      _statEvents: [{ type: 'HP_LOSS', target: 1, seq: 3 }],
-      _inspectionEvents: [{ seq: 2, target: 1, card }],
-      _animSphinxReveal: { actorIdx: 1, card, guessCorrect: true },
-    };
-
-    const first = promoteLegacyVisualEvents(state);
-    const second = promoteLegacyVisualEvents(state);
-    expect(first.map(event => event.type)).toEqual(['statEvents', 'sphinxResult']);
-    expect(second.map(event => event.id)).toEqual(first.map(event => event.id));
-  });
-
   it('merges canonical transactions without duplicating equivalent legacy steps', () => {
     const transaction = {
       eventIds: ['event-1'],
       queue: [{ type: 'DICE_ROLL', diceMode: 'throwStone', d1: 4, rollerName: '你', visualEventId: 'event-1' }],
     };
-    const merged = mergeAnimationTransactionQueue(
+    const merged = selectTransactionQueue(
       [{ type: 'DICE_ROLL', diceMode: 'throwStone', d1: 4, rollerName: '你' }],
       transaction,
     );
@@ -765,7 +789,7 @@ describe('visualEventTransactionCompiler', () => {
       queue: [faithHighlight, encounterSan],
     };
 
-    const result = mergeAnimationTransactionQueue(stagedQueue, conflictingRecompile, {
+    const result = selectTransactionQueue(stagedQueue, conflictingRecompile, {
       authority: ANIMATION_QUEUE_AUTHORITY.QUEUE,
     });
 
@@ -779,19 +803,20 @@ describe('visualEventTransactionCompiler', () => {
     expect(result[3].visualSetupPatch.players[1].godName).toBeUndefined();
   });
 
-  it('replaces inferred albino-creature stat effects with one canonical HP/SAN pair', () => {
+  it('uses canonical albino-creature stat effects and discards the non-authoritative queue', () => {
     const before = [player('你'), player('艾伦'), player('贝拉')];
     const after = [before[0], before[1], player('贝拉', { hp: 8, san: 8 })];
     const statEvents = [
       { type: 'HP_LOSS', target: 2, from: { hp: 10, san: 10 }, to: { hp: 8, san: 8 }, reason: '白化生物', seq: 1 },
       { type: 'SAN_LOSS', target: 2, from: { hp: 10, san: 10 }, to: { hp: 8, san: 8 }, reason: '白化生物', seq: 1 },
     ];
-    const state = ensureVisualEventState({
+    const state = {
       players: after,
       phase: 'ACTION',
       _statEventSeq: 1,
       _statEvents: statEvents,
-    });
+      _visualEvents: [createStatEventsEvent({ statEvents })],
+    };
     const transaction = compileRuleVisualEventsToAnimTransaction(state);
     const legacyQueue = [
       { type: 'HUNT_REVEAL_CARD', targetPid: 0, card: { id: 'fire-card', name: '活火山' } },
@@ -799,17 +824,17 @@ describe('visualEventTransactionCompiler', () => {
       { type: 'SAN_DAMAGE', hitIndices: [2], targetStats: after.map(({ hp, san }) => ({ hp, san })) },
     ];
     const prepared = prepareAnimationQueueSteps(
-      mergeAnimationTransactionQueue(legacyQueue, transaction),
+      selectTransactionQueue(legacyQueue, transaction),
     ).steps;
 
-    expect(prepared.map(step => step.type)).toEqual(['HUNT_REVEAL_CARD', 'HP_DAMAGE', 'SAN_DAMAGE']);
+    expect(prepared.map(step => step.type)).toEqual(['HP_DAMAGE', 'SAN_DAMAGE']);
     expect(prepared.filter(step => step.type === 'HP_DAMAGE')).toHaveLength(1);
     expect(prepared.filter(step => step.type === 'SAN_DAMAGE')).toHaveLength(1);
     expect(prepared.filter(step => step.type === 'HP_DAMAGE')[0].statEvents).toEqual([statEvents[0]]);
     expect(prepared.filter(step => step.type === 'SAN_DAMAGE')[0].statEvents).toEqual([statEvents[1]]);
   });
 
-  it('restores a canonical event as one ordered block when legacy inference interleaves it', () => {
+  it('uses the canonical event block without retaining steps from the other authority', () => {
     const transaction = {
       id: 'stone-event',
       eventIds: ['stone-event'],
@@ -819,17 +844,17 @@ describe('visualEventTransactionCompiler', () => {
         { type: 'THROW_STONE', sourceIdx: 0, targetIdx: 1, visualEventId: 'stone-event' },
       ],
     };
-    const merged = mergeAnimationTransactionQueue([
+    const merged = selectTransactionQueue([
       transaction.queue[0],
       { type: 'PAUSE', durationMs: 100 },
       transaction.queue[2],
       transaction.queue[1],
     ], transaction);
 
-    expect(merged.map(step => step.type)).toEqual(['DICE_ROLL', 'RANDOM_TARGET', 'THROW_STONE', 'PAUSE']);
+    expect(merged.map(step => step.type)).toEqual(['DICE_ROLL', 'RANDOM_TARGET', 'THROW_STONE']);
   });
 
-  it('does not anchor an action transaction to an unrelated unbound state patch', () => {
+  it('does not retain unrelated steps when the event transaction is authoritative', () => {
     const transaction = {
       id: 'hunt-result',
       eventIds: ['hunt-result'],
@@ -839,22 +864,16 @@ describe('visualEventTransactionCompiler', () => {
       ],
     };
     const drawPatch = { type: 'STATE_PATCH', players: [player('你'), player('贝拉')] };
-    const merged = mergeAnimationTransactionQueue([
+    const merged = selectTransactionQueue([
       { type: 'DRAW_CARD', card: { id: 'underground-sky', name: '地底天空' }, targetPid: 1 },
       drawPatch,
       { type: 'DICE_ROLL', diceMode: 'apophisNight', d1: 1, rollerName: '贝拉' },
       { type: 'SKILL_HUNT', targetIdx: 2 },
     ], transaction);
 
-    expect(merged.indexOf(drawPatch)).toBeLessThan(
-      merged.findIndex(step => step.type === 'DICE_ROLL')
-    );
     expect(merged.map(step => step.type)).toEqual([
-      'DRAW_CARD',
-      'STATE_PATCH',
       'DICE_ROLL',
       'STATE_PATCH',
-      'SKILL_HUNT',
     ]);
   });
 
@@ -923,5 +942,66 @@ describe('visualEventTransactionCompiler', () => {
         dependencyId: targetEvent.id,
       }),
     ]));
+  });
+
+  it('compiles a wrong Sphinx guess entirely from its payload', () => {
+    const before = [player('你', { hp: 10 })];
+    const after = [player('你', { hp: 7 })];
+    const event = createSphinxResultEvent({
+      actorIdx: 0,
+      card: { id: 'sphinx-reveal', name: '错误答案' },
+      sourceCard: { id: 'sphinx', name: '斯芬克斯' },
+      guessCorrect: false,
+      playersBefore: before,
+      playersAfter: after,
+      statEvents: [{
+        type: 'HP_LOSS', target: 0,
+        from: { hp: 10, san: 10 }, to: { hp: 7, san: 10 },
+        reason: '斯芬克斯', seq: 1,
+      }],
+    });
+
+    const queue = compileVisualEventToAnimSteps(event, { players: after }, { players: before });
+
+    expect(queue.map(step => step.type)).toEqual(['DRAW_CARD', 'CARD_TRANSFER', 'HP_DAMAGE']);
+    expect(queue[2]).toMatchObject({ hitIndices: [0] });
+  });
+
+  it('keeps canonical stat, inspection, and Bewitch acquisition ordering without a diff compiler', () => {
+    const gift = { id: 'bewitch-gift', name: '礼物', type: 'zone' };
+    const before = [player('你'), player('艾伦', { san: 7 })];
+    const afterSan = [before[0], player('艾伦', { san: 6 })];
+    const inspection = createInspectionVisualEvent({
+      seq: 1,
+      target: 1,
+      card: { id: 'inspection-card', name: '失忆' },
+      beforePlayers: afterSan,
+      afterPlayers: afterSan,
+      beforeStatEventSeq: 1,
+      revealMsgs: ['艾伦 的SAN检定结果为"失忆"'],
+      effectMsgs: ['艾伦 失忆'],
+      statEvents: [],
+    });
+    const statEvent = createStatEventsEvent({ statEvents: [{
+      type: 'SAN_LOSS', target: 1,
+      from: { hp: 10, san: 7 }, to: { hp: 10, san: 6 },
+      reason: '蛊惑礼物', seq: 1,
+    }] });
+    const event = createBewitchGiftEvent({
+      sourceIdx: 0,
+      targetIdx: 1,
+      targetName: '艾伦',
+      card: gift,
+      playersBefore: before,
+      playersAfter: afterSan,
+      settlementEvents: [statEvent, inspection],
+    });
+
+    const transaction = compileVisualEventToAnimTransaction(event, { players: afterSan }, { players: before });
+    const types = transaction.queue.map(step => step.type);
+
+    expect(types.slice(0, 3)).toEqual(['SKILL_BEWITCH', 'CARD_TRANSFER', 'DRAW_CARD']);
+    expect(types.indexOf('SAN_DAMAGE')).toBeGreaterThan(2);
+    expect(types.findLastIndex(type => type === 'DRAW_CARD')).toBeGreaterThan(types.indexOf('SAN_DAMAGE'));
   });
 });

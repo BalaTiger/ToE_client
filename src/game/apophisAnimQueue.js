@@ -1,5 +1,7 @@
-import { buildAnimQueue } from './animQueueCore';
-import { compileRuleVisualEventsToAnimTransaction } from './visualEventTransactionCompiler';
+import {
+  compileFreshVisualEventQueue,
+  compileRuleVisualEventsToAnimTransaction,
+} from './visualEventTransactionCompiler';
 
 function getFreshApophisTargetEvent(oldState, nextState) {
   const previousIds = new Set((oldState?._visualEvents || []).map(event => event?.id).filter(Boolean));
@@ -46,7 +48,7 @@ export function attachApophisNightTimeline(queue = [], initialNight = null, fina
   });
 }
 
-export function buildApophisTargetQueueForState(oldState, nextState, buildQueue = buildAnimQueue) {
+export function buildApophisTargetQueueForState(oldState, nextState, buildQueue = compileFreshVisualEventQueue) {
   const targetEvent = getFreshApophisTargetEvent(oldState, nextState);
   const seq = targetEvent?.seq;
   if (!seq || seq <= (oldState?._apophisTargetSeq || 0)) return [];
@@ -57,7 +59,7 @@ export function buildApophisTargetQueueForState(oldState, nextState, buildQueue 
   ));
 }
 
-export function compileApophisTargetPrelude(nextState, oldState, buildQueue = buildAnimQueue) {
+export function compileApophisTargetPrelude(nextState, oldState) {
   const targetEvent = nextState?._apophisTargetEvent;
   if (!targetEvent?.seq) return null;
   const oldEventIds = new Set((oldState?._visualEvents || []).map(event => event?.id).filter(Boolean));
@@ -71,12 +73,11 @@ export function compileApophisTargetPrelude(nextState, oldState, buildQueue = bu
   });
   const ownedInspections = firstInspectionIndex >= 0 ? freshInspections.slice(firstInspectionIndex) : [];
   return compileRuleVisualEventsToAnimTransaction(nextState, oldState, {
-    buildAnimQueue: buildQueue,
     eventIds: [apophisEvent.id, ...ownedInspections.map(event => event.id)],
   });
 }
 
-export function mergeApophisTargetQueue(queue = [], oldState, nextState, buildQueue = buildAnimQueue) {
+export function mergeApophisTargetQueue(queue = [], oldState, nextState, buildQueue = compileFreshVisualEventQueue) {
   const builtApophisQueue = buildApophisTargetQueueForState(oldState, nextState, buildQueue);
   if (!builtApophisQueue.length) return queue || [];
   const targetEvent = getFreshApophisTargetEvent(oldState, nextState);
@@ -224,7 +225,7 @@ export function mergeApophisTargetQueue(queue = [], oldState, nextState, buildQu
 // across an end-turn or next-turn boundary in a canonical queue.
 export function normalizeApophisQueueForPlayback(queue = [], oldState, nextState, {
   preserveQueueOrder = false,
-  buildQueue = buildAnimQueue,
+  buildQueue = compileFreshVisualEventQueue,
 } = {}) {
   return preserveQueueOrder
     ? (queue || [])

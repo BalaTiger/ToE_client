@@ -14,7 +14,7 @@ import { resetIds, makePlayer, makeStandardPlayers, makeZoneCard, makeGodCard, m
 import { createTsathogguaSlimeCard } from '../../constants/card';
 import { VISUAL_EVENT } from '../visualEvents';
 import { buildGraveDigTransferStep } from '../animQueueHelpers';
-import { buildAnimQueue } from '../animQueueCore';
+import { compileFreshVisualEventQueue as buildAnimQueue } from '../visualEventTransactionCompiler';
 import { assertCompleteThrowStoneTransactions } from '../animationStepSchema';
 import { makeProliferatingZState } from '../proliferatingZ';
 import { addDamageLink, getAllDamageLinks } from '../damageLinks';
@@ -262,7 +262,8 @@ describe('投掷石块玩家收入回放', () => {
       'THROW_STONE',
       'HP_DAMAGE',
     ]));
-    const stoneSteps = queue.filter(step => step.visualEventId === result.statePatch._visualEvents.at(-1).id);
+    const throwEvent = result.statePatch._visualEvents.find(event => event.type === VISUAL_EVENT.THROW_STONE);
+    const stoneSteps = queue.filter(step => step.visualEventId === throwEvent.id);
     expect(stoneSteps.slice(0, 3).map(step => step.type)).toEqual([
       'DICE_ROLL',
       'RANDOM_TARGET',
@@ -643,7 +644,7 @@ describe('applyFx', () => {
       damage: 5,
     });
     expect(res.statEvents[0]).toMatchObject({ target: 1, phaseOrder: 2 });
-    expect(res.statePatch._visualEvents.at(-1)).toMatchObject({
+    expect(res.statePatch._visualEvents.find(event => event.type === VISUAL_EVENT.THROW_STONE)).toMatchObject({
       type: 'throwStone',
       sourceIdx: 0,
       targetIdx: 1,
@@ -1008,7 +1009,7 @@ describe('applyFx', () => {
 
     expect(res.P[1].hand).toEqual([fallCard]);
     expect(res.Disc).toEqual([discardedCard]);
-    expect(res.statePatch._visualEvents).toEqual([
+    expect(res.statePatch._visualEvents).toEqual(expect.arrayContaining([
       expect.objectContaining({
         type: VISUAL_EVENT.CARD_EFFECT,
         effectKey: 'forcedRandomDiscard',
@@ -1020,7 +1021,8 @@ describe('applyFx', () => {
           }),
         ],
       }),
-    ]);
+      expect.objectContaining({ type: VISUAL_EVENT.STAT_EVENTS }),
+    ]));
   });
 
   it('失去 HP 且手中有撒托古亚黏液时进入平分选择', () => {
@@ -1968,7 +1970,10 @@ describe('inspection and AI decision regressions', () => {
     expect(result.statePatch.abilityData).toBeUndefined();
     expect(result.P[0].hand).toHaveLength(2);
     expect(result.Disc).toEqual([discardedNormal]);
-    expect(result.statePatch._visualEvents?.at(-1)?.discardEvents.map(event => event.card)).toEqual([
+    const discardEvent = result.statePatch._visualEvents?.find(event => (
+      event?.type === VISUAL_EVENT.CARD_EFFECT && event?.effectKey === 'forcedRandomDiscard'
+    ));
+    expect(discardEvent?.discardEvents.map(event => event.card)).toEqual([
       derived,
       discardedNormal,
     ]);

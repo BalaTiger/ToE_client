@@ -16,8 +16,8 @@ import { startNextTurn } from '../turnEngine';
 import { ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
 import { applyFx } from '../effectEngine';
 import { applyStatEventsToDisplayStats, primeDisplayStatsForStatQueue } from '../statEvents';
-import { buildFreshStatVisualEvents, buildTurnStartDrawVisualEvents, createGodPowerBlockedEvent, createGodStatusChangedEvent, createInspectionVisualEvent, createSphinxResultEvent, createStatEventsEvent, createThrowStoneEvent, createTsathogguaSlimeGrantEvent, createTurnDrawVisualEvents, getTurnBannerVisualEventId, VISUAL_EVENT } from '../visualEvents';
-import { buildAnimQueue } from '../animQueueCore';
+import { buildFreshStatVisualEvents, buildTurnStartDrawVisualEvents, createDiceResultVisualEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent, createInspectionVisualEvent, createSphinxResultEvent, createStatEventsEvent, createThrowStoneEvent, createTsathogguaSlimeGrantEvent, createTurnDrawVisualEvents, getTurnBannerVisualEventId, VISUAL_EVENT } from '../visualEvents';
+import { compileFreshVisualEventQueue as buildAnimQueue } from '../visualEventTransactionCompiler';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
 function player(name) {
@@ -514,7 +514,7 @@ describe('buildTurnStartDrawReplayQueue', () => {
     );
   });
 
-  it('黏液发放同时存在显式事件和 legacy 快照时只编译显式事件', () => {
+  it('黏液发放只编译规范视觉事件', () => {
     const beforePlayers = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' })];
     const slime = { id: 'grant-slime', name: '撒托古亚的赐福黏液', isTsathogguaSlime: true };
     const afterPlayers = [beforePlayers[0], { ...beforePlayers[1], hand: [slime] }];
@@ -530,7 +530,6 @@ describe('buildTurnStartDrawReplayQueue', () => {
 
     const queue = buildTsathogguaSlimeGrantQueue({
       players: afterPlayers,
-      _tsgSlimeGrantEvents: [grant],
       _visualEvents: [visualEvent],
     });
     const transfers = queue.filter(step => step.type === 'CARD_TRANSFER' && step.effect === 'tsgSlime');
@@ -726,7 +725,6 @@ describe('buildTurnStartDrawReplayQueue', () => {
       _statEventSeq: 0,
       _statEvents: [],
       _inspectionSeq: 0,
-      _inspectionEvents: [],
     });
 
     const newGs = startNextTurn(oldGs);
@@ -1454,6 +1452,13 @@ describe('buildTurnStartDrawReplayQueue', () => {
       _statLogs: ['贝拉 遭遇邪神 阿波菲斯！（第1次）失去1SAN'],
       _statEvents: [allenSanLoss, bellaSanLoss],
       _statEventSeq: 2,
+      _visualEvents: [{
+        ...createStatEventsEvent({
+          statEvents: [bellaSanLoss],
+          msgs: ['贝拉 遭遇邪神 阿波菲斯！（第1次）失去1SAN'],
+        }),
+        turnStartStage: 'draw',
+      }],
       log: ['旧日志', '── 贝拉 的回合开始 ──', '贝拉 遭遇邪神 阿波菲斯！（第1次）失去1SAN'],
     });
 
@@ -1603,6 +1608,10 @@ describe('buildTurnStartDrawReplayQueue', () => {
       _statLogs: [damageLog],
       _statEvents: [...healEvents, ...damageEvents],
       _statEventSeq: 2,
+      _visualEvents: [{
+        ...createStatEventsEvent({ statEvents: damageEvents, msgs: [damageLog] }),
+        turnStartStage: 'draw',
+      }],
       log: ['旧日志', '── 贝拉 的回合开始 ──', '贝拉 摸到 [A2] 亡者军团，选择收入手牌并触发效果', damageLog],
     });
 
@@ -1688,9 +1697,9 @@ describe('buildTurnStartDrawReplayQueue', () => {
     const youHp = statEvent(3, 'HP_LOSS', 0, afterDiana, afterYou, '自残', youDamage);
     const prefix = ['旧日志', '── 黛安娜 的回合开始 ──', drawLog, sanLog];
     const events = [
-      { seq: 1, card: { name: '自残', effect: 'selfDamageHP' }, target: 2, beforePlayers: afterSan, beforeLog: prefix, afterPlayers: afterDiana, afterLog: [...prefix, dianaReveal, dianaDamage], statEvents: [dianaHp], statEventSeq: 2 },
-      { seq: 2, card: { name: '自残', effect: 'selfDamageHP' }, target: 0, beforePlayers: afterDiana, beforeLog: [...prefix, dianaReveal, dianaDamage], afterPlayers: afterYou, afterLog: [...prefix, dianaReveal, dianaDamage, youReveal, youDamage], statEvents: [youHp], statEventSeq: 3 },
-      { seq: 3, card: { name: '昏睡', effect: 'flip' }, target: 1, beforePlayers: afterYou, beforeLog: [...prefix, dianaReveal, dianaDamage, youReveal, youDamage], afterPlayers: afterCarlos, afterLog: [...prefix, dianaReveal, dianaDamage, youReveal, youDamage, carlosReveal, carlosSleep], statEvents: [], statEventSeq: null },
+      { seq: 1, card: { name: '自残', effect: 'selfDamageHP' }, target: 2, beforePlayers: afterSan, beforeLog: prefix, afterPlayers: afterDiana, afterLog: [...prefix, dianaReveal, dianaDamage], revealMsgs: [dianaReveal], effectMsgs: [dianaDamage], statEvents: [dianaHp], statEventSeq: 2 },
+      { seq: 2, card: { name: '自残', effect: 'selfDamageHP' }, target: 0, beforePlayers: afterDiana, beforeLog: [...prefix, dianaReveal, dianaDamage], afterPlayers: afterYou, afterLog: [...prefix, dianaReveal, dianaDamage, youReveal, youDamage], revealMsgs: [youReveal], effectMsgs: [youDamage], statEvents: [youHp], statEventSeq: 3 },
+      { seq: 3, card: { name: '昏睡', effect: 'flip' }, target: 1, beforePlayers: afterYou, beforeLog: [...prefix, dianaReveal, dianaDamage, youReveal, youDamage], afterPlayers: afterCarlos, afterLog: [...prefix, dianaReveal, dianaDamage, youReveal, youDamage, carlosReveal, carlosSleep], revealMsgs: [carlosReveal], effectMsgs: [carlosSleep], statEvents: [], statEventSeq: null },
     ];
     const oldGs = makeGs({ players: oldPlayers, currentTurn: 1, log: ['旧日志'], _statEventSeq: 0, _inspectionSeq: 0 });
     const newGs = makeGs({
@@ -1720,13 +1729,13 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(reveals.map(({ step }) => step._logChunk)).toEqual([[dianaReveal], [youReveal], [carlosReveal]]);
     expect(hpSteps[0].idx).toBeGreaterThan(reveals[0].idx);
     expect(hpSteps[0].idx).toBeLessThan(reveals[1].idx);
-    expect(hpSteps[0].step.msgs).toEqual(expect.arrayContaining([dianaReveal, dianaDamage]));
+    expect(hpSteps[0].step.msgs).toEqual([dianaDamage]);
     expect(hpSteps[0].step.statEvents).toEqual(expect.arrayContaining([
       expect.objectContaining({ target: 2, to: expect.objectContaining({ hp: 8 }) }),
     ]));
     expect(hpSteps[1].idx).toBeGreaterThan(reveals[1].idx);
     expect(hpSteps[1].idx).toBeLessThan(reveals[2].idx);
-    expect(hpSteps[1].step.msgs).toEqual(expect.arrayContaining([youReveal, youDamage]));
+    expect(hpSteps[1].step.msgs).toEqual([youDamage]);
     expect(hpSteps[1].step.statEvents).toEqual(expect.arrayContaining([
       expect.objectContaining({ target: 0, to: expect.objectContaining({ hp: 8 }) }),
     ]));
@@ -1918,6 +1927,15 @@ describe('buildTurnStartDrawReplayQueue', () => {
       _aiDrawnCard: moldyFood,
       _moldyFoodDiceSeq: 1,
       _moldyFoodDiceRoll: { d1: 1, isEven: false, actorIdx: 1, seq: 1 },
+      _visualEvents: [{
+        ...createDiceResultVisualEvent({
+          mode: 'moldyFood',
+          actorIdx: 1,
+          actorName: '贝拉',
+          d1: 1,
+        }),
+        turnStartStage: 'draw',
+      }],
     };
 
     const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
@@ -1961,13 +1979,14 @@ describe('buildTurnStartDrawReplayQueue', () => {
       _aiDrawnCard: moldyFood,
       _moldyFoodDiceSeq: 1,
       _moldyFoodDiceRoll: { d1: 4, isEven: true, actorIdx: 1, seq: 1 },
-      _randomTargetSeq: 1,
-      _randomTargetEvents: [{
-        seq: 1,
-        sourceIdx: 0,
-        targetIdx: 1,
-        label: '钻地魔虫',
-        resultText: '艾伦 被选中',
+      _visualEvents: [{
+        ...createDiceResultVisualEvent({
+          mode: 'moldyFood',
+          actorIdx: 1,
+          actorName: '艾伦',
+          d1: 4,
+        }),
+        turnStartStage: 'draw',
       }],
     };
 
@@ -2016,6 +2035,15 @@ describe('buildTurnStartDrawReplayQueue', () => {
       _aiDrawnCard: moldyFood,
       _moldyFoodDiceSeq: 1,
       _moldyFoodDiceRoll: { d1: 4, isEven: true, actorIdx: 1, seq: 1 },
+      _visualEvents: [{
+        ...createDiceResultVisualEvent({
+          mode: 'moldyFood',
+          actorIdx: 1,
+          actorName: '黛安娜',
+          d1: 4,
+        }),
+        turnStartStage: 'draw',
+      }],
     };
 
     const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs, effectOldGs: oldGs });
@@ -2162,27 +2190,13 @@ describe('buildTurnStartDrawReplayQueue', () => {
   it('摸到邪神翻牌后不重播上一回合残留的投掷石块动画', () => {
     const nya = makeGodCard('NYA');
     const beforeDrawPlayers = [player('你'), player('贝拉'), player('艾伦')];
-    const staleStoneEvent = {
-      seq: 1,
-      sourceIdx: 2,
-      targetIdx: 1,
-      label: '投掷石块',
-      roll: 1,
-      distance: 1,
-      damage: 0,
-      resultText: '贝拉 被选中',
-      diceBefore: true,
-      phaseOrder: 1,
-    };
-    // 上一回合（艾伦行动阶段）打出投掷石块后，_randomTargetSeq/_randomTargetEvents
-    // 随 gs 残留到下一回合；两者水位都必须视为已消费
+    // 上一回合投石日志可以保留，但没有 fresh 规范事件时不得重播。
     const oldGs = {
       players: beforeDrawPlayers,
       currentTurn: 2,
       phase: 'ACTION',
       log: ['艾伦 掷出 1 点，随机砸向 贝拉（距离1），造成 0 HP 伤害'],
       _randomTargetSeq: 1,
-      _randomTargetEvents: [staleStoneEvent],
     };
     const newGs = {
       players: [
@@ -2205,7 +2219,6 @@ describe('buildTurnStartDrawReplayQueue', () => {
         '贝拉 遭遇邪神 伏行之混沌！（第1次）失去 1 SAN',
       ],
       _randomTargetSeq: 1,
-      _randomTargetEvents: [staleStoneEvent],
     };
 
     const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
@@ -2302,6 +2315,16 @@ describe('buildTurnStartDrawReplayQueue', () => {
       _aiDrawnCard: moldyFood,
       _moldyFoodDiceSeq: 1,
       _moldyFoodDiceRoll: { d1: 1, isEven: false, actorIdx: 1, seq: 1, negativeAvoided: true },
+      _visualEvents: [{
+        ...createDiceResultVisualEvent({
+          mode: 'moldyFood',
+          actorIdx: 1,
+          actorName: '贝拉',
+          d1: 1,
+          negativeAvoided: true,
+        }),
+        turnStartStage: 'draw',
+      }],
     };
 
     const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });

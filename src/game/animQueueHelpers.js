@@ -1,6 +1,6 @@
 import { isTurnStartLog } from "./animLogs";
-import { cardIdentity } from "./cardIdentity";
 import { getVisualEvents, VISUAL_EVENT } from "./visualEvents";
+import { statEventsToAnimQueue } from "./statEvents";
 
 export function statePatchStep(patch={}){
   const step={type:"STATE_PATCH"};
@@ -407,76 +407,6 @@ export function dedupeFaithSettlementTransfers(queue=[]){
   });
 }
 
-function withFaithExitPlayer(players=[],playerIdx,faithlessPlayer=null){
-  if(!Array.isArray(players)||playerIdx==null||!players[playerIdx]||!faithlessPlayer)return players;
-  return players.map((player,index)=>index===playerIdx?{
-    ...player,
-    godName:faithlessPlayer.godName??null,
-    godLevel:faithlessPlayer.godLevel??0,
-    godZone:[...(faithlessPlayer.godZone||[])],
-  }:player);
-}
-
-function withRequiredDiscardCards(discard=[],requiredCards=[]){
-  if(!Array.isArray(discard)||!requiredCards.length)return discard;
-  const available=new Map();
-  discard.forEach(card=>{
-    const key=cardIdentity(card);
-    if(key)available.set(key,(available.get(key)||0)+1);
-  });
-  const missing=[];
-  requiredCards.forEach(card=>{
-    const key=cardIdentity(card);
-    const count=key?(available.get(key)||0):0;
-    if(count>0)available.set(key,count-1);
-    else missing.push(card);
-  });
-  return missing.length?[...discard,...missing]:discard;
-}
-
-function preserveFaithExitSnapshots(queue=[],exitStep=null,transition={},stopStep=null){
-  const exitIndex=queue.indexOf(exitStep);
-  if(exitIndex<0||transition?.playerIdx==null)return queue;
-  const faithlessPlayer=transition?.playersAfter?.[transition.playerIdx];
-  const requiredDiscard=Array.isArray(transition?.cards)?transition.cards.filter(Boolean):[];
-  if(!faithlessPlayer)return queue;
-  const patchSnapshot=(snapshot={})=>({
-    ...snapshot,
-    ...(Array.isArray(snapshot?.players)?{
-      players:withFaithExitPlayer(snapshot.players,transition.playerIdx,faithlessPlayer),
-    }:{}),
-    ...(Array.isArray(snapshot?.discard)?{
-      discard:withRequiredDiscardCards(snapshot.discard,requiredDiscard),
-    }:{}),
-  });
-  for(let index=exitIndex+1;index<queue.length;index+=1){
-    const step=queue[index];
-    const establishesNewFaith=step===stopStep||(
-      step?.type==='GOD_HIGHLIGHT'&&step?.targetPid===transition.playerIdx
-    );
-    queue[index]={
-      ...step,
-      ...(!establishesNewFaith&&Array.isArray(step?.players)?{
-        players:withFaithExitPlayer(step.players,transition.playerIdx,faithlessPlayer),
-      }:{}),
-      ...(!establishesNewFaith&&Array.isArray(step?.discard)?{
-        discard:withRequiredDiscardCards(step.discard,requiredDiscard),
-      }:{}),
-      ...(step?.visualSetupPatch?{
-        visualSetupPatch:patchSnapshot(step.visualSetupPatch),
-      }:{}),
-      ...(!establishesNewFaith&&Array.isArray(step?.visualTimeline)?{
-        visualTimeline:step.visualTimeline.map(frame=>frame?.patch?{
-          ...frame,
-          patch:patchSnapshot(frame.patch),
-        }:frame),
-      }:{}),
-    };
-    if(establishesNewFaith)break;
-  }
-  return queue;
-}
-
 function resolvePlayerPidByLogName(name,players=[]){
   if(!name)return -1;
   if(name==="你")return 0;
@@ -655,17 +585,13 @@ export function getFreshInspectionReplayEvents(state,{afterSeq=0,predicate=null}
     ));
 }
 
-export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlayers,eventOwnedOnly=false}){
+export function buildInspectionEventFlow(baseGs,events,{copyPlayers}){
   const queue=[];
   const boundarySteps=new Map();
   let cursorPlayers=copyPlayers(baseGs?.players||[]);
   let cursorLog=[...(Array.isArray(baseGs?.log)?baseGs.log:[])];
   let cursorDiscard=[...(Array.isArray(baseGs?.discard)?baseGs.discard:[])];
   let cursorStatEventSeq=baseGs?._statEventSeq||0;
-  const availableStatEvents=Array.isArray(baseGs?._statEvents)?baseGs._statEvents:[];
-  const statEventsThrough=seq=>availableStatEvents.filter(event=>(
-    event?.seq==null||event.seq<=seq
-  ));
   (events||[]).forEach(ev=>{
     const beforePlayers=copyPlayers(ev?.beforePlayers||cursorPlayers);
     const beforeLog=[...(Array.isArray(ev?.beforeLog)?ev.beforeLog:cursorLog)];
@@ -674,22 +600,9 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
     const afterLog=[...(Array.isArray(ev?.afterLog)?ev.afterLog:beforeLog)];
     const afterDiscard=[...(Array.isArray(ev?.afterDiscard)?ev.afterDiscard:beforeDiscard)];
     const beforeStatEventSeq=Math.max(cursorStatEventSeq,ev?.beforeStatEventSeq||0);
-    const preQ=eventOwnedOnly?[]:buildAnimQueue(
-      {players:cursorPlayers,log:cursorLog,discard:cursorDiscard,_statEvents:statEventsThrough(cursorStatEventSeq),_statEventSeq:cursorStatEventSeq},
-      {players:beforePlayers,log:beforeLog,discard:beforeDiscard,_statEvents:statEventsThrough(beforeStatEventSeq),_statEventSeq:beforeStatEventSeq}
-    );
-    // Lock the state visible at the start of the inspection segment before any
-    // preceding stat animations run. The committed game state may already be
-    // the post-inspection snapshot (for example after 迫害妄想 discarded a
-    // card), so waiting until the reveal boundary would expose that hand early.
-    if(preQ.length)queue.push({type:"VISUAL_LOCK",players:cursorPlayers});
-    if(preQ.length)queue.push(...preQ);
     queue.push({type:"VISUAL_LOCK",players:beforePlayers});
-    const inspectionLogDelta=afterLog.slice(beforeLog.length);
-    const revealLog=inspectionLogDelta.find(line=>typeof line==="string"&&line.includes("的SAN检定结果为"));
-    const effectLogs=revealLog
-      ?inspectionLogDelta.filter((line,index)=>line!==revealLog||index!==inspectionLogDelta.indexOf(revealLog))
-      :inspectionLogDelta;
+    const revealMsgs=Array.isArray(ev?.revealMsgs)?ev.revealMsgs.filter(Boolean):[];
+    const effectMsgs=Array.isArray(ev?.effectMsgs)?ev.effectMsgs.filter(Boolean):[];
     queue.push({
       type:"DRAW_CARD",
       ...(ev?.id?{visualEventId:ev.id}:{}),
@@ -700,7 +613,7 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
       // A reveal step must own exactly its result line. Otherwise the generic
       // draw-log fallback can consume later inspections before their cards are
       // actually revealed.
-      _logChunk:revealLog?[revealLog]:[],
+      _logChunk:revealMsgs,
     });
     if(ev?.gainedCard){
       queue.push({
@@ -730,7 +643,7 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
         count:1,
         triggerName:beforePlayers[targetPid]?.name||"角色",
         targetPid,
-        msgs:index===0?effectLogs:[],
+        msgs:index===0?effectMsgs:[],
         visualSetupTiming:"stepStart",
         visualSetupPatch:{players:discardCursorPlayers,discard:discardCursor},
         visualTimeline:[
@@ -742,29 +655,11 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
       discardCursor=nextDiscard;
       return step;
     });
-    const explicitDiscardTargets=new Set(explicitDiscardEvents.map(event=>event.playerIndex??ev.target??0));
-    const effectQ=buildAnimQueue(
-      {
-        players:explicitDiscardQ.length?discardCursorPlayers:beforePlayers,
-        log:beforeLog,
-        discard:explicitDiscardQ.length?discardCursor:beforeDiscard,
-        _statEventSeq:beforeStatEventSeq,
-      },
-      {
-        players:afterPlayers,
-        log:afterLog,
-        discard:afterDiscard,
-        ...(Array.isArray(ev?.statEvents)&&ev.statEvents.length?{_statEvents:ev.statEvents,_statEventSeq:ev.statEventSeq}:{}),
-      }
-    ).filter(step=>!(
-      explicitDiscardTargets.has(step?.fromPid)
-      && step?.type==="CARD_TRANSFER"
-      && step?.dest==="discard"
-      && step?.inferredHandLoss
-    )&&!(
-      explicitDiscardTargets.has(step?.targetPid)
-      && step?.type==="TSG_SLIME_POP"
-    ));
+    const effectQ=statEventsToAnimQueue(
+      Array.isArray(ev?.statEvents)?ev.statEvents:[],
+      explicitDiscardQ.length?discardCursorPlayers:beforePlayers,
+      explicitDiscardQ.length?[]:effectMsgs,
+    );
     if(explicitDiscardQ.length)queue.push(...explicitDiscardQ.map(step=>ev?.id?{...step,visualEventId:ev.id}:step));
     if(effectQ.length)queue.push(...effectQ.map(step=>ev?.id?{...step,visualEventId:ev.id}:step));
     const effectHasVisibleStep=explicitDiscardQ.length>0||effectQ.some(step=>step?.type!=="STATE_PATCH");
@@ -774,7 +669,7 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
       // Non-stat inspection effects (for example 昏睡) may have no animation
       // step, but their log still belongs after this reveal, never to an
       // earlier inspection card.
-      ...(!effectHasVisibleStep&&effectLogs.length?{_logChunk:effectLogs}:{}),
+      ...(!effectHasVisibleStep&&effectMsgs.length?{_logChunk:effectMsgs}:{}),
     };
     queue.push(boundaryStep);
     if(ev?.seq!=null)boundarySteps.set(ev.seq,boundaryStep);
@@ -785,150 +680,4 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
     if(ev?.statEventSeq!=null)cursorStatEventSeq=Math.max(cursorStatEventSeq,ev.statEventSeq);
   });
   return {queue,players:cursorPlayers,log:cursorLog,statEventSeq:cursorStatEventSeq,boundarySteps};
-}
-
-export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPlayers}){
-  const baseOldGs=oldGs||{};
-  const baseInspectionSeq=baseOldGs._inspectionSeq||0;
-  const oldVisualEventIds=new Set(getVisualEvents(baseOldGs).map(event=>event.id));
-  const visualInspectionEvents=getVisualEvents(newGs)
-    .filter(event=>event?.type===VISUAL_EVENT.INSPECTION&&event?.id&&!oldVisualEventIds.has(event.id));
-  const inspectionEvents=visualInspectionEvents;
-  if(!inspectionEvents.length){
-    return {
-      queue:buildAnimQueue(baseOldGs,newGs),
-      inspectionEvents:[],
-      inspectionSeq:baseInspectionSeq,
-    };
-  }
-  const firstEvent=inspectionEvents[0];
-  const preInspectionGs={
-    ...newGs,
-    players:firstEvent?.beforePlayers||newGs.players,
-    log:firstEvent?.beforeLog||newGs.log,
-    // This snapshot is the presentation cursor immediately before the first
-    // inspection. It may already carry the final event journal so faith-exit
-    // transfers can compile, but post-inspection events must not cross it.
-    _inspectionPresentationSeq:baseInspectionSeq,
-    _inspectionSeq:baseInspectionSeq,
-    _statEvents:newGs?._statEvents||[],
-    _statEventSeq:firstEvent?.beforeStatEventSeq??baseOldGs._statEventSeq??0,
-  };
-  const preQueue=buildAnimQueue(baseOldGs,preInspectionGs);
-  const inspectionFlow=buildInspectionEventFlow(
-    {
-      players:preInspectionGs.players,
-      log:preInspectionGs.log,
-      discard:preInspectionGs.discard,
-      _statEvents:newGs?._statEvents||[],
-      _statEventSeq:preInspectionGs._statEventSeq,
-    },
-    inspectionEvents,
-    {buildAnimQueue,copyPlayers}
-  );
-  const maxInspectionSeq=Math.max(baseInspectionSeq,...inspectionEvents.map(ev=>ev?.seq||0));
-  // The tail starts at the stat-event watermark reached by the inspection
-  // flow.  Do not advance this baseline to newGs._statEventSeq: that scalar
-  // also includes post-inspection settlement losses (for example a competing
-  // follower losing SAN during faith establishment).  Treating the final
-  // watermark as already consumed is the old state-diff failure mode: the
-  // follower's SAN bar changes with the snapshot, but no SAN_DAMAGE step is
-  // emitted.
-  const tailStatEventSeq=inspectionFlow.statEventSeq;
-  const tailBaselineVisualEvents=Array.isArray(newGs?._visualEvents)
-    ?newGs._visualEvents.filter(event=>(
-      event?.presentAfterInspectionSeq==null ||
-      event.presentAfterInspectionSeq>maxInspectionSeq
-    ))
-    :(Array.isArray(baseOldGs?._visualEvents)?baseOldGs._visualEvents:[]);
-  const tailQueue=buildAnimQueue(
-    {
-      players:inspectionFlow.players,
-      log:inspectionFlow.log,
-      _statEventSeq:tailStatEventSeq,
-      _inspectionSeq:maxInspectionSeq,
-      // The tail starts after every inspection in this batch. Visual events
-      // already present on the resolved state (for example 夜风呼啸 before a
-      // slime-balance pause) belong to the pre-inspection segment and must be
-      // part of this baseline, otherwise buildAnimQueue treats them as fresh
-      // and replays the card effect between two inspection reveals.
-      _visualEvents:tailBaselineVisualEvents,
-    },
-    newGs
-  );
-  let queue=dedupeFaithSettlementTransfers([...preQueue,...inspectionFlow.queue,...tailQueue]);
-  const moveStepAfterAnchors=(step,anchors=[],fallbackIndex=null)=>{
-    if(!step)return;
-    const currentIndex=queue.indexOf(step);
-    if(currentIndex<0)return;
-    const presentAnchors=anchors.filter(Boolean).filter(anchor=>queue.includes(anchor));
-    const [moved]=queue.splice(currentIndex,1);
-    if(presentAnchors.length){
-      const anchorIndex=Math.max(...presentAnchors.map(anchor=>queue.indexOf(anchor)));
-      queue.splice(anchorIndex+1,0,moved);
-    }else if(fallbackIndex!=null){
-      queue.splice(Math.max(0,Math.min(fallbackIndex,queue.length)),0,moved);
-    }else{
-      queue.splice(Math.min(currentIndex,queue.length),0,moved);
-    }
-  };
-  getVisualEvents(newGs)
-    .filter(event=>event?.type===VISUAL_EVENT.GOD_STATUS_CHANGED)
-    .forEach(event=>{
-      const previousFaithExit=event?.faithSettlement?.previousFaithExit||null;
-      const abandonedFollowers=event?.faithSettlement?.abandonedFollowers||[];
-      const faithTransitions=[previousFaithExit,...abandonedFollowers].filter(Boolean);
-      // A first-time worship has no `presentAfterInspectionSeq` of its own,
-      // but it can still follow an encounter inspection.  The structured
-      // faith-exit snapshots carry the exact boundary in that case.
-      const faithBoundarySeq=event?.presentAfterInspectionSeq!=null
-        ?event.presentAfterInspectionSeq
-        :Math.max(0,...faithTransitions.map(transition=>Number(
-          transition?.inspectionSeqBefore ?? 0,
-        )||0));
-      const previousExitStep=previousFaithExit?queue.find(step=>(
-        step?.type==='CARD_TRANSFER'
-        &&step?.visualEventId===event.id
-        &&step?.effect===previousFaithExit.effect
-        &&step?.fromPid===previousFaithExit.playerIdx
-      )):null;
-      const previousExitBoundary=inspectionFlow.boundarySteps.get(previousFaithExit?.inspectionSeqBefore);
-      if(previousExitStep){
-        moveStepAfterAnchors(
-          previousExitStep,
-          [previousExitBoundary],
-          previousFaithExit?.inspectionSeqAfter>previousFaithExit?.inspectionSeqBefore?0:null,
-        );
-      }
-      const highlightIndex=queue.findIndex(step=>step?.type==='GOD_HIGHLIGHT'&&step?.visualEventId===event.id);
-      const boundaryStep=inspectionFlow.boundarySteps.get(faithBoundarySeq);
-      const boundaryIndex=queue.indexOf(boundaryStep);
-      const highlight=highlightIndex>=0?queue[highlightIndex]:null;
-      if(highlight&&boundaryIndex>=0&&highlightIndex!==boundaryIndex+1){
-        moveStepAfterAnchors(highlight,[boundaryStep]);
-      }
-      let previousFollowerExit=null;
-      const followerExits=[];
-      (event?.faithSettlement?.abandonedFollowers||[]).forEach(transition=>{
-        const exitStep=queue.find(step=>(
-          step?.type==='CARD_TRANSFER'
-          &&step?.visualEventId===event.id
-          &&step?.effect===transition.effect
-          &&step?.fromPid===transition.playerIdx
-        ));
-        const transitionBoundary=inspectionFlow.boundarySteps.get(transition?.inspectionSeqBefore);
-        moveStepAfterAnchors(exitStep,[transitionBoundary,highlight,previousFollowerExit]);
-        if(exitStep)followerExits.push([exitStep,transition]);
-        previousFollowerExit=exitStep||previousFollowerExit;
-      });
-      preserveFaithExitSnapshots(queue,previousExitStep,previousFaithExit,highlight);
-      followerExits.forEach(([exitStep,transition])=>{
-        preserveFaithExitSnapshots(queue,exitStep,transition);
-      });
-    });
-  return {
-    queue,
-    inspectionEvents,
-    inspectionSeq:maxInspectionSeq,
-  };
 }

@@ -1,14 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildAnimQueue } from '../animQueueCore';
-import {
-  ANIMATION_QUEUE_AUTHORITY,
-  compileRuleVisualEventsToAnimTransaction,
-  mergeAnimationTransactionQueue,
-} from '../visualEventTransactionCompiler';
-import { createCardEffectEvent, createRandomTargetVisualEvent, ensureVisualEventState } from '../visualEvents';
+import { compileRuleVisualEventsToAnimTransaction } from '../visualEventTransactionCompiler';
+import { createCardEffectEvent, createRandomTargetVisualEvent, createStatEventsEvent } from '../visualEvents';
 import { makeGs, makePlayer } from './factory';
 
-// 钻地魔虫回归：legacyMerge 提交边界必须保持 phaseOrder 跨事件交错
+// 钻地魔虫回归：规范事件事务必须保持 phaseOrder 跨事件交错
 // （全体扣血 → 转盘 → 额外扣血）。历史上编译器按视觉事件逐个展开，
 // 且 buildRandomTargetSteps 的 ...event 展开把步骤类型覆盖成 'randomTarget'，
 // 导致转盘无法与 legacy 步骤去重而被排到额外扣血之后。
@@ -44,34 +39,28 @@ function makeWormScenario() {
     afterDiscard: [],
     msgs: ['全体存活角色失去 2 HP'],
   });
+  const statEvents = [
+    { type: 'HP_LOSS', target: 0, from: { hp: 10, san: 10, isDead: false }, to: { hp: 8, san: 10, isDead: false }, seq: 1, phaseOrder: 0, phaseGroupId },
+    { type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10, isDead: false }, to: { hp: 8, san: 10, isDead: false }, seq: 1, phaseOrder: 0, phaseGroupId },
+    { type: 'HP_LOSS', target: 2, from: { hp: 10, san: 10, isDead: false }, to: { hp: 8, san: 10, isDead: false }, seq: 1, phaseOrder: 0, phaseGroupId },
+    { type: 'HP_LOSS', target: 1, from: { hp: 8, san: 10, isDead: false }, to: { hp: 6, san: 10, isDead: false }, seq: 1, phaseOrder: 2, phaseGroupId },
+  ];
   const newGs = makeGs({
     players: playersAfter,
     log: ['全体存活角色失去 2 HP', '艾伦 额外失去 2 HP'],
-    _visualEvents: [wormEvent, randomTargetEvent].filter(Boolean),
+    _visualEvents: [wormEvent, randomTargetEvent, createStatEventsEvent({ statEvents })].filter(Boolean),
     _randomTargetSeq: 1,
-    _randomTargetEvents: [{ seq: 1, sourceIdx: 0, targetIdx: 1, label: '钻地魔虫', phaseOrder: 1, resultText: '艾伦 被选中' }],
     _statEventSeq: 1,
-    _statEvents: [
-      { type: 'HP_LOSS', target: 0, from: { hp: 10, san: 10, isDead: false }, to: { hp: 8, san: 10, isDead: false }, seq: 1, phaseOrder: 0, phaseGroupId },
-      { type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10, isDead: false }, to: { hp: 8, san: 10, isDead: false }, seq: 1, phaseOrder: 0, phaseGroupId },
-      { type: 'HP_LOSS', target: 2, from: { hp: 10, san: 10, isDead: false }, to: { hp: 8, san: 10, isDead: false }, seq: 1, phaseOrder: 0, phaseGroupId },
-      { type: 'HP_LOSS', target: 1, from: { hp: 8, san: 10, isDead: false }, to: { hp: 6, san: 10, isDead: false }, seq: 1, phaseOrder: 2, phaseGroupId },
-    ],
+    _statEvents: statEvents,
   });
   return { oldGs, newGs };
 }
 
-describe('legacyMerge 提交边界的 phaseOrder 交错', () => {
+describe('规范事件事务的 phaseOrder 交错', () => {
   it('钻地魔虫: 转盘位于全体扣血与额外扣血之间且不重复', () => {
     const { oldGs, newGs } = makeWormScenario();
-    const legacyQueue = buildAnimQueue(oldGs, newGs);
-    const ruleTransaction = compileRuleVisualEventsToAnimTransaction(ensureVisualEventState(newGs), null, {
-      buildAnimQueue,
-    });
-    const merged = mergeAnimationTransactionQueue(legacyQueue, ruleTransaction, {
-      authority: ANIMATION_QUEUE_AUTHORITY.LEGACY_MERGE,
-    });
-    const types = merged.map(step => step.type);
+    const ruleTransaction = compileRuleVisualEventsToAnimTransaction(newGs, oldGs);
+    const types = ruleTransaction.queue.map(step => step.type);
 
     const firstHpIdx = types.indexOf('HP_DAMAGE');
     const randomIdx = types.indexOf('RANDOM_TARGET');

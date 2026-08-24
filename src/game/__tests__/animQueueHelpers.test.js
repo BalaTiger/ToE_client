@@ -4,7 +4,6 @@ import {
   buildBewitchForcedCardQueue,
   buildSphinxResultQueue,
   buildFullHandSwapStepsFromLogs,
-  buildInspectionAwareAnimQueue,
   buildInspectionEventFlow,
   getFreshInspectionReplayEvents,
   buildWorshipReplayBaselinePlayers,
@@ -20,9 +19,12 @@ import {
   swapCardsSteps,
   zhuHideCardStep,
 } from '../animQueueHelpers';
+import {
+  compileFreshVisualEventQueue as buildAnimQueue,
+  compileFreshVisualEventReplay,
+} from '../visualEventTransactionCompiler';
 import { copyPlayers, ROLE_CULTIST, ROLE_TREASURE } from '../coreUtils';
-import { buildAnimQueue } from '../animQueueCore';
-import { createCardEffectEvent, createGodStatusChangedEvent, createInspectionVisualEvent, createRandomTargetVisualEvent, VISUAL_EVENT } from '../visualEvents';
+import { createCardEffectEvent, createGodStatusChangedEvent, createInspectionVisualEvent, createRandomTargetVisualEvent, createStatEventsEvent, VISUAL_EVENT } from '../visualEvents';
 import { resolveAiGodChoiceTransition } from '../aiDecisionState';
 import { scopeAiReplayMetadataBeforeInspection } from '../aiTurnPresentation';
 import { resolveGodEncounterForAI, startNextTurn } from '../turnEngine';
@@ -83,6 +85,8 @@ describe('animQueueHelpers', () => {
         afterPlayers: afterSelfHarm,
         beforeLog: [...prefix, '卡洛斯 的SAN检定结果为"失眠"', '卡洛斯 失眠，下一回合禁用休息'],
         afterLog: [...prefix, '卡洛斯 的SAN检定结果为"失眠"', '卡洛斯 失眠，下一回合禁用休息', '艾伦 的SAN检定结果为"自残"', selfHarmLog],
+        revealMsgs: ['艾伦 的SAN检定结果为"自残"'],
+        effectMsgs: [selfHarmLog],
         beforeStatEventSeq: 1,
         statEvents: [selfHarmStat],
         statEventSeq: 2,
@@ -130,7 +134,7 @@ describe('animQueueHelpers', () => {
     expect(selfHarmDamageIdx).toBeLessThan(fatigueRevealIdx);
     expect(queue[selfHarmDamageIdx]).toMatchObject({
       hitIndices: [2],
-      msgs: expect.arrayContaining(['艾伦 的SAN检定结果为"自残"', selfHarmLog]),
+      msgs: [selfHarmLog],
     });
   });
 
@@ -186,10 +190,9 @@ describe('animQueueHelpers', () => {
     const keepEvent = transition.state._visualEvents.find(event => (
       event?.type === VISUAL_EVENT.GOD_GIFT_KEEP
     ));
-    const replay = buildInspectionAwareAnimQueue(
+    const replay = compileFreshVisualEventReplay(
       pendingGs,
       transition.state,
-      { buildAnimQueue, copyPlayers },
     );
     const ownedSteps = replay.queue.filter(step => step?.visualEventId === keepEvent.id);
 
@@ -225,10 +228,9 @@ describe('animQueueHelpers', () => {
     }));
     const transition = resolveAiGodChoiceTransition(pendingGs);
     const keepEvent = transition.state._visualEvents.find(event => event?.type === VISUAL_EVENT.GOD_GIFT_KEEP);
-    const replay = buildInspectionAwareAnimQueue(
+    const replay = compileFreshVisualEventReplay(
       pendingGs,
       transition.state,
-      { buildAnimQueue, copyPlayers },
     );
     const inspectionIdx = replay.queue.findIndex(step => (
       step?.type === 'DRAW_CARD' && step.card?.id === inspectionCard.id
@@ -259,7 +261,7 @@ describe('animQueueHelpers', () => {
       log: [],
     }));
     const transition = resolveAiGodChoiceTransition(pendingGs);
-    const replay = buildInspectionAwareAnimQueue(pendingGs, transition.state, { buildAnimQueue, copyPlayers });
+    const replay = compileFreshVisualEventReplay(pendingGs, transition.state);
     const queue = replay.queue;
     const highlightIndices = queue
       .map((step, index) => step?.type === 'GOD_HIGHLIGHT' && step?.targetPid === 1 ? index : -1)
@@ -374,7 +376,7 @@ describe('animQueueHelpers', () => {
       ...result.inspectionMeta,
       ...result.statePatch,
     };
-    const queue = buildInspectionAwareAnimQueue(oldGs, newGs, { buildAnimQueue, copyPlayers }).queue;
+    const queue = compileFreshVisualEventReplay(oldGs, newGs).queue;
     const exitIdx = queue.findIndex(step => step?.effect === 'godConvertDiscard' && step?.fromPid === 1);
     const sanIdx = queue.findIndex(step => step?.type === 'SAN_DAMAGE' && step?.hitIndices?.includes(1));
     const inspectionIdx = queue.findIndex(step => step?.inspectionSeq != null && step?.targetPid === 1);
@@ -419,10 +421,9 @@ describe('animQueueHelpers', () => {
     });
     const pending = startNextTurn(base);
     const transition = resolveAiGodChoiceTransition(pending);
-    const queue = buildInspectionAwareAnimQueue(
+    const queue = compileFreshVisualEventReplay(
       pending,
       transition.state,
-      { buildAnimQueue, copyPlayers },
     ).queue;
     const faithDiscards = queue.filter(step => (
       step?.type === 'CARD_TRANSFER'
@@ -475,7 +476,7 @@ describe('animQueueHelpers', () => {
       ...result.inspectionMeta,
       ...result.statePatch,
     };
-    const queue = buildInspectionAwareAnimQueue(oldGs, newGs, { buildAnimQueue, copyPlayers }).queue;
+    const queue = compileFreshVisualEventReplay(oldGs, newGs).queue;
     const exitIdx = queue.findIndex(step => step?.effect === 'godConvertDiscard' && step?.fromPid === 1);
     const sanIdx = queue.findIndex(step => step?.type === 'SAN_DAMAGE' && step?.hitIndices?.includes(1));
     const highlightIdx = queue.findIndex(step => step?.type === 'GOD_HIGHLIGHT' && step?.targetPid === 1);
@@ -520,7 +521,7 @@ describe('animQueueHelpers', () => {
       ...result.inspectionMeta,
       ...result.statePatch,
     };
-    const queue = buildInspectionAwareAnimQueue(oldGs, newGs, { buildAnimQueue, copyPlayers }).queue;
+    const queue = compileFreshVisualEventReplay(oldGs, newGs).queue;
     const highlightIdx = queue.findIndex(step => step?.type === 'GOD_HIGHLIGHT' && step?.targetPid === 1);
     const exitIdx = queue.findIndex(step => step?.effect === 'godAbandon' && step?.fromPid === 2);
     const sanIdx = queue.findIndex(step => step?.type === 'SAN_DAMAGE' && step?.hitIndices?.includes(2));
@@ -574,7 +575,7 @@ describe('animQueueHelpers', () => {
       ...result.inspectionMeta,
       ...result.statePatch,
     };
-    const queue = buildInspectionAwareAnimQueue(oldGs, newGs, { buildAnimQueue, copyPlayers }).queue;
+    const queue = compileFreshVisualEventReplay(oldGs, newGs).queue;
     const actorExitIdx = queue.findIndex(step => step?.effect === 'godConvertDiscard' && step?.fromPid === 1);
     const actorSanIdx = queue.findIndex(step => step?.type === 'SAN_DAMAGE' && step?.hitIndices?.includes(1));
     const actorInspectionIdx = queue.findIndex(step => step?.inspectionSeq != null && step?.targetPid === 1);
@@ -657,7 +658,7 @@ describe('animQueueHelpers', () => {
       _visualEvents: [upgradeEvent],
     };
     const queue = prepareWorshipHighlight(
-      buildInspectionAwareAnimQueue(oldGs, newGs, { buildAnimQueue, copyPlayers }).queue,
+      compileFreshVisualEventReplay(oldGs, newGs).queue,
       { targetPid: 0, godKey: 'TSG', players: after },
     );
     const highlight = queue.find(step => step.type === 'GOD_HIGHLIGHT');
@@ -1248,10 +1249,9 @@ describe('animQueueHelpers', () => {
       },
     });
     const resolved = resolveAiGodChoiceTransition(pendingState).state;
-    const queue = buildInspectionAwareAnimQueue(
+    const queue = compileFreshVisualEventReplay(
       pendingState,
       resolved,
-      { buildAnimQueue, copyPlayers },
     ).queue;
     const inspectionIdx = queue.findIndex(step => step?.type === 'DRAW_CARD' && step?.inspectionSeq != null);
     const highlightIdx = queue.findIndex(step => step?.type === 'GOD_HIGHLIGHT');
@@ -1288,7 +1288,7 @@ describe('animQueueHelpers', () => {
     ]);
   });
 
-  it('检定事件流保证前置变化、检定翻牌、检定效果按顺序入队', () => {
+  it('检定事件流只消费事件自带的翻牌与效果事实', () => {
     const card = makeZoneCard('B2', 0);
     const basePlayers = [makePlayer({ name: '玩家', hp: 10, san: 10 })];
     const beforePlayers = copyPlayers(basePlayers);
@@ -1302,33 +1302,31 @@ describe('animQueueHelpers', () => {
       beforeLog: ['蛊惑发动'],
       afterPlayers,
       afterLog: ['蛊惑发动', '检定导致伤害'],
+      revealMsgs: ['玩家 的SAN检定结果为"伤害"'],
+      effectMsgs: ['检定导致伤害'],
+      statEvents: [{
+        type: 'HP_LOSS', target: 0,
+        from: { hp: 10, san: 8 }, to: { hp: 7, san: 8 },
+        reason: '检定', seq: 1,
+      }],
+      statEventSeq: 1,
     }];
-    const buildAnimQueue = (oldGs, newGs) => {
-      const queue = [];
-      if (oldGs.log.length !== newGs.log.length) queue.push({ type: 'LOG_STEP', to: newGs.log.at(-1) });
-      if (oldGs.players[0].hp !== newGs.players[0].hp) queue.push({ type: 'DAMAGE', targetPid: 0 });
-      if (oldGs.players[0].san !== newGs.players[0].san) queue.push({ type: 'SAN_CHANGE', targetPid: 0 });
-      return queue;
-    };
 
     const flow = buildInspectionEventFlow(
       { players: basePlayers, log: [] },
       events,
-      { buildAnimQueue, copyPlayers },
+      { copyPlayers },
     );
 
     expect(flow.queue.map(step => step.type)).toEqual([
       'VISUAL_LOCK',
-      'LOG_STEP',
-      'SAN_CHANGE',
-      'VISUAL_LOCK',
       'DRAW_CARD',
-      'LOG_STEP',
-      'DAMAGE',
+      'HP_DAMAGE',
       'STATE_PATCH',
     ]);
     expect(flow.queue[0].players[0]).toMatchObject({ id: basePlayers[0].id, hand: basePlayers[0].hand });
-    expect(flow.queue[4]).toMatchObject({ triggerName: '检定牌', card, targetPid: 0 });
+    expect(flow.queue[1]).toMatchObject({ triggerName: '检定牌', card, targetPid: 0 });
+    expect(flow.queue[2]).toMatchObject({ hitIndices: [0], msgs: ['检定导致伤害'] });
   });
 
   it('检定效果动画优先使用显式 statEvents', () => {
@@ -1386,7 +1384,7 @@ describe('animQueueHelpers', () => {
       '奥托 的SAN检定结果为"失忆"',
       '奥托 失忆，下一回合禁用技能',
     ];
-    const result = buildInspectionAwareAnimQueue(
+    const result = compileFreshVisualEventReplay(
       {
         players: oldPlayers,
         log: [],
@@ -1413,7 +1411,21 @@ describe('animQueueHelpers', () => {
           reason: '鼠群',
         }],
         _inspectionSeq: 2,
-        _visualEvents: [{
+        _visualEvents: [createStatEventsEvent({ statEvents: [{
+          seq: 1,
+          type: 'SAN_LOSS',
+          target: 0,
+          from: { hp: 9, san: 7, isDead: false },
+          to: { hp: 9, san: 6, isDead: false },
+          reason: '鼠群',
+        }, {
+          seq: 1,
+          type: 'SAN_LOSS',
+          target: 1,
+          from: { hp: 10, san: 7, isDead: false },
+          to: { hp: 10, san: 6, isDead: false },
+          reason: '鼠群',
+        }] }), {
           ...createInspectionVisualEvent({
           seq: 1,
           card: calmCard,
@@ -1441,7 +1453,6 @@ describe('animQueueHelpers', () => {
           }),
         }],
       },
-      { buildAnimQueue, copyPlayers },
     );
 
     const sanIdx = result.queue.findIndex(step => step.type === 'SAN_DAMAGE');
@@ -1501,10 +1512,9 @@ describe('animQueueHelpers', () => {
       _visualEvents: [nightWindEvent, createInspectionVisualEvent(inspectionEvent)],
     };
 
-    const result = buildInspectionAwareAnimQueue(
+    const result = compileFreshVisualEventReplay(
       baseState,
       resolvedState,
-      { buildAnimQueue, copyPlayers },
     );
 
     expect(result.queue.filter(step => step.type === 'NIGHT_WIND')).toHaveLength(0);
@@ -1538,7 +1548,7 @@ describe('animQueueHelpers', () => {
     const firstVisualEvent = createInspectionVisualEvent(firstEvent);
     const secondVisualEvent = createInspectionVisualEvent(secondEvent);
 
-    const result = buildInspectionAwareAnimQueue(
+    const result = compileFreshVisualEventReplay(
       {
         players,
         log: firstEvent.afterLog,
@@ -1554,7 +1564,6 @@ describe('animQueueHelpers', () => {
           secondVisualEvent,
         ],
       },
-      { buildAnimQueue, copyPlayers },
     );
 
     const inspectionCards = result.queue
@@ -1609,7 +1618,7 @@ describe('animQueueHelpers', () => {
     expect(tailQueue.some(step => step.type === 'HP_DAMAGE')).toBe(false);
   });
 
-  it('连续检定会消费第二次检定前的改信 SAN 事件，highlight 后不再重播', () => {
+  it('检定事件流不会从外部 stat 水位捞取改信伤害', () => {
     const encounterSanEvent = {
       seq: 1,
       type: 'SAN_LOSS',
@@ -1706,7 +1715,7 @@ describe('animQueueHelpers', () => {
     );
 
     expect(flow.statEventSeq).toBe(2);
-    expect(flow.queue.filter(step => step.type === 'SAN_DAMAGE')).toHaveLength(1);
+    expect(flow.queue.filter(step => step.type === 'SAN_DAMAGE')).toHaveLength(0);
     expect(tailQueue.some(step => step.type === 'GOD_HIGHLIGHT')).toBe(true);
     expect(tailQueue.some(step => step.type === 'SAN_DAMAGE')).toBe(false);
   });

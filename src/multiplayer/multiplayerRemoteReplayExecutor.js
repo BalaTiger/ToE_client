@@ -1,7 +1,4 @@
-import {
-  buildAnimQueue,
-  buildFullHandSwapTransferQueueFromLogs,
-} from '../game/animQueueCore';
+import { buildFullHandSwapTransferQueueFromLogs } from '../game/animQueueCore';
 import {
   buildMpRemoteReplayAction,
   MP_REMOTE_REPLAY,
@@ -9,7 +6,10 @@ import {
 import { rotateGsForViewer } from '../game/rotateState';
 import { getVisualEventIdsFromState } from '../game/visualEvents';
 import { getZhuTopGuard } from '../game/zhuPower';
-import { ANIMATION_QUEUE_AUTHORITY } from '../game/visualEventTransactionCompiler';
+import {
+  ANIMATION_QUEUE_AUTHORITY,
+  compileFreshVisualEventQueue,
+} from '../game/visualEventTransactionCompiler';
 
 const ANIMATED_REPLAY_TYPES = new Set([
   MP_REMOTE_REPLAY.ROLE_REVEAL,
@@ -238,7 +238,7 @@ export function processIncomingMultiplayerStateSync({
     rotated: rotatedState,
     previousGs: previousState,
     roleRevealed: context.mpRoleRevealedRef.current,
-    buildAnimQueue,
+    compileFreshVisualEventQueue,
     buildFullHandSwapTransferQueueFromLogs,
     consumedVisualEventIds: context.consumedVisualEventIdsRef.current,
   });

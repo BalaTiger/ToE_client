@@ -45,6 +45,7 @@ import {
   createGodStatusChangedEvent,
   createGodGiftDiscardEvent,
   createGodGiftKeepEvent,
+  createOrderedSettlementEvents,
   createStatEventsEvent,
   createTsathogguaSlimeGrantEvent,
   createTsathogguaSlimePopEvent,
@@ -797,15 +798,22 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
       if (patch.proliferatingZQueue) zBase = { ...zBase, proliferatingZQueue: patch.proliferatingZQueue };
     });
   }
+  const settlementEvents = [
+    ...(inspectionMeta?._visualEvents || []),
+    ...visualEvents,
+  ].filter((event, index, events) => (
+    !event?.id || events.findIndex(candidate => candidate?.id === event.id) === index
+  ));
+  const priorStatKeys = new Set((gs?._statEvents || []).map(event => JSON.stringify(event)));
+  const freshSettlementStatEvents = (inspectionMeta?._statEvents || [])
+    .filter(event => !priorStatKeys.has(JSON.stringify(event)));
   statePatch = {
     ...statePatch,
     ...(zBase.proliferatingZQueue ? { proliferatingZQueue: zBase.proliferatingZQueue } : {}),
-    _visualEvents: [
-      ...(inspectionMeta?._visualEvents || []),
-      ...visualEvents,
-    ].filter((event, index, events) => (
-      !event?.id || events.findIndex(candidate => candidate?.id === event.id) === index
-    )),
+    _visualEvents: createOrderedSettlementEvents({
+      events: settlementEvents,
+      statEvents: freshSettlementStatEvents,
+    }),
   };
   return { P, D, Disc, msgs, inspectionMeta, statePatch, discardedGod };
 }
@@ -1739,8 +1747,8 @@ function resolveNextTurnState(gs, opts = {}) {
     _apophisTargetEvent: null,
     _visualEvents: [...inheritedGodPowerBlockedEvents, ...inheritedTsgSlimeGrantEvents],
     _skippedTurnReplays: inheritedSkippedTurnReplays,
-    _carryTsgSlimeGrantEvents: null,
-    _carryGodPowerBlockedEvents: null,
+    _carryTsgSlimeGrantEvents: inheritedTsgSlimeGrantEvents,
+    _carryGodPowerBlockedEvents: inheritedGodPowerBlockedEvents,
     _carrySkippedTurnReplays: null,
     _tsgSlimeGrantedAtTurnEnd: undefined,
     // One-shot rule/presentation guard. A later startNextTurn call must not
@@ -1748,7 +1756,6 @@ function resolveNextTurnState(gs, opts = {}) {
     _turnStartAbortedByDeath: undefined,
   };
   const visualEvents = gs._visualEvents;
-  const inheritedGodPowerBlockedEventCount = inheritedGodPowerBlockedEvents.length;
   const N = gs.players.length;
   let P = copyPlayers(gs.players), D = [...gs.deck], Disc = [...gs.discard], L = [...gs.log];
   let _P_beforeTurn = copyPlayers(P);
@@ -1851,7 +1858,7 @@ function resolveNextTurnState(gs, opts = {}) {
       cthReplay: skippedTurnCthReplay,
     };
     return resolveNextTurnState(
-      { ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents.filter(event => event?.type === VISUAL_EVENT.GOD_POWER_BLOCKED).slice(inheritedGodPowerBlockedEventCount), _carrySkippedTurnReplays: [...inheritedSkippedTurnReplays, skippedTurnReplay] },
+      { ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents.filter(event => event?.type === VISUAL_EVENT.GOD_POWER_BLOCKED), _carrySkippedTurnReplays: [...inheritedSkippedTurnReplays, skippedTurnReplay] },
       { ...opts, skipCurrentEndTurnStage: true },
     );
   }
@@ -2734,7 +2741,11 @@ export function startNextTurn(gs, opts = {}) {
   // executed at the turn boundary, before the next TURN_START stage begins.
   const boundaryInput = enterTurnBoundary(cleanInput);
   const nextState = normalizeTurnOpeningFlowState(resolveNextTurnState(boundaryInput, opts));
-  const engineEvents = Array.isArray(nextState?._visualEvents) ? nextState._visualEvents : [];
+  const engineEvents = mergeVisualEventLists(
+    nextState?._carryGodPowerBlockedEvents,
+    nextState?._carryTsgSlimeGrantEvents,
+    nextState?._visualEvents,
+  );
   const freshStatVisualEvents = buildFreshStatVisualEvents(nextState, previousStatSeq);
   const freshStatEvents = freshStatVisualEvents.flatMap(event => event?.statEvents || []);
   // resolveNextTurnState only produces events for the newly entered turn.
@@ -2853,5 +2864,10 @@ export function startNextTurn(gs, opts = {}) {
     ));
   }
   visualEvents = markTerminalVisualEventBoundary(visualEvents, nextState);
-  return visualEvents.length ? { ...nextState, _visualEvents: visualEvents } : nextState;
+  const finalizedState = {
+    ...nextState,
+    _carryGodPowerBlockedEvents: null,
+    _carryTsgSlimeGrantEvents: null,
+  };
+  return visualEvents.length ? { ...finalizedState, _visualEvents: visualEvents } : finalizedState;
 }

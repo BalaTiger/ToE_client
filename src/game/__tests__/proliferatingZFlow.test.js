@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildProliferatingZDrawFlow } from '../proliferatingZFlow';
+import { createStatEventsEvent } from '../visualEvents';
 import { makePlayer, makeZoneCard, makeGodCard } from './factory';
 
 const baseDeps = overrides => ({
@@ -82,6 +83,13 @@ describe('proliferatingZFlow', () => {
   it('无需抉择时会组装摸牌、状态动画并要求继续队列', () => {
     const card = makeZoneCard('B1', 0);
     const playersAfter = [makePlayer({ name: '你', hp: 9 }), makePlayer({ name: '艾伦' })];
+    const hpLoss = {
+      seq: 1,
+      type: 'HP_LOSS',
+      target: 0,
+      from: { hp: 10, san: 10, isDead: false },
+      to: { hp: 9, san: 10, isDead: false },
+    };
     const deps = baseDeps({
       playerDrawCard: vi.fn(() => ({
         P: playersAfter,
@@ -89,9 +97,12 @@ describe('proliferatingZFlow', () => {
         Disc: [card],
         drawnCard: card,
         effectMsgs: ['你 失去 1 HP'],
-        statePatch: {},
+        statePatch: {
+          _statEvents: [hpLoss],
+          _statEventSeq: 1,
+          _visualEvents: [createStatEventsEvent({ statEvents: [hpLoss], msgs: ['你 失去 1 HP'] })],
+        },
       })),
-      buildAnimQueue: () => [{ type: 'HP_DAMAGE', hitIndices: [0] }],
     });
 
     const flow = buildProliferatingZDrawFlow(makeState(), deps);

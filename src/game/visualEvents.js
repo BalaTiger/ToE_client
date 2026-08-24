@@ -36,6 +36,7 @@ export const VISUAL_EVENT = {
   CARD_MOVE: 'cardMove',
   CARD_REVEAL: 'cardReveal',
   DICE_RESULT: 'diceResult',
+  VRITRA_IMMORTAL_REVEAL: 'vritraImmortalReveal',
 };
 
 const visualEventInstanceId = Math.random().toString(36).slice(2, 10);
@@ -275,6 +276,7 @@ export function createStatEventsEvent({
   statEvents = [],
   msgs = [],
   turnStartStage = null,
+  turnStartStageOrder = null,
   transactionId = null,
   order = null,
   resolutionPhase = null,
@@ -285,7 +287,10 @@ export function createStatEventsEvent({
   const phaseGroupIds = [...new Set(events.map(event => event?.phaseGroupId).filter(Boolean))];
   return withVisualEventMeta({
     type: VISUAL_EVENT.STAT_EVENTS,
-    ...(turnStartStage ? { turnStartStage, turnStartStageOrder: 1 } : {}),
+    ...(turnStartStage ? {
+      turnStartStage,
+      turnStartStageOrder: Number.isFinite(turnStartStageOrder) ? turnStartStageOrder : 1,
+    } : {}),
     ...(transactionId ? { transactionId } : {}),
     ...(order != null ? { order } : {}),
     ...(resolutionPhase ? { resolutionPhase } : {}),
@@ -302,9 +307,24 @@ export function createBewitchGiftEvent({
   targetName = '该玩家',
   card,
   msgs = [],
-  encounterState = null,
+  playersBefore = null,
+  playersAfter = null,
+  discardBefore = null,
+  discardAfter = null,
+  statEvents = [],
+  settlementEvents = [],
+  encounterEvents = [],
+  acceptanceEvents = [],
+  zhuLightBefore = null,
+  zhuLightAfter = null,
 } = {}) {
   if (!card) return null;
+  const normalizedSettlementEvents = Array.isArray(settlementEvents) && settlementEvents.length
+    ? settlementEvents.filter(Boolean)
+    : [
+        ...(Array.isArray(encounterEvents) ? encounterEvents.filter(Boolean).map(event => ({ ...event, cardAcquisitionStage: 'godEncounter' })) : []),
+        ...(Array.isArray(acceptanceEvents) ? acceptanceEvents.filter(Boolean).map(event => ({ ...event, cardAcquisitionStage: 'acceptance' })) : []),
+      ];
   return withVisualEventMeta({
     type: VISUAL_EVENT.BEWITCH_GIFT,
     id: `${VISUAL_EVENT.BEWITCH_GIFT}:${visualEventInstanceId}:${++actionEventSeq}`,
@@ -313,8 +333,54 @@ export function createBewitchGiftEvent({
     targetName,
     card,
     msgs: Array.isArray(msgs) ? msgs : [],
-    ...(encounterState ? { encounterState } : {}),
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfter) ? { playersAfter } : {}),
+    ...(Array.isArray(discardBefore) ? { discardBefore } : {}),
+    ...(Array.isArray(discardAfter) ? { discardAfter } : {}),
+    statEvents: Array.isArray(statEvents) ? statEvents.filter(Boolean) : [],
+    settlementEvents: normalizedSettlementEvents,
+    ...(zhuLightBefore ? { zhuLightBefore } : {}),
+    ...(zhuLightAfter ? { zhuLightAfter } : {}),
   }, 'action');
+}
+
+export function createOrderedSettlementEvents({ events = [], statEvents = [] } = {}) {
+  const seenEventIds = new Set();
+  const seenEventRefs = new Set();
+  const explicitEvents = (Array.isArray(events) ? events : []).filter(event => {
+    if (!event) return false;
+    if (event.id) {
+      if (seenEventIds.has(event.id)) return false;
+      seenEventIds.add(event.id);
+      return true;
+    }
+    if (seenEventRefs.has(event)) return false;
+    seenEventRefs.add(event);
+    return true;
+  });
+  const ownedStatKeys = new Set(explicitEvents
+    .flatMap(event => event?.statEvents || [])
+    .map(event => JSON.stringify(event)));
+  const remaining = (Array.isArray(statEvents) ? statEvents : [])
+    .filter(event => event && !ownedStatKeys.has(JSON.stringify(event)));
+  const result = [];
+  const emitted = new Set();
+  const emitThrough = threshold => {
+    const batch = remaining.filter(event => (
+      !emitted.has(event) && threshold != null && (event?.seq ?? Number.POSITIVE_INFINITY) <= threshold
+    ));
+    batch.forEach(event => emitted.add(event));
+    const visualEvent = createStatEventsEvent({ statEvents: batch });
+    if (visualEvent) result.push(visualEvent);
+  };
+  explicitEvents.forEach(event => {
+    emitThrough(event?.beforeStatEventSeq);
+    result.push(event);
+  });
+  const tail = remaining.filter(event => !emitted.has(event));
+  const tailEvent = createStatEventsEvent({ statEvents: tail });
+  if (tailEvent) result.push(tailEvent);
+  return result;
 }
 
 export function createGraveDigEvent({
@@ -571,6 +637,23 @@ export function createDiceResultVisualEvent({
   }, 'action');
 }
 
+export function createVritraImmortalRevealEvent({
+  targetIdx = 0,
+  cards = [],
+  succeeded = false,
+  msg = '',
+} = {}) {
+  const revealedCards = Array.isArray(cards) ? cards.filter(Boolean) : [];
+  if (!revealedCards.length) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.VRITRA_IMMORTAL_REVEAL,
+    targetIdx,
+    cards: revealedCards,
+    succeeded: !!succeeded,
+    msgs: msg ? [msg] : [],
+  }, 'stat');
+}
+
 export function buildDiceResultSteps(event = {}) {
   if (!event?.mode || !Number.isFinite(Number(event?.d1))) return [];
   return [
@@ -630,6 +713,7 @@ export function createSphinxResultEvent({
   msgs = [],
   playersBefore = null,
   playersAfter = null,
+  statEvents = [],
 } = {}) {
   if (!card) return null;
   return withVisualEventMeta({
@@ -640,6 +724,7 @@ export function createSphinxResultEvent({
     ...(sourceCard ? { sourceCard } : {}),
     guessCorrect: !!guessCorrect,
     msgs: Array.isArray(msgs) ? msgs : [],
+    statEvents: Array.isArray(statEvents) ? statEvents.filter(Boolean) : [],
     ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
     ...(Array.isArray(playersAfter) ? { playersAfter } : {}),
   }, 'action');
@@ -1303,95 +1388,6 @@ export function getVisualEvents(state) {
     : [];
 }
 
-function legacyVisualEventId(type, parts = []) {
-  return `legacy:${type}:${parts.map(part => String(part ?? '')).join(':')}`;
-}
-
-function legacyCardKey(card) {
-  return cardIdentity(card) || card?.id || card?.key || card?.name || 'none';
-}
-
-export function promoteLegacyVisualEvents(state) {
-  if (!state) return [];
-  const explicit = getVisualEvents(state);
-  const promoted = [];
-  const hasEvent = predicate => explicit.some(predicate) || promoted.some(predicate);
-
-  const coveredStatSeqs = new Set(explicit.flatMap(event => (
-    Array.isArray(event?.statEvents) ? event.statEvents.map(stat => stat?.seq).filter(seq => seq != null) : []
-  )));
-  const currentStatSeq = state._statEventSeq;
-  const currentStatLogs = new Set((state._statLogs || []).filter(Boolean));
-  const legacyStats = (Array.isArray(state._statEvents) ? state._statEvents : [])
-    .filter(event => event &&
-      (event.seq == null || !coveredStatSeqs.has(event.seq)) &&
-      (
-        currentStatSeq == null ||
-        event.seq == null ||
-        event.seq === currentStatSeq ||
-        (event.logHint && currentStatLogs.has(event.logHint))
-      ));
-  const statGroups = new Map();
-  legacyStats.forEach(event => {
-    const key = event.seq ?? `${event.type}:${event.target ?? ''}`;
-    if (!statGroups.has(key)) statGroups.set(key, []);
-    statGroups.get(key).push(event);
-  });
-  statGroups.forEach((statEvents, key) => {
-    const phaseGroupIds = [...new Set(statEvents.map(event => event?.phaseGroupId).filter(Boolean))];
-    promoted.push({
-      type: VISUAL_EVENT.STAT_EVENTS,
-      id: legacyVisualEventId(VISUAL_EVENT.STAT_EVENTS, [key]),
-      scope: 'stat',
-      ...(phaseGroupIds.length === 1 ? { phaseGroupId: phaseGroupIds[0] } : {}),
-      statEvents,
-      msgs: state._statLogs || [],
-    });
-  });
-
-  const apophis = state._apophisTargetEvent;
-  if (apophis?.seq && !hasEvent(event => event.type === VISUAL_EVENT.APOPHIS_TARGET && event.legacySeq === apophis.seq)) {
-    promoted.push({
-      ...apophis,
-      type: VISUAL_EVENT.APOPHIS_TARGET,
-      id: legacyVisualEventId(VISUAL_EVENT.APOPHIS_TARGET, [apophis.seq]),
-      scope: 'action',
-      legacySeq: apophis.seq,
-    });
-  }
-
-  (state._aiHuntEvents || []).forEach((event, index) => {
-    if (event?.targetOnly) return;
-    if (hasEvent(candidate => candidate.type === VISUAL_EVENT.HUNT_RESULT && candidate.hunterIdx === event?.hunterIdx && candidate.targetIdx === event?.targetIdx)) return;
-    promoted.push({
-      ...event,
-      type: VISUAL_EVENT.HUNT_RESULT,
-      id: legacyVisualEventId(VISUAL_EVENT.HUNT_RESULT, [state._turnKey, index, event?.hunterIdx, event?.targetIdx]),
-      scope: 'action',
-      sourceIdx: event?.sourceIdx ?? event?.hunterIdx,
-    });
-  });
-
-  const sphinx = state._animSphinxReveal;
-  if (sphinx?.card && !hasEvent(event => event.type === VISUAL_EVENT.SPHINX_RESULT && event.actorIdx === sphinx.actorIdx && legacyCardKey(event.card) === legacyCardKey(sphinx.card))) {
-    promoted.push({
-      ...sphinx,
-      type: VISUAL_EVENT.SPHINX_RESULT,
-      id: legacyVisualEventId(VISUAL_EVENT.SPHINX_RESULT, [state._turnKey, sphinx.actorIdx, legacyCardKey(sphinx.card)]),
-      scope: 'action',
-      msgs: state._statLogs || [],
-    });
-  }
-
-  return [...explicit, ...promoted];
-}
-
-export function ensureVisualEventState(state) {
-  if (!state) return state;
-  const events = promoteLegacyVisualEvents(state);
-  return { ...state, _visualEvents: events };
-}
-
 export function clearVisualEvents(state) {
   return state ? { ...state, _visualEvents: [] } : state;
 }
@@ -1859,7 +1855,7 @@ export function buildCardEffectStepsFromVisualEvents(state, oldState = null, pre
       const steps = step?.type === 'COMPOSITE' ? step.steps : [step];
       // Tag each compiled step with its owning event id so queue-coverage
       // checks (getAiActionQueueCoverage) recognize the event as presented;
-      // otherwise callers fall back to legacyMerge and the event is compiled
+      // otherwise callers could compile the same event again
       // a second time (e.g. 夜风呼啸 gifted via 蛊惑 played its animation and
       // stat deductions twice).
       return steps.filter(Boolean).map(s => (

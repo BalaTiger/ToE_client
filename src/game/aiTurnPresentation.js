@@ -477,12 +477,19 @@ export function buildAiHuntWaitPresentation({
       ],
       previousState._playersBeforeThisDraw
     );
+    const drawEffectEventIds = (previousState._visualEvents || [])
+      .filter(event => (
+        event?.id
+        && event.turnStartStage === 'draw'
+        && !['drawCard', 'deckReshuffle'].includes(event.type)
+      ))
+      .map(event => event.id);
+    const drawEffectTransaction = drawEffectEventIds.length
+      ? compileRuleVisualEventsToAnimTransaction(previousState, null, { eventIds: drawEffectEventIds })
+      : null;
     const drawEffectQueueBase = bindAnimLogChunks(
-      buildAnimQueue(
-        fakeState(previousState._playersBeforeThisDraw, drawBaselineLog),
-        previousState
-      ),
-      { statLogs: previousState._statLogs }
+      drawEffectTransaction?.queue || [],
+      { statLogs: previousState._statLogs },
     );
     const drawEffectQueue = drawFullHandSwapQueue.length
       ? [
@@ -554,9 +561,7 @@ export function buildAiHuntWaitPresentation({
       }
     : { ...previousState, players: actionBaselinePlayers };
   const preHuntReplay = scopeAiPreHuntReplayMetadata(nextState, rawResult);
-  const actionStatQueueBase = buildAnimQueue(
-    actionOldState,
-    {
+  const actionReplayState = {
       ...fakeState(preHuntReplay.players, nextLog),
       // AI worship-from-hand is resolved in the rule layer before the hunt
       // wait state is returned.  Keep the authoritative action events here so
@@ -566,8 +571,8 @@ export function buildAiHuntWaitPresentation({
       _visualEvents: preHuntReplay.visualEvents,
       _statEvents: preHuntReplay.statEvents,
       _statEventSeq: preHuntReplay.statEventSeq,
-    }
-  );
+    };
+  const actionStatQueueBase = compileFreshVisualEventReplay(actionOldState, actionReplayState).queue;
   const hasRoseThornGiftAllHand = newMessages.some(message =>
     typeof message === 'string'
     && message.includes('【玫瑰倒刺】')
@@ -630,14 +635,7 @@ export function buildAiHuntWaitPresentation({
         ...huntEventQueue
       );
     } else {
-      queue.push(
-        ...getAiPreHuntActionSteps(
-          actionStatQueue,
-          newMessages,
-          huntEventQueue
-        ),
-        ...huntEventQueue
-      );
+      queue.push(...actionStatQueue, ...huntEventQueue);
     }
   } else if (actionStatQueue.length) {
     queue.push(...actionStatQueue);
@@ -725,13 +723,11 @@ export function buildOwnedAiHuntEventQueue({
   rawHuntEvents = [],
   state,
   actorName,
-  buildQueue = buildAnimQueue,
 } = {}) {
   const metadata = scopeAiActionReplayMetadata(state);
   const owned = collectOwnedAiHuntVisualEvents(metadata.visualEvents, rawHuntEvents);
   const transaction = owned.events.length
     ? compileRuleVisualEventsToAnimTransaction(state, null, {
-        buildAnimQueue: buildQueue,
         eventIds: owned.events.map(event => event.id),
       })
     : null;
@@ -806,9 +802,7 @@ export function buildAiPresentationRecoveryState({
 }
 import {
   buildAiHuntEventAnimQueue,
-  buildAnimQueue,
   buildFullHandSwapTransferQueueFromLogs,
-  getAiPreHuntActionSteps,
 } from './animQueueCore';
 import { statePatchStep } from './animQueueHelpers';
 import {
@@ -820,6 +814,7 @@ import {
 import { removeCardsFromDiscard } from './coreUtils';
 import { getTurnStartDrawBaselineLog } from './turnAnimState';
 import {
+  compileFreshVisualEventReplay,
   compileRuleVisualEventsToAnimTransaction,
   getAnimationQueueVisualEventIds,
 } from './visualEventTransactionCompiler';

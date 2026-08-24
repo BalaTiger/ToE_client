@@ -1,7 +1,7 @@
 import { copyPlayers, removeCardsFromDiscard } from './coreUtils';
 import { isAiSeat, localDisplayName } from './rotateState';
 import { bindAnimLogChunks } from './animLogs';
-import { buildAnimQueue, buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
+import { buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
 import { buildInspectionEventFlow, cardTransferStep, prepareWorshipHighlight, statePatchStep, zhuHideCardStep } from './animQueueHelpers';
 import {
   getVisualEvents,
@@ -12,7 +12,10 @@ import {
   isPreDrawTurnStartStatEvent,
 } from './visualEvents';
 import { statEventsToAnimQueue } from './statEvents';
-import { compileRuleVisualEventsToAnimTransaction } from './visualEventTransactionCompiler';
+import {
+  compileFreshVisualEventQueue,
+  compileRuleVisualEventsToAnimTransaction,
+} from './visualEventTransactionCompiler';
 
 export const EMPTY_TURN_ANIM_FIELDS = Object.freeze({
   _aiDrawnCard: null,
@@ -500,7 +503,6 @@ export function insertBlackGoatDamagePreludeSteps(queue = [], preludeSteps = [])
 export function buildTurnStartPreDrawEffectQueue({
   oldGs,
   newGs,
-  buildQueue = buildAnimQueue,
   consumedVisualEventIds = null,
   blackGoatDamagePreludeSteps = [],
 } = {}) {
@@ -545,7 +547,6 @@ export function buildTurnStartPreDrawEffectQueue({
     const statTransaction = freshCanonicalEvents.length
       ? compileRuleVisualEventsToAnimTransaction(newGs, null, {
           eventIds: freshCanonicalEvents.map(event => event.id).filter(Boolean),
-          buildAnimQueue: buildQueue,
           players: preTurnPlayers,
           ...(consumedVisualEventIds ? { consumedEventIds: consumedVisualEventIds } : {}),
         })
@@ -599,7 +600,6 @@ export function buildTurnStartPreDrawEffectQueue({
   if (explicitInspectionEvents.length) {
     const inspectionTransaction = compileRuleVisualEventsToAnimTransaction(newGs, oldGs, {
       eventIds: explicitInspectionEvents.map(event => event.id).filter(Boolean),
-      buildAnimQueue: buildQueue,
       players: beforeDrawPlayers,
       ...(consumedVisualEventIds ? { consumedEventIds: consumedVisualEventIds } : {}),
     });
@@ -608,7 +608,7 @@ export function buildTurnStartPreDrawEffectQueue({
   return queue;
 }
 
-export function buildSkippedTurnReplayQueue(state, { buildQueue = buildAnimQueue, bannersOnly = false } = {}) {
+export function buildSkippedTurnReplayQueue(state, { buildQueue = compileFreshVisualEventQueue, bannersOnly = false } = {}) {
   const replays = Array.isArray(state?._skippedTurnReplays) ? state._skippedTurnReplays : [];
   return replays.flatMap(replay => {
     const turnBanner = {
@@ -724,7 +724,7 @@ export function buildTurnStartDrawReplayQueue({
   preTurnSteps = [],
   consumedVisualEventIds = null,
   blackGoatDamagePreludeSteps = [],
-  buildQueue = buildAnimQueue,
+  buildQueue = compileFreshVisualEventQueue,
   buildFullHandSwapTransferQueue = buildFullHandSwapTransferQueueFromLogs,
 } = {}) {
   const boundarySteps = [
@@ -1099,7 +1099,7 @@ export function buildTurnStartDrawReplayQueue({
     ...(newGs?._statLogs || []),
   ].some(line => typeof line === 'string' && line.startsWith('【霉变食物】') && line.includes('掷出'));
   // AI draw replay is often built from the already-resolved turn state. In that
-  // path effectOldGs carries the current roll watermark too, so buildAnimQueue
+  // path effectOldGs carries the current visual-event watermark too, so the compiler
   // mistakes this draw's moldy-food roll for an event it has already presented.
   // Rewind only when the current draw metadata owns a moldy-food result; stale
   // rolls from earlier turns have no matching _drawLogs/_statLogs entry here.
@@ -1107,7 +1107,7 @@ export function buildTurnStartDrawReplayQueue({
     ? Math.max(0, currentMoldySeq - 1)
     : null;
   // 摸牌效果的基线状态代表「摸牌效果发生之前」，不应携带本次摸牌产生的视觉事件
-  // （如地动山摇 earthquake）。清掉后，buildAnimQueue 才会把它判定为新事件并播放首次动画。
+  // （如地动山摇 earthquake）。清掉后，事件编译器才会把它判定为新事件并播放首次动画。
   const fallbackOldGs = {
     ...fallbackOldGsRaw,
     ...(drawOldStatSeq != null ? { _statEventSeq: drawOldStatSeq } : {}),
@@ -1131,7 +1131,6 @@ export function buildTurnStartDrawReplayQueue({
   const stagedTurnStartTransaction = hasAuthoritativeTurnStartEvents
     ? compileRuleVisualEventsToAnimTransaction(newGs, consumedVisualEventIds ? null : oldGs, {
         visualEventScope: 'turnStart',
-        buildAnimQueue: buildQueue,
         players: beforeDrawPlayers,
         ...(consumedVisualEventIds ? { consumedEventIds: consumedVisualEventIds } : {}),
       })
@@ -1252,7 +1251,7 @@ export function buildTurnStartDrawReplayQueue({
         _statEvents: replayStatEvents,
       },
       replayInspectionEvents,
-      { buildAnimQueue: buildQueue, copyPlayers }
+      { copyPlayers }
     );
     const maxInspectionSeq = Math.max(oldGs?._inspectionSeq || 0, ...drawInspectionEvents.map(ev => ev?.seq || 0));
     const tailQueue = buildQueue(

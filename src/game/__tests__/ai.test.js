@@ -1686,14 +1686,15 @@ describe('aiStep optional action limits', () => {
     });
     expect(result.players.some(player => player.hand.some(card => card.isBlackGoatYoung))).toBe(false);
     const bewitchEvent = result._visualEvents.find(event => event.type === 'bewitchGift');
-    expect(bewitchEvent?.encounterState?.players?.[0]).toMatchObject({
+    expect(bewitchEvent?.playersBefore?.[0]).toMatchObject({
       godName: null,
       godLevel: 0,
     });
-    expect(bewitchEvent?.encounterState?.log).toEqual(expect.arrayContaining([
-      expect.stringContaining('遭遇邪神 森之领主'),
+    expect(bewitchEvent?.playersAfter?.[0]).toMatchObject({ godName: 'SHU', godLevel: 1 });
+    expect(bewitchEvent?.settlementEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'godStatusChanged', cardAcquisitionStage: 'acceptance' }),
     ]));
-    expect(bewitchEvent?.encounterState?.log.some(line => line.includes('信仰了 森之领主'))).toBe(false);
+    expect(bewitchEvent).not.toHaveProperty('encounterState');
   });
 
   it('AI 黑夜蛊惑跨回合后保留 action-owned 目标与信仰抢夺事务', () => {
@@ -1733,11 +1734,12 @@ describe('aiStep optional action limits', () => {
     const faithEvent = actionEvents.find(event => event.type === 'godStatusChanged');
 
     expect(result._apophisTargetEvent).toBeNull();
-    expect(actionEvents.map(event => event.type).slice(0, 3)).toEqual([
+    const actionEventTypes = actionEvents.map(event => event.type);
+    expect(actionEventTypes.slice(0, 2)).toEqual([
       'apophisTarget',
       'bewitchGift',
-      'godStatusChanged',
     ]);
+    expect(actionEventTypes).toContain('godStatusChanged');
     expect(apophisEvent).toMatchObject({ legacySeq: 1, changed: true, targetIdx: 3, transactionId: expect.any(String) });
     expect(bewitchEvent).toMatchObject({ sourceIdx: 1, targetIdx: 3, transactionId: apophisEvent.transactionId });
     expect(faithEvent?.faithSettlement?.abandonedFollowers?.[0]).toMatchObject({

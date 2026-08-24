@@ -1,5 +1,5 @@
 import { bindAnimLogChunks, isDrawLikeLog, isTurnStartLog } from './animLogs';
-import { buildBewitchForcedCardQueue, buildInspectionAwareAnimQueue } from './animQueueHelpers';
+import { compileFreshVisualEventReplay, compileVisualEventToAnimTransaction } from './visualEventTransactionCompiler';
 import { appendFinalStatePatch } from './animStatePatch';
 import { copyPlayers } from './coreUtils';
 import { createAnimTransactionEvent, getVisualEvents, VISUAL_EVENT } from './visualEvents';
@@ -61,8 +61,8 @@ export function isStatAnimationStep(step) {
   return false;
 }
 
-export function buildInspectionReplay(oldGs, newGs, { buildAnimQueue, copyPlayers } = {}) {
-  return buildInspectionAwareAnimQueue(oldGs, newGs, { buildAnimQueue, copyPlayers });
+export function buildInspectionReplay(oldGs, newGs) {
+  return compileFreshVisualEventReplay(oldGs, newGs);
 }
 
 export function isLaterDrawBoundaryLog(line) {
@@ -122,14 +122,12 @@ export function buildRandomTargetReplay({
   oldGs,
   newGs,
   logDelta = [],
-  buildAnimQueue,
-  copyPlayers,
   finalFields = ['players', 'discard', 'log', 'phase', 'abilityData'],
 } = {}) {
   if (!hasFreshRandomTargetEvents(newGs, oldGs)) {
     return { queue: [], inspectionEvents: [], inspectionSeq: oldGs?._inspectionSeq || 0 };
   }
-  const inspectionReplay = buildInspectionReplay(oldGs, newGs, { buildAnimQueue, copyPlayers });
+  const inspectionReplay = buildInspectionReplay(oldGs, newGs);
   const queue = appendFinalStatePatch(
     bindAnimLogChunks(inspectionReplay.queue, { statLogs: logDelta }),
     newGs,
@@ -146,55 +144,17 @@ export function buildBewitchGiftReplay({
   oldGs,
   newGs,
   bewitchEvent,
-  logDelta = [],
-  visualStatQueue = [],
-  queueOptions = {},
-  buildAnimQueue,
-  copyPlayers,
 } = {}) {
   if (!bewitchEvent) return { queue: [], inspectionEvents: [], inspectionSeq: oldGs?._inspectionSeq || 0 };
-  const encounterGs = bewitchEvent.encounterState
-    ? { ...oldGs, ...bewitchEvent.encounterState }
-    : null;
-  const encounterReplay = encounterGs
-    ? buildInspectionReplay(oldGs, encounterGs, { buildAnimQueue, copyPlayers })
-    : { queue: [], inspectionEvents: [], inspectionSeq: oldGs?._inspectionSeq || 0 };
-  const acceptanceReplay = buildInspectionReplay(encounterGs || oldGs, newGs, { buildAnimQueue, copyPlayers });
-  const encounterLogDelta = encounterGs
-    ? (encounterGs.log || []).slice((oldGs?.log || []).length)
-    : [];
-  const acceptanceLogDelta = encounterGs
-    ? (newGs?.log || []).slice((encounterGs.log || []).length)
-    : logDelta;
-  const encounterQueue = bindAnimLogChunks(encounterReplay.queue, { statLogs: encounterLogDelta });
-  const acceptanceQueue = bindAnimLogChunks(acceptanceReplay.queue, { statLogs: acceptanceLogDelta });
-  const fallbackStatQueue = [...encounterQueue, ...acceptanceQueue];
-  const statQueue = visualStatQueue.length
-    ? [...visualStatQueue, ...fallbackStatQueue.filter(step => !isStatAnimationStep(step))]
-    : fallbackStatQueue;
-  const targetIdx = bewitchEvent.targetIdx;
-  const queue = buildBewitchForcedCardQueue(
-    bewitchEvent.sourceIdx ?? newGs?.currentTurn,
-    targetIdx,
-    bewitchEvent.card,
-    bewitchEvent.targetName || newGs?.players?.[targetIdx]?.name,
-    statQueue,
-    bewitchEvent.msgs || logDelta,
-    {
-      ...queueOptions,
-      playersAfter: newGs?.players,
-      zhuLightBefore: oldGs?.zhuLight || null,
-      zhuLightAfter: newGs?.zhuLight || null,
-      ...(encounterGs && !visualStatQueue.length ? { encounterQueue, acceptanceQueue } : {}),
-    },
-  );
-  const inspectionEvents = [...encounterReplay.inspectionEvents, ...acceptanceReplay.inspectionEvents];
+  const transaction = compileVisualEventToAnimTransaction(bewitchEvent, newGs, oldGs);
+  const queue = transaction?.queue || [];
+  const inspectionEvents = (bewitchEvent.settlementEvents || [])
+    .filter(event => event?.type === VISUAL_EVENT.INSPECTION);
   return {
     queue,
     inspectionEvents,
-    inspectionSeq: Math.max(encounterReplay.inspectionSeq || 0, acceptanceReplay.inspectionSeq || 0),
-    statQueue,
-    encounterQueue,
-    acceptanceQueue,
+    inspectionSeq: Math.max(oldGs?._inspectionSeq || 0, ...inspectionEvents.map(event => event?.legacySeq ?? event?.seq ?? 0)),
+    encounterQueue: queue.filter(step => step?.cardAcquisitionStage === 'godEncounter'),
+    acceptanceQueue: queue.filter(step => step?.cardAcquisitionStage === 'acceptance'),
   };
 }

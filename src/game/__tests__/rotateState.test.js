@@ -195,17 +195,6 @@ describe('rotateGsForViewer', () => {
       ],
       _inspectionTarget: 1,
       _inspectionBeforePlayers: [player('ib0'), player('ib1'), player('ib2'), player('ib3')],
-      _inspectionEvents: [
-        {
-          seq: 2,
-          target: 1,
-          beforePlayers: [player('insB0'), player('insB1'), player('insB2'), player('insB3')],
-          afterPlayers: [player('insA0'), player('insA1'), player('insA2'), player('insA3')],
-          statEvents: [
-            { type: 'HP_LOSS', target: 1, from: { hp: 10 }, to: { hp: 9 }, seq: 5 },
-          ],
-        },
-      ],
       _aiHuntEvents: [
         {
           hunterIdx: 3,
@@ -218,17 +207,6 @@ describe('rotateGsForViewer', () => {
           beforePlayers: [player('b0'), player('b1'), player('b2'), player('b3')],
           afterDiscardPlayers: [player('d0'), player('d1'), player('d2'), player('d3')],
           afterPlayers: [player('a0'), player('a1'), player('a2'), player('a3')],
-        },
-      ],
-      _randomTargetEvents: [
-        { seq: 1, sourceIdx: 3, targetIdx: 1, label: '投掷石块' },
-      ],
-      _tsgSlimeGrantEvents: [
-        {
-          ownerIdx: 0,
-          count: 1,
-          playersBefore: [player('tsgB0'), player('tsgB1'), player('tsgB2'), player('tsgB3')],
-          playersAfter: [player('tsgA0'), player('tsgA1'), player('tsgA2'), player('tsgA3')],
         },
       ],
       _animMultiplyEvent: { fromIdx: 1, toIdx: 3, sourceCardIndex: 4 },
@@ -249,11 +227,13 @@ describe('rotateGsForViewer', () => {
           sourceIdx: 3,
           targetIdx: 1,
           card: { name: '蛊惑牌' },
-          encounterState: {
-            currentTurn: 3,
-            players: [player('bw0'), player('bw1'), player('bw2'), player('bw3')],
-            _statEvents: [{ type: 'SAN_LOSS', target: 1, from: { san: 9 }, to: { san: 8 } }],
-          },
+          playersBefore: [player('bw0'), player('bw1'), player('bw2'), player('bw3')],
+          playersAfter: [player('bwa0'), player('bwa1'), player('bwa2'), player('bwa3')],
+          settlementEvents: [{
+            id: 'nested-bewitch-stat',
+            type: 'statEvents',
+            statEvents: [{ type: 'SAN_LOSS', target: 1, from: { san: 9 }, to: { san: 8 } }],
+          }],
         },
         { type: 'huntTarget', sourceIdx: 0, targetIdx: 3 },
         { type: 'huntReveal', sourceIdx: 3, targetIdx: 0, card: { name: '亮出牌' } },
@@ -343,7 +323,6 @@ describe('rotateGsForViewer', () => {
     expect(rotated._statEvents[0].target).toBe(3);
     expect(rotated._inspectionTarget).toBe(3);
     expect(names(rotated._inspectionBeforePlayers)).toEqual(['ib2', 'ib3', 'ib0', 'ib1']);
-    expect(rotated._inspectionEvents).toBeUndefined();
     expect(rotated._aiHuntEvents[0].hunterIdx).toBe(1);
     expect(rotated._aiHuntEvents[0].targetIdx).toBe(3);
     expect(rotated._aiHuntEvents[0].sourceCardIndex).toBe(2);
@@ -357,8 +336,6 @@ describe('rotateGsForViewer', () => {
     expect(names(rotated._aiHuntEvents[0].beforePlayers)).toEqual(['b2', 'b3', 'b0', 'b1']);
     expect(names(rotated._aiHuntEvents[0].afterDiscardPlayers)).toEqual(['d2', 'd3', 'd0', 'd1']);
     expect(names(rotated._aiHuntEvents[0].afterPlayers)).toEqual(['a2', 'a3', 'a0', 'a1']);
-    expect(rotated._randomTargetEvents).toBeUndefined();
-    expect(rotated._tsgSlimeGrantEvents).toBeUndefined();
     expect(rotated._animMultiplyEvent).toMatchObject({ fromIdx: 3, toIdx: 1, sourceCardIndex: 4 });
     expect(rotated._animSphinxReveal).toMatchObject({ actorIdx: 2 });
     expect(rotated._visualEvents[0].playerIdx).toBe(1);
@@ -368,9 +345,9 @@ describe('rotateGsForViewer', () => {
     expect(names(rotated._visualEvents[1].playersAfterResolution)).toEqual(['drawR2', 'drawR3', 'drawR0', 'drawR1']);
     expect(rotated._visualEvents[2].drawerIdx).toBe(2);
     expect(rotated._visualEvents[3]).toMatchObject({ sourceIdx: 1, targetIdx: 3 });
-    expect(rotated._visualEvents[3].encounterState.currentTurn).toBe(1);
-    expect(names(rotated._visualEvents[3].encounterState.players)).toEqual(['bw2', 'bw3', 'bw0', 'bw1']);
-    expect(rotated._visualEvents[3].encounterState._statEvents[0].target).toBe(3);
+    expect(names(rotated._visualEvents[3].playersBefore)).toEqual(['bw2', 'bw3', 'bw0', 'bw1']);
+    expect(names(rotated._visualEvents[3].playersAfter)).toEqual(['bwa2', 'bwa3', 'bwa0', 'bwa1']);
+    expect(rotated._visualEvents[3].settlementEvents[0].statEvents[0].target).toBe(3);
     expect(rotated._visualEvents[4]).toMatchObject({ sourceIdx: 2, targetIdx: 1 });
     expect(rotated._visualEvents[5]).toMatchObject({ sourceIdx: 1, targetIdx: 2 });
     expect(rotated._visualEvents[6]).toMatchObject({ sourceIdx: 1, hunterIdx: 1, targetIdx: 3 });
@@ -423,19 +400,8 @@ describe('rotateGsForViewer', () => {
       _statEvents: [{ type: 'SAN_LOSS', target: 2, seq: 1 }],
       _inspectionTarget: 2,
       _inspectionBeforePlayers: [player('ib0'), player('ib1'), player('ib2')],
-      _inspectionEvents: [
-        {
-          target: 2,
-          beforePlayers: [player('insB0'), player('insB1'), player('insB2')],
-          afterPlayers: [player('insA0'), player('insA1'), player('insA2')],
-          statEvents: [{ type: 'HP_LOSS', target: 2, seq: 2 }],
-        },
-      ],
       _aiHuntEvents: [
         { hunterIdx: 1, targetIdx: 0, attemptId: 'hunt-attempt:restore', phaseGroupId: 'hunt-attempt:restore', targetResolutionEventId: 'apophisTarget:restore', beforePlayers: [player('b0'), player('b1'), player('b2')] },
-      ],
-      _randomTargetEvents: [
-        { seq: 1, sourceIdx: 1, targetIdx: 0, label: '投掷石块' },
       ],
       _animMultiplyEvent: { fromIdx: 0, toIdx: 2 },
       _animSphinxReveal: { actorIdx: 1 },
@@ -463,7 +429,6 @@ describe('rotateGsForViewer', () => {
     expect(restored._statEvents[0].target).toBe(2);
     expect(restored._inspectionTarget).toBe(2);
     expect(names(restored._inspectionBeforePlayers)).toEqual(['ib0', 'ib1', 'ib2']);
-    expect(restored._inspectionEvents).toBeUndefined();
     expect(restored._aiHuntEvents[0].hunterIdx).toBe(1);
     expect(restored._aiHuntEvents[0].targetIdx).toBe(0);
     expect(restored._aiHuntEvents[0]).not.toHaveProperty('apophisTargetEvent');
@@ -473,7 +438,6 @@ describe('rotateGsForViewer', () => {
       targetResolutionEventId: 'apophisTarget:restore',
     });
     expect(names(restored._aiHuntEvents[0].beforePlayers)).toEqual(['b0', 'b1', 'b2']);
-    expect(restored._randomTargetEvents).toBeUndefined();
     expect(restored._animMultiplyEvent).toEqual(gs._animMultiplyEvent);
     expect(restored._animSphinxReveal).toEqual(gs._animSphinxReveal);
     expect(names(restored._visualEvents[0].beforePlayers)).toEqual(['eq0', 'eq1', 'eq2']);

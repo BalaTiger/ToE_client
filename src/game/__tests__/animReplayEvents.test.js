@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildAnimQueue } from '../animQueueCore';
+import { compileFreshVisualEventQueue as buildAnimQueue } from '../visualEventTransactionCompiler';
 import {
   buildBewitchGiftReplay,
   buildInspectionReplay,
@@ -12,7 +12,7 @@ import {
 } from '../animReplayEvents';
 import { copyPlayers, makeInspectionMeta, ROLE_CULTIST } from '../coreUtils';
 import { applySanLossToPlayerWithInspection, resolveGodEncounterForAI } from '../turnEngine';
-import { createBewitchGiftEvent, createInspectionVisualEvent, createRandomTargetVisualEvent } from '../visualEvents';
+import { createApophisEclipseEvent, createBewitchGiftEvent, createGodStatusChangedEvent, createInspectionVisualEvent, createOrderedSettlementEvents, createRandomTargetVisualEvent, createStatEventsEvent, createThrowStoneEvent } from '../visualEvents';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
 describe('animReplayEvents', () => {
@@ -47,26 +47,24 @@ describe('animReplayEvents', () => {
     const gift = makeZoneCard('A1', 0);
     const players = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' }), makePlayer({ name: '贝拉' })];
     const oldGs = { players, currentTurn: 0, log: [] };
-    const newGs = { players: copyPlayers(players), currentTurn: 0, log: ['你对 贝拉 【蛊惑】'] };
+    const afterPlayers = copyPlayers(players);
+    afterPlayers[2].san = 9;
+    const newGs = { players: afterPlayers, currentTurn: 0, log: ['你对 贝拉 【蛊惑】'] };
     const buildAnimQueue = vi.fn(() => [
       { type: 'CARD_TRANSFER', fromPid: 2, toPid: 0, count: 1 },
       { type: 'SAN_DAMAGE', hitIndices: [1], msgs: ['旧差分伤害'] },
       { type: 'STATE_PATCH', _logChunk: ['旧数值日志'] },
     ]);
-    const visualSanDamage = { type: 'SAN_DAMAGE', hitIndices: [2], msgs: ['事件伤害'] };
+    const statEvent = { type: 'SAN_LOSS', target: 2, from: { hp: 10, san: 10 }, to: { hp: 10, san: 9 }, seq: 1, logHint: '事件伤害' };
+    const event = createBewitchGiftEvent({
+      sourceIdx: 0, targetIdx: 2, targetName: '贝拉', card: gift, msgs: ['事件蛊惑'],
+      playersBefore: players, playersAfter: afterPlayers, statEvents: [statEvent],
+    });
 
     const replay = buildBewitchGiftReplay({
       oldGs,
       newGs,
-      bewitchEvent: {
-        sourceIdx: 0,
-        targetIdx: 2,
-        targetName: '贝拉',
-        card: gift,
-        msgs: ['事件蛊惑'],
-      },
-      logDelta: ['你对 贝拉 【蛊惑】', '贝拉 失去 1 SAN'],
-      visualStatQueue: [visualSanDamage],
+      bewitchEvent: event,
       buildAnimQueue,
       copyPlayers,
     });
@@ -76,11 +74,12 @@ describe('animReplayEvents', () => {
     expect(replay.queue[1]).toMatchObject({ fromPid: 0, toPid: 2, count: 1 });
     expect(replay.queue[2]).toMatchObject({ card: gift, triggerName: '贝拉', targetPid: 2, skipTravel: true });
     expect(replay.queue[3]).toMatchObject({
-      ...visualSanDamage,
+      type: 'SAN_DAMAGE', hitIndices: [2],
       cardAcquisitionStage: 'acceptance',
     });
     expect(replay.queue.some(step => step.msgs?.includes('旧差分伤害'))).toBe(false);
     expect(replay.queue.some(step => step._logChunk?.includes('旧数值日志'))).toBe(false);
+    expect(buildAnimQueue).not.toHaveBeenCalled();
   });
 
   it('邪神蛊惑回放按遭遇边界分别编译遭遇与信仰结算', () => {
@@ -111,25 +110,22 @@ describe('animReplayEvents', () => {
       currentTurn: 0,
       log: [...encounterState.log, '艾伦 信仰了 阿波菲斯', '【噬日灭世】黑夜降临'],
     };
-    const encounterDamage = { type: 'SAN_DAMAGE', hitIndices: [1] };
-    const highlight = { type: 'GOD_HIGHLIGHT', targetPid: 1, godKey: 'APO' };
-    const eclipse = { type: 'APOPHIS_ECLIPSE' };
-    const buildQueue = vi.fn((from, to) => (
-      to.players === encounterPlayers ? [encounterDamage] : [highlight, eclipse]
-    ));
+    const encounterStat = { type: 'SAN_LOSS', target: 1, from: { hp: 10, san: 6 }, to: { hp: 10, san: 5 }, seq: 1 };
+    const bewitchEvent = createBewitchGiftEvent({
+      sourceIdx: 0, targetIdx: 1, targetName: '艾伦', card: god,
+      msgs: ['你对 艾伦 【蛊惑】，赠予阿波菲斯'],
+      playersBefore: beforePlayers, playersAfter: finalPlayers,
+      encounterEvents: [createStatEventsEvent({ statEvents: [encounterStat] })],
+      acceptanceEvents: [
+        createGodStatusChangedEvent({ playerIdx: 1, godKey: 'APO', godLevel: 1, playersBefore: encounterPlayers, playersAfter: finalPlayers }),
+        createApophisEclipseEvent({ playerIdx: 1, apophisNight: { active: true } }),
+      ],
+    });
 
     const replay = buildBewitchGiftReplay({
       oldGs,
       newGs,
-      bewitchEvent: {
-        sourceIdx: 0,
-        targetIdx: 1,
-        targetName: '艾伦',
-        card: god,
-        msgs: ['你对 艾伦 【蛊惑】，赠予阿波菲斯'],
-        encounterState,
-      },
-      buildAnimQueue: buildQueue,
+      bewitchEvent,
       copyPlayers,
     });
 
@@ -215,17 +211,28 @@ describe('animReplayEvents', () => {
       ...faithResult.inspectionMeta,
       ...faithResult.statePatch,
     };
+    const encounterEvents = createOrderedSettlementEvents({
+      events: encounterResult.inspectionMeta?._visualEvents || [],
+      statEvents: encounterResult.inspectionMeta?._statEvents || [],
+    });
+    const encounterEventIds = new Set(encounterEvents.map(event => event?.id).filter(Boolean));
+    const encounterStatKeys = new Set(encounterEvents.flatMap(event => event?.statEvents || []).map(event => JSON.stringify(event)));
+    const acceptanceEvents = createOrderedSettlementEvents({
+      events: [...(faithResult.inspectionMeta?._visualEvents || []), ...(faithResult.statePatch?._visualEvents || [])]
+        .filter(event => !event?.id || !encounterEventIds.has(event.id)),
+      statEvents: (faithResult.inspectionMeta?._statEvents || [])
+        .filter(event => !encounterStatKeys.has(JSON.stringify(event))),
+    });
+    const bewitchEvent = createBewitchGiftEvent({
+      sourceIdx: 0, targetIdx: 1, targetName: '贝拉', card: giftedGod, msgs: [bewitchMsg],
+      playersBefore: oldGs.players, playersAfter: newGs.players,
+      discardBefore: oldGs.discard, discardAfter: newGs.discard,
+      encounterEvents, acceptanceEvents,
+    });
     const replay = buildBewitchGiftReplay({
       oldGs,
       newGs,
-      bewitchEvent: {
-        sourceIdx: 0,
-        targetIdx: 1,
-        targetName: '贝拉',
-        card: giftedGod,
-        msgs: [bewitchMsg],
-        encounterState,
-      },
+      bewitchEvent,
       logDelta: newGs.log,
       buildAnimQueue,
       copyPlayers,
@@ -244,7 +251,7 @@ describe('animReplayEvents', () => {
       targetPid: 1,
       card: sealCard,
     });
-    expect(acceptanceInspections[0]).not.toHaveProperty('cardAcquisitionStage');
+    expect(acceptanceInspections[0]).toHaveProperty('cardAcquisitionStage', 'acceptance');
     expect(finalInspections).toHaveLength(1);
     expect(finalInspections[0]).toMatchObject({
       inspectionSeq: 1,
@@ -315,13 +322,30 @@ describe('animReplayEvents', () => {
       encounterState,
       true,
     );
+    const encounterEvents = createOrderedSettlementEvents({
+      events: encounterResult.inspectionMeta?._visualEvents || [],
+      statEvents: encounterResult.inspectionMeta?._statEvents || [],
+    });
+    const encounterEventIds = new Set(encounterEvents.map(event => event?.id).filter(Boolean));
+    const encounterStatKeys = new Set(encounterEvents.flatMap(event => event?.statEvents || []).map(event => JSON.stringify(event)));
+    const acceptanceEvents = createOrderedSettlementEvents({
+      events: [...(faithResult.inspectionMeta?._visualEvents || []), ...(faithResult.statePatch?._visualEvents || [])]
+        .filter(event => !event?.id || !encounterEventIds.has(event.id)),
+      statEvents: (faithResult.inspectionMeta?._statEvents || [])
+        .filter(event => !encounterStatKeys.has(JSON.stringify(event))),
+    });
     const bewitchEvent = createBewitchGiftEvent({
       sourceIdx: 0,
       targetIdx: 1,
       targetName: '贝拉',
       card: giftedGod,
       msgs: [bewitchMsg],
-      encounterState,
+      playersBefore: oldGs.players,
+      playersAfter: faithResult.P,
+      discardBefore: oldGs.discard,
+      discardAfter: faithResult.Disc,
+      encounterEvents,
+      acceptanceEvents,
     });
     const newGs = {
       ...encounterState,
@@ -415,10 +439,7 @@ describe('animReplayEvents', () => {
       })],
     };
 
-    const replay = buildInspectionReplay(oldGs, newGs, {
-      buildAnimQueue: vi.fn(() => []),
-      copyPlayers,
-    });
+    const replay = buildInspectionReplay(oldGs, newGs);
 
     expect(replay.inspectionEvents).toHaveLength(1);
     expect(replay.inspectionSeq).toBe(1);
@@ -446,16 +467,24 @@ describe('animReplayEvents', () => {
       abilityData: {},
       log: ['你 掷出 4 点，随机砸向 艾伦（距离1），造成 3 HP 伤害'],
       _randomTargetSeq: 1,
-      _visualEvents: [createRandomTargetVisualEvent({
-        seq: 1,
+      _visualEvents: [createThrowStoneEvent({
         sourceIdx: 0,
         targetIdx: 1,
-        label: '投掷石块',
         roll: 4,
         distance: 1,
         damage: 3,
-        diceBefore: true,
-        phaseOrder: 1,
+        resultText: '艾伦 被选中',
+        msgs: ['你 掷出 4 点，随机砸向 艾伦（距离1），造成 3 HP 伤害'],
+        playersBefore: beforePlayers,
+        playersAfter: afterPlayers,
+        statEvents: [{
+          type: 'HP_LOSS',
+          target: 1,
+          from: { hp: 10, san: 10, isDead: false },
+          to: { hp: 7, san: 10, isDead: false },
+          seq: 1,
+        }],
+        legacySeq: 1,
       })],
       _statEventSeq: 1,
       _statEvents: [{

@@ -1,5 +1,6 @@
 import { clamp, copyPlayers } from './coreUtils';
 import { buildStatEvents } from './statEvents';
+import { createStatEventsEvent } from './visualEvents';
 
 function normalizedRecoveryEvents(players = [], events = []) {
   return (Array.isArray(events) ? events : [])
@@ -66,10 +67,20 @@ export function appendStatChangeResult(meta = {}, result = {}) {
     meta?._statEventSeq || 0,
     ...statEvents.map(event => event?.seq || 0),
   );
+  const statVisualEvent = createStatEventsEvent({
+    statEvents,
+    msgs: result.logs || [],
+  });
+  const visualEvents = [
+    ...(meta?._visualEvents || []),
+    ...(result.visualEvents || []),
+    ...(statVisualEvent ? [statVisualEvent] : []),
+  ];
   return {
     ...meta,
     _statEvents: [...(meta?._statEvents || []), ...statEvents],
     _statEventSeq: nextSeq,
+    ...(visualEvents.length ? { _visualEvents: visualEvents } : {}),
   };
 }
 
@@ -84,5 +95,6 @@ export function buildStatChangeStatePatch(meta = {}, result = {}) {
   return {
     _statEvents: merged._statEvents,
     _statEventSeq: merged._statEventSeq,
+    ...(merged._visualEvents ? { _visualEvents: merged._visualEvents } : {}),
   };
 }

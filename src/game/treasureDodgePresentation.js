@@ -1,7 +1,6 @@
 import { bindAnimLogChunks, splitAnimBoundLogs } from './animLogs';
-import { buildInspectionAwareAnimQueue, cardTransferStep, statePatchStep } from './animQueueHelpers';
-import { buildAnimQueue } from './animQueueCore';
-import { copyPlayers } from './coreUtils';
+import { cardTransferStep, statePatchStep } from './animQueueHelpers';
+import { compileFreshVisualEventReplay } from './visualEventTransactionCompiler';
 import { treasureDodgeModeConfig } from './treasureDodgeFlow';
 
 export function createTreasureDodgeDiceAnim({ transaction, tutorialHold = false, onTutorialSettled } = {}) {
@@ -24,10 +23,7 @@ export function createTreasureDodgeDiceAnim({ transaction, tutorialHold = false,
 function buildEffectQueue(transaction) {
   const beforeState = transaction?.beforeState || {};
   const afterState = transaction?.afterState || {};
-  const inspectionAware = buildInspectionAwareAnimQueue(beforeState, afterState, {
-    buildAnimQueue,
-    copyPlayers,
-  });
+  const inspectionAware = compileFreshVisualEventReplay(beforeState, afterState);
   return inspectionAware.inspectionEvents.length
     ? inspectionAware.queue
     : bindAnimLogChunks(inspectionAware.queue, splitAnimBoundLogs(transaction?.logDelta || []));

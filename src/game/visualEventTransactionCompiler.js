@@ -20,13 +20,11 @@ import {
   buildCardMoveSteps,
   buildCardRevealSteps,
   buildDiceResultSteps,
-  ensureVisualEventState,
   getVisualEvents,
   getVisualEventIdsFromState,
 } from './visualEvents';
-import { buildAiHuntEventAnimQueue, buildAnimQueue } from './animQueueCore';
-import { buildInspectionEventFlow, buildSphinxResultQueue, buildGraveDigTransferStep, swapCardsSteps } from './animQueueHelpers';
-import { buildBewitchGiftReplay } from './animReplayEvents';
+import { buildAiHuntEventAnimQueue } from './animQueueCore';
+import { buildBewitchForcedCardQueue, buildInspectionEventFlow, buildSphinxResultQueue, buildGraveDigTransferStep, swapCardsSteps } from './animQueueHelpers';
 import { copyPlayers } from './coreUtils';
 import { statEventsToAnimQueue } from './statEvents';
 import { assertValidRuleResolutionEvents, orderRuleResolutionEvents, statEventIdentity, validateRuleResolutionEvents } from './ruleResolutionTransaction';
@@ -148,96 +146,18 @@ function suppressStatsOwnedByExplicitEvents(events = []) {
   return { events: filteredEvents, suppressedEventIds };
 }
 
-function statStepTargets(step) {
-  const targets = [
-    ...(Array.isArray(step?.statEvents) ? step.statEvents.map(event => event?.target) : []),
-    ...(Array.isArray(step?.hitIndices) ? step.hitIndices : []),
-    ...(Array.isArray(step?.targets) ? step.targets : []),
-    step?.targetPid,
-    step?.targetIdx,
-    step?.triggerPid,
-  ].filter(target => target != null).map(Number);
-  return [...new Set(targets)].sort((a, b) => a - b);
-}
-
-function sameStatStepTargets(left, right) {
-  const a = statStepTargets(left);
-  const b = statStepTargets(right);
-  return a.length > 0 && a.length === b.length && a.every((target, index) => target === b[index]);
-}
-
-function isEquivalentAnimationStep(left, right) {
-  if (!left || !right || left.type !== right.type) return false;
-  if (left.visualEventId && right.visualEventId) return left.visualEventId === right.visualEventId;
-  if (left.type === 'DRAW_CARD') return sameCard(left.card, right.card) && left.targetPid === right.targetPid;
-  if (left.type === 'DICE_ROLL') return left.diceMode === right.diceMode && left.d1 === right.d1 && left.rollerName === right.rollerName;
-  if (['RANDOM_TARGET', 'THROW_STONE', 'SKILL_HUNT', 'SKILL_BEWITCH'].includes(left.type)) {
-    return left.sourceIdx === right.sourceIdx && left.targetIdx === right.targetIdx;
-  }
-  if (['HP_DAMAGE', 'SAN_DAMAGE', 'HP_HEAL', 'SAN_HEAL'].includes(left.type)) {
-    return sameStatEvents(left.statEvents, right.statEvents) || sameStatStepTargets(left, right);
-  }
-  if (left.type === 'DISCARD') {
-    return left.targetPid === right.targetPid && (sameCard(left.card, right.card) || left.count === right.count);
-  }
-  if (left.type === 'CARD_TRANSFER') {
-    return left.fromPid === right.fromPid && left.toPid === right.toPid && left.dest === right.dest && left.effect === right.effect;
-  }
-  // An unbound state patch has no stable identity. Matching it by type alone
-  // can anchor an action transaction to an unrelated earlier commit (for
-  // example the draw-resolution patch), pulling later dice and settlement
-  // steps across the turn-start boundary. Event-bound patches were handled by
-  // the visualEventId comparison above; leave all other patches in place.
-  if (left.type === 'STATE_PATCH') return false;
-  return true;
-}
-
 export const ANIMATION_QUEUE_AUTHORITY = Object.freeze({
   QUEUE: 'queue',
   EVENTS: 'events',
-  LEGACY_MERGE: 'legacyMerge',
 });
-
-export function mergeAnimationTransactionQueue(queue = [], transaction = null, options = {}) {
-  const legacyQueue = Array.isArray(queue) ? queue.filter(Boolean).map(step => ({ ...step })) : [];
-  const canonicalQueue = Array.isArray(transaction?.queue) ? transaction.queue.filter(Boolean) : [];
-  const authority = options.authority || ANIMATION_QUEUE_AUTHORITY.LEGACY_MERGE;
-  // A queue produced by a stage-aware orchestrator is already the canonical
-  // transaction. Recompiling state events here would create a second ordering
-  // authority and can move settlement steps across their phase boundaries.
-  if (authority === ANIMATION_QUEUE_AUTHORITY.QUEUE) return legacyQueue;
-  if (authority === ANIMATION_QUEUE_AUTHORITY.EVENTS) return canonicalQueue.map(step => ({ ...step }));
-  if (!canonicalQueue.length) return legacyQueue;
-
-  // During migration some callers still submit an inferred queue alongside
-  // the canonical rule transaction. Treat the transaction as one atomic
-  // block: retain useful legacy-only fields/callbacks, remove equivalent
-  // inferred steps, and restore the rule-defined order without interleaving.
-  const usedLegacyIndices = new Set();
-  const canonicalBlock = canonicalQueue.map(canonicalStep => {
-    const matchingIndex = legacyQueue.findIndex((legacyStep, index) => (
-      !usedLegacyIndices.has(index) && isEquivalentAnimationStep(legacyStep, canonicalStep)
-    ));
-    if (matchingIndex < 0) return canonicalStep;
-    usedLegacyIndices.add(matchingIndex);
-    return { ...legacyQueue[matchingIndex], ...canonicalStep };
-  });
-  const insertionIndex = usedLegacyIndices.size
-    ? Math.min(...usedLegacyIndices)
-    : legacyQueue.length;
-  const retainedBefore = legacyQueue.filter((_, index) => index < insertionIndex && !usedLegacyIndices.has(index));
-  const retainedAfter = legacyQueue.filter((_, index) => index >= insertionIndex && !usedLegacyIndices.has(index));
-  return [...retainedBefore, ...canonicalBlock, ...retainedAfter];
-}
 
 export function getAnimationQueueVisualEventIds(queue = []) {
   return [...new Set((Array.isArray(queue) ? queue : []).map(step => step?.visualEventId).filter(Boolean))];
 }
 
-// Queue-authoritative orchestrators often build stat steps directly from the
-// same _statEvents that legacy promotion wraps as statEvents visual events.
-// Resolve those wrapper ids without compiling them again, so playback can
-// consume the covered events while preserving the orchestrator's exact order.
+// Queue-authoritative orchestrators sometimes build stat steps directly from
+// canonical statEvents visual events. Resolve those wrapper ids without
+// compiling them again, preserving the orchestrator's exact order.
 export function getVisualEventIdsCoveredByAnimationQueue(state, queue = []) {
   const steps = Array.isArray(queue) ? queue.filter(Boolean) : [];
   const directIds = new Set(getAnimationQueueVisualEventIds(steps));
@@ -246,8 +166,7 @@ export function getVisualEventIdsCoveredByAnimationQueue(state, queue = []) {
       ? step.statEvents.map(event => event?.seq).filter(seq => seq != null)
       : []
   )));
-  const visualState = ensureVisualEventState(state);
-  return getVisualEvents(visualState)
+  return getVisualEvents(state)
     .filter(event => {
       if (!event?.id) return false;
       if (directIds.has(event.id)) return true;
@@ -270,9 +189,10 @@ export function validateVisualEventTransaction(transaction, events = []) {
   const queue = Array.isArray(transaction.queue) ? transaction.queue : [];
   const eventIds = Array.isArray(transaction.eventIds) ? transaction.eventIds : [];
   const scopedEvents = (Array.isArray(events) ? events : []).filter(Boolean);
+  const knownEvents = scopedEvents.flatMap(event => [event, ...(event?.settlementEvents || [])]);
   issues.push(...validateRuleResolutionEvents(scopedEvents));
   const eventIndexById = new Map(
-    scopedEvents.map((event, index) => [event?.id, index]).filter(([id]) => !!id),
+    knownEvents.map((event, index) => [event?.id, index]).filter(([id]) => !!id),
   );
   if (!transaction.id) issues.push({ code: 'MISSING_TRANSACTION_ID' });
   if (!queue.length) issues.push({ code: 'EMPTY_TRANSACTION_QUEUE' });
@@ -349,6 +269,141 @@ export function validateVisualEventTransaction(transaction, events = []) {
     }
   });
   return issues;
+}
+
+function suppressNestedSettlementEvents(events = []) {
+  const coveredIds = new Set(events
+    .filter(event => event?.type === VISUAL_EVENT.BEWITCH_GIFT)
+    .flatMap(event => event?.settlementEvents || [])
+    .map(event => event?.id)
+    .filter(Boolean));
+  if (!coveredIds.size) return { events, suppressedEventIds: [] };
+  return {
+    events: events.filter(event => !coveredIds.has(event?.id)),
+    suppressedEventIds: events.filter(event => coveredIds.has(event?.id)).map(event => event.id),
+  };
+}
+
+function faithTransitionOwnsStatEvent(transition, statEvent) {
+  return transition?.statEventSeqBefore != null && transition?.statEventSeqAfter != null
+    && statEvent?.seq > transition.statEventSeqBefore
+    && statEvent.seq <= transition.statEventSeqAfter
+    && Number(statEvent.target) === Number(transition.playerIdx);
+}
+
+function buildCanonicalFaithExitStep(transition, visualEventId) {
+  const cards = Array.isArray(transition?.cards) ? transition.cards.filter(Boolean) : [];
+  if (transition?.playerIdx == null || !cards.length) return null;
+  const playersBefore = copyPlayers(transition.playersBefore || []);
+  const playersAfter = copyPlayers(transition.playersAfter || playersBefore);
+  const discardBefore = [...(transition.discardBefore || [])];
+  const discardAfter = [...(transition.discardAfter || discardBefore)];
+  return {
+    type: 'CARD_TRANSFER',
+    visualEventId,
+    fromPid: transition.playerIdx,
+    dest: 'discard',
+    count: cards.length,
+    cards,
+    sourceAnchor: 'godPower',
+    effect: transition.effect || 'godAbandon',
+    durationMs: 1500,
+    faceUp: true,
+    msgs: transition.msgs || [],
+    faithSettlementStep: true,
+    visualSetupTiming: 'stepStart',
+    visualSetupPatch: { players: playersBefore, discard: discardBefore },
+    visualTimeline: [
+      { atMs: 0, patch: { players: playersBefore, discard: discardBefore } },
+      { atMs: 360, patch: { players: playersAfter, discard: discardAfter } },
+    ],
+  };
+}
+
+function applyStatEventsToPlayersSnapshot(players = [], statEvents = []) {
+  const nextPlayers = copyPlayers(players);
+  (Array.isArray(statEvents) ? statEvents : []).forEach(statEvent => {
+    const target = Number(statEvent?.target);
+    if (!Number.isInteger(target) || !nextPlayers[target] || !statEvent?.to) return;
+    nextPlayers[target] = {
+      ...nextPlayers[target],
+      ...(statEvent.to.hp != null ? { hp: statEvent.to.hp } : {}),
+      ...(statEvent.to.san != null ? { san: statEvent.to.san } : {}),
+      ...(statEvent.to.isDead != null ? { isDead: statEvent.to.isDead } : {}),
+    };
+  });
+  return nextPlayers;
+}
+
+function composeCanonicalFaithSettlementSteps(queue = [], events = []) {
+  let result = [...queue];
+  const inspectionEvents = events.filter(event => event?.type === VISUAL_EVENT.INSPECTION);
+  events.filter(event => event?.type === VISUAL_EVENT.GOD_STATUS_CHANGED && event?.faithSettlement)
+    .forEach(event => {
+      const previous = event.faithSettlement?.previousFaithExit || null;
+      const followers = event.faithSettlement?.abandonedFollowers || [];
+      const transitions = [previous, ...followers].filter(Boolean);
+      if (!transitions.length) return;
+      const highlight = result.find(step => step?.type === 'GOD_HIGHLIGHT' && step?.visualEventId === event.id);
+      if (!highlight) return;
+      const ownedByTransition = transition => {
+        const inspectionIds = new Set(inspectionEvents
+          .filter(inspection => {
+            const seq = inspection?.legacySeq ?? inspection?.seq;
+            return seq > (transition.inspectionSeqBefore ?? Number.POSITIVE_INFINITY)
+              && seq <= (transition.inspectionSeqAfter ?? Number.NEGATIVE_INFINITY);
+          })
+          .map(inspection => inspection.id));
+        const steps = result.filter(step => (
+          inspectionIds.has(step?.visualEventId)
+          || (Array.isArray(step?.statEvents) && step.statEvents.some(statEvent => faithTransitionOwnsStatEvent(transition, statEvent)))
+        ));
+        let statCursorPlayers = copyPlayers(transition.playersAfter || transition.playersBefore || []);
+        const statSteps = steps
+          .filter(step => !inspectionIds.has(step?.visualEventId))
+          .map(step => {
+            const playersBeforeStep = statCursorPlayers;
+            statCursorPlayers = applyStatEventsToPlayersSnapshot(playersBeforeStep, step?.statEvents);
+            return {
+              ...step,
+              visualSetupTiming: step.visualSetupTiming || 'stepStart',
+              visualSetupPatch: {
+                ...(step.visualSetupPatch || {}),
+                players: playersBeforeStep,
+              },
+              visualTimeline: [
+                ...(step.visualTimeline || []),
+                { atMs: 480, patch: { players: statCursorPlayers } },
+              ],
+            };
+          });
+        const inspectionSteps = steps.filter(step => inspectionIds.has(step?.visualEventId));
+        return [buildCanonicalFaithExitStep(transition, event.id), ...statSteps, ...inspectionSteps].filter(Boolean);
+      };
+      const transitionBlocks = new Map(transitions.map(transition => [transition, ownedByTransition(transition)]));
+      const ownedOriginalSteps = result.filter(step => transitions.some(transition => {
+        const inspectionIds = new Set(inspectionEvents
+          .filter(inspection => {
+            const seq = inspection?.legacySeq ?? inspection?.seq;
+            return seq > (transition.inspectionSeqBefore ?? Number.POSITIVE_INFINITY)
+              && seq <= (transition.inspectionSeqAfter ?? Number.NEGATIVE_INFINITY);
+          })
+          .map(inspection => inspection.id));
+        return inspectionIds.has(step?.visualEventId)
+          || (Array.isArray(step?.statEvents) && step.statEvents.some(statEvent => faithTransitionOwnsStatEvent(transition, statEvent)));
+      }));
+      const ownedSet = new Set([highlight, ...ownedOriginalSteps]);
+      const insertionIndex = Math.min(...result
+        .map((step, index) => ownedSet.has(step) ? index : Number.POSITIVE_INFINITY));
+      result = result.filter(step => !ownedSet.has(step));
+      const phases = [
+        ...(previous ? transitionBlocks.get(previous) : []),
+        highlight,
+        ...followers.flatMap(transition => transitionBlocks.get(transition)),
+      ];
+      result.splice(Number.isFinite(insertionIndex) ? insertionIndex : result.length, 0, ...phases);
+    });
+  return result;
 }
 
 function reportTransactionIssues(stage, issues = []) {
@@ -441,10 +496,51 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
       return buildCardRevealSteps(event);
     case VISUAL_EVENT.DICE_RESULT:
       return buildDiceResultSteps(event);
+    case VISUAL_EVENT.VRITRA_IMMORTAL_REVEAL:
+      return [{
+        type: 'VRI_IMMORTAL_REVEAL',
+        targetPid: event.targetIdx,
+        cards: event.cards || [],
+        succeeded: !!event.succeeded,
+        msgs: event.msgs || [],
+      }];
     case VISUAL_EVENT.HAND_LIMIT_DISCARD:
       return buildHandLimitDiscardStepsFromVisualEvents(isolated);
-    case VISUAL_EVENT.STAT_EVENTS:
-      return buildStatStepsFromVisualEvents(isolated, options.players || event.beforePlayers || previousState?.players || state?.players);
+    case VISUAL_EVENT.STAT_EVENTS: {
+      const revealStatEvent = (event.statEvents || []).find(statEvent => statEvent?.vritraImmortalReveal);
+      if (!revealStatEvent) {
+        return buildStatStepsFromVisualEvents(isolated, options.players || event.beforePlayers || previousState?.players || state?.players);
+      }
+      const reveal = revealStatEvent.vritraImmortalReveal;
+      const revealOrder = revealStatEvent.phaseOrder ?? 0;
+      const isRevealTargetDefeat = statEvent => (
+        statEvent?.type === 'PLAYER_DEFEATED'
+        && Number(statEvent.target) === Number(reveal.targetIdx)
+      );
+      const beforeEvents = event.statEvents.filter(statEvent => (
+        (statEvent.phaseOrder ?? 0) <= revealOrder
+        && statEvent !== revealStatEvent
+        && !isRevealTargetDefeat(statEvent)
+      ));
+      const afterEvents = event.statEvents.filter(statEvent => (
+        statEvent === revealStatEvent
+        || isRevealTargetDefeat(statEvent)
+        || (statEvent.phaseOrder ?? 0) > revealOrder
+      ));
+      const damageEvent = { ...revealStatEvent };
+      delete damageEvent.vritraImmortalReveal;
+      return [
+        ...statEventsToAnimQueue([...beforeEvents, damageEvent], options.players || event.beforePlayers || previousState?.players || state?.players, event.msgs || []),
+        {
+          type: 'VRI_IMMORTAL_REVEAL',
+          targetPid: reveal.targetIdx,
+          cards: reveal.cards || [],
+          succeeded: !!reveal.succeeded,
+          msgs: reveal.msgs || [],
+        },
+        ...statEventsToAnimQueue(afterEvents.filter(statEvent => statEvent !== revealStatEvent), options.players || event.beforePlayers || previousState?.players || state?.players, []),
+      ];
+    }
     case VISUAL_EVENT.GOD_POWER_BLOCKED:
       return buildGodPowerBlockedStepsFromVisualEvents(isolated, null);
     case VISUAL_EVENT.TSG_SLIME_POP: {
@@ -476,7 +572,7 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
           _statEventSeq: event.beforeStatEventSeq || 0,
         },
         [event],
-        { buildAnimQueue, copyPlayers, eventOwnedOnly: true },
+        { copyPlayers },
       ).queue;
     case VISUAL_EVENT.TSG_SLIME_GRANT:
       return buildTsathogguaSlimeGrantSteps(event, state);
@@ -534,15 +630,11 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
             { prepend: true },
           )
         : null;
-      const resultQueue = Array.isArray(event.statEvents)
-        ? statEventsToAnimQueue(
-            event.statEvents,
-            playersBeforeResult,
-            event.msgs || [],
-          )
-        : typeof options.buildAnimQueue === 'function' && !event.guessCorrect
-          ? options.buildAnimQueue(previousState || state, state)
-          : [];
+      const resultQueue = statEventsToAnimQueue(
+        Array.isArray(event.statEvents) ? event.statEvents : [],
+        playersBeforeResult,
+        event.msgs || [],
+      );
       return buildSphinxResultQueue({
         card: event.card,
         actorIdx: event.actorIdx,
@@ -553,16 +645,56 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
       });
     }
     case VISUAL_EVENT.BEWITCH_GIFT: {
-      if (typeof options.buildAnimQueue !== 'function') return [];
-      return buildBewitchGiftReplay({
-        oldGs: previousState || state,
-        newGs: state,
-        bewitchEvent: event,
-        logDelta: options.logDelta || event.msgs || [],
-        visualStatQueue: options.visualStatQueue || [],
-        buildAnimQueue: options.buildAnimQueue,
-        copyPlayers,
-      }).queue;
+      const settlementEvents = Array.isArray(event.settlementEvents) ? event.settlementEvents : [];
+      const nestedStatKeys = new Set(settlementEvents
+        .flatMap(settlementEvent => settlementEvent?.statEvents || [])
+        .map(statEventIdentity));
+      const directStatEvents = (Array.isArray(event.statEvents) ? event.statEvents : [])
+        .filter(statEvent => !nestedStatKeys.has(statEventIdentity(statEvent)));
+      const directStatQueue = statEventsToAnimQueue(
+          directStatEvents,
+          event.playersBefore || previousState?.players || state?.players || [],
+          [],
+        );
+      const compiledSettlementEvents = settlementEvents.map(settlementEvent => ({
+        event: settlementEvent,
+        steps: tagVisualEventSteps(
+          settlementEvent,
+          compileVisualEventToAnimSteps(settlementEvent, state, previousState, options),
+        ),
+      }));
+      const encounterEvents = compiledSettlementEvents
+        .filter(item => item.event?.cardAcquisitionStage === 'godEncounter')
+        .map(item => item.event);
+      const acceptanceEvents = compiledSettlementEvents
+        .filter(item => item.event?.cardAcquisitionStage !== 'godEncounter')
+        .map(item => item.event);
+      const encounterQueue = composeCanonicalFaithSettlementSteps(
+        compiledSettlementEvents.filter(item => item.event?.cardAcquisitionStage === 'godEncounter').flatMap(item => item.steps),
+        encounterEvents,
+      );
+      const acceptanceQueue = composeCanonicalFaithSettlementSteps([
+        ...directStatQueue,
+        ...compiledSettlementEvents
+          .filter(item => item.event?.cardAcquisitionStage !== 'godEncounter')
+          .flatMap(item => item.steps),
+      ], acceptanceEvents);
+      const settlementQueue = [...encounterQueue, ...acceptanceQueue];
+      return buildBewitchForcedCardQueue(
+        event.sourceIdx,
+        event.targetIdx,
+        event.card,
+        event.targetName || state?.players?.[event.targetIdx]?.name,
+        settlementQueue,
+        event.msgs || [],
+        {
+          ...(Array.isArray(event.playersBefore) ? { skillVisualSetupPatch: { players: event.playersBefore } } : {}),
+          playersAfter: event.playersAfter || state?.players,
+          zhuLightBefore: event.zhuLightBefore || previousState?.zhuLight || null,
+          zhuLightAfter: event.zhuLightAfter || state?.zhuLight || null,
+          ...(event.card?.isGod ? { encounterQueue, acceptanceQueue } : {}),
+        },
+      );
     }
     default:
       return [];
@@ -638,10 +770,12 @@ export function compileRuleVisualEventsToAnimTransaction(state, previousState = 
     ));
   assertValidRuleResolutionEvents(freshScopedEvents);
   const scopedEvents = orderRuleResolutionEvents(freshScopedEvents);
+  const nestedSuppression = suppressNestedSettlementEvents(scopedEvents);
   const {
     events: presentationEvents,
-    suppressedEventIds,
-  } = suppressStatsOwnedByExplicitEvents(scopedEvents);
+    suppressedEventIds: suppressedStatEventIds,
+  } = suppressStatsOwnedByExplicitEvents(nestedSuppression.events);
+  const suppressedEventIds = [...nestedSuppression.suppressedEventIds, ...suppressedStatEventIds];
   const events = interleavePhaseOrderedVisualEvents(orderTurnStartVisualEvents(presentationEvents));
   const compiledWithEmpty = events.map(event => ({
       event,
@@ -657,7 +791,10 @@ export function compileRuleVisualEventsToAnimTransaction(state, previousState = 
   const eventIds = scopedEvents
     .map(event => event.id)
     .filter(id => compiledEventIds.has(id) || suppressedIdSet.has(id));
-  const queue = compiled.flatMap(item => item.steps);
+  const queue = composeCanonicalFaithSettlementSteps(
+    compiled.flatMap(item => item.steps),
+    events,
+  );
   const transaction = {
     id: transactionIdFromEventIds(eventIds),
     context: compiled.length === 1
@@ -686,30 +823,8 @@ export function compileRuleVisualEventsToAnimTransaction(state, previousState = 
 
 export function compileVisualEventToAnimTransaction(event, state, previousState = null, options = {}) {
   if (!event) return null;
-  if (event.type === VISUAL_EVENT.BEWITCH_GIFT && typeof options.buildAnimQueue === 'function') {
-    const replay = buildBewitchGiftReplay({
-      oldGs: previousState || state,
-      newGs: state,
-      bewitchEvent: event,
-      logDelta: options.logDelta || event.msgs || [],
-      visualStatQueue: options.visualStatQueue || [],
-      buildAnimQueue: options.buildAnimQueue,
-      copyPlayers,
-    });
-    assertNoEmptyVisualEventCompilations([{ event, steps: replay.queue || [] }], options, 'visual event compiled to an empty queue');
-    const transaction = {
-      id: event.id || null,
-      context: 'bewitchGift',
-      barrier: state?.phase && state.phase !== 'ACTION' && state.phase !== 'AI_TURN' ? 'decision' : 'continuation',
-      queue: tagVisualEventSteps(event, replay.queue || []),
-      eventIds: event.id ? [event.id] : [],
-      beforePlayers: previousState?.players || null,
-      beforeDiscard: previousState?.discard || null,
-      inspectionEvents: replay.inspectionEvents || [],
-    };
-    reportTransactionIssues('invalid compiled transaction', validateVisualEventTransaction(transaction, [event]));
-    return transaction;
-  }
+  const nestedInspectionEvents = (event?.settlementEvents || [])
+    .filter(settlementEvent => settlementEvent?.type === VISUAL_EVENT.INSPECTION);
   const queue = tagVisualEventSteps(
     event,
     compileVisualEventToAnimSteps(event, state, previousState, options),
@@ -723,7 +838,7 @@ export function compileVisualEventToAnimTransaction(event, state, previousState 
     eventIds: event.id ? [event.id] : [],
     beforePlayers: event.beforePlayers || event.playersBefore || previousState?.players || null,
     beforeDiscard: event.beforeDiscard || previousState?.discard || null,
-    inspectionEvents: [],
+    inspectionEvents: nestedInspectionEvents,
   } : null;
   reportTransactionIssues('invalid compiled transaction', validateVisualEventTransaction(transaction, transaction ? [event] : []));
   return transaction;
@@ -740,4 +855,35 @@ export function compileFreshVisualEventsToAnimSteps(state, previousState = null,
   }));
   assertNoEmptyVisualEventCompilations(compiled, options, 'fresh visual event compiled to an empty queue');
   return compiled.flatMap(item => item.steps);
+}
+
+// Compile every fresh rule event through the same canonical transaction,
+// regardless of whether the settlement contains an inspection. Presentation
+// callers must never switch back to state-diff replay merely because a
+// particular resolution happened not to draw an inspection card.
+export function compileFreshVisualEventReplay(oldGs, newGs, options = {}) {
+  const baseInspectionSeq = oldGs?._inspectionSeq || 0;
+  const oldIds = new Set(getVisualEventIdsFromState(oldGs));
+  const inspectionEvents = getVisualEvents(newGs)
+    .filter(event => event?.type === VISUAL_EVENT.INSPECTION && event?.id && !oldIds.has(event.id));
+  const transaction = compileRuleVisualEventsToAnimTransaction(newGs, oldGs, {
+    testMode: false,
+    ...options,
+  });
+  const excludedStepTypes = new Set(options.excludedStepTypes || []);
+  const queue = excludedStepTypes.size
+    ? (transaction?.queue || []).filter(step => !excludedStepTypes.has(step?.type))
+    : (transaction?.queue || []);
+  return {
+    queue,
+    inspectionEvents,
+    inspectionSeq: Math.max(baseInspectionSeq, ...inspectionEvents.map(event => event?.legacySeq ?? event?.seq ?? 0)),
+  };
+}
+
+// Canonical convenience entry point for presentation composers. `oldGs` is
+// used only as the visual-event ID watermark; HP/SAN, hand and log snapshots
+// are never diffed to manufacture animation steps.
+export function compileFreshVisualEventQueue(oldGs, newGs, options = {}) {
+  return compileFreshVisualEventReplay(oldGs, newGs, options).queue;
 }

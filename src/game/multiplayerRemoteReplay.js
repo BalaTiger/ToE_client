@@ -11,7 +11,7 @@ import {
   isFreshBewitchReplayEvent,
 } from './animReplayEvents';
 import { appendFinalStatePatch, finalStatePatch } from './animStatePatch';
-import { cardLogText, copyPlayers } from './coreUtils';
+import { copyPlayers } from './coreUtils';
 import { isLocalCurrentTurn, isLocalSeatIndex, localDisplayName } from './rotateState';
 import {
   buildTurnStartPreDrawEffectQueue,
@@ -38,12 +38,12 @@ import {
 } from './visualEvents';
 import {
   ANIMATION_QUEUE_AUTHORITY,
+  compileFreshVisualEventQueue as compileCanonicalVisualEventQueue,
   compileFreshVisualEventsToAnimSteps,
   compileRuleVisualEventsToAnimTransaction,
   compileVisualEventToAnimSteps,
   compileVisualEventToAnimTransaction,
 } from './visualEventTransactionCompiler';
-import { getAllDamageLinks } from './damageLinks';
 
 export const MP_REMOTE_REPLAY = {
   ROLE_REVEAL: 'ROLE_REVEAL',
@@ -154,17 +154,17 @@ function buildMaskedActionState(state) {
   return { ...state, phase: 'ACTION', drawReveal: null, abilityData: {} };
 }
 
-function withApophisTargetReplay(queue = [], previousGs, rotated, buildAnimQueue) {
-  return mergeApophisTargetQueue(queue, previousGs || buildMaskedActionState(rotated), rotated, buildAnimQueue);
+function withApophisTargetReplay(queue = [], previousGs, rotated, compileFreshVisualEventQueue) {
+  return mergeApophisTargetQueue(queue, previousGs || buildMaskedActionState(rotated), rotated, compileFreshVisualEventQueue);
 }
 
 function clearRemoteReplayHints(state) {
   return state ? withClearedReplayAnimFields(clearVisualEvents({ ...state, _mpTimedOutDrawDiscard: null })) : state;
 }
 
-function compileRemoteStateEffects(rotated, previousGs, buildAnimQueue, excludedTypes = []) {
+function compileRemoteStateEffects(rotated, previousGs, compileFreshVisualEventQueue, excludedTypes = []) {
   const transaction = compileRuleVisualEventsToAnimTransaction(rotated, previousGs, {
-    buildAnimQueue,
+    compileFreshVisualEventQueue,
     hidePrivateCards: true,
   });
   const excluded = new Set(excludedTypes);
@@ -190,7 +190,7 @@ function prepareExactTransactionQueue(event) {
   return exactQueue;
 }
 
-function buildExactAnimTransactionReplayAction(events, rotated, previousGs, buildAnimQueue) {
+function buildExactAnimTransactionReplayAction(events, rotated, previousGs, compileFreshVisualEventQueue) {
   const exactEvents = (Array.isArray(events) ? events : [events]).filter(event => (
     event?.type === VISUAL_EVENT.ANIM_TRANSACTION && Array.isArray(event.queue) && event.queue.length
   ));
@@ -205,7 +205,7 @@ function buildExactAnimTransactionReplayAction(events, rotated, previousGs, buil
   const uncoveredTransactions = uncoveredEvents.map(event => ({
     event,
     transaction: compileVisualEventToAnimTransaction(event, rotated, previousGs, {
-      buildAnimQueue,
+      compileFreshVisualEventQueue,
       logDelta: getLogDelta(previousGs, rotated),
     }),
   }));
@@ -256,25 +256,27 @@ function getLogDelta(previousGs, rotated) {
   return nextLog.slice(start);
 }
 
-function buildTreasureDodgeResolutionReplay({ previousGs, rotated, logDelta, buildAnimQueue }) {
+function buildTreasureDodgeResolutionReplay({ previousGs, rotated, compileFreshVisualEventQueue }) {
   if (!['TREASURE_DODGE_DECISION', 'TREASURE_AOE_DODGE_DECISION'].includes(previousGs?.phase)) return null;
-  const resultLog = logDelta.find(line => (
-    typeof line === 'string'
-    && / 掷出 \d+ 点，(?:成功规避负面效果|未能规避，触发负面效果)/.test(line)
+  const previousIds = new Set(getVisualEventIdsFromState(previousGs));
+  const resultEvent = (rotated?._visualEvents || []).find(event => (
+    event?.type === VISUAL_EVENT.DICE_RESULT
+    && event?.id
+    && !previousIds.has(event.id)
+    && (event?.mode === 'treasureDodge' || event?.mode === 'treasureAoeDodge')
   ));
-  const match = resultLog?.match(/^(.+?) 掷出 (\d+) 点，(.+?)！?$/);
-  if (!match) return null;
+  if (!resultEvent) return null;
 
   const drawerIdx = previousGs.drawReveal?.drawerIdx
     ?? previousGs.abilityData?.drawerIdx
     ?? previousGs.currentTurn
     ?? 0;
   const card = previousGs.drawReveal?.card || null;
-  const d1 = Number(match[2]);
+  const d1 = Number(resultEvent.d1);
   const effectQueue = compileRemoteStateEffects(
     rotated,
     previousGs,
-    buildAnimQueue,
+    compileFreshVisualEventQueue,
     ['DRAW_CARD', 'DICE_ROLL'],
   );
   const keptInHand = !!card && (rotated.players?.[drawerIdx]?.hand || []).some(candidate => (
@@ -299,43 +301,19 @@ function buildTreasureDodgeResolutionReplay({ previousGs, rotated, logDelta, bui
       d1,
       d2: 0,
       heal: 0,
-      rollerName: localDisplayName(drawerIdx, rotated.players?.[drawerIdx]?.name || match[1]),
-      dodgeSuccess: match[3].includes('成功规避负面效果'),
-      msgs: [resultLog],
+      rollerName: resultEvent.actorName || localDisplayName(drawerIdx, rotated.players?.[drawerIdx]?.name || '该玩家'),
+      dodgeSuccess: !!resultEvent.dodgeSuccess,
+      msgs: resultEvent.msgs || [],
     }, ...effectQueue, ...(transferStep ? [transferStep] : [])],
     rotated,
     ['players', 'deck', 'discard', 'log', 'phase', 'drawReveal', 'abilityData'],
   );
 }
 
-function buildTimedOutDrawDiscardStep(rotated, previousGs, logDelta = []) {
+function buildTimedOutDrawDiscardStep(rotated, previousGs) {
   const visualEventStep = compileFreshVisualEventsToAnimSteps(rotated, null, [VISUAL_EVENT.TIMED_OUT_DRAW_DISCARD])[0];
   if (visualEventStep) return visualEventStep;
-  const explicit = rotated?._mpTimedOutDrawDiscard;
-  if (explicit?.card) {
-    const drawerIdx = explicit.drawerIdx ?? 0;
-    const drawerName = explicit.drawerName || rotated?.players?.[drawerIdx]?.name || '???';
-    return {
-      type: 'DISCARD',
-      card: explicit.card,
-      triggerName: localDisplayName(drawerIdx, drawerName),
-      targetPid: drawerIdx,
-      msgs: [`(超时) ${localDisplayName(drawerIdx, drawerName)} 弃置了 ${cardLogText(explicit.card, { alwaysShowName: true })}`],
-    };
-  }
-  const previousDraw = previousGs?.drawReveal;
-  if (!previousDraw?.card || !previousDraw.needsDecision || previousDraw.forcedKeep) return null;
-  const discardMsg = logDelta.find(line => /（?超时\)? .*弃置了/.test(line || '') || /\(超时\).*弃置了/.test(line || ''));
-  if (!discardMsg) return null;
-  const drawerIdx = previousDraw.drawerIdx ?? previousGs?.currentTurn ?? 0;
-  const drawerName = previousDraw.drawerName || previousGs?.players?.[drawerIdx]?.name || '???';
-  return {
-    type: 'DISCARD',
-    card: previousDraw.card,
-    triggerName: drawerName,
-    targetPid: drawerIdx,
-    msgs: [discardMsg],
-  };
+  return compileFreshVisualEventsToAnimSteps(rotated, previousGs, [VISUAL_EVENT.TIMED_OUT_DRAW_DISCARD])[0] || null;
 }
 
 function findCardByLabel(players, label) {
@@ -382,30 +360,15 @@ function prepareRemoteWorshipFromHandQueue(queue, rotated, logDelta) {
   });
 }
 
-function buildResolvedGodChoiceDiscardStep(rotated, previousGs, logDelta = []) {
-  const previousCard = getPendingGodChoiceCard(previousGs);
-  if (!previousCard || !(rotated?.discard || []).some(card => isSameCard(card, previousCard))) return null;
-
-  const drawerIdx = previousGs.abilityData?.drawerIdx ?? previousGs.currentTurn ?? 0;
-  const drawerName = previousGs.players?.[drawerIdx]?.name || rotated?.players?.[drawerIdx]?.name || '???';
-  const discardMsg = logDelta.find(line => /放弃了邪神的馈赠|\(超时\).*放弃了邪神的馈赠/.test(line || ''));
-  return {
-    type: 'DISCARD',
-    card: previousCard,
-    triggerName: localDisplayName(drawerIdx, drawerName),
-    targetPid: drawerIdx,
-    msgs: discardMsg ? [discardMsg] : [],
-    // The incoming state already contains the discarded card. Restore the
-    // pre-decision view until the card has visibly reached the discard pile.
-    visualSetupTiming: 'queueStart',
-    visualSetupPatch: {
-      players: previousGs.players,
-      discard: previousGs.discard || [],
-    },
-  };
+function buildResolvedGodChoiceDiscardStep(rotated, previousGs) {
+  return compileFreshVisualEventsToAnimSteps(
+    rotated,
+    previousGs,
+    [VISUAL_EVENT.GOD_GIFT_DISCARD],
+  )[0] || null;
 }
 
-function buildResolvedDrawChoiceQueue(rotated, previousGs, logDelta, buildAnimQueue) {
+function buildResolvedDrawChoiceQueue(rotated, previousGs, logDelta, compileFreshVisualEventQueue) {
   const previousDraw = previousGs?.drawReveal;
   const card = previousDraw?.card;
   if (previousGs?.phase !== 'DRAW_REVEAL' || !card || !previousDraw.needsDecision || previousDraw.forcedKeep || rotated?.drawReveal?.card) return null;
@@ -414,10 +377,7 @@ function buildResolvedDrawChoiceQueue(rotated, previousGs, logDelta, buildAnimQu
   const inHand = (rotated.players?.[drawerIdx]?.hand || []).some(candidate => isSameCard(candidate, card));
   const inDiscard = (rotated.discard || []).some(candidate => isSameCard(candidate, card));
   if (!inHand && !inDiscard) return null;
-  const effectQueue = bindAnimLogChunks(
-    compileRemoteStateEffects(rotated, previousGs, buildAnimQueue, ['DRAW_CARD', 'CARD_TRANSFER', 'DISCARD']),
-    { statLogs: logDelta },
-  );
+  const effectQueue = compileRemoteStateEffects(rotated, previousGs, compileFreshVisualEventQueue);
   const resolutionStep = inHand
     ? cardTransferStep({
         fromPid: drawerIdx,
@@ -427,14 +387,14 @@ function buildResolvedDrawChoiceQueue(rotated, previousGs, logDelta, buildAnimQu
         sourceAnchor: 'playerArea',
         effect: 'draw',
         cards: [card],
-        msgs: logDelta.filter(line => typeof line === 'string' && line.includes('收入了')),
+        msgs: [],
       })
     : {
         type: 'DISCARD',
         card,
         triggerName: localDisplayName(drawerIdx, drawerName),
         targetPid: drawerIdx,
-        msgs: logDelta.filter(line => typeof line === 'string' && line.includes('弃置了')),
+        msgs: [],
       };
   return [resolutionStep, ...effectQueue];
 }
@@ -443,7 +403,7 @@ export function buildMpRemoteReplayAction({
   rotated,
   previousGs,
   roleRevealed,
-  buildAnimQueue,
+  compileFreshVisualEventQueue = compileCanonicalVisualEventQueue,
   buildFullHandSwapTransferQueueFromLogs,
   consumedVisualEventIds,
 }) {
@@ -485,7 +445,7 @@ export function buildMpRemoteReplayAction({
     (rotated._visualEvents || []).filter(event => event?.type === VISUAL_EVENT.ANIM_TRANSACTION),
     rotated,
     previousGs,
-    buildAnimQueue,
+    compileFreshVisualEventQueue,
   );
   if (exactTransactionAction) return withConsumedVisualEvents(exactTransactionAction);
 
@@ -497,7 +457,7 @@ export function buildMpRemoteReplayAction({
   ));
   if (freshGodGiftKeepEvent) {
     const transaction = compileRuleVisualEventsToAnimTransaction(rotated, previousGs, {
-      buildAnimQueue,
+      compileFreshVisualEventQueue,
       hidePrivateCards: true,
     });
     if (transaction?.queue?.length) {
@@ -521,7 +481,7 @@ export function buildMpRemoteReplayAction({
   }
 
   const logDelta = getLogDelta(previousGs, rotated);
-  const timedOutDrawDiscardStep = buildTimedOutDrawDiscardStep(rotated, previousGs, logDelta);
+  const timedOutDrawDiscardStep = buildTimedOutDrawDiscardStep(rotated, previousGs);
   const handLimitDiscardSteps = compileFreshVisualEventsToAnimSteps(rotated, null, [VISUAL_EVENT.HAND_LIMIT_DISCARD]);
   const preTurnSteps = [
     ...handLimitDiscardSteps,
@@ -529,7 +489,7 @@ export function buildMpRemoteReplayAction({
   ];
   const isDrawAnimationState = hasDrawAnimationState(rotated);
   const previousPendingZhuHide = isPendingZhuHideState(previousGs);
-  const resolvedDrawChoiceQueue = buildResolvedDrawChoiceQueue(rotated, previousGs, logDelta, buildAnimQueue);
+  const resolvedDrawChoiceQueue = buildResolvedDrawChoiceQueue(rotated, previousGs, logDelta, compileFreshVisualEventQueue);
   if (resolvedDrawChoiceQueue?.length) {
     const queue = appendFinalStatePatch(
       resolvedDrawChoiceQueue,
@@ -547,7 +507,7 @@ export function buildMpRemoteReplayAction({
       },
     });
   }
-  const resolvedGodChoiceDiscardStep = buildResolvedGodChoiceDiscardStep(rotated, previousGs, logDelta);
+  const resolvedGodChoiceDiscardStep = buildResolvedGodChoiceDiscardStep(rotated, previousGs);
   if (resolvedGodChoiceDiscardStep) {
     const queue = appendFinalStatePatch(
       [resolvedGodChoiceDiscardStep],
@@ -571,7 +531,7 @@ export function buildMpRemoteReplayAction({
     // decision modal opened. A later decision sync must replay only its new
     // effects, never the original card draw and background camera.
     const decisionQueue = bindAnimLogChunks(
-      compileRemoteStateEffects(rotated, previousGs, buildAnimQueue)
+      compileRemoteStateEffects(rotated, previousGs, compileFreshVisualEventQueue)
         .filter(step => !(step?.type === 'DRAW_CARD' && isSameCard(step.card, resolvedGodChoiceCard))),
       { statLogs: logDelta },
     );
@@ -624,7 +584,7 @@ export function buildMpRemoteReplayAction({
       newGs: rotated,
       timedOutDrawDiscardStep,
       preTurnSteps,
-      buildQueue: buildAnimQueue,
+      buildQueue: compileFreshVisualEventQueue,
       buildFullHandSwapTransferQueue: buildFullHandSwapTransferQueueFromLogs,
       effectOldGs: { ...rotated, players: rotated._playersBeforeThisDraw || previousGs?.players || rotated.players, log: getTurnStartDrawBaselineLog(rotated) },
     });
@@ -727,8 +687,7 @@ export function buildMpRemoteReplayAction({
   const treasureDodgeQueue = buildTreasureDodgeResolutionReplay({
     previousGs,
     rotated,
-    logDelta,
-    buildAnimQueue,
+    compileFreshVisualEventQueue,
   });
   if (treasureDodgeQueue?.length) {
     return withConsumedVisualEvents({
@@ -741,7 +700,7 @@ export function buildMpRemoteReplayAction({
   }
   if (!isDrawAnimationState && hasFreshRandomTargetEvents(rotated, previousGs)) {
     const oldGs = previousGs || buildMaskedActionState(rotated);
-    const replay = buildRandomTargetReplay({ oldGs, newGs: rotated, logDelta, buildAnimQueue, copyPlayers });
+    const replay = buildRandomTargetReplay({ oldGs, newGs: rotated, logDelta });
     if (replay.queue.length) {
       return withConsumedVisualEvents({
         type: MP_REMOTE_REPLAY.ANIM_QUEUE,
@@ -815,7 +774,7 @@ export function buildMpRemoteReplayAction({
         { ...rotated, drawReveal: null },
         ['players', 'discard', 'log', 'drawReveal', 'phase', 'abilityData'],
       ),
-    ], previousGs, rotated, buildAnimQueue);
+    ], previousGs, rotated, compileFreshVisualEventQueue);
     return withConsumedVisualEvents({
       type: MP_REMOTE_REPLAY.ANIM_QUEUE,
       maskedGs: buildMaskedActionState(rotated),
@@ -834,7 +793,7 @@ export function buildMpRemoteReplayAction({
         compileVisualEventToAnimSteps(huntResultEvent, rotated, previousGs),
         previousGs,
         rotated,
-        buildAnimQueue,
+        compileFreshVisualEventQueue,
       ),
       rotated,
       ['players', 'discard', 'log', 'phase', 'abilityData'],
@@ -855,9 +814,9 @@ export function buildMpRemoteReplayAction({
   // state-sync packet with a later turn/draw boundary, so log freshness must
   // not suppress it. Event ids are pruned above and provide replay dedupe.
   if (sphinxResultEvent) {
-    const resultQueue = compileVisualEventToAnimSteps(sphinxResultEvent, rotated, previousGs || buildMaskedActionState(rotated), { buildAnimQueue });
+    const resultQueue = compileVisualEventToAnimSteps(sphinxResultEvent, rotated, previousGs || buildMaskedActionState(rotated), { compileFreshVisualEventQueue });
     const queue = appendFinalStatePatch(
-      withApophisTargetReplay(resultQueue, previousGs, rotated, buildAnimQueue),
+      withApophisTargetReplay(resultQueue, previousGs, rotated, compileFreshVisualEventQueue),
       rotated,
       ['players', 'deck', 'discard', 'log', 'phase', 'abilityData'],
     );
@@ -878,9 +837,9 @@ export function buildMpRemoteReplayAction({
     const compiledBewitch = compileVisualEventToAnimTransaction(bewitchEvent, rotated, oldGs, {
       logDelta,
       visualStatQueue: compileFreshVisualEventsToAnimSteps(rotated, null, [VISUAL_EVENT.STAT_EVENTS], { players: previousGs?.players || rotated.players }),
-      buildAnimQueue,
+      compileFreshVisualEventQueue,
     });
-    const queue = withApophisTargetReplay(compiledBewitch?.queue || [], previousGs, rotated, buildAnimQueue);
+    const queue = withApophisTargetReplay(compiledBewitch?.queue || [], previousGs, rotated, compileFreshVisualEventQueue);
     const patchedQueue = appendFinalStatePatch(queue, rotated);
     return withConsumedVisualEvents({
       type: MP_REMOTE_REPLAY.ANIM_QUEUE,
@@ -893,7 +852,7 @@ export function buildMpRemoteReplayAction({
   const huntEvent = getHuntTargetVisualEvent(rotated);
   if (huntEvent && !isDrawAnimationState && rotated.phase !== 'PLAYER_REVEAL_FOR_HUNT') {
     const baseStep = compileVisualEventToAnimSteps(huntEvent, rotated, previousGs)[0];
-    const queue = withApophisTargetReplay([baseStep], previousGs, rotated, buildAnimQueue);
+    const queue = withApophisTargetReplay([baseStep], previousGs, rotated, compileFreshVisualEventQueue);
     if (queue.length <= 1 && queue[0] === baseStep) {
       return withConsumedVisualEvents({
         type: MP_REMOTE_REPLAY.START_ANIM,
@@ -946,17 +905,17 @@ export function buildMpRemoteReplayAction({
           msgs: logDelta,
         },
         logDelta,
-        buildAnimQueue,
+        compileFreshVisualEventQueue,
         copyPlayers,
       })
-      : buildInspectionReplay(oldGs, rotated, { buildAnimQueue, copyPlayers });
+      : buildInspectionReplay(oldGs, rotated);
     const statQueue = giftCard && targetIdx >= 0
       ? replay.statQueue
       : bindAnimLogChunks(replay.queue, { statLogs: logDelta });
     const queue = giftCard && targetIdx >= 0
       ? replay.queue
       : [{ type: 'SKILL_BEWITCH', msgs: logDelta, targetIdx: targetIdx >= 0 ? targetIdx : 1 }, ...statQueue];
-    const patchedQueue = appendFinalStatePatch(withApophisTargetReplay(queue, previousGs, rotated, buildAnimQueue), rotated);
+    const patchedQueue = appendFinalStatePatch(withApophisTargetReplay(queue, previousGs, rotated, compileFreshVisualEventQueue), rotated);
     return withConsumedVisualEvents({
       type: MP_REMOTE_REPLAY.ANIM_QUEUE,
       maskedGs: buildMaskedActionState(rotated),
@@ -973,7 +932,7 @@ export function buildMpRemoteReplayAction({
     : [];
   if (cardEffectSteps.length) {
     const queue = appendFinalStatePatch(
-      withApophisTargetReplay(cardEffectSteps, previousGs, rotated, buildAnimQueue),
+      withApophisTargetReplay(cardEffectSteps, previousGs, rotated, compileFreshVisualEventQueue),
       rotated,
       ['players', 'discard', 'log', 'phase', 'abilityData'],
     );
@@ -998,7 +957,7 @@ export function buildMpRemoteReplayAction({
       newGs: rotated,
       timedOutDrawDiscardStep,
       preTurnSteps,
-      buildQueue: buildAnimQueue,
+      buildQueue: compileFreshVisualEventQueue,
       buildFullHandSwapTransferQueue: buildFullHandSwapTransferQueueFromLogs,
       effectOldGs: { ...rotated, players: beforeDrawPlayers, log: getTurnStartDrawBaselineLog(rotated) },
     });
@@ -1027,7 +986,7 @@ export function buildMpRemoteReplayAction({
       newGs: rotated,
       timedOutDrawDiscardStep,
       preTurnSteps,
-      buildQueue: buildAnimQueue,
+      buildQueue: compileFreshVisualEventQueue,
       buildFullHandSwapTransferQueue: buildFullHandSwapTransferQueueFromLogs,
       effectOldGs: { ...previousGs, players: beforeDrawPlayers },
     });
@@ -1074,17 +1033,12 @@ export function buildMpRemoteReplayAction({
 
   // 两人一绳建立链条：本地触发方在选目标时已显式注入 CARD_TRANSFER 飞行动画（App.jsx damageLinkSelectTarget），
   // 远端没有对应 _visualEvents，需按日志增量重建，否则只有触发方看得到链条发动特效
-  const damageLinkEstablishMsg = logDelta.find(m => (
-    typeof m === 'string' && m.includes('【两人一绳】') && m.includes('间架起链条')
+  const damageLinkEvent = (rotated._visualEvents || []).find(event => (
+    event?.type === VISUAL_EVENT.CARD_MOVE && event?.effect === 'damageLink'
   ));
-  if (damageLinkEstablishMsg && !isDrawAnimationState) {
-    const establishedLink = getAllDamageLinks(rotated.players || [], { activeOnly: true }).at(-1);
-    const damageLinkPair = establishedLink ? {
-      fromPid: establishedLink.sourceIdx ?? establishedLink.a,
-      toPid: establishedLink.sourceIdx === establishedLink.b ? establishedLink.a : establishedLink.b,
-    } : {};
+  if (damageLinkEvent && !isDrawAnimationState) {
     const queue = appendFinalStatePatch(
-      [cardTransferStep({ ...damageLinkPair, effect: 'damageLink', durationMs: 1900, msgs: [damageLinkEstablishMsg] })],
+      compileVisualEventToAnimSteps(damageLinkEvent, rotated, previousGs),
       rotated,
       ['players', 'discard', 'log', 'phase', 'abilityData'],
     );
@@ -1107,12 +1061,12 @@ export function buildMpRemoteReplayAction({
       .some(event => event?.type === VISUAL_EVENT.INSPECTION
         && event?.id && !previousVisualEventIds.has(event.id));
     const replay = hasFreshInspection
-      ? buildInspectionReplay(inspectionBaseline, rotated, { buildAnimQueue, copyPlayers })
+      ? buildInspectionReplay(inspectionBaseline, rotated)
       : { queue: [], inspectionEvents: [], inspectionSeq: previousInspectionSeq };
     const rawReplayQueue = replay.inspectionEvents.length
       ? replay.queue
       : bindAnimLogChunks(
-          compileRemoteStateEffects(rotated, previousGs || buildMaskedActionState(rotated), buildAnimQueue),
+          compileRemoteStateEffects(rotated, previousGs || buildMaskedActionState(rotated), compileFreshVisualEventQueue),
           { statLogs: logDelta },
         );
     const replayQueue = prepareRemoteWorshipFromHandQueue(rawReplayQueue, rotated, logDelta);

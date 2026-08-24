@@ -9,11 +9,6 @@ export const AUTHORITATIVE_QUEUE_META = Object.freeze({
   authority: ANIMATION_QUEUE_AUTHORITY.QUEUE,
 });
 
-export const LEGACY_MERGE_ACTION_SCOPE_META = Object.freeze({
-  authority: ANIMATION_QUEUE_AUTHORITY.LEGACY_MERGE,
-  visualEventScope: 'action',
-});
-
 export function authoritativeTurnStartQueueMeta(state) {
   const eventIds = (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
     .filter(event => event?.turnStartStage && event?.id)
@@ -135,37 +130,11 @@ export function authoritativeEndTurnReplayQueueMeta(state, queue, consumedEventI
   return strictActionQueueMeta(state, queue, consumedEventIds, 'end-turn replay queue');
 }
 
-export function resolveTutorialQueueMeta(state, queue, consumedEventIds = null) {
-  const coverage = getAiActionQueueCoverage(
-    state,
-    queue,
-    steps => getVisualEventIdsCoveredByAnimationQueue(state, steps),
-    consumedEventIds,
-  );
-  if (coverage.uncoveredEventIds.length) {
-    if (import.meta.env.DEV) {
-      console.warn('[tutorial queue] authoritative coverage incomplete; using scoped legacy merge', {
-        uncoveredEventIds: coverage.uncoveredEventIds,
-      });
-    }
-    return {
-      ...LEGACY_MERGE_ACTION_SCOPE_META,
-      compileEventIds: coverage.uncoveredEventIds,
-      compileState: state,
-    };
-  }
-  return coverage.eventIds.length
-    ? { ...AUTHORITATIVE_QUEUE_META, eventIds: coverage.eventIds }
-    : AUTHORITATIVE_QUEUE_META;
-}
-
 export function actionQueueMetaForMode(
   state,
   queue,
   consumedEventIds,
-  { tutorial = false, context = 'action queue' } = {},
+  { context = 'action queue' } = {},
 ) {
-  return tutorial
-    ? resolveTutorialQueueMeta(state, queue, consumedEventIds)
-    : strictActionQueueMeta(state, queue, consumedEventIds, context);
+  return strictActionQueueMeta(state, queue, consumedEventIds, context);
 }

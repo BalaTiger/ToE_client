@@ -3,12 +3,7 @@ import path from 'node:path';
 import process from 'node:process';
 
 const sourceRoot = path.resolve('src');
-const legacyBaseline = new Map([
-  ['game/animationQueuePolicy.js', 3],
-  ['game/animationTransaction.js', 1],
-  ['game/visualEventTransactionCompiler.js', 3],
-  ['game/visualEvents.js', 1],
-]);
+const legacyBaseline = new Map();
 const legacyVisualStateFields = [
   '_inspectionEvents',
   '_randomTargetEvents',
@@ -20,46 +15,27 @@ const migrationBaselines = [
   {
     label: 'buildAnimQueue call',
     pattern: /\bbuildAnimQueue\s*\(/g,
-    allowed: new Map([
-      ['App.jsx', 52],
-      ['game/aiTurnPresentation.js', 2],
-      ['game/animQueueCore.js', 1],
-      ['game/animQueueHelpers.js', 5],
-      ['game/handLimitDiscard.js', 1],
-      ['game/proliferatingZFlow.js', 1],
-      ['game/restTurnPresentation.js', 1],
-      ['game/turnStartPresentation.js', 1],
-      ['game/visualEventTransactionCompiler.js', 1],
-    ]),
+    allowed: new Map(),
   },
   {
     label: 'buildInspectionAwareAnimQueue call',
     pattern: /\bbuildInspectionAwareAnimQueue\s*\(/g,
-    allowed: new Map([
-      ['App.jsx', 10],
-      ['game/animQueueHelpers.js', 1],
-      ['game/animReplayEvents.js', 1],
-      ['game/treasureDodgePresentation.js', 1],
-    ]),
+    allowed: new Map(),
   },
   {
     label: 'hand-delta animation inference',
     pattern: /\bbuildHandDeltaInferenceQueue\s*\(/g,
-    allowed: new Map([['game/animQueueCore.js', 2]]),
+    allowed: new Map(),
   },
   {
     label: 'legacy visual-event promotion',
-    pattern: /\bpromoteLegacyVisualEvents\s*\(/g,
-    allowed: new Map([['game/visualEvents.js', 2]]),
+    pattern: /\b(?:promoteLegacyVisualEvents|ensureVisualEventState)\s*\(/g,
+    allowed: new Map(),
   },
   {
     label: 'presentation log inference',
     pattern: /\b(?:newMsgs|logDelta|actionMsgs)\.(?:find|filter|some)\s*\(/g,
-    allowed: new Map([
-      ['App.jsx', 10],
-      ['game/animQueueCore.js', 3],
-      ['game/multiplayerRemoteReplay.js', 6],
-    ]),
+    allowed: new Map(),
   },
   {
     label: 'terminal state-diff replay',
@@ -69,7 +45,7 @@ const migrationBaselines = [
   {
     label: 'caller-side buildAnimQueue filtering',
     pattern: /buildAnimQueue[^\r\n]*\.filter\s*\(/g,
-    allowed: new Map([['App.jsx', 13]]),
+    allowed: new Map(),
   },
 ];
 
@@ -100,21 +76,20 @@ for (const file of collectSourceFiles(sourceRoot)) {
     const count = (source.match(guard.pattern) || []).length;
     if (count) counts.set(relative, count);
   });
-  if (relative !== 'game/rotateState.js') {
-    source.split(/\r?\n/).forEach((line, index) => {
-      if (legacyVisualFieldPattern.test(line)) {
-        legacyVisualFieldReferences.push(`${relative}:${index + 1}: ${line.trim()}`);
-      }
-      if (/\btargetStats\s*:/.test(line)) {
-        legacyStatTargetProducers.push(`${relative}:${index + 1}`);
-      }
-      if (/\b_animSphinxReveal\s*:/.test(line)
-        && relative !== 'game/visualEvents.js'
-        && relative !== 'game/aiTurnPresentation.js') {
-        legacySphinxHintProducers.push(`${relative}:${index + 1}`);
-      }
-    });
-  }
+  source.split(/\r?\n/).forEach((line, index) => {
+    if (legacyVisualFieldPattern.test(line)) {
+      legacyVisualFieldReferences.push(`${relative}:${index + 1}: ${line.trim()}`);
+    }
+    if (relative !== 'game/rotateState.js' && /\btargetStats\s*:/.test(line)) {
+      legacyStatTargetProducers.push(`${relative}:${index + 1}`);
+    }
+    if (/\b_animSphinxReveal\s*:/.test(line)
+      && relative !== 'game/rotateState.js'
+      && relative !== 'game/visualEvents.js'
+      && relative !== 'game/aiTurnPresentation.js') {
+      legacySphinxHintProducers.push(`${relative}:${index + 1}`);
+    }
+  });
 }
 
 const issues = [];
@@ -149,13 +124,16 @@ for (const [file, allowed] of legacyBaseline) {
 }
 
 const appSource = fs.readFileSync(path.join(sourceRoot, 'App.jsx'), 'utf8');
+const visualCompilerSource = fs.readFileSync(path.join(sourceRoot, 'game/visualEventTransactionCompiler.js'), 'utf8');
+if (/options\.buildAnimQueue/.test(visualCompilerSource)) {
+  issues.push('game/visualEventTransactionCompiler.js: compiler backedges to options.buildAnimQueue are forbidden');
+}
+const inspectionHelperSource = fs.readFileSync(path.join(sourceRoot, 'game/animQueueHelpers.js'), 'utf8');
+if (/buildInspectionEventFlow[\s\S]*?buildAnimQueue\s*\(/.test(inspectionHelperSource)) {
+  issues.push('game/animQueueHelpers.js: inspection flow must compile only explicit event payloads');
+}
 if (/resolveActionQueueMeta/.test(appSource)) {
   issues.push('App.jsx: generic resolveActionQueueMeta is forbidden; use strictActionQueueMeta or the tutorial-only router');
-}
-const animationQueuePolicySource = fs.readFileSync(path.join(sourceRoot, 'game/animationQueuePolicy.js'), 'utf8');
-const tutorialResolverRefs = animationQueuePolicySource.match(/resolveTutorialQueueMeta\s*\(/g) || [];
-if (tutorialResolverRefs.length !== 2) {
-  issues.push(`game/animationQueuePolicy.js: resolveTutorialQueueMeta must only appear in its definition and tutorial router (found ${tutorialResolverRefs.length})`);
 }
 appSource.split(/\r?\n/).forEach((line, index) => {
   if (!line.includes('actionQueueMetaForMode(') || line.includes('function actionQueueMetaForMode(')) return;

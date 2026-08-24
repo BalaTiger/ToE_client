@@ -1,9 +1,7 @@
-import { ensureVisualEventState } from './visualEvents';
 import {
   ANIMATION_QUEUE_AUTHORITY,
   compileRuleVisualEventsToAnimTransaction,
   getAnimationQueueVisualEventIds,
-  mergeAnimationTransactionQueue,
 } from './visualEventTransactionCompiler';
 import { truncateQueueAtTerminalPresentation } from './terminalPresentation';
 
@@ -61,17 +59,15 @@ export function createQueueAnimationTransaction({
   };
 }
 
-// Migration adapter: compiles legacy/event authority before playback. The
-// animation hook receives only the resulting queue-authoritative transaction.
-// This adapter is intentionally retained until the final legacy deletion pass.
+// Resolve the declared authority exactly once before playback. Queue and event
+// authority are mutually exclusive; there is no merge/reordering fallback.
 export function prepareAnimationTransaction({
   queue = [],
   nextState = null,
   callback,
   transactionMeta = null,
   consumedEventIds = null,
-  buildAnimQueue,
-  context = 'legacy-adapter',
+  context = 'animation-transaction',
 } = {}) {
   diagnostics.preparedTransactionCount += 1;
   const declaredAuthority = transactionMeta?.authority;
@@ -80,21 +76,23 @@ export function prepareAnimationTransaction({
     throw new TypeError(`[animation-transaction] ${context}: authority is required`);
   }
   const authority = declaredAuthority;
-  const shouldCompile = authority !== ANIMATION_QUEUE_AUTHORITY.QUEUE;
+  if (![ANIMATION_QUEUE_AUTHORITY.QUEUE, ANIMATION_QUEUE_AUTHORITY.EVENTS].includes(authority)) {
+    throw new TypeError(`[animation-transaction] ${context}: unsupported authority ${String(authority)}`);
+  }
+  const shouldCompile = authority === ANIMATION_QUEUE_AUTHORITY.EVENTS;
   const compileState = getRuleEventCompileState(nextState, transactionMeta);
   const compileEventIds = getRuleEventCompileIds(transactionMeta);
   if (shouldCompile && Array.isArray(compileEventIds)) diagnostics.uncoveredEventCount += compileEventIds.length;
   const ruleTransaction = compileState && shouldCompile
-      ? compileRuleVisualEventsToAnimTransaction(ensureVisualEventState(compileState), null, {
+      ? compileRuleVisualEventsToAnimTransaction(compileState, null, {
          consumedEventIds,
-         buildAnimQueue,
          ...(transactionMeta?.compileOptions || {}),
         ...(Array.isArray(compileEventIds) ? { eventIds: compileEventIds } : {}),
         ...(transactionMeta?.visualEventScope ? { visualEventScope: transactionMeta.visualEventScope } : {}),
       })
     : null;
   diagnostics.recompiledEventCount += ruleTransaction?.eventIds?.length || 0;
-  const preparedQueue = mergeAnimationTransactionQueue(queue, ruleTransaction, { authority });
+  const preparedQueue = shouldCompile ? (ruleTransaction?.queue || []) : queue;
   const terminalQueue = truncateQueueAtTerminalPresentation(preparedQueue, nextState);
   const isTerminalTransaction = !!nextState?.gameOver;
   return createQueueAnimationTransaction({
@@ -127,7 +125,6 @@ export function submitAnimationPresentation({
   compileOptions,
   preserveQueueOrder = false,
   consumedEventIds = null,
-  buildAnimQueue,
   context = 'presentation',
 } = {}) {
   if (typeof playTransaction !== 'function') {
@@ -148,7 +145,6 @@ export function submitAnimationPresentation({
     callback,
     transactionMeta,
     consumedEventIds,
-    buildAnimQueue,
     context,
   });
   playTransaction(transaction);

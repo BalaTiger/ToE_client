@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { submitLossEvents } from '../effectEngine';
-import { buildAnimQueue } from '../animQueueCore';
+import { compileFreshVisualEventQueue as buildAnimQueue } from '../visualEventTransactionCompiler';
 import { buildSphinxResultQueue } from '../animQueueHelpers';
 import { appendStatChangeResult, buildStatChangeStatePatch, submitRecoveryEvents } from '../statChangeEngine';
 import { makePlayer } from './factory';
