@@ -96,7 +96,7 @@ describe('registerMultiplayerSocketHandlers', () => {
     const { socket, deps } = makeDeps();
     registerMultiplayerSocketHandlers(deps);
 
-    expect(socket.on).toHaveBeenCalledTimes(22);
+    expect(socket.on).toHaveBeenCalledTimes(23);
     expect([...socket.handlers.keys()]).toEqual([
       'connect_error',
       'uuidAssigned',
@@ -111,6 +111,7 @@ describe('registerMultiplayerSocketHandlers', () => {
       'roomClosed',
       'lobbyRooms',
       'gameStart',
+      'matchRestored',
       'mpStateSync',
       'mpAiTakeover',
       'emojiReceived',
@@ -132,6 +133,18 @@ describe('registerMultiplayerSocketHandlers', () => {
     expect(deps.cleanupConnection).toHaveBeenCalled();
     expect(deps.setMultiLoading).toHaveBeenCalledWith(false);
     expect(deps.setConnErrModal).toHaveBeenCalledWith(true);
+    expect(socket.disconnect).toHaveBeenCalled();
+  });
+
+  it('keeps automatic reconnect failures silent', () => {
+    const { socket, deps } = makeDeps({ silentConnectionErrors: true });
+    registerMultiplayerSocketHandlers(deps);
+
+    socket.trigger('connect_error', new Error('temporary outage'));
+
+    expect(deps.cleanupConnection).toHaveBeenCalled();
+    expect(deps.setMultiLoading).toHaveBeenCalledWith(false);
+    expect(deps.setConnErrModal).not.toHaveBeenCalled();
     expect(socket.disconnect).toHaveBeenCalled();
   });
 
@@ -185,6 +198,45 @@ describe('registerMultiplayerSocketHandlers', () => {
     expect(deps.handleMpAiTakeover).toHaveBeenCalledTimes(1);
     expect(deps.handleMpAiTakeover).toHaveBeenCalledWith({ seq: 2, playerIndex: 1 });
     expect(deps.mpAiTakeoverSeqRef.current).toBe(2);
+  });
+
+  it('restores an active match snapshot without replaying opening state', () => {
+    const { socket, deps, state } = makeDeps();
+    registerMultiplayerSocketHandlers(deps);
+    const rawGs = {
+      phase: 'ACTION',
+      currentTurn: 1,
+      players: [{ name: '房主' }, { name: '我' }],
+      _visualEvents: [{ id: 'already-seen' }],
+    };
+
+    socket.trigger('matchRestored', {
+      roomId: 'room-1',
+      owner: 'u1',
+      isPrivate: true,
+      players: [{ uuid: 'u1' }, { uuid: 'u2' }],
+      count: 2,
+      max: 12,
+      playerIndex: 1,
+      gs: rawGs,
+      takeoverSeq: 3,
+    });
+
+    expect(state.isMultiplayer).toBe(true);
+    expect(deps.isMultiplayerRef.current).toBe(true);
+    expect(state.isDisconnected).toBe(false);
+    expect(state.myPlayerIndex).toBe(1);
+    expect(state.roomModal).toMatchObject({ roomId: 'room-1', count: 2 });
+    expect(deps.mpAiTakeoverSeqRef.current).toBe(3);
+    expect([...deps.consumedVisualEventIdsRef.current]).toEqual(['already-seen']);
+    expect(deps.animQueueRef.current).toEqual([]);
+    expect(deps.pendingGsRef.current).toBe(null);
+    expect(deps.receivedGsRef.current).toBe(true);
+    expect(deps.setRoleRevealAnim).toHaveBeenCalledWith(null);
+    expect(deps.setGs).toHaveBeenCalledWith(expect.objectContaining({
+      currentTurn: 0,
+      players: [{ name: '我' }, { name: '房主' }],
+    }));
   });
 
   it('resets multiplayer refs when AI takeover disconnects the player', () => {

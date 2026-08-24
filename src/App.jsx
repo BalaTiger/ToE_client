@@ -402,7 +402,7 @@ import { useEndTurnReplaySync } from './hooks/useEndTurnReplaySync';
 import { advanceGodEncounter, formatGodEncounterProgress } from './game/balancePatches';
 import { useMultiplayerConnection } from './multiplayer/useMultiplayerConnection';
 import { buildPlayerWinWaitState, useMultiplayerStateBroadcast } from './multiplayer/useMultiplayerStateBroadcast';
-import { useMultiplayerEmojiSender, useWaitingRoomReconnect } from './multiplayer/useMultiplayerUiSession';
+import { useMultiplayerEmojiSender, useMultiplayerSessionReconnect } from './multiplayer/useMultiplayerUiSession';
 import {
   getPendingZhuHideCardForState,
   isLocalZhuHideDecisionPhase,
@@ -1542,7 +1542,7 @@ export default function Game(){
     });
   }
 
-  useWaitingRoomReconnect({
+  useMultiplayerSessionReconnect({
     gs,
     isMultiplayerRef,
     roomModalRef,

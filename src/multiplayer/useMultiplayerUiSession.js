@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 
-export function shouldReconnectWaitingRoom({
+export function shouldReconnectMultiplayerSession({
   visibilityState,
   gs,
   isMultiplayer,
@@ -9,7 +9,9 @@ export function shouldReconnectWaitingRoom({
   socket,
 }) {
   if (visibilityState !== 'visible') return false;
-  if (gs || isMultiplayer) return false;
+  const isWaitingRoom = !gs && !isMultiplayer;
+  const isActiveMatch = isMultiplayer;
+  if (!isWaitingRoom && !isActiveMatch) return false;
   if (!roomModal?.roomId) return false;
   if (multiLoading) return false;
   if (socket?.connected) return false;
@@ -32,7 +34,7 @@ export function emitEmojiSend({ socket, playerUUID, roomId, emoji }) {
   return true;
 }
 
-export function useWaitingRoomReconnect({
+export function useMultiplayerSessionReconnect({
   gs,
   isMultiplayerRef,
   roomModalRef,
@@ -44,11 +46,21 @@ export function useWaitingRoomReconnect({
   playerUUID,
   identityTokenRef,
   identityToken,
+  retryMs = 1500,
 }) {
+  const lastReconnectAttemptRef = useRef(0);
+
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    const handleWaitingRoomReconnect = () => {
-      if (!shouldReconnectWaitingRoom({
+    let retryTimer = null;
+
+    const scheduleReconnect = (delay = 0) => {
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(handleSessionReconnect, delay);
+    };
+
+    const handleSessionReconnect = () => {
+      if (!shouldReconnectMultiplayerSession({
         visibilityState: document.visibilityState,
         gs,
         isMultiplayer: isMultiplayerRef.current,
@@ -58,6 +70,12 @@ export function useWaitingRoomReconnect({
       })) {
         return;
       }
+      const elapsed = Date.now() - lastReconnectAttemptRef.current;
+      if (elapsed < retryMs) {
+        scheduleReconnect(retryMs - elapsed);
+        return;
+      }
+      lastReconnectAttemptRef.current = Date.now();
       setOnlineResourcesUnlocked(true);
       connectSocket(socket => {
         emitOpenOnlineOptions(
@@ -65,10 +83,23 @@ export function useWaitingRoomReconnect({
           playerUUIDRef.current || playerUUID,
           identityTokenRef.current || identityToken,
         );
-      });
+      }, { silent: true });
+      scheduleReconnect(retryMs);
     };
-    document.addEventListener('visibilitychange', handleWaitingRoomReconnect);
-    return () => document.removeEventListener('visibilitychange', handleWaitingRoomReconnect);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') scheduleReconnect(0);
+    };
+    const handleOnline = () => scheduleReconnect(0);
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleOnline);
+    scheduleReconnect(0);
+    return () => {
+      clearTimeout(retryTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnline);
+    };
   }, [
     gs,
     multiLoading,
@@ -81,6 +112,7 @@ export function useWaitingRoomReconnect({
     roomModalRef,
     socketRef,
     setOnlineResourcesUnlocked,
+    retryMs,
   ]);
 }
 

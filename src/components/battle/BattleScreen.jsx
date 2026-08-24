@@ -354,17 +354,18 @@ export function BattleScreen(props) {
       )}
       {/* ── 断线遮罩（游戏内）── */}
       {isDisconnected&&(
-        <div onClick={resetDisconnectedToStart}
+        <div
           style={{position:'fixed',inset:0,background:'#000000dd',zIndex:9999,
-            display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
+            display:'flex',alignItems:'center',justifyContent:'center'}}>
           <div style={{textAlign:'center',color:'#c8a0e8',fontFamily:"'Cinzel Decorative','Cinzel',serif",
             padding:'36px 48px',background:'#0e0a14',border:'2px solid #7a50b0',borderRadius:6,
-            boxShadow:'0 0 60px #5a3a8066',animation:'animPop 0.25s ease-out',pointerEvents:'none'}}>
+            boxShadow:'0 0 60px #5a3a8066',animation:'animPop 0.25s ease-out'}}>
             <div style={{fontSize:48,marginBottom:16,filter:'drop-shadow(0 0 20px #a080d0)'}}>📡</div>
-            <div style={{fontSize:16,letterSpacing:2,marginBottom:8}}>连接已断开</div>
+            <div style={{fontSize:16,letterSpacing:2,marginBottom:8}}>正在恢复连接</div>
             <div style={{fontSize:12,color:'#8060a0',letterSpacing:1,fontFamily:"'Cinzel',serif",fontStyle:'italic'}}>
-              您已断线，点击任意位置返回主界面
+              正在尝试返回当前对局，请稍候…
             </div>
+            <button onClick={resetDisconnectedToStart} style={{marginTop:20,padding:'8px 16px',background:'#1e0d36',border:'1px solid #6a4890',borderRadius:3,color:'#a888c8',fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:1,cursor:'pointer'}}>放弃重连并返回主界面</button>
           </div>
         </div>
       )}

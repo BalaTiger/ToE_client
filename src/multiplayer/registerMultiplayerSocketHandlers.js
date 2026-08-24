@@ -55,12 +55,13 @@ export function registerMultiplayerSocketHandlers({
   setFlyingEmojis,
   discardPileRef,
   setServerAnnouncement,
+  silentConnectionErrors = false,
 }) {
   socket.on('connect_error', (err) => {
     cleanupConnection();
     setMultiLoading(false);
     console.error('[multiplayer connect_error]', serverUrl, socketPath, err?.message || err);
-    setConnErrModal(true);
+    if (!silentConnectionErrors) setConnErrModal(true);
     socket.disconnect();
   });
 
@@ -200,6 +201,57 @@ export function registerMultiplayerSocketHandlers({
     }
   });
 
+  socket.on('matchRestored', ({
+    roomId,
+    owner,
+    isPrivate,
+    players,
+    count,
+    max,
+    playerIndex,
+    gs: rawGs,
+    takeoverSeq,
+  }) => {
+    const safePlayers = Array.isArray(players) ? players : [];
+    const safeIdx = Number.isInteger(playerIndex) && playerIndex >= 0 ? playerIndex : 0;
+    setFirstBattleStarted(true);
+    safeLS.set(FIRST_BATTLE_DONE_KEY, '1');
+    setOnlineResourcesUnlocked(true);
+    setRoomModal({
+      roomId,
+      owner,
+      isPrivate: !!isPrivate,
+      players: safePlayers,
+      count: count ?? safePlayers.length,
+      max: max || 12,
+      countdown: null,
+    });
+    myPlayerIndexRef.current = safeIdx;
+    setMyPlayerIndex(safeIdx);
+    setIsMultiplayer(true);
+    isMultiplayerRef.current = true;
+    setIsDisconnected(false);
+    mpRoleRevealedRef.current = true;
+    mpOpeningRoleRevealPendingRef.current = false;
+    mpAiTakeoverSeqRef.current = takeoverSeq || 0;
+    pendingMpAiTakeoverRef.current = null;
+    consumedVisualEventIdsRef.current = new Set(
+      (rawGs?._visualEvents || []).map(event => event?.id).filter(Boolean),
+    );
+    animQueueRef.current = [];
+    pendingGsRef.current = null;
+    setAnimExiting(false);
+    clearDamageAnimations();
+    setAnim(null);
+    setRoleRevealAnim(null);
+    if (gameOverPresentationFrozenRef) gameOverPresentationFrozenRef.current = false;
+    if (rawGs) {
+      receivedGsRef.current = true;
+      setGs(rotateGsForViewer(rawGs, safeIdx));
+    }
+    addToast('连接已恢复，已返回当前对局');
+  });
+
   socket.on('mpStateSync', ({ gs: rawGs }) => {
     processIncomingMpStateSync(rawGs);
   });
@@ -252,7 +304,7 @@ export function registerMultiplayerSocketHandlers({
     setServerAnnouncement(announcement || null);
   });
 
-  socket.on('aiTakeover', () => {
+  socket.on('aiTakeover', ({ reason } = {}) => {
     setIsDisconnected(true);
     setIsMultiplayer(false);
     isMultiplayerRef.current = false;
@@ -261,6 +313,7 @@ export function registerMultiplayerSocketHandlers({
     mpRoleRevealedRef.current = false;
     consumedVisualEventIdsRef.current = new Set();
     pendingMpAiTakeoverRef.current = null;
+    if (reason) addToast(reason);
   });
 
   socket.on('disconnect', () => {

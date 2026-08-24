@@ -2,12 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   emitEmojiSend,
   emitOpenOnlineOptions,
-  shouldReconnectWaitingRoom,
+  shouldReconnectMultiplayerSession,
 } from './useMultiplayerUiSession';
 
 describe('useMultiplayerUiSession helpers', () => {
-  it('reconnects only when a waiting room is visible and disconnected', () => {
-    expect(shouldReconnectWaitingRoom({
+  it('reconnects a visible disconnected waiting room or active match', () => {
+    expect(shouldReconnectMultiplayerSession({
       visibilityState: 'visible',
       gs: null,
       isMultiplayer: false,
@@ -16,7 +16,7 @@ describe('useMultiplayerUiSession helpers', () => {
       socket: null,
     })).toBe(true);
 
-    expect(shouldReconnectWaitingRoom({
+    expect(shouldReconnectMultiplayerSession({
       visibilityState: 'hidden',
       gs: null,
       isMultiplayer: false,
@@ -24,7 +24,23 @@ describe('useMultiplayerUiSession helpers', () => {
       multiLoading: false,
       socket: null,
     })).toBe(false);
-    expect(shouldReconnectWaitingRoom({
+    expect(shouldReconnectMultiplayerSession({
+      visibilityState: 'visible',
+      gs: { phase: 'ACTION' },
+      isMultiplayer: true,
+      roomModal: { roomId: 'room-1' },
+      multiLoading: false,
+      socket: null,
+    })).toBe(true);
+    expect(shouldReconnectMultiplayerSession({
+      visibilityState: 'visible',
+      gs: null,
+      isMultiplayer: true,
+      roomModal: { roomId: 'room-1' },
+      multiLoading: false,
+      socket: null,
+    })).toBe(true);
+    expect(shouldReconnectMultiplayerSession({
       visibilityState: 'visible',
       gs: { phase: 'ACTION' },
       isMultiplayer: false,
@@ -32,15 +48,7 @@ describe('useMultiplayerUiSession helpers', () => {
       multiLoading: false,
       socket: null,
     })).toBe(false);
-    expect(shouldReconnectWaitingRoom({
-      visibilityState: 'visible',
-      gs: null,
-      isMultiplayer: true,
-      roomModal: { roomId: 'room-1' },
-      multiLoading: false,
-      socket: null,
-    })).toBe(false);
-    expect(shouldReconnectWaitingRoom({
+    expect(shouldReconnectMultiplayerSession({
       visibilityState: 'visible',
       gs: null,
       isMultiplayer: false,
@@ -48,7 +56,7 @@ describe('useMultiplayerUiSession helpers', () => {
       multiLoading: false,
       socket: null,
     })).toBe(false);
-    expect(shouldReconnectWaitingRoom({
+    expect(shouldReconnectMultiplayerSession({
       visibilityState: 'visible',
       gs: null,
       isMultiplayer: false,
@@ -56,7 +64,7 @@ describe('useMultiplayerUiSession helpers', () => {
       multiLoading: true,
       socket: null,
     })).toBe(false);
-    expect(shouldReconnectWaitingRoom({
+    expect(shouldReconnectMultiplayerSession({
       visibilityState: 'visible',
       gs: null,
       isMultiplayer: false,

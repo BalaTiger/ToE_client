@@ -109,7 +109,7 @@ Socket/session code that has been extracted from `App.jsx`:
 - `useMultiplayerConnection.js` - runtime Socket.io loading and connection setup
 - `registerMultiplayerSocketHandlers.js` - socket event registration
 - `useMultiplayerStateBroadcast.js` - local state broadcast and game-end sync
-- `useMultiplayerUiSession.js` - waiting-room foreground reconnect and emoji sending
+- `useMultiplayerUiSession.js` - waiting-room/in-match foreground reconnect and emoji sending
 - `multiplayerRemoteReplayExecutor.js` - validates, buffers, and applies relayed state snapshots to animation/runtime refs
 
 `App.jsx` retains the authority check, seat rotation, socket emission, and thin wrappers that provide current React refs/actions to these modules.

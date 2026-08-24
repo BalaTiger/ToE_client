@@ -14,13 +14,15 @@ export function useMultiplayerConnection({
   handlerDeps,
 }) {
   const connTimeoutRef = useRef(null);
+  const connectingRef = useRef(false);
 
-  async function connectSocket(onConnected) {
+  async function connectSocket(onConnected, { silent = false } = {}) {
     if (isArtifact) {
-      addToast('联机功能在预览环境中不可用，请部署到服务器后使用');
+      if (!silent) addToast('联机功能在预览环境中不可用，请部署到服务器后使用');
       return;
     }
-    if (multiLoading) return;
+    if (multiLoading || connectingRef.current) return;
+    connectingRef.current = true;
     setMultiLoading(true);
     if (socketRef.current) {
       socketRef.current.disconnect();
@@ -36,8 +38,9 @@ export function useMultiplayerConnection({
         socketRef.current.disconnect();
         socketRef.current = null;
       }
+      connectingRef.current = false;
       setMultiLoading(false);
-      setConnErrModal(true);
+      if (!silent) setConnErrModal(true);
     }, 5000);
 
     let ioFn;
@@ -46,8 +49,9 @@ export function useMultiplayerConnection({
     } catch {
       clearTimeout(connTimeoutRef.current);
       connTimeoutRef.current = null;
+      connectingRef.current = false;
       setMultiLoading(false);
-      addToast('网络加载失败，请检查连接后重试');
+      if (!silent) addToast('网络加载失败，请检查连接后重试');
       return;
     }
 
@@ -61,6 +65,7 @@ export function useMultiplayerConnection({
     function cleanupConnection() {
       clearTimeout(connTimeoutRef.current);
       connTimeoutRef.current = null;
+      connectingRef.current = false;
     }
 
     registerMultiplayerSocketHandlers({
@@ -74,6 +79,7 @@ export function useMultiplayerConnection({
       setMultiLoading,
       setConnErrModal,
       addToast,
+      silentConnectionErrors: silent,
     });
   }
 
