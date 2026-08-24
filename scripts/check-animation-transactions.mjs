@@ -64,7 +64,7 @@ const migrationBaselines = [
   {
     label: 'terminal state-diff replay',
     pattern: /newGs\.gameOver\s*&&\s*newGs\.currentTurn\s*!==\s*oldGs\.currentTurn/g,
-    allowed: new Map([['game/animQueueCore.js', 1]]),
+    allowed: new Map(),
   },
   {
     label: 'caller-side buildAnimQueue filtering',

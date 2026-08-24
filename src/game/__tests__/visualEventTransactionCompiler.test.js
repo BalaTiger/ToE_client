@@ -39,6 +39,28 @@ import { prepareAnimationQueueSteps } from '../animationStepSchema';
 const player = (name, patch = {}) => ({ name, hp: 10, san: 10, hand: [], ...patch });
 
 describe('visualEventTransactionCompiler', () => {
+  it('keeps terminal turn-start and draw facts as canonical events', () => {
+    const card = { id: 'terminal-draw', name: '撒托古亚', isGod: true };
+    const state = {
+      gameOver: { winner: '邪祀者' },
+      currentTurn: 1,
+      players: [player('你'), player('贝拉')],
+      phase: 'DRAW_REVEAL',
+      drawReveal: { card, drawerIdx: 1, sourcePile: 'deck' },
+      _turnKey: 7,
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉 遭遇邪神 撒托古亚'],
+      _visualEvents: [],
+    };
+
+    const events = buildTurnStartDrawVisualEvents(state);
+    const transaction = compileRuleVisualEventsToAnimTransaction({ ...state, _visualEvents: events });
+
+    expect(events.map(event => event.type)).toEqual(['turnStart', 'drawCard']);
+    expect(transaction.queue.map(step => step.type)).toEqual(['YOUR_TURN', 'DRAW_CARD']);
+    expect(transaction.queue.map(step => step.visualEventId)).toEqual(events.map(event => event.id));
+  });
+
   it('compiles generic card movement from event payload without snapshot inference', () => {
     const card = { id: 'move-1', name: '测试牌' };
     const before = [player('你', { hand: [card] })];

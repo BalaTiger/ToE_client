@@ -13,6 +13,28 @@ import { buildFreshStatVisualEvents, createApophisEclipseEvent, createCardEffect
 import { makeGodCard, makeGs, makePlayer } from './factory';
 
 describe('buildAnimQueue stat animations', () => {
+  it('does not reconstruct terminal turn banners or draws from resolved state snapshots', () => {
+    const drawnCard = makeGodCard('TSG');
+    const players = [makePlayer({ name: '你' }), makePlayer({ name: '贝拉', san: 0 })];
+    const oldGs = makeGs({ players, currentTurn: 0, log: [] });
+    const terminalGs = makeGs({
+      players,
+      currentTurn: 1,
+      gameOver: { winner: '邪祀者', reason: '贝拉 的理智归零，邪神苏醒' },
+      _aiDrawnCard: drawnCard,
+      _drawnCard: drawnCard,
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉 遭遇邪神 撒托古亚'],
+      log: ['── 贝拉 的回合开始 ──', '贝拉 遭遇邪神 撒托古亚'],
+      _visualEvents: [],
+    });
+
+    const queue = buildAnimQueue(oldGs, terminalGs);
+
+    expect(queue.some(step => step.type === 'YOUR_TURN')).toBe(false);
+    expect(queue.some(step => step.type === 'DRAW_CARD')).toBe(false);
+  });
+
   it('uses distinct explicit events for consecutive worship and upgrade highlights', () => {
     const initial = [makePlayer({ name: '你' }), makePlayer({ name: '贝拉' })];
     const worshipped = [initial[0], { ...initial[1], godName: 'TSG', godLevel: 1 }];

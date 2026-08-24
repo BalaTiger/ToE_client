@@ -685,13 +685,6 @@ export function buildAnimQueue(oldGs, newGs) {
     }
     return queue;
   };
-  if (newGs.gameOver && newGs.currentTurn !== oldGs.currentTurn) {
-    const dCard = newGs._aiDrawnCard || newGs._drawnCard || newGs.drawReveal?.card;
-    if (dCard) {
-      q.push({ type: 'YOUR_TURN', name: newGs.players[newGs.currentTurn]?.name || '???', msgs: newGs._turnStartLogs || [] });
-      q.push({ type: 'DRAW_CARD', card: dCard, triggerName: newGs.players[newGs.currentTurn]?.name || '???', targetPid: newGs.currentTurn, msgs: newGs._drawLogs || [] });
-    }
-  }
   // 分阶段/跨回合状态偶尔会先带上已处理事件，再稍后同步标量水位。
   // 旧状态中已经存在的事件不得再次进入动画队列，否则会重播此前角色的伤害或回复。
   const oldStatSeq = Math.max(

@@ -1616,6 +1616,7 @@ function buildPendingZhuRevealState({
 
 export function continueTurnStartAfterDamageReaction(state) {
   if (!state?.abilityData) return state;
+  const previousStatSeq = maxKnownStatEventSeq(state);
   const abilityData = state.abilityData;
   const next = abilityData._turnOwner ?? state.currentTurn;
   let P = copyPlayers(state.players || []);
@@ -1645,7 +1646,27 @@ export function continueTurnStartAfterDamageReaction(state) {
         _statLogs: statLogs,
       };
     }
-    if (poison.winAfterPoison) return { ...state, ...inspectionMeta, players: P, deck: D, discard: Disc, log: L, gameOver: poison.winAfterPoison };
+    if (poison.winAfterPoison) {
+      const terminalState = {
+        ...state,
+        ...inspectionMeta,
+        players: P,
+        deck: D,
+        discard: Disc,
+        log: L,
+        gameOver: poison.winAfterPoison,
+        _statLogs: statLogs,
+        _turnStartDrawAborted: true,
+      };
+      const terminalEvents = mergeVisualEventLists(
+        state._visualEvents,
+        buildFreshStatVisualEvents(terminalState, previousStatSeq),
+      );
+      return {
+        ...terminalState,
+        _visualEvents: markTerminalVisualEventBoundary(terminalEvents, terminalState),
+      };
+    }
   }
   const validHeals = pendingEventIds.has(TURN_START_EVENT.DAMAGE_LINK_HEAL)
     ? (abilityData._pendingTurnStartLinkHeals || []).filter(heal => (
@@ -1859,6 +1880,14 @@ function resolveNextTurnState(gs, opts = {}) {
     return turnStartEvents.slice(eventIndex + 1).map(event => event.id);
   };
   const isAiTurnOwner = (next !== 0 && !gs._isMP) || shouldUseAiController(next);
+  const buildTurnOpeningVisualMeta = ({ drawAborted = false, beforeDrawPlayers = null } = {}) => ({
+    _turnStartLogs: turnStartLogs,
+    _drawLogs: drawLogs,
+    _statLogs: statLogs,
+    _preTurnPlayers: _P_beforeTurn,
+    _playersBeforeThisDraw: beforeDrawPlayers || copyPlayers(P),
+    ...(drawAborted ? { _turnStartDrawAborted: true } : {}),
+  });
   const buildTurnStartDeathAbortState = () => ({
     ...gs,
     ...inspectionMeta,
@@ -1884,11 +1913,8 @@ function resolveNextTurnState(gs, opts = {}) {
     _drawnCard: null,
     _drawSourcePile: null,
     _discardedDrawnCard: false,
-    _turnStartLogs: turnStartLogs,
+    ...buildTurnOpeningVisualMeta({ drawAborted: true }),
     _drawLogs: [],
-    _statLogs: statLogs,
-    _preTurnPlayers: _P_beforeTurn,
-    _playersBeforeThisDraw: copyPlayers(P),
     _turnStartAbortedByDeath: true,
   });
   // Lifecycle reconciliation is not a registered event. The owner refresh is
@@ -1898,7 +1924,11 @@ function resolveNextTurnState(gs, opts = {}) {
     ? turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta)
     : { P, D, Disc, L, inspectionMeta, winAfterBgy: null };
   P = bgy.P; D = bgy.D; Disc = bgy.Disc; L = bgy.L; inspectionMeta = bgy.inspectionMeta; gs = { ...gs, ...inspectionMeta };
-  if (bgy.winAfterBgy) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: bgy.winAfterBgy, multiplyUsed: false };
+  if (bgy.winAfterBgy) return {
+    ...buildTurnStartDeathAbortState(),
+    gameOver: bgy.winAfterBgy,
+    multiplyUsed: false,
+  };
   // Death during the pre-draw opening is a hard rule boundary for AI turns.
   // Return a draw-less state so the presentation can finish the fatal effect;
   // aiStep's dead-owner guard will then advance to the next living player.
@@ -1917,7 +1947,11 @@ function resolveNextTurnState(gs, opts = {}) {
   if (poison.slimeDecision) {
     return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, phase: 'TSG_SLIME_BALANCE', abilityData: { ...poison.slimeDecision, _turnOwner: next, continueTurnStartDraw: true, _pendingTurnStartLinkHeals: pendingLinkHeals, _pendingTurnStartEventIds: pendingAfter(TURN_START_EVENT.POISON_DAMAGE) }, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: copyPlayers(P) };
   }
-  if (poison.winAfterPoison) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: poison.winAfterPoison, multiplyUsed: false };
+  if (poison.winAfterPoison) return {
+    ...buildTurnStartDeathAbortState(),
+    gameOver: poison.winAfterPoison,
+    multiplyUsed: false,
+  };
   if (isAiTurnOwner && P[next].isDead) return buildTurnStartDeathAbortState();
   // [PASSIVE_OTHER] 两人一绳治愈
   const link = turnStartEvent_LinkHeal(P, turnStartEventIds.has(TURN_START_EVENT.DAMAGE_LINK_HEAL) ? pendingLinkHeals : [], L, inspectionMeta, statLogs);
@@ -1939,7 +1973,7 @@ function resolveNextTurnState(gs, opts = {}) {
     gs = enterTurnFlowStage(gs, TURN_FLOW_STAGE.DRAW);
     // 检查是否需要跳过摸牌
     if (consumeSkipNextDraw(P, 0, L, { local: true })) {
-      const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, gameOver: win, turn: newTurn, _turnKey: newTurnKey, debugForceCard: null, debugForceCardTarget: null };
+      const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, gameOver: win, turn: newTurn, _turnKey: newTurnKey, debugForceCard: null, debugForceCardTarget: null, ...buildTurnOpeningVisualMeta({ drawAborted: true }) };
       return buildSkippedDrawActionState({
         gs,
         zhuLight,
@@ -2192,7 +2226,7 @@ function resolveNextTurnState(gs, opts = {}) {
     gs = enterTurnFlowStage(gs, TURN_FLOW_STAGE.DRAW);
     // 检查是否需要跳过摸牌
     if (consumeSkipNextDraw(P, next, L)) {
-      const win = checkWin(P, true); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: win };
+      const win = checkWin(P, true); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: win, ...buildTurnOpeningVisualMeta({ drawAborted: true }) };
       return buildSkippedDrawActionState({
         gs,
         zhuLight,
@@ -2341,7 +2375,7 @@ function resolveNextTurnState(gs, opts = {}) {
       const decisionState=deriveGodEncounterDecisionState(res.statePatch,{godCard:res.drawnCard,godEncounterCost:res.godEncounterCost});
       return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, ...(res.statePatch || {}), phase:decisionState.phase,abilityData:decisionState.abilityData }, turnDrawVisualEvents);
     }
-    const win = hasPendingDamageReaction(res.statePatch) ? null : checkWin(P, true); if (win) return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: win, ...(res.statePatch || {}) }, turnDrawVisualEvents);
+    const win = hasPendingDamageReaction(res.statePatch) ? null : checkWin(P, true); if (win) return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: win, ...buildTurnOpeningVisualMeta({ beforeDrawPlayers: _P_beforeMpDraw }), ...(res.statePatch || {}) }, turnDrawVisualEvents);
     // 强制触发牌：效果已执行，直接进入 ACTION；不向其他玩家广播 DRAW_REVEAL 界面
     if (res.kept) {
       return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'ACTION', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, _drawSourcePile: res.sourcePile, ...(res.statePatch || {}) }, turnDrawVisualEvents);
@@ -2355,7 +2389,7 @@ function resolveNextTurnState(gs, opts = {}) {
     gs = enterTurnFlowStage(gs, TURN_FLOW_STAGE.DRAW);
     // 检查是否需要跳过摸牌
     if (consumeSkipNextDraw(P, next, L)) {
-      const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: win, debugForceCard: null, debugForceCardTarget: null };
+      const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: win, debugForceCard: null, debugForceCardTarget: null, ...buildTurnOpeningVisualMeta({ drawAborted: true }) };
       return buildSkippedDrawActionState({
         gs,
         zhuLight,
@@ -2659,6 +2693,35 @@ function attachTurnDrawStatEventOwnership(events = []) {
   return result;
 }
 
+function visualStatEventCrossesTerminalThreshold(statEvent = {}) {
+  const fromHp = Number(statEvent?.from?.hp);
+  const toHp = Number(statEvent?.to?.hp);
+  const fromSan = Number(statEvent?.from?.san);
+  const toSan = Number(statEvent?.to?.san);
+  return (
+    Number.isFinite(toHp) && toHp <= 0 && (!Number.isFinite(fromHp) || fromHp > 0)
+  ) || (
+    Number.isFinite(toSan) && toSan <= 0 && (!Number.isFinite(fromSan) || fromSan > 0)
+  );
+}
+
+function markTerminalVisualEventBoundary(events = [], state = null) {
+  const source = Array.isArray(events) ? events.filter(Boolean) : [];
+  if (!state?.gameOver || !source.length || source.some(event => event?.terminalBoundary === true)) return source;
+  const terminalStatIndex = source.findIndex(event => (
+    Array.isArray(event?.statEvents) && event.statEvents.some(visualStatEventCrossesTerminalThreshold)
+  ));
+  const lastDrawIndex = source.findLastIndex(event => event?.type === VISUAL_EVENT.DRAW_CARD);
+  const boundaryIndex = terminalStatIndex >= 0
+    ? terminalStatIndex
+    : lastDrawIndex >= 0
+      ? lastDrawIndex
+      : source.length - 1;
+  return source.map((event, index) => (
+    index === boundaryIndex ? { ...event, terminalBoundary: true } : event
+  ));
+}
+
 // Rule and presentation metadata are produced at the same boundary. Every
 // caller (local player, AI, multiplayer takeover, and setup) receives the same
 // one-shot visual events instead of reconstructing them later in React.
@@ -2789,5 +2852,6 @@ export function startNextTurn(gs, opts = {}) {
         : event
     ));
   }
+  visualEvents = markTerminalVisualEventBoundary(visualEvents, nextState);
   return visualEvents.length ? { ...nextState, _visualEvents: visualEvents } : nextState;
 }

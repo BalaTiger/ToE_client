@@ -1202,6 +1202,15 @@ describe('turnEngine stat events', () => {
     expect(result.players[1]).toMatchObject({ hp: 0, san: 1, isDead: true });
     expect(result.gameOver?.winner).toBe(ROLE_HUNTER);
     expect(result._inspectionEvents || []).toEqual([]);
+    expect(result._visualEvents.some(event => event.type === VISUAL_EVENT.TURN_START)).toBe(true);
+    expect(result._visualEvents.some(event => event.type === VISUAL_EVENT.DRAW_CARD)).toBe(false);
+    expect(result._visualEvents.some(event => (
+      event.type === VISUAL_EVENT.STAT_EVENTS
+      && event.statEvents?.some(statEvent => statEvent.type === 'HP_LOSS' && statEvent.target === 1)
+    ))).toBe(true);
+    expect(result._visualEvents.find(event => event.terminalBoundary)).toMatchObject({
+      type: VISUAL_EVENT.STAT_EVENTS,
+    });
   });
 
   it('AI 在自己回合的开场伤害中死亡后立即中止，不做检定或摸牌', () => {
@@ -2133,6 +2142,20 @@ describe('turnEngine stat events', () => {
     expect(result.phase).not.toBe('AI_GOD_CHOICE');
     expect(result.log.some(line => line.includes('放弃了邪神的馈赠'))).toBe(false);
     expect(result.abilityData?.godCard).toBeUndefined();
+    const eventTypes = result._visualEvents.map(event => event.type);
+    expect(eventTypes).toEqual(expect.arrayContaining([
+      VISUAL_EVENT.TURN_START,
+      VISUAL_EVENT.DRAW_CARD,
+      VISUAL_EVENT.STAT_EVENTS,
+    ]));
+    expect(result._visualEvents.find(event => event.terminalBoundary)).toMatchObject({
+      type: VISUAL_EVENT.STAT_EVENTS,
+    });
+    const replayTypes = buildTurnStartDrawReplayQueue({ oldGs: gs, newGs: result }).queue
+      .map(step => step.type);
+    expect(replayTypes.indexOf('YOUR_TURN')).toBeGreaterThanOrEqual(0);
+    expect(replayTypes.indexOf('DRAW_CARD')).toBeGreaterThan(replayTypes.indexOf('YOUR_TURN'));
+    expect(replayTypes.indexOf('SAN_DAMAGE')).toBeGreaterThan(replayTypes.indexOf('DRAW_CARD'));
   });
 
   it('reveals an unrevealed cultist (role only, not their whole hand) when they keep an encountered god card in hand', () => {
@@ -2213,6 +2236,44 @@ describe('turnEngine stat events', () => {
     });
     expect(result.log.some(line => line.includes('绳索断裂'))).toBe(false);
     expect(result.log.some(line => line.includes('绳索未断裂'))).toBe(false);
+  });
+
+  it('回合开始决策续接中的致死中毒仍产生 canonical 伤害和终局边界', () => {
+    const players = [
+      makePlayer({ name: '追猎者', role: ROLE_HUNTER }),
+      makePlayer({ name: '邪祀者', role: ROLE_CULTIST, hp: 1, poisonStacks: 1 }),
+    ];
+    const turnStartEvent = {
+      id: 'continued-turn-start',
+      type: VISUAL_EVENT.TURN_START,
+      playerIdx: 1,
+      playerName: '邪祀者',
+      msgs: ['── 邪祀者 的回合开始 ──'],
+    };
+    const pending = makeGs({
+      players,
+      currentTurn: 1,
+      _isMP: true,
+      log: [...turnStartEvent.msgs],
+      _turnStartLogs: [...turnStartEvent.msgs],
+      _visualEvents: [turnStartEvent],
+      abilityData: {
+        _turnOwner: 1,
+        _pendingTurnStartPoison: true,
+        _pendingTurnStartEventIds: ['poisonDamage'],
+      },
+    });
+
+    const result = continueTurnStartAfterDamageReaction(pending);
+    const terminalEvent = result._visualEvents.find(event => event.terminalBoundary);
+
+    expect(result.gameOver?.winner).toBe(ROLE_HUNTER);
+    expect(result._visualEvents[0]).toBe(turnStartEvent);
+    expect(terminalEvent).toMatchObject({ type: VISUAL_EVENT.STAT_EVENTS });
+    expect(terminalEvent.statEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'HP_LOSS', target: 1 }),
+    ]));
+    expect(result._turnStartDrawAborted).toBe(true);
   });
 
   it('AI 跳过摸牌后仍停留在自己的行动阶段', () => {

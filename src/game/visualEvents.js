@@ -1213,7 +1213,7 @@ export function buildEarthquakeAnimStep({
 }
 
 export function buildTurnStartDrawVisualEvents(state) {
-  if (!state || state.gameOver) return [];
+  if (!state) return [];
   const events = [];
   if (Array.isArray(state._turnStartLogs) && state._turnStartLogs.length) {
     events.push(createTurnStartEvent({
@@ -1224,7 +1224,7 @@ export function buildTurnStartDrawVisualEvents(state) {
     }));
   }
   // The rule layer explicitly aborted this opening before the draw phase.
-  if (state._turnStartAbortedByDeath) return events;
+  if (state._turnStartAbortedByDeath || state._turnStartDrawAborted) return events;
   const explicitDrawEvents = getVisualEvents(state).filter(event => event?.type === VISUAL_EVENT.DRAW_CARD && event?.card);
   const drawCard = state.phase === 'GOD_CHOICE'
     ? state.abilityData?.godCard
