@@ -343,10 +343,7 @@ describe('rotateGsForViewer', () => {
     expect(rotated._statEvents[0].target).toBe(3);
     expect(rotated._inspectionTarget).toBe(3);
     expect(names(rotated._inspectionBeforePlayers)).toEqual(['ib2', 'ib3', 'ib0', 'ib1']);
-    expect(rotated._inspectionEvents[0].target).toBe(3);
-    expect(names(rotated._inspectionEvents[0].beforePlayers)).toEqual(['insB2', 'insB3', 'insB0', 'insB1']);
-    expect(names(rotated._inspectionEvents[0].afterPlayers)).toEqual(['insA2', 'insA3', 'insA0', 'insA1']);
-    expect(rotated._inspectionEvents[0].statEvents[0].target).toBe(3);
+    expect(rotated._inspectionEvents).toBeUndefined();
     expect(rotated._aiHuntEvents[0].hunterIdx).toBe(1);
     expect(rotated._aiHuntEvents[0].targetIdx).toBe(3);
     expect(rotated._aiHuntEvents[0].sourceCardIndex).toBe(2);
@@ -360,10 +357,8 @@ describe('rotateGsForViewer', () => {
     expect(names(rotated._aiHuntEvents[0].beforePlayers)).toEqual(['b2', 'b3', 'b0', 'b1']);
     expect(names(rotated._aiHuntEvents[0].afterDiscardPlayers)).toEqual(['d2', 'd3', 'd0', 'd1']);
     expect(names(rotated._aiHuntEvents[0].afterPlayers)).toEqual(['a2', 'a3', 'a0', 'a1']);
-    expect(rotated._randomTargetEvents[0]).toMatchObject({ sourceIdx: 1, targetIdx: 3, label: '投掷石块' });
-    expect(rotated._tsgSlimeGrantEvents[0].ownerIdx).toBe(2);
-    expect(names(rotated._tsgSlimeGrantEvents[0].playersBefore)).toEqual(['tsgB2', 'tsgB3', 'tsgB0', 'tsgB1']);
-    expect(names(rotated._tsgSlimeGrantEvents[0].playersAfter)).toEqual(['tsgA2', 'tsgA3', 'tsgA0', 'tsgA1']);
+    expect(rotated._randomTargetEvents).toBeUndefined();
+    expect(rotated._tsgSlimeGrantEvents).toBeUndefined();
     expect(rotated._animMultiplyEvent).toMatchObject({ fromIdx: 3, toIdx: 1, sourceCardIndex: 4 });
     expect(rotated._animSphinxReveal).toMatchObject({ actorIdx: 2 });
     expect(rotated._visualEvents[0].playerIdx).toBe(1);
@@ -468,10 +463,7 @@ describe('rotateGsForViewer', () => {
     expect(restored._statEvents[0].target).toBe(2);
     expect(restored._inspectionTarget).toBe(2);
     expect(names(restored._inspectionBeforePlayers)).toEqual(['ib0', 'ib1', 'ib2']);
-    expect(restored._inspectionEvents[0].target).toBe(2);
-    expect(names(restored._inspectionEvents[0].beforePlayers)).toEqual(['insB0', 'insB1', 'insB2']);
-    expect(names(restored._inspectionEvents[0].afterPlayers)).toEqual(['insA0', 'insA1', 'insA2']);
-    expect(restored._inspectionEvents[0].statEvents[0].target).toBe(2);
+    expect(restored._inspectionEvents).toBeUndefined();
     expect(restored._aiHuntEvents[0].hunterIdx).toBe(1);
     expect(restored._aiHuntEvents[0].targetIdx).toBe(0);
     expect(restored._aiHuntEvents[0]).not.toHaveProperty('apophisTargetEvent');
@@ -481,7 +473,7 @@ describe('rotateGsForViewer', () => {
       targetResolutionEventId: 'apophisTarget:restore',
     });
     expect(names(restored._aiHuntEvents[0].beforePlayers)).toEqual(['b0', 'b1', 'b2']);
-    expect(restored._randomTargetEvents[0]).toMatchObject({ sourceIdx: 1, targetIdx: 0, label: '投掷石块' });
+    expect(restored._randomTargetEvents).toBeUndefined();
     expect(restored._animMultiplyEvent).toEqual(gs._animMultiplyEvent);
     expect(restored._animSphinxReveal).toEqual(gs._animSphinxReveal);
     expect(names(restored._visualEvents[0].beforePlayers)).toEqual(['eq0', 'eq1', 'eq2']);

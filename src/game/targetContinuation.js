@@ -75,9 +75,19 @@ export function buildTargetContinuationState({
   const legacyGodChoice = abilityData?.pendingGodChoice?.godCard
     ? abilityData.pendingGodChoice
     : null;
-  const nextPhase = phase || queuedDecision.frame?.phase || (
+  const resumedDecisionPhase = queuedDecision.frame?.phase === 'GOD_CHOICE'
+    && isAiSeat(baseState, turnOwner)
+    && !baseState?._isMP
+    ? 'AI_GOD_CHOICE'
+    : queuedDecision.frame?.phase;
+  const legacyGodChoicePhase = legacyGodChoice
+    && isAiSeat(baseState, turnOwner)
+    && !baseState?._isMP
+    ? 'AI_GOD_CHOICE'
+    : 'GOD_CHOICE';
+  const nextPhase = phase || resumedDecisionPhase || (
     legacyGodChoice
-      ? 'GOD_CHOICE'
+      ? legacyGodChoicePhase
       : canResumeAi
         && isAiSeat(baseState, turnOwner)
         && !players?.[turnOwner]?.isDead

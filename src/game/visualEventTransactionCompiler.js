@@ -38,13 +38,17 @@ function flattenStep(step) {
 }
 
 function tagVisualEventSteps(event, steps = []) {
-  return (Array.isArray(steps) ? steps : []).map(step => (
+  const source = Array.isArray(steps) ? steps : [];
+  return source.map((step, index) => (
     step
       ? {
           ...step,
           ...(event?.id && !step.visualEventId ? { visualEventId: event.id } : {}),
           ...(event?.turnStartStage && !step.turnStartStage
             ? { turnStartStage: event.turnStartStage }
+            : {}),
+          ...(event?.terminalBoundary === true && index === source.length - 1 && step.terminalBoundary !== true
+            ? { terminalBoundary: true }
             : {}),
         }
       : step
@@ -367,10 +371,51 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
     case VISUAL_EVENT.DECK_RESHUFFLE:
       return [buildDeckReshuffleStepFromVisualEvent(event)].filter(Boolean);
     case VISUAL_EVENT.DRAW_CARD:
-      return [buildDrawCardStepFromVisualEvents({
-        ...isolated,
-        currentTurn: event.playerIdx ?? isolated?.currentTurn,
-      })].filter(Boolean);
+      return (() => {
+        const drawStep = buildDrawCardStepFromVisualEvents({
+          ...isolated,
+          currentTurn: event.playerIdx ?? isolated?.currentTurn,
+        });
+        if (!drawStep) return [];
+        const playerIdx = event.playerIdx ?? state?.currentTurn ?? 0;
+        if (event.discarded) {
+          return [
+            drawStep,
+            {
+              type: 'DISCARD',
+              card: event.card,
+              triggerName: drawStep.triggerName,
+              targetPid: playerIdx,
+            },
+            ...(
+              Array.isArray(event.playersAfterDiscard) || Array.isArray(event.discardAfter)
+                ? [{
+                    type: 'STATE_PATCH',
+                    ...(Array.isArray(event.playersAfterDiscard) ? { players: event.playersAfterDiscard } : {}),
+                    ...(Array.isArray(event.discardAfter) ? { discard: event.discardAfter } : {}),
+                  }]
+                : []
+            ),
+          ];
+        }
+        if (event.keptInHand && Array.isArray(event.playersAfterKeep)) {
+          return [
+            drawStep,
+            {
+              type: 'CARD_TRANSFER',
+              fromPid: playerIdx,
+              dest: 'player',
+              toPid: playerIdx,
+              count: 1,
+              sourceAnchor: 'playerArea',
+              effect: 'draw',
+              cards: [event.card],
+            },
+            { type: 'STATE_PATCH', players: event.playersAfterKeep },
+          ];
+        }
+        return [drawStep];
+      })();
     case VISUAL_EVENT.HAND_LIMIT_DISCARD:
       return buildHandLimitDiscardStepsFromVisualEvents(isolated);
     case VISUAL_EVENT.STAT_EVENTS:

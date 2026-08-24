@@ -22,7 +22,7 @@ import {
 } from '../animQueueHelpers';
 import { copyPlayers, ROLE_CULTIST, ROLE_TREASURE } from '../coreUtils';
 import { buildAnimQueue } from '../animQueueCore';
-import { createCardEffectEvent, createGodStatusChangedEvent, createInspectionVisualEvent, VISUAL_EVENT } from '../visualEvents';
+import { createCardEffectEvent, createGodStatusChangedEvent, createInspectionVisualEvent, createRandomTargetVisualEvent, VISUAL_EVENT } from '../visualEvents';
 import { resolveAiGodChoiceTransition } from '../aiDecisionState';
 import { scopeAiReplayMetadataBeforeInspection } from '../aiTurnPresentation';
 import { resolveGodEncounterForAI, startNextTurn } from '../turnEngine';
@@ -771,7 +771,10 @@ describe('animQueueHelpers', () => {
   it('AI 行动基线将已保留的随机目标事件视为已消费', () => {
     const state = consumeRetainedRandomTargetEvents({
       _randomTargetSeq: 1,
-      _randomTargetEvents: [{ seq: 4 }, { seq: 2 }],
+      _visualEvents: [
+        createRandomTargetVisualEvent({ seq: 4, sourceIdx: 0, targetIdx: 1 }),
+        createRandomTargetVisualEvent({ seq: 2, sourceIdx: 1, targetIdx: 0 }),
+      ],
     });
 
     expect(state._randomTargetSeq).toBe(4);
@@ -1410,7 +1413,8 @@ describe('animQueueHelpers', () => {
           reason: '鼠群',
         }],
         _inspectionSeq: 2,
-        _inspectionEvents: [{
+        _visualEvents: [{
+          ...createInspectionVisualEvent({
           seq: 1,
           card: calmCard,
           target: 0,
@@ -1421,7 +1425,9 @@ describe('animQueueHelpers', () => {
           beforeStatEventSeq: 1,
           statEvents: [],
           statEventSeq: null,
+          }),
         }, {
+          ...createInspectionVisualEvent({
           seq: 2,
           card: amnesiaCard,
           target: 1,
@@ -1432,6 +1438,7 @@ describe('animQueueHelpers', () => {
           beforeStatEventSeq: 1,
           statEvents: [],
           statEventSeq: null,
+          }),
         }],
       },
       { buildAnimQueue, copyPlayers },
@@ -1491,7 +1498,7 @@ describe('animQueueHelpers', () => {
       players: afterPlayers,
       log: inspectionEvent.afterLog,
       _inspectionSeq: 2,
-      _inspectionEvents: [inspectionEvent],
+      _visualEvents: [nightWindEvent, createInspectionVisualEvent(inspectionEvent)],
     };
 
     const result = buildInspectionAwareAnimQueue(
@@ -1528,19 +1535,24 @@ describe('animQueueHelpers', () => {
       afterPlayers: players,
       afterLog: [...firstEvent.afterLog, '艾伦 的SAN检定结果为"失忆"'],
     };
+    const firstVisualEvent = createInspectionVisualEvent(firstEvent);
+    const secondVisualEvent = createInspectionVisualEvent(secondEvent);
 
     const result = buildInspectionAwareAnimQueue(
       {
         players,
         log: firstEvent.afterLog,
-        _inspectionSeq: 0,
-        _inspectionEvents: [firstEvent],
+        _inspectionSeq: 1,
+        _visualEvents: [firstVisualEvent],
       },
       {
         players,
         log: secondEvent.afterLog,
         _inspectionSeq: 2,
-        _inspectionEvents: [firstEvent, secondEvent],
+        _visualEvents: [
+          firstVisualEvent,
+          secondVisualEvent,
+        ],
       },
       { buildAnimQueue, copyPlayers },
     );
@@ -1769,21 +1781,18 @@ describe('animQueueHelpers', () => {
     });
   });
 
-  it('检定回放按序号优先使用显式视觉事件，仅对无显式事件的旧状态回退', () => {
-    const legacyFirst = { seq: 1, target: 0, card: { id: 'first', name: '旧检定一' } };
-    const legacySecond = { seq: 2, target: 0, card: { id: 'second', name: '旧检定二' } };
+  it('检定回放只读取规范视觉事件并保留事件阶段', () => {
+    const second = { seq: 2, target: 0, card: { id: 'second', name: '检定二' } };
     const explicitSecond = {
-      ...createInspectionVisualEvent(legacySecond),
+      ...createInspectionVisualEvent(second),
       turnStartStage: 'turnStart',
     };
     const events = getFreshInspectionReplayEvents({
-      _inspectionEvents: [legacyFirst, legacySecond],
       _visualEvents: [explicitSecond],
     });
 
-    expect(events).toHaveLength(2);
-    expect(events[0]).toBe(legacyFirst);
-    expect(events[1]).toMatchObject({ id: explicitSecond.id, legacySeq: 2, turnStartStage: 'turnStart' });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ id: explicitSecond.id, legacySeq: 2, turnStartStage: 'turnStart' });
     expect(events.filter(event => (event.legacySeq ?? event.seq) === 2)).toHaveLength(1);
   });
 

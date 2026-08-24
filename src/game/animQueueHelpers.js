@@ -310,8 +310,9 @@ export function consumeRetainedRandomTargetEvents(state={}){
     ...state,
     _randomTargetSeq:Math.max(
       state?._randomTargetSeq||0,
-      ...(Array.isArray(state?._randomTargetEvents)?state._randomTargetEvents:[])
-        .map(event=>event?.seq||0),
+      ...getVisualEvents(state)
+        .filter(event=>event?.type===VISUAL_EVENT.RANDOM_TARGET||event?.type===VISUAL_EVENT.THROW_STONE)
+        .map(event=>event?.legacySeq??event?.seq??0),
     ),
   };
 }
@@ -642,24 +643,16 @@ export function buildInspectionRevealQueue(events){
   }));
 }
 
-// Prefer canonical inspection visual events for every sequence they cover and
-// retain legacy snapshots only for old saves/peers that did not emit one. This
-// keeps specialized orchestrators from rebuilding the same inspection through
-// `_inspectionEvents` while still supporting mixed migration-era states.
 export function getFreshInspectionReplayEvents(state,{afterSeq=0,predicate=null}={}){
   const matches=event=>{
     const seq=event?.legacySeq??event?.seq??0;
     return seq>afterSeq&&(!predicate||predicate(event));
   };
-  const explicit=getVisualEvents(state)
-    .filter(event=>event?.type===VISUAL_EVENT.INSPECTION&&matches(event));
-  const explicitSeqs=new Set(explicit.map(event=>event?.legacySeq??event?.seq).filter(seq=>seq!=null));
-  const legacy=(state?._inspectionEvents||[])
-    .filter(matches)
-    .filter(event=>!explicitSeqs.has(event?.seq));
-  return [...explicit,...legacy].sort((left,right)=>(
-    (left?.legacySeq??left?.seq??0)-(right?.legacySeq??right?.seq??0)
-  ));
+  return getVisualEvents(state)
+    .filter(event=>event?.type===VISUAL_EVENT.INSPECTION&&matches(event))
+    .sort((left,right)=>(
+      (left?.legacySeq??left?.seq??0)-(right?.legacySeq??right?.seq??0)
+    ));
 }
 
 export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlayers,eventOwnedOnly=false}){
@@ -796,18 +789,11 @@ export function buildInspectionEventFlow(baseGs,events,{buildAnimQueue,copyPlaye
 
 export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPlayers}){
   const baseOldGs=oldGs||{};
-  // 旧状态已经携带的检定事件一定已经进入过上一段动画。部分分阶段结算
-  // （例如 AI 邪神选择）可能让标量水位稍晚同步，不能因此重播旧检定牌。
-  const baseInspectionSeq=Math.max(
-    baseOldGs._inspectionSeq||0,
-    ...(baseOldGs._inspectionEvents||[]).map(ev=>ev?.seq||0),
-  );
+  const baseInspectionSeq=baseOldGs._inspectionSeq||0;
   const oldVisualEventIds=new Set(getVisualEvents(baseOldGs).map(event=>event.id));
   const visualInspectionEvents=getVisualEvents(newGs)
     .filter(event=>event?.type===VISUAL_EVENT.INSPECTION&&event?.id&&!oldVisualEventIds.has(event.id));
-  const inspectionEvents=visualInspectionEvents.length
-    ?visualInspectionEvents
-    :(newGs?._inspectionEvents||[]).filter(ev=>ev?.seq>baseInspectionSeq);
+  const inspectionEvents=visualInspectionEvents;
   if(!inspectionEvents.length){
     return {
       queue:buildAnimQueue(baseOldGs,newGs),
@@ -824,7 +810,6 @@ export function buildInspectionAwareAnimQueue(oldGs,newGs,{buildAnimQueue,copyPl
     // inspection. It may already carry the final event journal so faith-exit
     // transfers can compile, but post-inspection events must not cross it.
     _inspectionPresentationSeq:baseInspectionSeq,
-    _inspectionEvents:baseOldGs._inspectionEvents||[], // legacy-visual-allow: compatibility presentation baseline
     _inspectionSeq:baseInspectionSeq,
     _statEvents:newGs?._statEvents||[],
     _statEventSeq:firstEvent?.beforeStatEventSeq??baseOldGs._statEventSeq??0,

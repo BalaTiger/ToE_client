@@ -12,7 +12,7 @@ import {
 } from '../animReplayEvents';
 import { copyPlayers, makeInspectionMeta, ROLE_CULTIST } from '../coreUtils';
 import { applySanLossToPlayerWithInspection, resolveGodEncounterForAI } from '../turnEngine';
-import { createBewitchGiftEvent, createRandomTargetVisualEvent } from '../visualEvents';
+import { createBewitchGiftEvent, createInspectionVisualEvent, createRandomTargetVisualEvent } from '../visualEvents';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
 describe('animReplayEvents', () => {
@@ -404,7 +404,7 @@ describe('animReplayEvents', () => {
       players: afterPlayers,
       log: ['旧日志', '你 的SAN检定结果为"迫害妄想"', '你 失去 1 SAN'],
       _inspectionSeq: 1,
-      _inspectionEvents: [{
+      _visualEvents: [createInspectionVisualEvent({
         seq: 1,
         card: inspectionCard,
         target: 0,
@@ -412,7 +412,7 @@ describe('animReplayEvents', () => {
         beforeLog: ['旧日志'],
         afterPlayers,
         afterLog: ['旧日志', '你 的SAN检定结果为"迫害妄想"', '你 失去 1 SAN'],
-      }],
+      })],
     };
 
     const replay = buildInspectionReplay(oldGs, newGs, {
@@ -446,7 +446,7 @@ describe('animReplayEvents', () => {
       abilityData: {},
       log: ['你 掷出 4 点，随机砸向 艾伦（距离1），造成 3 HP 伤害'],
       _randomTargetSeq: 1,
-      _randomTargetEvents: [{
+      _visualEvents: [createRandomTargetVisualEvent({
         seq: 1,
         sourceIdx: 0,
         targetIdx: 1,
@@ -456,7 +456,7 @@ describe('animReplayEvents', () => {
         damage: 3,
         diceBefore: true,
         phaseOrder: 1,
-      }],
+      })],
       _statEventSeq: 1,
       _statEvents: [{
         type: 'HP_LOSS',

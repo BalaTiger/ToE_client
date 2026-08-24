@@ -3,7 +3,7 @@ import { buildAnimQueue } from '../animQueueCore';
 import { copyPlayers } from '../coreUtils';
 import { buildMpRemoteReplayAction, MP_REMOTE_REPLAY } from '../multiplayerRemoteReplay';
 import { rotateGsForViewer } from '../rotateState';
-import { createAnimTransactionEvent, createApophisEclipseEvent, createCardEffectEvent, createEarthquakeEvent, createEndlessCorridorReplayEvent, createGodGiftKeepEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent, createHuntResultEvent, createSphinxResultEvent, createStatEventsEvent, createSwapCardsEvent, VISUAL_EVENT } from '../visualEvents';
+import { createAnimTransactionEvent, createApophisEclipseEvent, createCardEffectEvent, createEarthquakeEvent, createEndlessCorridorReplayEvent, createGodGiftKeepEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent, createHuntResultEvent, createInspectionVisualEvent, createSphinxResultEvent, createStatEventsEvent, createSwapCardsEvent, createThrowStoneEvent, createTsathogguaSlimeGrantEvent, VISUAL_EVENT } from '../visualEvents';
 import { buildStatEvents } from '../statEvents';
 import { createRuleResolutionTransaction } from '../ruleResolutionTransaction';
 
@@ -393,32 +393,25 @@ describe('buildMpRemoteReplayAction', () => {
     const beforePlayers = [player('你'), player('艾伦'), { ...player('贝拉'), hp: 10 }];
     const afterPlayers = [player('你'), player('艾伦'), { ...player('贝拉'), hp: 7 }];
     const log = ['艾伦 掷出 4 点，随机砸向 贝拉（距离1），造成 3 HP 伤害'];
+    const statEvent = {
+      type: 'HP_LOSS', target: 2,
+      from: { hp: 10, san: 10, isDead: false },
+      to: { hp: 7, san: 10, isDead: false },
+      seq: 1, phaseOrder: 2,
+    };
+    const throwStoneEvent = createThrowStoneEvent({
+      sourceIdx: 1, targetIdx: 2, roll: 4, distance: 1, damage: 3,
+      resultText: '贝拉 被选中', playersBefore: beforePlayers, playersAfter: afterPlayers,
+      statEvents: [statEvent],
+    });
     const action = buildAction(makeState({
       currentTurn: 1,
       players: afterPlayers,
       log,
       _randomTargetSeq: 1,
-      _randomTargetEvents: [{
-        seq: 1,
-        sourceIdx: 1,
-        targetIdx: 2,
-        label: '投掷石块',
-        roll: 4,
-        distance: 1,
-        damage: 3,
-        diceBefore: true,
-        phaseOrder: 1,
-        resultText: '贝拉 被选中',
-      }],
+      _visualEvents: [throwStoneEvent],
       _statEventSeq: 1,
-      _statEvents: [{
-        type: 'HP_LOSS',
-        target: 2,
-        from: { hp: 10, san: 10, isDead: false },
-        to: { hp: 7, san: 10, isDead: false },
-        seq: 1,
-        phaseOrder: 2,
-      }],
+      _statEvents: [statEvent],
     }), {
       previousGs: makeState({
         currentTurn: 1,
@@ -822,32 +815,34 @@ describe('buildMpRemoteReplayAction', () => {
         reason: '乱抓',
       }],
       _inspectionSeq: 1,
-      _inspectionEvents: [{
-        seq: 1,
-        card: scratchCard,
-        target: 1,
-        beforePlayers: beforeInspectionPlayers,
-        beforeLog: beforeInspectionLog,
-        afterPlayers: afterInspectionPlayers,
-        afterLog: afterInspectionLog,
-        statEvents: [{
+      _visualEvents: [
+        {
+          type: 'bewitchGift',
+          sourceIdx: 0,
+          targetIdx: 1,
+          targetName: '卡洛斯',
+          card: godGift,
+          msgs: ['你对 卡洛斯 【蛊惑】，赠予 伏行之混沌'],
+        },
+        createInspectionVisualEvent({
           seq: 1,
-          type: 'HP_LOSS',
+          card: scratchCard,
           target: 1,
-          from: { hp: 10, san: 7, isDead: false },
-          to: { hp: 9, san: 7, isDead: false },
-          reason: '乱抓',
-        }],
-        statEventSeq: 1,
-      }],
-      _visualEvents: [{
-        type: 'bewitchGift',
-        sourceIdx: 0,
-        targetIdx: 1,
-        targetName: '卡洛斯',
-        card: godGift,
-        msgs: ['你对 卡洛斯 【蛊惑】，赠予 伏行之混沌'],
-      }],
+          beforePlayers: beforeInspectionPlayers,
+          beforeLog: beforeInspectionLog,
+          afterPlayers: afterInspectionPlayers,
+          afterLog: afterInspectionLog,
+          statEvents: [{
+            seq: 1,
+            type: 'HP_LOSS',
+            target: 1,
+            from: { hp: 10, san: 7, isDead: false },
+            to: { hp: 9, san: 7, isDead: false },
+            reason: '乱抓',
+          }],
+          statEventSeq: 1,
+        }),
+      ],
     }), {
       previousGs: makeState({
         currentTurn: 0,
@@ -985,7 +980,7 @@ describe('buildMpRemoteReplayAction', () => {
         reason: '鼠群',
       }],
       _inspectionSeq: 2,
-      _inspectionEvents: [{
+      _visualEvents: [createInspectionVisualEvent({
         seq: 1,
         card: calmCard,
         target: 1,
@@ -996,7 +991,7 @@ describe('buildMpRemoteReplayAction', () => {
         beforeStatEventSeq: 1,
         statEvents: [],
         statEventSeq: null,
-      }, {
+      }), createInspectionVisualEvent({
         seq: 2,
         card: amnesiaCard,
         target: 2,
@@ -1007,7 +1002,7 @@ describe('buildMpRemoteReplayAction', () => {
         beforeStatEventSeq: 1,
         statEvents: [],
         statEventSeq: null,
-      }],
+      })],
     }), {
       previousGs: makeState({ currentTurn: 0, phase: 'DRAW_REVEAL', players: beforePlayers, log: [] }),
       buildAnimQueue,
@@ -1081,24 +1076,6 @@ describe('buildMpRemoteReplayAction', () => {
         },
       ],
       _inspectionSeq: 1,
-      _inspectionEvents: [{
-        seq: 1,
-        card: selfHarmCard,
-        target: 1,
-        beforePlayers: beforeInspectionPlayers,
-        beforeLog: beforeInspectionLog,
-        afterPlayers: afterInspectionPlayers,
-        afterLog: afterInspectionLog,
-        statEvents: [{
-          seq: 2,
-          type: 'HP_LOSS',
-          target: 1,
-          from: { hp: 10, san: 6, isDead: false },
-          to: { hp: 9, san: 6, isDead: false },
-          reason: '自残',
-        }],
-        statEventSeq: 2,
-      }],
       _visualEvents: [
         { type: 'turnStart', playerIdx: 1, playerName: '黛安娜', msgs: ['── 黛安娜 的回合开始 ──'] },
         { type: 'drawCard', playerIdx: 1, playerName: '黛安娜', card: godCard, msgs: ['黛安娜 摸到 弗栗多'] },
@@ -1118,6 +1095,24 @@ describe('buildMpRemoteReplayAction', () => {
             to: { hp: 9, san: 6, isDead: false },
           },
         ], msgs: ['黛安娜 遭遇邪神 弗栗多！（第2次）失去2SAN', '黛安娜 自残，失去 1 HP'] },
+        createInspectionVisualEvent({
+          seq: 1,
+          card: selfHarmCard,
+          target: 1,
+          beforePlayers: beforeInspectionPlayers,
+          beforeLog: beforeInspectionLog,
+          afterPlayers: afterInspectionPlayers,
+          afterLog: afterInspectionLog,
+          statEvents: [{
+            seq: 2,
+            type: 'HP_LOSS',
+            target: 1,
+            from: { hp: 10, san: 6, isDead: false },
+            to: { hp: 9, san: 6, isDead: false },
+            reason: '自残',
+          }],
+          statEventSeq: 2,
+        }),
       ],
     }), {
       previousGs: makeState({
@@ -1221,48 +1216,6 @@ describe('buildMpRemoteReplayAction', () => {
         },
       ],
       _inspectionSeq: 2,
-      _inspectionEvents: [
-        {
-          seq: 1,
-          card: selfHarmCard,
-          target: 1,
-          beforePlayers: beforeFirstInspectionPlayers,
-          beforeLog: baseLog,
-          afterPlayers: afterFirstInspectionPlayers,
-          afterLog: [
-            ...baseLog,
-            '诺亚 的SAN检定结果为"自残"',
-            '诺亚 自残，失去 1 HP',
-          ],
-          beforeStatEventSeq: 1,
-          statEvents: [{
-            seq: 2,
-            type: 'HP_LOSS',
-            target: 1,
-            from: { hp: 10, san: 7, isDead: false },
-            to: { hp: 9, san: 7, isDead: false },
-            reason: '自残',
-          }],
-          statEventSeq: 2,
-        },
-        {
-          seq: 2,
-          card: insomniaCard,
-          target: 1,
-          beforePlayers: beforeSecondInspectionPlayers,
-          beforeLog: [
-            ...baseLog,
-            '诺亚 的SAN检定结果为"自残"',
-            '诺亚 自残，失去 1 HP',
-            '诺亚 被迫改信新神，SAN-1',
-          ],
-          afterPlayers: afterSecondInspectionPlayers,
-          afterLog: fullLog,
-          beforeStatEventSeq: 3,
-          statEvents: [],
-          statEventSeq: 3,
-        },
-      ],
       _visualEvents: [
         { type: 'turnStart', playerIdx: 1, playerName: '诺亚', msgs: ['── 诺亚 的回合开始 ──'] },
         { type: 'drawCard', playerIdx: 1, playerName: '诺亚', card: godCard, msgs: ['诺亚 摸到 烛九阴'] },
@@ -1297,6 +1250,35 @@ describe('buildMpRemoteReplayAction', () => {
             '诺亚 被迫改信新神，SAN-1',
           ],
         },
+        createInspectionVisualEvent({
+          seq: 1,
+          card: selfHarmCard,
+          target: 1,
+          beforePlayers: beforeFirstInspectionPlayers,
+          beforeLog: baseLog,
+          afterPlayers: afterFirstInspectionPlayers,
+          afterLog: [...baseLog, '诺亚 的SAN检定结果为"自残"', '诺亚 自残，失去 1 HP'],
+          beforeStatEventSeq: 1,
+          statEvents: [{
+            seq: 2, type: 'HP_LOSS', target: 1,
+            from: { hp: 10, san: 7, isDead: false },
+            to: { hp: 9, san: 7, isDead: false },
+            reason: '自残',
+          }],
+          statEventSeq: 2,
+        }),
+        createInspectionVisualEvent({
+          seq: 2,
+          card: insomniaCard,
+          target: 1,
+          beforePlayers: beforeSecondInspectionPlayers,
+          beforeLog: [...baseLog, '诺亚 的SAN检定结果为"自残"', '诺亚 自残，失去 1 HP', '诺亚 被迫改信新神，SAN-1'],
+          afterPlayers: afterSecondInspectionPlayers,
+          afterLog: fullLog,
+          beforeStatEventSeq: 3,
+          statEvents: [],
+          statEventSeq: 3,
+        }),
       ],
     }), {
       previousGs: makeState({
@@ -1718,19 +1700,21 @@ describe('buildMpRemoteReplayAction', () => {
         reason: '蛊惑遭遇',
       }],
       _inspectionSeq: 1,
-      _inspectionEvents: [{
-        seq: 1,
-        card: inspectionCard,
-        target: 2,
-        beforePlayers: beforeInspectionPlayers,
-        beforeLog: beforeInspectionLog,
-        afterPlayers: beforeInspectionPlayers,
-        afterLog: afterInspectionLog,
-        beforeStatEventSeq: 1,
-        statEvents: [],
-        statEventSeq: 0,
-      }],
-      _visualEvents: [bewitchEvent],
+      _visualEvents: [
+        bewitchEvent,
+        createInspectionVisualEvent({
+          seq: 1,
+          card: inspectionCard,
+          target: 2,
+          beforePlayers: beforeInspectionPlayers,
+          beforeLog: beforeInspectionLog,
+          afterPlayers: beforeInspectionPlayers,
+          afterLog: afterInspectionLog,
+          beforeStatEventSeq: 1,
+          statEvents: [],
+          statEventSeq: 0,
+        }),
+      ],
     });
     const repeatedRotated = {
       ...rotated,
@@ -3055,14 +3039,14 @@ describe('buildMpRemoteReplayAction', () => {
       _turnStartLogs: ['── 艾伦 的回合开始 ──'],
       _drawLogs: ['艾伦 摸到 [B2] 下一张牌'],
       _playersBeforeThisDraw: afterGrantPlayers,
-      _tsgSlimeGrantEvents: [{
+      _visualEvents: [createTsathogguaSlimeGrantEvent({
         ownerIdx: 0,
         count: 1,
         cards: [slime],
         msgs: ['蟾蜍信徒 获得1张撒托古亚的赐福黏液'],
         playersBefore: beforeGrantPlayers,
         playersAfter: afterGrantPlayers,
-      }],
+      })],
       log: ['蟾蜍信徒 获得1张撒托古亚的赐福黏液', '── 艾伦 的回合开始 ──', '艾伦 摸到 [B2] 下一张牌'],
     });
     const rawPreviousGs = makeState({

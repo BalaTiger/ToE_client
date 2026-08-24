@@ -717,7 +717,6 @@ export function buildScopedAiActionReplayState({
     _visualEvents: actionMetadata.visualEvents,
     _statEvents: actionMetadata.statEvents,
     _statEventSeq: actionMetadata.statEventSeq,
-    _inspectionEvents: scopedInspectionEvents, // legacy-visual-allow: compatibility presentation baseline
     _inspectionSeq: inspectionSeq,
   };
 }

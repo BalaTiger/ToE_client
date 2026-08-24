@@ -374,8 +374,9 @@ describe('AI turn presentation helpers', () => {
     expect(handler).toContain('pruneConsumedVisualEvents(');
     expect(handler).toContain("consumedVisualEventIdsRef.current,\n      'tsg turn-start draw'");
     expect(handler).toContain('.filter(event=>!event?.id||!consumedVisualEventIdsRef.current.has(event.id))');
-    expect(handler).toContain('buildInspectionAwareAnimQueue(');
-    expect(handler).toContain('markInspectionEventsSeen(inspectionReplay.inspectionEvents)');
+    expect(handler).toContain('compileRuleVisualEventsToAnimTransaction(');
+    expect(handler).not.toContain('buildInspectionAwareAnimQueue(');
+    expect(handler).not.toContain('markInspectionEventsSeen(');
     expect(handler).not.toContain('authoritativeResolvedQueueMeta(');
   });
 

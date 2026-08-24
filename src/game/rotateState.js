@@ -1,4 +1,4 @@
-import { rotateInspectionEvents, rotatePlayersArray, rotateStatEvents } from './rotateEvents';
+import { rotatePlayersArray, rotateStatEvents } from './rotateEvents';
 import { getDecisionOwnerSeats, isTargetSelectionDecisionPhase } from './decisionContext';
 
 const ROTATE_GS_TOP_LEVEL_INDEX_FIELDS = ['currentTurn'];
@@ -184,15 +184,6 @@ function rotateApophisTargetEvent(event, rotateIndex) {
   };
 }
 
-function rotateRandomTargetEvents(events, rotateIndex) {
-  if (!Array.isArray(events)) return events;
-  return events.map(event => ({
-    ...event,
-    sourceIdx: event.sourceIdx != null ? rotateIndex(event.sourceIdx) : event.sourceIdx,
-    targetIdx: event.targetIdx != null ? rotateIndex(event.targetIdx) : event.targetIdx,
-  }));
-}
-
 function rotateTimedOutDrawDiscardEvent(event, rotateIndex) {
   if (!event) return event;
   return {
@@ -201,19 +192,6 @@ function rotateTimedOutDrawDiscardEvent(event, rotateIndex) {
   };
 }
 
-function rotateTsathogguaSlimeGrantEvents(events, rotateIndex, myIndex) {
-  if (!Array.isArray(events)) return events;
-  return events.map(event => ({
-    ...event,
-    ownerIdx: event.ownerIdx != null ? rotateIndex(event.ownerIdx) : event.ownerIdx,
-    playersBefore: rotatePlayersArray(event.playersBefore, myIndex),
-    playersAfter: rotatePlayersArray(event.playersAfter, myIndex),
-  }));
-}
-
-// _turnDrawEvents 由执行摸牌的客户端按自身视角生成（drawerIdx 常为自己的 0 号位），
-// 必须随广播状态一起旋转，否则接收端 DRAW_CARD 的 targetPid 指向错误座位，
-// 飞牌终点会从摸牌者手牌区错落到对手面板
 function rotateTsathogguaSlimePop(slimePop, rotateIndex, myIndex) {
   if (!slimePop) return slimePop;
   return {
@@ -233,18 +211,6 @@ function rotateGodGiftKeepEvent(event, rotateIndex, myIndex) {
     playersBefore: rotatePlayersArray(event.playersBefore, myIndex),
     playersAfter: rotatePlayersArray(event.playersAfter, myIndex),
   };
-}
-
-function rotateTurnDrawEvents(events, rotateIndex, myIndex) {
-  if (!Array.isArray(events)) return events;
-  return events.map(event => ({
-    ...event,
-    drawerIdx: event.drawerIdx != null ? rotateIndex(event.drawerIdx) : event.drawerIdx,
-    playersBefore: rotatePlayersArray(event.playersBefore, myIndex),
-    playersAfterKeep: rotatePlayersArray(event.playersAfterKeep, myIndex),
-    playersAfterResolution: rotatePlayersArray(event.playersAfterResolution, myIndex),
-    slimePop: rotateTsathogguaSlimePop(event.slimePop, rotateIndex, myIndex),
-  }));
 }
 
 function rotateCardEffectPayload(payload, rotateIndex, myIndex) {
@@ -343,7 +309,6 @@ function rotateBewitchEncounterState(state, rotateIndex, myIndex) {
     ...state,
     currentTurn: state.currentTurn != null ? rotateIndex(state.currentTurn) : state.currentTurn,
     players: rotatePlayersArray(state.players, myIndex),
-    _inspectionEvents: rotateInspectionEvents(state._inspectionEvents, rotateIndex, myIndex), // legacy-visual-allow: old peer rotation
     _statEvents: rotateStatEvents(state._statEvents, rotateIndex, myIndex),
   };
 }
@@ -376,6 +341,15 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
     if (event?.type === 'timedOutDrawDiscard') return rotateTimedOutDrawDiscardEvent(event, rotateIndex);
     if (event?.type === 'godGiftDiscard') return rotateTimedOutDrawDiscardEvent(event, rotateIndex);
     if (event?.type === 'godGiftKeep') return rotateGodGiftKeepEvent(event, rotateIndex, myIndex);
+    if (event?.type === 'tsgSlimeGrant') {
+      return {
+        ...event,
+        playerIdx: event.playerIdx != null ? rotateIndex(event.playerIdx) : event.playerIdx,
+        ownerIdx: event.ownerIdx != null ? rotateIndex(event.ownerIdx) : event.ownerIdx,
+        playersBefore: rotatePlayersArray(event.playersBefore, myIndex),
+        playersAfter: rotatePlayersArray(event.playersAfter, myIndex),
+      };
+    }
     if (event?.type === 'earthquake' || event?.type === 'cardEffect') return rotateCardEffectVisualEvent(event, rotateIndex, myIndex);
     if (event?.type === 'endlessCorridorReplay' || event?.type === 'animTransaction') return rotateEndlessCorridorReplayVisualEvent(event, rotateIndex, myIndex);
     if (event?.type === 'turnStart' || event?.type === 'drawCard' || event?.type === 'handLimitDiscard' || event?.type === 'tsgSlimePop' || event?.type === 'godStatusChanged' || event?.type === 'graveDig') {
@@ -388,6 +362,7 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
         ...(event?.type === 'drawCard' ? {
           playersBefore: rotatePlayersArray(event.playersBefore, myIndex),
           playersAfterKeep: rotatePlayersArray(event.playersAfterKeep, myIndex),
+          playersAfterDiscard: rotatePlayersArray(event.playersAfterDiscard, myIndex),
           playersAfterResolution: rotatePlayersArray(event.playersAfterResolution, myIndex),
         } : {}),
         ...(event?.type === 'godStatusChanged' && Array.isArray(event.playersBefore)
@@ -480,8 +455,13 @@ export function rotateGsForViewer(gs, myIndex) {
   const zhuLight = rotateZhuLightForViewer(gs.zhuLight, rotateIndex);
   const abilityData = rotateAbilityDataForViewer(gs.abilityData || {}, rotateIndex, myIndex);
   const rotatedSnapshots = rotatePlayerSnapshotFields(rotatedTopLevel, ROTATE_GS_PLAYER_SNAPSHOT_FIELDS, myIndex);
+  const canonicalSnapshots = { ...rotatedSnapshots };
+  delete canonicalSnapshots._inspectionEvents;
+  delete canonicalSnapshots._randomTargetEvents;
+  delete canonicalSnapshots._turnDrawEvents;
+  delete canonicalSnapshots._tsgSlimeGrantEvents;
   return {
-    ...rotatedSnapshots,
+    ...canonicalSnapshots,
     players,
     gameOver,
     abilityData,
@@ -493,15 +473,11 @@ export function rotateGsForViewer(gs, myIndex) {
     ...(gs._earthquakeDiscardEvents ? { _earthquakeDiscardEvents: rotateEarthquakeDiscardEvents(gs._earthquakeDiscardEvents, rotateIndex, myIndex) } : {}),
     ...(gs._aiHuntEvents ? { _aiHuntEvents: rotateAiHuntEvents(gs._aiHuntEvents, rotateIndex, myIndex) } : {}),
     ...(gs._statEvents ? { _statEvents: rotateStatEvents(gs._statEvents, rotateIndex, myIndex) } : {}),
-    ...(gs._inspectionEvents ? { _inspectionEvents: rotateInspectionEvents(gs._inspectionEvents, rotateIndex, myIndex) } : {}), // legacy-visual-allow: old peer rotation
     ...(gs._inspectionTarget != null ? { _inspectionTarget: rotateIndex(gs._inspectionTarget) } : {}),
     ...(gs._animMultiplyEvent ? { _animMultiplyEvent: rotateAnimMultiplyEvent(gs._animMultiplyEvent, rotateIndex) } : {}),
     ...(gs._animSphinxReveal ? { _animSphinxReveal: rotateAnimSphinxReveal(gs._animSphinxReveal, rotateIndex) } : {}),
     ...(gs._apophisTargetEvent ? { _apophisTargetEvent: rotateApophisTargetEvent(gs._apophisTargetEvent, rotateIndex) } : {}),
-    ...(gs._randomTargetEvents ? { _randomTargetEvents: rotateRandomTargetEvents(gs._randomTargetEvents, rotateIndex) } : {}), // legacy-visual-allow: old peer rotation
     ...(gs._mpTimedOutDrawDiscard ? { _mpTimedOutDrawDiscard: rotateTimedOutDrawDiscardEvent(gs._mpTimedOutDrawDiscard, rotateIndex) } : {}),
-    ...(gs._tsgSlimeGrantEvents ? { _tsgSlimeGrantEvents: rotateTsathogguaSlimeGrantEvents(gs._tsgSlimeGrantEvents, rotateIndex, myIndex) } : {}), // legacy-visual-allow: old peer rotation
-    ...(gs._turnDrawEvents ? { _turnDrawEvents: rotateTurnDrawEvents(gs._turnDrawEvents, rotateIndex, myIndex) } : {}),
     ...(gs._visualEvents ? { _visualEvents: rotateVisualEvents(gs._visualEvents, rotateIndex, myIndex) } : {}),
   };
 }

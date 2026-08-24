@@ -9,7 +9,7 @@ import { dedupeInferredDiscardTransfers } from '../animQueueHelpers';
 import { assertCompleteThrowStoneTransactions } from '../animationStepSchema';
 import { copyPlayers } from '../coreUtils';
 import { buildStatEvents } from '../statEvents';
-import { buildFreshStatVisualEvents, createApophisEclipseEvent, createCardEffectEvent, createEarthquakeEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent, createRandomTargetVisualEvent, createTurnDrawVisualEvents } from '../visualEvents';
+import { buildFreshStatVisualEvents, createApophisEclipseEvent, createCardEffectEvent, createEarthquakeEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent, createInspectionVisualEvent, createRandomTargetVisualEvent, createThrowStoneEvent, createTurnDrawVisualEvents } from '../visualEvents';
 import { makeGodCard, makeGs, makePlayer } from './factory';
 
 describe('buildAnimQueue stat animations', () => {
@@ -592,13 +592,19 @@ describe('buildAnimQueue stat animations', () => {
     const playersBefore = [makePlayer({ name: '你', hp: 10 }), makePlayer({ name: '艾伦', hp: 10 })];
     const playersAfter = [makePlayer({ name: '你', hp: 10 }), makePlayer({ name: '艾伦', hp: 7 })];
     const oldGs = makeGs({ players: playersBefore, log: [], _randomTargetSeq: 0, _statEventSeq: 0 });
+    const statEvent = { type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10, isDead: false }, to: { hp: 7, san: 10, isDead: false }, seq: 1, phaseOrder: 2 };
+    const throwStoneEvent = createThrowStoneEvent({
+      sourceIdx: 0, targetIdx: 1, roll: 4, distance: 1, damage: 3,
+      resultText: '你 掷出 4 点，随机砸向 艾伦（距离1），造成 3 HP 伤害',
+      playersBefore, playersAfter, statEvents: [statEvent],
+    });
     const newGs = makeGs({
       players: playersAfter,
       log: ['你 掷出 4 点，随机砸向 艾伦（距离1），造成 3 HP 伤害'],
       _randomTargetSeq: 1,
-      _randomTargetEvents: [{ seq: 1, sourceIdx: 0, targetIdx: 1, label: '投掷石块', roll: 4, distance: 1, damage: 3, diceBefore: true, phaseOrder: 1 }],
+      _visualEvents: [throwStoneEvent],
       _statEventSeq: 1,
-      _statEvents: [{ type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10, isDead: false }, to: { hp: 7, san: 10, isDead: false }, seq: 1, phaseOrder: 2 }],
+      _statEvents: [statEvent],
     });
 
     const queue = buildAnimQueue(oldGs, newGs);
@@ -1254,6 +1260,14 @@ describe('buildAnimQueue stat animations', () => {
       _statEventSeq: 0,
     });
     const beforeInspectionPlayers = [makePlayer({ hp: 10, san: 6 })];
+    const inspectionEvent = createInspectionVisualEvent({
+      seq: 1,
+      target: 0,
+      card: { id: 'inspection-self-harm', name: '自残' },
+      statEventSeq: 2,
+      beforePlayers: beforeInspectionPlayers,
+      beforeLog: ['遭遇邪神，失去1SAN'],
+    });
     const newGs = makeGs({
       players: [makePlayer({ hp: 9, san: 6 })],
       log: ['遭遇邪神，失去1SAN', '你 的SAN检定结果为"自残"', '你 自残，失去 1 HP'],
@@ -1262,12 +1276,7 @@ describe('buildAnimQueue stat animations', () => {
         { type: 'HP_LOSS', target: 0, from: { hp: 10, san: 6 }, to: { hp: 9, san: 6 }, seq: 2 },
       ],
       _statEventSeq: 2,
-      _inspectionEvents: [{
-        seq: 1,
-        statEventSeq: 2,
-        beforePlayers: beforeInspectionPlayers,
-        beforeLog: ['遭遇邪神，失去1SAN'],
-      }],
+      _visualEvents: [inspectionEvent],
     });
 
     const queue = buildAnimQueue(oldGs, newGs);

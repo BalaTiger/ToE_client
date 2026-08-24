@@ -17,7 +17,7 @@ import {
   tryVritraImmortal,
   makeInspectionMeta,
 } from './coreUtils';
-import { createCardEffectEvent } from './visualEvents';
+import { createCardEffectEvent, VISUAL_EVENT } from './visualEvents';
 import { applyHpDamageWithLink, applyInspectionForSanLoss, resolvePendingDamageLinkBreak, submitLossEvents } from './effectEngine';
 import { deriveEffectDecisionState } from './effectStatePatch';
 import { initGame } from './setup';
@@ -663,7 +663,7 @@ function getHeadlessProgressKey(state) {
 
 function describeHeadlessTransition(before, after) {
   const ignored = new Set([
-    'players', 'deck', 'discard', 'log', '_visualEvents', '_statEvents', '_inspectionEvents',
+    'players', 'deck', 'discard', 'log', '_visualEvents', '_statEvents',
     '_playersBeforeNextDraw', '_playersBeforeSkillAction', '_playersBeforeEndTurnReplay',
     '_playersBeforeThisDraw', '_preTurnPlayers',
   ]);
@@ -700,7 +700,8 @@ export function validateHeadlessPresentationTransition(before, after) {
     ? after.log.lastIndexOf(nextTurnLine)
     : -1;
   const actionLog = nextTurnLogIndex >= 0 ? after.log.slice(0, nextTurnLogIndex) : after?.log;
-  const actionInspectionEvents = (Array.isArray(after?._inspectionEvents) ? after._inspectionEvents : [])
+  const actionInspectionEvents = (Array.isArray(after?._visualEvents) ? after._visualEvents : [])
+    .filter(event => event?.type === VISUAL_EVENT.INSPECTION)
     .filter(event => !((event?.beforeLog || []).some(line => line === nextTurnLine)));
   const scopedActionState = buildScopedAiActionReplayState({
     state: after,

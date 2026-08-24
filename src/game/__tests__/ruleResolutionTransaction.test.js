@@ -60,4 +60,19 @@ describe('rule resolution transactions', () => {
       { id: 'second', type: 'inspection', statEvents: [second] },
     ])).toEqual([]);
   });
+
+  it('marks one generic terminal boundary without encoding an outcome type', () => {
+    const transaction = createRuleResolutionTransaction({
+      id: 'resolution:terminal',
+      terminalBoundary: 'winning-event',
+      events: [
+        { id: 'reveal', type: 'drawCard' },
+        { id: 'winning-event', type: 'cardEffect' },
+        { id: 'must-not-run', type: 'inspection' },
+      ],
+    });
+
+    expect(transaction.terminalBoundary).toBe('winning-event');
+    expect(transaction.events.map(event => !!event.terminalBoundary)).toEqual([false, true, false]);
+  });
 });

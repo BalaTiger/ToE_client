@@ -98,7 +98,7 @@ describe('buildTargetContinuationState', () => {
     });
     const next = buildTargetContinuationState({ baseState: state });
 
-    expect(next.phase).toBe('GOD_CHOICE');
+    expect(next.phase).toBe('AI_GOD_CHOICE');
     expect(next.abilityData).toEqual(pendingGodChoice);
   });
 

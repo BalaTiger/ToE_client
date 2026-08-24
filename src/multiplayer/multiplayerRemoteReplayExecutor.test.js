@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MP_REMOTE_REPLAY } from '../game/multiplayerRemoteReplay';
-import { createEndlessCorridorReplayEvent } from '../game/visualEvents';
+import { createEndlessCorridorReplayEvent, createTurnDrawVisualEvents } from '../game/visualEvents';
 import {
   applyMultiplayerReplayAction,
   getPendingZhuHideCardForState,
@@ -117,9 +117,22 @@ describe('multiplayer remote replay executor', () => {
       _playersBeforeThisDraw: afterSwap,
       _turnStartLogs: ['Alan turn starts'],
       _drawLogs: ['slime disappears', 'Alan extra draws D3', 'Alan encounters NYA'],
-      _turnDrawEvents: [
-        { card: extraDraw, drawerIdx: 1, drawerName: 'Alan', fromTsathogguaSlime: true, msgs: ['Alan extra draws D3'] },
-        { card: normalDraw, drawerIdx: 1, drawerName: 'Alan', msgs: ['Alan encounters NYA'] },
+      _visualEvents: [
+        ...createTurnDrawVisualEvents({
+          card: extraDraw,
+          playerIdx: 1,
+          playerName: 'Alan',
+          fromTsathogguaSlime: true,
+          drawOrder: 0,
+          msgs: ['Alan extra draws D3'],
+        }),
+        ...createTurnDrawVisualEvents({
+          card: normalDraw,
+          playerIdx: 1,
+          playerName: 'Alan',
+          drawOrder: 1,
+          msgs: ['Alan encounters NYA'],
+        }),
       ],
       log: [swapLog, 'Alan turn starts', 'slime disappears', 'Alan extra draws D3', 'Alan encounters NYA'],
     });

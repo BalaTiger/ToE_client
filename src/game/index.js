@@ -19,6 +19,7 @@ export * from './animationTiming';
 export * from './animationStepSchema';
 export * from './animationQueueMachine';
 export * from './animationTransaction';
+export * from './terminalPresentation';
 export * from './animationQueuePolicy';
 export * from './endTurnEvents';
 export * from './endTurnFlow';

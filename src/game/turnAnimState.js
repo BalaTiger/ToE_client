@@ -22,11 +22,9 @@ export const EMPTY_TURN_ANIM_FIELDS = Object.freeze({
   _playersBeforeThisDraw: null,
   _turnStartLogs: [],
   _drawLogs: [],
-  _turnDrawEvents: [], // legacy-visual-allow: clear compatibility input after replay
   _statLogs: [],
   _statEvents: [],
   _preTurnPlayers: null,
-  _tsgSlimeGrantEvents: null, // legacy-visual-allow: old save/peer cleanup
   _earthquakeBeforePlayers: null,
   _earthquakeBeforeDiscard: null,
   _earthquakeDiscardEvents: null,
@@ -144,34 +142,8 @@ export function buildPlayerTurnDrawQueue(oldGs, newGs, seedQueue = []) {
 export function buildTsathogguaSlimeGrantQueue(state) {
   const explicitEvents = getVisualEvents(state)
     .filter(event => event?.type === VISUAL_EVENT.TSG_SLIME_GRANT);
-  const explicitKeys = new Set(explicitEvents.map(event => `${event?.ownerIdx}:${event?.count}`));
-  const events = (Array.isArray(state?._tsgSlimeGrantEvents) ? state._tsgSlimeGrantEvents : [])
-    .filter(event => !explicitKeys.has(`${event?.ownerIdx}:${event?.count}`));
   const queue = buildGodPowerBlockedBoundaryQueue(state);
   explicitEvents.forEach(event => queue.push(...buildTsathogguaSlimeGrantSteps(event, state)));
-  events.forEach(ev => {
-    if (!ev || ev.ownerIdx == null || !ev.count) return;
-    queue.push(
-      {
-        type: 'VISUAL_LOCK',
-        players: ev.playersBefore,
-        zhuLight: state?.zhuLight || null,
-      },
-      cardTransferStep({
-        fromPid: ev.ownerIdx,
-        dest: 'player',
-        toPid: ev.ownerIdx,
-        count: ev.count,
-        sourceAnchor: 'playerArea',
-        effect: 'tsgSlime',
-        durationMs: 950,
-        cards: ev.cards,
-        msgs: ev.msgs || [],
-      }),
-      statePatchStep({ players: ev.playersAfter }),
-      { type: 'TURN_BOUNDARY_PAUSE', durationMs: 180 }
-    );
-  });
   return queue;
 }
 
@@ -245,7 +217,7 @@ function addCardToHandSnapshot(players = [], playerIdx = 0, card = null) {
   } : player);
 }
 
-function normalizeTurnDrawEvents(state, fallbackCard, drawerPid, drawerName) {
+function normalizeTurnDrawEvents(state, drawerPid, drawerName) {
   const allExplicitEvents = getVisualEvents(state)
     .filter(event => event?.type === VISUAL_EVENT.DRAW_CARD && event?.card);
   const currentDrawerEvents = allExplicitEvents.filter(event => event.playerIdx === drawerPid);
@@ -256,26 +228,7 @@ function normalizeTurnDrawEvents(state, fallbackCard, drawerPid, drawerName) {
       drawerName: event.playerName || drawerName,
       msgs: Array.isArray(event.msgs) ? event.msgs : [],
     }));
-  if (explicitEvents.length) return explicitEvents;
-  // Compatibility only: old saves/peers may still carry draw snapshots.
-  const events = (Array.isArray(state?._turnDrawEvents) ? state._turnDrawEvents : [])
-    .filter(event => event?.card)
-    .map(event => ({
-      ...event,
-      drawerIdx: event.drawerIdx ?? drawerPid,
-      drawerName: event.drawerName || drawerName,
-      msgs: Array.isArray(event.msgs) ? event.msgs : [],
-    }));
-  if (fallbackCard && !events.some(event => sameDrawCard(event.card, fallbackCard))) {
-    events.push({
-      card: fallbackCard,
-      drawerIdx: drawerPid,
-      drawerName,
-      sourcePile: state?.drawReveal?.sourcePile || state?._drawSourcePile || (state?.geomagneticReversalActive ? 'discard' : 'deck'),
-      msgs: state?._drawLogs || [],
-    });
-  }
-  return events;
+  return explicitEvents;
 }
 
 const DECK_RESHUFFLE_LOG = '牌堆耗尽，重洗弃牌堆';
@@ -298,10 +251,10 @@ export function getTurnStartDrawerIdx(state) {
 
 export function shouldReplaySinglePlayerAiTurnStart(state) {
   return (
-    (state?.phase === 'AI_TURN' || state?.phase === 'AI_GOD_CHOICE') &&
     isAiSeat(state, state?.currentTurn) &&
     Array.isArray(state?._turnStartLogs) &&
-    state._turnStartLogs.length > 0
+    state._turnStartLogs.length > 0 &&
+    getVisualEvents(state).some(event => !!event?.turnStartStage)
   );
 }
 
@@ -342,8 +295,11 @@ function filterFallbackDrawEffects(queue, state, visualStatQ = []) {
 }
 
 function getFreshInspectionEvents(oldGs, newGs) {
-  const oldSeq = oldGs?._inspectionSeq || 0;
-  return (newGs?._inspectionEvents || []).filter(ev => ev?.seq > oldSeq);
+  const oldIds = new Set(getVisualEvents(oldGs)
+    .filter(event => event?.type === VISUAL_EVENT.INSPECTION)
+    .map(event => event.id));
+  return getVisualEvents(newGs)
+    .filter(event => event?.type === VISUAL_EVENT.INSPECTION && !oldIds.has(event.id));
 }
 
 function getInspectionStatSeqs(inspectionEvents = []) {
@@ -640,9 +596,6 @@ export function buildTurnStartPreDrawEffectQueue({
       event?.type === VISUAL_EVENT.INSPECTION &&
       event?.turnStartStage === TURN_START_ANIMATION_STAGE.TURN_START
     ));
-  const explicitInspectionSeqs = new Set(
-    explicitInspectionEvents.map(event => event?.legacySeq).filter(seq => seq != null)
-  );
   if (explicitInspectionEvents.length) {
     const inspectionTransaction = compileRuleVisualEventsToAnimTransaction(newGs, oldGs, {
       eventIds: explicitInspectionEvents.map(event => event.id).filter(Boolean),
@@ -651,29 +604,6 @@ export function buildTurnStartPreDrawEffectQueue({
       ...(consumedVisualEventIds ? { consumedEventIds: consumedVisualEventIds } : {}),
     });
     queue.push(...(inspectionTransaction?.queue || []));
-  }
-  // Compatibility only: old saves/peers may carry `_inspectionEvents` without
-  // canonical visual events. Never reconstruct an inspection already owned by
-  // an explicit event, or it will be emitted once here and once by the staged
-  // transaction compiler.
-  const inspectionEvents = getFreshInspectionEvents(oldGs, newGs)
-    .filter(event => !explicitInspectionSeqs.has(event?.seq))
-    .filter(ev => {
-      const lines = getInspectionLogLines([ev]);
-      if (!lines.size) return false;
-      return [...lines].some(line => preDrawMsgs.includes(line));
-    });
-  if (inspectionEvents.length) {
-    const firstInspection = inspectionEvents[0];
-    const inspectionFlow = buildInspectionEventFlow(
-      {
-        players: copyPlayers(firstInspection?.beforePlayers || beforeDrawPlayers),
-        log: [...(firstInspection?.beforeLog || getTurnStartDrawBaselineLog(newGs))],
-      },
-      inspectionEvents,
-      { buildAnimQueue: buildQueue, copyPlayers }
-    );
-    queue.push(...inspectionFlow.queue);
   }
   return queue;
 }
@@ -881,9 +811,8 @@ export function buildTurnStartDrawReplayQueue({
   const reshuffleVisualEvents = getVisualEvents(newGs)
     .filter(event => event?.type === VISUAL_EVENT.DECK_RESHUFFLE);
   const hasExplicitTurnDrawEvents = explicitTurnDrawEvents.length > 0;
-  const hasStructuredTurnDrawEvents = hasExplicitTurnDrawEvents
-    || (Array.isArray(newGs?._turnDrawEvents) && newGs._turnDrawEvents.some(event => event?.card));
-  const turnDrawEvents = normalizeTurnDrawEvents(newGs, drawnCard, drawerPid, drawerName);
+  const hasStructuredTurnDrawEvents = hasExplicitTurnDrawEvents;
+  const turnDrawEvents = normalizeTurnDrawEvents(newGs, drawerPid, drawerName);
   const beforeDrawPlayers = newGs?._playersBeforeThisDraw || oldGs?.players || newGs?.players || [];
   const turnStartPreDrawQ = buildTurnStartPreDrawEffectQueue({
     oldGs,
@@ -1135,15 +1064,16 @@ export function buildTurnStartDrawReplayQueue({
           ...(Array.isArray(newGs?._statEvents) ? newGs._statEvents : []).map(event => event?.seq || 0),
         )
       : null;
-  // 只回退到「本次摸牌新产生」的随机目标事件之前。_randomTargetEvents 会随 gs 跨回合
-  // 残留（如上一回合行动阶段打出的投掷石块），若按全部事件回退水位，会把旧事件重新
-  // 判定为新事件，在翻牌动画后重播骰子/转盘/石块飞行。旧水位取标量与旧事件列表的较大
-  // 值，与 buildAnimQueue 对 _statEvents 的防御口径一致。
+  // Legacy scalar watermarks may remain during the final state-shape cleanup,
+  // but event identity and freshness come only from the canonical journal.
   const oldRandomTargetSeq = Math.max(
     oldGs?._randomTargetSeq || 0,
-    ...(Array.isArray(oldGs?._randomTargetEvents) ? oldGs._randomTargetEvents : []).map(event => event?.seq || 0),
+    ...getVisualEvents(oldGs)
+      .filter(event => event?.type === VISUAL_EVENT.RANDOM_TARGET || event?.type === VISUAL_EVENT.THROW_STONE)
+      .map(event => event?.legacySeq ?? event?.seq ?? 0),
   );
-  const randomTargetEvents = Array.isArray(newGs?._randomTargetEvents) ? newGs._randomTargetEvents : [];
+  const randomTargetEvents = getVisualEvents(newGs)
+    .filter(event => event?.type === VISUAL_EVENT.RANDOM_TARGET || event?.type === VISUAL_EVENT.THROW_STONE);
   // Some queued AI-turn entry points build oldGs from the already-resolved
   // next state. Rewind only for a random-target event that the currently drawn
   // card can actually have produced. Otherwise retained events from an older
@@ -1206,8 +1136,15 @@ export function buildTurnStartDrawReplayQueue({
         ...(consumedVisualEventIds ? { consumedEventIds: consumedVisualEventIds } : {}),
       })
     : null;
+  const primaryDrawEventIds = new Set(turnDrawEvents.map(event => event?.id).filter(Boolean));
   const stagedDrawEffectQueue = (stagedTurnStartTransaction?.queue || []).filter(step => (
     step?.type !== 'YOUR_TURN'
+    // The replay assembler places the primary draw and its owned keep/discard
+    // landing as one block below. The canonical compiler also knows how to
+    // build that block for direct transaction consumers (such as chained TSG
+    // draws), so exclude every step owned by those draw ids here to avoid a
+    // second transfer/landing patch.
+    && !primaryDrawEventIds.has(step?.visualEventId)
     // The primary turn draw is built separately above, but event-owned reveal
     // draws (inspection and Sphinx) are distinct cards and must stay in their
     // canonical transaction. Dropping the Sphinx reveal here previously led

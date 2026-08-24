@@ -503,7 +503,7 @@ describe('makeInspectionMeta', () => {
     expect(meta.houndsOfTindalosElapsed).toBe(0);
     expect(meta._inspectionSeq).toBe(0);
     expect(meta._inspectionCard).toBe(null);
-    expect(meta._inspectionEvents).toEqual([]);
+    expect(meta._inspectionEvents).toBeUndefined();
   });
 
   it('复制 gs 中的值', () => {
@@ -519,13 +519,14 @@ describe('makeInspectionMeta', () => {
       _inspectionTarget: 2,
       _inspectionPrevLogLen: 10,
       _inspectionBeforePlayers: [],
-      _inspectionEvents: [{ type: 'test' }],
+      _visualEvents: [{ id: 'inspection:test', type: 'inspection' }],
     };
     const meta = makeInspectionMeta(gs);
     expect(meta.inspectionDeck).toEqual([1, 2]);
     expect(meta.sealLooseningCount).toBe(2);
     expect(meta.houndsOfTindalosActive).toBe(true);
     expect(meta._inspectionSeq).toBe(3);
+    expect(meta._visualEvents).toEqual(gs._visualEvents);
   });
 });
 

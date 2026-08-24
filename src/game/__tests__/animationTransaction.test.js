@@ -7,6 +7,7 @@ import {
   prepareAnimationTransaction,
   resetAnimationTransactionDiagnostics,
   submitAnimationPresentation,
+  truncateQueueAtTerminalPresentation,
 } from '../index';
 
 describe('animation transaction boundary', () => {
@@ -118,5 +119,63 @@ describe('animation transaction boundary', () => {
       queue: [],
       context: 'test:missing-player',
     })).toThrow('playTransaction must be a function');
+  });
+
+  it('truncates a terminal queue after the causative stat step', () => {
+    const causal = {
+      type: 'SAN_DAMAGE',
+      visualEventId: 'san-terminal',
+      statEvents: [{ type: 'SAN_LOSS', target: 0, from: { san: 2 }, to: { san: 0 } }],
+    };
+    const queue = [
+      { type: 'YOUR_TURN', visualEventId: 'turn-banner' },
+      causal,
+      { type: 'INSPECTION', visualEventId: 'stale-inspection' },
+      { type: 'DRAW_CARD', visualEventId: 'stale-ai-action' },
+    ];
+
+    expect(truncateQueueAtTerminalPresentation(queue, { gameOver: { winner: '邪祀者' } }))
+      .toEqual(queue.slice(0, 2));
+  });
+
+  it('uses an explicit terminal boundary for non-stat terminal outcomes', () => {
+    const queue = [
+      { type: 'DRAW_CARD', visualEventId: 'winning-draw', terminalBoundary: true },
+      { type: 'DISCARD', visualEventId: 'stale-discard' },
+    ];
+
+    expect(truncateQueueAtTerminalPresentation(queue, { gameOver: { winner: '寻宝者' } }))
+      .toEqual([queue[0]]);
+  });
+
+  it('leaves a nonterminal queue unchanged', () => {
+    const queue = [{ type: 'SAN_DAMAGE', terminalBoundary: true }, { type: 'DRAW_CARD' }];
+    expect(truncateQueueAtTerminalPresentation(queue, { gameOver: null })).toEqual(queue);
+  });
+
+  it('drops a terminal transaction continuation and consumes only the causal prefix', () => {
+    const callback = vi.fn();
+    const transaction = prepareAnimationTransaction({
+      queue: [
+        {
+          type: 'SAN_DAMAGE',
+          visualEventId: 'terminal-hit',
+          statEvents: [{ type: 'SAN_LOSS', from: { san: 1 }, to: { san: 0 } }],
+        },
+        { type: 'DRAW_CARD', visualEventId: 'post-terminal-ai-action' },
+      ],
+      nextState: { gameOver: { winner: '邪祀者' } },
+      callback,
+      transactionMeta: {
+        authority: ANIMATION_QUEUE_AUTHORITY.QUEUE,
+        eventIds: ['terminal-hit', 'post-terminal-ai-action'],
+      },
+      context: 'test:terminal-callback',
+    });
+
+    expect(transaction.queue.map(step => step.visualEventId)).toEqual(['terminal-hit']);
+    expect(transaction.eventIds).toEqual(['terminal-hit']);
+    expect(transaction.callback).toBeUndefined();
+    expect(callback).not.toHaveBeenCalled();
   });
 });

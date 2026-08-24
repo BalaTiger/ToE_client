@@ -13,6 +13,7 @@ import {
   createGodGiftKeepEvent,
   createTsathogguaSlimeGrantEvent,
   createTsathogguaSlimePopEvent,
+  createTurnDrawVisualEvents,
   buildTsathogguaSlimeGrantSteps,
   buildFreshStatVisualEvents,
   buildTurnStartDrawVisualEvents,
@@ -35,6 +36,33 @@ import { prepareAnimationQueueSteps } from '../animationStepSchema';
 const player = (name, patch = {}) => ({ name, hp: 10, san: 10, hand: [], ...patch });
 
 describe('visualEventTransactionCompiler', () => {
+  it('compiles a resolved draw and its explicit keep landing without a state diff', () => {
+    const card = { id: 'kept-draw', name: '战利品', type: 'zone' };
+    const beforePlayers = [player('你'), player('艾伦')];
+    const afterPlayers = [beforePlayers[0], player('艾伦', { hand: [card] })];
+    const [event] = createTurnDrawVisualEvents({
+      playerIdx: 1,
+      playerName: '艾伦',
+      card,
+      keptInHand: true,
+      playersBefore: beforePlayers,
+      playersAfterKeep: afterPlayers,
+    });
+
+    const transaction = compileRuleVisualEventsToAnimTransaction({
+      currentTurn: 1,
+      players: afterPlayers,
+      _visualEvents: [event],
+    });
+
+    expect(transaction.queue.map(step => step.type)).toEqual([
+      'DRAW_CARD',
+      'CARD_TRANSFER',
+      'STATE_PATCH',
+    ]);
+    expect(transaction.queue.every(step => step.visualEventId === event.id)).toBe(true);
+  });
+
   it('compiles a resolved god-gift keep as one owned transfer and landing patch', () => {
     const godCard = { id: 'gift-god', name: '伏行之混沌', isGod: true, godKey: 'NYA' };
     const beforePlayers = [player('你'), player('艾伦')];
@@ -316,7 +344,6 @@ describe('visualEventTransactionCompiler', () => {
       players: after,
       _turnStartLogs: ['── 艾伦 的回合开始 ──'],
       _drawLogs: ['[调试] 艾伦（追猎者）起手摸到 烛九阴'],
-      _turnDrawEvents: [{ card: god, drawerIdx: 1, drawerName: '艾伦', sourcePile: 'deck' }],
       _statEventSeq: 1,
       _statEvents: [statEvent],
       _statLogs: [encounterLog],
@@ -333,6 +360,7 @@ describe('visualEventTransactionCompiler', () => {
       ...baseState,
       _visualEvents: [
         ...buildTurnStartDrawVisualEvents(baseState),
+        ...createTurnDrawVisualEvents({ playerIdx: 1, playerName: '艾伦', card: god, sourcePile: 'deck' }),
         ...buildFreshStatVisualEvents(baseState, 0),
         worshipEvent,
       ],
@@ -362,7 +390,6 @@ describe('visualEventTransactionCompiler', () => {
       players: [player('你'), player('艾伦', { hp: 9, san: 9 })],
       _turnStartLogs: ['── 艾伦 的回合开始 ──'],
       _drawLogs: ['艾伦 摸到 [B2] 下一张牌'],
-      _turnDrawEvents: [{ card, drawerIdx: 1, drawerName: '艾伦', sourcePile: 'deck' }],
       _statEventSeq: 2,
       _statLogs: [goatLog],
       _statEvents: [
@@ -382,6 +409,7 @@ describe('visualEventTransactionCompiler', () => {
       // still move these turn-start effects ahead of the reveal.
       _visualEvents: [
         ...buildTurnStartDrawVisualEvents(baseState),
+        ...createTurnDrawVisualEvents({ playerIdx: 1, playerName: '艾伦', card, sourcePile: 'deck' }),
         ...buildFreshStatVisualEvents(baseState, 0),
       ],
     };
@@ -582,7 +610,7 @@ describe('visualEventTransactionCompiler', () => {
     expect(steps.find(step => step.type === 'DRAW_CARD')).toMatchObject({ inspectionSeq: 3 });
   });
 
-  it('promotes legacy replay metadata to deterministic visual-event ids', () => {
+  it('does not promote removed inspection compatibility metadata', () => {
     const card = { id: 'legacy-card', name: '旧检定牌' };
     const state = {
       _turnKey: 4,
@@ -594,7 +622,7 @@ describe('visualEventTransactionCompiler', () => {
 
     const first = promoteLegacyVisualEvents(state);
     const second = promoteLegacyVisualEvents(state);
-    expect(first.map(event => event.type)).toEqual(['statEvents', 'inspection', 'sphinxResult']);
+    expect(first.map(event => event.type)).toEqual(['statEvents', 'sphinxResult']);
     expect(second.map(event => event.id)).toEqual(first.map(event => event.id));
   });
 

@@ -144,8 +144,11 @@ export function createDrawCardEvent({
   slimePop = null,
   godEncounter = null,
   keptInHand = false,
+  discarded = false,
   playersBefore = null,
   playersAfterKeep = null,
+  playersAfterDiscard = null,
+  discardAfter = null,
   playersAfterResolution = null,
   statEventSeqs = [],
 } = {}) {
@@ -164,8 +167,11 @@ export function createDrawCardEvent({
     ...(slimePop ? { slimePop } : {}),
     ...(godEncounter ? { godEncounter } : {}),
     ...(keptInHand ? { keptInHand: true } : {}),
+    ...(discarded ? { discarded: true } : {}),
     ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
     ...(Array.isArray(playersAfterKeep) ? { playersAfterKeep } : {}),
+    ...(Array.isArray(playersAfterDiscard) ? { playersAfterDiscard } : {}),
+    ...(Array.isArray(discardAfter) ? { discardAfter } : {}),
     ...(Array.isArray(playersAfterResolution) ? { playersAfterResolution } : {}),
     ...(Array.isArray(statEventSeqs) && statEventSeqs.length
       ? { statEventSeqs: [...new Set(statEventSeqs.filter(seq => seq != null))] }
@@ -1025,24 +1031,20 @@ export function buildTurnStartDrawVisualEvents(state) {
     }));
   }
   // The rule layer explicitly aborted this opening before the draw phase.
-  // Ignore compatibility snapshots from an older turn as well as any stale
-  // drawReveal payload instead of manufacturing a visual draw for the corpse.
   if (state._turnStartAbortedByDeath) return events;
   const explicitDrawEvents = getVisualEvents(state).filter(event => event?.type === VISUAL_EVENT.DRAW_CARD && event?.card);
-  const turnDrawEvent = (Array.isArray(state._turnDrawEvents) ? state._turnDrawEvents : [])
-    .findLast(event => event?.card);
   const drawCard = state.phase === 'GOD_CHOICE'
     ? state.abilityData?.godCard
-    : (state.drawReveal?.card || turnDrawEvent?.card);
+    : state.drawReveal?.card;
   if (drawCard && !explicitDrawEvents.length) {
     const drawerIdx = state.phase === 'GOD_CHOICE'
       ? (state.abilityData?.drawerIdx ?? state.currentTurn ?? 0)
-      : (state.drawReveal?.drawerIdx ?? turnDrawEvent?.drawerIdx ?? state.currentTurn ?? 0);
+      : (state.drawReveal?.drawerIdx ?? state.currentTurn ?? 0);
     const drawEvent = createDrawCardEvent({
       playerIdx: drawerIdx,
-      playerName: turnDrawEvent?.drawerName || state.players?.[drawerIdx]?.name || '该玩家',
+      playerName: state.players?.[drawerIdx]?.name || '该玩家',
       card: drawCard,
-      sourcePile: state.drawReveal?.sourcePile || turnDrawEvent?.sourcePile || state.abilityData?.sourcePile || state._drawSourcePile || null,
+      sourcePile: state.drawReveal?.sourcePile || state.abilityData?.sourcePile || state._drawSourcePile || null,
       msgs: state._drawLogs,
     });
     if (drawEvent) events.push(drawEvent);
@@ -1154,17 +1156,6 @@ export function promoteLegacyVisualEvents(state) {
     });
   });
 
-  (state._inspectionEvents || []).forEach(event => {
-    if (hasEvent(candidate => candidate.type === VISUAL_EVENT.INSPECTION && candidate.legacySeq === event?.seq)) return;
-    promoted.push({
-      ...event,
-      type: VISUAL_EVENT.INSPECTION,
-      id: legacyVisualEventId(VISUAL_EVENT.INSPECTION, [event?.seq, event?.target, legacyCardKey(event?.card)]),
-      scope: 'inspection',
-      legacySeq: event?.seq,
-    });
-  });
-
   const apophis = state._apophisTargetEvent;
   if (apophis?.seq && !hasEvent(event => event.type === VISUAL_EVENT.APOPHIS_TARGET && event.legacySeq === apophis.seq)) {
     promoted.push({
@@ -1175,18 +1166,6 @@ export function promoteLegacyVisualEvents(state) {
       legacySeq: apophis.seq,
     });
   }
-
-  (state._randomTargetEvents || []).forEach(event => {
-    const type = event?.label === '投掷石块' ? VISUAL_EVENT.THROW_STONE : VISUAL_EVENT.RANDOM_TARGET;
-    if (hasEvent(candidate => candidate.type === type && candidate.legacySeq === event?.seq)) return;
-    promoted.push({
-      ...event,
-      type,
-      id: legacyVisualEventId(type, [event?.seq, event?.sourceIdx, event?.targetIdx]),
-      scope: 'action',
-      legacySeq: event?.seq,
-    });
-  });
 
   (state._aiHuntEvents || []).forEach((event, index) => {
     if (event?.targetOnly) return;
@@ -1210,33 +1189,6 @@ export function promoteLegacyVisualEvents(state) {
       msgs: state._statLogs || [],
     });
   }
-
-  (state._tsgSlimeGrantEvents || []).forEach((event, index) => {
-    if (hasEvent(candidate => candidate.type === VISUAL_EVENT.TSG_SLIME_GRANT && candidate.playerIdx === event?.ownerIdx && candidate.count === event?.count)) return;
-    promoted.push({
-      ...event,
-      type: VISUAL_EVENT.TSG_SLIME_GRANT,
-      turnStartStage: 'turnBoundary',
-      turnStartStageOrder: 0,
-      id: legacyVisualEventId(VISUAL_EVENT.TSG_SLIME_GRANT, [state._turnKey, index, event?.ownerIdx, event?.count]),
-      scope: 'turn',
-      playerIdx: event?.ownerIdx,
-    });
-  });
-
-  (state._turnDrawEvents || []).forEach((event, index) => {
-    if (!event?.card || hasEvent(candidate => candidate.type === VISUAL_EVENT.DRAW_CARD && candidate.playerIdx === event.drawerIdx && legacyCardKey(candidate.card) === legacyCardKey(event.card))) return;
-    promoted.push({
-      type: VISUAL_EVENT.DRAW_CARD,
-      id: legacyVisualEventId(VISUAL_EVENT.DRAW_CARD, [state._turnKey, index, event.drawerIdx, legacyCardKey(event.card)]),
-      scope: 'turn',
-      playerIdx: event.drawerIdx,
-      playerName: event.drawerName,
-      card: event.card,
-      msgs: event.msgs || [],
-      sourcePile: event.sourcePile || null,
-    });
-  });
 
   return [...explicit, ...promoted];
 }

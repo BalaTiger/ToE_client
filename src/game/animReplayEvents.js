@@ -111,13 +111,11 @@ export function findFreshBewitchReplayLog(logDelta = []) {
 
 export function hasFreshRandomTargetEvents(newGs, oldGs) {
   const oldVisualEventIds = new Set(getVisualEvents(oldGs).map(event => event?.id).filter(Boolean));
-  if (getVisualEvents(newGs).some(event => (
+  return getVisualEvents(newGs).some(event => (
     (event?.type === VISUAL_EVENT.RANDOM_TARGET || event?.type === VISUAL_EVENT.THROW_STONE) &&
     event?.id &&
     !oldVisualEventIds.has(event.id)
-  ))) return true;
-  const oldSeq = oldGs?._randomTargetSeq || 0;
-  return (newGs?._randomTargetEvents || []).some(event => event?.seq > oldSeq);
+  ));
 }
 
 export function buildRandomTargetReplay({

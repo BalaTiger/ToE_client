@@ -19,6 +19,7 @@ export function createRuleResolutionTransaction({
   phase = 'action',
   barrier = 'continuation',
   events = [],
+  terminalBoundary = null,
 } = {}) {
   if (!id) throw new TypeError('createRuleResolutionTransaction requires id');
   const normalizedEvents = (Array.isArray(events) ? events : []).filter(Boolean).map((event, index) => ({
@@ -27,8 +28,21 @@ export function createRuleResolutionTransaction({
     order: event.order ?? index,
     resolutionPhase: event.resolutionPhase || phase,
     barrier: event.barrier || barrier,
+    ...(
+      event.terminalBoundary === true
+      || terminalBoundary === index
+      || (event.id && terminalBoundary === event.id)
+        ? { terminalBoundary: true }
+        : {}
+    ),
   }));
-  return { id, phase, barrier, events: normalizedEvents };
+  return {
+    id,
+    phase,
+    barrier,
+    events: normalizedEvents,
+    terminalBoundary: normalizedEvents.find(event => event.terminalBoundary === true)?.id || null,
+  };
 }
 
 export function orderRuleResolutionEvents(events = []) {

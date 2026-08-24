@@ -40,7 +40,6 @@ import {
   buildFreshStatVisualEvents,
   buildTurnStartDrawVisualEvents,
   VISUAL_EVENT,
-  createInspectionVisualEvent,
   createApophisEclipseEvent,
   createGodPowerBlockedEvent,
   createGodStatusChangedEvent,
@@ -2596,16 +2595,6 @@ function maxKnownStatEventSeq(state) {
   return Math.max(explicit, fromStats, fromVisualEvents);
 }
 
-function maxKnownInspectionEventSeq(state) {
-  const explicit = Number.isFinite(state?._inspectionSeq) ? state._inspectionSeq : 0;
-  const fromInspections = (Array.isArray(state?._inspectionEvents) ? state._inspectionEvents : [])
-    .reduce((max, event) => Number.isFinite(event?.seq) ? Math.max(max, event.seq) : max, 0);
-  const fromVisualEvents = (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
-    .filter(event => event?.type === VISUAL_EVENT.INSPECTION)
-    .reduce((max, event) => Number.isFinite(event?.legacySeq) ? Math.max(max, event.legacySeq) : max, 0);
-  return Math.max(explicit, fromInspections, fromVisualEvents);
-}
-
 function attachTurnDrawStatEventOwnership(events = []) {
   let result = [...events];
   const draws = result.filter(event => (
@@ -2675,7 +2664,6 @@ function attachTurnDrawStatEventOwnership(events = []) {
 // one-shot visual events instead of reconstructing them later in React.
 export function startNextTurn(gs, opts = {}) {
   const previousStatSeq = maxKnownStatEventSeq(gs);
-  const previousInspectionSeq = maxKnownInspectionEventSeq(gs);
   const cleanInput = Array.isArray(gs?._visualEvents) && gs._visualEvents.length
     ? { ...gs, _visualEvents: [] }
     : gs;
@@ -2706,33 +2694,10 @@ export function startNextTurn(gs, opts = {}) {
       turnStartStageOrder: isPreDrawEvent ? 1 : 2,
     };
   });
-  // 同步结算路径（如 AI 黏液额外摸到邪神牌）里 handleInspection 已经把一个
-  // 检定视觉事件写进了 _visualEvents，这里再按 _inspectionEvents 重建会造成重复翻牌。
-  // 以 legacySeq 去重，保证每次 SAN 检定只产生一个检定动画。
-  const engineInspectionSeqs = new Set(
-    engineEvents
-      .filter(event => event?.type === VISUAL_EVENT.INSPECTION)
-      .map(event => event?.legacySeq)
-      .filter(seq => seq != null)
-  );
-  const stagedInspectionEvents = (Array.isArray(nextState?._inspectionEvents) ? nextState._inspectionEvents : [])
-    .filter(event => (
-      Number.isFinite(event?.seq) &&
-      event.seq > previousInspectionSeq &&
-      !engineInspectionSeqs.has(event.seq)
-    ))
-    .map(createInspectionVisualEvent)
-    .filter(Boolean)
-    .map(event => ({
-      ...event,
-      turnStartStage: 'draw',
-      turnStartStageOrder: 3,
-    }));
   let visualEvents = [
     ...buildTurnStartDrawVisualEvents(nextState),
     ...freshStatVisualEvents,
     ...stagedEngineEvents,
-    ...stagedInspectionEvents,
   ];
   // A draw phase may reveal several cards (notably one slime draw followed by
   // the fixed draw). Keep each ordinary card's stat settlement beside the draw

@@ -1100,12 +1100,12 @@ export function buildMpRemoteReplayAction({
 
   if (!isDrawAnimationState) {
     const inspectionBaseline = previousGs || buildMaskedActionState(rotated);
-    const previousInspectionSeq = Math.max(
-      inspectionBaseline?._inspectionSeq || 0,
-      ...(inspectionBaseline?._inspectionEvents || []).map(event => event?.seq || 0),
-    );
-    const hasFreshInspection = (rotated?._inspectionEvents || [])
-      .some(event => (event?.seq || 0) > previousInspectionSeq);
+    const previousInspectionSeq = inspectionBaseline?._inspectionSeq || 0;
+    const previousVisualEventIds = new Set((inspectionBaseline?._visualEvents || [])
+      .map(event => event?.id).filter(Boolean));
+    const hasFreshInspection = (rotated?._visualEvents || [])
+      .some(event => event?.type === VISUAL_EVENT.INSPECTION
+        && event?.id && !previousVisualEventIds.has(event.id));
     const replay = hasFreshInspection
       ? buildInspectionReplay(inspectionBaseline, rotated, { buildAnimQueue, copyPlayers })
       : { queue: [], inspectionEvents: [], inspectionSeq: previousInspectionSeq };

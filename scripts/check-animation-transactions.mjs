@@ -15,15 +15,7 @@ const legacyVisualStateFields = [
   '_tsgSlimeGrantEvents',
   '_turnDrawEvents',
 ];
-const legacyVisualObjectProducerPattern = new RegExp(`(?:^|[{,])\\s*(${legacyVisualStateFields.join('|')})\\s*:`);
-const legacyVisualAssignmentPattern = new RegExp(`\\.(${legacyVisualStateFields.join('|')})\\s*=(?!=)`);
-const LEGACY_VISUAL_ALLOW_MARKER = 'legacy-visual-allow:';
-
-function isTutorialSource(relative) {
-  return relative === 'game/tutorialScenario.js'
-    || relative.startsWith('components/tutorial/')
-    || relative.toLowerCase().includes('/tutorial/');
-}
+const legacyVisualFieldPattern = new RegExp(`\\b(?:${legacyVisualStateFields.join('|')})\\b`);
 
 function collectSourceFiles(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
@@ -37,7 +29,7 @@ function collectSourceFiles(directory) {
 const actual = new Map();
 const legacyStatTargetProducers = [];
 const legacySphinxHintProducers = [];
-const legacyVisualFieldProducers = [];
+const legacyVisualFieldReferences = [];
 const presentationStatDiffFallbacks = [];
 for (const file of collectSourceFiles(sourceRoot)) {
   const relative = path.relative(sourceRoot, file).split(path.sep).join('/');
@@ -49,10 +41,8 @@ for (const file of collectSourceFiles(sourceRoot)) {
   if (matches.length) actual.set(relative, matches.length);
   if (relative !== 'game/rotateState.js') {
     source.split(/\r?\n/).forEach((line, index) => {
-      if ((legacyVisualObjectProducerPattern.test(line) || legacyVisualAssignmentPattern.test(line))
-        && !isTutorialSource(relative)
-        && !line.includes(LEGACY_VISUAL_ALLOW_MARKER)) {
-        legacyVisualFieldProducers.push(`${relative}:${index + 1}: ${line.trim()}`);
+      if (legacyVisualFieldPattern.test(line)) {
+        legacyVisualFieldReferences.push(`${relative}:${index + 1}: ${line.trim()}`);
       }
       if (/\btargetStats\s*:/.test(line)) {
         legacyStatTargetProducers.push(`${relative}:${index + 1}`);
@@ -67,8 +57,8 @@ for (const file of collectSourceFiles(sourceRoot)) {
 }
 
 const issues = [];
-legacyVisualFieldProducers.forEach(location => {
-  issues.push(`${location}: legacy visual field production is forbidden; emit a canonical visual event (tutorial/compatibility code must use an explicit ${LEGACY_VISUAL_ALLOW_MARKER} marker)`);
+legacyVisualFieldReferences.forEach(location => {
+  issues.push(`${location}: legacy visual fields are forbidden; emit and consume canonical _visualEvents`);
 });
 legacyStatTargetProducers.forEach(location => {
   issues.push(`${location}: production targetStats payloads are forbidden; emit statEvents instead`);
@@ -111,5 +101,5 @@ if (issues.length) {
   process.exitCode = 1;
 } else {
   const remaining = [...actual.values()].reduce((sum, count) => sum + count, 0);
-  console.log(`[animation-transaction-gate] passed; legacy baseline=${remaining}, no growth`);
+  console.log(`[animation-transaction-gate] passed; legacy-merge baseline=${remaining}, no growth`);
 }

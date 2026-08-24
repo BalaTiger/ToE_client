@@ -16,7 +16,7 @@ import { startNextTurn } from '../turnEngine';
 import { ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
 import { applyFx } from '../effectEngine';
 import { applyStatEventsToDisplayStats, primeDisplayStatsForStatQueue } from '../statEvents';
-import { buildFreshStatVisualEvents, buildTurnStartDrawVisualEvents, createGodPowerBlockedEvent, createGodStatusChangedEvent, createSphinxResultEvent, createTsathogguaSlimeGrantEvent, createTurnDrawVisualEvents, getTurnBannerVisualEventId, VISUAL_EVENT } from '../visualEvents';
+import { buildFreshStatVisualEvents, buildTurnStartDrawVisualEvents, createGodPowerBlockedEvent, createGodStatusChangedEvent, createInspectionVisualEvent, createSphinxResultEvent, createStatEventsEvent, createThrowStoneEvent, createTsathogguaSlimeGrantEvent, createTurnDrawVisualEvents, getTurnBannerVisualEventId, VISUAL_EVENT } from '../visualEvents';
 import { buildAnimQueue } from '../animQueueCore';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
@@ -1697,8 +1697,18 @@ describe('buildTurnStartDrawReplayQueue', () => {
       players: afterCarlos, currentTurn: 2, phase: 'AI_TURN', log: events[2].afterLog,
       _drawnCard: card, _aiDrawnCard: card, _playersBeforeThisDraw: oldPlayers,
       _turnStartLogs: ['── 黛安娜 的回合开始 ──'], _drawLogs: [drawLog], _statLogs: [sanLog, dianaReveal, dianaDamage, youReveal, youDamage, carlosReveal, carlosSleep],
-      _statEvents: [...sanEvents, dianaHp, youHp], _statEventSeq: 3, _inspectionEvents: events, _inspectionSeq: 3,
+      _statEvents: [...sanEvents, dianaHp, youHp], _statEventSeq: 3, _inspectionSeq: 3,
     });
+    newGs._visualEvents = [
+      { id: 'turn:claustrophobia', type: VISUAL_EVENT.TURN_START, turnStartStage: 'turnBanner', playerIdx: 2, playerName: '黛安娜', msgs: newGs._turnStartLogs },
+      ...createTurnDrawVisualEvents({ playerIdx: 2, playerName: '黛安娜', card, msgs: [drawLog] }),
+      createStatEventsEvent({ statEvents: sanEvents, msgs: [sanLog], turnStartStage: 'draw' }),
+      ...events.map((event, index) => ({
+        ...createInspectionVisualEvent(event),
+        turnStartStage: 'draw',
+        turnStartStageOrder: 3 + index,
+      })),
+    ].filter(Boolean);
 
     const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs, effectOldGs: oldGs });
     const visible = replay.queue.filter(step => step.type !== 'VISUAL_LOCK' && step.type !== 'STATE_PATCH');
@@ -1747,9 +1757,10 @@ describe('buildTurnStartDrawReplayQueue', () => {
         '【无定形体】艾伦 额外摸到 [B2] 投掷石块',
         '艾伦 遭遇邪神 烛九阴！（第3次）失去 3 SAN',
       ],
-      _turnDrawEvents: [
-        { card: stone, drawerIdx: 1, drawerName: '艾伦', msgs: ['【无定形体】艾伦 额外摸到 [B2] 投掷石块'], fromTsathogguaSlime: true },
-        { card: god, drawerIdx: 1, drawerName: '艾伦', msgs: ['艾伦 遭遇邪神 烛九阴！（第3次）失去 3 SAN'], fromTsathogguaSlime: true },
+      _visualEvents: [
+        { id: 'turn:slime-draws', type: VISUAL_EVENT.TURN_START, turnStartStage: 'turnBanner', playerIdx: 1, playerName: '艾伦', msgs: ['── 艾伦 的回合开始 ──'] },
+        ...createTurnDrawVisualEvents({ playerIdx: 1, playerName: '艾伦', card: stone, msgs: ['【无定形体】艾伦 额外摸到 [B2] 投掷石块'], fromTsathogguaSlime: true, drawOrder: 0 }),
+        ...createTurnDrawVisualEvents({ playerIdx: 1, playerName: '艾伦', card: god, msgs: ['艾伦 遭遇邪神 烛九阴！（第3次）失去 3 SAN'], fromTsathogguaSlime: true, drawOrder: 1 }),
       ],
       _statLogs: ['艾伦 的SAN检定结果为"自残"', '艾伦 自残，失去 1 HP'],
       log: [
@@ -2083,6 +2094,10 @@ describe('buildTurnStartDrawReplayQueue', () => {
       log: ['旧日志'],
       _randomTargetSeq: 0,
     };
+    const throwStoneEvent=createThrowStoneEvent({
+      sourceIdx:1,targetIdx:0,roll:1,distance:2,damage:0,resultText:'你 被选中',
+      playersBefore:beforeDrawPlayers,playersAfter:afterPlayers,
+    });
     const newGs = {
       players: afterPlayers,
       currentTurn: 1,
@@ -2095,18 +2110,11 @@ describe('buildTurnStartDrawReplayQueue', () => {
       _drawnCard: stone,
       _aiDrawnCard: stone,
       _randomTargetSeq: 1,
-      _randomTargetEvents: [{
-        seq: 1,
-        sourceIdx: 1,
-        targetIdx: 0,
-        label: '投掷石块',
-        roll: 1,
-        distance: 2,
-        damage: 0,
-        resultText: '你 被选中',
-        diceBefore: true,
-        phaseOrder: 1,
-      }],
+      _visualEvents: [
+        {id:'turn:throw-stone',type:VISUAL_EVENT.TURN_START,turnStartStage:'turnBanner',playerIdx:1,playerName:'贝拉',msgs:['── 贝拉 的回合开始 ──']},
+        ...createTurnDrawVisualEvents({playerIdx:1,playerName:'贝拉',card:stone,msgs:['贝拉 摸到 [B2] 投掷石块，选择收入手牌并触发效果'],keptInHand:true,playersBefore:beforeDrawPlayers,playersAfterKeep:afterPlayers}),
+        {...throwStoneEvent,turnStartStage:'draw',turnStartStageOrder:2},
+      ],
     };
 
     const replay = buildTurnStartDrawReplayQueue({
@@ -2144,7 +2152,7 @@ describe('buildTurnStartDrawReplayQueue', () => {
         log: ['旧日志', '── 贝拉 的回合开始 ──'],
       },
     });
-    expect(resolvedBaselineReplay.queue.map(step => step.type)).toEqual(expect.arrayContaining([
+    expect(resolvedBaselineReplay.queue.map(step => step.type)).not.toEqual(expect.arrayContaining([
       'DICE_ROLL',
       'RANDOM_TARGET',
       'THROW_STONE',
@@ -2307,19 +2315,26 @@ describe('buildTurnStartDrawReplayQueue', () => {
 });
 
 describe('shouldReplaySinglePlayerAiTurnStart', () => {
-  it('only matches single-player AI turn-start replay states with logs', () => {
+  it('matches canonical single-player AI turn-start transactions regardless of pause phase', () => {
     const baseState = {
       players: [player('你'), player('艾伦')],
       currentTurn: 1,
       _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _visualEvents: [{
+        id: 'turn-start:ai',
+        type: VISUAL_EVENT.TURN_START,
+        turnStartStage: TURN_START_ANIMATION_STAGE.TURN_BANNER,
+        playerIdx: 1,
+      }],
     };
 
     expect(shouldReplaySinglePlayerAiTurnStart({ ...baseState, phase: 'AI_TURN' })).toBe(true);
     expect(shouldReplaySinglePlayerAiTurnStart({ ...baseState, phase: 'AI_GOD_CHOICE' })).toBe(true);
+    expect(shouldReplaySinglePlayerAiTurnStart({ ...baseState, phase: 'TSG_SLIME_BALANCE' })).toBe(true);
     expect(shouldReplaySinglePlayerAiTurnStart({ ...baseState, phase: 'AI_TURN', _isMP: true })).toBe(false);
-    expect(shouldReplaySinglePlayerAiTurnStart({ ...baseState, phase: 'ACTION' })).toBe(false);
     expect(shouldReplaySinglePlayerAiTurnStart({ ...baseState, phase: 'AI_TURN', currentTurn: 0 })).toBe(false);
     expect(shouldReplaySinglePlayerAiTurnStart({ ...baseState, phase: 'AI_TURN', _turnStartLogs: [] })).toBe(false);
+    expect(shouldReplaySinglePlayerAiTurnStart({ ...baseState, phase: 'AI_TURN', _visualEvents: [] })).toBe(false);
   });
 });
 
@@ -2339,6 +2354,12 @@ describe('buildSinglePlayerAiTurnStartReplayContext', () => {
       phase: 'AI_GOD_CHOICE',
       _playersBeforeThisDraw: beforeDrawPlayers,
       _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _visualEvents: [{
+        id: 'turn-start:ai-context',
+        type: VISUAL_EVENT.TURN_START,
+        turnStartStage: TURN_START_ANIMATION_STAGE.TURN_BANNER,
+        playerIdx: 1,
+      }],
     };
 
     const context = buildSinglePlayerAiTurnStartReplayContext(currentGs, nextGs);

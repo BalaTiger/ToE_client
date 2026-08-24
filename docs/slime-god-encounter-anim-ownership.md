@@ -30,7 +30,7 @@ SAN 扣减、检定翻牌、弃牌动画全部丢失。
 handleCardDrawCore（邪神牌、AI、同步路径）
   └─ 返回 godEncounter = {
        statSeqs,        // 本次遭遇产出的 _statEvents 序号（水位差，结算当场记录）
-       inspectionSeqs,  // 本次遭遇产出的 _inspectionEvents 序号
+       inspectionSeqs,  // 本次遭遇产出的 canonical INSPECTION 事件序号
        discardedGod,    // 结构化弃牌结果（resolveGodEncounterForAI 返回，非日志推断）
      }
 resolveNextTurnState 黏液循环
@@ -46,16 +46,15 @@ buildTurnStartDrawReplayQueue（turnAnimState.js）
 ```
 
 播放顺序：邪神翻牌 → SAN 扣减 → 检定翻牌（含翻面等检定流程步骤）→ 弃牌 →
-下一张摸牌。新状态只广播 `_visualEvents`；`_turnDrawEvents` 仅作为旧存档/旧 peer
-兼容输入。联机远程回放
-走同一个 `buildTurnStartDrawReplayQueue`，行为一致。
+下一张摸牌。新状态只广播 `_visualEvents`，本地与联机远程回放都只消费这一本
+规范事件日志，并走同一个 `buildTurnStartDrawReplayQueue`。
 
 ## 事件消费与去重
 
 - 遭遇块步骤都携带 `visualEventId`，经
   `getVisualEventIdsCoveredByAnimationQueue` 进入消费集，多人广播/重播不会重复播放。
-- `startNextTurn` 里原有的 legacySeq 去重（同步路径下 canonical 检定事件与
-  `_inspectionEvents` 提升的去重）仍然保留，与本机制正交。
+- 检定事件用 canonical 事件 id 消费；`legacySeq` 只作为同一规范事件日志内部的
+  结算顺序水位，不再从独立的旧式状态数组提升或补造事件。
 
 ## 边界情况
 

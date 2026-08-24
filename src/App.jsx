@@ -236,6 +236,7 @@ import {
   VISUAL_EVENT,
   ANIMATION_QUEUE_AUTHORITY,
   getAnimationQueueVisualEventIds,
+  compileRuleVisualEventsToAnimTransaction,
   getAnimationTransactionDiagnostics,
   submitAnimationPresentation,
   AUTHORITATIVE_QUEUE_META,
@@ -1427,11 +1428,11 @@ export default function Game(){
   },[roleRevealAnim,anim,animExiting,gs?.phase,gs?._turnKey,gs?.log?.length]);
 
   const latestHoundsInspectionSeq=useMemo(()=>{
-    const events=Array.isArray(gs?._inspectionEvents)?gs._inspectionEvents:[];
+    const events=(gs?._visualEvents||[]).filter(event=>event?.type===VISUAL_EVENT.INSPECTION);
     return events
       .filter(ev=>ev?.card?.effect==='houndsOfTindalos')
-      .reduce((max,ev)=>Math.max(max,ev?.seq||0),0);
-  },[gs?._inspectionEvents]);
+      .reduce((max,ev)=>Math.max(max,ev?.legacySeq??ev?.seq??0),0);
+  },[gs?._visualEvents]);
   const houndsTimerVisible=!!gs?.houndsOfTindalosActive&&(!latestHoundsInspectionSeq||houndsRevealedSeq>=latestHoundsInspectionSeq);
 
   useAnimationAudioEffects({ anim, playApophisEclipseSound, playThrowStoneThrowSound, playThrowStoneRollingSound, playEarthquakeSound, playGeomagneticReversalSound, playStartledBatsSound, playNightWindSound, playRopeSound, playUndergroundSpringDropletSound, playVolcanoSound, playSemiMaterialSound, playBurrowingWormSound, playSnakeTrapSound, playCthRlyehDreamSound, playGodPowerBlockedSound, playTsgSlimePopSound, playTsgSlimeCreateSound, playOneCardShiftSound, playMultiCardShiftSound, playDiceRollSound, playTurnStartSound, playSkillHuntSound, playSkillSwapSound, playSkillBewitchSound, playGodHighlightSound, playVritraImmortalRevealSound, playPositiveCardFlipSound, playNeutralCardFlipSound, playCaveDuelSound, playWheelSpinSound, playBlackGoatRunSound, playBlackGoatPulseSound, playNegativeCardFlipSound });
@@ -1879,29 +1880,12 @@ export default function Game(){
         return;
       }
     }
-    const explicitInspectionSeqs=new Set(explicitInspectionEvents.map(event=>event.legacySeq));
     const consumedExplicitInspectionEvents=explicitInspectionEvents
       .filter(event=>consumedVisualEventIdsRef.current.has(event.id))
       .map(event=>({seq:event.legacySeq}));
     markInspectionEventsSeen(consumedExplicitInspectionEvents);
-    const events=(gs._inspectionEvents||[]).filter(ev=>(
-      ev?.seq>lastInspectionSeqRef.current&&!explicitInspectionSeqs.has(ev.seq)
-    ));
-    if(!events.length)return;
-    markInspectionEventsSeen(events);
-    const flow=buildInspectionEventFlow(
-      {players:events[0]?.beforePlayers||gs.players,log:events[0]?.beforeLog||gs.log},
-      events,
-      {buildAnimQueue,copyPlayers}
-    );
-    const queue=flow.queue;
-    submitPresentation({
-      queue,nextState:gs,
-      ...strictActionQueueMeta(gs,queue,consumedVisualEventIdsRef.current,'automatic inspection'),
-      context:'automatic inspection compatibility',
-    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[gs?._inspectionSeq,gs?._inspectionEvents,gs?.gameOver,anim,showTutorial,softGuidePauseActive]);
+  },[gs?._inspectionSeq,gs?._visualEvents,gs?.gameOver,anim,showTutorial,softGuidePauseActive]);
 
   useEffect(()=>{
     if(!gs||showTutorial||softGuidePauseActive||anim||animQueueRef.current.length>0||pendingGsRef.current||gs.gameOver)return;
@@ -2066,7 +2050,6 @@ export default function Game(){
           ...newGs,
           players:pausePlayers,
           log:beforeInspectionLog,
-          _inspectionEvents:gs._inspectionEvents||[], // legacy-visual-allow: tutorial split-state snapshot
           _inspectionSeq:gs._inspectionSeq||0,
           _statEvents:pauseStatEvents,
           _statEventSeq:pauseStatSeq,
@@ -3596,13 +3579,15 @@ export default function Game(){
     }
   },[gs?.phase]);
 
-  // 1. 兜底与静默同步：当没有动画在播放时，且不处于AI回合（AI回合中draw效果已bake进gs但动画尚未开始），UI 强制对齐真实的底层数据
+  // 1. 兜底与静默同步：仅在没有待播放/待提交事务时对齐真实数据。
+  // 阶段名不是视觉所有权边界；TSG_SLIME_BALANCE 等暂停阶段同样可能仍在等待回放。
   useEffect(() => {
-    if (gs?.players && (!anim && (!animQueueRef.current || animQueueRef.current.length === 0))) {
-      if (gs.phase === 'AI_TURN') return;
+    if (gs?.players && !anim && !animExiting
+      && (!animQueueRef.current || animQueueRef.current.length === 0)
+      && !pendingGsRef.current) {
       setDisplayStats(gs.players.map(p => ({ hp: p.hp, san: p.san })));
     }
-  }, [gs?.players, anim, gs?.phase, animQueueRef]);
+  }, [gs?.players, anim, animExiting, animQueueRef, pendingGsRef]);
 
   function performMpDecisionTimeout(){
     if(!gs||isBlocked)return;
@@ -4090,13 +4075,11 @@ export default function Game(){
   }
 
   // ── Game Over ──────────────────────────────────────────────
-  // A terminal state may arrive while the encounter replay is still running.
-  // Preserve only the prefix through the terminal SAN hit: once SAN_DAMAGE has
-  // finished, resurrection intentionally cuts off any stale follow-up steps
-  // (inspection/gift decisions/etc.) instead of waiting for the whole queue.
-  const terminalSanReplayPending=anim?.type==='SAN_DAMAGE'
-    ||animQueueRef.current.some(step=>step?.type==='SAN_DAMAGE');
-  if(gs.gameOver&&!terminalSanReplayPending){
+  // Keep terminal UI behind the generic presentation transaction. The queue
+  // itself is truncated at the causative event before playback begins.
+  const terminalPresentationPending=!!anim||!!animExiting
+    ||animQueueRef.current.length>0||!!pendingGsRef.current;
+  if(gs.gameOver&&!terminalPresentationPending){
     const{winner,reason,winnerIdx}=gs.gameOver;
     const gameOverFullLog=normalizeLogForViewer(
       buildCompleteGameOverLog(gs,visibleLogRef.current),
@@ -4533,18 +4516,27 @@ export default function Game(){
     }
     if(drawLogs.length)L.push(...drawLogs);
     if(statLogs.length)L.push(...statLogs);
+    const drawVisualEvents=createTurnDrawVisualEvents({
+      playerIdx:drawerIdx,
+      playerName:P[drawerIdx]?.name,
+      card:res.drawnCard,
+      sourcePile:res.sourcePile,
+      msgs:drawLogs.slice(0,1),
+      reshuffleLog:res.reshuffleLog,
+      fromTsathogguaSlime:!!continuingSlime,
+      keptInHand:!!res.kept&&!res.discardedDrawnCard
+        &&(P[drawerIdx]?.hand||[]).some(card=>sameCardIdentity(card,res.drawnCard)),
+      discarded:!!res.discardedDrawnCard,
+      playersBefore:_P_beforeDraw,
+      playersAfterKeep:P,
+      playersAfterDiscard:P,
+      discardAfter:Disc,
+      playersAfterResolution:P,
+    });
     const continuationVisualEvents=[
       ...(Array.isArray(baseGsAfterDecision._visualEvents)?baseGsAfterDecision._visualEvents:[]),
+      ...drawVisualEvents,
       ...(Array.isArray(res.statePatch?._visualEvents)?res.statePatch._visualEvents:[]),
-      ...createTurnDrawVisualEvents({
-        playerIdx:drawerIdx,
-        playerName:P[drawerIdx]?.name,
-        card:res.drawnCard,
-        sourcePile:res.sourcePile,
-        msgs:drawLogs.slice(0,1),
-        reshuffleLog:res.reshuffleLog,
-        fromTsathogguaSlime:!!continuingSlime,
-      }),
     ]
       .filter(event=>!event?.id||!consumedVisualEventIdsRef.current.has(event.id))
       .filter((event,index,events)=>!event?.id||events.findIndex(candidate=>candidate?.id===event.id)===index);
@@ -4575,40 +4567,22 @@ export default function Game(){
       return;
     }
     const shouldContinueAfterResolvedSlimeDraw=(phase)=>!!continuingSlime&&(phase==='AI_TURN'||phase==='ACTION');
-    const buildResolvedDrawQueue=(newGs,{discarded=false}={})=>{
-      const drawBaseline={...baseGsAfterDecision,players:_P_beforeDraw,log:baseGsAfterDecision.log};
-      // An automatically resolved slime/turn-start draw can synchronously
-      // lower SAN enough to produce an inspection. The state-diff queue owns
-      // the resulting stat changes, but only the inspection-aware builder
-      // inserts the reveal between the SAN loss and its derived effects.
-      const inspectionReplay=buildInspectionAwareAnimQueue(
-        drawBaseline,
-        newGs,
-        {buildAnimQueue,copyPlayers}
-      );
-      if(inspectionReplay.inspectionEvents.length)markInspectionEventsSeen(inspectionReplay.inspectionEvents);
-      const inferred=inspectionReplay.inspectionEvents.length
-        ?inspectionReplay.queue
-        :bindAnimLogChunks(inspectionReplay.queue,{statLogs});
-      const hasDraw=inferred.some(step=>step?.type==='DRAW_CARD'&&step.card===res.drawnCard);
-      const hasDiscard=inferred.some(step=>step?.type==='DISCARD'&&step.card===res.drawnCard);
-      const hasKeepTransfer=inferred.some(step=>step?.type==='CARD_TRANSFER'&&step.effect==='draw'&&step.cards?.some(card=>card===res.drawnCard||card?.id===res.drawnCard?.id));
-      const queue=[
-        ...(hasDraw?[]:[{type:'DRAW_CARD',card:res.drawnCard,triggerName:drawerName,targetPid:drawerIdx,msgs:drawLogs}]),
-        ...inferred,
-      ];
-      if(discarded&&!hasDiscard){
-        queue.push({type:'DISCARD',card:res.drawnCard,triggerName:drawerName,targetPid:drawerIdx});
-      }else if(!discarded&&!hasKeepTransfer){
-        queue.push(cardTransferStep({
-          fromPid:drawerIdx,
-          dest:'player',
-          toPid:drawerIdx,
-          count:1,
-          sourceAnchor:'playerArea',
-          effect:'draw',
-          cards:[res.drawnCard],
-        }));
+    const buildResolvedDrawQueue=(newGs)=>{
+      const freshEventIds=continuationVisualEvents
+        .filter(event=>event?.id&&!consumedVisualEventIdsRef.current.has(event.id))
+        .map(event=>event.id);
+      const transaction=compileRuleVisualEventsToAnimTransaction(newGs,null,{
+        eventIds:freshEventIds,
+        consumedEventIds:consumedVisualEventIdsRef.current,
+        players:_P_beforeDraw,
+        buildAnimQueue,
+      });
+      const queue=[...(transaction?.queue||[])];
+      // Queue shape is now compiled from the canonical draw/effect journal.
+      // This assertion catches a producer regression instead of silently
+      // recreating the reveal or stat effects from a state diff.
+      if(!queue.some(step=>step?.type==='DRAW_CARD'&&sameCardIdentity(step.card,res.drawnCard))){
+        throw new TypeError('[tsg turn-start draw] canonical draw event did not compile');
       }
       queue.push(statePatchStep({players:P,deck:D,discard:Disc,log:L,phase:newGs.phase,drawReveal:newGs.drawReveal,abilityData:newGs.abilityData}));
       return queue;
@@ -4620,18 +4594,15 @@ export default function Game(){
         ?{...pendingAiGodChoice}
         :{godCard:res.drawnCard,drawerIdx,godEncounterCost:res.godEncounterCost};
       const newGs={...baseMeta,...(res.statePatch||{}),_visualEvents:continuationVisualEvents,phase,abilityData:{...godAbilityData,...continuationAbility},drawReveal:null,selectedCard:null,_drawnCard:res.drawnCard};
-      const drawStep={type:'DRAW_CARD',card:res.drawnCard,triggerName:drawerName,targetPid:drawerIdx,msgs:drawLogs};
-      const queue=buildGodChoiceDrawInspectionQueue({
-        oldGs:{...baseGsAfterDecision,players:_P_beforeDraw,log:baseGsAfterDecision.log,_statEventSeq:baseGsAfterDecision._statEventSeq||0,_inspectionSeq:baseGsAfterDecision._inspectionSeq||0},
-        newGs,
-        drawStep,
-      });
+      const queue=buildResolvedDrawQueue(newGs);
       triggerAnimQueue(queue,newGs,undefined,tsgTurnStartDrawQueueMeta(newGs,queue));
       return;
     }
     const win=checkWin(P,baseGsAfterDecision._isMP);
     if(win){
-      setGs({...baseMeta,gameOver:win,phase:'ACTION',drawReveal:null,selectedCard:null,abilityData:{},...(res.statePatch||{}),_visualEvents:continuationVisualEvents});
+      const newGs={...baseMeta,gameOver:win,phase:'ACTION',drawReveal:null,selectedCard:null,abilityData:{},...(res.statePatch||{}),_visualEvents:continuationVisualEvents};
+      const queue=buildResolvedDrawQueue(newGs);
+      triggerAnimQueue(queue,newGs,undefined,tsgTurnStartDrawQueueMeta(newGs,queue));
       return;
     }
     if(res.discardedDrawnCard){
@@ -6638,12 +6609,10 @@ export default function Game(){
           log:drawBaselineLog,
           _statEventSeq:state._statEventSeq||0,
           _statEvents:[],
-          _inspectionEvents:[], // legacy-visual-allow: compatibility diff baseline
         },
         {
           ...state,
           _statEvents:[],
-          _inspectionEvents:[], // legacy-visual-allow: compatibility diff baseline
         }
       ),
       {statLogs:state._statLogs}
@@ -9584,44 +9553,9 @@ const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.n
       setGs(newGs);
       return;
     }
-    if(
-      newGs?.gameOver &&
-      !newGs?._isMP &&
-      newGs.currentTurn!==0 &&
-      (
-        (Array.isArray(newGs._turnStartLogs)&&newGs._turnStartLogs.length>0) ||
-        !!newGs._drawnCard ||
-        drawStatQ.length>0
-      )
-    ){
-      const aiName=newGs.players[newGs.currentTurn]?.name||'???';
-      const replay=buildActorTurnStartReplay(newGs,{
-        oldGs:gs,
-        effectOldGs:{...gs,players:newGs._playersBeforeThisDraw||gs.players},
-        actorName:aiName,
-        forceActorName:true,
-      });
-      const usedReplay=!!(replay?.queue?.length);
-      const queue=usedReplay
-        ? replay.queue
-        : [
-          ...buildTurnStartIntroQueue(newGs,aiName),
-          ...(newGs._drawnCard?[{type:'DRAW_CARD',card:newGs._drawnCard,triggerName:aiName,targetPid:newGs.currentTurn,msgs:newGs._drawLogs}]:[]),
-          ...drawStatQ,
-        ];
-      if(queue.length){
-        if(replay?.visualLock)visualStateLocks.lock(replay.visualLock);
-        else if(newGs._playersBeforeThisDraw&&newGs._drawnCard)visualStateLocks.lock({players:newGs._playersBeforeThisDraw,zhuLight:gs.zhuLight||newGs.zhuLight||null});
-        submitTurnStartPresentation([...preTurnQ,...queue],newGs,undefined,'AI game-over turn-start replay');
-        return;
-      }
-    }
     if(newGs.currentTurn===0){
       const playerTurnStartMsgs=newGs._turnStartLogs||[];
-      const localTurnDrawReplay=(
-        newGs.drawReveal?.card||
-        (newGs.phase==='GOD_CHOICE'&&newGs.abilityData?.godCard)
-      )
+      const localTurnDrawReplay=getTurnStartDrawnCard(newGs)
         ?buildAppTurnStartDrawReplay(newGs,{oldGs:gs,effectOldGs:{...gs,players:newGs._playersBeforeThisDraw||gs.players}})
         :null;
       if(localTurnDrawReplay?.drawnCard){

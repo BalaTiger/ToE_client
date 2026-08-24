@@ -934,7 +934,7 @@ describe('turnEngine stat events', () => {
     expect(result.inspectionMeta._statEvents).toMatchObject([
       { type: 'SAN_LOSS', target: 0, from: { san: 7 }, to: { san: 6 }, seq: 1 },
     ]);
-    expect(result.inspectionMeta._inspectionEvents).toEqual([]);
+    expect(result.inspectionMeta._inspectionEvents).toBeUndefined();
     expect(result.inspectionMeta.abilityData).toMatchObject({
       type: 'tsgSlimeBalance',
       targetIdx: 0,
@@ -974,7 +974,7 @@ describe('turnEngine stat events', () => {
     expect(result.P[1].san).toBe(5);
     expect(result.P[1].godName).toBe('NYA');
     expect(result.effectMsgs.some(msg => msg.includes('改信新神'))).toBe(false);
-    expect(result.statePatch._inspectionEvents).toHaveLength(0);
+    expect(result.statePatch._inspectionEvents).toBeUndefined();
     expect(result.statePatch._pendingAiGodChoice).toMatchObject({
       playerIndex: 1,
       godCard,

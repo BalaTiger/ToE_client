@@ -137,7 +137,6 @@ export function useAnimationQueue({
       '_statEventSeq',
       '_statEvents',
       '_inspectionSeq',
-      '_inspectionEvents',
       '_apophisTargetSeq',
       '_apophisTargetEvent',
     ].forEach(key => {

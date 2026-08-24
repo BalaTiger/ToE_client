@@ -5,6 +5,7 @@ import {
   getAnimationQueueVisualEventIds,
   mergeAnimationTransactionQueue,
 } from './visualEventTransactionCompiler';
+import { truncateQueueAtTerminalPresentation } from './terminalPresentation';
 
 const diagnostics = {
   preparedTransactionCount: 0,
@@ -94,11 +95,17 @@ export function prepareAnimationTransaction({
     : null;
   diagnostics.recompiledEventCount += ruleTransaction?.eventIds?.length || 0;
   const preparedQueue = mergeAnimationTransactionQueue(queue, ruleTransaction, { authority });
+  const terminalQueue = truncateQueueAtTerminalPresentation(preparedQueue, nextState);
+  const isTerminalTransaction = !!nextState?.gameOver;
   return createQueueAnimationTransaction({
-    queue: preparedQueue,
+    queue: terminalQueue,
     nextState,
-    callback,
-    eventIds: collectPendingVisualEventIds(preparedQueue, ruleTransaction, transactionMeta),
+    // A terminal commit is the continuation barrier. Never let a stale AI or
+    // turn-flow callback run after the causative presentation has completed.
+    callback: isTerminalTransaction ? undefined : callback,
+    eventIds: isTerminalTransaction
+      ? getAnimationQueueVisualEventIds(terminalQueue)
+      : collectPendingVisualEventIds(terminalQueue, ruleTransaction, transactionMeta),
     context,
     preserveQueueOrder: transactionMeta?.preserveQueueOrder === true,
   });

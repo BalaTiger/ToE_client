@@ -575,7 +575,8 @@ export function buildAnimQueue(oldGs, newGs) {
       q.push({ type: 'SKILL_BEWITCH', _apophisTargetSeq: newApophisTargetEvent.seq, _apophisNight: apophisNightForAnim, targetIdx: newApophisTargetEvent.targetIdx, msgs: [] });
     }
   }
-  const newInspectionEvents = (newGs?._inspectionEvents || []).filter(ev => ev?.seq > (oldGs?._inspectionSeq || 0));
+  const newInspectionEvents = freshVisualEvents
+    .filter(event => event?.type === VISUAL_EVENT.INSPECTION);
   const effectivePlayers = newInspectionEvents[0]?.beforePlayers || newGs.players;
   const effectiveLog = newInspectionEvents[0]?.beforeLog || newGs.log;
   const oldLog = Array.isArray(oldGs?.log) ? oldGs.log : [];
@@ -631,15 +632,7 @@ export function buildAnimQueue(oldGs, newGs) {
   const freshRandomTargetVisualEvents = freshVisualEvents.filter(event => (
     event.type === VISUAL_EVENT.THROW_STONE || event.type === VISUAL_EVENT.RANDOM_TARGET
   ));
-  const explicitRandomTargetSeqs = new Set(
-    freshRandomTargetVisualEvents
-      .map(event => event?.legacySeq ?? event?.seq)
-      .filter(seq => seq != null)
-  );
-  const legacyRandomTargetEvents = (newGs?._randomTargetEvents || []).filter(ev => ev?.seq > (oldGs?._randomTargetSeq || 0));
-  const randomTargetEvents = [
-    ...legacyRandomTargetEvents.filter(event => !explicitRandomTargetSeqs.has(event?.seq)),
-    ...freshRandomTargetVisualEvents.map(event => ({
+  const randomTargetEvents = freshRandomTargetVisualEvents.map(event => ({
       ...event,
       ...(event.type === VISUAL_EVENT.THROW_STONE ? {
         label: '投掷石块',
@@ -647,8 +640,7 @@ export function buildAnimQueue(oldGs, newGs) {
         phaseOrder: event.phaseOrder ?? 1,
       } : {}),
       visualEventId: event.id,
-    })),
-  ].sort((left, right) => (
+    })).sort((left, right) => (
     (left?.phaseOrder ?? 0) - (right?.phaseOrder ?? 0) ||
     (left?.legacySeq ?? left?.seq ?? 0) - (right?.legacySeq ?? right?.seq ?? 0)
   ));

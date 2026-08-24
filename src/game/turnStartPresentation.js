@@ -193,7 +193,6 @@ export function buildTurnStartStatQueue(state) {
     log: [],
     _statEventSeq: 0,
     _statEvents: [],
-    _inspectionEvents: [], // legacy-visual-allow: compatibility diff baseline
   };
   const newGs = {
     ...state,
@@ -201,7 +200,6 @@ export function buildTurnStartStatQueue(state) {
     log: statLogs,
     _statEventSeq: 1,
     _statEvents: statEvents,
-    _inspectionEvents: [], // legacy-visual-allow: compatibility diff baseline
   };
   const queue = bindAnimLogChunks(buildAnimQueue(oldGs, newGs), { statLogs });
   if (statLogs.some(line => typeof line === 'string' && line.includes('黑山羊幼仔'))) {
