@@ -17,6 +17,9 @@ import {
   buildTimedOutDrawDiscardStepFromVisualEvents,
   buildGodGiftDiscardStepFromVisualEvents,
   buildGodGiftKeepSteps,
+  buildCardMoveSteps,
+  buildCardRevealSteps,
+  buildDiceResultSteps,
   ensureVisualEventState,
   getVisualEvents,
   getVisualEventIdsFromState,
@@ -353,6 +356,22 @@ function reportTransactionIssues(stage, issues = []) {
   console.error(`[visual-transaction] ${stage}`, issues);
 }
 
+function assertNoEmptyVisualEventCompilations(compiled = [], options = {}, stage = 'compile') {
+  const issues = (Array.isArray(compiled) ? compiled : [])
+    .filter(item => item?.event && !(Array.isArray(item.steps) && item.steps.length))
+    .map(item => ({
+      code: 'EMPTY_VISUAL_EVENT_QUEUE',
+      eventId: item.event.id || null,
+      eventType: item.event.type || null,
+    }));
+  if (!issues.length) return;
+  reportTransactionIssues(stage, issues);
+  const strict = options.strictEventCompilation === true || import.meta.env?.MODE === 'test';
+  if (strict) {
+    throw new TypeError(`[visual-transaction] ${stage}: ${JSON.stringify(issues)}`);
+  }
+}
+
 export function compileVisualEventToAnimSteps(event, state, previousState = null, options = {}) {
   if (!event) return [];
   const isolated = stateWithSingleEvent(state, event);
@@ -416,6 +435,12 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
         }
         return [drawStep];
       })();
+    case VISUAL_EVENT.CARD_MOVE:
+      return buildCardMoveSteps(event);
+    case VISUAL_EVENT.CARD_REVEAL:
+      return buildCardRevealSteps(event);
+    case VISUAL_EVENT.DICE_RESULT:
+      return buildDiceResultSteps(event);
     case VISUAL_EVENT.HAND_LIMIT_DISCARD:
       return buildHandLimitDiscardStepsFromVisualEvents(isolated);
     case VISUAL_EVENT.STAT_EVENTS:
@@ -622,9 +647,7 @@ export function compileRuleVisualEventsToAnimTransaction(state, previousState = 
       event,
       steps: tagVisualEventSteps(event, compileVisualEventToAnimSteps(event, state, previousState, options)),
     }));
-  reportTransactionIssues('visual event compiled to an empty queue', compiledWithEmpty
-    .filter(item => !item.steps.length)
-    .map(item => ({ code: 'EMPTY_VISUAL_EVENT_QUEUE', eventId: item.event.id, eventType: item.event.type })));
+  assertNoEmptyVisualEventCompilations(compiledWithEmpty, options, 'visual event compiled to an empty queue');
   const compiled = compiledWithEmpty
     .filter(item => item.steps.length);
   if (!compiled.length) return null;
@@ -673,6 +696,7 @@ export function compileVisualEventToAnimTransaction(event, state, previousState 
       buildAnimQueue: options.buildAnimQueue,
       copyPlayers,
     });
+    assertNoEmptyVisualEventCompilations([{ event, steps: replay.queue || [] }], options, 'visual event compiled to an empty queue');
     const transaction = {
       id: event.id || null,
       context: 'bewitchGift',
@@ -690,6 +714,7 @@ export function compileVisualEventToAnimTransaction(event, state, previousState 
     event,
     compileVisualEventToAnimSteps(event, state, previousState, options),
   );
+  assertNoEmptyVisualEventCompilations([{ event, steps: queue }], options, 'visual event compiled to an empty queue');
   const transaction = queue.length ? {
     id: event.id || null,
     context: event.context || event.effectKey || event.type || 'visualEvent',
@@ -707,7 +732,12 @@ export function compileVisualEventToAnimTransaction(event, state, previousState 
 export function compileFreshVisualEventsToAnimSteps(state, previousState = null, types = [], options = {}) {
   const accepted = new Set(Array.isArray(types) ? types : [types]);
   const previousIds = new Set(getVisualEventIdsFromState(previousState));
-  return (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
-    .filter(event => event && (!event.id || !previousIds.has(event.id)) && (!accepted.size || accepted.has(event.type)))
-    .flatMap(event => compileVisualEventToAnimSteps(event, state, previousState, options));
+  const events = (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
+    .filter(event => event && (!event.id || !previousIds.has(event.id)) && (!accepted.size || accepted.has(event.type)));
+  const compiled = events.map(event => ({
+    event,
+    steps: compileVisualEventToAnimSteps(event, state, previousState, options),
+  }));
+  assertNoEmptyVisualEventCompilations(compiled, options, 'fresh visual event compiled to an empty queue');
+  return compiled.flatMap(item => item.steps);
 }

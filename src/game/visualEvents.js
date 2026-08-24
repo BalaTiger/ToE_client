@@ -33,6 +33,9 @@ export const VISUAL_EVENT = {
   MULTIPLY: 'multiply',
   RANDOM_TARGET: 'randomTarget',
   GRAVE_DIG: 'graveDig',
+  CARD_MOVE: 'cardMove',
+  CARD_REVEAL: 'cardReveal',
+  DICE_RESULT: 'diceResult',
 };
 
 const visualEventInstanceId = Math.random().toString(36).slice(2, 10);
@@ -400,6 +403,196 @@ export function createHuntTargetEvent({
     ...(Array.isArray(afterPlayers) ? { afterPlayers } : {}),
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'action');
+}
+
+// Generic presentation facts used while retiring snapshot/log inference.
+// Rule code records the semantic move/reveal/roll at the moment it happens;
+// the compiler maps it to playback steps without comparing resolved states.
+export function createCardMoveVisualEvent({
+  from,
+  to,
+  cards = [],
+  count = null,
+  effect = 'move',
+  sourceAnchor = null,
+  durationMs = null,
+  faceUp = null,
+  playersBefore = null,
+  playersAfter = null,
+  discardBefore = null,
+  discardAfter = null,
+  msgs = [],
+} = {}) {
+  const normalizedCards = Array.isArray(cards) ? cards.filter(Boolean) : [];
+  const normalizedCount = count ?? normalizedCards.length;
+  if (!from?.zone || !to?.zone || !Number.isFinite(Number(normalizedCount)) || Number(normalizedCount) <= 0) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.CARD_MOVE,
+    from: { ...from },
+    to: { ...to },
+    cards: normalizedCards,
+    count: Number(normalizedCount),
+    effect,
+    ...(sourceAnchor ? { sourceAnchor } : {}),
+    ...(durationMs != null ? { durationMs } : {}),
+    ...(faceUp != null ? { faceUp: !!faceUp } : {}),
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfter) ? { playersAfter } : {}),
+    ...(Array.isArray(discardBefore) ? { discardBefore } : {}),
+    ...(Array.isArray(discardAfter) ? { discardAfter } : {}),
+    msgs: Array.isArray(msgs) ? msgs : [],
+  }, 'action');
+}
+
+export function buildCardMoveSteps(event = {}) {
+  if (!event?.from?.zone || !event?.to?.zone || !event?.count) return [];
+  const beforePatch = {
+    ...(Array.isArray(event.playersBefore) ? { players: event.playersBefore } : {}),
+    ...(Array.isArray(event.discardBefore) ? { discard: event.discardBefore } : {}),
+  };
+  const afterPatch = {
+    ...(Array.isArray(event.playersAfter) ? { players: event.playersAfter } : {}),
+    ...(Array.isArray(event.discardAfter) ? { discard: event.discardAfter } : {}),
+  };
+  const hasBeforePatch = Object.keys(beforePatch).length > 0;
+  const hasAfterPatch = Object.keys(afterPatch).length > 0;
+  const fromPid = event.from.playerIdx;
+  const toPid = event.to.playerIdx;
+  const moveStep = event.to.zone === 'deckBottom'
+    ? {
+        type: 'BURY_TO_DECK',
+        fromPid: fromPid ?? 0,
+        cards: event.cards || [],
+        count: event.count,
+        effect: event.effect,
+        msgs: event.msgs || [],
+        ...(hasBeforePatch ? { visualSetupPatch: beforePatch } : {}),
+      }
+    : {
+        type: 'CARD_TRANSFER',
+        ...(fromPid != null ? { fromPid } : {}),
+        dest: event.to.zone === 'hand' || event.to.zone === 'godZone' ? 'player' : event.to.zone,
+        ...(toPid != null ? { toPid } : {}),
+        count: event.count,
+        cards: event.cards || [],
+        effect: event.effect,
+        sourceAnchor: event.sourceAnchor || event.from.zone,
+        msgs: event.msgs || [],
+        ...(event.durationMs != null ? { durationMs: event.durationMs } : {}),
+        ...(event.faceUp != null ? { faceUp: event.faceUp } : {}),
+        ...(hasBeforePatch ? { visualSetupTiming: 'stepStart', visualSetupPatch: beforePatch } : {}),
+        ...(hasAfterPatch ? { visualTimeline: [{ atMs: 360, patch: afterPatch }] } : {}),
+      };
+  return [
+    moveStep,
+    ...(hasAfterPatch ? [{ type: 'STATE_PATCH', ...afterPatch }] : []),
+  ];
+}
+
+export function createCardRevealVisualEvent({
+  card,
+  targetIdx = 0,
+  triggerName = '该玩家',
+  revealKind = 'card',
+  msgs = [],
+  skipTravel = false,
+  playersBefore = null,
+  playersAfter = null,
+} = {}) {
+  if (!card || targetIdx == null) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.CARD_REVEAL,
+    card,
+    targetIdx,
+    triggerName,
+    revealKind,
+    msgs: Array.isArray(msgs) ? msgs : [],
+    ...(skipTravel ? { skipTravel: true } : {}),
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfter) ? { playersAfter } : {}),
+  }, 'action');
+}
+
+export function buildCardRevealSteps(event = {}) {
+  if (!event?.card || event?.targetIdx == null) return [];
+  return [
+    {
+      type: 'DRAW_CARD',
+      card: event.card,
+      targetPid: event.targetIdx,
+      triggerName: event.triggerName || '该玩家',
+      revealKind: event.revealKind || 'card',
+      msgs: event.msgs || [],
+      ...(event.skipTravel ? { skipTravel: true } : {}),
+      ...(Array.isArray(event.playersBefore) ? { visualSetupPatch: { players: event.playersBefore } } : {}),
+    },
+    ...(Array.isArray(event.playersAfter) ? [{ type: 'STATE_PATCH', players: event.playersAfter }] : []),
+  ];
+}
+
+export function createDiceResultVisualEvent({
+  mode,
+  actorIdx = 0,
+  actorName = '该玩家',
+  dice = [],
+  d1 = null,
+  d2 = null,
+  heal = 0,
+  msgs = [],
+  playersBefore = null,
+  playersAfter = null,
+  negativeAvoided = null,
+  apophisChanged = null,
+  targetIdx = null,
+  distance = null,
+  damage = null,
+} = {}) {
+  const normalizedDice = Array.isArray(dice) ? dice.filter(value => Number.isFinite(Number(value))).map(Number) : [];
+  const first = d1 ?? normalizedDice[0];
+  const second = d2 ?? normalizedDice[1] ?? 0;
+  if (!mode || !Number.isFinite(Number(first))) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.DICE_RESULT,
+    mode,
+    actorIdx,
+    actorName,
+    dice: normalizedDice.length ? normalizedDice : [Number(first), Number(second)],
+    d1: Number(first),
+    d2: Number(second),
+    heal,
+    msgs: Array.isArray(msgs) ? msgs : [],
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfter) ? { playersAfter } : {}),
+    ...(negativeAvoided != null ? { negativeAvoided: !!negativeAvoided } : {}),
+    ...(apophisChanged != null ? { apophisChanged: !!apophisChanged } : {}),
+    ...(targetIdx != null ? { targetIdx } : {}),
+    ...(distance != null ? { distance } : {}),
+    ...(damage != null ? { damage } : {}),
+  }, 'action');
+}
+
+export function buildDiceResultSteps(event = {}) {
+  if (!event?.mode || !Number.isFinite(Number(event?.d1))) return [];
+  return [
+    {
+      type: 'DICE_ROLL',
+      diceMode: event.mode,
+      d1: Number(event.d1),
+      d2: Number(event.d2 ?? 0),
+      heal: Number(event.heal ?? 0),
+      rollerName: event.actorName || '该玩家',
+      msgs: event.msgs || [],
+      ...(Array.isArray(event.playersBefore) ? { visualSetupPatch: { players: event.playersBefore } } : {}),
+      ...Object.fromEntries(Object.entries(event).filter(([key]) => [
+        'negativeAvoided',
+        'apophisChanged',
+        'targetIdx',
+        'distance',
+        'damage',
+      ].includes(key))),
+    },
+    ...(Array.isArray(event.playersAfter) ? [{ type: 'STATE_PATCH', players: event.playersAfter }] : []),
+  ];
 }
 
 export function createHuntRevealEvent({ sourceIdx = 0, targetIdx = 0, card, msgs = [] } = {}) {

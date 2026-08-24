@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   createCardEffectEvent,
+  createCardMoveVisualEvent,
+  createCardRevealVisualEvent,
+  createDiceResultVisualEvent,
   createGodPowerBlockedEvent,
   createGodStatusChangedEvent,
   createSwapCardsEvent,
@@ -36,6 +39,85 @@ import { prepareAnimationQueueSteps } from '../animationStepSchema';
 const player = (name, patch = {}) => ({ name, hp: 10, san: 10, hand: [], ...patch });
 
 describe('visualEventTransactionCompiler', () => {
+  it('compiles generic card movement from event payload without snapshot inference', () => {
+    const card = { id: 'move-1', name: '测试牌' };
+    const before = [player('你', { hand: [card] })];
+    const after = [player('你', { hand: [] })];
+    const event = createCardMoveVisualEvent({
+      from: { zone: 'hand', playerIdx: 0 },
+      to: { zone: 'discard' },
+      cards: [card],
+      effect: 'discard',
+      playersBefore: before,
+      playersAfter: after,
+      discardBefore: [],
+      discardAfter: [card],
+      msgs: ['你 弃置了测试牌'],
+    });
+
+    const transaction = compileRuleVisualEventsToAnimTransaction({
+      players: after,
+      discard: [card],
+      _visualEvents: [event],
+    });
+
+    expect(transaction.queue.map(step => step.type)).toEqual(['CARD_TRANSFER', 'STATE_PATCH']);
+    expect(transaction.queue.every(step => step.visualEventId === event.id)).toBe(true);
+    expect(transaction.queue[0]).toMatchObject({
+      fromPid: 0,
+      dest: 'discard',
+      cards: [card],
+      visualSetupPatch: { players: before, discard: [] },
+    });
+    expect(transaction.queue[1]).toMatchObject({ players: after, discard: [card] });
+  });
+
+  it('compiles generic reveal and dice events solely from their payloads', () => {
+    const card = { id: 'reveal-1', name: '揭示牌' };
+    const reveal = createCardRevealVisualEvent({
+      card,
+      targetIdx: 1,
+      triggerName: '弗栗多',
+      revealKind: 'godPower',
+      msgs: ['弗栗多揭示了一张牌'],
+    });
+    const dice = createDiceResultVisualEvent({
+      mode: 'moldyFood',
+      actorIdx: 1,
+      actorName: '艾伦',
+      dice: [4],
+      negativeAvoided: true,
+      msgs: ['艾伦掷出4点'],
+    });
+    const transaction = compileRuleVisualEventsToAnimTransaction({
+      players: [player('你'), player('艾伦')],
+      _visualEvents: [reveal, dice],
+    });
+
+    expect(transaction.queue.map(step => step.type)).toEqual(['DRAW_CARD', 'DICE_ROLL']);
+    expect(transaction.queue[0]).toMatchObject({
+      visualEventId: reveal.id,
+      card,
+      targetPid: 1,
+      triggerName: '弗栗多',
+      revealKind: 'godPower',
+    });
+    expect(transaction.queue[1]).toMatchObject({
+      visualEventId: dice.id,
+      diceMode: 'moldyFood',
+      d1: 4,
+      rollerName: '艾伦',
+      negativeAvoided: true,
+    });
+  });
+
+  it('fails canonical compilation when a fresh event has no compiler', () => {
+    expect(() => compileRuleVisualEventsToAnimTransaction({
+      players: [player('你')],
+      _visualEvents: [{ id: 'unknown-event', type: 'unknownCanonicalEvent' }],
+    })).toThrow('EMPTY_VISUAL_EVENT_QUEUE');
+  });
+
   it('compiles a resolved draw and its explicit keep landing without a state diff', () => {
     const card = { id: 'kept-draw', name: '战利品', type: 'zone' };
     const beforePlayers = [player('你'), player('艾伦')];

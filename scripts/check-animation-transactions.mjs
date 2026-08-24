@@ -16,6 +16,62 @@ const legacyVisualStateFields = [
   '_turnDrawEvents',
 ];
 const legacyVisualFieldPattern = new RegExp(`\\b(?:${legacyVisualStateFields.join('|')})\\b`);
+const migrationBaselines = [
+  {
+    label: 'buildAnimQueue call',
+    pattern: /\bbuildAnimQueue\s*\(/g,
+    allowed: new Map([
+      ['App.jsx', 52],
+      ['game/aiTurnPresentation.js', 2],
+      ['game/animQueueCore.js', 1],
+      ['game/animQueueHelpers.js', 5],
+      ['game/handLimitDiscard.js', 1],
+      ['game/proliferatingZFlow.js', 1],
+      ['game/restTurnPresentation.js', 1],
+      ['game/turnStartPresentation.js', 1],
+      ['game/visualEventTransactionCompiler.js', 1],
+    ]),
+  },
+  {
+    label: 'buildInspectionAwareAnimQueue call',
+    pattern: /\bbuildInspectionAwareAnimQueue\s*\(/g,
+    allowed: new Map([
+      ['App.jsx', 10],
+      ['game/animQueueHelpers.js', 1],
+      ['game/animReplayEvents.js', 1],
+      ['game/treasureDodgePresentation.js', 1],
+    ]),
+  },
+  {
+    label: 'hand-delta animation inference',
+    pattern: /\bbuildHandDeltaInferenceQueue\s*\(/g,
+    allowed: new Map([['game/animQueueCore.js', 2]]),
+  },
+  {
+    label: 'legacy visual-event promotion',
+    pattern: /\bpromoteLegacyVisualEvents\s*\(/g,
+    allowed: new Map([['game/visualEvents.js', 2]]),
+  },
+  {
+    label: 'presentation log inference',
+    pattern: /\b(?:newMsgs|logDelta|actionMsgs)\.(?:find|filter|some)\s*\(/g,
+    allowed: new Map([
+      ['App.jsx', 10],
+      ['game/animQueueCore.js', 3],
+      ['game/multiplayerRemoteReplay.js', 6],
+    ]),
+  },
+  {
+    label: 'terminal state-diff replay',
+    pattern: /newGs\.gameOver\s*&&\s*newGs\.currentTurn\s*!==\s*oldGs\.currentTurn/g,
+    allowed: new Map([['game/animQueueCore.js', 1]]),
+  },
+  {
+    label: 'caller-side buildAnimQueue filtering',
+    pattern: /buildAnimQueue[^\r\n]*\.filter\s*\(/g,
+    allowed: new Map([['App.jsx', 13]]),
+  },
+];
 
 function collectSourceFiles(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
@@ -31,6 +87,7 @@ const legacyStatTargetProducers = [];
 const legacySphinxHintProducers = [];
 const legacyVisualFieldReferences = [];
 const presentationStatDiffFallbacks = [];
+const migrationCounts = migrationBaselines.map(guard => ({ guard, actual: new Map() }));
 for (const file of collectSourceFiles(sourceRoot)) {
   const relative = path.relative(sourceRoot, file).split(path.sep).join('/');
   const source = fs.readFileSync(file, 'utf8');
@@ -39,6 +96,10 @@ for (const file of collectSourceFiles(sourceRoot)) {
   }
   const matches = source.match(/legacyMerge|LEGACY_MERGE/g) || [];
   if (matches.length) actual.set(relative, matches.length);
+  migrationCounts.forEach(({ guard, actual: counts }) => {
+    const count = (source.match(guard.pattern) || []).length;
+    if (count) counts.set(relative, count);
+  });
   if (relative !== 'game/rotateState.js') {
     source.split(/\r?\n/).forEach((line, index) => {
       if (legacyVisualFieldPattern.test(line)) {
@@ -68,6 +129,14 @@ legacySphinxHintProducers.forEach(location => {
 });
 presentationStatDiffFallbacks.forEach(relative => {
   issues.push(`${relative}: presentation-layer HP/SAN snapshot diff fallback is forbidden; consume canonical statEvents`);
+});
+migrationCounts.forEach(({ guard, actual: counts }) => {
+  counts.forEach((count, file) => {
+    const allowed = guard.allowed.get(file) || 0;
+    if (count > allowed) {
+      issues.push(`${file}: ${guard.label} baseline grew from ${allowed} to ${count}`);
+    }
+  });
 });
 for (const [file, count] of actual) {
   const allowed = legacyBaseline.get(file);
@@ -101,5 +170,8 @@ if (issues.length) {
   process.exitCode = 1;
 } else {
   const remaining = [...actual.values()].reduce((sum, count) => sum + count, 0);
-  console.log(`[animation-transaction-gate] passed; legacy-merge baseline=${remaining}, no growth`);
+  const migrationRemaining = migrationCounts.reduce((sum, { actual: counts }) => (
+    sum + [...counts.values()].reduce((subtotal, count) => subtotal + count, 0)
+  ), 0);
+  console.log(`[animation-transaction-gate] passed; legacy-merge baseline=${remaining}; migration debt=${migrationRemaining}, no growth`);
 }

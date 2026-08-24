@@ -2313,19 +2313,14 @@ describe('buildMpRemoteReplayAction', () => {
     ]));
   });
 
-  it('does not mark an uncovered event as consumed when no explicit compiler exists', () => {
+  it('rejects an uncovered canonical event when no explicit compiler exists', () => {
     const unknownEvent = { id: 'future-visual-event', type: 'futureVisualEvent' };
     const transaction = createAnimTransactionEvent({
       id: 'exact-before-future-event',
       queue: [{ type: 'YOUR_TURN', name: '艾伦' }],
     });
-    const action = buildAction(makeState({ _visualEvents: [transaction, unknownEvent] }));
-
-    expect(action.queue.map(step => step.type)).toEqual(['YOUR_TURN', 'STATE_PATCH']);
-    expect(action.uncompiledVisualEventIds).toEqual([unknownEvent.id]);
-    expect(action.consumedVisualEventIds).toContain(transaction.id);
-    expect(action.consumedVisualEventIds).not.toContain(unknownEvent.id);
-    expect(action.pendingGs.phase).toBe('ACTION');
+    expect(() => buildAction(makeState({ _visualEvents: [transaction, unknownEvent] })))
+      .toThrow('EMPTY_VISUAL_EVENT_QUEUE');
   });
 
   it('accepts a later endless-corridor dodge delta after the opening replay was consumed', () => {
