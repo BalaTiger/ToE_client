@@ -261,14 +261,57 @@ export function buryToDeckStep({fromPid=0,msgs=[],players=null}={}){
   };
 }
 
+// 手牌快照在飞牌飞行中段提交的默认时点,与掘墓/CARD_MOVE 既有节奏一致。
+export const HAND_TRANSFER_AFTER_AT_MS=360;
+
+// 转移作用域快照:在 before 快照上只应用这一次换牌,不带入事件的后续结算
+// (SAN 结算、死亡标记等仍由各自的动画步骤呈现)。god 牌被蛊惑后直接遭遇,
+// 不进入目标手牌。
+export function deriveHandTransferSnapshot(players=[],{fromPid=null,toPid=null,card=null,toHand=true}={}){
+  if(!Array.isArray(players))return null;
+  const next=players.map(player=>(player?{...player,hand:[...(player.hand||[])]}:player));
+  let moved=null;
+  if(fromPid!=null&&next[fromPid]){
+    const hand=next[fromPid].hand;
+    const idx=card?hand.findIndex(c=>(card.id!=null&&c?.id===card.id)||c===card):-1;
+    moved=idx>=0?hand.splice(idx,1)[0]:(hand.length?hand.splice(hand.length-1,1)[0]:null);
+  }
+  if(toHand&&toPid!=null&&next[toPid]&&moved)next[toPid].hand.push(moved);
+  return next;
+}
+
 export function cardTransferStep(options={}){
+  const{
+    playersBefore=null,playersAfter=null,
+    discardBefore=null,discardAfter=null,
+    afterAtMs=null,
+    ...rest
+  }=options||{};
   const step={type:"CARD_TRANSFER"};
-  Object.entries(options).forEach(([key,value])=>{
+  Object.entries(rest).forEach(([key,value])=>{
     if(value!==undefined)step[key]=value;
   });
   // The discard pile is public information. Any transfer headed there must
   // render face-up when its card identity is available.
   if(step.dest==="discard"&&step.faceUp===undefined)step.faceUp=true;
+  const beforePatch={
+    ...(Array.isArray(playersBefore)?{players:playersBefore}:{}),
+    ...(Array.isArray(discardBefore)?{discard:discardBefore}:{}),
+  };
+  if(Object.keys(beforePatch).length){
+    if(step.visualSetupTiming===undefined)step.visualSetupTiming="stepStart";
+    step.visualSetupPatch={...beforePatch,...(step.visualSetupPatch||{})};
+  }
+  const afterPatch={
+    ...(Array.isArray(playersAfter)?{players:playersAfter}:{}),
+    ...(Array.isArray(discardAfter)?{discard:discardAfter}:{}),
+  };
+  if(Object.keys(afterPatch).length){
+    step.visualTimeline=[
+      ...(Array.isArray(step.visualTimeline)?step.visualTimeline:[]),
+      {atMs:Number.isFinite(afterAtMs)?afterAtMs:HAND_TRANSFER_AFTER_AT_MS,patch:afterPatch},
+    ];
+  }
   return step;
 }
 
@@ -413,16 +456,16 @@ function resolvePlayerPidByLogName(name,players=[]){
   return players.findIndex(p=>p?.name===name);
 }
 
-export function fullHandSwapTransferSteps({fromPid,toPid,fromCount=0,toCount=0,msgs=[]}={}){
+export function fullHandSwapTransferSteps({fromPid,toPid,fromCount=0,toCount=0,msgs=[],playersAfter=null,discardAfter=null}={}){
   if(fromPid==null||fromPid<0||toPid==null||toPid<0)return [];
   return [
     cardTransferStep({fromPid,dest:"player",toPid,count:fromCount}),
-    cardTransferStep({fromPid:toPid,dest:"player",toPid:fromPid,count:toCount,msgs}),
+    cardTransferStep({fromPid:toPid,dest:"player",toPid:fromPid,count:toCount,msgs,playersAfter,discardAfter}),
   ];
 }
 
-export function fullHandSwapSteps({fromPid,toPid,fromCount=0,toCount=0,msgs=[],playersBefore=null,zhuLight=null}={}){
-  const transfers=fullHandSwapTransferSteps({fromPid,toPid,fromCount,toCount,msgs});
+export function fullHandSwapSteps({fromPid,toPid,fromCount=0,toCount=0,msgs=[],playersBefore=null,playersAfter=null,discardAfter=null,zhuLight=null}={}){
+  const transfers=fullHandSwapTransferSteps({fromPid,toPid,fromCount,toCount,msgs,playersAfter,discardAfter});
   if(!transfers.length)return [];
   return [
     ...(playersBefore?[{type:"VISUAL_LOCK",players:playersBefore,zhuLight:zhuLight||null}]:[]),
@@ -430,7 +473,7 @@ export function fullHandSwapSteps({fromPid,toPid,fromCount=0,toCount=0,msgs=[],p
   ];
 }
 
-export function swapCardsTransferSteps({sourceIdx,targetIdx,sourceCount=1,targetCount=1,msgs=[],takenCard=null,givenCard=null}={}){
+export function swapCardsTransferSteps({sourceIdx,targetIdx,sourceCount=1,targetCount=1,msgs=[],takenCard=null,givenCard=null,playersAfter=null,discardAfter=null}={}){
   if(sourceIdx==null||sourceIdx<0||targetIdx==null||targetIdx<0)return [];
   return [
     cardTransferStep({
@@ -447,12 +490,14 @@ export function swapCardsTransferSteps({sourceIdx,targetIdx,sourceCount=1,target
       count:sourceCount,
       ...(givenCard?{cards:[givenCard]}:{}),
       msgs,
+      playersAfter,
+      discardAfter,
     }),
   ];
 }
 
-export function swapCardsSteps({sourceIdx,targetIdx,sourceCount=1,targetCount=1,msgs=[],playersBefore=null,zhuLight=null,takenCard=null,givenCard=null}={}){
-  const transfers=swapCardsTransferSteps({sourceIdx,targetIdx,sourceCount,targetCount,msgs,takenCard,givenCard});
+export function swapCardsSteps({sourceIdx,targetIdx,sourceCount=1,targetCount=1,msgs=[],playersBefore=null,playersAfter=null,discardAfter=null,zhuLight=null,takenCard=null,givenCard=null}={}){
+  const transfers=swapCardsTransferSteps({sourceIdx,targetIdx,sourceCount,targetCount,msgs,takenCard,givenCard,playersAfter,discardAfter});
   if(!transfers.length)return [];
   return [
     ...(playersBefore?[{type:"VISUAL_LOCK",players:playersBefore,zhuLight:zhuLight||null}]:[]),
@@ -535,7 +580,7 @@ export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQ
     ...(options.skillVisualSetupPatch?{visualSetupPatch:options.skillVisualSetupPatch}:{}),
   }];
   if(toPid!=null&&toPid>=0){
-    acquisitionQueue.push(cardTransferStep({fromPid,dest:"player",toPid,count:1}));
+    acquisitionQueue.push(cardTransferStep({fromPid,dest:"player",toPid,count:1,...(options.transferSnapshots||{})}));
     if(options.afterGiftPatch)acquisitionQueue.push(statePatchStep(options.afterGiftPatch));
   }
   // 注意：被蛊惑者的操作是在当前回合内完成的，不应视为"回合开始"

@@ -24,7 +24,7 @@ import {
   getVisualEventIdsFromState,
 } from './visualEvents';
 import { buildAiHuntEventAnimQueue } from './animQueueCore';
-import { buildBewitchForcedCardQueue, buildInspectionEventFlow, buildSphinxResultQueue, buildGraveDigTransferStep, swapCardsSteps } from './animQueueHelpers';
+import { buildBewitchForcedCardQueue, buildInspectionEventFlow, buildSphinxResultQueue, buildGraveDigTransferStep, swapCardsSteps, deriveHandTransferSnapshot } from './animQueueHelpers';
 import { copyPlayers } from './coreUtils';
 import { statEventsToAnimQueue } from './statEvents';
 import { assertValidRuleResolutionEvents, orderRuleResolutionEvents, statEventIdentity, validateRuleResolutionEvents } from './ruleResolutionTransaction';
@@ -598,6 +598,8 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
           givenCard: hideCards ? null : (event.givenCard || null),
           msgs: event.msgs || [],
           playersBefore: event.beforePlayers || previousState?.players || null,
+          playersAfter: event.afterPlayers || null,
+          discardAfter: event.afterDiscard || null,
           zhuLight: previousState?.zhuLight || state?.zhuLight || null,
         }),
       ];
@@ -680,6 +682,16 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
           .flatMap(item => item.steps),
       ], acceptanceEvents);
       const settlementQueue = [...encounterQueue, ...acceptanceQueue];
+      // 飞牌飞行中段提交“仅换牌”的手牌快照;事件级 playersAfter 含全部结算
+      // 后果(全场扣SAN、死亡等),提前锁入会让结算表现跑在对应动画前面。
+      const giftPlayersAfter = Array.isArray(event.playersBefore)
+        ? deriveHandTransferSnapshot(event.playersBefore, {
+            fromPid: event.sourceIdx,
+            toPid: event.targetIdx,
+            card: event.card,
+            toHand: !!event.card && !event.card.isGod,
+          })
+        : null;
       return buildBewitchForcedCardQueue(
         event.sourceIdx,
         event.targetIdx,
@@ -689,6 +701,9 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
         event.msgs || [],
         {
           ...(Array.isArray(event.playersBefore) ? { skillVisualSetupPatch: { players: event.playersBefore } } : {}),
+          ...(Array.isArray(event.playersBefore) && giftPlayersAfter
+            ? { transferSnapshots: { playersBefore: event.playersBefore, playersAfter: giftPlayersAfter } }
+            : {}),
           playersAfter: event.playersAfter || state?.players,
           zhuLightBefore: event.zhuLightBefore || previousState?.zhuLight || null,
           zhuLightAfter: event.zhuLightAfter || state?.zhuLight || null,

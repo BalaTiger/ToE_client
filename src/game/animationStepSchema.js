@@ -193,10 +193,60 @@ export function assertCompleteThrowStoneTransactions(queue = []) {
   return queue;
 }
 
+const HAND_COMMIT_TRANSPARENT_TYPES = new Set(['STATE_PATCH', 'VISUAL_LOCK']);
+
+function isHandTransferStep(step) {
+  if (!step || typeof step !== 'object') return false;
+  if (step.type === 'CARD_TRANSFER') {
+    return (Number.isInteger(step.fromPid) && step.fromPid >= 0) || step.dest === 'player';
+  }
+  if (step.type === 'DISCARD') return step.targetPid != null || step.fromPid != null;
+  return false;
+}
+
+function stepCommitsPlayers(step) {
+  if (!step || typeof step !== 'object') return false;
+  if (HAND_COMMIT_TRANSPARENT_TYPES.has(step.type)) return Array.isArray(step.players);
+  return Array.isArray(step.visualTimeline)
+    && step.visualTimeline.some(point => Array.isArray(point?.patch?.players));
+}
+
+// 手牌区渲染自动画锁快照:涉及手牌的转移/弃牌步骤必须在飞行中段
+// (visualTimeline)或紧随的 STATE_PATCH/VISUAL_LOCK 提交 after 快照,
+// 否则手牌显示会一直停在 before,直到队列里更晚的某个补丁或队列提交才刷新。
+// 连续的转移步骤视为同一次视觉交换,任一步骤提交即覆盖整组。
+export function validateHandTransferCommits(queue = []) {
+  const steps = Array.isArray(queue) ? queue : [];
+  const issues = [];
+  steps.forEach((step, stepIndex) => {
+    if (!isHandTransferStep(step) || step.deferHandCommit) return;
+    if (stepCommitsPlayers(step)) return;
+    let cursor = stepIndex + 1;
+    while (cursor < steps.length
+      && isHandTransferStep(steps[cursor])
+      && !steps[cursor].deferHandCommit) {
+      if (stepCommitsPlayers(steps[cursor])) return;
+      cursor += 1;
+    }
+    while (cursor < steps.length && HAND_COMMIT_TRANSPARENT_TYPES.has(steps[cursor]?.type)) {
+      if (stepCommitsPlayers(steps[cursor])) return;
+      cursor += 1;
+    }
+    // 队列提交会在最后一个可视步骤结束后立即刷新手牌,无需步骤级补丁。
+    if (cursor >= steps.length) return;
+    issues.push(issue('HAND_TRANSFER_MISSING_AFTER_COMMIT', stepIndex, {
+      type: step.type,
+      nextStepType: steps[cursor]?.type || null,
+    }));
+  });
+  return issues;
+}
+
 export function prepareAnimationQueueSteps(queue = []) {
   const sourceIssues = [
     ...validateAnimationQueueSteps(queue, { allowCombined: true }),
     ...validateThrowStoneTransactions(queue),
+    ...validateHandTransferCommits(queue),
   ];
   const steps = normalizeAnimationQueueSteps(queue);
   const normalizedIssues = validateAnimationQueueSteps(steps);

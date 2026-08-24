@@ -1004,4 +1004,49 @@ describe('visualEventTransactionCompiler', () => {
     expect(types.indexOf('SAN_DAMAGE')).toBeGreaterThan(2);
     expect(types.findLastIndex(type => type === 'DRAW_CARD')).toBeGreaterThan(types.indexOf('SAN_DAMAGE'));
   });
+
+  it('蛊惑赠牌的飞牌步骤在飞行中段提交仅换牌的手牌快照,不等全场扣SAN', () => {
+    const gift = { id: 'echo-card', name: '空谷传音', type: 'allDamageSAN', val: 1 };
+    const before = [
+      player('你', { hand: [gift, { id: 'keep-1', name: '火把' }] }),
+      player('艾伦', { hand: [{ id: 'ai-1', name: '石板' }] }),
+    ];
+    // 事件级 playersAfter 含全场扣SAN结算,不能直接用于飞牌中途提交
+    const after = [
+      player('你', { san: 9, hand: [{ id: 'keep-1', name: '火把' }] }),
+      player('艾伦', { san: 9, hand: [{ id: 'ai-1', name: '石板' }, gift] }),
+    ];
+    const statEvent = createStatEventsEvent({ statEvents: [
+      { type: 'SAN_LOSS', target: 0, from: { hp: 10, san: 10 }, to: { hp: 10, san: 9 }, reason: '空谷传音', seq: 1 },
+      { type: 'SAN_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 10, san: 9 }, reason: '空谷传音', seq: 1 },
+    ] });
+    const event = createBewitchGiftEvent({
+      sourceIdx: 0,
+      targetIdx: 1,
+      targetName: '艾伦',
+      card: gift,
+      playersBefore: before,
+      playersAfter: after,
+      settlementEvents: [statEvent],
+    });
+
+    const transaction = compileVisualEventToAnimTransaction(event, { players: after }, { players: before });
+    const transfer = transaction.queue.find(step => step.type === 'CARD_TRANSFER');
+
+    expect(transfer.visualSetupTiming).toBe('stepStart');
+    expect(transfer.visualSetupPatch.players).toBe(before);
+    const afterPoint = (transfer.visualTimeline || []).find(point => Array.isArray(point?.patch?.players));
+    expect(afterPoint).toBeTruthy();
+    expect(afterPoint.atMs).toBeGreaterThan(0);
+    // 换牌已生效
+    expect(afterPoint.patch.players[0].hand.map(card => card.id)).toEqual(['keep-1']);
+    expect(afterPoint.patch.players[1].hand.map(card => card.id)).toEqual(['ai-1', 'echo-card']);
+    // 但不带入 SAN 结算
+    expect(afterPoint.patch.players[0].san).toBe(10);
+    expect(afterPoint.patch.players[1].san).toBe(10);
+    // 播放边界校验不再对蛊惑队列报缺提交
+    const handCommitIssues = prepareAnimationQueueSteps(transaction.queue).issues
+      .filter(item => item.code === 'HAND_TRANSFER_MISSING_AFTER_COMMIT');
+    expect(handCommitIssues).toEqual([]);
+  });
 });

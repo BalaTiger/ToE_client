@@ -248,8 +248,11 @@ events through `legacySeq` or log text. The AI final boundary never calls the
 legacy final-state `mergeApophisTargetQueue`, leaving the transaction compiler
 as the only ordering authority.
 
-## HP/SAN Presentation Boundary
+## Hand-Transfer Presentation Boundary
 
+Hand areas render from the animation-locked `visualPlayers` snapshot during queued playback, so a hand-affecting `CARD_TRANSFER`/`DISCARD` step must commit its after snapshot itself: pass `playersBefore`/`playersAfter` (and discard pairs) to `cardTransferStep`/`swapCardsSteps`/`fullHandSwapSteps`, which attach a stepStart `visualSetupPatch` plus a mid-flight `visualTimeline` commit. The after snapshot must be transfer-scoped (`deriveHandTransferSnapshot`), never the event-level `playersAfter`, which already contains later settlements (SAN loss, deaths) whose animations have not played yet. `validateHandTransferCommits` in `animationStepSchema.js` reports (DEV) any hand transfer with no mid-flight commit and no immediately following `STATE_PATCH`/`VISUAL_LOCK`; steps with a legitimate late commit (e.g. hunt loot) opt out explicitly via `deferHandCommit`.
+
+## HP/SAN Presentation Boundary
 Authoritative HP/SAN remain in `gs.players`, but battle stat bars render from
 `displayStats`. During an animation transaction:
 

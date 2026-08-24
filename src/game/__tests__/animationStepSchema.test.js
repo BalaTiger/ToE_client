@@ -4,6 +4,7 @@ import {
   normalizeAnimationQueueSteps,
   prepareAnimationQueueSteps,
   validateAnimationQueueSteps,
+  validateHandTransferCommits,
   validateThrowStoneTransactions,
 } from '../animationStepSchema';
 
@@ -182,5 +183,59 @@ describe('animationStepSchema', () => {
 
     expect(validateThrowStoneTransactions(queue)).toEqual([]);
     expect(assertCompleteThrowStoneTransactions(queue)).toBe(queue);
+  });
+});
+
+describe('validateHandTransferCommits', () => {
+  const players = [{ name: '你', hand: [] }];
+
+  it('裸飞牌步骤后紧跟其他可视步骤时报告缺提交', () => {
+    const queue = [
+      { type: 'SKILL_BEWITCH', targetIdx: 1 },
+      { type: 'CARD_TRANSFER', fromPid: 0, dest: 'player', toPid: 1, count: 1 },
+      { type: 'SAN_DAMAGE', hitIndices: [0, 1] },
+    ];
+
+    expect(validateHandTransferCommits(queue)).toEqual([
+      expect.objectContaining({
+        code: 'HAND_TRANSFER_MISSING_AFTER_COMMIT',
+        stepIndex: 1,
+        nextStepType: 'SAN_DAMAGE',
+      }),
+    ]);
+    expect(prepareAnimationQueueSteps(queue).issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'HAND_TRANSFER_MISSING_AFTER_COMMIT' }),
+    ]));
+  });
+
+  it('飞行中段 timeline 提交、紧随 STATE_PATCH、队列末尾与显式豁免均不报告', () => {
+    const timelines = [
+      { type: 'CARD_TRANSFER', fromPid: 0, dest: 'player', toPid: 1, count: 1, visualTimeline: [{ atMs: 360, patch: { players } }] },
+      { type: 'SAN_DAMAGE', hitIndices: [0] },
+    ];
+    const statePatch = [
+      { type: 'CARD_TRANSFER', fromPid: 0, dest: 'player', toPid: 1, count: 1 },
+      { type: 'STATE_PATCH', players },
+      { type: 'SAN_DAMAGE', hitIndices: [0] },
+    ];
+    const atQueueEnd = [
+      { type: 'SAN_DAMAGE', hitIndices: [0] },
+      { type: 'CARD_TRANSFER', fromPid: 0, dest: 'player', toPid: 1, count: 1 },
+    ];
+    const deferred = [
+      { type: 'CARD_TRANSFER', fromPid: 2, dest: 'player', toPid: 1, count: 1, deferHandCommit: true },
+      { type: 'DISCARD', targetPid: 2, count: 1 },
+    ];
+    const swapPair = [
+      { type: 'CARD_TRANSFER', fromPid: 1, dest: 'player', toPid: 0, count: 1 },
+      { type: 'CARD_TRANSFER', fromPid: 0, dest: 'player', toPid: 1, count: 1, visualTimeline: [{ atMs: 360, patch: { players } }] },
+      { type: 'SAN_DAMAGE', hitIndices: [0] },
+    ];
+
+    expect(validateHandTransferCommits(timelines)).toEqual([]);
+    expect(validateHandTransferCommits(statePatch)).toEqual([]);
+    expect(validateHandTransferCommits(atQueueEnd)).toEqual([]);
+    expect(validateHandTransferCommits(deferred)).toEqual([]);
+    expect(validateHandTransferCommits(swapPair)).toEqual([]);
   });
 });

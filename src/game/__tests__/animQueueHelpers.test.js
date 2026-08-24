@@ -14,6 +14,7 @@ import {
   insertHuntResolutionStatePatch,
   mergePlayerStatsIntoSnapshot,
   consumeRetainedRandomTargetEvents,
+  deriveHandTransferSnapshot,
   prepareWorshipHighlight,
   resolveTurnHighlightForStep,
   swapCardsSteps,
@@ -814,6 +815,46 @@ describe('animQueueHelpers', () => {
       dest: 'discard',
       faceUp: true,
     });
+  });
+
+  it('飞牌步骤携带 before/after 快照时自动生成起始锁与飞行中段提交', () => {
+    const before = [makePlayer({ name: '你', hand: [{ id: 'a' }] }), makePlayer({ name: '艾伦', hand: [] })];
+    const after = [makePlayer({ name: '你', hand: [] }), makePlayer({ name: '艾伦', hand: [{ id: 'a' }] })];
+
+    expect(cardTransferStep({
+      fromPid: 0, dest: 'player', toPid: 1, count: 1,
+      playersBefore: before, playersAfter: after,
+    })).toEqual({
+      type: 'CARD_TRANSFER',
+      fromPid: 0,
+      dest: 'player',
+      toPid: 1,
+      count: 1,
+      visualSetupTiming: 'stepStart',
+      visualSetupPatch: { players: before },
+      visualTimeline: [{ atMs: 360, patch: { players: after } }],
+    });
+  });
+
+  it('转移作用域快照只应用换牌本身,不带入后续结算', () => {
+    const gift = { id: 'echo', name: '空谷传音' };
+    const before = [
+      makePlayer({ name: '你', san: 10, hand: [gift, { id: 'keep' }] }),
+      makePlayer({ name: '艾伦', san: 10, hand: [{ id: 'ai-card' }] }),
+    ];
+
+    const snapshot = deriveHandTransferSnapshot(before, { fromPid: 0, toPid: 1, card: gift });
+    expect(snapshot[0].hand.map(card => card.id)).toEqual(['keep']);
+    expect(snapshot[1].hand.map(card => card.id)).toEqual(['ai-card', 'echo']);
+    expect(snapshot[0].san).toBe(10);
+    expect(snapshot[1].san).toBe(10);
+    // 原快照不被修改
+    expect(before[0].hand).toHaveLength(2);
+
+    // god 牌被蛊惑后直接遭遇,不进入目标手牌
+    const godSnapshot = deriveHandTransferSnapshot(before, { fromPid: 0, toPid: 1, card: gift, toHand: false });
+    expect(godSnapshot[0].hand.map(card => card.id)).toEqual(['keep']);
+    expect(godSnapshot[1].hand.map(card => card.id)).toEqual(['ai-card']);
   });
 
   it('整手交换 helper 可统一生成视觉锁和双向飞牌', () => {

@@ -107,7 +107,9 @@ export function buildAiHuntEventAnimQueue(evt, actorName, options = {}) {
       const discardMsgs = followupMsgs.filter(line => /衍生牌|黑山羊幼仔/.test(line || ''));
       const cardsTaken = Number.isFinite(evt.lootTransferCount) ? evt.lootTransferCount : 0;
       if (cardsTaken > 0) {
-        perHuntQueue.push(cardTransferStep({ fromPid: evt.targetIdx, dest: 'player', toPid: evt.hunterIdx, count: cardsTaken, msgs: lootMsgs }));
+        // deferHandCommit: 战利品牌身份对旁观者不可见,无法构造转移作用域快照;
+        // 手牌提交由紧随战利品弃牌之后的 STATE_PATCH(evt.afterPlayers)完成。
+        perHuntQueue.push(cardTransferStep({ fromPid: evt.targetIdx, dest: 'player', toPid: evt.hunterIdx, count: cardsTaken, msgs: lootMsgs, deferHandCommit: true }));
       } else if (lootMsgs.length) {
         perHuntQueue.push({ type: 'TURN_BOUNDARY_PAUSE', _logChunk: lootMsgs });
       }

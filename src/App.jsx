@@ -2690,7 +2690,7 @@ export default function Game(){
             const dedupedActionStatQ=actionStatQ.filter(s=>!(['GUILLOTINE','DEATH','HP_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','SAN_DAMAGE'].includes(s.type)&&(s.hitIndices||[]).some(i=>huntStatHitSet.has(i))));
             orderedActionQ=mergeActionQueueByLogOrder(dedupedActionStatQ,huntEventQueue);
           } else {
-            orderedActionQ=actionStatQ;
+            orderedActionQ=[...actionStatQ,...huntEventQueue];
           }
         }
         else if(actionReplayMetadata.visualEvents.some(event=>(
@@ -5898,7 +5898,7 @@ export default function Game(){
       const queue=[
         ...fullHandSwapSteps({
           fromPid:actorIdx,toPid:ti,fromCount:actorHandCountBefore,toCount:targetHandCountBefore,
-          msgs:[L[L.length-1]],playersBefore:gs.players,zhuLight:gs.zhuLight||null,
+          msgs:[L[L.length-1]],playersBefore:gs.players,playersAfter:P,zhuLight:gs.zhuLight||null,
         }),
         ...compileFreshVisualEventQueue(gs,pendingWinGs,{excludedStepTypes:['CARD_TRANSFER','SKILL_SWAP']}),
       ];
@@ -5921,6 +5921,7 @@ export default function Game(){
       toCount:targetHandCountBefore,
       msgs:[L[L.length-1]],
       playersBefore:gs.players,
+      playersAfter:P,
       zhuLight:gs.zhuLight||null,
     });
     const statQ=compileFreshVisualEventQueue(gs,newGs,{excludedStepTypes:['CARD_TRANSFER']});
@@ -7863,7 +7864,7 @@ export default function Game(){
       ...swapCardsSteps({
         sourceIdx:0,targetIdx:swapTi,sourceCount:1,targetCount:1,
         takenCard,givenCard:given,msgs:resolvedSwapMsgs,
-        playersBefore:gs.players,zhuLight:gs.zhuLight||null,
+        playersBefore:gs.players,playersAfter:P,zhuLight:gs.zhuLight||null,
       }),
       ...compileFreshVisualEventQueue(gs,nextGs,{excludedStepTypes:['CARD_TRANSFER','SKILL_SWAP']}),
     ];
@@ -7915,7 +7916,7 @@ export default function Game(){
     const newGs={...gs,players:P,drawReveal:null,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...(win?{gameOver:win}:{})};
     const swapSteps=[
       {type:'VISUAL_LOCK',players:gs.players,zhuLight:gs.zhuLight||null},
-      cardTransferStep({fromPid:0,dest:'player',toPid:swapTi,count:1,msgs:[L[L.length-1]]}),
+      cardTransferStep({fromPid:0,dest:'player',toPid:swapTi,count:1,msgs:[L[L.length-1]],playersAfter:P}),
     ];
     const statQ=compileFreshVisualEventQueue(gs,newGs,{excludedStepTypes:['CARD_TRANSFER']});
     const swapMsgs=extractSkillLogs(L.slice(gs.log.length),'swap');
