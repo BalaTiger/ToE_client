@@ -2356,7 +2356,18 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     },
     albinoCreature: () => {
       const hand = actor.hand || [];
-      const fireCards = hand.filter(c => cardContainsFireText(c));
+      // During an Endless Corridor replay the resolving card is intentionally
+      // still in the actor's hand while its effect is applied.  Do not let
+      // Albino Creature match its own description (which contains "火").
+      // Exclude the current instance by identity and, for cloned snapshots,
+      // by its unique card id.  This avoids mutating the hand just to hide the
+      // card and keeps the state diff limited to the actual effect.
+      const resolvingCardId = card?.id;
+      const fireCards = hand.filter(candidate => (
+        candidate !== card
+        && !(resolvingCardId != null && candidate?.id === resolvingCardId)
+        && cardContainsFireText(candidate)
+      ));
       if (fireCards.length > 0) {
         if (isAI) {
           const chosenCard = fireCards[Math.floor(Math.random() * fireCards.length)];

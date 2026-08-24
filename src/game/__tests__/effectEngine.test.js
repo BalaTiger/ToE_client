@@ -914,6 +914,25 @@ describe('applyFx', () => {
     expect(sanIdx).toBeGreaterThan(randomIdx);
   });
 
+  it('albinoCreature: 无尽通道重播时不把正在结算的白化生物当作火牌', () => {
+    const albino = { id: 'albino-1', type: 'albinoCreature', name: '白化生物', desc: '亮出带有"火"字的一张手牌' };
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '卡洛斯', hand: [albino, { id: 'plain', name: '无尽通道' }] }),
+      makePlayer({ name: '艾伦' }),
+    ];
+    const gs = makeGs({ players: copyPlayers(players), currentTurn: 1, _randomTargetSeq: 0, _statEventSeq: 0 });
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+
+    const res = applyFx(albino, 1, null, copyPlayers(players), [], [], gs, false, [], true);
+    randomSpy.mockRestore();
+
+    expect(res.msgs).toContain('【白化生物】卡洛斯 没有带"火"字的手牌，失去 2 HP 和 2 SAN');
+    expect(res.msgs.some(msg => msg.includes('亮出了') && msg.includes('白化生物'))).toBe(false);
+    expect(res.P[1]).toMatchObject({ hp: 8, san: 8 });
+    expect(res.statePatch._randomTargetEvent).toBeUndefined();
+  });
+
   it('decipherStoneCarving: 玩家收入后进入解读阶段', () => {
     const players = makeStandardPlayers(3);
     const deck = [makeZoneCard('A1', 0), makeZoneCard('B2', 0), makeGodCard('NYA')];

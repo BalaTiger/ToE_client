@@ -378,7 +378,7 @@ import { loadEffectImage } from './components/anim/effectNoise';
 import { ApophisNightBadge } from './components/anim/ApophisOverlays';
 import { formatFileSize, useResourcePreload } from './hooks/useResourcePreload';
 import { useMultiplayerLobby } from './hooks/useMultiplayerLobby';
-import { useAnimationQueue } from './hooks/useAnimationQueue';
+import { isAnimationTraceEnabled, useAnimationQueue } from './hooks/useAnimationQueue';
 import { useDecisionTransaction } from './hooks/useDecisionTransaction';
 import { useGlobalShakeEffects } from './hooks/useGlobalShakeEffects';
 import { useCardTransferAnimationEffects } from './hooks/useCardTransferAnimationEffects';
@@ -1737,6 +1737,20 @@ export default function Game(){
   useEffect(()=>{
     if(typeof document==='undefined')return;
     const handleVisibilityChange=()=>{
+      try{
+        if(isAnimationTraceEnabled()){
+          console.log('[ANIM-TRACE] visibility',JSON.stringify({
+            visibilityState:document.visibilityState,
+            anim:anim?.type||null,
+            animPlaybackId:anim?._playbackId||null,
+            animExiting,
+            queueLength:animQueueRef.current.length,
+            queueHead:animQueueRef.current[0]?.type||null,
+            pendingPhase:pendingGsRef.current?.phase||null,
+            pendingTurn:pendingGsRef.current?.currentTurn??null,
+          }));
+        }
+      }catch{/* diagnostic logging must not affect playback */}
       if(document.visibilityState!=='visible')return;
       clearSkillAnimations();
       clearCardTransferAnimations();
@@ -1745,7 +1759,7 @@ export default function Game(){
     };
     document.addEventListener('visibilitychange',handleVisibilityChange);
     return()=>document.removeEventListener('visibilitychange',handleVisibilityChange);
-  },[clearSkillAnimations,clearCardTransferAnimations,clearDamageAnimations]);
+  },[anim,animExiting,animQueueRef,pendingGsRef,clearSkillAnimations,clearCardTransferAnimations,clearDamageAnimations]);
 
   const isDrawnCardActuallyDiscarded=useCallback((stateLike,drawnCard)=>{
     if(!(stateLike?._animDiscardedDrawnCard ?? stateLike?._discardedDrawnCard) || !drawnCard)return false;

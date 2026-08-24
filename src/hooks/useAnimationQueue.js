@@ -29,6 +29,38 @@ import {
   ANIMATION_QUEUE_AUTHORITY,
   getAnimationQueueVisualEventIds,
 } from '../game/visualEventTransactionCompiler';
+
+// Diagnostic tracing is opt-in so normal games do not pay for verbose queue
+// logging. Enable in a development console with:
+//   globalThis.__TOE_TRACE_ANIM = true
+export function isAnimationTraceEnabled() {
+  try {
+    if (globalThis.__TOE_TRACE_ANIM) return true;
+    // The in-app browser may expose a non-extensible global object, so allow
+    // diagnostics to be enabled without mutating window from a console.
+    if (typeof location !== 'undefined') {
+      const params = new URLSearchParams(location.search || '');
+      if (params.get('toeTraceAnim') === '1') return true;
+    }
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('toeTraceAnim') === '1') {
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function traceAnimationQueue(stage, payload = {}) {
+  if (!isAnimationTraceEnabled()) return;
+  try {
+    // Serialize the payload so browser console collectors retain the fields
+    // (many render a plain object only as "Object").
+    console.log('[ANIM-TRACE]', stage, JSON.stringify(payload));
+  } catch {
+    // Diagnostic logging must never affect playback.
+  }
+}
 export {
   collectPendingVisualEventIds,
   getRuleEventCompileIds,
@@ -176,9 +208,25 @@ export function useAnimationQueue({
   }
 
   function advanceQueue() {
+    traceAnimationQueue('advance:enter', {
+      activeAnim: anim?.type || null,
+      activePlaybackId: anim?._playbackId || null,
+      queueLength: animQueueRef.current.length,
+      queueHead: animQueueRef.current[0]?.type || null,
+      pendingPhase: pendingGsRef.current?.phase || null,
+      pendingTurn: pendingGsRef.current?.currentTurn ?? null,
+      lifecycle: queueLifecycleRef.current.phase,
+    });
     setAnimExiting(false);
     if (animQueueRef.current.length > 0) {
       const next = animQueueRef.current.shift();
+      traceAnimationQueue('advance:step', {
+        step: next?.type || null,
+        playbackId: next?._playbackId || null,
+        remaining: animQueueRef.current.length,
+        pendingPhase: pendingGsRef.current?.phase || null,
+        pendingTurn: pendingGsRef.current?.currentTurn ?? null,
+      });
       if (next.type === 'STATE_PATCH') {
         revealAnimLogs(next);
         visualStateLocks.clear({players:true,zhuLight:true});
@@ -225,6 +273,12 @@ export function useAnimationQueue({
         revealAnimLogs(displayStep);
       }
     } else {
+      traceAnimationQueue('advance:commit', {
+        pendingPhase: pendingGsRef.current?.phase || null,
+        pendingTurn: pendingGsRef.current?.currentTurn ?? null,
+        hasCallback: !!animCallbackRef.current,
+        lifecycle: queueLifecycleRef.current.phase,
+      });
       sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.COMMIT_STARTED);
       const next = pendingGsRef.current;
       const normalizedNext = normalizePendingState(next);
@@ -251,10 +305,21 @@ export function useAnimationQueue({
       if (callback) {
         const pendingBeforeCallback = pendingGsRef.current;
         const callbackBeforeCallback = animCallbackRef.current;
+        traceAnimationQueue('advance:callback-start', {
+          pendingPhase: pendingBeforeCallback?.phase || null,
+          pendingTurn: pendingBeforeCallback?.currentTurn ?? null,
+          queueLength: animQueueRef.current.length,
+        });
         try {
           callback();
         } catch (error) {
           callbackFailed = true;
+          traceAnimationQueue('advance:callback-error', {
+            message: error?.message || String(error),
+            queueLength: animQueueRef.current.length,
+            pendingPhase: pendingGsRef.current?.phase || null,
+            pendingTurn: pendingGsRef.current?.currentTurn ?? null,
+          });
           // The rule state has already been resolved. A presentation failure in
           // the chained queue must not strand the previous turn's visual locks
           // or leave the game permanently stuck at the callback boundary.
@@ -264,6 +329,14 @@ export function useAnimationQueue({
           pendingGsRef.current !== pendingBeforeCallback ||
           animCallbackRef.current !== callbackBeforeCallback ||
           animQueueRef.current.length > 0;
+        traceAnimationQueue('advance:callback-end', {
+          callbackFailed,
+          callbackStartedNextQueue,
+          queueLength: animQueueRef.current.length,
+          queueHead: animQueueRef.current[0]?.type || null,
+          pendingPhase: pendingGsRef.current?.phase || null,
+          pendingTurn: pendingGsRef.current?.currentTurn ?? null,
+        });
         if (!callbackFailed && callbackStartedNextQueue) {
           return;
         }
@@ -314,11 +387,26 @@ export function useAnimationQueue({
     const timers = [];
     const fireCue = cue => {
       const active = playbackRef.current;
-      if (
-        active.id !== playbackId ||
-        active.firedCueIds.has(cue.id) ||
-        !canFireAnimationCue(queueLifecycleRef.current, cue.kind)
-      ) return;
+      const skipReason = active.id !== playbackId
+        ? 'stale-playback'
+        : active.firedCueIds.has(cue.id)
+          ? 'already-fired'
+          : !canFireAnimationCue(queueLifecycleRef.current, cue.kind)
+            ? `lifecycle-${queueLifecycleRef.current.phase}`
+            : null;
+      if (skipReason) {
+        traceAnimationQueue('cue:skip', {
+          animType: anim?.type || null,
+          playbackId,
+          cueId: cue.id,
+          cueKind: cue.kind,
+          reason: skipReason,
+          lifecycle: queueLifecycleRef.current.phase,
+          queueLength: animQueueRef.current.length,
+          queueHead: animQueueRef.current[0]?.type || null,
+        });
+        return;
+      }
       active.firedCueIds.add(cue.id);
       if (cue.kind === 'visual') applyVisualPatch(cue.patch);
       else if (cue.kind === 'impact' && setDisplayStats) {
@@ -327,7 +415,27 @@ export function useAnimationQueue({
         sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.STEP_EXITED);
         setAnimExiting(true);
       } else if (cue.kind === 'advance') {
-        advanceQueue();
+        traceAnimationQueue('cue:advance', {
+          animType: anim?.type || null,
+          playbackId: anim?._playbackId || null,
+          atMs: cue.atMs,
+          elapsedMs: playback.elapsedMs,
+          queueLength: animQueueRef.current.length,
+          lifecycle: queueLifecycleRef.current.phase,
+        });
+        try {
+          advanceQueue();
+        } catch (error) {
+          traceAnimationQueue('cue:advance-error', {
+            animType: anim?.type || null,
+            playbackId: anim?._playbackId || null,
+            message: error?.message || String(error),
+            queueLength: animQueueRef.current.length,
+            pendingPhase: pendingGsRef.current?.phase || null,
+            pendingTurn: pendingGsRef.current?.currentTurn ?? null,
+          });
+          throw error;
+        }
       }
     };
     const cues = getPendingAnimationCues(
@@ -335,6 +443,17 @@ export function useAnimationQueue({
       playback.elapsedMs,
       playback.firedCueIds,
     );
+    traceAnimationQueue('playback:start', {
+      animType: anim.type,
+      playbackId: playbackId,
+      durationMs: anim.durationMs ?? null,
+      elapsedMs: playback.elapsedMs,
+      pendingCues: cues.map(cue => ({ id: cue.id, kind: cue.kind, delayMs: cue.delayMs })),
+      queueLength: animQueueRef.current.length,
+      pendingPhase: pendingGsRef.current?.phase || null,
+      pendingTurn: pendingGsRef.current?.currentTurn ?? null,
+      lifecycle: queueLifecycleRef.current.phase,
+    });
     cues.forEach(cue => {
       timers.push(setTimeout(() => fireCue(cue), cue.delayMs));
     });
@@ -343,6 +462,15 @@ export function useAnimationQueue({
       const active = playbackRef.current;
       if (active.id === playbackId && Number.isFinite(active.runningSinceMs)) {
         active.elapsedMs = advanceAnimationElapsed(active.elapsedMs, active.runningSinceMs, Date.now());
+        traceAnimationQueue('playback:cleanup', {
+          animType: anim?.type || null,
+          playbackId,
+          elapsedMs: active.elapsedMs,
+          queueLength: animQueueRef.current.length,
+          pendingPhase: pendingGsRef.current?.phase || null,
+          pendingTurn: pendingGsRef.current?.currentTurn ?? null,
+          lifecycle: queueLifecycleRef.current.phase,
+        });
         active.runningSinceMs = null;
       }
     };
@@ -360,6 +488,14 @@ export function useAnimationQueue({
       eventIds = [],
       preserveQueueOrder = false,
     } = transaction;
+    traceAnimationQueue('transaction:start', {
+      context: transaction.context || null,
+      queue: queue.map(step => step?.type || null),
+      nextPhase: nextGs?.phase || null,
+      nextTurn: nextGs?.currentTurn ?? null,
+      hasCallback: !!callback,
+      eventIds: eventIds.length,
+    });
     if (Array.isArray(queue) && queue.some(s => s?.type === 'EARTHQUAKE')) {
       try { console.log('[EQ-DEBUG] playAnimationTransaction received queue =', queue.map(s => s.type), '| hasCallback =', !!callback, '| nextGs.phase =', nextGs?.phase); } catch { /* noop */ }
     }
