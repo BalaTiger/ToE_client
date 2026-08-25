@@ -11,6 +11,11 @@ import {
 import { appendFinalStatePatch, finalStatePatch } from './animStatePatch';
 import { isLocalCurrentTurn, isLocalSeatIndex, localDisplayName } from './rotateState';
 import {
+  compileFreshBewitchVisualTransaction,
+  compileFreshHuntVisualTransaction,
+  compileFreshSwapVisualTransaction,
+} from './identitySkillVisualTransaction';
+import {
   buildTurnStartPreDrawEffectQueue,
   buildSkippedTurnReplayQueue,
   buildTsathogguaSlimeGrantQueue,
@@ -21,7 +26,6 @@ import {
 } from './turnAnimState';
 import {
   clearVisualEvents,
-  getVisualEvents,
   getVisualEventIdsFromState,
   getCardEffectVisualEvents,
   getBewitchGiftVisualEvent,
@@ -743,42 +747,41 @@ export function buildMpRemoteReplayAction({
     const hideSwapCards = swapEvent.sourceIdx !== 0 && swapEvent.targetIdx !== 0;
     const swapBeforePlayers = swapEvent.beforePlayers || previousGs?.players || null;
     const swapBeforeDiscard = swapEvent.beforeDiscard || previousGs?.discard || null;
+    const swapReplay = compileFreshSwapVisualTransaction(rotated, previousGs, {
+      hidePrivateCards: hideSwapCards,
+    });
     const swapLandingPatch = Array.isArray(swapEvent.afterPlayers)
       ? [finalStatePatch({
           players: swapEvent.afterPlayers,
           discard: swapEvent.afterDiscard || swapBeforeDiscard || rotated.discard,
         }, ['players', 'discard'])]
       : [];
-    const queue = withApophisTargetReplay([
-      ...compileVisualEventToAnimSteps(swapEvent, rotated, previousGs, { hidePrivateCards: hideSwapCards }),
+    const queue = [
+      ...(swapReplay?.transaction?.queue || []),
       ...swapLandingPatch,
       ...handLimitDiscardSteps,
       finalStatePatch(
         { ...rotated, drawReveal: null },
         ['players', 'discard', 'log', 'drawReveal', 'phase', 'abilityData'],
       ),
-    ], previousGs, rotated, compileFreshVisualEventQueue);
+    ];
     return withConsumedVisualEvents({
       type: MP_REMOTE_REPLAY.ANIM_QUEUE,
       maskedGs: buildMaskedActionState(rotated),
       pendingGs: clearRemoteReplayHints({ ...rotated, drawReveal: null }),
       queue,
+      consumedVisualEventIds: swapReplay?.transaction?.eventIds || [],
       visualLock: {
         players: swapBeforePlayers,
         zhuLight: previousGs?.zhuLight || rotated.zhuLight || null,
       },
     });
   }
-  const normalizedVisualEvents = getVisualEvents(rotated);
-  const freshVisualEvents = normalizedVisualEvents.filter(event => (
-    event?.id && !previousVisualEventIds.has(event.id)
-  ));
-  const freshHuntEvents = freshVisualEvents.filter(event => (
-    event?.type === VISUAL_EVENT.HUNT_TARGET
-    || event?.type === VISUAL_EVENT.HUNT_REVEAL
-    || event?.type === VISUAL_EVENT.HUNT_RESULT
-  ));
-  if (freshHuntEvents.length && !isDrawAnimationState) {
+  const huntReplay = !isDrawAnimationState
+    ? compileFreshHuntVisualTransaction(rotated, previousGs)
+    : null;
+  if (huntReplay) {
+    const { transaction, freshHuntEvents } = huntReplay;
     if (
       freshHuntEvents.every(event => event.type === VISUAL_EVENT.HUNT_REVEAL)
       && freshHuntEvents.every(event => event.targetIdx === 0)
@@ -788,25 +791,7 @@ export function buildMpRemoteReplayAction({
         gs: clearRemoteReplayHints(rotated),
       });
     }
-    const huntTransactionIds = new Set(freshHuntEvents.map(event => event?.transactionId).filter(Boolean));
-    const huntPhaseGroupIds = new Set(freshHuntEvents.flatMap(event => (
-      [event?.attemptId, event?.phaseGroupId].filter(Boolean)
-    )));
-    const huntDependencyIds = new Set(freshHuntEvents.flatMap(event => (
-      [event?.causedByEventId, event?.targetResolutionEventId].filter(Boolean)
-    )));
-    const ownedHuntEvents = freshVisualEvents.filter(event => (
-      freshHuntEvents.includes(event)
-      || huntDependencyIds.has(event?.id)
-      || (event?.transactionId && huntTransactionIds.has(event.transactionId))
-      || (event?.phaseGroupId && huntPhaseGroupIds.has(event.phaseGroupId))
-    ));
-    const huntCompileState = { ...rotated, _visualEvents: normalizedVisualEvents };
-    const transaction = compileRuleVisualEventsToAnimTransaction(huntCompileState, previousGs, {
-      eventIds: ownedHuntEvents.map(event => event.id),
-      allowTargetZero: true,
-    });
-    if (transaction?.queue?.length) {
+    if (transaction.queue.length) {
       const firstHuntEvent = freshHuntEvents[0];
       if (transaction.queue.length === 1) {
         return withConsumedVisualEvents({
@@ -861,19 +846,17 @@ export function buildMpRemoteReplayAction({
   const bewitchEvent = getBewitchGiftVisualEvent(rotated);
   if (bewitchEvent && !isDrawAnimationState && isFreshBewitchReplayEvent(bewitchEvent, logDelta)) {
     const oldGs = previousGs || buildMaskedActionState(rotated);
-    const compiledBewitch = compileVisualEventToAnimTransaction(bewitchEvent, rotated, oldGs, {
-      logDelta,
-      visualStatQueue: compileFreshVisualEventsToAnimSteps(rotated, null, [VISUAL_EVENT.STAT_EVENTS], { players: previousGs?.players || rotated.players }),
+    const bewitchReplay = compileFreshBewitchVisualTransaction(rotated, oldGs, {
       compileFreshVisualEventQueue,
     });
-    const queue = withApophisTargetReplay(compiledBewitch?.queue || [], previousGs, rotated, compileFreshVisualEventQueue);
-    const patchedQueue = appendFinalStatePatch(queue, rotated);
+    const patchedQueue = appendFinalStatePatch(bewitchReplay?.transaction?.queue || [], rotated);
     return withConsumedVisualEvents({
       type: MP_REMOTE_REPLAY.ANIM_QUEUE,
       maskedGs: buildMaskedActionState(rotated),
       pendingGs: clearRemoteReplayHints(rotated),
       queue: patchedQueue,
-      inspectionEvents: compiledBewitch?.inspectionEvents || [],
+      consumedVisualEventIds: bewitchReplay?.transaction?.eventIds || [],
+      inspectionEvents: bewitchReplay?.inspectionEvents || [],
     });
   }
   const previousCardEffectIds = new Set(getCardEffectVisualEvents(previousGs).map(event => event?.id).filter(Boolean));
