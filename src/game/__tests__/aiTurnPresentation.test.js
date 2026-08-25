@@ -373,7 +373,7 @@ describe('AI turn presentation helpers', () => {
     const end = source.indexOf('function _cthContinueRestDraws(', start);
     const handler = source.slice(start, end);
     expect(handler).toContain('pruneConsumedVisualEvents(');
-    expect(handler).toContain("consumedVisualEventIdsRef.current,\n      'tsg turn-start draw'");
+    expect(handler).toMatch(/consumedVisualEventIdsRef\.current,\s*'tsg turn-start draw'/);
     expect(handler).toContain('.filter(event=>!event?.id||!consumedVisualEventIdsRef.current.has(event.id))');
     expect(handler).toContain('compileRuleVisualEventsToAnimTransaction(');
     expect(handler).not.toContain('buildInspectionAwareAnimQueue(');
@@ -657,6 +657,17 @@ describe('AI turn presentation helpers', () => {
       'DRAW_CARD',
       'HP_HEAL',
     ]);
+  });
+
+  it('lets the canonical compiler own the AI swap transaction exactly once', () => {
+    const appPath = fileURLToPath(new URL('../../App.jsx', import.meta.url));
+    const source = fs.readFileSync(appPath, 'utf8');
+    const start = source.indexOf('const actionSwapEvent=');
+    const end = source.indexOf('const handLimitDiscardCards=', start);
+    const swapComposer = source.slice(start, end);
+    expect(swapComposer).toContain('{hidePrivateCards:hidePrivateSwapCards}');
+    expect(source).not.toContain('actionQWithoutCompiledSwap');
+    expect(source).not.toContain('excludeVisualEventSteps');
   });
 
   it('does not treat retained inspection metadata as part of a later throw-stone action', () => {

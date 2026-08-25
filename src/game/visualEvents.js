@@ -678,7 +678,17 @@ export function buildDiceResultSteps(event = {}) {
   ];
 }
 
-export function createHuntRevealEvent({ sourceIdx = 0, targetIdx = 0, card, msgs = [] } = {}) {
+export function createHuntRevealEvent({
+  sourceIdx = 0,
+  targetIdx = 0,
+  card,
+  msgs = [],
+  attemptId = null,
+  phaseGroupId = null,
+  phaseOrder = null,
+  transactionId = null,
+  order = null,
+} = {}) {
   if (!card) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.HUNT_REVEAL,
@@ -686,6 +696,11 @@ export function createHuntRevealEvent({ sourceIdx = 0, targetIdx = 0, card, msgs
     sourceIdx,
     targetIdx,
     card,
+    ...(attemptId ? { attemptId } : {}),
+    ...(phaseGroupId ? { phaseGroupId } : {}),
+    ...(phaseOrder != null ? { phaseOrder } : {}),
+    ...(transactionId ? { transactionId } : {}),
+    ...(order != null ? { order } : {}),
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'action');
 }

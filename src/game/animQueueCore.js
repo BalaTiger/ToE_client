@@ -69,9 +69,14 @@ export function buildAiHuntEventAnimQueue(evt, actorName, options = {}) {
   if (evt.discardedCard) {
     const discardChunk = takeFollowup(line => /^弃 \[/.test(line || ''));
     perHuntQueue.push({ type: 'DISCARD', card: evt.discardedCard, triggerName: actorName || '???', targetPid: evt.hunterIdx, _logChunk: discardChunk });
+    if (evt.resolutionPatch) {
+      perHuntQueue.push(statePatchStep(evt.resolutionPatch));
+    }
     if (evt.afterDiscardPlayers) {
       perHuntQueue.push(statePatchStep({ players: evt.afterDiscardPlayers, discard: evt.afterDiscardDiscard }));
     }
+  } else if (evt.resolutionPatch) {
+    perHuntQueue.push(statePatchStep(evt.resolutionPatch));
   }
   if (evt.beforePlayers && evt.afterPlayers) {
     const resultQueue = statEventsToAnimQueue(

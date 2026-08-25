@@ -93,7 +93,6 @@ import {
   ROLE_CULTIST,
   compileFreshVisualEventQueue,
   buildFullHandSwapTransferQueueFromLogs,
-  buildAiHuntEventAnimQueue,
   withClearedTurnAnimFields,
   withClearedReplayAnimFields,
   buildTurnStartDrawReplayQueue,
@@ -203,6 +202,7 @@ import {
   buildSinglePlayerAiTurnStartReplayContext,
   createTimedOutDrawDiscardEvent,
   createBewitchGiftEvent,
+  createSwapCardsEvent,
   createOrderedSettlementEvents,
   createApophisEclipseEvent,
   createGodPowerBlockedEvent,
@@ -215,13 +215,14 @@ import {
   grantTurnScopedGodPowerImmunity,
   createEndlessCorridorReplayEvent,
   createAnimTransactionEvent,
+  createHuntTargetEvent,
   createHuntRevealEvent,
   createHuntResultEvent,
+  createHandLimitDiscardEvent,
   createRandomTargetVisualEvent,
   createTsathogguaSlimeGrantEvent,
   createTurnDrawVisualEvents,
   createRuleResolutionTransaction,
-  buildHuntRevealStepFromVisualEvents,
   buildHuntRevealStepFromVisualEvent,
   pruneConsumedVisualEvents,
   chooseAiEtherealizeRedirectTarget,
@@ -317,7 +318,6 @@ import {
   buildOwnedAiHuntEventQueue,
   buildAiPresentationRecoveryState,
   buildRoseThornSnapshot,
-  buildScopedAiActionReplayState,
   bindVisualEventToSteps,
   collectExplicitAiTurnLogs,
   insertAiRestDiceBeforeSettlement,
@@ -334,7 +334,6 @@ import {
   getFreshInspectionReplayEvents,
   buildWorshipReplayBaselinePlayers,
   statePatchStep,
-  insertHuntResolutionStatePatch,
   prepareWorshipHighlight,
   consumeRetainedRandomTargetEvents,
   zhuHideCardStep,
@@ -343,7 +342,6 @@ import {
   buildGraveDigTransferStep,
   buildSphinxResultQueue,
   fullHandSwapSteps,
-  swapCardsSteps,
 } from "./game/animQueueHelpers";
 import {
   buildBewitchGiftReplay,
@@ -2576,9 +2574,18 @@ export default function Game(){
           playersBefore:afterInspectionPlayers,
           zhuLight:gs.zhuLight||null,
         });
+        const actionSwapEvent=(scopedActionVisualPatch._visualEvents||[]).find(event=>(
+          event?.type===VISUAL_EVENT.SWAP_CARDS
+          && event.sourceIdx!=null
+          && event.targetIdx!=null
+        ));
+        const hidePrivateSwapCards=!!actionSwapEvent
+          && actionSwapEvent.sourceIdx!==0
+          && actionSwapEvent.targetIdx!==0;
         const actionStatQBase=compileFreshVisualEventQueue(
           actionOldGsWithHuntTargetWatermark,
-          {...fakeGs(actionReplayPlayers,actionLogPreInspection),...scopedActionVisualPatch}
+          {...fakeGs(actionReplayPlayers,actionLogPreInspection),...scopedActionVisualPatch},
+          {hidePrivateCards:hidePrivateSwapCards},
         );
         const hasRoseThornGiftAllHand=actionReplayMetadata.visualEvents.some(event=>(
           event?.type===VISUAL_EVENT.CARD_MOVE&&event?.effect==='roseThornGiftAllHand'
@@ -2588,6 +2595,15 @@ export default function Game(){
           : hasRoseThornGiftAllHand
             ? actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')
           : actionStatQBase;
+        const compiledNestedInspectionEvents=(scopedActionVisualPatch._visualEvents||[])
+          .flatMap(event=>Array.isArray(event?.settlementEvents)?event.settlementEvents:[])
+          .filter(event=>event?.type===VISUAL_EVENT.INSPECTION);
+        if(compiledNestedInspectionEvents.length){
+          lastInspectionSeqRef.current=Math.max(
+            lastInspectionSeqRef.current,
+            ...compiledNestedInspectionEvents.map(event=>event?.legacySeq??event?.seq??0),
+          );
+        }
         const handLimitDiscardCards=_aiHandLimitDiscards||[];
         const handLimitDiscardQueue=handLimitDiscardCards.length?[{
           type:'DISCARD',
@@ -2657,48 +2673,10 @@ export default function Game(){
             return ai===bi?a.idx-b.idx:ai-bi;
           })
           .map(item=>item.step);
-        const hasActualSwap=actionReplayMetadata.visualEvents.some(event=>event?.type===VISUAL_EVENT.SWAP_CARDS);
         const hasFullHandSwap=actionReplayMetadata.visualEvents.some(event=>(
           event?.type===VISUAL_EVENT.CARD_MOVE&&event?.effect==='fullHandSwap'
         ));
-        if(hasActualSwap){
-          const swapEvent=actionReplayMetadata.visualEvents
-            .find(event=>event?.type==='swapCards'&&event.sourceIdx!=null&&event.targetIdx!=null);
-          const swapMsgs=extractSkillLogs(actionMsgs,'swap');
-          const swapIntroStep=bindVisualEventToSteps([{type:'SKILL_SWAP',msgs:swapMsgs}],swapEvent)[0];
-          const swapPlayersBefore=swapEvent?.beforePlayers||_playersBeforeSkillAction||afterInspectionPlayers;
-          // 本地玩家未参与的掉包（AI↔AI 或其他两名角色互换）不向本地观众暴露牌面，
-          // 飞行动画一律以背面展示
-          const hideSwapCards=swapEvent&&swapEvent.sourceIdx!==0&&swapEvent.targetIdx!==0;
-          const swapTransferSteps=swapEvent
-            ? bindVisualEventToSteps(swapCardsSteps({
-              sourceIdx:swapEvent.sourceIdx,
-              targetIdx:swapEvent.targetIdx,
-              sourceCount:swapEvent.sourceCount||1,
-              targetCount:swapEvent.targetCount||1,
-              takenCard:hideSwapCards?null:(swapEvent.takenCard||null),
-              givenCard:hideSwapCards?null:(swapEvent.givenCard||null),
-              msgs:swapEvent.msgs||swapMsgs,
-              playersBefore:swapPlayersBefore,
-              zhuLight:gs.zhuLight||null,
-            }),swapEvent)
-            : [];
-          if(swapTransferSteps.length){
-            const swapLandingPlayers=swapEvent?.afterPlayers||P_actionBeforeHandLimit;
-            const swapLandingDiscard=swapEvent?.afterDiscard||_aiHandLimitBeforeDiscard||_discardBeforeEndTurnReplay||newGs.discard;
-            const swapCommitStep=bindVisualEventToSteps([statePatchStep({
-              players:swapLandingPlayers,
-              discard:swapLandingDiscard,
-            })],swapEvent)[0];
-            const swapLogIdx=actionMsgs.findIndex(line=>/^.+对 .+ 【掉包】/.test(line||''));
-            const preSwapQ=actionStatQ.filter(step=>firstStepLogIndex(step)<swapLogIdx);
-            const postSwapQ=actionStatQ.filter(step=>firstStepLogIndex(step)>=swapLogIdx);
-            orderedActionQ=[...preSwapQ,swapIntroStep,...swapTransferSteps,swapCommitStep,...postSwapQ.filter(step=>step?.type!=='CARD_TRANSFER')];
-          }else{
-            orderedActionQ=mergeActionQueueByLogOrder(actionStatQ,swapIntroStep);
-          }
-        }
-        else if(huntEventQueue.length){
+        if(huntEventQueue.length){
           if(hasFullHandSwap){
             const huntStatHitSet=new Set(huntEventQueue.flatMap(s=>['GUILLOTINE','DEATH','HP_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','SAN_DAMAGE'].includes(s.type)?(s.hitIndices||[]):[]));
             const dedupedActionStatQ=actionStatQ.filter(s=>!(['GUILLOTINE','DEATH','HP_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','SAN_DAMAGE'].includes(s.type)&&(s.hitIndices||[]).some(i=>huntStatHitSet.has(i))));
@@ -2711,78 +2689,6 @@ export default function Game(){
           event?.type===VISUAL_EVENT.HUNT_TARGET||event?.type===VISUAL_EVENT.HUNT_RESULT
         ))){
           orderedActionQ=actionStatQ;
-        }
-        else {
-          const bewitchEvent=actionReplayMetadata.visualEvents.find(event=>
-            event?.type==='bewitchGift'
-            && event.sourceIdx===gs.currentTurn
-            && (event.msgs||[]).some(msg=>actionMsgs.includes(msg))
-          );
-          if(bewitchEvent){
-          const bwti=bewitchEvent.targetIdx;
-          const giftedCard=bewitchEvent.card||null;
-          const bewitchMsgs=bewitchEvent?.msgs?.length
-            ?bewitchEvent.msgs
-            :[];
-          const inspectionEvents=pendingActionInspectionEvents;
-          const inspectionFlow=inspectionEvents.length
-            ?buildInspectionEventFlow(
-              {players:P_actionPreInspection,log:actionLogPreInspection},
-              inspectionEvents,
-              {compileFreshVisualEventQueue,copyPlayers}
-            )
-            :{queue:[],players:P_actionPreInspection,log:actionLogPreInspection};
-          // 摸牌阶段的视觉效果事件（如半物质化 etherealizeGain）已在回合开始重放中播过；
-          // fakeGs 继承 gs._visualEvents 而 oldGs 没有，会被当作新事件在检定后重播，故此处清空。
-          const postInspectionQ=inspectionEvents.length
-            ?compileFreshVisualEventQueue(
-                {players:inspectionFlow.players,log:inspectionFlow.log,_statEventSeq:inspectionFlow.statEventSeq},
-                {
-                  ...fakeGs(P_actionEnd,actionLog),
-                  // 改信等结算可能发生在检定之后；这些 stat events 只存在于
-                  // aiStep 的最终状态，不能继续沿用本回合开始前的旧水位。
-                  _statEvents:newGs._statEvents||[],
-                  _statEventSeq:newGs._statEventSeq||0,
-                  _visualEvents:[],
-                }
-              )
-            :[];
-          if(giftedCard&&bwti>=0){
-            if(inspectionEvents.length){
-              lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
-            }
-            const replayNewGs=buildScopedAiActionReplayState({
-              state:{...fakeGs(P_actionEnd,actionLog),deck:newGs.deck},
-              players:P_actionEnd,
-              discard:_discardBeforeNextDraw||newGs.discard,
-              log:actionLog,
-              inspectionEvents:getFreshInspectionReplayEvents(newGs,{predicate:isCurrentTurnInspectionEvent}),
-              metadata:fullActionReplayMetadata,
-            });
-            const bewitchReplay=buildBewitchGiftReplay({
-              oldGs:actionOldGsWithHuntTargetWatermark,
-              newGs:replayNewGs,
-              bewitchEvent,
-            });
-            if(bewitchReplay.inspectionEvents.length){
-              lastInspectionSeqRef.current=Math.max(
-                lastInspectionSeqRef.current,
-                ...bewitchReplay.inspectionEvents.map(event=>event?.seq||0),
-              );
-            }
-            orderedActionQ=bindVisualEventToSteps(bewitchReplay.queue,bewitchEvent);
-          }else{
-            const bewitchStep=bindVisualEventToSteps([{
-              type:'SKILL_BEWITCH',msgs:bewitchMsgs,targetIdx:bwti>=0?bwti:1
-            }],bewitchEvent)[0];
-            if(inspectionEvents.length){
-              lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionEvents.map(ev=>ev.seq||0));
-              orderedActionQ=mergeActionQueueByLogOrder(actionStatQ,bewitchStep,inspectionFlow.queue,postInspectionQ);
-            }else{
-              orderedActionQ=mergeActionQueueByLogOrder(actionStatQ,bewitchStep);
-            }
-          }
-          }
         }
         // Inject custom animations for multiply and sphinx reveal
         const sphinxReveal=actionReplayMetadata.visualEvents
@@ -7873,15 +7779,26 @@ export default function Game(){
     const takenText=targetWasRevealed?cardLogText(takenCard,{alwaysShowName:true}):'暗抽牌';
     const L=[...gs.log,`拿走 ${takenText}，还给 ${P[swapTi].name} ${cardLogText(given,{alwaysShowName:true})}`];
     const resolvedSwapMsgs=L.slice(gs.log.length);
-    const buildResolvedLocalSwapQueue=nextGs=>[
-      {type:'SKILL_SWAP',msgs:resolvedSwapMsgs},
-      ...swapCardsSteps({
+    const swapIntroMsg=[...gs.log].reverse().find(line=>/^.+对 .+ 【掉包】/.test(line||''));
+    const swapEvent=createSwapCardsEvent({
         sourceIdx:0,targetIdx:swapTi,sourceCount:1,targetCount:1,
-        takenCard,givenCard:given,msgs:resolvedSwapMsgs,
-        playersBefore:gs.players,playersAfter:P,zhuLight:gs.zhuLight||null,
-      }),
-      ...compileFreshVisualEventQueue(gs,nextGs,{excludedStepTypes:['CARD_TRANSFER','SKILL_SWAP']}),
-    ];
+        takenCard,givenCard:given,msgs:[swapIntroMsg,...resolvedSwapMsgs].filter(Boolean),
+        beforePlayers:gs.players,afterPlayers:P,
+        beforeDiscard:gs.discard,afterDiscard:gs.discard,
+      });
+    const buildResolvedLocalSwapTransaction=nextGs=>{
+      const state={
+        ...nextGs,
+        _visualEvents:[
+          ...(Array.isArray(nextGs?._visualEvents)?nextGs._visualEvents:[]),
+          swapEvent,
+        ].filter(Boolean),
+      };
+      return{
+        state,
+        queue:compileFreshVisualEventQueue(gs,state),
+      };
+    };
     // 只有真正的寻宝者才能通过集齐全部编号获胜
     if(P[0].role==='寻宝者'&&isWinHand(P[0].hand)){
       const _wname=gs._isMP?gs.players[0].name:'你';
@@ -7901,15 +7818,17 @@ export default function Game(){
           ?(localIdx+(myPlayerIndexRef.current||0))%P.length
           :localIdx;
         const orderedLocalWinnerSeats=[0,swapTi].sort((a,b)=>originalSeatOf(a)-originalSeatOf(b));
-        const newGs={...gs,players:P,drawReveal:null,log:[...L,reason],abilityData:{},
+        let newGs={...gs,players:P,drawReveal:null,log:[...L,reason],abilityData:{},
           gameOver:{winner:'寻宝者',reason,winnerIdx:orderedLocalWinnerSeats[0],winnerIdx2:orderedLocalWinnerSeats[1]}};
-        const queue=buildResolvedLocalSwapQueue(newGs);
+        let queue;
+        ({state:newGs,queue}=buildResolvedLocalSwapTransaction(newGs));
         triggerSyncedAnimTransaction(queue,newGs,{context:'swapCards',barrier:'gameOver',msgs:resolvedSwapMsgs,beforePlayers:gs.players,beforeDiscard:gs.discard});
         return;
       }
-      const pendingWinGs={...gs,players:P,drawReveal:null,log:[...L,`${_wname}集齐了全部编号！`],abilityData:{winReason:`${_wname}通过掉包集齐了全部编号！`},
+      let pendingWinGs={...gs,players:P,drawReveal:null,log:[...L,`${_wname}集齐了全部编号！`],abilityData:{winReason:`${_wname}通过掉包集齐了全部编号！`},
         phase:'PLAYER_WIN_PENDING'};
-      const queue=buildResolvedLocalSwapQueue(pendingWinGs);
+      let queue;
+      ({state:pendingWinGs,queue}=buildResolvedLocalSwapTransaction(pendingWinGs));
       broadcastAnimTransaction(pendingWinGs,queue,{context:'swapCards',barrier:'decision',msgs:resolvedSwapMsgs,beforePlayers:gs.players,beforeDiscard:gs.discard});
       finishTutorialActionWithState(pendingWinGs,showTutorial?TUTORIAL_FLOW.TREASURE_MAP_ANIM:tutorialNext,queue);
       return;
@@ -7920,23 +7839,62 @@ export default function Game(){
       const tname=P[swapTi].name;
       const reason=`${tname} 获得了最后一张编号，寻宝者获胜！`;
       L.push(reason);
-      const newGs={...gs,players:P,drawReveal:null,log:L,abilityData:{},
+      let newGs={...gs,players:P,drawReveal:null,log:L,abilityData:{},
         gameOver:{winner:'寻宝者',reason,winnerIdx:swapTi},phase:'ACTION',skillUsed:true};
-      const queue=buildResolvedLocalSwapQueue(newGs);
+      let queue;
+      ({state:newGs,queue}=buildResolvedLocalSwapTransaction(newGs));
       triggerSyncedAnimTransaction(queue,newGs,{context:'swapCards',barrier:'gameOver',msgs:resolvedSwapMsgs,beforePlayers:gs.players,beforeDiscard:gs.discard});
       return;
     }
     const win=checkWin(P,gs._isMP);
-    const newGs={...gs,players:P,drawReveal:null,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...(win?{gameOver:win}:{})};
-    const swapSteps=[
-      {type:'VISUAL_LOCK',players:gs.players,zhuLight:gs.zhuLight||null},
-      cardTransferStep({fromPid:0,dest:'player',toPid:swapTi,count:1,msgs:[L[L.length-1]],playersAfter:P}),
-    ];
-    const statQ=compileFreshVisualEventQueue(gs,newGs,{excludedStepTypes:['CARD_TRANSFER']});
-    const swapMsgs=extractSkillLogs(L.slice(gs.log.length),'swap');
-    const queue=[{type:'SKILL_SWAP',msgs:swapMsgs},...swapSteps,...statQ];
+    let newGs={...gs,players:P,drawReveal:null,log:L,abilityData:{},phase:'ACTION',skillUsed:true,...(win?{gameOver:win}:{})};
+    let queue;
+    ({state:newGs,queue}=buildResolvedLocalSwapTransaction(newGs));
     broadcastAnimTransaction(newGs,queue,{context:'swapCards',barrier:'continuation',msgs:resolvedSwapMsgs,beforePlayers:gs.players,beforeDiscard:gs.discard});
     finishTutorialActionWithState(newGs,tutorialNext,queue);
+  }
+
+  function getHuntAttemptId(state,hunterIdx,targetIdx){
+    const recordedAttempt=[...(state?._visualEvents||[])].findLast(event=>(
+      (event?.type===VISUAL_EVENT.HUNT_TARGET||event?.type===VISUAL_EVENT.HUNT_REVEAL||event?.type===VISUAL_EVENT.HUNT_RESULT)
+      &&event?.attemptId
+      &&(hunterIdx==null||(event.sourceIdx??event.hunterIdx)===hunterIdx)
+      &&(targetIdx==null||event.targetIdx===targetIdx)
+    ));
+    return state?.abilityData?.huntPromptId
+      ||recordedAttempt?.attemptId
+      ||`hunt:${state?._turnKey??state?.turn??0}:${hunterIdx??state?.currentTurn??0}:${targetIdx??0}:${state?.log?.length??0}`;
+  }
+
+  function withHuntStageEvents(state,events,{attemptId,stage='settlement',barrier='decision'}={}){
+    const ownedEvents=(Array.isArray(events)?events:[]).filter(Boolean);
+    if(!ownedEvents.length)return state;
+    const resolvedAttemptId=attemptId||getHuntAttemptId(
+      state,
+      ownedEvents[0]?.sourceIdx??ownedEvents[0]?.hunterIdx,
+      ownedEvents[0]?.targetIdx,
+    );
+    const phaseOrderByType={
+      [VISUAL_EVENT.HUNT_TARGET]:0,
+      [VISUAL_EVENT.HUNT_REVEAL]:10,
+      [VISUAL_EVENT.HUNT_RESULT]:30,
+      [VISUAL_EVENT.HAND_LIMIT_DISCARD]:40,
+    };
+    const transaction=createRuleResolutionTransaction({
+      id:`${resolvedAttemptId}:${stage}`,
+      phase:`hunt:${stage}`,
+      barrier,
+      events:ownedEvents.map(event=>({
+        ...event,
+        attemptId:event.attemptId||resolvedAttemptId,
+        phaseGroupId:event.phaseGroupId||resolvedAttemptId,
+        phaseOrder:event.phaseOrder??phaseOrderByType[event.type]??0,
+      })),
+    });
+    return{
+      ...state,
+      _visualEvents:[...(state?._visualEvents||[]),...transaction.events],
+    };
   }
 
   function huntSelectTarget(ti){
@@ -7948,53 +7906,86 @@ export default function Game(){
     const night=resolveApophisTarget({gs,players:P,deck:D,discard:Disc,log:baseLog,actorIdx:0,selectedIdx:ti,legalTargets:legal,label:'选择【追捕】目标'});
     P=night.players;D=night.deck;Disc=night.discard;baseLog=night.log;ti=night.targetIdx;
     P[0].roleRevealed=true;
+    const huntAttemptId=`hunt:${gs._turnKey??gs.turn??0}:${gs.currentTurn??0}:${ti}:${gs.log.length}`;
+    const oldVisualEventIds=new Set((gs._visualEvents||[]).map(event=>event?.id).filter(Boolean));
+    const freshNightEvents=(night.statePatch?._visualEvents||[]).filter(event=>(
+      event&&(!event.id||!oldVisualEventIds.has(event.id))
+    ));
+    const buildHuntStageState=(state,stageEvents,barrier='decision')=>{
+      const events=createRuleResolutionTransaction({
+        id:huntAttemptId,
+        phase:'hunt',
+        barrier,
+        events:[...freshNightEvents,...stageEvents].filter(Boolean),
+      }).events;
+      return{
+        ...state,
+        _visualEvents:[...(gs._visualEvents||[]),...events],
+      };
+    };
     if(!hasHuntRevealableCard(P[ti])){
-      setGsWithApophisTargetAnim({...gs,players:P,deck:D,discard:Disc,phase:'ACTION',abilityData:{},log:[...baseLog,`${P[ti].name} 手中没有可亮出的暗牌，追捕失败`],...apophisNightPatch(night)});
+      const failureMsg=`${P[ti].name} 手中没有可亮出的暗牌，追捕失败`;
+      const targetEvent=createHuntTargetEvent({
+        sourceIdx:0,targetIdx:ti,msgs:[failureMsg],attemptId:huntAttemptId,
+        targetResolutionEventId:night.targetResolutionEventId,
+        beforePlayers:gs.players,afterPlayers:P,
+      });
+      const failureGs=buildHuntStageState({...gs,players:P,deck:D,discard:Disc,phase:'ACTION',abilityData:{},log:[...baseLog,failureMsg],...apophisNightPatch(night)},[targetEvent]);
+      const queue=compileFreshVisualEventQueue(gs,failureGs);
+      triggerSyncedAnimTransaction(queue,failureGs,{context:'huntTarget',barrier:'continuation',msgs:[failureMsg],beforePlayers:gs.players,beforeDiscard:gs.discard});
       return;
     }
     if(gs._isMP){
       // 多人游戏：目标是真人玩家，让目标自己选择亮出哪张牌（20秒超时随机）
       // 暂停房主回合计时器：进入 HUNT_WAIT_REVEAL 子阶段，目标玩家选完后恢复
-      const huntWaitGs={...gs,players:P,deck:D,discard:Disc,phase:'HUNT_WAIT_REVEAL',
+      const waitMsg=`你（追猎者）追捕 ${P[ti].name}，等待对方亮出一张手牌…`;
+      const targetEvent=createHuntTargetEvent({
+        sourceIdx:0,targetIdx:ti,msgs:[waitMsg],attemptId:huntAttemptId,
+        targetResolutionEventId:night.targetResolutionEventId,
+        beforePlayers:gs.players,afterPlayers:P,
+      });
+      const huntWaitGs=buildHuntStageState({...gs,players:P,deck:D,discard:Disc,phase:'HUNT_WAIT_REVEAL',
         abilityData:{
-          ...(gs.abilityData||{}),
-          huntTi:ti,
-          huntPromptId:`mp-hunt:${gs._turnKey??gs.turn??0}:${gs.currentTurn??0}:${ti}:${baseLog.length}`,
+           ...(gs.abilityData||{}),
+           huntTi:ti,
+           huntPromptId:huntAttemptId,
         },
-        log:[...baseLog,`你（追猎者）追捕 ${P[ti].name}，等待对方亮出一张手牌…`],...apophisNightPatch(night)};
-      const huntMsgs=extractSkillLogs(huntWaitGs.log.slice(gs.log.length),'hunt');
-      const huntWaitGsWithEvent=huntWaitGs;
-      const targetPrelude=compileApophisTargetPrelude(huntWaitGsWithEvent);
-      const queue=mergeApophisTargetQueue([...(targetPrelude?.queue||[]),{type:'SKILL_HUNT',targetIdx:ti,msgs:huntMsgs}],gs,huntWaitGsWithEvent);
-      triggerSyncedAnimTransaction(queue,huntWaitGsWithEvent,{context:'huntTarget',barrier:'decision',msgs:huntMsgs,beforePlayers:gs.players,beforeDiscard:gs.discard});
+        log:[...baseLog,waitMsg],...apophisNightPatch(night)},[targetEvent]);
+      const queue=compileFreshVisualEventQueue(gs,huntWaitGs);
+      triggerSyncedAnimTransaction(queue,huntWaitGs,{context:'huntTarget',barrier:'decision',msgs:[waitMsg],beforePlayers:gs.players,beforeDiscard:gs.discard});
       return;
     }
     // 单机/AI目标：由AI策略选择最优亮牌
     const knownHunterCards=P[ti]?.peekMemories?.[0]||[];
     const rc=aiChooseRevealCard(P[ti].hand,'你',gs.log,knownHunterCards);
     if(!rc){
-      setGsWithApophisTargetAnim({...gs,players:P,deck:D,discard:Disc,phase:'ACTION',abilityData:{},log:[...baseLog,`${P[ti].name} 手中没有可亮出的暗牌，追捕失败`],...apophisNightPatch(night)});
+      const failureMsg=`${P[ti].name} 手中没有可亮出的暗牌，追捕失败`;
+      const targetEvent=createHuntTargetEvent({
+        sourceIdx:0,targetIdx:ti,msgs:[failureMsg],attemptId:huntAttemptId,
+        targetResolutionEventId:night.targetResolutionEventId,
+        beforePlayers:gs.players,afterPlayers:P,
+      });
+      const failureGs=buildHuntStageState({...gs,players:P,deck:D,discard:Disc,phase:'ACTION',abilityData:{},log:[...baseLog,failureMsg],...apophisNightPatch(night)},[targetEvent]);
+      const queue=compileFreshVisualEventQueue(gs,failureGs);
+      triggerSyncedAnimTransaction(queue,failureGs,{context:'huntTarget',barrier:'continuation',msgs:[failureMsg],beforePlayers:gs.players,beforeDiscard:gs.discard});
       return;
     }
-    const huntConfirmGs={...gs,players:P,deck:D,discard:Disc,phase:'HUNT_CONFIRM',
-      abilityData:{...(gs.abilityData||{}),huntTi:ti,revCard:rc},
-      log:[...baseLog,`你（追猎者）追捕 ${P[ti].name}，${P[ti].name} 亮出 ${cardLogText(rc,{alwaysShowName:true})}`],...apophisNightPatch(night)};
-    // 动画位置测量交给 useEffect([anim]) 中的 SKILL_HUNT 分支（使用 data-pid，正确）
-    const huntMsgs=extractSkillLogs(huntConfirmGs.log.slice(gs.log.length),'hunt');
-    const revealEvent=createHuntRevealEvent({sourceIdx:0,targetIdx:ti,card:rc,msgs:[huntConfirmGs.log[huntConfirmGs.log.length-1]]});
-    const revealStep=buildHuntRevealStepFromVisualEvents({...huntConfirmGs,_visualEvents:[revealEvent].filter(Boolean)});
-    const targetPrelude=compileApophisTargetPrelude(huntConfirmGs);
-    const queue=mergeApophisTargetQueue([
-      ...(targetPrelude?.queue||[]),
-      {type:'SKILL_HUNT',targetIdx:ti,msgs:huntMsgs},
-      ...(revealStep?[revealStep]:[]),
-    ],gs,huntConfirmGs);
-    const targetEventIds=targetPrelude?.eventIds||[];
+    const revealMsg=`你（追猎者）追捕 ${P[ti].name}，${P[ti].name} 亮出 ${cardLogText(rc,{alwaysShowName:true})}`;
+    const targetEvent=createHuntTargetEvent({
+      sourceIdx:0,targetIdx:ti,msgs:[revealMsg],attemptId:huntAttemptId,
+      targetResolutionEventId:night.targetResolutionEventId,
+      beforePlayers:gs.players,afterPlayers:P,
+    });
+    const revealEvent=createHuntRevealEvent({sourceIdx:0,targetIdx:ti,card:rc,msgs:[revealMsg]});
+    const huntConfirmGs=buildHuntStageState({...gs,players:P,deck:D,discard:Disc,phase:'HUNT_CONFIRM',
+      abilityData:{...(gs.abilityData||{}),huntTi:ti,revCard:rc,huntPromptId:huntAttemptId},
+      log:[...baseLog,revealMsg],...apophisNightPatch(night)},[targetEvent,revealEvent]);
+    const queue=compileFreshVisualEventQueue(gs,huntConfirmGs);
     finishTutorialActionWithState(
       huntConfirmGs,
       tutorialNext,
       queue,
-      {...AUTHORITATIVE_QUEUE_META,...(targetEventIds.length?{eventIds:targetEventIds}:{}),preserveQueueOrder:true}
+      {...strictActionQueueMeta(huntConfirmGs,queue,consumedVisualEventIdsRef.current,'hunt target and reveal'),preserveQueueOrder:true}
     );
   }
   function huntConfirm(myCardIdx){
@@ -8024,7 +8015,22 @@ export default function Game(){
       });
       if(huntDamageResult.phase==='ETHEREALIZE_DECISION'){
         P[0].roleRevealed=true;
-        const newGs={
+        const huntResultEvent=createHuntResultEvent({
+          hunterIdx:0,
+          targetIdx:huntTi,
+          revealedCard:gs.abilityData?.revCard,
+          discardedCard:dc,
+          beforePlayers:beforeHuntPlayers,
+          afterDiscardPlayers,
+          afterDiscardDiscard,
+          afterPlayers:copyPlayers(P),
+          afterResultDiscard:[...Disc],
+          beforeLog:L.slice(0,huntLogStart),
+          afterLog:[...L],
+          msgs:L.slice(huntLogStart),
+          resolutionPatch:{phase:huntDamageResult.phase,abilityData:huntDamageResult.abilityData},
+        });
+        const newGs=withHuntStageEvents({
           ...gs,
           players:P,
           deck:D,
@@ -8033,11 +8039,12 @@ export default function Game(){
           abilityData:huntDamageResult.abilityData,
           phase:huntDamageResult.phase,
           skillUsed:true,
-        };
-        const queue=insertHuntResolutionStatePatch(compileFreshVisualEventQueue(gs,newGs),{
-          phase:newGs.phase,
-          abilityData:newGs.abilityData,
+        },[huntResultEvent],{
+          attemptId:getHuntAttemptId(gs,0,huntTi),
+          stage:'resultDecision',
+          barrier:'decision',
         });
+        const queue=compileFreshVisualEventQueue(gs,newGs);
         if(queue.length)triggerSyncedAnimTransaction(queue,newGs,{context:'huntResult',barrier:'decision',msgs:L.slice(huntLogStart),beforePlayers:gs.players,beforeDiscard:gs.discard});else setGs(newGs);
         return;
       }
@@ -8097,17 +8104,23 @@ export default function Game(){
               statEvents:huntStatEvents,
               afterPlayers:copyPlayers(P),
               afterResultDiscard:[...Disc],
-              beforeLog:L.slice(0,huntLogStart),
-              afterLog:[...L],
-              msgs:L.slice(huntLogStart),
-            });
-            const lootSelectGs={...gs,players:P,deck:D,discard:Disc,log:[...L,`你（追猎者）从 ${P[huntTi].name} 的公开手牌中任选 ${Math.min(maxToTake,handCount)} 张！`],
+               beforeLog:L.slice(0,huntLogStart),
+               afterLog:[...L],
+               msgs:L.slice(huntLogStart),
+               resolutionPatch:{
+                 phase:'HUNT_SELECT_CARD_FROM_PUBLIC',
+                 abilityData:{huntTi:huntTi,preSkillRevealed:gs.abilityData?.preSkillRevealed,maxToTake:Math.min(maxToTake,handCount)},
+               },
+             });
+            const lootSelectGs=withHuntStageEvents({...gs,players:P,deck:D,discard:Disc,log:[...L,`你（追猎者）从 ${P[huntTi].name} 的公开手牌中任选 ${Math.min(maxToTake,handCount)} 张！`],
               phase:'HUNT_SELECT_CARD_FROM_PUBLIC',
               abilityData:{huntTi:huntTi,preSkillRevealed:gs.abilityData?.preSkillRevealed,maxToTake:Math.min(maxToTake,handCount)},
-              };
-            const queue=huntResultEvent
-              ? buildAiHuntEventAnimQueue(huntResultEvent,P[0]?.name||'???')
-              : compileFreshVisualEventQueue(gs,lootSelectGs);
+              },[huntResultEvent],{
+                attemptId:getHuntAttemptId(gs,0,huntTi),
+                stage:'resultLootDecision',
+                barrier:'decision',
+              });
+            const queue=compileFreshVisualEventQueue(gs,lootSelectGs);
             if(queue.length) triggerSyncedAnimTransaction(queue,lootSelectGs,{context:'huntResult',barrier:'decision',msgs:L.slice(huntLogStart),beforePlayers:gs.players,beforeDiscard:gs.discard}); else setGs(lootSelectGs);
             return;
           }else if(targetRevealBefore){
@@ -8174,15 +8187,17 @@ export default function Game(){
         beforeLog:L.slice(0,huntLogStart),
         afterLog:[...L],
         msgs:L.slice(huntLogStart),
+        resolutionPatch:{
+          phase:newGs.phase,
+          abilityData:newGs.abilityData,
+        },
       });
-      const newGsWithEvent=newGs;
-      const resultQueue=huntResultEvent
-        ? buildAiHuntEventAnimQueue(huntResultEvent,P[0]?.name||'???')
-        : compileFreshVisualEventQueue(gs,newGsWithEvent);
-      const queue=insertHuntResolutionStatePatch(resultQueue,{
-        phase:newGsWithEvent.phase,
-        abilityData:newGsWithEvent.abilityData,
+      const newGsWithEvent=withHuntStageEvents(newGs,[huntResultEvent],{
+        attemptId:getHuntAttemptId(gs,0,huntTi),
+        stage:'result',
+        barrier:newGs.phase==='ACTION'?'continuation':'decision',
       });
+      const queue=compileFreshVisualEventQueue(gs,newGsWithEvent);
       if(queue.length&&tutorialNext){
         broadcastAnimTransaction(newGsWithEvent,queue,{context:'huntResult',barrier:newGs.phase==='ACTION'?'continuation':'decision',msgs:L.slice(huntLogStart),beforePlayers:gs.players,beforeDiscard:gs.discard});
         finishTutorialActionWithState(newGsWithEvent,tutorialNext,queue);
@@ -8257,16 +8272,22 @@ export default function Game(){
     const P=copyPlayers(gs.players);
     const L=[...gs.log,`${me.name} 亮出 ${cardLogText(card,{alwaysShowName:true})}`];
     const huntTi=gs.abilityData?.huntTi ?? 0;
+    const huntAttemptId=getHuntAttemptId(gs,gs.currentTurn??0,huntTi);
     const huntRevealEvent=createHuntRevealEvent({
       sourceIdx:gs.currentTurn??0,
       targetIdx:huntTi,
       card,
       msgs:L.slice(gs.log.length),
+      attemptId:huntAttemptId,
     });
-    const newGs={...gs,players:P,log:L,phase:'HUNT_CONFIRM',
-      abilityData:{...gs.abilityData,revCard:card},_visualEvents:[]};
-    const revealStep=buildHuntRevealStepFromVisualEvent(huntRevealEvent,newGs,{allowTargetZero:true});
-    triggerSyncedAnimTransaction([revealStep].filter(Boolean),newGs,{
+    const newGs=withHuntStageEvents({...gs,players:P,log:L,phase:'HUNT_CONFIRM',
+      abilityData:{...gs.abilityData,revCard:card,huntPromptId:huntAttemptId}},[huntRevealEvent],{
+        attemptId:huntAttemptId,
+        stage:'reveal',
+        barrier:'decision',
+      });
+    const queue=compileFreshVisualEventQueue(gs,newGs,{allowTargetZero:true});
+    triggerSyncedAnimTransaction(queue,newGs,{
       context:'huntReveal',barrier:'decision',msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard,
     });
   }
@@ -8295,6 +8316,14 @@ export default function Game(){
     let lootDiscardCards=[];
     let defeatedGodCards=[];
     L.push(`你亮出 ${cardLogText(card,{alwaysShowName:true})}`);
+    const huntAttemptId=getHuntAttemptId(gs,huntingAI,0);
+    const huntRevealEvent=createHuntRevealEvent({
+      sourceIdx:huntingAI,
+      targetIdx:0,
+      card,
+      msgs:L.slice(huntLogStart),
+      attemptId:huntAttemptId,
+    });
     const aiHand=P[huntingAI].hand;
     const mi=aiHand.findIndex(c=>cardsHuntMatch(c,card));
     const hadHuntDamage=mi>=0;
@@ -8311,7 +8340,22 @@ export default function Game(){
         events:[...balanceEvents,{targetIdx:0,lostHp:huntDamage,source:'追捕',order:balanceEvents.length}],
       });
       if(damage.phase==='ETHEREALIZE_DECISION'){
-        const newGs={
+        const huntResultEvent=createHuntResultEvent({
+          hunterIdx:huntingAI,
+          targetIdx:0,
+          revealedCard:card,
+          discardedCard,
+          beforePlayers:beforeHuntPlayers,
+          afterDiscardPlayers,
+          afterDiscardDiscard,
+          afterPlayers:copyPlayers(P),
+          afterResultDiscard:[...Disc],
+          beforeLog:gs.log,
+          afterLog:[...L],
+          msgs:L.slice(huntLogStart+1),
+          resolutionPatch:{phase:'AI_TURN',currentTurn:huntingAI,abilityData:{}},
+        });
+        const newGs=withHuntStageEvents({
           ...gs,
           players:P,
           deck:D,
@@ -8321,13 +8365,13 @@ export default function Game(){
           abilityData:damage.abilityData,
           huntAbandoned:gs.huntAbandoned||[],
           skillUsed:true,
-        };
-        syncVisibleLog(L,newGs);
-        const queue=insertHuntResolutionStatePatch(compileFreshVisualEventQueue(gs,newGs),{
-          phase:'AI_TURN',
-          currentTurn:huntingAI,
-          abilityData:{},
+        },[huntRevealEvent,huntResultEvent],{
+          attemptId:huntAttemptId,
+          stage:'playerRevealDecision',
+          barrier:'decision',
         });
+        syncVisibleLog(L,newGs);
+        const queue=compileFreshVisualEventQueue(gs,newGs,{allowTargetZero:true});
         if(queue.length)triggerAnimQueue(queue,newGs,undefined,strictActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current,'AI hunt player etherealize decision'));else setGs(newGs);
         return;
       }
@@ -8413,12 +8457,14 @@ export default function Game(){
 
     let newGs;
     const aiHandLimitDiscardCards=[];
+    let aiHandLimitDiscardMsgs=[];
     let beforeNextTurnGs=null;
     if (win) newGs = {...baseGs, gameOver:win};
     // 决定是让 AI 重新进入 AI_TURN 继续追杀，还是结束该回合
       else if (wantsToHuntAgain) newGs = withClearedTurnAnimFields({...baseGs, phase: 'AI_TURN', currentTurn: huntingAI, skillUsed: false, restUsed: false, _aiName: aiHunterName});
     else{
       const aiHandLimit=P[huntingAI]._nyaHandLimit??4;
+      const aiHandLimitLogStart=L.length;
       while(P[huntingAI].hand.length>aiHandLimit){
         const c=P[huntingAI].hand.shift();
         const {kept,destroyed}=splitKeptDestroyedDiscarded([c]);
@@ -8430,6 +8476,7 @@ export default function Game(){
           L.push(`${aiHunterName} 的衍生牌被销毁`);
         }
       }
+      aiHandLimitDiscardMsgs=L.slice(aiHandLimitLogStart);
       beforeNextTurnGs={...baseGs, players:P, discard:Disc, log:L, currentTurn: huntingAI, skillUsed: true};
       newGs = startNextTurn(beforeNextTurnGs);
     }
@@ -8455,22 +8502,36 @@ export default function Game(){
       afterResultDiscard:huntResolvedDiscard,
       beforeLog:gs.log,
       afterLog:huntResolvedLog,
-      msgs:huntResolvedLog.slice(huntLogStart),
+      msgs:huntResolvedLog.slice(huntLogStart+1),
+      resolutionPatch:{phase:'AI_TURN',currentTurn:huntingAI,abilityData:{}},
     });
-    const queue=huntResultEvent
-      ?buildAiHuntEventAnimQueue(huntResultEvent,aiHunterName||'???')
-      :[];
-    if(aiHandLimitDiscardCards.length){
-      queue.push({type:'DISCARD',card:aiHandLimitDiscardCards[0],cards:aiHandLimitDiscardCards,count:aiHandLimitDiscardCards.length,triggerName:aiHunterName||'???',targetPid:huntingAI});
+    const handLimitDiscardEvent=createHandLimitDiscardEvent({
+      playerIdx:huntingAI,
+      playerName:aiHunterName||'???',
+      cards:aiHandLimitDiscardCards,
+      msgs:aiHandLimitDiscardMsgs,
+    });
+    const huntSettlementEvents=[huntRevealEvent,huntResultEvent,handLimitDiscardEvent].filter(Boolean);
+    if(beforeNextTurnGs){
+      beforeNextTurnGs=withHuntStageEvents(beforeNextTurnGs,huntSettlementEvents,{
+        attemptId:huntAttemptId,
+        stage:'playerRevealResult',
+        barrier:'continuation',
+      });
+      newGs=withHuntStageEvents(newGs,huntSettlementEvents,{
+        attemptId:huntAttemptId,
+        stage:'playerRevealResult',
+        barrier:'continuation',
+      });
+    }else{
+      newGs=withHuntStageEvents(newGs,huntSettlementEvents,{
+        attemptId:huntAttemptId,
+        stage:'playerRevealResult',
+        barrier:newGs.phase==='ACTION'||newGs.phase==='AI_TURN'?'continuation':'decision',
+      });
     }
     const animEndGs=beforeNextTurnGs||newGs;
-    const animQueue=compileFreshVisualEventQueue(baseGs,animEndGs);
-    queue.push(...animQueue);
-    const resolutionQueue=insertHuntResolutionStatePatch(queue,{
-      phase:'AI_TURN',
-      currentTurn:huntingAI,
-      abilityData:{},
-    });
+    const resolutionQueue=compileFreshVisualEventQueue(gs,animEndGs,{allowTargetZero:true});
     const nextAiTurnIntroQueue=beforeNextTurnGs
       ?buildQueuedNextAiTurnStartReplay(newGs,{
         fromTurn:huntingAI,
@@ -8819,25 +8880,27 @@ export default function Game(){
         zhuLightBefore:gs.zhuLight,
         zhuLightAfter:gres.statePatch?.zhuLight??gs.zhuLight,
       });
-      const newGs=clearTurnDrawReplayHints({...gs,players:P,deck:D,discard:Disc,log:L,drawReveal:null,skillUsed:true,...mergedInspectionMeta,...nightPatch,...(gres.statePatch||{}),phase:nextPhase,abilityData:nextAbilityData,apophisNight:nextApophisNight,_visualEvents:[...(bewitchEvent?[bewitchEvent]:[]),...(gres.statePatch?._visualEvents||[])],...(win?{gameOver:win}:{})});
+      const bewitchVisualEvents=[
+        ...(Array.isArray(nightPatch?._visualEvents)?nightPatch._visualEvents:[]),
+        ...(bewitchEvent?[bewitchEvent]:[]),
+        ...(Array.isArray(gres.statePatch?._visualEvents)?gres.statePatch._visualEvents:[]),
+      ].filter((event,index,events)=>event&&(!event.id||events.findIndex(candidate=>candidate?.id===event.id)===index));
+      const newGs=clearTurnDrawReplayHints({...gs,players:P,deck:D,discard:Disc,log:L,drawReveal:null,skillUsed:true,...mergedInspectionMeta,...nightPatch,...(gres.statePatch||{}),phase:nextPhase,abilityData:nextAbilityData,apophisNight:nextApophisNight,_visualEvents:bewitchVisualEvents,...(win?{gameOver:win}:{})});
       const bewitchReplay=buildBewitchGiftReplay({
         oldGs:gs,
         newGs,
         bewitchEvent,
-        logDelta:L.slice(gs.log.length),
-        compileFreshVisualEventQueue,
-        copyPlayers,
       });
       if(bewitchReplay.inspectionEvents.length){
         lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...bewitchReplay.inspectionEvents.map(ev=>ev?.seq||0));
       }
-      const queue=mergeApophisTargetQueue(bindVisualEventToSteps(bewitchReplay.queue,bewitchEvent),gs,newGs);
+      const queue=compileFreshVisualEventQueue(gs,newGs);
       broadcastAnimTransaction(newGs,queue,{context:'bewitchGift',barrier:nextPhase==='ACTION'?'continuation':'decision',msgs:bewitchMsgs,beforePlayers:gs.players,beforeDiscard:gs.discard});
       finishTutorialActionWithState(
         newGs,
         tutorialNext,
         queue,
-        {...AUTHORITATIVE_QUEUE_META,preserveQueueOrder:true}
+        {...strictActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current,'bewitch gift'),preserveQueueOrder:true}
       );
       return;
     }
@@ -8874,28 +8937,30 @@ export default function Game(){
       zhuLightBefore:gs.zhuLight,
       zhuLightAfter:res.statePatch?.zhuLight??gs.zhuLight,
     });
+    const bewitchVisualEvents=[
+      ...(Array.isArray(apophisNightPatch(night)?._visualEvents)?apophisNightPatch(night)._visualEvents:[]),
+      ...(bewitchEvent?[bewitchEvent]:[]),
+      ...(Array.isArray(res.statePatch?._visualEvents)?res.statePatch._visualEvents:[]),
+    ].filter((event,index,events)=>event&&(!event.id||events.findIndex(candidate=>candidate?.id===event.id)===index));
     const newGs=clearTurnDrawReplayHints({...gs,players:res.P,deck:res.D,discard:res.Disc,log:L,drawReveal:null,
       abilityData:phaseAbilityData,
       phase:nextPhase,
-      skillUsed:true,...(res.statePatch||{}),...apophisNightPatch(night),_visualEvents:[...(bewitchEvent?[bewitchEvent]:[]),...(res.statePatch?._visualEvents||[])],...(win?{gameOver:win}:{})});
+      skillUsed:true,...(res.statePatch||{}),...apophisNightPatch(night),_visualEvents:bewitchVisualEvents,...(win?{gameOver:win}:{})});
       const bewitchReplay=buildBewitchGiftReplay({
         oldGs:gs,
         newGs,
         bewitchEvent,
-        logDelta:L.slice(gs.log.length),
-        compileFreshVisualEventQueue,
-        copyPlayers,
       });
       if(bewitchReplay.inspectionEvents.length){
         lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...bewitchReplay.inspectionEvents.map(ev=>ev?.seq||0));
       }
-      const queue=mergeApophisTargetQueue(bindVisualEventToSteps(bewitchReplay.queue,bewitchEvent),gs,newGs);
+      const queue=compileFreshVisualEventQueue(gs,newGs);
       broadcastAnimTransaction(newGs,queue,{context:'bewitchGift',barrier:nextPhase==='ACTION'?'continuation':'decision',msgs:bewitchMsgs,beforePlayers:gs.players,beforeDiscard:gs.discard});
       finishTutorialActionWithState(
         newGs,
         tutorialNext,
         queue,
-        {...AUTHORITATIVE_QUEUE_META,preserveQueueOrder:true}
+        {...strictActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current,'bewitch gift'),preserveQueueOrder:true}
       );
   }
 

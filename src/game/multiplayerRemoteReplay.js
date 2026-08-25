@@ -2,16 +2,13 @@ import { bindAnimLogChunks } from './animLogs';
 import { mergeApophisTargetQueue } from './apophisAnimQueue';
 import { cardTransferStep, prepareWorshipHighlight } from './animQueueHelpers';
 import {
-  buildBewitchGiftReplay,
   buildInspectionReplay,
   buildRandomTargetReplay,
-  findFreshBewitchReplayLog,
   hasFreshRandomTargetEvents,
   isFreshActionReplayEvent,
   isFreshBewitchReplayEvent,
 } from './animReplayEvents';
 import { appendFinalStatePatch, finalStatePatch } from './animStatePatch';
-import { copyPlayers } from './coreUtils';
 import { isLocalCurrentTurn, isLocalSeatIndex, localDisplayName } from './rotateState';
 import {
   buildTurnStartPreDrawEffectQueue,
@@ -24,13 +21,11 @@ import {
 } from './turnAnimState';
 import {
   clearVisualEvents,
+  getVisualEvents,
   getVisualEventIdsFromState,
   getCardEffectVisualEvents,
   getBewitchGiftVisualEvent,
   getSwapCardsVisualEvent,
-  getHuntRevealVisualEvent,
-  getHuntTargetVisualEvent,
-  getHuntResultVisualEvent,
   getSphinxResultVisualEvent,
   getAnimTransactionVisualEvent,
   VISUAL_EVENT,
@@ -314,18 +309,6 @@ function buildTimedOutDrawDiscardStep(rotated, previousGs) {
   const visualEventStep = compileFreshVisualEventsToAnimSteps(rotated, null, [VISUAL_EVENT.TIMED_OUT_DRAW_DISCARD])[0];
   if (visualEventStep) return visualEventStep;
   return compileFreshVisualEventsToAnimSteps(rotated, previousGs, [VISUAL_EVENT.TIMED_OUT_DRAW_DISCARD])[0] || null;
-}
-
-function findCardByLabel(players, label) {
-  if (!label) return null;
-  for (const player of players || []) {
-    const zones = [player?.hand, player?.godZone, player?.zoneCards].filter(Array.isArray);
-    for (const zone of zones) {
-      const found = zone.find(card => card?.key === label || card?.name === label || card?.godKey === label);
-      if (found) return found;
-    }
-  }
-  return null;
 }
 
 function isSameCard(first, second) {
@@ -786,28 +769,72 @@ export function buildMpRemoteReplayAction({
       },
     });
   }
-  const huntResultEvent = getHuntResultVisualEvent(rotated);
-  if (huntResultEvent && isFreshActionReplayEvent(huntResultEvent, logDelta)) {
-    const queue = appendFinalStatePatch(
-      withApophisTargetReplay(
-        compileVisualEventToAnimSteps(huntResultEvent, rotated, previousGs),
-        previousGs,
-        rotated,
-        compileFreshVisualEventQueue,
-      ),
-      rotated,
-      ['players', 'discard', 'log', 'phase', 'abilityData'],
-    );
-    return withConsumedVisualEvents({
-      type: MP_REMOTE_REPLAY.ANIM_QUEUE,
-      maskedGs: buildMaskedActionState(rotated),
-      pendingGs: clearRemoteReplayHints(rotated),
-      queue,
-      visualLock: {
-        players: huntResultEvent.beforePlayers || previousGs?.players || null,
-        zhuLight: previousGs?.zhuLight || rotated.zhuLight || null,
-      },
+  const normalizedVisualEvents = getVisualEvents(rotated);
+  const freshVisualEvents = normalizedVisualEvents.filter(event => (
+    event?.id && !previousVisualEventIds.has(event.id)
+  ));
+  const freshHuntEvents = freshVisualEvents.filter(event => (
+    event?.type === VISUAL_EVENT.HUNT_TARGET
+    || event?.type === VISUAL_EVENT.HUNT_REVEAL
+    || event?.type === VISUAL_EVENT.HUNT_RESULT
+  ));
+  if (freshHuntEvents.length && !isDrawAnimationState) {
+    if (
+      freshHuntEvents.every(event => event.type === VISUAL_EVENT.HUNT_REVEAL)
+      && freshHuntEvents.every(event => event.targetIdx === 0)
+    ) {
+      return withConsumedVisualEvents({
+        type: MP_REMOTE_REPLAY.SET_STATE,
+        gs: clearRemoteReplayHints(rotated),
+      });
+    }
+    const huntTransactionIds = new Set(freshHuntEvents.map(event => event?.transactionId).filter(Boolean));
+    const huntPhaseGroupIds = new Set(freshHuntEvents.flatMap(event => (
+      [event?.attemptId, event?.phaseGroupId].filter(Boolean)
+    )));
+    const huntDependencyIds = new Set(freshHuntEvents.flatMap(event => (
+      [event?.causedByEventId, event?.targetResolutionEventId].filter(Boolean)
+    )));
+    const ownedHuntEvents = freshVisualEvents.filter(event => (
+      freshHuntEvents.includes(event)
+      || huntDependencyIds.has(event?.id)
+      || (event?.transactionId && huntTransactionIds.has(event.transactionId))
+      || (event?.phaseGroupId && huntPhaseGroupIds.has(event.phaseGroupId))
+    ));
+    const huntCompileState = { ...rotated, _visualEvents: normalizedVisualEvents };
+    const transaction = compileRuleVisualEventsToAnimTransaction(huntCompileState, previousGs, {
+      eventIds: ownedHuntEvents.map(event => event.id),
+      allowTargetZero: true,
     });
+    if (transaction?.queue?.length) {
+      const firstHuntEvent = freshHuntEvents[0];
+      if (transaction.queue.length === 1) {
+        return withConsumedVisualEvents({
+          type: MP_REMOTE_REPLAY.START_ANIM,
+          maskedGs: buildMaskedActionState(rotated),
+          pendingGs: clearRemoteReplayHints(rotated),
+          anim: transaction.queue[0],
+          queue: [],
+          consumedVisualEventIds: transaction.eventIds,
+        });
+      }
+      const queue = appendFinalStatePatch(
+        transaction.queue,
+        rotated,
+        ['players', 'discard', 'log', 'phase', 'abilityData'],
+      );
+      return withConsumedVisualEvents({
+        type: MP_REMOTE_REPLAY.ANIM_QUEUE,
+        maskedGs: buildMaskedActionState(rotated),
+        pendingGs: clearRemoteReplayHints(rotated),
+        queue,
+        consumedVisualEventIds: transaction.eventIds,
+        visualLock: {
+          players: firstHuntEvent.beforePlayers || previousGs?.players || null,
+          zhuLight: previousGs?.zhuLight || rotated.zhuLight || null,
+        },
+      });
+    }
   }
   const sphinxResultEvent = getSphinxResultVisualEvent(rotated);
   // A sphinx result is an explicit public reveal event. It may share one
@@ -847,81 +874,6 @@ export function buildMpRemoteReplayAction({
       pendingGs: clearRemoteReplayHints(rotated),
       queue: patchedQueue,
       inspectionEvents: compiledBewitch?.inspectionEvents || [],
-    });
-  }
-  const huntEvent = getHuntTargetVisualEvent(rotated);
-  if (huntEvent && !isDrawAnimationState && rotated.phase !== 'PLAYER_REVEAL_FOR_HUNT') {
-    const baseStep = compileVisualEventToAnimSteps(huntEvent, rotated, previousGs)[0];
-    const queue = withApophisTargetReplay([baseStep], previousGs, rotated, compileFreshVisualEventQueue);
-    if (queue.length <= 1 && queue[0] === baseStep) {
-      return withConsumedVisualEvents({
-        type: MP_REMOTE_REPLAY.START_ANIM,
-        maskedGs: buildMaskedActionState(rotated),
-        pendingGs: clearRemoteReplayHints(rotated),
-        anim: baseStep,
-        queue: [],
-      });
-    }
-    return withConsumedVisualEvents({
-      type: MP_REMOTE_REPLAY.ANIM_QUEUE,
-      maskedGs: buildMaskedActionState(rotated),
-      pendingGs: clearRemoteReplayHints(rotated),
-      queue,
-    });
-  }
-  const huntRevealEvent = getHuntRevealVisualEvent(rotated);
-  if (huntRevealEvent && !isDrawAnimationState) {
-    const revealStep = compileVisualEventToAnimSteps(huntRevealEvent, rotated, previousGs)[0];
-    if (!revealStep) {
-      return withConsumedVisualEvents({
-        type: MP_REMOTE_REPLAY.SET_STATE,
-        gs: clearRemoteReplayHints(rotated),
-      });
-    }
-    return withConsumedVisualEvents({
-      type: MP_REMOTE_REPLAY.START_ANIM,
-      maskedGs: buildMaskedActionState(rotated),
-      pendingGs: clearRemoteReplayHints(rotated),
-      anim: { ...revealStep, msgs: revealStep.msgs?.length ? revealStep.msgs : logDelta },
-      queue: [],
-    });
-  }
-  const bewitchMsg = findFreshBewitchReplayLog(logDelta);
-  if (bewitchMsg && !isDrawAnimationState) {
-    const targetName = bewitchMsg.match(/对 (.+?) 【蛊惑】/)?.[1];
-    const targetIdx = targetName ? rotated.players?.findIndex(p => p?.name === targetName) : -1;
-    const giftLabel = bewitchMsg.match(/赠予 \[([^\]]+)\]/)?.[1] || bewitchMsg.match(/赠予 ([^，。]+)/)?.[1];
-    const giftCard = findCardByLabel(rotated.players, giftLabel);
-    const oldGs = previousGs || buildMaskedActionState(rotated);
-    const replay = giftCard && targetIdx >= 0
-      ? buildBewitchGiftReplay({
-        oldGs,
-        newGs: rotated,
-        bewitchEvent: {
-          sourceIdx: rotated.currentTurn,
-          targetIdx,
-          targetName: rotated.players?.[targetIdx]?.name,
-          card: giftCard,
-          msgs: logDelta,
-        },
-        logDelta,
-        compileFreshVisualEventQueue,
-        copyPlayers,
-      })
-      : buildInspectionReplay(oldGs, rotated);
-    const statQueue = giftCard && targetIdx >= 0
-      ? replay.statQueue
-      : bindAnimLogChunks(replay.queue, { statLogs: logDelta });
-    const queue = giftCard && targetIdx >= 0
-      ? replay.queue
-      : [{ type: 'SKILL_BEWITCH', msgs: logDelta, targetIdx: targetIdx >= 0 ? targetIdx : 1 }, ...statQueue];
-    const patchedQueue = appendFinalStatePatch(withApophisTargetReplay(queue, previousGs, rotated, compileFreshVisualEventQueue), rotated);
-    return withConsumedVisualEvents({
-      type: MP_REMOTE_REPLAY.ANIM_QUEUE,
-      maskedGs: buildMaskedActionState(rotated),
-      pendingGs: clearRemoteReplayHints(rotated),
-      queue: patchedQueue,
-      inspectionEvents: replay.inspectionEvents,
     });
   }
   const previousCardEffectIds = new Set(getCardEffectVisualEvents(previousGs).map(event => event?.id).filter(Boolean));
@@ -1011,17 +963,6 @@ export function buildMpRemoteReplayAction({
       visualLock: replay.visualLock,
       inspectionEvents: replay.inspectionEvents,
     });
-  }
-
-  const isHuntingPlayer0 = !rotated.gameOver && rotated.phase === 'PLAYER_REVEAL_FOR_HUNT' && rotated.abilityData?.huntingAI != null;
-  if (isHuntingPlayer0) {
-    return {
-      type: MP_REMOTE_REPLAY.START_ANIM,
-      maskedGs: buildMaskedActionState(rotated),
-      pendingGs: clearRemoteReplayHints(rotated),
-      anim: { type: 'SKILL_HUNT', msgs: rotated.log.slice(-3), targetIdx: 0 },
-      queue: [],
-    };
   }
 
   if (rotated.phase === 'DISCARD_PHASE' && !isLocalCurrentTurn(rotated)) {

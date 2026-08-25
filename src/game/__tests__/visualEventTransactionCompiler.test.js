@@ -944,6 +944,47 @@ describe('visualEventTransactionCompiler', () => {
     ]));
   });
 
+  it('compiles the hunt decision boundary from the huntResult payload', () => {
+    const discardedCard = { id: 'hunt-discard', name: '追捕弃牌', key: 'C3' };
+    const before = [
+      player('追猎者', { hand: [discardedCard] }),
+      player('目标'),
+    ];
+    const afterDiscard = [
+      player('追猎者', { hand: [] }),
+      player('目标'),
+    ];
+    const event = createHuntResultEvent({
+      hunterIdx: 0,
+      targetIdx: 1,
+      discardedCard,
+      beforePlayers: before,
+      afterDiscardPlayers: afterDiscard,
+      afterDiscardDiscard: [discardedCard],
+      afterPlayers: afterDiscard,
+      afterResultDiscard: [discardedCard],
+      resolutionPatch: {
+        phase: 'ETHEREALIZE_DECISION',
+        abilityData: { pendingIndex: 0 },
+      },
+    });
+
+    const transaction = compileRuleVisualEventsToAnimTransaction({
+      players: afterDiscard,
+      discard: [discardedCard],
+      phase: 'ETHEREALIZE_DECISION',
+      _visualEvents: [event],
+    });
+    const discardIndex = transaction.queue.findIndex(step => step.type === 'DISCARD');
+
+    expect(transaction.queue[discardIndex + 1]).toMatchObject({
+      type: 'STATE_PATCH',
+      phase: 'ETHEREALIZE_DECISION',
+      abilityData: { pendingIndex: 0 },
+      visualEventId: event.id,
+    });
+  });
+
   it('compiles a wrong Sphinx guess entirely from its payload', () => {
     const before = [player('你', { hp: 10 })];
     const after = [player('你', { hp: 7 })];
