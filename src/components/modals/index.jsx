@@ -82,7 +82,7 @@ function GodChoiceModal({
           <span style={{ color: def.col, filter: `drop-shadow(0 0 6px ${def.col}88)` }}>{godCard.name}</span>
         </div>
         <div style={{ fontSize: 16.5*ui, color: '#c89058', fontStyle: 'italic', fontFamily: "'IM Fell English',serif", marginBottom: 4*ui }}>
-          {'💀'.repeat(player.godEncounters)} {formatGodEncounterProgress(encounterProgress)}
+          {'💀'.repeat(player.godEncounters)} {formatGodEncounterProgress(encounterProgress).replace(/次(?=，|$)/, '次遭遇邪神')}
           {immuneEncounter ? '（邪祀者免疫伤害）' : `，失去 ${encounterProgress.sanLoss} SAN`}
           {isConvert && !forcedConvert && <span style={{ color: '#e08888', marginLeft: 8*ui }}>（改信将失去 1 SAN）</span>}
         </div>
