@@ -326,6 +326,7 @@ import {
   buildAiPresentationRecoveryState,
   buildRoseThornSnapshot,
   bindVisualEventToSteps,
+  collectInspectionEventsCoveredByQueue,
   collectExplicitAiTurnLogs,
   insertAiRestDiceBeforeSettlement,
   scopeAiActionReplayMetadata,
@@ -2601,14 +2602,16 @@ export default function Game(){
           : hasRoseThornGiftAllHand
             ? actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')
           : actionStatQBase;
-        const compiledNestedInspectionEvents=(scopedActionVisualPatch._visualEvents||[])
-          .flatMap(event=>Array.isArray(event?.settlementEvents)?event.settlementEvents:[])
-          .filter(event=>event?.type===VISUAL_EVENT.INSPECTION);
-        if(compiledNestedInspectionEvents.length){
-          lastInspectionSeqRef.current=Math.max(
-            lastInspectionSeqRef.current,
-            ...compiledNestedInspectionEvents.map(event=>event?.legacySeq??event?.seq??0),
-          );
+        const compiledActionInspectionEvents=collectInspectionEventsCoveredByQueue(
+          scopedActionVisualPatch._visualEvents||[],
+          actionStatQBase,
+        );
+        // The canonical action transaction has already emitted these reveal
+        // flows. Advance the watermark before the compatibility append at the
+        // end of executeAiTurn, otherwise a top-level Apophis inspection is
+        // replayed and its before/after snapshots can roll back a later swap.
+        if(compiledActionInspectionEvents.length){
+          markInspectionEventsSeen(compiledActionInspectionEvents);
         }
         const handLimitDiscardCards=_aiHandLimitDiscards||[];
         const handLimitDiscardQueue=handLimitDiscardCards.length?[{

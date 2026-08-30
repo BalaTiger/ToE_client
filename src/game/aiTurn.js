@@ -1155,6 +1155,10 @@ export function aiStep(gs, opts = {}) {
       visualMeta: {
         transactionId: aiActionTransactionId,
         ...(phaseGroupId ? { phaseGroupId } : {}),
+        // The action journal is append-only, so its current length is the next
+        // globally unique cursor in this AI action. resolveApophisTarget uses
+        // the following slots for any inspection events caused by this roll.
+        order: ownedActionVisualEvents.length,
         phaseOrder: 0,
       },
     });

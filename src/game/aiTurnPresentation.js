@@ -155,6 +155,32 @@ export function scopeAiReplayMetadataBeforeInspection(metadata = {}, firstInspec
   };
 }
 
+// A canonical action queue can own inspections directly (for example a black-
+// night SAN check) or through a parent settlement event.  Return every
+// inspection already represented by that queue so callers can advance the
+// shared inspection watermark before considering compatibility replay paths.
+export function collectInspectionEventsCoveredByQueue(visualEvents = [], queue = []) {
+  const coveredIds = new Set(getAnimationQueueVisualEventIds(queue));
+  const covered = [];
+  const seen = new Set();
+  const add = event => {
+    if (!event) return;
+    const key = event.id || `inspection-seq:${event.legacySeq ?? event.seq ?? covered.length}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    covered.push(event);
+  };
+
+  (Array.isArray(visualEvents) ? visualEvents : []).forEach(event => {
+    if (event?.type === 'inspection' && event.id && coveredIds.has(event.id)) add(event);
+    if (!event?.id || !coveredIds.has(event.id)) return;
+    (Array.isArray(event.settlementEvents) ? event.settlementEvents : [])
+      .filter(settlementEvent => settlementEvent?.type === 'inspection')
+      .forEach(add);
+  });
+  return covered;
+}
+
 function collectOwnedAiHuntVisualEvents(visualEvents = [], rawHuntEvents = []) {
   const attempts = (Array.isArray(rawHuntEvents) ? rawHuntEvents : []).filter(event => (
     event?.attemptId || event?.phaseGroupId

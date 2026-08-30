@@ -242,14 +242,57 @@ export function validateHandTransferCommits(queue = []) {
   return issues;
 }
 
+function playerSnapshotsCommittedByStep(step) {
+  const snapshots = [];
+  if (Array.isArray(step?.players)) snapshots.push(step.players);
+  if (Array.isArray(step?.visualSetupPatch?.players)) snapshots.push(step.visualSetupPatch.players);
+  (Array.isArray(step?.visualTimeline) ? step.visualTimeline : []).forEach(point => {
+    if (Array.isArray(point?.patch?.players)) snapshots.push(point.patch.players);
+  });
+  return snapshots;
+}
+
+// A terminal player state is owned by DEATH. Source-card and damage steps may
+// show the impact, but must not gray out the player panel before the terminal
+// presentation starts.
+export function validateTerminalPlayerCommitOrder(queue = []) {
+  const steps = Array.isArray(queue) ? queue : [];
+  const deathStepByTarget = new Map();
+  steps.forEach((step, stepIndex) => {
+    if (step?.type !== 'DEATH') return;
+    (Array.isArray(step.hitIndices) ? step.hitIndices : []).forEach(target => {
+      if (!deathStepByTarget.has(target)) deathStepByTarget.set(target, stepIndex);
+    });
+  });
+
+  const issues = [];
+  deathStepByTarget.forEach((deathStepIndex, target) => {
+    for (let stepIndex = 0; stepIndex < deathStepIndex; stepIndex += 1) {
+      const commitsDefeat = playerSnapshotsCommittedByStep(steps[stepIndex])
+        .some(players => players?.[target]?.isDead === true);
+      if (!commitsDefeat) continue;
+      issues.push(issue('PREMATURE_PLAYER_DEFEAT_COMMIT', stepIndex, {
+        target,
+        deathStepIndex,
+        type: steps[stepIndex]?.type || null,
+      }));
+    }
+  });
+  return issues;
+}
+
 export function prepareAnimationQueueSteps(queue = []) {
   const sourceIssues = [
     ...validateAnimationQueueSteps(queue, { allowCombined: true }),
     ...validateThrowStoneTransactions(queue),
     ...validateHandTransferCommits(queue),
+    ...validateTerminalPlayerCommitOrder(queue),
   ];
   const steps = normalizeAnimationQueueSteps(queue);
-  const normalizedIssues = validateAnimationQueueSteps(steps);
+  const normalizedIssues = [
+    ...validateAnimationQueueSteps(steps),
+    ...validateTerminalPlayerCommitOrder(steps),
+  ];
   const issueKey = value => JSON.stringify(value);
   const seen = new Set();
   const issues = [...sourceIssues, ...normalizedIssues].filter(value => {

@@ -5,6 +5,7 @@ import {
   prepareAnimationQueueSteps,
   validateAnimationQueueSteps,
   validateHandTransferCommits,
+  validateTerminalPlayerCommitOrder,
   validateThrowStoneTransactions,
 } from '../animationStepSchema';
 
@@ -237,5 +238,43 @@ describe('validateHandTransferCommits', () => {
     expect(validateHandTransferCommits(atQueueEnd)).toEqual([]);
     expect(validateHandTransferCommits(deferred)).toEqual([]);
     expect(validateHandTransferCommits(swapPair)).toEqual([]);
+  });
+});
+
+describe('validateTerminalPlayerCommitOrder', () => {
+  const alive = [{ name: '卡洛斯', hp: 4, san: 8, isDead: false }];
+  const defeated = [{ name: '卡洛斯', hp: 0, san: 8, isDead: true }];
+
+  it('拒绝在断头台与死亡公告之前提交死亡置灰', () => {
+    const queue = [
+      { type: 'VOLCANO', visualTimeline: [{ atMs: 2400, patch: { players: defeated } }] },
+      { type: 'HP_DAMAGE', hitIndices: [0] },
+      { type: 'GUILLOTINE', hitIndices: [0] },
+      { type: 'DEATH', hitIndices: [0], visualSetupPatch: { players: defeated } },
+    ];
+
+    expect(validateTerminalPlayerCommitOrder(queue)).toEqual([
+      expect.objectContaining({
+        code: 'PREMATURE_PLAYER_DEFEAT_COMMIT',
+        stepIndex: 0,
+        target: 0,
+        deathStepIndex: 3,
+      }),
+    ]);
+    expect(prepareAnimationQueueSteps(queue).issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'PREMATURE_PLAYER_DEFEAT_COMMIT' }),
+    ]));
+  });
+
+  it('允许来源动画保持存活快照，并由 DEATH 独占死亡提交', () => {
+    const queue = [
+      { type: 'VOLCANO', visualTimeline: [{ atMs: 2400, patch: { players: alive } }] },
+      { type: 'HP_DAMAGE', hitIndices: [0] },
+      { type: 'GUILLOTINE', hitIndices: [0] },
+      { type: 'DEATH', hitIndices: [0], visualSetupPatch: { players: defeated } },
+    ];
+
+    expect(validateTerminalPlayerCommitOrder(queue)).toEqual([]);
+    expect(prepareAnimationQueueSteps(queue).issues).toEqual([]);
   });
 });

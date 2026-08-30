@@ -9,6 +9,7 @@ import {
   buildRoseThornSnapshot,
   buildScopedAiActionReplayState,
   bindVisualEventToSteps,
+  collectInspectionEventsCoveredByQueue,
   collectExplicitAiTurnLogs,
   getAiActionQueueCoverage,
   getAiActionSphinxResultEvent,
@@ -27,9 +28,14 @@ import {
   createHuntResultEvent,
   createHuntTargetEvent,
   createInspectionVisualEvent,
+  createSwapCardsEvent,
   createStatEventsEvent,
 } from '../visualEvents';
-import { getVisualEventIdsCoveredByAnimationQueue } from '../visualEventTransactionCompiler';
+import { getFreshInspectionReplayEvents } from '../animQueueHelpers';
+import {
+  compileRuleVisualEventsToAnimTransaction,
+  getVisualEventIdsCoveredByAnimationQueue,
+} from '../visualEventTransactionCompiler';
 
 describe('AI turn presentation helpers', () => {
   it('keeps inspection-owned self-harm damage out of the AI action prelude', () => {
@@ -1206,6 +1212,7 @@ describe('AI turn presentation helpers', () => {
     const night = {
       seq: 1,
       transactionId: 'ai-action:inspection',
+      order: 0,
       phaseGroupId: 'hunt-attempt:inspection',
       phaseOrder: 0,
       actorIdx: 1,
@@ -1255,6 +1262,7 @@ describe('AI turn presentation helpers', () => {
     const inspectionVisualEvent = createInspectionVisualEvent({
       ...inspectionEvent,
       transactionId: 'ai-action:inspection',
+      order: 1,
       phaseGroupId: 'hunt-attempt:inspection',
       phaseOrder: 10,
       causedByEventId: apophisEvent.id,
@@ -1297,6 +1305,68 @@ describe('AI turn presentation helpers', () => {
       result.queue,
       queue => queue.map(step => step.visualEventId).filter(Boolean),
     ).uncoveredEventIds).toEqual([]);
+  });
+
+  it('advances the inspection watermark when the canonical action queue also contains a later swap', () => {
+    const beforePlayers = [
+      { name: '艾伦', hp: 10, san: 7, hand: [{ id: 'alan-card' }] },
+      { name: '黛安娜', hp: 10, san: 8, hand: [{ id: 'diana-card' }] },
+    ];
+    const afterInspection = beforePlayers.map(player => ({ ...player, hand: [...player.hand] }));
+    const afterSwap = [
+      { ...afterInspection[0], hand: [{ id: 'diana-card' }] },
+      { ...afterInspection[1], hand: [{ id: 'alan-card' }] },
+    ];
+    const inspectionEvent = createInspectionVisualEvent({
+      seq: 3,
+      transactionId: 'ai-action:truth-swap',
+      order: 0,
+      target: 0,
+      card: { id: 'truth', name: '揭开真相' },
+      beforePlayers,
+      afterPlayers: afterInspection,
+      beforeDiscard: [],
+      afterDiscard: [],
+      beforeLog: [],
+      afterLog: ['艾伦 揭开真相'],
+    });
+    const swapEvent = {
+      ...createSwapCardsEvent({
+        sourceIdx: 0,
+        targetIdx: 1,
+        takenCard: beforePlayers[1].hand[0],
+        givenCard: beforePlayers[0].hand[0],
+        beforePlayers: afterInspection,
+        afterPlayers: afterSwap,
+      }),
+      transactionId: 'ai-action:truth-swap',
+      order: 1,
+    };
+    const state = {
+      phase: 'AI_TURN',
+      players: afterSwap,
+      discard: [],
+      log: ['艾伦 揭开真相', '艾伦 对 黛安娜 【掉包】'],
+      _visualEvents: [inspectionEvent, swapEvent],
+    };
+    const transaction = compileRuleVisualEventsToAnimTransaction(state);
+    const coveredInspections = collectInspectionEventsCoveredByQueue(
+      state._visualEvents,
+      transaction.queue,
+    );
+    const inspectionWatermark = Math.max(
+      0,
+      ...coveredInspections.map(event => event.legacySeq ?? event.seq ?? 0),
+    );
+
+    expect(transaction.queue.filter(step => (
+      step.type === 'DRAW_CARD' && step.visualEventId === inspectionEvent.id
+    ))).toHaveLength(1);
+    expect(transaction.queue.findIndex(step => step.visualEventId === swapEvent.id))
+      .toBeGreaterThan(transaction.queue.findIndex(step => step.visualEventId === inspectionEvent.id));
+    expect(coveredInspections).toEqual([inspectionEvent]);
+    // App's compatibility append must now see no fresh inspection to replay.
+    expect(getFreshInspectionReplayEvents(state, { afterSeq: inspectionWatermark })).toEqual([]);
   });
 
   it('keeps worship and consecutive hunts on one monotonic hand timeline', () => {

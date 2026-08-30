@@ -45,6 +45,15 @@ describe('rule resolution transactions', () => {
     ]));
   });
 
+  it('does not accept phase-local order as the transaction-global order', () => {
+    expect(validateRuleResolutionEvents([
+      { id: 'a', type: 'drawCard', transactionId: 'tx', phaseOrder: 0 },
+      { id: 'b', type: 'inspection', transactionId: 'tx', phaseOrder: 10 },
+    ])).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'MISSING_RULE_TRANSACTION_ORDER', transactionId: 'tx' }),
+    ]));
+  });
+
   it('throws before compiling an ambiguous rule transaction', () => {
     expect(() => assertValidRuleResolutionEvents([
       { id: 'a', type: 'drawCard', transactionId: 'tx', order: 0 },

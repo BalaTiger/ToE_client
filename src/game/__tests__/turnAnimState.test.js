@@ -197,6 +197,9 @@ describe('buildPlayerTurnDrawQueue', () => {
     expect(replay.queue[3].msgs).not.toContain('牌堆耗尽，重洗弃牌堆');
     expect(replay.queue[1].visualEventId).toBe(newGs._visualEvents[0].id);
     expect(replay.queue[3].visualEventId).toBe(newGs._visualEvents[1].id);
+    // The canonical staged transaction compiles the same reshuffle event again;
+    // the draw-step assembler's explicit step must remain the only playback.
+    expect(replay.queue.filter(step => step.type === 'DECK_RESHUFFLE')).toHaveLength(1);
   });
 
   it('canonical multiple draws preserve drawOrder without fallback duplicates', () => {

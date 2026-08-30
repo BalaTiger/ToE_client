@@ -20,6 +20,7 @@ import { createBlackGoatYoungCard } from '../../constants/card';
 import { makeGs, makeGodCard, makePlayer, makeZoneCard } from './factory';
 import { makeProliferatingZState } from '../proliferatingZ';
 import { addDamageLink } from '../damageLinks';
+import { validateRuleResolutionEvents } from '../ruleResolutionTransaction';
 
 describe('AI 两人一绳策略', () => {
   const rope = () => makeZoneCard('B4', 0, { name: '两人一绳', type: 'damageLink', polarity: 'neutral' });
@@ -1384,6 +1385,50 @@ describe('aiStep optional action limits', () => {
       presentation.queue,
       queue => getVisualEventIdsCoveredByAnimationQueue(result, queue),
     ).uncoveredEventIds).toEqual([]);
+  });
+
+  it('AI 在黑夜中连续追捕时为整轮动作生成全局唯一事务顺序', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const players = [
+      makePlayer({
+        name: '贝拉',
+        role: ROLE_HUNTER,
+        roleRevealed: true,
+        hp: 10,
+        hand: [makeZoneCard('C1', 0), makeZoneCard('C2', 0)],
+      }),
+      makePlayer({
+        name: '卡洛斯',
+        role: ROLE_TREASURE,
+        roleRevealed: true,
+        hp: 9,
+        hand: [makeZoneCard('C3', 0), makeZoneCard('C4', 0)],
+      }),
+    ];
+    const result = aiStep(makeGs({
+      players,
+      currentTurn: 0,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+      apophisNight: { active: true, count: 0, limit: 12, threshold: 2 },
+      _apophisTargetSeq: 0,
+      _visualEvents: [],
+      log: ['旧日志'],
+    }), { allAi: true });
+    const targetEvents = (result._visualEvents || []).filter(event => event.type === 'apophisTarget');
+    const actionTransactionId = targetEvents[0]?.transactionId;
+    const actionEvents = (result._visualEvents || []).filter(event => (
+      event?.transactionId === actionTransactionId
+    ));
+    const orders = actionEvents.map(event => event.order);
+
+    expect(targetEvents).toHaveLength(2);
+    expect(actionTransactionId).toEqual(expect.any(String));
+    expect(orders.every(Number.isInteger)).toBe(true);
+    expect(new Set(orders).size).toBe(orders.length);
+    expect(validateRuleResolutionEvents(actionEvents)).toEqual([]);
   });
 
   it('追捕条件不足且不需休息时，把黑山羊幼仔繁衍给低HP高SAN目标', () => {

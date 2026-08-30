@@ -1138,6 +1138,11 @@ export function buildTurnStartDrawReplayQueue({
   const primaryDrawEventIds = new Set(turnDrawEvents.map(event => event?.id).filter(Boolean));
   const stagedDrawEffectQueue = (stagedTurnStartTransaction?.queue || []).filter(step => (
     step?.type !== 'YOUR_TURN'
+    // The draw-step assembler owns the reshuffle presentation (event-bound steps
+    // beside their draw, or the _drawLogs fallback). The canonical transaction
+    // compiles the same DECK_RESHUFFLE event a second time; letting it through
+    // replays the discard-to-deck flight at the tail of the draw segment.
+    && step?.type !== 'DECK_RESHUFFLE'
     // The replay assembler places the primary draw and its owned keep/discard
     // landing as one block below. The canonical compiler also knows how to
     // build that block for direct transaction consumers (such as chained TSG

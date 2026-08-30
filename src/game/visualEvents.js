@@ -1680,8 +1680,11 @@ export function buildCardEffectAnimStep(event, state) {
     const sync = buildSyncedCardEffectTimeline({
       beforePlayers: event.beforePlayers,
       beforeDiscard: event.beforeDiscard,
-      afterPlayers: event.afterPlayers || state?.players,
-      afterDiscard: event.afterDiscard || state?.discard,
+      // VOLCANO only presents the source card. HP/death state belongs to the
+      // following stat/death steps; committing the final snapshot here makes
+      // a defeated panel gray out before the guillotine and death notice.
+      afterPlayers: event.beforePlayers,
+      afterDiscard: event.beforeDiscard,
       state,
       finalAtMs: 2400,
     });

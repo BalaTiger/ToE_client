@@ -2,10 +2,11 @@ import React from 'react';
 import { getPileAnchorCenter } from '../../utils/dom';
 import { getStandardFlyingCardSize } from './cardSizing';
 import { GenericAnimOverlay } from './GenericAnimOverlay';
+import { CardBackLayer } from '../cards/AnimatedCardBack';
 
 const BROADCAST_MS = 720;
 
-export function DeckReshuffleOverlay({ anim, exiting }) {
+export function DeckReshuffleOverlay({ anim, exiting, expansionKey = '地神的潜影' }) {
   const [showTransfer, setShowTransfer] = React.useState(false);
   const [path, setPath] = React.useState(null);
 
@@ -66,7 +67,7 @@ export function DeckReshuffleOverlay({ anim, exiting }) {
             animationDelay: `${index * 55}ms`,
           }}
         >
-          <div className="deck-reshuffle-card-back">✦</div>
+          <CardBackLayer expansionKey={expansionKey}/>
         </div>
       ))}
       <div className="deck-reshuffle-caption">弃牌堆洗回牌堆</div>

@@ -37,6 +37,7 @@ import {
   validateVisualEventTransaction,
 } from '../visualEventTransactionCompiler';
 import { prepareAnimationQueueSteps } from '../animationStepSchema';
+import { createPlayerDefeatedStatEvent } from '../statEvents';
 
 const selectTransactionQueue = (queue, transaction, options = {}) => (
   options.authority === ANIMATION_QUEUE_AUTHORITY.QUEUE
@@ -907,6 +908,58 @@ describe('visualEventTransactionCompiler', () => {
     expect(transaction.queue.map(step => step.targetPid)).toEqual([0, 1]);
   });
 
+  it('keeps volcano death state out of the source animation until DEATH begins', () => {
+    const beforePlayers = [player('卡洛斯', { hp: 4, isDead: false })];
+    const depletedPlayers = [player('卡洛斯', { hp: 0, isDead: false })];
+    const defeatedPlayers = [player('卡洛斯', { hp: 0, isDead: true, roleRevealed: true })];
+    const hpLoss = {
+      id: 'volcano-hp-loss',
+      type: 'HP_LOSS',
+      target: 0,
+      from: { hp: 4, san: 10 },
+      to: { hp: 0, san: 10 },
+      seq: 1,
+      phaseOrder: 0,
+    };
+    const defeated = createPlayerDefeatedStatEvent({
+      target: 0,
+      from: hpLoss.from,
+      to: hpLoss.to,
+      seq: 1,
+      phaseOrder: 1,
+      playersBefore: depletedPlayers,
+      playersAfter: defeatedPlayers,
+    });
+    const event = createCardEffectEvent({
+      effectKey: 'volcano',
+      card: { id: 'volcano', name: '活火山' },
+      actorIdx: 1,
+      beforePlayers,
+      afterPlayers: defeatedPlayers,
+      statEvents: [hpLoss, defeated],
+      msgs: ['全体存活角色失去 4 HP', '☠ 卡洛斯倒下了！'],
+    });
+    const transaction = compileVisualEventToAnimTransaction(
+      event,
+      { players: defeatedPlayers, discard: [] },
+      { players: beforePlayers, discard: [] },
+    );
+    const volcano = transaction.queue.find(step => step.type === 'VOLCANO');
+    const deathIndex = transaction.queue.findIndex(step => step.type === 'DEATH');
+
+    expect(transaction.queue.map(step => step.type)).toEqual(expect.arrayContaining([
+      'VOLCANO',
+      'HP_DAMAGE',
+      'GUILLOTINE',
+      'DEATH',
+    ]));
+    expect(deathIndex).toBeGreaterThan(transaction.queue.findIndex(step => step.type === 'GUILLOTINE'));
+    expect(volcano.visualTimeline.every(point => point.patch.players[0].isDead === false)).toBe(true);
+    expect(prepareAnimationQueueSteps(transaction.queue).issues
+      .filter(item => item.code === 'PREMATURE_PLAYER_DEFEAT_COMMIT')).toEqual([]);
+    expect(transaction.queue[deathIndex].visualSetupPatch.players[0].isDead).toBe(true);
+  });
+
   it('validates explicit hunt target dependencies at the transaction boundary', () => {
     const targetEvent = createApophisTargetVisualEvent({
       seq: 1,
@@ -914,6 +967,7 @@ describe('visualEventTransactionCompiler', () => {
       targetIdx: 2,
       roll: 4,
       transactionId: 'action-1',
+      order: 0,
       phaseGroupId: 'attempt-1',
       phaseOrder: 0,
     });
@@ -922,6 +976,7 @@ describe('visualEventTransactionCompiler', () => {
       targetIdx: 2,
       targetResolutionEventId: targetEvent.id,
       transactionId: 'action-1',
+      order: 1,
       phaseGroupId: 'attempt-1',
       phaseOrder: 30,
     });

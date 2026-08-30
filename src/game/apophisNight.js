@@ -151,6 +151,7 @@ export function resolveApophisTarget({
     ...(visualMeta?.transactionId ? { transactionId: visualMeta.transactionId } : {}),
     ...(visualMeta?.phaseGroupId ? { phaseGroupId: visualMeta.phaseGroupId } : {}),
     ...(apophisVisualEvent?.id ? { causedByEventId: apophisVisualEvent.id } : {}),
+    ...(visualMeta?.order != null ? { order: visualMeta.order + 1 + index } : {}),
     phaseOrder: (visualMeta?.phaseOrder ?? 0) + 10 + index,
   }));
   return {

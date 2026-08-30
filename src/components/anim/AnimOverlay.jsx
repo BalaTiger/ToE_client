@@ -80,7 +80,7 @@ const ANIM_RENDERERS = {
   GOD_POWER_BLOCKED: ({ anim, exiting }) => <TorchWardOverlay anim={anim} exiting={exiting} />,
   TSG_SLIME_POP: ({ anim, exiting }) => <TsathogguaSlimePopOverlay anim={anim} exiting={exiting} />,
   VRI_IMMORTAL_REVEAL: ({ anim, exiting }) => <VritraImmortalRevealOverlay anim={anim} exiting={exiting} />,
-  DECK_RESHUFFLE: ({ anim, exiting }) => <DeckReshuffleOverlay anim={anim} exiting={exiting} />,
+  DECK_RESHUFFLE: ({ anim, exiting, expansionKey }) => <DeckReshuffleOverlay anim={anim} exiting={exiting} expansionKey={expansionKey} />,
 };
 
 function AnimOverlay({ anim, exiting, expansionKey = '地神的潜影', playEndlessCorridorTunnelSound }) {

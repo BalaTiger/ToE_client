@@ -88,7 +88,11 @@ export function validateRuleResolutionEvents(events = []) {
   transactionGroups.forEach((items, transactionId) => {
     const seenOrders = new Map();
     items.forEach(({ event }) => {
-      const eventOrder = event.order ?? event.phaseOrder;
+      // `phaseOrder` is local to one settlement/phase group.  It must never
+      // double as the cursor for the enclosing rule transaction: independent
+      // settlements commonly start at phaseOrder=0, so that fallback makes a
+      // valid multi-attempt action ambiguous only when it reaches playback.
+      const eventOrder = event.order;
       if (eventOrder == null || !Number.isFinite(Number(eventOrder))) {
         issues.push({ code: 'MISSING_RULE_TRANSACTION_ORDER', transactionId, eventId: event.id || null });
         return;

@@ -104,6 +104,7 @@ describe('apophisNight', () => {
       label: '选择【掉包】目标',
       visualMeta: {
         transactionId: 'action-1',
+        order: 4,
         phaseGroupId: 'attempt-1',
         phaseOrder: 0,
       },
@@ -118,6 +119,7 @@ describe('apophisNight', () => {
     expect(res.targetResolutionEventId).toBe(apophisEvent.id);
     expect(apophisEvent).toMatchObject({
       transactionId: 'action-1',
+      order: 4,
       phaseGroupId: 'attempt-1',
       phaseOrder: 0,
     });
@@ -126,6 +128,7 @@ describe('apophisNight', () => {
       card: inspectionCard,
       beforeStatEventSeq: 1,
       transactionId: 'action-1',
+      order: 5,
       phaseGroupId: 'attempt-1',
       phaseOrder: 10,
       causedByEventId: apophisEvent.id,
