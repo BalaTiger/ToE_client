@@ -347,6 +347,7 @@ import {
   zhuHideCardStep,
   buryToDeckStep,
   cardTransferStep,
+  discardStep,
   buildGraveDigTransferStep,
   buildSphinxResultQueue,
   fullHandSwapSteps,
@@ -2018,13 +2019,15 @@ export default function Game(){
     // AI 放弃邪神馈赠时，diff 队列无法感知邪神牌从“待决策”进入弃牌堆（旧状态里它不在任何区域），
     // 需要像玩家 GOD_CHOICE 放弃分支一样显式补一个弃牌动画，否则卡牌只会随状态快照消失。
     const abandonGiftDiscardStep=abandonedGodGift
-      ?{
-        type:'DISCARD',
+      ?discardStep({
         card:godCard,
         triggerName:P[actorIdx]?.name||'???',
         targetPid:actorIdx,
+        sourceZone:'god',
+        playersBefore:gs.players,
+        discardBefore:gs.discard,
         msgs:resultMsgs.filter(msg=>typeof msg==='string'&&msg.includes('放弃了邪神的馈赠')),
-      }
+      })
       :null;
     const replay=compileFreshVisualEventReplay(gs,newGs);
     if(replay.inspectionEvents.length){
@@ -2462,7 +2465,13 @@ export default function Game(){
         }
         // 2c. Discard anim if AI chose to discard the drawn card
         if(!usedAiTurnStartReplay&&!gs._aiTurnDiscardShown&&aiTurnDiscarded&&aiTurnDrawnCard){
-          queue.push({type:'DISCARD',card:aiTurnDrawnCard,triggerName:gs.players[gs.currentTurn]?.name||'???',targetPid:gs.currentTurn});
+          queue.push(discardStep({
+            card:aiTurnDrawnCard,
+            triggerName:gs.players[gs.currentTurn]?.name||'???',
+            targetPid:gs.currentTurn,
+            playersBefore:gs.players,
+            discardBefore:gs.discard,
+          }));
           queue.push(statePatchStep({players:gs.players,discard:gs.discard}));
         }
         // Append inspection events triggered by the draw
@@ -2614,16 +2623,17 @@ export default function Game(){
           markInspectionEventsSeen(compiledActionInspectionEvents);
         }
         const handLimitDiscardCards=_aiHandLimitDiscards||[];
-        const handLimitDiscardQueue=handLimitDiscardCards.length?[{
-          type:'DISCARD',
+        const handLimitDiscardQueue=handLimitDiscardCards.length?[discardStep({
           card:handLimitDiscardCards[0],
           cards:handLimitDiscardCards,
           count:handLimitDiscardCards.length,
           triggerName:gs.players[gs.currentTurn]?.name||'???',
           targetPid:gs.currentTurn,
+          playersBefore:_aiHandLimitBeforePlayers||_playersBeforeEndTurnReplay||gs.players,
+          discardBefore:_aiHandLimitBeforeDiscard||_discardBeforeEndTurnReplay||gs.discard,
           msgs:actionReplayMetadata.visualEvents
             .find(event=>event?.type===VISUAL_EVENT.HAND_LIMIT_DISCARD)?.msgs||[],
-        }]:[];
+        })]:[];
         const handLimitDiscardCommitQueue=handLimitDiscardCards.length&&_playersBeforeEndTurnReplay
           ?[statePatchStep({
               players:_playersBeforeEndTurnReplay,
@@ -3677,12 +3687,12 @@ export default function Game(){
       const discardMsg=`(超时) ${who} 弃置了 ${cardLogText(dr.card,{alwaysShowName:true})}`;
       const win=checkWin(base.players,true);
       if(win){
-        triggerAnimQueue([{type:'DISCARD',card:dr.card,triggerName:who,targetPid:drawerIdx,msgs:[discardMsg]}],{...base,gameOver:win},undefined,AUTHORITATIVE_QUEUE_META);
+        triggerAnimQueue([discardStep({card:dr.card,triggerName:who,targetPid:drawerIdx,msgs:[discardMsg],playersBefore:base.players,discardBefore:base.discard})],{...base,gameOver:win},undefined,AUTHORITATIVE_QUEUE_META);
         return;
       }
       const baseHandLimit=getHandLimitForPlayer(base.players?.[0]);
       if(base.players[0].hand.length>baseHandLimit){
-        triggerAnimQueue([{type:'DISCARD',card:dr.card,triggerName:who,targetPid:drawerIdx,msgs:[discardMsg]}],transitionTurnFlowStage({...base,abilityData:{discardSelected:[],fromEndTurn:true}},TURN_FLOW_STAGE.DISCARD,{phase:'DISCARD_PHASE'}),undefined,AUTHORITATIVE_QUEUE_META);
+        triggerAnimQueue([discardStep({card:dr.card,triggerName:who,targetPid:drawerIdx,msgs:[discardMsg],playersBefore:base.players,discardBefore:base.discard})],transitionTurnFlowStage({...base,abilityData:{discardSelected:[],fromEndTurn:true}},TURN_FLOW_STAGE.DISCARD,{phase:'DISCARD_PHASE'}),undefined,AUTHORITATIVE_QUEUE_META);
         return;
       }
       const timeoutDiscardEvent=createTimedOutDrawDiscardEvent({
@@ -3709,7 +3719,7 @@ export default function Game(){
       const drawnCard=ph==='GOD_CHOICE'?nextGs.abilityData?.godCard:nextGs.drawReveal?.card;
       const nextActorName=nextGs.players?.[nextGs.currentTurn]?.name||'???';
       const nextActorPid=nextGs.currentTurn;
-      const queue=[{type:'DISCARD',card:dr.card,triggerName:who,targetPid:drawerIdx,msgs:[discardMsg]},...preTurnQ];
+      const queue=[discardStep({card:dr.card,triggerName:who,targetPid:drawerIdx,msgs:[discardMsg],playersBefore:base.players,discardBefore:base.discard}),...preTurnQ];
       if(drawnCard&&(ph==='DRAW_REVEAL'||ph==='GOD_CHOICE'||ph==='DRAW_SELECT_TARGET'||ph==='ACTION')){
         queue.push({type:'YOUR_TURN',name:nextActorName,msgs:nextGs._turnStartLogs});
         queue.push({type:'DRAW_CARD',card:drawnCard,triggerName:nextActorPid===0?'你':nextActorName,targetPid:nextActorPid,msgs:nextGs._drawLogs});
@@ -5703,7 +5713,15 @@ export default function Game(){
       balanceStatPatch=buildStatChangeStatePatch(gs,balanceDecision);
     }
     const queue=[
-      {type:'DISCARD',card:discardCard,triggerName:who,msgs:[discardLog]},
+      discardStep({
+        card:discardCard,
+        triggerName:who,
+        targetPid:drawerIdx,
+        msgs:[discardLog],
+        playersBefore:gs.players,
+        discardBefore:gs.discard,
+        discardAfter:nextDiscard,
+      }),
       ...statEventsToAnimQueue(balanceDecision?.statEvents||[],P,nextLog.slice(gs.log.length)),
     ];
     const replayPatch=dr.fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
@@ -6987,7 +7005,14 @@ export default function Game(){
     if(damageDecision?.phase)nextGs={...nextGs,phase:damageDecision.phase,abilityData:damageDecision.abilityData};
     const balanceSteps=statEventsToAnimQueue(damageDecision?.statEvents||[],playersAfterDiscard,L.slice(activeGs.log.length));
     const effectQueue=[
-      {type:'DISCARD',card:discardedCard,targetPid:actorIdx,msgs:L.slice(activeGs.log.length,activeGs.log.length+1)},
+      discardStep({
+        card:discardedCard,
+        targetPid:actorIdx,
+        msgs:L.slice(activeGs.log.length,activeGs.log.length+1),
+        playersBefore:beforeDiscardPlayers,
+        discardBefore:beforeDiscardPile,
+        discardAfter:Disc,
+      }),
       ...balanceSteps,
       statePatchStep({players:P,discard:Disc,log:L}),
     ].map(step=>discardEvent?.id&&!step.visualEventId?{...step,visualEventId:discardEvent.id}:step);
@@ -8198,20 +8223,24 @@ export default function Game(){
       return;
     }else{
       // 已经选择了足够的手牌，处理剩余的手牌
+      const beforeRemainingSettlementPlayers=copyPlayers(P);
+      const beforeRemainingSettlementDiscard=[...Disc];
       const remainingHand=[...P[huntTi].hand];
       const remainingSettlement=splitKeptDestroyedDiscarded(remainingHand);
       const defeatedGodCards=[...(P[huntTi].godZone||[])];
+      const afterRemainingSettlementDiscard=[...Disc,...remainingSettlement.kept];
       Disc.push(...remainingSettlement.kept);
       if(remainingSettlement.destroyed.length)L.push(`${P[huntTi].name} 的 ${remainingSettlement.destroyed.length} 张衍生牌被销毁`);
       P[huntTi].hand=[];
+      const beforeGodSettlementPlayers=copyPlayers(P);
       if(defeatedGodCards.length){Disc.push(...defeatedGodCards);P[huntTi].godZone=[];P[huntTi].godName=null;P[huntTi].godLevel=0;}
       const win=checkWin(P,gs._isMP);
       const newGs={...gs,players:P,discard:Disc,log:L,abilityData:{},phase:'ACTION',...(win?{gameOver:win}:{})};
       const inferredQueue=compileFreshVisualEventQueue(gs,newGs);
       const queue=[
         ...inferredQueue,
-        ...(remainingHand.length?[{type:'DISCARD',card:remainingHand[0],cards:remainingHand,count:remainingHand.length,triggerName:P[huntTi]?.name||'???',targetPid:huntTi}]:[]),
-        ...(defeatedGodCards.length?[{type:'DISCARD',card:defeatedGodCards[0],cards:defeatedGodCards,count:defeatedGodCards.length,triggerName:P[huntTi]?.name||'???',targetPid:huntTi,sourceZone:'god'}]:[]),
+        ...(remainingHand.length?[discardStep({card:remainingHand[0],cards:remainingHand,count:remainingHand.length,triggerName:P[huntTi]?.name||'???',targetPid:huntTi,playersBefore:beforeRemainingSettlementPlayers,discardBefore:beforeRemainingSettlementDiscard,discardAfter:afterRemainingSettlementDiscard})]:[]),
+        ...(defeatedGodCards.length?[discardStep({card:defeatedGodCards[0],cards:defeatedGodCards,count:defeatedGodCards.length,triggerName:P[huntTi]?.name||'???',targetPid:huntTi,sourceZone:'god',playersBefore:beforeGodSettlementPlayers,discardBefore:afterRemainingSettlementDiscard,discardAfter:Disc})]:[]),
         statePatchStep({players:P,discard:Disc,log:L,abilityData:{},phase:'ACTION'}),
       ];
       if(queue.length) triggerAnimQueue(queue,newGs,undefined,authoritativeResolvedQueueMeta(newGs,queue)); else setGs(newGs);
@@ -8421,12 +8450,16 @@ export default function Game(){
     let newGs;
     const aiHandLimitDiscardCards=[];
     let aiHandLimitDiscardMsgs=[];
+    let aiHandLimitBeforePlayers=null;
+    let aiHandLimitBeforeDiscard=null;
     let beforeNextTurnGs=null;
     if (win) newGs = {...baseGs, gameOver:win};
     // 决定是让 AI 重新进入 AI_TURN 继续追杀，还是结束该回合
       else if (wantsToHuntAgain) newGs = withClearedTurnAnimFields({...baseGs, phase: 'AI_TURN', currentTurn: huntingAI, skillUsed: false, restUsed: false, _aiName: aiHunterName});
     else{
       const aiHandLimit=P[huntingAI]._nyaHandLimit??4;
+      aiHandLimitBeforePlayers=copyPlayers(P);
+      aiHandLimitBeforeDiscard=[...Disc];
       const aiHandLimitLogStart=L.length;
       while(P[huntingAI].hand.length>aiHandLimit){
         const c=P[huntingAI].hand.shift();
@@ -8473,6 +8506,9 @@ export default function Game(){
       playerName:aiHunterName||'???',
       cards:aiHandLimitDiscardCards,
       msgs:aiHandLimitDiscardMsgs,
+      beforePlayers:beforeNextTurnGs ? aiHandLimitBeforePlayers : null,
+      beforeDiscard:beforeNextTurnGs ? aiHandLimitBeforeDiscard : null,
+      afterDiscard:beforeNextTurnGs ? beforeNextTurnGs.discard : null,
     });
     const huntSettlementEvents=[huntRevealEvent,huntResultEvent,handLimitDiscardEvent].filter(Boolean);
     let resolutionQueue=[];
@@ -9107,7 +9143,15 @@ export default function Game(){
       const queue=[
         // The god draw and reveal have already completed before GOD_CHOICE opens.
         // Replaying DRAW_CARD here also replays its background camera prelude.
-        {type:'DISCARD',card:godCard,triggerName:'你',targetPid:drawerIdx,msgs:[discardLog]},
+        discardStep({
+          card:godCard,
+          triggerName:'你',
+          targetPid:drawerIdx,
+          msgs:[discardLog],
+          playersBefore:gs.players,
+          discardBefore:gs.discard,
+          discardAfter:Disc,
+        }),
         statePatchStep({players:P,discard:Disc}),
       ];
       if(fromEndTurnReplay){

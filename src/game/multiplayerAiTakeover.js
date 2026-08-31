@@ -100,6 +100,9 @@ export function withTimeoutDrawDiscardVisual(state, timeoutSource) {
     drawerName: timeoutSource.players?.[drawerIdx]?.name
       || drawReveal.drawerName
       || '该玩家',
+    beforePlayers: timeoutSource.players,
+    beforeDiscard: timeoutSource.discard,
+    afterDiscard: state?.discard,
   });
   if (!event) return state;
   return {
@@ -170,6 +173,9 @@ function autoDiscardSeatAndAdvance(
         playerName: players[seatIdx]?.name || '该玩家',
         cards: discardAnimationCards,
         msgs: log.slice(baseState.log?.length || 0),
+        beforePlayers: baseState.players,
+        beforeDiscard: baseState.discard,
+        afterDiscard: discard,
       })
     : null;
   const carriedVisualEvents = Array.isArray(balanceStatePatch._visualEvents)

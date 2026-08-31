@@ -2,7 +2,7 @@ import { copyPlayers, removeCardsFromDiscard } from './coreUtils';
 import { isAiSeat, localDisplayName } from './rotateState';
 import { bindAnimLogChunks } from './animLogs';
 import { buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
-import { buildInspectionEventFlow, cardTransferStep, prepareWorshipHighlight, statePatchStep, zhuHideCardStep } from './animQueueHelpers';
+import { buildInspectionEventFlow, cardTransferStep, discardStep, prepareWorshipHighlight, statePatchStep, zhuHideCardStep } from './animQueueHelpers';
 import {
   getVisualEvents,
   VISUAL_EVENT,
@@ -220,9 +220,17 @@ function addCardToHandSnapshot(players = [], playerIdx = 0, card = null) {
   } : player);
 }
 
-function normalizeTurnDrawEvents(state, drawerPid, drawerName) {
+function isConsumedVisualEventId(consumedVisualEventIds, id) {
+  return !!id && !!consumedVisualEventIds && (
+    consumedVisualEventIds?.has?.(id) ||
+    (Array.isArray(consumedVisualEventIds) && consumedVisualEventIds.includes(id))
+  );
+}
+
+function normalizeTurnDrawEvents(state, drawerPid, drawerName, consumedVisualEventIds = null) {
   const allExplicitEvents = getVisualEvents(state)
-    .filter(event => event?.type === VISUAL_EVENT.DRAW_CARD && event?.card);
+    .filter(event => event?.type === VISUAL_EVENT.DRAW_CARD && event?.card)
+    .filter(event => !isConsumedVisualEventId(consumedVisualEventIds, event?.id));
   const currentDrawerEvents = allExplicitEvents.filter(event => event.playerIdx === drawerPid);
   const explicitEvents = (currentDrawerEvents.length ? currentDrawerEvents : allExplicitEvents)
     .map(event => ({
@@ -806,13 +814,16 @@ export function buildTurnStartDrawReplayQueue({
   }
   const drawerPid = getTurnStartDrawerIdx(newGs);
   const drawerName = newGs?.players?.[drawerPid]?.name || '???';
+  const isConsumedVisualEvent = event => isConsumedVisualEventId(consumedVisualEventIds, event?.id);
   const explicitTurnDrawEvents = getVisualEvents(newGs)
-    .filter(event => event?.type === VISUAL_EVENT.DRAW_CARD && event?.card && event.playerIdx === drawerPid);
+    .filter(event => event?.type === VISUAL_EVENT.DRAW_CARD && event?.card && event.playerIdx === drawerPid)
+    .filter(event => !isConsumedVisualEvent(event));
   const reshuffleVisualEvents = getVisualEvents(newGs)
-    .filter(event => event?.type === VISUAL_EVENT.DECK_RESHUFFLE);
+    .filter(event => event?.type === VISUAL_EVENT.DECK_RESHUFFLE)
+    .filter(event => !isConsumedVisualEvent(event));
   const hasExplicitTurnDrawEvents = explicitTurnDrawEvents.length > 0;
   const hasStructuredTurnDrawEvents = hasExplicitTurnDrawEvents;
-  const turnDrawEvents = normalizeTurnDrawEvents(newGs, drawerPid, drawerName);
+  const turnDrawEvents = normalizeTurnDrawEvents(newGs, drawerPid, drawerName, consumedVisualEventIds);
   const beforeDrawPlayers = newGs?._playersBeforeThisDraw || oldGs?.players || newGs?.players || [];
   const turnStartPreDrawQ = buildTurnStartPreDrawEffectQueue({
     oldGs,
@@ -871,6 +882,14 @@ export function buildTurnStartDrawReplayQueue({
     deck: [...(oldGs?.discard || [])],
     discard: [],
   });
+  // 旧式日志差分兜底仅服务没有视觉事件的遗留状态。回合横幅 id 由 _turnKey
+  // 稳定派生，且横幅/摸牌/重洗同属一个已提交事务；横幅已消费即证明本次回合
+  // 开始摸牌已呈现过。此时禁止再从 _drawLogs 差分重建重洗/摸牌步骤——联机广播
+  // 会裁掉已消费事件但保留 _drawLogs，否则远端（或本地二次构建）会在回合结束
+  // 把同一套摸牌动画重播一遍。
+  const turnStartDrawAlreadyPresented = isConsumedVisualEventId(consumedVisualEventIds, getTurnBannerVisualEventId(newGs));
+  const legacyDrawCardStep = turnStartDrawAlreadyPresented ? null : drawCardStep;
+  const legacyReshuffleStep = msgs => (turnStartDrawAlreadyPresented ? null : deckReshuffleStep(msgs));
   const drawCardSteps = hasStructuredTurnDrawEvents
     ? turnDrawEvents.flatMap((event, eventIdx) => {
       const explicitReshuffleSteps = reshuffleVisualEvents
@@ -880,7 +899,7 @@ export function buildTurnStartDrawReplayQueue({
           visualEventId: reshuffle.id,
           msgs: reshuffle.msgs || [],
         }));
-      const reshuffleStep = explicitReshuffleSteps.length ? null : deckReshuffleStep(event.msgs);
+      const reshuffleStep = explicitReshuffleSteps.length ? null : legacyReshuffleStep(event.msgs);
       const drawStep = {
         type: 'DRAW_CARD',
         ...(event?.id ? { visualEventId: event.id } : {}),
@@ -896,7 +915,7 @@ export function buildTurnStartDrawReplayQueue({
       };
       const steps = [];
       if (eventIdx === 0 && !hasEventBoundReshuffle) {
-        const fallbackReshuffleStep = deckReshuffleStep(newGs?._drawLogs);
+        const fallbackReshuffleStep = legacyReshuffleStep(newGs?._drawLogs);
         if (fallbackReshuffleStep) steps.push(fallbackReshuffleStep, reshuffleLandingStep);
       }
       if (event.slimePop) {
@@ -912,11 +931,11 @@ export function buildTurnStartDrawReplayQueue({
       return steps;
     })
     : (() => {
-      const fallbackReshuffleStep = deckReshuffleStep(newGs?._drawLogs);
+      const fallbackReshuffleStep = legacyReshuffleStep(newGs?._drawLogs);
       return [
         fallbackReshuffleStep,
         ...(fallbackReshuffleStep ? [reshuffleLandingStep] : []),
-        drawCardStep,
+        legacyDrawCardStep,
       ].filter(Boolean);
     })();
   // A previous player's god choice can remain in the accumulated game log. Only
@@ -934,12 +953,14 @@ export function buildTurnStartDrawReplayQueue({
     : null;
   const discardedDrawnCard = !!newGs?._discardedDrawnCard || godDrawResolution === 'discard';
   const discardDrawnStep = discardedDrawnCard
-    ? {
-      type: 'DISCARD',
+    ? discardStep({
       card: drawnCard,
       triggerName: localDisplayName(drawerPid, drawerName),
       targetPid: drawerPid,
-    }
+      playersBefore: oldGs?.players,
+      discardBefore: oldGs?.discard,
+      discardAfter: newGs?.discard,
+    })
     : null;
   const discardRestoreStep = discardedDrawnCard
     ? statePatchStep({ players: newGs?.players, discard: newGs?.discard })

@@ -63,6 +63,8 @@ export function DeckReshuffleOverlay({ anim, exiting, expansionKey = '地神的�
           className="deck-reshuffle-flying-card"
           style={{
             ...path,
+            borderRadius: 7,
+            overflow: 'hidden',
             '--reshuffle-rot': `${(index - 3) * 5}deg`,
             animationDelay: `${index * 55}ms`,
           }}

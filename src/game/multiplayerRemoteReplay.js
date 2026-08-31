@@ -1,6 +1,6 @@
 import { bindAnimLogChunks } from './animLogs';
 import { mergeApophisTargetQueue } from './apophisAnimQueue';
-import { cardTransferStep, prepareWorshipHighlight } from './animQueueHelpers';
+import { cardTransferStep, discardStep, prepareWorshipHighlight } from './animQueueHelpers';
 import {
   buildInspectionReplay,
   buildRandomTargetReplay,
@@ -376,13 +376,15 @@ function buildResolvedDrawChoiceQueue(rotated, previousGs, logDelta, compileFres
         cards: [card],
         msgs: [],
       })
-    : {
-        type: 'DISCARD',
+    : discardStep({
         card,
         triggerName: localDisplayName(drawerIdx, drawerName),
         targetPid: drawerIdx,
         msgs: [],
-      };
+        playersBefore: previousGs?.players,
+        discardBefore: previousGs?.discard,
+        discardAfter: rotated?.discard,
+      });
   return [resolutionStep, ...effectQueue];
 }
 
@@ -571,6 +573,7 @@ export function buildMpRemoteReplayAction({
       newGs: rotated,
       timedOutDrawDiscardStep,
       preTurnSteps,
+      consumedVisualEventIds,
       buildQueue: compileFreshVisualEventQueue,
       buildFullHandSwapTransferQueue: buildFullHandSwapTransferQueueFromLogs,
       effectOldGs: { ...rotated, players: rotated._playersBeforeThisDraw || previousGs?.players || rotated.players, log: getTurnStartDrawBaselineLog(rotated) },
@@ -892,6 +895,7 @@ export function buildMpRemoteReplayAction({
       newGs: rotated,
       timedOutDrawDiscardStep,
       preTurnSteps,
+      consumedVisualEventIds,
       buildQueue: compileFreshVisualEventQueue,
       buildFullHandSwapTransferQueue: buildFullHandSwapTransferQueueFromLogs,
       effectOldGs: { ...rotated, players: beforeDrawPlayers, log: getTurnStartDrawBaselineLog(rotated) },
@@ -921,6 +925,7 @@ export function buildMpRemoteReplayAction({
       newGs: rotated,
       timedOutDrawDiscardStep,
       preTurnSteps,
+      consumedVisualEventIds,
       buildQueue: compileFreshVisualEventQueue,
       buildFullHandSwapTransferQueue: buildFullHandSwapTransferQueueFromLogs,
       effectOldGs: { ...previousGs, players: beforeDrawPlayers },

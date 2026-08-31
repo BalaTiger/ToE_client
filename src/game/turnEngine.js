@@ -2832,6 +2832,8 @@ export function startNextTurn(gs, opts = {}) {
           card: drawEvent.card,
           drawerIdx: drawEvent.playerIdx ?? nextState.currentTurn ?? 0,
           drawerName: drawEvent.playerName,
+          beforePlayers: drawEvent.playersBefore || null,
+          afterDiscard: nextState.discard,
         });
         if (discardEvent) {
           visualEvents = [...visualEvents, discardEvent];

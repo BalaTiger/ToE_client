@@ -14,6 +14,7 @@ import {
   insertHuntResolutionStatePatch,
   mergePlayerStatsIntoSnapshot,
   consumeRetainedRandomTargetEvents,
+  discardStep,
   deriveHandTransferSnapshot,
   prepareWorshipHighlight,
   resolveTurnHighlightForStep,
@@ -834,6 +835,41 @@ describe('animQueueHelpers', () => {
       visualSetupPatch: { players: before },
       visualTimeline: [{ atMs: 360, patch: { players: after } }],
     });
+  });
+
+  it('弃牌步骤只提交手牌变化,不会提前泄漏事件终态', () => {
+    const discarded = { id: 'discarded' };
+    const before = [makePlayer({ name: '你', hp: 4, san: 8, hand: [discarded, { id: 'keep' }] })];
+    const finalPlayers = [makePlayer({ name: '你', hp: 0, san: 2, isDead: true, hand: [] })];
+    const step = discardStep({
+      card: discarded,
+      targetPid: 0,
+      playersBefore: before,
+      playersAfter: finalPlayers,
+      discardBefore: [],
+      discardAfter: [discarded],
+    });
+
+    expect(step.visualSetupPatch.players[0].hand.map(card => card.id)).toEqual(['discarded', 'keep']);
+    expect(step.visualTimeline).toHaveLength(1);
+    expect(step.visualTimeline[0].atMs).toBe(360);
+    expect(step.visualTimeline[0].patch.players[0].hand.map(card => card.id)).toEqual(['keep']);
+    expect(step.visualTimeline[0].patch.players[0]).toMatchObject({ hp: 4, san: 8, isDead: false });
+  });
+
+  it('弃牌 before 快照优先级高于残留 setup patch,避免起始态回退到终态', () => {
+    const discarded = { id: 'discarded-setup' };
+    const before = [makePlayer({ hand: [discarded, { id: 'keep' }], hp: 8 })];
+    const leaked = [makePlayer({ hand: [{ id: 'keep' }], hp: 0, isDead: true })];
+    const step = discardStep({
+      card: discarded,
+      targetPid: 0,
+      playersBefore: before,
+      visualSetupPatch: { players: leaked },
+    });
+
+    expect(step.visualSetupPatch.players[0]).toMatchObject({ hp: 8, isDead: false });
+    expect(step.visualSetupPatch.players[0].hand.map(card => card.id)).toEqual(['discarded-setup', 'keep']);
   });
 
   it('转移作用域快照只应用换牌本身,不带入后续结算', () => {

@@ -47,7 +47,7 @@ import {
 } from './turnEngine';
 import { withClearedTurnAnimFields } from './turnAnimState';
 import { buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
-import { cardTransferStep, statePatchStep } from './animQueueHelpers';
+import { cardTransferStep, discardStep, statePatchStep } from './animQueueHelpers';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, isRevealedCultist } from './coreUtils';
 import { createBlackGoatYoungCard } from '../constants/card';
 import { buildStatEvents, statEventsToAnimQueue } from './statEvents';
@@ -566,6 +566,8 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
     }
     const keep = card?.type === END_TURN_EVENT.END_TURN_REPLAY_HAND || !isZoneCard(card) || aiShouldKeepZoneCard(card, ct, P, false, { discard: Disc, deck: D, gs });
     if (!keep) {
+      const beforeDiscardPlayers = copyPlayers(P);
+      const beforeDiscardPile = [...Disc];
       const [discarded] = P[ct].hand.splice(handIdx, 1);
       const derivedDiscard = isVanishingDerivedCard(discarded);
       const discardMsg = derivedDiscard
@@ -573,13 +575,14 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
         : `${P[ct].name} 弃置了 ${cardLogText(discarded, { alwaysShowName: true })}`;
       L.push(discardMsg);
       replayMsgs.push(discardMsg);
-      replayQueue.push({
-        type: 'DISCARD',
+      replayQueue.push(discardStep({
         card: discarded,
         triggerName: P[ct].name,
         targetPid: ct,
         msgs: [discardMsg],
-      });
+        playersBefore: beforeDiscardPlayers,
+        discardBefore: beforeDiscardPile,
+      }));
       if (!derivedDiscard) {
         Disc.push(discarded);
         const beforeBalancePlayers = copyPlayers(P);
@@ -1094,6 +1097,9 @@ export function aiStep(gs, opts = {}) {
       playerName:P[ct]?.name||'该玩家',
       cards:discardedCards,
       msgs:L.slice(beforeLog.length,afterDiscardLogLength),
+      beforePlayers,
+      beforeDiscard,
+      afterDiscard:afterDiscardPile,
     });
     const handLimitStatEvent=createStatEventsEvent({
       statEvents:[...discardStatEvents,...thornStatEvents],

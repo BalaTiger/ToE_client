@@ -2,6 +2,7 @@ import { statEventsToAnimQueue } from './statEvents';
 import {
   buildFullHandSwapStepsFromLogs,
   cardTransferStep,
+  discardStep,
   statePatchStep,
 } from './animQueueHelpers';
 import { buildHuntRevealStepFromVisualEvent } from './visualEvents';
@@ -68,7 +69,16 @@ export function buildAiHuntEventAnimQueue(evt, actorName, options = {}) {
   };
   if (evt.discardedCard) {
     const discardChunk = takeFollowup(line => /^弃 \[/.test(line || ''));
-    perHuntQueue.push({ type: 'DISCARD', card: evt.discardedCard, triggerName: actorName || '???', targetPid: evt.hunterIdx, _logChunk: discardChunk });
+    perHuntQueue.push(discardStep({
+      card: evt.discardedCard,
+      triggerName: actorName || '???',
+      targetPid: evt.hunterIdx,
+      _logChunk: discardChunk,
+      playersBefore: evt.beforePlayers,
+      discardBefore: evt.beforeDiscard,
+      playersAfter: evt.afterDiscardPlayers || null,
+      discardAfter: evt.afterDiscardDiscard || null,
+    }));
     if (evt.resolutionPatch) {
       perHuntQueue.push(statePatchStep(evt.resolutionPatch));
     }
@@ -120,27 +130,31 @@ export function buildAiHuntEventAnimQueue(evt, actorName, options = {}) {
       }
       const lootDiscardCards = (evt.lootDiscardCards || []).filter(Boolean);
       if (lootDiscardCards.length) {
-        perHuntQueue.push({
-          type: 'DISCARD',
+        perHuntQueue.push(discardStep({
           card: lootDiscardCards[0],
           cards: lootDiscardCards,
           count: lootDiscardCards.length,
           triggerName: evt.afterPlayers[evt.targetIdx]?.name || '???',
           targetPid: evt.targetIdx,
           _logChunk: discardMsgs,
-        });
+          playersBefore: evt.afterDiscardPlayers || evt.beforePlayers,
+          discardBefore: evt.afterDiscardDiscard || evt.beforeDiscard,
+          discardAfter: evt.afterDamageDiscard || evt.afterResultDiscard || null,
+        }));
       }
       const defeatedGodCards = (evt.defeatedGodCards || []).filter(Boolean);
       if (defeatedGodCards.length) {
-        perHuntQueue.push({
-          type: 'DISCARD',
+        perHuntQueue.push(discardStep({
           card: defeatedGodCards[0],
           cards: defeatedGodCards,
           count: defeatedGodCards.length,
           triggerName: evt.afterPlayers[evt.targetIdx]?.name || '???',
           targetPid: evt.targetIdx,
           sourceZone: 'god',
-        });
+          playersBefore: evt.afterDiscardPlayers || evt.beforePlayers,
+          discardBefore: evt.afterDiscardDiscard || evt.beforeDiscard,
+          discardAfter: evt.afterDamageDiscard || evt.afterResultDiscard || null,
+        }));
       }
       if (!cardsTaken && !lootDiscardCards.length && discardMsgs.length) {
         perHuntQueue.push({ type: 'TURN_BOUNDARY_PAUSE', _logChunk: discardMsgs });

@@ -1,6 +1,6 @@
 import { getEndTurnEvents } from './endTurnEvents';
 import { createHandLimitDiscardEvent } from './visualEvents';
-import { statePatchStep } from './animQueueHelpers';
+import { statePatchStep, discardStep } from './animQueueHelpers';
 import { buildPlayerTurnDrawQueue } from './turnAnimState';
 import { cardLogText } from './coreUtils';
 import { TURN_FLOW_STAGE } from './turnFlowStages';
@@ -76,9 +76,12 @@ export function resolvePostDiscardEndTurn(baseGs, {
   const handLimitDiscardEvent = baseGs._isMP
     ? createHandLimitDiscardEvent({
         playerIdx: actorIndex,
-        playerName: P[actorIndex]?.name || '该玩家',
-        cards: discarded,
-        msgs: discardAnimMsgs,
+      playerName: P[actorIndex]?.name || '该玩家',
+      cards: discarded,
+      msgs: discardAnimMsgs,
+      beforePlayers: baseGs.players,
+      beforeDiscard: baseGs.discard,
+      afterDiscard: Disc,
       })
     : null;
 
@@ -97,7 +100,7 @@ export function resolvePostDiscardEndTurn(baseGs, {
   const endTurnEvents = getEndTurnEvents(P, actorIndex);
   if (endTurnEvents.length) {
     const seedQueue = discarded.length
-      ? [{ type: 'DISCARD', cards: discarded, count: discarded.length, targetPid: actorIndex, msgs: discardAnimMsgs }, ...balanceQueue, statePatchStep({ players: P, discard: Disc })]
+      ? [discardStep({ cards: discarded, count: discarded.length, targetPid: actorIndex, msgs: discardAnimMsgs, playersBefore: baseGs.players, discardBefore: baseGs.discard, discardAfter: Disc }), ...balanceQueue, statePatchStep({ players: P, discard: Disc })]
       : [];
     const kickoffGs = {
       ...postDiscardGs,
@@ -121,7 +124,7 @@ export function resolvePostDiscardEndTurn(baseGs, {
   }
 
   const seedQueue = discarded.length
-    ? [{ type: 'DISCARD', cards: discarded, count: discarded.length, targetPid: actorIndex, msgs: discardAnimMsgs }, ...balanceQueue, statePatchStep({ players: P, discard: Disc })]
+    ? [discardStep({ cards: discarded, count: discarded.length, targetPid: actorIndex, msgs: discardAnimMsgs, playersBefore: baseGs.players, discardBefore: baseGs.discard, discardAfter: Disc }), ...balanceQueue, statePatchStep({ players: P, discard: Disc })]
     : [];
   const queue = buildPlayerTurnDrawQueue(postDiscardGs, newGs, seedQueue);
 

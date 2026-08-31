@@ -264,6 +264,80 @@ export function buryToDeckStep({fromPid=0,msgs=[],players=null}={}){
 // 手牌快照在飞牌飞行中段提交的默认时点,与掘墓/CARD_MOVE 既有节奏一致。
 export const HAND_TRANSFER_AFTER_AT_MS=360;
 
+function clonePlayersForHandDiscard(players = []) {
+  return Array.isArray(players)
+    ? players.map(player => (player ? { ...player, hand: [...(player.hand || [])] } : player))
+    : null;
+}
+
+// Build the visual after-snapshot for a discard without importing any later
+// HP/SAN/death settlement from the authoritative final state.  A discard from
+// the god zone (or a synthetic card that was never in hand) must not remove a
+// different card merely because the target hand is non-empty.
+export function deriveHandDiscardSnapshot(players = [], { targetPid = null, cards = [], sourceZone = null } = {}) {
+  const next = clonePlayersForHandDiscard(players);
+  if (!next || targetPid == null || sourceZone === 'god' || !next[targetPid]) return next;
+  const hand = next[targetPid].hand;
+  (Array.isArray(cards) ? cards : []).filter(Boolean).forEach(card => {
+    const index = hand.findIndex(candidate => (
+      (card?.id != null && candidate?.id === card.id) || candidate === card
+    ));
+    if (index >= 0) hand.splice(index, 1);
+  });
+  return next;
+}
+
+// Discard overlays share the hand-transfer presentation boundary.  Keep the
+// helper output identical to a legacy raw DISCARD when no snapshots are
+// supplied, while allowing every real discard to commit its hand-only after
+// state during the flight.
+export function discardStep(options = {}) {
+  const {
+    playersBefore = null,
+    playersAfter = null,
+    discardBefore = null,
+    discardAfter = null,
+    afterAtMs = null,
+    ...rest
+  } = options || {};
+  const step = { type: 'DISCARD' };
+  Object.entries(rest).forEach(([key, value]) => {
+    if (value !== undefined) step[key] = value;
+  });
+  const beforePatch = {
+    ...(Array.isArray(playersBefore) ? { players: playersBefore } : {}),
+    ...(Array.isArray(discardBefore) ? { discard: discardBefore } : {}),
+  };
+  if (Object.keys(beforePatch).length) {
+    if (step.visualSetupTiming === undefined) step.visualSetupTiming = 'stepStart';
+    // Event-level before snapshots are the authoritative presentation
+    // boundary.  Do not let a pre-existing setup patch (often copied from a
+    // later settlement step) overwrite them and leak the terminal state.
+    step.visualSetupPatch = { ...(step.visualSetupPatch || {}), ...beforePatch };
+  }
+  // When a before snapshot is available, always derive the after hand from it
+  // instead of trusting an event-level playersAfter that may already contain
+  // later HP/SAN/death settlement.
+  const resolvedPlayersAfter = Array.isArray(playersBefore)
+    ? deriveHandDiscardSnapshot(playersBefore, {
+        targetPid: step.targetPid,
+        cards: Array.isArray(step.cards) && step.cards.length ? step.cards : (step.card ? [step.card] : []),
+        sourceZone: step.sourceZone,
+      })
+    : (Array.isArray(playersAfter) ? playersAfter : null);
+  const afterPatch = {
+    ...(Array.isArray(resolvedPlayersAfter) ? { players: resolvedPlayersAfter } : {}),
+    ...(Array.isArray(discardAfter) ? { discard: discardAfter } : {}),
+  };
+  if (Object.keys(afterPatch).length) {
+    step.visualTimeline = [
+      ...(Array.isArray(step.visualTimeline) ? step.visualTimeline : []),
+      { atMs: Number.isFinite(afterAtMs) ? afterAtMs : HAND_TRANSFER_AFTER_AT_MS, patch: afterPatch },
+    ];
+  }
+  return step;
+}
+
 // 转移作用域快照:在 before 快照上只应用这一次换牌,不带入事件的后续结算
 // (SAN 结算、死亡标记等仍由各自的动画步骤呈现)。god 牌被蛊惑后直接遭遇,
 // 不进入目标手牌。
@@ -681,8 +755,7 @@ export function buildInspectionEventFlow(baseGs,events,{copyPlayers}){
       const targetPid=discardEvent.playerIndex??ev.target??0;
       const nextPlayers=copyPlayers(discardEvent.afterPlayers||afterPlayers);
       const nextDiscard=[...(Array.isArray(discardEvent.afterDiscard)?discardEvent.afterDiscard:afterDiscard)];
-      const step={
-        type:"DISCARD",
+      const step=discardStep({
         card:discardEvent.card,
         cards:[discardEvent.card],
         count:1,
@@ -691,11 +764,11 @@ export function buildInspectionEventFlow(baseGs,events,{copyPlayers}){
         msgs:index===0?effectMsgs:[],
         visualSetupTiming:"stepStart",
         visualSetupPatch:{players:discardCursorPlayers,discard:discardCursor},
-        visualTimeline:[
-          {atMs:0,patch:{players:discardCursorPlayers,discard:discardCursor}},
-          {atMs:900,patch:{players:nextPlayers,discard:nextDiscard}},
-        ],
-      };
+        playersBefore:discardCursorPlayers,
+        discardBefore:discardCursor,
+        playersAfter:nextPlayers,
+        discardAfter:nextDiscard,
+      });
       discardCursorPlayers=nextPlayers;
       discardCursor=nextDiscard;
       return step;

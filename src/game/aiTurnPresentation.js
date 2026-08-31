@@ -544,12 +544,13 @@ export function buildAiHuntWaitPresentation({
     && discardedDrawnCard
     && drawnCard
   ) {
-    queue.push({
-      type: 'DISCARD',
+    queue.push(discardStep({
       card: drawnCard,
       triggerName: actorName,
       targetPid: previousState.currentTurn,
-    });
+      playersBefore: previousState.players,
+      discardBefore: previousState.discard,
+    }));
     queue.push(statePatchStep({
       players: previousState.players,
       discard: previousState.discard,
@@ -830,7 +831,7 @@ import {
   buildAiHuntEventAnimQueue,
   buildFullHandSwapTransferQueueFromLogs,
 } from './animQueueCore';
-import { statePatchStep } from './animQueueHelpers';
+import { discardStep, statePatchStep } from './animQueueHelpers';
 import {
   appendAnimLogChunkToQueueEnd,
   bindAnimLogChunks,

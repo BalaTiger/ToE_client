@@ -24,7 +24,7 @@ import {
   getVisualEventIdsFromState,
 } from './visualEvents';
 import { buildAiHuntEventAnimQueue } from './animQueueCore';
-import { buildBewitchForcedCardQueue, buildInspectionEventFlow, buildSphinxResultQueue, buildGraveDigTransferStep, swapCardsSteps, deriveHandTransferSnapshot } from './animQueueHelpers';
+import { buildBewitchForcedCardQueue, buildInspectionEventFlow, buildSphinxResultQueue, buildGraveDigTransferStep, swapCardsSteps, deriveHandTransferSnapshot, discardStep } from './animQueueHelpers';
 import { copyPlayers } from './coreUtils';
 import { statEventsToAnimQueue } from './statEvents';
 import { assertValidRuleResolutionEvents, orderRuleResolutionEvents, statEventIdentity, validateRuleResolutionEvents } from './ruleResolutionTransaction';
@@ -36,6 +36,19 @@ function stateWithSingleEvent(state, event) {
 function flattenStep(step) {
   if (!step) return [];
   return step.type === 'COMPOSITE' ? (step.steps || []).filter(Boolean) : [step];
+}
+
+function compileDiscardStep(step, event, state, previousState = null) {
+  if (!step) return step;
+  const beforePlayers = event?.beforePlayers || event?.playersBefore || previousState?.players || null;
+  const beforeDiscard = event?.beforeDiscard || event?.discardBefore || previousState?.discard || null;
+  const afterDiscard = event?.afterDiscard || event?.discardAfter || null;
+  return discardStep({
+    ...step,
+    playersBefore: beforePlayers,
+    discardBefore: beforeDiscard,
+    discardAfter: afterDiscard,
+  });
 }
 
 function tagVisualEventSteps(event, steps = []) {
@@ -435,9 +448,19 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
     case VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY:
       return Array.isArray(event.queue) ? event.queue.filter(Boolean) : [];
     case VISUAL_EVENT.TIMED_OUT_DRAW_DISCARD:
-      return [buildTimedOutDrawDiscardStepFromVisualEvents(isolated)].filter(Boolean);
+      return [compileDiscardStep(
+        buildTimedOutDrawDiscardStepFromVisualEvents(isolated),
+        event,
+        state,
+        previousState,
+      )].filter(Boolean);
     case VISUAL_EVENT.GOD_GIFT_DISCARD:
-      return [buildGodGiftDiscardStepFromVisualEvents(isolated)].filter(Boolean);
+      return [compileDiscardStep(
+        buildGodGiftDiscardStepFromVisualEvents(isolated),
+        event,
+        state,
+        previousState,
+      )].filter(Boolean);
     case VISUAL_EVENT.GOD_GIFT_KEEP:
       return buildGodGiftKeepSteps(event);
     case VISUAL_EVENT.TURN_START:
@@ -455,12 +478,12 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
         if (event.discarded) {
           return [
             drawStep,
-            {
+            compileDiscardStep({
               type: 'DISCARD',
               card: event.card,
               triggerName: drawStep.triggerName,
               targetPid: playerIdx,
-            },
+            }, event, state, previousState),
             ...(
               Array.isArray(event.playersAfterDiscard) || Array.isArray(event.discardAfter)
                 ? [{
@@ -505,7 +528,8 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
         msgs: event.msgs || [],
       }];
     case VISUAL_EVENT.HAND_LIMIT_DISCARD:
-      return buildHandLimitDiscardStepsFromVisualEvents(isolated);
+      return buildHandLimitDiscardStepsFromVisualEvents(isolated)
+        .map(step => compileDiscardStep(step, event, state, previousState));
     case VISUAL_EVENT.STAT_EVENTS: {
       const revealStatEvent = (event.statEvents || []).find(statEvent => statEvent?.vritraImmortalReveal);
       if (!revealStatEvent) {

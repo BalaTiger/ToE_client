@@ -420,6 +420,28 @@ describe('visualEventTransactionCompiler', () => {
       .toMatchObject({ type: 'BURROWING_WORM', actorIdx: 1, durationMs: 2750 });
   });
 
+  it('compiles hand-limit discard with a hand-only mid-flight commit', () => {
+    const discarded = { id: 'limit-discard', name: '超限牌', type: 'zone' };
+    const before = [player('你'), player('艾伦', { hp: 4, san: 8, hand: [discarded, { id: 'keep' }] })];
+    const final = [player('你'), player('艾伦', { hp: 0, san: 1, isDead: true, hand: [] })];
+    const event = createHandLimitDiscardEvent({
+      playerIdx: 1,
+      playerName: '艾伦',
+      cards: [discarded],
+      beforePlayers: before,
+      beforeDiscard: [],
+      afterDiscard: [discarded],
+    });
+    const step = compileVisualEventToAnimSteps(event, { players: final, discard: [discarded] }, { players: before, discard: [] })[0];
+
+    expect(step.visualSetupPatch.players[1].hand.map(card => card.id)).toEqual(['limit-discard', 'keep']);
+    expect(step.visualTimeline).toEqual([
+      expect.objectContaining({ atMs: 360, patch: { players: expect.any(Array), discard: [discarded] } }),
+    ]);
+    expect(step.visualTimeline[0].patch.players[1].hand.map(card => card.id)).toEqual(['keep']);
+    expect(step.visualTimeline[0].patch.players[1]).toMatchObject({ hp: 4, san: 8 });
+  });
+
   it('compiles throw stone as one ordered transaction', () => {
     const before = [player('你'), player('贝拉')];
     const after = [before[0], player('贝拉', { hp: 7 })];
@@ -1038,6 +1060,31 @@ describe('visualEventTransactionCompiler', () => {
       abilityData: { pendingIndex: 0 },
       visualEventId: event.id,
     });
+  });
+
+  it('keeps earthquake discard frames hand-only before later settlement', () => {
+    const card = { id: 'quake-discard', name: '地震弃牌' };
+    const beforePlayers = [player('你', { hp: 10, san: 10, isDead: false, hand: [card] })];
+    const afterDiscardPlayers = [player('你', { hp: 10, san: 10, isDead: false, hand: [] })];
+    const finalPlayers = [player('你', { hp: 0, san: 10, isDead: true, hand: [] })];
+    const event = createCardEffectEvent({
+      effectKey: 'earthquake',
+      beforePlayers,
+      beforeDiscard: [],
+      afterPlayers: finalPlayers,
+      afterDiscard: [card],
+      discardEvents: [{
+        playerIndex: 0,
+        card,
+        afterPlayers: afterDiscardPlayers,
+        afterDiscard: [card],
+      }],
+    });
+
+    const step = compileVisualEventToAnimSteps(event, { players: finalPlayers }, { players: beforePlayers })[0];
+    const discardFrame = step.visualTimeline.find(point => point.patch?.players?.[0]?.hand?.length === 0);
+
+    expect(discardFrame.patch.players[0]).toMatchObject({ hp: 10, san: 10, isDead: false });
   });
 
   it('compiles a wrong Sphinx guess entirely from its payload', () => {

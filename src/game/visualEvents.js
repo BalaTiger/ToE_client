@@ -90,19 +90,22 @@ function withVisualEventMeta(event, scope = 'action', generateUniqueId = true) {
   };
 }
 
-export function createTimedOutDrawDiscardEvent({ card, drawerIdx = 0, drawerName = '该玩家' } = {}) {
+export function createTimedOutDrawDiscardEvent({ card, drawerIdx = 0, drawerName = '该玩家', beforePlayers = null, beforeDiscard = null, afterDiscard = null } = {}) {
   if (!card) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.TIMED_OUT_DRAW_DISCARD,
     card,
     drawerIdx,
     drawerName,
+    ...(Array.isArray(beforePlayers) ? { beforePlayers } : {}),
+    ...(Array.isArray(beforeDiscard) ? { beforeDiscard } : {}),
+    ...(Array.isArray(afterDiscard) ? { afterDiscard } : {}),
   }, 'turn');
 }
 
 // 黏液额外摸到邪神牌且同步结算为「放弃馈赠」时，由规则层发出此事件，
 // 弃牌动画步骤由事务编译器统一产出，不再由呈现层根据日志文本补造。
-export function createGodGiftDiscardEvent({ card, drawerIdx = 0, drawerName = '该玩家' } = {}) {
+export function createGodGiftDiscardEvent({ card, drawerIdx = 0, drawerName = '该玩家', beforePlayers = null, beforeDiscard = null, afterDiscard = null } = {}) {
   if (!card) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.GOD_GIFT_DISCARD,
@@ -112,6 +115,9 @@ export function createGodGiftDiscardEvent({ card, drawerIdx = 0, drawerName = '�
     card,
     drawerIdx,
     drawerName,
+    ...(Array.isArray(beforePlayers) ? { beforePlayers } : {}),
+    ...(Array.isArray(beforeDiscard) ? { beforeDiscard } : {}),
+    ...(Array.isArray(afterDiscard) ? { afterDiscard } : {}),
   }, 'turn');
 }
 
@@ -745,7 +751,7 @@ export function createSphinxResultEvent({
   }, 'action');
 }
 
-export function createHandLimitDiscardEvent({ playerIdx = 0, playerName = '该玩家', cards = [], msgs = [] } = {}) {
+export function createHandLimitDiscardEvent({ playerIdx = 0, playerName = '该玩家', cards = [], msgs = [], beforePlayers = null, beforeDiscard = null, afterDiscard = null } = {}) {
   const normalizedCards = Array.isArray(cards) ? cards.filter(Boolean) : [];
   if (!normalizedCards.length && !(Array.isArray(msgs) && msgs.length)) return null;
   return withVisualEventMeta({
@@ -754,6 +760,9 @@ export function createHandLimitDiscardEvent({ playerIdx = 0, playerName = '该�
     playerName,
     cards: normalizedCards,
     msgs: Array.isArray(msgs) ? msgs : [],
+    ...(Array.isArray(beforePlayers) ? { beforePlayers } : {}),
+    ...(Array.isArray(beforeDiscard) ? { beforeDiscard } : {}),
+    ...(Array.isArray(afterDiscard) ? { afterDiscard } : {}),
   }, 'turn');
 }
 
@@ -1274,14 +1283,19 @@ export function buildEarthquakeAnimStep({
   const normalizedDiscardEvents = Array.isArray(discardEvents)
     ? discardEvents.map((event, index, events) => {
       const playerIndex = event?.playerIndex;
-      if (playerIndex != null && finalPlayerList?.[playerIndex]) {
+      // `afterPlayers` is captured immediately after removing this card,
+      // before any discard-triggered HP/SAN/death settlement.  Prefer it over
+      // the event's final player list so the flight phase cannot leak a later
+      // terminal state.  The final list remains a compatibility fallback for
+      // older events that did not carry per-discard snapshots.
+      if (Array.isArray(event?.afterPlayers)) {
+        stagedPlayers = event.afterPlayers.map(p => ({ ...p, hand: [...(p?.hand || [])] }));
+      } else if (playerIndex != null && finalPlayerList?.[playerIndex]) {
         stagedPlayers = stagedPlayers.map((player, i) => (
           i === playerIndex
             ? { ...finalPlayerList[playerIndex], hand: [...(finalPlayerList[playerIndex].hand || [])] }
             : player
         ));
-      } else if (Array.isArray(event?.afterPlayers)) {
-        stagedPlayers = event.afterPlayers.map(p => ({ ...p, hand: [...(p?.hand || [])] }));
       }
       return {
         ...event,
@@ -1615,7 +1629,7 @@ export function buildCardEffectAnimStep(event, state) {
         },
         visualTimeline: [
           { atMs: 0, patch: { players: cursorPlayers, discard: cursorDiscard } },
-          { atMs: 900, patch: { players: nextPlayers, discard: nextDiscard } },
+          { atMs: 360, patch: { players: nextPlayers, discard: nextDiscard } },
         ],
       };
       cursorPlayers = nextPlayers;
