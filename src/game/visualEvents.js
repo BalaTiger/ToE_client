@@ -350,10 +350,43 @@ export function createBewitchGiftEvent({
   }, 'action');
 }
 
+function orderExplicitSettlementEvents(events = []) {
+  const ordered = [...events];
+  // Some effect resolvers append their card/stat visual events only after
+  // finishing the SAN-inspection chain.  The inspection snapshot still
+  // carries the authoritative beforeStatEventSeq boundary, so move any later
+  // event whose complete stat payload belongs to that boundary in front of
+  // the reveal.  This covers both aggregate stat wrappers and bespoke damage
+  // effects such as 夜风呼啸, whose event owns its own SAN impact.  Without
+  // this normalization a gifted 鼠群 records `inspection -> statEvents` and
+  // the inspection card visibly flips before the SAN-loss animation.
+  for (let boundaryIndex = 0; boundaryIndex < ordered.length; boundaryIndex += 1) {
+    const boundary = Number(ordered[boundaryIndex]?.beforeStatEventSeq);
+    if (!Number.isFinite(boundary)) continue;
+    const movable = [];
+    for (let index = boundaryIndex + 1; index < ordered.length; index += 1) {
+      const candidate = ordered[index];
+      if (!Array.isArray(candidate?.statEvents) || !candidate.statEvents.length) continue;
+      const seqs = candidate.statEvents.map(statEvent => Number(statEvent?.seq));
+      if (seqs.every(seq => Number.isFinite(seq) && seq <= boundary)) movable.push(candidate);
+    }
+    if (!movable.length) continue;
+    const movableSet = new Set(movable);
+    ordered.splice(0, ordered.length,
+      ...ordered.slice(0, boundaryIndex),
+      ...movable,
+      ordered[boundaryIndex],
+      ...ordered.slice(boundaryIndex + 1).filter(event => !movableSet.has(event)),
+    );
+    boundaryIndex += movable.length;
+  }
+  return ordered;
+}
+
 export function createOrderedSettlementEvents({ events = [], statEvents = [] } = {}) {
   const seenEventIds = new Set();
   const seenEventRefs = new Set();
-  const explicitEvents = (Array.isArray(events) ? events : []).filter(event => {
+  const explicitEvents = orderExplicitSettlementEvents((Array.isArray(events) ? events : []).filter(event => {
     if (!event) return false;
     if (event.id) {
       if (seenEventIds.has(event.id)) return false;
@@ -363,7 +396,7 @@ export function createOrderedSettlementEvents({ events = [], statEvents = [] } =
     if (seenEventRefs.has(event)) return false;
     seenEventRefs.add(event);
     return true;
-  });
+  }));
   const ownedStatKeys = new Set(explicitEvents
     .flatMap(event => event?.statEvents || [])
     .map(event => JSON.stringify(event)));

@@ -14,9 +14,10 @@ import {
 import { aiStep, chooseAiTreasureSwapPlan, continueAiCthRestDraws, discardAiHandToLimit, processAiEndTurnEvents, processAiEndTurnReplayHand } from '../aiTurn';
 import { buildOwnedAiHuntEventQueue, getAiActionQueueCoverage, scopeAiActionReplayMetadata } from '../aiTurnPresentation';
 import { cardLogText, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
-import { getAnimationQueueVisualEventIds, getVisualEventIdsCoveredByAnimationQueue } from '../visualEventTransactionCompiler';
+import { compileRuleVisualEventsToAnimTransaction, getAnimationQueueVisualEventIds, getVisualEventIdsCoveredByAnimationQueue } from '../visualEventTransactionCompiler';
 import { startNextTurn } from '../turnEngine';
-import { createBlackGoatYoungCard } from '../../constants/card';
+import { createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../../constants/card';
+import { createInspectionVisualEvent } from '../visualEvents';
 import { makeGs, makeGodCard, makePlayer, makeZoneCard } from './factory';
 import { makeProliferatingZState } from '../proliferatingZ';
 import { addDamageLink } from '../damageLinks';
@@ -1631,6 +1632,66 @@ describe('aiStep optional action limits', () => {
     const result = aiStep(bellaTurn);
     const newLogs = result.log.slice(bellaTurn.log.length);
     expect(newLogs.some(line => line.includes('贝拉 选择【休息】'))).toBe(true);
+  });
+
+  it('AI 摸鼠群检定后再蛊惑鼠群时，第二次 SAN 扣减先于乏力检定', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const ratSwarm = makeZoneCard('D3', 3, { id: 'rat-swarm' });
+    const slime = { ...createTsathogguaSlimeCard(), id: 'allen-slime' };
+    const players = [
+      makePlayer({ name: '你', san: 9 }),
+      makePlayer({ name: '贝拉', role: ROLE_CULTIST, hp: 10, san: 9, hand: [ratSwarm] }),
+      makePlayer({ name: '卡洛斯', role: ROLE_HUNTER, san: 9 }),
+      makePlayer({ name: '艾伦', san: 6, hand: [slime], disableSkillNextTurn: true }),
+    ];
+    const firstInspection = createInspectionVisualEvent({
+      seq: 1,
+      target: 3,
+      card: { id: 'amnesia', name: '失忆', effect: 'disableSkill' },
+      beforePlayers: players,
+      afterPlayers: players,
+      beforeLog: [],
+      afterLog: ['艾伦 的SAN检定结果为"失忆"', '艾伦 失忆，下一回合禁用技能'],
+      beforeStatEventSeq: 1,
+      statEvents: [],
+    });
+    const gs = makeGs({
+      players,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      skillUsed: false,
+      restUsed: false,
+      multiplyUsed: false,
+      inspectionDeck: [{ id: 'fatigue', name: '乏力', effect: 'handLimitDecrease', value: 1, type: 'negative' }],
+      inspectionDiscard: [],
+      _inspectionSeq: 1,
+      _statEventSeq: 1,
+      _statEvents: [],
+      _visualEvents: [firstInspection],
+      log: [
+        '── 贝拉 的回合开始 ──',
+        '贝拉 摸到 [D3] 鼠群，选择收入手牌并触发效果',
+        '全体存活角色失去 1 SAN',
+        '艾伦 的SAN检定结果为"失忆"',
+        '艾伦 失忆，下一回合禁用技能',
+        '【撒托古亚的赐福黏液】艾伦 没有牺牲黏液',
+      ],
+    });
+
+    const result = aiStep(gs);
+    const bewitchEvent = result._visualEvents.find(event => event?.type === 'bewitchGift');
+    const transaction = compileRuleVisualEventsToAnimTransaction(result, gs, {
+      eventIds: [bewitchEvent?.id].filter(Boolean),
+    });
+    const queue = transaction?.queue || [];
+    const sanDamageIdx = queue.findIndex(step => step.type === 'SAN_DAMAGE');
+    const fatigueIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.name === '乏力');
+
+    expect(result.log).toContain('全体存活角色失去 1 SAN');
+    expect(result.log).toContain('艾伦 的SAN检定结果为"乏力"');
+    expect(bewitchEvent?.settlementEvents.map(event => event.type)).toEqual(['statEvents', 'inspection']);
+    expect(sanDamageIdx).toBeGreaterThan(-1);
+    expect(fatigueIdx).toBeGreaterThan(sanDamageIdx);
   });
 
   it('邪祀者蛊惑区域牌让寻宝者集齐时会立即记录完整胜利日志', () => {

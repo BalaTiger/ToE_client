@@ -12,6 +12,7 @@ import {
   createInspectionVisualEvent,
   createSphinxResultEvent,
   createStatEventsEvent,
+  createOrderedSettlementEvents,
   createThrowStoneEvent,
   createHandLimitDiscardEvent,
   createHuntResultEvent,
@@ -1146,6 +1147,60 @@ describe('visualEventTransactionCompiler', () => {
     expect(types.slice(0, 3)).toEqual(['SKILL_BEWITCH', 'CARD_TRANSFER', 'DRAW_CARD']);
     expect(types.indexOf('SAN_DAMAGE')).toBeGreaterThan(2);
     expect(types.findLastIndex(type => type === 'DRAW_CARD')).toBeGreaterThan(types.indexOf('SAN_DAMAGE'));
+  });
+
+  it('keeps bespoke SAN damage effects before an inspection when gifted', () => {
+    const before = [player('贝拉'), player('艾伦', { san: 7 })];
+    const afterDamage = [before[0], player('艾伦', { san: 6 })];
+    const statEvent = {
+      type: 'SAN_LOSS',
+      target: 1,
+      from: { hp: 10, san: 7 },
+      to: { hp: 10, san: 6 },
+      reason: '夜风呼啸',
+      seq: 1,
+    };
+    const nightWind = createCardEffectEvent({
+      effectKey: 'nightWind',
+      card: { id: 'night-wind', name: '夜风呼啸', type: 'allDamageBoth', val: 1 },
+      actorIdx: 0,
+      beforePlayers: before,
+      afterPlayers: afterDamage,
+      statEvents: [statEvent],
+      msgs: ['全体存活角色失去 1 HP 和 SAN'],
+    });
+    const inspection = createInspectionVisualEvent({
+      seq: 1,
+      target: 1,
+      card: { id: 'fatigue', name: '乏力' },
+      beforePlayers: afterDamage,
+      afterPlayers: afterDamage,
+      beforeStatEventSeq: 1,
+      statEvents: [],
+    });
+    const gift = createBewitchGiftEvent({
+      sourceIdx: 0,
+      targetIdx: 1,
+      targetName: '艾伦',
+      card: nightWind.card,
+      playersBefore: before,
+      playersAfter: afterDamage,
+      settlementEvents: createOrderedSettlementEvents({
+        events: [inspection, nightWind, createStatEventsEvent({ statEvents: [statEvent] })],
+      }),
+    });
+    const queue = compileVisualEventToAnimTransaction(
+      gift,
+      { players: afterDamage },
+      { players: before },
+    ).queue;
+    const windIdx = queue.findIndex(step => step.type === 'NIGHT_WIND');
+    const damageIdx = queue.findIndex(step => step.type === 'SAN_DAMAGE');
+    const inspectionIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.inspectionSeq != null);
+
+    expect(windIdx).toBeGreaterThan(-1);
+    expect(damageIdx).toBeGreaterThan(windIdx);
+    expect(inspectionIdx).toBeGreaterThan(damageIdx);
   });
 
   it('蛊惑赠牌的飞牌步骤在飞行中段提交仅换牌的手牌快照,不等全场扣SAN', () => {
