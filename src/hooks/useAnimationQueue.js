@@ -118,7 +118,13 @@ export function useAnimationQueue({
   function revealAnimLogs(animStep) {
     if (!animStep) return;
     if (Array.isArray(animStep._logChunk) && animStep._logChunk.length) {
-      appendVisibleLog(animStep._logChunk);
+      // Event-backed steps already carry the rule layer's ordered message
+      // payload.  Do not use the authoritative state.log cursor to decide
+      // whether these messages are visible: that log may be redacted or may
+      // have advanced past the event while the queue is still playing.
+      appendVisibleLog(animStep._logChunk, {
+        source: animStep.visualEventId ? 'visualEvent' : 'legacyLog',
+      });
     }
   }
 

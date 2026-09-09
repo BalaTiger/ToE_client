@@ -45,6 +45,7 @@ import {
   createGodStatusChangedEvent,
   createGodGiftDiscardEvent,
   createGodGiftKeepEvent,
+  createLogOnlyVisualEvent,
   createOrderedSettlementEvents,
   createStatEventsEvent,
   createTsathogguaSlimeGrantEvent,
@@ -2130,7 +2131,7 @@ function resolveNextTurnState(gs, opts = {}) {
     }
     if (drawLogs.length > drawLogsSyncedCount) L.push(...drawLogs.slice(drawLogsSyncedCount));
     if (statLogs.length) appendMissingLogOccurrences(L, statLogs);
-    if (!res.drawnCard) { L.push('牌堆耗尽！'); return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }, turnDrawVisualEvents); }
+    if (!res.drawnCard) { L.push('牌堆耗尽！'); const event = createLogOnlyVisualEvent({ msgs: ['牌堆耗尽！'], turnStartStage: 'draw' }); if (event) turnDrawVisualEvents.push(event); return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }, turnDrawVisualEvents); }
     if (res.needGodChoice) {
       const inspectionPatch = res.statePatch || {};
       const godChoiceAbilityData={godCard:res.drawnCard,drawerIdx:0,godEncounterCost:res.godEncounterCost};
@@ -2377,7 +2378,7 @@ function resolveNextTurnState(gs, opts = {}) {
     }
     if (drawLogs.length > drawLogsSyncedCount) L.push(...drawLogs.slice(drawLogsSyncedCount));
     if (statLogs.length) appendMissingLogOccurrences(L, statLogs);
-    if (!res.drawnCard) { L.push('牌堆耗尽！'); return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }, turnDrawVisualEvents); }
+    if (!res.drawnCard) { L.push('牌堆耗尽！'); const event = createLogOnlyVisualEvent({ msgs: ['牌堆耗尽！'], turnStartStage: 'draw' }); if (event) turnDrawVisualEvents.push(event); return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }, turnDrawVisualEvents); }
     if (res.needGodChoice) {
       const decisionState=deriveGodEncounterDecisionState(res.statePatch,{godCard:res.drawnCard,godEncounterCost:res.godEncounterCost});
       return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, ...(res.statePatch || {}), phase:decisionState.phase,abilityData:decisionState.abilityData }, turnDrawVisualEvents);
@@ -2873,3 +2874,4 @@ export function startNextTurn(gs, opts = {}) {
   };
   return visualEvents.length ? { ...finalizedState, _visualEvents: visualEvents } : finalizedState;
 }
+

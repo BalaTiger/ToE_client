@@ -141,11 +141,22 @@ export function prepareAnimQueueLogs(queue,nextGs,baseLog=[]){
   const nextLog=Array.isArray(nextGs?.log)?nextGs.log:[];
   const normalizedBaseLog=Array.isArray(baseLog)?baseLog:[];
   const explicitTurnFlow=hasExplicitTurnFlowLogs(nextGs);
+  // A visual-event-backed transaction already carries its log ownership on
+  // the event/queue steps (turnBanner, turnStart, draw, ...). Do not
+  // reconstruct ownership from the flattened presentation log in that case:
+  // doing so can move or discard a later turn banner when the queue starts at
+  // DRAW_CARD.
+  const hasStagedVisualEvents=Array.isArray(nextGs?._visualEvents)
+    && nextGs._visualEvents.some(event=>!!event?.turnStartStage);
+  const hasEventBackedQueueSteps=queue.some(step=>!!step?.visualEventId);
+  const eventDrivenQueue=hasStagedVisualEvents||hasEventBackedQueueSteps;
   let prefix=0;
   while(prefix<normalizedBaseLog.length&&prefix<nextLog.length&&normalizedBaseLog[prefix]===nextLog[prefix])prefix++;
-  let remaining=nextLog.slice(prefix);
+  let remaining=eventDrivenQueue ? [] : nextLog.slice(prefix);
   const queueStartsNewTurn=queue[0]?.type==="YOUR_TURN";
-  if(nextGs?._playersBeforeThisDraw&&!queueStartsNewTurn){
+  // Legacy, un-staged queues still need the old log-delta inference.  Keep
+  // that compatibility path isolated so it cannot affect staged events.
+  if(nextGs?._playersBeforeThisDraw&&!queueStartsNewTurn&&!explicitTurnFlow&&!eventDrivenQueue){
     const turnStartIdx=remaining.findIndex(line=>isTurnStartLog(line));
     if(turnStartIdx>=0){
       remaining=remaining.slice(0,turnStartIdx);
@@ -154,6 +165,10 @@ export function prepareAnimQueueLogs(queue,nextGs,baseLog=[]){
   const consumeExplicit=(msgs=[])=>{
     const normalized=(Array.isArray(msgs)?msgs:[]).filter(m=>typeof m==="string"&&m.length);
     if(!normalized.length)return [];
+    // Visual events are authoritative for presentation. Their message
+    // chunks are already scoped to this queue, so retain them directly rather
+    // than looking them up in the flattened state log.
+    if(eventDrivenQueue)return normalized;
     const taken=[];
     normalized.forEach(msg=>{
       const idx=remaining.findIndex(line=>line===msg);

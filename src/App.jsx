@@ -1110,11 +1110,18 @@ export default function Game(){
     applyVisibleLogPrefix(normalized.length,normalized);
   },[applyVisibleLogPrefix]);
 
-  const appendVisibleLog=useCallback((lines)=>{
+  const appendVisibleLog=useCallback((lines,options={})=>{
     if(!Array.isArray(lines)||!lines.length)return;
     const normalized=[...lines];
     if(!normalized.length)return;
     const authority=Array.isArray(visibleLogAuthorityRef.current)?visibleLogAuthorityRef.current:[];
+    if(options?.source==='visualEvent'){
+      const next=[...visibleLogRef.current,...normalized];
+      visibleLogRef.current=next;
+      visibleLogCountRef.current=next.length;
+      setVisibleLog(next);
+      return;
+    }
     if(!authority.length){
       visibleLogRef.current=[...visibleLogRef.current,...normalized];
       visibleLogCountRef.current=visibleLogRef.current.length;

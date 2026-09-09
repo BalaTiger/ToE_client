@@ -36,8 +36,40 @@ export const VISUAL_EVENT = {
   CARD_MOVE: 'cardMove',
   CARD_REVEAL: 'cardReveal',
   DICE_RESULT: 'diceResult',
+  LOG_ONLY: 'logOnly',
   VRITRA_IMMORTAL_REVEAL: 'vritraImmortalReveal',
 };
+
+// Audit only: playback never derives events from state.log.
+export function auditVisualEventLogCoverage(events = [], log = []) {
+  const source = Array.isArray(events) ? events : [];
+  const entries = Array.isArray(log) ? log : [];
+  return source.flatMap(event => {
+    if (!event || event.logExcluded === true) return [];
+    return (Array.isArray(event.msgs) ? event.msgs : []).filter(Boolean).flatMap(msg => (
+      entries.includes(msg) ? [] : [{ code: 'VISUAL_EVENT_LOG_MISSING', eventId: event.id || null, eventType: event.type, msg }]
+    ));
+  });
+}
+
+export function createLogOnlyVisualEvent({
+  msgs = [],
+  turnStartStage = null,
+  turnStartStageOrder = null,
+  transactionId = null,
+  order = null,
+} = {}) {
+  const normalized = Array.isArray(msgs) ? msgs.filter(msg => typeof msg === 'string' && msg.length) : [];
+  if (!normalized.length) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.LOG_ONLY,
+    msgs: normalized,
+    ...(turnStartStage ? { turnStartStage } : {}),
+    ...(Number.isFinite(turnStartStageOrder) ? { turnStartStageOrder } : {}),
+    ...(transactionId ? { transactionId } : {}),
+    ...(Number.isFinite(order) ? { order } : {}),
+  }, turnStartStage ? 'turn' : 'action');
+}
 
 const visualEventInstanceId = Math.random().toString(36).slice(2, 10);
 let actionEventSeq = 0;
@@ -1415,9 +1447,15 @@ export function buildFreshStatVisualEvents(state, previousStatSeq = 0) {
   ));
   const statLogs = Array.isArray(state?._statLogs) ? state._statLogs : [];
   const msgsFor = (events, otherEvents) => {
-    if (!otherEvents.length) return statLogs;
-    const hints = new Set(events.map(event => event?.logHint).filter(Boolean));
-    return statLogs.filter(msg => hints.has(msg));
+    const hints = [...new Set(events.map(event => event?.logHint).filter(Boolean))];
+    const hintSet = new Set(hints);
+    // Canonical stat events own their log hints. Older turn-start paths did
+    // not populate _statLogs, so falling back to the event hints keeps those
+    // messages attached to the staged transaction instead of recovering them
+    // from state.log in the presentation layer.
+    const scoped = statLogs.filter(msg => hintSet.has(msg));
+    const known = new Set(scoped);
+    return [...scoped, ...hints.filter(msg => !known.has(msg))];
   };
   const preDrawEvents = freshStatEvents.filter(isPreDrawTurnStartStatEvent);
   const drawEvents = freshStatEvents.filter(event => !isPreDrawTurnStartStatEvent(event));

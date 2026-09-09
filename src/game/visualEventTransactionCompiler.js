@@ -606,6 +606,11 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
       return [buildGraveDigTransferStep(event)].filter(Boolean);
     case VISUAL_EVENT.RANDOM_TARGET:
       return buildRandomTargetSteps(event, state);
+    case VISUAL_EVENT.LOG_ONLY:
+      return [{
+        type: 'STATE_PATCH',
+        msgs: Array.isArray(event.msgs) ? event.msgs : [],
+      }];
     case VISUAL_EVENT.CARD_EFFECT:
     case VISUAL_EVENT.EARTHQUAKE:
       return flattenStep(buildCardEffectAnimStep(event, state));

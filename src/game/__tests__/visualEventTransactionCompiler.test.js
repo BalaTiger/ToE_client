@@ -21,6 +21,8 @@ import {
   createTsathogguaSlimeGrantEvent,
   createTsathogguaSlimePopEvent,
   createTurnDrawVisualEvents,
+  createLogOnlyVisualEvent,
+  auditVisualEventLogCoverage,
   buildTsathogguaSlimeGrantSteps,
   buildFreshStatVisualEvents,
   buildTurnStartDrawVisualEvents,
@@ -49,6 +51,13 @@ const selectTransactionQueue = (queue, transaction, options = {}) => (
 const player = (name, patch = {}) => ({ name, hp: 10, san: 10, hand: [], ...patch });
 
 describe('visualEventTransactionCompiler', () => {
+  it('audits event messages without affecting runtime compilation', () => {
+    const event = createLogOnlyVisualEvent({ msgs: ['事件日志'] });
+    expect(auditVisualEventLogCoverage([event], ['事件日志'])).toEqual([]);
+    expect(auditVisualEventLogCoverage([event], [])).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'VISUAL_EVENT_LOG_MISSING', msg: '事件日志' }),
+    ]));
+  });
   it('compiles non-inspection settlements from canonical events without snapshot fallback', () => {
     const beforePlayers = [player('你', { san: 10 })];
     const afterPlayers = [player('你', { san: 8 })];
@@ -419,6 +428,38 @@ describe('visualEventTransactionCompiler', () => {
     });
     expect(compileVisualEventToAnimSteps(effect, { players: [player('你'), player('艾伦')] })[0])
       .toMatchObject({ type: 'BURROWING_WORM', actorIdx: 1, durationMs: 2750 });
+  });
+
+  it('compiles log-only rule messages into an owned queue step', () => {
+    const event = createLogOnlyVisualEvent({ msgs: ['牌堆耗尽！'] });
+    const transaction = compileVisualEventToAnimTransaction(event, { players: [] });
+    expect(transaction.queue).toEqual([
+      expect.objectContaining({ type: 'STATE_PATCH', visualEventId: event.id, msgs: ['牌堆耗尽！'] }),
+    ]);
+  });
+
+  it('uses stat event log hints when turn-start stat buckets are absent', () => {
+    const logHint = '【黑山羊幼仔】艾伦 失去 1 HP 和 1 SAN';
+    const state = {
+      currentTurn: 1,
+      players: [player('你'), player('艾伦')],
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _drawLogs: ['艾伦 摸到 [A1] 测试牌'],
+      _statLogs: [],
+      _statEvents: [{
+        seq: 1,
+        type: 'HP_SAN_LOSS',
+        target: 1,
+        reason: '黑山羊幼仔',
+        logHint,
+        from: { hp: 10, san: 10 },
+        to: { hp: 9, san: 9 },
+      }],
+      _visualEvents: [],
+    };
+    const events = buildFreshStatVisualEvents(state, 0);
+    const statEvent = events.find(event => event.type === 'statEvents');
+    expect(statEvent.msgs).toContain(logHint);
   });
 
   it('compiles hand-limit discard with a hand-only mid-flight commit', () => {
