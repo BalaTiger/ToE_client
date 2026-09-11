@@ -70,6 +70,7 @@ export function appendStatChangeResult(meta = {}, result = {}) {
   const statVisualEvent = createStatEventsEvent({
     statEvents,
     msgs: result.logs || [],
+    ...(result.turnStartStage ? { turnStartStage: result.turnStartStage } : {}),
   });
   const visualEvents = [
     ...(meta?._visualEvents || []),

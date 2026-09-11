@@ -6,6 +6,7 @@ import { RoomModal, LobbyModal, PrivacyToggleModal, TutorialOverlay, ConnectionE
 import { BattleLogPanel } from './components/log/BattleLogPanel';
 import { useTutorialHighlightMeasurements } from './hooks/useTutorialHighlightMeasurements';
 import { normalizeLogForViewer } from './game/logPerspective';
+import { createLogOnlyVisualEvent } from './game/visualEvents';
 import { shouldPlayGodResurrection } from './game/gameOverPresentation';
 import {
   classifyTreasureDodgeRoll,
@@ -1825,31 +1826,30 @@ export default function Game(){
         const nextElapsed=(prev.houndsOfTindalosElapsed||0)+1;
         if(nextElapsed<15)return {...prev,houndsOfTindalosElapsed:nextElapsed};
         const P=copyPlayers(prev.players),Disc=[...prev.discard],L=[...prev.log];
-        const beforePlayers=copyPlayers(P);
         const ti=prev.currentTurn;
+        const statEventSeq=(prev._statEventSeq||0)+1;
         let damageDecision=null;
         if(P[ti]&&!P[ti].isDead){
           damageDecision=submitLossEvents({
             players:P,deck:[...(prev.deck||[])],discard:Disc,log:L,currentTurn:prev.currentTurn,
             events:[{targetIdx:ti,lostHp:4,source:'廷达罗斯猎犬'}],
+            statEventSeq,
+            statEventLogs:[`廷达罗斯猎犬撕咬 ${P[ti].name}，其失去 4 HP`],
           });
           L.push(`廷达罗斯猎犬撕咬 ${P[ti].name}，其失去 4 HP`);
         }
-        const statEventSeq=(prev._statEventSeq||0)+1;
-        const statEvents=buildStatEvents(beforePlayers,P,L.slice(-2),{
-          reason:'廷达罗斯猎犬',seq:statEventSeq,discardBefore:prev.discard,discardAfter:Disc,
-        });
         const houndsCard=INSPECTION_DECK.find(c=>c.effect==='houndsOfTindalos');
         let nextGs={
           ...prev,
           players:P,
+          deck:damageDecision?.deck||prev.deck,
           discard:Disc,
           log:L,
           houndsOfTindalosActive:false,
           houndsOfTindalosTarget:ti,
           houndsOfTindalosElapsed:0,
           inspectionDeck:houndsCard?shuffle([...(prev.inspectionDeck||[]),houndsCard]):prev.inspectionDeck,
-          ...(statEvents.length?{_statEvents:[...(prev._statEvents||[]),...statEvents],_statEventSeq:statEventSeq}:{}),
+          ...buildStatChangeStatePatch(prev,damageDecision),
         };
         if(damageDecision?.phase)nextGs={...nextGs,phase:damageDecision.phase,abilityData:damageDecision.abilityData};
         const hasDamageDecision=nextGs.phase==='TSG_SLIME_BALANCE'||nextGs.phase==='ETHEREALIZE_DECISION';
@@ -5534,14 +5534,15 @@ export default function Game(){
     };
     const d1=roll?(1+(Math.random()*6|0)):null;
     const dodgeSuccess=roll&&d1>=4;
+    const dodgeMsg=roll
+      ?`你 掷出 ${d1} 点，${dodgeSuccess?'成功规避负面效果！':'未能规避，触发负面效果！'}`
+      :'你选择不规避负面效果';
     if(roll){
       P[0].roleRevealed=true;
-      L.push(`你 掷出 ${d1} 点，${dodgeSuccess?'成功规避负面效果！':'未能规避，触发负面效果！'}`);
-    }else{
-      L.push('你选择不规避负面效果');
     }
+    L.push(dodgeMsg);
     let damageDecision=null;
-    let damageStatPatch={};
+    let damageStatPatch={_visualEvents:[...(gs._visualEvents||[]),createLogOnlyVisualEvent({msgs:[dodgeMsg]})]};
     if(!dodgeSuccess){
       L.push('猜测错误！你失去 3 HP');
       const statEventSeq=(gs._statEventSeq||0)+1;
@@ -5551,7 +5552,7 @@ export default function Game(){
         continuation:continuationAbilityData,
         statEventSeq,statEventReason:'斯芬克斯',statEventLogs:[L.at(-1)],
       });
-      damageStatPatch=buildStatChangeStatePatch(gs,damageDecision);
+      damageStatPatch={...damageStatPatch,...buildStatChangeStatePatch({...gs,...damageStatPatch},damageDecision)};
     }
     const win=damageDecision?.abilityData?null:checkWin(P,gs._isMP);
     const resumesAiTurn=isAiSeat(gs,turnOwner)&&!P[turnOwner]?.isDead;
@@ -5811,8 +5812,12 @@ export default function Game(){
     let P=players,D=deck,Disc=discard,L=log;
     let inspectionMeta=baseInspectionMeta||makeInspectionMeta({...gs,players:P,deck:D,discard:Disc,log:L});
     if(lostHp>0){
-      applyHpDamageWithLink(P,targetIdx,lostHp,Disc,L,currentTurn,D);
-      L.push(`${localDisplayName(targetIdx,P[targetIdx]?.name)} 失去 ${lostHp} HP`);
+      const damageMsg=`${localDisplayName(targetIdx,P[targetIdx]?.name)} 失去 ${lostHp} HP`;
+      const damage=submitLossEvents({players:P,deck:D,discard:Disc,log:L,currentTurn,
+        events:[{targetIdx,lostHp,source}],skipEtherealize:true,deferPostDamageDecisions:true,
+        statEventSeq:(inspectionMeta._statEventSeq||0)+1,statEventLogs:[damageMsg]});
+      L.push(damageMsg);
+      inspectionMeta={...inspectionMeta,...buildStatChangeStatePatch(inspectionMeta,damage)};
     }
     if(lostSan>0&&P[targetIdx]&&!P[targetIdx].isDead){
       L.push(`${localDisplayName(targetIdx,P[targetIdx]?.name)} 失去 ${lostSan} SAN`);
@@ -5901,8 +5906,6 @@ export default function Game(){
     const turnOwner=abilityData._turnOwner??gs.currentTurn;
     let P=players,D=deck,Disc=discard,L=log;
     const beforeSettlePlayers=copyPlayers(P);
-    const beforeSettleDiscard=[...Disc];
-    const beforeSettleLogLen=L.length;
     let inspectionMeta=makeInspectionMeta({...gs,players:P,deck:D,discard:Disc,log:L});
     const losses=collectEtherealizeChainSettleLosses(abilityData);
     losses.forEach(loss=>{
@@ -5922,31 +5925,33 @@ export default function Game(){
     });
     const pendingLinkTarget=P.findIndex(player=>player?._pendingDamageLinkBreak&&!(player.hand||[]).some(isTsathogguaSlime));
     if(pendingLinkTarget>=0){
+      const beforeLinkPlayers=copyPlayers(P),beforeLinkDiscard=[...Disc],linkLogs=[];
       const linkReaction=resolvePendingDamageLinkBreak(
-        P,pendingLinkTarget,Disc,L,turnOwner,D,buildTargetContinuationAbilityData(abilityData)
+        P,pendingLinkTarget,Disc,linkLogs,turnOwner,D,buildTargetContinuationAbilityData(abilityData)
       );
+      L.push(...linkLogs);
+      const linkSeq=(inspectionMeta._statEventSeq||0)+1;
+      inspectionMeta={...inspectionMeta,...buildStatChangeStatePatch(inspectionMeta,{
+        statEvents:buildStatEvents(beforeLinkPlayers,P,linkLogs,{reason:'绳索断裂',seq:linkSeq,discardBefore:beforeLinkDiscard,discardAfter:Disc}),
+        statEventSeq:linkSeq,logs:linkLogs,
+      })};
       if(linkReaction.etherealizeDecision){
         const nextGs=buildTargetContinuationGs({
           players:P,deck:D,discard:Disc,log:L,turnOwner,
           abilityData:linkReaction.etherealizeDecision,
           phase:'ETHEREALIZE_DECISION',canResumeAi:false,
-          extraPatch:{_visualEvents:[]},
+          extraPatch:inspectionMeta,
         });
-        const fullNextGs={...nextGs,phase:'ETHEREALIZE_DECISION',abilityData:linkReaction.etherealizeDecision};
-        const settleQueue=compileFreshVisualEventQueue(gs,{...gs,players:P,deck:D,discard:Disc,log:L});
+        const fullNextGs={...nextGs,...inspectionMeta,phase:'ETHEREALIZE_DECISION',abilityData:linkReaction.etherealizeDecision};
+        const settleQueue=compileFreshVisualEventQueue(gs,fullNextGs);
         finishTargetContinuation({queue:[...preQueue,...settleQueue],nextGs:fullNextGs});
         return;
       }
     }
-    const statEventSeq=(gs._statEventSeq||0)+1;
-    const statEvents=buildStatEvents(beforeSettlePlayers,P,L.slice(beforeSettleLogLen),{
-      reason:'伤害结算',seq:statEventSeq,discardBefore:beforeSettleDiscard,discardAfter:Disc,
-    });
-    const statPatch=statEvents.length?{_statEvents:[...(gs._statEvents||[]),...statEvents],_statEventSeq:statEventSeq}:{};
-    const {_statEvents:_dropMetaStatEvents,_statEventSeq:_dropMetaStatSeq,abilityData:_dropMetaAbilityData,...inspectionMetaFields}=inspectionMeta||{};
-    const finalAbilityData={...abilityData,...inspectionMetaFields,...statPatch};
+    const {abilityData:_dropMetaAbilityData,...inspectionMetaFields}=inspectionMeta||{};
+    const finalAbilityData={...abilityData,...inspectionMetaFields};
     const settleQueue=losses.length
-      ?compileFreshVisualEventQueue(gs,{...gs,players:P,deck:D,discard:Disc,log:L,...statPatch})
+      ?compileFreshVisualEventQueue(gs,{...gs,players:P,deck:D,discard:Disc,log:L,...inspectionMetaFields})
       :[];
     finishEtherealizeDecision({
       players:P,
@@ -7511,6 +7516,8 @@ export default function Game(){
         players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
         events:[{targetIdx:randomTarget,lostHp:2,lostSan:2,source:'白化生物'}],
         continuation:buildTargetContinuationAbilityData(abilityData),
+        statEventSeq:(gs?._statEventSeq||0)+1,
+        statEventLogs:[`${P[randomTarget].name} 失去 2 HP 和 2 SAN`],
       });
       if(damageDecision.phase==='ETHEREALIZE_DECISION'){
         L.push(`【白化生物】${P[randomTarget].name} 即将失去 2 HP 和 2 SAN`);
@@ -7528,13 +7535,7 @@ export default function Game(){
         return;
       }
       L.push(`${P[randomTarget].name} 失去 2 HP 和 2 SAN`);
-      const statEventSeq=(gs?._statEventSeq||0)+1;
-      statEvents=buildStatEvents(
-        gs.players,
-        P,
-        [L[L.length-1]],
-        {reason:'白化生物',seq:statEventSeq,discardBefore:gs.discard,discardAfter:Disc},
-      );
+      statEvents=damageDecision.statEvents;
       if(P[randomTarget].hp<=0&&!damageDecision.abilityData){
         killPlayerState(P,randomTarget,Disc,L);
       }
@@ -7910,6 +7911,10 @@ export default function Game(){
       const huntDamageResult=submitLossEvents({
         players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
         events:[...balanceEvents,{targetIdx:huntTi,lostHp:huntDamage,source:'追捕',order:balanceEvents.length}],
+        statEventLogs:L.slice(huntLogStart),
+        statEventSeq:(gs._statEventSeq||0)+1,
+        statEventIdPrefix:`hunt:${gs._turnKey||gs.turn||0}:0:${huntTi}:${gs.log.length}`,
+        defeatSettlementOwner:'huntResult',
       });
       if(huntDamageResult.phase==='ETHEREALIZE_DECISION'){
         P[0].roleRevealed=true;
@@ -7953,17 +7958,7 @@ export default function Game(){
         P[0].roleRevealed=true;
         L.push(`${P[0].name} 的身份揭晓：追猎者`);
       }
-      const huntStatEvents=buildStatEvents(
-        afterDiscardPlayers,
-        P,
-        L.slice(huntLogStart),
-        {
-          reason:'追捕',
-          seq:(gs._statEventSeq||0)+1,
-          eventIdPrefix:`hunt:${gs._turnKey||gs.turn||0}:0:${huntTi}:${gs.log.length}`,
-          defeatSettlementOwner:'huntResult',
-        },
-      );
+      const huntStatEvents=huntDamageResult.statEvents;
       const defeatedEvent=huntStatEvents.find(event=>event.type==='PLAYER_DEFEATED'&&event.target===huntTi);
       let afterDamagePlayers=null;
       let afterDamageDiscard=null;
@@ -8249,6 +8244,10 @@ export default function Game(){
       damage=submitLossEvents({
         players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
         events:[...balanceEvents,{targetIdx:0,lostHp:huntDamage,source:'追捕',order:balanceEvents.length}],
+        statEventLogs:L.slice(huntLogStart),
+        statEventSeq:(gs._statEventSeq||0)+1,
+        statEventIdPrefix:`hunt:${gs._turnKey||gs.turn||0}:${huntingAI}:0:${gs.log.length}`,
+        defeatSettlementOwner:'huntResult',
       });
       if(damage.phase==='ETHEREALIZE_DECISION'){
         const huntResultEvent=createHuntResultEvent({
@@ -8288,17 +8287,7 @@ export default function Game(){
         if(queue.length)triggerAnimQueue(queue,newGs,undefined,strictActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current,'AI hunt player etherealize decision'));else setGs(newGs);
         return;
       }
-      huntStatEvents=buildStatEvents(
-        afterDiscardPlayers,
-        P,
-        L.slice(huntLogStart),
-        {
-          reason:'追捕',
-          seq:(gs._statEventSeq||0)+1,
-          eventIdPrefix:`hunt:${gs._turnKey||gs.turn||0}:${huntingAI}:0:${gs.log.length}`,
-          defeatSettlementOwner:'huntResult',
-        },
-      );
+      huntStatEvents=damage.statEvents;
       const defeatedEvent=huntStatEvents.find(event=>event.type==='PLAYER_DEFEATED'&&event.target===0);
       if(P[0].hp<=0&&!(P[0].hand||[]).some(isTsathogguaSlime)){
         defeatedGodCards=[...myGodZoneBefore];

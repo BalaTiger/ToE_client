@@ -142,7 +142,7 @@ describe('treasure dodge flow variants', () => {
     expect(sphinx).toContain('queue:fullQueue');
     expect(sphinx).toContain('continuation:continuationAbilityData');
     expect(sphinx).toContain("statEventReason:'斯芬克斯'");
-    expect(sphinx).toContain('damageStatPatch=buildStatChangeStatePatch(gs,damageDecision)');
+    expect(sphinx).toContain('buildStatChangeStatePatch({...gs,...damageStatPatch},damageDecision)');
     expect(sphinx).toContain('...damageStatPatch');
     expect(sphinx).toContain('continueRest:!damageDecision?.phase&&!win&&!!continuationAbilityData.fromRest');
 

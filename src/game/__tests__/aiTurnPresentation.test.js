@@ -10,7 +10,6 @@ import {
   buildScopedAiActionReplayState,
   bindVisualEventToSteps,
   collectInspectionEventsCoveredByQueue,
-  collectExplicitAiTurnLogs,
   getAiActionQueueCoverage,
   getAiActionSphinxResultEvent,
   insertAiRestDiceBeforeSettlement,
@@ -449,7 +448,7 @@ describe('AI turn presentation helpers', () => {
     })).toBe(true);
   });
 
-  it('builds the hunt-wait timeline and returns presentation state without side effects', () => {
+  it('builds hunt-wait notices from rule events instead of recovering the final transcript', () => {
     const introStep = { type: 'YOUR_TURN', triggerName: 'Bot' };
     const previousState = {
       phase: 'ACTION',
@@ -472,6 +471,7 @@ describe('AI turn presentation helpers', () => {
         },
       ],
       log: ['before', 'unbound result'],
+      _visualEvents: [createLogOnlyVisualEvent({ msgs: ['rule notice'] })],
     };
     const buildActorTurnStartReplay = vi.fn();
     const buildTurnStartIntroQueue = vi.fn(() => [introStep]);
@@ -488,7 +488,8 @@ describe('AI turn presentation helpers', () => {
     expect(buildActorTurnStartReplay).not.toHaveBeenCalled();
     expect(buildTurnStartIntroQueue).toHaveBeenCalledWith(previousState, 'Bot');
     expect(result.queue[0]).toMatchObject(introStep);
-    expect(result.queue.flatMap(step => step.msgs || [])).toContain('unbound result');
+    expect(result.queue.flatMap(step => step.msgs || [])).toContain('rule notice');
+    expect(result.queue.flatMap(step => step.msgs || [])).not.toContain('unbound result');
     expect(result.nextState.players[1]).not.toHaveProperty('_pendingAnimDeath');
     expect(result.roseThornSnapshot).toEqual([
       { idx: 0, marked: [] },
@@ -1571,17 +1572,6 @@ describe('AI turn presentation helpers', () => {
       { idx: 0, marked: ['h0', 'g0'] },
       { idx: 1, marked: ['h1'] },
     ]);
-  });
-
-  it('collects explicit timeline logs in playback order', () => {
-    expect(collectExplicitAiTurnLogs({
-      _turnStartLogs: ['start'],
-      _drawLogs: ['draw'],
-      _statLogs: ['stat'],
-    }, [
-      { msgs: ['skill'] },
-      { type: 'PAUSE' },
-    ])).toEqual(['start', 'draw', 'stat', 'skill']);
   });
 
   it('builds stage-specific recovery through the turn engine', () => {

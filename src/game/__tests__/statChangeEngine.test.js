@@ -4,8 +4,31 @@ import { compileFreshVisualEventQueue as buildAnimQueue } from '../visualEventTr
 import { buildSphinxResultQueue } from '../animQueueHelpers';
 import { appendStatChangeResult, buildStatChangeStatePatch, submitRecoveryEvents } from '../statChangeEngine';
 import { makePlayer } from './factory';
+import { createBlackGoatYoungCard } from '../../constants/card';
+import { prepareAnimQueueLogs } from '../animLogs';
+import { consumeVisualLogEntries } from '../visualEventLogs';
 
 describe('stat change rule entry points', () => {
+  it('ordinary lethal damage reserves death and destruction logs for their own playback steps', () => {
+    const players = [makePlayer({ name: '贝拉', hp: 2, hand: [createBlackGoatYoungCard()] })];
+    const previous = { players: structuredClone(players), _visualEvents: [], _statEvents: [], _statEventSeq: 0 };
+    const logs = ['贝拉 失去 3 HP'];
+    const damage = submitLossEvents({
+      players, log: logs, statEventLogs: logs, statEventSeq: 1,
+      events: [{ targetIdx: 0, lostHp: 3, source: '普通伤害' }],
+    });
+    const next = { players, ...appendStatChangeResult({}, { ...damage, logs }) };
+    const queue = buildAnimQueue(previous, next);
+    const consumed = new Set();
+    const prepared = prepareAnimQueueLogs(queue, next);
+    const batches = prepared.map(step => consumeVisualLogEntries(step.logEntries, consumed));
+    expect(batches.flat()).toEqual(logs);
+    expect(batches[queue.findIndex(step => step.type === 'HP_DAMAGE')]).toEqual(['贝拉 失去 3 HP']);
+    expect(batches[queue.findIndex(step => step.type === 'GUILLOTINE')]).toEqual(['☠ 贝拉（寻宝者）倒下了！']);
+    expect(batches[queue.findIndex(step => step.deathSettlementStep)]).toEqual(['贝拉 的 1 张衍生牌被销毁']);
+    expect(prepared.flatMap(step => consumeVisualLogEntries(step.logEntries, consumed))).toEqual([]);
+  });
+
   it('submitLossEvents settles HP and SAN in one transaction and emits canonical stat events', () => {
     const players = [makePlayer({ hp: 5, san: 4 })];
     const result = submitLossEvents({

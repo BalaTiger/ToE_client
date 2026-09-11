@@ -69,6 +69,7 @@ export function applyBalanceDiscardSideEffects({
       damageDecision: damage,
       statEvents: damage.statEvents || [],
       statEventSeq: damage.statEventSeq,
+      logs: damage.logs,
       ...(damage.phase === 'ETHEREALIZE_DECISION' ? { etherealizeDecision: damage.abilityData } : {}),
     };
   }

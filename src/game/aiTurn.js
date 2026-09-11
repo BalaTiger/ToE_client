@@ -50,7 +50,7 @@ import { buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
 import { cardTransferStep, discardStep, statePatchStep } from './animQueueHelpers';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, isRevealedCultist } from './coreUtils';
 import { createBlackGoatYoungCard } from '../constants/card';
-import { buildStatEvents, statEventsToAnimQueue } from './statEvents';
+import { statEventsToAnimQueue } from './statEvents';
 import { appendStatChangeResult, submitRecoveryEvents } from './statChangeEngine';
 import { END_TURN_EVENT, getEndTurnEvents, getEndTurnReplayHandCards, resolveReverseTurnOrderAtEnd } from './endTurnEvents';
 import { deriveEffectDecisionState, hasEffectDecisionState } from './effectStatePatch';
@@ -431,10 +431,12 @@ export function clearPlayerGodZone(targetPlayer, discard) {
 /**
  * AI 弃牌至手牌上限。
  */
-export function discardAiHandToLimit(P, ct, Disc, L, D = [], discardedCards = []) {
+export function discardAiHandToLimit(P, ct, Disc, L, D = [], discardedCards = [], statEventSeq = 0) {
   const aiHandLimit = P[ct]._nyaHandLimit ?? 4;
   let damageDecision = null;
+  const statEvents = [], visualEvents = [];
   while (P[ct].hand.length > aiHandLimit) {
+    const beforePlayers = copyPlayers(P), beforeDiscard = [...Disc], logStart = L.length;
     const c = P[ct].hand.shift();
     // Animation owns the attempted discard, even when the rules destroy the
     // derived card instead of adding it to the discard pile.
@@ -444,18 +446,26 @@ export function discardAiHandToLimit(P, ct, Disc, L, D = [], discardedCards = []
     } else {
       Disc.push(c);
       L.push(`${P[ct].name} 弃 ${cardLogText(c, { alwaysShowName: true })}（上限）`);
-      const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: L, ownerIdx: ct, cards: [c], reason: '手牌上限弃牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitLossEvents, currentTurn: ct });
+    }
+    visualEvents.push(createHandLimitDiscardEvent({playerIdx:ct,playerName:P[ct].name,cards:[c],msgs:L.slice(logStart),beforePlayers,beforeDiscard,afterDiscard:[...Disc]}));
+    if (!isVanishingDerivedCard(c)) {
+      const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: L, ownerIdx: ct, cards: [c], reason: '手牌上限弃牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitLossEvents, currentTurn: ct, statEventSeq: statEventSeq + 1 });
       P.splice(0, P.length, ...balance.players);
       D.splice(0, D.length, ...balance.deck);
       Disc.splice(0, Disc.length, ...balance.discard);
       L.splice(0, L.length, ...balance.log);
+      if (balance.statEvents?.length) {
+        statEventSeq = balance.statEventSeq;
+        statEvents.push(...balance.statEvents);
+        visualEvents.push(createStatEventsEvent({statEvents:balance.statEvents,msgs:balance.logs}));
+      }
       if (balance.damageDecision?.phase) {
         damageDecision = balance.damageDecision;
         break;
       }
     }
   }
-  return { damageDecision };
+  return { damageDecision, statEvents, statEventSeq, visualEvents };
 }
 
 // Compile this card's complete event transaction so explicit result owners
@@ -1058,11 +1068,9 @@ export function aiStep(gs, opts = {}) {
     const beforeDiscard=[...Disc];
     const beforeLog=[...L];
     const discardedCards=[];
-    const discardResult=discardAiHandToLimit(P,ct,Disc,L,D,discardedCards);
-    const afterDiscardPlayers=copyPlayers(P);
-    const afterDiscardPile=[...Disc];
-    const afterDiscardLogLength=L.length;
+    const discardResult=discardAiHandToLimit(P,ct,Disc,L,D,discardedCards,gs._statEventSeq||0);
     let damageDecision=discardResult.damageDecision||null;
+    let thornDamage=null;
     if(!damageDecision?.phase&&discardedCards.length){
       const thornLosses={};
       discardedCards.forEach(card=>{
@@ -1072,54 +1080,43 @@ export function aiStep(gs, opts = {}) {
       });
       const thornEvents=Object.entries(thornLosses).map(([holderIdxText,count],order)=>{
         const holderIdx=Number(holderIdxText);
-        L.push(`【玫瑰倒刺】${P[holderIdx].name} 失去标记手牌，受到 ${2*count} HP 伤害`);
-        return {targetIdx:holderIdx,lostHp:2*count,source:'玫瑰倒刺',order};
+        const logHint=`【玫瑰倒刺】${P[holderIdx].name} 失去标记手牌，受到 ${2*count} HP 伤害`;
+        L.push(logHint);
+        return {targetIdx:holderIdx,lostHp:2*count,source:'玫瑰倒刺',order,logHint};
       });
       if(thornEvents.length){
-        damageDecision=submitLossEvents({
+        thornDamage=submitLossEvents({
           players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
           events:thornEvents,continuation:{_turnOwner:ct},
         });
+        damageDecision=thornDamage;
       }
     }
     const statEventSeqs=[];
-    const discardStatEventSeq=(gs._statEventSeq||0)+1;
-    const discardStatEvents=buildStatEvents(beforePlayers,afterDiscardPlayers,L.slice(beforeLog.length,afterDiscardLogLength),{
-      reason:'手牌上限弃牌',seq:discardStatEventSeq,discardBefore:beforeDiscard,discardAfter:afterDiscardPile,
-    });
+    const discardStatEventSeq=discardResult.statEventSeq;
+    const discardStatEvents=discardResult.statEvents;
     if(discardStatEvents.length){
-      gs=appendStatChangeResult(gs,{statEvents:discardStatEvents,statEventSeq:discardStatEventSeq});
-      statEventSeqs.push(discardStatEventSeq);
+      gs={...gs,_statEvents:[...(gs._statEvents||[]),...discardStatEvents],_statEventSeq:discardStatEventSeq};
+      statEventSeqs.push(...new Set(discardStatEvents.map(event=>event.seq)));
     }
     const thornStatEventSeq=(gs._statEventSeq||0)+1;
-    const thornStatEvents=buildStatEvents(afterDiscardPlayers,P,L.slice(afterDiscardLogLength),{
-      reason:'玫瑰倒刺',seq:thornStatEventSeq,discardBefore:afterDiscardPile,discardAfter:Disc,
-    });
+    const thornStatEvents=(thornDamage?.statEvents||[]).map(event=>({...event,seq:thornStatEventSeq}));
     if(thornStatEvents.length){
-      gs=appendStatChangeResult(gs,{statEvents:thornStatEvents,statEventSeq:thornStatEventSeq});
+      gs={...gs,_statEvents:[...(gs._statEvents||[]),...thornStatEvents],_statEventSeq:thornStatEventSeq};
       statEventSeqs.push(thornStatEventSeq);
     }
-    const handLimitDiscardEvent=createHandLimitDiscardEvent({
-      playerIdx:ct,
-      playerName:P[ct]?.name||'该玩家',
-      cards:discardedCards,
-      msgs:L.slice(beforeLog.length,afterDiscardLogLength),
-      beforePlayers,
-      beforeDiscard,
-      afterDiscard:afterDiscardPile,
-    });
     const handLimitStatEvent=createStatEventsEvent({
-      statEvents:[...discardStatEvents,...thornStatEvents],
-      msgs:L.slice(afterDiscardLogLength),
+      statEvents:thornStatEvents,
+      msgs:thornDamage?.logs||[],
       transactionId:aiActionTransactionId,
-      order:aiActionOrder+(handLimitDiscardEvent?1:0),
+      order:aiActionOrder+discardResult.visualEvents.length,
     });
     recordActionVisualEvents([
-      handLimitDiscardEvent?{
-        ...handLimitDiscardEvent,
+      ...discardResult.visualEvents.map((event,index)=>({
+        ...event,
         transactionId:aiActionTransactionId,
-        order:aiActionOrder,
-      }:null,
+        order:aiActionOrder+index,
+      })),
       handLimitStatEvent,
     ]);
     aiHandLimitPresentation=discardedCards.length?{
@@ -1974,6 +1971,10 @@ export function aiStep(gs, opts = {}) {
                 const huntDamageResult=submitLossEvents({
                   players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
                   events:[...balanceEvents,{targetIdx:ti,lostHp:huntDamage,source:'追捕',order:balanceEvents.length}],
+                  statEventLogs:L.slice(huntLogStart),
+                  statEventSeq:(gs._statEventSeq||0)+1,
+                  statEventIdPrefix:`hunt:${gs._turnKey||gs.turn||0}:${ct}:${ti}:${aiHuntEvents.length}`,
+                  defeatSettlementOwner:'huntResult',
                 });
                 if(huntDamageResult.phase==='ETHEREALIZE_DECISION'){
                   aiHuntEvents.push({
@@ -2005,17 +2006,7 @@ export function aiStep(gs, opts = {}) {
                     huntAbandoned:newAbandoned,
                   },copyPlayers(P));
                 }
-                const huntStatEvents=buildStatEvents(
-                  afterDiscardPlayers,
-                  copyPlayers(P),
-                  L.slice(huntLogStart),
-                  {
-                    reason:'追捕',
-                    seq:(gs._statEventSeq||0)+1,
-                    eventIdPrefix:`hunt:${gs._turnKey||gs.turn||0}:${ct}:${ti}:${aiHuntEvents.length}`,
-                    defeatSettlementOwner:'huntResult',
-                  },
-                );
+                const huntStatEvents=huntDamageResult.statEvents;
                 if (P[ti].hp <= 0 && !(P[ti].hand || []).some(isTsathogguaSlime)) {
                   let afterDamagePlayers=null;
                   let afterDamageDiscard=null;

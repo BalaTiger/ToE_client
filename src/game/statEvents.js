@@ -132,6 +132,7 @@ export function createPlayerDefeatedStatEvent({
   playersAfter = [],
   discardBefore = null,
   discardAfter = null,
+  discardMsgs = [],
   settlementOwner = null,
 } = {}) {
   if (target == null) return null;
@@ -165,6 +166,7 @@ export function createPlayerDefeatedStatEvent({
     playersAfter: afterSnapshot,
     ...(Array.isArray(discardBefore) ? { discardBefore: [...discardBefore] } : {}),
     ...(Array.isArray(discardAfter) ? { discardAfter: [...discardAfter] } : {}),
+    ...(discardMsgs.length ? { discardMsgs: [...discardMsgs] } : {}),
     deathCards: [
       ...(beforePlayer?.hand || []),
       ...(beforePlayer?.godZone || []),
@@ -258,6 +260,11 @@ export function buildStatEvents(beforePlayers = [], afterPlayers = [], logs = []
         playersAfter: afterPlayers,
         discardBefore: defeatDiscardBefore,
         discardAfter: options.discardAfter,
+        discardMsgs: (Array.isArray(logs) ? logs : []).filter(line => (
+          typeof line === 'string'
+          && line.startsWith(`${before.name} 的 `)
+          && line.includes('张衍生牌被销毁')
+        )),
         settlementOwner: options.defeatSettlementOwner || null,
       }));
     }
@@ -565,12 +572,27 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
   const hpHeal = [...byType.HP_HEAL];
   const sanHeal = [...byType.SAN_HEAL];
   const queue = [];
+  const defeatEvents = events.filter(event => event.type === 'PLAYER_DEFEATED');
+  const allDeathMsgs = (Array.isArray(msgs) ? msgs : []).filter(line => (
+    typeof line === 'string' && (
+      line.includes('倒下了')
+      || line.includes('被石化了')
+      || line.includes('立即死亡并石化')
+    )
+  ));
+  const settlementMsgs = new Set(defeatEvents.length ? [
+    ...allDeathMsgs,
+    ...defeatEvents.flatMap(event => event.discardMsgs || []),
+  ] : []);
+  // A shared stat batch can include later defeat/clear-hand messages. Reserve
+  // those for their owned steps instead of consuming them at the damage impact.
+  const statMsgs = (Array.isArray(msgs) ? msgs : []).filter(msg => !settlementMsgs.has(msg));
   const push = (type, hitIndices) => {
     if (!hitIndices.length) return;
     const matchingEvents = events.filter(event => eventMatchesAnimationType(event, type));
     queue.push({
       type,
-      msgs,
+      msgs: statMsgs,
       hitIndices,
       statEvents: matchingEvents,
     });
@@ -592,20 +614,12 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
     .filter(group => group.hitIndices.length)
     .sort((a, b) => a.firstEventIndex - b.firstEventIndex || a.stableOrder - b.stableOrder)
     .forEach(group => push(group.type, group.hitIndices));
-  const defeatEvents = events.filter(event => event.type === 'PLAYER_DEFEATED');
   let deathCursorPlayers = clonePlayersForStatPatch(
     defeatEvents[0]?.playersBefore?.length ? defeatEvents[0].playersBefore : players,
   );
   const ordinarySettlements = [];
   defeatEvents.forEach(event => {
     const target = event.target;
-    const allDeathMsgs = (Array.isArray(msgs) ? msgs : []).filter(line => (
-      typeof line === 'string' && (
-        line.includes('倒下了')
-        || line.includes('被石化了')
-        || line.includes('立即死亡并石化')
-      )
-    ));
     const targetName = event.playersBefore?.[target]?.name || event.committedPlayers?.[target]?.name;
     const matchingDeathMsgs = targetName
       ? allDeathMsgs.filter(line => line.includes(targetName))
@@ -675,6 +689,7 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
         targetPid: target,
         triggerName: beforePlayers[target]?.name || '角色',
         deathSettlementStep: true,
+        msgs: event.discardMsgs || [],
         visualSetupTiming: 'stepStart',
         visualSetupPatch: {
           players: beforePlayers,

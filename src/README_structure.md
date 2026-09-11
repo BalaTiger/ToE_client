@@ -264,6 +264,25 @@ as the only ordering authority.
 Hand areas render from the animation-locked `visualPlayers` snapshot during queued playback, so a hand-affecting `CARD_TRANSFER`/`DISCARD` step must commit its after snapshot itself: pass `playersBefore`/`playersAfter` (and discard pairs) to `cardTransferStep`/`swapCardsSteps`/`fullHandSwapSteps`, which attach a stepStart `visualSetupPatch` plus a mid-flight `visualTimeline` commit. The after snapshot must be transfer-scoped (`deriveHandTransferSnapshot`), never the event-level `playersAfter`, which already contains later settlements (SAN loss, deaths) whose animations have not played yet. `validateHandTransferCommits` in `animationStepSchema.js` reports (DEV) any hand transfer with no mid-flight commit and no immediately following `STATE_PATCH`/`VISUAL_LOCK`; steps with a legitimate late commit (e.g. hunt loot) opt out explicitly via `deferHandCommit`.
 
 ## HP/SAN Presentation Boundary
+Damage submitted through `effectEngine.submitLossEvents` returns one rule-owned
+result: `logs`, the original `statEvents`/`statEventSeq`, and `phase`/`abilityData`
+for any pending decision. `statEventLogs` is a copied input containing authored
+messages for this batch; reactions are collected privately and included in
+`result.logs`. The supplied `log` remains the final-settlement sink and receives
+reaction messages as before. Neither the visual compiler nor live-log playback
+may read that sink to recover missing messages.
+
+Consumers must preserve the returned events with `appendStatChangeResult` or
+`buildStatChangeStatePatch`, or give them to one explicit composite owner. Do not
+rebuild damage from final player snapshots: rope timelines and immortality reveal
+metadata are consumed when the original result is built. Do not register both a
+generic wrapper and a second stat wrapper for the same result. Composite draw,
+faith, and discard events own their announcements; damage events own the ensuing
+reactions. A decision pause must retain events for damage already applied.
+Confirmed redirect chains use `deferPostDamageDecisions` only to preserve their
+existing loss/inspection order before the chain controller offers rope/slime
+decisions. Each completed damage batch still emits its original events immediately.
+
 Authoritative HP/SAN remain in `gs.players`, but battle stat bars render from
 `displayStats`. During an animation transaction:
 

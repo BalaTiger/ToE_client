@@ -165,9 +165,12 @@ export function resolvePendingDamageLinkBreak(P, targetIdx, Disc, L, currentTurn
       const eligibleTargets = new Set(pendingLosses.map(loss => loss.targetIdx));
       const deferredDirectLosses = orderedLosses.filter(loss => !eligibleTargets.has(loss.targetIdx));
       saveRemaining(lossTargets[0] ?? targetIdx);
-      L.push(lossTargets.length === 1
+      const breakLine = lossTargets.length === 1
         ? `【两人一绳】绳索断裂！${P[lossTargets[0]].name} 即将失去 3 HP`
-        : `【两人一绳】绳索断裂！${P[active.a].name} 和 ${P[active.b].name} 即将各失去 3 HP`);
+        : `【两人一绳】绳索断裂！${P[active.a].name} 和 ${P[active.b].name} 即将各失去 3 HP`;
+      L.push(breakLine);
+      if (!Array.isArray(P._damageLinkBreakTimeline)) P._damageLinkBreakTimeline = [];
+      P._damageLinkBreakTimeline.push({linkId:active.id,pair:[active.a,active.b],beforePlayers,breakPlayers,afterPlayers:copyPlayers(P),breakLine});
       return {
         applied,
         deferred: true,
@@ -209,8 +212,10 @@ export function resolvePendingDamageLinkBreak(P, targetIdx, Disc, L, currentTurn
   return { applied, beforePlayers, affected };
 }
 
-// Pure state-layer entry for damage. Callers provide only damage facts and
-// continuation metadata; card/phase code remains responsible for presentation.
+// Damage owns its complete reaction transaction. `log` is the settlement sink;
+// `statEventLogs` contains only this batch's authored damage messages. Never
+// require those arrays to alias: return `logs` and the original `statEvents`
+// together, including reactions produced before a decision interrupts damage.
 export function submitLossEvents({
   players,
   deck = [],
@@ -220,14 +225,18 @@ export function submitLossEvents({
   events = [],
   continuation = {},
   skipEtherealize = false,
+  deferPostDamageDecisions = false,
   statEventSeq = null,
   statEventReason = null,
   statEventLogs = [],
+  statEventIdPrefix = null,
+  defeatSettlementOwner = null,
 } = {}) {
   const P = players;
   const D = deck;
   const Disc = discard;
-  const L = log;
+  const L = [];
+  const authoredLogs = Array.isArray(statEventLogs) ? [...statEventLogs] : [];
   const beforeDiscard = [...(Disc || [])];
   const normalized = (events || [])
     .map((event, order) => ({
@@ -238,7 +247,25 @@ export function submitLossEvents({
     }))
     .filter(event => event.targetIdx != null && P?.[event.targetIdx] && !P[event.targetIdx].isDead && (event.lostHp || event.lostSan));
   const beforePlayers = copyPlayers(P || []);
-  if (!normalized.length) return { players: P, deck: D, discard: Disc, log: L, beforePlayers, statEvents: [], statEventSeq: null, phase: null, abilityData: null };
+  const finish = (phase = null, abilityData = null) => {
+    const logs = [...(authoredLogs.length ? authoredLogs : normalized.map(event => event.logHint).filter(Boolean)), ...L];
+    const sourceNames = [...new Set(normalized.map(event => event.source).filter(Boolean))];
+    let statEvents = normalized.length ? buildStatEvents(beforePlayers, P, logs, {
+      reason: statEventReason || sourceNames.join(' / ') || '属性扣减',
+      ...(statEventSeq != null ? { seq: statEventSeq } : {}),
+      ...(statEventIdPrefix ? { eventIdPrefix: statEventIdPrefix } : {}),
+      defeatSettlementOwner,
+      discardBefore: beforeDiscard,
+      discardAfter: Disc,
+    }) : [];
+    if (normalized.length) statEvents = attachVritraRevealsToStatEvents(statEvents, takeVritraImmortalRevealEvents(P));
+    log.push(...L);
+    return {
+      players: P, deck: D, discard: Disc, log, logs, beforePlayers,
+      statEvents, statEventSeq: statEvents.length ? statEventSeq : null, phase, abilityData,
+    };
+  };
+  if (!normalized.length) return finish();
 
   if (!skipEtherealize) {
     const pendingLosses = normalized.map(event => {
@@ -260,7 +287,7 @@ export function submitLossEvents({
         _turnOwner: currentTurn,
         ...(deferredDirectLosses.length ? { deferredDirectLosses } : {}),
       });
-      return { players: P, deck: D, discard: Disc, log: L, beforePlayers, statEvents: [], statEventSeq: null, phase: 'ETHEREALIZE_DECISION', abilityData };
+      return finish('ETHEREALIZE_DECISION', abilityData);
     }
   }
 
@@ -275,16 +302,17 @@ export function submitLossEvents({
     }
   });
 
+  // Confirmed redirect chains settle their ordered losses and SAN inspections
+  // before offering the next rope/slime decision. Preserve each batch now.
+  if (deferPostDamageDecisions) return finish();
+
   const pendingLinkTarget = P.findIndex(player => (
     player?._pendingDamageLinkBreak && !(player.hand || []).some(isTsathogguaSlime)
   ));
   if (pendingLinkTarget >= 0) {
     const reaction = resolvePendingDamageLinkBreak(P, pendingLinkTarget, Disc, L, currentTurn, D, continuation);
     if (reaction.etherealizeDecision) {
-      return {
-        players: P, deck: D, discard: Disc, log: L, beforePlayers,
-        phase: 'ETHEREALIZE_DECISION', abilityData: reaction.etherealizeDecision,
-      };
+      return finish('ETHEREALIZE_DECISION', reaction.etherealizeDecision);
     }
   }
 
@@ -292,29 +320,7 @@ export function submitLossEvents({
     ...continuation,
     _turnOwner: currentTurn,
   });
-  const sourceNames = [...new Set(normalized.map(event => event.source).filter(Boolean))];
-  const eventLogs = Array.isArray(statEventLogs) && statEventLogs.length
-    ? statEventLogs
-    : normalized.map(event => event.logHint).filter(Boolean);
-  let statEvents = buildStatEvents(beforePlayers, P, eventLogs, {
-    reason: statEventReason || sourceNames.join(' / ') || '属性扣减',
-    ...(statEventSeq != null ? { seq: statEventSeq } : {}),
-    discardBefore: beforeDiscard,
-    discardAfter: Disc,
-  });
-  const vritraVisualEvents = takeVritraImmortalRevealEvents(P);
-  statEvents = attachVritraRevealsToStatEvents(statEvents, vritraVisualEvents);
-  return {
-    players: P,
-    deck: D,
-    discard: Disc,
-    log: L,
-    beforePlayers,
-    statEvents,
-    statEventSeq: statEvents.length ? statEventSeq : null,
-    phase: abilityData ? 'TSG_SLIME_BALANCE' : null,
-    abilityData,
-  };
+  return finish(abilityData ? 'TSG_SLIME_BALANCE' : null, abilityData);
 }
 
 export { getAdjacentTargets };
@@ -387,6 +393,7 @@ function handleInspection(playerIndex, gs) {
   let gainedCardLog = null;
   const inspectionDiscardEvents = [];
   let inspectionDamageDecision = null;
+  const statEventSeq = (gs?._statEventSeq || 0) + 1;
   // 检查检定牌堆是否为空，如果为空则洗牌
   if (newGs.inspectionDeck.length === 0) {
     newGs.inspectionDeck = shuffle([...newGs.inspectionDiscard]);
@@ -419,7 +426,9 @@ function handleInspection(playerIndex, gs) {
         currentTurn: newGs.currentTurn,
         events: targets.map((idx, order) => ({
           targetIdx: idx, lostHp: drawnCard.value, source: drawnCard.name || '乱抓', order,
+          logHint: `${P[idx].name} 被乱抓，失去 ${drawnCard.value} HP`,
         })),
+        statEventSeq,
       });
       if (inspectionDamageDecision.phase === 'ETHEREALIZE_DECISION') {
         targets.forEach(idx => L.push(`${P[idx].name} 即将因乱抓失去 ${drawnCard.value} HP`));
@@ -439,6 +448,8 @@ function handleInspection(playerIndex, gs) {
         log: L,
         currentTurn: newGs.currentTurn,
         events: [{ targetIdx: playerIndex, lostHp: drawnCard.value, source: drawnCard.name || '自残' }],
+        statEventSeq,
+        statEventLogs: [`${P[playerIndex].name} 自残，失去 ${drawnCard.value} HP`],
       });
       if (inspectionDamageDecision.phase === 'ETHEREALIZE_DECISION') {
         L.push(`${P[playerIndex].name} 即将因自残失去 ${drawnCard.value} HP`);
@@ -491,6 +502,7 @@ function handleInspection(playerIndex, gs) {
             applyHpDamage: applyHpDamageWithLink,
             submitDamage: submitLossEvents,
             currentTurn: newGs.currentTurn,
+            statEventSeq,
             continuation: { _turnOwner: newGs.currentTurn },
           });
           L.splice(0, L.length, ...balance.log);
@@ -563,8 +575,7 @@ function handleInspection(playerIndex, gs) {
     : L;
   const afterPlayers = copyPlayers(P);
   const afterDiscard = [...(Array.isArray(newGs.discard) ? newGs.discard : [])];
-  const statEventSeq = (gs?._statEventSeq || 0) + 1;
-  const statEvents = buildStatEvents(beforePlayers, afterPlayers, finalLog.slice(beforeLogLen), {
+  const statEvents = inspectionDamageDecision?.statEvents ?? buildStatEvents(beforePlayers, afterPlayers, finalLog.slice(beforeLogLen), {
     reason: drawnCard.name || 'SAN检定',
     seq: statEventSeq,
   });

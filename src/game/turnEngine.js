@@ -28,7 +28,6 @@ import {
   requestZhuReveal,
   refreshZhuLightAtOwnerTurn,
 } from './zhuPower';
-import { buildStatEvents } from './statEvents';
 import { deriveEffectDecisionState } from './effectStatePatch';
 import { buildApophisNightLog, getApophisNightForLevel } from './apophisNight';
 import { buildGodPowerBlockedLog, canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
@@ -70,17 +69,6 @@ import {
   removeDamageLinks,
 } from './damageLinks';
 
-function appendStatEventsToInspectionMeta(inspectionMeta, beforePlayers, afterPlayers, logs, reason) {
-  const statEventSeq = (inspectionMeta?._statEventSeq || 0) + 1;
-  const statEvents = buildStatEvents(beforePlayers, afterPlayers, logs, { reason, seq: statEventSeq });
-  if (!statEvents.length) return inspectionMeta;
-  return {
-    ...inspectionMeta,
-    _statEvents: [...(inspectionMeta?._statEvents || []), ...statEvents],
-    _statEventSeq: statEventSeq,
-  };
-}
-
 function mergeVisualEventLists(...lists) {
   const merged = lists.flatMap(list => (Array.isArray(list) ? list : [])).filter(Boolean);
   const seenIds = new Set();
@@ -105,7 +93,9 @@ function appendGodChoiceContinuation(statePatch, baseState, abilityData) {
 
 function appendTurnDrawVisualEvents(events, draw) {
   const drawOrder = events.filter(event => event?.type === VISUAL_EVENT.DRAW_CARD).length;
-  const effectMsgs = new Set((draw.effectVisualEvents || []).flatMap(event => event.msgs || []));
+  const effectMsgs = new Set((draw.effectVisualEvents || [])
+    .filter(event => !draw.card?.isGod || event.type !== VISUAL_EVENT.STAT_EVENTS)
+    .flatMap(event => event.msgs || []));
   const earlierEffects = new Set(events.flatMap(event => event.effectVisualEventIds || []));
   const effectVisualEventIds = (draw.effectVisualEvents || [])
     .filter(event => event.type !== VISUAL_EVENT.STAT_EVENTS && !earlierEffects.has(event.id))
@@ -944,15 +934,11 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
           players: P, deck: D, discard: Disc, log: L2, currentTurn: gs?.currentTurn ?? ci,
           events: [{ targetIdx: ci, lostSan: cost, source: '邪神遭遇' }],
           continuation: { pendingGodChoice },
+          statEventSeq: (inspectionMeta?._statEventSeq || 0) + 1,
+          statEventLogs: [effectMsg],
         });
         pendingGodChoice.pendingEncounterInspection = P[ci].san > 0 && P[ci].san <= 6;
-        inspectionMeta = appendStatEventsToInspectionMeta(
-          inspectionMeta,
-          damage.beforePlayers,
-          P,
-          [effectMsg],
-          '邪神遭遇',
-        );
+        inspectionMeta = appendStatChangeResult(inspectionMeta, damage);
         if (damage.abilityData) {
           return {
             P, D, Disc, drawnCard, reshuffleLog, effectMsgs: L2, kept: true,
@@ -1067,14 +1053,10 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
           currentTurn: gs?.currentTurn ?? ci,
           events: [{ targetIdx: ci, lostSan: cost, source: '邪神遭遇' }],
           continuation: { pendingGodChoice },
+          statEventSeq: (inspectionMeta?._statEventSeq || 0) + 1,
+          statEventLogs: [effectMsg],
         });
-        inspectionMeta = appendStatEventsToInspectionMeta(
-          inspectionMeta,
-          damage.beforePlayers,
-          P,
-          [effectMsg],
-          '邪神遭遇',
-        );
+        inspectionMeta = appendStatChangeResult(inspectionMeta, damage);
         if (damage.abilityData) {
           return {
             P, D, Disc, drawnCard,
@@ -1272,20 +1254,19 @@ function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta) {
       .map(link => link.a === next ? link.b : link.a);
     const statEventSeq = (inspectionMeta?._statEventSeq || 0) + 1;
     const damageLog = `【黑山羊幼仔】${P[next].name} 失去 ${bgyCount} HP 和 ${bgyCount} SAN`;
-    const reactionLogs = [];
+    const damageLogs = [damageLog];
     const damage = submitLossEvents({
-      players: P, deck: D, discard: Disc, log: reactionLogs, currentTurn: next,
+      players: P, deck: D, discard: Disc, log: damageLogs, currentTurn: next,
       events: [{ targetIdx: next, lostHp: bgyCount, lostSan: bgyCount, source: '黑山羊幼仔' }],
       statEventSeq,
-      statEventLogs: [damageLog],
+      statEventLogs: damageLogs,
     });
-    L.push(damageLog);
-    L.push(...reactionLogs);
+    L.push(...damageLogs);
     // Damage already owns the ordered rope-break/defeat reactions. Rebuilding
     // from final stats loses the consumed reaction timeline and its messages.
     const damageEvent = createStatEventsEvent({
       statEvents: damage.statEvents,
-      msgs: [damageLog, ...reactionLogs],
+      msgs: damage.logs,
       turnStartStage: 'turnStart',
     });
     if (damageEvent) inspectionMeta = {
@@ -1366,25 +1347,20 @@ function turnStartEvent_PoisonDamage(P, next, D, Disc, L, gs, inspectionMeta, st
   const poisonStacks = P[next].poisonStacks || 0;
   if (poisonStacks <= 0) return { P, D, Disc, L, inspectionMeta, winAfterPoison: null, slimeDecision: null };
 
-  const beforePlayers = copyPlayers(P);
+  const msg = `【中毒】${P[next].name} 失去 ${poisonStacks} HP，消耗1层中毒`;
   const reactionLogs = [];
   const damage = submitLossEvents({
     players: P, deck: D, discard: Disc, log: reactionLogs, currentTurn: next,
     events: [{ targetIdx: next, lostHp: poisonStacks, source: '中毒' }],
+    statEventSeq: (inspectionMeta?._statEventSeq || 0) + 1,
+    statEventLogs: [msg],
   });
   P[next].poisonStacks = Math.max(0, poisonStacks - 1);
   if (P[next].poisonStacks <= 0) delete P[next].poisonStacks;
-  const msg = `【中毒】${P[next].name} 失去 ${poisonStacks} HP，消耗1层中毒`;
   L.push(msg);
   L.push(...reactionLogs);
   if (statLogs) statLogs.push(msg);
-  inspectionMeta = appendStatEventsToInspectionMeta(
-    inspectionMeta,
-    beforePlayers,
-    P,
-    [msg],
-    '中毒',
-  );
+  inspectionMeta = appendStatChangeResult(inspectionMeta, { ...damage, turnStartStage: 'turnStart' });
   const slimeDecision = damage.phase === 'TSG_SLIME_BALANCE' ? damage.abilityData : null;
   if (slimeDecision) return { P, D, Disc, L, inspectionMeta, winAfterPoison: null, slimeDecision };
   if (P[next].hp <= 0) {
@@ -1685,7 +1661,7 @@ export function continueTurnStartAfterDamageReaction(state) {
         _turnStartDrawAborted: true,
       };
       const terminalEvents = mergeVisualEventLists(
-        state._visualEvents,
+        terminalState._visualEvents,
         buildFreshStatVisualEvents(terminalState, previousStatSeq),
       );
       return {
@@ -1721,7 +1697,7 @@ export function continueTurnStartAfterDamageReaction(state) {
       deck: D,
       discard: Disc,
       log: [...L, nya.logMsg],
-      _visualEvents: [...(state._visualEvents || []), createLogOnlyVisualEvent({ msgs: [nya.logMsg], turnStartStage: 'turnStart' })],
+      _visualEvents: [...(inspectionMeta._visualEvents || state._visualEvents || []), createLogOnlyVisualEvent({ msgs: [nya.logMsg], turnStartStage: 'turnStart' })],
       phase: 'NYA_BORROW',
       abilityData: {},
       _statLogs: statLogs,

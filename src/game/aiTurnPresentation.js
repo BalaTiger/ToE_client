@@ -74,15 +74,6 @@ export function buildRoseThornSnapshot(players) {
   }));
 }
 
-export function collectExplicitAiTurnLogs(state, queue) {
-  return [
-    ...(state?._turnStartLogs || []),
-    ...(state?._drawLogs || []),
-    ...(state?._statLogs || []),
-    ...(queue || []).flatMap(step => Array.isArray(step?.msgs) ? step.msgs : []),
-  ];
-}
-
 // aiStep may return the completed current action together with the already
 // resolved next turn. Keep the latter's staged events out of the current
 // action replay; they are presented by the queued turn-start transaction.
@@ -433,7 +424,6 @@ export function buildAiHuntWaitPresentation({
 }) {
   const oldLog = Array.isArray(previousState.log) ? previousState.log : [];
   const nextLog = Array.isArray(nextState.log) ? nextState.log : oldLog;
-  const { currentTurnLogs } = splitTransitionLogs(oldLog, nextLog);
   const actorName = previousState.players?.[previousState.currentTurn]?.name || '???';
   const hasTurnStartDraw = !!previousState._playersBeforeThisDraw;
   const shouldReplayTurnStart = hasTurnStartDraw && !previousState._aiTurnIntroShown;
@@ -670,12 +660,10 @@ export function buildAiHuntWaitPresentation({
     queue.push(...actionStatQueue);
   }
 
-  const explicitCurrentLogs = collectExplicitAiTurnLogs(previousState, queue);
-  const residualLogs = subtractLogOccurrences(
-    currentTurnLogs,
-    explicitCurrentLogs
-  );
-  const finalQueue = appendAnimLogChunkToQueueEnd(queue, residualLogs);
+  // Hunt/stat steps already own their live log entries. Only explicit rule
+  // notices may add messages between attempts; the final transcript is not
+  // a source for filling perceived gaps in this presentation.
+  const finalQueue = includeAiActionNotices(queue, nextState);
   const actionTransactionId = rawResult?._aiActionTransactionId || null;
   const stateVisualEvents = Array.isArray(nextState?._visualEvents) ? nextState._visualEvents : [];
   const stateVisualEventsById = new Map(
@@ -835,10 +823,7 @@ import {
 } from './animQueueCore';
 import { discardStep, statePatchStep } from './animQueueHelpers';
 import {
-  appendAnimLogChunkToQueueEnd,
   bindAnimLogChunks,
-  splitTransitionLogs,
-  subtractLogOccurrences,
 } from './animLogs';
 import { removeCardsFromDiscard } from './coreUtils';
 import { getTurnStartDrawBaselineLog } from './turnAnimState';

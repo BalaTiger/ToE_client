@@ -1,5 +1,4 @@
 import { GOD_DEFS } from '../constants/card';
-import { buildStatEvents } from './statEvents';
 import { copyPlayers, formatSanLoss, makeInspectionMeta } from './coreUtils';
 import { applyInspectionForSanLoss, submitLossEvents } from './effectEngine';
 import { hasGodPowerImmunity } from './godPowerImmunity';
@@ -53,16 +52,16 @@ export function resolveApophisTarget({
 
   if (roll <= night.threshold && alternatives.length) {
     targetIdx = alternatives[Math.floor(Math.random() * alternatives.length)];
-    const beforePlayers = copyPlayers(P);
+    eventLog = `【黑夜】${P[actorIdx].name} ${label}掷出 ${roll}，目标由 ${P[selectedIdx].name} 错乱为 ${P[targetIdx].name}，${formatSanLoss(1)}`;
+    const statEventSeq = (gs?._statEventSeq || 0) + 1;
     const damage = submitLossEvents({
       players: P, deck: D, discard: Disc, log: L, currentTurn: gs?.currentTurn ?? actorIdx,
       events: [{ targetIdx: actorIdx, lostSan: 1, source: '黑夜' }],
+      statEventSeq, statEventLogs: [eventLog],
     });
-    eventLog = `【黑夜】${P[actorIdx].name} ${label}掷出 ${roll}，目标由 ${P[selectedIdx].name} 错乱为 ${P[targetIdx].name}，${formatSanLoss(1)}`;
     L = [...L, eventLog];
-    const statEventSeq = (gs?._statEventSeq || 0) + 1;
     statSeq = statEventSeq;
-    const statEvents = buildStatEvents(beforePlayers, P, [L[L.length - 1]], { reason: '黑夜', seq: statEventSeq });
+    const statEvents = damage.statEvents;
     if (statEvents.length) {
       statPatch = { _statEvents: [...(gs?._statEvents || []), ...statEvents], _statEventSeq: statEventSeq };
     }

@@ -8,9 +8,39 @@ import { applyStatAnimationImpact } from '../statEvents';
 import { buildTurnStartDrawReplayQueue } from '../turnAnimState';
 import { startNextTurn } from '../turnEngine';
 import { consumeVisualLogEntries } from '../visualEventLogs';
-import { makeBlankZoneCard, makeGs, makePlayer } from './factory';
+import { makeBlankZoneCard, makeGs, makePlayer, makeStandardPlayers } from './factory';
 
 describe('black goat turn-start rope reaction', () => {
+  it.each([
+    { actor: 0, rope: true }, { actor: 1, rope: true },
+    { actor: 0, rope: false }, { actor: 1, rope: false },
+  ])('keeps defeat and destruction messages at their playback steps (seat $actor, rope $rope)', ({ actor, rope }) => {
+    const players = makeStandardPlayers(4, [{ name: '你' }, { name: '贝拉' }, { name: '艾伦' }, { name: '黛安娜' }]);
+    players[actor].hp = rope ? 2 : 1;
+    players[actor].hand = [createBlackGoatYoungCard()];
+    if (rope) addDamageLink(players, 2, actor, { expiryOwner: 2 });
+    const previous = makeGs({ players, currentTurn: (actor + 3) % 4, deck: [makeBlankZoneCard()] });
+    const next = startNextTurn(previous);
+    const queue = buildTurnStartDrawReplayQueue({ oldGs: previous, newGs: next }).queue;
+    const consumed = new Set();
+    const prepared = prepareAnimQueueLogs(queue, next);
+    const batches = prepared.map(step => consumeVisualLogEntries(step.logEntries, consumed));
+    const deathLine = `☠ ${players[actor].name}（${players[actor].role}）倒下了！`;
+    const destructionLine = `${players[actor].name} 的 1 张衍生牌被销毁`;
+    expect(next.players[actor]).toMatchObject({ hp: 0, san: 10, isDead: true, hand: [] });
+    expect(batches.flat()).toEqual(next.log);
+    const deathIndex = queue.findIndex(step => step.type === 'GUILLOTINE');
+    const discardIndex = queue.findIndex(step => step.type === 'DISCARD' && step.deathSettlementStep);
+    expect(batches[deathIndex]).toEqual([deathLine]);
+    expect(batches[discardIndex]).toEqual([destructionLine]);
+    expect(deathIndex).toBeGreaterThan(queue.findLastIndex(step => step.type === 'HP_DAMAGE'));
+    expect(discardIndex).toBeGreaterThan(deathIndex);
+    expect(queue.some(step => step.type === 'DRAW_CARD')).toBe(false);
+    const beforeStats = players.map(({ hp, san }) => ({ hp, san }));
+    expect(queue.reduce(applyStatAnimationImpact, beforeStats)).toEqual(next.players.map(({ hp, san }) => ({ hp, san })));
+    expect(prepared.flatMap(step => consumeVisualLogEntries(step.logEntries, consumed))).toEqual([]);
+  });
+
   it.each([false, true])('publishes the rule break message before drawing (multiplayer: %s)', isMP => {
     const players = [
       makePlayer({ name: '莉莉' }),

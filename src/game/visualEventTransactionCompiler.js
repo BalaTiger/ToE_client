@@ -350,6 +350,17 @@ function applyStatEventsToPlayersSnapshot(players = [], statEvents = []) {
   return nextPlayers;
 }
 
+// A composite event may own the announcement while its nested damage owns
+// the reactions. Transfer only those explicitly declared announcement lines.
+function withoutOwnedMessages(step, ownedMsgs = []) {
+  const owned = new Set(ownedMsgs || []);
+  return {
+    ...step,
+    ...(Array.isArray(step.msgs) ? { msgs: step.msgs.filter(msg => !owned.has(msg)) } : {}),
+    ...(Array.isArray(step.logEntries) ? { logEntries: step.logEntries.filter(entry => !owned.has(entry.text)) } : {}),
+  };
+}
+
 function composeCanonicalFaithSettlementSteps(queue = [], events = []) {
   let result = [...queue];
   const inspectionEvents = events.filter(event => event?.type === VISUAL_EVENT.INSPECTION);
@@ -380,7 +391,7 @@ function composeCanonicalFaithSettlementSteps(queue = [], events = []) {
             const playersBeforeStep = statCursorPlayers;
             statCursorPlayers = applyStatEventsToPlayersSnapshot(playersBeforeStep, step?.statEvents);
             return {
-              ...step,
+              ...withoutOwnedMessages(step, transition.msgs),
               visualSetupTiming: step.visualSetupTiming || 'stepStart',
               visualSetupPatch: {
                 ...(step.visualSetupPatch || {}),
@@ -705,7 +716,7 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
       const encounterQueue = composeCanonicalFaithSettlementSteps(
         compiledSettlementEvents.filter(item => item.event?.cardAcquisitionStage === 'godEncounter').flatMap(item => item.steps),
         encounterEvents,
-      );
+      ).map(step => withoutOwnedMessages(step, event.encounterMsgs));
       const acceptanceQueue = composeCanonicalFaithSettlementSteps([
         ...directStatQueue,
         ...compiledSettlementEvents
