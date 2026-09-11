@@ -15,6 +15,7 @@ import {
   getAiActionSphinxResultEvent,
   insertAiRestDiceBeforeSettlement,
   scopeAiActionReplayMetadata,
+  includeAiActionNotices,
   scopeAiReplayMetadataBeforeInspection,
   scopeAiPreHuntReplayMetadata,
   shouldBuildQueuedAiTurnStartReplay,
@@ -28,6 +29,7 @@ import {
   createHuntResultEvent,
   createHuntTargetEvent,
   createInspectionVisualEvent,
+  createLogOnlyVisualEvent,
   createSwapCardsEvent,
   createStatEventsEvent,
 } from '../visualEvents';
@@ -1634,3 +1636,19 @@ describe('AI turn presentation helpers', () => {
     expect(recovered.log.at(-1)).toBe('Bot 的行动动画已降级（bad queue），规则结算继续');
   });
 });
+
+  it('keeps rule notices between custom hunt attempts and before the next turn', () => {
+    const notice = {...createLogOnlyVisualEvent({msgs:['放弃当前追捕目标']}),transactionId:'hunt-action',order:1};
+    const end = {...createLogOnlyVisualEvent({msgs:['结束回合']}),transactionId:'hunt-action',order:3};
+    const events=[{id:'hunt-one',type:'huntResult',transactionId:'hunt-action',order:0},
+      notice,{id:'hunt-two',type:'huntResult',transactionId:'hunt-action',order:2},end,
+      {id:'future-banner',type:'turnStart',turnStartStage:'turnBanner'}];
+    const state={_visualEvents:events,log:['unrelated next turn'],players:[]};
+    const queue=[{type:'SKILL_HUNT',visualEventId:'hunt-one'},
+      {type:'STATE_PATCH'}, {type:'SKILL_HUNT',visualEventId:'hunt-two'}];
+    const result=includeAiActionNotices(queue,state);
+    expect(result.map(step=>step.visualEventId)).toEqual(['hunt-one',undefined,notice.id,'hunt-two',end.id]);
+    expect(result.flatMap(step=>step.msgs||[])).toEqual(['放弃当前追捕目标','结束回合']);
+    expect(includeAiActionNotices(result,state)).toEqual(result);
+    expect(includeAiActionNotices(queue,state,new Set([notice.id,end.id]))).toEqual(queue);
+  });

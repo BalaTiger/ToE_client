@@ -1,3 +1,5 @@
+import { orderRuleResolutionEvents } from './ruleResolutionTransaction';
+
 const EXECUTION_ONLY_FIELDS = [
   '_aiDrawnCard',
   '_aiName',
@@ -225,9 +227,9 @@ function collectOwnedAiHuntVisualEvents(visualEvents = [], rawHuntEvents = []) {
 export function scopeAiPreHuntReplayMetadata(state, rawResult = {}) {
   const unscopedAction = scopeAiActionReplayMetadata(state);
   const actionTransactionId = rawResult?._aiActionTransactionId || null;
-  const transactionVisualEvents = actionTransactionId
+  const transactionVisualEvents = orderRuleResolutionEvents(actionTransactionId
     ? unscopedAction.visualEvents.filter(event => event?.transactionId === actionTransactionId)
-    : unscopedAction.visualEvents;
+    : unscopedAction.visualEvents);
   const transactionStatSeqs = new Set(transactionVisualEvents
     .flatMap(event => Array.isArray(event?.statEvents) ? event.statEvents : [])
     .map(event => event?.seq)
@@ -240,7 +242,7 @@ export function scopeAiPreHuntReplayMetadata(state, rawResult = {}) {
           event?.seq != null && transactionStatSeqs.has(event.seq)
         )),
       }
-    : unscopedAction;
+    : { ...unscopedAction, visualEvents: transactionVisualEvents };
   const ownedHuntEvents = collectOwnedAiHuntVisualEvents(
     action.visualEvents,
     rawResult?._aiHuntEvents || [],
@@ -845,3 +847,21 @@ import {
   compileRuleVisualEventsToAnimTransaction,
   getAnimationQueueVisualEventIds,
 } from './visualEventTransactionCompiler';
+
+// A custom hunt queue owns its nested animations, while rule notices between
+// attempts still belong to the enclosing action. Insert those event payloads
+// at their rule boundary without reconstructing or sorting from state.log.
+export function includeAiActionNotices(queue, state, consumedEventIds = new Set()) {
+  const events = orderRuleResolutionEvents(scopeAiActionReplayMetadata(state).visualEvents);
+  const order = new Map(events.map((event, index) => [event.id, index]));
+  const covered = new Set(getAnimationQueueVisualEventIds(queue));
+  const result = [...queue];
+  for (const event of events) {
+    if (event.type !== 'logOnly' || covered.has(event.id) || consumedEventIds.has(event.id)) continue;
+    const steps = compileRuleVisualEventsToAnimTransaction(state, null, { eventIds: [event.id] }).queue;
+    const nextIndex = result.findIndex(step => order.has(step.visualEventId)
+      && order.get(step.visualEventId) > order.get(event.id));
+    result.splice(nextIndex < 0 ? result.length : nextIndex, 0, ...steps);
+  }
+  return result;
+}

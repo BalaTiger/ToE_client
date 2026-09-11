@@ -12,7 +12,7 @@ import {
   shouldAiRest,
 } from '../ai';
 import { aiStep, chooseAiTreasureSwapPlan, continueAiCthRestDraws, discardAiHandToLimit, processAiEndTurnEvents, processAiEndTurnReplayHand } from '../aiTurn';
-import { buildOwnedAiHuntEventQueue, getAiActionQueueCoverage, scopeAiActionReplayMetadata } from '../aiTurnPresentation';
+import { buildOwnedAiHuntEventQueue, getAiActionQueueCoverage, includeAiActionNotices, scopeAiActionReplayMetadata } from '../aiTurnPresentation';
 import { cardLogText, ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
 import { compileRuleVisualEventsToAnimTransaction, getAnimationQueueVisualEventIds, getVisualEventIdsCoveredByAnimationQueue } from '../visualEventTransactionCompiler';
 import { startNextTurn } from '../turnEngine';
@@ -21,7 +21,9 @@ import { createInspectionVisualEvent } from '../visualEvents';
 import { makeGs, makeGodCard, makePlayer, makeZoneCard } from './factory';
 import { makeProliferatingZState } from '../proliferatingZ';
 import { addDamageLink } from '../damageLinks';
-import { validateRuleResolutionEvents } from '../ruleResolutionTransaction';
+import { orderRuleResolutionEvents, validateRuleResolutionEvents } from '../ruleResolutionTransaction';
+import { prepareAnimQueueLogs } from '../animLogs';
+import { consumeVisualLogEntries } from '../visualEventLogs';
 
 describe('AI 两人一绳策略', () => {
   const rope = () => makeZoneCard('B4', 0, { name: '两人一绳', type: 'damageLink', polarity: 'neutral' });
@@ -907,6 +909,29 @@ describe('aiChooseRevealCard', () => {
 });
 
 describe('AI end-turn endless corridor replay', () => {
+  it.each([1, 2])('无尽通道重摸 %i 张同名石化配方时，每次翻牌只输出一次消息', count => {
+    const formulas = Array.from({ length: count }, () => makeZoneCard('C1', 5));
+    const corridor = makeZoneCard('A3', 3);
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', hand: [...formulas, corridor] }),
+    ];
+    const gs = makeGs({ players, currentTurn: 1, phase: 'AI_TURN' });
+    const result = processAiEndTurnEvents(players, [], [], [], 1, gs);
+    const queue = prepareAnimQueueLogs(result.replayQueue, {
+      ...gs, ...result.statePatch, players: result.P, log: result.L,
+    });
+    const consumedIds = new Set();
+    const visibleLines = queue.flatMap(step => consumeVisualLogEntries(step.logEntries, consumedIds));
+    const drawMsg = '【无尽通道】艾伦 重新摸到 [C1] 石化配方';
+
+    expect(result.L.filter(line => line === drawMsg)).toHaveLength(count);
+    expect(visibleLines.filter(line => line === drawMsg)).toHaveLength(count);
+    expect(visibleLines).toEqual(result.L);
+    expect(queue.filter(step => step.type === 'CARD_TRANSFER' && step.effect === 'draw')).toHaveLength(count);
+    expect(queue.flatMap(step => consumeVisualLogEntries(step.logEntries, consumedIds))).toEqual([]);
+  });
+
   it('斯芬克斯结果只归属无尽通道中的 D4 子事务', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0);
     const legion = makeZoneCard('A2', 0, { id: 'diana-legion' });
@@ -1432,6 +1457,51 @@ describe('aiStep optional action limits', () => {
     expect(validateRuleResolutionEvents(actionEvents)).toEqual([]);
   });
 
+  it('连续追捕后的放弃通知按规则顺序排在对应亮牌之后，且只输出一次', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.8);
+    const players = [
+      makePlayer({ name: '你', role: ROLE_HUNTER, roleRevealed: true }),
+      makePlayer({
+        name: '卡洛斯', role: ROLE_HUNTER, roleRevealed: true,
+        hand: [makeZoneCard('C1', 0), makeZoneCard('C2', 0), makeZoneCard('A4', 0)],
+      }),
+      makePlayer({ name: '贝拉', role: ROLE_TREASURE, roleRevealed: true, hand: [makeZoneCard('C3', 0)] }),
+    ];
+    const gs = makeGs({
+      players, currentTurn: 1, phase: 'AI_TURN', log: ['旧日志'],
+      skillUsed: false, restUsed: false, multiplyUsed: false,
+      apophisNight: { active: true, count: 0, limit: 12, threshold: 2 },
+      _apophisTargetSeq: 0,
+      deck: [makeZoneCard('B3', 0)],
+    });
+    const result = aiStep(gs);
+    const actionEvents = orderRuleResolutionEvents(scopeAiActionReplayMetadata(result).visualEvents);
+    const abandonMsg = '卡洛斯（追猎者）放弃追捕 贝拉';
+    const notice = actionEvents.find(event => event.type === 'logOnly' && event.msgs.includes(abandonMsg));
+    const attempts = actionEvents.filter(event => event.type === 'huntResult');
+    const targetEvents = actionEvents.filter(event => event.type === 'apophisTarget');
+
+    expect(attempts).toHaveLength(3);
+    expect(targetEvents).toHaveLength(3);
+    expect(validateRuleResolutionEvents(actionEvents)).toEqual([]);
+    attempts.forEach((attempt, index) => {
+      expect(targetEvents[index].order).toBeLessThan(attempt.order);
+      expect(attempt.order).toBeLessThan(index < 2 ? targetEvents[index + 1].order : notice.order);
+    });
+    expect(attempts.flatMap(event => event.msgs)).not.toContain(abandonMsg);
+    const huntQueue = buildOwnedAiHuntEventQueue({
+      rawHuntEvents: result._aiHuntEvents, state: result, actorName: '卡洛斯',
+    }).queue;
+    const queue = includeAiActionNotices(huntQueue, result);
+    const consumedIds = new Set();
+    const liveLogs = prepareAnimQueueLogs(queue, result)
+      .flatMap(step => consumeVisualLogEntries(step.logEntries, consumedIds));
+    const newLogs = result.log.slice(gs.log.length);
+    const nextTurnIndex = newLogs.findIndex(line => line.includes('──'));
+    expect(liveLogs).toEqual(nextTurnIndex < 0 ? newLogs : newLogs.slice(0, nextTurnIndex));
+    expect(liveLogs.filter(line => line === abandonMsg)).toHaveLength(1);
+  });
+
   it('追捕条件不足且不需休息时，把黑山羊幼仔繁衍给低HP高SAN目标', () => {
     const players = [
       makePlayer({
@@ -1458,6 +1528,10 @@ describe('aiStep optional action limits', () => {
     const result = aiStep(gs, { allAi: true });
 
     expect(result.log.some(line => line.includes('【繁衍】追猎者 将黑山羊幼仔传播给了 低HP高SAN'))).toBe(true);
+    const actionEvents = orderRuleResolutionEvents(scopeAiActionReplayMetadata(result).visualEvents);
+    const multiply = actionEvents.find(event => event.type === 'multiply');
+    const end = actionEvents.find(event => event.type === 'logOnly' && event.msgs.some(msg => msg.includes('结束回合')));
+    expect(multiply.order).toBeLessThan(end.order);
   });
 
   it('3HP 邪祀者有三张手牌时不会因蛊惑清手牌例外跳过休息', () => {

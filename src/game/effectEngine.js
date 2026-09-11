@@ -858,7 +858,8 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     }
     return decision;
   };
-  const finish = (result, explicitStatEvents = null) => {
+  const finish = (result, explicitStatEvents = null, directMsgs = null) => {
+    const beforeSettlementMsgCount = (result.msgs || msgs).length;
     const beforeDamageSettlementPlayers = copyPlayers(result.P || P);
     const beforeDamageSettlementDiscard = [...(result.Disc || Disc)];
     settlePendingDamages('batch');
@@ -926,9 +927,14 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       }
       return event;
     });
+    // Inspection events own their reveal/effect messages. Keep the direct
+    // card-effect batch fixed before inspections append to the final rule log.
+    const effectVisualMsgs = directMsgs
+      ? [...directMsgs, ...(result.msgs || msgs).slice(beforeSettlementMsgCount)]
+      : (result.msgs || msgs);
     const statVisualEvent = createStatEventsEvent({
       statEvents,
-      msgs: result.msgs || msgs,
+      msgs: effectVisualMsgs,
     });
     const canonicalVisualEvents = [
       ...(gs?._visualEvents || []),
@@ -936,8 +942,8 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       ...(statVisualEvent ? [statVisualEvent] : []),
       // A rule resolution without a visual effect still owns its explanation
       // or decision prompt; it must survive without a state.log fallback.
-      ...(!statVisualEvent && !ownedVisualEvents.length && (result.msgs || msgs).length
-        ? [createLogOnlyVisualEvent({ msgs: result.msgs || msgs })]
+      ...(!statVisualEvent && !ownedVisualEvents.length && effectVisualMsgs.length
+        ? [createLogOnlyVisualEvent({ msgs: effectVisualMsgs })]
         : []),
     ].filter((event, index, events) => !event?.id || events.findIndex(candidate => candidate?.id === event.id) === index);
     const nextStatePatch = {
@@ -2459,6 +2465,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     if (earlyReturn) return finish(earlyReturn);
   }
   settlePendingDamages('batch');
+  const directEffectMsgs = [...msgs];
   const directStatEventSeq = (gs?._statEventSeq || 0) + 1;
   if (!directStatEvents) directStatEvents = buildStatEvents(beforePlayers, P, msgs, { reason: card?.name || card?.type || '', seq: directStatEventSeq });
   const inspectionStartMeta = directStatEvents.length
@@ -2506,5 +2513,5 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       ...(mergedVisualEvents.length ? { _visualEvents: mergedVisualEvents } : {}),
     };
   }
-  return finish({ P, D, Disc, msgs, statePatch }, directStatEvents);
+  return finish({ P, D, Disc, msgs, statePatch }, directStatEvents, directEffectMsgs);
 }

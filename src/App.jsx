@@ -214,6 +214,7 @@ import {
   createApophisEclipseEvent,
   createGodPowerBlockedEvent,
   createGodStatusChangedEvent,
+  createGodGiftKeepEvent,
   createGraveDigEvent,
   createFaithSettlementGodStatusEvent,
   createCardEffectEvent,
@@ -245,6 +246,7 @@ import {
   VISUAL_EVENT,
   ANIMATION_QUEUE_AUTHORITY,
   getAnimationQueueVisualEventIds,
+  getVisualEventIdsCoveredByAnimationQueue,
   compileRuleVisualEventsToAnimTransaction,
   compileFreshVisualEventReplay,
   getAnimationTransactionDiagnostics,
@@ -323,6 +325,7 @@ import {
   collectInspectionEventsCoveredByQueue,
   insertAiRestDiceBeforeSettlement,
   scopeAiActionReplayMetadata,
+  includeAiActionNotices,
   scopeAiReplayMetadataBeforeInspection,
   scopeAiPreHuntReplayMetadata,
   shouldBuildQueuedAiTurnStartReplay,
@@ -2461,7 +2464,7 @@ export default function Game(){
         const aiEndTurnReplayQueue=Array.isArray(newGs._aiEndTurnReplayQueue)
           ? newGs._aiEndTurnReplayQueue
           : [];
-        const endTurnReplayEventIds=new Set(getAnimationQueueVisualEventIds(aiEndTurnReplayQueue));
+        const endTurnReplayEventIds=new Set(getVisualEventIdsCoveredByAnimationQueue(newGs,aiEndTurnReplayQueue));
         const endTurnReplayStatSeqs=new Set(aiEndTurnReplayQueue.flatMap(step=>(
           Array.isArray(step?.statEvents)
             ?step.statEvents.map(event=>event?.seq).filter(seq=>seq!=null)
@@ -2502,6 +2505,8 @@ export default function Game(){
           fullActionReplayMetadata,
           firstActionInspection,
         );
+        const handLimitDiscardVisualEvent=actionReplayMetadata.visualEvents
+          .find(event=>event?.type===VISUAL_EVENT.HAND_LIMIT_DISCARD);
         const P_actionEnd=rawResult._playersBeforeNextDraw||newGs.players;
         const P_actionPreInspection=firstActionInspection?.beforePlayers||P_actionEnd;
         const P_actionBeforeHandLimit=(firstActionInspection
@@ -2571,9 +2576,10 @@ export default function Game(){
         const hasRoseThornGiftAllHand=actionReplayMetadata.visualEvents.some(event=>(
           event?.type===VISUAL_EVENT.CARD_MOVE&&event?.effect==='roseThornGiftAllHand'
         ));
-        const actionStatQ=hasRoseThornGiftAllHand
-            ? actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')
-          : actionStatQBase;
+        const actionStatQ=actionStatQBase.filter(step=>(
+          (!handLimitDiscardVisualEvent||step.visualEventId!==handLimitDiscardVisualEvent.id)
+          && (!hasRoseThornGiftAllHand||step.type!=='CARD_TRANSFER')
+        ));
         const compiledActionInspectionEvents=collectInspectionEventsCoveredByQueue(
           scopedActionVisualPatch._visualEvents||[],
           actionStatQBase,
@@ -2586,17 +2592,9 @@ export default function Game(){
           markInspectionEventsSeen(compiledActionInspectionEvents);
         }
         const handLimitDiscardCards=_aiHandLimitDiscards||[];
-        const handLimitDiscardQueue=handLimitDiscardCards.length?[discardStep({
-          card:handLimitDiscardCards[0],
-          cards:handLimitDiscardCards,
-          count:handLimitDiscardCards.length,
-          triggerName:gs.players[gs.currentTurn]?.name||'???',
-          targetPid:gs.currentTurn,
-          playersBefore:_aiHandLimitBeforePlayers||_playersBeforeEndTurnReplay||gs.players,
-          discardBefore:_aiHandLimitBeforeDiscard||_discardBeforeEndTurnReplay||gs.discard,
-          msgs:actionReplayMetadata.visualEvents
-            .find(event=>event?.type===VISUAL_EVENT.HAND_LIMIT_DISCARD)?.msgs||[],
-        })]:[];
+        const handLimitDiscardQueue=handLimitDiscardVisualEvent
+          ?compileRuleVisualEventsToAnimTransaction(newGs,null,{eventIds:[handLimitDiscardVisualEvent.id]})?.queue||[]
+          :[];
         const handLimitDiscardCommitQueue=handLimitDiscardCards.length&&_playersBeforeEndTurnReplay
           ?[statePatchStep({
               players:_playersBeforeEndTurnReplay,
@@ -2772,7 +2770,7 @@ export default function Game(){
           );
           queue.push(...inspectionFlow.queue);
         }
-        const currentTurnQueue=queue;
+        const currentTurnQueue=includeAiActionNotices(queue,newGs,consumedVisualEventIdsRef.current);
         const currentTurnStatePatch=
           rawResult._playersBeforeNextDraw&&!multiplyEvent
             ? [statePatchStep({players:P_actionEnd,discard:newGs.discard})]
@@ -8903,6 +8901,7 @@ export default function Game(){
     const godStatusPlayersBefore=copyPlayers(P);
     let previousFaithExit=null;
     let faithEstablished=null;
+    let godGiftKeepEvent=null;
     const abandonedFaithExits=[];
     let presentAfterInspectionSeq=null;
     const fromEndTurnReplay=!!gs.abilityData?.fromEndTurnReplay;
@@ -8918,7 +8917,12 @@ export default function Game(){
     if(action==='keepHand'){
       P[0].roleRevealed=true;
       if(!fromEndTurnReplay)P[0].hand.push({...godCard});
-      L.push('你（邪祀者）将邪神牌收入手牌');
+      const keepMsg='你（邪祀者）将邪神牌收入手牌';
+      L.push(keepMsg);
+      godGiftKeepEvent=createGodGiftKeepEvent({
+        card:godCard,drawerIdx:0,drawerName:P[0].name,
+        playersBefore:godStatusPlayersBefore,playersAfter:copyPlayers(P),msgs:[keepMsg],
+      });
     } else if(action==='worship'||action==='upgrade'||action==='forcedConvert'){
       if(action==='forcedConvert'||(P[0].godName&&P[0].godName!==gk)){
         const inspectionSeqBefore=inspectionMeta?._inspectionSeq||0;
@@ -9015,14 +9019,14 @@ export default function Game(){
       msgs:L.slice(gs.log.length),
       presentAfterInspectionSeq,
     });
-    const faithResolutionEvents=[godStatusEvent,apophisEclipseEvent].filter(Boolean);
+    const faithResolutionEvents=[godStatusEvent,apophisEclipseEvent,godGiftKeepEvent].filter(Boolean);
     const orderedFaithResolutionEvents=faithResolutionEvents.length>1
       ?createRuleResolutionTransaction({id:`faith:${godStatusEvent.id}`,phase:'faithSettlement',events:faithResolutionEvents}).events
       :faithResolutionEvents;
     // 保留abilityData中的cthDrawsRemaining信息
     const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,apophisNight:nextApophisNight,phase:nextPhase,abilityData:nextAbilityData,
-      _visualEvents:[...orderedFaithResolutionEvents,...(blockedGodPowerEvent?[blockedGodPowerEvent]:[])],
-      godTriggeredThisTurn:consumesSlot,...inspectionMetaWithoutAbilityData,...replayPatch,...proliferatingZPatch};
+      godTriggeredThisTurn:consumesSlot,...inspectionMetaWithoutAbilityData,...replayPatch,...proliferatingZPatch,
+      _visualEvents:[...(inspectionMetaWithoutAbilityData._visualEvents||[]),...orderedFaithResolutionEvents,...(blockedGodPowerEvent?[blockedGodPowerEvent]:[])]};
     const finishGodChoice=(state)=>{
       const win=checkWin(state.players,state._isMP);
       if(win){
@@ -9079,17 +9083,7 @@ export default function Game(){
     if(inspectionReplay.inspectionEvents.length){
       lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...inspectionReplay.inspectionEvents.map(ev=>ev.seq||0));
     }
-    let queue=bindAnimLogChunks(inspectionReplay.queue,splitAnimBoundLogs(L.slice(gs.log.length)));
-    const keepHandTransfer=action==='keepHand'?cardTransferStep({
-      fromPid:0,
-      dest:'player',
-      toPid:0,
-      count:1,
-      sourceAnchor:'playerArea',
-      effect:'draw',
-      cards:[godCard],
-    }):null;
-    if(keepHandTransfer)queue=[...queue,keepHandTransfer];
+    const queue=inspectionReplay.queue;
     if(queue.length){
       if(fromEndTurnReplay){
         broadcastEndTurnDecisionAnimTransaction(newGs,[...queue,statePatchStep({players:P,discard:Disc})],L.slice(gs.log.length));
@@ -9097,7 +9091,7 @@ export default function Game(){
         // 信仰/升级/收手同样先广播：远端按 resolvedGodChoice 决策分支与本地同步播放效果动画
         broadcastAnimTransaction(newGs,queue,{context:'godChoice',barrier:'continuation',msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard});
       }
-      const eventIds=[godStatusEvent?.id,blockedGodPowerEvent?.id].filter(Boolean);
+      const eventIds=[...orderedFaithResolutionEvents.map(event=>event.id),blockedGodPowerEvent?.id].filter(Boolean);
       triggerAnimQueue(queue,newGs,()=>finishGodChoice(newGs),eventIds.length?{...AUTHORITATIVE_QUEUE_META,eventIds}:AUTHORITATIVE_QUEUE_META);
     }else{
       const win=checkWin(P,gs._isMP);
@@ -10138,11 +10132,8 @@ export default function Game(){
     let faithEstablished=null;
     const abandonedFaithExits=[];
     let presentAfterInspectionSeq=null;
-    if(isUpgrade){
-      L.push(buildWorshipFromHandLog('你',godCard,{upgrade:true,level:P[0].godLevel+1}));
-    } else {
-      L.push(buildWorshipFromHandLog('你',godCard));
-    }
+    const worshipMsg=buildWorshipFromHandLog('你',godCard,isUpgrade?{upgrade:true,level:P[0].godLevel+1}:{});
+    L.push(worshipMsg);
     if(isUpgrade){
       const playersBeforeFaithEstablished=copyPlayers(P);
       P[0].godLevel++;P[0].godZone.push({...godCard});
@@ -10187,7 +10178,6 @@ export default function Game(){
     const blockedGodPowerEvent=(!godPowerImmediateHand&&['APO','ZHU','SHU'].includes(godKey)&&hasGodPowerImmunity(P[0]))
       ?createGodPowerBlockedEvent({playerIdx:0,playerName:P[0].name,msgs:[buildGodPowerBlockedLog(P[0])]})
       :null;
-    const worshipMsg=L.slice(gs.log.length).find(line=>typeof line==='string'&&(line.includes('从手牌信仰')||line.includes('从手牌直接信仰')||line.includes('改信')));
     const godStatusEvent=createGodStatusChangedEvent({
       playerIdx:0,playerName:P[0].name,godKey:P[0].godName,godLevel:P[0].godLevel,
       msgs:worshipMsg?[worshipMsg]:[],playersBefore:faithEstablished?.playersBefore||gs.players,playersAfter:faithEstablished?.playersAfter||P,
@@ -10197,7 +10187,8 @@ export default function Game(){
     const orderedFaithResolutionEvents=faithResolutionEvents.length>1
       ?createRuleResolutionTransaction({id:`faith:${godStatusEvent.id}`,phase:'faithSettlement',events:faithResolutionEvents}).events
       :faithResolutionEvents;
-    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,apophisNight:nextApophisNight,phase:isShuBlessingHand?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessingHand?{shuOffspringCount:shuOffspringCountHand,shuChooserIdx:0}:gs.abilityData,_visualEvents:[...orderedFaithResolutionEvents,...(blockedGodPowerEvent?[blockedGodPowerEvent]:[])],...inspectionMeta,...(win?{gameOver:win}:{})};
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,zhuLight:nextZhuLight,apophisNight:nextApophisNight,phase:isShuBlessingHand?'SHU_SELECT_TARGET':'ACTION',abilityData:isShuBlessingHand?{shuOffspringCount:shuOffspringCountHand,shuChooserIdx:0}:gs.abilityData,...inspectionMeta,...(win?{gameOver:win}:{}),
+      _visualEvents:[...(inspectionMeta._visualEvents||[]),...orderedFaithResolutionEvents,...(blockedGodPowerEvent?[blockedGodPowerEvent]:[])]};
     // 手牌移动立即进入回放基线，但邪神 tag 保持升级前状态；
     // GOD_HIGHLIGHT 仍是新等级正式进入可见状态的唯一边界。
     const worshipReplayBaseline=buildWorshipReplayBaselinePlayers(gs.players,P,0);

@@ -86,7 +86,7 @@ import {
   createTsathogguaSlimeGrantEvent,
 } from './visualEvents';
 import { createRuleResolutionTransaction } from './ruleResolutionTransaction';
-import { compileVisualEventToAnimTransaction } from './visualEventTransactionCompiler';
+import { compileRuleVisualEventsToAnimTransaction } from './visualEventTransactionCompiler';
 import {
   getBestCaveDuelCardIndex,
   resolveCaveDuelOutcome,
@@ -458,10 +458,9 @@ export function discardAiHandToLimit(P, ct, Disc, L, D = [], discardedCards = []
   return { damageDecision };
 }
 
-// 逐事件编译：本张牌结算新增的规范视觉事件各自编译为事务步骤（创建顺序即规则
-// 顺序）；未被任何规范事件/已编译步骤认领的属性事件（纯数值结算）按 seq 水位
-// 直接编译。不再对整段 before/after 做状态差分——差分会跨结算
-// 边界捞取后续事件，曾导致死亡广播丢失与上一回合抢播。
+// Compile this card's complete event transaction so explicit result owners
+// suppress their generic stat wrappers (for example Sphinx's HP loss).
+// Unclaimed raw stat events are compiled separately using the rule sequence.
 function buildAiEndTurnReplayResolutionQueue({ beforeGs, afterGs }) {
   const previousVisualEventIds = new Set(
     (Array.isArray(beforeGs?._visualEvents) ? beforeGs._visualEvents : [])
@@ -470,7 +469,8 @@ function buildAiEndTurnReplayResolutionQueue({ beforeGs, afterGs }) {
   );
   const freshEvents = (Array.isArray(afterGs?._visualEvents) ? afterGs._visualEvents : [])
     .filter(event => event?.id && !previousVisualEventIds.has(event.id));
-  const queue = [];
+  const transaction = compileRuleVisualEventsToAnimTransaction(afterGs, beforeGs);
+  const queue = [...(transaction?.queue || [])];
   const ownedStatSeqs = new Set();
   const claimStatSeq = statEvent => {
     if (statEvent?.seq != null) ownedStatSeqs.add(statEvent.seq);
@@ -483,12 +483,8 @@ function buildAiEndTurnReplayResolutionQueue({ beforeGs, afterGs }) {
   };
   freshEvents.forEach(event => {
     (Array.isArray(event?.statEvents) ? event.statEvents : []).forEach(claimStatSeq);
-    const transaction = compileVisualEventToAnimTransaction(event, afterGs, beforeGs);
-    if (transaction?.queue?.length) {
-      queue.push(...transaction.queue);
-      claimStepStatSeqs(transaction.queue);
-    }
   });
+  claimStepStatSeqs(queue);
   const beforeStatSeq = Math.max(
     beforeGs?._statEventSeq || 0,
     ...(Array.isArray(beforeGs?._statEvents) ? beforeGs._statEvents : []).map(event => event?.seq || 0),
@@ -651,6 +647,7 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
     // treated as a fresh draw.  Commit that visible "gain" before resolving its
     // stats so a prior action heal (notably Rest) cannot run straight into a
     // Dragon Heart heal with no corridor/card boundary between them.
+    // DRAW_CARD already owns this occurrence's replay announcement.
     replayQueue.push(cardTransferStep({
       fromPid: ct,
       dest: 'player',
@@ -659,7 +656,6 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
       sourceAnchor: 'playerArea',
       effect: 'draw',
       cards: [card],
-      msgs: [drawMsg],
     }));
     // A corridor-triggered 触底反弹 resolves its hand swap synchronously in
     // applyFx. Keep the swap flight beside this card's replay (after the
@@ -932,6 +928,8 @@ export function aiStep(gs, opts = {}) {
   // intermediate state replacement cannot erase a one-shot visual payload.
   const ownedActionVisualEvents = [];
   const ownedActionVisualEventIds = new Set();
+  const aiActionTransactionId = `ai-action:${gs._turnKey || gs.turn || 0}:${ct}:${++aiActionSequence}`;
+  let aiActionOrder = 0;
   const recordActionVisualEvents = events => {
     (Array.isArray(events) ? events : []).forEach(event => {
       if (!event || event?.turnStartStage) return;
@@ -939,7 +937,7 @@ export function aiStep(gs, opts = {}) {
       if (!event.id && incomingVisualEventRefs.has(event)) return;
       if (event.id && ownedActionVisualEventIds.has(event.id)) return;
       if (event.id) ownedActionVisualEventIds.add(event.id);
-      ownedActionVisualEvents.push(event);
+      ownedActionVisualEvents.push({ ...event, transactionId: aiActionTransactionId, order: aiActionOrder++ });
     });
   };
   let P=copyPlayers(ps),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
@@ -980,7 +978,6 @@ export function aiStep(gs, opts = {}) {
   };
   let unifiedReplayCacheState = null;
   let unifiedReplayCache = null;
-  const aiActionTransactionId = `ai-action:${gs._turnKey || gs.turn || 0}:${ct}:${++aiActionSequence}`;
   const getUnifiedReplayVisualEvents = nextGs => {
     if (unifiedReplayCacheState === nextGs && unifiedReplayCache) return unifiedReplayCache;
     const baseEvents = getReplayVisualEvents(nextGs) || [];
@@ -994,6 +991,8 @@ export function aiStep(gs, opts = {}) {
           targetResolutionEventId: event.targetResolutionEventId,
           phaseGroupId: event.phaseGroupId,
           phaseOrder: event.phaseOrder ?? 30,
+          transactionId: event.transactionId,
+          order: event.order,
           beforePlayers: event.beforePlayers,
           afterPlayers: event.afterPlayers,
         });
@@ -1008,17 +1007,14 @@ export function aiStep(gs, opts = {}) {
         phaseOrder: event.phaseOrder ?? 30,
       });
     }).filter(Boolean);
-    const multiplyVisualEvent = animMultiplyEvent
-      ? createMultiplyVisualEvent(animMultiplyEvent)
-      : null;
     unifiedReplayCacheState = nextGs;
     const ownedOrderById = new Map(
       ownedActionVisualEvents
-        .map((event, index) => [event?.id, index])
+        .map(event => [event?.id, event.order])
         .filter(([id]) => !!id),
     );
-    let fallbackActionOrder = ownedActionVisualEvents.length;
-    unifiedReplayCache = [...baseEvents, ...huntEvents, ...(multiplyVisualEvent ? [multiplyVisualEvent] : [])]
+    let fallbackActionOrder = aiActionOrder;
+    unifiedReplayCache = [...baseEvents, ...huntEvents]
       .map(event => event?.turnStartStage
         ? event
         : {
@@ -1030,9 +1026,11 @@ export function aiStep(gs, opts = {}) {
             turnOwner: event.turnOwner ?? ct,
             ruleStage: event.ruleStage ?? 'action',
             transactionId: aiActionTransactionId,
-            order: event.transactionId === aiActionTransactionId && event.order != null
-              ? event.order
-              : ownedOrderById.get(event.id) ?? fallbackActionOrder++,
+            order: ownedOrderById.get(event.id) ?? (
+              event.transactionId === aiActionTransactionId && event.order != null
+                ? event.order
+                : fallbackActionOrder++
+            ),
           });
     return unifiedReplayCache;
   };
@@ -1114,13 +1112,13 @@ export function aiStep(gs, opts = {}) {
       statEvents:[...discardStatEvents,...thornStatEvents],
       msgs:L.slice(afterDiscardLogLength),
       transactionId:aiActionTransactionId,
-      order:ownedActionVisualEvents.length+(handLimitDiscardEvent?1:0),
+      order:aiActionOrder+(handLimitDiscardEvent?1:0),
     });
     recordActionVisualEvents([
       handLimitDiscardEvent?{
         ...handLimitDiscardEvent,
         transactionId:aiActionTransactionId,
-        order:ownedActionVisualEvents.length,
+        order:aiActionOrder,
       }:null,
       handLimitStatEvent,
     ]);
@@ -1170,10 +1168,8 @@ export function aiStep(gs, opts = {}) {
       visualMeta: {
         transactionId: aiActionTransactionId,
         ...(phaseGroupId ? { phaseGroupId } : {}),
-        // The action journal is append-only, so its current length is the next
-        // globally unique cursor in this AI action. resolveApophisTarget uses
-        // the following slots for any inspection events caused by this roll.
-        order: ownedActionVisualEvents.length,
+        // Deferred hunt attempts and immediate events share this rule cursor.
+        order: aiActionOrder,
         phaseOrder: 0,
       },
     });
@@ -1704,7 +1700,7 @@ export function aiStep(gs, opts = {}) {
         statEvents:recovery.statEvents,
         msgs:[restMsg],
         transactionId:aiActionTransactionId,
-        order:ownedActionVisualEvents.length+1,
+        order:aiActionOrder+1,
       }),
     ]);
     const restMeta=appendStatChangeResult(gs,recovery);
@@ -1805,6 +1801,7 @@ export function aiStep(gs, opts = {}) {
       playersAfter: copyPlayers(P),
       discardAfter: [...Disc],
     };
+    recordActionVisualEvents([createMultiplyVisualEvent(animMultiplyEvent)]);
     gs = { ...gs, multiplyUsed: true, skillUsed: true, ...appendPublicCardGainTriggers(gs, P, multiplyEvent.toIdx, goatCard) };
     useSkill = false;
   }
@@ -1890,6 +1887,8 @@ export function aiStep(gs, opts = {}) {
             );
             const targetResolutionEventId = consumeLastTargetResolutionEventId();
             const targetAttemptOwnership = {
+              transactionId: aiActionTransactionId,
+              order: aiActionOrder++,
               attemptId,
               phaseGroupId: attemptId,
               phaseOrder: 30,
@@ -2116,7 +2115,6 @@ export function aiStep(gs, opts = {}) {
                   break;
                 }
               } else {
-                appendActionNotice(`${ai.name}（追猎者）放弃追捕 ${tgt.name}`);
                 aiHuntEvents.push({
                   ...targetAttemptOwnership,
                   targetIdx:ti,
@@ -2129,6 +2127,7 @@ export function aiStep(gs, opts = {}) {
                   afterLog:[...L],
                   msgs:L.slice(huntLogStart),
                 });
+                appendActionNotice(`${ai.name}（追猎者）放弃追捕 ${tgt.name}`);
                 // 将目标添加到已放弃列表，避免同一回合再次选择
                 newAbandoned = [...newAbandoned, ti];
                 // 追猎者放弃追捕后本回合禁用追捕技能

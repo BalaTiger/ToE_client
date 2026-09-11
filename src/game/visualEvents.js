@@ -1239,6 +1239,10 @@ export function createInspectionVisualEvent(inspectionEvent = {}) {
   return withVisualEventMeta({
     type: VISUAL_EVENT.INSPECTION,
     ...inspectionEvent,
+    msgs: [
+      ...(Array.isArray(inspectionEvent.revealMsgs) ? inspectionEvent.revealMsgs : []),
+      ...(Array.isArray(inspectionEvent.effectMsgs) ? inspectionEvent.effectMsgs : []),
+    ],
     legacySeq: inspectionEvent.seq,
   }, 'inspection');
 }

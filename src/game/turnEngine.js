@@ -2713,7 +2713,9 @@ function attachTurnDrawStatEventOwnership(events = []) {
         const restEvent = recreate(rest, restMsgs);
         if (restEvent) splitEvents.push(restEvent);
       }
-      const ownedEvent = recreate(owned, ownedMsgs);
+      // The draw already owns its announcement (notably the god encounter).
+      // Its linked stat settlement must not publish that same rule message again.
+      const ownedEvent = recreate(owned, ownedMsgs.filter(msg => !(drawEvent.msgs || []).includes(msg)));
       if (ownedEvent) {
         splitEvents.push(ownedEvent);
         ownedVisualEventIds.push(ownedEvent.id);
@@ -2841,7 +2843,11 @@ export function startNextTurn(gs, opts = {}) {
           if (rest.length) {
             splitEvents.push(createStatEventsEvent({ statEvents: rest, msgs: restMsgs, turnStartStage: 'draw' }));
           }
-          const ownedEvent = createStatEventsEvent({ statEvents: owned, msgs: ownedMsgs, turnStartStage: 'draw' });
+          const ownedEvent = createStatEventsEvent({
+            statEvents: owned,
+            msgs: ownedMsgs.filter(msg => !(drawEvent.msgs || []).includes(msg)),
+            turnStartStage: 'draw',
+          });
           if (ownedEvent) {
             splitEvents.push(ownedEvent);
             ownedIds.push(ownedEvent.id);
@@ -2902,4 +2908,3 @@ export function startNextTurn(gs, opts = {}) {
   };
   return visualEvents.length ? { ...finalizedState, _visualEvents: visualEvents } : finalizedState;
 }
-

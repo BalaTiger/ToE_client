@@ -114,6 +114,9 @@ export function buildAiHuntEventAnimQueue(evt, actorName, options = {}) {
           ...(Array.isArray(resultWithChunks[firstVisibleIdx]._logChunk) ? resultWithChunks[firstVisibleIdx]._logChunk : []),
           ...followupMsgs,
         ];
+      } else {
+        // An abandoned hunt has a result message but no damage animation.
+        resultWithChunks.push({ type: 'ANIM_LOG', msgs: [...followupMsgs] });
       }
     }
     perHuntQueue.push(...resultWithChunks);
