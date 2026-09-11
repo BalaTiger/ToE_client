@@ -328,6 +328,7 @@ function rotateFaithSettlement(settlement, rotateIndex, myIndex) {
 function rotateVisualEvents(events, rotateIndex, myIndex) {
   if (!Array.isArray(events)) return events;
   return events.map(event => {
+    if (event?.turnOwner != null) event = { ...event, turnOwner: rotateIndex(event.turnOwner) };
     if (event?.type === 'timedOutDrawDiscard') return rotateTimedOutDrawDiscardEvent(event, rotateIndex);
     if (event?.type === 'godGiftDiscard') return rotateTimedOutDrawDiscardEvent(event, rotateIndex);
     if (event?.type === 'godGiftKeep') return rotateGodGiftKeepEvent(event, rotateIndex, myIndex);

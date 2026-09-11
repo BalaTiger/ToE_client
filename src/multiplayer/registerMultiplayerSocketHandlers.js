@@ -47,6 +47,7 @@ export function registerMultiplayerSocketHandlers({
   clearDamageAnimations,
   setAnim,
   setGs,
+  restoreVisibleLog,
   receivedGsRef,
   setRoleRevealAnim,
   startNextTurn,
@@ -191,6 +192,7 @@ export function registerMultiplayerSocketHandlers({
       clearDamageAnimations();
       setAnim(null);
       const rotatedGs = rotateGsForViewer(rawGs, 0);
+      restoreVisibleLog?.(rotatedGs.gameOver ? rotatedGs.log : (rotatedGs._initialLog || []), rotatedGs);
       receivedGsRef.current = true;
       mpRoleRevealedRef.current = true;
       setGs({ ...rotatedGs, phase: 'ACTION', drawReveal: null, abilityData: {} });
@@ -247,7 +249,9 @@ export function registerMultiplayerSocketHandlers({
     if (gameOverPresentationFrozenRef) gameOverPresentationFrozenRef.current = false;
     if (rawGs) {
       receivedGsRef.current = true;
-      setGs(rotateGsForViewer(rawGs, safeIdx));
+      const restoredGs = rotateGsForViewer(rawGs, safeIdx);
+      restoreVisibleLog?.(restoredGs.log || [], restoredGs);
+      setGs(restoredGs);
     }
     addToast('连接已恢复，已返回当前对局');
   });

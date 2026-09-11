@@ -128,7 +128,7 @@ export function applyMultiplayerReplayAction(
   if (replayAction?.type === MP_REMOTE_REPLAY.ROLE_REVEAL) {
     context.mpRoleRevealedRef.current = true;
     context.mpOpeningRoleRevealPendingRef.current = true;
-    context.syncVisibleLog(rotatedState.log || [], rotatedState);
+    context.restoreVisibleLog(rotatedState._initialLog || [], rotatedState);
     context.setGs(replayAction.maskedGs);
     context.setAnim(null);
     context.setRoleRevealAnim({

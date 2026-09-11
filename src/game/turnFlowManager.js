@@ -28,6 +28,19 @@ export function enterTurnFlowStage(state, stage, { resume = undefined } = {}) {
   };
 }
 
+// Capture ownership while the rules produce an event. The resolved state's
+// current stage can already belong to a later decision or the next turn.
+export function bindTurnFlowEvents(state, events = []) {
+  return events.map(event => ({
+    ...event,
+    turnKey: event.turnKey ?? state?._turnKey ?? state?.turn ?? 0,
+    turnOwner: event.turnOwner ?? state?.currentTurn ?? 0,
+    ruleStage: event.ruleStage ?? (event.turnStartStage === 'turnBanner'
+      ? TURN_FLOW_STAGE.TURN_START
+      : event.turnStartStage || state?._turnFlowStage || TURN_FLOW_STAGE.ACTION),
+  }));
+}
+
 export function setTurnFlowResume(state, kind, data = {}) {
   if (!state) return state;
   return {

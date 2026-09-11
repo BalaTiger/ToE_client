@@ -1,3 +1,6 @@
+import { createVisualLogEntries } from './visualEventLogs';
+import { normalizeLogLineForViewer } from './logPerspective';
+
 export function isTurnStartLog(line){
   return new RegExp("^── .+ 的回合开始 ──$").test(line||"");
 }
@@ -43,6 +46,9 @@ export function splitAnimBoundLogs(lines){
 
 export function bindAnimLogChunks(queue,{turnStartLogs=[],drawLogs=[],preStatLogs=[],statLogs=[]}={}){
   if(!Array.isArray(queue)||!queue.length)return queue||[];
+  // Canonical events already own their messages. Legacy bucket attachment
+  // must never add a second copy or move a later event's log to the first step.
+  if(queue.some(step=>step?.visualEventId))return queue;
   const bound=queue.map(step=>({...step}));
   const mergeMsgs=(step,lines)=>{
     const normalized=(Array.isArray(lines)?lines:[]).filter(line=>typeof line==="string"&&line.length);
@@ -125,111 +131,25 @@ export function extractSkillLogs(lines,kind){
   }
 }
 
-function takeMatchingLogs(remaining,predicate,limit=1){
-  if(!remaining.length)return [];
-  const taken=[];
-  let consumed=0;
-  while(remaining.length&&consumed<limit&&predicate(remaining[0],consumed)){
-    taken.push(remaining.shift());
-    consumed++;
-  }
-  return taken;
-}
+let unownedLogSequence = 0;
 
-export function prepareAnimQueueLogs(queue,nextGs,baseLog=[]){
+// State supplies event ownership and viewer names, never live message text.
+// Every step must carry its own explicit message payload.
+export function prepareAnimQueueLogs(queue,state=null){
   if(!Array.isArray(queue)||!queue.length)return queue||[];
-  const nextLog=Array.isArray(nextGs?.log)?nextGs.log:[];
-  const normalizedBaseLog=Array.isArray(baseLog)?baseLog:[];
-  const explicitTurnFlow=hasExplicitTurnFlowLogs(nextGs);
-  // A visual-event-backed transaction already carries its log ownership on
-  // the event/queue steps (turnBanner, turnStart, draw, ...). Do not
-  // reconstruct ownership from the flattened presentation log in that case:
-  // doing so can move or discard a later turn banner when the queue starts at
-  // DRAW_CARD.
-  const hasStagedVisualEvents=Array.isArray(nextGs?._visualEvents)
-    && nextGs._visualEvents.some(event=>!!event?.turnStartStage);
-  const hasEventBackedQueueSteps=queue.some(step=>!!step?.visualEventId);
-  const eventDrivenQueue=hasStagedVisualEvents||hasEventBackedQueueSteps;
-  let prefix=0;
-  while(prefix<normalizedBaseLog.length&&prefix<nextLog.length&&normalizedBaseLog[prefix]===nextLog[prefix])prefix++;
-  let remaining=eventDrivenQueue ? [] : nextLog.slice(prefix);
-  const queueStartsNewTurn=queue[0]?.type==="YOUR_TURN";
-  // Legacy, un-staged queues still need the old log-delta inference.  Keep
-  // that compatibility path isolated so it cannot affect staged events.
-  if(nextGs?._playersBeforeThisDraw&&!queueStartsNewTurn&&!explicitTurnFlow&&!eventDrivenQueue){
-    const turnStartIdx=remaining.findIndex(line=>isTurnStartLog(line));
-    if(turnStartIdx>=0){
-      remaining=remaining.slice(0,turnStartIdx);
-    }
-  }
-  const consumeExplicit=(msgs=[])=>{
-    const normalized=(Array.isArray(msgs)?msgs:[]).filter(m=>typeof m==="string"&&m.length);
-    if(!normalized.length)return [];
-    // Visual events are authoritative for presentation. Their message
-    // chunks are already scoped to this queue, so retain them directly rather
-    // than looking them up in the flattened state log.
-    if(eventDrivenQueue)return normalized;
-    const taken=[];
-    normalized.forEach(msg=>{
-      const idx=remaining.findIndex(line=>line===msg);
-      if(idx>=0){
-        taken.push(remaining[idx]);
-        remaining.splice(idx,1);
-      }
-    });
-    return taken;
-  };
+  const eventsById=new Map((state?._visualEvents||[]).map(event=>[event.id,event]));
   return queue.map(item=>{
-    const step={...item};
-    if(Array.isArray(step._logChunk)){
-      consumeExplicit(step._logChunk);
-      return step;
-    }
-    let chunk=consumeExplicit(step.msgs);
-    if(hasExplicitAnimMsgs(step)){
-      step._logChunk=chunk;
-      return step;
-    }
-    if(explicitTurnFlow&&["YOUR_TURN","DRAW_CARD","HP_DAMAGE","SAN_DAMAGE","HP_HEAL","SAN_HEAL","HP_SAN_HEAL","GUILLOTINE","DEATH"].includes(step.type)){
-      step._logChunk=chunk;
-      return step;
-    }
-    if(!chunk.length){
-      switch(step.type){
-        case "YOUR_TURN":
-          chunk=takeMatchingLogs(remaining,isTurnStartLog,1);
-          break;
-        case "DRAW_CARD":
-          chunk=takeMatchingLogs(remaining,isDrawLikeLog,8);
-          if(!chunk.length)chunk=takeMatchingLogs(remaining,line=>!isTurnStartLog(line)&&!isSkillHuntLog(line)&&!isSkillSwapLog(line)&&!isSkillBewitchLog(line)&&!isStatLog(line),4);
-          break;
-        case "SKILL_HUNT":
-          chunk=takeMatchingLogs(remaining,isSkillHuntLog,1);
-          break;
-        case "SKILL_SWAP":
-          chunk=takeMatchingLogs(remaining,isSkillSwapLog,1);
-          break;
-        case "SKILL_BEWITCH":
-          chunk=takeMatchingLogs(remaining,isSkillBewitchLog,1);
-          break;
-        case "DISCARD":
-          chunk=takeMatchingLogs(remaining,isDiscardOnlyLog,1);
-          break;
-        case "CARD_TRANSFER":
-          chunk=takeMatchingLogs(remaining,isTransferLog,1);
-          break;
-        case "HP_DAMAGE":
-        case "SAN_DAMAGE":
-        case "HP_HEAL":
-        case "SAN_HEAL":
-        case "GUILLOTINE":
-          chunk=takeMatchingLogs(remaining,isStatLog,12);
-          break;
-        default:
-          break;
-      }
-    }
-    step._logChunk=chunk;
-    return step;
+    const ownerId=item.visualEventId||item._logOwnerId||('unowned-log:'+ ++unownedLogSequence);
+    const rawEntries=Array.isArray(item.logEntries)
+      ?item.logEntries
+      :createVisualLogEntries(ownerId,Array.isArray(item._logChunk)?item._logChunk:item.msgs);
+    const turnOwner=item.turnOwner??eventsById.get(item.visualEventId)?.turnOwner;
+    const ownerName=state?.players?.[turnOwner]?.name;
+    // Resolve actor-relative wording from immutable event ownership. The panel
+    // may still render the local name as “你”, but no later banner owns this line.
+    const entries=rawEntries.map(entry=>({...entry,text:normalizeLogLineForViewer(entry.text,{
+      isMultiplayer:!!state?._isMP,turnOwner:ownerName,
+    })}));
+    return {...item,_logOwnerId:ownerId,_logSource:'visualEvent',logEntries:entries,_logChunk:entries.map(entry=>entry.text)};
   });
 }

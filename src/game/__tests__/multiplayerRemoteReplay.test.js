@@ -103,12 +103,10 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.maskedGs).toMatchObject({ phase: 'ACTION', drawReveal: null, abilityData: {} });
   });
 
-  it('turns remote dice logs into a dice animation action', () => {
+  it('does not invent dice events from a remote settlement log', () => {
     const action = buildAction(makeState({ log: ['艾伦 掷出 5 点'] }));
 
-    expect(action.type).toBe(MP_REMOTE_REPLAY.DICE_ROLL);
-    expect(action.anim).toMatchObject({ type: 'DICE_ROLL', d1: 5, rollerName: '艾伦', dodgeSuccess: true });
-    expect(action.pendingGs.log).toEqual(['艾伦 掷出 5 点']);
+    expect(action.type).toBe(MP_REMOTE_REPLAY.SET_STATE);
   });
 
   it('replays a remote damage link establishment as a card transfer animation', () => {
@@ -417,13 +415,15 @@ describe('buildMpRemoteReplayAction', () => {
     expect(action.queue.some(step => step.type === 'DRAW_CARD')).toBe(false);
   });
 
-  it('turns moldy-food logs into a moldy-food dice animation action', () => {
+  it('reads moldy-food dice from the rule event even when the settlement log disagrees', () => {
     const action = buildAction(makeState({
-      log: ['【霉变食物】艾伦 掷出 1 点（单数），失去 1 HP，下回合开始时不能摸牌'],
+      log: ['【霉变食物】艾伦 掷出 6 点（双数）'],
+      _visualEvents: [createDiceResultVisualEvent({ mode: 'moldyFood', actorIdx: 1, actorName: '艾伦', d1: 1,
+        msgs: ['【霉变食物】艾伦 掷出 1 点（单数），失去 1 HP，下回合开始时不能摸牌'] })],
     }));
 
-    expect(action.type).toBe(MP_REMOTE_REPLAY.DICE_ROLL);
-    expect(action.anim).toMatchObject({ type: 'DICE_ROLL', diceMode: 'moldyFood', d1: 1, rollerName: '艾伦' });
+    expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);
+    expect(action.queue.find(step => step.type === 'DICE_ROLL')).toMatchObject({ diceMode: 'moldyFood', d1: 1, rollerName: '艾伦' });
   });
 
   it('replays throw-stone random target queue instead of treating its roll as treasure dodge', () => {
@@ -1690,7 +1690,7 @@ describe('buildMpRemoteReplayAction', () => {
       _drawLogs: ['贝拉 摸到 下一回合摸牌'],
       _visualEvents: [staleSwapEvent],
     }), {
-      previousGs: makeState({ currentTurn: 1, phase: 'ACTION', log: [] }),
+      previousGs: makeState({ currentTurn: 1, phase: 'ACTION', log: [], _visualEvents: [staleSwapEvent] }),
     });
 
     expect(action.type).toBe(MP_REMOTE_REPLAY.ANIM_QUEUE);

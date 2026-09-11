@@ -44,6 +44,17 @@ src/
 └─ utils/                   # runtime config, DOM, scale, socket loader
 ```
 
+## Live log presentation boundary
+
+The existing turn-flow manager selects the rule stage. Rules produce visual events with turn ownership and a separate settlement transcript. During play, only event/animation message payloads feed the live log; `state.log` is not a live-log cursor or a source of inferred events.
+
+- `game/visualEventLogs.js` assigns message occurrence identities. Playback consumes each identity once, while preserving equal text from distinct events.
+- `hooks/useAnimationQueue.js` reveals messages when their step begins, or at its configured impact cue. Queue completion and idle state updates never restore the full transcript.
+- `restoreVisibleLog` is restricted to initial history, explicit restoration/tutorial setup, and final settlement. New-game history uses `_initialLog` captured before the first turn is resolved.
+- Rule `LOG_ONLY` events carry notices with no animation and still pass through the queue. Multiplayer buffers these packets in arrival order.
+- Canonical event queues bypass legacy log-bucket attachment. Historical replay adapters remain for snapshots without staged events; do not use them for new producers.
+- `auditVisualEventLogCoverage` is a read-only audit of one ordered transaction against its rule-log delta. It reports missing/extra occurrences and ordering differences; it must not repair events or drive playback.
+
 ## Major Modules
 
 ### `App.jsx`

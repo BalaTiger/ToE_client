@@ -58,6 +58,8 @@ function tagVisualEventSteps(event, steps = []) {
       ? {
           ...step,
           ...(event?.id && !step.visualEventId ? { visualEventId: event.id } : {}),
+          ...(event?.turnOwner != null && step.turnOwner == null ? { turnOwner: event.turnOwner } : {}),
+          ...(event?.turnKey != null && step.turnKey == null ? { turnKey: event.turnKey } : {}),
           ...(event?.turnStartStage && !step.turnStartStage
             ? { turnStartStage: event.turnStartStage }
             : {}),

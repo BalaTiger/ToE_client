@@ -80,6 +80,7 @@ function makeDeps(overrides = {}) {
       setGs: vi.fn(),
       receivedGsRef: { current: false },
       setRoleRevealAnim: vi.fn(),
+      restoreVisibleLog: vi.fn(),
       startNextTurn: vi.fn(),
       processIncomingMpStateSync: vi.fn(),
       handleMpAiTakeover: vi.fn(),
@@ -208,6 +209,7 @@ describe('registerMultiplayerSocketHandlers', () => {
       currentTurn: 1,
       players: [{ name: '房主' }, { name: '我' }],
       _visualEvents: [{ id: 'already-seen' }],
+      log: ['historical action'],
     };
 
     socket.trigger('matchRestored', {
@@ -229,6 +231,7 @@ describe('registerMultiplayerSocketHandlers', () => {
     expect(state.roomModal).toMatchObject({ roomId: 'room-1', count: 2 });
     expect(deps.mpAiTakeoverSeqRef.current).toBe(3);
     expect([...deps.consumedVisualEventIdsRef.current]).toEqual(['already-seen']);
+    expect(deps.restoreVisibleLog).toHaveBeenCalledWith(rawGs.log, expect.objectContaining({currentTurn:0}));
     expect(deps.animQueueRef.current).toEqual([]);
     expect(deps.pendingGsRef.current).toBe(null);
     expect(deps.receivedGsRef.current).toBe(true);

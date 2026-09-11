@@ -52,6 +52,8 @@ export function maxStatEventSeqForLogs(state, logs = []) {
 }
 
 export function getTurnStartStatLogs(state) {
+  const events = state?._visualEvents || [];
+  if (events.some(event => event.turnStartStage)) return events.filter(event => event.turnStartStage === 'turnStart').flatMap(event => event.msgs || []);
   const log = Array.isArray(state?.log) ? state.log : [];
   const turnStartLogs = Array.isArray(state?._turnStartLogs) ? state._turnStartLogs : [];
   if (!turnStartLogs.length) return [];
@@ -204,6 +206,9 @@ export function buildTurnStartIntroQueue(state, name) {
   });
   const turnStartStatQueue = preDrawQueue.length ? preDrawQueue : buildTurnStartStatQueue(state);
   const queue = [];
+  (state?._visualEvents || []).filter(event => event.type === 'logOnly' && event.turnStartStage === 'turnBoundary').forEach(event => {
+    queue.push(statePatchStep({ msgs: event.msgs, visualEventId: event.id, turnStartStage: event.turnStartStage }));
+  });
   if (turnStartStatQueue.length) {
     queue.push({
       type: 'VISUAL_LOCK',

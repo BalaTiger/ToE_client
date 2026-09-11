@@ -5,8 +5,6 @@ import {
   buildInspectionReplay,
   buildRandomTargetReplay,
   hasFreshRandomTargetEvents,
-  isFreshActionReplayEvent,
-  isFreshBewitchReplayEvent,
 } from './animReplayEvents';
 import { appendFinalStatePatch, finalStatePatch } from './animStatePatch';
 import { isLocalCurrentTurn, isLocalSeatIndex, localDisplayName } from './rotateState';
@@ -26,6 +24,7 @@ import {
 } from './turnAnimState';
 import {
   clearVisualEvents,
+  getVisualEvents,
   getVisualEventIdsFromState,
   getCardEffectVisualEvents,
   getBewitchGiftVisualEvent,
@@ -205,7 +204,7 @@ function buildExactAnimTransactionReplayAction(events, rotated, previousGs, comp
     event,
     transaction: compileVisualEventToAnimTransaction(event, rotated, previousGs, {
       compileFreshVisualEventQueue,
-      logDelta: getLogDelta(previousGs, rotated),
+      logDelta: getFreshEventMessages(previousGs, rotated),
     }),
   }));
   const compiledUncovered = uncoveredTransactions.filter(item => item.transaction?.queue?.length);
@@ -247,12 +246,9 @@ function buildExactAnimTransactionReplayAction(events, rotated, previousGs, comp
   };
 }
 
-function getLogDelta(previousGs, rotated) {
-  const prevLog = Array.isArray(previousGs?.log) ? previousGs.log : [];
-  const nextLog = Array.isArray(rotated?.log) ? rotated.log : [];
-  let start = 0;
-  while (start < prevLog.length && start < nextLog.length && prevLog[start] === nextLog[start]) start += 1;
-  return nextLog.slice(start);
+function getFreshEventMessages(previousGs, rotated) {
+  const previousIds = new Set(getVisualEventIdsFromState(previousGs));
+  return getVisualEvents(rotated).filter(event => !previousIds.has(event.id)).flatMap(event => event.msgs || []);
 }
 
 function buildTreasureDodgeResolutionReplay({ previousGs, rotated, compileFreshVisualEventQueue }) {
@@ -328,22 +324,14 @@ function getPendingGodChoiceCard(state) {
   return state?.phase === 'GOD_CHOICE' ? state.abilityData?.godCard || null : null;
 }
 
-function prepareRemoteWorshipFromHandQueue(queue, rotated, logDelta) {
-  const worshipMsg = (logDelta || []).find(line => (
-    typeof line === 'string'
-    && line.includes('从手牌')
-    && (line.includes('信仰') || line.includes('改信'))
-  ));
-  if (!worshipMsg) return queue;
-  const targetPid = (rotated?.players || []).findIndex(player => (
-    player?.godName && player?.name && worshipMsg.includes(player.name)
-  ));
-  if (targetPid < 0) return queue;
+function prepareRemoteWorshipFromHandQueue(queue, rotated) {
+  const event = getVisualEvents(rotated).find(event => event.type === VISUAL_EVENT.GOD_STATUS_CHANGED);
+  if (!event || queue.some(step => step.visualEventId === event.id)) return queue;
   return prepareWorshipHighlight(queue, {
-    targetPid,
-    godKey: rotated.players[targetPid].godName,
+    targetPid: event.playerIdx,
+    godKey: event.godKey,
     players: rotated.players,
-    msgs: [worshipMsg],
+    msgs: event.msgs || [],
   });
 }
 
@@ -469,7 +457,7 @@ export function buildMpRemoteReplayAction({
     }
   }
 
-  const logDelta = getLogDelta(previousGs, rotated);
+  const logDelta = getFreshEventMessages(previousGs, rotated);
   const timedOutDrawDiscardStep = buildTimedOutDrawDiscardStep(rotated, previousGs);
   const handLimitDiscardSteps = compileFreshVisualEventsToAnimSteps(rotated, null, [VISUAL_EVENT.HAND_LIMIT_DISCARD]);
   const preTurnSteps = [
@@ -701,50 +689,8 @@ export function buildMpRemoteReplayAction({
       });
     }
   }
-  const lastLog = rotated.log?.[rotated.log.length - 1] || '';
-  const moldyMatch = lastLog.match(/^【霉变食物】(.+?) 掷出 (\d+) 点（(双数|单数)）/);
-  const isMoldyFoodDiceRoll = moldyMatch && !rotated.gameOver && rotated.phase === 'ACTION';
-  if (isMoldyFoodDiceRoll) {
-    const rollerName = moldyMatch[1];
-    const d1 = parseInt(moldyMatch[2], 10);
-    const isSelf = rollerName === '你' || rollerName === localDisplayName(0, rotated.players?.[0]?.name);
-    return {
-      type: MP_REMOTE_REPLAY.DICE_ROLL,
-      maskedGs: buildMaskedActionState(rotated),
-      pendingGs: rotated,
-      anim: {
-        type: 'DICE_ROLL',
-        diceMode: 'moldyFood',
-        d1,
-        d2: 0,
-        heal: 0,
-        rollerName: isSelf ? '你' : rollerName,
-        negativeAvoided: /负面效果已规避/.test(lastLog),
-      },
-    };
-  }
-  const diceMatch = lastLog.match(/(.+?) 掷出 (\d+) 点/);
-  const isDiceRoll = diceMatch && !rotated.gameOver && rotated.phase === 'ACTION';
-  if (isDiceRoll) {
-    const rollerName = diceMatch[1];
-    const d1 = parseInt(diceMatch[2], 10);
-    const isSelf = rollerName === '你' || rollerName === localDisplayName(0, rotated.players?.[0]?.name);
-    return {
-      type: MP_REMOTE_REPLAY.DICE_ROLL,
-      maskedGs: buildMaskedActionState(rotated),
-      pendingGs: rotated,
-      anim: {
-        type: 'DICE_ROLL',
-        d1,
-        d2: 0,
-        heal: 0,
-        rollerName: isSelf ? '你' : rollerName,
-        dodgeSuccess: d1 >= 4,
-      },
-    };
-  }
   const swapEvent = getSwapCardsVisualEvent(rotated);
-  if (swapEvent && isFreshActionReplayEvent(swapEvent, logDelta)) {
+  if (swapEvent && !previousVisualEventIds.has(swapEvent.id)) {
     // 本地玩家（旋转后座位 0）未参与的掉包不向本地观众暴露牌面，
     // 飞行动画一律以背面展示
     const hideSwapCards = swapEvent.sourceIdx !== 0 && swapEvent.targetIdx !== 0;
@@ -847,7 +793,7 @@ export function buildMpRemoteReplayAction({
     });
   }
   const bewitchEvent = getBewitchGiftVisualEvent(rotated);
-  if (bewitchEvent && !isDrawAnimationState && isFreshBewitchReplayEvent(bewitchEvent, logDelta)) {
+  if (bewitchEvent && !isDrawAnimationState && !previousVisualEventIds.has(bewitchEvent.id)) {
     const oldGs = previousGs || buildMaskedActionState(rotated);
     const bewitchReplay = compileFreshBewitchVisualTransaction(rotated, oldGs, {
       compileFreshVisualEventQueue,
@@ -865,7 +811,7 @@ export function buildMpRemoteReplayAction({
   const previousCardEffectIds = new Set(getCardEffectVisualEvents(previousGs).map(event => event?.id).filter(Boolean));
   const cardEffectSteps = !isDrawAnimationState
     ? getCardEffectVisualEvents(rotated)
-      .filter(event => event?.id && !previousCardEffectIds.has(event.id) && isFreshActionReplayEvent(event, logDelta))
+      .filter(event => event?.id && !previousCardEffectIds.has(event.id))
       .flatMap(event => compileVisualEventToAnimSteps(event, rotated, previousGs))
     : [];
   if (cardEffectSteps.length) {

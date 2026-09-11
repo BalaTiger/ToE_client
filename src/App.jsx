@@ -268,7 +268,6 @@ import {
   isLocalMpDecisionPhase,
   maxStatEventSeqFromSteps,
   maxKnownStatEventSeq,
-  maxStatEventSeqForLogs,
   statEventSeqBeforeTurnStartStats,
   getTurnStartDrawBaselineLog,
   buildCompleteGameOverLog,
@@ -312,12 +311,7 @@ import { getDecisionContext } from './game/decisionContext';
 import {
   splitAnimBoundLogs,
   bindAnimLogChunks,
-  subtractLogOccurrences,
-  splitTransitionLogs,
-  appendAnimLogChunkToQueueEnd,
   extractSkillLogs,
-  isStatLog,
-  isTurnStartLog,
   prepareAnimQueueLogs,
 } from "./game/animLogs";
 import {
@@ -327,7 +321,6 @@ import {
   buildRoseThornSnapshot,
   bindVisualEventToSteps,
   collectInspectionEventsCoveredByQueue,
-  collectExplicitAiTurnLogs,
   insertAiRestDiceBeforeSettlement,
   scopeAiActionReplayMetadata,
   scopeAiReplayMetadataBeforeInspection,
@@ -880,7 +873,7 @@ export default function Game(){
         animQueueRef,
         pendingGsRef,
         suppressNextBroadcastRef,
-        syncVisibleLog,
+        restoreVisibleLog,
         setGs,
         setAnim,
         setRoleRevealAnim,
@@ -1013,7 +1006,7 @@ export default function Game(){
   const [dismissedHuntRevealPromptId,setDismissedHuntRevealPromptId]=useState(null);
   const visibleLogRef=useRef(Array.isArray(gs?.log)?gs.log:[]);
   const visibleLogCountRef=useRef(Array.isArray(gs?.log)?gs.log.length:0);
-  const visibleLogAuthorityRef=useRef(Array.isArray(gs?.log)?gs.log:[]);
+  const visibleLogEntryIdsRef=useRef(new Set());
 
   useEffect(()=>{
     if(!gs)setDismissedHuntRevealPromptId(null);
@@ -1092,50 +1085,22 @@ export default function Game(){
     };
   },[vw,vh,isMobile,isMobileLandscape]);
 
-  const applyVisibleLogPrefix=useCallback((count,authorityOverride)=>{
-    const authority=Array.isArray(authorityOverride)?authorityOverride:(Array.isArray(visibleLogAuthorityRef.current)?visibleLogAuthorityRef.current:[]);
-    const safeCount=Math.max(0,Math.min(count,authority.length));
-    visibleLogAuthorityRef.current=authority;
-    visibleLogCountRef.current=safeCount;
-    const prefix=authority.slice(0,safeCount);
-    visibleLogRef.current=prefix;
-    setVisibleLog(prefix);
+  // Explicit history restoration and final settlement use the rule log.
+  // Live playback only appends messages from visual events.
+  const restoreVisibleLog=useCallback((nextLog,stateForLocalView=null)=>{
+    visibleLogEntryIdsRef.current.clear();
+    const normalized=buildVisibleLogForLocalViewer(Array.isArray(nextLog)?nextLog:[],stateForLocalView);
+    visibleLogRef.current=normalized;
+    visibleLogCountRef.current=normalized.length;
+    setVisibleLog(normalized);
   },[]);
 
-  const syncVisibleLog=useCallback((nextLog,stateForLocalView=null)=>{
-    const normalized=buildVisibleLogForLocalViewer(
-      Array.isArray(nextLog)?nextLog:[],
-      stateForLocalView
-    );
-    applyVisibleLogPrefix(normalized.length,normalized);
-  },[applyVisibleLogPrefix]);
-
-  const appendVisibleLog=useCallback((lines,options={})=>{
+  const appendVisibleLog=useCallback((lines)=>{
     if(!Array.isArray(lines)||!lines.length)return;
-    const normalized=[...lines];
-    if(!normalized.length)return;
-    const authority=Array.isArray(visibleLogAuthorityRef.current)?visibleLogAuthorityRef.current:[];
-    if(options?.source==='visualEvent'){
-      const next=[...visibleLogRef.current,...normalized];
-      visibleLogRef.current=next;
-      visibleLogCountRef.current=next.length;
-      setVisibleLog(next);
-      return;
-    }
-    if(!authority.length){
-      visibleLogRef.current=[...visibleLogRef.current,...normalized];
-      visibleLogCountRef.current=visibleLogRef.current.length;
-      setVisibleLog(visibleLogRef.current);
-      return;
-    }
-    let cursor=visibleLogCountRef.current;
-    normalized.forEach(line=>{
-      const idx=authority.findIndex((entry,i)=>i>=cursor&&entry===line);
-      if(idx>=0)cursor=idx+1;
-    });
-    applyVisibleLogPrefix(cursor,authority);
-  },[applyVisibleLogPrefix]);
-
+    visibleLogRef.current=[...visibleLogRef.current,...lines];
+    visibleLogCountRef.current=visibleLogRef.current.length;
+    setVisibleLog(visibleLogRef.current);
+  },[]);
 
   const getVisualDiscardForState=useCallback((stateLike)=>{
     return [...(stateLike?.discard||[])];
@@ -1192,7 +1157,7 @@ export default function Game(){
     setDisplayStats,
     setVisualPlayersOverride:setEarthquakeVisualPlayers,
     setVisualDiscard,
-    syncVisibleLog,
+    restoreVisibleLog,
     appendVisibleLog,
     getVisualDiscardForState,
     resolveTurnHighlightForStep,
@@ -1201,7 +1166,7 @@ export default function Game(){
     applyNextTurnGs,
     cthContinueRestDraws:_cthContinueRestDraws,
     visibleLogRef,
-    visibleLogAuthorityRef,
+    visibleLogEntryIdsRef,
     visualStateLocks,
     suppressNextBroadcastRef,
     receivedGsRef,
@@ -1535,6 +1500,7 @@ export default function Game(){
       clearDamageAnimations,
       setAnim,
       setGs,
+      restoreVisibleLog,
       receivedGsRef,
       setRoleRevealAnim,
       startNextTurn,
@@ -1593,11 +1559,11 @@ export default function Game(){
 
   const applyTutorialStateSnapshot=useCallback((nextGs)=>{
     if(!nextGs)return;
-    syncVisibleLog(nextGs.log||[],nextGs);
+    restoreVisibleLog(nextGs.log||[],nextGs);
     setVisualDiscard(getVisualDiscardForState(nextGs));
     setDisplayStats((nextGs.players||[]).map(p=>({hp:p.hp,san:p.san})));
     setGs(nextGs);
-  },[getVisualDiscardForState,syncVisibleLog]);
+  },[getVisualDiscardForState,restoreVisibleLog]);
 
   const playPendingAiGodEncounterInspection=useCallback(()=>{
     const pending=gs?.abilityData;
@@ -1666,12 +1632,12 @@ export default function Game(){
       if(!prev)return prev;
       const base=pendingBase||prev;
       const nextGs=applyTutorialStepState(clearTutorialWinState(base,nextStep),nextStep);
-      syncVisibleLog(nextGs?.log||[],nextGs);
+      restoreVisibleLog(nextGs?.log||[],nextGs);
       setVisualDiscard(getVisualDiscardForState(nextGs));
       setDisplayStats((nextGs?.players||[]).map(p=>({hp:p.hp,san:p.san})));
       return nextGs;
     });
-  },[clearBattleAnimationState,getVisualDiscardForState,playPendingAiGodEncounterInspection,syncVisibleLog,pendingGsRef,tutorialStep]);
+  },[clearBattleAnimationState,getVisualDiscardForState,playPendingAiGodEncounterInspection,restoreVisibleLog,pendingGsRef,tutorialStep]);
 
   const handleTutorialResultNext=useCallback(()=>{
     if(tutorialStep===TUTORIAL_FLOW.CULTIST_GOD_CHECK_INTRO){
@@ -1786,13 +1752,20 @@ export default function Game(){
   useEffect(()=>{if(logRef.current)logRef.current.scrollTop=logRef.current.scrollHeight;},[visibleLog.length]);
 
   useEffect(()=>{
-    if(anim||animQueueRef.current.length>0)return;
-    if(gs?._playersBeforeThisDraw)return;
-    const nextLog=Array.isArray(gs?.log)?gs.log:[];
-    const curLog=visibleLogRef.current;
-    const same=curLog.length===nextLog.length&&curLog.every((line,i)=>line===nextLog[i]);
-    if(!same)syncVisibleLog(nextLog,gs);
-  },[gs,anim,animQueueRef,syncVisibleLog]);
+    if(!gs){
+      visibleLogEntryIdsRef.current.clear();
+      restoreVisibleLog([]);
+      return;
+    }
+    if(!gs.gameOver||anim||animQueueRef.current.length>0||pendingGsRef.current)return;
+    restoreVisibleLog(gs.log||[],gs);
+  },[gs,anim,animQueueRef,pendingGsRef,restoreVisibleLog]);
+
+  useEffect(()=>{
+    if(!gs||gs.gameOver||anim||animQueueRef.current.length||pendingGsRef.current||gs._playersBeforeThisDraw)return;
+    const eventIds=(gs._visualEvents||[]).filter(event=>event?.type==='logOnly'&&!consumedVisualEventIdsRef.current.has(event.id)).map(event=>event.id);
+    if(eventIds.length)triggerAnimQueue([],gs,undefined,{authority:ANIMATION_QUEUE_AUTHORITY.EVENTS,eventIds});
+  },[gs,anim,animQueueRef,pendingGsRef,triggerAnimQueue]);
 
   useEffect(()=>{
     if(!gs||anim||animQueueRef.current.length>0||gs.gameOver||gs.phase==='PLAYER_WIN_PENDING'||gs.phase==='TREASURE_WIN'||gs.phase==='MP_PLAYER_WIN_WAIT')return;
@@ -1802,7 +1775,7 @@ export default function Game(){
       if(!prev||prev.gameOver||prev.phase==='PLAYER_WIN_PENDING'||prev.phase==='TREASURE_WIN'||prev.phase==='MP_PLAYER_WIN_WAIT')return prev;
       const recheck=moveEligibleBlankZones(prev.players,prev.log||[]);
       if(!recheck)return prev;
-      return {...prev,players:recheck.players,log:recheck.log};
+      return {...prev,players:recheck.players,log:recheck.log,_visualEvents:[...(prev._visualEvents||[]),...recheck.visualEvents]};
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[gs?.players,gs?.log?.length,gs?.gameOver,anim]);
@@ -2381,7 +2354,6 @@ export default function Game(){
         }=rawResult;
         newGs=stripAiPresentationFields(rawResult);
         const oldLog=Array.isArray(gs.log)?gs.log:[];
-        const nextLog=Array.isArray(newGs.log)?newGs.log:oldLog;
         // Helper: build a gs-like object with substituted players for compileFreshVisualEventQueue
         // fakeGs: use gs.log as the baseline so compileFreshVisualEventQueue correctly detects new messages
         const fakeGs = (ps,log=gs.log) => ({...gs, players: ps, log, _statEvents: gs._statEvents || [], _statEventSeq: gs._statEventSeq || 0});
@@ -2389,23 +2361,13 @@ export default function Game(){
         const shouldReplayTurnStart=hasTurnStartDraw&&!gs._aiTurnIntroShown;
         const aiTurnDrawnCard=hasTurnStartDraw?(rawResult._animAiDrawnCard??rawResult._aiDrawnCard??gs._aiDrawnCard??gs._drawnCard??null):null;
         const aiTurnDiscarded=hasTurnStartDraw?isDrawnCardActuallyDiscarded(rawResult,aiTurnDrawnCard):false;
-        const {currentTurnLogs}=splitTransitionLogs(oldLog,nextLog);
-        // An AI end-turn replay is already represented by its own ordered
-        // queue (tunnel -> reveal -> card effect).  Its logs still share the
-        // current-turn log, so exclude the explicitly owned lines before any
-        // legacy log/state-diff compiler sees them.  Otherwise a synchronous
-        // 触底反弹 swap is inferred into actionStatQ and its card flights run
-        // ahead of ENDLESS_CORRIDOR_TUNNEL.
-        const endTurnReplayMsgSet = new Set(
-          Array.isArray(newGs._aiEndTurnReplayMsgs) ? newGs._aiEndTurnReplayMsgs : []
-        );
-        const actionMsgs=currentTurnLogs.filter(msg => !endTurnReplayMsgSet.has(msg));
+        const currentActionEvents=scopeAiActionReplayMetadata(newGs).visualEvents;
+        const actionMsgs=currentActionEvents.flatMap(event=>event.msgs||[]);
         const actionLog=[...oldLog,...actionMsgs];
-        const isCurrentTurnInspectionEvent=event=>{
-          const beforeLog=Array.isArray(event?.beforeLog)?event.beforeLog:[];
-          const beforeDelta=beforeLog.slice(oldLog.length);
-          return !beforeDelta.some(isTurnStartLog);
-        };
+        const currentInspectionIds=new Set(currentActionEvents
+          .filter(event=>event.type===VISUAL_EVENT.INSPECTION)
+          .map(event=>event.legacySeq??event.seq));
+        const isCurrentTurnInspectionEvent=event=>currentInspectionIds.has(event.legacySeq??event.seq);
         const queue=[];
         const aiTurnStartReplay=shouldReplayTurnStart
           ? buildActorTurnStartReplay(gs,{
@@ -2523,7 +2485,7 @@ export default function Game(){
           queue.push(statePatchStep({
             players:_playersBeforeSkillAction,
             discard:_preSkillDiscard||newGs.discard,
-            msgs:_preSkillLogs||[],
+
           }));
           queue.push({type:'VISUAL_LOCK',players:_playersBeforeSkillAction,zhuLight:gs.zhuLight||null});
           queue.push({type:'TURN_BOUNDARY_PAUSE'});
@@ -2593,10 +2555,6 @@ export default function Game(){
               _statEventSeq:preHuntReplayMetadata.statEventSeq,
             }
           :actionVisualPatch;
-        const fullHandSwapQ=buildFullHandSwapTransferQueueFromLogs(actionMsgs,afterInspectionPlayers,{
-          playersBefore:afterInspectionPlayers,
-          zhuLight:gs.zhuLight||null,
-        });
         const actionSwapEvent=(scopedActionVisualPatch._visualEvents||[]).find(event=>(
           event?.type===VISUAL_EVENT.SWAP_CARDS
           && event.sourceIdx!=null
@@ -2613,9 +2571,7 @@ export default function Game(){
         const hasRoseThornGiftAllHand=actionReplayMetadata.visualEvents.some(event=>(
           event?.type===VISUAL_EVENT.CARD_MOVE&&event?.effect==='roseThornGiftAllHand'
         ));
-        const actionStatQ=fullHandSwapQ.length
-          ? [...fullHandSwapQ,...actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')]
-          : hasRoseThornGiftAllHand
+        const actionStatQ=hasRoseThornGiftAllHand
             ? actionStatQBase.filter(step=>step.type!=='CARD_TRANSFER')
           : actionStatQBase;
         const compiledActionInspectionEvents=collectInspectionEventsCoveredByQueue(
@@ -2654,51 +2610,10 @@ export default function Game(){
             ).filter(step=>step.type!=='CARD_TRANSFER')
           : [];
         let orderedActionQ=null;
-        const statAnimTypes=new Set(['HP_DAMAGE','SAN_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','GUILLOTINE','DEATH','PETRIFY_DEATH']);
-        const sanitizeActionStep=step=>{
-          if(!step||!statAnimTypes.has(step.type))return step;
-          const statMsgs=(Array.isArray(step.msgs)?step.msgs:[]).filter(isStatLog);
-          const statLogChunk=(Array.isArray(step._logChunk)?step._logChunk:[]).filter(isStatLog);
-          return {...step,msgs:statMsgs,_logChunk:statLogChunk};
-        };
-        const firstStepLogIndex=step=>{
-          const explicitLines=[
-            ...(Array.isArray(step?._logChunk)?step._logChunk:[]),
-            ...(Array.isArray(step?.msgs)?step.msgs:[]),
-          ].filter(line=>typeof line==='string'&&line.length);
-          const explicitIdx=explicitLines
-            .map(line=>actionMsgs.findIndex(msg=>msg===line))
-            .filter(idx=>idx>=0)
-            .sort((a,b)=>a-b)[0];
-          if(explicitIdx!=null)return explicitIdx;
-          if(statAnimTypes.has(step?.type)){
-            const statIdx=actionMsgs.findIndex(isStatLog);
-            if(statIdx>=0)return statIdx;
-          }
-          if(step?.type==='SKILL_SWAP'){
-            const idx=actionMsgs.findIndex(line=>/^.+对 .+ 【掉包】/.test(line||''));
-            if(idx>=0)return idx;
-          }
-          if(step?.type==='SKILL_HUNT'){
-            const idx=actionMsgs.findIndex(line=>line?.includes('【追捕】')||line?.includes('追捕'));
-            if(idx>=0)return idx;
-          }
-          if(step?.type==='SKILL_BEWITCH'){
-            const idx=actionMsgs.findIndex(line=>line?.includes('【蛊惑】'));
-            if(idx>=0)return idx;
-          }
-          return Number.MAX_SAFE_INTEGER;
-        };
-        const mergeActionQueueByLogOrder=(...groups)=>groups
-          .flat()
-          .filter(Boolean)
-          .map((step,idx)=>({step:sanitizeActionStep(step),idx}))
-          .sort((a,b)=>{
-            const ai=firstStepLogIndex(a.step);
-            const bi=firstStepLogIndex(b.step);
-            return ai===bi?a.idx-b.idx:ai-bi;
-          })
-          .map(item=>item.step);
+        const actionEventOrder=new Map(fullActionReplayMetadata.visualEvents.map((event,index)=>[event.id,index]));
+        const mergeActionQueueByEventOrder=(...groups)=>groups.flat().filter(Boolean)
+          .sort((a,b)=>(actionEventOrder.get(a.visualEventId)??Number.MAX_SAFE_INTEGER)
+            -(actionEventOrder.get(b.visualEventId)??Number.MAX_SAFE_INTEGER));
         const hasFullHandSwap=actionReplayMetadata.visualEvents.some(event=>(
           event?.type===VISUAL_EVENT.CARD_MOVE&&event?.effect==='fullHandSwap'
         ));
@@ -2706,7 +2621,7 @@ export default function Game(){
           if(hasFullHandSwap){
             const huntStatHitSet=new Set(huntEventQueue.flatMap(s=>['GUILLOTINE','DEATH','HP_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','SAN_DAMAGE'].includes(s.type)?(s.hitIndices||[]):[]));
             const dedupedActionStatQ=actionStatQ.filter(s=>!(['GUILLOTINE','DEATH','HP_DAMAGE','HP_HEAL','SAN_HEAL','HP_SAN_HEAL','SAN_DAMAGE'].includes(s.type)&&(s.hitIndices||[]).some(i=>huntStatHitSet.has(i))));
-            orderedActionQ=mergeActionQueueByLogOrder(dedupedActionStatQ,huntEventQueue);
+            orderedActionQ=mergeActionQueueByEventOrder(dedupedActionStatQ,huntEventQueue);
           } else {
             orderedActionQ=[...actionStatQ,...huntEventQueue];
           }
@@ -2788,7 +2703,7 @@ export default function Game(){
           maxStatEventSeqFromSteps(handLimitDiscardQueue),
           maxStatEventSeqFromSteps(handLimitStatQueue),
           maxStatEventSeqFromSteps(aiEndTurnReplayQueue),
-          maxStatEventSeqForLogs(newGs,currentTurnLogs)
+          fullActionReplayMetadata.statEventSeq
         );
         if(isLocalCurrentTurn(newGs)){
           queue.push(...finalActionQ);
@@ -2857,9 +2772,7 @@ export default function Game(){
           );
           queue.push(...inspectionFlow.queue);
         }
-        const explicitCurrentLogs=collectExplicitAiTurnLogs(gs,queue);
-        const residualLogs=subtractLogOccurrences(currentTurnLogs,explicitCurrentLogs);
-        const currentTurnQueue=appendAnimLogChunkToQueueEnd(queue,residualLogs);
+        const currentTurnQueue=queue;
         const currentTurnStatePatch=
           rawResult._playersBeforeNextDraw&&!multiplyEvent
             ? [statePatchStep({players:P_actionEnd,discard:newGs.discard})]
@@ -5139,7 +5052,6 @@ export default function Game(){
         });
         triggerAnimQueue(decisionQueue,decisionGs,undefined,drawKeepQueueMeta(decisionGs,decisionQueue));
       }else{
-        syncVisibleLog(L);
         setGs(decisionGs);
       }
       return;
@@ -5182,7 +5094,6 @@ export default function Game(){
         const restQueue=[...incomeQueue,incomeStatePatch,boundaryPause];
         triggerAnimQueue(restQueue,newGs,()=>_cthContinueRestDraws(newGs),drawKeepQueueMeta(newGs,restQueue));
       }else{
-        syncVisibleLog(L);
         const restQueue=[incomeStatePatch,boundaryPause];
         triggerAnimQueue(restQueue,newGs,()=>_cthContinueRestDraws(newGs),drawKeepQueueMeta(newGs,restQueue));
       }
@@ -5197,7 +5108,6 @@ export default function Game(){
         const slimeQueue=[...incomeQueue,incomeStatePatch,boundaryPause];
         triggerAnimQueue(slimeQueue,newGs,()=>_tsgContinueTurnStartDraw(newGs),drawKeepQueueMeta(newGs,slimeQueue));
       }else{
-        syncVisibleLog(L);
         const slimeQueue=[incomeStatePatch,boundaryPause];
         triggerAnimQueue(slimeQueue,newGs,()=>_tsgContinueTurnStartDraw(newGs),drawKeepQueueMeta(newGs,slimeQueue));
       }
@@ -5208,7 +5118,6 @@ export default function Game(){
         const proliferatingQueue=[...incomeQueue,incomeStatePatch];
         triggerAnimQueue(proliferatingQueue,null,()=>{if(!continueProliferatingZDraws(newGs))setGs(newGs);},drawKeepQueueMeta(newGs,proliferatingQueue));
       }else{
-        syncVisibleLog(L);
         if(!continueProliferatingZDraws(newGs))setGs(newGs);
       }
       return;
@@ -5221,7 +5130,6 @@ export default function Game(){
       const playbackQueue=[...incomeQueue,incomeStatePatch];
       triggerAnimQueue(playbackQueue,newGs,undefined,drawKeepQueueMeta(newGs,playbackQueue));
     }else{
-      syncVisibleLog(L);
       setGs(newGs);
     }
   }
@@ -6132,7 +6040,7 @@ export default function Game(){
   }
 
 
-  function finishTargetContinuation({queue=[],nextGs,continueRest=false,continueTurnStartDraw=false,syncLog=false}){
+  function finishTargetContinuation({queue=[],nextGs,continueRest=false,continueTurnStartDraw=false}){
     queue=mergeApophisTargetQueue(queue,gs,nextGs);
     if((nextGs?.phase==='ACTION'||nextGs?.phase==='AI_TURN')&&nextGs?.abilityData?.pendingInspectionContinuation?.targets?.length){
       const pendingContinuation=nextGs.abilityData.pendingInspectionContinuation;
@@ -6192,7 +6100,6 @@ export default function Game(){
         })]:[]),
       ];
     }
-    if(syncLog&&nextGs?.log)syncVisibleLog(nextGs.log,nextGs);
     const flowResolution=resolveTargetContinuation(nextGs,{continueRest,continueTurnStartDraw});
     nextGs=flowResolution.state;
     const continuationRoute=flowResolution.route;
@@ -6634,7 +6541,6 @@ export default function Game(){
       queue:[duelAnim],
       nextGs,
       continueRest:!!gs.abilityData?.fromRest,
-      syncLog:true,
     });
   }
   
@@ -6771,7 +6677,6 @@ export default function Game(){
       queue:damageLinkQueue,
       nextGs,
       continueRest:!!gs.abilityData?.fromRest,
-      syncLog:!gs.abilityData?.fromRest,
     });
   }
 
@@ -8370,7 +8275,6 @@ export default function Game(){
           barrier:'decision',
           compileOptions:{allowTargetZero:true},
         });
-        syncVisibleLog(L,newGs);
         if(queue.length)triggerAnimQueue(queue,newGs,undefined,strictActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current,'AI hunt player etherealize decision'));else setGs(newGs);
         return;
       }
@@ -8485,7 +8389,6 @@ export default function Game(){
     }
     if(damage?.phase)newGs={...newGs,phase:damage.phase,abilityData:damage.abilityData};
 
-    syncVisibleLog(L,newGs);
     const huntResultEvent=createHuntResultEvent({
       hunterIdx:huntingAI,
       targetIdx:0,
@@ -9655,10 +9558,8 @@ export default function Game(){
     }
     if(newGs.currentTurn===0){
       const playerTurnStartMsgs=newGs._turnStartLogs||[];
-      const localTurnDrawReplay=getTurnStartDrawnCard(newGs)
-        ?buildAppTurnStartDrawReplay(newGs,{oldGs:gs,effectOldGs:{...gs,players:newGs._playersBeforeThisDraw||gs.players}})
-        :null;
-      if(localTurnDrawReplay?.drawnCard){
+      const localTurnDrawReplay=buildAppTurnStartDrawReplay(newGs,{oldGs:gs,effectOldGs:{...gs,players:newGs._playersBeforeThisDraw||gs.players}});
+      if(localTurnDrawReplay?.queue?.length){
         if(localTurnDrawReplay.visualLock)visualStateLocks.lock(localTurnDrawReplay.visualLock);
         setGs(prev=>hideTurnStartDecisionForReplay(prev,localTurnDrawReplay,newGs,{getVisualDiscard:getVisualDiscardForState}));
         submitTurnStartPresentation([...preTurnQ,...localTurnDrawReplay.queue],newGs,undefined,'local turn-start draw');
@@ -9844,12 +9745,12 @@ export default function Game(){
     if(silent){
       // Tutorial preview: set game state immediately, no animation, no pending draw
       setAnim(null);
-      syncVisibleLog(newGs.log||[]);
+      restoreVisibleLog(newGs.log||[]);
       setGs({...newGs,phase:'ACTION',drawReveal:null});
       return;
     }
-    // Normal start: show game board immediately as background, then ask for role before reveal
-    syncVisibleLog(newGs.log||[]);
+    // Opening restoration stops before the first turn's event timeline.
+    restoreVisibleLog(newGs.gameOver?newGs.log:(newGs._initialLog||[]));
     setGs(maskOpeningTurnStartDrawForDisplay(newGs));
     setAnim(null);
     setPendingRoleSelection(newGs);
@@ -9983,7 +9884,7 @@ export default function Game(){
     setMobileArmedGodCardIdx(null);
     setTutorialStep(TUTORIAL_FLOW.INTRO);
     setShowTutorial(true);
-    syncVisibleLog(tutorialGs.log||[]);
+    restoreVisibleLog(tutorialGs.log||[]);
     setVisualDiscard(getVisualDiscardForState(tutorialGs));
     setDisplayStats((tutorialGs.players||[]).map(p=>({hp:p.hp,san:p.san})));
     setGs(tutorialGs);
@@ -10562,4 +10463,3 @@ const smallBtnStyle={
   border:'1px solid #3a2510',color:'#a07838',
   fontFamily:"'Cinzel',serif",fontSize:10,borderRadius:2,cursor:'pointer',letterSpacing:1,
 };
-

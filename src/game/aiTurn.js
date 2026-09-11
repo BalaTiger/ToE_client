@@ -71,6 +71,7 @@ import {
   buildTsathogguaSlimeGrantSteps,
   createBewitchGiftEvent,
   createCardMoveVisualEvent,
+  createLogOnlyVisualEvent,
   createOrderedSettlementEvents,
   createApophisEclipseEvent,
   createGodPowerBlockedEvent,
@@ -99,6 +100,8 @@ import { addDamageLink } from './damageLinks';
  * - 空白区域牌默认匹配
  * - 否则字母或数字相同即匹配
  */
+let aiActionSequence = 0;
+
 export function cardsHuntMatch(a, b) {
   if (!a || !b) return false;
   if (isBlackGoatYoung(a) || isBlackGoatYoung(b) || isTsathogguaSlime(a) || isTsathogguaSlime(b)) return false; // 衍生牌不可被任何卡牌匹配
@@ -285,6 +288,7 @@ export function moveEligibleBlankZones(players, log = []) {
   let changed = false;
   const P = copyPlayers(players);
   const L = [...log];
+  const visualEvents = [];
   P.forEach(player => {
     if (!player || player.isDead) return;
     const blankZones = (player.zoneCards || []).filter(isBlankZoneCard);
@@ -292,13 +296,15 @@ export function moveEligibleBlankZones(players, log = []) {
     if (player.hand.length <= 3) {
       blankZones.forEach(blank => {
         player.hand.push(blank);
-        L.push(`${player.name} 手牌不大于3张，将空白区域牌收入手牌`);
+        const msg = `${player.name} 手牌不大于3张，将空白区域牌收入手牌`;
+        L.push(msg);
+        visualEvents.push(createLogOnlyVisualEvent({ msgs: [msg] }));
       });
       player.zoneCards = (player.zoneCards || []).filter(c => !isBlankZoneCard(c));
       changed = true;
     }
   });
-  return changed ? { players: P, log: L } : null;
+  return changed ? { players: P, log: L, visualEvents } : null;
 }
 
 function getBlackGoatMultiplyEvent(players, sourceIdx) {
@@ -974,7 +980,7 @@ export function aiStep(gs, opts = {}) {
   };
   let unifiedReplayCacheState = null;
   let unifiedReplayCache = null;
-  const aiActionTransactionId = `ai-action:${gs._turnKey || gs.turn || 0}:${ct}:${gs.log?.length || 0}`;
+  const aiActionTransactionId = `ai-action:${gs._turnKey || gs.turn || 0}:${ct}:${++aiActionSequence}`;
   const getUnifiedReplayVisualEvents = nextGs => {
     if (unifiedReplayCacheState === nextGs && unifiedReplayCache) return unifiedReplayCache;
     const baseEvents = getReplayVisualEvents(nextGs) || [];
@@ -1020,6 +1026,9 @@ export function aiStep(gs, opts = {}) {
             // AI 的一次完整行动只有一个规则结算游标。子结算（如信仰
             // 高亮+日食）保留语义阶段，但必须重新挂到行动事务，避免
             // 嵌套事务各自从 order=0 开始而抢到技能动画之前。
+            turnKey: event.turnKey ?? gs._turnKey ?? gs.turn ?? 0,
+            turnOwner: event.turnOwner ?? ct,
+            ruleStage: event.ruleStage ?? 'action',
             transactionId: aiActionTransactionId,
             order: event.transactionId === aiActionTransactionId && event.order != null
               ? event.order
@@ -1799,6 +1808,10 @@ export function aiStep(gs, opts = {}) {
     gs = { ...gs, multiplyUsed: true, skillUsed: true, ...appendPublicCardGainTriggers(gs, P, multiplyEvent.toIdx, goatCard) };
     useSkill = false;
   }
+  const appendActionNotice = msg => {
+    L.push(msg);
+    recordActionVisualEvents([createLogOnlyVisualEvent({ msgs: [msg] })]);
+  };
   const appendAiEndTurnLog = () => {
     const usedSkillThisTurn = !!(
       useSkill
@@ -1806,7 +1819,7 @@ export function aiStep(gs, opts = {}) {
       || gs.multiplyUsed
       || gs.skillActivatedTurn === gs.turn
     );
-    L.push(usedSkillThisTurn ? `${ai.name} 结束回合` : `${ai.name} 未使用技能，结束回合`);
+    appendActionNotice(usedSkillThisTurn ? `${ai.name} 结束回合` : `${ai.name} 未使用技能，结束回合`);
   };
 
   if(aiEffRole!==ROLE_HUNTER && alive.length===0){
@@ -1948,6 +1961,7 @@ export function aiStep(gs, opts = {}) {
                 if(blankZoneUpdate){
                   P=blankZoneUpdate.players;ai=getAi();alive=getAlive();
                   L=blankZoneUpdate.log;
+                  recordActionVisualEvents(blankZoneUpdate.visualEvents);
                 }
                 const afterDiscardPlayers=copyPlayers(P);
                 const afterDiscardDiscard=[...Disc];
@@ -2102,7 +2116,7 @@ export function aiStep(gs, opts = {}) {
                   break;
                 }
               } else {
-                L.push(`${ai.name}（追猎者）放弃追捕 ${tgt.name}`);
+                appendActionNotice(`${ai.name}（追猎者）放弃追捕 ${tgt.name}`);
                 aiHuntEvents.push({
                   ...targetAttemptOwnership,
                   targetIdx:ti,
@@ -2128,12 +2142,12 @@ export function aiStep(gs, opts = {}) {
 
           if (!foundTarget) {
             // 亮牌后放弃不公开是主动选择还是没有匹配牌。
-            if (!abandonedAfterReveal) L.push(`${ai.name} 尝试了所有目标，仍无法追捕`);
+            if (!abandonedAfterReveal) appendActionNotice(`${ai.name} 尝试了所有目标，仍无法追捕`);
             markHunterLowQualityHand(P, ct, gs, newAbandoned.length);
             huntContinue = false;
           }
         } else {
-          L.push(`${ai.name} 环顾四周，没有合适的猎物了`);
+          appendActionNotice(`${ai.name} 环顾四周，没有合适的猎物了`);
           markHunterLowQualityHand(P, ct, gs, newAbandoned.length);
           huntContinue = false;
         }

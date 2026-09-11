@@ -27,7 +27,7 @@ import { submitRecoveryEvents } from './statChangeEngine';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { makeProliferatingZState } from './proliferatingZ';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
-import { VISUAL_EVENT, createCardEffectEvent, createDiceResultVisualEvent, createEarthquakeEvent, createGraveDigEvent, createInspectionVisualEvent, createRandomTargetVisualEvent, createSphinxResultEvent, createStatEventsEvent, createThrowStoneEvent, createVritraImmortalRevealEvent } from './visualEvents';
+import { VISUAL_EVENT, createLogOnlyVisualEvent, createCardMoveVisualEvent, createCardEffectEvent, createDiceResultVisualEvent, createEarthquakeEvent, createGraveDigEvent, createInspectionVisualEvent, createRandomTargetVisualEvent, createSphinxResultEvent, createStatEventsEvent, createThrowStoneEvent, createVritraImmortalRevealEvent } from './visualEvents';
 import { createGeomagneticRestoreCard } from '../constants/card';
 import {
   addTurnScopedDamageBonus,
@@ -931,9 +931,15 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       msgs: result.msgs || msgs,
     });
     const canonicalVisualEvents = [
+      ...(gs?._visualEvents || []),
       ...ownedVisualEvents,
       ...(statVisualEvent ? [statVisualEvent] : []),
-    ];
+      // A rule resolution without a visual effect still owns its explanation
+      // or decision prompt; it must survive without a state.log fallback.
+      ...(!statVisualEvent && !ownedVisualEvents.length && (result.msgs || msgs).length
+        ? [createLogOnlyVisualEvent({ msgs: result.msgs || msgs })]
+        : []),
+    ].filter((event, index, events) => !event?.id || events.findIndex(candidate => candidate?.id === event.id) === index);
     const nextStatePatch = {
       ...(result.statePatch || {}),
       ...(canonicalVisualEvents.length ? { _visualEvents: canonicalVisualEvents } : {}),
@@ -1761,10 +1767,23 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     swapAllHands: () => {
       const swapTarget = ti != null ? ti : others.reduce((best, i) => P[i].hand.length > P[best].hand.length ? i : best, others[0] ?? ci);
       if (swapTarget != null && swapTarget !== ci && P[swapTarget] && !P[swapTarget].isDead) {
+        const playersBeforeSwap = copyPlayers(P);
         const myHand = [...P[ci].hand];
         P[ci].hand = [...P[swapTarget].hand];
         P[swapTarget].hand = myHand;
-        msgs.push(`${actor.name} 与 ${P[swapTarget].name} 交换了全部手牌（${P[ci].hand.length} 张 ↔ ${P[swapTarget].hand.length} 张）`);
+        const swapMsg = `${actor.name} 与 ${P[swapTarget].name} 交换了全部手牌（${P[ci].hand.length} 张 ↔ ${P[swapTarget].hand.length} 张）`;
+        msgs.push(swapMsg);
+        const moves = [[ci, swapTarget], [swapTarget, ci]]
+          .filter(([from]) => playersBeforeSwap[from].hand.length > 0);
+        const swapEvents = moves.map(([from, to], index) => createCardMoveVisualEvent({
+          from: { zone: 'hand', playerIdx: from },
+          to: { zone: 'hand', playerIdx: to },
+          count: playersBeforeSwap[from].hand.length,
+          effect: 'fullHandSwap',
+          ...(index === 0 ? { playersBefore: playersBeforeSwap } : {}),
+          ...(index === moves.length - 1 ? { playersAfter: copyPlayers(P), msgs: [swapMsg] } : {}),
+        }));
+        statePatch = { ...statePatch, _visualEvents: [...(statePatch._visualEvents || []), ...swapEvents] };
       } else {
         msgs.push(`${actor.name} 无法找到交换目标`);
       }

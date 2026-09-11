@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MP_REMOTE_REPLAY } from '../game/multiplayerRemoteReplay';
-import { createEndlessCorridorReplayEvent, createTurnDrawVisualEvents } from '../game/visualEvents';
+import { createEndlessCorridorReplayEvent, createTurnDrawVisualEvents, createLogOnlyVisualEvent } from '../game/visualEvents';
 import {
   applyMultiplayerReplayAction,
   getPendingZhuHideCardForState,
@@ -51,7 +51,7 @@ function context(overrides = {}) {
     animQueueRef: ref([]),
     pendingGsRef: ref(null),
     suppressNextBroadcastRef: ref(false),
-    syncVisibleLog: vi.fn(),
+    restoreVisibleLog: vi.fn(),
     setGs: vi.fn(),
     setAnim: vi.fn(),
     setRoleRevealAnim: vi.fn(),
@@ -373,3 +373,23 @@ describe('multiplayer remote replay executor', () => {
     expect(ctx.setGs).not.toHaveBeenCalled();
   });
 });
+
+  it('buffers every no-animation message packet and replays them in order', () => {
+    const current = state();
+    const ctx = context({latestGsRef:ref(current)});
+    const packets = ['first notice','second notice'].map(msg=>state({
+      _visualEvents:[createLogOnlyVisualEvent({msgs:[msg]})], log:[],
+    }));
+    for(const rawState of packets) {
+      expect(processIncomingMultiplayerStateSync({rawState,currentState:current,
+        anim:{type:'DRAW_CARD'},animExiting:false,context:ctx})).toBe('buffered');
+    }
+    expect(ctx.pendingMpRawQueueRef.current).toEqual(packets);
+    for(const rawState of ctx.pendingMpRawQueueRef.current) {
+      processIncomingMultiplayerStateSync({rawState,currentState:current,allowBuffer:false,
+        anim:null,animExiting:false,context:ctx});
+    }
+    expect(ctx.triggerAnimQueue.mock.calls.map(([queue])=>queue.flatMap(step=>step.msgs||[])))
+      .toEqual([['first notice'],['second notice']]);
+    expect(ctx.restoreVisibleLog).not.toHaveBeenCalled();
+  });

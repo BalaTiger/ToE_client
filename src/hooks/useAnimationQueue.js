@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { dedupeInferredDiscardTransfers } from '../game/animQueueHelpers';
 import { markConsumedVisualEvents } from '../game/visualEvents';
+import { consumeVisualLogEntries } from '../game/visualEventLogs';
 import { attachApophisNightTimeline, normalizeApophisQueueForPlayback } from '../game/apophisAnimQueue';
 import {
   applyStatAnimationImpact,
@@ -74,7 +75,7 @@ export function useAnimationQueue({
   setDisplayStats,
   setVisualPlayersOverride,
   setVisualDiscard,
-  syncVisibleLog,
+  restoreVisibleLog,
   appendVisibleLog,
   getVisualDiscardForState,
   resolveTurnHighlightForStep,
@@ -83,7 +84,7 @@ export function useAnimationQueue({
   applyNextTurnGs,
   cthContinueRestDraws,
   visibleLogRef,
-  visibleLogAuthorityRef,
+  visibleLogEntryIdsRef,
   visualStateLocks,
   suppressNextBroadcastRef,
   receivedGsRef,
@@ -104,6 +105,8 @@ export function useAnimationQueue({
   const playbackIdRef = useRef(0);
   const queueLifecycleRef = useRef(createAnimationQueueState());
   const pendingVisualEventIdsRef = useRef([]);
+  const fallbackLogEntryIdsRef = useRef(new Set());
+  const logEntryIds = visibleLogEntryIdsRef || fallbackLogEntryIdsRef;
 
   function sendQueueLifecycleEvent(type) {
     queueLifecycleRef.current = transitionAnimationQueue(queueLifecycleRef.current, type);
@@ -115,16 +118,16 @@ export function useAnimationQueue({
     console.error(`[animation-schema] ${stage}`, issues);
   }
 
-  function revealAnimLogs(animStep) {
+  function revealAnimLogs(animStep, atImpact = false) {
     if (!animStep) return;
-    if (Array.isArray(animStep._logChunk) && animStep._logChunk.length) {
+    if (!atImpact && Number.isFinite(animStep.impactAtMs)) return;
+    const lines = consumeVisualLogEntries(animStep.logEntries, logEntryIds.current);
+    if (lines.length) {
       // Event-backed steps already carry the rule layer's ordered message
       // payload.  Do not use the authoritative state.log cursor to decide
       // whether these messages are visible: that log may be redacted or may
       // have advanced past the event while the queue is still playing.
-      appendVisibleLog(animStep._logChunk, {
-        source: animStep.visualEventId ? 'visualEvent' : 'legacyLog',
-      });
+      appendVisibleLog(lines, { source: 'visualEvent' });
     }
   }
 
@@ -301,7 +304,6 @@ export function useAnimationQueue({
         });
       }
       const callback = animCallbackRef.current;
-      if (next?.log) syncVisibleLog(next.log);
       const nextVisualEventIds = pendingVisualEventIdsRef.current;
       if (nextVisualEventIds.length && consumedVisualEventIdsRef?.current) {
         markConsumedVisualEvents(consumedVisualEventIdsRef.current, nextVisualEventIds.map(id => ({ id, type: 'consumed' })));
@@ -347,6 +349,9 @@ export function useAnimationQueue({
           return;
         }
       }
+      // Only final settlement restores the rule transcript. Ordinary commits
+      // leave live history entirely owned by the completed visual cues.
+      if (next?.gameOver && next?.log) restoreVisibleLog(next.log);
       if (callbackFailed) {
         animQueueRef.current = [];
         pendingVisualEventIdsRef.current = [];
@@ -415,8 +420,9 @@ export function useAnimationQueue({
       }
       active.firedCueIds.add(cue.id);
       if (cue.kind === 'visual') applyVisualPatch(cue.patch);
-      else if (cue.kind === 'impact' && setDisplayStats) {
-        setDisplayStats(prev => applyStatAnimationImpact(prev, anim));
+      else if (cue.kind === 'impact') {
+        if (setDisplayStats) setDisplayStats(prev => applyStatAnimationImpact(prev, anim));
+        revealAnimLogs(anim, true);
       } else if (cue.kind === 'exit') {
         sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.STEP_EXITED);
         setAnimExiting(true);
@@ -538,11 +544,10 @@ export function useAnimationQueue({
 
     if (!normalizedQueue.length) {
       if (callback) {
-        if (nextGs?.log) syncVisibleLog(nextGs.log);
         callback();
       } else {
         const normalizedNextGs = normalizePendingState(nextGs);
-        if (nextGs?.log) syncVisibleLog(nextGs.log);
+        if (nextGs?.gameOver && nextGs?.log) restoreVisibleLog(nextGs.log);
         syncDisplayStatsFromState(normalizedNextGs);
         setGs(normalizedNextGs);
       }
@@ -551,7 +556,6 @@ export function useAnimationQueue({
 
     const wrappedCallback = callback;
 
-    visibleLogAuthorityRef.current = Array.isArray(nextGs?.log) ? nextGs.log : (Array.isArray(visibleLogAuthorityRef.current) ? visibleLogAuthorityRef.current : []);
     const timedQueue = normalizedQueue.map(step => resolveAnimationStepTiming(step, {
       durationByType: ANIM_DURATION,
       speedScale: ANIM_SPEED_SCALE,

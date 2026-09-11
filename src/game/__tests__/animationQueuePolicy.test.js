@@ -224,6 +224,7 @@ describe('animation queue policy', () => {
 
     expect(authoritativeTurnStartQueueMeta(state)).toEqual({
       ...AUTHORITATIVE_QUEUE_META,
+      preserveQueueOrder: true,
       eventIds: ['turn-boundary', 'turn-banner'],
     });
   });

@@ -163,6 +163,10 @@ function godPowerBlockedStepFromEvent(event, state) {
 }
 
 function getGodPowerBlockedBoundaryEvents(state) {
+  const events = getVisualEvents(state);
+  if (events.some(event => event.turnStartStage)) return events.filter(event => (
+    event.type === VISUAL_EVENT.GOD_POWER_BLOCKED && event.turnStartStage === 'turnBoundary'
+  ));
   const log = Array.isArray(state?.log) ? state.log : [];
   const turnStartLine = Array.isArray(state?._turnStartLogs) ? state._turnStartLogs[0] : null;
   const turnStartIdx = turnStartLine ? log.lastIndexOf(turnStartLine) : -1;
@@ -395,6 +399,8 @@ function getGodDrawResolution(logs = [], drawerName = '') {
 }
 
 function getCurrentTurnResolutionLogs(state) {
+  const events = getVisualEvents(state);
+  if (events.some(event => event.turnStartStage)) return events.filter(event => event.turnStartStage === 'draw').flatMap(event => event.msgs || []);
   const log = Array.isArray(state?.log) ? state.log : [];
   const turnStartLines = Array.isArray(state?._turnStartLogs) ? state._turnStartLogs : [];
   const turnStartIdx = turnStartLines.length ? log.lastIndexOf(turnStartLines[0]) : -1;
@@ -406,7 +412,8 @@ function buildFilteredStatStepsFromVisualEvents(state, players, shouldKeepEvent,
   if (!event) return [];
   const statEvents = event.statEvents.filter(statEvent => shouldKeepEvent(statEvent));
   if (!statEvents.length) return [];
-  return statEventsToAnimQueue(statEvents, players || state?.players || [], withoutLogLines(event.msgs || [], excludedMsgs));
+  return statEventsToAnimQueue(statEvents, players || state?.players || [], withoutLogLines(event.msgs || [], excludedMsgs))
+    .map(step => ({ ...step, visualEventId: event.id }));
 }
 
 function isBlackGoatTurnStartStatEvent(event) {
@@ -444,6 +451,8 @@ function getFreshStatEventsFromState(oldGs, newGs) {
 }
 
 function getTurnStartPreDrawMsgs(state) {
+  const events = getVisualEvents(state);
+  if (events.some(event => event.turnStartStage)) return events.filter(event => event.turnStartStage === 'turnStart').flatMap(event => event.msgs || []);
   const log = Array.isArray(state?.log) ? state.log : [];
   const turnStartLogs = Array.isArray(state?._turnStartLogs) ? state._turnStartLogs : [];
   if (!turnStartLogs.length) return [];
@@ -542,12 +551,12 @@ export function buildTurnStartPreDrawEffectQueue({
   );
   const preDrawBlockedSteps = getVisualEvents(newGs)
     .filter(event => event?.type === VISUAL_EVENT.GOD_POWER_BLOCKED)
-    .filter(event => (event?.msgs || []).some(msg => preDrawMsgs.includes(msg)))
+    .filter(event => event.turnStartStage ? event.turnStartStage === 'turnStart' : (event?.msgs || []).some(msg => preDrawMsgs.includes(msg)))
     .map(event => godPowerBlockedStepFromEvent(event, newGs));
   queue.push(...preDrawBlockedSteps);
   const slimePopSteps = getVisualEvents(newGs)
     .filter(event => event?.type === VISUAL_EVENT.TSG_SLIME_POP)
-    .filter(event => (event?.msgs || []).some(msg => preDrawMsgs.includes(msg)))
+    .filter(event => event.turnStartStage ? event.turnStartStage === 'turnStart' : (event?.msgs || []).some(msg => preDrawMsgs.includes(msg)))
     .map(tsgSlimePopStepFromEvent)
     .filter(Boolean);
   if (canonicalTurnStartStatEvents.length) {
@@ -613,17 +622,25 @@ export function buildTurnStartPreDrawEffectQueue({
     });
     queue.push(...(inspectionTransaction?.queue || []));
   }
+  const logEventIds = getVisualEvents(newGs).filter(event => (
+    event.type === VISUAL_EVENT.LOG_ONLY && event.turnStartStage === TURN_START_ANIMATION_STAGE.TURN_START
+  )).map(event => event.id);
+  if (logEventIds.length) queue.push(...(compileRuleVisualEventsToAnimTransaction(newGs, null, {
+    eventIds: logEventIds, consumedEventIds: consumedVisualEventIds,
+  })?.queue || []));
   return queue;
 }
 
 export function buildSkippedTurnReplayQueue(state, { buildQueue = compileFreshVisualEventQueue, bannersOnly = false } = {}) {
   const replays = Array.isArray(state?._skippedTurnReplays) ? state._skippedTurnReplays : [];
   return replays.flatMap(replay => {
+    const [bannerEvent, wakeEvent] = replay.logEvents || [];
     const turnBanner = {
       type: 'YOUR_TURN',
       turnStartStage: TURN_START_ANIMATION_STAGE.TURN_BANNER,
       name: localDisplayName(replay.playerIdx, replay.playerName || state?.players?.[replay.playerIdx]?.name || '???'),
-      msgs: replay.turnStartLogs || [],
+      ...(bannerEvent?.id ? { visualEventId: bannerEvent.id } : {}),
+      msgs: bannerEvent?.msgs || replay.turnStartLogs || [],
     };
     // A decision gate only needs the skipped player's visible turn boundary.
     // Replaying state patches or draw/effect steps can restore an already
@@ -658,11 +675,13 @@ export function buildSkippedTurnReplayQueue(state, { buildQueue = compileFreshVi
       ...effectQueue.flatMap(step => Array.isArray(step?.msgs) ? step.msgs : []),
     ]);
     const deltaLogs = preCthLog.slice((replay.beforeLog || []).length);
-    const remainingLogs = withoutLogLines(deltaLogs, consumedLogs);
+    const remainingLogs = wakeEvent?.msgs || withoutLogLines(deltaLogs, consumedLogs);
     const queue = [
       turnBanner,
       ...(!replay.restingSkip ? effectQueue : []),
-      statePatchStep({ players: preCthPlayers, log: preCthLog, msgs: remainingLogs }),
+      statePatchStep({ players: preCthPlayers, log: preCthLog, msgs: remainingLogs,
+        ...(wakeEvent?.id ? { visualEventId: wakeEvent.id } : {}),
+      }),
     ];
     if (cthReplay?.draws?.length) {
       const dreamLog = (cthReplay.drawLogs || []).find(msg => typeof msg === 'string' && msg.includes('梦访拉莱耶'));
@@ -739,6 +758,12 @@ export function buildTurnStartDrawReplayQueue({
     ...(timedOutDrawDiscardStep ? [timedOutDrawDiscardStep] : []),
     ...(Array.isArray(preTurnSteps) ? preTurnSteps.filter(Boolean) : []),
   ];
+  const boundaryLogIds = getVisualEvents(newGs).filter(event => (
+    event.type === VISUAL_EVENT.LOG_ONLY && event.turnStartStage === 'turnBoundary'
+  )).map(event => event.id);
+  if (boundaryLogIds.length) boundarySteps.push(...(compileRuleVisualEventsToAnimTransaction(newGs, null, {
+    eventIds: boundaryLogIds, consumedEventIds: consumedVisualEventIds,
+  })?.queue || []));
   const drawnCard = getTurnStartDrawnCard(newGs);
   if (!drawnCard) {
     if (newGs?._turnStartAbortedByDeath) {
@@ -793,18 +818,15 @@ export function buildTurnStartDrawReplayQueue({
         inspectionEvents: [],
       };
     }
-    const turnStartStageQueue = markTurnStartAnimationStage(
-      boundarySteps,
-      TURN_START_ANIMATION_STAGE.TURN_START,
-    );
+    const canonicalQueue = compileRuleVisualEventsToAnimTransaction(newGs, null, {
+      visualEventScope: 'turnStart', consumedEventIds: consumedVisualEventIds,
+    })?.queue || [];
+    const turnStartStageQueue = [...boundarySteps, ...canonicalQueue.filter(step => !boundaryLogIds.includes(step.visualEventId))];
     return {
       drawnCard: null,
       beforeDrawPlayers: newGs?.players || oldGs?.players || [],
       drawEffectQ: [],
-      stageQueues: {
-        [TURN_START_ANIMATION_STAGE.TURN_START]: turnStartStageQueue,
-        [TURN_START_ANIMATION_STAGE.DRAW]: [],
-      },
+      stageQueues: splitTurnStartAnimationStages(turnStartStageQueue),
       queue: turnStartStageQueue,
       startAnim: turnStartStageQueue[0] || null,
       startQueue: turnStartStageQueue.slice(1),
@@ -1014,11 +1036,12 @@ export function buildTurnStartDrawReplayQueue({
       cards: [drawnCard],
     })
     : null;
-  const drawFullHandSwapQ = buildFullHandSwapTransferQueue(
+  const hasCanonicalTurnEvents = getVisualEvents(newGs).some(event => event.turnStartStage);
+  const drawFullHandSwapQ = hasCanonicalTurnEvents ? [] : buildFullHandSwapTransferQueue(
     [...(newGs?._drawLogs || []), ...(newGs?._statLogs || [])],
     beforeDrawPlayers,
   );
-  const treasureDodgeDiceStep = buildTreasureDodgeDiceStepFromLogs(
+  const treasureDodgeDiceStep = hasCanonicalTurnEvents ? null : buildTreasureDodgeDiceStepFromLogs(
     [...(newGs?._drawLogs || []), ...(newGs?._statLogs || [])],
     drawerName,
   );
@@ -1409,6 +1432,7 @@ export function buildTurnStartDrawReplayQueue({
   const ownedEventIdsByDrawId = new Map();
   turnDrawEvents.forEach((event, eventIdx) => {
     const ids = [
+      ...(event?.effectVisualEventIds || []),
       ...(Array.isArray(event?.statVisualEventIds) ? event.statVisualEventIds : []),
       ...(Array.isArray(event?.godEncounter?.visualEventIds) ? event.godEncounter.visualEventIds : []),
     ];
@@ -1430,6 +1454,12 @@ export function buildTurnStartDrawReplayQueue({
       return true;
     });
   }
+  // Treasure dodge is resolved before applying the drawn card. Keep the rest
+  // of the canonical settlement order, especially SAN loss before inspection.
+  drawOwnedEffectGroups?.forEach(steps => {
+    const rank = step => step.type === 'DICE_ROLL' && step.diceMode === 'treasureDodge' ? 0 : 1;
+    steps.sort((a, b) => rank(a) - rank(b));
+  });
   // Sphinx's result event is owned by the draw that revealed the D4 trigger.
   // Keep the whole block beside that draw even when slime creates several draws
   // in one turn. Its dodge die belongs after the wrong-result reveal and before

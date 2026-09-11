@@ -13,9 +13,13 @@ export function authoritativeTurnStartQueueMeta(state) {
   const eventIds = (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
     .filter(event => event?.turnStartStage && event?.id)
     .map(event => event.id);
-  return eventIds.length
-    ? { ...AUTHORITATIVE_QUEUE_META, eventIds }
-    : AUTHORITATIVE_QUEUE_META;
+  // The completed turn-start segment must not import the previous action's
+  // retained target event when playback normalizes against an older snapshot.
+  return {
+    ...AUTHORITATIVE_QUEUE_META,
+    preserveQueueOrder: true,
+    ...(eventIds.length ? { eventIds } : {}),
+  };
 }
 
 export function strictActionQueueMeta(

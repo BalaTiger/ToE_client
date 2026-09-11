@@ -393,6 +393,7 @@ export function initGame(
     players, deck, discard: [], inspectionDeck, inspectionDiscard: [], currentTurn: -1, phase: 'DRAW_REVEAL', drawReveal: null, selectedCard: null, abilityData: {}, log: [`游戏开始。每人获得${zhCount(INITIAL_HAND_SIZE)}张初始手牌。`], gameOver: null, skillUsed: false, restUsed: false, multiplyUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner: null, geomagneticReversalActive: false, apophisNight: null, expansionKey: expansionPlan.expansionKey, deckExpansionKey: expansionPlan.deckExpansionKey, temporaryStarsCallReplacement, debugFixedRoleCounts, balancePatches: resolveBalancePatches(options.balancePatches), _turnKey: 0, _isMP: !!playerNames, turn: 0, turnDirection: 1, sealLooseningCount: 0, houndsOfTindalosActive: false, houndsOfTindalosTarget: null, houndsOfTindalosElapsed: 0, debugForceCard: targetCard, debugForceCardTarget
   };
   base.debugForceCardKeep = playerNames ? 'auto' : debugForceCardKeep;
+  base._initialLog = [...base.log];
   const initialTreasureWin = getInitialTreasureWin(players);
   if (initialTreasureWin) {
     for (const winnerIdx of [initialTreasureWin.winnerIdx, initialTreasureWin.winnerIdx2]) {

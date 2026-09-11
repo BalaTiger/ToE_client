@@ -46,6 +46,7 @@ import {
   createGodGiftDiscardEvent,
   createGodGiftKeepEvent,
   createLogOnlyVisualEvent,
+  createDiceResultVisualEvent,
   createOrderedSettlementEvents,
   createStatEventsEvent,
   createTsathogguaSlimeGrantEvent,
@@ -56,7 +57,7 @@ import { createRuleResolutionTransaction } from './ruleResolutionTransaction';
 import { advanceGodEncounter, formatGodEncounterProgress, getLatestGodEncounterProgress } from './balancePatches';
 import { TURN_START_EVENT, getTurnStartEvents } from './turnStartEvents';
 import { TURN_FLOW_STAGE } from './turnFlowStages';
-import { enterTurnBoundary, enterTurnFlowStage, normalizeTurnOpeningFlowState } from './turnFlowManager';
+import { bindTurnFlowEvents, enterTurnBoundary, enterTurnFlowStage, normalizeTurnOpeningFlowState } from './turnFlowManager';
 import {
   appendDecisionContinuation,
   createDecisionContinuation,
@@ -104,7 +105,12 @@ function appendGodChoiceContinuation(statePatch, baseState, abilityData) {
 
 function appendTurnDrawVisualEvents(events, draw) {
   const drawOrder = events.filter(event => event?.type === VISUAL_EVENT.DRAW_CARD).length;
-  const created = createTurnDrawVisualEvents({ ...draw, drawOrder });
+  const effectMsgs = new Set((draw.effectVisualEvents || []).flatMap(event => event.msgs || []));
+  const earlierEffects = new Set(events.flatMap(event => event.effectVisualEventIds || []));
+  const effectVisualEventIds = (draw.effectVisualEvents || [])
+    .filter(event => event.type !== VISUAL_EVENT.STAT_EVENTS && !earlierEffects.has(event.id))
+    .map(event => event.id);
+  const created = createTurnDrawVisualEvents({ ...draw, drawOrder, effectVisualEventIds, msgs: (draw.msgs || []).filter(msg => !effectMsgs.has(msg)) });
   events.push(...created);
   return created.find(event => event?.type === VISUAL_EVENT.DRAW_CARD) || null;
 }
@@ -1169,7 +1175,7 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
       P[ci],
       { moldyFoodRoll },
     );
-    const effectGs = moldyFoodRoll == null ? gs : { ...gs, _pendingMoldyFoodRoll: moldyFoodRoll };
+    let effectGs = moldyFoodRoll == null ? gs : { ...gs, _pendingMoldyFoodRoll: moldyFoodRoll };
     // Sphinx is the one zone card whose effect visually and semantically starts
     // after the trigger card has entered the hand. Keep it before applyFx so a
     // correctly guessed reward is appended after D4 in both rule and visual state.
@@ -1180,16 +1186,19 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
       P[ci].roleRevealed = true;
       const d1 = 1 + (Math.random() * 6 | 0);
       const dodgeSuccess = d1 >= 4;
+      // The roll belongs to this rule resolution, before the card's effects.
+      const dodgeLog = `${P[ci].name}（寻宝者）摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，掷出 ${d1} 点，${dodgeSuccess ? '成功规避负面效果！' : '未能规避，触发负面效果！'}`;
+      const dodgeEvent = createDiceResultVisualEvent({ mode: 'treasureDodge', actorIdx: ci, actorName: P[ci].name, d1, msgs: [dodgeLog] });
+      effectGs = { ...effectGs, _visualEvents: [...(effectGs._visualEvents || []), dodgeEvent] };
       if (dodgeSuccess) {
         if (keepBeforeEffect) P[ci].hand.push(drawnCard);
         const res = applyFx(drawnCard, ci, null, P, D, Disc, effectGs, true, [], isAI);
         P = res.P; D = res.D; Disc = res.Disc;
         if (!keepBeforeEffect) P[ci].hand.push(drawnCard);
-        const dodgeLog = `${P[ci].name}（寻宝者）摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，掷出 ${d1} 点，成功规避负面效果！`;
         const effectMsgs = drawnCard.type === 'albinoCreature' ? [...res.msgs, dodgeLog] : [dodgeLog, ...res.msgs];
         return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs, statePatch: res.statePatch, kept: true, needsDecision: false, _aiDrawnCard: drawnCard };
       }
-      failedDodgeLog = `${P[ci].name}（寻宝者）摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，掷出 ${d1} 点，未能规避，触发负面效果！`;
+      failedDodgeLog = dodgeLog;
     }
 
     // Apply effect for AI
@@ -1421,7 +1430,9 @@ function turnStartEvent_NyaBorrow(P, next, L, gs, visualEvents = []) {
       if (aiRole === ROLE_CULTIST) borrow = deadPlayers.find(p => p.role === ROLE_HUNTER) || deadPlayers[0];
       const handLimit = 4 - (GOD_DEFS.NYA.levels[P[next].godLevel - 1].handPenalty);
       P[next] = { ...P[next], _nyaBorrow: borrow.role, _nyaHandLimit: handLimit };
-      L.push(`${P[next].name}（NYA Lv.${P[next].godLevel}）千人千貌：本回合借用 [${borrow.role}]`);
+      const msg = `${P[next].name}（NYA Lv.${P[next].godLevel}）千人千貌：本回合借用 [${borrow.role}]`;
+      L.push(msg);
+      visualEvents.push(createLogOnlyVisualEvent({ msgs: [msg], turnStartStage: 'turnStart' }));
     }
   }
   return { shouldEnterPhase: false };
@@ -1528,7 +1539,7 @@ function consumeTsathogguaSlimeBeforeDraw(P, ownerIdx, slime, L, visualEvents = 
   };
 }
 
-function consumeSkipNextDraw(P, playerIdx, L, { local = false } = {}) {
+function consumeSkipNextDraw(P, playerIdx, L, { local = false, visualEvents = [] } = {}) {
   const player = P?.[playerIdx];
   if (!player?.skipNextDraw) return null;
   const reason = player.skipNextDrawReason || '扭伤';
@@ -1538,6 +1549,7 @@ function consumeSkipNextDraw(P, playerIdx, L, { local = false } = {}) {
     ? `你因${reason}而无法摸牌`
     : `${player.name} 因${reason}而无法摸牌`;
   L.push(msg);
+  visualEvents.push(createLogOnlyVisualEvent({ msgs: [msg], turnStartStage: 'draw' }));
   return { reason, msg };
 }
 
@@ -1704,6 +1716,7 @@ export function continueTurnStartAfterDamageReaction(state) {
       deck: D,
       discard: Disc,
       log: [...L, nya.logMsg],
+      _visualEvents: [...(state._visualEvents || []), createLogOnlyVisualEvent({ msgs: [nya.logMsg], turnStartStage: 'turnStart' })],
       phase: 'NYA_BORROW',
       abilityData: {},
       _statLogs: statLogs,
@@ -1840,10 +1853,15 @@ function resolveNextTurnState(gs, opts = {}) {
     turnStartLogs = [`── ${P[next].name} 的回合开始 ──`];
     L.push(...turnStartLogs);
     P[next].isResting = false;
-    L.push(`${P[next].name} 从休息中醒来，跳过本回合`);
+    const wakeMsg = `${P[next].name} 从休息中醒来，跳过本回合`;
+    L.push(wakeMsg);
     // Skip the turn: advance past player to the next living player
     // Hand limit is NOT enforced here — excess cards are kept until the next normal turn ends
     const skippedTurnReplay = {
+      logEvents: bindTurnFlowEvents({ currentTurn: next, _turnKey: newTurnKey }, [
+        createLogOnlyVisualEvent({ msgs: turnStartLogs, turnStartStage: 'turnBanner' }),
+        createLogOnlyVisualEvent({ msgs: [wakeMsg], turnStartStage: 'turnBoundary' }),
+      ]),
       restingSkip: true,
       playerIdx: next,
       playerName: P[next].name,
@@ -1875,7 +1893,9 @@ function resolveNextTurnState(gs, opts = {}) {
   }
   if (globalOnlySwapOwner === next) {
     globalOnlySwapOwner = null;
-    L.push('"全员技能变为掉包"的效果结束了');
+    const msg = '"全员技能变为掉包"的效果结束了';
+    L.push(msg);
+    visualEvents.push(createLogOnlyVisualEvent({ msgs: [msg], turnStartStage: 'turnBoundary' }));
   }
   turnStartLogs = [`── ${P[next].name} 的回合开始 ──`];
   L.push(...turnStartLogs);
@@ -1976,11 +1996,12 @@ function resolveNextTurnState(gs, opts = {}) {
       ? turnStartEvent_NyaBorrow(P, 0, L, gs, visualEvents)
       : { shouldEnterPhase: false };
     if (nya.shouldEnterPhase) {
+      visualEvents.push(createLogOnlyVisualEvent({ msgs: [nya.logMsg], turnStartStage: 'turnStart' }));
       return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: [...L, nya.logMsg], currentTurn: 0, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'NYA_BORROW', abilityData: {}, drawReveal: null, selectedCard: null, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: copyPlayers(P) };
     }
     gs = enterTurnFlowStage(gs, TURN_FLOW_STAGE.DRAW);
     // 检查是否需要跳过摸牌
-    if (consumeSkipNextDraw(P, 0, L, { local: true })) {
+    if (consumeSkipNextDraw(P, 0, L, { local: true, visualEvents })) {
       const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, gameOver: win, turn: newTurn, _turnKey: newTurnKey, debugForceCard: null, debugForceCardTarget: null, ...buildTurnOpeningVisualMeta({ drawAborted: true }) };
       return buildSkippedDrawActionState({
         gs,
@@ -2040,6 +2061,7 @@ function resolveNextTurnState(gs, opts = {}) {
           playerIdx: 0,
           playerName: P[0].name,
           card: rSlime.drawnCard,
+          effectVisualEvents: rSlime.statePatch?._visualEvents,
           sourcePile: rSlime.sourcePile,
           msgs: [msg],
           reshuffleLog: rSlime.reshuffleLog,
@@ -2105,6 +2127,7 @@ function resolveNextTurnState(gs, opts = {}) {
         playerIdx: 0,
         playerName: P[0].name,
         card: res.drawnCard,
+          effectVisualEvents: res.statePatch?._visualEvents,
         sourcePile: res.sourcePile,
         msgs: [msg],
         reshuffleLog: res.reshuffleLog,
@@ -2229,11 +2252,12 @@ function resolveNextTurnState(gs, opts = {}) {
       ? turnStartEvent_NyaBorrow(P, next, L, gs, visualEvents)
       : { shouldEnterPhase: false };
     if (nyaMp.shouldEnterPhase) {
+      visualEvents.push(createLogOnlyVisualEvent({ msgs: [nyaMp.logMsg], turnStartStage: 'turnStart' }));
       return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: [...L, nyaMp.logMsg], currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'NYA_BORROW', abilityData: {}, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: copyPlayers(P) };
     }
     gs = enterTurnFlowStage(gs, TURN_FLOW_STAGE.DRAW);
     // 检查是否需要跳过摸牌
-    if (consumeSkipNextDraw(P, next, L)) {
+    if (consumeSkipNextDraw(P, next, L, { visualEvents })) {
       const win = checkWin(P, true); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: win, ...buildTurnOpeningVisualMeta({ drawAborted: true }) };
       return buildSkippedDrawActionState({
         gs,
@@ -2287,6 +2311,7 @@ function resolveNextTurnState(gs, opts = {}) {
           playerIdx: next,
           playerName: P[next].name,
           card: rSlime.drawnCard,
+          effectVisualEvents: rSlime.statePatch?._visualEvents,
           sourcePile: rSlime.sourcePile,
           msgs: [msg],
           reshuffleLog: rSlime.reshuffleLog,
@@ -2352,6 +2377,7 @@ function resolveNextTurnState(gs, opts = {}) {
         playerIdx: next,
         playerName: P[next].name,
         card: res.drawnCard,
+          effectVisualEvents: res.statePatch?._visualEvents,
         sourcePile: res.sourcePile,
         msgs: [msg],
         reshuffleLog: res.reshuffleLog,
@@ -2396,7 +2422,7 @@ function resolveNextTurnState(gs, opts = {}) {
     }
     gs = enterTurnFlowStage(gs, TURN_FLOW_STAGE.DRAW);
     // 检查是否需要跳过摸牌
-    if (consumeSkipNextDraw(P, next, L)) {
+    if (consumeSkipNextDraw(P, next, L, { visualEvents })) {
       const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: win, debugForceCard: null, debugForceCardTarget: null, ...buildTurnOpeningVisualMeta({ drawAborted: true }) };
       return buildSkippedDrawActionState({
         gs,
@@ -2463,6 +2489,7 @@ function resolveNextTurnState(gs, opts = {}) {
           playerIdx: next,
           playerName: P[next].name,
           card: rSlime.drawnCard,
+          effectVisualEvents: rSlime.statePatch?._visualEvents,
           sourcePile: rSlime.sourcePile,
           msgs: [msg],
           reshuffleLog: rSlime.reshuffleLog,
@@ -2561,6 +2588,7 @@ function resolveNextTurnState(gs, opts = {}) {
         playerIdx: next,
         playerName: P[next].name,
         card: res.drawnCard,
+          effectVisualEvents: res.statePatch?._visualEvents,
         sourcePile: res.sourcePile,
         msgs: eventMsgs.length ? eventMsgs : drawLogs.slice(-1),
         reshuffleLog: res.reshuffleLog,
@@ -2866,7 +2894,7 @@ export function startNextTurn(gs, opts = {}) {
         : event
     ));
   }
-  visualEvents = markTerminalVisualEventBoundary(visualEvents, nextState);
+  visualEvents = bindTurnFlowEvents(nextState, markTerminalVisualEventBoundary(visualEvents, nextState));
   const finalizedState = {
     ...nextState,
     _carryGodPowerBlockedEvents: null,

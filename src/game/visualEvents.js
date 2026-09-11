@@ -2,6 +2,7 @@ import { cardLogText } from './coreUtils';
 import { localDisplayName } from './rotateState';
 import { statEventsToAnimQueue } from './statEvents';
 import { cardIdentity } from './cardIdentity';
+import { createVisualLogEntries } from './visualEventLogs';
 
 export const VISUAL_EVENT = {
   TIMED_OUT_DRAW_DISCARD: 'timedOutDrawDiscard',
@@ -40,16 +41,34 @@ export const VISUAL_EVENT = {
   VRITRA_IMMORTAL_REVEAL: 'vritraImmortalReveal',
 };
 
-// Audit only: playback never derives events from state.log.
+// Audit only: pass one ordered transaction and its rule-log delta. This
+// reports omissions, multiplicity and order; it never changes playback.
 export function auditVisualEventLogCoverage(events = [], log = []) {
-  const source = Array.isArray(events) ? events : [];
-  const entries = Array.isArray(log) ? log : [];
-  return source.flatMap(event => {
-    if (!event || event.logExcluded === true) return [];
-    return (Array.isArray(event.msgs) ? event.msgs : []).filter(Boolean).flatMap(msg => (
-      entries.includes(msg) ? [] : [{ code: 'VISUAL_EVENT_LOG_MISSING', eventId: event.id || null, eventType: event.type, msg }]
-    ));
+  const lines = Array.isArray(log) ? log : [];
+  const claimed = new Set();
+  const seenEntries = new Set();
+  let cursor = -1;
+  const issues = [];
+  (Array.isArray(events) ? events : []).forEach(event => {
+    if (!event || event.logExcluded === true) return;
+    const entries = event.logEntries || createVisualLogEntries(event.id, event.msgs);
+    entries.forEach(entry => {
+      if (seenEntries.has(entry.id)) return;
+      seenEntries.add(entry.id);
+      const index = lines.findIndex((line, i) => !claimed.has(i) && line === entry.text);
+      if (index < 0) {
+        issues.push({ code: 'VISUAL_EVENT_LOG_MISSING', eventId: event.id || null, msg: entry.text });
+        return;
+      }
+      claimed.add(index);
+      if (index < cursor) issues.push({ code: 'VISUAL_EVENT_LOG_OUT_OF_ORDER', eventId: event.id || null, msg: entry.text });
+      cursor = Math.max(cursor, index);
+    });
   });
+  lines.forEach((msg, index) => {
+    if (!claimed.has(index)) issues.push({ code: 'RULE_LOG_WITHOUT_VISUAL_EVENT', index, msg });
+  });
+  return issues;
 }
 
 export function createLogOnlyVisualEvent({
@@ -114,11 +133,13 @@ function withVisualEventMeta(event, scope = 'action', generateUniqueId = true) {
     ...event,
     scope: event.scope || scope,
   };
+  const id = event.id || (generateUniqueId
+    ? `${event.type}:${visualEventInstanceId}:${++visualEventSeq}`
+    : makeVisualEventId(scoped));
   return {
     ...scoped,
-    id: event.id || (generateUniqueId
-      ? `${event.type}:${visualEventInstanceId}:${++visualEventSeq}`
-      : makeVisualEventId(scoped)),
+    id,
+    ...(event.msgs?.length ? { logEntries: createVisualLogEntries(id, event.msgs) } : {}),
   };
 }
 
@@ -193,6 +214,7 @@ export function createDrawCardEvent({
   discardAfter = null,
   playersAfterResolution = null,
   statEventSeqs = [],
+  effectVisualEventIds = [],
 } = {}) {
   if (!card) return null;
   return withVisualEventMeta({
@@ -200,6 +222,7 @@ export function createDrawCardEvent({
     turnStartStage: 'draw',
     turnStartStageOrder: drawOrder * 2 + 1,
     drawOrder,
+    ...(effectVisualEventIds.length ? { effectVisualEventIds } : {}),
     ...(transactionId ? { transactionId } : {}),
     playerIdx,
     playerName,
@@ -731,6 +754,7 @@ export function buildDiceResultSteps(event = {}) {
     {
       type: 'DICE_ROLL',
       diceMode: event.mode,
+      ...(event.mode === 'treasureDodge' ? { dodgeSuccess: Number(event.d1) >= 4 } : {}),
       d1: Number(event.d1),
       d2: Number(event.d2 ?? 0),
       heal: Number(event.heal ?? 0),
@@ -1446,7 +1470,7 @@ export function buildFreshStatVisualEvents(state, previousStatSeq = 0) {
     event?.seq != null ? !ownedStatSeqs.has(event.seq) : !ownedStatRefs.has(event)
   ));
   const statLogs = Array.isArray(state?._statLogs) ? state._statLogs : [];
-  const msgsFor = (events, otherEvents) => {
+  const msgsFor = events => {
     const hints = [...new Set(events.map(event => event?.logHint).filter(Boolean))];
     const hintSet = new Set(hints);
     // Canonical stat events own their log hints. Older turn-start paths did
@@ -1462,12 +1486,12 @@ export function buildFreshStatVisualEvents(state, previousStatSeq = 0) {
   return [
     createStatEventsEvent({
       statEvents: preDrawEvents,
-      msgs: msgsFor(preDrawEvents, drawEvents),
+      msgs: msgsFor(preDrawEvents),
       turnStartStage: 'turnStart',
     }),
     createStatEventsEvent({
       statEvents: drawEvents,
-      msgs: msgsFor(drawEvents, preDrawEvents),
+      msgs: msgsFor(drawEvents),
       turnStartStage: 'draw',
     }),
   ].filter(Boolean);

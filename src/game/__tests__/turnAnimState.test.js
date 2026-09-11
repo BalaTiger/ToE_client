@@ -2319,6 +2319,9 @@ describe('buildTurnStartDrawReplayQueue', () => {
       _moldyFoodDiceSeq: 1,
       _moldyFoodDiceRoll: { d1: 1, isEven: false, actorIdx: 1, seq: 1, negativeAvoided: true },
       _visualEvents: [{
+        ...createDiceResultVisualEvent({ mode: 'treasureDodge', actorIdx: 1, actorName: '贝拉', d1: 5 }),
+        turnStartStage: 'draw',
+      }, {
         ...createDiceResultVisualEvent({
           mode: 'moldyFood',
           actorIdx: 1,

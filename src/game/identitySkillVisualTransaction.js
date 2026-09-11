@@ -1,4 +1,5 @@
 import { createRuleResolutionTransaction } from './ruleResolutionTransaction';
+import { bindTurnFlowEvents } from './turnFlowManager';
 import {
   compileFreshVisualEventQueue,
   compileRuleVisualEventsToAnimTransaction,
@@ -52,7 +53,7 @@ export function appendIdentitySkillEvents(state, events, {
     id: resolvedTransactionId,
     phase,
     barrier,
-    events: ownedEvents.map((event, index) => decorateEvent(event, index)),
+    events: bindTurnFlowEvents(state, ownedEvents.map((event, index) => decorateEvent(event, index))),
   });
   const ownedIds = new Set(transaction.events.map(event => event?.id).filter(Boolean));
   return {
