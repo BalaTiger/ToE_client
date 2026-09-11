@@ -738,7 +738,7 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
           playersAfter: event.playersAfter || state?.players,
           zhuLightBefore: event.zhuLightBefore || previousState?.zhuLight || null,
           zhuLightAfter: event.zhuLightAfter || state?.zhuLight || null,
-          ...(event.card?.isGod ? { encounterQueue, acceptanceQueue } : {}),
+          ...(event.card?.isGod ? { encounterQueue, acceptanceQueue, encounterMsgs:event.encounterMsgs } : {}),
         },
       );
     }

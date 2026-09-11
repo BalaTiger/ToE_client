@@ -313,7 +313,6 @@ import { getDecisionContext } from './game/decisionContext';
 import {
   splitAnimBoundLogs,
   bindAnimLogChunks,
-  extractSkillLogs,
   prepareAnimQueueLogs,
 } from "./game/animLogs";
 import {
@@ -790,6 +789,9 @@ export default function Game(){
   const [isDisconnected,setIsDisconnected]=useState(false);
   const [exitMatchConfirm,setExitMatchConfirm]=useState(null);
   function resetDisconnectedToStart(){
+    clearMultiplayerReplayState();
+    endTurnSeqRef.current=null;
+    latestGsRef.current=null;
     setIsDisconnected(false);
     closeRoomModal();
     setOnlineOptionsModal(false);
@@ -805,6 +807,9 @@ export default function Game(){
     setGs(null);
   }
   function leaveMultiplayerMatchToStart(){
+    clearMultiplayerReplayState();
+    endTurnSeqRef.current=null;
+    latestGsRef.current=null;
     setExitMatchConfirm(null);
     setShowEmojiPicker(false);
     setShowFullLog(false);
@@ -1151,7 +1156,7 @@ export default function Game(){
     setAnimExiting,
     animQueueRef,
     pendingGsRef,
-    animCallbackRef,
+    resetAnimationQueue,
     playAnimationTransaction,
   } = useAnimationQueue({
     gs,
@@ -1539,17 +1544,13 @@ export default function Game(){
   });
 
   const clearBattleAnimationState=useCallback(()=>{
-    animQueueRef.current=[];
-    pendingGsRef.current=null;
-    animCallbackRef.current=null;
-    setAnimExiting(false);
-    setAnim(null);
+    resetAnimationQueue();
     clearSkillAnimations();
     clearCardTransferAnimations();
     clearDamageAnimations();
     setEarthquakeVisualPlayers(null);
     visualStateLocks.clear({turnHighlight:true,players:true,zhuLight:true,hiddenZhuCardId:true});
-  },[animQueueRef,pendingGsRef,animCallbackRef,setAnim,setAnimExiting,clearSkillAnimations,clearCardTransferAnimations,clearDamageAnimations,visualStateLocks]);
+  },[resetAnimationQueue,clearSkillAnimations,clearCardTransferAnimations,clearDamageAnimations,visualStateLocks]);
 
   const clearMultiplayerReplayState=useCallback(()=>{
     clearBattleAnimationState();
@@ -3662,8 +3663,9 @@ export default function Game(){
   useEffect(()=>{
     if(!gs?._mpAutoDiscard)return;
     setGs(p=>p?{...p,_mpAutoDiscard:undefined}:p);
+    if(!isMultiplayer||gs.gameOver||gs.phase!=='DISCARD_PHASE'||!isLocalCurrentTurn(gs))return;
     autoDiscardRef.current?.();
-  },[gs?._mpAutoDiscard]);
+  },[gs,isMultiplayer]);
 
   useEffect(()=>{
     if(!gs||!isMobile){
@@ -5592,6 +5594,7 @@ export default function Game(){
     const dr=gs.drawReveal;if(!dr?.card)return;
     const drawerIdx=dr.drawerIdx??0;
     const who=localDisplayName(drawerIdx,(dr.drawerName||gs.players[drawerIdx]?.name||'该角色'));
+    const drawerName=gs.players[drawerIdx]?.name||dr.drawerName||'该角色';
     const discardCard=revealBlindDrawCard(dr.card);
     let P=copyPlayers(gs.players);
     let nextDeck=[...gs.deck];
@@ -5609,8 +5612,8 @@ export default function Game(){
     // 衍生牌在规则上销毁、不进入弃牌堆；视觉暂时复用标准弃牌动画，
     // 以后可在同一队列位置替换为“飞行途中分解消散”的专属动画。
     const discardLog=destroyedDerived
-      ?`${who} 的衍生牌被销毁`
-      :`${who} 弃置了 ${cardLogText(discardCard,{alwaysShowName:true})}`;
+      ?`${drawerName} 的衍生牌被销毁`
+      :`${drawerName} 弃置了 ${cardLogText(discardCard,{alwaysShowName:true})}`;
     let nextLog=[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),discardLog];
     let balanceDecision=null;
     let balanceStatPatch={};
@@ -5716,7 +5719,7 @@ export default function Game(){
     }
     const targetPlayer=P[ti];
     // 如果目标玩家手牌公开，让玩家选择一张牌
-    setGsWithApophisTargetAnim({...gs,players:P,phase:targetPlayer.revealHand?'SWAP_SELECT_TARGET_CARD':'SWAP_STEAL_CARD',
+    setGsWithApophisTargetAnim({...gs,players:P,deck:D,discard:Disc,phase:targetPlayer.revealHand?'SWAP_SELECT_TARGET_CARD':'SWAP_STEAL_CARD',
       drawReveal:null,
       abilityData:{swapTi:ti,preSkillRevealed:gs.abilityData?.preSkillRevealed},
       log:[...L,`你${gs.globalOnlySwapOwner!==null?'':'（寻宝者）'}对 ${gs.players[ti].name} 【掉包】，请选择要抽取的牌`],
@@ -6033,7 +6036,15 @@ export default function Game(){
       ...(transaction?.eventIds?.length?{eventIds:transaction.eventIds}:{}),
       preserveQueueOrder:true,
     };
-    if(queue.length)triggerAnimQueue(queue,nextState,undefined,transactionMeta);
+    if(queue.length){
+      // Target selection is its own decision stage. Publish before local
+      // playback consumes its events, including private swap choice phases.
+      broadcastAnimTransaction(nextState,queue,{
+        context:'apophisTarget',barrier:nextState.gameOver?'gameOver':'decision',
+        beforePlayers:gs.players,beforeDiscard:gs.discard,
+      });
+      triggerAnimQueue(queue,nextState,undefined,transactionMeta);
+    }
     else setGs(nextState);
   }
 
@@ -6631,33 +6642,34 @@ export default function Game(){
     P=night.players;D=night.deck;Disc=night.discard;baseLog=night.log;ti=night.targetIdx;
     const sourcePlayer=P[damageLinkSource];
     const targetPlayer=P[ti];
+    const playersBeforeLink=copyPlayers(P);
     // 建立链条：在两名玩家之间建立伤害传导关系
     // 使用damageLink字段存储链条信息：{partner: 对方索引, active: 是否激活, expiryOwner: 发起者的下回合开始时过期}
     addDamageLink(P,damageLinkSource,ti,{expiryOwner:damageLinkSource});
-    const L=[...baseLog,`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.name} 间架起链条，一方受到HP伤害时另一方受等量伤害`];
+    const damageLinkLog=`【两人一绳】${sourcePlayer.name} 与 ${targetPlayer.name} 间架起救生索，任意一方受到HP伤害时绳索断裂，双方各失去3HP；若到${sourcePlayer.name}下个回合绳索未断裂，双方各回复4HP`;
+    const L=[...baseLog,damageLinkLog];
     const damageLinkEvent=createCardMoveVisualEvent({
       from:{zone:'playerArea',playerIdx:damageLinkSource},
       to:{zone:'hand',playerIdx:ti},
       count:1,
       effect:'damageLink',
       durationMs:1900,
-      playersBefore:gs.players,
+      playersBefore:playersBeforeLink,
       playersAfter:P,
-      msgs:L.slice(-1),
+      msgs:[damageLinkLog],
     });
     const targetContinuationGs=buildTargetContinuationGs({players:P,deck:D,discard:Disc,log:L});
+    const nightPatch=apophisNightPatch(night);
     const nextGs={
       ...targetContinuationGs,
-      ...apophisNightPatch(night),
+      ...nightPatch,
       _visualEvents:[
         ...(targetContinuationGs._visualEvents||[]),
+        ...(nightPatch._visualEvents||[]),
         ...(damageLinkEvent?[damageLinkEvent]:[]),
       ],
     };
-    if(!gs.abilityData?.fromRest)visualStateLocks.lock({players:gs.players,zhuLight:gs.zhuLight||null});
-    const damageLinkQueue=gs.abilityData?.fromRest
-      ?[]
-      :[cardTransferStep({fromPid:damageLinkSource,toPid:ti,effect:'damageLink',durationMs:1900,msgs:L.slice(-1)})];
+    const damageLinkQueue=compileFreshVisualEventQueue(gs,nextGs);
     // The choosing client starts this queue immediately. Publish the exact same
     // queue first so remote viewers do not have to wait for the post-animation
     // state update before starting the rope effect.
@@ -6666,7 +6678,7 @@ export default function Game(){
       broadcastAnimTransaction(nextGs,syncedQueue,{
         context:'damageLink',
         barrier:'continuation',
-        msgs:L.slice(-1),
+        msgs:[damageLinkLog],
         beforePlayers:gs.players,
         beforeDiscard:gs.discard,
       });
@@ -8731,7 +8743,8 @@ export default function Game(){
     P=night.players;D=night.deck;Disc=night.discard;baseLog=night.log;ti=night.targetIdx;
     let inspectionMeta=makeInspectionMeta(gs);
     P[0].roleRevealed=true;P[0].hand.splice(bewitchIdx,1);
-    const L=[...baseLog,`你对 ${P[ti].name} 【蛊惑】，赠予 ${cardLogText(bewitchCard,{alwaysShowName:true})}`];
+    const bewitchMsg=`${P[0].name}对 ${P[ti].name} 【蛊惑】，赠予 ${cardLogText(bewitchCard,{alwaysShowName:true})}`;
+    const L=[...baseLog,bewitchMsg];
     // God card gifted via bewitch: forced convert if different god, then AI resolves for target
     if(bewitchCard.isGod){
       const encounterProgress=advanceGodEncounter(P[ti],gs);
@@ -8770,7 +8783,7 @@ export default function Game(){
         :deferredShu
           ?{...(gres.statePatch?.abilityData||{}),_turnOwner:gs.currentTurn}
           :{};
-      const bewitchMsgs=extractSkillLogs(L.slice(gs.log.length),'bewitch');
+      const bewitchMsgs=[bewitchMsg];
       const oldVisualIds=new Set((gs._visualEvents||[]).map(event=>event?.id).filter(Boolean));
       const oldStatKeys=new Set((gs._statEvents||[]).map(event=>JSON.stringify(event)));
       const encounterVisualEvents=(inspectionMeta?._visualEvents||[])
@@ -8790,6 +8803,7 @@ export default function Game(){
         targetName:P[ti]?.name,
         card:bewitchCard,
         msgs:bewitchMsgs,
+        encounterMsgs:[effectMsg],
         playersBefore:gs.players,
         playersAfter:P,
         discardBefore:gs.discard,
@@ -8838,7 +8852,7 @@ export default function Game(){
       }:{},
       turnOwner:gs.currentTurn,
     });
-    const bewitchMsgs=extractSkillLogs(L.slice(gs.log.length),'bewitch');
+    const bewitchMsgs=[bewitchMsg];
     const oldVisualIds=new Set((gs._visualEvents||[]).map(event=>event?.id).filter(Boolean));
     const settlementEvents=(res.statePatch?._visualEvents||[])
       .filter(event=>event&&(!event.id||!oldVisualIds.has(event.id)));
@@ -8902,6 +8916,7 @@ export default function Game(){
     let previousFaithExit=null;
     let faithEstablished=null;
     let godGiftKeepEvent=null;
+    let statusMsg=null;
     const abandonedFaithExits=[];
     let presentAfterInspectionSeq=null;
     const fromEndTurnReplay=!!gs.abilityData?.fromEndTurnReplay;
@@ -8937,15 +8952,16 @@ export default function Game(){
         P[0].godLevel=Math.min(3,(P[0].godLevel||0)+1);
         P[0].godZone.push({...godCard});
         faithEstablished={playersBefore:playersBeforeFaithEstablished,playersAfter:copyPlayers(P)};
-        L.push(`邪神之力升至Lv.${P[0].godLevel}`);
+        statusMsg=`${P[0].name} 邪神之力升至Lv.${P[0].godLevel}`;
       } else if(!faithEstablished) {
         const playersBeforeFaithEstablished=copyPlayers(P);
         P[0].godName=gk;P[0].godLevel=1;P[0].godZone=[{...godCard}];
         faithEstablished={playersBefore:playersBeforeFaithEstablished,playersAfter:copyPlayers(P)};
-        L.push(`你信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
+        statusMsg=`${P[0].name}信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`;
       } else {
-        L.push(`你信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
+        statusMsg=`${P[0].name}信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`;
       }
+      L.push(statusMsg);
       P[0].hasBelievedGod=true;
       if(['APO','ZHU','SHU'].includes(gk)&&hasGodPowerImmunity(P[0])){
         L.push(buildGodPowerBlockedLog(P[0]));
@@ -9016,7 +9032,7 @@ export default function Game(){
       faithEstablished,
       previousFaithExit,
       abandonedFollowers:abandonedFaithExits,
-      msgs:L.slice(gs.log.length),
+      statusMsg,
       presentAfterInspectionSeq,
     });
     const faithResolutionEvents=[godStatusEvent,apophisEclipseEvent,godGiftKeepEvent].filter(Boolean);
@@ -9772,11 +9788,9 @@ export default function Game(){
     setIsSoloPaused(false);
     roseThornPrevRef.current=null;
     consumedVisualEventIdsRef.current=new Set();
-    animQueueRef.current=[];
-    pendingGsRef.current=null;
-    setAnim(null);
-    setAnimExiting(false);
-    clearCardTransferAnimations();
+    clearMultiplayerReplayState();
+    endTurnSeqRef.current=null;
+    latestGsRef.current=null;
     setPendingRoleSelection(null);
     setGs(null);
   }
@@ -10101,15 +10115,21 @@ export default function Game(){
         label:'选择【黑暗子嗣】目标'
       });
       P=night.players;D=night.deck;Disc=night.discard;baseLog=night.log;pi=night.targetIdx;
+      const playersBeforeGrant=copyPlayers(P);
       const goatCards=Array.from({length:count},()=>createBlackGoatYoungCard());
       P[pi].hand.push(...goatCards);
       const targetName=P[pi].name;
       const logMsg=`【黑暗子嗣】${targetName==='你'?'你':targetName} 获得${count}张黑山羊幼仔`;
       const L=[...baseLog,logMsg];
+      const grantEvent=createCardMoveVisualEvent({
+        from:{zone:'godPower',playerIdx:gs.abilityData?.shuChooserIdx??0},
+        to:{zone:'hand',playerIdx:pi},cards:goatCards,effect:'blackGoat',durationMs:1500,
+        playersBefore:playersBeforeGrant,playersAfter:P,msgs:[logMsg],
+      });
       const proliferatingZPatch=appendPublicCardGainTriggers(gs,P,pi,goatCards);
       const newGs={...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:turnOwner,phase:nextPhase,abilityData:{},...apophisNightPatch(night),...proliferatingZPatch};
-      const baseQueue=compileFreshVisualEventQueue(gs,newGs);
-      const queue=baseQueue.length?[...baseQueue,statePatchStep({players:P})]:[];
+      newGs._visualEvents=[...(newGs._visualEvents||[]),grantEvent];
+      const queue=compileFreshVisualEventQueue(gs,newGs);
       if(queue.length){
         setGs(p=>p?{...p,currentTurn:turnOwner,phase:nextPhase,abilityData:{}}:p);
         triggerSyncedAnimTransaction(queue,newGs,{context:'shuOffspring',barrier:'continuation',msgs:[logMsg],beforePlayers:gs.players,beforeDiscard:gs.discard});
@@ -10132,7 +10152,7 @@ export default function Game(){
     let faithEstablished=null;
     const abandonedFaithExits=[];
     let presentAfterInspectionSeq=null;
-    const worshipMsg=buildWorshipFromHandLog('你',godCard,isUpgrade?{upgrade:true,level:P[0].godLevel+1}:{});
+    const worshipMsg=buildWorshipFromHandLog(P[0].name,godCard,isUpgrade?{upgrade:true,level:P[0].godLevel+1}:{});
     L.push(worshipMsg);
     if(isUpgrade){
       const playersBeforeFaithEstablished=copyPlayers(P);

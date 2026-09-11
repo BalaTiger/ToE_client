@@ -250,42 +250,34 @@ function rotateCardEffectVisualEvent(event, rotateIndex, myIndex) {
 
 function rotateAnimQueueStep(step, rotateIndex, myIndex) {
   if (!step) return step;
+  const rotatedIndices = rotateIndexedFields(step, ['turnOwner', 'targetPid', 'targetIdx', 'sourceIdx'], rotateIndex);
+  const rotatedArrays = rotateIndexedArrayFields(rotatedIndices, ['hitIndices'], rotateIndex);
+  // Missing fields are meaningful: stat authority and visual patches use
+  // property presence. Rotation must not invent undefined stat/players writes.
+  const rotatedPlayers = rotatePlayerSnapshotFields(rotatedArrays, ['players', 'beforePlayers', 'targetStats'], myIndex);
   return {
-    ...step,
-    targetPid: step.targetPid != null ? rotateIndex(step.targetPid) : step.targetPid,
-    targetIdx: step.targetIdx != null ? rotateIndex(step.targetIdx) : step.targetIdx,
-    sourceIdx: step.sourceIdx != null ? rotateIndex(step.sourceIdx) : step.sourceIdx,
-    fromPid: step.fromPid != null && step.fromPid >= 0 ? rotateIndex(step.fromPid) : step.fromPid,
-    toPid: step.toPid != null && step.toPid >= 0 ? rotateIndex(step.toPid) : step.toPid,
-    hitIndices: Array.isArray(step.hitIndices) ? step.hitIndices.map(rotateIndex) : step.hitIndices,
-    players: rotatePlayersArray(step.players, myIndex),
-    beforePlayers: rotatePlayersArray(step.beforePlayers, myIndex),
-    targetStats: rotatePlayersArray(step.targetStats, myIndex),
-    statEvents: rotateStatEvents(step.statEvents, rotateIndex, myIndex),
-    statPresentation: step.statPresentation
-      ? {
+    ...rotatedPlayers,
+    ...(step.fromPid != null && step.fromPid >= 0 ? { fromPid: rotateIndex(step.fromPid) } : {}),
+    ...(step.toPid != null && step.toPid >= 0 ? { toPid: rotateIndex(step.toPid) } : {}),
+    ...(Array.isArray(step.statEvents) ? { statEvents: rotateStatEvents(step.statEvents, rotateIndex, myIndex) } : {}),
+    ...(step.statPresentation ? {
+      statPresentation: {
         ...step.statPresentation,
         target: step.statPresentation.target != null ? rotateIndex(step.statPresentation.target) : step.statPresentation.target,
-      }
-      : step.statPresentation,
-    beforeDiscard: Array.isArray(step.beforeDiscard) ? step.beforeDiscard : step.beforeDiscard,
-    discardEvents: Array.isArray(step.discardEvents)
-      ? rotateEarthquakeDiscardEvents(step.discardEvents, rotateIndex, myIndex)
-      : step.discardEvents,
-    visualSetupPatch: step.visualSetupPatch
-      ? {
-        ...step.visualSetupPatch,
-        players: rotatePlayersArray(step.visualSetupPatch.players, myIndex),
-      }
-      : step.visualSetupPatch,
-    visualTimeline: Array.isArray(step.visualTimeline)
-      ? step.visualTimeline.map(item => ({
+      },
+    } : {}),
+    ...(Array.isArray(step.discardEvents) ? {
+      discardEvents: rotateEarthquakeDiscardEvents(step.discardEvents, rotateIndex, myIndex),
+    } : {}),
+    ...(step.visualSetupPatch ? {
+      visualSetupPatch: rotatePlayerSnapshotFields(step.visualSetupPatch, ['players'], myIndex),
+    } : {}),
+    ...(Array.isArray(step.visualTimeline) ? {
+      visualTimeline: step.visualTimeline.map(item => ({
         ...item,
-        patch: item?.patch
-          ? { ...item.patch, players: rotatePlayersArray(item.patch.players, myIndex) }
-          : item?.patch,
-      }))
-      : step.visualTimeline,
+        ...(item?.patch ? { patch: rotatePlayerSnapshotFields(item.patch, ['players'], myIndex) } : {}),
+      })),
+    } : {}),
   };
 }
 

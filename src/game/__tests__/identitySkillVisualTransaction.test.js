@@ -10,6 +10,7 @@ import {
   getHuntAttemptId,
 } from '../identitySkillVisualTransaction';
 import {
+  createAnimTransactionEvent,
   createApophisTargetVisualEvent,
   createBewitchGiftEvent,
   createHuntRevealEvent,
@@ -17,12 +18,64 @@ import {
   createInspectionVisualEvent,
   createSwapCardsEvent,
 } from '../visualEvents';
+import { rotateGsForViewer } from '../rotateState';
+import { compileFreshVisualEventQueue } from '../visualEventTransactionCompiler';
+import { prepareAnimQueueLogs } from '../animLogs';
+import { consumeVisualLogEntries } from '../visualEventLogs';
+import { normalizeLogForViewer } from '../logPerspective';
 
 function player(name, hand = []) {
   return { name, hp: 10, san: 10, hand, godZone: [], isDead: false };
 }
 
 describe('identity skill visual transactions', () => {
+  it('keeps the swap actor and target distinct after an exact replay changes viewer seats', () => {
+    const taken = { id: 'taken', name: '暗抽牌' };
+    const given = { id: 'given', key: 'C2', name: '地下泉' };
+    const before = [player('林恩', [given]), player('索菲', [taken]), player('米娅')];
+    const after = [player('林恩', [taken]), player('索菲', [given]), player('米娅')];
+    const previousState = { players: before, currentTurn: 0, _isMP: true, _visualEvents: [] };
+    const result = buildSwapCardsVisualTransaction({
+      previousState,
+      state: { ...previousState, players: after, phase: 'ACTION' },
+      swapEvent: createSwapCardsEvent({
+        sourceIdx: 0,
+        targetIdx: 1,
+        takenCard: taken,
+        givenCard: given,
+        beforePlayers: before,
+        afterPlayers: after,
+        msgs: [
+          '你（寻宝者）对 索菲 【掉包】，请选择要抽取的牌',
+          '拿走 暗抽牌，还给 索菲 [C2] 地下泉',
+        ],
+      }),
+    });
+    const broadcast = {
+      ...result.state,
+      _visualEvents: [createAnimTransactionEvent({
+        actorIdx: 0,
+        actorName: '林恩',
+        queue: result.queue,
+        context: 'swapCards',
+      }), ...result.state._visualEvents],
+    };
+
+    for (let viewer = 0; viewer < 3; viewer++) {
+      const remoteState = rotateGsForViewer(broadcast, viewer);
+      const queue = compileFreshVisualEventQueue(rotateGsForViewer(previousState, viewer), remoteState);
+      const consumed = new Set();
+      const live = prepareAnimQueueLogs(queue, remoteState)
+        .flatMap(step => consumeVisualLogEntries(step.logEntries, consumed));
+      // No heading or settlement transcript is supplied to resolve the actor.
+      expect(live[0]).toBe('林恩（寻宝者）对 索菲 【掉包】，请选择要抽取的牌');
+      expect(normalizeLogForViewer(live, { isMultiplayer: true, myName: remoteState.players[0].name })).toEqual([
+        `${viewer === 0 ? '你' : '林恩'}（寻宝者）对 ${viewer === 1 ? '你' : '索菲'} 【掉包】，请选择要抽取的牌`,
+        `拿走 暗抽牌，还给 ${viewer === 1 ? '你' : '索菲'} [C2] 地下泉`,
+      ]);
+    }
+  });
+
   it('builds swap state and queue through the shared boundary', () => {
     const taken = { id: 'taken', name: '拿走的牌' };
     const given = { id: 'given', name: '交还的牌' };

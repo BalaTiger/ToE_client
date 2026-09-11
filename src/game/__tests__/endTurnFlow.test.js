@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolveEndTurn, END_TURN_DECISION } from '../endTurnFlow';
-import { makePlayer, makeGs, makeZoneCard } from './factory';
+import { resolvePostDiscardEndTurn } from '../postDiscardEndTurn';
+import { discardCardsFromHandFromRight } from '../handLimitDiscard';
+import { startNextTurn } from '../turnEngine';
+import { isLocalCurrentTurn, rotateGsForViewer } from '../rotateState';
+import { shouldRunMpDiscardTimer } from '../../hooks/useMultiplayerTimers';
+import { makePlayer, makeGs, makeStandardPlayers, makeZoneCard } from './factory';
 
 const leftCard = (id = 'left') => makeZoneCard('A1', 0, { id });
 
@@ -23,6 +28,50 @@ describe('resolveEndTurn', () => {
       discardSelected: [],
       fromEndTurn: true,
     });
+  });
+
+  it('restarts the local discard timer for the next over-limit turn after an automatic discard', () => {
+    const players = makeStandardPlayers(3, [
+      { name: '莉莉' },
+      { name: '贝拉', skipNextDraw: true },
+      { name: '米娅' },
+    ]);
+    players[0].hand = Array.from({ length: 5 }, (_, index) => leftCard(`first-${index}`));
+    players[1].hand = Array.from({ length: 5 }, (_, index) => leftCard(`second-${index}`));
+    const first = resolveEndTurn(makeGs({ players, _isMP: true, _turnKey: 1 }), {
+      effectiveHandLimit: 4,
+    }).gs;
+    const timerRuns = gs => shouldRunMpDiscardTimer({ isMultiplayer: true, gs, isLocalCurrentTurn });
+    expect(timerRuns(first)).toBe(true);
+    expect(timerRuns(rotateGsForViewer(first, 1))).toBe(false);
+
+    const discard = discardCardsFromHandFromRight(first.players, 0, 1);
+    const resolved = resolvePostDiscardEndTurn(first, {
+      playersAfterDiscard: discard.players,
+      discarded: discard.discarded,
+      mpEndTurnDiscardResolved: true,
+      advanceTurn: startNextTurn,
+    });
+    expect(resolved.newGs.currentTurn).toBe(1);
+    expect(resolved.newGs.phase).toBe('ACTION');
+    expect(resolved.newGs.players[1].hand).toHaveLength(5);
+    expect(resolved.postDiscardGs._mpEndTurnDiscardResolved).toBe(true);
+    expect(timerRuns({ ...resolved.postDiscardGs, phase: 'DISCARD_PHASE' })).toBe(false);
+
+    const nextViewer = rotateGsForViewer(resolved.newGs, 1);
+    const second = resolveEndTurn(nextViewer, { effectiveHandLimit: 4 });
+    expect(second.decision).toBe(END_TURN_DECISION.DISCARD);
+    expect(timerRuns(second.gs)).toBe(true);
+    expect(timerRuns(rotateGsForViewer(second.gs, 1))).toBe(false);
+    const secondDiscard = discardCardsFromHandFromRight(second.gs.players, 0, 1);
+    const secondResolved = resolvePostDiscardEndTurn(second.gs, {
+      playersAfterDiscard: secondDiscard.players,
+      discarded: secondDiscard.discarded,
+      mpEndTurnDiscardResolved: true,
+      advanceTurn: startNextTurn,
+    });
+    expect(secondResolved.postDiscardGs.players[0].hand).toHaveLength(4);
+    expect(timerRuns({ ...secondResolved.postDiscardGs, phase: 'DISCARD_PHASE' })).toBe(false);
   });
 
   it('schedules end-turn events for a resting CTH player', () => {

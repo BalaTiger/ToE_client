@@ -9,6 +9,7 @@ vi.mock('react', () => ({
   useRef: value => ({ current: value }),
   useState: value => [value, vi.fn()],
   useEffect: vi.fn(),
+  useCallback: fn => fn,
 }));
 
 function playback(gs) {

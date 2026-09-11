@@ -36,6 +36,7 @@ export function resolveEndTurn(gs, {
       decision: END_TURN_DECISION.DISCARD,
       gs: transitionTurnFlowStage({
         ...gs,
+        _mpEndTurnDiscardResolved: false,
         abilityData: { discardSelected: [], fromEndTurn: true },
       }, TURN_FLOW_STAGE.DISCARD, { phase: 'DISCARD_PHASE' }),
     };

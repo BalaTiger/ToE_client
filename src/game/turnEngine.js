@@ -504,7 +504,7 @@ export function createFaithSettlementGodStatusEvent({
   faithEstablished = null,
   previousFaithExit = null,
   abandonedFollowers = [],
-  msgs = [],
+  statusMsg = null,
   presentAfterInspectionSeq = null,
 } = {}) {
   const beforePlayer = playersBeforeSettlement?.[playerIdx];
@@ -515,13 +515,6 @@ export function createFaithSettlementGodStatusEvent({
     beforePlayer?.godName === afterPlayer.godName &&
     (beforePlayer?.godLevel || 0) === (afterPlayer.godLevel || 0)
   ) return null;
-  const statusMsgs = (Array.isArray(msgs) ? msgs : []).filter(line => (
-    typeof line === 'string' && (
-      line.includes('信仰了') ||
-      line.includes('邪神之力升至') ||
-      line.includes('改信')
-    )
-  ));
   const presentationBoundary = Math.max(
     Number(presentAfterInspectionSeq) || 0,
     Number(previousFaithExit?.inspectionSeqAfter) || 0,
@@ -531,7 +524,7 @@ export function createFaithSettlementGodStatusEvent({
     playerName: afterPlayer.name,
     godKey: afterPlayer.godName,
     godLevel: afterPlayer.godLevel || 0,
-    msgs: statusMsgs.slice(0, 1),
+    msgs: statusMsg ? [statusMsg] : [],
     playersBefore: faithEstablished?.playersBefore || playersBeforeSettlement,
     playersAfter: faithEstablished?.playersAfter || playersAfterSettlement,
     faithSettlement: {
@@ -599,6 +592,7 @@ export function convertGodFollower(targetIndex, startIndex, P, D, Disc, L, inspe
 
 export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConvert, opts = {}) {
   const msgs = []; const godKey = godCard.godKey;
+  let statusMsg = null;
   let statePatch = {};
   const visualEvents = [];
   let apophisEclipseEvent = null;
@@ -724,11 +718,13 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
       playersAfter: copyPlayers(P),
     };
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
-    msgs.push(`${P[ci].name} 邪神之力升至Lv.${P[ci].godLevel}（${godCard.power}）`);
+    statusMsg = `${P[ci].name} 邪神之力升至Lv.${P[ci].godLevel}（${godCard.power}）`;
+    msgs.push(statusMsg);
     abandonCompetingFollowers();
     applyImmediateGodPower();
   } else if (action === 'convert') {
-    msgs.push(`${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
+    statusMsg = `${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`;
+    msgs.push(statusMsg);
     const inspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
     const convertBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
     const converted = convertGodFollower(ci, gs?.currentTurn ?? ci, P, D, Disc, convertBaseLog, inspectionMeta, `${P[ci].name} 改信新神，${formatSanLoss(1)}`, godCard);
@@ -750,7 +746,8 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
       playersAfter: copyPlayers(P),
     };
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
-    msgs.push(`${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
+    statusMsg = `${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`;
+    msgs.push(statusMsg);
     abandonCompetingFollowers();
     applyImmediateGodPower();
   } else if (action === 'hand') {
@@ -783,7 +780,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     faithEstablished,
     previousFaithExit,
     abandonedFollowers: abandonedFaithExits,
-    msgs,
+    statusMsg,
     presentAfterInspectionSeq,
   });
   const faithResolutionEvents = [godStatusEvent, apophisEclipseEvent].filter(Boolean);
@@ -1271,24 +1268,32 @@ function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta) {
 
   const bgyCount = P[next].hand.filter(isBlackGoatYoung).length;
   if (bgyCount > 0) {
-    const beforePlayers = copyPlayers(P);
     const linkPartnerIndices = getActiveDamageLinksForPlayer(P, next)
       .map(link => link.a === next ? link.b : link.a);
-    const logStart = L.length;
+    const statEventSeq = (inspectionMeta?._statEventSeq || 0) + 1;
+    const damageLog = `【黑山羊幼仔】${P[next].name} 失去 ${bgyCount} HP 和 ${bgyCount} SAN`;
     const reactionLogs = [];
     const damage = submitLossEvents({
       players: P, deck: D, discard: Disc, log: reactionLogs, currentTurn: next,
       events: [{ targetIdx: next, lostHp: bgyCount, lostSan: bgyCount, source: '黑山羊幼仔' }],
+      statEventSeq,
+      statEventLogs: [damageLog],
     });
-    L.push(`【黑山羊幼仔】${P[next].name} 失去 ${bgyCount} HP 和 ${bgyCount} SAN`);
+    L.push(damageLog);
     L.push(...reactionLogs);
-    inspectionMeta = appendStatEventsToInspectionMeta(
-      inspectionMeta,
-      beforePlayers,
-      P,
-      L.slice(logStart),
-      '黑山羊幼仔',
-    );
+    // Damage already owns the ordered rope-break/defeat reactions. Rebuilding
+    // from final stats loses the consumed reaction timeline and its messages.
+    const damageEvent = createStatEventsEvent({
+      statEvents: damage.statEvents,
+      msgs: [damageLog, ...reactionLogs],
+      turnStartStage: 'turnStart',
+    });
+    if (damageEvent) inspectionMeta = {
+      ...inspectionMeta,
+      _statEvents: [...(inspectionMeta?._statEvents || []), ...damage.statEvents],
+      _statEventSeq: statEventSeq,
+      _visualEvents: [...(inspectionMeta?._visualEvents || []), damageEvent],
+    };
     const slimeDecision = damage.phase === 'TSG_SLIME_BALANCE' ? damage.abilityData : null;
     if (slimeDecision) inspectionMeta = { ...inspectionMeta, abilityData: slimeDecision };
     if (slimeDecision) return { P, D, Disc, L, inspectionMeta, winAfterBgy: null };
@@ -2120,16 +2125,18 @@ function resolveNextTurnState(gs, opts = {}) {
     P = res.P; D = res.D; Disc = res.Disc;
     // 多人游戏中记录玩家0摸牌信息到日志，让其他玩家可见（单机不需要，DRAW_REVEAL 时可见）
     if (res.reshuffleLog) drawLogs.push(res.reshuffleLog);
-    if (res.drawnCard && !res.kept) {
+    if (res.drawnCard && (!res.kept || res.drawnCard.forced)) {
       const msg = `${gs._isMP ? P[0].name : '你'} 摸到 ${drawCardDecisionText(res.drawnCard)}`;
-      drawLogs.push(msg);
+      if (!res.kept) drawLogs.push(msg);
       appendTurnDrawVisualEvents(turnDrawVisualEvents, {
         playerIdx: 0,
         playerName: P[0].name,
         card: res.drawnCard,
           effectVisualEvents: res.statePatch?._visualEvents,
         sourcePile: res.sourcePile,
-        msgs: [msg],
+        // Forced draws already resolved their effects. Author the reveal here
+        // so its messages exclude those owned by the card-effect events.
+        msgs: res.kept ? res.effectMsgs : [msg],
         reshuffleLog: res.reshuffleLog,
         statEventSeqs: collectFreshStatEventSeqs(res.statePatch, statEventSeqBeforeFixedDraw),
         ...buildDrawKeepPresentation({
@@ -2370,16 +2377,16 @@ function resolveNextTurnState(gs, opts = {}) {
     P = res.P; D = res.D; Disc = res.Disc;
     // 记录摸牌信息到日志（与单机AI摸牌保持一致：[key] 名称）
     if (res.reshuffleLog) drawLogs.push(res.reshuffleLog);
-    if (res.drawnCard && !res.kept) {
+    if (res.drawnCard && (!res.kept || res.drawnCard.forced)) {
       const msg = `${P[next].name} 摸到 ${drawCardDecisionText(res.drawnCard)}`;
-      drawLogs.push(msg);
+      if (!res.kept) drawLogs.push(msg);
       appendTurnDrawVisualEvents(turnDrawVisualEvents, {
         playerIdx: next,
         playerName: P[next].name,
         card: res.drawnCard,
           effectVisualEvents: res.statePatch?._visualEvents,
         sourcePile: res.sourcePile,
-        msgs: [msg],
+        msgs: res.kept ? res.effectMsgs : [msg],
         reshuffleLog: res.reshuffleLog,
         statEventSeqs: collectFreshStatEventSeqs(res.statePatch, statEventSeqBeforeFixedDraw),
         ...buildDrawKeepPresentation({

@@ -22,7 +22,7 @@ export function normalizeLogLineForViewer(line, { isMultiplayer, turnOwner, myNa
     // “你的手牌…被暗抽” describe the local target even during another seat's
     // turn and must remain “你”.
     display = display
-      .replace(/^你(?=（|\s+(?:遭遇|信仰|放弃|摸到|选择|借用|收入|暗抽)|遭遇|信仰|放弃|摸到|选择|借用|收入|暗抽|$)/, turnOwner)
+      .replace(/^你(?=（|\s+(?:从手牌|遭遇|信仰|放弃|摸到|选择|借用|收入|暗抽)|从手牌|遭遇|信仰|放弃|摸到|选择|借用|收入|暗抽|$)/, turnOwner)
       .replace(/^你的邪神之力/, `${turnOwner}的邪神之力`);
   }
   if (myName && myName !== '你') display = replaceAllLiteral(display, myName, '你');

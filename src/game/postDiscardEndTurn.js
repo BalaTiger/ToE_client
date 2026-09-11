@@ -99,6 +99,9 @@ export function resolvePostDiscardEndTurn(baseGs, {
     abilityData: {},
     _mpEndTurnDiscardResolved: mpEndTurnDiscardResolved,
     ...balanceStatePatch,
+    // The timeout flag is a local command, consumed by this resolution. It
+    // must not travel with the replay and trigger another client's handler.
+    _mpAutoDiscard: undefined,
   }, TURN_FLOW_STAGE.END_TURN);
 
   const endTurnEvents = getEndTurnEvents(P, actorIndex);

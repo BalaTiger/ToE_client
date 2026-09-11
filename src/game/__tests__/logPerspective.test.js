@@ -35,6 +35,23 @@ describe('multiplayer log perspective', () => {
     expect(normalizeLogForViewer(log, { isMultiplayer: false, myName: '安娜' })).toEqual(log);
   });
 
+  it('normalizes hand faith action wording while preserving target wording', () => {
+    const log = [
+      '── 林恩 的回合开始 ──',
+      '你 从手牌信仰 阿波菲斯，获得噬日灭世(Lv.1)（骷髅头不计）',
+      '你 从手牌升级邪神之力至 Lv.2（骷髅头不计）',
+      '你的手牌[B2] 旧牌被暗抽',
+      '你 失去 1 SAN',
+    ];
+    expect(normalizeLogForViewer(log, { isMultiplayer: true, myName: '米娅' })).toEqual([
+      log[0],
+      log[1].replace(/^你/, '林恩'),
+      log[2].replace(/^你/, '林恩'),
+      log[3],
+      log[4],
+    ]);
+  });
+
   it('keeps viewer-relative target text during a remote turn', () => {
     const log = [
       '── 艾伦 的回合开始 ──',

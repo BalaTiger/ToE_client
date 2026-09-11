@@ -31,7 +31,7 @@ describe('createFaithSettlementGodStatusEvent', () => {
       playersBeforeSettlement: worshipped,
       playersAfterSettlement: upgraded,
       faithEstablished: { playersBefore: worshipped, playersAfter: upgraded },
-      msgs: ['邪神之力升至Lv.2'],
+      statusMsg: '邪神之力升至Lv.2',
     });
 
     expect(worship).toMatchObject({ type: 'godStatusChanged', playerIdx: 0, godKey: 'APO', godLevel: 1, msgs: [] });

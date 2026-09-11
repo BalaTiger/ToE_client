@@ -660,7 +660,7 @@ export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQ
   // 注意：被蛊惑者的操作是在当前回合内完成的，不应视为"回合开始"
   // 因此不再添加 YOUR_TURN 动画步骤
   if(card){
-    acquisitionQueue.push({type:"DRAW_CARD",card,triggerName,targetPid:toPid,skipTravel:true,disableDrawBackgroundCamera:true});
+    acquisitionQueue.push({type:"DRAW_CARD",card,triggerName,targetPid:toPid,skipTravel:true,disableDrawBackgroundCamera:true,msgs:options.encounterMsgs||[]});
   }
   const settlementQueue=(statQueue||[]).filter(a=>
     !isPlainInferredTransfer(a) &&

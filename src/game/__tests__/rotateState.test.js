@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { canLocalActOnTargetSelectionPhase, derotateGs, rotateGsForViewer } from '../rotateState';
 import { addDamageLink, getAllDamageLinks } from '../damageLinks';
+import { prepareAnimationQueueSteps } from '../animationStepSchema';
 
 function player(name, hand = []) {
   return { name, hp: 10, san: 10, hand };
@@ -11,6 +12,47 @@ function names(players) {
 }
 
 describe('rotateGsForViewer', () => {
+  it('preserves optional animation fields and stat authority across a wire round trip', () => {
+    const queue = [
+      { type: 'GOD_HIGHLIGHT', targetPid: 0, godKey: 'APO' },
+      {
+        type: 'APOPHIS_ECLIPSE',
+        visualSetupPatch: { hiddenZhuCardId: null },
+        visualTimeline: [{ atMs: 100, patch: { discard: [] } }],
+      },
+      {
+        type: 'SAN_DAMAGE',
+        visualEventId: 'stat:1',
+        hitIndices: [0],
+        statEvents: [{ id: 'san:1', type: 'SAN_LOSS', target: 0, from: { hp: 10, san: 10 }, to: { hp: 10, san: 9 } }],
+      },
+      { type: 'VISUAL_LOCK', hiddenZhuCardId: null },
+      { type: 'STATE_PATCH', discard: [] },
+      { type: 'TSG_SLIME_POP', targetPid: 1, statPresentation: { target: 1, from: { hp: 3, san: 9 }, to: { hp: 6, san: 6 } } },
+    ];
+    const gs = {
+      players: [player('p0'), player('p1'), player('p2')],
+      currentTurn: 0,
+      phase: 'ACTION',
+      abilityData: {},
+      _visualEvents: [{ id: 'transaction:1', type: 'animTransaction', queue }],
+    };
+    // A non-host authors in its own seat order, then each receiver rotates
+    // the serialized server order again before validating/replaying the queue.
+    const packet = JSON.parse(JSON.stringify(derotateGs(gs, 1)));
+    for (const viewer of [0, 1, 2]) {
+      const rotated = rotateGsForViewer(packet, viewer)._visualEvents[0].queue;
+      expect(prepareAnimationQueueSteps(rotated).issues).toEqual([]);
+      rotated.forEach((step, index) => {
+        expect(Object.keys(step).sort()).toEqual(Object.keys(queue[index]).sort());
+      });
+      expect(rotated[1].visualSetupPatch).not.toHaveProperty('players');
+      expect(rotated[1].visualTimeline[0].patch).not.toHaveProperty('players');
+      expect(rotated[2].statEvents[0].target).toBe((1 - viewer + 3) % 3);
+      expect(rotated[5].statPresentation.target).toBe((2 - viewer + 3) % 3);
+    }
+  });
+
   it('rotates god-gift keep owner and landing snapshots together', () => {
     const godCard = { id: 'god-gift', name: '伏行之混沌' };
     const gs = {

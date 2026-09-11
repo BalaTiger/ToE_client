@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { dedupeInferredDiscardTransfers } from '../game/animQueueHelpers';
 import { markConsumedVisualEvents } from '../game/visualEvents';
 import { consumeVisualLogEntries } from '../game/visualEventLogs';
@@ -108,6 +108,18 @@ export function useAnimationQueue({
   const fallbackLogEntryIdsRef = useRef(new Set());
   const logEntryIds = visibleLogEntryIdsRef || fallbackLogEntryIdsRef;
 
+  const resetAnimationQueue = useCallback(() => {
+    animQueueRef.current = [];
+    pendingGsRef.current = null;
+    animCallbackRef.current = null;
+    pendingVisualEventIdsRef.current = [];
+    queueLifecycleRef.current = transitionAnimationQueue(queueLifecycleRef.current, ANIMATION_QUEUE_EVENT.INTERRUPTED);
+    // Invalidate already-scheduled cues before React cleans up their timers.
+    playbackRef.current = { id: null, elapsedMs: 0, runningSinceMs: null, firedCueIds: new Set() };
+    setAnimExiting(false);
+    setAnim(null);
+  }, []);
+
   function sendQueueLifecycleEvent(type) {
     queueLifecycleRef.current = transitionAnimationQueue(queueLifecycleRef.current, type);
     return queueLifecycleRef.current;
@@ -115,7 +127,7 @@ export function useAnimationQueue({
 
   function reportSchemaIssues(stage, issues = []) {
     if (!issues.length || !import.meta.env?.DEV) return;
-    console.error(`[animation-schema] ${stage}`, issues);
+    console.error(`[animation-schema] ${stage}`, JSON.stringify(issues));
   }
 
   function revealAnimLogs(animStep, atImpact = false) {
@@ -627,6 +639,7 @@ export function useAnimationQueue({
     animCallbackRef,
     pendingVisualEventIdsRef,
     queueLifecycleRef,
+    resetAnimationQueue,
     playAnimationTransaction,
     advanceQueue,
   };

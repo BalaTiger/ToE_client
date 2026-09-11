@@ -1195,6 +1195,7 @@ export function aiStep(gs, opts = {}) {
     );
     let inspectionMeta = makeInspectionMeta(_gs);
     let encounterEvents = [];
+    let encounterMsgs = [];
     _P[_ct].hand = _P[_ct].hand.filter(c => c.id !== _sc.id);
     const bewitchMsg = `${_P[_ct].name}（邪祀者）对 ${_P[_ti].name} 【蛊惑】，赠予 ${cardLogText(_sc, { alwaysShowName: true })}`;
     _L.push(bewitchMsg);
@@ -1207,6 +1208,7 @@ export function aiStep(gs, opts = {}) {
         ? `${_P[_ti].name}（邪祀者）遭遇邪神 ${_sc.name}！（${formatGodEncounterProgress(encounterProgress)}）免疫SAN损耗`
         : `${_P[_ti].name} 遭遇邪神 ${_sc.name}！（${formatGodEncounterProgress(encounterProgress)}）${formatSanLoss(godCost)}`;
       _L.push(effectMsg);
+      encounterMsgs = [effectMsg];
       if (!revealedCultist && godCost > 0) {
         const processed = applySanLossToPlayerWithInspection(_ti, godCost, _gs.currentTurn, _P, _D, _Disc, _L, inspectionMeta, '邪神遭遇');
         _P = processed.P; _D = processed.D; _Disc = processed.Disc;
@@ -1263,6 +1265,7 @@ export function aiStep(gs, opts = {}) {
       targetName: _P[_ti].name,
       card: _sc,
       msgs: [bewitchMsg],
+      encounterMsgs,
       playersBefore: playersBeforeGift,
       playersAfter: copyPlayers(_P),
       discardBefore: discardBeforeGift,
