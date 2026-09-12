@@ -85,7 +85,7 @@ import {
   createStatEventsEvent,
   createTsathogguaSlimeGrantEvent,
 } from './visualEvents';
-import { createRuleResolutionTransaction } from './ruleResolutionTransaction';
+import { createRuleResolutionTransaction, orderRuleResolutionEvents } from './ruleResolutionTransaction';
 import { compileRuleVisualEventsToAnimTransaction } from './visualEventTransactionCompiler';
 import {
   getBestCaveDuelCardIndex,
@@ -2146,7 +2146,16 @@ export function aiStep(gs, opts = {}) {
         }
 
         // 检查胜利条件
-        const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
+        const win=checkWin(P,gs._isMP);
+        if(win){
+          const winningState=buildReturnPack({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win},copyPlayers(P));
+          // Preserve every attempt through the winning settlement, including
+          // death/loot. An earlier casualty is not the terminal boundary.
+          const terminalEvent=orderRuleResolutionEvents(winningState._visualEvents)
+            .filter(event=>event.transactionId===aiActionTransactionId).at(-1);
+          if(terminalEvent)terminalEvent.terminalBoundary=true;
+          return winningState;
+        }
       }
     } else if(aiEffRole===ROLE_CULTIST){
       if(!alive.length){

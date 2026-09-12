@@ -4,9 +4,14 @@ import {
   buildFullHandSwapTransferQueueFromLogs,
 } from '../animQueueCore';
 import { compileFreshVisualEventQueue } from '../visualEventTransactionCompiler';
+import { prepareAnimQueueLogs } from '../animLogs';
+import { copyPlayers } from '../coreUtils';
+import { submitLossEvents } from '../effectEngine';
+import { consumeVisualLogEntries } from '../visualEventLogs';
 import {
   createCardMoveVisualEvent,
   createDiceResultVisualEvent,
+  createHuntResultEvent,
   createStatEventsEvent,
 } from '../visualEvents';
 import { makeGs, makePlayer } from './factory';
@@ -82,6 +87,50 @@ describe('canonical animation queue boundary', () => {
 });
 
 describe('retained explicit hunt composers', () => {
+  it('keeps successful immortality logs on the reveal between hunt damage and healing', () => {
+    const discardedCard = { id: 'hunt-discard', name: '地磁反转', key: 'C2', isZone: true };
+    const revealedCard = { id: 'hunt-reveal', name: '区域牌', key: 'C1', isZone: true };
+    const beforePlayers = [
+      makePlayer({ name: '艾伦', hand: [discardedCard] }),
+      makePlayer({ name: '贝拉', hp: 2, godName: 'VRI', godLevel: 3, hand: [revealedCard] }),
+    ];
+    const afterDiscardPlayers = copyPlayers(beforePlayers);
+    afterDiscardPlayers[0].hand = [];
+    const log = ['艾伦 对 贝拉 【追捕】，亮出 [C1]', '弃 [C2] 地磁反转 → 贝拉 受 3HP 伤害！'];
+    const damage = submitLossEvents({
+      players: copyPlayers(afterDiscardPlayers),
+      deck: [{ id: 'immortal-one', name: '首张区域牌', isZone: true }, { id: 'immortal-two', name: '次张区域牌', isZone: true }],
+      discard: [discardedCard], log, currentTurn: 0,
+      events: [{ targetIdx: 1, lostHp: 3, source: '追捕' }],
+      statEventLogs: log,
+      statEventSeq: 10,
+      defeatSettlementOwner: 'huntResult',
+    });
+    expect(damage.players[1]).toMatchObject({ hp: 1, isDead: false });
+    const event = createHuntResultEvent({
+      hunterIdx: 0, targetIdx: 1, skipIntro: false, skipReveal: false,
+      revealedCard, discardedCard, beforePlayers, afterDiscardPlayers,
+      beforeDiscard: [], afterDiscardDiscard: [discardedCard],
+      afterPlayers: damage.players, afterResultDiscard: damage.discard,
+      statEvents: damage.statEvents, msgs: log,
+    });
+    const state = makeGs({ players: damage.players, log, _visualEvents: [event] });
+    const queue = compileFreshVisualEventQueue(makeGs({ _visualEvents: [] }), state);
+    const types = queue.map(step => step.type);
+    expect(types.filter(type => ['HP_DAMAGE', 'VRI_IMMORTAL_REVEAL', 'HP_HEAL'].includes(type)))
+      .toEqual(['HP_DAMAGE', 'VRI_IMMORTAL_REVEAL', 'HP_HEAL']);
+    const consumed = new Set();
+    const liveByStep = prepareAnimQueueLogs(queue, state)
+      .map(step => consumeVisualLogEntries(step.logEntries, consumed));
+    const revealIndex = types.indexOf('VRI_IMMORTAL_REVEAL');
+    const revealLog = log.find(line => line.includes('【不灭之躯】'));
+    expect(revealLog).toContain('HP恢复至1');
+    expect(liveByStep.slice(0, revealIndex).flat()).not.toContain(revealLog);
+    expect(liveByStep[revealIndex]).toEqual([revealLog]);
+    expect(liveByStep[types.indexOf('HP_HEAL')]).toEqual([]);
+    expect(liveByStep.flat()).toEqual(log);
+  });
+
   it('builds a hunt reticle and reveal from the event payload', () => {
     const card = { id: 'fire', name: '火牌' };
     const players = [

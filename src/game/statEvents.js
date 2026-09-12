@@ -580,11 +580,12 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
       || line.includes('立即死亡并石化')
     )
   ));
-  const settlementMsgs = new Set(defeatEvents.length ? [
-    ...allDeathMsgs,
+  const settlementMsgs = new Set([
+    ...events.flatMap(event => event.vritraImmortalReveal?.msgs || []),
+    ...(defeatEvents.length ? allDeathMsgs : []),
     ...defeatEvents.flatMap(event => event.discardMsgs || []),
-  ] : []);
-  // A shared stat batch can include later defeat/clear-hand messages. Reserve
+  ]);
+  // A shared stat batch can include later reveal/defeat/clear-hand messages. Reserve
   // those for their owned steps instead of consuming them at the damage impact.
   const statMsgs = (Array.isArray(msgs) ? msgs : []).filter(msg => !settlementMsgs.has(msg));
   const push = (type, hitIndices) => {
@@ -596,6 +597,21 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
       hitIndices,
       statEvents: matchingEvents,
     });
+    // Immortality belongs to the HP-loss payload even when a hunt or card
+    // effect owns the surrounding transaction. Reveal after damage, before
+    // the next phase's recovery or this batch's defeat settlement.
+    if (type === 'HP_DAMAGE') {
+      matchingEvents.filter(event => event.vritraImmortalReveal).forEach(event => {
+        const reveal = event.vritraImmortalReveal;
+        queue.push({
+          type: 'VRI_IMMORTAL_REVEAL',
+          targetPid: reveal.targetIdx,
+          cards: reveal.cards || [],
+          succeeded: !!reveal.succeeded,
+          msgs: reveal.msgs || [],
+        });
+      });
+    }
   };
 
   const animationGroups = [

@@ -89,10 +89,11 @@ export function buildAiHuntEventAnimQueue(evt, actorName, options = {}) {
     perHuntQueue.push(statePatchStep(evt.resolutionPatch));
   }
   if (evt.beforePlayers && evt.afterPlayers) {
+    const lootMsgs = followupMsgs.filter(line => /从 .+ 的(?:公开)?手牌中/.test(line || ''));
     const resultQueue = statEventsToAnimQueue(
       evt.statEvents || [],
       evt.afterDiscardPlayers || evt.beforePlayers,
-      followupMsgs,
+      followupMsgs.filter(line => !lootMsgs.includes(line)),
     );
     const resultWithChunks = resultQueue
       .filter(step => {
@@ -108,11 +109,13 @@ export function buildAiHuntEventAnimQueue(evt, actorName, options = {}) {
       })
       .map(step => ({ ...step }));
     if (followupMsgs.length && !evt.afterPlayers[evt.targetIdx]?.isDead) {
+      const revealMsgs = new Set(resultWithChunks
+        .filter(step => step.type === 'VRI_IMMORTAL_REVEAL').flatMap(step => step.msgs || []));
       const firstVisibleIdx = resultWithChunks.findIndex(step => step.type !== 'STATE_PATCH');
       if (firstVisibleIdx >= 0) {
         resultWithChunks[firstVisibleIdx]._logChunk = [
           ...(Array.isArray(resultWithChunks[firstVisibleIdx]._logChunk) ? resultWithChunks[firstVisibleIdx]._logChunk : []),
-          ...followupMsgs,
+          ...followupMsgs.filter(line => !revealMsgs.has(line)),
         ];
       } else {
         // An abandoned hunt has a result message but no damage animation.
@@ -121,7 +124,6 @@ export function buildAiHuntEventAnimQueue(evt, actorName, options = {}) {
     }
     perHuntQueue.push(...resultWithChunks);
     if (evt.afterPlayers[evt.targetIdx]?.isDead && evt.hunterIdx != null) {
-      const lootMsgs = followupMsgs.filter(line => /从 .+ 的(?:公开)?手牌中/.test(line || ''));
       const discardMsgs = followupMsgs.filter(line => /衍生牌|黑山羊幼仔/.test(line || ''));
       const cardsTaken = Number.isFinite(evt.lootTransferCount) ? evt.lootTransferCount : 0;
       if (cardsTaken > 0) {

@@ -543,41 +543,8 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
     case VISUAL_EVENT.HAND_LIMIT_DISCARD:
       return buildHandLimitDiscardStepsFromVisualEvents(isolated)
         .map(step => compileDiscardStep(step, event, state, previousState));
-    case VISUAL_EVENT.STAT_EVENTS: {
-      const revealStatEvent = (event.statEvents || []).find(statEvent => statEvent?.vritraImmortalReveal);
-      if (!revealStatEvent) {
-        return buildStatStepsFromVisualEvents(isolated, options.players || event.beforePlayers || previousState?.players || state?.players);
-      }
-      const reveal = revealStatEvent.vritraImmortalReveal;
-      const revealOrder = revealStatEvent.phaseOrder ?? 0;
-      const isRevealTargetDefeat = statEvent => (
-        statEvent?.type === 'PLAYER_DEFEATED'
-        && Number(statEvent.target) === Number(reveal.targetIdx)
-      );
-      const beforeEvents = event.statEvents.filter(statEvent => (
-        (statEvent.phaseOrder ?? 0) <= revealOrder
-        && statEvent !== revealStatEvent
-        && !isRevealTargetDefeat(statEvent)
-      ));
-      const afterEvents = event.statEvents.filter(statEvent => (
-        statEvent === revealStatEvent
-        || isRevealTargetDefeat(statEvent)
-        || (statEvent.phaseOrder ?? 0) > revealOrder
-      ));
-      const damageEvent = { ...revealStatEvent };
-      delete damageEvent.vritraImmortalReveal;
-      return [
-        ...statEventsToAnimQueue([...beforeEvents, damageEvent], options.players || event.beforePlayers || previousState?.players || state?.players, event.msgs || []),
-        {
-          type: 'VRI_IMMORTAL_REVEAL',
-          targetPid: reveal.targetIdx,
-          cards: reveal.cards || [],
-          succeeded: !!reveal.succeeded,
-          msgs: reveal.msgs || [],
-        },
-        ...statEventsToAnimQueue(afterEvents.filter(statEvent => statEvent !== revealStatEvent), options.players || event.beforePlayers || previousState?.players || state?.players, []),
-      ];
-    }
+    case VISUAL_EVENT.STAT_EVENTS:
+      return buildStatStepsFromVisualEvents(isolated, options.players || event.beforePlayers || previousState?.players || state?.players);
     case VISUAL_EVENT.GOD_POWER_BLOCKED:
       return buildGodPowerBlockedStepsFromVisualEvents(isolated, null);
     case VISUAL_EVENT.TSG_SLIME_POP: {

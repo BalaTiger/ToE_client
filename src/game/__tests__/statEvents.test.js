@@ -10,11 +10,46 @@ import {
   validateStatAnimationContinuity,
 } from '../statEvents';
 import { makePlayer } from './factory';
-import { applyHpDamageWithLink } from '../effectEngine';
+import { applyHpDamageWithLink, submitLossEvents } from '../effectEngine';
 import { addDamageLink } from '../damageLinks';
 import { copyPlayers } from '../coreUtils';
 
 describe('statEvents', () => {
+  it.each([true, false])('共享属性队列在不灭之躯成功=%s时保留一次翻牌并按顺序结算', succeeded => {
+    const before = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '贝拉', hp: 2, godName: 'VRI', godLevel: 3 }),
+    ];
+    const players = copyPlayers(before);
+    const damage = submitLossEvents({
+      players,
+      deck: [
+        { id: 'immortal-one', name: '首张牌', isGod: !succeeded, isZone: succeeded },
+        { id: 'immortal-two', name: '区域牌', isZone: true },
+      ],
+      discard: [], log: [], currentTurn: 0,
+      events: [{ targetIdx: 1, lostHp: 3, source: '致死伤害' }],
+      statEventSeq: 10,
+    });
+    const originalEvents = structuredClone(damage.statEvents);
+    const queue = statEventsToAnimQueue(damage.statEvents, before, damage.logs);
+    const types = queue.map(step => step.type);
+    const reveal = queue.find(step => step.type === 'VRI_IMMORTAL_REVEAL');
+
+    expect(types.filter(type => type === 'VRI_IMMORTAL_REVEAL')).toHaveLength(1);
+    expect(types.indexOf('VRI_IMMORTAL_REVEAL')).toBeGreaterThan(types.indexOf('HP_DAMAGE'));
+    expect(types.indexOf(succeeded ? 'HP_HEAL' : 'GUILLOTINE')).toBeGreaterThan(types.indexOf('VRI_IMMORTAL_REVEAL'));
+    expect(reveal).toMatchObject({ targetPid: 1, succeeded });
+    expect(reveal.cards).toHaveLength(2);
+    expect(reveal.msgs).toHaveLength(1);
+    expect(queue.filter(step => step.type !== 'VRI_IMMORTAL_REVEAL')
+      .some(step => step.msgs?.some(msg => reveal.msgs.includes(msg)))).toBe(false);
+    expect(damage.statEvents).toEqual(originalEvents);
+    expect(validateStatAnimationContinuity(queue)).toEqual([]);
+    expect(applyStatAnimationImpact([{ hp: 10, san: 8 }, { hp: 0, san: 8 }], reveal))
+      .toEqual([{ hp: 10, san: 8 }, { hp: 0, san: 8 }]);
+  });
+
   it('属性队列开始时只把对应数值锁定到第一段事件的 from', () => {
     const displayStats = [{ hp: 4, san: 6 }];
     const queue = statEventsToAnimQueue([
